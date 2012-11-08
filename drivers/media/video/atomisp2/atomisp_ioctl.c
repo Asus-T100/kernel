@@ -2254,6 +2254,10 @@ static long atomisp_vidioc_default(struct file *file, void *fh,
 		err = atomisp_gamma_correction(isp, 1, arg);
 		break;
 
+	case ATOMISP_IOC_S_PARAMETERS:
+		err = atomisp_set_parameters(isp, arg);
+		break;
+
 	default:
 		mutex_unlock(&isp->mutex);
 		return -EINVAL;

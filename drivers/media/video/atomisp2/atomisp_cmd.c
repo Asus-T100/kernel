@@ -2142,6 +2142,254 @@ int atomisp_3a_stat(struct atomisp_device *isp, int flag,
 	return 0;
 }
 
+static int __atomisp_set_general_isp_parameters(struct atomisp_device *isp,
+					struct atomisp_parameters *arg)
+{
+	if (arg->wb_config) {
+		if (copy_from_user(&isp->params.wb_config, arg->wb_config,
+			sizeof(struct sh_css_wb_config)))
+			return -EFAULT;
+		sh_css_set_wb_config(&isp->params.wb_config);
+	}
+
+	if (arg->ob_config) {
+		if (copy_from_user(&isp->params.ob_config, arg->ob_config,
+			sizeof(struct sh_css_ob_config)))
+			return -EFAULT;
+		sh_css_set_ob_config(&isp->params.ob_config);
+	}
+
+	if (arg->dp_config) {
+		if (copy_from_user(&isp->params.dp_config, arg->dp_config,
+			sizeof(struct sh_css_dp_config)))
+			return -EFAULT;
+		sh_css_set_dp_config(&isp->params.dp_config);
+	}
+
+	if (arg->de_config) {
+		if (copy_from_user(&isp->params.de_config, arg->de_config,
+			sizeof(struct sh_css_de_config)))
+			return -EFAULT;
+		sh_css_set_de_config(&isp->params.de_config);
+	}
+
+	if (arg->ce_config) {
+		if (copy_from_user(&isp->params.ce_config, arg->ce_config,
+			sizeof(struct sh_css_ce_config)))
+			return -EFAULT;
+		sh_css_set_ce_config(&isp->params.ce_config);
+	}
+
+	if (arg->nr_config) {
+		if (copy_from_user(&isp->params.nr_config, arg->nr_config,
+			sizeof(struct sh_css_nr_config)))
+			return -EFAULT;
+		sh_css_set_nr_config(&isp->params.nr_config);
+	}
+
+	if (arg->ee_config) {
+		if (copy_from_user(&isp->params.ee_config, arg->ee_config,
+			sizeof(struct sh_css_ee_config)))
+			return -EFAULT;
+		sh_css_set_ee_config(&isp->params.ee_config);
+	}
+
+	if (arg->tnr_config) {
+		if (copy_from_user(&isp->params.tnr_config, arg->tnr_config,
+			sizeof(struct sh_css_tnr_config)))
+			return -EFAULT;
+		sh_css_set_tnr_config(&isp->params.tnr_config);
+	}
+
+	if (arg->cc_config) {
+		if (copy_from_user(&isp->params.cc_config, arg->cc_config,
+			sizeof(struct sh_css_cc_config)))
+			return -EFAULT;
+		sh_css_set_cc_config(&isp->params.cc_config);
+	}
+
+	if (arg->macc_config) {
+		if (copy_from_user(&isp->params.macc_table,
+			&arg->macc_config->table,
+			sizeof(struct sh_css_macc_table)))
+			return -EFAULT;
+		isp->params.color_effect = arg->macc_config->color_effect;
+		sh_css_set_macc_table(&isp->params.macc_table);
+	}
+
+	if (arg->gamma_table) {
+		if (copy_from_user(&isp->params.gamma_table, arg->gamma_table,
+			sizeof(isp->params.gamma_table)))
+			return -EFAULT;
+		sh_css_set_gamma_table(&isp->params.gamma_table);
+	}
+
+	if (arg->ctc_table) {
+		if (copy_from_user(&isp->params.ctc_table, arg->ctc_table,
+			sizeof(isp->params.ctc_table)))
+			return -EFAULT;
+		sh_css_set_ctc_table(&isp->params.ctc_table);
+	}
+
+	/*
+	 * TODO/FIXME: No implementation exists for setting the XNR threshold
+	 * in CSS. Enable this when CSS implementation is ready.
+	 */
+	/*
+	if (arg->xnr_config)
+		sh_css_xnr_config(xnr_config->threshold);
+	*/
+
+	if (arg->gc_config) {
+		if (copy_from_user(&isp->params.gc_config, arg->gc_config,
+			sizeof(*arg->gc_config)))
+			return -EFAULT;
+		sh_css_set_gc_config(&isp->params.gc_config);
+	}
+
+	if (arg->a3a_config) {
+		if (copy_from_user(&isp->params.s3a_config, arg->a3a_config,
+			sizeof(*arg->a3a_config)))
+			return -EFAULT;
+		sh_css_set_3a_config(&isp->params.s3a_config);
+	}
+
+	return 0;
+}
+
+static int __atomisp_set_lsc_table(struct atomisp_device *isp,
+			struct atomisp_shading_table *user_st)
+{
+	unsigned int i;
+	unsigned int len_table;
+	struct sh_css_shading_table *shading_table;
+	struct sh_css_shading_table *old_shading_table;
+
+	if (!user_st)
+		return 0;
+
+	old_shading_table = isp->inputs[isp->input_curr].shading_table;
+
+	/* user config is to disable the shading table. */
+	if (!user_st->enable) {
+		shading_table = NULL;
+		goto set_lsc;
+	}
+
+	/* Setting a new table. Validate first - all tables must be set */
+	for (i = 0; i < ATOMISP_NUM_SC_COLORS; i++) {
+		if (!user_st->data[i])
+			return -EINVAL;
+	}
+
+	/* Shading table size per color */
+	if (user_st->width > SH_CSS_MAX_SCTBL_WIDTH_PER_COLOR ||
+		user_st->height > SH_CSS_MAX_SCTBL_HEIGHT_PER_COLOR)
+		return -EINVAL;
+
+	shading_table = sh_css_shading_table_alloc(user_st->width,
+			user_st->height);
+	if (!shading_table)
+			return -ENOMEM;
+
+	len_table = user_st->width * user_st->height * ATOMISP_SC_TYPE_SIZE;
+	for (i = 0; i < ATOMISP_NUM_SC_COLORS; i++) {
+		if (copy_from_user(shading_table->data[i],
+			user_st->data[i], len_table)) {
+			sh_css_shading_table_free(shading_table);
+			return -EFAULT;
+		}
+
+	}
+	shading_table->sensor_width = user_st->sensor_width;
+	shading_table->sensor_height = user_st->sensor_height;
+	shading_table->fraction_bits = user_st->fraction_bits;
+
+set_lsc:
+	/* set LSC to CSS */
+	isp->inputs[isp->input_curr].shading_table = shading_table;
+	sh_css_set_shading_table(shading_table);
+	isp->params.sc_en = shading_table != NULL;
+
+	if (old_shading_table)
+		sh_css_shading_table_free(old_shading_table);
+
+	return 0;
+}
+
+static int __atomisp_set_morph_table(struct atomisp_device *isp,
+				struct atomisp_morph_table *user_morph_table)
+{
+	int ret = -EFAULT;
+	unsigned int i;
+	struct sh_css_morph_table *morph_table;
+	struct sh_css_morph_table *old_morph_table;
+
+	if (!user_morph_table)
+		return 0;
+
+	old_morph_table = isp->inputs[isp->input_curr].morph_table;
+
+	morph_table = sh_css_morph_table_allocate(user_morph_table->width,
+				user_morph_table->height);
+	if (!morph_table)
+		return -ENOMEM;
+
+	for (i = 0; i < SH_CSS_MORPH_TABLE_NUM_PLANES; i++) {
+		if (copy_from_user(morph_table->coordinates_x[i],
+			user_morph_table->coordinates_x[i],
+			user_morph_table->height * user_morph_table->width *
+			sizeof(*user_morph_table->coordinates_x[i])))
+			goto error;
+
+		if (copy_from_user(morph_table->coordinates_y[i],
+			user_morph_table->coordinates_y[i],
+			user_morph_table->height * user_morph_table->width *
+			sizeof(*user_morph_table->coordinates_y[i])))
+			goto error;
+	}
+
+	isp->inputs[isp->input_curr].morph_table = morph_table;
+	if (isp->params.gdc_cac_en)
+		sh_css_set_morph_table(morph_table);
+
+	if (old_morph_table)
+		sh_css_morph_table_free(old_morph_table);
+
+	return 0;
+
+error:
+	if (morph_table)
+		sh_css_morph_table_free(morph_table);
+	return ret;
+}
+
+/*
+* Function to configure ISP parameters
+*/
+int atomisp_set_parameters(struct atomisp_device *isp,
+			struct atomisp_parameters *arg)
+{
+	int ret;
+
+	ret = __atomisp_set_general_isp_parameters(isp, arg);
+	if (ret)
+		return ret;
+
+	ret = __atomisp_set_lsc_table(isp, arg->shading_table);
+	if (ret)
+		return ret;
+
+	ret = __atomisp_set_morph_table(isp, arg->morph_table);
+	if (ret)
+		return ret;
+
+	/* indicate to CSS that we have parametes to be updated */
+	isp->params.css_update_params_needed = true;
+
+	return 0;
+}
+
 /*
  * Function to set/get isp parameters to isp
  */

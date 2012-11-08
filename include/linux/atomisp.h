@@ -221,6 +221,11 @@ struct atomisp_dp_config {
 	unsigned int gain;
 };
 
+/* XNR threshold */
+struct atomisp_xnr_config {
+	unsigned int threshold;
+};
+
 struct atomisp_parm {
 	struct atomisp_grid_info info;
 	struct atomisp_wb_config wb_config;
@@ -232,6 +237,26 @@ struct atomisp_parm {
 	struct atomisp_nr_config nr_config;
 	struct atomisp_ee_config ee_config;
 	struct atomisp_tnr_config tnr_config;
+};
+
+struct atomisp_parameters {
+	struct atomisp_wb_config *wb_config;
+	struct atomisp_cc_config *cc_config;
+	struct atomisp_ob_config *ob_config;
+	struct atomisp_de_config *de_config;
+	struct atomisp_ce_config *ce_config;
+	struct atomisp_dp_config *dp_config;
+	struct atomisp_nr_config *nr_config;
+	struct atomisp_ee_config *ee_config;
+	struct atomisp_tnr_config *tnr_config;
+	struct atomisp_shading_table *shading_table;
+	struct atomisp_morph_table *morph_table;
+	struct atomisp_macc_config *macc_config;
+	struct atomisp_gamma_table *gamma_table;
+	struct atomisp_ctc_table *ctc_table;
+	struct atomisp_xnr_config *xnr_config;
+	struct atomisp_gc_config *gc_config;
+	struct atomisp_3a_config *a3a_config;
 };
 
 #define ATOMISP_GAMMA_TABLE_SIZE        1024
@@ -694,6 +719,9 @@ struct v4l2_private_int_data {
 
 #define ATOMISP_IOC_ACC_S_MAPPED_ARG \
 	_IOW('v', BASE_VIDIOC_PRIVATE + 60, struct atomisp_acc_s_mapped_arg)
+
+#define ATOMISP_IOC_S_PARAMETERS \
+	_IOW('v', BASE_VIDIOC_PRIVATE + 61, struct atomisp_parameters)
 
 /*  ISP Private control IDs */
 #define V4L2_CID_ATOMISP_BAD_PIXEL_DETECTION \
