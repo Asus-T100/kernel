@@ -98,6 +98,9 @@
 
 #include "device_libs/platform_btwilink.h"
 
+#include "device_libs/platform_tpm502i.h"
+
+
 static void __init *no_platform_data(void *info)
 {
 	return NULL;
@@ -156,6 +159,7 @@ struct devs_id __initconst device_ids[] = {
 	{"mxt224", SFI_DEV_TYPE_I2C, 0, &mxt224_platform_data, NULL},
 	{"max11871", SFI_DEV_TYPE_I2C, 0, &max11871_platform_data},
 	{"ft5406", SFI_DEV_TYPE_I2C, 0, &ft5406_platform_data},
+	{"tpm_i2c", SFI_DEV_TYPE_I2C, 0, &tpm502i_platform_data, NULL},
 	{"audience_es305", SFI_DEV_TYPE_I2C, 0, &audience_platform_data,
 						NULL},
 	{"accel", SFI_DEV_TYPE_I2C, 0, &lis3dh_platform_data, NULL},
