@@ -271,6 +271,11 @@ int mdfld_h8c7_drv_ic_init(struct mdfld_dsi_config *dsi_config)
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
 
+	/*wait for last command (protect on), make sure it takes effect
+	* for other command, it waits in next coming
+	* mdfld_dsi_send_XXXX_long
+	*/
+	mdelay(5);
 	return 0;
 }
 
@@ -653,7 +658,9 @@ int mdfld_dsi_h8c7_cmd_set_brightness(struct mdfld_dsi_config *dsi_config,
 		}
 
 		mdfld_dsi_send_mcs_long_hs(sender, h8c7_disable_cabc, 4, 0);
+		mdfld_dsi_send_gen_long_hs(sender, h8c7_mcs_protect_off, 4, 0);
 		mdfld_dsi_send_mcs_long_hs(sender, h8c7_set_cabc_gain, 10, 0);
+		mdfld_dsi_send_gen_long_hs(sender, h8c7_mcs_protect_on, 4, 0);
 	}
 
 	duty_val = (255 * level) / 100;
