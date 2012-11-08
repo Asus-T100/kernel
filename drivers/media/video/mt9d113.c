@@ -567,15 +567,15 @@ static int mt9d113_init_pll(struct v4l2_subdev *sd)
 	/*
 	 * PLL Setting:
 	 * Input: 19.2M
-	 * M=105, N=7, P3=0, P1=5, WCD=8
-	 * fbit/MIPI: 504M
-	 * fword: 63M
-	 * system: 84M
-	 * sensor: 42M
+	 * M=53, N=3, P3=0, P1=5, WCD=8
+	 * fbit/MIPI: 508M
+	 * fword: 63.6M
+	 * system: 85M
+	 * sensor: 42.5M
 	 */
-	/* PLL Dividers: M=105, N=7 */
+	/* PLL Dividers: M=53, N=3 */
 	ret = mt9d113_write_reg(client, MISENSOR_16BIT, MT9D113_REG_PLL_DIV,
-				0x0769);
+				0x0335);
 	if (ret)
 		goto err;
 
@@ -834,6 +834,14 @@ static int mt9d113_res2size(unsigned int res, int *h_size, int *v_size)
 		hsize = MT9D113_RES_QVGA_SIZE_H;
 		vsize = MT9D113_RES_QVGA_SIZE_V;
 		break;
+	case MT9D113_RES_CIF:
+		hsize = MT9D113_RES_CIF_SIZE_H;
+		vsize = MT9D113_RES_CIF_SIZE_V;
+		break;
+	case MT9D113_RES_VGA_WIDE:
+		hsize = MT9D113_RES_VGA_SIZE_H;
+		vsize = MT9D113_RES_VGA_WIDE_SIZE_V;
+		break;
 	case MT9D113_RES_VGA:
 		hsize = MT9D113_RES_VGA_SIZE_H;
 		vsize = MT9D113_RES_VGA_SIZE_V;
@@ -912,6 +920,22 @@ static int mt9d113_set_mbus_fmt(struct v4l2_subdev *sd,
 	if (ret)
 		return ret;
 	switch (res_index->res) {
+	case MT9D113_RES_QCIF:
+		ret = mt9d113_write_reg_array(c, mt9d113_qcif_30_init);
+		dev_info(&c->dev, "%s: set for qcif\n", __func__);
+		break;
+	case MT9D113_RES_QVGA:
+		ret = mt9d113_write_reg_array(c, mt9d113_qvga_30_init);
+		dev_info(&c->dev, "%s: set for qvga\n", __func__);
+		break;
+	case MT9D113_RES_CIF:
+		ret = mt9d113_write_reg_array(c, mt9d113_cif_30_init);
+		dev_info(&c->dev, "%s: set for cif\n", __func__);
+		break;
+	case MT9D113_RES_VGA_WIDE:
+		ret = mt9d113_write_reg_array(c, mt9d113_vga_wide_29_init);
+		dev_info(&c->dev, "%s: set for vga wide\n", __func__);
+		break;
 	case MT9D113_RES_VGA:
 		ret = mt9d113_write_reg_array(c, mt9d113_vga_30_init);
 		dev_info(&c->dev, "%s: set for vga\n", __func__);
@@ -925,7 +949,7 @@ static int mt9d113_set_mbus_fmt(struct v4l2_subdev *sd,
 		dev_info(&c->dev, "%s: set for 720p\n", __func__);
 		break;
 	case MT9D113_RES_2M:
-		ret = mt9d113_write_reg_array(c, mt9d113_2m_10_init);
+		ret = mt9d113_write_reg_array(c, mt9d113_2m_15_init);
 		dev_info(&c->dev, "%s: set for 2m\n", __func__);
 		break;
 	default:
