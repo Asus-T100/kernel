@@ -67,3 +67,5 @@ obj-$(subst m,y,$(CONFIG_USB_PENWELL_OTG))				+= platform_usb_otg.o
 obj-$(subst m,y,$(CONFIG_MMC_SDHCI_PCI))				+= platform_sdhci_pci.o
 # WIFI
 obj-$(subst m,y,$(CONFIG_WL12XX_PLATFORM_DATA))				+= platform_wl12xx.o
+# Bluetooth
+obj-$(subst m,y,$(CONFIG_TI_ST))					+= platform_btwilink.o

@@ -29,35 +29,39 @@ static int st_resume(struct platform_device *pdev)
 	return 0;
 }
 
-static int st_chip_enable(struct st_data_s *s)
+static int st_chip_enable(struct kim_data_s *s)
 {
 	return 0;
 }
 
-static int st_chip_disable(struct st_data_s *s)
+static int st_chip_disable(struct kim_data_s *s)
 {
 	return 0;
 }
 
-static int st_chip_awake(struct st_data_s *s)
+static int st_chip_awake(struct kim_data_s *s)
 {
+	struct st_data_s *st = s->core_data;
+
 	/* Tell PM runtime to power on the tty device and block S3 */
-	if (!s->is_awake) {
-		pm_runtime_get(s->tty_dev);
-		wake_lock(&s->wake_lock);
-		s->is_awake = 1;
+	if (!st->is_awake) {
+		pm_runtime_get(st->tty_dev);
+		wake_lock(&st->wake_lock);
+		st->is_awake = 1;
 	}
 
 	return 0;
 }
 
-static int st_chip_asleep(struct st_data_s *s)
+static int st_chip_asleep(struct kim_data_s *s)
 {
+	struct st_data_s *st = s->core_data;
+
 	/* Tell PM runtime to release tty device and allow S3 */
-	if (s->is_awake) {
-		pm_runtime_put(s->tty_dev);
-		wake_unlock(&s->wake_lock);
-		s->is_awake = 0;
+	if (st->is_awake) {
+		pm_runtime_put(st->tty_dev);
+		wake_unlock(&st->wake_lock);
+		st->is_awake = 0;
 	}
 
 	return 0;
@@ -81,11 +85,11 @@ static struct platform_device linux_kim_device = {
 };
 
 /* BT WILINK related */
-static int bt_enable(struct st_data_s *s)
+static int bt_enable(struct kim_data_s *s)
 {
 	return 0;
 }
-static int bt_disable(struct st_data_s *s)
+static int bt_disable(struct kim_data_s *s)
 {
 	return 0;
 }
