@@ -820,7 +820,7 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	int err;
 
 	if (!dev) {
-		v4l2_err(&atomisp_dev, "atomisp: error device ptr\n");
+		dev_err(&dev->dev, "atomisp: error device ptr\n");
 		return -EINVAL;
 	}
 
@@ -829,8 +829,7 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 
 	err = pci_enable_device(dev);
 	if (err) {
-		v4l2_err(&atomisp_dev,
-			    "Failed to enable CI ISP device\n");
+		dev_err(&dev->dev, "Failed to enable CI ISP device\n");
 		return err;
 	}
 
@@ -841,15 +840,14 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	v4l2_dbg(1, dbg_level, &atomisp_dev, "len: 0x%x\n", len);
 
 	if (!devm_request_mem_region(&dev->dev, start, len, pci_name(dev))) {
-		v4l2_err(&atomisp_dev, "Failed to request region 0x%x-0x%x\n",
-				       start, start + len - 1);
+		dev_err(&dev->dev, "Failed to request region 0x%x-0x%x\n",
+			start, start + len - 1);
 		return -EBUSY;
 	}
 
 	base = devm_ioremap(&dev->dev, start, len);
 	if (!base) {
-		v4l2_err(&atomisp_dev,
-			    "Failed to I/O memory remapping\n");
+		dev_err(&dev->dev, "Failed to I/O memory remapping\n");
 		return -ENOMEM;
 	}
 	v4l2_dbg(1, dbg_level, &atomisp_dev, "base: %p\n", base);
@@ -861,7 +859,7 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 
 	isp = devm_kzalloc(&dev->dev, sizeof(struct atomisp_device), GFP_KERNEL);
 	if (!isp) {
-		v4l2_err(&atomisp_dev, "Failed to alloc CI ISP structure\n");
+		dev_err(&dev->dev, "Failed to alloc CI ISP structure\n");
 		return -ENOMEM;
 	}
 	isp->pdev = dev;
@@ -876,7 +874,7 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	/* Load isp firmware from user space */
 	isp->firmware = load_firmware(&dev->dev);
 	if (!isp->firmware) {
-		v4l2_err(&atomisp_dev, "Load firmwares failed\n");
+		dev_err(&dev->dev, "Load firmwares failed\n");
 		goto load_fw_fail;
 	}
 
@@ -887,7 +885,7 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 
 	isp->wdt_work_queue = alloc_workqueue(isp->v4l2_dev.name, 0, 1);
 	if (isp->wdt_work_queue == NULL) {
-		v4l2_err(&atomisp_dev, "Failed to initialize work queue\n");
+		dev_err(&dev->dev, "Failed to initialize work queue\n");
 		goto work_queue_fail;
 	}
 	INIT_WORK(&isp->wdt_work, atomisp_wdt_work);
@@ -897,8 +895,7 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 
 	err = pci_enable_msi(dev);
 	if (err) {
-		v4l2_err(&atomisp_dev,
-			    "Failed to enable msi\n");
+		dev_err(&dev->dev, "Failed to enable msi\n");
 		goto enable_msi_fail;
 	}
 
@@ -906,8 +903,7 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 					atomisp_isr, atomisp_isr_thread,
 					IRQF_SHARED, "isp_irq", isp);
 	if (err) {
-		v4l2_err(&atomisp_dev,
-			    "Failed to request irq\n");
+		dev_err(&dev->dev, "Failed to request irq\n");
 		goto request_irq_fail;
 	}
 
@@ -931,13 +927,13 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 
 	err = atomisp_initialize_modules(isp);
 	if (err < 0) {
-		v4l2_err(&atomisp_dev, "atomisp_initialize_modules\n");
+		dev_err(&dev->dev, "atomisp_initialize_modules\n");
 		goto request_irq_fail;
 	}
 
 	err = atomisp_register_entities(isp);
 	if (err < 0) {
-		v4l2_err(&atomisp_dev, "atomisp_register_entities failed\n");
+		dev_err(&dev->dev, "atomisp_register_entities failed\n");
 		goto request_irq_fail;
 	}
 
