@@ -866,6 +866,10 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	isp->dev = &dev->dev;
 	isp->sw_contex.power_state = ATOM_ISP_POWER_UP;
 	isp->hw_contex.pci_root = pci_get_bus_and_slot(0, 0);
+	if (!isp->hw_contex.pci_root) {
+		dev_err(&dev->dev, "Unable to find PCI host\n");
+		return -ENODEV;
+	}
 	isp->hw_contex.ispmmadr = start;
 	isp->tvnorm = tvnorms;
 
@@ -950,6 +954,7 @@ enable_msi_fail:
 work_queue_fail:
 	release_firmware(isp->firmware);
 load_fw_fail:
+	pci_dev_put(isp->hw_contex.pci_root);
 	pci_disable_device(dev);
 	return err;
 }
