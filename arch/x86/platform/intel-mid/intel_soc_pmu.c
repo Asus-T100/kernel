@@ -1173,7 +1173,8 @@ static atomic_t saved_nc_power_history_current = ATOMIC_INIT(-1);
 static struct saved_nc_power_history all_history[SAVED_HISTORY_NUM];
 static struct saved_nc_power_history *get_new_record_history(void)
 {
-	int ret = atomic_add_return(1, &saved_nc_power_history_current);
+	unsigned int ret =
+		atomic_add_return(1, &saved_nc_power_history_current);
 	return &all_history[ret%SAVED_HISTORY_NUM];
 }
 
@@ -1251,13 +1252,13 @@ size_t backtrace_safe(void **array, size_t max_size)
 
 void dump_nc_power_history(void)
 {
-	int i;
-	int start = (atomic_read(&saved_nc_power_history_current)) %
-				SAVED_HISTORY_NUM;
+	int i, start;
+	unsigned int total = atomic_read(&saved_nc_power_history_current);
 
+	start = total % SAVED_HISTORY_NUM;
 	printk(KERN_INFO "<----current timestamp\n");
 	printk(KERN_INFO "start[%d] saved[%d]\n",
-			start, atomic_read(&saved_nc_power_history_current));
+			start, total);
 	for (i = start; i >= 0; i--)
 		print_saved_record(&all_history[i]);
 	for (i = SAVED_HISTORY_NUM - 1; i > start; i--)
