@@ -2290,7 +2290,7 @@ int psb_runtime_suspend(struct device *dev)
 int psb_runtime_resume(struct device *dev)
 {
 	/* Notify HDMI Audio sub-system about the resume. */
-#ifdef CONFIG_SND_INTELMID_HDMI_AUDIO
+#ifdef CONFIG_SUPPORT_HDMI
 	struct drm_psb_private *dev_priv = gpDrmDevice->dev_private;
 
 	if (dev_priv->had_pvt_data)
@@ -2306,13 +2306,13 @@ int psb_runtime_resume(struct device *dev)
 
 int psb_runtime_idle(struct device *dev)
 {
-#ifdef CONFIG_SND_INTELMID_HDMI_AUDIO
+#ifdef CONFIG_SUPPORT_HDMI
 	struct drm_psb_private *dev_priv = gpDrmDevice->dev_private;
 	int hdmi_audio_busy = 0;
 	pm_event_t hdmi_audio_event;
 #endif
 
-#ifdef CONFIG_SND_INTELMID_HDMI_AUDIO
+#ifdef CONFIG_SUPPORT_HDMI
 	if (dev_priv->had_pvt_data) {
 		hdmi_audio_event.event = 0;
 		hdmi_audio_busy =
@@ -2326,7 +2326,7 @@ int psb_runtime_idle(struct device *dev)
 	    || atomic_read(&g_display_access_count)
 	    || atomic_read(&g_videovsp_access_count)
 	    || (gbdispstatus == true)
-#ifdef CONFIG_SND_INTELMID_HDMI_AUDIO
+#ifdef CONFIG_SUPPORT_HDMI
 	    || hdmi_audio_busy
 #endif
 	)

@@ -1197,7 +1197,7 @@ static int __devinit hdmi_audio_probe(struct platform_device *devptr)
 
 	/* registering with display driver to get access to display APIs */
 
-	retval = intel_hdmi_audio_query_capabilities(
+	retval = mid_hdmi_audio_setup(
 			ops_cb.intel_had_event_call_back,
 			&(intelhaddata->reg_ops),
 			&(intelhaddata->query_ops));
@@ -1273,7 +1273,7 @@ static int __devinit hdmi_audio_probe(struct platform_device *devptr)
 	}
 
 	mutex_unlock(&had_mutex);
-	retval = display_register(&had_interface, intelhaddata);
+	retval = mid_hdmi_audio_register(&had_interface, intelhaddata);
 	if (retval) {
 		pr_err("registering with display driver failed %#x\n", retval);
 		snd_card_free(card);

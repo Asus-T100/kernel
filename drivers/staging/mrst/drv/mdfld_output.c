@@ -86,7 +86,7 @@ void init_panel(struct drm_device* dev, int mipi_pipe, enum panel_type p_type)
 	struct panel_funcs *p_funcs = NULL;
 	int i = 0, ret = 0;
 
-#ifdef CONFIG_MDFD_HDMI
+#ifdef CONFIG_SUPPORT_HDMI
 	if (p_type == HDMI) {
 		PSB_DEBUG_ENTRY( "GFX: Initializing HDMI");
 		android_hdmi_driver_init(dev, &dev_priv->mode_dev);
@@ -127,7 +127,7 @@ void mdfld_output_init(struct drm_device *dev)
 	init_panel(dev, 2, p_type2);
 #endif
 
-#ifdef CONFIG_MDFD_HDMI
+#ifdef CONFIG_SUPPORT_HDMI
 	/* HDMI panel */
 	init_panel(dev, 0, HDMI);
 #endif

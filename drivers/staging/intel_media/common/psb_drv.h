@@ -26,7 +26,6 @@
 #include "sys_pvr_drm_export.h"
 #include "psb_drm.h"
 #include "psb_reg.h"
-#include "psb_hotplug.h"
 #include "psb_dpst.h"
 #include "psb_gtt.h"
 #include "psb_powermgmt.h"
@@ -863,9 +862,7 @@ struct drm_psb_private {
 	struct work_struct watchdog_wq;
 	struct work_struct msvdx_watchdog_wq;
 	struct work_struct topaz_watchdog_wq;
-	struct work_struct hdmi_hotplug_wq;
 	struct work_struct hdmi_audio_wq;
-	atomic_t hotplug_wq_done;
 	int timer_available;
 
 #ifdef OSPM_STAT
@@ -889,7 +886,6 @@ struct drm_psb_private {
 	 * DPST and Hotplug state
 	 */
 	struct dpst_state *psb_dpst_state;
-	struct hotplug_state *psb_hotplug_state;
 	pfn_vsync_handler psb_vsync_handler;
 
 	struct mutex dsr_mutex;
@@ -914,7 +910,6 @@ struct drm_psb_private {
 	struct timer_list dsr_timer;
 
 	bool dsi_device_ready;
-	bool hdmi_done_reading_edid;
 	bool um_start;
 	/*flag to indicate android restart*/
 	bool usermode_restart;
@@ -1040,8 +1035,8 @@ void mid_enable_pipe_event(struct drm_psb_private *dev_priv, int pipe);
 extern u32 psb_get_vblank_counter(struct drm_device *dev, int crtc);
 extern int mdfld_enable_te(struct drm_device *dev, int pipe);
 extern void mdfld_disable_te(struct drm_device *dev, int pipe);
-extern int mdfld_irq_enable_hdmi_audio(struct drm_device *dev);
-extern int mdfld_irq_disable_hdmi_audio(struct drm_device *dev);
+extern int mid_irq_enable_hdmi_audio(struct drm_device *dev);
+extern int mid_irq_disable_hdmi_audio(struct drm_device *dev);
 extern void psb_te_timer_func(unsigned long data);
 extern void mdfld_te_handler_work(struct work_struct *te_work);
 extern void mdfld_vsync_event_work(struct work_struct *work);
