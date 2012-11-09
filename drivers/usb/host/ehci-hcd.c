@@ -1402,6 +1402,14 @@ static int __init ehci_hcd_init(void)
 		if (retval < 0)
 			return retval;
 	}
+#ifdef CONFIG_HSI_NO_MODEM
+	else {
+		/* reset it for power consumption efficiency */
+		retval = cloverview_sph_gpio_reset();
+		if (retval < 0)
+			return retval;
+	}
+#endif
 #endif
 
 #ifdef DEBUG
@@ -1482,6 +1490,10 @@ err_debug:
 #ifdef CONFIG_BOARD_CTP
 	if (sph_enabled())
 		cloverview_sph_gpio_cleanup();
+#ifdef CONFIG_HSI_NO_MODEM
+	else
+		cloverview_sph_gpio_cleanup();
+#endif
 #endif
 	clear_bit(USB_EHCI_LOADED, &usb_hcds_loaded);
 	return retval;
@@ -1511,6 +1523,10 @@ static void __exit ehci_hcd_cleanup(void)
 #ifdef CONFIG_BOARD_CTP
 	if (sph_enabled())
 		cloverview_sph_gpio_cleanup();
+#ifdef CONFIG_HSI_NO_MODEM
+	else
+		cloverview_sph_gpio_cleanup();
+#endif
 #endif
 #ifdef DEBUG
 	debugfs_remove(ehci_debug_root);
