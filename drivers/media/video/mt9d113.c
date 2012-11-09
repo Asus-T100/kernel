@@ -455,6 +455,99 @@ static int mt9d113_set_suspend(struct v4l2_subdev *sd)
 	return ret;
 }
 
+static int mt9d113_s_color_effect(struct v4l2_subdev *sd, int effect)
+{
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	struct mt9d113_device *dev = to_mt9d113_sensor(sd);
+	int reg_val;
+	int ret = 0;
+
+	if (dev->color_effect == effect)
+		return 0;
+
+	/* Read col effect register */
+	ret = mt9d113_write_reg(client, MISENSOR_16BIT,
+				MT9D113_MCU_VAR_ADDR,
+				MT9D113_VAR_COL_EFF_A);
+	if (ret) {
+		dev_err(&client->dev, "err Write VAR ADDR: %d", ret);
+		return ret;
+	}
+
+	ret = mt9d113_read_reg(client, MISENSOR_16BIT,
+				MT9D113_MCU_VAR_DATA0,
+				&reg_val);
+	if (ret) {
+		dev_err(&client->dev, "err read COL_EFF_A: %d", ret);
+		return ret;
+	}
+
+	reg_val &= ~MT9D113_COL_EFF_MASK;
+
+	switch (effect) {
+	case V4L2_COLORFX_NONE:
+		reg_val |= MT9D113_COL_EFF_DISABLE;
+		break;
+	case V4L2_COLORFX_SEPIA:
+		reg_val |= MT9D113_COL_EFF_SEPIA;
+		break;
+	case V4L2_COLORFX_NEGATIVE:
+		reg_val |= MT9D113_COL_EFF_NEG;
+		break;
+	case V4L2_COLORFX_BW:
+		reg_val |= MT9D113_COL_EFF_MONO;
+		break;
+	default:
+		dev_err(&client->dev, "invalid col eff: %d", effect);
+		return -ERANGE;
+	}
+
+	/* Write col effect register */
+	ret = mt9d113_write_reg(client, MISENSOR_16BIT,
+				MT9D113_MCU_VAR_ADDR,
+				MT9D113_VAR_COL_EFF_A);
+	if (ret) {
+		dev_err(&client->dev, "err Write VAR ADDR: %d", ret);
+		return ret;
+	}
+
+	ret = mt9d113_write_reg(client, MISENSOR_16BIT,
+				MT9D113_MCU_VAR_DATA0,
+				reg_val);
+	if (ret) {
+		dev_err(&client->dev, "err read COL_EFF_A: %d", ret);
+		return ret;
+	}
+
+	/* Refresh sequencer */
+	ret = mt9d113_write_reg(client, MISENSOR_16BIT, MT9D113_MCU_VAR_ADDR,
+				MT9D113_VAR_SEQ_CMD);
+	if (ret) {
+		dev_err(&client->dev, "err Write VAR ADDR: %d", ret);
+		return ret;
+	}
+
+	ret = mt9d113_write_reg(client, MISENSOR_16BIT, MT9D113_MCU_VAR_DATA0,
+				 SEQ_CMD_REFRESH);
+	if (ret) {
+		dev_err(&client->dev, "err refresh seq: %d", ret);
+		return ret;
+	}
+
+	dev->color_effect = effect;
+
+	return 0;
+}
+
+static int mt9d113_g_color_effect(struct v4l2_subdev *sd, int *effect)
+{
+	struct mt9d113_device *dev = to_mt9d113_sensor(sd);
+
+	*effect = dev->color_effect;
+
+	return 0;
+}
+
 static int mt9d113_wait_refresh(struct v4l2_subdev *sd)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
@@ -724,7 +817,25 @@ static int mt9d113_init_common(struct v4l2_subdev *sd)
 	}
 	ret = mt9d113_wait_standby(sd, 0);
 
-	return ret;
+	/*
+	 * Low light settings
+	 */
+	ret = mt9d113_write_reg_array(client, mt9d113_lowlight);
+	if (ret) {
+		dev_err(&client->dev, "err set lowlight: %d", ret);
+		return ret;
+	}
+
+	/*
+	 * AWB and CCM Settings
+	 */
+	ret = mt9d113_write_reg_array(client, mt9d113_awb_ccm);
+	if (ret) {
+		dev_err(&client->dev, "err set awb ccm: %d", ret);
+		return ret;
+	}
+
+	return 0;
 }
 
 static int power_up(struct v4l2_subdev *sd)
@@ -999,10 +1110,228 @@ static int mt9d113_set_mbus_fmt(struct v4l2_subdev *sd,
 	return 0;
 }
 
+static int mt9d113_g_focal(struct v4l2_subdev *sd, s32 *val)
+{
+	*val = (MT9D113_FOCAL_LENGTH_NUM << 16) | MT9D113_FOCAL_LENGTH_DEM;
+	return 0;
+}
+
+static int mt9d113_g_fnumber(struct v4l2_subdev *sd, s32 *val)
+{
+	/* const f number for MT9D113 */
+	*val = (MT9D113_F_NUMBER_DEFAULT_NUM << 16) | MT9D113_F_NUMBER_DEM;
+	return 0;
+}
+
+static int mt9d113_g_fnumber_range(struct v4l2_subdev *sd, s32 *val)
+{
+	*val = (MT9D113_F_NUMBER_DEFAULT_NUM << 24) |
+		(MT9D113_F_NUMBER_DEM << 16) |
+		(MT9D113_F_NUMBER_DEFAULT_NUM << 8) | MT9D113_F_NUMBER_DEM;
+	return 0;
+}
+
+/* read shutter, in number of line period */
+static int mt9d113_get_shutter(struct v4l2_subdev *sd, s32 *shutter)
+{
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	struct mt9d113_device *dev = to_mt9d113_sensor(sd);
+	u32 inte_time, row_time;
+	int ret, i;
+
+	/* read integration time */
+	ret = mt9d113_write_reg(client, MISENSOR_16BIT,
+				MT9D113_MCU_VAR_ADDR,
+				MT9D113_VAR_INTEGRATION_TIME);
+	if (ret) {
+		dev_err(&client->dev, "err Write VAR ADDR: %d", ret);
+		return ret;
+	}
+
+	ret = mt9d113_read_reg(client, MISENSOR_16BIT,
+				MT9D113_MCU_VAR_DATA0,
+				&inte_time);
+	if (ret) {
+		dev_err(&client->dev,
+				"err read integration time: %d", ret);
+		return ret;
+	}
+
+	/* get row time */
+	for (i = 0; i < N_RES; i++) {
+		if (mt9d113_res[i].res == dev->res) {
+			row_time = mt9d113_res[i].row_time;
+			break;
+		}
+	}
+	if (i == N_RES)	{
+		dev_err(&client->dev,
+				"err get row  time: %d", ret);
+		return -EINVAL;
+	}
+
+	/* return exposure value is in units of 100us */
+	*shutter = inte_time * row_time / 100;
+
+	return 0;
+}
+
 /*
- * TBD: features will be added in future
+ * This returns the exposure compensation value, which is expressed in
+ * terms of EV. The default EV value is 0, and driver don't support
+ * adjust EV value.
  */
-static struct mt9d113_control mt9d113_controls[] = {};
+static int mt9d113_get_exposure_bias(struct v4l2_subdev *sd, s32 *value)
+{
+	*value = 0;
+
+	return 0;
+}
+
+/*
+ * This returns ISO sensitivity.
+ */
+static int mt9d113_get_iso(struct v4l2_subdev *sd, s32 *value)
+{
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	u32 ae_gain, ae_d_gain;
+	int ret;
+
+	/* read ae virtual gain */
+	ret = mt9d113_write_reg(client, MISENSOR_16BIT,
+				MT9D113_MCU_VAR_ADDR,
+				MT9D113_VAR_AE_GAIN);
+	if (ret) {
+		dev_err(&client->dev, "err Write VAR ADDR: %d", ret);
+		return ret;
+	}
+
+	ret = mt9d113_read_reg(client, MISENSOR_8BIT,
+				MT9D113_MCU_VAR_DATA0,
+				&ae_gain);
+	if (ret) {
+		dev_err(&client->dev,
+				"err read ae virtual gain: %d", ret);
+		return ret;
+	}
+
+	/* read ae_d_gain */
+	ret = mt9d113_write_reg(client, MISENSOR_16BIT,
+				MT9D113_MCU_VAR_ADDR,
+				MT9D113_VAR_AE_D_GAIN);
+	if (ret) {
+		dev_err(&client->dev, "err Write VAR ADDR: %d", ret);
+		return ret;
+	}
+
+	ret = mt9d113_read_reg(client, MISENSOR_16BIT,
+				MT9D113_MCU_VAR_DATA0,
+				&ae_d_gain);
+	if (ret) {
+		dev_err(&client->dev,
+				"err read ae_d_gain: %d", ret);
+		return ret;
+	}
+
+	*value = ((ae_gain * 25) >> 4) + (((ae_d_gain - 128) * 200) >> 7);
+
+	return 0;
+}
+
+static struct mt9d113_control mt9d113_controls[] = {
+	{
+		.qc = {
+			.id = V4L2_CID_EXPOSURE_ABSOLUTE,
+			.type = V4L2_CTRL_TYPE_INTEGER,
+			.name = "exposure",
+			.minimum = 0x0,
+			.maximum = 0xffff,
+			.step = 0x01,
+			.default_value = 0x00,
+			.flags = 0,
+		},
+		.query = mt9d113_get_shutter,
+	},
+	{
+		.qc = {
+			.id = V4L2_CID_AUTO_EXPOSURE_BIAS,
+			.type = V4L2_CTRL_TYPE_INTEGER,
+			.name = "exposure bias",
+			.minimum = 0x0,
+			.maximum = 0xffff,
+			.step = 0x01,
+			.default_value = 0x00,
+			.flags = 0,
+		},
+		.query = mt9d113_get_exposure_bias,
+	},
+	{
+		.qc = {
+			.id = V4L2_CID_ISO_SENSITIVITY,
+			.type = V4L2_CTRL_TYPE_INTEGER,
+			.name = "iso",
+			.minimum = 0x0,
+			.maximum = 0xffff,
+			.step = 0x01,
+			.default_value = 0x00,
+			.flags = 0,
+		},
+		.query = mt9d113_get_iso,
+	},
+	{
+		.qc = {
+			.id = V4L2_CID_COLORFX,
+			.type = V4L2_CTRL_TYPE_INTEGER,
+			.name = "color effect",
+			.minimum = 0,
+			.maximum = 9,
+			.step = 1,
+			.default_value = 0,
+		},
+		.tweak = mt9d113_s_color_effect,
+		.query = mt9d113_g_color_effect,
+	},
+	{
+		.qc = {
+			.id = V4L2_CID_FOCAL_ABSOLUTE,
+			.type = V4L2_CTRL_TYPE_INTEGER,
+			.name = "focal length",
+			.minimum = MT9D113_FOCAL_LENGTH_DEFAULT,
+			.maximum = MT9D113_FOCAL_LENGTH_DEFAULT,
+			.step = 0x01,
+			.default_value = MT9D113_FOCAL_LENGTH_DEFAULT,
+			.flags = 0,
+		},
+		.query = mt9d113_g_focal,
+	},
+	{
+		.qc = {
+			.id = V4L2_CID_FNUMBER_ABSOLUTE,
+			.type = V4L2_CTRL_TYPE_INTEGER,
+			.name = "f-number",
+			.minimum = MT9D113_F_NUMBER_DEFAULT,
+			.maximum = MT9D113_F_NUMBER_DEFAULT,
+			.step = 0x01,
+			.default_value = MT9D113_F_NUMBER_DEFAULT,
+			.flags = 0,
+		},
+		.query = mt9d113_g_fnumber,
+	},
+	{
+		.qc = {
+			.id = V4L2_CID_FNUMBER_RANGE,
+			.type = V4L2_CTRL_TYPE_INTEGER,
+			.name = "f-number range",
+			.minimum = MT9D113_F_NUMBER_RANGE,
+			.maximum =  MT9D113_F_NUMBER_RANGE,
+			.step = 0x01,
+			.default_value = MT9D113_F_NUMBER_RANGE,
+			.flags = 0,
+		},
+		.query = mt9d113_g_fnumber_range,
+	},
+
+};
 
 #define N_CONTROLS (ARRAY_SIZE(mt9d113_controls))
 
@@ -1094,6 +1423,8 @@ mt9d113_s_config(struct v4l2_subdev *sd, int irq, void *platform_data)
 		dev_err(&client->dev, "mt9d113 power down err");
 		return ret;
 	}
+
+	dev->color_effect = V4L2_COLORFX_NONE;
 
 	return 0;
 

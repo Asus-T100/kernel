@@ -38,6 +38,50 @@
 
 #define V4L2_IDENT_MT9D113 0x2580
 
+#define MT9D113_FOCAL_LENGTH_NUM	439	/*4.39mm*/
+#define MT9D113_FOCAL_LENGTH_DEM	100
+#define MT9D113_F_NUMBER_DEFAULT_NUM	24
+#define MT9D113_F_NUMBER_DEM	10
+/*
+ * focal length bits definition:
+ * bits 31-16: numerator, bits 15-0: denominator
+ */
+#define MT9D113_FOCAL_LENGTH_DEFAULT 0xD00064
+
+/*
+ * current f-number bits definition:
+ * bits 31-16: numerator, bits 15-0: denominator
+ */
+#define MT9D113_F_NUMBER_DEFAULT 0x18000a
+
+/*
+ * f-number range bits definition:
+ * bits 31-24: max f-number numerator
+ * bits 23-16: max f-number denominator
+ * bits 15-8: min f-number numerator
+ * bits 7-0: min f-number denominator
+ */
+#define MT9D113_F_NUMBER_RANGE 0x180a180a
+
+#define MT9D113_COL_EFF_MASK	0x7
+#define MT9D113_COL_EFF_DISABLE	0x0
+#define MT9D113_COL_EFF_MONO	0x1
+#define MT9D113_COL_EFF_SEPIA	0x2
+#define MT9D113_COL_EFF_NEG	0x3
+
+#define MT9D113_BIT_FD_MANUAL	7
+#define MT9D113_MASK_FD_MANUAL	(1 << MT9D113_BIT_FD_MANUAL)
+enum {
+	MT9D113_FD_MANUAL_DIS,
+	MT9D113_FD_MANUAL_EN,
+};
+#define MT9D113_BIT_FD_SET	6
+#define MT9D113_MASK_FD_SET	(1 << MT9D113_BIT_FD_SET)
+enum {
+	MT9D113_FD_60HZ,
+	MT9D113_FD_50HZ,
+};
+
 #define MT9D113_REG_CHIPID	0x0
 #define MT9D113_REG_PLL_DIV	0x0010
 #define MT9D113_REG_PLL_P	0x0012
@@ -91,6 +135,15 @@
 #define SEQ_CMD_REFRESH_MODE	0x0006
 #define SEQ_CMD_REFRESH		0x0005
 #define MT9D113_VAR_SEQ_STATE	0xa104
+
+#define MT9D113_VAR_COL_EFF_A	0x2759
+#define MT9D113_VAR_FD_MODE	0x2404
+
+/* current integration time access */
+#define MT9D113_VAR_INTEGRATION_TIME	0x2222
+
+#define MT9D113_VAR_AE_GAIN	0x221c
+#define MT9D113_VAR_AE_D_GAIN	0x221f
 
 /* #defines for register writes and register array processing */
 #define MISENSOR_8BIT		1
@@ -179,6 +232,7 @@ struct mt9d113_device {
 	struct camera_sensor_platform_data *platform_data;
 	int real_model_id;
 	unsigned int res;
+	int color_effect;
 };
 
 struct mt9d113_format_struct {
@@ -194,6 +248,7 @@ struct mt9d113_res_struct {
 	int height;
 	int fps;
 	int skip_frames;
+	int row_time;
 	bool used;
 	struct regval_list *regs;
 };
@@ -229,6 +284,7 @@ static struct mt9d113_res_struct mt9d113_res[] = {
 	.used	= 0,
 	.regs	= NULL,
 	.skip_frames = 1,
+	.row_time = 48,
 	},
 	{
 	.desc	= "QVGA",
@@ -239,6 +295,7 @@ static struct mt9d113_res_struct mt9d113_res[] = {
 	.used	= 0,
 	.regs	= NULL,
 	.skip_frames = 1,
+	.row_time = 48,
 	},
 	{
 	.desc	= "CIF",
@@ -249,6 +306,7 @@ static struct mt9d113_res_struct mt9d113_res[] = {
 	.used	= 0,
 	.regs	= NULL,
 	.skip_frames = 1,
+	.row_time = 48,
 	},
 	{
 	.desc	= "VGA_WIDE",
@@ -259,6 +317,7 @@ static struct mt9d113_res_struct mt9d113_res[] = {
 	.used	= 0,
 	.regs	= NULL,
 	.skip_frames = 1,
+	.row_time = 48,
 	},
 	{
 	.desc	= "VGA",
@@ -269,6 +328,7 @@ static struct mt9d113_res_struct mt9d113_res[] = {
 	.used	= 0,
 	.regs	= NULL,
 	.skip_frames = 1,
+	.row_time = 48,
 	},
 	{
 	.desc	= "SVGA",
@@ -279,6 +339,7 @@ static struct mt9d113_res_struct mt9d113_res[] = {
 	.used	= 0,
 	.regs	= NULL,
 	.skip_frames = 1,
+	.row_time = 48,
 	},
 	{
 	.desc	= "720p",
@@ -289,6 +350,7 @@ static struct mt9d113_res_struct mt9d113_res[] = {
 	.used	= 0,
 	.regs	= NULL,
 	.skip_frames = 1,
+	.row_time = 42,
 	},
 	{
 	.desc	= "2M",
@@ -299,6 +361,7 @@ static struct mt9d113_res_struct mt9d113_res[] = {
 	.used	= 0,
 	.regs	= NULL,
 	.skip_frames = 1,
+	.row_time = 52,
 	},
 };
 #define N_RES (ARRAY_SIZE(mt9d113_res))
@@ -1267,7 +1330,7 @@ static struct misensor_reg const mt9d113_reset[] = {
 };
 
 /* AWB_CCM initialization */
-static struct misensor_reg const mt9d113_AWB_CCM[] = {
+static struct misensor_reg const mt9d113_awb_ccm[] = {
 	{MISENSOR_16BIT, 0x098c, 0x2306}, /* MCU_ADDRESS [AWB_CCM_L_0]*/
 	{MISENSOR_16BIT, 0x0990, 0x0180}, /* MCU_DATA_0*/
 	{MISENSOR_16BIT, 0x098c, 0x2308}, /* MCU_ADDRESS [AWB_CCM_L_1]*/
@@ -1321,6 +1384,53 @@ static struct misensor_reg const mt9d113_AWB_CCM[] = {
 	/* NO dS, aptinal private */
 	{MISENSOR_16BIT, 0x3244, 0x0328}, /* aWb_CONFIG4, aWb fine tuning*/
 	{MISENSOR_16BIT, 0x323e, 0xc22c}, /* aWb fine tuning, bit[11-15]*/
+	{MISENSOR_TOK_TERM, 0, 0}
+};
+
+/* Low light settings */
+static struct misensor_reg const mt9d113_lowlight[] = {
+	{MISENSOR_16BIT, 0x098c, 0x2b28}, /* MCU_ADDRESS [hg_ll_bg_start]*/
+	{MISENSOR_16BIT, 0x0990, 0x35e8}, /* 13800*/
+	{MISENSOR_16BIT, 0x098c, 0x2b2a}, /* MCU_ADDRESS [hg_ll_bg_stop]*/
+	{MISENSOR_16BIT, 0x0990, 0xb3b0}, /* 46000*/
+
+	{MISENSOR_16BIT, 0x098c, 0x2b20}, /* MCU_ADDRESS [hg_ll_sat1]*/
+	{MISENSOR_16BIT, 0x0990, 0x004b}, /* 75*/
+	{MISENSOR_16BIT, 0x098c, 0x2b24}, /* MCU_ADDRESS [hg_ll_sat2]*/
+	{MISENSOR_16BIT, 0x0990, 0x0000}, /* 0*/
+	{MISENSOR_16BIT, 0x098c, 0x2b25}, /* MCU_ADDRESS [hg_ll_thresh2]*/
+	{MISENSOR_16BIT, 0x0990, 0x00ff}, /* 255*/
+
+	{MISENSOR_16BIT, 0x098c, 0x2b30}, /* MCU_ADDRESS [hg_nr_stop_r]*/
+	{MISENSOR_16BIT, 0x0990, 0x00ff}, /* 255*/
+	{MISENSOR_16BIT, 0x098c, 0x2b31}, /* MCU_ADDRESS [hg_nr_stop_g]*/
+	{MISENSOR_16BIT, 0x0990, 0x00ff}, /* 255*/
+	{MISENSOR_16BIT, 0x098c, 0x2b32}, /* MCU_ADDRESS [hg_nr_stop_b]*/
+	{MISENSOR_16BIT, 0x0990, 0x00ff}, /* 255*/
+	{MISENSOR_16BIT, 0x098c, 0x2b33}, /* MCU_ADDRESS [hg_nr_stop_ol]*/
+	{MISENSOR_16BIT, 0x0990, 0x0057}, /* 87*/
+
+	{MISENSOR_16BIT, 0x098c, 0x2b34}, /* MCU_ADDRESS [hg_nr_gainstart]*/
+	{MISENSOR_16BIT, 0x0990, 0x0080}, /* 128*/
+	{MISENSOR_16BIT, 0x098c, 0x2b35}, /* MCU_ADDRESS [hg_nr_gainstop]*/
+	{MISENSOR_16BIT, 0x0990, 0x00ff}, /* 255*/
+
+	{MISENSOR_16BIT, 0x098c, 0x2b36}, /* MCU_ADDRESS [hg_clusterdc_th]*/
+	{MISENSOR_16BIT, 0x0990, 0x0014}, /* 20*/
+
+	{MISENSOR_16BIT, 0x098c, 0x2b37}, /* MCU_ADDRESS [hg_gamma_mor_ctrl]*/
+	{MISENSOR_16BIT, 0x0990, 0x0003}, /* 3*/
+
+	{MISENSOR_16BIT, 0x098c, 0x2b38}, /* MCU_ADDRESS [hg_gammastartmor]*/
+	{MISENSOR_16BIT, 0x0990, 0x32c8}, /* 13000 [100 lux]*/
+	{MISENSOR_16BIT, 0x098c, 0x2b3a}, /* MCU_ADDRESS [hg_gammastopmor]*/
+	{MISENSOR_16BIT, 0x0990, 0x7918}, /* 31000 [20 lux]*/
+
+	{MISENSOR_16BIT, 0x098c, 0x2b61}, /* MCU_ADDRESS [hg_ftb_start_bm]*/
+	{MISENSOR_16BIT, 0x0990, 0xffff}, /* Disable FTB*/
+	{MISENSOR_16BIT, 0x098c, 0x2b64}, /* MCU_ADDRESS [hg_ftb_stop_bm]*/
+	{MISENSOR_16BIT, 0x0990, 0xffff}, /* Disable FTB*/
+
 	{MISENSOR_TOK_TERM, 0, 0}
 };
 
