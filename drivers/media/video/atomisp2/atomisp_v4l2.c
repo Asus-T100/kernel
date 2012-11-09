@@ -811,12 +811,14 @@ load_firmware(struct device *dev)
 	return fw;
 }
 
+#define ATOM_ISP_PCI_BAR	0
+
 static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 				       const struct pci_device_id *id)
 {
 	struct atomisp_device *isp;
-	unsigned int start, len;
-	void __iomem *base = NULL;
+	unsigned int start;
+	void __iomem *base;
 	int err;
 
 	if (!dev) {
@@ -827,29 +829,22 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	atomisp_pci_vendor = id->vendor;
 	atomisp_pci_device = id->device;
 
-	err = pci_enable_device(dev);
+	err = pcim_enable_device(dev);
 	if (err) {
 		dev_err(&dev->dev, "Failed to enable CI ISP device\n");
 		return err;
 	}
 
-	start = pci_resource_start(dev, 0);
+	start = pci_resource_start(dev, ATOM_ISP_PCI_BAR);
 	v4l2_dbg(1, dbg_level, &atomisp_dev, "start: 0x%x\n", start);
 
-	len = pci_resource_len(dev, 0);
-	v4l2_dbg(1, dbg_level, &atomisp_dev, "len: 0x%x\n", len);
-
-	if (!devm_request_mem_region(&dev->dev, start, len, pci_name(dev))) {
-		dev_err(&dev->dev, "Failed to request region 0x%x-0x%x\n",
-			start, start + len - 1);
-		return -EBUSY;
-	}
-
-	base = devm_ioremap(&dev->dev, start, len);
-	if (!base) {
+	err = pcim_iomap_regions(dev, 1 << ATOM_ISP_PCI_BAR, pci_name(dev));
+	if (err) {
 		dev_err(&dev->dev, "Failed to I/O memory remapping\n");
-		return -ENOMEM;
+		return err;
 	}
+
+	base = pcim_iomap_table(dev)[ATOM_ISP_PCI_BAR];
 	v4l2_dbg(1, dbg_level, &atomisp_dev, "base: %p\n", base);
 
 	atomisp_io_base = base;
@@ -908,7 +903,7 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 					IRQF_SHARED, "isp_irq", isp);
 	if (err) {
 		dev_err(&dev->dev, "Failed to request irq\n");
-		goto request_irq_fail;
+		goto enable_msi_fail;
 	}
 
 	setup_timer(&isp->wdt, atomisp_wdt, (unsigned long)isp);
@@ -932,13 +927,13 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	err = atomisp_initialize_modules(isp);
 	if (err < 0) {
 		dev_err(&dev->dev, "atomisp_initialize_modules\n");
-		goto request_irq_fail;
+		goto enable_msi_fail;
 	}
 
 	err = atomisp_register_entities(isp);
 	if (err < 0) {
 		dev_err(&dev->dev, "atomisp_register_entities failed\n");
-		goto request_irq_fail;
+		goto enable_msi_fail;
 	}
 
 	pm_runtime_put_noidle(&dev->dev);
@@ -946,16 +941,12 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 
 	return 0;
 
-request_irq_fail:
-	pci_disable_msi(dev);
 enable_msi_fail:
-	pci_set_drvdata(dev, NULL);
 	destroy_workqueue(isp->wdt_work_queue);
 work_queue_fail:
 	release_firmware(isp->firmware);
 load_fw_fail:
 	pci_dev_put(isp->hw_contex.pci_root);
-	pci_disable_device(dev);
 	return err;
 }
 
@@ -969,15 +960,11 @@ static void __devexit atomisp_pci_remove(struct pci_dev *dev)
 	pm_qos_remove_request(&isp->pm_qos);
 
 	atomisp_msi_irq_uninit(isp, dev);
-	pci_disable_msi(dev);
 	pci_dev_put(isp->hw_contex.pci_root);
 
 	atomisp_unregister_entities(isp);
 
 	destroy_workqueue(isp->wdt_work_queue);
-
-	pci_set_drvdata(dev, NULL);
-	pci_disable_device(dev);
 
 	release_firmware(isp->firmware);
 }
