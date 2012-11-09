@@ -2056,9 +2056,9 @@ static int mt9e013_probe(struct i2c_client *client,
 	dev->sd.flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
 	dev->pad.flags = MEDIA_PAD_FL_SOURCE;
 	dev->sd.entity.ops = &mt9e013_entity_ops;
+	dev->sd.entity.type = MEDIA_ENT_T_V4L2_SUBDEV_SENSOR;
 	dev->format.code = V4L2_MBUS_FMT_SGRBG10_1X10;
 
-	/* REVISIT: Do we need media controller? */
 	ret = media_entity_init(&dev->sd.entity, 1, &dev->pad, 0);
 	if (ret) {
 		mt9e013_remove(client);
