@@ -2902,13 +2902,6 @@ int atomisp_3a_config_param(struct atomisp_device *isp, int flag,
 	} else {
 		/* Set white balance to isp parameters */
 		memcpy(&isp->params.s3a_config, config, sizeof(*config));
-		/*
-		 * using default values for awb threshold valued
-		 * until 3a library starts setting values by itself
-		 */
-		isp->params.s3a_config.awb_lg_high_raw = 1022;
-		isp->params.s3a_config.awb_lg_low = 1;
-		isp->params.s3a_config.awb_lg_high = 8191;
 		sh_css_set_3a_config(&isp->params.s3a_config);
 		isp->params.css_update_params_needed = true;
 		/* isp->params.s3a_buf_data_valid = false; */
