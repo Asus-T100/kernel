@@ -141,9 +141,7 @@ gfx-y += $(DISPLAYDIR)/psb_bl.o \
 		$(DISPLAYDIR)/gi_renesas_cmd.o \
 		$(DISPLAYDIR)/yb_cmi_vid.o
 
-gfx-$(CONFIG_MDFD_HDMI) += $(DISPLAYDIR)/psb_hotplug.o
-
-gfx-$(CONFIG_SND_INTELMID_HDMI_AUDIO) += $(DISPLAYDIR)/mdfld_hdmi_audio.o
+gfx-y += $(DISPLAYDIR)/mdfld_hdmi_audio.o
 
 gfx-y +=  $(VIDEO_COMMON_DIR)/psb_ttm_glue.o
 
@@ -170,5 +168,4 @@ gfx-$(CONFIG_MDFD_GL3) += $(MEDIA_COMMON_DIR)/mdfld_gl3.o
 obj-$(CONFIG_DRM_MDFLD) += gfx.o
 obj-$(CONFIG_DRM_CTP) += gfx.o
 
-obj-$(CONFIG_DRM_MDFLD) += $(DISPLAYDIR)/otm_hdmi/
-obj-$(CONFIG_DRM_CTP) += $(DISPLAYDIR)/otm_hdmi/
+obj-$(CONFIG_SUPPORT_HDMI) += $(DISPLAYDIR)/otm_hdmi/

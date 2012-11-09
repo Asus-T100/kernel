@@ -192,7 +192,7 @@ IMG_BOOL  MRSTLFBFlipToSurface(MRSTLFB_DEVINFO *psDevInfo,
 					return IMG_FALSE;
 			}
 #endif
-#ifdef CONFIG_MDFD_HDMI
+#ifdef CONFIG_SUPPORT_HDMI
 			/* To avoid Plane B still fetches data from original frame
 			 * buffer. */
 			if (psCurrentSwapChain->ui32SwapChainPropertyFlag

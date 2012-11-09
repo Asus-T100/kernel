@@ -466,7 +466,7 @@ static int psb_dpu_dsr_off_ioctl(struct drm_device *dev, void *data,
 static int psb_disp_ioctl(struct drm_device *dev, void *data,
 			 struct drm_file *file_priv);
 
-#ifdef CONFIG_MDFD_HDMI
+#ifdef CONFIG_SUPPORT_HDMI
 static int psb_query_hdcp_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv);
 static int psb_validate_hdcp_ksv_ioctl(struct drm_device *dev, void *data,
@@ -588,7 +588,7 @@ static struct drm_ioctl_desc psb_ioctls[] = {
 	DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCRL_PSB_DPU_DSR_OFF, psb_dpu_dsr_off_ioctl,
 	DRM_AUTH),
-#ifdef CONFIG_MDFD_HDMI
+#ifdef CONFIG_SUPPORT_HDMI
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_HDMI_FB_CMD, psb_disp_ioctl, 0),
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_QUERY_HDCP, psb_query_hdcp_ioctl, DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_VALIDATE_HDCP_KSV, psb_validate_hdcp_ksv_ioctl, DRM_AUTH),
@@ -1023,58 +1023,18 @@ out:
 	return true;
 }
 
-#ifdef CONFIG_MDFD_HDMI
-#define HDMI_HOTPLUG_DELAY (2*HZ)
-static void hdmi_hotplug_timer_func(unsigned long data)
-{
-	struct drm_device *dev = (struct drm_device *)data;
-
-	PSB_DEBUG_ENTRY("\n");
-	ospm_runtime_pm_allow(dev);
-}
-
-static int hdmi_hotplug_timer_init(struct drm_device *dev)
-{
-	struct drm_psb_private *dev_priv = dev->dev_private;
-	struct timer_list *hdmi_timer = &dev_priv->hdmi_timer;
-
-	PSB_DEBUG_ENTRY("\n");
-
-	init_timer(hdmi_timer);
-
-	hdmi_timer->data = (unsigned long)dev;
-	hdmi_timer->function = hdmi_hotplug_timer_func;
-	hdmi_timer->expires = jiffies + HDMI_HOTPLUG_DELAY;
-
-	PSB_DEBUG_ENTRY("successfully\n");
-
-	return 0;
-}
-
-void hdmi_hotplug_timer_start(struct drm_device *dev)
-{
-	struct drm_psb_private *dev_priv = dev->dev_private;
-	struct timer_list *hdmi_timer = &dev_priv->hdmi_timer;
-
-	PSB_DEBUG_ENTRY("\n");
-	if (!timer_pending(hdmi_timer)) {
-		hdmi_timer->expires = jiffies + HDMI_HOTPLUG_DELAY;
-		add_timer(hdmi_timer);
-	}
-}
-
+#ifdef CONFIG_SUPPORT_HDMI
 void hdmi_do_audio_wq(struct work_struct *work)
 {
 	u8 data = 0;
 	struct drm_psb_private *dev_priv = container_of(work,
-					   struct drm_psb_private,
-					   hdmi_audio_wq);
+		struct drm_psb_private,
+		hdmi_audio_wq);
 	bool hdmi_hpd_connected = false;
 
-#if defined(CONFIG_X86_MDFLD) && defined(CONFIG_MDFD_HDMI)
 	/* As in the hdmi_do_hotplug_wq() function above
 	* it seems we should not be running this section of
-	* code if we don't also have CONFIG_MDFD_HDMI set,
+	* code if we don't also have CONFIG_SUPPORT_HDMI set,
 	* some devices might not want/need support for HDMI
 	* early in the platform bring up and by having this
 	* available to run might produce unexpected results
@@ -1086,13 +1046,8 @@ void hdmi_do_audio_wq(struct work_struct *work)
 
 	if (hdmi_hpd_connected) {
 		DRM_INFO("hdmi_do_audio_wq: HDMI plugged in\n");
-		if (dev_priv->mdfld_had_event_callbacks) {
-			DRM_INFO("hdmi_do_audio_wq: HDMI calling audio probe\n");
-			(*dev_priv->mdfld_had_event_callbacks)
-				(HAD_EVENT_HOT_PLUG, dev_priv->had_pvt_data);
-		}
+		mid_hdmi_audio_signal_event(dev_priv->dev, HAD_EVENT_HOT_PLUG);
 	}
-#endif
 }
 #endif
 
@@ -1355,7 +1310,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 #ifdef CONFIG_MDFD_DUAL_MIPI
 		dev_priv->num_pipe++;
 #endif
-#ifdef CONFIG_MDFD_HDMI
+#ifdef CONFIG_SUPPORT_HDMI
 		dev_priv->num_pipe++;
 #endif
 	} else if (IS_MRST(dev))
@@ -1365,10 +1320,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 
 	/*init DPST umcomm to NULL*/
 	dev_priv->psb_dpst_state = NULL;
-#ifdef CONFIG_MDFD_HDMI
-	dev_priv->psb_hotplug_state = NULL;
-	dev_priv->hdmi_done_reading_edid = false;
-#endif
+
 	dev_priv->um_start = false;
 	dev_priv->b_vblank_enable = false;
 	dev_priv->usermode_restart = false;
@@ -1692,24 +1644,6 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 		return ret;
 	}
 
-#ifdef CONFIG_MDFD_HDMI
-	/* initialize HDMI Hotplug interrupt forwarding
-	* notifications for user mode
-	*/
-	if (IS_MDFLD(dev)) {
-		struct pci_dev *pdev = NULL;
-		struct device *ddev = NULL;
-		struct kobject *kobj = NULL;
-
-		/*find handle to drm kboject*/
-		pdev = dev->pdev;
-		ddev = &pdev->dev;
-		kobj = &ddev->kobj;
-
-		dev_priv->psb_hotplug_state = psb_hotplug_init(kobj);
-	}
-#endif
-
 	/* Post OSPM init */
 	if (IS_MDFLD(dev))
 		ospm_post_init(dev);
@@ -1719,17 +1653,13 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	pm_runtime_put_noidle(&dev->pdev->dev);
 #endif
 
-#ifdef CONFIG_MDFD_HDMI
-	hdmi_hotplug_timer_init(dev);
-#endif
-
 	/* GL3 */
 #ifdef CONFIG_MDFD_GL3
 	if (drm_psb_gl3_enable)
 		gl3_enable();
 #endif
 
-#ifdef CONFIG_MDFD_HDMI
+#ifdef CONFIG_SUPPORT_HDMI
 	INIT_WORK(&dev_priv->hdmi_audio_wq, hdmi_do_audio_wq);
 #endif
 
@@ -2134,19 +2064,15 @@ static int psb_disp_ioctl(struct drm_device *dev, void *data,
 	} else if (dp_ctrl->cmd == DRM_PSB_HDMI_NOTIFY_HOTPLUG_TO_AUDIO) {
 		if (dp_ctrl->u.data == 0) {
 			/* notify audio with HDMI unplug event */
-			if (dev_priv->mdfld_had_event_callbacks &&
-				dev_priv->hdmi_priv->monitor_type == MONITOR_TYPE_HDMI) {
+			if (dev_priv->hdmi_priv->monitor_type == MONITOR_TYPE_HDMI) {
 				DRM_INFO("HDMI plug out to audio driver\n");
-				(*dev_priv->mdfld_had_event_callbacks)
-				(HAD_EVENT_HOT_UNPLUG, dev_priv->had_pvt_data);
+				mid_hdmi_audio_signal_event(dev, HAD_EVENT_HOT_UNPLUG);
 			}
 		} else {
 			/* notify audio with HDMI plug event */
-			if (dev_priv->mdfld_had_event_callbacks &&
-				dev_priv->hdmi_priv->monitor_type == MONITOR_TYPE_HDMI) {
+			if (dev_priv->hdmi_priv->monitor_type == MONITOR_TYPE_HDMI) {
 				DRM_INFO("HDMI plug in to audio driver\n");
-				(*dev_priv->mdfld_had_event_callbacks)
-				(HAD_EVENT_HOT_PLUG, dev_priv->had_pvt_data);
+				mid_hdmi_audio_signal_event(dev, HAD_EVENT_HOT_PLUG);
 			}
 		}
 	}
@@ -2155,7 +2081,7 @@ exit:
 	return ret;
 }
 
-#ifdef CONFIG_MDFD_HDMI
+#ifdef CONFIG_SUPPORT_HDMI
 static int psb_query_hdcp_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv)
 {
@@ -4596,9 +4522,6 @@ early_param("hdmi_edid", parse_hdmi_edid);
 static int __init psb_init(void)
 {
 	int ret;
-#ifdef CONFIG_MDFD_HDMI
-	struct drm_psb_private *dev_priv = NULL;
-#endif
 
 #if defined(MODULE) && defined(CONFIG_NET)
 	psb_kobject_uevent_init();
@@ -4614,8 +4537,9 @@ static int __init psb_init(void)
 		return ret;
 	}
 
-#ifdef CONFIG_MDFD_HDMI
+#ifdef CONFIG_SUPPORT_HDMI
 	if (gpDrmDevice) {
+		struct drm_psb_private *dev_priv = NULL;
 		dev_priv = (struct drm_psb_private *)gpDrmDevice->dev_private;
 		if (dev_priv)
 			otm_hdmi_hpd_init();
@@ -4628,12 +4552,10 @@ static int __init psb_init(void)
 static void __exit psb_exit(void)
 {
 	int ret;
-#ifdef CONFIG_MDFD_HDMI
-	struct drm_psb_private *dev_priv = NULL;
-#endif
 
-#ifdef CONFIG_MDFD_HDMI
+#ifdef CONFIG_SUPPORT_HDMI
 	if (gpDrmDevice) {
+		struct drm_psb_private *dev_priv = NULL;
 		dev_priv = (struct drm_psb_private *)gpDrmDevice->dev_private;
 		if (dev_priv)
 			otm_hdmi_hpd_deinit();

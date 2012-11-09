@@ -97,9 +97,9 @@ struct android_hdmi_priv {
 };
 
 extern int psb_intel_panel_fitter_pipe(struct drm_device *dev);
-extern void mdfld_hdmi_audio_init(struct android_hdmi_priv *p_hdmi_priv);
+extern void mid_hdmi_audio_init(struct android_hdmi_priv *p_hdmi_priv);
 
-#ifdef CONFIG_MDFD_HDMI
+#ifdef CONFIG_SUPPORT_HDMI
 
 /**
  * This function initializes the hdmi driver called during bootup
@@ -385,7 +385,7 @@ void android_hdmi_dpms(struct drm_encoder *encoder, int mode);
  */
 void android_hdmi_connector_dpms(struct drm_connector *connector, int mode);
 
-#else /* CONFIG_MDFD_HDMI */
+#else /* CONFIG_SUPPORT_HDMI */
 
 static inline void android_hdmi_driver_init(struct drm_device *dev,
 						void *mode_dev) {}
@@ -462,7 +462,7 @@ static inline void android_hdmi_set_power_rails(bool on)
 static inline void android_hdmi_dpms(struct drm_encoder *encoder,
 				int mode) {}
 
-#endif /* CONFIG_MDFD_HDMI */
+#endif /* CONFIG_SUPPORT_HDMI */
 
 /*
  * Description: hdmi helper function to parse cmdline option

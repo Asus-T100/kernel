@@ -1058,8 +1058,8 @@ edid_is_ready:
 					 head) {
 			refresh_rate = calculate_refresh_rate(mode);
 			if (otm_hdmi_is_preferred_mode(mode->hdisplay,
-						       mode->vdisplay,
-						       refresh_rate))
+					mode->vdisplay,
+					refresh_rate))
 				continue;
 			mode->type &= ~DRM_MODE_TYPE_PREFERRED;
 		}
@@ -1169,14 +1169,14 @@ static void __android_hdmi_drm_mode_to_otm_timing(otm_hdmi_timing_t *otm_mode,
 	otm_mode->metadata = 0;
 	for (i = 0; i < ARRAY_SIZE(vic_formats); i++) {
 		if (otm_mode->width == vic_formats[i].width &&
-		   otm_mode->height == vic_formats[i].height &&
-		   otm_mode->htotal == vic_formats[i].htotal &&
-		   otm_mode->vtotal == vic_formats[i].vtotal &&
-		   (otm_mode->dclk == vic_formats[i].dclk ||
-		    otm_mode->dclk == __f5994(vic_formats[i].dclk)) &&
-		    par == vic_formats[i].par) {
+			otm_mode->height == vic_formats[i].height &&
+			otm_mode->htotal == vic_formats[i].htotal &&
+			otm_mode->vtotal == vic_formats[i].vtotal &&
+			(otm_mode->dclk == vic_formats[i].dclk ||
+			otm_mode->dclk == __f5994(vic_formats[i].dclk)) &&
+			par == vic_formats[i].par) {
 			if (1 == cmdline_mode.specified &&
-			    1 == cmdline_mode.vic_specified) {
+				1 == cmdline_mode.vic_specified) {
 				if (cmdline_mode.vic == vic_formats[i].vic) {
 					otm_mode->metadata = cmdline_mode.vic;
 					break;
@@ -1409,10 +1409,6 @@ void android_hdmi_enc_mode_set(struct drm_encoder *encoder,
 	struct drm_device *dev;
 	struct android_hdmi_priv *hdmi_priv;
 	struct drm_psb_private *dev_priv;
-#ifdef CONFIG_SND_INTELMID_HDMI_AUDIO
-	void *had_pvt_data;
-	enum had_event_type event_type = HAD_EVENT_MODE_CHANGING;
-#endif
 	otm_hdmi_timing_t otm_mode, otm_adjusted_mode;
 
 	pr_debug("Enter %s\n", __func__);
@@ -1424,9 +1420,6 @@ void android_hdmi_enc_mode_set(struct drm_encoder *encoder,
 	dev = encoder->dev;
 	dev_priv = dev->dev_private;
 	hdmi_priv = dev_priv->hdmi_priv;
-#ifdef CONFIG_SND_INTELMID_HDMI_AUDIO
-	had_pvt_data = dev_priv->had_pvt_data;
-#endif
 
 	__android_hdmi_drm_mode_to_otm_timing(&otm_mode, mode);
 	__android_hdmi_drm_mode_to_otm_timing(&otm_adjusted_mode,
@@ -1446,12 +1439,8 @@ void android_hdmi_enc_mode_set(struct drm_encoder *encoder,
 	hdmi_priv->current_mode =
 		drm_mode_duplicate(dev, adjusted_mode);
 
-#ifdef CONFIG_SND_INTELMID_HDMI_AUDIO
 	/* Send MODE_CHANGE event to Audio driver */
-	if (dev_priv->mdfld_had_event_callbacks)
-		(*dev_priv->mdfld_had_event_callbacks)(event_type,
-				had_pvt_data);
-#endif
+	mid_hdmi_audio_signal_event(dev, HAD_EVENT_MODE_CHANGING);
 
 #ifdef OTM_HDMI_HDCP_ENABLE
 #ifdef OTM_HDMI_HDCP_ALWAYS_ENC
@@ -1555,7 +1544,7 @@ void android_hdmi_restore_and_enable_display(struct drm_device *dev)
 	data = otm_hdmi_get_cable_status(hdmi_priv->context);
 
 	otm_hdmi_restore_and_enable_display(hdmi_priv->context,
-					    data);
+				data);
 }
 
 /**
@@ -1663,10 +1652,10 @@ void android_hdmi_encoder_restore_wq(struct work_struct *work)
 
 	if (hdmi_priv->current_mode)
 		__android_hdmi_drm_mode_to_otm_timing(&otm_mode,
-						      hdmi_priv->current_mode);
+			hdmi_priv->current_mode);
 	else
 		pr_err("%s: No saved current mode found, unable to restore\n",
-		       __func__);
+			__func__);
 
 	is_monitor_hdmi = otm_hdmi_is_monitor_hdmi(hdmi_priv->context);
 
@@ -1737,8 +1726,8 @@ void android_hdmi_encoder_restore(struct drm_encoder *encoder)
  * This is currently not required.
  */
 bool android_hdmi_mode_fixup(struct drm_encoder *encoder,
-			     struct drm_display_mode *mode,
-			     struct drm_display_mode *adjusted_mode)
+		struct drm_display_mode *mode,
+		struct drm_display_mode *adjusted_mode)
 {
 	pr_debug("%s: Nothing be done here\n", __func__);
 	return true;
@@ -2139,7 +2128,7 @@ static int android_hdmi_set_property(struct drm_connector *connector,
 	}
 	else {
 		pr_err("%s: Unable to handle property %s\n", __func__,
-		       property->name);
+			property->name);
 		goto set_prop_error;
 	}
 
@@ -2161,15 +2150,13 @@ static int android_hdmi_set_property(struct drm_connector *connector,
 			goto set_prop_error;
 		}
 
-		if (drm_connector_property_get_value(connector, property,
-						     &curValue))
+		if (drm_connector_property_get_value(connector, property, &curValue))
 			goto set_prop_error;
 
 		if (curValue == value)
 			goto set_prop_done;
 
-		if (drm_connector_property_set_value(connector, property,
-						     value))
+		if (drm_connector_property_set_value(connector, property, value))
 			goto set_prop_error;
 
 		bTransitionFromToCentered =
@@ -2182,28 +2169,28 @@ static int android_hdmi_set_property(struct drm_connector *connector,
 			(value == DRM_MODE_SCALE_ASPECT);
 
 		if (pPsbCrtc->saved_mode.hdisplay != 0 &&
-		    pPsbCrtc->saved_mode.vdisplay != 0) {
+			pPsbCrtc->saved_mode.vdisplay != 0) {
 			if (bTransitionFromToCentered ||
 					bTransitionFromToAspect) {
 				if (!drm_crtc_helper_set_mode(pEncoder->crtc,
-							      &pPsbCrtc->saved_mode,
-							      pEncoder->crtc->x,
-							      pEncoder->crtc->y,
-							      pEncoder->crtc->fb))
+						&pPsbCrtc->saved_mode,
+						pEncoder->crtc->x,
+						pEncoder->crtc->y,
+						pEncoder->crtc->fb))
 					goto set_prop_error;
 			} else {
 				struct drm_encoder_helper_funcs *pEncHFuncs =
 					pEncoder->helper_private;
 				pEncHFuncs->mode_set(pEncoder,
-						     &pPsbCrtc->saved_mode,
-						     &pPsbCrtc->saved_adjusted_mode);
+					&pPsbCrtc->saved_mode,
+					&pPsbCrtc->saved_adjusted_mode);
 			}
 		}
 	}
 set_prop_done:
-    return 0;
+	return 0;
 set_prop_error:
-    return -1;
+	return -1;
 }
 
 
@@ -2218,8 +2205,7 @@ void android_hdmi_connector_dpms(struct drm_connector *connector, int mode)
 {
 	struct drm_device *dev = connector->dev;
 	struct drm_psb_private *dev_priv = dev->dev_private;
-	int hdmi_audio_busy = 0;
-	hdmi_audio_event_t hdmi_audio_event;
+	bool hdmi_audio_busy = false;
 	u32 dspcntr_val;
 
 #ifdef CONFIG_PM_RUNTIME
@@ -2232,12 +2218,7 @@ void android_hdmi_connector_dpms(struct drm_connector *connector, int mode)
 		return ;
 
 	/* Check HDMI Audio Status */
-	hdmi_audio_event.type = HAD_EVENT_QUERY_IS_AUDIO_BUSY;
-	if (dev_priv->had_interface && dev_priv->had_pvt_data)
-		hdmi_audio_busy =
-			dev_priv->had_interface->query
-					(dev_priv->had_pvt_data,
-					hdmi_audio_event);
+	hdmi_audio_busy = mid_hdmi_audio_is_busy(dev);
 
 	pr_debug("[DPMS] audio busy: 0x%x\n", hdmi_audio_busy);
 
@@ -2274,8 +2255,8 @@ void android_hdmi_connector_dpms(struct drm_connector *connector, int mode)
 
 	/*then check all display panels + monitors status*/
 	if (!panel_on &&
-	    !panel_on2 &&
-	    !(REG_READ(HDMIB_CONTROL) & HDMIB_PORT_EN)) {
+		!panel_on2 &&
+		!(REG_READ(HDMIB_CONTROL) & HDMIB_PORT_EN)) {
 		/*request rpm idle*/
 		if(dev_priv->rpm_enabled) {
 			pm_request_idle(&dev->pdev->dev);
@@ -2348,12 +2329,8 @@ void android_hdmi_dpms(struct drm_encoder *encoder, int mode)
 	}
 
 	if (mode != DRM_MODE_DPMS_ON) {
-		if (dev_priv->mdfld_had_event_callbacks
-			&& is_monitor_hdmi
-			&& (hdmip_enabled != 0)) {
-			(*dev_priv->mdfld_had_event_callbacks)
-			(HAD_EVENT_HOT_UNPLUG, dev_priv->had_pvt_data);
-		}
+		if (is_monitor_hdmi && (hdmip_enabled != 0))
+			mid_hdmi_audio_signal_event(dev, HAD_EVENT_HOT_UNPLUG);
 
 		REG_WRITE(hdmi_priv->hdmib_reg,
 			hdmib & ~HDMIB_PORT_EN & ~HDMIB_AUDIO_ENABLE);
@@ -2369,12 +2346,8 @@ void android_hdmi_dpms(struct drm_encoder *encoder, int mode)
 		psb_enable_vblank(dev, 1);
 		REG_WRITE(hdmi_priv->hdmib_reg, hdmib | HDMIB_PORT_EN);
 
-		if (dev_priv->mdfld_had_event_callbacks
-			&& is_monitor_hdmi
-			&& (hdmip_enabled == 0)) {
-			(*dev_priv->mdfld_had_event_callbacks)
-			(HAD_EVENT_HOT_PLUG, dev_priv->had_pvt_data);
-		}
+		if (is_monitor_hdmi && (hdmip_enabled == 0))
+			mid_hdmi_audio_signal_event(dev, HAD_EVENT_HOT_PLUG);
 
 		if (hdmi_priv->current_mode)
 			__android_hdmi_drm_mode_to_otm_timing(&otm_mode,
@@ -2479,8 +2452,8 @@ void android_hdmi_driver_init(struct drm_device *dev,
 	connector = &psb_intel_output->base;
 	encoder = &psb_intel_output->enc;
 	drm_connector_init(dev, &psb_intel_output->base,
-			   &android_hdmi_connector_funcs,
-			   DRM_MODE_CONNECTOR_DVID);
+				&android_hdmi_connector_funcs,
+				DRM_MODE_CONNECTOR_DVID);
 
 	drm_encoder_init(dev, &psb_intel_output->enc, &android_hdmi_enc_funcs,
 			 DRM_MODE_ENCODER_TMDS);
@@ -2510,7 +2483,7 @@ void android_hdmi_driver_init(struct drm_device *dev,
 	otm_hdmi_hdcp_init(hdmi_priv->context, &hdmi_ddc_read_write);
 #endif
 	/* Initialize the audio driver interface */
-	mdfld_hdmi_audio_init(hdmi_priv);
+	mid_hdmi_audio_init(hdmi_priv);
 	/* initialize hdmi encoder restore delayed work */
 	INIT_DELAYED_WORK(&hdmi_priv->enc_work, android_hdmi_encoder_restore_wq);
 

@@ -340,34 +340,6 @@ static void mid_vblank_handler(struct drm_device *dev, uint32_t pipe)
 		(*dev_priv->psb_vsync_handler)(dev, pipe);
 }
 
-/**
- * Display controller interrupt handler for pipe hdmi audio underrun.
- *
- */
-static void mdfld_pipe_hdmi_audio_underrun(struct drm_device *dev)
-{
-	struct drm_psb_private *dev_priv =
-		(struct drm_psb_private *) dev->dev_private;
-	void *had_pvt_data = dev_priv->had_pvt_data;
-	enum had_event_type event_type = HAD_EVENT_AUDIO_BUFFER_UNDERRUN;
-
-	if (dev_priv->mdfld_had_event_callbacks)
-		(*dev_priv->mdfld_had_event_callbacks)(event_type,
-				had_pvt_data);
-}
-
-/**
- * Display controller interrupt handler for pipe hdmi audio buffer done.
- *
- */
-static void mdfld_pipe_hdmi_audio_buffer_done(struct drm_device *dev)
-{
-	struct drm_psb_private *dev_priv =
-		(struct drm_psb_private *) dev->dev_private;
-
-	if (dev_priv->mdfld_had_event_callbacks)
-		(*dev_priv->mdfld_had_event_callbacks)(HAD_EVENT_AUDIO_BUFFER_DONE, dev_priv->had_pvt_data);
-}
 void psb_te_timer_func(unsigned long data)
 {
 	/*
@@ -618,13 +590,11 @@ static void mid_pipe_event_handler(struct drm_device *dev, uint32_t pipe)
 		schedule_work(&dev_priv->te_work);
 	}
 
-	if (pipe_stat_val & PIPE_HDMI_AUDIO_UNDERRUN_STATUS) {
-		mdfld_pipe_hdmi_audio_underrun(dev);
-	}
+	if (pipe_stat_val & PIPE_HDMI_AUDIO_UNDERRUN_STATUS)
+		mid_hdmi_audio_signal_event(dev, HAD_EVENT_AUDIO_BUFFER_UNDERRUN);
 
-	if (pipe_stat_val & PIPE_HDMI_AUDIO_BUFFER_DONE_STATUS) {
-		mdfld_pipe_hdmi_audio_buffer_done(dev);
-	}
+	if (pipe_stat_val & PIPE_HDMI_AUDIO_BUFFER_DONE_STATUS)
+		mid_hdmi_audio_signal_event(dev, HAD_EVENT_AUDIO_BUFFER_DONE);
 }
 
 /**
@@ -1323,7 +1293,7 @@ void mdfld_disable_te(struct drm_device *dev, int pipe)
 	spin_unlock_irqrestore(&dev_priv->irqmask_lock, irqflags);
 }
 
-int mdfld_irq_enable_hdmi_audio(struct drm_device *dev)
+int mid_irq_enable_hdmi_audio(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *) dev->dev_private;
@@ -1350,7 +1320,7 @@ int mdfld_irq_enable_hdmi_audio(struct drm_device *dev)
 	return 0;
 }
 
-int mdfld_irq_disable_hdmi_audio(struct drm_device *dev)
+int mid_irq_disable_hdmi_audio(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *) dev->dev_private;

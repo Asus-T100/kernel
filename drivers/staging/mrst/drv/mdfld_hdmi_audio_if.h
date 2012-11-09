@@ -56,13 +56,13 @@ enum had_event_type {
  */
 typedef int (*had_event_call_back)(enum had_event_type event_type, void * ctxt_info);
 
-struct  hdmi_audio_registers_ops{
+struct  hdmi_audio_registers_ops {
 	int (*hdmi_audio_read_register)(uint32_t reg_addr, uint32_t *data);
 	int (*hdmi_audio_write_register) (uint32_t reg_addr, uint32_t data);
 	int (*hdmi_audio_read_modify)(uint32_t reg_addr, uint32_t data, uint32_t mask);
 };
 
-struct hdmi_audio_query_set_ops{
+struct hdmi_audio_query_set_ops {
 	int (*hdmi_audio_get_caps)(enum had_caps_list query_element , void *capabilties);
 	int (*hdmi_audio_set_caps)(enum had_caps_list set_element , void *capabilties);
 };
@@ -78,7 +78,15 @@ struct snd_intel_had_interface {
 	int (*resume) (void *had_data);
 };
 
-extern int intel_hdmi_audio_query_capabilities (had_event_call_back audio_callbacks, struct hdmi_audio_registers_ops *reg_ops,struct hdmi_audio_query_set_ops *query_ops);
-extern  int display_register(struct snd_intel_had_interface *driver,void * had_data);
+extern int mid_hdmi_audio_setup(
+	had_event_call_back audio_callbacks,
+	struct hdmi_audio_registers_ops *reg_ops,
+	struct hdmi_audio_query_set_ops *query_ops);
+extern int mid_hdmi_audio_register(struct snd_intel_had_interface *driver, void *had_data);
+extern bool mid_hdmi_audio_is_busy(struct drm_device *dev);
+extern bool mid_hdmi_audio_suspend(struct drm_device *dev);
+extern void mid_hdmi_audio_resume(struct drm_device *dev);
+extern void mid_hdmi_audio_signal_event(struct drm_device *dev, enum had_event_type event);
+
 
 #endif /* MDFLD_HDMI_AUDIO_IF_H */

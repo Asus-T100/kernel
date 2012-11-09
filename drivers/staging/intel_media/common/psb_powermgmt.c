@@ -501,7 +501,7 @@ void ospm_post_init(struct drm_device *dev)
 
 /* if HDMI is disabled in the kernel .config, then we want to
 disable these MSIC power rails permanently.  */
-#ifndef CONFIG_MDFD_HDMI
+#ifndef CONFIG_SUPPORT_HDMI
 	if (IS_MDFLD_OLD(dev)) {
 		/* turn off HDMI power rails */
 		intel_scu_ipc_iowrite8(MSIC_VHDMICNT, VHDMI_OFF);
@@ -939,15 +939,8 @@ void ospm_resume_display(struct pci_dev *pdev)
 		android_hdmi_restore_and_enable_display(dev);
 		/*devices connect status will be changed
 		  when system suspend,re-detect once here*/
-#if (defined(CONFIG_SND_INTELMID_HDMI_AUDIO) || \
-		defined(CONFIG_SND_INTELMID_HDMI_AUDIO_MODULE))
-		if (android_hdmi_is_connected(dev)) {
-			PSB_DEBUG_ENTRY("resume hdmi_state %d", hdmi_state);
-			if (dev_priv->had_pvt_data && hdmi_state)
-				dev_priv->had_interface->
-					resume(dev_priv->had_pvt_data);
-		}
-#endif
+		if (android_hdmi_is_connected(dev))
+			mid_hdmi_audio_resume(dev);
 	}
 	mdfld_restore_cursor_overlay_registers(dev);
 
@@ -1140,13 +1133,7 @@ int ospm_power_suspend(struct pci_dev *pdev, pm_message_t state)
 	int display_access_count;
 	struct drm_psb_private *dev_priv = gpDrmDevice->dev_private;
 	unsigned long flags;
-
-#if (defined(CONFIG_SND_INTELMID_HDMI_AUDIO) || \
-		defined(CONFIG_SND_INTELMID_HDMI_AUDIO_MODULE))
-	struct snd_intel_had_interface *had_interface = dev_priv->had_interface;
-	bool hdmi_audio_suspend = false;
-	hdmi_audio_event_t hdmi_audio_event;
-#endif
+	bool hdmi_audio_suspend = true;
 
 	if (gbSuspendInProgress || gbResumeInProgress) {
 		PSB_DEBUG_PM(KERN_ALERT "%s: system BUSY\n", __func__);
@@ -1157,15 +1144,7 @@ int ospm_power_suspend(struct pci_dev *pdev, pm_message_t state)
 
 	mutex_lock(&g_ospm_mutex);
 	if (!gbSuspended) {
-#if (defined(CONFIG_SND_INTELMID_HDMI_AUDIO) || \
-		defined(CONFIG_SND_INTELMID_HDMI_AUDIO_MODULE))
-		if (dev_priv->had_pvt_data && hdmi_state) {
-			hdmi_audio_event.type = 0;
-			ret = had_interface->suspend(dev_priv->had_pvt_data,
-							hdmi_audio_event);
-			hdmi_audio_suspend = (ret == 0) ? true : false;
-		}
-#endif
+		hdmi_audio_suspend = mid_hdmi_audio_suspend(dev_priv->dev);
 		/* Turn on suspending first before check the access count */
 		spin_lock_irqsave(&dev_priv->ospm_lock, flags);
 		gbSuspendInProgress = true;
@@ -1180,12 +1159,8 @@ int ospm_power_suspend(struct pci_dev *pdev, pm_message_t state)
 			|| videoenc_access_count
 			|| videodec_access_count
 			|| display_access_count
-#if (defined(CONFIG_SND_INTELMID_HDMI_AUDIO) || \
-		defined(CONFIG_SND_INTELMID_HDMI_AUDIO_MODULE))
-			|| ((!hdmi_audio_suspend) && hdmi_state)
-#endif
-		)
-		ret = -EBUSY;
+			|| (hdmi_audio_suspend == false))
+			ret = -EBUSY;
 		if (!ret) {
 			if (ospm_runtime_pm_msvdx_suspend(gpDrmDevice) != 0)
 				ret = -EBUSY;
@@ -1932,10 +1907,10 @@ int psb_runtime_suspend(struct device *dev)
 	PSB_DEBUG_PM("psb_runtime_suspend is called.\n");
 
 	if (atomic_read(&g_graphics_access_count) ||
-	    atomic_read(&g_videoenc_access_count) ||
-	    (gbdispstatus == true) ||
-	    atomic_read(&g_videodec_access_count) ||
-	    atomic_read(&g_display_access_count))
+		atomic_read(&g_videoenc_access_count) ||
+		(gbdispstatus == true) ||
+		atomic_read(&g_videodec_access_count) ||
+		atomic_read(&g_display_access_count))
 		return -EBUSY;
 	else
 		ret = ospm_power_suspend(gpDrmDevice->pdev, state);
@@ -1954,35 +1929,18 @@ int psb_runtime_resume(struct device *dev)
 int psb_runtime_idle(struct device *dev)
 {
 	struct drm_psb_private *dev_priv = gpDrmDevice->dev_private;
-#if (defined(CONFIG_SND_INTELMID_HDMI_AUDIO) || \
-		defined(CONFIG_SND_INTELMID_HDMI_AUDIO_MODULE))
-	struct snd_intel_had_interface *had_interface = dev_priv->had_interface;
-	int hdmi_audio_busy = 0;
-	hdmi_audio_event_t hdmi_audio_event;
-#endif
+	bool hdmi_audio_busy = false;
 
 	PSB_DEBUG_ENTRY("\n");
 
-#if (defined(CONFIG_SND_INTELMID_HDMI_AUDIO) || \
-		defined(CONFIG_SND_INTELMID_HDMI_AUDIO_MODULE))
-	if (dev_priv->had_pvt_data && hdmi_state) {
-		hdmi_audio_event.type = HAD_EVENT_QUERY_IS_AUDIO_BUSY;
-		hdmi_audio_busy =
-			had_interface->query(dev_priv->had_pvt_data,
-					hdmi_audio_event);
-	}
-#endif
+	hdmi_audio_busy = mid_hdmi_audio_is_busy(dev_priv->dev);
 
 	if (atomic_read(&g_graphics_access_count) ||
-	    atomic_read(&g_videoenc_access_count) ||
-	    atomic_read(&g_videodec_access_count) ||
-	    atomic_read(&g_display_access_count) ||
-	    (gbdispstatus == true)
-#if (defined(CONFIG_SND_INTELMID_HDMI_AUDIO) || \
-	defined(CONFIG_SND_INTELMID_HDMI_AUDIO_MODULE))
-	    || hdmi_audio_busy
-#endif
-	   )
+		atomic_read(&g_videoenc_access_count) ||
+		atomic_read(&g_videodec_access_count) ||
+		atomic_read(&g_display_access_count) ||
+		(gbdispstatus == true) ||
+		(hdmi_audio_busy == true))
 		return -EBUSY;
 	else
 		return 0;
