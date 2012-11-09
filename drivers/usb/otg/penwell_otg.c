@@ -3213,6 +3213,11 @@ static void penwell_otg_work(struct work_struct *work)
 				/* Notify EM charger remove event */
 				penwell_otg_update_chrg_cap(CHRG_UNKNOWN,
 						CHRG_CURR_DISCONN);
+
+				retval = penwell_otg_ulpi_write(iotg,
+						ULPI_PWRCTRLCLR, DPVSRCEN);
+				if (retval)
+					dev_warn(pnw->dev, "ulpi failed\n");
 				penwell_otg_charger_hwdet(false);
 			}
 		}
