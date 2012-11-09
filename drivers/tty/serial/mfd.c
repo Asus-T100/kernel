@@ -39,6 +39,7 @@
 #include <linux/dma-mapping.h>
 #include <linux/pci.h>
 #include <linux/io.h>
+#include <linux/nmi.h>
 #include <linux/debugfs.h>
 #include <linux/gpio.h>
 #include <linux/lnw_gpio.h>
@@ -1667,6 +1668,9 @@ serial_hsu_console_write(struct console *co, const char *s, unsigned int count)
 		return;
 	}
 #endif
+
+	touch_nmi_watchdog();
+
 	pm_runtime_get(up->dev);
 	local_irq_save(flags);
 	if (up->port.sysrq)
