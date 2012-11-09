@@ -28,6 +28,18 @@
 #ifndef _SYNAPTICS_RMI4_H_INCLUDED_
 #define _SYNAPTICS_RMI4_H_INCLUDED_
 
+#define TOUCH_TYPE_OGS	0
+#define TOUCH_TYPE_GFF	1
+
+struct rmi4_touch_calib {
+	bool x_flip;
+	bool y_flip;
+	bool swap_axes;
+	u32 customer_id;
+	char *fw_name;
+	char *key_dev_name;
+};
+
 /**
  * struct synaptics_rmi4_platform_data - contains the rmi4 platform data
  * @int_gpio_number: interrupt gpio number
@@ -44,12 +56,9 @@ struct rmi4_platform_data {
 	int int_gpio_number;
 	int rst_gpio_number;
 	int irq_type;
-	bool x_flip;
-	bool y_flip;
-	bool swap_axes;
 	bool regulator_en;
 	char *regulator_name;
-	char *fw_name;
+	const struct rmi4_touch_calib *calibs;
 };
 
 #endif

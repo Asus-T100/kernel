@@ -48,8 +48,6 @@
 #define RMI4_SLEEP_MODE_NORMAL      (0x00)
 #define RMI4_END_OF_PDT(id)         ((id) == 0x00 || (id) == 0xff)
 
-#define HARDWARE_TYPE_OGS           1
-#define HARDWARE_TYPE_GFF           2
 struct rmi4_fn_ops;
 /**
  * struct rmi4_fn_desc - contains the function descriptor information
@@ -171,7 +169,7 @@ struct rmi4_data {
 	int			current_page;
 	int			sensor_max_x;
 	int			sensor_max_y;
-	int			hardware_type;
+	int			touch_type;
 	struct regulator	*regulator;
 	int			irq;
 	struct early_suspend	es;

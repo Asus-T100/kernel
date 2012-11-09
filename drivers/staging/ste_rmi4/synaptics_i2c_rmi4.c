@@ -301,6 +301,8 @@ int rmi4_touchpad_irq_handler(struct rmi4_data *pdata, struct rmi4_fn *rfi)
 	u8 *data;
 	struct rmi4_touchpad_data *touch_data;
 	struct i2c_client *client = pdata->i2c_client;
+	const struct rmi4_touch_calib *calib =
+				&pdata->board->calibs[pdata->touch_type];
 
 	/* get 2D sensor finger data */
 	/*
@@ -348,12 +350,11 @@ int rmi4_touchpad_irq_handler(struct rmi4_data *pdata, struct rmi4_fn *rfi)
 			wx = (data[3] & MASK_4BIT);
 			wy = (data[3] >> 4) & MASK_4BIT;
 
-			if  (pdata->board->swap_axes &&
-				pdata->hardware_type != HARDWARE_TYPE_GFF)
+			if (calib->swap_axes)
 				swap(x, y);
-			if (pdata->board->x_flip)
+			if (calib->x_flip)
 				x = pdata->sensor_max_x - x;
-			if (pdata->board->y_flip)
+			if (calib->y_flip)
 				y = pdata->sensor_max_y - y;
 
 			input_report_abs(pdata->input_ts_dev,
@@ -713,6 +714,8 @@ int rmi4_touchpad_config(struct rmi4_data *pdata, struct rmi4_fn *rfi)
 	u8 data[BUF_LEN];
 	int retval = 0;
 	struct	i2c_client *client = pdata->i2c_client;
+	const struct rmi4_touch_calib *calib =
+				&pdata->board->calibs[pdata->touch_type];
 
 	/* Get and print some info about the data source... */
 	/* To Query 2D devices we need to read from the address obtained
@@ -737,7 +740,7 @@ int rmi4_touchpad_config(struct rmi4_data *pdata, struct rmi4_fn *rfi)
 					((data[7] & MASK_4BIT) << 8);
 	pdata->sensor_max_y = ((data[8] & MASK_8BIT) << 0) |
 					((data[9] & MASK_4BIT) << 8);
-	if (pdata->board->swap_axes)
+	if (calib->swap_axes)
 		swap(pdata->sensor_max_x, pdata->sensor_max_y);
 	dev_info(&client->dev, "sensor_max_x=%d, sensor_max_y=%d\n",
 				pdata->sensor_max_x, pdata->sensor_max_y);
@@ -897,8 +900,14 @@ static int do_init_reset(struct rmi4_data *pdata)
 			__func__);
 		return -ENODEV;
 	}
-	pdata->hardware_type = rmi4_fw_update(pdata, &f01_fd, &f34_fd);
-	dev_info(&client->dev, "hardware type is %d\n", pdata->hardware_type);
+	retval = rmi4_fw_update(pdata, &f01_fd, &f34_fd);
+	if (retval < 0) {
+		dev_err(&client->dev,
+				"%s: update firmware failed!\n", __func__);
+		return retval;
+	}
+	pdata->touch_type = retval;
+
 	return 0;
 }
 
@@ -1334,6 +1343,7 @@ static int __devinit rmi4_probe(struct i2c_client *client,
 	struct rmi4_data *rmi4_data;
 	const struct rmi4_platform_data *platformdata =
 						client->dev.platform_data;
+	const struct rmi4_touch_calib *calib;
 
 	if (!platformdata) {
 		dev_err(&client->dev, "%s: no platform data\n", __func__);
@@ -1399,6 +1409,7 @@ static int __devinit rmi4_probe(struct i2c_client *client,
 	retval = do_init_reset(rmi4_data);
 	if (retval)
 		dev_warn(&client->dev, "Init reset failed! Soldiering on!\n");
+	calib = &rmi4_data->board->calibs[rmi4_data->touch_type];
 	/*
 	 * Register physical driver - this will call the detect function that
 	 * will then scan the device and determine the supported
@@ -1420,11 +1431,7 @@ static int __devinit rmi4_probe(struct i2c_client *client,
 	rmi4_data->input_ts_dev->dev.parent = &client->dev;
 	input_set_drvdata(rmi4_data->input_ts_dev, rmi4_data);
 
-	if (rmi4_data->hardware_type == HARDWARE_TYPE_GFF)
-		rmi4_data->input_key_dev->name	= "rmi4_key_gff";
-	else
-		rmi4_data->input_key_dev->name	= "rmi4_key";
-
+	rmi4_data->input_key_dev->name	= calib->key_dev_name;
 	rmi4_data->input_key_dev->phys	= "Synaptics_Clearpad";
 	rmi4_data->input_key_dev->id.bustype = BUS_I2C;
 	rmi4_data->input_key_dev->dev.parent = &client->dev;
@@ -1435,17 +1442,10 @@ static int __devinit rmi4_probe(struct i2c_client *client,
 	set_bit(EV_ABS, rmi4_data->input_ts_dev->evbit);
 	set_bit(EV_KEY, rmi4_data->input_key_dev->evbit);
 
-	if (rmi4_data->hardware_type == HARDWARE_TYPE_GFF) {
-		input_set_abs_params(rmi4_data->input_ts_dev,
-			ABS_MT_POSITION_Y, 0, rmi4_data->sensor_max_x, 0, 0);
-		input_set_abs_params(rmi4_data->input_ts_dev,
-			ABS_MT_POSITION_X, 0, rmi4_data->sensor_max_y, 0, 0);
-	} else {
-		input_set_abs_params(rmi4_data->input_ts_dev,
-			ABS_MT_POSITION_X, 0, rmi4_data->sensor_max_x, 0, 0);
-		input_set_abs_params(rmi4_data->input_ts_dev,
-			ABS_MT_POSITION_Y, 0, rmi4_data->sensor_max_y, 0, 0);
-	}
+	input_set_abs_params(rmi4_data->input_ts_dev,
+		ABS_MT_POSITION_X, 0, rmi4_data->sensor_max_x, 0, 0);
+	input_set_abs_params(rmi4_data->input_ts_dev,
+		ABS_MT_POSITION_Y, 0, rmi4_data->sensor_max_y, 0, 0);
 
 	input_set_abs_params(rmi4_data->input_ts_dev,
 			ABS_MT_TOUCH_MAJOR, 0, MAX_TOUCH_MAJOR, 0, 0);
@@ -1500,9 +1500,11 @@ static int __devinit rmi4_probe(struct i2c_client *client,
 #endif
 	return retval;
 
+#ifdef DEBUG
 err_reg_input:
 	input_unregister_device(rmi4_data->input_key_dev);
 	rmi4_data->input_key_dev = NULL;
+#endif
 err_reg_input_key:
 	input_unregister_device(rmi4_data->input_ts_dev);
 	rmi4_data->input_ts_dev = NULL;
