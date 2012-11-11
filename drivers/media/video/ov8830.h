@@ -622,6 +622,7 @@ static const struct ov8830_reg ov8830_BasicSettings[] = {
 	{ OV8830_8BIT, { 0x4307 }, 0x30 },
 	{ OV8830_8BIT, { 0x4315 }, 0x00 },
 	{ OV8830_8BIT, { 0x4511 }, 0x05 },
+	{ OV8830_8BIT, { 0x4512 }, 0x01 }, /* Binning option = Average */
 	{ OV8830_8BIT, { 0x4750 }, 0x00 },
 	{ OV8830_8BIT, { 0x4751 }, 0x00 },
 	{ OV8830_8BIT, { 0x4752 }, 0x00 },
@@ -716,7 +717,6 @@ static const struct ov8830_reg ov8830_1080P_STILL_15fps[] = {
 	{ OV8830_8BIT, { 0x3815 }, 0x11 },
 	{ OV8830_8BIT, { 0x3820 }, 0x10 }, /* Binning off */
 	{ OV8830_8BIT, { 0x3821 }, 0x0e },
-	{ OV8830_8BIT, { 0x4512 }, 0x01 },
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
@@ -745,7 +745,6 @@ static const struct ov8830_reg ov8830_VGA_STILL_15fps[] = {
 	{ OV8830_8BIT, { 0x3815 }, 0x11 },
 	{ OV8830_8BIT, { 0x3820 }, 0x10 }, /* Binning off */
 	{ OV8830_8BIT, { 0x3821 }, 0x0e },
-	{ OV8830_8BIT, { 0x4512 }, 0x01 },
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
@@ -774,7 +773,6 @@ static const struct ov8830_reg ov8830_1M_STILL_15fps[] = {
 	{ OV8830_8BIT, { 0x3815 }, 0x11 },
 	{ OV8830_8BIT, { 0x3820 }, 0x10 }, /* Binning off */
 	{ OV8830_8BIT, { 0x3821 }, 0x0e },
-	{ OV8830_8BIT, { 0x4512 }, 0x01 },
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
@@ -803,7 +801,6 @@ static const struct ov8830_reg ov8830_2M_STILL_15fps[] = {
 	{ OV8830_8BIT, { 0x3815 }, 0x11 },
 	{ OV8830_8BIT, { 0x3820 }, 0x10 }, /* Binning off */
 	{ OV8830_8BIT, { 0x3821 }, 0x0e },
-	{ OV8830_8BIT, { 0x4512 }, 0x01 },
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
@@ -832,7 +829,6 @@ static const struct ov8830_reg ov8830_3M_STILL_15fps[] = {
 	{ OV8830_8BIT, { 0x3815 }, 0x11 },
 	{ OV8830_8BIT, { 0x3820 }, 0x10 }, /* Binning off */
 	{ OV8830_8BIT, { 0x3821 }, 0x0e },
-	{ OV8830_8BIT, { 0x4512 }, 0x01 },
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
@@ -861,7 +857,6 @@ static const struct ov8830_reg ov8830_5M_STILL_15fps[] = {
 	{ OV8830_8BIT, { 0x3815 }, 0x11 },
 	{ OV8830_8BIT, { 0x3820 }, 0x10 }, /* Binning off */
 	{ OV8830_8BIT, { 0x3821 }, 0x0e },
-	{ OV8830_8BIT, { 0x4512 }, 0x01 },
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
@@ -890,7 +885,6 @@ static const struct ov8830_reg ov8830_6M_STILL_15fps[] = {
 	{ OV8830_8BIT, { 0x3815 }, 0x11 },
 	{ OV8830_8BIT, { 0x3820 }, 0x10 }, /* Binning off */
 	{ OV8830_8BIT, { 0x3821 }, 0x0e },
-	{ OV8830_8BIT, { 0x4512 }, 0x01 },
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
@@ -919,7 +913,6 @@ static const struct ov8830_reg ov8830_8M_STILL_15fps[] = {
 	{ OV8830_8BIT, { 0x3815 }, 0x11 },
 	{ OV8830_8BIT, { 0x3820 }, 0x10 }, /* Binning off */
 	{ OV8830_8BIT, { 0x3821 }, 0x0e },
-	{ OV8830_8BIT, { 0x4512 }, 0x01 },
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 /*****************************OV8830 PREVIEW********************************/
@@ -949,7 +942,6 @@ static struct ov8830_reg const ov8830_PREVIEW_848x616_30fps[] = {
 	{ OV8830_8BIT, { 0x3815 }, 0x31 },
 	{ OV8830_8BIT, { 0x3820 }, 0x11 }, /* Vertical Binning 0n */
 	{ OV8830_8BIT, { 0x3821 }, 0x0f }, /* Horizontal Binning 0n */
-	{ OV8830_8BIT, { 0x4512 }, 0x00 }, /* Vertical Binning Option */
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
@@ -982,7 +974,6 @@ static struct ov8830_reg const ov8830_PREVIEW_WIDE_PREVIEW_30fps[] = {
 	{ OV8830_8BIT, { 0x3815 }, 0x31 },
 	{ OV8830_8BIT, { 0x3820 }, 0x11 }, /* Binning on */
 	{ OV8830_8BIT, { 0x3821 }, 0x0f },
-	{ OV8830_8BIT, { 0x4512 }, 0x00 },
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
@@ -1012,7 +1003,6 @@ static struct ov8830_reg const ov8830_PREVIEW_1632x1224_30fps[] = {
 	{ OV8830_8BIT, { 0x3815 }, 0x31 },
 	{ OV8830_8BIT, { 0x3820 }, 0x11 }, /* Vertical Binning 0n */
 	{ OV8830_8BIT, { 0x3821 }, 0x0f }, /* Horizontal Binning 0n */
-	{ OV8830_8BIT, { 0x4512 }, 0x00 }, /* Vertical Binning OptionPTION */
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
@@ -1043,7 +1033,6 @@ static const struct ov8830_reg ov8830_QCIF_strong_dvs_30fps[] = {
 	{ OV8830_8BIT, { 0x3815 }, 0x31 },
 	{ OV8830_8BIT, { 0x3820 }, 0x11 },
 	{ OV8830_8BIT, { 0x3821 }, 0x0f },
-	{ OV8830_8BIT, { 0x4512 }, 0x00 },
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
@@ -1072,7 +1061,6 @@ static const struct ov8830_reg ov8830_QVGA_strong_dvs_30fps[] = {
 	{ OV8830_8BIT, { 0x3815 }, 0x31 },
 	{ OV8830_8BIT, { 0x3820 }, 0x11 },
 	{ OV8830_8BIT, { 0x3821 }, 0x0f },
-	{ OV8830_8BIT, { 0x4512 }, 0x00 },
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
@@ -1101,7 +1089,6 @@ static const struct ov8830_reg ov8830_VGA_strong_dvs_30fps[] = {
 	{ OV8830_8BIT, { 0x3815 }, 0x31 },
 	{ OV8830_8BIT, { 0x3820 }, 0x11 },
 	{ OV8830_8BIT, { 0x3821 }, 0x0f },
-	{ OV8830_8BIT, { 0x4512 }, 0x00 },
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
@@ -1130,7 +1117,6 @@ static struct ov8830_reg const ov8830_480p_strong_dvs_30fps[] = {
 	{ OV8830_8BIT, { 0x3815 }, 0x31 },
 	{ OV8830_8BIT, { 0x3820 }, 0x11 }, /* Binning on */
 	{ OV8830_8BIT, { 0x3821 }, 0x0f },
-	{ OV8830_8BIT, { 0x4512 }, 0x00 },
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
@@ -1159,7 +1145,6 @@ static struct ov8830_reg const ov8830_720p_strong_dvs_30fps[] = {
 	{ OV8830_8BIT, { 0x3815 }, 0x31 },
 	{ OV8830_8BIT, { 0x3820 }, 0x11 },
 	{ OV8830_8BIT, { 0x3821 }, 0x0f },
-	{ OV8830_8BIT, { 0x4512 }, 0x00 },
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
@@ -1188,7 +1173,6 @@ static const struct ov8830_reg ov8830_1080p_strong_dvs_30fps[] = {
 	{ OV8830_8BIT, { 0x3815 }, 0x11 },
 	{ OV8830_8BIT, { 0x3820 }, 0x10 },
 	{ OV8830_8BIT, { 0x3821 }, 0x0e },
-	{ OV8830_8BIT, { 0x4512 }, 0x01 },
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
@@ -1217,7 +1201,6 @@ static const struct ov8830_reg ov8830_1080p_30fps_dvs_off[] = {
 	{ OV8830_8BIT, { 0x3815 }, 0x11 },
 	{ OV8830_8BIT, { 0x3820 }, 0x10 },
 	{ OV8830_8BIT, { 0x3821 }, 0x0e },
-	{ OV8830_8BIT, { 0x4512 }, 0x01 },
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
