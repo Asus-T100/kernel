@@ -2,9 +2,8 @@
  *  mfld_machine_gi.c - ASoc Machine driver for Gilligan Island board
  *  based on Intel Medfield MID platform
  *
- *  Copyright (C) 2010 Intel Corp
+ *  Copyright (C) 2010-12 Intel Corp
  *  Author: Vinod Koul <vinod.koul@intel.com>
- *  Author: Harsha Priya <priya.harsha@intel.com>
  *  Author: Ramesh babu K V <ramesh.babu@intel.com>
  *  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  *
@@ -42,11 +41,22 @@
 #include <sound/soc.h>
 #include <sound/jack.h>
 #include <sound/tlv.h>
+#include <sound/msic_audio_platform.h>
 #include "../codecs/sn95031.h"
 #include "mfld_common.h"
 
 /* The GI jack is different, debounce time needs to be more */
 #define MFLD_JACK_DEBOUNCE_TIME	  700 /* mS */
+
+/* Maximum number of retry for HS detection */
+#define MAX_HS_DET_RETRY 10
+
+/*Maximum delay for workqueue */
+#define MAX_DELAY 2000
+
+/* Support for slow HS jack inserts */
+#define JACK_DET_RETRY 4
+#define JACK_POLL_INTERVAL 500
 
 /* jack detection voltage zones */
 static struct snd_soc_jack_zone mfld_zones[] = {
@@ -58,8 +68,7 @@ static void mfld_jack_enable_mic_bias(struct snd_soc_codec *codec)
 {
 	pr_debug("enable mic bias\n");
 	mutex_lock(&codec->mutex);
-	/* FIXME: GI has micbias swapped, change this when HW is fixed */
-	snd_soc_dapm_force_enable_pin(&codec->dapm, "AMIC2Bias");
+	snd_soc_dapm_force_enable_pin(&codec->dapm, "AMIC1Bias");
 	snd_soc_dapm_sync(&codec->dapm);
 	mutex_unlock(&codec->mutex);
 }
@@ -68,14 +77,16 @@ static void mfld_jack_disable_mic_bias(struct snd_soc_codec *codec)
 {
 	pr_debug("disable mic bias\n");
 	mutex_lock(&codec->mutex);
-	snd_soc_dapm_disable_pin(&codec->dapm, "AMIC2Bias");
+	snd_soc_dapm_disable_pin(&codec->dapm, "AMIC1Bias");
 	snd_soc_dapm_sync(&codec->dapm);
 	mutex_unlock(&codec->mutex);
 }
 
 static int mfld_get_headset_state(struct snd_soc_jack *jack)
 {
-	int micbias, jack_type;
+	int micbias, jack_type, gpio_state;
+	struct mfld_mc_private *ctx =
+			snd_soc_card_get_drvdata(jack->codec->card);
 
 	mfld_jack_enable_mic_bias(jack->codec);
 	micbias = mfld_jack_read_voltage(jack);
@@ -83,6 +94,13 @@ static int mfld_get_headset_state(struct snd_soc_jack *jack)
 	jack_type = snd_soc_jack_get_type(jack, micbias);
 	pr_debug("jack type detected = %d, micbias = %d\n", jack_type, micbias);
 
+	if (jack_type != SND_JACK_HEADSET && jack_type != SND_JACK_HEADPHONE) {
+		gpio_state = mfld_read_jack_gpio(ctx);
+		if (gpio_state == 0) {
+			jack_type = SND_JACK_HEADPHONE;
+			pr_debug("GPIO says there is a headphone, reporting it\n");
+		}
+	}
 	if (jack_type == SND_JACK_HEADSET)
 		/* enable btn press detection */
 		snd_soc_update_bits(jack->codec, SN95031_BTNCTRL2, BIT(0), 1);
@@ -98,8 +116,10 @@ static void mfld_jack_report(struct snd_soc_jack *jack, unsigned int status)
 
 	pr_debug("jack reported of type: 0x%x\n", status);
 	if ((status == SND_JACK_HEADSET) || (status == SND_JACK_HEADPHONE)) {
-		/* if we detected valid headset then disable headset ground,
-		 * this is required for jack detection to work well */
+		/*
+		 * if we detected valid headset then disable headset ground,
+		 * this is required for jack detection to work well
+		 */
 		snd_soc_update_bits(jack->codec, SN95031_BTNCTRL2, BIT(1), 0);
 	} else if (status == 0) {
 		snd_soc_update_bits(jack->codec, SN95031_BTNCTRL2,
@@ -127,6 +147,7 @@ void mfld_jack_wq(struct work_struct *work)
 	struct mfld_jack_work *jack_work = &ctx->jack_work;
 	struct snd_soc_jack *jack = jack_work->jack;
 	unsigned int voltage, status = 0, intr_id = jack_work->intr_id;
+	int gpio_state;
 
 	pr_debug("jack status in wq: 0x%x\n", intr_id);
 	if (intr_id & SN95031_JACK_INSERTED) {
@@ -135,12 +156,38 @@ void mfld_jack_wq(struct work_struct *work)
 		if (status == SND_JACK_HEADSET)
 			snd_soc_update_bits(jack->codec, SN95031_ACCDETMASK,
 							BIT(1)|BIT(0), 0);
+		/*
+		 * At this point the HS may be half inserted and still be
+		 * detected as HP, so recheck after 500mS
+		 */
+		else if (!atomic_dec_and_test(&ctx->hs_det_retry)) {
+			pr_debug("HS Jack detect Retry %d\n",
+					atomic_read(&ctx->hs_det_retry));
+#ifdef CONFIG_HAS_WAKELOCK
+			/* Give sufficient time for the detection to propagate*/
+			wake_lock_timeout(ctx->jack_wake_lock, 2*HZ);
+#endif
+			schedule_delayed_work(&jack_work->work,
+				msecs_to_jiffies(ctx->jack_poll_interval));
+
+		}
+		if (ctx->jack_status == status)
+			return;
+		else
+			ctx->jack_status = status;
+
 	} else if (intr_id & SN95031_JACK_REMOVED) {
+		gpio_state = mfld_read_jack_gpio(ctx);
+		if (gpio_state == 0) {
+			pr_debug("remove interrupt, but GPIO says inserted\n");
+			return;
+		}
 		pr_debug("reporting jack as removed\n");
 		snd_soc_update_bits(jack->codec, SN95031_BTNCTRL2, BIT(0), 0);
 		snd_soc_update_bits(jack->codec, SN95031_ACCDETMASK, BIT(2), 0);
 		mfld_jack_disable_mic_bias(jack->codec);
 		jack_work->intr_id = 0;
+		ctx->jack_status = 0;
 		cancel_delayed_work(&ctx->jack_work.work);
 	} else if (intr_id & SN95031_JACK_BTN0) {
 		if (ctx->mfld_jack_lp_flag) {
@@ -160,9 +207,11 @@ void mfld_jack_wq(struct work_struct *work)
 			return;
 		}
 	} else if (intr_id & SN95031_JACK_BTN1) {
-		/* we get spurious interrupts if jack key is held down
-		* so we ignore them until key is released by checking the
-		* voltage level */
+		/*
+		 * we get spurious interrupts if jack key is held down
+		 * so we ignore them until key is released by checking the
+		 * voltage level
+		 */
 		if (ctx->mfld_jack_lp_flag) {
 			voltage = mfld_jack_read_voltage(jack);
 			if (voltage > MFLD_LP_THRESHOLD_VOLTAGE) {
@@ -175,7 +224,8 @@ void mfld_jack_wq(struct work_struct *work)
 		}
 		/* Codec sends separate long press event after button pressed
 		 * for a specified time. Need to send separate button pressed
-		 * and released events for Android */
+		 * and released events for Android
+		 */
 		status = SND_JACK_HEADSET | SND_JACK_BTN_0;
 		ctx->mfld_jack_lp_flag = 1;
 		pr_debug("long press detected\n");
@@ -188,6 +238,11 @@ void mfld_jack_wq(struct work_struct *work)
 
 static int mfld_schedule_jack_wq(struct mfld_jack_work *jack_work)
 {
+	struct mfld_mc_private *ctx =
+		container_of(jack_work, struct mfld_mc_private, jack_work);
+	/* Reset the HS slow jack detect retry count  on interrupt*/
+	atomic_set(&ctx->hs_det_retry, ctx->jack_poll_retry);
+
 	return schedule_delayed_work(&jack_work->work,
 			msecs_to_jiffies(MFLD_JACK_DEBOUNCE_TIME));
 }
@@ -304,8 +359,10 @@ static int mfld_init(struct snd_soc_pcm_runtime *runtime)
 	snd_soc_dapm_disable_pin(dapm, "DMIC6");
 	snd_soc_dapm_disable_pin(dapm, "IHFOUTR");
 
-	/* Keep the voice call paths active during
-	suspend. Mark the end points ignore_suspend */
+	/*
+	 * Keep the voice call paths active during
+	 * suspend. Mark the end points ignore_suspend
+	 */
 	snd_soc_dapm_ignore_suspend(dapm, "PCM1_IN");
 	snd_soc_dapm_ignore_suspend(dapm, "PCM1_Out");
 	snd_soc_dapm_ignore_suspend(dapm, "EPOUT");
@@ -333,9 +390,11 @@ static int mfld_init(struct snd_soc_pcm_runtime *runtime)
 	}
 
 	ctx->jack_work.jack = &ctx->mfld_jack;
-	/* we want to check if anything is inserted at boot,
+	/*
+	 * we want to check if anything is inserted at boot,
 	 * so send a fake event to codec and it will read adc
-	 * to find if anything is there or not */
+	 * to find if anything is there or not
+	 */
 	ctx->jack_work.intr_id = MFLD_JACK_INSERT_ID;
 	mfld_schedule_jack_wq(&ctx->jack_work);
 	return ret_val;
@@ -354,16 +413,26 @@ static int mfld_media_hw_params(struct snd_pcm_substream *substream,
 	int ret;
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_soc_codec *codec = rtd->codec;
+	struct mfld_mc_private *ctx = snd_soc_card_get_drvdata(rtd->card);
 
 	pr_debug("%s\n", __func__);
+
 	/* Force the data width to 24 bit in MSIC since post processing
-	algorithms in DSP enabled with 24 bit precision */
+	 * algorithms in DSP enabled with 24 bit precision
+	 */
 	ret = snd_soc_codec_set_params(codec, SNDRV_PCM_FORMAT_S24_LE);
 	if (ret < 0) {
 		pr_debug("codec_set_params returned error %d\n", ret);
 		return ret;
 	}
-	snd_soc_codec_set_pll(codec, 0, SN95031_PLLIN, 1, 1);
+
+	/* if PCM1 is running and in slave mode, dont reconfigure PLL */
+	if (ctx->voice_usage && !ctx->sn95031_pcm1_master_mode) {
+		pr_debug("FM active, do not reconfigure PLL\n");
+		snd_soc_dai_set_tristate(rtd->codec_dai, 0);
+		return 0;
+	}
+
 
 	/* VAUD needs to be on before configuring PLL */
 	snd_soc_dapm_force_enable_pin(&codec->dapm, "VirtBias");
@@ -371,8 +440,9 @@ static int mfld_media_hw_params(struct snd_pcm_substream *substream,
 	snd_soc_dapm_sync(&codec->dapm);
 	mutex_unlock(&codec->mutex);
 	usleep_range(5000, 6000);
-	sn95031_configure_pll(codec, SN95031_ENABLE_PLL);
 
+	snd_soc_codec_set_pll(codec, 0, SN95031_PLLIN, 1, 1);
+	sn95031_configure_pll(codec, SN95031_ENABLE_PLL);
 	/* enable PCM2 */
 	snd_soc_dai_set_tristate(rtd->codec_dai, 0);
 	return 0;
@@ -387,7 +457,7 @@ static int mfld_voice_hw_params(struct snd_pcm_substream *substream,
 	struct mfld_mc_private *ctx = snd_soc_card_get_drvdata(soc_card);
 	pr_debug("%s\n", __func__);
 
-	if (ctx->sn95031_pcm1_mode) { /* VOIP call */
+	if (ctx->sn95031_pcm1_master_mode) { /* VOIP call */
 		snd_soc_codec_set_pll(codec, 0, SN95031_PLLIN, 1, 1);
 		snd_soc_dai_set_fmt(rtd->codec_dai, SND_SOC_DAIFMT_CBM_CFM
 						| SND_SOC_DAIFMT_DSP_A);
@@ -422,11 +492,14 @@ static struct snd_pcm_hw_constraint_list constraints_44100 = {
 
 static int mfld_media_startup(struct snd_pcm_substream *substream)
 {
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct mfld_mc_private *ctx = snd_soc_card_get_drvdata(rtd->card);
 	pr_debug("%s - applying rate constraint\n", __func__);
 	snd_pcm_hw_constraint_list(substream->runtime, 0,
 				   SNDRV_PCM_HW_PARAM_RATE,
 				   &constraints_44100);
 	intel_scu_ipc_set_osc_clk0(true, CLK0_MSIC);
+	ctx->media_usage++;
 	return 0;
 }
 
@@ -434,26 +507,45 @@ static void mfld_media_shutdown(struct snd_pcm_substream *substream)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_soc_dai *codec_dai = rtd->codec_dai;
+	struct mfld_mc_private *ctx = snd_soc_card_get_drvdata(rtd->card);
 	pr_debug("%s\n", __func__);
 
 	snd_soc_dapm_disable_pin(&rtd->codec->dapm, "VirtBias");
-	/* switch off PCM2 port */
-	if (!rtd->codec->active)
+	ctx->media_usage--;
+
+	/* switch off PCM2 port if no media streams active */
+	if (!ctx->media_usage)
 		snd_soc_dai_set_tristate(codec_dai, 1);
 }
 
 static int mfld_voice_startup(struct snd_pcm_substream *substream)
 {
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct mfld_mc_private *ctx = snd_soc_card_get_drvdata(rtd->card);
 	intel_scu_ipc_set_osc_clk0(true, CLK0_MSIC);
+	ctx->voice_usage++;
 	return 0;
 }
 
 static void mfld_voice_shutdown(struct snd_pcm_substream *substream)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct mfld_mc_private *ctx = snd_soc_card_get_drvdata(rtd->card);
+	struct snd_soc_codec *codec = rtd->codec;
 	pr_debug("%s\n", __func__);
 
 	snd_soc_dapm_disable_pin(&rtd->codec->dapm, "VirtBias");
+	ctx->voice_usage--;
+
+	/* currently in slave mode. FM exiting and media still running,
+	 * reconfigure PLL for media
+	 */
+	if (!ctx->sn95031_pcm1_master_mode && ctx->media_usage > 0) {
+		pr_debug("FM exiting, reconfiguring PLL for media\n");
+		snd_soc_codec_set_pll(codec, 0, SN95031_PLLIN, 1, 1);
+		sn95031_configure_pll(codec, SN95031_ENABLE_PLL);
+	}
+
 }
 
 static struct snd_soc_ops mfld_media_ops = {
@@ -631,6 +723,89 @@ ret:
 	return IRQ_HANDLED;
 }
 
+static ssize_t jack_retry_show(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	struct ipc_device *ipcdev =
+			container_of(dev, struct ipc_device, dev);
+
+	struct snd_soc_card *soc_card = ipc_get_drvdata(ipcdev);
+	struct mfld_mc_private *ctx = snd_soc_card_get_drvdata(soc_card);
+
+	return sprintf(buf, "%d\n", ctx->jack_poll_retry);
+}
+
+static ssize_t jack_retry_set(struct device *dev,
+				struct device_attribute *attr,
+				const char *buf, size_t count)
+{
+	int ret;
+	long value;
+	struct ipc_device *ipcdev =
+			container_of(dev, struct ipc_device, dev);
+
+	struct snd_soc_card *soc_card = ipc_get_drvdata(ipcdev);
+	struct mfld_mc_private *ctx = snd_soc_card_get_drvdata(soc_card);
+	ret = kstrtol(buf, 0, &value);
+	if (ret < 0) {
+		pr_err("kstrtol() failed with ret: %d\n", ret);
+		return ret;
+	}
+	if (value > MAX_HS_DET_RETRY)
+		ctx->jack_poll_retry = MAX_HS_DET_RETRY;
+	else if (value < 0)
+		ctx->jack_poll_retry = JACK_DET_RETRY;
+	else
+		ctx->jack_poll_retry = value;
+
+
+	return count;
+}
+
+static DEVICE_ATTR(jack_poll_retry, 0644, jack_retry_show, jack_retry_set);
+
+static ssize_t jack_interval_show(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	struct ipc_device *ipcdev =
+			container_of(dev, struct ipc_device, dev);
+
+	struct snd_soc_card *soc_card = ipc_get_drvdata(ipcdev);
+	struct mfld_mc_private *ctx = snd_soc_card_get_drvdata(soc_card);
+
+	return sprintf(buf, "%ld\n", ctx->jack_poll_interval);
+}
+
+static ssize_t jack_interval_set(struct device *dev,
+				struct device_attribute *attr,
+				const char *buf, size_t count)
+{
+	int ret;
+	long value;
+	struct ipc_device *ipcdev =
+			container_of(dev, struct ipc_device, dev);
+
+	struct snd_soc_card *soc_card = ipc_get_drvdata(ipcdev);
+	struct mfld_mc_private *ctx = snd_soc_card_get_drvdata(soc_card);
+	ret = kstrtol(buf, 0, &value);
+	if (ret < 0) {
+		pr_err("kstrtol() failed with ret: %d\n", ret);
+		return ret;
+	}
+	if (value > MAX_DELAY)
+		ctx->jack_poll_interval = MAX_DELAY;
+	else if (value < 0)
+		ctx->jack_poll_interval = JACK_POLL_INTERVAL;
+	else
+		ctx->jack_poll_interval = value;
+
+
+	return count;
+}
+
+
+static DEVICE_ATTR(jack_poll_interval, 0644, jack_interval_show, jack_interval_set);
+
 static int __devinit snd_mfld_mc_probe(struct ipc_device *ipcdev)
 {
 	int ret_val = 0, irq;
@@ -643,7 +818,8 @@ static int __devinit snd_mfld_mc_probe(struct ipc_device *ipcdev)
 	irq = ipc_get_irq(ipcdev, 0);
 
 	/* audio interrupt base of SRAM location where
-	 * interrupts are stored by System FW */
+	 * interrupts are stored by System FW
+	 */
 	ctx = kzalloc(sizeof(*ctx), GFP_ATOMIC);
 	if (!ctx) {
 		pr_err("allocation failed\n");
@@ -675,11 +851,37 @@ static int __devinit snd_mfld_mc_probe(struct ipc_device *ipcdev)
 	}
 	INIT_DELAYED_WORK(&ctx->jack_work.work, mfld_jack_wq);
 
+	/* Set default HS retry number*/
+	ctx->jack_poll_retry = JACK_DET_RETRY;
+	ctx->jack_poll_interval = JACK_POLL_INTERVAL;
+	ctx->jack_status = 0;
+
+	ret_val = device_create_file(&ipcdev->dev, &dev_attr_jack_poll_retry);
+	if (ret_val < 0)
+		pr_err("Err createing poll_retry sysfs file %d\n", ret_val);
+
+	ret_val = device_create_file(&ipcdev->dev, &dev_attr_jack_poll_interval);
+	if (ret_val < 0)
+		pr_err("Err creating poll_interval sysfs file %d\n", ret_val);
+
+	/* Store jack gpio pin number in ctx for future reference */
+	ctx->jack_gpio = get_gpio_by_name("audio_jack_gpio");
+	if (ctx->jack_gpio >= 0) {
+		pr_info("GPIO for jack det is %d\n", ctx->jack_gpio);
+		ret_val = gpio_request_one(ctx->jack_gpio,
+						GPIOF_DIR_IN,
+						"headset_detect_gpio");
+		if (ret_val) {
+			pr_err("Headset detect GPIO alloc fail:%d\n", ret_val);
+			goto free_gpadc;
+		}
+	}
+
 	ctx->int_base = ioremap_nocache(irq_mem->start, resource_size(irq_mem));
 	if (!ctx->int_base) {
 		pr_err("Mapping of cache failed\n");
 		ret_val = -ENOMEM;
-		goto unalloc;
+		goto free_gpio;
 	}
 	/* register for interrupt */
 	ret_val = request_threaded_irq(irq, snd_mfld_jack_intr_handler,
@@ -688,7 +890,7 @@ static int __devinit snd_mfld_mc_probe(struct ipc_device *ipcdev)
 			ipcdev->dev.driver->name, ctx);
 	if (ret_val) {
 		pr_err("cannot register IRQ\n");
-		goto unalloc;
+		goto free_gpio;
 	}
 	/* register the soc card */
 	snd_soc_card_mfld.dev = &ipcdev->dev;
@@ -699,12 +901,19 @@ static int __devinit snd_mfld_mc_probe(struct ipc_device *ipcdev)
 		pr_debug("snd_soc_register_card failed %d\n", ret_val);
 		goto freeirq;
 	}
+	ctx->pdata = ipcdev->dev.platform_data;
 	ipc_set_drvdata(ipcdev, &snd_soc_card_mfld);
 	pr_debug("successfully exited probe\n");
 	return ret_val;
 
 freeirq:
 	free_irq(irq, ctx);
+free_gpio:
+	gpio_free(ctx->jack_gpio);
+free_gpadc:
+	intel_mid_gpadc_free(ctx->audio_adc_handle);
+	device_remove_file(&ipcdev->dev, &dev_attr_jack_poll_retry);
+	device_remove_file(&ipcdev->dev, &dev_attr_jack_poll_interval);
 unalloc:
 	kfree(ctx);
 	return ret_val;
@@ -722,8 +931,12 @@ static int __devexit snd_mfld_mc_remove(struct ipc_device *ipcdev)
 	wake_lock_destroy(ctx->jack_wake_lock);
 	kfree(ctx->jack_wake_lock);
 #endif
+	device_remove_file(&ipcdev->dev, &dev_attr_jack_poll_retry);
+	device_remove_file(&ipcdev->dev, &dev_attr_jack_poll_interval);
 	cancel_delayed_work(&ctx->jack_work.work);
 	intel_mid_gpadc_free(ctx->audio_adc_handle);
+	if (ctx->jack_gpio >= 0)
+		gpio_free(ctx->jack_gpio);
 	kfree(ctx);
 	snd_soc_card_set_drvdata(soc_card, NULL);
 	snd_soc_unregister_card(soc_card);

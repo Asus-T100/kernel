@@ -32,7 +32,7 @@
 #include "device_libs/platform_msic.h"
 #include "device_libs/platform_msic_adc.h"
 #include "device_libs/platform_msic_gpio.h"
-#include "device_libs/platform_clvs_audio.h"
+#include <asm/platform_clvs_audio.h>
 #include "device_libs/platform_msic_power_btn.h"
 
 /*

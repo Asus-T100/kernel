@@ -1316,7 +1316,6 @@ static struct snd_soc_dai_driver cs42l73_dai[] = {
 	 }
 };
 
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
 static int cs42l73_set_mic_bias(struct snd_soc_codec *codec, int state)
 {
 
@@ -1336,7 +1335,6 @@ static int cs42l73_set_mic_bias(struct snd_soc_codec *codec, int state)
 
 	return 0;
 }
-#endif
 
 int cs42l73_bp_detection(struct snd_soc_codec *codec,
 			   struct snd_soc_jack *jack,

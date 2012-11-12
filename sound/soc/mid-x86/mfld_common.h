@@ -26,6 +26,7 @@
 #ifndef _MFLD_COMMON_H
 #define _MFLD_COMMON_H
 
+#include <linux/gpio.h>
 /* ADC channel code values */
 #define MFLD_AUDIO_DETECT_CODE 0x06
 /*Count of AUD_DETECT ADC Registers*/
@@ -63,11 +64,18 @@ struct mfld_mc_private {
 	spinlock_t lock; /* lock for interrupt status and jack debounce */
 	struct mfld_jack_work jack_work;
 	void *audio_adc_handle;
-	int sn95031_pcm1_mode;
+	int sn95031_pcm1_master_mode;
 	unsigned int mfld_jack_lp_flag;
 	unsigned int hs_switch;
 	unsigned int sn95031_lo_dac;
 	struct msic_audio_platform_data *pdata;
+	int jack_gpio;
+	int media_usage;
+	int voice_usage;
+	u8 jack_poll_retry;
+	long jack_poll_interval;
+	atomic_t hs_det_retry;
+	unsigned int jack_status;
 #ifdef CONFIG_HAS_WAKELOCK
 	struct wake_lock *jack_wake_lock;
 #endif
@@ -91,6 +99,14 @@ static const struct soc_enum sn95031_pcm1_mode_config_enum =
 	SOC_ENUM_SINGLE_EXT(ARRAY_SIZE(sn95031_pcm1_mode_text),
 					sn95031_pcm1_mode_text);
 
+
+static inline int mfld_read_jack_gpio(struct mfld_mc_private *ctx)
+{
+	/* Return if there is no GPIO support */
+	if (ctx->jack_gpio < 0)
+		return -EINVAL;
+	return gpio_get_value(ctx->jack_gpio);
+}
 
 unsigned int mfld_jack_read_voltage(struct snd_soc_jack *jack);
 int mfld_vibra_enable_clk(struct snd_soc_dapm_widget *w,

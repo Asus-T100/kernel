@@ -19,6 +19,7 @@
 #include <linux/mfd/intel_msic.h>
 #include <asm/intel-mid.h>
 #include <asm/intel_mid_remoteproc.h>
+#include <asm/platform_sst_audio.h>
 #include <sound/msic_audio_platform.h>
 #include <sound/sn95031_platform.h>
 #include "platform_msic.h"
@@ -51,15 +52,8 @@ void *msic_audio_platform_data(void *info)
 	struct platform_device *pdev = NULL;
 	struct sfi_device_table_entry *entry = info;
 
-	pdev = platform_device_alloc("sst-platform", -1);
-	if (!pdev) {
-		pr_err("failed to create sst-platform device\n");
-		goto out;
-	}
-	if (platform_device_add(pdev)) {
-		pr_err("failed to add sst-platform device\n");
-		goto pdev_add_fail;
-	}
+	if (add_sst_platform_device() < 0)
+		return NULL;
 
 	pdev = platform_device_alloc("hdmi-audio", -1);
 	if (!pdev) {

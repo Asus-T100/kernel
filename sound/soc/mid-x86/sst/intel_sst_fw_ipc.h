@@ -298,8 +298,7 @@ struct snd_sst_tstamp {
 	u32 bytes_decoded;
 	u32 bytes_copied;
 	u32 sampling_frequency;
-	u32 left_channel_peak;
-	u32 right_channel_peak;
+	u32 channel_peak[8];
 };
 
 /* SST to IA memory read debug message  */

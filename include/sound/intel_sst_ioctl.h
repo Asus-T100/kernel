@@ -98,15 +98,12 @@ struct snd_sst_mix_info {
 };
 
 struct snd_pcm_params {
-	__u16 codec;	/* codec type */
 	__u8 num_chan;	/* 1=Mono, 2=Stereo */
 	__u8 pcm_wd_sz;	/* 16/24 - bit*/
-	__u32 reserved;	/* Bitrate in bits per second */
-	__u32 sfreq;	/* Sampling rate in Hz */
 	__u8 use_offload_path;	/* 0-PCM using period elpased & ALSA interfaces
 				   1-PCM stream via compressed interface  */
 	__u8 reserved2;
-	__u16 reserved3;
+	__u32 sfreq;    /* Sampling rate in Hz */
 	__u8 channel_map[8];
 } __packed;
 
@@ -124,12 +121,10 @@ struct snd_pcm_params_mfld {
 
 /* MP3 Music Parameters Message */
 struct snd_mp3_params {
-	__u16 codec;
 	__u8  num_chan;	/* 1=Mono, 2=Stereo	*/
 	__u8  pcm_wd_sz; /* 16/24 - bit*/
 	__u8  crc_check; /* crc_check - disable (0) or enable (1) */
 	__u8  reserved1; /* unused*/
-	__u16 reserved2;	/* Unused */
 };
 
 #define AAC_BIT_STREAM_ADTS		0
@@ -138,23 +133,21 @@ struct snd_mp3_params {
 
 /* AAC Music Parameters Message */
 struct snd_aac_params {
-	__u16 codec;
 	__u8 num_chan; /* 1=Mono, 2=Stereo*/
 	__u8 pcm_wd_sz; /* 16/24 - bit*/
 	__u8 bdownsample; /*SBR downsampling 0 - disable 1 -enabled AAC+ only */
 	__u8 bs_format; /* input bit stream format adts=0, adif=1, raw=2 */
-	__u16  reser2;
 	__u32 externalsr; /*sampling rate of basic AAC raw bit stream*/
 	__u8 sbr_signalling;/*disable/enable/set automode the SBR tool.AAC+*/
 	__u8 reser1;
-	__u16  reser3;
+	__u16  reser2;
 };
 
 /* WMA Music Parameters Message */
 struct snd_wma_params {
-	__u16 codec;
 	__u8  num_chan;	/* 1=Mono, 2=Stereo */
 	__u8  pcm_wd_sz;	/* 16/24 - bit*/
+	__u16 reserved1;
 	__u32 brate;	/* Use the hard coded value. */
 	__u32 sfreq;	/* Sampling freq eg. 8000, 441000, 48000 */
 	__u32 channel_mask;  /* Channel Mask */
@@ -252,12 +245,11 @@ struct sst_address_info {
 
 /* Additional params for Alloc struct*/
 struct snd_sst_alloc_params_ext {
-	struct sst_address_info  ring_buf_info[8];
-	__u8 sg_count;
-	__u8 reserved;
-	__u16 reserved2;
+	__u16 sg_count;
+	__u16 reserved;
 	__u32 frag_size;	/*Number of samples after which period elapsed
 				  message is sent valid only if path  = 0*/
+	struct sst_address_info  ring_buf_info[8];
 };
 
 

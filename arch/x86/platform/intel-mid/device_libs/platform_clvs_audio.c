@@ -18,11 +18,11 @@
 #include <linux/platform_device.h>
 #include <asm/intel-mid.h>
 #include <asm/intel_mid_remoteproc.h>
-#include <sound/clvs_audio_platform.h>
+#include <asm/platform_sst_audio.h>
+#include <asm/platform_clvs_audio.h>
 #include "platform_msic.h"
-#include "platform_clvs_audio.h"
 
-static struct clvs_audio_platform_data clvs_audio_pdata = {
+static struct clvcs_audio_platform_data clvcs_audio_pdata = {
 	.spid = &spid,
 };
 
@@ -31,18 +31,10 @@ void *clvs_audio_platform_data(void *info)
 	struct platform_device *pdev;
 	int ret;
 
-	pdev = platform_device_alloc("sst-platform", -1);
-	if (!pdev) {
-		pr_err("failed to allocate audio platform device\n");
+	ret = add_sst_platform_device();
+	if (ret < 0)
 		return NULL;
-	}
 
-	ret = platform_device_add(pdev);
-	if (ret) {
-		pr_err("failed to add audio platform device\n");
-		platform_device_put(pdev);
-		return NULL;
-	}
 	pdev = platform_device_alloc("compress-sst", -1);
 	if (!pdev) {
 		pr_err("failed to allocate compress-sst platform device\n");
@@ -82,9 +74,9 @@ void *clvs_audio_platform_data(void *info)
 		platform_device_put(pdev);
 		return NULL;
 	}
-	if (platform_device_add_data(pdev, &clvs_audio_pdata,
-			sizeof(struct clvs_audio_platform_data))) {
-		pr_err("failed to add clvs_audio platform data\n");
+	if (platform_device_add_data(pdev, &clvcs_audio_pdata,
+			sizeof(struct clvcs_audio_platform_data))) {
+		pr_err("failed to add clvcs_audio platform data\n");
 		platform_device_put(pdev);
 		return NULL;
 	}

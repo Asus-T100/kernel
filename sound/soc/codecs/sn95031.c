@@ -39,10 +39,12 @@
 #include <sound/initval.h>
 #include <sound/tlv.h>
 #include <sound/jack.h>
+#include <sound/sn95031_platform.h>
 #include "sn95031.h"
 
 #define SN95031_RATES (SNDRV_PCM_RATE_8000_96000)
 #define SN95031_FORMATS (SNDRV_PCM_FMTBIT_S24_LE | SNDRV_PCM_FMTBIT_S16_LE)
+#define SN95031_PLL_DELAY 1000
 
 /* codec private data */
 struct sn95031_priv {
@@ -76,33 +78,33 @@ static inline int sn95031_write(struct snd_soc_codec *codec,
 
 void sn95031_configure_pll(struct snd_soc_codec *codec, int operation)
 {
-	struct sn95031_priv *sn95031_ctx;
-	sn95031_ctx = snd_soc_codec_get_drvdata(codec);
+	struct sn95031_priv *ctx;
+	ctx = snd_soc_codec_get_drvdata(codec);
 
 
-	if (sn95031_ctx->pll_state == PLL_ENABLE_PENDING
+	if (ctx->pll_state == PLL_ENABLE_PENDING
 			&& operation == SN95031_ENABLE_PLL) {
-		pr_debug("setting PLL to 0x%x\n", sn95031_ctx->clk_src);
+		pr_debug("%s: setting PLL to 0x%x\n", __func__, ctx->clk_src);
 		/* PLL takes few msec to stabilize
 		Refer sec2.3 MFLD Audio Interface Doc-rev0.7 */
 		snd_soc_write(codec, SN95031_AUDPLLCTRL, 0);
-		udelay(1000);
+		udelay(SN95031_PLL_DELAY);
 		snd_soc_write(codec, SN95031_AUDPLLCTRL,
-					(sn95031_ctx->clk_src)<<2);
-		udelay(1000);
+					(ctx->clk_src)<<2);
+		udelay(SN95031_PLL_DELAY);
 		snd_soc_update_bits(codec, SN95031_AUDPLLCTRL, BIT(1), BIT(1));
-		udelay(1000);
+		udelay(SN95031_PLL_DELAY);
 		snd_soc_update_bits(codec, SN95031_AUDPLLCTRL, BIT(5), BIT(5));
-		udelay(1000);
-		sn95031_ctx->pll_state = PLL_ENABLED;
+		udelay(SN95031_PLL_DELAY);
+		ctx->pll_state = PLL_ENABLED;
 	} else if (operation == SN95031_DISABLE_PLL) {
 		pr_debug("disabling PLL\n");
 		snd_soc_write(codec, SN95031_AUDPLLCTRL, 0);
-		sn95031_ctx->clk_src = SN95031_INVALID;
-		sn95031_ctx->pll_state = PLL_DISABLED;
+		ctx->clk_src = SN95031_INVALID;
+		ctx->pll_state = PLL_DISABLED;
 	} else {
 		pr_debug("PLL configure state: op=0x%x, state=0x%x\n",
-				operation, sn95031_ctx->pll_state);
+				operation, ctx->pll_state);
 	}
 }
 EXPORT_SYMBOL_GPL(sn95031_configure_pll);
@@ -685,18 +687,11 @@ static const struct snd_soc_dapm_route sn95031_audio_map[] = {
 
 	/* AMIC2 */
 	{ "Mic_InputR Capture Route", "AMIC", "MIC2 Enable"},
-#if (defined(CONFIG_SND_MFLD_MACHINE_GI) \
-		|| defined(CONFIG_SND_MFLD_MACHINE_GI_MODULE))
-	{ "MIC1 Enable", NULL, "AMIC2Bias"},
-	{ "MIC2 Enable", NULL, "AMIC1Bias"},
-	{ "AMIC1Bias", NULL, "AMIC2"},
-	{ "AMIC2Bias", NULL, "AMIC1"},
-#else
 	{ "MIC1 Enable", NULL, "AMIC1Bias"},
 	{ "MIC2 Enable", NULL, "AMIC2Bias"},
 	{ "AMIC1Bias", NULL, "AMIC1"},
 	{ "AMIC2Bias", NULL, "AMIC2"},
-#endif
+
 	/* Linein */
 	{ "LineIn Enable Left", NULL, "LINEINL"},
 	{ "LineIn Enable Right", NULL, "LINEINR"},
@@ -851,8 +846,6 @@ static int sn95031_codec_set_params(struct snd_soc_codec *codec,
 	}
 	snd_soc_update_bits(codec, SN95031_PCM2C2,
 			BIT(4)|BIT(5), format);
-	/* enable pcm 2 */
-	snd_soc_update_bits(codec, SN95031_PCM2C2, BIT(0), BIT(0));
 	return 0;
 }
 
@@ -1187,8 +1180,6 @@ static int sn95031_codec_probe(struct snd_soc_codec *codec)
 	 * volume control.
 	 */
 	snd_soc_update_bits(codec, SN95031_OCAUDIOMASK, BIT(0), BIT(0));
-
-
 	snd_soc_codec_set_drvdata(codec, sn95031_ctx);
 	return 0;
 }
@@ -1224,7 +1215,11 @@ struct snd_soc_codec_driver sn95031_codec = {
 
 static int __devinit sn95031_device_probe(struct platform_device *pdev)
 {
+	struct sn95031_platform_data *pdata = pdev->dev.platform_data;
+	const struct sfi_soft_platform_id *spid = pdata->spid;
+
 	pr_debug("codec device probe called for %s\n", dev_name(&pdev->dev));
+
 	return snd_soc_register_codec(&pdev->dev, &sn95031_codec,
 			sn95031_dais, ARRAY_SIZE(sn95031_dais));
 }

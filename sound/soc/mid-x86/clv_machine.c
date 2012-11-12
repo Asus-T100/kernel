@@ -41,11 +41,10 @@
 #include <asm/intel_mid_rpmsg.h>
 #include <asm/intel_mid_remoteproc.h>
 #include <asm/intel-mid.h>
-
+#include <asm/platform_clvs_audio.h>
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
-#include <sound/clvs_audio_platform.h>
 #include <sound/jack.h>
 #include "../codecs/cs42l73.h"
 
@@ -126,7 +125,7 @@ struct clv_mc_private {
 #ifdef CONFIG_HAS_WAKELOCK
 	struct wake_lock *jack_wake_lock;
 #endif
-	struct clvs_audio_platform_data *pdata;
+	struct clvcs_audio_platform_data *pdata;
 };
 
 

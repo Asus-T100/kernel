@@ -1,23 +1,23 @@
 /*
- * sound/clvs_audio_platform.h -- Platform data for CLVS_AUDIO
+ * platform_sst_audio.h:  sst audio platform data header file
  *
- * (C) Copyright 2012 Intel Corporation
- * Author:
+ * Copyright (C) 2012 Intel Corporation
+ * Author: Jeeja KP <jeeja.kp@intel.com>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
  * as published by the Free Software Foundation; version 2
  * of the License.
  */
-
-#ifndef __SND_CLVS_AUDIO_PLATFORM_H
-#define __SND_CLVS_AUDIO_PLATFORM_H
-
+#ifndef _PLATFORM_SST_AUDIO_H_
+#define _PLATFORM_SST_AUDIO_H_
 
 #include <linux/sfi.h>
-struct clvs_audio_platform_data {
+struct sst_platform_data {
 	/* Intel software platform id*/
 	const struct sfi_soft_platform_id *spid;
 };
 
+int add_sst_platform_device();
 #endif
+

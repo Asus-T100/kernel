@@ -33,6 +33,8 @@
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
 #include <sound/intel_sst_ioctl.h>
+#include <asm/platform_sst_audio.h>
+#include <asm/intel-mid.h>
 #include "sst_platform.h"
 #include "sst_platform_pvt.h"
 
@@ -66,11 +68,7 @@ static struct snd_pcm_hardware sst_platform_pcm_hw = {
 	.fifo_size = SST_FIFO_SIZE,
 };
 
-#if (defined(CONFIG_SND_CLV_MACHINE) || defined(CONFIG_SND_CLV_MACHINE_MODULE))
-static unsigned int	lpe_mixer_input_ihf;
-static unsigned int	lpe_mixer_input_hs;
-
-static int sst_set_mixer_param(unsigned int device_input_mixer)
+int sst_set_mixer_param(unsigned int device_input_mixer)
 {
 	if (!sst_dsp) {
 		pr_err("sst: DSP not registered\n");
@@ -79,97 +77,8 @@ static int sst_set_mixer_param(unsigned int device_input_mixer)
 
 	/*allocate memory for params*/
 	return sst_dsp->ops->set_generic_params(SST_SET_ALGO_PARAMS,
-					(void *)&device_input_mixer);
+						(void *)&device_input_mixer);
 }
-
-static int lpe_mixer_ihf_get(struct snd_kcontrol *kcontrol,
-	struct snd_ctl_elem_value *ucontrol)
-{
-	ucontrol->value.integer.value[0] = lpe_mixer_input_ihf;
-	return 0;
-}
-
-static int lpe_mixer_ihf_set(struct snd_kcontrol *kcontrol,
-	struct snd_ctl_elem_value *ucontrol)
-{
-	int device_input_mixer;
-
-	switch (ucontrol->value.integer.value[0]) {
-	case 0:
-		pr_debug("input is PCM stream\n");
-		device_input_mixer = SST_STREAM_DEVICE_IHF
-					| SST_INPUT_STREAM_PCM;
-	break;
-	case 1:
-		pr_debug("input is Compress  stream\n");
-		device_input_mixer = SST_STREAM_DEVICE_IHF
-					| SST_INPUT_STREAM_COMPRESS;
-		break;
-	case 2:
-		pr_debug("input is Mixed stream\n");
-		device_input_mixer = SST_STREAM_DEVICE_IHF
-					| SST_INPUT_STREAM_MIXED;
-		break;
-	default:
-		pr_err("Invalid Input:%ld\n", ucontrol->value.integer.value[0]);
-		return -EINVAL;
-	}
-	lpe_mixer_input_ihf  = ucontrol->value.integer.value[0];
-	sst_set_mixer_param(device_input_mixer);
-	return 0;
-}
-
-static int lpe_mixer_headset_get(struct snd_kcontrol *kcontrol,
-	struct snd_ctl_elem_value *ucontrol)
-{
-	ucontrol->value.integer.value[0] = lpe_mixer_input_hs;
-	return 0;
-}
-
-static int lpe_mixer_headset_set(struct snd_kcontrol *kcontrol,
-	struct snd_ctl_elem_value *ucontrol)
-{
-	int mixer_input_stream;
-
-	switch (ucontrol->value.integer.value[0]) {
-	case 0:
-		pr_debug("input is PCM stream\n");
-		mixer_input_stream = SST_STREAM_DEVICE_HS
-					 | SST_INPUT_STREAM_PCM;
-		break;
-	case 1:
-		pr_debug("input is Compress  stream\n");
-		mixer_input_stream = SST_STREAM_DEVICE_HS
-					 | SST_INPUT_STREAM_COMPRESS;
-		break;
-	case 2:
-		pr_debug("input is Mixed stream\n");
-		mixer_input_stream = SST_STREAM_DEVICE_HS
-					 | SST_INPUT_STREAM_MIXED;
-		break;
-	default:
-		pr_err("Invalid Input:%ld\n", ucontrol->value.integer.value[0]);
-		return -EINVAL;
-	}
-	lpe_mixer_input_hs  = ucontrol->value.integer.value[0];
-	sst_set_mixer_param(mixer_input_stream);
-	return 0;
-}
-
-static const char *lpe_mixer_text[] = {
-	"PCM", "Compressed", "PCM and Compressed",
-};
-
-static const struct soc_enum lpe_mixer_enum =
-	SOC_ENUM_SINGLE_EXT(3, lpe_mixer_text);
-
-static const struct snd_kcontrol_new sst_controls[] = {
-	SOC_ENUM_EXT("LPE IHF mixer", lpe_mixer_enum,
-		lpe_mixer_ihf_get, lpe_mixer_ihf_set),
-	SOC_ENUM_EXT("LPE headset mixer", lpe_mixer_enum,
-		lpe_mixer_headset_get, lpe_mixer_headset_set),
-};
-#endif
 
 static int sst_platform_ihf_set_tdm_slot(struct snd_soc_dai *dai,
 			unsigned int tx_mask, unsigned int rx_mask,
@@ -227,7 +136,6 @@ static void sst_fill_alloc_params(struct snd_pcm_substream *substream,
 	alloc_param->ring_buf_info[0].size = buffer_bytes;
 	alloc_param->sg_count = 1;
 	alloc_param->reserved = 0;
-	alloc_param->reserved2 = 0;
 	alloc_param->frag_size = periodbytes * channels;
 
 	pr_debug("period_size = %d\n", alloc_param->frag_size);
@@ -236,16 +144,13 @@ static void sst_fill_alloc_params(struct snd_pcm_substream *substream,
 static void sst_fill_pcm_params(struct snd_pcm_substream *substream,
 				struct snd_sst_stream_params *param)
 {
-	param->uc.pcm_params.codec = SST_CODEC_TYPE_PCM;
 	param->uc.pcm_params.num_chan = (u8) substream->runtime->channels;
 	param->uc.pcm_params.pcm_wd_sz = substream->runtime->sample_bits;
-	param->uc.pcm_params.reserved = 0;
 	param->uc.pcm_params.sfreq = substream->runtime->rate;
 
 	/* PCM stream via ALSA interface */
 	param->uc.pcm_params.use_offload_path = 0;
 	param->uc.pcm_params.reserved2 = 0;
-	param->uc.pcm_params.reserved3 = 0;
 	memset(param->uc.pcm_params.channel_map, 0, sizeof(u8));
 	pr_debug("sfreq= %d, wd_sz = %d\n",
 	param->uc.pcm_params.sfreq, param->uc.pcm_params.pcm_wd_sz);
@@ -267,7 +172,7 @@ static int sst_platform_alloc_stream(struct snd_pcm_substream *substream)
 	substream->runtime->dma_area = substream->dma_buffer.area;
 	str_params.sparams = param;
 	str_params.aparams = alloc_params;
-	str_params.codec =  param.uc.pcm_params.codec;
+	str_params.codec = SST_CODEC_TYPE_PCM;
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
 		str_params.ops = STREAM_OPS_PLAYBACK;
 		str_params.device_type = substream->pcm->device + 1;
@@ -472,24 +377,6 @@ static struct snd_soc_dai_driver sst_platform_dai[] = {
 	},
 },
 {
-	.name = SST_VIBRA1_DAI,
-	.playback = {
-		.channels_min = SST_MONO,
-		.channels_max = SST_MONO,
-		.rates = SNDRV_PCM_RATE_44100,
-		.formats = SNDRV_PCM_FMTBIT_S16_LE,
-	},
-},
-{
-	.name = SST_VIBRA2_DAI,
-	.playback = {
-		.channels_min = SST_MONO,
-		.channels_max = SST_MONO,
-		.rates = SNDRV_PCM_RATE_44100,
-		.formats = SNDRV_PCM_FMTBIT_S16_LE,
-	},
-},
-{
 	.name = SST_VOICE_DAI,
 	.playback = {
 		.channels_min = SST_MONO,
@@ -639,36 +526,19 @@ static int sst_pcm_new(struct snd_soc_pcm_runtime *rtd)
 	return retval;
 }
 
-#if (defined(CONFIG_SND_CLV_MACHINE) || defined(CONFIG_SND_CLV_MACHINE_MODULE))
 static int sst_soc_probe(struct snd_soc_platform *platform)
 {
+	struct sst_data *ctx = snd_soc_platform_get_drvdata(platform);
+	const struct sfi_soft_platform_id *spid = ctx->pdata->spid;
+
 	pr_debug("%s called\n", __func__);
-
-	lpe_mixer_input_ihf = 0;
-	lpe_mixer_input_hs = 0;
-	pr_debug("platform is %p\n", platform);
-	if (!platform) {
-		pr_err("platform ptr invalid");
-		return -EINVAL;
-	}
-	if (!platform->card) {
-		pr_err("platform card ptr invalid");
-		return -EINVAL;
-	}
-	if (!platform->card->snd_card) {
-		pr_err("platform card snd_card ptr invalid");
-		return -EINVAL;
-	}
-
-	return snd_soc_add_platform_controls(platform, sst_controls,
-			ARRAY_SIZE(sst_controls));
+	if (spid->platform_family_id == INTEL_CLVTP_PHONE)
+		return sst_platform_clv_init(platform);
+	return 0;
 }
-#endif
 
 static struct snd_soc_platform_driver sst_soc_platform_drv = {
-#if (defined(CONFIG_SND_CLV_MACHINE) || defined(CONFIG_SND_CLV_MACHINE_MODULE))
 	.probe		= sst_soc_probe,
-#endif
 	.ops		= &sst_platform_ops,
 	.pcm_new	= sst_pcm_new,
 	.pcm_free	= sst_pcm_free,
@@ -711,10 +581,22 @@ EXPORT_SYMBOL_GPL(sst_unregister_dsp);
 
 static int sst_platform_probe(struct platform_device *pdev)
 {
+	struct sst_data *sst;
 	int ret;
+	struct sst_platform_data *pdata = pdev->dev.platform_data;
 
 	pr_debug("sst_platform_probe called\n");
-	ret = snd_soc_register_platform(&pdev->dev, &sst_soc_platform_drv);
+	sst = devm_kzalloc(&pdev->dev, sizeof(*sst), GFP_KERNEL);
+	if (sst == NULL) {
+		pr_err("kzalloc failed\n");
+		return -ENOMEM;
+	};
+
+	sst->pdata = pdata;
+	dev_set_drvdata(&pdev->dev, sst);
+
+	ret = snd_soc_register_platform(&pdev->dev,
+					 &sst_soc_platform_drv);
 	if (ret) {
 		pr_err("registering soc platform failed\n");
 		return ret;
