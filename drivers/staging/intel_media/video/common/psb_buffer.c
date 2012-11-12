@@ -35,7 +35,6 @@ struct drm_psb_ttm_backend {
 	unsigned long num_pages;
 };
 
-#ifdef PSB_MSVDX_PCI_ONCARD_MEM_SUPPORT
 static int psb_move_blit(struct ttm_buffer_object *bo,
 			 bool evict, bool no_wait,
 			 struct ttm_mem_reg *new_mem)
@@ -88,7 +87,6 @@ out_cleanup:
 	}
 	return ret;
 }
-#endif
 
 static int drm_psb_tbe_populate(struct ttm_backend *backend,
 				unsigned long num_pages,
@@ -316,7 +314,6 @@ static void psb_evict_mask(struct ttm_buffer_object *bo, struct ttm_placement *p
 	/* return cur_placement | TTM_PL_FLAG_SYSTEM; */
 }
 
-#ifdef PSB_MSVDX_PCI_ONCARD_MEM_SUPPORT
 static int psb_move(struct ttm_buffer_object *bo,
 		    bool evict, bool interruptible, bool no_wait_reserve,
 		    bool no_wait, struct ttm_mem_reg *new_mem)
@@ -351,7 +348,6 @@ static int psb_move(struct ttm_buffer_object *bo,
 	}
 	return 0;
 }
-#endif
 
 int psb_verify_access(struct ttm_buffer_object *bo,
 		      struct file *filp)
@@ -421,9 +417,8 @@ struct ttm_bo_driver psb_ttm_bo_driver = {
 #endif
 	.init_mem_type = &psb_init_mem_type,
 	.evict_flags = &psb_evict_mask,
-#ifdef PSB_MSVDX_PCI_ONCARD_MEM_SUPPORT
+	/* psb_move is used for IMR case */
 	.move = &psb_move,
-#endif
 	.verify_access = &psb_verify_access,
 	.sync_obj_signaled = &ttm_fence_sync_obj_signaled,
 	.sync_obj_wait = &ttm_fence_sync_obj_wait,
