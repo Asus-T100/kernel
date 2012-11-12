@@ -165,9 +165,9 @@ void kim_int_recv(struct kim_data_s *kim_gdata,
 		}		/* end of if rx_state */
 		switch (*ptr) {
 			/* Bluetooth event packet? */
-		case 0x04:
+		case ST_BT:
 			kim_gdata->rx_state = ST_W4_HEADER;
-			kim_gdata->rx_count = 2;
+			kim_gdata->rx_count = HCI_EVENT_HDR_SIZE;
 			type = *ptr;
 			break;
 		default:
@@ -179,7 +179,7 @@ void kim_int_recv(struct kim_data_s *kim_gdata,
 		ptr++;
 		count--;
 		kim_gdata->rx_skb =
-			alloc_skb(1024+8, GFP_ATOMIC);
+			alloc_skb(HCI_MAX_FRAME_SIZE + 4, GFP_ATOMIC);
 		if (!kim_gdata->rx_skb) {
 			pr_err("can't allocate mem for new packet");
 			kim_gdata->rx_state = ST_W4_PACKET_TYPE;
@@ -807,6 +807,14 @@ static int kim_remove(struct platform_device *pdev)
 int kim_suspend(struct platform_device *pdev, pm_message_t state)
 {
 	struct ti_st_plat_data	*pdata = pdev->dev.platform_data;
+	struct kim_data_s *kim_data = dev_get_drvdata(&pdev->dev);
+	struct st_data_s *st_data = kim_data->core_data;
+
+	if (st_data->ll_state != ST_LL_ASLEEP &&
+	    st_data->ll_state != ST_LL_INVALID) {
+		pr_info("Shared Transport LL state : %d", st_data->ll_state);
+		return -EBUSY;
+	}
 
 	if (pdata->suspend)
 		return pdata->suspend(pdev, state);

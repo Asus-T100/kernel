@@ -25,16 +25,23 @@
 #ifndef TI_WILINK_ST_H
 #define TI_WILINK_ST_H
 
+#include <linux/wakelock.h>
+
 /**
  * enum proto-type - The protocol on WiLink chips which share a
  *	common physical interface like UART.
  */
 enum proto_type {
-	ST_BT,
-	ST_FM,
-	ST_GPS,
+	ST_BT = 4, /* HCI_EVENT_PKT */
+	ST_FM = 8,
+	ST_GPS = 9,
 	ST_MAX_CHANNELS = 16,
 };
+
+/* Those are also defined in include/net/bluetooth/hci.h */
+#define HCI_EVENT_HDR_SIZE	2
+#define HCI_MAX_ACL_SIZE	1024
+#define HCI_MAX_FRAME_SIZE	(HCI_MAX_ACL_SIZE + 4)
 
 /**
  * struct st_proto_s - Per Protocol structure from BT/FM/GPS to ST
@@ -130,6 +137,8 @@ extern long st_unregister(struct st_proto_s *);
  *	from waitq can be moved onto the txq.
  *	Needs locking too.
  * @lock: the lock to protect skbs, queues, and ST states.
+ * @wake_lock: wake lock to implement an inactivity timeout to prevent
+ * going into S3 when incoming data is to be handled.
  * @protos_registered: count of the protocols registered, also when 0 the
  *	chip enable gpio can be toggled, and when it changes to 1 the fw
  *	needs to be downloaded to initialize chip side ST.
@@ -152,10 +161,13 @@ struct st_data_s {
 	unsigned char rx_chnl;
 	struct sk_buff_head txq, tx_waitq;
 	spinlock_t lock;
+	struct wake_lock wake_lock;
 	unsigned char	protos_registered;
 	unsigned long ll_state;
 	void *kim_data;
 	struct tty_struct *tty;
+	struct device *tty_dev;
+	int is_awake;
 };
 
 /*
@@ -203,8 +215,8 @@ void gps_chrdrv_stub_init(void);
 /* time in msec to wait for
  * line discipline to be installed
  */
-#define LDISC_TIME	1000
-#define CMD_RESP_TIME	800
+#define LDISC_TIME	1150
+#define CMD_RESP_TIME	1000
 #define CMD_WR_TIME	5000
 #define MAKEWORD(a, b)  ((unsigned short)(((unsigned char)(a)) \
 	| ((unsigned short)((unsigned char)(b))) << 8))
