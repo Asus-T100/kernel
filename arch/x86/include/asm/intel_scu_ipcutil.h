@@ -56,7 +56,6 @@ struct scu_ipc_pmdb_buffer {
 	__u8	data[PMDB_SIZE]; /* PMDB buffer */
 };
 
-
 /* Penwell has 4 osc clocks */
 #define OSC_CLK_AUDIO	0	/* Audio */
 #define OSC_CLK_CAM0	1	/* Primary camera */
@@ -85,12 +84,16 @@ int intel_scu_ipc_msic_vprog2(int on);
 /* OSHOB-OS Handoff Buffer read */
 int intel_scu_ipc_read_oshob(u8 *data, int len, int offset);
 /* OSNIB-OS No Init Buffer write */
-#define OSNIB_OFFSET           0x0C
+
+int intel_scu_ipc_get_oshob_size(void);
 int intel_scu_ipc_write_osnib(u8 *data, int len, int offset);
 int intel_scu_ipc_read_osnib(u8 *data, int len, int offset);
+int intel_scu_ipc_write_osnib_extend(u8 *data, int len, int offset);
+int intel_scu_ipc_read_osnib_extend(u8 *data, int len, int offset);
 int intel_scu_ipc_write_osnib_rr(u8 rr);
 int intel_scu_ipc_read_osnib_rr(u8 *rr);
-
+int intel_scu_ipc_read_osnib_wd(u8 *wd);
+int intel_scu_ipc_write_osnib_wd(u8 *wd);
 #endif
 
 #endif

@@ -1030,8 +1030,8 @@ static ssize_t counter_store(struct device *dev,
 {
 	int ret;
 	pr_debug(PFX "%s\n", __func__);
-	ret = intel_scu_ipc_write_osnib(&osnib_reset,
-		OSNIB_WRITE_SIZE, OSNIB_WDOG_OFFSET);
+	ret = intel_scu_ipc_write_osnib_wd(&osnib_reset);
+
 	if (ret != 0) {
 		pr_err(PFX "cannot write OSNIB\n");
 		return -EINVAL;
@@ -1048,8 +1048,9 @@ static ssize_t counter_show(struct device *dev,
 	unsigned char osnib_read = (unsigned char)0;
 	int ret;
 	pr_debug(PFX "%s\n", __func__);
-	ret = intel_scu_ipc_read_osnib(&osnib_read,
-		OSNIB_WRITE_SIZE, OSNIB_WDOG_OFFSET);
+
+	ret = intel_scu_ipc_read_osnib_wd(&osnib_read);
+
 	if (ret != 0)
 		return -EIO;
 

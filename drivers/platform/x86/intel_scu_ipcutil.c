@@ -32,6 +32,8 @@
 #include <asm/intel_scu_ipcutil.h>
 #include <asm/intel-mid.h>
 #include <linux/pm_runtime.h>
+#include <linux/debugfs.h>
+#include <linux/seq_file.h>
 
 #ifdef CONFIG_COMPAT
 #include <linux/compat.h>
@@ -39,18 +41,65 @@
 
 #define MAX_FW_SIZE 264192
 
-#define OSHOB_PMIT_OFFSET		0x0000002c
+/* OSNIB allocation. */
 #define OSNIB_RR_OFFSET		0
 #define OSNIB_WD_OFFSET		1
-#define OSNIB_ALARM_OFFSET		2
+#define OSNIB_ALARM_OFFSET	2
 #define OSNIB_WAKESRC_OFFSET	3
 #define OSNIB_RESETIRQ1_OFFSET	4
 #define OSNIB_RESETIRQ2_OFFSET	5
+
+#define OSNIB_CHECKSUM_OFFSET	31
+
 #define PMIT_RESETIRQ1_OFFSET		14
 #define PMIT_RESETIRQ2_OFFSET		15
 
+/* Used for old OSHOB: offsets wehere SCUTxl and IATxl */
+/* can be found.                                       */
 #define OSHOB_SCU_TRACE_OFFSET		0x00
 #define OSHOB_IA_TRACE_OFFSET		0x04
+
+/* This offset corresponds to the old OSNIB organization. */
+#define OSNIB_OFFSET			0x0C
+
+/* Points to the parameter indicating which of the old */
+/* or new OSHOB will be used.                          */
+#define OSHOB_EXTEND_MAGIC_OFFSET	0x00
+
+#define OSHOB_EXTEND_MAJREV_OFFSET	0x04
+#define OSHOB_EXTEND_MINREV_OFFSET	0x05
+
+/* Points to the total size (bytes) of the whole new   */
+/* OSHOB structure.                                    */
+#define OSHOB_EXTEND_SIZE_OFFSET	0x06
+
+/* Used for new OSHOB: offsets wehere SCUTxl and IATxl */
+/* can be found.                                       */
+#define OSHOB_EXTEND_SCU_TRACE_OFFSET	0x0C
+#define OSHOB_EXTEND_IA_TRACE_OFFSET	0x10
+
+/* Used with new OSHOB structure. */
+#define POSNIB_R_INTEL_SIZE_OFFSET	0x18
+
+/* OEM area size. Used with new OSHOB structure. */
+#define POSNIB_R_OEM_SIZE_OFFSET	0x1A
+
+/* This offset is the place where the pointer to the new OSNIB */
+/* for reading can be found.                                   */
+#define POSNIB_R_INTEL_POINTER_OFFSET	0x1C
+
+/* This offset is the place where the pointer to the new OSNIB */
+/* for writting can be found.                                  */
+#define POSNIB_W_INTEL_POINTER_OFFSET	0x20
+
+/* Next 3 defines concern the new OEMNIB information. */
+#define POSNIB_R_OEM_POINTER_OFFSET	0x24
+#define POSNIB_W_OEM_POINTER_OFFSET	0x28
+
+/* This offset is the place where pointer to PMIT can be found.*/
+/* Used for both old and new OSHOB.                            */
+#define OSHOB_PMIT_OFFSET		0x2C
+
 
 #define IPC_RESIDENCY_CMD_ID_START	0
 #define IPC_RESIDENCY_CMD_ID_DUMP	2
@@ -61,6 +110,47 @@
 #ifndef CONFIG_X86_MRFLD
 #define DUMP_OSNIB
 #endif
+
+#define OSHOB_STRUCT_OLD	0x1 /* Old OSHOB and OSNIB to be used.       */
+#define OSHOB_STRUCT_EXTENDED	0x2 /* Extended OSHOB and OSNIB to be used.  */
+
+#define OSHOB_EXTEND_DESC_SIZE	52  /* OSHOB header+osnib+oem info: 52 bytes.*/
+
+#define OSHOB_HEADER_MAGIC_SIZE	4   /* Size (bytes) of magic number in OSHOB */
+				    /* header.                               */
+
+#define OSHOB_MAGIC_NUMBER	"$OH$"	/* If found when reading the first   */
+					/* 4 bytes of the OSOHB zone, it     */
+					/* means that the new extended OSHOB */
+					/* is going to be used.              */
+
+/* In the new OSHOB/OSNIB/OEMNIB structure the stored pointers do not have */
+/* same byte order. So they must be swapped.                               */
+#define SWAP32(x)   (((u32)(x)<<16) | ((((u32)(x)))>>16))
+
+
+struct scu_ipc_oshob_info {
+	__u32	oshob_type;     /* Set from magic number extracted from      */
+				/* OSHOB structure. Indicates if old or      */
+				/* extended version of OSHOB will be used.   */
+	__u32	oshob_base;     /* Base address of OSHOB. Use ioremap to     */
+				/* remap for access.                         */
+	__u8	oshob_majrev;   /* Major revision number of OSHOB structure. */
+	__u8	oshob_minrev;   /* Minor revision number of OSHOB structure. */
+	__u16	oshob_size;     /* Total size (bytes) of OSHOB structure.    */
+	__u32   scu_trace;      /* SCU trace buffer.                         */
+	__u32   ia_trace;       /* IA trace buffer.                          */
+	__u16	osnib_size;     /* Total size (bytes) of OSNIB structure.    */
+	__u16	oemnib_size;    /* Total size (bytes) of OEMNIB area.        */
+	__u32	posnibr;        /* Pointer to Intel read zone.               */
+	__u32	posnibw;        /* Pointer to Intel write zone.              */
+	__u32	poemnibr;       /* Pointer to OEM read zone.                 */
+	__u32	poemnibw;       /* Pointer to OEM write zone.                */
+};
+
+/* Structure for OSHOB info */
+static struct scu_ipc_oshob_info *poshob_info;
+
 
 /* Mode for Audio clock */
 static DEFINE_MUTEX(osc_clk0_lock);
@@ -448,14 +538,33 @@ static long scu_ipc_ioctl(struct file *fp, unsigned int cmd,
 			pr_err("copy from user failed!!\n");
 			return ret;
 		}
-		ret = intel_scu_ipc_read_osnib(&data, 1, OSNIB_ALARM_OFFSET);
+
+		if (poshob_info->oshob_type == OSHOB_STRUCT_OLD)
+			ret = intel_scu_ipc_read_osnib(&data,
+							1,
+							OSNIB_ALARM_OFFSET);
+		else
+			ret = intel_scu_ipc_read_osnib_extend(&data,
+							1,
+							OSNIB_ALARM_OFFSET);
 		if (ret < 0)
 			return ret;
-		if (flag)
+		if (flag) {
 			data = data | 0x1; /* set alarm flag */
-		else
+			pr_info("scu_ipc_ioctl: set alarm flag\n");
+		} else {
 			data = data & 0xFE; /* clear alarm flag */
-		ret = intel_scu_ipc_write_osnib(&data, 1, OSNIB_ALARM_OFFSET);
+			pr_info("scu_ipc_ioctl: clear alarm flag\n");
+		}
+
+		if (poshob_info->oshob_type == OSHOB_STRUCT_OLD)
+			ret = intel_scu_ipc_write_osnib(&data,
+							1,
+							OSNIB_ALARM_OFFSET);
+		else
+			ret = intel_scu_ipc_write_osnib_extend(&data,
+							1,
+							OSNIB_ALARM_OFFSET);
 		break;
 	}
 	case INTEL_SCU_IPC_READ_VBATTCRIT:
@@ -523,39 +632,195 @@ static long scu_ipc_ioctl(struct file *fp, unsigned int cmd,
 	return ret;
 }
 
+/* Size (bytes) of the old OSHOB structure. Includes the old OSNIB size.   */
+/* Note: size of new OSHOB structure is at offset OSHOB_EXTEND_SIZE_OFFSET */
+/*       in the new OSHOB.                                                 */
 #define OSHOB_SIZE              60
-#define OSNIB_SIZE              32
+#define OSNIB_SIZE              32	/* Size (bytes) of the old OSNIB.  */
+
 #define IPCMSG_GET_HOBADDR      0xE5
 
-int intel_scu_ipc_read_oshob(u8 *data, int len, int offset)
+int intel_scu_ipc_read_oshob_info(void)
 {
-	int ret, i;
+	int i, ret = 0;
 	u32 oshob_base;
 	void __iomem *oshob_addr;
+	unsigned char oshob_magic[4];
 
 	ret = intel_scu_ipc_command(IPCMSG_GET_HOBADDR, 0, NULL, 0,
 			&oshob_base, 1);
 	if (ret < 0) {
-		pr_err("ipc_read_oshob failed!!\n");
+		pr_err("ipc_read_oshob cmd failed!!\n");
 		goto exit;
 	}
 
-	pr_info("OSHOB addr values is %x\n", oshob_base);
+	/* At this stage, we still don't know which OSHOB type (old or new) */
+	/* an be used, and the size of resource to be remapped depends on   */
+	/* the type of OSHOB structure to be used.                          */
+	/* So just remap the minimum size to get the needed bytes of the    */
+	/* OSHOB zone.                                                      */
+	oshob_addr = ioremap_nocache(oshob_base, OSHOB_EXTEND_DESC_SIZE);
 
-	oshob_addr = ioremap_nocache(oshob_base, OSHOB_SIZE);
 	if (!oshob_addr) {
-		pr_err("ioremap failed!\n");
+		pr_err("oshob addr ioremap failed!\n");
 		ret = -ENOMEM;
 		goto exit;
-	} else {
-		u8 *ptr = data;
-		for (i = 0; i < len; i = i+1) {
-			*ptr = readb(oshob_addr + offset + i);
-			pr_info("addr=%8x, offset=%2x, value=%2x\n",
-					(u32)(oshob_addr + i),
-					offset + i, *ptr);
-			ptr++;
+	}
+
+	pr_info("OSHOB addr 0x%8x remapped to addr 0x%8x\n",
+		oshob_base, (u32)oshob_addr);
+
+	poshob_info->oshob_base = oshob_base;
+
+	/* Extract magic number that will help identifying the good OSHOB  */
+	/* that is going to be used.                                       */
+	for (i = 0; i < OSHOB_HEADER_MAGIC_SIZE; i = i+1)
+		oshob_magic[i] = readb(oshob_addr + i);
+
+	if (strncmp(oshob_magic,
+		    OSHOB_MAGIC_NUMBER,
+		    OSHOB_HEADER_MAGIC_SIZE) == 0) {
+		poshob_info->oshob_type = OSHOB_STRUCT_EXTENDED;
+		poshob_info->oshob_size = readw(oshob_addr +
+						OSHOB_EXTEND_SIZE_OFFSET);
+
+		/* Get version. */
+		poshob_info->oshob_majrev = readb(oshob_addr +
+					    OSHOB_EXTEND_MAJREV_OFFSET);
+		poshob_info->oshob_minrev = readb(oshob_addr +
+					    OSHOB_EXTEND_MINREV_OFFSET);
+
+		/* Get defined OSNIB space size. */
+		poshob_info->osnib_size = readw(oshob_addr +
+					    POSNIB_R_INTEL_SIZE_OFFSET);
+
+		if (poshob_info->osnib_size == 0) {
+			pr_err("ipc_read_oshob: OSNIB size is null!\n");
+			ret = -EFAULT;
+			goto unmap_oshob;
 		}
+
+		/* Get defined OEM space size. */
+		poshob_info->oemnib_size = readw(oshob_addr +
+						POSNIB_R_OEM_SIZE_OFFSET);
+
+		if (poshob_info->oemnib_size == 0) {
+			pr_err("ipc_read_oshob: OEMNIB size is null!\n");
+			ret = -EFAULT;
+			goto unmap_oshob;
+		}
+
+		/* Set SCU and IA trace buffers */
+		poshob_info->scu_trace = readl(oshob_addr +
+						OSHOB_EXTEND_SCU_TRACE_OFFSET);
+		poshob_info->ia_trace = readl(oshob_addr +
+						OSHOB_EXTEND_IA_TRACE_OFFSET);
+		/* Set pointers */
+		poshob_info->posnibr = readl(oshob_addr +
+						POSNIB_R_INTEL_POINTER_OFFSET);
+
+		if (!poshob_info->posnibr) {
+			pr_err("oshob R_INTEL_POINTER is NULL!\n");
+			ret = -ENOMEM;
+			goto unmap_oshob;
+		}
+
+		poshob_info->posnibw = readl(oshob_addr +
+						POSNIB_W_INTEL_POINTER_OFFSET);
+
+		if (poshob_info->posnibw == 0) {
+			/* workaround here for BZ 2914 */
+			poshob_info->posnibw = 0xFFFF3400;
+			pr_err(
+			"ipc_write_osnib_extend: ERR: posnibw from oshob is 0, manually set it here\n");
+		}
+
+		poshob_info->poemnibr = readl(oshob_addr +
+						POSNIB_R_OEM_POINTER_OFFSET);
+
+		if (!poshob_info->poemnibr) {
+			pr_err("oshob R_OEM_POINTER is NULL!\n");
+			ret = -ENOMEM;
+			goto unmap_oshob;
+		}
+
+		poshob_info->poemnibw = readl(oshob_addr +
+						POSNIB_W_OEM_POINTER_OFFSET);
+
+		if (!poshob_info->poemnibw) {
+			pr_err("oshob W_OEM_POINTER is NULL!\n");
+			ret = -ENOMEM;
+			goto unmap_oshob;
+		}
+
+		pr_info(
+			"Using NEW OSHOB structure size = %d bytes\n",
+			poshob_info->oshob_size);
+		pr_info(
+			"OSNIB size = %d bytes OEMNIB size = %d bytes\n",
+			poshob_info->osnib_size, poshob_info->oemnib_size);
+	} else {
+		poshob_info->oshob_type = OSHOB_STRUCT_OLD;
+		poshob_info->oshob_size = OSHOB_SIZE;
+		poshob_info->osnib_size = OSNIB_SIZE;
+		poshob_info->oemnib_size = 0;
+
+		/* Set SCU and IA trace buffers */
+		poshob_info->scu_trace = readl(oshob_addr +
+						OSHOB_SCU_TRACE_OFFSET);
+		poshob_info->ia_trace = readl(oshob_addr +
+						OSHOB_IA_TRACE_OFFSET);
+
+		pr_info(
+			"Using OLD OSHOB structure size = %d bytes\n",
+			poshob_info->oshob_size);
+	}
+
+unmap_oshob:
+	iounmap(oshob_addr);
+
+exit:
+	return ret;
+}
+
+int intel_scu_ipc_get_oshob_size(void)
+{
+	return poshob_info->oshob_size;
+}
+
+int intel_scu_ipc_read_oshob(u8 *data, int len, int offset)
+{
+	int ret = 0, i;
+	u32 oshob_base;
+	void __iomem *oshob_addr;
+	u8 *ptr = data;
+
+	ret = intel_scu_ipc_command(IPCMSG_GET_HOBADDR, 0, NULL, 0,
+			&oshob_base, 1);
+	if (ret < 0) {
+		pr_err("ipc_read_oshob: cmd failed!!\n");
+		goto exit;
+	}
+
+	if (poshob_info->oshob_type == OSHOB_STRUCT_OLD) {
+		oshob_addr = ioremap_nocache(oshob_base, OSHOB_SIZE);
+	} else {
+		oshob_addr = ioremap_nocache(oshob_base,
+					     poshob_info->oshob_size);
+	}
+
+	if (!oshob_addr) {
+		pr_err("ipc_read_oshob: addr ioremap failed!\n");
+		ret = -ENOMEM;
+		goto exit;
+	}
+
+	for (i = 0; i < len; i = i+1) {
+		*ptr = readb(oshob_addr + offset + i);
+		pr_info("addr=%8x, offset=%2x, value=%2x\n",
+			(u32)(oshob_addr + i),
+			offset + i, *ptr);
+		ptr++;
 	}
 
 	iounmap(oshob_addr);
@@ -564,9 +829,20 @@ exit:
 }
 EXPORT_SYMBOL_GPL(intel_scu_ipc_read_oshob);
 
-#define IPCMSG_WRITE_OSNIB      0xE4
-#define POSNIBW_OFFSET          0x34
+/* This option is used to write to the old OSNIB. */
+#define IPCMSG_WRITE_OSNIB		0xE4
 
+/* This option is used to write to the extended OSNIB. */
+#define IPCMSG_WRITE_OSNIB_EXTEND	0xE4
+
+/* This command is used to write the OEMNIB data.   */
+/* Used with the new extended OSHOB OSNIB only.     */
+#define IPCMSG_WRITE_OEMNIB		0xDF
+
+/* Offset of pointer to OSNIB. Used with old OSHOB. */
+#define POSNIBW_OFFSET			0x34
+
+/* This function is used for the old OSNIB. */
 int intel_scu_ipc_read_osnib(u8 *data, int len, int offset)
 {
 	int i, ret = 0;
@@ -580,7 +856,7 @@ int intel_scu_ipc_read_osnib(u8 *data, int len, int offset)
 		pr_err("ipc_read_osnib failed!\n");
 		goto exit;
 	}
-	pr_info("OSHOB addr values is %x\n", oshob_base);
+	pr_info("OSHOB base addr value is %x\n", oshob_base);
 	oshob_addr = ioremap_nocache(oshob_base, OSHOB_SIZE);
 	if (!oshob_addr) {
 		pr_err("ioremap failed!\n");
@@ -588,6 +864,14 @@ int intel_scu_ipc_read_osnib(u8 *data, int len, int offset)
 		goto exit;
 	}
 	osnibr_addr = oshob_addr + OSNIB_OFFSET;
+
+	if (!osnibr_addr) {
+		pr_err("Bad osnib address!\n");
+		ret = -EFAULT;
+		iounmap(oshob_addr);
+		goto exit;
+	}
+
 	/* Make a chksum verification for osnib */
 	for (i = 0; i < OSNIB_SIZE; i++)
 		check += readb(osnibr_addr + i);
@@ -618,6 +902,7 @@ exit:
 }
 EXPORT_SYMBOL_GPL(intel_scu_ipc_read_osnib);
 
+/* This function is used for the old OSNIB. */
 int intel_scu_ipc_write_osnib(u8 *data, int len, int offset)
 {
 	int i;
@@ -634,7 +919,7 @@ int intel_scu_ipc_write_osnib(u8 *data, int len, int offset)
 		goto exit;
 	}
 
-	pr_info("OSHOB addr values is %x\n", oshob_base);
+	pr_info("OSHOB base addr value is 0x%8x\n", oshob_base);
 
 	intel_scu_ipc_lock();
 
@@ -647,6 +932,13 @@ int intel_scu_ipc_write_osnib(u8 *data, int len, int offset)
 
 	/*Dump osnib data for generate chksum */
 	osnibr_addr = oshob_addr + OSNIB_OFFSET;
+
+	if (!osnibr_addr) {
+		pr_err("Bad osnib read address!\n");
+		ret = -ENOMEM;
+		goto unmap_oshob_addr;
+	}
+
 	for (i = 0; i < OSNIB_SIZE; i++) {
 		osnib_data[i] = readb(osnibr_addr + i);
 		check += osnib_data[i];
@@ -668,7 +960,7 @@ int intel_scu_ipc_write_osnib(u8 *data, int len, int offset)
 		pr_err("ERR: posnibw from oshob is 0, manually set it here\n");
 	}
 
-	pr_info("POSNIB: %x\n", posnibw);
+	pr_info("POSNIB address: %x\n", posnibw);
 
 	osnibw_addr = ioremap_nocache(posnibw, OSNIB_SIZE);
 	if (!osnibw_addr) {
@@ -696,12 +988,208 @@ exit:
 }
 EXPORT_SYMBOL_GPL(intel_scu_ipc_write_osnib);
 
+
+/* This function is used for the extended OSHOB/OSNIB. */
+int intel_scu_ipc_read_osnib_extend(u8 *data, int len, int offset)
+{
+	int i, ret = 0;
+	u8 *ptr, check = 0;
+	void __iomem *oshob_addr, *osnibr_addr, *osnibw_addr;
+	u32 sptr_dw_mask;
+
+	oshob_addr = ioremap_nocache(poshob_info->oshob_base,
+				     poshob_info->oshob_size);
+	if (!oshob_addr) {
+		pr_err("ipc_read_osnib_extend: ioremap failed!\n");
+		ret = -ENOMEM;
+		goto exit;
+	}
+
+	pr_info(
+		"ipc_read_osnib_extend: remap OSNIB addr=0x%x size %d\n",
+		poshob_info->posnibr, poshob_info->osnib_size);
+
+	osnibr_addr = ioremap_nocache(poshob_info->posnibr,
+				      poshob_info->osnib_size);
+
+	if (!osnibr_addr) {
+		pr_err("ipc_read_osnib_extend: ioremap of osnib failed!\n");
+		ret = -ENOMEM;
+		goto unmap_oshob_addr;
+	}
+
+	/* Make a chksum verification for osnib */
+	for (i = 0; i < poshob_info->osnib_size; i++)
+		check += readb(osnibr_addr + i);
+
+	if (check) {
+		pr_err("ipc_read_osnib_extend: WARNING!!! osnib chksum verification faild, reset all osnib data!\n");
+		pr_info(
+			"ipc_read_osnib_extend: remap posnibw addr=0x%x size %d\n",
+			poshob_info->posnibw, poshob_info->osnib_size);
+
+		osnibw_addr = ioremap_nocache(poshob_info->posnibw,
+					      poshob_info->osnib_size);
+		if (!osnibw_addr) {
+			pr_err("ipc_read_osnib_extend: cannot remap osnib write ptr\n");
+			goto unmap_oshob_addr;
+		}
+
+		for (i = 0; i < poshob_info->osnib_size; i++)
+			writeb(0, osnibw_addr + i);
+
+		/* Send command. The mask to be written identifies which      */
+		/* double words of the OSNIB osnib_size bytes will be written.*/
+		/* So the mask is coded on 4 bytes.                           */
+		sptr_dw_mask = 0xFFFFFFFF;
+		intel_scu_ipc_raw_cmd(IPCMSG_WRITE_OSNIB_EXTEND,
+			0, NULL, 0, NULL, 0, 0, sptr_dw_mask);
+		iounmap(osnibw_addr);
+	}
+
+	ptr = data;
+	pr_info("ipc_read_osnib_extend: OSNIB content:\n");
+	for (i = 0; i < len; i++) {
+		*ptr = readb(osnibr_addr + offset + i);
+		pr_info("addr=%8x, offset=%2x, value=%2x\n",
+			(u32)(osnibr_addr+offset+i), offset+i, *ptr);
+		ptr++;
+	}
+
+	iounmap(osnibr_addr);
+
+unmap_oshob_addr:
+	iounmap(oshob_addr);
+exit:
+	return ret;
+}
+EXPORT_SYMBOL_GPL(intel_scu_ipc_read_osnib_extend);
+
+
+/* This function is used for the extended OSHOB/OSNIB. */
+int intel_scu_ipc_write_osnib_extend(u8 *data, int len, int offset)
+{
+	int i;
+	int ret = 0;
+	u8 *posnib_data, *ptr;
+	u8 check = 0, chksum = 0;
+	void __iomem *oshob_addr, *osnibw_addr, *osnibr_addr;
+	u32 sptr_dw_mask;
+
+	intel_scu_ipc_lock();
+
+	pr_info(
+		"ipc_write_osnib_extend: remap OSHOB addr 0x%8x size %d\n",
+		poshob_info->oshob_base, poshob_info->oshob_size);
+
+	oshob_addr = ioremap_nocache(poshob_info->oshob_base,
+				     poshob_info->oshob_size);
+	if (!oshob_addr) {
+		pr_err("ipc_write_osnib_extend: ioremap failed!\n");
+		ret = -ENOMEM;
+		goto exit;
+	}
+
+	osnibr_addr = ioremap_nocache(poshob_info->posnibr,
+				      poshob_info->osnib_size);
+
+	if (!osnibr_addr) {
+		pr_err("ipc_write_osnib_extend: ioremap of osnib failed!\n");
+		ret = -ENOMEM;
+		goto unmap_oshob_addr;
+	}
+
+	/* Dump osnib data for generate chksum */
+	posnib_data = kzalloc(poshob_info->osnib_size, GFP_KERNEL);
+
+	if (posnib_data == NULL) {
+		pr_err("ipc_write_osnib_extend: The buffer for getting OSNIB is NULL\n");
+		ret = -EFAULT;
+		iounmap(osnibr_addr);
+		goto unmap_oshob_addr;
+	}
+
+	ptr = posnib_data;
+	for (i = 0; i < poshob_info->osnib_size; i++) {
+		*ptr = readb(osnibr_addr + i);
+		check += *ptr;
+		ptr++;
+	}
+
+	memcpy(posnib_data + offset, data, len);
+
+	if (check) {
+		pr_err("ipc_write_osnib_extend: WARNING!!! OSNIB data chksum verification FAILED!\n");
+	} else {
+		/* generate chksum.  */
+		pr_info("ipc_write_osnib_extend: generating checksum\n");
+		for (i = 0; i < poshob_info->osnib_size - 1; i++)
+			chksum += *(posnib_data + i);
+		/* Fill checksum at the CHECKSUM offset place in OSNIB. */
+		*(posnib_data + OSNIB_CHECKSUM_OFFSET) = ~chksum + 1;
+	}
+
+	pr_info(
+		"ipc_write_osnib_extend: remap posnibw addr=0x%x size %d\n",
+		poshob_info->posnibw, poshob_info->osnib_size);
+
+	osnibw_addr = ioremap_nocache(poshob_info->posnibw,
+				      poshob_info->osnib_size);
+	if (!osnibw_addr) {
+		pr_err("scu_ipc_write_osnib_extend: ioremap failed!\n");
+		ret = -ENOMEM;
+		kfree(posnib_data);
+		iounmap(osnibr_addr);
+		goto unmap_oshob_addr;
+	}
+
+	for (i = 0; i < poshob_info->osnib_size; i++)
+		writeb(*(posnib_data + i), (osnibw_addr + i));
+
+	/* Send command. The mask to be written identifies which            */
+	/* double words of the OSNIB osnib_size bytes will be written.*/
+	/* So the mask is coded on 4 bytes.                                 */
+	sptr_dw_mask = 0xFFFFFFFF;
+	ret = intel_scu_ipc_raw_cmd(IPCMSG_WRITE_OSNIB_EXTEND, 0, NULL, 0,
+			NULL, 0, 0, sptr_dw_mask);
+	if (ret < 0)
+		pr_err("scu_ipc_write_osnib_extend: ipc_write_osnib failed!!\n");
+
+	iounmap(osnibw_addr);
+	iounmap(osnibr_addr);
+
+	kfree(posnib_data);
+
+unmap_oshob_addr:
+	iounmap(oshob_addr);
+exit:
+	intel_scu_ipc_unlock();
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(intel_scu_ipc_write_osnib_extend);
+
+
 /*
  * This writes the reboot reason in the OSNIB (factor and avoid any overlap)
  */
 int intel_scu_ipc_write_osnib_rr(u8 rr)
 {
-	return intel_scu_ipc_write_osnib(&rr, 1, OSNIB_RR_OFFSET);
+	int ret = 0;
+
+	pr_info("intel_scu_ipc_write_osnib_rr: reboot reason %x\n", rr);
+	if (poshob_info->oshob_type == OSHOB_STRUCT_OLD)
+		ret = intel_scu_ipc_write_osnib(
+						&rr,
+						1,
+						OSNIB_RR_OFFSET);
+	else
+		ret = intel_scu_ipc_write_osnib_extend(
+							&rr,
+							1,
+							OSNIB_RR_OFFSET);
+
+	return ret;
 }
 EXPORT_SYMBOL_GPL(intel_scu_ipc_write_osnib_rr);
 
@@ -710,9 +1198,171 @@ EXPORT_SYMBOL_GPL(intel_scu_ipc_write_osnib_rr);
  */
 int intel_scu_ipc_read_osnib_rr(u8 *rr)
 {
-	return intel_scu_ipc_read_osnib(rr, 1, OSNIB_RR_OFFSET);
+	int ret = 0;
+
+	pr_info("intel_scu_ipc_write_osnib_rr: read reboot reason\n");
+	if (poshob_info->oshob_type == OSHOB_STRUCT_OLD)
+		ret = intel_scu_ipc_read_osnib(rr, 1, OSNIB_RR_OFFSET);
+	else
+		ret = intel_scu_ipc_read_osnib_extend(rr, 1, OSNIB_RR_OFFSET);
+
+	return ret;
 }
 EXPORT_SYMBOL_GPL(intel_scu_ipc_read_osnib_rr);
+
+/*
+ * This writes the OEMNIB buffer in the internal RAM of the SCU.
+ */
+int intel_scu_ipc_write_oemnib(u8 *oemnib, int len, int offset)
+{
+	int i;
+	int ret = 0;
+	void __iomem *oshob_addr, *oemnibw_addr;
+	u32 sptr_dw_mask;
+
+	if (oemnib == NULL) {
+		pr_err("ipc_write_oemnib: passed buffer for writting OEMNIB is NULL\n");
+		return -EINVAL;
+	}
+
+	intel_scu_ipc_lock();
+
+	pr_info("ipc_write_oemnib: remap OSHOB addr 0x%8x size %d\n",
+		poshob_info->oshob_base, poshob_info->oshob_size);
+
+	oshob_addr = ioremap_nocache(poshob_info->oshob_base,
+				     poshob_info->oshob_size);
+	if (!oshob_addr) {
+		pr_err("ipc_write_oemnib: ioremap failed!\n");
+		ret = -ENOMEM;
+		goto exit;
+	}
+
+	if ((len == 0) || (len > poshob_info->oemnib_size)) {
+		pr_err(
+			"ipc_write_oemnib: bad OEMNIB data length (%d) to write (max=%d bytes)\n",
+			    len, poshob_info->oemnib_size);
+		ret = -EINVAL;
+		goto unmap_oshob_addr;
+	}
+
+	/* offset shall start at 0 from the OEMNIB base address and shall */
+	/* not exceed the OEMNIB allowed size.                            */
+	if ((offset < 0) || (offset >= poshob_info->oemnib_size) ||
+	    (len + offset > poshob_info->oemnib_size)) {
+		pr_err(
+			"ipc_write_oemnib: Bad OEMNIB data offset/len for writing (offset=%d , len=%d)\n",
+			offset, len);
+		ret = -EINVAL;
+		goto unmap_oshob_addr;
+	}
+
+	pr_info("ipc_write_oemnib: POEMNIB remap poemnibw 0x%x size %d\n",
+		poshob_info->poemnibw, poshob_info->oemnib_size);
+
+	oemnibw_addr = ioremap_nocache(poshob_info->poemnibw,
+				       poshob_info->oemnib_size);
+	if (!oemnibw_addr) {
+		pr_err("ipc_write_oemnib: ioremap failed!\n");
+		ret = -ENOMEM;
+		goto unmap_oshob_addr;
+	}
+
+	for (i = 0; i < len; i++)
+		writeb(*(oemnib + i), (oemnibw_addr + offset + i));
+
+	/* Send command. The mask to be written identifies which double */
+	/* words of the OSNIB oemnib_size bytes will be written.        */
+	/* So the mask is coded on 4 bytes.                             */
+	sptr_dw_mask = 0xFFFFFFFF;
+	ret = intel_scu_ipc_raw_cmd(IPCMSG_WRITE_OEMNIB, 0, NULL, 0, NULL,
+			0, 0, sptr_dw_mask);
+	if (ret < 0)
+		pr_err("ipc_write_oemnib: ipc_write_osnib failed!!\n");
+
+	iounmap(oemnibw_addr);
+
+unmap_oshob_addr:
+	iounmap(oshob_addr);
+exit:
+	intel_scu_ipc_unlock();
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(intel_scu_ipc_write_oemnib);
+
+/*
+ * This reads the OEMNIB from the internal RAM of the SCU.
+ */
+static int intel_scu_ipc_read_oemnib(u8 *oemnib, int len, int offset)
+{
+	int i, ret = 0;
+	u8 *ptr;
+	void __iomem *oshob_addr, *oemnibr_addr;
+
+	if (oemnib == NULL) {
+		pr_err("ipc_read_oemnib: passed buffer for reading OEMNIB is NULL\n");
+		return -EINVAL;
+	}
+
+	pr_info("ipc_read_oemnib: remap OSHOB base addr 0x%x size %d\n",
+		poshob_info->oshob_base, poshob_info->oshob_size);
+
+	oshob_addr = ioremap_nocache(poshob_info->oshob_base,
+				     poshob_info->oshob_size);
+	if (!oshob_addr) {
+		pr_err("ipc_read_oemnib: ioremap failed!\n");
+		ret = -ENOMEM;
+		goto exit;
+	}
+
+	if ((len == 0) || (len > poshob_info->oemnib_size)) {
+		pr_err("ipc_read_oemnib: Bad OEMNIB data length (%d) to be read (max=%d bytes)\n",
+			    len, poshob_info->oemnib_size);
+		ret = -EINVAL;
+		goto unmap_oshob_addr;
+	}
+
+	/* offset shall start at 0 from the OEMNIB base address and shall */
+	/* not exceed the OEMNIB allowed size.                            */
+	if ((offset < 0) || (offset >= poshob_info->oemnib_size) ||
+	    (len + offset > poshob_info->oemnib_size)) {
+		pr_err(
+		"ipc_read_oemnib: Bad OEMNIB data offset/len to read (offset=%d ,len=%d)\n",
+		offset, len);
+		ret = -EINVAL;
+		goto unmap_oshob_addr;
+	}
+
+	pr_info("ipc_read_oemnib: POEMNIB remap poemnibr 0x%x size %d\n",
+		poshob_info->poemnibr, poshob_info->oemnib_size);
+
+	oemnibr_addr = ioremap_nocache(poshob_info->poemnibr,
+				       poshob_info->oemnib_size);
+
+	if (!oemnibr_addr) {
+		pr_err("ipc_read_oemnib: ioremap of oemnib failed!\n");
+		ret = -ENOMEM;
+		goto unmap_oshob_addr;
+	}
+
+	ptr = oemnib;
+	pr_info("ipc_read_oemnib: OEMNIB content:\n");
+	for (i = 0; i < len; i++) {
+		*ptr = readb(oemnibr_addr + offset + i);
+		pr_info("addr=%8x, offset=%2x, value=%2x\n",
+			(u32)(oemnibr_addr+offset+i), offset+i, *ptr);
+		ptr++;
+	}
+
+	iounmap(oemnibr_addr);
+
+unmap_oshob_addr:
+	iounmap(oshob_addr);
+exit:
+	return ret;
+}
+EXPORT_SYMBOL_GPL(intel_scu_ipc_read_oemnib);
 
 /*
  * This reads the PMIT from the OSHOB (pointer to interrupt tree)
@@ -720,6 +1370,8 @@ EXPORT_SYMBOL_GPL(intel_scu_ipc_read_osnib_rr);
 #ifdef DUMP_OSNIB
 static int intel_scu_ipc_read_oshob_it_tree(u32 *ptr)
 {
+	pr_info("intel_scu_ipc_read_oshob_it_tree: read IT tree\n");
+
 	return intel_scu_ipc_read_oshob((u8 *) ptr, 4, OSHOB_PMIT_OFFSET);
 }
 #endif
@@ -730,7 +1382,22 @@ static int intel_scu_ipc_read_oshob_it_tree(u32 *ptr)
 #ifdef DUMP_OSNIB
 static int intel_scu_ipc_read_osnib_resetirq1(u8 *rirq1)
 {
-	return intel_scu_ipc_read_osnib(rirq1, 1, OSNIB_RESETIRQ1_OFFSET);
+	int ret = 0;
+
+	pr_info("intel_scu_ipc_read_osnib_resetirq1: read RESETIRQ1\n");
+
+	if (poshob_info->oshob_type == OSHOB_STRUCT_OLD)
+		ret = intel_scu_ipc_read_osnib(
+						rirq1,
+						1,
+						OSNIB_RESETIRQ1_OFFSET);
+	else
+		ret = intel_scu_ipc_read_osnib_extend(
+						rirq1,
+						1,
+						OSNIB_RESETIRQ1_OFFSET);
+
+	return ret;
 }
 #endif
 
@@ -740,19 +1407,59 @@ static int intel_scu_ipc_read_osnib_resetirq1(u8 *rirq1)
 #ifdef DUMP_OSNIB
 static int intel_scu_ipc_read_osnib_resetirq2(u8 *rirq2)
 {
-	return intel_scu_ipc_read_osnib(rirq2, 1, OSNIB_RESETIRQ2_OFFSET);
+	int ret = 0;
+
+	pr_info("intel_scu_ipc_read_osnib_resetirq1: read RESETIRQ2\n");
+
+	if (poshob_info->oshob_type == OSHOB_STRUCT_OLD)
+		ret = intel_scu_ipc_read_osnib(
+						rirq2,
+						1,
+						OSNIB_RESETIRQ2_OFFSET);
+	else
+		ret = intel_scu_ipc_read_osnib_extend(
+						rirq2,
+						1,
+						OSNIB_RESETIRQ2_OFFSET);
+
+	return ret;
 }
 #endif
 
 /*
  * This reads the WD from the OSNIB
  */
-#ifdef DUMP_OSNIB
-static int intel_scu_ipc_read_osnib_wd(u8 *wd)
+int intel_scu_ipc_read_osnib_wd(u8 *wd)
 {
-	return intel_scu_ipc_read_osnib(wd, 1, OSNIB_WD_OFFSET);
+	int ret = 0;
+
+	pr_info("intel_scu_ipc_read_osnib_resetirq1: read WATCHDOG\n");
+
+	if (poshob_info->oshob_type == OSHOB_STRUCT_OLD)
+		ret = intel_scu_ipc_read_osnib(wd, 1, OSNIB_WD_OFFSET);
+	else
+		ret = intel_scu_ipc_read_osnib_extend(wd, 1, OSNIB_WD_OFFSET);
+
+	return ret;
 }
-#endif
+
+/*
+ * This writes the WD in the OSNIB
+ */
+int intel_scu_ipc_write_osnib_wd(u8 *wd)
+{
+	int ret = 0;
+
+	pr_info("intel_scu_ipc_write_osnib_wd: write WATCHDOG %x\n", *wd);
+
+	if (poshob_info->oshob_type == OSHOB_STRUCT_OLD)
+		ret = intel_scu_ipc_write_osnib(wd, 1, OSNIB_WD_OFFSET);
+	else
+		ret = intel_scu_ipc_write_osnib_extend(wd, 1, OSNIB_WD_OFFSET);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(intel_scu_ipc_write_osnib_wd);
 
 /*
  * This reads the ALARM from the OSNIB
@@ -760,8 +1467,19 @@ static int intel_scu_ipc_read_osnib_wd(u8 *wd)
 #ifdef DUMP_OSNIB
 static int intel_scu_ipc_read_osnib_alarm(u8 *alarm)
 {
-	return intel_scu_ipc_read_osnib(alarm, 1, OSNIB_ALARM_OFFSET);
+	int ret = 0;
 
+	pr_info("intel_scu_ipc_read_osnib_alarm: read ALARM\n");
+
+	if (poshob_info->oshob_type == OSHOB_STRUCT_OLD)
+		ret = intel_scu_ipc_read_osnib(alarm, 1, OSNIB_ALARM_OFFSET);
+	else
+		ret = intel_scu_ipc_read_osnib_extend(
+							alarm,
+							1,
+							OSNIB_ALARM_OFFSET);
+
+	return ret;
 }
 #endif
 
@@ -771,9 +1489,303 @@ static int intel_scu_ipc_read_osnib_alarm(u8 *alarm)
 #ifdef DUMP_OSNIB
 static int intel_scu_ipc_read_osnib_wakesrc(u8 *wakesrc)
 {
-	return intel_scu_ipc_read_osnib(wakesrc, 1, OSNIB_WAKESRC_OFFSET);
+	int ret = 0;
+
+	pr_info("intel_scu_ipc_read_osnib_wakesrc: read WAKESRC\n");
+
+	if (poshob_info->oshob_type == OSHOB_STRUCT_OLD)
+		ret = intel_scu_ipc_read_osnib(
+						wakesrc,
+						1,
+						OSNIB_WAKESRC_OFFSET);
+	else
+		ret = intel_scu_ipc_read_osnib_extend(
+							wakesrc,
+							1,
+							OSNIB_WAKESRC_OFFSET);
+
+	return ret;
 }
 #endif
+
+
+#define OEMNIB_BUF_DESC_LEN	4096
+
+#ifdef CONFIG_DEBUG_FS
+
+static int intel_scu_ipc_oshob_stat(struct seq_file *m, void *unused)
+{
+	void __iomem *osnib;
+	int i, count;
+	int ret = 0;
+
+	u32 value;
+	if (poshob_info->oshob_type == OSHOB_STRUCT_OLD) {
+		seq_printf(m, "OLD OSHOB\n");
+		seq_printf(m, "OSHOB size : %d\n", poshob_info->oshob_size);
+		seq_printf(m, "SCU trace : %x\n", poshob_info->scu_trace);
+		seq_printf(m, "IA trace  : %x\n", poshob_info->ia_trace);
+	} else {
+		seq_printf(m, "NEW OSHOB v%d.%d\n", poshob_info->oshob_majrev,
+						poshob_info->oshob_minrev);
+		seq_printf(m, "OSHOB size : %d\n\n", poshob_info->oshob_size);
+		seq_printf(m, "SCU trace : %x\n", poshob_info->scu_trace);
+		seq_printf(m, "IA trace  : %x\n\n", poshob_info->ia_trace);
+
+		seq_printf(m, "OSNIB size : %d\n", poshob_info->osnib_size);
+		seq_printf(m, "OSNIB  read address  : %x\n",
+							poshob_info->posnibr);
+		seq_printf(m, "OSNIB  write address : %x\n",
+							poshob_info->posnibw);
+		/* Dump OSNIB */
+		osnib = ioremap_nocache(poshob_info->posnibr,
+						poshob_info->osnib_size);
+		if (!osnib) {
+			pr_err("Cannot remap OSNIB\n");
+			ret = -ENOMEM;
+			return ret;
+		}
+
+		i = 0;
+		count = 0; /* used for fancy presentation */
+		while (i < poshob_info->osnib_size) {
+			if (count%4 == 0)
+				seq_printf(m, "\nOSNIB[%08x] ",
+						poshob_info->posnibr+i);
+
+			value = readl(osnib+i);
+			seq_printf(m, "%08x ", value);
+			i += 4;
+			count++;
+		}
+		seq_printf(m, "\n\n");
+		iounmap(osnib);
+
+		seq_printf(m, "OEMNIB size : %d\n",
+						poshob_info->oemnib_size);
+		seq_printf(m, "OEMNIB read address  : %x\n",
+						poshob_info->poemnibr);
+		seq_printf(m, "OEMNIB write address : %x\n",
+						poshob_info->poemnibw);
+		seq_printf(m, "\n\n");
+	}
+	return 0;
+}
+
+static int intel_scu_ipc_oemnib_stat(struct seq_file *m, void *unused)
+{
+	void __iomem *oemnib;
+	int i, count;
+	u32 value;
+
+	seq_printf(m, "OEMNIB size : %d\n",
+					poshob_info->oemnib_size);
+	seq_printf(m, "OEMNIB read address  : %x\n",
+					poshob_info->poemnibr);
+	seq_printf(m, "OEMNIB write address : %x\n",
+					poshob_info->poemnibw);
+	/* Dump OEMNIB */
+	oemnib = ioremap_nocache(poshob_info->poemnibr,
+				poshob_info->oemnib_size);
+
+	if (!oemnib) {
+		pr_err("Cannot remap OEMNIB\n");
+		return -ENOMEM;
+	}
+
+	i = 0;
+	count = 0; /* used for fancy presentation */
+	while (i < poshob_info->oemnib_size) {
+		if (count%4 == 0)
+			seq_printf(m, "\nOEMNIB[%08x] ",
+				    poshob_info->poemnibr+i);
+
+		value = readl(oemnib+i);
+		seq_printf(m, "%08x ", value);
+		i += 4;
+		count++;
+	}
+	seq_printf(m, "\n\n");
+	iounmap(oemnib);
+
+	return 0;
+}
+
+static ssize_t intel_scu_ipc_oshob_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, intel_scu_ipc_oshob_stat, NULL);
+}
+
+static ssize_t intel_scu_ipc_oemnib_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, intel_scu_ipc_oemnib_stat, NULL);
+}
+
+
+/*
+*	debugfs interface: the "oemnib_write" stores the OEMNIB part of OSNIB,
+*       starting at offset ppos.
+*/
+static ssize_t intel_scu_ipc_oemnib_write(struct file *file,
+					  const char __user *buf,
+					    size_t count, loff_t *ppos)
+{
+	int ret, i;
+	u8 *posnib_data, *ptr;
+	char *ptrchar, *temp;
+
+	if (poshob_info->oshob_type != OSHOB_STRUCT_EXTENDED) {
+		/* OEMNIB only usable with new OSHOB structure. */
+		pr_err(
+		"Write OEMNIB: OEMNIB only usable with new OSHOB structure.\n");
+		return -EFAULT;
+	}
+
+	pr_info("Write OEMNIB: number bytes = %d\n", count);
+
+	/* Note: when the string is passed through debugfs interface, the  */
+	/* real count value includes the end of line \n. So we must take   */
+	/* care to consider count - 1 as the real number of OEM bytes.     */
+
+	if (buf == NULL) {
+		pr_err("Write OEMNIB: The passed OEMNIB buffer is NULL\n");
+		return -EINVAL;
+	}
+
+	if (count == 0) {
+		pr_err("Write OEMNIB: The OEMNIB data length to write is NULL\n");
+		return -EINVAL;
+	}
+
+	posnib_data = kzalloc(count - 1, GFP_KERNEL);
+
+	if (posnib_data == NULL) {
+		pr_err("Write OEMNIB: Cannot allocate buffer for writting OEMNIB\n");
+		return -ENOMEM;
+	}
+
+	memset(posnib_data, 0, count - 1);
+
+	temp = kzalloc(count - 1, GFP_KERNEL);
+
+	if (temp == NULL) {
+		pr_err(
+		"Write OEMNIB: Cannot allocate temp buffer for writting OEMNIB\n");
+		return -ENOMEM;
+	}
+
+	memset(temp, 0, count - 1);
+
+	if (copy_from_user(temp, buf, count - 1)) {
+		pr_err(
+		"Write OEMNIB: Cannot transfer from user buf to OEMNIB buf\n");
+		kfree(posnib_data);
+		return -EFAULT;
+	}
+
+	ptrchar = temp;
+	ptr = posnib_data;
+
+	for (i = 0; i <= count - 1; i++) {
+		if (*ptrchar >= '0' && *ptrchar <= '9')
+			*ptr = *ptrchar - '0';
+		if (*ptrchar >= 'A' && *ptrchar <= 'F')
+			*ptr = *ptrchar - 'A' + 10;
+		if (*ptrchar >= 'a' && *ptrchar <= 'f')
+			*ptr = *ptrchar - 'a' + 10;
+
+		ptrchar++;
+		ptr++;
+	}
+
+	ret = intel_scu_ipc_write_oemnib(posnib_data, count - 1, *ppos);
+
+	if (ret < 0) {
+		pr_err("Write OEMNIB: ipc write of OEMNIB failed!!\n");
+		kfree(posnib_data);
+		return ret;
+	}
+
+	kfree(posnib_data);
+	kfree(temp);
+
+	pr_info("Write OEMNIB: OEMNIB updated: count=%d bytes\n", count);
+
+	return count;
+}
+
+/* Attach the debugfs operations methods */
+static const struct file_operations scu_ipc_oemnib_fops = {
+	.owner = THIS_MODULE,
+	.open = intel_scu_ipc_oemnib_open,
+	.read = seq_read,
+	.write = intel_scu_ipc_oemnib_write,
+	.llseek = seq_lseek,
+	.release = single_release,
+};
+
+static const struct file_operations scu_ipc_oshob_fops = {
+	.owner = THIS_MODULE,
+	.open = intel_scu_ipc_oshob_open,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.release = single_release,
+};
+
+static struct dentry *scu_ipc_oemnib_dir;
+static struct dentry *scu_ipc_oemnib_file;
+static struct dentry *scu_ipc_oshob_file;
+
+/*
+*	debugfs interface: init interface.
+*/
+static int intel_mid_scu_ipc_oemnib_debugfs_init(void)
+{
+	/* Create debugfs directory /sys/kernel/debug/intel_scu_oshob */
+	scu_ipc_oemnib_dir = debugfs_create_dir("intel_scu_oshob", NULL);
+
+	if (!scu_ipc_oemnib_dir) {
+		pr_err("cannot create OSHOB debugfs directory\n");
+		return -1;
+	}
+
+	/* Add operations /sys/kernel/debug/intel_scu_oshob to control */
+	/* the OEM.                                                     */
+	scu_ipc_oemnib_file = debugfs_create_file("oemnib_debug",
+				S_IFREG | S_IRUGO | S_IWUSR | S_IWGRP,
+				scu_ipc_oemnib_dir,
+				NULL, &scu_ipc_oemnib_fops);
+
+	if (!scu_ipc_oemnib_file) {
+		pr_err("cannot create OEMNIB debugfs file\n");
+		debugfs_remove(scu_ipc_oemnib_dir);
+		return -1;
+	}
+
+	/* Add operations /sys/kernel/debug/intel_scu_oshob to debug OSHOB */
+	/* content.                                                         */
+	scu_ipc_oshob_file = debugfs_create_file("oshob_dump",
+				S_IFREG | S_IRUGO | S_IWUSR | S_IWGRP,
+				scu_ipc_oemnib_dir, NULL, &scu_ipc_oshob_fops);
+
+	if (!scu_ipc_oshob_file) {
+		pr_err("cannot create OSHOB debugfs file\n");
+		debugfs_remove_recursive(scu_ipc_oemnib_dir);
+		return -1;
+	}
+
+	return 0;
+}
+
+/*
+*	debugfs interface: exit interface.
+*/
+static void intel_mid_scu_ipc_oemnib_debugfs_exit(void)
+{
+	debugfs_remove_recursive(scu_ipc_oemnib_dir);
+}
+
+#endif /* CONFIG_DEBUG_FS */
 
 static const struct file_operations scu_ipc_fops = {
 	.unlocked_ioctl = scu_ipc_ioctl,
@@ -790,31 +1802,99 @@ static struct miscdevice scu_ipcutil = {
 
 static int __init ipc_module_init(void)
 {
+	int ret;
+
 #ifdef DUMP_OSNIB
 	u8 rr, resetirq1, resetirq2, wd, alarm, wakesrc, *ptr;
 	u32 pmit, scu_trace, ia_trace;
 #endif
 
-#ifdef DUMP_OSNIB
-	/* Dumping RESETIRQ1 and 2 from the interrupt tree */
-	intel_scu_ipc_read_oshob_it_tree(&pmit);
-	ptr = ioremap_nocache(pmit + PMIT_RESETIRQ1_OFFSET, 2);
-	if (ptr) {
-		resetirq1 = readb(ptr);
-		resetirq2 = readb(ptr+1);
-		pr_warn("[BOOT] RESETIRQ1=0x%02x RESETIRQ2=0x%02x "
-			"(interrupt tree)\n",
-			resetirq1, resetirq2);
-		iounmap(ptr);
+	poshob_info = kmalloc(sizeof(struct scu_ipc_oshob_info), GFP_KERNEL);
+
+	if (poshob_info == NULL) {
+		pr_err(
+		"Cannot init ipc module: oshob info struct not allocated\n");
+		return -ENOMEM;
 	}
 
+	/* Identify the type and size of OSHOB to be used. */
+	ret = intel_scu_ipc_read_oshob_info();
+
+	if (ret != 0) {
+		pr_err("Cannot init ipc module: oshob info not read\n");
+		goto exit;
+	}
+
+#ifdef DUMP_OSNIB
+	/* Dumping RESETIRQ1 and 2 from the interrupt tree */
+	ret = intel_scu_ipc_read_oshob_it_tree(&pmit);
+
+	if (ret != 0) {
+		pr_err("Cannot read interrupt tree\n");
+		goto exit;
+	}
+
+	ptr = ioremap_nocache(pmit + PMIT_RESETIRQ1_OFFSET, 2);
+
+	if (!ptr) {
+		pr_err("Cannot remap PMIT\n");
+		ret = -ENOMEM;
+		goto exit;
+	}
+
+	pr_info("PMIT addr 0x%8x remapped to 0x%8x\n", pmit, (u32)ptr);
+
+	resetirq1 = readb(ptr);
+	resetirq2 = readb(ptr+1);
+	pr_warn("[BOOT] RESETIRQ1=0x%02x RESETIRQ2=0x%02x (interrupt tree)\n",
+		resetirq1, resetirq2);
+	iounmap(ptr);
+
 	/* Dumping OSHOB content */
-	intel_scu_ipc_read_oshob(&scu_trace, 4, OSHOB_SCU_TRACE_OFFSET);
-	intel_scu_ipc_read_oshob(&ia_trace, 4, OSHOB_IA_TRACE_OFFSET);
+	if (poshob_info->oshob_type == OSHOB_STRUCT_EXTENDED) {
+		ret = intel_scu_ipc_read_oshob(&scu_trace,
+					       4,
+					       OSHOB_EXTEND_SCU_TRACE_OFFSET);
+
+		if (ret != 0) {
+			pr_err("Cannot read SCU data\n");
+			goto exit;
+		}
+
+		ret = intel_scu_ipc_read_oshob(&ia_trace,
+					       4,
+					       OSHOB_EXTEND_IA_TRACE_OFFSET);
+
+		if (ret != 0) {
+			pr_err("Cannot read IA data\n");
+			goto exit;
+		}
+	} else {
+		/* Use old OSHOB here. */
+
+		ret = intel_scu_ipc_read_oshob(&scu_trace,
+					       4,
+					       OSHOB_SCU_TRACE_OFFSET);
+
+		if (ret != 0) {
+			pr_err("Cannot read SCU data\n");
+			goto exit;
+		}
+
+		ret = intel_scu_ipc_read_oshob(&ia_trace,
+					       4,
+					       OSHOB_IA_TRACE_OFFSET);
+
+		if (ret != 0) {
+			pr_err("Cannot read IA data\n");
+			goto exit;
+		}
+	}
+
 	pr_warn("[BOOT] SCU_TR=0x%08x IA_TR=0x%08x (oshob)\n",
 		scu_trace, ia_trace);
 	/* Dumping OSNIB content */
-	intel_scu_ipc_read_osnib_rr(&rr);
+	ret = intel_scu_ipc_read_osnib_rr(&rr);
 	intel_scu_ipc_read_osnib_resetirq1(&resetirq1);
 	intel_scu_ipc_read_osnib_resetirq2(&resetirq2);
 	intel_scu_ipc_read_osnib_wd(&wd);
@@ -827,12 +1907,44 @@ static int __init ipc_module_init(void)
 		wakesrc, resetirq1, resetirq2);
 #endif
 
-	return misc_register(&scu_ipcutil);
+#ifdef CONFIG_DEBUG_FS
+	if (poshob_info->oshob_type == OSHOB_STRUCT_EXTENDED) {
+		/* OEMNIB only usable with new OSHOB structure. */
+		ret = intel_mid_scu_ipc_oemnib_debugfs_init();
+
+		if (ret != 0) {
+			pr_err("Cannot register OEMNIB interface to debugfs\n");
+			goto exit;
+		} else {
+			pr_info("OEMNIB interface registered to debugfs\n");
+		}
+	}
+#endif /* CONFIG_DEBUG_FS */
+
+exit:
+	if (ret != 0) {
+		kfree(poshob_info);
+		return ret;
+	} else {
+		/* return result of scu_ipc_ioctl registration to sysfs. */
+		return misc_register(&scu_ipcutil);
+	}
 }
 
 static void __exit ipc_module_exit(void)
 {
+#ifdef CONFIG_DEBUG_FS
+	if (poshob_info->oshob_type == OSHOB_STRUCT_EXTENDED) {
+		/* OEMNIB only usable with new OSHOB structure. */
+		/* unregister from debugfs.                     */
+		intel_mid_scu_ipc_oemnib_debugfs_exit();
+	}
+#endif /* CONFIG_DEBUG_FS */
+
+	/* unregister scu_ipc_ioctl from sysfs. */
 	misc_deregister(&scu_ipcutil);
+
+	kfree(poshob_info);
 }
 
 rootfs_initcall(ipc_module_init);

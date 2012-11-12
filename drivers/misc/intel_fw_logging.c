@@ -34,12 +34,12 @@
 
 #include <linux/io.h>
 #include <asm/intel_scu_ipc.h>
+#include <asm/intel_scu_ipcutil.h>
 
 #include "intel_fabricid_def.h"
 
 #define IPCMSG_GET_HOBADDR		0xE5
 #define IPCMSG_CLEAR_FABERROR		0xE3
-#define OSHOB_SIZE			120
 
 /*
    OSHOB - OS Handoff Buffer
@@ -164,6 +164,7 @@ static void __iomem *get_oshob_addr(void)
 {
 	int ret;
 	u32 oshob_base;
+	u16 oshob_size;
 	void __iomem *oshob_addr;
 
 	ret = intel_scu_ipc_command(IPCMSG_GET_HOBADDR, 0, NULL,
@@ -174,8 +175,16 @@ static void __iomem *get_oshob_addr(void)
 		return NULL;
 	}
 
-	pr_debug("OSHOB addr is 0x%x\n", oshob_base);
-	oshob_addr = ioremap_nocache(oshob_base, OSHOB_SIZE);
+	oshob_size = intel_scu_ipc_get_oshob_size();
+
+	pr_debug("OSHOB addr is 0x%x size is %d\n", oshob_base, oshob_size);
+
+	if (oshob_size == 0) {
+		pr_err("size of oshob is null!!\n");
+		return NULL;
+	}
+
+	oshob_addr = ioremap_nocache(oshob_base, oshob_size);
 
 	if (!oshob_addr) {
 		pr_err("ioremap of oshob address failed!!\n");
