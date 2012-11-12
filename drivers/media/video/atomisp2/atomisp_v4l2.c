@@ -831,7 +831,8 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 
 	err = pcim_enable_device(dev);
 	if (err) {
-		dev_err(&dev->dev, "Failed to enable CI ISP device\n");
+		dev_err(&dev->dev, "Failed to enable CI ISP device (%d)\n",
+			err);
 		return err;
 	}
 
@@ -840,7 +841,8 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 
 	err = pcim_iomap_regions(dev, 1 << ATOM_ISP_PCI_BAR, pci_name(dev));
 	if (err) {
-		dev_err(&dev->dev, "Failed to I/O memory remapping\n");
+		dev_err(&dev->dev, "Failed to I/O memory remapping (%d)\n",
+			err);
 		return err;
 	}
 
@@ -894,7 +896,7 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 
 	err = pci_enable_msi(dev);
 	if (err) {
-		dev_err(&dev->dev, "Failed to enable msi\n");
+		dev_err(&dev->dev, "Failed to enable msi (%d)\n", err);
 		goto enable_msi_fail;
 	}
 
@@ -902,7 +904,7 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 					atomisp_isr, atomisp_isr_thread,
 					IRQF_SHARED, "isp_irq", isp);
 	if (err) {
-		dev_err(&dev->dev, "Failed to request irq\n");
+		dev_err(&dev->dev, "Failed to request irq (%d)\n", err);
 		goto enable_msi_fail;
 	}
 
@@ -926,13 +928,14 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 
 	err = atomisp_initialize_modules(isp);
 	if (err < 0) {
-		dev_err(&dev->dev, "atomisp_initialize_modules\n");
+		dev_err(&dev->dev, "atomisp_initialize_modules (%d)\n", err);
 		goto enable_msi_fail;
 	}
 
 	err = atomisp_register_entities(isp);
 	if (err < 0) {
-		dev_err(&dev->dev, "atomisp_register_entities failed\n");
+		dev_err(&dev->dev, "atomisp_register_entities failed (%d)\n",
+			err);
 		goto enable_msi_fail;
 	}
 
