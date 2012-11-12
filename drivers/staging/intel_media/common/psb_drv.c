@@ -3910,7 +3910,7 @@ static int psb_panel_register_write(struct file *file, const char *buffer,
 
 		kfree(pdata);
 	}
-	if (op == 's') {
+	if (op == 's' && pnum <= GENERIC_READ_FIFO_SIZE_MAX) {
 		struct mdfld_dsi_pkg_sender *sender =
 				 mdfld_dsi_get_pkg_sender(dsi_config);
 		pdata = kmalloc(sizeof(u8)*pnum, GFP_KERNEL);
