@@ -47,6 +47,8 @@ struct ft5x0x_ts_data {
 	int irq_gpio;
 	int wake_gpio;
 	int reset_gpio;
+	int x_flip;
+	int y_flip;
 
 	struct mutex lock;
 };
@@ -57,7 +59,7 @@ static void ft5x0x_wake(struct ft5x0x_ts_data *ft)
 	gpio_set_value(ft->reset_gpio, 0);
 	usleep_range(6000, 7000);
 	gpio_set_value(ft->reset_gpio, 1);
-	msleep(500);
+	msleep(FT5X0X_RST_MS);
 
 	enable_irq(ft->irq);
 }
@@ -84,7 +86,7 @@ static int ft5x0x_i2c_rxdata(struct i2c_client *client,
 
 	ret = i2c_transfer(client->adapter, msgs, 2);
 	if (ret < 0)
-		pr_err("msg %s i2c read error: %d\n", __func__, ret);
+		pr_err("msg %s i2c read error: %d", __func__, ret);
 
 	return ret;
 }
@@ -105,7 +107,7 @@ static int ft5x0x_i2c_txdata(struct i2c_client *client,
 
 	ret = i2c_transfer(client->adapter, msg, 1);
 	if (ret < 0)
-		pr_err("%s i2c write error: %d\n", __func__, ret);
+		pr_err("%s i2c write error: %d", __func__, ret);
 
 	return ret;
 }
@@ -149,7 +151,7 @@ static int ft5x0x_read_reg(struct i2c_client *client, u8 addr, u8 *pdata)
 	buf[0] = addr;
 	ret = i2c_transfer(client->adapter, msgs, 2);
 	if (ret < 0)
-		pr_err("msg %s i2c read error: %d\n", __func__, ret);
+		pr_err("msg %s i2c read error: %d", __func__, ret);
 
 	*pdata = buf[0];
 	return ret;
@@ -172,12 +174,12 @@ static int ft5x0x_read_data(struct ft5x0x_ts_data *ft)
 	int i;
 	u8 num;
 
-	ft5x0x_read_reg(ft->client, 0x02, &num);
-	printk(KERN_ERR "ft5x0x touch num = %d", num);
+	ft5x0x_read_reg(ft->client, FT5X0X_REG_TS_NUM, &num);
+	dev_dbg(&ft->client->dev, "ft5x0x touch num = %d", num);
 
 	ret = ft5x0x_i2c_rxdata(ft->client, buf, 31);
 	if (ret < 0) {
-		printk(KERN_ERR "ft5x0x %s read_data i2c_rxdata failed: %d\n",
+		dev_err(&ft->client->dev, "ft5x0x %s i2c_rxdata failed: %d",
 			__func__, ret);
 		return ret;
 	}
@@ -186,7 +188,7 @@ static int ft5x0x_read_data(struct ft5x0x_ts_data *ft)
 
 	event->touch_point = num;
 
-	reg = 0x03;
+	reg = FT5X0X_REG_DATA;
 	for (i = 0; i < num; i++) {
 		event->touch[i][0] =
 			((u16)(buf[reg] & 0x0f)) << 8 | buf[reg + 1];
@@ -194,8 +196,8 @@ static int ft5x0x_read_data(struct ft5x0x_ts_data *ft)
 			((u16)(buf[reg + 2] & 0x0f)) << 8 | buf[reg + 3];
 
 		reg += 6;
-		printk(KERN_ERR "ft5x0x touch%d[%d][%d]", i, event->touch[i][0],
-				event->touch[i][1]);
+		dev_dbg(&ft->client->dev, "ft5x0x touch%d[%d][%d]", i,
+			event->touch[i][0], event->touch[i][1]);
 
 	}
 
@@ -209,10 +211,15 @@ static void ft5x0x_report_value(struct ft5x0x_ts_data *ft)
 	int i;
 
 	for (i = 0; i < event->touch_point; i++) {
+		if (data->x_flip)
+			event->touch[i][1] = SCREEN_MAX_X - event->touch[i][1];
+		if (data->y_flip)
+			event->touch[i][0] = SCREEN_MAX_Y - event->touch[i][0];
+
 		input_report_abs(data->input_dev,
 			ABS_MT_POSITION_X, event->touch[i][1]);
 		input_report_abs(data->input_dev,
-			ABS_MT_POSITION_Y, 1024 - event->touch[i][0]);
+			ABS_MT_POSITION_Y, event->touch[i][0]);
 		input_mt_sync(data->input_dev);
 	}
 	if (event->touch_point == 0)
@@ -226,7 +233,7 @@ static void ft5x0x_ts_suspend(struct early_suspend *handler)
 	struct ft5x0x_ts_data *ft;
 	ft = container_of(handler, struct ft5x0x_ts_data, early_suspend);
 
-	printk(KERN_ERR "==ft5x0x_ts_suspend=\n");
+	dev_dbg(&ft->client->dev, "suspend");
 	disable_irq(ft->irq);
 	/* ==set mode == poweroff */
 	ft5x0x_write_reg(ft->client, FT5X0X_REG_PMODE, PMODE_HIBERNATE);
@@ -237,7 +244,7 @@ static void ft5x0x_ts_resume(struct early_suspend *handler)
 	struct ft5x0x_ts_data *ft;
 	ft = container_of(handler, struct ft5x0x_ts_data, early_suspend);
 
-	printk(KERN_ERR "==ft5x0x_ts_resume=\n");
+	dev_dbg(&ft->client->dev, "resume");
 	ft5x0x_wake(ft);
 }
 #endif
@@ -263,54 +270,56 @@ static irqreturn_t ft_irq_handler(int irq, void *dev_id)
 static int ft5x0x_ts_init_gpio(struct ft5x0x_ts_data *ft5x0x_ts)
 {
 	int err = 0;
+	struct i2c_client *client;
 
-	printk(KERN_ERR "ft5x0x r=%d,i=%d,w=%d\n", ft5x0x_ts->reset_gpio,
+	client = ft5x0x_ts->client;
+
+	dev_dbg(&client->dev, "ft5x0x r=%d,i=%d,w=%d", ft5x0x_ts->reset_gpio,
 		ft5x0x_ts->irq_gpio, ft5x0x_ts->wake_gpio);
 
 	err = gpio_request(ft5x0x_ts->irq_gpio, 0);
 	if (err < 0) {
-		printk(KERN_ERR "ft5x0x Failed to request GPIO%d irq error=%d\n",
+		dev_err(&client->dev, "Failed request GPIO(%d) irq error=%d",
 			ft5x0x_ts->irq_gpio, err);
 		goto err_request_irq;
 	}
 
 	err = gpio_direction_input(ft5x0x_ts->irq_gpio);
 	if (err) {
-		printk(KERN_ERR "ft5x0x Failed on interrupt direction, error=%d\n",
+		dev_err(&client->dev, "Failed interrupt direction, error=%d",
 			err);
 		goto err_set_irq_direction;
 	}
 
 	err = gpio_request(ft5x0x_ts->reset_gpio, "ft5x0x-reset");
 	if (err < 0) {
-		printk(KERN_ERR "ft5x0x Failed to request GPIO%d reset error=%d\n",
+		dev_err(&client->dev, "Failed request GPIO%d reset error=%d",
 			ft5x0x_ts->reset_gpio, err);
 		goto err_request_reset;
 	}
 
 	err = gpio_direction_output(ft5x0x_ts->reset_gpio, 1);
 	if (err) {
-		printk(KERN_ERR "ft5x0x Failed on interrupt direction, error=%d\n",
+		dev_err(&client->dev, "Failed interrupt direction, error=%d",
 			err);
 		goto err_set_reset_direction;
 	}
 
 	err = gpio_request(ft5x0x_ts->wake_gpio, "ft5x0x-wake");
 	if (err < 0) {
-		printk(KERN_ERR "ft5x0x Failed to request GPIO%d wake error=%d\n",
+		dev_err(&client->dev, "Failed request GPIO%d wake error=%d",
 			ft5x0x_ts->wake_gpio, err);
 		goto err_request_wake;
 	}
 
 	err = gpio_direction_output(ft5x0x_ts->wake_gpio, 1);
 	if (err) {
-		printk(KERN_ERR "ft5x0x Failed on interrupt direction, error=%d\n",
+		dev_err(&client->dev, "Failed interrupt direction, error=%d",
 			err);
 		goto err_set_wake_direction;
 	}
 
-	printk(KERN_ERR "ft5x0x gpio config done\n");
-
+	dev_dbg(&client->dev, "ft5x0x gpio config done");
 	return 0;
 
 err_set_wake_direction:
@@ -334,15 +343,13 @@ ft5x0x_ts_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	int err = 0;
 	unsigned char uc_reg_value;
 
-	printk(KERN_ERR "==ft5x0x_ts_probe=\n");
-	printk(KERN_ERR "==ft5x0x i2c addr = %x\n", client->addr);
+	dev_dbg(&client->dev, "probe start");
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
 		err = -ENODEV;
 		goto exit_check_functionality_failed;
 	}
 
-	printk(KERN_ERR "ft5x0x ==kzalloc=\n");
 	ft5x0x_ts = kzalloc(sizeof(*ft5x0x_ts), GFP_KERNEL);
 	if (!ft5x0x_ts)	{
 		err = -ENOMEM;
@@ -355,9 +362,13 @@ ft5x0x_ts_probe(struct i2c_client *client, const struct i2c_device_id *id)
 
 	pdata = client->dev.platform_data;
 	if (pdata == NULL) {
-		dev_err(&client->dev, "%s: platform data is null\n", __func__);
+		dev_err(&client->dev, "%s: platform data is null", __func__);
 		goto exit_platform_data_null;
 	}
+
+	ft5x0x_ts->x_flip = pdata->x_flip;
+	ft5x0x_ts->y_flip = pdata->y_flip;
+
 	ft5x0x_ts->reset_gpio = pdata->reset;
 	ft5x0x_ts->irq_gpio = pdata->irq;
 	ft5x0x_ts->wake_gpio = pdata->wake;
@@ -366,24 +377,22 @@ ft5x0x_ts_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	if (err)
 		goto exit_init_gpio_fail;
 
-	printk(KERN_ERR "ft5x0x ==request_irq=\n");
 	ft5x0x_ts->irq = gpio_to_irq(ft5x0x_ts->irq_gpio);
 
 	err = request_threaded_irq(ft5x0x_ts->irq, NULL, ft_irq_handler,
 				IRQF_TRIGGER_FALLING, "ft5x0x_ts", ft5x0x_ts);
 	if (err < 0) {
-		dev_err(&client->dev, "ft5x0x_probe: request irq failed\n");
+		dev_err(&client->dev, "ft5x0x_probe: request irq failed");
 		goto exit_irq_request_failed;
 	}
 
 
 	disable_irq(ft5x0x_ts->irq);
 
-	printk(KERN_ERR "ft5x0x ==input_allocate_device=\n");
 	input_dev = input_allocate_device();
 	if (!input_dev) {
 		err = -ENOMEM;
-		dev_err(&client->dev, "failed to allocate input device\n");
+		dev_err(&client->dev, "failed to allocate input device");
 		goto exit_input_dev_alloc_failed;
 	}
 
@@ -393,9 +402,9 @@ ft5x0x_ts_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	__set_bit(ABS_MT_POSITION_Y, input_dev->absbit);
 
 	input_set_abs_params(input_dev,
-			     ABS_MT_POSITION_X, 0, SCREEN_MAX_Y, 0, 0);
+			     ABS_MT_POSITION_X, 0, SCREEN_MAX_X, 0, 0);
 	input_set_abs_params(input_dev,
-			     ABS_MT_POSITION_Y, 0, SCREEN_MAX_X, 0, 0);
+			     ABS_MT_POSITION_Y, 0, SCREEN_MAX_Y, 0, 0);
 
 	__set_bit(EV_ABS, input_dev->evbit);
 	__set_bit(EV_SYN, input_dev->evbit);
@@ -403,65 +412,22 @@ ft5x0x_ts_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	input_dev->name = FT5X0X_NAME;
 	err = input_register_device(input_dev);
 	if (err) {
-		dev_err(&client->dev,
-		"ft5x0x_ts_probe: failed to register input device: %s\n",
-		dev_name(&client->dev));
+		dev_err(&client->dev, "failed to register input device: %s",
+			dev_name(&client->dev));
 		goto exit_input_register_device_failed;
 	}
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
-	printk(KERN_ERR "ft5x0x ==register_early_suspend =\n");
 	ft5x0x_ts->early_suspend.level = EARLY_SUSPEND_LEVEL_BLANK_SCREEN + 1;
 	ft5x0x_ts->early_suspend.suspend = ft5x0x_ts_suspend;
 	ft5x0x_ts->early_suspend.resume	= ft5x0x_ts_resume;
 	register_early_suspend(&ft5x0x_ts->early_suspend);
 #endif
 
-	/* get some register information */
-	printk(KERN_ERR "ft5x0x first read\n");
-
-	msleep(500);
-/*
-	ft5x0x_write_reg(client, 0x00, 0x00);
-	msleep(500);
-
-	ft5x0x_write_reg(client, 0x00, 0x40);
-	msleep(500);
-	ft5x0x_read_reg(client, 0x00, &err);
-	printk(KERN_ERR "ft5x0x first write mod = 0x%x\n", err);
-
-	ft5x0x_write_reg(client, 0x00, 0x00);
-	msleep(500);
-
-	ft5x0x_read_reg(client, 0x00, &err);
-	printk(KERN_ERR "ft5x0x 2nd write mod = 0x%x\n", err);
-
-	uc_reg_value = ft5x0x_read_fw_ver(client);
-	printk(KERN_ERR "ft5x0x [FST] Firmware version = 0x%x\n", uc_reg_value);
-
-	ft5x0x_read_reg(client, 0xa5, &err);
-	printk(KERN_ERR "ft5x0x power mod = 0x%x\n", err);
-*/
-
 	/* wake the CTPM */
 	ft5x0x_wake(ft5x0x_ts);
 
-/*	ft5x0x_read_reg(client, 0xa5, &err);
-	printk(KERN_ERR "ft5x0x power 2nd mod = 0x%x\n", err);
-
-
-	printk(KERN_ERR "ft5x0x ==probe over =\n");
-
-
-	ft5x0x_read_reg(client, 0x80, &err);
-	printk(KERN_ERR "ft5x0x 80 2nd mod = 0x%x\n", err);
-	ft5x0x_read_reg(client, 0x81, &err);
-	printk(KERN_ERR "ft5x0x 81 2nd mod = 0x%x\n", err);
-	ft5x0x_read_reg(client, 0x82, &err);
-	printk(KERN_ERR "ft5x0x 82 2nd mod = 0x%x\n", err);
-	ft5x0x_read_reg(client, 0x83, &err);
-	printk(KERN_ERR "ft5x0x 83 2nd mod = 0x%x\n", err);
-*/
+	dev_dbg(&client->dev, "probe done");
 	return 0;
 
 exit_input_register_device_failed:
@@ -484,11 +450,11 @@ exit_check_functionality_failed:
 static int __devexit ft5x0x_ts_remove(struct i2c_client *client)
 {
 	struct ft5x0x_ts_data *ft5x0x_ts = i2c_get_clientdata(client);
-	printk(KERN_ERR "ft5x0x ==ft5x0x_ts_remove=\n");
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 	unregister_early_suspend(&ft5x0x_ts->early_suspend);
 #endif
+
 	free_irq(ft5x0x_ts->irq, ft5x0x_ts);
 	gpio_free(ft5x0x_ts->wake_gpio);
 	gpio_free(ft5x0x_ts->irq_gpio);
@@ -520,15 +486,14 @@ static struct i2c_driver ft5x0x_ts_driver = {
 static int __init ft5x0x_ts_init(void)
 {
 	int ret;
-	printk(KERN_ERR "ft5x0x ==ft5x0x_ts_init==\n");
 	ret = i2c_add_driver(&ft5x0x_ts_driver);
-	printk(KERN_ERR " ft5x0x ret=%d\n", ret);
+	printk(KERN_DEBUG "ft5x0x add driver: ret = %d", ret);
 	return ret;
 }
 
 static void __exit ft5x0x_ts_exit(void)
 {
-	printk(KERN_ERR "ft5x0x ==ft5x0x_ts_exit==\n");
+	printk(KERN_DEBUG "ft5x0x del driver");
 	i2c_del_driver(&ft5x0x_ts_driver);
 }
 

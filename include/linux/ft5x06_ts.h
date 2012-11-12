@@ -5,15 +5,22 @@
 #define SCREEN_MAX_Y    600
 #define PRESS_MAX       255
 
+#define FT5X0X_RST_MS	500
+
 #define FT5X0X_NAME	"ft5406"
 
 struct ft5x0x_ts_platform_data {
 	u16 irq; /* irq gpio */
 	u16 wake; /* wake gpio */
 	u16 reset; /* reset gpio */
+
+	u8 x_flip;
+	u8 y_flip;
 };
 
 enum ft5x0x_ts_regs {
+	FT5X0X_REG_TS_NUM = 0x02,
+	FT5X0X_REG_DATA = 0x03,
 	FT5X0X_REG_THGROUP = 0x80,
 	FT5X0X_REG_THPEAK = 0x81,
 	FT5X0X_REG_THCAL = 0x82,

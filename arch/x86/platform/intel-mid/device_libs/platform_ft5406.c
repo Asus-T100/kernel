@@ -23,6 +23,8 @@ void *ft5406_platform_data(void *info)
 	ft_pdata.irq = get_gpio_by_name("ts_int");
 	ft_pdata.wake = get_gpio_by_name("ts_wake");
 	ft_pdata.reset = get_gpio_by_name("ts_rst");
+	ft_pdata.x_flip = 1;
+	ft_pdata.y_flip = 1;
 
 	return &ft_pdata;
 }
