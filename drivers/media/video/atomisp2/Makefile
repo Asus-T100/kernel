@@ -60,7 +60,7 @@ atomisp-objs += \
 obj-$(CONFIG_VIDEO_ATOMISP_CSS15) = atomisp.o
 
 INCLUDES := -I$(srctree)/$(src)/include \
-	    -I$(srctree)/$(src)/include/atomisp \
+	    -I$(srctree)/$(src)/ \
 	    -I$(src) \
 	    -I$(src)/hrt \
 	    -I$(srctree)/drivers/staging/intel_media/bc_video
