@@ -918,7 +918,7 @@ static enum msic_vendor penwell_otg_check_msic(void)
 static void penwell_otg_mon_bus(void)
 {
 	struct penwell_otg *pnw = the_transceiver;
-	int count = 5;
+	int count = 6;
 	int interval = 300; /* ms */
 	u32 val = 0;
 
