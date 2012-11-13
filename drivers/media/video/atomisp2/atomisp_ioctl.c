@@ -25,6 +25,7 @@
 #include "atomisp_cmd.h"
 #include "atomisp_acc.h"
 #include "atomisp_fops.h"
+#include "atomisp-regs.h"
 #include <linux/delay.h>
 
 #include "sh_css_hrt.h"

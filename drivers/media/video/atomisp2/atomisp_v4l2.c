@@ -26,6 +26,7 @@
 #include "atomisp_cmd.h"
 #include "atomisp_fops.h"
 #include "atomisp_file.h"
+#include "atomisp-regs.h"
 
 #include "device_access.h"
 

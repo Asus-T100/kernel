@@ -24,6 +24,7 @@
 #include "atomisp_ioctl.h"
 #include "atomisp_cmd.h"
 #include "atomisp_fops.h"
+#include "atomisp-regs.h"
 #include "hrt/hive_isp_css_mm_hrt.h"
 
 #include "sh_css_debug.h"
