@@ -560,14 +560,14 @@ static int atomisp_g_fmt_file(struct file *file, void *fh,
 	mutex_lock(&isp->mutex);
 	switch (isp->sw_contex.output_mode) {
 	case OUTPUT_MODE_FILE:
-		f->fmt.pix.width = pipe->out_fmt->width;
-		f->fmt.pix.height = pipe->out_fmt->height;
-		f->fmt.pix.pixelformat = pipe->out_fmt->pixelformat;
-		f->fmt.pix.bytesperline = pipe->out_fmt->bytesperline;
-		f->fmt.pix.sizeimage = pipe->out_fmt->imagesize;
+		f->fmt.pix.width = pipe->out_fmt.width;
+		f->fmt.pix.height = pipe->out_fmt.height;
+		f->fmt.pix.pixelformat = pipe->out_fmt.pixelformat;
+		f->fmt.pix.bytesperline = pipe->out_fmt.bytesperline;
+		f->fmt.pix.sizeimage = pipe->out_fmt.imagesize;
 		break;
 	case OUTPUT_MODE_TEXT:
-		f->fmt.pix.sizeimage = pipe->out_fmt->framesize;
+		f->fmt.pix.sizeimage = pipe->out_fmt.framesize;
 		break;
 	default:
 		v4l2_err(&atomisp_dev, "Unspported output mode\n");
@@ -1184,7 +1184,7 @@ static int atomisp_dqbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 		return ret;
 	}
 	mutex_lock(&isp->mutex);
-	buf->bytesused = pipe->format->out.sizeimage;
+	buf->bytesused = pipe->format.out.sizeimage;
 	buf->reserved = isp->frame_status[buf->index];
 	mutex_unlock(&isp->mutex);
 

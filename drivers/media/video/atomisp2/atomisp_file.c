@@ -45,7 +45,7 @@ static int file_input_s_stream(struct v4l2_subdev *sd, int enable)
 	int i, j;
 
 	/* extend RAW8 pixel type to unsigned short */
-	if (out_pipe->out_fmt->depth == 8) {
+	if (out_pipe->out_fmt.depth == 8) {
 		data = vmalloc(width*height*2);
 		if (!data) {
 			v4l2_err(&atomisp_dev,
@@ -98,7 +98,7 @@ static int file_input_s_stream(struct v4l2_subdev *sd, int enable)
 	}
 	sh_css_send_input_frame(data, width, height);
 
-	if (out_pipe->out_fmt->depth == 8)
+	if (out_pipe->out_fmt.depth == 8)
 		vfree(data);
 	return 0;
 }
@@ -148,12 +148,12 @@ static int file_input_try_mbus_fmt(struct v4l2_subdev *sd,
 	if (fmt == NULL)
 		return -EINVAL;
 
-	if ((fmt->width > out_pipe->out_fmt->width) ||
-	    (fmt->height > out_pipe->out_fmt->height))
+	if ((fmt->width > out_pipe->out_fmt.width) ||
+	    (fmt->height > out_pipe->out_fmt.height))
 		return -EINVAL;
 
-	fmt->width = out_pipe->out_fmt->width;
-	fmt->height = out_pipe->out_fmt->height;
+	fmt->width = out_pipe->out_fmt.width;
+	fmt->height = out_pipe->out_fmt.height;
 	fmt->code = V4L2_MBUS_FMT_SGRBG10_1X10;
 
 	return 0;
@@ -169,8 +169,8 @@ static int file_input_g_mbus_fmt(struct v4l2_subdev *sd,
 	if (fmt == NULL)
 		return -EINVAL;
 
-	fmt->width = out_pipe->out_fmt->width;
-	fmt->height = out_pipe->out_fmt->height;
+	fmt->width = out_pipe->out_fmt.width;
+	fmt->height = out_pipe->out_fmt.height;
 	fmt->code = V4L2_MBUS_FMT_SGRBG10_1X10;
 
 	return 0;
@@ -194,8 +194,8 @@ static int file_input_s_mbus_fmt(struct v4l2_subdev *sd,
 		return ret;
 	}
 
-	fmt->width = out_pipe->out_fmt->width;
-	fmt->height = out_pipe->out_fmt->height;
+	fmt->width = out_pipe->out_fmt.width;
+	fmt->height = out_pipe->out_fmt.height;
 	fmt->code = V4L2_MBUS_FMT_SGRBG10_1X10;
 
 	sh_css_input_set_mode(SH_CSS_INPUT_MODE_FIFO);

@@ -3009,8 +3009,8 @@ int atomisp_get_fmt(struct video_device *vdev, struct v4l2_format *f)
 
 	/* VIDIOC_S_FMT already called,*/
 	/* return fmt setted by app */
-	if (pipe->format && pipe->format->out.width != 0) {
-		memcpy(&f->fmt.pix, &pipe->format->out,
+	if (pipe->format.out.width != 0) {
+		memcpy(&f->fmt.pix, &pipe->format.out,
 			sizeof(struct v4l2_pix_format));
 	} else {
 		f->fmt.pix.width = 640;
@@ -3233,8 +3233,8 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
 	const struct atomisp_format_bridge *format;
-	int effective_input_width = pipe->format->in.width;
-	int effective_input_height = pipe->format->in.height;
+	int effective_input_width = pipe->format.in.width;
+	int effective_input_height = pipe->format.in.height;
 	int ret;
 
 	format = get_atomisp_format_bridge(pixelformat);
@@ -3242,7 +3242,7 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 		return -EINVAL;
 
 	isp->capture_format->out_sh_fmt = format->sh_fmt;
-	pipe->format->out.pixelformat = pixelformat;
+	pipe->format.out.pixelformat = pixelformat;
 
 	if (isp->inputs[isp->input_curr].type != TEST_PATTERN &&
 		isp->inputs[isp->input_curr].type != FILE_INPUT) {
@@ -3532,8 +3532,8 @@ static int atomisp_set_fmt_to_snr(struct atomisp_device *isp,
 		isp->input_format->out.pixelformat =
 		    snr_mbus_fmt.code;
 	} else {	/* file input case */
-		isp->input_format->out.width = out_pipe->out_fmt->width;
-		isp->input_format->out.height = out_pipe->out_fmt->height;
+		isp->input_format->out.width = out_pipe->out_fmt.width;
+		isp->input_format->out.height = out_pipe->out_fmt.height;
 	}
 
 	if (isp->input_format->out.width < ATOM_ISP_STEP_WIDTH ||
@@ -3608,20 +3608,19 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 		 * than Main Resolution. If so, Force VF resolution
 		 * to be the same as Main resolution
 		 */
-		if (isp->isp_subdev.video_out_capture.format &&
-		    isp->isp_subdev.video_out_capture.format->out.width &&
-		    isp->isp_subdev.video_out_capture.format->out.height &&
-		    (isp->isp_subdev.video_out_capture.format->out.width <
+		if (isp->isp_subdev.video_out_capture.format.out.width &&
+		    isp->isp_subdev.video_out_capture.format.out.height &&
+		    (isp->isp_subdev.video_out_capture.format.out.width <
 		     width ||
-		     isp->isp_subdev.video_out_capture.format->out.height
+		     isp->isp_subdev.video_out_capture.format.out.height
 		     < height)) {
 			v4l2_warn(&atomisp_dev,
 				  "Force capture resolution to same as "
 				  "vf/preview\n");
-			width = isp->isp_subdev.video_out_capture.format
-				->out.width;
-			height = isp->isp_subdev.video_out_capture.format
-				->out.height;
+			width = isp->isp_subdev.video_out_capture.format.
+				out.width;
+			height = isp->isp_subdev.video_out_capture.format.
+				out.height;
 		}
 
 		switch (isp->sw_contex.run_mode) {
@@ -3644,16 +3643,15 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	 * to be the same as snapshot resolution
 	 */
 	if (pipe->pipe_type == ATOMISP_PIPE_CAPTURE &&
-	    isp->isp_subdev.video_out_vf.format &&
-	    isp->isp_subdev.video_out_vf.format->out.width &&
-	    isp->isp_subdev.video_out_vf.format->out.height &&
-	    (isp->isp_subdev.video_out_vf.format->out.width > width ||
-	     isp->isp_subdev.video_out_vf.format->out.height > height)) {
+	    isp->isp_subdev.video_out_vf.format.out.width &&
+	    isp->isp_subdev.video_out_vf.format.out.height &&
+	    (isp->isp_subdev.video_out_vf.format.out.width > width ||
+	     isp->isp_subdev.video_out_vf.format.out.height > height)) {
 		v4l2_warn(&atomisp_dev, "Main Resolution config "
 			  "smaller then Vf Resolution. Force "
 			  "to be equal with Vf Resolution.");
-		width = isp->isp_subdev.video_out_vf.format->out.width;
-		height = isp->isp_subdev.video_out_vf.format->out.height;
+		width = isp->isp_subdev.video_out_vf.format.out.width;
+		height = isp->isp_subdev.video_out_vf.format.out.height;
 	}
 
 	/* V4L2_BUF_TYPE_PRIVATE will set offline processing */
@@ -3742,7 +3740,7 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	}
 
 	/* Only main stream pipe will be here */
-	isp->capture_format = pipe->format;
+	isp->capture_format = &pipe->format;
 	if (!isp->capture_format) {
 		v4l2_err(&atomisp_dev, "Internal error\n");
 		return -EINVAL;
@@ -3765,23 +3763,22 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	if (ret)
 		return -EINVAL;
 done:
-	pipe->format->out.width = width;
-	pipe->format->out.height = height;
-	pipe->format->out.pixelformat = pixelformat;
-	pipe->format->out.bytesperline =
+	pipe->format.out.width = width;
+	pipe->format.out.height = height;
+	pipe->format.out.pixelformat = pixelformat;
+	pipe->format.out.bytesperline =
 		DIV_ROUND_UP(format_bridge->depth * output_info.padded_width,
 			     8);
-	pipe->format->out.sizeimage =
-	    PAGE_ALIGN(height * pipe->format->out.bytesperline);
+	pipe->format.out.sizeimage =
+	    PAGE_ALIGN(height * pipe->format.out.bytesperline);
 	if (f->fmt.pix.field == V4L2_FIELD_ANY)
 		f->fmt.pix.field = V4L2_FIELD_NONE;
-	pipe->format->out.field = f->fmt.pix.field;
-	pipe->format->out_sh_fmt = sh_format;
+	pipe->format.out.field = f->fmt.pix.field;
+	pipe->format.out_sh_fmt = sh_format;
 
-	memcpy(&f->fmt.pix, &pipe->format->out,
-			sizeof(struct v4l2_pix_format));
-	f->fmt.pix.priv = PAGE_ALIGN(pipe->format->out.width *
-				     pipe->format->out.height * 2);
+	memcpy(&f->fmt.pix, &pipe->format.out, sizeof(struct v4l2_pix_format));
+	f->fmt.pix.priv = PAGE_ALIGN(pipe->format.out.width *
+				     pipe->format.out.height * 2);
 
 	pipe->capq.field = f->fmt.pix.field;
 
@@ -3807,17 +3804,17 @@ int atomisp_set_fmt_file(struct video_device *vdev, struct v4l2_format *f)
 		if (ret)
 			return ret;
 
-		pipe->out_fmt->pixelformat = f->fmt.pix.pixelformat;
-		pipe->out_fmt->framesize = f->fmt.pix.sizeimage;
-		pipe->out_fmt->imagesize = f->fmt.pix.sizeimage;
-		pipe->out_fmt->depth = get_pixel_depth(f->fmt.pix.pixelformat);
-		pipe->out_fmt->bytesperline = f->fmt.pix.bytesperline;
+		pipe->out_fmt.pixelformat = f->fmt.pix.pixelformat;
+		pipe->out_fmt.framesize = f->fmt.pix.sizeimage;
+		pipe->out_fmt.imagesize = f->fmt.pix.sizeimage;
+		pipe->out_fmt.depth = get_pixel_depth(f->fmt.pix.pixelformat);
+		pipe->out_fmt.bytesperline = f->fmt.pix.bytesperline;
 
-		pipe->out_fmt->bayer_order = f->fmt.pix.priv;
-		pipe->out_fmt->width = f->fmt.pix.width;
-		pipe->out_fmt->height = f->fmt.pix.height;
+		pipe->out_fmt.bayer_order = f->fmt.pix.priv;
+		pipe->out_fmt.width = f->fmt.pix.width;
+		pipe->out_fmt.height = f->fmt.pix.height;
 		sh_input_format = get_sh_input_format(
-						pipe->out_fmt->pixelformat);
+						pipe->out_fmt.pixelformat);
 		if (sh_input_format == -EINVAL) {
 			v4l2_err(&atomisp_dev,
 					"Wrong v4l2 format for output\n");
@@ -3826,15 +3823,15 @@ int atomisp_set_fmt_file(struct video_device *vdev, struct v4l2_format *f)
 
 		sh_css_input_set_format(sh_input_format);
 		sh_css_input_set_mode(SH_CSS_INPUT_MODE_FIFO);
-		sh_css_input_set_bayer_order(pipe->out_fmt->bayer_order);
+		sh_css_input_set_bayer_order(pipe->out_fmt.bayer_order);
 		sh_css_input_configure_port(
 				__get_mipi_port(ATOMISP_CAMERA_PORT_PRIMARY),
 						2, 0xffff4);
 		return 0;
 
 	case OUTPUT_MODE_TEXT:
-		pipe->out_fmt->framesize = f->fmt.pix.sizeimage;
-		pipe->out_fmt->imagesize = f->fmt.pix.sizeimage;
+		pipe->out_fmt.framesize = f->fmt.pix.sizeimage;
+		pipe->out_fmt.imagesize = f->fmt.pix.sizeimage;
 		return 0;
 
 	default:

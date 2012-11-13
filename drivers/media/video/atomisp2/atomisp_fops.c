@@ -66,7 +66,7 @@ int atomisp_buf_setup(struct videobuf_queue *vq,
 {
 	struct atomisp_video_pipe *pipe = vq->priv_data;
 
-	*size = pipe->format->out.sizeimage;
+	*size = pipe->format.out.sizeimage;
 
 	return 0;
 }
@@ -77,9 +77,9 @@ int atomisp_buf_prepare(struct videobuf_queue *vq,
 {
 	struct atomisp_video_pipe *pipe = vq->priv_data;
 
-	vb->size = pipe->format->out.sizeimage;
-	vb->width = pipe->format->out.width;
-	vb->height = pipe->format->out.height;
+	vb->size = pipe->format.out.sizeimage;
+	vb->width = pipe->format.out.width;
+	vb->height = pipe->format.out.height;
 	vb->field = field;
 	vb->state = VIDEOBUF_PREPARED;
 
@@ -273,7 +273,7 @@ static int atomisp_buf_setup_output(struct videobuf_queue *vq,
 {
 	struct atomisp_video_pipe *pipe = vq->priv_data;
 
-	*size = pipe->out_fmt->imagesize;
+	*size = pipe->out_fmt.imagesize;
 
 	return 0;
 }
@@ -284,9 +284,9 @@ static int atomisp_buf_prepare_output(struct videobuf_queue *vq,
 {
 	struct atomisp_video_pipe *pipe = vq->priv_data;
 
-	vb->size = pipe->out_fmt->imagesize;
-	vb->width = pipe->out_fmt->width;
-	vb->height = pipe->out_fmt->height;
+	vb->size = pipe->out_fmt.imagesize;
+	vb->width = pipe->out_fmt.width;
+	vb->height = pipe->out_fmt.height;
 	vb->field = field;
 	vb->state = VIDEOBUF_PREPARED;
 
@@ -325,33 +325,12 @@ static struct videobuf_queue_ops videobuf_qops_output = {
 
 static int atomisp_uninit_pipe(struct atomisp_video_pipe *pipe)
 {
-	kfree(pipe->format);
-	pipe->format = NULL;
-
-	kfree(pipe->out_fmt);
-	pipe->out_fmt = NULL;
-
 	pipe->opened = false;
 	return 0;
 }
 
 static int atomisp_init_pipe(struct atomisp_video_pipe *pipe)
 {
-
-	pipe->out_fmt = kzalloc(sizeof(struct atomisp_fmt), GFP_KERNEL);
-	if (pipe->out_fmt == NULL) {
-		v4l2_err(&atomisp_dev, "fail to allocte memory\n");
-		return -ENOMEM;
-	}
-
-	pipe->format =
-	kzalloc(sizeof(struct atomisp_video_pipe_format), GFP_KERNEL);
-	if (pipe->format == NULL) {
-		v4l2_err(&atomisp_dev, "failed to alloca memory\n");
-		kfree(pipe->out_fmt);
-		return -ENOMEM;
-	}
-
 	/* init locks */
 	spin_lock_init(&pipe->irq_lock);
 
@@ -609,13 +588,7 @@ static int atomisp_release(struct file *file)
 		mutex_unlock(&pipe->outq.vb_lock);
 	}
 
-	kfree(pipe->format);
-	pipe->format = NULL;
-
 	isp->capture_format = NULL;
-
-	kfree(pipe->out_fmt);
-	pipe->out_fmt = NULL;
 
 	kfree(isp->vf_format);
 	isp->vf_format = NULL;
@@ -821,8 +794,7 @@ static int atomisp_mmap(struct file *file, struct vm_area_struct *vma)
 		return -EINVAL;
 
 	mutex_lock(&isp->mutex);
-	new_size = pipe->format->out.width *
-		pipe->format->out.height * 2;
+	new_size = pipe->format.out.width * pipe->format.out.height * 2;
 
 	/* mmap for ISP offline raw data */
 	if ((pipe->pipe_type == ATOMISP_PIPE_CAPTURE) &&
@@ -840,8 +812,8 @@ static int atomisp_mmap(struct file *file, struct vm_area_struct *vma)
 		}
 
 		ret = remove_pad_from_frame(raw_virt_addr,
-				      pipe->format->out.width,
-				      pipe->format->out.height);
+				      pipe->format.out.width,
+				      pipe->format.out.height);
 		if (ret < 0) {
 			v4l2_err(&atomisp_dev, "remove pad failed.\n");
 			goto error;
@@ -873,7 +845,7 @@ static int atomisp_mmap(struct file *file, struct vm_area_struct *vma)
 	/*
 	 * mmap for normal frames
 	 */
-	if (size != pipe->format->out.sizeimage) {
+	if (size != pipe->format.out.sizeimage) {
 		v4l2_err(&atomisp_dev,
 			    "incorrect size for mmap ISP frames\n");
 		ret = -EINVAL;

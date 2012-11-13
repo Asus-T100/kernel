@@ -262,12 +262,6 @@ struct atomisp_css_params {
 	bool css_update_params_needed;
 };
 
-struct atomisp_video_pipe_format {
-	struct v4l2_pix_format out;
-	struct v4l2_pix_format in;
-	unsigned int out_sh_fmt;
-};
-
 struct atomisp_map {
 	hrt_vaddress ptr;
 	size_t length;

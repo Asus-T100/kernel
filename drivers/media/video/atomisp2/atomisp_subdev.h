@@ -25,6 +25,7 @@
 #include <media/v4l2-subdev.h>
 #include <media/videobuf-core.h>
 
+#include "atomisp_common.h"
 #include "atomisp_v4l2.h"
 #include "sh_css.h"
 
@@ -91,8 +92,8 @@ struct atomisp_video_pipe {
 	enum atomisp_pipe_type pipe_type;
 
 	struct atomisp_device *isp;
-	struct atomisp_fmt *out_fmt;
-	struct atomisp_video_pipe_format *format;
+	struct atomisp_fmt out_fmt;
+	struct atomisp_video_pipe_format format;
 };
 
 struct atomisp_sub_device {
