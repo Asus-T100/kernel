@@ -424,6 +424,10 @@ config X86_WANT_INTEL_MID
 
 if X86_WANT_INTEL_MID
 
+config HARDIRQS_SW_RESEND
+	bool
+	default y
+
 config X86_INTEL_MID
 	bool
 
