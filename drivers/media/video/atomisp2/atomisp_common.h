@@ -84,13 +84,6 @@ extern int atomisp_pci_device;
 
 #define IS_MRFLD ((atomisp_pci_device & 0xfff8) == 0x1178)
 
-struct atomisp_tvnorm {
-	char *name;
-	v4l2_std_id id;
-	u32 cxiformat;
-	u32 cxoformat;
-};
-
 struct atomisp_format_bridge {
 	unsigned int pixelformat;
 	unsigned int depth;

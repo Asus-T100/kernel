@@ -326,7 +326,6 @@ struct atomisp_device {
 	struct list_head s3a_stats;
 	struct list_head dis_stats;
 	uint32_t irq_infos;
-	struct atomisp_tvnorm *tvnorm;
 	bool isp3a_stat_ready;
 
 	struct atomisp_video_pipe_format *capture_format;

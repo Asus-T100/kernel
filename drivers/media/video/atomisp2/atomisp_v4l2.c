@@ -215,21 +215,6 @@ const struct atomisp_format_bridge atomisp_output_fmts[] = {
 
 const u32 atomisp_output_fmts_num = ARRAY_SIZE(atomisp_output_fmts);
 
-static struct atomisp_tvnorm tvnorms[] = {
-	{
-		.name = "atomisp format",
-		.id = V4L2_STD_NTSC_M,
-		.cxiformat = 0,
-		.cxoformat = 0x181f0008,
-	},
-	{
-		.name = "atomisp format NULL",
-		.id = V4L2_STD_NTSC_M_JP,
-		.cxiformat = 1,
-		.cxoformat = 0x181f0008,
-	}
-};
-
 int atomisp_video_init(struct atomisp_video_pipe *video, const char *name)
 {
 	int ret;
@@ -869,7 +854,6 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 		return -ENODEV;
 	}
 	isp->hw_contex.ispmmadr = start;
-	isp->tvnorm = tvnorms;
 
 	mutex_init(&isp->mutex);
 

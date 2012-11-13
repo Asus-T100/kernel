@@ -488,16 +488,6 @@ error:
 	return ret;
 }
 
-static int atomisp_g_std(struct file *file, void *fh, v4l2_std_id * id)
-{
-	return -EINVAL;
-}
-
-static int atomisp_s_std(struct file *file, void *fh, v4l2_std_id * id)
-{
-	return -EINVAL;
-}
-
 static int atomisp_enum_fmt_cap(struct file *file, void *fh,
 	struct v4l2_fmtdesc *f)
 {
@@ -2248,8 +2238,6 @@ const struct v4l2_ioctl_ops atomisp_ioctl_ops = {
 	.vidioc_enum_frameintervals = atomisp_enum_frameintervals,
 	.vidioc_s_parm = atomisp_s_parm,
 	.vidioc_g_parm = atomisp_g_parm,
-	.vidioc_g_std = atomisp_g_std,
-	.vidioc_s_std = atomisp_s_std,
 	.vidioc_g_crop = atomisp_g_crop,
 	.vidioc_s_crop = atomisp_s_crop,
 };
