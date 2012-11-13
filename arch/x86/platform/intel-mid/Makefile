@@ -33,3 +33,4 @@ obj-$(CONFIG_BOARD_CTP)			+= board-ctp.o
 obj-$(CONFIG_BOARD_MRFLD_VP)		+= board-vp.o
 obj-$(CONFIG_BOARD_MRFLD_HVP)		+= board-hvp.o
 obj-$(CONFIG_BOARD_MRFLD_SLE)           += board-sle.o
+obj-$(CONFIG_BOARD_MRFLD_VV)		+= board-merr_vv.o

@@ -522,6 +522,15 @@ config BOARD_MRFLD_SLE
 	  Merrifield SLE platform.
 	  Enable this option for SLE codepaths and workarounds.
 	  Note this option is not necessary for VP/HVP.
+
+config BOARD_MRFLD_VV
+	bool "Merrifield VV board (SilverRidge)"
+	depends on X86_MRFLD
+	default n
+	---help---
+	  Merrifield VV board.
+	  Enable this option for Merrifield VV board (SilverRidge).
+	  Note this option can not be eanbled together with SLE, VP or HVP.
 endchoice
 
 endif
