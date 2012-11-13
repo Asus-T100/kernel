@@ -106,9 +106,11 @@
 
 /* it takes about 800ms to generate the first interrupt when ALS is enabled*/
 #define ALS_FIRST_INT_DELAY	800
+/* it takes about 400ms to generate the first interrupt when PS is enabled*/
 #define PS_FIRST_INT_DELAY	400
 #define ALS_INIT_DATA		0xffff
-#define CONFIGREG_DELAY         50
+#define CONFIGREG_DELAY		50
+#define LTR502_GPIO_CHECK_MAX	5
 
 struct alsps_client {
 	struct list_head list;
@@ -137,11 +139,11 @@ struct alsps_device {
 	struct delayed_work 	als_first_work;
 	struct list_head	proximity_list;
 	struct list_head	ambient_list;
-
 	struct alsps_state	als_state;
 	struct alsps_state	ps_state;
 
 	int gpio;
+	u8 dbg_addr;
 };
 
 static struct alsps_device *alsps_dev; /* for miscdevice operations */
@@ -166,6 +168,9 @@ static int alsps_read(struct alsps_device *alsps, u8 reg, u8 *pval)
 	if (ret >= 0) {
 		*pval = ret;
 		ret = 0;
+	} else {
+		dev_err(&alsps->client->dev, "%s: Read %d faled, ret=%d\n",
+				__func__, reg, ret);
 	}
 
 	return ret;
@@ -173,7 +178,13 @@ static int alsps_read(struct alsps_device *alsps, u8 reg, u8 *pval)
 
 static int alsps_write(struct alsps_device *alsps, u8 reg, u8 val)
 {
-	return i2c_smbus_write_byte_data(alsps->client, reg, val);
+	int ret;
+	ret = i2c_smbus_write_byte_data(alsps->client, reg, val);
+	if (ret < 0) {
+		dev_err(&alsps->client->dev, "%s: Write to %d faled, ret=%d\n",
+				__func__, reg, ret);
+	}
+	return ret;
 }
 
 /*
@@ -276,6 +287,9 @@ static void proximity_handle_irq(struct alsps_device *alsps, u8 reg_data)
 		alsps->ps_state.once, alsps->ps_state.now);
 
 	if (alsps->ps_state.now != alsps->ps_state.once) {
+		dev_info(&alsps->client->dev,
+				"proximity data changed, now = %d\n",
+				alsps->ps_state.now);
 		alsps->ps_state.once = alsps->ps_state.now;
 
 		list_for_each_entry(client, &alsps->proximity_list, list)
@@ -369,62 +383,10 @@ static int ambient_open(struct inode *inode, struct file *filep)
 	return 0;
 }
 
-static irqreturn_t alsps_interrupt_thread(int irq, void *dev_id)
-{
-	struct alsps_device *alsps = dev_id;
-	int ret;
-	u8 irqstat;
-	u8 data;
-
-	dev_dbg(&alsps->client->dev, "enter %s\n", __func__);
-
-	ret = alsps_read(alsps, INTREG, &irqstat);
-	if (ret < 0)
-		return IRQ_NONE;
-
-	/* This also acknowledges the interrupt */
-	ret = alsps_read(alsps, DATAREG, &data);
-	if (ret < 0) {
-		dev_err(&alsps->client->dev, "fail to read DATAREG\n");
-		return IRQ_NONE;
-	}
-
-	mutex_lock(&alsps_dev->lock);
-	ret = IRQ_NONE;
-	if (irqstat & DPS_INT_MASK) {
-		proximity_handle_irq(alsps, data);
-		ret = IRQ_HANDLED;
-	}
-	if (irqstat & DLS_INT_MASK) {
-		ambient_handle_irq(alsps, data);
-		ret = IRQ_HANDLED;
-	}
-	mutex_unlock(&alsps_dev->lock);
-	return ret;
-}
-
-static int ltr502als_initchip(struct alsps_device *alsps)
-{
-	u8 val;
-
-	alsps_write(alsps, CONFIGREG, POWER_UP | IDLE);
-	alsps_write(alsps, DLSCTROL, ADC_64LEVEL);
-	alsps_write(alsps, TCREG,
-		    PRX_INT_CYCLE1 | INTEGRATE_100MS | ALPS_INT_CYCLE1);
-
-	/* change proximity threshold PRX_THRESH_CTL to 31 to decrease the distance
-	 * that triggers proximity interrupt*/
-	alsps_read(alsps, DPSCTROL, &val);
-	alsps_write(alsps, DPSCTROL, (val & PRX_COUNT_MASK) | PRX_THRESH_CTL);
-
-	alsps_write(alsps, CONFIGREG, POWER_DOWN);
-
-	return 0;
-}
 static void ltr502_switch(int mode)
 {
 	u8 data;
-	u8 reg = 0;
+	int ret;
 
 	mode = mode & ENABLE_MASK;
 	switch (mode) {
@@ -443,19 +405,12 @@ static void ltr502_switch(int mode)
 		break;
 	}
 
-	if (alsps_read(alsps_dev, CONFIGREG, &reg) < 0) {
-		dev_err(&alsps_dev->client->dev, "fail to read CONFIGREG\n");
+	ret = alsps_write(alsps_dev, CONFIGREG, data);
+	if (ret < 0) {
+		dev_err(&alsps_dev->client->dev, "Write CONFIGREG failed\n");
 		return;
 	}
-	if (reg == data)
-		return;
-
-	/* when change the device mode, we need to set the CONFIG REG to
-	 * "idle" first to disable interrupt. Otherwise, some interrupts
-	 * may be triggered abnormally during the mode switch */
-	alsps_write(alsps_dev, CONFIGREG, IDLE);
 	msleep(CONFIGREG_DELAY);
-	alsps_write(alsps_dev, CONFIGREG, data);
 
 	if (mode & AMBIENT_ENABLE) {
 		alsps_dev->als_state.once = ALS_INIT_DATA;
@@ -463,6 +418,79 @@ static void ltr502_switch(int mode)
 				msecs_to_jiffies(ALS_FIRST_INT_DELAY));
 	} else if (alsps_dev->alsps_switch & AMBIENT_ENABLE)
 		cancel_delayed_work(&alsps_dev->als_first_work);
+}
+
+
+static irqreturn_t alsps_interrupt_thread(int irq, void *dev_id)
+{
+	struct alsps_device *alsps = dev_id;
+	int i, ret;
+	u8 irqstat, data;
+
+	dev_dbg(&alsps->client->dev, "enter %s\n", __func__);
+
+	mutex_lock(&alsps_dev->lock);
+	for (i = 0; i < LTR502_GPIO_CHECK_MAX; i++) {
+		ret = alsps_read(alsps, INTREG, &irqstat);
+		if (ret < 0) {
+			dev_err(&alsps->client->dev, "fail to read INTREG\n");
+			ret = IRQ_NONE;
+			goto out;
+		}
+		ret = alsps_read(alsps, DATAREG, &data);
+		if (ret < 0) {
+			dev_err(&alsps->client->dev, "fail to ACK interrupt\n");
+			ret = IRQ_NONE;
+			goto out;
+		}
+
+		ret = IRQ_NONE;
+		if (irqstat & DPS_INT_MASK) {
+			proximity_handle_irq(alsps, data);
+			ret = IRQ_HANDLED;
+		}
+		if (irqstat & DLS_INT_MASK) {
+			ambient_handle_irq(alsps, data);
+			ret = IRQ_HANDLED;
+		}
+
+		/* If there is another interrupt triggerred during status read
+		   and interrupt ACK, we need to check the status again to
+		   avoid missing the new interrupt from different sensor*/
+		if (gpio_get_value(alsps->gpio))
+			break;
+		else
+			dev_info(&alsps->client->dev,
+				"gpio low, need to check irq again\n");
+	}
+	if (i == LTR502_GPIO_CHECK_MAX) {
+		dev_info(&alsps->client->dev,
+				"gpio check max, reset sensor\n");
+		ltr502_switch(alsps->alsps_switch);
+	}
+
+out:
+	mutex_unlock(&alsps_dev->lock);
+	return ret;
+}
+
+static int ltr502als_initchip(struct alsps_device *alsps)
+{
+	u8 val;
+
+	alsps_write(alsps, CONFIGREG, POWER_UP | IDLE);
+	alsps_write(alsps, DLSCTROL, ADC_64LEVEL);
+	alsps_write(alsps, TCREG,
+		    PRX_INT_CYCLE1 | INTEGRATE_100MS | ALPS_INT_CYCLE1);
+
+	/* change proximity threshold PRX_THRESH_CTL to 31 to decrease the
+	   distance that triggers proximity interrupt*/
+	alsps_read(alsps, DPSCTROL, &val);
+	alsps_write(alsps, DPSCTROL, (val & PRX_COUNT_MASK) | PRX_THRESH_CTL);
+
+	alsps_write(alsps, CONFIGREG, POWER_DOWN);
+
+	return 0;
 }
 
 /* lock must be held when calling this function */
@@ -640,8 +668,9 @@ static void alsps_early_suspend(struct early_suspend *h)
 	dev_dbg(&alsps->client->dev, "enter %s\n", __func__);
 
 	mutex_lock(&alsps_dev->lock);
-	/* Only proximity is kept actice over the suspend period */
-	ltr502_switch(alsps->alsps_switch & PROXIMITY_ENABLE);
+	/* If proximity is enabled, kept actice over the suspend period */
+	if (alsps->alsps_switch & AMBIENT_ENABLE)
+		ltr502_switch(alsps->alsps_switch & PROXIMITY_ENABLE);
 
 	/* If PS is enabled during early supend, some PS interrupt may be lost
 	 * during the CONFIG REG switch, so we need to check the data register
@@ -649,6 +678,7 @@ static void alsps_early_suspend(struct early_suspend *h)
 	if (alsps->alsps_switch & PROXIMITY_ENABLE) {
 		msleep(PS_FIRST_INT_DELAY);
 		alsps_read(alsps, DATAREG, &data);
+		dev_info(&alsps_dev->client->dev, "proximity check DATAREG");
 		proximity_handle_irq(alsps, data);
 	}
 	mutex_unlock(&alsps_dev->lock);
@@ -661,7 +691,8 @@ static void alsps_late_resume(struct early_suspend *h)
 	dev_dbg(&alsps->client->dev, "enter %s\n", __func__);
 
 	mutex_lock(&alsps_dev->lock);
-	ltr502_switch(alsps->alsps_switch);
+	if (alsps->alsps_switch & AMBIENT_ENABLE)
+		ltr502_switch(alsps->alsps_switch);
 	mutex_unlock(&alsps_dev->lock);
 }
 #endif
@@ -773,6 +804,70 @@ out:
 	return ret;
 }
 
+static ssize_t
+ltr502_reg_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	u8 reg;
+	struct alsps_device *alsps = dev_get_drvdata(dev);
+
+	alsps_read(alsps, alsps->dbg_addr, &reg);
+	return sprintf(buf, "%d\n", reg);
+}
+
+static ssize_t
+ltr502_reg_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t len)
+{
+	struct alsps_device *alsps = dev_get_drvdata(dev);
+	unsigned long value;
+
+	if (kstrtoul(buf, 0, &value))
+		return -EINVAL;
+	if (value > 0xff || value < 0)
+		return -EINVAL;
+
+	alsps_write(alsps, alsps->dbg_addr, (u8)value);
+	return len;
+}
+
+static DEVICE_ATTR(reg, S_IRUGO | S_IWUSR, ltr502_reg_show, ltr502_reg_store);
+
+static ssize_t
+ltr502_addr_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct alsps_device *alsps = dev_get_drvdata(dev);
+	return sprintf(buf, "%d\n", alsps->dbg_addr);
+}
+
+static ssize_t
+ltr502_addr_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t len)
+{
+	struct alsps_device *alsps = dev_get_drvdata(dev);
+	unsigned long value;
+
+	if (kstrtoul(buf, 0, &value))
+		return -EINVAL;
+	if (value > 0xff || value < 0)
+		return -EINVAL;
+
+	alsps->dbg_addr = (u8)value;
+	return len;
+}
+
+static DEVICE_ATTR(addr, S_IRUGO | S_IWUSR,
+		ltr502_addr_show, ltr502_addr_store);
+
+static struct attribute *attrs[] = {
+	&dev_attr_reg.attr,
+	&dev_attr_addr.attr,
+	NULL
+};
+
+static struct attribute_group ltr502_attr_group[] = {
+	{.attrs = attrs },
+};
+
 static int __init ltr502als_probe(struct i2c_client *client,
 		const struct i2c_device_id *id)
 {
@@ -816,6 +911,12 @@ static int __init ltr502als_probe(struct i2c_client *client,
 		goto fail_init;
 	}
 
+	ret = sysfs_create_group(&client->dev.kobj, ltr502_attr_group);
+	if (ret < 0) {
+		dev_err(&client->dev, "Sysfs registration failed\n");
+		goto fail_init;
+	}
+
 #ifdef CONFIG_HAS_EARLYSUSPEND
 	alsps->es.level = EARLY_SUSPEND_LEVEL_DISABLE_FB + 10;
 	alsps->es.suspend = alsps_early_suspend;
@@ -856,6 +957,7 @@ static int __exit ltr502als_remove(struct i2c_client *client)
 	free_irq(client->irq, alsps);
 	misc_deregister(&proximity_dev);
 	misc_deregister(&ambient_dev);
+	sysfs_remove_group(&client->dev.kobj, ltr502_attr_group);
 	unregister_early_suspend(&alsps->es);
 	kfree(alsps);
 	return 0;
