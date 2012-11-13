@@ -138,7 +138,7 @@ void log_write_to_pti(struct logger_log *log)
 				pti_reader->entry->entry.msg,
 				pti_reader->entry->entry.len);
 	} else {
-		reader->r_off = logger_offset(reader->r_off + count);
+		reader->r_off = logger_offset(log, reader->r_off + count);
 	}
 }
 

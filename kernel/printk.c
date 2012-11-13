@@ -558,23 +558,6 @@ void kdb_syslog_data(char *syslog_data[4])
 }
 #endif	/* CONFIG_KGDB_KDB */
 
-/*
- * Call the console drivers on a range of log_buf
- */
-static void __call_console_drivers(unsigned start, unsigned end)
-{
-	struct console *con;
-
-	for_each_console(con) {
-		if (exclusive_console && con != exclusive_console)
-			continue;
-		if ((con->flags & CON_ENABLED) && con->write &&
-				(cpu_online(smp_processor_id()) ||
-				(con->flags & CON_ANYTIME)))
-			con->write(con, &LOG_BUF(start), end - start);
-	}
-}
-
 static bool __read_mostly ignore_loglevel;
 
 static int __init ignore_loglevel_setup(char *str)
@@ -591,6 +574,25 @@ MODULE_PARM_DESC(ignore_loglevel, "ignore loglevel setting, to"
 	"print all kernel messages to the console.");
 
 /*
+ * Call the console drivers on a range of log_buf
+ */
+static void __call_console_drivers(unsigned start, unsigned end, int loglevel)
+{
+	struct console *con;
+
+	for_each_console(con) {
+		if (exclusive_console && con != exclusive_console)
+			continue;
+		if (((con->flags & CON_IGNORELEVEL) || ignore_loglevel ||
+			loglevel < console_loglevel) &&
+			(con->flags & CON_ENABLED) && con->write &&
+			(cpu_online(smp_processor_id()) ||
+			(con->flags & CON_ANYTIME)))
+				con->write(con, &LOG_BUF(start), end - start);
+	}
+}
+
+/*
  * Write out chars from start to end - 1 inclusive
  */
 static void _call_console_drivers(unsigned start,
@@ -598,15 +600,15 @@ static void _call_console_drivers(unsigned start,
 {
 	trace_console(&LOG_BUF(0), start, end, log_buf_len);
 
-	if ((msg_log_level < console_loglevel || ignore_loglevel) &&
-			console_drivers && start != end) {
+	if (console_drivers && start != end) {
 		if ((start & LOG_BUF_MASK) > (end & LOG_BUF_MASK)) {
 			/* wrapped write */
 			__call_console_drivers(start & LOG_BUF_MASK,
-						log_buf_len);
-			__call_console_drivers(0, end & LOG_BUF_MASK);
+						log_buf_len, msg_log_level);
+			__call_console_drivers(0, end & LOG_BUF_MASK,
+								msg_log_level);
 		} else {
-			__call_console_drivers(start, end);
+			__call_console_drivers(start, end, msg_log_level);
 		}
 	}
 }
