@@ -10,6 +10,8 @@ if POWER_SUPPLY
 
 config POWER_SUPPLY_CHARGER
 	bool "Power Supply Charger"
+	select EXTCON
+	select POWER_SUPPLY_BATTID
 	help
 	  Say Y here to enable the power supply charger framework. Charger
 	  framework supports charging in a generic way. This allows the charger
