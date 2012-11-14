@@ -46,6 +46,7 @@
 #include "device_libs/platform_mpu3050.h"
 #include "device_libs/platform_emc1403.h"
 #include "device_libs/platform_lis331.h"
+#include "device_libs/platform_pn544.h"
 #include "device_libs/platform_mpu3050.h"
 #include "device_libs/platform_tc35876x.h"
 #include "device_libs/platform_max17042.h"
@@ -82,6 +83,7 @@ struct devs_id __initconst device_ids[] = {
 					&ipc_device_handler},
 	{"max17042", SFI_DEV_TYPE_I2C, 1, &max17042_platform_data, NULL},
 	{"spi_max3111", SFI_DEV_TYPE_SPI, 0, &max3111_platform_data, NULL},
+	{"pn544", SFI_DEV_TYPE_I2C, 0, &pn544_platform_data, NULL},
 	{"i2c_max7315", SFI_DEV_TYPE_I2C, 1, &max7315_platform_data, NULL},
 	{"i2c_max7315_2", SFI_DEV_TYPE_I2C, 1, &max7315_platform_data, NULL},
 	{"tca6416", SFI_DEV_TYPE_I2C, 1, &tca6416_platform_data, NULL},

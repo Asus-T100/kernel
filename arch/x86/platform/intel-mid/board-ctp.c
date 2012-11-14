@@ -41,6 +41,7 @@
 #include "device_libs/platform_mxt224.h"
 #include "device_libs/platform_max17042.h"
 #include "device_libs/platform_s3202.h"
+#include "device_libs/platform_pn544.h"
 #include "device_libs/platform_bq24192.h"
 #include "device_libs/platform_camera.h"
 #include "device_libs/platform_mt9m114.h"
@@ -107,5 +108,7 @@ struct devs_id __initconst device_ids[] = {
 	{"mxt224", SFI_DEV_TYPE_I2C, 0, &mxt224_platform_data, NULL},
 	{"synaptics_3202", SFI_DEV_TYPE_I2C, 0, &s3202_platform_data},
 
+	/* NFC */
+	{"pn544", SFI_DEV_TYPE_I2C, 0, &pn544_platform_data, NULL},
 	{},
 };
