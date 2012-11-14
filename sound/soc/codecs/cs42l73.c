@@ -741,7 +741,8 @@ static const struct snd_soc_dapm_route cs42l73_audio_map[] = {
 	{"ESL DAC", "ESL-XSP Mono Volume", "ESL Mixer"},
 	{"ESL DAC", "ESL-VSP Mono Volume", "VSPIN"},
 	/* Loopback */
-	{"ESL DAC", "ESL-IP Mono Volume", "ESL Loopback"},
+	{"ESL DAC", "ESL-IP Mono Volume", "ESL Mixer"},
+	{"ESL Mixer", NULL, "ESL Loopback"},
 	{"ESL Loopback", "Enable", "Input Loopback Mixer"},
 
 	{"ESL Mixer", NULL, "ESL-ASP Mux"},
