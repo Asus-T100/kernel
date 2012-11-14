@@ -21,10 +21,18 @@
  *
  */
 
-#include "atomisp_ioctl.h"
+#include <linux/pm_runtime.h>
+
+#include <media/v4l2-ioctl.h>
+#include <media/videobuf-vmalloc.h>
+
 #include "atomisp_cmd.h"
-#include "atomisp_fops.h"
 #include "atomisp_common.h"
+#include "atomisp_fops.h"
+#include "atomisp_internal.h"
+#include "atomisp_ioctl.h"
+#include "atomisp_subdev.h"
+
 #include "hrt/hive_isp_css_mm_hrt.h"
 
 #include "sh_css_debug.h"

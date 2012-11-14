@@ -20,27 +20,20 @@
  * 02110-1301, USA.
  *
  */
-#ifndef ATOMISP_INTERNAL_H_
-#define ATOMISP_INTERNAL_H_
+#ifndef __ATOMISP_INTERNAL_H__
+#define __ATOMISP_INTERNAL_H__
 
 #ifdef CONFIG_BOARD_CTP
 #include <linux/intel_mid_pm.h>
 #endif
 
-#include <linux/atomisp.h>
 #include <linux/atomisp_platform.h>
 #include <linux/firmware.h>
 #include <linux/kernel.h>
 #include <linux/pm_qos_params.h>
 
 #include <media/media-device.h>
-#include <media/v4l2-common.h>
-#include <media/v4l2-dev.h>
-#include <media/v4l2-device.h>
-#include <media/v4l2-ioctl.h>
 #include <media/v4l2-subdev.h>
-#include <media/videobuf-core.h>
-#include <media/videobuf-vmalloc.h>
 
 #include <sh_css_types.h>
 
@@ -107,11 +100,6 @@
 #else
 #define ATOMISP_MAX_ISR_LATENCY	1000
 #endif
-
-int atomisp_video_init(struct atomisp_video_pipe *video, const char *name);
-void atomisp_video_unregister(struct atomisp_video_pipe *video);
-int atomisp_video_register(struct atomisp_video_pipe *video,
-	struct v4l2_device *vdev);
 
 struct atomisp_css_event {
 	enum sh_css_pipe_id pipe;
@@ -374,4 +362,4 @@ extern void atomisp_kernel_free(void *ptr);
 #define MFLD_FW_PATH	"shisp_css15.bin"
 #define MRFLD_FW_PATH   "shisp_2400.bin"
 
-#endif /* ATOMISP_INTERNAL_H_ */
+#endif /* __ATOMISP_INTERNAL_H__ */

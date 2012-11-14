@@ -21,15 +21,15 @@
  *
  */
 
+#include <media/v4l2-event.h>
+#include <media/v4l2-mediabus.h>
+
+#include <media/videobuf-vmalloc.h>
 
 #include <sh_css.h>
 
-#include <media/v4l2-event.h>
-#include <media/v4l2-mediabus.h>
 #include "atomisp_internal.h"
 #include "atomisp_common.h"
-#include "atomisp_subdev.h"
-#include "atomisp_cmd.h"
 #include "atomisp_file.h"
 
 static int file_input_s_stream(struct v4l2_subdev *sd, int enable)

@@ -24,13 +24,16 @@
 #ifndef	__ATOMISP_CMD_H__
 #define	__ATOMISP_CMD_H__
 
-
-#include <linux/interrupt.h>
-#include <linux/delay.h>
-#include "sh_css_types.h"
-#include "atomisp_internal.h"
-
 #include <linux/atomisp.h>
+#include <linux/interrupt.h>
+#include <linux/videodev2.h>
+
+#include <media/v4l2-subdev.h>
+
+#include "sh_css_types.h"
+
+struct atomisp_device;
+struct sh_css_frame;
 
 #define MSI_ENABLE_BIT		16
 #define INTR_DISABLE_BIT	10
@@ -299,4 +302,4 @@ void atomisp_free_3a_dis_buffers(struct atomisp_device *isp);
 
 int  atomisp_flash_enable(struct atomisp_device *isp, int num_frames);
 
-#endif
+#endif /* __ATOMISP_CMD_H__ */

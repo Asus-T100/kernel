@@ -24,18 +24,15 @@
  * including ioctls to map and unmap acceleration parameters and buffers.
  */
 
-#include <linux/errno.h>
-#include <linux/atomisp.h>
-#include <linux/gfp.h>
-#include <linux/slab.h>
-#include <linux/list.h>
-#include <asm/page.h>
+#include <linux/init.h>
 
+#include "atomisp_acc.h"
+#include "atomisp_internal.h"
+
+#include "hrt/hive_isp_css_mm_hrt.h"
+#include "memory_access/memory_access.h"
 #include "sh_css.h"
 #include "sh_css_accelerate.h"
-#include "memory_access/memory_access.h"
-#include "hrt/hive_isp_css_mm_hrt.h"
-#include "atomisp_acc.h"
 
 #define ATOMISP_TO_CSS_MEMORY(m)	((enum sh_css_isp_memories)(m))
 

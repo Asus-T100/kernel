@@ -21,13 +21,13 @@
  *
  */
 
-#ifndef __FILE_INPUT_H__
-#define __FILE_INPUT_H__
+#ifndef __ATOMISP_FILE_H__
+#define __ATOMISP_FILE_H__
 
-#include <linux/videodev2.h>
-#include <media/v4l2-device.h>
+#include <media/media-entity.h>
 #include <media/v4l2-subdev.h>
-#include <media/v4l2-ctrls.h>
+
+struct atomisp_device;
 
 struct atomisp_file_device {
 	struct v4l2_subdev sd;
@@ -41,4 +41,4 @@ void atomisp_file_input_unregister_entities(
 				struct atomisp_file_device *file_dev);
 int atomisp_file_input_register_entities(struct atomisp_file_device *file_dev,
 			struct v4l2_device *vdev);
-#endif
+#endif /* __ATOMISP_FILE_H__ */

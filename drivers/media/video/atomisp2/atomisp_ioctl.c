@@ -21,12 +21,18 @@
  *
  */
 
-#include "atomisp_ioctl.h"
-#include "atomisp_cmd.h"
-#include "atomisp_acc.h"
-#include "atomisp_fops.h"
-#include "atomisp-regs.h"
 #include <linux/delay.h>
+
+#include <media/v4l2-ioctl.h>
+#include <media/videobuf-vmalloc.h>
+
+#include "atomisp_acc.h"
+#include "atomisp_cmd.h"
+#include "atomisp_common.h"
+#include "atomisp_fops.h"
+#include "atomisp_internal.h"
+#include "atomisp_ioctl.h"
+#include "atomisp-regs.h"
 
 #include "sh_css_hrt.h"
 #include "sh_css.h"

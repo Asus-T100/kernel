@@ -18,12 +18,14 @@
  * 02110-1301, USA.
  *
  */
-#ifndef ATOMISP_SUBDEV_H_
-#define ATOMISP_SUBDEV_H_
+#ifndef __ATOMISP_SUBDEV_H__
+#define __ATOMISP_SUBDEV_H__
 
-#include <linux/i2c.h>
 #include <media/v4l2-device.h>
 #include <media/v4l2-subdev.h>
+#include <media/videobuf-core.h>
+
+#include "atomisp_v4l2.h"
 #include "sh_css.h"
 
 enum atomisp_subdev_input_entity {
@@ -115,4 +117,4 @@ int atomisp_subdev_register_entities(struct atomisp_sub_device *isp_subdev,
 int atomisp_subdev_init(struct atomisp_device *isp);
 void atomisp_subdev_cleanup(struct atomisp_device *isp);
 
-#endif
+#endif /* __ATOMISP_SUBDEV_H__ */

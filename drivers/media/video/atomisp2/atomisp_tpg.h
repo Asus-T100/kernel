@@ -21,13 +21,11 @@
  *
  */
 
-#ifndef __TPG_H__
-#define __TPG_H__
+#ifndef __ATOMISP_TPG_H__
+#define __ATOMISP_TPG_H__
 
-#include <linux/videodev2.h>
-#include <media/v4l2-device.h>
+#include <media/media-entity.h>
 #include <media/v4l2-subdev.h>
-#include <media/v4l2-ctrls.h>
 
 struct atomisp_tpg_device {
 	struct v4l2_subdev sd;
@@ -41,4 +39,4 @@ void atomisp_tpg_unregister_entities(struct atomisp_tpg_device *tpg);
 int atomisp_tpg_register_entities(struct atomisp_tpg_device *tpg,
 			struct v4l2_device *vdev);
 
-#endif
+#endif /* __ATOMISP_TPG_H__ */

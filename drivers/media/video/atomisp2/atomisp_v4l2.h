@@ -21,39 +21,15 @@
  *
  */
 
-#ifndef ATOMISP_V4L2_H_
-#define ATOMISP_V4L2_H_
+#ifndef __ATOMISP_V4L2_H__
+#define __ATOMISP_V4L2_H__
 
-#include <linux/videodev2.h>
+struct atomisp_video_pipe;
+struct v4l2_device;
 
-/* SH header files */
+int atomisp_video_init(struct atomisp_video_pipe *video, const char *name);
+void atomisp_video_unregister(struct atomisp_video_pipe *video);
+int atomisp_video_register(struct atomisp_video_pipe *video,
+	struct v4l2_device *vdev);
 
-#include <sh_css_types.h>
-
-#define ATOMISP_MAJOR		0
-#define ATOMISP_MINOR		5
-#define ATOMISP_PATCHLEVEL	1
-
-#define DRIVER_VERSION_STR	__stringify(ATOMISP_MAJOR) \
-	"." __stringify(ATOMISP_MINOR) "." __stringify(ATOMISP_PATCHLEVEL)
-#define DRIVER_VERSION		KERNEL_VERSION(ATOMISP_MAJOR, \
-	ATOMISP_MINOR, ATOMISP_PATCHLEVEL)
-
-/*ISP binary running mode*/
-#define CI_MODE_PREVIEW		0x8000
-#define CI_MODE_VIDEO		0x4000
-#define CI_MODE_STILL_CAPTURE	0x2000
-#define CI_MODE_NONE		0x0000
-
-#define ATOM_ISP_STEP_WIDTH	2
-#define ATOM_ISP_STEP_HEIGHT	2
-
-#define ATOM_ISP_MIN_WIDTH	256
-#define ATOM_ISP_MIN_HEIGHT	2
-#define ATOM_ISP_MAX_WIDTH	4352
-#define ATOM_ISP_MAX_HEIGHT	3264
-
-#define ATOM_ISP_MAX_WIDTH_TMP	1280
-#define ATOM_ISP_MAX_HEIGHT_TMP	720
-
-#endif /* ATOMISP_V4L2_H_ */
+#endif /* __ATOMISP_V4L2_H__ */

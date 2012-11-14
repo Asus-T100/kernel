@@ -19,9 +19,12 @@
  *
  */
 
+#ifndef __ATOMISP_ACC_H__
+#define __ATOMISP_ACC_H__
+
 #include <linux/atomisp.h>
-#include "sh_css_types.h"
-#include "atomisp_internal.h"
+
+struct atomisp_device;
 
 int atomisp_acc_load(struct atomisp_device *isp,
 		     struct atomisp_acc_fw_load *fw);
@@ -45,3 +48,5 @@ int atomisp_acc_unmap(struct atomisp_device *isp,
 
 int atomisp_acc_s_mapped_arg(struct atomisp_device *isp,
 			     struct atomisp_acc_s_mapped_arg *arg);
+
+#endif /* __ATOMISP_ACC_H__ */

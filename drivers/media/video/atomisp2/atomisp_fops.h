@@ -21,10 +21,8 @@
  *
  */
 
-#ifndef	__ATOMISP_FCTRL_H__
-#define	__ATOMISP_FCTRL_H__
-
-#include "atomisp_common.h"
+#ifndef	__ATOMISP_FOPS_H__
+#define	__ATOMISP_FOPS_H__
 
 int atomisp_q_video_buffers_to_css(struct atomisp_device *isp,
 			     struct atomisp_video_pipe *pipe,
@@ -70,6 +68,6 @@ int atomisp_qbuf_to_css(struct atomisp_device *isp,
 
 int atomisp_qbuffers_to_css(struct atomisp_device *isp);
 
-extern struct v4l2_device atomisp_dev;
+extern const struct v4l2_file_operations atomisp_fops;
 
-#endif
+#endif /* __ATOMISP_FOPS_H__ */

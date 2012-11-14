@@ -20,12 +20,18 @@
  * 02110-1301, USA.
  *
  */
+#include <linux/pci.h>
+#include <linux/pm_runtime.h>
 #include <linux/pm_qos_params.h>
-#include <linux/async.h>
-#include "atomisp_ioctl.h"
+#include <linux/timer.h>
+#include <linux/interrupt.h>
+
 #include "atomisp_cmd.h"
+#include "atomisp_common.h"
 #include "atomisp_fops.h"
 #include "atomisp_file.h"
+#include "atomisp_ioctl.h"
+#include "atomisp_internal.h"
 #include "atomisp-regs.h"
 
 #include "device_access.h"

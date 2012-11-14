@@ -20,11 +20,27 @@
  * 02110-1301, USA.
  *
  */
-#include "atomisp_tables.h"
-#include "atomisp_ioctl.h"
+#include <linux/firmware.h>
+#include <linux/intel_mid_pm.h>
+#include <linux/interrupt.h>
+#include <linux/kernel.h>
+#include <linux/kfifo.h>
+#include <linux/pm_runtime.h>
+#include <linux/timer.h>
+
+#include <asm/intel-mid.h>
+
+#include <media/v4l2-event.h>
+#include <media/videobuf-vmalloc.h>
+
 #include "atomisp_cmd.h"
+#include "atomisp_common.h"
 #include "atomisp_fops.h"
+#include "atomisp_internal.h"
+#include "atomisp_ioctl.h"
 #include "atomisp-regs.h"
+#include "atomisp_tables.h"
+
 #include "hrt/hive_isp_css_mm_hrt.h"
 
 #include "sh_css_debug.h"
@@ -41,11 +57,6 @@
 #include "irq.h"
 
 #include "hrt/bits.h"
-#include "linux/intel_mid_pm.h"
-#include <linux/kernel.h>
-#include <media/v4l2-event.h>
-#include <asm/intel-mid.h>
-#include <linux/kfifo.h>
 
 #define ATOMISP_DEFAULT_DTRACE_LEVEL 5
 /* We should never need to run the flash for more than 2 frames.
