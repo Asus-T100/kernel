@@ -143,8 +143,7 @@ static inline int get_ps_int_property(struct power_supply *psy,
 		(((psy->throttle_states)+state)->throttle_action)
 
 #define MAX_THROTTLE_STATE(psy)\
-		(get_ps_int_property(psy,\
-			POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT_MAX))
+		((psy->num_throttle_states))
 
 #define CURRENT_THROTTLE_STATE(psy)\
 		(get_ps_int_property(psy,\

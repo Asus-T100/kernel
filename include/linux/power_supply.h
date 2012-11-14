@@ -216,6 +216,7 @@ struct power_supply {
 	unsigned long supported_cables;
 	size_t num_supplicants;
 	struct power_supply_throttle *throttle_states;
+	size_t num_throttle_states;
 
 	int (*get_property)(struct power_supply *psy,
 			    enum power_supply_property psp,
