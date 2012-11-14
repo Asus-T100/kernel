@@ -1,0 +1,5 @@
+config BCM_BT_LPM
+	tristate "Broadcom Bluetooth Low Power Mode"
+	default n
+	help
+	   Select this module for Broadcom Bluetooth low power management.
