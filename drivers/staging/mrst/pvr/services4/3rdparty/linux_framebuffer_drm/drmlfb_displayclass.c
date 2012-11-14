@@ -1686,11 +1686,14 @@ static IMG_BOOL ProcessFlip2(IMG_HANDLE hCmdCookie,
 		}
 		if (!retry) {
 			DRM_ERROR("FIFO never emptied\n");
+			MRSTFBFlipComplete(psSwapChain, NULL, MRST_FALSE);
+			psSwapChain->psPVRJTable->pfnPVRSRVCmdComplete(hCmdCookie,
+					IMG_TRUE);
 			if (contextlocked) {
 				mdfld_dsi_dsr_allow_locked(dsi_config);
 				mutex_unlock(&dsi_config->context_lock);
 			}
-			return IMG_FALSE;
+			return IMG_TRUE;
 		}
 	}
 
@@ -1877,11 +1880,14 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 		}
 		if (!retry) {
 			DRM_ERROR("FIFO never emptied\n");
+			MRSTFBFlipComplete(psSwapChain, NULL, MRST_FALSE);
+			psSwapChain->psPVRJTable->pfnPVRSRVCmdComplete(hCmdCookie,
+					IMG_TRUE);
 			if (contextlocked) {
 				mdfld_dsi_dsr_allow_locked(dsi_config);
 				mutex_unlock(&dsi_config->context_lock);
 			}
-			return IMG_FALSE;
+			return IMG_TRUE;
 		}
 	}
 
