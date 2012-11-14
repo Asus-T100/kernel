@@ -12,6 +12,6 @@
 
 
 /* __attribute__((weak)) makes these declarations overridable */
-extern struct devs_id __initconst device_ids[] __attribute__((weak));
+extern struct devs_id *get_device_ptr(void) __attribute__((weak));
 extern void intel_mid_power_off(void) __attribute__((weak));
 extern unsigned long __init intel_mid_calibrate_tsc(void) __attribute__((weak));

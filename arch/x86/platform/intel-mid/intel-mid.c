@@ -975,9 +975,10 @@ static void __init sfi_handle_sd_dev(struct sfi_device_table_entry *pentry,
 
 struct devs_id *get_device_id(u8 type, char *name)
 {
-	const struct devs_id *dev = device_ids;
+	const struct devs_id *dev =
+			(get_device_ptr ? get_device_ptr() : NULL);
 
-	if (device_ids == NULL)
+	if (dev == NULL)
 		return NULL;
 
 	while (dev->name[0]) {
@@ -1217,33 +1218,9 @@ static struct attribute_group spid_attr_group = {
 	.attrs = spid_attrs,
 };
 
-static struct kobject *board_properties;
-
-static int __init intel_mid_board_properties(void)
-{
-	int ret = 0;
-
-	board_properties = kobject_create_and_add("board_properties", NULL);
-	if (!board_properties) {
-		pr_err("failed to create /sys/board_properties\n");
-		ret = -EINVAL;
-	}
-
-	return ret;
-}
-
-int intel_mid_create_property(const struct attribute *attr)
-{
-	if (!board_properties)
-		return -EINVAL;
-
-	return sysfs_create_file(board_properties, attr);
-}
 
 static int __init intel_mid_platform_init(void)
 {
-	intel_mid_board_properties();
-
 	/* create sysfs entries for soft platform id */
 	spid_kobj = kobject_create_and_add("spid", NULL);
 	if (!spid_kobj)

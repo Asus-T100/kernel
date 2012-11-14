@@ -30,10 +30,4 @@ obj-$(CONFIG_INTEL_ATOM_CLV_POWER)	+= intel_soc_clv.o intel_soc_mdfld_clv_common
 obj-$(CONFIG_INTEL_ATOM_MRFLD_POWER)	+= intel_soc_mrfld.o
 
 # BOARD files
-obj-$(CONFIG_BOARD_MFLD_BLACKBAY)	+= board-blackbay.o
-obj-$(CONFIG_BOARD_REDRIDGE)		+= board-redridge.o
-obj-$(CONFIG_BOARD_CTP)			+= board-ctp.o
-obj-$(CONFIG_BOARD_MRFLD_VP)		+= board-vp.o
-obj-$(CONFIG_BOARD_MRFLD_HVP)		+= board-hvp.o
-obj-$(CONFIG_BOARD_MRFLD_SLE)           += board-sle.o
-obj-$(CONFIG_BOARD_MRFLD_VV)		+= board-merr_vv.o
+obj-$(CONFIG_X86_INTEL_MID)		+= board.o

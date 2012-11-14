@@ -457,7 +457,7 @@ static int cloverview_sph_gpio_init(void)
 	int		retval = 0;
 	u32		board_id;
 
-	board_id = ctp_board_id();
+	board_id = get_board_id();
 
 	/* Bypass CTP_VV series for VV use different PHY(SMSC USB3340)
 	 * Do CS and reset operation for TI TUSB1212 PHY used by other boards
@@ -511,7 +511,7 @@ static int cloverview_sph_gpio_reset(void)
 	int		retval = 0;
 	u32		board_id;
 
-	board_id = ctp_board_id();
+	board_id = get_board_id();
 
 	/* Bypass CTP_VV series for VV use different PHY(SMSC USB3340)
 	 * Do CS and reset operation for TI TUSB1212 PHY used by other boards
@@ -562,7 +562,7 @@ static void cloverview_sph_gpio_cleanup(void)
 {
 	u32		board_id;
 
-	board_id = ctp_board_id();
+	board_id = get_board_id();
 
 	if (board_id != CTP_BID_VV) {
 		if (gpio_is_valid(SPH_CS_N))

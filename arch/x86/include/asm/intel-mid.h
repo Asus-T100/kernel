@@ -192,7 +192,7 @@ enum {
 	CTP_BID_VV	= 0x08,
 	CTP_BID_PR0	= 0x04
 };
-extern u32 ctp_board_id(void);
+extern u32 get_board_id(void);
 
 #define spid_attr(_name) \
 static struct kobj_attribute _name##_attr = {	\
