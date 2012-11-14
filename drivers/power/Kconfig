@@ -338,4 +338,13 @@ config MRFL_CHARGER_SIM_DRIVER
 	  charging/discharging scenarios and events and allows
 	  for testing of the charger operations
 
+config BQ24261_CHARGER
+	tristate "BQ24261 charger driver"
+	select POWER_SUPPLY_CHARGER
+	depends on I2C
+	help
+	  Say Y to include support for BQ24261 Charger driver. This driver
+	  makes use of power supply charging framework. So the driver gives
+	  the charger hardware abstraction only. Charging logic is abstracted
+	  in the charging framework.
 endif # POWER_SUPPLY
