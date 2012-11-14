@@ -44,6 +44,7 @@ obj-$(CONFIG_CHARGER_GPIO)	+= gpio-charger.o
 obj-$(CONFIG_CHARGER_SMB347)	+= smb347-charger.o
 obj-$(CONFIG_CHARGER_BQ24192)	+= bq24192_charger.o
 obj-$(CONFIG_BQ24261_CHARGER)	+= bq24261_charger.o
+obj-$(CONFIG_PMIC_CCSM)	+= pmic_ccsm.o
 obj-$(CONFIG_MRFL_CHARGER_SIM_DRIVER)   += sim_driver.o
 obj-$(CONFIG_INTEL_MID_BASIN_COVE_CHARGER)	+= basin_cove_charger.o
 obj-$(CONFIG_CHARGER_HELPER)	+= charger_helper.o
