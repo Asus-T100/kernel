@@ -22,7 +22,6 @@
  *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
  */
-#define DEBUG
 #include <linux/platform_device.h>
 #include <net/bluetooth/bluetooth.h>
 #include <net/bluetooth/hci_core.h>
@@ -104,7 +103,6 @@ static long st_receive(void *priv_data, struct sk_buff *skb)
 		return -EFAULT;
 
 	if (!lhst) {
-		kfree_skb(skb);
 		return -EFAULT;
 	}
 
@@ -114,7 +112,10 @@ static long st_receive(void *priv_data, struct sk_buff *skb)
 	err = hci_recv_frame(skb);
 	if (err < 0) {
 		BT_ERR("Unable to push skb to HCI core(%d)", err);
-		return err;
+		/* Here we can not return err to st_send_frame
+		 * otherwise, double freeing skb will happen!
+		 */
+		return 0;
 	}
 
 	lhst->hdev->stat.byte_rx += skb->len;
