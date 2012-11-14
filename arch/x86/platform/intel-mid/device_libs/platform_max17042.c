@@ -220,11 +220,11 @@ void *max17042_platform_data(void *info)
 #endif
 
 #ifdef CONFIG_X86_MRFLD
-	platform_data.enable_current_sense = true;
 	platform_data.technology = POWER_SUPPLY_TECHNOLOGY_LION;
 	platform_data.battery_health = bc_check_battery_health;
 	platform_data.battery_status = bc_check_battery_status;
 	platform_data.battery_pack_temp = bc_get_battery_pack_temp;
+	platform_data.file_sys_storage_enabled = 1;
 #endif
 	return &platform_data;
 }
