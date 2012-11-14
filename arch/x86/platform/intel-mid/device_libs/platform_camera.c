@@ -20,6 +20,20 @@
 #include "platform_camera.h"
 
 /*
+ * TODO: Check whether we can move this info to OEM table or
+ *       set this info in the platform data of each sensor
+ */
+const struct intel_v4l2_subdev_id v4l2_ids[] = {
+	{"mt9e013", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
+	{"ov8830", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
+	{"mt9d113", SOC_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
+	{"mt9m114", SOC_CAMERA, ATOMISP_CAMERA_PORT_SECONDARY},
+	{"mt9v113", SOC_CAMERA, ATOMISP_CAMERA_PORT_SECONDARY},
+	{"lm3554", LED_FLASH, -1},
+	{},
+};
+
+/*
  * One-time gpio initialization.
  * @name: gpio name: coded in SFI table
  * @gpio: gpio pin number (bypass @name)

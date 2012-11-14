@@ -10,7 +10,7 @@ obj-y += device_libs/
 obj-$(CONFIG_X86_INTEL_MID) += intel_mid_vrtc.o
 obj-$(CONFIG_EARLY_PRINTK_INTEL_MID) += early_printk_intel_mid.o
 obj-$(CONFIG_X86_INTEL_MID) += intel-mid.o
-obj-$(CONFIG_X86_INTEL_MID)	+= intel_mid_scu.o
+obj-$(CONFIG_X86_INTEL_MID) += intel_mid_scu.o
 # MFLD specific files
 obj-$(CONFIG_X86_MDFLD) += mfld.o
 # PMU driver
@@ -18,5 +18,4 @@ obj-$(CONFIG_ATOM_SOC_POWER) += intel_soc_pm_debug.o intel_soc_pmu.o
 obj-$(CONFIG_INTEL_ATOM_MDFLD_POWER) += intel_soc_mdfld.o
 obj-$(CONFIG_INTEL_ATOM_CLV_POWER) += intel_soc_clv.o
 # BOARD files
-obj-$(CONFIG_BOARD_MFLD_BLACKBAY) += board-blackbay.o
-obj-$(CONFIG_BOARD_CTP) += board-ctp.o
+obj-$(CONFIG_X86_INTEL_MID) += board.o

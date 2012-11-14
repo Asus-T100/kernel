@@ -692,9 +692,10 @@ static void sfi_handle_hsi_dev(struct sfi_device_table_entry *pentry,
 
 struct devs_id *get_device_id(u8 type, char *name)
 {
-	struct devs_id *dev = device_ids;
+	const struct devs_id *dev =
+			(get_device_ptr ? get_device_ptr() : NULL);
 
-	if (device_ids == NULL)
+	if (dev == NULL)
 		return NULL;
 
 	while (dev->name[0]) {
