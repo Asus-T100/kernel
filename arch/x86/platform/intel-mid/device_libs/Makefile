@@ -73,6 +73,7 @@ obj-$(subst m,y,$(CONFIG_SERIAL_MRST_MAX3110))				+= platform_max3111.o
 obj-$(subst m,y,$(CONFIG_HSI_ARASAN))					+= platform_hsi_modem.o
 # Bluetooth
 obj-$(subst m,y,$(CONFIG_TI_ST))					+= platform_btwilink.o
+obj-$(subst m,y,$(CONFIG_BCM_BT_LPM))					+= platform_btlpm.o
 # MMC Sdhci pci host controller platform data
 obj-$(subst m,y,$(CONFIG_MMC_SDHCI_PCI))				+= platform_mmc_sdhci_pci.o
 # WIFI
