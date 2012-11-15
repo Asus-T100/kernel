@@ -30,6 +30,7 @@ obj-$(subst m,y,$(CONFIG_INPUT_LTR301ALS))				+= platform_ltr301als.o
 obj-$(subst m,y,$(CONFIG_SENSORS_L3G4200D_POLL))			+= platform_l3g4200d.o
 obj-$(subst m,y,$(CONFIG_SENSORS_LSM303_MAG))				+= platform_lsm303.o
 obj-$(subst m,y,$(CONFIG_SENSORS_APDS990X))				+= platform_apds990x.o
+obj-$(subst m,y,$(CONFIG_SENSORS_APDS9300))				+= platform_apds9300.o
 obj-$(subst m,y,$(CONFIG_TOUCHSCREEN_MAX11871))				+= platform_max11871.o
 ifdef CONFIG_BATTERY_MAX17042
 obj-$(subst m,y,$(CONFIG_BATTERY_MAX17042))				+= platform_max17042.o

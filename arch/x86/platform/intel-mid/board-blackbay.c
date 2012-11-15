@@ -68,6 +68,7 @@
 #include "device_libs/platform_hmc5883.h"
 #include "device_libs/platform_max11871.h"
 #include "device_libs/platform_apds990x.h"
+#include "device_libs/platform_apds9300.h"
 #include "device_libs/platform_lm3554.h"
 #include "device_libs/platform_ft5406.h"
 
@@ -164,6 +165,7 @@ struct devs_id __initconst device_ids[] = {
 	{"als", SFI_DEV_TYPE_I2C, 0, &ltr502als_platform_data, NULL},
 	{"cs42l73", SFI_DEV_TYPE_I2C, 1, &no_platform_data, NULL},
 	{"apds990x", SFI_DEV_TYPE_I2C, 0, &apds990x_platform_data},
+	{"apds9300", SFI_DEV_TYPE_I2C, 0, &apds9300_platform_data},
 	{"lsm303dl", SFI_DEV_TYPE_I2C, 0, &lsm303dlhc_accel_platform_data},
 	{"lsm303cmp", SFI_DEV_TYPE_I2C, 0, &no_platform_data, NULL},
 	{},

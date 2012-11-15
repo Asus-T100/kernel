@@ -388,6 +388,17 @@ config SENSORS_APDS990X
 	   To compile this driver as a module, choose M here: the
 	   module will be called apds990x. If unsure, say N here.
 
+config SENSORS_APDS9300
+	 tristate "APDS9300 als sensors"
+	 depends on I2C
+	 default n
+	 ---help---
+	   Say Y here if you want to build a driver for Avago apds9300
+	   ambient light sensor chip.
+
+	   To compile this driver as a module, choose M here: the
+	   module will be called apds9300. If unsure, say N here.
+
 config HMC6352
 	tristate "Honeywell HMC6352 compass"
 	depends on I2C
