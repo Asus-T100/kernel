@@ -2536,9 +2536,24 @@ int atomisp_color_effect(struct atomisp_device *isp, int flag, __s32 *effect)
 	const struct sh_css_cc_config *cc_config;
 	const struct sh_css_macc_table *macc_table;
 	const struct sh_css_ctc_table *ctc_table;
+	int ret = 0;
+	struct v4l2_control control;
 
 	if (flag == 0) {
 		*effect = isp->params.color_effect;
+		return 0;
+	}
+
+	control.id = V4L2_CID_COLORFX;
+	control.value = *effect;
+	ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
+				core, s_ctrl, &control);
+	/*
+	 * if set color effect to sensor successfully, return
+	 * 0 directly.
+	 */
+	if (!ret) {
+		isp->params.color_effect = (u32)*effect;
 		return 0;
 	}
 
