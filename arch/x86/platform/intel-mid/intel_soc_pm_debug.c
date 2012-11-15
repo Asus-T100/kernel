@@ -934,6 +934,10 @@ static void pmu_stats_logger(bool logging_type, struct seq_file *s)
 	if (!logging_type)
 		DEBUG_PRINT(logging_type, s, STATS,
 				"\n----MID_PMU_STATS_LOG_END----\n");
+	DEBUG_PRINT(logging_type, s, STATS, "\n----WAKE_LOCK_INFO_START----\n");
+	if (!has_wake_lock(WAKE_LOCK_SUSPEND))
+		DEBUG_PRINT(logging_type, s, STATS, "No WAKE LOCK held");
+	DEBUG_PRINT(logging_type, s, STATS, "\n----WAKE_LOCK_INFO_END----\n");
 }
 
 static void pmu_log_stat(struct work_struct *work)
