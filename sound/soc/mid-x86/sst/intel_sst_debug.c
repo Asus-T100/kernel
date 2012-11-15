@@ -60,33 +60,44 @@ static ssize_t sst_debug_shim_read(struct file *file, char __user *user_buf,
 {
 	struct intel_sst_drv *drv = file->private_data;
 	unsigned long long val = 0;
-	char buf[256];
+	unsigned int addr;
+	char buf[512];
+	char name[8];
 	int pos = 0;
 
+	buf[0] = 0;
 	if (drv->sst_state == SST_SUSPENDED) {
 		pr_err("FW suspended, cannot read SHIM registers\n");
 		return -EFAULT;
 	}
-	if (drv->pci_id == SST_MFLD_PCI_ID
-			|| drv->pci_id == SST_CLV_PCI_ID) {
-		val = sst_shim_read(drv->shim, SST_CSR);
-		pos += sprintf(buf + pos, "CSR:  0x%llx\n", val);
-		val = sst_shim_read(drv->shim, SST_PISR);
-		pos += sprintf(buf + pos, "PISR: 0x%llx\n", val);
-		val = sst_shim_read(drv->shim, SST_PIMR);
-		pos += sprintf(buf + pos, "PIMR: 0x%llx\n", val);
-		val = sst_shim_read(drv->shim, SST_ISRX);
-		pos += sprintf(buf + pos, "ISRX: 0x%llx\n", val);
-		val = sst_shim_read(drv->shim, SST_IMRX);
-		pos += sprintf(buf + pos, "IMRX: 0x%llx\n", val);
-		val = sst_shim_read(drv->shim, SST_IPCX);
-		pos += sprintf(buf + pos, "IPCX: 0x%llx\n", val);
-		val = sst_shim_read(drv->shim, SST_IPCD);
-		pos += sprintf(buf + pos, "IPCD: 0x%llx\n", val);
-		val = sst_shim_read(drv->shim, SST_ISRD);
-		pos += sprintf(buf + pos, "ISRD: 0x%llx\n", val);
-		val = sst_shim_read(drv->shim, SST_CSR2);
-		pos += sprintf(buf + pos, "CSR2: 0x%llx\n", val);
+
+	for (addr = SST_SHIM_BEGIN; addr <= SST_SHIM_END; addr += 8) {
+		switch (drv->pci_id) {
+		case SST_MFLD_PCI_ID:
+		case SST_CLV_PCI_ID:
+			val = sst_shim_read(drv->shim, addr);
+			break;
+		case SST_MRFLD_PCI_ID:
+			val = sst_shim_read64(drv->shim, addr);
+			break;
+		}
+
+		name[0] = 0;
+		switch (addr) {
+		case SST_ISRX:
+			strcpy(name, "ISRX"); break;
+		case SST_ISRD:
+			strcpy(name, "ISRD"); break;
+		case SST_IPCX:
+			strcpy(name, "IPCX"); break;
+		case SST_IPCD:
+			strcpy(name, "IPCD"); break;
+		case SST_IMRX:
+			strcpy(name, "IMRX"); break;
+		case SST_IMRD:
+			strcpy(name, "IMRD"); break;
+		}
+		pos += sprintf(buf + pos, "0x%.2x: %.8llx  %s\n", addr, val, name);
 	}
 
 	return simple_read_from_buffer(user_buf, count, ppos,
@@ -98,12 +109,11 @@ static ssize_t sst_debug_shim_write(struct file *file,
 {
 	struct intel_sst_drv *drv = file->private_data;
 	char buf[32];
-	char regname[32];
 	char *start = buf, *end;
-	unsigned long value;
-	unsigned long long reg;
-	size_t buf_size = min(count, sizeof(buf)-1);
+	unsigned long long value;
+	unsigned long reg_addr;
 	int ret_val;
+	size_t buf_size = min(count, sizeof(buf)-1);
 
 	if (copy_from_user(buf, user_buf, buf_size))
 		return -EFAULT;
@@ -113,50 +123,40 @@ static ssize_t sst_debug_shim_write(struct file *file,
 		pr_err("FW suspended, cannot write SHIM registers\n");
 		return -EFAULT;
 	}
-	if (drv->pci_id == SST_MFLD_PCI_ID
-			|| drv->pci_id == SST_CLV_PCI_ID) {
-		while (*start == ' ')
-			start++;
-		end = start;
-		while (isalnum(*end))
-			end++;
-		strncpy(regname, start, end - start);
-		regname[end - start] = 0;
 
-		start = end;
-		while (*start == ' ')
-			start++;
+	while (*start == ' ')
+		start++;
+	end = start;
+	while (isalnum(*end))
+		end++;
+	*end = 0;
 
-		ret_val = kstrtoul(start, 16, &value);
-		if (ret_val) {
-			pr_err("kstrtoul failed, ret_val = %d\n", ret_val);
-			return ret_val;
-		}
-
-		if (!strncmp(regname, "CSR", 4))
-			reg = SST_CSR;
-		else if (!strncmp(regname, "PISR", 4))
-			reg = SST_PISR;
-		else if (!strncmp(regname, "PIMR", 4))
-			reg = SST_PIMR;
-		else if (!strncmp(regname, "ISRX", 4))
-			reg = SST_ISRX;
-		else if (!strncmp(regname, "IMRX", 4))
-			reg = SST_IMRX;
-		else if (!strncmp(regname, "IPCX", 4))
-			reg = SST_IPCX;
-		else if (!strncmp(regname, "IPCD", 4))
-			reg = SST_IPCD;
-		else if (!strncmp(regname, "ISRD", 4))
-			reg = SST_ISRD;
-		else if (!strncmp(regname, "CSR2", 4))
-			reg = SST_CSR2;
-		else
-			return -EINVAL;
-
-		pr_debug("writing shim: %s(0x%llx)=0x%lx", regname, reg, value);
-		sst_shim_write(drv->shim, reg, (u32) value);
+	ret_val = kstrtoul(start, 16, &reg_addr);
+	if (ret_val) {
+		pr_err("kstrtoul failed, ret_val = %d\n", ret_val);
+		return ret_val;
 	}
+	if (!(SST_SHIM_BEGIN < reg_addr && reg_addr < SST_SHIM_END)) {
+		pr_err("invalid shim address: 0x%lx\n", reg_addr);
+		return -EINVAL;
+	}
+
+	start = end + 1;
+	while (*start == ' ')
+		start++;
+
+	ret_val = kstrtoull(start, 16, &value);
+	if (ret_val) {
+		pr_err("kstrtoul failed, ret_val = %d\n", ret_val);
+		return ret_val;
+	}
+
+	pr_debug("writing shim: 0x%.2lx=0x%.8lx", reg_addr, value);
+
+	if (drv->pci_id == SST_MFLD_PCI_ID || drv->pci_id == SST_CLV_PCI_ID)
+		sst_shim_write(drv->shim, reg_addr, (u32) value);
+	else if (drv->pci_id == SST_MRFLD_PCI_ID)
+		sst_shim_write64(drv->shim, reg_addr, (u64) value);
 
 	/* Userspace has been fiddling around behind the kernel's back */
 	add_taint(TAINT_USER);
