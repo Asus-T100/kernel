@@ -81,6 +81,8 @@
 #define SOC_WARNING_LEVEL2	4
 #define SOC_SHUTDOWN_LEVEL	1
 
+#define CONFIG_BER_BIT_ENBL	(1 << 0)
+#define CONFIG_BEI_BIT_ENBL	(1 << 1)
 #define CONFIG_ALRT_BIT_ENBL	(1 << 2)
 #define CONFIG_TSTICKY_BIT_SET	(1 << 13)
 #define CONFIG_ALP_BIT_ENBL	(1 << 11)
@@ -593,7 +595,8 @@ static irqreturn_t max17042_thread_handler(int id, void *dev)
 		/* clear BR bit */
 		max17042_reg_read_modify(chip->client, MAX17042_STATUS,
 						STATUS_BR_BIT, 0);
-		if (stat & STATUS_BST_BIT) {
+		if ((fg_conf_data->cfg & CONFIG_BER_BIT_ENBL) &&
+				(stat & STATUS_BST_BIT)) {
 			dev_warn(&chip->client->dev, "battery unplugged\n");
 			mutex_lock(&chip->batt_lock);
 			chip->present = 0;
@@ -1674,15 +1677,7 @@ static bool is_battery_online(struct max17042_chip *chip)
 
 static void init_battery_props(struct max17042_chip *chip)
 {
-	if (is_battery_online(chip)) {
-		dev_dbg(&chip->client->dev, "battery present\n");
-		chip->present = 1;
-	} else {
-		dev_warn(&chip->client->dev, "battery NOT present\n");
-		chip->present = 0;
-		kernel_power_off();
-	}
-
+	chip->present = 1;
 	chip->status = POWER_SUPPLY_STATUS_UNKNOWN;
 	chip->health = POWER_SUPPLY_HEALTH_UNKNOWN;
 	chip->technology = chip->pdata->technology;
@@ -1873,6 +1868,13 @@ static void configure_interrupts(struct max17042_chip *chip)
 	max17042_write_reg(chip->client, MAX17042_TALRT_Th,
 					TEMP_DEF_MAX_MIN_THRLD);
 
+	/* clear BI bit */
+	max17042_reg_read_modify(chip->client, MAX17042_STATUS,
+						STATUS_BI_BIT, 0);
+	/* clear BR bit */
+	max17042_reg_read_modify(chip->client, MAX17042_STATUS,
+						STATUS_BR_BIT, 0);
+
 	/* get interrupt edge type from ALP pin */
 	if (fg_conf_data->cfg & CONFIG_ALP_BIT_ENBL)
 		edge_type = IRQF_TRIGGER_RISING;
@@ -1907,7 +1909,8 @@ static void configure_interrupts(struct max17042_chip *chip)
 	 * removal event and power off if battery
 	 * is removed/unplugged.
 	 */
-	if (!is_battery_online(chip)) {
+	if ((fg_conf_data->cfg & CONFIG_BER_BIT_ENBL) &&
+		!is_battery_online(chip)) {
 		dev_warn(&chip->client->dev, "battery NOT present\n");
 		mutex_lock(&chip->batt_lock);
 		chip->present = 0;
