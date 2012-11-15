@@ -77,6 +77,7 @@
 #include <crypto/aes.h>
 #include <crypto/des.h>
 #include <crypto/hash.h>
+#include <linux/intel_mid_pm.h>
 
 #include "sep_driver_hw_defs.h"
 #include "sep_driver_config.h"
@@ -105,27 +106,11 @@
 #define PNW_IMR_ADDRESS_MASK 0x00fffffcu
 #define PNW_IMR_ADDRESS_SHIFT 8
 
-static inline u32 MDFLD_MSG_READ32(uint port, uint offset)
-{
-	int mcr = (0x10 << 24) | (port << 16) | (offset << 8);
-	uint32_t ret_val = 0;
-	struct pci_dev *pci_root = pci_get_bus_and_slot(0, 0);
-
-	if (pci_root == NULL) {
-		pr_debug("oops, MDFLD_MSG_READ null pci_root\n");
-		return -EINVAL;
-	}
-
-	pci_write_config_dword(pci_root, 0xD0, mcr);
-	pci_read_config_dword(pci_root, 0xD4, &ret_val);
-	pci_dev_put(pci_root);
-	return ret_val;
-}
-
 uint32_t get_imr_base(void)
 {
 	u32 low, start;
-	low = MDFLD_MSG_READ32(PNW_IMR_MSG_PORT, PNW_IMR4L_MSG_REGADDR);
+	low = intel_mid_msgbus_read32(PNW_IMR_MSG_PORT,
+			PNW_IMR4L_MSG_REGADDR);
 	start = (low & PNW_IMR_ADDRESS_MASK) << PNW_IMR_ADDRESS_SHIFT;
 	return start;
 }
