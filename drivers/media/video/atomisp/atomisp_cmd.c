@@ -41,7 +41,7 @@
  * Each flash driver is supposed to set its own timeout, but
  * just in case someone else changed the timeout, we set it
  * here to make sure we don't damage the flash hardware. */
-#define FLASH_TIMEOUT 800 /* ms */
+#define FLASH_TIMEOUT 1024 /* ms */
 
 union host {
 	struct {
