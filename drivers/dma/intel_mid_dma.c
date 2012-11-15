@@ -879,13 +879,14 @@ static struct dma_async_tx_descriptor *intel_mid_dma_prep_sg(
  * @sg_len: length of sg txn
  * @direction: DMA transfer dirtn
  * @flags: DMA flags
+ * @context: transfer context (ignored)
  *
  * Prepares LLI based periphral transfer
  */
 static struct dma_async_tx_descriptor *intel_mid_dma_prep_slave_sg(
 			struct dma_chan *chan, struct scatterlist *sg,
 			unsigned int sg_len, enum dma_data_direction direction,
-			unsigned long flags)
+			unsigned long flags, void *context)
 {
 
 	pr_debug("MDMA: Prep for slave SG\n");
