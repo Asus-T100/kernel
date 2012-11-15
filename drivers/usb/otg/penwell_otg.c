@@ -1449,6 +1449,11 @@ static int penwell_otg_manual_chrg_det(void)
 	timeout = jiffies + msecs_to_jiffies(DATACON_TIMEOUT);
 	interval = DATACON_INTERVAL * 1000; /* us */
 
+	dev_info(pnw->dev, "DCD started!\n");
+
+	/* Delay TIDP_SRC_ON + TCHGD_SERX_DEB */
+	usleep_range(66500, 67000);
+
 	while (!time_after(jiffies, timeout)) {
 		retval = penwell_otg_msic_read(MSIC_VS4, &data);
 		if (retval) {
