@@ -596,7 +596,7 @@ static void hsu_dma_rx_tasklet(unsigned long data)
 	struct hsu_dma_chan *chan = up->rxc;
 	struct tty_struct *tty;
 	unsigned char low_latency;
-
+	unsigned long flags;
 	/* Get a reference to tty to prevent its closing
 	 * from elsewhere during our treatment
 	 */
@@ -616,12 +616,18 @@ static void hsu_dma_rx_tasklet(unsigned long data)
 		/* Release reference */
 		tty_kref_put(tty);
 
-		chan_writel(chan, HSU_CH_CR, 0x3);
+		if (low_latency)
+			spin_lock_irqsave(&up->port.lock, flags);
+
+		if (up->dma_rx_on)
+			chan_writel(chan, HSU_CH_CR, 0x3);
 
 		/* If function is called from tasklet context, pm_runtime
 		 * needs to be notified */
-		if (low_latency)
+		if (low_latency) {
+			spin_unlock_irqrestore(&up->port.lock, flags);
 			pm_runtime_put(up->dev);
+		}
 	}
 }
 /* This is always called in spinlock protected mode, so
@@ -1161,7 +1167,9 @@ static int serial_hsu_startup(struct uart_port *port)
 		dbuf->dma_size = dma_dscr_size;
 
 		/* Start the RX channel right now */
+		spin_lock_irqsave(&up->port.lock, flags);
 		hsu_dma_start_rx_chan(up, dbuf);
+		spin_unlock_irqrestore(&up->port.lock, flags);
 
 		/* Next init the TX DMA */
 		dbuf = &up->txbuf;
@@ -1236,11 +1244,15 @@ static void serial_hsu_shutdown(struct uart_port *port)
 		struct hsu_dma_buffer *dbuf;
 
 		/* stop dma */
+		spin_lock_irqsave(&up->port.lock, flags);
 		chan_writel(up->txc, HSU_CH_CR, 0x0);
 		up->dma_tx_on = 0;
 
 		chan_writel(up->rxc, HSU_CH_CR, 0x2);
 		up->dma_rx_on = 0;
+		spin_unlock_irqrestore(&up->port.lock, flags);
+
+		tasklet_kill(&up->hsu_dma_rx_tasklet);
 
 		/* Free and unmap rx dma buffer */
 		dbuf = &up->rxbuf;
