@@ -33,14 +33,23 @@ static int exit_dsr_locked(struct mdfld_dsi_config *dsi_config)
 {
 	int err = 0;
 	struct drm_device *dev;
+	struct mdfld_dsi_pkg_sender *sender;
 	if (!dsi_config)
 		return -EINVAL;
+
+	sender = mdfld_dsi_get_pkg_sender(dsi_config);
+	if (!sender) {
+		DRM_ERROR("Failed to get dsi sender\n");
+		return -EINVAL;
+	}
 
 	dev = dsi_config->dev;
 	err =  __dbi_power_on(dsi_config);
 	if (!err)
 		/*enable TE, will need it in panel power on*/
 		mdfld_enable_te(dev, dsi_config->pipe);
+
+	mdfld_dsi_status_check(sender);
 	return err;
 }
 
@@ -215,6 +224,33 @@ int mdfld_dsi_dsr_update_panel_fb(struct mdfld_dsi_config *dsi_config)
 	sender = mdfld_dsi_get_pkg_sender(dsi_config);
 	if (!sender) {
 		DRM_ERROR("No sender\n");
+		err = -EINVAL;
+		goto update_fb_out;
+	}
+	/*some time the panel will randomly in
+	*idle/invert mode. so here, make sure
+	*exit idle/invert mode for each frame
+	*/
+	err = mdfld_dsi_send_dcs(sender,
+		 exit_idle_mode,
+		 NULL,
+		 0,
+		 CMD_DATA_SRC_SYSTEM_MEM,
+		 MDFLD_DSI_SEND_PACKAGE);
+	if (err) {
+		DRM_ERROR("faild to exit idle mode\n");
+		err = -EINVAL;
+		goto update_fb_out;
+	}
+
+	err = mdfld_dsi_send_dcs(sender,
+		 exit_invert_mode,
+		 NULL,
+		 0,
+		 CMD_DATA_SRC_SYSTEM_MEM,
+		 MDFLD_DSI_SEND_PACKAGE);
+	if (err) {
+		DRM_ERROR("faild to exit invert mode\n");
 		err = -EINVAL;
 		goto update_fb_out;
 	}
