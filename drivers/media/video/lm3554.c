@@ -806,6 +806,7 @@ static int __devinit lm3554_probe(struct i2c_client *client,
 	flash->sd.internal_ops = &lm3554_internal_ops;
 	flash->sd.flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
 	flash->mode = ATOMISP_FLASH_MODE_OFF;
+	flash->timeout = LM3554_MAX_TIMEOUT / LM3554_TIMEOUT_STEPSIZE - 1;
 
 	err = media_entity_init(&flash->sd.entity, 0, NULL, 0);
 	if (err) {
