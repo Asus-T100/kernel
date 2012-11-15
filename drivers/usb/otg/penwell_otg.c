@@ -2447,6 +2447,9 @@ static irqreturn_t otg_irq_handle(struct penwell_otg *pnw,
 			flag = 1;
 			dev_dbg(pnw->dev, "%s: id change int = %d\n",
 						__func__, iotg->hsm.id);
+
+			/* Update a_vbus_valid once ID changed */
+			iotg->hsm.a_vbus_vld = (int_sts & OTGSC_AVV) ? 1 : 0;
 		}
 		if (int_mask & OTGSC_DPIS) {
 			iotg->hsm.a_srp_det = (int_sts & OTGSC_DPS) ? 1 : 0;
