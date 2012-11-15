@@ -33,7 +33,8 @@ void gl3_enable(void)
 	struct drm_psb_private *dev_priv =
 		    (struct drm_psb_private *) gpDrmDevice->dev_private;
 
-	PSB_DEBUG_ENTRY("gl3_enable called on platform %x\n",	dev_priv->platform_rev_id);
+	PSB_DEBUG_PM("gl3_enable called on platform %x\n",
+				dev_priv->platform_rev_id);
 	if (gl3_exist()) {
 		if (!ospm_power_using_hw_begin(OSPM_GL3_CACHE_ISLAND, true))
 			return;
@@ -51,7 +52,8 @@ void gl3_disable(void)
 	struct drm_psb_private *dev_priv =
 		    (struct drm_psb_private *) gpDrmDevice->dev_private;
 
-	PSB_DEBUG_ENTRY("gl3_disable called on platform %x\n",	dev_priv->platform_rev_id);
+	PSB_DEBUG_PM("gl3_disable called on platform %x\n",
+				dev_priv->platform_rev_id);
 	if (gl3_exist()) {
 		if (!ospm_power_using_hw_begin(OSPM_GL3_CACHE_ISLAND, true))
 			return;
@@ -66,7 +68,8 @@ void gl3_invalidate(void)
 	struct drm_psb_private *dev_priv =
 		    (struct drm_psb_private *) gpDrmDevice->dev_private;
 
-	PSB_DEBUG_ENTRY("gl3_invalidate called on platform %x\n", dev_priv->platform_rev_id);
+	PSB_DEBUG_PM("gl3_invalidate called on platform %x\n",
+					dev_priv->platform_rev_id);
 	if (gl3_exist()) {
 		/* No need to call ospm_power_using_hw_begin
 			as this is being called from ospm_suspend_pci only.
@@ -105,7 +108,8 @@ void gl3_flush(void)
 	struct drm_psb_private *dev_priv =
 		    (struct drm_psb_private *) gpDrmDevice->dev_private;
 
-	PSB_DEBUG_ENTRY("gl3_flush called on platform %x\n",	dev_priv->platform_rev_id);
+	PSB_DEBUG_PM("gl3_flush called on platform %x\n",
+				dev_priv->platform_rev_id);
 	if (gl3_exist()) {
 		if (!ospm_power_using_hw_begin(OSPM_GL3_CACHE_ISLAND, true))
 			return;
@@ -121,7 +125,8 @@ void gl3_reset(void)
 	struct drm_psb_private *dev_priv =
 		    (struct drm_psb_private *) gpDrmDevice->dev_private;
 
-	PSB_DEBUG_ENTRY("gl3_reset called on platform %x\n",	dev_priv->platform_rev_id);
+	PSB_DEBUG_PM("gl3_reset called on platform %x\n",
+				dev_priv->platform_rev_id);
 	if (gl3_exist()) {
 		if (!ospm_power_using_hw_begin(OSPM_GL3_CACHE_ISLAND, true))
 			return;

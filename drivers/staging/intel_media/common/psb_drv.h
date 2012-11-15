@@ -1265,8 +1265,15 @@ static inline int psb_get_power_state(int islands)
 {
 	switch (islands) {
 	case OSPM_VIDEO_DEC_ISLAND:
-		if (pmu_nc_get_power_state(OSPM_VIDEO_DEC_ISLAND, APM_REG_TYPE) ==
-			APM_STS_D3)
+		if (pmu_nc_get_power_state(OSPM_VIDEO_DEC_ISLAND, APM_REG_TYPE)
+			== APM_STS_D3)
+			return 0;
+		else
+			return 1;
+		break;
+	case OSPM_GL3_CACHE_ISLAND:
+		if (pmu_nc_get_power_state(OSPM_GL3_CACHE_ISLAND, APM_REG_TYPE)
+			== APM_STS_D3)
 			return 0;
 		else
 			return 1;

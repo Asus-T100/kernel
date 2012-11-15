@@ -59,7 +59,7 @@ int psb_wait_for_register(struct drm_psb_private *dev_priv,
 		/* PSB_UDELAY(5); */
 		poll_cnt--;
 	}
-	PSB_DEBUG_WARN("MSVDX: Timeout while waiting for register %08x:"
+	PSB_DEBUG_MSVDX("MSVDX: Timeout while waiting for register %08x:"
 		  " expecting %08x (mask %08x), got %08x\n",
 		  offset, value, enable, reg_value);
 
@@ -164,7 +164,9 @@ int psb_msvdx_core_reset(struct drm_psb_private *dev_priv)
 						MSVDX_MMU_MEM_REQ_OFFSET,
 						0, 0xff, 2000000, 5);
 		if (ret) {
-			DRM_ERROR("have outstanding read request.\n");
+			PSB_DEBUG_WARN("MSVDX_MMU_MEM_REQ is %d,\n"
+				"indicate outstanding read request 0.\n",
+				PSB_RMSVDX32(MSVDX_MMU_MEM_REQ_OFFSET));
 			ret = -1;
 			return ret;
 		}
@@ -188,14 +190,21 @@ int psb_msvdx_core_reset(struct drm_psb_private *dev_priv)
 			ret = psb_wait_for_register(dev_priv, MSVDX_CONTROL_OFFSET, 0,
 					MSVDX_CONTROL__MSVDX_SOFT_RESET_MASK,
 					2000000, 5);
-
 			if (!ret) {
 				/* Clear interrupt enabled flag */
 				PSB_WMSVDX32(0, MSVDX_HOST_INTERRUPT_ENABLE_OFFSET);
 
 				/* Clear any pending interrupt flags */
 				PSB_WMSVDX32(0xFFFFFFFF, MSVDX_INTERRUPT_CLEAR_OFFSET);
+			} else {
+				PSB_DEBUG_WARN("MSVDX_CONTROL_OFFSET is %d,\n"
+					"indicate software reset failed.\n",
+					PSB_RMSVDX32(MSVDX_CONTROL_OFFSET));
 			}
+		} else {
+			PSB_DEBUG_WARN("MSVDX_MMU_MEM_REQ is %d,\n"
+				"indicate outstanding read request 1.\n",
+				PSB_RMSVDX32(MSVDX_MMU_MEM_REQ_OFFSET));
 		}
 	}
 	return ret;
@@ -222,6 +231,10 @@ int psb_msvdx_reset(struct drm_psb_private *dev_priv)
 
 		/* Clear any pending interrupt flags */
 		PSB_WMSVDX32(0xFFFFFFFF, MSVDX_INTERRUPT_CLEAR_OFFSET);
+	} else {
+		PSB_DEBUG_WARN("MSVDX_CONTROL_OFFSET is %d,\n"
+			"indicate software reset failed.\n",
+			PSB_RMSVDX32(MSVDX_CONTROL_OFFSET));
 	}
 
 	return ret;
@@ -668,10 +681,13 @@ int msvdx_mtx_init(struct drm_device *dev, int error_reset)
 				    0xffffffff,
 				    1000, 1000);
 	if (ret) {
-		PSB_DEBUG_WARN("WARN: Gunit upload fw failure, MTX_ENABLE reg is 0x%x.\n",
+		PSB_DEBUG_WARN("WARN: Gunit upload fw failure,\n"
+				"MSVDX_COMMS_SIGNATURE reg is 0x%x,"
+				"MSVDX_COMMS_FW_STATUS reg is 0x%x,"
+				"MTX_ENABLE reg is 0x%x.\n",
+				PSB_RMSVDX32(MSVDX_COMMS_SIGNATURE),
+				PSB_RMSVDX32(MSVDX_COMMS_FW_STATUS),
 				PSB_RMSVDX32(MTX_ENABLE_OFFSET));
-		PSB_DEBUG_WARN("WARN: MSVDX_COMMS_FW_STATUS reg is 0x%x.\n",
-				PSB_RMSVDX32(MSVDX_COMMS_FW_STATUS));
 		msvdx_priv->msvdx_needs_reset |=
 				MSVDX_RESET_NEEDS_REUPLOAD_FW |
 				MSVDX_RESET_NEEDS_INIT_FW;
