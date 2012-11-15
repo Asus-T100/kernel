@@ -144,7 +144,10 @@ static int clock = 50000; /* default clock source is 50M */
 inline bool hsu_port_is_active(struct uart_hsu_port *up)
 {
 #ifdef CONFIG_PM_RUNTIME
-	return (up->dev->power.runtime_status == RPM_ACTIVE);
+	return (up->dev->power.runtime_status == RPM_ACTIVE &&
+		!up->suspended);
+#else
+	return !up->suspended;
 #endif
 	return true;
 }
@@ -2070,6 +2073,11 @@ static void qwork(struct work_struct *work)
 	int cmd, offset, value, count = 0;
 
 	pm_runtime_get_sync(up->dev);
+	if (up->suspended) {
+		pm_runtime_put(up->dev);
+		return;
+	}
+
 	spin_lock_irqsave(&up->qlock, flags);
 	while (get_q(up, &cmd, &offset, &value)){
 		dev_dbg(up->dev, "qwork get cmd %d %d %d\n", cmd, offset, value);
@@ -2432,18 +2440,20 @@ static int hsu_resume(struct device *dev)
 		if (up->index == logic_idx) {
 			struct uart_hsu_port *up3 = serial_hsu_ports[share_idx];
 			if (up3->suspended && up3->running) {
+				up3->suspended = 0;
 				uart_resume_port(&serial_hsu_reg, &up3->port);
 				schedule_work(&up3->qwork);
-			}
-			up3->suspended = 0;
+			} else
+				up3->suspended = 0;
 		}
 
 		if (up->suspended && up->running) {
+			up->suspended = 0;
 			uart_resume_port(&serial_hsu_reg, &up->port);
 			intel_mid_hsu_resume(up->index);
 			schedule_work(&up->qwork);
-		}
-		up->suspended = 0;
+		} else
+			up->suspended = 0;
 	}
 	return 0;
 }
