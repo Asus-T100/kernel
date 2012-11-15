@@ -633,17 +633,18 @@ static void mdfld_gl3_interrupt(struct drm_device *dev, uint32_t vdc_stat)
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *) dev->dev_private;
 	uint32_t gl3_err_status = 0;
+	unsigned long irq_flags;
 
 	gl3_err_status = MDFLD_GL3_READ(MDFLD_GCL_ERR_STATUS);
 	if (gl3_err_status & _MDFLD_GL3_ECC_FLAG) {
 		gl3_flush();
 		gl3_reset();
 	}
-
+	spin_lock_irqsave(&dev_priv->irqmask_lock, irq_flags);
 	dev_priv->vdc_irq_mask &= ~_MDFLD_GL3_IRQ_FLAG;
 	PSB_WVDC32(~dev_priv->vdc_irq_mask, PSB_INT_MASK_R);
 	PSB_WVDC32(dev_priv->vdc_irq_mask, PSB_INT_ENABLE_R);
-
+	spin_unlock_irqrestore(&dev_priv->irqmask_lock, irq_flags);
 }
 #endif
 
