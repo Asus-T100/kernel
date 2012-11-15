@@ -83,23 +83,15 @@
 #define STRING_COLD_BOOT "COLD_BOOT"
 
 #ifdef CONFIG_DEBUG_FS
-#define SECURITY_WATCHDOG_ADDR 0x40102FF4
+#define SECURITY_WATCHDOG_ADDR	    0x40102FF4
 #define STRING_NONE "NONE"
 #endif
 
 #define WDIOC_SETTIMERTIMEOUT     _IOW(WATCHDOG_IOCTL_BASE, 11, int)
 #define WDIOC_GETTIMERTIMEOUT     _IOW(WATCHDOG_IOCTL_BASE, 12, int)
 
-
 /* Statics */
-#ifdef CONFIG_DEBUG_FS
-static struct intel_scu_watchdog_dev watchdog_device = {
-	.normal_wd_action = IPC_SET_SUB_COLDRESET,
-	.reboot_wd_action = IPC_SET_SUB_COLDRESET,
-	.shutdown_wd_action = IPC_SET_SUB_COLDOFF,
-	.panic_reboot_notifier = false
-};
-#endif
+static struct intel_scu_watchdog_dev watchdog_device;
 static struct wake_lock watchdog_wake_lock;
 static DECLARE_WAIT_QUEUE_HEAD(read_wq);
 static unsigned char osnib_reset = OSNIB_WRITE_VALUE;
@@ -968,7 +960,7 @@ error:
 	remove_debugfs_entries();
 	return 1;
 }
-#endif
+#endif  /* CONFIG_DEBUG_FS*/
 
 /* Kernel Interfaces */
 static const struct file_operations intel_scu_fops = {
@@ -1070,9 +1062,13 @@ static int reset_type_to_string(int reset_type, char *string)
 	case IPC_SET_SUB_COLDOFF:
 		strcpy(string, STRING_COLD_OFF);
 		break;
+#ifdef CONFIG_DEBUG_FS
 	case IPC_SET_SUB_DONOTHING:
+		/* The IPC command DONOTHING is provided */
+		/* for debug purpose only.               */
 		strcpy(string, STRING_NONE);
 		break;
+#endif
 	default:
 		return 1;
 	}
@@ -1308,6 +1304,14 @@ int remove_watchdog_sysfs_files(void)
 static int __init intel_scu_watchdog_init(void)
 {
 	int ret = 0;
+
+	watchdog_device.normal_wd_action = IPC_SET_SUB_COLDRESET;
+	watchdog_device.reboot_wd_action = IPC_SET_SUB_COLDRESET;
+	watchdog_device.shutdown_wd_action = IPC_SET_SUB_COLDOFF;
+
+#ifdef CONFIG_DEBUG_FS
+	watchdog_device.panic_reboot_notifier = false;
+#endif /* CONFIG_DEBUG_FS */
 
 	/* Initially, we are not in shutdown mode */
 	watchdog_device.shutdown_flag = false;
