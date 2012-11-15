@@ -172,7 +172,8 @@ static int dsi_error_handler(struct mdfld_dsi_pkg_sender * sender)
 			break;
 		case BIT18:
 			REG_WRITE(MIPIA_EOT_DISABLE_REG,
-				REG_READ(MIPIA_EOT_DISABLE_REG)|0x30);
+				(REG_READ(MIPIA_EOT_DISABLE_REG)|
+				MDFLD_HIGH_CONTENTION_RECOVERY_DISABLE));
 			while ((REG_READ(intr_stat_reg) & BIT18)) {
 				count++;
 				/*
@@ -183,13 +184,23 @@ static int dsi_error_handler(struct mdfld_dsi_pkg_sender * sender)
 				if (count == 4) {
 					DRM_INFO("dsi status %s\n",
 						dsi_errors[i]);
+					REG_WRITE(MIPIA_EOT_DISABLE_REG,
+					(REG_READ(MIPIA_EOT_DISABLE_REG) &
+					(~MDFLD_HIGH_CONTENTION_RECOVERY_DISABLE)));
+					REG_WRITE(intr_stat_reg, mask);
 					break;
 				}
 				REG_WRITE(intr_stat_reg, mask);
 			}
+			err = wait_for_all_fifos_empty(sender);
 			break;
 		case BIT19:
 			DRM_INFO("dsi status %s\n", dsi_errors[i]);
+			REG_WRITE(MIPIA_EOT_DISABLE_REG,
+				(REG_READ(MIPIA_EOT_DISABLE_REG) &
+				 (~MDFLD_LOW_CONTENTION_RECOVERY_DISABLE)));
+			REG_WRITE(intr_stat_reg, mask);
+			err = wait_for_all_fifos_empty(sender);
 			break;
 		case BIT20:
 			/*No Action required.*/
@@ -661,8 +672,9 @@ static int send_pkg(struct mdfld_dsi_pkg_sender * sender,
 		goto send_pkg_err;
 	}
 
-	/*FIXME: should I query complete and fifo empty here?*/
+	return 0;
 send_pkg_err:
+	sender->status = MDFLD_DSI_CONTROL_ABNORMAL;
 	return err;
 }
 
@@ -1256,6 +1268,11 @@ int mdfld_dsi_send_dcs(struct mdfld_dsi_pkg_sender * sender,
 	if (dcs == write_mem_start) {
 		spin_lock(&sender->lock);
 
+		/*handle DSI error*/
+		if (dsi_error_handler(sender)) {
+			DRM_ERROR("Error handling failed\n");
+			return  -EAGAIN;
+		}
 		/**
 		 * check the whether is there any write_mem_start already being
 		 * sent in this between current te_seq and next te.
