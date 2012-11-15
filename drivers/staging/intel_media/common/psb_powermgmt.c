@@ -287,16 +287,20 @@ void ospm_apm_power_down_msvdx(struct drm_device *dev, int force_off)
 	mutex_lock(&g_ospm_mutex);
 	if (force_off)
 		goto power_off;
-	if (!ospm_power_is_hw_on(OSPM_VIDEO_DEC_ISLAND))
-		goto out;
-
-	if (psb_get_power_state(OSPM_VIDEO_DEC_ISLAND) == 0) {
-		PSB_DEBUG_PM("MSVDX: island already in power off state.\n");
+	if (!ospm_power_is_hw_on(OSPM_VIDEO_DEC_ISLAND)) {
+		PSB_DEBUG_PM("g_hw_power_status_mask: msvdx in power off.\n");
 		goto out;
 	}
 
-	if (atomic_read(&g_videodec_access_count))
+	if (psb_get_power_state(OSPM_VIDEO_DEC_ISLAND) == 0) {
+		PSB_DEBUG_PM("pmu_nc_get_power_state: msvdx in power off.\n");
 		goto out;
+	}
+
+	if (atomic_read(&g_videodec_access_count)) {
+		PSB_DEBUG_PM("g_videodec_access_count has been set.\n");
+		goto out;
+	}
 
 #ifdef CONFIG_MDFD_VIDEO_DECODE
 	if (psb_check_msvdx_idle(dev))
@@ -1203,8 +1207,6 @@ void ospm_power_island_up(int hw_islands)
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *) gpDrmDevice->dev_private;
 
-	PSB_DEBUG_ENTRY("hw_islands: %x\n", hw_islands);
-
 	if (hw_islands & OSPM_DISPLAY_ISLAND) {
 		/*Power-up required islands only*/
 		if (dev_priv->panel_desc & DISPLAY_A)
@@ -1225,7 +1227,7 @@ void ospm_power_island_up(int hw_islands)
 		*/
 		spin_lock_irqsave(&dev_priv->ospm_lock, flags);
 
-		PSB_DEBUG_ENTRY("power up display islands\n");
+		PSB_DEBUG_PM("power up display islands 0x%x.\n", dc_islands);
 		if (pmu_nc_set_power_state(dc_islands,
 			OSPM_ISLAND_UP, OSPM_REG_TYPE))
 			BUG();
@@ -1242,6 +1244,7 @@ void ospm_power_island_up(int hw_islands)
 		reg would result in a crash - IERR/Fabric error.
 		*/
 		spin_lock_irqsave(&dev_priv->ospm_lock, flags);
+		PSB_DEBUG_PM("power on gfx_islands: 0x%x\n", gfx_islands);
 		if (pmu_nc_set_power_state(gfx_islands,
 					   OSPM_ISLAND_UP, APM_REG_TYPE))
 			BUG();
@@ -1327,7 +1330,7 @@ void ospm_power_island_down(int hw_islands)
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *) gpDrmDevice->dev_private;
 
-	PSB_DEBUG_ENTRY("hw_islands: %x\n", hw_islands);
+	PSB_DEBUG_PM("power down hw_islands: %x\n", hw_islands);
 
 	if (video_islands) {
 		ospm_power_island_down_video(video_islands);
@@ -1353,7 +1356,7 @@ void ospm_power_island_down(int hw_islands)
 		 *	goto unlock;
 		 */
 
-		PSB_DEBUG_ENTRY("power off display island\n");
+		PSB_DEBUG_PM("power off display island\n");
 		g_hw_power_status_mask &= ~OSPM_DISPLAY_ISLAND;
 		if (pmu_nc_set_power_state(dc_islands,
 					   OSPM_ISLAND_DOWN, OSPM_REG_TYPE))
@@ -1397,6 +1400,7 @@ void ospm_power_island_down(int hw_islands)
 		If pmu_nc_set_power_state fails then accessing HW
 		reg would result in a crash - IERR/Fabric error.
 		*/
+		PSB_DEBUG_PM("power off gfx/gl3 island 0x%x.\n", gfx_islands);
 		g_hw_power_status_mask &= ~gfx_islands;
 		if (pmu_nc_set_power_state(gfx_islands,
 			OSPM_ISLAND_DOWN, APM_REG_TYPE))
@@ -1530,7 +1534,13 @@ bool ospm_power_using_video_begin(int video_island)
 					MSVDX_COMMS_SIGNATURE_VALUE,
 					0xffffffff, 2000000, 5);
 				if (reg_ret)
-					printk(KERN_ERR	"fw fails to init.\n");
+					PSB_DEBUG_WARN("WARN: load fw fail,\n"
+					"MSVDX_COMMS_SIGNATURE reg is 0x%x,"
+					"MSVDX_COMMS_FW_STATUS reg is 0x%x,"
+					"MTX_ENABLE reg is 0x%x.\n",
+					PSB_RMSVDX32(MSVDX_COMMS_SIGNATURE),
+					PSB_RMSVDX32(MSVDX_COMMS_FW_STATUS),
+					PSB_RMSVDX32(MTX_ENABLE_OFFSET));
 			}
 			ospm_runtime_pm_msvdx_resume(gpDrmDevice);
 			psb_irq_preinstall_islands(gpDrmDevice,

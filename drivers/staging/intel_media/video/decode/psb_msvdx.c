@@ -364,7 +364,8 @@ int psb_submit_video_cmdbuf(struct drm_device *dev,
 	spin_lock_irqsave(&msvdx_priv->msvdx_lock, irq_flags);
 
 	msvdx_priv->last_msvdx_ctx = msvdx_priv->msvdx_ctx;
-
+	PSB_DEBUG_PM("sequence is 0x%x, needs_reset is 0x%x.\n",
+			sequence, msvdx_priv->msvdx_needs_reset);
 	if (msvdx_priv->msvdx_needs_reset) {
 		spin_unlock_irqrestore(&msvdx_priv->msvdx_lock, irq_flags);
 		PSB_DEBUG_GENERAL("MSVDX: will reset msvdx\n");
@@ -762,6 +763,8 @@ loop: /* just for coding style check */
 				  panic_msg->be_status,
 				  panic_msg->mb.bits.reserved2,
 				  panic_msg->mb.bits.last_mb);
+		PSB_DEBUG_WARN("MSVDX: MSVDX_COMMS_ERROR_TRIG is 0x%x.\n",
+					PSB_RMSVDX32(MSVDX_COMMS_ERROR_TRIG));
 		fence = panic_msg->header.bits.msg_fence;
 		last_mb = panic_msg->mb.bits.last_mb;
 
@@ -979,8 +982,11 @@ done:
 
 	/* we get a frame/slice done, try to save some power*/
 	if (msvdx_priv->fw_loaded_by_punit) {
-		if (drm_msvdx_pmpolicy == PSB_PMPOLICY_POWERDOWN) {
-			PSB_DEBUG_PM("MSVDX: schedule work queue to suspend msvdx.\n");
+		if ((drm_msvdx_pmpolicy == PSB_PMPOLICY_POWERDOWN) &&
+			(msvdx_priv->msvdx_busy == 0)) {
+			PSB_DEBUG_PM("MSVDX: schedule work queue to\n"
+				"suspend msvdx, current sequence is 0x%x.\n",
+				msvdx_priv->msvdx_current_sequence);
 			schedule_delayed_work(&msvdx_priv->msvdx_suspend_wq, 0);
 		}
 	}
@@ -1109,15 +1115,18 @@ int psb_check_msvdx_idle(struct drm_device *dev)
 		return 0;
 #endif
 	if (msvdx_priv->msvdx_busy) {
-		PSB_DEBUG_PM("MSVDX: psb_check_msvdx_idle returns busy\n");
+		PSB_DEBUG_PM("MSVDX: msvdx_busy was set, return busy.\n");
 		return -EBUSY;
 	}
 
 	if (msvdx_priv->fw_loaded_by_punit) {
-		PSB_DEBUG_PM("SIGNITURE is %x\n", PSB_RMSVDX32(MSVDX_COMMS_SIGNATURE));
 		if (!(PSB_RMSVDX32(MSVDX_COMMS_FW_STATUS) &
 					MSVDX_FW_STATUS_HW_IDLE)) {
-			PSB_DEBUG_PM("MSVDX: MSVDX_COMMS_FW_STATUS reg indicate hw busy.\n");
+			PSB_DEBUG_PM("MSVDX_COMMS_SIGNATURE reg is 0x%x,\n"
+				"MSVDX_COMMS_FW_STATUS reg is 0x%x,\n"
+				"indicate hw is busy.\n",
+				PSB_RMSVDX32(MSVDX_COMMS_SIGNATURE),
+				PSB_RMSVDX32(MSVDX_COMMS_FW_STATUS));
 			return -EBUSY;
 		}
 	}
@@ -1126,12 +1135,33 @@ int psb_check_msvdx_idle(struct drm_device *dev)
 	for (loop = 0; loop < 10; loop++)
 		ret = psb_wait_for_register(dev_priv,
 					MSVDX_MMU_MEM_REQ_OFFSET,
-					0, 0xff, 2000000, 5);
+					0, 0xff, 100, 1);
 	if (ret) {
-		PSB_DEBUG_WARN("MSVDX: MSVDX_MMU_MEM_REQ reg is 0x%x, indicate mem busy.\n",
-				PSB_RMSVDX32(MSVDX_MMU_MEM_REQ_OFFSET));
-		PSB_DEBUG_WARN("WARN: MSVDX_COMMS_FW_STATUS reg is 0x%x.\n",
-				PSB_RMSVDX32(MSVDX_COMMS_FW_STATUS));
+		PSB_DEBUG_WARN("MSVDX: MSVDX_MMU_MEM_REQ reg is 0x%x,\n"
+				"indicate mem busy, prevent power off vxd,"
+				"MSVDX_COMMS_FW_STATUS reg is 0x%x,"
+				"MSVDX_COMMS_ERROR_TRIG reg is 0x%x,",
+				PSB_RMSVDX32(MSVDX_MMU_MEM_REQ_OFFSET),
+				PSB_RMSVDX32(MSVDX_COMMS_FW_STATUS),
+				PSB_RMSVDX32(MSVDX_COMMS_ERROR_TRIG));
+#ifdef CONFIG_MDFD_GL3
+		PSB_DEBUG_WARN("WARN: gl3 state is %d, 0 is off, 1 is on,\n"
+				"gl3 MDFLD_GCL_CR_CTL2 reg is 0x%x,"
+				"gl3 MDFLD_GCL_ERR_ADDR reg is 0x%x,"
+				"gl3 MDFLD_GCL_ERR_STATUS reg is 0x%x,"
+				"gl3 MDFLD_GCL_CR_ECO reg is 0x%x,"
+				"gl3 MDFLD_GL3_CONTROL reg is 0x%x,"
+				"gl3 MDFLD_GL3_USE_WRT_INVAL reg is 0x%x,"
+				"gl3 MDFLD_GL3_STATUS reg is 0x%x.\n",
+				psb_get_power_state(OSPM_GL3_CACHE_ISLAND),
+				MDFLD_GL3_READ(MDFLD_GCL_CR_CTL2),
+				MDFLD_GL3_READ(MDFLD_GCL_ERR_ADDR),
+				MDFLD_GL3_READ(MDFLD_GCL_ERR_STATUS),
+				MDFLD_GL3_READ(MDFLD_GCL_CR_ECO),
+				MDFLD_GL3_READ(MDFLD_GL3_CONTROL),
+				MDFLD_GL3_READ(MDFLD_GL3_USE_WRT_INVAL),
+				MDFLD_GL3_READ(MDFLD_GL3_STATUS));
+#endif
 		return -EBUSY;
 	}
 	/*
@@ -1176,7 +1206,7 @@ int psb_msvdx_save_context(struct drm_device *dev)
 
 	/* why need reset msvdx before power off it, need check IMG */
 	if (psb_msvdx_core_reset(dev_priv))
-		DRM_ERROR("failed to call psb_msvdx_core_reset.\n");
+		PSB_DEBUG_WARN("failed to call psb_msvdx_core_reset.\n");
 
 	/* Initialize VEC Local RAM */
 	for (offset = 0; offset < VEC_LOCAL_MEM_BYTE_SIZE / 4; ++offset)

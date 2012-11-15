@@ -47,12 +47,15 @@
  * GL3 Control
  */
 
-#define MDFLD_GCL_CR_CTL2				0xB0000
-#define MDFLD_GCL_ERR_ADDR				0xB0004		/* address at location is the address that had the error */
-#define MDFLD_GCL_CR_ECO			0xB0030 /*GL3 ECO Register*/
-#define MDFLD_GCL_ERR_STATUS			0xB0008
+#define MDFLD_GCL_CR_CTL2		0xB0000
+/* address at location is the address that had the error */
+#define MDFLD_GCL_ERR_ADDR		0xB0004
+/*GL3 ECO Register*/
+#define MDFLD_GCL_CR_ECO		0xB0030
+#define MDFLD_GCL_ERR_STATUS		0xB0008
 
-#define MDFLD_IMG_MASK					0x20A8		/* unmask bit 21 to get GL3 interrupts */
+/* unmask bit 21 to get GL3 interrupts */
+#define MDFLD_IMG_MASK			0x20A8
 /*
  * GL3 registers and bits
  */
