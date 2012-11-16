@@ -71,11 +71,6 @@
 
 #define PCI_DEVICE_HDMI 0x080D
 #define PCI_LENGTH_HDMI 0x7000
-#define IPS_MIN_PIXEL_CLOCK 25175
-#define IPS_MAX_PIXEL_CLOCK 74250
-#define IPS_PREFERRED_HDISPLAY 1920
-#define IPS_PREFERRED_VDISPLAY 1080
-#define IPS_PREFERRED_REFRESH_RATE 30
 
 #define IPS_DPLL_B           (0x0f018)
 #define IPS_DPLL_DIV0        (0x0f048)
@@ -217,4 +212,27 @@ void ips_hdmi_destroy_saved_data(hdmi_device_t *dev);
  * Returns: none
  */
 void ips_disable_hdmi(hdmi_device_t *dev);
+
+/**
+ * Description: get pixel clock range
+ *
+ * @pc_min:	minimum pixel clock
+ * @pc_max:	maximum pixel clock
+ *
+ * Returns:	OTM_HDMI_SUCCESS on success
+ *		OTM_HDMI_ERR_FAILED on NULL input arguments.
+ */
+otm_hdmi_ret_t ips_get_pixel_clock_range(unsigned int *pc_min,
+						unsigned int *pc_max);
+
+/**
+ * Returns if the given values is preferred mode or not
+ * @hdisplay	: width
+ * @vdisplay	: height
+ * @refresh	: refresh rate
+ *
+ * Returns true if preferred mode else false
+ */
+bool ips_hdmi_is_preferred_mode(int hdisplay, int vdisplay, int refresh);
+
 #endif /* __IPS_HDMI_H */
