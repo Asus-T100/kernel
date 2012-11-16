@@ -3269,10 +3269,6 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 
 	switch (isp->sw_contex.run_mode) {
 	case CI_MODE_PREVIEW:
-		if (sh_css_preview_configure_pp_input(
-				effective_input_width, effective_input_height))
-			return -EINVAL;
-
 		if (sh_css_preview_configure_output(width, height,
 					format->sh_fmt))
 			return -EINVAL;
@@ -3308,11 +3304,6 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 		}
 
 		sh_css_capture_enable_online(isp->params.online_process);
-
-		if (sh_css_capture_configure_pp_input(
-						effective_input_width,
-						effective_input_height))
-			return -EINVAL;
 
 		if (sh_css_capture_configure_viewfinder(
 					isp->vf_format->out.width,
