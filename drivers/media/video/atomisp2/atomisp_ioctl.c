@@ -806,16 +806,15 @@ static void atomisp_videobuf_free(struct videobuf_queue *q)
 	mutex_unlock(&q->vb_lock);
 }
 
-int atomisp_alloc_css_stat_bufs(struct atomisp_device *isp, int count)
+int atomisp_alloc_css_stat_bufs(struct atomisp_device *isp)
 {
 	struct atomisp_s3a_buf *s3a_buf = NULL;
 	struct atomisp_dis_buf *dis_buf = NULL;
+	/* 2 css pipes consuming 3a buffers */
+	int count = ATOMISP_CSS_Q_DEPTH * 2;
 
-	if (!count ||
-	    (!list_empty(&isp->s3a_stats) &&
-	     !list_empty(&isp->dis_stats))) {
+	if (!list_empty(&isp->s3a_stats) && !list_empty(&isp->dis_stats))
 		return 0;
-	}
 
 	v4l2_dbg(2, dbg_level, &atomisp_dev,
 		    "allocating %d 3a & dis buffers\n", count);
@@ -921,7 +920,7 @@ int atomisp_reqbufs(struct file *file, void *fh,
 		return -EINVAL;
 	}
 
-	atomisp_alloc_css_stat_bufs(isp, ATOMISP_CSS_Q_DEPTH);
+	atomisp_alloc_css_stat_bufs(isp);
 
 	/*
 	 * for user pointer type, buffers are not really allcated here,

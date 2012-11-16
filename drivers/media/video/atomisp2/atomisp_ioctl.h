@@ -26,6 +26,9 @@
 
 #include "atomisp_common.h"
 #include "sh_css_types.h"
+
+int atomisp_alloc_css_stat_bufs(struct atomisp_device *isp);
+
 /*
  * v4l2 ioctls
  */

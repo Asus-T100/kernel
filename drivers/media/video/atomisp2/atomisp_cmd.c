@@ -1738,7 +1738,7 @@ static void atomisp_update_grid_info(struct atomisp_device *isp)
 		   the grid size. */
 		atomisp_free_3a_dis_buffers(isp);
 
-		err = atomisp_alloc_css_stat_bufs(isp, ATOMISP_CSS_Q_DEPTH);
+		err = atomisp_alloc_css_stat_bufs(isp);
 		if (err) {
 			v4l2_err(&atomisp_dev,
 					"stat_buf allocate error\n");
