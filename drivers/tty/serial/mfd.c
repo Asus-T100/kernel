@@ -905,6 +905,7 @@ static void serial_hsu_break_ctl(struct uart_port *port, int break_state)
  */
 static int serial_hsu_startup(struct uart_port *port)
 {
+	int run_cnt = 0;
 	static DEFINE_MUTEX(lock);
 	struct uart_hsu_port *up =
 		container_of(port, struct uart_hsu_port, port);
@@ -918,8 +919,14 @@ static int serial_hsu_startup(struct uart_port *port)
 		if (alt_up->running && alt_cfg->force_suspend) {
 			uart_suspend_port(&serial_hsu_reg, &alt_up->port);
 		} else {
-			while (alt_up->running)
-				msleep(100);
+			while (alt_up->running) {
+				msleep(20);
+				if (++run_cnt >= 50) {
+					dev_warn(up->dev, "waite alt port %d 1S\n",
+						 alt_up->index);
+					run_cnt = 0;
+				}
+			}
 		}
 		insert_qcmd(alt_up, qcmd_clear_alt);
 		queue_work(alt_up->workqueue, &alt_up->work);
