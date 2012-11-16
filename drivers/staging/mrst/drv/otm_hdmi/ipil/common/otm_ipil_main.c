@@ -806,3 +806,32 @@ void ipil_hdmi_restore_data_island(hdmi_device_t *dev)
 	if (NULL != dev)
 		ips_hdmi_restore_data_island(dev);
 }
+
+/**
+ * Description: get pixel clock range
+ *
+ * @pc_min:	minimum pixel clock
+ * @pc_max:	maximum pixel clock
+ *
+ * Returns:	OTM_HDMI_SUCCESS on success
+ *		OTM_HDMI_ERR_FAILED on NULL input arguments.
+ */
+otm_hdmi_ret_t ipil_get_pixel_clock_range(unsigned int *pc_min,
+						unsigned int *pc_max)
+{
+	return ips_get_pixel_clock_range(pc_min, pc_max);
+}
+
+/**
+ * Returns if the given values is preferred mode or not
+ * @hdisplay	: width
+ * @vdisplay	: height
+ * @refresh	: refresh rate
+ *
+ * Returns true if preferred mode else false
+ */
+bool ipil_hdmi_is_preferred_mode(int hdisplay, int vdisplay, int refresh)
+{
+	return ips_hdmi_is_preferred_mode(hdisplay, vdisplay, refresh);
+}
+

@@ -820,12 +820,7 @@ bool otm_hdmi_get_cable_status(void *context)
 otm_hdmi_ret_t otm_hdmi_get_pixel_clock_range(unsigned int *pc_min,
 						unsigned int *pc_max)
 {
-	if (!pc_min || !pc_max)
-		return OTM_HDMI_ERR_FAILED;
-
-	*pc_min = IPIL_MIN_PIXEL_CLOCK;
-	*pc_max = IPIL_MAX_PIXEL_CLOCK;
-	return OTM_HDMI_SUCCESS;
+	return ipil_get_pixel_clock_range(pc_min, pc_max);
 }
 
 /**
@@ -966,12 +961,7 @@ exit:
  */
 bool otm_hdmi_is_preferred_mode(int hdisplay, int vdisplay, int refresh)
 {
-	if (hdisplay == IPIL_PREFERRED_HDISPLAY &&
-	    vdisplay == IPIL_PREFERRED_VDISPLAY &&
-	    refresh == IPIL_PREFERRED_REFRESH_RATE)
-		return true;
-	else
-		return false;
+	return ipil_hdmi_is_preferred_mode(hdisplay, vdisplay, refresh);
 }
 
 /**

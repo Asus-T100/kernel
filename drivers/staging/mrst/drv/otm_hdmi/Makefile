@@ -139,11 +139,13 @@ ifeq ($(CONFIG_DRM_CTP),y)
 $(TARGET)-y += \
 	$(OTM_HDMI_TOP)/ipil/specific/mfld/ips_hdmi.o \
 	$(OTM_HDMI_TOP)/ipil/specific/mfld/ips_hdcp.o \
+	$(OTM_HDMI_TOP)/ipil/specific/ctp/ips_hdmi_priv.o \
 	$(OTM_HDMI_TOP)/pil/specific/ctp/ps_hdmi.o
 else ifeq ($(CONFIG_DRM_MDFLD),y)
 $(TARGET)-y += \
 	$(OTM_HDMI_TOP)/ipil/specific/mfld/ips_hdmi.o \
 	$(OTM_HDMI_TOP)/ipil/specific/mfld/ips_hdcp.o \
+	$(OTM_HDMI_TOP)/ipil/specific/mfld/ips_hdmi_priv.o \
 	$(OTM_HDMI_TOP)/pil/specific/mfld/ps_hdmi.o
 endif
 
