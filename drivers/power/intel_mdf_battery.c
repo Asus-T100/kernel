@@ -1052,14 +1052,32 @@ static void msic_handle_exception(struct msic_power_module_info *mbi,
 			dev_info(msic_dev,
 				"[Low Batt] msic vbatt:%dmV\n", msic_vbatt);
 
+		/* read ocv voltage from fuel gauge */
+		fg_vbatt = fg_chip_get_property(POWER_SUPPLY_PROP_VOLTAGE_OCV);
+		if (fg_vbatt < 0)
+			dev_warn(msic_dev,
+				"[Low Bat]Can't read voltage ocv from FG\n");
+		else
+			dev_info(msic_dev,
+			"[Low Batt]fg vbatt ocv:%dmV\n", fg_vbatt/1000);
+
 		/* read avg voltage from fuel gauge */
 		fg_vbatt = fg_chip_get_property(POWER_SUPPLY_PROP_VOLTAGE_AVG);
 		if (fg_vbatt < 0)
 			dev_warn(msic_dev,
-				"[Low Bat]Can't read voltage from FG\n");
+				"[Low Bat]Can't read voltage avg from FG\n");
 		else
 			dev_info(msic_dev,
-				"[Low Batt]fg vbatt avg:%dmV\n", fg_vbatt/1000);
+			"[Low Batt]fg vbatt avg:%dmV\n", fg_vbatt/1000);
+
+		/* read inst voltage from fuel gauge */
+		fg_vbatt = fg_chip_get_property(POWER_SUPPLY_PROP_VOLTAGE_NOW);
+		if (fg_vbatt < 0)
+			dev_warn(msic_dev,
+				"[Low Bat]Can't read voltage now from FG\n");
+		else
+			dev_info(msic_dev,
+			"[Low Batt]fg vbatt now:%dmV\n", fg_vbatt/1000);
 
 		/* read current from fuel gauge */
 		fg_curr = fg_chip_get_property(POWER_SUPPLY_PROP_CURRENT_NOW);
