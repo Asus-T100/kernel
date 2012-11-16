@@ -1351,6 +1351,38 @@ static int dwc_otg_handle_notification(struct notifier_block *nb,
 	return state;
 }
 
+#ifdef CONFIG_BOARD_MRFLD_VV
+/* This function will de-assert USBRST pin for USB2PHY, and drive VBUS. */
+static int enable_usb_phy(struct dwc_otg2 *otg)
+{
+	int ret;
+
+	ret = intel_scu_ipc_iowrite8(PMIC_USBPHYCTRL, PMIC_USBPHYCTRL_D0);
+	if (ret)
+		otg_err(otg, "Fail to de-assert USBRST\n");
+
+	msleep(20);
+
+	ret = intel_scu_ipc_iowrite8(PMIC_I2COVRDADDR, PMIC_TLP1ESBS0I1VNNBASE);
+	if (ret)
+		otg_err(otg, "Fail to Write the I2C address for Charger IC\n");
+
+	ret = intel_scu_ipc_iowrite8(PMIC_I2COVROFFSET, 0x0);
+		otg_err(otg, "Fail to Load offset\n");
+
+	ret = intel_scu_ipc_iowrite8(PMIC_I2COVRWRDATA, 0x40);
+		otg_err(otg, "Fail to Load the data to be writen\n");
+
+	ret = intel_scu_ipc_iowrite8(PMIC_I2COVRCTRL, PMIC_I2COVRCTL_I2CWR);
+	if (ret)
+		otg_err(otg, "Fail to Set I2CWR bit\n");
+
+	return 0;
+}
+#endif
+
+
+
 int otg_main_thread(void *data)
 {
 	struct dwc_otg2 *otg = (struct dwc_otg2 *)data;
@@ -1370,6 +1402,11 @@ int otg_main_thread(void *data)
 	allow_signal(SIGUSR1);
 
 	pm_runtime_get_sync(otg->dev);
+#ifdef CONFIG_BOARD_MRFLD_VV
+	enable_usb_phy(otg);
+#endif
+
+
 	/* Allow the thread to be frozen */
 	set_freezable();
 	reset_hw(otg);
