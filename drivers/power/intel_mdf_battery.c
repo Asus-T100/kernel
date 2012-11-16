@@ -1249,6 +1249,10 @@ static void update_usb_ps_info(struct msic_power_module_info *mbi,
 			mbi->usb.type = POWER_SUPPLY_TYPE_USB;
 			dev_info(msic_dev, "Charger type: SDP, "
 					"current negotiated: %d", cap->mA);
+		} else if (cap->chrg_type == CHRG_SDP_INVAL) {
+			mbi->usb.type = POWER_SUPPLY_TYPE_USB;
+			dev_info(msic_dev, "Charger type: SDP_INVAL, "\
+			"current negotiated: %d", cap->mA);
 		} else {
 			/* CHRG_UNKNOWN */
 			dev_warn(msic_dev, "Charger type:%d unknown\n",
