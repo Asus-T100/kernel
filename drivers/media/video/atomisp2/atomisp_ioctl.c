@@ -203,6 +203,34 @@ static struct v4l2_queryctrl ci_v4l2_controls[] = {
 };
 static const u32 ctrls_num = ARRAY_SIZE(ci_v4l2_controls);
 
+static int __get_css_frame_info(struct atomisp_device *isp,
+				enum atomisp_pipe_type pipe_type,
+				struct sh_css_frame_info *frame_info)
+{
+	switch (pipe_type) {
+	case ATOMISP_PIPE_CAPTURE:
+		if (isp->sw_contex.run_mode == CI_MODE_VIDEO)
+			return sh_css_video_get_output_frame_info(frame_info);
+		return sh_css_capture_get_output_frame_info(frame_info);
+	case ATOMISP_PIPE_VIEWFINDER:
+		if (isp->sw_contex.run_mode == CI_MODE_VIDEO)
+			return sh_css_video_get_viewfinder_frame_info(
+					frame_info);
+		else if (isp->capture_format->out_sh_fmt !=
+			SH_CSS_FRAME_FORMAT_RAW)
+			return sh_css_capture_get_viewfinder_frame_info(
+					frame_info);
+		return -EINVAL;
+	case ATOMISP_PIPE_PREVIEW:
+		if (isp->sw_contex.run_mode == CI_MODE_VIDEO)
+			return sh_css_video_get_viewfinder_frame_info(
+					frame_info);
+		return sh_css_preview_get_output_frame_info(frame_info);
+	default:
+		return -EINVAL;
+	}
+}
+
 /*
  * v4l2 ioctls
  * return ISP capabilities
@@ -872,7 +900,7 @@ int atomisp_reqbufs(struct file *file, void *fh,
 	struct video_device *vdev = video_devdata(file);
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
-	struct sh_css_frame_info out_info, vf_info, frame_info;
+	struct sh_css_frame_info frame_info;
 	struct sh_css_frame *frame;
 	struct videobuf_vmalloc_memory *vm_mem;
 	int ret = 0, i = 0;
@@ -882,43 +910,11 @@ int atomisp_reqbufs(struct file *file, void *fh,
 		return 0;
 	}
 
-/*
-	if (pipe->pipe_type != ATOMISP_PIPE_CAPTURE &&
-	    !atomisp_is_viewfinder_support(isp))
-		return -EINVAL;
-*/
-
 	ret = videobuf_reqbufs(&pipe->capq, req);
 	if (ret)
 		return ret;
 
 	mutex_lock(&isp->mutex);
-	switch (isp->sw_contex.run_mode) {
-	case CI_MODE_STILL_CAPTURE:
-		if (isp->capture_format &&
-		    isp->capture_format->out_sh_fmt !=
-		    SH_CSS_FRAME_FORMAT_RAW) {
-			if (sh_css_capture_get_viewfinder_frame_info(&vf_info))
-				goto error;
-		}
-		if (sh_css_capture_get_output_frame_info(&out_info))
-			goto error;
-		break;
-	case CI_MODE_VIDEO:
-		if (sh_css_video_get_viewfinder_frame_info(&vf_info))
-			goto error;
-
-		if (sh_css_video_get_output_frame_info(&out_info))
-			goto error;
-		break;
-	case CI_MODE_PREVIEW:
-		if (sh_css_preview_get_output_frame_info(&vf_info))
-			goto error;
-		break;
-	default:
-		mutex_unlock(&isp->mutex);
-		return -EINVAL;
-	}
 
 	atomisp_alloc_css_stat_bufs(isp);
 
@@ -931,16 +927,8 @@ int atomisp_reqbufs(struct file *file, void *fh,
 		return 0;
 	}
 
-	switch (pipe->pipe_type) {
-	case ATOMISP_PIPE_CAPTURE:
-		frame_info = out_info;
-		break;
-	case ATOMISP_PIPE_PREVIEW:
-	case ATOMISP_PIPE_VIEWFINDER:
-		frame_info = vf_info;
-		break;
-	/* node not supported */
-	default:
+	ret = __get_css_frame_info(isp, pipe->pipe_type, &frame_info);
+	if (ret) {
 		mutex_unlock(&isp->mutex);
 		return -EINVAL;
 	}
@@ -1033,7 +1021,7 @@ static int atomisp_qbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 	unsigned long userptr = buf->m.userptr;
 	struct videobuf_buffer *vb;
 	struct videobuf_vmalloc_memory *vm_mem;
-	struct sh_css_frame_info out_info, vf_info, frame_info;
+	struct sh_css_frame_info frame_info;
 	struct sh_css_frame *handle = NULL;
 	u32 length;
 	u32 pgnr;
@@ -1046,11 +1034,6 @@ static int atomisp_qbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 		goto error;
 	}
 
-/*
-	if ((!pipe->is_main) &&
-	    (!atomisp_is_viewfinder_support(isp)))
-		return -EINVAL;
-*/
 	if (!buf || buf->index >= VIDEO_MAX_FRAME ||
 		!pipe->capq.bufs[buf->index]) {
 		v4l2_err(&atomisp_dev,
@@ -1077,28 +1060,9 @@ static int atomisp_qbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 		if ((vb->baddr == userptr) && (vm_mem->vaddr))
 			goto done;
 
-		switch (isp->sw_contex.run_mode) {
-		case CI_MODE_STILL_CAPTURE:
-			if (isp->capture_format &&
-			    (isp->capture_format->out_sh_fmt !=
-				SH_CSS_FRAME_FORMAT_RAW) &&
-			sh_css_capture_get_viewfinder_frame_info(&vf_info))
-				goto error;
-
-			if (sh_css_capture_get_output_frame_info(&out_info))
-				goto error;
-			break;
-		case CI_MODE_VIDEO:
-			if (sh_css_video_get_viewfinder_frame_info(&vf_info))
-				goto error;
-			if (sh_css_video_get_output_frame_info(&out_info))
-				goto error;
-			break;
-		case CI_MODE_PREVIEW:
-			if (sh_css_preview_get_output_frame_info(&vf_info))
-				goto error;
-			break;
-		}
+		if (__get_css_frame_info(isp, pipe->pipe_type,
+					   &frame_info))
+			goto error;
 #ifdef CONFIG_ION
 		hrt_isp_css_mm_set_user_ptr(userptr, pgnr,
 			buf->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_ION
@@ -1107,23 +1071,6 @@ static int atomisp_qbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 		hrt_isp_css_mm_set_user_ptr(userptr, pgnr, HRT_USR_PTR);
 #endif
 
-		switch (pipe->pipe_type) {
-		case ATOMISP_PIPE_CAPTURE:
-			frame_info = out_info;
-			break;
-		case ATOMISP_PIPE_VIEWFINDER:
-		case ATOMISP_PIPE_PREVIEW:
-			frame_info = vf_info;
-			break;
-		/*TODO: fileinput support missing
-		case ATOMISP_PIPE_FILEINPUT:
-			break;
-		*/
-		/* node not supported */
-		default:
-			ret = -EINVAL;
-			goto error;
-		}
 		ret = sh_css_frame_allocate_from_info(&handle,
 							&frame_info);
 
@@ -1220,11 +1167,6 @@ static int atomisp_dqbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 
 	mutex_lock(&isp->mutex);
 
-/*
-	if ((!pipe->is_main) &&
-	    (!atomisp_is_viewfinder_support(isp)))
-		return -EINVAL;
-*/
 	if (isp->sw_contex.error) {
 		mutex_unlock(&isp->mutex);
 		v4l2_err(&atomisp_dev, "ISP ERROR\n");
