@@ -729,6 +729,8 @@ int intel_msic_get_battery_pack_temp(int *temp)
 }
 EXPORT_SYMBOL(intel_msic_get_battery_pack_temp);
 
+/* Avoid MSIC-reads when debugging not enabled */
+#if defined(DEBUG) || defined(CONFIG_DYNAMIC_DEBUG)
 static void dump_registers(int dump_mask)
 {
 	int i, retval = 0;
@@ -742,17 +744,13 @@ static void dump_registers(int dump_mask)
 	char *reg_str_boot[] = {"rirq1", "rirq2", "lowdet",
 				"spchr", "chrtime", "chrctrl1",
 				"chrgwdt", "safelmt"};
-	uint16_t reg_addr_int[] = {MSIC_BATT_CHR_PWRSRCINT_ADDR,
-		MSIC_BATT_CHR_PWRSRCINT1_ADDR, MSIC_BATT_CHR_CHRINT_ADDR,
-		MSIC_BATT_CHR_CHRINT1_ADDR, MSIC_BATT_CHR_PWRSRCLMT_ADDR};
-	char *reg_str_int[] = {"pwrint", "pwrint1", "chrint",
-				"chrint1", "pwrsrclmt"};
 	uint16_t reg_addr_evt[] = {MSIC_BATT_CHR_CHRCTRL_ADDR,
 		MSIC_BATT_CHR_CHRCVOLTAGE_ADDR, MSIC_BATT_CHR_CHRCCURRENT_ADDR,
 		MSIC_BATT_CHR_SPWRSRCINT_ADDR, MSIC_BATT_CHR_SPWRSRCINT1_ADDR,
 		CHR_STATUS_FAULT_REG};
 	char *reg_str_evt[] = {"chrctrl", "chrcv", "chrcc",
 				"spwrsrcint", "sprwsrcint1", "chrflt"};
+
 
 	if (dump_mask & MSIC_CHRG_REG_DUMP_BOOT) {
 		for (i = 0; i < ARRAY_SIZE(reg_addr_boot); i++) {
@@ -763,18 +761,6 @@ static void dump_registers(int dump_mask)
 				goto ipcread_err;
 			}
 			dev_dbg(msic_dev, "%s val: %x\n", reg_str_boot[i],
-								reg_val);
-		}
-	}
-	if (dump_mask & MSIC_CHRG_REG_DUMP_INT) {
-		for (i = 0; i < ARRAY_SIZE(reg_addr_int); i++) {
-			retval = intel_scu_ipc_ioread8(reg_addr_int[i],
-								&reg_val);
-			if (retval) {
-				chk_reg_addr = reg_addr_int[i];
-				goto ipcread_err;
-			}
-			dev_dbg(msic_dev, "%s val: %x\n", reg_str_int[i],
 								reg_val);
 		}
 	}
@@ -796,6 +782,11 @@ static void dump_registers(int dump_mask)
 ipcread_err:
 	handle_ipc_rw_status(retval, chk_reg_addr, MSIC_IPC_READ);
 }
+#else
+static void dump_registers(int dump_mask)
+{
+}
+#endif
 
 static bool is_charger_fault(void)
 {
@@ -2397,7 +2388,7 @@ static irqreturn_t msic_battery_thread_handler(int id, void *dev)
 	disable_chr_tmr = mbi->disable_safety_tmr;
 	mutex_unlock(&mbi->event_lock);
 
-	dump_registers(MSIC_CHRG_REG_DUMP_INT | MSIC_CHRG_REG_DUMP_EVENT);
+	dump_registers(MSIC_CHRG_REG_DUMP_EVENT);
 
 	/* Check if charge complete */
 	if (data[1] & MSIC_BATT_CHR_CHRCMPLT_MASK)
