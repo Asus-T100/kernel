@@ -165,6 +165,30 @@ const struct atomisp_format_bridge atomisp_output_fmts[] = {
 	{
 		.pixelformat = V4L2_PIX_FMT_SBGGR10,
 		.depth = 16,
+		.mbus_code = V4L2_MBUS_FMT_SBGGR10_1X10,
+		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
+		.description = "Bayer 10"},
+	{
+		.pixelformat = V4L2_PIX_FMT_SGBRG10,
+		.depth = 16,
+		.mbus_code = V4L2_MBUS_FMT_SBGGR10_1X10,
+		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
+		.description = "Bayer 10"},
+	{
+		.pixelformat = V4L2_PIX_FMT_SGRBG10,
+		.depth = 16,
+		.mbus_code = V4L2_MBUS_FMT_SBGGR10_1X10,
+		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
+		.description = "Bayer 10"},
+	{
+		.pixelformat = V4L2_PIX_FMT_SRGGB10,
+		.depth = 16,
+		.mbus_code = V4L2_MBUS_FMT_SBGGR10_1X10,
+		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
+		.description = "Bayer 10"},
+	{
+		.pixelformat = V4L2_PIX_FMT_SBGGR10,
+		.depth = 16,
 		.mbus_code = V4L2_MBUS_FMT_SGRBG10_1X10,
 		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
 		.description = "Bayer 10"},
