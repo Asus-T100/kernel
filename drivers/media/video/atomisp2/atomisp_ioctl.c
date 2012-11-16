@@ -907,6 +907,11 @@ int atomisp_reqbufs(struct file *file, void *fh,
 
 	if (req->count == 0) {
 		atomisp_videobuf_free(&pipe->capq);
+		if (!list_empty(&pipe->capq.stream)) {
+			mutex_lock(&pipe->capq.vb_lock);
+			videobuf_queue_cancel(&pipe->capq);
+			mutex_unlock(&pipe->capq.vb_lock);
+		}
 		return 0;
 	}
 
@@ -1189,23 +1194,22 @@ static int atomisp_dqbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 	return 0;
 }
 
-int atomisp_get_css_pipe_id(struct atomisp_device *isp, enum sh_css_pipe_id *pipe)
+enum sh_css_pipe_id atomisp_get_css_pipe_id(struct atomisp_device *isp)
 {
+	if (isp->params.continuous_vf &&
+	    isp->sw_contex.run_mode != CI_MODE_VIDEO)
+		return SH_CSS_PREVIEW_PIPELINE;
+
 	switch (isp->sw_contex.run_mode) {
-	case CI_MODE_STILL_CAPTURE:
-		*pipe = SH_CSS_CAPTURE_PIPELINE;
-		break;
 	case CI_MODE_PREVIEW:
-		*pipe = SH_CSS_PREVIEW_PIPELINE;
-		break;
+		return SH_CSS_PREVIEW_PIPELINE;
 	case CI_MODE_VIDEO:
-		*pipe = SH_CSS_VIDEO_PIPELINE;
-		break;
+		return SH_CSS_VIDEO_PIPELINE;
+	case CI_MODE_STILL_CAPTURE:
+		/* fall through */
 	default:
-	v4l2_err(&atomisp_dev,"atomisp_get_css_pipe_id\n");
-		return -EINVAL;
+		return SH_CSS_CAPTURE_PIPELINE;
 	}
-	return 0;
 }
 
 int atomisp_get_css_buf_type(struct atomisp_device *isp,
@@ -1258,8 +1262,21 @@ static int atomisp_streamon(struct file *file, void *fh,
 		goto error;
 
 
-	if (isp->sw_contex.work_queued)
+	if (isp->sw_contex.work_queued) {
+		/* trigger still capture */
+		if (isp->params.continuous_vf &&
+		    pipe->pipe_type == ATOMISP_PIPE_CAPTURE &&
+		    isp->sw_contex.run_mode != CI_MODE_VIDEO) {
+			ret = sh_css_offline_capture_configure(
+					isp->params.offline_parm.num_captures,
+					isp->params.offline_parm.skip_frames,
+					isp->params.offline_parm.offset);
+			if (ret)
+				return ret;
+		}
+		atomisp_qbuffers_to_css(isp);
 		goto done;
+	}
 
 	if (isp->sw_contex.isp_streaming) {
 		atomisp_qbuffers_to_css(isp);
@@ -1279,10 +1296,7 @@ static int atomisp_streamon(struct file *file, void *fh,
 	}
 #endif
 
-	ret = atomisp_get_css_pipe_id(isp, &css_pipe_id);
-	if (ret < 0)
-		goto error;
-
+	css_pipe_id = atomisp_get_css_pipe_id(isp);
 
 	ret = sh_css_start(css_pipe_id);
 	if (ret) {
@@ -1306,11 +1320,11 @@ static int atomisp_streamon(struct file *file, void *fh,
 	atomisp_qbuffers_to_css(isp);
 
 	/* don't start workq yet, wait for another pipe*/
-	/* for capture pipe + raw output,  ISP only support output main*/
+	/* for capture pipe + raw output, ISP only support output main */
 	if (isp->sw_contex.run_mode == CI_MODE_VIDEO ||
-		(isp->sw_contex.run_mode == CI_MODE_STILL_CAPTURE &&
-			(isp->capture_format->out_sh_fmt !=
-			 SH_CSS_FRAME_FORMAT_RAW)))
+	    (isp->sw_contex.run_mode == CI_MODE_STILL_CAPTURE &&
+	     isp->capture_format->out_sh_fmt != SH_CSS_FRAME_FORMAT_RAW &&
+	     !isp->params.continuous_vf))
 		goto done;
 
 start_workq:
@@ -1389,6 +1403,18 @@ int atomisp_streamoff(struct file *file, void *fh,
 	}
 
 	mutex_lock(&isp->mutex);
+	/*
+	 * do only videobuf_streamoff for capture & vf pipes in
+	 * case of continuous capture
+	 */
+	if (isp->sw_contex.run_mode != CI_MODE_VIDEO &&
+	    isp->params.continuous_vf &&
+	    pipe->pipe_type != ATOMISP_PIPE_PREVIEW) {
+		ret = videobuf_streamoff(&pipe->capq);
+		mutex_unlock(&isp->mutex);
+		return ret;
+	}
+
 	if(!isp->sw_contex.isp_streaming) {
 		ret = videobuf_streamoff(&pipe->capq);
 		if (ret)
@@ -1413,21 +1439,17 @@ int atomisp_streamoff(struct file *file, void *fh,
 					false);
 #endif /* CONFIG_X86_MRFLD */
 
-	switch (isp->sw_contex.run_mode) {
-	case CI_MODE_STILL_CAPTURE:
-		v4l2_dbg(3, dbg_level, &atomisp_dev,
-				"%s, stop capture\n",__func__);
-		sh_css_capture_stop();
-		break;
-	case CI_MODE_PREVIEW:
-		v4l2_dbg(3, dbg_level, &atomisp_dev,
-				"%s, stop preview\n",__func__);
+	switch (atomisp_get_css_pipe_id(isp)) {
+	case SH_CSS_PREVIEW_PIPELINE:
 		sh_css_preview_stop();
 		break;
-	case CI_MODE_VIDEO:
-		v4l2_dbg(3, dbg_level, &atomisp_dev,
-				"%s, stop video\n",__func__);
+	case SH_CSS_VIDEO_PIPELINE:
 		sh_css_video_stop();
+		break;
+	case SH_CSS_CAPTURE_PIPELINE:
+		/* fall through */
+	default:
+		sh_css_capture_stop();
 		break;
 	}
 

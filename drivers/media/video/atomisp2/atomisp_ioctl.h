@@ -38,7 +38,7 @@ int atomisp_streamoff(struct file *file, void *fh,
 int atomisp_reqbufs(struct file *file, void *fh,
 			struct v4l2_requestbuffers *req);
 
-int atomisp_get_css_pipe_id(struct atomisp_device *isp, enum sh_css_pipe_id *pipe);
+enum sh_css_pipe_id atomisp_get_css_pipe_id(struct atomisp_device *isp);
 
 int atomisp_get_css_buf_type(struct atomisp_device *isp,
 			 struct atomisp_video_pipe *pipe);

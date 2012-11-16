@@ -395,13 +395,6 @@ static void atomisp_pipe_reset(struct atomisp_device *isp)
 	int ret;
 	enum sh_css_pipe_id css_pipe_id;
 
-	ret = atomisp_get_css_pipe_id(isp, &css_pipe_id);
-	if (ret < 0) {
-		v4l2_err(&atomisp_dev,
-			"get css pipe id fails: %d\n", ret);
-		return;
-	}
-
 	v4l2_warn(&atomisp_dev, "ISP timeout. Recovering\n");
 
 #ifndef CONFIG_X86_MRFLD
@@ -410,15 +403,18 @@ static void atomisp_pipe_reset(struct atomisp_device *isp)
 					false);
 #endif /* CONFIG_X86_MRFLD */
 
-	switch (isp->sw_contex.run_mode) {
-	case CI_MODE_STILL_CAPTURE:
-		sh_css_capture_stop();
-		break;
-	case CI_MODE_PREVIEW:
+	css_pipe_id = atomisp_get_css_pipe_id(isp);
+	switch (css_pipe_id) {
+	case SH_CSS_PREVIEW_PIPELINE:
 		sh_css_preview_stop();
 		break;
-	case CI_MODE_VIDEO:
+	case SH_CSS_VIDEO_PIPELINE:
 		sh_css_video_stop();
+		break;
+	case SH_CSS_CAPTURE_PIPELINE:
+		/* fall through */
+	default:
+		sh_css_capture_stop();
 		break;
 	}
 
@@ -3185,6 +3181,20 @@ atomisp_set_sensor_mipi_to_isp(struct camera_mipi_info *mipi_info)
 	}
 }
 
+static void __enable_continuous_vf(bool enable)
+{
+	sh_css_capture_set_mode(SH_CSS_CAPTURE_MODE_PRIMARY);
+	sh_css_capture_enable_online(!enable);
+	sh_css_preview_enable_online(!enable);
+	sh_css_enable_continuous(enable);
+	sh_css_enable_cont_capt(enable);
+	if (!enable) {
+		sh_css_enable_raw_reordered(false);
+		sh_css_input_set_two_pixels_per_clock(false);
+	}
+	sh_css_input_set_mode(SH_CSS_INPUT_MODE_SENSOR);
+}
+
 static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 				   struct sh_css_frame_info *output_info,
 				   struct sh_css_frame_info *raw_output_info,
@@ -3258,24 +3268,21 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 		}
 	}
 
-	switch (isp->sw_contex.run_mode) {
-	case CI_MODE_PREVIEW:
-		if (sh_css_preview_configure_output(width, height,
-					format->sh_fmt))
-			return -EINVAL;
+	if (isp->params.continuous_vf) {
+		if (isp->sw_contex.run_mode != CI_MODE_VIDEO) {
+			__enable_continuous_vf(true);
+			/* enable raw reordered only to resolutions above 5M */
+			if (width >= 2576 || height >= 1936) {
+				sh_css_enable_raw_reordered(true);
+				sh_css_input_set_two_pixels_per_clock(true);
+			}
+		} else {
+			__enable_continuous_vf(false);
+		}
+	}
 
-		v4l2_dbg(3, dbg_level, &atomisp_dev,
-					"sh css preview output width: %d, height: %d\n",
-					width, height);
-
-		if (sh_css_preview_get_output_frame_info(output_info))
-			return -EINVAL;
-
-		v4l2_dbg(3, dbg_level, &atomisp_dev,
-				    "sh css preview output_info width: %d, height: %d\n",
-					output_info->width, output_info->height);
-		break;
-	case CI_MODE_VIDEO:
+	/* video same in continuouscapture and online modes */
+	if (isp->sw_contex.run_mode == CI_MODE_VIDEO) {
 		if (sh_css_video_configure_viewfinder(
 					isp->vf_format->out.width,
 					isp->vf_format->out.height,
@@ -3288,13 +3295,26 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 
 		if (sh_css_video_get_output_frame_info(output_info))
 			return -EINVAL;
+		goto done;
+	}
+
+	switch (pipe->pipe_type) {
+	case ATOMISP_PIPE_PREVIEW:
+		if (sh_css_preview_configure_output(width, height,
+					format->sh_fmt))
+			return -EINVAL;
+		if (sh_css_preview_get_output_frame_info(output_info))
+			return -EINVAL;
 		break;
+	case ATOMISP_PIPE_CAPTURE:
+		/* fall through */
 	default:
 		if (format->sh_fmt == SH_CSS_FRAME_FORMAT_RAW) {
 			sh_css_capture_set_mode(SH_CSS_CAPTURE_MODE_RAW);
 		}
-
-		sh_css_capture_enable_online(isp->params.online_process);
+		if (!isp->params.continuous_vf)
+			sh_css_capture_enable_online(
+					isp->params.online_process);
 
 		if (sh_css_capture_configure_viewfinder(
 					isp->vf_format->out.width,
@@ -3319,15 +3339,12 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 				    ret);
 			return -EINVAL;
 		}
-		v4l2_dbg(3, dbg_level, &atomisp_dev,
-					"sh css capture main output_info width: %d, height: %d\n",
-					output_info->width, output_info->height);
-
-		if (!isp->params.online_process)
+		if (!isp->params.online_process && !isp->params.continuous_vf)
 			if (sh_css_capture_get_output_raw_frame_info(
 						raw_output_info))
 				return -EINVAL;
-		if (isp->sw_contex.run_mode != CI_MODE_STILL_CAPTURE) {
+		if (!isp->params.continuous_vf &&
+		    isp->sw_contex.run_mode != CI_MODE_STILL_CAPTURE) {
 			v4l2_err(&atomisp_dev,
 				    "Need to set the running mode first\n");
 			isp->sw_contex.run_mode = CI_MODE_STILL_CAPTURE;
@@ -3335,14 +3352,16 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 		break;
 	}
 
+done:
 	atomisp_update_grid_info(isp);
 
 	/* Free the raw_dump buffer first */
 	sh_css_frame_free(isp->raw_output_frame);
 	isp->raw_output_frame = NULL;
 
-	if (!isp->params.online_process && !isp->sw_contex.file_input
-	    && sh_css_frame_allocate_from_info(&isp->raw_output_frame,
+	if (!isp->params.continuous_vf && !isp->params.online_process &&
+	    !isp->sw_contex.file_input &&
+	    sh_css_frame_allocate_from_info(&isp->raw_output_frame,
 					       raw_output_info))
 		return -ENOMEM;
 
@@ -3553,8 +3572,9 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 
 	sh_format = format_bridge->sh_fmt;
 
-	if (pipe->pipe_type != ATOMISP_PIPE_CAPTURE &&
-	    isp->sw_contex.run_mode != CI_MODE_PREVIEW) {
+	if (pipe->pipe_type == ATOMISP_PIPE_VIEWFINDER ||
+	    (pipe->pipe_type == ATOMISP_PIPE_PREVIEW &&
+	     isp->sw_contex.run_mode == CI_MODE_VIDEO)) {
 		/*
 		 * Check whether VF resolution configured larger
 		 * than Main Resolution. If so, Force VF resolution
@@ -3582,7 +3602,7 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 					width, height, sh_format);
 			sh_css_video_get_viewfinder_frame_info(&output_info);
 			break;
-		case CI_MODE_STILL_CAPTURE:
+		default:
 			sh_css_capture_configure_viewfinder(
 					width, height, sh_format);
 			sh_css_capture_get_viewfinder_frame_info(&output_info);
@@ -3605,7 +3625,7 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 			  "smaller then Vf Resolution. Force "
 			  "to be equal with Vf Resolution.");
 		width = isp->isp_subdev.video_out_vf.format->out.width;
-		height = isp->isp_subdev.video_out_vf .format->out.height;
+		height = isp->isp_subdev.video_out_vf.format->out.height;
 	}
 
 	/* V4L2_BUF_TYPE_PRIVATE will set offline processing */
@@ -3615,7 +3635,12 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 		isp->params.online_process = 1;
 
 	/* setting run mode to the sensor */
-	sensor_parm.parm.capture.capturemode = isp->sw_contex.run_mode;
+	if (isp->sw_contex.run_mode != CI_MODE_VIDEO &&
+	    isp->params.continuous_vf)
+		sensor_parm.parm.capture.capturemode = CI_MODE_STILL_CAPTURE;
+	else
+		sensor_parm.parm.capture.capturemode = isp->sw_contex.run_mode;
+
 	v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
 				video, s_parm, &sensor_parm);
 
@@ -3640,7 +3665,7 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	}
 
 	/* construct resolution supported by isp */
-	if (res_overflow) {
+	if (res_overflow && !isp->params.continuous_vf) {
 		width -= padding_w;
 		height -= padding_h;
 		/* app vs isp */
@@ -3669,11 +3694,24 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 		return -ENOMEM;
 	}
 
-	/* set format info to sensor */
-	ret = atomisp_set_fmt_to_snr(isp, f, pixelformat, padding_w, padding_h,
-				     dvs_env_w, dvs_env_h);
-	if (ret)
-		return -EINVAL;
+	/*
+	 * set format info to sensor
+	 * In case of continuous_vf, resolution is set only if it is higher than
+	 * existing value. This because preview pipe will be configured after
+	 * capture pipe and usually has lower resolution than capture pipe.
+	 */
+	if (!isp->params.continuous_vf ||
+	    isp->sw_contex.run_mode == CI_MODE_VIDEO ||
+	    (isp->input_format &&
+	     isp->input_format->out.width < (width + padding_w + dvs_env_w) &&
+	     isp->input_format->out.height <
+	     (height + padding_h + dvs_env_h))) {
+		ret = atomisp_set_fmt_to_snr(isp, f, pixelformat,
+					     padding_w, padding_h,
+					     dvs_env_w, dvs_env_h);
+		if (ret)
+			return -EINVAL;
+	}
 
 	/* Only main stream pipe will be here */
 	isp->capture_format = pipe->format;

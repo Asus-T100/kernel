@@ -183,23 +183,31 @@ int atomisp_qbuffers_to_css(struct atomisp_device *isp)
 	struct atomisp_video_pipe *vf_pipe = NULL;
 	struct atomisp_video_pipe *preview_pipe = NULL;
 
-	switch (isp->sw_contex.run_mode) {
-	case CI_MODE_PREVIEW:
-		preview_pipe = &isp->isp_subdev.video_out_preview;
-		css_preview_pipe_id = SH_CSS_PREVIEW_PIPELINE;
-		break;
-	case CI_MODE_VIDEO:
+	if (isp->sw_contex.run_mode == CI_MODE_VIDEO) {
 		capture_pipe = &isp->isp_subdev.video_out_capture;
 		preview_pipe = &isp->isp_subdev.video_out_preview;
 		css_capture_pipe_id = SH_CSS_VIDEO_PIPELINE;
 		css_preview_pipe_id = SH_CSS_VIDEO_PIPELINE;
-		break;
-	case CI_MODE_STILL_CAPTURE:
-		/* fall through */
-	default:
+	} else if (isp->params.continuous_vf) {
 		capture_pipe = &isp->isp_subdev.video_out_capture;
 		vf_pipe = &isp->isp_subdev.video_out_vf;
+		preview_pipe = &isp->isp_subdev.video_out_preview;
+
+		css_preview_pipe_id = SH_CSS_PREVIEW_PIPELINE;
 		css_capture_pipe_id = SH_CSS_CAPTURE_PIPELINE;
+	} else {
+		switch (isp->sw_contex.run_mode) {
+		case CI_MODE_PREVIEW:
+			preview_pipe = &isp->isp_subdev.video_out_preview;
+			css_preview_pipe_id = SH_CSS_PREVIEW_PIPELINE;
+			break;
+		case CI_MODE_STILL_CAPTURE:
+			/* fall through */
+		default:
+			capture_pipe = &isp->isp_subdev.video_out_capture;
+			vf_pipe = &isp->isp_subdev.video_out_vf;
+			css_capture_pipe_id = SH_CSS_CAPTURE_PIPELINE;
+		}
 	}
 
 	if (capture_pipe) {
@@ -383,6 +391,10 @@ int atomisp_init_struct(struct atomisp_device *isp)
 	isp->params.online_process = 1;
 	isp->params.yuv_ds_en = 0;
 	//isp->params.vf_overlay = NULL;
+	isp->params.offline_parm.num_captures = 1;
+	isp->params.offline_parm.skip_frames = 0;
+	isp->params.offline_parm.offset = 0;
+	isp->params.continuous_vf = false;
 	isp->sw_contex.sensor_streaming = false;
 	isp->sw_contex.isp_streaming = false;
 	isp->sw_contex.work_queued = false;

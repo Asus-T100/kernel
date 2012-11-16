@@ -204,6 +204,7 @@ struct atomisp_css_params {
 	bool fpn_en;
 	bool xnr_en;
 	bool low_light;
+	bool continuous_vf;
 	int false_color;
 	unsigned int histogram_elenum;
 
@@ -267,6 +268,8 @@ struct atomisp_css_params {
 	int num_flash_frames;
 	enum atomisp_flash_state flash_state;
 	enum atomisp_frame_status last_frame_status;
+	/* continuous capture */
+	struct atomisp_cont_capture_conf offline_parm;
 	/* Flag to check if driver needs to update params to css */
 	bool css_update_params_needed;
 };
