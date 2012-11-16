@@ -93,7 +93,7 @@ int sfi_mtimer_num;
 struct sfi_rtc_table_entry sfi_mrtc_array[SFI_MRTC_MAX];
 EXPORT_SYMBOL_GPL(sfi_mrtc_array);
 int sfi_mrtc_num;
-#ifdef CONFIG_X86_MDFLD
+#ifdef CONFIG_ATOM_SOC_POWER
 void (*saved_shutdown)(void);
 #include <intel_soc_pmu.h>
 /* This function is here just to have a hook to execute code before
@@ -443,7 +443,7 @@ void __init x86_intel_mid_early_setup(void)
 
 	/* Moorestown specific power_off/restart method */
 	pm_power_off = intel_mid_power_off;
-#ifdef CONFIG_X86_MDFLD
+#ifdef CONFIG_ATOM_SOC_POWER
 	if (mfld_shutdown) {
 		saved_shutdown = machine_ops.shutdown;
 		machine_ops.shutdown = mfld_shutdown;

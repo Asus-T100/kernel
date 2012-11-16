@@ -594,10 +594,15 @@ extern void intel_mid_rtc_init(void);
 extern int mrst_pmu_pci_set_power_state(struct pci_dev *pdev,
 					pci_power_t state);
 
-#ifdef CONFIG_X86_MDFLD
+#ifdef CONFIG_ATOM_SOC_POWER
 extern int pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state);
 extern pci_power_t pmu_pci_choose_state(struct pci_dev *pdev);
-#endif /* !CONFIG_X86_MDFLD */
+#else
+static inline int pmu_pci_set_power_state
+		(struct pci_dev *pdev, pci_power_t state) {return 0; }
+static inline pci_power_t pmu_pci_choose_state
+				(struct pci_dev *pdev) { return PCI_D3hot; }
+#endif /* CONFIG_ATOM_SOC_POWER */
 
 #ifdef CONFIG_INTEL_MID_RAM_CONSOLE
 extern void ram_consle_reserve_memory(void);

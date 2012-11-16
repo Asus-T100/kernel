@@ -2355,7 +2355,7 @@ void irq_force_complete_move(int irq)
 static inline void irq_complete_move(struct irq_cfg *cfg) { }
 #endif
 
-#ifdef CONFIG_X86_MDFLD
+#ifdef CONFIG_ATOM_SOC_POWER
 static int ioapic_set_wake(struct irq_data *data, unsigned int on)
 {
 	return 0;
@@ -2541,7 +2541,7 @@ static struct irq_chip ioapic_chip __read_mostly = {
 #ifdef CONFIG_SMP
 	.irq_set_affinity	= ioapic_set_affinity,
 #endif
-#ifdef CONFIG_X86_MDFLD
+#ifdef CONFIG_ATOM_SOC_POWER
 	.irq_set_wake	= ioapic_set_wake,
 #endif
 	.irq_retrigger		= ioapic_retrigger_irq,

@@ -2067,7 +2067,7 @@ static struct {
 	unsigned int apic_thmr;
 } apic_pm_state;
 
-#ifdef CONFIG_X86_MDFLD
+#ifdef CONFIG_ATOM_SOC_POWER
 /* On intel_mid, the suspend flow is a bit different, and the lapic
    hw implementation, and integration is not supporting standard suspension.
    This implementation is only putting high value to the timer, so that
