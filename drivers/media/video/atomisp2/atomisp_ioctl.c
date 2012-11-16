@@ -1159,7 +1159,7 @@ done:
 	ret = videobuf_qbuf(&pipe->capq, buf);
 	/* TODO: do this better, not best way to queue to css */
 	if (isp->sw_contex.isp_streaming)
-		atomisp_qbuffers_to_css(isp, pipe);
+		atomisp_qbuffers_to_css(isp);
 	mutex_unlock(&isp->mutex);
 	return ret;
 
@@ -1269,22 +1269,12 @@ int atomisp_get_css_pipe_id(struct atomisp_device *isp, enum sh_css_pipe_id *pip
 int atomisp_get_css_buf_type(struct atomisp_device *isp,
 			 struct atomisp_video_pipe *pipe)
 {
-	int buf_type;
-	switch (isp->sw_contex.run_mode) {
-	case CI_MODE_STILL_CAPTURE:
-	case CI_MODE_VIDEO:
-		if (pipe->pipe_type == ATOMISP_PIPE_CAPTURE)
-			buf_type = SH_CSS_BUFFER_TYPE_OUTPUT_FRAME;
-		else
-			buf_type = SH_CSS_BUFFER_TYPE_VF_OUTPUT_FRAME;
-		break;
-	case CI_MODE_PREVIEW:
-		buf_type = SH_CSS_BUFFER_TYPE_OUTPUT_FRAME;
-		break;
-	default:
-		return -EINVAL;
-	}
-	return buf_type;
+	if (pipe->pipe_type == ATOMISP_PIPE_CAPTURE ||
+	    (pipe->pipe_type == ATOMISP_PIPE_PREVIEW &&
+	     isp->sw_contex.run_mode != CI_MODE_VIDEO))
+		return SH_CSS_BUFFER_TYPE_OUTPUT_FRAME;
+	else
+		return SH_CSS_BUFFER_TYPE_VF_OUTPUT_FRAME;
 }
 
 /*
@@ -1330,7 +1320,7 @@ static int atomisp_streamon(struct file *file, void *fh,
 		goto done;
 
 	if (isp->sw_contex.isp_streaming) {
-		atomisp_qbuffers_to_css(isp, pipe);
+		atomisp_qbuffers_to_css(isp);
 		goto start_workq;
 	}
 
@@ -1371,8 +1361,7 @@ static int atomisp_streamon(struct file *file, void *fh,
 	isp->sw_contex.invalid_frame = false;
 	isp->irq_infos = 0;
 
-	atomisp_qbuffers_to_css(isp, pipe);
-	//sh_css_dump_sp_sw_debug_info();
+	atomisp_qbuffers_to_css(isp);
 
 	/* don't start workq yet, wait for another pipe*/
 	/* for capture pipe + raw output,  ISP only support output main*/
@@ -1474,10 +1463,7 @@ int atomisp_streamoff(struct file *file, void *fh,
 	isp->sw_contex.isp_streaming = false;
 	isp->sw_contex.error = true;
 
-	isp->s3a_bufs_in_css = 0;
-	isp->frame_bufs_in_css = 0;
-	isp->dis_bufs_in_css = 0;
-	isp->vf_frame_bufs_in_css = 0;
+	atomisp_clear_css_buffer_counters(isp);
 
 #ifndef CONFIG_X86_MRFLD
 	if (!isp->sw_contex.file_input)

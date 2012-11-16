@@ -297,9 +297,7 @@ struct atomisp_device {
 		struct list_head memory_maps;
 	} acc;
 
-	unsigned int frame_bufs_in_css;
-	unsigned int vf_frame_bufs_in_css;
-	unsigned int s3a_bufs_in_css;
+	unsigned int s3a_bufs_in_css[SH_CSS_NR_OF_PIPELINES];
 	unsigned int dis_bufs_in_css;
 
 	/* ISP modules */

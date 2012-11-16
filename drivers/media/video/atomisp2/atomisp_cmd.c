@@ -383,6 +383,15 @@ void atomisp_set_term_en_count(struct atomisp_device *isp)
 	intel_mid_msgbus_write32(MFLD_IUNITPHY_PORT, MFLD_CSI_CONTROL, val);
 }
 
+void atomisp_clear_css_buffer_counters(struct atomisp_device *isp)
+{
+	memset(isp->s3a_bufs_in_css, 0, sizeof(isp->s3a_bufs_in_css));
+	isp->dis_bufs_in_css = 0;
+	isp->isp_subdev.video_out_capture.buffers_in_css = 0;
+	isp->isp_subdev.video_out_vf.buffers_in_css = 0;
+	isp->isp_subdev.video_out_preview.buffers_in_css = 0;
+}
+
 static void atomisp_pipe_reset(struct atomisp_device *isp)
 {
 	int ret;
@@ -434,15 +443,7 @@ static void atomisp_pipe_reset(struct atomisp_device *isp)
 	/* reset ISP and restore its state */
 	atomisp_reset(isp);
 
-	isp->s3a_bufs_in_css = 0;
-	isp->frame_bufs_in_css = 0;
-	isp->dis_bufs_in_css = 0;
-	isp->vf_frame_bufs_in_css = 0;
-
-	isp->s3a_bufs_in_css = 0;
-	isp->frame_bufs_in_css = 0;
-	isp->dis_bufs_in_css = 0;
-	isp->vf_frame_bufs_in_css = 0;
+	atomisp_clear_css_buffer_counters(isp);
 
 	sh_css_start(css_pipe_id);
 	if (!isp->sw_contex.file_input) {
@@ -505,18 +506,23 @@ static void atomisp_timeout_handler(struct atomisp_device *isp)
 	snprintf(debug_context, 64, "ISP timeout encountered (%d of 5)",
 		 atomic_read(&isp->wdt_count));
 	sh_css_dump_debug_info(debug_context);
-	v4l2_err(&atomisp_dev,
-			"%s, frames in css: %d\n",
-			__func__, isp->frame_bufs_in_css);
-	v4l2_err(&atomisp_dev,
-			"%s, vf frames in css: %d\n",
-			__func__, isp->vf_frame_bufs_in_css);
-	v4l2_err(&atomisp_dev,
-			"%s, s3a buffers in css: %d\n",
-			__func__, isp->s3a_bufs_in_css);
-	v4l2_err(&atomisp_dev,
-			"%s, dis buffers in css: %d\n",
-			__func__, isp->dis_bufs_in_css);
+	dev_err(isp->dev, "%s, pipe[%d] buffers in css: %d\n", __func__,
+		isp->isp_subdev.video_out_capture.pipe_type,
+		isp->isp_subdev.video_out_capture.buffers_in_css);
+	dev_err(isp->dev, "%s, pipe[%d] buffers in css: %d\n", __func__,
+		isp->isp_subdev.video_out_vf.pipe_type,
+		isp->isp_subdev.video_out_vf.buffers_in_css);
+	dev_err(isp->dev, "%s, pipe[%d] buffers in css: %d\n", __func__,
+		isp->isp_subdev.video_out_preview.pipe_type,
+		isp->isp_subdev.video_out_preview.buffers_in_css);
+	dev_err(isp->dev, "%s, s3a buffers in css preview pipe: %d\n",
+		__func__, isp->s3a_bufs_in_css[SH_CSS_PREVIEW_PIPELINE]);
+	dev_err(isp->dev, "%s, s3a buffers in css capture pipe: %d\n",
+		__func__, isp->s3a_bufs_in_css[SH_CSS_CAPTURE_PIPELINE]);
+	dev_err(isp->dev, "%s, s3a buffers in css video pipe: %d\n",
+		__func__, isp->s3a_bufs_in_css[SH_CSS_VIDEO_PIPELINE]);
+	dev_err(isp->dev, "%s, dis buffers in css: %d\n",
+		__func__, isp->dis_bufs_in_css);
 	/*sh_css_dump_sp_state();*/
 	/*sh_css_dump_isp_state();*/
 	atomisp_pipe_reset(isp);
@@ -679,7 +685,7 @@ static void atomisp_buf_done(struct atomisp_device *isp,
 					v4l2_err(&atomisp_dev,
 						"get 3a statistics failed, not enough memory\n");
 			}
-			isp->s3a_bufs_in_css--;
+			isp->s3a_bufs_in_css[css_pipe_id]--;
 			break;
 		case SH_CSS_BUFFER_TYPE_DIS_STATISTICS:
 			/* ignore error in case of dis statistics for now */
@@ -723,7 +729,7 @@ static void atomisp_buf_done(struct atomisp_device *isp,
 				pipe = &isp->isp_subdev.video_out_vf;
 			else
 				pipe = &isp->isp_subdev.video_out_preview;
-			isp->vf_frame_bufs_in_css--;
+			pipe->buffers_in_css--;
 			frame = buffer;
 			if (isp->params.flash_state == ATOMISP_FLASH_ONGOING) {
 				if (frame->flash_state
@@ -753,7 +759,7 @@ static void atomisp_buf_done(struct atomisp_device *isp,
 				pipe = &isp->isp_subdev.video_out_capture;
 			else
 				pipe = &isp->isp_subdev.video_out_preview;
-			isp->frame_bufs_in_css--;
+			pipe->buffers_in_css--;
 			vb = atomisp_css_frame_to_vbuf(pipe, buffer);
 			frame = buffer;
 
@@ -825,7 +831,7 @@ static void atomisp_buf_done(struct atomisp_device *isp,
 		return;
 	}
 	if (!error)
-		atomisp_qbuffers_to_css(isp, pipe);
+		atomisp_qbuffers_to_css(isp);
 }
 
 void atomisp_wdt_work(struct work_struct *work)
@@ -838,10 +844,7 @@ void atomisp_wdt_work(struct work_struct *work)
 	case ATOMISP_ISP_MAX_TIMEOUT_COUNT:
 		isp->sw_contex.error = true;
 
-		isp->s3a_bufs_in_css = 0;
-		isp->frame_bufs_in_css = 0;
-		isp->dis_bufs_in_css = 0;
-		isp->vf_frame_bufs_in_css = 0;
+		atomisp_clear_css_buffer_counters(isp);
 
 		atomic_set(&isp->wdt_count, 0);
 

@@ -78,153 +78,159 @@ int atomisp_buf_prepare(struct videobuf_queue *vq,
 	return 0;
 }
 
-static int atomisp_css_qbuf(struct atomisp_device *isp,
-			    struct atomisp_video_pipe *pipe,
-			    enum sh_css_buffer_type buf_type,
-			    void *buffer)
+int atomisp_q_video_buffers_to_css(struct atomisp_device *isp,
+			     struct atomisp_video_pipe *pipe,
+			     enum sh_css_buffer_type css_buf_type,
+			     enum sh_css_pipe_id css_pipe_id)
 {
-	enum sh_css_pipe_id css_pipe_id;
-	int *in_css;
+	struct videobuf_buffer *vb;
 	struct videobuf_vmalloc_memory *vm_mem;
-	void *cssbuffer = buffer;
+	unsigned long irqflags;
 	int err;
-	unsigned long irqflags;
 
-	if (!buffer)
-		return -EINVAL;
-
-	switch (buf_type) {
-	case SH_CSS_BUFFER_TYPE_3A_STATISTICS:
-		in_css = &isp->s3a_bufs_in_css;
-		break;
-	case SH_CSS_BUFFER_TYPE_DIS_STATISTICS:
-		in_css = &isp->dis_bufs_in_css;
-		break;
-	case SH_CSS_BUFFER_TYPE_OUTPUT_FRAME:
-		in_css = &isp->frame_bufs_in_css;
-		vm_mem = ((struct videobuf_buffer *)buffer)->priv;
-		cssbuffer = vm_mem->vaddr;
-		break;
-	case SH_CSS_BUFFER_TYPE_VF_OUTPUT_FRAME:
-		in_css = &isp->vf_frame_bufs_in_css;
-		vm_mem = ((struct videobuf_buffer *)buffer)->priv;
-		cssbuffer = vm_mem->vaddr;
-		break;
-	default:
-		v4l2_err(&atomisp_dev, "%s, unknown buffer type\n", __func__);
-		return -EINVAL;
-	}
-
-	if (*in_css >= ATOMISP_CSS_Q_DEPTH)
-		return -ENOSPC;
-
-	err = atomisp_get_css_pipe_id(isp, &css_pipe_id);
-	if (err < 0)
-		return -EINVAL;
-
-	err = sh_css_queue_buffer(css_pipe_id, buf_type, cssbuffer);
-	if (err) {
-		v4l2_err(&atomisp_dev, "%s, css q fails: %d\n",
-				__func__, err);
-		return -EINVAL;
-	}
-	*in_css += 1;
-
-	if (buf_type == SH_CSS_BUFFER_TYPE_OUTPUT_FRAME ||
-	    buf_type == SH_CSS_BUFFER_TYPE_VF_OUTPUT_FRAME) {
+	while (pipe->buffers_in_css < ATOMISP_CSS_Q_DEPTH) {
 		spin_lock_irqsave(&pipe->irq_lock, irqflags);
-		((struct videobuf_buffer *)buffer)->state = VIDEOBUF_ACTIVE;
-		spin_unlock_irqrestore(&pipe->irq_lock, irqflags);
-	}
-
-	return 0;
-}
-
-int atomisp_qbuffers_to_css(struct atomisp_device *isp,
-			 struct atomisp_video_pipe *pipe)
-{
-	struct videobuf_buffer *vb = NULL;
-	struct atomisp_s3a_buf *s3a_buf = NULL;
-	struct atomisp_dis_buf *dis_buf = NULL;
-	unsigned long irqflags;
-	enum sh_css_buffer_type buf_type;
-	int *in_css;
-	int err = 0;
-
-	/* frame buffer */
-	buf_type = atomisp_get_css_buf_type(isp, pipe);
-	if (buf_type == SH_CSS_BUFFER_TYPE_OUTPUT_FRAME)
-		in_css = &isp->frame_bufs_in_css;
-	else
-		in_css = &isp->vf_frame_bufs_in_css;
-
-	while (!err && *in_css < ATOMISP_CSS_Q_DEPTH) {
-		spin_lock_irqsave(&pipe->irq_lock, irqflags);
-		if (!list_empty(&pipe->activeq)) {
-			vb = list_entry(pipe->activeq.next,
-					struct videobuf_buffer, queue);
-			list_del_init(&vb->queue);
+		if (list_empty(&pipe->activeq)) {
+			spin_unlock_irqrestore(&pipe->irq_lock, irqflags);
+			return -EINVAL;
 		}
+		vb = list_entry(pipe->activeq.next,
+				struct videobuf_buffer, queue);
+		list_del_init(&vb->queue);
 		spin_unlock_irqrestore(&pipe->irq_lock, irqflags);
 
-		if (!vb) {
-			err = -EINVAL;
-			break;
-		}
-
-		err = atomisp_css_qbuf(isp, pipe, buf_type, vb);
-
+		vm_mem = vb->priv;
+		err = sh_css_queue_buffer(css_pipe_id, css_buf_type,
+					  vm_mem->vaddr);
 		if (err) {
 			spin_lock_irqsave(&pipe->irq_lock, irqflags);
 			list_add_tail(&vb->queue, &pipe->activeq);
 			spin_unlock_irqrestore(&pipe->irq_lock, irqflags);
+			dev_err(isp->dev, "%s, css q fails: %d\n",
+					__func__, err);
+			return -EINVAL;
 		}
+		pipe->buffers_in_css++;
+
+		spin_lock_irqsave(&pipe->irq_lock, irqflags);
+		vb->state = VIDEOBUF_ACTIVE;
+		spin_unlock_irqrestore(&pipe->irq_lock, irqflags);
 		vb = NULL;
 	}
-	/* s3a statistics buffer */
-	err = isp->params.curr_grid_info.s3a_grid.enable == false? 1:0;
-	while (!err && isp->s3a_bufs_in_css < ATOMISP_CSS_Q_DEPTH) {
+	return 0;
+}
 
-		if (!list_empty(&isp->s3a_stats)) {
-			s3a_buf = list_entry(isp->s3a_stats.next,
-					struct atomisp_s3a_buf, list);
-			list_move_tail(&s3a_buf->list, &isp->s3a_stats);
-		}
-		if (!s3a_buf) {
-			err = -EINVAL;
-			break;
-		}
+int atomisp_q_s3a_buffers_to_css(struct atomisp_device *isp,
+			   enum sh_css_pipe_id css_pipe_id)
+{
+	struct atomisp_s3a_buf *s3a_buf;
 
-		err = atomisp_css_qbuf(isp, pipe, SH_CSS_BUFFER_TYPE_3A_STATISTICS,
-				 &s3a_buf->s3a_data);
-		if (err)
-			v4l2_err(&atomisp_dev, "failed to q s3a stat buffer\n");
-		s3a_buf = NULL;
+	if (list_empty(&isp->s3a_stats)) {
+		WARN(1, "%s: No s3a buffers available!\n", __func__);
+		return -EINVAL;
 	}
 
-	/* dis statistics buffer */
-	err = isp->params.curr_grid_info.dvs_grid.enable == false? 1:0;
-	while (!err && isp->dis_bufs_in_css < ATOMISP_CSS_Q_DEPTH) {
+	while (isp->s3a_bufs_in_css[css_pipe_id] < ATOMISP_CSS_Q_DEPTH) {
+		s3a_buf = list_entry(isp->s3a_stats.next,
+				struct atomisp_s3a_buf, list);
+		list_move_tail(&s3a_buf->list, &isp->s3a_stats);
 
-		if (!list_empty(&isp->dis_stats)) {
-			dis_buf = list_entry(isp->dis_stats.next,
-					struct atomisp_dis_buf, list);
-			list_move_tail(&dis_buf->list, &isp->dis_stats);
+		if (sh_css_queue_buffer(css_pipe_id,
+					SH_CSS_BUFFER_TYPE_3A_STATISTICS,
+					&s3a_buf->s3a_data)) {
+			dev_err(isp->dev, "failed to q s3a stat buffer\n");
+			return -EINVAL;
 		}
+		isp->s3a_bufs_in_css[css_pipe_id]++;
+	}
+	return 0;
+}
 
-		if (!dis_buf) {
-			err = -EINVAL;
-			break;
+int atomisp_q_dis_buffers_to_css(struct atomisp_device *isp,
+			   enum sh_css_pipe_id css_pipe_id)
+{
+	struct atomisp_dis_buf *dis_buf;
+
+	if (list_empty(&isp->dis_stats)) {
+		WARN(1, "%s: No dis buffers available!\n", __func__);
+		return -EINVAL;
+	}
+
+	while (isp->dis_bufs_in_css < ATOMISP_CSS_Q_DEPTH) {
+		dis_buf = list_entry(isp->dis_stats.next,
+				struct atomisp_dis_buf, list);
+		list_move_tail(&dis_buf->list, &isp->dis_stats);
+
+		if (sh_css_queue_buffer(css_pipe_id,
+					SH_CSS_BUFFER_TYPE_DIS_STATISTICS,
+					&dis_buf->dis_data)) {
+			dev_err(isp->dev, "failed to q dis stat buffer\n");
+			return -EINVAL;
 		}
-		err = atomisp_css_qbuf(isp,
-				       pipe,
-				       SH_CSS_BUFFER_TYPE_DIS_STATISTICS,
-				       &dis_buf->dis_data);
-		if (err)
-			v4l2_err(&atomisp_dev, "failed to q dis stat buffer\n");
+		isp->dis_bufs_in_css++;
 		dis_buf = NULL;
 	}
-	return err;
+	return 0;
+}
+
+/* queue all available buffers to css */
+int atomisp_qbuffers_to_css(struct atomisp_device *isp)
+{
+	enum sh_css_buffer_type buf_type;
+	enum sh_css_pipe_id css_capture_pipe_id = SH_CSS_NR_OF_PIPELINES;
+	enum sh_css_pipe_id css_preview_pipe_id = SH_CSS_NR_OF_PIPELINES;
+	struct atomisp_video_pipe *capture_pipe = NULL;
+	struct atomisp_video_pipe *vf_pipe = NULL;
+	struct atomisp_video_pipe *preview_pipe = NULL;
+
+	switch (isp->sw_contex.run_mode) {
+	case CI_MODE_PREVIEW:
+		preview_pipe = &isp->isp_subdev.video_out_preview;
+		css_preview_pipe_id = SH_CSS_PREVIEW_PIPELINE;
+		break;
+	case CI_MODE_VIDEO:
+		capture_pipe = &isp->isp_subdev.video_out_capture;
+		preview_pipe = &isp->isp_subdev.video_out_preview;
+		css_capture_pipe_id = SH_CSS_VIDEO_PIPELINE;
+		css_preview_pipe_id = SH_CSS_VIDEO_PIPELINE;
+		break;
+	case CI_MODE_STILL_CAPTURE:
+		/* fall through */
+	default:
+		capture_pipe = &isp->isp_subdev.video_out_capture;
+		vf_pipe = &isp->isp_subdev.video_out_vf;
+		css_capture_pipe_id = SH_CSS_CAPTURE_PIPELINE;
+	}
+
+	if (capture_pipe) {
+		buf_type = atomisp_get_css_buf_type(isp, capture_pipe);
+		atomisp_q_video_buffers_to_css(isp, capture_pipe, buf_type,
+					 css_capture_pipe_id);
+	}
+
+	if (vf_pipe) {
+		buf_type = atomisp_get_css_buf_type(isp, vf_pipe);
+		atomisp_q_video_buffers_to_css(isp, vf_pipe, buf_type,
+					 css_capture_pipe_id);
+	}
+
+	if (preview_pipe) {
+		buf_type = atomisp_get_css_buf_type(isp, preview_pipe);
+		atomisp_q_video_buffers_to_css(isp, preview_pipe, buf_type,
+					 css_preview_pipe_id);
+	}
+
+	if (isp->params.curr_grid_info.s3a_grid.enable) {
+		if (css_capture_pipe_id < SH_CSS_NR_OF_PIPELINES)
+			atomisp_q_s3a_buffers_to_css(isp, css_capture_pipe_id);
+		if (css_preview_pipe_id < SH_CSS_NR_OF_PIPELINES)
+			atomisp_q_s3a_buffers_to_css(isp, css_preview_pipe_id);
+	}
+
+	if (isp->params.curr_grid_info.dvs_grid.enable)
+		atomisp_q_dis_buffers_to_css(isp, css_capture_pipe_id);
+
+	return 0;
 }
 
 void atomisp_buf_queue(struct videobuf_queue *vq,

@@ -26,6 +26,17 @@
 
 #include "atomisp_common.h"
 
+int atomisp_q_video_buffers_to_css(struct atomisp_device *isp,
+			     struct atomisp_video_pipe *pipe,
+			     enum sh_css_buffer_type css_buf_type,
+			     enum sh_css_pipe_id css_pipe_id);
+
+int atomisp_q_s3a_buffers_to_css(struct atomisp_device *isp,
+			   enum sh_css_pipe_id css_pipe_id);
+
+int atomisp_q_dis_buffers_to_css(struct atomisp_device *isp,
+			   enum sh_css_pipe_id css_pipe_id);
+
 /*
  * Videobuf ops
  */
@@ -54,11 +65,10 @@ int atomisp_videobuf_mmap_mapper(struct videobuf_queue *q,
 int atomisp_file_mmap(struct file *file, struct vm_area_struct *vma);
 
 int atomisp_qbuf_to_css(struct atomisp_device *isp,
-			 struct atomisp_video_pipe *pipe,
-		 	 struct videobuf_buffer *vb);
+			struct atomisp_video_pipe *pipe,
+			struct videobuf_buffer *vb);
 
-int atomisp_qbuffers_to_css(struct atomisp_device *isp,
-			 struct atomisp_video_pipe *pipe);
+int atomisp_qbuffers_to_css(struct atomisp_device *isp);
 
 extern struct v4l2_device atomisp_dev;
 
