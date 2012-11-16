@@ -86,12 +86,13 @@ static unsigned int lapic_timer_reliable_states = (1 << 1);	 /* Default to only 
 static struct cpuidle_device __percpu *intel_idle_cpuidle_devices;
 static int intel_idle(struct cpuidle_device *dev, struct cpuidle_state *state);
 
-#ifdef CONFIG_ATOM_SOC_POWER
+#if defined(CONFIG_INTEL_ATOM_MDFLD_POWER) ||	\
+		defined(CONFIG_INTEL_ATOM_CLV_POWER)
 static int soc_s0ix_idle(struct cpuidle_device *dev,
 			 struct cpuidle_state *state);
 
 static atomic_t nr_cpus_in_c6;
-#else
+#elif defined(CONFIG_X86_MDFLD)
 #define soc_s0ix_idle	intel_idle
 #endif
 
@@ -219,6 +220,8 @@ static struct cpuidle_state atom_cstates[MWAIT_MAX_NUM_CSTATES] = {
 };
 
 #ifdef CONFIG_ATOM_SOC_POWER
+
+#ifdef CONFIG_X86_MDFLD
 static struct cpuidle_state mfld_cstates[MWAIT_MAX_NUM_CSTATES] = {
 	{ /* MWAIT C0 */
 		.power_usage = C0_POWER_USAGE },
@@ -284,11 +287,26 @@ static struct cpuidle_state mfld_cstates[MWAIT_MAX_NUM_CSTATES] = {
 		.prev_state_idx = 7,
 		.enter = &soc_s0ix_idle }
 };
-#else
-#define mfld_cstates atom_cstates
 #endif
 
-#ifdef CONFIG_ATOM_SOC_POWER
+/*Enable C1 - C6 for Merrifield*/
+#ifdef CONFIG_X86_MRFLD
+#define mrfld_cstates atom_cstates
+#endif
+
+#else /*if !CONFIG_ATOM_SOC_POWER*/
+
+#ifdef CONFIG_X86_MDFLD
+#define mfld_cstates atom_cstates
+
+#elif CONFIG_X86_MRFLD
+#define mrfld_cstates atom_cstates
+#endif
+
+#endif
+
+#if defined(CONFIG_INTEL_ATOM_MDFLD_POWER) ||	\
+		defined(CONFIG_INTEL_ATOM_CLV_POWER)
 static void enter_s0ix_state(u32 eax, int gov_req_state, int s0ix_state,
 						  struct cpuidle_device *dev)
 {
@@ -600,7 +618,11 @@ static int intel_idle_probe(void)
 		auto_demotion_disable_flags = ATM_LNC_C6_AUTO_DEMOTE;
 		break;
 #endif
-
+#ifdef CONFIG_X86_MRFLD
+	case 0x4a:	/*74 - Tangier Atom Processor */
+		cpuidle_state_table = mrfld_cstates;
+		break;
+#endif
 	case 0x2A:	/* SNB */
 	case 0x2D:	/* SNB Xeon */
 		cpuidle_state_table = snb_cstates;
@@ -747,10 +769,10 @@ static int intel_idle_cpuidle_devices_init(void)
 					else
 						continue;
 				break;
-#ifndef CONFIG_X86_MDFLD
+#ifndef CONFIG_ATOM_SOC_POWER
 				case 0x27:	/* 39 - Penwell Atom variant */
 				case 0x35:	/* 53 - Clv Atom Processor */
-				/*place holder for mrfld BZ:21210*/
+				case 0x4a:	/* 74 - Tangier Atom variant */
 					if (cstate > 6)
 						continue;
 				break;
