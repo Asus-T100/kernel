@@ -283,6 +283,9 @@ void atomisp_free_all_shading_tables(struct atomisp_device *isp);
 int atomisp_set_shading_table(struct atomisp_device *isp,
 			      struct atomisp_shading_table *shading_table);
 
+int atomisp_offline_capture_configure(struct atomisp_device *isp,
+				struct atomisp_cont_capture_conf *cvf_config);
+
 int atomisp_save_iunit_reg(struct atomisp_device *isp);
 int atomisp_restore_iunit_reg(struct atomisp_device *isp);
 

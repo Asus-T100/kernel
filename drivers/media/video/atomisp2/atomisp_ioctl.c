@@ -2205,6 +2205,10 @@ static long atomisp_vidioc_default(struct file *file, void *fh,
 		err = atomisp_set_parameters(isp, arg);
 		break;
 
+	case ATOMISP_IOC_S_CONT_CAPTURE_CONFIG:
+		err = atomisp_offline_capture_configure(isp, arg);
+		break;
+
 	default:
 		mutex_unlock(&isp->mutex);
 		return -EINVAL;

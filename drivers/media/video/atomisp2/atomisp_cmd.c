@@ -4122,6 +4122,21 @@ int atomisp_exif_makernote(struct atomisp_device *isp,
 	return 0;
 }
 
+int atomisp_offline_capture_configure(struct atomisp_device *isp,
+			      struct atomisp_cont_capture_conf *cvf_config)
+{
+	isp->params.offline_parm = *cvf_config;
+
+	if (isp->params.offline_parm.num_captures) {
+		isp->params.continuous_vf = true;
+	} else {
+		isp->params.continuous_vf = false;
+		__enable_continuous_vf(false);
+	}
+
+	return 0;
+}
+
 int atomisp_flash_enable(struct atomisp_device *isp, int num_frames)
 {
 	if (num_frames < 0) {
