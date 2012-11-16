@@ -79,6 +79,7 @@ static int __init mid_pci_init(void)
 #endif
 	case INTEL_ATOM_MFLD:
 	case INTEL_ATOM_CLV:
+	case INTEL_ATOM_MRFLD:
 		mid_pci_platform_pm.set_state = pmu_pci_set_power_state;
 		mid_pci_platform_pm.choose_state = pmu_pci_choose_state;
 		pci_set_platform_pm(&mid_pci_platform_pm);

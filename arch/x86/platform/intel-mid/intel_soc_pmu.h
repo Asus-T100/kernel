@@ -44,9 +44,11 @@
 
 #include "intel_soc_mdfld.h"
 #include "intel_soc_clv.h"
+#include "intel_soc_mrfld.h"
 
 #define MID_PMU_MFLD_DRV_DEV_ID                 0x0828
 #define MID_PMU_CLV_DRV_DEV_ID			0x08EC
+#define MID_PMU_MRFL_DRV_DEV_ID			0x11A1
 
 /* SRAM address where PANIC START is written */
 #define PMU_PANIC_EMMC_UP_ADDR			0xFFFF3080
@@ -259,7 +261,9 @@ union pmu_pm_ics {
 		u32 int_status:8;
 		u32 int_enable:1;
 		u32 int_pend:1;
-		u32 reserved:22;
+		/* New bit added in TNG to indicate device wakes*/
+		u32 sw_int_status:1;
+		u32 reserved:21;
 	} pmu_pm_ics_parts;
 	u32 pmu_pm_ics_value;
 };
@@ -368,6 +372,7 @@ struct platform_pmu_ops {
 
 extern struct platform_pmu_ops mfld_pmu_ops;
 extern struct platform_pmu_ops clv_pmu_ops;
+extern struct platform_pmu_ops mrfld_pmu_ops;
 extern struct platform_pmu_ops *get_platform_ops(void);
 extern void mfld_s0ix_sram_save_cleanup(void);
 extern void pmu_stats_init(void);

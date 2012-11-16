@@ -30,6 +30,7 @@
 #define INTEL_ATOM_MRST 0x26
 #define INTEL_ATOM_MFLD 0x27
 #define INTEL_ATOM_CLV 0x35
+#define INTEL_ATOM_MRFLD 0x4a
 
 /* Register Type definitions */
 #define OSPM_REG_TYPE          0x0

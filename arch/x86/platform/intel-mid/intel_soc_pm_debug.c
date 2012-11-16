@@ -20,6 +20,11 @@
 #include "intel_soc_pmu.h"
 #include "intel_soc_pm_debug.h"
 
+static char *dstates[] = {"D0", "D0i1", "D0i2", "D0i3"};
+
+#if defined(CONFIG_INTEL_ATOM_MDFLD_POWER)			\
+			|| defined(CONFIG_INTEL_ATOM_CLV_POWER)
+
 #define PMU_DEBUG_PRINT_STATS	(1U << 0)
 static int debug_mask;
 module_param_named(debug_mask, debug_mask, int, S_IRUGO | S_IWUSR | S_IWGRP);
@@ -50,8 +55,6 @@ static struct island camera_islands[] = {
 };
 
 static char *lss_device_status[4] = { "D0i0", "D0i1", "D0i2", "D0i3" };
-
-static char *dstates[] = {"D0", "D0i1", "D0i2", "D0i3"};
 
 static int lsses_num =
 			sizeof(lsses)/sizeof(lsses[0]);
@@ -1007,3 +1010,92 @@ void pmu_stats_finish(void)
 	cancel_delayed_work_sync(&mid_pmu_cxt->log_work);
 #endif
 }
+
+#endif /*if CONFIG_X86_MDFLD_POWER || CONFIG_X86_CLV_POWER*/
+
+#ifdef CONFIG_INTEL_ATOM_MRFLD_POWER
+
+static int pmu_devices_state_show(struct seq_file *s, void *unused)
+{
+	struct pci_dev *pdev = NULL;
+	int index, i, pmu_num, ss_idx, ss_pos;
+	unsigned int base_class;
+	u32 mask, val;
+	struct pmu_ss_states cur_pmsss;
+
+	/* Acquire the scu_ready_sem */
+	down(&mid_pmu_cxt->scu_ready_sem);
+	_pmu2_wait_not_busy();
+	pmu_read_sss(&cur_pmsss);
+	up(&mid_pmu_cxt->scu_ready_sem);
+
+	seq_printf(s, "SSS: ");
+
+	for (i = 0; i < 4; i++)
+		seq_printf(s, "%08lX ", cur_pmsss.pmu2_states[i]);
+
+	seq_printf(s, "cmd_error_int count: %d\n", mid_pmu_cxt->cmd_error_int);
+
+	while ((pdev = pci_get_device(PCI_ID_ANY, PCI_ID_ANY, pdev)) != NULL) {
+		/* find the base class info */
+		base_class = pdev->class >> 16;
+
+		if (base_class == PCI_BASE_CLASS_BRIDGE)
+			continue;
+
+		if (pmu_pci_to_indexes(pdev, &index, &pmu_num, &ss_idx,
+								  &ss_pos))
+			continue;
+
+		if (pmu_num == PMU_NUM_1)
+			continue;
+
+		mask	= (D0I3_MASK << (ss_pos * BITS_PER_LSS));
+		val	= (cur_pmsss.pmu2_states[ss_idx] & mask) >>
+						(ss_pos * BITS_PER_LSS);
+
+		seq_printf(s, "pci %04x %04X %s %20s: lss:%02d reg:%d ",
+			pdev->vendor, pdev->device, dev_name(&pdev->dev),
+			dev_driver_string(&pdev->dev),
+			index - mid_pmu_cxt->pmu1_max_devs, ss_idx);
+		seq_printf(s, "mask:%08X  %s\n",  mask, dstates[val & 3]);
+	}
+
+	return 0;
+}
+
+
+static int devices_state_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, pmu_devices_state_show, NULL);
+}
+
+static const struct file_operations devices_state_operations = {
+	.open		= devices_state_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
+/*These are place holders and will be enabled in next patch*/
+
+void pmu_log_pmu_irq(int status, bool interactive_cmd_sent) { return; };
+void pmu_log_ipc_irq(void) { return; };
+void pmu_log_ipc(u32 command) { return; };
+void pmu_log_command(u32 command, struct pmu_ss_states *pm_ssc) { return; };
+void pmu_dump_logs(void) { return; };
+void pmu_stat_start(enum sys_state type) { return; };
+void pmu_stat_end(void) { return; };
+void pmu_stat_error(u8 err_type) { return; };
+void pmu_s0ix_demotion_stat(int req_state, int grant_state) { return; };
+EXPORT_SYMBOL(pmu_s0ix_demotion_stat);
+void pmu_stats_finish(void) { return; };
+
+void pmu_stats_init(void)
+{
+	/* /sys/kernel/debug/mid_pmu_states */
+	(void) debugfs_create_file("mid_pmu_states", S_IFREG | S_IRUGO,
+				NULL, NULL, &devices_state_operations);
+}
+
+#endif /*if CONFIG_INTEL_ATOM_MRFLD_POWER*/
