@@ -120,6 +120,13 @@ static u8 gi_er61529_backlight_cntr[]	= {0xb9, 0x01, 0x00, 0xff, 0x18};
 static u8 gi_er61529_set_backlight[]	= {0xb9, 0x01, 0x00, 0xff, 0x18};
 static u8 gi_er61529_set_te_scanline[]	= {0x44, 0x00, 0x00, 0x00};
 static u8 gi_er61529_set_tear_on[]	= {0x35, 0x00, 0x00, 0x00};
+static u8 gi_er61529_backlight_cntr_1[] = {
+	0xb8, 0x01, 0x0f, 0x00,
+	0xf0, 0x00, 0xc8, 0x00,
+	0x08, 0x14, 0x10, 0x00,
+	0x37, 0x5a, 0x87, 0xbe,
+	0xdc, 0x00, 0x00, 0x00,
+	0x00};
 
 static int gi_renesas_dbi_ic_init(struct mdfld_dsi_config *dsi_config)
 {
@@ -135,11 +142,6 @@ static int gi_renesas_dbi_ic_init(struct mdfld_dsi_config *dsi_config)
 
 	mdfld_dsi_send_gen_long_hs(sender, gi_er61529_mcs_protect_on, 2, 0);
 	mdfld_dsi_send_gen_long_hs(sender, gi_er61529_mcs_mem_access, 5, 0);
-	mdfld_dsi_send_mcs_long_hs(sender, gi_er61529_enter_sleep_mode, 4, 0);
-	/*
-	 *mdfld_dsi_send_gen_long_hs(sender, gi_dbc_control_on_data, 21, 0);
-	 */
-	mdfld_dsi_send_gen_long_hs(sender, gi_er61529_backlight_cntr, 5, 0);
 	mdfld_dsi_send_gen_long_hs(sender, gi_er61529_disp_mode, 2, 0);
 	mdfld_dsi_send_gen_long_hs(sender, gi_er61529_disp_timming, 6, 0);
 	mdfld_dsi_send_gen_long_hs(sender, gi_er61529_src_timming, 5, 0);
@@ -157,10 +159,6 @@ static int gi_renesas_dbi_ic_init(struct mdfld_dsi_config *dsi_config)
 	mdfld_dsi_send_mcs_long_hs(sender, gi_er61529_set_tear_on, 4, 0);
 	mdfld_dsi_send_gen_long_hs(sender, gi_er61529_set_ddb_write_cntr, 7, 0);
 	mdfld_dsi_send_gen_long_hs(sender, gi_er61529_nvm_load_cntr, 2, 0);
-	mdfld_dsi_send_mcs_long_hs(sender, gi_er61529_exit_sleep_mode, 4, 0);
-	mdelay(120);
-	mdfld_dsi_send_mcs_long_hs(sender, gi_er61529_dcs_set_display_on, 1, 0);
-	mdfld_dsi_send_gen_long_hs(sender, gi_er61529_backlight_cntr, 5, 0);
 	mdfld_dsi_send_gen_long_hs(sender, gi_er61529_mcs_protect_off, 2, 0);
 
 	return 0;
@@ -260,6 +258,22 @@ int __gi_renesas_dsi_power_on(struct mdfld_dsi_config *dsi_config)
 	if (err)
 		DRM_ERROR("%s - sent write_mem_start faild\n", __func__);
 
+	if (drm_psb_enable_cabc) {
+		/* enable cabc */
+		gi_er61529_backlight_cntr_1[1] = 0x01;
+		mdfld_dsi_send_gen_long_hs(sender, gi_er61529_mcs_protect_on, 2, 0);
+		mdfld_dsi_send_gen_long_hs(sender, gi_er61529_backlight_cntr_1, 21, 0);
+		mdfld_dsi_send_gen_long_hs(sender, gi_er61529_mcs_protect_off, 2, 0);
+	}
+
+	mdfld_dsi_send_gen_long_hs(sender, gi_er61529_mcs_protect_on, 2, 0);
+	mdfld_dsi_send_gen_long_hs(sender, gi_er61529_backlight_cntr, 5, 0);
+	mdfld_dsi_send_gen_long_hs(sender, gi_er61529_mcs_protect_off, 2, 0);
+
+	mdfld_dsi_send_mcs_long_hs(sender, gi_er61529_exit_sleep_mode, 4, 0);
+	mdelay(120);
+	mdfld_dsi_send_mcs_long_hs(sender, gi_er61529_dcs_set_display_on, 1, 0);
+
 	return err;
 }
 
@@ -293,6 +307,12 @@ int __gi_renesas_dsi_power_off(struct mdfld_dsi_config *dsi_config)
 		goto power_err;
 	}
 	mdelay(70);
+
+	/* disable CABC */
+	gi_er61529_backlight_cntr_1[1] = 0x00;
+	mdfld_dsi_send_gen_long_hs(sender, gi_er61529_mcs_protect_on, 2, 0);
+	mdfld_dsi_send_gen_long_hs(sender, gi_er61529_backlight_cntr_1, 21, 0);
+	mdfld_dsi_send_gen_long_hs(sender, gi_er61529_mcs_protect_off, 2, 0);
 
 	err =
 	mdfld_dsi_send_mcs_long_hs(sender, gi_er61529_enter_sleep_mode, 4, 0);
