@@ -44,6 +44,7 @@
 #include <linux/kernel.h>
 #include <media/v4l2-event.h>
 #include <asm/intel-mid.h>
+#include <linux/kfifo.h>
 
 #define ATOMISP_DEFAULT_DTRACE_LEVEL 5
 /* We should never need to run the flash for more than 2 frames.
@@ -99,9 +100,6 @@ void atomisp_kernel_free(void *ptr)
 	else
 		kfree(ptr);
 }
-
-static void atomisp_buf_done(struct atomisp_device *isp,
-			     int error, enum sh_css_buffer_type buf_type);
 
 /*
  * get sensor:dis71430/ov2720 related info from v4l2_subdev->priv data field.
@@ -621,27 +619,42 @@ void atomisp_flush_bufs_and_wakeup(struct atomisp_device *isp)
 	}
 }
 
-static void atomisp_buf_done(struct atomisp_device *isp,
-		int error, enum sh_css_buffer_type buf_type)
+
+/* find atomisp_video_pipe with css pipe id, buffer type and atomisp run_mode */
+static struct atomisp_video_pipe *__atomisp_get_pipe(struct atomisp_device *isp,
+		enum sh_css_pipe_id css_pipe_id,
+		enum sh_css_buffer_type buf_type)
+{
+	/* video is same in online as in continuouscapture mode */
+	if (isp->sw_contex.run_mode == CI_MODE_VIDEO) {
+		if (buf_type == SH_CSS_BUFFER_TYPE_OUTPUT_FRAME)
+			return &isp->isp_subdev.video_out_capture;
+		return &isp->isp_subdev.video_out_preview;
+	} else if (buf_type == SH_CSS_BUFFER_TYPE_OUTPUT_FRAME) {
+		if (css_pipe_id == SH_CSS_PREVIEW_PIPELINE)
+			return &isp->isp_subdev.video_out_preview;
+		return &isp->isp_subdev.video_out_capture;
+	/* statistic buffers are needed only in css capture & preview pipes */
+	} else if (buf_type == SH_CSS_BUFFER_TYPE_3A_STATISTICS ||
+		   buf_type == SH_CSS_BUFFER_TYPE_DIS_STATISTICS) {
+		if (css_pipe_id == SH_CSS_PREVIEW_PIPELINE)
+			return &isp->isp_subdev.video_out_preview;
+		return &isp->isp_subdev.video_out_capture;
+	}
+	return &isp->isp_subdev.video_out_vf;
+}
+
+static void atomisp_buf_done(struct atomisp_device *isp, int error,
+			enum sh_css_buffer_type buf_type,
+			enum sh_css_pipe_id css_pipe_id, bool q_buffers)
 {
 	struct videobuf_buffer *vb = NULL;
-	struct atomisp_video_pipe *pipe;
+	struct atomisp_video_pipe *pipe = NULL;
 	void *buffer;
-	enum sh_css_pipe_id css_pipe_id;
 	bool requeue = false;
 	int err;
 	unsigned long irqflags;
 	struct sh_css_frame* frame = NULL;
-
-	/* choose right pipe for atomisp_qbuffers_to_css() main output */
-	if (isp->sw_contex.run_mode != CI_MODE_PREVIEW)
-		pipe = &isp->isp_subdev.video_out_capture;
-	else
-		pipe = &isp->isp_subdev.video_out_preview;
-
-	err = atomisp_get_css_pipe_id(isp, &css_pipe_id);
-	if (err < 0)
-		return;
 
 	if (buf_type != SH_CSS_BUFFER_TYPE_3A_STATISTICS &&
 	    buf_type != SH_CSS_BUFFER_TYPE_DIS_STATISTICS &&
@@ -663,6 +676,14 @@ static void atomisp_buf_done(struct atomisp_device *isp,
 			err);
 		return;
 	}
+
+	/* need to know the atomisp pipe for frame buffers */
+	pipe = __atomisp_get_pipe(isp, css_pipe_id, buf_type);
+	if (pipe == NULL) {
+		dev_err(isp->dev, "error getting atomisp pipe\n");
+		return;
+	}
+
 	switch (buf_type) {
 		case SH_CSS_BUFFER_TYPE_3A_STATISTICS:
 			/* ignore error in case of 3a statistics for now */
@@ -718,17 +739,7 @@ static void atomisp_buf_done(struct atomisp_device *isp,
 				 "%s css has marked this vf frame as invalid\n",
 				 __func__);
 			}
-			if (!atomisp_is_viewfinder_support(isp)) {
-				v4l2_err(&atomisp_dev,
-					 "%s: viewfinder is not enabled!\n",
-					 __func__);
-				return;
-			}
-			/* relay buffer to correct pipe */
-			if (isp->sw_contex.run_mode == CI_MODE_STILL_CAPTURE)
-				pipe = &isp->isp_subdev.video_out_vf;
-			else
-				pipe = &isp->isp_subdev.video_out_preview;
+
 			pipe->buffers_in_css--;
 			frame = buffer;
 			if (isp->params.flash_state == ATOMISP_FLASH_ONGOING) {
@@ -754,11 +765,6 @@ static void atomisp_buf_done(struct atomisp_device *isp,
 				   "%s css has marked this frame as invalid\n",
 				   __func__);
 			}
-			/* relay buffer to correct pipe */
-			if (isp->sw_contex.run_mode != CI_MODE_PREVIEW)
-				pipe = &isp->isp_subdev.video_out_capture;
-			else
-				pipe = &isp->isp_subdev.video_out_preview;
 			pipe->buffers_in_css--;
 			vb = atomisp_css_frame_to_vbuf(pipe, buffer);
 			frame = buffer;
@@ -830,7 +836,7 @@ static void atomisp_buf_done(struct atomisp_device *isp,
 					__func__, err);
 		return;
 	}
-	if (!error)
+	if (!error && q_buffers)
 		atomisp_qbuffers_to_css(isp);
 }
 
@@ -893,87 +899,69 @@ void atomisp_setup_flash(struct atomisp_device *isp)
 irqreturn_t atomisp_isr_thread(int irq, void *isp_ptr)
 {
 	struct atomisp_device *isp = isp_ptr;
-	uint32_t cssEvent = 0;
-	uint32_t cssPipeId = 0;
-	int s3aCount = 0;
-	int frameCount = 0;
-	int vfCount = 0;
-	int disCount = 0;
-	const int MAX_EVENTS = 10;
-	enum sh_css_buffer_type events[MAX_EVENTS];
-	int next_event = 0;
-	int current_event = 0;
+	struct atomisp_css_event current_event;
 	bool frame_done_found = false;
+	bool css_pipe_done = false;
+	DEFINE_KFIFO(events, struct atomisp_css_event, ATOMISP_CSS_EVENTS_MAX);
 
 	v4l2_dbg(5, dbg_level, &atomisp_dev, ">%s\n", __func__);
 	mutex_lock(&isp->mutex);
 
 	while (isp->sw_contex.isp_streaming &&
-	       sh_css_dequeue_event(&cssPipeId, &cssEvent) == sh_css_success) {
-		events[next_event] = cssEvent;
-		next_event = (next_event + 1) % MAX_EVENTS;
-		switch (cssEvent) {
-		case SH_CSS_EVENT_OUTPUT_FRAME_DONE:
-			frameCount++;
-			break;
-		case SH_CSS_EVENT_3A_STATISTICS_DONE:
-			s3aCount++;
-			break;
-		case SH_CSS_EVENT_VF_OUTPUT_FRAME_DONE:
-			vfCount++;
-			break;
-		case SH_CSS_EVENT_DIS_STATISTICS_DONE:
-			disCount++;
-			break;
+	       sh_css_dequeue_event(&current_event.pipe,
+		       &current_event.event) == sh_css_success) {
+		switch (current_event.event) {
 		case SH_CSS_EVENT_PIPELINE_DONE:
+			css_pipe_done = true;
+			break;
+		case SH_CSS_EVENT_OUTPUT_FRAME_DONE:
+		case SH_CSS_EVENT_3A_STATISTICS_DONE:
+		case SH_CSS_EVENT_VF_OUTPUT_FRAME_DONE:
+		case SH_CSS_EVENT_DIS_STATISTICS_DONE:
 			break;
 		default:
-			v4l2_err(&atomisp_dev,
-				 "unhandled css event: 0x%x\n",
-				 cssEvent & 0xFFFF);
+			dev_err(isp->dev, "unknown event 0x%x pipe:%d\n",
+				current_event.event, current_event.pipe);
 			break;
 		}
+		kfifo_in(&events, &current_event, 1);
 	}
 
 	while (isp->sw_contex.isp_streaming &&
-	       current_event != next_event) {
-		switch (events[current_event]) {
+			kfifo_out(&events, &current_event, 1)) {
+		switch (current_event.event) {
 		case SH_CSS_EVENT_OUTPUT_FRAME_DONE:
 			frame_done_found = true;
-			atomisp_buf_done(
-				isp, 0,
-				SH_CSS_BUFFER_TYPE_OUTPUT_FRAME);
-			frameCount--;
+			atomisp_buf_done(isp, 0,
+					 SH_CSS_BUFFER_TYPE_OUTPUT_FRAME,
+					 current_event.pipe,
+					 true);
 			break;
 		case SH_CSS_EVENT_3A_STATISTICS_DONE:
-			atomisp_buf_done(
-				isp, 0,
-				SH_CSS_BUFFER_TYPE_3A_STATISTICS);
-			s3aCount--;
+			atomisp_buf_done(isp, 0,
+					 SH_CSS_BUFFER_TYPE_3A_STATISTICS,
+					 current_event.pipe,
+					 css_pipe_done);
 			break;
 		case SH_CSS_EVENT_VF_OUTPUT_FRAME_DONE:
-			atomisp_buf_done(
-				isp, 0,
-				SH_CSS_BUFFER_TYPE_VF_OUTPUT_FRAME);
-			vfCount--;
+			atomisp_buf_done(isp, 0,
+					 SH_CSS_BUFFER_TYPE_VF_OUTPUT_FRAME,
+					 current_event.pipe,
+					 true);
 			break;
 		case SH_CSS_EVENT_DIS_STATISTICS_DONE:
-			atomisp_buf_done(
-				isp, 0,
-				SH_CSS_BUFFER_TYPE_DIS_STATISTICS);
-			disCount--;
+			atomisp_buf_done(isp, 0,
+					 SH_CSS_BUFFER_TYPE_DIS_STATISTICS,
+					 current_event.pipe,
+					 css_pipe_done);
 			break;
 		case SH_CSS_EVENT_PIPELINE_DONE:
 			break;
 		default:
-			v4l2_err(&atomisp_dev,
-				 "unhandled css stored event: 0x%x\n",
-				 events[current_event]);
+			dev_err(isp->dev, "unhandled css stored event: 0x%x\n",
+					current_event.event);
 			break;
 		}
-		events[current_event] = SH_CSS_NR_OF_EVENTS;
-
-		current_event = (current_event + 1) % MAX_EVENTS;
 	}
 
 	if (isp->sw_contex.isp_streaming &&
@@ -3533,6 +3521,7 @@ static void atomisp_get_yuv_ds_status(struct atomisp_device *isp,
 	else
 		isp->params.yuv_ds_en = true;
 }
+
 int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 {
 	struct atomisp_device *isp = video_get_drvdata(vdev);

@@ -93,6 +93,7 @@
 #define ATOMISP_ISP_MAX_TIMEOUT_COUNT	2
 
 #define ATOMISP_CSS_Q_DEPTH	3
+#define ATOMISP_CSS_EVENTS_MAX  16
 /*
  * Define how fast CPU should be able to serve ISP interrupts.
  * The bigger the value, the higher risk that the ISP is not
@@ -111,6 +112,11 @@ int atomisp_video_init(struct atomisp_video_pipe *video, const char *name);
 void atomisp_video_unregister(struct atomisp_video_pipe *video);
 int atomisp_video_register(struct atomisp_video_pipe *video,
 	struct v4l2_device *vdev);
+
+struct atomisp_css_event {
+	enum sh_css_pipe_id pipe;
+	enum sh_css_event_type event;
+};
 
 struct atomisp_input_subdev {
 	unsigned int type;
