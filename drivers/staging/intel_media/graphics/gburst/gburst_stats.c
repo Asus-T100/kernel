@@ -216,25 +216,36 @@ static uint32_t update_perf_counter_value(int ix_core, int ndx,
 	denominator = 0;
 	utilization = 0;
 	pce = &gsdat.gsd_pcd[ix_core][ndx];
-	value_index = pce->pce_value_index;
-	pce->pce_values[value_index] = 0;
-	counter_coeff = pce->pce_coeff;
 
-	if (counters_storable
-		&& (time_stamp > pce->pce_time_stamp)
-		&& (counter_coeff != 0)
-		&& (value > pce->last_value)) {
+	if (counters_storable) {
+		/* Upd counter data history only when periodic event arrives */
+		counter_coeff = pce->pce_coeff;
+		value_index = pce->pce_value_index;
+		pce->pce_values[value_index] = 0;
 
-		/*  Calculate counter utilization percentage */
-		numerator = 100*(value - pce->last_value);
-		denominator = counter_coeff*(time_stamp - pce->pce_time_stamp);
-		utilization = numerator / denominator;
-		pce->pce_values[value_index] = utilization;
+		if ((time_stamp > pce->pce_time_stamp)
+			&& (counter_coeff != 0)
+			&& (value > pce->last_value)) {
+
+			/*  Calculate counter utilization percentage */
+			numerator = 100*(value - pce->last_value);
+			denominator = counter_coeff * (time_stamp -
+				pce->pce_time_stamp);
+			utilization = numerator / denominator;
+			pce->pce_values[value_index] = utilization;
+		}
+		pce->pce_time_stamp = time_stamp;
+		pce->last_value = value;
+		pce->pce_value_index = next_index_for_buffer(
+			pce->pce_value_index);
+
+	} else if (time_stamp < pce->pce_time_stamp ||
+				value < pce->last_value) {
+		/* counter reset or roll over between periodic events
+		=> start over with new counter values */
+		pce->pce_time_stamp = time_stamp;
+		pce->last_value = value;
 	}
-
-	pce->pce_time_stamp = time_stamp;
-	pce->last_value = value;
-	pce->pce_value_index = next_index_for_buffer(pce->pce_value_index);
 
 	if (gburst_debug_msg_on)
 		printk(KERN_ALERT "GBUTIL: %d, %d, %d\n",
@@ -327,6 +338,14 @@ int gburst_stats_gfx_hw_perf_counters_set(const char *buf)
 			pce = &gsdat.gsd_pcd[ix_core][counter];
 			pce->pce_coeff = coeff;
 		}
+
+		/*
+		 * When all characters are handled continue to call
+		 * gburst_hw_set_perf_status_periodic()
+		 */
+		if (*pstr == '\n')
+			break;
+
 	}
 
 	return gburst_hw_set_perf_status_periodic(1);
