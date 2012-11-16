@@ -127,19 +127,11 @@ static int __devinit mfld_pb_probe(struct ipc_device *ipcdev)
 		goto fail;
 	}
 
-	ret = request_threaded_irq(priv->irq, mfld_pb_isr, msic_pb_irq,
-			  IRQF_NO_SUSPEND, DRIVER_NAME, priv);
-	if (ret) {
-		dev_err(&ipcdev->dev,
-			"unable to request irq %d for power button\n", irq);
-		goto out_iounmap;
-	}
-
 	ret = input_register_device(input);
 	if (ret) {
 		dev_err(&ipcdev->dev,
 			"unable to register input dev, error %d\n", ret);
-		goto out_free_irq;
+		goto out_iounmap;
 	}
 
 	priv->pb_level = pdata->pb_level;
@@ -154,6 +146,15 @@ static int __devinit mfld_pb_probe(struct ipc_device *ipcdev)
 		priv->irq_ack = NULL;
 	}
 
+	ret = request_threaded_irq(priv->irq, mfld_pb_isr, msic_pb_irq,
+			IRQF_NO_SUSPEND, DRIVER_NAME, priv);
+	if (ret) {
+		dev_err(&ipcdev->dev,
+			"unable to request irq %d for power button\n", irq);
+		goto out_unregister_input;
+	}
+
+
 	/* SCU firmware might send power button interrupts to IA core before
 	 * kernel boots and doesn't get EOI from IA core. The first bit of
 	 * MSIC reg 0x21 is kept masked, and SCU firmware doesn't send new
@@ -167,8 +168,9 @@ static int __devinit mfld_pb_probe(struct ipc_device *ipcdev)
 
 	return 0;
 
-out_free_irq:
-	free_irq(priv->irq, priv);
+out_unregister_input:
+	input_unregister_device(input);
+	input = NULL;
 out_iounmap:
 	iounmap(priv->pb_stat);
 fail:
