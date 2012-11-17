@@ -271,6 +271,15 @@ int dwc3_core_init(struct dwc3 *dwc)
 	}
 	dwc->revision = reg & DWC3_GSNPSREV_MASK;
 
+	/* This is one hardware workaround,
+	 * Disable U1/U2 by default which cause PHY stability issue*/
+	reg = dwc3_readl(dwc->regs, DWC3_DCTL);
+	reg &= ~DWC3_DCTL_INITU1ENA;
+	dwc3_writel(dwc->regs, DWC3_DCTL, reg);
+
+	reg &= ~DWC3_DCTL_INITU2ENA;
+	dwc3_writel(dwc->regs, DWC3_DCTL, reg);
+
 	dwc3_core_soft_reset(dwc);
 
 	/* issue device SoftReset too */
