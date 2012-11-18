@@ -1048,7 +1048,7 @@ static enum dwc_otg_state do_connector_id_status(struct dwc_otg2 *otg)
 	int ret;
 	unsigned long flags;
 	u32 events = 0, user_events = 0;
-	u32 otg_mask = 0, user_mask = 0;
+	u32 otg_mask = 0, user_mask = 0, tmp;
 	enum dwc_otg_state state = DWC_STATE_INVALID;
 #ifdef CONFIG_DWC_CHARGER_DETECION
 	u32 gctl;
@@ -1066,11 +1066,13 @@ static enum dwc_otg_state do_connector_id_status(struct dwc_otg2 *otg)
 	otg_write(otg, ADPCFG, 0);
 	otg_write(otg, ADPCTL, 0);
 	otg_write(otg, ADPEVTEN, 0);
+	tmp = otg_read(otg, ADPEVT);
+	otg_write(otg, ADPEVT, tmp);
 
 	otg_write(otg, OCFG, 0);
 	otg_write(otg, OEVTEN, 0);
-	otg_write(otg, OEVT, 0xffffffff);
-	otg_write(otg, OEVTEN, OEVT_CONN_ID_STS_CHNG_EVNT);
+	tmp = otg_read(otg, OEVT);
+	otg_write(otg, OEVT, tmp);
 	otg_write(otg, OCTL, OCTL_PERI_MODE);
 
 #ifdef CONFIG_DWC_CHARGER_DETECION
