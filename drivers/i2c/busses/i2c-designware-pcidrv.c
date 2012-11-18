@@ -229,14 +229,6 @@ static struct  dw_pci_controller  dw_pci_controllers[] = {
 	},
 
 	[merrifield_0] = {
-		.bus_num     = 0,
-		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_STD,
-		.tx_fifo_depth = 32,
-		.rx_fifo_depth = 32,
-		.clk_khz      = 17000,
-		.enable_stop = 1,
-	},
-	[merrifield_1] = {
 		.bus_num     = 1,
 		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_STD,
 		.tx_fifo_depth = 32,
@@ -244,7 +236,7 @@ static struct  dw_pci_controller  dw_pci_controllers[] = {
 		.clk_khz      = 17000,
 		.enable_stop = 1,
 	},
-	[merrifield_2] = {
+	[merrifield_1] = {
 		.bus_num     = 2,
 		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_STD,
 		.tx_fifo_depth = 32,
@@ -252,7 +244,7 @@ static struct  dw_pci_controller  dw_pci_controllers[] = {
 		.clk_khz      = 17000,
 		.enable_stop = 1,
 	},
-	[merrifield_3] = {
+	[merrifield_2] = {
 		.bus_num     = 3,
 		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_STD,
 		.tx_fifo_depth = 32,
@@ -260,7 +252,7 @@ static struct  dw_pci_controller  dw_pci_controllers[] = {
 		.clk_khz      = 17000,
 		.enable_stop = 1,
 	},
-	[merrifield_4] = {
+	[merrifield_3] = {
 		.bus_num     = 4,
 		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_STD,
 		.tx_fifo_depth = 32,
@@ -268,7 +260,7 @@ static struct  dw_pci_controller  dw_pci_controllers[] = {
 		.clk_khz      = 17000,
 		.enable_stop = 1,
 	},
-	[merrifield_5] = {
+	[merrifield_4] = {
 		.bus_num     = 5,
 		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_STD,
 		.tx_fifo_depth = 32,
@@ -276,8 +268,16 @@ static struct  dw_pci_controller  dw_pci_controllers[] = {
 		.clk_khz      = 17000,
 		.enable_stop = 1,
 	},
-	[merrifield_6] = {
+	[merrifield_5] = {
 		.bus_num     = 6,
+		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_STD,
+		.tx_fifo_depth = 32,
+		.rx_fifo_depth = 32,
+		.clk_khz      = 17000,
+		.enable_stop = 1,
+	},
+	[merrifield_6] = {
+		.bus_num     = 7,
 		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_STD,
 		.tx_fifo_depth = 32,
 		.rx_fifo_depth = 32,
