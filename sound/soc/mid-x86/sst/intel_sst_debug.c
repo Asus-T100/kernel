@@ -47,6 +47,36 @@
 #include "intel_sst_fw_ipc.h"
 #include "intel_sst_common.h"
 
+/* each_word_occupies + newlines_needed + pointer_print_size_per_line */
+#define DUMP_BYTES_SIZE(num_words, chars_in_word, num_lines) \
+	  ((num_words) * ((chars_in_word) + 1) \
+	    + (num_lines) \
+	    + (2 * sizeof(void *) + 4) * (num_lines))
+
+static void dump_bytes(const void *data, size_t sz, char *dest,
+		       unsigned char word_sz, unsigned char words_in_line)
+{
+	unsigned int i, j, words;
+	unsigned long long val;
+	const unsigned char *d = data;
+	int pos = 0;
+
+	for (words = 0; words < sz / word_sz; words += words_in_line) {
+		pos += sprintf(dest + pos, "0x%p: ", data + (words * word_sz));
+		for (i = 0; i < words_in_line && words + i < sz/word_sz; i++) {
+			val = 0;
+			for (j = 0; j < word_sz; j++) {
+				val |= ((unsigned long long)*d)
+						<< (j * sizeof(*d) * 8);
+				d += sizeof(*d);
+			}
+			/* 2 ascii chars per byte displayed */
+			pos += sprintf(dest + pos, "%.*llx ", word_sz * 2, val);
+		}
+		pos += sprintf(dest + pos, "\n");
+	}
+}
+
 /* FIXME: replace with simple_open from 3.4 kernel */
 static int sst_debug_open(struct inode *inode, struct file *file)
 {
@@ -151,7 +181,7 @@ static ssize_t sst_debug_shim_write(struct file *file,
 		return ret_val;
 	}
 
-	pr_debug("writing shim: 0x%.2lx=0x%.8lx", reg_addr, value);
+	pr_debug("writing shim: 0x%.2lx=0x%.8llx", reg_addr, value);
 
 	if (drv->pci_id == SST_MFLD_PCI_ID || drv->pci_id == SST_CLV_PCI_ID)
 		sst_shim_write(drv->shim, reg_addr, (u32) value);
@@ -167,6 +197,167 @@ static const struct file_operations sst_debug_shim_ops = {
 	.open = sst_debug_open,
 	.read = sst_debug_shim_read,
 	.write = sst_debug_shim_write,
+	.llseek = default_llseek,
+};
+
+#define RESVD_DUMP_SZ		40
+#define CHECKPOINT_DUMP_SZ	256
+#define IA_LPE_MAILBOX_DUMP_SZ	100
+#define LPE_IA_MAILBOX_DUMP_SZ	100
+#define SCU_LPE_MAILBOX_DUMP_SZ	20
+#define LPE_SCU_MAILBOX_DUMP_SZ	20
+
+#define WORDS_PER_LINE		4
+#define MAX_CHARS_IN_DWORD	10
+
+static inline int read_buffer_fromio(char *dest, const u32 __iomem *from,
+				     unsigned int num_dwords)
+{
+	const unsigned int size = num_dwords * sizeof(u32);
+	u32 *tmp = vmalloc(size);
+	int i;
+	if (!tmp)
+		return -ENOMEM;
+	memcpy_fromio(tmp, from, size);
+	/* assumes dest has enough space for dump_bytes to print into */
+	dump_bytes(tmp, size, dest, sizeof(u32), WORDS_PER_LINE);
+	vfree(tmp);
+	return 0;
+}
+
+static inline int copy_sram_to_user_buffer(char __user *user_buf, size_t count, loff_t *ppos,
+					   unsigned int num_dwords, const u32 __iomem *from)
+{
+	ssize_t bytes_read;
+	char *buf;
+	int pos;
+
+	buf = vmalloc(DUMP_BYTES_SIZE(num_dwords, MAX_CHARS_IN_DWORD, num_dwords / WORDS_PER_LINE)
+			+ 32 + 1);
+	if (!buf) {
+		pr_err("%s: no memory\n", __func__);
+		return -ENOMEM;
+	}
+	*buf = 0;
+	pos = sprintf(buf, "Reading %u dwords from %p\n", num_dwords, from);
+	read_buffer_fromio(buf + pos, from, num_dwords);
+	bytes_read = simple_read_from_buffer(user_buf, count, ppos,
+			buf, strlen(buf));
+	vfree(buf);
+	return bytes_read;
+}
+
+static ssize_t sst_debug_sram_lpe_debug_read(struct file *file,
+		char __user *user_buf, size_t count, loff_t *ppos)
+{
+
+	struct intel_sst_drv *drv = file->private_data;
+	if (drv->sst_state != SST_FW_RUNNING) {
+		pr_err("FW not running, cannot read SRAM\n");
+		return -EFAULT;
+	}
+	return copy_sram_to_user_buffer(user_buf, count, ppos,
+			RESVD_DUMP_SZ, (u32 *)(drv->mailbox + SST_RESERVED_OFFSET));
+}
+
+static const struct file_operations sst_debug_sram_lpe_debug_ops = {
+	.open = sst_debug_open,
+	.read = sst_debug_sram_lpe_debug_read,
+	.llseek = default_llseek,
+};
+
+static ssize_t sst_debug_sram_lpe_checkpoint_read(struct file *file,
+		char __user *user_buf, size_t count, loff_t *ppos)
+{
+
+	struct intel_sst_drv *drv = file->private_data;
+	if (drv->sst_state != SST_FW_RUNNING) {
+		pr_err("FW not running, cannot read SRAM\n");
+		return -EFAULT;
+	}
+	return copy_sram_to_user_buffer(user_buf, count, ppos,
+			CHECKPOINT_DUMP_SZ, (u32 *)(drv->mailbox + SST_CHECKPOINT_OFFSET));
+}
+
+static const struct file_operations sst_debug_sram_lpe_checkpoint_ops = {
+	.open = sst_debug_open,
+	.read = sst_debug_sram_lpe_checkpoint_read,
+	.llseek = default_llseek,
+};
+
+static ssize_t sst_debug_sram_ia_lpe_mbox_read(struct file *file,
+		char __user *user_buf, size_t count, loff_t *ppos)
+{
+
+	struct intel_sst_drv *drv = file->private_data;
+	if (drv->sst_state != SST_FW_RUNNING) {
+		pr_err("FW not running, cannot read SRAM\n");
+		return -EFAULT;
+	}
+	return copy_sram_to_user_buffer(user_buf, count, ppos,
+			IA_LPE_MAILBOX_DUMP_SZ, (u32 *)(drv->mailbox + SST_MAILBOX_SEND));
+}
+
+static const struct file_operations sst_debug_sram_ia_lpe_mbox_ops = {
+	.open = sst_debug_open,
+	.read = sst_debug_sram_ia_lpe_mbox_read,
+	.llseek = default_llseek,
+};
+
+static ssize_t sst_debug_sram_lpe_ia_mbox_read(struct file *file,
+		char __user *user_buf, size_t count, loff_t *ppos)
+{
+
+	struct intel_sst_drv *drv = file->private_data;
+	if (drv->sst_state != SST_FW_RUNNING) {
+		pr_err("FW not running, cannot read SRAM\n");
+		return -EFAULT;
+	}
+	return copy_sram_to_user_buffer(user_buf, count, ppos,
+			LPE_IA_MAILBOX_DUMP_SZ , (u32 *)(drv->mailbox + SST_MAILBOX_RCV));
+}
+
+static const struct file_operations sst_debug_sram_lpe_ia_mbox_ops = {
+	.open = sst_debug_open,
+	.read = sst_debug_sram_lpe_ia_mbox_read,
+	.llseek = default_llseek,
+};
+
+static ssize_t sst_debug_sram_lpe_scu_mbox_read(struct file *file,
+		char __user *user_buf, size_t count, loff_t *ppos)
+{
+
+	struct intel_sst_drv *drv = file->private_data;
+	if (drv->sst_state != SST_FW_RUNNING) {
+		pr_err("FW not running, cannot read SRAM\n");
+		return -EFAULT;
+	}
+	return copy_sram_to_user_buffer(user_buf, count, ppos,
+			LPE_SCU_MAILBOX_DUMP_SZ, (u32 *)(drv->mailbox + SST_LPE_SCU_MAILBOX));
+}
+
+static const struct file_operations sst_debug_sram_lpe_scu_mbox_ops = {
+	.open = sst_debug_open,
+	.read = sst_debug_sram_lpe_scu_mbox_read,
+	.llseek = default_llseek,
+};
+
+static ssize_t sst_debug_sram_scu_lpe_mbox_read(struct file *file,
+		char __user *user_buf, size_t count, loff_t *ppos)
+{
+
+	struct intel_sst_drv *drv = file->private_data;
+	if (drv->sst_state != SST_FW_RUNNING) {
+		pr_err("FW not running, cannot read SRAM\n");
+		return -EFAULT;
+	}
+	return copy_sram_to_user_buffer(user_buf, count, ppos,
+			SCU_LPE_MAILBOX_DUMP_SZ, (u32 *)(drv->mailbox + SST_SCU_LPE_MAILBOX));
+}
+
+static const struct file_operations sst_debug_sram_scu_lpe_mbox_ops = {
+	.open = sst_debug_open,
+	.read = sst_debug_sram_scu_lpe_mbox_read,
 	.llseek = default_llseek,
 };
 
@@ -227,11 +418,15 @@ static ssize_t sst_debug_readme_read(struct file *file, char __user *user_buf,
 				   size_t count, loff_t *ppos)
 {
 	const char *buf =
-		"All files can be read using 'cat'\n"
+		"\nAll files can be read using 'cat'\n"
 		"1. 'echo disable > runtime_pm' disables runtime PM and will prevent SST from suspending.\n"
-		"To enable runtime PM, echo 'enable' to runtime_pm.\n"
-		"2. Write to shim register using 'echo CSR 0x192 > shim_dump'.\n"
-		"3. Enable input clock by 'echo enable > osc_clk0'.\n";
+		"To enable runtime PM, echo 'enable' to runtime_pm. Dmesg will print the runtime pm usage\n"
+		"if logs are enabled.\n"
+		"2. Write to shim register using 'echo <addr> <value> > shim_dump'.\n"
+		"Valid address range is between 0x00 to 0x80 in increments of 8.\n"
+		"3. Enable input clock by 'echo enable > osc_clk0'.\n"
+		"This prevents the input OSC clock from switching off till it is disabled by\n"
+		"'echo disable > osc_clk0'. The status of the clock indicated who are using it.\n";
 
 	return simple_read_from_buffer(user_buf, count, ppos,
 			buf, strlen(buf));
@@ -312,6 +507,38 @@ void sst_debugfs_init(struct intel_sst_drv *sst)
 	if (!debugfs_create_file("osc_clk0", 0600, sst->debugfs.root,
 				sst, &sst_debug_osc_clk0_ops)) {
 		pr_err("Failed to create osc_clk0 file\n");
+		return;
+	}
+
+	/* For SRAM Dump */
+	if (!debugfs_create_file("sram_lpe_debug", 0400, sst->debugfs.root,
+				sst, &sst_debug_sram_lpe_debug_ops)) {
+		pr_err("Failed to create sram_lpe_debug file\n");
+		return;
+	}
+	if (!debugfs_create_file("sram_lpe_checkpoint", 0400, sst->debugfs.root,
+				sst, &sst_debug_sram_lpe_checkpoint_ops)) {
+		pr_err("Failed to create sram_lpe_checkpoint file\n");
+		return;
+	}
+	if (!debugfs_create_file("sram_ia_lpe_mailbox", 0400, sst->debugfs.root,
+				sst, &sst_debug_sram_ia_lpe_mbox_ops)) {
+		pr_err("Failed to create sram_ia_lpe_mailbox file\n");
+		return;
+	}
+	if (!debugfs_create_file("sram_lpe_ia_mailbox", 0400, sst->debugfs.root,
+				sst, &sst_debug_sram_lpe_ia_mbox_ops)) {
+		pr_err("Failed to create sram_lpe_ia_mailbox file\n");
+		return;
+	}
+	if (!debugfs_create_file("sram_lpe_scu_mailbox", 0400, sst->debugfs.root,
+				sst, &sst_debug_sram_lpe_scu_mbox_ops)) {
+		pr_err("Failed to create sram_lpe_scu_mailbox file\n");
+		return;
+	}
+	if (!debugfs_create_file("sram_scu_lpe_mailbox", 0400, sst->debugfs.root,
+				sst, &sst_debug_sram_scu_lpe_mbox_ops)) {
+		pr_err("Failed to create sram_lpe_ia_mailbox file\n");
 		return;
 	}
 
