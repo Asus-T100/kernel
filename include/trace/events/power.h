@@ -244,11 +244,12 @@ DEFINE_EVENT(power_domain, power_domain_target,
 		rpm_status_name(RESUMING),			\
 		rpm_status_name(ACTIVE)		                \
 		)
-TRACE_EVENT(runtime_pm_status,
+TRACE_EVENT_CONDITION(runtime_pm_status,
 
 	TP_PROTO(struct device *dev, int status),
 
 	TP_ARGS(dev, status),
+	TP_CONDITION(dev_name(dev)),
 
 	TP_STRUCT__entry(
 		__string(devname, dev_name(dev))
@@ -265,12 +266,12 @@ TRACE_EVENT(runtime_pm_status,
 	TP_printk("driver=%s dev=%s status=%s", __get_str(drivername),
 		  __get_str(devname), show_rpm_status_name(__entry->status))
 );
-TRACE_EVENT(runtime_pm_usage,
+TRACE_EVENT_CONDITION(runtime_pm_usage,
 
 	TP_PROTO(struct device *dev, int usage),
 
 	TP_ARGS(dev, usage),
-
+	TP_CONDITION(dev_name(dev)),
 	TP_STRUCT__entry(
 		__string(devname, dev_name(dev))
 		__string(drivername, dev_driver_string(dev))
