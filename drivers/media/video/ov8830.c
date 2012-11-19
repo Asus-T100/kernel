@@ -54,19 +54,6 @@
  * (result is 0 if b == 0) */
 #define divsave_rounded(a, b)	(((b) != 0) ? (((a)+((b)>>1))/(b)) : (-1))
 
-typedef unsigned int sensor_register;
-struct sensor_mode_data {
-	sensor_register coarse_integration_time_min;
-	sensor_register coarse_integration_time_max_margin;
-	sensor_register fine_integration_time_min;
-	sensor_register fine_integration_time_max_margin;
-	sensor_register fine_integration_time_def;
-	sensor_register frame_length_lines;
-	sensor_register line_length_pck;
-	sensor_register read_mode;
-	int vt_pix_clk_freq_mhz;
-};
-
 /*
  * TODO: use debug parameter to actually define when debug messages should
  * be printed.
@@ -1259,12 +1246,29 @@ static int ov8830_get_register(struct v4l2_subdev *sd, int reg,
 	return val;
 }
 
+static int ov8830_get_register_16bit(struct v4l2_subdev *sd, int reg,
+		const struct ov8830_reg *reglist, unsigned int *value)
+{
+	int high, low;
+
+	high = ov8830_get_register(sd, reg, reglist);
+	if (high < 0)
+		return high;
+
+	low = ov8830_get_register(sd, reg + 1, reglist);
+	if (low < 0)
+		return low;
+
+	*value = ((u8) high << 8) | (u8) low;
+	return 0;
+}
+
 static int ov8830_get_intg_factor(struct v4l2_subdev *sd,
 				  struct camera_mipi_info *info,
 				  const struct ov8830_reg *reglist)
 {
 	const int ext_clk = 19200000; /* MHz */
-	struct sensor_mode_data *m = (struct sensor_mode_data *)&info->data;
+	struct atomisp_sensor_mode_data *m = &info->data;
 	struct ov8830_device *dev = to_ov8830_sensor(sd);
 	int pll2_prediv;
 	int pll2_multiplier;
@@ -1272,6 +1276,7 @@ static int ov8830_get_intg_factor(struct v4l2_subdev *sd,
 	int pll2_seld5;
 	int t1, t2, t3;
 	int sclk;
+	int ret;
 
 	memset(&info->data, 0, sizeof(info->data));
 
@@ -1321,8 +1326,38 @@ static int ov8830_get_intg_factor(struct v4l2_subdev *sd,
 	 * read mode values accordingly.
 	 */
 	m->read_mode = ov8830_res[dev->fmt_idx].bin_factor_x ?
-		     OV8830_READ_MODE_BINNING_ON : OV8830_READ_MODE_BINNING_OFF;
-	return 0;
+		OV8830_READ_MODE_BINNING_ON : OV8830_READ_MODE_BINNING_OFF;
+	m->binning_factor_x = ov8830_res[dev->fmt_idx].bin_factor_x ? 2 : 1;
+	m->binning_factor_y = ov8830_res[dev->fmt_idx].bin_factor_y ? 2 : 1;
+
+	/* Get the cropping and output resolution to ISP for this mode. */
+	ret =  ov8830_get_register_16bit(sd, OV8830_HORIZONTAL_START_H,
+		ov8830_res[dev->fmt_idx].regs, &m->crop_horizontal_start);
+	if (ret)
+		return ret;
+
+	ret = ov8830_get_register_16bit(sd, OV8830_VERTICAL_START_H,
+		ov8830_res[dev->fmt_idx].regs, &m->crop_vertical_start);
+	if (ret)
+		return ret;
+
+	ret = ov8830_get_register_16bit(sd, OV8830_HORIZONTAL_END_H,
+		ov8830_res[dev->fmt_idx].regs, &m->crop_horizontal_end);
+	if (ret)
+		return ret;
+
+	ret = ov8830_get_register_16bit(sd, OV8830_VERTICAL_END_H,
+		ov8830_res[dev->fmt_idx].regs, &m->crop_vertical_end);
+	if (ret)
+		return ret;
+
+	ret = ov8830_get_register_16bit(sd, OV8830_HORIZONTAL_OUTPUT_SIZE_H,
+		ov8830_res[dev->fmt_idx].regs, &m->output_width);
+	if (ret)
+		return ret;
+
+	return ov8830_get_register_16bit(sd, OV8830_VERTICAL_OUTPUT_SIZE_H,
+		ov8830_res[dev->fmt_idx].regs, &m->output_height);
 }
 
 /* This returns the exposure time being used. This should only be used
