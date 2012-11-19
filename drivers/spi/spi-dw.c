@@ -274,6 +274,7 @@ static void giveback(struct dw_spi *dws)
 
 	spin_lock_irqsave(&dws->lock, flags);
 	msg = dws->cur_msg;
+	list_del_init(&dws->cur_msg->queue);
 	dws->cur_msg = NULL;
 	dws->cur_transfer = NULL;
 	dws->prev_chip = dws->cur_chip;
@@ -576,7 +577,6 @@ static void pump_messages(struct work_struct *work)
 
 	/* Extract head of queue */
 	dws->cur_msg = list_entry(dws->queue.next, struct spi_message, queue);
-	list_del_init(&dws->cur_msg->queue);
 
 	/* Initial message state*/
 	dws->cur_msg->state = START_STATE;
