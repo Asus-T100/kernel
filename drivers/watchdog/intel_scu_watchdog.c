@@ -83,8 +83,7 @@
 #define STRING_COLD_BOOT "COLD_BOOT"
 
 #ifdef CONFIG_DEBUG_FS
-#define SECURITY_WATCHDOG_ADDR_PNW 0xff108194
-#define SECURITY_WATCHDOG_ADDR_CLV 0xff108ffc
+#define SECURITY_WATCHDOG_ADDR 0x40102FF4
 #define STRING_NONE "NONE"
 #endif
 
@@ -679,15 +678,7 @@ int open_security(struct inode *i, struct file *f)
 	u64 *ptr;
 	u32 value;
 
-	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_PENWELL) {
-		ptr = ioremap_nocache(SECURITY_WATCHDOG_ADDR_PNW, sizeof(u32));
-	} else if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_CLOVERVIEW) {
-		ptr = ioremap_nocache(SECURITY_WATCHDOG_ADDR_CLV, sizeof(u32));
-	} else {
-		pr_err(PFX "SoC not supported\n");
-		ret = -EINVAL;
-		goto error;
-	}
+	ptr = ioremap_nocache(SECURITY_WATCHDOG_ADDR, sizeof(u32));
 
 	if (!ptr) {
 		pr_err(PFX "cannot open secwd's debugfile\n");
