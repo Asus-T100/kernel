@@ -216,6 +216,8 @@ extern int mmc_try_claim_host(struct mmc_host *host);
 
 extern int mmc_detect_card_removed(struct mmc_host *host);
 
+extern int mmc_flush_cache(struct mmc_card *);
+
 /**
  *	mmc_claim_host - exclusively claim a host
  *	@host: mmc host to claim

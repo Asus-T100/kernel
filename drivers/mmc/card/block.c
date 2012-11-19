@@ -1098,16 +1098,18 @@ out:
 static int mmc_blk_issue_flush(struct mmc_queue *mq, struct request *req)
 {
 	struct mmc_blk_data *md = mq->data;
+	struct mmc_card *card = md->queue.card;
+	int ret = 0;
 
-	/*
-	 * No-op, only service this because we need REQ_FUA for reliable
-	 * writes.
-	 */
+	ret = mmc_flush_cache(card);
+	if (ret)
+		ret = -EIO;
+
 	spin_lock_irq(&md->lock);
-	__blk_end_request_all(req, 0);
+	__blk_end_request_all(req, ret);
 	spin_unlock_irq(&md->lock);
 
-	return 1;
+	return ret ? 0 : 1;
 }
 
 /*
@@ -2009,9 +2011,20 @@ static int mmc_blk_resume(struct mmc_card *card)
 #define mmc_blk_resume	NULL
 #endif
 
+static void mmc_blk_shutdown(struct device *dev)
+{
+	struct mmc_card *card = mmc_dev_to_card(dev);
+	struct mmc_host *mmc = card->host;
+
+	mmc_claim_host(mmc);
+	mmc_cache_ctrl(mmc, 0);
+	mmc_release_host(mmc);
+}
+
 static struct mmc_driver mmc_driver = {
 	.drv		= {
 		.name	= "mmcblk",
+		.shutdown = mmc_blk_shutdown,
 	},
 	.probe		= mmc_blk_probe,
 	.remove		= mmc_blk_remove,

@@ -2154,6 +2154,17 @@ static int mmc_do_hw_reset(struct mmc_host *host, int check)
 	if (!card)
 		return -EINVAL;
 
+	/*
+	 * before HW reset card, cache needs to be flushed. Otherwise
+	 * the data in cache can be lost. But this flush may be failed
+	 * because card may be not in a good state
+	 */
+	if (mmc_cache_ctrl(host, 0)) {
+		pr_err("%s: flushing cache before HW reset failed, ",
+				mmc_hostname(host));
+		pr_err("this maybe cause file system unexpected error!\n");
+	}
+
 	mmc_host_clk_hold(host);
 	mmc_set_clock(host, host->f_init);
 
@@ -2387,6 +2398,10 @@ void mmc_stop_host(struct mmc_host *host)
 	mmc_bus_get(host);
 	if (host->bus_ops && !host->bus_dead) {
 		mmc_claim_host(host);
+		/*
+		 * disable cache before remove card
+		 */
+		mmc_cache_ctrl(host, 0);
 		if (mmc_can_poweroff_notify(host->card)) {
 			int err = host->bus_ops->poweroff_notify(host,
 						MMC_PW_OFF_NOTIFY_LONG);
@@ -2431,6 +2446,10 @@ int mmc_power_save_host(struct mmc_host *host)
 		ret = host->bus_ops->power_save(host);
 
 	mmc_claim_host(host);
+	/*
+	 * disable cache before remove card
+	 */
+	mmc_cache_ctrl(host, 0);
 	if (mmc_can_poweroff_notify(host->card)) {
 		int err = host->bus_ops->poweroff_notify(host,
 					MMC_PW_OFF_NOTIFY_SHORT);
@@ -2518,6 +2537,77 @@ int mmc_card_can_sleep(struct mmc_host *host)
 }
 EXPORT_SYMBOL(mmc_card_can_sleep);
 
+/*
+ * Flush the cache to the non-volatile storage.
+ */
+int mmc_flush_cache(struct mmc_card *card)
+{
+	struct mmc_host *host = card->host;
+	int err = 0;
+
+	if (!(host->caps2 & MMC_CAP2_CACHE_CTRL))
+		return err;
+
+	if (mmc_card_mmc(card) &&
+			(card->ext_csd.cache_size > 0) &&
+			(card->ext_csd.cache_ctrl & 1)) {
+		err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
+				EXT_CSD_FLUSH_CACHE, 1, 0, 0);
+		if (err)
+			pr_err("%s: cache flush error %d\n",
+					mmc_hostname(card->host), err);
+	}
+
+	return err;
+}
+EXPORT_SYMBOL(mmc_flush_cache);
+
+/*
+ * Turn the cache ON/OFF.
+ * Turning the cache OFF shall trigger flushing of the data
+ * to the non-volatile storage.
+ */
+int mmc_cache_ctrl(struct mmc_host *host, u8 enable)
+{
+	struct mmc_card *card = host->card;
+	int err = 0;
+
+	if (!(host->caps2 & MMC_CAP2_CACHE_CTRL) ||
+			mmc_card_is_removable(host))
+		return err;
+
+	if (card && mmc_card_mmc(card) &&
+			(card->ext_csd.cache_size > 0)) {
+		enable = !!enable;
+
+		if (card->ext_csd.cache_ctrl ^ enable) {
+			if (enable)
+				err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
+					EXT_CSD_CACHE_CTRL, enable,
+					card->ext_csd.generic_cmd6_time, 1);
+			else
+				/*
+				 * disable cache will cause flushing data to
+				 * non-volatile storage, so we may need to
+				 * check busy state here by polling card status
+				 */
+				err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
+					EXT_CSD_CACHE_CTRL, enable,
+					0, 0);
+			if (err)
+				pr_err("%s: cache %s error %d\n",
+						mmc_hostname(card->host),
+						enable ? "on" : "off",
+						err);
+			else
+				card->ext_csd.cache_ctrl = enable;
+		}
+	}
+
+	return err;
+}
+EXPORT_SYMBOL(mmc_cache_ctrl);
+
 #ifdef CONFIG_PM
 
 /**
@@ -2536,6 +2626,15 @@ int mmc_suspend_host(struct mmc_host *host)
 	if (cancel_delayed_work(&host->detect))
 		wake_unlock(&host->detect_wake_lock);
 	mmc_flush_scheduled_work();
+
+	if (mmc_try_claim_host(host)) {
+		err = mmc_cache_ctrl(host, 0);
+		mmc_do_release_host(host);
+	} else {
+		err = -EBUSY;
+	}
+	if (err)
+		goto out;
 
 	mmc_bus_get(host);
 	if (host->bus_ops && !host->bus_dead) {
@@ -2561,6 +2660,7 @@ int mmc_suspend_host(struct mmc_host *host)
 	if (!err && !mmc_card_keep_power(host))
 		mmc_power_off(host);
 
+out:
 	return err;
 }
 
@@ -2647,6 +2747,10 @@ int mmc_pm_notify(struct notifier_block *notify_block,
 			break;
 
 		mmc_claim_host(host);
+		/*
+		 * disable cache before remove card
+		 */
+		mmc_cache_ctrl(host, 0);
 		if (mmc_can_poweroff_notify(host->card)) {
 			int err = host->bus_ops->poweroff_notify(host,
 						MMC_PW_OFF_NOTIFY_SHORT);

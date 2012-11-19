@@ -270,6 +270,8 @@ struct _mmc_csd {
 /*
  * EXT_CSD fields
  */
+#define EXT_CSD_FLUSH_CACHE		32      /* W */
+#define EXT_CSD_CACHE_CTRL		33      /* R/W */
 #define EXT_CSD_POWER_OFF_NOTIFICATION	34	/* R/W */
 #define EXT_CSD_EXCEPTION_STATUS	54	/* RO */
 #define EXT_CSD_EXCEPTION_EVENTS_CTRL	56	/* R/W */
@@ -310,6 +312,7 @@ struct _mmc_csd {
 #define EXT_CSD_TRIM_MULT		232	/* RO */
 #define EXT_CSD_BKOPS_STATUS		246	/* RO */
 #define EXT_CSD_POWER_OFF_LONG_TIME	247	/* RO */
+#define EXT_CSD_CACHE_SIZE		249	/* RO, 4 bytes */
 #define EXT_CSD_BKOPS_SUPPORT		502	/* RO */
 #define EXT_CSD_HPI_FEATURES		503	/* RO */
 

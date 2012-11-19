@@ -51,6 +51,7 @@ struct mmc_ext_csd {
 	u8			rel_param;
 	u8			rel_set;
 	u8			part_config;
+	u8			cache_ctrl;
 	u8			rst_n_function;
 	unsigned int		part_time;		/* Units: ms */
 	unsigned int		sa_timeout;		/* Units: 100ns */
@@ -67,6 +68,7 @@ struct mmc_ext_csd {
 	bool			enhanced_area_en;	/* enable bit */
 	unsigned long long	enhanced_area_offset;	/* Units: Byte */
 	unsigned int		enhanced_area_size;	/* Units: KB */
+	unsigned int		cache_size;		/* Units: KB */
 	unsigned int		boot_size;		/* in bytes */
 	bool			hpi_en;			/* HPI enablebit */
 	bool			hpi;			/* HPI support bit */

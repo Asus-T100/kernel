@@ -193,6 +193,7 @@ struct mmc_panic_host {
 	unsigned int		max_req_size;
 	unsigned int		blkaddr;
 	unsigned int		caps;
+	unsigned int		caps2;
 	u32			ocr;		/* the current OCR setting */
 	struct mmc_ios		ios;		/* current io bus settings */
 	struct mmc_card		*card;
@@ -278,6 +279,7 @@ struct mmc_host {
 #define MMC_CAP2_POWEROFF_NOTIFY (1 << 4)	/* Notify poweroff supported */
 #define MMC_CAP2_LED_SUPPORT	(1 << 5)	/* led support */
 #define MMC_CAP2_POLL_R1B_BUSY	(1 << 6)	/* host poll R1B busy*/
+#define MMC_CAP2_CACHE_CTRL	(1 << 7)	/* Allow cache control */
 
 	mmc_pm_flag_t		pm_caps;	/* supported pm features */
 
@@ -422,6 +424,8 @@ extern int mmc_power_restore_host(struct mmc_host *host);
 
 extern void mmc_detect_change(struct mmc_host *, unsigned long delay);
 extern void mmc_request_done(struct mmc_host *, struct mmc_request *);
+
+extern int mmc_cache_ctrl(struct mmc_host *, u8);
 
 static inline void mmc_signal_sdio_irq(struct mmc_host *host)
 {

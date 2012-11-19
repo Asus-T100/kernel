@@ -153,6 +153,83 @@ static int mmc_emergency_send_cmd(struct mmc_command *cmd, int retries)
 	return cmd->error;
 }
 
+static int mmc_emergency_send_status(struct mmc_panic_host *host, u32 *status)
+{
+	struct mmc_card *card = host->card;
+	int err;
+	struct mmc_command cmd;
+
+	memset(&cmd, 0, sizeof(struct mmc_command));
+
+	cmd.opcode = MMC_SEND_STATUS;
+	if (!mmc_host_is_spi(host))
+		cmd.arg = card->rca << 16;
+	cmd.flags = MMC_RSP_SPI_R2 | MMC_RSP_R1 | MMC_CMD_AC;
+
+	err = mmc_emergency_send_cmd(&cmd, MMC_CMD_RETRIES);
+	if (err)
+		return err;
+
+	/* NOTE: callers are required to understand the difference
+	 * between "native" and SPI format status words!
+	 */
+	if (status)
+		*status = cmd.resp[0];
+
+	return 0;
+}
+
+
+static int mmc_emergency_switch(struct mmc_panic_host *host,
+		u8 set, u8 index, u8 value, u8 check_busy)
+{
+	struct mmc_card *card = host->card;
+	int err;
+	struct mmc_command cmd;
+	u32 status;
+
+	memset(&cmd, 0, sizeof(struct mmc_command));
+
+	cmd.opcode = MMC_SWITCH;
+	cmd.arg = (MMC_SWITCH_MODE_WRITE_BYTE << 24) |
+		  (index << 16) |
+		  (value << 8) |
+		  set;
+	if (check_busy)
+		cmd.flags = MMC_RSP_SPI_R1B | MMC_RSP_R1B | MMC_CMD_AC;
+	else
+		cmd.flags = MMC_RSP_SPI_R1 | MMC_RSP_R1 | MMC_CMD_AC;
+
+	err = mmc_emergency_send_cmd(&cmd, MMC_CMD_RETRIES);
+	if (err)
+		return err;
+
+	/* Must check status to be sure of no errors */
+	do {
+		err = mmc_emergency_send_status(host, &status);
+		if (err)
+			return err;
+		if (host->caps & MMC_CAP_WAIT_WHILE_BUSY)
+			break;
+		if (mmc_host_is_spi(host))
+			break;
+	} while (R1_CURRENT_STATE(status) == 7);
+
+	if (mmc_host_is_spi(host)) {
+		if (status & R1_SPI_ILLEGAL_COMMAND)
+			return -EBADMSG;
+	} else {
+		if (status & 0xFDFFA000)
+			pr_warn("%s: unexpected status %#x after switch\n",
+					mmc_hostname(card->host), status);
+		if (status & R1_SWITCH_ERROR)
+			return -EBADMSG;
+	}
+
+	return 0;
+}
+
+
 static int __mmc_emergency_write(unsigned int blk_id)
 {
 	struct mmc_request mrq;
@@ -180,6 +257,36 @@ static int __mmc_emergency_write(unsigned int blk_id)
 	mmc_emergency_send_req(&mrq);
 
 	return cmd.error;
+}
+
+static int mmc_emergency_cache_disable(struct mmc_panic_host *host)
+{
+	struct mmc_card *card = host->card;
+	int err = 0;
+
+	if (!(host->caps2 & MMC_CAP2_CACHE_CTRL))
+		return err;
+
+	if (card && mmc_card_mmc(card) && card->ext_csd.cache_ctrl &&
+			(card->ext_csd.cache_size > 0)) {
+		/*
+		 * disable cache will cause flushing data to
+		 * non-volatile storage, so we may need to
+		 * check busy state here by polling card status
+		 */
+		err = mmc_emergency_switch(host,
+			EXT_CSD_CMD_SET_NORMAL,
+			EXT_CSD_CACHE_CTRL, 0,
+			0);
+
+		if (err)
+			pr_err("%s: disable cache error %d in panic mode\n",
+					mmc_hostname(card->host), err);
+		else
+			card->ext_csd.cache_ctrl = 0;
+	}
+
+	return err;
 }
 
 static int mmc_emergency_go_idle(struct mmc_panic_host *host)
@@ -329,78 +436,6 @@ static int mmc_emergency_select_card(struct mmc_card *card)
 	return 0;
 }
 
-static int mmc_emergency_send_status(struct mmc_panic_host *host, u32 *status)
-{
-	struct mmc_card *card = host->card;
-	int err;
-	struct mmc_command cmd;
-
-	memset(&cmd, 0, sizeof(struct mmc_command));
-
-	cmd.opcode = MMC_SEND_STATUS;
-	if (!mmc_host_is_spi(host))
-		cmd.arg = card->rca << 16;
-	cmd.flags = MMC_RSP_SPI_R2 | MMC_RSP_R1 | MMC_CMD_AC;
-
-	err = mmc_emergency_send_cmd(&cmd, MMC_CMD_RETRIES);
-	if (err)
-		return err;
-
-	/* NOTE: callers are required to understand the difference
-	 * between "native" and SPI format status words!
-	 */
-	if (status)
-		*status = cmd.resp[0];
-
-	return 0;
-}
-
-static int mmc_emergency_switch(struct mmc_panic_host *host,
-		u8 set, u8 index, u8 value)
-{
-	struct mmc_card *card = host->card;
-	int err;
-	struct mmc_command cmd;
-	u32 status;
-
-	memset(&cmd, 0, sizeof(struct mmc_command));
-
-	cmd.opcode = MMC_SWITCH;
-	cmd.arg = (MMC_SWITCH_MODE_WRITE_BYTE << 24) |
-		  (index << 16) |
-		  (value << 8) |
-		  set;
-	cmd.flags = MMC_RSP_SPI_R1B | MMC_RSP_R1B | MMC_CMD_AC;
-
-	err = mmc_emergency_send_cmd(&cmd, MMC_CMD_RETRIES);
-	if (err)
-		return err;
-
-	/* Must check status to be sure of no errors */
-	do {
-		err = mmc_emergency_send_status(host, &status);
-		if (err)
-			return err;
-		if (host->caps & MMC_CAP_WAIT_WHILE_BUSY)
-			break;
-		if (mmc_host_is_spi(host))
-			break;
-	} while (R1_CURRENT_STATE(status) == 7);
-
-	if (mmc_host_is_spi(host)) {
-		if (status & R1_SPI_ILLEGAL_COMMAND)
-			return -EBADMSG;
-	} else {
-		if (status & 0xFDFFA000)
-			printk(KERN_WARNING "%s: unexpected status %#x after "
-			       "switch", mmc_hostname(card->host), status);
-		if (status & R1_SWITCH_ERROR)
-			return -EBADMSG;
-	}
-
-	return 0;
-}
-
 static int mmc_emergency_spi_set_crc(struct mmc_panic_host *host, int use)
 {
 	return -1;
@@ -423,6 +458,13 @@ static int mmc_emergency_reinit_card(void)
 	u32 cid[4];
 	unsigned int max_dtr;
 
+	/*
+	 * before re-init card, flush cache first
+	 * if there is.
+	 * flush may be failed. So just ignore the failure
+	 * here
+	 */
+	mmc_emergency_cache_disable(host);
 	/*
 	 * low the clock to be init clock
 	 */
@@ -506,7 +548,7 @@ static int mmc_emergency_reinit_card(void)
 	if ((card->ext_csd.hs_max_dtr != 0) &&
 		(host->caps & MMC_CAP_MMC_HIGHSPEED)) {
 		err = mmc_emergency_switch(host, EXT_CSD_CMD_SET_NORMAL,
-			EXT_CSD_HS_TIMING, 1);
+			EXT_CSD_HS_TIMING, 1, 1);
 		if (err && err != -EBADMSG)
 			goto err;
 
@@ -553,7 +595,7 @@ static int mmc_emergency_reinit_card(void)
 		}
 
 		err = mmc_emergency_switch(host, EXT_CSD_CMD_SET_NORMAL,
-				 EXT_CSD_BUS_WIDTH, ext_csd_bit);
+				 EXT_CSD_BUS_WIDTH, ext_csd_bit, 1);
 
 		if (err && err != -EBADMSG)
 			goto err;
@@ -759,6 +801,7 @@ void mmc_emergency_setup(struct mmc_host *mmc)
 
 	memcpy(host->card, mmc->card, sizeof(struct mmc_card));
 	host->caps = mmc->caps;
+	host->caps2 = mmc->caps2;
 	host->mmc = mmc;
 	host->ocr = mmc->ocr;
 	host->totalsecs = mmc_get_capacity(mmc->card);

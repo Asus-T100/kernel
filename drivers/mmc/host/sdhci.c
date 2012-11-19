@@ -3133,9 +3133,7 @@ static void sdhci_mfld_panic_set_ios(struct mmc_panic_host *mmc)
 	else
 		ctrl &= ~SDHCI_CTRL_4BITBUS;
 
-	if ((ios->timing == MMC_TIMING_SD_HS ||
-	     ios->timing == MMC_TIMING_MMC_HS)
-	    && !(host->quirks & SDHCI_QUIRK_NO_HISPD_BIT))
+	if (ios->timing && !(host->quirks & SDHCI_QUIRK_NO_HISPD_BIT))
 		ctrl |= SDHCI_CTRL_HISPD;
 	else
 		ctrl &= ~SDHCI_CTRL_HISPD;
