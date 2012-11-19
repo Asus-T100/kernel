@@ -88,7 +88,7 @@ struct atomisp_video_pipe {
 	 * also to make activeq, activeq_out, capq and outq list
 	 * operations atomic. */
 	spinlock_t irq_lock;
-	bool opened;
+	unsigned int users;
 	enum atomisp_pipe_type pipe_type;
 
 	struct atomisp_device *isp;

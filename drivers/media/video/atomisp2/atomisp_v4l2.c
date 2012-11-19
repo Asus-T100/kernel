@@ -256,7 +256,6 @@ int atomisp_video_init(struct atomisp_video_pipe *video, const char *name)
 		 "ATOMISP ISP %s %s", name, direction);
 	video->vdev.release = video_device_release_empty;
 	video_set_drvdata(&video->vdev, video->isp);
-	video->opened = false;
 
 	return 0;
 }
@@ -468,7 +467,7 @@ static int atomisp_suspend(struct device *dev)
 	 * FIXME: Suspend is not supported by sensors. Abort if any video
 	 * node was opened.
 	 */
-	if (isp->sw_contex.init == true)
+	if (atomisp_users(isp))
 		return -EBUSY;
 
 	spin_lock_irqsave(&isp->lock, flags);

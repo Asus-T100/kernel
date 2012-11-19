@@ -323,12 +323,6 @@ static struct videobuf_queue_ops videobuf_qops_output = {
 	.buf_release	= atomisp_buf_release_output,
 };
 
-static int atomisp_uninit_pipe(struct atomisp_video_pipe *pipe)
-{
-	pipe->opened = false;
-	return 0;
-}
-
 static int atomisp_init_pipe(struct atomisp_video_pipe *pipe)
 {
 	/* init locks */
@@ -353,7 +347,6 @@ static int atomisp_init_pipe(struct atomisp_video_pipe *pipe)
 
 	INIT_LIST_HEAD(&pipe->activeq);
 	INIT_LIST_HEAD(&pipe->activeq_out);
-	pipe->opened = true;
 
 	return 0;
 }
@@ -431,6 +424,13 @@ my_kernel_malloc(size_t bytes, bool zero_mem)
 /*
  * file operation functions
  */
+unsigned int atomisp_users(struct atomisp_device *isp)
+{
+	return isp->isp_subdev.video_out_preview.users +
+	       isp->isp_subdev.video_out_vf.users +
+	       isp->isp_subdev.video_out_capture.users;
+}
+
 static int atomisp_open(struct file *file)
 {
 	struct video_device *vdev = video_devdata(file);
@@ -454,14 +454,14 @@ static int atomisp_open(struct file *file)
 		goto error;
 	}
 
-	if (pipe->opened)
+	if (pipe->users)
 		goto done;
 
 	ret = atomisp_init_pipe(pipe);
 	if (ret)
 		goto error;
 
-	if (isp->sw_contex.init) {
+	if (atomisp_users(isp)) {
 		v4l2_err(&atomisp_dev, "skip init isp in open\n");
 		goto done;
 	}
@@ -471,7 +471,7 @@ static int atomisp_open(struct file *file)
 	if (ret) {
 		v4l2_err(&atomisp_dev,
 				"Failed to power on device\n");
-		goto runtime_get_failed;
+		goto error;
 	}
 
 	device_set_base_address(0);
@@ -522,26 +522,17 @@ static int atomisp_open(struct file *file)
 
 	atomisp_init_struct(isp);
 
-	isp->sw_contex.init = true;
 done:
+	pipe->users++;
 	mutex_unlock(&isp->mutex);
 	return 0;
 
 css_init_failed:
 	v4l2_err(&atomisp_dev, "css init failed\n");
 	pm_runtime_put(vdev->v4l2_dev->dev);
-runtime_get_failed:
-	atomisp_uninit_pipe(pipe);
 error:
 	mutex_unlock(&isp->mutex);
 	return ret;
-}
-
-static inline int atomisp_openpipes(struct atomisp_device *isp)
-{
-	return (isp->isp_subdev.video_out_preview.opened ? 1 : 0) +
-	       (isp->isp_subdev.video_out_vf.opened ? 1 : 0) +
-	       (isp->isp_subdev.video_out_capture.opened ? 1 : 0);
 }
 
 static int atomisp_release(struct file *file)
@@ -560,15 +551,24 @@ static int atomisp_release(struct file *file)
 		return -EBADF;
 
 	mutex_lock(&isp->mutex);
-	if (pipe->capq.streaming &&
-	    __atomisp_streamoff(file, NULL, V4L2_BUF_TYPE_VIDEO_CAPTURE))
-		goto error;
 
-	if (pipe->opened == false)
+	pipe->users--;
+
+	if (pipe->capq.streaming &&
+	    __atomisp_streamoff(file, NULL, V4L2_BUF_TYPE_VIDEO_CAPTURE)) {
+		dev_err(isp->dev,
+			"atomisp_streamoff failed on release, driver bug");
+		goto done;
+	}
+
+	if (pipe->users)
 		goto done;
 
-	if (atomisp_reqbufs(file, NULL, &req))
-		goto error;
+	if (atomisp_reqbufs(file, NULL, &req)) {
+		dev_err(isp->dev,
+			"atomisp_reqbufs failed on release, driver bug");
+		goto done;
+	}
 
 	/* in case image buf is not freed */
 	if (pipe->capq.bufs[0]) {
@@ -591,10 +591,7 @@ static int atomisp_release(struct file *file)
 	kfree(isp->input_format);
 	isp->input_format = NULL;
 
-	if (atomisp_openpipes(isp) > 1)
-		goto done;
-
-	if (isp->sw_contex.init == false)
+	if (atomisp_users(isp))
 		goto done;
 
 	del_timer_sync(&isp->wdt);
@@ -623,19 +620,12 @@ static int atomisp_release(struct file *file)
 	isp->hw_contex.mmu_l1_base =
 			(void *)sh_css_mmu_get_page_table_base_index();
 
-	isp->sw_contex.init = false;
-
 	if (pm_runtime_put_sync(vdev->v4l2_dev->dev))
 		v4l2_err(&atomisp_dev, "Failed to power off device\n");
 done:
-	pipe->opened = false;
 	mutex_unlock(&isp->mutex);
 
 	return 0;
-error:
-	mutex_unlock(&isp->mutex);
-
-	return ret;
 }
 
 /*

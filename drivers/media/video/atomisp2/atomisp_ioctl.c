@@ -1476,15 +1476,15 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 	cancel_work_sync(&isp->wdt_work);
 
 	/* cancel work queue*/
-	if (isp->isp_subdev.video_out_capture.opened) {
+	if (isp->isp_subdev.video_out_capture.users) {
 		capture_pipe = &isp->isp_subdev.video_out_capture;
 		wake_up_interruptible(&capture_pipe->capq.wait);
 	}
-	if (isp->isp_subdev.video_out_vf.opened) {
+	if (isp->isp_subdev.video_out_vf.users) {
 		vf_pipe = &isp->isp_subdev.video_out_vf;
 		wake_up_interruptible(&vf_pipe->capq.wait);
 	}
-	if (isp->isp_subdev.video_out_preview.opened) {
+	if (isp->isp_subdev.video_out_preview.users) {
 		preview_pipe = &isp->isp_subdev.video_out_preview;
 		wake_up_interruptible(&preview_pipe->capq.wait);
 	}

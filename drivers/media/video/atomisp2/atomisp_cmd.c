@@ -502,7 +502,7 @@ void atomisp_flush_bufs_and_wakeup(struct atomisp_device *isp)
 	int i;
 
 	pipe = &isp->isp_subdev.video_out_capture;
-	if(pipe->opened) {
+	if (pipe->users) {
 		for (i = 0; pipe->capq.bufs[i]; i++) {
 			spin_lock_irqsave(&pipe->irq_lock, irqflags);
 			if (pipe->capq.bufs[i]->state == VIDEOBUF_ACTIVE ||
@@ -520,7 +520,7 @@ void atomisp_flush_bufs_and_wakeup(struct atomisp_device *isp)
 	}
 
 	pipe = &isp->isp_subdev.video_out_vf;
-	if(pipe->opened) {
+	if (pipe->users) {
 		for (i = 0; pipe->capq.bufs[i]; i++) {
 			spin_lock_irqsave(&pipe->irq_lock, irqflags);
 			if (pipe->capq.bufs[i]->state == VIDEOBUF_ACTIVE ||
@@ -539,7 +539,7 @@ void atomisp_flush_bufs_and_wakeup(struct atomisp_device *isp)
 	}
 
 	pipe = &isp->isp_subdev.video_out_preview;
-	if(pipe->opened) {
+	if (pipe->users) {
 		for (i = 0; pipe->capq.bufs[i]; i++) {
 			spin_lock_irqsave(&pipe->irq_lock, irqflags);
 			if (pipe->capq.bufs[i]->state == VIDEOBUF_ACTIVE ||
@@ -3955,7 +3955,7 @@ int atomisp_ospm_dphy_down(struct atomisp_device *isp)
 	if (isp->isp_timeout)
 		goto done;
 
-	if (!isp->sw_contex.init)
+	if (!atomisp_users(isp))
 		goto done;
 
 	idle = sh_css_hrt_system_is_idle();

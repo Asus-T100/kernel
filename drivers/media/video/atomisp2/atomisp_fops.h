@@ -53,6 +53,8 @@ void atomisp_buf_release(struct videobuf_queue *vq,
 
 int atomisp_init_struct(struct atomisp_device *isp);
 
+unsigned int atomisp_users(struct atomisp_device *isp);
+
 /*
  * Memory help functions for image frame and private parameters
  */
