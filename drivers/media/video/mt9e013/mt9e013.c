@@ -944,7 +944,7 @@ mt9e013_get_intg_factor(struct i2c_client *client,
      * MSIC's driver to get the ext_clk that MSIC supllies to the sensor.
      */
 	const int ext_clk_freq_mhz = 19200000;
-	struct sensor_mode_data buf;
+	struct atomisp_sensor_mode_data buf;
 	const struct mt9e013_reg *next = reglist;
 	int vt_pix_clk_freq_mhz;
 	u16 data[MT9E013_SHORT_MAX];
@@ -956,6 +956,8 @@ mt9e013_get_intg_factor(struct i2c_client *client,
 	unsigned int frame_length_lines;
 	unsigned int line_length_pck;
 	unsigned int read_mode;
+	u16 value;
+	int ret;
 
 	if (info == NULL)
 		return -EINVAL;
@@ -1001,7 +1003,7 @@ mt9e013_get_intg_factor(struct i2c_client *client,
 		}
 	}
 
-    /* something's wrong here, this mode does not have fine_igt set! */
+	/* something's wrong here, this mode does not have fine_igt set! */
 	if (next->type == MT9E013_TOK_TERM)
 		return -EINVAL;
 
@@ -1014,6 +1016,43 @@ mt9e013_get_intg_factor(struct i2c_client *client,
 	buf.line_length_pck = line_length_pck;
 	buf.frame_length_lines = frame_length_lines;
 	buf.read_mode = read_mode;
+
+	/* Get the cropping and output resolution to ISP for this mode. */
+	ret = mt9e013_read_reg(client, MT9E013_16BIT,
+				MT9E013_HORIZONTAL_START_H, &value);
+	if (ret)
+		return ret;
+	buf.crop_horizontal_start = value;
+
+	ret = mt9e013_read_reg(client, MT9E013_16BIT, MT9E013_VERTICAL_START_H,
+				&value);
+	if (ret)
+		return ret;
+	buf.crop_vertical_start = value;
+
+	ret = mt9e013_read_reg(client, MT9E013_16BIT, MT9E013_HORIZONTAL_END_H,
+				&value);
+	if (ret)
+		return ret;
+	buf.crop_horizontal_end = value;
+
+	ret = mt9e013_read_reg(client, MT9E013_16BIT, MT9E013_VERTICAL_END_H,
+				&value);
+	if (ret)
+		return ret;
+	buf.crop_vertical_end = value;
+
+	ret = mt9e013_read_reg(client, MT9E013_16BIT,
+				MT9E013_HORIZONTAL_OUTPUT_SIZE_H, &value);
+	if (ret)
+		return ret;
+	buf.output_width = value;
+
+	ret = mt9e013_read_reg(client, MT9E013_16BIT,
+				MT9E013_VERTICAL_OUTPUT_SIZE_H, &value);
+	if (ret)
+		return ret;
+	buf.output_height = value;
 
 	memcpy(&info->data, &buf, sizeof(buf));
 
