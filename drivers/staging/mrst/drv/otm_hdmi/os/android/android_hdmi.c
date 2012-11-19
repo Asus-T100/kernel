@@ -166,39 +166,17 @@ static unsigned char default_edid[] = {
 };
 
 #define HDMI_HOTPLUG_DELAY (2*HZ)
-struct timer_list g_hotplug_delay_timer;
 
-static void android_hdmi_hotplug_timer_func(unsigned long data)
+static void hdmi_hotplug_delay_wq_func(struct work_struct *work)
 {
-	struct drm_device *dev = (struct drm_device *)data;
-	pr_debug("%s: Hotplug delay timer expired, allowing ospm\n",
-		 __func__);
-	ospm_runtime_pm_allow(dev);
-}
 
-static int android_hdmi_hotplug_timer_init(struct drm_device *dev)
-{
-	struct timer_list *hdmi_timer = &g_hotplug_delay_timer;
+	struct android_hdmi_priv *hdmi_priv =
+		container_of(work, struct android_hdmi_priv, hdmi_delayed_wq.work);
+	struct drm_device *dev = hdmi_priv->dev;
 
-	pr_debug("Entered %s\n", __func__);
-	init_timer(hdmi_timer);
-
-	hdmi_timer->data = (unsigned long)dev;
-	hdmi_timer->function = android_hdmi_hotplug_timer_func;
-	hdmi_timer->expires = jiffies + HDMI_HOTPLUG_DELAY;
-
-	return 0;
-}
-
-static void android_hdmi_hotplug_timer_start(void)
-{
-	struct timer_list *hdmi_timer = &g_hotplug_delay_timer;
-
-	pr_debug("Entered %s\n", __func__);
-	if (!timer_pending(hdmi_timer)) {
-		hdmi_timer->expires = jiffies + HDMI_HOTPLUG_DELAY;
-		add_timer(hdmi_timer);
-	}
+	struct delayed_work *delayed_work = to_delayed_work(work);
+	if (!delayed_work_pending(delayed_work))
+		ospm_runtime_pm_allow(dev);
 }
 
 static struct edid *drm_get_edid_retry(struct drm_connector *connector,
@@ -339,7 +317,7 @@ exit:
 			 */
 			pr_debug("%s: Delaying any OSPM activity\n", __func__);
 			ospm_runtime_pm_forbid(hdmi_priv->dev);
-			android_hdmi_hotplug_timer_start();
+			schedule_delayed_work(&hdmi_priv->hdmi_delayed_wq, HDMI_HOTPLUG_DELAY);
 		} else {
 			hdmi_state = 0;
 			edid_ready_in_hpd = 0;
@@ -464,8 +442,8 @@ void android_hdmi_driver_setup(struct drm_device *dev)
 		goto free;
 	}
 
-	/* Initialize the hotplug delay timer */
-	android_hdmi_hotplug_timer_init(dev);
+	/* Initialize the hotplug delay workqueue */
+	INIT_DELAYED_WORK(&hdmi_priv->hdmi_delayed_wq, (void *)hdmi_hotplug_delay_wq_func);
 	pr_info("%s: Done with driver setup\n", __func__);
 	pr_info("Exit %s\n", __func__);
 	return;

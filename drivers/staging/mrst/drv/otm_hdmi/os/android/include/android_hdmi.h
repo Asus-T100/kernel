@@ -89,6 +89,7 @@ struct android_hdmi_priv {
 	struct drm_display_mode *current_mode;
 	bool need_encoder_restore;
 	struct delayed_work enc_work;
+	struct delayed_work hdmi_delayed_wq;
 	void *data;
 
 	bool is_hdcp_supported;
