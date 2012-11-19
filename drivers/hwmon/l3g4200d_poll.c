@@ -86,6 +86,7 @@
 
 /** Registers Contents */
 #define WHOAMI_L3G4200D		0x00D3	/* Expected content for WAI register*/
+#define WHOAMI_L3GD20H		0x00D4  /* WAI register for l3gd20h */
 
 /* After device enable a short delay
  * is needed for device to be stable.
@@ -141,7 +142,7 @@ static int l3g4200d_hw_init(struct l3g4200d_data *gyro)
 	if (ret < 0)
 		return ret;
 
-	if (ret != WHOAMI_L3G4200D) {
+	if (ret != WHOAMI_L3G4200D && ret != WHOAMI_L3GD20H) {
 		dev_err(&gyro->client->dev, "Invalid device id, %x", ret);
 		return -EINVAL;
 	}
@@ -786,6 +787,7 @@ static const struct dev_pm_ops l3g4200d_pm_ops = {
 
 static const struct i2c_device_id l3g4200d_id[] = {
 	{ L3G4200D_GYR_DEV_NAME , 0 },
+	{ L3GD20H_GYR_DEV_NAME , 0 },
 	{},
 };
 

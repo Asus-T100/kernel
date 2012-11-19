@@ -56,6 +56,7 @@
 #include "device_libs/platform_lis3dh.h"
 #include "device_libs/platform_hmc5883.h"
 #include "device_libs/platform_ms5607.h"
+#include "device_libs/platform_l3g4200d.h"
 #include "device_libs/platform_mpu3050.h"
 #include "device_libs/platform_ltr502als.h"
 #include "device_libs/platform_ltr301als.h"
@@ -105,6 +106,7 @@ struct devs_id __initconst device_ids[] = {
 					&ipc_device_handler},
 	{"spi_max3111", SFI_DEV_TYPE_SPI, 0, &max3111_platform_data, NULL},
 	{"pn544", SFI_DEV_TYPE_I2C, 0, &pn544_platform_data, NULL},
+	{"l3gd20", SFI_DEV_TYPE_I2C, 0, &l3g4200d_platform_data, NULL},
 	{"mpu3050", SFI_DEV_TYPE_I2C, 1, &mpu3050_platform_data, NULL},
 	{"msic_adc", SFI_DEV_TYPE_IPC, 1, &msic_adc_platform_data,
 					&ipc_device_handler},
