@@ -389,11 +389,26 @@ struct atomisp_overlay {
 	unsigned int overlay_start_y;
 };
 
-/* Sensor resolution specific data for AE calculation.
- * This contains sensor specific data, so we simply use an array of 64
- * bytes. */
+/* Sensor resolution specific data for AE calculation.*/
 struct atomisp_sensor_mode_data {
-	unsigned char data[64];
+	unsigned int coarse_integration_time_min;
+	unsigned int coarse_integration_time_max_margin;
+	unsigned int fine_integration_time_min;
+	unsigned int fine_integration_time_max_margin;
+	unsigned int fine_integration_time_def;
+	unsigned int frame_length_lines;
+	unsigned int line_length_pck;
+	unsigned int read_mode;
+	unsigned int vt_pix_clk_freq_mhz;
+	unsigned int crop_horizontal_start; /* Sensor crop start cord. (x0,y0)*/
+	unsigned int crop_vertical_start;
+	unsigned int crop_horizontal_end; /* Sensor crop end cord. (x1,y1)*/
+	unsigned int crop_vertical_end;
+	unsigned int output_width; /* input size to ISP after binning/scaling */
+	unsigned int output_height;
+	uint8_t binning_factor_x; /* horizontal binning factor used */
+	uint8_t binning_factor_y; /* vertical binning factor used */
+	uint8_t reserved[2];
 };
 
 struct atomisp_exposure {
