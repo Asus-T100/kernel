@@ -1308,7 +1308,6 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 
 	dev_priv->um_start = false;
 	dev_priv->b_vblank_enable = false;
-	dev_priv->usermode_restart = false;
 
 	dev_priv->dev = dev;
 	bdev = &dev_priv->bdev;
@@ -2954,6 +2953,7 @@ static int psb_vsync_set_ioctl(struct drm_device *dev, void *data,
 	u32 vbl_count = 0;
 	s64 nsecs = 0;
 	int ret = 0;
+	struct psb_fpriv *psb_fp = NULL;
 
 	mutex_lock(&dev_priv->vsync_lock);
 	if (arg->vsync_operation_mask) {
@@ -3012,7 +3012,9 @@ static int psb_vsync_set_ioctl(struct drm_device *dev, void *data,
 			switch (pipe) {
 			case 0:
 			case 2:
+				psb_fp = psb_fpriv(file_priv);
 				mdfld_dsi_dsr_forbid(dsi_config);
+				psb_fp->dsr_blocked = true;
 
 				if (is_panel_vid_or_cmd(dev) ==
 						MDFLD_DSI_ENCODER_DPI)
@@ -3029,11 +3031,13 @@ static int psb_vsync_set_ioctl(struct drm_device *dev, void *data,
 			switch (pipe) {
 			case 0:
 			case 2:
+				psb_fp = psb_fpriv(file_priv);
 				if (is_panel_vid_or_cmd(dev) ==
 						MDFLD_DSI_ENCODER_DPI)
 					psb_disable_vblank(dev, pipe);
 
 				mdfld_dsi_dsr_allow(dsi_config);
+				psb_fp->dsr_blocked = false;
 				break;
 			case 1:
 				psb_disable_vblank(dev, pipe);
@@ -4272,6 +4276,7 @@ int psb_release(struct inode *inode, struct file *filp)
 	struct psb_msvdx_ec_ctx *ec_ctx;
 	file_priv = (struct drm_file *) filp->private_data;
 	struct ttm_object_file *tfile = psb_fpriv(file_priv)->tfile;
+	struct mdfld_dsi_config *dsi_config;
 	psb_fp = psb_fpriv(file_priv);
 	dev_priv = psb_priv(file_priv->minor->dev);
 
@@ -4307,6 +4312,12 @@ int psb_release(struct inode *inode, struct file *filp)
 
 	ttm_object_file_release(&psb_fp->tfile);
 #endif
+
+	if (psb_fp->dsr_blocked) {
+		dsi_config = dev_priv->dsi_configs[0];
+		mdfld_dsi_dsr_allow(dsi_config);
+	}
+
 	kfree(psb_fp);
 
 #ifdef CONFIG_MDFD_VIDEO_DECODE

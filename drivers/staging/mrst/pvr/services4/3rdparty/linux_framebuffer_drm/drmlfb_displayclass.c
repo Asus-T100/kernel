@@ -1065,8 +1065,7 @@ static PVRSRV_ERROR CreateDCSwapChain(IMG_HANDLE hDevice,
 	mutex_unlock(&psDevInfo->sSwapChainMutex);
 
 	*phSwapChain = (IMG_HANDLE)psSwapChain;
-	dev_priv->usermode_restart = true;
-	DRM_INFO("user mode restart");
+
 	return (PVRSRV_OK);
 
 ErrorFreeAllocatedBuffes:

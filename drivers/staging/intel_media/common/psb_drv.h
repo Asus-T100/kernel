@@ -912,8 +912,6 @@ struct drm_psb_private {
 
 	bool dsi_device_ready;
 	bool um_start;
-	/*flag to indicate android restart*/
-	bool usermode_restart;
 
 	uint32_t tmds_clock_khz;
 	had_event_call_back mdfld_had_event_callbacks;
@@ -991,6 +989,7 @@ extern int mdfld_intel_crtc_set_color_conversion(struct drm_device *dev,
 
 struct psb_fpriv {
 	struct ttm_object_file *tfile;
+	bool dsr_blocked;
 };
 
 static inline struct psb_fpriv *psb_fpriv(struct drm_file *file_priv)
