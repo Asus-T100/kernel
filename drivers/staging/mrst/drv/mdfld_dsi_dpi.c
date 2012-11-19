@@ -526,10 +526,12 @@ power_off_err:
 /**
  * Send TURN_ON package to dpi panel to turn it on
  */
-static int mdfld_dsi_dpi_panel_turn_on(struct mdfld_dsi_config *dsi_config)
+static int mdfld_dsi_dpi_panel_turn_on(struct mdfld_dsi_config *dsi_config,
+		struct panel_funcs *p_funcs)
 {
 	struct mdfld_dsi_pkg_sender *sender =
 		mdfld_dsi_get_pkg_sender(dsi_config);
+	struct mdfld_dsi_hw_context *ctx;
 	int err = 0;
 
 	err = mdfld_dsi_send_dpi_spk_pkg_hs(sender,
@@ -538,17 +540,28 @@ static int mdfld_dsi_dpi_panel_turn_on(struct mdfld_dsi_config *dsi_config)
 	/*To optimize dpms flow, move sleep out of mutex*/
 	/* msleep(100); */
 
+	ctx = &dsi_config->dsi_hw_context;
+	if (p_funcs->set_brightness(dsi_config, ctx->lastbrightnesslevel))
+		DRM_ERROR("Failed to set panel brightness\n");
+
 	return err;
 }
 
 /**
  * Send SHUT_DOWN package to dpi panel to turn if off
  */
-static int mdfld_dsi_dpi_panel_shut_down(struct mdfld_dsi_config *dsi_config)
+static int mdfld_dsi_dpi_panel_shut_down(struct mdfld_dsi_config *dsi_config,
+		struct panel_funcs *p_funcs)
 {
 	struct mdfld_dsi_pkg_sender *sender =
 		mdfld_dsi_get_pkg_sender(dsi_config);
+	struct mdfld_dsi_hw_context *ctx;
 	int err = 0;
+
+	ctx = &dsi_config->dsi_hw_context;
+	ctx->lastbrightnesslevel = psb_brightness;
+	if (p_funcs->set_brightness(dsi_config, 0))
+		DRM_ERROR("Failed to set panel brightness\n");
 
 	err = mdfld_dsi_send_dpi_spk_pkg_hs(sender,
 			MDFLD_DSI_DPI_SPK_SHUT_DOWN);
@@ -623,7 +636,7 @@ static int __mdfld_dsi_dpi_set_power(struct drm_encoder *encoder, bool on)
 			goto fun_exit;
 		/* For DPMS case, just turn on/off panel */
 		if (dev_priv->dpms_on_off) {
-			if (mdfld_dsi_dpi_panel_turn_on(dsi_config)) {
+			if (mdfld_dsi_dpi_panel_turn_on(dsi_config, p_funcs)) {
 				DRM_ERROR("Faild to turn on panel\n");
 				goto set_power_err;
 			}
@@ -645,7 +658,7 @@ static int __mdfld_dsi_dpi_set_power(struct drm_encoder *encoder, bool on)
 	case false:
 		if (dev_priv->dpms_on_off &&
 				dsi_config->dsi_hw_context.panel_on) {
-			if (mdfld_dsi_dpi_panel_shut_down(dsi_config))
+			if (mdfld_dsi_dpi_panel_shut_down(dsi_config, p_funcs))
 				DRM_ERROR("Faild to shutdown panel\n");
 
 			last_ospm_suspend = false;
