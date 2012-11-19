@@ -808,7 +808,7 @@ int tc35876x_vid_set_brightness(struct mdfld_dsi_config *dsi_config, int level)
 	 * the brightness level less than 15%, so set the minimum brightness
 	 * level to 15% as workround.
 	 */
-	if (level < MINIMUM_BRIGHTNESS_LEVEL_20KHZ)
+	if (level < MINIMUM_BRIGHTNESS_LEVEL_20KHZ && 0 != level)
 		level = MINIMUM_BRIGHTNESS_LEVEL_20KHZ;
 	/* I won't pretend to understand this formula. The panel spec is quite
 	 * bad engrish.
