@@ -1885,7 +1885,7 @@ int ospm_runtime_pm_allow(struct drm_device *dev)
 		panel_on2 = dsi_configs[1]->dsi_hw_context.panel_on;
 
 #ifdef CONFIG_GFX_RTPM
-	if (panel_on && panel_on2) {
+	if (!panel_on && !panel_on2) {
 		pm_runtime_allow(&dev->pdev->dev);
 		dev_priv->rpm_enabled = 1;
 		DRM_INFO("Runtime PM enabled\n");
