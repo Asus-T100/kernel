@@ -95,8 +95,10 @@ int intel_ia2psh_command(struct psh_msg *in, struct psh_msg *out,
 	in->msg |= CHANNEL_BUSY;
 
 	/* Check if channel is ready for IA sending command */
-	if (readl(&PSH_REG(ia2psh)[ch].msg) & CHANNEL_BUSY)
-		return -EBUSY;
+	if (readl(&PSH_REG(ia2psh)[ch].msg) & CHANNEL_BUSY) {
+		ret = -EBUSY;
+		goto end;
+	}
 
 	writel(in->param, &PSH_REG(ia2psh)[ch].param);
 	writel(in->msg, &PSH_REG(ia2psh)[ch].msg);
@@ -154,6 +156,7 @@ int intel_psh_ipc_bind(int ch, psh_channel_handle_t handle, void *data)
 	down(&ipc_ctrl.ch_lock[ch]);
 	if (PSH_CH_HANDLE(ch - PSH_RECV_CH0) != NULL) {
 		up(&ipc_ctrl.ch_lock[ch]);
+		mutex_unlock(&ipc_ctrl.psh_mutex);
 		return -EBUSY;
 	} else {
 		PSH_CH_DATA(ch - PSH_RECV_CH0) = data;
