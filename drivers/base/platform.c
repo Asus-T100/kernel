@@ -395,6 +395,7 @@ struct platform_device *platform_device_register_full(
 		goto err_alloc;
 
 	pdev->dev.parent = pdevinfo->parent;
+	ACPI_HANDLE_SET(&pdev->dev, pdevinfo->acpi_node.handle);
 
 	if (pdevinfo->dma_mask) {
 		/*
@@ -425,6 +426,7 @@ struct platform_device *platform_device_register_full(
 	ret = platform_device_add(pdev);
 	if (ret) {
 err:
+		ACPI_HANDLE_SET(&pdev->dev, NULL);
 		kfree(pdev->dev.dma_mask);
 
 err_alloc:
