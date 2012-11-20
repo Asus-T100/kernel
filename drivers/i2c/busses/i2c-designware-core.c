@@ -602,12 +602,23 @@ irqreturn_t i2c_dw_isr(int this_irq, void *dev_id)
 	struct dw_i2c_dev *dev = dev_id;
 	u32 stat, enabled;
 
+	pm_runtime_get(dev->dev);
+#ifdef CONFIG_PM_RUNTIME
+	if (dev->dev->power.runtime_status != RPM_ACTIVE) {
+		dev_err(dev->dev, "i2c get interrupt when it's off\n");
+		WARN_ON(1);
+		pm_runtime_put_autosuspend(dev->dev);
+		return IRQ_NONE;
+	}
+#endif
 	enabled = dw_readl(dev, DW_IC_ENABLE);
 	stat = dw_readl(dev, DW_IC_RAW_INTR_STAT);
 	dev_dbg(dev->dev, "%s:  %s enabled= 0x%x stat=0x%x\n", __func__,
 		dev->adapter.name, enabled, stat);
-	if (!enabled || !(stat & ~DW_IC_INTR_ACTIVITY))
+	if (!enabled || !(stat & ~DW_IC_INTR_ACTIVITY)) {
+		pm_runtime_put_autosuspend(dev->dev);
 		return IRQ_NONE;
+	}
 
 	stat = i2c_dw_read_clear_intrbits(dev);
 
@@ -649,6 +660,7 @@ tx_aborted:
 		complete(&dev->cmd_complete);
 	}
 
+	pm_runtime_put_autosuspend(dev->dev);
 	return IRQ_HANDLED;
 }
 
