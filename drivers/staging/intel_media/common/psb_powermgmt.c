@@ -460,10 +460,10 @@ void ospm_post_init(struct drm_device *dev)
 
 	if (!(dev_priv->panel_desc & DISPLAY_B))
 		dc_islands |= OSPM_DISPLAY_B_ISLAND;
-/*
+
 	if (!(dev_priv->panel_desc & DISPLAY_C))
 		dc_islands |= OSPM_DISPLAY_C_ISLAND;
-*/
+
 	if (!(dev_priv->panel_desc))
 		dc_islands |= OSPM_MIPI_ISLAND;
 
@@ -629,6 +629,23 @@ static int mdfld_save_cursor_overlay_registers(struct drm_device *dev)
 	dev_priv->saveDSPCCURSOR_BASE = PSB_RVDC32(CURCBASE);
 	dev_priv->saveDSPCCURSOR_POS = PSB_RVDC32(CURCPOS);
 
+	/* HW overlay */
+	dev_priv->saveOV_OVADD = PSB_RVDC32(OV_OVADD);
+	dev_priv->saveOV_OGAMC0 = PSB_RVDC32(OV_OGAMC0);
+	dev_priv->saveOV_OGAMC1 = PSB_RVDC32(OV_OGAMC1);
+	dev_priv->saveOV_OGAMC2 = PSB_RVDC32(OV_OGAMC2);
+	dev_priv->saveOV_OGAMC3 = PSB_RVDC32(OV_OGAMC3);
+	dev_priv->saveOV_OGAMC4 = PSB_RVDC32(OV_OGAMC4);
+	dev_priv->saveOV_OGAMC5 = PSB_RVDC32(OV_OGAMC5);
+
+	dev_priv->saveOV_OVADD_C = PSB_RVDC32(OV_OVADD + OV_C_OFFSET);
+	dev_priv->saveOV_OGAMC0_C = PSB_RVDC32(OV_OGAMC0 + OV_C_OFFSET);
+	dev_priv->saveOV_OGAMC1_C = PSB_RVDC32(OV_OGAMC1 + OV_C_OFFSET);
+	dev_priv->saveOV_OGAMC2_C = PSB_RVDC32(OV_OGAMC2 + OV_C_OFFSET);
+	dev_priv->saveOV_OGAMC3_C = PSB_RVDC32(OV_OGAMC3 + OV_C_OFFSET);
+	dev_priv->saveOV_OGAMC4_C = PSB_RVDC32(OV_OGAMC4 + OV_C_OFFSET);
+	dev_priv->saveOV_OGAMC5_C = PSB_RVDC32(OV_OGAMC5 + OV_C_OFFSET);
+
 	return 0;
 }
 
@@ -782,6 +799,23 @@ static int mdfld_restore_cursor_overlay_registers(struct drm_device *dev)
 	REG_WRITE(CURCCNTR, dev_priv->saveDSPCCURSOR_CTRL);
 	REG_WRITE(CURCPOS, dev_priv->saveDSPCCURSOR_POS);
 	REG_WRITE(CURCBASE, dev_priv->saveDSPCCURSOR_BASE);
+
+	/* restore HW overlay */
+	REG_WRITE(OV_OVADD, dev_priv->saveOV_OVADD);
+	REG_WRITE(OV_OGAMC0, dev_priv->saveOV_OGAMC0);
+	REG_WRITE(OV_OGAMC1, dev_priv->saveOV_OGAMC1);
+	REG_WRITE(OV_OGAMC2, dev_priv->saveOV_OGAMC2);
+	REG_WRITE(OV_OGAMC3, dev_priv->saveOV_OGAMC3);
+	REG_WRITE(OV_OGAMC4, dev_priv->saveOV_OGAMC4);
+	REG_WRITE(OV_OGAMC5, dev_priv->saveOV_OGAMC5);
+
+	REG_WRITE(OV_OVADD + OV_C_OFFSET, dev_priv->saveOV_OVADD_C);
+	REG_WRITE(OV_OGAMC0 + OV_C_OFFSET, dev_priv->saveOV_OGAMC0_C);
+	REG_WRITE(OV_OGAMC1 + OV_C_OFFSET, dev_priv->saveOV_OGAMC1_C);
+	REG_WRITE(OV_OGAMC2 + OV_C_OFFSET, dev_priv->saveOV_OGAMC2_C);
+	REG_WRITE(OV_OGAMC3 + OV_C_OFFSET, dev_priv->saveOV_OGAMC3_C);
+	REG_WRITE(OV_OGAMC4 + OV_C_OFFSET, dev_priv->saveOV_OGAMC4_C);
+	REG_WRITE(OV_OGAMC5 + OV_C_OFFSET, dev_priv->saveOV_OGAMC5_C);
 
 	return 0;
 }
@@ -1204,7 +1238,7 @@ void ospm_power_island_up(int hw_islands)
 		if (dev_priv->panel_desc & DISPLAY_B)
 			dc_islands |= OSPM_DISPLAY_B_ISLAND;
 
-		/*if (dev_priv->panel_desc & DISPLAY_C)*/
+		if (dev_priv->panel_desc & DISPLAY_C)
 			dc_islands |= OSPM_DISPLAY_C_ISLAND;
 
 		if (dev_priv->panel_desc)

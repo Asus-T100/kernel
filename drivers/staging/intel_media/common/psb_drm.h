@@ -621,11 +621,12 @@ struct drm_psb_stolen_memory_arg {
 /*Overlay Register Bits*/
 #define OV_REGRWBITS_OVADD			(1 << 0)
 #define OV_REGRWBITS_OGAM_ALL			(1 << 1)
+
 #define OVC_REGRWBITS_OVADD			(1 << 2)
 #define OVC_REGRWBITS_OGAM_ALL			(1 << 3)
+
 #define OV_REGRWBITS_WAIT_FLIP			(1 << 4)
 #define OVC_REGRWBITS_WAIT_FLIP			(1 << 5)
-#define OV_REGRWBITS_DETECT			(1 << 6)
 
 /*sprite update fields*/
 #define SPRITE_UPDATE_SURFACE			(0x00000001UL)
@@ -640,7 +641,6 @@ struct drm_psb_stolen_memory_arg {
 #define VSYNC_DISABLE				(1 << 1)
 #define VSYNC_WAIT				(1 << 2)
 #define GET_VSYNC_COUNT			        (1 << 3)
-
 struct intel_overlay_context {
 	uint32_t index;
 	uint32_t pipe;
@@ -668,32 +668,17 @@ struct intel_sprite_context {
 
 /*platform dependent macros*/
 #define INTEL_SPRITE_PLANE_NUM		3
-
-#if defined(CONFIG_DRM_CTP) || defined(CONFIG_DRM_CTP_PR1)
-#define INTEL_OVERLAY_PLANE_NUM		1
-#define INTEL_DISPLAY_PLANE_NUM		4
-#else /*end CONFIG_DRM_CTP || CONFIG_DRM_CTP_PR1*/
 #define INTEL_OVERLAY_PLANE_NUM		2
 #define INTEL_DISPLAY_PLANE_NUM		5
-#endif
-
 #define INVALID_INDEX			0xffffffff
-
-#define INTEL_OVERLAY_NUM_MAX		2
-#define INTEL_SPRITE_NUM_MAX		3
-
-enum {
-	OVERLAY_A = 0,
-	OVERLAY_C,
-};
 
 struct mdfld_plane_contexts {
 	uint32_t active_primaries;
 	uint32_t active_sprites;
 	uint32_t active_overlays;
-	struct intel_sprite_context primary_contexts[INTEL_SPRITE_NUM_MAX];
-	struct intel_sprite_context sprite_contexts[INTEL_SPRITE_NUM_MAX];
-	struct intel_overlay_context overlay_contexts[INTEL_OVERLAY_NUM_MAX];
+	struct intel_sprite_context primary_contexts[INTEL_SPRITE_PLANE_NUM];
+	struct intel_sprite_context sprite_contexts[INTEL_SPRITE_PLANE_NUM];
+	struct intel_overlay_context overlay_contexts[INTEL_OVERLAY_PLANE_NUM];
 };
 
 struct drm_psb_vsync_set_arg {
@@ -741,18 +726,13 @@ struct drm_psb_register_rw_arg {
 		uint32_t IEP_ENABLED;
 		uint32_t IEP_BLE_MINMAX;
 		uint32_t IEP_BSSCC_CONTROL;
-		uint32_t index;
 		uint32_t b_wait_vblank;
 		uint32_t b_wms;
 		uint32_t buffer_handle;
 	} overlay;
 
-	struct {
-		uint32_t num_overlays;
-		uint32_t num_sprites;
-	} overlay_info;
-
 	uint32_t vsync_operation_mask;
+
 	struct {
 		uint32_t pipe;
 		int vsync_pipe;
