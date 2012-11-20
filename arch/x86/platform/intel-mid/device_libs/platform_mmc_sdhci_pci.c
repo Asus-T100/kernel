@@ -15,6 +15,10 @@
 #include <asm/intel-mid.h>
 #include <linux/mmc/sdhci-pci-data.h>
 #include "platform_mmc_sdhci_pci.h"
+#include <linux/gpio.h>
+#include <linux/lnw_gpio.h>
+#include <linux/delay.h>
+#include <asm/intel_scu_ipc.h>
 
 
 static struct sdhci_pci_data mfd_clv_emmc0_data;
@@ -105,6 +109,52 @@ static struct sdhci_pci_data *sdhci_host_get_data(struct pci_dev *pdev,
 /* Board specific setup related to SD goes here */
 static int mrfl_sd_setup(struct sdhci_pci_data *data)
 {
+#ifdef CONFIG_BOARD_MRFLD_VV
+	u8 vldocnt = 0;
+	int err;
+
+	/*
+	 * Change necessary GPIO pin mode for SD card working.
+	 * This is something should be done in IA firmware.
+	 * But, anyway, just do it here in case IA firmware
+	 * forget to do so.
+	 */
+	lnw_gpio_set_alt(MRFLD_GPIO_SDIO_0_CD, 0);
+	lnw_gpio_set_alt(MRFLD_GPIO_SDIO_0_CLK, 1);
+	lnw_gpio_set_alt(MRFLD_GPIO_SDIO_0_CMD, 1);
+	lnw_gpio_set_alt(MRFLD_GPIO_SDIO_0_DATA_0, 1);
+	lnw_gpio_set_alt(MRFLD_GPIO_SDIO_0_DATA_1, 1);
+	lnw_gpio_set_alt(MRFLD_GPIO_SDIO_0_DATA_2, 1);
+	lnw_gpio_set_alt(MRFLD_GPIO_SDIO_0_DATA_3, 1);
+	lnw_gpio_set_alt(MRFLD_GPIO_SDIO_0_LVL_CLK_FB, 1);
+	lnw_gpio_set_alt(MRFLD_GPIO_SDIO_0_LVL_CMD_DIR, 1);
+	lnw_gpio_set_alt(MRFLD_GPIO_SDIO_0_LVL_DAT_DIR, 1);
+	lnw_gpio_set_alt(MRFLD_GPIO_SDIO_0_LVL_EN, 1);
+	lnw_gpio_set_alt(MRFLD_GPIO_SDIO_0_LVL_SEL, 1);
+	lnw_gpio_set_alt(MRFLD_GPIO_SDIO_0_WP, 1);
+
+	if (gpio_is_valid(MRFLD_GPIO_SDIO_0_LVL_EN)) {
+		if (!gpio_request(MRFLD_GPIO_SDIO_0_LVL_EN, "MRFL SD lvl_en"))
+			gpio_direction_output(MRFLD_GPIO_SDIO_0_LVL_EN, 1);
+		else
+			pr_err("Failed to request sd_lvl_en\n");
+	}
+
+	err = intel_scu_ipc_ioread8(MRFLD_PMIC_VLDOCNT, &vldocnt);
+	if (err) {
+		printk(KERN_ERR "PMIC vldocnt IPC read error: %d\n", err);
+		return err;
+	}
+
+	vldocnt |= MRFLD_PMIC_VLDOCNT_VSWITCH_BIT;
+	err = intel_scu_ipc_iowrite8(MRFLD_PMIC_VLDOCNT, vldocnt);
+	if (err) {
+		printk(KERN_ERR "PMIC vldocnt IPC write error: %d\n", err);
+		return err;
+	}
+	msleep(20);
+
+#endif
 	return 0;
 }
 
