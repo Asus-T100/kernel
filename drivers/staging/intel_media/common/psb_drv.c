@@ -2831,7 +2831,7 @@ static void wait_for_pipeb_finish(struct drm_device *dev,
 }
 
 /*wait for ovadd flip complete*/
-static void overlay_wait_flip(struct drm_device *dev, u32 ovstat_reg)
+static void overlay_wait_flip(struct drm_device *dev)
 {
 	int retry;
 	struct drm_psb_private *dev_priv = psb_priv(dev);
@@ -2861,7 +2861,7 @@ static void overlay_wait_flip(struct drm_device *dev, u32 ovstat_reg)
 	 */
 	retry = 60;
 	while (--retry) {
-		if (BIT31 & PSB_RVDC32(ovstat_reg))
+		if (BIT31 & PSB_RVDC32(OV_DOVASTA))
 			break;
 		usleep_range(500, 600);
 	}
@@ -3314,42 +3314,7 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 	}
 
 	if (arg->overlay_write_mask != 0) {
-		u32 ovadd_pipe = (arg->overlay.OVADD >> 6) & 0x3;
-		u32 index = arg->overlay.index;
-		u32 ov_ogamc5_reg;
-		u32 ov_ogamc4_reg;
-		u32 ov_ogamc3_reg;
-		u32 ov_ogamc2_reg;
-		u32 ov_ogamc1_reg;
-		u32 ov_ogamc0_reg;
-		u32 ovstat_reg;
-		u32 ovadd_reg;
-
-		switch (index) {
-		case OVERLAY_A:
-			ov_ogamc5_reg = OV_OGAMC5;
-			ov_ogamc4_reg = OV_OGAMC4;
-			ov_ogamc3_reg = OV_OGAMC3;
-			ov_ogamc2_reg = OV_OGAMC2;
-			ov_ogamc1_reg = OV_OGAMC1;
-			ov_ogamc0_reg = OV_OGAMC0;
-			ovstat_reg = OV_DOVASTA;
-			ovadd_reg = OV_OVADD;
-			break;
-		case OVERLAY_C:
-			ov_ogamc5_reg = OVC_OGAMC5;
-			ov_ogamc4_reg = OVC_OGAMC4;
-			ov_ogamc3_reg = OVC_OGAMC3;
-			ov_ogamc2_reg = OVC_OGAMC2;
-			ov_ogamc1_reg = OVC_OGAMC1;
-			ov_ogamc0_reg = OVC_OGAMC0;
-			ovstat_reg = OVC_DOVCSTA;
-			ovadd_reg =  OVC_OVADD;
-			break;
-		default:
-			DRM_ERROR("Invalid overlay index %d\n", index);
-			return -EINVAL;
-		}
+		uint32_t ovadd_pipe = (arg->overlay.OVADD >> 6) & 0x3;
 
 		if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, usage)) {
 			dsi_config = dev_priv->dsi_configs[0];
@@ -3361,18 +3326,40 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 				mdfld_dsi_dsr_forbid(dsi_config);
 
 			if (arg->overlay_write_mask & OV_REGRWBITS_OGAM_ALL) {
-				PSB_WVDC32(arg->overlay.OGAMC5, ov_ogamc5_reg);
-				PSB_WVDC32(arg->overlay.OGAMC4, ov_ogamc4_reg);
-				PSB_WVDC32(arg->overlay.OGAMC3, ov_ogamc3_reg);
-				PSB_WVDC32(arg->overlay.OGAMC2, ov_ogamc2_reg);
-				PSB_WVDC32(arg->overlay.OGAMC1, ov_ogamc1_reg);
-				PSB_WVDC32(arg->overlay.OGAMC0, ov_ogamc0_reg);
+				PSB_WVDC32(arg->overlay.OGAMC5, OV_OGAMC5);
+				PSB_WVDC32(arg->overlay.OGAMC4, OV_OGAMC4);
+				PSB_WVDC32(arg->overlay.OGAMC3, OV_OGAMC3);
+				PSB_WVDC32(arg->overlay.OGAMC2, OV_OGAMC2);
+				PSB_WVDC32(arg->overlay.OGAMC1, OV_OGAMC1);
+				PSB_WVDC32(arg->overlay.OGAMC0, OV_OGAMC0);
+			}
+			if (arg->overlay_write_mask & OVC_REGRWBITS_OGAM_ALL) {
+				PSB_WVDC32(arg->overlay.OGAMC5, OVC_OGAMC5);
+				PSB_WVDC32(arg->overlay.OGAMC4, OVC_OGAMC4);
+				PSB_WVDC32(arg->overlay.OGAMC3, OVC_OGAMC3);
+				PSB_WVDC32(arg->overlay.OGAMC2, OVC_OGAMC2);
+				PSB_WVDC32(arg->overlay.OGAMC1, OVC_OGAMC1);
+				PSB_WVDC32(arg->overlay.OGAMC0, OVC_OGAMC0);
 			}
 
 			if (arg->overlay_write_mask & OV_REGRWBITS_WAIT_FLIP)
-				overlay_wait_flip(dev, ovstat_reg);
+				overlay_wait_flip(dev);
 
 			if (arg->overlay_write_mask & OV_REGRWBITS_OVADD) {
+				if (arg->overlay.buffer_handle) {
+					ret = validate_overlay_register_buffer(
+						file_priv,
+						&arg->overlay.OVADD,
+						arg->overlay.buffer_handle);
+
+					if (ret) {
+						printk(KERN_ERR
+							"Invalid parameter\n");
+						mutex_unlock(&dev_priv->overlay_lock);
+						return -EINVAL;
+					}
+				}
+
 				if (ovadd_pipe == 0) {
 					/*lock*/
 					mutex_lock(&dsi_config->context_lock);
@@ -3384,9 +3371,10 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 								MDFLD_DSR_2D_3D,
 								NULL,
 								true);
+
 					/*flip overlay*/
-					PSB_WVDC32(arg->overlay.OVADD,
-							ovadd_reg);
+					PSB_WVDC32(arg->overlay.OVADD, OV_OVADD);
+
 					ctx->ovaadd = arg->overlay.OVADD;
 
 					/*update on-panel frame buffer*/
@@ -3395,8 +3383,7 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 
 					mutex_unlock(&dsi_config->context_lock);
 				} else
-					PSB_WVDC32(arg->overlay.OVADD,
-							ovadd_reg);
+					PSB_WVDC32(arg->overlay.OVADD, OV_OVADD);
 
 				/* when switch back from HDMI to local
 				 * this ensures the Pipe B is fully disabled */
@@ -3426,7 +3413,35 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 					}
 				}
 			}
+			if (arg->overlay_write_mask & OVC_REGRWBITS_OVADD) {
+				if (arg->overlay.buffer_handle) {
+					ret = validate_overlay_register_buffer(
+						file_priv,
+						&arg->overlay.OVADD,
+						arg->overlay.buffer_handle);
 
+					if (ret) {
+						printk(KERN_ERR
+							"Invalid parameter\n");
+						mutex_unlock(&dev_priv->overlay_lock);
+						return -EINVAL;
+					}
+				}
+
+				PSB_WVDC32(arg->overlay.OVADD, OVC_OVADD);
+				if (arg->overlay.b_wait_vblank) {
+					/*Wait for 20ms.*/
+					unsigned long vblank_timeout = jiffies + HZ / 50;
+					uint32_t temp;
+					while (time_before_eq(jiffies, vblank_timeout)) {
+						temp = PSB_RVDC32(OVC_DOVCSTA);
+						if ((temp & (0x1 << 31)) != 0) {
+							break;
+						}
+						cpu_relax();
+					}
+				}
+			}
 			/*allow entering dsr*/
 			if (ovadd_pipe == 0)
 				mdfld_dsi_dsr_allow(dsi_config);
@@ -3457,13 +3472,6 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 	}
 
 	if (arg->overlay_read_mask != 0) {
-		if (arg->overlay_read_mask & OV_REGRWBITS_DETECT) {
-			arg->overlay_info.num_overlays =
-				INTEL_OVERLAY_PLANE_NUM;
-			arg->overlay_info.num_sprites =
-				INTEL_SPRITE_PLANE_NUM;
-		}
-
 		if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, usage)) {
 			if (arg->overlay_read_mask & OV_REGRWBITS_OGAM_ALL) {
 				arg->overlay.OGAMC5 = PSB_RVDC32(OV_OGAMC5);
@@ -3635,7 +3643,7 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 	}
 
 	mutex_unlock(&dev_priv->overlay_lock);
-	return ret;
+	return 0;
 }
 
 /* always available as we are SIGIO'd */
