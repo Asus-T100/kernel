@@ -54,6 +54,7 @@
 #include "device_libs/platform_camera.h"
 #include "device_libs/platform_mt9e013.h"
 #include "device_libs/platform_mt9m114.h"
+#include "device_libs/platform_a1026.h"
 
 /*
  * SPI devices
@@ -126,6 +127,8 @@ struct devs_id __initconst device_ids[] = {
 					&intel_ignore_i2c_device_register},
 	{"mt9m114", SFI_DEV_TYPE_I2C, 0, &mt9m114_platform_data,
 					&intel_ignore_i2c_device_register},
+	{"audience_es305", SFI_DEV_TYPE_I2C, 0, &audience_platform_data,
+						NULL},
 
 	/* Modem */
 #ifndef CONFIG_HSI_NO_MODEM

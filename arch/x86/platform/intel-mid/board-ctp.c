@@ -46,6 +46,7 @@
 #include "device_libs/platform_camera.h"
 #include "device_libs/platform_mt9m114.h"
 #include "device_libs/platform_ov8830.h"
+#include "device_libs/platform_a1026.h"
 
 /*
  * SPI devices
@@ -104,6 +105,8 @@ struct devs_id __initconst device_ids[] = {
 	{"clvcs_audio", SFI_DEV_TYPE_IPC, 1, &clvs_audio_platform_data,
 					     &ipc_device_handler},
 	{"cs42l73", SFI_DEV_TYPE_I2C, 1, &no_platform_data, NULL},
+	{"audience_es305", SFI_DEV_TYPE_I2C, 0, &audience_platform_data,
+						NULL},
 
 	/*
 	 * Camera Sensors and LED Flash.
