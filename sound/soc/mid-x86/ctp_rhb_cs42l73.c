@@ -561,6 +561,17 @@ static struct snd_soc_dai_link ctp_rhb_dailink[] = {
 		.init = NULL,
 		.ops = &ctp_comms_dai_link_ops,
 	},
+	[CTP_AUD_VIRTUAL_ASP_DEV] = {
+		.name = "Cloverview virtual-ASP",
+		.stream_name = "virtual-stream",
+		.cpu_dai_name = "Virtual-cpu-dai",
+		.codec_dai_name = "cs42l73-asp",
+		.codec_name = "cs42l73.1-004a",
+		.platform_name = "sst-platform",
+		.init = NULL,
+		.ignore_suspend = 1,
+		.ops = &ctp_asp_ops,
+	},
 };
 int ctp_hp_detection(struct snd_soc_codec *codec,
 			struct snd_soc_jack *jack, int enable)
