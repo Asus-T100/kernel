@@ -55,6 +55,7 @@ config DHD_ENABLE_P2P
 
 config BCM43XX_PLATFORM_DATA
 	bool
-	depends on BCMDHD
+	---help---
+	  Enables platform_bcm43xx
 	default y
 
