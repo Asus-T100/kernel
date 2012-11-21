@@ -72,6 +72,8 @@
 #define HSI_RESETDONE_RETRIES	20	/* => max 200 ms waiting for reset */
 #define HSI_BASE_FREQUENCY	200000	/* in KHz */
 
+#define HSI_ACWAKE_DELAY	100		/* 100 usec */
+
 #define IDLE_POLL_JIFFIES (usecs_to_jiffies(10000)) /* 10 ms */
 #define IDLE_TO_SUSPEND_DELAY 10 /* 10 ms */
 #define HSI_CLOCK_SETUP_DELAY_WAIT 20000 /* 20 ms according to HW spec */
@@ -334,6 +336,7 @@ struct intel_xfer_ctx {
  * @sz_cfg: current program1 configuration register
  * @ip_freq: HSI controller IP frequency in kHz
  * @brk_us_delay: Minimal BREAK sequence delay in us
+ * @acwake_delay: Delay between ACWAKE assertion and data xfer
  * @stay_awake: Android wake lock for preventing entering low power mode
  * @dir: debugfs HSI root directory
  */
@@ -395,6 +398,9 @@ struct intel_controller {
 	/* HSI controller IP frequency */
 	unsigned int		 ip_freq;
 	unsigned int		 brk_us_delay;
+
+	/* AWCAKE delay (in usec) */
+	unsigned int acwake_delay;
 #ifdef CONFIG_HAS_WAKELOCK
 	/* Android PM support */
 	struct wake_lock	 stay_awake;
@@ -613,6 +619,11 @@ static void assert_acwake(struct intel_controller *intel_hsi)
 	}
 	intel_hsi->tx_state++;
 	spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
+
+	/* Wait only if needed */
+	if ((intel_hsi->acwake_delay) &&
+		(intel_hsi->suspend_state == DEVICE_READY))
+		udelay(intel_hsi->acwake_delay);
 
 	if (do_wakeup)
 		hsi_pm_runtime_get(intel_hsi);
@@ -2559,6 +2570,9 @@ static int hsi_mid_setup(struct hsi_client *cl)
 		dev_dbg(&port->device, "platform data not found\n");
 		return -EINVAL;
 	}
+
+	/* Save the ACWAKE delay */
+	intel_hsi->acwake_delay = HSI_ACWAKE_DELAY;
 
 	/* Compute the arbiter control register */
 	arb_cfg	= cl->tx_cfg.arb_mode;
