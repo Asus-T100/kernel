@@ -17,6 +17,7 @@ obj-$(subst m,y,$(CONFIG_GPIO_INTEL_PMIC))				+= platform_pmic_gpio.o
 obj-$(subst m,y,$(CONFIG_MID_PWM))					+= platform_mid_pwm.o
 obj-$(subst m,y,$(CONFIG_LEDS_INTEL_KPD))				+= platform_kpd_led.o
 obj-$(subst m,y,$(CONFIG_INTEL_MFLD_THERMAL))				+= platform_msic_thermal.o
+obj-$(subst m,y,$(CONFIG_INTEL_SCU_FLIS))				+= platform_scu_flis.o
 # IPC Devices for Merrifield Platform
 obj-$(subst m,y,$(CONFIG_BASINCOVE_GPADC))				+= platform_mrfl_adc.o
 obj-$(subst m,y,$(CONFIG_SENSORS_MRFLD_CURRENT))			+= platform_mrfl_ocd.o
