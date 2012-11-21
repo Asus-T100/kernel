@@ -297,6 +297,7 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 	if (irq_infos & SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF) {
 		atomic_inc(&isp->sof_count);
 		atomisp_sof_event(isp);
+		irq_infos &= ~SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF;
 #else /* CONFIG_X86_MRFLD */
 	if (irq_infos & SH_CSS_IRQ_INFO_PIPELINE_DONE) {
 		atomic_inc(&isp->sequence);
@@ -313,6 +314,9 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 					&isp->sequence_temp))
 			atomic_set(&isp->sequence_temp,
 					atomic_read(&isp->sof_count));
+
+		if (!irq_infos)
+			goto out;
 	}
 
 	if (irq_infos & SH_CSS_IRQ_INFO_BUFFER_DONE)
@@ -343,12 +347,14 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 	atomic_set(&isp->wdt_count, 0);
 	mod_timer(&isp->wdt, jiffies + ATOMISP_ISP_TIMEOUT_DURATION);
 
+out:
 	/* Clear irq reg at PENWELL B0 */
 	pci_read_config_dword(isp->pdev, PCI_INTERRUPT_CTRL, &msg_ret);
 	msg_ret |= 1 << INTR_IIR;
 	pci_write_config_dword(isp->pdev, PCI_INTERRUPT_CTRL, msg_ret);
 
-	return isp->sw_contex.isp_streaming ? IRQ_WAKE_THREAD : IRQ_HANDLED;
+	return isp->sw_contex.isp_streaming && irq_infos ?
+		IRQ_WAKE_THREAD : IRQ_HANDLED;
 }
 
 /*
