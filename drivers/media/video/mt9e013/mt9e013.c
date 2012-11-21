@@ -1017,6 +1017,17 @@ mt9e013_get_intg_factor(struct i2c_client *client,
 	buf.frame_length_lines = frame_length_lines;
 	buf.read_mode = read_mode;
 
+	/* 1: normal 3:inc 2, 7:inc 4 addresses in X direction*/
+	buf.binning_factor_x =
+		(((read_mode & MT9E013_READ_MODE_X_ODD_INC) >> 6) + 1) / 2;
+
+	/*
+	 * 1:normal 3:inc 2, 7:inc 4, 15:inc 8, 31:inc 16, 63:inc 32 addresses
+	 * in Y direction
+	 */
+	buf.binning_factor_y =
+			((read_mode & MT9E013_READ_MODE_Y_ODD_INC) + 1) / 2;
+
 	/* Get the cropping and output resolution to ISP for this mode. */
 	ret = mt9e013_read_reg(client, MT9E013_16BIT,
 				MT9E013_HORIZONTAL_START_H, &value);
