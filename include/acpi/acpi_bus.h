@@ -199,6 +199,7 @@ struct acpi_device_power_flags {
 struct acpi_device_power_state {
 	struct {
 		u8 valid:1;
+		u8 os_accessible:1;
 		u8 explicit_set:1;	/* _PSx present? */
 		u8 reserved:6;
 	} flags;
@@ -476,6 +477,11 @@ static inline bool acpi_device_power_manageable(struct acpi_device *adev)
 static inline bool acpi_device_can_wakeup(struct acpi_device *adev)
 {
 	return adev->wakeup.flags.valid;
+}
+
+static inline bool acpi_device_can_poweroff(struct acpi_device *adev)
+{
+	return adev->power.states[ACPI_STATE_D3_COLD].flags.os_accessible;
 }
 
 #else	/* CONFIG_ACPI */
