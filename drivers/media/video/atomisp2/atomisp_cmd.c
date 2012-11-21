@@ -223,7 +223,7 @@ static void atomisp_sof_event(struct atomisp_device *isp)
 
 	memset(&event, 0, sizeof(event));
 	event.type = V4L2_EVENT_FRAME_SYNC;
-	event.u.frame_sync.frame_sequence = atomic_read(&isp->sequence);
+	event.u.frame_sync.frame_sequence = atomic_read(&isp->sof_count);
 
 	v4l2_event_queue(isp->isp_subdev.subdev.devnode, &event);
 }
@@ -283,13 +283,29 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 
 #ifndef CONFIG_X86_MRFLD
 	if (irq_infos & SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF) {
-		atomic_inc(&isp->sequence);
+		atomic_inc(&isp->sof_count);
 		atomisp_sof_event(isp);
-	}
 #else /* CONFIG_X86_MRFLD */
-	if (irq_infos & SH_CSS_IRQ_INFO_PIPELINE_DONE)
+	if (irq_infos & SH_CSS_IRQ_INFO_PIPELINE_DONE) {
 		atomic_inc(&isp->sequence);
 #endif /* CONFIG_X86_MRFLD */
+
+		/* If sequence_temp and sequence are the same
+		 * there where no frames lost so we can increase sequence_temp.
+		 * If not then processing of frame is still in progress and
+		 * driver needs to keep old sequence_temp value.
+		 * NOTE: There is assumption here that ISP will not start
+		 * processing next frame from sensor before old one is
+		 * completely done. */
+		if (atomic_read(&isp->sequence) == atomic_read(
+					&isp->sequence_temp))
+			atomic_set(&isp->sequence_temp,
+					atomic_read(&isp->sof_count));
+	}
+
+	if (irq_infos & SH_CSS_IRQ_INFO_BUFFER_DONE)
+		atomic_set(&isp->sequence,
+				atomic_read(&isp->sequence_temp));
 
 #ifdef CONFIG_X86_MRFLD
 	if ((irq_infos & SH_CSS_IRQ_INFO_INPUT_SYSTEM_ERROR) ||

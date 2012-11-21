@@ -1309,7 +1309,9 @@ static int atomisp_streamon(struct file *file, void *fh,
 	isp->params.css_update_params_needed = true;
 	isp->sw_contex.isp_streaming = true;
 	isp->isp_timeout = false;
+	atomic_set(&isp->sof_count, -1);
 	atomic_set(&isp->sequence, -1);
+	atomic_set(&isp->sequence_temp, -1);
 	atomic_set(&isp->wdt_count, 0);
 	mod_timer(&isp->wdt, jiffies + ATOMISP_ISP_TIMEOUT_DURATION);
 	isp->fr_status = ATOMISP_FRAME_STATUS_OK;

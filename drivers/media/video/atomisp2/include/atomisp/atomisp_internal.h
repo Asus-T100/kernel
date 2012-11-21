@@ -358,7 +358,9 @@ struct atomisp_device {
 	atomic_t wdt_count;
 	enum atomisp_frame_status fr_status;
 
-	atomic_t sequence;
+	atomic_t sof_count;
+	atomic_t sequence;      /* Sequence value that is assigned to buffer. */
+	atomic_t sequence_temp;
 };
 
 #define v4l2_dev_to_atomisp_device(dev) \
