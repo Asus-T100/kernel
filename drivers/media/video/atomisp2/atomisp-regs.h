@@ -55,14 +55,25 @@
  * cache line. When cleared, each 32-byte read request is sent as a
  * separate request on the IB interface.
  */
-#define MFLD_PCI_I_CONTROL_ENABLE_READ_COMBINING	0x10000
+#define MFLD_PCI_I_CONTROL_ENABLE_READ_COMBINING	BIT(16)
 
 /*
  * Enables the combining of adjacent 32-byte write requests to the same
  * cache line. When cleared, each 32-byte write request is sent as a
  * separate request on the IB interface.
  */
-#define MFLD_PCI_I_CONTROL_ENABLE_WRITE_COMBINING	0x20000
+#define MFLD_PCI_I_CONTROL_ENABLE_WRITE_COMBINING	BIT(17)
+
+/* Ensure the correct bits are set for the clock gating disable regster */
+#define MFLD_PCI_CG_DIS_DISABLED_ISPCLK		BIT(0)
+#define MFLD_PCI_CG_DIS_DISABLED_PERF_MON	BIT(2)
+#define MFLD_PCI_CG_DIS_DISABLED_NOA_MON	BIT(3)
+
+/* The MIPI1 and MIPI4 interface and lanes configuration */
+#define MFLD_CSI_CONTROL_DIS_MIPI1_IF	BIT(8)
+#define MFLD_CSI_CONTROL_DIS_MIPI4_IF	BIT(9)
+#define MFLD_CSI_CONTROL_EN_MIPI1_LANE	BIT(10)
+#define MFLD_CSI_CONTROL_EN_MIPI4_LANE	(BIT(11) | BIT(12) | BIT(13) | BIT(14))
 
 #define MFLD_MAX_ZOOM_FACTOR	64
 
