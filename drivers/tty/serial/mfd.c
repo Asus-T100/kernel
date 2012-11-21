@@ -50,8 +50,6 @@
 
 #define  MFD_HSU_A0_STEPPING	1
 
-#define HSU_DMA_BUF_SIZE	2048
-
 #define chan_readl(chan, offset)	readl(chan->reg + offset)
 #define chan_writel(chan, offset, val)	writel(val, chan->reg + offset)
 
@@ -72,7 +70,6 @@ struct hsu_dma_chan {
 	enum dma_data_direction	dirt;
 	struct uart_hsu_port	*uport;
 	void __iomem		*reg;
-	struct timer_list	rx_timer; /* only needed by RX channel */
 };
 
 /* max queue before HSU pm active */
@@ -118,7 +115,6 @@ struct uart_hsu_port {
 	struct tasklet_struct	hsu_dma_rx_tasklet;
 	int			suspended;
 	int			reopen;
-	int			rts_delay;
 };
 
 /* Top level data structure of HSU */
@@ -135,6 +131,7 @@ struct hsu_port {
 /* Mainly for uart console use */
 static struct uart_hsu_port *serial_hsu_ports[4];
 static struct uart_driver serial_hsu_reg;
+static int dma_dscr_size = 2048;
 static struct hsu_port hsu;
 /* temp global pointer before we settle down on using one or four PCI dev */
 static struct hsu_port *phsu = &hsu;
@@ -205,14 +202,6 @@ static int get_q(struct uart_hsu_port *up, int *cmd, int *offset, int *value)
 static unsigned int hsu_low_latency = 1;
 module_param(hsu_low_latency, uint, S_IRUGO);
 
-/*
- * The runtime check is used to check whether the current chip
- * stepping is Penwell A0, if yes, enable the DMA RX timeout timer
- */
-static inline int dmarx_need_timer(struct uart_hsu_port *up)
-{
-	return hsu_rx_wa && up->use_dma;
-}
 
 static inline void runtime_suspend_delay(struct uart_hsu_port *up)
 {
@@ -546,11 +535,6 @@ void hsu_dma_start_rx_chan(struct uart_hsu_port *up,
 					 );
 	chan_writel(rxc, HSU_CH_CR, 0x3);
 	up->dma_rx_on = 1;
-
-	if (dmarx_need_timer(up)) {
-		mod_timer(&rxc->rx_timer, jiffies + HSU_DMA_TIMEOUT_CHECK_FREQ);
-		runtime_suspend_delay(up);
-	}
 }
 
 /* Protected by spin_lock_irqsave(port->lock) */
@@ -634,12 +618,6 @@ static void hsu_dma_rx_tasklet(unsigned long data)
 
 		chan_writel(chan, HSU_CH_CR, 0x3);
 
-		if (dmarx_need_timer(up)) {
-			mod_timer(&chan->rx_timer,
-				jiffies + HSU_DMA_TIMEOUT_CHECK_FREQ);
-			runtime_suspend_delay(up);
-		}
-
 		/* If function is called from tasklet context, pm_runtime
 		 * needs to be notified */
 		if (low_latency)
@@ -680,11 +658,6 @@ void hsu_dma_rx(struct uart_hsu_port *up, u32 int_sts)
 		chan_writel(chan, HSU_CH_CR, 0x3);
 		tty_kref_put(tty);
 		return;
-	}
-
-	if (dmarx_need_timer(up)) {
-		del_timer(&chan->rx_timer);
-		runtime_suspend_delay(up);
 	}
 
 	dma_sync_single_for_cpu(port->dev, dbuf->dma_addr,
@@ -739,8 +712,6 @@ static void serial_hsu_stop_rx(struct uart_port *port)
 			chan_writel(up->rxc, HSU_CH_CR, 0x2);
 		}
 		up->dma_rx_on = 0;
-		if (dmarx_need_timer(up))
-			del_timer_sync(&up->rxc->rx_timer);
 	} else {
 		up->ier &= ~UART_IER_RLSI;
 		up->port.read_status_mask &= ~UART_LSR_DR;
@@ -1178,16 +1149,16 @@ static int serial_hsu_startup(struct uart_port *port)
 
 		/* First allocate the RX buffer */
 		dbuf = &up->rxbuf;
-		dbuf->buf = kzalloc(HSU_DMA_BUF_SIZE, GFP_KERNEL);
+		dbuf->buf = kzalloc(dma_dscr_size, GFP_KERNEL);
 		if (!dbuf->buf) {
 			up->use_dma = 0;
 			goto exit;
 		}
 		dbuf->dma_addr = dma_map_single(port->dev,
 						dbuf->buf,
-						HSU_DMA_BUF_SIZE,
+						dma_dscr_size,
 						DMA_FROM_DEVICE);
-		dbuf->dma_size = HSU_DMA_BUF_SIZE;
+		dbuf->dma_size = dma_dscr_size;
 
 		/* Start the RX channel right now */
 		hsu_dma_start_rx_chan(up, dbuf);
@@ -1255,8 +1226,6 @@ static void serial_hsu_shutdown(struct uart_port *port)
 		}
 
 	}
-	if (dmarx_need_timer(up))
-		del_timer_sync(&up->rxc->rx_timer);
 
 	/* Disable interrupts from this port */
 	up->ier = 0;
@@ -1385,10 +1354,6 @@ serial_hsu_set_termios(struct uart_port *port, struct ktermios *termios,
 		mul = (up->port.uartclk / 1600) * 0x3d09 / clock * 16 / 10;
 		quot = 0;
 	}
-
-	up->rts_delay = (12 * 1000000) / baud + 1;
-	if (up->rts_delay > 110)
-		up->rts_delay = 110;
 
 	if (!quot)
 		quot = uart_get_divisor(port, baud);
@@ -1920,33 +1885,6 @@ static void hsu_port_register(struct uart_hsu_port *uport)
 #endif
 }
 
-static void hsu_dma_rx_timeout(unsigned long data)
-{
-	struct hsu_dma_chan *chan = (void *)data;
-	struct uart_hsu_port *up = chan->uport;
-	struct hsu_dma_buffer *dbuf = &up->rxbuf;
-	int count = 0;
-	unsigned long flags;
-
-	spin_lock_irqsave(&up->port.lock, flags);
-
-	count = chan_readl(chan, HSU_CH_D0SAR) - dbuf->dma_addr;
-
-	if (!count) {
-		if (dmarx_need_timer(up))
-			mod_timer(&chan->rx_timer,
-				jiffies + HSU_DMA_TIMEOUT_CHECK_FREQ);
-		goto exit;
-	}
-
-	intel_mid_hsu_set_rts(up->index, 1);
-	udelay(up->rts_delay);
-	hsu_dma_rx(up, 0);
-	intel_mid_hsu_set_rts(up->index, 0);
-exit:
-	spin_unlock_irqrestore(&up->port.lock, flags);
-}
-
 static int serial_hsu_probe(struct pci_dev *pdev,
 				const struct pci_device_id *ent)
 {
@@ -1967,12 +1905,12 @@ static int serial_hsu_probe(struct pci_dev *pdev,
 	 */
 	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_CLOVERVIEW &&
 		pdev->revision < 0xC) {
-		dev_warn(&pdev->dev, "CLVP A0 detected, enable hsu timer\n");
-		hsu_rx_wa = 1;
+		dev_warn(&pdev->dev, "CLVP A0 detected, dma_dscr_size=16\n");
+		dma_dscr_size = 16;
 	} else if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_PENWELL &&
 		pdev->revision < 0x8) {
-		dev_warn(&pdev->dev, "PNW A0 detected, enable hsu timer\n");
-		hsu_rx_wa = 1;
+		dev_warn(&pdev->dev, "PNW A0 detected, \dma_dscr_size=16\n");
+		dma_dscr_size = 16;
 	} else if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER) {
 #define TNG_CLOCK_CTL 0xFF00B830
 		int *clkctl = ioremap_nocache(TNG_CLOCK_CTL, 4);
@@ -1983,8 +1921,8 @@ static int serial_hsu_probe(struct pci_dev *pdev,
 			dev_warn(&pdev->dev, "TNG hsu clock is 19.2M\n");
 			iounmap(clkctl);
 		}
-		dev_warn(&pdev->dev, "TNG A0 detected, enable hsu timer\n");
-		hsu_rx_wa = 1;
+		dev_warn(&pdev->dev, "TNG A0 detected, dma_dscr_size=16\n");
+		dma_dscr_size = 16;
 	}
 
 	ret = pci_enable_device(pdev);
@@ -2031,13 +1969,6 @@ static int serial_hsu_probe(struct pci_dev *pdev,
 			dchan->reg = phsu->reg + HSU_DMA_CHANS_REG_OFFSET +
 					i * HSU_DMA_CHANS_REG_LENGTH;
 
-			/* Work around for RX */
-			if (dmarx_need_timer(dchan->uport)
-				&& dchan->dirt == DMA_FROM_DEVICE) {
-				init_timer(&dchan->rx_timer);
-				dchan->rx_timer.function = hsu_dma_rx_timeout;
-				dchan->rx_timer.data = (unsigned long)dchan;
-			}
 			dchan++;
 		}
 		/* DMA controller */
@@ -2260,9 +2191,6 @@ static int hsu_runtime_suspend(struct device *dev)
 	struct pci_dev *pdev = container_of(dev, struct pci_dev, dev);
 	struct uart_hsu_port *up = pci_get_drvdata(pdev);
 
-	if (dmarx_need_timer(up))
-		del_timer_sync(&up->rxc->rx_timer);
-
 	if (up->running)
 		intel_mid_hsu_suspend(up->index);
 
@@ -2272,10 +2200,6 @@ static int hsu_runtime_suspend(struct device *dev)
 
 		if (up->running)
 			intel_mid_hsu_resume(up->index);
-
-		if (up->dma_rx_on && dmarx_need_timer(up))
-			mod_timer(&up->rxc->rx_timer,
-				jiffies + HSU_DMA_TIMEOUT_CHECK_FREQ);
 
 		pm_schedule_suspend(dev, 100);
 		return -EBUSY;
@@ -2306,8 +2230,6 @@ static int hsu_runtime_suspend(struct device *dev)
 		struct uart_hsu_port *up3 = serial_hsu_ports[share_idx];
 		memcpy(up3->reg_shadow + 1, up3->port.membase + 1,
 			HSU_PORT_REG_LENGTH - 1);
-		if (dmarx_need_timer(up))
-			del_timer_sync(&up3->rxc->rx_timer);
 	}
 	memcpy(up->reg_shadow + 1, up->port.membase + 1, HSU_PORT_REG_LENGTH - 1);
 
@@ -2325,19 +2247,12 @@ static int hsu_runtime_resume(struct device *dev)
 
 		if (up3->dma_rx_on) {
 			dma_rx_on = 1;
-			if (dmarx_need_timer(up))
-				mod_timer(&up3->rxc->rx_timer,
-					jiffies + HSU_DMA_TIMEOUT_CHECK_FREQ);
 		}
 	}
 
 	enable_irq(up->port.irq);
 	if (up->dma_rx_on || dma_rx_on)
 		chan_writel(up->rxc, HSU_CH_CR, 0x3);
-
-	if (up->dma_rx_on && dmarx_need_timer(up))
-		mod_timer(&up->rxc->rx_timer,
-			jiffies + HSU_DMA_TIMEOUT_CHECK_FREQ);
 
 	if (up->running)
 		intel_mid_hsu_resume(up->index);
