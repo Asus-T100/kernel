@@ -289,9 +289,6 @@ int atomisp_set_shading_table(struct atomisp_device *isp,
 int atomisp_offline_capture_configure(struct atomisp_device *isp,
 				struct atomisp_cont_capture_conf *cvf_config);
 
-int atomisp_save_iunit_reg(struct atomisp_device *isp);
-int atomisp_restore_iunit_reg(struct atomisp_device *isp);
-
 int atomisp_ospm_dphy_down(struct atomisp_device *isp);
 int atomisp_ospm_dphy_up(struct atomisp_device *isp);
 int atomisp_exif_makernote(struct atomisp_device *isp,
