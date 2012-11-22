@@ -461,6 +461,7 @@ static int atomisp_suspend(struct device *dev)
 {
 	struct atomisp_device *isp = (struct atomisp_device *)
 		dev_get_drvdata(dev);
+	unsigned long flags;
 	int ret;
 
 	/*
@@ -470,11 +471,14 @@ static int atomisp_suspend(struct device *dev)
 	if (isp->sw_contex.init == true)
 		return -EBUSY;
 
-	if (isp->sw_contex.isp_streaming) {
+	spin_lock_irqsave(&isp->lock, flags);
+	if (isp->streaming != ATOMISP_DEVICE_STREAMING_DISABLED) {
+		spin_unlock_irqrestore(&isp->lock, flags);
 		v4l2_err(&atomisp_dev,
 			    "atomisp cannot suspend at this time.\n");
 		return -EINVAL;
 	}
+	spin_unlock_irqrestore(&isp->lock, flags);
 
 	/*Turn off the ISP d-phy */
 	ret = atomisp_ospm_dphy_down(isp);
@@ -998,6 +1002,7 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	isp->hw_contex.ispmmadr = start;
 
 	mutex_init(&isp->mutex);
+	spin_lock_init(&isp->lock);
 
 	isp->max_isr_latency = ATOMISP_MAX_ISR_LATENCY;
 	if ((pdata->spid->platform_family_id == INTEL_CLVTP_PHONE ||

@@ -1041,7 +1041,7 @@ static int atomisp_qbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 	int ret = 0;
 
 	mutex_lock(&isp->mutex);
-	if (isp->sw_contex.error && isp->sw_contex.isp_streaming) {
+	if (isp->streaming == ATOMISP_DEVICE_STREAMING_STOPPING) {
 		v4l2_err(&atomisp_dev, "ISP ERROR\n");
 		ret = -EIO;
 		goto error;
@@ -1118,7 +1118,7 @@ static int atomisp_qbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 done:
 	ret = videobuf_qbuf(&pipe->capq, buf);
 	/* TODO: do this better, not best way to queue to css */
-	if (isp->sw_contex.isp_streaming)
+	if (isp->streaming == ATOMISP_DEVICE_STREAMING_ENABLED)
 		atomisp_qbuffers_to_css(isp);
 	mutex_unlock(&isp->mutex);
 	return ret;
@@ -1180,7 +1180,7 @@ static int atomisp_dqbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 
 	mutex_lock(&isp->mutex);
 
-	if (isp->sw_contex.error) {
+	if (isp->streaming == ATOMISP_DEVICE_STREAMING_STOPPING) {
 		mutex_unlock(&isp->mutex);
 		v4l2_err(&atomisp_dev, "ISP ERROR\n");
 		return -EIO;
@@ -1286,7 +1286,7 @@ static int atomisp_streamon(struct file *file, void *fh,
 		goto done;
 	}
 
-	if (isp->sw_contex.isp_streaming) {
+	if (isp->streaming == ATOMISP_DEVICE_STREAMING_ENABLED) {
 		atomisp_qbuffers_to_css(isp);
 		goto start_workq;
 	}
@@ -1315,14 +1315,13 @@ static int atomisp_streamon(struct file *file, void *fh,
 
 	/* Make sure that update_isp_params is called at least once.*/
 	isp->params.css_update_params_needed = true;
-	isp->sw_contex.isp_streaming = true;
+	isp->streaming = ATOMISP_DEVICE_STREAMING_ENABLED;
 	atomic_set(&isp->sof_count, -1);
 	atomic_set(&isp->sequence, -1);
 	atomic_set(&isp->sequence_temp, -1);
 	atomic_set(&isp->wdt_count, 0);
 	mod_timer(&isp->wdt, jiffies + ATOMISP_ISP_TIMEOUT_DURATION);
 	isp->fr_status = ATOMISP_FRAME_STATUS_OK;
-	isp->sw_contex.error = false;
 	isp->sw_contex.invalid_frame = false;
 	isp->irq_infos = 0;
 
@@ -1368,13 +1367,6 @@ start_workq:
 	}
 
 done:
-	/*
-	 * setting error to false temporarily here because HAL starts to
-	 * dequeue immediately after streamon and if we have not managed to
-	 * get into workq before thati(error set to false there usually),
-	 * this flag will be still true, causing dqbuf to fail
-	 */
-	isp->sw_contex.error = false;
 	mutex_unlock(&isp->mutex);
 	v4l2_dbg(3, dbg_level, &atomisp_dev, "<%s\n", __func__);
 	return 0;
@@ -1399,6 +1391,7 @@ int atomisp_streamoff(struct file *file, void *fh,
 	struct videobuf_buffer *vb = NULL;
 	int ret;
 	unsigned long flags;
+	bool first_streamoff = false;
 #ifdef PUNIT_CAMERA_BUSY
 	u32 msg_ret;
 #endif
@@ -1424,7 +1417,21 @@ int atomisp_streamoff(struct file *file, void *fh,
 		return ret;
 	}
 
-	if(!isp->sw_contex.isp_streaming) {
+	if (!pipe->capq.streaming) {
+		mutex_unlock(&isp->mutex);
+		return -EBUSY;
+	}
+
+	spin_lock_irqsave(&isp->lock, flags);
+	if (isp->streaming == ATOMISP_DEVICE_STREAMING_ENABLED) {
+		isp->streaming = ATOMISP_DEVICE_STREAMING_STOPPING;
+		first_streamoff = true;
+	}
+	if (atomisp_streaming_count(isp) == 1)
+		isp->streaming = ATOMISP_DEVICE_STREAMING_DISABLED;
+	spin_unlock_irqrestore(&isp->lock, flags);
+
+	if (!first_streamoff) {
 		ret = videobuf_streamoff(&pipe->capq);
 		if (ret)
 			goto error;
@@ -1436,9 +1443,6 @@ int atomisp_streamoff(struct file *file, void *fh,
 			return ret;
 		}
 	}
-
-	isp->sw_contex.isp_streaming = false;
-	isp->sw_contex.error = true;
 
 	atomisp_clear_css_buffer_counters(isp);
 

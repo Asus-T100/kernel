@@ -148,9 +148,7 @@ struct atomisp_sw_contex {
 
 	bool work_queued;
 	bool sensor_streaming;
-	bool isp_streaming;
 
-	bool error;
 	bool bypass;
 	bool updating_uptr;
 	bool file_input;
@@ -261,6 +259,10 @@ struct atomisp_map {
 	struct list_head list;
 };
 
+#define ATOMISP_DEVICE_STREAMING_DISABLED	0
+#define ATOMISP_DEVICE_STREAMING_ENABLED	1
+#define ATOMISP_DEVICE_STREAMING_STOPPING	2
+
 /*
  * ci device struct
  */
@@ -336,6 +338,9 @@ struct atomisp_device {
 	atomic_t sof_count;
 	atomic_t sequence;      /* Sequence value that is assigned to buffer. */
 	atomic_t sequence_temp;
+
+	spinlock_t lock; /* Just for streaming below */
+	unsigned int streaming; /* Hold both mutex and lock to change this */
 };
 
 #define v4l2_dev_to_atomisp_device(dev) \

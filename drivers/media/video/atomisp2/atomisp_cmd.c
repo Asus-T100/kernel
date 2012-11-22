@@ -282,6 +282,7 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 	u32 msg_ret;
 	struct atomisp_device *isp = (struct atomisp_device *)dev;
 	unsigned int irq_infos = 0;
+	unsigned long flags;
 	int err;
 
 	err = sh_css_translate_interrupt(&irq_infos);
@@ -298,8 +299,9 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 	msg_ret |= 1 << INTR_IIR;
 	pci_write_config_dword(isp->pdev, PCI_INTERRUPT_CTRL, msg_ret);
 
-	if (!isp->sw_contex.isp_streaming)
-		return IRQ_HANDLED;
+	spin_lock_irqsave(&isp->lock, flags);
+	if (isp->streaming != ATOMISP_DEVICE_STREAMING_ENABLED)
+		goto out_nowake;
 
 #ifndef CONFIG_X86_MRFLD
 	if (irq_infos & SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF) {
@@ -323,7 +325,7 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 			atomic_set(&isp->sequence_temp,
 					atomic_read(&isp->sof_count));
 		if (!irq_infos)
-			return IRQ_HANDLED;
+			goto out_nowake;
 	}
 
 	if (irq_infos & SH_CSS_IRQ_INFO_BUFFER_DONE)
@@ -354,7 +356,14 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 	atomic_set(&isp->wdt_count, 0);
 	mod_timer(&isp->wdt, jiffies + ATOMISP_ISP_TIMEOUT_DURATION);
 
+	spin_unlock_irqrestore(&isp->lock, flags);
+
 	return IRQ_WAKE_THREAD;
+
+out_nowake:
+	spin_unlock_irqrestore(&isp->lock, flags);
+
+	return IRQ_HANDLED;
 }
 
 /*
@@ -784,8 +793,6 @@ void atomisp_wdt_work(struct work_struct *work)
 
 	switch (atomic_inc_return(&isp->wdt_count)) {
 	case ATOMISP_ISP_MAX_TIMEOUT_COUNT:
-		isp->sw_contex.error = true;
-
 		atomisp_clear_css_buffer_counters(isp);
 
 		atomic_set(&isp->wdt_count, 0);
@@ -926,14 +933,20 @@ irqreturn_t atomisp_isr_thread(int irq, void *isp_ptr)
 {
 	struct atomisp_device *isp = isp_ptr;
 	struct atomisp_css_event current_event;
+	unsigned long flags;
 	bool frame_done_found = false;
 	bool css_pipe_done = false;
 	DEFINE_KFIFO(events, struct atomisp_css_event, ATOMISP_CSS_EVENTS_MAX);
 
 	v4l2_dbg(5, dbg_level, &atomisp_dev, ">%s\n", __func__);
 	mutex_lock(&isp->mutex);
-	if (!isp->sw_contex.isp_streaming)
+
+	spin_lock_irqsave(&isp->lock, flags);
+	if (isp->streaming != ATOMISP_DEVICE_STREAMING_ENABLED) {
+		spin_unlock_irqrestore(&isp->lock, flags);
 		goto out;
+	}
+	spin_unlock_irqrestore(&isp->lock, flags);
 
 	while (sh_css_dequeue_event(&current_event.pipe,
 				    &current_event.event) == sh_css_success) {
@@ -2026,6 +2039,7 @@ int atomisp_set_dis_vector(struct atomisp_device *isp,
 int atomisp_get_dis_stat(struct atomisp_device *isp,
 			 struct atomisp_dis_statistics *stats)
 {
+	unsigned long flags;
 	int error;
 	long left;
 
@@ -2036,8 +2050,13 @@ int atomisp_get_dis_stat(struct atomisp_device *isp,
 		return -EINVAL;
 
 	/* isp needs to be streaming to get DIS statistics */
-	if (!isp->sw_contex.isp_streaming)
+	spin_lock_irqsave(&isp->lock, flags);
+	if (isp->streaming != ATOMISP_DEVICE_STREAMING_ENABLED) {
+		spin_unlock_irqrestore(&isp->lock, flags);
 		return -EINVAL;
+	}
+	spin_unlock_irqrestore(&isp->lock, flags);
+
 	if (!isp->params.video_dis_en)
 		return -EINVAL;
 
