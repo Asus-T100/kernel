@@ -42,7 +42,9 @@ struct vp_ctxt {
 	struct i2c_client *i2c_dev;
 	struct a1026_platform_data *pdata;
 	unsigned long open;
-	int suspended;
+	int initialized; /* true when FW has been
+		successfully loaded */
+	int enabled; /* suspend request from client */
 	struct mutex mutex;
 } *es305;
 
@@ -90,7 +92,7 @@ static int es305_i2c_write(const u8 *txData, int length, struct vp_ctxt *the_vp)
 			.addr = client->addr,
 			.flags = 0,
 			.len = length,
-			.buf = txData,
+			.buf = (u8 *)txData,
 		},
 	};
 
@@ -145,24 +147,72 @@ static int es305_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
-static int suspend(struct vp_ctxt *vp)
+static int wakeup(struct vp_ctxt *the_vp)
 {
-	int rc;
+	int rc = 0;
 
-	/* Put es305 into sleep mode */
-	rc = execute_cmdmsg(A100_msg_Sleep, vp);
-	if (rc < 0) {
-		pr_debug("%s: suspend error\n", __func__);
-		goto set_suspend_err;
+	if (!the_vp->enabled) {
+
+		/* Enable the clock */
+		rc = intel_scu_ipc_set_osc_clk0(true, CLK0_AUDIENCE);
+		if (rc) {
+			pr_err("ipc clk enable command failed: %d\n", rc);
+			goto wakeup_err;
+		}
+
+		if (the_vp->initialized) {
+			int retry = 3;
+
+			the_vp->pdata->wakeup(gpio_l);
+			msleep(30); /* es305b spec: need to wait 30ms
+					after wake-up */
+
+			do {
+				rc = execute_cmdmsg(A100_msg_Sync, the_vp);
+			} while ((rc < 0) && --retry);
+
+			the_vp->pdata->wakeup(gpio_h);
+			if (rc < 0) {
+				pr_err("%s: failed (%d)\n", __func__, rc);
+
+				/* Turn clock down */
+				intel_scu_ipc_set_osc_clk0(false,
+								CLK0_AUDIENCE);
+
+				goto wakeup_err;
+			}
+		}
+		/* Commit wake up */
+		the_vp->enabled = 1;
 	}
 
-	vp->suspended = 1;
-	msleep(120); /* 120 defined by fig 2 of eS305 as the time to wait
-			before clock gating */
-	pr_debug("A1026 suspend\n");
-	rc = intel_scu_ipc_set_osc_clk0(false, CLK0_AUDIENCE);
-	if (rc)
-		pr_err("ipc clk disable command failed: %d\n", rc);
+wakeup_err:
+	return rc;
+}
+
+static int suspend(struct vp_ctxt *vp)
+{
+	int rc = 0;
+
+	if (vp->enabled) {
+
+		if (vp->initialized) {
+			/* Put es305 into sleep mode */
+			rc = execute_cmdmsg(A100_msg_Sleep, vp);
+			if (rc < 0) {
+				pr_debug("%s: suspend error\n", __func__);
+				goto set_suspend_err;
+			}
+
+			msleep(120); /* 120 defined by fig 2 of eS305 as the
+					time to wait before clock gating */
+		}
+		pr_debug("A1026 suspend\n");
+		vp->enabled = 0;
+		rc = intel_scu_ipc_set_osc_clk0(false, CLK0_AUDIENCE);
+		if (rc)
+			pr_err("ipc clk disable command failed: %d\n", rc);
+	}
 
 set_suspend_err:
 	return rc;
@@ -193,10 +243,14 @@ static ssize_t es305_bootup_init(struct vp_ctxt *vp, const char * firmware_name)
 		return -EINVAL;
 	}
 
+	/* Init state */
+	vp->initialized = 0;
+
 	while (retry--) {
 		/* Reset es305 chip */
 		vp->pdata->reset(gpio_l);
-                /* delay in order to wait for stable power supplies & for stable system clock */
+		/* delay in order to wait for stable power supplies & for
+		stable system clock */
 		usleep_range(ES305_HARD_RESET_PERIOD, ES305_HARD_RESET_PERIOD);
 		/* Take out of reset */
 		vp->pdata->reset(gpio_h);
@@ -264,7 +318,12 @@ static ssize_t es305_bootup_init(struct vp_ctxt *vp, const char * firmware_name)
 			continue;
 		}
 
+
 		pass = 1;
+
+		/* Record state */
+		vp->initialized = 1;
+
 		break;
 	}
 	if (pass)
@@ -273,31 +332,7 @@ static ssize_t es305_bootup_init(struct vp_ctxt *vp, const char * firmware_name)
 		pr_err("%s: initialization failed\n", __func__);
 
 	release_firmware(fw_entry);
-	return rc;
-}
 
-static ssize_t chk_wakeup_es305(struct vp_ctxt *the_vp)
-{
-	int rc = 0, retry = 3;
-
-	if (the_vp->suspended == 1) {
-		the_vp->pdata->wakeup(gpio_l);
-		msleep(30); /* es305b spec: need to wait 30ms after wake-up */
-
-		do {
-			rc = execute_cmdmsg(A100_msg_Sync, the_vp);
-		} while ((rc < 0) && --retry);
-
-		the_vp->pdata->wakeup(gpio_h);
-		if (rc < 0) {
-			pr_err("%s: failed (%d)\n", __func__, rc);
-			goto wakeup_sync_err;
-		}
-
-		the_vp->suspended = 0;
-	}
-
-wakeup_sync_err:
 	return rc;
 }
 
@@ -380,7 +415,7 @@ int execute_cmdmsg(unsigned int msg, struct vp_ctxt *vp)
 static ssize_t es305_write(struct file *file, const char __user *buff,
 	size_t count, loff_t *offp)
 {
-	int rc;
+	int rc = 0;
 	unsigned int i, j, sw_reset;
 	unsigned int nb_block, nb_sub_block;
 	unsigned int msg_buf_count, size_cmd_snd, remaining;
@@ -400,9 +435,13 @@ static ssize_t es305_write(struct file *file, const char __user *buff,
 		goto out_unlock;
 	}
 
-	rc = chk_wakeup_es305(the_vp);
-	if (rc < 0)
+	if (!the_vp->enabled) {
+
+		pr_err("%s error: Audience suspended!\n", __func__);
+
+		rc = EPERM;
 		goto out_unlock;
+	}
 
 	kbuf = kmalloc(count, GFP_KERNEL);
 	if (!kbuf) {
@@ -546,15 +585,15 @@ static long es305_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		rc = suspend(the_vp);
 		mutex_unlock(&the_vp->mutex);
 		if (rc < 0)
-			pr_err("suspend error\n");
+			pr_err("suspend error: %d\n", rc);
 		break;
 	case A1026_ENABLE_CLOCK:
 		pr_debug("%s:ipc clk enable command\n", __func__);
 		mutex_lock(&the_vp->mutex);
-		rc = intel_scu_ipc_set_osc_clk0(true, CLK0_AUDIENCE);
+		rc = wakeup(the_vp);
 		mutex_unlock(&the_vp->mutex);
 		if (rc) {
-			pr_err("ipc clk enable command failed: %d\n", rc);
+			pr_err("wakeup error: %d\n", rc);
 			return rc;
 		}
 		break;
