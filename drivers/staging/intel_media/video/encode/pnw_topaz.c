@@ -747,10 +747,10 @@ int pnw_topaz_dequeue_send(struct drm_device *dev)
 		return 0;
 	}
 
+	topaz_cmd = list_first_entry(&topaz_priv->topaz_queue,
+		struct pnw_topaz_cmd_queue, head);
 	if (dev_priv->topaz_ctx) {
 		topaz_priv->topaz_busy = 1;
-		topaz_cmd = list_first_entry(&topaz_priv->topaz_queue,
-			struct pnw_topaz_cmd_queue, head);
 
 		PSB_DEBUG_GENERAL("TOPAZ: queue has id %08x\n",
 			topaz_cmd->sequence);
