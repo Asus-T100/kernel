@@ -309,9 +309,17 @@ void mrfld_early_console_init(void)
 			(MRFLD_REGBASE_SSP5 & (PAGE_SIZE - 1)));
 
 	/* mask interrupts, clear enable and set DSS config */
+#ifdef CONFIG_BOARD_MRFLD_VV
+	dw_writel(pssp, ctrl0, 0xc12c0f);
+#else
 	dw_writel(pssp, ctrl0, 0xc0000f);
+#endif
 	/* SSPSCLK on active transfers only */
+#ifdef CONFIG_BOARD_MRFLD_VV
+	dw_writel(pssp, ctrl1, 0x0);
+#else
 	dw_writel(pssp, ctrl1, 0x10000000);
+#endif
 	dw_readl(pssp, sr);
 
 	/* enable port */
@@ -330,7 +338,11 @@ static int early_mrfld_putc(char c)
 	/* early putc need make sure the TX FIFO is not full*/
 	while (timeout--) {
 		sr = dw_readl(pssp, sr);
+#ifdef CONFIG_BOARD_MRFLD_VV
+		if (sr & 0xF00)
+#else
 		if (!(sr & SSP_SR_TF_NOT_FULL))
+#endif
 			cpu_relax();
 		else
 			break;
