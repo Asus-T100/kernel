@@ -764,6 +764,10 @@ static void poll_transfer(unsigned long data)
 				INTEL_MRFL_CPU_SIMULATION_VP)
 				udelay(10);
 #endif /* CONFIG_X86_MRFLD */
+#ifdef CONFIG_BOARD_MRFLD_VV
+			while ((read_SSSR(drv_context->ioaddr)) & 0xF00)
+				;
+#endif
 			drv_context->write(drv_context);
 			drv_context->read(drv_context);
 		}
@@ -959,7 +963,16 @@ static int transfer(struct spi_device *spi, struct spi_message *msg)
 			start_bitbanging(drv_context);
 	} else {
 		/* (re)start the SSP */
+#ifdef CONFIG_BOARD_MRFLD_VV
+		chip->cr0 = 0x00C0000F;
 		write_SSCR0(chip->cr0, reg);
+		chip->cr0 = 0x00C12C0F;
+		write_SSCR0(chip->cr0, reg);
+		chip->cr0 = 0x00C12C8F;
+		write_SSCR0(chip->cr0, reg);
+#else
+		write_SSCR0(chip->cr0, reg);
+#endif
 	}
 
 	if (likely(chip->dma_enabled)) {
@@ -1077,7 +1090,9 @@ static int setup(struct spi_device *spi)
 		chip->read = u16_reader;
 		chip->write = u16_writer;
 	} else if (spi->bits_per_word <= 32) {
+#ifndef CONFIG_BOARD_MRFLD_VV
 		chip->cr0 |= SSCR0_EDSS;
+#endif
 		chip->n_bytes = 4;
 		chip->read = u32_reader;
 		chip->write = u32_writer;
@@ -1089,7 +1104,9 @@ static int setup(struct spi_device *spi)
 	if ((drv_context->quirks & QUIRKS_SPI_SLAVE_CLOCK_MODE) == 0) {
 		chip->speed_hz = spi->max_speed_hz;
 		clk_div = ssp_get_clk_div(chip->speed_hz);
+#ifndef CONFIG_BOARD_MRFLD_VV
 		chip->cr0 |= clk_div << 8;
+#endif
 	}
 	chip->bits_per_word = spi->bits_per_word;
 
