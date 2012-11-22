@@ -23,6 +23,8 @@
 
 #include <linux/delay.h>
 
+#include <asm/intel-mid.h>
+
 #include <media/v4l2-ioctl.h>
 #include <media/videobuf-vmalloc.h>
 
@@ -36,7 +38,7 @@
 
 #include "sh_css_hrt.h"
 #include "sh_css.h"
-#include <sh_css_debug.h>
+#include "sh_css_debug.h"
 #include "gp_device.h"
 #include "device_access.h"
 #include "irq.h"

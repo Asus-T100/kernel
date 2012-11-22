@@ -26,6 +26,8 @@
 #include <linux/timer.h>
 #include <linux/interrupt.h>
 
+#include <asm/intel-mid.h>
+
 #include "atomisp_cmd.h"
 #include "atomisp_common.h"
 #include "atomisp_fops.h"
