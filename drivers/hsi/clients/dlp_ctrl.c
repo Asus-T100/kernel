@@ -1465,8 +1465,6 @@ struct dlp_channel *dlp_ctrl_ctx_create(unsigned int index, struct device *dev)
 	if (dlp_ctrl_setup_irq_gpio(ch_ctx, dev))
 		goto free_ctx;
 
-	dlp_ctrl_push_rx_pdus(ch_ctx);
-
 	/* Reset & Wait for the modem readiness flag */
 	queue_work(ctrl_ctx->wq, &ctrl_ctx->readiness_work);
 

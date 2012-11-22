@@ -1755,9 +1755,6 @@ static int __init dlp_driver_probe(struct device *dev)
 	dlp_drv.flash_rx_cfg.channels = 1;
 	dlp_drv.flash_tx_cfg.channels = 1;
 
-	/* Start in IPC mode */
-	dlp_set_flashing_mode(0);
-
 	/* Create DLP contexts */
 	for (i = 0; i < DLP_CHANNEL_COUNT; i++) {
 		dlp_drv.channels[i] = create_funcs[i] (i, dev);
