@@ -1554,16 +1554,11 @@ int __devinit sst_dsp_init(struct snd_soc_platform *platform)
 		return -ENOMEM;
 	}
 
-	/* FIXME: we cant add controla s that is affecting codec
-	 * so resolve that first upstream and then enable here
-	 */
-#if 0
 	snd_soc_dapm_new_controls(&platform->dapm, sst_dapm_widgets,
 			ARRAY_SIZE(sst_dapm_widgets));
 	snd_soc_dapm_add_routes(&platform->dapm, intercon,
 			ARRAY_SIZE(intercon));
 	snd_soc_dapm_new_widgets(&platform->dapm);
-#endif
 	snd_soc_add_platform_controls(platform, sst_byte_controls,
 			ARRAY_SIZE(sst_byte_controls));
 	return 0;
