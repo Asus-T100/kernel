@@ -408,6 +408,9 @@ struct intel_controller {
 #ifdef CONFIG_DEBUG_FS
 	struct dentry		*dir;
 #endif
+#ifdef CONFIG_HSI_WAKEUP_PACKETS_DUMP
+	u16 packet_dumped;
+#endif
 };
 
 /* Disable the following to deactivate the runtime power management
@@ -452,6 +455,32 @@ static unsigned int dioread32(void __iomem *addr)
 #else
 #define diowrite32(v, a) iowrite32(v, a)
 #define dioread32(a)     ioread32(a)
+#endif
+
+/* Help debugging PnP/Power consumption issues
+ * This will enable dumping the HSI wakeup packets
+ */
+#ifdef CONFIG_HSI_WAKEUP_PACKETS_DUMP
+static unsigned int wakeup_packet_len = 20;
+module_param(wakeup_packet_len, uint, 0644);
+
+#ifndef MIN
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+#endif
+
+#define hsi_msg_complete(msg)                                \
+	do {                                                     \
+		if (!intel_hsi->packet_dumped) {                     \
+			intel_hsi->packet_dumped = 1;                    \
+			print_hex_dump(KERN_DEBUG,                       \
+				DRVNAME": WAKE", DUMP_PREFIX_ADDRESS,        \
+				32, 4, sg_virt(msg->sgt.sgl),                \
+				MIN(wakeup_packet_len, msg->actual_len), 1); \
+			}                                                \
+		msg->complete(msg);                                  \
+	} while (0)
+#else
+#define hsi_msg_complete(msg) do { msg->complete(msg); } while (0)
 #endif
 
 /**
@@ -1187,6 +1216,9 @@ static int hsi_ctrl_suspend(struct intel_controller *intel_hsi)
 		iowrite32(0, ARASAN_REG(PROGRAM));
 		intel_hsi->suspend_state = DEVICE_SUSPENDED;
 
+#ifdef CONFIG_HSI_WAKEUP_PACKETS_DUMP
+		intel_hsi->packet_dumped = 0;
+#endif
 #ifdef CONFIG_HAS_WAKELOCK
 		wake_unlock(&intel_hsi->stay_awake);
 #endif
@@ -2143,7 +2175,7 @@ static void hsi_break_complete(struct intel_controller *intel_hsi)
 
 		/* Call the msg complete callback */
 		msg->status = HSI_STATUS_COMPLETED;
-		msg->complete(msg);
+		hsi_msg_complete(msg);
 		spin_lock_irqsave(&intel_hsi->sw_lock, flags);
 	}
 	spin_unlock_irqrestore(&intel_hsi->sw_lock, flags);
@@ -2251,7 +2283,7 @@ hsi_pio_timeout_try:
 hsi_pio_timeout_done:
 			list_del(&msg->link);
 			spin_unlock_irqrestore(&intel_hsi->sw_lock, flags);
-			msg->complete(msg);
+			hsi_msg_complete(msg);
 			hsi_transfer(intel_hsi, 0, i, -1);
 			goto hsi_pio_timeout_try;
 		}
@@ -2297,7 +2329,7 @@ static int hsi_async_break(struct hsi_msg *msg)
 		iowrite32(intel_hsi->clk_cfg, ARASAN_REG(CLOCK_CTRL));
 		spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
 		msg->status = HSI_STATUS_COMPLETED;
-		msg->complete(msg);
+		hsi_msg_complete(msg);
 		(void) deassert_acwake(intel_hsi);
 	} else {
 		spin_lock_irqsave(&intel_hsi->sw_lock, flags);
@@ -2927,7 +2959,7 @@ hsi_pio_xfer_done:
 	hsi_transfer(intel_hsi, tx_not_rx, ch, -1);
 	if (tx_not_rx)
 		(void) deassert_acwake(intel_hsi);
-	msg->complete(msg);
+	hsi_msg_complete(msg);
 
 	return 0;
 }
@@ -3167,7 +3199,7 @@ static void hsi_fwd_tasklet(unsigned long hsi)
 			else
 				hsi_free_msg(msg);
 		} else
-			msg->complete(msg);
+			hsi_msg_complete(msg);
 		spin_lock_irqsave(&intel_hsi->sw_lock, flags);
 	}
 	spin_unlock_irqrestore(&intel_hsi->sw_lock, flags);
