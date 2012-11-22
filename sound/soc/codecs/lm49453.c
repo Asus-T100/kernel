@@ -547,8 +547,6 @@ static const struct snd_kcontrol_new lm49453_snd_controls[] = {
 	SOC_DOUBLE_R_TLV("DMIC2 Volume", LM49453_P0_DMIC2_LEVELL_REG,
 			  LM49453_P0_DMIC2_LEVELR_REG, 0, 6, 0, digital_tlv),
 
-	SOC_DAPM_ENUM("Mic2Mode", lm49453_mic2mode_enum),
-
 	/* Capture path filter enable */
 	SOC_SINGLE("DMIC1 HPFilter Switch", LM49453_P0_ADC_FX_ENABLES_REG,
 					    0, 1, 0),
@@ -603,8 +601,10 @@ static const struct snd_kcontrol_new lm49453_snd_controls[] = {
 	SOC_SINGLE("AMIC1Bias Switch", LM49453_P0_MICL_REG, 6, 1, 0),
 	SOC_SINGLE("AMIC2Bias Switch", LM49453_P0_MICR_REG, 6, 1, 0),
 	SOC_SINGLE("DMIC12 Switch", LM49453_P0_DIGITAL_MIC1_CONFIG_REG, 7, 1, 0),
-	SOC_SINGLE("DMIC34 Switch", LM49453_P0_DIGITAL_MIC1_CONFIG_REG, 7, 1, 0),
+	SOC_SINGLE("DMIC34 Switch", LM49453_P0_DIGITAL_MIC2_CONFIG_REG, 7, 1, 0),
 	SOC_ENUM("DMIX CLK Selection", lm49453_dmix_input_sel_enum),
+	SOC_ENUM("Mic2Mode", lm49453_mic2mode_enum),
+
 };
 
 /* DAPM widgets */
