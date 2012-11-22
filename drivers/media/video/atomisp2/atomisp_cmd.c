@@ -936,10 +936,11 @@ irqreturn_t atomisp_isr_thread(int irq, void *isp_ptr)
 
 	v4l2_dbg(5, dbg_level, &atomisp_dev, ">%s\n", __func__);
 	mutex_lock(&isp->mutex);
+	if (!isp->sw_contex.isp_streaming)
+		goto out;
 
-	while (isp->sw_contex.isp_streaming &&
-	       sh_css_dequeue_event(&current_event.pipe,
-		       &current_event.event) == sh_css_success) {
+	while (sh_css_dequeue_event(&current_event.pipe,
+				    &current_event.event) == sh_css_success) {
 		switch (current_event.event) {
 		case SH_CSS_EVENT_PIPELINE_DONE:
 			css_pipe_done = true;
@@ -957,8 +958,7 @@ irqreturn_t atomisp_isr_thread(int irq, void *isp_ptr)
 		kfifo_in(&events, &current_event, 1);
 	}
 
-	while (isp->sw_contex.isp_streaming &&
-			kfifo_out(&events, &current_event, 1)) {
+	while (kfifo_out(&events, &current_event, 1)) {
 		switch (current_event.event) {
 		case SH_CSS_EVENT_OUTPUT_FRAME_DONE:
 			frame_done_found = true;
@@ -994,8 +994,7 @@ irqreturn_t atomisp_isr_thread(int irq, void *isp_ptr)
 		}
 	}
 
-	if (isp->sw_contex.isp_streaming &&
-	    frame_done_found &&
+	if (frame_done_found &&
 	    isp->params.css_update_params_needed) {
 		sh_css_update_isp_params();
 		isp->params.css_update_params_needed = false;
@@ -1003,6 +1002,8 @@ irqreturn_t atomisp_isr_thread(int irq, void *isp_ptr)
 	}
 	isp->isp_timeout = false;
 	atomisp_setup_flash(isp);
+
+out:
 	mutex_unlock(&isp->mutex);
 
 	v4l2_dbg(5, dbg_level, &atomisp_dev, "<%s\n", __func__);
