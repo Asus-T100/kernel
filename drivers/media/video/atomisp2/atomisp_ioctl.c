@@ -421,6 +421,14 @@ static int atomisp_enum_input(struct file *file, void *fh,
 
 	return 0;
 }
+
+static unsigned int atomisp_streaming_count(struct atomisp_device *isp)
+{
+	return isp->isp_subdev.video_out_preview.capq.streaming
+		+ isp->isp_subdev.video_out_capture.capq.streaming
+		+ isp->isp_subdev.video_in.capq.streaming;
+}
+
 /*
  * get input are used to get current primary/secondary camera
  */
@@ -461,9 +469,7 @@ static int atomisp_s_input(struct file *file, void *fh, unsigned int input)
 		goto error;
 	}
 
-	if ((isp->isp_subdev.video_out_preview.capq.streaming == 1) ||
-	    (isp->isp_subdev.video_out_capture.capq.streaming == 1) ||
-	    (isp->isp_subdev.video_in.capq.streaming == 1)) {
+	if (atomisp_streaming_count(isp)) {
 		v4l2_err(&atomisp_dev,
 			 "ISP is still streaming, stop first\n");
 		ret = -EINVAL;
