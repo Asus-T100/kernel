@@ -621,16 +621,18 @@ static int sep_end_transaction_handler(struct sep_device *sep,
 	memset(sep->shared_addr, 0,
 	       SEP_DRIVER_MESSAGE_SHARED_AREA_SIZE_IN_BYTES);
 
+	clear_bit(SEP_WORKING_LOCK_BIT, &sep->in_use_flags);
+
 	/* start suspend delay */
 #ifdef SEP_ENABLE_RUNTIME_PM
 	if (sep->in_use) {
 		sep->in_use = 0;
+		synchronize_irq(sep->pdev->irq);
 		pm_runtime_mark_last_busy(&sep->pdev->dev);
 		pm_runtime_put_autosuspend(&sep->pdev->dev);
 	}
 #endif
 
-	clear_bit(SEP_WORKING_LOCK_BIT, &sep->in_use_flags);
 	sep->pid_doing_transaction = 0;
 
 	/* Now it's safe for next process to proceed */
