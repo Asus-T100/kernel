@@ -8,8 +8,8 @@
 #include <asm/setup.h>
 #include <asm/intel_mid_hsu.h>
 
-/* a 3 bits bit-map, from 0 to 7, default 0 */
-unsigned char hsu_dma_enable;
+/* a 3 bits bit-map, from 0 to 7, default 0x7 */
+unsigned char hsu_dma_enable = 0x7;
 EXPORT_SYMBOL_GPL(hsu_dma_enable);
 
 int __init setup_hsu_dma_enable_flag(char *p)

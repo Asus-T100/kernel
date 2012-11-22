@@ -1812,6 +1812,10 @@ static int hsu_port_init(struct pci_dev *pdev, int index)
 			uport->use_dma = 1;
 		else
 			uport->use_dma = 0;
+#ifdef CONFIG_SERIAL_MFD_HSU_CONSOLE
+		if (index == CONFIG_SERIAL_MFD_HSU_CONSOLE_PORT)
+			uport->use_dma = 0;
+#endif
 		uport->qcirc.buf = (char *)uport->qbuf;
 		INIT_WORK(&uport->qwork, qwork);
 		spin_lock_init(&uport->qlock);
