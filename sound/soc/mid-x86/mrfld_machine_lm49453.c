@@ -212,7 +212,7 @@ struct snd_soc_dai_link mrfld_msic_dailink[] = {
 	},
 };
 
-#ifdef CONFIG_PM
+#ifdef CONFIG_PM_SLEEP
 static int snd_mrfld_suspend(struct device *dev)
 {
 	pr_debug("In %s device name\n", __func__);
@@ -303,8 +303,7 @@ const struct dev_pm_ops snd_mrfld_mc_pm_ops = {
 static struct ipc_driver snd_mrfld_mc_driver = {
 	.driver = {
 		.owner = THIS_MODULE,
-		/* TODO: change this */
-		.name = "mrfld_cs42l73",
+		.name = "mrfld_lm49453",
 		.pm = &snd_mrfld_mc_pm_ops,
 	},
 	.probe = snd_mrfld_mc_probe,

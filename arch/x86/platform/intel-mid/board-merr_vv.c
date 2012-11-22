@@ -18,7 +18,7 @@
 #include "device_libs/platform_ipc.h"
 #include "device_libs/platform_mrfl_adc.h"
 #include "device_libs/platform_max3111.h"
-
+#include <asm/platform_mrfld_audio.h>
 /* I2C Devices */
 #include "device_libs/platform_max17042.h"
 
@@ -34,6 +34,8 @@ struct devs_id __initconst device_ids[] = {
 	{"bcove_chrgr", SFI_DEV_TYPE_IPC, 1, &no_platform_data, NULL},
 	{"max17050", SFI_DEV_TYPE_I2C, 1, &max17042_platform_data, NULL},
 	{"spi_max3111", SFI_DEV_TYPE_SPI, 0, &max3111_vp_platform_data, NULL},
+	{"mrfld_lm49453", SFI_DEV_TYPE_IPC, 1, &merfld_audio_platform_data, NULL},
+	{"lm49453_codec", SFI_DEV_TYPE_I2C, 1, &no_platform_data, NULL},
 	{},
 };
 

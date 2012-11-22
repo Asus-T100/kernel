@@ -1470,11 +1470,6 @@ static int lm49453_probe(struct snd_soc_codec *codec)
 	snd_soc_write(codec, LM49453_P0_AUDIO_PORT1_TX_MSB_REG, 0x00);
 	snd_soc_write(codec, LM49453_P0_AUDIO_PORT1_TDM_CHANNELS_REG, 0x1b);
 
-	/* For RevA codec only */
-	snd_soc_write(codec, LM49453_PAGE_REG, 0x01);
-	snd_soc_write(codec, 0xc0, 0x03);
-	snd_soc_write(codec, LM49453_PAGE_REG, 0x00);
-
 	return 0;
 }
 
@@ -1554,7 +1549,7 @@ static int __devexit lm49453_i2c_remove(struct i2c_client *client)
 }
 
 static const struct i2c_device_id lm49453_i2c_id[] = {
-	{ "lm49453", 0 },
+	{ "lm49453_codec", 0 },
 	{ }
 };
 MODULE_DEVICE_TABLE(i2c, lm49453_i2c_id);

@@ -14,7 +14,7 @@
 #include <linux/kernel.h>
 #include <linux/sfi.h>
 #include <asm/intel-mid.h>
-#include "device_libs/platform_mrfld_audio.h"
+#include <asm/platform_mrfld_audio.h>
 #include "device_libs/platform_max3111.h"
 
 /* not supported */
@@ -24,7 +24,7 @@ int penwell_otg_query_charging_cap(void *dummy)
 }
 
 struct devs_id __initconst device_ids[] = {
-	{"mrfld_cs42l73", SFI_DEV_TYPE_IPC, 1, &mrfld_audio_platform_data},
+	{"mrfld_cs42l73", SFI_DEV_TYPE_IPC, 1, &merfld_audio_platform_data},
 	{"spi_max3111", SFI_DEV_TYPE_SPI, 0, &max3111_vp_platform_data, NULL},
 	{},
 };
