@@ -424,69 +424,6 @@ void atomisp_clear_css_buffer_counters(struct atomisp_device *isp)
 	isp->isp_subdev.video_out_preview.buffers_in_css = 0;
 }
 
-static void atomisp_pipe_reset(struct atomisp_device *isp)
-{
-	int ret;
-	enum sh_css_pipe_id css_pipe_id;
-
-	v4l2_warn(&atomisp_dev, "ISP timeout. Recovering\n");
-
-#ifndef CONFIG_X86_MRFLD
-	if (!isp->sw_contex.file_input)
-		sh_css_enable_interrupt(SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF,
-					false);
-#endif /* CONFIG_X86_MRFLD */
-
-	css_pipe_id = atomisp_get_css_pipe_id(isp);
-	switch (css_pipe_id) {
-	case SH_CSS_PREVIEW_PIPELINE:
-		sh_css_preview_stop();
-		break;
-	case SH_CSS_VIDEO_PIPELINE:
-		sh_css_video_stop();
-		break;
-	case SH_CSS_CAPTURE_PIPELINE:
-		/* fall through */
-	default:
-		sh_css_capture_stop();
-		break;
-	}
-
-	/* clear irq */
-	enable_isp_irq(hrt_isp_css_irq_sp, false);
-	clear_isp_irq(hrt_isp_css_irq_sp);
-	/*
-	 * TODO: do we need to reset any other interrupts,
-	 * i.e hrt_isp_css_irq_sw_1 or hrt_isp_css_irq_sw_2?
-	 */
-	/* stream off sensor */
-	if (!isp->sw_contex.file_input) {
-		ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
-				       video, s_stream, 0);
-		if (ret)
-			dev_warn(isp->dev,
-				 "can't stop streaming on sensor!\n");
-	}
-
-	/* reset ISP and restore its state */
-	atomisp_reset(isp);
-
-	atomisp_clear_css_buffer_counters(isp);
-
-	sh_css_start(css_pipe_id);
-	if (!isp->sw_contex.file_input) {
-#ifndef CONFIG_X86_MRFLD
-		sh_css_enable_interrupt(SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF, true);
-#endif /* CONFIG_X86_MRFLD */
-		atomisp_set_term_en_count(isp);
-		ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
-				       video, s_stream, 1);
-		if (ret)
-			dev_warn(isp->dev,
-				 "can't start streaming on sensor!\n");
-	}
-}
-
 /* 0x100000 is the start of dmem inside SP */
 #define SP_DMEM_BASE	0x100000
 
@@ -521,44 +458,6 @@ void dump_sp_dmem(unsigned int addr, unsigned int size)
 		addr += sizeof(unsigned int);
 		size32 -= 1;
 	} while(size32 > 0);
-}
-
-static void atomisp_timeout_handler(struct atomisp_device *isp)
-{
-	char debug_context[64];
-
-	v4l2_err(&atomisp_dev, "ISP timeout\n");
-	isp->isp_timeout = true;
-
-	sh_css_dump_sp_sw_debug_info();
-	snprintf(debug_context, 64, "ISP timeout encountered (%d of 5)",
-		 atomic_read(&isp->wdt_count));
-	sh_css_dump_debug_info(debug_context);
-	dev_err(isp->dev, "%s, pipe[%d] buffers in css: %d\n", __func__,
-		isp->isp_subdev.video_out_capture.pipe_type,
-		isp->isp_subdev.video_out_capture.buffers_in_css);
-	dev_err(isp->dev, "%s, pipe[%d] buffers in css: %d\n", __func__,
-		isp->isp_subdev.video_out_vf.pipe_type,
-		isp->isp_subdev.video_out_vf.buffers_in_css);
-	dev_err(isp->dev, "%s, pipe[%d] buffers in css: %d\n", __func__,
-		isp->isp_subdev.video_out_preview.pipe_type,
-		isp->isp_subdev.video_out_preview.buffers_in_css);
-	dev_err(isp->dev, "%s, s3a buffers in css preview pipe: %d\n",
-		__func__, isp->s3a_bufs_in_css[SH_CSS_PREVIEW_PIPELINE]);
-	dev_err(isp->dev, "%s, s3a buffers in css capture pipe: %d\n",
-		__func__, isp->s3a_bufs_in_css[SH_CSS_CAPTURE_PIPELINE]);
-	dev_err(isp->dev, "%s, s3a buffers in css video pipe: %d\n",
-		__func__, isp->s3a_bufs_in_css[SH_CSS_VIDEO_PIPELINE]);
-	dev_err(isp->dev, "%s, dis buffers in css: %d\n",
-		__func__, isp->dis_bufs_in_css);
-	/*sh_css_dump_sp_state();*/
-	/*sh_css_dump_isp_state();*/
-	atomisp_pipe_reset(isp);
-
-	/* dequeueing buffers is not needed. CSS will recycle buffers that it
-	 * has. */
-	atomisp_flush_bufs_and_wakeup(isp);
-	v4l2_err(&atomisp_dev, "ISP timeout recovery handling done\n");
 }
 
 static struct videobuf_buffer *atomisp_css_frame_to_vbuf(
@@ -874,8 +773,15 @@ void atomisp_wdt_work(struct work_struct *work)
 {
 	struct atomisp_device *isp = container_of(work, struct atomisp_device,
 						  wdt_work);
+	char debug_context[64];
+	enum sh_css_pipe_id css_pipe_id;
+	int ret;
+
+	dev_err(isp->dev, "timeout %d of %d\n", atomic_read(&isp->wdt_count),
+		ATOMISP_ISP_MAX_TIMEOUT_COUNT);
 
 	mutex_lock(&isp->mutex);
+
 	switch (atomic_inc_return(&isp->wdt_count)) {
 	case ATOMISP_ISP_MAX_TIMEOUT_COUNT:
 		isp->sw_contex.error = true;
@@ -887,10 +793,100 @@ void atomisp_wdt_work(struct work_struct *work)
 		atomisp_flush_bufs_and_wakeup(isp);
 		break;
 	default:
-		atomisp_timeout_handler(isp);
+		sh_css_dump_sp_sw_debug_info();
+		sh_css_dump_debug_info(debug_context);
+		dev_err(isp->dev, "%s, pipe[%d] buffers in css: %d\n", __func__,
+			isp->isp_subdev.video_out_capture.pipe_type,
+			isp->isp_subdev.video_out_capture.buffers_in_css);
+		dev_err(isp->dev, "%s, pipe[%d] buffers in css: %d\n", __func__,
+			isp->isp_subdev.video_out_vf.pipe_type,
+			isp->isp_subdev.video_out_vf.buffers_in_css);
+		dev_err(isp->dev, "%s, pipe[%d] buffers in css: %d\n", __func__,
+			isp->isp_subdev.video_out_preview.pipe_type,
+			isp->isp_subdev.video_out_preview.buffers_in_css);
+		dev_err(isp->dev, "%s, s3a buffers in css preview pipe: %d\n",
+			__func__,
+			isp->s3a_bufs_in_css[SH_CSS_PREVIEW_PIPELINE]);
+		dev_err(isp->dev, "%s, s3a buffers in css capture pipe: %d\n",
+			__func__,
+			isp->s3a_bufs_in_css[SH_CSS_CAPTURE_PIPELINE]);
+		dev_err(isp->dev, "%s, s3a buffers in css video pipe: %d\n",
+			__func__, isp->s3a_bufs_in_css[SH_CSS_VIDEO_PIPELINE]);
+		dev_err(isp->dev, "%s, dis buffers in css: %d\n",
+			__func__, isp->dis_bufs_in_css);
+		/*sh_css_dump_sp_state();*/
+		/*sh_css_dump_isp_state();*/
+
+#ifndef CONFIG_X86_MRFLD
+		if (!isp->sw_contex.file_input)
+			sh_css_enable_interrupt(
+				SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF, false);
+#endif /* CONFIG_X86_MRFLD */
+
+		css_pipe_id = atomisp_get_css_pipe_id(isp);
+		switch (css_pipe_id) {
+		case SH_CSS_PREVIEW_PIPELINE:
+			sh_css_preview_stop();
+			break;
+		case SH_CSS_VIDEO_PIPELINE:
+			sh_css_video_stop();
+			break;
+		case SH_CSS_CAPTURE_PIPELINE:
+			/* fall through */
+		default:
+			sh_css_capture_stop();
+			break;
+		}
+
+		/* clear irq */
+		enable_isp_irq(hrt_isp_css_irq_sp, false);
+		clear_isp_irq(hrt_isp_css_irq_sp);
+		/*
+		 * TODO: do we need to reset any other interrupts,
+		 * i.e hrt_isp_css_irq_sw_1 or hrt_isp_css_irq_sw_2?
+		 */
+		/* stream off sensor */
+		if (!isp->sw_contex.file_input) {
+			ret = v4l2_subdev_call(
+				isp->inputs[isp->input_curr].camera, video,
+				s_stream, 0);
+			if (ret)
+				dev_warn(isp->dev,
+					 "can't stop streaming on sensor!\n");
+		}
+
+		/* reset ISP and restore its state */
+		isp->isp_timeout = true;
+		atomisp_reset(isp);
+		isp->isp_timeout = false;
+
+		atomisp_clear_css_buffer_counters(isp);
+
+		sh_css_start(css_pipe_id);
+		if (!isp->sw_contex.file_input) {
+#ifndef CONFIG_X86_MRFLD
+			sh_css_enable_interrupt(
+				SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF, true);
+#endif /* CONFIG_X86_MRFLD */
+			atomisp_set_term_en_count(isp);
+			ret = v4l2_subdev_call(
+				isp->inputs[isp->input_curr].camera, video,
+				s_stream, 1);
+			if (ret)
+				dev_warn(isp->dev,
+					 "can't start streaming on sensor!\n");
+		}
+
+		/*
+		 * dequeueing buffers is not needed. CSS will recycle
+		 * buffers that it has.
+		 */
+		atomisp_flush_bufs_and_wakeup(isp);
+		dev_err(isp->dev, "timeout recovery handling done\n");
+
+		mod_timer(&isp->wdt, jiffies + ATOMISP_ISP_TIMEOUT_DURATION);
 	}
 
-	mod_timer(&isp->wdt, jiffies + ATOMISP_ISP_TIMEOUT_DURATION);
 	mutex_unlock(&isp->mutex);
 }
 
@@ -1000,7 +996,6 @@ irqreturn_t atomisp_isr_thread(int irq, void *isp_ptr)
 		isp->params.css_update_params_needed = false;
 		frame_done_found = false;
 	}
-	isp->isp_timeout = false;
 	atomisp_setup_flash(isp);
 
 out:
@@ -3938,10 +3933,8 @@ int atomisp_ospm_dphy_down(struct atomisp_device *isp)
 		return 0;
 
 	/* if ISP timeout, we can force powerdown */
-	if (isp->isp_timeout) {
-		isp->isp_timeout = false;
+	if (isp->isp_timeout)
 		goto done;
-	}
 
 	if (!isp->sw_contex.init)
 		goto done;
