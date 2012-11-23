@@ -19,6 +19,7 @@
 #include "device_libs/platform_mrfl_adc.h"
 #include "device_libs/platform_max3111.h"
 #include "device_libs/platform_msic_power_btn.h"
+#include "device_libs/platform_mrfl_pmic.h"
 
 /* I2C Devices */
 #include "device_libs/platform_max17042.h"
@@ -39,6 +40,7 @@ struct devs_id __initconst device_ids[] = {
 	{"max17050", SFI_DEV_TYPE_I2C, 1, &max17042_platform_data, NULL},
 	{"spi_max3111", SFI_DEV_TYPE_SPI, 0, &max3111_vp_platform_data, NULL},
 	{"bq24261_charger", SFI_DEV_TYPE_I2C, 1, &bq24261_platform_data, NULL},
+	{"pmic_ccsm", SFI_DEV_TYPE_IPC, 1, &mrfl_pmic_platform_data, NULL},
 	{},
 };
 
