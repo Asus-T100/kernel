@@ -61,8 +61,7 @@ static inline int get_ps_int_property(struct power_supply *psy,
 					true);\
 		enable_charger(psy); })
 #define disable_charging(psy) \
-		({if ((CABLE_TYPE(psy) != POWER_SUPPLY_CHARGER_TYPE_NONE) &&\
-				IS_CHARGING_ENABLED(psy)) \
+		({if (IS_CHARGING_ENABLED(psy)) \
 		set_ps_int_property(psy,\
 				POWER_SUPPLY_PROP_ENABLE_CHARGING, false); })
 
@@ -128,8 +127,8 @@ static inline int get_ps_int_property(struct power_supply *psy,
 #define IS_SUPPORTED_CABLE(psy, cable_type) \
 		(psy->supported_cables & cable_type)
 #define IS_CABLE_ACTIVE(status) \
-	((status != EXTCON_CHRGR_CABLE_DISCONNECTED) ||\
-			(status != EXTCON_CHRGR_CABLE_SUSPENDED))
+	(!((status == EXTCON_CHRGR_CABLE_DISCONNECTED) ||\
+			(status == EXTCON_CHRGR_CABLE_SUSPENDED)))
 
 #define IS_CHARGER_PROP_CHANGED(prop, cache_prop)\
 	((cache_prop.online != prop.online) || \

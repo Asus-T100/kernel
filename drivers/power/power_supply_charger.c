@@ -293,7 +293,7 @@ static int get_supplied_by_list(struct power_supply *psy,
 			continue;
 		for (i = 0; i < pst->num_supplicants; i++) {
 			if ((!strcmp(pst->supplied_to[i], psy->name)) &&
-			    IS_ONLINE(pst))
+			    IS_PRESENT(pst))
 				psy_lst[cnt++] = pst;
 		}
 	}
@@ -332,8 +332,10 @@ static int trigger_algo(struct power_supply *psy)
 	get_bat_prop_cache(psy, &bat_prop);
 
 	algo = power_supply_get_charging_algo(psy, &chrg_profile);
-	if (!algo)
+	if (!algo) {
+		pr_err("Error in getting charging algo!!\n");
 		return -EINVAL;
+	}
 
 	algo->get_next_cc_cv(bat_prop, chrg_profile, &cc, &cv);
 
@@ -371,6 +373,8 @@ static inline void enable_supplied_by_charging
 	 * disable charging for all chargers
 	 */
 	cnt = get_supplied_by_list(psy, chrgr_lst);
+	if (cnt == 0)
+		return;
 	while (--cnt) {
 		if (is_enable && IS_CHARGING_CAN_BE_ENABLED(psy))
 			enable_charging(chrgr_lst[cnt]);
