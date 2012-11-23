@@ -31,8 +31,7 @@ struct atomisp_video_pipe;
 
 int atomisp_alloc_css_stat_bufs(struct atomisp_device *isp);
 
-int atomisp_streamoff(struct file *file, void *fh,
-			      enum v4l2_buf_type type);
+int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type);
 
 int atomisp_reqbufs(struct file *file, void *fh,
 			struct v4l2_requestbuffers *req);

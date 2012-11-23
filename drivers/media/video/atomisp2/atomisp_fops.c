@@ -561,8 +561,7 @@ static int atomisp_release(struct file *file)
 
 	mutex_lock(&isp->mutex);
 	if (pipe->capq.streaming &&
-	    atomisp_streamoff(file, NULL,
-			      V4L2_BUF_TYPE_VIDEO_CAPTURE))
+	    __atomisp_streamoff(file, NULL, V4L2_BUF_TYPE_VIDEO_CAPTURE))
 		goto error;
 
 	if (pipe->opened == false)
