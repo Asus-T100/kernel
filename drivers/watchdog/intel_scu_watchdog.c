@@ -950,10 +950,10 @@ static int create_debugfs_entries(void)
 		goto error;
 	}
 
-	/* /sys/kernel/debug/watchdog/panic_reboot_notifier */
+	/* /sys/kernel/debug/watchdog/kernel_watchdog/panic_reboot_notifier */
 	dev->dfs_kwd_panic_reboot = debugfs_create_file("panic_reboot_notifier",
 					S_IFREG | S_IRUGO | S_IWUSR | S_IWGRP,
-					dev->dfs_wd, NULL,
+					dev->dfs_kwd, NULL,
 					&kwd_panic_reboot_fops);
 
 	if (!dev->dfs_kwd_panic_reboot) {
