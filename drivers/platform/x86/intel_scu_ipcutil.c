@@ -146,8 +146,14 @@ out:
 }
 EXPORT_SYMBOL_GPL(intel_scu_ipc_set_osc_clk0);
 
+#ifdef CONFIG_X86_MRFLD
+#define MSIC_VPROG1_CTRL	0xAC
+#define MSIC_VPROG2_CTRL	0xAD
+#else
 #define MSIC_VPROG1_CTRL        0xD6
 #define MSIC_VPROG2_CTRL        0xD7
+#endif
+
 #define MSIC_VPROG_ON           0xFF
 #define MSIC_VPROG_OFF          0
 
