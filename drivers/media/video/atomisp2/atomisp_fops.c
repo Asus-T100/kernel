@@ -383,7 +383,6 @@ int atomisp_init_struct(struct atomisp_device *isp)
 	isp->params.offline_parm.offset = 0;
 	isp->params.continuous_vf = false;
 	isp->sw_contex.sensor_streaming = false;
-	isp->sw_contex.work_queued = false;
 	isp->sw_contex.file_input = 0;
 
 	/* Add for channel */

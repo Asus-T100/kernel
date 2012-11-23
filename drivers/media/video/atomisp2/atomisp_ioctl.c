@@ -1247,6 +1247,7 @@ static int atomisp_streamon(struct file *file, void *fh,
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	enum sh_css_pipe_id css_pipe_id;
+	unsigned int sensor_start_stream;
 	int ret;
 	unsigned long irqflags;
 #ifdef PUNIT_CAMERA_BUSY
@@ -1261,6 +1262,19 @@ static int atomisp_streamon(struct file *file, void *fh,
 	}
 
 	mutex_lock(&isp->mutex);
+
+	/*
+	 * The number of streaming video nodes is based on which
+	 * binary is going to be run.
+	 */
+	if (isp->sw_contex.run_mode == CI_MODE_VIDEO ||
+	    (isp->sw_contex.run_mode == CI_MODE_STILL_CAPTURE &&
+	     isp->capture_format->out_sh_fmt != SH_CSS_FRAME_FORMAT_RAW &&
+	     !isp->params.continuous_vf))
+		sensor_start_stream = 2;
+	else
+		sensor_start_stream = 1;
+
 	spin_lock_irqsave(&pipe->irq_lock, irqflags);
 	if (list_empty(&(pipe->capq.stream))) {
 		spin_unlock_irqrestore(&pipe->irq_lock, irqflags);
@@ -1275,8 +1289,7 @@ static int atomisp_streamon(struct file *file, void *fh,
 	if (ret)
 		goto error;
 
-
-	if (isp->sw_contex.work_queued) {
+	if (atomisp_streaming_count(isp) > sensor_start_stream) {
 		/* trigger still capture */
 		if (isp->params.continuous_vf &&
 		    pipe->pipe_type == ATOMISP_PIPE_CAPTURE &&
@@ -1294,7 +1307,7 @@ static int atomisp_streamon(struct file *file, void *fh,
 
 	if (isp->streaming == ATOMISP_DEVICE_STREAMING_ENABLED) {
 		atomisp_qbuffers_to_css(isp);
-		goto start_workq;
+		goto start_sensor;
 	}
 
 #ifdef PUNIT_CAMERA_BUSY
@@ -1333,23 +1346,17 @@ static int atomisp_streamon(struct file *file, void *fh,
 
 	atomisp_qbuffers_to_css(isp);
 
-	/* don't start workq yet, wait for another pipe*/
-	/* for capture pipe + raw output, ISP only support output main */
-	if (isp->sw_contex.run_mode == CI_MODE_VIDEO ||
-	    (isp->sw_contex.run_mode == CI_MODE_STILL_CAPTURE &&
-	     isp->capture_format->out_sh_fmt != SH_CSS_FRAME_FORMAT_RAW &&
-	     !isp->params.continuous_vf))
+	/* Only start sensor when the last streaming instance started */
+	if (atomisp_streaming_count(isp) < sensor_start_stream)
 		goto done;
 
-start_workq:
+start_sensor:
 	if (isp->flash) {
 		ret += v4l2_subdev_call(isp->flash, core, s_power, 1);
 		isp->params.num_flash_frames = 0;
 		isp->params.flash_state = ATOMISP_FLASH_IDLE;
 		atomisp_setup_flash(isp);
 	}
-
-	isp->sw_contex.work_queued = true;
 
 	if (!isp->sw_contex.file_input) {
 #ifndef CONFIG_X86_MRFLD
@@ -1488,8 +1495,6 @@ int atomisp_streamoff(struct file *file, void *fh,
 		preview_pipe = &isp->isp_subdev.video_out_preview;
 		wake_up_interruptible(&preview_pipe->capq.wait);
 	}
-	isp->sw_contex.work_queued = false;
-
 	ret = videobuf_streamoff(&pipe->capq);
 	if (ret)
 		goto error;
