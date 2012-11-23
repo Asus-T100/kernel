@@ -412,6 +412,9 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 	sst_drv_ctx->cp_streams = 0;
 	sst_drv_ctx->fw = NULL;
 	sst_drv_ctx->fw_in_mem = NULL;
+	/* we use dma, so set to 1*/
+	sst_drv_ctx->use_dma = 1;
+	sst_drv_ctx->use_lli = 1;
 	ops = sst_drv_ctx->ops;
 
 	INIT_LIST_HEAD(&sst_drv_ctx->ipc_dispatch_list);
@@ -533,6 +536,9 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 		pr_err("couldn't register control device\n");
 		goto do_free_irq;
 	}
+	/* default intr are unmasked so set this as masked */
+	if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID)
+		sst_shim_write64(sst_drv_ctx->shim, SST_IMRX, 0xFFFF0034);
 
 	if ((sst_drv_ctx->pci_id == SST_MFLD_PCI_ID) ||
 			(sst_drv_ctx->pci_id == SST_CLV_PCI_ID)) {

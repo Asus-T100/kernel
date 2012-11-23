@@ -165,7 +165,8 @@ int sst_fill_sglist(unsigned long ram, struct dma_block_info *block,
 	u32 offset;
 	unsigned long dstn, src;
 	int len = 0;
-	pr_debug("sst_fill_sglist\n");
+
+	pr_debug("%s entry", __func__);
 
 	offset = 0;
 	do {
@@ -191,7 +192,6 @@ int sst_fill_sglist(unsigned long ram, struct dma_block_info *block,
 		*sg_src = sg_next(*sg_src);
 		*sg_dst = sg_next(*sg_dst);
 	} while (offset > 0);
-
 	return 0;
 }
 
@@ -215,9 +215,11 @@ static inline int sst_validate_fw_elf(const struct firmware *sst_fw)
 }
 
 static int sst_memcpy_fw(struct intel_sst_drv *sst, const void *fw,
-		 struct sst_probe_info info, Elf32_Phdr *pr)
+		 struct sst_probe_info info, Elf32_Phdr *pr,
+		 struct scatterlist **sg_src, struct scatterlist **sg_dstn)
 {
 	void *dstn;
+	unsigned int dstn_phys;
 
 #ifdef MRFLD_WORD_WA
 	/* work around-since only 4 byte align copying is only allowed for ICCM */
@@ -227,22 +229,87 @@ static int sst_memcpy_fw(struct intel_sst_drv *sst, const void *fw,
 		if (data_size)
 			pr->p_filesz += 4 - data_size;
 		dstn = sst->iram + (pr->p_paddr - info.iram_start);
-	}
+		dstn_phys = sst->iram_base + pr->p_paddr - info.iram_start;
 #else
-	if ((pr->p_paddr >= info.iram_start) && (pr->p_paddr < info.iram_end))
+	if ((pr->p_paddr >= info.iram_start) && (pr->p_paddr < info.iram_end)) {
 		dstn = sst->iram + (pr->p_paddr - info.iram_start);
+		dstn_phys = sst->iram_base + pr->p_paddr - info.iram_start;
 #endif
-	else if ((pr->p_paddr >= info.dram_start) && (pr->p_paddr < info.dram_end))
+	} else if ((pr->p_paddr >= info.dram_start) && (pr->p_paddr < info.dram_end)) {
 		dstn = sst->dram + (pr->p_paddr - info.dram_start);
-	else if ((pr->p_paddr >= info.imr_start) && (pr->p_paddr < info.imr_end))
+		dstn_phys = sst->dram_base + pr->p_paddr - info.dram_start;
+	} else if ((pr->p_paddr >= info.imr_start) && (pr->p_paddr < info.imr_end)) {
 		dstn = sst->ddr + (pr->p_paddr - info.imr_start);
-	else
+		dstn_phys =  sst->ddr_base + pr->p_paddr - info.imr_start;
+	} else {
 	       return -EINVAL;
-	memcpy_toio(dstn, fw + pr->p_offset, pr->p_filesz);
+	}
+	if (sst->use_dma && pr->p_filesz) {
+		/* populate sg entry; used no logic for block parsing assuming
+		 * mrfld dma length of 128KB, so no need to split blocks
+		 * would need to fix this if to be used for mfld/ctp
+		 */
+		dstn = phys_to_virt(dstn_phys);
+		sg_set_buf(*sg_src, fw + pr->p_offset, pr->p_filesz);
+		sg_set_buf(*sg_dstn, dstn, pr->p_filesz);
+		*sg_src = sg_next(*sg_src);
+		*sg_dstn = sg_next(*sg_dstn);
+
+		sst->fw_sg_list.sg_idx++;
+	} else {
+		memcpy_toio(dstn, fw + pr->p_offset, pr->p_filesz);
+	}
 	return 0;
 }
 
-static void
+static unsigned int
+sst_get_elf_sg_len(struct intel_sst_drv *sst, Elf32_Ehdr *elf, Elf32_Phdr *pr,
+		struct sst_probe_info info)
+{
+	unsigned int i = 0, count = 0;
+
+	pr_debug("in %s\n", __func__);
+	while (i < elf->e_phnum) {
+		if (pr[i].p_type == PT_LOAD) {
+			if ((pr[i].p_paddr >= info.iram_start) &&
+					(pr[i].p_paddr < info.iram_end && pr[i].p_filesz))
+				count++;
+			if ((pr[i].p_paddr >= info.dram_start) &&
+					(pr[i].p_paddr < info.dram_end && pr[i].p_filesz))
+				count++;
+			else if ((pr[i].p_paddr >= info.imr_start) &&
+					(pr[i].p_paddr < info.imr_end && pr[i].p_filesz))
+				count++;
+		}
+		i++;
+	}
+	pr_debug("gotcha count %d\n", count);
+	return count;
+}
+
+static int
+sst_init_dma_sg_list(struct intel_sst_drv *sst, unsigned int len,
+		struct scatterlist **src, struct scatterlist **dstn)
+{
+	struct scatterlist *sg_src = NULL, *sg_dst = NULL;
+
+	sg_src = kzalloc(sizeof(*sg_src)*(len), GFP_KERNEL);
+	if (NULL == sg_src)
+		return -ENOMEM;
+	sg_init_table(sg_src, len);
+	sg_dst = kzalloc(sizeof(*sg_dst)*(len), GFP_KERNEL);
+	if (NULL == sg_dst) {
+		kfree(sg_src);
+		return -ENOMEM;
+	}
+	sg_init_table(sg_dst, len);
+	*src = sg_src;
+	*dstn = sg_dst;
+
+	return 0;
+}
+
+static int
 sst_download_elf_fw(struct intel_sst_drv *sst, const void *fw_in_mem)
 {
 	int i = 0;
@@ -250,6 +317,7 @@ sst_download_elf_fw(struct intel_sst_drv *sst, const void *fw_in_mem)
 	Elf32_Ehdr *elf;
 	Elf32_Phdr *pr;
 	struct sst_probe_info info;
+	struct scatterlist *sg_src = NULL, *sg_dst = NULL;
 
 	BUG_ON(!fw_in_mem);
 
@@ -280,11 +348,30 @@ sst_download_elf_fw(struct intel_sst_drv *sst, const void *fw_in_mem)
 		info.imr_end = sst->ddr_end;
 	}
 
+	if (sst->use_dma) {
+		unsigned int sg_len;
+
+		pr_err("dma mode set for elf\n");
+		sg_len = sst_get_elf_sg_len(sst, elf, pr, info);
+		if (sg_len == 0) {
+			pr_err("we got NULL sz ELF, abort\n");
+			return -EIO;
+		}
+		if (sst_init_dma_sg_list(sst, sg_len, &sg_src, &sg_dst))
+			return -ENOMEM;
+		sst->fw_sg_list.src = sg_src;
+		sst->fw_sg_list.dst = sg_dst;
+		sst->fw_sg_list.list_len = sg_len;
+		sst->fw_sg_list.sg_idx = 0;
+	}
+
 	while (i < elf->e_phnum) {
 		if (pr[i].p_type == PT_LOAD)
-			sst_memcpy_fw(sst, fw_in_mem, info, &pr[i]);
+			sst_memcpy_fw(sst, fw_in_mem, info, &pr[i],
+					&sg_src, &sg_dst);
 		i++;
 	}
+	return 0;
 }
 /**
  * sst_parse_module - Parse audio FW modules
@@ -318,17 +405,7 @@ static int sst_parse_module(struct fw_module_header *module,
 		block = (void *)block + sizeof(*block) + block->size;
 	}
 
-	sg_src = kzalloc(sizeof(*sg_src)*(sg_len), GFP_KERNEL);
-	if (NULL == sg_src)
-		return -ENOMEM;
-	sg_init_table(sg_src, sg_len);
-	sg_dst = kzalloc(sizeof(*sg_dst)*(sg_len), GFP_KERNEL);
-	if (NULL == sg_dst) {
-		kfree(sg_src);
-		return -ENOMEM;
-	}
-	sg_init_table(sg_dst, sg_len);
-
+	sst_init_dma_sg_list(sst_drv_ctx, sg_len, &sg_src, &sg_dst);
 	sg_list->src = sg_src;
 	sg_list->dst = sg_dst;
 	sg_list->list_len = sg_len;
@@ -392,9 +469,12 @@ static int sst_alloc_dma_chan(struct sst_dma *dma)
 	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID)
 		dma->dmac = pci_get_device(PCI_VENDOR_ID_INTEL,
 						PCI_DMAC_CLV_ID, NULL);
-	else
+	else if (sst_drv_ctx->pci_id == SST_MFLD_PCI_ID)
 		dma->dmac = pci_get_device(PCI_VENDOR_ID_INTEL,
 						PCI_DMAC_MFLD_ID, NULL);
+	else if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID)
+		dma->dmac = pci_get_device(PCI_VENDOR_ID_INTEL,
+						PCI_DMAC_MRFLD_ID, NULL);
 
 	if (!dma->dmac) {
 		pr_err("Can't find DMAC\n");
@@ -516,7 +596,8 @@ int sst_request_fw(void)
 		retval = -ENOMEM;
 		goto end_release;
 	}
-
+	pr_debug("copied fw to %x", sst_drv_ctx->fw_in_mem);
+	pr_debug("phys: %x", virt_to_phys(sst_drv_ctx->fw_in_mem));
 	memcpy(sst_drv_ctx->fw_in_mem, sst_drv_ctx->fw->data,
 			sst_drv_ctx->fw->size);
 #ifndef MRFLD_TEST_ON_MFLD
@@ -536,33 +617,69 @@ end_release:
 	return retval;
 }
 
+static inline int sst_dma_wait_for_completion(struct intel_sst_drv *sst)
+{
+	/* call prep and wait */
+	sst->desc->callback = sst_dma_transfer_complete;
+	sst->desc->callback_param = sst;
+
+	sst->dma_info_blk.condition = false;
+	sst->dma_info_blk.ret_code = 0;
+	sst->dma_info_blk.on = true;
+
+	sst->desc->tx_submit(sst_drv_ctx->desc);
+	return sst_wait_timeout(sst, &sst->dma_info_blk);
+}
+
 int sst_dma_firmware(struct sst_dma *dma, struct sst_sg_list *sg_list)
 {
 	int retval = 0;
 	enum dma_ctrl_flags flag = DMA_CTRL_ACK;
 	struct scatterlist *sg_src_list, *sg_dst_list;
 	int length;
-	pr_debug(" sst_dma_firmware\n");
+	pr_debug("sst_dma_firmware\n");
 
 	sg_src_list = sg_list->src;
 	sg_dst_list = sg_list->dst;
 	length = sg_list->list_len;
-	sst_drv_ctx->desc = dma->ch->device->device_prep_dma_sg(dma->ch,
+
+	/* BY default PIMR is unsmasked
+	 * FW gets unmaksed dma intr too, so mask it for FW to execute on mrfld
+	 */
+	if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID)
+		sst_shim_write(sst_drv_ctx->shim, SST_PIMR, 0xFFFF0034);
+
+	if (sst_drv_ctx->use_lli) {
+		sst_drv_ctx->desc = dma->ch->device->device_prep_dma_sg(dma->ch,
 					sg_dst_list, length,
 					sg_src_list, length, flag);
-	if (!sst_drv_ctx->desc)
-		return -EFAULT;
-	sst_drv_ctx->desc->callback = sst_dma_transfer_complete;
-	sst_drv_ctx->desc->callback_param = sst_drv_ctx;
+		if (!sst_drv_ctx->desc)
+			return -EFAULT;
+		retval = sst_dma_wait_for_completion(sst_drv_ctx);
+		if (retval)
+			pr_err("sst_dma_firmware..timeout!\n");
+	} else {
+		struct scatterlist *sg;
+		dma_addr_t src_addr, dstn_addr;
+		int i = 0;
 
-	sst_drv_ctx->dma_info_blk.condition = false;
-	sst_drv_ctx->dma_info_blk.ret_code = 0;
-	sst_drv_ctx->dma_info_blk.on = true;
+		/* dma single block mode */
+		for_each_sg(sg_src_list, sg, length, i) {
+			pr_debug("dma desc %d, length %d\n", i, sg->length);
+			src_addr = sg_phys(sg);
+			dstn_addr = sg_phys(sg_dst_list);
+			if (sg_dst_list)
+				sg_dst_list = sg_next(sg_dst_list);
+			sst_drv_ctx->desc = dma->ch->device->device_prep_dma_memcpy(
+					dma->ch, dstn_addr, src_addr, sg->length, flag);
+			if (!sst_drv_ctx->desc)
+				return -EFAULT;
+			retval = sst_dma_wait_for_completion(sst_drv_ctx);
+			if (retval)
+				pr_err("sst_dma_firmware..timeout!\n");
 
-	sst_drv_ctx->desc->tx_submit(sst_drv_ctx->desc);
-	retval = sst_wait_timeout(sst_drv_ctx, &sst_drv_ctx->dma_info_blk);
-	if (retval)
-		pr_err("sst_dma_firmware..timeout!\n");
+		}
+	}
 
 	return retval;
 }
@@ -593,12 +710,24 @@ int sst_load_fw(const void *fw_in_mem, void *context)
 	if (ret_val)
 		return ret_val;
 
-	/* FIXME: this needs to be revised when the elf fw downloading is
-	 * implemented. right now !elf means dma
-	 * also when we do configurable memcpy */
-	if (sst_drv_ctx->info.use_elf == true)
-		sst_download_elf_fw(sst_drv_ctx, fw_in_mem);
-	else {
+	if (sst_drv_ctx->info.use_elf == true) {
+		ret_val = sst_download_elf_fw(sst_drv_ctx, fw_in_mem);
+		if (ret_val) {
+			pr_err("parsing fail, abort\n");
+			return ret_val;
+		}
+		if (sst_drv_ctx->use_dma) {
+			/* get a dmac channel */
+			sst_alloc_dma_chan(&sst_drv_ctx->dma);
+			 /* allocate desc for transfer and submit */
+			ret_val = sst_dma_firmware(&sst_drv_ctx->dma,
+					&sst_drv_ctx->fw_sg_list);
+			if (ret_val)
+				goto free_dma;
+		}
+	} else {
+		/* we should support memcpy here as well!!! */
+
 		/* get a dmac channel */
 		sst_alloc_dma_chan(&sst_drv_ctx->dma);
 		 /* allocate desc for transfer and submit */
@@ -611,12 +740,9 @@ int sst_load_fw(const void *fw_in_mem, void *context)
 	/* bring sst out of reset */
 	ret_val = sst_drv_ctx->ops->start();
 
-	if (ret_val && sst_drv_ctx->info.use_elf == false)
-		goto free_dma;
-
 	pr_debug("fw loaded successful!!!\n");
 free_dma:
-	if (sst_drv_ctx->info.use_elf == false)
+	if (!sst_drv_ctx->info.use_elf || sst_drv_ctx->use_dma)
 		sst_dma_free_resources(&sst_drv_ctx->dma);
 	return ret_val;
 }
