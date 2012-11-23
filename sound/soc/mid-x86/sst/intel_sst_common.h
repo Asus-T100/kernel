@@ -72,6 +72,7 @@ enum sst_states {
 
 #define MAX_ACTIVE_STREAM	3
 #define MAX_ENC_STREAM		1
+#define MAX_AM_HANDLES		1
 #define SST_BLOCK_TIMEOUT	1000
 #define BLOCK_UNINIT		-1
 #define RX_TIMESLOT_UNINIT	-1
@@ -311,6 +312,11 @@ struct dma_block_info {
 	u32			size;	/* Bytes */
 	u32			ram_offset; /* Offset in I/DRAM */
 	u32			rsvd;	/* Reserved field */
+};
+
+struct ioctl_pvt_data {
+	int			str_id;
+	int			pvt_id;
 };
 
 struct sst_ipc_msg_wq {
