@@ -336,6 +336,7 @@ struct sst_sg_list {
 	struct scatterlist *src;
 	struct scatterlist *dst;
 	int list_len;
+	unsigned int sg_idx;
 };
 
 #ifdef CONFIG_DEBUG_FS
@@ -363,7 +364,9 @@ struct snd_sst_bytes {
 
 #define PCI_DMAC_MFLD_ID 0x0830
 #define PCI_DMAC_CLV_ID 0x08F0
+#define PCI_DMAC_MRFLD_ID 0x119B
 #define SST_MAX_DMA_LEN (4095*4)
+#define SST_MAX_DMA_LEN_MRFLD (1024*128)
 
 struct sst_probe_info {
 	u32 iram_start;
@@ -486,6 +489,8 @@ struct intel_sst_drv {
 	struct sst_probe_info info;
 	u32 block_id;
 	struct sst_block sst_byte_blk;
+	unsigned int use_dma;
+	unsigned int use_lli;
 };
 
 extern struct intel_sst_drv *sst_drv_ctx;
