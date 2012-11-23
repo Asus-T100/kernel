@@ -50,6 +50,7 @@
 #include <asm/apb_timer.h>
 #include <asm/reboot.h>
 #include "intel_mid_weak_decls.h"
+#include <linux/power/battery_id.h>
 
 /*
  * the clockevent devices on Moorestown/Medfield can be APBT or LAPIC clock,
@@ -485,9 +486,88 @@ __setup("x86_intel_mid_timer=", setup_x86_intel_mid_timer);
  */
 static struct sfi_table_header *oem0_table;
 
+#ifdef CONFIG_X86_MRFLD
+static struct ps_pse_mod_prof *batt_chrg_profile;
+static struct ps_batt_chg_prof *ps_batt_chrg_profile;
+
+static void set_batt_chrg_prof(struct ps_pse_mod_prof *batt_prof,
+				struct ps_pse_mod_prof *pentry)
+{
+	int i, j;
+
+	if (batt_prof == NULL || pentry == NULL) {
+		pr_err("%s: Invalid Pointer\n");
+		return;
+	}
+
+	memcpy(batt_prof->batt_id, pentry->batt_id, BATTID_STR_LEN);
+	batt_prof->battery_type = pentry->battery_type;
+	batt_prof->capacity = pentry->capacity;
+	batt_prof->voltage_max = pentry->voltage_max;
+	batt_prof->chrg_term_mA = pentry->chrg_term_mA;
+	batt_prof->low_batt_mV = pentry->low_batt_mV;
+	batt_prof->disch_tmp_ul = pentry->disch_tmp_ul;
+	batt_prof->disch_tmp_ll = pentry->disch_tmp_ll;
+	batt_prof->temp_low_lim = pentry->temp_low_lim;
+
+	for (i = 0, j = 0; i < pentry->temp_mon_ranges; i++) {
+		if (pentry->temp_mon_range[i].temp_up_lim != 0xff) {
+			memcpy(&batt_prof->temp_mon_range[j],
+				&pentry->temp_mon_range[i],
+				sizeof(struct ps_temp_chg_table));
+			j++ ;
+		}
+	}
+	batt_prof->temp_mon_ranges = j;
+	return;
+}
+#endif
+
 static int __init sfi_parse_oem0(struct sfi_table_header *table)
 {
+#ifdef CONFIG_X86_MRFLD
+	struct sfi_table_simple *sb;
+	struct ps_pse_mod_prof *pentry;
+	int totentrs = 0, totlen = 0;
+#endif
 	oem0_table = table;
+
+#ifdef CONFIG_X86_MRFLD
+	sb = (struct sfi_table_simple *)table;
+	totentrs = SFI_GET_NUM_ENTRIES(sb, struct ps_pse_mod_prof);
+	if (totentrs) {
+		batt_chrg_profile = kzalloc(
+				sizeof(*batt_chrg_profile), GFP_KERNEL);
+		if (!batt_chrg_profile) {
+			pr_info("%s(): Error in kzalloc\n", __func__);
+			return -ENOMEM;
+		}
+		pentry = (struct ps_pse_mod_prof *)sb->pentry;
+		totlen = totentrs * sizeof(*pentry);
+		if (totlen <= sizeof(*batt_chrg_profile)) {
+			set_batt_chrg_prof(batt_chrg_profile, pentry);
+			ps_batt_chrg_profile = kzalloc(
+					sizeof(*ps_batt_chrg_profile),
+					GFP_KERNEL);
+			ps_batt_chrg_profile->chrg_prof_type =
+				PSE_MOD_CHRG_PROF;
+			ps_batt_chrg_profile->batt_prof = batt_chrg_profile;
+#ifdef CONFIG_POWER_SUPPLY_BATTID
+			battery_prop_changed(POWER_SUPPLY_BATTERY_INSERTED,
+					ps_batt_chrg_profile);
+#endif
+		} else {
+			pr_err("%s: Error in copying batt charge profile\n",
+					__func__);
+			kfree(batt_chrg_profile);
+			return -ENOMEM;
+		}
+	} else {
+		pr_err("%s: Error in finding batt charge profile\n",
+				__func__);
+	}
+#endif
+
 	return 0;
 }
 
