@@ -22,6 +22,7 @@
 
 /* I2C Devices */
 #include "device_libs/platform_max17042.h"
+#include "device_libs/platform_bq24261.h"
 
 static void __init *no_platform_data(void *info)
 {
@@ -37,6 +38,7 @@ struct devs_id __initconst device_ids[] = {
 	{"bcove_chrgr", SFI_DEV_TYPE_IPC, 1, &no_platform_data, NULL},
 	{"max17050", SFI_DEV_TYPE_I2C, 1, &max17042_platform_data, NULL},
 	{"spi_max3111", SFI_DEV_TYPE_SPI, 0, &max3111_vp_platform_data, NULL},
+	{"bq24261_charger", SFI_DEV_TYPE_I2C, 1, &bq24261_platform_data, NULL},
 	{},
 };
 

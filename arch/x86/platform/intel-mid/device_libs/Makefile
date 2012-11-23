@@ -87,3 +87,4 @@ obj-$(subst m,y,$(CONFIG_SERIAL_MFD_HSU))				+= platform_hsu.o
 obj-$(subst m,y,$(CONFIG_LEDS_INTEL_KPD_GPIO))				+= platform_kpd_led_gpio.o
 obj-y									+= platform_clv_regulator.o
 obj-$(subst m,y,$(CONFIG_TCG_TPM))					+= platform_tpm502i.o
+obj-$(subst m,y,$(CONFIG_BQ24261_CHARGER))                            += platform_bq24261.o
