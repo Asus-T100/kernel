@@ -24,6 +24,7 @@
 #define __LINUX_EXTCON_H__
 
 #include <linux/notifier.h>
+#include <linux/kconfig.h>
 
 #define SUPPORTED_CABLE_MAX	32
 #define CABLE_NAME_MAX		30
