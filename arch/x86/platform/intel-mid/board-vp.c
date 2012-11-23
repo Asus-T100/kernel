@@ -41,6 +41,7 @@ struct devs_id __initconst device_ids[] = {
 	{"spi_max3111", SFI_DEV_TYPE_SPI, 0, &max3111_vp_platform_data, NULL},
 	{"bq24261_charger", SFI_DEV_TYPE_I2C, 1, &bq24261_platform_data, NULL},
 	{"pmic_ccsm", SFI_DEV_TYPE_IPC, 1, &mrfl_pmic_platform_data, NULL},
+	{"i2c_pmic_adap", SFI_DEV_TYPE_IPC, 1, &no_platform_data, NULL},
 	{},
 };
 
