@@ -908,11 +908,7 @@ static void dlp_fifo_empty(struct list_head *fifo,
 
 	write_lock_irqsave(&xfer_ctx->lock, flags);
 
-	/* Empty ? */
-	if (list_empty(fifo))
-		goto out;
-
-	while ((pdu = list_entry(fifo->next, struct hsi_msg, link))) {
+	while ((pdu = dlp_fifo_head(fifo))) {
 		/* Remove the pdu from the list */
 		list_del_init(&pdu->link);
 
@@ -920,7 +916,6 @@ static void dlp_fifo_empty(struct list_head *fifo,
 		dlp_pdu_free(pdu, pdu->channel);
 	}
 
- out:
 	write_unlock_irqrestore(&xfer_ctx->lock, flags);
 }
 
@@ -1113,7 +1108,7 @@ struct hsi_msg *dlp_fifo_recycled_pop(struct dlp_xfer_ctx *xfer_ctx)
 	struct list_head *first;
 	unsigned long flags;
 
-	read_lock_irqsave(&xfer_ctx->lock, flags);
+	write_lock_irqsave(&xfer_ctx->lock, flags);
 	first = &xfer_ctx->recycled_pdus;
 
 	/* Empty ? */
@@ -1121,16 +1116,11 @@ struct hsi_msg *dlp_fifo_recycled_pop(struct dlp_xfer_ctx *xfer_ctx)
 		/* Get the fist pdu */
 		pdu = list_entry(first->next, struct hsi_msg, link);
 
-		read_unlock_irqrestore(&xfer_ctx->lock, flags);
-
 		/* Remove the pdu from the list */
-		write_lock_irqsave(&xfer_ctx->lock, flags);
 		list_del_init(&pdu->link);
-		write_unlock_irqrestore(&xfer_ctx->lock, flags);
-	} else {
-		read_unlock_irqrestore(&xfer_ctx->lock, flags);
 	}
 
+	write_unlock_irqrestore(&xfer_ctx->lock, flags);
 	return pdu;
 }
 
@@ -1578,11 +1568,9 @@ int dlp_allocate_pdus_pool(struct dlp_channel *ch_ctx,
 cleanup:
 	/* Have some items ? */
 	fifo = &xfer_ctx->recycled_pdus;
-	if (list_empty(fifo))
-		return ret;
 
 	/* Delete the allocated PDUs */
-	while ((pdu = list_entry(fifo->next, struct hsi_msg, link))) {
+	while ((pdu = dlp_fifo_head(fifo))) {
 		list_del_init(&pdu->link);
 		dlp_pdu_free(pdu, pdu->channel);
 	}
