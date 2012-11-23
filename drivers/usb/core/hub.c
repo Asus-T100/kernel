@@ -30,6 +30,10 @@
 
 #include "usb.h"
 
+#ifdef CONFIG_BOARD_MRFLD_VV
+#include <linux/usb/ehci-tangier-hsic-pci.h>
+#endif
+
 /* if we are in debug mode, always announce new devices */
 #ifdef DEBUG
 #ifndef CONFIG_USB_ANNOUNCE_NEW_DEVICES
@@ -3407,6 +3411,18 @@ static void hub_port_connect_change(struct usb_hub *hub, int port1,
 		if (status)
 			goto loop_disable;
 
+#ifdef CONFIG_BOARD_MRFLD_VV
+		/* Notify hsic host driver that stage one enumeration done */
+		if ((udev->descriptor.idVendor ==
+				MODEM_7160_STAGE_ONE_VID) &&
+			(udev->descriptor.idProduct ==
+			 MODEM_7160_STAGE_ONE_PID)) {
+			dev_dbg(hub_dev, "%s: hsic notifier!\n", __func__);
+			blocking_notifier_call_chain(
+					&hcd->hsic->re_enum_notifier,
+					0, NULL);
+		}
+#endif
 		status = hub_power_remaining(hub);
 		if (status)
 			dev_dbg(hub_dev, "%dmA power budget left\n", status);
