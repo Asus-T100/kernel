@@ -54,7 +54,7 @@ struct ps_pse_mod_prof {
 	u8 disch_tmp_ul;
 	u8 disch_tmp_ll;
 	/* number of temperature monitoring ranges */
-	u8 temp_mon_ranges;
+	u16 temp_mon_ranges;
 	struct ps_temp_chg_table temp_mon_range[BATT_TEMP_NR_RNG];
 	/* Lowest temperature supported */
 	short int temp_low_lim;
