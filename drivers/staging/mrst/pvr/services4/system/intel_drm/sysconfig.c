@@ -1378,6 +1378,14 @@ int SYSPVRServiceSGXInterrupt(struct drm_device *dev)
 		{
 			OSScheduleMISR((IMG_VOID *)gpsSGXDevNode->psSysData);
 		}
+		if (gpsSGXDevNode->psSysData->psGlobalEventObject)
+		{
+			IMG_HANDLE hOSEventKM = gpsSGXDevNode->psSysData->psGlobalEventObject->hOSEventKM;
+			if(hOSEventKM)
+			{
+				OSEventObjectSignalKM(hOSEventKM);
+			}
+		}
 	}
 
 	return bStatus ? 1 : 0;
