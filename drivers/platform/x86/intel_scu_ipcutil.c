@@ -58,7 +58,9 @@
 #define SRAM_ADDR_S0IX_RESIDENCY	0xFFFF71E0
 #define ALL_RESIDENCY_DATA_SIZE		12
 
+#ifndef CONFIG_X86_MRFLD
 #define DUMP_OSNIB
+#endif
 
 /* Mode for Audio clock */
 static DEFINE_MUTEX(osc_clk0_lock);
