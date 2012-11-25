@@ -40,24 +40,30 @@
 #define INTEL_MFLD_DMAC1_ID		0x0830
 #define INTEL_CLV_GP_DMAC2_ID		0x08EF
 #define INTEL_CLV_DMAC1_ID		0x08F0
-#define LNW_PERIPHRAL_MASK_BASE		0xFFAE8008
-#define LNW_PERIPHRAL_MASK_SIZE		0x10
-#define LNW_PERIPHRAL_STATUS		0x0
-#define LNW_PERIPHRAL_MASK		0x8
+#define INTEL_MRFLD_GP_DMAC2_ID         0x11A2
+#define INTEL_MRFLD_DMAC0_ID		0x119B
+#define LNW_PERIPHRAL_MASK_SIZE		0x20
 
 struct intel_mid_dma_probe_info {
 	u8 max_chan;
 	u8 ch_base;
-	u16 block_size;
+	u32 block_size;
 	u32 pimr_mask;
+	u32 pimr_base;
+	u8 dword_trf;
+	u32 pimr_offset;
 };
 
-#define INFO(_max_chan, _ch_base, _block_size, _pimr_mask) \
+#define INFO(_max_chan, _ch_base, _block_size, _pimr_mask,	\
+		_pimr_base, _dword_trf, _pimr_offset)				\
 	((kernel_ulong_t)&(struct intel_mid_dma_probe_info) {	\
 		.max_chan = (_max_chan),			\
 		.ch_base = (_ch_base),				\
 		.block_size = (_block_size),			\
 		.pimr_mask = (_pimr_mask),			\
+		.pimr_base = (_pimr_base),			\
+		.dword_trf = (_dword_trf),			\
+		.pimr_offset = (_pimr_offset)			\
 	})
 
 /*****************************************************************************
@@ -87,11 +93,14 @@ static int get_ch_index(int status, unsigned int base)
  * @len: dma transfer length
  * @tx_width: dma transfer src width
  * @block_size: dma controller max block size
+ * @dword_trf: is transfer dword size aligned and needs the data transfer to
+ *   be in terms of data items and not bytes
  *
  * Based on src width calculate the DMA trsaction length in data items
  * return data items or FFFF if exceeds max length for block
  */
-static int get_block_ts(int len, int tx_width, int block_size)
+static unsigned int get_block_ts(int len, int tx_width,
+				int block_size, int dword_trf)
 {
 	int byte_width = 0, block_ts = 0;
 
@@ -107,8 +116,10 @@ static int get_block_ts(int len, int tx_width, int block_size)
 		byte_width = 4;
 		break;
 	}
-
-	block_ts = len/byte_width;
+	if (dword_trf)
+		block_ts = len/byte_width;
+	else
+		block_ts = len;
 	if (block_ts > block_size)
 		block_ts = 0xFFFF;
 	return block_ts;
@@ -161,9 +172,9 @@ static void dmac1_mask_periphral_intr(struct middma_device *mid)
 	u32 pimr;
 
 	if (mid->pimr_mask) {
-		pimr = readl(mid->mask_reg + LNW_PERIPHRAL_MASK);
+		pimr = readl(mid->mask_reg + mid->pimr_offset);
 		pimr |= mid->pimr_mask;
-		writel(pimr, mid->mask_reg + LNW_PERIPHRAL_MASK);
+		writel(pimr, mid->mask_reg + mid->pimr_offset);
 	}
 	return;
 }
@@ -181,10 +192,15 @@ static void dmac1_unmask_periphral_intr(struct intel_mid_dma_chan *midc)
 	u32 pimr;
 	struct middma_device *mid = to_middma_device(midc->chan.device);
 
-	if (mid->pimr_mask) {
-		pimr = readl(mid->mask_reg + LNW_PERIPHRAL_MASK);
+	if (mid->pimr_mask && mid->dword_trf) {
+		pimr = readl(mid->mask_reg + mid->pimr_offset);
 		pimr &= ~mid->pimr_mask;
-		writel(pimr, mid->mask_reg + LNW_PERIPHRAL_MASK);
+		writel(pimr, mid->mask_reg + mid->pimr_offset);
+	}
+	if (mid->pimr_mask && !mid->dword_trf) {
+		pimr = readl(mid->mask_reg + mid->pimr_offset);
+		pimr &= ~(1 << (midc->ch_id + 16));
+		writel(pimr, mid->mask_reg + mid->pimr_offset);
 	}
 	return;
 }
@@ -217,10 +233,19 @@ static void enable_dma_interrupt(struct intel_mid_dma_chan *midc)
  */
 static void disable_dma_interrupt(struct intel_mid_dma_chan *midc)
 {
+	struct middma_device *mid = to_middma_device(midc->chan.device);
+	u32 pimr;
+
 	/*Check LPE PISR, make sure fwd is disabled*/
 	iowrite32(MASK_INTR_REG(midc->ch_id), midc->dma_base + MASK_BLOCK);
 	iowrite32(MASK_INTR_REG(midc->ch_id), midc->dma_base + MASK_TFR);
 	iowrite32(MASK_INTR_REG(midc->ch_id), midc->dma_base + MASK_ERR);
+	if (mid->pimr_mask && !mid->dword_trf) {
+		pimr = readl(mid->mask_reg + mid->pimr_offset);
+		pimr |= (1 << (midc->ch_id + 16));
+		writel(pimr, mid->mask_reg + mid->pimr_offset);
+	}
+
 	return;
 }
 
@@ -296,9 +321,9 @@ static int midc_dostart(struct intel_mid_dma_chan *midc,
 	iowrite32(first->cfg_lo, midc->ch_regs + CFG_LOW);
 	iowrite32(first->ctl_lo, midc->ch_regs + CTL_LOW);
 	iowrite32(first->ctl_hi, midc->ch_regs + CTL_HIGH);
-	pr_debug("MDMA:TX SAR %x,DAR %x,CFGL %x,CFGH %x,CTLH %x, CTLL %x\n",
+	pr_debug("MDMA:TX SAR %x,DAR %x,CFGL %x,CFGH %x,CTLH %x, CTLL %x LLI %x",
 		(int)first->sar, (int)first->dar, first->cfg_hi,
-		first->cfg_lo, first->ctl_hi, first->ctl_lo);
+		first->cfg_lo, first->ctl_hi, first->ctl_lo, (int)first->lli_phys);
 	first->status = DMA_IN_PROGRESS;
 
 	iowrite32(ENABLE_CHANNEL(midc->ch_id), mid->dma_base + DMA_CHAN_EN);
@@ -412,7 +437,7 @@ static int midc_lli_fill_sg(struct intel_mid_dma_chan *midc,
 	dma_addr_t lli_next, sg_phy_addr;
 	struct intel_mid_dma_lli *lli_bloc_desc;
 	union intel_mid_dma_ctl_lo ctl_lo;
-	union intel_mid_dma_ctl_hi ctl_hi;
+	u32 ctl_hi;
 	int i;
 
 	pr_debug("MDMA: Entered midc_lli_fill_sg\n");
@@ -422,7 +447,7 @@ static int midc_lli_fill_sg(struct intel_mid_dma_chan *midc,
 	lli_next = desc->lli_phys;
 
 	ctl_lo.ctl_lo = desc->ctl_lo;
-	ctl_hi.ctl_hi = desc->ctl_hi;
+	ctl_hi = desc->ctl_hi;
 	for_each_sg(src_sglist, sg, sglen, i) {
 		/*Populate CTL_LOW and LLI values*/
 		if (i != sglen - 1) {
@@ -440,9 +465,8 @@ static int midc_lli_fill_sg(struct intel_mid_dma_chan *midc,
 			}
 		}
 		/*Populate CTL_HI values*/
-		ctl_hi.ctlx.block_ts = get_block_ts(sg->length,
-							desc->width,
-							midc->dma->block_size);
+		ctl_hi = get_block_ts(sg->length, desc->width,
+					midc->dma->block_size, midc->dma->dword_trf);
 		/*Populate SAR and DAR values*/
 		sg_phy_addr = sg_phys(sg);
 		if (desc->dirn ==  DMA_MEM_TO_DEV) {
@@ -458,8 +482,11 @@ static int midc_lli_fill_sg(struct intel_mid_dma_chan *midc,
 		/*Copy values into block descriptor in system memroy*/
 		lli_bloc_desc->llp = lli_next;
 		lli_bloc_desc->ctl_lo = ctl_lo.ctl_lo;
-		lli_bloc_desc->ctl_hi = ctl_hi.ctl_hi;
+		lli_bloc_desc->ctl_hi = ctl_hi;
 
+		pr_debug("MDMA:Calc CTL LO %x, CTL HI %x src: %x dest: %x sg->l:%x\n",
+					ctl_lo.ctl_lo, lli_bloc_desc->ctl_hi,
+					lli_bloc_desc->sar, lli_bloc_desc->dar, sg->length);
 		lli_bloc_desc++;
 		if (dst_sglist)
 			dst_sglist = sg_next(dst_sglist);
@@ -631,7 +658,7 @@ static struct dma_async_tx_descriptor *intel_mid_dma_prep_memcpy(
 	struct intel_mid_dma_desc *desc = NULL;
 	struct intel_mid_dma_slave *mids;
 	union intel_mid_dma_ctl_lo ctl_lo;
-	union intel_mid_dma_ctl_hi ctl_hi;
+	u32 ctl_hi;
 	union intel_mid_dma_cfg_lo cfg_lo;
 	union intel_mid_dma_cfg_hi cfg_hi;
 	enum dma_slave_buswidth width;
@@ -691,15 +718,11 @@ static struct dma_async_tx_descriptor *intel_mid_dma_prep_memcpy(
 					midc->ch_id - midc->dma->chan_base;
 		}
 	}
-
 	/*calculate CTL_HI*/
-	ctl_hi.ctlx.reser = 0;
-	ctl_hi.ctlx.done  = 0;
 	width = mids->dma_slave.src_addr_width;
-
-	ctl_hi.ctlx.block_ts = get_block_ts(len, width, midc->dma->block_size);
+	ctl_hi = get_block_ts(len, width, midc->dma->block_size, midc->dma->dword_trf);
 	pr_debug("MDMA:calc len %d for block size %d\n",
-				ctl_hi.ctlx.block_ts, midc->dma->block_size);
+				ctl_hi, midc->dma->block_size);
 	/*calculate CTL_LO*/
 	ctl_lo.ctl_lo = 0;
 	ctl_lo.ctlx.int_en = 1;
@@ -718,9 +741,6 @@ static struct dma_async_tx_descriptor *intel_mid_dma_prep_memcpy(
 				return NULL;
 	}
 	ctl_lo.ctlx.src_tr_width = src_reg_width;
-
-
-
 	ctl_lo.ctlx.dst_msize = mids->dma_slave.src_maxburst;
 	ctl_lo.ctlx.src_msize = mids->dma_slave.dst_maxburst;
 
@@ -741,7 +761,7 @@ static struct dma_async_tx_descriptor *intel_mid_dma_prep_memcpy(
 	}
 
 	pr_debug("MDMA:Calc CTL LO %x, CTL HI %x, CFG LO %x, CFG HI %x\n",
-		ctl_lo.ctl_lo, ctl_hi.ctl_hi, cfg_lo.cfg_lo, cfg_hi.cfg_hi);
+		ctl_lo.ctl_lo, ctl_hi, cfg_lo.cfg_lo, cfg_hi.cfg_hi);
 
 	enable_dma_interrupt(midc);
 
@@ -754,7 +774,7 @@ static struct dma_async_tx_descriptor *intel_mid_dma_prep_memcpy(
 	desc->cfg_hi = cfg_hi.cfg_hi;
 	desc->cfg_lo = cfg_lo.cfg_lo;
 	desc->ctl_lo = ctl_lo.ctl_lo;
-	desc->ctl_hi = ctl_hi.ctl_hi;
+	desc->ctl_hi = ctl_hi;
 	desc->width = width;
 	desc->dirn = mids->dma_slave.direction;
 	desc->lli_phys = 0;
@@ -921,7 +941,7 @@ static void intel_mid_dma_free_chan_resources(struct dma_chan *chan)
 	pr_debug("entry:%s\n", __func__);
 	if (false == midc->in_use) {
 		pr_err("ERR_MDMA: try to free chnl already freed\n");
-		return 0;
+		return;
 	}
 	if (true == midc->busy) {
 		/*trying to free ch in use!!!!!*/
@@ -951,8 +971,8 @@ static void intel_mid_dma_free_chan_resources(struct dma_chan *chan)
 	midc->in_use = false;
 	midc->busy = false;
 	/* Disable CH interrupts */
-	iowrite32(MASK_INTR_REG(midc->ch_id), mid->dma_base + MASK_BLOCK);
-	iowrite32(MASK_INTR_REG(midc->ch_id), mid->dma_base + MASK_ERR);
+	disable_dma_interrupt(midc);
+
 	pm_runtime_put(&mid->pdev->dev);
 }
 
@@ -1129,6 +1149,7 @@ static irqreturn_t intel_mid_dma_interrupt(int irq, void *data)
 	struct middma_device *mid = data;
 	u32 tfr_status, err_status, block_status;
 	int call_tasklet = 0;
+	u32 isr;
 
 	/*DMA Interrupt*/
 	pr_debug("MDMA:Got an interrupt on irq %d\n", irq);
@@ -1141,8 +1162,9 @@ static irqreturn_t intel_mid_dma_interrupt(int irq, void *data)
 	tfr_status = ioread32(mid->dma_base + STATUS_TFR);
 	err_status = ioread32(mid->dma_base + STATUS_ERR);
 	block_status = ioread32(mid->dma_base + STATUS_BLOCK);
+
 	if (!tfr_status && !err_status && !block_status)
-		return IRQ_NONE;
+		return IRQ_HANDLED;
 
 	/*DMA Interrupt*/
 	pr_debug("MDMA:Got an interrupt on irq %d\n", irq);
@@ -1162,6 +1184,20 @@ static irqreturn_t intel_mid_dma_interrupt(int irq, void *data)
 			  mid->dma_base + MASK_ERR);
 		call_tasklet = 1;
 	}
+	/* in mrlfd we need to clear the pisr bits to stop intr as well
+	 * so read the PISR register, see if we have pisr bits status and clear
+	 * them
+	 */
+	if (mid->pimr_mask && !mid->dword_trf) {
+		isr = readl(mid->mask_reg);
+		pr_debug("isr says: %x", isr);
+		if (isr) {
+			isr &= mid->pimr_mask;
+			pr_debug("writing isr: %x", isr);
+			writel(isr, mid->mask_reg);
+		}
+	}
+
 	if (call_tasklet)
 		tasklet_schedule(&mid->tasklet);
 
@@ -1204,8 +1240,7 @@ static int mid_setup_dma(struct pci_dev *pdev)
 	INIT_LIST_HEAD(&dma->common.channels);
 	dma->pci_id = pdev->device;
 	if (dma->pimr_mask) {
-		dma->mask_reg = ioremap(LNW_PERIPHRAL_MASK_BASE,
-					LNW_PERIPHRAL_MASK_SIZE);
+		dma->mask_reg = ioremap(dma->pimr_base, LNW_PERIPHRAL_MASK_SIZE);
 		if (dma->mask_reg == NULL) {
 			pr_err("ERR_MDMA:Can't map periphral intr space !!\n");
 			err = -ENOMEM;
@@ -1398,6 +1433,9 @@ static int __devinit intel_mid_dma_probe(struct pci_dev *pdev,
 	device->chan_base = info->ch_base;
 	device->block_size = info->block_size;
 	device->pimr_mask = info->pimr_mask;
+	device->pimr_base = info->pimr_base;
+	device->dword_trf = info->dword_trf;
+	device->pimr_offset = info->pimr_offset;
 
 	err = mid_setup_dma(pdev);
 	if (err)
@@ -1506,26 +1544,37 @@ static int dma_runtime_idle(struct device *dev)
 	struct middma_device *device = dev_get_drvdata(dev);
 	int i;
 
+	if (device->pci_id == INTEL_MRFLD_DMAC0_ID)
+		return -EAGAIN;
 	for (i = 0; i < device->max_chan; i++) {
 		if (device->ch[i].in_use)
 			return -EAGAIN;
 	}
-
-	return pm_schedule_suspend(dev, 0);
+	return pm_schedule_suspend(dev, 0);;
 }
 
 /******************************************************************************
 * PCI stuff
 */
 static struct pci_device_id intel_mid_dma_ids[] = {
-	{ PCI_VDEVICE(INTEL, INTEL_MID_DMAC1_ID),	INFO(2, 6, 4095, 0x200020)},
-	{ PCI_VDEVICE(INTEL, INTEL_MID_DMAC2_ID),	INFO(2, 0, 2047, 0)},
-	{ PCI_VDEVICE(INTEL, INTEL_MID_GP_DMAC2_ID),	INFO(2, 0, 2047, 0)},
-	{ PCI_VDEVICE(INTEL, INTEL_MFLD_DMAC1_ID),	INFO(4, 0, 4095, 0x400040)},
-
+	{ PCI_VDEVICE(INTEL, INTEL_MID_DMAC1_ID),
+					INFO(2, 6, 4095, 0x200020, 0xFFAE8008, 1, 0x8)},
+	{ PCI_VDEVICE(INTEL, INTEL_MID_DMAC2_ID),
+					INFO(2, 0, 2047, 0, 0, 1, 0)},
+	{ PCI_VDEVICE(INTEL, INTEL_MID_GP_DMAC2_ID),
+					INFO(2, 0, 2047, 0, 0, 1, 0)},
+	{ PCI_VDEVICE(INTEL, INTEL_MFLD_DMAC1_ID),
+					INFO(4, 0, 4095, 0x400040, 0xFFAE8008, 1, 0x8)},
 	/* Cloverview support */
-	{ PCI_VDEVICE(INTEL, INTEL_CLV_GP_DMAC2_ID),	INFO(2, 0, 2047, 0)},
-	{ PCI_VDEVICE(INTEL, INTEL_CLV_DMAC1_ID),	INFO(4, 0, 4095, 0x400040)},
+	{ PCI_VDEVICE(INTEL, INTEL_CLV_GP_DMAC2_ID),
+					INFO(2, 0, 2047, 0, 0, 1, 0)},
+	{ PCI_VDEVICE(INTEL, INTEL_CLV_DMAC1_ID),
+					INFO(4, 0, 4095, 0x400040, 0xFFAE8008, 1, 0x8)},
+	/* Mrfld */
+	{ PCI_VDEVICE(INTEL, INTEL_MRFLD_GP_DMAC2_ID),
+					INFO(4, 0, 131072, 0, 0, 0, 0)},
+	{ PCI_VDEVICE(INTEL, INTEL_MRFLD_DMAC0_ID),
+					INFO(4, 0, 131072, 0xFF0000, 0xFF340018, 0, 0x10)},
 	{ 0, }
 };
 MODULE_DEVICE_TABLE(pci, intel_mid_dma_ids);
