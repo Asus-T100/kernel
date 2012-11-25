@@ -572,7 +572,7 @@ static int psb_msvdx_send(struct drm_device *dev, void *cmd,
 		}
 	}
 #ifdef CONFIG_VIDEO_MRFLD_VP
-	while (1) {
+	while (0) {
 		uint32_t msvdx_stat;
 		msvdx_stat = PSB_RMSVDX32(MSVDX_INTERRUPT_STATUS);
 		if (msvdx_stat & MSVDX_INTERRUPT_STATUS_CR_MTX_IRQ_MASK) {

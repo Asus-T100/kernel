@@ -214,7 +214,7 @@ static void psb_upload_fw(struct drm_psb_private *dev_priv,
 
 	/* Invalidate */
 	reg_val = PSB_RMSVDX32(REGISTER(MSVDX_CORE, CR_MMU_CONTROL0));
-	reg_val &= ~0xf;
+	reg_val = 0;
 	REGIO_WRITE_FIELD(reg_val, MSVDX_CORE_CR_MMU_CONTROL0, CR_MMU_INVALDC,
 			  1);
 	PSB_WMSVDX32(reg_val, REGISTER(MSVDX_CORE, CR_MMU_CONTROL0));
@@ -529,6 +529,7 @@ int psb_setup_fw(struct drm_device *dev)
 	uint32_t *text_ptr = NULL;
 	uint32_t *data_ptr = NULL;
 	const struct firmware *raw = NULL;
+	int32_t reg;
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
 	int ec_firmware = 0, ret = 0;
 
@@ -1055,6 +1056,8 @@ int psb_msvdx_init(struct drm_device *dev)
 		    sysfs_get_dirent(dev->pdev->dev.kobj.sd,
 				     NULL,
 				     "msvdx_pmstate");
+
+		msvdx_priv->msvdx_needs_reset = 1;
 	}
 
 	msvdx_priv = dev_priv->msvdx_private;
