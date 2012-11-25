@@ -109,7 +109,7 @@ int intel_ia2psh_command(struct psh_msg *in, struct psh_msg *out,
 
 	/* Input timeout is nonzero, check channel status */
 	while (((status = readl(&PSH_REG(ia2psh)[ch].msg)) & CHANNEL_BUSY)
-		&& timeout) {
+		&& timeout > 0) {
 		usleep_range(100, 101);
 		timeout -= 100;
 	}
