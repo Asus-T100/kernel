@@ -106,7 +106,7 @@ int do_setup_ddr(struct device *dev)
 #ifdef VPROG2_SENSOR
 	intel_scu_ipc_msic_vprog2(1);
 #endif
-	if (!request_firmware(&fw_entry, "psh", dev)) {
+	if (!request_firmware(&fw_entry, "psh.bin", dev)) {
 		pr_debug("psh fw size %d virt:0x%p\n",
 				fw_entry->size, fw_entry->data);
 		if (fw_entry->size > APP_IMR_SIZE) {
@@ -190,7 +190,7 @@ pci_err: */
 	return ret;
 }
 
-static __devexit int psh_remove(struct pci_dev *pdev)
+static void __devexit psh_remove(struct pci_dev *pdev)
 {
 	__free_pages(imr, get_order(APP_IMR_SIZE));
 
@@ -201,8 +201,6 @@ static __devexit int psh_remove(struct pci_dev *pdev)
 	hwmon_device_unregister(hwmon_dev);
 
 	/* pci_dev_put(pdev); */
-
-	return 0;
 }
 
 static DEFINE_PCI_DEVICE_TABLE(pci_ids) = {
