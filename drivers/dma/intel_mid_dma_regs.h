@@ -238,6 +238,9 @@ struct middma_device {
 	int			max_chan;
 	int			block_size;
 	unsigned int		pimr_mask;
+	unsigned int		pimr_base;
+	unsigned int		dword_trf;
+	unsigned int		pimr_offset;
 	enum intel_mid_dma_state state;
 };
 
