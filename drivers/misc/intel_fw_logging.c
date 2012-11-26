@@ -59,6 +59,10 @@
 #define MAX_FID_REG_LEN			32
 #define MAX_NUM_LOGDWORDS		12
 #define MAX_NUM_LOGDWORDS_EXTENDED      9
+#define MAX_NUM_ALL_LOGDWORDS           (2 + (MAX_NUM_LOGDWORDS + \
+						MAX_NUM_LOGDWORDS_EXTENDED))
+#define MAX_RAW_DWORDS_SIZE             (16  * MAX_NUM_ALL_LOGDWORDS)
+#define MAX_FULL_SIZE                   (MAX_BUFFER_SIZE + MAX_RAW_DWORDS_SIZE)
 #define FABERR_INDICATOR		0x15
 #define FWERR_INDICATOR			0x7
 #define UNDEFLVL1ERR_IND		0x11
@@ -109,7 +113,7 @@ union flag_status_hilo {
 };
 
 static void __iomem *oshob_base;
-static char log_buffer[MAX_BUFFER_SIZE] = {0};
+static char log_buffer[MAX_FULL_SIZE] = {0};
 
 static char *Fabric_Names[] = {
 	"\nFull Chip Fabric [error]\n\n",
@@ -150,8 +154,8 @@ static int intel_fw_logging_proc_read(char *buffer, char **start, off_t offset,
 		return 0;
 	} else {
 		/* Fill the buffer, return the buffer size */
-		memcpy(buffer, log_buffer, MAX_BUFFER_SIZE);
-		return MAX_BUFFER_SIZE;
+		memcpy(buffer, log_buffer, MAX_FULL_SIZE);
+		return MAX_FULL_SIZE;
 	}
 }
 #endif /* CONFIG_PROC_FS */
@@ -194,8 +198,8 @@ static void get_fabric_error_cause_detail(char *buf, u32 FabId,
 			ptr = fabric_error_lookup(FabId, index, IsHiDword);
 
 			if (ptr != NULL && strlen(ptr)) {
-				strcat(buf, ptr);
-				strcat(buf, "\n");
+				strlcat(buf, ptr, MAX_BUFFER_SIZE);
+				strlcat(buf, "\n", MAX_BUFFER_SIZE);
 			}
 		}
 
@@ -203,7 +207,7 @@ static void get_fabric_error_cause_detail(char *buf, u32 FabId,
 		fid_mask <<= 1;
 	}
 
-	strcat(buf, "\n");
+	strlcat(buf, "\n", MAX_BUFFER_SIZE);
 }
 
 static void get_additional_error(char *buf, int num_err_log,
@@ -213,7 +217,8 @@ static void get_additional_error(char *buf, int num_err_log,
 	char temp[100], str[50];
 	union error_log_dw10 log;
 
-	strcat(buf, "\nAdditional logs associated with error(s): ");
+	strlcat(buf, "\nAdditional logs associated with error(s): ",
+							MAX_BUFFER_SIZE);
 
 	if (num_err_log) {
 
@@ -222,15 +227,17 @@ static void get_additional_error(char *buf, int num_err_log,
 			sprintf(temp, "\nerror_log: 0x%X\n",
 					*(faberr_dwords + i));
 
-			strcat(buf, temp);
+			strlcat(buf, temp, MAX_BUFFER_SIZE);
 			sprintf(temp, "error_addr: 0x%X\n",
 				*(faberr_dwords + i + 1));
 
-			strcat(buf, temp);
+			strlcat(buf, temp, MAX_BUFFER_SIZE);
 			log.data = *(faberr_dwords + i);
 
-			strcat(buf, "\nDecoded error log detail\n");
-			strcat(buf, "---------------------------\n\n");
+			strlcat(buf, "\nDecoded error log detail\n",
+							MAX_BUFFER_SIZE);
+			strlcat(buf, "---------------------------\n\n",
+							MAX_BUFFER_SIZE);
 
 			if (log.fields.agent_idx > MAX_AGENT_IDX)
 				sprintf(str, "Unknown agent index (%d)\n",
@@ -240,25 +247,26 @@ static void get_additional_error(char *buf, int num_err_log,
 					Agent_Names[log.fields.agent_idx]);
 
 			snprintf(temp, sizeof(temp)-1, "Agent Index:%s\n", str);
-			strcat(buf, temp);
+			strlcat(buf, temp, MAX_BUFFER_SIZE);
 
 			sprintf(temp, "Cmd initiator ID: %d\n",
 						log.fields.initid);
-			strcat(buf, temp);
+			strlcat(buf, temp, MAX_BUFFER_SIZE);
 
 			sprintf(temp, "Command: %d\n", log.fields.cmd);
-			strcat(buf, temp);
+			strlcat(buf, temp, MAX_BUFFER_SIZE);
 
 			sprintf(temp, "Code: %d\n", log.fields.err_code);
-			strcat(buf, temp);
+			strlcat(buf, temp, MAX_BUFFER_SIZE);
 
 			if (log.fields.multi_err)
-				strcat(buf, "\n* Multiple errors detected!\n");
+				strlcat(buf, "\n Multiple errors detected!\n",
+							MAX_BUFFER_SIZE);
 
 			i += 2; /* Skip one error_log/addr pair */
 		}
 	} else {
-		strcat(buf, "Not present\n");
+		strlcat(buf, "Not present\n", MAX_BUFFER_SIZE);
 	}
 }
 
@@ -380,7 +388,7 @@ static int create_fwerr_log(char *output_buf, void __iomem *oshob_ptr)
 		 */
 
 		if (prev_id != id || id == FAB_ID_UNKNOWN) {
-			strcat(output_buf, ptr);
+			strlcat(output_buf, ptr, MAX_BUFFER_SIZE);
 			prev_id = id;
 		}
 
@@ -414,13 +422,13 @@ static int create_fwerr_log(char *output_buf, void __iomem *oshob_ptr)
 	get_additional_error(output_buf, num_err_logs, &faberr_dwords[offset],
 						MAX_NUM_LOGDWORDS - offset);
 
-	strcat(output_buf, "\n\n\nAdditional debug data:\n\n");
+	strlcat(output_buf, "\n\n\nAdditional debug data:\n\n", MAX_FULL_SIZE);
 	for (count = 0;
 		count < MAX_NUM_LOGDWORDS + MAX_NUM_LOGDWORDS_EXTENDED;
 		count++) {
 		sprintf(temp, "DW%d:0x%08x\n",
 			count, faberr_dwords[count]);
-		strcat(output_buf, temp);
+		strlcat(output_buf, temp, MAX_FULL_SIZE);
 	}
 	return strlen(output_buf);
 }
