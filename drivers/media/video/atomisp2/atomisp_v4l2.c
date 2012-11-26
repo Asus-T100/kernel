@@ -290,67 +290,67 @@ static int atomisp_save_iunit_reg(struct atomisp_device *isp)
 
 	dev_dbg(isp->dev, "%s\n", __func__);
 
-	pci_read_config_word(dev, PCI_COMMAND, &isp->hw_contex.pcicmdsts);
-	/* isp->hw_contex.ispmmadr is set from the atomisp_pci_probe() */
-	pci_read_config_dword(dev, PCI_MSI_CAPID, &isp->hw_contex.msicap);
-	pci_read_config_dword(dev, PCI_MSI_ADDR, &isp->hw_contex.msi_addr);
-	pci_read_config_word(dev, PCI_MSI_DATA,  &isp->hw_contex.msi_data);
-	pci_read_config_byte(dev, PCI_INTERRUPT_LINE, &isp->hw_contex.intr);
+	pci_read_config_word(dev, PCI_COMMAND, &isp->saved_regs.pcicmdsts);
+	/* isp->saved_regs.ispmmadr is set from the atomisp_pci_probe() */
+	pci_read_config_dword(dev, PCI_MSI_CAPID, &isp->saved_regs.msicap);
+	pci_read_config_dword(dev, PCI_MSI_ADDR, &isp->saved_regs.msi_addr);
+	pci_read_config_word(dev, PCI_MSI_DATA,  &isp->saved_regs.msi_data);
+	pci_read_config_byte(dev, PCI_INTERRUPT_LINE, &isp->saved_regs.intr);
 	pci_read_config_dword(dev, PCI_INTERRUPT_CTRL,
-			      &isp->hw_contex.interrupt_control);
+			      &isp->saved_regs.interrupt_control);
 
 	if (IS_MRFLD) {
 		pci_read_config_dword(dev, MRFLD_PCI_PMCS,
-				      &isp->hw_contex.pmcs);
+				      &isp->saved_regs.pmcs);
 		/* Ensure read/write combining is enabled. */
 		pci_read_config_dword(dev, PCI_I_CONTROL,
-				&isp->hw_contex.i_control);
-		isp->hw_contex.i_control |=
+				&isp->saved_regs.i_control);
+		isp->saved_regs.i_control |=
 				MRFLD_PCI_I_CONTROL_ENABLE_READ_COMBINING |
 				MRFLD_PCI_I_CONTROL_ENABLE_WRITE_COMBINING;
 		pci_read_config_dword(dev, MRFLD_PCI_CSI_ACCESS_CTRL_VIOL,
-				      &isp->hw_contex.csi_access_viol);
+				      &isp->saved_regs.csi_access_viol);
 		pci_read_config_dword(dev, MRFLD_PCI_CSI_RCOMP_CONTROL,
-				      &isp->hw_contex.csi_rcomp_config);
+				      &isp->saved_regs.csi_rcomp_config);
 		pci_read_config_dword(dev, MRFLD_PCI_CSI_AFE_TRIM_CONTROL,
-				      &isp->hw_contex.csi_afe_dly);
+				      &isp->saved_regs.csi_afe_dly);
 		pci_read_config_dword(dev, MRFLD_PCI_CSI_CONTROL,
-				      &isp->hw_contex.csi_control);
+				      &isp->saved_regs.csi_control);
 		pci_read_config_dword(dev, MRFLD_PCI_CSI_AFE_RCOMP_CONTROL,
-				      &isp->hw_contex.csi_afe_rcomp_config);
+				      &isp->saved_regs.csi_afe_rcomp_config);
 		pci_read_config_dword(dev, MRFLD_PCI_CSI_AFE_HS_CONTROL,
-				      &isp->hw_contex.csi_afe_hs_control);
+				      &isp->saved_regs.csi_afe_hs_control);
 		pci_read_config_dword(dev, MRFLD_PCI_CSI_DEADLINE_CONTROL,
-				      &isp->hw_contex.csi_deadline_control);
+				      &isp->saved_regs.csi_deadline_control);
 	} else {
 		pci_read_config_dword(dev, MFLD_PCI_PMCS,
-				      &isp->hw_contex.pmcs);
+				      &isp->saved_regs.pmcs);
 
 		/* Ensure clock gating for ISPCLK, PERF and NOA monitoring. */
 		pci_read_config_dword(dev, MFLD_PCI_CG_DIS,
-				      &isp->hw_contex.cg_dis);
-		isp->hw_contex.cg_dis &= ~(MFLD_PCI_CG_DIS_DISABLED_ISPCLK |
+				      &isp->saved_regs.cg_dis);
+		isp->saved_regs.cg_dis &= ~(MFLD_PCI_CG_DIS_DISABLED_ISPCLK |
 				MFLD_PCI_CG_DIS_DISABLED_PERF_MON |
 				MFLD_PCI_CG_DIS_DISABLED_NOA_MON);
 
 		/* Ensure read/write combining is enabled. */
 		pci_read_config_dword(dev, PCI_I_CONTROL,
-				&isp->hw_contex.i_control);
-		isp->hw_contex.i_control |=
+				&isp->saved_regs.i_control);
+		isp->saved_regs.i_control |=
 				MFLD_PCI_I_CONTROL_ENABLE_READ_COMBINING |
 				MFLD_PCI_I_CONTROL_ENABLE_WRITE_COMBINING;
 
-		isp->hw_contex.csi_rcomp_config = intel_mid_msgbus_read32(
+		isp->saved_regs.csi_rcomp_config = intel_mid_msgbus_read32(
 				MFLD_IUNITPHY_PORT, MFLD_CSI_RCOMP);
-		isp->hw_contex.csi_afe_dly = intel_mid_msgbus_read32(
+		isp->saved_regs.csi_afe_dly = intel_mid_msgbus_read32(
 				MFLD_IUNITPHY_PORT, MFLD_CSI_AFE);
 
 		/* Ensure mipi1 and mipi4 configurations are enabled */
-		isp->hw_contex.csi_control = intel_mid_msgbus_read32(
+		isp->saved_regs.csi_control = intel_mid_msgbus_read32(
 				MFLD_IUNITPHY_PORT, MFLD_CSI_CONTROL);
-		isp->hw_contex.csi_control &= ~(MFLD_CSI_CONTROL_DIS_MIPI4_IF |
+		isp->saved_regs.csi_control &= ~(MFLD_CSI_CONTROL_DIS_MIPI4_IF |
 				MFLD_CSI_CONTROL_DIS_MIPI1_IF);
-		isp->hw_contex.csi_control |= MFLD_CSI_CONTROL_EN_MIPI4_LANE |
+		isp->saved_regs.csi_control |= MFLD_CSI_CONTROL_EN_MIPI4_LANE |
 				MFLD_CSI_CONTROL_EN_MIPI1_LANE;
 	}
 
@@ -363,35 +363,35 @@ static int atomisp_restore_iunit_reg(struct atomisp_device *isp)
 
 	dev_dbg(isp->dev, "%s\n", __func__);
 
-	pci_write_config_word(dev, PCI_COMMAND, isp->hw_contex.pcicmdsts);
+	pci_write_config_word(dev, PCI_COMMAND, isp->saved_regs.pcicmdsts);
 	pci_write_config_dword(dev, PCI_BASE_ADDRESS_0,
-			       isp->hw_contex.ispmmadr);
-	pci_write_config_dword(dev, PCI_MSI_CAPID, isp->hw_contex.msicap);
-	pci_write_config_dword(dev, PCI_MSI_ADDR, isp->hw_contex.msi_addr);
-	pci_write_config_word(dev, PCI_MSI_DATA, isp->hw_contex.msi_data);
-	pci_write_config_byte(dev, PCI_INTERRUPT_LINE, isp->hw_contex.intr);
+			       isp->saved_regs.ispmmadr);
+	pci_write_config_dword(dev, PCI_MSI_CAPID, isp->saved_regs.msicap);
+	pci_write_config_dword(dev, PCI_MSI_ADDR, isp->saved_regs.msi_addr);
+	pci_write_config_word(dev, PCI_MSI_DATA, isp->saved_regs.msi_data);
+	pci_write_config_byte(dev, PCI_INTERRUPT_LINE, isp->saved_regs.intr);
 	pci_write_config_dword(dev, PCI_INTERRUPT_CTRL,
-			       isp->hw_contex.interrupt_control);
+			       isp->saved_regs.interrupt_control);
 	pci_write_config_dword(dev, PCI_I_CONTROL,
-					isp->hw_contex.i_control);
+					isp->saved_regs.i_control);
 
 	if (IS_MRFLD) {
 		pci_write_config_dword(dev, MRFLD_PCI_PMCS,
-						isp->hw_contex.pmcs);
+						isp->saved_regs.pmcs);
 		pci_write_config_dword(dev, MRFLD_PCI_CSI_ACCESS_CTRL_VIOL,
-				      isp->hw_contex.csi_access_viol);
+				      isp->saved_regs.csi_access_viol);
 		pci_write_config_dword(dev, MRFLD_PCI_CSI_RCOMP_CONTROL,
-				      isp->hw_contex.csi_rcomp_config);
+				      isp->saved_regs.csi_rcomp_config);
 		pci_write_config_dword(dev, MRFLD_PCI_CSI_AFE_TRIM_CONTROL,
-				      isp->hw_contex.csi_afe_dly);
+				      isp->saved_regs.csi_afe_dly);
 		pci_write_config_dword(dev, MRFLD_PCI_CSI_CONTROL,
-				      isp->hw_contex.csi_control);
+				      isp->saved_regs.csi_control);
 		pci_write_config_dword(dev, MRFLD_PCI_CSI_AFE_RCOMP_CONTROL,
-				      isp->hw_contex.csi_afe_rcomp_config);
+				      isp->saved_regs.csi_afe_rcomp_config);
 		pci_write_config_dword(dev, MRFLD_PCI_CSI_AFE_HS_CONTROL,
-				      isp->hw_contex.csi_afe_hs_control);
+				      isp->saved_regs.csi_afe_hs_control);
 		pci_write_config_dword(dev, MRFLD_PCI_CSI_DEADLINE_CONTROL,
-				      isp->hw_contex.csi_deadline_control);
+				      isp->saved_regs.csi_deadline_control);
 
 		/*
 		 * for MRFLD, Software/firmware needs to write a 1 to bit0
@@ -403,15 +403,16 @@ static int atomisp_restore_iunit_reg(struct atomisp_device *isp)
 		device_store_uint32(MRFLD_CSI_RECEIVER_SELECTION_REG, 1);
 
 	} else {
-		pci_write_config_dword(dev, MFLD_PCI_PMCS, isp->hw_contex.pmcs);
+		pci_write_config_dword(dev, MFLD_PCI_PMCS,
+				       isp->saved_regs.pmcs);
 		pci_write_config_dword(dev, MFLD_PCI_CG_DIS,
-						isp->hw_contex.cg_dis);
+						isp->saved_regs.cg_dis);
 		intel_mid_msgbus_write32(MFLD_IUNITPHY_PORT, MFLD_CSI_RCOMP,
-				    isp->hw_contex.csi_rcomp_config);
+				    isp->saved_regs.csi_rcomp_config);
 		intel_mid_msgbus_write32(MFLD_IUNITPHY_PORT, MFLD_CSI_AFE,
-				    isp->hw_contex.csi_afe_dly);
+				    isp->saved_regs.csi_afe_dly);
 		intel_mid_msgbus_write32(MFLD_IUNITPHY_PORT, MFLD_CSI_CONTROL,
-				    isp->hw_contex.csi_control);
+				    isp->saved_regs.csi_control);
 	}
 
 	return 0;
@@ -450,7 +451,7 @@ static int atomisp_runtime_resume(struct device *dev)
 	}
 
 	/*restore register values for iUnit and iUnitPHY registers*/
-	if (isp->hw_contex.pcicmdsts)
+	if (isp->saved_regs.pcicmdsts)
 		atomisp_restore_iunit_reg(isp);
 
 	return 0;
@@ -507,7 +508,7 @@ static int atomisp_resume(struct device *dev)
 	}
 
 	/*restore register values for iUnit and iUnitPHY registers*/
-	if (isp->hw_contex.pcicmdsts)
+	if (isp->saved_regs.pcicmdsts)
 		atomisp_restore_iunit_reg(isp);
 
 	return 0;
@@ -993,12 +994,12 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	isp->pdev = dev;
 	isp->dev = &dev->dev;
 	isp->sw_contex.power_state = ATOM_ISP_POWER_UP;
-	isp->hw_contex.pci_root = pci_get_bus_and_slot(0, 0);
-	if (!isp->hw_contex.pci_root) {
+	isp->pci_root = pci_get_bus_and_slot(0, 0);
+	if (!isp->pci_root) {
 		dev_err(&dev->dev, "Unable to find PCI host\n");
 		return -ENODEV;
 	}
-	isp->hw_contex.ispmmadr = start;
+	isp->saved_regs.ispmmadr = start;
 
 	mutex_init(&isp->mutex);
 	spin_lock_init(&isp->lock);
@@ -1091,7 +1092,7 @@ enable_msi_fail:
 work_queue_fail:
 	release_firmware(isp->firmware);
 load_fw_fail:
-	pci_dev_put(isp->hw_contex.pci_root);
+	pci_dev_put(isp->pci_root);
 	return err;
 }
 
@@ -1105,7 +1106,7 @@ static void __devexit atomisp_pci_remove(struct pci_dev *dev)
 	pm_qos_remove_request(&isp->pm_qos);
 
 	atomisp_msi_irq_uninit(isp, dev);
-	pci_dev_put(isp->hw_contex.pci_root);
+	pci_dev_put(isp->pci_root);
 
 	atomisp_unregister_entities(isp);
 

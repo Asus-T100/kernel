@@ -480,7 +480,7 @@ static int atomisp_open(struct file *file)
 	 * This means we need to put the L1 page table base address back into
 	 * the ISP
 	 */
-	if (isp->hw_contex.mmu_l1_base)
+	if (isp->mmu_l1_base)
 		/*
 		 * according to sh_css.c sh_css_mmu_set_page_table_base_index
 		 * is deprecated and mmgr_set_base_address should be used
@@ -489,10 +489,10 @@ static int atomisp_open(struct file *file)
 		 * with mmgr_set_base_address() is not working.
 		 */
 		sh_css_mmu_set_page_table_base_index(
-				HOST_ADDRESS(isp->hw_contex.mmu_l1_base));
+				HOST_ADDRESS(isp->mmu_l1_base));
 
 	/* With CSS "alpha" it is mandatory to set base address always */
-	mmgr_set_base_address(HOST_ADDRESS(isp->hw_contex.mmu_l1_base));
+	mmgr_set_base_address(HOST_ADDRESS(isp->mmu_l1_base));
 
 	/* Init ISP */
 	if (sh_css_init(&my_env,
@@ -613,10 +613,10 @@ static int atomisp_release(struct file *file)
 
 	/* store L1 base address for next time we init the CSS */
 /*
-	isp->hw_contex.mmu_l1_base =
+	isp->mmu_l1_base =
 			(void *)mmgr_get_base_address();
 */
-	isp->hw_contex.mmu_l1_base =
+	isp->mmu_l1_base =
 			(void *)sh_css_mmu_get_page_table_base_index();
 
 	if (pm_runtime_put_sync(vdev->v4l2_dev->dev))

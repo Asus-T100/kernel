@@ -106,8 +106,7 @@ struct atomisp_input_subdev {
 	struct v4l2_frmsizeenum frame_size;
 };
 
-struct atomisp_hw_contex {
-
+struct atomisp_regs {
 	/* PCI config space info */
 	u16 pcicmdsts;
 	u32 ispmmadr;
@@ -130,15 +129,6 @@ struct atomisp_hw_contex {
 	u32 csi_afe_hs_control;
 	u32 csi_deadline_control;
 	u32 csi_access_viol;
-
-	/* ISP MMU base address */
-	void *mmu_l1_base;
-
-	/*
-	 * PCI Bus Root
-	 * Used to access internal message bus
-	 */
-	struct pci_dev *pci_root;
 };
 
 struct atomisp_sw_contex {
@@ -263,6 +253,8 @@ struct atomisp_device {
 	struct v4l2_device v4l2_dev;
 	struct media_device media_dev;
 	struct atomisp_platform_data *pdata;
+	void *mmu_l1_base;
+	struct pci_dev *pci_root;
 	const struct firmware *firmware;
 
 	struct pm_qos_request_list pm_qos;
@@ -309,7 +301,7 @@ struct atomisp_device {
 	struct v4l2_subdev *flash;
 	struct v4l2_subdev *motor;
 
-	struct atomisp_hw_contex hw_contex;
+	struct atomisp_regs saved_regs;
 	struct atomisp_sw_contex sw_contex;
 	struct atomisp_css_params params;
 
