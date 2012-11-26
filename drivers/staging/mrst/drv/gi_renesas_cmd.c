@@ -32,23 +32,22 @@
 #define GPIO_MIPI_PANEL_RESET 128
 
 /* Renesas display command */
-static u8 gi_er61529_mcs_protect_on[]	= {0xb0, 0x00};
+static u8 gi_er61529_mcs_protect_on[]	= {0xb0, 0x04};
 static u8 gi_er61529_mcs_protect_off[]	= {0xb0, 0x03};
 static u8 gi_er61529_mcs_lp_mode_cntr[] = {0xb1, 0x1};
 static u8 gi_er61529_mcs_mem_access[]	= {0xb3, 0x02, 0x00, 0x00, 0x00};
-static u8 gi_er61529_disp_mode[]	= {0xb4, 0x00};
 static u8 gi_er61529_mcs_panel_driving[] = {
-	0xc0, 0x03, 0xdf, 0x40,
-	0x12, 0x00, 0x01, 0x00,
-	0x44
+	0xc0, 0x06, 0xdf, 0x40,
+	0x13, 0x00, 0x01, 0x00,
+	0x55
 };
 static u8 gi_er61529_disp_timming[] = {
 	0xc1, 0x07, 0x28, 0x08,
 	0x08, 0x00
 };
 static u8 gi_er61529_src_timming[] = {
-	0xc4, 0x57, 0x00, 0x0c,
-	0x0c
+	0xc4, 0x57, 0x00, 0x03,
+	0x03
 };
 static u8 gi_er61529_polarity_setting[] = {0xc6, 0x04};
 static u8 gi_er61529_gamma_a[] = {
@@ -79,15 +78,15 @@ static u8 gi_er61529_gamma_c[] = {
 	0x08
 };
 static u8 gi_er61529_power_setting[] = {
-	0xd0, 0xa9, 0x0a, 0x08,
-	0x20, 0x29, 0x04, 0x01,
+	0xd0, 0xa5, 0x06, 0x08,
+	0x20, 0x2c, 0x04, 0x01,
 	0x00, 0x08, 0x01, 0x00,
 	0x06, 0x01, 0x00, 0x00,
 	0x20
 };
 static u8 gi_er61529_vcom_setting[] = {
-	0xd1, 0x00, 0x40, 0x14,
-	0x15
+	0xd1, 0x02, 0x2c, 0x2c,
+	0x33
 };
 static u8 gi_er61529_set_pixel_format[] = {0x3a, 0x77};
 static u8 gi_er61529_set_column_address[] = {
@@ -98,7 +97,7 @@ static u8 gi_er61529_set_page_address[] = {
 	0x2b, 0x00, 0x00, 0x01,
 	0xdf
 };
-static u8 gi_er61529_set_address_mode[] = {0x36, 0x09};
+static u8 gi_er61529_set_address_mode[] = {0x36, 0x00};
 static u8 gi_er61529_set_ddb_write_cntr[] = {
 	0xe1, 0x00, 0x00, 0x00,
 	0x00, 0x00, 0x00
@@ -118,8 +117,8 @@ static u8 gi_er61529_enter_sleep_mode[] = {0x10, 0x00, 0x00, 0x00};
 static u8 gi_er61529_exit_sleep_mode[]	= {0x11, 0x00, 0x00, 0x00};
 static u8 gi_er61529_backlight_cntr[]	= {0xb9, 0x01, 0x00, 0xff, 0x18};
 static u8 gi_er61529_set_backlight[]	= {0xb9, 0x01, 0x00, 0xff, 0x18};
-static u8 gi_er61529_set_te_scanline[]	= {0x44, 0x00, 0x00, 0x00};
-static u8 gi_er61529_set_tear_on[]	= {0x35, 0x00, 0x00, 0x00};
+static u8 gi_er61529_set_te_scanline[]	= {0x44, 0x00, 0x01};
+static u8 gi_er61529_set_tear_on[]	= {0x35, 0x00};
 static u8 gi_er61529_backlight_cntr_1[] = {
 	0xb8, 0x01, 0x0f, 0x00,
 	0xf0, 0x00, 0xc8, 0x00,
@@ -142,7 +141,7 @@ static int gi_renesas_dbi_ic_init(struct mdfld_dsi_config *dsi_config)
 
 	mdfld_dsi_send_gen_long_hs(sender, gi_er61529_mcs_protect_on, 2, 0);
 	mdfld_dsi_send_gen_long_hs(sender, gi_er61529_mcs_mem_access, 5, 0);
-	mdfld_dsi_send_gen_long_hs(sender, gi_er61529_disp_mode, 2, 0);
+	mdfld_dsi_send_gen_long_hs(sender, gi_er61529_mcs_panel_driving, 9, 0);
 	mdfld_dsi_send_gen_long_hs(sender, gi_er61529_disp_timming, 6, 0);
 	mdfld_dsi_send_gen_long_hs(sender, gi_er61529_src_timming, 5, 0);
 	mdfld_dsi_send_gen_long_hs(sender, gi_er61529_polarity_setting, 2, 0);
@@ -155,10 +154,8 @@ static int gi_renesas_dbi_ic_init(struct mdfld_dsi_config *dsi_config)
 	mdfld_dsi_send_mcs_long_hs(sender, gi_er61529_set_column_address, 5, 0);
 	mdfld_dsi_send_mcs_long_hs(sender, gi_er61529_set_page_address, 5, 0);
 	mdfld_dsi_send_mcs_long_hs(sender, gi_er61529_set_address_mode, 2, 0);
-	mdfld_dsi_send_mcs_long_hs(sender, gi_er61529_set_te_scanline, 4, 0);
-	mdfld_dsi_send_mcs_long_hs(sender, gi_er61529_set_tear_on, 4, 0);
-	mdfld_dsi_send_gen_long_hs(sender, gi_er61529_set_ddb_write_cntr, 7, 0);
-	mdfld_dsi_send_gen_long_hs(sender, gi_er61529_nvm_load_cntr, 2, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, gi_er61529_set_te_scanline, 3, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, gi_er61529_set_tear_on, 2, 0);
 	mdfld_dsi_send_gen_long_hs(sender, gi_er61529_mcs_protect_off, 2, 0);
 
 	return 0;
@@ -270,7 +267,7 @@ int __gi_renesas_dsi_power_on(struct mdfld_dsi_config *dsi_config)
 	mdfld_dsi_send_gen_long_hs(sender, gi_er61529_backlight_cntr, 5, 0);
 	mdfld_dsi_send_gen_long_hs(sender, gi_er61529_mcs_protect_off, 2, 0);
 
-	mdfld_dsi_send_mcs_long_hs(sender, gi_er61529_exit_sleep_mode, 4, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, gi_er61529_exit_sleep_mode, 1, 0);
 	mdelay(120);
 	mdfld_dsi_send_mcs_long_hs(sender, gi_er61529_dcs_set_display_on, 1, 0);
 
@@ -315,7 +312,7 @@ int __gi_renesas_dsi_power_off(struct mdfld_dsi_config *dsi_config)
 	mdfld_dsi_send_gen_long_hs(sender, gi_er61529_mcs_protect_off, 2, 0);
 
 	err =
-	mdfld_dsi_send_mcs_long_hs(sender, gi_er61529_enter_sleep_mode, 4, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, gi_er61529_enter_sleep_mode, 1, 0);
 	if (err) {
 		DRM_ERROR("Enter sleep mode error\n");
 		goto power_err;
