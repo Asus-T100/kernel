@@ -41,8 +41,6 @@
 #include "gp_device.h"
 #include "irq.h"
 
-#define MAGIC_NUMBER 0x73c5cc4
-
 #define ATOMISP_MAJOR		0
 #define ATOMISP_MINOR		5
 #define ATOMISP_PATCHLEVEL	1
@@ -147,9 +145,7 @@ struct atomisp_sw_contex {
 	bool sensor_streaming;
 
 	bool bypass;
-	bool updating_uptr;
 	bool file_input;
-	bool grid_info_updated;
 	int  invalid_frame;
 	int  invalid_vf_frame;
 	int  invalid_s3a;
@@ -300,7 +296,6 @@ struct atomisp_device {
 	struct mutex mutex;
 	struct list_head s3a_stats;
 	struct list_head dis_stats;
-	uint32_t irq_infos;
 	bool isp3a_stat_ready;
 
 	struct atomisp_video_pipe_format *capture_format;
