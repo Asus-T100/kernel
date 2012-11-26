@@ -209,6 +209,15 @@ static struct v4l2_queryctrl ci_v4l2_controls[] = {
 		.step = 1,
 		.default_value = 0,
 	},
+	{
+		.id = V4L2_CID_2A_STATUS,
+		.type = V4L2_CTRL_TYPE_BITMASK,
+		.name = "AE and AWB status",
+		.minimum = 0,
+		.maximum = V4L2_2A_STATUS_AE_READY | V4L2_2A_STATUS_AWB_READY,
+		.step = 1,
+		.default_value = 0,
+	},
 };
 static const u32 ctrls_num = ARRAY_SIZE(ci_v4l2_controls);
 
@@ -1576,6 +1585,7 @@ static int atomisp_g_ctrl(struct file *file, void *fh,
 	case V4L2_CID_FNUMBER_ABSOLUTE:
 	case V4L2_CID_HFLIP:
 	case V4L2_CID_VFLIP:
+	case V4L2_CID_2A_STATUS:
 		mutex_unlock(&isp->mutex);
 		return v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
 				       core, g_ctrl, control);
