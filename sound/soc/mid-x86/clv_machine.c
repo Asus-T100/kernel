@@ -160,7 +160,7 @@ bool ctp_vv_board(const struct sfi_soft_platform_id *spid)
 		((spid->product_line_id == CLVTPP_RHB_CCVV2) ||
 		(spid->product_line_id == CLVTPP_RHB_CCVV1) ||
 		(spid->product_line_id == CLVTPP_RHB_CCVV3) ||
-		(spid->product_line_id == CLVTPP_RHB_CCPVV1) ||
+		(spid->product_line_id == CLVTPP_RHB_CCVV1P) ||
 		(spid->product_line_id == CLVTPP_RHB_CCVV0)))
 		return true;
 	else
