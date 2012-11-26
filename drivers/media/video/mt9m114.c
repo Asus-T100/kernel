@@ -874,6 +874,32 @@ static int mt9m114_s_freq(struct v4l2_subdev *sd, s32  val)
 	return ret;
 }
 
+static int mt9m114_g_2a_status(struct v4l2_subdev *sd, s32 *val)
+{
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	int ret;
+	unsigned int status_exp, status_wb;
+	*val = 0;
+
+	ret = mt9m114_read_reg(client, MISENSOR_16BIT,
+			MISENSOR_AE_TRACK_STATUS, &status_exp);
+	if (ret)
+		return ret;
+
+	ret = mt9m114_read_reg(client, MISENSOR_16BIT,
+			MISENSOR_AWB_STATUS, &status_wb);
+	if (ret)
+		return ret;
+
+	if (status_exp & MISENSOR_AE_READY)
+		*val = V4L2_2A_STATUS_AE_READY;
+
+	if (status_wb & MISENSOR_AWB_STEADY)
+		*val |= V4L2_2A_STATUS_AWB_READY;
+
+	return 0;
+}
+
 static struct mt9m114_control mt9m114_controls[] = {
 	{
 		.qc = {
@@ -952,6 +978,20 @@ static struct mt9m114_control mt9m114_controls[] = {
 			.flags = 0,
 		},
 		.tweak = mt9m114_s_freq,
+	},
+	{
+		.qc = {
+			.id = V4L2_CID_2A_STATUS,
+			.type = V4L2_CTRL_TYPE_BITMASK,
+			.name = "AE and AWB status",
+			.minimum = 0,
+			.maximum = V4L2_2A_STATUS_AE_READY |
+				V4L2_2A_STATUS_AWB_READY,
+			.step = 1,
+			.default_value = 0,
+			.flags = 0,
+		},
+		.query = mt9m114_g_2a_status,
 	},
 
 };
