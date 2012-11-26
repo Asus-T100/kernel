@@ -1469,6 +1469,22 @@ int __cpufreq_driver_getavg(struct cpufreq_policy *policy, unsigned int cpu)
 }
 EXPORT_SYMBOL_GPL(__cpufreq_driver_getavg);
 
+int __cpufreq_driver_getload(struct cpufreq_policy *policy, unsigned int cpu)
+{
+	int ret = 0;
+
+	policy = cpufreq_cpu_get(policy->cpu);
+	if (!policy)
+		return -EINVAL;
+
+	if (cpu_online(cpu) && cpufreq_driver->getload)
+		ret = cpufreq_driver->getload(policy, cpu);
+
+	cpufreq_cpu_put(policy);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(__cpufreq_driver_getload);
+
 /*
  * when "event" is CPUFREQ_GOV_LIMITS
  */
