@@ -73,9 +73,9 @@ static u8 h8c7_set_power_dstb[] = {
 	0x00, 0x00, 0x00, 0x00,
 	0x00, 0x00};
 static u8 h8c7_set_disp_reg[] = {
-	0xb2, 0x0f, 0xc8, 0x05,
-	0x0f, 0x04, 0x84, 0x00,
-	0xff, 0x05, 0x0f, 0x04,
+	0xb2, 0x0f, 0xc8, 0x01,
+	0x01, 0x06, 0x84, 0x00,
+	0xff, 0x01, 0x01, 0x06,
 	0x20};
 static u8 h8c7_set_command_cyc[] = {
 	0xb4, 0x00, 0x00, 0x05,
@@ -548,6 +548,8 @@ int mdfld_dsi_h8c7_cmd_detect(struct mdfld_dsi_config *dsi_config)
 	struct mdfld_dsi_hw_registers *regs = &dsi_config->regs;
 	u32 dpll_val, device_ready_val;
 	int pipe = dsi_config->pipe;
+	struct mdfld_dsi_pkg_sender *sender =
+		mdfld_dsi_get_pkg_sender(dsi_config);
 
 	PSB_DEBUG_ENTRY("\n");
 
@@ -567,6 +569,9 @@ int mdfld_dsi_h8c7_cmd_detect(struct mdfld_dsi_config *dsi_config)
 		if ((device_ready_val & DSI_DEVICE_READY) &&
 		    (dpll_val & DPLL_VCO_ENABLE)) {
 			dsi_config->dsi_hw_context.panel_on = true;
+			mdfld_dsi_send_gen_long_hs(sender, h8c7_mcs_protect_off, 4, 0);
+			mdfld_dsi_send_gen_long_hs(sender, h8c7_set_disp_reg, 13, 0);
+			mdfld_dsi_send_gen_long_hs(sender, h8c7_mcs_protect_on, 4, 0);
 		} else {
 			dsi_config->dsi_hw_context.panel_on = false;
 			DRM_INFO("%s: panel is not detected!\n", __func__);
