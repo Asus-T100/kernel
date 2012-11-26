@@ -1259,23 +1259,20 @@ static int atomisp_streamon(struct file *file, void *fh,
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	enum sh_css_pipe_id css_pipe_id;
 	unsigned int sensor_start_stream;
-	int ret;
+	int ret = 0;
 	unsigned long irqflags;
 #ifdef PUNIT_CAMERA_BUSY
 	u32 msg_ret;
 #endif
-	v4l2_dbg(3, dbg_level, &atomisp_dev, ">%s, [%d]\n",
-			__func__, pipe->pipe_type);
 	if (type != V4L2_BUF_TYPE_VIDEO_CAPTURE) {
-		v4l2_err(&atomisp_dev,
-			    "unsupported v4l2 buf type\n");
+		dev_dbg(isp->dev, "unsupported v4l2 buf type\n");
 		return -EINVAL;
 	}
 
 	mutex_lock(&isp->mutex);
 
 	if (pipe->capq.streaming)
-		goto done;
+		goto out;
 
 	/*
 	 * The number of streaming video nodes is based on which
@@ -1286,16 +1283,15 @@ static int atomisp_streamon(struct file *file, void *fh,
 	spin_lock_irqsave(&pipe->irq_lock, irqflags);
 	if (list_empty(&(pipe->capq.stream))) {
 		spin_unlock_irqrestore(&pipe->irq_lock, irqflags);
-		v4l2_err(&atomisp_dev,
-			"no buffer in the queue\n");
+		dev_dbg(isp->dev, "no buffer in the queue\n");
 		ret = -EINVAL;
-		goto error;
+		goto out;
 	}
 	spin_unlock_irqrestore(&pipe->irq_lock, irqflags);
 
 	ret = videobuf_streamon(&pipe->capq);
 	if (ret)
-		goto error;
+		goto out;
 
 	if (atomisp_streaming_count(isp) > sensor_start_stream) {
 		/* trigger still capture */
@@ -1310,7 +1306,7 @@ static int atomisp_streamon(struct file *file, void *fh,
 				return ret;
 		}
 		atomisp_qbuffers_to_css(isp);
-		goto done;
+		goto out;
 	}
 
 	if (isp->streaming == ATOMISP_DEVICE_STREAMING_ENABLED) {
@@ -1335,9 +1331,8 @@ static int atomisp_streamon(struct file *file, void *fh,
 
 	ret = sh_css_start(css_pipe_id);
 	if (ret) {
-		v4l2_err(&atomisp_dev,
-				"sh_css_start fails: %d\n", ret);
-		goto error;
+		dev_err(isp->dev, "sh_css_start fails: %d\n", ret);
+		goto out;
 	}
 
 	/* Make sure that update_isp_params is called at least once.*/
@@ -1355,7 +1350,7 @@ static int atomisp_streamon(struct file *file, void *fh,
 
 	/* Only start sensor when the last streaming instance started */
 	if (atomisp_streaming_count(isp) < sensor_start_stream)
-		goto done;
+		goto out;
 
 start_sensor:
 	if (isp->flash) {
@@ -1381,19 +1376,11 @@ start_sensor:
 		if (ret) {
 			atomisp_reset(isp);
 			ret = -EINVAL;
-			goto error;
 		}
 	}
 
-done:
+out:
 	mutex_unlock(&isp->mutex);
-	v4l2_dbg(3, dbg_level, &atomisp_dev, "<%s\n", __func__);
-	return 0;
-
-error:
-	mutex_unlock(&isp->mutex);
-	v4l2_dbg(3, dbg_level, &atomisp_dev, "<%s ret: %d\n", __func__, ret);
-
 	return ret;
 }
 
@@ -1414,11 +1401,8 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 	u32 msg_ret;
 #endif
 
-	v4l2_dbg(3, dbg_level, &atomisp_dev, ">%s, [%d]\n",
-			__func__, pipe->pipe_type);
 	if (type != V4L2_BUF_TYPE_VIDEO_CAPTURE) {
-		v4l2_err(&atomisp_dev,
-			    "unsupported v4l2 buf type\n");
+		dev_dbg(isp->dev, "unsupported v4l2 buf type\n");
 		return -EINVAL;
 	}
 
@@ -1512,12 +1496,9 @@ stopsensor:
 	    != atomisp_sensor_start_stream(isp))
 		return 0;
 
-	if (!isp->sw_contex.file_input) {
-		v4l2_dbg(3, dbg_level, &atomisp_dev,
-			 "%s, streamoff sensor\n",__func__);
+	if (!isp->sw_contex.file_input)
 		ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
 				       video, s_stream, 0);
-	}
 
 	if (isp->flash) {
 		ret += v4l2_subdev_call(isp->flash, core, s_power, 0);
@@ -1541,7 +1522,6 @@ stopsensor:
 	if (isp->sw_contex.power_state == ATOM_ISP_POWER_UP)
 		atomisp_reset(isp);
 
-	v4l2_dbg(3, dbg_level, &atomisp_dev, "<%s\n", __func__);
 	return ret;
 }
 
