@@ -414,38 +414,6 @@ static int mt9m114_write_reg_array(struct i2c_client *client,
 	return 0;
 }
 
-
-static int mt9m114_wait_3a(struct v4l2_subdev *sd)
-{
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
-	int timeout = 35;
-	int ret;
-	unsigned int status_exp, status_wb;
-
-	while (timeout--) {
-		ret = mt9m114_read_reg(client, MISENSOR_16BIT,
-			MISENSOR_AE_TRACK_STATUS, &status_exp);
-		if (ret)
-			return ret;
-		if (!(status_exp & MISENSOR_AE_READY)) {
-			msleep(20);
-			continue;
-		}
-		ret = mt9m114_read_reg(client,
-			MISENSOR_16BIT, MISENSOR_AWB_STATUS, &status_wb);
-		if (ret)
-			return ret;
-		if (status_wb & MISENSOR_AWB_STEADY) {
-			dev_dbg(&client->dev, "ae/awb stablize retry count  %d.\n",
-				  (35-timeout));
-			return 0;
-		}
-		msleep(20);
-	}
-
-	return -EINVAL;
-}
-
 static int mt9m114_wait_state(struct i2c_client *client, int timeout)
 {
 	int ret;
@@ -1215,12 +1183,6 @@ static int mt9m114_s_stream(struct v4l2_subdev *sd, int enable)
 			return ret;
 
 		ret = mt9m114_set_streaming(sd);
-		/*
-		 * here we wait for sensor's 3A algorithm to be
-		 * stablized, as to fix still capture bad 3A output picture
-		 */
-		if (mt9m114_wait_3a(sd))
-			v4l2_warn(c, "3A can not finish!");
 	} else {
 		ret = mt9m114_set_suspend(sd);
 	}
