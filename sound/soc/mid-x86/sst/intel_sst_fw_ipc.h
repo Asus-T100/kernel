@@ -47,6 +47,7 @@
 #define SST_CHECKPOINT_OFFSET 0x1C00
 #define SST_SCU_LPE_MAILBOX 0x1000
 #define SST_LPE_SCU_MAILBOX 0x1400
+#define SST_SCU_LPE_LOG_BUF (SST_SCU_LPE_MAILBOX+16)
 #define REPLY_MSG 0x80
 
 /* Message ID's for IPC messages */
@@ -96,6 +97,7 @@
 #define IPC_IA_DBG_MEM_READ 0x40
 #define IPC_IA_DBG_MEM_WRITE 0x41
 #define IPC_IA_DBG_LOOP_BACK 0x42
+#define IPC_IA_DBG_LOG_ENABLE 0x47
 
 /* L2I Firmware/Codec Download msgs */
 #define IPC_IA_FW_INIT_CMPLT 0x81
@@ -305,6 +307,12 @@ enum dbg_mem_data_type {
 	DATA_TYPE_U32,
 	DATA_TYPE_U16,
 	DATA_TYPE_U8,
+};
+
+enum dbg_type {
+	NO_DEBUG = 0,
+	SRAM_DEBUG,
+	PTI_DEBUG,
 };
 
 struct ipc_dsp_hdr {
@@ -550,4 +558,11 @@ struct snd_sst_ctxt_params {
 	u32 address; /* Physical Address in DDR where the context is stored */
 	u32 size; /* size of the context */
 };
+
+struct snd_sst_lpe_log_params {
+	u8 dbg_type;
+	u8 module_id;
+	u8 log_level;
+	u8 reserved;
+} __packed;
 #endif /* __INTEL_SST_FW_IPC_H__ */
