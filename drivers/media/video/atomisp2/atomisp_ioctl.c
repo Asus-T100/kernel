@@ -1237,6 +1237,17 @@ int atomisp_get_css_buf_type(struct atomisp_device *isp,
 		return SH_CSS_BUFFER_TYPE_VF_OUTPUT_FRAME;
 }
 
+static unsigned int atomisp_sensor_start_stream(struct atomisp_device *isp)
+{
+	if (isp->sw_contex.run_mode == CI_MODE_VIDEO ||
+	    (isp->sw_contex.run_mode == CI_MODE_STILL_CAPTURE &&
+	     isp->capture_format->out_sh_fmt != SH_CSS_FRAME_FORMAT_RAW &&
+	     !isp->params.continuous_vf))
+		return 2;
+	else
+		return 1;
+}
+
 /*
  * This ioctl start the capture during streaming I/O.
  */
@@ -1270,13 +1281,7 @@ static int atomisp_streamon(struct file *file, void *fh,
 	 * The number of streaming video nodes is based on which
 	 * binary is going to be run.
 	 */
-	if (isp->sw_contex.run_mode == CI_MODE_VIDEO ||
-	    (isp->sw_contex.run_mode == CI_MODE_STILL_CAPTURE &&
-	     isp->capture_format->out_sh_fmt != SH_CSS_FRAME_FORMAT_RAW &&
-	     !isp->params.continuous_vf))
-		sensor_start_stream = 2;
-	else
-		sensor_start_stream = 1;
+	sensor_start_stream = atomisp_sensor_start_stream(isp);
 
 	spin_lock_irqsave(&pipe->irq_lock, irqflags);
 	if (list_empty(&(pipe->capq.stream))) {
@@ -1378,7 +1383,6 @@ start_sensor:
 			ret = -EINVAL;
 			goto error;
 		}
-		isp->sw_contex.sensor_streaming = true;
 	}
 
 done:
@@ -1402,6 +1406,7 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 	struct atomisp_video_pipe *vf_pipe = NULL;
 	struct atomisp_video_pipe *preview_pipe = NULL;
 	struct videobuf_buffer *vb = NULL;
+	unsigned int sensor_start_stream;
 	int ret;
 	unsigned long flags;
 	bool first_streamoff = false;
@@ -1417,6 +1422,7 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 		return -EINVAL;
 	}
 
+	sensor_start_stream = atomisp_sensor_start_stream(isp);
 	/*
 	 * do only videobuf_streamoff for capture & vf pipes in
 	 * case of continuous capture
@@ -1442,11 +1448,7 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 		ret = videobuf_streamoff(&pipe->capq);
 		if (ret)
 			return ret;
-
-		if (isp->sw_contex.sensor_streaming)
-			goto stopsensor;
-		else
-			return 0;
+		goto stopsensor;
 	}
 
 	atomisp_clear_css_buffer_counters(isp);
@@ -1505,18 +1507,11 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 	}
 	spin_unlock_irqrestore(&pipe->irq_lock, flags);
 
-	/* stream off sensor, power off is called in senor driver */
-	/*
-	 * so this now introduces dpendency to streamoff order between mo and
-	 * vf pipes
-	 */
-	/*stream off sensor, power off is called in senor driver*/
-	if ((pipe->pipe_type == ATOMISP_PIPE_PREVIEW ||
-	     pipe->pipe_type == ATOMISP_PIPE_VIEWFINDER) &&
-	    isp->isp_subdev.video_out_capture.capq.streaming == 1)
+stopsensor:
+	if (atomisp_streaming_count(isp) + 1
+	    != atomisp_sensor_start_stream(isp))
 		return 0;
 
-stopsensor:
 	if (!isp->sw_contex.file_input) {
 		v4l2_dbg(3, dbg_level, &atomisp_dev,
 			 "%s, streamoff sensor\n",__func__);
@@ -1529,8 +1524,6 @@ stopsensor:
 		isp->params.num_flash_frames = 0;
 		isp->params.flash_state = ATOMISP_FLASH_IDLE;
 	}
-
-	isp->sw_contex.sensor_streaming = false;
 
 #ifdef PUNIT_CAMERA_BUSY
 	if (!IS_MRFLD) {

@@ -142,8 +142,6 @@ struct atomisp_hw_contex {
 };
 
 struct atomisp_sw_contex {
-	bool sensor_streaming;
-
 	bool bypass;
 	bool file_input;
 	int  invalid_frame;
