@@ -43,7 +43,6 @@
 #include "intel_sst_common.h"
 
 #define AM_MODULE 1
-#define STREAM_MODULE 0
 
 /**
  * intel_sst_open_cntrl - opens a handle to driver
@@ -67,14 +66,7 @@ int intel_sst_open_cntrl(struct inode *i_node, struct file *file_ptr)
 		mutex_unlock(&sst_drv_ctx->stream_lock);
 		return retval;
 	}
-
-	if (sst_drv_ctx->am_cnt < MAX_AM_HANDLES) {
-		sst_drv_ctx->am_cnt++;
-		pr_debug("AM handle opened...\n");
-		file_ptr->private_data = NULL;
-	} else {
-		retval = -EACCES;
-	}
+	pr_debug("AM handle opened\n");
 
 	mutex_unlock(&sst_drv_ctx->stream_lock);
 	return retval;
@@ -85,7 +77,6 @@ int intel_sst_release_cntrl(struct inode *i_node, struct file *file_ptr)
 {
 	/* audio manager close */
 	mutex_lock(&sst_drv_ctx->stream_lock);
-	sst_drv_ctx->am_cnt--;
 	pm_runtime_put(&sst_drv_ctx->pci->dev);
 	mutex_unlock(&sst_drv_ctx->stream_lock);
 	pr_debug("AM handle closed\n");
@@ -300,15 +291,6 @@ static int sst_ioctl_tuning_params(unsigned int cmd, unsigned long arg)
 long intel_sst_ioctl(struct file *file_ptr, unsigned int cmd, unsigned long arg)
 {
 	int retval = 0;
-	struct ioctl_pvt_data *data = NULL;
-	int str_id = 0, minor = 0;
-
-	data = file_ptr->private_data;
-	if (data) {
-		minor = 0;
-		str_id = data->str_id;
-	} else
-		minor = 1;
 
 	if (sst_drv_ctx->sst_state != SST_FW_RUNNING)
 		return -EBUSY;
@@ -355,19 +337,11 @@ long intel_sst_ioctl(struct file *file_ptr, unsigned int cmd, unsigned long arg)
 	}
 	case _IOC_NR(SNDRV_SST_GET_ALGO):
 	case _IOC_NR(SNDRV_SST_SET_ALGO):
-		if (minor != AM_MODULE) {
-			retval = -EBADRQC;
-			break;
-		}
 		retval = intel_sst_ioctl_dsp(cmd, arg);
 		break;
 
 	case _IOC_NR(SNDRV_SST_TUNING_PARAMS):
 	case _IOC_NR(SNDRV_SST_SET_RUNTIME_PARAMS):
-		if (minor != AM_MODULE) {
-			retval = -EBADRQC;
-			break;
-		}
 		retval = sst_ioctl_tuning_params(cmd, arg);
 		break;
 
