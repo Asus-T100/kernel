@@ -23,6 +23,10 @@
 #ifndef __ATOMISP_INTERNAL_H__
 #define __ATOMISP_INTERNAL_H__
 
+#ifdef CONFIG_BOARD_CTP
+#include <linux/intel_mid_pm.h>
+#endif
+
 #include <linux/atomisp_platform.h>
 #include <linux/firmware.h>
 #include <linux/kernel.h>
@@ -91,7 +95,11 @@
  * 1000 us is a reasonable value considering that the processing
  * time is typically ~2000 us.
  */
+#ifdef CONFIG_BOARD_CTP
+#define ATOMISP_MAX_ISR_LATENCY	CSTATE_EXIT_LATENCY_C1
+#else
 #define ATOMISP_MAX_ISR_LATENCY	1000
+#endif
 
 struct atomisp_css_event {
 	enum sh_css_pipe_id pipe;
@@ -273,7 +281,6 @@ struct atomisp_device {
 	const struct firmware *firmware;
 
 	struct pm_qos_request_list pm_qos;
-	s32 max_isr_latency;
 
 	struct {
 		struct sh_css_fw_info *fw[ATOMISP_ACC_FW_MAX];

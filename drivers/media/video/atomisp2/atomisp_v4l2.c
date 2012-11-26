@@ -38,11 +38,6 @@
 
 #include "device_access.h"
 
-#ifdef CONFIG_BOARD_CTP
-#include <linux/intel_mid_pm.h>
-#include <asm/intel-mid.h>
-#endif
-
 /* cross componnet debug message flag */
 int dbg_level = 0;
 module_param(dbg_level, int, 0644);
@@ -442,7 +437,7 @@ static int atomisp_runtime_resume(struct device *dev)
 		dev_get_drvdata(dev);
 	int ret;
 
-	pm_qos_update_request(&isp->pm_qos, isp->max_isr_latency);
+	pm_qos_update_request(&isp->pm_qos, ATOMISP_MAX_ISR_LATENCY);
 	if (isp->sw_contex.power_state == ATOM_ISP_POWER_DOWN) {
 		/*Turn on ISP d-phy */
 		ret = atomisp_ospm_dphy_up(isp);
@@ -496,7 +491,7 @@ static int atomisp_resume(struct device *dev)
 		dev_get_drvdata(dev);
 	int ret;
 
-	pm_qos_update_request(&isp->pm_qos, isp->max_isr_latency);
+	pm_qos_update_request(&isp->pm_qos, ATOMISP_MAX_ISR_LATENCY);
 
 	/*Turn on ISP d-phy */
 	ret = atomisp_ospm_dphy_up(isp);
@@ -994,14 +989,6 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	isp->hw_contex.ispmmadr = start;
 
 	mutex_init(&isp->mutex);
-
-	isp->max_isr_latency = ATOMISP_MAX_ISR_LATENCY;
-#ifdef CONFIG_BOARD_CTP
-	if (isp->pdev->revision < 0x09) {
-		/* Workaround for Cloverview(+) older than stepping B0 */
-		isp->max_isr_latency = CSTATE_EXIT_LATENCY_C1;
-	}
-#endif
 
 	/* Load isp firmware from user space */
 	isp->firmware = load_firmware(&dev->dev);
