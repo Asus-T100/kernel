@@ -19,14 +19,6 @@
  */
 
 #include "intel_soc_pmu.h"
-/**
- *      platform_set_pmu_ops - Set the global pmu method table.
- *      @ops:   Pointer to ops structure.
- */
-void platform_set_pmu_ops(void)
-{
-	pmu_ops = &mfld_pmu_ops;
-}
 
 /* To CLEAR C6 offload Bit(LSB) in MSR 120 */
 static inline void clear_c6offload_bit(void)
@@ -158,8 +150,19 @@ static int mfld_pmu_init(void)
 		goto out_err;
 	}
 
+	mid_pmu_cxt->s3_hint = C6_HINT;
+
 out_err:
 	return ret;
+}
+
+/**
+ *      platform_set_pmu_ops - Set the global pmu method table.
+ *      @ops:   Pointer to ops structure.
+ */
+void platform_set_pmu_ops(void)
+{
+	pmu_ops = &mfld_pmu_ops;
 }
 
 struct platform_pmu_ops mfld_pmu_ops = {
@@ -168,4 +171,6 @@ struct platform_pmu_ops mfld_pmu_ops = {
 	.wakeup = mfld_pmu_wakeup,
 	.remove = mfld_pmu_remove,
 	.pci_choose_state = mfld_pmu_choose_state,
+	.set_power_state_ops = pmu_set_s0ix_possible,
+	.set_s0ix_complete = s0ix_complete,
 };

@@ -76,12 +76,6 @@
 #ifdef CONFIG_ATOM_SOC_POWER
 #define LOG_PMU_EVENTS
 
-#define PMU1_MAX_DEVS   8
-#define PMU2_MAX_DEVS   55
-#define MAX_DEVICES	(PMU1_MAX_DEVS + PMU2_MAX_DEVS)
-#define PMU_MAX_LSS_SHARE 4
-
-
 /* Error codes for pmu */
 #define	PMU_SUCCESS			0
 #define PMU_FAILED			-1

@@ -41,6 +41,7 @@
 #include <asm/apic.h>
 #include <asm/intel_scu_ipc.h>
 #include <linux/intel_mid_pm.h>
+
 #include "intel_soc_mdfld.h"
 #include "intel_soc_clv.h"
 
@@ -51,11 +52,13 @@
 #define PMU_PANIC_EMMC_UP_ADDR			0xFFFF3080
 #define PMU_PANIC_EMMC_UP_REQ_CMD		0xDEADBEEF
 
+#define MAX_DEVICES	(PMU1_MAX_DEVS + PMU2_MAX_DEVS)
+#define PMU_MAX_LSS_SHARE 4
+
 #define PMU2_BUSY_TIMEOUT			500000
 #define HSU0_PCI_ID				0x81c
 #define HSU1_PCI_ID				0x81b
 #define HSI_PCI_ID				0x833
-
 
 #define PCI_ID_ANY	(~0)
 
@@ -329,7 +332,6 @@ struct mid_pmu_dev {
 	struct intel_mid_base_addr base_addr;
 	struct mrst_pmu_reg	__iomem *pmu_reg;
 	struct semaphore scu_ready_sem;
-	struct completion set_mode_complete;
 	struct mid_pmu_stats pmu_stats[SYS_STATE_MAX];
 	struct device_residency pmu_dev_res[MAX_DEVICES];
 	struct delayed_work log_work;
@@ -349,6 +351,8 @@ struct mid_pmu_dev {
 	struct pci_dev *pmu_dev;
 
 	spinlock_t nc_ready_lock;
+
+	int s3_hint;
 };
 
 struct platform_pmu_ops {
@@ -358,6 +362,8 @@ struct platform_pmu_ops {
 	void (*wakeup)(void);
 	void (*remove)(void);
 	pci_power_t (*pci_choose_state) (int);
+	void (*set_power_state_ops) (int);
+	void (*set_s0ix_complete) (void);
 };
 
 extern struct platform_pmu_ops mfld_pmu_ops;
@@ -378,10 +384,11 @@ extern void pmu_read_sss(struct pmu_ss_states *pm_ssc);
 extern int pmu_issue_interactive_command(struct pmu_ss_states *pm_ssc,
 				bool ioc);
 extern int _pmu2_wait_not_busy(void);
-extern int extended_cstate_mode;
+extern u32 get_s0ix_val_set_pm_ssc(int);
+extern int pmu_get_wake_source(void);
 extern bool pmu_initialized;
 extern struct platform_pmu_ops *pmu_ops;
-extern u32 get_s0ix_val_set_pm_ssc(int);
+extern void platform_update_all_lss_states(struct pmu_ss_states *, int *);
 
 #ifdef LOG_PMU_EVENTS
 extern void pmu_log_pmu_irq(int status, bool interactive_cmd_sent);
@@ -473,5 +480,18 @@ static inline void clear_d0ix_stats(void)
 }
 
 /* Accessor functions for pci_devs end */
+
+static inline bool nc_device_state(void)
+{
+	return !mid_pmu_cxt->display_off || !mid_pmu_cxt->camera_off;
+}
+
+static inline int platform_is(u8 model)
+{
+	if (boot_cpu_data.x86_model == model)
+		return true;
+	else
+		return false;
+}
 
 #endif
