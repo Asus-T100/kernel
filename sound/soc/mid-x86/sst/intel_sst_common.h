@@ -345,6 +345,13 @@ struct sst_debugfs {
 	struct dentry *root;
 	int runtime_pm_status;
 };
+
+struct lpe_log_buf_hdr {
+	u32 base_addr;
+	u32 end_addr;
+	u32 rd_addr;
+	u32 wr_addr;
+};
 #endif
 
 enum snd_sst_bytes_type {
