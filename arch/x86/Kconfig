@@ -850,6 +850,16 @@ config SCHED_MC
 	  making when dealing with multi-core CPU chips at a cost of slightly
 	  increased overhead in some places. If unsure say N here.
 
+config COMPUTE_PHYSICAL_CORE_LOAD
+	bool "Compute and use the physical core load in CPUFreq governor"
+	depends on X86_HT
+	---help---
+	  Enable to compute the physical core load if HyperThreading is supported.
+	  The load value will be used in CPUFreq governor for correct frequency
+	  adjustment.
+
+	  If in doubt, say N here
+
 config IRQ_TIME_ACCOUNTING
 	bool "Fine granularity task level IRQ time accounting"
 	default n

@@ -80,6 +80,176 @@ static struct sfi_processor_performance *sfi_perf_data;
 
 static struct cpufreq_driver sfi_cpufreq_driver;
 
+#ifdef CONFIG_COMPUTE_PHYSICAL_CORE_LOAD
+#define phy_core_id(cpu) (topology_core_id(cpu))
+#define phy_core_idle(mask) (mask == 0)
+
+/* percpu struct to record the per cpu active info */
+struct per_cpu_t {
+	u64 tsc;		  /* for recording the sampling time */
+	u64 active_tsc;		  /* active tsc recorded by this cpu */
+	u64 total_active_tsc;	  /* total core active tsc */
+};
+
+DEFINE_PER_CPU(struct per_cpu_t, pcpu_counts);
+#pragma pack(8)
+/* per physical core struct to record physical core info */
+struct per_physical_core_t {
+	/*
+	 * Variable to record all cpu status (idle or busy) together.
+	 * Aligned 64-bit access in 64-bit processor is atomic, hence SMP
+	 * safe without needing a lock. One byte for one core, so it can
+	 * support up to eight cores. It is enough up to near future.
+	 */
+	u64 busy_mask;		/*show the status of siblings in physical core*/
+	u64 active_start_tsc;	/*the active start time of the physical core*/
+	u64 accum_flag;		/*indicate the active period has been counted*/
+};
+
+DEFINE_PER_CPU(struct per_physical_core_t, pphycore_counts);
+#pragma pack()
+
+/*
+ * Set mask to indicate the cpu is busy or idle. One byte for one cpu.
+ * So the 64-bit mask can support up to eight cpus.
+ * Byte operations are atomic
+ */
+static inline void set_cpu_idle(int cpu, u64 *mask)
+{
+	*((u8 *)mask + cpu) = 0;
+}
+static inline void set_cpu_busy(int cpu, u64 *mask)
+{
+	*((u8 *)mask + cpu) = 1;
+}
+
+/*
+ * Update the active time when CPU enter/exit idle. Physical core is active
+ * when at least one logical core is active, physical core is idle when all
+ * the logical cores are idle. So the physical core active tsc is the time
+ * period between the first logical core exit idle and the time all the
+ * logical cores enter idle. The active period is updated at the time all
+ * the logical cores enter idle. Physical core active time is used for
+ * computing load of physical core.
+ */
+void update_cpu_active_tsc(int cpu, int enter_idle)
+{
+	u64 tsc;
+	u64 old;
+	struct per_cpu_t *pcpu = NULL;
+	struct per_physical_core_t *pphycore = NULL;
+	int phycore_id;
+	u64 *phycore_start;
+
+	phycore_id = phy_core_id(cpu);
+	pphycore = &per_cpu(pphycore_counts, phycore_id);
+	phycore_start = &(pphycore->active_start_tsc);
+
+	if (enter_idle) {
+		/* get the TSC at the time */
+		rdtscll(tsc);
+		old = *phycore_start;
+		/* set the cpu's byte in its physical mask */
+		set_cpu_idle(cpu, &(pphycore->busy_mask));
+		/*
+		 * update the active time only when all the siblings in the
+		 * physical core are idle. To avoid simulataneous access by
+		 * siblings, we use cmpxchg here.
+		 */
+		if (phy_core_idle(pphycore->busy_mask)) {
+			if (old == *phycore_start &&
+			    old == cmpxchg64(phycore_start, old, tsc)) {
+				pcpu = &per_cpu(pcpu_counts, cpu);
+				if (tsc > old)
+					pcpu->active_tsc += tsc - old;
+				pphycore->accum_flag = 1;
+			}
+		}
+	} else { /* exit idle */
+		/*
+		 * the active period is counted at the time the first core
+		 * exits idle. We use cmpxchg to avoid confliction.
+		 */
+		rdtscll(tsc);
+		if (phy_core_idle(pphycore->busy_mask)) {
+			if (1 == cmpxchg64(&(pphycore->accum_flag), 1, 0))
+				*phycore_start = tsc;
+		}
+		/* since the cpu exits idle, set its byte in mask as active */
+		set_cpu_busy(cpu, &(pphycore->busy_mask));
+	}
+}
+
+/*
+ * Return the cpu load value used in CPUFreq governor.
+ * The function can be used in CPUFreq governor to show the load of physical
+ * core. Governor uses sampling to get the cpu load in each sampling
+ * interval. This function is called in every sampling, and return the load
+ * of that sampling interval.
+ */
+static unsigned int cpufreq_get_load(struct cpufreq_policy *policy,
+				     unsigned int cpu)
+{
+	u64 tsc;
+	u64 total_active_tsc = 0;
+	u64 delta_tsc, delta_active_tsc;
+	u64 load;
+	u64 tmp;
+	unsigned int j;
+	struct per_cpu_t *this_cpu;
+	struct per_cpu_t *pcpu;
+	struct per_physical_core_t *pphycore = NULL;
+	int phycore_id;
+	u64 *phycore_start;
+
+	phycore_id = phy_core_id(cpu);
+	pphycore = &per_cpu(pphycore_counts, phycore_id);
+	phycore_start = &(pphycore->active_start_tsc);
+	this_cpu = &per_cpu(pcpu_counts, cpu);
+	rdtscll(tsc);
+	delta_tsc = tsc - this_cpu->tsc;
+
+	/*
+	 * if this sampling occurs at the same time when all logical cores
+	 * enter idle, they may compete to access the active tsc and shared
+	 * active_start_tsc. To solve the issue, we use cmpxchg to make sure
+	 * only one can do it.
+	 */
+	tmp = *phycore_start;
+	if (!phy_core_idle(pphycore->busy_mask)) {
+		if (tmp == *phycore_start && tmp ==
+		    cmpxchg64(phycore_start, tmp, tsc)) {
+			if (tsc > tmp)
+				this_cpu->active_tsc += tsc - tmp;
+			pphycore->accum_flag = 1;
+		}
+	}
+
+	/*
+	 * To compute the load of physical core, we need to sum all the
+	 * active time accumulated by siblings in the physical core.
+	 */
+	for_each_cpu(j, cpu_sibling_mask(cpu)) {
+		pcpu = &per_cpu(pcpu_counts, j);
+		total_active_tsc += pcpu->active_tsc;
+	}
+	/* active time between two calls */
+	delta_active_tsc = total_active_tsc - this_cpu->total_active_tsc;
+
+	this_cpu->tsc = tsc;
+	this_cpu->total_active_tsc = total_active_tsc;
+
+	if (delta_tsc > 0) {
+		load = div64_u64(delta_active_tsc * 100, delta_tsc);
+		if (unlikely(load > 100))
+			load = 100;
+	} else
+		load = 0;
+
+	return (unsigned int)load;
+}
+#endif
+
 static int parse_freq(struct sfi_table_header *table)
 {
 	struct sfi_table_simple *sb;
@@ -422,6 +592,11 @@ static int sfi_cpufreq_cpu_init(struct cpufreq_policy *policy)
 		lo = lo | ENABLE_ULFM_AUTOCM | ENABLE_INDP_AUTOCM;
 		wrmsr_on_cpu(policy->cpu, MSR_IA32_POWER_MISC, lo, hi);
 	}
+
+#ifdef CONFIG_COMPUTE_PHYSICAL_CORE_LOAD
+	if (smt_capable())
+		sfi_cpufreq_driver.getload = cpufreq_get_load;
+#endif
 
 	pr_debug("CPU%u - SFI performance management activated.\n", cpu);
 	for (i = 0; i < perf->state_count; i++)
