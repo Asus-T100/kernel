@@ -3669,7 +3669,7 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	/* setting run mode to the sensor */
 	if (isp->sw_contex.run_mode != CI_MODE_VIDEO &&
 	    isp->params.continuous_vf)
-		sensor_parm.parm.capture.capturemode = CI_MODE_STILL_CAPTURE;
+		sensor_parm.parm.capture.capturemode = CI_MODE_PREVIEW;
 	else
 		sensor_parm.parm.capture.capturemode = isp->sw_contex.run_mode;
 
