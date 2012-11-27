@@ -207,10 +207,11 @@ void intel_register_i2c_camera_device(struct sfi_device_table_entry *pentry,
 
 const struct atomisp_platform_data *atomisp_get_platform_data(void)
 {
-	if (atomisp_platform_data)
+	if (atomisp_platform_data) {
+		atomisp_platform_data->spid = &spid;
 		return atomisp_platform_data;
-	else {
-		pr_err("MRST: no camera device in the SFI table\n");
+	} else {
+		pr_err("%s: no camera device in the SFI table\n", __func__);
 		return NULL;
 	}
 }

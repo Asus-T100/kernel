@@ -22,6 +22,7 @@
 #define ATOMISP_PLATFORM_H_
 
 #include <linux/i2c.h>
+#include <linux/sfi.h>
 #include <media/v4l2-subdev.h>
 #include "atomisp.h"
 
@@ -82,6 +83,7 @@ struct intel_v4l2_subdev_table {
 
 struct atomisp_platform_data {
 	struct intel_v4l2_subdev_table *subdevs;
+	const struct sfi_soft_platform_id *spid;
 };
 
 struct camera_sensor_platform_data {
