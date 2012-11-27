@@ -2,7 +2,7 @@
  * Support for Omnivision OV8830 camera sensor.
  * Based on Aptina mt9e013 driver.
  *
- * Copyright (c) 2010 Intel Corporation. All Rights Reserved.
+ * Copyright (c) 2012 Intel Corporation. All Rights Reserved.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License version
@@ -865,8 +865,6 @@ static struct ov8830_resolution ov8835_res_preview[] = {
 	},
 };
 
-#define N_RES_PREVIEW_OV8835 (ARRAY_SIZE(ov8835_res_preview))
-
 static struct ov8830_resolution ov8835_res_still[] = {
 	{
 		 .desc = "ov8835_still_1080p_15fps",
@@ -947,8 +945,6 @@ static struct ov8830_resolution ov8835_res_still[] = {
 		.skip_frames = 1,
 	},
 };
-
-#define N_RES_STILL_OV8835 (ARRAY_SIZE(ov8835_res_still))
 
 static struct ov8830_resolution ov8835_res_video[] = {
 	{
@@ -1043,7 +1039,5 @@ static struct ov8830_resolution ov8835_res_video[] = {
 		 .skip_frames = 0,
 	},
 };
-
-#define N_RES_VIDEO_OV8835 (ARRAY_SIZE(ov8835_res_video))
 
 #endif

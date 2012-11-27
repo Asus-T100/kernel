@@ -395,6 +395,11 @@ struct ov8830_device {
 	int run_mode;
 	struct drv201_device drv201;
 	struct mutex input_lock; /* serialize sensor's ioctl */
+
+	const struct ov8830_reg *pll_reg_list;
+	const struct ov8830_reg *basis_settings_list;
+	const struct ov8830_resolution *curr_res_table;
+	int entries_curr_table;
 };
 
 /*
@@ -1274,8 +1279,6 @@ static struct ov8830_resolution ov8830_res_preview[] = {
 	},
 };
 
-#define N_RES_PREVIEW_OV8830 (ARRAY_SIZE(ov8830_res_preview))
-
 static struct ov8830_resolution ov8830_res_still[] = {
 	{
 		 .desc = "STILL_VGA_15fps",
@@ -1383,8 +1386,6 @@ static struct ov8830_resolution ov8830_res_still[] = {
 	},
 };
 
-#define N_RES_STILL_OV8830 (ARRAY_SIZE(ov8830_res_still))
-
 static struct ov8830_resolution ov8830_res_video[] = {
 	{
 		 .desc = "QCIF_strong_dvs_30fps",
@@ -1478,7 +1479,5 @@ static struct ov8830_resolution ov8830_res_video[] = {
 		 .skip_frames = 0,
 	},
 };
-
-#define N_RES_VIDEO_OV8830 (ARRAY_SIZE(ov8830_res_video))
 
 #endif
