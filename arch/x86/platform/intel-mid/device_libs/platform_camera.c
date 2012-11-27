@@ -115,7 +115,7 @@ static const struct intel_v4l2_subdev_id *get_v4l2_ids(int *n_subdev)
 
 static struct atomisp_platform_data *atomisp_platform_data;
 
-void intel_ignore_i2c_device_register(struct sfi_device_table_entry *pentry,
+void intel_register_i2c_camera_device(struct sfi_device_table_entry *pentry,
 					struct devs_id *dev)
 {
 	struct i2c_board_info i2c_info;
@@ -174,7 +174,7 @@ void intel_ignore_i2c_device_register(struct sfi_device_table_entry *pentry,
 	/* set platform data */
 	memcpy(&info->board_info, idev, sizeof(*idev));
 
-	if (v4l2_subdev_table_head == NULL) {
+	if (atomisp_platform_data == NULL) {
 		subdev_table = kzalloc(sizeof(struct intel_v4l2_subdev_table)
 			* n_subdev, GFP_KERNEL);
 
@@ -185,16 +185,16 @@ void intel_ignore_i2c_device_register(struct sfi_device_table_entry *pentry,
 			return;
 		}
 
-		v4l2_subdev_table_head = kzalloc(
+		atomisp_platform_data = kzalloc(
 			sizeof(struct atomisp_platform_data), GFP_KERNEL);
-		if (!v4l2_subdev_table_head) {
-			pr_err("MRST: fail to alloc mem for v4l2_subdev_table %s\n",
-			       idev->type);
+		if (!atomisp_platform_data) {
+			pr_err("%s: fail to alloc mem for atomisp_platform_data %s\n",
+			       __func__, idev->type);
 			kfree(info);
 			kfree(subdev_table);
 			return;
 		}
-		v4l2_subdev_table_head->subdevs = subdev_table;
+		atomisp_platform_data->subdevs = subdev_table;
 	}
 
 	memcpy(&subdev_table[i].v4l2_subdev, info, sizeof(*info));

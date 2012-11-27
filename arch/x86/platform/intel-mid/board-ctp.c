@@ -133,11 +133,11 @@ struct devs_id __initconst device_ids[] = {
 	 * I2C core while initialize
 	 */
 	{"lm3554", SFI_DEV_TYPE_I2C, 0, &lm3554_platform_data_func,
-					&intel_ignore_i2c_device_register},
+					&intel_register_i2c_camera_device},
 	{"mt9m114", SFI_DEV_TYPE_I2C, 0, &mt9m114_platform_data,
-					&intel_ignore_i2c_device_register},
+					&intel_register_i2c_camera_device},
 	{"ov8830", SFI_DEV_TYPE_I2C, 0, &ov8830_platform_data,
-					&intel_ignore_i2c_device_register},
+					&intel_register_i2c_camera_device},
 
 	/* Touch Screen */
 	{"mxt224", SFI_DEV_TYPE_I2C, 0, &mxt224_platform_data, NULL},
