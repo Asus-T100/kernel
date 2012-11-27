@@ -725,6 +725,34 @@ static const struct ov8830_reg ov8830_MIPI_Settings_614Mbps[] = {
 };
 /*****************************STILL********************************/
 
+static const struct ov8830_reg ov8830_cont_cap_720P_15fps[] = {
+	{ OV8830_8BIT, { 0x3800 }, 0x00 },
+	{ OV8830_8BIT, { 0x3801 }, 0x0c },
+	{ OV8830_8BIT, { 0x3802 }, 0x01 },
+	{ OV8830_8BIT, { 0x3803 }, 0x40 },
+	{ OV8830_8BIT, { 0x3804 }, 0x0c },
+	{ OV8830_8BIT, { 0x3805 }, 0xe3 },
+	{ OV8830_8BIT, { 0x3806 }, 0x08 },
+	{ OV8830_8BIT, { 0x3807 }, 0x75 },
+	{ OV8830_8BIT, { 0x3808 }, 0x05 }, /* Output size 1296x736 */
+	{ OV8830_8BIT, { 0x3809 }, 0x10 },
+	{ OV8830_8BIT, { 0x380a }, 0x02 },
+	{ OV8830_8BIT, { 0x380b }, 0xe0 },
+	{ OV8830_8BIT, { 0x380c }, 0x12 }, /* HTSxVTS 4696x2724 from MDFLD */
+	{ OV8830_8BIT, { 0x380d }, 0x58 },
+	{ OV8830_8BIT, { 0x380e }, 0x0a },
+	{ OV8830_8BIT, { 0x380f }, 0xa4 },
+	{ OV8830_8BIT, { 0x3810 }, 0x00 },
+	{ OV8830_8BIT, { 0x3811 }, 0x04 },
+	{ OV8830_8BIT, { 0x3812 }, 0x00 },
+	{ OV8830_8BIT, { 0x3813 }, 0x04 },
+	{ OV8830_8BIT, { 0x3814 }, 0x31 },
+	{ OV8830_8BIT, { 0x3815 }, 0x31 },
+	{ OV8830_8BIT, { 0x3820 }, 0x11 }, /* Binning on */
+	{ OV8830_8BIT, { 0x3821 }, 0x0f },
+	{ OV8830_TOK_TERM, {0}, 0}
+};
+
 static const struct ov8830_reg ov8830_1080P_STILL_15fps[] = {
 	{ OV8830_8BIT, { 0x3800 }, 0x00 },
 	{ OV8830_8BIT, { 0x3801 }, 0x0c },
@@ -753,6 +781,34 @@ static const struct ov8830_reg ov8830_1080P_STILL_15fps[] = {
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
+static const struct ov8830_reg ov8830_cont_cap_qvga_15fps[] = {
+	{ OV8830_8BIT, { 0x3800 }, 0x00 },
+	{ OV8830_8BIT, { 0x3801 }, 0x04 },
+	{ OV8830_8BIT, { 0x3802 }, 0x00 },
+	{ OV8830_8BIT, { 0x3803 }, 0x04 },
+	{ OV8830_8BIT, { 0x3804 }, 0x0c },
+	{ OV8830_8BIT, { 0x3805 }, 0xdb },
+	{ OV8830_8BIT, { 0x3806 }, 0x09 },
+	{ OV8830_8BIT, { 0x3807 }, 0xab },
+	{ OV8830_8BIT, { 0x3808 }, 0x01 }, /* O/p 336x256 Bin+skip+scale */
+	{ OV8830_8BIT, { 0x3809 }, 0x50 },
+	{ OV8830_8BIT, { 0x380a }, 0x01 },
+	{ OV8830_8BIT, { 0x380b }, 0x00 },
+	{ OV8830_8BIT, { 0x380c }, 0x12 }, /* HTSxVTS 4696x2724 from MDFLD */
+	{ OV8830_8BIT, { 0x380d }, 0x58 },
+	{ OV8830_8BIT, { 0x380e }, 0x0a },
+	{ OV8830_8BIT, { 0x380f }, 0xa4 },
+	{ OV8830_8BIT, { 0x3810 }, 0x00 },
+	{ OV8830_8BIT, { 0x3811 }, 0x04 },
+	{ OV8830_8BIT, { 0x3812 }, 0x00 },
+	{ OV8830_8BIT, { 0x3813 }, 0x04 },
+	{ OV8830_8BIT, { 0x3814 }, 0x71 },
+	{ OV8830_8BIT, { 0x3815 }, 0x71 },
+	{ OV8830_8BIT, { 0x3820 }, 0x11 }, /* Binning+skipping on */
+	{ OV8830_8BIT, { 0x3821 }, 0x0f },
+	{ OV8830_TOK_TERM, {0}, 0}
+};
+
 static const struct ov8830_reg ov8830_VGA_STILL_15fps[] = {
 	{ OV8830_8BIT, { 0x3800 }, 0x00 },
 	{ OV8830_8BIT, { 0x3801 }, 0x04 },
@@ -774,10 +830,10 @@ static const struct ov8830_reg ov8830_VGA_STILL_15fps[] = {
 	{ OV8830_8BIT, { 0x3811 }, 0x04 },
 	{ OV8830_8BIT, { 0x3812 }, 0x00 },
 	{ OV8830_8BIT, { 0x3813 }, 0x04 },
-	{ OV8830_8BIT, { 0x3814 }, 0x11 },
-	{ OV8830_8BIT, { 0x3815 }, 0x11 },
-	{ OV8830_8BIT, { 0x3820 }, 0x10 }, /* Binning off */
-	{ OV8830_8BIT, { 0x3821 }, 0x0e },
+	{ OV8830_8BIT, { 0x3814 }, 0x31 },
+	{ OV8830_8BIT, { 0x3815 }, 0x31 },
+	{ OV8830_8BIT, { 0x3820 }, 0x11 }, /* Binning on */
+	{ OV8830_8BIT, { 0x3821 }, 0x0f },
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
@@ -1252,7 +1308,7 @@ static struct ov8830_resolution ov8830_res_preview[] = {
 		 .skip_frames = 0,
 	},
 	{
-		 .desc = "OV8830_WidePreview"	,
+		 .desc = "ov8830_wide_preview_30fps",
 		 .width = 1280,
 		 .height = 720,
 		 .fps = 30,
@@ -1260,6 +1316,32 @@ static struct ov8830_resolution ov8830_res_preview[] = {
 		 .pixels_per_line = 3608,
 		 .lines_per_frame = 1773,
 		 .regs = ov8830_PREVIEW_WIDE_PREVIEW_30fps,
+		 .bin_factor_x = 1,
+		 .bin_factor_y = 1,
+		 .skip_frames = 0,
+	},
+	{
+		 .desc = "ov8830_cont_cap_qvga_15fps",
+		 .width = 336,
+		 .height = 256,
+		 .fps = 15,
+		 .used = 0,
+		 .pixels_per_line = 4696,
+		 .lines_per_frame = 2724,
+		 .regs = ov8830_cont_cap_qvga_15fps,
+		 .bin_factor_x = 1,
+		 .bin_factor_y = 1,
+		 .skip_frames = 0,
+	},
+	{
+		 .desc = "ov8830_cont_cap_vga_15fps",
+		 .width = 656,
+		 .height = 496,
+		 .fps = 15,
+		 .used = 0,
+		 .pixels_per_line = 4696,
+		 .lines_per_frame = 2724,
+		 .regs = ov8830_VGA_STILL_15fps,
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
 		 .skip_frames = 0,
@@ -1277,6 +1359,97 @@ static struct ov8830_resolution ov8830_res_preview[] = {
 		 .bin_factor_y = 1,
 		 .skip_frames = 0,
 	},
+	{
+		 .desc = "ov8830_cont_cap_720P_15fps",
+		 .width = 1296,
+		 .height = 736,
+		 .fps = 15,
+		 .used = 0,
+		 .pixels_per_line = 4696,
+		 .lines_per_frame = 2724,
+		 .regs = ov8830_cont_cap_720P_15fps,
+		 .bin_factor_x = 1,
+		 .bin_factor_y = 1,
+		 .skip_frames = 0,
+	},
+	{
+		 .desc = "ov8830_cont_cap_1M_15fps",
+		 .width = 1040,
+		 .height = 784,
+		 .fps = 15,
+		 .used = 0,
+		 .pixels_per_line = 4696,
+		 .lines_per_frame = 2724,
+		 .regs = ov8830_1M_STILL_15fps,
+		 .bin_factor_x = 0,
+		 .bin_factor_y = 0,
+		 .skip_frames = 0,
+	},
+	{
+		 .desc = "ov8830_cont_cap_1080P_15fps",
+		 .width = 1936,
+		 .height = 1104,
+		 .fps = 15,
+		 .used = 0,
+		 .pixels_per_line = 4696,
+		 .lines_per_frame = 2724,
+		 .regs = ov8830_1080P_STILL_15fps,
+		 .bin_factor_x = 0,
+		 .bin_factor_y = 0,
+		 .skip_frames = 0,
+	},
+	{
+		.desc = "ov8830_cont_cap_3M_15fps",
+		.width = 2064,
+		.height = 1552,
+		.fps = 15,
+		.used = 0,
+		.pixels_per_line = 4696,
+		.lines_per_frame = 2724,
+		.regs = ov8830_3M_STILL_15fps,
+		.bin_factor_x = 0,
+		.bin_factor_y = 0,
+		.skip_frames = 0,
+	},
+	{
+		.desc = "ov8830_cont_cap_5M_15fps",
+		.width = 2576,
+		.height = 1936,
+		.fps = 15,
+		.used = 0,
+		.pixels_per_line = 4696,
+		.lines_per_frame = 2724,
+		.regs = ov8830_5M_STILL_15fps,
+		.bin_factor_x = 0,
+		.bin_factor_y = 0,
+		.skip_frames = 0,
+	},
+	{
+		 .desc = "ov8830_cont_cap_6M_15fps",
+		 .width = 3280,
+		 .height = 1852,
+		 .fps = 15,
+		 .used = 0,
+		 .pixels_per_line = 4696,
+		 .lines_per_frame = 2724,
+		 .regs = ov8830_6M_STILL_15fps,
+		 .bin_factor_x = 0,
+		 .bin_factor_y = 0,
+		 .skip_frames = 0,
+	},
+	{
+		.desc = "ov8830_cont_cap_8M_15fps",
+		.width = 3280,
+		.height = 2464,
+		.fps = 15,
+		.used = 0,
+		.pixels_per_line = 4464,
+		.lines_per_frame = 2867,
+		.regs = ov8830_8M_STILL_15fps,
+		.bin_factor_x = 0,
+		.bin_factor_y = 0,
+		.skip_frames = 0,
+	},
 };
 
 static struct ov8830_resolution ov8830_res_still[] = {
@@ -1289,8 +1462,8 @@ static struct ov8830_resolution ov8830_res_still[] = {
 		 .pixels_per_line = 4696,
 		 .lines_per_frame = 2724,
 		 .regs = ov8830_VGA_STILL_15fps,
-		 .bin_factor_x = 0,
-		 .bin_factor_y = 0,
+		 .bin_factor_x = 1,
+		 .bin_factor_y = 1,
 		 .skip_frames = 1,
 	},
 	{
