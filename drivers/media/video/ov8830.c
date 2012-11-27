@@ -59,7 +59,6 @@
  * be printed.
  */
 static int debug;
-static u16 real_model_id;
 
 module_param(debug, int, 0644);
 MODULE_PARM_DESC(debug, "Enable debug messages");
@@ -1819,39 +1818,57 @@ static int ov8830_g_mbus_fmt(struct v4l2_subdev *sd,
 static int ov8830_detect(struct i2c_client *client, u16 *id, u8 *revision)
 {
 	struct i2c_adapter *adapter = client->adapter;
-	u16 high, low;
+	u16 id35;
+	int ret, s_ret;
 
 	/* i2c check */
 	if (!i2c_check_functionality(adapter, I2C_FUNC_I2C))
 		return -ENODEV;
 
-	/* check sensor chip ID	 */
-	if (ov8830_read_reg(client, OV8830_8BIT, 0x3001,
-			     &high)) {
-		v4l2_err(client, "sensor_id_high = 0x%x\n", high);
-		return -ENODEV;
-	}
-	if (ov8830_read_reg(client, OV8830_8BIT, 0x3002,
-			     &low)) {
-		v4l2_err(client, "sensor_id_low = 0x%x\n", high);
-		return -ENODEV;
-	}
-	*id = (((u8) high) << 8) | (u8) low;
-	v4l2_info(client, "sensor_id = 0x%x\n", *id);
-	real_model_id = *id;
+	/* check sensor chip ID - are same for both 8830 and 8835 modules */
+	ret = ov8830_read_reg(client, OV8830_16BIT, OV8830_CHIP_ID_HIGH, id);
+	if (ret)
+		return ret;
 
-	/* Reco settings changes this 0x2a88 from init registers*/
-	if (*id != 0x2a88) {
-		v4l2_err(client, "sensor ID error\n");
+	/* This always reads as 0x8830, even on 8835. */
+	dev_info(&client->dev, "chip_id = 0x%4.4x\n", *id);
+	if (*id != OV8830_CHIP_ID)
 		return -ENODEV;
-	}
 
-	v4l2_info(client, "detect ov8830 success\n");
+	/*
+	 * Check which module is attached OV8835 or OV8830.
+	 * We need to support OV8830 for a while.
+	 *
+	 * For correctly identifying the OV8835 module, sensor needs
+	 * to start streaming, OTP read enabled and wait for about 10ms
+	 * before reading the OTB Bank 0 for OV8835 module identification.
+	 *
+	 * TODO/FIXME Revisit OTP support is added or OV8830 not needed anymore.
+	 */
+	ret = ov8830_write_reg_array(client, ov8835_module_detection);
+	if (ret)
+		return ret;
+
+	msleep(20);
+
+	ret = ov8830_read_reg(client, OV8830_8BIT, OV8830_OTP_BANK0_PID, &id35);
+	if (ret)
+		goto out;
+
+	/* OTP BANK0 read will return 0x35 for OV8835 else 0*/
+	if (id35 == 0x35)
+		*id = OV8835_CHIP_ID;
+
+	dev_info(&client->dev, "sensor is ov%4.4x\n", *id);
 
 	/* REVISIT: HACK: Driver is currently forcing revision to 0 */
 	*revision = 0;
 
-	return 0;
+out:
+	/* Stream off now. */
+	s_ret = ov8830_write_reg(client, OV8830_8BIT, OV8830_STREAM_MODE, 0);
+
+	return ret ? ret : s_ret;
 }
 
 /*

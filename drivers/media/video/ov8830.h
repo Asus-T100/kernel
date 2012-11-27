@@ -61,6 +61,9 @@ struct drv201_device {
 #define	OV8830_ADDR	0x36
 #define OV8830_ID	0x4b00
 
+#define OV8830_CHIP_ID	0x8830
+#define OV8835_CHIP_ID	0x8835
+
 #define	LAST_REG_SETING		{0xffff, 0xff}
 #define	is_last_reg_setting(item) ((item).reg == 0xffff)
 #define I2C_MSG_LENGTH		0x2
@@ -122,6 +125,11 @@ struct drv201_device {
 #define OV8830_AEC_MANUAL_CTRL			0x3503
 #define OV8830_AGC_ADJ_H			0x3508
 #define OV8830_AGC_ADJ_L			0x3509
+
+#define OV8830_OTP_BANK0_PID			0x3d00
+#define OV8830_CHIP_ID_HIGH			0x300a
+#define OV8830_CHIP_ID_LOW			0x300b
+#define OV8830_STREAM_MODE			0x0100
 
 #define OV8830_FOCAL_LENGTH_NUM	439	/*4.39mm*/
 #define OV8830_FOCAL_LENGTH_DEM	100
@@ -409,6 +417,13 @@ struct ov8830_write_ctrl {
 
 #define OV8830_RES_WIDTH_MAX	3280
 #define OV8830_RES_HEIGHT_MAX	2464
+
+static const struct ov8830_reg ov8835_module_detection[] = {
+	{ OV8830_8BIT, { OV8830_STREAM_MODE }, 0x01 }, /* Stream on */
+	{ OV8830_8BIT, { 0x3d84 }, 0xc0 }, /* Select Bank 0 */
+	{ OV8830_8BIT, { 0x3d81 }, 0x01 }, /* OTP read enable */
+	{ OV8830_TOK_TERM, {0}, 0}
+};
 
 static const struct ov8830_reg ov8830_SwReset[] = {
 	{ OV8830_8BIT, { 0x0100 }, 0x00 },
