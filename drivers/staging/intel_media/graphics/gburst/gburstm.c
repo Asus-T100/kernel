@@ -2693,7 +2693,9 @@ static int gburst_suspend(struct gburst_pvt_s *gbprv)
 
 	/* Must update times before changing flag. */
 	update_state_times(gbprv, NULL);
+	mutex_lock(&gbprv->gbp_mutex_pwrgt_sts);
 	gbprv->gbp_suspended = 1;
+	mutex_unlock(&gbprv->gbp_mutex_pwrgt_sts);
 	smp_wmb();
 
 	/* Cancel timer events. */
@@ -2952,6 +2954,12 @@ static int __init gburst_init(struct gburst_pvt_s *gbprv)
 	/* -1 indicates no override is in effect. */
 	gbprv->gbp_utilization_override = -1;
 
+	/* No 3D activity is initialized to run until kernel finish
+	 * its initialization. so here make the gburst status consistent
+	 * with HW
+	 * */
+	gbprv->gbp_suspended = 1;
+
 	read_PWRGT_CNT_toggle(gbprv);
 
 	{       /* Not a shared interrupt, so no IRQF_SHARED. */
@@ -3044,11 +3052,6 @@ static int __init gburst_init(struct gburst_pvt_s *gbprv)
 	gbprv->gbp_initialized = 1;
 
 	smp_wmb();
-
-	/* Start Timer */
-	hrt_start(gbprv);
-
-	set_state_pwrgt_cnt(gbprv, PWRGT_CNT_BURST_REQUEST_M_400);
 
 	pfs_init(gbprv);
 
