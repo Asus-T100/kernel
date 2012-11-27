@@ -43,6 +43,7 @@
 #include <media/v4l2-chip-ident.h>
 
 #include "ov8830.h"
+#include "ov8835.h"
 
 #define OV8830_BIN_FACTOR_MAX	2
 
@@ -63,8 +64,9 @@ static int debug;
 module_param(debug, int, 0644);
 MODULE_PARM_DESC(debug, "Enable debug messages");
 
+static const struct ov8830_reg *pll_settings_reg_list = ov8830_PLL192MHz;
 static struct ov8830_resolution *ov8830_res = ov8830_res_preview;
-static int N_RES = N_RES_PREVIEW;
+static int N_RES = N_RES_PREVIEW_OV8830;
 
 static int
 ov8830_read_reg(struct i2c_client *client, u16 len, u16 reg, u16 *val)
@@ -814,15 +816,42 @@ static long ov8830_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
 static int ov8830_init_registers(struct v4l2_subdev *sd)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	struct ov8830_device *dev = to_ov8830_sensor(sd);
+	const struct ov8830_reg *basic_setting_reg_list;
+	const struct ov8830_reg *init_res_reg_list;
 	int ret;
 
-	ret = ov8830_write_reg_array(client, ov8830_SwReset);
-	ret |= ov8830_write_reg_array(client, ov8830_PLL192MHz);
-	ret |= ov8830_write_reg_array(client, ov8830_BasicSettings);
-	ret |= ov8830_write_reg_array(client, ov8830_MIPI_Settings_684Mbps);
-	ret |= ov8830_write_reg_array(client, ov8830_PREVIEW_848x616_30fps);
+	if (dev->sensor_id == OV8835_CHIP_ID) {
+		ov8830_res = ov8835_res_preview;
+		N_RES = N_RES_PREVIEW_OV8835;
+		pll_settings_reg_list = ov8835_pll_278_4_mhz;
+		basic_setting_reg_list = ov8835_basic_settings;
+		init_res_reg_list = ov8835_preview_848x616_30fps;
+	} else {
+		ov8830_res = ov8830_res_preview;
+		N_RES = N_RES_PREVIEW_OV8830;
+		pll_settings_reg_list = ov8830_PLL192MHz;
+		basic_setting_reg_list = ov8830_BasicSettings;
+		init_res_reg_list = ov8830_PREVIEW_848x616_30fps;
+	}
 
-	return ret;
+	ret = ov8830_write_reg_array(client, common_sw_reset);
+	if (ret)
+		return ret;
+
+	ret = ov8830_write_reg_array(client, pll_settings_reg_list);
+	if (ret)
+		return ret;
+
+	ret = ov8830_write_reg_array(client, common_mipi_settings_684_mbps);
+	if (ret)
+		return ret;
+
+	ret = ov8830_write_reg_array(client, basic_setting_reg_list);
+	if (ret)
+		return ret;
+
+	return ov8830_write_reg_array(client, init_res_reg_list);
 }
 
 static int __ov8830_init(struct v4l2_subdev *sd, u32 val)
@@ -831,10 +860,6 @@ static int __ov8830_init(struct v4l2_subdev *sd, u32 val)
 
 	/* set inital registers */
 	ret = ov8830_init_registers(sd);
-
-	/* restore settings */
-	ov8830_res = ov8830_res_preview;
-	N_RES = N_RES_PREVIEW;
 
 	return ret;
 }
@@ -1532,7 +1557,7 @@ static int ov8830_s_mbus_fmt(struct v4l2_subdev *sd,
 	dev->pixels_per_line = ov8830_res[dev->fmt_idx].pixels_per_line;
 	dev->lines_per_frame = ov8830_res[dev->fmt_idx].lines_per_frame;
 
-	ret = ov8830_get_intg_factor(sd, ov8830_info, ov8830_PLL192MHz);
+	ret = ov8830_get_intg_factor(sd, ov8830_info, pll_settings_reg_list);
 	if (ret) {
 		mutex_unlock(&dev->input_lock);
 		v4l2_err(sd, "failed to get integration_factor\n");
@@ -1855,16 +1880,22 @@ ov8830_s_parm(struct v4l2_subdev *sd, struct v4l2_streamparm *param)
 
 	switch (dev->run_mode) {
 	case CI_MODE_VIDEO:
-		ov8830_res = ov8830_res_video;
-		N_RES = N_RES_VIDEO;
+		ov8830_res = dev->sensor_id == OV8835_CHIP_ID ?
+				ov8835_res_video : ov8830_res_video;
+		N_RES = dev->sensor_id == OV8835_CHIP_ID ?
+				N_RES_VIDEO_OV8835 : N_RES_VIDEO_OV8830;
 		break;
 	case CI_MODE_STILL_CAPTURE:
-		ov8830_res = ov8830_res_still;
-		N_RES = N_RES_STILL;
+		ov8830_res = dev->sensor_id == OV8835_CHIP_ID ?
+				ov8835_res_still : ov8830_res_still;
+		N_RES = dev->sensor_id == OV8835_CHIP_ID ?
+				N_RES_STILL_OV8835 : N_RES_STILL_OV8830;
 		break;
 	default:
-		ov8830_res = ov8830_res_preview;
-		N_RES = N_RES_PREVIEW;
+		ov8830_res = dev->sensor_id == OV8835_CHIP_ID ?
+				ov8835_res_preview : ov8830_res_preview;
+		N_RES = dev->sensor_id == OV8835_CHIP_ID ?
+				N_RES_PREVIEW_OV8835 : N_RES_PREVIEW_OV8830;
 	}
 
 	mutex_unlock(&dev->input_lock);

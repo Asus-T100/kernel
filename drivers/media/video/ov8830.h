@@ -1274,7 +1274,7 @@ static struct ov8830_resolution ov8830_res_preview[] = {
 	},
 };
 
-#define N_RES_PREVIEW (ARRAY_SIZE(ov8830_res_preview))
+#define N_RES_PREVIEW_OV8830 (ARRAY_SIZE(ov8830_res_preview))
 
 static struct ov8830_resolution ov8830_res_still[] = {
 	{
@@ -1383,7 +1383,7 @@ static struct ov8830_resolution ov8830_res_still[] = {
 	},
 };
 
-#define N_RES_STILL (ARRAY_SIZE(ov8830_res_still))
+#define N_RES_STILL_OV8830 (ARRAY_SIZE(ov8830_res_still))
 
 static struct ov8830_resolution ov8830_res_video[] = {
 	{
@@ -1479,6 +1479,6 @@ static struct ov8830_resolution ov8830_res_video[] = {
 	},
 };
 
-#define N_RES_VIDEO (ARRAY_SIZE(ov8830_res_video))
+#define N_RES_VIDEO_OV8830 (ARRAY_SIZE(ov8830_res_video))
 
 #endif
