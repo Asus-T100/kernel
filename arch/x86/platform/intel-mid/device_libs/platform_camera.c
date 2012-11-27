@@ -113,7 +113,7 @@ static const struct intel_v4l2_subdev_id *get_v4l2_ids(int *n_subdev)
 	return v4l2_ids;
 }
 
-static struct atomisp_platform_data *v4l2_subdev_table_head;
+static struct atomisp_platform_data *atomisp_platform_data;
 
 void intel_ignore_i2c_device_register(struct sfi_device_table_entry *pentry,
 					struct devs_id *dev)
@@ -205,16 +205,16 @@ void intel_ignore_i2c_device_register(struct sfi_device_table_entry *pentry,
 	return;
 }
 
-const struct atomisp_platform_data *intel_get_v4l2_subdev_table(void)
+const struct atomisp_platform_data *atomisp_get_platform_data(void)
 {
-	if (v4l2_subdev_table_head)
-		return v4l2_subdev_table_head;
+	if (atomisp_platform_data)
+		return atomisp_platform_data;
 	else {
 		pr_err("MRST: no camera device in the SFI table\n");
 		return NULL;
 	}
 }
-EXPORT_SYMBOL_GPL(intel_get_v4l2_subdev_table);
+EXPORT_SYMBOL_GPL(atomisp_get_platform_data);
 
 static int camera_af_power_gpio = -1;
 

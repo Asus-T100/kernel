@@ -108,4 +108,6 @@ struct camera_mipi_info {
 	struct atomisp_sensor_mode_data data;
 };
 
+extern const struct atomisp_platform_data *atomisp_get_platform_data(void);
+
 #endif /* ATOMISP_PLATFORM_H_ */
