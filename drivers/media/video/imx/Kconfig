@@ -21,5 +21,14 @@ config VIDEO_IMX175
 	  And it will be used on MRFLD platform firstly. Enable this if you own imx175
 	  sensor and want to use it
 
+config VIDEO_IMX135
+	bool "Sony IMX135 13Mp raw sensor"
+	---help---
+	  This is sensor driver for Sony IMX135 raw sensor.
+
+	  It currently depends on VIDEO_IMX defined in the above section.
+	  And it will be used on MRFLD platform firstly. Enable this if you own imx135
+	  sensor and want to use it
+
 endchoice
 

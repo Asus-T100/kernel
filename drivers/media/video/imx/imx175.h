@@ -4,11 +4,15 @@
 #define IMX_NAME	"imx175"
 #define IMX_ID	0x0175
 
+#define IMX_SC_CMMN_CHIP_ID_H	0x0000
+#define IMX_SC_CMMN_CHIP_ID_L	0x0001
 #define IMX_FOCAL_LENGTH_NUM	369	/*3.69mm*/
 #define IMX_FOCAL_LENGTH_DEM	100
 #define IMX_F_NUMBER_DEFAULT_NUM	22
 #define IMX_F_NUMBER_DEM	10
 
+#define IMX_RES_WIDTH_MAX	3280
+#define IMX_RES_HEIGHT_MAX	2464
 #define IMX_BIN_FACTOR_MAX			4
 /*
  * focal length bits definition:

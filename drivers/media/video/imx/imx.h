@@ -36,6 +36,8 @@
 #include <media/v4l2-subdev.h>
 #if defined(CONFIG_VIDEO_IMX175)
 #include "imx175.h"
+#elif defined(CONFIG_VIDEO_IMX135)
+#include "imx135.h"
 #endif
 
 #define I2C_MSG_LENGTH		0x2
@@ -50,9 +52,6 @@
 /*
  * imx System control registers
  */
-#define IMX_SC_CMMN_CHIP_ID_H		0x0000
-#define IMX_SC_CMMN_CHIP_ID_L		0x0001
-
 #define IMX_MASK_4BIT	0xF
 #define IMX_MASK_2BIT	0x3
 #define IMX_MASK_11BIT	0x7FF
@@ -84,9 +83,6 @@
 #define IMX_TOK_MASK	0xfff0
 
 #define MAX_FMTS 1
-
-#define IMX_RES_WIDTH_MAX	3280
-#define IMX_RES_HEIGHT_MAX	2464
 
 #define	v4l2_format_capture_type_entry(_width, _height, \
 		_pixelformat, _bytesperline, _colorspace) \
