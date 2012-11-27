@@ -1658,14 +1658,23 @@ IMG_VOID HWRecoveryResetSGX (PVRSRV_DEVICE_NODE *psDeviceNode,
 	static IMG_UINT32	ui32HWRecoveryCount=0;
 	IMG_UINT32			ui32TempClockinus=0;
 #endif	
-	
+	int count = 0;
 	PVR_UNREFERENCED_PARAMETER(ui32Component);
-	if (drm_psb_dump_pm_history)
-		dump_nc_power_history();
+	PVR_LOG(("HWRecoveryResetSGX: enter"));
+
+	/*if (drm_psb_dump_pm_history)
+		dump_nc_power_history();*/
 	/*
 		Ensure that hardware recovery is serialised with any power transitions.
 	*/
-	eError = PVRSRVPowerLock(ui32CallerID, IMG_FALSE);
+	do {
+		eError = PVRSRVPowerLock(ui32CallerID, IMG_FALSE);
+		if (eError == PVRSRV_ERROR_RETRY)
+			usleep_range(1000, 1500);
+		else
+			break;
+	} while (count++ < 50);
+
 	if(eError != PVRSRV_OK)
 	{
 		/*
@@ -1673,6 +1682,8 @@ IMG_VOID HWRecoveryResetSGX (PVRSRV_DEVICE_NODE *psDeviceNode,
 			in progress.
 		*/
 		PVR_DPF((PVR_DBG_WARNING,"HWRecoveryResetSGX: Power transition in progress"));
+		PVR_LOG(("HWRecoveryResetSGX: exit1"));
+		panic("HWRecoveryResetSGX: timout to get powerlock\n");
 		return;
 	}
 
@@ -1722,6 +1733,7 @@ IMG_VOID HWRecoveryResetSGX (PVRSRV_DEVICE_NODE *psDeviceNode,
 
 	/* Flush any old commands from the queues. */
 	PVRSRVProcessQueues(IMG_TRUE);
+	PVR_LOG(("HWRecoveryResetSGX: exit2"));
 }
 #endif /* #if defined(SYS_USING_INTERRUPTS) || defined(SUPPORT_HW_RECOVERY) */
 
