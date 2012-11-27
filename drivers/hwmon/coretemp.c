@@ -513,8 +513,8 @@ static int create_core_attrs(struct temp_data *tdata, struct device *dev,
 	for (i = 0; i < tdata->attr_size; i++) {
 		if (rd_ptr[i] == show_ttarget && !have_ttarget)
 			continue;
-		snprintf(tdata->attr_name[i], CORETEMP_NAME_LENGTH, names[i],
-			attr_no);
+		snprintf(tdata->attr_name[i], sizeof(tdata->attr_name[i]),
+						names[i], attr_no);
 		sysfs_attr_init(&tdata->sd_attrs[i].dev_attr.attr);
 		tdata->sd_attrs[i].dev_attr.attr.name = tdata->attr_name[i];
 		tdata->sd_attrs[i].dev_attr.attr.mode = S_IRUGO;
