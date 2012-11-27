@@ -37,6 +37,8 @@
 #include "atomisp-regs.h"
 
 #include "device_access.h"
+#include <linux/intel_mid_pm.h>
+#include <asm/intel-mid.h>
 
 /* cross componnet debug message flag */
 int dbg_level = 0;
@@ -437,7 +439,7 @@ static int atomisp_runtime_resume(struct device *dev)
 		dev_get_drvdata(dev);
 	int ret;
 
-	pm_qos_update_request(&isp->pm_qos, ATOMISP_MAX_ISR_LATENCY);
+	pm_qos_update_request(&isp->pm_qos, isp->max_isr_latency);
 	if (isp->sw_contex.power_state == ATOM_ISP_POWER_DOWN) {
 		/*Turn on ISP d-phy */
 		ret = atomisp_ospm_dphy_up(isp);
@@ -491,7 +493,7 @@ static int atomisp_resume(struct device *dev)
 		dev_get_drvdata(dev);
 	int ret;
 
-	pm_qos_update_request(&isp->pm_qos, ATOMISP_MAX_ISR_LATENCY);
+	pm_qos_update_request(&isp->pm_qos, isp->max_isr_latency);
 
 	/*Turn on ISP d-phy */
 	ret = atomisp_ospm_dphy_up(isp);
@@ -935,6 +937,7 @@ load_firmware(struct device *dev)
 static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 				       const struct pci_device_id *id)
 {
+	const struct atomisp_platform_data *pdata;
 	struct atomisp_device *isp;
 	unsigned int start;
 	void __iomem *base;
@@ -947,6 +950,12 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 
 	atomisp_pci_vendor = id->vendor;
 	atomisp_pci_device = id->device;
+
+	pdata = atomisp_get_platform_data();
+	if (pdata == NULL) {
+		dev_err(&dev->dev, "no platform data available\n");
+		return -ENODEV;
+	}
 
 	err = pcim_enable_device(dev);
 	if (err) {
@@ -989,6 +998,14 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	isp->hw_contex.ispmmadr = start;
 
 	mutex_init(&isp->mutex);
+
+	isp->max_isr_latency = ATOMISP_MAX_ISR_LATENCY;
+	if ((pdata->spid->platform_family_id == INTEL_CLVTP_PHONE ||
+	     pdata->spid->platform_family_id == INTEL_CLVT_TABLET) &&
+	    isp->pdev->revision < 0x09) {
+		/* Workaround for Cloverview(+) older than stepping B0 */
+		isp->max_isr_latency = CSTATE_EXIT_LATENCY_C1;
+	}
 
 	/* Load isp firmware from user space */
 	isp->firmware = load_firmware(&dev->dev);
