@@ -1590,17 +1590,6 @@ static void intel_ignore_i2c_device_register(int bus,
 	return;
 }
 
-const struct atomisp_platform_data *intel_get_v4l2_subdev_table(void)
-{
-	if (v4l2_subdev_table_head)
-		return v4l2_subdev_table_head;
-	else {
-		pr_err("MRST: no camera device in the SFI table\n");
-		return NULL;
-	}
-}
-EXPORT_SYMBOL_GPL(intel_get_v4l2_subdev_table);
-
 #define MAX_IPCDEVS	24
 static struct platform_device *ipc_devs[MAX_IPCDEVS];
 static int ipc_next_dev;
