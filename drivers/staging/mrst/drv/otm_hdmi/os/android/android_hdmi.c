@@ -1071,16 +1071,24 @@ static void __android_hdmi_dump_crtc_mode(struct drm_display_mode *mode)
 	pr_debug("flags = 0x%x\n", mode->flags);
 }
 
+
 /**
- * Derive 29.97/59.94Hz dot clock from 30/60Hz dot clock
- *   f(clock) = clock * 1000/1001
- * @dotclock:	dot clock for 30/60Hz
+ * helper function to check whether two clocks can fall into the same VIC.
  *
- * Returns:	dot clock for 29.97/59.94Hz
+ * Returns: true if possible, false otherwise.
  */
-static int __f5994(int dotclock)
+static bool __android_check_clock_match(int target, int reference)
 {
-	return DIV_ROUND_UP(dotclock*1000, 1001);
+	/* check target clock is in range of 60Hz or 59.94 (reference * 1000/1001) with
+	 * (-0.5%, +0.5%) tolerance. Based on CEA spec, when determining whether two video timings
+	 * are identical, clock frequencey within (-0.5%, +0.5%) tolerance should be considered
+	 * as the same.
+	 */
+
+	if (target >= DIV_ROUND_UP(reference * 995, 1001) &&
+		target <= DIV_ROUND_UP(reference * 1005, 1000))
+		return true;
+	return false;
 }
 
 /**
@@ -1150,8 +1158,7 @@ static void __android_hdmi_drm_mode_to_otm_timing(otm_hdmi_timing_t *otm_mode,
 			otm_mode->height == vic_formats[i].height &&
 			otm_mode->htotal == vic_formats[i].htotal &&
 			otm_mode->vtotal == vic_formats[i].vtotal &&
-			(otm_mode->dclk == vic_formats[i].dclk ||
-			otm_mode->dclk == __f5994(vic_formats[i].dclk)) &&
+			__android_check_clock_match(otm_mode->dclk, vic_formats[i].dclk) &&
 			par == vic_formats[i].par) {
 			if (1 == cmdline_mode.specified &&
 				1 == cmdline_mode.vic_specified) {
@@ -1162,6 +1169,10 @@ static void __android_hdmi_drm_mode_to_otm_timing(otm_hdmi_timing_t *otm_mode,
 				/* else continue */
 			} else {
 				otm_mode->metadata = vic_formats[i].vic;
+				pr_debug("Assigning vic %d to mode %dx%d@%d, flags=%#x.\n",
+					(int)otm_mode->metadata, otm_mode->width,
+					otm_mode->height, (int)otm_mode->dclk,
+					(int)otm_mode->mode_info_flags);
 				break;
 			}
 		}
