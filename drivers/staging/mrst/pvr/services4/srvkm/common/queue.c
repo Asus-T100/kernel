@@ -1125,6 +1125,9 @@ PVRSRV_ERROR PVRSRVProcessCommand(SYS_DATA			*psSysData,
 	if (psCmdCompleteData->bInUse)
 	{
 		/* can use this to protect against concurrent execution of same command */
+		PVR_DPF((PVR_DBG_ERROR,
+					"PVRSRVProcessCommand: CCD is in use 0x%x",
+					psCommand->ui32DevIndex));
 		return PVRSRV_ERROR_FAILED_DEPENDENCIES;
 	}
 
@@ -1183,9 +1186,15 @@ PVRSRV_ERROR PVRSRVProcessCommand(SYS_DATA			*psSysData,
 			clean-up:
 			free cmd complete structure
 		*/
+		PVR_DPF((PVR_DBG_ERROR,
+					"PVRSRVProcessCommand: Process command fail 0x%x",
+					psCommand->ui32DevIndex));
 		psCmdCompleteData->bInUse = IMG_FALSE;
 		g_ui32InStamp++;
 		eError = PVRSRV_ERROR_CMD_NOT_PROCESSED;
+	} else {
+		/* Increment the CCB offset */
+		psDeviceCommandData[psCommand->CommandType].ui32CCBOffset = (ui32CCBOffset + 1) % DC_NUM_COMMANDS_PER_TYPE;
 	}
 /*temporarily disable the timer as we have flip timer and they have race now*/
 #if 0
@@ -1205,9 +1214,6 @@ PVRSRV_ERROR PVRSRVProcessCommand(SYS_DATA			*psSysData,
 		}
 	}
 #endif
-	
-	/* Increment the CCB offset */
-	psDeviceCommandData[psCommand->CommandType].ui32CCBOffset = (ui32CCBOffset + 1) % DC_NUM_COMMANDS_PER_TYPE;
 
 	return eError;
 }
