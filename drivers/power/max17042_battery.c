@@ -612,9 +612,6 @@ static irqreturn_t max17042_thread_handler(int id, void *dev)
 	if ((stat & STATUS_INTR_SOCMAX_BIT) ||
 		(stat & STATUS_INTR_SOCMIN_BIT)) {
 		dev_info(&chip->client->dev, "SOC threshold INTR\n");
-		/* set thresholds for the next trigger */
-		if (chip->pdata->soc_intr_mode_enabled)
-			set_soc_intr_thresholds_s0(chip, SOC_INTR_S0_THR);
 	}
 
 	if (stat & STATUS_BR_BIT) {
@@ -632,7 +629,8 @@ static irqreturn_t max17042_thread_handler(int id, void *dev)
 		}
 	}
 
-	power_supply_changed(&chip->battery);
+	/* update battery status and health */
+	schedule_work(&chip->evt_worker);
 	pm_runtime_put_sync(&chip->client->dev);
 	return IRQ_HANDLED;
 }
@@ -2164,18 +2162,14 @@ static int max17042_resume(struct device *dev)
 		/* Setting V-alrt threshold register to default values */
 		max17042_write_reg(chip->client, MAX17042_VALRT_Th,
 					VOLT_DEF_MAX_MIN_THRLD);
-		/* set the Interrupt threshold register for soc */
-		if (chip->pdata->soc_intr_mode_enabled)
-			set_soc_intr_thresholds_s0(chip, SOC_INTR_S0_THR);
-		else
-			/* set SOC-alert threshold sholds to lowest value */
-			max17042_write_reg(chip->client, MAX17042_SALRT_Th,
+		/* set SOC-alert threshold sholds to lowest value */
+		max17042_write_reg(chip->client, MAX17042_SALRT_Th,
 					SOC_DEF_MAX_MIN3_THRLD);
 		enable_irq(chip->client->irq);
 		disable_irq_wake(chip->client->irq);
 	}
-	/* current capacity updation to UI */
-	power_supply_changed(&chip->battery);
+	/* update battery status and health */
+	schedule_work(&chip->evt_worker);
 
 	/* max17042 IC automatically wakes up if any edge
 	 * on SDCl or SDA if we set I2CSH of CONFG reg
