@@ -93,15 +93,6 @@
 #define APDS_ALS_MAX_LUX	10000
 #define APDS_ALS_MIN_ADC	1
 
-/* Reverse chip factors for threshold calculation */
-struct reverse_factors {
-	u32 afactor;
-	int cf1;
-	int irf1;
-	int cf2;
-	int irf2;
-};
-
 struct apds9300_chip {
 	bool			lux_wait_fresh_res;
 	bool			suspend;
@@ -116,14 +107,13 @@ struct apds9300_chip {
 	struct apds9300_platform_data	*pdata;
 	int irq_gpio;
 
-	/* Chip parameters */
-	struct	apds9300_chip_factors	cf;
 	u16	rate;		/* als reporting rate */
 	u16	max_result;	/* Max possible ADC value with current atime */
 	u8	lux_persistence;
 
-	u32	lux_raw;
-	u32	lux;
+	u16	pre_clear;
+	u16	pre_ir;
+
 	u16	lux_clear;
 	u16	lux_ir;
 	u16	lux_calib;
@@ -289,24 +279,33 @@ static void apds9300_force_a_refresh(struct apds9300_chip *chip)
 	apds9300_write_word(chip, APDS9300_AIHTL, APDS_LUX_DEF_THRES_HI);
 }
 
-static ssize_t apds9300_lux_show(struct device *dev,
+static ssize_t apds9300_clear_show(struct device *dev,
 				 struct device_attribute *attr, char *buf)
 {
 	struct apds9300_chip *chip = dev_get_drvdata(dev);
 	ssize_t ret;
-	u32 result;
 
 	mutex_lock(&chip->mutex);
-	result = (chip->lux * chip->lux_calib) / APDS_CALIB_SCALER;
-	if (result > APDS_ALS_MAX_LUX)
-		result = APDS_ALS_MAX_LUX;
-
-	ret = sprintf(buf, "%d\n", result);
+	ret = sprintf(buf, "%d\n", chip->lux_clear);
 	mutex_unlock(&chip->mutex);
 	return ret;
 }
 
-static DEVICE_ATTR(lux0_input, S_IRUGO, apds9300_lux_show, NULL);
+static DEVICE_ATTR(lux_clear, S_IRUGO, apds9300_clear_show, NULL);
+
+static ssize_t apds9300_ir_show(struct device *dev,
+				 struct device_attribute *attr, char *buf)
+{
+	struct apds9300_chip *chip = dev_get_drvdata(dev);
+	ssize_t ret;
+
+	mutex_lock(&chip->mutex);
+	ret = sprintf(buf, "%d\n", chip->lux_ir);
+	mutex_unlock(&chip->mutex);
+	return ret;
+}
+
+static DEVICE_ATTR(lux_ir, S_IRUGO, apds9300_ir_show, NULL);
 
 static ssize_t apds9300_lux_calib_show(struct device *dev,
 				 struct device_attribute *attr, char *buf)
@@ -495,7 +494,8 @@ static DEVICE_ATTR(chip_id, S_IRUGO, apds9300_chip_id_show, NULL);
 
 static struct attribute *sysfs_attrs_ctrl[] = {
 	&dev_attr_lux0_calibscale.attr,
-	&dev_attr_lux0_input.attr,
+	&dev_attr_lux_clear.attr,
+	&dev_attr_lux_ir.attr,
 	&dev_attr_lux0_rate.attr,
 	&dev_attr_lux0_rate_avail.attr,
 	&dev_attr_lux0_thresh_above_value.attr,
@@ -511,18 +511,19 @@ static struct attribute_group apds9300_attribute_group[] = {
 static ssize_t
 als_read(struct file *filep, char __user *buffer, size_t size, loff_t *offset)
 {
-	u32 lux;
+	u32 buf[2];
 	int ret = -ENODEV;
 	struct als_client *client = filep->private_data;
 	struct apds9300_chip *chip = client->chip;
 
 	mutex_lock(&chip->mutex);
 	if (test_bit(ALS_ENABLE, &client->status)) {
-		lux = min_t(int, chip->lux, (u32)APDS_ALS_MAX_LUX);
+		buf[0] = chip->lux_clear;
+		buf[1] = chip->lux_ir;
 		clear_bit(ALS_DATA_READY, &client->status);
-		if (copy_to_user(buffer, &lux, sizeof(lux)))
+		if (copy_to_user(buffer, buf, sizeof(u32) * 2))
 			ret = -EFAULT;
-		ret = sizeof(lux);
+		ret = sizeof(u32) * 2;
 	}
 	mutex_unlock(&chip->mutex);
 
@@ -707,40 +708,6 @@ static const struct dev_pm_ops apds9300_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(apds9300_suspend, apds9300_resume)
 };
 
-/* Called always with mutex locked */
-static int apds9300_get_lux(struct apds9300_chip *chip, int clear, int ir)
-{
-	int ret;
-	int ratio, cf, irf;
-
-	if (clear < APDS_ALS_MIN_ADC)
-		return 0;
-
-	ratio = (ir * APDS_PARAM_SCALE) / clear;
-	/* TODO: refine the calculation here
-	 * pow(ratio, 1.4)
-	 */
-	cf = chip->cf.cf1;
-	irf = chip->cf.irf1;
-	if (ratio > APDS_RATIO_P1 && ratio <= APDS_RATIO_P2) {
-		cf = chip->cf.cf2;
-		irf = chip->cf.irf2;
-	} else if (ratio > APDS_RATIO_P2 && ratio <= APDS_RATIO_P3) {
-		cf = chip->cf.cf3;
-		irf = chip->cf.irf3;
-	} else if (ratio > APDS_RATIO_P3 && ratio <= APDS_RATIO_P4) {
-		cf = chip->cf.cf4;
-		irf = chip->cf.irf4;
-	} else if (ratio > APDS_RATIO_P4) {
-		return 0;
-	}
-
-	ret = 4 * (cf * clear - irf * ir) / APDS_PARAM_SCALE;
-	ret = max(ret, 0);
-
-	return min_t(int, ret, APDS_ALS_MAX_LUX);
-}
-
 /* mutex must be held when calling this function */
 static void als_handle_irq(struct apds9300_chip *chip)
 {
@@ -749,14 +716,17 @@ static void als_handle_irq(struct apds9300_chip *chip)
 	apds9300_read_word(chip, APDS9300_CDATAL, &chip->lux_clear);
 	apds9300_read_word(chip, APDS9300_IRDATAL, &chip->lux_ir);
 
-	chip->lux_raw = apds9300_get_lux(chip, chip->lux_clear, chip->lux_ir);
-	dev_dbg(&chip->client->dev, "value = %d", chip->lux_raw);
+	dev_dbg(&chip->client->dev, "clear=%d,ir=%d", chip->lux_clear,
+		chip->lux_ir);
 	apds9300_clear_to_athres(chip);
 	apds9300_refresh_athres(chip);
 
-	if (chip->lux != chip->lux_raw || chip->lux_wait_fresh_res == true) {
+	if (chip->pre_clear != chip->lux_clear ||
+			chip->pre_ir != chip->lux_ir ||
+			chip->lux_wait_fresh_res == true) {
 		chip->lux_wait_fresh_res = false;
-		chip->lux = chip->lux_raw;
+		chip->pre_clear = chip->lux_clear;
+		chip->pre_ir = chip->lux_ir;
 
 		list_for_each_entry(client, &chip->als_list, list)
 			set_bit(ALS_DATA_READY, &client->status);
@@ -889,20 +859,6 @@ static int apds9300_detect(struct apds9300_chip *chip)
 
 static void apds9300_init_params(struct apds9300_chip *chip)
 {
-	if (chip->pdata->cf.cf4 == 0) {
-		/* set uncovered sensor default parameters */
-		chip->cf.cf1 = 129; /* 0.0315 * APDS_PARAM_SCALE */
-		chip->cf.irf1 = 243; /* 0.0593 * APDS_PARAM_SCALE */
-		chip->cf.cf2 = 94; /* 0.0229 * APDS_PARAM_SCALE */
-		chip->cf.irf2 = 119; /* 0.0291 * APDS_PARAM_SCALE */
-		chip->cf.cf3 = 64; /* 0.0157 * APDS_PARAM_SCALE */
-		chip->cf.irf3 = 74; /* 0.018 * APDS_PARAM_SCALE */
-		chip->cf.cf4 = 14; /* 0.00338 * APDS_PARAM_SCALE */
-		chip->cf.irf4 = 11; /* 0.0026 * APDS_PARAM_SCALE */
-	} else {
-		chip->cf = chip->pdata->cf;
-	}
-
 	/* Set something to start with */
 	chip->lux_thres_hi = APDS_LUX_DEF_THRES_HI;
 	chip->lux_thres_lo = APDS_LUX_DEF_THRES_LO;

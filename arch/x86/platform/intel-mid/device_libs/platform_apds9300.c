@@ -18,20 +18,7 @@
 
 void *apds9300_platform_data(void *info)
 {
-	static struct apds9300_platform_data platform_data = {
-		.cf = {
-			.cf1    = 129,
-			.irf1   = 243,
-			.cf2    = 94,
-			.irf2   = 119,
-			.cf3    = 64,
-			.irf3   = 74,
-			.cf4    = 14,
-			.irf4   = 11,
-			.df     = 52,
-			.ga     = 15728,
-		},
-	};
+	static struct apds9300_platform_data platform_data;
 
 	platform_data.gpio_number = get_gpio_by_name("AL-intr");
 

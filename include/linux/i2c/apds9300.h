@@ -32,34 +32,6 @@
 #define APDS_IRLED_CURR_100mA	0x0
 
 /**
- * struct apds9300_chip_factors - defines effect of the cover window
- * @ga: Total glass attenuation
- * @cf1: clear channel factor 1 for raw to lux conversion
- * @irf1: IR channel factor 1 for raw to lux conversion
- * @cf2: clear channel factor 2 for raw to lux conversion
- * @irf2: IR channel factor 2 for raw to lux conversion
- * @df: device factor for conversion formulas
- *
- * Structure for tuning ALS calculation to match with environment.
- * Values depend on the material above the sensor and the sensor
- * itself. If the GA is zero, driver will use uncovered sensor default values
- * format: decimal value * APDS_PARAM_SCALE except df which is plain integer.
- */
-#define APDS_PARAM_SCALE 4096
-struct apds9300_chip_factors {
-	int ga;
-	int cf1;
-	int irf1;
-	int cf2;
-	int irf2;
-	int df;
-	int cf3;
-	int irf3;
-	int cf4;
-	int irf4;
-};
-
-/**
  * struct apds9300_platform_data - platform data for apsd9300.c driver
  * @cf: chip factor data
  * @pddrive: IR-led driving current
@@ -73,7 +45,6 @@ struct apds9300_chip_factors {
  */
 
 struct apds9300_platform_data {
-	struct apds9300_chip_factors cf;
 	int    gpio_number;
 	int    (*setup_resources)(void);
 	int    (*release_resources)(void);
