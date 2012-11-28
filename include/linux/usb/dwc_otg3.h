@@ -25,8 +25,8 @@
 #include <linux/device.h>
 #include <linux/compiler.h>
 
-#define SUPPORT_USER_ID_CHANGE_EVENTS
 
+#define SUPPORT_USER_ID_CHANGE_EVENTS
 struct dwc_device_par {
 	void __iomem *io_addr;
 	int len;
@@ -461,9 +461,9 @@ struct dwc_otg2 {
 #define TUSB1211_SCRATCH_REG_CLR				0x18
 #define TUSB1211_ACCESS_EXT_REG_SET				0x2F
 
-#define TUSB1211_VENDOR_SPECIFIC1				0x3D
-#define TUSB1211_VENDOR_SPECIFIC1_SET			0x3E
-#define TUSB1211_VENDOR_SPECIFIC1_CLR			0x3F
+#define TUSB1211_VENDOR_SPECIFIC1				0x80
+#define TUSB1211_VENDOR_SPECIFIC1_SET			0x81
+#define TUSB1211_VENDOR_SPECIFIC1_CLR			0x82
 #define TUSB1211_POWER_CONTROL					0x3D
 #define TUSB1211_POWER_CONTROL_SET				0x3E
 #define TUSB1211_POWER_CONTROL_CLR				0x3F
