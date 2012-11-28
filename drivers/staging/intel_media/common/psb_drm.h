@@ -757,6 +757,14 @@ struct drm_psb_register_rw_arg {
 
 	uint32_t subpicture_enable_mask;
 	uint32_t subpicture_disable_mask;
+	struct {
+		uint32_t CursorADDR;
+		uint32_t xPos;
+		uint32_t yPos;
+		uint32_t CursorSize;
+	} cursor;
+	uint32_t cursor_enable_mask;
+	uint32_t cursor_disable_mask;
 };
 
 enum {
