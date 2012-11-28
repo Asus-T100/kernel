@@ -67,6 +67,12 @@
 
 #define SCU_BOOT_BIT_MASK 0x00000008
 
+/* Op code to tell sep the shared memory location */
+#define DX_SEP_HOST_SEP_SEP_DRIVER_LOADED_OP_CODE 0xBC3
+
+/* Incorrect Op Code return */
+#define  DX_SEP_HOST_INCORRECT_OP_CODE 0xA09004
+
 struct sep_message_top_to_sep {
 	u32	rpmb_command; /* Command / Respond with Firmware */
 	u32	job_id;
@@ -81,6 +87,25 @@ struct sep_message_top_from_sep {
 	u32	data_size;
 	u32	emmc_result;
 	u32	reserve[2];
+};
+
+/* To use these, you must align this structure to the start of message pool */
+struct sep_msg_shared_mem_addr_to_sep {
+	u32	reserv[2];
+	u32	token;
+	u32	size;
+	u32	command;
+	u32	shared_phys;
+	u32	crc;
+};
+
+/* To use these, you must align this structure to the start of message pool */
+struct sep_msg_shared_mem_addr_from_sep {
+	u32	reserv[2];
+	u32	token;
+	u32	size;
+	u32	command;
+	u32	result;
 };
 
 /* Note that data buffer immediately follows */
