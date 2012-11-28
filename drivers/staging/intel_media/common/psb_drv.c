@@ -3599,6 +3599,32 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 			ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 		}
 	}
+	if (arg->cursor_enable_mask != 0) {
+		if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, usage)) {
+			uint32_t temp;
+			temp = PSB_RVDC32(PIPEACONF);
+			temp &= ~PIPECONF_CURSOR_OFF;
+			PSB_WVDC32(temp, PIPEACONF);
+			PSB_WVDC32((arg->cursor.CursorSize == 1) ? 0x22 : 0x27,
+					CURACNTR);
+			PSB_WVDC32(arg->cursor.CursorADDR, CURABASE);
+			if ((arg->cursor.xPos > 0) && (arg->cursor.yPos > 0))
+				PSB_WVDC32(((arg->cursor.yPos << 16)
+					|(arg->cursor.xPos)), CURAPOS);
+			ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+		}
+	}
+	if (arg->cursor_disable_mask != 0) {
+		if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, usage)) {
+			uint32_t temp;
+			temp = PSB_RVDC32(PIPEACONF);
+			temp |= PIPECONF_CURSOR_OFF;
+			PSB_WVDC32(temp, PIPEACONF);
+			PSB_WVDC32(0x0, CURACNTR);
+			PSB_WVDC32(0x0, CURABASE);
+			ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+		}
+	}
 
 	mutex_unlock(&dev_priv->overlay_lock);
 	return 0;
