@@ -505,7 +505,17 @@ static int ulpi_read(struct dwc_otg2 *otg, const u8 reg, u8 *val)
 	}
 
 	count = 200;
-	val32 = GUSB2PHYACC0_NEWREGREQ | GUSB2PHYACC0_REGADDR(reg);
+	/* Determine if use extend registers access */
+	if (reg & EXTEND_ULPI_REGISTER_ACCESS_MASK) {
+		otg_dbg(otg, "Access extend registers 0x%x\n", reg);
+		val32 = GUSB2PHYACC0_NEWREGREQ
+			| GUSB2PHYACC0_REGADDR(TUSB1211_ACCESS_EXT_REG_SET)
+			| GUSB2PHYACC0_VCTRL(reg);
+	} else {
+		otg_dbg(otg, "Access normal registers 0x%x\n", reg);
+		val32 = GUSB2PHYACC0_NEWREGREQ | GUSB2PHYACC0_REGADDR(reg)
+			| GUSB2PHYACC0_VCTRL(0x00);
+	}
 	otg_write(otg, GUSB2PHYACC0, val32);
 
 	while (count) {
@@ -561,9 +571,20 @@ static int ulpi_write(struct dwc_otg2 *otg, const u8 reg, const u8 val)
 	}
 
 	count = 200;
-	val32 = GUSB2PHYACC0_NEWREGREQ | GUSB2PHYACC0_REGADDR(reg)
-		| GUSB2PHYACC0_REGWR | GUSB2PHYACC0_REGDATA(val);
 
+	if (reg & EXTEND_ULPI_REGISTER_ACCESS_MASK) {
+		otg_dbg(otg, "Access extend registers 0x%x\n", reg);
+		val32 = GUSB2PHYACC0_NEWREGREQ
+			| GUSB2PHYACC0_REGADDR(TUSB1211_ACCESS_EXT_REG_SET)
+			| GUSB2PHYACC0_VCTRL(reg)
+			| GUSB2PHYACC0_REGWR | GUSB2PHYACC0_REGDATA(val);
+	} else {
+		otg_dbg(otg, "Access normal registers 0x%x\n", reg);
+		val32 = GUSB2PHYACC0_NEWREGREQ
+			| GUSB2PHYACC0_REGADDR(reg)
+			| GUSB2PHYACC0_REGWR
+			| GUSB2PHYACC0_REGDATA(val);
+	}
 	otg_write(otg, GUSB2PHYACC0, val32);
 
 	while (count) {

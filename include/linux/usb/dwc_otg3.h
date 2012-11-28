@@ -106,6 +106,7 @@ struct dwc_device_par {
 #define GUSB2PHYCFG0				0xc200
 #define GUSB2PHYCFG_SUS_PHY                     0x40
 
+#define EXTEND_ULPI_REGISTER_ACCESS_MASK	0xC0
 #define GUSB2PHYACC0	0xc280
 #define GUSB2PHYACC0_DISULPIDRVR  (1 << 26)
 #define GUSB2PHYACC0_NEWREGREQ  (1 << 25)
@@ -114,9 +115,11 @@ struct dwc_device_par {
 #define GUSB2PHYACC0_REGWR  (1 << 22)
 #define GUSB2PHYACC0_REGADDR(v)  ((v & 0x3F) << 16)
 #define GUSB2PHYACC0_EXTREGADDR(v)  ((v & 0x3F) << 8)
-#define GUSB2PHYACC0_VCTRL  (0xFF << 8)
+#define GUSB2PHYACC0_VCTRL(v)  ((v & 0xFF) << 8)
 #define GUSB2PHYACC0_REGDATA(v)  (v & 0xFF)
 #define GUSB2PHYACC0_REGDATA_MASK  0xFF
+#define DATACON_TIMEOUT		750
+#define DATACON_INTERVAL	10
 
 #define GUSB3PIPECTL0                           0xc2c0
 #define GUSB3PIPECTL_SUS_EN                     0x20000
