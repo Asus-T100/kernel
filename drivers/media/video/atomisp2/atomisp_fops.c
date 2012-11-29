@@ -549,6 +549,7 @@ static int atomisp_release(struct file *file)
 	if (isp == NULL)
 		return -EBADF;
 
+	mutex_lock(&isp->streamoff_mutex);
 	mutex_lock(&isp->mutex);
 
 	pipe->users--;
@@ -623,6 +624,7 @@ static int atomisp_release(struct file *file)
 		v4l2_err(&atomisp_dev, "Failed to power off device\n");
 done:
 	mutex_unlock(&isp->mutex);
+	mutex_unlock(&isp->streamoff_mutex);
 
 	return 0;
 }

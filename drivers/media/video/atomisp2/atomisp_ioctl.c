@@ -1270,6 +1270,10 @@ static int atomisp_streamon(struct file *file, void *fh,
 	}
 
 	mutex_lock(&isp->mutex);
+	if (isp->streaming == ATOMISP_DEVICE_STREAMING_STOPPING) {
+		ret = -EBUSY;
+		goto out;
+	}
 
 	if (pipe->capq.streaming)
 		goto out;
@@ -1401,6 +1405,9 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 	u32 msg_ret;
 #endif
 
+	BUG_ON(!mutex_is_locked(&isp->mutex));
+	BUG_ON(!mutex_is_locked(&isp->streamoff_mutex));
+
 	if (type != V4L2_BUF_TYPE_VIDEO_CAPTURE) {
 		dev_dbg(isp->dev, "unsupported v4l2 buf type\n");
 		return -EINVAL;
@@ -1424,6 +1431,16 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 		isp->streaming = ATOMISP_DEVICE_STREAMING_STOPPING;
 		first_streamoff = true;
 	}
+	spin_unlock_irqrestore(&isp->lock, flags);
+
+	if (first_streamoff) {
+		mutex_unlock(&isp->mutex);
+		del_timer_sync(&isp->wdt);
+		cancel_work_sync(&isp->wdt_work);
+		mutex_lock(&isp->mutex);
+	}
+
+	spin_lock_irqsave(&isp->lock, flags);
 	if (atomisp_streaming_count(isp) == 1)
 		isp->streaming = ATOMISP_DEVICE_STREAMING_DISABLED;
 	spin_unlock_irqrestore(&isp->lock, flags);
@@ -1456,9 +1473,6 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 		sh_css_capture_stop();
 		break;
 	}
-
-	del_timer_sync(&isp->wdt);
-	cancel_work_sync(&isp->wdt_work);
 
 	/* cancel work queue*/
 	if (isp->isp_subdev.video_out_capture.users) {
@@ -1532,9 +1546,11 @@ static int atomisp_streamoff(struct file *file, void *fh,
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	int rval;
 
+	mutex_lock(&isp->streamoff_mutex);
 	mutex_lock(&isp->mutex);
 	rval = __atomisp_streamoff(file, fh, type);
 	mutex_unlock(&isp->mutex);
+	mutex_unlock(&isp->streamoff_mutex);
 
 	return rval;
 }
