@@ -2708,7 +2708,7 @@ static void sfi_table_invalid_batt(struct msic_batt_sfi_prop *sfi_table)
 * mfld_umip_read_termination_current - reads the termination current data from umip using IPC.
 * @term_curr : termination current read from umip.
 */
-static void  mfld_umip_read_termination_current(u16 *term_curr)
+static void  mfld_umip_read_termination_current(u32 *term_curr)
 {
 	int mip_offset, ret;
 	/* Read 2bytes of termination current data from the umip */

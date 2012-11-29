@@ -516,6 +516,6 @@ struct msic_power_module_info {
 	uint8_t chrint_mask, chrint1_mask;
 
 	int in_cur_lmt;	/* input current limit level */
-	uint16_t term_curr; /*termination current */
+	uint32_t term_curr; /*termination current */
 };
 #endif
