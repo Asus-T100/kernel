@@ -392,6 +392,12 @@ config X86_UV
 # Following is an alphabetically sorted list of 32 bit extended platforms
 # Please maintain the alphabetic order if and when there are additions
 
+config INTEL_ATOM_SOC_DUMP
+	tristate "Intel Atom SoC register dump debugfs interface"
+	default n
+	---help---
+	   Select for the Intel Atom SoC register dump debugfs interface.
+
 config X86_INTEL_CE
 	bool "CE4100 TV platform"
 	depends on PCI

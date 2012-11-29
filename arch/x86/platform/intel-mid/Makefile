@@ -11,6 +11,7 @@ obj-$(CONFIG_X86_INTEL_MID) += intel_mid_vrtc.o
 obj-$(CONFIG_EARLY_PRINTK_INTEL_MID) += early_printk_intel_mid.o
 obj-$(CONFIG_X86_INTEL_MID) += intel-mid.o
 obj-$(CONFIG_X86_INTEL_MID) += intel_mid_scu.o
+obj-$(CONFIG_INTEL_ATOM_SOC_DUMP)	+= intel_soc_dump.o
 # MFLD specific files
 obj-$(CONFIG_X86_MDFLD) += mfld.o
 # PMU driver

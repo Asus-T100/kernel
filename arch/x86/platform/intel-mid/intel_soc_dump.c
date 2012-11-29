@@ -75,6 +75,7 @@
 
 #define MAX_CMDLEN		96
 #define MAX_ERRLEN		255
+#define MAX_USER_CMD_LEN	96
 #define MIN_ARGS_NUM		3
 #define MAX_ARGS_NUM		8
 #define MAX_MMIO_PCI_LEN	4096
@@ -111,7 +112,7 @@ struct mmio_pci_map {
 
 static struct dentry *dump_cmd_dentry, *dump_output_dentry;
 static int dump_cmd_was_set;
-static char dump_cmd_buf[MAX_CMDLEN], err_buf[MAX_ERRLEN + 1];
+static char dump_cmd_buf[MAX_USER_CMD_LEN], err_buf[256];
 
 static int access_dir, access_width, access_bus, access_len;
 static u32 access_value;
@@ -317,7 +318,7 @@ static int parse_mmio_args(char **arg_list, int arg_num)
 	int ret;
 
 	if (arg_num < 3) {
-		snprintf(err_buf, MAX_ERRLEN, "too few arguments\n"
+		sprintf(err_buf, "too few arguments\n"
 			"usage: r[1|2|4] <mmio> <addr> [<len>]\n"
 			"       w[1|2|4] <mmio> <addr> <val>\n");
 		goto failed;
@@ -328,24 +329,21 @@ static int parse_mmio_args(char **arg_list, int arg_num)
 
 	ret = kstrtou32(arg_list[2], 0, &mmio_addr);
 	if (ret) {
-		snprintf(err_buf, MAX_ERRLEN, "invalid mmio address %s\n",
-							 arg_list[2]);
+		sprintf(err_buf, "invalid mmio address %s\n", arg_list[2]);
 		goto failed;
 	}
 
 	if ((access_width == ACCESS_WIDTH_32BIT) &&
 		(mmio_addr % 4)) {
-		snprintf(err_buf, MAX_ERRLEN,
-			"addr %x is not 4 bytes aligned!\n",
-						mmio_addr);
+		sprintf(err_buf, "addr %x is not 4 bytes aligned!\n",
+					mmio_addr);
 		goto failed;
 	}
 
 	if ((access_width == ACCESS_WIDTH_16BIT) &&
 		(mmio_addr % 2)) {
-		snprintf(err_buf, MAX_ERRLEN,
-			"addr %x is not 2 bytes aligned!\n",
-						mmio_addr);
+		sprintf(err_buf, "addr %x is not 2 bytes aligned!\n",
+					mmio_addr);
 		goto failed;
 	}
 
@@ -353,31 +351,27 @@ static int parse_mmio_args(char **arg_list, int arg_num)
 		if (arg_num == 4) {
 			ret = kstrtou32(arg_list[3], 0, &access_len);
 			if (ret) {
-				snprintf(err_buf, MAX_ERRLEN,
-					"invalid mmio read length %s\n",
-							arg_list[3]);
+				sprintf(err_buf, "invalid mmio read "
+					"length %s\n", arg_list[3]);
 				goto failed;
 			}
 		} else if (arg_num > 4) {
-			snprintf(err_buf, MAX_ERRLEN,
-				"usage: r[1|2|4] mmio <addr> "
-						"[<len>]\n");
+			sprintf(err_buf, "usage: r[1|2|4] mmio <addr> "
+							"[<len>]\n");
 			goto failed;
 		}
 	}
 
 	if (access_dir == ACCESS_DIR_WRITE) {
 		if (arg_num != 4) {
-			snprintf(err_buf, MAX_ERRLEN,
-				"need exact 4 arguments for "
-					"mmio write.\n");
+			sprintf(err_buf, "need exact 4 arguments for "
+						"mmio write.\n");
 			goto failed;
 		}
 		ret = kstrtou32(arg_list[3], 0, &access_value);
 		if (ret) {
-			snprintf(err_buf, MAX_ERRLEN,
-				"invalid mmio address %s\n",
-						arg_list[3]);
+			sprintf(err_buf, "invalid mmio address %s\n",
+							arg_list[3]);
 			goto failed;
 		}
 	}
@@ -393,7 +387,7 @@ static int parse_msg_bus_args(char **arg_list, int arg_num)
 	int ret;
 
 	if (arg_num < 4) {
-		snprintf(err_buf, MAX_ERRLEN, "too few arguments\n"
+		sprintf(err_buf, "too few arguments\n"
 			"usage: r msg_bus <port> <addr> [<len>]\n"
 			"       w msg_bus <port> <addr> <val>\n");
 		goto failed;
@@ -403,22 +397,19 @@ static int parse_msg_bus_args(char **arg_list, int arg_num)
 		access_width = ACCESS_WIDTH_32BIT;
 
 	if (access_width != ACCESS_WIDTH_32BIT) {
-		snprintf(err_buf, MAX_ERRLEN,
-			"only 32bit read/write are supported.\n");
+		sprintf(err_buf, "only 32bit read/write are supported.\n");
 		goto failed;
 	}
 
 	ret = kstrtou8(arg_list[2], 0, &msg_bus_port);
 	if (ret || msg_bus_port > 255) {
-		snprintf(err_buf, MAX_ERRLEN, "invalid msg_bus port %s\n",
-								arg_list[2]);
+		sprintf(err_buf, "invalid msg_bus port %s\n", arg_list[2]);
 		goto failed;
 	}
 
 	ret = kstrtou32(arg_list[3], 0, &msg_bus_addr);
 	if (ret) {
-		snprintf(err_buf, MAX_ERRLEN, "invalid msg_bus address %s\n",
-								arg_list[3]);
+		sprintf(err_buf, "invalid msg_bus address %s\n", arg_list[3]);
 		goto failed;
 	}
 
@@ -426,29 +417,27 @@ static int parse_msg_bus_args(char **arg_list, int arg_num)
 		if (arg_num == 5) {
 			ret = kstrtou32(arg_list[4], 0, &access_len);
 			if (ret) {
-				snprintf(err_buf, MAX_ERRLEN,
-					"invalid msg_bus read length %s\n",
-								arg_list[4]);
+				sprintf(err_buf, "invalid msg_bus read length"
+						" %s\n", arg_list[4]);
 				goto failed;
 			}
 		} else if (arg_num > 5) {
-			snprintf(err_buf, MAX_ERRLEN, "too many arguments\n"
-						"usage: r[1|2|4] msg_bus "
-						"<port> <addr> [<len>]\n");
+			sprintf(err_buf, "too many arguments\n"
+					"usage: r[1|2|4] msg_bus "
+					"<port> <addr> [<len>]\n");
 			goto failed;
 		}
 	}
 
 	if (access_dir == ACCESS_DIR_WRITE) {
 		if (arg_num != 5) {
-			snprintf(err_buf, MAX_ERRLEN, "too few arguments\n"
+			sprintf(err_buf, "too few arguments\n"
 				"usage: w msg_bus <port> <addr> <val>]\n");
 			goto failed;
 		}
 		ret = kstrtou32(arg_list[4], 0, &access_value);
 		if (ret) {
-			snprintf(err_buf, MAX_ERRLEN,
-				"invalid value for msg_bus write %s\n",
+			sprintf(err_buf, "invalid value for msg_bus write %s\n",
 							 arg_list[4]);
 			goto failed;
 		}
@@ -465,7 +454,7 @@ static int parse_pci_args(char **arg_list, int arg_num)
 	int ret;
 
 	if (arg_num < 6) {
-		snprintf(err_buf, MAX_ERRLEN, "too few arguments\n"
+		sprintf(err_buf, "too few arguments\n"
 			"usage: r[1|2|4] pci <bus> <dev> <func> <reg> [<len>]\n"
 			"       w[1|2|4] pci <bus> <dev> <func> <reg> <val>\n");
 		goto failed;
@@ -476,41 +465,35 @@ static int parse_pci_args(char **arg_list, int arg_num)
 
 	ret = kstrtou8(arg_list[2], 0, &pci_bus);
 	if (ret || pci_bus > 255) {
-		snprintf(err_buf, MAX_ERRLEN, "invalid pci bus %s\n",
-							arg_list[2]);
+		sprintf(err_buf, "invalid pci bus %s\n", arg_list[2]);
 		goto failed;
 	}
 
 	ret = kstrtou8(arg_list[3], 0, &pci_dev);
 	if (ret || pci_dev > 255) {
-		snprintf(err_buf, MAX_ERRLEN, "invalid pci device %s\n",
-							arg_list[3]);
+		sprintf(err_buf, "invalid pci device %s\n", arg_list[3]);
 		goto failed;
 	}
 
 	ret = kstrtou8(arg_list[4], 0, &pci_func);
 	if (ret || pci_func > 255) {
-		snprintf(err_buf, MAX_ERRLEN, "invalid pci function %s\n",
-							arg_list[4]);
+		sprintf(err_buf, "invalid pci function %s\n", arg_list[4]);
 		goto failed;
 	}
 
 	ret = kstrtou16(arg_list[5], 0, &pci_reg);
 	if (ret || pci_reg > 4 * 1024) {
-		snprintf(err_buf, MAX_ERRLEN, "invalid pci register %s\n",
-							arg_list[5]);
+		sprintf(err_buf, "invalid pci register %s\n", arg_list[5]);
 		goto failed;
 	}
 
 	if ((access_width == ACCESS_WIDTH_32BIT) && (pci_reg % 4)) {
-		snprintf(err_buf, MAX_ERRLEN, "reg %x is not 4 bytes aligned!\n"
-							 , (u32) pci_reg);
+		sprintf(err_buf, "reg %x is not 4 bytes aligned!\n", pci_reg);
 		goto failed;
 	}
 
 	if ((access_width == ACCESS_WIDTH_16BIT) && (pci_reg % 2)) {
-		snprintf(err_buf, MAX_ERRLEN, "reg %x is not 2 bytes aligned\n",
-								pci_reg);
+		sprintf(err_buf, "reg %x is not 2 bytes aligned!\n", pci_reg);
 		goto failed;
 	}
 
@@ -518,30 +501,26 @@ static int parse_pci_args(char **arg_list, int arg_num)
 		if (arg_num == 7) {
 			ret = kstrtou32(arg_list[6], 0, &access_len);
 			if (ret || access_len > 4 * 1024) {
-				snprintf(err_buf, MAX_ERRLEN,
-					"invalid pci read length %s\n",
+				sprintf(err_buf, "invalid pci read length %s\n",
 							arg_list[6]);
 				return ret;
 			}
 		} else if (arg_num > 7) {
-			snprintf(err_buf, MAX_ERRLEN,
-				"max 7 args are allowed for pci read\n"
+			sprintf(err_buf, "max 7 args are allowed for pci read\n"
 				"usage: r[1|2|4] pci <bus> <dev> <func> "
-							"<reg> [<len>]\n");
+				"<reg> [<len>]\n");
 			goto failed;
 		}
 	}
 
 	if (access_dir == ACCESS_DIR_WRITE) {
 		if (arg_num != 7) {
-			snprintf(err_buf, MAX_ERRLEN,
-				"need exact 7 args for pci write.\n");
+			sprintf(err_buf, "need exact 7 args for pci write.\n");
 			goto failed;
 		}
 		ret = kstrtou32(arg_list[6], 0, &access_value);
 		if (ret) {
-			snprintf(err_buf, MAX_ERRLEN,
-				"invalid value for pci write %s\n",
+			sprintf(err_buf, "invalid value for pci write %s\n",
 							 arg_list[6]);
 			goto failed;
 		}
@@ -559,7 +538,7 @@ static int parse_i2c_args(char **arg_list, int arg_num)
 
 	if ((access_dir == ACCESS_DIR_READ && arg_num != 4) ||
 		(access_dir == ACCESS_DIR_WRITE && arg_num != 5)) {
-		snprintf(err_buf, MAX_ERRLEN, "usage: r i2c <bus> <addr>\n"
+		sprintf(err_buf, "usage: r i2c <bus> <addr>\n"
 			"       w i2c <bus> <addr> <val>\n");
 		goto failed;
 	}
@@ -568,14 +547,13 @@ static int parse_i2c_args(char **arg_list, int arg_num)
 		access_width = ACCESS_WIDTH_8BIT;
 
 	if (access_width != ACCESS_WIDTH_8BIT) {
-		snprintf(err_buf, MAX_ERRLEN, "only 8bit access is allowed\n");
+		sprintf(err_buf, "only 8bit access is supported\n");
 		goto failed;
 	}
 
 	ret = kstrtou8(arg_list[2], 0, &i2c_bus);
 	if (ret || i2c_bus > 9) {
-		snprintf(err_buf, MAX_ERRLEN, "invalid i2c bus %s\n",
-							arg_list[2]);
+		sprintf(err_buf, "invalid i2c bus %s\n", arg_list[2]);
 		goto failed;
 	}
 
@@ -583,16 +561,14 @@ static int parse_i2c_args(char **arg_list, int arg_num)
 
 	pr_err("ret = %d, i2c_addr is 0x%x\n", ret, i2c_addr);
 	if (ret || (i2c_addr > 1024)) {
-		snprintf(err_buf, MAX_ERRLEN, "invalid i2c address %s\n",
-							arg_list[3]);
+		sprintf(err_buf, "invalid i2c address %s\n", arg_list[3]);
 		goto failed;
 	}
 
 	if (access_dir == ACCESS_DIR_WRITE) {
 		ret = kstrtou32(arg_list[4], 0, &access_value);
 		if (ret) {
-			snprintf(err_buf, MAX_ERRLEN,
-				"invalid value for i2c write %s\n",
+			sprintf(err_buf, "invalid value for i2c write %s\n",
 							 arg_list[4]);
 			goto failed;
 		}
@@ -606,39 +582,37 @@ failed:
 static ssize_t dump_cmd_write(struct file *file, const char __user *buf,
 				size_t len, loff_t *offset)
 {
-	char cmd[MAX_CMDLEN];
+	char cmd[MAX_USER_CMD_LEN];
 	char *arg_list[MAX_ARGS_NUM];
 	int arg_num, ret = -EINVAL;
 
 	err_buf[0] = 0;
 
-	if (len >= MAX_CMDLEN) {
-		snprintf(err_buf, MAX_ERRLEN, "input command is too long.\n"
-					"max allowed input length is %d\n",
-							MAX_CMDLEN);
+	if (len >= MAX_USER_CMD_LEN) {
+		sprintf(err_buf, "input command is too long.\n"
+			"max allowed input length is %d\n",
+			MAX_USER_CMD_LEN);
 		goto done;
 	}
 
 	if (copy_from_user(cmd, buf, len)) {
-		snprintf(err_buf, MAX_ERRLEN, "copy_from_user() failed.\n");
+		sprintf(err_buf, "copy_from_user() failed.\n");
 		goto done;
 	}
 	cmd[len] = 0;
 
 	dump_cmd_buf[0] = 0;
-	strncpy(dump_cmd_buf, cmd, len);
+	strcpy(dump_cmd_buf, cmd);
 	dump_cmd_buf[len] = 0;
 
 	arg_num = parse_argument(cmd, arg_list);
 	if (arg_num < MIN_ARGS_NUM) {
-		snprintf(err_buf, MAX_ERRLEN,
-			"invalid command(too few arguments): "
+		sprintf(err_buf, "invalid command(too few arguments): "
 					"%s\n", dump_cmd_buf);
 		goto done;
 	}
 	if (arg_num > MAX_ARGS_NUM) {
-		snprintf(err_buf, MAX_ERRLEN,
-			"invalid command(too many arguments): "
+		sprintf(err_buf, "invalid command(too many arguments): "
 					"%s\n", dump_cmd_buf);
 		goto done;
 	}
@@ -669,8 +643,7 @@ static ssize_t dump_cmd_write(struct file *file, const char __user *buf,
 		access_dir = ACCESS_DIR_WRITE;
 		access_width = ACCESS_WIDTH_DEFAULT;
 	} else {
-		snprintf(err_buf, MAX_ERRLEN, "unknown argument: %s\n",
-							arg_list[0]);
+		sprintf(err_buf, "unknown argument: %s\n", arg_list[0]);
 		goto done;
 	}
 
@@ -689,21 +662,18 @@ static ssize_t dump_cmd_write(struct file *file, const char __user *buf,
 		access_bus = ACCESS_BUS_I2C;
 		ret = parse_i2c_args(arg_list, arg_num);
 	} else {
-		snprintf(err_buf, MAX_ERRLEN, "unknown argument: %s\n",
-							arg_list[1]);
+		sprintf(err_buf, "unknown argument: %s\n", arg_list[1]);
 	}
 
 	if (access_len == 0) {
-		snprintf(err_buf, MAX_ERRLEN,
-			"access length must be larger than 0\n");
+		sprintf(err_buf, "access length must be larger than 0\n");
 		ret = -EINVAL;
 		goto done;
 	}
 
 	if ((access_bus == ACCESS_BUS_MMIO || access_bus == ACCESS_BUS_PCI) &&
 					 (access_len > MAX_MMIO_PCI_LEN)) {
-		snprintf(err_buf, MAX_ERRLEN,
-			"%d exceeds max mmio/pci read length(%d)\n",
+		sprintf(err_buf, "%d exceeds max mmio/pci read length(%d)\n",
 					access_len, MAX_MMIO_PCI_LEN);
 		ret = -EINVAL;
 		goto done;
@@ -711,8 +681,7 @@ static ssize_t dump_cmd_write(struct file *file, const char __user *buf,
 
 	if ((access_bus == ACCESS_BUS_MSG_BUS) &&
 		(access_len > MAX_MSG_BUS_LEN)) {
-		snprintf(err_buf, MAX_ERRLEN,
-			"%d exceeds max msg_bus read length(%d)\n",
+		sprintf(err_buf, "%d exceeds max msg_bus read length(%d)\n",
 					access_len, MAX_MSG_BUS_LEN);
 		ret = -EINVAL;
 	}
@@ -747,14 +716,14 @@ static int dump_output_show_mmio(struct seq_file *s)
 		}
 		switch (access_width) {
 		case ACCESS_WIDTH_8BIT:
-			iowrite8((u8) access_value, base);
+			*(u8 *)base = (u8) access_value;
 			break;
 		case ACCESS_WIDTH_16BIT:
-			iowrite16((u16) access_value, base);
+			*(u16 *)base = (u16) access_value;
 			break;
 		case ACCESS_WIDTH_32BIT:
 		case ACCESS_WIDTH_DEFAULT:
-			iowrite32(access_value, base);
+			*(u32 *)base = access_value;
 			break;
 		default:
 			break; /* never happen */
@@ -799,15 +768,15 @@ static int dump_output_show_mmio(struct seq_file *s)
 				switch (access_width) {
 				case ACCESS_WIDTH_32BIT:
 					seq_printf(s, " %08x",
-						ioread32(base + i));
+						*((u32 *)base + i));
 					break;
 				case ACCESS_WIDTH_16BIT:
 					seq_printf(s, " %04x",
-						(u16) ioread16(base + i));
+						*((u16 *)base + i));
 					break;
 				case ACCESS_WIDTH_8BIT:
 					seq_printf(s, " %02x",
-						(u8) ioread8(base + i));
+						*((u8 *)base + i));
 					break;
 				}
 			}
