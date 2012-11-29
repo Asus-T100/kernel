@@ -1,5 +1,5 @@
 /*
- * platform_mpu3050.h: mpu3050 platform data header file
+ * platform_ltr502als.h: ltr502als platform data header file
  *
  * (C) Copyright 2008 Intel Corporation
  * Author:
@@ -9,9 +9,8 @@
  * as published by the Free Software Foundation; version 2
  * of the License.
  */
-#ifndef _PLATFORM_MPU3050_H_
-#define _PLATFORM_MPU3050_H_
+#ifndef _PLATFORM_LTR502ALS_H_
+#define _PLATFORM_LTR502ALS_H_
 
-extern void *mpu3050_platform_data(void *info) __attribute__((weak));
-extern void *gyro_platform_data(void *info) __attribute__((weak));
+extern void *ltr502als_platform_data(void *info) __attribute__((weak));
 #endif

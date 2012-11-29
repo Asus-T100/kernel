@@ -1,5 +1,5 @@
 /*
- * platform_mpu3050.c: mpu3050 platform data initilization file
+ * platform_ltr502als.c: ltr502als platform data initilization file
  *
  * (C) Copyright 2008 Intel Corporation
  * Author:
@@ -14,25 +14,13 @@
 #include <linux/i2c.h>
 #include <linux/lnw_gpio.h>
 #include <asm/intel-mid.h>
-#include "platform_mpu3050.h"
+#include "platform_ltr502als.h"
 
-void *gyro_platform_data(void *info)
+void *ltr502als_platform_data(void *info)
 {
 	struct i2c_board_info *i2c_info = (struct i2c_board_info *)info;
 
-	i2c_info->irq = get_gpio_by_name("gyro_int");
+	i2c_info->irq = get_gpio_by_name("AL-intr");
 
-	return NULL;
-}
-
-void *mpu3050_platform_data(void *info)
-{
-	struct i2c_board_info *i2c_info = info;
-	int intr = get_gpio_by_name("mpu3050_int");
-
-	if (intr == -1)
-		return NULL;
-
-	i2c_info->irq = intr + INTEL_MID_IRQ_OFFSET;
 	return NULL;
 }

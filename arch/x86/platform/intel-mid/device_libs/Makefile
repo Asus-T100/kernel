@@ -23,6 +23,7 @@ obj-$(subst m,y,$(CONFIG_SENSORS_HMC5883))				+= platform_hmc5883.o
 obj-$(subst m,y,$(CONFIG_SENSORS_LIS3LV02D))				+= platform_lis331.o
 obj-$(subst m,y,$(CONFIG_GPIO_PCA953X))					+= platform_max7315.o
 obj-$(subst m,y,$(CONFIG_SENSORS_MPU3050))				+= platform_mpu3050.o
+obj-$(subst m,y,$(CONFIG_SENSORS_LTR502ALS))				+= platform_ltr502als.o
 obj-$(subst m,y,$(CONFIG_GPIO_PCA953X))					+= platform_tca6416.o
 ifdef CONFIG_BATTERY_MAX17042
 obj-$(subst m,y,$(CONFIG_BATTERY_MAX17042))				+= platform_max17042.o

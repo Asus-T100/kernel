@@ -205,7 +205,7 @@ struct alsps_client {
 #define APDS_PROX_NEUTRAL_CALIB_VALUE	(1 * APDS_CALIB_SCALER)
 
 #define APDS_PROX_DEF_THRES		600
-#define APDS_PROX_HYSTERESIS		50
+#define APDS_PROX_HYSTERESIS		30
 #define APDS_LUX_DEF_THRES_HI		101
 #define APDS_LUX_DEF_THRES_LO		100
 #define APDS_DEFAULT_PROX_PERS		0x2
@@ -624,13 +624,9 @@ static void ps_handle_irq(struct apds990x_chip *chip)
 		apds990x_read_word(chip, APDS990X_PDATAL, &chip->prox_data);
 
 	apds990x_refresh_pthres(chip, chip->prox_data);
-	if (chip->prox_data < chip->prox_thres)
-		chip->prox_data = 0;
-	else
-		chip->prox_data = 1;
 
-	dev_dbg(&chip->client->dev, "clr_ch=%u, proximity =%u\n",
-			clr_ch, chip->prox_data);
+	dev_info(&chip->client->dev, "clr_ch=%u, proximity=%u, thresh=%u\n",
+			clr_ch, chip->prox_data, chip->prox_thres);
 
 	list_for_each_entry(client, &chip->ps_list, list)
 		set_bit(PS_DATA_READY, &client->status);
@@ -821,6 +817,7 @@ static ssize_t apds990x_prox_show(struct device *dev,
 		ret = -EIO;
 		goto out;
 	}
+	apds990x_read_word(chip, APDS990X_PDATAL, &chip->prox_data);
 	ret = sprintf(buf, "%d\n", chip->prox_data);
 out:
 	mutex_unlock(&chip->mutex);
@@ -967,7 +964,7 @@ static ssize_t ps_read(struct file *filep,
 
 	mutex_lock(&chip->mutex);
 	if (chip->alsps_switch & APDS_PS_ENABLE) {
-		value = chip->prox_data;
+		value = chip->prox_data < chip->prox_thres ? 0 : 1;
 		ret = sizeof(value);
 		clear_bit(PS_DATA_READY, &client->status);
 		if (copy_to_user(buffer, &value, sizeof(value)))
@@ -1574,13 +1571,13 @@ static int apds990x_suspend(struct device *dev)
 
 	dev_dbg(&i2c_client->dev, "%s: pm suspend", __func__);
 	disable_irq(i2c_client->irq);
-
-	if (!mutex_trylock(&chip->mutex))
+	if (!mutex_trylock(&chip->mutex)) {
 		goto out1;
-
+	}
 	list_for_each_entry(client, &chip->ps_list, list) {
-		if (test_bit(PS_DATA_READY, &client->status))
+		if (test_bit(PS_DATA_READY, &client->status)) {
 			goto out2;
+		}
 	}
 	mutex_unlock(&chip->mutex);
 	return 0;
@@ -1627,8 +1624,19 @@ static struct i2c_driver apds990x_driver = {
 	.id_table = apds990x_id,
 };
 
-module_i2c_driver(apds990x_driver);
+static int __init apds990x_init(void)
+{
+	return i2c_add_driver(&apds990x_driver);
+}
+
+static void __exit apds990x_exit(void)
+{
+	i2c_del_driver(&apds990x_driver);
+}
 
 MODULE_DESCRIPTION("APDS990X combined ALS and proximity sensor");
 MODULE_AUTHOR("Samu Onkalo, Nokia Corporation");
 MODULE_LICENSE("GPL v2");
+
+module_init(apds990x_init);
+module_exit(apds990x_exit);

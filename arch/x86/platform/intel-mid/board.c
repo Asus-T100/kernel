@@ -40,10 +40,13 @@
 #include <asm/platform_clvs_audio.h>
 
 /* I2C devices */
+#include "device_libs/platform_apds990x.h"
+#include "device_libs/platform_l3g4200d.h"
 #include "device_libs/platform_max7315.h"
 #include "device_libs/platform_tca6416.h"
 #include "device_libs/platform_mpu3050.h"
 #include "device_libs/platform_lsm303.h"
+#include "device_libs/platform_ltr502als.h"
 #include "device_libs/platform_emc1403.h"
 #include "device_libs/platform_lis331.h"
 #include "device_libs/platform_pn544.h"
@@ -136,6 +139,10 @@ struct devs_id __initconst device_ids[] = {
 	{"accel", SFI_DEV_TYPE_I2C, 0, &lis3dh_platform_data, NULL},
 	{"lsm303dl", SFI_DEV_TYPE_I2C, 0, &lsm303dlhc_accel_platform_data},
 	{"lsm303cmp", SFI_DEV_TYPE_I2C, 0, &no_platform_data, NULL},
+	{"apds990x", SFI_DEV_TYPE_I2C, 0, &apds990x_platform_data},
+	{"l3g4200d", SFI_DEV_TYPE_I2C, 0, &l3g4200d_platform_data},
+	{"gyro", SFI_DEV_TYPE_I2C, 0, &gyro_platform_data, NULL},
+	{"als", SFI_DEV_TYPE_I2C, 0, &ltr502als_platform_data, NULL},
 
 	/* Modem */
 #ifndef CONFIG_HSI_NO_MODEM
