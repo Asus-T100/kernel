@@ -9,9 +9,13 @@
 #include <linux/thermal.h>
 #include <linux/extcon.h>
 #include <linux/power/battery_id.h>
+#include <linux/notifier.h>
 #include "power_supply.h"
 #include "power_supply_charger.h"
 
+#include <linux/usb/dwc_otg3.h>
+
+struct work_struct otg_work;
 #define MAX_CHARGER_COUNT 5
 
 static LIST_HEAD(algo_list);
@@ -60,6 +64,125 @@ static struct charger_cable cable_list[] = {
 	 },
 };
 
+#ifdef CONFIG_DWC_CHARGER_DETECTION
+static int otg_handle_notification(struct notifier_block *nb,
+				   unsigned long event, void *data);
+struct otg_transceiver *otg_xceiver;
+struct notifier_block otg_nb = {
+		   .notifier_call = otg_handle_notification,
+		};
+static void configure_chrgr_source(struct charger_cable *cable_lst);
+
+struct charger_cable *get_cable(unsigned long usb_chrgr_type)
+{
+
+	switch (usb_chrgr_type) {
+	case CHRG_SDP:
+		printk(KERN_ERR "%s:%d SDP\n", __FILE__, __LINE__);
+		return &cable_list[0];
+	case CHRG_CDP:
+		printk(KERN_ERR "%s:%d CDP\n", __FILE__, __LINE__);
+		return &cable_list[1];
+	case CHRG_DCP:
+		printk(KERN_ERR "%s:%d DCP\n", __FILE__, __LINE__);
+		return &cable_list[2];
+	case CHRG_ACA:
+		printk(KERN_ERR "%s:%d ACA\n", __FILE__, __LINE__);
+		return &cable_list[3];
+	}
+
+	return NULL;
+}
+
+
+static void otg_event_worker(struct work_struct *work)
+{
+	configure_chrgr_source(cable_list);
+
+}
+
+static int otg_handle_notification(struct notifier_block *nb,
+				   unsigned long event, void *data)
+{
+
+	struct otg_bc_cap *cap;
+	struct charger_cable *cable = NULL;
+
+	cap = (struct otg_bc_cap *)data;
+
+	if (event != USB_EVENT_CHARGER)
+		return NOTIFY_DONE;
+
+
+	cable = get_cable(cap->chrg_type);
+	if (!cable) {
+
+		pr_err("%s:%d Error in getting charger cable from get_cable\n",
+				__FILE__, __LINE__);
+		return -EINVAL;
+	}
+
+	switch (cap->chrg_state) {
+	case OTG_CHR_STATE_CONNECTED:
+		printk(KERN_ERR "%s:%d Connected\n", __FILE__, __LINE__);
+		cable->cable_props.cable_stat = EXTCON_CHRGR_CABLE_CONNECTED;
+		break;
+	case OTG_CHR_STATE_DISCONNECTED:
+		printk(KERN_ERR "%s:%d Disconnected\n", __FILE__, __LINE__);
+		cable->cable_props.cable_stat = EXTCON_CHRGR_CABLE_DISCONNECTED;
+		break;
+	case OTG_CHR_STATE_SUSPENDED:
+		printk(KERN_ERR "%s:%d Suspended\n", __FILE__, __LINE__);
+		cable->cable_props.cable_stat = EXTCON_CHRGR_CABLE_SUSPENDED;
+		break;
+	default:
+		printk(KERN_ERR "%s:%d Invalid event\n", __FILE__, __LINE__);
+		break;
+	}
+
+	cable->cable_props.mA = cap->mA;
+	schedule_work(&otg_work);
+
+	return NOTIFY_OK;
+
+}
+
+int otg_register(void)
+{
+	int retval;
+
+	otg_xceiver = otg_get_transceiver();
+	if (!otg_xceiver) {
+		pr_err("%s:%d failure to get otg transceiver\n",
+					__FILE__, __LINE__);
+		goto otg_reg_failed;
+	}
+	retval = otg_register_notifier(otg_xceiver, &otg_nb);
+	if (retval) {
+		pr_err("%s:%d failure to register otg notifier\n",
+			__FILE__, __LINE__);
+		goto otg_reg_failed;
+	}
+
+	INIT_WORK(&otg_work, otg_event_worker);
+
+
+	return 0;
+
+otg_reg_failed:
+
+	return -EIO;
+}
+
+#else
+
+int otg_register(void)
+{
+	return 0;
+}
+
+#endif
+
 static int charger_cable_notifier(struct notifier_block *nb,
 				  unsigned long event, void *ptr);
 static void charger_cable_event_worker(struct work_struct *work);
@@ -72,6 +195,7 @@ static void init_charger_cables(struct charger_cable *cable_lst, int count)
 	struct extcon_chrgr_cbl_props cable_props;
 	const char *cable_name;
 
+	otg_register();
 	while (--count) {
 		cable = cable_lst++;
 		/* initialize cable instance */
