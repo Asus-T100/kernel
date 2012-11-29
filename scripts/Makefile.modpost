@@ -159,9 +159,9 @@ SIGN_MODULES := 0
 endif
 
 # only sign if it's an in-tree module
-ifneq ($(KBUILD_EXTMOD),)
-SIGN_MODULES := 0
-endif
+#ifneq ($(KBUILD_EXTMOD),)
+#SIGN_MODULES := 0
+#endif
 
 # We strip the module as best we can - note that using both strip and eu-strip
 # results in a smaller module than using either alone.
