@@ -247,6 +247,8 @@ struct msvdx_private {
 	/* previous vieo context */
 	struct psb_video_ctx *last_msvdx_ctx;
 	uint32_t pm_gating_count;
+
+	struct page *mmu_recover_page;
 };
 
 struct psb_msvdx_cmd_queue {

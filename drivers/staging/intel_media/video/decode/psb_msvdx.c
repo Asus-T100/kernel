@@ -126,6 +126,7 @@ void psb_msvdx_flush_cmd_queue(struct drm_device *dev)
 		kfree(msvdx_cmd->cmd);
 		kfree(msvdx_cmd);
 	}
+	msvdx_priv->msvdx_busy = 0;
 	spin_unlock_irqrestore(&msvdx_priv->msvdx_lock, irq_flags);
 }
 
@@ -1129,6 +1130,21 @@ int psb_check_msvdx_idle(struct drm_device *dev)
 				PSB_RMSVDX32(MSVDX_COMMS_FW_STATUS));
 			return -EBUSY;
 		}
+	}
+
+	/* on some cores below 50502, there is one instance that
+	 * read requests may not go to zero is in the case of a page fault,
+	 * check core revision by reg MSVDX_CORE_REV, 385 core is 0x20001
+	 * check if mmu page fault happend by reg MSVDX_INTERRUPT_STATUS,
+	 * check was it a page table rather than a protection fault
+	 * by reg MSVDX_MMU_STATUS, for such case,
+	 * need call psb_msvdx_core_reset as the work around */
+	if ((PSB_RMSVDX32(MSVDX_CORE_REV_OFFSET) < 0x00050502) &&
+		(PSB_RMSVDX32(MSVDX_INTERRUPT_STATUS_OFFSET)
+			& MSVDX_INTERRUPT_STATUS__MMU_FAULT_IRQ_MASK) &&
+		(PSB_RMSVDX32(MSVDX_MMU_STATUS_OFFSET) & 1)) {
+		PSB_DEBUG_WARN("mmu page fault, recover by core_reset.\n");
+		return 0;
 	}
 
 	/* check MSVDX_MMU_MEM_REQ to confirm there's no memory requests */
