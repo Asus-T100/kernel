@@ -21,6 +21,7 @@
 #include <asm/platform_mrfld_audio.h>
 /* I2C Devices */
 #include "device_libs/platform_max17042.h"
+#include "device_libs/platform_pn544.h"
 
 static void __init *no_platform_data(void *info)
 {
@@ -43,6 +44,7 @@ struct devs_id __initconst device_ids[] = {
 	{"mrfld_lm49453", SFI_DEV_TYPE_IPC, 1, &merfld_audio_platform_data, NULL},
 	{"lm49453_codec", SFI_DEV_TYPE_I2C, 1, &no_platform_data, NULL},
 	{"bcm43xx_clk_vmmc", SFI_DEV_TYPE_SD, 0, &bcm43xx_platform_data, NULL},
+	{"pn544", SFI_DEV_TYPE_I2C, 0, &pn544_platform_data, NULL},
 	{},
 };
 
