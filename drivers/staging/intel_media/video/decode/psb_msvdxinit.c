@@ -117,42 +117,35 @@ int psb_msvdx_core_reset(struct drm_psb_private *dev_priv)
 	 */
 	PSB_WMSVDX32(2, MSVDX_MMU_CONTROL0_OFFSET);
 
-	/* MSVDX 385 core revision is 0x20001 */
-	core_rev = PSB_RMSVDX32(MSVDX_CORE_REV_OFFSET);
-	if (core_rev < 0x00050502) {
-		/* if there's any page fault */
-		int int_status = PSB_RMSVDX32(MSVDX_INTERRUPT_STATUS_OFFSET);
+	/* BRN26106, BRN23944, BRN33671 */
+	/* This is neccessary for all cores up to Tourmaline */
+	if ((PSB_RMSVDX32(MSVDX_CORE_REV_OFFSET) < 0x00050502) &&
+		(PSB_RMSVDX32(MSVDX_INTERRUPT_STATUS_OFFSET)
+			& MSVDX_INTERRUPT_STATUS__MMU_FAULT_IRQ_MASK) &&
+		(PSB_RMSVDX32(MSVDX_MMU_STATUS_OFFSET) & 1)) {
+		unsigned int *pptd;
+		unsigned int loop;
+		uint32_t ptd_addr;
 
-		if (int_status & MSVDX_INTERRUPT_STATUS__MMU_FAULT_IRQ_MASK) {
-			/* was it a page table rather than a protection fault */
-			int mmu_status = PSB_RMSVDX32(MSVDX_MMU_STATUS_OFFSET);
-
-			if (mmu_status & 1) {
-				struct page *p;
-				unsigned int *pptd;
-				unsigned int loop;
-				uint32_t ptd_addr;
-
-				/* do work around */
-				p = alloc_page(GFP_DMA32);
-				if (!p) {
-					ret = -1;
-					return ret;
-				}
-				ptd_addr = page_to_pfn(p) << PAGE_SHIFT;
-				pptd = kmap(p);
-				for (loop = 0; loop < 1024; loop++)
-					pptd[loop] = ptd_addr | 0x00000003;
-				PSB_WMSVDX32(ptd_addr, MSVDX_MMU_DIR_LIST_BASE_OFFSET +  0);
-				PSB_WMSVDX32(ptd_addr, MSVDX_MMU_DIR_LIST_BASE_OFFSET +  4);
-				PSB_WMSVDX32(ptd_addr, MSVDX_MMU_DIR_LIST_BASE_OFFSET +  8);
-				PSB_WMSVDX32(ptd_addr, MSVDX_MMU_DIR_LIST_BASE_OFFSET + 12);
-
-				PSB_WMSVDX32(6, MSVDX_MMU_CONTROL0_OFFSET);
-				PSB_WMSVDX32(MSVDX_INTERRUPT_STATUS__MMU_FAULT_IRQ_MASK, MSVDX_INTERRUPT_STATUS_OFFSET);
-				__free_page(p);
-			}
+		/* do work around */
+		ptd_addr = page_to_pfn(msvdx_priv->mmu_recover_page)
+					<< PAGE_SHIFT;
+		pptd = kmap(msvdx_priv->mmu_recover_page);
+		if (!pptd) {
+			DRM_ERROR("failed to kmap mmu recover page.\n");
+			return -1;
 		}
+		for (loop = 0; loop < 1024; loop++)
+			pptd[loop] = ptd_addr | 0x00000003;
+		PSB_WMSVDX32(ptd_addr, MSVDX_MMU_DIR_LIST_BASE_OFFSET +  0);
+		PSB_WMSVDX32(ptd_addr, MSVDX_MMU_DIR_LIST_BASE_OFFSET +  4);
+		PSB_WMSVDX32(ptd_addr, MSVDX_MMU_DIR_LIST_BASE_OFFSET +  8);
+		PSB_WMSVDX32(ptd_addr, MSVDX_MMU_DIR_LIST_BASE_OFFSET + 12);
+
+		PSB_WMSVDX32(6, MSVDX_MMU_CONTROL0_OFFSET);
+		PSB_WMSVDX32(MSVDX_INTERRUPT_STATUS__MMU_FAULT_IRQ_MASK,
+					MSVDX_INTERRUPT_STATUS_OFFSET);
+		kunmap(msvdx_priv->mmu_recover_page);
 	}
 
 	/* make sure *ALL* outstanding reads have gone away */
@@ -162,7 +155,7 @@ int psb_msvdx_core_reset(struct drm_psb_private *dev_priv)
 		for (loop = 0; loop < 10; loop++)
 			ret = psb_wait_for_register(dev_priv,
 						MSVDX_MMU_MEM_REQ_OFFSET,
-						0, 0xff, 2000000, 5);
+						0, 0xff, 100, 1);
 		if (ret) {
 			PSB_DEBUG_WARN("MSVDX_MMU_MEM_REQ is %d,\n"
 				"indicate outstanding read request 0.\n",
@@ -182,7 +175,7 @@ int psb_msvdx_core_reset(struct drm_psb_private *dev_priv)
 		PSB_WMSVDX32(0, MSVDX_CONTROL_OFFSET);
 		/* make sure read requests are zero */
 		ret = psb_wait_for_register(dev_priv, MSVDX_MMU_MEM_REQ_OFFSET,
-						0, 0xff, 2000000, 5);
+						0, 0xff, 100, 100);
 		if (!ret) {
 			/* Issue software reset */
 			PSB_WMSVDX32(MSVDX_CONTROL__MSVDX_SOFT_RESET_MASK, MSVDX_CONTROL_OFFSET);
@@ -586,6 +579,11 @@ static int msvdx_startup_init(struct drm_device *dev)
 	spin_lock_init(&msvdx_priv->msvdx_lock);
 	/*figure out the stepping */
 	pci_read_config_byte(dev->pdev, PSB_REVID_OFFSET, &psb_rev_id);
+
+	msvdx_priv->mmu_recover_page = alloc_page(GFP_DMA32);
+	if (!msvdx_priv->mmu_recover_page)
+		goto err_exit;
+
 #ifdef PSB_MSVDX_SAVE_RESTORE_VEC
 	msvdx_priv->vec_local_mem_size = VEC_LOCAL_MEM_BYTE_SIZE;
 	if (!msvdx_priv->vec_local_mem_data) {
@@ -919,6 +917,9 @@ int psb_msvdx_uninit(struct drm_device *dev)
 		kfree(msvdx_priv->vec_local_mem_data);
 #endif
 	kfree(msvdx_priv->msvdx_ec_ctx[0]);
+
+	if (msvdx_priv->mmu_recover_page)
+		__free_page(msvdx_priv->mmu_recover_page);
 
 	if (msvdx_priv) {
 		/* pci_set_drvdata(dev->pdev, NULL); */
