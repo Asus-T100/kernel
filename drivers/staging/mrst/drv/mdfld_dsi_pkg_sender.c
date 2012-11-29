@@ -1350,10 +1350,10 @@ int mdfld_dsi_send_dcs(struct mdfld_dsi_pkg_sender * sender,
 	}
 
 	if(param_num == 0)
-		err =  mdfld_dsi_send_mcs_short_hs(
+		err =  mdfld_dsi_send_mcs_short_lp(
 				sender, dcs, 0, 0, delay);
 	else if(param_num == 1)
-		err =  mdfld_dsi_send_mcs_short_hs(
+		err =  mdfld_dsi_send_mcs_short_lp(
 				sender, dcs, param[0], 1, delay);
 	else if(param_num > 1) {
 		/*transfer to dcs package*/
@@ -1368,7 +1368,7 @@ int mdfld_dsi_send_dcs(struct mdfld_dsi_pkg_sender * sender,
 		dst = pSendparam + 1;
 		memcpy(dst, param, param_num);
 
-		err = mdfld_dsi_send_mcs_long_hs(
+		err = mdfld_dsi_send_mcs_long_lp(
 			sender, pSendparam, param_num + 1, delay);
 
 		/*free pkg*/
