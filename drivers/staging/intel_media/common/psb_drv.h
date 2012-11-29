@@ -1316,6 +1316,7 @@ static inline int psb_get_power_state(int islands)
 #define IS_MRFL(dev) ((dev->pci_device & 0xFFFC) == 0x1180)
 
 #define IS_CTP_NEED_WA(dev) ((dev->pci_device & 0xffff) == 0x08c8)
+#define HAS_DISPLAY_IED_CNTRL(dev) ((dev->pci_device & 0xffff) == 0x08c8)
 
 #define IS_MDFLD(dev) (IS_CTP(dev) || IS_MDFLD_OLD(dev))
 #define IS_MID(dev) (IS_MRST(dev) || IS_MDFLD(dev))

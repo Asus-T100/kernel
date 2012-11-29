@@ -324,6 +324,13 @@ MODULE_DEVICE_TABLE(pci, pciidlist);
 		DRM_IO(DRM_PSB_DISABLE_HDCP + DRM_COMMAND_BASE)
 #define DRM_IOCTL_PSB_GET_HDCP_LINK_STATUS \
 		DRM_IOR(DRM_PSB_GET_HDCP_LINK_STATUS + DRM_COMMAND_BASE, uint32_t)
+#define DRM_IOCTL_PSB_HDCP_DISPLAY_IED_OFF \
+		DRM_IO(DRM_PSB_HDCP_DISPLAY_IED_OFF + DRM_COMMAND_BASE)
+#define DRM_IOCTL_PSB_HDCP_DISPLAY_IED_ON \
+		DRM_IO(DRM_PSB_HDCP_DISPLAY_IED_ON + DRM_COMMAND_BASE)
+#define DRM_IOCTL_PSB_QUERY_HDCP_DISPLAY_IED_CAPS \
+		DRM_IOR(DRM_PSB_QUERY_HDCP_DISPLAY_IED_CAPS \
+			+ DRM_COMMAND_BASE, uint32_t)
 /* CSC IOCTLS */
 #define DRM_IOCTL_PSB_SET_CSC \
 	DRM_IOW(DRM_PSB_SET_CSC + DRM_COMMAND_BASE, struct drm_psb_csc_matrix)
@@ -479,6 +486,12 @@ static int psb_disable_hdcp_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv);
 static int psb_get_hdcp_link_status_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv);
+static int psb_enable_display_ied_ioctl(struct drm_device *dev, void *data,
+				 struct drm_file *file_priv);
+static int psb_disable_display_ied_ioctl(struct drm_device *dev, void *data,
+				 struct drm_file *file_priv);
+static int psb_query_display_ied_caps_ioctl(struct drm_device *dev, void *data,
+				 struct drm_file *file_priv);
 #endif
 
 static int psb_set_csc_ioctl(struct drm_device *dev, void *data,
@@ -590,6 +603,12 @@ static struct drm_ioctl_desc psb_ioctls[] = {
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_ENABLE_HDCP, psb_enable_hdcp_ioctl, DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_DISABLE_HDCP, psb_disable_hdcp_ioctl, DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_GET_HDCP_LINK_STATUS, psb_get_hdcp_link_status_ioctl, DRM_AUTH),
+	PSB_IOCTL_DEF(DRM_IOCTL_PSB_HDCP_DISPLAY_IED_OFF,
+			psb_disable_display_ied_ioctl, DRM_AUTH),
+	PSB_IOCTL_DEF(DRM_IOCTL_PSB_HDCP_DISPLAY_IED_ON,
+			psb_enable_display_ied_ioctl, DRM_AUTH),
+	PSB_IOCTL_DEF(DRM_IOCTL_PSB_QUERY_HDCP_DISPLAY_IED_CAPS,
+			psb_query_display_ied_caps_ioctl, DRM_AUTH),
 #endif
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_CSC_GAMMA_SETTING, psb_csc_gamma_setting_ioctl, DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_SET_CSC, psb_set_csc_ioctl, DRM_AUTH),
@@ -2138,6 +2157,58 @@ static int psb_disable_hdcp_ioctl(struct drm_device *dev, void *data,
 	return -1;
 }
 
+static int psb_enable_display_ied_ioctl(struct drm_device *dev, void *data,
+				 struct drm_file *file_priv)
+{
+	int ret = 0;
+	int temp = 0;
+	struct drm_psb_private *dev_priv = psb_priv(dev);
+	if (HAS_DISPLAY_IED_CNTRL(dev)) {
+		if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
+					OSPM_UHB_FORCE_POWER_ON)) {
+			temp = PSB_RVDC32(DSPCHICKENBIT);
+			temp &= ~(1 << 31);
+			PSB_WVDC32(temp, DSPCHICKENBIT);
+			temp = PSB_RVDC32(DSPCHICKENBIT);
+			ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+		} else
+			ret = -1;
+	}
+
+	return ret;
+}
+static int psb_disable_display_ied_ioctl(struct drm_device *dev, void *data,
+				 struct drm_file *file_priv)
+{
+	int ret = 0;
+	int temp = 0;
+	struct drm_psb_private *dev_priv = psb_priv(dev);
+	if (HAS_DISPLAY_IED_CNTRL(dev)) {
+		if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
+				OSPM_UHB_FORCE_POWER_ON)) {
+			temp = PSB_RVDC32(DSPCHICKENBIT);
+			temp |= (1 << 31);
+			PSB_WVDC32(temp, DSPCHICKENBIT);
+			temp = PSB_RVDC32(DSPCHICKENBIT);
+			ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+		} else
+			ret = -1;
+	}
+
+	return ret;
+}
+static int psb_query_display_ied_caps_ioctl(struct drm_device *dev, void *data,
+				 struct drm_file *file_priv)
+{
+	uint32_t *arg = data;
+
+	if (HAS_DISPLAY_IED_CNTRL(dev))
+		*arg = 1;
+	else
+		*arg = 0;
+
+	return 0;
+}
 static int psb_get_hdcp_link_status_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv)
 {

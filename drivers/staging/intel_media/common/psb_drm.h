@@ -865,6 +865,11 @@ typedef struct drm_psb_msvdx_decode_status {
 /* VSYNC IOCTLS */
 #define DRM_PSB_VSYNC_SET         0x32
 
+/* HDCP */
+#define DRM_PSB_HDCP_DISPLAY_IED_OFF		0x33
+#define DRM_PSB_HDCP_DISPLAY_IED_ON		0x34
+#define DRM_PSB_QUERY_HDCP_DISPLAY_IED_CAPS	0x35
+
 /* Do not use IOCTL between 0x40 and 0x4F */
 /* These will be reserved for OEM to use */
 /* OEM IOCTLs */
