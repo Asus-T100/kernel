@@ -288,7 +288,35 @@ static int __dbi_enter_ulps_locked(struct mdfld_dsi_config *dsi_config)
 	PSB_DEBUG_ENTRY("%s: entered ULPS state\n", __func__);
 	return 0;
 }
+static bool mdfld_get_data_line_LP11_status(struct mdfld_dsi_config *dsi_config)
+{
+	struct mdfld_dsi_hw_registers *regs = NULL;
+	struct drm_device *dev = NULL;
+	int    retry = 1000;
+	bool   ret = false;
 
+	if (!dsi_config) {
+		ret = false;
+		goto __fun_exit;
+	}
+
+	dev = dsi_config->dev;
+	regs = &dsi_config->regs;
+	while (!(REG_READ(regs->mipi_reg) & BIT17) && retry) {
+		mdelay(1);
+		retry--;
+	}
+
+	if (retry == 0) {
+		DRM_INFO("Can not get data line LP11\n");
+		ret = false;
+	}
+
+	ret = true;
+__fun_exit:
+	return ret;
+
+}
 static int __dbi_exit_ulps_locked(struct mdfld_dsi_config *dsi_config)
 {
 	struct mdfld_dsi_hw_registers *regs = &dsi_config->regs;
@@ -428,6 +456,7 @@ int __dbi_power_on(struct mdfld_dsi_config *dsi_config)
 	REG_WRITE(regs->lp_byteclk_reg, ctx->lp_byteclk);
 	REG_WRITE(regs->clk_lane_switch_time_cnt_reg,
 		ctx->clk_lane_switch_time_cnt);
+	REG_WRITE(regs->hs_ls_dbi_enable_reg, ctx->hs_ls_dbi_enable);
 	REG_WRITE(regs->dsi_func_prg_reg, ctx->dsi_func_prg);
 
 	/*DBI bw ctrl*/
@@ -528,9 +557,6 @@ static int __dbi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 reset_recovery:
 	--reset_count;
 	err = 0;
-	/*after entering dstb mode, need reset*/
-	if (p_funcs && p_funcs->reset)
-		p_funcs->reset(dsi_config);
 
 	if (__dbi_power_on(dsi_config)) {
 		DRM_ERROR("Failed to init display controller!\n");
@@ -540,6 +566,17 @@ reset_recovery:
 
 	/*enable TE, will need it in panel power on*/
 	mdfld_enable_te(dev, dsi_config->pipe);
+
+	/*according panel vender , panel reset prefer happens at LP11*/
+	mdfld_get_data_line_LP11_status(dsi_config);
+
+	/*after entering dstb mode, need reset*/
+	if (p_funcs && p_funcs->reset)
+		p_funcs->reset(dsi_config);
+
+	/*after reset keep in LP11 120ms*/
+	mdfld_get_data_line_LP11_status(dsi_config);
+	mdelay(120);
 
 	/**
 	 * Different panel may have different ways to have
