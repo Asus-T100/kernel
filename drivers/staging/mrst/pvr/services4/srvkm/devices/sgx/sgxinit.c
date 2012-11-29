@@ -68,6 +68,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "srvkm.h"
 #include "ttrace.h"
 
+extern int drm_psb_dump_pm_history;
+
 #if (defined CONFIG_GPU_BURST) || (defined CONFIG_GPU_BURST_MODULE)
 
 #include <linux/module.h>
@@ -1646,8 +1648,8 @@ IMG_VOID HWRecoveryResetSGX (PVRSRV_DEVICE_NODE *psDeviceNode,
 #endif	
 	
 	PVR_UNREFERENCED_PARAMETER(ui32Component);
-
-	dump_nc_power_history();
+	if (drm_psb_dump_pm_history)
+		dump_nc_power_history();
 	/*
 		Ensure that hardware recovery is serialised with any power transitions.
 	*/
