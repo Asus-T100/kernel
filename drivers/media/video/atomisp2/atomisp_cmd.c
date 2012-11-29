@@ -790,6 +790,10 @@ void atomisp_wdt_work(struct work_struct *work)
 		ATOMISP_ISP_MAX_TIMEOUT_COUNT);
 
 	mutex_lock(&isp->mutex);
+	if (isp->streaming != ATOMISP_DEVICE_STREAMING_ENABLED) {
+		mutex_unlock(&isp->mutex);
+		return;
+	}
 
 	switch (atomic_inc_return(&isp->wdt_count)) {
 	case ATOMISP_ISP_MAX_TIMEOUT_COUNT:
