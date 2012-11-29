@@ -23,6 +23,7 @@
 #include <asm/intel-mid.h>
 #include <asm/delay.h>
 #include <asm/intel_scu_ipc.h>
+#include "platform_msic_battery.h"
 #include "platform_max17042.h"
 
 void max17042_i2c_reset_workaround(void)
