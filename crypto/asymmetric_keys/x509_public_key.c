@@ -9,6 +9,8 @@
  * 2 of the Licence, or (at your option) any later version.
  */
 
+#define DEBUG
+
 #define pr_fmt(fmt) "X.509: "fmt
 #include <linux/module.h>
 #include <linux/kernel.h>
@@ -154,8 +156,8 @@ static int x509_key_preparse(struct key_preparsed_payload *prep)
 		     (now.tm_sec < cert->valid_from.tm_sec
 		      ))))))))))) {
 		pr_warn("Cert %s is not yet valid\n", cert->fingerprint);
-		ret = -EKEYREJECTED;
-		goto error_free_cert;
+		/* ret = -EKEYREJECTED;
+		 * goto error_free_cert; */
 	}
 	if (now.tm_year > cert->valid_to.tm_year ||
 	    (now.tm_year == cert->valid_to.tm_year &&
