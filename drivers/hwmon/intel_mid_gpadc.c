@@ -530,6 +530,86 @@ fail:
 EXPORT_SYMBOL(intel_mid_gpadc_sample);
 
 /**
+ * get_gpadc_sample() - get gpadc sample.
+ * @handle: the gpadc handle
+ * @sample_count: do sample serveral times and get the average value.
+ * @buffer: sampling resulting arguments of all channels.
+ *
+ * Returns 0 on success or an error code.
+ *
+ * This function may sleep.
+ */
+int get_gpadc_sample(void *handle, int sample_count, int *buffer)
+{
+
+	struct gpadc_request *rq = handle;
+	struct gpadc_info *mgi = &gpadc_info;
+	int i;
+	u8 data;
+	int ret = 0;
+	int count;
+	int tmp;
+
+	if (!mgi->initialized)
+		return -ENODEV;
+
+	mutex_lock(&mgi->lock);
+	for (i = 0; i < rq->count; i++)
+		buffer[i] = 0;
+
+	pm_qos_add_request(&mgi->pm_qos_request,
+			PM_QOS_CPU_DMA_LATENCY,	CSTATE_EXIT_LATENCY_S0i1-1);
+	gpadc_poweron(mgi, rq->vref);
+	gpadc_clear_bits(ADC1CNTL1, ADC1CNTL1_AD1OFFSETEN);
+	gpadc_read(ADC1CNTL1, &data);
+	data = (data & ~ADC1CNTL1_ADSLP) + ADC1CNTL1_ADSLP_DEF;
+	gpadc_write(ADC1CNTL1, data);
+	mgi->rnd_done = 0;
+	gpadc_set_bits(ADC1CNTL1, ADC1CNTL1_ADSTRT);
+	for (count = 0; count < sample_count; count++) {
+		if (wait_event_timeout(mgi->wait, mgi->rnd_done, HZ) == 0) {
+			gpadc_dump(mgi);
+			dev_err(mgi->dev, "sample timeout\n");
+			ret = -ETIMEDOUT;
+			goto fail;
+		}
+		gpadc_set_bits(ADC1CNTL3, ADC1CNTL3_RRDATARD);
+		for (i = 0; i < rq->count; ++i) {
+			tmp = 0;
+			gpadc_read(ADC1SNS0H + 2 * rq->addr[i], &data);
+			tmp += data << 2;
+			gpadc_read(ADC1SNS0H + 2 * rq->addr[i] + 1, &data);
+			tmp += data & 0x3;
+
+			/**
+			 * Using the calibration data, we have the voltage and
+			 * current after calibration correction as below:
+			 * V_CAL_CODE = V_RAW_CODE - (VZSE+(VGE)*VRAW_CODE/1023)
+			 * I_CAL_CODE = I_RAW_CODE - (IZSE+(IGE)*IRAW_CODE/1023)
+			 */
+			if (rq->ch[i] & CH_NEED_VCALIB)
+				tmp -= mgi->vzse + mgi->vge * tmp / 1023;
+			if (rq->ch[i] & CH_NEED_ICALIB)
+				tmp -= mgi->izse + mgi->ige * tmp / 1023;
+			buffer[i] += tmp;
+		}
+		gpadc_clear_bits(ADC1CNTL3, ADC1CNTL3_RRDATARD);
+		mgi->rnd_done = 0;
+	}
+
+	for (i = 0; i < rq->count; ++i)
+		buffer[i] /= sample_count;
+
+fail:
+	gpadc_clear_bits(ADC1CNTL1, ADC1CNTL1_ADSTRT);
+	gpadc_poweroff(mgi);
+	pm_qos_remove_request(&mgi->pm_qos_request);
+	mutex_unlock(&mgi->lock);
+	return ret;
+}
+EXPORT_SYMBOL(get_gpadc_sample);
+
+/**
  * intel_mid_gpadc_free - free gpadc
  * @handle: the gpadc handle
  *
@@ -601,6 +681,61 @@ void *intel_mid_gpadc_alloc(int count, ...)
 	return rq;
 }
 EXPORT_SYMBOL(intel_mid_gpadc_alloc);
+
+ /**
+ * gpadc_alloc_channels - allocate gpadc for channels
+ * @count: the count of channels
+ * @...: the channel parameters. (channel idx | flags)
+ *       flags:
+ *             CH_NEED_VCALIB   it needs voltage calibration
+ *             CH_NEED_ICALIB   it needs current calibration
+ *
+ * Returns gpadc handle on success or NULL on fail.
+ *
+ * This function may sleep.
+ *
+ * TODO: Cleanup intel_mid_gpadc_alloc() once all its users
+ *       are moved to gpadc_alloc_channels()
+ *
+ */
+
+void *gpadc_alloc_channels(int n, int *channel_info)
+{
+	struct gpadc_request *rq;
+	struct gpadc_info *mgi = &gpadc_info;
+	int ch;
+	int i;
+
+	if (!mgi->initialized)
+		return NULL;
+
+	rq = kzalloc(sizeof(struct gpadc_request), GFP_KERNEL);
+	if (rq == NULL)
+		return NULL;
+
+	mutex_lock(&mgi->lock);
+	rq->count = n;
+	for (i = 0; i < n; i++) {
+		ch = channel_info[i];
+		rq->ch[i] = ch;
+		if (ch & CH_NEED_VREF)
+			rq->vref = 1;
+		ch &= 0xf;
+		rq->addr[i] = alloc_channel_addr(mgi, ch);
+		if (rq->addr[i] < 0) {
+			dev_err(mgi->dev, "alloc addr failed\n");
+			while (i-- > 0)
+				free_channel_addr(mgi, rq->addr[i]);
+			kfree(rq);
+			rq = NULL;
+			break;
+		}
+	}
+	mutex_unlock(&mgi->lock);
+
+	return rq;
+}
+EXPORT_SYMBOL(gpadc_alloc_channels);
 
 static ssize_t intel_mid_gpadc_store_alloc_channel(struct device *dev,
 					struct device_attribute *attr,
