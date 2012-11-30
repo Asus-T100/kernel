@@ -17,11 +17,10 @@
 #include <linux/sfi.h>
 #include <linux/platform_device.h>
 #include <linux/mfd/intel_msic.h>
+#include <asm/platform_sst_audio.h>
 #include <asm/intel-mid.h>
 #include <asm/intel_mid_remoteproc.h>
-#include <asm/platform_sst_audio.h>
 #include <sound/msic_audio_platform.h>
-#include <sound/sn95031_platform.h>
 #include "platform_msic.h"
 #include "platform_msic_audio.h"
 
@@ -36,10 +35,6 @@ static struct resource msic_audio_resources[] __initdata = {
 		.start = MSIC_IRQ_STATUS_OCAUDIO,
 		.end   = MSIC_IRQ_STATUS_ACCDET,
 	},
-};
-
-static struct sn95031_platform_data sn95031_pdata = {
-	.spid = &spid,
 };
 
 static struct msic_audio_platform_data msic_audio_pdata = {
@@ -70,11 +65,6 @@ void *msic_audio_platform_data(void *info)
 		pr_err("failed to allocate sn95031 platform device\n");
 		goto out;
 	}
-	if (platform_device_add_data(pdev, &sn95031_pdata,
-			sizeof(struct sn95031_platform_data))) {
-		pr_err("failed to add sn95031 platform data\n");
-		goto pdev_add_fail;
-	}
 	if (platform_device_add(pdev)) {
 		pr_err("failed to add sn95031 platform device\n");
 		goto pdev_add_fail;
@@ -102,6 +92,7 @@ void *msic_audio_platform_data(void *info)
 			MSIC_AUDIO_DEVICE_NAME);
 		goto pdev_add_fail;
 	}
+	msic_audio_pdata.jack_gpio = get_gpio_by_name("audio_jack_gpio");
 	pdata = &msic_audio_pdata;
 	register_rpmsg_service("rpmsg_msic_audio", RPROC_SCU, RP_MSIC_AUDIO);
 

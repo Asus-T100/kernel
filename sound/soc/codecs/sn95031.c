@@ -39,7 +39,6 @@
 #include <sound/initval.h>
 #include <sound/tlv.h>
 #include <sound/jack.h>
-#include <sound/sn95031_platform.h>
 #include "sn95031.h"
 
 #define SN95031_RATES (SNDRV_PCM_RATE_8000_96000)
@@ -1215,9 +1214,6 @@ struct snd_soc_codec_driver sn95031_codec = {
 
 static int __devinit sn95031_device_probe(struct platform_device *pdev)
 {
-	struct sn95031_platform_data *pdata = pdev->dev.platform_data;
-	const struct sfi_soft_platform_id *spid = pdata->spid;
-
 	pr_debug("codec device probe called for %s\n", dev_name(&pdev->dev));
 
 	return snd_soc_register_codec(&pdev->dev, &sn95031_codec,
