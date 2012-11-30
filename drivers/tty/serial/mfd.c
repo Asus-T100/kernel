@@ -1773,7 +1773,7 @@ static int hsu_port_init(struct pci_dev *pdev, int index)
 		uport->port.line = index;
 		serial_hsu_ports[index] = uport;
 		uport->index = index;
-		if (hsu_dma_enable & (1<<index))
+		if (hsu_dma_enable & (1<<logic_idx))
 			uport->use_dma = 1;
 		else
 			uport->use_dma = 0;
