@@ -388,9 +388,15 @@
 /**
  * struct intel_msic_gpio_pdata - platform data for the MSIC GPIO driver
  * @gpio_base: base number for the GPIOs
+ * @ngpio_lv: number of low voltage GPIOs
+ * @ngpio_hv: number of high voltage GPIOs
+ * @can_sleep: flag for gpio chip
  */
 struct intel_msic_gpio_pdata {
 	unsigned	gpio_base;
+	int		ngpio_lv;
+	int		ngpio_hv;
+	int		can_sleep;
 };
 
 /**

@@ -683,6 +683,15 @@ config CTP_CRYSTAL_38M4
 	  will use 19.2M crystal. Say y for CLV boards (ctp_pr0 build)
 	  and n for CLV+ based boards (ctp_pr1 build)
 
+config GPIO_INTEL_MSIC
+	bool "Intel MSIC GPIO support"
+	depends on INTEL_SCU_IPC && GPIOLIB
+	---help---
+	  MSIC provides a GPIO subsystem containing several input
+	  output pins.
+	  Say Y here to support GPIO via the SCU IPC interface
+	  on Intel MID platforms.
+
 config GPIO_INTEL_PMIC
 	bool "Intel PMIC GPIO support"
 	depends on INTEL_SCU_IPC && GPIOLIB

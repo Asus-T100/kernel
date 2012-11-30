@@ -46,6 +46,14 @@ void __init *msic_gpio_platform_data(void *info)
 	if (gpio < 0)
 		return NULL;
 
+	if (INTEL_MID_BOARD(1, PHONE, CLVTP) ||
+		INTEL_MID_BOARD(1, TABLET, CLVT)) {
+		msic_gpio_pdata.ngpio_lv = 1;
+		msic_gpio_pdata.ngpio_hv = 8;
+	}
+
+	msic_gpio_pdata.can_sleep = 1;
+
 	msic_gpio_pdata.gpio_base = gpio;
 	handle_ipc_irq_res(entry->irq, ipc_msic_gpio_res);
 
