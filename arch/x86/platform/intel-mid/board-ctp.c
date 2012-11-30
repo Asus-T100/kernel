@@ -74,6 +74,7 @@
  */
 
 #include "device_libs/platform_wl12xx.h"
+#include "device_libs/platform_bcm43xx.h"
 
 /*
  * Bluetooth devices
@@ -127,6 +128,7 @@ struct devs_id __initconst device_ids[] = {
 #endif
 	{"wl12xx_clk_vmmc", SFI_DEV_TYPE_SD, 0, &wl12xx_platform_data,
 						NULL},
+	{"bcm43xx_clk_vmmc", SFI_DEV_TYPE_SD, 0, &bcm43xx_platform_data, NULL},
 	/*
 	 * Camera Sensors and LED Flash.
 	 * I2C devices for camera image subsystem which will not be load into

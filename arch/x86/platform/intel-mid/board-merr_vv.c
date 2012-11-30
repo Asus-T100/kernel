@@ -27,6 +27,12 @@ static void __init *no_platform_data(void *info)
 	return NULL;
 }
 
+/*
+ * WIFI devices
+ */
+
+#include "device_libs/platform_bcm43xx.h"
+
 struct devs_id __initconst device_ids[] = {
 	{"bcove_adc", SFI_DEV_TYPE_IPC, 1, &mrfl_adc_platform_data, NULL},
 	{"bcove_bcu", SFI_DEV_TYPE_IPC, 1, &no_platform_data, NULL},
@@ -36,6 +42,7 @@ struct devs_id __initconst device_ids[] = {
 	{"spi_max3111", SFI_DEV_TYPE_SPI, 0, &max3111_vp_platform_data, NULL},
 	{"mrfld_lm49453", SFI_DEV_TYPE_IPC, 1, &merfld_audio_platform_data, NULL},
 	{"lm49453_codec", SFI_DEV_TYPE_I2C, 1, &no_platform_data, NULL},
+	{"bcm43xx_clk_vmmc", SFI_DEV_TYPE_SD, 0, &bcm43xx_platform_data, NULL},
 	{},
 };
 
