@@ -58,15 +58,15 @@ unsigned long __init intel_mid_calibrate_tsc(void)
 		pr_debug("Actual FSB frequency detected by SOC 0x%x : %x\n",
 			hi, lo);
 
-		bus_freq = (lo >> 4) & 0x7;
+		bus_freq = lo & 0x7;
 		pr_debug("bus_freq = 0x%x\n", bus_freq);
 
 		if (bus_freq == 0)
 			fsb = TNG_IDI_FREQ_100SKU;
 		else if (bus_freq == 1)
-			fsb = TNG_IDI_FREQ_133SKU;
+			fsb = TNG_IDI_FREQ_100SKU;
 		else if (bus_freq == 2)
-			fsb = TNG_IDI_FREQ_200SKU;
+			fsb = TNG_IDI_FREQ_133SKU;
 		else if (bus_freq == 3)
 			fsb = TNG_IDI_FREQ_167SKU;
 		else if (bus_freq == 4)
