@@ -650,12 +650,20 @@ int android_hdmi_mode_valid(struct drm_connector *connector,
 	if (mode->type == DRM_MODE_TYPE_USERDEF)
 		return MODE_OK;
 
-	if (mode->flags & DRM_MODE_FLAG_DBLSCAN)
+	if (mode->flags & DRM_MODE_FLAG_DBLSCAN) {
+		pr_debug("pruned mode %dx%d@%dHz. Double scan not supported.\n",
+			mode->hdisplay,
+			mode->vdisplay,
+			calculate_refresh_rate(mode));
 		return MODE_NO_DBLESCAN;
-
-	if (mode->flags & DRM_MODE_FLAG_INTERLACE)
+	}
+	if (mode->flags & DRM_MODE_FLAG_INTERLACE) {
+		pr_debug("pruned mode %dx%d@%dHz. Interlace not supported.\n",
+			mode->hdisplay,
+			mode->vdisplay,
+			calculate_refresh_rate(mode));
 		return MODE_NO_INTERLACE;
-
+	}
 	return MODE_OK;
 }
 
@@ -884,8 +892,9 @@ int android_hdmi_get_modes(struct drm_connector *connector)
 	struct drm_display_mode *mode, *t, *dup_mode, *user_mode;
 	int i = 0, j = 0, ret = 0, mode_present = 0;
 	int refresh_rate = 0;
-	int pref_mode_found = -1;
+	bool pref_mode_found = false;
 	struct i2c_adapter *adapter = NULL;
+	struct drm_display_mode *pref_mode_assigned;
 
 	debug_modes_count = 0;
 	pr_debug("Enter %s\n", __func__);
@@ -1011,37 +1020,41 @@ edid_is_ready:
 		}
 	}
 
+	pref_mode_assigned = NULL;
 
 	/* choose a preferred mode and set the mode type accordingly */
 	list_for_each_entry_safe(mode, t, &connector->probed_modes, head) {
-		/* check whether the display has support for 720P.
+		/* check whether the display has support for 1080p.
 		 * 720P is the minimum requirement expected from
 		 * external display.
 		 * (extend this if condition to set other modes as preferred).
 		 */
 		refresh_rate = calculate_refresh_rate(mode);
-		if (otm_hdmi_is_preferred_mode(mode->hdisplay, mode->vdisplay,
-						refresh_rate)) {
-			pr_debug("External display has %dx%d support\n",
-				mode->hdisplay, mode->vdisplay);
-			mode->type |= DRM_MODE_TYPE_PREFERRED;
-			pref_mode_found = 1;
+		if (mode->type & DRM_MODE_TYPE_PREFERRED) {
+			pr_debug("Preferred timing mode of extenal display is %dx%d@%dHz.\n",
+				mode->hdisplay, mode->vdisplay, refresh_rate);
+			pref_mode_found = true;
 			break;
+		}
+		if (pref_mode_assigned == NULL) {
+			if (otm_hdmi_is_preferred_mode(mode->hdisplay, mode->vdisplay,
+						refresh_rate)) {
+				pr_debug("External display has %dx%d@%dHz support.\n",
+					mode->hdisplay, mode->vdisplay, refresh_rate);
+				pr_debug("This mode will be assigned as preferred if none is indicated.\n");
+				pref_mode_assigned = mode;
+			}
 		}
 	}
 
-	/* clear any other preferred modes*/
-	if (pref_mode_found == 1) {
-		list_for_each_entry_safe(mode, t, &connector->probed_modes,
-					 head) {
-			refresh_rate = calculate_refresh_rate(mode);
-			if (otm_hdmi_is_preferred_mode(mode->hdisplay,
-					mode->vdisplay,
-					refresh_rate))
-				continue;
-			mode->type &= ~DRM_MODE_TYPE_PREFERRED;
-		}
-	}
+	/* if the external display does not indicate a preferred timing mode,
+	 * assign 1080p mode (if found) as the preferred mode.
+	 */
+	if (pref_mode_found == false && pref_mode_assigned != NULL)
+		pref_mode_assigned->type |= DRM_MODE_TYPE_PREFERRED;
+
+	if (pref_mode_found == false && pref_mode_assigned == NULL)
+		pr_err("Preferred mode is not indicated or assigned.\n");
 
 	pr_debug("Exit %s (%d)\n", __func__, (ret - i));
 
