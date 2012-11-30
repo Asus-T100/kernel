@@ -1263,6 +1263,9 @@ static int atomisp_streamon(struct file *file, void *fh,
 
 	mutex_lock(&isp->mutex);
 
+	if (pipe->capq.streaming)
+		goto done;
+
 	/*
 	 * The number of streaming video nodes is based on which
 	 * binary is going to be run.
@@ -1425,7 +1428,7 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 		return videobuf_streamoff(&pipe->capq);
 
 	if (!pipe->capq.streaming)
-		return -EBUSY;
+		return 0;
 
 	spin_lock_irqsave(&isp->lock, flags);
 	if (isp->streaming == ATOMISP_DEVICE_STREAMING_ENABLED) {
