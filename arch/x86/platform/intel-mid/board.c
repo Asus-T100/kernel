@@ -57,6 +57,7 @@
 #include "device_libs/platform_bq24192.h"
 #include "device_libs/platform_ov8830.h"
 #include "device_libs/platform_hmc5883.h"
+#include "device_libs/platform_ms5607.h"
 
 /* SPI devices */
 #include "device_libs/platform_max3111.h"
@@ -128,6 +129,9 @@ struct devs_id __initconst device_ids[] = {
 	{"mpu3050", SFI_DEV_TYPE_I2C, 1, &mpu3050_platform_data, NULL},
 	{"i2c_disp_brig", SFI_DEV_TYPE_I2C, 0, &tc35876x_platform_data, NULL},
 	{"compass", SFI_DEV_TYPE_I2C, 0, &hmc5883_platform_data, NULL},
+	{"baro", SFI_DEV_TYPE_I2C, 0, &ms5607_platform_data, NULL},
+	{"lps331ap", SFI_DEV_TYPE_I2C, 0, &no_platform_data},
+
 	/* Modem */
 #ifndef CONFIG_HSI_NO_MODEM
 	{"hsi_ifx_modem", SFI_DEV_TYPE_HSI, 0, &hsi_modem_platform_data, NULL},

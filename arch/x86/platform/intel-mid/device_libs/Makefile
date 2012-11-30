@@ -37,6 +37,7 @@ obj-$(subst m,y,$(CONFIG_SENSORS_L3G4200D_POLL))			+= platform_l3g4200d.o
 obj-$(subst m,y,$(CONFIG_SENSORS_LIS3DH_ACC))				+= platform_lis3dh.o
 obj-$(subst m,y,$(CONFIG_SENSORS_LSM303_MAG))				+= platform_lsm303.o
 obj-$(subst m,y,$(CONFIG_PN544_NFC))					+= platform_pn544.o
+obj-$(subst m,y,$(CONFIG_SENSORS_MS5607))				+= platform_ms5607.o
 ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_RMI4_I2C
 obj-$(subst m,y,$(CONFIG_TOUCHSCREEN_SYNAPTICS_RMI4_I2C))		+= platform_s3202.o
 else

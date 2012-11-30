@@ -739,6 +739,13 @@ config SENSORS_LM95245
 	  This driver can also be built as a module.  If so, the module
 	  will be called lm95245.
 
+config SENSORS_MS5607
+	tristate "Measurement MS5607 digital pressure sensor"
+	depends on I2C && SYSFS
+	help
+	  If you say yes here you get support for the Measurement MS5607 digital
+	  pressure sensor.
+
 config MSIC_GPADC
 	tristate "MSIC GPADC driver for Intel Medfield platform"
 	depends on INTEL_SCU_IPC
@@ -1375,6 +1382,17 @@ config SENSORS_APPLESMC
 
 	  Say Y here if you have an applicable laptop and want to experience
 	  the awesome power of applesmc.
+
+config SENSORS_LPS331AP
+	bool "LPS331AP pressure sensor Driver"
+	depends on I2C && INPUT
+	default y
+	help
+	   Say yes here to enable LPS331AP pressure sensor driver
+
+	   Pressure sensor LPS331AP from STMicroelectronics
+	   please search on
+	   http://www.st.com/ for more details.
 
 config SENSORS_MC13783_ADC
         tristate "Freescale MC13783/MC13892 ADC"
