@@ -37,52 +37,18 @@
 
 #include <asm/intel_scu_ipc.h>
 #include <asm/intel_mid_gpadc.h>
-
-#ifdef CONFIG_BOARD_CTP
-
-/* Number of thermal sensors */
-#define MSIC_THERMAL_SENSORS	4
-
-static char *name[MSIC_THERMAL_SENSORS] = {
-	"skin0", "skin1", "msicdie", "bptherm"
-};
-
-/*Skin sensors attributes*/
-#define SKIN0_INDEX		0
-#define SKIN1_INDEX		1
-#define MSIC_DIE_INDEX		2
-#define BPTHERM_INDEX		3
-#define SKIN1_SLOPE		723
-#define SKIN1_INTERCEPT		7084
-#define SKIN0_SLOPE		446
-#define SKIN0_INTERCEPT		14050
-#define BPTHERM_SLOPE		788
-#define BPTHERM_INTERCEPT	5065
-
-#else
-
-/* Number of thermal sensors */
-#define MSIC_THERMAL_SENSORS	4
-#define MSIC_DIE_INDEX		3
-#define SKIN0_INDEX		0
-#define SKIN1_INDEX		1
-#define SKIN1_SLOPE		806
-#define SKIN1_INTERCEPT		1800
-#define SKIN0_SLOPE		851
-#define SKIN0_INTERCEPT		2800
-static char *name[MSIC_THERMAL_SENSORS] = {
-	"skin0", "skin1", "sys", "msicdie"
-};
-#endif
+#include <asm/intel_mid_thermal.h>
 
 /* Cooling device attributes */
 #define SOC_IPC_COMMAND		0xCF
+
 enum {
 	NORMAL = 0,
 	WARNING,
 	ALERT,
 	CRITICAL
 } thermal_state;
+
 enum {
 	SOC_SKIN_NORMAL = 0,
 	SOC_SKIN_WARM = 2,
@@ -96,10 +62,6 @@ enum {
 
 /* Convert adc_val to die temperature (in milli degree celsius) */
 #define TO_MSIC_DIE_TEMP(adc_val)	(368 * adc_val - 219560)
-
-/* Convert Thermistor temperature to skin0/skin1 temperature */
-#define SKIN0_TEMP(temp) ((temp * SKIN0_SLOPE)/1000 + SKIN0_INTERCEPT)
-#define SKIN1_TEMP(temp) ((temp * SKIN1_SLOPE)/1000 + SKIN1_INTERCEPT)
 
 #define TABLE_LENGTH 24
 /*
@@ -118,7 +80,7 @@ static const int adc_code[2][TABLE_LENGTH] = {
 struct ts_cache_info {
 	bool is_cached_data_initialized;
 	struct mutex lock;
-	int cached_values[MSIC_THERMAL_SENSORS];
+	int *cached_values;
 	unsigned long last_updated;
 };
 
@@ -131,22 +93,33 @@ static struct soc_cooling_device_info soc_cdev_info;
 
 struct ipc_info {
 	struct ipc_device *ipcdev;
-	struct thermal_zone_device *tzd[MSIC_THERMAL_SENSORS];
+	struct thermal_zone_device **tzd;
 	struct ts_cache_info cacheinfo;
 	/* ADC handle used to read sensor temperature values */
 	void *therm_adc_handle;
 	struct thermal_cooling_device *soc_cdev;
+	int num_sensors;
+	int soc_cooling;
+	struct intel_mid_thermal_sensor *sensors;
 };
 
 static struct ipc_info *ipcinfo;
 
 struct thermal_device_info {
-	/* if 1, ADC code to temperature conversion is direct. i.e. no linear
-	 * approximation is needed */
-	int direct;
-	int sensor_index;
+	struct intel_mid_thermal_sensor *sensor;
 };
 
+static struct intel_mid_thermal_sensor *sensor_by_name(char *name)
+{
+	int index = 0;
+
+	for (index = 0; index < ipcinfo->num_sensors; index++) {
+		if (!strncmp(name, ipcinfo->sensors[index].name,
+				THERMAL_NAME_LENGTH))
+			return &ipcinfo->sensors[index];
+	}
+	return NULL;
+}
 /* SoC cooling device callbacks */
 static int soc_get_max_state(struct thermal_cooling_device *cdev,
 				unsigned long *state)
@@ -308,7 +281,7 @@ static int linear_interpolate(int indx, uint16_t adc_val)
  *
  * Can sleep
  */
-static int adc_to_temp(int direct, uint16_t adc_val, unsigned long *tp)
+static int adc_to_temp(bool direct, uint16_t adc_val, unsigned long *tp)
 {
 	int indx;
 
@@ -339,6 +312,66 @@ static int adc_to_temp(int direct, uint16_t adc_val, unsigned long *tp)
 	return 0;
 }
 
+int skin0_temp_correlation(void *info, unsigned long temp, unsigned long *res)
+{
+	struct intel_mid_thermal_sensor *sensor = info;
+	int ret = 0;
+
+	*res = ((temp * sensor->slope) / 1000) + sensor->intercept;
+
+	return ret;
+}
+
+int bptherm_temp_correlation(void *info, unsigned long temp, unsigned long *res)
+{
+	struct intel_mid_thermal_sensor *sensor = info;
+	int ret = 0;
+
+	*res = ((temp * sensor->slope) / 1000) + sensor->intercept;
+
+	return ret;
+}
+
+int skin1_temp_correlation(void *info, unsigned long temp, unsigned long *res)
+{
+	struct intel_mid_thermal_sensor *sensor = info;
+	struct intel_mid_thermal_sensor *dsensor; /* dependent sensor */
+	struct skin1_private_info *skin_info;
+	unsigned long sensor_temp = 0, curr_temp;
+	int ret, index;
+
+	skin_info = sensor->priv;
+
+	*res = ((temp * sensor->slope) / 1000) + sensor->intercept;
+
+	/* If we do not have dependent sensors, just return. Not an error */
+	if (!skin_info || !skin_info->dependent || !skin_info->sensors)
+		return 0;
+
+	for (index = 0; index < skin_info->dependent; index++) {
+		if (!skin_info->sensors[index])
+			continue;
+
+		dsensor = skin_info->sensors[index];
+
+		ret = adc_to_temp(dsensor->direct,
+			ipcinfo->cacheinfo.cached_values[dsensor->index],
+			&curr_temp);
+		if (ret)
+			return ret;
+
+		if (dsensor->temp_correlation)
+			dsensor->temp_correlation(dsensor, curr_temp,
+						&sensor_temp);
+
+		if (sensor_temp > *res)
+			*res = sensor_temp;
+	}
+
+	return 0;
+}
+
+
 /**
  * mid_read_temp - read sensors for temperature
  * @temp: holds the current temperature for the sensor after reading
@@ -352,19 +385,15 @@ static int mid_read_temp(struct thermal_zone_device *tzd, unsigned long *temp)
 {
 	struct thermal_device_info *td_info = tzd->devdata;
 	int ret;
-	long curr_temp, bp_temp = 0;
-	int indx = td_info->sensor_index; /* Required Index */
+	long curr_temp;
+	int indx = td_info->sensor->index; /* Required Index */
 
 	mutex_lock(&ipcinfo->cacheinfo.lock);
 
 	if (!ipcinfo->cacheinfo.is_cached_data_initialized ||
 	time_after(jiffies, ipcinfo->cacheinfo.last_updated + HZ)) {
-		ret = intel_mid_gpadc_sample(
-			ipcinfo->therm_adc_handle, 1,
-			&ipcinfo->cacheinfo.cached_values[0],
-			&ipcinfo->cacheinfo.cached_values[1],
-			&ipcinfo->cacheinfo.cached_values[2],
-			&ipcinfo->cacheinfo.cached_values[3]);
+		ret = get_gpadc_sample(ipcinfo->therm_adc_handle, 1,
+					ipcinfo->cacheinfo.cached_values);
 		if (ret)
 			goto exit;
 		ipcinfo->cacheinfo.last_updated = jiffies;
@@ -372,34 +401,16 @@ static int mid_read_temp(struct thermal_zone_device *tzd, unsigned long *temp)
 	}
 
 	/* Convert ADC value to temperature */
-	ret = adc_to_temp(td_info->direct,
-		ipcinfo->cacheinfo.cached_values[indx],
-		&curr_temp);
+	ret = adc_to_temp(td_info->sensor->direct,
+			ipcinfo->cacheinfo.cached_values[indx], &curr_temp);
 	if (ret)
 		goto exit;
 
-	switch (indx) {
-	case SKIN0_INDEX:
-		*temp = SKIN0_TEMP(curr_temp);
-		break;
-	case SKIN1_INDEX:
-#ifdef CONFIG_BOARD_CTP
-		ret = adc_to_temp(td_info->direct,
-			ipcinfo->cacheinfo.cached_values[BPTHERM_INDEX],
-			&bp_temp);
-		if (ret)
-			goto exit;
-		bp_temp = (bp_temp * BPTHERM_SLOPE)/1000 + BPTHERM_INTERCEPT;
-#endif
-		*temp = SKIN1_TEMP(curr_temp);
-
-		/* Max(Back Skin Thermistor temp, BPTHERM value) */
-		if (bp_temp > *temp)
-			*temp = bp_temp;
-		break;
-	default:
+	if (td_info->sensor->temp_correlation)
+		ret = td_info->sensor->temp_correlation(td_info->sensor,
+							curr_temp, temp);
+	else
 		*temp = curr_temp;
-	}
 
 exit:
 	mutex_unlock(&ipcinfo->cacheinfo.lock);
@@ -412,7 +423,8 @@ exit:
  *
  * Context: can sleep
  */
-static struct thermal_device_info *initialize_sensor(int index)
+static struct thermal_device_info *initialize_sensor(
+			struct intel_mid_thermal_sensor *sensor)
 {
 	struct thermal_device_info *td_info =
 		kzalloc(sizeof(struct thermal_device_info), GFP_KERNEL);
@@ -420,10 +432,8 @@ static struct thermal_device_info *initialize_sensor(int index)
 	if (!td_info)
 		return NULL;
 
-	td_info->sensor_index = index;
-	/* Direct conversion for MSIC_DIE */
-	if (index == MSIC_DIE_INDEX)
-		td_info->direct = 1;
+	td_info->sensor = sensor;
+
 	return td_info;
 }
 
@@ -471,41 +481,69 @@ static struct thermal_zone_device_ops tzd_ops = {
  */
 static int mid_thermal_probe(struct ipc_device *ipcdev)
 {
-	int ret;
+	int ret = 0;
 	int i;
+	int *adc_channel_info;
+	struct intel_mid_thermal_platform_data *pdata;
+
+	pdata = ipcdev->dev.platform_data;
+
+	if (!pdata)
+		return -EINVAL;
+
 	ipcinfo = kzalloc(sizeof(struct ipc_info), GFP_KERNEL);
+
 	if (!ipcinfo)
 		return -ENOMEM;
+
+	ipcinfo->num_sensors = pdata->num_sensors;
+	ipcinfo->soc_cooling = pdata->soc_cooling;
+	ipcinfo->sensors = pdata->sensors;
+
+	ipcinfo->tzd = kzalloc(
+		(sizeof(struct thermal_zone_device *) * ipcinfo->num_sensors),
+		 GFP_KERNEL);
+
+	if (!ipcinfo->tzd)
+		goto ipcinfo_alloc_fail;
+
+	ipcinfo->cacheinfo.cached_values =
+		kzalloc((sizeof(int) * ipcinfo->num_sensors), GFP_KERNEL);
+
+	if (!ipcinfo->cacheinfo.cached_values)
+		goto tzd_alloc_fail;
+
+	adc_channel_info = kzalloc((sizeof(int) * ipcinfo->num_sensors),
+			GFP_KERNEL);
+
+	if (!adc_channel_info)
+		goto cachedinfo_alloc_fail;
 
 	/* initialize mutex locks */
 	mutex_init(&ipcinfo->cacheinfo.lock);
 
-#ifdef CONFIG_BOARD_CTP
-	mutex_init(&soc_cdev_info.lock_cool_state);
+
+	if (ipcinfo->soc_cooling)
+		mutex_init(&soc_cdev_info.lock_cool_state);
+
+	for (i = 0; i < ipcinfo->num_sensors; i++)
+		adc_channel_info[i] = ipcinfo->sensors[i].adc_channel;
 
 	/* Allocate ADC channels for all sensors */
-	ipcinfo->therm_adc_handle = intel_mid_gpadc_alloc(MSIC_THERMAL_SENSORS,
-					0x04 | CH_NEED_VREF | CH_NEED_VCALIB,
-					0x04 | CH_NEED_VREF | CH_NEED_VCALIB,
-					0x03 | CH_NEED_VCALIB,
-					0x09 | CH_NEED_VREF | CH_NEED_VCALIB);
-#else
-	/* Allocate ADC channels for all sensors */
-	ipcinfo->therm_adc_handle = intel_mid_gpadc_alloc(MSIC_THERMAL_SENSORS,
-					0x08 | CH_NEED_VREF | CH_NEED_VCALIB,
-					0x08 | CH_NEED_VREF | CH_NEED_VCALIB,
-					0x0A | CH_NEED_VREF | CH_NEED_VCALIB,
-					0x03 | CH_NEED_VCALIB);
-#endif
+	ipcinfo->therm_adc_handle = gpadc_alloc_channels(ipcinfo->num_sensors,
+						adc_channel_info);
+
 	if (!ipcinfo->therm_adc_handle) {
 		ret = -ENOMEM;
-		goto alloc_fail;
+		goto adc_channel_alloc_fail;
 	}
 
 	/* Register each sensor with the generic thermal framework*/
-	for (i = 0; i < MSIC_THERMAL_SENSORS; i++) {
-		ipcinfo->tzd[i] = thermal_zone_device_register(name[i],
-					0, 0, initialize_sensor(i),
+	for (i = 0; i < ipcinfo->num_sensors; i++) {
+		ipcinfo->tzd[i] = thermal_zone_device_register(
+					ipcinfo->sensors[i].name,
+					0, 0,
+					initialize_sensor(&ipcinfo->sensors[i]),
 					&tzd_ops, 0, 0, 0, 0);
 		if (IS_ERR(ipcinfo->tzd[i]))
 			goto reg_fail;
@@ -514,13 +552,17 @@ static int mid_thermal_probe(struct ipc_device *ipcdev)
 	ipcinfo->ipcdev = ipcdev;
 	ipc_set_drvdata(ipcdev, ipcinfo);
 
-#ifdef CONFIG_BOARD_CTP
 	/* Register SoC as a cooling device */
-	ret = register_soc_as_cdev();
-	/* Log this, but keep the driver loaded */
-	if (ret)
-		dev_err(&ipcdev->dev, "register_soc_as_cdev failed:%d\n", ret);
-#endif
+	if (ipcinfo->soc_cooling) {
+		ret = register_soc_as_cdev();
+		/* Log this, but keep the driver loaded */
+		if (ret) {
+			dev_err(&ipcdev->dev,
+				"register_soc_as_cdev failed:%d\n", ret);
+		}
+	}
+
+	kfree(adc_channel_info);
 
 	return 0;
 
@@ -528,7 +570,13 @@ reg_fail:
 	ret = PTR_ERR(ipcinfo->tzd[i]);
 	while (--i >= 0)
 		thermal_zone_device_unregister(ipcinfo->tzd[i]);
-alloc_fail:
+adc_channel_alloc_fail:
+	kfree(adc_channel_info);
+cachedinfo_alloc_fail:
+	kfree(ipcinfo->cacheinfo.cached_values);
+tzd_alloc_fail:
+	kfree(ipcinfo->tzd);
+ipcinfo_alloc_fail:
 	kfree(ipcinfo);
 	return ret;
 }
@@ -544,19 +592,21 @@ static int mid_thermal_remove(struct ipc_device *ipcdev)
 {
 	int i;
 
-	for (i = 0; i < MSIC_THERMAL_SENSORS; i++)
+	for (i = 0; i < ipcinfo->num_sensors; i++)
 		thermal_zone_device_unregister(ipcinfo->tzd[i]);
 
-#ifdef CONFIG_BOARD_CTP
 	/* Unregister SoC as cooling device */
-	unregister_soc_as_cdev();
-#endif
+	if (ipcinfo->soc_cooling)
+		unregister_soc_as_cdev();
 
 	/* Free the allocated ADC channels */
 	if (ipcinfo->therm_adc_handle)
 		intel_mid_gpadc_free(ipcinfo->therm_adc_handle);
 
+	kfree(ipcinfo->cacheinfo.cached_values);
+	kfree(ipcinfo->tzd);
 	kfree(ipcinfo);
+
 	ipc_set_drvdata(ipcdev, NULL);
 
 	return 0;

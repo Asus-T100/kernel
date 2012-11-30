@@ -13,4 +13,11 @@
 #define _PLATFORM_MSIC_THERMAL_H_
 
 #define MSIC_THERM_DEV_NAME	"msic_thermal"
+
+enum {
+	mfld_thermal,
+	ctp_thermal,
+	lex_thermal,
+};
+
 #endif
