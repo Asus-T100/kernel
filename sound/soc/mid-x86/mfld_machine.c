@@ -41,6 +41,7 @@
 #include <sound/soc.h>
 #include <sound/jack.h>
 #include <sound/tlv.h>
+#include <sound/msic_audio_platform.h>
 #include "../codecs/sn95031.h"
 #include "mfld_common.h"
 
@@ -693,8 +694,11 @@ static int __devinit snd_mfld_mc_probe(struct ipc_device *ipcdev)
 	int ret_val = 0, irq;
 	struct mfld_mc_private *ctx;
 	struct resource *irq_mem;
+	struct msic_audio_platform_data *pdata;
 
 	pr_debug("snd_mfld_mc_probe called\n");
+
+	pdata = ipcdev->dev.platform_data;
 
 	/* retrive the irq number */
 	irq = ipc_get_irq(ipcdev, 0);
@@ -734,12 +738,12 @@ static int __devinit snd_mfld_mc_probe(struct ipc_device *ipcdev)
 	INIT_DELAYED_WORK(&ctx->jack_work.work, mfld_jack_wq);
 
 	/* Store jack gpio pin number in ctx for future reference */
-	ctx->jack_gpio = get_gpio_by_name("audio_jack_gpio");
+	ctx->jack_gpio = pdata->jack_gpio;
 	if (ctx->jack_gpio >= 0) {
 		pr_info("GPIO for jack det is %d\n", ctx->jack_gpio);
 		ret_val = gpio_request_one(ctx->jack_gpio,
-						GPIOF_DIR_IN,
-						"headset_detect_gpio");
+					   GPIOF_DIR_IN,
+					   "headset_detect_gpio");
 		if (ret_val) {
 			pr_err("Headset detect GPIO alloc fail:%d\n", ret_val);
 			goto free_gpadc;

@@ -15,12 +15,11 @@
 #include <linux/scatterlist.h>
 #include <linux/init.h>
 #include <linux/sfi.h>
-#include <sound/msic_audio_platform.h>
-#include <sound/sn95031_platform.h>
-#include <asm/platform_sst_audio.h>
 #include <linux/platform_device.h>
 #include <linux/mfd/intel_msic.h>
+#include <asm/platform_sst_audio.h>
 #include <asm/intel-mid.h>
+#include <sound/msic_audio_platform.h>
 #include "platform_ipc.h"
 #include "platform_msic_audio.h"
 
@@ -44,10 +43,6 @@ static struct intel_ipc_dev_res ipc_msic_audio_res[] __initdata = {
 		.resources              = msic_audio_resources,
 	},
 
-};
-
-static struct sn95031_platform_data sn95031_pdata = {
-	.spid = &spid,
 };
 
 static struct msic_audio_platform_data msic_audio_pdata = {
@@ -83,14 +78,6 @@ void *msic_audio_platform_data(void *info)
 		return NULL;
 	}
 
-	ret = platform_device_add_data(pdev, &sn95031_pdata,
-				sizeof(struct sn95031_platform_data));
-	if (ret) {
-		pr_err("failed to add sn95031 platform data\n");
-		platform_device_put(pdev);
-		return NULL;
-	}
-
 	ret = platform_device_add(pdev);
 	if (ret) {
 		pr_err("failed to add sn95031 platform device\n");
@@ -100,6 +87,8 @@ void *msic_audio_platform_data(void *info)
 
 	if (strncmp(entry->name, "msic_audio", 16) == 0)
 		handle_ipc_irq_res(entry->irq, ipc_msic_audio_res);
+
+	msic_audio_pdata.jack_gpio = get_gpio_by_name("audio_jack_gpio");
 
 	return &msic_audio_pdata;
 }
