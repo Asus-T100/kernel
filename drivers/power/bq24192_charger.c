@@ -1546,34 +1546,9 @@ static  bool bq24192_check_charge_full(struct bq24192_chip *chip, int vref)
 	}
 
 	if ((ret & SYSTEM_STAT_CHRG_MASK) == SYSTEM_STAT_CHRG_DONE) {
-		if (volt_now >= (vref - CLT_VBATT_FULL_DET_MARGIN)) {
 			dev_info(&chip->client->dev,
 					"FULL: HW based termination\n");
 			is_full = true;
-		} else {
-			is_full = false;
-			if (chip->batt_mode == BATT_CHRG_NORMAL) {
-				/*
-				 * FIXME: Charger chip cuts the charging even
-				 * when the battery has not reached FULL.
-				 * Restart the charging would make sure that
-				 * battery continues to charge unless reached
-				 * FULL.
-				 */
-				dev_info(&chip->client->dev,
-					"Charging complete before FULL.\n");
-				stop_charging(chip);
-				set_up_charging(chip, &reg, chip->curr_chrg,
-							chip->curr_volt);
-
-				ret = enable_charging(chip, &reg);
-				if (ret < 0) {
-					dev_err(&chip->client->dev,
-						"enable charging failed %s\n",
-								__func__);
-				}
-			}
-		}
 		return is_full;
 	}
 
