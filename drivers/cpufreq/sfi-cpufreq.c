@@ -716,7 +716,7 @@ static int __init init_sfi_processor_list(void)
 
 	for (i = 0; i < sfi_cpu_num; i++) {
 		pr->id = sfi_cpu_array[i].apic_id;
-		per_cpu(sfi_processors, pr->id) = pr;
+		per_cpu(sfi_processors, i) = pr;
 		pr++;
 	}
 
