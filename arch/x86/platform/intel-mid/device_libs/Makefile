@@ -95,3 +95,4 @@ obj-$(subst m,y,$(CONFIG_TCG_TPM))					+= platform_tpm502i.o
 obj-$(subst m,y,$(CONFIG_BQ24261_CHARGER))                            += platform_bq24261.o
 obj-$(subst m,y,$(CONFIG_PMIC_CCSM))                                    += platform_mrfl_pmic.o
 obj-$(subst m,y,$(CONFIG_DRM_MRFLD))                  += platform_hdmi.o
+obj-$(subst m,y,$(CONFIG_SENSOR_MID_THERMAL_PROBE))			+= platform_mid_thermal_probe.o

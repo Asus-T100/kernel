@@ -1469,6 +1469,18 @@ config MID_PWM
 	  an output signal. For more information, please refer to the driver
 	  source code.
 
+config SENSOR_MID_THERMAL_PROBE
+        tristate "Thermal probe driver for Intel mid platform"
+        depends on INTEL_SCU_IPC && MSIC_GPADC
+        help
+          Say Y here to enable thermal probe driver on Intel mid
+          platform.
+
+	  The mid thermal probe is an ambient temperature sensor which plug in
+	  audio jack and get temperature value by adc samples.
+
+          To load this driver as a module, select M here.
+
 config SENSORS_MID_CURRENT
 	tristate "Over Current Detection driver for Intel Medfield platform"
         depends on INTEL_SCU_IPC
