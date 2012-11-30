@@ -43,6 +43,7 @@
 #include "device_libs/platform_max7315.h"
 #include "device_libs/platform_tca6416.h"
 #include "device_libs/platform_mpu3050.h"
+#include "device_libs/platform_lsm303.h"
 #include "device_libs/platform_emc1403.h"
 #include "device_libs/platform_lis331.h"
 #include "device_libs/platform_pn544.h"
@@ -58,6 +59,7 @@
 #include "device_libs/platform_ov8830.h"
 #include "device_libs/platform_hmc5883.h"
 #include "device_libs/platform_ms5607.h"
+#include "device_libs/platform_lis3dh.h"
 
 /* SPI devices */
 #include "device_libs/platform_max3111.h"
@@ -131,6 +133,9 @@ struct devs_id __initconst device_ids[] = {
 	{"compass", SFI_DEV_TYPE_I2C, 0, &hmc5883_platform_data, NULL},
 	{"baro", SFI_DEV_TYPE_I2C, 0, &ms5607_platform_data, NULL},
 	{"lps331ap", SFI_DEV_TYPE_I2C, 0, &no_platform_data},
+	{"accel", SFI_DEV_TYPE_I2C, 0, &lis3dh_platform_data, NULL},
+	{"lsm303dl", SFI_DEV_TYPE_I2C, 0, &lsm303dlhc_accel_platform_data},
+	{"lsm303cmp", SFI_DEV_TYPE_I2C, 0, &no_platform_data, NULL},
 
 	/* Modem */
 #ifndef CONFIG_HSI_NO_MODEM

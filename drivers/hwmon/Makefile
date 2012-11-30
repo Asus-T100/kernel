@@ -130,6 +130,8 @@ obj-$(CONFIG_SENSORS_HMC5883)           += hmc5883.o
 obj-$(CONFIG_SENSORS_MS5607)		+= ms5607.o
 obj-$(CONFIG_SENSORS_LPS331AP)         += lps331ap.o
 obj-$(CONFIG_MSIC_GPADC)        += intel_mid_gpadc.o
+obj-$(CONFIG_SENSORS_LIS3DH_ACC)        += lis3dh_acc.o
+obj-$(CONFIG_SENSORS_LSM303_MAG)   += lsm303dlhc_compass.o
 
 obj-$(CONFIG_PMBUS)		+= pmbus/
 
