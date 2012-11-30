@@ -5018,9 +5018,13 @@ static int penwell_otg_suspend_noirq(struct device *dev)
 {
 	struct penwell_otg		*pnw = the_transceiver;
 	struct intel_mid_otg_xceiv	*iotg = &pnw->iotg;
+	struct pci_dev			*pdev = to_pci_dev(dev);
 	int				ret = 0;
 
 	dev_dbg(pnw->dev, "%s --->\n", __func__);
+
+	synchronize_irq(pdev->irq);
+	flush_workqueue(pnw->qwork);
 
 	switch (iotg->otg.state) {
 	case OTG_STATE_A_VBUS_ERR:
