@@ -196,6 +196,7 @@ static void dlp_trace_complete_rx(struct hsi_msg *msg)
 
 	/* Wakeup any waiting clients for read/poll */
 	wake_up_interruptible(&trace_ctx->read_wq);
+	return;
 
 push_again:
 	/* Push again the RX msg */
