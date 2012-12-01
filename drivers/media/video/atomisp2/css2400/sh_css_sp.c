@@ -47,7 +47,6 @@
 
 #include "queue.h"	/* host_sp_enqueue_XXX */
 #include "sw_event.h"	/* encode_sw_event */
-#include "mmu_local.h"
 
 #ifndef offsetof
 #define offsetof(T, x) ((unsigned)&(((T *)0)->x))
@@ -55,6 +54,7 @@
 
 struct sh_css_sp_group		sh_css_sp_group;
 struct sh_css_sp_stage		sh_css_sp_stage;
+struct sh_css_isp_stage		sh_css_isp_stage;
 struct sh_css_sp_output		sh_css_sp_output;
 static struct sh_css_sp_per_frame_data per_frame_data;
 
@@ -76,12 +76,25 @@ store_sp_group_data(void)
 	per_frame_data.sp_group_addr = sh_css_store_sp_group_to_ddr();
 }
 
+static void
+copy_isp_stage_to_sp_stage(void)
+{
+	sh_css_sp_stage.num_stripes = sh_css_isp_stage.binary_info.num_stripes;
+	sh_css_sp_stage.enable.vf_veceven =
+		sh_css_isp_stage.binary_info.enable.vf_veceven;
+	sh_css_sp_stage.enable.sdis = sh_css_isp_stage.binary_info.enable.dis;
+	sh_css_sp_stage.enable.s3a = sh_css_isp_stage.binary_info.enable.s3a;
+}
+
 void
 store_sp_stage_data(enum sh_css_pipe_id id, unsigned stage)
 {
 	enum sh_css_pipe_id pipe_id = id;
 	unsigned int thread_id;
 	sh_css_query_sp_thread_id(pipe_id, &thread_id);
+	copy_isp_stage_to_sp_stage();
+	sh_css_sp_stage.isp_stage_addr =
+		sh_css_store_isp_stage_to_ddr(pipe_id, stage);
 	sh_css_sp_group.pipe[thread_id].sp_stage_addr[stage] =
 		sh_css_store_sp_stage_to_ddr(pipe_id, stage);
 
@@ -163,6 +176,8 @@ sh_css_sp_uninit(void)
 	init_dmem_ddr = mmgr_NULL;
 }
 
+#if SP_DEBUG !=SP_DEBUG_NONE
+
 void
 sh_css_sp_get_debug_state(struct sh_css_sp_debug_state *state)
 {
@@ -174,6 +189,8 @@ sh_css_sp_get_debug_state(struct sh_css_sp_debug_state *state)
 	for (i = 0; i < sizeof(*state)/sizeof(int); i++)
 		((unsigned *)state)[i] = load_sp_array_uint(sp_output, i+o);
 }
+
+#endif
 
 void
 sh_css_sp_start_binary_copy(struct sh_css_frame *out_frame,
@@ -347,7 +364,6 @@ sh_css_copy_frame_to_spframe(struct sh_css_sp_frame *sp_frame_out,
 
 	switch (frame_in->info.format) {
 	case SH_CSS_FRAME_FORMAT_RAW:
-	case SH_CSS_FRAME_FORMAT_RAW_REORDERED:
 		sp_frame_out->planes.raw.offset = frame_in->planes.raw.offset;
 		break;
 	case SH_CSS_FRAME_FORMAT_RGB565:
@@ -430,7 +446,6 @@ set_input_frame_buffer(const struct sh_css_frame *frame,
 	case SH_CSS_FRAME_FORMAT_QPLANE6:
 	case SH_CSS_FRAME_FORMAT_YUV420_16:
 	case SH_CSS_FRAME_FORMAT_RAW:
-	case SH_CSS_FRAME_FORMAT_RAW_REORDERED:
 	case SH_CSS_FRAME_FORMAT_YUV420:
 	case SH_CSS_FRAME_FORMAT_YUV_LINE:
 	case SH_CSS_FRAME_FORMAT_NV12:
@@ -472,7 +487,6 @@ set_output_frame_buffer(const struct sh_css_frame *frame,
 	case SH_CSS_FRAME_FORMAT_RGBA888:
 	case SH_CSS_FRAME_FORMAT_PLANAR_RGB888:
 	case SH_CSS_FRAME_FORMAT_RAW:
-	case SH_CSS_FRAME_FORMAT_RAW_REORDERED:
 	case SH_CSS_FRAME_FORMAT_QPLANE6:
 	case SH_CSS_FRAME_FORMAT_BINARY_8:
 		break;
@@ -704,7 +718,7 @@ sh_css_sp_init_group(bool two_ppc, enum sh_css_input_format input_format,
 void
 sh_css_stage_write_binary_info(struct sh_css_binary_info *info)
 {
-	sh_css_sp_stage.binary_info = *info;
+	sh_css_isp_stage.binary_info = *info;
 }
 
 static enum sh_css_err
@@ -722,7 +736,6 @@ sh_css_sp_init_stage(struct sh_css_binary *binary,
 {
 	const struct sh_css_binary_info *info = binary->info;
 	enum sh_css_err err = sh_css_success;
-	bool start_copy;
 	int i;
 
 	enum sh_css_pipe_id pipe_id = id;
@@ -744,13 +757,12 @@ sh_css_sp_init_stage(struct sh_css_binary *binary,
 	sh_css_sp_group.pipe[thread_id].num_stages++;
 
 	if (info == NULL) {
-		sh_css_sp_group.pipe[thread_id].sp_stage_addr[stage] =
-			(hrt_vaddress)HOST_ADDRESS(NULL);
+		sh_css_sp_group.pipe[thread_id].sp_stage_addr[stage] = mmgr_NULL;
 		return sh_css_success;
 	}
 
-	start_copy = stage == 0 && sh_css_continuous_start_sp_copy();
-	sh_css_sp_stage.deinterleaved = start_copy;
+	sh_css_sp_stage.deinterleaved = stage == 0 &&
+					sh_css_continuous_is_enabled();
 
 	/*
 	 * TODO: Make the Host dynamically determine
@@ -783,12 +795,12 @@ sh_css_sp_init_stage(struct sh_css_binary *binary,
 	sh_css_sp_stage.xmem_bin_addr = info->xmem_addr;
 	sh_css_sp_stage.xmem_map_addr = sh_css_params_ddr_address_map();
 	sh_css_sp_stage.anr	      = low_light;
-	sh_css_sp_stage.isp_blob_info = *blob_info;
+	sh_css_isp_stage.blob_info = *blob_info;
 	sh_css_stage_write_binary_info((struct sh_css_binary_info *)info);
-	memcpy(sh_css_sp_stage.binary_name, binary_name,
+	memcpy(sh_css_isp_stage.binary_name, binary_name,
 		strlen(binary_name)+1);
-	memcpy(&sh_css_sp_stage.isp_mem_interface, isp_mem_if,
-		sizeof(sh_css_sp_stage.isp_mem_interface));
+	memcpy(&sh_css_isp_stage.mem_interface, isp_mem_if,
+		sizeof(sh_css_isp_stage.mem_interface));
 
 #if 0
 	{
@@ -837,21 +849,6 @@ sh_css_sp_init_stage(struct sh_css_binary *binary,
 	err = sh_css_sp_write_frame_pointers(args, pipe_id, stage);
 	if (err != sh_css_success)
 		return err;
-
-
-	/* TODO: @GC Remove this code after the proper mechanism is placed! */
-	if (binary->in_frame_info.format == SH_CSS_FRAME_FORMAT_RAW_REORDERED
-	&& binary->info->enable.rawdeci) {
-		unsigned int left_cropping = binary->info->left_cropping;
-		/* It takes back the undesired effect (circular data flow,
-		 * preview->copy->preview) due to the call of function
-		 * sh_css_sp_write_frame_pointers */
-		sh_css_sp_stage.frames.in.info.padded_width /= 2;
-		sh_css_sp_stage.frames.in.info.width += left_cropping;
-		sh_css_sp_stage.frames.in.info.width /= 2;
-		sh_css_sp_stage.frames.in.info.height += left_cropping;
-		sh_css_sp_stage.frames.in.info.height /= 2;
-	}
 
 	if (continuous &&  binary->info->enable.rawdeci) {
 		/* TODO: Remove this after preview output decimation is fixed

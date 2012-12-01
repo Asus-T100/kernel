@@ -77,7 +77,7 @@ void
 sh_css_pipe_set_input_bayer_order(struct sh_css_pipe *pipe,
 				  enum sh_css_bayer_order bayer_order);
 
-int
+void
 sh_css_pipe_get_extra_pixels_count(struct sh_css_pipe *pipe,
 				   int *extra_rows,
 				   int *extra_cols);

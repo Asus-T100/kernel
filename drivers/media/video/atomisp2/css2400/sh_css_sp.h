@@ -138,8 +138,12 @@ sh_css_sp_start_isp(void);
 void
 sh_css_sp_set_sp_running(bool flag);
 
+#if SP_DEBUG !=SP_DEBUG_NONE
+
 void
 sh_css_sp_get_debug_state(struct sh_css_sp_debug_state *state);
+
+#endif
 
 extern void sh_css_sp_set_if_configs(
 	const input_formatter_cfg_t		*config_a,
@@ -228,5 +232,7 @@ extern void sh_css_sp_snd_event(int evt_id,
 
 extern struct sh_css_sp_group sh_css_sp_group;
 extern struct sh_css_sp_stage sh_css_sp_stage;
+extern struct sh_css_isp_stage sh_css_isp_stage;
 
 #endif /* _SH_CSS_SP_H_ */
+

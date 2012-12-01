@@ -5,7 +5,7 @@
 
 #include <stdint.h>
 
-/* #include "if_defs.h" */
+#include "if_defs.h"
 
 typedef struct input_formatter_cfg_s	input_formatter_cfg_t;
 

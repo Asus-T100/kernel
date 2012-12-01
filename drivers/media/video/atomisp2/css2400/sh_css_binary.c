@@ -238,7 +238,6 @@ sh_css_fill_binary_info(const struct sh_css_binary_info *info,
 	bool enable_hus = false;
 	bool enable_vus = false;
 	bool is_out_format_rgba888 = false;
-	bool is_in_format_rawreordered = false;
 	unsigned int tmp_width, tmp_height;
 
 assert(info != NULL);
@@ -249,8 +248,6 @@ assert(info != NULL);
 			enable_hus = in_info->width < out_info->width;
 			enable_vus = in_info->height < out_info->height;
 		}
-		is_in_format_rawreordered =
-			in_info->format == SH_CSS_FRAME_FORMAT_RAW_REORDERED;
 	}
 	if (out_info != NULL) {
 		isp_output_width  = out_info->padded_width;
@@ -529,6 +526,7 @@ sh_css_binary_find(struct sh_css_binary_descr *descr,
 	bool enable_yuv_ds = descr->enable_yuv_ds;
 	bool enable_high_speed = descr->enable_high_speed;
 	bool enable_dvs_6axis  = descr->enable_dvs_6axis;
+	bool enable_reduced_pipe = descr->enable_reduced_pipe;
 	enum sh_css_err err = sh_css_err_internal_error;
 	bool continuous = sh_css_continuous_is_enabled();
 	unsigned int isp_pipe_version = descr->isp_pipe_version;
@@ -564,8 +562,11 @@ sh_css_binary_find(struct sh_css_binary_descr *descr,
 
 	for (candidate = binary_infos[mode]; candidate;
 	     candidate = candidate->next) {
+	  //printf("sh_css_binary_find: evaluating candidate: %d\n",candidate->id);
 		if (mode == SH_CSS_BINARY_MODE_VIDEO &&
 		    candidate->isp_pipe_version != isp_pipe_version)
+			continue;
+		if (!candidate->enable.reduced_pipe && enable_reduced_pipe)
 			continue;
 		if (!candidate->enable.dvs_6axis && enable_dvs_6axis)
 			continue;
@@ -609,6 +610,9 @@ sh_css_binary_find(struct sh_css_binary_descr *descr,
 		if (!supports_output_format(candidate, req_out_info->format))
 			continue;
 
+		if (descr->binning && !candidate->enable.rawdeci)
+			continue;
+
 		/* If we are in continuous preview mode, it is possible to have
 		 * an output decimation. If output decimation is needed, the
 		 * decimation factor is calculated output->vf. So, we switch
@@ -619,7 +623,7 @@ sh_css_binary_find(struct sh_css_binary_descr *descr,
 			*cc_out_info = *req_out_info;
 			*cc_vf_info = *req_out_info;
 
-		if (req_in_info->format == SH_CSS_FRAME_FORMAT_RAW_REORDERED) {
+		if (descr->binning) {
 			/* Take into account that we have (currently implicit)
 			 * a decimation on preview-ISP which halves the
 			 * resolution. Therefore, here we specify this. */

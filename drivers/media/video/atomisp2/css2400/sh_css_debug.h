@@ -36,8 +36,10 @@
 #define SH_DBG_WARNING 3
 /*! Level for tracing debug messages */
 #define SH_DBG_DEBUG   5
-/*! Level for tracing trace messages a.o. sh_css function calls */
-#define SH_DBG_TRACE   7
+/*! Level for tracing trace messages a.o. sh_css public function calls */
+#define SH_DBG_TRACE   6
+/*! Level for tracing trace messages a.o. sh_css private function calls */
+#define SH_DBG_TRACE_PRIVATE   7
 /*! Level for tracing parameter messages e.g. in and out params of functions */
 #define SH_DBG_PARAM   8
 /*! Level for tracing info messages */
@@ -141,6 +143,9 @@ extern void sh_css_dump_sp_sw_debug_info(void);
  */
 extern void sh_css_dump_debug_info(
 	const char	*context);
+
+void
+sh_css_sp_debug_dump_mipi_fifo_high_water(void);
 
 /*! \brief Dump isp gdc fifo state to the trace output
  * Dumps the isp gdc fifo state to tracing output.

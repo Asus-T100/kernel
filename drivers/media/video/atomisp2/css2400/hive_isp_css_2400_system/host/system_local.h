@@ -10,7 +10,11 @@
 
 #include "system_global.h"
 
-#define HRT_ADDRESS_WIDTH	64		/* Surprise, this is a local property*/
+#ifdef __FIST__
+#define HRT_ADDRESS_WIDTH	32		/* Surprise, this is a local property and even differs per platform */
+#else
+#define HRT_ADDRESS_WIDTH	64		/* Surprise, this is a local property */
+#endif
 
 #if !defined(__KERNEL__) || (1==1)
 /* This interface is deprecated */
@@ -18,7 +22,14 @@
 #else  /* __KERNEL__ */
 #include <stdint.h>
 
+#if HRT_ADDRESS_WIDTH==64
 typedef uint64_t			hrt_address;
+#elif HRT_ADDRESS_WIDTH==32
+typedef uint32_t			hrt_address;
+#else
+#error "system_local.h: HRT_ADDRESS_WIDTH must be one of {32,64}"
+#endif
+
 typedef uint32_t			hrt_vaddress;
 typedef uint32_t			hrt_data;
 #endif /* __KERNEL__ */
@@ -26,6 +37,8 @@ typedef uint32_t			hrt_data;
 /*
  * Cell specific address maps
  */
+#if HRT_ADDRESS_WIDTH==64
+
 #define GP_FIFO_BASE   ((hrt_address)0x0000000000090104)		/* This is NOT a base address */
 
 /* DDR */
@@ -97,11 +110,11 @@ static const hrt_address GP_DEVICE_BASE[N_GP_DEVICE_ID] = {
 
 /* GPIO */
 static const hrt_address GPIO_BASE[N_GPIO_ID] = {
-	0x00000400UL};
+	0x0000000000000400ULL};
 
 /* TIMED_CTRL */
 static const hrt_address TIMED_CTRL_BASE[N_TIMED_CTRL_ID] = {
-	0x00000100UL};
+	0x0000000000000100ULL};
 
 
 /* INPUT_FORMATTER */
@@ -127,5 +140,113 @@ static const hrt_address INPUT_SYSTEM_BASE[N_INPUT_SYSTEM_ID] = {
 /* RX, the MIPI lane control regs start at offset 0 */
 static const hrt_address RX_BASE[N_RX_ID] = {
 	0x0000000000080100ULL};
+
+#elif HRT_ADDRESS_WIDTH==32
+
+#define GP_FIFO_BASE   ((hrt_address)0x00090104)		/* This is NOT a base address */
+
+/* DDR : Attention, this value not defined in 32-bit */
+static const hrt_address DDR_BASE[N_DDR_ID] = {
+	0x00000000UL};
+
+/* ISP */
+static const hrt_address ISP_CTRL_BASE[N_ISP_ID] = {
+	0x00020000UL};
+
+static const hrt_address ISP_DMEM_BASE[N_ISP_ID] = {
+	0xffffffffUL};
+
+static const hrt_address ISP_BAMEM_BASE[N_BAMEM_ID] = {
+	0xffffffffUL};
+
+static const hrt_address ISP_VAMEM_BASE[N_VAMEM_ID] = {
+	0xffffffffUL,
+	0xffffffffUL,
+	0xffffffffUL};
+
+static const hrt_address ISP_HMEM_BASE[N_HMEM_ID] = {
+	0xffffffffUL};
+
+/* SP */
+static const hrt_address SP_CTRL_BASE[N_SP_ID] = {
+	0x00010000UL};
+
+static const hrt_address SP_DMEM_BASE[N_SP_ID] = {
+	0x00300000UL};
+
+/* MMU */
+static const hrt_address MMU_BASE[N_MMU_ID] = {
+	0x00070000UL};
+
+/* DMA */
+static const hrt_address DMA_BASE[N_DMA_ID] = {
+	0x00040000UL};
+
+/* IRQ */
+static const hrt_address IRQ_BASE[N_IRQ_ID] = {
+	0x00000500UL};
+/*
+	0x00030A00UL,
+	0x0008C000UL,
+	0x00090200UL};
+ */
+
+/* GDC */
+static const hrt_address GDC_BASE[N_GDC_ID] = {
+	0x00050000UL,
+	0x00060000UL};
+
+/* FIFO_MONITOR (not a subset of GP_DEVICE) */
+static const hrt_address FIFO_MONITOR_BASE[N_FIFO_MONITOR_ID] = {
+	0x00000000UL};
+
+/*
+static const hrt_address GP_REGS_BASE[N_GP_REGS_ID] = {
+	0x00000000UL};
+
+static const hrt_address GP_DEVICE_BASE[N_GP_DEVICE_ID] = {
+	0x00090000UL};
+*/
+
+/* GP_DEVICE (single base for all separate GP_REG instances) */
+static const hrt_address GP_DEVICE_BASE[N_GP_DEVICE_ID] = {
+	0x00000000UL};
+
+/* GPIO */
+static const hrt_address GPIO_BASE[N_GPIO_ID] = {
+	0x00000400UL};
+
+/* TIMED_CTRL */
+static const hrt_address TIMED_CTRL_BASE[N_TIMED_CTRL_ID] = {
+	0x00000100UL};
+
+
+/* INPUT_FORMATTER */
+static const hrt_address INPUT_FORMATTER_BASE[N_INPUT_FORMATTER_ID] = {
+	0x00030000UL,
+	0x00030200UL,
+	0x00030400UL};
+/*	0x00030600UL, */ /* memcpy() */
+
+/* INPUT_SYSTEM */
+static const hrt_address INPUT_SYSTEM_BASE[N_INPUT_SYSTEM_ID] = {
+	0x00080000UL};
+/*	0x00081000UL, */ /* capture A */
+/*	0x00082000UL, */ /* capture B */
+/*	0x00083000UL, */ /* capture C */
+/*	0x00084000UL, */ /* Acquisition */
+/*	0x00085000UL, */ /* DMA */
+/*	0x00089000UL, */ /* ctrl */
+/*	0x0008A000UL, */ /* GP regs */
+/*	0x0008B000UL, */ /* FIFO */
+/*	0x0008C000UL, */ /* IRQ */
+
+/* RX, the MIPI lane control regs start at offset 0 */
+static const hrt_address RX_BASE[N_RX_ID] = {
+	0x00080100UL};
+
+#else
+#error "system_local.h: HRT_ADDRESS_WIDTH must be one of {32,64}"
+#endif
 
 #endif /* __SYSTEM_LOCAL_H_INCLUDED__ */
