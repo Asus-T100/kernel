@@ -216,7 +216,9 @@ int atomisp_qbuffers_to_css(struct atomisp_device *isp)
 			/* fall through */
 		default:
 			capture_pipe = &isp->isp_subdev.video_out_capture;
-			vf_pipe = &isp->isp_subdev.video_out_vf;
+			if (isp->capture_format->out_sh_fmt !=
+						SH_CSS_FRAME_FORMAT_RAW)
+				vf_pipe = &isp->isp_subdev.video_out_vf;
 			css_capture_pipe_id = SH_CSS_CAPTURE_PIPELINE;
 		}
 	}
