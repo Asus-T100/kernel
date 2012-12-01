@@ -24,7 +24,7 @@
 #ifndef _css_receiver_2400_defs_h_
 #define _css_receiver_2400_defs_h_
 
-/* #include "css_receiver_2400_common_defs.h" */
+#include "css_receiver_2400_common_defs.h"
 
 #define CSS_RECEIVER_DATA_WIDTH                8
 #define CSS_RECEIVER_RX_TRIG                   4
@@ -141,7 +141,7 @@
 #define _HRT_CSS_RECEIVER_2400_CSI2_MASK_ECC_TWO_BIT_ERR_IDX                  6
 #define _HRT_CSS_RECEIVER_2400_CSI2_MASK_DATA_ID_ERR_IDX                      7
 
-
+                                  
 /* Bits for CSI2_FUNC_PROG register */
 #define _HRT_CSS_RECEIVER_2400_CSI2_DATA_TIMEOUT_IDX    0
 #define _HRT_CSS_RECEIVER_2400_CSI2_DATA_TIMEOUT_BITS   19

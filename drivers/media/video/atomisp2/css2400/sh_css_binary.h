@@ -50,10 +50,12 @@ struct sh_css_binary_descr {
 	int mode;
 	bool online;
 	bool continuous;
+	bool binning;
 	bool two_ppc;
 	bool enable_yuv_ds;
 	bool enable_high_speed;
 	bool enable_dvs_6axis;
+	bool enable_reduced_pipe;
 	enum sh_css_input_format stream_format;
 	struct sh_css_frame_info *in_info;
 	struct sh_css_frame_info *out_info;

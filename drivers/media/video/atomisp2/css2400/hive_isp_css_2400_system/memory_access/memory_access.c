@@ -2,6 +2,7 @@
 #include "memory_access.h"
 
 #include <stddef.h>		/* NULL */
+#include <stdbool.h>
 
 #include "device_access.h"
 
@@ -23,12 +24,155 @@ static hrt_data			page_table_base_index = (hrt_data)-1;
 
 const hrt_vaddress	mmgr_NULL = (hrt_vaddress)0;
 
+#ifndef SH_CSS_MEMORY_GUARDING
+/* Choose default in case not defined */
+#ifdef HRT_CSIM
+#define SH_CSS_MEMORY_GUARDING (1)
+#else
+#define SH_CSS_MEMORY_GUARDING (0)
+#endif
+#endif
+
+#if SH_CSS_MEMORY_GUARDING
+#define CEIL_DIV(a, b)	((b) ? ((a)+(b)-1)/(b) : 0)
+#define CEIL_MUL(a, b)	(CEIL_DIV(a, b) * (b))
+#define DDR_ALIGN(a)	(CEIL_MUL((a), (HIVE_ISP_DDR_WORD_BYTES)))
+
+#define MEM_GUARD_START		0xABBAABBA
+#define MEM_GUARD_END		0xBEEFBEEF
+#define GUARD_SIZE		sizeof(unsigned long)
+#define GUARD_SIZE_ALIGNED	DDR_ALIGN(GUARD_SIZE)
+
+#define MAX_ALLOC_ENTRIES (256)
+#define INVALID_VBASE ((hrt_vaddress)-1)
+#define INVALID_SIZE ((unsigned long)-1)
+
+struct alloc_info{
+	hrt_vaddress  vbase;
+	unsigned long size;
+};
+
+static struct alloc_info alloc_admin[MAX_ALLOC_ENTRIES];
+
+static struct alloc_info const alloc_info_invalid
+					= { INVALID_VBASE, INVALID_SIZE };
+
+static void alloc_admin_init(void)
+{
+	int i;
+
+	for (i = 0; i < MAX_ALLOC_ENTRIES; i++)
+		alloc_admin[i] = alloc_info_invalid;
+}
+
+static struct alloc_info const *alloc_admin_find(hrt_vaddress vaddr)
+{
+	int i;
+	/**
+	 * Note that we use <= instead of < because we like to accept
+	 * zero-sized operations at the last allocated address
+	 * e.g. mmgr_set(vbase+alloc_size, data, 0)
+	 */
+	for (i = 0; i < MAX_ALLOC_ENTRIES; i++) {
+		if (alloc_admin[i].vbase != INVALID_VBASE &&
+					vaddr >= alloc_admin[i].vbase &&
+					vaddr <= alloc_admin[i].vbase +
+							alloc_admin[i].size) {
+			return &alloc_admin[i];
+		}
+	}
+	return &alloc_info_invalid;
+}
+
+static bool mem_guard_valid(hrt_vaddress vaddr, unsigned long size)
+{
+	unsigned long mem_guard;
+	struct alloc_info const *info;
+
+	info = alloc_admin_find(vaddr);
+	if (info->vbase == INVALID_VBASE) {
+		assert(false);
+		return false;
+	}
+
+	/* Check if end is in alloc range*/
+	if ((vaddr + size) > (info->vbase + info->size)) {
+		assert(false);
+		return false;
+	}
+
+	hrt_isp_css_mm_load(
+			(hmm_ptr)HOST_ADDRESS(info->vbase - sizeof(mem_guard)),
+			&mem_guard, sizeof(mem_guard));
+	if (mem_guard != MEM_GUARD_START) {
+		assert(false);
+		return false;
+	}
+
+	hrt_isp_css_mm_load((hmm_ptr)HOST_ADDRESS(info->vbase + info->size),
+						&mem_guard, sizeof(mem_guard));
+	if (mem_guard != MEM_GUARD_END) {
+		assert(false);
+		return false;
+	}
+
+	return true;
+
+}
+
+static void alloc_admin_add(hrt_vaddress vbase, unsigned long size)
+{
+	int i;
+	unsigned long mem_guard;
+
+	assert(alloc_admin_find(vbase)->vbase == INVALID_VBASE);
+
+	mem_guard = MEM_GUARD_START;
+	hrt_isp_css_mm_store((hmm_ptr)HOST_ADDRESS(vbase - sizeof(mem_guard)),
+						&mem_guard, sizeof(mem_guard));
+
+	mem_guard = MEM_GUARD_END;
+	hrt_isp_css_mm_store((hmm_ptr)HOST_ADDRESS(vbase + size),
+						&mem_guard, sizeof(mem_guard));
+
+	for (i = 0; i < MAX_ALLOC_ENTRIES; i++) {
+		if (alloc_admin[i].vbase == INVALID_VBASE) {
+			alloc_admin[i].vbase = vbase;
+			alloc_admin[i].size = size;
+			return;
+		}
+	}
+	assert(false);
+}
+
+static void alloc_admin_remove(hrt_vaddress vbase)
+{
+	int i;
+	assert(mem_guard_valid(vbase, 0));
+	for (i = 0; i < MAX_ALLOC_ENTRIES; i++) {
+		if (alloc_admin[i].vbase == vbase) {
+			alloc_admin[i] = alloc_info_invalid;
+			return;
+		}
+	}
+	assert(false);
+}
+
+#endif
+
 void mmgr_set_base_address(
 	const sys_address		base_addr)
 {
 	hrt_data	base_index;
 	page_table_base_address = base_addr;
-/* This is part of "device_access.h", but it may be that "hive_isp_css_mm_hrt.h" requires it */
+
+#if SH_CSS_MEMORY_GUARDING
+	alloc_admin_init();
+#endif
+/*
+ * This is part of "device_access.h", but it may be
+ * that "hive_isp_css_mm_hrt.h" requires it
+ */
 /* hrt_isp_css_mm_set_ddr_address_offset(offset); */
 /* HIVE_ISP_PAGE_SHIFT is a system property, not defined with the MMU */
 	base_index = page_table_base_address >> HIVE_ISP_PAGE_SHIFT;
@@ -78,8 +222,14 @@ void mmgr_free(
 	hrt_vaddress			vaddr)
 {
 /* "free()" should accept NULL, "hrt_isp_css_mm_free()" may not */
-	if (vaddr != mmgr_NULL)
+	if (vaddr != mmgr_NULL) {
+#if SH_CSS_MEMORY_GUARDING
+		alloc_admin_remove(vaddr);
+		/* Reconstruct the "original" address used with the alloc */
+		vaddr -= GUARD_SIZE_ALIGNED;
+#endif
 		hrt_isp_css_mm_free((hmm_ptr)HOST_ADDRESS(vaddr));
+	}
 return;
 }
 
@@ -88,39 +238,68 @@ hrt_vaddress mmgr_alloc_attr(
 	const uint16_t			attribute)
 {
 	hmm_ptr	ptr;
+	size_t	extra_space = 0;
+	size_t	aligned_size = size;
+
 assert(page_table_base_address != (sys_address)-1);
 assert((attribute & MMGR_ATTRIBUTE_UNUSED) == 0);
-/* assert(attribute == MMGR_ATTRIBUTE_DEFAULT); */
+
+#if SH_CSS_MEMORY_GUARDING
+	/* Add DDR aligned space for a guard at begin and end */
+	/* Begin guard must be DDR aligned, "end" guard not */
+	extra_space = GUARD_SIZE_ALIGNED + GUARD_SIZE;
+	/* SP DMA operates on multiple of 32 bytes, also with writes.
+	 * To prevent that the guard is being overwritten by SP DMA,
+	 * the "end" guard must start DDR aligned.
+	 */
+	aligned_size = DDR_ALIGN(aligned_size);
+#endif
+
 	if (attribute & MMGR_ATTRIBUTE_CLEARED) {
 		if (attribute & MMGR_ATTRIBUTE_CACHED) {
-			if (attribute & MMGR_ATTRIBUTE_CONTIGUOUS) {
-				ptr = hrt_isp_css_mm_calloc_contiguous(size);
-			} else {
-				ptr = hrt_isp_css_mm_calloc(size);
-			}
+			if (attribute & MMGR_ATTRIBUTE_CONTIGUOUS) /* { */
+				ptr = hrt_isp_css_mm_calloc_contiguous(
+						aligned_size + extra_space);
+			/* } */ else /* { */
+				ptr = hrt_isp_css_mm_calloc(
+						aligned_size + extra_space);
+			/* } */
 		} else { /* !MMGR_ATTRIBUTE_CACHED */
-			if (attribute & MMGR_ATTRIBUTE_CONTIGUOUS) {
-				ptr = hrt_isp_css_mm_calloc_contiguous(size);
-			} else {
-				ptr = hrt_isp_css_mm_calloc(size);
-			}
+			if (attribute & MMGR_ATTRIBUTE_CONTIGUOUS) /* { */
+				ptr = hrt_isp_css_mm_calloc_contiguous(
+						aligned_size + extra_space);
+			/* } */ else /* { */
+				ptr = hrt_isp_css_mm_calloc(
+						aligned_size + extra_space);
+			/* } */
 		}
 	} else { /* MMGR_ATTRIBUTE_CLEARED */
 		if (attribute & MMGR_ATTRIBUTE_CACHED) {
-			if (attribute & MMGR_ATTRIBUTE_CONTIGUOUS) {
-				ptr = hrt_isp_css_mm_alloc_contiguous(size);
-			} else {
-				ptr = hrt_isp_css_mm_alloc(size);
-			}
+			if (attribute & MMGR_ATTRIBUTE_CONTIGUOUS) /* { */
+				ptr = hrt_isp_css_mm_alloc_contiguous(
+						aligned_size + extra_space);
+			/* } */ else /* { */
+				ptr = hrt_isp_css_mm_alloc(
+						aligned_size + extra_space);
+			/* } */
 		} else { /* !MMGR_ATTRIBUTE_CACHED */
-			if (attribute & MMGR_ATTRIBUTE_CONTIGUOUS) {
-				ptr = hrt_isp_css_mm_alloc_contiguous(size);
-			} else {
-				ptr = hrt_isp_css_mm_alloc(size);
-			}
+			if (attribute & MMGR_ATTRIBUTE_CONTIGUOUS) /* { */
+				ptr = hrt_isp_css_mm_alloc_contiguous(
+						aligned_size + extra_space);
+			/* } */ else /* { */
+				ptr = hrt_isp_css_mm_alloc(
+						aligned_size + extra_space);
+			/* } */
 		}
 	}
-return HOST_ADDRESS(ptr);
+
+#if SH_CSS_MEMORY_GUARDING
+	/* ptr is the user pointer, so we need to skip the "begin" guard */
+	ptr += GUARD_SIZE_ALIGNED;
+	alloc_admin_add(HOST_ADDRESS(ptr), aligned_size);
+#endif
+
+	return HOST_ADDRESS(ptr);
 }
 
 hrt_vaddress mmgr_realloc_attr(
@@ -163,15 +342,21 @@ void mmgr_set(
 	const uint8_t			data,
 	const size_t			size)
 {
+#if SH_CSS_MEMORY_GUARDING
+	assert(mem_guard_valid(vaddr, size));
+#endif
 	hrt_isp_css_mm_set((hmm_ptr)HOST_ADDRESS(vaddr), (int)data, size);
 return;
 }
 
 void mmgr_load(
 	const hrt_vaddress		vaddr,
-	void					*data,
+	void				*data,
 	const size_t			size)
 {
+#if SH_CSS_MEMORY_GUARDING
+	assert(mem_guard_valid(vaddr, size));
+#endif
 	hrt_isp_css_mm_load((hmm_ptr)HOST_ADDRESS(vaddr), data, size);
 return;
 }
@@ -181,6 +366,9 @@ void mmgr_store(
 	const void				*data,
 	const size_t			size)
 {
+#if SH_CSS_MEMORY_GUARDING
+	assert(mem_guard_valid(vaddr, size));
+#endif
 	hrt_isp_css_mm_store((hmm_ptr)HOST_ADDRESS(vaddr), data, size);
 return;
 }

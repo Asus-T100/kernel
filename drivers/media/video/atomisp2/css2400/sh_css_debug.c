@@ -891,116 +891,216 @@ void sh_css_frame_print(
 return;
 }
 
+#ifdef __KERNEL__
+#define DTRACE_SP_STATE(format, args...)                                       \
+	printk(KERN_ERR "sh_css_sp_debug: " format,##args)
+#else
+#define DTRACE_SP_STATE(format, args...)                                       \
+	sh_css_dtrace(SH_DBG_DEBUG, "sh_css_sp_debug: " format,##args)
+#endif
+
+#if SP_DEBUG !=SP_DEBUG_NONE
+
 void sh_css_print_sp_debug_state(
 	const struct sh_css_sp_debug_state	*state)
 {
-#ifndef __KERNEL__
-	int i;
-	sh_css_dtrace(2, "sp_error = 0x%x\n", state->error);
-	for (i = 0; i < SH_CSS_NUM_SP_DEBUG; i++)
-		sh_css_dtrace(2, "sp_debug[%d] = %d\n", i, state->debug[i]);
-#else
-/*
- * MW: use print_support.h to define a platform
- * independent print, or use sh_css_print()
- */
-	printk(KERN_ERR "current SP software counter: %d\n",
-				state->debug[0]);
-	printk(KERN_ERR "empty output buffer queue head: 0x%x\n",
-				state->debug[1]);
-	printk(KERN_ERR "empty output buffer queue tail: 0x%x\n",
-				state->debug[2]);
-	printk(KERN_ERR "empty s3a buffer queue head: 0x%x\n",
-				state->debug[3]);
-	printk(KERN_ERR "empty s3a buffer queue tail: 0x%x\n",
-				state->debug[4]);
-	printk(KERN_ERR "full output buffer queue head: 0x%x\n",
-				state->debug[5]);
-	printk(KERN_ERR "full output buffer queue tail: 0x%x\n",
-				state->debug[6]);
-	printk(KERN_ERR "full s3a buffer queue head: 0x%x\n",
-				state->debug[7]);
-	printk(KERN_ERR "full s3a buffer queue tail: 0x%x\n",
-				state->debug[8]);
-	printk(KERN_ERR "event queue head: 0x%x\n",
-				state->debug[9]);
-	printk(KERN_ERR "event queue tail: 0x%x\n",
-				state->debug[10]);
-	printk(KERN_ERR "num of stages of current pipeline: 0x%x\n",
-				state->debug[11]);
-	printk(KERN_ERR "DDR address of stage 1: 0x%x\n",
-				state->debug[12]);
-	printk(KERN_ERR "DDR address of stage 2: 0x%x\n",
-				state->debug[13]);
-	printk(KERN_ERR "current stage out_vf buffer idx: 0x%x\n",
-				state->debug[14]);
-	printk(KERN_ERR "current stage output buffer idx: 0x%x\n",
-				state->debug[15]);
-	printk(KERN_ERR "current stage s3a buffer idx: 0x%x\n",
-				state->debug[16]);
-	printk(KERN_ERR "first char of current stage name: 0x%x\n",
-				state->debug[17]);
-	printk(KERN_ERR "current SP thread id: 0x%x\n",
-				state->debug[18]);
-	printk(KERN_ERR "empty output buffer address 1: 0x%x\n",
-				state->debug[19]);
-	printk(KERN_ERR "empty output buffer address 2: 0x%x\n",
-				state->debug[20]);
-	printk(KERN_ERR "empty out_vf buffer address 1: 0x%x\n",
-				state->debug[21]);
-	printk(KERN_ERR "empty out_vf buffer address 2: 0x%x\n",
-				state->debug[22]);
-	printk(KERN_ERR "empty s3a_hi buffer address 1: 0x%x\n",
-				state->debug[23]);
-	printk(KERN_ERR "empty s3a_hi buffer address 2: 0x%x\n",
-				state->debug[24]);
-	printk(KERN_ERR "empty s3a_lo buffer address 1: 0x%x\n",
-				state->debug[25]);
-	printk(KERN_ERR "empty s3a_lo buffer address 2: 0x%x\n",
-				state->debug[26]);
-	printk(KERN_ERR "empty dis_hor buffer address 1: 0x%x\n",
-				state->debug[27]);
-	printk(KERN_ERR "empty dis_hor buffer address 2: 0x%x\n",
-				state->debug[28]);
-	printk(KERN_ERR "empty dis_ver buffer address 1: 0x%x\n",
-				state->debug[29]);
-	printk(KERN_ERR "empty dis_ver buffer address 2: 0x%x\n",
-				state->debug[30]);
-	printk(KERN_ERR "empty param buffer address: 0x%x\n",
-				state->debug[31]);
-	printk(KERN_ERR "first incorrect frame address: 0x%x\n",
-				state->debug[32]);
-	printk(KERN_ERR "first incorrect frame container address: 0x%x\n",
-				state->debug[33]);
-	printk(KERN_ERR "first incorrect frame container payload: 0x%x\n",
-				state->debug[34]);
-	printk(KERN_ERR "first incorrect s3a_hi address: 0x%x\n",
-				state->debug[35]);
-	printk(KERN_ERR "first incorrect s3a_hi container address: 0x%x\n",
-				state->debug[36]);
-	printk(KERN_ERR "first incorrect s3a_hi container payload: 0x%x\n",
-				state->debug[37]);
-	printk(KERN_ERR "first incorrect s3a_lo address: 0x%x\n",
-				state->debug[38]);
-	printk(KERN_ERR "first incorrect s3a_lo container address: 0x%x\n",
-				state->debug[39]);
-	printk(KERN_ERR "first incorrect s3a_lo container payload: 0x%x\n",
-				state->debug[40]);
-	printk(KERN_ERR "number of calling flash start function: 0x%x\n",
-				state->debug[41]);
-	printk(KERN_ERR "number of calling flash close function: 0x%x\n",
-				state->debug[42]);
-    printk(KERN_ERR "number of flashed frame: 0x%x\n",
-				state->debug[43]);
-	printk(KERN_ERR "flash in use flag: 0x%x\n",
-				state->debug[44]);
-	printk(KERN_ERR "number of update frame flashed flag: 0x%x\n",
-				state->debug[46]);
-	printk(KERN_ERR "number of active threads: 0x%x\n",
-				state->debug[45]);
+
 #endif
-return;
+
+#if SP_DEBUG == SP_DEBUG_DUMP
+
+	DTRACE_SP_STATE("current SP software counter: %d\n",
+				state->debug[0]);
+	DTRACE_SP_STATE("empty output buffer queue head: 0x%x\n",
+				state->debug[1]);
+	DTRACE_SP_STATE("empty output buffer queue tail: 0x%x\n",
+				state->debug[2]);
+	DTRACE_SP_STATE("empty s3a buffer queue head: 0x%x\n",
+				state->debug[3]);
+	DTRACE_SP_STATE("empty s3a buffer queue tail: 0x%x\n",
+				state->debug[4]);
+	DTRACE_SP_STATE("full output buffer queue head: 0x%x\n",
+				state->debug[5]);
+	DTRACE_SP_STATE("full output buffer queue tail: 0x%x\n",
+				state->debug[6]);
+	DTRACE_SP_STATE("full s3a buffer queue head: 0x%x\n",
+				state->debug[7]);
+	DTRACE_SP_STATE("full s3a buffer queue tail: 0x%x\n",
+				state->debug[8]);
+	DTRACE_SP_STATE("event queue head: 0x%x\n",
+				state->debug[9]);
+	DTRACE_SP_STATE("event queue tail: 0x%x\n",
+				state->debug[10]);
+	DTRACE_SP_STATE("num of stages of current pipeline: 0x%x\n",
+				state->debug[11]);
+	DTRACE_SP_STATE("DDR address of stage 1: 0x%x\n",
+				state->debug[12]);
+	DTRACE_SP_STATE("DDR address of stage 2: 0x%x\n",
+				state->debug[13]);
+	DTRACE_SP_STATE("current stage out_vf buffer idx: 0x%x\n",
+				state->debug[14]);
+	DTRACE_SP_STATE("current stage output buffer idx: 0x%x\n",
+				state->debug[15]);
+	DTRACE_SP_STATE("current stage s3a buffer idx: 0x%x\n",
+				state->debug[16]);
+	DTRACE_SP_STATE("first char of current stage name: 0x%x\n",
+				state->debug[17]);
+	DTRACE_SP_STATE("current SP thread id: 0x%x\n",
+				state->debug[18]);
+	DTRACE_SP_STATE("empty output buffer address 1: 0x%x\n",
+				state->debug[19]);
+	DTRACE_SP_STATE("empty output buffer address 2: 0x%x\n",
+				state->debug[20]);
+	DTRACE_SP_STATE("empty out_vf buffer address 1: 0x%x\n",
+				state->debug[21]);
+	DTRACE_SP_STATE("empty out_vf buffer address 2: 0x%x\n",
+				state->debug[22]);
+	DTRACE_SP_STATE("empty s3a_hi buffer address 1: 0x%x\n",
+				state->debug[23]);
+	DTRACE_SP_STATE("empty s3a_hi buffer address 2: 0x%x\n",
+				state->debug[24]);
+	DTRACE_SP_STATE("empty s3a_lo buffer address 1: 0x%x\n",
+				state->debug[25]);
+	DTRACE_SP_STATE("empty s3a_lo buffer address 2: 0x%x\n",
+				state->debug[26]);
+	DTRACE_SP_STATE("empty dis_hor buffer address 1: 0x%x\n",
+				state->debug[27]);
+	DTRACE_SP_STATE("empty dis_hor buffer address 2: 0x%x\n",
+				state->debug[28]);
+	DTRACE_SP_STATE("empty dis_ver buffer address 1: 0x%x\n",
+				state->debug[29]);
+	DTRACE_SP_STATE("empty dis_ver buffer address 2: 0x%x\n",
+				state->debug[30]);
+	DTRACE_SP_STATE("empty param buffer address: 0x%x\n",
+				state->debug[31]);
+	DTRACE_SP_STATE("first incorrect frame address: 0x%x\n",
+				state->debug[32]);
+	DTRACE_SP_STATE("first incorrect frame container address: 0x%x\n",
+				state->debug[33]);
+	DTRACE_SP_STATE("first incorrect frame container payload: 0x%x\n",
+				state->debug[34]);
+	DTRACE_SP_STATE("first incorrect s3a_hi address: 0x%x\n",
+				state->debug[35]);
+	DTRACE_SP_STATE("first incorrect s3a_hi container address: 0x%x\n",
+				state->debug[36]);
+	DTRACE_SP_STATE("first incorrect s3a_hi container payload: 0x%x\n",
+				state->debug[37]);
+	DTRACE_SP_STATE("first incorrect s3a_lo address: 0x%x\n",
+				state->debug[38]);
+	DTRACE_SP_STATE("first incorrect s3a_lo container address: 0x%x\n",
+				state->debug[39]);
+	DTRACE_SP_STATE("first incorrect s3a_lo container payload: 0x%x\n",
+				state->debug[40]);
+	DTRACE_SP_STATE("number of calling flash start function: 0x%x\n",
+				state->debug[41]);
+	DTRACE_SP_STATE("number of calling flash close function: 0x%x\n",
+				state->debug[42]);
+	DTRACE_SP_STATE("number of flashed frame: 0x%x\n",
+				state->debug[43]);
+	DTRACE_SP_STATE("flash in use flag: 0x%x\n",
+				state->debug[44]);
+	DTRACE_SP_STATE("number of update frame flashed flag: 0x%x\n",
+				state->debug[46]);
+	DTRACE_SP_STATE("number of active threads: 0x%x\n",
+				state->debug[45]);
+
+
+#elif SP_DEBUG == SP_DEBUG_COPY
+
+	/* Remember last_index because we only want to print new entries */
+	static int last_index = 0;
+	int sp_index = state->index;
+	int n;
+
+	if (sp_index < last_index) {
+		/* SP has been reset */
+		last_index = 0;
+	}
+
+	if (last_index == 0) {
+		DTRACE_SP_STATE(
+		  "copy-trace init: sp_dbg_if_start_line=%d, sp_dbg_if_start_column=%d, "
+		  "sp_dbg_if_cropped_height=%d, sp_debg_if_cropped_width=%d\n",
+		  state->if_start_line,
+		  state->if_start_column,
+		  state->if_cropped_height,
+		  state->if_cropped_width
+		  );
+	}
+
+	if ((last_index + SH_CSS_SP_DBG_TRACE_DEPTH) < sp_index) {
+		/* last index can be multiple rounds behind */
+		/* while trace size is only SH_CSS_SP_DBG_TRACE_DEPTH */
+		last_index = sp_index - SH_CSS_SP_DBG_TRACE_DEPTH;
+	}
+
+	for (n = last_index; n < sp_index; n++) {
+		int i = n % SH_CSS_SP_DBG_TRACE_DEPTH;
+		if (state->trace[i].frame != 0) {
+			DTRACE_SP_STATE(
+			  "copy-trace: frame=%d, line=%d, "
+			  "pixel_distance=%d, mipi_used_dword=%d\n",
+			  state->trace[i].frame,
+			  state->trace[i].line,
+			  state->trace[i].pixel_distance,
+			  state->trace[i].mipi_used_dword
+			  );
+		}
+	}
+
+	last_index = sp_index;
+
+#elif SP_DEBUG == SP_DEBUG_TRACE
+
+#if 1
+
+	static char const *id2filename[8] = {
+		"N.A.", "sp.hive.c", "event.sp.c", "sp_raw_copy.hive.c",
+		"buffer_queue.sp.c", "event_proxy_sp.hive.c", "ERROR", "ERROR"
+		};
+
+#if 0
+	static char const *trace_name[SH_CSS_SP_DBG_NR_OF_TRACES] = {
+				"copy", "preview/video", "capture",
+				"acceleration", "control", "TBD" };
+#else
+	static char const *trace_name[SH_CSS_SP_DBG_NR_OF_TRACES] = {
+				"copy", "preview/video", "event_ext_io",
+				"event_PIF_A" };
+#endif
+	int t, d;
+
+	for (t = 0; t < SH_CSS_SP_DBG_NR_OF_TRACES; t++) {
+		/* base contains the "oldest" index */
+		int base = state->index[t];
+		for (d = 0; d < SH_CSS_SP_DBG_TRACE_DEPTH; d++) {
+			int i = (base + d) % SH_CSS_SP_DBG_TRACE_DEPTH;
+			int l = state->trace[t][i].location &
+				((1<<SH_CSS_SP_DBG_TRACE_FILE_ID_BIT_POS)-1);
+			int fid = state->trace[t][i].location >>
+				SH_CSS_SP_DBG_TRACE_FILE_ID_BIT_POS;
+			int ts = state->trace[t][i].time_stamp;
+
+			if (ts) {
+				DTRACE_SP_STATE(
+				  "%05d trace=%s, file=%s:%d, data=0x%08x\n",
+				  ts,
+				  trace_name[t],
+				  id2filename[fid], l,
+				  state->trace[t][i].data);
+			}
+		}
+	}
+
+
+#endif
+#endif
+
+#if SP_DEBUG !=SP_DEBUG_NONE
+
+	return;
 }
+#endif
 
 void sh_css_dump_rx_state(void)
 {
@@ -1040,10 +1140,12 @@ return;
 void
 sh_css_dump_sp_sw_debug_info(void)
 {
+#if SP_DEBUG !=SP_DEBUG_NONE
 	struct sh_css_sp_debug_state state;
 
 	sh_css_sp_get_debug_state(&state);
 	sh_css_print_sp_debug_state(&state);
+#endif
 return;
 }
 
@@ -1065,6 +1167,26 @@ void sh_css_dump_debug_info(
 	sh_css_dump_dma_state();
 return;
 }
+
+#if SP_DEBUG == SP_DEBUG_TRACE
+
+void
+sh_css_sp_debug_dump_mipi_fifo_high_water(void)
+{
+	const struct sh_css_fw_info *fw = &sh_css_sp_fw;
+	unsigned int mfhw;
+	unsigned int HIVE_ADDR_sp_output = fw->info.sp.output;
+	unsigned offset = offsetof(struct sh_css_sp_output, debug.mipi_fifo_high_water);
+
+	(void)HIVE_ADDR_sp_output; /* To get rid of warning in CRUN */
+
+	load_sp_var_with_offset(sp_output, offset, &mfhw, sizeof(mfhw));
+
+	DTRACE_SP_STATE("Mipi fifo high water mark: %d, line %d\n",mfhw&0xFFFF, mfhw>>16);
+}
+
+#endif
+
 
 /* this function is for debug use, it can make SP go to sleep
   state after each frame, then user can dump the stable SP dmem.
@@ -1481,8 +1603,7 @@ static const char *format2str[] = {
 	[SH_CSS_FRAME_FORMAT_PLANAR_RGB888] = "PLANAR_RGB888",
 	[SH_CSS_FRAME_FORMAT_RGBA888]	= "RGBA888",
 	[SH_CSS_FRAME_FORMAT_QPLANE6]	= "QPLANE6",
-	[SH_CSS_FRAME_FORMAT_BINARY_8]	= "BINARY_8",
-	[SH_CSS_FRAME_FORMAT_RAW_REORDERED] = "RAW_REORDERED"
+	[SH_CSS_FRAME_FORMAT_BINARY_8]	= "BINARY_8"
 };
 
 #define DPG_START "sh_css_pipe_graph_dump_start "

@@ -70,6 +70,9 @@
 #include "linux/delay.h"
 #include "sh_css_metrics.h"
 
+
+
+
 static int thread_alive;
 #endif
 
@@ -173,6 +176,7 @@ enum sh_css_state {
 	false,                     /* enable_dvs_6axis */ \
 	true,                      /* enable_viewfinder */ \
 	true,                      /* enable_dz */ \
+	false,                     /* enable_reduced_pipe */ \
 	1,                         /* isp_pipe_version */ \
 	{ }                        /* settings */
 
@@ -295,6 +299,7 @@ struct sh_css_pipe {
 	bool                         enable_dvs_6axis;
 	bool                         enable_viewfinder;
 	bool                         enable_dz;
+	bool                         enable_reduced_pipe;
 	unsigned int                 isp_pipe_version;
 	union {
 		struct sh_css_preview_settings preview;
@@ -361,7 +366,7 @@ struct sh_css {
 }
 
 #if defined(HAS_RX_VERSION_2)
- /* Bin: apply timeout, sync count and rx count from VLV */  
+
 #define DEFAULT_MIPI_CONFIG \
 { \
 	MONO_4L_1L_0L, \
@@ -631,8 +636,7 @@ get_copy_out_frame_format(struct sh_css_pipe *pipe,
 	case SH_CSS_INPUT_FORMAT_RAW_12:
 	case SH_CSS_INPUT_FORMAT_RAW_14:
 	case SH_CSS_INPUT_FORMAT_RAW_16:
-		if (*format != SH_CSS_FRAME_FORMAT_RAW_REORDERED)
-			*format = SH_CSS_FRAME_FORMAT_RAW;
+		*format = SH_CSS_FRAME_FORMAT_RAW;
 		break;
 	case SH_CSS_INPUT_FORMAT_BINARY_8:
 		*format = SH_CSS_FRAME_FORMAT_BINARY_8;
@@ -844,7 +848,6 @@ program_input_formatter(struct sh_css_pipe *pipe,
 			unsigned int left_padding)
 {
 	unsigned int start_line, start_column = 0,
-		     in_format = binary->in_frame_info.format,
 		     cropped_height = binary->in_frame_info.height,
 		     cropped_width  = binary->in_frame_info.width,
 		     num_vectors,
@@ -868,15 +871,22 @@ program_input_formatter(struct sh_css_pipe *pipe,
 	enum sh_css_input_format input_format = binary->input_format;
 	enum sh_css_err err = sh_css_success;
 
+#if 1
 	/* TODO: Remove this when the decimated resolution is available */
 	/* Only for continuous preview mode where we need 2xOut resolution */
-	if (in_format == SH_CSS_FRAME_FORMAT_RAW_REORDERED
+#if 0
+	if (binary->in_frame_info.format == SH_CSS_FRAME_FORMAT_RAW_REORDERED
 		&& binary->info->enable.rawdeci) {
+#else
+	if (pipe->input_is_raw_reordered &&
+	    binary->info->enable.rawdeci) {
+#endif
 		cropped_width *= 2;
 		cropped_width -= binary->info->left_cropping;
 		cropped_height *= 2;
 		cropped_height -= binary->info->left_cropping;
 	}
+#endif
 
 	/* TODO: check to see if input is RAW and if current mode interprets
 	 * RAW data in any particular bayer order. copy binary with output
@@ -1022,21 +1032,6 @@ program_input_formatter(struct sh_css_pipe *pipe,
 			start_column /= 2;
 			start_column_b = start_column;
 			buf_offset_b = 1;
-			if (in_format == SH_CSS_FRAME_FORMAT_RAW_REORDERED) {
-				/* @GC: special config for reordered format */
-				vmem_increment = 1;
-				deinterleaving = 2;
-				deinterleaving_b = 2;
-				buf_offset_b
-					= buffer_width / 2 / ISP_VEC_NELEMS;
-				cropped_width /= 2;
-
-				num_vectors = CEIL_DIV(cropped_width
-					+ left_padding/deinterleaving
-					, ISP_VEC_NELEMS);
-				num_vectors = CEIL_MUL(num_vectors
-						, deinterleaving);
-			}
 		} else {
 			vmem_increment = 1;
 			deinterleaving = 2;
@@ -1100,6 +1095,10 @@ program_input_formatter(struct sh_css_pipe *pipe,
 		* vmem_increment);
 
 	vectors_per_buffer = buffer_height * buffer_width / ISP_VEC_NELEMS;
+#if 0
+	if (sh_css_continuous_is_enabled())
+		vectors_per_buffer *= 2;
+#endif
 
 	if (pipe->input_mode == SH_CSS_INPUT_MODE_TPG &&
 	    binary->info->mode == SH_CSS_BINARY_MODE_VIDEO) {
@@ -1130,18 +1129,15 @@ program_input_formatter(struct sh_css_pipe *pipe,
 	if (two_ppc) {
 		if (deinterleaving_b) {
 			deinterleaving = deinterleaving_b;
-			if (in_format != SH_CSS_FRAME_FORMAT_RAW_REORDERED) {
-				/* if not cont raw copy */
-				width_b = cropped_width * deinterleaving;
-				buffer_width *= deinterleaving;
-				/* Patch from bayer to rgb */
-				num_vectors = num_vectors / 2 *
-						deinterleaving * width_b_factor;
-				vectors_per_line = num_vectors / buffer_height;
-				line_width = vectors_per_line *
-					input_formatter_get_alignment(
-					INPUT_FORMATTER0_ID);
-			}
+			width_b = cropped_width * deinterleaving;
+			buffer_width *= deinterleaving;
+			/* Patch from bayer to rgb */
+			num_vectors = num_vectors / 2 *
+					deinterleaving * width_b_factor;
+			vectors_per_line = num_vectors / buffer_height;
+			line_width = vectors_per_line *
+				input_formatter_get_alignment(
+				INPUT_FORMATTER0_ID);
 		}
 		if_b_config.start_line = start_line;
 		if_b_config.start_column = start_column_b;
@@ -1218,9 +1214,8 @@ sh_css_config_input_network(struct sh_css_pipe *pipe,
 			     width,
 			     height,
 			     vblank_cycles;
-
 		width  = pipe->input_width;
-		height  = pipe->input_height;
+		height = pipe->input_height;
 		vblank_cycles = vblank_lines * (width + hblank_cycles);
 		sh_css_sp_configure_sync_gen(width, height, hblank_cycles,
 					     vblank_cycles);
@@ -1486,6 +1481,9 @@ sh_css_pipeline_init(struct sh_css_pipeline *me, enum sh_css_pipe_id pipe_id)
 {
 	struct sh_css_frame init_frame = {
 		.dynamic_data_index = SH_CSS_INVALID_FRAME_ID };
+assert(me != NULL);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"sh_css_pipeline_init() enter:\n");
 	me->pipe_id = pipe_id;
 	me->stages = NULL;
 	me->reload = true;
@@ -1525,6 +1523,11 @@ sh_css_pipeline_add_stage(struct sh_css_pipeline *me,
 	struct sh_css_pipeline_stage *last = me->stages, *new_stage = NULL;
 	enum sh_css_err err;
 
+/* other arguments can be NULL */
+assert(me != NULL);
+/* assert(stage != NULL); */
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"sh_css_pipeline_add_stage() enter:\n");
 	if (!binary && !firmware)
 		return sh_css_err_internal_error;
 
@@ -1560,6 +1563,10 @@ sh_css_pipeline_get_stage(struct sh_css_pipeline *me,
 			  struct sh_css_pipeline_stage **stage)
 {
 	struct sh_css_pipeline_stage *s;
+assert(me != NULL);
+assert(stage != NULL);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"sh_css_pipeline_get_stage() enter:\n");
 	for (s = me->stages; s; s = s->next) {
 		if (s->mode == mode) {
 			*stage = s;
@@ -1575,6 +1582,10 @@ sh_css_pipeline_get_output_stage(struct sh_css_pipeline *me,
 				 struct sh_css_pipeline_stage **stage)
 {
 	struct sh_css_pipeline_stage *s;
+assert(me != NULL);
+assert(stage != NULL);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"sh_css_pipeline_get_output_stage() enter:\n");
 
 	*stage = NULL;
 	/* First find acceleration firmware at end of pipe */
@@ -1592,6 +1603,9 @@ sh_css_pipeline_get_output_stage(struct sh_css_pipeline *me,
 static void
 sh_css_pipeline_restart(struct sh_css_pipeline *me)
 {
+assert(me != NULL);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"sh_css_pipeline_restart() enter:\n");
 	me->current_stage = NULL;
 }
 
@@ -1599,6 +1613,9 @@ static void
 sh_css_pipeline_clean(struct sh_css_pipeline *me)
 {
 	struct sh_css_pipeline_stage *s = me->stages;
+assert(me != NULL);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"sh_css_pipeline_clean() enter:\n");
 
 	while (s) {
 		struct sh_css_pipeline_stage *next = s->next;
@@ -1612,6 +1629,9 @@ static void
 sh_css_pipe_start(struct sh_css_pipe *pipe)
 {
 	struct sh_css_pipeline_stage *stage = pipe->pipeline.stages;
+assert(pipe != NULL);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"sh_css_pipe_start() enter:\n");
 	if (!stage)
 		return;
 	pipe->pipeline.current_stage = stage;
@@ -1619,14 +1639,18 @@ sh_css_pipe_start(struct sh_css_pipe *pipe)
 	start_binary(pipe, stage->binary);
 }
 
-static void
-start_pipe(struct sh_css_pipe *me,
-		enum sh_css_pipe_config_override copy_ovrd)
+static void start_pipe(
+	struct sh_css_pipe *me,
+	enum sh_css_pipe_config_override copy_ovrd)
 {
 	bool low_light = me->mode == SH_CSS_CAPTURE_PIPELINE &&
 			 (me->capture_mode == SH_CSS_CAPTURE_MODE_LOW_LIGHT ||
 			  me->capture_mode == SH_CSS_CAPTURE_MODE_BAYER);
 	bool is_preview = me->mode == SH_CSS_PREVIEW_PIPELINE;
+
+assert(me != NULL);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"start_pipe() enter:\n");
 
 	sh_css_sp_init_pipeline(&me->pipeline,
 				me->mode,
@@ -1650,14 +1674,21 @@ sh_css_set_irq_buffer(struct sh_css_pipeline_stage *stage,
 			enum sh_css_frame_id frame_id,
 			struct sh_css_frame *frame)
 {
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"sh_css_set_irq_buffer() enter:\n");
 	if (stage && frame)
 		stage->irq_buf_flags |= 1<<frame_id;
 }
 
-void
-sh_css_frame_info_set_width(struct sh_css_frame_info *info,
-			    unsigned int width)
+void sh_css_frame_info_set_width(
+	struct sh_css_frame_info *info,
+	unsigned int width)
 {
+assert(info != NULL);
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_frame_info_set_width() enter: "
+		"width=%d\n",
+		width);
 	info->width = width;
 	/* frames with a U and V plane of 8 bits per pixel need to have
 	   all planes aligned, this means double the alignment for the
@@ -1669,16 +1700,17 @@ sh_css_frame_info_set_width(struct sh_css_frame_info *info,
 		info->padded_width = CEIL_MUL(width, 2*ISP_VEC_NELEMS);
 	else if (info->format == SH_CSS_FRAME_FORMAT_RAW)
 		info->padded_width = CEIL_MUL(width, 2*ISP_VEC_NELEMS);
-	else if (info->format == SH_CSS_FRAME_FORMAT_RAW_REORDERED)
-		info->padded_width = CEIL_MUL(width, 4*ISP_VEC_NELEMS);
 	else
 		info->padded_width = CEIL_MUL(width, HIVE_ISP_DDR_WORD_BYTES);
 }
 
-static void
-sh_css_frame_info_set_format(struct sh_css_frame_info *info,
-			     enum sh_css_frame_format format)
+static void sh_css_frame_info_set_format(
+	struct sh_css_frame_info *info,
+	enum sh_css_frame_format format)
 {
+assert(info != NULL);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"sh_css_frame_info_set_format() enter:\n");
 	/* yuv_line has 2*NWAY alignment */
 	info->format = format;
 	/* HACK: this resets the padded width incorrectly.
@@ -1686,20 +1718,33 @@ sh_css_frame_info_set_format(struct sh_css_frame_info *info,
 	info->padded_width =  CEIL_MUL(info->padded_width, 2*ISP_VEC_NELEMS);
 }
 
-void
-sh_css_frame_info_init(struct sh_css_frame_info *info,
-		       unsigned int width,
-		       unsigned int height,
-		       enum sh_css_frame_format format)
+void sh_css_frame_info_init(
+	struct sh_css_frame_info *info,
+	unsigned int width,
+	unsigned int height,
+	enum sh_css_frame_format format)
 {
+assert(info != NULL);
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_frame_info_init() enter: "
+		"width=%d, "
+		"height=%d, "
+		"format=%d\n",
+		width, height,
+		format);
 	info->height = height;
 	info->format = format;
 	sh_css_frame_info_set_width(info, width);
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_frame_info_init() leave: return_void\n");
 }
 
-static void
-invalidate_video_binaries(struct sh_css_pipe *pipe)
+static void invalidate_video_binaries(
+	struct sh_css_pipe *pipe)
 {
+assert(pipe != NULL);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"invalidate_video_binaries() enter:\n");
 	pipe->pipeline.reload   = true;
 	pipe->pipe.video.copy_binary.info = NULL;
 	pipe->pipe.video.video_binary.info = NULL;
@@ -1710,9 +1755,12 @@ invalidate_video_binaries(struct sh_css_pipe *pipe)
 	}
 }
 
-void
-sh_css_set_shading_table(const struct sh_css_shading_table *table)
+void sh_css_set_shading_table(
+	const struct sh_css_shading_table *table)
 {
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_shading_table() enter: "
+		"table=%p\n",table);
 #if 0
 	if (table != my_css.shading_table)
 		reset_mode_shading_tables();
@@ -1724,21 +1772,38 @@ sh_css_set_shading_table(const struct sh_css_shading_table *table)
 		sh_css_pipe_free_shading_table(&my_css.video_pipe);
 		sh_css_pipe_free_shading_table(&my_css.capture_pipe);
 	}
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_set_shading_table() leave: return_void\n");
 }
 
 /* CSS receiver programming */
-enum sh_css_err
-sh_css_pipe_configure_input_port(struct sh_css_pipe  *pipe,
+enum sh_css_err sh_css_pipe_configure_input_port(
+	struct sh_css_pipe	*pipe,
 	const mipi_port_ID_t	port,
 	const unsigned int		num_lanes,
 	const unsigned int		timeout)
 {
+assert(pipe != NULL);
 assert(port < N_MIPI_PORT_ID);
 
-	if (num_lanes > MIPI_PORT_MAXLANES[port])
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_pipe_set_compression() enter: "
+		"port=%d, "
+		"num_lanes=%d, "
+		"timeout=%d\n",
+		port, num_lanes,
+		timeout);
+
+	if (num_lanes > MIPI_PORT_MAXLANES[port]) {
 		return sh_css_err_conflicting_mipi_settings;
-	if (num_lanes > MIPI_4LANE_CFG)
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_pipe_set_compression() leave: return_err=%d", sh_css_err_conflicting_mipi_settings);
+	}
+	if (num_lanes > MIPI_4LANE_CFG) {
 		return sh_css_err_conflicting_mipi_settings;
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_pipe_set_compression() leave: return_err=%d", sh_css_err_conflicting_mipi_settings);
+	}
 
 	pipe->mipi_config.port = port;
 #if defined(HAS_RX_VERSION_1)
@@ -1747,27 +1812,47 @@ assert(port < N_MIPI_PORT_ID);
 	pipe->mipi_config.timeout = timeout;
 	my_css.reconfigure_css_rx = true;
 
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_pipe_set_compression() leave: return_err=%d", sh_css_success);
 return sh_css_success;
 }
 
-enum sh_css_err
-sh_css_pipe_set_compression(struct sh_css_pipe    *pipe,
+enum sh_css_err sh_css_pipe_set_compression(
+	struct sh_css_pipe    *pipe,
 	const mipi_predictor_t	comp,
 	const unsigned int compressed_bits_per_pixel,
 	const unsigned int uncompressed_bits_per_pixel)
 {
+assert(pipe != NULL);
 assert(comp < N_MIPI_PREDICTOR_TYPES);
 
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_pipe_set_compression() enter: "
+		"comp=%d, "
+		"compressed_bits_per_pixel=%d, "
+		"uncompressed_bits_per_pixel=%d\n",
+		comp, compressed_bits_per_pixel,
+		uncompressed_bits_per_pixel);
+
 	if (comp == MIPI_PREDICTOR_NONE) {
-		if (compressed_bits_per_pixel || uncompressed_bits_per_pixel)
+		if (compressed_bits_per_pixel || uncompressed_bits_per_pixel) {
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_pipe_set_compression() leave: return_err=%d", sh_css_err_conflicting_mipi_settings);
 			return sh_css_err_conflicting_mipi_settings;
+		}
 	} else {
 		if (compressed_bits_per_pixel < 6 ||
-		    compressed_bits_per_pixel > 8)
+		    compressed_bits_per_pixel > 8) {
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_pipe_set_compression() leave: return_err=%d", sh_css_err_conflicting_mipi_settings);
 			return sh_css_err_conflicting_mipi_settings;
+		}
 		if (uncompressed_bits_per_pixel != 10 &&
-		    uncompressed_bits_per_pixel != 12)
+		    uncompressed_bits_per_pixel != 12) {
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_pipe_set_compression() leave: return_err=%d", sh_css_err_conflicting_mipi_settings);
 			return sh_css_err_conflicting_mipi_settings;
+		}
 	}
 	pipe->mipi_config.comp = comp;
 #if defined(HAS_RX_VERSION_1)
@@ -1776,34 +1861,52 @@ assert(comp < N_MIPI_PREDICTOR_TYPES);
 #endif
 	my_css.reconfigure_css_rx = true;
 
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_pipe_set_compression() leave: return_err=%d", sh_css_success);
+
 return sh_css_success;
 }
 
-void
-sh_css_tpg_configure(unsigned int x_mask,
-		     int x_delta,
-		     unsigned int y_mask,
-		     int y_delta,
-		     unsigned int xy_mask)
+void sh_css_tpg_configure(
+	unsigned int x_mask,
+	int x_delta,
+	unsigned int y_mask,
+	int y_delta,
+	unsigned int xy_mask)
 {
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_tpg_configure() enter: "
+		"x_mask=%d, y_mask=%d, xy_mask=%d, "
+		"x_delta=%d, y_delta=%d\n",
+		x_mask, y_mask, xy_mask,
+		x_delta, y_delta);
 	sh_css_sp_configure_tpg(x_mask, y_mask, x_delta, y_delta, xy_mask);
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_tpg_configure() leave: return_void\n");
 }
 
-void
-sh_css_prbs_set_seed(int seed)
+void sh_css_prbs_set_seed(
+	int seed)
 {
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_prbs_set_seed() enter: "
+		"seed=%d\n",seed);
 	sh_css_sp_configure_prbs(seed);
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_prbs_set_seed() leave: return_void\n");
 }
 
 /* currently, the capture pp binary requires an internal frame. This will
    be removed in the future. */
-static enum sh_css_err
-alloc_capture_pp_frame(struct sh_css_pipe *pipe,
-		       const struct sh_css_binary *binary)
+static enum sh_css_err alloc_capture_pp_frame(
+	struct sh_css_pipe *pipe,
+	const struct sh_css_binary *binary)
 {
-
 	struct sh_css_frame_info cpp_info;
 	enum sh_css_err err = sh_css_success;
+assert(pipe != NULL);
+assert(binary != NULL);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "alloc_capture_pp_frame() enter:\n");
 
 	cpp_info = binary->internal_frame_info;
 	cpp_info.format = SH_CSS_FRAME_FORMAT_YUV420;
@@ -1814,9 +1917,11 @@ alloc_capture_pp_frame(struct sh_css_pipe *pipe,
 	return err;
 }
 
-static void
-invalidate_preview_binaries(struct sh_css_pipe *pipe)
+static void invalidate_preview_binaries(
+	struct sh_css_pipe *pipe)
 {
+assert(pipe != NULL);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "invalidate_preview_binaries() enter:\n");
 	pipe->pipeline.reload     = true;
 	pipe->pipe.preview.preview_binary.info = NULL;
 	pipe->pipe.preview.vf_pp_binary.info   = NULL;
@@ -1827,9 +1932,11 @@ invalidate_preview_binaries(struct sh_css_pipe *pipe)
 	}
 }
 
-static void
-invalidate_capture_binaries(struct sh_css_pipe *pipe)
+static void invalidate_capture_binaries(
+	struct sh_css_pipe *pipe)
 {
+assert(pipe != NULL);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "invalidate_capture_binaries() enter:\n");
 	pipe->pipeline.reload        = true;
 	pipe->pipe.capture.copy_binary.info       = NULL;
 	pipe->pipe.capture.primary_binary.info    = NULL;
@@ -1845,9 +1952,11 @@ invalidate_capture_binaries(struct sh_css_pipe *pipe)
 	}
 }
 
-static void
-sh_css_pipe_invalidate_binaries(struct sh_css_pipe *pipe)
+static void sh_css_pipe_invalidate_binaries(
+	struct sh_css_pipe *pipe)
 {
+assert(pipe != NULL);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_pipe_invalidate_binaries() enter:\n");
 	switch (pipe->mode) {
 	case SH_CSS_VIDEO_PIPELINE:
 		invalidate_video_binaries(pipe);
@@ -1866,6 +1975,7 @@ sh_css_pipe_invalidate_binaries(struct sh_css_pipe *pipe)
 static void
 enable_interrupts(void)
 {
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "enable_interrupts() enter:\n");
 	/* Enable IRQ which signals that SP goes to idle (aka ready state) */
 	cnd_sp_irq_enable(SP0_ID, true);
 
@@ -1922,6 +2032,8 @@ enum sh_css_err sh_css_init(
 	hrt_data enable = gpio_reg_load(GPIO0_ID, _gpio_block_reg_do_e)
 							| GPIO_FLASH_PIN_MASK;
 
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_init() enter: void\n");
+
 	default_css.preview_pipe.pipe.preview = preview;
 	default_css.capture_pipe.pipe.capture = capture;
 	default_css.video_pipe.pipe.video     = video;
@@ -1938,7 +2050,7 @@ enum sh_css_err sh_css_init(
 
 	ia_css_i_host_rmgr_init();
 
-	sh_css_set_dtrace_level(SH_DBG_WARNING);
+	sh_css_set_dtrace_level(9);
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_init()\n");
 
 	/* In case this has been programmed already, update internal
@@ -1969,8 +2081,10 @@ enum sh_css_err sh_css_init(
 	my_css.sp_bin_addr = sh_css_sp_load_program(&sh_css_sp_fw,
 						    SP_PROG_NAME,
 						    my_css.sp_bin_addr);
-	if (!my_css.sp_bin_addr)
+	if (!my_css.sp_bin_addr) {
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_init() leave: return_err=%d\n",sh_css_err_cannot_allocate_memory);
 		return sh_css_err_cannot_allocate_memory;
+	}
 	sh_css_pipeline_init(&my_css.preview_pipe.pipeline,
 			     SH_CSS_PREVIEW_PIPELINE);
 	sh_css_pipeline_init(&my_css.video_pipe.pipeline,
@@ -1984,8 +2098,10 @@ enum sh_css_err sh_css_init(
 	 * In all other cases (e.g. Android phone), the user (e.g. driver)
 	 * must explicitly enable debug support by calling this function.
 	 */
-	if (!sh_css_debug_mode_init())
+	if (!sh_css_debug_mode_init()) {
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_init() leave: return_err=%d\n",sh_css_err_internal_error);
 		return sh_css_err_internal_error;
+	}
 #endif
 
 #if WITH_PC_MONITORING
@@ -1997,14 +2113,18 @@ enum sh_css_err sh_css_init(
 	}
 	sh_css_printf = printk;
 #endif
-	if (!sh_css_hrt_system_is_idle())
+	if (!sh_css_hrt_system_is_idle()) {
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_init() leave: return_err=%d\n",sh_css_err_system_not_idle);
 		return sh_css_err_system_not_idle;
+	}
 	/* can be called here, queuing works, but:
 	   - when sp is started later, it will wipe queued items
 	   so for now we leave it for later and make sure
 	   updates are not called to frequently.
 	sh_css_init_buffer_queues();
 	*/
+
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_init() leave: return_err=%d\n",err);
 
 	return err;
 }
@@ -2014,13 +2134,13 @@ enum sh_css_err sh_css_init(
 void
 sh_css_suspend(void)
 {
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_suspend()\n");
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_suspend() enter & leave\n");
 }
 
 void
 sh_css_resume(void)
 {
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_resume()\n");
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_resume() enter: void\n");
 	/* trigger reconfiguration of necessary hardware */
 	my_css.reconfigure_css_rx = true;
 	my_css.curr_if_a_config.cropped_width  = 0;
@@ -2040,11 +2160,13 @@ sh_css_resume(void)
 				   SP_PROG_NAME);
 
 	enable_interrupts();
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_resume() leave: return_void\n");
 }
 
 void *
 sh_css_malloc(size_t size)
 {
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_malloc() enter:\n");
 	if (size > 0 && my_css.malloc)
 		return my_css.malloc(size, false);
 	return NULL;
@@ -2053,6 +2175,7 @@ sh_css_malloc(size_t size)
 void
 sh_css_free(void *ptr)
 {
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_free() enter:\n");
 	if (ptr && my_css.free)
 		my_css.free(ptr);
 }
@@ -2061,7 +2184,7 @@ sh_css_free(void *ptr)
 void
 sh_css_flush(struct sh_css_acc_fw *fw)
 {
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_flush()\n");
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_flush() enter:\n");
 	if ((fw != NULL) && (my_css.flush != NULL))
 		my_css.flush(fw);
 }
@@ -2074,7 +2197,7 @@ sh_css_uninit(void)
 	struct sh_css_pipe *video_pipe   = &my_css.video_pipe;
 	struct sh_css_pipe *capture_pipe = &my_css.capture_pipe;
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_uninit()\n");
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_uninit() enter: void\n");
 #if WITH_PC_MONITORING
 	sh_css_print("PC_MONITORING: %s() -- started\n", __func__);
 	print_pc_histogram();
@@ -2137,11 +2260,12 @@ sh_css_uninit(void)
 
 
 	sh_css_sp_set_sp_running(false);
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_uninit() leave: return_void\n");
 }
 
-static bool
-sh_css_frame_ready(void)
+static bool sh_css_frame_ready(void)
 {
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_frame_ready() enter:\n");
 	if (my_css.curr_state == sh_css_state_executing_sp_bin_copy) {
 		my_css.capture_pipe.pipe.capture.output_frame->planes.binary.size =
 			sh_css_sp_get_binary_copy_size();
@@ -2149,11 +2273,11 @@ sh_css_frame_ready(void)
 	return true;
 }
 
-static unsigned int
-translate_sw_interrupt(unsigned value)
+static unsigned int translate_sw_interrupt(unsigned value)
 {
 	enum sh_css_pipe_id pipe_id = value >> 24;
 	unsigned stage_num;
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "translate_sw_interrupt() enter:\n");
 	value &= ~(0xff<<24);
 	stage_num = value >> 16;
 	value &= ~(0xff<<16);
@@ -2162,15 +2286,14 @@ translate_sw_interrupt(unsigned value)
 	return value;
 }
 
-static unsigned int
-translate_sw_interrupt1(void)
+static unsigned int translate_sw_interrupt1(void)
 {
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "translate_sw_interrupt1() enter:\n");
 	return translate_sw_interrupt(sh_css_get_sw_interrupt_value(1));
 }
 
 #if 0
-static unsigned int
-translate_sw_interrupt2(void)
+static unsigned int translate_sw_interrupt2(void)
 {
 	/* By smart coding the flag/bits in value (on the SP side),
 	 * no translation is required. The returned value can be
@@ -2179,6 +2302,7 @@ translate_sw_interrupt2(void)
 	 */
 /* MW: No smart coding required, we should just keep interrupt info
    and local context info separated */
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "translate_sw_interrupt2() enter:\n");
 	return translate_sw_interrupt(sh_css_get_sw_interrupt_value(2));
 }
 #endif
@@ -2187,24 +2311,25 @@ translate_sw_interrupt2(void)
 void
 sh_css_mmu_set_page_table_base_index(hrt_data base_index)
 {
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_mmu_set_page_table_base_index()\n");
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_mmu_set_page_table_base_index() enter: base_index=0x%08x\n",base_index);
 	my_css.page_table_base_index = base_index;
 	mmu_set_page_table_base_index(MMU0_ID, base_index);
 	mmu_invalidate_cache(MMU0_ID);
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_mmu_set_page_table_base_index() leave: return_void\n");
 }
 
 /* Deprecated, this is an HRT backend function (memory_access.h) */
 hrt_data
 sh_css_mmu_get_page_table_base_index(void)
 {
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_mmu_get_page_table_base_index()\n");
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_mmu_get_page_table_base_index() enter & leave\n");
 	return mmu_get_page_table_base_index(MMU0_ID);
 }
 
 void
 sh_css_mmu_invalidate_cache(void)
 {
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_mmu_invalidate_cache()\n");
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_mmu_invalidate_cache() enter & leave\n");
 	sh_css_sp_invalidate_mmu();
 }
 
@@ -2217,7 +2342,9 @@ enum sh_css_err sh_css_translate_interrupt(
 	enum hrt_isp_css_irq_status status = hrt_isp_css_irq_status_more_irqs;
 	unsigned int infos = 0;
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_translate_interrupt()\n");
+/* irq_infos can be NULL, but that would make the function useless */
+/* assert(irq_infos != NULL); */
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_translate_interrupt() enter: irq_infos=%d\n",irq_infos);
 
 	while (status == hrt_isp_css_irq_status_more_irqs) {
 		status = irq_get_channel_id(IRQ0_ID, &irq);
@@ -2326,17 +2453,17 @@ enum sh_css_err sh_css_translate_interrupt(
 		*irq_infos = infos;
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_translate_interrupt() "
-		"out: irq_infos=0x%08x\n", infos);
+		"leave: irq_infos=0x%08x\n", infos);
 
 	return sh_css_success;
 }
 
-enum sh_css_err
-sh_css_enable_interrupt(enum sh_css_interrupt_info info,
-			bool enable)
+enum sh_css_err sh_css_enable_interrupt(
+	enum sh_css_interrupt_info info,
+	bool enable)
 {
 	enum hrt_isp_css_irq irq = -1;
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_enable_interrupt()\n");
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_enable_interrupt() enter: info=%d, enable=%d\n",info,enable);
 
 	switch (info) {
 	case SH_CSS_IRQ_INFO_CSS_RECEIVER_ERROR:
@@ -2394,6 +2521,7 @@ sh_css_enable_interrupt(enum sh_css_interrupt_info info,
 		irq = hrt_isp_css_irq_sw_2;
 		break;
 	default:
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_enable_interrupt() leave: return_err=%d\n",sh_css_err_invalid_arguments);
 		return sh_css_err_invalid_arguments;
 	}
 
@@ -2402,6 +2530,7 @@ sh_css_enable_interrupt(enum sh_css_interrupt_info info,
 	else
 		irq_disable_channel(IRQ0_ID, irq);
 
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_enable_interrupt() leave: return_err=%d\n",sh_css_success);
 	return sh_css_success;
 }
 
@@ -2414,7 +2543,8 @@ enum sh_css_err sh_css_translate_interrupt(
 	enum hrt_isp_css_irq_status status = hrt_isp_css_irq_status_more_irqs;
 	unsigned int infos = 0;
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_translate_interrupt()\n");
+/* irq_infos can be NULL, but that would make the function useless */
+/* assert(irq_infos != NULL); */
 
 	while (status == hrt_isp_css_irq_status_more_irqs) {
 		status = irq_get_channel_id(IRQ0_ID, &irq);
@@ -2480,17 +2610,17 @@ enum sh_css_err sh_css_translate_interrupt(
 		*irq_infos = infos;
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_translate_interrupt() "
-		"out: irq_infos=0x%08x\n", infos);
+		"leave: irq_infos=0x%08x\n", infos);
 
 	return sh_css_success;
 }
 
-enum sh_css_err
-sh_css_enable_interrupt(enum sh_css_interrupt_info info,
-			bool enable)
+enum sh_css_err sh_css_enable_interrupt(
+	enum sh_css_interrupt_info info,
+	bool enable)
 {
 	enum hrt_isp_css_irq irq = -1;
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_enable_interrupt()\n");
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_enable_interrupt() enter: info=%d, enable=%d\n",info,enable);
 
 	switch (info) {
 	case SH_CSS_IRQ_INFO_INPUT_SYSTEM_ERROR:
@@ -2509,6 +2639,7 @@ sh_css_enable_interrupt(enum sh_css_interrupt_info info,
 		irq = hrt_isp_css_irq_sw_pin_1;
 		break;
 	default:
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_enable_interrupt() leave: return_err=%d\n",sh_css_err_invalid_arguments);
 		return sh_css_err_invalid_arguments;
 	}
 
@@ -2517,6 +2648,7 @@ sh_css_enable_interrupt(enum sh_css_interrupt_info info,
 	else
 		irq_disable_channel(IRQ0_ID, irq);
 
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_enable_interrupt() leave: return_err=%d\n",sh_css_success);
 	return sh_css_success;
 }
 
@@ -2525,21 +2657,24 @@ sh_css_enable_interrupt(enum sh_css_interrupt_info info,
 	{IRQ_MAP_VERSION_1, IRQ_MAP_VERSION_1_DEMO, IRQ_MAP_VERSION_2}"
 #endif
 
-unsigned int
-sh_css_get_sw_interrupt_value(unsigned int irq)
+unsigned int sh_css_get_sw_interrupt_value(
+	unsigned int irq)
 {
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_sw_interrupt_value()\n");
-	return sh_css_sp_get_sw_interrupt_value(irq);
+unsigned int	irq_value;
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_sw_interrupt_value() enter: irq=%d\n",irq);
+	irq_value = sh_css_sp_get_sw_interrupt_value(irq);
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_sw_interrupt_value() leave: irq_value=%d\n",irq_value);
+return irq_value;
 }
 
-enum sh_css_err
-sh_css_wait_for_completion(enum sh_css_pipe_id pipe_id)
+enum sh_css_err sh_css_wait_for_completion(
+	enum sh_css_pipe_id pipe_id)
 {
 	uint32_t sp_event;
 	uint32_t event;
 	enum sh_css_pipe_id pipe_id_event;
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_wait_for_completion()\n");
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_wait_for_completion() enter: pipe_id=%d\n",pipe_id);
 
 	while (true) {
 		bool rc;
@@ -2554,110 +2689,182 @@ sh_css_wait_for_completion(enum sh_css_pipe_id pipe_id)
 			pipe_id_event = event >> 16;
 			event &= 0xFFFF;
 			if ((pipe_id_event ==  pipe_id) &&
-					(event == SH_CSS_EVENT_PIPELINE_DONE))
+					(event == SH_CSS_EVENT_PIPELINE_DONE)) {
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_wait_for_completion() leave: return_err=%d\n",sh_css_success);
 				return sh_css_success;
+			}
 		}
 		hrt_sleep();
 	}
+
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_wait_for_completion() leave: return_err=%d\n",sh_css_err_internal_error);
+
 	return sh_css_err_internal_error;
 }
 
 void
 sh_css_uv_offset_is_zero(bool *uv_offset_is_zero)
 {
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_uv_offset_is_zero()\n");
-	if (uv_offset_is_zero)
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_uv_offset_is_zero() enter:\n");
+	if (uv_offset_is_zero != NULL) {
 		*uv_offset_is_zero = SH_CSS_UV_OFFSET_IS_0;
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_uv_offset_is_zero() leave: uv_offset_is_zero=%d\n",
+		*uv_offset_is_zero);
+	}
 }
 
-enum sh_css_err
-sh_css_pipe_set_input_resolution(struct sh_css_pipe *pipe,
+enum sh_css_err sh_css_pipe_set_input_resolution(struct sh_css_pipe *pipe,
 				 unsigned int width,
 				 unsigned int height)
 {
 	enum sh_css_err err = sh_css_success;
+assert(pipe != NULL);
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_pipe_set_input_resolution() enter: width=%d, height=%d\n",width, height);
 	err = check_res(width, height);
-	if (err != sh_css_success)
+	if (err != sh_css_success) {
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_pipe_set_input_resolution() leave: return_err=%d\n",err);
 		return err;
+	}
 	if (pipe->input_width != width || pipe->input_height != height)
 		sh_css_invalidate_morph_table();
 
 	pipe->input_width  = width;
 	pipe->input_height = height;
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_pipe_set_input_resolution() leave: return_err=%d\n",sh_css_success);
 	return sh_css_success;
 }
 
-enum sh_css_err
-sh_css_pipe_set_effective_input_resolution(struct sh_css_pipe *pipe,
-					   unsigned int width,
-					   unsigned int height)
+enum sh_css_err sh_css_pipe_set_effective_input_resolution(
+	struct sh_css_pipe *pipe,
+	unsigned int width,
+	unsigned int height)
 {
 	enum sh_css_err err = sh_css_success;
+assert(pipe != NULL);
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_pipe_set_effective_input_resolution() enter: width=%d, height=%d\n",width, height);
+
 	err = check_res(width, height);
-	if (err != sh_css_success)
+	if (err != sh_css_success) {
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_pipe_set_effective_input_resolution() leave: return_err=%d\n",err);
 		return err;
+	}
 	pipe->input_effective_info.width = width;
 	pipe->input_effective_info.padded_width = width;
 	pipe->input_effective_info.height = height;
+
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_pipe_set_effective_input_resolution() leave: return_err=%d\n",sh_css_success);
+
 	return sh_css_success;
 }
 
-void
-sh_css_pipe_set_input_format(struct sh_css_pipe *me,
-			     enum sh_css_input_format format)
+void sh_css_pipe_set_input_format(
+	struct sh_css_pipe *me,
+	enum sh_css_input_format format)
 {
+assert(me != NULL);
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_pipe_set_input_format() enter: format=%d\n",format);
+
 	me->input_format = format;
+
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_pipe_set_input_format() leave: return_void\n");
 }
 
-enum sh_css_input_format
-sh_css_pipe_get_input_format(struct sh_css_pipe *me)
+enum sh_css_input_format sh_css_pipe_get_input_format(
+	struct sh_css_pipe *me)
 {
-	return me->input_format;
+enum sh_css_input_format	format;
+assert(me != NULL);
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_pipe_get_input_format() enter: void\n");
+
+	format = me->input_format;
+
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_pipe_get_two_pixels_per_clock() leave: format=%d\n",format);
+return format;
 }
 
-void
-sh_css_input_set_binning_factor(unsigned int binning_factor)
+void sh_css_input_set_binning_factor(
+	unsigned int binning_factor)
 {
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_input_set_binning_factor()\n");
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_input_set_binning_factor() enter: binning_factor=%d\n",binning_factor);
 	my_css.sensor_binning = binning_factor;
 	if (sh_css_params_set_binning_factor(binning_factor)) {
 		sh_css_pipe_free_shading_table(&my_css.preview_pipe);
 		sh_css_pipe_free_shading_table(&my_css.video_pipe);
 		sh_css_pipe_free_shading_table(&my_css.capture_pipe);
 	}
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_input_set_binning_factor() leave: return_void\n");
 }
 
-void
-sh_css_pipe_set_two_pixels_per_clock(struct sh_css_pipe *me,
-				     bool two_ppc)
+void sh_css_pipe_set_two_pixels_per_clock(
+	struct sh_css_pipe *me,
+	bool two_ppc)
 {
+assert(me != NULL);
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_pipe_set_two_pixels_per_clock() enter: is_two_ppc=%d\n",two_ppc);
+
 	if (me->two_ppc != two_ppc) {
 		me->two_ppc = two_ppc;
 		my_css.reconfigure_css_rx = true;
 	}
+
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_pipe_set_two_pixels_per_clock() leave: return_void\n");
 }
 
 bool
 sh_css_pipe_get_two_pixels_per_clock(struct sh_css_pipe *me)
 {
-	return me->two_ppc;
+bool	is_two_ppc;
+assert(me != NULL);
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_pipe_get_two_pixels_per_clock() enter: void\n");
+
+	is_two_ppc = me->two_ppc;
+
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_pipe_get_two_pixels_per_clock() leave: is_two_ppc=%d\n",is_two_ppc);
+return is_two_ppc;
 }
 
 void
 sh_css_pipe_set_input_bayer_order(struct sh_css_pipe *pipe,
 				  enum sh_css_bayer_order bayer_order)
 {
+assert(pipe != NULL);
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_pipe_set_input_bayer_order() enter: bayer_order=%d\n",bayer_order);
+
 	pipe->bayer_order = bayer_order;
+
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_pipe_set_input_bayer_order() leave: return_void\n");
 }
 
-int
-sh_css_pipe_get_extra_pixels_count(struct sh_css_pipe *pipe,
-				   int *extra_rows,
-				   int *extra_cols)
+void sh_css_pipe_get_extra_pixels_count(
+	struct sh_css_pipe *pipe,
+	int *extra_rows,
+	int *extra_cols)
 {
 	int rows = SH_CSS_MAX_LEFT_CROPPING,
 	    cols = SH_CSS_MAX_LEFT_CROPPING;
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_extra_pixels_count()\n");
+assert(pipe != NULL);
+assert(extra_rows != NULL);
+assert(extra_cols != NULL);
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_extra_pixels_count() enter: void\n");
 
 	if (lines_needed_for_bayer_order(pipe))
 		rows += 2;
@@ -2667,23 +2874,37 @@ sh_css_pipe_get_extra_pixels_count(struct sh_css_pipe *pipe,
 
 	*extra_rows = rows;
 	*extra_cols = cols;
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_get_extra_pixels_count() leave: extra_rows=%d, extra_cols=%d\n",
+		*extra_rows,*extra_cols);
 
-	return 0;
+	return;
 }
 
-void
-sh_css_pipe_set_input_channel(struct sh_css_pipe *pipe,
-			      unsigned int channel_id)
+void sh_css_pipe_set_input_channel(
+	struct sh_css_pipe *pipe,
+	unsigned int channel_id)
 {
+assert(pipe != NULL);
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_pipe_set_input_channel() enter: channel_id=%d\n",channel_id);
+
 	pipe->ch_id = channel_id;
+
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_pipe_set_input_channel() leave: return_void\n");
 }
 
-void
-sh_css_pipe_set_input_mode(struct sh_css_pipe *pipe, enum sh_css_input_mode mode)
+void sh_css_pipe_set_input_mode(
+	struct sh_css_pipe *pipe,
+	enum sh_css_input_mode mode)
 {
 	enum sh_css_input_mode prev = pipe->input_mode;
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_input_set_mode()\n");
+assert(pipe != NULL);
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_input_set_mode() enter: mode=%d\n",mode);
+
 	if (prev != mode && pipe->mode == SH_CSS_VIDEO_PIPELINE) {
 		if (mode == SH_CSS_INPUT_MODE_MEMORY
 		    || prev == SH_CSS_INPUT_MODE_MEMORY) {
@@ -2693,42 +2914,64 @@ sh_css_pipe_set_input_mode(struct sh_css_pipe *pipe, enum sh_css_input_mode mode
 		}
 	}
 	pipe->input_mode = mode;
+
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_input_set_mode() leave: return_void\n");
 }
 
-void
-sh_css_input_set_left_padding(unsigned int padding)
+void sh_css_input_set_left_padding(
+	unsigned int padding)
 {
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_input_set_left_padding()\n");
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_input_set_left_padding() enter: padding=%d\n",padding);
+
 	my_css.left_padding = 2*ISP_VEC_NELEMS-padding;
+
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_input_set_left_padding() leave: return_void\n");
 }
 
-static void
-init_copy_descr(struct sh_css_pipe *pipe,
-		struct sh_css_frame_info *in_info,
-		struct sh_css_frame_info *out_info)
+static void init_copy_descr(
+	struct sh_css_pipe *pipe,
+	struct sh_css_frame_info *in_info,
+	struct sh_css_frame_info *out_info)
 {
+/* out_info can be NULL */
+assert(pipe != NULL);
+assert(in_info != NULL);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"init_copy_descr() enter:\n");
+
 	*in_info = *out_info;
 
 	copy_descr.mode          = SH_CSS_BINARY_MODE_COPY;
 	copy_descr.online        = true;
 	copy_descr.stream_format = pipe->input_format;
+	copy_descr.binning       = false;
 	copy_descr.two_ppc       = pipe->two_ppc;
 	copy_descr.in_info       = in_info;
 	copy_descr.out_info      = out_info;
 	copy_descr.vf_info       = NULL;
 }
 
-static void
-init_offline_descr(struct sh_css_pipe *pipe,
-		   struct sh_css_binary_descr *descr,
-		   int mode,
-		   struct sh_css_frame_info *in_info,
-		   struct sh_css_frame_info *out_info,
-		   struct sh_css_frame_info *vf_info)
+static void init_offline_descr(
+	struct sh_css_pipe *pipe,
+	struct sh_css_binary_descr *descr,
+	int mode,
+	struct sh_css_frame_info *in_info,
+	struct sh_css_frame_info *out_info,
+	struct sh_css_frame_info *vf_info)
 {
+/* in_info, out_info, vf_info can be NULL */
+assert(pipe != NULL);
+assert(descr != NULL);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"init_offline_descr() enter:\n");
+
 	descr->mode          = mode;
 	descr->online        = false;
 	descr->stream_format = pipe->input_format;
+	descr->binning       = false;
 	descr->two_ppc       = false;
 	descr->in_info       = in_info;
 	descr->out_info      = out_info;
@@ -2740,25 +2983,35 @@ init_vf_pp_descr(struct sh_css_pipe *pipe,
 		 struct sh_css_frame_info *in_info,
 		 struct sh_css_frame_info *out_info)
 {
+/* out_info can be NULL ??? */
+assert(pipe != NULL);
+assert(in_info != NULL);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"init_vf_pp_descr() enter:\n");
+
 	in_info->raw_bit_depth = 0;
 	init_offline_descr(pipe,
 			   &vf_pp_descr, SH_CSS_BINARY_MODE_VF_PP,
 			   in_info, out_info, NULL);
 }
 
-static void
-init_preview_descr(struct sh_css_pipe *pipe,
-		   struct sh_css_frame_info *in_info,
-		   struct sh_css_frame_info *out_info)
+static void init_preview_descr(
+	struct sh_css_pipe *pipe,
+	struct sh_css_frame_info *in_info,
+	struct sh_css_frame_info *out_info)
 {
 	int mode = SH_CSS_BINARY_MODE_PREVIEW;
+
+/* out_info can be NULL ??? */
+assert(pipe != NULL);
+assert(in_info != NULL);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"init_preview_descr() enter:\n");
 
 	*in_info = pipe->input_effective_info;
 	in_info->raw_bit_depth = sh_css_pipe_input_format_bits_per_pixel(pipe);
 	if (input_format_is_yuv(pipe->input_format))
 		mode = SH_CSS_BINARY_MODE_COPY;
-	else if (pipe->input_is_raw_reordered)
-		in_info->format = SH_CSS_FRAME_FORMAT_RAW_REORDERED;
 	else
 		in_info->format = SH_CSS_FRAME_FORMAT_RAW;
 
@@ -2767,21 +3020,28 @@ init_preview_descr(struct sh_css_pipe *pipe,
 			   in_info, out_info, NULL);
 	preview_descr.online	    = pipe->online;
 	preview_descr.stream_format = pipe->input_format;
+	preview_descr.binning	    = pipe->input_is_raw_reordered;
 }
 
 /* configure and load the copy binary, the next binary is used to
    determine whether the copy binary needs to do left padding. */
-static enum sh_css_err
-load_copy_binary(struct sh_css_pipe *pipe,
-		 struct sh_css_binary *copy_binary,
-		 struct sh_css_binary *next_binary)
+static enum sh_css_err load_copy_binary(
+	struct sh_css_pipe *pipe,
+	struct sh_css_binary *copy_binary,
+	struct sh_css_binary *next_binary)
 {
 	struct sh_css_frame_info copy_out_info, copy_in_info;
 	unsigned int left_padding;
 	enum sh_css_err err;
 	int mode = SH_CSS_BINARY_MODE_COPY;
 
-	if (next_binary) {
+/* next_binary can be NULL */
+assert(pipe != NULL);
+assert(copy_binary != NULL);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"load_copy_binary() enter:\n");
+
+	if (next_binary != NULL) {
 		copy_out_info = next_binary->in_frame_info;
 		left_padding = next_binary->left_padding;
 	} else {
@@ -2798,9 +3058,9 @@ load_copy_binary(struct sh_css_pipe *pipe,
 	return sh_css_success;
 }
 
-static enum sh_css_err
-load_preview_binaries(struct sh_css_pipe *pipe,
-		      struct sh_css_pipe *capture_pipe)
+static enum sh_css_err load_preview_binaries(
+	struct sh_css_pipe *pipe,
+	struct sh_css_pipe *capture_pipe)
 {
 	struct sh_css_frame_info prev_in_info,
 				 prev_out_info,
@@ -2811,6 +3071,12 @@ load_preview_binaries(struct sh_css_pipe *pipe,
 	bool input_is_raw_reordered = pipe->input_is_raw_reordered;
 	unsigned int i;
 	unsigned int left_cropping;
+
+/* capture_pipe can be NULL */
+assert(pipe != NULL);
+/* assert(capture_pipe != NULL); */
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"load_preview_binaries() enter:\n");
 
 	if (pipe->pipe.preview.preview_binary.info &&
 	    pipe->pipe.preview.vf_pp_binary.info)
@@ -2856,11 +3122,11 @@ load_preview_binaries(struct sh_css_pipe *pipe,
 
 	left_cropping = pipe->pipe.preview.preview_binary.info->left_cropping;
 
-	if (!continuous)
+	if (!continuous) {
 		ref_info = pipe->pipe.preview.preview_binary.in_frame_info;
-	else if (input_is_raw_reordered
+	} else if (input_is_raw_reordered
 	&& pipe->pipe.preview.preview_binary.info->enable.rawdeci) {
-		ref_info = pipe->pipe.preview.preview_binary.in_frame_info;
+		ref_info = pipe->pipe.preview.preview_binary.internal_frame_info;
 		/* TODO: Remove this when the decimated
 		 * resolution is available */
 		/* Only for continuous preview mode
@@ -2878,10 +3144,7 @@ load_preview_binaries(struct sh_css_pipe *pipe,
 		  pipe->pipe.preview.preview_binary.internal_frame_info;
 	}
 
-	if (input_is_raw_reordered)
-		ref_info.format = SH_CSS_FRAME_FORMAT_RAW_REORDERED;
-	else
-		ref_info.format = SH_CSS_FRAME_FORMAT_RAW;
+	ref_info.format = SH_CSS_FRAME_FORMAT_RAW;
 
 	for (i = 0; i < NUM_CONTINUOUS_FRAMES; i++) {
 		/* free previous frame */
@@ -2908,10 +3171,14 @@ load_preview_binaries(struct sh_css_pipe *pipe,
 	return sh_css_success;
 }
 
-static const struct sh_css_fw_info *
-last_output_firmware(const struct sh_css_fw_info *fw)
+static const struct sh_css_fw_info *last_output_firmware(
+	const struct sh_css_fw_info *fw)
 {
 	const struct sh_css_fw_info *last_fw = NULL;
+/* fw can be NULL */
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"last_output_firmware() enter:\n");
+
 	for (; fw; fw = fw->next) {
 		const struct sh_css_fw_info *info = fw;
 		if (info->info.isp.enable.output)
@@ -2920,20 +3187,25 @@ last_output_firmware(const struct sh_css_fw_info *fw)
 	return last_fw;
 }
 
-static enum sh_css_err
-add_firmwares(struct sh_css_pipeline *me,
-	      struct sh_css_binary *binary,
-	      const struct sh_css_fw_info *fw,
-	      const struct sh_css_fw_info *last_fw,
-	      unsigned int binary_mode,
-	      struct sh_css_frame *in_frame,
-	      struct sh_css_frame *out_frame,
-	      struct sh_css_frame *vf_frame,
-	      struct sh_css_pipeline_stage **my_stage,
-	      struct sh_css_pipeline_stage **vf_stage)
+static enum sh_css_err add_firmwares(
+	struct sh_css_pipeline *me,
+	struct sh_css_binary *binary,
+	const struct sh_css_fw_info *fw,
+	const struct sh_css_fw_info *last_fw,
+	unsigned int binary_mode,
+	struct sh_css_frame *in_frame,
+	struct sh_css_frame *out_frame,
+	struct sh_css_frame *vf_frame,
+	struct sh_css_pipeline_stage **my_stage,
+	struct sh_css_pipeline_stage **vf_stage)
 {
 	enum sh_css_err err = sh_css_success;
 	struct sh_css_pipeline_stage *extra_stage = NULL;
+
+/* all args can be NULL ??? */
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"add_firmwares() enter:\n");
+
 	for (; fw; fw = fw->next) {
 		struct sh_css_frame *out = NULL;
 		struct sh_css_frame *in = NULL;
@@ -2965,21 +3237,29 @@ add_firmwares(struct sh_css_pipeline *me,
 	return err;
 }
 
-static enum sh_css_err
-add_vf_pp_stage(struct sh_css_pipe *pipe,
-		struct sh_css_frame *out_frame,
-		struct sh_css_binary *vf_pp_binary,
-		struct sh_css_pipeline_stage *post_stage,
-		struct sh_css_pipeline_stage **vf_pp_stage)
+static enum sh_css_err add_vf_pp_stage(
+	struct sh_css_pipe *pipe,
+	struct sh_css_frame *out_frame,
+	struct sh_css_binary *vf_pp_binary,
+	struct sh_css_pipeline_stage *post_stage,
+	struct sh_css_pipeline_stage **vf_pp_stage)
 {
 	struct sh_css_pipeline *me = &pipe->pipeline;
 	const struct sh_css_fw_info *last_fw;
 	enum sh_css_err err = sh_css_success;
 	struct sh_css_frame *in_frame = post_stage->args.out_vf_frame;
 
+/* out_frame can be NULL ??? */
+assert(pipe != NULL);
+assert(vf_pp_binary != NULL);
+assert(post_stage != NULL);
+assert(vf_pp_stage != NULL);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"add_vf_pp_stage() enter:\n");
+
 	*vf_pp_stage = NULL;
 
-	if (!in_frame)
+	if (in_frame == NULL)
 		in_frame = post_stage->args.out_frame;
 
 	last_fw = last_output_firmware(pipe->vf_stage);
@@ -3000,22 +3280,31 @@ add_vf_pp_stage(struct sh_css_pipe *pipe,
 	return err;
 }
 
-static enum sh_css_err
-add_capture_pp_stage(struct sh_css_pipe *pipe,
-		     struct sh_css_pipeline *me,
-		     struct sh_css_frame *out_frame,
-		     struct sh_css_binary *capture_pp_binary,
-		     struct sh_css_pipeline_stage *capture_stage,
-		     struct sh_css_pipeline_stage **pre_vf_pp_stage)
+static enum sh_css_err add_capture_pp_stage(
+	struct sh_css_pipe *pipe,
+	struct sh_css_pipeline *me,
+	struct sh_css_frame *out_frame,
+	struct sh_css_binary *capture_pp_binary,
+	struct sh_css_pipeline_stage *capture_stage,
+	struct sh_css_pipeline_stage **pre_vf_pp_stage)
 {
 	const struct sh_css_fw_info *last_fw;
 	enum sh_css_err err = sh_css_success;
 	struct sh_css_frame *in_frame = capture_stage->args.out_frame;
 	struct sh_css_frame *vf_frame = NULL;
 
+/* out_frame can be NULL ??? */
+assert(pipe != NULL);
+assert(me != NULL);
+assert(capture_pp_binary != NULL);
+assert(capture_stage != NULL);
+assert(pre_vf_pp_stage != NULL);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"add_capture_pp_stage() enter:\n");
+
 	*pre_vf_pp_stage = NULL;
 
-	if (!in_frame)
+	if (in_frame == NULL)
 		in_frame = capture_stage->args.out_frame;
 
 	last_fw = last_output_firmware(pipe->output_stage);
@@ -3057,7 +3346,7 @@ sh_css_init_buffer_queues(void)
 	unsigned int HIVE_ADDR_host_sp_queues_initialized;
 	unsigned int i;
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_init_buffer_queues()\n");
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_init_buffer_queues() enter:\n");
 
 	for (i = 0; i < MAX_HMM_BUFFER_NUM; i++)
 		hmm_buffer_record_h[i] = NULL;
@@ -3084,11 +3373,13 @@ sh_css_init_buffer_queues(void)
 	sh_css_invalidate_params();
 
 	sh_css_param_update_isp_params(true);
+
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_init_buffer_queues() leave:\n");
 }
 
-static enum sh_css_err
-preview_start(struct sh_css_pipe *pipe,
-	      struct sh_css_pipe *capture_pipe)
+static enum sh_css_err preview_start(
+	struct sh_css_pipe *pipe,
+	struct sh_css_pipe *capture_pipe)
 {
 	struct sh_css_pipeline *me = &pipe->pipeline;
 	struct sh_css_pipeline_stage *preview_stage, *copy_stage;
@@ -3104,6 +3395,12 @@ preview_start(struct sh_css_pipe *pipe,
 	 */
 	struct sh_css_frame *raw_out_frame = NULL;
 	struct sh_css_frame *out_frame = &me->out_frame;
+
+assert(pipe != NULL);
+/* capture_pipe can be NULL */
+/*assert(capture_pipe != NULL);*/
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"preview_start() enter: void\n");
 
 	sh_css_pipeline_clean(me);
 
@@ -3244,16 +3541,27 @@ preview_start(struct sh_css_pipe *pipe,
 	return sh_css_success;
 }
 
-enum sh_css_err
-sh_css_pipe_stop(struct sh_css_pipe *me)
+enum sh_css_err sh_css_pipe_stop(
+	struct sh_css_pipe *me)
 {
-	return sh_css_pipeline_stop(me->mode);
+enum sh_css_err err = sh_css_success;
+
+assert(me != NULL);
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_pipe_stop() enter: me=%p\n",
+		me);
+
+	err = sh_css_pipeline_stop(me->mode);
+	
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_pipe_stop() leave: return_err=%d\n",err);
+return err;
 }
 
-enum sh_css_err
-sh_css_queue_buffer(enum sh_css_pipe_id pipe_id,
-			enum sh_css_buffer_type buf_type,
-			void *buffer)
+enum sh_css_err sh_css_queue_buffer(
+	enum sh_css_pipe_id pipe_id,
+	enum sh_css_buffer_type buf_type,
+	void *buffer)
 {
 	enum sh_css_err err = sh_css_success;
 	struct sh_css_pipe *pipe;
@@ -3266,8 +3574,10 @@ sh_css_queue_buffer(enum sh_css_pipe_id pipe_id,
 	struct sh_css_hmm_buffer ddr_buffer;
 	bool rc = true;
 
+/* buffer can be NULL */
+/* assert(buffer != NULL); */
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_queue_buffer() in: pipe_id=%d, buf_type=%d, buffer=%p\n",
+		"sh_css_queue_buffer() enter: pipe_id=%d, buf_type=%d, buffer=%p\n",
 		pipe_id, buf_type, buffer);
 
 	switch (pipe_id) {
@@ -3315,6 +3625,8 @@ sh_css_queue_buffer(enum sh_css_pipe_id pipe_id,
 	assert(pipeline != NULL ||
 	       pipe_id == SH_CSS_COPY_PIPELINE ||
 	       pipe_id == SH_CSS_ACC_PIPELINE);
+
+
 
 	ddr_buffer.kernel_ptr = (hrt_vaddress)HOST_ADDRESS(buffer);
 	if (buf_type == SH_CSS_BUFFER_TYPE_3A_STATISTICS) {
@@ -3393,6 +3705,8 @@ sh_css_queue_buffer(enum sh_css_pipe_id pipe_id,
 				queue_id,
 				0);
 
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_queue_buffer() leave: return_err=%d\n",err);
 	return err;
 }
 
@@ -3411,8 +3725,10 @@ sh_css_dequeue_buffer(enum sh_css_pipe_id   pipe,
 	bool rc;
 	unsigned int i, found_record;
 
+/* buffer can be NULL ??? */
+assert(buffer != NULL);
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_dequeue_buffer() in: pipe=%d, buf_type=%d\n",
+		"sh_css_dequeue_buffer() enter: pipe=%d, buf_type=%d\n",
 		pipe, buf_type);
 
 	(void)pipe;
@@ -3497,18 +3813,20 @@ sh_css_dequeue_buffer(enum sh_css_pipe_id   pipe,
 				0);
 
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_dequeue_buffer() out: buffer=%p\n",
+		"sh_css_dequeue_buffer() leave: buffer=%p\n",
 		buffer ? *buffer : (void *)-1);
 
 	return err;
 }
 
-static uint32_t
-translate_sp_event(uint32_t sp_event)
+static uint32_t translate_sp_event(
+	uint32_t	sp_event)
 {
 	unsigned int bit_width = 0, i;
 	enum sh_css_sp_event_type sp_event_id;
 	uint32_t event;
+
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "translate_sp_event() enter:\n");
 
 	i = SH_CSS_SP_EVENT_NR_OF_TYPES - 1;
 	bit_width = 0;
@@ -3547,12 +3865,16 @@ translate_sp_event(uint32_t sp_event)
 	return event;
 }
 
-static void
-decode_sp_event(uint32_t event,
-		enum sh_css_pipe_id *pipe_id,
-		enum sh_css_event_type *event_id)
+static void decode_sp_event(
+	uint32_t event,
+	enum sh_css_pipe_id *pipe_id,
+	enum sh_css_event_type *event_id)
 {
 	unsigned int bit_width = 0, i;
+
+assert(pipe_id != NULL);
+assert(event_id != NULL);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "decode_sp_event() enter:\n");
 
 	i = SH_CSS_NR_OF_PIPELINES - 1;
 	while (i != 0) {
@@ -3579,10 +3901,9 @@ sh_css_dequeue_event(enum sh_css_pipe_id *pipe_id,
 	uint32_t sp_event;
 	uint32_t host_event;
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_dequeue_event()\n");
-
-	assert(pipe_id != NULL);
-	assert(event_id != NULL);
+assert(pipe_id != NULL);
+assert(event_id != NULL);
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_dequeue_event() enter:\n");
 
 	/* dequeue the IRQ event */
 	is_event_available =
@@ -3609,23 +3930,21 @@ sh_css_dequeue_event(enum sh_css_pipe_id *pipe_id,
 	decode_sp_event(host_event, pipe_id, event_id);
 
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_dequeue_event() out: pipe_id=%d, event_id=%d\n",
+		"sh_css_dequeue_event() leave: pipe_id=%d, event_id=%d\n",
 				*pipe_id, *event_id);
 
 	return sh_css_success;
 }
 
-enum sh_css_err
-sh_css_start(enum sh_css_pipe_id pipe_id)
+enum sh_css_err sh_css_start(
+	enum sh_css_pipe_id pipe_id)
 {
 	enum sh_css_err err;
-	unsigned int loop_count = 0;
 
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_start() in: pipe_id_id=%d\n", pipe_id);
+		"sh_css_start() enter: pipe_id=%d\n", pipe_id);
 #ifdef __KERNEL__
-	printk(
-		"sh_css_start() in: pipe_id_id=%d\n", pipe_id);
+	printk("sh_css_start() enter: pipe_id=%d\n", pipe_id);
 #endif
 
 	switch (pipe_id) {
@@ -3642,24 +3961,20 @@ sh_css_start(enum sh_css_pipe_id pipe_id)
 		err = sh_css_err_invalid_arguments;
 	}
 
-	if (err != sh_css_success)
+	if (err != sh_css_success) {
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_start() leave: return_err=%d\n", err);
 		return err;
+	}
 
 	/* waiting for the SP is completely started */
-	while (!sh_css_sp_has_initialized()) {
-		loop_count++;
-		if((loop_count%20) == 0) {
-			sh_css_dump_debug_info("sh_css_start()");
-		}
-		sh_css_dtrace(SH_DBG_WARNING,
-			"sh_css_sp_has_initialized() is polling\n");
+	while (!sh_css_sp_has_initialized())
 		hrt_sleep();
-	}
-	
-	sh_css_init_buffer_queues();
-	sh_css_dtrace(SH_DBG_WARNING,
-		"sh_css_start() done: err=%d\n", err);
 
+	sh_css_init_buffer_queues();
+
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_start() leave: return_err=%d\n", err);
 	return err;
 }
 
@@ -3670,8 +3985,8 @@ sh_css_start(enum sh_css_pipe_id pipe_id)
  */
 #define SP_SHUTDOWN_TIMEOUT_US 200000
 
-static enum sh_css_err
-sh_css_pipeline_stop(enum sh_css_pipe_id pipe)
+static enum sh_css_err sh_css_pipeline_stop(
+	enum sh_css_pipe_id pipe)
 {
 	unsigned int i;
 	unsigned long timeout;
@@ -3730,17 +4045,21 @@ sh_css_pipeline_stop(enum sh_css_pipe_id pipe)
 	return sh_css_success;
 }
 
-enum sh_css_err
-sh_css_preview_configure_pp_input(unsigned int width, unsigned int height)
+enum sh_css_err sh_css_preview_configure_pp_input(
+	unsigned int width,
+	unsigned int height)
 {
 	enum sh_css_err err = sh_css_success;
 	struct sh_css_pipe *pipe = &my_css.preview_pipe;
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_preview_configure_pp_input()\n");
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_preview_configure_pp_input() enter: width=%d, height=%d\n", width, height);
 	err = check_null_res(width, height);
-	if (err != sh_css_success)
+	if (err != sh_css_success) {
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_preview_configure_pp_input() leave: return_err=%d\n",
+		err);
 		return err;
-
+	}
 	if (pipe->yuv_ds_input_info.width != width ||
 	    pipe->yuv_ds_input_info.height != height) {
 		sh_css_frame_info_init(&pipe->yuv_ds_input_info,
@@ -3748,18 +4067,23 @@ sh_css_preview_configure_pp_input(unsigned int width, unsigned int height)
 				       SH_CSS_FRAME_FORMAT_YUV_LINE);
 		sh_css_pipe_invalidate_binaries(pipe);
 	}
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_preview_configure_pp_input() leave: return_err=%d\n",
+		sh_css_success);
 	return sh_css_success;
 }
 
-enum sh_css_err
-sh_css_preview_get_input_resolution(unsigned int *width,
-				    unsigned int *height)
+enum sh_css_err sh_css_preview_get_input_resolution(
+	unsigned int *width,
+	unsigned int *height)
 {
 	enum sh_css_err err;
 	struct sh_css_pipe *pipe = &my_css.preview_pipe,
 			   *capture_pipe = &my_css.capture_pipe;
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_preview_get_input_resolution()\n");
+assert(width != NULL);
+assert(height != NULL);
+
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_preview_get_input_resolution() enter: void\n");
 	err = sh_css_pipe_load_binaries(pipe, capture_pipe);
 	if (err == sh_css_success) {
 		const struct sh_css_binary *binary;
@@ -3780,8 +4104,10 @@ sh_css_preview_get_input_resolution(unsigned int *width,
 			*width -= binary->info->left_cropping;
 			*height *= 2;
 			*height -= binary->info->left_cropping;
+		}
 	}
-	}
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_preview_get_input_resolution() leave: width=%d, height=%d\n", *width, *height);
 	return err;
 }
 
@@ -3789,7 +4115,7 @@ void
 sh_css_video_enable_yuv_ds(bool enable)
 {
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_video_enable_yuv_ds() in: enable=%d\n", enable);
+		"sh_css_video_enable_yuv_ds() enter: enable=%d\n", enable);
 	my_css.video_pipe.enable_yuv_ds = enable;
 }
 
@@ -3797,7 +4123,7 @@ void
 sh_css_video_enable_high_speed(bool enable)
 {
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_video_enable_high_speed() in: enable=%d\n", enable);
+		"sh_css_video_enable_high_speed() enter: enable=%d\n", enable);
 	my_css.video_pipe.enable_high_speed = enable;
 }
 
@@ -3805,15 +4131,23 @@ void
 sh_css_video_enable_dvs_6axis(bool enable)
 {
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_video_enable_dvs_6axis() in: enable=%d\n", enable);
+		"sh_css_video_enable_dvs_6axis() enter: enable=%d\n", enable);
 	my_css.video_pipe.enable_dvs_6axis = enable;
+}
+
+void
+sh_css_video_enable_reduced_pipe(bool enable)
+{
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_video_enable_reduced_pipe() enter: enable=%d\n", enable);
+	my_css.video_pipe.enable_reduced_pipe = enable;
 }
 
 void
 sh_css_video_enable_viewfinder(bool enable)
 {
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_video_enable_viewfinder() in: enable=%d\n", enable);
+		"sh_css_video_enable_viewfinder() enter: enable=%d\n", enable);
 	my_css.video_pipe.enable_viewfinder = enable;
 }
 
@@ -3821,7 +4155,7 @@ void
 sh_css_enable_continuous(bool enable)
 {
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_enable_continuous() in: enable=%d\n", enable);
+		"sh_css_enable_continuous() enter: enable=%d\n", enable);
 	my_css.continuous = enable;
 }
 
@@ -3829,7 +4163,7 @@ void
 sh_css_enable_cont_capt(bool enable)
 {
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_enable_cont_capt() in: enable=%d\n", enable);
+		"sh_css_enable_cont_capt() enter: enable=%d\n", enable);
 	my_css.cont_capt = enable;
 }
 
@@ -3838,7 +4172,7 @@ sh_css_pipe_enable_raw_reordered(struct sh_css_pipe *pipe,
 				 bool enable)
 {
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_pipe_enable_raw_reordered() in: pipe=%p, enable=%d\n",
+		"sh_css_pipe_enable_raw_reordered() enter: pipe=%p, enable=%d\n",
 		pipe, enable);
 	pipe->input_is_raw_reordered = enable;
 }
@@ -3846,9 +4180,9 @@ sh_css_pipe_enable_raw_reordered(struct sh_css_pipe *pipe,
 bool
 sh_css_continuous_is_enabled(void)
 {
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_continuous_is_enabled()\n");
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_continuous_is_enabled() enter: void\n");
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_continuous_is_enabled() out: enable=%d\n",
+		"sh_css_continuous_is_enabled() leave: enable=%d\n",
 		my_css.continuous);
 	return my_css.continuous;
 }
@@ -3856,14 +4190,14 @@ sh_css_continuous_is_enabled(void)
 int
 sh_css_continuous_get_max_raw_frames(void)
 {
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_continuous_get_max_raw_frames()\n");
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_continuous_get_max_raw_frames() enter: void\n");
 	return NUM_CONTINUOUS_FRAMES;
 }
 
 enum sh_css_err
 sh_css_continuous_set_num_raw_frames(int num_frames)
 {
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_continuous_set_num_raw_frames()\n");
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_continuous_set_num_raw_frames() enter: num_frames=%d\n",num_frames);
 	if (num_frames > NUM_CONTINUOUS_FRAMES || num_frames < 1)
 		return sh_css_err_invalid_arguments;
 	/* ok, value allowed */
@@ -3875,14 +4209,14 @@ sh_css_continuous_set_num_raw_frames(int num_frames)
 int
 sh_css_continuous_get_num_raw_frames(void)
 {
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_continuous_get_num_raw_frames()\n");
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_continuous_get_num_raw_frames() enter: void\n");
 	return my_css.num_cont_raw_frames;
 }
 
 bool
 sh_css_continuous_start_sp_copy(void)
 {
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_continuous_start_sp_copy()\n");
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_continuous_start_sp_copy() enter: void\n");
 	return my_css.start_sp_copy;
 }
 
@@ -3890,26 +4224,28 @@ void
 sh_css_pipe_disable_vf_pp(struct sh_css_pipe *pipe,
 			  bool disable)
 {
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_pipe_disable_vf_pp() enter: disable=%d\n",disable);
 	pipe->disable_vf_pp = disable;
 }
 
 void
 sh_css_disable_capture_pp(bool disable)
 {
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_disable_capture_pp()\n");
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_disable_capture_pp() enter: disable=%d\n",disable);
 	my_css.capture_pipe.disable_capture_pp = disable;
 }
 
-enum sh_css_err
-sh_css_pipe_configure_output(struct sh_css_pipe *pipe,
-			     unsigned int width,
-			     unsigned int height,
-			     enum sh_css_frame_format format)
+enum sh_css_err sh_css_pipe_configure_output(
+	struct sh_css_pipe *pipe,
+	unsigned int width,
+	unsigned int height,
+	enum sh_css_frame_format format)
 
 {
 	enum sh_css_err err = sh_css_success;
+assert(pipe != NULL);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_pipe_configure_output() enter:\n");
 
-	sh_css_dtrace(SH_DBG_TRACE, "%s()\n", __FUNCTION__);
 	err = check_res(width, height);
 	if (err != sh_css_success)
 		return err;
@@ -3922,13 +4258,19 @@ sh_css_pipe_configure_output(struct sh_css_pipe *pipe,
 	return sh_css_success;
 }
 
-static enum sh_css_err
-sh_css_pipe_get_grid_info(struct sh_css_pipe *pipe,
-			  struct sh_css_pipe *capture_pipe,
-			  struct sh_css_grid_info *info)
+static enum sh_css_err sh_css_pipe_get_grid_info(
+	struct sh_css_pipe *pipe,
+	struct sh_css_pipe *capture_pipe,
+	struct sh_css_grid_info *info)
 {
 	enum sh_css_err err;
-	sh_css_dtrace(SH_DBG_TRACE, "%s()\n", __FUNCTION__);
+
+/* capture_pipe can be NULL */
+assert(pipe != NULL);
+/*assert(capture_pipe != NULL);*/
+assert(info != NULL);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_pipe_get_grid_info() enter:\n");
+
 	err = sh_css_pipe_load_binaries(pipe, capture_pipe);
 	if (err == sh_css_success) {
 		struct sh_css_binary *s3a_binary = NULL;
@@ -3975,12 +4317,17 @@ sh_css_pipe_get_grid_info(struct sh_css_pipe *pipe,
 	return err;
 }
 
-static void
-init_video_descr(struct sh_css_pipe *pipe,
-		 struct sh_css_frame_info *in_info,
-		 struct sh_css_frame_info *vf_info)
+static void init_video_descr(
+	struct sh_css_pipe *pipe,
+	struct sh_css_frame_info *in_info,
+	struct sh_css_frame_info *vf_info)
 {
 	int mode = SH_CSS_BINARY_MODE_VIDEO;
+/* vf_info can be NULL */
+assert(pipe != NULL);
+assert(in_info != NULL);
+/* assert(vf_info != NULL); */
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "init_video_descr() enter:\n");
 
 	if (input_format_is_yuv(pipe->input_format))
 		mode = SH_CSS_BINARY_MODE_COPY;
@@ -4002,8 +4349,10 @@ init_video_descr(struct sh_css_pipe *pipe,
  * PLEASE DO NOT REMOVE IT!
  */
 #if DVS_REF_TESTING
-static enum sh_css_err
-alloc_frame_from_file(struct sh_css_pipe *pipe, int width, int height)
+static enum sh_css_err alloc_frame_from_file(
+	struct sh_css_pipe *pipe,
+	int width,
+	int height)
 {
 	FILE *fp;
 	int len = 0, err;
@@ -4018,6 +4367,9 @@ alloc_frame_from_file(struct sh_css_pipe *pipe, int width, int height)
 		+ pipe->pipe.video.ref_frames[0]->planes.yuv.y.offset;
 	hrt_vaddress out_uv_addr = out_base_addr
 		+ pipe->pipe.video.ref_frames[0]->planes.yuv.u.offset;
+
+assert(pipe != NULL);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "alloc_frame_from_file() enter:\n");
 
 	bytes_per_pixel = sizeof(char);
 
@@ -4081,11 +4433,15 @@ alloc_frame_from_file(struct sh_css_pipe *pipe, int width, int height)
 	return sh_css_success;
 }
 
-static enum sh_css_err
-fill_ref_frame_for_dvs(struct sh_css_pipe *pipe, struct sh_css_frame_info ref_info)
+/* MW: Why do we not pass the pointer to the struct ? */
+static enum sh_css_err fill_ref_frame_for_dvs(
+	struct sh_css_pipe *pipe,
+	struct sh_css_frame_info ref_info)
 {
 	enum sh_css_err err = sh_css_success;
 
+assert(pipe != NULL);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "fill_ref_frame_for_dvs() enter:\n");
 	/* Allocate tmp_frame which is used to store YUV420 input.
 	 * Read YUV420 input from the file to tmp_frame.
 	 * Convert from YUV420 to NV12 format */
@@ -4095,9 +4451,11 @@ fill_ref_frame_for_dvs(struct sh_css_pipe *pipe, struct sh_css_frame_info ref_in
 }
 #endif
 
+#define SH_CSS_TNR_BIT_DEPTH 8
+#define SH_CSS_REF_BIT_DEPTH 8
 
-static enum sh_css_err
-load_video_binaries(struct sh_css_pipe *pipe)
+static enum sh_css_err load_video_binaries(
+	struct sh_css_pipe *pipe)
 {
 	struct sh_css_frame_info video_in_info, ref_info, tnr_info,
 				 *video_vf_info;
@@ -4105,6 +4463,8 @@ load_video_binaries(struct sh_css_pipe *pipe)
 	enum sh_css_err err = sh_css_success;
 	int i;
 
+assert(pipe != NULL);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "load_video_binaries() enter:\n");
 	/* we only test the video_binary because offline video doesn't need a
 	 * vf_pp binary and online does not (always use) the copy_binary.
 	 * All are always reset at the same time anyway.
@@ -4142,6 +4502,8 @@ load_video_binaries(struct sh_css_pipe *pipe)
 		video_descr.enable_high_speed = true;
 	if (pipe->enable_dvs_6axis)
 		video_descr.enable_dvs_6axis = true;
+	if (pipe->enable_reduced_pipe)
+		video_descr.enable_reduced_pipe = true;
 	video_descr.isp_pipe_version = pipe->isp_pipe_version;
 	err = sh_css_binary_find(&video_descr,
 				 &pipe->pipe.video.video_binary);
@@ -4180,6 +4542,7 @@ load_video_binaries(struct sh_css_pipe *pipe)
 
 	ref_info = pipe->pipe.video.video_binary.internal_frame_info;
 	ref_info.format = SH_CSS_FRAME_FORMAT_YUV420;
+	ref_info.raw_bit_depth = SH_CSS_REF_BIT_DEPTH;
 
 	for (i = 0; i < NUM_REF_FRAMES; i++) {
 		if (pipe->pipe.video.ref_frames[i])
@@ -4210,6 +4573,7 @@ load_video_binaries(struct sh_css_pipe *pipe)
 
 	tnr_info = pipe->pipe.video.video_binary.internal_frame_info;
 	tnr_info.format = SH_CSS_FRAME_FORMAT_YUV_LINE;
+	tnr_info.raw_bit_depth = SH_CSS_TNR_BIT_DEPTH;
 
 	for (i = 0; i < NUM_TNR_FRAMES; i++) {
 		if (pipe->pipe.video.tnr_frames[i])
@@ -4227,8 +4591,8 @@ load_video_binaries(struct sh_css_pipe *pipe)
 	return sh_css_success;
 }
 
-static enum sh_css_err
-video_start(struct sh_css_pipe *pipe)
+static enum sh_css_err video_start(
+	struct sh_css_pipe *pipe)
 {
 	struct sh_css_pipeline *me = &pipe->pipeline;
 	struct sh_css_pipeline_stage *copy_stage  = NULL;
@@ -4249,6 +4613,9 @@ video_start(struct sh_css_pipe *pipe)
 	struct sh_css_frame *in_frame = NULL;
 	struct sh_css_frame *out_frame = &out_frame_struct;
 	struct sh_css_frame *vf_frame = &vf_frame_struct;
+
+assert(pipe != NULL);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "video_start() enter:\n");
 
 	my_css.curr_pipe = pipe;
 
@@ -4398,50 +4765,91 @@ printf("wouldhave prepare (%p, %d, ..., %p)\n", NULL,
 	return sh_css_success;
 }
 
-enum sh_css_err
-sh_css_video_get_output_raw_frame_info(struct sh_css_frame_info *info)
+enum sh_css_err sh_css_video_get_output_raw_frame_info(
+	struct sh_css_frame_info *info)
 {
 	enum sh_css_err err;
 	struct sh_css_pipe *pipe = &my_css.video_pipe;
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_video_get_output_raw_frame_info()\n");
+assert(info != NULL);
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_video_get_output_raw_frame_info() enter:\n");
 
-	if (pipe->online)
+	if (pipe->online) {
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_video_get_viewfinder_frame_info() leave: return_err=%d\n",
+			sh_css_err_mode_does_not_have_raw_output);
 		return sh_css_err_mode_does_not_have_raw_output;
+	}
 	err = sh_css_pipe_load_binaries(pipe, NULL);
-	if (err == sh_css_success)
+	if (err == sh_css_success) {
 		*info = pipe->pipe.video.copy_binary.out_frame_info;
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_video_get_output_raw_frame_info() leave: \
+		info.width=%d, info.height=%d, \
+		info.padded_width=%d, info.format=%d, \
+		info.raw_bit_depth=%d, info.raw_bayer_order=%d\n",
+		info->width,info->height,
+		info->padded_width,info->format,
+		info->raw_bit_depth,info->raw_bayer_order);
+	} else {
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_video_get_viewfinder_frame_info() leave: return_err=%d\n",
+			err);
+	}
 		/* info->height += -4; */
 		/* info->width += 12; */
 	return err;
 }
 
-enum sh_css_err
-sh_css_video_get_viewfinder_frame_info(struct sh_css_frame_info *info)
+enum sh_css_err sh_css_video_get_viewfinder_frame_info(
+	struct sh_css_frame_info *info)
 {
 	enum sh_css_err err;
 	struct sh_css_pipe *pipe = &my_css.video_pipe;
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_video_get_viewfinder_frame_info()\n");
+assert(info != NULL);
+/* We could print the pointer as input arg, and the values as output */
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_video_get_viewfinder_frame_info() enter: void\n");
 
 	err = sh_css_pipe_load_binaries(pipe, NULL);
-	if (err != sh_css_success)
+	if (err != sh_css_success) {
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_video_get_viewfinder_frame_info() leave: return_err=%d\n",
+			err);
 		return err;
+	}
 	/* offline video does not generate viewfinder output */
-	if (!pipe->online)
+	if (!pipe->online) {
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_video_get_viewfinder_frame_info() leave: return_err=%d\n",
+			sh_css_err_mode_does_not_have_viewfinder);
 		return sh_css_err_mode_does_not_have_viewfinder;
-	else
+	} else {
 		*info = pipe->vf_output_info;
+	}
+
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_video_get_viewfinder_frame_info() leave: \
+		info.width=%d, info.height=%d, \
+		info.padded_width=%d, info.format=%d, \
+		info.raw_bit_depth=%d, info.raw_bayer_order=%d\n",
+		info->width,info->height,
+		info->padded_width,info->format,
+		info->raw_bit_depth,info->raw_bayer_order);
+
 	return sh_css_success;
 }
 
-enum sh_css_err
-sh_css_video_get_input_resolution(unsigned int *width, unsigned int *height)
+enum sh_css_err sh_css_video_get_input_resolution(
+	unsigned int *width,
+	unsigned int *height)
 {
 	enum sh_css_err err;
 	struct sh_css_pipe *pipe = &my_css.video_pipe;
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_video_get_input_resolution()\n");
+assert(width != NULL);
+assert(height != NULL);
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_video_get_input_resolution() enter: void\n");
 
 	err = sh_css_pipe_load_binaries(pipe, NULL);
 	if (err == sh_css_success) {
@@ -4456,21 +4864,29 @@ sh_css_video_get_input_resolution(unsigned int *width, unsigned int *height)
 			  lines_needed_for_bayer_order(pipe);
 	}
 
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_video_get_input_resolution() leave: width=%d, height=%d\n", *width, *height);
 	return err;
 }
 
-enum sh_css_err
-sh_css_video_configure_viewfinder(unsigned int width,
-				  unsigned int height,
-				  enum sh_css_frame_format format)
+enum sh_css_err sh_css_video_configure_viewfinder(
+	unsigned int width,
+	unsigned int height,
+	enum sh_css_frame_format format)
 {
 	enum sh_css_err err = sh_css_success;
 	struct sh_css_pipe *pipe = &my_css.video_pipe;
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_video_configure_viewfinder()\n");
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_video_configure_viewfinder() enter: \
+		width=%d, height=%d format=%d\n",
+		width, height, format);
+
 	err = check_res(width, height);
-	if (err != sh_css_success)
+	if (err != sh_css_success) {
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_video_configure_viewfinder() leave: return_err=%d\n",err);
 		return err;
+	}
 	if (pipe->vf_output_info.width != width ||
 	    pipe->vf_output_info.height != height ||
 	    pipe->vf_output_info.format != format) {
@@ -4478,46 +4894,56 @@ sh_css_video_configure_viewfinder(unsigned int width,
 				       width, height, format);
 		sh_css_pipe_invalidate_binaries(pipe);
 	}
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_video_configure_viewfinder() leave: return_err=%d\n",sh_css_success);
 	return sh_css_success;
 }
 
 /* Specify the envelope to be used for DIS. */
-void
-sh_css_video_set_dis_envelope(unsigned int width, unsigned int height)
+void sh_css_video_set_dis_envelope(
+	unsigned int width,
+	unsigned int height)
 {
 	struct sh_css_pipe *pipe = &my_css.video_pipe;
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_video_set_dis_envelope()\n");
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_video_set_dis_envelope() enter: width=%d, height=%d\n", width, height);
 	if (width != pipe->dvs_envelope.width ||
 	    height != pipe->dvs_envelope.height) {
 		pipe->dvs_envelope.width = width;
 		pipe->dvs_envelope.height = height;
 		sh_css_pipe_invalidate_binaries(pipe);
 	}
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_video_set_dis_envelope() leave: return_void\n");
 }
 
-void
-sh_css_video_get_dis_envelope(unsigned int *width, unsigned int *height)
+void sh_css_video_get_dis_envelope(
+	unsigned int *width,
+	unsigned int *height)
 {
 	struct sh_css_pipe *pipe = &my_css.video_pipe;
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_video_get_dis_envelope()\n");
+assert(width != NULL);
+assert(height != NULL);
+
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_video_get_dis_envelope() enter: void\n");
 	*width = pipe->dvs_envelope.width;
 	*height = pipe->dvs_envelope.height;
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_video_get_dis_envelope() leave: width=%d, height=%d\n", *width, *height);
 }
 
 #if 0
 /* rvanimme: Not supported for now, use global sh_css_set_zoom_factor */
-void
-sh_css_pipe_set_zoom_factor(struct sh_css_pipe *me,
-			    unsigned int dx,
-			    unsigned int dy)
+void sh_css_pipe_set_zoom_factor(
+	struct sh_css_pipe *me,
+	unsigned int dx,
+ 	unsigned int dy)
 {
 	bool is_zoomed  = dx < HRT_GDC_N || dy < HRT_GDC_N;
 	bool was_zoomed = me->curr_dx < HRT_GDC_N ||
 			  me->curr_dy < HRT_GDC_N;
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_pipe_set_zoom_factor() in: pipe_id=%d, dx=%d, dy=%d\n",
+		"sh_css_pipe_set_zoom_factor() enter: pipe_id=%d, dx=%d, dy=%d\n",
 		me->mode, dx, dy);
 
 	if (is_zoomed != was_zoomed) {
@@ -4526,27 +4952,34 @@ sh_css_pipe_set_zoom_factor(struct sh_css_pipe *me,
 	}
 	me->curr_dx = dx;
 	me->curr_dy = dy;
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_pipe_set_zoom_factor() leave: return_void\n");
 }
 
-void
-sh_css_pipe_get_zoom_factor(struct sh_css_pipe *me,
-			    unsigned int *dx,
-			    unsigned int *dy)
+void sh_css_pipe_get_zoom_factor(
+	struct sh_css_pipe *me,
+	unsigned int *dx,
+	unsigned int *dy)
 {
+assert(dx != NULL);
+assert(dy != NULL);
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_pipe_get_zoom_factor() in: pipe_id=%d\n", me->mode);
+		"sh_css_pipe_get_zoom_factor() enter: pipe_id=%d\n", me->mode);
 	*dx = me->curr_dx;
 	*dy = me->curr_dy;
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_pipe_get_zoom_factor() out: dx=%d, dy=%d\n", *dx, *dy);
+		"sh_css_pipe_get_zoom_factor() leave: dx=%d, dy=%d\n", *dx, *dy);
 
 }
 #endif
 
-static enum sh_css_err
-load_copy_binaries(struct sh_css_pipe *pipe)
+static enum sh_css_err load_copy_binaries(
+	struct sh_css_pipe *pipe)
 {
 	enum sh_css_err err = sh_css_success;
+
+assert(pipe != NULL);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "load_copy_binaries() enter:\n");
 
 	if (pipe->pipe.capture.copy_binary.info)
 		return sh_css_success;
@@ -4562,11 +4995,13 @@ load_copy_binaries(struct sh_css_pipe *pipe)
 				NULL);
 }
 
-static bool
-need_capture_pp(const struct sh_css_pipe *pipe)
+static bool need_capture_pp(
+	const struct sh_css_pipe *pipe)
 {
 	struct sh_css_zoom zoom;
 
+assert(pipe != NULL);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "need_capture_pp() enter:\n");
 	/* determine whether we need to use the capture_pp binary.
 	 * This is needed for:
 	 *   1. XNR or
@@ -4587,11 +5022,16 @@ need_capture_pp(const struct sh_css_pipe *pipe)
 	return false;
 }
 
-static void
-init_capture_pp_descr(struct sh_css_pipe *pipe,
-		      struct sh_css_frame_info *in_info,
-		      struct sh_css_frame_info *vf_info)
+static void init_capture_pp_descr(
+	struct sh_css_pipe *pipe,
+	struct sh_css_frame_info *in_info,
+	struct sh_css_frame_info *vf_info)
 {
+assert(pipe != NULL);
+assert(in_info != NULL);
+assert(vf_info != NULL);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "init_capture_pp_descr() enter:\n");
+
 	/* the in_info is only used for resolution to enable
 	   bayer down scaling. */
 	if (pipe->yuv_ds_input_info.width)
@@ -4609,23 +5049,26 @@ init_capture_pp_descr(struct sh_css_pipe *pipe,
 			   vf_info);
 }
 
-static void
-init_primary_descr(struct sh_css_pipe *pipe,
-		   struct sh_css_frame_info *in_info,
-		   struct sh_css_frame_info *out_info,
-		   struct sh_css_frame_info *vf_info)
+static void init_primary_descr(
+	struct sh_css_pipe *pipe,
+	struct sh_css_frame_info *in_info,
+	struct sh_css_frame_info *out_info,
+	struct sh_css_frame_info *vf_info)
 {
 	int mode = SH_CSS_BINARY_MODE_PRIMARY;
+
+assert(pipe != NULL);
+assert(in_info != NULL);
+assert(out_info != NULL);
+assert(vf_info != NULL);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "init_primary_descr() enter:\n");
 
 	if (input_format_is_yuv(pipe->input_format))
 		mode = SH_CSS_BINARY_MODE_COPY;
 
 	*in_info = pipe->input_effective_info;
 
-	if (pipe->input_is_raw_reordered)
-		in_info->format = SH_CSS_FRAME_FORMAT_RAW_REORDERED;
-	else
-		in_info->format = SH_CSS_FRAME_FORMAT_RAW;
+	in_info->format = SH_CSS_FRAME_FORMAT_RAW;
 
 	in_info->raw_bit_depth = sh_css_pipe_input_format_bits_per_pixel(pipe);
 	init_offline_descr(pipe,
@@ -4640,11 +5083,16 @@ init_primary_descr(struct sh_css_pipe *pipe,
 	}
 }
 
-static void
-init_pre_gdc_descr(struct sh_css_pipe *pipe,
-		   struct sh_css_frame_info *in_info,
-		   struct sh_css_frame_info *out_info)
+static void init_pre_gdc_descr(
+	struct sh_css_pipe *pipe,
+	struct sh_css_frame_info *in_info,
+	struct sh_css_frame_info *out_info)
 {
+assert(pipe != NULL);
+assert(in_info != NULL);
+assert(out_info != NULL);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "init_pre_gdc_descr() enter:\n");
+
 	*in_info = *out_info;
 	in_info->format = SH_CSS_FRAME_FORMAT_RAW;
 	in_info->raw_bit_depth = sh_css_pipe_input_format_bits_per_pixel(pipe);
@@ -4654,10 +5102,16 @@ init_pre_gdc_descr(struct sh_css_pipe *pipe,
 }
 
 static void
-init_gdc_descr(struct sh_css_pipe *pipe,
-	       struct sh_css_frame_info *in_info,
-	       struct sh_css_frame_info *out_info)
+init_gdc_descr(
+	struct sh_css_pipe *pipe,
+	struct sh_css_frame_info *in_info,
+	struct sh_css_frame_info *out_info)
 {
+assert(pipe != NULL);
+assert(in_info != NULL);
+assert(out_info != NULL);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "init_gdc_descr() enter:\n");
+
 	*in_info = *out_info;
 	in_info->format = SH_CSS_FRAME_FORMAT_QPLANE6;
 	init_offline_descr(pipe,
@@ -4665,12 +5119,18 @@ init_gdc_descr(struct sh_css_pipe *pipe,
 			   in_info, out_info, NULL);
 }
 
-static void
-init_post_gdc_descr(struct sh_css_pipe *pipe,
-		    struct sh_css_frame_info *in_info,
-		    struct sh_css_frame_info *out_info,
-		    struct sh_css_frame_info *vf_info)
+static void init_post_gdc_descr(
+	struct sh_css_pipe *pipe,
+	struct sh_css_frame_info *in_info,
+	struct sh_css_frame_info *out_info,
+	struct sh_css_frame_info *vf_info)
 {
+assert(pipe != NULL);
+assert(in_info != NULL);
+assert(out_info != NULL);
+assert(vf_info != NULL);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "init_post_gdc_descr() enter:\n");
+
 	*in_info = *out_info;
 	in_info->format = SH_CSS_FRAME_FORMAT_YUV420_16;
 	init_offline_descr(pipe,
@@ -4678,11 +5138,16 @@ init_post_gdc_descr(struct sh_css_pipe *pipe,
 			   in_info, out_info, vf_info);
 }
 
-static void
-init_pre_anr_descr(struct sh_css_pipe *pipe,
-		   struct sh_css_frame_info *in_info,
-		   struct sh_css_frame_info *out_info)
+static void init_pre_anr_descr(
+	struct sh_css_pipe *pipe,
+	struct sh_css_frame_info *in_info,
+	struct sh_css_frame_info *out_info)
 {
+assert(pipe != NULL);
+assert(in_info != NULL);
+assert(out_info != NULL);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "init_pre_anr_descr() enter:\n");
+
 	*in_info = *out_info;
 	in_info->format = SH_CSS_FRAME_FORMAT_RAW;
 	in_info->raw_bit_depth = sh_css_pipe_input_format_bits_per_pixel(pipe);
@@ -4695,11 +5160,16 @@ init_pre_anr_descr(struct sh_css_pipe *pipe,
 	}
 }
 
-static void
-init_anr_descr(struct sh_css_pipe *pipe,
-	       struct sh_css_frame_info *in_info,
-	       struct sh_css_frame_info *out_info)
+static void init_anr_descr(
+	struct sh_css_pipe *pipe,
+	struct sh_css_frame_info *in_info,
+	struct sh_css_frame_info *out_info)
 {
+assert(pipe != NULL);
+assert(in_info != NULL);
+assert(out_info != NULL);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "init_anr_descr() enter:\n");
+
 	*in_info = *out_info;
 	in_info->format = SH_CSS_FRAME_FORMAT_RAW;
 	in_info->raw_bit_depth = sh_css_pipe_input_format_bits_per_pixel(pipe);
@@ -4708,12 +5178,18 @@ init_anr_descr(struct sh_css_pipe *pipe,
 			   in_info, out_info, NULL);
 }
 
-static void
-init_post_anr_descr(struct sh_css_pipe *pipe,
-		    struct sh_css_frame_info *in_info,
-		    struct sh_css_frame_info *out_info,
-		    struct sh_css_frame_info *vf_info)
+static void init_post_anr_descr(
+	struct sh_css_pipe *pipe,
+	struct sh_css_frame_info *in_info,
+	struct sh_css_frame_info *out_info,
+	struct sh_css_frame_info *vf_info)
 {
+assert(pipe != NULL);
+assert(in_info != NULL);
+assert(out_info != NULL);
+assert(vf_info != NULL);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "init_post_anr_descr() enter:\n");
+
 	*in_info = *out_info;
 	in_info->format = SH_CSS_FRAME_FORMAT_RAW;
 	in_info->raw_bit_depth = sh_css_pipe_input_format_bits_per_pixel(pipe);
@@ -4722,8 +5198,8 @@ init_post_anr_descr(struct sh_css_pipe *pipe,
 			   in_info, out_info, vf_info);
 }
 
-static enum sh_css_err
-load_primary_binaries(struct sh_css_pipe *pipe)
+static enum sh_css_err load_primary_binaries(
+	struct sh_css_pipe *pipe)
 {
 	bool online = pipe->online;
 	bool continuous = my_css.continuous;
@@ -4734,6 +5210,9 @@ load_primary_binaries(struct sh_css_pipe *pipe)
 				 *vf_pp_in_info;
 	enum sh_css_err err = sh_css_success;
 	struct sh_css_capture_settings *mycs = &pipe->pipe.capture;
+
+assert(pipe != NULL);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "load_primary_binaries() enter:\n");
 
 	if (mycs->primary_binary.info)
 		return sh_css_success;
@@ -4796,15 +5275,7 @@ load_primary_binaries(struct sh_css_pipe *pipe)
 		unsigned int i;
 
 		ref_info = mycs->primary_binary.internal_frame_info;
-
-		if (pipe->input_is_raw_reordered) {
-			ref_info.format = SH_CSS_FRAME_FORMAT_RAW_REORDERED;
-			/* TODO: Remove it when proper mechanism is in place */
-			ref_info.padded_width
-			= CEIL_MUL(ref_info.padded_width, 4*ISP_VEC_NELEMS);
-		} else {
-			ref_info.format = SH_CSS_FRAME_FORMAT_RAW;
-		}
+		ref_info.format = SH_CSS_FRAME_FORMAT_RAW;
 
 		for (i = 0; i < NUM_CONTINUOUS_FRAMES; i++) {
 			/* free previous frame */
@@ -4831,14 +5302,17 @@ load_primary_binaries(struct sh_css_pipe *pipe)
 		return sh_css_success;
 }
 
-static enum sh_css_err
-load_advanced_binaries(struct sh_css_pipe *pipe)
+static enum sh_css_err load_advanced_binaries(
+	struct sh_css_pipe *pipe)
 {
 	struct sh_css_frame_info pre_in_info, gdc_in_info,
 				 post_in_info, post_out_info,
 				 vf_info, *vf_pp_in_info;
 	bool need_pp;
 	enum sh_css_err err = sh_css_success;
+
+assert(pipe != NULL);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "load_advanced_binaries() enter:\n");
 
 	if (pipe->pipe.capture.pre_isp_binary.info)
 		return sh_css_success;
@@ -4921,11 +5395,14 @@ load_advanced_binaries(struct sh_css_pipe *pipe)
 		return sh_css_success;
 }
 
-static enum sh_css_err
-load_pre_isp_binaries(struct sh_css_pipe *pipe)
+static enum sh_css_err load_pre_isp_binaries(
+	struct sh_css_pipe *pipe)
 {
-    struct sh_css_frame_info pre_isp_in_info;
+	struct sh_css_frame_info pre_isp_in_info;
 	enum sh_css_err err = sh_css_success;
+
+assert(pipe != NULL);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "load_pre_isp_binaries() enter:\n");
 
 	if (pipe->pipe.capture.pre_isp_binary.info)
 		return sh_css_success;
@@ -4943,14 +5420,17 @@ load_pre_isp_binaries(struct sh_css_pipe *pipe)
 	return err;
 }
 
-static enum sh_css_err
-load_low_light_binaries(struct sh_css_pipe *pipe)
+static enum sh_css_err load_low_light_binaries(
+	struct sh_css_pipe *pipe)
 {
 	struct sh_css_frame_info pre_in_info, anr_in_info,
 				 post_in_info, post_out_info,
 				 vf_info, *vf_pp_in_info;
 	bool need_pp;
 	enum sh_css_err err = sh_css_success;
+
+assert(pipe != NULL);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "load_low_light_binaries() enter:\n");
 
 	if (pipe->pipe.capture.pre_isp_binary.info)
 		return sh_css_success;
@@ -5033,9 +5513,13 @@ load_low_light_binaries(struct sh_css_pipe *pipe)
 		return sh_css_success;
 }
 
-static bool
-copy_on_sp(struct sh_css_pipe *pipe)
+static bool copy_on_sp(
+	struct sh_css_pipe *pipe)
 {
+
+assert(pipe != NULL);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "copy_on_sp() enter:\n");
+
 	if (pipe->mode != SH_CSS_CAPTURE_PIPELINE)
 		return false;
 	if (pipe->capture_mode != SH_CSS_CAPTURE_MODE_RAW)
@@ -5044,12 +5528,14 @@ copy_on_sp(struct sh_css_pipe *pipe)
 		pipe->input_format == SH_CSS_INPUT_FORMAT_BINARY_8;
 }
 
-static enum sh_css_err
-load_capture_binaries(struct sh_css_pipe *pipe)
+static enum sh_css_err load_capture_binaries(
+	struct sh_css_pipe *pipe)
 {
 	enum sh_css_err err = sh_css_success;
 	bool must_be_raw;
 
+assert(pipe != NULL);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "load_capture_binaries() enter:\n");
 	/* in primary, advanced,low light or bayer,
 						the input format must be raw */
 	must_be_raw =
@@ -5084,11 +5570,16 @@ load_capture_binaries(struct sh_css_pipe *pipe)
 	return sh_css_success;
 }
 
-static enum sh_css_err
-sh_css_pipe_load_binaries(struct sh_css_pipe *pipe,
-			  struct sh_css_pipe *capture_pipe)
+static enum sh_css_err sh_css_pipe_load_binaries(
+	struct sh_css_pipe *pipe,
+	struct sh_css_pipe *capture_pipe)
 {
 	enum sh_css_err err = sh_css_success;
+
+/* capture_pipe can be NULL */
+assert(pipe != NULL);
+/* assert(capture_pipe != NULL); */
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_pipe_load_binaries() enter:\n");
 
 	switch (pipe->mode) {
 	case SH_CSS_PREVIEW_PIPELINE:
@@ -5107,8 +5598,8 @@ sh_css_pipe_load_binaries(struct sh_css_pipe *pipe,
 	return err;
 }
 
-static enum sh_css_err
-construct_capture_pipe(struct sh_css_pipe *pipe)
+static enum sh_css_err construct_capture_pipe(
+	struct sh_css_pipe *pipe)
 {
 	struct sh_css_pipeline *me = &pipe->pipeline;
 	enum sh_css_err err = sh_css_success;
@@ -5140,6 +5631,7 @@ construct_capture_pipe(struct sh_css_pipe *pipe)
 	struct sh_css_frame *out_frame = &me->out_frame;
 	struct sh_css_frame *vf_frame = &me->vf_frame;
 
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "construct_capture_pipe() enter:\n");
 	sh_css_pipeline_clean(me);
 
 	sh_css_pipe_invalidate_binaries(pipe);
@@ -5359,13 +5851,14 @@ construct_capture_pipe(struct sh_css_pipe *pipe)
 
 }
 
-static enum sh_css_err
-capture_start(struct sh_css_pipe *pipe)
+static enum sh_css_err capture_start(
+	struct sh_css_pipe *pipe)
 {
 	struct sh_css_pipeline *me = &pipe->pipeline;
 
 	enum sh_css_err err = sh_css_success;
 
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "capture_start() enter:\n");
 	sh_css_pipeline_stream_clear_pipelines();
 	sh_css_pipeline_stream_add_pipeline(me);
 
@@ -5407,14 +5900,18 @@ capture_start(struct sh_css_pipe *pipe)
 
 }
 
-static enum sh_css_err
-sh_css_pipe_get_output_frame_info(struct sh_css_pipe *pipe,
-				  struct sh_css_pipe *capture_pipe,
-				  struct sh_css_frame_info *info)
+static enum sh_css_err sh_css_pipe_get_output_frame_info(
+	struct sh_css_pipe *pipe,
+	struct sh_css_pipe *capture_pipe,
+	struct sh_css_frame_info *info)
 {
 	enum sh_css_err err;
 
-	sh_css_dtrace(SH_DBG_TRACE, "%s()\n", __FUNCTION__);
+/* capture_pipe can be NULL */
+assert(pipe != NULL);
+/* assert(capture_pipe != NULL); */
+assert(info != NULL);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_pipe_get_output_frame_info() enter:\n");
 	err = sh_css_pipe_load_binaries(pipe, capture_pipe);
 	if (err == sh_css_success)
 		*info = pipe->output_info;
@@ -5422,20 +5919,21 @@ sh_css_pipe_get_output_frame_info(struct sh_css_pipe *pipe,
 	    pipe->input_format == SH_CSS_INPUT_FORMAT_BINARY_8) {
 		sh_css_frame_info_init(info, JPEG_BYTES, 1,
 				SH_CSS_FRAME_FORMAT_BINARY_8);
-	} else if (info->format == SH_CSS_FRAME_FORMAT_RAW ||
-		   info->format == SH_CSS_FRAME_FORMAT_RAW_REORDERED) {
+	} else if (info->format == SH_CSS_FRAME_FORMAT_RAW) {
 		info->raw_bit_depth =
 			sh_css_pipe_input_format_bits_per_pixel(pipe);
 	}
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_pipe_get_output_frame_info() leave:\n");
 	return err;
 }
 
-enum sh_css_err
-sh_css_capture_get_viewfinder_frame_info(struct sh_css_frame_info *info)
+enum sh_css_err sh_css_capture_get_viewfinder_frame_info(
+	struct sh_css_frame_info *info)
 {
 	enum sh_css_err err;
 	struct sh_css_pipe *pipe = &my_css.capture_pipe;
 
+assert(info != NULL);
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_capture_get_viewfinder_frame_info()\n");
 
 	if (pipe->capture_mode == SH_CSS_CAPTURE_MODE_RAW ||
@@ -5444,16 +5942,25 @@ sh_css_capture_get_viewfinder_frame_info(struct sh_css_frame_info *info)
 	err = sh_css_pipe_load_binaries(pipe, NULL);
 	if (err == sh_css_success)
 		*info = pipe->vf_output_info;
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_capture_get_viewfinder_frame_info() leave: \
+		info.width=%d, info.height=%d, \
+		info.padded_width=%d, info.format=%d, \
+		info.raw_bit_depth=%d, info.raw_bayer_order=%d\n",
+		info->width,info->height,
+		info->padded_width,info->format,
+		info->raw_bit_depth,info->raw_bayer_order);
 	return err;
 }
 
-enum sh_css_err
-sh_css_capture_get_output_raw_frame_info(struct sh_css_frame_info *info)
+enum sh_css_err sh_css_capture_get_output_raw_frame_info(
+	struct sh_css_frame_info *info)
 {
 	enum sh_css_err err;
 	struct sh_css_pipe *pipe = &my_css.capture_pipe;
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_capture_get_output_raw_frame_info()\n");
+assert(info != NULL);
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_capture_get_output_raw_frame_info() enter: void\n");
 
 	if (pipe->online || copy_on_sp(pipe)) {
 		return sh_css_err_mode_does_not_have_raw_output;
@@ -5461,16 +5968,28 @@ sh_css_capture_get_output_raw_frame_info(struct sh_css_frame_info *info)
 	err = sh_css_pipe_load_binaries(pipe, NULL);
 	if (err == sh_css_success)
 		*info = pipe->pipe.capture.copy_binary.out_frame_info;
+
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_capture_get_output_raw_frame_info() leave: \
+		info.width=%d, info.height=%d, \
+		info.padded_width=%d, info.format=%d, \
+		info.raw_bit_depth=%d, info.raw_bayer_order=%d\n",
+		info->width,info->height,
+		info->padded_width,info->format,
+		info->raw_bit_depth,info->raw_bayer_order);
 	return err;
 }
 
-enum sh_css_err
-sh_css_capture_get_input_resolution(unsigned int *width, unsigned int *height)
+enum sh_css_err sh_css_capture_get_input_resolution(
+	unsigned int *width,
+	unsigned int *height)
 {
 	enum sh_css_err err;
 	struct sh_css_pipe *pipe = &my_css.capture_pipe;
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_capture_get_input_resolution()\n");
+assert(width != NULL);
+assert(height != NULL);
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_capture_get_input_resolution() enter: void\n");
 
 	if (copy_on_sp(pipe) &&
 	    pipe->input_format == SH_CSS_INPUT_FORMAT_BINARY_8) {
@@ -5493,6 +6012,8 @@ sh_css_capture_get_input_resolution(unsigned int *width, unsigned int *height)
 		*height = binary->in_frame_info.height +
 			  lines_needed_for_bayer_order(pipe);
 	}
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_capture_get_input_resolution() "
+		"leave: width=%d, height=%d\n",*width,*height);
 	return err;
 }
 
@@ -5501,11 +6022,13 @@ sh_css_capture_set_mode(enum sh_css_capture_mode mode)
 {
 	struct sh_css_pipe *pipe = &my_css.capture_pipe;
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_capture_set_mode()\n");
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_capture_set_mode() enter: mode=%d\n",mode);
 	if (mode != pipe->capture_mode) {
 		pipe->capture_mode = mode;
 		sh_css_pipe_invalidate_binaries(pipe);
 	}
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_capture_set_mode() leave: return_void\n");
 }
 
 void
@@ -5513,25 +6036,33 @@ sh_css_capture_enable_xnr(bool enable)
 {
 	struct sh_css_pipe *pipe = &my_css.capture_pipe;
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_capture_enable_xnr()\n");
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_capture_enable_xnr() enter: enable=%d\n",enable);
 	if (pipe->mode == SH_CSS_CAPTURE_PIPELINE && pipe->xnr != enable) {
 		sh_css_pipe_invalidate_binaries(pipe);
 		pipe->xnr = enable;
 	}
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_capture_enable_xnr() leave: return_void\n");
 }
 
-enum sh_css_err
-sh_css_capture_configure_viewfinder(unsigned int width,
-				    unsigned int height,
-				    enum sh_css_frame_format format)
+enum sh_css_err sh_css_capture_configure_viewfinder(
+	unsigned int width,
+	unsigned int height,
+	enum sh_css_frame_format format)
 {
 	struct sh_css_pipe *pipe = &my_css.capture_pipe;
 	enum sh_css_err err = sh_css_success;
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_capture_configure_viewfinder()\n");
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_capture_configure_viewfinder() "
+		"enter: width=%d, height=%d, format=%d\n",
+		width, height, format);
 	err = check_res(width, height);
-	if (err != sh_css_success)
+	if (err != sh_css_success) {
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_capture_configure_viewfinder() leave: return_err=%d\n",
+		err);
 		return err;
+	}
 	if (pipe->vf_output_info.width != width ||
 	    pipe->vf_output_info.height != height ||
 	    pipe->vf_output_info.format != format) {
@@ -5539,20 +6070,28 @@ sh_css_capture_configure_viewfinder(unsigned int width,
 				       width, height, format);
 		sh_css_pipe_invalidate_binaries(pipe);
 	}
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_capture_configure_viewfinder() leave: return_err=%d\n",
+		sh_css_success);
 	return sh_css_success;
 }
 
-enum sh_css_err
-sh_css_capture_configure_pp_input(unsigned int width,
-				  unsigned int height)
+enum sh_css_err sh_css_capture_configure_pp_input(
+	unsigned int width,
+	unsigned int height)
 {
 	struct sh_css_pipe *pipe = &my_css.capture_pipe;
 	enum sh_css_err err = sh_css_success;
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_capture_configure_pp_input()\n");
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_capture_configure_pp_input() enter: \
+		width=%d, height=%d\n",width, height);
 	err = check_null_res(width, height);
-	if (err != sh_css_success)
+	if (err != sh_css_success) {
+		sh_css_dtrace(SH_DBG_TRACE,
+			"sh_css_capture_configure_pp_input() leave: return_err=%d\n",
+			err);
 		return err;
+	}
 	if (pipe->yuv_ds_input_info.width != width ||
 	    pipe->yuv_ds_input_info.height != height) {
 		sh_css_frame_info_init(&pipe->yuv_ds_input_info,
@@ -5564,16 +6103,19 @@ sh_css_capture_configure_pp_input(unsigned int width,
 }
 
 void
-sh_css_pipe_enable_online(struct sh_css_pipe *me,
-			  bool enable)
+sh_css_pipe_enable_online(
+	struct sh_css_pipe *me,
+	bool enable)
 {
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"sh_css_pipe_enable_online() enter & leave:\n");
 	me->online = enable;
 }
 
-void
-sh_css_send_input_frame(unsigned short *data,
-			unsigned int width,
-			unsigned int height)
+void sh_css_send_input_frame(
+	unsigned short *data,
+	unsigned int width,
+	unsigned int height)
 {
 	sh_css_hrt_send_input_frame(data, width, height,
 				    my_css.curr_pipe->ch_id,
@@ -5582,10 +6124,10 @@ sh_css_send_input_frame(unsigned short *data,
 }
 
 
-void
-sh_css_streaming_to_mipi_start_frame(unsigned int channel_id,
-				enum sh_css_input_format input_format,
-				bool two_pixels_per_clock)
+void sh_css_streaming_to_mipi_start_frame(
+	unsigned int channel_id,
+	enum sh_css_input_format input_format,
+	bool two_pixels_per_clock)
 {
 	sh_css_hrt_streaming_to_mipi_start_frame(channel_id,
 						input_format,
@@ -5594,11 +6136,12 @@ sh_css_streaming_to_mipi_start_frame(unsigned int channel_id,
 
 
 void
-sh_css_streaming_to_mipi_send_line(unsigned int channel_id,
-					unsigned short *data,
-					unsigned int width,
-						unsigned short *data2,
-						unsigned int width2)
+sh_css_streaming_to_mipi_send_line(
+	unsigned int channel_id,
+	unsigned short *data,
+	unsigned int width,
+	unsigned short *data2,
+	unsigned int width2)
 {
 	sh_css_hrt_streaming_to_mipi_send_line(channel_id,
 						data, width,
@@ -5606,15 +6149,15 @@ sh_css_streaming_to_mipi_send_line(unsigned int channel_id,
 }
 
 
-void
-sh_css_streaming_to_mipi_end_frame(unsigned int channel_id)
+void sh_css_streaming_to_mipi_end_frame(
+	unsigned int channel_id)
 {
 	sh_css_hrt_streaming_to_mipi_end_frame(channel_id);
 }
 
 
-static enum sh_css_err
-allocate_frame_data(struct sh_css_frame *frame)
+static enum sh_css_err allocate_frame_data(
+	struct sh_css_frame *frame)
 {
 	frame->data = mmgr_alloc_attr(frame->data_bytes,
 		frame->contiguous ?
@@ -5625,8 +6168,8 @@ allocate_frame_data(struct sh_css_frame *frame)
 	return sh_css_success;
 }
 
-static void
-init_plane(struct sh_css_frame_plane *plane,
+static void init_plane(
+	struct sh_css_frame_plane *plane,
 	unsigned int width,
 	unsigned int stride,
 	unsigned int height,
@@ -5638,12 +6181,12 @@ init_plane(struct sh_css_frame_plane *plane,
 	plane->offset = offset;
 }
 
-static void
-init_single_plane(struct sh_css_frame *frame,
-		      struct sh_css_frame_plane *plane,
-		      unsigned int height,
-		      unsigned int subpixels_per_line,
-		      unsigned int bytes_per_pixel)
+static void init_single_plane(
+	struct sh_css_frame *frame,
+	struct sh_css_frame_plane *plane,
+	unsigned int height,
+	unsigned int subpixels_per_line,
+	unsigned int bytes_per_pixel)
 {
 	unsigned int stride;
 
@@ -5653,10 +6196,10 @@ init_single_plane(struct sh_css_frame *frame,
 	return;
 	}
 
-static void
-init_nv_planes(struct sh_css_frame *frame,
-		   unsigned int horizontal_decimation,
-		   unsigned int vertical_decimation)
+static void init_nv_planes(
+	struct sh_css_frame *frame,
+	unsigned int horizontal_decimation,
+	unsigned int vertical_decimation)
 {
 	unsigned int y_width = frame->info.padded_width,
 		     y_height = frame->info.height,
@@ -5674,12 +6217,12 @@ init_nv_planes(struct sh_css_frame *frame,
 	return;
 }
 
-static void
-init_yuv_planes(struct sh_css_frame *frame,
-		    unsigned int horizontal_decimation,
-		    unsigned int vertical_decimation,
-		    bool swap_uv,
-		    unsigned int bytes_per_element)
+static void init_yuv_planes(
+	struct sh_css_frame *frame,
+	unsigned int horizontal_decimation,
+	unsigned int vertical_decimation,
+	bool swap_uv,
+	unsigned int bytes_per_element)
 {
 	unsigned int y_width = frame->info.padded_width,
 		     y_height = frame->info.height,
@@ -5708,8 +6251,9 @@ init_yuv_planes(struct sh_css_frame *frame,
 	return;
 	}
 
-static void
-init_rgb_planes(struct sh_css_frame *frame, unsigned int bytes_per_element)
+static void init_rgb_planes(
+	struct sh_css_frame *frame,
+	unsigned int bytes_per_element)
 {
 	unsigned int width = frame->info.width,
 		     height = frame->info.height, stride, bytes;
@@ -5726,8 +6270,8 @@ init_rgb_planes(struct sh_css_frame *frame, unsigned int bytes_per_element)
 	return;
 	}
 
-static void
-init_qplane6_planes(struct sh_css_frame *frame)
+static void init_qplane6_planes(
+	struct sh_css_frame *frame)
 {
 	unsigned int width = frame->info.padded_width / 2,
 		     height = frame->info.height / 2,
@@ -5752,14 +6296,13 @@ init_qplane6_planes(struct sh_css_frame *frame)
 	return;
 }
 
-static enum sh_css_err
-init_frame_planes(struct sh_css_frame *frame)
+static enum sh_css_err init_frame_planes(
+	struct sh_css_frame *frame)
 {
-	assert(frame);
+assert(frame != NULL);
 
 	switch (frame->info.format) {
 	case SH_CSS_FRAME_FORMAT_RAW:
-	case SH_CSS_FRAME_FORMAT_RAW_REORDERED:
 		init_single_plane(frame, &frame->planes.raw,
 				frame->info.height,
 				frame->info.padded_width,
@@ -5847,14 +6390,14 @@ init_frame_planes(struct sh_css_frame *frame)
 }
 
 
-static enum sh_css_err
-allocate_frame_and_data(struct sh_css_frame **frame,
-			unsigned int width,
-			unsigned int height,
-			enum sh_css_frame_format format,
-			unsigned int padded_width,
-			unsigned int raw_bit_depth,
-			bool contiguous)
+static enum sh_css_err allocate_frame_and_data(
+	struct sh_css_frame **frame,
+	unsigned int width,
+	unsigned int height,
+	enum sh_css_frame_format format,
+	unsigned int padded_width,
+	unsigned int raw_bit_depth,
+	bool contiguous)
 {
 	enum sh_css_err err;
 	struct sh_css_frame *me = sh_css_malloc(sizeof(*me));
@@ -5885,18 +6428,18 @@ allocate_frame_and_data(struct sh_css_frame **frame,
 	return err;
 }
 
-enum sh_css_err
-sh_css_frame_allocate(struct sh_css_frame **frame,
-		      unsigned int width,
-		      unsigned int height,
-		      enum sh_css_frame_format format,
-		      unsigned int padded_width,
-		      unsigned int raw_bit_depth)
+enum sh_css_err sh_css_frame_allocate(
+	struct sh_css_frame **frame,
+	unsigned int width,
+	unsigned int height,
+	enum sh_css_frame_format format,
+	unsigned int padded_width,
+	unsigned int raw_bit_depth)
 {
 	enum sh_css_err err = sh_css_success;
 
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_frame_allocate() in: width=%d, height=%d, format=%d\n",
+		"sh_css_frame_allocate() enter: width=%d, height=%d, format=%d\n",
 		width, height, format);
 
 
@@ -5904,80 +6447,90 @@ sh_css_frame_allocate(struct sh_css_frame **frame,
 			      padded_width, raw_bit_depth, false);
 
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_frame_allocate() out: frame=%p\n",
+		"sh_css_frame_allocate() leave: frame=%p\n",
 		frame ? *frame : (void *)-1);
 
 	return err;
 }
 
-enum sh_css_err
-sh_css_frame_allocate_from_info(struct sh_css_frame **frame,
-				const struct sh_css_frame_info *info)
+enum sh_css_err sh_css_frame_allocate_from_info(
+	struct sh_css_frame **frame,
+	const struct sh_css_frame_info *info)
 {
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_frame_allocate_from_info()\n");
-	return sh_css_frame_allocate(frame,
+	enum sh_css_err err = sh_css_success;
+assert(frame != NULL);
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_frame_allocate_from_info() enter:\n");
+	err = sh_css_frame_allocate(frame,
 				     info->width,
 				     info->height,
 				     info->format,
 				     info->padded_width,
 				     info->raw_bit_depth);
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_frame_allocate_from_info() leave:\n");
+return err;
 }
 
-enum sh_css_err
-sh_css_frame_allocate_contiguous(struct sh_css_frame **frame,
-				 unsigned int width,
-				 unsigned int height,
-				 enum sh_css_frame_format format,
-				 unsigned int padded_width,
-				 unsigned int raw_bit_depth)
+enum sh_css_err sh_css_frame_allocate_contiguous(
+	struct sh_css_frame **frame,
+	unsigned int width,
+	unsigned int height,
+	enum sh_css_frame_format format,
+	unsigned int padded_width,
+	unsigned int raw_bit_depth)
 {
 	enum sh_css_err err = sh_css_success;
 
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_frame_allocate_contiguous() "
-		"in: width=%d, height=%d, format=%d\n",
+		"enter: width=%d, height=%d, format=%d\n",
 		width, height, format);
 
 	err = allocate_frame_and_data(frame, width, height, format,
 					padded_width, raw_bit_depth, true);
 
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_frame_allocate_contiguous() out: frame=%p\n",
+		"sh_css_frame_allocate_contiguous() leave: frame=%p\n",
 		frame ? *frame : (void *)-1);
 
 	return err;
 }
 
-enum sh_css_err
-sh_css_frame_allocate_contiguous_from_info(struct sh_css_frame **frame,
-					   const struct sh_css_frame_info
-						*info)
+enum sh_css_err sh_css_frame_allocate_contiguous_from_info(
+	struct sh_css_frame **frame,
+	const struct sh_css_frame_info *info)
 {
+	enum sh_css_err err = sh_css_success;
+assert(frame != NULL);
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_frame_allocate_contiguous_from_info()\n");
-	return sh_css_frame_allocate_contiguous(frame,
+		"sh_css_frame_allocate_contiguous_from_info() enter:\n");
+	err = sh_css_frame_allocate_contiguous(frame,
 						info->width,
 						info->height,
 						info->format,
 						info->padded_width,
 						info->raw_bit_depth);
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_frame_allocate_contiguous_from_info() leave:\n");
+return err;
 }
 
 void
 sh_css_frame_free(struct sh_css_frame *frame)
 {
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_frame_free() in: frame=%p\n", frame);
+		"sh_css_frame_free() enter: frame=%p\n", frame);
 
-	if (frame) {
+	if (frame != NULL) {
 		mmgr_free(frame->data);
 		sh_css_free(frame);
 	}
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_frame_free() leave: return_void\n");
 }
 
-bool
-sh_css_frame_info_equal_resolution(const struct sh_css_frame_info *info_a,
-				   const struct sh_css_frame_info *info_b)
+bool sh_css_frame_info_equal_resolution(
+	const struct sh_css_frame_info *info_a,
+	const struct sh_css_frame_info *info_b)
 {
 	if (!info_a || !info_b)
 		return false;
@@ -5985,57 +6538,71 @@ sh_css_frame_info_equal_resolution(const struct sh_css_frame_info *info_a,
 	    (info_a->height == info_b->height);
 }
 
-bool
-sh_css_frame_equal_types(const struct sh_css_frame *frame_a,
-			 const struct sh_css_frame *frame_b)
+bool sh_css_frame_equal_types(
+	const struct sh_css_frame *frame_a,
+	const struct sh_css_frame *frame_b)
 {
+	bool is_equal = false;
 	const struct sh_css_frame_info *info_a = &frame_a->info,
 	    *info_b = &frame_b->info;
+
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_frame_equal_types() enter:\n");
+
 	if (!info_a || !info_b)
 		return false;
 	if (info_a->format != info_b->format)
 		return false;
 	if (info_a->padded_width != info_b->padded_width)
 		return false;
-	return sh_css_frame_info_equal_resolution(info_a, info_b);
+	is_equal = sh_css_frame_info_equal_resolution(info_a, info_b);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_frame_equal_types() leave:\n");
+return is_equal;
 }
 
 static void
 append_firmware(struct sh_css_fw_info **l, struct sh_css_fw_info *firmware)
 {
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "append_firmware() enter:\n");
 	while (*l)
 		l = &(*l)->next;
 	*l = firmware;
 	firmware->next = NULL;
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "append_firmware() leave:\n");
 }
 
 static void
 remove_firmware(struct sh_css_fw_info **l, struct sh_css_fw_info *firmware)
 {
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "remove_firmware() enter:\n");
 	while (*l && *l != firmware)
 		l = &(*l)->next;
 	if (!*l)
 		return;
 	*l = firmware->next;
 	firmware->next = NULL;
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "remove_firmware() leave:\n");
 }
 
 /* Load firmware for acceleration */
 enum sh_css_err
 sh_css_load_acceleration(struct sh_css_acc_fw *firmware)
 {
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_load_acceleration()\n");
+	enum sh_css_err err = sh_css_success;
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_load_acceleration() enter:\n");
 	my_css.invalidate = true;
-	return sh_css_acc_load(firmware);
+	err = sh_css_acc_load(firmware);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_load_acceleration() leave:\n");
+return err;
 }
 
 /* Unload firmware for acceleration */
 void
 sh_css_unload_acceleration(struct sh_css_acc_fw *firmware)
 {
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_unload_acceleration()\n");
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_unload_acceleration() enter:\n");
 	my_css.invalidate = true;
 	sh_css_acc_unload(firmware);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_unload_acceleration() leave:\n");
 }
 
 /* Load firmware for extension */
@@ -6043,12 +6610,16 @@ enum sh_css_err
 sh_css_pipe_load_extension(struct sh_css_pipe *pipe,
 			   struct sh_css_fw_info *firmware)
 {
+	enum sh_css_err err = sh_css_success;
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_pipe_load_extension() enter:\n");
 	my_css.invalidate = true;
 	if (firmware->info.isp.type == SH_CSS_ACC_OUTPUT)
 		append_firmware(&pipe->output_stage, firmware);
 	else if (firmware->info.isp.type == SH_CSS_ACC_VIEWFINDER)
 		append_firmware(&pipe->vf_stage, firmware);
-	return sh_css_acc_load_extension(firmware);
+	err = sh_css_acc_load_extension(firmware);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_pipe_load_extension() leave:\n");
+return err;
 }
 
 /* Unload firmware for extension */
@@ -6056,12 +6627,14 @@ void
 sh_css_pipe_unload_extension(struct sh_css_pipe *pipe,
 			     struct sh_css_fw_info *firmware)
 {
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_pipe_unload_extension() enter:\n");
 	my_css.invalidate = true;
 	if (firmware->info.isp.type == SH_CSS_ACC_OUTPUT)
 		remove_firmware(&pipe->output_stage, firmware);
 	else if (firmware->info.isp.type == SH_CSS_ACC_VIEWFINDER)
 		remove_firmware(&pipe->vf_stage, firmware);
 	sh_css_acc_unload_extension(firmware);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_pipe_unload_extension() leave:\n");
 }
 
 /* Set acceleration parameter to value <val> */
@@ -6069,9 +6642,12 @@ enum sh_css_err
 sh_css_set_acceleration_parameter(struct sh_css_acc_fw *firmware,
 				  hrt_vaddress val, size_t size)
 {
+	enum sh_css_err err = sh_css_success;
 	struct sh_css_hmm_section par = { val, size };
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_acceleration_parameter()\n");
-	return sh_css_acc_set_parameter(firmware, par);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_set_acceleration_parameter() enter:\n");
+	err = sh_css_acc_set_parameter(firmware, par);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_set_acceleration_parameter() leave:\n");
+return err;
 }
 
 /* Set acceleration parameters to value <val> */
@@ -6080,18 +6656,24 @@ sh_css_set_firmware_dmem_parameters(struct sh_css_fw_info *firmware,
 				    enum sh_css_isp_memories mem,
 				  hrt_vaddress val, size_t size)
 {
+	enum sh_css_err err = sh_css_success;
 	struct sh_css_hmm_section par = { val, size };
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_firmware_dmem_parameters()\n");
-	return sh_css_acc_set_firmware_parameters(firmware, mem, par);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_set_firmware_dmem_parameters() enter:\n");
+	err = sh_css_acc_set_firmware_parameters(firmware, mem, par);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_set_firmware_dmem_parameters() leave:\n");
+return err;
 }
 
 /* Start acceleration of firmware with sp-args as SP arguments. */
 enum sh_css_err
 sh_css_start_acceleration(struct sh_css_acc_fw *firmware)
 {
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_start_acceleration()\n");
+	enum sh_css_err err = sh_css_success;
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_start_acceleration() enter:\n");
 	my_css.curr_pipe = NULL;
-	return sh_css_acc_start(firmware);
+	err = sh_css_acc_start(firmware);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_start_acceleration() leave:\n");
+return err;
 }
 
 /* To be called when acceleration has terminated.
@@ -6099,9 +6681,12 @@ sh_css_start_acceleration(struct sh_css_acc_fw *firmware)
 void
 sh_css_acceleration_done(struct sh_css_acc_fw *firmware)
 {
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_acceleration_done()\n");
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"sh_css_acceleration_done() enter: firmware=%p\n", firmware);
 	sh_css_acc_wait();
 	sh_css_acc_done(firmware);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"sh_css_acceleration_done() leave: return_void\n");
 }
 
 /* Abort acceleration within <deadline> microseconds
@@ -6109,10 +6694,11 @@ sh_css_acceleration_done(struct sh_css_acc_fw *firmware)
 void
 sh_css_abort_acceleration(struct sh_css_acc_fw *firmware, unsigned deadline)
 {
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_abort_acceleration()\n");
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_abort_acceleration() enter:\n");
 	/* TODO: implement time-out */
 	(void)deadline;
 	sh_css_acc_abort(firmware);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_abort_acceleration() leave:\n");
 }
 
 bool
@@ -6120,21 +6706,32 @@ sh_css_pipe_uses_params(struct sh_css_pipeline *me)
 {
 	struct sh_css_pipeline_stage *stage;
 
+assert(me != NULL);
+
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"sh_css_pipe_uses_params() enter: me=%p\n", me);
+
 	for (stage = me->stages; stage; stage = stage->next)
-		if (stage->binary_info->enable.params)
+		if (stage->binary_info->enable.params) {
+			sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+				"sh_css_pipe_uses_params() leave: "
+				"return_bool=true\n");
 			return true;
+		}
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"sh_css_pipe_uses_params() leave: return_bool=false\n");
 	return false;
 }
 
 /* Create a pipeline stage for firmware <isp_fw>
  * with input and output arguments.
 */
-static enum sh_css_err
-sh_css_create_stage(struct sh_css_pipeline_stage **stage,
-			const char *isp_fw,
-			struct sh_css_frame *in,
-			struct sh_css_frame *out,
-			struct sh_css_frame *vf)
+static enum sh_css_err sh_css_create_stage(
+	struct sh_css_pipeline_stage **stage,
+	const char *isp_fw,
+	struct sh_css_frame *in,
+	struct sh_css_frame *out,
+	struct sh_css_frame *vf)
 {
 	struct sh_css_binary *binary;
 	struct sh_css_blob_descr *blob;
@@ -6142,17 +6739,33 @@ sh_css_create_stage(struct sh_css_pipeline_stage **stage,
 	unsigned size;
 	enum sh_css_err err = sh_css_success;
 
+assert(stage != NULL);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"sh_css_create_stage() enter:\n");
+
 	*stage = sh_css_malloc(sizeof(**stage));
-	if (!*stage)
+	if (*stage == NULL) {
+		sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+			"sh_css_create_stage() leave: return_err=%d\n",
+			sh_css_err_cannot_allocate_memory);
 		return sh_css_err_cannot_allocate_memory;
+	}
 
 	binary = sh_css_malloc(sizeof(*binary));
-	if (!binary)
+	if (binary == NULL) {
+		sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+			"sh_css_create_stage() leave: return_err=%d\n",
+			sh_css_err_cannot_allocate_memory);
 		return sh_css_err_cannot_allocate_memory;
+	}
 
 	blob = sh_css_malloc(sizeof(*blob));
-	if (!blob)
+	if (blob == NULL) {
+		sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+			"sh_css_create_stage() leave: return_err=%d\n",
+			sh_css_err_cannot_allocate_memory);
 		return sh_css_err_cannot_allocate_memory;
+	}
 
 	memset(&(*stage)->args, 0, sizeof((*stage)->args));
 	(*stage)->args.in_frame = in;
@@ -6160,23 +6773,35 @@ sh_css_create_stage(struct sh_css_pipeline_stage **stage,
 	(*stage)->args.out_vf_frame = vf;
 
 	err = sh_css_load_blob_info(isp_fw, blob);
-	if (err != sh_css_success)
+	if (err != sh_css_success) {
+		sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+			"sh_css_create_stage() leave: return_err=%d\n",
+			err);
 		return err;
+	}
 	err = sh_css_fill_binary_info(&blob->header.info.isp, false, false,
 			    SH_CSS_INPUT_FORMAT_RAW_10,
 			    in  ? &in->info  : NULL,
 			    out ? &out->info : NULL,
 			    vf  ? &vf->info  : NULL,
 			    binary, false);
-	if (err != sh_css_success)
+	if (err != sh_css_success) {
+		sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+			"sh_css_create_stage() leave: return_err=%d\n",
+			err);
 		return err;
+	}
 	blob->header.info.isp.xmem_addr = 0;
 	size = blob->header.blob.size;
 	if (size) {
 		blob->header.info.isp.xmem_addr =
 			sh_css_load_blob(blob->blob, size);
-		if (!blob->header.info.isp.xmem_addr)
+		if (!blob->header.info.isp.xmem_addr) {
+			sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+				"sh_css_create_stage() leave: return_err=%d\n",
+				sh_css_err_cannot_allocate_memory);
 			return sh_css_err_cannot_allocate_memory;
+		}
 	}
 
 	info = (struct sh_css_binary_info *)binary->info;
@@ -6189,32 +6814,48 @@ sh_css_create_stage(struct sh_css_pipeline_stage **stage,
 	(*stage)->vf_frame_allocated = false;
 	(*stage)->next = NULL;
 
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"sh_css_create_stage() leave: return_err=%d\n", err);
+
 	return err;
 }
 
 /* Append a new stage to *pipeline. When *pipeline is NULL, it will be created.
  * The stage consists of an ISP binary <isp_fw> and input and output arguments.
 */
-enum sh_css_err
-sh_css_append_stage(void **me,
-			const char *isp_fw,
-			struct sh_css_frame *in,
-			struct sh_css_frame *out,
-			struct sh_css_frame *vf)
+enum sh_css_err sh_css_append_stage(
+	void **me,
+	const char *isp_fw,
+	struct sh_css_frame *in,
+	struct sh_css_frame *out,
+	struct sh_css_frame *vf)
 {
 	struct sh_css_pipeline **pipeline = (struct sh_css_pipeline **)me;
 	struct sh_css_pipeline_stage *stage;
 	enum sh_css_err err = sh_css_success;
 
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_append_stage() enter: "
+		"me=%p, isp_f%s, in=%p, out=%p, vf=%p\n",
+		me, isp_fw, in, out, vf);
+
 	if (!*pipeline) {
 		*pipeline = (struct sh_css_pipeline *)sh_css_create_pipeline();
-		if (*pipeline == NULL)
+		if (*pipeline == NULL) {
+
+			sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+				"sh_css_append_stage() leave: return_err=%d\n",
+				sh_css_err_cannot_allocate_memory);
 			return sh_css_err_cannot_allocate_memory;
+		}
 	}
 
 	err = sh_css_create_stage(&stage, isp_fw, in, out, vf);
-	if (err != sh_css_success)
+	if (err != sh_css_success) {
+		sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+			"sh_css_append_stage() leave: return_err=%d\n", err);
+
 		return err;
+	}
 
 	stage->stage_num = (*pipeline)->num_stages++;
 	if ((*pipeline)->current_stage)
@@ -6223,17 +6864,29 @@ sh_css_append_stage(void **me,
 		(*pipeline)->stages = stage;
 
 	(*pipeline)->current_stage = stage;
+
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"sh_css_append_stage() leave: return_err=%d\n", err);
+
 	return err;
 }
 
+/* #error return of function is not consistent with implementation */
 void *sh_css_create_pipeline(void)
 {
 	struct sh_css_pipeline *pipeline = sh_css_malloc(sizeof(struct sh_css_pipeline));
+
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"sh_css_create_pipeline() enter:\n");
+
 	if (pipeline != NULL) {
 		pipeline->num_stages = 0;
 		pipeline->stages = NULL;
 		pipeline->current_stage = NULL;
 	}
+
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"sh_css_create_pipeline() leave: pipeline=%p\n", pipeline);
 return (void *)pipeline;
 }
 
@@ -6244,6 +6897,10 @@ enum sh_css_err sh_css_pipeline_add_acc_stage(
 	struct sh_css_fw_info *fw = (struct sh_css_fw_info *)acc_fw;
 	enum sh_css_err	err = sh_css_acc_load_extension(fw);
 
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_pipeline_add_acc_stage() enter: pipeline=%p,"
+		" acc_fw=%p\n", pipeline, acc_fw);
+
 	if (err == sh_css_success) {
 		err = sh_css_pipeline_add_stage(
 			pipeline, NULL, fw,
@@ -6251,6 +6908,9 @@ enum sh_css_err sh_css_pipeline_add_acc_stage(
 			NULL, NULL,
 			NULL,NULL);
 	}
+
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_pipeline_add_acc_stage() leave: return_err=%d\n",err);
 return err;
 }
 
@@ -6259,6 +6919,10 @@ void sh_css_destroy_pipeline(
 {
 	struct sh_css_pipeline *pipeline_loc = pipeline;
 	struct sh_css_pipeline_stage *stage, *next = NULL;
+
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"sh_css_destroy_pipeline() enter: pipeline=%p\n", pipeline);
+
 	for (stage = pipeline_loc->stages; (stage != NULL); stage = next) {
 		struct sh_css_fw_info *fw = (struct sh_css_fw_info *)stage->firmware;
 
@@ -6268,6 +6932,9 @@ void sh_css_destroy_pipeline(
 		sh_css_pipeline_stage_destroy(stage);
 	}
 	sh_css_free(pipeline_loc);
+
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"sh_css_destroy_pipeline() leave: return_void\n");
 return;
 }
 
@@ -6276,6 +6943,9 @@ void
 sh_css_start_pipeline(enum sh_css_pipe_id pipe_id, void *me)
 {
 	struct sh_css_pipeline *pipeline = me;
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"sh_css_start_pipeline() enter: pipe_id=%d, me=%p\n",
+		pipe_id, me);
 	pipeline->pipe_id = pipe_id;
 	sh_css_sp_init_pipeline(pipeline, pipe_id,
 				false, true, false, false, false, true, false,
@@ -6285,6 +6955,8 @@ sh_css_start_pipeline(enum sh_css_pipe_id pipe_id, void *me)
 		sh_css_pipeline_stream_add_pipeline(pipeline);
 	}
 	sh_css_sp_start_isp();
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"sh_css_start_pipeline() leave: return_void\n");
 }
 
 /* Run a pipeline and free all memory allocated to it. */
@@ -6294,6 +6966,7 @@ sh_css_close_pipeline(void *me)
 	struct sh_css_pipeline *pipeline = me;
 	struct sh_css_pipeline_stage *stage;
 	struct sh_css_pipeline_stage *next;
+
 	for (stage = pipeline->stages; stage; stage = next) {
 		struct sh_css_blob_descr *blob;
 		next = stage->next;
@@ -6305,28 +6978,43 @@ sh_css_close_pipeline(void *me)
 		sh_css_pipeline_stage_destroy(stage);
 	}
 	sh_css_free(pipeline);
+
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"sh_css_close_pipeline() leave: return_void\n");
 }
 
 /* Run an isp binary <isp_fw> with input, output and vf frames
 */
-enum sh_css_err
-sh_css_run_isp_firmware(const char *isp_fw,
-			struct sh_css_frame *in,
-			struct sh_css_frame *out,
-			struct sh_css_frame *vf)
+enum sh_css_err sh_css_run_isp_firmware(
+	const char *isp_fw,
+	struct sh_css_frame *in,
+	struct sh_css_frame *out,
+	struct sh_css_frame *vf)
 {
 	void *pipeline = NULL;
 	enum sh_css_err err;
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_run_isp_firmware() enter: isp_fw=%p,"
+		" in=%p, out=%p, vf=%p\n", isp_fw,in, out, vf);
+
 	err = sh_css_append_stage(&pipeline, isp_fw, in, out, vf);
-	if (err != sh_css_success)
+	if (err != sh_css_success) {
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_run_isp_firmware() leave: return_err=%d\n",err);
 		return err;
+	}
 	sh_css_start_pipeline(SH_CSS_ACC_PIPELINE, pipeline);
 	/* TODO: the following line must be changed if
 		someone want to use this function */
 	err = sh_css_wait_for_completion(SH_CSS_ACC_PIPELINE);
-	if (err != sh_css_success)
+	if (err != sh_css_success) {
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_run_isp_firmware() leave: return_err=%d\n",err);
 		return err;
+	}
 	sh_css_close_pipeline(pipeline);
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_run_isp_firmware() leave: return_err=%d\n",err);
 	return err;
 }
 
@@ -6339,8 +7027,13 @@ sh_css_query_sp_thread_id(enum sh_css_pipe_id key,
 		unsigned int *val)
 {
 assert(key < SH_CSS_NR_OF_PIPELINES);
+assert(val != NULL);
 
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"sh_css_query_sp_thread_id() enter: key=%d\n", key);
 	*val = sh_css_pipe_id_2_internal_thread_id[key];
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"sh_css_query_sp_thread_id() leave: return_val=%d\n", *val);
 	return true;
 }
 
@@ -6348,13 +7041,19 @@ assert(key < SH_CSS_NR_OF_PIPELINES);
  * @brief Query the internal frame ID.
  * Refer to "sh_css_internal.h" for details.
  */
-bool
-sh_css_query_internal_queue_id(enum sh_css_buffer_type key,
-		enum sh_css_buffer_queue_id *val)
+bool sh_css_query_internal_queue_id(
+	enum sh_css_buffer_type key,
+	enum sh_css_buffer_queue_id *val)
 {
 assert(key < SH_CSS_BUFFER_TYPE_NR_OF_TYPES);
+assert(val != NULL);
 
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"sh_css_query_internal_queue_id() enter: key=%d\n", key);
 	*val = sh_css_buf_type_2_internal_queue_id[key];
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"sh_css_query_internal_queue_id() leave: return_val=%d\n",
+		*val);
 	return true;
 }
 
@@ -6362,8 +7061,8 @@ assert(key < SH_CSS_BUFFER_TYPE_NR_OF_TYPES);
  * @brief Tag a specific frame in continuous capture.
  * Refer to "sh_css_internal.h" for details.
  */
-enum sh_css_err
-sh_css_offline_capture_tag_frame(unsigned int exp_id)
+enum sh_css_err sh_css_offline_capture_tag_frame(
+	unsigned int exp_id)
 {
 	struct sh_css_tag_descr tag_descr;
 	unsigned int encoded_tag_descr;
@@ -6371,11 +7070,16 @@ sh_css_offline_capture_tag_frame(unsigned int exp_id)
 	bool enqueue_successful = false;
 
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_offline_capture_tag_frame() in: exp_id=%d\n",
+		"sh_css_offline_capture_tag_frame() enter: exp_id=%d\n",
 		exp_id);
 
-	if (exp_id == 0)
+	if (exp_id == 0) {
+		sh_css_dtrace(SH_DBG_TRACE,
+			"sh_css_offline_capture_tag_frame() "
+			"leave: return_err=%d\n",
+			sh_css_err_invalid_tag_description);
 		return sh_css_err_invalid_tag_description;
+	}
 
 	/* Create the tag descriptor from the parameters */
 	sh_css_create_tag_descr(0, 0, 0, exp_id, &tag_descr);
@@ -6396,10 +7100,16 @@ sh_css_offline_capture_tag_frame(unsigned int exp_id)
 
 	/* Give an error if the tag command cannot be issued
 	 * (because the cmd queue is full) */
-	if (!enqueue_successful)
+	if (!enqueue_successful) {
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_offline_capture_tag_frame() leave: return_err=%d\n",
+		sh_css_err_tag_queue_is_full);
 		return sh_css_err_tag_queue_is_full;
+	}
 
-
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_offline_capture_tag_frame() leave: return_err=%d\n",
+		sh_css_success);
 	return sh_css_success;
 }
 
@@ -6407,10 +7117,10 @@ sh_css_offline_capture_tag_frame(unsigned int exp_id)
  * @brief Configure the continuous capture.
  * Refer to "sh_css_internal.h" for details.
  */
-enum sh_css_err
-sh_css_offline_capture_configure(int num_captures,
-				 unsigned int skip,
-				 int offset)
+enum sh_css_err sh_css_offline_capture_configure(
+	int num_captures,
+	unsigned int skip,
+	int offset)
 {
 	struct sh_css_tag_descr tag_descr;
 	unsigned int encoded_tag_descr;
@@ -6418,13 +7128,16 @@ sh_css_offline_capture_configure(int num_captures,
 	bool enqueue_successful = false;
 
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_offline_capture_configure() in: num_captures=%d,"
+		"sh_css_offline_capture_configure() enter: num_captures=%d,"
 		" skip=%d, offset=%d\n", num_captures, skip,offset);
 
 	/* Check if the tag descriptor is valid */
-	if (num_captures < SH_CSS_MINIMUM_TAG_ID)
+	if (num_captures < SH_CSS_MINIMUM_TAG_ID) {
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_offline_capture_configure() leave: return_err=%d\n",
+		sh_css_err_invalid_tag_description);
 		return sh_css_err_invalid_tag_description;
-
+	}
 
 	/* Create the tag descriptor from the parameters */
 	sh_css_create_tag_descr(num_captures, skip, offset, 0, &tag_descr);
@@ -6445,19 +7158,27 @@ sh_css_offline_capture_configure(int num_captures,
 
 	/* Give an error if the tag command cannot be issued
 	 * (because the cmd queue is full) */
-	if (!enqueue_successful)
+	if (!enqueue_successful) {
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_offline_capture_configure() leave: return_err=%d\n",
+		sh_css_err_tag_queue_is_full);
 		return sh_css_err_tag_queue_is_full;
+	}
 
-
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_offline_capture_configure() leave: return_err=%d\n",
+		sh_css_success);
 	return sh_css_success;
 }
 
+/* MW: This function does not invalidate the TLB, it sends an indicate to do so, better change the name */
 void sh_css_enable_sp_invalidate_tlb(void)
 {
-	const struct sh_css_fw_info *fw;
+	const struct sh_css_fw_info *fw = &sh_css_sp_fw;
 	unsigned int HIVE_ADDR_sp_invalidate_tlb;
 
-	fw = &sh_css_sp_fw;
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_enable_sp_invalidate_tlb() enter: void\n");
 	HIVE_ADDR_sp_invalidate_tlb = fw->info.sp.invalidate_tlb;
 
 	(void)HIVE_ADDR_sp_invalidate_tlb; /* Suppres warnings in CRUN */
@@ -6465,14 +7186,16 @@ void sh_css_enable_sp_invalidate_tlb(void)
 	sp_dmem_store_uint32(SP0_ID,
 		(unsigned int)sp_address_of(sp_invalidate_tlb),
 		1);
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_enable_sp_invalidate_tlb() leave: return_void\n");
 }
 
 void sh_css_request_flash(void)
 {
-	const struct sh_css_fw_info *fw;
+	const struct sh_css_fw_info *fw= &sh_css_sp_fw;
 	unsigned int HIVE_ADDR_sp_request_flash;
 
-	fw = &sh_css_sp_fw;
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_request_flash() enter: void\n");
 	HIVE_ADDR_sp_request_flash = fw->info.sp.request_flash;
 
 	(void)HIVE_ADDR_sp_request_flash;
@@ -6481,43 +7204,63 @@ void sh_css_request_flash(void)
 		(unsigned int)sp_address_of(sp_request_flash),
 		1);
 
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_request_flash() leave: return_void\n");
 }
 
 /* CSS 1.5 wrapper */
 enum sh_css_err
 sh_css_preview_stop(void)
 {
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_preview_stop()\n");
-	return sh_css_pipe_stop(&my_css.preview_pipe);
+	enum sh_css_err err = sh_css_success;
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_preview_stop() enter: void\n");
+	err = sh_css_pipe_stop(&my_css.preview_pipe);
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_preview_stop() leave: return_err=%d\n",err);
+return err;
 }
 
 enum sh_css_err
 sh_css_video_stop(void)
 {
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_video_stop()\n");
-	return sh_css_pipe_stop(&my_css.video_pipe);
+	enum sh_css_err err = sh_css_success;
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_video_stop() enter: void\n");
+	err = sh_css_pipe_stop(&my_css.video_pipe);
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_video_stop() leave: return_err=%d\n",err);
+return err;
 }
 
 enum sh_css_err
 sh_css_capture_stop(void)
 {
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_capture_stop()\n");
-	return sh_css_pipe_stop(&my_css.capture_pipe);
+	enum sh_css_err err = sh_css_success;
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_capture_stop() enter: void\n");
+	err = sh_css_pipe_stop(&my_css.capture_pipe);
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_capture_stop() leave: return_err=%d\n",err);
+return err;
 }
 
 enum sh_css_err
 sh_css_acceleration_stop(void)
 {
-       sh_css_dtrace(SH_DBG_TRACE, "sh_css_acceleration_stop()\n");
-       return sh_css_pipeline_stop(SH_CSS_ACC_PIPELINE);
+	enum sh_css_err err = sh_css_success;
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_acceleration_stop() enter: void\n");
+	err = sh_css_pipeline_stop(SH_CSS_ACC_PIPELINE);
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_acceleration_stop() leave: return_err=%d\n",err);
+return err;
 }
 
 void
 sh_css_capture_enable_online(bool enable)
 {
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_capture_enable_online() in: enable=%d\n", enable);
+		"sh_css_capture_enable_online() enter: enable=%d\n", enable);
 	sh_css_pipe_enable_online(&my_css.capture_pipe, enable);
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_capture_enable_online() leave: return_void\n");
 }
 
 void
@@ -6525,8 +7268,11 @@ sh_css_video_set_enable_dz(bool enable_dz)
 {
 	struct sh_css_pipe *pipe = &my_css.video_pipe;
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_video_set_enable_dz()\n");
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_video_set_enable_dz() enter: enable_dz=%d\n",enable_dz);
 	pipe->enable_dz = enable_dz;
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_video_set_enable_dz() leave: return_void\n");
 }
 
 void
@@ -6534,187 +7280,384 @@ sh_css_video_get_enable_dz(bool *enable_dz)
 {
 	struct sh_css_pipe *pipe = &my_css.video_pipe;
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_video_get_enable_dz()\n");
-	if (enable_dz != NULL)
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_video_get_enable_dz() enter: void\n");
+
+	if (enable_dz != NULL) {
 		*enable_dz = pipe->enable_dz;
+		sh_css_dtrace(SH_DBG_TRACE,
+			"sh_css_video_get_enable_dz() leave: enable_dz=%d\n",
+			*enable_dz);
+	} else {
+		sh_css_dtrace(SH_DBG_TRACE,
+			"sh_css_video_get_enable_dz() leave: "
+			"enable_dz=UNDEFINED (pipe has no DZ)\n");
+	}
 }
 
-enum sh_css_err
-sh_css_preview_configure_output(unsigned int width,
-				unsigned int height,
-				enum sh_css_frame_format format)
+enum sh_css_err sh_css_preview_configure_output(
+	unsigned int width,
+	unsigned int height,
+	enum sh_css_frame_format format)
 {
-	return sh_css_pipe_configure_output(&my_css.preview_pipe, width,
+	enum sh_css_err err = sh_css_success;
+
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_preview_configure_output() enter: "
+		"width=%d, height=%d format=%d\n",
+		width, height, format);
+
+	err = sh_css_pipe_configure_output(&my_css.preview_pipe, width,
 					    height, format);
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_preview_configure_output() leave: return_err=%d\n",err);
+return err;
 }
 
-enum sh_css_err
-sh_css_capture_configure_output(unsigned int width,
-				unsigned int height,
-				enum sh_css_frame_format format)
+enum sh_css_err sh_css_capture_configure_output(
+	unsigned int width,
+	unsigned int height,
+	enum sh_css_frame_format format)
 {
-	return sh_css_pipe_configure_output(&my_css.capture_pipe, width,
+	enum sh_css_err err = sh_css_success;
+
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_capture_configure_output() enter: "
+		"width=%d, height=%d format=%d\n",
+		width, height, format);
+
+	err = sh_css_pipe_configure_output(&my_css.capture_pipe, width,
 					    height, format);
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_capture_configure_output() leave: return_err=%d\n",err);
+return err;
 }
 
-enum sh_css_err
-sh_css_video_configure_output(unsigned int width,
-			      unsigned int height,
-			      enum sh_css_frame_format format)
+enum sh_css_err sh_css_video_configure_output(
+	unsigned int width,
+	unsigned int height,
+	enum sh_css_frame_format format)
 {
-	return sh_css_pipe_configure_output(&my_css.video_pipe, width,
+	enum sh_css_err err = sh_css_success;
+
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_video_configure_output() enter: "
+		"width=%d, height=%d format=%d\n",
+		width, height, format);
+
+	err = sh_css_pipe_configure_output(&my_css.video_pipe, width,
 					    height, format);
+
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_video_configure_output() leave: return_err=%d\n", err);
+return err;
 }
 
-enum sh_css_err
-sh_css_capture_get_output_frame_info(struct sh_css_frame_info *info)
+enum sh_css_err sh_css_capture_get_output_frame_info(
+	struct sh_css_frame_info *info)
 {
-	sh_css_dtrace(SH_DBG_TRACE, "%s()\n", __FUNCTION__);
-	return sh_css_pipe_get_output_frame_info(&my_css.capture_pipe,
+	enum sh_css_err err = sh_css_success;
+
+assert(info != NULL);
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_capture_get_output_frame_info() enter: void\n");
+
+	err = sh_css_pipe_get_output_frame_info(&my_css.capture_pipe,
 						 NULL, info);
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_capture_get_output_frame_info() leave: "
+		"return_err=%d, "
+		"info.width=%d, info.height=%d, "
+		"info.padded_width=%d, info.format=%d, "
+		"info.raw_bit_depth=%d, info.raw_bayer_order=%d\n",
+		err,
+		info->width,info->height,
+		info->padded_width,info->format,
+		info->raw_bit_depth,info->raw_bayer_order);
+
+return err;
 }
 
-enum sh_css_err
-sh_css_preview_get_output_frame_info(struct sh_css_frame_info *info)
+enum sh_css_err sh_css_preview_get_output_frame_info(
+	struct sh_css_frame_info *info)
 {
-	sh_css_dtrace(SH_DBG_TRACE, "%s()\n", __FUNCTION__);
-	return sh_css_pipe_get_output_frame_info(&my_css.preview_pipe,
+	enum sh_css_err err = sh_css_success;
+
+assert(info != NULL);
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_preview_get_output_frame_info() enter: void\n");
+
+	err = sh_css_pipe_get_output_frame_info(&my_css.preview_pipe,
 						 &my_css.capture_pipe,
 						 info);
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_preview_get_output_frame_info() leave: "
+		"return_err=%d, "
+		"info.width=%d, info.height=%d, "
+		"info.padded_width=%d, info.format=%d, "
+		"info.raw_bit_depth=%d, info.raw_bayer_order=%d\n",
+		err,
+		info->width,info->height,
+		info->padded_width,info->format,
+		info->raw_bit_depth,info->raw_bayer_order);
+
+return err;
 }
 
-enum sh_css_err
-sh_css_video_get_output_frame_info(struct sh_css_frame_info *info)
+enum sh_css_err sh_css_video_get_output_frame_info(
+	struct sh_css_frame_info *info)
 {
-	sh_css_dtrace(SH_DBG_TRACE, "%s()\n", __FUNCTION__);
-	return sh_css_pipe_get_output_frame_info(&my_css.video_pipe,
+	enum sh_css_err err = sh_css_success;
+
+assert(info != NULL);
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_video_get_output_frame_info() enter: void\n");
+
+	err = sh_css_pipe_get_output_frame_info(&my_css.video_pipe,
 						 NULL, info);
+
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_video_get_output_frame_info() leave: "
+		"return_err=%d, "
+		"info.width=%d, info.height=%d, "
+		"info.padded_width=%d, info.format=%d, "
+		"info.raw_bit_depth=%d, info.raw_bayer_order=%d\n",
+		err,
+		info->width,info->height,
+		info->padded_width,info->format,
+		info->raw_bit_depth,info->raw_bayer_order);
+
+return err;
 }
 
-enum sh_css_err
-sh_css_preview_get_grid_info(struct sh_css_grid_info *info)
+enum sh_css_err sh_css_preview_get_grid_info(
+	struct sh_css_grid_info *info)
 {
-	sh_css_dtrace(SH_DBG_TRACE, "%s()\n", __FUNCTION__);
-	return sh_css_pipe_get_grid_info(&my_css.preview_pipe,
+	enum sh_css_err err = sh_css_success;
+
+assert(info != NULL);
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_preview_get_grid_info() enter: void\n");
+
+	err = sh_css_pipe_get_grid_info(&my_css.preview_pipe,
 					 &my_css.capture_pipe,
 					 info);
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_preview_get_grid_info() leave: &info=%p\n", info);
+
+return err;
 }
 
-enum sh_css_err
-sh_css_video_get_grid_info(struct sh_css_grid_info *info)
+enum sh_css_err sh_css_video_get_grid_info(
+	struct sh_css_grid_info *info)
 {
-	sh_css_dtrace(SH_DBG_TRACE, "%s()\n", __FUNCTION__);
-	return sh_css_pipe_get_grid_info(&my_css.video_pipe,
+	enum sh_css_err err = sh_css_success;
+
+assert(info != NULL);
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_video_get_grid_info() enter: void\n");
+
+	err = sh_css_pipe_get_grid_info(&my_css.video_pipe,
 					 NULL, info);
+
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_video_get_grid_info() leave: &info=%p\n", info);
+
+return err;
 }
 
-enum sh_css_err
-sh_css_capture_get_grid_info(struct sh_css_grid_info *info)
+enum sh_css_err sh_css_capture_get_grid_info(
+	struct sh_css_grid_info *info)
 {
-	sh_css_dtrace(SH_DBG_TRACE, "%s()\n", __FUNCTION__);
-	return sh_css_pipe_get_grid_info(&my_css.capture_pipe,
+	enum sh_css_err err = sh_css_success;
+
+assert(info != NULL);
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_capture_get_grid_info() enter: void\n");
+
+	err = sh_css_pipe_get_grid_info(&my_css.capture_pipe,
 					 NULL, info);
+
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_capture_get_grid_info() leave: &info=%p\n", info);
+
+
+return err;
 }
 
 void
 sh_css_preview_enable_online(bool enable)
 {
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_preview_enable_online() in: enable=%d\n", enable);
+		"sh_css_preview_enable_online() enter: enable=%d\n", enable);
+
 	sh_css_pipe_enable_online(&my_css.preview_pipe, enable);
+
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_preview_enable_online() leave: return_void\n");
+
 }
 
 void
 sh_css_video_enable_online(bool enable)
 {
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_video_enable_online() in: enable=%d\n", enable);
+		"sh_css_video_enable_online() enter: enable=%d\n", enable);
+
 	sh_css_pipe_enable_online(&my_css.video_pipe, enable);
+
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_video_enable_online() leave: return_void\n");
 }
 
 void
 sh_css_input_set_channel(unsigned int channel_id)
 {
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_input_set_channel()\n");
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_input_set_channel() enter: channel_id%d\n", channel_id);
+
 	sh_css_pipe_set_input_channel(&my_css.preview_pipe, channel_id);
 	sh_css_pipe_set_input_channel(&my_css.capture_pipe, channel_id);
 	sh_css_pipe_set_input_channel(&my_css.video_pipe, channel_id);
+
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_input_set_channel() leave: return_void\n");
 }
 
 void
 sh_css_input_set_format(enum sh_css_input_format format)
 {
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_input_set_format()\n");
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_input_set_format() enter: format%d\n", format);
+
 	sh_css_pipe_set_input_format(&my_css.preview_pipe, format);
 	sh_css_pipe_set_input_format(&my_css.video_pipe, format);
 	sh_css_pipe_set_input_format(&my_css.capture_pipe, format);
+
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_input_set_format() leave: return_void\n");
+
 }
 
 void
 sh_css_input_get_format(enum sh_css_input_format *format)
 {
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_input_get_format()\n");
+	assert(format != NULL);
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_input_get_format() enter: void\n");
+
 	/* arbitrarily pick preview, they are all the same */
 	*format = sh_css_pipe_get_input_format(&my_css.preview_pipe);
+
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_input_get_format() leave: format=%d\n", *format);
 }
 
 void
 sh_css_input_set_mode(enum sh_css_input_mode mode)
 {
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_input_set_mode() enter: mode=%d\n",
+		mode);
+
 	sh_css_pipe_set_input_mode(&my_css.preview_pipe, mode);
 	sh_css_pipe_set_input_mode(&my_css.video_pipe, mode);
 	sh_css_pipe_set_input_mode(&my_css.capture_pipe, mode);
+
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_input_set_mode() leave: return_void\n");
+
 }
 
 void
 sh_css_input_set_two_pixels_per_clock(bool two_ppc)
 {
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_input_set_two_pixels_per_clock()\n");
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_input_set_two_pixels_per_clock() enter: two_ppc=%d\n",
+		two_ppc);
+
 	sh_css_pipe_set_two_pixels_per_clock(&my_css.preview_pipe, two_ppc);
 	sh_css_pipe_set_two_pixels_per_clock(&my_css.video_pipe, two_ppc);
 	sh_css_pipe_set_two_pixels_per_clock(&my_css.capture_pipe, two_ppc);
+
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_input_set_two_pixels_per_clock() leave: return_void\n");
 }
 
 void
 sh_css_input_get_two_pixels_per_clock(bool *two_ppc)
 {
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_input_get_two_pixels_per_clock()\n");
+	assert(two_ppc != NULL);
+
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_input_get_two_pixels_per_clock() enter: void\n");
+
 	*two_ppc = sh_css_pipe_get_two_pixels_per_clock(&my_css.preview_pipe);
+
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_input_get_two_pixels_per_clock() leave: two_ppc=%d\n",
+		*two_ppc);
 }
 
 void
 sh_css_input_set_bayer_order(enum sh_css_bayer_order bayer_order)
 {
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_input_set_bayer_order()\n");
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_input_set_bayer_order() enter: "
+		"bayer_order=%d\n", bayer_order);
+
 	sh_css_pipe_set_input_bayer_order(&my_css.preview_pipe, bayer_order);
 	sh_css_pipe_set_input_bayer_order(&my_css.video_pipe, bayer_order);
 	sh_css_pipe_set_input_bayer_order(&my_css.capture_pipe, bayer_order);
+
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_input_set_bayer_order() leave: return_void\n");
 }
 
-int
+void
 sh_css_get_extra_pixels_count(int *extra_rows, int *extra_cols)
 {
 	/* arbitrarily pick preview */
 	struct sh_css_pipe *pipe = &my_css.preview_pipe;
-	return sh_css_pipe_get_extra_pixels_count(pipe, extra_rows, extra_cols);
+
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_get_extra_pixels_count() enter: void\n");
+
+	assert(extra_rows != NULL);
+	assert(extra_cols != NULL);
+	sh_css_pipe_get_extra_pixels_count(pipe, extra_rows, extra_cols);
+
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_get_extra_pixels_count() leave: "
+		"extra_rows=%d, extra_cols=%d\n", *extra_rows, *extra_cols);
 }
 
 void
 sh_css_disable_vf_pp(bool disable)
 {
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_disable_vf_pp() enter: disable=%d\n", disable);
+
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_disable_vf_pp()\n");
 	sh_css_pipe_disable_vf_pp(&my_css.preview_pipe, disable);
 	sh_css_pipe_disable_vf_pp(&my_css.video_pipe, disable);
 	sh_css_pipe_disable_vf_pp(&my_css.capture_pipe, disable);
+
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_disable_vf_pp() leave: return_void\n");
 }
 
 void
 sh_css_enable_raw_reordered(bool enable)
 {
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_enable_raw_reordered()\n");
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_enable_raw_reordered() enter: enable=%d\n", enable);
 	sh_css_pipe_enable_raw_reordered(&my_css.preview_pipe, enable);
 	sh_css_pipe_enable_raw_reordered(&my_css.video_pipe, enable);
 	sh_css_pipe_enable_raw_reordered(&my_css.capture_pipe, enable);
+
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_enable_raw_reordered() leave: return_void\n");
+
 }
 
 enum sh_css_err
@@ -6722,13 +7665,22 @@ sh_css_input_configure_port(const mipi_port_ID_t port,
 			    const unsigned int	 num_lanes,
 			    const unsigned int	 timeout)
 {
+	enum sh_css_err err;
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_input_configure_port() enter: "
+		"port=%d, ""num_lanes=%d, timeout=%d\n",
+		port, num_lanes, timeout);
+
 	/* if one fails, all fail, so just check the last result */
 	sh_css_pipe_configure_input_port(&my_css.preview_pipe, port,
 					 num_lanes, timeout);
 	sh_css_pipe_configure_input_port(&my_css.capture_pipe, port,
 					 num_lanes, timeout);
-	return sh_css_pipe_configure_input_port(&my_css.video_pipe, port,
+	err = sh_css_pipe_configure_input_port(&my_css.video_pipe, port,
 					 num_lanes, timeout);
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_input_configure_port() leave: return_err=%d\n",err);
+	return err;
 }
 
 enum sh_css_err
@@ -6736,61 +7688,166 @@ sh_css_input_set_compression(const mipi_predictor_t comp,
 			     const unsigned int     compressed_bits_per_pixel,
 			     const unsigned int     uncompressed_bits_per_pixel)
 {
+	enum sh_css_err err;
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_input_set_compression() enter: "
+		"comp=%d, ""comp_bpp=%d, uncomp_bpp=%d\n",
+		comp, compressed_bits_per_pixel, uncompressed_bits_per_pixel);
+
+	/* if one fails, all fail, so just check the last result */
 	sh_css_pipe_set_compression(&my_css.preview_pipe, comp,
 				    compressed_bits_per_pixel,
 				    uncompressed_bits_per_pixel);
 	sh_css_pipe_set_compression(&my_css.video_pipe, comp,
 				    compressed_bits_per_pixel,
 				    uncompressed_bits_per_pixel);
-	return sh_css_pipe_set_compression(&my_css.capture_pipe, comp,
+	err = sh_css_pipe_set_compression(&my_css.capture_pipe, comp,
 				    compressed_bits_per_pixel,
 				    uncompressed_bits_per_pixel);
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_input_set_compression() leave: return_err=%d\n",err);
+
+	return err;
+
 }
 
 enum sh_css_err
 sh_css_load_extension(struct sh_css_fw_info *fw)
 {
-	int r;
-	sh_css_dtrace(SH_DBG_TRACE, "%s()\n", __FUNCTION__);
-	r = sh_css_pipe_load_extension(&my_css.preview_pipe, fw);
-	if (r != sh_css_success)
-		return r;
-	r = sh_css_pipe_load_extension(&my_css.video_pipe, fw);
-	if (r != sh_css_success)
-		return r;
-	return sh_css_pipe_load_extension(&my_css.capture_pipe, fw);
+	enum sh_css_err err;
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_load_extension() enter: fw=%p\n",fw);
+	err = sh_css_pipe_load_extension(&my_css.preview_pipe, fw);
+	if (err != sh_css_success) {
+		sh_css_dtrace(SH_DBG_TRACE,
+			"sh_css_load_extension() leave: return_err=%d\n",err);
+		return err;
+	}
+	err = sh_css_pipe_load_extension(&my_css.video_pipe, fw);
+	if (err != sh_css_success) {
+		sh_css_dtrace(SH_DBG_TRACE,
+			"sh_css_load_extension() leave: return_err=%d\n",err);
+		return err;
+	}
+	err = sh_css_pipe_load_extension(&my_css.capture_pipe, fw);
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_load_extension() leave: return_err=%d\n",err);
+	return err;
 }
 
 void
 sh_css_unload_extension(struct sh_css_fw_info *fw)
 {
-	sh_css_dtrace(SH_DBG_TRACE, "%s()\n", __FUNCTION__);
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_unload_extension() enter: fw=%p\n",fw);
 	sh_css_pipe_unload_extension(&my_css.preview_pipe, fw);
 	sh_css_pipe_unload_extension(&my_css.video_pipe, fw);
 	sh_css_pipe_unload_extension(&my_css.capture_pipe, fw);
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_unload_extension() leave: return_void\n");
 }
 
 enum sh_css_err
 sh_css_input_set_effective_resolution(unsigned int width, unsigned int height)
 {
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_input_set_effective_resolution()\n");
+	enum sh_css_err err;
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_input_set_effective_resolution() "
+		"enter: width=%d, height=%d\n",width, height);
 	sh_css_pipe_set_effective_input_resolution(&my_css.preview_pipe, width, height);
 	sh_css_pipe_set_effective_input_resolution(&my_css.video_pipe, width, height);
-	return sh_css_pipe_set_effective_input_resolution(&my_css.capture_pipe, width, height);
+	err = sh_css_pipe_set_effective_input_resolution(&my_css.capture_pipe, width, height);
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_input_set_effective_resolution() "
+		"leave: return_err=%d\n",err);
+	return err;
 }
 
 enum sh_css_err
 sh_css_input_set_resolution(unsigned int width, unsigned int height)
 {
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_input_set_resolution()\n");
+	enum sh_css_err err;
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_input_set_resolution() enter: width=%d, height=%d\n",
+		width, height);
 	sh_css_pipe_set_input_resolution(&my_css.preview_pipe, width, height);
 	sh_css_pipe_set_input_resolution(&my_css.video_pipe, width, height);
-	return sh_css_pipe_set_input_resolution(&my_css.capture_pipe, width, height);
+	err = sh_css_pipe_set_input_resolution(&my_css.capture_pipe, width, height);
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_input_set_resolution() leave: return_err=%d\n",err);
+	return err;
 }
 
 void
 sh_css_video_set_isp_pipe_version(unsigned int version)
 {
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_video_set_isp_pipe_version()\n");
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_video_set_isp_pipe_version() enter: version=%d\n",
+		version);
 	my_css.video_pipe.isp_pipe_version = version;
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_video_set_isp_pipe_version() leave: return=void\n");
 }
+#if 0
+void
+sh_css_init_host_sp_control_vars(void)
+{
+	const struct sh_css_fw_info *fw;
+	unsigned int HIVE_ADDR_sp_isp_started;
+	
+	unsigned int HIVE_ADDR_host_sp_queues_initialized;
+	unsigned int HIVE_ADDR_sp_sleep_mode;
+	unsigned int HIVE_ADDR_sp_invalidate_tlb;
+	unsigned int HIVE_ADDR_sp_request_flash;
+	unsigned int HIVE_ADDR_sp_stop_copy_preview;
+	unsigned int HIVE_ADDR_host_sp_com;
+	unsigned int o = offsetof(struct host_sp_communication, host2sp_command)
+				/ sizeof(int);
+
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_init_host_sp_control_vars() enter: void\n");
+
+	fw = &sh_css_sp_fw;
+	HIVE_ADDR_sp_isp_started = fw->info.sp.isp_started;
+	
+	HIVE_ADDR_host_sp_queues_initialized =
+		fw->info.sp.host_sp_queues_initialized;
+	HIVE_ADDR_sp_sleep_mode = fw->info.sp.sleep_mode;
+	HIVE_ADDR_sp_invalidate_tlb = fw->info.sp.invalidate_tlb;
+	HIVE_ADDR_sp_request_flash = fw->info.sp.request_flash;
+	HIVE_ADDR_sp_stop_copy_preview = fw->info.sp.stop_copy_preview;
+	HIVE_ADDR_host_sp_com = fw->info.sp.host_sp_com;
+
+	(void)HIVE_ADDR_sp_isp_started; /* Suppres warnings in CRUN */
+	
+	(void)HIVE_ADDR_sp_sleep_mode;
+	(void)HIVE_ADDR_sp_invalidate_tlb;
+	(void)HIVE_ADDR_sp_request_flash;
+	(void)HIVE_ADDR_sp_stop_copy_preview;
+	(void)HIVE_ADDR_host_sp_com;
+
+	sp_dmem_store_uint32(SP0_ID,
+		(unsigned int)sp_address_of(sp_isp_started),
+		(uint32_t)(0));
+	
+	sp_dmem_store_uint32(SP0_ID,
+		(unsigned int)sp_address_of(host_sp_queues_initialized),
+		(uint32_t)(0));
+	sp_dmem_store_uint32(SP0_ID,
+		(unsigned int)sp_address_of(sp_sleep_mode),
+		(uint32_t)(0));
+	sp_dmem_store_uint32(SP0_ID,
+		(unsigned int)sp_address_of(sp_invalidate_tlb),
+		(uint32_t)(0));
+	sp_dmem_store_uint32(SP0_ID,
+		(unsigned int)sp_address_of(sp_request_flash),
+		(uint32_t)(0));
+	sp_dmem_store_uint32(SP0_ID,
+		(unsigned int)sp_address_of(sp_stop_copy_preview),
+		my_css.stop_copy_preview?(uint32_t)(1):(uint32_t)(0));
+	store_sp_array_uint(host_sp_com, o, host2sp_cmd_ready);
+
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_init_host_sp_control_vars() leave: return_void\n");
+}
+#endif

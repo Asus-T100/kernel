@@ -1,3 +1,6 @@
+#ifndef _SH_CSS_PARAMS_H_
+#define _SH_CSS_PARAMS_H_
+
 /*
 * Support for Medfield PNW Camera Imaging ISP subsystem.
 *
@@ -21,11 +24,9 @@
 *
 */
 
-#ifndef _SH_CSS_PARAMS_H_
-#define _SH_CSS_PARAMS_H_
-
 /*! \file */
 
+#include "sh_css_types.h"	/* struct sh_css_ecd_config,... */
 #include "sh_css.h"
 
 /* TODO: remove most of the individual parameter functions.
@@ -220,6 +221,13 @@ sh_css_set_ce_config(const struct sh_css_ce_config *ce_config);
 
 void
 sh_css_get_ce_config(const struct sh_css_ce_config **ce_config);
+
+/* Eigen Color Demosaicing */
+void
+sh_css_set_ecd_config(const struct sh_css_ecd_config *ecd_config);
+
+void
+sh_css_get_ecd_config(const struct sh_css_ecd_config **ecd_config);
 
 /* Y(Luma) Noise Reduction */
 void
