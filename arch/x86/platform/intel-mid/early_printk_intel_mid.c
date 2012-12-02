@@ -439,7 +439,7 @@ void hsu_early_console_init(void)
 #ifdef CONFIG_X86_MRFLD
 	/* detect HSU clock is 50M or 19.2M */
 	if (*clkctl & (1 << 16))
-		writel(0x0240, phsu + UART_MUL * 4); /* for 50M */
+		writel(0x0120, phsu + UART_MUL * 4); /* for 100M */
 	else
 		writel(0x05DC, phsu + UART_MUL * 4);  /* for 19.2M */
 #else

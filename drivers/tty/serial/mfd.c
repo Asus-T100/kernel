@@ -136,7 +136,7 @@ static struct hsu_port hsu;
 /* temp global pointer before we settle down on using one or four PCI dev */
 static struct hsu_port *phsu = &hsu;
 static int logic_idx = -1, share_idx = -1;
-static int clock = 50000; /* default clock source is 50M */
+static unsigned int clock;
 
 inline bool hsu_port_is_active(struct uart_hsu_port *up)
 {
@@ -1334,6 +1334,9 @@ serial_hsu_set_termios(struct uart_port *port, struct ktermios *termios,
 	else
 		ps = 0x10;
 
+	if (clock == 19200 && baud > 1600000)
+		pr_err("clock 19.2M but port %d baud > 1.6M\n", up->index);
+
 	switch (baud) {
 	case 3500000:
 	case 3000000:
@@ -1815,7 +1818,9 @@ static int hsu_port_init(struct pci_dev *pdev, int index)
 
 	/* calculate if DLAB=1, the ideal uartclk */
 	uclk = clock * 1000 / (115200 * 16); /* 16 is default ps */
-	if (uclk >= 24)
+	if (uclk >= 32)
+		uclk = 32;
+	else if (uclk >= 24)
 		uclk = 24;
 	else if (uclk >= 16)
 		uclk = 16;
@@ -1898,32 +1903,6 @@ static int serial_hsu_probe(struct pci_dev *pdev,
 		pdev->vendor, pdev->device,
 		PCI_FUNC(pdev->devfn), ent->driver_data,
 		pci_resource_start(pdev, 0), pci_resource_len(pdev, 0));
-	/*
-	 * There is a hsu rx timeout interrup lost silicon bug, this workaround
-	 * is to use RX timer to clean up tailing chars.
-	 * PNW A0 and CLVP A0 need this workaround.
-	 */
-	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_CLOVERVIEW &&
-		pdev->revision < 0xC) {
-		dev_warn(&pdev->dev, "CLVP A0 detected, dma_dscr_size=16\n");
-		dma_dscr_size = 16;
-	} else if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_PENWELL &&
-		pdev->revision < 0x8) {
-		dev_warn(&pdev->dev, "PNW A0 detected, \dma_dscr_size=16\n");
-		dma_dscr_size = 16;
-	} else if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER) {
-#define TNG_CLOCK_CTL 0xFF00B830
-		int *clkctl = ioremap_nocache(TNG_CLOCK_CTL, 4);
-
-		if (clkctl) {
-			if (!((*clkctl) & (1 << 16)))
-				clock = 19200;/* 19.2 M */
-			dev_warn(&pdev->dev, "TNG hsu clock is 19.2M\n");
-			iounmap(clkctl);
-		}
-		dev_warn(&pdev->dev, "TNG A0 detected, dma_dscr_size=16\n");
-		dma_dscr_size = 16;
-	}
 
 	ret = pci_enable_device(pdev);
 	if (ret)
@@ -1945,6 +1924,36 @@ static int serial_hsu_probe(struct pci_dev *pdev,
 		}
 		index++;
 	} else if (ent->driver_data == HSU_DMA) {
+		/*
+		 * There is a hsu rx timeout interrup lost silicon bug,
+		 * this workaround is to use xfer size 16 to clean up
+		 * tailing chars.
+		 * PNW A0 and CLVP A0 need this workaround.
+		 */
+		switch (intel_mid_identify_cpu()) {
+		case INTEL_MID_CPU_CHIP_CLOVERVIEW:
+			if (pdev->revision < 0xC) {
+				dma_dscr_size = 16;
+				dev_warn(&pdev->dev,
+					"CLVP A0 detected, dma_dscr_size=16\n");
+			}
+			break;
+		case INTEL_MID_CPU_CHIP_PENWELL:
+			if (pdev->revision < 0x8) {
+				dma_dscr_size = 16;
+				dev_warn(&pdev->dev,
+					"PNW A0 detected, dma_dscr_size=16\n");
+			}
+			break;
+		case INTEL_MID_CPU_CHIP_TANGIER:
+			dma_dscr_size = 16;
+			dev_warn(&pdev->dev,
+					"TNG A0 detected, dma_dscr_size=16\n");
+			break;
+		default:
+			break;
+		}
+
 		ret = pci_request_region(pdev, 0, "hsu dma");
 		if (ret)
 			goto err_disable;
@@ -2407,6 +2416,30 @@ static struct pci_driver hsu_pci_driver = {
 static int __init hsu_pci_init(void)
 {
 	int ret;
+	int *clkctl;
+
+	switch (intel_mid_identify_cpu()) {
+	case INTEL_MID_CPU_CHIP_TANGIER:
+#define TNG_CLOCK_CTL 0xFF00B830
+		clkctl = ioremap_nocache(TNG_CLOCK_CTL, 4);
+		if (clkctl) {
+			if (*clkctl & (1 << 16))
+				clock = 100000; /* 100M */
+			else
+				clock = 19200; /* 19.2M */
+
+			iounmap(clkctl);
+		} else
+			pr_err("tng scu clk ioremap error\n");
+		break;
+	case INTEL_MID_CPU_CHIP_PENWELL:
+	case INTEL_MID_CPU_CHIP_CLOVERVIEW:
+	default:
+		clock = 50000;
+		break;
+	}
+
+	pr_info("hsu core clock %u M\n", clock / 1000);
 
 	intel_mid_hsu_port_map(&logic_idx, &share_idx);
 
