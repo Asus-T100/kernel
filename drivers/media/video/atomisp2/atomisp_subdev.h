@@ -21,6 +21,7 @@
 #ifndef __ATOMISP_SUBDEV_H__
 #define __ATOMISP_SUBDEV_H__
 
+#include <media/v4l2-ctrls.h>
 #include <media/v4l2-device.h>
 #include <media/v4l2-subdev.h>
 #include <media/videobuf-core.h>
@@ -110,6 +111,8 @@ struct atomisp_sub_device {
 	/* struct isp_subdev_params params; */
 	spinlock_t lock;
 	struct atomisp_device *isp;
+	struct v4l2_ctrl_handler ctrl_handler;
+	struct v4l2_ctrl *fmt_auto;
 };
 
 void atomisp_subdev_unregister_entities(struct atomisp_sub_device *isp_subdev);
