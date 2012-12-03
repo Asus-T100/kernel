@@ -563,7 +563,7 @@ static int atomisp_g_fmt_file(struct file *file, void *fh,
 	struct video_device *vdev = video_devdata(file);
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
-	int ret;
+	int ret = 0;
 
 	if (f->type != V4L2_BUF_TYPE_VIDEO_OUTPUT) {
 		v4l2_err(&atomisp_dev,
