@@ -86,7 +86,7 @@ static u8 gi_er61529_power_setting[] = {
 };
 static u8 gi_er61529_vcom_setting[] = {
 	0xd1, 0x02, 0x2c, 0x2c,
-	0x33
+	0x6f
 };
 static u8 gi_er61529_set_pixel_format[] = {0x3a, 0x77};
 static u8 gi_er61529_set_column_address[] = {
