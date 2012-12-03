@@ -1006,10 +1006,72 @@ static int mt9v113_set_mbus_fmt(struct v4l2_subdev *sd,
 	return 0;
 }
 
+static int mt9v113_g_focal(struct v4l2_subdev *sd, s32 *val)
+{
+	/* const focal length for MT9V113 */
+	*val = (MT9V113_FOCAL_LENGTH_NUM << 16) | MT9V113_FOCAL_LENGTH_DEM;
+	return 0;
+}
+
+static int mt9v113_g_fnumber(struct v4l2_subdev *sd, s32 *val)
+{
+	/* const f-number for MT9V113 */
+	*val = (MT9V113_F_NUMBER_DEFAULT_NUM << 16) | MT9V113_F_NUMBER_DEM;
+	return 0;
+}
+
+static int mt9v113_g_fnumber_range(struct v4l2_subdev *sd, s32 *val)
+{
+	*val = (MT9V113_F_NUMBER_DEFAULT_NUM << 24) |
+		(MT9V113_F_NUMBER_DEM << 16) |
+		(MT9V113_F_NUMBER_DEFAULT_NUM << 8) | MT9V113_F_NUMBER_DEM;
+	return 0;
+}
+
 /*
  * More will be added in future
  */
-static struct mt9v113_control mt9v113_controls[] = {};
+static struct mt9v113_control mt9v113_controls[] = {
+	{
+		.qc = {
+			.id = V4L2_CID_FOCAL_ABSOLUTE,
+			.type = V4L2_CTRL_TYPE_INTEGER,
+			.name = "focal length",
+			.minimum = 0,
+			.maximum = MT9V113_FOCAL_LENGTH_DEFAULT,
+			.step = 0x01,
+			.default_value = MT9V113_FOCAL_LENGTH_DEFAULT,
+			.flags = 0,
+		},
+		.query = mt9v113_g_focal,
+	},
+	{
+		.qc = {
+			.id = V4L2_CID_FNUMBER_ABSOLUTE,
+			.type = V4L2_CTRL_TYPE_INTEGER,
+			.name = "f-number",
+			.minimum = 0,
+			.maximum = MT9V113_F_NUMBER_DEFAULT,
+			.step = 0x01,
+			.default_value = MT9V113_F_NUMBER_DEFAULT,
+			.flags = 0,
+		},
+		.query = mt9v113_g_fnumber,
+	},
+	{
+		.qc = {
+			.id = V4L2_CID_FNUMBER_RANGE,
+			.type = V4L2_CTRL_TYPE_INTEGER,
+			.name = "f-number range",
+			.minimum = 0,
+			.maximum =  MT9V113_F_NUMBER_RANGE,
+			.step = 0x01,
+			.default_value = MT9V113_F_NUMBER_RANGE,
+			.flags = 0,
+		},
+		.query = mt9v113_g_fnumber_range,
+	},
+};
 
 #define N_CONTROLS (ARRAY_SIZE(mt9v113_controls))
 

@@ -39,6 +39,31 @@
 
 #define V4L2_IDENT_MT9V113 0x2280
 
+#define MT9V113_FOCAL_LENGTH_NUM	439	/* 4.39mm */
+#define MT9V113_FOCAL_LENGTH_DEM	100
+#define MT9V113_F_NUMBER_DEFAULT_NUM	24
+#define MT9V113_F_NUMBER_DEM	10
+/*
+ * focal length bits definition:
+ * bits 31-16: numerator, bits 15-0: denominator
+ */
+#define MT9V113_FOCAL_LENGTH_DEFAULT 0xd00064
+
+/*
+ * current f-number bits definition:
+ * bits 31-16: numerator, bits 15-0: denominator
+ */
+#define MT9V113_F_NUMBER_DEFAULT 0x18000a
+
+/*
+ * f-number range bits definition:
+ * bits 31-24: max f-number numerator
+ * bits 23-16: max f-number denominator
+ * bits 15-8: min f-number numerator
+ * bits 7-0: min f-number denominator
+ */
+#define MT9V113_F_NUMBER_RANGE 0x180a180a
+
 #define MT9V113_REG_CHIPID	0x0
 #define MT9V113_REG_PLL_DIV	0x0010
 #define MT9V113_REG_PLL_P	0x0012
