@@ -258,6 +258,10 @@ held by the proccess (struct file) */
 #define SCU_DELAY_ITERATION 10
 
 
+/* Wait to guarantee at probe time that chaabi has completed its boot */
+#define CHAABI_BOOT_TIME_MIN_US 2000
+#define CHAABI_BOOT_TIME_MAX_US 2500
+
 /*
  * Bits used in struct sep_call_status to check that
  * driver's APIs are called in valid order

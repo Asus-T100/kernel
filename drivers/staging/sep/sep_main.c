@@ -4103,6 +4103,41 @@ static int sep_register_driver_with_fs(struct sep_device *sep)
 	return ret_val;
 }
 
+/**
+ * sep_wait_for_scu
+ * @sep:        pointer to sep device
+ * @returns 0: success; scu boot did happen
+ *          non zero: failure; scu boot did not happen
+ */
+static int sep_wait_for_scu(struct sep_device *sep)
+{
+	u32 gpr3_contents;
+	u32 delay_count;
+
+	gpr3_contents = 0;
+	delay_count = 0;
+	while ((gpr3_contents == 0) && (delay_count < SCU_DELAY_MAX)) {
+		gpr3_contents =
+			sep_read_reg(sep, HW_HOST_SEP_HOST_GPR3_REG_ADDR);
+		gpr3_contents &= SCU_BOOT_BIT_MASK;
+		if (gpr3_contents == 0) {
+			usleep_range(SCU_MIN_DELAY_ITERATION,
+				SCU_MAX_DELAY_ITERATION);
+			delay_count++;
+		}
+	}
+
+	dev_dbg(&sep->pdev->dev, "iteration %d times\n",
+		delay_count);
+
+	if (gpr3_contents == 0) {
+		dev_err(&sep->pdev->dev, "scu boot bit not set at resume\n");
+		BUG_ON(1);
+		return -EINVAL;
+	}
+
+	return 0;
+}
 
 /**
  *sep_probe - probe a matching PCI device
@@ -4129,6 +4164,9 @@ static int __devinit sep_probe(struct pci_dev *pdev,
 		dev_warn(&pdev->dev, "error enabling pci device\n");
 		goto end_function;
 	}
+
+	/* Give chaabi time to complete its warm boot */
+	usleep_range(CHAABI_BOOT_TIME_MIN_US, CHAABI_BOOT_TIME_MAX_US);
 
 	/* Allocate the sep_device structure for this device */
 	sep_dev = kzalloc(sizeof(struct sep_device), GFP_ATOMIC);
@@ -4199,6 +4237,24 @@ static int __devinit sep_probe(struct pci_dev *pdev,
 	if (sep_map_and_alloc_shared_area(sep)) {
 		error = -ENOMEM;
 		/* Allocation failed */
+		goto end_function_error;
+	}
+
+	/**
+	 * Before we touch the device, lets make sure that it's
+	 * warm booted. If it is not by this time, we need to
+	 * force a panic.
+	 * We had to wait to call sep_wait_for_scu until this time
+	 * because the sep structure has to be initialied and
+	 * populated with pci information before the call. Even though
+	 * we have populated the sep device structure, we have not
+	 * yet 'touched' the device so far at this time in the boot
+	 * process.
+	 */
+	error = sep_wait_for_scu(sep);
+	if (error) {
+		dev_warn(&sep->pdev->dev, "device apears to be dead\n");
+		error = -ENODEV;
 		goto end_function_error;
 	}
 
