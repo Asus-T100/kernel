@@ -16,41 +16,8 @@
 #include <asm/intel-mid.h>
 #include "platform_smb347.h"
 
-#ifdef CONFIG_CHARGER_SMB349
-static struct smb347_charger_platform_data smb347_pdata = {
-	.battery_info	= {
-		.name			= "UP110005",
-		.technology		= POWER_SUPPLY_TECHNOLOGY_LIPO,
-		.voltage_max_design	= 3700000,
-		.voltage_min_design	= 3000000,
-		.charge_full_design	= 6894000,
-	},
-	.use_mains			= true,
-	.enable_control			= SMB347_CHG_ENABLE_PIN_ACTIVE_LOW,
-	.otg_control			= SMB347_OTG_CONTROL_SW,
-	.irq_gpio			= SMB347_IRQ_GPIO,
-	.char_config_regs		= {
-						/* Reg  Value */
-						0x00, 0xA1,
-						0x01, 0x6C,
-						0x02, 0x93,
-						0x03, 0xE5,
-						0x04, 0x3E,
-						0x05, 0x16,
-						0x06, 0x0C,
-						0x07, 0x8c,
-						0x08, 0x08,
-						0x09, 0x0c,
-						0x0A, 0xA4,
-						0x0B, 0x13,
-						0x0C, 0x81,
-						0x0D, 0x02,
-						0x0E, 0x20,
-						0x10, 0x7F
-					},
-};
-#else
-static struct smb347_charger_platform_data smb347_pdata = {
+/* Redridge DV2.1 */
+static struct smb347_charger_platform_data smb347_rr_pdata = {
 	.battery_info	= {
 		.name			= "UP110005",
 		.technology		= POWER_SUPPLY_TECHNOLOGY_LIPO,
@@ -81,9 +48,97 @@ static struct smb347_charger_platform_data smb347_pdata = {
 						0x00, 0x00,
 					},
 };
-#endif
+
+/* Salitpa EV 0.5 */
+static struct smb347_charger_platform_data smb347_ev05_pdata = {
+	.battery_info	= {
+		.name			= "UP110005",
+		.technology		= POWER_SUPPLY_TECHNOLOGY_LIPO,
+		.voltage_max_design	= 3700000,
+		.voltage_min_design	= 3000000,
+		.charge_full_design	= 6894000,
+	},
+	.use_mains			= true,
+	.enable_control			= SMB347_CHG_ENABLE_PIN_ACTIVE_LOW,
+	.otg_control			= SMB347_OTG_CONTROL_DISABLED,
+	.irq_gpio			= SMB347_IRQ_GPIO,
+	.char_config_regs		= {
+						/* Reg  Value */
+						0x00, 0xA1,
+						0x01, 0x6C,
+						0x02, 0x93,
+						0x03, 0xE5,
+						0x04, 0x3E,
+						0x05, 0x16,
+						0x06, 0x0C,
+						0x07, 0x8c,
+						0x08, 0x08,
+						0x09, 0x0c,
+						0x0A, 0xA4,
+						0x0B, 0x13,
+						0x0C, 0x81,
+						0x0D, 0x02,
+						0x0E, 0x20,
+						0x10, 0x7F
+					},
+};
+
+/* Salitpa EV 1.0 */
+static struct smb347_charger_platform_data smb347_ev10_pdata = {
+	.battery_info	= {
+		.name			= "UP110005",
+		.technology		= POWER_SUPPLY_TECHNOLOGY_LIPO,
+		.voltage_max_design	= 3700000,
+		.voltage_min_design	= 3000000,
+		.charge_full_design	= 6894000,
+	},
+	.use_mains			= true,
+	.enable_control			= SMB347_CHG_ENABLE_PIN_ACTIVE_LOW,
+	.otg_control			= SMB347_OTG_CONTROL_DISABLED,
+	.irq_gpio			= SMB347_IRQ_GPIO,
+	.char_config_regs		= {
+						/* Reg  Value */
+						0x00, 0xAA,
+						0x01, 0x6C,
+						0x02, 0x93,
+						0x03, 0xE5,
+						0x04, 0x3E,
+						0x05, 0x16,
+						0x06, 0x74,
+						0x07, 0xCC,
+						0x09, 0x0C,
+						0x0A, 0xA4,
+						0x0B, 0x13,
+						0x0C, 0x8D,
+						0x0D, 0x00,
+						0x0E, 0x20,
+						0x10, 0x7F
+					},
+};
+
+static void *get_platform_data(void)
+{
+	if (spid.platform_family_id == INTEL_MFLD_TABLET) {
+		/* Redridge all */
+		if (spid.product_line_id == INTEL_MFLD_TABLET_RR_PRO ||
+			spid.product_line_id == INTEL_MFLD_TABLET_RR_ENG) {
+			return &smb347_rr_pdata;
+		/* Salitpa */
+		} else if (spid.product_line_id == INTEL_MFLD_TABLET_SLP_PRO ||
+			spid.product_line_id == INTEL_MFLD_TABLET_SLP_ENG) {
+			/* EV 0.5 */
+			if (spid.hardware_id == MFLD_TABLET_SLP_EV05)
+				return &smb347_ev05_pdata;
+			/* EV 1.0 and later */
+			else
+				return &smb347_ev10_pdata;
+		}
+	}
+
+	return NULL;
+}
 
 void *smb347_platform_data(void *info)
 {
-	return &smb347_pdata;
+	return get_platform_data();
 }
