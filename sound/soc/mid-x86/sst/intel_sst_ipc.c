@@ -594,6 +594,7 @@ static int sst_get_stream_mrfld(struct intel_sst_drv *ctx, u32 drv_id)
 		if (ctx->streams[i].ctrl_blk.drv_id == drv_id)
 			return i;
 	}
+	pr_err("no match for drv_id - FW gave %d\n", drv_id);
 	return -EINVAL;
 }
 
@@ -601,45 +602,43 @@ static int sst_get_stream_mrfld(struct intel_sst_drv *ctx, u32 drv_id)
 void sst_process_reply_mrfld(struct work_struct *work)
 {
 	struct sst_ipc_msg_wq *msg, *tmp;
-	int msg_id = 0, str_id;
+	unsigned int msg_id, drv_id;
+	int str_id;
 	void *data = NULL;
 
 	/* copy the message before enabling interrupts */
 	tmp = container_of(work, struct sst_ipc_msg_wq, wq);
 	msg = kzalloc(sizeof(*msg), GFP_KERNEL);
 	if (NULL == msg) {
-		pr_err("%s:memory alloc failed. msg didn't processed\n", __func__);
+		pr_err("%s:memory alloc failed. msg not processed\n", __func__);
 		return;
 	}
 	memcpy(msg, tmp, sizeof(*msg));
 	sst_drv_ctx->ops->clear_interrupt();
 
+	drv_id = msg->mrfld_header.p.header_high.part.str_id;
 	msg_id = msg->mrfld_header.p.header_low_payload & SST_UNSOLICITED_MSG_ID;
-	if (!(msg->mrfld_header.p.header_high.part.large))
-		msg_id = msg->mrfld_header.p.header_low_payload & SST_UNSOLICITED_MSG_ID;
-	if (msg->mrfld_header.p.header_high.part.str_id == SST_UNSOLICIT_MSG &&
-				!(msg->mrfld_header.p.header_high.part.large)) {
+	if (drv_id == SST_UNSOLICIT_MSG
+	    && !msg->mrfld_header.p.header_high.part.large) {
 		switch (msg_id) {
-			case IPC_IA_FW_INIT_CMPLT_MRFLD: {
-				intel_sst_clear_intr_mrfld();
-				process_fw_init(msg);
-				break;
-			}
-			default: {
-				pr_debug("Not cleared:\n");
-			}
+		case IPC_IA_FW_INIT_CMPLT_MRFLD:
+			intel_sst_clear_intr_mrfld();
+			process_fw_init(msg);
+			break;
+		default:
+			pr_debug("Not cleared:\n");
+			break;
 		}
 	} else {
-
-
-		str_id = sst_get_stream_mrfld(sst_drv_ctx,
-				msg->mrfld_header.p.header_high.part.str_id);
+		str_id = sst_get_stream_mrfld(sst_drv_ctx, drv_id);
+		if (str_id < 0)
+			goto end;
 		if (msg->mrfld_header.p.header_high.part.large) {
 			data = kzalloc(msg->mrfld_header.p.header_low_payload, GFP_KERNEL);
 			if (!data)
-				return;
+				goto end;
 			memcpy(data, (void *) msg->mailbox,
-					msg->mrfld_header.p.header_low_payload);
+			       msg->mrfld_header.p.header_low_payload);
 		}
 
 		if (!str_id) {
@@ -662,6 +661,7 @@ void sst_process_reply_mrfld(struct work_struct *work)
 			}
 		}
 	}
+end:
 	kfree(msg);
 	return;
 }
