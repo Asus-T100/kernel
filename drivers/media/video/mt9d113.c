@@ -1009,6 +1009,10 @@ static int mt9d113_res2size(unsigned int res, int *h_size, int *v_size)
 		hsize = MT9D113_RES_720P_SIZE_H;
 		vsize = MT9D113_RES_720P_SIZE_V;
 		break;
+	case MT9D113_RES_1M:
+		hsize = MT9D113_RES_1M_SIZE_H;
+		vsize = MT9D113_RES_1M_SIZE_V;
+		break;
 	case MT9D113_RES_2M:
 		hsize = MT9D113_RES_2M_SIZE_H;
 		vsize = MT9D113_RES_2M_SIZE_V;
@@ -1088,6 +1092,10 @@ static int mt9d113_set_mbus_fmt(struct v4l2_subdev *sd,
 	case MT9D113_RES_720P:
 		ret = mt9d113_write_reg_array(c, mt9d113_720p_29_init);
 		dev_info(&c->dev, "%s: set for 720p\n", __func__);
+		break;
+	case MT9D113_RES_1M:
+		ret = mt9d113_write_reg_array(c, mt9d113_1m_15_init);
+		dev_info(&c->dev, "%s: set for 1m\n", __func__);
 		break;
 	case MT9D113_RES_2M:
 		ret = mt9d113_write_reg_array(c, mt9d113_2m_15_init);

@@ -178,11 +178,14 @@ enum {
 	MT9D113_RES_480P,
 	MT9D113_RES_SVGA,
 	MT9D113_RES_720P,
+	MT9D113_RES_1M,
 	MT9D113_RES_2M,
 };
 
 #define MT9D113_RES_2M_SIZE_H		1600
 #define MT9D113_RES_2M_SIZE_V		1200
+#define MT9D113_RES_1M_SIZE_H		1024
+#define MT9D113_RES_1M_SIZE_V		768
 #define MT9D113_RES_720P_SIZE_H		1280
 #define MT9D113_RES_720P_SIZE_V		720
 #define MT9D113_RES_SVGA_SIZE_H		800
@@ -351,6 +354,17 @@ static struct mt9d113_res_struct mt9d113_res[] = {
 	.regs	= NULL,
 	.skip_frames = 1,
 	.row_time = 42,
+	},
+	{
+	.desc	= "1M",
+	.res	= MT9D113_RES_1M,
+	.width	= 1024,
+	.height	= 768,
+	.fps	= 15,
+	.used	= 0,
+	.regs	= NULL,
+	.skip_frames = 1,
+	.row_time = 52,
 	},
 	{
 	.desc	= "2M",
@@ -1179,6 +1193,125 @@ static struct misensor_reg const mt9d113_svga_30_init[] = {
 	{MISENSOR_16BIT, 0x98c, 0xa404},/*fd Mode*/
 	{MISENSOR_16BIT, 0x990, 0x10},/*      = 16*/
 	{MISENSOR_16BIT, 0x98c, 0xa40d},/*Stat_min*/
+	{MISENSOR_16BIT, 0x990, 0x02},/*      = 2*/
+	{MISENSOR_16BIT, 0x98c, 0xa40e},/*Stat_max*/
+	{MISENSOR_16BIT, 0x990, 0x03},/*      = 3*/
+	{MISENSOR_16BIT, 0x98c, 0xa410},/*Min_amplitude*/
+	{MISENSOR_16BIT, 0x990, 0x0a},/*      = 10*/
+	{MISENSOR_TOK_TERM, 0, 0}
+};
+
+/*
+ * Context A setting for 1024x768
+; Max Frame Time: 66.8896 msec
+; Max Frame Clocks: 2836120.4 clocks (42.400 MHz)
+; Pixel Clock: divided by 1
+; Skip Mode: 1x cols, 1x rows, Bin Mode: No
+; Horiz clks:  1608 active + 585 blank = 2193 total
+; Vert  rows:  1208 active + 85 blank = 1293 total
+; Extra Delay: 571 clocks
+;
+; Actual Frame Clocks: 2836120 clocks
+; Row Time: 51.722 usec / 2193 clocks
+; Frame time: 66.889623 msec
+; Frames per Sec: 14.950 fps
+;
+; 50Hz Flicker Period: 193.34 lines
+; 60Hz Flicker Period: 161.12 lines
+
+; hblank: 13.79us
+; vblank: 4.4ms
+ */
+static struct misensor_reg const mt9d113_1m_15_init[] = {
+	{MISENSOR_16BIT, 0x98c, 0x2703},/*Output Width (a)*/
+	{MISENSOR_16BIT, 0x990, 0x0400},/*      = 1024*/
+	{MISENSOR_16BIT, 0x98c, 0x2705},/*Output Height (a)*/
+	{MISENSOR_16BIT, 0x990, 0x0300},/*      = 768*/
+	{MISENSOR_16BIT, 0x98c, 0x2707},/*Output Width (b)*/
+	{MISENSOR_16BIT, 0x990, 0x0640},/*      = 1600*/
+	{MISENSOR_16BIT, 0x98c, 0x2709},/*Output Height (b)*/
+	{MISENSOR_16BIT, 0x990, 0x04b0},/*      = 1200*/
+	{MISENSOR_16BIT, 0x98c, 0x270D},/*Row Start (a)*/
+	{MISENSOR_16BIT, 0x990, 0x004},/*      = 4*/
+	{MISENSOR_16BIT, 0x98c, 0x270f},/*column Start (a)*/
+	{MISENSOR_16BIT, 0x990, 0x004},/*      = 4*/
+	{MISENSOR_16BIT, 0x98c, 0x2711},/*Row end (a)*/
+	{MISENSOR_16BIT, 0x990, 0x04bb},/*      = 1211*/
+	{MISENSOR_16BIT, 0x98c, 0x2713},/*column end (a)*/
+	{MISENSOR_16BIT, 0x990, 0x064b},/*      = 1611*/
+	{MISENSOR_16BIT, 0x98c, 0x2715},/*Row Speed (a)*/
+	{MISENSOR_16BIT, 0x990, 0x0111},/*      = 273*/
+	{MISENSOR_16BIT, 0x98c, 0x2717},/*Read Mode (a)*/
+	{MISENSOR_16BIT, 0x990, 0x0027},/*      = 39*/
+	{MISENSOR_16BIT, 0x98c, 0x2719},/*sensor_fine_correction (a)*/
+	{MISENSOR_16BIT, 0x990, 0x003a},/*      = 58*/
+	{MISENSOR_16BIT, 0x98c, 0x271b},/*sensor_fine_IT_min (a)*/
+	{MISENSOR_16BIT, 0x990, 0x00f6},/*      = 246*/
+	{MISENSOR_16BIT, 0x98c, 0x271D},/*sensor_fine_IT_max_margin (a)*/
+	{MISENSOR_16BIT, 0x990, 0x008b},/*      = 139*/
+	{MISENSOR_16BIT, 0x98c, 0x271f},/*frame Lines (a)*/
+	{MISENSOR_16BIT, 0x990, 0x050d},/*      = 1293*/
+	{MISENSOR_16BIT, 0x98c, 0x2721},/*Line Length (a)*/
+	{MISENSOR_16BIT, 0x990, 0x0891},/*      = 2193*/
+	{MISENSOR_16BIT, 0x98c, 0x2723},/*Row Start (b)*/
+	{MISENSOR_16BIT, 0x990, 0x0004},/*      = 4*/
+	{MISENSOR_16BIT, 0x98c, 0x2725},/*column Start (b)*/
+	{MISENSOR_16BIT, 0x990, 0x0004},/*      = 4*/
+	{MISENSOR_16BIT, 0x98c, 0x2727},/*Row end (b)*/
+	{MISENSOR_16BIT, 0x990, 0x04bb},/*      = 1211*/
+	{MISENSOR_16BIT, 0x98c, 0x2729},/*column end (b)*/
+	{MISENSOR_16BIT, 0x990, 0x064b},/*      = 1611*/
+	{MISENSOR_16BIT, 0x98c, 0x272b},/*Row Speed (b)*/
+	{MISENSOR_16BIT, 0x990, 0x0111},/*      = 273*/
+	{MISENSOR_16BIT, 0x98c, 0x272D},/*Read Mode (b)*/
+	{MISENSOR_16BIT, 0x990, 0x0024},/*      = 36*/
+	{MISENSOR_16BIT, 0x98c, 0x272f},/*sensor_fine_correction (b)*/
+	{MISENSOR_16BIT, 0x990, 0x003a},/*      = 58*/
+	{MISENSOR_16BIT, 0x98c, 0x2731},/*sensor_fine_IT_min (b)*/
+	{MISENSOR_16BIT, 0x990, 0x00f6},/*      = 246*/
+	{MISENSOR_16BIT, 0x98c, 0x2733},/*sensor_fine_IT_max_margin (b)*/
+	{MISENSOR_16BIT, 0x990, 0x008b},/*      = 139*/
+	{MISENSOR_16BIT, 0x98c, 0x2735},/*frame Lines (b)*/
+	{MISENSOR_16BIT, 0x990, 0x050D},/*      = 1293*/
+	{MISENSOR_16BIT, 0x98c, 0x2737},/*Line Length (b)*/
+	{MISENSOR_16BIT, 0x990, 0x0c24},/*      = 3108*/
+	{MISENSOR_16BIT, 0x98c, 0x2739},/*crop_X0 (a)*/
+	{MISENSOR_16BIT, 0x990, 0x0000},/*      = 0*/
+	{MISENSOR_16BIT, 0x98c, 0x273b},/*crop_X1 (a)*/
+	{MISENSOR_16BIT, 0x990, 0x063f},/*      = 1599*/
+	{MISENSOR_16BIT, 0x98c, 0x273D},/*crop_Y0 (a)*/
+	{MISENSOR_16BIT, 0x990, 0x0000},/*      = 0*/
+	{MISENSOR_16BIT, 0x98c, 0x273f},/*crop_Y1 (a)*/
+	{MISENSOR_16BIT, 0x990, 0x04af},/*      = 1199*/
+	{MISENSOR_16BIT, 0x98c, 0x2747},/*crop_X0 (b)*/
+	{MISENSOR_16BIT, 0x990, 0x0000},/*      = 0*/
+	{MISENSOR_16BIT, 0x98c, 0x2749},/*crop_X1 (b)*/
+	{MISENSOR_16BIT, 0x990, 0x063f},/*      = 1599*/
+	{MISENSOR_16BIT, 0x98c, 0x274b},/*crop_Y0 (b)*/
+	{MISENSOR_16BIT, 0x990, 0x0000},/*      = 0*/
+	{MISENSOR_16BIT, 0x98c, 0x274D},/*crop_Y1 (b)*/
+	{MISENSOR_16BIT, 0x990, 0x04af},/*      = 1199*/
+	{MISENSOR_16BIT, 0x98c, 0x222D},/*R9 Step*/
+	{MISENSOR_16BIT, 0x990, 0x00a1},/*      = 161*/
+	{MISENSOR_16BIT, 0x98c, 0xa408},/*search_f1_50*/
+	{MISENSOR_16BIT, 0x990, 0x27},/*      = 39*/
+	{MISENSOR_16BIT, 0x98c, 0xa409},/*search_f2_50*/
+	{MISENSOR_16BIT, 0x990, 0x29},/*      = 41*/
+	{MISENSOR_16BIT, 0x98c, 0xa40a},/*search_f1_60*/
+	{MISENSOR_16BIT, 0x990, 0x2f},/*      = 47*/
+	{MISENSOR_16BIT, 0x98c, 0xa40b},/*search_f2_60*/
+	{MISENSOR_16BIT, 0x990, 0x31},/*      = 49*/
+	{MISENSOR_16BIT, 0x98c, 0x2411},/*R9_Step_60 (a)*/
+	{MISENSOR_16BIT, 0x990, 0x00a1},/*      = 161*/
+	{MISENSOR_16BIT, 0x98c, 0x2413},/*R9_Step_50 (a)*/
+	{MISENSOR_16BIT, 0x990, 0x00c1},/*      = 193*/
+	{MISENSOR_16BIT, 0x98c, 0x2415},/*R9_Step_60 (b)*/
+	{MISENSOR_16BIT, 0x990, 0x0071},/*      = 113*/
+	{MISENSOR_16BIT, 0x98c, 0x2417},/*R9_Step_50 (b)*/
+	{MISENSOR_16BIT, 0x990, 0x0087},/*      = 135*/
+	{MISENSOR_16BIT, 0x98c, 0xa404},/*fD Mode*/
+	{MISENSOR_16BIT, 0x990, 0x10},/*      = 16*/
+	{MISENSOR_16BIT, 0x98c, 0xa40D},/*Stat_min*/
 	{MISENSOR_16BIT, 0x990, 0x02},/*      = 2*/
 	{MISENSOR_16BIT, 0x98c, 0xa40e},/*Stat_max*/
 	{MISENSOR_16BIT, 0x990, 0x03},/*      = 3*/
