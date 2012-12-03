@@ -19,6 +19,7 @@ obj-$(subst m,y,$(CONFIG_INTEL_MFLD_THERMAL))				+= platform_msic_thermal.o
 obj-$(subst m,y,$(CONFIG_SENSORS_MID_VDD))				+= platform_msic_vdd.o
 # I2C Devices
 obj-$(subst m,y,$(CONFIG_SENSORS_EMC1403))				+= platform_emc1403.o
+obj-$(subst m,y,$(CONFIG_SENSORS_HMC5883))				+= platform_hmc5883.o
 obj-$(subst m,y,$(CONFIG_SENSORS_LIS3LV02D))				+= platform_lis331.o
 obj-$(subst m,y,$(CONFIG_GPIO_PCA953X))					+= platform_max7315.o
 obj-$(subst m,y,$(CONFIG_SENSORS_MPU3050))				+= platform_mpu3050.o

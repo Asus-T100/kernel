@@ -1382,6 +1382,14 @@ config SENSORS_MC13783_ADC
         help
           Support for the A/D converter on MC13783 and MC13892 PMIC.
 
+config SENSORS_HMC5883
+	bool "Honeywell HMC5883 Magnetometer Driver"
+	depends on I2C
+	select INPUT_POLLDEV
+	default y
+	help
+	  Say Yes here to enable the Honeywell HMC5883 Magnetometer Driver
+
 if ACPI
 
 comment "ACPI drivers"
