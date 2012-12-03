@@ -3359,6 +3359,14 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 			return -EINVAL;
 		if (sh_css_preview_get_output_frame_info(output_info))
 			return -EINVAL;
+
+		if (!isp->params.continuous_vf) {
+			if (sh_css_preview_configure_pp_input(
+					effective_input_width,
+					effective_input_height))
+				return -EINVAL;
+		}
+
 		break;
 	case ATOMISP_PIPE_CAPTURE:
 		/* fall through */
@@ -3385,6 +3393,13 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 		v4l2_dbg(3, dbg_level, &atomisp_dev,
 					"sh css capture main output width: %d, height: %d\n",
 					width, height);
+
+		if (!isp->params.continuous_vf) {
+			if (sh_css_capture_configure_pp_input(
+					effective_input_width,
+					effective_input_height))
+				return -EINVAL;
+		}
 
 		ret = sh_css_capture_get_output_frame_info(output_info);
 		if (ret) {
