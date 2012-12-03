@@ -312,6 +312,25 @@ static const struct media_entity_operations isp_subdev_media_ops = {
 /*	 .set_power = v4l2_subdev_set_power,	*/
 };
 
+static int s_ctrl(struct v4l2_ctrl *ctrl)
+{
+	return 0;
+}
+
+static const struct v4l2_ctrl_ops ctrl_ops = {
+	.s_ctrl = &s_ctrl,
+};
+
+static const struct v4l2_ctrl_config ctrl_fmt_auto = {
+	.ops = &ctrl_ops,
+	.id = V4L2_CID_FMT_AUTO,
+	.name = "Automatic format guessing",
+	.type = V4L2_CTRL_TYPE_BOOLEAN,
+	.min = 0,
+	.max = 1,
+	.def = 1,
+};
+
 /*
  * isp_subdev_init_entities - Initialize V4L2 subdev and media entity
  * @isp_subdev: ISP CCDC module
@@ -411,11 +430,23 @@ static int isp_subdev_init_entities(struct atomisp_sub_device *isp_subdev)
 	if (ret < 0)
 		return ret;
 
-	return 0;
+	ret = v4l2_ctrl_handler_init(&isp_subdev->ctrl_handler, 1);
+	if (ret)
+		return ret;
+
+	isp_subdev->fmt_auto = v4l2_ctrl_new_custom(&isp_subdev->ctrl_handler,
+						    &ctrl_fmt_auto, NULL);
+
+	/* Make controls visible on subdev as well. */
+	isp_subdev->subdev.ctrl_handler = &isp_subdev->ctrl_handler;
+
+	return isp_subdev->ctrl_handler.error;
 }
 
 void atomisp_subdev_unregister_entities(struct atomisp_sub_device *isp_subdev)
 {
+	v4l2_ctrl_handler_free(&isp_subdev->ctrl_handler);
+
 	media_entity_cleanup(&isp_subdev->subdev.entity);
 
 	v4l2_device_unregister_subdev(&isp_subdev->subdev);

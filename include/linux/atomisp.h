@@ -845,6 +845,8 @@ struct v4l2_private_int_data {
 #define V4L2_2A_STATUS_AE_READY            (1 << 0)
 #define V4L2_2A_STATUS_AWB_READY           (1 << 1)
 
+#define V4L2_CID_FMT_AUTO			(V4L2_CID_CAMERA_LASTP1 + 19)
+
 #define V4L2_BUF_FLAG_BUFFER_INVALID       0x0400
 #define V4L2_BUF_FLAG_BUFFER_VALID         0x0800
 
