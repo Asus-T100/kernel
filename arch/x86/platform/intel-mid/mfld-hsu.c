@@ -220,6 +220,24 @@ void intel_mid_hsu_port_map(int *logic_idx, int *share_idx)
 	}
 }
 
+void intel_mid_hsu_wake_peer(int port)
+{
+	struct mfld_hsu_info *info = platform_hsu_info + port;
+
+	if (info->wake_peer)
+		info->wake_peer(info->dev);
+}
+
+struct device *intel_mid_hsu_set_wake_peer(int port,
+	void (*wake_peer)(struct device *))
+{
+	struct mfld_hsu_info *info = platform_hsu_info + port;
+
+	info->wake_peer = wake_peer;
+	return info->dev;
+}
+EXPORT_SYMBOL(intel_mid_hsu_set_wake_peer);
+
 int intel_mid_hsu_init(int port, struct device *dev, irq_handler_t wake_isr)
 {
 	struct mfld_hsu_info *info;

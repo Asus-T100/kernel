@@ -1452,6 +1452,14 @@ serial_hsu_pm(struct uart_port *port, unsigned int state,
 {
 }
 
+static void serial_hsu_wake_peer(struct uart_port *port)
+{
+	struct uart_hsu_port *up =
+			container_of(port, struct uart_hsu_port, port);
+
+	intel_mid_hsu_wake_peer(up->index);
+}
+
 static void serial_hsu_release_port(struct uart_port *port)
 {
 }
@@ -1731,6 +1739,7 @@ struct uart_ops serial_hsu_pops = {
 	.shutdown	= serial_hsu_shutdown,
 	.set_termios	= serial_hsu_set_termios,
 	.pm		= serial_hsu_pm,
+	.wake_peer	= serial_hsu_wake_peer,
 	.type		= serial_hsu_type,
 	.release_port	= serial_hsu_release_port,
 	.request_port	= serial_hsu_request_port,
