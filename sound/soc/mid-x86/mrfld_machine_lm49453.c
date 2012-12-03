@@ -123,6 +123,23 @@ static int mrfld_set_bias_level_post(struct snd_soc_card *card,
 	return 0;
 }
 
+static const struct snd_soc_dapm_widget widgets[] = {
+	SND_SOC_DAPM_HP("Headphones", NULL),
+	SND_SOC_DAPM_MIC("Mic", NULL),
+};
+
+static const struct snd_soc_dapm_route map[] = {
+	{"Headphones", NULL, "HPOUTR"},
+	{"Headphones", NULL, "HPOUTL"},
+	{"AMIC1", NULL, "Mic"},
+
+	/* SWM map link the SWM outs to codec AIF */
+	{ "PORT1_SDI", "NULL", "Codec OUT0"  },
+	{ "PORT1_SDI", "NULL", "Codec OUT1"  },
+	{ "Codec IN0", "NULL", "PORT1_SDO"  },
+	{ "Codec IN1", "NULL", "PORT1_SDO"  },
+};
+
 static int mrfld_init(struct snd_soc_pcm_runtime *runtime)
 {
 	struct snd_soc_codec *codec = runtime->codec;
@@ -228,6 +245,10 @@ static struct snd_soc_card snd_soc_card_mrfld = {
 	.dai_link = mrfld_msic_dailink,
 	.num_links = ARRAY_SIZE(mrfld_msic_dailink),
 	.set_bias_level_post = mrfld_set_bias_level_post,
+	.dapm_widgets = widgets,
+	.num_dapm_widgets = ARRAY_SIZE(widgets),
+	.dapm_routes = map,
+	.num_dapm_routes = ARRAY_SIZE(map),
 };
 
 static int snd_mrfld_mc_probe(struct ipc_device *ipcdev)
