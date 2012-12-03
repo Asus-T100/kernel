@@ -1178,9 +1178,9 @@ int ospm_power_suspend(struct pci_dev *pdev, pm_message_t state)
 			if (ospm_runtime_pm_topaz_suspend(gpDrmDevice) != 0)
 				ret = -EBUSY;
 
-			ospm_suspend_display(gpDrmDevice);
-
 			if (!ret) {
+				ospm_suspend_display(gpDrmDevice);
+
 				/* When suspend, the gfx island may increase
 				** its access count, hence the PCI host
 				** shouldn't be power off
