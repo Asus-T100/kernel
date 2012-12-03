@@ -18,9 +18,11 @@
 #include "device_libs/platform_ipc.h"
 #include "device_libs/platform_mrfl_adc.h"
 #include "device_libs/platform_max3111.h"
+#include "device_libs/platform_mrfl_pmic.h"
 #include <asm/platform_mrfld_audio.h>
 /* I2C Devices */
 #include "device_libs/platform_max17042.h"
+#include "device_libs/platform_bq24261.h"
 #include "device_libs/platform_pn544.h"
 
 static void __init *no_platform_data(void *info)
@@ -41,6 +43,16 @@ struct devs_id __initconst device_ids[] = {
 	{"bcove_chrgr", SFI_DEV_TYPE_IPC, 1, &no_platform_data, NULL},
 	{"max17050", SFI_DEV_TYPE_I2C, 1, &max17042_platform_data, NULL},
 	{"spi_max3111", SFI_DEV_TYPE_SPI, 0, &max3111_vp_platform_data, NULL},
+
+#ifdef CONFIG_BQ24261_CHARGER
+	{"bq24261_charger", SFI_DEV_TYPE_I2C, 1, &bq24261_platform_data, NULL},
+#endif
+#ifdef CONFIG_PMIC_CCSM
+	{"pmic_ccsm", SFI_DEV_TYPE_IPC, 1, &mrfl_pmic_platform_data, NULL},
+#endif
+#ifdef CONFIG_I2C_PMIC
+	{"i2c_pmic_adap", SFI_DEV_TYPE_IPC, 1, &no_platform_data, NULL},
+#endif
 	{"mrfld_lm49453", SFI_DEV_TYPE_IPC, 1, &merfld_audio_platform_data, NULL},
 	{"lm49453_codec", SFI_DEV_TYPE_I2C, 1, &no_platform_data, NULL},
 	{"bcm43xx_clk_vmmc", SFI_DEV_TYPE_SD, 0, &bcm43xx_platform_data, NULL},
