@@ -36,6 +36,8 @@
 #define DW_IC_SS_SCL_LCNT	0x18
 #define DW_IC_FS_SCL_HCNT	0x1c
 #define DW_IC_FS_SCL_LCNT	0x20
+#define DW_IC_HS_SCL_HCNT	0x24
+#define DW_IC_HS_SCL_LCNT	0x28
 #define DW_IC_INTR_STAT		0x2c
 #define DW_IC_INTR_MASK		0x30
 #define DW_IC_RAW_INTR_STAT	0x34
@@ -158,6 +160,19 @@
 #define CLV_FS_SCLK_LCNT		0x98
 #define CLV_HS_SCLK_HCNT		0x8
 #define CLV_HS_SCLK_LCNT		0x17
+
+/* inofficial configuration
+#define MERR_SS_SCLK_HCNT 0x2c8
+#define MERR_SS_SCLK_LCNT 0x380
+#define MERR_FS_SCLK_HCNT 0x084
+#define MERR_FS_SCLK_LCNT 0x100
+*/
+#define MERR_SS_SCLK_HCNT 0x2f8
+#define MERR_SS_SCLK_LCNT 0x37b
+#define MERR_FS_SCLK_HCNT 0x087
+#define MERR_FS_SCLK_LCNT 0x10a
+#define MERR_HS_SCLK_HCNT 0x8
+#define MERR_HS_SCLK_LCNT 0x20
 
 /**
  * struct dw_i2c_dev - private i2c-designware data

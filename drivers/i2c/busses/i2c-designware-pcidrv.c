@@ -105,6 +105,20 @@ static int ctp_i2c_scl_cfg(struct dw_i2c_dev *dev)
 	return 0;
 }
 
+static int merr_i2c_scl_cfg(struct dw_i2c_dev *dev)
+{
+	dw_writel(dev, MERR_SS_SCLK_HCNT, DW_IC_SS_SCL_HCNT);
+	dw_writel(dev, MERR_SS_SCLK_LCNT, DW_IC_SS_SCL_LCNT);
+
+	dw_writel(dev, MERR_FS_SCLK_HCNT, DW_IC_FS_SCL_HCNT);
+	dw_writel(dev, MERR_FS_SCLK_LCNT, DW_IC_FS_SCL_LCNT);
+
+	dw_writel(dev, MERR_HS_SCLK_HCNT, DW_IC_HS_SCL_HCNT);
+	dw_writel(dev, MERR_HS_SCLK_LCNT, DW_IC_HS_SCL_LCNT);
+
+	return 0;
+}
+
 static struct  dw_pci_controller  dw_pci_controllers[] = {
 	[moorestown_0] = {
 		.bus_num     = 0,
@@ -227,59 +241,59 @@ static struct  dw_pci_controller  dw_pci_controllers[] = {
 
 	[merrifield_0] = {
 		.bus_num     = 1,
-		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_STD,
-		.tx_fifo_depth = 32,
-		.rx_fifo_depth = 32,
-		.clk_khz      = 17000,
+		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_FAST,
+		.tx_fifo_depth = 64,
+		.rx_fifo_depth = 64,
 		.enable_stop = 1,
+		.scl_cfg = merr_i2c_scl_cfg,
 	},
 	[merrifield_1] = {
 		.bus_num     = 2,
 		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_STD,
-		.tx_fifo_depth = 32,
-		.rx_fifo_depth = 32,
-		.clk_khz      = 17000,
+		.tx_fifo_depth = 64,
+		.rx_fifo_depth = 64,
 		.enable_stop = 1,
+		.scl_cfg = merr_i2c_scl_cfg,
 	},
 	[merrifield_2] = {
 		.bus_num     = 3,
-		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_STD,
-		.tx_fifo_depth = 32,
-		.rx_fifo_depth = 32,
-		.clk_khz      = 17000,
+		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_FAST,
+		.tx_fifo_depth = 64,
+		.rx_fifo_depth = 64,
 		.enable_stop = 1,
+		.scl_cfg = merr_i2c_scl_cfg,
 	},
 	[merrifield_3] = {
 		.bus_num     = 4,
-		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_STD,
-		.tx_fifo_depth = 32,
-		.rx_fifo_depth = 32,
-		.clk_khz      = 17000,
+		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_FAST,
+		.tx_fifo_depth = 64,
+		.rx_fifo_depth = 64,
 		.enable_stop = 1,
+		.scl_cfg = merr_i2c_scl_cfg,
 	},
 	[merrifield_4] = {
 		.bus_num     = 5,
-		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_STD,
-		.tx_fifo_depth = 32,
-		.rx_fifo_depth = 32,
-		.clk_khz      = 17000,
+		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_FAST,
+		.tx_fifo_depth = 64,
+		.rx_fifo_depth = 64,
 		.enable_stop = 1,
+		.scl_cfg = merr_i2c_scl_cfg,
 	},
 	[merrifield_5] = {
 		.bus_num     = 6,
-		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_STD,
-		.tx_fifo_depth = 32,
-		.rx_fifo_depth = 32,
-		.clk_khz      = 17000,
+		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_FAST,
+		.tx_fifo_depth = 64,
+		.rx_fifo_depth = 64,
 		.enable_stop = 1,
+		.scl_cfg = merr_i2c_scl_cfg,
 	},
 	[merrifield_6] = {
 		.bus_num     = 7,
-		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_STD,
-		.tx_fifo_depth = 32,
-		.rx_fifo_depth = 32,
-		.clk_khz      = 17000,
+		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_FAST,
+		.tx_fifo_depth = 64,
+		.rx_fifo_depth = 64,
 		.enable_stop = 1,
+		.scl_cfg = merr_i2c_scl_cfg,
 	},
 };
 
