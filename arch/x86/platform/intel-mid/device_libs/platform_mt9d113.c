@@ -18,32 +18,12 @@
 #include <media/v4l2-subdev.h>
 #include "platform_camera.h"
 #include "platform_mt9d113.h"
-/*
- * FIXME
- * Remove this if SFI table has added the GPIO entry!
- */
-#define LACK_SFI_TABLE
 
 static int camera_reset;
-/*
- * FIXME
- * Remove this if SFI table has added the GPIO entry!
- */
-#ifdef LACK_SFI_TABLE
-static int camera_power_down = 161;
-#else
 static int camera_power_down;
-#endif
 static int camera_vprog1_on;
-/*
- * FIXME
- * Remove this if SFI table has added the GPIO entry!
- */
-#ifdef LACK_SFI_TABLE
-static int camera_1p8 = 43;
-#else
 static int camera_1p8;
-#endif
+
 /*
  * MFLD PR2 primary camera sensor - MT9V113 platform data
  */
@@ -76,11 +56,7 @@ static int mt9d113_flisclk_ctrl(struct v4l2_subdev *sd, int flag)
 static int mt9d113_power_ctrl(struct v4l2_subdev *sd, int flag)
 {
 	int ret;
-/*
- * FIXME
- * Remove this if SFI table has added the GPIO entry!
- */
-#ifndef LACK_SFI_TABLE
+
 	if (camera_power_down < 0) {
 		ret = camera_sensor_gpio(-1, GP_CAMERA_0_STANDBY,
 					 GPIOF_DIR_OUT, 1);
@@ -90,15 +66,7 @@ static int mt9d113_power_ctrl(struct v4l2_subdev *sd, int flag)
 		}
 		camera_power_down = ret;
 	}
-#else
-	pr_warn("CAM_R_STBY use hard coded value: %d", camera_power_down);
-#endif
 
-/*
- * FIXME
- * Remove this if SFI table has added the GPIO entry!
- */
-#ifndef LACK_SFI_TABLE
 	if (camera_1p8 < 0) {
 		ret = camera_sensor_gpio(-1, GP_CAMERA_1P8,
 					 GPIOF_DIR_OUT, 1);
@@ -108,16 +76,6 @@ static int mt9d113_power_ctrl(struct v4l2_subdev *sd, int flag)
 		}
 		camera_1p8 = ret;
 	}
-#else
-	pr_warn("CAMERA_ON_N use hard coded value: %d", camera_1p8);
-	ret = gpio_direction_output(camera_1p8, 1);
-
-	if (ret) {
-		pr_err("%s: failed to set gpio(pin %d) direction\n",
-							__func__, camera_1p8);
-		return ret;
-	}
-#endif
 
 	if (flag) {
 		if (camera_power_down >= 0)
@@ -163,14 +121,8 @@ static struct camera_sensor_platform_data mt9d113_sensor_platform_data = {
 void *mt9d113_platform_data(void *info)
 {
 	camera_reset = -1;
-/*
- * FIXME
- * Remove this if SFI table has added the GPIO entry!
- */
-#ifndef LACK_SFI_TABLE
 	camera_power_down = -1;
 	camera_1p8 = -1;
-#endif
 
 	return &mt9d113_sensor_platform_data;
 }
