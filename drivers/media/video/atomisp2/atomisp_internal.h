@@ -238,6 +238,7 @@ struct atomisp_acc_fw {
 	struct sh_css_fw_info *fw;
 	unsigned int handle;
 	unsigned int flags;
+	unsigned int type;
 	struct {
 		size_t length;
 		unsigned long css_ptr;
@@ -279,6 +280,7 @@ struct atomisp_device {
 		struct list_head fw;
 		struct list_head memory_maps;
 		struct sh_css_pipeline *pipeline;
+		bool extension_mode;
 		struct ida ida;
 	} acc;
 

@@ -40,6 +40,7 @@
 #include "atomisp_ioctl.h"
 #include "atomisp-regs.h"
 #include "atomisp_tables.h"
+#include "atomisp_acc.h"
 #include "atomisp_compat.h"
 
 #include "hrt/hive_isp_css_mm_hrt.h"
@@ -849,6 +850,7 @@ void atomisp_wdt_work(struct work_struct *work)
 			sh_css_capture_stop();
 			break;
 		}
+		atomisp_acc_unload_extensions(isp);
 
 		/* clear irq */
 		enable_isp_irq(hrt_isp_css_irq_sp, false);
@@ -873,6 +875,9 @@ void atomisp_wdt_work(struct work_struct *work)
 		isp->isp_timeout = false;
 
 		atomisp_clear_css_buffer_counters(isp);
+		if (atomisp_acc_load_extensions(isp) < 0)
+			dev_err(isp->dev, "acc extension failed to reload\n");
+
 
 		sh_css_start(css_pipe_id);
 		if (!isp->sw_contex.file_input) {

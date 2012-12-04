@@ -1333,6 +1333,11 @@ static int atomisp_streamon(struct file *file, void *fh,
 
 	css_pipe_id = atomisp_get_css_pipe_id(isp);
 
+	ret = atomisp_acc_load_extensions(isp);
+	if (ret < 0) {
+		dev_err(isp->dev, "acc extension failed to load\n");
+		goto out;
+	}
 	ret = sh_css_start(css_pipe_id);
 	if (ret) {
 		dev_err(isp->dev, "sh_css_start fails: %d\n", ret);
@@ -1438,6 +1443,7 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 		del_timer_sync(&isp->wdt);
 		cancel_work_sync(&isp->wdt_work);
 		mutex_lock(&isp->mutex);
+		atomisp_acc_unload_extensions(isp);
 	}
 
 	spin_lock_irqsave(&isp->lock, flags);

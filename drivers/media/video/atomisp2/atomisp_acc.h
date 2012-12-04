@@ -94,4 +94,16 @@ int atomisp_acc_start(struct atomisp_device *isp,
 int atomisp_acc_wait(struct atomisp_device *isp,
 		     unsigned int *handle);
 
+/*
+ * Appends the loaded acceleration binary extensions to the
+ * current ISP mode. Must be called just before sh_css_start().
+ */
+int atomisp_acc_load_extensions(struct atomisp_device *isp);
+
+/*
+ * Must be called after streaming is stopped:
+ * unloads any loaded acceleration extensions.
+ */
+void atomisp_acc_unload_extensions(struct atomisp_device *isp);
+
 #endif /* __ATOMISP_ACC_H__ */
