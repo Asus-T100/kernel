@@ -165,7 +165,6 @@ enum sh_css_frame_format {
 					     frames of this type, we set the
 					     height to 1 and the width to the
 					     number of allocated bytes. */
-	SH_CSS_FRAME_FORMAT_RAW_REORDERED,   /**< Continiuous RAW, 1 plane */
 	N_SH_CSS_FRAME_FORMAT
 };
 /* The maximum number of different frame formats any binary can support */
@@ -457,6 +456,14 @@ struct sh_css_anr_config {
 	int threshold; /**< Threshold */
 };
 
+/** Eigen Color Demosaicing configuration.
+ */
+struct sh_css_ecd_config {
+	unsigned short ecd_zip_strength;
+	unsigned short ecd_fc_strength;
+	unsigned short ecd_fc_debias;
+};
+
 /** Y(Luma) Noise Reduction configuration.
  */
 struct sh_css_ynr_config {
@@ -578,6 +585,7 @@ struct sh_css_isp_config {
 	struct sh_css_wb_config  wb_config;  /**< White Balance config */
 	struct sh_css_cc_config  cc_config;  /**< Color Correction config */
 	struct sh_css_tnr_config tnr_config; /**< Temporal Noise Reduction */
+	struct sh_css_ecd_config ecd_config; /**< Eigen Color Demosaicing */
 	struct sh_css_ynr_config ynr_config; /**< Y(Luma) Noise Reduction */
 	struct sh_css_fc_config  fc_config;  /**< Fringe Control */
 	struct sh_css_cnr_config cnr_config; /**< Chroma Noise Reduction */
@@ -770,6 +778,7 @@ struct sh_css_binary_info {
 	} memories;
 /* MW: Packing (related) bools in an integer ?? */
 	struct {
+		unsigned char     reduced_pipe;
 		unsigned char     vf_veceven;
 		unsigned char     dis;
 		unsigned char     dvs_envelope;
@@ -777,7 +786,7 @@ struct sh_css_binary_info {
 		unsigned char     dvs_6axis;
 		unsigned char     block_output;
 		unsigned char     ds;
-		unsigned char     rawdeci;
+		unsigned char     raw_binning;
 		unsigned char     continuous;
 		unsigned char     s3a;
 		unsigned char     fpnr;
@@ -857,7 +866,7 @@ struct sh_css_sp_info {
 	unsigned int	sleep_mode;  /**< different mode to halt SP */
 	unsigned int	invalidate_tlb;		/**< inform SP to invalidate mmu TLB */
 	unsigned int	request_flash;	/**< inform SP to switch on flash for next frame */
-	unsigned int	flash_in_use;
+	unsigned int	stop_copy_preview;
 	unsigned int	debug_buffer_ddr_address;	/**< inform SP the address
 	of DDR debug queue */
 	unsigned int	ddr_parameter_address; /**< acc param ddrptr, sp dmem */
@@ -894,6 +903,7 @@ struct sh_css_hmm_isp_interface {
 /** Firmware information.
  */
 struct sh_css_fw_info {
+	size_t			header_size; /**< size of fw header */
 	enum sh_css_fw_type	type; /**< FW type */
 	union sh_css_fw_union	info; /**< Binary info */
 	struct sh_css_blob_info blob; /**< Blob info */
@@ -1001,9 +1011,9 @@ enum sh_css_sp_sleep_mode {
 };
 
 enum sh_css_sp_sw_state {
-	SP_SW_STATE_NULL = 0,
-	SP_SW_INITIALIZED,
-	SP_SW_TERMINATED
+	SP_READY_TO_START = 0,
+	SP_BOOTED,
+	SP_TERMINATED
 };
 
 #endif /* _SH_CSS_TYPES_H_ */

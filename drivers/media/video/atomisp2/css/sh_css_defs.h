@@ -58,76 +58,7 @@
 #error "sh_css_defs: Unknown VAMEM version"
 #endif
 
-/* the max macro from the kernel only works within function context. We use
-   these macros also as global initializers (for now). for this, we need
-   the MAX macro. */
-#define _MAX(a, b)        ((a) > (b) ? (a) : (b))
-#define _MIN(a, b)        ((a) < (b) ? (a) : (b))
-#define _CEIL_MUL(a, b)   (CEIL_DIV(a, b) * (b))
-#define _CEIL_DIV(a, b)   ((b) ? ((a)+(b)-1)/(b) : 0)
-#define _CEIL_SHIFT(a, b) (((a)+(1<<(b))-1)>>(b))
-#define _CEIL_SHIFT_MUL(a, b) (CEIL_SHIFT(a, b) << (b))
-#define _CEIL_MUL2(a, b)  (((a)+(b)-1) & ~((b)-1))
-
-#ifndef SH_CSS_CEIL_INLINE
-#define MAX(a, b)	 	_MAX(a,b)
-#ifdef __KERNEL__
-#define MIN(a, b)		_MIN(a,b)
-#endif
-#define CEIL_MUL(a, b)		_CEIL_MUL(a, b) 
-#define CEIL_DIV(a, b)   	_CEIL_DIV(a, b)
-#define CEIL_SHIFT(a, b) 	_CEIL_SHIFT(a, b)
-#define CEIL_SHIFT_MUL(a, b)  	_CEIL_SHIFT_MUL(a, b)
-#define CEIL_MUL2(a, b)  	_CEIL_MUL2(a, b)
-
-#else
-
-#define MAX(a, b)	 	_max(a,b)
-#ifdef __KERNEL__
-#define MIN(a, b)		_min(a,b)
-#endif
-#define CEIL_MUL(a, b)		_ceil_mul(a, b) 
-#define CEIL_DIV(a, b)   	_ceil_div(a, b)
-#define CEIL_SHIFT(a, b) 	_ceil_shift(a, b)
-#define CEIL_SHIFT_MUL(a, b)  	_ceil_shift_mul(a, b)
-#define CEIL_MUL2(a, b)  	_ceil_mul2(a, b)
-
-static inline unsigned _max(unsigned a, unsigned b)
-{
-	return _MAX(a,b);
-}
-
-static inline unsigned _min(unsigned a, unsigned b)
-{
-	return _MIN(a,b);
-}
-
-static inline unsigned _ceil_div(unsigned a, unsigned b)
-{
-	return _CEIL_DIV(a,b);
-}
-
-static inline unsigned _ceil_mul(unsigned a, unsigned b)
-{
-	return _CEIL_MUL(a,b);
-}
-
-static inline unsigned _ceil_shift(unsigned a, unsigned b)
-{
-	return _CEIL_SHIFT(a,b);
-}
-
-static inline unsigned _ceil_shift_mul(unsigned a, unsigned b)
-{
-	return _CEIL_SHIFT_MUL(a,b);
-}
-
-static inline unsigned _ceil_mul2(unsigned a, unsigned b)
-{
-	return _CEIL_MUL2(a,b);
-}
-
-#endif
+#include"math_support.h"	/* max(), min, MAX(), MIN(), etc etc */
 
 /* Digital Image Stabilization */
 #define SH_CSS_DIS_DECI_FACTOR_LOG2       6
@@ -224,6 +155,10 @@ RGB[0,8191],coef[-8192,8191] -> RGB[0,8191]
 #define SH_CSS_MAX_SENSOR_WIDTH           4608
 #define SH_CSS_MAX_SENSOR_HEIGHT          3450
 #endif
+
+/* Limited to reduce vmem pressure */
+#define SH_CSS_MAX_CONTINUOUS_SENSOR_WIDTH  3264
+#define SH_CSS_MAX_CONTINUOUS_SENSOR_HEIGHT 2448
 
 #define SH_CSS_MIN_SENSOR_WIDTH           2
 #define SH_CSS_MIN_SENSOR_HEIGHT          2
@@ -415,20 +350,18 @@ RGB[0,8191],coef[-8192,8191] -> RGB[0,8191]
 	((out_height) + (dvs_env_height) + top_crop)
 
 /* @GC: Input can be up to sensor resolution when either bayer downscaling
- *	or reordered raw decimation is enabled.
+ *	or raw binning is enabled.
  *	Also, during continuous mode, we need to align to 4*NWAY since input
- *	frame lines are divided into 4 planes for reordered raw format */
-#define _ISP_MAX_INPUT_WIDTH(max_internal_width, enable_ds, enable_rawdeci, \
+ *	should support binning */
+#define _ISP_MAX_INPUT_WIDTH(max_internal_width, enable_ds, enable_raw_bin, \
 				enable_continuous) \
-	((enable_ds || enable_continuous) ? SH_CSS_MAX_SENSOR_WIDTH \
-					: max_internal_width)
-#if 0
-	((enable_ds || enable_rawdeci) ? SH_CSS_MAX_SENSOR_WIDTH \
-					: enable_continuous ? \
-					CEIL_MUL(max_internal_width \
-						, 4*ISP_VEC_NELEMS) \
-					: max_internal_width)
-#endif
+	((enable_ds) ? \
+	   SH_CSS_MAX_SENSOR_WIDTH :\
+	 (enable_raw_bin) ? \
+	   CEIL_MUL(SH_CSS_MAX_CONTINUOUS_SENSOR_WIDTH,4*ISP_VEC_NELEMS) : \
+	 (enable_continuous) ? \
+	   SH_CSS_MAX_CONTINUOUS_SENSOR_WIDTH \
+	   : max_internal_width)
 #define _ISP_INPUT_WIDTH(internal_width, ds_input_width, enable_ds) \
 	((enable_ds) ? (ds_input_width) : (internal_width))
 

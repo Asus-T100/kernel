@@ -5,7 +5,9 @@
 #ifndef HRT_USE_VIR_ADDRS
 #define HRT_USE_VIR_ADDRS
 #endif
+#ifdef __KERNEL__
 #include <hive_isp_css_custom_host_hrt.h>
+#endif
 #endif
 
 #include "system_global.h"

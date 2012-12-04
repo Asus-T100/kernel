@@ -54,6 +54,7 @@ typedef struct {
 	unsigned int      p2_y;
 	unsigned int      p3_x;
 	unsigned int      p3_y;
+	unsigned int      padding[3];
 } gdc_warp_param_mem_t;
 
 #endif /* __GDC_GLOBAL_H_INCLUDED__ */

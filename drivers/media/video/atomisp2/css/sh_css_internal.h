@@ -44,6 +44,13 @@
 
 #define SH_CSS_MAX_BINARY_NAME	32
 
+#define SP_DEBUG_NONE	(0)
+#define SP_DEBUG_DUMP	(1)
+#define SP_DEBUG_COPY	(2)
+#define SP_DEBUG_TRACE	(3) /* not yet functional */
+
+#define SP_DEBUG SP_DEBUG_NONE
+
 #ifdef __DISABLE_UNUSED_THREAD__
 #define SH_CSS_MAX_SP_THREADS	1 /* preview */
 #else
@@ -237,6 +244,11 @@ struct sh_css_isp_params {
 
 /* parameters for ISP pipe version 2 */
 #if SH_CSS_ISP_PARAMS_VERSION == 2
+	/* DE (Demosaic) */
+	int ecd_zip_strength;
+	int ecd_fc_strength;
+	int ecd_fc_debias;
+
 	/* YNR (Y Noise Reduction), YEE (Y Edge Enhancement) */
 	int yee_edge_sense_gain_0;
 	int yee_edge_sense_gain_1;
@@ -344,7 +356,6 @@ struct sh_css_ddr_address_map {
 	hrt_vaddress tetra_batr_x;
 	hrt_vaddress tetra_batr_y;
 	hrt_vaddress dvs_6axis_params_y;
-	hrt_vaddress dvs_6axis_params_uv;
 	hrt_vaddress r_gamma_tbl;
 	hrt_vaddress g_gamma_tbl;
 	hrt_vaddress b_gamma_tbl;
@@ -374,7 +385,6 @@ struct sh_css_ddr_address_map_size {
 	size_t tetra_batr_x;
 	size_t tetra_batr_y;
 	size_t dvs_6axis_params_y;
-	size_t dvs_6axis_params_uv;
 	size_t r_gamma_tbl;
 	size_t g_gamma_tbl;
 	size_t b_gamma_tbl;
@@ -435,12 +445,63 @@ struct sh_css_pipeline {
 };
 
 
+#if SP_DEBUG == SP_DEBUG_DUMP
+
 #define SH_CSS_NUM_SP_DEBUG 48
 
 struct sh_css_sp_debug_state {
 	unsigned int error;
 	unsigned int debug[SH_CSS_NUM_SP_DEBUG];
 };
+
+#elif SP_DEBUG == SP_DEBUG_COPY
+
+#define SH_CSS_SP_DBG_TRACE_DEPTH	(40)
+
+struct sh_css_sp_debug_trace {
+	uint16_t frame;
+	uint16_t line;
+	uint16_t pixel_distance;
+	uint16_t mipi_used_dword;
+	uint16_t sp_index;
+};
+
+struct sh_css_sp_debug_state {
+	uint16_t if_start_line;
+	uint16_t if_start_column;
+	uint16_t if_cropped_height;
+	uint16_t if_cropped_width;
+	unsigned int index;
+	struct sh_css_sp_debug_trace
+		trace[SH_CSS_SP_DBG_TRACE_DEPTH];
+};
+
+#elif SP_DEBUG == SP_DEBUG_TRACE
+
+#define SH_CSS_SP_DBG_NR_OF_TRACES	(4)
+#define SH_CSS_SP_DBG_TRACE_DEPTH	(20)
+
+#define SH_CSS_SP_DBG_TRACE_FILE_ID_BIT_POS (13)
+
+/* trace id 0..3 are used by the SP threads */
+#define SH_CSS_SP_DBG_TRACE_ID_CONTROL (3) /* Re-use accl thread */
+#define SH_CSS_SP_DBG_TRACE_ID_TBD  (5)
+
+struct sh_css_sp_debug_trace {
+	uint16_t time_stamp;
+	uint16_t location;	/* bit 15..13 = file_id, 12..0 = line */
+	uint32_t data;
+};
+
+struct sh_css_sp_debug_state {
+	unsigned int mipi_fifo_high_water;
+	struct sh_css_sp_debug_trace
+		trace[SH_CSS_SP_DBG_NR_OF_TRACES][SH_CSS_SP_DBG_TRACE_DEPTH];
+	uint8_t index[SH_CSS_SP_DBG_NR_OF_TRACES];
+};
+
+#endif
+
 
 struct sh_css_sp_debug_command {
 	/*
@@ -460,7 +521,7 @@ struct sh_css_sp_debug_command {
 /* SP configuration information */
 struct sh_css_sp_config {
 	uint8_t			is_offline;  /* Run offline, with continuous copy */
-	uint8_t			input_is_raw_reordered;
+	uint8_t			input_needs_raw_binning;
 	uint8_t			no_isp_sync; /* Signal host immediately after start */
 	struct {
 		uint8_t					a_changed;
@@ -499,6 +560,7 @@ struct sh_css_sp_pipeline {
 	uint32_t	thread_id;	/* the sp thread ID */
 	uint32_t	pipe_config;	/* the pipe config */
 	uint32_t	num_stages;
+	uint32_t	running;
 	hrt_vaddress	sp_stage_addr[SH_CSS_MAX_STAGES];
 	struct sh_css_sp_stage *stage; /* Current stage for this pipeline */
 	union {
@@ -628,6 +690,23 @@ struct sh_css_sp_frames {
 	hrt_vaddress static_frame_data[SH_CSS_NUM_FRAME_IDS];
 };
 
+/* Information for a single pipeline stage for an ISP */
+struct sh_css_isp_stage {
+	/*
+	 * For compatability and portabilty, only types
+	 * from "stdint.h" are allowed
+	 *
+	 * Use of "enum" and "bool" is prohibited
+	 * Multiple boolean flags can be stored in an
+	 * integer
+	 */
+	struct sh_css_blob_info		blob_info;
+	struct sh_css_binary_info	binary_info;
+	char				binary_name[SH_CSS_MAX_BINARY_NAME];
+	struct sh_css_hmm_isp_interface mem_interface
+						[SH_CSS_NUM_ISP_MEMORIES];
+};
+
 /* Information for a single pipeline stage */
 struct sh_css_sp_stage {
 	/*
@@ -658,21 +737,24 @@ struct sh_css_sp_stage {
 	/* The type of the pipe-stage */
 	/* enum sh_css_stage_type	stage_type; */
 	uint8_t			stage_type;
+	uint8_t			num_stripes;
+	struct {
+		uint8_t		vf_veceven;
+		uint8_t		s3a;
+		uint8_t		sdis;
+	} enable;
 	/* Add padding to come to a word boundary */
 	/* unsigned char			padding[0]; */
+
 	struct sh_css_crop_pos		sp_out_crop_pos;
 	/* Indicate which buffers require an IRQ */
 	uint32_t					irq_buf_flags;
 	struct sh_css_sp_frames		frames;
 	struct sh_css_dvs_envelope	dvs_envelope;
 	struct sh_css_uds_info		uds;
-	struct sh_css_blob_info		isp_blob_info;
-	struct sh_css_binary_info	binary_info;
-	char					binary_name[SH_CSS_MAX_BINARY_NAME];
+	hrt_vaddress			isp_stage_addr;
 	hrt_vaddress			xmem_bin_addr;
 	hrt_vaddress			xmem_map_addr;
-	struct sh_css_hmm_isp_interface isp_mem_interface
-						[SH_CSS_NUM_ISP_MEMORIES];
 };
 
 /*
@@ -707,7 +789,9 @@ struct sh_css_sp_per_frame_data {
 /* Output data from SP to css */
 struct sh_css_sp_output {
 	unsigned int			bin_copy_bytes_copied;
+#if SP_DEBUG != SP_DEBUG_NONE
 	struct sh_css_sp_debug_state	debug;
+#endif
 	unsigned int		sw_interrupt_value[SH_CSS_NUM_SDW_IRQS];
 };
 
@@ -880,8 +964,12 @@ sh_css_capture_enable_bayer_downscaling(bool enable);
 void
 sh_css_binary_print(const struct sh_css_binary *binary);
 
+#if SP_DEBUG !=SP_DEBUG_NONE
+
 void
 sh_css_print_sp_debug_state(const struct sh_css_sp_debug_state *state);
+
+#endif
 
 void
 sh_css_frame_info_set_width(struct sh_css_frame_info *info,
@@ -923,6 +1011,9 @@ sh_css_store_sp_group_to_ddr(void);
 
 hrt_vaddress
 sh_css_store_sp_stage_to_ddr(unsigned pipe, unsigned stage);
+
+hrt_vaddress
+sh_css_store_isp_stage_to_ddr(unsigned pipe, unsigned stage);
 
 void
 sh_css_frame_info_init(struct sh_css_frame_info *info,
