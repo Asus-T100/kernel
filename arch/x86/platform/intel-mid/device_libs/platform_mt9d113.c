@@ -100,6 +100,12 @@ static int mt9d113_power_ctrl(struct v4l2_subdev *sd, int flag)
 		if (camera_power_down >= 0)
 			gpio_set_value(camera_power_down, 0);
 
+		/*
+		 * camera_1p8 is shared pin, so should free it
+		 * when don't use it.
+		 */
+		gpio_free(camera_1p8);
+		camera_1p8 = -1;
 	}
 
 	return 0;
