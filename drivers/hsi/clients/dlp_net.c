@@ -199,9 +199,6 @@ static void dlp_net_complete_tx(struct hsi_msg *pdu)
 	struct dlp_net_context *net_ctx = ch_ctx->ch_data;
 	struct dlp_xfer_ctx *xfer_ctx = &ch_ctx->tx;
 
-	/* TX xfer done => Reset the "ongoing" flag */
-	dlp_ctrl_set_reset_ongoing(0);
-
 	/* TX done, free the skb */
 	dev_kfree_skb(msg_param->skb);
 
@@ -400,6 +397,11 @@ int dlp_net_open(struct net_device *dev)
 			goto out;
 		}
 	}
+
+	/* Reset the seq_num */
+
+	ch_ctx->rx.seq_num = 0 ;
+	ch_ctx->tx.seq_num = 0 ;
 
 	/* Open the channel */
 	ret = dlp_ctrl_open_channel(ch_ctx);

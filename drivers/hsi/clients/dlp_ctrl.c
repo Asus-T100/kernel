@@ -222,25 +222,24 @@ static irqreturn_t dlp_ctrl_reset_it(int irq, void *data)
 	struct dlp_ctrl_context *ctrl_ctx = ch_ctx->ch_data;
 
 	value = gpio_get_value(ctrl_ctx->gpio_mdm_rst_out);
-	reset_ongoing = dlp_ctrl_get_reset_ongoing();
-	if (reset_ongoing) {
-		pr_debug(DRVNAME ": Modem RESET_OUT 0x%x\n", value);
+	pr_debug(DRVNAME ": Modem RESET_OUT 0x%x\n", value);
 
-		/* Rising EDGE (Reset done) ? */
-		if (value)
+	if (!value) {
+		/* Unexpected reset received */
+		dlp_ctrl_set_reset_ongoing(1);
+
+		/* Set the reason & launch the work to handle the hangup */
+		ch_ctx->hangup.cause |= DLP_MODEM_HU_RESET;
+		queue_work(ctrl_ctx->wq, &ctrl_ctx->hangup_work);
+	} else {
+		reset_ongoing = dlp_ctrl_get_reset_ongoing();
+		if (reset_ongoing) {
+			dlp_ctrl_set_reset_ongoing(0);
 			complete(&ctrl_ctx->reset_done);
-
-		return IRQ_HANDLED;
+		} else {
+			pr_err(DRVNAME "RESET_OUT raised without disable detection !");
+		}
 	}
-
-	pr_err(DRVNAME ": Unexpected modem RESET_OUT 0x%x\n", value);
-
-	/* Unexpected reset received */
-	dlp_ctrl_set_reset_ongoing(1);
-
-	/* Set the reason & launch the work to handle the hangup */
-	ch_ctx->hangup.cause |= DLP_MODEM_HU_RESET;
-	queue_work(ctrl_ctx->wq, &ctrl_ctx->hangup_work);
 	return IRQ_HANDLED;
 }
 

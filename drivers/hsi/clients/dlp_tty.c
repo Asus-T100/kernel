@@ -383,9 +383,6 @@ static void dlp_tty_complete_tx(struct hsi_msg *pdu)
 	int wakeup, avail, pending;
 	unsigned long flags;
 
-	/* TX xfer done => Reset the "ongoing" flag */
-	dlp_ctrl_set_reset_ongoing(0);
-
 	/* Recycle or Free the pdu */
 	write_lock_irqsave(&xfer_ctx->lock, flags);
 	dlp_pdu_delete(xfer_ctx, pdu);
@@ -657,7 +654,7 @@ static int dlp_tty_open(struct tty_struct *tty, struct file *filp)
 
 	/* Check & wait for modem readiness */
 	if (!dlp_ctrl_modem_is_ready()) {
-		pr_err(DRVNAME ": Unale to open TTY (Modem NOT ready)\n");
+		pr_err(DRVNAME ": Unable to open TTY (Modem NOT ready)\n");
 
 		ret = -EBUSY;
 		goto out;
@@ -697,6 +694,10 @@ static int dlp_tty_open(struct tty_struct *tty, struct file *filp)
 	 * the first write request. This shall not introduce denial of service
 	 * as this flag will later adapt to the available TX buffer size. */
 	tty->flags |= (1 << TTY_NO_WRITE_SPLIT);
+
+	/* Reset the seq_num */
+	ch_ctx->rx.seq_num = 0 ;
+	ch_ctx->tx.seq_num = 0 ;
 
 out:
 	pr_debug(DRVNAME ": TTY device open done (ret: %d)\n", ret);
