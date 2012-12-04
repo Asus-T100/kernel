@@ -385,6 +385,12 @@ int __dbi_power_on(struct mdfld_dsi_config *dsi_config)
 	REG_WRITE(regs->device_ready_reg,
 		REG_READ(regs->device_ready_reg) & ~(DSI_DEVICE_READY));
 
+	/*according spec, if clock stop feature enable b05c[1],
+	* then un-ready MIPI adapter need wait HS speed mode to
+	* low speed mode. per calculation 1us is enough
+	*/
+	udelay(1);
+
 	/*D-PHY parameter*/
 	REG_WRITE(regs->dphy_param_reg, ctx->dphy_param);
 
