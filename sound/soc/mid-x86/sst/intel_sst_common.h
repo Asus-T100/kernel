@@ -397,6 +397,13 @@ struct sst_probe_info {
 	bool use_elf;
 	unsigned int max_streams;
 };
+
+struct sst_fw_context {
+	void *iram;
+	void *dram;
+	unsigned int saved;
+};
+
 /***
  * struct intel_sst_drv - driver ops
  *
@@ -508,6 +515,7 @@ struct intel_sst_drv {
 	struct list_head memcpy_list;
 	/* list used during LIB download in memcpy mode */
 	struct list_head libmemcpy_list;
+	struct sst_fw_context context;
 };
 
 extern struct intel_sst_drv *sst_drv_ctx;

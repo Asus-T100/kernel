@@ -64,6 +64,7 @@
 #define IPC_IA_SET_FW_CTXT 0x08
 
 /* I2L Codec Config/control msgs */
+#define IPC_PREP_D3 0x10
 #define IPC_IA_SET_CODEC_PARAMS 0x10
 #define IPC_IA_GET_CODEC_PARAMS 0x11
 #define IPC_IA_SET_PPP_PARAMS 0x12

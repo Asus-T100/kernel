@@ -581,6 +581,21 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 		/*set SSP3 disable DMA finsh for SSSP3 */
 		csr2 |= BIT(1)|BIT(2);
 		sst_shim_write(sst_drv_ctx->shim, SST_CSR2, csr2);
+	} else {
+		/*allocate mem for fw context save during suspend*/
+		sst_drv_ctx->context.iram =
+			kzalloc(sst_drv_ctx->iram_end - sst_drv_ctx->iram_base, GFP_KERNEL);
+		if (!sst_drv_ctx->context.iram) {
+			ret = -ENOMEM;
+			goto do_free_misc;
+		}
+		sst_drv_ctx->context.dram =
+			kzalloc(sst_drv_ctx->dram_end - sst_drv_ctx->dram_base, GFP_KERNEL);
+		if (!sst_drv_ctx->context.dram) {
+			ret = -ENOMEM;
+			kfree(sst_drv_ctx->context.iram);
+			goto do_free_misc;
+		}
 	}
 
 	/* GPIO_PIN 12,13,74,75 needs to be configured in
@@ -595,10 +610,8 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 	}
 
 	pci_set_drvdata(pci, sst_drv_ctx);
-	if (sst_drv_ctx->pci_id != SST_MRFLD_PCI_ID) {
-		pm_runtime_allow(&pci->dev);
-		pm_runtime_put_noidle(&pci->dev);
-	}
+	pm_runtime_allow(&pci->dev);
+	pm_runtime_put_noidle(&pci->dev);
 	register_sst(&pci->dev);
 	sst_debugfs_init(sst_drv_ctx);
 	sst_drv_ctx->qos = kzalloc(sizeof(struct pm_qos_request),
@@ -692,6 +705,105 @@ static void __devexit intel_sst_remove(struct pci_dev *pci)
 	pci_set_drvdata(pci, NULL);
 }
 
+static int sst_save_fw_rams(struct intel_sst_drv *sst)
+{
+	/* first reset, stall and bypass the core */
+	sst->ops->reset();
+
+	/* FIXME now we copy, should use DMA here but for now we cant
+	 * so use mempcy instead
+	 */
+	memcpy_fromio(sst->context.iram, sst->iram,
+			sst->iram_end - sst->iram_base);
+	memcpy_fromio(sst->context.dram, sst->dram,
+			sst->dram_end - sst->dram_base);
+	return 0;
+}
+
+static int sst_load_fw_rams(struct intel_sst_drv *sst)
+{
+	struct sst_block *block;
+
+	/* first reset, stall and bypass the core */
+	sst->ops->reset();
+
+	/* FIXME now we copy, should use DMA here but for now we cant
+	 * so use mempcy instead
+	 */
+	block = sst_create_block(sst, 0, FW_DWNL_ID);
+	if (block == NULL)
+		return -ENOMEM;
+
+	memcpy_toio(sst->iram, sst->context.iram,
+			sst->iram_end - sst->iram_base);
+	memcpy_toio(sst->dram, sst->context.dram,
+			sst->dram_end - sst->dram_base);
+	sst_set_fw_state_locked(sst, SST_FW_LOADED);
+
+	sst->ops->start();
+	if (sst_wait_timeout(sst, block)) {
+		pr_err("fw download failed\n");
+		/* assume FW d/l failed due to timeout*/
+		sst_set_fw_state_locked(sst, SST_UN_INIT);
+		return -EBUSY;
+	}
+	pr_debug("Fw loaded!");
+	sst_free_block(sst, block);
+	return 0;
+}
+
+static int sst_save_dsp_context2(struct intel_sst_drv *sst)
+{
+	unsigned int pvt_id;
+	struct ipc_post *msg = NULL;
+	unsigned long irq_flags;
+	struct ipc_dsp_hdr dsp_hdr;
+	struct sst_block *block;
+
+	/*not supported for rest*/
+	if (sst->sst_state != SST_FW_RUNNING) {
+		pr_debug("fw not running no context save ...\n");
+		return 0;
+	}
+
+	/*send msg to fw*/
+	pvt_id = sst_assign_pvt_id(sst);
+	if (sst_create_block_and_ipc_msg(&msg, true, sst, &block,
+				IPC_CMD, pvt_id)) {
+		pr_err("msg/block alloc failed. Not proceeding with context save\n");
+		return;
+	}
+
+	sst_fill_header_mrfld(&msg->mrfld_header, IPC_CMD,
+				IPC_QUE_ID_MED, 1, pvt_id);
+	msg->mrfld_header.p.header_low_payload = sizeof(dsp_hdr);
+	msg->mrfld_header.p.header_high.part.res_rqd = 1;
+	sst_fill_header_dsp(&dsp_hdr, IPC_PREP_D3, PIPE_RSVD, pvt_id);
+	memcpy(msg->mailbox_data, &dsp_hdr, sizeof(dsp_hdr));
+
+	spin_lock_irqsave(&sst->ipc_spin_lock, irq_flags);
+	list_add_tail(&msg->node, &sst->ipc_dispatch_list);
+	spin_unlock_irqrestore(&sst->ipc_spin_lock, irq_flags);
+	sst->ops->post_message(&sst->ipc_post_msg_wq);
+	/*wait for reply*/
+	if (sst_wait_timeout(sst, block)) {
+		pr_err("sst: err fw context save timeout  ...\n");
+		pr_err("not suspending FW!!!");
+		return -EIO;
+	}
+	if (block->ret_code) {
+		pr_err("fw responded w/ error %d", block->ret_code);
+		return -EIO;
+	}
+
+	/* all good, so lets copy the fw */
+	sst_save_fw_rams(sst);
+	sst->context.saved = 0;
+	pr_debug("fw context saved  ...\n");
+	sst_free_block(sst, block);
+	return 0;
+}
+
 static void sst_save_dsp_context(void)
 {
 	struct snd_sst_ctxt_params fw_context;
@@ -760,19 +872,23 @@ static int intel_sst_runtime_suspend(struct device *dev)
 	/*save fw context*/
 
 #ifndef MRFLD_TEST_ON_MFLD
-	sst_save_dsp_context();
+	if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID) {
+		if (sst_save_dsp_context2(sst_drv_ctx))
+			return -EBUSY;
+	} else {
+		sst_save_dsp_context();
+	}
 #endif
-	/*Assert RESET on LPE Processor*/
-	csr.full = sst_shim_read(sst_drv_ctx->shim, SST_CSR);
-	sst_drv_ctx->csr_value = csr.full;
-	csr.full = csr.full | 0x2;
+	if (sst_drv_ctx->pci_id != SST_MRFLD_PCI_ID) {
+		/*Assert RESET on LPE Processor*/
+		csr.full = sst_shim_read(sst_drv_ctx->shim, SST_CSR);
+		sst_drv_ctx->csr_value = csr.full;
+		csr.full = csr.full | 0x2;
+		sst_shim_write(sst_drv_ctx->shim, SST_CSR, csr.full);
+	}
 
 	/* Move the SST state to Suspended */
-	mutex_lock(&sst_drv_ctx->sst_lock);
-	sst_drv_ctx->sst_state = SST_SUSPENDED;
-	sst_shim_write(sst_drv_ctx->shim, SST_CSR, csr.full);
-	mutex_unlock(&sst_drv_ctx->sst_lock);
-
+	sst_set_fw_state_locked(sst_drv_ctx, SST_SUSPENDED);
 
 	flush_workqueue(sst_drv_ctx->post_msg_wq);
 	flush_workqueue(sst_drv_ctx->process_msg_wq);
@@ -790,26 +906,29 @@ static int intel_sst_runtime_resume(struct device *dev)
 		pr_err("SST is not in suspended state\n");
 		return 0;
 	}
-	csr = sst_shim_read(sst_drv_ctx->shim, SST_CSR);
-	/*
-	 * To restore the csr_value after S0ix and S3 states.
-	 * The value 0x30000 is to enable LPE dram high and low addresses.
-	 * Reference:
-	 * Penwell Audio Voice Module HAS 1.61 Section - 13.12.1 -
-	 * CSR - Configuration and Status Register.
-	 */
-	csr |= (sst_drv_ctx->csr_value | 0x30000);
-	sst_shim_write(sst_drv_ctx->shim, SST_CSR, csr);
 
-	/* GPIO_PIN 12,13,74,75 needs to be configured in
-	 * ALT_FUNC_2 mode for SSP3 IOs
-	 */
-	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID) {
-		lnw_gpio_set_alt(CLV_I2S_3_CLK_GPIO_PIN, LNW_ALT_2);
-		lnw_gpio_set_alt(CLV_I2S_3_FS_GPIO_PIN, LNW_ALT_2);
-		lnw_gpio_set_alt(CLV_I2S_3_TXD_GPIO_PIN, LNW_ALT_2);
-		lnw_gpio_set_alt(CLV_I2S_3_RXD_GPIO_PIN, LNW_ALT_2);
+	if (sst_drv_ctx->pci_id != SST_MRFLD_PCI_ID) {
+		csr = sst_shim_read(sst_drv_ctx->shim, SST_CSR);
+		/*
+		 * To restore the csr_value after S0ix and S3 states.
+		 * The value 0x30000 is to enable LPE dram high and low addresses.
+		 * Reference:
+		 * Penwell Audio Voice Module HAS 1.61 Section - 13.12.1 -
+		 * CSR - Configuration and Status Register.
+		 */
+		csr |= (sst_drv_ctx->csr_value | 0x30000);
+		sst_shim_write(sst_drv_ctx->shim, SST_CSR, csr);
 
+		/* GPIO_PIN 12,13,74,75 needs to be configured in
+		 * ALT_FUNC_2 mode for SSP3 IOs
+		 */
+		if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID) {
+			lnw_gpio_set_alt(CLV_I2S_3_CLK_GPIO_PIN, LNW_ALT_2);
+			lnw_gpio_set_alt(CLV_I2S_3_FS_GPIO_PIN, LNW_ALT_2);
+			lnw_gpio_set_alt(CLV_I2S_3_TXD_GPIO_PIN, LNW_ALT_2);
+			lnw_gpio_set_alt(CLV_I2S_3_RXD_GPIO_PIN, LNW_ALT_2);
+
+		}
 	}
 
 	/* When fw_clear_cache is set, clear the cached firmware copy */
@@ -827,14 +946,19 @@ static int intel_sst_runtime_resume(struct device *dev)
 	}
 
 	sst_set_fw_state_locked(sst_drv_ctx, SST_UN_INIT);
+	if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID && sst_drv_ctx->context.saved) {
+		/* in mrfld we have saved ram snapshot
+		 * so check if snapshot is present if so download that
+		 */
+		sst_load_fw_rams(sst_drv_ctx);
+		sst_drv_ctx->context.saved = 0;
+	}
 
 	return 0;
 }
 
 static int intel_sst_runtime_idle(struct device *dev)
 {
-	if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID)
-		return -EBUSY;
 	pr_debug("runtime_idle called\n");
 	if (sst_drv_ctx->sst_state != SST_UN_INIT) {
 		pm_schedule_suspend(dev, SST_SUSPEND_DELAY);
