@@ -757,13 +757,8 @@ irqreturn_t psb_irq_handler(DRM_IRQ_ARGS)
 	}
 #endif
 	if (sgx_int) {
-		if (ospm_power_using_hw_begin(OSPM_GRAPHICS_ISLAND,
-			OSPM_UHB_ONLY_IF_ON)) {
-			if (SYSPVRServiceSGXInterrupt(dev) != 0)
-					handled = 1;
-			ospm_power_using_hw_end(OSPM_GRAPHICS_ISLAND);
-		} else
-			DRM_INFO("get sgx int while it's off\n");
+		if (SYSPVRServiceSGXInterrupt(dev) != 0)
+				handled = 1;
 	}
 
 
