@@ -142,6 +142,10 @@ enum {
 /* current integration time access */
 #define MT9D113_VAR_INTEGRATION_TIME	0x2222
 
+#define MT9D113_VAR_AE_MAX_INDEX	0xa20c
+#define MT9D113_AE_MAX_INDEX_0	0x0003
+#define MT9D113_AE_MAX_INDEX_1	0x000e
+
 #define MT9D113_VAR_AE_GAIN	0x221c
 #define MT9D113_VAR_AE_D_GAIN	0x221f
 
@@ -236,6 +240,7 @@ struct mt9d113_device {
 	int real_model_id;
 	unsigned int res;
 	int color_effect;
+	int run_mode;
 };
 
 struct mt9d113_format_struct {
