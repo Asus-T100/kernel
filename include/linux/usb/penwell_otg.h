@@ -179,7 +179,13 @@
 #	define TERMSELECT		BIT(2)
 #	define XCVRSELECT1		BIT(1)
 #	define XCVRSELECT0		BIT(0)
+#define MSIC_DEBUG		0x3a5
 #define ULPI_DEBUG		0x15
+#	define LINESTATE_MSK		(BIT(0) | BIT(1))
+#	define LINESTATE_SE1		(BIT(0) | BIT(1))
+#	define LINESTATE_SE0		(0)
+#	define LINESTATE_FSJ		BIT(0)
+#	define LINESTATE_FSK		BIT(1)
 #define MSIC_VS1		0x3b6
 #define MSIC_VS1SET		0x3a9
 #define MSIC_VS1CLR		0x3aa
@@ -406,6 +412,7 @@ struct otg_bc_cap {
 #define CHRG_CURR_SDP_INVAL	500
 #define CHRG_CURR_CDP		1500
 #define CHRG_CURR_DCP	1500
+#define CHRG_CURR_SE1	1500
 #define CHRG_CURR_ACA	1500
 	unsigned int            current_event;
 };
