@@ -27,6 +27,7 @@
 #include <linux/firmware.h>
 #include <linux/kernel.h>
 #include <linux/pm_qos.h>
+#include <linux/idr.h>
 
 #include <media/media-device.h>
 #include <media/v4l2-subdev.h>
@@ -72,7 +73,6 @@
 #define ATOM_ISP_POWER_UP	1
 
 #define ATOM_ISP_MAX_INPUTS	4
-#define ATOMISP_ACC_FW_MAX	8
 
 #define ATOMISP_SC_TYPE_SIZE	2
 
@@ -234,10 +234,24 @@ struct atomisp_css_params {
 	bool css_update_params_needed;
 };
 
+struct atomisp_acc_fw {
+	struct sh_css_fw_info *fw;
+	unsigned int handle;
+	struct {
+		size_t length;
+		unsigned long css_ptr;
+	} args[ATOMISP_ACC_NR_MEMORY];
+	struct list_head list;
+};
+
 struct atomisp_map {
 	hrt_vaddress ptr;
 	size_t length;
 	struct list_head list;
+	/* FIXME: should keep book which maps are currently used
+	 * by binaries and not allow releasing those
+	 * which are in use. Implement by reference counting.
+	 */
 };
 
 #define ATOMISP_DEVICE_STREAMING_DISABLED	0
@@ -261,10 +275,10 @@ struct atomisp_device {
 	s32 max_isr_latency;
 
 	struct {
-		struct sh_css_fw_info *fw[ATOMISP_ACC_FW_MAX];
-		int fw_count;
-		struct sh_css_pipeline *pipeline;
+		struct list_head fw;
 		struct list_head memory_maps;
+		struct sh_css_pipeline *pipeline;
+		struct ida ida;
 	} acc;
 
 	unsigned int s3a_bufs_in_css[SH_CSS_NR_OF_PIPELINES];

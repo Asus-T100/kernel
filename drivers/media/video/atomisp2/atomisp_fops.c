@@ -41,6 +41,7 @@
 #include "device_access/device_access.h"
 #include "memory_access/memory_access.h"
 
+#include "atomisp_acc.h"
 #include "atomisp_fw.h"
 
 #define ISP_LEFT_PAD			128	/* equal to 2*NWAY */
@@ -596,6 +597,7 @@ static int atomisp_release(struct file *file)
 		goto done;
 
 	del_timer_sync(&isp->wdt);
+	atomisp_acc_release(isp);
 	atomisp_free_3a_dis_buffers(isp);
 	atomisp_free_all_shading_tables(isp);
 	atomisp_free_internal_buffers(isp);

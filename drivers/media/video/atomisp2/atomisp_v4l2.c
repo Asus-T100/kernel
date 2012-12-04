@@ -35,6 +35,7 @@
 #include "atomisp_file.h"
 #include "atomisp_ioctl.h"
 #include "atomisp_internal.h"
+#include "atomisp_acc.h"
 #include "atomisp-regs.h"
 
 #include "device_access.h"
@@ -1045,7 +1046,6 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 		goto load_fw_fail;
 	}
 
-	INIT_LIST_HEAD(&isp->acc.memory_maps);
 	INIT_LIST_HEAD(&isp->s3a_stats);
 	INIT_LIST_HEAD(&isp->dis_stats);
 	init_completion(&isp->dis_state_complete);
@@ -1104,6 +1104,7 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 			err);
 		goto enable_msi_fail;
 	}
+	atomisp_acc_init(isp);
 
 	/* save the iunit context only once after all the values are init'ed. */
 	atomisp_save_iunit_reg(isp);
