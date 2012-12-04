@@ -19,24 +19,10 @@
 #include "platform_camera.h"
 #include "platform_mt9v113.h"
 
-/*
- * FIXME
- * Remove this if SFI table has added the GPIO entry!
- */
-#define LACK_SFI_TABLE
-
 static int camera_reset;
 static int camera_power_down;
 static int camera_vprog1_on;
-/*
- * FIXME
- * Remove this if SFI table has added the GPIO entry!
- */
-#ifdef LACK_SFI_TABLE
-static int camera_1p8 = 43;
-#else
 static int camera_1p8;
-#endif
 
 /*
  * MFLD PR2 primary camera sensor - MT9V113 platform data
@@ -80,11 +66,7 @@ static int mt9v113_power_ctrl(struct v4l2_subdev *sd, int flag)
 		}
 		camera_power_down = ret;
 	}
-/*
- * FIXME
- * Remove this if SFI table has added the GPIO entry!
- */
-#ifndef LACK_SFI_TABLE
+
 	if (camera_1p8 < 0) {
 		ret = camera_sensor_gpio(-1, GP_CAMERA_1P8,
 					 GPIOF_DIR_OUT, 1);
@@ -94,16 +76,7 @@ static int mt9v113_power_ctrl(struct v4l2_subdev *sd, int flag)
 		}
 		camera_1p8 = ret;
 	}
-#else
-		pr_warn("CAMERA_ON_N use hard coded value: %d", camera_1p8);
-		ret = gpio_direction_output(camera_1p8, 1);
-		if (ret) {
-			pr_err("%s: failed to set gpio(pin %d) direction\n",
-							__func__, camera_1p8);
-			return ret;
-		}
 
-#endif
 	if (flag) {
 		if (camera_power_down >= 0)
 			gpio_set_value(camera_power_down, 0);
@@ -148,13 +121,7 @@ void *mt9v113_platform_data(void *info)
 {
 	camera_reset = -1;
 	camera_power_down = -1;
-/*
- * FIXME
- * Remove this if SFI table has added the GPIO entry!
- */
-#ifndef LACK_SFI_TABLE
 	camera_1p8 = -1;
-#endif
 
 	return &mt9v113_sensor_platform_data;
 }
