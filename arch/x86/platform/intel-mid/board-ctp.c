@@ -113,6 +113,7 @@ struct devs_id __initconst device_ids[] = {
 
 	/* Fuel Gauge and charger */
 	{"max17042", SFI_DEV_TYPE_I2C, 1, &max17042_platform_data, NULL},
+	{"max17047", SFI_DEV_TYPE_I2C, 1, &max17042_platform_data, NULL},
 	{"bq24192", SFI_DEV_TYPE_I2C, 1, &bq24192_platform_data},
 
 	/* Audio */
