@@ -5065,6 +5065,10 @@ assert(pipe != NULL);
 	if (zoom.dx < HRT_GDC_N ||
 	    zoom.dy < HRT_GDC_N)
 		return true;
+
+	if (my_css.continuous)
+		return true;
+
 	return false;
 }
 
