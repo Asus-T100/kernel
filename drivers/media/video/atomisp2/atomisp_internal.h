@@ -237,6 +237,7 @@ struct atomisp_css_params {
 struct atomisp_acc_fw {
 	struct sh_css_fw_info *fw;
 	unsigned int handle;
+	unsigned int flags;
 	struct {
 		size_t length;
 		unsigned long css_ptr;
