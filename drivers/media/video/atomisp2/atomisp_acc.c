@@ -35,7 +35,20 @@
 #include "sh_css.h"
 #include "sh_css_accelerate.h"
 
-#define ATOMISP_TO_CSS_MEMORY(m)	((enum sh_css_isp_memories)(m))
+#ifdef CONFIG_X86_MRFLD
+#define sh_css_load_extension(fw, pipe_id, acc_type) sh_css_load_extension(fw)
+#define sh_css_unload_extension(fw, pipe_id) sh_css_unload_extension(fw)
+#endif
+
+static const struct {
+	unsigned int flag;
+	enum sh_css_pipe_id pipe_id;
+} acc_flag_to_pipe[] = {
+	{ ATOMISP_ACC_FW_LOAD_FL_PREVIEW, SH_CSS_PREVIEW_PIPELINE },
+	{ ATOMISP_ACC_FW_LOAD_FL_COPY, SH_CSS_COPY_PIPELINE },
+	{ ATOMISP_ACC_FW_LOAD_FL_VIDEO, SH_CSS_VIDEO_PIPELINE },
+	{ ATOMISP_ACC_FW_LOAD_FL_CAPTURE, SH_CSS_CAPTURE_PIPELINE },
+};
 
 /*
  * Allocate struct atomisp_acc_fw along with space for firmware.
@@ -155,7 +168,11 @@ int atomisp_acc_load_to_pipe(struct atomisp_device *isp,
 	if (user_fw->flags & ~pipeline_flags)
 		return -EINVAL;
 
-	if (isp->acc.pipeline)
+	if (user_fw->type < ATOMISP_ACC_FW_LOAD_TYPE_OUTPUT ||
+	    user_fw->type > ATOMISP_ACC_FW_LOAD_TYPE_STANDALONE)
+		return -EINVAL;
+
+	if (isp->acc.pipeline || isp->acc.extension_mode)
 		return -EBUSY;
 
 	acc_fw = acc_alloc_fw(user_fw->size);
@@ -190,6 +207,7 @@ int atomisp_acc_load(struct atomisp_device *isp,
 
 	memset(&ltp, 0, sizeof(ltp));
 	ltp.flags = ATOMISP_ACC_FW_LOAD_FL_ACC;
+	ltp.type = ATOMISP_ACC_FW_LOAD_TYPE_STANDALONE;
 	ltp.size = user_fw->size;
 	ltp.data = user_fw->data;
 	r = atomisp_acc_load_to_pipe(isp, &ltp);
@@ -201,7 +219,7 @@ int atomisp_acc_unload(struct atomisp_device *isp, unsigned int *handle)
 {
 	struct atomisp_acc_fw *acc_fw;
 
-	if (isp->acc.pipeline)
+	if (isp->acc.pipeline || isp->acc.extension_mode)
 		return -EBUSY;
 
 	acc_fw = acc_get_fw(isp, *handle);
@@ -214,14 +232,33 @@ int atomisp_acc_unload(struct atomisp_device *isp, unsigned int *handle)
 	return 0;
 }
 
+/* Set the binary arguments */
+static int acc_set_parameters(struct atomisp_acc_fw *acc_fw)
+{
+	struct sh_css_hmm_section sec;
+	unsigned int mem;
+
+	for (mem = 0; mem < ATOMISP_ACC_NR_MEMORY; mem++) {
+		if (acc_fw->args[mem].length == 0)
+			continue;
+
+		sec.ddr_address = acc_fw->args[mem].css_ptr;
+		sec.ddr_size = acc_fw->args[mem].length;
+		if (sh_css_acc_set_firmware_parameters(acc_fw->fw, mem, sec)
+		    != sh_css_success)
+			return -EIO;
+	}
+
+	return 0;
+}
+
 int atomisp_acc_start(struct atomisp_device *isp, unsigned int *handle)
 {
 	struct atomisp_acc_fw *acc_fw;
-	struct sh_css_hmm_section sec;
 	int ret;
-	unsigned int mem, nbin;
+	unsigned int nbin;
 
-	if (isp->sw_contex.isp_streaming || isp->acc.pipeline)
+	if (isp->acc.pipeline || isp->acc.extension_mode)
 		return -EBUSY;
 
 	/* Invalidate caches. FIXME: should flush only necessary buffers */
@@ -236,7 +273,7 @@ int atomisp_acc_start(struct atomisp_device *isp, unsigned int *handle)
 		if (*handle != 0 && *handle != acc_fw->handle)
 			continue;
 
-		if (!(acc_fw->flags & ATOMISP_ACC_FW_LOAD_FL_ACC))
+		if (acc_fw->type != ATOMISP_ACC_FW_LOAD_TYPE_STANDALONE)
 			continue;
 
 		/* Add the binary into the pipeline */
@@ -247,19 +284,9 @@ int atomisp_acc_start(struct atomisp_device *isp, unsigned int *handle)
 		}
 		nbin++;
 
-		/* Set the binary arguments */
-		for (mem = 0; mem < ATOMISP_ACC_NR_MEMORY; mem++) {
-			if (acc_fw->args[mem].length == 0)
-				continue;
-
-			sec.ddr_address = acc_fw->args[mem].css_ptr;
-			sec.ddr_size = acc_fw->args[mem].length;
-			if (sh_css_acc_set_firmware_parameters(acc_fw->fw,
-			   ATOMISP_TO_CSS_MEMORY(mem), sec) != sh_css_success) {
-				ret = -EIO;
-				goto err_stage;
-			}
-		}
+		ret = acc_set_parameters(acc_fw);
+		if (ret < 0)
+			goto err_stage;
 	}
 	if (nbin < 1) {
 		/* Refuse creating pipelines with no binaries */
@@ -372,4 +399,93 @@ int atomisp_acc_s_mapped_arg(struct atomisp_device *isp,
 	acc_fw->args[arg->memory].length = arg->length;
 	acc_fw->args[arg->memory].css_ptr = arg->css_ptr;
 	return 0;
+}
+
+/*
+ * Appends the loaded acceleration binary extensions to the
+ * current ISP mode. Must be called just before sh_css_start().
+ */
+int atomisp_acc_load_extensions(struct atomisp_device *isp)
+{
+	struct atomisp_acc_fw *acc_fw;
+	int ret, i;
+
+	if (isp->acc.pipeline || isp->acc.extension_mode)
+		return -EBUSY;
+
+	/* Invalidate caches. FIXME: should flush only necessary buffers */
+	wbinvd();
+
+	list_for_each_entry(acc_fw, &isp->acc.fw, list) {
+		if (acc_fw->type != ATOMISP_ACC_FW_LOAD_TYPE_OUTPUT &&
+		    acc_fw->type != ATOMISP_ACC_FW_LOAD_TYPE_VIEWFINDER)
+			continue;
+
+		for (i = 0; i < ARRAY_SIZE(acc_flag_to_pipe); i++) {
+			if (acc_fw->flags & acc_flag_to_pipe[i].flag) {
+				/* Add the binary into the pipeline */
+				if (sh_css_load_extension(acc_fw->fw,
+					     acc_flag_to_pipe[i].pipe_id,
+					     acc_fw->type) != sh_css_success) {
+					i--;
+					ret = -EBADSLT;
+					goto error;
+				}
+			}
+		}
+
+		ret = acc_set_parameters(acc_fw);
+		if (ret < 0)
+			goto error;
+	}
+
+	isp->acc.extension_mode = true;
+	return 0;
+
+error:
+	for (; i >= 0; i--) {
+		if (acc_fw->flags & acc_flag_to_pipe[i].flag) {
+			sh_css_unload_extension(acc_fw->fw,
+				acc_flag_to_pipe[i].pipe_id);
+		}
+	}
+
+	list_for_each_entry_continue_reverse(acc_fw, &isp->acc.fw, list) {
+		if (acc_fw->type != ATOMISP_ACC_FW_LOAD_TYPE_OUTPUT &&
+		    acc_fw->type != ATOMISP_ACC_FW_LOAD_TYPE_VIEWFINDER)
+			continue;
+
+		for (i = ARRAY_SIZE(acc_flag_to_pipe) - 1; i >= 0; i--) {
+			if (acc_fw->flags & acc_flag_to_pipe[i].flag) {
+				sh_css_unload_extension(acc_fw->fw,
+					acc_flag_to_pipe[i].pipe_id);
+			}
+		}
+	}
+	return ret;
+}
+
+void atomisp_acc_unload_extensions(struct atomisp_device *isp)
+{
+	struct atomisp_acc_fw *acc_fw;
+	int i;
+
+	if (!isp->acc.extension_mode)
+		return;
+
+	list_for_each_entry_reverse(acc_fw, &isp->acc.fw, list) {
+		if (acc_fw->type != ATOMISP_ACC_FW_LOAD_TYPE_OUTPUT &&
+		    acc_fw->type != ATOMISP_ACC_FW_LOAD_TYPE_VIEWFINDER)
+			continue;
+
+		for (i = ARRAY_SIZE(acc_flag_to_pipe) - 1; i >= 0; i--) {
+			if (acc_fw->flags & acc_flag_to_pipe[i].flag) {
+				/* Remove the binary from the pipeline */
+				sh_css_unload_extension(acc_fw->fw,
+					acc_flag_to_pipe[i].pipe_id);
+			}
+		}
+	}
+
+	isp->acc.extension_mode = false;
 }
