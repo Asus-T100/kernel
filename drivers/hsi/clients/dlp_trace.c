@@ -35,6 +35,7 @@
 #include "dlp_main.h"
 
 #define TRACE_DEVNAME	CONFIG_HSI_TRACE_DEV_NAME
+#define HSI_TACE_TEMP_BUFFERS	4
 
 /*
  * struct trace_driver - HSI Modem trace driver protocol
@@ -69,7 +70,19 @@ struct dlp_trace_ctx {
 	int rx_msgs_count;
 
 	struct dlp_channel *ch_ctx;
+
+#ifdef DEBUG
+	unsigned long dropped_data_size;
+#endif
+
 };
+
+
+#ifdef DEBUG
+/* Used to activate the dump of dropped packets */
+static unsigned int log_dropped_data;
+module_param_named(log_dropped_data, log_dropped_data, int, S_IRUGO | S_IWUSR);
+#endif
 
 
 /*
@@ -184,6 +197,13 @@ static void dlp_trace_complete_rx(struct hsi_msg *msg)
 	if (trace_ctx->rx_msgs_count >= DLP_HSI_RX_WAIT_FIFO) {
 		/* Just drop the msg */
 		spin_unlock_irqrestore(&ch_ctx->lock, flags);
+
+#ifdef DEBUG
+		trace_ctx->dropped_data_size += msg->actual_len;
+		if (log_dropped_data)
+			pr_debug(DRVNAME ": Packet dropped (dropped data size: %d Bytes)\n",
+					trace_ctx->dropped_data_size);
+#endif
 		goto push_again;
 	}
 
@@ -216,7 +236,7 @@ push_again:
  */
 static int dlp_trace_dev_open(struct inode *inode, struct file *filp)
 {
-	int ret = 0, state, opened;
+	int ret = 0, state, opened, count;
 	unsigned long flags;
 	struct dlp_channel *ch_ctx = DLP_CHANNEL_CTX(DLP_CHANNEL_TRACE);
 	struct dlp_trace_ctx *trace_ctx = ch_ctx->ch_data;
@@ -250,7 +270,8 @@ static int dlp_trace_dev_open(struct inode *inode, struct file *filp)
 	ch_ctx->use_flow_ctrl = 1;
 
 	/* Push RX PDUs */
-	for (ret = DLP_HSI_RX_WAIT_FIFO; ret; ret--)
+	count = DLP_HSI_RX_WAIT_FIFO + HSI_TACE_TEMP_BUFFERS;
+	for (ret = count; ret; ret--)
 		dlp_trace_push_rx_pdu(ch_ctx);
 
 out:
@@ -283,6 +304,9 @@ static ssize_t dlp_trace_dev_read(struct file *filp,
 	struct dlp_trace_ctx *trace_ctx = ch_ctx->ch_data;
 	struct hsi_msg *msg;
 	int ret, to_copy, copied, available;
+	unsigned int data_size, offset;
+	unsigned char *data_addr, *start_addr;
+	unsigned int *ptr;
 	unsigned long flags;
 
 	/* Check the user buffer size */
@@ -317,11 +341,22 @@ static ssize_t dlp_trace_dev_read(struct file *filp,
 
 	/* Parse RX msgs queue */
 	while ((msg = dlp_trace_peek_msg(ch_ctx))) {
+		ptr = sg_virt(msg->sgt.sgl);
+		start_addr = (unsigned char *)ptr;
+		/* Get the start offset */
+		ptr++;
+		offset = (*ptr);
+
+		/* Get the size & address */
+		ptr++;
+		data_size = DLP_HDR_DATA_SIZE((*ptr)) - DLP_HDR_SPACE_AP;
+		data_addr = start_addr + offset + DLP_HDR_SPACE_AP;
+
 		/* Calculate the data size */
-		to_copy = MIN(msg->actual_len, available);
+		to_copy = MIN(data_size, available);
 
 		/* Copy data to the user buffer */
-		ret = copy_to_user(data+copied, sg_virt(msg->sgt.sgl), to_copy);
+		ret = copy_to_user(data+copied, data_addr, to_copy);
 		if (ret) {
 			/* Stop copying */
 			pr_err(DRVNAME": Uanble to copy data to the user buffer\n");
