@@ -546,6 +546,30 @@ struct atomisp_acc_fw_load {
 	void __user *data;
 };
 
+/*
+ * Load firmware to specified pipeline.
+ * For CSS 1.5 only.
+ */
+struct atomisp_acc_fw_load_to_pipe {
+	__u32 flags;			/* Flags, see below for valid values */
+	unsigned int fw_handle;		/* Handle, filled by kernel. */
+	__u32 size;			/* Firmware binary size */
+	void __user *data;		/* Pointer to firmware */
+	__u32 type;			/* Binary type */
+	__u32 reserved[3];		/* Set to zero */
+};
+
+#define ATOMISP_ACC_FW_LOAD_FL_PREVIEW		(1 << 0)
+#define ATOMISP_ACC_FW_LOAD_FL_COPY		(1 << 1)
+#define ATOMISP_ACC_FW_LOAD_FL_VIDEO		(1 << 2)
+#define ATOMISP_ACC_FW_LOAD_FL_CAPTURE		(1 << 3)
+#define ATOMISP_ACC_FW_LOAD_FL_ACC		(1 << 4)
+
+#define ATOMISP_ACC_FW_LOAD_TYPE_NONE		0 /* Normal binary: don't use */
+#define ATOMISP_ACC_FW_LOAD_TYPE_OUTPUT		1 /* Stage on output */
+#define ATOMISP_ACC_FW_LOAD_TYPE_VIEWFINDER	2 /* Stage on viewfinder */
+#define ATOMISP_ACC_FW_LOAD_TYPE_STANDALONE	3 /* Stand-alone acceleration */
+
 struct atomisp_acc_map {
 	__u32 flags;			/* Flags, see list below */
 	__u32 length;			/* Length of data in bytes */
@@ -761,6 +785,9 @@ struct v4l2_private_int_data {
 
 #define ATOMISP_IOC_S_CONT_CAPTURE_CONFIG \
 	_IOWR('v', BASE_VIDIOC_PRIVATE + 62, struct atomisp_cont_capture_conf)
+
+#define ATOMISP_IOC_ACC_LOAD_TO_PIPE \
+	_IOWR('v', BASE_VIDIOC_PRIVATE + 63, struct atomisp_acc_fw_load_to_pipe)
 
 /*  ISP Private control IDs */
 #define V4L2_CID_ATOMISP_BAD_PIXEL_DETECTION \
