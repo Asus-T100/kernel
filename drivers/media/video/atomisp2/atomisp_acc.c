@@ -131,13 +131,28 @@ void atomisp_acc_release(struct atomisp_device *isp)
 	}
 }
 
-int atomisp_acc_load(struct atomisp_device *isp,
-		     struct atomisp_acc_fw_load *user_fw)
+int atomisp_acc_load_to_pipe(struct atomisp_device *isp,
+			     struct atomisp_acc_fw_load_to_pipe *user_fw)
 {
+	static const unsigned int pipeline_flags =
+		ATOMISP_ACC_FW_LOAD_FL_PREVIEW |
+		ATOMISP_ACC_FW_LOAD_FL_COPY |
+		ATOMISP_ACC_FW_LOAD_FL_VIDEO |
+		ATOMISP_ACC_FW_LOAD_FL_CAPTURE |
+		ATOMISP_ACC_FW_LOAD_FL_ACC;
+
 	struct atomisp_acc_fw *acc_fw;
 	int handle;
 
 	if (!user_fw->data || user_fw->size == 0)
+		return -EINVAL;
+
+	/* Binary has to be enabled at least for one pipeline */
+	if (!(user_fw->flags & pipeline_flags))
+		return -EINVAL;
+
+	/* We do not support other flags yet */
+	if (user_fw->flags & ~pipeline_flags)
 		return -EINVAL;
 
 	if (isp->acc.pipeline)
@@ -160,8 +175,26 @@ int atomisp_acc_load(struct atomisp_device *isp,
 
 	user_fw->fw_handle = handle;
 	acc_fw->handle = handle;
+	acc_fw->flags = user_fw->flags;
+	acc_fw->type = user_fw->type;
 	list_add_tail(&acc_fw->list, &isp->acc.fw);
+
 	return 0;
+}
+
+int atomisp_acc_load(struct atomisp_device *isp,
+		     struct atomisp_acc_fw_load *user_fw)
+{
+	struct atomisp_acc_fw_load_to_pipe ltp;
+	int r;
+
+	memset(&ltp, 0, sizeof(ltp));
+	ltp.flags = ATOMISP_ACC_FW_LOAD_FL_ACC;
+	ltp.size = user_fw->size;
+	ltp.data = user_fw->data;
+	r = atomisp_acc_load_to_pipe(isp, &ltp);
+	user_fw->fw_handle = ltp.fw_handle;
+	return r;
 }
 
 int atomisp_acc_unload(struct atomisp_device *isp, unsigned int *handle)
@@ -186,7 +219,7 @@ int atomisp_acc_start(struct atomisp_device *isp, unsigned int *handle)
 	struct atomisp_acc_fw *acc_fw;
 	struct sh_css_hmm_section sec;
 	int ret;
-	unsigned int mem;
+	unsigned int mem, nbin;
 
 	if (isp->sw_contex.isp_streaming || isp->acc.pipeline)
 		return -EBUSY;
@@ -198,8 +231,12 @@ int atomisp_acc_start(struct atomisp_device *isp, unsigned int *handle)
 	if (!isp->acc.pipeline)
 		return -EBADE;
 
+	nbin = 0;
 	list_for_each_entry(acc_fw, &isp->acc.fw, list) {
 		if (*handle != 0 && *handle != acc_fw->handle)
+			continue;
+
+		if (!(acc_fw->flags & ATOMISP_ACC_FW_LOAD_FL_ACC))
 			continue;
 
 		/* Add the binary into the pipeline */
@@ -208,6 +245,7 @@ int atomisp_acc_start(struct atomisp_device *isp, unsigned int *handle)
 			ret = -EBADSLT;
 			goto err_stage;
 		}
+		nbin++;
 
 		/* Set the binary arguments */
 		for (mem = 0; mem < ATOMISP_ACC_NR_MEMORY; mem++) {
@@ -222,6 +260,11 @@ int atomisp_acc_start(struct atomisp_device *isp, unsigned int *handle)
 				goto err_stage;
 			}
 		}
+	}
+	if (nbin < 1) {
+		/* Refuse creating pipelines with no binaries */
+		ret = -EINVAL;
+		goto err_stage;
 	}
 
 	sh_css_start_pipeline(SH_CSS_ACC_PIPELINE, isp->acc.pipeline);

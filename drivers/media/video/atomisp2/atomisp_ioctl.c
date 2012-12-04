@@ -2172,6 +2172,10 @@ static long atomisp_vidioc_default(struct file *file, void *fh,
 		err = atomisp_acc_load(isp, arg);
 		break;
 
+	case ATOMISP_IOC_ACC_LOAD_TO_PIPE:
+		err = atomisp_acc_load_to_pipe(isp, arg);
+		break;
+
 	case ATOMISP_IOC_ACC_UNLOAD:
 		err = atomisp_acc_unload(isp, arg);
 		break;

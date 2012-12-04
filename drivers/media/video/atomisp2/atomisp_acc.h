@@ -47,9 +47,13 @@ void atomisp_acc_init(struct atomisp_device *isp);
  */
 void atomisp_acc_release(struct atomisp_device *isp);
 
-/* Load acceleration binary */
+/* Load acceleration binary. DEPRECATED. */
 int atomisp_acc_load(struct atomisp_device *isp,
 		     struct atomisp_acc_fw_load *fw);
+
+/* Load acceleration binary with specified properties */
+int atomisp_acc_load_to_pipe(struct atomisp_device *isp,
+			     struct atomisp_acc_fw_load_to_pipe *fw);
 
 /* Unload specified acceleration binary */
 int atomisp_acc_unload(struct atomisp_device *isp,
