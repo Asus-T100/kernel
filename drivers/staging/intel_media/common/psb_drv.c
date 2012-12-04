@@ -3055,6 +3055,7 @@ static int psb_vsync_set_ioctl(struct drm_device *dev, void *data,
 			spin_unlock_irqrestore(&dev_priv->irqmask_lock,
 					irq_flags);
 
+			mutex_unlock(&dev_priv->vsync_lock);
 			if (vsync_enable) {
 				DRM_WAIT_ON(ret, dev_priv->vsync_queue,
 						3 * DRM_HZ,
@@ -3072,7 +3073,6 @@ static int psb_vsync_set_ioctl(struct drm_device *dev, void *data,
 
 			arg->vsync.timestamp = (uint64_t)nsecs;
 
-			mutex_unlock(&dev_priv->vsync_lock);
 			return 0;
 		}
 
