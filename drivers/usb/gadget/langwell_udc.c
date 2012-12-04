@@ -70,10 +70,6 @@ static void ep_set_halt(struct langwell_ep *ep, int value);
 
 
 #ifdef CONFIG_DEBUG_FS
-
-extern  unsigned int *pm_sss0_base;
-
-extern  int check_pm_otg();
 #ifdef readl
 #undef readl
 #endif
@@ -105,8 +101,6 @@ static void dump_ep(struct langwell_udc *dev, int ep_index)
 	u32	value, i;
 	u32 in = ep_index % 2;
 	u32 num = ep_index / 2;
-	unsigned long	flags;
-
 
 	printk(KERN_ERR"Showing ep %d (ep%d%s) ...\n\n",
 			ep_index, num, in ? "IN" : "OUT");
@@ -188,81 +182,7 @@ static inline void print_all_registers(struct langwell_udc *dev)
 {
 	int	i;
 
-	/* Capability Registers */
-	dev_dbg(&dev->pdev->dev,
-		"Capability Registers (offset: 0x%04x, length: 0x%08x)\n",
-		CAP_REG_OFFSET, (u32)sizeof(struct langwell_cap_regs));
-	dev_dbg(&dev->pdev->dev, "caplength=0x%02x\n",
-			readb(&dev->cap_regs->caplength));
-	dev_dbg(&dev->pdev->dev, "hciversion=0x%04x\n",
-			readw(&dev->cap_regs->hciversion));
-	dev_dbg(&dev->pdev->dev, "hcsparams=0x%08x\n",
-			readl(&dev->cap_regs->hcsparams));
-	dev_dbg(&dev->pdev->dev, "hccparams=0x%08x\n",
-			readl(&dev->cap_regs->hccparams));
-	dev_dbg(&dev->pdev->dev, "dciversion=0x%04x\n",
-			readw(&dev->cap_regs->dciversion));
-	dev_dbg(&dev->pdev->dev, "dccparams=0x%08x\n",
-			readl(&dev->cap_regs->dccparams));
-
-	/* Operational Registers */
-	dev_dbg(&dev->pdev->dev,
-		"Operational Registers (offset: 0x%04x, length: 0x%08x)\n",
-		OP_REG_OFFSET, (u32)sizeof(struct langwell_op_regs));
-	dev_dbg(&dev->pdev->dev, "extsts=0x%08x\n",
-			readl(&dev->op_regs->extsts));
-	dev_dbg(&dev->pdev->dev, "extintr=0x%08x\n",
-			readl(&dev->op_regs->extintr));
-	dev_dbg(&dev->pdev->dev, "usbcmd=0x%08x\n",
-			readl(&dev->op_regs->usbcmd));
-	dev_dbg(&dev->pdev->dev, "usbsts=0x%08x\n",
-			readl(&dev->op_regs->usbsts));
-	dev_dbg(&dev->pdev->dev, "usbintr=0x%08x\n",
-			readl(&dev->op_regs->usbintr));
-	dev_dbg(&dev->pdev->dev, "frindex=0x%08x\n",
-			readl(&dev->op_regs->frindex));
-	dev_dbg(&dev->pdev->dev, "ctrldssegment=0x%08x\n",
-			readl(&dev->op_regs->ctrldssegment));
-	dev_dbg(&dev->pdev->dev, "deviceaddr=0x%08x\n",
-			readl(&dev->op_regs->deviceaddr));
-	dev_dbg(&dev->pdev->dev, "endpointlistaddr=0x%08x\n",
-			readl(&dev->op_regs->endpointlistaddr));
-	dev_dbg(&dev->pdev->dev, "ttctrl=0x%08x\n",
-			readl(&dev->op_regs->ttctrl));
-	dev_dbg(&dev->pdev->dev, "burstsize=0x%08x\n",
-			readl(&dev->op_regs->burstsize));
-	dev_dbg(&dev->pdev->dev, "txfilltuning=0x%08x\n",
-			readl(&dev->op_regs->txfilltuning));
-	dev_dbg(&dev->pdev->dev, "txttfilltuning=0x%08x\n",
-			readl(&dev->op_regs->txttfilltuning));
-	dev_dbg(&dev->pdev->dev, "ic_usb=0x%08x\n",
-			readl(&dev->op_regs->ic_usb));
-	dev_dbg(&dev->pdev->dev, "ulpi_viewport=0x%08x\n",
-			readl(&dev->op_regs->ulpi_viewport));
-	dev_dbg(&dev->pdev->dev, "configflag=0x%08x\n",
-			readl(&dev->op_regs->configflag));
-	dev_dbg(&dev->pdev->dev, "portsc1=0x%08x\n",
-			readl(&dev->op_regs->portsc1));
-	dev_dbg(&dev->pdev->dev, "devlc=0x%08x\n",
-			readl(&dev->op_regs->devlc));
-	dev_dbg(&dev->pdev->dev, "otgsc=0x%08x\n",
-			readl(&dev->op_regs->otgsc));
-	dev_dbg(&dev->pdev->dev, "usbmode=0x%08x\n",
-			readl(&dev->op_regs->usbmode));
-	dev_dbg(&dev->pdev->dev, "endptnak=0x%08x\n",
-			readl(&dev->op_regs->endptnak));
-	dev_dbg(&dev->pdev->dev, "endptnaken=0x%08x\n",
-			readl(&dev->op_regs->endptnaken));
-	dev_dbg(&dev->pdev->dev, "endptsetupstat=0x%08x\n",
-			readl(&dev->op_regs->endptsetupstat));
-	dev_dbg(&dev->pdev->dev, "endptprime=0x%08x\n",
-			readl(&dev->op_regs->endptprime));
-	dev_dbg(&dev->pdev->dev, "endptflush=0x%08x\n",
-			readl(&dev->op_regs->endptflush));
-	dev_dbg(&dev->pdev->dev, "endptstat=0x%08x\n",
-			readl(&dev->op_regs->endptstat));
-	dev_dbg(&dev->pdev->dev, "endptcomplete=0x%08x\n",
-			readl(&dev->op_regs->endptcomplete));
+	dev_dbg(&dev->pdev->dev, STRING_LNW_REGS(dev));
 
 	for (i = 0; i < dev->ep_max / 2; i++) {
 		dev_dbg(&dev->pdev->dev, "endptctrl[%d]=0x%08x\n",
@@ -560,7 +480,16 @@ static void done(struct langwell_ep *ep, struct langwell_request *req,
 		}
 	}
 
-	usb_gadget_unmap_request(&dev->gadget, &req->req, is_in(ep));
+	if (req->mapped) {
+		dma_unmap_single(&dev->pdev->dev,
+			req->req.dma, req->req.length,
+			is_in(ep) ? DMA_TO_DEVICE : DMA_FROM_DEVICE);
+		req->req.dma = DMA_ADDR_INVALID;
+		req->mapped = 0;
+	} else if (req->req.dma != DMA_ADDR_INVALID)
+		dma_sync_single_for_cpu(&dev->pdev->dev, req->req.dma,
+				req->req.length,
+				is_in(ep) ? DMA_TO_DEVICE : DMA_FROM_DEVICE);
 
 	if (status != -ESHUTDOWN)
 		dev_dbg(&dev->pdev->dev,
@@ -950,9 +879,7 @@ static int langwell_ep_queue(struct usb_ep *_ep, struct usb_request *_req,
 	struct langwell_ep	*ep;
 	struct langwell_udc	*dev;
 	unsigned long		flags;
-	int			is_iso = 0;
-	int			ret;
-	int			zlflag = 0, in = 0;
+	int			is_iso = 0, in = 0;
 
 	if (unlikely(!_ep || !_req))
 		return -EINVAL;
@@ -998,24 +925,14 @@ static int langwell_ep_queue(struct usb_ep *_ep, struct usb_request *_req,
 
 	/* set up dma mapping in case the caller didn't */
 	if (_req->dma == DMA_ADDR_INVALID) {
-		/* WORKAROUND: WARN_ON(size == 0) */
-		if (_req->length == 0) {
-			dev_vdbg(&dev->pdev->dev, "req->length: 0->1\n");
-			zlflag = 1;
-			_req->length++;
-		}
-
-		_req->dma = dma_map_single(&dev->pdev->dev,
+		if (_req->length) {
+			_req->dma = dma_map_single(&dev->pdev->dev,
 				_req->buf, _req->length,
 				in ? DMA_TO_DEVICE : DMA_FROM_DEVICE);
-		if (zlflag && (_req->length == 1)) {
-			dev_vdbg(&dev->pdev->dev, "req->length: 1->0\n");
-			zlflag = 0;
-			_req->length = 0;
-		}
-
-		req->mapped = 1;
-		dev_vdbg(&dev->pdev->dev, "req->mapped = 1\n");
+			req->mapped = 1;
+			dev_vdbg(&dev->pdev->dev, "req->mapped = 1\n");
+		} else
+			req->mapped = 0;
 	} else {
 		dma_sync_single_for_device(&dev->pdev->dev,
 				_req->dma, _req->length,
@@ -1457,10 +1374,10 @@ static void langwell_udc_pullup(struct langwell_udc *dev, u32 on)
 		if (can_pullup(dev)) {
 			if (dev->sdis) {
 				usbmode |= MODE_SDIS;
-				dev_dbg(&dev->pdev->dev, "disable streaming mode\n");
+				dev_info(&dev->pdev->dev, "disable streaming mode\n");
 			} else {
 				usbmode &= ~MODE_SDIS;
-				dev_dbg(&dev->pdev->dev, "enable streaming mode\n");
+				dev_info(&dev->pdev->dev, "enable streaming mode\n");
 			}
 			writel(usbmode, &dev->op_regs->usbmode);
 			usbcmd |= CMD_RUNSTOP;
@@ -1733,7 +1650,7 @@ static int langwell_udc_reset(struct langwell_udc *dev)
 
 	/* FIXME: workaround for bug9000364367 */
 	sbuscfg_addr = (unsigned long)dev->cap_regs + SBUSCFG_REG_OFFSET;
-	writel(0x7, sbuscfg_addr);
+	writel(0x7, (void *)sbuscfg_addr);
 
 	/* if support USB LPM, ACK all LPM token */
 	if (dev->lpm) {
@@ -1935,6 +1852,117 @@ static inline enum usb_device_speed lpm_device_speed(u32 reg)
 		return USB_SPEED_UNKNOWN;
 	}
 }
+
+
+#define lnw_scnprintf(next, size, fmt, args...) do {\
+	unsigned t;\
+	t = scnprintf((next), (size), fmt, ## args);\
+	(size) -= t;\
+	(next) += t;\
+	} while (0)
+
+static void langwell_dump_registers(struct langwell_udc *dev,
+				char **next, unsigned *size)
+{
+	int i;
+
+	lnw_scnprintf(*next, *size, STRING_LNW_REGS(dev));
+
+	for (i = 0; i < dev->ep_max / 2; i++) {
+		lnw_scnprintf(*next, *size, "endptctrl[%d]=0x%08x\n",
+				i, readl(&dev->op_regs->endptctrl[i]));
+	}
+
+}
+
+static void langwell_dump_ep(struct langwell_udc *dev, int ep_index,
+				char **next, unsigned *size)
+{
+	struct langwell_ep *ep = &dev->ep[ep_index];
+	struct langwell_dqh *dqh = &dev->ep_dqh[ep_index];
+	struct langwell_request *req;
+	struct langwell_dtd *dtd;
+	int         i, j;
+
+	lnw_scnprintf(*next, *size,
+		"<EP %d-%s>\n", ep->ep_num, ep_index % 2 ? "in" : "out");
+	lnw_scnprintf(*next, *size, "[dQH]\n");
+
+	for (i = 0; i < DQH_DW_SIZE; i++)
+		lnw_scnprintf(*next, *size,
+			"\tDW%02d: 0x%08x\n", i, *((u32 *)dqh + i));
+
+	lnw_scnprintf(*next, *size, "[Request & dTD]\n");
+	/* ep1's requests are managed in ep0 too */
+	if (ep_index == 1)
+		ep = &dev->ep[0];
+
+	list_for_each_entry(req, &ep->queue, queue) {
+
+		lnw_scnprintf(*next, *size,
+			"req %p actual 0x%x length 0x%x "
+			"buf 0x%p (dma addr 0x%x)\n",
+			&req->req, req->req.actual,
+			req->req.length, req->req.buf, req->req.dma);
+
+		dtd = req->head;
+		for (i = 0; i < req->dtd_count; i++) {
+			lnw_scnprintf(*next, *size,
+				"\tdTD %d virt_addr 0x%p, dma addr 0x%08x\n",
+				i, dtd, dtd->dtd_dma);
+
+			for (j = 0; j < DTD_DW_SIZE; j++)
+				lnw_scnprintf(*next, *size, "\tDW%d: 0x%08x\n",
+					j, *((u32 *)dtd + j));
+
+			if (i != req->dtd_count - 1)
+				dtd = dtd->next_dtd_virt;
+		}
+	}
+}
+
+/** show_langwell_snapt - shows a snapshot of HW & SW.
+ *
+ * 1. Dump of all registers
+ * 2. For each enabled endpoint, dump the following info:
+ *  a). all requests queued: request addr, request buffer addr,
+ *      request buffer len.
+ *  b). dQH and all dTDs linked.
+ */
+static ssize_t show_langwell_snapshot(struct device *_dev,
+			struct device_attribute *attr, char *buf)
+{
+	struct langwell_udc *dev = the_controller;
+	struct langwell_ep  *ep;
+	char            *next;
+	unsigned        size;
+	unsigned long       flags;
+	int i;
+
+	next = buf;
+	size = PAGE_SIZE;
+
+	if (!dev->got_irq) {
+		lnw_scnprintf(next, size,
+			"langwell snapshot not available. Not connected?\n");
+		goto out;
+	}
+
+	pm_runtime_get_sync(&dev->pdev->dev);
+	spin_lock_irqsave(&dev->lock, flags);
+	langwell_dump_registers(dev, &next, &size);
+	for (i = 0; i < dev->ep_max; i++) {
+		ep = &dev->ep[i];
+		if (ep->desc || i == 1)
+			langwell_dump_ep(dev, i, &next, &size);
+	}
+	spin_unlock_irqrestore(&dev->lock, flags);
+	pm_runtime_put(&dev->pdev->dev);
+
+out:
+	return PAGE_SIZE - size;
+}
+static DEVICE_ATTR(langwell_snapshot, S_IRUGO, show_langwell_snapshot, NULL);
 
 /* device "langwell_udc" sysfs attribute file */
 static ssize_t show_langwell_udc(struct device *_dev,
@@ -2439,6 +2467,8 @@ static int prime_status_phase(struct langwell_udc *dev, int dir)
 
 	req->ep = ep;
 	req->req.length = 0;
+	req->req.dma = DMA_ADDR_INVALID;
+	req->mapped = 0;
 	req->req.status = -EINPROGRESS;
 	req->req.actual = 0;
 	req->req.complete = NULL;
@@ -2511,6 +2541,8 @@ static int prime_status_phase_test_mode(struct langwell_udc *dev,
 	req->ep = ep;
 	req->test_mode = test_mode;
 	req->req.length = 0;
+	req->req.dma = DMA_ADDR_INVALID;
+	req->mapped = 0;
 	req->req.status = -EINPROGRESS;
 	req->req.actual = 0;
 	req->req.complete = test_mode_complete;
@@ -2652,6 +2684,9 @@ static void get_status(struct langwell_udc *dev, u8 request_type, u16 value,
 	*((u16 *) req->req.buf) = cpu_to_le16(status_data);
 	req->ep = ep;
 	req->req.length = flag ? 1 : 2;
+	req->req.dma = dma_map_single(&dev->pdev->dev,
+		req->req.buf, req->req.length, DMA_TO_DEVICE);
+	req->mapped = 1;
 	req->req.status = -EINPROGRESS;
 	req->req.actual = 0;
 	req->req.complete = NULL;
@@ -3091,7 +3126,7 @@ static void handle_trans_complete(struct langwell_udc *dev)
 			dev_vdbg(&dev->pdev->dev, "%s req status: %d\n",
 					epn->name, status);
 
-			if (status)
+			if (status == 1)
 				break;
 
 			/* write back status to req */
@@ -3555,6 +3590,7 @@ static void langwell_udc_remove(struct pci_dev *pdev)
 	device_remove_file(&pdev->dev, &dev_attr_langwell_udc);
 	device_remove_file(&pdev->dev, &dev_attr_remote_wakeup);
 	device_remove_file(&pdev->dev, &dev_attr_sdis);
+	device_remove_file(&pdev->dev, &dev_attr_langwell_snapshot);
 
 #ifndef	OTG_TRANSCEIVER
 	pci_set_drvdata(pdev, NULL);
@@ -3742,7 +3778,7 @@ static int langwell_udc_probe(struct pci_dev *pdev,
 
 	/* allocate a small amount of memory to get valid address */
 	dev->status_req->req.buf = kmalloc(8, GFP_KERNEL);
-	dev->status_req->req.dma = virt_to_phys(dev->status_req->req.buf);
+	dev->status_req->req.dma = DMA_ADDR_INVALID;
 
 	dev->resume_state = USB_STATE_NOTATTACHED;
 	dev->usb_state = USB_STATE_POWERED;
@@ -3832,6 +3868,10 @@ static int langwell_udc_probe(struct pci_dev *pdev,
 	if (retval)
 		goto error_attr2;
 
+	retval = device_create_file(&pdev->dev, &dev_attr_langwell_snapshot);
+	if (retval)
+		goto error_attr3;
+
 #ifdef OTG_TRANSCEIVER
 	pm_runtime_put_sync(&pdev->dev);
 #else
@@ -3840,9 +3880,10 @@ static int langwell_udc_probe(struct pci_dev *pdev,
 	dev_vdbg(&dev->pdev->dev, "<--- %s()\n", __func__);
 	return 0;
 
+error_attr3:
+	device_remove_file(&pdev->dev, &dev_attr_sdis);
 error_attr2:
 	device_remove_file(&pdev->dev, &dev_attr_remote_wakeup);
-
 error_attr1:
 	device_remove_file(&pdev->dev, &dev_attr_langwell_udc);
 error:
