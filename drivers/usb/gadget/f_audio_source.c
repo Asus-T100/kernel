@@ -31,7 +31,7 @@
 
 #define AUDIO_AC_INTERFACE	0
 #define AUDIO_AS_INTERFACE	1
-#define AUDIO_NUM_STREAM_INTERFACES	1
+#define AUDIO_NUM_INTERFACES	2
 
 /* B.3.1  Standard AC Interface Descriptor */
 static struct usb_interface_descriptor ac_interface_desc = {
@@ -42,24 +42,24 @@ static struct usb_interface_descriptor ac_interface_desc = {
 	.bInterfaceSubClass =	USB_SUBCLASS_AUDIOCONTROL,
 };
 
-DECLARE_UAC_AC_HEADER_DESCRIPTOR(1);
+DECLARE_UAC_AC_HEADER_DESCRIPTOR(2);
 
-#define UAC_DT_AC_HEADER_LENGTH \
-UAC_DT_AC_HEADER_SIZE(AUDIO_NUM_STREAM_INTERFACES)
+#define UAC_DT_AC_HEADER_LENGTH	UAC_DT_AC_HEADER_SIZE(AUDIO_NUM_INTERFACES)
 /* 1 input terminal, 1 output terminal and 1 feature unit */
 #define UAC_DT_TOTAL_LENGTH (UAC_DT_AC_HEADER_LENGTH \
 	+ UAC_DT_INPUT_TERMINAL_SIZE + UAC_DT_OUTPUT_TERMINAL_SIZE \
 	+ UAC_DT_FEATURE_UNIT_SIZE(0))
 /* B.3.2  Class-Specific AC Interface Descriptor */
-static struct uac1_ac_header_descriptor_1 ac_header_desc = {
+static struct uac1_ac_header_descriptor_2 ac_header_desc = {
 	.bLength =		UAC_DT_AC_HEADER_LENGTH,
 	.bDescriptorType =	USB_DT_CS_INTERFACE,
 	.bDescriptorSubtype =	UAC_HEADER,
 	.bcdADC =		__constant_cpu_to_le16(0x0100),
 	.wTotalLength =		__constant_cpu_to_le16(UAC_DT_TOTAL_LENGTH),
-	.bInCollection =	AUDIO_NUM_STREAM_INTERFACES,
+	.bInCollection =	AUDIO_NUM_INTERFACES,
 	.baInterfaceNr = {
-		[0] =		0,
+		[0] =		AUDIO_AC_INTERFACE,
+		[1] =		AUDIO_AS_INTERFACE,
 	}
 };
 
@@ -585,7 +585,6 @@ audio_bind(struct usb_configuration *c, struct usb_function *f)
 		goto fail;
 	as_interface_alt_0_desc.bInterfaceNumber = status;
 	as_interface_alt_1_desc.bInterfaceNumber = status;
-	ac_header_desc.baInterfaceNr[0] = status;
 
 	status = -ENODEV;
 
