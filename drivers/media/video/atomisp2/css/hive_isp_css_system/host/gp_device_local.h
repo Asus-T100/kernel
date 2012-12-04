@@ -7,6 +7,7 @@
 #define _REG_GP_SWITCH_DMA_ADDR				0x04
 #define _REG_GP_SWITCH_GDC_ADDR				0x08
 */
+/*
 #define _REG_GP_SYNGEN_ENABLE_ADDR			0x0C
 #define _REG_GP_SYNGEN_NR_PIX_ADDR			0x10
 #define _REG_GP_SYNGEN_NR_LINES_ADDR		0x14
@@ -42,9 +43,10 @@
 #define _REG_GP_INP_SWI_FSYNC_LUT_REG_ADDR	0x8C
 #define _REG_GP_SDRAM_WAKEUP_ADDR			0x90
 #define _REG_GP_IDLE_ADDR					0x94
+*/
 /* #define _REG_GP_IRQ_REQUEST_ADDR			0x98 */
 #define _REG_GP_MIPI_DWORD_FULL_ADDR		0x9C
-#define _REG_GP_MIPI_USED_DWORD_ADDR		0xA0
+/* #define _REG_GP_MIPI_USED_DWORD_ADDR		0xA0 */
 
 struct gp_device_state_s {
 	int switch_if;

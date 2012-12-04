@@ -296,6 +296,8 @@ The CSS API and its implementation do not depend on any particular environment
 #include "input_system.h"	/* mipi_compressor_t */
 #endif
 
+struct sh_css_pipe;
+
 /** Input modes, these enumerate all supported input modes.
  *  Note that not all ISP modes support all input modes.
  */
@@ -556,7 +558,8 @@ enum sh_css_err {
 	sh_css_err_buffer_queue_is_full,
 	sh_css_err_buffer_queue_is_empty,
 	sh_css_err_invalid_tag_description,
-	sh_css_err_tag_queue_is_full
+	sh_css_err_tag_queue_is_full,
+	sh_css_err_isp_binary_header_mismatch
 };
 
 /** Generic resolution structure.
@@ -1192,6 +1195,9 @@ sh_css_event_get_irq_mask(
 	unsigned int *or_mask,
 	unsigned int *and_mask);
 
+void
+sh_css_event_init_irq_mask(void);
+
 
 /** @brief Return whether UV range starts at 0.
  *
@@ -1320,7 +1326,7 @@ sh_css_input_set_bayer_order(enum sh_css_bayer_order bayer_order);
  * This is dependent upon the bayer order which is assumed to have
  * been already set using the API ::sh_css_input_set_bayer_order
  */
-int
+void
 sh_css_get_extra_pixels_count(int *extra_rows, int *extra_columns);
 
 /** @brief Set the input channel id.
@@ -1644,6 +1650,15 @@ sh_css_video_enable_high_speed(bool enable);
 void
 sh_css_video_enable_dvs_6axis(bool enable);
 
+/** @brief Enable reduced pipe for video.
+ *
+ * @param	enable	Enabling value.
+ *
+ * Enable or disable reduced pipe (version 2). Default is disabled.
+ */
+void
+sh_css_video_enable_reduced_pipe(bool enable);
+
 /** @brief Enable/disable viewfinder for video.
  *
  * @param	enable	Enabling value.
@@ -1669,7 +1684,7 @@ sh_css_enable_continuous(bool enable);
  * Enable or disable continuous binaries if available. Default is disabled.
  */
 void
-sh_css_enable_cont_capt(bool enable);
+sh_css_enable_cont_capt(bool enable, bool stop_copy_preview);
 
 /** @brief Return whether continuous mode is enabled.
  *
@@ -1709,14 +1724,14 @@ sh_css_continuous_set_num_raw_frames(int num_frames);
 int
 sh_css_continuous_get_num_raw_frames(void);
 
-/** @brief Enable reordered raw format mode.
+/** @brief Enable raw binning mode.
  *
  * @param	enable	Enabling value.
  *
- * Enable or disable reordered raw format if available. Default is disabled.
+ * Enable or disable raw binning if available. Default is disabled.
  */
 void
-sh_css_enable_raw_reordered(bool enable);
+sh_css_enable_raw_binning(bool enable);
 
 /** @brief Disable vf_pp.
  *
@@ -2259,7 +2274,7 @@ sh_css_isp_has_started(void);
  * Temporary function to poll whether the SP has been initilized. Once it has,
  * we can enqueue buffers. */
 bool
-sh_css_sp_has_initialized(void);
+sh_css_sp_has_booted(void);
 
 /** @brief Test whether the SP has terminated.
  *
@@ -2292,21 +2307,28 @@ sh_css_unload_acceleration(struct sh_css_acc_fw *firmware);
 /** @brief Load firmware for extension.
  *
  * @param	firmware	Firmware to be loaded.
+ * @param	pipe_id		Pipeline type to be loaded on.
+ * @param	acc_type	Output to be conneted to.
  * @return			IA_CSS_SUCCESS or error code upon error.
  *
- * Load firmware for extension.
+ * Load firmware for extension to a designated pipeline
  */
-enum sh_css_err
-sh_css_load_extension(struct sh_css_fw_info *firmware);
+extern enum sh_css_err sh_css_load_extension(
+	struct sh_css_fw_info	*fw,
+	enum sh_css_pipe_id		pipe_id,
+	enum sh_css_acc_type	acc_type);
+
 
 /** @brief Unload firmware for extension.
  *
  * @param	firmware	Firmware to be unloaded.
+ * @param	pipe_id		Pipeline type to be unloaded from.
  *
- * Unload firmware for extension.
+ * Unload firmware for extension from a designated pipeline.
  */
-void
-sh_css_unload_extension(struct sh_css_fw_info *firmware);
+extern enum sh_css_err sh_css_unload_extension(
+	struct sh_css_fw_info *fw,
+	enum sh_css_pipe_id		pipe_id);
 
 /** @brief Set parameter for acceleration.
  *
@@ -2493,6 +2515,12 @@ sh_css_request_flash(void);
  */
 void
 sh_css_video_set_isp_pipe_version(unsigned int version);
+
+/** @brief initialize host-sp control variables.
+ *
+ */
+void
+sh_css_init_host_sp_control_vars(struct sh_css_pipe *pipe);
 
 
 /* For convenience, so users only need to include sh_css.h

@@ -42,7 +42,7 @@ const hrt_vaddress	mmgr_NULL = (hrt_vaddress)0;
 #define GUARD_SIZE		sizeof(unsigned long)
 #define GUARD_SIZE_ALIGNED	DDR_ALIGN(GUARD_SIZE)
 
-#define MAX_ALLOC_ENTRIES (150)
+#define MAX_ALLOC_ENTRIES (256)
 #define INVALID_VBASE ((hrt_vaddress)-1)
 #define INVALID_SIZE ((unsigned long)-1)
 

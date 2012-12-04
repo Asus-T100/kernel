@@ -55,6 +55,9 @@ void ia_css_i_host_refcount_retain_vbuf(
 			}
 		}
 		assert(*handle != NULL);
+		/* Klockwork pacifier */
+		if(*handle == NULL)
+			return;
 		(*handle)->vptr = h->vptr;
 		(*handle)->size = h->size;
 	}
@@ -88,7 +91,7 @@ void ia_css_i_host_rmgr_init_vbuf(struct ia_css_i_host_rmgr_vbuf_pool *pool)
 	/* initialize the recycle pool if used */
 	if (pool->recycle && pool->size) {
 		/* allocate memory for storing the handles */
-		bytes_needed = 
+		bytes_needed =
 			sizeof(struct ia_css_i_host_rmgr_vbuf_handle *) *
 			pool->size;
 		pool->handles = sh_css_malloc(bytes_needed);

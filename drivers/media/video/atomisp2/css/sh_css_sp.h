@@ -63,7 +63,7 @@ void
 sh_css_sp_start_raw_copy(struct sh_css_binary *binary,
 			 struct sh_css_frame *out_frame,
 			 unsigned two_ppc,
-			 bool input_is_raw_reordered,
+			 bool input_needs_raw_binning,
 			 enum sh_css_pipe_config_override pco);
 
 unsigned int
@@ -82,7 +82,7 @@ sh_css_sp_init_pipeline(struct sh_css_pipeline *me,
 			bool two_ppc,
 			bool continuous,
 			bool offline,
-			bool input_is_raw_reordered,
+			bool input_needs_raw_binning,
 			enum sh_css_pipe_config_override copy_ovrd);
 
 void
@@ -130,16 +130,17 @@ void
 sh_css_update_host2sp_cont_num_raw_frames(unsigned num_frames);
 
 void
-sh_css_event_init_irq_mask(void);
-
-void
 sh_css_sp_start_isp(void);
 
 void
 sh_css_sp_set_sp_running(bool flag);
 
+#if SP_DEBUG !=SP_DEBUG_NONE
+
 void
 sh_css_sp_get_debug_state(struct sh_css_sp_debug_state *state);
+
+#endif
 
 extern void sh_css_sp_set_if_configs(
 	const input_formatter_cfg_t		*config_a,
@@ -165,6 +166,9 @@ sh_css_sp_configure_tpg(int x_mask,
 
 void
 sh_css_sp_configure_prbs(int seed);
+
+void
+sh_css_sp_uninit_global_vars(void);
 
 enum sh_css_err
 sh_css_sp_write_frame_pointers(const struct sh_css_binary_args *args,
@@ -228,6 +232,7 @@ extern void sh_css_sp_snd_event(int evt_id,
 
 extern struct sh_css_sp_group sh_css_sp_group;
 extern struct sh_css_sp_stage sh_css_sp_stage;
+extern struct sh_css_isp_stage sh_css_isp_stage;
 
 #endif /* _SH_CSS_SP_H_ */
 

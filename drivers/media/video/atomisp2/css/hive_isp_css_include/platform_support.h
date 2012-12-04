@@ -19,6 +19,11 @@
  * Put here everything __KERNEL__ specific not covered in
  * "assert_support.h", "math_support.h", etc
  */
+#elif defined(__FIST__)
+/*
+ * Put here everything __FIST__ specific not covered in
+ * "assert_support.h", "math_support.h", etc
+ */
 
 #elif defined(__GNUC__)
 /*
@@ -28,9 +33,9 @@
 #include "hrt/host.h"
 
 
-#else /* default is for the FIST environment */
+#else /* default is for unknwn environments */
 /*
- * Put here everything FIST specific not covered in
+ * Put here everything specific not covered in
  * "assert_support.h", "math_support.h", etc
  */
 

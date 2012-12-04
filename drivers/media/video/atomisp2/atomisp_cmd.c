@@ -40,6 +40,7 @@
 #include "atomisp_ioctl.h"
 #include "atomisp-regs.h"
 #include "atomisp_tables.h"
+#include "atomisp_compat.h"
 
 #include "hrt/hive_isp_css_mm_hrt.h"
 
@@ -3240,9 +3241,9 @@ static void __enable_continuous_vf(bool enable)
 	sh_css_capture_enable_online(!enable);
 	sh_css_preview_enable_online(!enable);
 	sh_css_enable_continuous(enable);
-	sh_css_enable_cont_capt(enable);
+	sh_css_enable_cont_capt(enable, enable);
 	if (!enable) {
-		sh_css_enable_raw_reordered(false);
+		sh_css_enable_raw_binning(false);
 		sh_css_input_set_two_pixels_per_clock(false);
 	}
 	sh_css_input_set_mode(SH_CSS_INPUT_MODE_SENSOR);
@@ -3324,10 +3325,10 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 	if (isp->params.continuous_vf) {
 		if (isp->sw_contex.run_mode != CI_MODE_VIDEO) {
 			__enable_continuous_vf(true);
-			/* enable raw reordered only to resolutions above 5M */
+			/* enable only if resolution is equal or above 5M */
 			if (width >= 2576 || height >= 1936) {
-				sh_css_enable_raw_reordered(true);
-				sh_css_input_set_two_pixels_per_clock(true);
+				sh_css_enable_raw_binning(true);
+				sh_css_input_set_two_pixels_per_clock(false);
 			}
 		} else {
 			__enable_continuous_vf(false);

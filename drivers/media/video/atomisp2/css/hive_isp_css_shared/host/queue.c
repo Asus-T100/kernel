@@ -186,8 +186,14 @@ bool host2sp_enqueue_buffer(
 
 assert(pipe_num < SH_CSS_MAX_SP_THREADS);
 assert((index < SH_CSS_NUM_BUFFER_QUEUES));
+assert((index >= 0));
 
+	/* Klockwork pacifier */
 	if (pipe_num >= SH_CSS_MAX_SP_THREADS)
+		return false;
+
+	/* Klockwork pacifier */
+	if ((index >= SH_CSS_NUM_BUFFER_QUEUES) || (index < 0))
 		return false;
 
 	/* This is just the first step of introducing the queue API */
@@ -250,14 +256,23 @@ bool sp2host_dequeue_buffer(
 	bool is_empty;
 	//struct host_sp_queues *my_queues = NULL;
 	struct sh_css_circular_buf *offset_to_queue;
-	offset_to_queue = (struct sh_css_circular_buf *)
-		offsetof(struct host_sp_queues,
-			sp2host_buffer_queues[index]);
-
 	(void)stage_num;
-	(void)pipe_num;
 
+assert(pipe_num < SH_CSS_MAX_SP_THREADS);
 assert((index < SH_CSS_NUM_BUFFER_QUEUES));
+assert((index >= 0));
+
+	/* Klockwork pacifier */
+	if (pipe_num >= SH_CSS_MAX_SP_THREADS)
+		return false;
+
+	/* Klockwork pacifier */
+	if ((index >= SH_CSS_NUM_BUFFER_QUEUES) || (index < 0))
+		return false;
+
+	offset_to_queue = (struct sh_css_circular_buf *)
+		offsetof(struct host_sp_queues, sp2host_buffer_queues[index]);
+
 
 	/* This is just the first step of introducing the queue API */
 	/* The implementation is still the old non-queue implementation */

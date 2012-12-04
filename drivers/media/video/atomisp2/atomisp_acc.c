@@ -28,6 +28,7 @@
 
 #include "atomisp_acc.h"
 #include "atomisp_internal.h"
+#include "atomisp_compat.h"
 
 #include "hrt/hive_isp_css_mm_hrt.h"
 #include "memory_access/memory_access.h"
@@ -217,7 +218,7 @@ int atomisp_acc_start(struct atomisp_device *isp, unsigned int *handle)
 	wbinvd();
 
 	sh_css_start_pipeline(SH_CSS_ACC_PIPELINE, isp->acc.pipeline);
-	while (!sh_css_sp_has_initialized())
+	while (!sh_css_sp_has_booted())
 		hrt_sleep();
 	sh_css_init_buffer_queues();
 

@@ -13,11 +13,13 @@
 #elif defined(__KERNEL__)
 /* printk() */
 
+#elif defined(__FIST__)
+
 #elif defined(__GNUC__)
 
 #include <stdio.h>
 
-#else /* default is for the FIST environment */
+#else /* default is for unknown environments */
 
 /* ? */
 

@@ -138,8 +138,10 @@ sh_css_load_blob_info(const char *fw, struct sh_css_blob_descr *bd)
 	blob = (const unsigned char *)name + strlen(name)+1;
 
 	/* sanity check */
+	if (bi->header_size != sizeof(*bi))
+		return sh_css_err_isp_binary_header_mismatch;
 	if (bi->blob.size != bi->blob.text_size + bi->blob.icache_size + bi->blob.data_size)
-		return sh_css_err_internal_error;
+		return sh_css_err_isp_binary_header_mismatch;
 
 	bd->blob = blob;
 	bd->header = *bi;
