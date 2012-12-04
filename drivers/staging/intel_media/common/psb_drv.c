@@ -3062,6 +3062,11 @@ static int psb_vsync_set_ioctl(struct drm_device *dev, void *data,
 					irq_flags);
 
 			mutex_unlock(&dev_priv->vsync_lock);
+
+			/* should not wait on hdmi vblank when it is unpluged */
+			if (pipe == 1 && hdmi_state == 0)
+				vsync_enable = 0;
+
 			if (vsync_enable) {
 				DRM_WAIT_ON(ret, dev_priv->vsync_queue,
 						3 * DRM_HZ,
