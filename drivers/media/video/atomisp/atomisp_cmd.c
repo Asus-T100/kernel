@@ -281,21 +281,6 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 	 */
 	spin_lock_irqsave(&isp->irq_lock, irqflags);
 
-	/*
-	 * fixing me!
-	 * For mrfl VP, ISP is running on simulator which takes
-	 * lots of time, and watch dog is disable for this case
-	 */
-	if (!IS_MRFLD && isp->sw_contex.isp_streaming &&
-	    atomisp_wdt_pet_dog(isp) < 0) {
-		/*
-		 * BUG! Despite ISP is running, watchdog was woken up.
-		 * ISP reset may come soon.
-		 */
-		WARN(1, "%s: watchdog wrongly woken up.\n", __func__);
-		goto out;
-	}
-
 	/*got triggered interrupt*/
 	err = sh_css_translate_interrupt(&irq_infos);
 	if (err != sh_css_success) {
@@ -303,6 +288,25 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 			  " infos = %d)\n", __func__, err, irq_infos);
 		spin_unlock_irqrestore(&isp->irq_lock, irqflags);
 		return IRQ_NONE;
+	}
+	/*
+	 * Not feed dog if only SOF interrupt
+	 */
+	if (irq_infos & ~SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF) {
+		/*
+		 * fixing me!
+		 * For mrfl VP, ISP is running on simulator which takes
+		 * lots of time, and watch dog is disable for this case
+		 */
+		if (!IS_MRFLD && isp->sw_contex.isp_streaming &&
+		    atomisp_wdt_pet_dog(isp) < 0) {
+			/*
+			 * BUG! Despite ISP is running, watchdog was woken up.
+			 * ISP reset may come soon.
+			 */
+			WARN(1, "%s: watchdog wrongly woken up.\n", __func__);
+			goto out;
+		}
 	}
 
 #ifndef CONFIG_X86_MRFLD
