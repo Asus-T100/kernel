@@ -121,6 +121,10 @@
 #define SEQ_CMD_REFRESH		0x0005
 #define MT9V113_VAR_SEQ_STATE	0xa104
 
+#define MT9V113_VAR_AE_MAX_INDEX	0xa20c
+#define MT9V113_AE_MAX_INDEX_0	0x0003
+#define MT9V113_AE_MAX_INDEX_1	0x000e
+
 /* #defines for register writes and register array processing */
 #define MISENSOR_8BIT		1
 #define MISENSOR_16BIT		2
@@ -187,6 +191,7 @@ struct mt9v113_device {
 
 	struct camera_sensor_platform_data *platform_data;
 	int real_model_id;
+	int run_mode;
 
 	unsigned int res;
 };
@@ -875,6 +880,15 @@ static struct misensor_reg const mt9v113_cpipe_perference[] = {
 	{MISENSOR_16BIT, 0x098c, 0x2b2a}, /*HG_LL_bRIGHTNeSSSSTOP*/
 	{MISENSOR_16BIT, 0x0990, 0x3e80},
 
+	{MISENSOR_TOK_TERM, 0, 0},
+};
+
+/* Increase Flicker detection */
+static struct misensor_reg const mt9v113_high_flicker[] = {
+	{MISENSOR_16BIT, 0x98c, 0xa40d},/*Stat_min*/
+	{MISENSOR_16BIT, 0x990, 0x01},/*      = 1*/
+	{MISENSOR_16BIT, 0x98c, 0xa410},/*Min_amplitude*/
+	{MISENSOR_16BIT, 0x990, 0x02},/*      = 2*/
 	{MISENSOR_TOK_TERM, 0, 0},
 };
 

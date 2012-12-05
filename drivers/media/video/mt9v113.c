@@ -998,6 +998,45 @@ static int mt9v113_set_mbus_fmt(struct v4l2_subdev *sd,
 	if (ret)
 		return ret;
 
+	/* Limit max exposure if in video mode */
+	ret = mt9v113_write_reg(c, MISENSOR_16BIT,
+				MT9V113_MCU_VAR_ADDR,
+				MT9V113_VAR_AE_MAX_INDEX);
+	if (ret) {
+		dev_err(&c->dev, "err Write VAR ADDR: %d", ret);
+		return ret;
+	}
+
+	if (dev->run_mode == CI_MODE_VIDEO) {
+		ret = mt9v113_write_reg(c, MISENSOR_16BIT,
+				MT9V113_MCU_VAR_DATA0,
+				MT9V113_AE_MAX_INDEX_0);
+		/*
+		 * Need to increase Flicker Detection sensitivity
+		 * as keeping 30fps will have no enough exposure
+		 * time
+		 *
+		 * DS: How to adjust Auto Flicker Detection Sensitivity:
+		 * 1: Decrease the value of 0x000D to 2 or 1
+		 * 2: Decrease 0x0010 to 3 or 2
+		 * 3: Make the search range wider
+		 */
+		ret = mt9v113_write_reg_array(c, mt9v113_high_flicker);
+		if (ret) {
+			dev_err(&c->dev, "err set high flicker: %d", ret);
+			return ret;
+		}
+	} else {
+		ret = mt9v113_write_reg(c, MISENSOR_16BIT,
+				MT9V113_MCU_VAR_DATA0,
+				MT9V113_AE_MAX_INDEX_1);
+	}
+
+	if (ret) {
+		dev_err(&c->dev, "err write ae_max_index: %d", ret);
+		return ret;
+	}
+
 	dev->res = res_index->res;
 
 	fmt->width = width;
@@ -1384,6 +1423,18 @@ mt9v113_set_pad_format(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 	return 0;
 }
 
+static int mt9v113_s_parm(struct v4l2_subdev *sd, struct v4l2_streamparm *param)
+{
+	struct mt9v113_device *snr = to_mt9v113_sensor(sd);
+
+	if (param->type != V4L2_BUF_TYPE_VIDEO_CAPTURE)
+		return -EINVAL;
+
+	snr->run_mode = param->parm.capture.capturemode;
+
+	return 0;
+}
+
 static int mt9v113_g_skip_frames(struct v4l2_subdev *sd, u32 *frames)
 {
 	int index;
@@ -1409,6 +1460,7 @@ static const struct v4l2_subdev_video_ops mt9v113_video_ops = {
 	.s_mbus_fmt = mt9v113_set_mbus_fmt,
 	.g_mbus_fmt = mt9v113_get_mbus_fmt,
 	.s_stream = mt9v113_s_stream,
+	.s_parm = mt9v113_s_parm,
 	.enum_framesizes = mt9v113_enum_framesizes,
 	.enum_frameintervals = mt9v113_enum_frameintervals,
 };
@@ -1494,6 +1546,7 @@ static int mt9v113_probe(struct i2c_client *client,
 
 	/* set res index to be invalid */
 	dev->res = -1;
+	dev->run_mode = CI_MODE_PREVIEW;
 
 	return 0;
 }
