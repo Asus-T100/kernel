@@ -3841,11 +3841,6 @@ static int psb_ospm_write(struct file *file, const char *buffer,
 		drm_psb_ospm = buf[0] - '0';
 		PSB_DEBUG_ENTRY(" SGX (D0i3) drm_psb_ospm: %d\n",
 		       drm_psb_ospm);
-		/*Work around for video encode, it needs sgx always on*/
-		if (!drm_psb_ospm) {
-			ospm_power_using_hw_begin(OSPM_GRAPHICS_ISLAND, true);
-			ospm_power_using_hw_end(OSPM_GRAPHICS_ISLAND);
-		}
 	}
 	return count;
 }
