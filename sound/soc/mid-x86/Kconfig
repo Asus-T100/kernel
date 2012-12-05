@@ -10,7 +10,7 @@ config SND_MFLD_MACHINE
           This adds support for ASoC machine driver for Intel(R) MID Medfield platform
           used as alsa device in audio subsystem in Intel(R) MID devices
           Say Y if you have such a device
-          If unsure select "N".
+	  If unsure select "N".
 
 config SND_MFLD_MACHINE_GI
 	tristate "SOC Machine Audio driver for Intel Medfield GI board"
@@ -68,6 +68,21 @@ config SND_CLV_MACHINE
 	  used as alsa device in audio substem in Intel(R) MID devices
           Say Y if you have such a device
           If unsure select "N".
+
+config SND_CTP_VB_MACHINE
+	tristate "SOC Machine Audio driver for Intel Cloverview VictoriaBay MID platform"
+	depends on INTEL_SCU_IPC && INTEL_SCU_IPC_UTIL && X86 && GPIO_LANGWELL
+	select SND_SOC_CS42L73
+	select SND_SST_PLATFORM
+	select SND_INTEL_SST
+	select SND_COMPRESS_SST
+	select SND_COMPRESS_OFFLOAD
+	default n
+	help
+	This adds support for ASOC machine driver for Intel(R) MID Cloverview platform
+	used as alsa device in audio substream in Intel(R) MID devices
+	Say Y if you have such a device
+	If unsure select "N".
 
 config SND_INTEL_SST
        tristate

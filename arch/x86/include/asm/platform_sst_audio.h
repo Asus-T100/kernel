@@ -18,6 +18,6 @@ struct sst_platform_data {
 	const struct sfi_soft_platform_id *spid;
 };
 
-int add_sst_platform_device();
+int add_sst_platform_device(void);
 #endif
 
