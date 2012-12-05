@@ -54,8 +54,13 @@
 #define	ADC1BV0H		0x1F2
 #define ADC1BI0H		0x1FA
 
+#ifdef CONFIG_BOARD_CTP
+#define EEPROMCAL1		0x309
+#define EEPROMCAL2		0x30A
+#else
 #define EEPROMCAL1		0x317
 #define EEPROMCAL2		0x318
+#endif
 
 #define MCCINT_MCCCAL		(1 << 1)
 #define MCCINT_MOVERFLOW	(1 << 0)
@@ -212,10 +217,72 @@ static int gpadc_poweroff(struct gpadc_info *mgi)
 	return 0;
 }
 
+static int gpadc_calib(int rc, int zse, int ge)
+{
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_CLOVERVIEW) {
+		/**
+		 * For Cloverview, using the calibration data, we have the
+		 * voltage and current after calibration correction as below:
+		 * V_CAL_CODE = 213.33 * (V_RAW_CODE - VZSE) / VGE
+		 * I_CAL_CODE = 213.33 * (I_RAW_CODE - IZSE) / IGE
+		 */
+		return 21333 * (rc - zse) / ge;
+	} else {
+		/**
+		 * For Medfield, using the calibration data, we have the
+		 * voltage and current after calibration correction as below:
+		 * V_CAL_CODE = V_RAW_CODE - (VZSE + (VGE)* VRAW_CODE/1023)
+		 * I_CAL_CODE = I_RAW_CODE - (IZSE + (IGE)* IRAW_CODE/1023)
+		 */
+		return rc - (zse + ge * rc / 1023);
+	}
+}
+
+static void gpadc_calc_zse_ge(struct gpadc_info *mgi)
+{
+	u8 data;
+	int fse, zse, fse_sign, zse_sign, ge, ge_sign;
+
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_CLOVERVIEW) {
+		gpadc_read(EEPROMCAL1, &data);
+		zse = data & 0xf;
+		ge = (data >> 4) & 0xf;
+		gpadc_read(EEPROMCAL2, &data);
+		zse_sign = (data & (1 << 6)) ? -1 : 1;
+		ge_sign = (data & (1 << 7)) ? -1 : 1;
+		zse *= zse_sign;
+		ge *= ge_sign;
+		mgi->vzse = mgi->izse = zse / 2;
+		/* vge multiple 100 to avoid float */
+		mgi->vge = mgi->ige = 21333 - (ge * 100 / 4);
+	} else {
+		/* voltage trim */
+		gpadc_read(EEPROMCAL1, &data);
+		zse = (data & 0xf)/2;
+		fse = ((data >> 4) & 0xf)/2;
+		gpadc_read(EEPROMCAL2, &data);
+		zse_sign = (data & (1 << 6)) ? 1 : 0;
+		fse_sign = (data & (1 << 7)) ? 1 : 0;
+		zse *= zse_sign;
+		fse *= fse_sign;
+		mgi->vzse = zse;
+		mgi->vge = fse - zse;
+
+		/* current trim */
+		fse = (data & 0xf)/2;
+		fse_sign = (data & (1 << 5)) ? 1 : 0;
+		fse = ~(fse_sign * fse) + 1;
+		gpadc_read(ADC1OFFSETH, &data);
+		zse = data << 2;
+		gpadc_read(ADC1OFFSETL, &data);
+		zse += data & 0x3;
+		mgi->izse = zse;
+	}
+}
+
 static void gpadc_trimming(struct work_struct *work)
 {
 	u8 data;
-	int fse, zse, fse_sign, zse_sign;
 	struct gpadc_info *mgi =
 		container_of(work, struct gpadc_info, trimming_work);
 
@@ -238,28 +305,8 @@ static void gpadc_trimming(struct work_struct *work)
 	gpadc_set_bits(ADC1INT, ADC1INT_ADC1CAL);
 	gpadc_clear_bits(ADC1CNTL1, ADC1CNTL1_AD1CALEN);
 
-	/* voltage trim */
-	gpadc_read(EEPROMCAL1, &data);
-	zse = (data & 0xf)/2;
-	fse = ((data >> 4) & 0xf)/2;
-	gpadc_read(EEPROMCAL2, &data);
-	zse_sign = (data & (1 << 6)) ? 1 : 0;
-	fse_sign = (data & (1 << 7)) ? 1 : 0;
-	zse *= zse_sign;
-	fse *= fse_sign;
-	mgi->vzse = zse;
-	mgi->vge = fse - zse;
+	gpadc_calc_zse_ge(mgi);
 
-	/* current trim */
-	fse = (data & 0xf)/2;
-	fse_sign = (data & (1 << 5)) ? 1 : 0;
-	fse = ~(fse_sign * fse) + 1;
-	gpadc_read(ADC1OFFSETH, &data);
-	zse = data << 2;
-	gpadc_read(ADC1OFFSETL, &data);
-	zse += data & 0x3;
-	mgi->izse = zse;
-	mgi->ige = fse + zse;
 	if (gpadc_poweroff(mgi)) {
 		dev_err(mgi->dev, "power off failed\n");
 		goto failed;
@@ -370,14 +417,8 @@ static void gpadc_gsmpulse_work(struct work_struct *work)
 			cur = tmp;
 	}
 
-	/**
-	 * Using the calibration data, we have the voltage and current
-	 * after calibration correction as below:
-	 * V_CAL_CODE = V_RAW_CODE - (VZSE + (VGE)* VRAW_CODE/1023)
-	 * I_CAL_CODE = I_RAW_CODE - (IZSE + (IGE)* IRAW_CODE/1023)
-	*/
-	vol -= mgi->vzse + mgi->vge * (vol) / 1023;
-	cur -= mgi->izse + mgi->ige * (cur) / 1023;
+	vol = gpadc_calib(vol, mgi->vzse, mgi->vge);
+	cur = gpadc_calib(cur, mgi->izse, mgi->ige);
 
 	gpadc_set_bits(ADC1INT, ADC1INT_GSM);
 	gpadc_clear_bits(ADC1CNTL3, ADC1CNTL3_GSMDATARD);
@@ -498,16 +539,11 @@ int intel_mid_gpadc_sample(void *handle, int sample_count, ...)
 			gpadc_read(ADC1SNS0H + 2 * rq->addr[i] + 1, &data);
 			tmp += data & 0x3;
 
-			/**
-			 * Using the calibration data, we have the voltage and
-			 * current after calibration correction as below:
-			 * V_CAL_CODE = V_RAW_CODE - (VZSE+(VGE)*VRAW_CODE/1023)
-			 * I_CAL_CODE = I_RAW_CODE - (IZSE+(IGE)*IRAW_CODE/1023)
-			 */
 			if (rq->ch[i] & CH_NEED_VCALIB)
-				tmp -= mgi->vzse + mgi->vge * tmp / 1023;
+				tmp = gpadc_calib(tmp, mgi->vzse, mgi->vge);
 			if (rq->ch[i] & CH_NEED_ICALIB)
-				tmp -= mgi->izse + mgi->ige * tmp / 1023;
+				tmp = gpadc_calib(tmp, mgi->izse, mgi->ige);
+
 			*val[i] += tmp;
 		}
 		gpadc_clear_bits(ADC1CNTL3, ADC1CNTL3_RRDATARD);
@@ -757,6 +793,7 @@ static ssize_t intel_mid_gpadc_store_alloc_channel(struct device *dev,
 		dev_err(dev, "adc handle %d has been occupied", hdn);
 		return -EBUSY;
 	}
+
 	if (val == 2)
 		adc_handle[hdn - 1] = intel_mid_gpadc_alloc(1, ch[0]);
 	else
