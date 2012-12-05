@@ -1136,7 +1136,7 @@ int psb_msvdx_init(struct drm_device *dev)
 		if ((core_rev & 0xffffff) < 0x020000)
 			msvdx_priv->mtx_mem_size = 16 * 1024;
 		else
-			msvdx_priv->mtx_mem_size = 40 * 1024;
+			msvdx_priv->mtx_mem_size = 56 * 1024;
 
 		fw_bo_size = msvdx_priv->mtx_mem_size + 4096;
 
@@ -1177,7 +1177,7 @@ int psb_msvdx_init(struct drm_device *dev)
 		if ((core_rev & 0xffffff) < 0x020000)
 			msvdx_priv->mtx_mem_size = 16 * 1024;
 		else
-			msvdx_priv->mtx_mem_size = 40 * 1024;
+			msvdx_priv->mtx_mem_size = 56 * 1024;
 
 		PSB_DEBUG_INIT
 		    ("MSVDX: MTX mem size is 0x%08xbytes  allocate firmware BO size 0x%08x\n",
