@@ -55,6 +55,7 @@ static struct snd_pcm_hardware sst_platform_pcm_hw = {
 			SNDRV_PCM_FMTBIT_S24 | SNDRV_PCM_FMTBIT_U24 |
 			SNDRV_PCM_FMTBIT_S32 | SNDRV_PCM_FMTBIT_U32),
 	.rates = (SNDRV_PCM_RATE_8000|
+			SNDRV_PCM_RATE_16000 |
 			SNDRV_PCM_RATE_44100 |
 			SNDRV_PCM_RATE_48000),
 	.rate_min = SST_MIN_RATE,
@@ -382,13 +383,13 @@ static struct snd_soc_dai_driver sst_platform_dai[] = {
 	.playback = {
 		.channels_min = SST_MONO,
 		.channels_max = SST_STEREO,
-		.rates = SNDRV_PCM_RATE_48000,
+		.rates = SNDRV_PCM_RATE_16000|SNDRV_PCM_RATE_48000,
 		.formats = SNDRV_PCM_FMTBIT_S16_LE,
 	},
 	.capture = {
 		.channels_min = SST_MONO,
 		.channels_max = SST_STEREO,
-		.rates = SNDRV_PCM_RATE_48000,
+		.rates = SNDRV_PCM_RATE_16000|SNDRV_PCM_RATE_48000,
 		.formats = SNDRV_PCM_FMTBIT_S16_LE,
 	},
 },
