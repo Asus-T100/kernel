@@ -1247,6 +1247,7 @@ int mdfld_dsi_send_dcs(struct mdfld_dsi_pkg_sender * sender,
 {
 	u32 cb_phy = sender->dbi_cb_phy;
 	struct drm_device *dev = sender->dev;
+	struct drm_psb_private *dev_priv = dev->dev_private;
 	u32 index = 0;
 	u8 *cb = (u8 *)sender->dbi_cb_addr;
 	int retry;
@@ -1254,7 +1255,7 @@ int mdfld_dsi_send_dcs(struct mdfld_dsi_pkg_sender * sender,
 	u8 *pSendparam = NULL;
 	int err = 0;
 
-	if(!sender) {
+	if (!sender || !dev_priv) {
 		DRM_ERROR("Invalid parameter\n");
 		return -EINVAL;
 	}
@@ -1283,7 +1284,8 @@ int mdfld_dsi_send_dcs(struct mdfld_dsi_pkg_sender * sender,
 		if (atomic64_read(&sender->last_screen_update) ==
 			atomic64_read(&sender->te_seq)) {
 			spin_unlock(&sender->lock);
-			DRM_INFO("reject write_mem_start\n");
+			if (dev_priv->b_async_flip_enable)
+				DRM_INFO("reject write_mem_start\n");
 			return 0;
 		}
 
