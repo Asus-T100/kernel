@@ -87,6 +87,8 @@ static struct gburst_hw_if_info_s gburst_sgx_info;
 
 #endif /* if (defined CONFIG_GPU_BURST) || (defined CONFIG_GPU_BURST_MODULE) */
 
+IMG_UINT32 g_ui32HostIRQCountSample = 0;
+
 #if defined(PVRSRV_USSE_EDM_STATUS_DEBUG)
 
 static const IMG_CHAR *SGXUKernelStatusString(IMG_UINT32 code)
@@ -1942,6 +1944,10 @@ IMG_BOOL SGX_ISRHandler (IMG_VOID *pvData)
 			/* clear the events */
 			OSWriteHWReg(psDevInfo->pvRegsBaseKM, EUR_CR_EVENT_HOST_CLEAR, ui32EventClear);
 			OSWriteHWReg(psDevInfo->pvRegsBaseKM, EUR_CR_EVENT_HOST_CLEAR2, ui32EventClear2);
+			/* Sample the current count from the uKernel _before_ we clear the
+			 interrupt.
+			*/
+			g_ui32HostIRQCountSample = psDevInfo->psSGXHostCtl->ui32InterruptCount;
 		}
 	}
 
