@@ -13,9 +13,6 @@
 #define _PLATFORM_MMC_SDHCI_PCI_H_
 
 int bcmdhd_get_sdhci_quirk(void) __attribute__((weak));
-int bcmdhd_get_sdhci_mmc_caps(void) __attribute__((weak));
-void bcmdhd_register_embedded_control(void *dev_id, void (*virtual_cd)
-		(void *dev_id, int card_present)) __attribute__((weak));
 
 #ifdef CONFIG_BOARD_MRFLD_VV
 

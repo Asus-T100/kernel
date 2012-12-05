@@ -19,51 +19,22 @@
 #include <linux/interrupt.h>
 #include "platform_bcm43xx.h"
 #include <linux/mmc/sdhci.h>
-#include <linux/delay.h>
-
-#define DELAY_ONOFF 250
 
 static int sdhci_quirk;
-static int sdhci_mmc_caps;
-
-static int gpio_enable;
-static void (*g_virtual_cd)(void *dev_id, int card_present);
-void *g_host;
-
-void bcmdhd_register_embedded_control(void *dev_id,
-			void (*virtual_cd)(void *dev_id, int card_present))
-{
-	g_virtual_cd = virtual_cd;
-	g_host = dev_id;
-}
 
 int bcmdhd_get_sdhci_quirk(void)
 {
 	return sdhci_quirk;
 }
 
-int bcmdhd_get_sdhci_mmc_caps(void)
-{
-	return sdhci_mmc_caps;
-}
-
 static int bcmdhd_set_power(int on)
 {
-	gpio_set_value(gpio_enable, on);
-
-	/* Delay advice by BRCM */
-	msleep(DELAY_ONOFF);
-
 	return 0;
 }
 
 static int bcmdhd_set_card_detect(int detect)
 {
-	if (!g_virtual_cd)
-		return -1;
-
-	if (g_host)
-		g_virtual_cd(g_host, detect);
+	return 0;
 }
 
 static struct wifi_platform_data bcmdhd_data = {
@@ -105,6 +76,7 @@ static struct regulator_init_data bcm43xx_vmmc3 = {
 static struct fixed_voltage_config bcm43xx_vwlan = {
 	.supply_name		= "vbcm43xx",
 	.microvolts		= 1800000,
+	.gpio			= 75,
 	.startup_delay		= 70000,
 	.enable_high		= 1,
 	.enabled_at_boot	= 0,
@@ -145,8 +117,10 @@ void __init bcm43xx_platform_data_init_post_scu(void *info)
 	if (err < 0)
 		pr_err("error setting bcmdhd data\n");
 
-	gpio_enable = get_gpio_by_name(BCM43XX_SFI_GPIO_ENABLE_NAME);
-	if (gpio_enable == -1) {
+	/* this is the fake regulator that mmc stack use to power of the
+	   wifi sdio card via runtime_pm apis */
+	bcm43xx_vwlan.gpio = get_gpio_by_name(BCM43XX_SFI_GPIO_ENABLE_NAME);
+	if (bcm43xx_vwlan.gpio == -1) {
 		pr_err("%s: Unable to find WLAN-enable GPIO in the SFI table\n",
 		       __func__);
 		return;
@@ -166,7 +140,6 @@ void __init *bcm43xx_platform_data(void *info)
 	struct sd_board_info *sd_info;
 
 	sdhci_quirk = SDHCI_QUIRK_ADVERTISE_2V0_FORCE_1V8;
-	sdhci_mmc_caps = MMC_CAP_NONREMOVABLE;
 
 	sd_info = kmemdup(info, sizeof(*sd_info), GFP_KERNEL);
 	if (!sd_info) {
