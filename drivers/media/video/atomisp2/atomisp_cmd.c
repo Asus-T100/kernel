@@ -4065,6 +4065,16 @@ int atomisp_offline_capture_configure(struct atomisp_device *isp,
 	isp->params.offline_parm = *cvf_config;
 
 	if (isp->params.offline_parm.num_captures) {
+		int num_raw_frames = abs(isp->params.offline_parm.offset);
+
+		if (num_raw_frames > 1)
+			num_raw_frames -= 1;
+		else
+			num_raw_frames = 0;
+
+		num_raw_frames += max_t(int, ATOMISP_CONT_RAW_FRAMES,
+				isp->params.offline_parm.num_captures + 3);
+		sh_css_continuous_set_num_raw_frames(num_raw_frames);
 		isp->params.continuous_vf = true;
 	} else {
 		isp->params.continuous_vf = false;

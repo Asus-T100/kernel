@@ -81,6 +81,7 @@
 
 #define ATOMISP_CSS_Q_DEPTH	3
 #define ATOMISP_CSS_EVENTS_MAX  16
+#define ATOMISP_CONT_RAW_FRAMES 4
 /*
  * Define how fast CPU should be able to serve ISP interrupts.
  * The bigger the value, the higher risk that the ISP is not
