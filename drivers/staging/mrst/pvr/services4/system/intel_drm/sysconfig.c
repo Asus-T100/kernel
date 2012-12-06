@@ -61,7 +61,11 @@ extern struct drm_device *gpDrmDevice;
 #define SYS_SGX_CLOCK_SPEED			(400000000)
 #define SYS_SGX_HWRECOVERY_TIMEOUT_FREQ		(100)
 #define SYS_SGX_PDS_TIMER_FREQ			(1000)
-#define SYS_SGX_ACTIVE_POWER_LATENCY_MS		(2)
+#ifdef CONFIG_GFX_ON_GI
+#define SYS_SGX_ACTIVE_POWER_LATENCY_MS                (50)
+#else
+#define SYS_SGX_ACTIVE_POWER_LATENCY_MS                (2)
+#endif
 
 #if defined(SUPPORT_DRI_DRM_EXT)
 #define	DRI_DRM_STATIC
