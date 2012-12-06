@@ -231,3 +231,10 @@ config SUPPORT_GI_MIPI_SONY_COMMAND_MODE_DISPLAY
 	  mode MIPI panel, with
 	  320 x 480 resolution
 	  in portrait mode.
+
+config GFX_ON_GI
+	tristate "Differentiate platform for specific GFX setting"
+	depends on DRM_MDFLD
+	default n
+	help
+	  xxxxxx
