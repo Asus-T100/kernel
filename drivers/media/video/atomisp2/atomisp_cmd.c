@@ -4000,6 +4000,17 @@ done:
 
 	pipe->capq.field = f->fmt.pix.field;
 
+	/*
+	 * If in video 480P case, no GFX throttle
+	 */
+	if (pipe->pipe_type == ATOMISP_PIPE_CAPTURE) {
+		if (isp->sw_contex.run_mode == CI_MODE_VIDEO &&
+		    width == 720 && height == 480)
+			isp->need_gfx_throttle = false;
+		else
+			isp->need_gfx_throttle = true;
+	}
+
 	return 0;
 }
 

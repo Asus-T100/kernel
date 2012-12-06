@@ -361,6 +361,8 @@ struct atomisp_device {
 
 	spinlock_t lock; /* Just for streaming below */
 	unsigned int streaming; /* Hold both mutex and lock to change this */
+
+	bool need_gfx_throttle;
 };
 
 #define v4l2_dev_to_atomisp_device(dev) \
