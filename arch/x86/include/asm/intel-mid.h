@@ -417,6 +417,56 @@ enum {
 	MRFL_TABLET_TBD_UNKNOWN = 0xFFFF
 };
 
+/* Macros for SPID based checks */
+
+#define SPID_CUSTOMER_ID(customer) ( \
+	(spid.customer_id == CUSTOMER_##customer))
+#define SPID_VENDOR_ID(vendor) ( \
+	(spid.vendor_id == VENDOR_##vendor))
+#define SPID_PLATFORM_ID(vendor, platform, devtype) ( \
+	(spid.platform_family_id == vendor##_##platform##_##devtype))
+#define SPID_PRODUCT_ID(vendor, platform, devtype, product, type) (\
+	(spid.product_line_id == \
+	vendor##_##platform##_##devtype##_##product##_##type))
+#define SPID_HARDWARE_ID(platform, devtype, product, hardware) (\
+	(spid.hardware_id == platform##_##devtype##_##product##_##hardware))
+
+#define INTEL_MID_BOARDV1(devtype, platform) ( \
+	SPID_CUSTOMER_ID(INTEL) && \
+	SPID_VENDOR_ID(INTEL) && \
+	SPID_PLATFORM_ID(INTEL, platform, devtype))
+
+#define INTEL_MID_BOARDV2(devtype, platform, product, type) ( \
+	INTEL_MID_BOARDV1(devtype, platform) && \
+	SPID_PRODUCT_ID(INTEL, platform, devtype, product, type))
+
+#define INTEL_MID_BOARDV3(devtype, platform, product, type, hardware) ( \
+	INTEL_MID_BOARDV2(devtype, platform, product, type) && \
+	SPID_HARDWARE_ID(platform, devtype, product, hardware))
+
+
+
+/* INTEL_MID_BOARD - Returns true if arugments matches SPID contents
+ * @ level:	1, 2, 3
+		- 1 for verifying platform_id,
+		- 2 for verifying platform_type & product_id,
+		- 3 for verifying platform_type, product_id & hardware_id.
+ * @ devtype:	PHONE or TABLET
+ * @ arg3:	platform_type - MFLD,CLVTP,CLVT,MRFL.
+ * @ arg4:	product ID - product id supported by
+		platform_type passed in arg3.
+ * @ arg5:	PRO or ENG.
+ * @ arg6:	hardware_id -Hardware IDs supported by above
+		platform_type & product_id.
+ *
+ * Example:	INTEL_MID_BOARD(1,PHONE,MFLD)
+ *		INTEL_MID_BOARD(2,PHONE,MFLD,BB15,PRO)
+ *		INTEL_MID_BOARD(3,PHONE,MFLD,BB15,PRO,PR20),
+ *
+ */
+#define INTEL_MID_BOARD(level, devtype, ...) ( \
+	INTEL_MID_BOARDV##level(devtype, __VA_ARGS__))
+
 /*
  * Penwell uses spread spectrum clock, so the freq number is not exactly
  * the same as reported by MSR based on SDM.
