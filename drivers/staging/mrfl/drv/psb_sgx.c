@@ -789,6 +789,10 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 		if (!ospm_power_using_hw_begin(OSPM_VIDEO_ENC_ISLAND,
 					       OSPM_UHB_FORCE_POWER_ON))
 			return -EBUSY;
+	} else if (arg->engine == VSP_ENGINE_VPP) {
+		if (!ospm_power_using_hw_begin(OSPM_VIDEO_VPP_ISLAND,
+					       OSPM_UHB_FORCE_POWER_ON))
+			return -EBUSY;
 	}
 
 	ret = mutex_lock_interruptible(&dev_priv->cmdbuf_mutex);
@@ -940,6 +944,9 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 
 	if (arg->engine == LNC_ENGINE_ENCODE)
 		ospm_power_using_hw_end(OSPM_VIDEO_ENC_ISLAND);
+
+	if (arg->engine == VSP_ENGINE_VPP)
+		ospm_power_using_hw_end(OSPM_VIDEO_VPP_ISLAND);
 
 	return ret;
 }

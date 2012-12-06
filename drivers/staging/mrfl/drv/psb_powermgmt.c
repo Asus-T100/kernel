@@ -143,6 +143,8 @@ static int ospm_runtime_pm_msvdx_resume(struct drm_device *dev)
 	struct drm_psb_private *dev_priv = dev->dev_private;
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
 
+	return 0;
+
 	/*printk(KERN_ALERT "ospm_runtime_pm_msvdx_resume\n"); */
 
 	MSVDX_NEW_PMSTATE(dev, msvdx_priv, PSB_PMSTATE_POWERUP);
@@ -386,7 +388,7 @@ void ospm_power_init(struct drm_device *dev)
 
 	mutex_init(&g_ospm_mutex);
 	spin_lock_init(&dev_priv->ospm_lock);
-	g_hw_power_status_mask = OSPM_ALL_ISLANDS;
+	g_hw_power_status_mask = OSPM_GRAPHICS_ISLAND | OSPM_DISPLAY_ISLAND;
 	atomic_set(&g_display_access_count, 0);
 	atomic_set(&g_graphics_access_count, 0);
 	atomic_set(&g_videoenc_access_count, 0);
@@ -1599,6 +1601,13 @@ void ospm_power_island_up(int hw_islands)
 
 	if (hw_islands & OSPM_VIDEO_VPP_ISLAND) {
 		if (mrfld_set_power_state(
+			OSPM_DISPLAY_ISLAND,
+			MRFLD_GFX_SLC | MRFLD_GFX_SLC_LDO |
+			MRFLD_GFX_RSCD | MRFLD_GFX_SDKCK,
+			POWER_ISLAND_UP))
+			BUG();
+
+		if (mrfld_set_power_state(
 				OSPM_VIDEO_VPP_ISLAND,
 				0,
 				OSPM_ISLAND_UP))
@@ -1610,6 +1619,13 @@ void ospm_power_island_up(int hw_islands)
 
 	if (hw_islands & OSPM_VIDEO_DEC_ISLAND) {
 		if (mrfld_set_power_state(
+			OSPM_DISPLAY_ISLAND,
+			MRFLD_GFX_SLC | MRFLD_GFX_SLC_LDO |
+			MRFLD_GFX_RSCD | MRFLD_GFX_SDKCK,
+			POWER_ISLAND_UP))
+			BUG();
+
+		if (mrfld_set_power_state(
 				OSPM_VIDEO_DEC_ISLAND,
 				0,
 				OSPM_ISLAND_UP))
@@ -1620,6 +1636,13 @@ void ospm_power_island_up(int hw_islands)
 	}
 
 	if (hw_islands & OSPM_VIDEO_ENC_ISLAND) {
+		if (mrfld_set_power_state(
+			OSPM_DISPLAY_ISLAND,
+			MRFLD_GFX_SLC | MRFLD_GFX_SLC_LDO |
+			MRFLD_GFX_RSCD | MRFLD_GFX_SDKCK,
+			POWER_ISLAND_UP))
+			BUG();
+
 		if (mrfld_set_power_state(
 				OSPM_VIDEO_ENC_ISLAND,
 				0,
@@ -1705,11 +1728,9 @@ static int wait_for_pm_cmd_complete(int verify_mask, int state_type,
 	pwr_mask = pwr_cnt;
 
 	if (state_type == POWER_ISLAND_DOWN)
-		/* pwr_mask |= verify_mask; */
-		pwr_mask &= ~verify_mask;
-	else if (state_type == POWER_ISLAND_UP)
-		/* pwr_mask &= ~verify_mask; */
 		pwr_mask |= verify_mask;
+	else if (state_type == POWER_ISLAND_UP)
+		pwr_mask &= ~verify_mask;
 	else {
 		printk(KERN_ALERT "ERROR: %s invalid power state: %d\n",
 		       __func__, state_type);
