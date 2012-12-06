@@ -97,6 +97,8 @@ static int ospm_runtime_pm_topaz_suspend(struct drm_device *dev)
 	struct psb_video_ctx *pos, *n;
 	int encode_ctx = 0, encode_running = 0;
 
+	return 0;
+
 	list_for_each_entry_safe(pos, n, &dev_priv->video_ctx, head) {
 		int entrypoint = pos->ctx_type & 0xff;
 		if (entrypoint == VAEntrypointEncSlice ||
@@ -161,6 +163,8 @@ static int ospm_runtime_pm_topaz_resume(struct drm_device *dev)
 	struct pnw_topaz_private *pnw_topaz_priv = dev_priv->topaz_private;
 	struct psb_video_ctx *pos, *n;
 	int encode_ctx = 0, encode_running = 0;
+
+	return 0;
 
 	/*printk(KERN_ALERT "ospm_runtime_pm_topaz_resume\n"); */
 

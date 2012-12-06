@@ -32,6 +32,7 @@
 #include "vsp.h"
 #include "lnc_topaz.h"
 #include "pnw_topaz.h"
+#include "tng_topaz.h"
 #include <drm/drm_pciids.h>
 #include "psb_powermgmt.h"
 #include "dispmgrnl.h"
@@ -777,7 +778,11 @@ static void psb_do_takedown(struct drm_device *dev)
 	if (IS_MRFLD(dev))
 		vsp_deinit(dev);
 
-	pnw_topaz_uninit(dev);
+	if (IS_MDFLD(dev))
+		pnw_topaz_uninit(dev);
+
+	if (IS_MRFLD(dev))
+		tng_topaz_uninit(dev);
 }
 
 static void psb_get_core_freq(struct drm_device *dev)
@@ -1317,7 +1322,11 @@ static int psb_do_init(struct drm_device *dev)
 
 	PSB_DEBUG_INIT("Init Topaz\n");
 	/* for sku100L and sku100M, VEC is disabled in fuses */
-	pnw_topaz_init(dev);
+	if (IS_MDFLD(dev))
+		pnw_topaz_init(dev);
+
+	if (IS_MRFLD(dev))
+		tng_topaz_init(dev);
 
 	return 0;
  out_err:
@@ -1545,14 +1554,19 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	}
 
 	if (IS_TOPAZ(dev)) {
-		if (IS_FLDS(dev)) {
+		if (IS_MRFLD(dev))
+			dev_priv->topaz_reg =
+			    ioremap(resource_start + TNG_TOPAZ_OFFSET,
+				    TNG_TOPAZ_SIZE);
+		else if (IS_MDFLD(dev))
 			dev_priv->topaz_reg =
 			    ioremap(resource_start + PNW_TOPAZ_OFFSET,
 				    PNW_TOPAZ_SIZE);
-		} else
+		else
 			dev_priv->topaz_reg =
 			    ioremap(resource_start + LNC_TOPAZ_OFFSET,
 				    LNC_TOPAZ_SIZE);
+
 		if (!dev_priv->topaz_reg)
 			goto out_err;
 	}

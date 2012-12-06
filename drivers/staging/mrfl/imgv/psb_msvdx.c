@@ -25,6 +25,7 @@
 #include "psb_drv.h"
 #include "psb_msvdx.h"
 #include "pnw_topaz.h"
+#include "tng_topaz.h"
 #include "vsp.h"
 #include "psb_powermgmt.h"
 #include <linux/io.h>
@@ -1403,8 +1404,12 @@ int psb_remove_videoctx(struct drm_psb_private *dev_priv, struct file *filp)
 			/*Reset fw load status here. */
 			if ((VAEntrypointEncSlice == (pos->ctx_type & 0xff)
 			     || VAEntrypointEncPicture ==
-			     (pos->ctx_type & 0xff)))
-				pnw_reset_fw_status(dev_priv->dev);
+			     (pos->ctx_type & 0xff))) {
+				if (IS_MDFLD(dev_priv->dev))
+					pnw_reset_fw_status(dev_priv->dev);
+				if (IS_MRFLD(dev_priv->dev))
+					tng_topaz_remove_ctx(dev_priv, filp);
+			}
 
 			if ((VAEntrypointVideoProc == (pos->ctx_type & 0xff)))
 				vsp_rm_context(dev_priv->dev);

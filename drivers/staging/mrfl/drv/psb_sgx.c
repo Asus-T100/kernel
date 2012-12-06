@@ -26,6 +26,7 @@
 #include "psb_msvdx.h"
 #include "lnc_topaz.h"
 #include "pnw_topaz.h"
+#include "tng_topaz.h"
 #include "vsp.h"
 #include "ttm/ttm_bo_api.h"
 #include "ttm/ttm_execbuf_util.h"
@@ -795,6 +796,18 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 			return -EBUSY;
 	}
 
+	/*FIXME: for PO*/
+	PSB_DEBUG_GENERAL("by pass soc 0 %x\n", PSB_RMSVDX32(0x630));
+	PSB_DEBUG_GENERAL("by pass soc 1 %x\n", PSB_RMSVDX32(0x640));
+
+	{
+		PSB_WVDC32(0x103, 0x2850);
+		PSB_WVDC32(0xffffffff, 0x2884);
+		PSB_WVDC32(0xffffffff, 0x288c);
+		PSB_WVDC32(0xffffffff, 0x2894);
+		PSB_WVDC32(0xffffffff, 0x2898);
+	}
+
 	ret = mutex_lock_interruptible(&dev_priv->cmdbuf_mutex);
 	if (unlikely(ret != 0))
 		goto out_err0;
@@ -898,9 +911,17 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 			goto out_err4;
 		break;
 	case LNC_ENGINE_ENCODE:
-		ret = pnw_cmdbuf_video(file_priv, &context->validate_list,
-				       context->fence_types, arg,
-				       cmd_buffer, &fence_arg);
+		if (IS_MDFLD(dev))
+			ret = pnw_cmdbuf_video(
+				file_priv, &context->validate_list,
+				context->fence_types, arg,
+				cmd_buffer, &fence_arg);
+
+		if (IS_MRFLD(dev))
+			ret = tng_cmdbuf_video(
+				file_priv, &context->validate_list,
+				context->fence_types, arg,
+				cmd_buffer, &fence_arg);
 
 		if (unlikely(ret != 0))
 			goto out_err4;

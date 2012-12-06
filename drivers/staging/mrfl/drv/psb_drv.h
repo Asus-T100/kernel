@@ -163,8 +163,10 @@ enum panel_type {
 
 #define LNC_TOPAZ_OFFSET	0xA0000
 #define PNW_TOPAZ_OFFSET	0xC0000
+#define TNG_TOPAZ_OFFSET	0x140000
 #define LNC_TOPAZ_SIZE		0x10000
 #define PNW_TOPAZ_SIZE		0x30000	/* PNW VXE285 has two cores */
+#define TNG_TOPAZ_SIZE		0x20000
 #define PSB_MMU_CACHED_MEMORY	  0x0001	/* Bind to MMU only */
 #define PSB_MMU_RO_MEMORY	  0x0002	/* MMU RO memory */
 #define PSB_MMU_WO_MEMORY	  0x0004	/* MMU WO memory */
@@ -413,11 +415,30 @@ enum mmu_type_t {
 	VSP_MMU = 2
 };
 
+#define	LOG2_WB_FIFO_SIZE	(5)
+#define	WB_FIFO_SIZE		(1 << (LOG2_WB_FIFO_SIZE))
+
 struct psb_video_ctx {
 	struct list_head head;
 	struct file *filp;	/* DRM device file pointer */
 	int ctx_type;		/* profile<<8|entrypoint */
 	/* todo: more context specific data for multi-context support */
+	/* Context save and restore */
+	struct ttm_buffer_object *reg_saving_bo;
+	struct ttm_buffer_object *data_saving_bo;
+	uint32_t fw_data_dma_size;
+	uint32_t fw_data_dma_offset;
+	/* Write back buffer object */
+	struct ttm_buffer_object *wb_bo;
+	struct ttm_bo_kmap_obj wb_bo_kmap;
+	uint32_t wb_addr[WB_FIFO_SIZE];
+
+	uint32_t status;
+	uint32_t codec;
+	/* Firmware data section offset and size */
+	uint32_t mtx_debug_val;
+	uint32_t mtx_bank_size;
+	uint32_t mtx_ram_size;
 };
 
 #define MODE_SETTING_IN_CRTC	0x1
