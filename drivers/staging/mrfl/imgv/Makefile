@@ -18,6 +18,8 @@ obj-y += lnc_topaz.o \
 	lnc_topazinit.o \
 	pnw_topaz.o \
 	pnw_topazinit.o \
+	tng_topaz.o \
+	tng_topazinit.o \
 	psb_buffer.o \
 	psb_fence.o \
 	psb_mmu.o \

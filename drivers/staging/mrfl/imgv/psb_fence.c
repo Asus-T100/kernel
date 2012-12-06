@@ -23,6 +23,7 @@
 #include "psb_drv.h"
 #include "psb_msvdx.h"
 #include "pnw_topaz.h"
+#include "tng_topaz.h"
 #include "vsp.h"
 
 static void psb_fence_poll(struct ttm_fence_device *fdev,
@@ -49,6 +50,11 @@ static void psb_fence_poll(struct ttm_fence_device *fdev,
 			sequence = *((uint32_t *)
 				     ((struct pnw_topaz_private *)dev_priv->
 				      topaz_private)->topaz_sync_addr + 1);
+		if (IS_MRFLD(dev))
+			sequence = *((uint32_t *)
+				((struct tng_topaz_private *)dev_priv->
+				topaz_private)->topaz_sync_addr);
+
 		break;
 	case VSP_ENGINE_VPP:
 		sequence = vsp_fence_poll(dev_priv);
@@ -132,7 +138,12 @@ static void psb_fence_lockup(struct ttm_fence_object *fence,
 		DRM_ERROR("flush queued cmdbuf");
 
 		write_lock(&fc->lock);
-		pnw_topaz_handle_timeout(fence->fdev);
+
+		if (IS_MDFLD(dev))
+			pnw_topaz_handle_timeout(fence->fdev);
+		if (IS_MRFLD(dev))
+			tng_topaz_handle_timeout(fence->fdev);
+
 		ttm_fence_handler(fence->fdev, fence->fence_class,
 				  fence->sequence, fence_types, -EBUSY);
 		write_unlock(&fc->lock);
