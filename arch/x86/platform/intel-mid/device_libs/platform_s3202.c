@@ -64,7 +64,6 @@ static struct rmi_sensordata s3202_sensordata = {
 void *s3202_platform_data(void *info)
 {
 #ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_RMI4_I2C
-
 	struct i2c_board_info *i2c_info = info;
 	static struct rmi_i2c_platformdata s3202_platform_data = {
 		.delay_ms = 50,
@@ -75,16 +74,33 @@ void *s3202_platform_data(void *info)
 	s3202_sensordata.attn_gpio_number = get_gpio_by_name("ts_int");
 	s3202_sensordata.rst_gpio_number  = get_gpio_by_name("ts_rst");
 #else
+	static const struct rmi4_touch_calib calibs[] = {
+		/* TOUCH_TYPE_OGS */
+		{
+			.swap_axes = true,
+			.customer_id = 20121109,
+			.fw_name = "s3202_ogs.img",
+			.key_dev_name = "rmi4_key",
+		},
+		/* TOUCH_TYPE_GFF */
+		{
+			.swap_axes = false,
+			.customer_id = 20121109,
+			.fw_name = "s3202_gff.img",
+			.key_dev_name = "rmi4_key_gff",
+		},
+	};
+
 	static struct rmi4_platform_data s3202_platform_data = {
 		.irq_type = IRQ_TYPE_EDGE_FALLING | IRQF_ONESHOT,
-		.swap_axes = true,
 		.regulator_en = true,
 		.regulator_name = "vemmc2",
-		.fw_name = "s3202_fw.img",
+		.calibs = calibs,
 	};
 
 	s3202_platform_data.int_gpio_number = get_gpio_by_name("ts_int");
 	s3202_platform_data.rst_gpio_number = get_gpio_by_name("ts_rst");
+
 #endif
 	return &s3202_platform_data;
 }

@@ -61,6 +61,8 @@
 #define IS_IDLE(ctl_ptr)      ((!ctl_ptr->status) && (!ctl_ptr->command))
 #define extract_u32(ptr)      (le32_to_cpu(*(__le32 *)(ptr)))
 
+#define FIRMWARE_NAME_FORCE	"s3202.img"
+
 /** Image file V5, Option 0
  */
 struct image_header {
@@ -518,7 +520,7 @@ static int write_firmware(struct reflash_data *data)
 
 static int write_configuration(struct reflash_data *data)
 {
-	return write_blocks(data, (u8 *) data->config_data,
+	return write_blocks(data, (u8 *)data->config_data,
 		data->f34_queries.config_block_count, F34_WRITE_CONFIG_BLOCK);
 }
 
@@ -585,35 +587,54 @@ static void reflash_firmware(struct reflash_data *data)
 
 /* Returns false if the firmware should not be reflashed.
  */
-static bool go_nogo(struct reflash_data *data, struct image_header *header)
+static bool
+go_nogo(struct reflash_data *data, const struct rmi4_touch_calib *calib)
 {
 	int retval;
-	union f01_device_status device_status;
+	u8 customer_id[4] = { 0 };
+	u32 id;
 	struct i2c_client *client = data->rmi4_dev->i2c_client;
 
-	dev_info(&client->dev, "family: %d, %d     firmware: %d, %d\n",
-				data->f01_queries.productinfo_1,
-				header->product_info[0],
-				data->f01_queries.productinfo_2,
-				header->product_info[1]);
-
-	if (data->f01_queries.productinfo_2 < RMI4_FW_VERSION)
-		return true;
-	if (data->f01_queries.productinfo_1 < header->product_info[0] ||
-		data->f01_queries.productinfo_2 < header->product_info[1]) {
-		dev_info(&client->dev,
-			 "FW product ID is older than image product ID.\n");
+	retval = rmi4_i2c_block_read(data->rmi4_dev,
+				data->f34_pdt->ctrl_base_addr,
+				customer_id, sizeof(customer_id));
+	if (retval < 0) {
+		dev_err(&client->dev, "Failed to read customer congfig ID (code %d).\n",
+								retval);
 		return true;
 	}
+	dev_info(&client->dev, "Customer ID HEX: 0x%x %x %x %x\n",
+				customer_id[0], customer_id[1],
+				customer_id[2], customer_id[3]);
 
-	retval = read_f01_status(data, &device_status);
-	if (retval < 0)
-		dev_err(&client->dev,
-			"Failed to read F01 status. Code: %d.\n", retval);
-	return device_status.flash_prog || force;
+	id = *(u32 *)customer_id;
+	dev_info(&client->dev, "Customer ID: %d\n", id);
+
+	if (id != calib->customer_id)
+		return true;
+	return false || force;
 }
 
-void rmi4_fw_update(struct rmi4_data *pdata,
+static void
+print_image_info(struct i2c_client *client, struct image_header *header,
+					const struct firmware *fw_entry)
+{
+	dev_info(&client->dev, "Img checksum:           %#08X\n",
+			header->checksum);
+	dev_info(&client->dev, "Img image size:         %d\n",
+			header->image_size);
+	dev_info(&client->dev, "Img config size:        %d\n",
+			header->config_size);
+	dev_info(&client->dev, "Img bootloader version: %d\n",
+			header->bootloader_version);
+	dev_info(&client->dev, "Img product id:         %s\n",
+			header->product_id);
+	dev_info(&client->dev, "Img product info:       %#04x %#04x\n",
+			header->product_info[0], header->product_info[1]);
+	dev_info(&client->dev, "Got firmware, size: %d.\n", fw_entry->size);
+}
+
+int rmi4_fw_update(struct rmi4_data *pdata,
 		struct rmi4_fn_desc *f01_pdt, struct rmi4_fn_desc *f34_pdt)
 {
 #ifdef DEBUG
@@ -621,8 +642,8 @@ void rmi4_fw_update(struct rmi4_data *pdata,
 	struct timespec end;
 	s64 duration_ns;
 #endif
-	int retval;
-	char firmware_name[PRODUCT_ID_SIZE + 12];
+	int retval, touch_type;
+	char *firmware_name;
 	const struct firmware *fw_entry = NULL;
 	struct i2c_client *client = pdata->i2c_client;
 	union pdt_properties pdt_props;
@@ -632,14 +653,15 @@ void rmi4_fw_update(struct rmi4_data *pdata,
 		.f01_pdt = f01_pdt,
 		.f34_pdt = f34_pdt,
 	};
+	const struct rmi4_touch_calib *calibs = pdata->board->calibs;
 
 	dev_info(&client->dev, "Enter %s.\n", __func__);
 #ifdef	DEBUG
 	getnstimeofday(&start);
 #endif
 
-	retval = rmi4_i2c_byte_read(pdata, PDT_PROPERTIES_LOCATION,
-							pdt_props.regs);
+	retval = rmi4_i2c_byte_read(pdata,
+				PDT_PROPERTIES_LOCATION, pdt_props.regs);
 	if (retval < 0) {
 		dev_warn(&client->dev,
 			 "Failed to read PDT props at %#06x (code %d).\n",
@@ -648,52 +670,49 @@ void rmi4_fw_update(struct rmi4_data *pdata,
 	if (pdt_props.has_bsr) {
 		dev_warn(&client->dev,
 			 "Firmware update for LTS not currently supported.\n");
-		return;
+		return -1;
 	}
 
 	retval = read_f01_queries(&data);
 	if (retval) {
 		dev_err(&client->dev, "F01 queries failed, code = %d.\n",
 			retval);
-		return;
+		return -1;
 	}
+
+	if (data.product_id[0] == 0)
+		touch_type = TOUCH_TYPE_GFF;
+	else
+		touch_type = TOUCH_TYPE_OGS;
+
+	if (force)
+		firmware_name = FIRMWARE_NAME_FORCE;
+	else
+		firmware_name = calibs[touch_type].fw_name;
+	dev_info(&client->dev, "Firmware name:%s, hardware type:%d\n",
+					firmware_name, touch_type);
+
 	retval = read_f34_queries(&data);
 	if (retval) {
 		dev_err(&client->dev, "F34 queries failed, code = %d.\n",
 			retval);
-		return;
+		return touch_type;
 	}
-	if (pdata->board->fw_name && strlen(pdata->board->fw_name))
-		snprintf(firmware_name, sizeof(firmware_name), "%s",
-			pdata->board->fw_name);
-	else
-		snprintf(firmware_name, sizeof(firmware_name), "%s",
-			(img_name &&
-			 strlen(img_name)) ? img_name : data.product_id);
+	if (!go_nogo(&data, &calibs[touch_type])) {
+		dev_info(&client->dev, "Don't need to reflash firmware.\n");
+		return touch_type;
+	}
 	dev_info(&client->dev, "Requesting %s.\n", firmware_name);
 	retval = request_firmware(&fw_entry, firmware_name, &client->dev);
 	if (retval != 0) {
 		dev_err(&client->dev,
 				"Firmware %s not available, code = %d\n",
 				firmware_name, retval);
-		return;
+		return touch_type;
 	}
 
 	extract_header(fw_entry->data, 0, &header);
-
-	dev_dbg(&client->dev, "Got firmware, size: %d.\n", fw_entry->size);
-	dev_dbg(&client->dev, "Img checksum:           %#08X\n",
-			header.checksum);
-	dev_dbg(&client->dev, "Img image size:         %d\n",
-			header.image_size);
-	dev_dbg(&client->dev, "Img config size:        %d\n",
-			header.config_size);
-	dev_dbg(&client->dev, "Img bootloader version: %d\n",
-			header.bootloader_version);
-	dev_dbg(&client->dev, "Img product id:         %s\n",
-			header.product_id);
-	dev_dbg(&client->dev, "Img product info:       %#04x %#04x\n",
-			header.product_info[0], header.product_info[1]);
+	print_image_info(client, &header, fw_entry);
 
 	if (header.image_size)
 		data.firmware_data = fw_entry->data + F34_FW_IMAGE_OFFSET;
@@ -701,17 +720,14 @@ void rmi4_fw_update(struct rmi4_data *pdata,
 		data.config_data = fw_entry->data + F34_FW_IMAGE_OFFSET +
 			header.image_size;
 
-	if (go_nogo(&data, &header)) {
-		reflash_firmware(&data);
-		reset_device(&data);
-	} else
-		dev_info(&client->dev, "Go/NoGo said don't reflash.\n");
+	reflash_firmware(&data);
+	reset_device(&data);
+	release_firmware(fw_entry);
 
-	if (fw_entry)
-		release_firmware(fw_entry);
 #ifdef	DEBUG
 	getnstimeofday(&end);
 	duration_ns = timespec_to_ns(&end) - timespec_to_ns(&start);
 	dev_info(&client->dev, "Time to reflash: %lld ns.\n", duration_ns);
 #endif
+	return touch_type;
 }

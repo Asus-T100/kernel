@@ -169,6 +169,7 @@ struct rmi4_data {
 	int			current_page;
 	int			sensor_max_x;
 	int			sensor_max_y;
+	int			touch_type;
 	struct regulator	*regulator;
 	int			irq;
 	struct early_suspend	es;
@@ -324,6 +325,6 @@ int rmi4_button_detect(struct rmi4_data *pdata,
 int rmi4_button_irq_handler(struct rmi4_data *pdata, struct rmi4_fn *rfi);
 void rmi4_button_remove(struct rmi4_fn *);
 
-void rmi4_fw_update(struct rmi4_data *pdata,
+int rmi4_fw_update(struct rmi4_data *pdata,
 		struct rmi4_fn_desc *f01_pdt, struct rmi4_fn_desc *f34_pdt);
 #endif
