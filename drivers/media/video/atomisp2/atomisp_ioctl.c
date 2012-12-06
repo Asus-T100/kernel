@@ -1319,7 +1319,7 @@ static int atomisp_streamon(struct file *file, void *fh,
 	}
 
 #ifdef PUNIT_CAMERA_BUSY
-	if (!IS_MRFLD) {
+	if (!IS_MRFLD && isp->need_gfx_throttle) {
 		/*
 		 * As per h/w architect and ECO 697611 we need to throttle the
 		 * GFX performance (freq) while camera is up to prevent peak
@@ -1531,7 +1531,7 @@ stopsensor:
 	}
 
 #ifdef PUNIT_CAMERA_BUSY
-	if (!IS_MRFLD) {
+	if (!IS_MRFLD && isp->need_gfx_throttle) {
 		/* Free camera_busy bit */
 		msg_ret = intel_mid_msgbus_read32(PUNIT_PORT, MFLD_OR1);
 		msg_ret &= ~0x100;
