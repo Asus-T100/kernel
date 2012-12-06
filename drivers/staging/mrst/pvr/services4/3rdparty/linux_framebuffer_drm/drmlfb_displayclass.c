@@ -644,9 +644,9 @@ static int FrameBufferEvents(struct notifier_block *psNotif,
 	return 0;
 }
 
-
 static MRST_ERROR UnblankDisplay(MRSTLFB_DEVINFO *psDevInfo)
 {
+#if 0
 	int res;
 
 	console_lock();
@@ -658,10 +658,12 @@ static MRST_ERROR UnblankDisplay(MRSTLFB_DEVINFO *psDevInfo)
 			": fb_blank failed (%d)", res);
 		return (MRST_ERROR_GENERIC);
 	}
+#endif
 
 	return (MRST_OK);
 }
 
+#if 0
 static MRST_ERROR EnableLFBEventNotification(MRSTLFB_DEVINFO *psDevInfo)
 {
 	int                res;
@@ -708,6 +710,7 @@ static MRST_ERROR DisableLFBEventNotification(MRSTLFB_DEVINFO *psDevInfo)
 
 	return (MRST_OK);
 }
+#endif
 
 static PVRSRV_ERROR OpenDCDevice(IMG_UINT32 ui32DeviceID,
                                  IMG_HANDLE *phDevice,
@@ -726,13 +729,17 @@ static PVRSRV_ERROR OpenDCDevice(IMG_UINT32 ui32DeviceID,
 	psDevInfo->ulSetFlushStateRefCount = 0;
 	psDevInfo->bFlushCommands = MRST_FALSE;
 
+	/* As we don't rely on fb device, instead we use post/post2 to do flip,
+	 * so there's no need to register FB event notify call chain.
+	 */
+#if 0
 	eError = EnableLFBEventNotification(psDevInfo);
 	if (eError != MRST_OK)
 	{
 		printk(KERN_WARNING DRIVER_PREFIX ": Couldn't enable framebuffer event notification\n");
 		return PVRSRV_ERROR_UNABLE_TO_OPEN_DC_DEVICE;
 	}
-
+#endif
 
 	*phDevice = (IMG_HANDLE)psDevInfo;
 
@@ -741,6 +748,7 @@ static PVRSRV_ERROR OpenDCDevice(IMG_UINT32 ui32DeviceID,
 
 static PVRSRV_ERROR CloseDCDevice(IMG_HANDLE hDevice)
 {
+#if 0
 	MRSTLFB_DEVINFO *psDevInfo = (MRSTLFB_DEVINFO *)hDevice;
 	MRST_ERROR eError;
 
@@ -750,6 +758,7 @@ static PVRSRV_ERROR CloseDCDevice(IMG_HANDLE hDevice)
 		printk(KERN_WARNING DRIVER_PREFIX ": Couldn't disable framebuffer event notification\n");
 		return PVRSRV_ERROR_UNABLE_TO_REMOVE_DEVICE;
 	}
+#endif
 
 	return (PVRSRV_OK);
 }
