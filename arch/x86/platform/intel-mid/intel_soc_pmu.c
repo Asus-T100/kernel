@@ -997,7 +997,7 @@ static int debug_write_read_history_entry(struct file *file,
 static int __init debug_read_history_entry(void)
 {
 	struct proc_dir_entry *res = NULL;
-	res = create_proc_entry("debug_read_history", S_IALLUGO, NULL);
+	res = create_proc_entry("debug_read_history", S_IRUGO | S_IWUSR, NULL);
 	if (res) {
 		res->write_proc = debug_write_read_history_entry;
 		res->read_proc = debug_read_history;
