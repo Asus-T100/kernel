@@ -76,11 +76,11 @@ static u8 gi_l5f3_passwd1_on[] = {0xf0, 0x5a, 0x5a, 0x00};
 static u8 gi_l5f3_passwd2_on[] = {0xf1, 0x5a, 0x5a, 0x00};
 static u8 gi_l5f3_dstb_on[] = {0xdf, 0x01, 0x00, 0x00};
 static u8 gi_l5f3_set_disctl[] = {
-	0xf2, 0x3b, 0x4c, 0x0f,
-	0x20, 0x20, 0x08, 0x08,
+	0xf2, 0x3b, 0x55, 0x0f,
+	0x04, 0x02, 0x08, 0x08,
 	0x00, 0x08, 0x08, 0x00,
-	0x00, 0x00, 0x00, 0x4c,
-	0x20, 0x20, 0x20, 0x20};
+	0x00, 0x00, 0x00, 0x55,
+	0x04, 0x02, 0x04, 0x02};
 static u8 gi_l5f3_set_pwrctl[] = {
 	0xf4, 0x07, 0x00, 0x00,
 	0x00, 0x00, 0x00, 0x00,
@@ -479,6 +479,8 @@ int mdfld_gi_sony_dsi_cmd_detect(struct mdfld_dsi_config *dsi_config)
 	int status;
 	int pipe = dsi_config->pipe;
 	uint32_t dpll_val, device_ready_val;
+	struct mdfld_dsi_pkg_sender *sender
+			= mdfld_dsi_get_pkg_sender(dsi_config);
 
 	PSB_DEBUG_ENTRY("\n");
 
@@ -495,6 +497,12 @@ int mdfld_gi_sony_dsi_cmd_detect(struct mdfld_dsi_config *dsi_config)
 				(dpll_val & DPLL_VCO_ENABLE)) {
 			dsi_config->dsi_hw_context.panel_on = true;
 			status = MDFLD_DSI_PANEL_CONNECTED;
+			mdfld_dsi_send_gen_long_hs(sender,
+						 gi_l5f3_passwd1_on, 4, 0);
+			mdfld_dsi_send_gen_long_hs(sender,
+						 gi_l5f3_set_disctl, 20, 0);
+			mdfld_dsi_send_gen_long_hs(sender,
+						 gi_l5f3_passwd1_off, 4, 0);
 		} else {
 			dsi_config->dsi_hw_context.panel_on = false;
 			status = MDFLD_DSI_PANEL_DISCONNECTED;
