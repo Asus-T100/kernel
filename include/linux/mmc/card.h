@@ -282,7 +282,8 @@ struct mmc_card {
 	struct mmc_part	part[MMC_NUM_PHY_PARTITION]; /* physical partitions */
 	unsigned int    nr_parts;
 
-	unsigned int		rpmb_max_req;
+	int	rpmb_max_w_blks; /* Maximum writing block counts to RPMB */
+	int	rpmb_max_r_blks; /* Maximum reading block counts to RPMB */
 
 	unsigned long long	enhanced_area_offset;	/* Units: Byte */
 	unsigned int		enhanced_area_size;	/* Units: KB */
@@ -515,4 +516,5 @@ extern void mmc_fixup_device(struct mmc_card *card,
 
 extern int mmc_rpmb_req_handle(struct device *emmc,
 		struct mmc_ioc_rpmb_req *req);
+extern int mmc_rpmb_max_req_blkcnt(struct device *emmc, int write);
 #endif /* LINUX_MMC_CARD_H */
