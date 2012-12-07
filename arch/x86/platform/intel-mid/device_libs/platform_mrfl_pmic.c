@@ -42,8 +42,10 @@ void __init *mrfl_pmic_platform_data(void *info)
 	static struct pmic_platform_data pmic_pdata;
 
 	handle_ipc_irq_res(entry->irq, ipc_mrfl_pmic_res);
+#ifdef CONFIG_BQ24261_CHARGER
 	pmic_pdata.cc_to_reg = bq24261_cc_to_reg;
 	pmic_pdata.cv_to_reg = bq24261_cv_to_reg;
+#endif
 
 	return &pmic_pdata;
 }

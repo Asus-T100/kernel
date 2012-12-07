@@ -49,6 +49,7 @@ static struct power_supply_throttle bq24261_throttle_states[] = {
 
 char *bq24261_supplied_to[] = {
 				"max170xx_battery",
+				"max17047_battery",
 };
 
 
@@ -69,6 +70,7 @@ void __init *bq24261_platform_data(void *info)
 	bq24261_pdata.set_cc = pmic_set_cc;
 	bq24261_pdata.set_cv = pmic_set_cv;
 	bq24261_pdata.set_iterm = NULL;
+	bq24261_pdata.dump_master_regs = dump_pmic_regs;
 
 	return &bq24261_pdata;
 }
