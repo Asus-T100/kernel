@@ -34,7 +34,8 @@
 #include <linux/delay.h>
 #include <linux/capability.h>
 #include <linux/compat.h>
-
+#include <linux/pci.h>
+#include <asm/intel-mid.h>
 #include <linux/mmc/ioctl.h>
 #include <linux/mmc/card.h>
 #include <linux/mmc/host.h>
@@ -1770,6 +1771,12 @@ static int mmc_blk_alloc_part(struct mmc_card *card,
 static int mmc_blk_alloc_parts(struct mmc_card *card, struct mmc_blk_data *md)
 {
 	int ret = 0;
+	bool readonly = true;
+	struct pci_dev *pdev = to_pci_dev(card->host->parent);
+
+	if (INTEL_MID_CPU_CHIP_TANGIER == intel_mid_identify_cpu()
+						&& pdev->revision == 0x0)
+		readonly = false;
 
 	if (!mmc_card_mmc(card))
 		return 0;
@@ -1777,13 +1784,13 @@ static int mmc_blk_alloc_parts(struct mmc_card *card, struct mmc_blk_data *md)
 	if (card->ext_csd.boot_size && mmc_boot_partition_access(card->host)) {
 		ret = mmc_blk_alloc_part(card, md, EXT_CSD_PART_CONFIG_ACC_BOOT0,
 					 card->ext_csd.boot_size >> 9,
-					 true,
+					 readonly,
 					 "boot0");
 		if (ret)
 			return ret;
 		ret = mmc_blk_alloc_part(card, md, EXT_CSD_PART_CONFIG_ACC_BOOT1,
 					 card->ext_csd.boot_size >> 9,
-					 true,
+					 readonly,
 					 "boot1");
 		if (ret)
 			return ret;
