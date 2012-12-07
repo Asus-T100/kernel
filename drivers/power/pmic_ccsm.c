@@ -220,7 +220,7 @@ static int pmic_read_reg(u16 addr, u8 *val)
 	ret = intel_scu_ipc_ioread8(addr, val);
 	if (ret) {
 		dev_err(chc.dev,
-			"Error reading register 0x%04x\n", addr);
+			"Error in intel_scu_ipc_ioread8 0x%.4x\n", addr);
 		return -EIO;
 	}
 	return 0;
@@ -234,8 +234,12 @@ static int __pmic_write_tt(u8 addr, u8 data)
 	ret = intel_scu_ipc_iowrite8(CHRTTADDR_ADDR, addr);
 	if (unlikely(ret))
 		return ret;
+	msleep(100);
 
-	return intel_scu_ipc_iowrite8(CHRTTDATA_ADDR, data);
+	ret = intel_scu_ipc_iowrite8(CHRTTDATA_ADDR, data);
+	msleep(100);
+
+	return ret;
 }
 
 static inline int pmic_write_tt(u8 addr, u8 data)
@@ -294,34 +298,48 @@ exit:
 static int pmic_chrgr_reg_show(struct seq_file *seq, void *unused)
 {
 	int ret;
-	u16 addr;
+	long addr;
 	u8 val;
 
-	addr = *((u16 *)seq->private);
-	ret = pmic_read_reg(addr, &val);
-	if (ret != 0)
-		return -EIO;
+	addr = *((u8 *)seq->private);
 
-	seq_printf(seq, "0x%02x\n", val);
+	if ((addr == CHRGRIRQ1_ADDR) || (addr == CHGRIRQ0_ADDR))
+		val = ioread16(chc.pmic_intr_iomap);
+	else {
+		ret = pmic_read_reg(addr, &val);
+		if (ret != 0) {
+			dev_err(chc.dev,
+				"Error reading tt register 0x%2x\n",
+				addr);
+			return -EIO;
+		}
+	}
+
+	seq_printf(seq, "0x%x\n", val);
 	return 0;
 }
 
 static int pmic_chrgr_tt_reg_show(struct seq_file *seq, void *unused)
 {
 	int ret;
-	u8 addr;
+	long addr;
 	u8 val;
 
 	addr = *((u8 *)seq->private);
-	ret = pmic_read_tt(addr, &val);
-	if (ret != 0) {
-		dev_err(chc.dev,
-			"Error reading tt register 0x%02x\n",
-			addr);
-		return -EIO;
+
+	if ((addr == CHRGRIRQ1_ADDR) || (addr == CHGRIRQ0_ADDR))
+		val = ioread16(chc.pmic_intr_iomap);
+	else {
+		ret = pmic_read_tt(addr, &val);
+		if (ret != 0) {
+			dev_err(chc.dev,
+				"Error reading tt register 0x%2x\n",
+				addr);
+			return -EIO;
+		}
 	}
 
-	seq_printf(seq, "0x%02x\n", val);
+	seq_printf(seq, "0x%x\n", val);
 	return 0;
 }
 
@@ -337,6 +355,8 @@ static int pmic_chrgr_reg_open(struct inode *inode, struct file *file)
 
 static struct dentry *charger_debug_dir;
 static u8 pmic_regs[] = {
+	IRQLVL1_ADDR,
+	IRQLVL1_MASK_ADDR,
 	CHGRIRQ0_ADDR,
 	SCHGRIRQ0_ADDR,
 	MCHGRIRQ0_ADDR,
@@ -351,6 +371,9 @@ static u8 pmic_regs[] = {
 	CHGRCTRL0_ADDR,
 	CHGRCTRL1_ADDR,
 	CHGRSTATUS_ADDR,
+	USBIDCTRL_ADDR,
+	USBIDSTAT_ADDR,
+	WAKESRC_ADDR,
 	THRMBATZONE_ADDR,
 	THRMZN0L_ADDR,
 	THRMZN0H_ADDR,
@@ -416,6 +439,54 @@ static u8 pmic_tt_regs[] = {
 	TT_LOWCHRDISVAL_ADDR,
 };
 
+void dump_pmic_regs(void)
+{
+	u32 pmic_reg_cnt = ARRAY_SIZE(pmic_regs);
+	u32 reg_index;
+	u8 data;
+	int retval;
+
+
+	dev_info(chc.dev, "PMIC Register dump\n");
+	dev_info(chc.dev, "====================\n");
+
+	for (reg_index = 0; reg_index < pmic_reg_cnt; reg_index++) {
+
+		retval = intel_scu_ipc_ioread8(pmic_regs[reg_index], &data);
+		if (retval)
+			dev_err(chc.dev, "Error in reading %x\n",
+				pmic_regs[reg_index]);
+		else
+			dev_info(chc.dev, "0x%x=0x%x\n",
+				pmic_regs[reg_index], data);
+	}
+	dev_info(chc.dev, "====================\n");
+}
+EXPORT_SYMBOL(dump_pmic_regs);
+
+void dump_pmic_tt_regs(void)
+{
+	u32 pmic_tt_reg_cnt = ARRAY_SIZE(pmic_tt_regs);
+	u32 reg_index;
+	u8 data;
+	int retval;
+
+	dev_info(chc.dev, "PMIC CHRGR TT dump\n");
+	dev_info(chc.dev, "====================\n");
+
+	for (reg_index = 0; reg_index < pmic_tt_reg_cnt; reg_index++) {
+
+		retval = pmic_read_tt(pmic_tt_regs[reg_index], &data);
+		if (retval)
+			dev_err(chc.dev, "Error in reading %x\n",
+				pmic_tt_regs[reg_index]);
+		else
+			dev_info(chc.dev, "0x%x=0x%x\n",
+				pmic_tt_regs[reg_index], data);
+	}
+
+	dev_info(chc.dev, "====================\n");
+}
 static const struct file_operations pmic_chrgr_reg_fops = {
 	.open = pmic_chrgr_reg_open,
 	.read = seq_read,
@@ -455,7 +526,7 @@ static void pmic_debugfs_init(void)
 
 	for (reg_index = 0; reg_index < pmic_reg_cnt; reg_index++) {
 
-		snprintf(name, sizeof(name), "%04x",
+		sprintf(name, "%.2x",
 				pmic_regs[reg_index]);
 
 		fentry = debugfs_create_file(name,
@@ -477,8 +548,7 @@ static void pmic_debugfs_init(void)
 
 	for (reg_index = 0; reg_index < pmic_tt_reg_cnt; reg_index++) {
 
-		snprintf(name, sizeof(name), "%04x",
-				pmic_tt_regs[reg_index]);
+		sprintf(name, "%.2x", pmic_tt_regs[reg_index]);
 
 		fentry = debugfs_create_file(name,
 				S_IRUGO,
@@ -490,7 +560,7 @@ static void pmic_debugfs_init(void)
 			goto debugfs_err_exit;
 	}
 
-	dev_info(chc.dev, "Debugfs created successfully!!");
+	dev_dbg(chc.dev, "Debugfs created successfully!!");
 	return;
 
 debugfs_err_exit:
@@ -521,7 +591,7 @@ static void pmic_bat_zone_changed(void)
 	}
 
 	cur_zone = data & THRMBATZONE_MASK;
-	dev_info(chc.dev, "Thermal Zone changed. Current zone is %d\n",
+	dev_info(chc.dev, "Battery Zone changed. Current zone is %d\n",
 			(data & THRMBATZONE_MASK));
 
 	/* if current zone and previous zone are same and if they are
@@ -555,23 +625,41 @@ int pmic_enable_charger(bool enable)
 	int ret;
 	u8 val;
 
-	val = (enable) ? EXTCHRDIS_DISABLE : EXTCHRDIS_ENABLE;
+	val = (enable) ? 0 : EXTCHRDIS_ENABLE;
 
 	ret = intel_scu_ipc_update_register(CHGRCTRL0_ADDR,
 			val, CHGRCTRL0_EXTCHRDIS_MASK);
+	if (enable) {
+		ret = intel_scu_ipc_update_register(CHGRCTRL1_ADDR,
+			CHGRCTRL1_FTEMP_EVENT_MASK, CHGRCTRL1_FTEMP_EVENT_MASK);
+	}
 	return ret;
 }
 EXPORT_SYMBOL(pmic_enable_charger);
 
 static inline int update_zone_cc(int zone, u8 reg_val)
 {
+	u8 rval;
 	u8 addr_cc = TT_CHRCCHOTVAL_ADDR - zone;
-	return pmic_write_tt(addr_cc, reg_val);
+
+	dev_dbg(chc.dev, "%s:%X=%X\n", __func__, addr_cc, reg_val);
+	pmic_write_tt(addr_cc, reg_val);
+
+	pmic_read_tt(addr_cc, &rval);
+	if (rval != reg_val) {
+		dev_err(chc.dev,
+			"%s:Error in writing to TT reg :%x Wrote=%X:Read=%X\n",
+			__func__, addr_cc, reg_val, rval);
+		return -EIO;
+	}
+
+	return 0;
 }
 
 static inline int update_zone_cv(int zone, u8 reg_val)
 {
 	u8 addr_cv = TT_CHRCVHOTVAL_ADDR - zone;
+	dev_dbg(chc.dev, "%s:%X=%X\n", __func__, addr_cv, reg_val);
 	return pmic_write_tt(addr_cv, reg_val);
 }
 
@@ -583,6 +671,8 @@ static inline int update_zone_temp(int zone, u16 adc_val)
 	ret = intel_scu_ipc_iowrite8(addr_tzone, (u8)(adc_val >> 8));
 	if (unlikely(ret))
 		return ret;
+	dev_dbg(chc.dev, "%s:%X:%X=%X\n", __func__, addr_tzone,
+				(addr_tzone+1), adc_val);
 
 	return intel_scu_ipc_iowrite8(addr_tzone+1, (u8)(adc_val & 0xFF));
 }
@@ -597,6 +687,7 @@ int pmic_set_cc(int new_cc)
 	int i;
 	u8 reg_val;
 
+	return 0;
 	/* No need to write PMIC if CC = 0 */
 	if (!new_cc)
 		return 0;
@@ -630,6 +721,7 @@ int pmic_set_cv(int new_cv)
 	int ret;
 	int i;
 	u8 reg_val;
+	return 0;
 
 	/* No need to write PMIC if CV = 0 */
 	if (!new_cv)
@@ -677,6 +769,7 @@ EXPORT_SYMBOL(pmic_set_ilimmA);
  *
  * Returns 0 if success
  */
+#ifdef CONFIG_BASINCOVE_GPADC
 static int pmic_read_adc_val(int channel, int *sensor_val,
 			      struct pmic_chrgr_drv_context *chc)
 {
@@ -705,12 +798,18 @@ exit:
 	kfree(adc_res);
 	return ret;
 }
+#endif
 
 int pmic_get_battery_pack_temp(int *temp)
 {
+#ifdef CONFIG_BASINCOVE_GPADC
 	if (chc.invalid_batt)
 		return -ENODEV;
 	return pmic_read_adc_val(GPADC_BATTEMP0, temp, &chc);
+#else
+	*temp = 30;
+#endif
+	return 0;
 }
 EXPORT_SYMBOL(pmic_get_battery_pack_temp);
 
@@ -721,6 +820,9 @@ static void handle_level0_interrupt(u8 int_reg, u8 stat_reg,
 	int i;
 	bool int_stat;
 	char *log_msg;
+
+	if (int_reg && stat_reg)
+		dump_pmic_regs();
 
 	for (i = 0; i < int_info_size; ++i) {
 
@@ -768,62 +870,124 @@ static void handle_level0_interrupt(u8 int_reg, u8 stat_reg,
 
 static void handle_level1_interrupt(u8 int_reg, u8 stat_reg)
 {
-	u8 mask;
+	int mask;
 
 	if (!int_reg)
 		return;
 
-	mask = int_reg & stat_reg;
+	mask = !!(int_reg & stat_reg);
 
 	if (int_reg & CHRGRIRQ1_SUSBIDDET_MASK) {
-		atomic_notifier_call_chain(&chc.otg->notifier, USB_EVENT_ID,
-					&mask);
+			if (mask)
+				dev_info(chc.dev, "USB ID Detected. Notifying OTG driver\n");
+			else
+				dev_info(chc.dev, "USB ID Removed. Notifying OTG driver\n");
+			atomic_notifier_call_chain(&chc.otg->notifier,
+				USB_EVENT_ID, &mask);
 	}
 
 	if (int_reg & CHRGRIRQ1_SVBUSDET_MASK) {
-		atomic_notifier_call_chain(&chc.otg->notifier, USB_EVENT_VBUS,
-					&mask);
+		if (mask)
+			dev_info(chc.dev, "USB VBUS Detected. Notifying OTG driver\n");
+		else
+			dev_info(chc.dev, "USB VBUS Removed. Notifying OTG driver\n");
+		atomic_notifier_call_chain(&chc.otg->notifier,
+			USB_EVENT_VBUS, &mask);
 	}
 
 	return;
 }
+static void pmic_event_worker(struct work_struct *work)
+{
+	struct pmic_event *evt, *tmp;
+	unsigned long flags;
 
-static irqreturn_t pmic_thread_handler(int id, void *data)
+	dev_dbg(chc.dev, "%s\n", __func__);
+
+	mutex_lock(&chc.evt_queue_lock);
+	list_for_each_entry_safe(evt, tmp, &chc.evt_queue, node) {
+		list_del(&evt->node);
+
+		dev_dbg(chc.dev, "CHGRIRQ0=%X SCHGRIRQ0=%X CHGRIRQ1=%x SCHGRIRQ1=%X\n",
+				evt->chgrirq0_int, evt->chgrirq0_stat,
+				evt->chgrirq1_int, evt->chgrirq1_stat);
+		if (evt->chgrirq0_int)
+			handle_level0_interrupt(evt->chgrirq0_int,
+				evt->chgrirq0_stat, chgrirq0_info,
+				ARRAY_SIZE(chgrirq0_info));
+		if (evt->chgrirq1_stat)
+			handle_level1_interrupt(evt->chgrirq1_int,
+							evt->chgrirq1_stat);
+
+		kfree(evt);
+	}
+
+	mutex_unlock(&chc.evt_queue_lock);
+}
+
+static irqreturn_t pmic_isr(int irq, void *data)
 {
 	u16 pmic_intr;
-	u8 chgrirq0_stat, chgrirq0_int;
-	u8 chgrirq1_stat, chgrirq1_int;
+	u8 chgrirq0_int;
+	u8 chgrirq1_int;
 
 	pmic_intr = ioread16(chc.pmic_intr_iomap);
 	chgrirq0_int = (u8)pmic_intr;
 	chgrirq1_int = (u8)(pmic_intr >> 8);
 
-	if ((chgrirq0_int & PMIC_CHRGR_INT0_MASK) || (chgrirq1_int)) {
-		if (intel_scu_ipc_ioread8(SCHGRIRQ0_ADDR, &chgrirq0_stat)) {
+	if (!chgrirq1_int && !(chgrirq0_int & PMIC_CHRGR_INT0_MASK))
+		return IRQ_NONE;
+
+	dev_dbg(chc.dev, "%s", __func__);
+
+	return IRQ_WAKE_THREAD;
+}
+static irqreturn_t pmic_thread_handler(int id, void *data)
+{
+	u16 pmic_intr;
+	struct pmic_event *evt;
+	int ret;
+
+	evt = kzalloc(sizeof(*evt), GFP_ATOMIC);
+
+	pmic_intr = ioread16(chc.pmic_intr_iomap);
+	evt->chgrirq0_int = (u8)pmic_intr;
+	evt->chgrirq1_int = (u8)(pmic_intr >> 8);
+
+	if (evt->chgrirq0_int) {
+		ret = intel_scu_ipc_ioread8(SCHGRIRQ0_ADDR,
+				&evt->chgrirq0_stat);
+		if (ret) {
 			dev_err(chc.dev,
-				"%s(): Error in reading SCHGRIRQ0_ADDR\n",
-				__func__);
+				"%s: Error(%d) in intel_scu_ipc_ioread8. Faile to read SCHGRIRQ0_ADDR\n",
+					__func__, ret);
+			kfree(evt);
 			goto end;
 		}
-
-		if (intel_scu_ipc_ioread8(SCHGRIRQ1_ADDR, &chgrirq1_stat)) {
-			dev_err(chc.dev,
-				"%s(): Error in reading SCHGRIRQ1_ADDR\n",
-				__func__);
-			goto end;
-		}
-
-		dev_dbg(chc.dev, "SCHGRIQ0=%X chgrirq0%X\n",
-				chgrirq0_stat, chgrirq0_int);
-		dev_dbg(chc.dev, "SCHGRIQ1=%X chgrirq1%X\n",
-				chgrirq1_stat, chgrirq1_int);
-
-		handle_level0_interrupt(chgrirq0_int, chgrirq0_stat,
-				chgrirq0_info, ARRAY_SIZE(chgrirq0_info));
-		handle_level1_interrupt(chgrirq1_int, chgrirq1_stat);
 	}
+	if (evt->chgrirq1_int) {
+		ret = intel_scu_ipc_ioread8(SCHGRIRQ1_ADDR,
+				&evt->chgrirq1_stat);
+		if (ret) {
+			dev_err(chc.dev,
+				"%s: Error(%d) in intel_scu_ipc_ioread8. Faile to read SCHGRIRQ1_ADDR\n",
+					__func__, ret);
+			kfree(evt);
+			goto end;
+		}
+	}
+
+	INIT_LIST_HEAD(&evt->node);
+
+	mutex_lock(&chc.evt_queue_lock);
+	list_add_tail(&evt->node, &chc.evt_queue);
+	mutex_unlock(&chc.evt_queue_lock);
+
+	queue_work(system_nrt_wq, &chc.evt_work);
+
 end:
 	/*clear first level IRQ */
+	dev_dbg(chc.dev, "Clearing IRQLVL1_MASK_ADDR\n");
 	intel_scu_ipc_update_register(IRQLVL1_MASK_ADDR, 0x00,
 			IRQLVL1_CHRGR_MASK);
 
@@ -1102,6 +1266,7 @@ static int pmic_chrgr_probe(struct ipc_device *ipcdev)
 		return retval;
 	}
 
+	dump_pmic_tt_regs();
 	memcpy(chc.runtime_bcprof, chc.actual_bcprof,
 		sizeof(struct ps_pse_mod_prof));
 	chc.pmic_intr_iomap = ioremap_nocache(PMIC_SRAM_INTR_ADDR, 8);
@@ -1109,28 +1274,6 @@ static int pmic_chrgr_probe(struct ipc_device *ipcdev)
 		dev_err(&ipcdev->dev, "ioremap Failed\n");
 		retval = -ENOMEM;
 		goto ioremap_failed;
-	}
-	/* unmask charger interrupts in second level IRQ register*/
-	retval = intel_scu_ipc_iowrite8(MCHGRIRQ0_ADDR, 0x00);
-	if (unlikely(retval))
-		goto unmask_irq_failed;
-
-	/* unmask IRQLVL1 register */
-	retval = intel_scu_ipc_update_register(IRQLVL1_MASK_ADDR, 0x00,
-			IRQLVL1_CHRGR_MASK);
-	if (unlikely(retval))
-		goto unmask_irq_failed;
-
-	/* register interrupt */
-	retval = request_threaded_irq(chc.irq, NULL,
-			pmic_thread_handler,
-			IRQF_SHARED | IRQF_ONESHOT,
-			DRIVER_NAME, &chc);
-	if (retval) {
-		dev_err(&ipcdev->dev,
-			"Error in request_threaded_irq(irq(%d)!!\n",
-			chc.irq);
-		goto req_irq_failed;
 	}
 
 	chc.otg = otg_get_transceiver();
@@ -1140,16 +1283,52 @@ static int pmic_chrgr_probe(struct ipc_device *ipcdev)
 		goto otg_req_failed;
 	}
 
+	INIT_WORK(&chc.evt_work, pmic_event_worker);
+	INIT_LIST_HEAD(&chc.evt_queue);
+	mutex_init(&chc.evt_queue_lock);
+
+	/* register interrupt */
+	retval = request_threaded_irq(chc.irq, pmic_isr,
+			pmic_thread_handler,
+			IRQF_SHARED ,
+			DRIVER_NAME, &chc);
+	if (retval) {
+		dev_err(&ipcdev->dev,
+			"Error in request_threaded_irq(irq(%d)!!\n",
+			chc.irq);
+		goto req_irq_failed;
+	}
+	/* unmask charger interrupts in second level IRQ register*/
+	retval = intel_scu_ipc_update_register(MCHGRIRQ0_ADDR, 0x00,
+			PMIC_CHRGR_INT0_MASK);
+	/* unmask charger interrupts in second level IRQ register*/
+	retval = intel_scu_ipc_iowrite8(MCHGRIRQ1_ADDR, 0x00);
+	if (unlikely(retval))
+		goto unmask_irq_failed;
+
+
+	/* unmask IRQLVL1 register */
+	retval = intel_scu_ipc_update_register(IRQLVL1_MASK_ADDR, 0x00,
+			IRQLVL1_CHRGR_MASK);
+	if (unlikely(retval))
+		goto unmask_irq_failed;
+
+	retval = intel_scu_ipc_update_register(USBIDCTRL_ADDR,
+			 ACADETEN_MASK | USBIDEN_MASK,
+			ACADETEN_MASK | USBIDEN_MASK);
+	if (unlikely(retval))
+		goto unmask_irq_failed;
+
 	chc.health = POWER_SUPPLY_HEALTH_GOOD;
 #ifdef CONFIG_DEBUG_FS
 	pmic_debugfs_init();
 #endif
 	return 0;
 
-otg_req_failed:
 unmask_irq_failed:
 	free_irq(chc.irq, &chc);
 req_irq_failed:
+otg_req_failed:
 	iounmap(chc.pmic_intr_iomap);
 ioremap_failed:
 	kfree(chc.sfi_bcprof);

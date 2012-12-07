@@ -17,5 +17,6 @@ extern int pmic_set_ilimmA(int);
 
 extern int pmic_get_health(void);
 extern int pmic_get_battery_pack_temp(int *);
+extern void dump_pmic_regs(void);
 
 #endif
