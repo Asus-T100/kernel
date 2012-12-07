@@ -669,6 +669,9 @@ static struct misensor_reg const mt9m114_iq[] = {
 	{MISENSOR_16BIT,	0x30D4, 0x6080},
 	{MISENSOR_16BIT,	0xA802, 0x0008},
 
+	/* This register is from vender to avoid low light color noise */
+	{MISENSOR_16BIT,	0x31E0, 0x0001},
+
 	/* LOAD=Errata item 1 */
 	{MISENSOR_16BIT,	0x3E14, 0xFF39},
 
