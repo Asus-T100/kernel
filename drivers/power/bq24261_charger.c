@@ -40,6 +40,8 @@
 #include <linux/seq_file.h>
 #include <linux/debugfs.h>
 
+#include <asm/intel_scu_ipc.h>
+#include <linux/usb/dwc_otg3.h>
 #define DEV_NAME "bq24261_charger"
 #define CHRG_TERM_WORKER_DELAY (30 * HZ)
 
@@ -114,7 +116,7 @@
 #define BQ24261_VENDOR_MASK		(0x07 << 5)
 #define BQ24261_VENDOR			(0x02 << 5)
 #define BQ24261_REV_MASK		(0x07)
-#define BQ24261_REV			(0x00)
+#define BQ24261_REV			(0x02)
 
 u16 bq24261_inlmt[][2] = {
 	{100, BQ24261_INLMT_100}
@@ -228,7 +230,7 @@ static enum power_supply_property bq24261_usb_props[] = {
 
 struct bq24261_otg_event {
 	struct list_head node;
-	int mA;
+	struct otg_bc_cap *cap;
 };
 
 struct bq24261_charger {
@@ -241,7 +243,9 @@ struct bq24261_charger {
 	struct notifier_block otg_nb;
 	struct otg_transceiver *transceiver;
 	struct work_struct otg_work;
+	struct work_struct irq_work;
 	struct list_head otg_queue;
+	struct list_head irq_queue;
 	spinlock_t otg_queue_lock;
 	void __iomem *irq_iomap;
 
@@ -264,6 +268,8 @@ struct bq24261_charger {
 };
 
 struct i2c_client *bq24261_client;
+static inline int get_battery_voltage(int *volt);
+static inline int get_battery_current(int *cur);
 
 enum power_supply_type get_power_supply_type(
 		enum power_supply_charger_cable_type cable)
@@ -334,6 +340,51 @@ static inline int bq24261_read_reg(struct i2c_client *client, u8 reg)
 
 	return ret;
 }
+
+
+static inline void bq24261_dump_regs(bool dump_master)
+{
+	int i;
+	int ret;
+	int bat_cur, bat_volt;
+	struct bq24261_charger *chip = i2c_get_clientdata(bq24261_client);
+
+	ret = get_battery_current(&bat_cur);
+	if (ret)
+		dev_err(&bq24261_client->dev,
+			"%s: Error in getting battery current", __func__);
+	else
+		dev_info(&bq24261_client->dev, "Battery Current=%dmA\n",
+				(bat_cur/1000));
+
+	ret = get_battery_voltage(&bat_volt);
+	if (ret)
+		dev_err(&bq24261_client->dev,
+			"%s: Error in getting battery voltage", __func__);
+	else
+		dev_info(&bq24261_client->dev, "Battery VOlatge=%dmV\n",
+			(bat_volt/1000));
+
+
+	dev_info(&bq24261_client->dev, "BQ24261 Register dump\n");
+
+	dev_info(&bq24261_client->dev, "*======================*\n");
+	for (i = 0; i < 7; ++i) {
+		ret = bq24261_read_reg(bq24261_client, i);
+		if (ret < 0)
+			dev_err(&bq24261_client->dev,
+				"Error in reading REG 0x%X\n", i);
+		else
+			dev_info(&bq24261_client->dev,
+				"0x%X=0x%X ", i, ret);
+	}
+	dev_info(&bq24261_client->dev, "*======================*\n");
+
+	if (chip->pdata->dump_master_regs && dump_master)
+			chip->pdata->dump_master_regs();
+
+}
+
 
 #ifdef CONFIG_DEBUG_FS
 static int bq24261_reg_show(struct seq_file *seq, void *unused)
@@ -442,7 +493,7 @@ static inline int bq24261_read_modify_reg(struct i2c_client *client, u8 reg,
 	ret = bq24261_read_reg(client, reg);
 	if (ret < 0)
 		return ret;
-	ret = ret | (~mask & val);
+	ret = (ret & ~mask) | (mask & val);
 	return bq24261_write_reg(client, reg, ret);
 }
 
@@ -453,7 +504,8 @@ static inline int bq24261_enable_charging(
 	if (chip->pdata->enable_charging)
 		return chip->pdata->enable_charging(val);
 
-	data = val ? ~BQ24261_CE_DISABLE : BQ24261_CE_DISABLE;
+	data = val ? ~BQ24261_CE_DISABLE :
+		BQ24261_CE_DISABLE;
 
 	return bq24261_read_modify_reg(chip->client, BQ24261_CTRL_ADDR,
 				       BQ24261_CE_MASK, data);
@@ -463,6 +515,7 @@ static inline int bq24261_enable_charger(
 	struct bq24261_charger *chip, int val)
 {
 	u8 data;
+	dev_dbg(&chip->client->dev, "%s\n", __func__);
 	if (chip->pdata->enable_charger)
 		return chip->pdata->enable_charger(val);
 
@@ -556,12 +609,15 @@ static inline int bq24261_enable_boost_mode(
 				"Error(%d) in enabling Boost mode\n", ret);
 		else
 			chip->boost_mode = true;
+
+		dev_info(&chip->client->dev, "Boost Mode enabled\n");
 	} else {
 		ret =
 		    bq24261_read_modify_reg(chip->client,
 					    BQ24261_STAT_CTRL0_ADDR,
 					    BQ24261_BOOST_MASK,
 					    ~BQ24261_ENABLE_BOOST);
+		bq24261_write_reg(chip->client, BQ24261_STAT_CTRL0_ADDR, 0x00);
 		if (ret)
 			dev_err(&chip->client->dev,
 				"Error(%d) in disabling Boost mode\n", ret);
@@ -573,6 +629,7 @@ static inline int bq24261_enable_boost_mode(
 			if (!chip->is_charging_enabled)
 				bq24261_enable_charger(chip, false);
 			chip->boost_mode = false;
+			dev_info(&chip->client->dev, "Boost Mode disabled\n");
 		}
 		/* Notify power supply subsystem to enable charging
 		 *  if needed. Eg. if DC adapter is connected
@@ -597,6 +654,7 @@ static inline bool bq24261_is_vsys_on(struct bq24261_charger *chip)
 
 	if ((ret & BQ24261_HZ_MASK) == BQ24261_HZ_ENABLE) {
 		dev_err(&client->dev, "Charger in Hi Z Mode\n");
+		bq24261_dump_regs(true);
 		return false;
 	}
 
@@ -609,6 +667,7 @@ static inline bool bq24261_is_vsys_on(struct bq24261_charger *chip)
 
 	if (ret & BQ24261_CD_STATUS_MASK) {
 		dev_err(&client->dev, "CD line asserted\n");
+		bq24261_dump_regs(true);
 		return false;
 	}
 
@@ -880,9 +939,15 @@ static inline bool is_battery_full(struct bq24261_charger *chip)
 
 	if (_is_battery_full(pbat_cur, bat_cur, pbat_volt, bat_volt)) {
 		pbat_volt = pbat_cur = 0;
+		dev_info(&chip->client->dev,
+			"%s:Battery is Full volt=%d current=%d:\n",
+				__func__, bat_volt, bat_cur);
 		return true;
 	}
 
+	dev_info(&chip->client->dev,
+		"%s:Battery is not Full volt=%d current=%d:\n",
+			__func__, bat_volt, bat_cur);
 	pbat_volt = bat_volt;
 	pbat_cur = bat_cur;
 
@@ -934,11 +999,17 @@ static int bq24261_handle_irq(struct bq24261_charger *chip, u8 stat_reg)
 	 *  then recover excpetions
 	 */
 
-	if (chip->is_fault && !(stat_reg & BQ24261_FAULT_MASK)) {
+	if (chip->is_fault && ((stat_reg & BQ24261_STAT_MASK)
+				!= BQ24261_STAT_FAULT)) {
 		dev_info(&client->dev, "Fault recovered\n");
 		chip->chrgr_health = POWER_SUPPLY_HEALTH_GOOD;
 		chip->bat_health = POWER_SUPPLY_HEALTH_GOOD;
 		chip->is_fault = false;
+		bq24261_set_inlmt(chip, chip->inlmt);
+		if (chip->is_charger_enabled)
+			bq24261_enable_charger(chip, true);
+		power_supply_changed(&chip->psy_usb);
+		bq24261_dump_regs(false);
 		return 0;
 	}
 
@@ -959,10 +1030,12 @@ static int bq24261_handle_irq(struct bq24261_charger *chip, u8 stat_reg)
 			 * termination and send power_supply_changed
 			 * notification inorder to restart charging
 			 */
+			dev_info(&chip->client->dev, "Battery is Not Full. Starting SW charge term\n");
 			bq24261_enable_hw_charge_term(chip, false);
 			chip->is_charging_enabled = false;
 			schedule_delayed_work(&chip->sw_term_work, 0);
 			power_supply_changed(&chip->psy_usb);
+			bq24261_dump_regs(false);
 		}
 
 		break;
@@ -975,7 +1048,9 @@ static int bq24261_handle_irq(struct bq24261_charger *chip, u8 stat_reg)
 	if (stat_reg & BQ24261_BOOST_MASK)
 		dev_info(&client->dev, "Boost Mode\n");
 
-	if (stat_reg & BQ24261_FAULT_MASK) {
+	if ((stat_reg & BQ24261_STAT_MASK) == BQ24261_STAT_FAULT) {
+		bool dump_master = true;
+
 		switch (stat_reg & BQ24261_FAULT_MASK) {
 		case BQ24261_VOVP:
 			chip->chrgr_health = POWER_SUPPLY_HEALTH_OVERVOLTAGE;
@@ -983,6 +1058,7 @@ static int bq24261_handle_irq(struct bq24261_charger *chip, u8 stat_reg)
 			break;
 
 		case BQ24261_LOW_SUPPLY:
+			dump_master = false;
 			chip->chrgr_health = POWER_SUPPLY_HEALTH_DEAD;
 			dev_err(&client->dev, "Charger Low Supply Fault\n");
 			break;
@@ -1012,6 +1088,9 @@ static int bq24261_handle_irq(struct bq24261_charger *chip, u8 stat_reg)
 			break;
 
 		}
+
+		bq24261_dump_regs(dump_master);
+		power_supply_changed(&chip->psy_usb);
 	}
 
 	chip->is_vsys_on = bq24261_is_vsys_on(chip);
@@ -1019,18 +1098,47 @@ static int bq24261_handle_irq(struct bq24261_charger *chip, u8 stat_reg)
 	return 0;
 }
 
+static void bq24261_irq_worker(struct work_struct *work)
+{
+	struct bq24261_charger *chip =
+	    container_of(work, struct bq24261_charger, irq_work);
+	int ret;
+
+	/*Lock to ensure that interrupt register readings are done
+	* and processed sequentially. The interrupt Fault registers
+	* are read on clear and without sequential processing double
+	* fault interrupts or fault recovery cannot be handlled propely
+	*/
+
+	mutex_lock(&chip->lock);
+
+	dev_dbg(&chip->client->dev, "%s\n", __func__);
+
+	ret = bq24261_read_reg(chip->client, BQ24261_STAT_CTRL0_ADDR);
+	if (ret < 0)
+		dev_err(&chip->client->dev,
+			"Error (%d) in reading BQ24261_STAT_CTRL0_ADDR\n", ret);
+	else
+		bq24261_handle_irq(chip, ret);
+
+	mutex_unlock(&chip->lock);
+}
+
 static irqreturn_t bq24261_thread_handler(int id, void *data)
 {
 	struct bq24261_charger *chip = (struct bq24261_charger *)data;
-	int ret;
 
-	ret = bq24261_read_reg(chip->client, BQ24261_STAT_CTRL0_ADDR);
-	if (ret < 0) {
-		dev_err(&chip->client->dev,
-			"Error (%d) in reading BQ24261_STAT_CTRL0_ADDR\n", ret);
-		return IRQ_HANDLED;
-	}
-	bq24261_handle_irq(chip, ret);
+	/* FIXME: Move this to platform layer */
+#define IRQLVL1_MASK_ADDR		0x0c
+#define IRQLVL1_CHRGR_MASK		(0x01 << 5)
+
+
+	dev_dbg(&chip->client->dev,
+		"%s:Clearing IRQLVL1_MASK_ADDR\n", __func__);
+	intel_scu_ipc_update_register(IRQLVL1_MASK_ADDR, 0x00,
+			IRQLVL1_CHRGR_MASK);
+
+	queue_work(system_nrt_wq, &chip->irq_work);
 
 	return IRQ_HANDLED;
 }
@@ -1042,11 +1150,13 @@ static irqreturn_t bq24261_irq_handler(int irq, void *data)
 
 	if (chip->irq_iomap) {
 		intr_stat = ioread8(chip->irq_iomap);
-		if (!(intr_stat & chip->pdata->irq_mask))
-			return IRQ_NONE;
+		if ((intr_stat & chip->pdata->irq_mask)) {
+			dev_dbg(&chip->client->dev, "%s\n", __func__);
+			return IRQ_WAKE_THREAD;
+		}
 	}
 
-	return IRQ_WAKE_THREAD;
+	return IRQ_NONE;
 }
 
 static void bq24261_boostmode_worker(struct work_struct *work)
@@ -1061,8 +1171,14 @@ static void bq24261_boostmode_worker(struct work_struct *work)
 		list_del(&evt->node);
 		spin_unlock_irqrestore(&chip->otg_queue_lock, flags);
 
+		dev_info(&chip->client->dev,
+			"%s:%d state=%d\n", __FILE__, __LINE__,
+				evt->cap->chrg_state);
 		mutex_lock(&chip->lock);
-		bq24261_enable_boost_mode(chip, evt->mA);
+		if (evt->cap->chrg_state == OTG_CHR_STATE_HOST)
+			bq24261_enable_boost_mode(chip, 1);
+		else if (evt->cap->chrg_state == OTG_CHR_STATE_DISCONNECTED)
+			bq24261_enable_boost_mode(chip, 0);
 		mutex_unlock(&chip->lock);
 		spin_lock_irqsave(&chip->otg_queue_lock, flags);
 		kfree(evt);
@@ -1090,7 +1206,7 @@ static int otg_handle_notification(struct notifier_block *nb,
 		return NOTIFY_DONE;
 	}
 
-	evt->mA = *(int *)param;
+	evt->cap = (struct otg_bc_cap *)param;
 	INIT_LIST_HEAD(&evt->node);
 
 	spin_lock(&chip->otg_queue_lock);
@@ -1154,6 +1270,7 @@ static int bq24261_probe(struct i2c_client *client,
 			"Error (%d) in reading BQ24261_VENDOR_REV_ADDR\n", ret);
 		return ret;
 	}
+
 	if (((ret & BQ24261_VENDOR_MASK) != BQ24261_VENDOR) ||
 	    ((ret & BQ24261_REV_MASK) != BQ24261_REV)) {
 		dev_err(&client->dev,
@@ -1169,6 +1286,7 @@ static int bq24261_probe(struct i2c_client *client,
 	}
 
 	i2c_set_clientdata(client, chip);
+	chip->pdata = client->dev.platform_data;
 
 	/* Remap IRQ map address to read the IRQ status */
 	if ((chip->pdata->irq_map) && (chip->pdata->irq_mask)) {
@@ -1206,11 +1324,12 @@ static int bq24261_probe(struct i2c_client *client,
 
 	INIT_DELAYED_WORK(&chip->sw_term_work, bq24261_sw_charge_term_worker);
 
+	INIT_WORK(&chip->irq_work, bq24261_irq_worker);
 	if (chip->client->irq) {
 		ret = request_threaded_irq(chip->client->irq,
 					   bq24261_irq_handler,
 					   bq24261_thread_handler,
-					   IRQF_SHARED | IRQF_ONESHOT,
+					   IRQF_SHARED,
 					   DEV_NAME, chip);
 		if (ret) {
 			dev_err(&client->dev, "Failed: request_irq (%d)\n",
@@ -1219,6 +1338,11 @@ static int bq24261_probe(struct i2c_client *client,
 			power_supply_unregister(&chip->psy_usb);
 			return ret;
 		}
+	/* FIXME: Move this to platform layer */
+#define MCHGRIRQ0_ADDR			0x12
+		/* unmask charger interrupts in second level IRQ register*/
+		intel_scu_ipc_update_register(MCHGRIRQ0_ADDR, 0x00,
+				chip->pdata->irq_mask);
 	}
 
 	if (register_otg_notifications(chip))

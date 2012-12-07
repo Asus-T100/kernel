@@ -26,6 +26,7 @@ struct bq24261_plat_data {
 	int (*set_cc) (int val);
 	int (*set_cv) (int val);
 	int (*set_iterm) (int val);
+	void (*dump_master_regs) (void);
 };
 
 extern void bq24261_cv_to_reg(int, u8*);
@@ -33,5 +34,6 @@ extern void bq24261_cc_to_reg(int, u8*);
 
 extern int bq24261_get_bat_health(void);
 extern int bq24261_get_bat_status(void);
+
 
 #endif
