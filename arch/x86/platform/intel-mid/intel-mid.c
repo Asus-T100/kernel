@@ -806,31 +806,6 @@ static void __init sfi_handle_spi_dev(struct sfi_device_table_entry *pentry,
 		spi_register_board_info(&spi_info, 1);
 }
 
-static void handle_r69001_i2c_dev(void)
-{
-	struct i2c_board_info i2c_info;
-	int ioapic;
-	struct io_apic_irq_attr irq_attr;
-
-	memset(&i2c_info, 0, sizeof(i2c_info));
-	strcpy(i2c_info.type, "r69001-ts-i2c");
-	i2c_info.irq = 42;
-	i2c_info.addr = 0x55;
-
-	ioapic = mp_find_ioapic(i2c_info.irq);
-
-	if (ioapic >= 0) {
-		irq_attr.ioapic = ioapic;
-		irq_attr.ioapic_pin = i2c_info.irq;
-		irq_attr.trigger = 1;
-		irq_attr.polarity = 1; /* fast_int2 need low level trigger */
-		io_apic_set_pci_routing(NULL, i2c_info.irq, &irq_attr);
-	} else {
-		pr_warn("can not find touch interrupt in ioapic\n");
-	}
-	i2c_register_board_info(7, &i2c_info, 1);
-}
-
 static void __init sfi_handle_i2c_dev(struct sfi_device_table_entry *pentry,
 					struct devs_id *dev)
 {
@@ -930,7 +905,6 @@ static int __init sfi_parse_devs(struct sfi_table_header *table)
 	int num, i;
 	int ioapic;
 	struct io_apic_irq_attr irq_attr;
-	int r69001_found_in_sfi = 0;
 
 	sb = (struct sfi_table_simple *)table;
 	num = SFI_GET_NUM_ENTRIES(sb, struct sfi_device_table_entry);
@@ -953,7 +927,6 @@ static int __init sfi_parse_devs(struct sfi_table_header *table)
 #ifdef CONFIG_X86_MRFLD
 				if (!strncmp(pentry->name,
 						"r69001-ts-i2c", 13)) {
-					r69001_found_in_sfi = 1;
 					irq_attr.polarity = 1; /* Active low */
 				} else {
 					irq_attr.polarity = 0; /* Active high */
@@ -999,9 +972,6 @@ static int __init sfi_parse_devs(struct sfi_table_header *table)
 			}
 		}
 	}
-
-	if (!r69001_found_in_sfi)
-		handle_r69001_i2c_dev();
 
 	return 0;
 }
