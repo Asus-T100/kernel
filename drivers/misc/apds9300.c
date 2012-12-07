@@ -104,6 +104,7 @@ struct reverse_factors {
 
 struct apds9300_chip {
 	bool			lux_wait_fresh_res;
+	bool			suspend;
 	int			als_cnt;
 	int			gpio;
 	struct mutex		mutex; /* avoid parallel access */
@@ -394,6 +395,10 @@ static ssize_t apds9300_rate_store(struct device *dev,
 		return -EINVAL;
 
 	mutex_lock(&chip->mutex);
+	if (chip->suspend) {
+		mutex_unlock(&chip->mutex);
+		return -EINVAL;
+	}
 	ret = apds9300_set_rate(chip, value);
 	mutex_unlock(&chip->mutex);
 
@@ -433,6 +438,10 @@ static ssize_t apds9300_set_lux_thresh(struct apds9300_chip *chip, u16 *target,
 		return -EINVAL;
 
 	mutex_lock(&chip->mutex);
+	if (chip->suspend) {
+		mutex_unlock(&chip->mutex);
+		return -EINVAL;
+	}
 	*target = (u16)thresh;
 	/*
 	 * Don't update values in HW if we are still waiting for
@@ -567,6 +576,10 @@ static long als_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		"cmd = %d, arg = %d\n", (int)cmd, (int)arg);
 
 	mutex_lock(&chip->mutex);
+	if (chip->suspend) {
+		mutex_unlock(&chip->mutex);
+		return -EINVAL;
+	}
 	/* 1 - enable; 0 - disable */
 	switch (arg) {
 	case 0:
@@ -604,7 +617,8 @@ static int als_close(struct inode *inode, struct file *filep)
 	if (test_bit(ALS_ENABLE, &client->status)) {
 		if (--chip->als_cnt <= 0) {
 			chip->als_cnt = 0;
-			apds9300_poweroff(chip);
+			if (!chip->suspend)
+				apds9300_poweroff(chip);
 		}
 	}
 	mutex_unlock(&chip->mutex);
@@ -635,6 +649,8 @@ static void apds9300_early_suspend(struct early_suspend *h)
 	mutex_lock(&chip->mutex);
 	if (chip->als_cnt)
 		apds9300_poweroff(chip);
+	chip->suspend = true;
+	mutex_unlock(&chip->mutex);
 }
 
 static void apds9300_late_resume(struct early_suspend *h)
@@ -643,12 +659,53 @@ static void apds9300_late_resume(struct early_suspend *h)
 
 	dev_dbg(&chip->client->dev, "enter %s\n", __func__);
 
+	mutex_lock(&chip->mutex);
 	if (chip->als_cnt)
 		apds9300_poweron(chip);
+	chip->suspend = false;
 	mutex_unlock(&chip->mutex);
 	enable_irq(chip->client->irq);
 }
+#define apds9300_suspend  NULL
+#define apds9300_resume   NULL
+#else
+#ifdef CONFIG_PM
+static int apds9300_suspend(struct device *dev)
+{
+	struct i2c_client *i2c_client = to_i2c_client(dev);
+	struct apds9300_chip *chip = i2c_get_clientdata(i2c_client);
+
+	disable_irq(i2c_client->irq);
+	if (!mutex_trylock(&chip->mutex)) {
+		enable_irq(i2c_client->irq);
+		return -EBUSY;
+	}
+	if (chip->als_cnt)
+		apds9300_poweroff(chip);
+	mutex_unlock(&chip->mutex);
+	return 0;
+}
+
+static int apds9300_resume(struct device *dev)
+{
+	struct i2c_client *i2c_client = to_i2c_client(dev);
+	struct apds9300_chip *chip = i2c_get_clientdata(i2c_client);
+
+	mutex_lock(&chip->mutex);
+	if (chip->als_cnt)
+		apds9300_poweron(chip);
+	mutex_unlock(&chip->mutex);
+	enable_irq(i2c_client->irq);
+	return 0;
+}
+#else
+#define apds9300_suspend  NULL
+#define apds9300_resume   NULL
 #endif
+#endif
+static const struct dev_pm_ops apds9300_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(apds9300_suspend, apds9300_resume)
+};
 
 /* Called always with mutex locked */
 static int apds9300_get_lux(struct apds9300_chip *chip, int clear, int ir)
@@ -984,6 +1041,7 @@ static struct i2c_driver apds9300_driver = {
 	.driver	 = {
 		.name	= "apds9300",
 		.owner	= THIS_MODULE,
+		.pm	= &apds9300_pm_ops,
 	},
 	.probe	  = apds9300_probe,
 	.remove	  = __devexit_p(apds9300_remove),
