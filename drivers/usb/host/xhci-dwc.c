@@ -39,6 +39,7 @@ static int xhci_reset_port(struct usb_hcd *hcd);
 static int xhci_stop_host(struct usb_hcd *hcd);
 static int dwc_host_setup(struct usb_hcd *hcd);
 static int xhci_release_host(struct usb_hcd *hcd);
+static struct platform_driver xhci_dwc_driver;
 
 static void set_phy_suspend_resume(struct usb_hcd *hcd, int on_off)
 {
@@ -261,6 +262,8 @@ static int xhci_start_host(struct usb_hcd *hcd)
 			"Can't register sysfs attribute: %d\n", ret);
 	}
 
+	xhci_dwc_driver.shutdown = usb_hcd_platform_shutdown;
+
 	return ret;
 
 put_usb3_hcd:
@@ -294,6 +297,8 @@ static int xhci_stop_host(struct usb_hcd *hcd)
 	xhci = hcd_to_xhci(hcd);
 
 	pm_runtime_get_sync(hcd->self.controller);
+
+	xhci_dwc_driver.shutdown = NULL;
 
 	if (HCD_RH_RUNNING(hcd))
 		set_phy_suspend_resume(hcd, 1);
@@ -754,7 +759,6 @@ static const struct dev_pm_ops dwc_usb_hcd_pm_ops = {
 static struct platform_driver xhci_dwc_driver = {
 	.probe = xhci_dwc_drv_probe,
 	.remove = xhci_dwc_drv_remove,
-	.shutdown = usb_hcd_platform_shutdown,
 	.driver = {
 		.name = "dwc3-host",
 #ifdef CONFIG_PM
