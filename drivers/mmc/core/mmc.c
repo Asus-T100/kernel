@@ -527,6 +527,9 @@ static int mmc_read_ext_csd(struct mmc_card *card, u8 *ext_csd)
 
 	/* eMMC v4.5 or later */
 	if (card->ext_csd.rev >= 6) {
+		card->ext_csd.exception_events_ctrl =
+			ext_csd[EXT_CSD_EXCEPTION_EVENTS_CTRL];
+
 		card->ext_csd.feature_support |= MMC_DISCARD_FEATURE;
 
 		card->ext_csd.generic_cmd6_time = 10 *

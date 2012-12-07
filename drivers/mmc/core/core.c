@@ -175,6 +175,17 @@ void mmc_request_done(struct mmc_host *host, struct mmc_request *mrq)
 		if (mrq->done)
 			mrq->done(mrq);
 
+		/*
+		 * Check BKOPS urgency from each R1 response
+		 */
+		if (host->card && mmc_card_mmc(host->card) &&
+			host->card->ext_csd.bkops_en &&
+			((mmc_resp_type(cmd) == MMC_RSP_R1) ||
+			 (mmc_resp_type(cmd) == MMC_RSP_R1B)) &&
+			(cmd->resp[0] & R1_EXCEPTION_EVENT)) {
+			mmc_card_set_check_bkops(host->card);
+		}
+
 		mmc_host_clk_release(host);
 	}
 }
@@ -393,6 +404,42 @@ void mmc_wait_for_req(struct mmc_host *host, struct mmc_request *mrq)
 }
 EXPORT_SYMBOL(mmc_wait_for_req);
 
+ /**
+ *	mmc_polling_busy_wait - Issue CMD13 to wait card out of busy
+ *	state
+ *	@card: MMC/SD card
+ *	@sec: timeout value. If it is 0, means no timeout value and will
+ *	wait until card out of busy state
+ *
+ */
+static int mmc_polling_busy_wait(struct mmc_card *card, unsigned int msec)
+{
+	unsigned long t = 0;
+	int err;
+	u32 status;
+
+	if (!card)
+		return 0;
+
+	if (msec != 0)
+		t = jiffies + msecs_to_jiffies(msec);
+
+	do {
+		err = mmc_send_status(card, &status);
+		if (err) {
+			pr_err("%s: err %d happens when polling status\n",
+					mmc_hostname(card->host), err);
+			break;
+		}
+		if (t != 0 && time_after(jiffies, t)) {
+			err = -ETIMEDOUT;
+			break;
+		}
+	} while (R1_CURRENT_STATE(status) == R1_STATE_PRG);
+
+	return err;
+}
+
 /**
  *	mmc_interrupt_hpi - Issue for High priority Interrupt
  *	@card: the MMC card associated with the HPI transfer
@@ -423,24 +470,27 @@ int mmc_interrupt_hpi(struct mmc_card *card)
 	 * If the card status is in PRG-state, we can send the HPI command.
 	 */
 	if (R1_CURRENT_STATE(status) == R1_STATE_PRG) {
-		do {
-			/*
-			 * We don't know when the HPI command will finish
-			 * processing, so we need to resend HPI until out
-			 * of prg-state, and keep checking the card status
-			 * with SEND_STATUS.  If a timeout error occurs when
-			 * sending the HPI command, we are already out of
-			 * prg-state.
-			 */
-			err = mmc_send_hpi_cmd(card, &status);
-			if (err)
-				pr_debug("%s: abort HPI (%d error)\n",
-					 mmc_hostname(card->host), err);
-
-			err = mmc_send_status(card, &status);
-			if (err)
-				break;
-		} while (R1_CURRENT_STATE(status) == R1_STATE_PRG);
+		err = mmc_send_hpi_cmd(card, &status);
+		if (err) {
+			if (R1_CURRENT_STATE(status) == R1_STATE_TRAN) {
+				return 0;
+			} else
+				pr_err("%s: HPI failed (%d error %d status)\n",
+					 mmc_hostname(card->host), err,
+					 R1_CURRENT_STATE(status));
+		}
+		/*
+		 * after sending HPI, we need to polling card
+		 * status until card breaks out of busy state
+		 */
+		err = mmc_polling_busy_wait(card,
+				card->ext_csd.out_of_int_time);
+		if (err)
+			pr_err("%s: polling busy wait failed (%d error)\n",
+					mmc_hostname(card->host), err);
+		else
+			pr_info("%s: polling busy wait success\n",
+					mmc_hostname(card->host));
 	} else
 		pr_debug("%s: Left prg-state\n", mmc_hostname(card->host));
 
@@ -449,6 +499,172 @@ out:
 	return err;
 }
 EXPORT_SYMBOL(mmc_interrupt_hpi);
+
+static int mmc_read_bkops_status(struct mmc_card *card)
+{
+	int err;
+	u8 ext_csd[512];
+
+	err = mmc_send_ext_csd(card, ext_csd);
+	if (err)
+		return err;
+
+	card->ext_csd.raw_bkops_status = ext_csd[EXT_CSD_BKOPS_STATUS];
+	card->ext_csd.raw_exception_status = ext_csd[EXT_CSD_EXCEPTION_STATUS];
+
+	return 0;
+}
+
+static int mmc_is_exception_event(struct mmc_card *card, unsigned int value)
+{
+	int err;
+
+	err = mmc_read_bkops_status(card);
+	if (err) {
+		pr_err("%s: Didn't read bkops status : %d\n",
+		       mmc_hostname(card->host), err);
+		return 0;
+	}
+
+	/* In eMMC 4.41, R1_EXCEPTION_EVENT is URGENT_BKOPS */
+	if (card->ext_csd.rev == 5)
+		return 1;
+
+	return (card->ext_csd.raw_exception_status & value) ? 1 : 0;
+}
+
+ /**
+ * mmc_start_bkops - start to do BKOPS if eMMC card supported
+ * @card: card to do BKOPS
+ *
+ * If this function, reserved place for runtime power management.
+ * Since background operations should be done when user request
+ * queue is empty, and at that time card and host controller maybe
+ * are in runtime suspend status, before sending any command, we
+ * should make sure the device is power on status.
+ *
+ * Also add a workqueue to detect when to put the device in runtime
+ * suspend status.
+ */
+void mmc_start_bkops(struct mmc_card *card)
+{
+	int err;
+	struct mmc_command cmd = {0};
+	/*
+	 * If card is doing bkops or already need to
+	 * do bkops, just do nothing and return
+	 */
+	if (!card || !mmc_card_mmc(card))
+		return;
+	if (!card->ext_csd.bkops_en)
+		return;
+	if (!mmc_card_check_bkops(card))
+		return;
+
+	mmc_claim_host(card->host);
+
+	mmc_card_clr_check_bkops(card);
+
+	if (!mmc_is_exception_event(card, EXT_CSD_URGENT_BKOPS))
+		goto out;
+
+	/*
+	 * If card is already doing bkops or need for
+	 * bkops flag is not set, then do nothing just
+	 * return
+	 */
+	if (mmc_card_doing_bkops(card) ||
+			!card->ext_csd.raw_bkops_status)
+		goto out;
+
+	cmd.opcode = MMC_SWITCH;
+	cmd.arg = (MMC_SWITCH_MODE_WRITE_BYTE << 24) |
+		  (EXT_CSD_BKOPS_START << 16) |
+		  (1 << 8) |
+		  EXT_CSD_CMD_SET_NORMAL;
+	/*
+	 * Use R1 response instead of R1B for CMD6
+	 * Some host controller may have a small timeout threshold value
+	 * and we cannot sure when CMD6 for BKOPS can be finished.
+	 * So, we don't check the BUSY state here.
+	 *
+	 * When user want to stop bkops, check card status instead
+	 */
+	cmd.flags = MMC_RSP_SPI_R1 | MMC_RSP_R1 | MMC_CMD_AC;
+	err = mmc_wait_for_cmd(card->host, &cmd, MMC_CMD_RETRIES);
+	if (err) {
+		pr_err("%s: failed to do background operations\n",
+				mmc_hostname(card->host));
+	} else {
+		mmc_card_set_doing_bkops(card);
+		pr_info("%s: BKOPS started...\n", __func__);
+	}
+
+out:
+	mmc_release_host(card->host);
+	return;
+}
+EXPORT_SYMBOL(mmc_start_bkops);
+
+/**
+ *	mmc_wait_for_bkops - start a bkops check and wait for
+ *	completion
+ *	@card: MMC card need to check
+ *
+ *	start MMC_SEND_STATUS to check whether the card is busy for
+ *	BKOPS. Wait until the block finish BKOPS.
+ */
+static int mmc_wait_for_bkops(struct mmc_card *card)
+{
+	int err;
+	/*
+	 * check raw_bkops_status.
+	 * if >= LEVEL2, donot interrupt backops,
+	 * wait until it finished
+	 */
+	if (card->ext_csd.raw_bkops_status < EXT_CSD_BKOPS_LEVEL_2) {
+		err = mmc_interrupt_hpi(card);
+		if (err != -EOPNOTSUPP)
+			return err;
+	}
+	/*
+	 * we come to here because eMMC card
+	 * doesn't support HPI or the bkops event is urgent
+	 * wait for 5000ms. This is just an experience value
+	 */
+	return mmc_polling_busy_wait(card, 5000);
+}
+
+void mmc_stop_bkops(struct mmc_card *card)
+{
+	int err;
+
+	if (!card || !mmc_card_mmc(card))
+		return;
+	if (!card->ext_csd.bkops_en)
+		return;
+	if (!mmc_card_doing_bkops(card))
+		return;
+
+	mmc_claim_host(card->host);
+
+	mmc_card_clr_doing_bkops(card);
+
+	err = mmc_wait_for_bkops(card);
+	if (err) {
+		/*
+		 * err happen during stop bkops,
+		 * try to do a hw_reset if possible
+		 */
+		pr_err("%s: failed to stop BKOPS, try hardware reset\n",
+				mmc_hostname(card->host));
+		mmc_hw_reset_check(card->host);
+	} else
+		pr_info("%s: BKOPS stopped\n", __func__);
+
+	mmc_release_host(card->host);
+}
+EXPORT_SYMBOL(mmc_stop_bkops);
 
 /**
  *	mmc_wait_for_cmd - start a command and wait for completion
@@ -2445,6 +2661,9 @@ int mmc_pm_notify(struct notifier_block *notify_block,
 	switch (mode) {
 	case PM_HIBERNATION_PREPARE:
 	case PM_SUSPEND_PREPARE:
+
+		if (host->card)
+			mmc_stop_bkops(host->card);
 
 		spin_lock_irqsave(&host->lock, flags);
 		if (mmc_bus_needs_resume(host)) {
