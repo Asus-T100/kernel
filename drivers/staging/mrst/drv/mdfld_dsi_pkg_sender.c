@@ -25,6 +25,7 @@
  */
 
 #include <linux/freezer.h>
+#include <linux/time.h>
 
 #include "mdfld_dsi_output.h"
 #include "mdfld_dsi_pkg_sender.h"
@@ -997,6 +998,13 @@ static int __read_panel_data(struct mdfld_dsi_pkg_sender *sender,
 	 * 2) polling read data avail interrupt
 	 * 3) read data
 	 */
+
+	/* wait for fifo empty without spin lock first, otherwise if put it into
+	 * spin lock, then in worst cases, it will spend ~13ms to wait fifo
+	 * become empty, thus irq will be disabled for ~13ms.
+	 */
+	wait_for_all_fifos_empty(sender);
+
 	spin_lock_irqsave(&sender->lock, flags);
 
 	/*Set the Max return pack size*/
