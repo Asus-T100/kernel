@@ -17,7 +17,9 @@
 #include <linux/device.h>
 #include <linux/err.h>
 #include <linux/power_supply.h>
+#include <linux/thermal.h>
 #include "power_supply.h"
+#include "power_supply_charger.h"
 
 /* exported for the APM Power driver, APM emulation */
 struct class *power_supply_class;
@@ -62,6 +64,7 @@ static void power_supply_changed_work(struct work_struct *work)
 
 		class_for_each_device(power_supply_class, NULL, psy,
 				      __power_supply_changed_work);
+		power_supply_trigger_charging_handler(psy);
 
 		power_supply_update_leds(psy);
 
@@ -172,18 +175,42 @@ int power_supply_is_system_supplied(void)
 	unsigned int count = 0;
 
 	error = class_for_each_device(power_supply_class, NULL, &count,
-				      __power_supply_is_system_supplied);
+					__power_supply_is_system_supplied);
 
 	/*
-	 * If no power class device was found at all, most probably we are
-	 * running on a desktop system, so assume we are on mains power.
-	 */
+	* If no power class device was found at all, most probably we are
+	* running on a desktop system, so assume we are on mains power.
+	*/
 	if (count == 0)
 		return 1;
 
 	return error;
 }
 EXPORT_SYMBOL_GPL(power_supply_is_system_supplied);
+
+static int __power_supply_is_battery_connected(struct device *dev, void *data)
+{
+	union power_supply_propval ret = {0,};
+	struct power_supply *psy = dev_get_drvdata(dev);
+
+	if (psy->type == POWER_SUPPLY_TYPE_BATTERY) {
+		if (psy->get_property(psy, POWER_SUPPLY_PROP_PRESENT, &ret))
+			return 0;
+		if (ret.intval)
+			return ret.intval;
+	}
+	return 0;
+}
+
+int power_supply_is_battery_connected(void)
+{
+	int error;
+
+	error = class_for_each_device(power_supply_class, NULL, NULL,
+					__power_supply_is_battery_connected);
+	return error;
+}
+EXPORT_SYMBOL_GPL(power_supply_is_battery_connected);
 
 int power_supply_set_battery_charged(struct power_supply *psy)
 {
@@ -225,6 +252,163 @@ static void power_supply_dev_release(struct device *dev)
 	kfree(dev);
 }
 
+#ifdef CONFIG_THERMAL
+static int power_supply_read_temp(struct thermal_zone_device *tzd,
+		unsigned long *temp)
+{
+	struct power_supply *psy;
+	union power_supply_propval val;
+	int ret;
+
+	if (WARN_ON(tzd == NULL))
+		return -EINVAL;
+	psy = tzd->devdata;
+	ret = psy->get_property(psy, POWER_SUPPLY_PROP_TEMP, &val);
+
+	/* Convert tenths of degree Celsius to milli degree Celsius. */
+	if (!ret)
+		*temp = val.intval * 100;
+
+	return ret;
+}
+
+static struct thermal_zone_device_ops psy_tzd_ops = {
+	.get_temp = power_supply_read_temp,
+};
+
+static int psy_register_thermal(struct power_supply *psy)
+{
+	int i;
+
+	/* Register battery zone device psy reports temperature */
+	for (i = 0; i < psy->num_properties; i++) {
+		if (psy->properties[i] == POWER_SUPPLY_PROP_TEMP) {
+			psy->tzd = thermal_zone_device_register(
+				(char *)psy->name, 0, 0, psy, &psy_tzd_ops,
+				0, 0, 0, 0);
+			if (IS_ERR(psy->tzd))
+				return PTR_ERR(psy->tzd);
+			break;
+		}
+	}
+	return 0;
+}
+
+static void psy_unregister_thermal(struct power_supply *psy)
+{
+	if (IS_ERR_OR_NULL(psy->tzd))
+		return;
+	thermal_zone_device_unregister(psy->tzd);
+}
+
+/* thermal cooling device callbacks */
+static int ps_get_max_charge_cntl_limit(struct thermal_cooling_device *tcd,
+						unsigned long *state)
+{
+	struct power_supply *psy;
+	union power_supply_propval val;
+	int ret;
+
+	if (WARN_ON(tcd == NULL))
+		return -EINVAL;
+	psy = tcd->devdata;
+	ret = psy->get_property(psy,
+		POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT_MAX, &val);
+	if (!ret)
+		*state = val.intval;
+
+	return ret;
+}
+
+static int ps_get_cur_chrage_cntl_limit(struct thermal_cooling_device *tcd,
+						unsigned long *state)
+{
+	struct power_supply *psy;
+	union power_supply_propval val;
+	int ret;
+
+	if (WARN_ON(tcd == NULL))
+		return -EINVAL;
+	psy = tcd->devdata;
+	ret = psy->get_property(psy,
+		POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT, &val);
+	if (!ret)
+		*state = val.intval;
+
+	return ret;
+}
+
+static int ps_set_cur_charge_cntl_limit(struct thermal_cooling_device *tcd,
+							unsigned long state)
+{
+	struct power_supply *psy;
+	union power_supply_propval val;
+	int ret;
+
+	if (WARN_ON(tcd == NULL))
+		return -EINVAL;
+	psy = tcd->devdata;
+	val.intval = state;
+	ret = psy->set_property(psy,
+		POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT, &val);
+
+	psy_charger_throttle_charger(psy, state);
+
+	return ret;
+}
+
+static struct thermal_cooling_device_ops psy_tcd_ops = {
+	.get_max_state = ps_get_max_charge_cntl_limit,
+	.get_cur_state = ps_get_cur_chrage_cntl_limit,
+	.set_cur_state = ps_set_cur_charge_cntl_limit,
+};
+
+static int psy_register_cooler(struct power_supply *psy)
+{
+	int i;
+
+	/* Register for cooling device if psy can control charging */
+	for (i = 0; i < psy->num_properties; i++) {
+		if (psy->properties[i] ==
+				POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT) {
+			psy->tcd = thermal_cooling_device_register(
+							(char *)psy->name,
+							psy, &psy_tcd_ops);
+			if (IS_ERR(psy->tcd))
+				return PTR_ERR(psy->tcd);
+			break;
+		}
+	}
+	return 0;
+}
+
+static void psy_unregister_cooler(struct power_supply *psy)
+{
+	if (IS_ERR_OR_NULL(psy->tcd))
+		return;
+	thermal_cooling_device_unregister(psy->tcd);
+}
+#else
+static int psy_register_thermal(struct power_supply *psy)
+{
+	return 0;
+}
+
+static void psy_unregister_thermal(struct power_supply *psy)
+{
+}
+
+static int psy_register_cooler(struct power_supply *psy)
+{
+	return 0;
+}
+
+static void psy_unregister_cooler(struct power_supply *psy)
+{
+
+}
+#endif
+
 int power_supply_register(struct device *parent, struct power_supply *psy)
 {
 	struct device *dev;
@@ -255,6 +439,12 @@ int power_supply_register(struct device *parent, struct power_supply *psy)
 
 	spin_lock_init(&psy->changed_lock);
 	rc = device_init_wakeup(dev, true);
+
+	rc = psy_register_thermal(psy);
+	if (rc)
+		goto register_thermal_failed;
+
+	rc = psy_register_cooler(psy);
 	if (rc)
 		goto wakeup_init_failed;
 
@@ -262,17 +452,28 @@ int power_supply_register(struct device *parent, struct power_supply *psy)
 	if (rc)
 		goto create_triggers_failed;
 
+	if (IS_CHARGER(psy))
+		rc = power_supply_register_charger(psy);
+	if (rc)
+		goto charger_register_failed;
+
 	power_supply_changed(psy);
 
 	goto success;
 
+charger_register_failed:
 create_triggers_failed:
+	psy_unregister_cooler(psy);
+register_cooler_failed:
+	psy_unregister_thermal(psy);
+register_thermal_failed:
 wakeup_init_failed:
 	device_del(dev);
 kobject_set_name_failed:
 device_add_failed:
 	put_device(dev);
 success:
+	psy_unregister_cooler(psy);
 	return rc;
 }
 EXPORT_SYMBOL_GPL(power_supply_register);
@@ -282,6 +483,11 @@ void power_supply_unregister(struct power_supply *psy)
 	cancel_work_sync(&psy->changed_work);
 	sysfs_remove_link(&psy->dev->kobj, "powers");
 	power_supply_remove_triggers(psy);
+	if (IS_CHARGER(psy))
+		power_supply_unregister_charger(psy);
+	power_supply_remove_triggers(psy);
+	psy_unregister_cooler(psy);
+	psy_unregister_thermal(psy);
 	device_unregister(psy->dev);
 }
 EXPORT_SYMBOL_GPL(power_supply_unregister);
