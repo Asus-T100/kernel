@@ -34,7 +34,7 @@
 #include "i2c-pmic-regs.h"
 
 #define DRIVER_NAME "i2c_pmic_adap"
-#define PMIC_I2C_ADAPTER 7
+#define PMIC_I2C_ADAPTER 8
 
 enum I2C_STATUS {
 	I2C_WR = 1,
@@ -56,13 +56,25 @@ static irqreturn_t pmic_i2c_handler(int irq, void *data)
 
 	if (irq0_int) {
 		pmic_dev->i2c_rw = (irq0_int >> IRQ0_I2C_BIT_POS);
-		wake_up(&(pmic_dev->i2c_wait));
-		return IRQ_HANDLED;
+		return IRQ_WAKE_THREAD;
 	}
 
 	return IRQ_NONE;
 }
 
+
+static irqreturn_t pmic_thread_handler(int id, void *data)
+{
+#define IRQLVL1_MASK_ADDR		0x0c
+#define IRQLVL1_CHRGR_MASK		D5
+
+	dev_dbg(pmic_dev->dev, "Clearing IRQLVL1_MASK_ADDR\n");
+
+	intel_scu_ipc_update_register(IRQLVL1_MASK_ADDR, 0x00,
+			IRQLVL1_CHRGR_MASK);
+	wake_up(&(pmic_dev->i2c_wait));
+	return IRQ_HANDLED;
+}
 /* PMIC i2c read msg */
 static inline int pmic_i2c_read_xfer(struct i2c_msg msg)
 {
@@ -70,20 +82,16 @@ static inline int pmic_i2c_read_xfer(struct i2c_msg msg)
 	u16 i;
 	u8 addr = msg.buf[0];
 	u8 mask = (I2C_RD | I2C_NACK);
-	u16 reg[2];
-	u8 data[2];
 
 	for (i = 0; i < msg.len ; i++, addr++) {
 		pmic_dev->i2c_rw = 0;
-		reg[0] = I2COVROFFSET_ADDR;
-		data[0] = addr;
-		reg[1] = I2COVRCTRL_ADDR;
-		data[1] = I2COVRCTRL_I2C_RD;
-		ret = intel_scu_ipc_writev(reg, data, 2);
-		if (unlikely(ret)) {
-			ret = -EIO;
-			goto read_err_exit;
-		}
+		ret = intel_scu_ipc_iowrite8(I2COVROFFSET_ADDR, addr);
+		if (unlikely(ret))
+			return ret;
+		ret = intel_scu_ipc_iowrite8(I2COVRCTRL_ADDR,
+						I2COVRCTRL_I2C_RD);
+		if (unlikely(ret))
+			return ret;
 
 		ret = wait_event_timeout(pmic_dev->i2c_wait,
 				(pmic_dev->i2c_rw & mask),
@@ -117,38 +125,32 @@ static inline int pmic_i2c_write_xfer(struct i2c_msg msg)
 	u16 i;
 	u8 addr = msg.buf[0];
 	u8 mask = (I2C_WR | I2C_NACK);
-	u16 reg[3];
-	u8 data[3];
 
 	for (i = 1; i <= msg.len ; i++, addr++) {
 		pmic_dev->i2c_rw = 0;
-		reg[0] = I2COVROFFSET_ADDR;
-		data[0] = addr;
-		reg[1] = I2COVRWRDATA_ADDR;
-		data[1] = msg.buf[i];
-		reg[2] = I2COVRCTRL_ADDR;
-		data[2] = I2COVRCTRL_I2C_WR;
-		ret = intel_scu_ipc_writev(reg, data, 3);
-		if (unlikely(ret)) {
-			ret = -EIO;
-			goto write_err_exit;
-		}
+
+		ret = intel_scu_ipc_iowrite8(I2COVROFFSET_ADDR, addr);
+		if (unlikely(ret))
+			return ret;
+
+		ret = intel_scu_ipc_iowrite8(I2COVRWRDATA_ADDR, msg.buf[i]);
+		if (unlikely(ret))
+			return ret;
+
+		ret = intel_scu_ipc_iowrite8(I2COVRCTRL_ADDR,
+				I2COVRCTRL_I2C_WR);
+		if (unlikely(ret))
+			return ret;
+
 		ret = wait_event_timeout(pmic_dev->i2c_wait,
 				(pmic_dev->i2c_rw & mask),
 				HZ);
-
-		if (ret == 0) {
-			ret = -ETIMEDOUT;
-			goto write_err_exit;
-		} else if (pmic_dev->i2c_rw == I2C_NACK) {
-			ret = -EIO;
-			goto write_err_exit;
-		}
+		if (ret == 0)
+			return -ETIMEDOUT;
+		else if (pmic_dev->i2c_rw == I2C_NACK)
+			return -EIO;
 	}
 	return 0;
-
-write_err_exit:
-	return ret;
 }
 
 static int (*xfer_fn[]) (struct i2c_msg) = {
@@ -183,15 +185,14 @@ static int pmic_master_xfer(struct i2c_adapter *adap,
 			goto transfer_err_exit;
 	}
 
-	mutex_unlock(&pmic_dev->i2c_pmic_rw_lock);
-	pm_runtime_put_sync(pmic_dev->dev);
-	wake_unlock(&pmic_dev->i2c_wake_lock);
-	return num;
+	ret = num;
 
 transfer_err_exit:
 	mutex_unlock(&pmic_dev->i2c_pmic_rw_lock);
 	pm_runtime_put_sync(pmic_dev->dev);
 	wake_unlock(&pmic_dev->i2c_wake_lock);
+	intel_scu_ipc_update_register(IRQLVL1_MASK_ADDR, 0x00,
+			IRQLVL1_CHRGR_MASK);
 	return ret;
 }
 
@@ -250,17 +251,7 @@ static int __devinit pmic_i2c_probe(struct ipc_device *ipcdev)
 	pmic_dev->dev = &ipcdev->dev;
 	pmic_dev->irq = ipc_get_irq(ipcdev, 0);
 
-	ret = request_irq(pmic_dev->irq, pmic_i2c_handler,
-			IRQF_SHARED | IRQF_ONESHOT,
-			DRIVER_NAME, pmic_dev);
-	if (ret) {
-		dev_err(&ipcdev->dev, "Error requesting irq\n");
-		goto err_irq_request;
-	}
 
-	/* Init runtime PM state*/
-	pm_runtime_put_noidle(pmic_dev->dev);
-	pm_schedule_suspend(pmic_dev->dev, MSEC_PER_SEC);
 
 	mutex_init(&pmic_dev->i2c_pmic_rw_lock);
 	wake_lock_init(&pmic_dev->i2c_wake_lock, WAKE_LOCK_SUSPEND,
@@ -273,6 +264,17 @@ static int __devinit pmic_i2c_probe(struct ipc_device *ipcdev)
 		ret = -ENOMEM;
 		goto ioremap_failed;
 	}
+	ret = request_threaded_irq(pmic_dev->irq, pmic_i2c_handler,
+					pmic_thread_handler, IRQF_SHARED,
+					DRIVER_NAME, pmic_dev);
+	if (ret)
+		goto err_irq_request;
+
+	intel_scu_ipc_update_register(MCHGRIRQ0_ADDR, 0x00,
+			PMIC_I2C_INTR_MASK);
+
+	/* Init runtime PM state*/
+	pm_runtime_put_noidle(pmic_dev->dev);
 
 	adap = &pmic_dev->adapter;
 	adap->owner = THIS_MODULE;
@@ -287,13 +289,15 @@ static int __devinit pmic_i2c_probe(struct ipc_device *ipcdev)
 		goto err_adap_add;
 	}
 
+	pm_schedule_suspend(pmic_dev->dev, MSEC_PER_SEC);
 	return 0;
 
 err_adap_add:
+	free_irq(pmic_dev->irq, pmic_dev);
+unmask_irq_failed:
+err_irq_request:
 	iounmap(pmic_dev->pmic_intr_map);
 ioremap_failed:
-	free_irq(pmic_dev->irq, pmic_dev);
-err_irq_request:
 	kfree(pmic_dev);
 	return ret;
 }
