@@ -438,11 +438,6 @@ static int get_id(struct dwc_otg2 *otg)
 	else if (idsts & USBIDSTS_ID_RARBRC_STS(3))
 		id = RID_C;
 
-	ret = intel_scu_ipc_update_register(PMIC_USBIDCTRL, 0,\
-			USBIDCTRL_ACA_DETEN_D1 | PMIC_USBPHYCTRL_D0);
-	if (ret)
-		otg_err(otg, "Fail to disable ACA&ID detection logic\n");
-
 	return id;
 }
 
@@ -1298,9 +1293,8 @@ static enum dwc_otg_state do_a_host(struct dwc_otg2 *otg)
 		otg_dbg(otg, "OEVT_CONN_ID_STS_CHNG_EVNT\n");
 		id = get_id(otg);
 
-		/* RID_A: ACA-Dock
-		 * RID_GND: B-Device */
-		if (id == RID_A) {
+		/* Plug out ACA_DOCK/USB device */
+		if (id == RID_FLOAT) {
 			if (otg->charging_cap.chrg_type == CHRG_ACA_DOCK) {
 				/* ACA_DOCK plug out, receive
 				 * id change prior to vBus change
@@ -1308,13 +1302,14 @@ static enum dwc_otg_state do_a_host(struct dwc_otg2 *otg)
 				stop_host(otg);
 				return DWC_STATE_WAIT_VBUS_FALL;
 			} else {
-				otg_err(otg, "Meet invalid charger cases!");
+				/* Normal USB device plug out */
 				spin_lock_irqsave(&otg->lock, flags);
 				otg->charging_cap.chrg_type = CHRG_UNKNOWN;
 				spin_unlock_irqrestore(&otg->lock, flags);
 
 				stop_host(otg);
-				return DWC_STATE_INVALID;
+				dwc_otg_enable_vbus(otg, 0);
+				return DWC_STATE_INIT;
 			}
 		} else {
 			otg_err(otg, "Meet invalid charger cases!");
@@ -1392,8 +1387,7 @@ static int dwc_otg_handle_notification(struct notifier_block *nb,
 	int state, val;
 	unsigned long flags;
 
-	if (((event == USB_EVENT_ID) || (event == USB_EVENT_VBUS))
-			&& !otg)
+	if (!otg)
 		return NOTIFY_BAD;
 
 	val = *(int *)data;
