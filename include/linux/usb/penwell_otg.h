@@ -434,7 +434,8 @@ struct otg_bc_event {
 #define USBCHRG_EVENT_RESUME	4
 #define USBCHRG_EVENT_UPDATE	5
 
-struct cloverview_usb_otg_pdata {
+struct intel_mid_otg_pdata {
+	int gpio_vbus;
 	int gpio_cs;
 	int gpio_reset;
 };
@@ -484,7 +485,7 @@ struct penwell_otg {
 	unsigned			rt_resuming;
 
 	unsigned			rt_quiesce;
-	struct cloverview_usb_otg_pdata *otg_pdata;
+	struct intel_mid_otg_pdata	*otg_pdata;
 
 	struct wake_lock		wake_lock;
 	spinlock_t			lock;

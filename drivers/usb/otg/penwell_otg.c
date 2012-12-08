@@ -796,6 +796,14 @@ static int penwell_otg_set_vbus(struct otg_transceiver *otg, bool enabled)
 		goto done;
 	}
 
+	if (pnw->otg_pdata->gpio_vbus) {
+		dev_info(pnw->dev, "Turn %s VBUS using GPIO pin %d\n",
+			enabled ? "on" : "off", pnw->otg_pdata->gpio_vbus);
+		gpio_direction_output(pnw->otg_pdata->gpio_vbus,
+							enabled ? 1 : 0);
+		goto done;
+	}
+
 	data = enabled ? VOTGEN : 0;
 
 	mutex_lock(&pnw->msic_mutex);
@@ -4815,15 +4823,29 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 		goto err;
 	}
 
-#ifdef CONFIG_BOARD_CTP
-	/* Set up gpio for Clovertrail */
-	pnw->otg_pdata = (struct cloverview_usb_otg_pdata *)
-			cloverview_usb_otg_get_pdata();
+	pnw->otg_pdata = (struct intel_mid_otg_pdata *)
+				intel_mid_otg_get_pdata(pdev);
 	if (pnw->otg_pdata == NULL) {
 		dev_err(pnw->dev, "Failed to get OTG platform data.\n");
 		retval = -ENODEV;
 		goto err;
 	}
+
+	if (!is_clovertrail(pdev)) {
+		if (pnw->otg_pdata->gpio_vbus) {
+			retval = gpio_request(pnw->otg_pdata->gpio_vbus,
+					"usb_otg_phy_reset");
+			if (retval < 0) {
+				dev_err(pnw->dev, "request gpio(%d) failed\n",
+						pnw->otg_pdata->gpio_vbus);
+				retval = -ENODEV;
+				goto err;
+			}
+		}
+	}
+
+#ifdef CONFIG_BOARD_CTP
+	/* Set up gpio for Clovertrail */
 	retval = gpio_request(pnw->otg_pdata->gpio_reset,
 				"usb_otg_phy_reset");
 	if (retval < 0) {
