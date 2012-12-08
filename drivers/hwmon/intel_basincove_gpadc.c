@@ -158,11 +158,16 @@ int intel_basincove_gpadc_sample(int ch, struct gpadc_result *res)
 	struct gpadc_info *info = &gpadc_info;
 	int i, ret;
 	u8 tmp, th, tl;
+	u8 mask;
 
 	if (!info->initialized)
 		return -ENODEV;
 
 	mutex_lock(&info->lock);
+
+	mask = MBATTEMP | MSYSTEMP | MBATT | MVIBATT | MCCTICK;
+	gpadc_clear_bits(MADCIRQ, mask);
+	gpadc_clear_bits(MIRQLVL1, MIRQLVL1_ADC);
 
 	tmp = GPADCREQ_IRQEN;
 
@@ -200,7 +205,8 @@ int intel_basincove_gpadc_sample(int ch, struct gpadc_result *res)
 	}
 
 done:
-	gpadc_clear_bits(MIRQLVL1, MIRQLVL1_ADC);
+	gpadc_set_bits(MADCIRQ, mask);
+	gpadc_set_bits(MIRQLVL1, MIRQLVL1_ADC);
 	mutex_unlock(&info->lock);
 	return ret;
 }
@@ -298,7 +304,6 @@ static int __devinit gpadc_probe(struct ipc_device *ipcdev)
 	struct intel_basincove_gpadc_platform_data *pdata =
 			ipcdev->dev.platform_data;
 	int err;
-	u8 mask;
 
 	if (!pdata) {
 		dev_err(&ipcdev->dev, "no platform data supplied\n");
@@ -315,10 +320,6 @@ static int __devinit gpadc_probe(struct ipc_device *ipcdev)
 		err = -ENOMEM;
 		goto exit;
 	}
-
-	mask = MBATTEMP | MSYSTEMP | MBATT | MVIBATT | MCCTICK;
-	gpadc_clear_bits(MADCIRQ, mask);
-	gpadc_clear_bits(MIRQLVL1, MIRQLVL1_ADC);
 
 	err = request_threaded_irq(info->irq, NULL, gpadc_isr,
 			IRQF_ONESHOT, "adc", info);
@@ -407,7 +408,7 @@ static void __exit gpadc_module_exit(void)
 	ipc_driver_unregister(&gpadc_driver);
 }
 
-module_init(gpadc_module_init);
+rootfs_initcall(gpadc_module_init);
 module_exit(gpadc_module_exit);
 
 MODULE_AUTHOR("Yang Bin<bin.yang@intel.com>");
