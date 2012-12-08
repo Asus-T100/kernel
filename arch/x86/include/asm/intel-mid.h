@@ -583,7 +583,7 @@ extern void intel_scu_devices_create(int bus_id);
 extern void intel_scu_devices_destroy(int bus_id);
 extern void intel_psh_devices_create(int bus_id);
 extern void intel_psh_devices_destroy(int bus_id);
-extern void *cloverview_usb_otg_get_pdata(void);
+extern void *intel_mid_otg_get_pdata(struct pci_dev *pdev);
 
 /* VRTC timer */
 #define MRST_VRTC_MAP_SZ	(1024)

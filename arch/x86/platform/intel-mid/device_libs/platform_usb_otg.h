@@ -12,5 +12,4 @@
 #ifndef _PLATFORM_USB_OTG_H_
 #define _PLATFORM_USB_OTG_H_
 
-extern void *cloverview_usb_otg_get_pdata(void);
 #endif
