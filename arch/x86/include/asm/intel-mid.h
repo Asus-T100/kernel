@@ -49,7 +49,6 @@ extern void intel_mid_msgbus_write32_raw(u32 cmd, u32 data);
 extern u32 intel_mid_msgbus_read32(u8 port, u8 addr);
 extern void intel_mid_msgbus_write32(u8 port, u8 addr, u32 data);
 extern void register_rpmsg_service(char *name, int id, u32 addr);
-extern void *cloverview_usb_otg_get_pdata(void);
 extern int sdhci_pci_request_regulators(void);
 
 /*

@@ -4832,8 +4832,7 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 		goto err;
 	}
 
-	pnw->otg_pdata = (struct intel_mid_otg_pdata *)
-				intel_mid_otg_get_pdata(pdev);
+	pnw->otg_pdata = pdev->dev.platform_data;
 	if (pnw->otg_pdata == NULL) {
 		dev_err(pnw->dev, "Failed to get OTG platform data.\n");
 		retval = -ENODEV;
@@ -5014,8 +5013,6 @@ static void penwell_otg_remove(struct pci_dev *pdev)
 	if (pnw->region)
 		release_mem_region(pci_resource_start(pdev, 0),
 				pci_resource_len(pdev, 0));
-	if (is_clovertrail(pdev) && pnw->otg_pdata != NULL)
-		kfree(pnw->otg_pdata);
 
 	usb_set_transceiver(NULL);
 	pci_disable_device(pdev);

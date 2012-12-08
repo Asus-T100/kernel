@@ -11,6 +11,7 @@ obj-y									+= platform_tc35876x.o
 obj-y									+= platform_ctp_audio.o
 obj-y									+= platform_sst_audio.o
 obj-y									+= platform_clv_regulator.o
+obj-y									+= pci/
 obj-$(subst m,y,$(CONFIG_MSIC_GPADC))					+= platform_msic_adc.o
 obj-$(subst m,y,$(CONFIG_BATTERY_INTEL_MDF))				+= platform_msic_battery.o
 obj-$(subst m,y,$(CONFIG_INTEL_MID_POWER_BUTTON))			+= platform_msic_power_btn.o
@@ -65,7 +66,6 @@ obj-$(subst m,y,$(CONFIG_SERIAL_MFD_HSU))				+= platform_hsu.o
 obj-$(subst m,y,$(CONFIG_KEYBOARD_GPIO))				+= platform_gpio_keys.o
 obj-$(subst m,y,$(CONFIG_SWITCH_MID_USER_NOTIFY))			+= platform_switch_mid_user_notify.o
 obj-$(subst m,y,$(CONFIG_I2C_GPIO))					+= platform_i2c_gpio.o
-obj-$(subst m,y,$(CONFIG_USB_PENWELL_OTG))				+= platform_usb_otg.o
 # MMC
 obj-$(subst m,y,$(CONFIG_MMC_SDHCI_PCI))				+= platform_sdhci_pci.o
 # WIFI
