@@ -25,10 +25,13 @@
  */
 
 #include <linux/delay.h>
+#include <linux/string.h>
 #include <asm/intel_mid_gpadc.h>
 #include <asm/intel_scu_ipcutil.h>
+#include <asm/intel-mid.h>
 #include <sound/pcm.h>
 #include <sound/soc.h>
+#include <sound/jack.h>
 #include "../codecs/sn95031.h"
 #include "mfld_common.h"
 
@@ -256,3 +259,220 @@ int mfld_lo_set_switch(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
+void mfld_jack_enable_mic_bias_gen(struct snd_soc_codec *codec, char *mic)
+{
+	pr_debug("enable mic bias : %s\n", mic);
+	mutex_lock(&codec->mutex);
+	if (!strncmp(mic, "AMIC1Bias", 9))
+		snd_soc_dapm_force_enable_pin(&codec->dapm, "AMIC1Bias");
+	else if (!strncmp(mic, "AMIC2Bias", 9))
+		snd_soc_dapm_force_enable_pin(&codec->dapm, "AMIC2Bias");
+	snd_soc_dapm_sync(&codec->dapm);
+	mutex_unlock(&codec->mutex);
+}
+
+void mfld_jack_disable_mic_bias_gen(struct snd_soc_codec *codec, char *mic)
+{
+
+	pr_debug("disable mic bias : %s\n", mic);
+	mutex_lock(&codec->mutex);
+	if (!strncmp(mic, "AMIC1Bias", 9))
+		snd_soc_dapm_disable_pin(&codec->dapm, "AMIC1Bias");
+	else if (!strncmp(mic, "AMIC2Bias", 9))
+		snd_soc_dapm_disable_pin(&codec->dapm, "AMIC2Bias");
+	snd_soc_dapm_sync(&codec->dapm);
+	mutex_unlock(&codec->mutex);
+
+}
+/*
+Code related to thermal probe accessory follows
+*/
+
+extern void mid_user_notify(int state);
+
+/* Initialization function for thermal probe; success or failure does not
+   impact the rest of the system (except right channel audio if
+   tp_en_gpio is invalid).So return type is void
+*/
+void mfld_therm_probe_init(struct mfld_mc_private *ctx, int adc_ch_id)
+{
+	int ret_val;
+	struct mfld_therm_probe_data  *tp_data_ptr;
+
+	tp_data_ptr = &ctx->tp_data;
+
+	tp_data_ptr->tp_status = false;
+	tp_data_ptr->tp_adc_ch_id = adc_ch_id;
+	/* Init therm probe enable GPIO */
+	tp_data_ptr->tp_en_gpio = get_gpio_by_name("thermal_probe_en");
+	if (tp_data_ptr->tp_en_gpio >= 0) {
+		pr_info("GPIO for therm probe %d\n", tp_data_ptr->tp_en_gpio);
+	} else {
+		/* Workaround if the GPIO not defined in SFI table */
+		tp_data_ptr->tp_en_gpio = 114;
+	}
+	ret_val = gpio_request(tp_data_ptr->tp_en_gpio, "thermal_probe_en");
+	if (ret_val) {
+		pr_err("Therm probe Enable GPIO alloc fail:%d\n", ret_val);
+		/* Set gpio to -1 to indicate that gpio request had failed*/
+		tp_data_ptr->tp_en_gpio = -1;
+		return;
+	}
+
+	/* Default Ground HSL and HSR of MSIC. Grounding HSL  is needed for
+	   getting PlugDet interrupt in case thermal probe is connected.
+	   This does not impact HS insertion interrupt*/
+	snd_soc_update_bits(ctx->mfld_jack.codec, SN95031_BTNCTRL2, BIT(1), BIT(1));
+	gpio_direction_output(tp_data_ptr->tp_en_gpio, 0);
+}
+
+void mfld_therm_probe_deinit(struct mfld_mc_private *ctx)
+{
+	struct mfld_therm_probe_data  *tp_data_ptr;
+
+	tp_data_ptr = &ctx->tp_data;
+	if (tp_data_ptr->tp_en_gpio >= 0)
+		gpio_free(tp_data_ptr->tp_en_gpio);
+}
+
+/* This function checks if the inserted accessory is thermal probe.
+   If yes, keeps the bias and mux approprate for thermal
+   probe so that the sensor driver can just read the adc voltage.
+   Informs userspace and sensor driver of the insertion event
+   and returns true
+   If no, keeps the settings for Audio and returns false
+*/
+bool mfld_therm_probe_on_connect(struct snd_soc_jack *jack)
+{
+	int voltage = 0;
+	int gpio_state;
+	bool tp_status = false;
+	void *adc_handle =  NULL;
+	struct mfld_mc_private *ctx =
+		snd_soc_card_get_drvdata(jack->codec->card);
+	struct mfld_therm_probe_data  *tp_data_ptr;
+
+	tp_data_ptr = &ctx->tp_data;
+
+	gpio_state = mfld_read_jack_gpio(ctx);
+	if (gpio_state != 0) {
+		/* This situation can occur during bootup without any accessory
+		   connected. We reach here because we initiate accessory
+		   detection manually in the init function */
+		pr_debug("In therm probe check; but no acc attached;"
+			" returning\n");
+		return tp_status;
+	}
+	/*If audio jack already connected;dont proceed with thermal probe det*/
+	if (jack->status & (SND_JACK_HEADSET | SND_JACK_HEADPHONE)) {
+		pr_debug("Therm probe det: spurious intr: Audio Jack "
+					" already connected\n");
+		return false;
+	}
+	/*If thermal probe already connected;dont proceed with det*/
+	if (tp_data_ptr->tp_status) {
+		pr_debug("Therm probe det: spurious intr:Thermal probe "
+					" already connected\n");
+		return true;
+	}
+
+	if (tp_data_ptr->tp_en_gpio < 0) {
+		pr_err("therm probe gpio not valid; returning\n");
+		/* If therm probe en gpio is not valid right channel
+		   audio will also not work. But atleast enable left
+		   channel audio(unground HSL/HSR) and return */
+		snd_soc_update_bits(jack->codec, SN95031_BTNCTRL2, BIT(1), 0);
+		return tp_status;
+	}
+
+	/* GPADC handle for therm probe detection; ADC channel is allocated
+	   and deallocated in this fuction so that sensor driver can allocate
+	   it and read the ADC after we report thermal probe connection*/
+	adc_handle = intel_mid_gpadc_alloc(MFLD_THERM_PROBE_SENSOR,
+			tp_data_ptr->tp_adc_ch_id);
+	if (!adc_handle) {
+		pr_err("therm probe adc handle not valid; returning\n");
+		/* If therm probe adc handle is not valid, enable audio
+		   and return. UnGround HSL and HSR of MSIC and Mux right
+		   ch. headset pin to HSR of MSIC */
+		snd_soc_update_bits(jack->codec, SN95031_BTNCTRL2, BIT(1), 0);
+		gpio_direction_output(tp_data_ptr->tp_en_gpio, 1);
+		return tp_status;
+	}
+
+
+	/* Ground HSL and HSR of MSIC */
+	snd_soc_update_bits(jack->codec, SN95031_BTNCTRL2, BIT(1), BIT(1));
+	/* Mux right ch. headset pin to ADC*/
+	gpio_direction_output(tp_data_ptr->tp_en_gpio, 0);
+
+	/* Enable mic bias 2 for therm probe check */
+	mfld_jack_enable_mic_bias_gen(jack->codec, "AMIC2Bias");
+	msleep(50);
+
+	/* Read ADIN11 */
+	intel_mid_gpadc_sample(adc_handle, 1, &voltage);
+	voltage = (voltage * MFLD_ADC_ONE_LSB_MULTIPLIER) / 1000;
+
+	intel_mid_gpadc_free(adc_handle);
+
+	if (voltage < MFLD_TP_VOLT_THLD_LOW ||
+			voltage > MFLD_TP_VOLT_THLD_HI) {
+
+		/* Connected accessory is not thermal probe.
+		   Enable audio jack detection and audio */
+		/* UnGround HSL and HSR of MSIC */
+		snd_soc_update_bits(jack->codec, SN95031_BTNCTRL2, BIT(1), 0);
+		/* Mux right ch. headset pin to HSR of MSIC */
+		gpio_direction_output(tp_data_ptr->tp_en_gpio, 1);
+		mfld_jack_disable_mic_bias_gen(jack->codec, "AMIC2Bias");
+		tp_status = false;
+	} else {
+
+		tp_status = true;
+		if (tp_data_ptr->tp_status != tp_status) {
+			tp_data_ptr->tp_status = tp_status;
+#ifdef CONFIG_SWITCH_MID_USER_NOTIFY
+			/*Notify userspace about thermal prove event*/
+			mid_user_notify(1);
+#endif
+			pr_debug("thermal probe connected\n");
+		}
+	}
+	pr_debug("%s: therm_probe_state = %d voltage = %d\n", __func__,
+			tp_status, voltage);
+	return tp_status;
+}
+
+/* This function checks if the removed accessory is thermal probe.
+   If yes, informuserspace and sensor driver of the removal event
+   and returns true.
+   If no, returns false. In either case resets the bias and mux
+   approprate for thermal probe detection for the next insertion.
+*/
+bool mfld_therm_probe_on_removal(struct snd_soc_jack *jack)
+{
+	bool ret = false;
+	struct mfld_mc_private *ctx =
+		snd_soc_card_get_drvdata(jack->codec->card);
+	struct mfld_therm_probe_data  *tp_data_ptr;
+
+	tp_data_ptr = &ctx->tp_data;
+
+	/* Default Ground HSL and HSR of MSIC. Grounding HSL  is needed for
+	   getting PlugDet interrupt in case thermal probe is connected. */
+	snd_soc_update_bits(jack->codec, SN95031_BTNCTRL2, BIT(1), BIT(1));
+	mfld_jack_disable_mic_bias_gen(jack->codec, "AMIC2Bias");
+
+	/* If thermal probe was removed, notify userspace */
+	if (tp_data_ptr->tp_status == true) {
+		tp_data_ptr->tp_status = false;
+#ifdef CONFIG_SWITCH_MID_USER_NOTIFY
+		/*Notify userspace about thermal prove event*/
+		mid_user_notify(0);
+#endif
+		pr_debug("thermal probe removed\n");
+		ret = true;
+	}
+	return ret;
+}

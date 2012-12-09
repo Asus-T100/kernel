@@ -17,4 +17,9 @@ config SWITCH_MID
        help
          Say Y here to support MFLD switch.
 
+config SWITCH_MID_USER_NOTIFY
+       tristate "Userspace notification Switch support"
+       help
+         Say Y here to support USER_NOTIFY switch.
+
 endif # SWITCH

@@ -87,6 +87,7 @@ obj-$(subst m,y,$(CONFIG_BCM43XX_PLATFORM_DATA))			+= platform_bcm43xx.o
 # MISC Devices
 obj-$(subst m,y,$(CONFIG_KEYBOARD_GPIO))				+= platform_gpio_keys.o
 obj-$(subst m,y,$(CONFIG_SWITCH_MID))					+= platform_switch_mid.o
+obj-$(subst m,y,$(CONFIG_SWITCH_MID_USER_NOTIFY))                         += platform_switch_mid_user_notify.o
 obj-$(subst m,y,$(CONFIG_I2C_GPIO))					+= platform_i2c_gpio.o
 obj-$(subst m,y,$(CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE))		+= platform_tc35876x.o
 obj-$(subst m,y,$(CONFIG_USB_PENWELL_OTG))				+= platform_usb_otg.o
