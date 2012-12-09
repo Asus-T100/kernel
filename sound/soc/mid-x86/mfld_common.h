@@ -31,12 +31,18 @@
 #define MFLD_AUDIO_DETECT_CODE 0x06
 /*Count of AUD_DETECT ADC Registers*/
 #define MFLD_AUDIO_SENSOR 1
+#define MFLD_THERM_PROBE_SENSOR 1
 #define MFLD_ADC_SAMPLE_COUNT 1
 /* multipier to convert to mV */
 #define MFLD_ADC_ONE_LSB_MULTIPLIER 2346
 
 #define MFLD_JACK_INSERT_ID	  0x04
 #define MFLD_LP_THRESHOLD_VOLTAGE 400 /* mV */
+
+
+/* min/max volatage at ADCIN11 for accessory to be declared as Therm Probe*/
+#define MFLD_TP_VOLT_THLD_LOW             50  /* in mV */
+#define MFLD_TP_VOLT_THLD_HI              2008  /* in mV */
 
 enum soc_mic_bias_zones {
 	MFLD_MV_START = 0,
@@ -53,6 +59,13 @@ struct mfld_jack_work {
 	unsigned int intr_id;
 	struct delayed_work work;
 	struct snd_soc_jack *jack;
+};
+
+struct mfld_therm_probe_data {
+	int tp_en_gpio;
+	/* Thermal probe status: connected or not*/
+	bool tp_status;
+	int tp_adc_ch_id;
 };
 
 struct mfld_mc_private {
@@ -79,6 +92,7 @@ struct mfld_mc_private {
 #ifdef CONFIG_HAS_WAKELOCK
 	struct wake_lock *jack_wake_lock;
 #endif
+	struct mfld_therm_probe_data tp_data;
 };
 
 
@@ -125,5 +139,14 @@ int mfld_lo_get_switch(struct snd_kcontrol *kcontrol,
 				struct snd_ctl_elem_value *ucontrol);
 int mfld_lo_set_switch(struct snd_kcontrol *kcontrol,
 				struct snd_ctl_elem_value *ucontrol);
+void mfld_jack_enable_mic_bias_gen(struct snd_soc_codec *codec, char *mic);
+void mfld_jack_disable_mic_bias_gen(struct snd_soc_codec *codec, char *mic);
 
+/*
+Prototype declarations related to thermal probe accessory follow
+*/
+void mfld_therm_probe_init(struct mfld_mc_private *ctx, int adc_ch_id);
+void mfld_therm_probe_deinit(struct mfld_mc_private *ctx);
+bool mfld_therm_probe_on_connect(struct snd_soc_jack *jack);
+bool mfld_therm_probe_on_removal(struct snd_soc_jack *jack);
 #endif

@@ -12,4 +12,9 @@ config SWITCH_GPIO
 	help
 	  Say Y here to enable GPIO based switch support.
 
+config SWITCH_MID_USER_NOTIFY
+	tristate "Userspace notification Switch support"
+	help
+	  Say Y here to support USER_NOTIFY switch.
+
 endif # SWITCH

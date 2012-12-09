@@ -60,31 +60,31 @@
 #define JACK_DET_RETRY 4
 #define JACK_POLL_INTERVAL 500
 
+/* ADC channel number for thermal probe */
+#define MFLD_YB_THERM_PROBE_ADC_CH_ID        0x0B
+
+/* Jack detection zones for YB. Mostly same as typical mfld values
+   except for the upper limit for Headset. This was changed because:
+   When an accessory is insered into the jack it is checked for thermal probe
+   (TP) first and if it is not, the usual headset detection algo is invoked.
+   In the corner case where a TP is insered, but is not detected as TP we dont
+   want the HS detection alogo to report a HS or HP. Normally if the voltage
+   at ADC6 is more than 2000mv, HS detection algo reports that neither HS nor HP
+   is connected. To make this more robust, HW Eng. suggested changing this limit
+   to 1900 mV
+*/
+enum soc_mic_bias_zones_yb {
+	YB_MV_START = MFLD_MV_START,
+	/* mic bias volutage range for American Headset*/
+	YB_MV_AM_HS = MFLD_MV_AM_HS,
+	/* mic bias voltage range for Headset*/
+	YB_MV_HS = 1900, /* This value is changed from typical mfld value*/
+};
 /* jack detection voltage zones */
 static struct snd_soc_jack_zone mfld_zones[] = {
-	{MFLD_MV_START, MFLD_MV_AM_HS, SND_JACK_HEADPHONE},
-	{MFLD_MV_AM_HS, MFLD_MV_HS, SND_JACK_HEADSET},
+	{YB_MV_START, YB_MV_AM_HS, SND_JACK_HEADPHONE},
+	{YB_MV_AM_HS, YB_MV_HS, SND_JACK_HEADSET},
 };
-
-static void mfld_jack_enable_mic_bias(struct snd_soc_codec *codec)
-{
-	pr_debug("enable mic bias\n");
-	mutex_lock(&codec->mutex);
-	snd_soc_dapm_force_enable_pin(&codec->dapm, "AMIC1Bias");
-	snd_soc_dapm_sync(&codec->dapm);
-	mutex_unlock(&codec->mutex);
-}
-
-static void mfld_jack_disable_mic_bias(struct snd_soc_codec *codec)
-{
-
-	pr_debug("disable mic bias\n");
-	mutex_lock(&codec->mutex);
-	snd_soc_dapm_disable_pin(&codec->dapm, "AMIC1Bias");
-	snd_soc_dapm_sync(&codec->dapm);
-	mutex_unlock(&codec->mutex);
-
-}
 
 static int mfld_get_headset_state(struct snd_soc_jack *jack)
 {
@@ -92,7 +92,7 @@ static int mfld_get_headset_state(struct snd_soc_jack *jack)
 	struct mfld_mc_private *ctx =
 			snd_soc_card_get_drvdata(jack->codec->card);
 
-	mfld_jack_enable_mic_bias(jack->codec);
+	mfld_jack_enable_mic_bias_gen(jack->codec, "AMIC1Bias");
 	micbias = mfld_jack_read_voltage(jack);
 
 	jack_type = snd_soc_jack_get_type(jack, micbias);
@@ -109,7 +109,7 @@ static int mfld_get_headset_state(struct snd_soc_jack *jack)
 		/* enable btn press detection */
 		snd_soc_update_bits(jack->codec, SN95031_BTNCTRL2, BIT(0), 1);
 	else
-		mfld_jack_disable_mic_bias(jack->codec);
+		mfld_jack_disable_mic_bias_gen(jack->codec, "AMIC1Bias");
 
 	return jack_type;
 }
@@ -155,6 +155,12 @@ void mfld_jack_wq(struct work_struct *work)
 
 	pr_debug("jack status in wq: 0x%x\n", intr_id);
 	if (intr_id & SN95031_JACK_INSERTED) {
+
+		/* Check if thermal probe is connected. If yes return from here
+		   without going though HS detection/jack report */
+		if (mfld_therm_probe_on_connect(jack))
+			return;
+
 		status = mfld_get_headset_state(jack);
 		/* unmask button press interrupts */
 		if (status == SND_JACK_HEADSET)
@@ -189,10 +195,16 @@ void mfld_jack_wq(struct work_struct *work)
 		pr_debug("reporting jack as removed\n");
 		snd_soc_update_bits(jack->codec, SN95031_BTNCTRL2, BIT(0), 0);
 		snd_soc_update_bits(jack->codec, SN95031_ACCDETMASK, BIT(2), 0);
-		mfld_jack_disable_mic_bias(jack->codec);
+		mfld_jack_disable_mic_bias_gen(jack->codec, "AMIC1Bias");
 		jack_work->intr_id = 0;
 		ctx->jack_status = 0;
 		cancel_delayed_work(&ctx->jack_work.work);
+
+		/* Check if the accessory removed was indeed thermal probe.
+		   If yes return without going through jack report */
+		if (mfld_therm_probe_on_removal(jack))
+			return;
+
 	} else if (intr_id & SN95031_JACK_BTN0) {
 		if (ctx->mfld_jack_lp_flag) {
 			snd_soc_jack_report(jack, SND_JACK_HEADSET, mask);
@@ -399,6 +411,9 @@ static int mfld_init(struct snd_soc_pcm_runtime *runtime)
 	}
 
 	ctx->jack_work.jack = &ctx->mfld_jack;
+
+	/* Init thermal probe adc/gpio etc.*/
+	mfld_therm_probe_init(ctx, MFLD_YB_THERM_PROBE_ADC_CH_ID);
 	/*
 	 * we want to check if anything is inserted at boot,
 	 * so send a fake event to codec and it will read adc
@@ -958,6 +973,9 @@ static int __devexit snd_mfld_mc_remove(struct ipc_device *ipcdev)
 	intel_mid_gpadc_free(ctx->audio_adc_handle);
 	if (ctx->jack_gpio >= 0)
 		gpio_free(ctx->jack_gpio);
+
+	mfld_therm_probe_deinit(ctx);
+
 	kfree(ctx);
 	snd_soc_card_set_drvdata(soc_card, NULL);
 	snd_soc_unregister_card(soc_card);
