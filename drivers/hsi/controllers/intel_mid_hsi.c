@@ -2598,7 +2598,7 @@ static int hsi_mid_setup(struct hsi_client *cl)
 		  ARASAN_CLK_DIVISOR(divisor/2) |
 		  ARASAN_DATA_TIMEOUT(data_timeout) |
 		  ARASAN_RX_FRAME_BURST_COUNT(256) |
-		  ARASAN_RX_TAILING_BIT_COUNT(66) |
+		  ARASAN_RX_TAILING_BIT_COUNT(50) |
 		  ARASAN_RX_TAP_DELAY_NS(3);
 
 	/* A HSI break frame shall be at least 38 TX cycles long */
