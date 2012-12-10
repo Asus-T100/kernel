@@ -202,6 +202,7 @@ static const struct pci_device_id pci_ids[] __devinitdata = {
 	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x0800), .driver_data = 0 },
 	/* Intel Cloverview platform SPI controller 1 */
 	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x08E1), .driver_data = 0 },
+	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x08EE), .driver_data = 1 },
 	/* Intel EVx platform SPI controller 1 */
 	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x0812), .driver_data = 2 },
 	{},
