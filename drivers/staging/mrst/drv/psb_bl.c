@@ -32,6 +32,7 @@
 #define BLC_PWM_FREQ_CALC_CONSTANT 32
 #define MHz 1000000
 #define BRIGHTNESS_MIN_LEVEL 1
+#define BRIGHTNESS_INIT_LEVEL	50
 #define BRIGHTNESS_MAX_LEVEL 100
 #define BRIGHTNESS_MASK	0xFF
 #define BLC_POLARITY_NORMAL 0
@@ -212,7 +213,7 @@ int psb_backlight_init(struct drm_device *dev)
 	if ((ret = device_backlight_init(dev)) != 0)
 		return ret;
 
-	psb_backlight_device->props.brightness = BRIGHTNESS_MAX_LEVEL;
+	psb_backlight_device->props.brightness = BRIGHTNESS_INIT_LEVEL;
 	psb_backlight_device->props.max_brightness = BRIGHTNESS_MAX_LEVEL;
 	backlight_update_status(psb_backlight_device);
 #endif
