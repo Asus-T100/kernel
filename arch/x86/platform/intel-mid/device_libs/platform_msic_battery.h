@@ -14,4 +14,9 @@
 
 extern void __init *msic_battery_platform_data(void *info)
 			__attribute__((weak));
+
+extern int intel_msic_save_config_data(const char *name,
+					void *data, int len);
+extern int intel_msic_restore_config_data(const char *name,
+					void *data, int len);
 #endif

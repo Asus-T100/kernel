@@ -273,7 +273,7 @@ int intel_msic_is_current_sense_enabled(void)
 					struct ipc_device, dev);
 	struct msic_power_module_info *mbi = ipc_get_drvdata(ipcdev);
 
-	return mbi->is_batt_valid;
+	return mbi->pdata->is_batt_valid;
 }
 EXPORT_SYMBOL(intel_msic_is_current_sense_enabled);
 
@@ -389,172 +389,6 @@ static inline int handle_ipc_rw_status(int error_val,
 
 	return error_val;
 }
-
-/**
- * get_batt_fg_curve_index - get the fg curve ID from umip
- * Returns FG curve ID
- */
-static int get_batt_fg_curve_index(void)
-{
-	int mip_offset, i, ret;
-	u8 batt_id[BATTID_STR_LEN + 1];
-	u8 num_tbls = 0;
-
-	/* get the no.of tables from mip */
-	ret = intel_scu_ipc_read_mip((u8 *)&num_tbls, 1,
-					UMIP_NO_OF_CFG_TBLS, 0);
-	if (ret) {
-		dev_warn(msic_dev, "%s: umip read failed\n", __func__);
-		goto get_idx_failed;
-	}
-
-	/* compare the batt ID provided by SFI table and FG table in mip */
-	mip_offset = UMIP_BATT_FG_TABLE_OFFSET + BATT_FG_TBL_BATTID;
-	for (i = 0; i < num_tbls; i++) {
-		ret = intel_scu_ipc_read_mip(batt_id, BATTID_STR_LEN,
-							mip_offset, 0);
-		if (ret) {
-			dev_warn(msic_dev, "%s: umip read failed\n", __func__);
-			goto get_idx_failed;
-		}
-		dev_info(msic_dev, "[umip] tbl:%d, batt_id:%s\n", i, batt_id);
-
-		if (!strncmp(batt_id, sfi_table->batt_id, BATTID_STR_LEN))
-			break;
-
-		mip_offset += UMIP_FG_TBL_SIZE;
-		memset(batt_id, 0x0, BATTID_STR_LEN);
-	}
-
-	if (i < num_tbls)
-		ret = i;
-	else
-		ret = -ENXIO;
-
-get_idx_failed:
-	return ret;
-}
-
-/**
- * intel_msic_store_referenced_table - store data to
- * referenced table from preconfigured battery data
- */
-static int intel_msic_store_refrenced_table(void)
-{
-	int mip_offset, ret, batt_index;
-	void *data;
-	u8 batt_id[BATTID_STR_LEN];
-
-	dev_info(msic_dev, "[sfi->batt_id]:%s\n", sfi_table->batt_id);
-
-	mip_offset = UMIP_REF_FG_TBL + BATT_FG_TBL_BATTID;
-	ret = intel_scu_ipc_read_mip(batt_id, BATTID_STR_LEN,
-						mip_offset, 0);
-	if (ret) {
-		dev_warn(msic_dev, "%s: umip read failed\n", __func__);
-		goto store_err;
-	}
-
-	/*if correct table is already in place then don't do anything*/
-	if (!strncmp(batt_id, sfi_table->batt_id, BATTID_STR_LEN)) {
-		dev_info(msic_dev,
-		 "%s: match found in ref tbl already\n", __func__);
-		return 0;
-	}
-
-	batt_index = get_batt_fg_curve_index();
-	if (batt_index < 0) {
-		dev_err(msic_dev,
-			"can't find fg battery index\n");
-		return batt_index;
-	}
-
-	data = kmalloc(UMIP_FG_TBL_SIZE, GFP_KERNEL);
-	if (!data) {
-		ret = -ENOMEM;
-		goto store_err;
-	}
-
-	/* read the fg data from batt_index */
-	mip_offset = UMIP_BATT_FG_TABLE_OFFSET + UMIP_FG_TBL_SIZE * batt_index;
-	ret = intel_scu_ipc_read_mip((u8 *)data, UMIP_FG_TBL_SIZE,
-							mip_offset, 0);
-	if (ret) {
-		dev_warn(msic_dev, "%s: umip read failed\n", __func__);
-		kfree(data);
-		goto store_err;
-	}
-	/* write the data to ref table */
-	mip_offset = UMIP_REF_FG_TBL;
-	ret = intel_scu_ipc_write_umip((u8 *)data, UMIP_FG_TBL_SIZE,
-					mip_offset);
-	if (ret) {
-		dev_warn(msic_dev, "%s: umip read failed\n", __func__);
-		kfree(data);
-		goto store_err;
-	}
-
-	kfree(data);
-
-store_err:
-	return ret;
-}
-
-/**
- * intel_msic_restore_config_data - restore config data
- * @name : Power Supply name
- * @data : config data output pointer
- * @len : length of config data
- *
- */
-int intel_msic_restore_config_data(const char *name, void *data, int len)
-{
-	int mip_offset, ret;
-
-	/* check if msic charger is ready */
-	if (!power_supply_get_by_name(CHARGER_PS_NAME))
-		return -EAGAIN;
-
-	ret = intel_msic_store_refrenced_table();
-	if (ret < 0) {
-		dev_err("%s failed to read fg data\n", __func__);
-		return ret;
-	}
-
-	/* Read the fuel gauge config data from umip */
-	mip_offset = UMIP_REF_FG_TBL + BATT_FG_TBL_BODY;
-	ret = intel_scu_ipc_read_mip((u8 *)data, len, mip_offset, 0);
-	if (ret)
-		dev_warn(msic_dev, "%s: umip read failed\n", __func__);
-
-	return ret;
-}
-EXPORT_SYMBOL(intel_msic_restore_config_data);
-
-/**
- * intel_msic_save_config_data - save config data
- * @name : Power Supply name
- * @data : config data input pointer
- * @len : length of config data
- *
- */
-int intel_msic_save_config_data(const char *name, void *data, int len)
-{
-	int mip_offset, ret;
-
-	/* check if msic charger is ready */
-	if (!power_supply_get_by_name("msic_charger"))
-		return -EAGAIN;
-
-	/* write the fuel gauge config data to umip */
-	mip_offset = UMIP_REF_FG_TBL + BATT_FG_TBL_BODY;
-	ret = intel_scu_ipc_write_umip((u8 *)data, len, mip_offset);
-	if (ret)
-		dev_warn(msic_dev, "%s: umip write failed\n", __func__);
-
-	return ret;
-}
-EXPORT_SYMBOL(intel_msic_save_config_data);
 
 /* Check for valid Temp ADC range */
 static bool is_valid_temp_adc(int adc_val)
@@ -722,7 +556,7 @@ int intel_msic_get_battery_pack_temp(int *temp)
 	if (!power_supply_get_by_name(CHARGER_PS_NAME))
 		return -EAGAIN;
 
-	if (!mbi->is_batt_valid)
+	if (!mbi->pdata->is_batt_valid)
 		return -ENODEV;
 
 	return mdf_read_adc_regs(MSIC_ADC_TEMP_IDX, temp, mbi);
@@ -1955,7 +1789,6 @@ lbl_sched_work:
 static void update_charger_health(struct msic_power_module_info *mbi)
 {
 	int vbus_volt;
-	unsigned char dummy_val;
 
 	/* We don't get an interrupt once charger returns from
 	  error state. So check current status by reading voltage
@@ -2195,7 +2028,7 @@ static int msic_event_handler(void *arg, int event, struct otg_bc_cap *cap)
 	update_usb_ps_info(mbi, cap, event);
 
 	/* check for valid battery condition */
-	if (!mbi->is_batt_valid)
+	if (!mbi->pdata->is_batt_valid)
 		return 0;
 
 	mutex_lock(&mbi->event_lock);
@@ -2682,94 +2515,6 @@ static ssize_t get_disable_safety_timer(struct device *dev,
 }
 
 /**
- * sfi_table_invalid_batt - default battery SFI table values  to be
- * used in case of invalid battery
- *
- * @sfi_table : sfi table pointer
- * Context: can sleep
- *
- */
-static void sfi_table_invalid_batt(struct msic_batt_sfi_prop *sfi_table)
-{
-
-	/*
-	 * In case of invalid battery we manually set
-	 * the SFI parameters and limit the battery from
-	 * charging, so platform will be in discharging mode
-	 */
-	memcpy(sfi_table->batt_id, "UNKNOWN", sizeof("UNKNOWN"));
-	sfi_table->voltage_max = CHR_CHRVOLTAGE_SET_DEF;
-	sfi_table->capacity = DEFAULT_MAX_CAPACITY;
-	sfi_table->battery_type = POWER_SUPPLY_TECHNOLOGY_LION;
-	sfi_table->temp_mon_ranges = 0;
-
-}
-/**
-* mfld_umip_read_termination_current - reads the termination current data from umip using IPC.
-* @term_curr : termination current read from umip.
-*/
-static void  mfld_umip_read_termination_current(u32 *term_curr)
-{
-	int mip_offset, ret;
-	/* Read 2bytes of termination current data from the umip */
-	mip_offset = UMIP_REF_FG_TBL + UMIP_BATT_FG_TERMINATION_CURRENT;
-	ret = intel_scu_ipc_read_mip((u8 *)term_curr, 2, mip_offset, 0);
-	if (ret) {
-		dev_warn(msic_dev, "Reading umip for termination_current failed. setting to default");
-		*term_curr = FULL_CURRENT_AVG_HIGH;
-	} else {
-		 /* multiply the current with maxim current conversion factor*/
-		 *term_curr *= TERMINATION_CUR_CONV_FACTOR;
-		 /* convert in to mili amps */
-		 *term_curr /= 1000;
-	}
-	dev_info(msic_dev, "termination_current read from umip: %dmA\n",
-			*term_curr);
-}
-
-
-/**
- * sfi_table_populate - Simple Firmware Interface table Populate
- * @sfi_table: Simple Firmware Interface table structure
- *
- * SFI table has entries for the temperature limits
- * which is populated in a local structure
- */
-static int __init sfi_table_populate(struct sfi_table_header *table)
-{
-	struct sfi_table_simple *sb;
-	struct msic_batt_sfi_prop *pentry;
-	struct ipc_device *ipcdev =
-	    container_of(msic_dev, struct ipc_device, dev);
-	struct msic_power_module_info *mbi = ipc_get_drvdata(ipcdev);
-	int totentrs = 0, totlen = 0;
-
-	sb = (struct sfi_table_simple *)table;
-	if (!sb) {
-		dev_warn(msic_dev, "SFI: Unable to map BATT signature\n");
-		mbi->is_batt_valid = false;
-		return -ENODEV;
-	}
-
-	totentrs = SFI_GET_NUM_ENTRIES(sb, struct msic_batt_sfi_prop);
-	if (totentrs) {
-		pentry = (struct msic_batt_sfi_prop *)sb->pentry;
-		totlen = totentrs * sizeof(*pentry);
-		memcpy(sfi_table, pentry, totlen);
-		mbi->is_batt_valid = true;
-		if (sfi_table->temp_mon_ranges != SFI_TEMP_NR_RNG)
-			dev_warn(msic_dev, "SFI: temperature monitoring range"
-				"doesn't match with its Array elements size\n");
-	} else {
-		dev_warn(msic_dev, "Invalid battery detected\n");
-		sfi_table_invalid_batt(sfi_table);
-		mbi->is_batt_valid = false;
-	}
-
-	return 0;
-}
-
-/**
  * init_batt_props - initialize battery properties
  * @mbi: msic module device structure
  * Context: can sleep
@@ -2857,26 +2602,12 @@ static u8 compute_pwrsrc_lmt_reg_val(int temp_high, int temp_low)
  */
 static void init_batt_thresholds(struct msic_power_module_info *mbi)
 {
-	int ret;
 	static const u16 address[] = {
 		MSIC_BATT_CHR_WDTWRITE_ADDR, MSIC_BATT_CHR_PWRSRCLMT_ADDR,
 	};
 	static u8 data[2];
 
-	batt_thrshlds->vbatt_sh_min = MSIC_BATT_VMIN_THRESHOLD;
-	batt_thrshlds->vbatt_crit = BATT_CRIT_CUTOFF_VOLT;
-	batt_thrshlds->temp_high = MSIC_BATT_TEMP_MAX;
-	batt_thrshlds->temp_low = MSIC_BATT_TEMP_MIN;
-
-	/* Read the threshold data from SMIP */
-	dev_dbg(msic_dev, "[SMIP Read] offset: %x\n", BATT_SMIP_BASE_OFFSET);
-	ret = intel_scu_ipc_read_mip((u8 *) batt_thrshlds,
-			  sizeof(struct batt_safety_thresholds),
-			  BATT_SMIP_BASE_OFFSET, 1);
-	if (ret)
-		dev_warn(msic_dev, "%s: smip read failed\n", __func__);
-
-	if (mbi->is_batt_valid)
+	if (mbi->pdata->is_batt_valid)
 		get_batt_temp_thresholds(&batt_thrshlds->temp_high,
 				&batt_thrshlds->temp_low);
 
@@ -2964,27 +2695,21 @@ static int msic_battery_probe(struct ipc_device *ipcdev)
 		return -ENOMEM;
 	}
 
-	sfi_table = kzalloc(sizeof(struct msic_batt_sfi_prop), GFP_KERNEL);
-	if (!sfi_table) {
-		dev_err(&ipcdev->dev, "%s(): memory allocation failed\n",
-			__func__);
-		kfree(mbi);
-		return -ENOMEM;
-	}
-	batt_thrshlds = kzalloc(sizeof(struct batt_safety_thresholds),
-				GFP_KERNEL);
-	if (!batt_thrshlds) {
-		dev_err(&ipcdev->dev, "%s(): memory allocation failed\n",
-			__func__);
-		kfree(sfi_table);
-		kfree(mbi);
-		return -ENOMEM;
-	}
-
 	mbi->ipcdev = ipcdev;
 	mbi->irq = ipc_get_irq(ipcdev, 0);
 	ipc_set_drvdata(ipcdev, mbi);
+	mbi->pdata = ipcdev->dev.platform_data;
 	msic_dev = &ipcdev->dev;
+
+	batt_thrshlds = &mbi->pdata->batt_thrshlds;
+	sfi_table = &mbi->pdata->sfi_table;
+	if ((batt_thrshlds == NULL) ||
+			(sfi_table == NULL)) {
+		dev_err(&ipcdev->dev, "%s(): memory allocation failed\n",
+			__func__);
+		kfree(mbi);
+		return -ENODEV;
+	}
 
 	/* initialize all required framework before enabling interrupts */
 
@@ -3016,12 +2741,6 @@ static int msic_battery_probe(struct ipc_device *ipcdev)
 				  MSIC_BATTID | CH_NEED_VREF | CH_NEED_VCALIB);
 	if (mbi->adc_handle == NULL)
 		dev_err(&ipcdev->dev, "ADC allocation failed\n");
-
-	/* check for valid SFI table entry for OEM0 table */
-	if (sfi_table_parse(SFI_SIG_OEM0, NULL, NULL, sfi_table_populate)) {
-		sfi_table_invalid_batt(sfi_table);
-		mbi->is_batt_valid = false;
-	}
 
 	/* Initialize battery and charger Properties */
 	init_batt_props(mbi);
@@ -3165,8 +2884,6 @@ sysfs1_create_failed:
 power_reg_failed_usb:
 	iounmap(mbi->msic_intr_iomap);
 ioremap_intr_failed:
-	kfree(batt_thrshlds);
-	kfree(sfi_table);
 	kfree(mbi);
 
 	return retval;
@@ -3210,8 +2927,6 @@ static int msic_battery_remove(struct ipc_device *ipcdev)
 		power_supply_unregister(&mbi->usb);
 		wake_lock_destroy(&mbi->wakelock);
 
-		kfree(batt_thrshlds);
-		kfree(sfi_table);
 		kfree(mbi);
 	}
 

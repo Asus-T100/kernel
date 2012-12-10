@@ -194,49 +194,6 @@
 #define CHR_FAULT_BIT_TIMER	0x6
 #define CHR_FAULT_BIT_NO_BATT	0x7
 
-/* Battery data Offset range in SMIP */
-#define BATT_SMIP_BASE_OFFSET		0x314
-#define BATT_SMIP_END_OFFSET		0x3F8
-
-/* Battery data Offset range in UMIP */
-#define BATT_UMIP_BASE_OFFSET		0x800
-#define BATT_UMIP_END_OFFSET		0xBFF
-/* UMIP parameter Offsets from UMIP base */
-#define UMIP_REV_MAJ_MIN_NUMBER		0x800
-#define UMIP_SIZE_IN_BYTES		0x802
-
-#define UMIP_FG_TBL_SIZE		158
-#define UMIP_REF_FG_TBL			0x806	/* 2 bytes */
-
-#define UMIP_NO_OF_CFG_TBLS		0X8A4
-#define UMIP_BATT_FG_TABLE_SIZE		0x9E
-#define UMIP_NO_OF_CFG_TBLS_SIZE	0x01
-#define UMIP_BATT_FG_TABLE_OFFSET	0x8A5
-#define UMIP_BATT_FG_TERMINATION_CURRENT 0x2E
-
-#define UMIP_BATT_FG_CFG_TBL1 UMIP_BATT_FG_TABLE_OFFSET
-
-#define UMIP_BATT_FG_CFG_TBL2 \
-	(UMIP_BATT_FG_CFG_TBL1 + UMIP_BATT_FG_TABLE_SIZE)
-#define UMIP_BATT_FG_CFG_TBL3 \
-	(UMIP_BATT_FG_CFG_TBL2 + UMIP_BATT_FG_TABLE_SIZE)
-#define UMIP_BATT_FG_CFG_TBL4 \
-	(UMIP_BATT_FG_CFG_TBL3 + UMIP_BATT_FG_TABLE_SIZE)
-#define UMIP_BATT_FG_CFG_TBL5 \
-	(UMIP_BATT_FG_CFG_TBL4 + UMIP_BATT_FG_TABLE_SIZE)
-
-/* UMIP BATT or FG Table definition */
-#define BATT_FG_TBL_REV			0	/* 2 bytes */
-#define BATT_FG_TBL_NAME		2	/* 4 bytes */
-#define BATT_FG_TBL_BATTID		6	/* 8 bytes */
-#define BATT_FG_TBL_SIZE		14	/* 2 bytes */
-#define BATT_FG_TBL_CHKSUM		16	/* 2 bytes */
-#define BATT_FG_TBL_TYPE		18	/* 1 bytes */
-#define BATT_FG_TBL_BODY		14	/* 144 bytes */
-
-#define UMIP_READ	0
-#define UMIP_WRITE	1
-#define SMIP_READ	2
 #define MSIC_IPC_READ	0
 #define MSIC_IPC_WRITE	1
 #define MAX_IPC_ERROR_COUNT 20
@@ -306,11 +263,6 @@
 #define USER_SET_CHRG_LMT3	3
 #define USER_SET_CHRG_NOLMT	4
 
-#define BATTID_STR_LEN		8
-#define MANFCT_STR_LEN		2
-#define MODEL_STR_LEN		4
-#define SFI_TEMP_NR_RNG		4
-
 #define DISCHRG_CURVE_MAX_SAMPLES 17
 #define DISCHRG_CURVE_MAX_COLUMNS 2
 #define CC_TIME_TO_LIVE (HZ/8)	/* 125 ms */
@@ -337,11 +289,6 @@
 #define FPO1_CAPACITY_SHUTDOWN		(1 << 0)
 #define FPO1_VOLTAGE_SHUTDOWN		(1 << 1)
 #define FPO1_LOWBATTINT_SHUTDOWN	(1 << 2)
-
-
-/*current multiplication factor*/
-#define TERMINATION_CUR_CONV_FACTOR  156
-
 
 /* Valid msic exception events */
 enum msic_event {
@@ -374,53 +321,6 @@ enum {
 	MSIC_CHRG_ERROR_WEAKVIN,
 };
 
-/* Battery Thresholds info which need to get from SMIP area */
-struct batt_safety_thresholds {
-	u8 smip_rev;
-	u8 fpo;		/* fixed implementation options */
-	u8 fpo1;	/* fixed implementation options1 */
-	u8 rsys;	/* System Resistance for Fuel gauging */
-
-	/* Minimum voltage necessary to
-	 * be able to safely shut down */
-	short int vbatt_sh_min;
-
-	/* Voltage at which the battery driver
-	 * should report the LEVEL as CRITICAL */
-	short int vbatt_crit;
-
-	short int itc;		/* Charge termination current */
-	short int temp_high;	/* Safe Temp Upper Limit */
-	short int temp_low;	/* Safe Temp lower Limit */
-	u8 brd_id;		/* Unique Board ID */
-} __packed;
-
-/*********************************************************************
- *		SFI table entries Structures
- *********************************************************************/
-
-/* Parameters defining the range */
-struct temp_mon_table {
-	short int temp_up_lim;
-	short int temp_low_lim;
-	short int rbatt;
-	short int full_chrg_vol;
-	short int full_chrg_cur;
-	short int maint_chrg_vol_ll;
-	short int maint_chrg_vol_ul;
-	short int maint_chrg_cur;
-} __packed;
-
-/* SFI table entries structure.*/
-struct msic_batt_sfi_prop {
-	char batt_id[BATTID_STR_LEN];
-	unsigned short int voltage_max;
-	unsigned int capacity;
-	u8 battery_type;
-	u8 temp_mon_ranges;
-	struct temp_mon_table temp_mon_range[SFI_TEMP_NR_RNG];
-} __packed;
-
 /*********************************************************************
  *		Battery properties
  *********************************************************************/
@@ -452,6 +352,7 @@ struct msic_charg_props {
 struct msic_power_module_info {
 
 	struct ipc_device *ipcdev;
+	struct intel_msic_avp_pdata *pdata;
 	bool is_batt_valid;
 
 	/* msic charger data */
