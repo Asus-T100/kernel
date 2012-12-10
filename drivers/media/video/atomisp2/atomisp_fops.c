@@ -522,6 +522,8 @@ static int atomisp_open(struct file *file)
 
 	atomisp_init_struct(isp);
 
+	ida_init(&isp->acc.ida);
+
 done:
 	pipe->users++;
 	mutex_unlock(&isp->mutex);
