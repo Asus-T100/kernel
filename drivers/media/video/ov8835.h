@@ -305,7 +305,7 @@ static const struct ov8830_reg ov8835_still_1080p_15fps[] = {
 	{ OV8830_8BIT, { 0x3809 }, 0x90 },
 	{ OV8830_8BIT, { 0x380a }, 0x04 },
 	{ OV8830_8BIT, { 0x380b }, 0x50 },
-	{ OV8830_8BIT, { 0x380c }, 0x15 }, /* 5500x3364 278.4 15.04 17.6ms */
+	{ OV8830_8BIT, { 0x380c }, 0x15 }, /* 5500x3364 278.4 15.04 29.7ms */
 	{ OV8830_8BIT, { 0x380d }, 0x7c },
 	{ OV8830_8BIT, { 0x380e }, 0x0d },
 	{ OV8830_8BIT, { 0x380f }, 0x24 },
@@ -336,11 +336,10 @@ static const struct ov8830_reg ov8835_still_2M_15fps[] = {
 	{ OV8830_8BIT, { 0x3809 }, 0x60 },
 	{ OV8830_8BIT, { 0x380a }, 0x04 },
 	{ OV8830_8BIT, { 0x380b }, 0xc8 },
-	{ OV8830_8BIT, { 0x380c }, 0x15 }, /*5500x3364 278.4 15.04 17.6ms */
+	{ OV8830_8BIT, { 0x380c }, 0x15 }, /*5500x3364 278.4 15.04 42.4ms */
 	{ OV8830_8BIT, { 0x380d }, 0x7c },
 	{ OV8830_8BIT, { 0x380e }, 0x0d },
 	{ OV8830_8BIT, { 0x380f }, 0x24 },
-	{ OV8830_8BIT, { 0x3810 }, 0x00 },
 	{ OV8830_8BIT, { 0x3810 }, 0x00 },
 	{ OV8830_8BIT, { 0x3811 }, 0x04 },
 	{ OV8830_8BIT, { 0x3812 }, 0x00 },
@@ -525,7 +524,7 @@ static struct ov8830_reg const ov8835_preview_1632x1224_30fps[] = {
 	{ OV8830_8BIT, { 0x3809 }, 0x60 },
 	{ OV8830_8BIT, { 0x380a }, 0x04 },
 	{ OV8830_8BIT, { 0x380b }, 0xc8 },
-	{ OV8830_8BIT, { 0x380c }, 0x11 }, /* 4400x2100 30.1 278.4 6.5ms */
+	{ OV8830_8BIT, { 0x380c }, 0x11 }, /* 4400x2100 30.1 278.4 13.7ms */
 	{ OV8830_8BIT, { 0x380d }, 0x30 },
 	{ OV8830_8BIT, { 0x380e }, 0x08 },
 	{ OV8830_8BIT, { 0x380f }, 0x34 },
@@ -557,7 +556,7 @@ static struct ov8830_reg const ov8835_cont_cap_qvga_30fps[] = {
 	{ OV8830_8BIT, { 0x3809 }, 0x50 },
 	{ OV8830_8BIT, { 0x380a }, 0x01 },
 	{ OV8830_8BIT, { 0x380b }, 0x00 },
-	{ OV8830_8BIT, { 0x380c }, 0x11 }, /* 4400x2100 30.1 278.4 13.7ms */
+	{ OV8830_8BIT, { 0x380c }, 0x11 }, /* 4400x2100 30.1 278.4 23.4ms */
 	{ OV8830_8BIT, { 0x380d }, 0x30 },
 	{ OV8830_8BIT, { 0x380e }, 0x08 },
 	{ OV8830_8BIT, { 0x380f }, 0x34 },
@@ -588,7 +587,7 @@ static struct ov8830_reg const ov8835_cont_cap_vga_30fps[] = {
 	{ OV8830_8BIT, { 0x3809 }, 0x90 },
 	{ OV8830_8BIT, { 0x380a }, 0x01 },
 	{ OV8830_8BIT, { 0x380b }, 0xf0 },
-	{ OV8830_8BIT, { 0x380c }, 0x11 }, /* 4400x2100 30.1 278.4 13.7ms */
+	{ OV8830_8BIT, { 0x380c }, 0x11 }, /* 4400x2100 30.1 278.4 23.4ms */
 	{ OV8830_8BIT, { 0x380d }, 0x30 },
 	{ OV8830_8BIT, { 0x380e }, 0x08 },
 	{ OV8830_8BIT, { 0x380f }, 0x34 },
@@ -619,7 +618,7 @@ static struct ov8830_reg const ov8835_cont_cap_1M_30fps[] = {
 	{ OV8830_8BIT, { 0x3809 }, 0x10 },
 	{ OV8830_8BIT, { 0x380a }, 0x03 },
 	{ OV8830_8BIT, { 0x380b }, 0x10 },
-	{ OV8830_8BIT, { 0x380c }, 0x11 }, /* 4400x2100 30.1 278.4 6.5ms */
+	{ OV8830_8BIT, { 0x380c }, 0x11 }, /* 4400x2100 30.1 278.4 13.6ms */
 	{ OV8830_8BIT, { 0x380d }, 0x30 },
 	{ OV8830_8BIT, { 0x380e }, 0x08 },
 	{ OV8830_8BIT, { 0x380f }, 0x34 },
@@ -651,7 +650,7 @@ static const struct ov8830_reg ov8835_cont_cap_720p_30fps[] = {
 	{ OV8830_8BIT, { 0x3809 }, 0x10 },
 	{ OV8830_8BIT, { 0x380a }, 0x02 },
 	{ OV8830_8BIT, { 0x380b }, 0xe0 },
-	{ OV8830_8BIT, { 0x380c }, 0x11 }, /* 4496x2064 278.4 30.02 */
+	{ OV8830_8BIT, { 0x380c }, 0x11 }, /* 4496x2064 278.4 30.02 18.3ms */
 	{ OV8830_8BIT, { 0x380d }, 0x90 },
 	{ OV8830_8BIT, { 0x380e }, 0x08 },
 	{ OV8830_8BIT, { 0x380f }, 0x10 },
@@ -839,7 +838,7 @@ static const struct ov8830_reg ov8835_video_qcif_dvs_30fps[] = {
 	{ OV8830_8BIT, { 0x3809 }, 0xd8 },
 	{ OV8830_8BIT, { 0x380a }, 0x00 },
 	{ OV8830_8BIT, { 0x380b }, 0xb0 },
-	{ OV8830_8BIT, { 0x380c }, 0x15 }, /* 5458x1700*/
+	{ OV8830_8BIT, { 0x380c }, 0x15 }, /* 5458x1700 278.4 30 21.2ms */
 	{ OV8830_8BIT, { 0x380d }, 0x52 },
 	{ OV8830_8BIT, { 0x380e }, 0x06 },
 	{ OV8830_8BIT, { 0x380f }, 0xa4 },
@@ -870,7 +869,7 @@ static const struct ov8830_reg ov8835_video_cif_dvs_30fps[] = {
 	{ OV8830_8BIT, { 0x3809 }, 0x84 },
 	{ OV8830_8BIT, { 0x380a }, 0x01 },
 	{ OV8830_8BIT, { 0x380b }, 0x3e },
-	{ OV8830_8BIT, { 0x380c }, 0x15 }, /* 5458x1700*/
+	{ OV8830_8BIT, { 0x380c }, 0x15 }, /* 5458x1700 278.4 30 21.2ms */
 	{ OV8830_8BIT, { 0x380d }, 0x52 },
 	{ OV8830_8BIT, { 0x380e }, 0x06 },
 	{ OV8830_8BIT, { 0x380f }, 0xa4 },
@@ -901,7 +900,7 @@ static const struct ov8830_reg ov8835_video_qvga_dvs_30fps[] = {
 	{ OV8830_8BIT, { 0x3809 }, 0x98 },
 	{ OV8830_8BIT, { 0x380a }, 0x01 },
 	{ OV8830_8BIT, { 0x380b }, 0x34 },
-	{ OV8830_8BIT, { 0x380c }, 0x15 }, /* 5458x1700*/
+	{ OV8830_8BIT, { 0x380c }, 0x15 }, /* 5458x1700 278.4 30 21.2ms */
 	{ OV8830_8BIT, { 0x380d }, 0x52 },
 	{ OV8830_8BIT, { 0x380e }, 0x06 },
 	{ OV8830_8BIT, { 0x380f }, 0xa4 },
@@ -932,7 +931,7 @@ static const struct ov8830_reg ov8835_video_vga_dvs_30fps[] = {
 	{ OV8830_8BIT, { 0x3809 }, 0x34 },
 	{ OV8830_8BIT, { 0x380a }, 0x02 },
 	{ OV8830_8BIT, { 0x380b }, 0x68 },
-	{ OV8830_8BIT, { 0x380c }, 0x15 }, /* 5458x1700*/
+	{ OV8830_8BIT, { 0x380c }, 0x15 }, /* 5458x1700 278.4 30 9ms*/
 	{ OV8830_8BIT, { 0x380d }, 0x52 },
 	{ OV8830_8BIT, { 0x380e }, 0x06 },
 	{ OV8830_8BIT, { 0x380f }, 0xa4 },
@@ -963,7 +962,7 @@ static struct ov8830_reg const ov8835_video_480p_dvs_30fps[] = {
 	{ OV8830_8BIT, { 0x3809 }, 0xa8 },
 	{ OV8830_8BIT, { 0x380a }, 0x02 },
 	{ OV8830_8BIT, { 0x380b }, 0x5a },
-	{ OV8830_8BIT, { 0x380c }, 0x15 }, /* 5458x1700*/
+	{ OV8830_8BIT, { 0x380c }, 0x15 }, /* 5458x1700 278.4 30 15.25ms */
 	{ OV8830_8BIT, { 0x380d }, 0x52 },
 	{ OV8830_8BIT, { 0x380e }, 0x06 },
 	{ OV8830_8BIT, { 0x380f }, 0xa4 },
@@ -994,7 +993,7 @@ static struct ov8830_reg const ov8835_video_720p_dvs_30fps[] = {
 	{ OV8830_8BIT, { 0x3809 }, 0x20 },
 	{ OV8830_8BIT, { 0x380a }, 0x03 },
 	{ OV8830_8BIT, { 0x380b }, 0x70 },
-	{ OV8830_8BIT, { 0x380c }, 0x15 }, /* 5458x1700*/
+	{ OV8830_8BIT, { 0x380c }, 0x15 }, /* 5458x1700 278.4 30 15ms */
 	{ OV8830_8BIT, { 0x380d }, 0x52 },
 	{ OV8830_8BIT, { 0x380e }, 0x06 },
 	{ OV8830_8BIT, { 0x380f }, 0xa4 },
