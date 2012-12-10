@@ -115,7 +115,6 @@ void atomisp_acc_init(struct atomisp_device *isp)
 {
 	INIT_LIST_HEAD(&isp->acc.fw);
 	INIT_LIST_HEAD(&isp->acc.memory_maps);
-	ida_init(&isp->acc.ida);
 }
 
 void atomisp_acc_release(struct atomisp_device *isp)
