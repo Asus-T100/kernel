@@ -112,6 +112,61 @@ void init_panel(struct drm_device* dev, int mipi_pipe, enum panel_type p_type)
 		}
 	}
 }
+/*
+* use to overwrite fw setting
+*/
+static void Overwrite_fw_setting(struct mdfld_dsi_config *dsi_config)
+{
+	return;
+}
+/*
+* In some case Fw has initialized different with driver requirement.
+* so driver needs to check whether reusable or not.
+* if can reuse, driver can overwrite some setting according driver.
+* if can not reuse, driver need reset-panel and display controller.
+*/
+bool Check_fw_initilized_reusable(struct mdfld_dsi_config *dsi_config,
+				struct panel_funcs *p_funcs)
+{
+	struct drm_device *dev = dsi_config->dev;
+	struct mdfld_dsi_hw_registers *regs = &dsi_config->regs;
+	int fw_type = 0xff;
+	bool b_reuseable = true;
+	u32 pipe_config = REG_READ(regs->pipeconf_reg);
+
+	PSB_DEBUG_ENTRY("\n");
+
+	if (!p_funcs || !dsi_config) {
+		DRM_ERROR("invalid parameter!\n");
+		return false;
+	}
+
+	if (!(pipe_config & PIPEACONF_ENABLE))
+		return false;
+
+	/*check fw initialized command/vide mode*/
+	if (pipe_config & PIPEACONF_DSR)
+		fw_type = MDFLD_DSI_ENCODER_DBI;
+	else
+		fw_type = MDFLD_DSI_ENCODER_DPI;
+
+	/*check whether the same as driver requirment*/
+	if (dsi_config->type == fw_type) {
+		b_reuseable = true;
+		/*overwrite or totall reuse*/
+		Overwrite_fw_setting(dsi_config);
+	} else {
+		DRM_INFO("can not reuse fw panel setting,do reset\n") ;
+		/*reset dispaly controller*/
+		acquire_ospm_lock();
+		ospm_power_island_down(OSPM_DISPLAY_ISLAND);
+		ospm_power_island_up(OSPM_DISPLAY_ISLAND);
+		release_ospm_lock();
+		b_reuseable = false;
+	}
+
+	return b_reuseable;
+}
 
 void mdfld_output_init(struct drm_device *dev)
 {

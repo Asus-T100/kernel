@@ -108,6 +108,8 @@ struct intel_mid_panel_list {
 extern void mdfld_output_init(struct drm_device *dev);
 extern enum panel_type get_panel_type(struct drm_device *dev, int pipe);
 extern int is_panel_vid_or_cmd(struct drm_device *dev);
+bool Check_fw_initilized_reusable(struct mdfld_dsi_config *dsi_config,
+				struct panel_funcs *p_funcs);
 
 #endif
 

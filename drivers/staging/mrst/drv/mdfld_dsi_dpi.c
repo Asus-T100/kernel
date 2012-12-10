@@ -618,9 +618,13 @@ static int __mdfld_dsi_dpi_set_power(struct drm_encoder *encoder, bool on)
 		last_ospm_suspend = false;
 
 	if (dpi_output->first_boot && dsi_config->dsi_hw_context.panel_on) {
-		printk(KERN_ALERT "skip panle power setting for first boot!"
-				" panel is already powered on\n");
-		goto fun_exit;
+
+		if (Check_fw_initilized_reusable(dsi_config, p_funcs)) {
+			DRM_INFO("skip panle power setting for first boot!"
+					" panel is already powered on\n");
+			goto fun_exit;
+		} else
+			dsi_config->dsi_hw_context.panel_on = 0;
 	}
 
 	/**

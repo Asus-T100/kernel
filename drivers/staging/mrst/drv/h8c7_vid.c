@@ -31,6 +31,7 @@
 #include <linux/gpio.h>
 #include <linux/sfi.h>
 
+static u8 h8c7_soft_reset[]      = {0x01};
 static u8 h8c7_exit_sleep_mode[] = {0x11, 0x00, 0x00, 0x00};
 static u8 h8c7_mcs_protect_off[] = {0xb9, 0xff, 0x83, 0x92};
 static u8 h8c7_set_tear_on[] = {0x35, 0x00, 0x00, 0x00};
@@ -46,6 +47,11 @@ static u8 h8c7_set_power[] = {
 	0x24, 0x00, 0x0d, 0x0d,
 	0x12, 0x1a, 0x3f, 0x3f,
 	0x42, 0x72, 0x00, 0x00};
+static u8 h8c7_set_power_dstb[] = {
+	0xb1, 0x01, 0x01, 0x00,
+	0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00};
 static u8 h8c7_set_disp_reg[] = {
 	0xb2, 0x0f, 0xc8, 0x05,
 	0x0f, 0x08, 0x84, 0x00,
@@ -135,20 +141,16 @@ static int mdfld_h8c7_dpi_ic_init(struct mdfld_dsi_config *dsi_config)
 	PSB_DEBUG_ENTRY("\n");
 	sender->status = MDFLD_DSI_PKG_SENDER_FREE;
 
-	/*wait for 5ms*/
-	wait_timeout = jiffies + (HZ / 200);
-	while (time_before_eq(jiffies, wait_timeout))
-		cpu_relax();
+	/**
+	 * soft reset will let panel exit from deep standby mode and
+	 * keep at standy mode.
+	 */
+	mdfld_dsi_send_gen_long_hs(sender, h8c7_soft_reset, 1, 0);
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
 
-	/* sleep out and wait for 150ms. */
-	mdfld_dsi_send_mcs_long_lp(sender, h8c7_exit_sleep_mode, 4, 0);
-	wait_timeout = jiffies + (3 * HZ / 20);
-	while (time_before_eq(jiffies, wait_timeout))
-		cpu_relax();
-	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
-		return -EIO;
+	/*wait for 5ms*/
+	mdelay(5);
 
 	/* set password and wait for 10ms. */
 	mdfld_dsi_send_gen_long_lp(sender, h8c7_mcs_protect_off, 4, 0);
@@ -330,7 +332,7 @@ void mdfld_h8c7_dpi_controller_init(struct mdfld_dsi_config *dsi_config)
 
 	/*reconfig lane configuration*/
 	dsi_config->lane_count = 3;
-	dsi_config->lane_config = MDFLD_DSI_DATA_LANE_4_0;
+	dsi_config->lane_config = MDFLD_DSI_DATA_LANE_3_1;
 	/* This is for 400 mhz.  Set it to 0 for 800mhz */
 	hw_ctx->cck_div = 1;
 	hw_ctx->pll_bypass_mode = 0;
@@ -339,14 +341,14 @@ void mdfld_h8c7_dpi_controller_init(struct mdfld_dsi_config *dsi_config)
 	hw_ctx->intr_en = 0xffffffff;
 	hw_ctx->hs_tx_timeout = 0xffffff;
 	hw_ctx->lp_rx_timeout = 0xffffff;
-	hw_ctx->turn_around_timeout = 0x14;
-	hw_ctx->device_reset_timer = 0xff;
-	hw_ctx->high_low_switch_count = 0x25;
+	hw_ctx->turn_around_timeout = 0x1f;
+	hw_ctx->device_reset_timer = 0xffff;
+	hw_ctx->high_low_switch_count = 0x28;
 	hw_ctx->init_count = 0xf0;
-	hw_ctx->eot_disable = 0x0;
+	hw_ctx->eot_disable = 0x3;
 	hw_ctx->lp_byteclk = 0x4;
 	hw_ctx->clk_lane_switch_time_cnt = 0xa0014;
-	hw_ctx->dphy_param = 0x150a600f;
+	hw_ctx->dphy_param = 0x20124e1a;
 
 	/*setup video mode format*/
 	hw_ctx->video_mode_format = 0xf;
@@ -475,6 +477,22 @@ static int mdfld_dsi_h8c7_power_off(struct mdfld_dsi_config *dsi_config)
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
+	/**
+	 * MIPI spec shows it must wait 5ms
+	 * before sneding next command
+	 */
+	mdelay(5);
+
+	/*enter deep standby mode*/
+	err = mdfld_dsi_send_gen_long_hs(sender, h8c7_mcs_protect_off, 4, 0);
+	if (err)
+		DRM_ERROR("Failed to turn off protection\n");
+
+	err = mdfld_dsi_send_gen_long_hs(sender, h8c7_set_power_dstb, 14, 0);
+	if (err)
+		DRM_ERROR("Failed to enter DSTB\n");
+	mdelay(5);
+	mdfld_dsi_send_gen_long_hs(sender, h8c7_mcs_protect_on, 4, 0);
 	return 0;
 }
 
@@ -492,7 +510,7 @@ int mdfld_dsi_h8c7_set_brightness(struct mdfld_dsi_config *dsi_config,
 	}
 
 	duty_val = (255 * level) / 100;
-	h8c7_set_brightness[0] = (0x00000051 | (duty_val << 8));
+	h8c7_set_brightness[1] = duty_val;
 
 	/* set backlight to full brightness and wait for 10ms. */
 	mdfld_dsi_send_mcs_long_hs(sender, h8c7_set_brightness, 4, 0);
@@ -532,13 +550,10 @@ int mdfld_dsi_h8c7_panel_reset(struct mdfld_dsi_config *dsi_config)
 
 	gpio_set_value_cansleep(mipi_reset_gpio, 0);
 	/* HW reset need minmum 3ms */
-	usleep_range(3000, 4000);
+	mdelay(11);
 
 	gpio_set_value_cansleep(mipi_reset_gpio, 1);
-
-	/* After reset and Before sending IC init sequence,
-	 * need wait 7ms, this time has confirmed ok by panel vender*/
-	usleep_range(7000, 7100);
+	mdelay(5);
 
 	return 0;
 }
@@ -587,7 +602,7 @@ void h8c7_vid_init(struct drm_device *dev, struct panel_funcs *p_funcs)
 
 	p_funcs->get_config_mode = h8c7_get_config_mode;
 	p_funcs->get_panel_info = h8c7_get_panel_info;
-	p_funcs->reset = mdfld_dsi_h8c7_panel_reset;
+	p_funcs->reset = NULL;
 	p_funcs->drv_ic_init = mdfld_h8c7_dpi_ic_init;
 	p_funcs->dsi_controller_init = mdfld_h8c7_dpi_controller_init;
 	p_funcs->detect = mdfld_dsi_h8c7_detect;
