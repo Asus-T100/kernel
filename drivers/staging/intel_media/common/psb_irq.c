@@ -254,8 +254,11 @@ static int mipi_te_hdmi_vsync_check(struct drm_device *dev, uint32_t pipe)
 			 */
 			pipe_surface[0] = REG_READ(DSPASURF);
 			ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-		} else
+		} else {
+			spin_unlock_irqrestore(&dev_priv->irqmask_lock,
+					irqflags);
 			return 1;
+		}
 
 		if ((pipea_stat & PIPE_TE_ENABLE)
 		    && (pipeb_ctl & HDMIB_PORT_EN)
