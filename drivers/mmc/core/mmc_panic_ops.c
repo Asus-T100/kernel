@@ -540,35 +540,18 @@ static int mmc_emergency_reinit_card(void)
 	host->panic_ops->set_ios(host);
 
 	/*
-	 * Indicate DDR mode (if supported).
-	 */
-	if (mmc_card_highspeed(card)) {
-		if ((card->ext_csd.card_type & EXT_CSD_CARD_TYPE_DDR_1_8V)
-			&& (host->caps & (MMC_CAP_1_8V_DDR)))
-				ddr = MMC_1_8V_DDR_MODE;
-		else if ((card->ext_csd.card_type & EXT_CSD_CARD_TYPE_DDR_1_2V)
-			&& (host->caps & (MMC_CAP_1_2V_DDR)))
-				ddr = MMC_1_2V_DDR_MODE;
-	}
-
-	/*
-	 * Activate wide bus and DDR (if supported).
+	 * Activate wide bus.
+	 * By default use SDR mode for panic write
 	 */
 	if ((card->csd.mmca_vsn >= CSD_SPEC_VER_4) &&
 	    (host->caps & (MMC_CAP_4_BIT_DATA | MMC_CAP_8_BIT_DATA))) {
 		unsigned ext_csd_bit, bus_width;
 
 		if (host->caps & MMC_CAP_8_BIT_DATA) {
-			if (ddr)
-				ext_csd_bit = EXT_CSD_DDR_BUS_WIDTH_8;
-			else
-				ext_csd_bit = EXT_CSD_BUS_WIDTH_8;
+			ext_csd_bit = EXT_CSD_BUS_WIDTH_8;
 			bus_width = MMC_BUS_WIDTH_8;
 		} else {
-			if (ddr)
-				ext_csd_bit = EXT_CSD_DDR_BUS_WIDTH_4;
-			else
-				ext_csd_bit = EXT_CSD_BUS_WIDTH_4;
+			ext_csd_bit = EXT_CSD_BUS_WIDTH_4;
 			bus_width = MMC_BUS_WIDTH_4;
 		}
 
@@ -579,15 +562,11 @@ static int mmc_emergency_reinit_card(void)
 			goto err;
 
 		if (err) {
-			printk(KERN_WARNING "%s: switch to bus width %d ddr %d "
-			       "failed\n", __func__, 1 << bus_width, ddr);
+			printk(KERN_WARNING "%s: switch to bus %dbit failed\n",
+					__func__, 1 << bus_width);
 			err = 0;
 		} else {
-			if (ddr)
-				mmc_card_set_ddr_mode(card);
-			else
-				ddr = MMC_SDR_MODE;
-
+			ddr = MMC_SDR_MODE;
 			host->ios.bus_width = bus_width;
 			host->panic_ops->set_ios(host);
 		}
