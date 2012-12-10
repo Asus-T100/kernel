@@ -1821,7 +1821,7 @@ static int mmc_do_erase(struct mmc_card *card, unsigned int from,
 	memset(&cmd, 0, sizeof(struct mmc_command));
 	cmd.opcode = MMC_ERASE;
 	cmd.arg = arg;
-	if (card->quirks & MMC_QUIRK_POLL_WAIT_BUSY) {
+	if (card->host->caps2 & MMC_CAP2_POLL_R1B_BUSY) {
 		cmd.flags = MMC_RSP_SPI_R1 | MMC_RSP_R1 | MMC_CMD_AC;
 		if (card->host->max_discard_to)
 			cmd.cmd_timeout_ms = card->host->max_discard_to - 1;
@@ -1840,7 +1840,7 @@ static int mmc_do_erase(struct mmc_card *card, unsigned int from,
 	}
 
 	if (mmc_host_is_spi(card->host) &&
-			!(card->quirks & MMC_QUIRK_POLL_WAIT_BUSY))
+			!(card->host->caps2 & MMC_CAP2_POLL_R1B_BUSY))
 		goto out;
 
 	do {
@@ -2016,16 +2016,8 @@ static unsigned int mmc_do_calc_max_discard(struct mmc_card *card,
 		qty += y;
 	} while (y);
 
-	/*
-	 * If qty == 0 or qty == 1, means the timeout value required by
-	 * card is larger than its host controller allowed, in this case
-	 * card needs to have the MMC_QUIRK_POLL_WAIT_BUSY to use polling
-	 * to wait busy, and the max_discard is set to one erase_size
-	 */
-	if (!qty || qty == 1) {
-		qty = 1;
-		card->quirks |= MMC_QUIRK_POLL_WAIT_BUSY;
-	}
+	if (!qty)
+		return 0;
 
 	if (arg & MMC_TRIM_ARGS) {
 		if (qty == 1)
@@ -2052,6 +2044,9 @@ unsigned int mmc_calc_max_discard(struct mmc_card *card)
 	unsigned int max_discard, max_trim;
 
 	if (!host->max_discard_to)
+		return UINT_MAX;
+
+	if (host->caps2 & MMC_CAP2_POLL_R1B_BUSY)
 		return UINT_MAX;
 
 	max_discard = mmc_do_calc_max_discard(card, MMC_ERASE_ARG);
