@@ -273,6 +273,7 @@ static const struct ov8830_reg ov8835_pll_278_4_mhz[] = {
 	{ OV8830_8BIT, { 0x3099 }, 0x13 },
 	{ OV8830_8BIT, { 0x309a }, 0x00 },
 	{ OV8830_8BIT, { 0x309b }, 0x00 },
+	{ OV8830_8BIT, { 0x309c }, 0x01 },
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
