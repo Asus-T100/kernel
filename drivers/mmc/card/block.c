@@ -914,6 +914,10 @@ static int mmc_rpmb_req_process(struct mmc_blk_data *md,
 		ret = -EPERM;
 		goto out;
 	}
+
+	/* wait for background operation finished */
+	mmc_stop_bkops(card);
+
 	/*
 	 * before start, let's change to RPMB partition first
 	 */
