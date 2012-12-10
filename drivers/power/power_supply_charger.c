@@ -109,6 +109,7 @@ static inline void get_cur_chrgr_prop(struct power_supply *psy,
 	chrgr_prop->online = IS_ONLINE(psy);
 	chrgr_prop->present = IS_PRESENT(psy);
 	chrgr_prop->cable = CABLE_TYPE(psy);
+	chrgr_prop->tstamp = get_jiffies_64();
 
 }
 
@@ -153,8 +154,10 @@ static inline void cache_chrgr_prop(struct charger_props *chrgr_prop_new)
 
 update_props:
 	chrgr_cache->status = chrgr_prop_new->status;
+	chrgr_cache->online = chrgr_prop_new->online;
 	chrgr_cache->present = chrgr_prop_new->present;
 	chrgr_cache->cable = chrgr_prop_new->cable;
+	chrgr_cache->tstamp = chrgr_prop_new->tstamp;
 }
 
 
@@ -206,6 +209,7 @@ update_props:
 	bat_cache->current_now = bat_prop_new->current_now;
 	bat_cache->temperature = bat_prop_new->temperature;
 	bat_cache->status = bat_prop_new->status;
+	bat_cache->tstamp = bat_prop_new->tstamp;
 }
 
 static inline int get_bat_prop_cache(struct power_supply *psy,
@@ -234,6 +238,7 @@ static inline void get_cur_bat_prop(struct power_supply *psy,
 	bat_prop->current_now = CURRENT_NOW(psy) / 1000;
 	bat_prop->temperature = TEMPERATURE(psy) / 10;
 	bat_prop->status = STATUS(psy);
+	bat_prop->tstamp = get_jiffies_64();
 
 }
 
