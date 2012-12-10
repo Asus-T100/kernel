@@ -542,7 +542,7 @@ static struct ov8830_reg const ov8835_preview_1632x1224_30fps[] = {
 };
 
 static struct ov8830_reg const ov8835_cont_cap_qvga_30fps[] = {
-	{ OV8830_8BIT, { 0x3660 }, 0x80 }, /* skipping related skip: 81 */
+	{ OV8830_8BIT, { 0x3660 }, 0x81 }, /* skipping related skip: 81 */
 	{ OV8830_8BIT, { 0x3708 }, 0xe6 }, /* Binning Related e6 : e3 */
 	{ OV8830_8BIT, { 0x3800 }, 0x00 }, /* 4, 4, 3291, 2475 3288x2472 */
 	{ OV8830_8BIT, { 0x3801 }, 0x04 },
@@ -573,7 +573,7 @@ static struct ov8830_reg const ov8835_cont_cap_qvga_30fps[] = {
 };
 
 static struct ov8830_reg const ov8835_cont_cap_vga_30fps[] = {
-	{ OV8830_8BIT, { 0x3660 }, 0x80 }, /* skipping related skip: 81 */
+	{ OV8830_8BIT, { 0x3660 }, 0x81 }, /* skipping related skip: 81 */
 	{ OV8830_8BIT, { 0x3708 }, 0xe6 }, /* Binning Related e6 : e3 */
 	{ OV8830_8BIT, { 0x3800 }, 0x00 }, /* 4, 4, 3291, 2475 3288x2472 */
 	{ OV8830_8BIT, { 0x3801 }, 0x04 },
@@ -824,7 +824,7 @@ static const struct ov8830_reg ov8835_cont_cap_6M_30fps[] = {
 /***************** OV8835 VIDEO ***************************************/
 
 static const struct ov8830_reg ov8835_video_qcif_dvs_30fps[] = {
-	{ OV8830_8BIT, { 0x3660 }, 0x80 }, /* skipping related skip: 81 */
+	{ OV8830_8BIT, { 0x3660 }, 0x81 }, /* skipping related skip: 81 */
 	{ OV8830_8BIT, { 0x3708 }, 0xe6 }, /* Binning Related e6 : e3 */
 	{ OV8830_8BIT, { 0x3800 }, 0x00 }, /* 4, 4, 3291, 2475 3288x2472 */
 	{ OV8830_8BIT, { 0x3801 }, 0x04 },
@@ -846,8 +846,8 @@ static const struct ov8830_reg ov8835_video_qcif_dvs_30fps[] = {
 	{ OV8830_8BIT, { 0x3811 }, 0x04 },
 	{ OV8830_8BIT, { 0x3812 }, 0x00 },
 	{ OV8830_8BIT, { 0x3813 }, 0x04 },
-	{ OV8830_8BIT, { 0x3814 }, 0x31 },
-	{ OV8830_8BIT, { 0x3815 }, 0x31 },
+	{ OV8830_8BIT, { 0x3814 }, 0x71 },
+	{ OV8830_8BIT, { 0x3815 }, 0x71 },
 	{ OV8830_8BIT, { 0x3820 }, 0x11 },
 	{ OV8830_8BIT, { 0x3821 }, 0x0f },
 	{ OV8830_8BIT, { 0x4004 }, 0x02 }, /* BLC No. of blacklines used. */
@@ -855,7 +855,7 @@ static const struct ov8830_reg ov8835_video_qcif_dvs_30fps[] = {
 };
 
 static const struct ov8830_reg ov8835_video_cif_dvs_30fps[] = {
-	{ OV8830_8BIT, { 0x3660 }, 0x80 }, /* skipping related skip: 81 */
+	{ OV8830_8BIT, { 0x3660 }, 0x81 }, /* skipping related skip: 81 */
 	{ OV8830_8BIT, { 0x3708 }, 0xe6 }, /* Binning Related e6 : e3 */
 	{ OV8830_8BIT, { 0x3800 }, 0x00 }, /* 4, 4, 3291, 2475 3288x2472 */
 	{ OV8830_8BIT, { 0x3801 }, 0x04 },
@@ -877,8 +877,8 @@ static const struct ov8830_reg ov8835_video_cif_dvs_30fps[] = {
 	{ OV8830_8BIT, { 0x3811 }, 0x04 },
 	{ OV8830_8BIT, { 0x3812 }, 0x00 },
 	{ OV8830_8BIT, { 0x3813 }, 0x04 },
-	{ OV8830_8BIT, { 0x3814 }, 0x31 },
-	{ OV8830_8BIT, { 0x3815 }, 0x31 },
+	{ OV8830_8BIT, { 0x3814 }, 0x71 },
+	{ OV8830_8BIT, { 0x3815 }, 0x71 },
 	{ OV8830_8BIT, { 0x3820 }, 0x11 },
 	{ OV8830_8BIT, { 0x3821 }, 0x0f },
 	{ OV8830_8BIT, { 0x4004 }, 0x02 }, /* BLC No. of blacklines used. */
@@ -886,7 +886,7 @@ static const struct ov8830_reg ov8835_video_cif_dvs_30fps[] = {
 };
 
 static const struct ov8830_reg ov8835_video_qvga_dvs_30fps[] = {
-	{ OV8830_8BIT, { 0x3660 }, 0x80 }, /* skipping related skip: 81 */
+	{ OV8830_8BIT, { 0x3660 }, 0x81 }, /* skipping related skip: 81 */
 	{ OV8830_8BIT, { 0x3708 }, 0xe6 }, /* Binning Related e6 : e3 */
 	{ OV8830_8BIT, { 0x3800 }, 0x00 }, /* 4, 4, 3291, 2475 3288x2472 */
 	{ OV8830_8BIT, { 0x3801 }, 0x04 },
@@ -908,8 +908,8 @@ static const struct ov8830_reg ov8835_video_qvga_dvs_30fps[] = {
 	{ OV8830_8BIT, { 0x3811 }, 0x04 },
 	{ OV8830_8BIT, { 0x3812 }, 0x00 },
 	{ OV8830_8BIT, { 0x3813 }, 0x04 },
-	{ OV8830_8BIT, { 0x3814 }, 0x31 },
-	{ OV8830_8BIT, { 0x3815 }, 0x31 },
+	{ OV8830_8BIT, { 0x3814 }, 0x71 },
+	{ OV8830_8BIT, { 0x3815 }, 0x71 },
 	{ OV8830_8BIT, { 0x3820 }, 0x11 },
 	{ OV8830_8BIT, { 0x3821 }, 0x0f },
 	{ OV8830_8BIT, { 0x4004 }, 0x02 }, /* BLC No. of blacklines used. */

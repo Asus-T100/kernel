@@ -1092,14 +1092,24 @@ static int ov8830_get_intg_factor(struct v4l2_subdev *sd,
 	m->fine_integration_time_max_margin = 0;
 
 	/*
-	 * read_mode inicate whether binning is used for calculating
+	 * read_mode indicate whether binning is used for calculating
 	 * the correct exposure value from the user side. So adapt the
 	 * read mode values accordingly.
 	 */
 	m->read_mode = ov8830_res[dev->fmt_idx].bin_factor_x ?
 		OV8830_READ_MODE_BINNING_ON : OV8830_READ_MODE_BINNING_OFF;
-	m->binning_factor_x = ov8830_res[dev->fmt_idx].bin_factor_x ? 2 : 1;
-	m->binning_factor_y = ov8830_res[dev->fmt_idx].bin_factor_y ? 2 : 1;
+
+	ret = ov8830_get_register(sd, OV8830_TIMING_X_INC,
+		dev->curr_res_table[dev->fmt_idx].regs);
+	if (ret < 0)
+		return ret;
+	m->binning_factor_x = ((ret >> 4) + 1) / 2;
+
+	ret = ov8830_get_register(sd, OV8830_TIMING_Y_INC,
+		dev->curr_res_table[dev->fmt_idx].regs);
+	if (ret < 0)
+		return ret;
+	m->binning_factor_y = ((ret >> 4) + 1) / 2;
 
 	/* Get the cropping and output resolution to ISP for this mode. */
 	ret =  ov8830_get_register_16bit(sd, OV8830_HORIZONTAL_START_H,
