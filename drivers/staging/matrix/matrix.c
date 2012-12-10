@@ -35,7 +35,7 @@
 #include "matrix.h"
 
 #define NAME "matrix"
-#define DRIVER_VERSION "2.5"
+#define DRIVER_VERSION "2.6"
 static int matrix_major_number;
 static bool instantiated;
 static bool mem_alloc_status;
@@ -315,6 +315,10 @@ static struct mtx_size_info xhg_buf_info;
 			} \
 		} \
 	} while (0)
+
+#define MCR_WRITE_OPCODE    0x11
+#define MCR_READ_OPCODE     0x10
+#define BIT_POS_OPCODE      24
 
 static int matrix_open(struct inode *in, struct file *filp)
 {
@@ -867,7 +871,48 @@ ERROR:
  */
 static int read_config(unsigned long *ptr_data)
 {
-	*ptr_data = platform_pci_read32((unsigned long)*ptr_data);
+
+	unsigned long buf, data;
+
+	if (copy_from_user
+	    (&buf, (u32 *)ptr_data,
+	     sizeof(unsigned long)) > 0) {
+		dev_err(matrix_device, "file : %s ,function : %s ,line %i\n",
+			__FILE__, __func__, __LINE__);
+		return -EFAULT;
+	}
+	data = platform_pci_read32(buf);
+	/* Write back to the same user buffer */
+	if (copy_to_user
+	    ((unsigned long *)ptr_data,
+	     &data, sizeof(unsigned long)) > 0) {
+		dev_err(matrix_device, "file : %s ,function : %s ,line %i\n",
+			__FILE__, __func__, __LINE__);
+		return -EFAULT;
+	}
+	return 0;
+}
+
+/**
+ * write_config - proceduer to write the config db registers
+ * @ptr_data : user buffer address that contains information like
+ * mcr (port) and mdr (data) used for writing config DB registers.
+ */
+static inline int write_config(unsigned long *ptr_data)
+{
+	unsigned long addr, val;
+	struct mtx_pci_ops pci_data;
+	if (copy_from_user
+	    (&pci_data,
+	     (struct mtx_pci_ops *)ptr_data,
+	     sizeof(struct mtx_pci_ops)) > 0) {
+		dev_err(matrix_device, "file : %s ,function : %s ,line %i\n",
+			__FILE__, __func__, __LINE__);
+		return -EFAULT;
+	}
+	addr = pci_data.port | (MCR_WRITE_OPCODE << BIT_POS_OPCODE);
+	val = pci_data.data;
+	platform_pci_write32(addr, val);
 	return 0;
 }
 
@@ -1089,6 +1134,8 @@ static long matrix_ioctl(struct file
 		return ioctl_gmch(request, ptr_data);
 	case IOCTL_READ_CONFIG_DB:
 		return read_config((unsigned long *)ptr_data);
+	case IOCTL_WRITE_CONFIG_DB:
+		return write_config((unsigned long *)ptr_data);
 	default:
 		dev_dbg(matrix_device,
 			"file : %s ,function : %s ,line %i\n", __FILE__,

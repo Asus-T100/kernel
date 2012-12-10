@@ -201,6 +201,7 @@ struct mtx_size_info {
 #define IOCTL_VERSION_INFO _IOW(0xF8, 0x00000100, char *)
 #define IOCTL_COPY_TO_USER _IOW(0xF8, 0x00000200, struct xchange_buffer_all *)
 #define IOCTL_READ_CONFIG_DB _IOW(0xF8, 0x00000400, unsigned long *)
+#define IOCTL_WRITE_CONFIG_DB _IOR(0xF8, 0x00001000, unsigned long *)
 #define IOCTL_OPERATE_ON_MSR _IOW(0xF8, 0x00100000, struct mtx_msr *)
 
 #define IOCTL_MSR _IOW(0xF8, 0x10000000, struct mtx_msr_container *)
