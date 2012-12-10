@@ -41,11 +41,12 @@ static struct mmc_panic_host *panic_host;
 
 static int mmc_emergency_prepare(void)
 {
-	struct mmc_panic_host *host = panic_host;
-	struct mmc_host *mmc = host->mmc;
+	struct mmc_host *mmc = panic_host->mmc;
 
-	if (!host->panic_ops)
-		return -EPERM;
+	if (mmc == NULL) {
+		pr_err("%s: panic host was not setup\n", __func__);
+		return -ENODEV;
+	}
 	/*
 	 * once panic happened, we monopolize the host controller.
 	 * so claim host without relase any more.
@@ -61,11 +62,6 @@ static int mmc_emergency_prepare(void)
 	mmc->clk_requests++;
 	mmc->ios.clock = mmc->clk_old;
 #endif
-	/*
-	 * prepare host controller
-	 */
-	if (host->panic_ops->prepare)
-		return host->panic_ops->prepare(host);
 	return 0;
 }
 
@@ -617,7 +613,20 @@ int mmc_emergency_write(char *data, unsigned int blk_id)
 	 */
 	memcpy(host->logbuf, data, SECTOR_SIZE);
 
+	/* hold Dekker mutex first */
+	if (host->panic_ops->hold_mutex && host->panic_ops->release_mutex) {
+		ret = host->panic_ops->hold_mutex(host);
+		if (ret) {
+			pr_err("%s: hold Dekker mutex failed\n", __func__);
+			return ret;
+		}
+	}
+
 	ret = __mmc_emergency_write(blk_id);
+
+	/* release Dekker mutex */
+	if (host->panic_ops->hold_mutex && host->panic_ops->release_mutex)
+		host->panic_ops->release_mutex(host);
 
 	return ret;
 }
@@ -634,22 +643,42 @@ EXPORT_SYMBOL(mmc_emergency_write);
  */
 int mmc_emergency_init(void)
 {
+	struct mmc_panic_host *host = panic_host;
 	int ret;
-	if (panic_host == NULL) {
+	if (host == NULL) {
 		pr_err("%s: no device for panic record\n", __func__);
-		return -ENODEV;
-	}
-
-	if (panic_host->mmc == NULL) {
-		pr_err("%s: panic host was not setup\n", __func__);
 		return -ENODEV;
 	}
 
 	ret = mmc_emergency_prepare();
 	if (ret) {
-		pr_info("%s: prepare host controller failed\n", __func__);
+		pr_err("%s: prepare panic host failed\n", __func__);
 		return ret;
 	}
+
+	if (!host->panic_ops) {
+		pr_err("%s: no panic_ops for panic host\n", __func__);
+		return -EPERM;
+	}
+
+	/*
+	 * prepare host controller
+	 */
+	if (host->panic_ops->prepare)
+		host->panic_ops->prepare(host);
+
+	/*
+	 * during init eMMC card, don't want to be interrupted by SCU FW
+	 */
+	if (host->panic_ops->hold_mutex && host->panic_ops->release_mutex) {
+		ret = host->panic_ops->hold_mutex(host);
+		if (ret) {
+			pr_err("%s: hold Dekker mutex failed\n", __func__);
+			return ret;
+		}
+	} else if (host->panic_ops->power_on)
+		/* don't have Dekker mutex, just power on host controller */
+		host->panic_ops->power_on(host);
 
 	/*
 	 * reset card since we are not sure whether card is in a good status
@@ -660,15 +689,19 @@ int mmc_emergency_init(void)
 	ret = mmc_emergency_reinit_card();
 	if (ret) {
 		pr_info("%s: reinit card failed\n", __func__);
-		return ret;
+		goto out;
 	}
 
 	/*
 	 * OK. we are ready
 	 */
 	mmc_emergency_ready();
+out:
+	/* release Dekker mutex */
+	if (host->panic_ops->hold_mutex && host->panic_ops->release_mutex)
+		host->panic_ops->release_mutex(host);
 
-	return 0;
+	return ret;
 }
 EXPORT_SYMBOL(mmc_emergency_init);
 

@@ -84,10 +84,13 @@ struct mmc_panic_host;
 
 struct mmc_host_panic_ops {
 	void	(*request)(struct mmc_panic_host *, struct mmc_request *);
-	int	(*prepare)(struct mmc_panic_host *);
+	void	(*prepare)(struct mmc_panic_host *);
 	int	(*setup)(struct mmc_panic_host *);
 	void	(*set_ios)(struct mmc_panic_host *);
 	void	(*dumpregs)(struct mmc_panic_host *);
+	int	(*power_on)(struct mmc_panic_host *);
+	int	(*hold_mutex)(struct mmc_panic_host *);
+	void	(*release_mutex)(struct mmc_panic_host *);
 };
 
 struct mmc_host_ops {
