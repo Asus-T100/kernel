@@ -15,6 +15,19 @@ menuconfig X86_PLATFORM_DEVICES
 
 if X86_PLATFORM_DEVICES
 
+config ANDROID_BOOTMODE
+	tristate "Android platform booting mode"
+	depends on ANDROID
+	---help---
+	This will read the android boot mode from the command line parameter
+	parsing macro and expose as a generic function in the kernel. Any of
+	the drivers can call this generic function to get the boot mode.
+
+	Say Y here to enable support to read the android platform
+	boot mode generic function.
+
+	If you are not sure, say N here.
+
 config ACER_WMI
 	tristate "Acer WMI Laptop Extras"
 	depends on ACPI
