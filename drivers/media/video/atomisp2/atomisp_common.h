@@ -54,11 +54,6 @@ struct atomisp_format_bridge {
 	unsigned char description[32];	/* the same as struct v4l2_fmtdesc */
 };
 
-struct atomisp_resolution {
-	u32 width;
-	u32 height;
-};
-
 struct atomisp_fmt {
 	u32 pixelformat;
 	u32 depth;
