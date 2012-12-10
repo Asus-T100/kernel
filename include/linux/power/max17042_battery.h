@@ -123,6 +123,7 @@ struct max17042_platform_data {
 	bool is_capacity_shutdown;
 	bool is_lowbatt_shutdown;
 	bool file_sys_storage_enabled;
+	bool soc_intr_mode_enabled;
 	int technology;
 	char battid[BATTID_LEN + 1];
 
