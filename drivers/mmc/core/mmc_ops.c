@@ -764,7 +764,10 @@ static int mmc_rpmb_request_check(struct mmc_card *card,
 					p_req->addr,
 					p_req->blk_cnt,
 					card->ext_csd.rpmb_size);
-			return -EINVAL;
+			/*
+			 * Not return error here since we want device to handle
+			 * such errors
+			 */
 		}
 		if (p_req->blk_cnt == 0) {
 			pr_err("%s: Type %d has zero block count\n",
