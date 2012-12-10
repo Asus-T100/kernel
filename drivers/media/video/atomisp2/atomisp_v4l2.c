@@ -1135,6 +1135,8 @@ static void __devexit atomisp_pci_remove(struct pci_dev *dev)
 	struct atomisp_device *isp = (struct atomisp_device *)
 		pci_get_drvdata(dev);
 
+	ida_destroy(&isp->acc.ida);
+
 	pm_runtime_forbid(&dev->dev);
 	pm_runtime_get_noresume(&dev->dev);
 	pm_qos_remove_request(&isp->pm_qos);

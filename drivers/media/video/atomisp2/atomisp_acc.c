@@ -115,6 +115,7 @@ void atomisp_acc_init(struct atomisp_device *isp)
 {
 	INIT_LIST_HEAD(&isp->acc.fw);
 	INIT_LIST_HEAD(&isp->acc.memory_maps);
+	ida_init(&isp->acc.ida);
 }
 
 void atomisp_acc_release(struct atomisp_device *isp)
@@ -132,8 +133,6 @@ void atomisp_acc_release(struct atomisp_device *isp)
 		ida_remove(&isp->acc.ida, acc_fw->handle);
 		acc_free_fw(acc_fw);
 	}
-
-	ida_destroy(&isp->acc.ida);
 
 	/* Free all mapped memory blocks */
 	list_for_each_entry_safe(atomisp_map, tm, &isp->acc.memory_maps, list) {
