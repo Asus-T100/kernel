@@ -820,6 +820,7 @@ CONFIG_BT_HIDP=y
 #
 # Bluetooth device drivers
 #
+CONFIG_BCM_BT_LPM=m
 # CONFIG_BT_HCIBTUSB is not set
 # CONFIG_BT_HCIBTSDIO is not set
 CONFIG_BT_HCIUART=y
