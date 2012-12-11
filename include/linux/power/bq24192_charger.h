@@ -89,6 +89,7 @@ struct ctp_batt_safety_thresholds {
 /* Parameters defining the range */
 struct ctp_temp_mon_table {
 	short int temp_up_lim;
+	short int temp_low_lim;
 	short int rbatt;
 	short int full_chrg_vol;
 	short int full_chrg_cur;
@@ -104,7 +105,7 @@ struct ctp_batt_sfi_prop {
 	u8 battery_type;
 	u8 temp_mon_ranges;
 	struct ctp_temp_mon_table temp_mon_range[CLT_SFI_TEMP_NR_RNG];
-	short int temp_low_lim;
+
 } __packed;
 
 struct bq24192_platform_data {
@@ -119,31 +120,6 @@ struct bq24192_platform_data {
 	short int temp_low_lim;
 	bool sfi_tabl_present;
 };
-
-/* SMIP SRAM Battery Temperature data */
-struct ctp_smip_sram_temp {
-	/* Temp range values */
-	short int b1tul;       /* Temp range upper limit */
-	u8 b1tpr;              /* Temp range pack resistance */
-	short int b1tfcv;      /* Temp range fast charge voltage upper */
-	short int b1tfci;      /* Temp range fast charge current limit */
-	short int b1tmcvstar_lower;    /*Temp range main charge voltage lower*/
-	short int b1tmcvstop_upper;    /*Temp range main charge voltage upper*/
-	short int b1tmci;      /* Temp range main charge current limit */
-} __packed;
-
-/* SMIP SRAM Battery property structure */
-struct ctp_smip_sram_batt_prop {
-	short int b1idmin;      /* Battery 1 id - min value (ohms) */
-	short int b1idmax;      /* Battery 1 id - max value (ohms) */
-	u8 b1type;              /* Battery 1 type */
-	short int b1cap;        /* Battery 1 capacity (mah) */
-	short int b1vmax;       /* Battery 1 max voltage (mv)*/
-	u8 b1safe_voltage;              /* Battery 1 charger safe voltage */
-	u8 b1safe_current;              /* Battery 1 charger safe current */
-	struct ctp_smip_sram_temp smip_sram_temp[CLT_SFI_TEMP_NR_RNG];
-	short int b1t1ll;       /* Temp range 1 lower limit */
-} __packed;
 
 int bq24192_slave_mode_enable_charging(int volt, int cur, int ilim);
 int bq24192_slave_mode_disable_charging(void);

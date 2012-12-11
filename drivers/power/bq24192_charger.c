@@ -199,7 +199,7 @@
 #define STATUS_UPDATE_INTERVAL		(HZ * 60) /* 60sec */
 
 #define BQ24192_CHRG_OTG_GPIO		36
-#define MAINTENANCE_CHRG_JIFFIES	(HZ * 75) /* 75sec */
+#define MAINTENANCE_CHRG_JIFFIES	(HZ * 60) /* 60sec */
 #define INITIAL_THREAD_JIFFY		(HZ / 2)  /* 500msec */
 
 #define CLT_BPTHERM_CURVE_MAX_SAMPLES	23
@@ -254,8 +254,7 @@
 
 static struct power_supply *fg_psy;
 static struct ctp_batt_sfi_prop *ctp_sfi_table;
-/* Battery properties structure */
-static struct ctp_smip_sram_batt_prop *ctp_smip_batt_prop;
+
 
 struct bq24192_chrg_regs {
 	u8 in_src;
@@ -270,7 +269,6 @@ struct bq24192_chip {
 	struct power_supply usb;
 	struct power_supply_charger_cap cap;
 	struct delayed_work chrg_evt_wrkr;
-	struct delayed_work stat_mon_wrkr;
 	struct delayed_work maint_chrg_wrkr;
 	struct mutex event_lock;
 
@@ -293,6 +291,8 @@ struct bq24192_chip {
 	int curr_chrg;
 	int input_curr;
 	int cached_chrg_cur_cntl;
+	bool is_pwr_good;
+	int cached_temp;
 	struct power_supply_charger_cap cached_cap;
 	/* Wake lock to prevent platform from going to S3 when charging */
 	struct wake_lock wakelock;
@@ -356,6 +356,74 @@ static short int vbatt_sh_min;
  * End of structure definition section
  ***********************************************************************/
 
+/*
+ * sfi table parsing specific interfaces
+ */
+
+/**
+ * ctp_sfi_table_invalid_batt - default battery SFI table values  to be
+ * used in case of invalid battery
+ *
+ * @sfi_table : sfi table pointer
+ * Context: can sleep
+ * Note: These interfaces will move to a common file and will be
+ * independent of the platform
+ */
+static void ctp_sfi_table_invalid_batt(struct ctp_batt_sfi_prop *sfi_table)
+{
+	/*
+	 * In case of invalid battery we manually set
+	 * the SFI parameters and limit the battery from
+	 * charging, so platform will be in discharging mode
+	 */
+	memcpy(ctp_sfi_table->batt_id, "UNKNOWN", sizeof("UNKNOWN"));
+	ctp_sfi_table->voltage_max = CLT_BATT_CHRVOLTAGE_SET_DEF;
+	ctp_sfi_table->capacity = CLT_BATT_DEFAULT_MAX_CAPACITY;
+	ctp_sfi_table->battery_type = POWER_SUPPLY_TECHNOLOGY_LION;
+	ctp_sfi_table->temp_mon_ranges = 0;
+}
+
+/**
+ * ctp_sfi_table_populate - Simple Firmware Interface table Populate
+ * @sfi_table: Simple Firmware Interface table structure
+ *
+ * SFI table has entries for the temperature limits
+ * which is populated in a local structure
+ */
+static int __init ctp_sfi_table_populate(struct sfi_table_header *table)
+{
+	struct sfi_table_simple *sb;
+	struct ctp_batt_sfi_prop *pentry;
+	struct bq24192_chip *chip = i2c_get_clientdata(bq24192_client);
+	int totentrs = 0, totlen = 0;
+
+	sb = (struct sfi_table_simple *)table;
+	if (!sb) {
+		dev_warn(&chip->client->dev, "SFI: Unable to map BATT signature\n");
+		return -ENODEV;
+	}
+
+	totentrs = SFI_GET_NUM_ENTRIES(sb, struct ctp_batt_sfi_prop);
+	if (totentrs) {
+		dev_info(&chip->client->dev, "Valid battery detected.\n");
+		pentry = (struct ctp_batt_sfi_prop *)sb->pentry;
+		totlen = totentrs * sizeof(*pentry);
+		memcpy(ctp_sfi_table, pentry, totlen);
+
+		if (ctp_sfi_table->temp_mon_ranges != CLT_SFI_TEMP_NR_RNG)
+			dev_warn(&chip->client->dev,
+				"SFI: temperature monitoring range"
+				"doesn't match with its Array elements size\n");
+		chip->pdata->sfi_tabl_present = true;
+	} else {
+		dev_warn(&chip->client->dev, "Invalid battery detected\n");
+		chip->pdata->sfi_tabl_present = false;
+		ctp_sfi_table_invalid_batt(ctp_sfi_table);
+	}
+
+	return 0;
+}
+
 /* Check for valid Temp ADC range */
 static bool ctp_is_valid_temp_adc(int adc_val)
 {
@@ -381,7 +449,7 @@ static int ctp_conv_adc_temp(int adc_val,
 static bool ctp_is_valid_temp_adc_range(int val, int min, int max)
 {
 	bool ret = false;
-	if (val > min && val <= max)
+	if (val >= min && val <= max)
 		ret = true;
 	return ret;
 }
@@ -493,16 +561,15 @@ static int ctp_sfi_temp_range_lookup(int adc_temp)
 		else
 			max_range = CLT_SFI_TEMP_NR_RNG;
 		temp_mon_tabl = &ctp_sfi_table->temp_mon_range[0];
-		temp_low_lim = ctp_sfi_table->temp_low_lim;
 	} else {
 		dev_info(&chip->client->dev,
 			 "Read the temperature range from platform data\n");
 		temp_mon_tabl = &chip->pdata->temp_mon_range[0];
-		temp_low_lim = chip->pdata->temp_low_lim;
 		max_range = chip->pdata->temp_mon_ranges;
 	}
 
 	for (i = max_range-1; i >= 0; i--) {
+		temp_low_lim = temp_mon_tabl[i].temp_low_lim;
 		if (adc_temp <= temp_mon_tabl[i].temp_up_lim &&
 			adc_temp > temp_low_lim) {
 			idx = i;
@@ -520,7 +587,6 @@ static void ctp_get_batt_temp_thresholds(short int *temp_high,
 	int i, max_range;
 	struct bq24192_chip *chip = i2c_get_clientdata(bq24192_client);
 	struct ctp_temp_mon_table *temp_mon_tabl = NULL;
-	short int temp_low_lim;
 
 	*temp_high = *temp_low = 0;
 	if (chip->pdata->sfi_tabl_present) {
@@ -529,11 +595,9 @@ static void ctp_get_batt_temp_thresholds(short int *temp_high,
 		else
 			max_range = CLT_SFI_TEMP_NR_RNG;
 		temp_mon_tabl = &ctp_sfi_table->temp_mon_range[0];
-		temp_low_lim = ctp_sfi_table->temp_low_lim;
 	} else {
 		temp_mon_tabl = &chip->pdata->temp_mon_range[0];
 		max_range = chip->pdata->temp_mon_ranges;
-		temp_low_lim = chip->pdata->temp_low_lim;
 	}
 
 	for (i = 0; i < max_range; i++) {
@@ -541,7 +605,10 @@ static void ctp_get_batt_temp_thresholds(short int *temp_high,
 			*temp_high = temp_mon_tabl[i].temp_up_lim;
 	}
 
-	*temp_low = temp_low_lim;
+	for (i = 0; i < max_range; i++) {
+		if (*temp_low > temp_mon_tabl[i].temp_low_lim)
+			*temp_low = temp_mon_tabl[i].temp_low_lim;
+	}
 }
 
 /*-------------------------------------------------------------------------*/
@@ -931,7 +998,11 @@ int ctp_get_battery_pack_temp(int *temp)
 	if (!power_supply_get_by_name(CHARGER_PS_NAME))
 		return -EAGAIN;
 
-	return ctp_read_adc_temp(temp);
+	if (unlikely(chip->present)) {
+		*temp = chip->cached_temp;
+		return  0;
+	} else
+		return ctp_read_adc_temp(temp);
 }
 EXPORT_SYMBOL(ctp_get_battery_pack_temp);
 
@@ -1378,21 +1449,6 @@ is_chrg_term_exit:
 	return is_chrg_term;
 }
 
-static void bq24192_monitor_worker(struct work_struct *work)
-{
-	int ret = 0;
-	struct bq24192_chip *chip = container_of(work,
-				struct bq24192_chip, stat_mon_wrkr.work);
-	dev_info(&chip->client->dev, "%s\n", __func__);
-	mutex_lock(&chip->event_lock);
-	ret = reset_wdt_timer(chip);
-	if (ret < 0)
-		dev_warn(&chip->client->dev, "WDT reset failed\n");
-	mutex_unlock(&chip->event_lock);
-	power_supply_changed(&chip->usb);
-	schedule_delayed_work(&chip->stat_mon_wrkr, STATUS_UPDATE_INTERVAL);
-}
-
 /*
  * bq24192_do_charging - Programs the charger as per the charge current passed
  * curr -charging current value passed as per the platform current state
@@ -1471,7 +1527,7 @@ static  bool bq24192_check_charge_full(struct bq24192_chip *chip, int vref)
 	struct bq24192_chrg_regs reg;
 
 	/* Read voltage and current from FG driver */
-	volt_now = fg_chip_get_property(POWER_SUPPLY_PROP_VOLTAGE_NOW);
+	volt_now = fg_chip_get_property(POWER_SUPPLY_PROP_VOLTAGE_OCV);
 	if (volt_now == -ENODEV || volt_now == -EINVAL) {
 		dev_warn(&chip->client->dev, "Can't read voltage from FG\n");
 		return false;
@@ -1486,35 +1542,22 @@ static  bool bq24192_check_charge_full(struct bq24192_chip *chip, int vref)
 		return is_full;
 	}
 
+	/*
+	 * Check if the charger power is good. This will be used in deciding
+	 * whether charging should be enabled or not.
+	 */
+	if (!(ret & SYSTEM_STAT_PWR_GOOD)) {
+		chip->is_pwr_good = false;
+		dev_info(&chip->client->dev, "Pwr is not good\n");
+	} else {
+		chip->is_pwr_good = true;
+		dev_info(&chip->client->dev, "Pwr is good\n");
+	}
+
 	if ((ret & SYSTEM_STAT_CHRG_MASK) == SYSTEM_STAT_CHRG_DONE) {
-		if (volt_now >= (vref - CLT_VBATT_FULL_DET_MARGIN)) {
 			dev_info(&chip->client->dev,
 					"FULL: HW based termination\n");
 			is_full = true;
-		} else {
-			is_full = false;
-			if (chip->batt_mode == BATT_CHRG_NORMAL) {
-				/*
-				 * FIXME: Charger chip cuts the charging even
-				 * when the battery has not reached FULL.
-				 * Restart the charging would make sure that
-				 * battery continues to charge unless reached
-				 * FULL.
-				 */
-				dev_info(&chip->client->dev,
-					"Charging complete before FULL.\n");
-				stop_charging(chip);
-				set_up_charging(chip, &reg, chip->curr_chrg,
-							chip->curr_volt);
-
-				ret = enable_charging(chip, &reg);
-				if (ret < 0) {
-					dev_err(&chip->client->dev,
-						"enable charging failed %s\n",
-								__func__);
-				}
-			}
-		}
 		return is_full;
 	}
 
@@ -1566,15 +1609,12 @@ static void bq24192_maintenance_worker(struct work_struct *work)
 	bool sysfs_stat = false;
 
 	dev_dbg(&chip->client->dev, "+ %s\n", __func__);
-	/* Check if we have the charger present */
-	if (chip->present) {
-		dev_info(&chip->client->dev,
-			"Charger is present\n");
-	} else {
-		dev_info(&chip->client->dev,
-				"Charger is not present. Schedule worker\n");
-		goto sched_maint_work;
-	}
+
+	mutex_lock(&chip->event_lock);
+	ret = reset_wdt_timer(chip);
+	if (ret < 0)
+		dev_warn(&chip->client->dev, "WDT reset failed\n");
+	mutex_unlock(&chip->event_lock);
 
 	/*
 	 * FIXEME: Hw issue in TI charger. Hi-Z needs to be cleared continuously
@@ -1586,8 +1626,23 @@ static void bq24192_maintenance_worker(struct work_struct *work)
 		goto sched_maint_work;
 	}
 
-	if (ret < 0) {
-		dev_warn(&chip->client->dev, "%s:I2C write fail\n", __func__);
+	/*
+	 * We update the battery charging status as per the type of
+	 * charger connected. If it is host mode cable connected then
+	 * battery status should be discharging
+	 */
+	if (chip->chrg_type == POWER_SUPPLY_TYPE_USB_HOST) {
+		dev_info(&chip->client->dev, "Charger type Host\n");
+		goto sched_maint_work;
+	}
+
+	/* Check if we have the charger present */
+	if (chip->present) {
+		dev_info(&chip->client->dev,
+			"Charger is present\n");
+	} else {
+		dev_info(&chip->client->dev,
+				"Charger is not present. Schedule worker\n");
 		goto sched_maint_work;
 	}
 
@@ -1597,6 +1652,7 @@ static void bq24192_maintenance_worker(struct work_struct *work)
 		dev_err(&chip->client->dev, "failed to acquire batt temp\n");
 		goto sched_maint_work;
 	}
+	chip->cached_temp = batt_temp;
 
 	/* find the temperature range */
 	idx = ctp_sfi_temp_range_lookup(batt_temp);
@@ -1642,7 +1698,7 @@ static void bq24192_maintenance_worker(struct work_struct *work)
 	dev_info(&chip->client->dev, "temperature zone idx = %d\n", idx);
 
 	/* read the battery voltage */
-	vbatt = fg_chip_get_property(POWER_SUPPLY_PROP_VOLTAGE_NOW);
+	vbatt = fg_chip_get_property(POWER_SUPPLY_PROP_VOLTAGE_OCV);
 	if (vbatt == -ENODEV || vbatt == -EINVAL) {
 		dev_err(&chip->client->dev, "Can't read voltage from FG\n");
 		goto sched_maint_work;
@@ -1819,13 +1875,19 @@ static void bq24192_maintenance_worker(struct work_struct *work)
 		goto sched_maint_work;
 	}
 
-	power_supply_changed(&chip->usb);
 sched_maint_work:
 	if ((chip->batt_mode == BATT_CHRG_MAINT) ||
-	    (chip->batt_mode == BATT_CHRG_FULL))
+	    (chip->batt_mode == BATT_CHRG_FULL)) {
 		battery_status = POWER_SUPPLY_STATUS_FULL;
-	else
+		/* When the charge status is FULL the FG interrupts
+		 * are disabled so sending power supply notification
+		 * to UI
+		 */
+		dev_info(&chip->client->dev, "Charge status FUll\n");
+		power_supply_changed(&chip->usb);
+	} else {
 		battery_status = POWER_SUPPLY_STATUS_CHARGING;
+	}
 
 	/*
 	 * Update the UI per the current battery/charger status
@@ -1838,15 +1900,27 @@ sched_maint_work:
 	if ((chip->chrg_type == POWER_SUPPLY_TYPE_USB_HOST))
 		battery_status = POWER_SUPPLY_STATUS_DISCHARGING;
 
+	if (!chip->is_pwr_good)
+		battery_status = POWER_SUPPLY_STATUS_NOT_CHARGING;
+
 	if ((battery_status == POWER_SUPPLY_STATUS_NOT_CHARGING) ||
 		(battery_status == POWER_SUPPLY_STATUS_DISCHARGING)) {
 		chip->online = 0;
 	} else {
 		chip->online = 1;
 	}
-	mutex_lock(&chip->event_lock);
-	chip->batt_status = battery_status;
-	mutex_unlock(&chip->event_lock);
+
+	dev_info(&chip->client->dev, "battery_status %dchip->batt_status %d\n",
+			battery_status, chip->batt_status);
+
+	if (chip->batt_status != battery_status) {
+		mutex_lock(&chip->event_lock);
+		chip->batt_status = battery_status;
+		mutex_unlock(&chip->event_lock);
+	}
+
+	power_supply_changed(&chip->usb);
+
 	schedule_delayed_work(&chip->maint_chrg_wrkr, MAINTENANCE_CHRG_JIFFIES);
 	dev_info(&chip->client->dev, "battery mode is  %d\n", chip->batt_mode);
 	dev_dbg(&chip->client->dev, "- %s\n", __func__);
@@ -1858,6 +1932,13 @@ static int bq24192_turn_otg_vbus(struct bq24192_chip *chip, bool votg_on)
 	int ret = 0;
 
 	if (votg_on) {
+			/* Program the timers */
+			ret = program_timers(chip, true, false);
+			if (ret < 0) {
+				dev_warn(&chip->client->dev,
+					"TIMER enable failed %s\n", __func__);
+				goto i2c_write_fail;
+			}
 			/* Configure the charger in OTG mode */
 			ret = bq24192_reg_read_modify(chip->client,
 					BQ24192_POWER_ON_CFG_REG,
@@ -2018,6 +2099,10 @@ static void bq24192_event_worker(struct work_struct *work)
 			chip->usb.type = POWER_SUPPLY_TYPE_USB;
 			dev_info(&chip->client->dev,
 				 "Charger type SDP\n");
+		} else if (chip->chrg_type == POWER_SUPPLY_TYPE_USB_INVAL) {
+			chip->usb.type = POWER_SUPPLY_TYPE_USB_INVAL;
+			dev_info(&chip->client->dev,
+				 "Charger type INVAL SDP\n");
 		} else if (chip->chrg_type == POWER_SUPPLY_TYPE_USB_HOST) {
 			dev_info(&chip->client->dev,
 				 "Charger type USB HOST\n");
@@ -2043,12 +2128,14 @@ static void bq24192_event_worker(struct work_struct *work)
 		 */
 		if (chip->chrg_type != POWER_SUPPLY_TYPE_USB_HOST) {
 			chip->batt_status = POWER_SUPPLY_STATUS_CHARGING;
-			/* Schedule the maintenance now */
-			schedule_delayed_work(&chip->maint_chrg_wrkr,
-							INITIAL_THREAD_JIFFY);
 		}
+
 		chip->batt_mode = BATT_CHRG_NORMAL;
 		mutex_unlock(&chip->event_lock);
+
+		/* Schedule the maintenance now */
+		schedule_delayed_work(&chip->maint_chrg_wrkr,
+							INITIAL_THREAD_JIFFY);
 		/*
 		 * Prevent system from entering s3 while charger is connected
 		 * or if any OTG device (mouse/keyboard) is connected.
@@ -2185,7 +2272,7 @@ static void bq24192_charging_port_changed(struct power_supply *psy,
 }
 
 #ifdef CONFIG_DEBUG_FS
-#define DBGFS_REG_BUF_LEN	4
+#define DBGFS_REG_BUF_LEN	3
 
 static int bq24192_show(struct seq_file *seq, void *unused)
 {
@@ -2209,17 +2296,19 @@ static int bq24192_dbgfs_open(struct inode *inode, struct file *file)
 static ssize_t bq24192_dbgfs_reg_write(struct file *file,
 		const char __user *user_buf, size_t count, loff_t *ppos)
 {
-	char buf[DBGFS_REG_BUF_LEN] = {'\0', };
-	long addr, value;
+	char buf[DBGFS_REG_BUF_LEN];
+	long addr;
+	unsigned long value;
 	int ret;
 	struct seq_file *seq = file->private_data;
 
 	if (!seq || kstrtol((char *)seq->private, 16, &addr))
 		return -EINVAL;
 
-	if (copy_from_user(buf, user_buf, DBGFS_REG_BUF_LEN))
+	if (copy_from_user(buf, user_buf, DBGFS_REG_BUF_LEN-1))
 		return -EFAULT;
 
+	buf[DBGFS_REG_BUF_LEN-1] = '\0';
 	if (kstrtoul(buf, 16, &value))
 		return -EINVAL;
 
@@ -2422,14 +2511,8 @@ static int ctp_set_safechrglimit(short int temp)
 static void init_batt_thresholds(struct bq24192_chip *chip)
 {
 	int ret;
-	int i;
 	u8 validate_smip_data[4];
 	u8 safetmp = 0;
-
-	chip->batt_thrshlds.vbatt_sh_min = CLT_BATT_VMIN_THRESHOLD_DEF;
-	chip->batt_thrshlds.vbatt_crit = CLT_BATT_CRIT_CUTOFF_VOLT_DEF;
-	chip->batt_thrshlds.temp_high = CLT_BATT_TEMP_MAX_DEF;
-	chip->batt_thrshlds.temp_low = CLT_BATT_TEMP_MIN_DEF;
 
 	/* Read the Signature verification data form SRAM */
 	ret = intel_scu_ipc_read_mip((u8 *)validate_smip_data,
@@ -2445,7 +2528,7 @@ static void init_batt_thresholds(struct bq24192_chip *chip)
 	if ((validate_smip_data[0] == SBCT_REV) && (
 			validate_smip_data[3] == RSYS_MOHMS)) {
 
-		dev_dbg(&chip->client->dev,
+		dev_info(&chip->client->dev,
 			"%s: Valid SMIP data\n", __func__);
 		/* Read the threshold values from SRAM */
 		ret = intel_scu_ipc_read_mip((u8 *)&chip->batt_thrshlds,
@@ -2455,68 +2538,13 @@ static void init_batt_thresholds(struct bq24192_chip *chip)
 			dev_warn(&chip->client->dev,
 				"%s:smip read failed\n", __func__);
 		vbatt_sh_min = chip->batt_thrshlds.vbatt_sh_min;
-
-		/* Read the battery properties from SRAM */
-		ret = intel_scu_ipc_read_mip((u8 *)ctp_smip_batt_prop,
-				sizeof(struct ctp_smip_sram_batt_prop),
-				SMIP_SRAM_BATT_PROP_OFFSET_ADDR, 1);
-		if (ret)
-			dev_warn(&chip->client->dev,
-				 "%s: smip read failed\n", __func__);
-
-		/* Copy Battery properties from SRAM to local structure
-		 * The structure copying is required since the data
-		 * is programmed with various offsets and to match
-		 * the xml e.g.XML_vF2.07_PR0.2_CMI_DEV.xml
-		 */
-		if ((ctp_smip_batt_prop->b1idmin == 0x0) &&
-			 (ctp_smip_batt_prop->b1idmax == 0x0)) {
-			/*
-			* In case of invalid battery we manually set
-			* the SFI parameters and limit the battery from
-			* charging, so platform will be in discharging mode
-			*/
-			memcpy(ctp_sfi_table->batt_id,
-				"UNKNOWN", sizeof("UNKNOWN"));
-		}
-
-		ctp_sfi_table->voltage_max = ctp_smip_batt_prop->b1vmax;
-		ctp_sfi_table->capacity = ctp_smip_batt_prop->b1cap;
-		ctp_sfi_table->battery_type = ctp_smip_batt_prop->b1type;
-		ctp_sfi_table->temp_mon_ranges = TEMP_MON_RANGES;
-
-		for (i = 0; i < TEMP_MON_RANGES; i++) {
-			ctp_sfi_table->temp_mon_range[i].temp_up_lim =
-			ctp_smip_batt_prop->smip_sram_temp[i].b1tul;
-			ctp_sfi_table->temp_mon_range[i].full_chrg_vol =
-			ctp_smip_batt_prop->smip_sram_temp[i].b1tfcv;
-			ctp_sfi_table->temp_mon_range[i].full_chrg_cur =
-			ctp_smip_batt_prop->smip_sram_temp[i].b1tfci;
-			ctp_sfi_table->temp_mon_range[i].maint_chrg_vol_ll =
-			ctp_smip_batt_prop->smip_sram_temp[i].b1tmcvstar_lower;
-			ctp_sfi_table->temp_mon_range[i].maint_chrg_vol_ul =
-			ctp_smip_batt_prop->smip_sram_temp[i].b1tmcvstop_upper;
-			ctp_sfi_table->temp_mon_range[i].maint_chrg_cur =
-			ctp_smip_batt_prop->smip_sram_temp[i].b1tmci;
-		}
-
-		ctp_sfi_table->temp_low_lim = ctp_smip_batt_prop->b1t1ll;
-
-		dev_dbg(&chip->client->dev,
-			"%s: voltage_max:0x%x"
-			"battery capacity: 0x%x"
-			"battery_type: 0x%x"
-			"temp_low_lim: 0x%x\n", __func__,
-			ctp_sfi_table->voltage_max,
-			ctp_sfi_table->capacity,
-			ctp_sfi_table->battery_type,
-			ctp_sfi_table->temp_low_lim);
-
-		chip->pdata->sfi_tabl_present = true;
 	} else {
+		chip->batt_thrshlds.vbatt_sh_min = CLT_BATT_VMIN_THRESHOLD_DEF;
+		chip->batt_thrshlds.vbatt_crit = CLT_BATT_CRIT_CUTOFF_VOLT_DEF;
+		chip->batt_thrshlds.temp_high = CLT_BATT_TEMP_MAX_DEF;
+		chip->batt_thrshlds.temp_low = CLT_BATT_TEMP_MIN_DEF;
 		dev_dbg(&chip->client->dev,
 			"%s: No signature match	for SRAM Read\n ", __func__);
-		chip->pdata->sfi_tabl_present = false;
 	}
 
 	ctp_get_batt_temp_thresholds(&chip->batt_thrshlds.temp_high,
@@ -2654,7 +2682,6 @@ static int __devinit bq24192_probe(struct i2c_client *client,
 	}
 
 	INIT_DELAYED_WORK(&chip->chrg_evt_wrkr, bq24192_event_worker);
-	INIT_DELAYED_WORK(&chip->stat_mon_wrkr, bq24192_monitor_worker);
 	INIT_DELAYED_WORK(&chip->maint_chrg_wrkr, bq24192_maintenance_worker);
 	mutex_init(&chip->event_lock);
 
@@ -2699,6 +2726,13 @@ static int __devinit bq24192_probe(struct i2c_client *client,
 		return -ENOMEM;
 	}
 
+	/* check for valid SFI table entry for OEM0 table */
+	if (sfi_table_parse(SFI_BATTPROP_TBL_ID, NULL, NULL,
+		ctp_sfi_table_populate)) {
+		chip->pdata->sfi_tabl_present = false;
+		ctp_sfi_table_invalid_batt(ctp_sfi_table);
+	}
+
 	/* Allocate ADC Channels */
 	chip->gpadc_handle =
 		intel_mid_gpadc_alloc(CLT_BATT_NUM_GPADC_SENSORS,
@@ -2708,18 +2742,6 @@ static int __devinit bq24192_probe(struct i2c_client *client,
 		dev_err(&client->dev,
 		 "ADC allocation failed: Check if ADC driver came up\n");
 		return -1;
-	}
-
-	/* Allocate Memory for Battery Property structure */
-	ctp_smip_batt_prop =
-		kzalloc(sizeof(struct ctp_smip_sram_batt_prop), GFP_KERNEL);
-	if (!ctp_smip_batt_prop) {
-		dev_err(&chip->client->dev,
-		 "%s: memory allocation failed\n", __func__);
-		kfree(chip);
-		intel_mid_gpadc_free(chip->gpadc_handle);
-		kfree(ctp_sfi_table);
-		return -ENOMEM;
 	}
 
 	init_batt_thresholds(chip);
@@ -2737,7 +2759,6 @@ static int __devinit bq24192_probe(struct i2c_client *client,
 		kfree(chip);
 		intel_mid_gpadc_free(chip->gpadc_handle);
 		kfree(ctp_sfi_table);
-		kfree(ctp_smip_batt_prop);
 		return ret;
 	}
 
@@ -2755,8 +2776,6 @@ static int __devinit bq24192_probe(struct i2c_client *client,
 		schedule_delayed_work(&chip->chrg_evt_wrkr, 0);
 	}
 
-	/* start the status monitor worker */
-	schedule_delayed_work(&chip->stat_mon_wrkr, 0);
 	return 0;
 }
 
@@ -2771,7 +2790,6 @@ static int __devexit bq24192_remove(struct i2c_client *client)
 	intel_mid_gpadc_free(chip->gpadc_handle);
 	wake_lock_destroy(&chip->wakelock);
 	kfree(ctp_sfi_table);
-	kfree(ctp_smip_batt_prop);
 	kfree(chip);
 	return 0;
 }
@@ -2781,7 +2799,6 @@ static int bq24192_suspend(struct device *dev)
 {
 	struct bq24192_chip *chip = dev_get_drvdata(dev);
 
-	cancel_delayed_work(&chip->stat_mon_wrkr);
 	dev_dbg(&chip->client->dev, "bq24192 suspend\n");
 	return 0;
 }
@@ -2790,7 +2807,6 @@ static int bq24192_resume(struct device *dev)
 {
 	struct bq24192_chip *chip = dev_get_drvdata(dev);
 
-	schedule_delayed_work(&chip->stat_mon_wrkr, 0);
 	dev_dbg(&chip->client->dev, "bq24192 resume\n");
 	return 0;
 }
