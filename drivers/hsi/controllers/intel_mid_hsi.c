@@ -3796,10 +3796,46 @@ static void __devexit intel_hsi_remove(struct pci_dev *pdev)
 	struct hsi_controller *hsi =
 		(struct hsi_controller *) pci_get_drvdata(pdev);
 
+	pr_debug(DRVNAME ": Driver remove requested\n");
+
 	if (hsi) {
 		hsi_remove_controller(hsi, pdev);
 		kfree(hsi);
 	}
+}
+
+/**
+ * intel_hsi_shutdown - called during PCI device shutdown
+ * @pdev: PCI device reference
+ *
+ * Reset the HSI HW and free allocated memory
+ */
+static void intel_hsi_shutdown(struct pci_dev *pdev)
+{
+	struct hsi_controller *hsi =
+		(struct hsi_controller *) pci_get_drvdata(pdev);
+	struct intel_controller *intel_hsi =
+		(struct intel_controller *)hsi_controller_drvdata(hsi);
+
+	pr_debug(DRVNAME ": Driver shutdown requested\n");
+
+	if (intel_hsi->suspend_state != DEVICE_READY) {
+		pr_info(DRVNAME ":Nothing to do, driver suspended\n");
+		return;
+	}
+
+	if (runtime_pm)
+		hsi_rtpm_exit(intel_hsi);
+
+	pci_set_drvdata(pdev, NULL);
+
+#ifdef CONFIG_DEBUG_FS
+	debugfs_remove_recursive(intel_hsi->dir);
+#endif
+	hsi_controller_exit(intel_hsi);
+	hsi_unmap_resources(intel_hsi, pdev);
+	pci_disable_device(pdev);
+	kfree(intel_hsi);
 }
 
 /**
@@ -3836,6 +3872,7 @@ static struct pci_driver intel_hsi_driver = {
 	.id_table =	pci_ids,
 	.probe =	intel_hsi_probe,
 	.remove =	__devexit_p(intel_hsi_remove),
+	.shutdown = intel_hsi_shutdown
 };
 
 /**
