@@ -19,6 +19,8 @@ struct bq24261_plat_data {
 	size_t num_supplicants;
 	struct power_supply_throttle *throttle_states;
 	size_t num_throttle_states;
+	int safety_timer;
+	bool is_ts_enabled;
 
 	int (*enable_charging) (bool val);
 	int (*enable_charger) (bool val);

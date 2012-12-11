@@ -54,6 +54,9 @@
 #define BQ24261_VINDPM_STAT_ADDR	0x05
 #define BQ24261_ST_NTC_MON_ADDR		0x06
 
+#define BQ24261_RESET_MASK		(0x01 << 7)
+#define BQ24261_RESET_ENABLE		(0x01 << 7)
+
 #define BQ24261_FAULT_MASK		0x07
 #define BQ24261_STAT_MASK		(0x03 << 4)
 #define BQ24261_BOOST_MASK		(0x01 << 6)
@@ -117,6 +120,28 @@
 #define BQ24261_VENDOR			(0x02 << 5)
 #define BQ24261_REV_MASK		(0x07)
 #define BQ24261_REV			(0x02)
+
+#define BQ24261_TS_MASK			(0x01 << 3)
+#define BQ24261_TS_ENABLED		(0x01 << 3)
+
+#define BQ24261_SAFETY_TIMER_MASK	(0x03 << 5)
+#define BQ24261_SAFETY_TIMER_40MIN	0x00
+#define BQ24261_SAFETY_TIMER_6HR	(0x01 << 5)
+#define BQ24261_SAFETY_TIMER_9HR	(0x02 << 5)
+#define BQ24261_SAFETY_TIMER_DISABLED	(0x11 < 5)
+#define BQ24261_SAFETY_TIMER_DISABLED	(0x03 << 5)
+
+u16 bq24261_sfty_tmr[][2] = {
+	{0, BQ24261_SAFETY_TIMER_DISABLED}
+	,
+	{40, BQ24261_SAFETY_TIMER_40MIN}
+	,
+	{360, BQ24261_SAFETY_TIMER_6HR}
+	,
+	{540, BQ24261_SAFETY_TIMER_9HR}
+	,
+};
+
 
 u16 bq24261_inlmt[][2] = {
 	{100, BQ24261_INLMT_100}
@@ -265,6 +290,7 @@ struct bq24261_charger {
 	bool is_bat_full;
 	bool is_vsys_on;
 	bool boost_mode;
+	bool is_hw_chrg_term;
 };
 
 struct i2c_client *bq24261_client;
@@ -327,6 +353,12 @@ static inline void bq24261_iterm_to_reg(int iterm, u8 *regval)
 {
 	return lookup_regval(bq24261_iterm, ARRAY_SIZE(bq24261_iterm),
 			     iterm, regval);
+}
+
+static inline void bq24261_sfty_tmr_to_reg(int tmr, u8 *regval)
+{
+	return lookup_regval(bq24261_sfty_tmr, ARRAY_SIZE(bq24261_sfty_tmr),
+			     tmr, regval);
 }
 
 static inline int bq24261_read_reg(struct i2c_client *client, u8 reg)
@@ -497,18 +529,45 @@ static inline int bq24261_read_modify_reg(struct i2c_client *client, u8 reg,
 	return bq24261_write_reg(client, reg, ret);
 }
 
+static inline int bq24261_tmr_ntc_init(struct bq24261_charger *chip)
+{
+	u8 reg_val;
+	int ret;
+
+	bq24261_sfty_tmr_to_reg(chip->pdata->safety_timer, &reg_val);
+
+	if (chip->pdata->is_ts_enabled)
+		reg_val |= BQ24261_TS_ENABLED;
+
+	ret = bq24261_read_modify_reg(chip->client, BQ24261_ST_NTC_MON_ADDR,
+			BQ24261_TS_MASK|BQ24261_SAFETY_TIMER_MASK, reg_val);
+
+	return ret;
+}
+
 static inline int bq24261_enable_charging(
 	struct bq24261_charger *chip, bool val)
 {
-	u8 data;
+	u8 reg_val;
+	int ret;
+
 	if (chip->pdata->enable_charging)
 		return chip->pdata->enable_charging(val);
 
-	data = val ? ~BQ24261_CE_DISABLE :
-		BQ24261_CE_DISABLE;
+	reg_val = val ? (~BQ24261_CE_DISABLE & BQ24261_CE_MASK) :
+			BQ24261_CE_DISABLE;
 
-	return bq24261_read_modify_reg(chip->client, BQ24261_CTRL_ADDR,
-				       BQ24261_CE_MASK, data);
+	if (val && chip->is_hw_chrg_term)
+		reg_val |= BQ24261_TE_ENABLE;
+
+	ret = bq24261_read_modify_reg(chip->client, BQ24261_CTRL_ADDR,
+		       BQ24261_RESET_MASK|BQ24261_CE_MASK|BQ24261_TE_MASK,
+					reg_val);
+	if (ret || !val)
+		return ret;
+
+	return bq24261_tmr_ntc_init(chip);
+
 }
 
 static inline int bq24261_enable_charger(
@@ -581,11 +640,19 @@ static inline int bq24261_enable_hw_charge_term(
 	struct bq24261_charger *chip, bool val)
 {
 	u8 data;
+	int ret;
 
 	data = val ? BQ24261_TE_ENABLE : ~BQ24261_TE_ENABLE;
 
-	return bq24261_read_modify_reg(chip->client, BQ24261_CTRL_ADDR,
+	ret = bq24261_read_modify_reg(chip->client, BQ24261_CTRL_ADDR,
 				       BQ24261_TE_MASK, data);
+
+	if (ret)
+		return ret;
+
+	chip->is_hw_chrg_term = val ? true : false;
+
+	return ret;
 }
 
 static inline int bq24261_enable_boost_mode(
@@ -604,11 +671,13 @@ static inline int bq24261_enable_boost_mode(
 					    BQ24261_STAT_CTRL0_ADDR,
 					    BQ24261_BOOST_MASK,
 					    BQ24261_ENABLE_BOOST);
-		if (ret)
-			dev_err(&chip->client->dev,
-				"Error(%d) in enabling Boost mode\n", ret);
-		else
-			chip->boost_mode = true;
+		if (unlikely(!ret))
+			return ret;
+
+		ret = bq24261_tmr_ntc_init(chip);
+		if (unlikely(ret))
+			return ret;
+		chip->boost_mode = true;
 
 		dev_info(&chip->client->dev, "Boost Mode enabled\n");
 	} else {
@@ -617,22 +686,19 @@ static inline int bq24261_enable_boost_mode(
 					    BQ24261_STAT_CTRL0_ADDR,
 					    BQ24261_BOOST_MASK,
 					    ~BQ24261_ENABLE_BOOST);
-		bq24261_write_reg(chip->client, BQ24261_STAT_CTRL0_ADDR, 0x00);
-		if (ret)
-			dev_err(&chip->client->dev,
-				"Error(%d) in disabling Boost mode\n", ret);
-		else {
 
-			/* if charging need not to be enabled, disable
-			* the charger else keep the charger on
-			*/
-			if (!chip->is_charging_enabled)
-				bq24261_enable_charger(chip, false);
-			chip->boost_mode = false;
-			dev_info(&chip->client->dev, "Boost Mode disabled\n");
-		}
+		if (unlikely(ret))
+			return ret;
+		/* if charging need not to be enabled, disable
+		* the charger else keep the charger on
+		*/
+		if (!chip->is_charging_enabled)
+			bq24261_enable_charger(chip, false);
+		chip->boost_mode = false;
+		dev_info(&chip->client->dev, "Boost Mode disabled\n");
+
 		/* Notify power supply subsystem to enable charging
-		 *  if needed. Eg. if DC adapter is connected
+		 * if needed. Eg. if DC adapter is connected
 		 */
 		power_supply_changed(&chip->psy_usb);
 	}
@@ -645,7 +711,7 @@ static inline bool bq24261_is_vsys_on(struct bq24261_charger *chip)
 	int ret;
 	struct i2c_client *client = chip->client;
 
-	ret = bq24261_read_reg(client, BQ24261_STAT_CTRL0_ADDR);
+	ret = bq24261_read_reg(client, BQ24261_CTRL_ADDR);
 	if (ret < 0) {
 		dev_err(&client->dev,
 			"Error(%d) in reading BQ24261_CTRL_ADDR\n", ret);
@@ -1005,9 +1071,14 @@ static int bq24261_handle_irq(struct bq24261_charger *chip, u8 stat_reg)
 		chip->chrgr_health = POWER_SUPPLY_HEALTH_GOOD;
 		chip->bat_health = POWER_SUPPLY_HEALTH_GOOD;
 		chip->is_fault = false;
-		bq24261_set_inlmt(chip, chip->inlmt);
-		if (chip->is_charger_enabled)
+
+		if (chip->is_charger_enabled) {
+			bq24261_set_inlmt(chip, chip->inlmt);
 			bq24261_enable_charger(chip, true);
+		}
+		if (chip->is_charging_enabled)
+			bq24261_enable_charging(chip, true);
+
 		power_supply_changed(&chip->psy_usb);
 		bq24261_dump_regs(false);
 		return 0;
@@ -1351,6 +1422,7 @@ static int bq24261_probe(struct i2c_client *client,
 	bq24261_client = client;
 	power_supply_changed(&chip->psy_usb);
 	bq24261_debugfs_init();
+	chip->is_hw_chrg_term = true;
 
 	return 0;
 }
