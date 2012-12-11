@@ -297,12 +297,6 @@ void intel_scu_ipc_lock(void)
 	/* Prevent C-states beyond C6 */
 	pm_qos_update_request(qos, CSTATE_EXIT_LATENCY_S0i1 - 1);
 
-	/* also hold a lock to synchronzie with PM commands
-	 * Potentially avoiding SCU getting busy executing PM
-	 * and IPC commands parallely
-	 */
-	acquire_scu_ready_sem();
-
 	/* Prevent S3 */
 	wake_lock(&ipc_wake_lock);
 }
@@ -312,9 +306,6 @@ void intel_scu_ipc_unlock(void)
 {
 	/* Re-enable S3 */
 	wake_unlock(&ipc_wake_lock);
-
-	/* Release the SCU ready lock */
-	release_scu_ready_sem();
 
 	/* Re-enable Deeper C-states beyond C6 */
 	pm_qos_update_request(qos, PM_QOS_DEFAULT_VALUE);

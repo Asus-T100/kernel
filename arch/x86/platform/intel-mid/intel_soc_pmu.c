@@ -517,18 +517,6 @@ static inline int pmu_read_interrupt_status(void)
 	return result.pmu_pm_ics_parts.int_status;
 }
 
-void acquire_scu_ready_sem(void)
-{
-	if (likely(pmu_initialized))
-		down(&mid_pmu_cxt->scu_ready_sem);
-}
-
-void release_scu_ready_sem(void)
-{
-	if (likely(pmu_initialized))
-		up(&mid_pmu_cxt->scu_ready_sem);
-}
-
 /*This function is used for programming the wake capable devices*/
 static void pmu_prepare_wake(int s0ix_state)
 {
