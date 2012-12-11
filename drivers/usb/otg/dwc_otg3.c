@@ -870,6 +870,13 @@ static int dwc_otg_set_power(struct otg_transceiver *_otg,
 	unsigned long flags;
 	struct dwc_otg2 *otg = the_transceiver;
 
+	/* force 896mA to 900mA
+	 * Beucause the power just can be set as an
+	 * integer multiple of 8 in usb configuration descriptor
+	 */
+	if (mA == 896)
+		mA = 900;
+
 	if ((mA != 100) &&
 		(mA != 150) &&
 		(mA != 500) &&
