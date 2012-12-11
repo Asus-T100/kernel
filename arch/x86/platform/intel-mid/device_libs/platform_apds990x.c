@@ -31,13 +31,13 @@ void *apds990x_platform_data(void *info)
 		.ppcount        = 1,
 	};
 
-	if (spid.product_line_id == INTEL_MFLDP_LEX_ENG) {
+	if (spid.product_line_id == INTEL_MFLD_PHONE_LEX_ENG) {
 		platform_data.cf.cf1    = 8602;
 		platform_data.cf.irf1   = 6552;
 		platform_data.cf.cf2    = 1064;
 		platform_data.cf.irf2   = 860;
 
-		if (spid.hardware_id < MFLDP_LEX_PR21)
+		if (spid.hardware_id < MFLD_PHONE_LEX_PR21)
 			platform_data.cf.ga = 1474;
 		else
 			platform_data.cf.ga = 11796;

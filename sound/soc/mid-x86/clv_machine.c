@@ -157,11 +157,11 @@ static struct snd_soc_jack_gpio hs_gpio[] = {
 bool ctp_vv_board(const struct sfi_soft_platform_id *spid)
 {
 	if ((spid->platform_family_id == INTEL_CLVTP_PHONE) &&
-		((spid->product_line_id == CLVTPP_RHB_CCVV2) ||
-		(spid->product_line_id == CLVTPP_RHB_CCVV1) ||
-		(spid->product_line_id == CLVTPP_RHB_CCVV3) ||
-		(spid->product_line_id == CLVTPP_RHB_CCVV1P) ||
-		(spid->product_line_id == CLVTPP_RHB_CCVV0)))
+		((spid->product_line_id == CLVTP_PHONE_RHB_CCVV2) ||
+		(spid->product_line_id == CLVTP_PHONE_RHB_CCVV1) ||
+		(spid->product_line_id == CLVTP_PHONE_RHB_CCVV3) ||
+		(spid->product_line_id == CLVTP_PHONE_RHB_CCVV1P) ||
+		(spid->product_line_id == CLVTP_PHONE_RHB_CCVV0)))
 		return true;
 	else
 		return false;

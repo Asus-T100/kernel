@@ -98,8 +98,8 @@ static int mt9e013_csi_configure(struct v4l2_subdev *sd, int flag)
 static bool mt9e013_low_fps(void)
 {
 	if (spid.platform_family_id == INTEL_MFLD_PHONE &&
-	    (spid.product_line_id == INTEL_MFLDP_LEX_PRO ||
-	     spid.product_line_id == INTEL_MFLDP_LEX_ENG))
+	    (spid.product_line_id == INTEL_MFLD_PHONE_LEX_PRO ||
+	     spid.product_line_id == INTEL_MFLD_PHONE_LEX_ENG))
 		return true;
 	else
 		return false;
