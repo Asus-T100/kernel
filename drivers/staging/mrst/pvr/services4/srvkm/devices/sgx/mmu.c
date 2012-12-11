@@ -1525,14 +1525,14 @@ _DeferredAllocPagetables(MMU_HEAP *pMMUHeap, IMG_DEV_VIRTADDR DevVAddr, IMG_UINT
 				}
 			}
 
-#if !defined(SGX_FEATURE_MULTIPLE_MEM_CONTEXTS)
+//#if !defined(SGX_FEATURE_MULTIPLE_MEM_CONTEXTS)
 			/* This is actually not to do with multiple mem contexts, but to do with the directory cache.
 			   In the 1 context implementation of the MMU, the directory "cache" is actually a copy of the
 			   page directory memory, and requires updating whenever the page directory changes, even if there
 			   was no previous value in a particular entry
 			 */
 			MMU_InvalidateDirectoryCache(pMMUHeap->psMMUContext->psDevInfo);
-#endif
+//#endif
 #if defined(FIX_HW_BRN_31620)
 			/* If this PT is not in the requested range then save it and null out the main PTInfo */
 			if (((ui32PDIndex + i) < ui32PDRequestStart) || ((ui32PDIndex + i) > ui32PDRequestEnd))
@@ -2578,9 +2578,9 @@ MMU_InsertHeap(MMU_CONTEXT *psMMUContext, MMU_HEAP *psMMUHeap)
 	IMG_UINT32 *pui32PDCpuVAddr = (IMG_UINT32 *) psMMUContext->pvPDCpuVAddr;
 	IMG_UINT32 *pui32KernelPDCpuVAddr = (IMG_UINT32 *) psMMUHeap->psMMUContext->pvPDCpuVAddr;
 	IMG_UINT32 ui32PDEntry;
-#if !defined(SGX_FEATURE_MULTIPLE_MEM_CONTEXTS)
+//#if !defined(SGX_FEATURE_MULTIPLE_MEM_CONTEXTS)
 	IMG_BOOL bInvalidateDirectoryCache = IMG_FALSE;
-#endif
+//#endif
 
 	/* advance to the first entry */
 	pui32PDCpuVAddr += psMMUHeap->psDevArena->BaseDevVAddr.uiAddr >> psMMUHeap->ui32PDShift;
@@ -2631,9 +2631,9 @@ MMU_InsertHeap(MMU_CONTEXT *psMMUContext, MMU_HEAP *psMMUHeap)
 				PDUMPPDENTRIES(&psMMUHeap->sMMUAttrib, psMMUContext->hPDOSMemHandle, (IMG_VOID *) &pui32PDCpuVAddr[ui32PDEntry], sizeof(IMG_UINT32), 0, IMG_FALSE, PDUMP_PD_UNIQUETAG, PDUMP_PT_UNIQUETAG);
 			}
 		#endif
-#if !defined(SGX_FEATURE_MULTIPLE_MEM_CONTEXTS)
+//#if !defined(SGX_FEATURE_MULTIPLE_MEM_CONTEXTS)
 			bInvalidateDirectoryCache = IMG_TRUE;
-#endif
+//#endif
 		}
 	}
 
@@ -2641,7 +2641,7 @@ MMU_InsertHeap(MMU_CONTEXT *psMMUContext, MMU_HEAP *psMMUHeap)
 	DisableHostAccess(psMMUContext);
 #endif
 
-#if !defined(SGX_FEATURE_MULTIPLE_MEM_CONTEXTS)
+//#if !defined(SGX_FEATURE_MULTIPLE_MEM_CONTEXTS)
 	if (bInvalidateDirectoryCache)
 	{
 		/* This is actually not to do with multiple mem contexts, but to do with the directory cache.
@@ -2651,7 +2651,7 @@ MMU_InsertHeap(MMU_CONTEXT *psMMUContext, MMU_HEAP *psMMUHeap)
 		*/
 		MMU_InvalidateDirectoryCache(psMMUContext->psDevInfo);
 	}
-#endif
+//#endif
 }
 
 
@@ -3549,6 +3549,9 @@ MMU_MapScatter (MMU_HEAP *pMMUHeap,
 				 "MMU_MapScatter: devVAddr=%08X, SysAddr=%08X, size=0x%x/0x%x",
 				  DevVAddr.uiAddr, sSysAddr.uiAddr, uCount, uSize));
 	}
+#if (SGX_FEATURE_PT_CACHE_ENTRIES_PER_LINE > 1)
+	MMU_InvalidatePageTableCache(pMMUHeap->psMMUContext->psDevInfo);
+#endif
 
 #if defined(PDUMP)
 	MMU_PDumpPageTables (pMMUHeap, MapBaseDevVAddr, uSize, IMG_FALSE, hUniqueTag);
@@ -3626,7 +3629,9 @@ MMU_MapPages (MMU_HEAP *pMMUHeap,
 		DevVAddr.uiAddr += ui32VAdvance;
 		DevPAddr.uiAddr += ui32PAdvance;
 	}
-
+#if (SGX_FEATURE_PT_CACHE_ENTRIES_PER_LINE > 1)
+	MMU_InvalidatePageTableCache(pMMUHeap->psMMUContext->psDevInfo);
+#endif
 #if defined(PDUMP)
 	MMU_PDumpPageTables (pMMUHeap, MapBaseDevVAddr, uSize, IMG_FALSE, hUniqueTag);
 #endif /* #if defined(PDUMP) */
@@ -3719,7 +3724,9 @@ MMU_MapPagesSparse (MMU_HEAP *pMMUHeap,
 		DevVAddr.uiAddr += ui32VAdvance;
 	}
 	pMMUHeap->bHasSparseMappings = IMG_TRUE;
-
+#if (SGX_FEATURE_PT_CACHE_ENTRIES_PER_LINE > 1)
+	MMU_InvalidatePageTableCache(pMMUHeap->psMMUContext->psDevInfo);
+#endif
 #if defined(PDUMP)
 	MMU_PDumpPageTables (pMMUHeap, MapBaseDevVAddr, uSizeVM, IMG_FALSE, hUniqueTag);
 #endif /* #if defined(PDUMP) */
@@ -3830,7 +3837,9 @@ MMU_MapShadow (MMU_HEAP          *pMMUHeap,
 		MapDevVAddr.uiAddr += ui32VAdvance;
 		uOffset += ui32PAdvance;
 	}
-
+#if (SGX_FEATURE_PT_CACHE_ENTRIES_PER_LINE > 1)
+	MMU_InvalidatePageTableCache(pMMUHeap->psMMUContext->psDevInfo);
+#endif
 #if defined(PDUMP)
 	MMU_PDumpPageTables (pMMUHeap, MapBaseDevVAddr, uByteSize, IMG_FALSE, hUniqueTag);
 #endif /* #if defined(PDUMP) */
@@ -3959,6 +3968,9 @@ MMU_MapShadowSparse (MMU_HEAP          *pMMUHeap,
 	}
 
 	pMMUHeap->bHasSparseMappings = IMG_TRUE;
+#if (SGX_FEATURE_PT_CACHE_ENTRIES_PER_LINE > 1)
+	MMU_InvalidatePageTableCache(pMMUHeap->psMMUContext->psDevInfo);
+#endif
 #if defined(PDUMP)
 	MMU_PDumpPageTables (pMMUHeap, MapBaseDevVAddr, uiSizeVM, IMG_FALSE, hUniqueTag);
 #endif /* #if defined(PDUMP) */
