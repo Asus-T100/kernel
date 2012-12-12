@@ -30,11 +30,7 @@
 #define MSIC_PB_LEN	1
 #define MSIC_PWRBTNM	(1 << 0)
 
-#if defined(CONFIG_BOARD_MRFLD_VP)
-#define DRIVER_NAME	"bcove_power_btn"
-#else
 #define DRIVER_NAME	"msic_power_btn"
-#endif
 
 struct mfld_pb_priv {
 	struct input_dev *input;
@@ -74,9 +70,9 @@ static irqreturn_t mfld_pb_isr(int irq, void *dev_id)
 	input_sync(priv->input);
 
 	if (pbstat & priv->pb_level)
-		pr_info("[%s] power button released\n", DRIVER_NAME);
+		pr_info("[%s] power button released\n", priv->input->name);
 	else
-		pr_info("[%s] power button pressed\n", DRIVER_NAME);
+		pr_info("[%s] power button pressed\n", priv->input->name);
 
 	return IRQ_WAKE_THREAD;
 }
@@ -90,6 +86,13 @@ static irqreturn_t msic_pb_irq(int irq, void *dev_id)
 
 	return IRQ_HANDLED;
 }
+
+static const struct ipc_device_id msic_power_btn_id[] = {
+	{ "msic_power_btn", 0},
+	{ "bcove_power_btn", 0},
+	{ },
+};
+MODULE_DEVICE_TABLE(ipc, msic_power_btn_id);
 
 static int __devinit mfld_pb_probe(struct ipc_device *ipcdev)
 {
@@ -147,7 +150,7 @@ static int __devinit mfld_pb_probe(struct ipc_device *ipcdev)
 	}
 
 	ret = request_threaded_irq(priv->irq, mfld_pb_isr, msic_pb_irq,
-			IRQF_NO_SUSPEND, DRIVER_NAME, priv);
+			IRQF_NO_SUSPEND, ipcdev->id_entry->name, priv);
 	if (ret) {
 		dev_err(&ipcdev->dev,
 			"unable to request irq %d for power button\n", irq);
@@ -199,6 +202,7 @@ static struct ipc_driver mfld_pb_driver = {
 	},
 	.probe  = mfld_pb_probe,
 	.remove = __devexit_p(mfld_pb_remove),
+	.id_table = msic_power_btn_id,
 };
 
 static int __init mfld_pb_init(void)
