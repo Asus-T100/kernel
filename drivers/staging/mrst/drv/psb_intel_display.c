@@ -43,12 +43,14 @@
 #include "psb_powermgmt.h"
 
 #include "android_hdmi.h"
+#include "mdfld_dsi_dbi_dsr.h"
 
 #ifdef MIN
 #undef MIN
 #endif
 
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))
+#define MAX_GAMMA			0x10000
 
 struct mrst_clock_t {
 	/* derived values */
@@ -481,12 +483,14 @@ int mdfld_intel_crtc_set_gamma(struct drm_device *dev,
 	}
 
 	if (!(setting_data->type &
-		(GAMMA_SETTING|GAMMA_INITIA))) {
+		(GAMMA_SETTING|GAMMA_INITIA|GAMMA_REG_SETTING))) {
 		ret = -EINVAL;
 		return ret;
 	}
-	if (setting_data->type == GAMMA_SETTING &&
-		setting_data->data_len != GAMMA_10_BIT_TABLE_COUNT) {
+	if ((setting_data->type == GAMMA_SETTING &&
+		setting_data->data_len != GAMMA_10_BIT_TABLE_COUNT) ||
+		(setting_data->type == GAMMA_REG_SETTING &&
+		setting_data->data_len != GAMMA_10_BIT_TABLE_COUNT)) {
 		ret = -EINVAL;
 		return ret;
 	}
@@ -515,6 +519,9 @@ int mdfld_intel_crtc_set_gamma(struct drm_device *dev,
 		ret = -EAGAIN;
 		goto _fun_exit;
 	}
+
+	/*forbid dsr which will restore regs*/
+	mdfld_dsi_dsr_forbid(dsi_config);
 
 	/*enable gamma*/
 	if (drm_psb_enable_gamma && setting_data->enable_state) {
@@ -580,45 +587,58 @@ int mdfld_intel_crtc_set_gamma(struct drm_device *dev,
 				temp = setting_data->gamma_tableX100[i / 8];
 			}
 
-			if (temp < 0)
-				temp = 0;
-			if (temp > 1024 * 100)
-				temp = 1024 * 100;
-
-			integer_part = temp / 100;
-			fraction_part = (temp - integer_part * 100);
-			/*get r/g/b each channel*/
-			int_blue_9_2 = integer_part >> 2;
-			int_green_9_2 = int_blue_9_2 << 8;
-			int_red_9_2 = int_blue_9_2 << 16;
-			int_blue_1_0 = (integer_part & 0x3) << 6;
-			int_green_1_0 = int_blue_1_0 << 8;
-			int_red_1_0 = int_blue_1_0 << 16;
-			fra_blue = fraction_part*64/100;
-			fra_green = fra_blue << 8;
-			fra_red = fra_blue << 16;
-			/*get even and odd part*/
-			odd_part = int_red_9_2 | int_green_9_2 | int_blue_9_2;
-			even_part = int_red_1_0 | fra_red | int_green_1_0 |
-				fra_green | int_blue_1_0 | fra_blue;
-			if (i != 1024) {
-				REG_WRITE(regs->palette_reg + j, even_part);
-				REG_WRITE(regs->palette_reg + j + 4, odd_part);
+			if (setting_data->type == GAMMA_REG_SETTING) {
+				if (i != 1024) {
+					REG_WRITE(regs->palette_reg + j, 0);
+					ctx->palette[(i / 8) * 2] = 0;
+					REG_WRITE(regs->palette_reg + j + 4, temp);
+					ctx->palette[(i / 8) * 2 + 1] = temp;
+				} else {
+					REG_WRITE(regs->gamma_red_max_reg, MAX_GAMMA);
+					REG_WRITE(regs->gamma_green_max_reg, MAX_GAMMA);
+					REG_WRITE(regs->gamma_blue_max_reg, MAX_GAMMA);
+				}
 			} else {
-				REG_WRITE(regs->gamma_red_max_reg,
-						(integer_part << 6) |
-						(fraction_part));
-				REG_WRITE(regs->gamma_green_max_reg,
-						(integer_part << 6) |
-						(fraction_part));
-				REG_WRITE(regs->gamma_blue_max_reg,
-						(integer_part << 6) |
-						(fraction_part));
-				printk(KERN_ALERT
-						"max (red %x, green 0x%x, blue 0x%x)\n",
-					REG_READ(regs->gamma_red_max_reg),
-					REG_READ(regs->gamma_green_max_reg),
-					REG_READ(regs->gamma_blue_max_reg));
+				if (temp < 0)
+					temp = 0;
+				if (temp > 1024 * 100)
+					temp = 1024 * 100;
+
+				integer_part = temp / 100;
+				fraction_part = (temp - integer_part * 100);
+				/*get r/g/b each channel*/
+				int_blue_9_2 = integer_part >> 2;
+				int_green_9_2 = int_blue_9_2 << 8;
+				int_red_9_2 = int_blue_9_2 << 16;
+				int_blue_1_0 = (integer_part & 0x3) << 6;
+				int_green_1_0 = int_blue_1_0 << 8;
+				int_red_1_0 = int_blue_1_0 << 16;
+				fra_blue = fraction_part*64/100;
+				fra_green = fra_blue << 8;
+				fra_red = fra_blue << 16;
+				/*get even and odd part*/
+				odd_part = int_red_9_2 | int_green_9_2 | int_blue_9_2;
+				even_part = int_red_1_0 | fra_red | int_green_1_0 |
+					fra_green | int_blue_1_0 | fra_blue;
+				if (i != 1024) {
+					REG_WRITE(regs->palette_reg + j, even_part);
+					REG_WRITE(regs->palette_reg + j + 4, odd_part);
+				} else {
+					REG_WRITE(regs->gamma_red_max_reg,
+							(integer_part << 6) |
+							(fraction_part));
+					REG_WRITE(regs->gamma_green_max_reg,
+							(integer_part << 6) |
+							(fraction_part));
+					REG_WRITE(regs->gamma_blue_max_reg,
+							(integer_part << 6) |
+							(fraction_part));
+					printk(KERN_ALERT
+							"max (red %x, green 0x%x, blue 0x%x)\n",
+						REG_READ(regs->gamma_red_max_reg),
+						REG_READ(regs->gamma_green_max_reg),
+						REG_READ(regs->gamma_blue_max_reg));
+				}
 			}
 
 			j = j + 8;
@@ -627,8 +647,10 @@ int mdfld_intel_crtc_set_gamma(struct drm_device *dev,
 		val = REG_READ(regs->pipeconf_reg);
 		val |= (PIPEACONF_GAMMA);
 		REG_WRITE(regs->pipeconf_reg, val);
+		ctx->pipeconf = val;
 		REG_WRITE(regs->dspcntr_reg, REG_READ(regs->dspcntr_reg) |
 				DISPPLANE_GAMMA_ENABLE);
+		ctx->dspcntr = REG_READ(regs->dspcntr_reg) | DISPPLANE_GAMMA_ENABLE;
 		REG_READ(regs->dspcntr_reg);
 	} else {
 		drm_psb_enable_gamma = 0;
@@ -636,11 +658,17 @@ int mdfld_intel_crtc_set_gamma(struct drm_device *dev,
 		val = REG_READ(regs->pipeconf_reg);
 		val &= ~(PIPEACONF_GAMMA);
 		REG_WRITE(regs->pipeconf_reg, val);
+		ctx->pipeconf = val;
 		REG_WRITE(regs->dspcntr_reg,
 				REG_READ(regs->dspcntr_reg) &
 				~(DISPPLANE_GAMMA_ENABLE));
+		ctx->dspcntr = REG_READ(regs->dspcntr_reg) & (~DISPPLANE_GAMMA_ENABLE);
 		REG_READ(regs->dspcntr_reg);
 	}
+
+	mdfld_dsi_dsr_update_panel_fb(dsi_config);
+	/*allow entering dsr*/
+	mdfld_dsi_dsr_allow(dsi_config);
 
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 
@@ -683,14 +711,16 @@ int mdfld_intel_crtc_set_color_conversion(struct drm_device *dev,
 	}
 
 	if (!(setting_data->type &
-		(CSC_CHROME_SETTING | CSC_INITIA | CSC_SETTING))) {
+		(CSC_CHROME_SETTING | CSC_INITIA | CSC_SETTING | CSC_REG_SETTING))) {
 		ret = -EINVAL;
 		return ret;
 	}
 	if ((setting_data->type == CSC_SETTING &&
 		setting_data->data_len != CSC_COUNT) ||
 		(setting_data->type == CSC_CHROME_SETTING &&
-		setting_data->data_len != CHROME_COUNT)) {
+		setting_data->data_len != CHROME_COUNT) ||
+		(setting_data->type == CSC_REG_SETTING &&
+		setting_data->data_len != CSC_REG_COUNT)) {
 		ret = -EINVAL;
 		return ret;
 	}
@@ -720,6 +750,9 @@ int mdfld_intel_crtc_set_color_conversion(struct drm_device *dev,
 		goto _fun_exit;
 	}
 
+	/*forbid dsr which will restore regs*/
+	mdfld_dsi_dsr_forbid(dsi_config);
+
 	if (drm_psb_enable_color_conversion && setting_data->enable_state) {
 		if (setting_data->type == CSC_INITIA) {
 			/*initialize*/
@@ -735,12 +768,19 @@ int mdfld_intel_crtc_set_color_conversion(struct drm_device *dev,
 			/*use user space csc*/
 			csc_program_DC(dev, &setting_data->data.csc_data[0],
 					pipe);
+		} else if (setting_data->type == CSC_REG_SETTING) {
+			/*use user space csc regiseter setting*/
+			for (i = 0; i < 6; i++) {
+				REG_WRITE(regs->color_coef_reg + (i<<2), setting_data->data.csc_reg_data[i]);
+				ctx->color_coef[i] = setting_data->data.csc_reg_data[i];
+			}
 		}
 
 		/*enable*/
 		val = REG_READ(regs->pipeconf_reg);
 		val |= (PIPEACONF_COLOR_MATRIX_ENABLE);
 		REG_WRITE(regs->pipeconf_reg, val);
+		ctx->pipeconf = val;
 		val = REG_READ(regs->dspcntr_reg);
 		REG_WRITE(regs->dspcntr_reg, val);
 	} else {
@@ -749,9 +789,14 @@ int mdfld_intel_crtc_set_color_conversion(struct drm_device *dev,
 		val = REG_READ(regs->pipeconf_reg);
 		val &= ~(PIPEACONF_COLOR_MATRIX_ENABLE);
 		REG_WRITE(regs->pipeconf_reg, val);
+		ctx->pipeconf = val;
 		val = REG_READ(regs->dspcntr_reg);
 		REG_WRITE(regs->dspcntr_reg, val);
 	}
+
+	mdfld_dbi_update_panel(dev, pipe);
+	/*allow entering dsr*/
+	mdfld_dsi_dsr_allow(dsi_config);
 
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 

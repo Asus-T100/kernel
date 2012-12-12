@@ -238,7 +238,8 @@ static void MRSTLFBFlipSprite(MRSTLFB_DEVINFO *psDevInfo,
 	}
 
 	if ((psContext->update_mask & SPRITE_UPDATE_CONTROL))
-		PSB_WVDC32(psContext->cntr | DISPLAY_PLANE_ENABLE,
+		PSB_WVDC32(psContext->cntr | DISPLAY_PLANE_ENABLE |
+					 (PSB_RVDC32(DSPACNTR + reg_offset) & DISPPLANE_GAMMA_ENABLE),
 			       DSPACNTR + reg_offset);
 
 	if ((psContext->update_mask & SPRITE_UPDATE_SURFACE)) {
@@ -251,7 +252,7 @@ static void MRSTLFBFlipSprite(MRSTLFB_DEVINFO *psDevInfo,
 		ctx->dsppos = psContext->pos;
 		ctx->dspsize = psContext->size;
 		ctx->dspstride = psContext->stride;
-		ctx->dspcntr = psContext->cntr;
+		ctx->dspcntr = psContext->cntr | ((PSB_RVDC32(DSPACNTR + reg_offset) & DISPPLANE_GAMMA_ENABLE));
 		ctx->dsplinoff = psContext->linoff;
 		ctx->dspsurf = psContext->surf;
 	}
@@ -299,7 +300,8 @@ static void MRSTLFBFlipPrimary(MRSTLFB_DEVINFO *psDevInfo,
 	}
 
 	if ((psContext->update_mask & SPRITE_UPDATE_CONTROL))
-		PSB_WVDC32(psContext->cntr | DISPLAY_PLANE_ENABLE,
+		PSB_WVDC32(psContext->cntr | DISPLAY_PLANE_ENABLE |
+					(PSB_RVDC32(DSPACNTR + reg_offset) & DISPPLANE_GAMMA_ENABLE),
 			       DSPACNTR + reg_offset);
 
 	if ((psContext->update_mask & SPRITE_UPDATE_SURFACE)) {
@@ -312,7 +314,7 @@ static void MRSTLFBFlipPrimary(MRSTLFB_DEVINFO *psDevInfo,
 		ctx->dsppos = psContext->pos;
 		ctx->dspsize = psContext->size;
 		ctx->dspstride = psContext->stride;
-		ctx->dspcntr = psContext->cntr;
+		ctx->dspcntr = psContext->cntr | ((PSB_RVDC32(DSPACNTR + reg_offset) & DISPPLANE_GAMMA_ENABLE));
 		ctx->dsplinoff = psContext->linoff;
 		ctx->dspsurf = psContext->surf;
 	}

@@ -96,6 +96,10 @@ int hdmi_state;
 u32 DISP_PLANEB_STATUS = ~DISPLAY_PLANE_ENABLE;
 int drm_psb_use_cases_control = PSB_ALL_UC_ENABLE;
 int drm_psb_dump_pm_history;
+int gamma_setting[129] = {0};
+int csc_setting[6] = {0};
+int gamma_number = 129;
+int csc_number = 6;
 
 int drm_psb_msvdx_tiling = 1;
 
@@ -153,6 +157,8 @@ module_param_named(te_delay, drm_psb_te_timer_delay, int, 0600);
 module_param_named(msvdx_tiling_memory, drm_psb_msvdx_tiling, int, 0600);
 module_param_named(psb_use_cases_control, drm_psb_use_cases_control, int, 0600);
 module_param_named(pm_history, drm_psb_dump_pm_history, int, 0600);
+module_param_array_named(gamma_adjust, gamma_setting, int, &gamma_number, 0600);
+module_param_array_named(csc_adjust, csc_setting, int, &csc_number, 0600);
 
 #ifndef MODULE
 /* Make ospm configurable via cmdline firstly, and others can be enabled if needed. */
@@ -4245,6 +4251,56 @@ static int psb_hdmi_power_write(struct file *file, const char *buffer,
 	return count;
 }
 
+static int csc_control_read(char *buf, char **start, off_t offset, int request,
+				     int *eof, void *data)
+{
+	return 0;
+}
+
+static int csc_control_write(struct file *file, const char *buffer,
+				      unsigned long count, void *data)
+{
+	char buf[2];
+	int  csc_control;
+	struct drm_minor *minor = (struct drm_minor *) data;
+	struct drm_device *dev = minor->dev;
+	struct csc_setting csc;
+	struct gamma_setting gamma;
+
+	if (count != sizeof(buf)) {
+		return -EINVAL;
+	} else {
+		if (copy_from_user(buf, buffer, count))
+			return -EINVAL;
+		if (buf[count-1] != '\n')
+			return -EINVAL;
+		csc_control = buf[0] - '0';
+		PSB_DEBUG_ENTRY(" csc control: %d\n", csc_control);
+
+		switch (csc_control) {
+		case 0x0:
+			csc.pipe = 0;
+			csc.type = CSC_REG_SETTING;
+			csc.enable_state = true;
+			csc.data_len = CSC_REG_COUNT;
+			memcpy(csc.data.csc_reg_data, csc_setting, sizeof(csc.data.csc_reg_data));
+			mdfld_intel_crtc_set_color_conversion(dev, &csc);
+			break;
+		case 0x1:
+			gamma.pipe = 0;
+			gamma.type = GAMMA_REG_SETTING;
+			gamma.enable_state = true;
+			gamma.data_len = GAMMA_10_BIT_TABLE_COUNT;
+			memcpy(gamma.gamma_tableX100, gamma_setting, sizeof(gamma.gamma_tableX100));
+			mdfld_intel_crtc_set_gamma(dev, &gamma);
+			break;
+		default:
+			printk("invalied parameters\n");
+		}
+	}
+	return count;
+}
+
 /* When a client dies:
  *    - Check for and clean up flipped page state
  */
@@ -4266,6 +4322,7 @@ static int psb_proc_init(struct drm_minor *minor)
 	struct proc_dir_entry *ent_display_status;
 	struct proc_dir_entry *ent_panel_status;
 	struct proc_dir_entry *ent_hdmi_status;
+	struct proc_dir_entry *csc_setting;
 	ent = create_proc_entry(OSPM_PROC_ENTRY, 0644, minor->proc_root);
 	rtpm = create_proc_entry(RTPM_PROC_ENTRY, 0644, minor->proc_root);
 	ent_display_status = create_proc_entry(DISPLAY_PROC_ENTRY, 0644, minor->proc_root);
@@ -4273,6 +4330,7 @@ static int psb_proc_init(struct drm_minor *minor)
 			 0644, minor->proc_root);
 	ent1 = proc_create_data(BLC_PROC_ENTRY, 0, minor->proc_root, &psb_blc_proc_fops, minor);
 	ent_hdmi_status = create_proc_entry(HDMI_PROC_ENTRY, 0644, minor->proc_root);
+	csc_setting = create_proc_entry(CSC_PROC_ENTRY, 0644, minor->proc_root);
 
 	if (!ent || !ent1 || !rtpm || !ent_display_status)
 		return -1;
@@ -4290,6 +4348,9 @@ static int psb_proc_init(struct drm_minor *minor)
 	ent_hdmi_status->write_proc = psb_hdmi_power_write;
 	ent_hdmi_status->read_proc = psb_hdmi_power_read;
 	ent_hdmi_status->data = (void *)minor;
+	csc_setting->write_proc = csc_control_write;
+	csc_setting->read_proc = csc_control_read;
+	csc_setting->data = (void *)minor;
 	return 0;
 }
 

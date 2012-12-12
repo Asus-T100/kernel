@@ -398,6 +398,10 @@ struct mdfld_dsi_hw_registers {
 	u32 mipi_cmd_len_reg;
 };
 
+#define NO_GAMMA_CSC			0x0
+#define ENABLE_GAMMA			(0x1 << 0)
+#define ENABLE_CSC			(0x1 << 1)
+#define ENABLE_GAMMA_CSC		(ENABLE_GAMMA | ENABLE_CSC)
 /*
  * DSI config, consists of one DSI connector, two DSI encoders.
  * DRM will pick up on DSI encoder basing on differents configs.
@@ -431,6 +435,7 @@ struct mdfld_dsi_config {
 	int channel_num;
 	/*video mode configure*/
 	int video_mode;
+	int enable_gamma_csc;
 
 	/*dsr*/
 	void *dsr;
