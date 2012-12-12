@@ -451,16 +451,34 @@ static void intel_mid_ehci_driver_unregister(struct pci_driver *host_driver)
 #include <asm/intel-mid.h>
 #define SPH_CS_N	51
 #define SPH_RST_N	169
+static int is_board_ctp_prx(void)
+{
+	return  INTEL_MID_BOARD(1, PHONE, CLVTP) &&
+		(SPID_HARDWARE_ID(CLVTP, PHONE, RHB, PR01)   ||
+		 SPID_HARDWARE_ID(CLVTP, PHONE, RHB, PR02)   ||
+		 SPID_HARDWARE_ID(CLVTP, PHONE, RHB, PR10PM) ||
+		 SPID_HARDWARE_ID(CLVTP, PHONE, RHB, PR10P)  ||
+		 SPID_HARDWARE_ID(CLVTP, PHONE, RHB, PR10M)  ||
+		 SPID_HARDWARE_ID(CLVTP, PHONE, RHB, PR10)   ||
+		 SPID_HARDWARE_ID(CLVTP, PHONE, RHB, PR15M)  ||
+		 SPID_HARDWARE_ID(CLVTP, PHONE, RHB, PR15)   ||
+		 SPID_HARDWARE_ID(CLVTP, PHONE, RHB, PR20M)  ||
+		 SPID_HARDWARE_ID(CLVTP, PHONE, RHB, PR20)   ||
+		 SPID_HARDWARE_ID(CLVTP, PHONE, RHB, PR30M)  ||
+		 SPID_HARDWARE_ID(CLVTP, PHONE, RHB, PR30)   ||
+		 SPID_HARDWARE_ID(CLVTP, PHONE, RHB, PR20A)  ||
+		 SPID_HARDWARE_ID(CLVTP, PHONE, RHB, PR19M)  ||
+		 SPID_HARDWARE_ID(CLVTP, PHONE, RHB, PR199M) ||
+		 SPID_HARDWARE_ID(CLVTP, PHONE, RHB, PR20B));
+}
 
 static int cloverview_sph_gpio_init(void)
 {
 	int		retval = 0;
 	u32		board_id;
 
-	board_id = ctp_board_id();
-
 	/*Only ctp_pr0/pr1 phone need to do CS and PHY operation */
-	if (board_id == CTP_BID_PR0) {
+	if (is_board_ctp_prx()) {
 
 		if (gpio_is_valid(SPH_CS_N)) {
 			retval = gpio_request(SPH_CS_N, "SPH_CS_N");
@@ -507,9 +525,7 @@ static void cloverview_sph_gpio_cleanup(void)
 {
 	u32		board_id;
 
-	board_id = ctp_board_id();
-
-	if (board_id == CTP_BID_PR0) {
+	if (is_board_ctp_prx()) {
 		if (gpio_is_valid(SPH_CS_N))
 			gpio_free(SPH_CS_N);
 		if (gpio_is_valid(SPH_RST_N))

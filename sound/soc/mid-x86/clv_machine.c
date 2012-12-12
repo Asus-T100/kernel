@@ -154,18 +154,16 @@ static struct snd_soc_jack_gpio hs_gpio[] = {
 	},
 };
 
-bool ctp_vv_board(const struct sfi_soft_platform_id *spid)
+bool ctp_vv_board(void)
 {
-	if ((spid->platform_family_id == INTEL_CLVTP_PHONE) &&
-		((spid->product_line_id == CLVTP_PHONE_RHB_CCVV2) ||
-		(spid->product_line_id == CLVTP_PHONE_RHB_CCVV1) ||
-		(spid->product_line_id == CLVTP_PHONE_RHB_CCVV3) ||
-		(spid->product_line_id == CLVTP_PHONE_RHB_CCVV1P) ||
-		(spid->product_line_id == CLVTP_PHONE_RHB_CCVV0)))
-		return true;
-	else
-		return false;
+	return  INTEL_MID_BOARD(1, PHONE, CLVTP) &&
+		(SPID_HARDWARE_ID(CLVTP, PHONE, RHB, CCVV0) ||
+		 SPID_HARDWARE_ID(CLVTP, PHONE, RHB, CCVV1) ||
+		 SPID_HARDWARE_ID(CLVTP, PHONE, RHB, CCVV2) ||
+		 SPID_HARDWARE_ID(CLVTP, PHONE, RHB, CCVV3) ||
+		 SPID_HARDWARE_ID(CLVTP, PHONE, RHB, CCVV1P));
 }
+
 static int set_mic_bias(struct snd_soc_jack *jack, int state)
 {
 	struct snd_soc_codec *codec = jack->codec;
@@ -176,13 +174,13 @@ static int set_mic_bias(struct snd_soc_jack *jack, int state)
 	mutex_lock(&codec->mutex);
 	switch (state) {
 	case MIC_BIAS_DISABLE:
-		if (ctp_vv_board(ctx->pdata->spid))
+		if (ctp_vv_board())
 			snd_soc_dapm_disable_pin(dapm, "MIC1 Bias");
 		else
 			snd_soc_dapm_disable_pin(dapm, "MIC2 Bias");
 		break;
 	case MIC_BIAS_ENABLE:
-		if (ctp_vv_board(ctx->pdata->spid))
+		if (ctp_vv_board())
 			snd_soc_dapm_force_enable_pin(dapm, "MIC1 Bias");
 		else
 			snd_soc_dapm_force_enable_pin(dapm, "MIC2 Bias");
@@ -492,7 +490,7 @@ static int clv_init(struct snd_soc_pcm_runtime *runtime)
 
 	/*In VV board SPKOUT is connected and SPKLINEOUT on PR board*/
 	/*In VV board MIC1 is connected  and MIC2 is PR boards */
-	if (ctp_vv_board(ctx->pdata->spid)) {
+	if (ctp_vv_board()) {
 		snd_soc_dapm_disable_pin(dapm, "MIC1");
 		snd_soc_dapm_disable_pin(dapm, "SPKOUT");
 		snd_soc_dapm_ignore_suspend(dapm, "SPKLINEOUT");

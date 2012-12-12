@@ -530,14 +530,13 @@ static int sst_pcm_new(struct snd_soc_pcm_runtime *rtd)
 static int __devinit sst_soc_probe(struct snd_soc_platform *platform)
 {
 	struct sst_data *ctx = snd_soc_platform_get_drvdata(platform);
-	const struct sfi_soft_platform_id *spid = ctx->pdata->spid;
 
 	pr_debug("%s called\n", __func__);
-	if (spid->platform_family_id == INTEL_CLVTP_PHONE) {
+	if (INTEL_MID_BOARD(1, PHONE, CLVTP)) {
 		return sst_platform_clv_init(platform);
-	} else if (spid->platform_family_id == INTEL_MRFL_PHONE) {
+	} else if (INTEL_MID_BOARD(1, PHONE, MRFL)) {
 		return sst_dsp_init(platform);
-	} else if (spid->platform_family_id == INTEL_MFLD_PHONE) {
+	} else if (INTEL_MID_BOARD(1, PHONE, MFLD)) {
 #ifdef MRFLD_TEST_ON_MFLD
 		sst_dsp_init(platform);
 #endif
