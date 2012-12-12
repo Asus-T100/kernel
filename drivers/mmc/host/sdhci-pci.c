@@ -321,12 +321,28 @@ static int mfd_emmc_probe_slot(struct sdhci_pci_slot *slot)
 		slot->host->quirks2 |= SDHCI_QUIRK2_V2_0_SUPPORT_DDR50;
 		slot->host->mmc->caps |= MMC_CAP_1_8V_DDR;
 		slot->host->mmc->caps2 |= MMC_CAP2_INIT_CARD_SYNC;
+		/*
+		 * CLV host controller has a special POWER_CTL register,
+		 * which can do HW reset, so it doesn't need to operate
+		 * a GPIO, so make sure platform data won't pass a valid
+		 * GPIO pin to CLV host
+		 */
+		slot->host->mmc->caps |= MMC_CAP_HW_RESET;
+		slot->rst_n_gpio = -EINVAL;
 		break;
 	case PCI_DEVICE_ID_INTEL_CLV_EMMC1:
 		slot->host->quirks2 |= SDHCI_QUIRK2_V2_0_SUPPORT_DDR50;
 		slot->host->mmc->caps |= MMC_CAP_1_8V_DDR;
 		slot->host->mmc->caps2 |= MMC_CAP2_BOOTPART_NOACC |
 			MMC_CAP2_RPMBPART_NOACC;
+		/*
+		 * CLV host controller has a special POWER_CTL register,
+		 * which can do HW reset, so it doesn't need to operate
+		 * a GPIO, so make sure platform data won't pass a valid
+		 * GPIO pin to CLV host
+		 */
+		slot->host->mmc->caps |= MMC_CAP_HW_RESET;
+		slot->rst_n_gpio = -EINVAL;
 		break;
 	case PCI_DEVICE_ID_INTEL_MFD_EMMC1:
 		slot->host->mmc->caps2 |= MMC_CAP2_BOOTPART_NOACC|
@@ -1170,15 +1186,31 @@ static void sdhci_pci_hw_reset(struct sdhci_host *host)
 {
 	struct sdhci_pci_slot *slot = sdhci_priv(host);
 	int rst_n_gpio = slot->rst_n_gpio;
+	u8 pwr;
 
-	if (!gpio_is_valid(rst_n_gpio))
-		return;
-	gpio_set_value_cansleep(rst_n_gpio, 0);
-	/* For eMMC, minimum is 1us but give it 10us for good measure */
-	udelay(10);
-	gpio_set_value_cansleep(rst_n_gpio, 1);
-	/* For eMMC, minimum is 200us but give it 300us for good measure */
-	usleep_range(300, 1000);
+	if (gpio_is_valid(rst_n_gpio)) {
+		gpio_set_value_cansleep(rst_n_gpio, 0);
+		/* For eMMC, minimum is 1us but give it 10us for good measure */
+		udelay(10);
+		gpio_set_value_cansleep(rst_n_gpio, 1);
+		/*
+		 * For eMMC, minimum is 200us,
+		 * but give it 300us for good measure
+		 */
+		usleep_range(300, 1000);
+	} else if (slot->host->mmc->caps & MMC_CAP_HW_RESET) {
+		/* first set bit4 of power control register */
+		pwr = sdhci_readb(host, SDHCI_POWER_CONTROL);
+		pwr |= SDHCI_HW_RESET;
+		sdhci_writeb(host, pwr, SDHCI_POWER_CONTROL);
+		/* keep the same delay for safe */
+		usleep_range(300, 1000);
+		/* then clear bit4 of power control register */
+		pwr &= ~SDHCI_HW_RESET;
+		sdhci_writeb(host, pwr, SDHCI_POWER_CONTROL);
+		/* keep the same delay for safe */
+		usleep_range(300, 1000);
+	}
 }
 
 #if defined(CONFIG_X86_MDFLD)
