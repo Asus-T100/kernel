@@ -86,7 +86,16 @@
 #define MT9E013_FINE_INTG_MAX_DEF		0x3EE
 
 #define MT9E013_READ_MODE				0x3040
+#define MT9E013_READ_MODE_X_ODD_INC		(BIT(6) | BIT(7) | BIT(8))
+#define MT9E013_READ_MODE_Y_ODD_INC		(BIT(0) | BIT(1) | BIT(2) |\
+						BIT(3) | BIT(4) | BIT(5))
 
+#define MT9E013_HORIZONTAL_START_H		0x0344
+#define MT9E013_VERTICAL_START_H		0x0346
+#define MT9E013_HORIZONTAL_END_H		0x0348
+#define MT9E013_VERTICAL_END_H			0x034a
+#define MT9E013_HORIZONTAL_OUTPUT_SIZE_H	0x034c
+#define MT9E013_VERTICAL_OUTPUT_SIZE_H		0x034e
 
 #define MT9E013_COARSE_INTEGRATION_TIME		0x3012
 #define MT9E013_FINE_INTEGRATION_TIME		0x3014
@@ -322,18 +331,6 @@ struct mt9e013_write_buffer {
 struct mt9e013_write_ctrl {
 	int index;
 	struct mt9e013_write_buffer buffer;
-};
-
-struct sensor_mode_data {
-	unsigned int coarse_integration_time_min;
-	unsigned int coarse_integration_time_max_margin;
-	unsigned int fine_integration_time_min;
-	unsigned int fine_integration_time_max_margin;
-	unsigned int fine_integration_time_def;
-	unsigned int frame_length_lines;
-	unsigned int line_length_pck;
-	unsigned int read_mode;
-	int vt_pix_clk_freq_mhz;
 };
 
 #define MT9E013_OTP_START_ADDR		0x3800
