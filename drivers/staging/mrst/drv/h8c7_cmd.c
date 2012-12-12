@@ -269,12 +269,61 @@ void mdfld_h8c7_dsi_controller_init(struct mdfld_dsi_config *dsi_config)
 {
 
 	struct mdfld_dsi_hw_context *hw_ctx = &dsi_config->dsi_hw_context;
+	struct drm_device *dev = dsi_config->dev;
+
+	struct csc_setting csc = {	.pipe = 0,
+								.type = CSC_REG_SETTING,
+								.enable_state = true,
+								.data_len = CSC_REG_COUNT,
+								.data.csc_reg_data = {
+									0xFFB0424, 0xFDF, 0x4320FF1, 0xFDC, 0xFF50FF5, 0x415}
+							 };
+	struct gamma_setting gamma = {	.pipe = 0,
+									.type = GAMMA_REG_SETTING,
+									.enable_state = true,
+									.data_len = GAMMA_10_BIT_TABLE_COUNT,
+									.gamma_tableX100 = {
+										0x000000, 0x030303, 0x050505, 0x070707,
+										0x090909, 0x0C0C0C, 0x0E0E0E, 0x101010,
+										0x121212, 0x141414, 0x171717, 0x191919,
+										0x1B1B1B, 0x1D1D1D, 0x1F1F1F, 0x212121,
+										0x232323, 0x252525, 0x282828, 0x2A2A2A,
+										0x2C2C2C, 0x2E2E2E, 0x303030, 0x323232,
+										0x343434, 0x363636, 0x383838, 0x3A3A3A,
+										0x3C3C3C, 0x3E3E3E, 0x404040, 0x424242,
+										0x444444, 0x464646, 0x484848, 0x4A4A4A,
+										0x4C4C4C, 0x4E4E4E, 0x505050, 0x525252,
+										0x545454, 0x565656, 0x585858, 0x5A5A5A,
+										0x5C5C5C, 0x5E5E5E, 0x606060, 0x626262,
+										0x646464, 0x666666, 0x686868, 0x6A6A6A,
+										0x6C6C6C, 0x6E6E6E, 0x707070, 0x727272,
+										0x747474, 0x767676, 0x787878, 0x7A7A7A,
+										0x7C7C7C, 0x7E7E7E, 0x808080, 0x828282,
+										0x848484, 0x868686, 0x888888, 0x8A8A8A,
+										0x8C8C8C, 0x8E8E8E, 0x909090, 0x929292,
+										0x949494, 0x969696, 0x989898, 0x999999,
+										0x9B9B9B, 0x9D9D9D, 0x9F9F9F, 0xA1A1A1,
+										0xA3A3A3, 0xA5A5A5, 0xA7A7A7, 0xA9A9A9,
+										0xABABAB, 0xADADAD, 0xAFAFAF, 0xB1B1B1,
+										0xB3B3B3, 0xB5B5B5, 0xB6B6B6, 0xB8B8B8,
+										0xBABABA, 0xBCBCBC, 0xBEBEBE, 0xC0C0C0,
+										0xC2C2C2, 0xC4C4C4, 0xC6C6C6, 0xC8C8C8,
+										0xCACACA, 0xCCCCCC, 0xCECECE, 0xCFCFCF,
+										0xD1D1D1, 0xD3D3D3, 0xD5D5D5, 0xD7D7D7,
+										0xD9D9D9, 0xDBDBDB, 0xDDDDDD, 0xDFDFDF,
+										0xE1E1E1, 0xE3E3E3, 0xE4E4E4, 0xE6E6E6,
+										0xE8E8E8, 0xEAEAEA, 0xECECEC, 0xEEEEEE,
+										0xF0F0F0, 0xF2F2F2, 0xF4F4F4, 0xF6F6F6,
+										0xF7F7F7, 0xF9F9F9, 0xFBFBFB, 0xFDFDFD}
+								 };
+
 
 	PSB_DEBUG_ENTRY("\n");
 
 	/*reconfig lane configuration*/
 	dsi_config->lane_count = 3;
 	dsi_config->lane_config = MDFLD_DSI_DATA_LANE_3_1;
+	dsi_config->enable_gamma_csc = ENABLE_GAMMA | ENABLE_CSC;
 	/* This is for 400 mhz.  Set it to 0 for 800mhz */
 	hw_ctx->cck_div = 1;
 	hw_ctx->pll_bypass_mode = 0;
@@ -296,6 +345,19 @@ void mdfld_h8c7_dsi_controller_init(struct mdfld_dsi_config *dsi_config)
 	hw_ctx->dsi_func_prg = (0xa000 | dsi_config->lane_count);
 	hw_ctx->mipi = TE_TRIGGER_GPIO_PIN;
 	hw_ctx->mipi |= dsi_config->lane_config;
+
+	if (dsi_config->enable_gamma_csc & ENABLE_CSC) {
+		/* setting the tuned csc setting */
+		drm_psb_enable_color_conversion = 1;
+		mdfld_intel_crtc_set_color_conversion(dev, &csc);
+	}
+
+	if (dsi_config->enable_gamma_csc & ENABLE_GAMMA) {
+		/* setting the tuned gamma setting */
+		drm_psb_enable_gamma = 1;
+		mdfld_intel_crtc_set_gamma(dev, &gamma);
+	}
+
 }
 
 static

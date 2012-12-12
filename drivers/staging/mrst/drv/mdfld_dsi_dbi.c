@@ -318,6 +318,7 @@ int __dbi_power_on(struct mdfld_dsi_config *dsi_config)
 	struct drm_psb_private *dev_priv;
 	struct drm_device *dev;
 	int retry;
+	int i;
 	int err = 0;
 
 	PSB_DEBUG_ENTRY("\n");
@@ -425,6 +426,14 @@ int __dbi_power_on(struct mdfld_dsi_config *dsi_config)
 	REG_WRITE(regs->pipesrc_reg, ctx->pipesrc);
 	REG_WRITE(regs->dsppos_reg, ctx->dsppos);
 	REG_WRITE(regs->dspstride_reg, ctx->dspstride);
+
+	/*restore color_coef (chrome) */
+	for (i = 0; i < 6; i++)
+		REG_WRITE(regs->color_coef_reg + (i<<2), ctx->color_coef[i]);
+
+	/* restore palette (gamma) */
+	for (i = 0; i < 256; i++)
+		REG_WRITE(regs->palette_reg + (i<<2), ctx->palette[i]);
 
 	/*Setup plane*/
 	REG_WRITE(regs->dspsize_reg, ctx->dspsize);
@@ -580,6 +589,7 @@ int __dbi_power_off(struct mdfld_dsi_config *dsi_config)
 	int pipe0_enabled;
 	int pipe2_enabled;
 	int err = 0;
+	int i;
 
 	if (!dsi_config)
 		return -EINVAL;
@@ -603,6 +613,14 @@ int __dbi_power_off(struct mdfld_dsi_config *dsi_config)
 	ctx->pipestat	= REG_READ(regs->pipestat_reg);
 	ctx->dspcntr	= REG_READ(regs->dspcntr_reg);
 	ctx->pipeconf	= REG_READ(regs->pipeconf_reg);
+
+	/*save color_coef (chrome) */
+	for (i = 0; i < 6; i++)
+		ctx->color_coef[i] = REG_READ(regs->color_coef_reg + (i<<2));
+
+	/* save palette (gamma) */
+	for (i = 0; i < 256; i++)
+		ctx->palette[i] = REG_READ(regs->palette_reg + (i<<2));
 
 	/*Disable plane*/
 	val = ctx->dspcntr;
