@@ -24,6 +24,7 @@
 #ifndef _HRT_MASTER_PORT_H 
 #define _HRT_MASTER_PORT_H 
 
+/*#include "var.h"*/
 
 /* Congratulations, you have reached the end of the HRT.
  * Here we split between the hardware implementation (memcpy / assignments)
@@ -58,38 +59,27 @@
 #define hrt_master_port_uload_16(addr)      _hrt_master_port_uload_16(addr)
 #define hrt_master_port_uload_32(addr)      _hrt_master_port_uload_32(addr)
 
-
-
-#define hrt_master_port_store(addr, data, bytes) \
-	_hrt_master_port_unaligned_store((void *)(addr), \
-					(const void *)(data), bytes)
-#define hrt_master_port_load(addr, data, bytes) \
-	_hrt_master_port_unaligned_load((const void *)(addr), \
-					(void *)(data), bytes)
-#define hrt_master_port_set(addr, data, bytes) \
-	_hrt_master_port_unaligned_set((void *)(addr), \
-					(int)(data), bytes)
+//#define hrt_master_port_store(addr, data, bytes) _hrt_master_port_unaligned_store((hrt_address)(addr), data, bytes)
+//#define hrt_master_port_load(addr, data, bytes)  _hrt_master_port_unaligned_load((hrt_address)(addr), data, bytes)
+//#define hrt_master_port_set(addr, data, bytes)   _hrt_master_port_unaligned_set((hrt_address)(addr), data, bytes)
+#define hrt_master_port_store(addr, data, bytes) _hrt_master_port_unaligned_store((void *)(addr), (const void *)(data), bytes)
+#define hrt_master_port_load(addr, data, bytes) _hrt_master_port_unaligned_load((const void *)(addr), (void *)(data), bytes)
+#define hrt_master_port_set(addr, data, bytes) _hrt_master_port_unaligned_set((void *)(addr), (int)(data), bytes)
 
 /* reduce number of functions */
 #define _hrt_master_port_unaligned_store(address, data, size) \
 	_hrt_mem_store(address, data, size)
+//static inline void *_hrt_mem_store(void *to, const void *from, size_t n)
 #define _hrt_master_port_unaligned_load(address, data, size) \
 	_hrt_mem_load(address, data, size)
 #define _hrt_master_port_unaligned_set(address, data, size) \
 	_hrt_mem_set(address, data, size)
 
-
-#if defined(__HIVECC)
-#include "master_port_hivecc.h"
-#elif defined(HRT_USE_VIR_ADDRS)
-/* do nothing, hrt backend is already included */
-#elif defined(HRT_HW)
-#include "master_port_hw.h"
+#if defined(HRT_HW)
+//#include "master_port_hw.h"
 #else
 #include "master_port_sim.h"
 #endif
-
-
 
 /* To use a combination of variables in crun and bus addresses in other runs, use these: */
 #ifdef C_RUN
