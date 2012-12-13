@@ -890,9 +890,6 @@ static int dwc_otg_set_power(struct otg_transceiver *_otg,
 	otg->charging_cap.mA = mA;
 	spin_unlock_irqrestore(&otg->lock, flags);
 
-#ifdef CONFIG_DWC_CHARGER_DETECTION
-	cancel_delayed_work(&otg->sdp_check_work);
-#endif
 	dwc_otg_notify_charger_type(otg,
 			OTG_CHR_STATE_CONNECTED);
 
