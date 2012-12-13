@@ -383,35 +383,7 @@ static int atomisp_cropcap(struct file *file, void *fh,
 
 	return 0;
 }
-/*
- *  FIXME:G_CROP and S_CROP are used for bayer downscaling case
- */
-static int atomisp_g_crop(struct file *file, void *fh,
-	struct v4l2_crop *crop)
-{
-	/*
-	 * g_crop is used to enable bayer downscaling previously.
-	 * current bayer ds is replaced by yuv ds.
-	 * so remove the support of cropping.
-	 */
-	v4l2_err(&atomisp_dev,
-		"crop is unavailable now\n");
-	return -EINVAL;
 
-}
-
-static int atomisp_s_crop(struct file *file, void *fh,
-	struct v4l2_crop *crop)
-{
-	/*
-	 * s_crop is used to enable bayer downscaling previously.
-	 * current bayer ds is replaced by yuv ds.
-	 * so remove the support of cropping.
-	 */
-	v4l2_err(&atomisp_dev,
-		"crop is unavailable now\n");
-	return -EINVAL;
-}
 /*
  * enum input are used to check primary/secondary camera
  */
@@ -2353,8 +2325,6 @@ const struct v4l2_ioctl_ops atomisp_ioctl_ops = {
 	.vidioc_enum_frameintervals = atomisp_enum_frameintervals,
 	.vidioc_s_parm = atomisp_s_parm,
 	.vidioc_g_parm = atomisp_g_parm,
-	.vidioc_g_crop = atomisp_g_crop,
-	.vidioc_s_crop = atomisp_s_crop,
 };
 
 const struct v4l2_ioctl_ops atomisp_file_ioctl_ops = {
