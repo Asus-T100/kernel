@@ -132,9 +132,15 @@ struct snd_pcm_hardware BUILTIN_alsa_hw_param = {
 			  SNDRV_PCM_INFO_MMAP_VALID |
 			  SNDRV_PCM_INFO_BATCH | SNDRV_PCM_INFO_SYNC_START),
 		.formats = (SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_U16_LE),
+#ifdef CONFIG_SND_INTEL_ALSA_SSP_BUILTIN_16K
+		.rates = (SNDRV_PCM_RATE_16000),
+		.rate_min = 16000,
+		.rate_max = 16000,
+#else
 		.rates = (SNDRV_PCM_RATE_48000),
 		.rate_min = 48000,
 		.rate_max = 48000,
+#endif
 		.channels_min = 1,
 		.channels_max = 2,
 		.buffer_bytes_max = (640*1024),

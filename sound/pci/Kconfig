@@ -921,6 +921,18 @@ config SND_INTEL_ALSA_SSP_BUILTIN_MASTER_MODE
 	   second channel (framesync high) : 16bits of channel 2 data +
 	   8 dummy bits (clk is running at 1.923Mhz need 40bits)
 
+config SND_INTEL_ALSA_SSP_BUILTIN_16K
+        depends on SND_INTEL_ALSA_SSP_BUILTIN_MASTER_MODE
+	bool "Sets ALSA SSP BUILT IN device in 16Khz instead 48Khz by default"
+	default n
+	help
+	   Say Y here to include support for this option.
+	   This is an option to select ALSA SSP BUILT IN in
+	   Master I2S 16 bits 16Khz.
+	   Current implementation is mono onlym one channel.
+	   First channel (Framesync high) : 16bits of channel 1 data
+	   second channel (framesync loz) : Null data.
+
 config SND_INTEL_ALSA_IFX
 	tristate "ALSA IFX modem SND Card Driver"
         depends on EXPERIMENTAL && SND_INTEL_MID_I2S

@@ -154,7 +154,11 @@ const struct intel_mid_i2s_settings
 		  .frame_format = PSP_FORMAT,
 		  .master_mode_clk_selection = SSP_ONCHIP_CLOCK,
 		  .frame_rate_divider_control = 1,
+#ifdef CONFIG_SND_INTEL_ALSA_SSP_BUILTIN_16K
+		  .master_mode_standard_freq = SSP_FRM_FREQ_16_000,
+#else
 		  .master_mode_standard_freq = SSP_FRM_FREQ_48_000,
+#endif
 		  .data_size = 32,
 		  .tx_tristate_phase = TXD_TRISTATE_LAST_PHASE_OFF,
 		  .tx_tristate_enable = TXD_TRISTATE_ON,
@@ -173,7 +177,11 @@ const struct intel_mid_i2s_settings
 		  .ssp_rx_fifo_threshold = 8,
 		  .ssp_tx_fifo_threshold = 7,
 		  .ssp_frmsync_timing_bit = NEXT_FRMS_ASS_AFTER_END_OF_T4,
+#ifdef CONFIG_SND_INTEL_ALSA_SSP_BUILTIN_16K
+		  .ssp_frmsync_pol_bit = SSP_FRMS_ACTIVE_HIGH,
+#else
 		  .ssp_frmsync_pol_bit = SSP_FRMS_ACTIVE_LOW,
+#endif
 		  .ssp_end_transfer_state = SSP_END_DATA_TRANSFER_STATE_LOW,
 		  .ssp_serial_clk_mode = SSP_CLK_MODE_0,
 		  .ssp_psp_T1 = 6,
