@@ -1865,6 +1865,10 @@ static int hsu_port_init(struct pci_dev *pdev, int index)
 	else
 		uport->use_dma = 0;
 
+#ifdef CONFIG_SERIAL_MFD_HSU_CONSOLE
+	if (index == CONFIG_SERIAL_MFD_HSU_CONSOLE_PORT)
+		uport->use_dma = 0;
+#endif
 	uport->qcirc.buf = (char *)uport->qbuf;
 	uport->qcirc.head = uport->qcirc.tail = 0;
 	INIT_WORK(&uport->qwork, qwork);
@@ -2143,29 +2147,59 @@ static bool allow_for_suspend(struct uart_hsu_port *up)
 	struct hsu_dma_chan *chan = up->rxc;
 	struct hsu_dma_buffer *dbuf = &up->rxbuf;
 	int rx_count;
+	u32 loop = 100000;
 
 	if (!uart_circ_empty(xmit)) {
 		dev_dbg(up->dev, "%s: circ_not_empty\n", __func__);
 		return false;
 	}
 
-	if (up->use_dma) {
-		if (up->dma_rx_on) {
-			rx_count = chan_readl(chan, HSU_CH_D0SAR) -
-				dbuf->dma_addr;
-			if (rx_count) {
-				dev_dbg(up->dev, "%s: rx cnt=%d\n",
-					__func__, rx_count);
-				return false;
-			}
+	if (up->running)
+		intel_mid_hsu_suspend(up->index);
+	else if (up->index == logic_idx) {
+		struct uart_hsu_port *up3 = serial_hsu_ports[share_idx];
+		if (up3->running)
+			intel_mid_hsu_suspend(up3->index);
+	}
+
+	if (up->use_dma && up->dma_rx_on) {
+		chan_writel(chan, HSU_CH_CR, 0x2);
+		while (--loop) {
+			if (chan_readl(chan, HSU_CH_CR) == 0x2)
+				break;
+			cpu_relax();
 		}
-		if (up->dma_tx_on) {
-			dev_dbg(up->dev, "%s: dma_tx_on\n", __func__);
-			return false;
+
+		if (!loop) {
+			dev_err(up->dev, "%s: can't stop rx dma\n", __func__);
+			goto rx_dma_run;
 		}
+
+		rx_count = chan_readl(chan, HSU_CH_D0SAR) - dbuf->dma_addr;
+		if (rx_count || (serial_in_irq(up, UART_FOR) & 0x7F))
+			goto rx_dma_run;
+	}
+
+	if (up->use_dma && up->dma_tx_on) {
+		dev_dbg(up->dev, "%s: dma_tx_on\n", __func__);
+		goto rx_dma_run;
 	}
 
 	return true;
+
+rx_dma_run:
+	if (up->use_dma && up->dma_rx_on)
+		hsu_dma_rx(up, 0);
+
+	if (up->running)
+		intel_mid_hsu_resume(up->index);
+	else if (up->index == logic_idx) {
+		struct uart_hsu_port *up3 = serial_hsu_ports[share_idx];
+		if (up3->running)
+			intel_mid_hsu_resume(up3->index);
+	}
+
+	return false;
 }
 #endif
 
@@ -2221,25 +2255,9 @@ static int hsu_runtime_suspend(struct device *dev)
 	struct pci_dev *pdev = container_of(dev, struct pci_dev, dev);
 	struct uart_hsu_port *up = pci_get_drvdata(pdev);
 
-	if (up->running)
-		intel_mid_hsu_suspend(up->index);
-
 	if (!allow_for_suspend(up)) {
-		if (up->use_dma && up->dma_rx_on)
-			hsu_dma_rx(up, 0);
-
-		if (up->running)
-			intel_mid_hsu_resume(up->index);
-
 		pm_schedule_suspend(dev, 100);
 		return -EBUSY;
-	}
-
-	if (up->index == logic_idx) {
-		struct uart_hsu_port *up3 = serial_hsu_ports[share_idx];
-		if (up3->running) {
-			intel_mid_hsu_suspend(up3->index);
-		}
 	}
 
 #ifdef CONFIG_SERIAL_MFD_HSU_CONSOLE_PORT
@@ -2253,7 +2271,6 @@ static int hsu_runtime_suspend(struct device *dev)
 	}
 #endif
 
-	chan_writel(up->rxc, HSU_CH_CR, 0x2);
 	disable_irq(up->port.irq);
 
 	if (up->index == logic_idx) {
