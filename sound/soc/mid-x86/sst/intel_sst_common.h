@@ -499,6 +499,9 @@ struct intel_sst_drv {
 	struct sst_block sst_byte_blk;
 	unsigned int use_dma;
 	unsigned int use_lli;
+	atomic_t fw_clear_context;
+	atomic_t fw_clear_cache;
+	struct mutex sst_in_mem_lock;
 };
 
 extern struct intel_sst_drv *sst_drv_ctx;

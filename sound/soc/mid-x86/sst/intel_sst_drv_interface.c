@@ -48,6 +48,14 @@ static void sst_restore_fw_context(void)
 	int retval = 0;
 	unsigned long irq_flags;
 
+	/* Skip the context restore, when fw_clear_context is set */
+	/* fw_clear_context set through debugfs support */
+	if (atomic_read(&sst_drv_ctx->fw_clear_context)) {
+		pr_debug("Skipping restore_fw_context\n");
+		atomic_set(&sst_drv_ctx->fw_clear_context, 0);
+		return;
+	}
+
 	pr_debug("restore_fw_context\n");
 	/*nothing to restore*/
 	if (!sst_drv_ctx->fw_cntx_size)

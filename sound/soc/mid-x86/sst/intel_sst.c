@@ -406,6 +406,7 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 	mutex_init(&sst_drv_ctx->stream_lock);
 	mutex_init(&sst_drv_ctx->sst_lock);
 	mutex_init(&sst_drv_ctx->mixer_ctrl_lock);
+	mutex_init(&sst_drv_ctx->sst_in_mem_lock);
 
 	sst_drv_ctx->stream_cnt = 0;
 	sst_drv_ctx->pb_streams = 0;
@@ -799,6 +800,20 @@ static int intel_sst_runtime_resume(struct device *dev)
 		lnw_gpio_set_alt(CLV_I2S_3_TXD_GPIO_PIN, LNW_ALT_2);
 		lnw_gpio_set_alt(CLV_I2S_3_RXD_GPIO_PIN, LNW_ALT_2);
 
+	}
+
+	/* When fw_clear_cache is set, clear the cached firmware copy */
+	/* fw_clear_cache is set through debugfs support */
+	if (atomic_read(&sst_drv_ctx->fw_clear_cache)) {
+		mutex_lock(&sst_drv_ctx->sst_in_mem_lock);
+
+		if (sst_drv_ctx->fw_in_mem) {
+			pr_debug("Clearing the cached firmware\n");
+			kfree(sst_drv_ctx->fw_in_mem);
+			sst_drv_ctx->fw_in_mem = NULL;
+			atomic_set(&sst_drv_ctx->fw_clear_cache, 0);
+		}
+		mutex_unlock(&sst_drv_ctx->sst_in_mem_lock);
 	}
 
 	sst_set_fw_state_locked(sst_drv_ctx, SST_UN_INIT);
