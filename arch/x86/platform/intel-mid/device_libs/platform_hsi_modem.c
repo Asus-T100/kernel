@@ -187,6 +187,8 @@ void *hsi_modem_platform_data(void *data)
 		.rx_fifo_sizes[6] = -1,
 		.rx_fifo_sizes[7] = -1,
 	};
+#else
+	static struct hsi_mid_platform_data mid_info = {};
 #endif
 	printk(KERN_INFO "HSI platform data setup\n");
 
