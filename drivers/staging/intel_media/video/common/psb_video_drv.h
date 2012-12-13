@@ -142,6 +142,7 @@ void psb_mmu_remove_pages(struct psb_mmu_pd *pd,
 				 uint32_t desired_tile_stride,
 				 uint32_t hw_tile_stride);
 #if 0
+void psb_mmu_pgtable_dump(struct drm_device *dev);
 extern void psb_mmu_mirror_gtt(struct psb_mmu_pd *pd, uint32_t mmu_offset,
 			       uint32_t gtt_start, uint32_t gtt_pages);
 extern int psb_mmu_virtual_to_pfn(struct psb_mmu_pd *pd, uint32_t virtual,

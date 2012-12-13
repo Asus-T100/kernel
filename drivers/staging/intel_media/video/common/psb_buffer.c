@@ -641,6 +641,10 @@ static int psb_ttm_io_mem_reserve(struct ttm_bo_device *bdev, struct ttm_mem_reg
 		mem->bus.base = dev_priv->imr_region_start;;
 		mem->bus.is_iomem = true;
 		break;
+	case DRM_PSB_MEM_MMU_TILING:
+		mem->bus.offset = mem->start << PAGE_SHIFT;
+		mem->bus.base = 0x00000000;
+		break;
 	default:
 		return -EINVAL;
 	}

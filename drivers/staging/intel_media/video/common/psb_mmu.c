@@ -1047,3 +1047,53 @@ out_err1:
 	__free_page(p);
 }
 #endif
+
+/*
+void psb_mmu_pgtable_dump(struct drm_device *dev)
+{
+
+	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct psb_mmu_pd *pd = psb_mmu_get_default_pd(dev_priv->mmu);
+	struct psb_mmu_pt *pt;
+	int i, j;
+	uint32_t flags;
+	uint32_t *v;
+
+	spinlock_t *lock = &pd->driver->lock;
+	down_read(&pd->driver->sem);
+	spin_lock_irqsave(lock, flags);
+	v = kmap_atomic(pd->p, KM_USER0);
+	if (!v) {
+		printk(KERN_INFO "%s: Kmap pg fail, abort\n", __func__);
+		return;
+	}
+
+	printk(KERN_INFO "%s: start dump mmu page table\n", __func__);
+	for (i = 0; i < 1024; i++) {
+		pt = pd->tables[i];
+		if (!pt) {
+			printk(KERN_INFO "pt[%d] is NULL, 0x%08x\n", i, v[i]);
+			continue;
+		}
+		printk(KERN_INFO "pt[%d] is 0x%08x\n", i, v[i]);
+		pt->v = kmap_atomic(pt->p, KM_USER0);
+		if (!(pt->v)) {
+			printk(KERN_INFO "%s: Kmap fail, abort\n", __func__);
+			break;
+		}
+		for (j = 0; j < 1024; j++) {
+			if (!(j%16))
+				printk(KERN_INFO "pte%d:", j);
+			uint32_t pte = pt->v[j];
+			printk("%08xh ", pte);
+			//if ((j%16) == 15)
+				//printk(KERN_INFO "\n");
+		}
+		kunmap_atomic(pt->v, KM_USER0);
+	}
+	spin_unlock_irqrestore(lock, flags);
+	up_read(&pd->driver->sem);
+	kunmap_atomic((void *) v, KM_USER0);
+	printk(KERN_INFO "%s: finish dump mmu page table\n", __func__);
+}
+*/

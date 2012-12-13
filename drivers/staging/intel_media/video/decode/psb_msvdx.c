@@ -201,6 +201,10 @@ static int psb_msvdx_map_command(struct drm_device *dev,
 #endif
 				PSB_DEBUG_GENERAL("MSVDX:Set MMU invalidate\n");
 			}
+			/*
+			if (msvdx_mmu_invalid == 1)
+				psb_mmu_pgtable_dump(dev);
+			*/
 
 			decode_msg->mmu_context.bits.mmu_ptd = mmu_ptd >> 8;
 			PSB_DEBUG_MSVDX("MSVDX: MSGID_DECODE_FE:"
