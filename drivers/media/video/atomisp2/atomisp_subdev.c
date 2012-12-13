@@ -84,32 +84,6 @@ static const unsigned int isp_subdev_capture_output_fmts[] = {
  */
 
 /*
- * isp_subdev_get_ctrl - V4L2 control get handler
- * @sd: ISP V4L2 subdevice
- * @ctrl: V4L2 control
- *
- * Return 0 on success or a negative error code otherwise.
- */
-static int isp_subdev_get_ctrl(struct v4l2_subdev *sd,
-	struct v4l2_control *ctrl)
-{
-	return -EINVAL;
-}
-
-/*
- * isp_subdev_set_ctrl - V4L2 control set handler
- * @sd: ISP CCDC V4L2 subdevice
- * @ctrl: V4L2 control
- *
- * Return 0 on success or a negative error code otherwise.
- */
-static int isp_subdev_set_ctrl(struct v4l2_subdev *sd,
-	struct v4l2_control *ctrl)
-{
-	return -EINVAL;
-}
-
-/*
  * isp_subdev_ioctl - CCDC module private ioctl's
  * @sd: ISP V4L2 subdevice
  * @cmd: ioctl command
@@ -236,8 +210,6 @@ static int isp_subdev_set_format(struct v4l2_subdev *sd,
 
 /* V4L2 subdev core operations */
 static const struct v4l2_subdev_core_ops isp_subdev_v4l2_core_ops = {
-	 .g_ctrl = isp_subdev_get_ctrl,
-	 .s_ctrl = isp_subdev_set_ctrl,
 	 .ioctl = isp_subdev_ioctl,
 	 .s_power = isp_subdev_set_power,
 	 .subscribe_event = isp_subdev_subscribe_event,
