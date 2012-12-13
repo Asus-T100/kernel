@@ -1463,24 +1463,6 @@ int atomisp_is_pixelformat_supported(u32 pixelformat)
 	}
 	return 0;
 }
-/*
- * for different isp run mode: preview/still/video.
- * return which mode support viewfinder output
- * still/video support dual stream output
- */
-bool atomisp_is_viewfinder_support(struct atomisp_device *isp)
-{
-	if (isp->sw_contex.run_mode == CI_MODE_PREVIEW)
-		return false;
-
-	if (isp->sw_contex.run_mode == CI_MODE_STILL_CAPTURE &&
-	    isp->capture_format &&
-	    isp->capture_format->out_sh_fmt == SH_CSS_FRAME_FORMAT_RAW &&
-	    isp->sw_contex.bypass)
-		return false;
-
-	return true;
-}
 
 /*
  * ISP features control function
