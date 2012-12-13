@@ -161,7 +161,9 @@ static void MRSTLFBFlipOverlay(MRSTLFB_DEVINFO *psDevInfo,
 			uDspCntr &= ~DISPLAY_PLANE_ENABLE;
 			PSB_WVDC32(uDspCntr, DSPACNTR);
 			/* trigger cntr register take effect */
-			PSB_WVDC32(0, DSPASURF);
+			// FIXME: comment it firstly as it may cause
+			// display freeze due to some limitation unknown
+			//PSB_WVDC32(0, DSPASURF);
 		}
 	} else if (((psContext->pipe >> 6) & 0x3) == 0x2 &&
 		!(pipe_mask & (1 << 1))) {
@@ -170,7 +172,9 @@ static void MRSTLFBFlipOverlay(MRSTLFB_DEVINFO *psDevInfo,
 			uDspCntr &= ~DISPLAY_PLANE_ENABLE;
 			PSB_WVDC32(uDspCntr, DSPACNTR + 0x1000);
 			/* trigger cntr register take effect */
-			PSB_WVDC32(0, DSPBSURF);
+			// FIXME: comment it firstly as it may cause
+			// display freeze due to some limitation unknown
+			//PSB_WVDC32(0, DSPBSURF);
 		}
 	} else if (((psContext->pipe >> 6) & 0x3) == 0x1 &&
 		!(pipe_mask & (1 << 2))) {
@@ -179,7 +183,9 @@ static void MRSTLFBFlipOverlay(MRSTLFB_DEVINFO *psDevInfo,
 			uDspCntr &= ~DISPLAY_PLANE_ENABLE;
 			PSB_WVDC32(uDspCntr, DSPACNTR + 0x2000);
 			/* trigger cntr register take effect */
-			PSB_WVDC32(0, DSPCSURF);
+			// FIXME: comment it firstly as it may cause
+			// display freeze due to some limitation unknown
+			//PSB_WVDC32(0, DSPCSURF);
 		}
 	}
 }
