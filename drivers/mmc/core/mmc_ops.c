@@ -610,8 +610,7 @@ static int mmc_rpmb_send_command(struct mmc_card *card, u8 *buf, __u16 blks,
 	 */
 	sbc.opcode = MMC_SET_BLOCK_COUNT;
 	sbc.arg = blks;
-	if ((req_type == RPMB_REQ) && (type == RPMB_WRITE_DATA ||
-			type == RPMB_PROGRAM_KEY))
+	if ((req_type == RPMB_REQ) && type == RPMB_WRITE_DATA)
 		sbc.arg |= 1 << 31;
 	sbc.flags = MMC_RSP_R1 | MMC_CMD_AC;
 
@@ -821,16 +820,6 @@ static int mmc_rpmb_request_check(struct mmc_card *card,
 				return -EINVAL;
 			}
 		}
-	} else if (p_req->type == RPMB_PROGRAM_KEY) {
-		if (!p_req->mac) {
-			pr_err("%s: Type %d has NULL pointer for MAC\n",
-					mmc_hostname(card->host), p_req->type);
-			return -EINVAL;
-		}
-		/*
-		 * used to allocate frame
-		 */
-		p_req->blk_cnt = 1;
 	} else
 		return -EOPNOTSUPP;
 
@@ -916,15 +905,6 @@ int mmc_rpmb_pre_frame(struct mmc_core_rpmb_req *rpmb_req,
 		/* convert MAC code */
 		memcpy(buf_frame + 512 * (i - 1) + RPMB_MAC_BEG,
 				p_req->mac, 32);
-	} else if (p_req->type == RPMB_PROGRAM_KEY) {
-		/*
-		 * One package prepared
-		 * This request only need mac
-		 */
-		memcpy(buf_frame + RPMB_TYPE_BEG, &type, 2);
-		/* convert MAC code */
-		memcpy(buf_frame + RPMB_MAC_BEG,
-				p_req->mac, 32);
 	} else {
 		pr_err("%s: We shouldn't be here\n", mmc_hostname(card->host));
 		kfree(buf_frame);
@@ -973,8 +953,7 @@ int mmc_rpmb_partition_ops(struct mmc_core_rpmb_req *rpmb_req,
 	 * STEP 2: check write result
 	 * Only for WRITE_DATA or Program key
 	 */
-	if (type == RPMB_WRITE_DATA ||
-			type == RPMB_PROGRAM_KEY) {
+	if (type == RPMB_WRITE_DATA) {
 		buf_frame[RPMB_TYPE_BEG + 1] = RPMB_RESULT_READ;
 		err = mmc_rpmb_send_command(card, buf_frame, 1,
 				RPMB_RESULT_READ, RPMB_REQ);
