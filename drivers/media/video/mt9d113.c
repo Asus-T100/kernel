@@ -548,6 +548,56 @@ static int mt9d113_g_color_effect(struct v4l2_subdev *sd, int *effect)
 	return 0;
 }
 
+static int mt9d113_wait_patch(struct v4l2_subdev *sd)
+{
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	int i = 100;
+	int ret, status;
+
+	while (i--) {
+		ret = mt9d113_write_reg(client, MISENSOR_16BIT,
+					MT9D113_MCU_VAR_ADDR,
+					MT9D113_VAR_MON_ID_0);
+		ret |= mt9d113_read_reg(client, MISENSOR_16BIT,
+					MT9D113_MCU_VAR_DATA0, &status);
+		if (ret) {
+			dev_err(&client->dev, "err read patch status: %d", ret);
+			return -EINVAL;
+		}
+		/*
+		 * Aptina:
+		 * POLL_FIELD=MON_PATCH_ID_0,==0,DELAY=10,TIMEOUT=100
+		 */
+		if (status)
+			return 0;
+
+		usleep_range(10000, 12000);
+	}
+
+	dev_err(&client->dev, "wait patch status timeout:0x%x.\n", status);
+	return -EBUSY;
+}
+
+static int mt9d113_patch(struct v4l2_subdev *sd)
+{
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	int ret;
+
+	/*
+	 * Load SOC2030 patch data
+	 */
+	ret = mt9d113_write_reg_array(client, patch_soc2030);
+	if (ret) {
+		dev_err(&client->dev, "err write soc 2030 patch: %d", ret);
+		return ret;
+	}
+
+	if (mt9d113_wait_patch(sd))
+		return -EINVAL;
+
+	return 0;
+}
+
 static int mt9d113_wait_refresh(struct v4l2_subdev *sd)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
@@ -851,6 +901,40 @@ static int mt9d113_init_common(struct v4l2_subdev *sd)
 		dev_err(&client->dev, "err set awb ccm: %d", ret);
 		return ret;
 	}
+
+	/*
+	 * Noise settings
+	 */
+	ret = mt9d113_write_reg_array(client, mt9d113_noise_reduce);
+	if (ret) {
+		dev_err(&client->dev, "err set noise reduce: %d", ret);
+		return ret;
+	}
+
+	/*
+	 * ccm3
+	 */
+	ret = mt9d113_write_reg_array(client, mt9d113_ccm3);
+	if (ret) {
+		dev_err(&client->dev, "err set ccm3: %d", ret);
+		return ret;
+	}
+
+	/*
+	 * LSC 85%
+	 */
+	ret = mt9d113_write_reg_array(client, mt9d113_lsc_85);
+	if (ret) {
+		dev_err(&client->dev, "err set lsc: %d", ret);
+		return ret;
+	}
+
+	/*
+	 * Load soc2030 patch
+	 */
+	ret = mt9d113_patch(sd);
+	if (ret)
+		return ret;
 
 	return 0;
 }
