@@ -158,36 +158,6 @@ static int csi2_enum_mbus_code(struct v4l2_subdev *sd,
 	return 0;
 }
 
-static int csi2_enum_frame_size(struct v4l2_subdev *sd,
-			 struct v4l2_subdev_fh *fh,
-			 struct v4l2_subdev_frame_size_enum *fse)
-{
-	struct atomisp_mipi_csi2_device *csi2 = v4l2_get_subdevdata(sd);
-	struct v4l2_mbus_framefmt format;
-
-	if (fse->index != 0)
-		return -EINVAL;
-
-	format.code = fse->code;
-	format.width = 1;
-	format.height = 1;
-	csi2_try_format(csi2, fh, fse->pad, &format, V4L2_SUBDEV_FORMAT_TRY);
-	fse->min_width = format.width;
-	fse->min_height = format.height;
-
-	if (format.code != fse->code)
-		return -EINVAL;
-
-	format.code = fse->code;
-	format.width = -1;
-	format.height = -1;
-	csi2_try_format(csi2, fh, fse->pad, &format, V4L2_SUBDEV_FORMAT_TRY);
-	fse->max_width = format.width;
-	fse->max_height = format.height;
-
-	return 0;
-}
-
 /*
  * csi2_get_format - Handle get format by pads subdev method
  * @sd : pointer to v4l2 subdev structure
@@ -273,7 +243,6 @@ static const struct v4l2_subdev_video_ops csi2_video_ops = {
 /* subdev pad operations */
 static const struct v4l2_subdev_pad_ops csi2_pad_ops = {
 	.enum_mbus_code = csi2_enum_mbus_code,
-	.enum_frame_size = csi2_enum_frame_size,
 	.get_fmt = csi2_get_format,
 	.set_fmt = csi2_set_format,
 };
