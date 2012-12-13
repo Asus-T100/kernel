@@ -154,138 +154,6 @@ static int isp_subdev_unsubscribe_event(struct v4l2_subdev *sd,
 	return v4l2_event_unsubscribe(fh, sub);
 }
 
-static struct v4l2_mbus_framefmt *
-__isp_subdev_get_format(struct atomisp_sub_device *isp_subdev,
-	struct v4l2_subdev_fh *fh, unsigned int pad,
-	enum v4l2_subdev_format_whence which)
-{
-
-	switch (which) {
-	case V4L2_SUBDEV_FORMAT_TRY:
-		return v4l2_subdev_get_try_format(fh, pad);
-	case V4L2_SUBDEV_FORMAT_ACTIVE:
-		if (pad == ATOMISP_SUBDEV_PAD_SINK ||
-		    pad == ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW ||
-		    pad == ATOMISP_SUBDEV_PAD_SOURCE_VF ||
-		    pad == ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE)
-			return &isp_subdev->formats[pad];
-		else
-			return NULL;
-	default:
-		return NULL;
-	}
-}
-
-/*
- * isp_subdev_try_format - Try video format on a pad
- * @isp_subdev: ISP v4l2 sub device
- * @fh : V4L2 subdev file handle
- * @pad: Pad number
- * @fmt: Format
- */
-static void
-isp_subdev_try_format(struct atomisp_sub_device *isp_subdev,
-	struct v4l2_subdev_fh *fh,
-	unsigned int pad, struct v4l2_mbus_framefmt *fmt,
-	enum v4l2_subdev_format_whence which)
-{
-	struct v4l2_mbus_framefmt *format;
-	unsigned int width = fmt->width;
-	unsigned int height = fmt->height;
-	enum v4l2_mbus_pixelcode pixelcode;
-	unsigned int i;
-
-	switch (pad) {
-	case ATOMISP_SUBDEV_PAD_SINK:
-		if (isp_subdev->input == ATOMISP_SUBDEV_INPUT_MEMORY) {
-			fmt->width = clamp_t(u32, fmt->width,
-				ATOM_ISP_MIN_WIDTH, ATOM_ISP_MAX_WIDTH);
-			fmt->height = clamp_t(u32, fmt->height,
-				ATOM_ISP_MIN_HEIGHT, ATOM_ISP_MAX_HEIGHT);
-		}
-
-		fmt->colorspace = V4L2_COLORSPACE_SRGB;
-		for (i = 0; i < ARRAY_SIZE(isp_subdev_input_fmts); i++) {
-			if (fmt->code == isp_subdev_input_fmts[i])
-				break;
-		}
-
-		/* If not found, use SGRBG10 as default */
-		if (i >= ARRAY_SIZE(isp_subdev_input_fmts))
-			fmt->code = V4L2_MBUS_FMT_SBGGR10_1X10;
-
-		/* Clamp the input size. */
-		fmt->width = clamp_t(u32, width, 32, 4096);
-		fmt->height = clamp_t(u32, height, 32, 4096);
-
-		break;
-
-	case ATOMISP_SUBDEV_PAD_SOURCE_VF:
-	case ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW:
-		pixelcode = fmt->code;
-		format = __isp_subdev_get_format(isp_subdev, fh,
-			ATOMISP_SUBDEV_PAD_SINK, which);
-		memcpy(fmt, format, sizeof(*fmt));
-
-		switch (pixelcode) {
-		/* yuv420, nv12, yv12, nv21, rgb565 */
-		case V4L2_MBUS_FMT_YUYV8_1X16:
-		case V4L2_MBUS_FMT_UYVY8_1X16:
-		case V4L2_MBUS_FMT_RGB565_2X8_LE:
-		case V4L2_MBUS_FMT_YUYV8_1_5X8:
-			fmt->code = pixelcode;
-			break;
-		default:
-			fmt->code = V4L2_MBUS_FMT_YUYV8_1X16;
-			break;
-		}
-
-		/* The data formatter truncates the number of horizontal output
-		* pixels to a multiple of 16. To avoid clipping data, allow
-		* callers to request an output size bigger than the input size
-		* up to the nearest multiple of 16.
-		*/
-		fmt->width = clamp_t(u32, width, 256, 1920);
-		fmt->height = clamp_t(u32, height, 0, 1080);
-		break;
-
-	case ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE:
-		pixelcode = fmt->code;
-		format = __isp_subdev_get_format(isp_subdev, fh,
-			ATOMISP_SUBDEV_PAD_SINK, which);
-		memcpy(fmt, format, sizeof(*fmt));
-		switch (pixelcode) {
-		/* yuv420, nv12, yv12, nv21, rgb565, nv11, yuv422 */
-		/* nv16, yv16, yuy2 */
-		/* rgb565, rgb888 */
-		/* TODO: check these formats */
-		case V4L2_MBUS_FMT_YUYV8_1X16:
-		case V4L2_MBUS_FMT_UYVY8_1X16:
-		case V4L2_MBUS_FMT_RGB565_2X8_LE:
-		case V4L2_MBUS_FMT_YUYV8_1_5X8:
-			fmt->code = pixelcode;
-			break;
-		default:
-			fmt->code = V4L2_MBUS_FMT_YUYV8_1X16;
-			break;
-		}
-
-		/* The number of lines that can be clocked out from the video
-		* port output must be at least one line less than the number
-		* of input lines.
-		*/
-		fmt->width = clamp_t(u32, width, 256, 4608);
-		fmt->height = clamp_t(u32, height, 0, fmt->height - 1);
-		break;
-	}
-
-	/* Data is written to memory unpacked, each 10-bit pixel is stored on
-	* 2 bytes.
-	*/
-	fmt->colorspace = V4L2_COLORSPACE_SRGB;
-	fmt->field = V4L2_FIELD_NONE;
-}
-
 /*
  * isp_subdev_enum_mbus_code - Handle pixel format enumeration
  * @sd: pointer to v4l2 subdev structure
@@ -347,16 +215,6 @@ static int isp_subdev_enum_mbus_code(struct v4l2_subdev *sd,
 static int isp_subdev_get_format(struct v4l2_subdev *sd,
 	struct v4l2_subdev_fh *fh, struct v4l2_subdev_format *fmt)
 {
-	struct atomisp_sub_device *isp_subdev = v4l2_get_subdevdata(sd);
-	struct v4l2_mbus_framefmt *format;
-
-	format = __isp_subdev_get_format(isp_subdev, fh, fmt->pad, fmt->which);
-	if (format == NULL) {
-		v4l2_err(&atomisp_dev, "no format available\n");
-		return -EINVAL;
-	}
-
-	fmt->format = *format;
 	return 0;
 }
 
@@ -373,38 +231,6 @@ static int isp_subdev_get_format(struct v4l2_subdev *sd,
 static int isp_subdev_set_format(struct v4l2_subdev *sd,
 	struct v4l2_subdev_fh *fh, struct v4l2_subdev_format *fmt)
 {
-	struct atomisp_sub_device *isp_subdev = v4l2_get_subdevdata(sd);
-	struct v4l2_mbus_framefmt *format;
-
-	format = __isp_subdev_get_format(isp_subdev, fh, fmt->pad, fmt->which);
-	if (format == NULL)
-		return -EINVAL;
-
-	isp_subdev_try_format(isp_subdev, fh, fmt->pad,
-		&fmt->format, fmt->which);
-	*format = fmt->format;
-
-	/* Propagate the format from sink to source */
-	if (fmt->pad == ATOMISP_SUBDEV_PAD_SINK) {
-		format = __isp_subdev_get_format(isp_subdev, fh,
-			ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW, fmt->which);
-		*format = fmt->format;
-		isp_subdev_try_format(isp_subdev, fh,
-			ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW, format, fmt->which);
-
-		format = __isp_subdev_get_format(isp_subdev, fh,
-			ATOMISP_SUBDEV_PAD_SOURCE_VF, fmt->which);
-		*format = fmt->format;
-		isp_subdev_try_format(isp_subdev, fh,
-			ATOMISP_SUBDEV_PAD_SOURCE_VF, format, fmt->which);
-
-		format = __isp_subdev_get_format(isp_subdev, fh,
-			ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE, fmt->which);
-		*format = fmt->format;
-		isp_subdev_try_format(isp_subdev, fh,
-			ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE, format, fmt->which);
-	}
-
 	return 0;
 }
 
