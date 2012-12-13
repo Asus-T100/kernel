@@ -896,6 +896,13 @@ static irqreturn_t port_irq(int irq, void *dev_id)
 		return IRQ_NONE;
 
 	pm_runtime_get(up->dev);
+#ifdef CONFIG_PM_RUNTIME
+	if (up->dev->power.runtime_status != RPM_ACTIVE &&
+		up->dev->power.runtime_status != RPM_RESUMING) {
+		pm_runtime_put(up->dev);
+		return IRQ_HANDLED;
+	}
+#endif
 	spin_lock(&up->port.lock);
 	if (up->use_dma) {
 		lsr = serial_in_irq(up, UART_LSR);
