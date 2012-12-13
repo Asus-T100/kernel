@@ -334,57 +334,6 @@ static int atomisp_g_chip_ident(struct file *file, void *fh,
 }
 
 /*
- * crop capability is the max resolution both ISP and Sensor supported
- */
-static int atomisp_cropcap(struct file *file, void *fh,
-	struct v4l2_cropcap *cropcap)
-{
-	struct video_device *vdev = video_devdata(file);
-	struct atomisp_device *isp = video_get_drvdata(vdev);
-	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
-	struct v4l2_mbus_framefmt snr_mbus_fmt;
-	int ret;
-
-	if (cropcap->type != V4L2_BUF_TYPE_VIDEO_CAPTURE) {
-		v4l2_err(&atomisp_dev, "unsupport v4l2 buf type\n");
-		return -EINVAL;
-	}
-
-	/*Only capture node supports cropcap*/
-	if (pipe->pipe_type != ATOMISP_PIPE_CAPTURE)
-		return 0;
-
-	mutex_lock(&isp->mutex);
-	cropcap->bounds.left = 0;
-	cropcap->bounds.top = 0;
-
-	snr_mbus_fmt.code = V4L2_MBUS_FMT_FIXED;
-	snr_mbus_fmt.height = ATOM_ISP_MAX_HEIGHT_TMP;
-	snr_mbus_fmt.width = ATOM_ISP_MAX_WIDTH_TMP;
-
-	ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
-			       video, try_mbus_fmt, &snr_mbus_fmt);
-	if (ret) {
-		v4l2_err(&atomisp_dev,
-			"failed to try_mbus_fmt for sensor"
-			", try try_fmt\n");
-	} else {
-		cropcap->bounds.width = snr_mbus_fmt.width;
-		cropcap->bounds.height = snr_mbus_fmt.height;
-		isp->snr_max_width = snr_mbus_fmt.width;
-		isp->snr_max_height = snr_mbus_fmt.height;
-		isp->snr_pixelformat = snr_mbus_fmt.code;
-	}
-
-	memcpy(&cropcap->defrect, &cropcap->bounds, sizeof(struct v4l2_rect));
-	cropcap->pixelaspect.numerator = 1;
-	cropcap->pixelaspect.denominator = 1;
-	mutex_unlock(&isp->mutex);
-
-	return 0;
-}
-
-/*
  * enum input are used to check primary/secondary camera
  */
 static int atomisp_enum_input(struct file *file, void *fh,
@@ -2320,7 +2269,6 @@ const struct v4l2_ioctl_ops atomisp_ioctl_ops = {
 	.vidioc_streamon = atomisp_streamon,
 	.vidioc_streamoff = atomisp_streamoff,
 	.vidioc_default = atomisp_vidioc_default,
-	.vidioc_cropcap = atomisp_cropcap,
 	.vidioc_enum_framesizes = atomisp_enum_framesizes,
 	.vidioc_enum_frameintervals = atomisp_enum_frameintervals,
 	.vidioc_s_parm = atomisp_s_parm,
