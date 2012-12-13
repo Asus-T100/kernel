@@ -1154,6 +1154,7 @@ sh_css_sp_start_isp(void)
 	
 
 	sh_css_debug_pipe_graph_dump_epilogue();
+	sh_css_sp_store_init_dmem(&sh_css_sp_fw);
 
 	store_sp_per_frame_data(fw);
 	
@@ -1301,13 +1302,12 @@ sh_css_sp_snd_event(int evt_id, int evt_payload_0, int evt_payload_1, int evt_pa
 }
 
 void
-sh_css_sp_uninit_global_vars(void)
+sh_css_sp_reset_global_vars(void)
 {
 	memset(&sh_css_sp_group, 0, sizeof(struct sh_css_sp_group));
 	memset(&sh_css_sp_stage, 0, sizeof(struct sh_css_sp_stage));
 	memset(&sh_css_isp_stage, 0, sizeof(struct sh_css_isp_stage));
 	memset(&sh_css_sp_output, 0, sizeof(struct sh_css_sp_output));
 	memset(&per_frame_data, 0, sizeof(struct sh_css_sp_per_frame_data));
-	init_dmem_ddr = mmgr_NULL;
 }
 

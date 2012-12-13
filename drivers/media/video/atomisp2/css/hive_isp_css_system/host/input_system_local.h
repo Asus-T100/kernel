@@ -5,8 +5,6 @@
 
 #include <input_system_global.h>
 
-#include <css_receiver_ahb_defs.h>
-
 typedef struct mipi_port_state_s	mipi_port_state_t;
 
 #define _REG_GP_CH_ID_FMT_TYPE_IDX		44
@@ -16,8 +14,10 @@ typedef struct mipi_port_state_s	mipi_port_state_t;
  */
 #define _HRT_CSS_RECEIVER_DEVICE_READY_REG_IDX			\
 	_HRT_CSS_RECEIVER_AHB_DEVICE_READY_REG_IDX
+/*
 #define _HRT_CSS_RECEIVER_IRQ_STATUS_REG_IDX			\
 	_HRT_CSS_RECEIVER_AHB_IRQ_STATUS_REG_IDX
+ */
 #define _HRT_CSS_RECEIVER_IRQ_ENABLE_REG_IDX			\
 	_HRT_CSS_RECEIVER_AHB_IRQ_ENABLE_REG_IDX
 #define _HRT_CSS_RECEIVER_FUNC_PROG_REG_IDX				\
@@ -44,9 +44,10 @@ typedef struct mipi_port_state_s	mipi_port_state_t;
 	_HRT_CSS_RECEIVER_AHB_TWO_PIXEL_EN_REG_IDX
 
 
-
+/*
 #define _HRT_CSS_RECEIVER_IRQ_OVERRUN_BIT				\
 	_HRT_CSS_RECEIVER_AHB_IRQ_OVERRUN_BIT
+ */
 #define _HRT_CSS_RECEIVER_IRQ_RESERVED_BIT				\
 	_HRT_CSS_RECEIVER_AHB_IRQ_RESERVED_BIT
 #define _HRT_CSS_RECEIVER_IRQ_SLEEP_MODE_ENTRY_BIT		\

@@ -4,6 +4,12 @@
 #define IS_INPUT_SYSTEM_VERSION_1
 
 #include <stdint.h>
+#include <css_receiver_ahb_defs.h>
+
+#define _HRT_CSS_RECEIVER_IRQ_STATUS_REG_IDX \
+	_HRT_CSS_RECEIVER_AHB_IRQ_STATUS_REG_IDX
+#define _HRT_CSS_RECEIVER_IRQ_OVERRUN_BIT \
+	_HRT_CSS_RECEIVER_AHB_IRQ_OVERRUN_BIT
 
 typedef enum {
 	MIPI_0LANE_CFG = 0,
@@ -59,5 +65,11 @@ struct tpg_cfg_s {
 struct prbs_cfg_s {
 	uint32_t	seed;
 };
+
+/*
+static const hrt_address MIPI_PORT_OFFSET[N_MIPI_PORT_ID] = {
+	0x00000100UL,
+	0x00000200UL};
+*/
 
 #endif /* __INPUT_SYSTEM_GLOBAL_H_INCLUDED__ */

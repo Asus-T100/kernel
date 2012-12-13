@@ -212,7 +212,7 @@ struct sh_css_capture_settings {
 	struct sh_css_binary vf_pp_binary;
 	struct sh_css_frame *capture_pp_frame;
 	struct sh_css_frame *output_frame;
-	struct sh_css_frame *continuous_frames[NUM_CONTINUOUS_FRAMES];
+	/*struct sh_css_frame *continuous_frames[NUM_CONTINUOUS_FRAMES];*/
 };
 
 #define DEFAULT_CAPTURE_SETTINGS \
@@ -227,7 +227,7 @@ struct sh_css_capture_settings {
 	DEFAULT_BINARY_SETTINGS,     /* vf_pp_binary */\
 	NULL,                        /* capture_pp_frame */\
 	NULL,                        /* output_frame */\
-	{ NULL },                 /* continuous_frames */\
+	/*{ NULL },   */              /* continuous_frames */\
 }
 
 #define DEFAULT_CAPTURE_PIPE \
@@ -2251,6 +2251,7 @@ sh_css_uninit(void)
 		sh_css_frame_free(capture_pipe->pipe.capture.capture_pp_frame);
 		capture_pipe->pipe.capture.capture_pp_frame = NULL;
 	}
+#if 0
 	for (i = 0; i < NUM_CONTINUOUS_FRAMES; i++) {
 		if (capture_pipe->pipe.capture.continuous_frames[i]) {
 			sh_css_frame_free(
@@ -2258,10 +2259,11 @@ sh_css_uninit(void)
 			capture_pipe->pipe.capture.continuous_frames[i] = NULL;
 		}
 	}
+#endif
 
 
 	sh_css_sp_set_sp_running(false);
-	sh_css_sp_uninit_global_vars();
+	sh_css_sp_reset_global_vars();
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_uninit() leave: return_void\n");
 }
 
@@ -2757,9 +2759,14 @@ assert(pipe != NULL);
 		"sh_css_pipe_set_effective_input_resolution() leave: return_err=%d\n",err);
 		return err;
 	}
-	pipe->input_effective_info.width = width;
-	pipe->input_effective_info.padded_width = width;
-	pipe->input_effective_info.height = height;
+	if (pipe->input_effective_info.width != width ||
+		pipe->input_effective_info.padded_width != width ||
+		pipe->input_effective_info.height != height) {
+		pipe->input_effective_info.width = width;
+		pipe->input_effective_info.padded_width = width;
+		pipe->input_effective_info.height = height;
+		sh_css_pipe_invalidate_binaries(pipe);
+	}
 
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_pipe_set_effective_input_resolution() leave: return_err=%d\n",sh_css_success);
@@ -3021,7 +3028,10 @@ assert(in_info != NULL);
 	init_offline_descr(pipe,
 			   &preview_descr, mode,
 			   in_info, out_info, NULL);
-	preview_descr.online	    = pipe->online;
+	if (pipe->online) {
+		preview_descr.online	    = pipe->online;
+		preview_descr.two_ppc       = pipe->two_ppc;
+	}
 	preview_descr.stream_format = pipe->input_format;
 	preview_descr.binning	    = pipe->input_needs_raw_binning;
 }
@@ -3060,11 +3070,12 @@ assert(copy_binary != NULL);
 	copy_binary->left_padding = left_padding;
 	return sh_css_success;
 }
-
+#if 0
 static enum sh_css_err
 primary_alloc_continuous_frames(
 	struct sh_css_pipe *pipe,
 	unsigned int stride);
+#endif
 
 static enum sh_css_err
 preview_alloc_continuous_frames(
@@ -3105,8 +3116,10 @@ preview_alloc_continuous_frames(
 
 	for (i = 0; i < NUM_CONTINUOUS_FRAMES; i++) {
 		/* free previous frame */
-		if (pipe->pipe.preview.continuous_frames[i])
+		if (pipe->pipe.preview.continuous_frames[i]) {
 			sh_css_frame_free(pipe->pipe.preview.continuous_frames[i]);
+			pipe->pipe.preview.continuous_frames[i] = NULL;
+		}
 		/* check if new frame needed */
 		if (i < my_css.num_cont_raw_frames) {
 			/* allocate new frame */
@@ -3181,13 +3194,14 @@ assert(pipe != NULL);
 	err = preview_alloc_continuous_frames(pipe, capture_pipe);
 	if (err != sh_css_success)
 		return err;
-
+#if 0
 	if (my_css.continuous) {
 		err = primary_alloc_continuous_frames(capture_pipe,
 		    pipe->pipe.preview.continuous_frames[0]->info.padded_width);
 		if (err != sh_css_success)
 			return err;
 	}
+#endif
 	if (SH_CSS_PREVENT_UNINIT_READS)
 		sh_css_frame_zero(pipe->pipe.preview.continuous_frames[0]);
 
@@ -4081,11 +4095,13 @@ static enum sh_css_err sh_css_pipeline_stop(
 
 	/* clear pending param sets from refcount */
 	sh_css_param_clear_param_sets();
+	sh_css_sp_reset_global_vars();
 
 	my_css.curr_state = sh_css_state_idle;
 
 	my_css.curr_pipe = NULL;
 	my_css.start_sp_copy = false;
+
 	return sh_css_success;
 }
 
@@ -4385,7 +4401,10 @@ assert(in_info != NULL);
 			   in_info,
 			   &pipe->output_info,
 			   vf_info);
-	video_descr.online = pipe->online;
+	if (pipe->online) {
+		video_descr.online = pipe->online;
+		video_descr.two_ppc = pipe->two_ppc;
+	}
 }
 
 
@@ -5053,6 +5072,7 @@ assert(pipe != NULL);
 	 *   1. XNR or
 	 *   2. Digital Zoom or
 	 *   3. YUV downscaling
+	 *   4. in continuous capture mode
 	 */
 	if (pipe->yuv_ds_input_info.width &&
 	    ((pipe->yuv_ds_input_info.width != pipe->output_info.width) ||
@@ -5129,6 +5149,7 @@ assert(vf_info != NULL);
 			   vf_info);
 	if (pipe->online) {
 		prim_descr.online        = true;
+		prim_descr.two_ppc       = pipe->two_ppc;
 		prim_descr.stream_format = pipe->input_format;
 	}
 }
@@ -5206,6 +5227,7 @@ assert(out_info != NULL);
 			   in_info, out_info, NULL);
 	if (pipe->online) {
 		pre_anr_descr.online        = true;
+		pre_anr_descr.two_ppc       = pipe->two_ppc;
 		pre_anr_descr.stream_format = pipe->input_format;
 	}
 }
@@ -5247,7 +5269,7 @@ assert(vf_info != NULL);
 			   &post_anr_descr, SH_CSS_BINARY_MODE_POST_ISP,
 			   in_info, out_info, vf_info);
 }
-
+#if 0
 static enum sh_css_err
 primary_alloc_continuous_frames(
 	struct sh_css_pipe *pipe,
@@ -5280,6 +5302,7 @@ primary_alloc_continuous_frames(
 		sh_css_frame_zero(mycs->continuous_frames[0]);
 	return sh_css_success;
 }
+#endif
 
 static enum sh_css_err load_primary_binaries(
 	struct sh_css_pipe *pipe)
@@ -5700,7 +5723,10 @@ static enum sh_css_err construct_capture_pipe(
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "construct_capture_pipe() enter:\n");
 	sh_css_pipeline_clean(me);
 
-	sh_css_pipe_invalidate_binaries(pipe);
+	if (my_css.invalidate) {
+		sh_css_pipe_invalidate_binaries(pipe);
+		my_css.invalidate = false;
+	}
 	err = sh_css_pipe_load_binaries(pipe, NULL);
 	if (err != sh_css_success)
 		return err;
@@ -5751,8 +5777,8 @@ static enum sh_css_err construct_capture_pipe(
 			return err;
 		in_stage = post_stage;
 	} else if (my_css.continuous) {
-		in_frame = pipe->pipe.capture.continuous_frames[0];
-		cc_frame = pipe->pipe.capture.continuous_frames[1];
+		in_frame = my_css.preview_pipe.pipe.preview.continuous_frames[0];
+		//cc_frame = pipe->pipe.capture.continuous_frames[1];
 	}
 
 	if (mode == SH_CSS_CAPTURE_MODE_PRIMARY) {
@@ -8027,11 +8053,13 @@ sh_css_init_host_sp_control_vars(struct sh_css_pipe *pipe)
 				sh_css_update_host2sp_offline_frame(i,
 					pipe->pipe.preview.continuous_frames[i]);
 			}
+#if 0
 		else if (pipe->mode == SH_CSS_CAPTURE_PIPELINE)
 			for (i = 0; i < NUM_CONTINUOUS_FRAMES; i++) {
 				sh_css_update_host2sp_offline_frame(i,
 					pipe->pipe.capture.continuous_frames[i]);
 			}
+#endif
 	}
 
 	sh_css_dtrace(SH_DBG_TRACE,
