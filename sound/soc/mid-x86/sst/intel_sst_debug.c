@@ -631,8 +631,11 @@ static ssize_t sst_debug_readme_read(struct file *file, char __user *user_buf,
 		"3. Enable input clock by 'echo enable > osc_clk0'.\n"
 		"This prevents the input OSC clock from switching off till it is disabled by\n"
 		"'echo disable > osc_clk0'. The status of the clock indicated who are using it.\n"
-		"\nlpe_log_enable usage: \n"
-		"	echo <dbg_type> <module_id> <log_level> > lpe_log_enable.\n";
+		"4. lpe_log_enable usage:\n"
+		"	echo <dbg_type> <module_id> <log_level> > lpe_log_enable.\n"
+		"5. echo 1 > fw_clear_context , This sets the flag to skip the context restore\n"
+		"6. echo 1 > fw_clear_cache , This sets the flag to clear the cached copy of firmware\n"
+		"7. echo 1 > fw_state ,This sets the fw state to uninit\n";
 
 	return simple_read_from_buffer(user_buf, count, ppos,
 			buf, strlen(buf));
@@ -684,6 +687,121 @@ static const struct file_operations sst_debug_osc_clk0_ops = {
 	.open = sst_debug_open,
 	.read = sst_debug_osc_clk0_read,
 	.write = sst_debug_osc_clk0_write,
+};
+
+static ssize_t sst_debug_fw_clear_cntx_read(struct file *file,
+		char __user *user_buf, size_t count, loff_t *ppos)
+{
+	char *status;
+
+	status = atomic_read(&sst_drv_ctx->fw_clear_context) ? \
+			"clear fw cntx\n" : "do not clear fw cntx\n";
+
+	return simple_read_from_buffer(user_buf, count, ppos,
+			status, strlen(status));
+
+}
+
+static ssize_t sst_debug_fw_clear_cntx_write(struct file *file,
+		const char __user *user_buf, size_t count, loff_t *ppos)
+
+{
+	char buf[16];
+	int sz = min(count, sizeof(buf)-1);
+
+	if (copy_from_user(buf, user_buf, sz))
+		return -EFAULT;
+	buf[sz] = 0;
+
+	if (!strncmp(buf, "1\n", sz))
+		atomic_set(&sst_drv_ctx->fw_clear_context, 1);
+	else
+		atomic_set(&sst_drv_ctx->fw_clear_context, 0);
+
+	return sz;
+
+}
+
+static const struct file_operations sst_debug_fw_clear_cntx = {
+	.open = sst_debug_open,
+	.read = sst_debug_fw_clear_cntx_read,
+	.write = sst_debug_fw_clear_cntx_write,
+};
+
+static ssize_t sst_debug_fw_clear_cache_read(struct file *file,
+		char __user *user_buf, size_t count, loff_t *ppos)
+{
+	char *status;
+
+	status = atomic_read(&sst_drv_ctx->fw_clear_cache) ? \
+			"cache clear flag set\n" : "cache clear flag not set\n";
+
+	return simple_read_from_buffer(user_buf, count, ppos,
+			status, strlen(status));
+
+}
+
+static ssize_t sst_debug_fw_clear_cache_write(struct file *file,
+		const char __user *user_buf, size_t count, loff_t *ppos)
+
+{
+	char buf[16];
+	int sz = min(count, sizeof(buf)-1);
+
+	if (copy_from_user(buf, user_buf, sz))
+		return -EFAULT;
+	buf[sz] = 0;
+
+	if (!strncmp(buf, "1\n", sz))
+		atomic_set(&sst_drv_ctx->fw_clear_cache, 1);
+	else
+		return -EINVAL;
+
+	return sz;
+}
+
+static const struct file_operations sst_debug_fw_clear_cache = {
+	.open = sst_debug_open,
+	.read = sst_debug_fw_clear_cache_read,
+	.write = sst_debug_fw_clear_cache_write,
+};
+
+static ssize_t sst_debug_fw_reset_state_read(struct file *file,
+		char __user *user_buf, size_t count, loff_t *ppos)
+{
+	char state[16];
+
+	sprintf(state, "%d\n", atomic_read(&sst_drv_ctx->sst_state));
+
+	return simple_read_from_buffer(user_buf, count, ppos,
+			state, strlen(state));
+
+}
+
+static ssize_t sst_debug_fw_reset_state_write(struct file *file,
+		const char __user *user_buf, size_t count, loff_t *ppos)
+
+{
+	char buf[16];
+	int sz = min(count, sizeof(buf)-1);
+
+	if (copy_from_user(buf, user_buf, sz))
+		return -EFAULT;
+	buf[sz] = 0;
+
+	if (!strncmp(buf, "1\n", sz))
+		sst_set_fw_state_locked(sst_drv_ctx, SST_UN_INIT);
+	else
+		return -EINVAL;
+
+	return sz;
+
+}
+
+static const struct file_operations sst_debug_fw_reset_state = {
+	.open = sst_debug_open,
+	.read = sst_debug_fw_reset_state_read,
+	.write = sst_debug_fw_reset_state_write,
 };
 
 void sst_debugfs_init(struct intel_sst_drv *sst)
@@ -750,6 +868,27 @@ void sst_debugfs_init(struct intel_sst_drv *sst)
 	if (!debugfs_create_file("lpe_log_enable", 0400, sst->debugfs.root,
 				sst, &sst_debug_lpe_log_enable_ops)) {
 		pr_err("Failed to create lpe_debug_enable file\n");
+		return;
+	}
+
+	/* Firmware context */
+	if (!debugfs_create_file("fw_clear_context", 0600, sst->debugfs.root,
+				sst, &sst_debug_fw_clear_cntx)) {
+		pr_err("Failed to create fw_clear_context file\n");
+		return;
+	}
+
+	/* Firmware cached copy */
+	if (!debugfs_create_file("fw_clear_cache", 0600, sst->debugfs.root,
+				sst, &sst_debug_fw_clear_cache)) {
+		pr_err("Failed to create fw_clear_cache file\n");
+		return;
+	}
+
+	/* Firmware lpe state */
+	if (!debugfs_create_file("fw_reset_state", 0600, sst->debugfs.root,
+				sst, &sst_debug_fw_reset_state)) {
+		pr_err("Failed to create fw_reset_state file\n");
 		return;
 	}
 
