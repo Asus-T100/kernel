@@ -20,6 +20,7 @@
 #include "device_libs/platform_max3111.h"
 #include "device_libs/platform_mrfl_pmic.h"
 #include "device_libs/platform_mrfl_ocd.h"
+#include "device_libs/platform_msic_power_btn.h"
 #include <asm/platform_mrfld_audio.h>
 /* I2C Devices */
 #include "device_libs/platform_max17042.h"
@@ -53,6 +54,8 @@ struct devs_id __initconst device_ids[] = {
 	{"bcove_bcu", SFI_DEV_TYPE_IPC, 1, &mrfl_ocd_platform_data, NULL},
 	{"bcove_thrm", SFI_DEV_TYPE_IPC, 1, &no_platform_data, NULL},
 	{"bcove_chrgr", SFI_DEV_TYPE_IPC, 1, &no_platform_data, NULL},
+	{"bcove_power_btn", SFI_DEV_TYPE_IPC, 1,
+		&msic_power_btn_platform_data, NULL},
 	{"max17050", SFI_DEV_TYPE_I2C, 1, &max17042_platform_data, NULL},
 	{"spi_max3111", SFI_DEV_TYPE_SPI, 0, &max3111_vp_platform_data, NULL},
 

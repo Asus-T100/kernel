@@ -39,7 +39,7 @@ void __init *msic_power_btn_platform_data(void *info)
 	struct sfi_device_table_entry *entry = info;
 	static struct intel_msic_power_btn_platform_data msic_power_btn_pdata;
 
-#if defined(CONFIG_BOARD_MRFLD_VP)
+#if defined(CONFIG_BOARD_MRFLD_VP) || defined(CONFIG_BOARD_MRFLD_VV)
 	msic_power_btn_pdata.pbstat = 0xfffff61a;
 	msic_power_btn_pdata.pb_level = (1 << 4);
 	msic_power_btn_pdata.irq_lvl1_mask = 0x0c;

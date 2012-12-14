@@ -988,11 +988,11 @@ static int dump_output_show_mmio(struct seq_file *s)
 				switch (access_width) {
 				case ACCESS_WIDTH_32BIT:
 					seq_printf(s, " %08x",
-						ioread32(base + i));
+						ioread32(base + i * 4));
 					break;
 				case ACCESS_WIDTH_16BIT:
 					seq_printf(s, " %04x",
-						(u16) ioread16(base + i));
+						(u16) ioread16(base + i * 2));
 					break;
 				case ACCESS_WIDTH_8BIT:
 					seq_printf(s, " %02x",

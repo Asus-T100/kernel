@@ -840,7 +840,11 @@ EXPORT_SYMBOL_GPL(intel_scu_ipc_read_oshob);
 #define IPCMSG_WRITE_OEMNIB		0xDF
 
 /* Offset of pointer to OSNIB. Used with old OSHOB. */
+#ifdef CONFIG_X86_MRFLD
+#define POSNIBW_OFFSET			0x40
+#else
 #define POSNIBW_OFFSET			0x34
+#endif
 
 /* This function is used for the old OSNIB. */
 int intel_scu_ipc_read_osnib(u8 *data, int len, int offset)
