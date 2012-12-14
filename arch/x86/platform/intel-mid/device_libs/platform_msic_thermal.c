@@ -120,8 +120,8 @@ static struct intel_mid_thermal_sensor lex_sensors[] = {
 	{
 		.name = SKIN0_NAME,
 		.index = 0,
-		.slope = 851,
-		.intercept = 2800,
+		.slope = 820,
+		.intercept = 3000,
 		.adc_channel = 0x08 | CH_NEED_VREF | CH_NEED_VCALIB,
 		.temp_correlation = skin0_temp_correlation,
 		.direct = false,
@@ -129,8 +129,8 @@ static struct intel_mid_thermal_sensor lex_sensors[] = {
 	{
 		.name = SKIN1_NAME,
 		.index = 1,
-		.slope = 806,
-		.intercept = 1800,
+		.slope = 850,
+		.intercept = 3000,
 		.adc_channel = 0x08 | CH_NEED_VREF | CH_NEED_VCALIB,
 		.temp_correlation = skin1_temp_correlation,
 		.direct = false,
@@ -176,13 +176,17 @@ static struct intel_mid_thermal_platform_data pdata[] = {
 void *msic_thermal_platform_data()
 {
 	if (INTEL_MID_BOARD(1, PHONE, CLVTP) ||
-			(INTEL_MID_BOARD(1, TABLET, CLVT)))
+			(INTEL_MID_BOARD(1, TABLET, CLVT))) {
+		pr_info("msic_thermal_platform_data: CLV board detected\n");
 		return &pdata[ctp_thermal];
-	else if (INTEL_MID_BOARD(2, PHONE, MFLD, LEX, ENG) ||
-			(INTEL_MID_BOARD(2, PHONE, MFLD, LEX, PRO)))
+	} else if (INTEL_MID_BOARD(2, PHONE, MFLD, LEX, ENG) ||
+			(INTEL_MID_BOARD(2, PHONE, MFLD, LEX, PRO))) {
+		pr_info("msic_thermal_platform_data: LEX board detected\n");
 		return &pdata[lex_thermal];
-	else
+	} else {
+		pr_info("msic_thermal_platform_data: MFLD board detected\n");
 		return &pdata[mfld_thermal];
+	}
 }
 
 static int __init intel_msic_thermal_init(void)
