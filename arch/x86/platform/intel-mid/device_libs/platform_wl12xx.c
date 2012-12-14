@@ -18,11 +18,17 @@
 #include <asm/intel-mid.h>
 #include "platform_wl12xx.h"
 
+static int wl12xx_platform_init(struct wl12xx_platform_data *platform_data);
+static void wl12xx_platform_deinit(struct wl12xx_platform_data *platform_data);
+
 static struct wl12xx_platform_data mid_wifi_control = {
 	.board_ref_clock = 1,
 	.irq = 2,
+	.gpio = -EINVAL,
 	.board_tcxo_clock = 1,
 	.platform_quirks = WL12XX_PLATFORM_QUIRK_EDGE_IRQ,
+	.hw_init = wl12xx_platform_init,
+	.hw_deinit = wl12xx_platform_deinit,
 };
 
 static struct regulator_consumer_supply wl12xx_vmmc3_supply = {
@@ -56,35 +62,19 @@ static struct platform_device wl12xx_vwlan_device = {
 	},
 };
 
-void __init wl12xx_platform_data_init_post_scu(void *info)
+void __init wl12xx_platform_data_init(void *info)
 {
 	struct sd_board_info *sd_info = info;
-	int wifi_irq_gpio;
 	int err;
 
 	/*Get GPIO numbers from the SFI table*/
-	wifi_irq_gpio = get_gpio_by_name(WL12XX_SFI_GPIO_IRQ_NAME);
-	if (wifi_irq_gpio == -1) {
+	mid_wifi_control.gpio = get_gpio_by_name(WL12XX_SFI_GPIO_IRQ_NAME);
+	if (mid_wifi_control.gpio == -1) {
 		pr_err("%s: Unable to find WLAN-interrupt GPIO in the SFI table\n",
 				__func__);
 		return;
 	}
-	err = gpio_request(wifi_irq_gpio, "wl12xx");
-	if (err < 0) {
-		pr_err("%s: Unable to request GPIO\n", __func__);
-		return;
-	}
-	err = gpio_direction_input(wifi_irq_gpio);
-	if (err < 0) {
-		pr_err("%s: Unable to set GPIO direction\n", __func__);
-		return;
-	}
-	mid_wifi_control.irq = gpio_to_irq(wifi_irq_gpio);
-	if (mid_wifi_control.irq < 0) {
-		pr_err("%s:Error gpio_to_irq:%d->%d\n", __func__, wifi_irq_gpio,
-		       mid_wifi_control.irq);
-		return;
-	}
+
 	if (board_id != MFLD_BID_SALITPA_EV1) {
 		/* Set our board_ref_clock from SFI SD board info */
 		if (sd_info->board_ref_clock == BOARD_26M_CLK)
@@ -120,7 +110,6 @@ void __init wl12xx_platform_data_init_post_scu(void *info)
 	if (err < 0)
 		pr_err("error platform_device_register\n");
 
-	sdhci_pci_request_regulators();
 }
 
 void __init *wl12xx_platform_data(void *info)
@@ -132,8 +121,75 @@ void __init *wl12xx_platform_data(void *info)
 		pr_err("MRST: fail to alloc mem for delayed wl12xx dev\n");
 		return NULL;
 	}
-	intel_delayed_device_register(sd_info,
-				      wl12xx_platform_data_init_post_scu);
+	wl12xx_platform_data_init(sd_info);
 
 	return &mid_wifi_control;
+}
+
+static int wl12xx_platform_init(struct wl12xx_platform_data *platform_data)
+{
+	int err = 0;
+
+	if (IS_ERR(platform_data)) {
+		err = PTR_ERR(platform_data);
+		pr_err("%s: missing wlan platform data: %d\n", __func__, err);
+		goto out;
+	}
+
+	/* gpio must be set to -EINVAL by platform code if
+	   gpio based irq is not used*/
+
+	if (gpio_is_valid(platform_data->gpio)) {
+		if (!platform_data->gpio)
+			pr_warn("using GPIO %d for wl12xx\n",
+						platform_data->gpio);
+
+		/* Request gpio */
+		err = gpio_request(platform_data->gpio, "wl12xx");
+		if (err < 0) {
+			pr_err("%s: Unable to request GPIO:%d, err:%d\n",
+					__func__, platform_data->gpio, err);
+			goto out;
+		}
+
+		/* set gpio direction */
+		err = gpio_direction_input(platform_data->gpio);
+		if (err < 0) {
+			pr_err("%s: Unable to set GPIO:%d direction, err:%d\n",
+			 __func__, platform_data->gpio, err);
+			goto out;
+		}
+
+		/* convert gpio to irq */
+		platform_data->irq = gpio_to_irq(platform_data->gpio);
+		if (platform_data->irq < 0) {
+			pr_err("%s: Error gpio_to_irq:%d->%d\n", __func__,
+					platform_data->gpio,
+					platform_data->irq);
+			goto out;
+		}
+	}
+
+	sdhci_pci_request_regulators();
+
+	pr_info("%s done\n", __func__);
+out:
+	return err;
+}
+
+static void wl12xx_platform_deinit(struct wl12xx_platform_data *pdata)
+{
+	/* get platform data and free the gpio */
+	if (IS_ERR(pdata)) {
+		pr_err("%s: missing wlan platform data\n", __func__);
+		goto out;
+	}
+
+	if (gpio_is_valid(pdata->gpio)) {
+		if (!pdata->gpio)
+			pr_warn("using GPIO %d for wl12xx\n", pdata->gpio);
+		gpio_free(pdata->gpio);
+	}
+out:
+	return ;
 }
