@@ -438,19 +438,19 @@ static int mt9d113_wait_standby(struct v4l2_subdev *sd, int flag)
 	return -EBUSY;
 }
 
-static int mt9d113_set_suspend(struct v4l2_subdev *sd)
+static int mt9d113_set_suspend(struct v4l2_subdev *sd, bool val)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	int ret;
 
 	ret = misensor_rmw_reg(client, MISENSOR_16BIT, MT9D113_REG_STBY_CTRL,
-			       STBY_CTRL_MASK_STBY_REQ, 0x01);
+			       STBY_CTRL_MASK_STBY_REQ, val);
 	if (ret) {
 		dev_err(&client->dev, "err set standby bit: %d", ret);
 		return -EINVAL;
 	}
 
-	ret = mt9d113_wait_standby(sd, 1);
+	ret = mt9d113_wait_standby(sd, val);
 
 	return ret;
 }
@@ -797,6 +797,23 @@ static int mt9d113_init_common(struct v4l2_subdev *sd)
 	}
 
 	/*
+	 * when standby pin is asserted, the sensor can enter two standby
+	 * modes, which mode is determined by the value of reg 0x0028:
+	 * [1]. when reg 0x0028 == 0x0000, the reg and state variables are
+	 * retained standby is asserted.
+	 * [2]. when reg 0x0028 == 0x0001, the reg and state variables are
+	 * not retained when standby is asserted, which result in the lowest
+	 * power consumption.
+	 * we set 0 to reg 0x0028 here.
+	 */
+	ret = mt9d113_write_reg(client, MISENSOR_16BIT, MT9D113_REG_STBY_MODE,
+							MT9D113_STBY_MODE_1);
+	if (ret) {
+		dev_err(&client->dev, "err set standby mode: %d", ret);
+		return ret;
+	}
+
+	/*
 	 * Load=MCU Powerup Stop Enable
 	 */
 	ret = misensor_rmw_reg(client, MISENSOR_16BIT, MT9D113_REG_STBY_CTRL,
@@ -1130,6 +1147,26 @@ static int mt9d113_set_mbus_fmt(struct v4l2_subdev *sd,
 
 	if (ret) {
 		dev_err(&c->dev, "err write ae_max_index: %d", ret);
+		return ret;
+	}
+
+	/* Clear power up stop bit */
+	ret = misensor_rmw_reg(c, MISENSOR_16BIT, MT9D113_REG_STBY_CTRL,
+			       STBY_CTRL_MASK_STOP_MCU, 0x0);
+	if (ret) {
+		dev_err(&c->dev, "err clear powerup stop bit: %d", ret);
+		return ret;
+	}
+
+	ret = mt9d113_refresh(sd);
+	if (ret) {
+		dev_err(&c->dev, "refresh failed: %d", ret);
+		return ret;
+	}
+
+	ret = mt9d113_set_suspend(sd, true);
+	if (ret) {
+		dev_err(&c->dev, "err enter suspend: %d", ret);
 		return ret;
 	}
 
@@ -1514,22 +1551,11 @@ static int mt9d113_s_stream(struct v4l2_subdev *sd, int enable)
 	struct i2c_client *c = v4l2_get_subdevdata(sd);
 
 	if (enable) {
-		/* Clear power up stop bit */
-		ret = misensor_rmw_reg(c, MISENSOR_16BIT, MT9D113_REG_STBY_CTRL,
-				       STBY_CTRL_MASK_STOP_MCU, 0x0);
+		ret = mt9d113_set_suspend(sd, false);
 		if (ret) {
-			dev_err(&c->dev, "err clear powerup stop bit: %d",
-				ret);
+			dev_err(&c->dev, "err leave suspend: %d", ret);
 			return ret;
 		}
-		ret = mt9d113_refresh(sd);
-		if (ret)
-			return ret;
-
-		ret = mt9d113_mipi_standby(sd, 0);
-		if (ret)
-			return ret;
-
 	} else {
 		ret = mt9d113_mipi_standby(sd, 1);
 		if (ret)
@@ -1541,13 +1567,14 @@ static int mt9d113_s_stream(struct v4l2_subdev *sd, int enable)
 
 		ret = misensor_rmw_reg(c, MISENSOR_16BIT, MT9D113_REG_STBY_CTRL,
 				       STBY_CTRL_MASK_STOP_MCU, 0x1);
-		if (ret)
-			dev_warn(&c->dev, "err set powerup stop bit: %d",
+		if (ret) {
+			dev_err(&c->dev, "err set powerup stop bit: %d",
 				 ret);
-
+			return ret;
+		}
 	}
 
-	return ret;
+	return 0;
 }
 
 static int
