@@ -73,3 +73,16 @@ int pmu_get_wake_source(void)
 {
 	return INVALID_WAKE_SRC;
 }
+
+
+int set_extended_cstate_mode(const char *val, struct kernel_param *kp)
+{
+	return 0;
+}
+
+int get_extended_cstate_mode(char *buffer, struct kernel_param *kp)
+{
+	const char *default_string = "not supported";
+	strcpy(buffer, default_string);
+	return strlen(default_string);
+}

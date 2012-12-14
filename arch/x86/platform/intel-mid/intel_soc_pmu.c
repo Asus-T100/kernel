@@ -87,6 +87,15 @@ static DEFINE_PCI_DEVICE_TABLE(mid_pm_ids) = {
 
 MODULE_DEVICE_TABLE(pci, mid_pm_ids);
 
+char s0ix[5] = "s0ix";
+
+module_param_call(s0ix, set_extended_cstate_mode,
+		get_extended_cstate_mode, NULL, 0644);
+
+MODULE_PARM_DESC(s0ix,
+	"setup extended c state s0ix mode [s0i3|s0i1|lmp3|"
+				"i1i3|lpi1|lpi3|s0ix|none]");
+
 /**
  * This function set all devices in d0i0 and deactivates pmu driver.
  * The function is used before IFWI update as it needs devices to be

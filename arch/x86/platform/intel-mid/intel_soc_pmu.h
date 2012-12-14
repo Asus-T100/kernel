@@ -370,6 +370,7 @@ struct platform_pmu_ops {
 	void (*set_s0ix_complete) (void);
 };
 
+extern char s0ix[5];
 extern struct platform_pmu_ops mfld_pmu_ops;
 extern struct platform_pmu_ops clv_pmu_ops;
 extern struct platform_pmu_ops mrfld_pmu_ops;
@@ -394,6 +395,8 @@ extern int pmu_get_wake_source(void);
 extern bool pmu_initialized;
 extern struct platform_pmu_ops *pmu_ops;
 extern void platform_update_all_lss_states(struct pmu_ss_states *, int *);
+extern int set_extended_cstate_mode(const char *val, struct kernel_param *kp);
+extern int get_extended_cstate_mode(char *buffer, struct kernel_param *kp);
 
 #ifdef LOG_PMU_EVENTS
 extern void pmu_log_pmu_irq(int status, bool interactive_cmd_sent);

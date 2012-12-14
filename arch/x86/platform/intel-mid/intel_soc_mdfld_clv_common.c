@@ -20,9 +20,8 @@
 
 #include "intel_soc_pmu.h"
 
-static char s0ix[5] = "s0ix";
 static int extended_cstate_mode = MID_S0IX_STATE;
-static int set_extended_cstate_mode(const char *val, struct kernel_param *kp)
+int set_extended_cstate_mode(const char *val, struct kernel_param *kp)
 {
 	char valcp[5];
 	int cstate_mode;
@@ -57,17 +56,11 @@ static int set_extended_cstate_mode(const char *val, struct kernel_param *kp)
 	return 0;
 }
 
-static int get_extended_cstate_mode(char *buffer, struct kernel_param *kp)
+int get_extended_cstate_mode(char *buffer, struct kernel_param *kp)
 {
 	strcpy(buffer, s0ix);
 	return 4;
 }
-
-module_param_call(s0ix, set_extended_cstate_mode,
-		get_extended_cstate_mode, NULL, 0644);
-MODULE_PARM_DESC(s0ix,
-	"setup extended c state s0ix mode [s0i3|s0i1|lmp3|"
-				"i1i3|lpi1|lpi3|s0ix|none]");
 
 /*
  *Decide which state the platfrom can go to based on user and
