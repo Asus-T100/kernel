@@ -3512,6 +3512,11 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 		}
 	}
 
+	if (isp->params.continuous_vf) {
+		effective_input_width = 0;
+		effective_input_height = 0;
+	}
+
 	/* video same in continuouscapture and online modes */
 	if (isp->sw_contex.run_mode == CI_MODE_VIDEO) {
 		if (sh_css_video_configure_viewfinder(
@@ -3537,12 +3542,10 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 		if (sh_css_preview_get_output_frame_info(output_info))
 			return -EINVAL;
 
-		if (!isp->params.continuous_vf) {
-			if (sh_css_preview_configure_pp_input(
+		if (sh_css_preview_configure_pp_input(
 					effective_input_width,
 					effective_input_height))
-				return -EINVAL;
-		}
+			return -EINVAL;
 
 		break;
 	case ATOMISP_PIPE_CAPTURE:
@@ -3571,12 +3574,10 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 					"sh css capture main output width: %d, height: %d\n",
 					width, height);
 
-		if (!isp->params.continuous_vf) {
-			if (sh_css_capture_configure_pp_input(
+		if (sh_css_capture_configure_pp_input(
 					effective_input_width,
 					effective_input_height))
-				return -EINVAL;
-		}
+			return -EINVAL;
 
 		ret = sh_css_capture_get_output_frame_info(output_info);
 		if (ret) {
