@@ -656,7 +656,6 @@ void timekeeping_inject_sleeptime(struct timespec *delta)
 	clock_was_set();
 }
 
-
 /**
  * timekeeping_resume - Resumes the generic timekeeping subsystem.
  *
@@ -668,19 +667,35 @@ static void timekeeping_resume(void)
 {
 	unsigned long flags;
 	struct timespec ts;
+	cycle_t cycle_now, cycle_delta;
+	struct clocksource *clock;
+	s64 nsec;
 
-	read_persistent_clock(&ts);
+	ts.tv_sec = ts.tv_nsec = 0;
+	clock = timekeeper.clock;
 
-	clocksource_resume();
+	if (!(clock->flags & CLOCK_SOURCE_SUSPEND_NONSTOP)) {
+		read_persistent_clock(&ts);
+		clocksource_resume();
+	}
 
 	write_seqlock_irqsave(&xtime_lock, flags);
 
-	if (timespec_compare(&ts, &timekeeping_suspend_time) > 0) {
+	if (clock->flags & CLOCK_SOURCE_SUSPEND_NONSTOP) {
+		cycle_now = clock->read(clock);
+		cycle_delta = (cycle_now - clock->cycle_last) & clock->mask;
+		clock->cycle_last = cycle_now;
+
+		nsec = clocksource_cyc2ns(cycle_delta, timekeeper.mult,
+					  timekeeper.shift);
+		ts = ns_to_timespec(nsec);
+	} else if (timespec_compare(&ts, &timekeeping_suspend_time) > 0)
 		ts = timespec_sub(ts, timekeeping_suspend_time);
-		__timekeeping_inject_sleeptime(&ts);
-	}
+
+	__timekeeping_inject_sleeptime(&ts);
+
 	/* re-base the last cycle value */
-	timekeeper.clock->cycle_last = timekeeper.clock->read(timekeeper.clock);
+	clock->cycle_last = timekeeper.clock->read(timekeeper.clock);
 	timekeeper.ntp_error = 0;
 	timekeeping_suspended = 0;
 	write_sequnlock_irqrestore(&xtime_lock, flags);

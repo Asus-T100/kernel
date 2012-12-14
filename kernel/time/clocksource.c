@@ -656,13 +656,15 @@ void __clocksource_updatefreq_scale(struct clocksource *cs, u32 scale, u32 freq)
 	sec = (cs->mask - (cs->mask >> 3));
 	do_div(sec, freq);
 	do_div(sec, scale);
+
 	if (!sec)
 		sec = 1;
-	else if (sec > 600 && cs->mask > UINT_MAX)
-		sec = 600;
+	else if (sec > 2400 && cs->mask > UINT_MAX)
+		sec = 2400;
 
 	clocks_calc_mult_shift(&cs->mult, &cs->shift, freq,
 			       NSEC_PER_SEC / scale, sec * scale);
+
 	cs->max_idle_ns = clocksource_max_deferment(cs);
 }
 EXPORT_SYMBOL_GPL(__clocksource_updatefreq_scale);
