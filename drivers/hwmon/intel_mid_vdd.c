@@ -622,6 +622,13 @@ static int program_bcu(struct ipc_device *pdev, struct vdd_info *vinfo)
 	if (vdata.vwarna_cfg == 0)
 		restore_default_value(&vdata);
 
+	/*
+	 * workaround for the VWARNA not getting triggered
+	 */
+	vdata.bcudisa_beh = 0x01;
+	vdata.bcudisb_beh = 0x01;
+	vdata.bcuprochot_beh = 0x02;
+
 configure_register:
 	/* configure all related register */
 	ret = vdd_set_register(VWARNA_CFG, vdata.vwarna_cfg);
