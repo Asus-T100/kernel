@@ -1125,9 +1125,14 @@ PVRSRV_ERROR PVRSRVProcessCommand(SYS_DATA			*psSysData,
 	if (psCmdCompleteData->bInUse)
 	{
 		/* can use this to protect against concurrent execution of same command */
-		PVR_DPF((PVR_DBG_ERROR,
+#if 0	/*too much printk may influence stability and performance, enable it while need debug*/
+		if (printk_ratelimit())
+		{
+			PVR_DPF((PVR_DBG_ERROR,
 					"PVRSRVProcessCommand: CCD is in use 0x%x",
 					psCommand->ui32DevIndex));
+		}
+#endif
 		return PVRSRV_ERROR_FAILED_DEPENDENCIES;
 	}
 
