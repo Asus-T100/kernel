@@ -1241,6 +1241,7 @@ static unsigned int atomisp_sensor_start_stream(struct atomisp_device *isp)
 {
 	if (isp->sw_contex.run_mode == CI_MODE_VIDEO ||
 	    (isp->sw_contex.run_mode == CI_MODE_STILL_CAPTURE &&
+	     isp->capture_format &&
 	     isp->capture_format->out_sh_fmt != SH_CSS_FRAME_FORMAT_RAW &&
 	     !isp->params.continuous_vf))
 		return 2;
