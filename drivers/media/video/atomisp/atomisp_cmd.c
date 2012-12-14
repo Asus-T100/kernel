@@ -4605,7 +4605,7 @@ int atomisp_restore_iunit_reg(struct atomisp_device *isp)
 int atomisp_ospm_dphy_down(struct atomisp_device *isp)
 {
 	u32 pwr_cnt = 0;
-	int timeout = 100;
+	int timeout = 500;
 	bool idle;
 
 	/* if ISP timeout, we can force powerdown */
@@ -4614,17 +4614,19 @@ int atomisp_ospm_dphy_down(struct atomisp_device *isp)
 		goto done;
 	}
 
+	/*
+	 * wait 500ms - 1000ms for ISP idle status, and if
+	 * timeout, we still should force power-down.
+	 */
 	idle = sh_css_hrt_system_is_idle();
 	while (!idle && timeout--) {
-		udelay(20);
+		usleep_range(1000, 2000);
 		idle = sh_css_hrt_system_is_idle();
 	}
 
-	if (timeout < 0) {
-		v4l2_err(&atomisp_dev,
+	if (timeout < 0)
+		v4l2_warn(&atomisp_dev,
 			 "Timeout to stop ISP HW\n");
-		return -EINVAL;
-	}
 
 done:
 	/* power down DPHY */
