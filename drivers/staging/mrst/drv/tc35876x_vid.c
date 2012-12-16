@@ -31,14 +31,30 @@
 #include <linux/gpio.h>
 
 /* HACK to create I2C device while it's not created by platform code */
-#define CMI_LCD_I2C_ADAPTER	2
-#define CMI_LCD_I2C_ADDR	0x60
+#define CMI_LCD_I2C_ADAPTER	0
+#define CMI_LCD_I2C_ADDR	0x2C
 
 /* Brightness related */
 #define MINIMUM_BRIGHTNESS_LEVEL_20KHZ	15
 /* MSIC PWM duty cycle goes up to 0x63 = 99% */
 #define BACKLIGHT_DUTY_FACTOR	0x63
 #define PWM0DUTYCYCLE		0x67
+
+/* Backlight IC(LP8556) Registers */
+#define BRIGHTNESS_CONTROL	0x00
+#define DEVICE_CONTROL		0x01
+#define DEVICE_STATUS		0x02
+#define DEVICE_CONTROL_LED	0x04
+#define DEVICE_LED_ENABLE	0x05
+
+/* Backlight IC(LP8556) Register 0x01h */
+#define BRT_MODE_PWM_INPUT_ONLY	0x00
+#define BRT_MODE_PWM_AND_REG_CB	0x02
+#define BRT_MODE_PWM_REG_ONLY	0x04
+#define BRT_MODE_PWM_AND_REG_CA	0x06
+
+#define BL_CTL_DISABLE		0x00
+#define BL_CTL_ENABLE		0x01
 
 /* Panel CABC registers */
 #define PANEL_PWM_MAX		0x99
@@ -491,67 +507,22 @@ void tc35876x_toshiba_bridge_panel_on(void)
 	gpio_direction_output(GPIO_MIPI_LCD_VADD, 1);
 	msleep(260);
 
-	if (cmi_lcd_i2c_client) {
-		PSB_DEBUG_ENTRY("setting TCON\n");
-		/* Bit 4 is average_saving. Setting it to 1, the brightness is
-		 * referenced to the average of the frame content. 0 means
-		 * reference to the maximum of frame contents. Bits 3:0 are
-		 * allow_distort. When set to a nonzero value, all color values
-		 * between 255-allow_distort*2 and 255 are mapped to the
-		 * 255-allow_distort*2 value.
-		 */
-		ret = i2c_smbus_write_byte_data(cmi_lcd_i2c_client,
-				PANEL_ALLOW_DISTORT, 0x32);
-		if (ret < 0)
-			dev_err(&cmi_lcd_i2c_client->dev,
-					"i2c write failed (%d)\n", ret);
-		ret = i2c_smbus_write_byte_data(cmi_lcd_i2c_client,
-				PANEL_BYPASS_PWMI, 0);
-		if (ret < 0)
-			dev_err(&cmi_lcd_i2c_client->dev,
-					"i2c write failed (%d)\n", ret);
-		/* Set minimum brightness value[15%@20KHz] - this is tunable */
-		ret = i2c_smbus_write_byte_data(cmi_lcd_i2c_client,
-				PANEL_PWM_MIN, 0x3C);
-		if (ret < 0)
-			dev_err(&cmi_lcd_i2c_client->dev,
-					"i2c write failed (%d)\n", ret);
-
-		/* changing CABC PWM frequency to 20Khz */
-		ret = i2c_smbus_write_byte_data(cmi_lcd_i2c_client,
-				PANEL_FREQ_DIVIDER_HI, 0xE1);
-		if (ret < 0)
-			dev_err(&cmi_lcd_i2c_client->dev,
-					"i2c write failed (%d)\n", ret);
-		ret = i2c_smbus_write_byte_data(cmi_lcd_i2c_client,
-				PANEL_FREQ_DIVIDER_LO, 0x90);
-		if (ret < 0)
-			dev_err(&cmi_lcd_i2c_client->dev,
-					"i2c write failed (%d)\n", ret);
-
-		/* PANEL_MODIFY_RGB to 0x00 to get rid of flicker */
-		ret = i2c_smbus_write_byte_data(cmi_lcd_i2c_client,
-				PANEL_MODIFY_RGB, 0x00);
-		if (ret < 0)
-			dev_err(&cmi_lcd_i2c_client->dev,
-					"i2c write failed (%d)\n", ret);
-		/* Enable PWMO generate by internal frequency */
-		ret = i2c_smbus_write_byte_data(cmi_lcd_i2c_client,
-				PANEL_PWM_CONTROL, 0x01);
-		if (ret < 0)
-			dev_err(&cmi_lcd_i2c_client->dev,
-					"i2c write failed (%d)\n", ret);
-
-		/* Set maximum duty of PWMO by pwm_set */
-		ret = i2c_smbus_write_byte_data(cmi_lcd_i2c_client,
-				PANEL_PWM_REF, 0x00);
-		if (ret < 0)
-			dev_err(&cmi_lcd_i2c_client->dev,
-					"i2c write failed (%d)\n", ret);
-	}
-
 	if (gpio_direction_output(GPIO_MIPI_LCD_BL_EN, 1))
 		gpio_set_value_cansleep(GPIO_MIPI_LCD_BL_EN, 1);
+
+	if (cmi_lcd_i2c_client) {
+		/* Set backlight as register control only */
+		ret = i2c_smbus_write_byte_data(cmi_lcd_i2c_client,
+						DEVICE_CONTROL,
+						BRT_MODE_PWM_REG_ONLY |
+						BL_CTL_ENABLE);
+		if (ret) {
+			DRM_ERROR("i2c write brightness control reg failed\n");
+			return;
+		}
+	} else {
+		DRM_ERROR("cmi_lcd_i2c_client is NULL!\n");
+	}
 }
 
 void tc35876x_configure_lvds_bridge(void)
@@ -818,7 +789,9 @@ int tc35876x_vid_set_brightness(struct mdfld_dsi_config *dsi_config, int level)
 	if (cmi_lcd_i2c_client) {
 		PSB_DEBUG_ENTRY("panel_duty_val = %d\n", panel_duty_val);
 		ret = i2c_smbus_write_byte_data(cmi_lcd_i2c_client,
-						PANEL_PWM_MAX, panel_duty_val);
+						BRIGHTNESS_CONTROL,
+						panel_duty_val);
+
 		if (ret < 0) {
 			DRM_ERROR("i2c write brightness failed\n");
 			return -EINVAL;
@@ -887,6 +860,21 @@ void tc35876x_vid_init(struct drm_device *dev, struct panel_funcs *p_funcs)
 	ret = i2c_add_driver(&cmi_lcd_i2c_driver);
 	if (ret) {
 		DRM_ERROR("add LCD I2C driver faild\n");
+		return;
+	}
+
+	if (cmi_lcd_i2c_client) {
+		/* Set backlight as register control only */
+		ret = i2c_smbus_write_byte_data(cmi_lcd_i2c_client,
+						DEVICE_CONTROL,
+						BRT_MODE_PWM_REG_ONLY |
+						BL_CTL_ENABLE);
+		if (ret) {
+			DRM_ERROR("i2c write brightness control reg failed\n");
+			return;
+		}
+	} else {
+		DRM_ERROR("cmi_lcd_i2c_client is NULL!\n");
 		return;
 	}
 
