@@ -65,6 +65,8 @@ extern int drm_psb_3D_vblank;
 
 static PFN_DC_GET_PVRJTABLE pfnGetPVRJTable = 0;
 static int FirstCleanFlag = 1;
+static IMG_BOOL DRMLFBFlipBlackScreen(MRSTLFB_DEVINFO *psDevInfo,
+					IMG_BOOL bAlpha);
 
 static MRSTLFB_DEVINFO * GetAnchorPtr(void)
 {
@@ -156,6 +158,13 @@ static void MRSTLFBFlipOverlay(MRSTLFB_DEVINFO *psDevInfo,
 	/* A pipe */
 	if (((psContext->pipe >> 6) & 0x3) == 0x00 &&
 		!(pipe_mask & (1 << 0))) {
+		/* WA: this is workaround to blank sprite instead of
+		* disabling sprite plane. As we find that it causes
+		* overlay update always to be failure when disable and
+		* re-enable overlay on CTP */
+		if (dev_priv->init_screen_start != PSB_RVDC32(DSPASURF))
+			DRMLFBFlipBlackScreen(psDevInfo, IMG_TRUE);
+#if 0
 		uDspCntr = PSB_RVDC32(DSPACNTR);
 		if (uDspCntr & DISPLAY_PLANE_ENABLE) {
 			uDspCntr &= ~DISPLAY_PLANE_ENABLE;
@@ -165,6 +174,7 @@ static void MRSTLFBFlipOverlay(MRSTLFB_DEVINFO *psDevInfo,
 			// display freeze due to some limitation unknown
 			//PSB_WVDC32(0, DSPASURF);
 		}
+#endif
 	} else if (((psContext->pipe >> 6) & 0x3) == 0x2 &&
 		!(pipe_mask & (1 << 1))) {
 		uDspCntr = PSB_RVDC32(DSPACNTR + 0x1000);
@@ -492,7 +502,8 @@ static IMG_BOOL DRMLFBFlipBuffer(MRSTLFB_DEVINFO *psDevInfo,
 	return ret;
 }
 
-static IMG_BOOL DRMLFBFlipBlackScreen(MRSTLFB_DEVINFO *psDevInfo)
+static IMG_BOOL DRMLFBFlipBlackScreen(MRSTLFB_DEVINFO *psDevInfo,
+					IMG_BOOL bAlpha)
 {
 	struct drm_psb_private *dev_priv;
 	u32 offset;
@@ -520,12 +531,21 @@ static IMG_BOOL DRMLFBFlipBlackScreen(MRSTLFB_DEVINFO *psDevInfo)
 		return IMG_FALSE;
 	}
 
+	dspcntr = PSB_RVDC32(DSPACNTR + offset);
+	/* mask alpha and pixel format if bAlpha to be false*/
+	if (!bAlpha) {
+		dspcntr &= (~DISPPLANE_PIXFORMAT_MASK);
+		dspcntr |= DISPPLANE_32BPP_NO_ALPHA;
+	} else {
+		dspcntr &= (~DISPPLANE_PIXFORMAT_MASK);
+		dspcntr |= DISPPLANE_32BPP;
+	}
+
 	PSB_WVDC32(0x0, DSPAPOS + offset);
 	PSB_WVDC32(dev_priv->init_screen_size, DSPASIZE + offset);
 	PSB_WVDC32(dev_priv->init_screen_stride, DSPASTRIDE + offset);
 	PSB_WVDC32(dev_priv->init_screen_offset, DSPALINOFF + offset);
-	dspcntr = PSB_RVDC32(DSPACNTR + offset) & (~DISPPLANE_PIXFORMAT_MASK);
-	PSB_WVDC32(dspcntr | DISPPLANE_32BPP_NO_ALPHA, DSPACNTR + offset);
+	PSB_WVDC32(dspcntr, DSPACNTR + offset);
 	PSB_WVDC32(dev_priv->init_screen_start, DSPASURF + offset);
 
 	return IMG_TRUE;
@@ -1131,7 +1151,7 @@ static PVRSRV_ERROR DestroyDCSwapChain(IMG_HANDLE hDevice,
 	{
 		DRMLFBFlipBuffer(psDevInfo, NULL, &psDevInfo->sSystemBuffer);
 		MRSTLFBClearSavedFlip(psDevInfo);
-		DRMLFBFlipBlackScreen(psDevInfo);
+		DRMLFBFlipBlackScreen(psDevInfo, IMG_FALSE);
 	}
 
 	if (psDevInfo->psCurrentSwapChain == psSwapChain ||
