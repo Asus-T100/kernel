@@ -874,6 +874,7 @@ void atomisp_work(struct work_struct *work)
 	     flash_in_progress = false,
 	     flash_enabled = false;
 	u32 irq_infos;
+	int flash_sequence = -1;
 
 	isp->fr_status = ATOMISP_FRAME_STATUS_OK;
 	isp->sw_contex.buffer_underrun = false;
@@ -945,7 +946,9 @@ void atomisp_work(struct work_struct *work)
 			/* If flash is in progress and the previous frame
 			 * was partially exposed, then this frame will be
 			 * correctly exposed. */
-			isp->fr_status = ATOMISP_FRAME_STATUS_FLASH_EXPOSED;
+			if (flash_sequence < atomic_read(&isp->sequence))
+				isp->fr_status =
+					ATOMISP_FRAME_STATUS_FLASH_EXPOSED;
 		} else if (flash_in_progress &&
 			   isp->fr_status ==
 					ATOMISP_FRAME_STATUS_FLASH_EXPOSED) {
@@ -965,6 +968,7 @@ void atomisp_work(struct work_struct *work)
 			 * applicaton would end up an in endless loop waiting
 			 * for a flash-exposed frame.
 			 */
+			flash_sequence = atomic_read(&isp->sequence);
 			ret = atomisp_start_flash(isp);
 			if (ret)
 				isp->fr_status =
