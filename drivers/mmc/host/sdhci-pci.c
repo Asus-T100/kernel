@@ -1535,7 +1535,10 @@ static int __devinit sdhci_pci_probe(struct pci_dev *pdev,
 	if (slots == 0)
 		return -ENODEV;
 
-	BUG_ON(slots > MAX_SLOTS);
+	if (slots > MAX_SLOTS) {
+		dev_err(&pdev->dev, "Invalid number of the slots. Aborting.\n");
+		return -ENODEV;
+	}
 
 	ret = pci_read_config_byte(pdev, PCI_SLOT_INFO, &first_bar);
 	if (ret)
@@ -1543,7 +1546,7 @@ static int __devinit sdhci_pci_probe(struct pci_dev *pdev,
 
 	first_bar &= PCI_SLOT_INFO_FIRST_BAR_MASK;
 
-	if (first_bar > 5) {
+	if (first_bar > 4) {
 		dev_err(&pdev->dev, "Invalid first BAR. Aborting.\n");
 		return -ENODEV;
 	}
@@ -1576,6 +1579,11 @@ static int __devinit sdhci_pci_probe(struct pci_dev *pdev,
 	}
 
 	slots = chip->num_slots;	/* Quirk may have changed this */
+	/* slots maybe changed again, so check again */
+	if (slots > MAX_SLOTS) {
+		dev_err(&pdev->dev, "Invalid number of the slots. Aborting.\n");
+		goto free;
+	}
 
 	for (i = 0; i < slots; i++) {
 		slot = sdhci_pci_probe_slot(pdev, chip, first_bar, i);
