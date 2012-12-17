@@ -97,10 +97,14 @@ struct atomisp_video_pipe {
 	struct atomisp_video_pipe_format format;
 };
 
+struct atomisp_pad_format {
+	struct v4l2_mbus_framefmt fmt;
+};
+
 struct atomisp_sub_device {
 	struct v4l2_subdev subdev;
 	struct media_pad pads[ATOMISP_SUBDEV_PADS_NUM];
-	struct v4l2_mbus_framefmt formats[ATOMISP_SUBDEV_PADS_NUM];
+	struct atomisp_pad_format fmt[ATOMISP_SUBDEV_PADS_NUM];
 
 	enum atomisp_subdev_input_entity input;
 	unsigned int output;
