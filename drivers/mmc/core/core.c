@@ -2024,7 +2024,10 @@ static unsigned int mmc_do_calc_max_discard(struct mmc_card *card,
 			aligned_qty = 1;
 		else
 			aligned_qty = qty - 1;
-	} else
+	} else if (mmc_card_sd(card) &&
+			(card->erase_size != 1 << card->erase_shift))
+		aligned_qty = qty - 1;
+	else
 		aligned_qty = qty;
 
 	/* Convert qty to sectors */
