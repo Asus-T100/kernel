@@ -719,11 +719,9 @@ static int atomisp_subdev_probe(struct atomisp_device *isp)
 	if (isp->motor && raw_index >= 0)
 		isp->inputs[raw_index].motor = isp->motor;
 
-	/*Check camera for at least one subdev in it */
-	if (!isp->inputs[0].camera) {
-		dev_err(isp->dev, "no camera attached or fail to detect\n");
-		return -ENODEV;
-	}
+	/* Proceed even if no modules detected. For COS mode and no modules. */
+	if (!isp->inputs[0].camera)
+		dev_warn(isp->dev, "no camera attached or fail to detect\n");
 
 	if (IS_MRFLD)
 		return mrfld_csi_lane_config(isp);
