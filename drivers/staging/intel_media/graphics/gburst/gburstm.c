@@ -259,6 +259,7 @@ struct pfs_data {
 	const char   *pfd_file_name;
 	read_proc_t  *pfd_func_read;
 	write_proc_t *pfd_func_write;
+	mode_t        pfd_mode;
 };
 
 
@@ -269,6 +270,10 @@ struct pfs_data {
 static int pfs_debug_message_read(char *buf,
 	char **start, off_t offset, int breq, int *eof, void *pvd);
 static int pfs_debug_message_write(struct file *file,
+	const char *buffer, unsigned long count, void *pvd);
+static int pfs_disable_read(char *buf,
+	char **start, off_t offset, int breq, int *eof, void *pvd);
+static int pfs_disable_write(struct file *file,
 	const char *buffer, unsigned long count, void *pvd);
 static int pfs_dump_read(char *buf,
 	char **start, off_t offset, int breq, int *eof, void *pvd);
@@ -326,49 +331,68 @@ static int pfs_verbosity_write(struct file *file,
 static const struct pfs_data pfs_tab[] = {
 	{ "debug_message",
 		pfs_debug_message_read,
-		pfs_debug_message_write, },
+		pfs_debug_message_write,
+		0644, },
+	{ "disable",
+		pfs_disable_read,
+		pfs_disable_write,
+		0666, },
 	{ "dump",
 		pfs_dump_read,
-		NULL, },
+		NULL,
+		0644, },
 	{ "enable",
 		pfs_enable_read,
-		pfs_enable_write, },
+		pfs_enable_write,
+		0644, },
 	{ "monitored",
 		pfs_gpu_monitored_counters_read,
-		pfs_gpu_monitored_counters_write, },
+		pfs_gpu_monitored_counters_write,
+		0644, },
 	{ "pwrgt_sts",
 		pfs_pwrgt_sts_read,
-		NULL, },
+		NULL,
+		0644, },
 	{ "state_times",
 		pfs_state_times_read,
-		pfs_state_times_write, },
+		pfs_state_times_write,
+		0644, },
 	{ "thermal_override",
 		pfs_thermal_override_read,
-		pfs_thermal_override_write, },
+		pfs_thermal_override_write,
+		0644, },
 	{ "thermal_state",
 		pfs_thermal_state_read,
-		NULL, },
+		NULL,
+		0644, },
 	{ "threshold_down_diff",
 		pfs_gb_threshold_down_diff_read,
-		pfs_gb_threshold_down_diff_write, },
+		pfs_gb_threshold_down_diff_write,
+		0644, },
 	{ "threshold_high",
 		pfs_gb_threshold_high_read,
-		pfs_gb_threshold_high_write, },
+		pfs_gb_threshold_high_write,
+		0644, },
 	{ "threshold_low",
 		pfs_gb_threshold_low_read,
-		pfs_gb_threshold_low_write, },
+		pfs_gb_threshold_low_write,
+		0644, },
 	{ "timer_period_usecs",
 		pfs_timer_period_usecs_read,
-		pfs_timer_period_usecs_write, },
+		pfs_timer_period_usecs_write,
+		0644, },
 	{ "utilization",
 		pfs_utilization_read,
-		NULL, },
+		NULL,
+		0644, },
 	{ "utilization_override",
 		pfs_utilization_override_read,
-		pfs_utilization_override_write, },
+		pfs_utilization_override_write,
+		0644, },
 	{ "verbosity",
 		pfs_verbosity_read,
-		pfs_verbosity_write, },
+		pfs_verbosity_write,
+		0644, },
 };
 
 
@@ -443,7 +467,13 @@ struct gburst_pvt_s {
 	int                     gbp_cooldv_state_highest;
 	int                     gbp_cooldv_state_override;
 
-	/* gbp_enable - Usually 1. if 0, gpu burst is disabled. */
+	/*  1 if disable requested via /proc/gburst/disable */
+	int                     gbp_request_disable;
+
+	/*  1 if enable requested via /proc/gburst/enable */
+	int                     gbp_request_enable;
+
+	/* gbp_enable - Usually 1.  If 0, gpu burst is disabled. */
 	int                     gbp_enable;
 	int                     gbp_timer_is_enabled;
 
@@ -1334,16 +1364,17 @@ static void gburst_thread_stop(struct gburst_pvt_s *gbprv)
 /**
  * gburst_enable_set() - gburst enable/disable.
  * @gbprv: gb handle.
- * @flgenb: non-zero to enable, zero to disable.
  *
  * Typically triggered through a /proc reference.
  * When disabled, overhead is reduced by turning off the kernel thread
  * and timer.
  */
-static void gburst_enable_set(struct gburst_pvt_s *gbprv, int flgenb)
+static void gburst_enable_set(struct gburst_pvt_s *gbprv)
 {
-	/* For incoming value, any non-zero is the same as 1. */
-	flgenb = !!flgenb;
+	int flgenb;
+
+	flgenb = gbprv->gbp_request_enable &&
+		!gbprv->gbp_request_disable;
 
 	if (gbprv->gbp_enable == flgenb)
 		return;
@@ -1727,6 +1758,84 @@ static int pfs_debug_message_write(struct file *file,
 
 
 /**
+ * pfs_disable_read - Procfs read function for
+ * /proc/gburst/disable -- Global and non-privileged disable for gpu burst.
+ * This is a non-privileged override that provides a way for any application
+ * (especially those that require exclusive use of the performance counters)
+ * to disable gburst.
+ *
+ * Parameters are the standard ones for procfs read functions.
+ * @buf: buffer into which output can be provided for read function.
+ * @start: May be used to provide multiple buffers of output.
+ * @offset: May be used to provide multiple buffers of output.
+ * @breq: Number of bytes available in buf.
+ * @eof: Set by this function to indicate EOF.
+ * @pvd: Private data (in this case, gbprv).
+ *
+ * Read: Returns current state of this *disable* flag as "0" or "1".
+ * Write:
+ * 0: Revert any previous disable done via /proc/gburst/disable.
+ *    Also happens when writing 1 to /proc/gburst/enable .
+ * 1: Disable gpu burst mode.  Stop the timer.  Stop the background thread.
+ */
+static int pfs_disable_read(char *buf,
+	char **start, off_t offset, int breq, int *eof, void *pvd)
+{
+	struct gburst_pvt_s *gbprv = (struct gburst_pvt_s *) pvd;
+	u32 len;
+
+	if (*start || (offset > 0)) {
+		*eof = 1;
+		return 0;
+	}
+
+	len = snprintf(buf, breq, "%d\n", gbprv->gbp_request_disable);
+
+	return len;
+}
+
+
+/**
+ * pfs_disable_write - Procfs write function for
+ * /proc/gburst/disable -- Global and non-privileged disable for gpu burst.
+ * This is a non-privileged override that provides a way for any application
+ * (especially those that require exclusive use of the performance counters)
+ * to disable gburst.
+ *
+ * Parameters are the standard ones for procfs read functions.
+ * @file: Pointer to procfs associated struct file.
+ * @buffer: buffer with data written to the proc file, input to this function.
+ * @count: number of bytes of data present in buffer.
+ * @pvd: Private data (in this case, gbprv).
+ *
+ * Read: Returns current state of this *disable* flag as "0" or "1".
+ * Write:
+ * 0: Revert any previous disable done via /proc/gburst/disable.
+ *    Also happens when writing 1 to /proc/gburst/enable .
+ * 1: Disable gpu burst mode.  Stop the timer.  Stop the background thread.
+ */
+static int pfs_disable_write(struct file *file,
+	const char *buffer, unsigned long count, void *pvd)
+{
+	struct gburst_pvt_s *gbprv = (struct gburst_pvt_s *) pvd;
+	unsigned int uval;
+	int rva;
+
+	rva = kstrtouint_from_user(buffer, count, 0, &uval);
+	if (rva < 0)
+		return rva;
+
+	if (gbprv->gbp_request_disable != uval) {
+		gbprv->gbp_request_disable = uval;
+
+		gburst_enable_set(gbprv);
+	}
+
+	return count;
+}
+
+
+/**
  * pfs_dump_read() - Procfs read function for
  * /proc/gburst/dump
  * Parameters are the standard ones for procfs read functions.
@@ -1769,6 +1878,7 @@ static int pfs_dump_read(char *buf,
  * Write:
  * 0: Disable gpu burst mode.  Stop the timer.  Stop the background thread.
  * 1: Enable gpu burst mode.
+ *    Also, revert any previous disable done via /proc/gburst/disable.
  */
 static int pfs_enable_read(char *buf,
 	char **start, off_t offset, int breq, int *eof, void *pvd)
@@ -1784,7 +1894,6 @@ static int pfs_enable_read(char *buf,
 	len = snprintf(buf, breq, "%d\n", gbprv->gbp_enable);
 
 	return len;
-
 }
 
 
@@ -1801,6 +1910,7 @@ static int pfs_enable_read(char *buf,
  * Write:
  * 0: Disable gpu burst mode.  Stop the timer.  Stop the background thread.
  * 1: Enable gpu burst mode.
+ *    Also, revert any previous disable done via /proc/gburst/disable.
  */
 static int pfs_enable_write(struct file *file,
 	const char *buffer, unsigned long count, void *pvd)
@@ -1813,12 +1923,22 @@ static int pfs_enable_write(struct file *file,
 	if (rva < 0)
 		return rva;
 
-	gburst_enable_set(gbprv, uval);
+	/*  Setting enable also clears disable. */
+	if ((uval && gbprv->gbp_request_disable) ||
+		(gbprv->gbp_request_enable != uval)) {
 
-	if (!gbprv->gbp_enable)
-		printk(GBURST_ALERT "gpu burst globally disabled via procfs.\n");
-	else
-		printk(GBURST_ALERT "gpu burst globally enabled via procfs.\n");
+		gbprv->gbp_request_enable = uval;
+
+		if (uval)
+			gbprv->gbp_request_disable = 0;
+
+		gburst_enable_set(gbprv);
+
+		if (!gbprv->gbp_enable)
+			printk(GBURST_ALERT "gpu burst globally disabled via procfs.\n");
+		else
+			printk(GBURST_ALERT "gpu burst globally enabled via procfs.\n");
+	}
 
 	return count;
 }
@@ -2580,7 +2700,7 @@ static void pfs_init(struct gburst_pvt_s *gbprv)
 	for (ix = 0; ix < ARRAY_SIZE(pfs_tab); ix++) {
 		pfsdat = pfs_tab + ix;
 
-		fmode = 0644;
+		fmode = pfsdat->pfd_mode;
 		if (!pfsdat->pfd_func_read)
 			fmode &= ~0444;
 		if (!pfsdat->pfd_func_write)
@@ -2948,7 +3068,11 @@ static int __init gburst_init(struct gburst_pvt_s *gbprv)
 	mutex_init(&gbprv->gbp_mutex_pwrgt_sts);
 	mutex_init(&gbprv->gbp_state_times_mutex);
 
-	gbprv->gbp_enable = mprm_enable;
+	gbprv->gbp_request_disable = 0;
+	gbprv->gbp_request_enable = mprm_enable;
+
+	gbprv->gbp_enable = gbprv->gbp_request_enable &&
+		!gbprv->gbp_request_disable;
 
 	gburst_debug_msg_on = 0;
 
