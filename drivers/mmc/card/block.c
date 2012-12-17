@@ -58,6 +58,8 @@ MODULE_ALIAS("mmc:block");
 #define INAND_CMD38_ARG_SECTRIM1 0x81
 #define INAND_CMD38_ARG_SECTRIM2 0x88
 
+#define MMC_PRG_STATE_TIMEOUT 10
+
 static DEFINE_MUTEX(block_mutex);
 
 /*
@@ -817,6 +819,11 @@ static int mmc_blk_cmd_recovery(struct mmc_card *card, struct request *req,
 		return mmc_blk_cmd_error(req, "r/w cmd", brq->cmd.error,
 				prev_cmd_status_valid, status);
 
+	/* Check for stop cmd errors */
+	if (mmc_card_sd(card) && brq->stop.error == -ETIMEDOUT)
+		return mmc_blk_cmd_error(req, "stop cmd", brq->stop.error,
+				prev_cmd_status_valid, status);
+
 	/* Data errors */
 	if (!brq->stop.error) {
 		/*
@@ -1257,6 +1264,7 @@ static int mmc_blk_err_check(struct mmc_card *card,
 	 */
 	if (!mmc_host_is_spi(card->host) && rq_data_dir(req) != READ) {
 		u32 status;
+		unsigned long wait = jiffies + MMC_PRG_STATE_TIMEOUT * HZ;
 		do {
 			int err = get_card_status(card, &status, 5);
 			if (err) {
@@ -1264,13 +1272,23 @@ static int mmc_blk_err_check(struct mmc_card *card,
 				       req->rq_disk->disk_name, err);
 				return MMC_BLK_CMD_ERR;
 			}
+			if (!(status & R1_READY_FOR_DATA) ||
+				(R1_CURRENT_STATE(status) == R1_STATE_PRG)) {
+				/*
+				 * per card programming caps, let's try to poll
+				 * card state every 100ms
+				 */
+				if (time_after(jiffies, wait))
+					return MMC_BLK_ABORT;
+				msleep(100);
+			} else
+				break;
 			/*
 			 * Some cards mishandle the status bits,
 			 * so make sure to check both the busy
 			 * indication and the card state.
 			 */
-		} while (!(status & R1_READY_FOR_DATA) ||
-			 (R1_CURRENT_STATE(status) == R1_STATE_PRG));
+		} while (1);
 	}
 
 	if (brq->data.error) {
