@@ -356,13 +356,13 @@ static int isp_subdev_init_entities(struct atomisp_sub_device *isp_subdev)
 	pads[ATOMISP_SUBDEV_PAD_SOURCE_VF].flags = MEDIA_PAD_FL_SOURCE;
 	pads[ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE].flags = MEDIA_PAD_FL_SOURCE;
 
-	isp_subdev->formats[ATOMISP_SUBDEV_PAD_SINK].code =
+	isp_subdev->fmt[ATOMISP_SUBDEV_PAD_SINK].fmt.code =
 		V4L2_MBUS_FMT_SBGGR10_1X10;
-	isp_subdev->formats[ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW].code =
+	isp_subdev->fmt[ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW].fmt.code =
 		V4L2_MBUS_FMT_SBGGR10_1X10;
-	isp_subdev->formats[ATOMISP_SUBDEV_PAD_SOURCE_VF].code =
+	isp_subdev->fmt[ATOMISP_SUBDEV_PAD_SOURCE_VF].fmt.code =
 		V4L2_MBUS_FMT_SBGGR10_1X10;
-	isp_subdev->formats[ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE].code =
+	isp_subdev->fmt[ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE].fmt.code =
 		V4L2_MBUS_FMT_SBGGR10_1X10;
 
 	me->ops = &isp_subdev_media_ops;
