@@ -30,7 +30,9 @@
 #include <media/v4l2-subdev.h>
 
 #define	LC898211_NAME			"lc898211"
-#define LC898211_MAX_I2C_MSG_LEN	30
+
+/* 2 bytes used for address: 256 bytes total */
+#define LC898211_MAX_I2C_MSG_LEN	254
 #define LC898211_I2C_MSG_LENGTH		2
 
 #define LC898211_16BIT			2
