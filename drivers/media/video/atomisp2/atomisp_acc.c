@@ -118,6 +118,11 @@ void atomisp_acc_init(struct atomisp_device *isp)
 	ida_init(&isp->acc.ida);
 }
 
+void atomisp_acc_cleanup(struct atomisp_device *isp)
+{
+	ida_destroy(&isp->acc.ida);
+}
+
 void atomisp_acc_release(struct atomisp_device *isp)
 {
 	struct atomisp_acc_fw *acc_fw, *ta;
