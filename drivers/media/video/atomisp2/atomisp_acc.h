@@ -38,6 +38,8 @@ struct atomisp_device;
  */
 void atomisp_acc_init(struct atomisp_device *isp);
 
+void atomisp_acc_cleanup(struct atomisp_device *isp);
+
 /*
  * Free up any allocated resources.
  * Must be called each time when the device is closed.
