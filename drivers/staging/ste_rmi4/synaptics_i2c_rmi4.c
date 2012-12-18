@@ -31,6 +31,7 @@
 #include <linux/delay.h>
 #include <linux/slab.h>
 #include <linux/interrupt.h>
+#include <linux/input/mt.h>
 #include <linux/regulator/consumer.h>
 #include <linux/earlysuspend.h>
 #include <linux/synaptics_i2c_rmi4.h>
@@ -69,6 +70,10 @@
 #define MASK_3BIT		0x07
 #define MASK_2BIT		0x03
 #define TOUCHPAD_CTRL_INTR	0x8
+
+#define DELTA_XPOS_THRESH	1
+#define DELTA_YPOS_THRESH	1
+#define TOUCH_REDUCE_MODE	1
 
 #define F01_CTRL0_CONFIGURED (1 << 7)
 #define F01_CTRL0_SLEEP      (1 << 0)
@@ -357,27 +362,29 @@ int rmi4_touchpad_irq_handler(struct rmi4_data *pdata, struct rmi4_fn *rfi)
 			if (calib->y_flip)
 				y = pdata->sensor_max_y - y;
 
-			input_report_abs(pdata->input_ts_dev,
-					ABS_MT_TRACKING_ID, finger + 1);
+			input_mt_slot(pdata->input_ts_dev, finger);
+			input_mt_report_slot_state(pdata->input_ts_dev,
+					MT_TOOL_FINGER, true);
+
 			input_report_abs(pdata->input_ts_dev,
 					ABS_MT_TOUCH_MAJOR, max(wx , wy));
 			input_report_abs(pdata->input_ts_dev,
 					ABS_MT_TOUCH_MINOR, min(wx , wy));
-
 			input_report_abs(pdata->input_ts_dev,
 					ABS_MT_POSITION_X, x);
 			input_report_abs(pdata->input_ts_dev,
 					ABS_MT_POSITION_Y, y);
 
-			input_mt_sync(pdata->input_ts_dev);
+			pdata->finger_status[finger] = F11_PRESENT;
 
-			/* number of active touch points */
-			touch_count++;
+		} else if (pdata->finger_status[finger] == F11_PRESENT) {
+			input_mt_slot(pdata->input_ts_dev, finger);
+			input_mt_report_slot_state(pdata->input_ts_dev,
+					MT_TOOL_FINGER, false);
+			pdata->finger_status[finger] = F11_NO_FINGER;
 		}
-	}
 
-	if (!touch_count)
-		input_mt_sync(pdata->input_ts_dev);
+	}
 
 	/* sync after groups of events */
 	input_sync(pdata->input_ts_dev);
@@ -711,8 +718,9 @@ int rmi4_touchpad_config(struct rmi4_data *pdata, struct rmi4_fn *rfi)
 	 * For the data source - print info and do any
 	 * source specific configuration.
 	 */
-	u8 data[BUF_LEN];
+	u8 ctrl0, data[BUF_LEN];
 	int retval = 0;
+	u8 pos_delta[] = { DELTA_XPOS_THRESH, DELTA_YPOS_THRESH };
 	struct	i2c_client *client = pdata->i2c_client;
 	const struct rmi4_touch_calib *calib =
 				&pdata->board->calibs[pdata->touch_type];
@@ -728,6 +736,27 @@ int rmi4_touchpad_config(struct rmi4_data *pdata, struct rmi4_fn *rfi)
 								__func__);
 		return retval;
 	}
+
+	retval = rmi4_i2c_byte_read(pdata, rfi->ctrl_base_addr, &ctrl0);
+	if (retval < 0) {
+		dev_err(&client->dev, "read control 0 failed\n");
+		return retval;
+	}
+
+	retval = rmi4_i2c_byte_write(pdata, rfi->ctrl_base_addr,
+				(ctrl0 & ~MASK_3BIT) | TOUCH_REDUCE_MODE);
+	if (retval < 0) {
+		dev_err(&client->dev, "Set touch report mode failed\n");
+		return retval;
+	}
+
+	retval = rmi4_i2c_block_write(pdata, rfi->ctrl_base_addr + 2,
+					pos_delta, sizeof(pos_delta));
+	if (retval < 0) {
+		dev_err(&client->dev, "Write DELTA_POS_THRESH failed\n");
+		return retval;
+	}
+
 	retval = rmi4_i2c_block_read(pdata,
 				rfi->ctrl_base_addr, data, DATA_BUF_LEN);
 	if (retval != DATA_BUF_LEN) {
@@ -1442,18 +1471,16 @@ static int __devinit rmi4_probe(struct i2c_client *client,
 	set_bit(EV_ABS, rmi4_data->input_ts_dev->evbit);
 	set_bit(EV_KEY, rmi4_data->input_key_dev->evbit);
 
+	input_mt_init_slots(rmi4_data->input_ts_dev, MAX_FINGERS);
 	input_set_abs_params(rmi4_data->input_ts_dev,
 		ABS_MT_POSITION_X, 0, rmi4_data->sensor_max_x, 0, 0);
 	input_set_abs_params(rmi4_data->input_ts_dev,
 		ABS_MT_POSITION_Y, 0, rmi4_data->sensor_max_y, 0, 0);
-
 	input_set_abs_params(rmi4_data->input_ts_dev,
 			ABS_MT_TOUCH_MAJOR, 0, MAX_TOUCH_MAJOR, 0, 0);
 	input_set_abs_params(rmi4_data->input_ts_dev,
 			ABS_MT_TOUCH_MINOR, 0, MAX_TOUCH_MINOR, 0, 0);
-	input_set_abs_params(rmi4_data->input_ts_dev,
-			ABS_MT_TRACKING_ID, MIN_TRACKING_ID,
-						MAX_TRACKING_ID, 0, 0);
+
 	/* Clear interrupts */
 	retval = rmi4_i2c_block_read(rmi4_data,
 			rmi4_data->fn01_data_base_addr + 1,
