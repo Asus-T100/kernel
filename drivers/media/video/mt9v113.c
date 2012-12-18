@@ -742,6 +742,38 @@ static int mt9v113_init_common(struct v4l2_subdev *sd)
 	}
 
 	/*
+	 * LSC 95%
+	 */
+	ret = mt9v113_write_reg_array(client, mt9v113_lsc_95);
+	if (ret) {
+		dev_err(&client->dev, "err set lsc: %d", ret);
+		return ret;
+	}
+
+	/*
+	 * COLOR PIPE CONTROL
+	 */
+	ret = mt9v113_write_reg(client, MISENSOR_16BIT,
+				MT9V113_REG_COL_PIPE_CTL,
+				MT9V113_REG_COL_PIPE_CTL_VAL);
+	if (ret) {
+		dev_err(&client->dev, "err set color pipe");
+		return ret;
+	}
+
+	/*
+	 * MT9V113 KERNEL CONFIG
+	 * For Noise reduction
+	 */
+	ret = mt9v113_write_reg(client, MISENSOR_16BIT,
+				MT9V113_REG_KERNEL_CONFIG,
+				MT9V113_REG_KERNEL_CONFIG_VAL);
+	if (ret) {
+		dev_err(&client->dev, "err set kernel config");
+		return ret;
+	}
+
+	/*
 	 * AWB_CCM
 	 */
 	ret = mt9v113_write_reg_array(client, mt9v113_awb_ccm);
