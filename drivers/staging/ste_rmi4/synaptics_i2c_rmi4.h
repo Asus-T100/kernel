@@ -47,6 +47,7 @@
 #define RMI4_DEVICE_RESET_CMD       (0x01)
 #define RMI4_SLEEP_MODE_NORMAL      (0x00)
 #define RMI4_END_OF_PDT(id)         ((id) == 0x00 || (id) == 0xff)
+#define MAX_FINGERS                 10
 
 struct rmi4_fn_ops;
 /**
@@ -172,6 +173,7 @@ struct rmi4_data {
 	int			touch_type;
 	struct regulator	*regulator;
 	int			irq;
+	int			finger_status[MAX_FINGERS];
 	struct early_suspend	es;
 #ifdef DEBUG
 	u16 dbg_reg_addr;
