@@ -2979,6 +2979,12 @@ static int process_ep_req(struct langwell_udc *dev, int index,
 
 				} else {
 					td_complete++;
+					if (i < curr_req->dtd_count - 1) {
+						WARN(1, "Short packet received on ep%d-IN,\n"
+							"but dTD isn't the last one.\n",
+							index / 2);
+						retval = -EREMOTEIO;
+					}
 					break;
 				}
 			}
@@ -3131,6 +3137,24 @@ static void handle_trans_complete(struct langwell_udc *dev)
 			status = process_ep_req(dev, i, curr_req);
 			dev_vdbg(&dev->pdev->dev, "%s req status: %d\n",
 					epn->name, status);
+
+			/* Short Read on non-last dTD is not recoverable due to
+			 * HW limitation. The best we can do is to recycle dTDs
+			 * and notify the caller that we screw up... :(
+			 */
+			if (unlikely(status == -EREMOTEIO)) {
+
+				u32 value;
+
+				value = readl(&dev->op_regs->endptctrl[ep_num]);
+				writel(value & ~EPCTRL_RXE,
+					&dev->op_regs->endptctrl[ep_num]);
+				nuke(epn, status);
+				value = readl(&dev->op_regs->endptctrl[ep_num]);
+				writel(value | EPCTRL_RXE,
+					&dev->op_regs->endptctrl[ep_num]);
+				break;
+			}
 
 			if (status == 1)
 				break;
