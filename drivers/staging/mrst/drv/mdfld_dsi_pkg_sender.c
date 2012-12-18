@@ -1283,6 +1283,7 @@ int mdfld_dsi_send_dcs(struct mdfld_dsi_pkg_sender * sender,
 
 		/*handle DSI error*/
 		if (dsi_error_handler(sender)) {
+			spin_unlock(&sender->lock);
 			DRM_ERROR("Error handling failed\n");
 			return  -EAGAIN;
 		}
