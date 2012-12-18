@@ -119,6 +119,15 @@ struct atomisp_sub_device {
 	struct v4l2_ctrl *fmt_auto;
 };
 
+/* Get pointer to appropriate format */
+struct v4l2_mbus_framefmt
+*atomisp_subdev_get_mfmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
+			 uint32_t which, uint32_t pad);
+/* Actually set the format */
+int atomisp_subdev_set_mfmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
+			    uint32_t which, uint32_t pad,
+			    struct v4l2_mbus_framefmt *ffmt);
+
 void atomisp_subdev_unregister_entities(struct atomisp_sub_device *isp_subdev);
 int atomisp_subdev_register_entities(struct atomisp_sub_device *isp_subdev,
 	struct v4l2_device *vdev);

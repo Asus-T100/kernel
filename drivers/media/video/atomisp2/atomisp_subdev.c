@@ -176,6 +176,30 @@ static int isp_subdev_enum_mbus_code(struct v4l2_subdev *sd,
 	return 0;
 }
 
+struct v4l2_mbus_framefmt
+*atomisp_subdev_get_mfmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
+			 uint32_t which, uint32_t pad)
+{
+	struct atomisp_sub_device *isp_sd = v4l2_get_subdevdata(sd);
+
+	if (which == V4L2_SUBDEV_FORMAT_TRY)
+		return v4l2_subdev_get_try_format(fh, pad);
+
+	return &isp_sd->fmt[pad].fmt;
+}
+
+int atomisp_subdev_set_mfmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
+			    uint32_t which, uint32_t pad,
+			    struct v4l2_mbus_framefmt *ffmt)
+{
+	struct v4l2_mbus_framefmt *__ffmt =
+		atomisp_subdev_get_mfmt(sd, fh, which, pad);
+
+	*__ffmt = *ffmt;
+
+	return 0;
+}
+
 /*
  * isp_subdev_get_format - Retrieve the video format on a pad
  * @sd : ISP V4L2 subdevice
@@ -189,6 +213,8 @@ static int isp_subdev_enum_mbus_code(struct v4l2_subdev *sd,
 static int isp_subdev_get_format(struct v4l2_subdev *sd,
 	struct v4l2_subdev_fh *fh, struct v4l2_subdev_format *fmt)
 {
+	fmt->format = *atomisp_subdev_get_mfmt(sd, fh, fmt->which, fmt->pad);
+
 	return 0;
 }
 
@@ -205,7 +231,8 @@ static int isp_subdev_get_format(struct v4l2_subdev *sd,
 static int isp_subdev_set_format(struct v4l2_subdev *sd,
 	struct v4l2_subdev_fh *fh, struct v4l2_subdev_format *fmt)
 {
-	return 0;
+	return atomisp_subdev_set_mfmt(sd, fh, fmt->which, fmt->pad,
+				       &fmt->format);
 }
 
 /* V4L2 subdev core operations */
