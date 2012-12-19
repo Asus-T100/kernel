@@ -60,7 +60,11 @@
 #define OSHOB_IA_TRACE_OFFSET		0x04
 
 /* This offset corresponds to the old OSNIB organization. */
+#ifdef CONFIG_X86_MRFLD
+#define OSNIB_OFFSET			0x18
+#else
 #define OSNIB_OFFSET			0x0C
+#endif
 
 /* Points to the parameter indicating which of the old */
 /* or new OSHOB will be used.                          */
@@ -107,9 +111,7 @@
 #define SRAM_ADDR_S0IX_RESIDENCY	0xFFFF71E0
 #define ALL_RESIDENCY_DATA_SIZE		12
 
-#ifndef CONFIG_X86_MRFLD
 #define DUMP_OSNIB
-#endif
 
 #define OSHOB_STRUCT_OLD	0x1 /* Old OSHOB and OSNIB to be used.       */
 #define OSHOB_STRUCT_EXTENDED	0x2 /* Extended OSHOB and OSNIB to be used.  */
