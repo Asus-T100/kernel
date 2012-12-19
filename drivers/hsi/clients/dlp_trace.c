@@ -183,14 +183,28 @@ static void dlp_trace_complete_rx(struct hsi_msg *msg)
 {
 	struct dlp_channel *ch_ctx = msg->context;
 	struct dlp_trace_ctx *trace_ctx = ch_ctx->ch_data;
+	u32 *header = sg_virt(msg->sgt.sgl);
 	unsigned long flags;
 	int ret;
 
+	/* Check the PDU status & signature */
 	if (msg->status != HSI_STATUS_COMPLETED) {
-		pr_err(DRVNAME": Invalid msg status: %d (ignored)\n",
+		pr_err(DRVNAME": Invalid PDU status: %d (ignored)\n",
 				msg->status);
 		goto push_again;
+	} else if (!DLP_HEADER_VALID_SIGNATURE(header[0])) {
+		pr_err("\n" DRVNAME ": Invalid PDU signature 0x%x\n",
+				header[0]);
+
+		/* Dump the first 64 bytes */
+		print_hex_dump(KERN_DEBUG,
+				DRVNAME"_LOG", DUMP_PREFIX_OFFSET,
+				16, 4,
+				header, 64, 1);
+
+		goto push_again;
 	}
+
 
 	/* Still have space in the rx queue ? */
 	spin_lock_irqsave(&ch_ctx->lock, flags);
@@ -340,7 +354,11 @@ static ssize_t dlp_trace_dev_read(struct file *filp,
 	available = count;
 
 	/* Parse RX msgs queue */
-	while ((msg = dlp_trace_peek_msg(ch_ctx))) {
+	while (available) {
+		msg = dlp_trace_peek_msg(ch_ctx);
+		if (!msg)
+			break;
+
 		ptr = sg_virt(msg->sgt.sgl);
 		start_addr = (unsigned char *)ptr;
 		/* Get the start offset */

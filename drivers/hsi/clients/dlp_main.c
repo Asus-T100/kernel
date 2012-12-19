@@ -441,7 +441,7 @@ inline int dlp_pdu_header_check(struct dlp_xfer_ctx *xfer_ctx,
 	xfer_ctx->seq_num++;
 
 	/* Check the PDU signature */
-	if (DLP_HEADER_SIGNATURE == (header[0] & 0xFFFF0000)) {
+	if (DLP_HEADER_VALID_SIGNATURE(header[0])) {
 		/* Check the seq number */
 		if (xfer_ctx->seq_num == (header[0] & 0x0000FFFF))
 			ret = 0;

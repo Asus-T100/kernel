@@ -104,6 +104,7 @@
 
 /* Header signature */
 #define DLP_HEADER_SIGNATURE	0xF9A80000
+#define DLP_HEADER_VALID_SIGNATURE(h) (((h) & 0xFFFF0000) == 0xF9A80000)
 
 /* header fields */
 #define DLP_HDR_DATA_SIZE(sz)	((sz) & 0x3FFFF)
