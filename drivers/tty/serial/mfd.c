@@ -1212,6 +1212,7 @@ static void serial_hsu_shutdown(struct uart_port *port)
 	struct uart_hsu_port *up =
 		container_of(port, struct uart_hsu_port, port);
 	unsigned long flags;
+	struct tty_struct *tty;
 	static DEFINE_MUTEX(hsu_lock);
 
 	pm_runtime_get_sync(up->dev);
@@ -1229,9 +1230,16 @@ static void serial_hsu_shutdown(struct uart_port *port)
 		intel_mid_hsu_switch(share_idx);
 		if (up3->reopen) {
 			up3->reopen = 0;
-			mutex_unlock(&hsu_lock);
-			uart_resume_port(&serial_hsu_reg, &up3->port);
-			goto f_out;
+			tty = tty_port_tty_get(&up3->port.state->port);
+			if (tty) {
+				mutex_unlock(&hsu_lock);
+				uart_resume_port(&serial_hsu_reg, &up3->port);
+				tty_kref_put(tty);
+				goto f_out;
+			} else {
+				/* up3 is already shutdown in this case */
+				up3->running = 0;
+			}
 		}
 	} else if (up->index == share_idx) {
 		struct uart_hsu_port *up1 = serial_hsu_ports[logic_idx];
@@ -1239,7 +1247,6 @@ static void serial_hsu_shutdown(struct uart_port *port)
 			mutex_unlock(&hsu_lock);
 			goto f_out;
 		}
-
 	}
 
 	/* Disable interrupts from this port */
