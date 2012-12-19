@@ -63,9 +63,12 @@
 
 
 #include <linux/types.h>
+#include <linux/delay.h>
 #include "hdcp_rx_defs.h"
 #include "ips_hdcp_api.h"
 #include "ipil_hdcp_api.h"
+#include "ipil_utils.h"
+#include "mfld_hdcp_reg.h"
 
 /**
  * Description: check whether hdcp hardware is ready
@@ -74,7 +77,17 @@
  */
 bool ipil_hdcp_is_ready(void)
 {
-	return ips_hdcp_is_ready();
+	bool ret = false;
+	int count = 20;
+	hdmi_write32(MDFLD_HDCP_CONFIG_REG,
+		HDCP_FUSE_PULL_ENABLE | HDCP_PULL_FUSE);
+	while ((count > 0) && !ret) {
+		udelay(20);
+		ret = ips_hdcp_is_ready();
+		count--;
+	}
+	pr_info("hdcp - read count left=%d\n", count);
+	return ret;
 }
 
 /**
