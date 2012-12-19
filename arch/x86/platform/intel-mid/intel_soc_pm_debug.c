@@ -1011,12 +1011,30 @@ void pmu_stats_finish(void)
 
 #ifdef CONFIG_INTEL_ATOM_MRFLD_POWER
 
+static char *nc_devices[] = {
+	"GFXSLC",
+	"GSDKCK",
+	"GRSCD",
+	"VED",
+	"VEC",
+	"DPA",
+	"DPB",
+	"DPC",
+	"VSP",
+	"ISP",
+	"MIO",
+	"HDMIO",
+	"GFXSLCLDO"
+};
+
+static int no_of_nc_devices = sizeof(nc_devices)/sizeof(nc_devices[0]);
+
 static int pmu_devices_state_show(struct seq_file *s, void *unused)
 {
 	struct pci_dev *pdev = NULL;
 	int index, i, pmu_num, ss_idx, ss_pos;
 	unsigned int base_class;
-	u32 mask, val;
+	u32 mask, val, nc_pwr_sts;
 	struct pmu_ss_states cur_pmsss;
 
 	/* Acquire the scu_ready_sem */
@@ -1031,6 +1049,17 @@ static int pmu_devices_state_show(struct seq_file *s, void *unused)
 		seq_printf(s, "%08lX ", cur_pmsss.pmu2_states[i]);
 
 	seq_printf(s, "cmd_error_int count: %d\n", mid_pmu_cxt->cmd_error_int);
+
+	seq_printf(s, "\nNORTH COMPLEX DEVICES :\n\n");
+
+	nc_pwr_sts = intel_mid_msgbus_read32(PUNIT_PORT, NC_PM_SSS);
+	for (i = 0; i < no_of_nc_devices; i++) {
+		val = nc_pwr_sts & 3;
+		nc_pwr_sts >>= BITS_PER_LSS;
+		seq_printf(s, "%9s : %s\n", nc_devices[i], dstates[val]);
+	}
+
+	seq_printf(s, "\nSOUTH COMPLEX DEVICES :\n\n");
 
 	while ((pdev = pci_get_device(PCI_ID_ANY, PCI_ID_ANY, pdev)) != NULL) {
 		/* find the base class info */
@@ -1050,7 +1079,7 @@ static int pmu_devices_state_show(struct seq_file *s, void *unused)
 		val	= (cur_pmsss.pmu2_states[ss_idx] & mask) >>
 						(ss_pos * BITS_PER_LSS);
 
-		seq_printf(s, "pci %04x %04X %s %20s: lss:%02d reg:%d ",
+		seq_printf(s, "pci %04x %04X %s %20.20s: lss:%02d reg:%d ",
 			pdev->vendor, pdev->device, dev_name(&pdev->dev),
 			dev_driver_string(&pdev->dev),
 			index - mid_pmu_cxt->pmu1_max_devs, ss_idx);
