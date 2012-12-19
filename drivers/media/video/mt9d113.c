@@ -912,18 +912,19 @@ static int mt9d113_init_common(struct v4l2_subdev *sd)
 	}
 
 	/*
-	 * ccm3
+	 * Sharpness
 	 */
-	ret = mt9d113_write_reg_array(client, mt9d113_ccm3);
+	ret = mt9d113_write_reg_array(client, mt9d113_sharpness);
 	if (ret) {
-		dev_err(&client->dev, "err set ccm3: %d", ret);
+		dev_err(&client->dev, "err set sharpness: %d", ret);
 		return ret;
 	}
 
+
 	/*
-	 * LSC 85%
+	 * LSC 95%
 	 */
-	ret = mt9d113_write_reg_array(client, mt9d113_lsc_85);
+	ret = mt9d113_write_reg_array(client, mt9d113_lsc_95);
 	if (ret) {
 		dev_err(&client->dev, "err set lsc: %d", ret);
 		return ret;
