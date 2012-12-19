@@ -29,6 +29,9 @@
 
 #define MRFLD_S3_HINT			0x64
 
+#define PUNIT_PORT			0x04
+#define NC_PM_SSS			0x3F
+
 #define GFX_LSS_INDEX			1
 #define PMU_SDIO0_LSS_01		1
 #define PMU_EMMC0_LSS_02		2
