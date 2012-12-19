@@ -2968,7 +2968,7 @@ static int tcd_set_cur_state(struct thermal_cooling_device *tcd,
 		cs = THERMAL_COOLING_DEVICE_MAX_STATE;
 
 	/* If state change between zero and non-zero... */
-	if (!!gbprv->gbp_cooldv_state_cur != !!gbprv->gbp_cooldv_state_prev) {
+	if (!!gbprv->gbp_cooldv_state_cur != !!cs) {
 		gbprv->gbp_cooldv_state_prev = gbprv->gbp_cooldv_state_cur;
 		gbprv->gbp_cooldv_state_cur = cs;
 
@@ -3122,6 +3122,8 @@ static int __init gburst_init(struct gburst_pvt_s *gbprv)
 
 		gburst_interface_set_data(&gd_interface);
 	}
+
+	gbprv->gbp_cooldv_state_override = -1;
 
 	/* Initialize timer.  This does not start the timer. */
 	hrtimer_init(&gbprv->gbp_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
