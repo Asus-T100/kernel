@@ -1177,8 +1177,8 @@ int dlp_ctrl_cold_reset(struct dlp_channel *ch_ctx)
  */
 int dlp_ctrl_normal_warm_reset(struct dlp_channel *ch_ctx)
 {
-	struct dlp_channel *ctrl_ch = DLP_CHANNEL_CTX(DLP_CHANNEL_CTRL);
-	struct dlp_ctrl_context	*ctrl_ctx = ctrl_ch->ch_data;
+	struct dlp_channel *ctrl_ch;
+	struct dlp_ctrl_context	*ctrl_ctx;
 	int ret = 0;
 
 	if (!dlp_ctrl_have_control_context()) {
@@ -1187,6 +1187,9 @@ int dlp_ctrl_normal_warm_reset(struct dlp_channel *ch_ctx)
 	}
 
 	pr_debug(DRVNAME ": Normal warm reset request\n");
+
+	ctrl_ch = DLP_CHANNEL_CTX(DLP_CHANNEL_CTRL);
+	ctrl_ctx = ctrl_ch->ch_data;
 
 	/* AP requested reset => just ignore */
 	dlp_ctrl_set_reset_ongoing(1);
@@ -1207,8 +1210,8 @@ int dlp_ctrl_normal_warm_reset(struct dlp_channel *ch_ctx)
  */
 int dlp_ctrl_flashing_warm_reset(struct dlp_channel *ch_ctx)
 {
-	struct dlp_channel *ctrl_ch = DLP_CHANNEL_CTX(DLP_CHANNEL_CTRL);
-	struct dlp_ctrl_context	*ctrl_ctx = ctrl_ch->ch_data;
+	struct dlp_channel *ctrl_ch;
+	struct dlp_ctrl_context	*ctrl_ctx;
 	int ret = 0;
 
 	if (!dlp_ctrl_have_control_context()) {
@@ -1217,6 +1220,9 @@ int dlp_ctrl_flashing_warm_reset(struct dlp_channel *ch_ctx)
 	}
 
 	pr_debug(DRVNAME ": Flashing warm reset request\n");
+
+	ctrl_ch = DLP_CHANNEL_CTX(DLP_CHANNEL_CTRL);
+	ctrl_ctx = ctrl_ch->ch_data;
 
 	/* AP requested reset => just ignore */
 	dlp_ctrl_set_reset_ongoing(1);
