@@ -1233,42 +1233,46 @@ static int pmic_chrgr_probe(struct ipc_device *ipcdev)
 		dev_err(chc.dev,
 			"Error reading battery profile from battid frmwrk\n");
 		kfree(chc.sfi_bcprof);
-		return retval;
+		chc.invalid_batt = true;
+		chc.sfi_bcprof = NULL;
 	}
 
-	chc.actual_bcprof = kzalloc(sizeof(struct ps_pse_mod_prof),
-				GFP_KERNEL);
-	if (chc.actual_bcprof == NULL) {
-		dev_err(chc.dev,
-			"Error allocating mem for local battery profile\n");
-		kfree(chc.sfi_bcprof);
-		return -ENOMEM;
-	}
+	if (!chc.invalid_batt) {
+		chc.actual_bcprof = kzalloc(sizeof(struct ps_pse_mod_prof),
+					GFP_KERNEL);
+		if (chc.actual_bcprof == NULL) {
+			dev_err(chc.dev,
+				"Error allocating mem for local battery profile\n");
+			kfree(chc.sfi_bcprof);
+			return -ENOMEM;
+		}
 
-	chc.runtime_bcprof = kzalloc(sizeof(struct ps_pse_mod_prof),
-				GFP_KERNEL);
-	if (chc.runtime_bcprof == NULL) {
-		dev_err(chc.dev,
+		chc.runtime_bcprof = kzalloc(sizeof(struct ps_pse_mod_prof),
+					GFP_KERNEL);
+		if (chc.runtime_bcprof == NULL) {
+			dev_err(chc.dev,
 			"Error allocating mem for runtime batt profile\n");
-		kfree(chc.sfi_bcprof);
-		kfree(chc.actual_bcprof);
-		return -ENOMEM;
-	}
+			kfree(chc.sfi_bcprof);
+			kfree(chc.actual_bcprof);
+			return -ENOMEM;
+		}
 
-	set_pmic_batt_prof(chc.actual_bcprof, chc.sfi_bcprof->batt_prof);
-	print_ps_pse_mod_prof(chc.actual_bcprof);
-	retval = pmic_init();
-	if (retval) {
-		dev_err(chc.dev, "Error in Initializing PMIC\n");
-		kfree(chc.sfi_bcprof);
-		kfree(chc.actual_bcprof);
-		kfree(chc.runtime_bcprof);
-		return retval;
-	}
+		set_pmic_batt_prof(chc.actual_bcprof,
+				chc.sfi_bcprof->batt_prof);
+		print_ps_pse_mod_prof(chc.actual_bcprof);
+		retval = pmic_init();
+		if (retval) {
+			dev_err(chc.dev, "Error in Initializing PMIC\n");
+			kfree(chc.sfi_bcprof);
+			kfree(chc.actual_bcprof);
+			kfree(chc.runtime_bcprof);
+			return retval;
+		}
 
-	dump_pmic_tt_regs();
-	memcpy(chc.runtime_bcprof, chc.actual_bcprof,
-		sizeof(struct ps_pse_mod_prof));
+		dump_pmic_tt_regs();
+		memcpy(chc.runtime_bcprof, chc.actual_bcprof,
+			sizeof(struct ps_pse_mod_prof));
+	}
 	chc.pmic_intr_iomap = ioremap_nocache(PMIC_SRAM_INTR_ADDR, 8);
 	if (!chc.pmic_intr_iomap) {
 		dev_err(&ipcdev->dev, "ioremap Failed\n");
