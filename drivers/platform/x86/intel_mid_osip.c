@@ -29,6 +29,7 @@
 #include <linux/genhd.h>
 #include <linux/seq_file.h>
 #include <asm/intel_scu_ipcutil.h>
+#include <asm/intel-mid.h>
 
 /* change to "loop0" and use losetup for safe testing */
 #define OSIP_BLKDEVICE "mmcblk0"
@@ -232,17 +233,35 @@ static int osip_reboot_notifier_call(struct notifier_block *notifier,
 					"switching to COS because a charger is "
 					"plugged in\n", __func__);
 				pr_info("charger connected ...\n");
+
+				/*
+				 * The charger os flow is not enabled for
+				 * TNG A0 yet. Go the normal power-off flow
+				 * for now.
+				 */
+				if ((intel_mid_identify_cpu() ==
+					INTEL_MID_CPU_CHIP_TANGIER) &&
+					(intel_mid_soc_stepping() == 0)) {
+					ret = intel_scu_ipc_simple_command(
+						IPCMSG_COLD_OFF, 0);
+					if (ret)
+						pr_err("%s(): COLD_OFF ipc failed\n",
+								 __func__);
+				} else {
 #ifdef DEBUG
-				intel_scu_ipc_read_osnib_rr(&rbt_reason);
+					intel_scu_ipc_read_osnib_rr(
+							&rbt_reason);
 #endif
-				ret_ipc = intel_scu_ipc_write_osnib_rr(
+					ret_ipc = intel_scu_ipc_write_osnib_rr(
 							SIGNED_COS_ATTR);
-				if (ret_ipc < 0)
-					pr_err("%s cannot write reboot reason"
-						" in OSNIB\n", __func__);
+					if (ret_ipc < 0)
+						pr_err("%s cannot write reboot reason in OSNIB\n",
+								__func__);
 #ifdef DEBUG
-				intel_scu_ipc_read_osnib_rr(&rbt_reason);
+					intel_scu_ipc_read_osnib_rr(
+							&rbt_reason);
 #endif
+				}
 			} else {
 				pr_warn("[SHTDWN] %s, Shutdown without charger"
 					" plugged in\n", __func__);
