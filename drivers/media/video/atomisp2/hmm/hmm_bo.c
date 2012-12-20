@@ -135,8 +135,6 @@ int hmm_bo_init(struct hmm_bo_device *bdev,
 	bo->pgnr = pgnr;
 	bo->bdev = bdev;
 
-	INIT_LIST_HEAD(&bo->pgblocks);
-
 	bo->release = release;
 
 	if (!bo->release)
@@ -348,9 +346,8 @@ static int alloc_private_pages(struct hmm_buffer_object *bo, int from_highmem,
 				bool cached)
 {
 	int ret;
-	unsigned int pgnr, order, blk_pgnr;
+	unsigned int pgnr, order, blk_pgnr, alloc_pgnr;
 	struct page *pages;
-	struct page_block *pgblk;
 	gfp_t gfp = GFP_NOWAIT | __GFP_NOWARN; /* REVISIT: need __GFP_FS too? */
 	int i, j;
 	int failure_number = 0;
@@ -423,19 +420,6 @@ retry:
 		} else {
 			blk_pgnr = order_to_nr(order);
 
-			pgblk = kzalloc(sizeof(*pgblk), GFP_KERNEL);
-			if (unlikely(!pgblk)) {
-				v4l2_err(&atomisp_dev,
-						"out of memory for pgblk\n");
-				goto out_of_mem;
-			}
-
-			INIT_LIST_HEAD(&pgblk->list);
-			pgblk->pages = pages;
-			pgblk->order = order;
-
-			list_add_tail(&pgblk->list, &bo->pgblocks);
-
 			for (j = 0; j < blk_pgnr; j++)
 				bo->pages[i++] = pages + j;
 
@@ -465,23 +449,16 @@ retry:
 	}
 
 	return 0;
-out_of_mem:
-	__free_pages(pages, order);
 cleanup:
-	while (!list_empty(&bo->pgblocks)) {
-		pgblk = list_first_entry(&bo->pgblocks,
-					 struct page_block, list);
-
-		list_del(&pgblk->list);
-
-		ret = set_pages_wb(pgblk->pages, order_to_nr(pgblk->order));
+	alloc_pgnr = bo->pgnr - pgnr;
+	for (i = 0; i < alloc_pgnr; i++) {
+		ret = set_pages_wb(bo->pages[i], 1);
 		if (ret)
 			v4l2_err(&atomisp_dev,
 					"set page to WB err...\n");
-
-		__free_pages(pgblk->pages, pgblk->order);
-		kfree(pgblk);
+		__free_pages(bo->pages[i], 0);
 	}
+
 	atomisp_kernel_free(bo->pages);
 
 	return -ENOMEM;
@@ -489,22 +466,14 @@ cleanup:
 
 static void free_private_pages(struct hmm_buffer_object *bo)
 {
-	struct page_block *pgblk;
-	int ret;
+	int ret, i;
 
-	while (!list_empty(&bo->pgblocks)) {
-		pgblk = list_first_entry(&bo->pgblocks,
-					 struct page_block, list);
-
-		list_del(&pgblk->list);
-
-		ret = set_pages_wb(pgblk->pages, order_to_nr(pgblk->order));
+	for (i = 0; i < bo->pgnr; i++) {
+		ret = set_pages_wb(bo->pages[i], 1);
 		if (ret)
 			v4l2_err(&atomisp_dev,
 					"set page to WB err...\n");
-
-		__free_pages(pgblk->pages, pgblk->order);
-		kfree(pgblk);
+		__free_pages(bo->pages[i], 0);
 	}
 
 	atomisp_kernel_free(bo->pages);
@@ -619,8 +588,7 @@ static int alloc_ion_pages(struct hmm_buffer_object *bo,
 			     unsigned int shared_fd)
 {
 	struct scatterlist *tmp;
-	struct page_block *pgblk;
-	int ret, i, page_nr = 0;
+	int ret, page_nr = 0;
 
 	bo->pages = atomisp_kernel_malloc(sizeof(struct page *) * bo->pgnr);
 	if (unlikely(!bo->pages)) {
@@ -660,21 +628,6 @@ static int alloc_ion_pages(struct hmm_buffer_object *bo,
 		goto error_unmap;
 	}
 
-	pgblk = atomisp_kernel_malloc(sizeof(*pgblk) * bo->pgnr);
-	if (unlikely(!pgblk)) {
-		v4l2_err(&atomisp_dev, "out of memory for pgblk\n");
-		ret = -ENOMEM;
-		goto error_unmap;
-	}
-
-	for (i = 0; i < bo->pgnr; i++) {
-		pgblk->pages = bo->pages[i];
-		pgblk->order = 0;
-
-		list_add_tail(&pgblk->list, &bo->pgblocks);
-		pgblk++;
-	}
-
 	return 0;
 error_unmap:
 	ion_unmap_dma(bo->bdev->iclient, bo->ihandle);
@@ -693,7 +646,6 @@ static int alloc_user_pages(struct hmm_buffer_object *bo,
 {
 	int page_nr;
 	int i;
-	struct page_block *pgblk;
 	struct vm_area_struct *vma;
 
 	bo->pages = atomisp_kernel_malloc(sizeof(struct page *) * bo->pgnr);
@@ -744,19 +696,6 @@ static int alloc_user_pages(struct hmm_buffer_object *bo,
 		goto out_of_mem;
 	}
 
-	pgblk = atomisp_kernel_malloc(sizeof(*pgblk) * bo->pgnr);
-	if (unlikely(!pgblk)) {
-		v4l2_err(&atomisp_dev, "out of memory for pgblk\n");
-		goto out_of_mem;
-	}
-
-	for (i = 0; i < bo->pgnr; i++) {
-		pgblk->pages = bo->pages[i];
-		pgblk->order = 0;
-
-		list_add_tail(&pgblk->list, &bo->pgblocks);
-		pgblk++;
-	}
 	return 0;
 
 out_of_mem:
@@ -770,39 +709,20 @@ out_of_mem:
 #ifdef CONFIG_ION
 static void free_ion_pages(struct hmm_buffer_object *bo)
 {
-	struct page_block *head = list_first_entry(&bo->pgblocks,
-						   struct page_block, list);
-
-	atomisp_kernel_free(head);
 	atomisp_kernel_free(bo->pages);
-
-	/*
-	 * All items on list were freed by free_bo_page_blocks(). We're safe
-	 * to initialize list head again.
-	 */
-	INIT_LIST_HEAD(&bo->pgblocks);
 	ion_unmap_dma(bo->bdev->iclient, bo->ihandle);
 }
 #endif
 
 static void free_user_pages(struct hmm_buffer_object *bo)
 {
-	struct page_block *pgblk;
-	struct page_block *head = list_first_entry(&bo->pgblocks,
-						   struct page_block, list);
+	int i;
 
 	if (bo->mem_type == HMM_BO_MEM_TYPE_USER)
-		list_for_each_entry(pgblk, &bo->pgblocks, list)
-			put_page(pgblk->pages);
+		for (i = 0; i < bo->pgnr; i++)
+			put_page(bo->pages[i]);
 
-	atomisp_kernel_free(head);
 	atomisp_kernel_free(bo->pages);
-
-	/*
-	 * All items on list were freed by free_bo_page_blocks(). We're safe
-	 * to initialize list head again.
-	 */
-	INIT_LIST_HEAD(&bo->pgblocks);
 }
 
 /*
