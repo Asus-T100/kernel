@@ -469,6 +469,15 @@ static int ov5640_g_color_effect(struct v4l2_subdev *sd, int *effect)
 	return 0;
 }
 
+static int ov5640_g_image_brightness(struct v4l2_subdev *sd, int *brightness)
+{
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
+
+	/* get target image luminance average */
+	return ov5640_read_reg(client, MISENSOR_8BIT,
+					OV5640_REG_AE_AVERAGE, brightness);
+}
+
 static int ov5640_g_focus_status(struct v4l2_subdev *sd, int *status)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
@@ -1688,6 +1697,18 @@ static struct ov5640_control ov5640_controls[] = {
 			.default_value = 0,
 		},
 		.query = ov5640_g_focus_status,
+	},
+	{
+		.qc = {
+			.id = V4L2_CID_BRIGHTNESS,
+			.type = V4L2_CTRL_TYPE_INTEGER,
+			.name = "target image luminance",
+			.minimum = 0,
+			.maximum = 255,
+			.step = 1,
+			.default_value = 0,
+		},
+		.query = ov5640_g_image_brightness,
 	},
 	{
 		.qc = {

@@ -240,6 +240,15 @@ static struct v4l2_queryctrl ci_v4l2_controls[] = {
 		.default_value = 0,
 	},
 	{
+		.id = V4L2_CID_BRIGHTNESS,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "target image luminance",
+		.minimum = 0,
+		.maximum = 255,
+		.step = 1,
+		.default_value = 0,
+	},
+	{
 		.id = V4L2_CID_EXPOSURE_ABSOLUTE,
 		.type = V4L2_CTRL_TYPE_INTEGER,
 		.name = "exposure",
@@ -1089,6 +1098,7 @@ static int atomisp_g_ctrl(struct file *file, void *fh,
 	case V4L2_CID_ISO_SENSITIVITY:
 	case V4L2_CID_FNUMBER_ABSOLUTE:
 	case V4L2_CID_AUTO_FOCUS_STATUS:
+	case V4L2_CID_BRIGHTNESS:
 	case V4L2_CID_HFLIP:
 	case V4L2_CID_VFLIP:
 		ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
