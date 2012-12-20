@@ -4893,8 +4893,8 @@ static int __devinit sep_probe(struct pci_dev *pdev,
 	pm_runtime_allow(&sep->pdev->dev);
 	pm_runtime_set_autosuspend_delay(&sep->pdev->dev,
 		SUSPEND_DELAY);
-	pm_runtime_use_autosuspend(&sep->pdev->dev);
 	pm_runtime_mark_last_busy(&sep->pdev->dev);
+	pm_runtime_use_autosuspend(&sep->pdev->dev);
 	sep->power_save_setup = 1;
 #endif
 	/* register kernel crypto driver */
