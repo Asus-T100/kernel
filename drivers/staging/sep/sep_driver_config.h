@@ -257,7 +257,7 @@ held by the proccess (struct file) */
 #define WAIT_TIME 10
 
 /* Delay for pm runtime suspend (reduces pm thrashing with bursty traffic */
-#define SUSPEND_DELAY 10
+#define SUSPEND_DELAY 20
 
 /* Number of delays to wait until scu boots after runtime resume */
 #define SCU_DELAY_MAX 2000
