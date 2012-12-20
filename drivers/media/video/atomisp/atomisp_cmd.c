@@ -3597,14 +3597,15 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	unsigned int padding_w = pad_w,
 		     padding_h = pad_h;
 	struct v4l2_streamparm sensor_parm;
-	int zoom = 0;
 	int ret;
+	__s32 zoom = 0;
 
 	if ((f->type != V4L2_BUF_TYPE_VIDEO_CAPTURE) &&
 	    (f->type != V4L2_BUF_TYPE_PRIVATE)) {
 		v4l2_err(&atomisp_dev, "Wrong v4l2 buf type\n");
 		return -EINVAL;
 	}
+	atomisp_digital_zoom(isp, 0, &zoom);
 
 	format_bridge = get_atomisp_format_bridge(pixelformat);
 	if (format_bridge == NULL)
