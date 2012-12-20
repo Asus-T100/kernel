@@ -219,6 +219,8 @@ static int gpadc_poweroff(struct gpadc_info *mgi)
 
 static int gpadc_calib(int rc, int zse, int ge)
 {
+	int tmp;
+
 	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_CLOVERVIEW) {
 		/**
 		 * For Cloverview, using the calibration data, we have the
@@ -226,7 +228,11 @@ static int gpadc_calib(int rc, int zse, int ge)
 		 * V_CAL_CODE = 213.33 * (V_RAW_CODE - VZSE) / VGE
 		 * I_CAL_CODE = 213.33 * (I_RAW_CODE - IZSE) / IGE
 		 */
-		return 21333 * (rc - zse) / ge;
+
+		/* note: the input zse is multipled by 10,
+		 * input ge is multipled by 100, need to handle them here
+		 */
+		tmp = 21333 * (10 * rc - zse) / ge;
 	} else {
 		/**
 		 * For Medfield, using the calibration data, we have the
@@ -234,8 +240,13 @@ static int gpadc_calib(int rc, int zse, int ge)
 		 * V_CAL_CODE = V_RAW_CODE - (VZSE + (VGE)* VRAW_CODE/1023)
 		 * I_CAL_CODE = I_RAW_CODE - (IZSE + (IGE)* IRAW_CODE/1023)
 		 */
-		return rc - (zse + ge * rc / 1023);
+		tmp = (10230 * rc - (10230 * zse + 10 * ge * rc)) / 1023;
 	}
+
+	/* tmp is 10 times of result value,
+	 * and it's used to obtain result's closest integer
+	 */
+	return DIV_ROUND_CLOSEST(tmp, 10);
 }
 
 static void gpadc_calc_zse_ge(struct gpadc_info *mgi)
@@ -252,7 +263,8 @@ static void gpadc_calc_zse_ge(struct gpadc_info *mgi)
 		ge_sign = (data & (1 << 7)) ? -1 : 1;
 		zse *= zse_sign;
 		ge *= ge_sign;
-		mgi->vzse = mgi->izse = zse / 2;
+		/* vzse divided by 2 may cause 0.5, x10 to avoid float */
+		mgi->vzse = mgi->izse = zse * 10 / 2;
 		/* vge multiple 100 to avoid float */
 		mgi->vge = mgi->ige = 21333 - (ge * 100 / 4);
 	} else {
@@ -621,9 +633,9 @@ int get_gpadc_sample(void *handle, int sample_count, int *buffer)
 			 * I_CAL_CODE = I_RAW_CODE - (IZSE+(IGE)*IRAW_CODE/1023)
 			 */
 			if (rq->ch[i] & CH_NEED_VCALIB)
-				tmp -= mgi->vzse + mgi->vge * tmp / 1023;
+				tmp = gpadc_calib(tmp, mgi->vzse, mgi->vge);
 			if (rq->ch[i] & CH_NEED_ICALIB)
-				tmp -= mgi->izse + mgi->ige * tmp / 1023;
+				tmp = gpadc_calib(tmp, mgi->izse, mgi->ige);
 			buffer[i] += tmp;
 		}
 		gpadc_clear_bits(ADC1CNTL3, ADC1CNTL3_RRDATARD);
