@@ -1744,13 +1744,11 @@ static void langwell_udc_start(struct langwell_udc *dev)
 	dev_dbg(&dev->pdev->dev, "---> %s()\n", __func__);
 
 	/* enable interrupts */
-	usbintr = INTR_ULPIE	/* ULPI */
-		| INTR_SLE	/* suspend */
+	usbintr = INTR_SLE	/* suspend */
+		/* | INTR_ULPIE	 ULPI */
 		/* | INTR_SRE	SOF received */
 		| INTR_URE	/* USB reset */
-		| INTR_AAE	/* async advance */
 		| INTR_SEE	/* system error */
-		| INTR_FRE	/* frame list rollover */
 		| INTR_PCE	/* port change detect */
 		| INTR_UEE	/* USB error interrupt */
 		| INTR_UE;	/* USB interrupt */
