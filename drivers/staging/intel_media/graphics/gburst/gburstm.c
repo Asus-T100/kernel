@@ -2731,6 +2731,11 @@ static int gburst_suspend(struct gburst_pvt_s *gbprv)
 	mutex_unlock(&gbprv->gbp_mutex_pwrgt_sts);
 #endif /* if GBURST_TIMING_BEFORE_SUSPEND */
 
+	/* Clear current utilization value before suspend as there has
+	been 5ms GPU idle period anyway due to suspend request */
+	if (gbprv->gbp_utilization_percentage > 0)
+		gbprv->gbp_utilization_percentage = 0;
+
 	return 0;
 }
 

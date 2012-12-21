@@ -39,13 +39,15 @@ int gburst_hw_gpu_freq_mhz_info(int freq_MHz);
 
 int gburst_hw_set_perf_status_periodic(int on_or_off);
 
-int gburst_hw_inq_num_counters(void);
+int gburst_hw_inq_num_counters(int *ctr_first, int *ctr_last);
 
 int gburst_hw_inq_num_cores(void);
 
-int gburst_hw_set_counter_id(unsigned int ctr_ix, int ctr_grp, int ctr_bit);
+int gburst_hw_set_counter_id(unsigned int ctr_ix, int ctr_grp,
+                        	int ctr_bit, int cntrbits, int summux);
 
-int gburst_hw_inq_counter_id(unsigned int ctr_ix, int *ctr_grp, int *ctr_bit);
+int gburst_hw_inq_counter_id(unsigned int ctr_ix, int *ctr_grp,
+	                        int *ctr_bit, int *cntrbits, int *summux);
 
 int gburst_hw_inq_counter_coeff(unsigned int ctr_ix);
 

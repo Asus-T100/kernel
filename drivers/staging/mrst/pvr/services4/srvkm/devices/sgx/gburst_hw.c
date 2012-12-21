@@ -89,6 +89,8 @@
  */
 
 #define NUM_COUNTERS (PVRSRV_SGX_HWPERF_NUM_COUNTERS)
+#define GBURST_MONITORED_COUNTER_FIRST    6
+#define GBURST_MONITORED_COUNTER_LAST     7
 
 /**
  * Utilization calculation per counter uses the following formula:
@@ -109,18 +111,20 @@ struct perf_counter_info_s {
 	u32 pi_group;       /* The counter group (in device). */
 	u32 pi_bit;         /* The counter bit (in device). */
 	u32 pi_coeff;	    /* Counter coefficient (see above) */
+	u32 pi_cntr_bits;   /* Counter bits used for sum (in device) */
+	u32 pi_summux;      /* Sum/Mux info, 1=sum 0=mux (in device) */
 };
 
 
 static const struct perf_counter_info_s pidat_initial[NUM_COUNTERS] = {
-	{ 1, 0, 16, },    /* 0: group, id, coeff */
-	{ 1, 1, 16, },    /* 1: group, id, coeff */
-	{ 1, 2, 16, },    /* 2: group, id, coeff */
-	{ 1, 3, 16, },    /* 3: group, id, coeff */
-	{ 1, 4, 16, },    /* 4: group, id, coeff */
-	{ 1, 5, 16, },    /* 5: group, id, coeff */
-	{ 1, 6, 16, },    /* 6: group, id, coeff */
-	{ 1, 7, 16, },    /* 7: group, id, coeff */
+	{ 63, 0, 16, 0, 0 },    /* 0: group, id, coeff, counter_bits, SumMux */
+	{ 63, 0, 16, 0, 0 },    /* 1: group, id, coeff, counter_bits, SumMux */
+	{ 63, 0, 16, 0, 0 },    /* 2: group, id, coeff, counter_bits, SumMux */
+	{ 63, 0, 16, 0, 0 },    /* 3: group, id, coeff, counter_bits, SumMux */
+	{ 63, 0, 16, 0, 0 },    /* 4: group, id, coeff, counter_bits, SumMux */
+	{ 63, 0, 16, 0, 0 },    /* 5: group, id, coeff, counter_bits, SumMux */
+	{  1, 0, 64, 3, 1 },    /* 6: group, id, coeff, counter_bits, SumMux */
+	{  1, 4, 64, 3, 1 },    /* 7: group, id, coeff, counter_bits, SumMux */
 };
 
 
@@ -147,8 +151,10 @@ static inline int gburst_hw_initialization_complete(void)
 }
 
 
-int gburst_hw_inq_num_counters(void)
+int gburst_hw_inq_num_counters(int *ctr_first, int *ctr_last)
 {
+	*ctr_first = GBURST_MONITORED_COUNTER_FIRST;
+	*ctr_last = GBURST_MONITORED_COUNTER_LAST;
 	return NUM_COUNTERS;
 }
 EXPORT_SYMBOL(gburst_hw_inq_num_counters);
@@ -178,6 +184,18 @@ static void gburst_hw_select_counters(struct perf_counter_info_s *cdef)
 		psDevInfo->psSGXHostCtl->aui32PerfGroup[i] = cdef[i].pi_group;
 		/* The counter bit (in device). */
 		psDevInfo->psSGXHostCtl->aui32PerfBit[i] = cdef[i].pi_bit;
+		psDevInfo->psSGXHostCtl->ui32PerfCounterBitSelect &=
+							~(0xF << (4*i));
+		psDevInfo->psSGXHostCtl->ui32PerfCounterBitSelect |=
+			( (cdef[i].pi_cntr_bits << 4*i) & (0xF << (4*i)) );
+
+		/* Select SumMux value */
+		if(cdef[i].pi_summux)
+			psDevInfo->psSGXHostCtl->ui32PerfSumMux |=
+					( (cdef[i].pi_summux & 1) << (8+i) );
+		else
+			psDevInfo->psSGXHostCtl->ui32PerfSumMux &=
+							~( 1 << (8+i) );
 	}
 
 	return;
@@ -238,29 +256,43 @@ int gburst_hw_set_perf_status_periodic(int on_or_off)
 EXPORT_SYMBOL(gburst_hw_set_perf_status_periodic);
 
 
-int gburst_hw_inq_counter_id(unsigned int ctr_ix, int *ctr_grp, int *ctr_bit)
+int gburst_hw_inq_counter_id(unsigned int ctr_ix, int *ctr_grp, int *ctr_bit,
+							int *cntrbits, int *summux)
 {
+	PVRSRV_SGXDEV_INFO *psDevInfo;
 	if (!gburst_hw_initialization_complete())
 		return -EINVAL;
 	if (ctr_ix >= NUM_COUNTERS)
 		return -EINVAL;
 
+	/* Update local counter group/bit status from DevInfo */
+	psDevInfo = gburst_sgx_data.gsh_gburst_psDeviceNode->pvDevice;
+	pidat[ctr_ix].pi_group = psDevInfo->psSGXHostCtl
+				->aui32PerfGroup[ctr_ix];
+	pidat[ctr_ix].pi_bit = psDevInfo->psSGXHostCtl->aui32PerfBit[ctr_ix];
+
 	*ctr_grp = pidat[ctr_ix].pi_group;
 	*ctr_bit = pidat[ctr_ix].pi_bit;
 
+	*cntrbits = pidat[ctr_ix].pi_cntr_bits;
+	*summux = pidat[ctr_ix].pi_summux;
 	return 0;
 }
 EXPORT_SYMBOL(gburst_hw_inq_counter_id);
 
 
-int gburst_hw_set_counter_id(unsigned int ctr_ix, int ctr_grp, int ctr_bit)
+int gburst_hw_set_counter_id(unsigned int ctr_ix, int ctr_grp, int ctr_bit,
+							int cntrbits, int summux)
 {
 	PVRSRV_SGXDEV_INFO *psDevInfo;
 
 	if (!gburst_hw_initialization_complete())
 		return -EINVAL;
 
-	if (ctr_ix >= NUM_COUNTERS)
+	/* Protect PVRScopeService client's counter usage */
+	if (ctr_ix < GBURST_MONITORED_COUNTER_FIRST)
+		return -EINVAL;
+	if (ctr_ix > GBURST_MONITORED_COUNTER_LAST)
 		return -EINVAL;
 	if (ctr_grp >= 128)
 		return -EINVAL;
@@ -271,9 +303,25 @@ int gburst_hw_set_counter_id(unsigned int ctr_ix, int ctr_grp, int ctr_bit)
 
 	pidat[ctr_ix].pi_group = ctr_grp;
 	pidat[ctr_ix].pi_bit = ctr_bit;
+	pidat[ctr_ix].pi_cntr_bits = cntrbits;
+	pidat[ctr_ix].pi_summux = summux;
 
 	psDevInfo->psSGXHostCtl->aui32PerfGroup[ctr_ix] = ctr_grp;
 	psDevInfo->psSGXHostCtl->aui32PerfBit[ctr_ix] = ctr_bit;
+
+	/* Select CounterBits value */
+	psDevInfo->psSGXHostCtl->ui32PerfCounterBitSelect &=
+									~(0xF << 4*ctr_ix);
+	psDevInfo->psSGXHostCtl->ui32PerfCounterBitSelect |=
+			((cntrbits << 4*ctr_ix) & (0xF << 4*ctr_ix));
+
+	/* Select SumMux value */
+	if(summux)
+		psDevInfo->psSGXHostCtl->ui32PerfSumMux |=
+					((summux & 1) << (8+ctr_ix));
+	else
+		psDevInfo->psSGXHostCtl->ui32PerfSumMux &=
+								~(1 << (8+ctr_ix));
 
 	return 0;
 }
