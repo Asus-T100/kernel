@@ -384,7 +384,7 @@ static int spk_to_chmap(int spk)
 	return 0;
 }
 
-int had_build_channel_allocation_map(struct snd_intelhad *intelhaddata)
+void had_build_channel_allocation_map(struct snd_intelhad *intelhaddata)
 {
 	int i = 0, c = 0;
 	int spk_mask = 0;
@@ -407,13 +407,13 @@ int had_build_channel_allocation_map(struct snd_intelhad *intelhaddata)
 				chmap->map[c] = spk_to_chmap(
 					channel_allocations[i].speakers[(MAX_SPEAKERS - 1)-c]);
 			}
+			chmap->channels = channel_allocations[i].channels;
+			intelhaddata->chmap->chmap = chmap;
 			break;
 		}
 	}
-	chmap->channels = channel_allocations[i].channels;
-	intelhaddata->chmap->chmap = chmap;
-
-	return 0;
+	if (i >= ARRAY_SIZE(channel_allocations))
+		kfree(chmap);
 }
 
 /*
@@ -457,7 +457,8 @@ static int had_chmap_ctl_get(struct snd_kcontrol *kcontrol,
 
 	if (intelhaddata->drv_status == HAD_DRV_DISCONNECTED)
 		return -ENODEV;
-
+	if (intelhaddata->chmap->chmap ==  NULL)
+		return -ENODATA;
 	chmap = intelhaddata->chmap->chmap;
 	for (i = 0; i < chmap->channels; i++) {
 		ucontrol->value.integer.value[i] = chmap->map[i];
@@ -491,6 +492,7 @@ static int had_register_chmap_ctls(struct snd_intelhad *intelhaddata,
 #ifndef USE_ALSA_DEFAULT_TLV
 	intelhaddata->kctl->tlv.c = had_chmap_ctl_tlv;
 #endif
+	intelhaddata->chmap->chmap = NULL;
 	return 0;
 }
 

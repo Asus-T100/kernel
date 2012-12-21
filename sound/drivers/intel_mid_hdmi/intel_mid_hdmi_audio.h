@@ -606,7 +606,7 @@ int snd_intelhad_prog_buffer(struct snd_intelhad *intelhaddata,
 					int start, int end);
 int snd_intelhad_invd_buffer(int start, int end);
 inline int snd_intelhad_read_len(struct snd_intelhad *intelhaddata);
-int had_build_channel_allocation_map(struct snd_intelhad *intelhaddata);
+void had_build_channel_allocation_map(struct snd_intelhad *intelhaddata);
 
 /* Register access functions */
 inline int had_get_hwstate(struct snd_intelhad *intelhaddata);
