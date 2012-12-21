@@ -19,22 +19,58 @@
 #include <linux/interrupt.h>
 #include "platform_bcm43xx.h"
 #include <linux/mmc/sdhci.h>
+#include <linux/delay.h>
+
+/* Delay copied from broadcom reference design */
+#define DELAY_ONOFF 250
 
 static int sdhci_quirk;
+static int sdhci_mmc_caps_unset;
+static int sdhci_mmc_pm_flags_set;
+
+static int gpio_enable;
+static void (*g_virtual_cd)(void *dev_id, int card_present);
+void *g_host;
+
+void bcmdhd_register_embedded_control(void *dev_id,
+			void (*virtual_cd)(void *dev_id, int card_present))
+{
+	g_virtual_cd = virtual_cd;
+	g_host = dev_id;
+}
 
 int bcmdhd_get_sdhci_quirk(void)
 {
 	return sdhci_quirk;
 }
 
+int bcmdhd_unset_sdhci_mmc_caps(void)
+{
+	return sdhci_mmc_caps_unset;
+}
+
+int bcmdhd_set_sdhci_mmc_pm_flags(void)
+{
+	return sdhci_mmc_pm_flags_set;
+}
+
 static int bcmdhd_set_power(int on)
 {
+	gpio_set_value(gpio_enable, on);
+
+	/* Delay advice by BRCM */
+	msleep(DELAY_ONOFF);
+
 	return 0;
 }
 
 static int bcmdhd_set_card_detect(int detect)
 {
-	return 0;
+	if (!g_virtual_cd)
+		return -1;
+
+	if (g_host)
+		g_virtual_cd(g_host, detect);
 }
 
 static struct wifi_platform_data bcmdhd_data = {
@@ -48,7 +84,14 @@ static struct resource bcmdhd_res[] = {
 	.start = 1,
 	.end = 1,
 	.flags = IORESOURCE_IRQ | IRQF_TRIGGER_FALLING ,
+	},
+	{
+	.name = "bcmdhd_wlan_en",
+	.start = 1,
+	.end = 1,
+	.flags = IORESOURCE_IRQ ,
 	}
+
 };
 
 static struct platform_device bcmdhd_device = {
@@ -76,7 +119,7 @@ static struct regulator_init_data bcm43xx_vmmc3 = {
 static struct fixed_voltage_config bcm43xx_vwlan = {
 	.supply_name		= "vbcm43xx",
 	.microvolts		= 1800000,
-	.gpio			= 75,
+	.gpio			= -EINVAL,
 	.startup_delay		= 70000,
 	.enable_high		= 1,
 	.enabled_at_boot	= 0,
@@ -113,21 +156,28 @@ void __init bcm43xx_platform_data_init_post_scu(void *info)
 		return;
 	}
 
-	err = platform_device_register(&bcmdhd_device);
-	if (err < 0)
-		pr_err("error setting bcmdhd data\n");
-
-	/* this is the fake regulator that mmc stack use to power of the
-	   wifi sdio card via runtime_pm apis */
-	bcm43xx_vwlan.gpio = get_gpio_by_name(BCM43XX_SFI_GPIO_ENABLE_NAME);
-	if (bcm43xx_vwlan.gpio == -1) {
+	gpio_enable = get_gpio_by_name(BCM43XX_SFI_GPIO_ENABLE_NAME);
+	if (gpio_enable == -1) {
 		pr_err("%s: Unable to find WLAN-enable GPIO in the SFI table\n",
 		       __func__);
 		return;
 	}
+
+	bcmdhd_res[1].start = gpio_enable;
+	bcmdhd_res[1].end = bcmdhd_res[1].start;
+	if (bcmdhd_res[1].start < 0) {
+		pr_err("%s:Error gpio_to_irq:%d->%d\n", __func__, gpio_enable,
+		       bcmdhd_res[1].start);
+		return;
+	}
+
 	/* format vmmc reg address from sfi table */
 	sprintf((char *)bcm43xx_vmmc3_supply.dev_name, "0000:00:%02x.%01x",
 		(sd_info->addr)>>8, sd_info->addr&0xFF);
+
+	err = platform_device_register(&bcmdhd_device);
+	if (err < 0)
+		pr_err("error setting bcmdhd data\n");
 
 	err = platform_device_register(&bcm43xx_vwlan_device);
 	if (err < 0)
@@ -140,6 +190,8 @@ void __init *bcm43xx_platform_data(void *info)
 	struct sd_board_info *sd_info;
 
 	sdhci_quirk = SDHCI_QUIRK_ADVERTISE_2V0_FORCE_1V8;
+	sdhci_mmc_caps_unset = MMC_CAP_NONREMOVABLE;
+	sdhci_mmc_pm_flags_set = MMC_PM_IGNORE_PM_NOTIFY;
 
 	sd_info = kmemdup(info, sizeof(*sd_info), GFP_KERNEL);
 	if (!sd_info) {

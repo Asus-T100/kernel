@@ -33,6 +33,10 @@
 
 #include "sdhci.h"
 
+/* Settle down values copied from broadcom reference design. */
+#define DELAY_CARD_INSERTED		200
+#define DELAY_CARD_REMOVED		50
+
 /*
  * PCI registers
  */
@@ -1462,6 +1466,19 @@ static const struct dev_pm_ops sdhci_pci_pm_ops = {
 	.runtime_idle = sdhci_pci_runtime_idle,
 };
 
+
+static void sdhci_hsmmc_virtual_detect(void *dev_id, int carddetect)
+{
+	struct sdhci_host *host = dev_id;
+
+	if (carddetect)
+		mmc_detect_change(host->mmc,
+				msecs_to_jiffies(DELAY_CARD_INSERTED));
+	else
+		mmc_detect_change(host->mmc,
+				msecs_to_jiffies(DELAY_CARD_REMOVED));
+}
+
 /*****************************************************************************\
  *                                                                           *
  * Device probing/removal                                                    *
@@ -1532,6 +1549,10 @@ static struct sdhci_pci_slot * __devinit sdhci_pci_probe_slot(
 
 		if (slot->data->quirks)
 			host->quirks2 |= slot->data->quirks;
+
+		if (slot->data->register_embedded_control)
+			slot->data->register_embedded_control(host,
+						sdhci_hsmmc_virtual_detect);
 	}
 
 	host->irq = pdev->irq;
@@ -1565,11 +1586,18 @@ static struct sdhci_pci_slot * __devinit sdhci_pci_probe_slot(
 		}
 	}
 
-	host->mmc->pm_caps = MMC_PM_KEEP_POWER | MMC_PM_WAKE_SDIO_IRQ;
+	host->mmc->pm_caps = MMC_PM_IGNORE_PM_NOTIFY | MMC_PM_KEEP_POWER
+			| MMC_PM_WAKE_SDIO_IRQ;
+
+	if (slot->data && slot->data->mmc_pm_flags)
+		host->mmc->pm_flags |= slot->data->mmc_pm_flags;
 
 	ret = sdhci_add_host(host);
 	if (ret)
 		goto remove;
+
+	if (slot->data && slot->data->mmc_caps)
+		host->mmc->caps &= ~slot->data->mmc_caps;
 
 	sdhci_pci_add_own_cd(slot);
 

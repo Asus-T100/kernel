@@ -20,6 +20,7 @@
 #include <linux/delay.h>
 #include <asm/intel_scu_ipc.h>
 
+
 static struct sdhci_pci_data mfd_clv_emmc0_data;
 static struct sdhci_pci_data mfd_clv_emmc1_data;
 static struct sdhci_pci_data mfd_clv_sd_data;
@@ -35,6 +36,22 @@ static struct sdhci_pci_data mrfl_sdio_data;
 int bcmdhd_get_sdhci_quirk(void)
 {
 	return 0;
+}
+
+int bcmdhd_unset_sdhci_mmc_caps(void)
+{
+	return 0;
+}
+
+int bcmdhd_set_sdhci_mmc_pm_flags(void)
+{
+	return 0;
+}
+
+void bcmdhd_register_embedded_control(void *dev_id, void (*virtual_cd)
+					(void *dev_id, int card_present))
+{
+	return;
 }
 
 static struct sdhci_pci_data *sdhci_host_get_data(struct pci_dev *pdev,
@@ -182,7 +199,12 @@ static int __init sdhci_pci_platform_data_init(void)
 
 	mfd_clv_sdio_data.rst_n_gpio = -EINVAL;
 	mfd_clv_sdio_data.cd_gpio = -EINVAL;
+
 	mfd_clv_sdio_data.quirks = bcmdhd_get_sdhci_quirk();
+	mfd_clv_sdio_data.register_embedded_control =
+					bcmdhd_register_embedded_control;
+	mfd_clv_sdio_data.mmc_caps = bcmdhd_unset_sdhci_mmc_caps();
+	mfd_clv_sdio_data.mmc_pm_flags = bcmdhd_set_sdhci_mmc_pm_flags();
 
 	memset(&mrfl_emmc0_data, 0, sizeof(struct sdhci_pci_data));
 	memset(&mrfl_emmc1_data, 0, sizeof(struct sdhci_pci_data));
@@ -207,12 +229,20 @@ static int __init sdhci_pci_platform_data_init(void)
 	mrfl_sdio_data.setup = mrfl_sdio_setup;
 	mrfl_sdio_data.cleanup = mrfl_sdio_cleanup;
 	mrfl_sdio_data.quirks = bcmdhd_get_sdhci_quirk();
+	mrfl_sdio_data.register_embedded_control =
+				bcmdhd_register_embedded_control;
+	mrfl_sdio_data.mmc_caps = bcmdhd_unset_sdhci_mmc_caps();
+	mrfl_sdio_data.mmc_pm_flags = bcmdhd_set_sdhci_mmc_pm_flags();
 
 	memset(&mfld_sdio_data, 0, sizeof(struct sdhci_pci_data));
 
 	mfld_sdio_data.rst_n_gpio = -EINVAL;
 	mfld_sdio_data.cd_gpio = -EINVAL;
 	mfld_sdio_data.quirks = bcmdhd_get_sdhci_quirk();
+	mfld_sdio_data.register_embedded_control =
+				bcmdhd_register_embedded_control;
+	mfld_sdio_data.mmc_caps = bcmdhd_unset_sdhci_mmc_caps();
+	mfld_sdio_data.mmc_pm_flags = bcmdhd_set_sdhci_mmc_pm_flags();
 
 	sdhci_pci_get_data = sdhci_host_get_data;
 
