@@ -95,6 +95,7 @@
 #include "device_libs/platform_s3202.h"
 #include "device_libs/platform_bq24261.h"
 #include "device_libs/platform_imx175.h"
+#include "device_libs/platform_imx135.h"
 #include "device_libs/platform_ov9724.h"
 #include "device_libs/platform_lm3559.h"
 
@@ -220,6 +221,8 @@ struct devs_id __initconst device_ids[] = {
 	{"ov8830", SFI_DEV_TYPE_I2C, 0, &ov8830_platform_data,
 					&intel_register_i2c_camera_device},
 	{"imx175", SFI_DEV_TYPE_I2C, 0, &imx175_platform_data,
+					&intel_register_i2c_camera_device},
+	{"imx135", SFI_DEV_TYPE_I2C, 0, &imx135_platform_data,
 					&intel_register_i2c_camera_device},
 	{"ov9724", SFI_DEV_TYPE_I2C, 0, &ov9724_platform_data,
 					&intel_register_i2c_camera_device},
