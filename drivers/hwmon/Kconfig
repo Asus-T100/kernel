@@ -1469,16 +1469,6 @@ config MID_PWM
 	  an output signal. For more information, please refer to the driver
 	  source code.
 
-config SENSORS_THERMAL_MRFLD
-        tristate "Thermal driver for Intel Merrifield platform"
-        depends on INTEL_SCU_IPC && BASINCOVE_GPADC
-        help
-          Say Y here to enable thermal driver on Intel Merrifield
-          platform.
-
-          To load this driver as a module, select M here. The module
-          will be called "mrfl_thermal"
-
 config SENSORS_MID_CURRENT
 	tristate "Over Current Detection driver for Intel Medfield platform"
         depends on INTEL_SCU_IPC

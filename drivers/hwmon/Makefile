@@ -145,4 +145,3 @@ obj-$(CONFIG_SENSORS_UCD9200)	+= ucd9200.o
 
 ccflags-$(CONFIG_HWMON_DEBUG_CHIP) := -DDEBUG
 obj-$(CONFIG_SENSORS_MRFLD_CURRENT) += intel_mrfl_ocd.o
-obj-$(CONFIG_SENSORS_THERMAL_MRFLD) += intel_mrfl_thermal.o

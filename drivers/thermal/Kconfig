@@ -22,3 +22,13 @@ config THERMAL_HWMON
 	  requires a 2.10.7/3.0.2 or later lm-sensors userspace.
 
 	  Say Y if your user-space is new enough.
+
+config SENSORS_THERMAL_MRFLD
+        tristate "Thermal driver for Intel Merrifield platform"
+        depends on THERMAL && INTEL_SCU_IPC && BASINCOVE_GPADC
+        help
+          Say Y here to enable thermal driver on Intel Merrifield
+          platform.
+
+          To load this driver as a module, select M here. The module
+          will be called "mrfl_thermal"
