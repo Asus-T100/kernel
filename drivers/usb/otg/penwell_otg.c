@@ -3415,8 +3415,19 @@ static void penwell_otg_work(struct work_struct *work)
 			/* Make sure current limit updated */
 			penwell_otg_update_chrg_cap(CHRG_ACA, CHRG_CURR_ACA);
 		} else if (hsm->id == ID_B) {
-			if (iotg->otg.set_power)
-				iotg->otg.set_power(&iotg->otg, 500);
+			spin_lock_irqsave(&pnw->charger_lock, flags);
+			ps_type = pnw->psc_cap.chrg_type;
+			spin_unlock_irqrestore(&pnw->charger_lock, flags);
+
+			if (ps_type == POWER_SUPPLY_TYPE_USB_ACA) {
+				/* Notify EM charger ACA removal event */
+				penwell_otg_update_chrg_cap(CHRG_UNKNOWN,
+						CHRG_CURR_DISCONN);
+				penwell_otg_charger_hwdet(false);
+				/* Set current when switch from ACA to SDP */
+				if (!hsm->a_bus_suspend && iotg->otg.set_power)
+					iotg->otg.set_power(&iotg->otg, 500);
+			}
 		}
 		break;
 
