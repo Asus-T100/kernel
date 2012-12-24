@@ -243,10 +243,15 @@ void psb_fence_error(struct drm_device *dev,
 	struct drm_psb_private *dev_priv = psb_priv(dev);
 	struct ttm_fence_device *fdev = &dev_priv->fdev;
 	unsigned long irq_flags;
-	struct ttm_fence_class_manager *fc =
-				&fdev->fence_class[fence_class];
+	struct ttm_fence_class_manager *fc;
 
-	BUG_ON(fence_class >= PSB_NUM_ENGINES);
+	if (fence_class >= PSB_NUM_ENGINES) {
+		DRM_ERROR("fence_class %d is unsupported.\n", fence_class);
+		return;
+	}
+
+	fc = &fdev->fence_class[fence_class];
+
 	write_lock_irqsave(&fc->lock, irq_flags);
 	ttm_fence_handler(fdev, fence_class, sequence, type, error);
 	write_unlock_irqrestore(&fc->lock, irq_flags);

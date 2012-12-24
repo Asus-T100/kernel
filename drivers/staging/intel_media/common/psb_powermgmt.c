@@ -1633,8 +1633,7 @@ recheck:
 	spin_unlock_irq(&pdev->dev.power.lock);
 #endif
 
-	/* Deal with force_on==true case. It must be process context */
-	BUG_ON(in_interrupt());
+	/* It must be process context, will not be called in irq */
 	mutex_lock(&g_ospm_mutex);
 
 	island_is_on = ospm_power_is_hw_on(video_island);
@@ -1957,10 +1956,16 @@ void ospm_power_using_video_end(int video_island)
 
 	switch (video_island) {
 	case OSPM_VIDEO_ENC_ISLAND:
-		atomic_dec(&g_videoenc_access_count);
+		if (atomic_read(&g_videoenc_access_count) <= 0)
+			DRM_ERROR("g_videoenc_access_count <=0.\n");
+		else
+			atomic_dec(&g_videoenc_access_count);
 		break;
 	case OSPM_VIDEO_DEC_ISLAND:
-		atomic_dec(&g_videodec_access_count);
+		if (atomic_read(&g_videodec_access_count) <= 0)
+			DRM_ERROR("g_videodec_access_count <=0.\n");
+		else
+			atomic_dec(&g_videodec_access_count);
 		break;
 	}
 
@@ -1968,9 +1973,6 @@ void ospm_power_using_video_end(int video_island)
 	/* decrement runtime pm ref count */
 	pm_runtime_put(&gpDrmDevice->pdev->dev);
 #endif
-
-	WARN_ON(atomic_read(&g_videoenc_access_count) < 0);
-	WARN_ON(atomic_read(&g_videodec_access_count) < 0);
 }
 
 /*

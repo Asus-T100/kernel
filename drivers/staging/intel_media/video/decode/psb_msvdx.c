@@ -639,7 +639,6 @@ int psb_mtx_send(struct drm_psb_private *dev_priv, const void *msg)
 		 * queue management should make
 		 * sure this never happens in the first place.
 		 */
-		BUG_ON(0 == ridx);
 		if (0 == ridx) {
 			ret = -EINVAL;
 			DRM_ERROR("MSVDX: RIndex=0, ret:%d\n", ret);
@@ -658,7 +657,6 @@ int psb_mtx_send(struct drm_psb_private *dev_priv, const void *msg)
 	else
 		words_free = ridx - widx - 1;
 
-	BUG_ON(msg_num > words_free);
 	if (msg_num > words_free) {
 		ret = -EINVAL;
 		DRM_ERROR("MSVDX: msg_num > words_free, ret:%d\n", ret);
