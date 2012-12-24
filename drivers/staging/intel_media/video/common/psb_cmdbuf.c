@@ -708,10 +708,10 @@ void psb_fence_or_sync(struct drm_file *file_priv,
 		fence_arg->signaled_types = info.signaled_types;
 		fence_arg->error = 0;
 	} else {
-		ret =
-			ttm_ref_object_base_unref(tfile, handle,
-						  ttm_fence_type);
-		BUG_ON(ret);
+		ret = ttm_ref_object_base_unref(tfile, handle,
+						ttm_fence_type);
+		if (ret)
+			DRM_ERROR("Failed to unref buffer object.\n");
 	}
 
 	if (fence_p)
@@ -870,7 +870,12 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 
 	context->used_buffers = 0;
 	context->fence_types = 0;
-	BUG_ON(!list_empty(&context->validate_list));
+	if (!list_empty(&context->validate_list)) {
+		DRM_ERROR("context->validate_list is not null.\n");
+		ret = -EINVAL;
+		goto out_err1;
+	}
+
 	/* BUG_ON(!list_empty(&context->kern_validate_list)); */
 
 	if (unlikely(context->buffers == NULL)) {
