@@ -47,24 +47,25 @@
  * NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
  * EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ******************************************************************************/
-
+ 
 #ifndef _PSB_DPST_FUNC_H_
 #define _PSB_DPST_FUNC_H_
+int dpst_init(struct drm_device *dev, int level, int output_id);
+int dpst_histogram_get_status(struct drm_device *dev,
+			       struct drm_psb_hist_status_arg *hist_data);
+void dpst_process_event(struct umevent_obj *notify_disp_obj, int dst_group_id);
+void dpst_execute_recv_command(struct dispmgr_command_hdr *cmd_hdr);
+ int psb_dpst_mode(struct drm_device *, void *);
+int psb_init_comm(struct drm_device *, void *);
+int psb_update_guard(struct drm_device *, void *);
+int psb_hist_enable(struct drm_device *, void *);
+int psb_gamma_set(struct drm_device *, void *);
+int psb_dpst_bl(struct drm_device *, void *);
 
-int dpst_init(struct drm_device *dev, int level, int output_id);
-int dpst_histogram_get_status(struct drm_device *dev,
-			      struct drm_psb_hist_status_arg *hist_data);
-void dpst_process_event(struct umevent_obj *notify_disp_obj, int dst_group_id);
-void dpst_execute_recv_command(struct dispmgr_command_hdr *cmd_hdr);
-
-int psb_dpst_mode(struct drm_device *, void *);
-int psb_init_comm(struct drm_device *, void *);
-int psb_update_guard(struct drm_device *, void *);
-int psb_hist_enable(struct drm_device *, void *);
-int psb_gamma_set(struct drm_device *, void *);
-int psb_dpst_bl(struct drm_device *, void *);
-/* SH START DPST This doesn't work and is not used. */
+// SH START DPST This doesn't work and is not used.
 int psb_diet_enable(struct drm_device *, void *);
-/* SH END DPST */
 
-#endif				/* _PSB_DPST_FUNC_H_ */
+// SH END DPST
+    
+#endif	/* _PSB_DPST_FUNC_H_ */
+    

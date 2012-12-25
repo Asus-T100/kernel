@@ -1,10 +1,45 @@
-									    /*************************************************************************//*!
-									       @File
-									       @Title          Linked list shared functions templates.
-									       @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
-									       @Description    Definition of the linked list function templates.
-									       @License        Strictly Confidential.
-    *//**************************************************************************/
+/*************************************************************************/ /*!
+@File
+@Title          Linked list shared functions templates.
+@Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
+@Description    Definition of the linked list function templates.
+@License        Dual MIT/GPLv2
+
+The contents of this file are subject to the MIT license as set out below.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+Alternatively, the contents of this file may be used under the terms of
+the GNU General Public License Version 2 ("GPL") in which case the provisions
+of GPL are applicable instead of those above.
+
+If you wish to allow use of your version of this file only under the terms of
+GPL, and not to allow others to use your version of this file under the terms
+of the MIT license, indicate your decision by deleting the provisions above
+and replace them with the notice and other provisions required by GPL as set
+out in the file called "GPL-COPYING" included in this distribution. If you do
+not delete the provisions above, a recipient may use your version of this file
+under the terms of either the MIT license or GPL.
+
+This License is also included in this distribution in the file called
+"MIT-COPYING".
+
+EXCEPT AS OTHERWISE STATED IN A NEGOTIATED AGREEMENT: (A) THE SOFTWARE IS
+PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING
+BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+PURPOSE AND NONINFRINGEMENT; AND (B) IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+*/ /**************************************************************************/
 
 #ifndef __LISTS_UTILS__
 #define __LISTS_UTILS__
@@ -41,12 +76,12 @@
 
 */
 
-									    /*************************************************************************//*!
-									       @Function       List_##TYPE##_ForEach
-									       @Description    Apply a callback function to all the elements of a list.
-									       @Input          psHead        The head of the list to be processed.
-									       @Input          pfnCallBack   The function to be applied to each element of the list.
-    *//**************************************************************************/
+/*************************************************************************/ /*!
+@Function       List_##TYPE##_ForEach
+@Description    Apply a callback function to all the elements of a list.
+@Input          psHead        The head of the list to be processed.
+@Input          pfnCallBack   The function to be applied to each element of the list.
+*/ /**************************************************************************/
 #define DECLARE_LIST_FOR_EACH(TYPE) \
 IMG_VOID List_##TYPE##_ForEach(TYPE *psHead, IMG_VOID(*pfnCallBack)(TYPE* psNode))
 
@@ -59,6 +94,31 @@ IMG_VOID List_##TYPE##_ForEach(TYPE *psHead, IMG_VOID(*pfnCallBack)(TYPE* psNode
 		psHead = psHead->psNext;\
 	}\
 }
+
+/*************************************************************************/ /*!
+@Function       List_##TYPE##_ForEachSafe
+@Description    Apply a callback function to all the elements of a list. Do it
+                in a safe way that handles the fact that a node might remove itself
+                from the list during the iteration.
+@Input          psHead        The head of the list to be processed.
+@Input          pfnCallBack   The function to be applied to each element of the list.
+*/ /**************************************************************************/
+#define DECLARE_LIST_FOR_EACH_SAFE(TYPE) \
+IMG_VOID List_##TYPE##_ForEachSafe(TYPE *psHead, IMG_VOID(*pfnCallBack)(TYPE* psNode))
+
+#define IMPLEMENT_LIST_FOR_EACH_SAFE(TYPE) \
+IMG_VOID List_##TYPE##_ForEachSafe(TYPE *psHead, IMG_VOID(*pfnCallBack)(TYPE* psNode))\
+{\
+	TYPE *psNext;\
+\
+	while(psHead)\
+	{\
+		psNext = psHead->psNext; \
+		pfnCallBack(psHead);\
+		psHead = psNext;\
+	}\
+}
+
 
 #define DECLARE_LIST_FOR_EACH_VA(TYPE) \
 IMG_VOID List_##TYPE##_ForEach_va(TYPE *psHead, IMG_VOID(*pfnCallBack)(TYPE* psNode, va_list va), ...)
@@ -76,14 +136,15 @@ IMG_VOID List_##TYPE##_ForEach_va(TYPE *psHead, IMG_VOID(*pfnCallBack)(TYPE* psN
 	}\
 }
 
-									    /*************************************************************************//*!
-									       @Function       List_##TYPE##_Any
-									       @Description    Applies a callback function to the elements of a list until the function
-									       returns a non null value, then returns it.
-									       @Input          psHead        The head of the list to be processed.
-									       @Input          pfnCallBack   The function to be applied to each element of the list.
-									       @Return         The first non null value returned by the callback function.
-    *//**************************************************************************/
+
+/*************************************************************************/ /*!
+@Function       List_##TYPE##_Any
+@Description    Applies a callback function to the elements of a list until the function
+                returns a non null value, then returns it.
+@Input          psHead        The head of the list to be processed.
+@Input          pfnCallBack   The function to be applied to each element of the list.
+@Return         The first non null value returned by the callback function.
+*/ /**************************************************************************/
 #define DECLARE_LIST_ANY(TYPE) \
 IMG_VOID* List_##TYPE##_Any(TYPE *psHead, IMG_VOID* (*pfnCallBack)(TYPE* psNode))
 
@@ -102,6 +163,7 @@ IMG_VOID* List_##TYPE##_Any(TYPE *psHead, IMG_VOID* (*pfnCallBack)(TYPE* psNode)
 	}\
 	return pResult;\
 }
+
 
 /*with variable arguments, that will be passed as a va_list to the callback function*/
 
@@ -146,6 +208,7 @@ RTYPE List_##TYPE##_##RTYPE##_Any(TYPE *psHead, RTYPE (*pfnCallBack)(TYPE* psNod
 	return result;\
 }
 
+
 #define DECLARE_LIST_ANY_VA_2(TYPE, RTYPE, CONTINUE) \
 RTYPE List_##TYPE##_##RTYPE##_Any_va(TYPE *psHead, RTYPE(*pfnCallBack)(TYPE* psNode, va_list va), ...)
 
@@ -166,11 +229,12 @@ RTYPE List_##TYPE##_##RTYPE##_Any_va(TYPE *psHead, RTYPE(*pfnCallBack)(TYPE* psN
 	return result;\
 }
 
-									    /*************************************************************************//*!
-									       @Function       List_##TYPE##_Remove
-									       @Description    Removes a given node from the list.
-									       @Input          psNode      The pointer to the node to be removed.
-    *//**************************************************************************/
+
+/*************************************************************************/ /*!
+@Function       List_##TYPE##_Remove
+@Description    Removes a given node from the list.
+@Input          psNode      The pointer to the node to be removed.
+*/ /**************************************************************************/
 #define DECLARE_LIST_REMOVE(TYPE) \
 IMG_VOID List_##TYPE##_Remove(TYPE *psNode)
 
@@ -184,12 +248,12 @@ IMG_VOID List_##TYPE##_Remove(TYPE *psNode)\
 	}\
 }
 
-									    /*************************************************************************//*!
-									       @Function       List_##TYPE##_Insert
-									       @Description    Inserts a given node at the beginnning of the list.
-									       @Input          psHead   The pointer to the pointer to the head node.
-									       @Input          psNode   The pointer to the node to be inserted.
-    *//**************************************************************************/
+/*************************************************************************/ /*!
+@Function       List_##TYPE##_Insert
+@Description    Inserts a given node at the beginnning of the list.
+@Input          psHead   The pointer to the pointer to the head node.
+@Input          psNode   The pointer to the node to be inserted.
+*/ /**************************************************************************/
 #define DECLARE_LIST_INSERT(TYPE) \
 IMG_VOID List_##TYPE##_Insert(TYPE **ppsHead, TYPE *psNewNode)
 
@@ -205,11 +269,11 @@ IMG_VOID List_##TYPE##_Insert(TYPE **ppsHead, TYPE *psNewNode)\
 	}\
 }
 
-									    /*************************************************************************//*!
-									       @Function       List_##TYPE##_Reverse
-									       @Description    Reverse a list in place
-									       @Input          ppsHead    The pointer to the pointer to the head node.
-    *//**************************************************************************/
+/*************************************************************************/ /*!
+@Function       List_##TYPE##_Reverse
+@Description    Reverse a list in place
+@Input          ppsHead    The pointer to the pointer to the head node.
+*/ /**************************************************************************/
 #define DECLARE_LIST_REVERSE(TYPE) \
 IMG_VOID List_##TYPE##_Reverse(TYPE **ppsHead)
 
@@ -240,6 +304,7 @@ IMG_VOID List_##TYPE##_Reverse(TYPE **ppsHead)\
 
 #define IS_LAST_ELEMENT(x) ((x)->psNext == IMG_NULL)
 
+
 DECLARE_LIST_ANY_2(PVRSRV_DEVICE_NODE, PVRSRV_ERROR, PVRSRV_OK);
 DECLARE_LIST_ANY_VA(PVRSRV_DEVICE_NODE);
 DECLARE_LIST_ANY_VA_2(PVRSRV_DEVICE_NODE, PVRSRV_ERROR, PVRSRV_OK);
@@ -261,9 +326,8 @@ DECLARE_LIST_REMOVE(PVRSRV_POWER_DEV);
 #undef DECLARE_LIST_INSERT
 #undef DECLARE_LIST_REMOVE
 
-IMG_VOID *MatchDeviceKM_AnyVaCb(PVRSRV_DEVICE_NODE * psDeviceNode, va_list va);
-IMG_VOID *MatchPowerDeviceIndex_AnyVaCb(PVRSRV_POWER_DEV * psPowerDev,
-					va_list va);
+IMG_VOID* MatchDeviceKM_AnyVaCb(PVRSRV_DEVICE_NODE* psDeviceNode, va_list va);
+IMG_VOID* MatchPowerDeviceIndex_AnyVaCb(PVRSRV_POWER_DEV *psPowerDev, va_list va);
 
 #endif
 

@@ -56,30 +56,30 @@
 /* I830 CRTC registers */
 #define HTOTAL_A	0x60000
 #define HBLANK_A	0x60004
-#define HSYNC_A		0x60008
+#define HSYNC_A 	0x60008
 #define VTOTAL_A	0x6000c
 #define VBLANK_A	0x60010
-#define VSYNC_A		0x60014
+#define VSYNC_A 	0x60014
 #define PIPEASRC	0x6001c
 #define BCLRPAT_A	0x60020
 #define VSYNCSHIFT_A	0x60028
 
 #define HTOTAL_B	0x61000
 #define HBLANK_B	0x61004
-#define HSYNC_B		0x61008
+#define HSYNC_B 	0x61008
 #define VTOTAL_B	0x6100c
 #define VBLANK_B	0x61010
-#define VSYNC_B		0x61014
+#define VSYNC_B 	0x61014
 #define PIPEBSRC	0x6101c
 #define BCLRPAT_B	0x61020
 #define VSYNCSHIFT_B	0x61028
 
 #define HTOTAL_C	0x62000
 #define HBLANK_C	0x62004
-#define HSYNC_C		0x62008
+#define HSYNC_C 	0x62008
 #define VTOTAL_C	0x6200c
 #define VBLANK_C	0x62010
-#define VSYNC_C		0x62014
+#define VSYNC_C 	0x62014
 #define PIPECSRC	0x6201c
 #define BCLRPAT_C	0x62020
 #define VSYNCSHIFT_C	0x62028
@@ -106,23 +106,49 @@
 #define PP_CYCLE        0x61210
 
 #define PFIT_CONTROL	0x61230
-#define PFIT_ENABLE				(1 << 31)
-#define PFIT_PIPE_MASK				(3 << 29)
-#define PFIT_PIPE_SHIFT			29
-#define PFIT_PIPE_SELECT_A			(0 << PFIT_PIPE_SHIFT)
-#define PFIT_PIPE_SELECT_B			(1 << PFIT_PIPE_SHIFT)
-#define PFIT_PIPE_SELECT_C			(2 << PFIT_PIPE_SHIFT)
-#define PFIT_PIPE_SELECT_D			(3 << PFIT_PIPE_SHIFT)
+
+#define PFIT_ENABLE                            (1 << 31)
+#define PFIT_PIPE_MASK                         (3 << 29)
+#define PFIT_PIPE_SHIFT                        29
+#define PFIT_PIPE_SELECT_A                     (0 << PFIT_PIPE_SHIFT)
+#define PFIT_PIPE_SELECT_B                     (1 << PFIT_PIPE_SHIFT)
+#define PFIT_PIPE_SELECT_C                     (2 << PFIT_PIPE_SHIFT)
+#define PFIT_PIPE_SELECT_D                     (3 << PFIT_PIPE_SHIFT)
 #define PFIT_SCALING_MODE_PILLARBOX            (1 << 27)
 #define PFIT_SCALING_MODE_LETTERBOX            (3 << 26)
-#define VERT_INTERP_DISABLE			(0 << 10)
-#define VERT_INTERP_BILINEAR			(1 << 10)
-#define VERT_INTERP_MASK			(3 << 10)
-#define VERT_AUTO_SCALE			(1 << 9)
-#define HORIZ_INTERP_DISABLE			(0 << 6)
-#define HORIZ_INTERP_BILINEAR			(1 << 6)
-#define HORIZ_INTERP_MASK			(3 << 6)
-#define HORIZ_AUTO_SCALE			(1 << 5)
+#define VERT_INTERP_DISABLE                    (0 << 10)
+#define VERT_INTERP_BILINEAR                   (1 << 10)
+#define VERT_INTERP_MASK                       (3 << 10)
+#define VERT_AUTO_SCALE                        (1 << 9)
+#define HORIZ_INTERP_DISABLE                   (0 << 6)
+#define HORIZ_INTERP_BILINEAR                  (1 << 6)
+#define HORIZ_INTERP_MASK                      (3 << 6)
+#define HORIZ_AUTO_SCALE                       (1 << 5)
+
+#if 0
+# define PFIT_ENABLE				(1 << 31)
+# define PFIT_PIPE_MASK				(3 << 29)
+# define PFIT_PIPE_SHIFT			29
+# define PFIT_PIPE_SELECT_A			(0 << PFIT_PIPE_SHIFT)
+# define PFIT_PIPE_SELECT_B			(1 << PFIT_PIPE_SHIFT)
+# define PFIT_PIPE_SELECT_C			(2 << PFIT_PIPE_SHIFT)
+# define PFIT_PIPE_SELECT_D			(3 << PFIT_PIPE_SHIFT)
+# define PFIT_SCALING_MODE_SHIFT		26
+# define PFIT_SCALING_MODE_AUTO			(0 << PFIT_SCALING_MODE_SHIFT)
+# define PFIT_SCALING_MODE_PROGRAM		(1 << PFIT_SCALING_MODE_SHIFT)
+# define PFIT_SCALING_MODE_PILLARBOX		(2 << PFIT_SCALING_MODE_SHIFT)
+# define PFIT_SCALING_MODE_LETTERBOX		(3 << PFIT_SCALING_MODE_SHIFT)
+# define VERT_INTERP_DISABLE			(0 << 10)
+# define VERT_INTERP_BILINEAR			(1 << 10)
+# define VERT_INTERP_MASK			(3 << 10)
+# define VERT_AUTO_SCALE			(1 << 9)
+# define HORIZ_INTERP_DISABLE			(0 << 6)
+# define HORIZ_INTERP_BILINEAR			(1 << 6)
+# define HORIZ_INTERP_MASK			(3 << 6)
+# define HORIZ_AUTO_SCALE			(1 << 5)
+#endif
+
+# define PANEL_8TO6_DITHER_ENABLE		(1 << 3)
 #define PANEL_8TO6_DITHER_ENABLE		(1 << 3)
 
 #define PFIT_PGM_RATIOS	0x61234
@@ -130,6 +156,13 @@
 #define PFIT_HORIZ_SCALE_MASK			0x0000fff0
 
 #define PFIT_AUTO_RATIOS	0x61238
+
+#define PFIT_FRACTIONAL_VALUE                   (1<<12)
+#define PFIT_VERT_MSB_SHIFT                     28
+#define PFIT_HORIZ_MSB_SHIFT                    12
+#define PFIT_VERT_SCALE_SHIFT                   16
+#define PFIT_HORIZ_SCALE_SHIFT                  0
+
 
 #define DPLL_A		0x06014
 #define DPLL_B		0x06018
@@ -242,7 +275,7 @@
 #define DPLLA_INPUT_BUFFER_ENABLE		(1 << 0)
 
 #define ADPA			0x61100
-#define ADPA_DAC_ENABLE		(1<<31)
+#define ADPA_DAC_ENABLE 	(1<<31)
 #define ADPA_DAC_DISABLE	0
 #define ADPA_PIPE_SELECT_MASK	(1<<30)
 #define ADPA_PIPE_A_SELECT	0
@@ -378,19 +411,20 @@
 #define PIPEACONF_PIPE_LOCKED	(1<<25)
 #define PIPEACONF_PALETTE	0
 #define PIPECONF_FORCE_BORDER	(1<<25)
-#define PIPEACONF_GAMMA		(1<<24)
+#define PIPEACONF_GAMMA 	(1<<24)
 #define PIPECONF_PROGRESSIVE	(0 << 21)
 #define PIPECONF_INTERLACE_W_FIELD_INDICATION	(6 << 21)
 #define PIPECONF_INTERLACE_FIELD_0_ONLY		(7 << 21)
-#define PIPECONF_PLANE_OFF	(1<<19)
-#define PIPECONF_CURSOR_OFF	(1<<18)
+#define PIPEACONF_COLOR_MATRIX_ENABLE (1 << 20)
+#define PIPECONF_PLANE_OFF 	(1<<19)
+#define PIPECONF_CURSOR_OFF 	(1<<18)
 
 #define PIPEBCONF 0x71008
 #define PIPEBCONF_ENABLE	(1<<31)
 #define PIPEBCONF_DISABLE	0
 #define PIPEBCONF_DOUBLE_WIDE	(1<<30)
 #define PIPEBCONF_DISABLE	0
-#define PIPEBCONF_GAMMA		(1<<24)
+#define PIPEBCONF_GAMMA 	(1<<24)
 #define PIPEBCONF_PALETTE	0
 
 #define PIPECCONF 0x72008
@@ -406,7 +440,7 @@
 #define PIPE_START_VBLANK_INTERRUPT_STATUS   (1UL<<2)
 #define PIPE_VBLANK_CLEAR                    (1 << 1)
 #define PIPE_VBLANK_STATUS                   (1 << 1)
-#define PIPE_TE_STATUS			     (1UL<<6)
+#define PIPE_TE_STATUS		             (1UL<<6)
 #define PIPE_DPST_EVENT_STATUS		     (1UL<<7)
 #define PIPE_VSYNC_CLEAR                     (1UL<<9)
 #define PIPE_VSYNC_STATUS                    (1UL<<9)
@@ -414,13 +448,14 @@
 #define PIPE_HDMI_AUDIO_BUFFER_DONE_STATUS   (1UL<<11)
 #define PIPE_VBLANK_INTERRUPT_ENABLE         (1UL<<17)
 #define PIPE_START_VBLANK_INTERRUPT_ENABLE   (1UL<<18)
-#define PIPE_TE_ENABLE			     (1UL<<22)
+#define PIPE_TE_ENABLE		             (1UL<<22)
 #define PIPE_DPST_EVENT_ENABLE               (1UL<<23)
 #define PIPE_VSYNC_ENABL                     (1UL<<25)
 #define PIPE_HDMI_AUDIO_UNDERRUN             (1UL<<26)
 #define PIPE_HDMI_AUDIO_BUFFER_DONE          (1UL<<27)
 #define PIPE_HDMI_AUDIO_INT_MASK (PIPE_HDMI_AUDIO_UNDERRUN | PIPE_HDMI_AUDIO_BUFFER_DONE)
-#define PIPE_EVENT_MASK (BIT29|BIT28|BIT27|BIT26|BIT24|BIT23|BIT22|BIT21|BIT20|BIT16)
+#define PIPE_EVENT_MASK (BIT29|BIT28|BIT27|BIT26|BIT25|BIT24|BIT23|BIT22|BIT21 \
+		|BIT20|BIT18|BIT17|BIT16)
 #define PIPE_VBLANK_MASK (BIT25|BIT24|BIT18|BIT17)
 #define HISTOGRAM_INT_CONTROL		0x61268
 #define HISTOGRAM_BIN_DATA		0X61264
@@ -494,7 +529,7 @@ struct dpst_guardband {
 #define DSPBCNTR		0x71180
 #define DSPCCNTR		0x72180
 #define DSPDCNTR		0x73180
-#define DISPLAY_PLANE_ENABLE			(1<<31)
+#define DISPLAY_PLANE_ENABLE 			(1<<31)
 #define DISPLAY_PLANE_DISABLE			0
 #define DISPPLANE_GAMMA_ENABLE			(1<<30)
 #define DISPPLANE_GAMMA_DISABLE			0
@@ -502,7 +537,7 @@ struct dpst_guardband {
 #define DISPPLANE_8BPP				(0x2<<26)
 #define DISPPLANE_15_16BPP			(0x4<<26)
 #define DISPPLANE_16BPP				(0x5<<26)
-#define DISPPLANE_32BPP_NO_ALPHA		(0x6<<26)
+#define DISPPLANE_32BPP_NO_ALPHA 		(0x6<<26)
 #define DISPPLANE_32BPP				(0x7<<26)
 #define DISPPLANE_STEREO_ENABLE			(1<<25)
 #define DISPPLANE_STEREO_DISABLE		0
@@ -564,9 +599,9 @@ struct dpst_guardband {
 
 #define DSPCSURF		0x7219C
 #define DSPCTILEOFF		0x721A4
-#define DSPCKEYMAXVAL		0x721A0
-#define DSPCKEYMINVAL		0x72194
-#define DSPCKEYMSK		0x72198
+#define DSPCKEYMAXVAL 		0x721A0
+#define DSPCKEYMINVAL 		0x72194
+#define DSPCKEYMSK 		0x72198
 
 #define DSPDSURF		0x7319C
 #define DSPDTILEOFF		0x731A4
@@ -643,6 +678,58 @@ struct dpst_guardband {
 #define PALETTE_B		0x0a800
 #define PALETTE_C		0x0ac00
 
+/*Gamma max register*/
+#define GAMMA_RED_MAX_A         0x70010
+#define GAMMA_GREEN_MAX_A       0x70014
+#define GAMMA_BLUE_MAX_A        0x70018
+
+#define GAMMA_RED_MAX_C         0x72010
+#define GAMMA_GREEN_MAX_C       0x72014
+#define GAMMA_BLUE_MAX_C        0x72018
+
+/*Gamma max register*/
+#define GAMMA_RED_MAX_A         0x70010
+#define GAMMA_GREEN_MAX_A       0x70014
+#define GAMMA_BLUE_MAX_A        0x70018
+
+#define GAMMA_RED_MAX_C         0x72010
+#define GAMMA_GREEN_MAX_C       0x72014
+#define GAMMA_BLUE_MAX_C        0x72018
+
+#define IS_I830(dev) ((dev)->pci_device == PCI_DEVICE_ID_INTEL_82830_CGC)
+#define IS_845G(dev) ((dev)->pci_device == PCI_DEVICE_ID_INTEL_82845G_IG)
+#define IS_I85X(dev) ((dev)->pci_device == PCI_DEVICE_ID_INTEL_82855GM_IG)
+#define IS_I855(dev) ((dev)->pci_device == PCI_DEVICE_ID_INTEL_82855GM_IG)
+#define IS_I865G(dev) ((dev)->pci_device == PCI_DEVICE_ID_INTEL_82865_IG)
+
+
+/* || dev->pci_device == PCI_DEVICE_ID_INTELPCI_CHIP_E7221_G) */
+#define IS_I915G(dev) (dev->pci_device == PCI_DEVICE_ID_INTEL_82915G_IG)
+#define IS_I915GM(dev) ((dev)->pci_device == PCI_DEVICE_ID_INTEL_82915GM_IG)
+#define IS_I945G(dev) ((dev)->pci_device == PCI_DEVICE_ID_INTEL_82945G_IG)
+#define IS_I945GM(dev) ((dev)->pci_device == PCI_DEVICE_ID_INTEL_82945GM_IG)
+
+#define IS_I965G(dev) ((dev)->pci_device == 0x2972 || \
+		       (dev)->pci_device == 0x2982 || \
+		       (dev)->pci_device == 0x2992 || \
+		       (dev)->pci_device == 0x29A2 || \
+		       (dev)->pci_device == 0x2A02 || \
+		       (dev)->pci_device == 0x2A12)
+
+#define IS_I965GM(dev) ((dev)->pci_device == 0x2A02)
+
+#define IS_G33(dev)    ((dev)->pci_device == 0x29C2 ||	\
+			(dev)->pci_device == 0x29B2 ||	\
+			(dev)->pci_device == 0x29D2)
+
+#define IS_I9XX(dev) (IS_I915G(dev) || IS_I915GM(dev) || IS_I945G(dev) || \
+		      IS_I945GM(dev) || IS_I965G(dev) || IS_POULSBO(dev) || \
+		      IS_MRST(dev))
+
+#define IS_MOBILE(dev) (IS_I830(dev) || IS_I85X(dev) || IS_I915GM(dev) || \
+			IS_I945GM(dev) || IS_I965GM(dev) || \
+			IS_POULSBO(dev) || IS_MRST(dev))
+
 /* Cursor A & B regs */
 #define CURACNTR		0x70080
 #define   CURSOR_MODE_DISABLE   0x00
@@ -693,13 +780,14 @@ struct dpst_guardband {
 #define MRST_PERF_MODE		0x020f4
 
 /* MEDFIELD HDMI registers */
-#define HDMIPHYMISCCTL		0x61134
+#define HDMIPHYMISCCTL   	0x61134
 #define HDMI_PHY_POWER_DOWN	0x7f
-#define HDMIB_CONTROL		0x61140
+#define HDMIB_CONTROL   	0x61140
 #define HDMIB_PORT_EN			(1 << 31)
 #define HDMIB_PIPE_B_SELECT		(1 << 30)
 #define HDMIB_NULL_PACKET		(1 << 9)
-#define HDMIB_HDCP_PORT		(1 << 5)
+# define HDMIB_AUDIO_ENABLE     (1 << 6)
+#define HDMIB_HDCP_PORT 		(1 << 5)
 #define VIDEO_DIP_CTL		0x61170
 #define EN_DIP				(1 << 31)
 #define PORT_B_SELECT			(1 << 29)
@@ -718,6 +806,8 @@ struct dpst_guardband {
 #define DIP_RAM_ADDR_MASK		0xf
 #define VIDEO_DIP_DATA		0x61178
 
+#define AUDIO_DIP_CTL   0x69060
+
 /* MEDFIELD HDMI audio unit registers */
 #define AUD_CONFIG		0x69000
 #define AUD_CONF_AUDIO_ENABLE	(1 << 0)
@@ -732,8 +822,9 @@ struct dpst_guardband {
 #define MIPI_PORT_EN			(1 << 31)
 /** Turns on border drawing to allow centered display. */
 #define SEL_FLOPPED_HSTX		(1 << 23)
-#define PASS_FROM_SPHY_TO_AFE		(1 << 16)
+#define PASS_FROM_SPHY_TO_AFE 		(1 << 16)
 #define MIPI_BORDER_EN			(1 << 15)
+#define BANDGAP_CHICKEN_BIT		(1 << 8)
 #define MIPIA_3LANE_MIPIC_1LANE	0x1
 #define MIPIA_2LANE_MIPIC_2LANE	0x2
 #define TE_TRIGGER_DSI_PROTOCOL	(1 << 2)
@@ -1096,12 +1187,12 @@ Bits D[6:4]  DPI Pixel Format Definition
 Bits D[2:0]  DBI Pixel Format Definition
 Bits D7 and D3 are not used.
 \* ************************************************************************* */
-#define DCS_PIXEL_FORMAT_3bbp		0x1
-#define DCS_PIXEL_FORMAT_8bbp		0x2
-#define DCS_PIXEL_FORMAT_12bbp	0x3
+#define DCS_PIXEL_FORMAT_3bbp	 	0x1
+#define DCS_PIXEL_FORMAT_8bbp 	0x2
+#define DCS_PIXEL_FORMAT_12bbp 	0x3
 #define DCS_PIXEL_FORMAT_16bbp	0x5
 #define DCS_PIXEL_FORMAT_18bbp	0x6
-#define DCS_PIXEL_FORMAT_24bbp	0x7
+#define DCS_PIXEL_FORMAT_24bbp 	0x7
 #define write_mem_cont               0x3c
 /* ************************************************************************* *\
 This command transfers image data from the host processor to the display
@@ -1196,35 +1287,35 @@ gamma settings.
 #define DBI_CB_TIME_OUT 0xFFFF
 #define GEN_FB_TIME_OUT 2000
 #define ALIGNMENT_32BYTE_MASK		(~(BIT0|BIT1|BIT2|BIT3|BIT4))
-#define SKU_83						0x01
-#define SKU_100						0x02
-#define SKU_100L					0x04
-#define SKU_BYPASS					0x08
+#define SKU_83 						0x01
+#define SKU_100 					0x02
+#define SKU_100L 					0x04
+#define SKU_BYPASS 					0x08
 
 /* MDFLD delta registers */
 #define PIPEB			0x1
 #define PIPEC			0x2
 #define PIPEB_OFFSET		0x1000
 #define PIPEC_OFFSET		0x2000
-#define PIPEA_COLOR_COEF0	0x60070
+#define PIPEA_COLOR_COEF0 	0x60070
 #define CC_1_POS		16
 #define CC_0_POS		0
-#define PIPEA_COLOR_COEF2	0x60074
-#define PIPEA_COLOR_COEF11	0x60078
-#define PIPEA_COLOR_COEF12	0x6007c
-#define PIPEA_COLOR_COEF21	0x60080
-#define PIPEA_COLOR_COEF22	0x60084
-#define PIPEB_COLOR_COEF0	0x61070
-#define PIPEB_COLOR_COEF2	0x61074
-#define PIPEB_COLOR_COEF11	0x61078
-#define PIPEB_COLOR_COEF12	0x6107c
-#define PIPEB_COLOR_COEF21	0x61080
-#define PIPEB_COLOR_COEF22	0x61084
-#define PIPEC_COLOR_COEF0	0x62070
-#define PIPEC_COLOR_COEF2	0x62074
-#define PIPEC_COLOR_COEF11	0x62078
-#define PIPEC_COLOR_COEF12	0x6207c
-#define PIPEC_COLOR_COEF21	0x62080
-#define PIPEC_COLOR_COEF22	0x62084
+#define PIPEA_COLOR_COEF2 	0x60074
+#define PIPEA_COLOR_COEF11 	0x60078
+#define PIPEA_COLOR_COEF12 	0x6007c
+#define PIPEA_COLOR_COEF21 	0x60080
+#define PIPEA_COLOR_COEF22 	0x60084
+#define PIPEB_COLOR_COEF0 	0x61070
+#define PIPEB_COLOR_COEF2 	0x61074
+#define PIPEB_COLOR_COEF11 	0x61078
+#define PIPEB_COLOR_COEF12 	0x6107c
+#define PIPEB_COLOR_COEF21 	0x61080
+#define PIPEB_COLOR_COEF22 	0x61084
+#define PIPEC_COLOR_COEF0 	0x62070
+#define PIPEC_COLOR_COEF2 	0x62074
+#define PIPEC_COLOR_COEF11 	0x62078
+#define PIPEC_COLOR_COEF12 	0x6207c
+#define PIPEC_COLOR_COEF21 	0x62080
+#define PIPEC_COLOR_COEF22 	0x62084
 
 #endif

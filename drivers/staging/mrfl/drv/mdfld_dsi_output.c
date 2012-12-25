@@ -32,7 +32,10 @@
 #include <asm/intel_scu_ipc.h>
 #include "mdfld_dsi_pkg_sender.h"
 #include <linux/pm_runtime.h>
+#include <linux/freezer.h>
 #include "psb_drv.h"
+#include "mdfld_dsi_esd.h"
+#include "mdfld_dsi_dbi_dsr.h"
 
 #define MDFLD_DSI_BRIGHTNESS_MAX_LEVEL 100
 
@@ -59,7 +62,6 @@ static int __init parse_CABC_control(char *arg)
 
 	return 0;
 }
-
 early_param("CABC", parse_CABC_control);
 
 static int __init parse_LABC_control(char *arg)
@@ -77,12 +79,11 @@ static int __init parse_LABC_control(char *arg)
 
 	return 0;
 }
-
 early_param("LABC", parse_LABC_control);
 #endif
 
 /**
- * make these MCS command global
+ * make these MCS command global 
  * we don't need 'movl' everytime we send them.
  * FIXME: these datas were provided by OEM, we should get them from GCT.
  **/
@@ -111,10 +112,10 @@ static u32 mdfld_dbi_mcs_gamma_profile[] = {
  * write hysteresis values.
  */
 static void mdfld_dsi_write_hysteresis(struct mdfld_dsi_config *dsi_config,
-				       int pipe)
+		int pipe)
 {
 	struct mdfld_dsi_pkg_sender *sender =
-	    mdfld_dsi_get_pkg_sender(dsi_config);
+		mdfld_dsi_get_pkg_sender(dsi_config);
 
 	if (!sender) {
 		DRM_ERROR("No sender found\n");
@@ -122,18 +123,19 @@ static void mdfld_dsi_write_hysteresis(struct mdfld_dsi_config *dsi_config,
 	}
 
 	mdfld_dsi_send_mcs_long_hs(sender,
-				   mdfld_dbi_mcs_hysteresis,
-				   17, MDFLD_DSI_SEND_PACKAGE);
+			mdfld_dbi_mcs_hysteresis,
+			68,
+			MDFLD_DSI_SEND_PACKAGE);
 }
 
 /**
  * write display profile values.
  */
 static void mdfld_dsi_write_display_profile(struct mdfld_dsi_config *dsi_config,
-					    int pipe)
+		int pipe)
 {
 	struct mdfld_dsi_pkg_sender *sender =
-	    mdfld_dsi_get_pkg_sender(dsi_config);
+		mdfld_dsi_get_pkg_sender(dsi_config);
 
 	if (!sender) {
 		DRM_ERROR("No sender found\n");
@@ -141,18 +143,19 @@ static void mdfld_dsi_write_display_profile(struct mdfld_dsi_config *dsi_config,
 	}
 
 	mdfld_dsi_send_mcs_long_hs(sender,
-				   mdfld_dbi_mcs_display_profile,
-				   5, MDFLD_DSI_SEND_PACKAGE);
+			mdfld_dbi_mcs_display_profile,
+			20,
+			MDFLD_DSI_SEND_PACKAGE);
 }
 
 /**
  * write KBBC profile values.
  */
 static void mdfld_dsi_write_kbbc_profile(struct mdfld_dsi_config *dsi_config,
-					 int pipe)
+		int pipe)
 {
 	struct mdfld_dsi_pkg_sender *sender =
-	    mdfld_dsi_get_pkg_sender(dsi_config);
+		mdfld_dsi_get_pkg_sender(dsi_config);
 
 	if (!sender) {
 		DRM_ERROR("No sender found\n");
@@ -160,18 +163,19 @@ static void mdfld_dsi_write_kbbc_profile(struct mdfld_dsi_config *dsi_config,
 	}
 
 	mdfld_dsi_send_mcs_long_hs(sender,
-				   mdfld_dbi_mcs_kbbc_profile,
-				   4, MDFLD_DSI_SEND_PACKAGE);
+			mdfld_dbi_mcs_kbbc_profile,
+			20,
+			MDFLD_DSI_SEND_PACKAGE);
 }
 
 /**
  * write gamma setting.
  */
 static void mdfld_dsi_write_gamma_setting(struct mdfld_dsi_config *dsi_config,
-					  int pipe)
+		int pipe)
 {
 	struct mdfld_dsi_pkg_sender *sender =
-	    mdfld_dsi_get_pkg_sender(dsi_config);
+		mdfld_dsi_get_pkg_sender(dsi_config);
 
 	if (!sender) {
 		DRM_ERROR("No sender found\n");
@@ -179,105 +183,30 @@ static void mdfld_dsi_write_gamma_setting(struct mdfld_dsi_config *dsi_config,
 	}
 
 	mdfld_dsi_send_mcs_long_hs(sender,
-				   mdfld_dbi_mcs_gamma_profile,
-				   3, MDFLD_DSI_SEND_PACKAGE);
+			mdfld_dbi_mcs_gamma_profile,
+			3,
+			MDFLD_DSI_SEND_PACKAGE);
 }
 
 /**
  * Check and see if the generic control or data buffer is empty and ready.
  */
 void mdfld_dsi_gen_fifo_ready(struct drm_device *dev, u32 gen_fifo_stat_reg,
-			      u32 fifo_stat)
+		u32 fifo_stat)
 {
 	u32 GEN_BF_time_out_count = 0;
 
-#if 1				/* FIXME MRFLD */
-	return;
-#endif				/* FIXME MRFLD */
 	/* Check MIPI Adatper command registers */
 	for (GEN_BF_time_out_count = 0; GEN_BF_time_out_count < GEN_FB_TIME_OUT;
-	     GEN_BF_time_out_count++) {
+			GEN_BF_time_out_count++) {
 		if ((REG_READ(gen_fifo_stat_reg) & fifo_stat) == fifo_stat)
 			break;
 		udelay(100);
 	}
 
 	if (GEN_BF_time_out_count == GEN_FB_TIME_OUT)
-		DRM_ERROR
-		    ("mdfld_dsi_gen_fifo_ready, Timeout. "
-		     "gen_fifo_stat_reg = 0x%x.\n",
-		     gen_fifo_stat_reg);
-}
-
-/**
- * Manage the DSI MIPI keyboard and display brightness.
- * FIXME: this is exported to OSPM code. should work out an specific
- * display interface to OSPM.
- */
-void mdfld_dsi_brightness_init(struct mdfld_dsi_config *dsi_config, int pipe)
-{
-#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
-	int ret = 0;
-
-	PSB_DEBUG_ENTRY("[DISPLAY] %s\n", __func__);
-
-	/* Program PWM Frequency to 300 Hz */
-	/* (19.2*1000*1000)/64000 = 300 Hz */
-	/* PWM0CLKDIV0 (Low Byte of Clock Divider) */
-	ret |= intel_scu_ipc_iowrite8(0x62, 0x00);
-	/* PWM0CLKDIV1 (High Byte of Clock Divider) */
-	ret |= intel_scu_ipc_iowrite8(0x61, 0xFA);
-	if (ret) {
-		printk(KERN_ERR "[DISPLAY] %s: ipc write fail\n", __func__);
-		return;
-	}
-#else
-	struct mdfld_dsi_pkg_sender *sender =
-	    mdfld_dsi_get_pkg_sender(dsi_config);
-	struct drm_device *dev = sender->dev;
-	struct drm_psb_private *dev_priv = dev->dev_private;
-	u32 gen_ctrl_val;
-
-	if (!sender)
-		DRM_ERROR("No sender found\n");
-
-	/* Set default display backlight value to 85% (0xd8) */
-	mdfld_dsi_send_mcs_short_hs(sender,
-				    write_display_brightness,
-				    0xd8, 1, MDFLD_DSI_SEND_PACKAGE);
-
-	/* Set minimum brightness setting of CABC function to 20% (0x33) */
-	mdfld_dsi_send_mcs_short_hs(sender,
-				    write_cabc_min_bright,
-				    0x33, 1, MDFLD_DSI_SEND_PACKAGE);
-
-	mdfld_dsi_write_hysteresis(dsi_config, pipe);
-	mdfld_dsi_write_display_profile(dsi_config, pipe);
-	mdfld_dsi_write_kbbc_profile(dsi_config, pipe);
-	mdfld_dsi_write_gamma_setting(dsi_config, pipe);
-
-	/* Enable backlight or/and LABC */
-	gen_ctrl_val = BRIGHT_CNTL_BLOCK_ON | DISPLAY_DIMMING_ON | BACKLIGHT_ON;
-	if (LABC_control == 1 || CABC_control == 1)
-		gen_ctrl_val |=
-		    DISPLAY_DIMMING_ON | DISPLAY_BRIGHTNESS_AUTO | GAMMA_AUTO;
-
-	if (LABC_control == 1)
-		gen_ctrl_val |= AMBIENT_LIGHT_SENSE_ON;
-
-	dev_priv->mipi_ctrl_display = gen_ctrl_val;
-
-	mdfld_dsi_send_mcs_short_hs(sender,
-				    write_ctrl_display,
-				    (u8) gen_ctrl_val,
-				    1, MDFLD_DSI_SEND_PACKAGE);
-
-	if (CABC_control == 0)
-		return;
-	mdfld_dsi_send_mcs_short_hs(sender,
-				    write_ctrl_cabc,
-				    UI_IMAGE, 1, MDFLD_DSI_SEND_PACKAGE);
-#endif
+		DRM_ERROR("%s: Timeout. gen_fifo_stat_reg = 0x%x.\n", __func__,
+				gen_fifo_stat_reg);
 }
 
 /**
@@ -286,30 +215,6 @@ void mdfld_dsi_brightness_init(struct mdfld_dsi_config *dsi_config, int pipe)
  */
 void mdfld_dsi_brightness_control(struct drm_device *dev, int pipe, int level)
 {
-#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
-	int duty_val = 0;
-	int ret = 0;
-
-	if (level == 0)
-		duty_val = level;
-	else
-		duty_val = level + 1;
-
-#define BACKLIGHT_DUTY_FACTOR 255
-	duty_val =
-	    level * BACKLIGHT_DUTY_FACTOR / MDFLD_DSI_BRIGHTNESS_MAX_LEVEL;
-
-	PSB_DEBUG_ENTRY("[DISPLAY] %s: level is %d and duty = %x\n", __func__,
-			level, duty_val);
-
-	/* PWM0DUTYCYCLE */
-	ret = intel_scu_ipc_iowrite8(0x67, duty_val);
-
-	if (ret) {
-		printk(KERN_ERR "[DISPLAY] %s: ipc write fail\n");
-		return;
-	}
-#else
 	struct drm_psb_private *dev_priv;
 	struct mdfld_dsi_config *dsi_config;
 	struct mdfld_dsi_dpi_output *dpi_output;
@@ -353,10 +258,12 @@ void mdfld_dsi_brightness_control(struct drm_device *dev, int pipe, int level)
 	}
 
 	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
-				       OSPM_UHB_ONLY_IF_ON))
+				OSPM_UHB_FORCE_POWER_ON))
 		return;
 
-	spin_lock(&dsi_config->context_lock);
+	mutex_lock(&dsi_config->context_lock);
+
+	mdfld_dsi_dsr_forbid_locked(dsi_config);
 
 	if (!dsi_config->dsi_hw_context.panel_on)
 		goto set_brightness_out;
@@ -364,69 +271,52 @@ void mdfld_dsi_brightness_control(struct drm_device *dev, int pipe, int level)
 	if (p_funcs->set_brightness(dsi_config, level))
 		DRM_ERROR("Failed to set panel brightness\n");
 
- set_brightness_out:
-	spin_unlock(&dsi_config->context_lock);
+set_brightness_out:
+	mdfld_dsi_dsr_allow_locked(dsi_config);
+	mutex_unlock(&dsi_config->context_lock);
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-#endif
 }
 
-static int mdfld_dsi_get_panel_status(struct mdfld_dsi_config *dsi_config,
-				      u8 dcs, u32 *data, u8 transmission)
+int mdfld_dsi_get_panel_status(struct mdfld_dsi_config *dsi_config,
+		u8 dcs,
+		u8 *data,
+		u8 transmission,
+		u32 len)
 {
-	struct mdfld_dsi_pkg_sender *sender
-	    = mdfld_dsi_get_pkg_sender(dsi_config);
+	struct mdfld_dsi_pkg_sender *sender =
+		mdfld_dsi_get_pkg_sender(dsi_config);
+	int ret = 0;
 
 	if (!sender || !data) {
 		DRM_ERROR("Invalid parameter\n");
 		return -EINVAL;
 	}
 
-	if (transmission == MDFLD_DSI_HS_TRANSMISSION)
-		return mdfld_dsi_read_mcs_hs(sender, dcs, data, 1);
-	else if (transmission == MDFLD_DSI_LP_TRANSMISSION)
-		return mdfld_dsi_read_mcs_lp(sender, dcs, data, 1);
-	else
+	if (transmission == MDFLD_DSI_HS_TRANSMISSION) {
+		ret = mdfld_dsi_read_mcs_hs(sender, dcs, data, len);
+		if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+			ret = -EIO;
+		return ret;
+	} else if (transmission == MDFLD_DSI_LP_TRANSMISSION) {
+		ret = mdfld_dsi_read_mcs_lp(sender, dcs, data, len);
+		if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+			ret = -EIO;
+		return ret;
+	} else
 		return -EINVAL;
 }
 
 int mdfld_dsi_get_power_mode(struct mdfld_dsi_config *dsi_config,
-			     u32 *mode, u8 transmission)
+		u8 *mode,
+		u8 transmission)
 {
 	if (!dsi_config || !mode) {
 		DRM_ERROR("Invalid parameter\n");
 		return -EINVAL;
 	}
 
-	return mdfld_dsi_get_panel_status(dsi_config, 0x0A, mode, transmission);
-}
-
-int mdfld_dsi_get_diagnostic_result(struct mdfld_dsi_config *dsi_config,
-				    u32 *result, u8 transmission)
-{
-	if (!dsi_config || !result) {
-		DRM_ERROR("Invalid parameter\n");
-		return -EINVAL;
-	}
-
-	return mdfld_dsi_get_panel_status(dsi_config, 0x0f, result,
-					  transmission);
-}
-
-/*
- * NOTE: this function was used by OSPM.
- * TODO: will be removed later, should work out display interfaces for OSPM
- */
-void mdfld_dsi_controller_init(struct mdfld_dsi_config *dsi_config, int pipe)
-{
-	if (!dsi_config || ((pipe != 0) && (pipe != 2))) {
-		DRM_ERROR("Invalid parameters\n");
-		return;
-	}
-
-	if (dsi_config->type)
-		mdfld_dsi_dpi_controller_init(dsi_config, pipe);
-	else
-		mdfld_dsi_controller_dbi_init(dsi_config, pipe);
+	return mdfld_dsi_get_panel_status(dsi_config, 0x0A, mode,
+			transmission, 1);
 }
 
 static void mdfld_dsi_connector_save(struct drm_connector *connector)
@@ -439,35 +329,34 @@ static void mdfld_dsi_connector_restore(struct drm_connector *connector)
 	PSB_DEBUG_ENTRY("\n");
 }
 
-static enum drm_connector_status mdfld_dsi_connector_detect
-	(struct drm_connector *connector) {
-	struct psb_intel_output *psb_output = to_psb_intel_output(connector);
-	struct mdfld_dsi_connector *dsi_connector
-	    = MDFLD_DSI_CONNECTOR(psb_output);
+static enum drm_connector_status
+mdfld_dsi_connector_detect(struct drm_connector *connector)
+{
+	struct psb_intel_output *psb_output =
+		to_psb_intel_output(connector);
+	struct mdfld_dsi_connector *dsi_connector =
+		MDFLD_DSI_CONNECTOR(psb_output);
 
-#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
-	dsi_connector->status = connector_status_connected;
-#else
 	PSB_DEBUG_ENTRY("\n");
+
 	return dsi_connector->status;
-#endif
 }
 
 static int mdfld_dsi_connector_set_property(struct drm_connector *connector,
-					    struct drm_property *property,
-					    uint64_t value)
+		struct drm_property *property,
+		uint64_t value)
 {
 	struct drm_encoder *encoder = connector->encoder;
 	struct backlight_device *psb_bd;
+	struct drm_encoder_helper_funcs *pEncHFuncs = NULL;
+	struct psb_intel_crtc *psb_crtc = NULL;
+	bool bTransitionFromToCentered;
+	uint64_t curValue;
 
 	PSB_DEBUG_ENTRY("\n");
 
 	if (!strcmp(property->name, "scaling mode") && encoder) {
-		struct psb_intel_crtc *psb_crtc =
-		    to_psb_intel_crtc(encoder->crtc);
-		bool bTransitionFromToCentered;
-		uint64_t curValue;
-
+		psb_crtc = to_psb_intel_crtc(encoder->crtc);
 		if (!psb_crtc)
 			goto set_prop_error;
 
@@ -484,41 +373,41 @@ static int mdfld_dsi_connector_set_property(struct drm_connector *connector,
 			goto set_prop_error;
 		}
 
-		if (drm_connector_property_get_value
-		    (connector, property, &curValue))
+		if (drm_connector_property_get_value(connector, property,
+					&curValue))
 			goto set_prop_error;
 
 		if (curValue == value)
 			goto set_prop_done;
 
-		if (drm_connector_property_set_value
-		    (connector, property, value))
+		if (drm_connector_property_set_value(connector, property,
+					value))
 			goto set_prop_error;
 
 		bTransitionFromToCentered =
-		    (curValue == DRM_MODE_SCALE_NO_SCALE)
-		    || (value == DRM_MODE_SCALE_NO_SCALE);
+			(curValue == DRM_MODE_SCALE_NO_SCALE) ||
+			(value == DRM_MODE_SCALE_NO_SCALE);
 
 		if (psb_crtc->saved_mode.hdisplay != 0 &&
-		    psb_crtc->saved_mode.vdisplay != 0) {
+				psb_crtc->saved_mode.vdisplay != 0) {
 			if (bTransitionFromToCentered) {
-				if (!drm_crtc_helper_set_mode
-				    (encoder->crtc, &psb_crtc->saved_mode,
-				     encoder->crtc->x, encoder->crtc->y,
-				     encoder->crtc->fb))
+				if (!drm_crtc_helper_set_mode(encoder->crtc,
+							&psb_crtc->saved_mode,
+							encoder->crtc->x,
+							encoder->crtc->y,
+							encoder->crtc->fb))
 					goto set_prop_error;
 			} else {
-				struct drm_encoder_helper_funcs *pEncHFuncs =
-				    encoder->helper_private;
+				pEncHFuncs = encoder->helper_private;
 				pEncHFuncs->mode_set(encoder,
-					&psb_crtc->saved_mode,
-					&psb_crtc->saved_adjusted_mode);
+						&psb_crtc->saved_mode,
+						&psb_crtc->saved_adjusted_mode);
 			}
 		}
 	} else if (!strcmp(property->name, "backlight") && encoder) {
 		PSB_DEBUG_ENTRY("backlight level = %d\n", (int)value);
-		if (drm_connector_property_set_value
-		    (connector, property, value))
+		if (drm_connector_property_set_value(connector, property,
+					value))
 			goto set_prop_error;
 		else {
 			PSB_DEBUG_ENTRY("set brightness to %d", (int)value);
@@ -529,9 +418,9 @@ static int mdfld_dsi_connector_set_property(struct drm_connector *connector,
 			}
 		}
 	}
- set_prop_done:
+set_prop_done:
 	return 0;
- set_prop_error:
+set_prop_error:
 	return -1;
 }
 
@@ -539,7 +428,9 @@ static void mdfld_dsi_connector_destroy(struct drm_connector *connector)
 {
 	struct psb_intel_output *psb_output = to_psb_intel_output(connector);
 	struct mdfld_dsi_connector *dsi_connector =
-	    MDFLD_DSI_CONNECTOR(psb_output);
+		MDFLD_DSI_CONNECTOR(psb_output);
+	struct mdfld_dsi_config *dsi_config =
+		mdfld_dsi_get_config(dsi_connector);
 	struct mdfld_dsi_pkg_sender *sender;
 
 	PSB_DEBUG_ENTRY("\n");
@@ -550,7 +441,11 @@ static void mdfld_dsi_connector_destroy(struct drm_connector *connector)
 	drm_sysfs_connector_remove(connector);
 	drm_connector_cleanup(connector);
 
+	mdfld_dsi_dsr_destroy(dsi_config);
+
 	sender = dsi_connector->pkg_sender;
+
+	mdfld_dsi_error_detector_exit(dsi_connector);
 
 	mdfld_dsi_pkg_sender_destroy(sender);
 
@@ -561,9 +456,9 @@ static int mdfld_dsi_connector_get_modes(struct drm_connector *connector)
 {
 	struct psb_intel_output *psb_output = to_psb_intel_output(connector);
 	struct mdfld_dsi_connector *dsi_connector =
-	    MDFLD_DSI_CONNECTOR(psb_output);
+		MDFLD_DSI_CONNECTOR(psb_output);
 	struct mdfld_dsi_config *dsi_config =
-	    mdfld_dsi_get_config(dsi_connector);
+		mdfld_dsi_get_config(dsi_connector);
 	struct drm_display_mode *fixed_mode = dsi_config->fixed_mode;
 	struct drm_display_mode *dup_mode = NULL;
 	struct drm_device *dev = connector->dev;
@@ -576,8 +471,8 @@ static int mdfld_dsi_connector_get_modes(struct drm_connector *connector)
 	connector->display_info.max_hfreq = 200;
 
 	if (fixed_mode) {
-		PSB_DEBUG_ENTRY("fixed_mode %dx%d\n", fixed_mode->hdisplay,
-				fixed_mode->vdisplay);
+		PSB_DEBUG_ENTRY("fixed_mode %dx%d\n",
+				fixed_mode->hdisplay, fixed_mode->vdisplay);
 
 		dup_mode = drm_mode_duplicate(dev, fixed_mode);
 		drm_mode_probed_add(connector, dup_mode);
@@ -590,13 +485,13 @@ static int mdfld_dsi_connector_get_modes(struct drm_connector *connector)
 }
 
 static int mdfld_dsi_connector_mode_valid(struct drm_connector *connector,
-					  struct drm_display_mode *mode)
+		struct drm_display_mode *mode)
 {
 	struct psb_intel_output *psb_output = to_psb_intel_output(connector);
 	struct mdfld_dsi_connector *dsi_connector =
-	    MDFLD_DSI_CONNECTOR(psb_output);
+		MDFLD_DSI_CONNECTOR(psb_output);
 	struct mdfld_dsi_config *dsi_config =
-	    mdfld_dsi_get_config(dsi_connector);
+		mdfld_dsi_get_config(dsi_connector);
 	struct drm_display_mode *fixed_mode = dsi_config->fixed_mode;
 
 	PSB_DEBUG_ENTRY("mode %p, fixed mode %p\n", mode, fixed_mode);
@@ -609,7 +504,7 @@ static int mdfld_dsi_connector_mode_valid(struct drm_connector *connector,
 
 	/**
 	 * FIXME: current DC has no fitting unit, reject any mode setting request
-	 * will figure out a way to do up-scaling(pannel fitting) later.
+	 * will figure out a way to do up-scaling(pannel fitting) later.  
 	 **/
 	if (fixed_mode) {
 		if (mode->hdisplay != fixed_mode->hdisplay)
@@ -626,54 +521,46 @@ static int mdfld_dsi_connector_mode_valid(struct drm_connector *connector,
 
 static void mdfld_dsi_connector_dpms(struct drm_connector *connector, int mode)
 {
-#ifdef CONFIG_PM_RUNTIME
-	struct drm_device *dev = connector->dev;
-	struct drm_psb_private *dev_priv = dev->dev_private;
-	bool panel_on, panel_on2;
-#endif
-	/*first, execute dpms */
+	/*first, execute dpms*/
 	drm_helper_connector_dpms(connector, mode);
 
 #ifdef CONFIG_PM_RUNTIME
-	if (is_panel_vid_or_cmd(dev)) {
-		/*DPI panel */
-		panel_on = dev_priv->dpi_panel_on;
-		panel_on2 = dev_priv->dpi_panel_on2;
-	} else {
-		/*DBI panel */
-		panel_on = dev_priv->dbi_panel_on;
-		panel_on2 = dev_priv->dbi_panel_on2;
-	}
+	struct drm_device *dev = connector->dev;
+	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct mdfld_dsi_config **dsi_configs;
+	bool panel_on = false, panel_on2 = false;
 
-	/*then check all display panels + monitors status */
-	if (!panel_on && !panel_on2
-	    && !(REG_READ(HDMIB_CONTROL) & HDMIB_PORT_EN)) {
-		/*request rpm idle */
+	dsi_configs = dev_priv->dsi_configs;
+
+	if (dsi_configs[0])
+		panel_on = dsi_configs[0]->dsi_hw_context.panel_on;
+	if (dsi_configs[1])
+		panel_on = dsi_configs[1]->dsi_hw_context.panel_on;
+
+	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
+				OSPM_UHB_ONLY_IF_ON))
+		return ;
+
+	/*then check all display panels + monitors status*/
+	if (!panel_on && !panel_on2) {
+		/*request rpm idle*/
 		if (dev_priv->rpm_enabled)
 			pm_request_idle(&dev->pdev->dev);
 	}
 
-	/**
-	 * if rpm wasn't enabled yet, try to allow it
-	 * FIXME: won't enable rpm for DPI since DPI
-	 * CRTC setting is a little messy now.
-	 * Enable it later!
-	 */
-#if 0	/* revist to check if we can enable rpm for DPI */
-	if (!dev_priv->rpm_enabled && !is_panel_vid_or_cmd(dev))
-		ospm_runtime_pm_allow(dev);
-#endif
+	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 #endif
 }
 
-static struct drm_encoder *mdfld_dsi_connector_best_encoder(struct drm_connector
-							    *connector)
+static struct drm_encoder *
+mdfld_dsi_connector_best_encoder(struct drm_connector *connector)
 {
-	struct psb_intel_output *psb_output = to_psb_intel_output(connector);
+	struct psb_intel_output *psb_output =
+		to_psb_intel_output(connector);
 	struct mdfld_dsi_connector *dsi_connector =
-	    MDFLD_DSI_CONNECTOR(psb_output);
+		MDFLD_DSI_CONNECTOR(psb_output);
 	struct mdfld_dsi_config *dsi_config =
-	    mdfld_dsi_get_config(dsi_connector);
+		mdfld_dsi_get_config(dsi_connector);
 	struct mdfld_dsi_encoder *encoder = NULL;
 
 	PSB_DEBUG_ENTRY("config type %d\n", dsi_config->type);
@@ -697,7 +584,7 @@ static struct drm_encoder *mdfld_dsi_connector_best_encoder(struct drm_connector
 
 /*DSI connector funcs*/
 static const struct drm_connector_funcs mdfld_dsi_connector_funcs = {
-	.dpms = /*drm_helper_connector_dpms */ mdfld_dsi_connector_dpms,
+	.dpms = mdfld_dsi_connector_dpms,
 	.save = mdfld_dsi_connector_save,
 	.restore = mdfld_dsi_connector_restore,
 	.detect = mdfld_dsi_connector_detect,
@@ -715,8 +602,7 @@ struct drm_connector_helper_funcs mdfld_dsi_connector_helper_funcs = {
 };
 
 static int mdfld_dsi_get_default_config(struct drm_device *dev,
-					struct mdfld_dsi_config *config,
-					int pipe)
+		struct mdfld_dsi_config *config, int pipe)
 {
 	if (!dev || !config) {
 		DRM_ERROR("Invalid parameters");
@@ -725,26 +611,17 @@ static int mdfld_dsi_get_default_config(struct drm_device *dev,
 
 	config->bpp = 24;
 	config->type = is_panel_vid_or_cmd(dev);
-
-#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
-	/* Gideon: changing lane count to 1 lane for toshiba panel */
-	config->lane_count = 1;
-#else
 	config->lane_count = 2;
 	config->lane_config = MDFLD_DSI_DATA_LANE_2_2;
-#endif				/* CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY */
 
 	config->channel_num = 0;
-	/*NOTE: video mode is ignored when type is MDFLD_DSI_ENCODER_DBI */
-	if (get_panel_type(dev, pipe) == TMD_VID)
-		config->video_mode = MDFLD_DSI_VIDEO_NON_BURST_MODE_SYNC_PULSE;
-	else
-		config->video_mode = MDFLD_DSI_VIDEO_BURST_MODE;
+	config->video_mode = MDFLD_DSI_VIDEO_BURST_MODE;
 
 	return 0;
 }
 
-static int mdfld_dsi_regs_init(struct mdfld_dsi_config *dsi_config, int pipe)
+static int mdfld_dsi_regs_init(struct mdfld_dsi_config *dsi_config,
+		int pipe)
 {
 	struct mdfld_dsi_hw_registers *regs;
 	u32 reg_offset;
@@ -760,6 +637,9 @@ static int mdfld_dsi_regs_init(struct mdfld_dsi_config *dsi_config, int pipe)
 	regs->dpll_reg = MRST_DPLL_A;
 	regs->fp_reg = MRST_FPA0;
 
+	regs->ovaadd_reg = OV_OVADD;
+	regs->ovcadd_reg = OVC_OVADD;
+
 	if (pipe == 0) {
 		regs->dspcntr_reg = DSPACNTR;
 		regs->dspsize_reg = DSPASIZE;
@@ -767,6 +647,7 @@ static int mdfld_dsi_regs_init(struct mdfld_dsi_config *dsi_config, int pipe)
 		regs->dsplinoff_reg = DSPALINOFF;
 		regs->dsppos_reg = DSPAPOS;
 		regs->dspstride_reg = DSPASTRIDE;
+		regs->color_coef_reg = PIPEA_COLOR_COEF0;
 		regs->htotal_reg = HTOTAL_A;
 		regs->hblank_reg = HBLANK_A;
 		regs->hsync_reg = HSYNC_A;
@@ -777,7 +658,10 @@ static int mdfld_dsi_regs_init(struct mdfld_dsi_config *dsi_config, int pipe)
 		regs->pipeconf_reg = PIPEACONF;
 		regs->pipestat_reg = PIPEASTAT;
 		regs->mipi_reg = MIPI;
-
+		regs->palette_reg = PALETTE_A;
+		regs->gamma_red_max_reg = GAMMA_RED_MAX_A;
+		regs->gamma_green_max_reg = GAMMA_GREEN_MAX_A;
+		regs->gamma_blue_max_reg = GAMMA_BLUE_MAX_A;
 		reg_offset = 0;
 	} else if (pipe == 2) {
 		regs->dspcntr_reg = DSPCCNTR;
@@ -786,6 +670,7 @@ static int mdfld_dsi_regs_init(struct mdfld_dsi_config *dsi_config, int pipe)
 		regs->dsplinoff_reg = DSPCLINOFF;
 		regs->dsppos_reg = DSPCPOS;
 		regs->dspstride_reg = DSPCSTRIDE;
+		regs->color_coef_reg = PIPEC_COLOR_COEF0;
 		regs->htotal_reg = HTOTAL_C;
 		regs->hblank_reg = HBLANK_C;
 		regs->hsync_reg = HSYNC_C;
@@ -796,6 +681,10 @@ static int mdfld_dsi_regs_init(struct mdfld_dsi_config *dsi_config, int pipe)
 		regs->pipeconf_reg = PIPECCONF;
 		regs->pipestat_reg = PIPECSTAT;
 		regs->mipi_reg = MIPI_C;
+		regs->palette_reg = PALETTE_C;
+		regs->gamma_red_max_reg = GAMMA_RED_MAX_C;
+		regs->gamma_green_max_reg = GAMMA_GREEN_MAX_C;
+		regs->gamma_blue_max_reg = GAMMA_BLUE_MAX_C;
 
 		reg_offset = MIPIC_REG_OFFSET;
 	} else {
@@ -810,11 +699,12 @@ static int mdfld_dsi_regs_init(struct mdfld_dsi_config *dsi_config, int pipe)
 	regs->hs_tx_timeout_reg = MIPIA_HS_TX_TIMEOUT_REG + reg_offset;
 	regs->lp_rx_timeout_reg = MIPIA_LP_RX_TIMEOUT_REG + reg_offset;
 	regs->turn_around_timeout_reg =
-	    MIPIA_TURN_AROUND_TIMEOUT_REG + reg_offset;
+		MIPIA_TURN_AROUND_TIMEOUT_REG + reg_offset;
 	regs->device_reset_timer_reg =
-	    MIPIA_DEVICE_RESET_TIMER_REG + reg_offset;
+		MIPIA_DEVICE_RESET_TIMER_REG + reg_offset;
 	regs->dpi_resolution_reg = MIPIA_DPI_RESOLUTION_REG + reg_offset;
-	regs->dbi_fifo_throttle_reg = MIPIA_DBI_FIFO_THROTTLE_REG + reg_offset;
+	regs->dbi_fifo_throttle_reg =
+		MIPIA_DBI_FIFO_THROTTLE_REG + reg_offset;
 	regs->hsync_count_reg = MIPIA_HSYNC_COUNT_REG + reg_offset;
 	regs->hbp_count_reg = MIPIA_HBP_COUNT_REG + reg_offset;
 	regs->hfp_count_reg = MIPIA_HFP_COUNT_REG + reg_offset;
@@ -823,13 +713,14 @@ static int mdfld_dsi_regs_init(struct mdfld_dsi_config *dsi_config, int pipe)
 	regs->vbp_count_reg = MIPIA_VBP_COUNT_REG + reg_offset;
 	regs->vfp_count_reg = MIPIA_VFP_COUNT_REG + reg_offset;
 	regs->high_low_switch_count_reg =
-	    MIPIA_HIGH_LOW_SWITCH_COUNT_REG + reg_offset;
+		MIPIA_HIGH_LOW_SWITCH_COUNT_REG + reg_offset;
 	regs->dpi_control_reg = MIPIA_DPI_CONTROL_REG + reg_offset;
 	regs->dpi_data_reg = MIPIA_DPI_DATA_REG + reg_offset;
 	regs->init_count_reg = MIPIA_INIT_COUNT_REG + reg_offset;
 	regs->max_return_pack_size_reg =
-	    MIPIA_MAX_RETURN_PACK_SIZE_REG + reg_offset;
-	regs->video_mode_format_reg = MIPIA_VIDEO_MODE_FORMAT_REG + reg_offset;
+		MIPIA_MAX_RETURN_PACK_SIZE_REG + reg_offset;
+	regs->video_mode_format_reg =
+		MIPIA_VIDEO_MODE_FORMAT_REG + reg_offset;
 	regs->eot_disable_reg = MIPIA_EOT_DISABLE_REG + reg_offset;
 	regs->lp_byteclk_reg = MIPIA_LP_BYTECLK_REG + reg_offset;
 	regs->lp_gen_data_reg = MIPIA_LP_GEN_DATA_REG + reg_offset;
@@ -837,11 +728,12 @@ static int mdfld_dsi_regs_init(struct mdfld_dsi_config *dsi_config, int pipe)
 	regs->lp_gen_ctrl_reg = MIPIA_LP_GEN_CTRL_REG + reg_offset;
 	regs->hs_gen_ctrl_reg = MIPIA_HS_GEN_CTRL_REG + reg_offset;
 	regs->gen_fifo_stat_reg = MIPIA_GEN_FIFO_STAT_REG + reg_offset;
-	regs->hs_ls_dbi_enable_reg = MIPIA_HS_LS_DBI_ENABLE_REG + reg_offset;
+	regs->hs_ls_dbi_enable_reg =
+		MIPIA_HS_LS_DBI_ENABLE_REG + reg_offset;
 	regs->dphy_param_reg = MIPIA_DPHY_PARAM_REG + reg_offset;
 	regs->dbi_bw_ctrl_reg = MIPIA_DBI_BW_CTRL_REG + reg_offset;
 	regs->clk_lane_switch_time_cnt_reg =
-	    MIPIA_CLK_LANE_SWITCH_TIME_CNT_REG + reg_offset;
+		MIPIA_CLK_LANE_SWITCH_TIME_CNT_REG + reg_offset;
 
 	regs->mipi_control_reg = MIPIA_CONTROL_REG + reg_offset;
 	regs->mipi_data_addr_reg = MIPIA_DATA_ADD_REG + reg_offset;
@@ -852,18 +744,19 @@ static int mdfld_dsi_regs_init(struct mdfld_dsi_config *dsi_config, int pipe)
 }
 
 /*
- * Returns the panel fixed mode from configuration.
+ * Returns the panel fixed mode from configuration. 
  */
-struct drm_display_mode *mdfld_dsi_get_configuration_mode(struct
-							  mdfld_dsi_config
-							  *dsi_config, int pipe)
+struct drm_display_mode *
+mdfld_dsi_get_configuration_mode(struct mdfld_dsi_config *dsi_config, int pipe)
 {
 	struct drm_device *dev = dsi_config->dev;
 	struct drm_display_mode *mode;
 	struct drm_psb_private *dev_priv =
-	    (struct drm_psb_private *)dev->dev_private;
+		(struct drm_psb_private *) dev->dev_private;
 	struct mrst_timing_info *ti = &dev_priv->gct_data.DTD;
 	bool use_gct = false;
+	if (IS_CTP(dev))
+		use_gct = true;
 
 	PSB_DEBUG_ENTRY("\n");
 
@@ -872,25 +765,26 @@ struct drm_display_mode *mdfld_dsi_get_configuration_mode(struct
 		return NULL;
 
 	if (use_gct) {
-		PSB_DEBUG_ENTRY("gct find MIPI panel.\n");
+		PSB_DEBUG_ENTRY("gct find MIPI panel. \n");
 
 		mode->hdisplay = (ti->hactive_hi << 8) | ti->hactive_lo;
 		mode->vdisplay = (ti->vactive_hi << 8) | ti->vactive_lo;
 		mode->hsync_start = mode->hdisplay +
-		    ((ti->hsync_offset_hi << 8) | ti->hsync_offset_lo);
+				    ((ti->hsync_offset_hi << 8) |
+				     ti->hsync_offset_lo);
 		mode->hsync_end = mode->hsync_start +
-		    ((ti->hsync_pulse_width_hi << 8) |
-		     ti->hsync_pulse_width_lo);
+				  ((ti->hsync_pulse_width_hi << 8) |
+				   ti->hsync_pulse_width_lo);
 		mode->htotal = mode->hdisplay + ((ti->hblank_hi << 8) |
-						 ti->hblank_lo);
-		mode->vsync_start =
-		    mode->vdisplay + ((ti->vsync_offset_hi << 8) |
-				      ti->vsync_offset_lo);
-		mode->vsync_end =
-		    mode->vsync_start + ((ti->vsync_pulse_width_hi << 8) |
-					 ti->vsync_pulse_width_lo);
+				ti->hblank_lo);
+		mode->vsync_start = mode->vdisplay +
+			((ti->vsync_offset_hi << 8) |
+			 ti->vsync_offset_lo);
+		mode->vsync_end = mode->vsync_start +
+			((ti->vsync_pulse_width_hi << 8) |
+			 ti->vsync_pulse_width_lo);
 		mode->vtotal = mode->vdisplay +
-		    ((ti->vblank_hi << 8) | ti->vblank_lo);
+			       ((ti->vblank_hi << 8) | ti->vblank_lo);
 		mode->clock = ti->pixel_clock * 10;
 
 		PSB_DEBUG_ENTRY("hdisplay is %d\n", mode->hdisplay);
@@ -904,27 +798,15 @@ struct drm_display_mode *mdfld_dsi_get_configuration_mode(struct
 		PSB_DEBUG_ENTRY("clock is %d\n", mode->clock);
 	} else {
 		if (dsi_config->type == MDFLD_DSI_ENCODER_DPI) {
-			if (get_panel_type(dev, pipe) == TMD_VID) {
-				mode->hdisplay = 480;
-				mode->vdisplay = 854;
-				mode->hsync_start = 487;
-				mode->hsync_end = 490;
-				mode->htotal = 499;
-				mode->vsync_start = 861;
-				mode->vsync_end = 865;
-				mode->vtotal = 873;
-				mode->clock = 33264;
-			} else {
-				mode->hdisplay = 864;
-				mode->vdisplay = 480;
-				mode->hsync_start = 873;
-				mode->hsync_end = 876;
-				mode->htotal = 887;
-				mode->vsync_start = 487;
-				mode->vsync_end = 490;
-				mode->vtotal = 499;
-				mode->clock = 33264;
-			}
+			mode->hdisplay = 864;
+			mode->vdisplay = 480;
+			mode->hsync_start = 873;
+			mode->hsync_end = 876;
+			mode->htotal = 887;
+			mode->vsync_start = 487;
+			mode->vsync_end = 490;
+			mode->vtotal = 499;
+			mode->clock = 33264;
 		} else if (dsi_config->type == MDFLD_DSI_ENCODER_DBI) {
 			mode->hdisplay = 864;
 			mode->vdisplay = 480;
@@ -935,7 +817,6 @@ struct drm_display_mode *mdfld_dsi_get_configuration_mode(struct
 			mode->vsync_end = 494;
 			mode->vtotal = 486;
 			mode->clock = 25777;
-
 		}
 	}
 
@@ -947,75 +828,19 @@ struct drm_display_mode *mdfld_dsi_get_configuration_mode(struct
 	return mode;
 }
 
-int mdfld_dsi_panel_reset(struct mdfld_dsi_config *dsi_config, int reset_from)
-{
-	unsigned gpio;
-	int ret = 0;
-	int pipe = 0;
-	static bool b_gpio_required[PSB_NUM_PIPE] = { 0 };
-	pipe = dsi_config->pipe;
-	switch (pipe) {
-	case 0:
-		gpio = 128;
-		break;
-	case 2:
-		gpio = 34;
-		break;
-	default:
-		DRM_ERROR("Invalid output\n");
-		return -EINVAL;
-	}
-#if 1				/* FIXME MRFLD */
-	return ret;
-#endif				/* FIXME MRFLD */
-	if (reset_from == RESET_FROM_BOOT_UP) {
-		b_gpio_required[pipe] = false;
-		ret = gpio_request(gpio, "gfx");
-		if (ret) {
-			DRM_ERROR("gpio_rqueset failed\n");
-			goto gpio_error;
-		}
-		b_gpio_required[pipe] = true;
-
-	}
-
-	if (b_gpio_required[pipe]) {
-		ret = gpio_direction_output(gpio, 1);
-		if (ret) {
-			DRM_ERROR("gpio_direction_output failed\n");
-			goto gpio_error;
-		}
-
-		gpio_get_value(128);
-	} else {
-		PSB_DEBUG_ENTRY("try to reset panel before gpio required.!!!");
-	}
-
- fun_exit:
-	if (b_gpio_required[pipe])
-		PSB_DEBUG_ENTRY("panel reset successfull.");
-	return ret;
- gpio_error:
-	gpio_free(gpio);
-	PSB_DEBUG_ENTRY("Panel reset unsuccessfull!!!\n");
-
-	return ret;
-}
-
 /*
  * MIPI output init
  * @dev drm device
  * @pipe pipe number. 0 or 2
- * @config
- *
+ * @config 
+ * 
  * Do the initialization of a MIPI output, including create DRM mode objects
- * initialization of DSI output on @pipe
+ * initialization of DSI output on @pipe 
  */
 int mdfld_dsi_output_init(struct drm_device *dev,
-			  int pipe,
-			  struct mdfld_dsi_config *config,
-			  struct panel_funcs *p_cmd_funcs,
-			  struct panel_funcs *p_vid_funcs)
+		int pipe,
+		struct mdfld_dsi_config *config,
+		struct panel_funcs *p_funcs)
 {
 	struct mdfld_dsi_config *dsi_config;
 	struct mdfld_dsi_connector *dsi_connector;
@@ -1033,21 +858,21 @@ int mdfld_dsi_output_init(struct drm_device *dev,
 		return -EIO;
 	}
 
-	/*create a new connetor */
+	/*create a new connetor*/
 	dsi_connector = kzalloc(sizeof(struct mdfld_dsi_connector), GFP_KERNEL);
 	if (!dsi_connector) {
 		DRM_ERROR("No memory");
 		return -ENOMEM;
 	}
 
-	dsi_connector->pipe = pipe;
+	dsi_connector->pipe =  pipe;
 
-	/*set DSI config */
+	/*set DSI config*/
 	if (config)
 		dsi_config = config;
 	else {
-		dsi_config =
-		    kzalloc(sizeof(struct mdfld_dsi_config), GFP_KERNEL);
+		dsi_config = kzalloc(sizeof(struct mdfld_dsi_config),
+				GFP_KERNEL);
 		if (!dsi_config) {
 			DRM_ERROR("cannot allocate memory for DSI config\n");
 			goto dsi_init_err0;
@@ -1056,11 +881,11 @@ int mdfld_dsi_output_init(struct drm_device *dev,
 		mdfld_dsi_get_default_config(dev, dsi_config, pipe);
 	}
 
-	/*init DSI regs */
+	/*init DSI regs*/
 	mdfld_dsi_regs_init(dsi_config, pipe);
 
-	/*init DSI HW context lock */
-	spin_lock_init(&dsi_config->context_lock);
+	/*init DSI HW context lock*/
+	mutex_init(&dsi_config->context_lock);
 
 	dsi_connector->private = dsi_config;
 
@@ -1068,15 +893,13 @@ int mdfld_dsi_output_init(struct drm_device *dev,
 	dsi_config->changed = 1;
 	dsi_config->dev = dev;
 
-	/*init fixed mode basing on DSI config type */
+	/*init fixed mode basing on DSI config type*/
 	if (dsi_config->type == MDFLD_DSI_ENCODER_DBI) {
-		dsi_config->fixed_mode = p_cmd_funcs->get_config_mode(dev);
-		if (p_cmd_funcs->get_panel_info(dev, pipe, &dsi_panel_info))
-			goto dsi_init_err0;
+		dsi_config->fixed_mode = p_funcs->get_config_mode();
+		p_funcs->get_panel_info(pipe, &dsi_panel_info);
 	} else if (dsi_config->type == MDFLD_DSI_ENCODER_DPI) {
-		dsi_config->fixed_mode = p_vid_funcs->get_config_mode(dev);
-		if (p_vid_funcs->get_panel_info(dev, pipe, &dsi_panel_info))
-			goto dsi_init_err0;
+		dsi_config->fixed_mode = p_funcs->get_config_mode();
+		p_funcs->get_panel_info(pipe, &dsi_panel_info);
 	}
 
 	width_mm = dsi_panel_info.width_mm;
@@ -1090,28 +913,24 @@ int mdfld_dsi_output_init(struct drm_device *dev,
 		goto dsi_init_err0;
 	}
 
-	if (pipe && dev_priv->dsi_configs[0]) {
-		dsi_config->dvr_ic_inited = 0;
+	if (pipe && dev_priv->dsi_configs[0])
 		dev_priv->dsi_configs[1] = dsi_config;
-	} else if (pipe == 0) {
-		if (get_panel_type(dev, pipe) == TMD_6X10_VID)
-			dsi_config->dvr_ic_inited = 0;
-		else
-			dsi_config->dvr_ic_inited = 1;
+	else if (pipe == 0)
 		dev_priv->dsi_configs[0] = dsi_config;
-	} else {
+	else {
 		DRM_ERROR("Trying to init MIPI1 before MIPI0\n");
 		goto dsi_init_err0;
 	}
 
-	/*init drm connector object */
+	/*init drm connector object*/
 	psb_output = &dsi_connector->base;
 
 	psb_output->type = (pipe == 0) ? INTEL_OUTPUT_MIPI : INTEL_OUTPUT_MIPI2;
 
 	connector = &psb_output->base;
 	drm_connector_init(dev, connector,
-			   &mdfld_dsi_connector_funcs, DRM_MODE_CONNECTOR_MIPI);
+			&mdfld_dsi_connector_funcs,
+			DRM_MODE_CONNECTOR_MIPI);
 
 	drm_connector_helper_add(connector, &mdfld_dsi_connector_helper_funcs);
 
@@ -1121,28 +940,34 @@ int mdfld_dsi_output_init(struct drm_device *dev,
 	connector->interlace_allowed = false;
 	connector->doublescan_allowed = false;
 
-	/*attach properties */
+	/*attach properties*/
 	drm_connector_attach_property(connector,
-				      dev->mode_config.scaling_mode_property,
-				      DRM_MODE_SCALE_FULLSCREEN);
+			dev->mode_config.scaling_mode_property,
+			DRM_MODE_SCALE_FULLSCREEN);
 
 	drm_connector_attach_property(connector,
-				      dev_priv->backlight_property,
-				      MDFLD_DSI_BRIGHTNESS_MAX_LEVEL);
+			dev_priv->backlight_property,
+			MDFLD_DSI_BRIGHTNESS_MAX_LEVEL);
 
-	/*init DSI package sender on this output */
+	/*init DSI package sender on this output*/
 	if (mdfld_dsi_pkg_sender_init(dsi_connector, pipe)) {
 		DRM_ERROR("Package Sender initialization failed on pipe %d\n",
-			  pipe);
+				pipe);
 		goto dsi_init_err0;
 	}
 
-	/*create DBI & DPI encoders */
-	if (p_cmd_funcs) {
-		encoder = mdfld_dsi_dbi_init(dev, dsi_connector, p_cmd_funcs);
+	/*init panel error detector*/
+	if (mdfld_dsi_error_detector_init(dev, dsi_connector)) {
+		DRM_ERROR("Failed to init dsi_error detector");
+		goto dsi_init_err1;
+	}
+
+	/*create DBI & DPI encoders*/
+	if (dsi_config->type == MDFLD_DSI_ENCODER_DBI) {
+		encoder = mdfld_dsi_dbi_init(dev, dsi_connector, p_funcs);
 		if (!encoder) {
 			DRM_ERROR("Create DBI encoder failed\n");
-			goto dsi_init_err1;
+			goto dsi_init_err2;
 		}
 		encoder->private = dsi_config;
 		dsi_config->encoders[MDFLD_DSI_ENCODER_DBI] = encoder;
@@ -1152,13 +977,11 @@ int mdfld_dsi_output_init(struct drm_device *dev,
 
 		if (pipe == 0)
 			dev_priv->encoder0 = encoder;
-	}
-
-	if (p_vid_funcs) {
-		encoder = mdfld_dsi_dpi_init(dev, dsi_connector, p_vid_funcs);
+	} else if (dsi_config->type == MDFLD_DSI_ENCODER_DPI) {
+		encoder = mdfld_dsi_dpi_init(dev, dsi_connector, p_funcs);
 		if (!encoder) {
 			DRM_ERROR("Create DPI encoder failed\n");
-			goto dsi_init_err1;
+			goto dsi_init_err2;
 		}
 		encoder->private = dsi_config;
 		dsi_config->encoders[MDFLD_DSI_ENCODER_DPI] = encoder;
@@ -1172,34 +995,37 @@ int mdfld_dsi_output_init(struct drm_device *dev,
 
 	drm_sysfs_connector_add(connector);
 
-	/* SH START DPST */
-	if (dev_priv->dpst_lvds_connector == 0)
-		dev_priv->dpst_lvds_connector = connector;
+	/*init dsr*/
+	if (mdfld_dsi_dsr_init(dsi_config))
+		DRM_INFO("%s: Failed to initialize DSR\n", __func__);
 
 	PSB_DEBUG_ENTRY("successfully\n");
 	return 0;
 
-	/*TODO: add code to destroy outputs on error */
- dsi_init_err1:
-	/*destroy sender */
+	/*TODO: add code to destroy outputs on error*/
+dsi_init_err2:
+	mdfld_dsi_error_detector_exit(dsi_connector);
+
+dsi_init_err1:
+	/*destroy sender*/
 	mdfld_dsi_pkg_sender_destroy(dsi_connector->pkg_sender);
 
 	drm_connector_cleanup(connector);
 
-	/* if (dsi_config->fixed_mode) */
-	kfree(dsi_config->fixed_mode);
+	if (dsi_config->fixed_mode)
+		kfree(dsi_config->fixed_mode);
 
-	/* if (dsi_config) { */
-	kfree(dsi_config);
+	if (dsi_config) {
+		kfree(dsi_config);
+		if (pipe)
+			dev_priv->dsi_configs[1] = NULL;
+		else
+			dev_priv->dsi_configs[0] = NULL;
+	}
 
-	if (pipe)
-		dev_priv->dsi_configs[1] = NULL;
-	else
-		dev_priv->dsi_configs[0] = NULL;
-
- dsi_init_err0:
-	/* if (dsi_connector) */
-	kfree(dsi_connector);
+dsi_init_err0:
+	if (dsi_connector)
+		kfree(dsi_connector);
 
 	return -EIO;
 }

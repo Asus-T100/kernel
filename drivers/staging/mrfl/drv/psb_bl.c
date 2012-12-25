@@ -13,7 +13,7 @@
  * more details.
  *
  * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
+ * this program; if not, write to the Free Software Foundation, Inc., 
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
  *
  * Authors: Eric Knopp
@@ -25,7 +25,6 @@
 #include "psb_drv.h"
 #include "psb_intel_reg.h"
 #include "psb_intel_drv.h"
-#include "psb_intel_bios.h"
 #include "psb_powermgmt.h"
 #include "mdfld_dsi_dbi.h"
 
@@ -71,9 +70,7 @@ int psb_set_brightness(struct backlight_device *bd)
 		level = lastFailedBrightness;
 
 	DRM_DEBUG_DRIVER("backlight level set to %d\n", level);
-
-	/* DIV5-MM-DISPLAY-NC-LCM_INIT-00 */
-	PSB_DEBUG_ENTRY("[DISPLAY] %s: level is %d\n", __func__, level);
+	PSB_DEBUG_ENTRY("[DISPLAY] %s: level is %d\n", __func__, level);	//DIV5-MM-DISPLAY-NC-LCM_INIT-00
 
 	/* Perform value bounds checking */
 	if (level < BRIGHTNESS_MIN_LEVEL)
@@ -81,22 +78,16 @@ int psb_set_brightness(struct backlight_device *bd)
 
 	if (!gbdispstatus) {
 		PSB_DEBUG_ENTRY
-			("[DISPLAY]: already OFF ignoring brighness request\n");
-
-		/*
-		 * there may exist concurrent racing, the gbdispstatus
-		 * may haven't been set in gfx_late_resume yet. record here,
-		 * and we may call brightness setting at the end of
-		 * gfx_late_resume
-		*/
+		    ("[DISPLAY]: already OFF ignoring brighness request \n");
+		//! there may exist concurrent racing, the gbdispstatus may haven't been set in gfx_late_resume yet.
+		//! record here, and we may call brightness setting at the end of gfx_late_resume
 		lastFailedBrightness = level;
 		return 0;
 	}
 
 	lastFailedBrightness = -1;
 
-	if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
-				      OSPM_UHB_ONLY_IF_ON)) {
+	if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, OSPM_UHB_ONLY_IF_ON)) {
 		if (IS_FLDS(dev)) {
 			u32 adjusted_level = 0;
 
@@ -113,8 +104,9 @@ int psb_set_brightness(struct backlight_device *bd)
 				mdfld_dsi_dbi_exit_dsr(dev,
 						       MDFLD_DSR_MIPI_CONTROL,
 						       0, 0);
-				PSB_DEBUG_ENTRY("Out of DSR before set "
-					"brightness to %d.\n", adjusted_level);
+				PSB_DEBUG_ENTRY
+				    ("Out of DSR before set brightness to %d.\n",
+				     adjusted_level);
 			}
 #endif
 
@@ -131,7 +123,7 @@ int psb_set_brightness(struct backlight_device *bd)
 
 int psb_get_brightness(struct backlight_device *bd)
 {
-	DRM_DEBUG_DRIVER("brightness = 0x%x\n", psb_brightness);
+	DRM_DEBUG_DRIVER("brightness = 0x%x \n", psb_brightness);
 
 	/* return locally cached var instead of HW read (due to DPST etc.) */
 	return psb_brightness;
@@ -153,43 +145,9 @@ static int device_backlight_init(struct drm_device *dev)
 	struct drm_psb_private *dev_priv =
 	    (struct drm_psb_private *)dev->dev_private;
 
-	if (IS_FLDS(dev)) {
-		dev_priv->blc_adj1 = BLC_ADJUSTMENT_MAX;
-		dev_priv->blc_adj2 = BLC_ADJUSTMENT_MAX;
-		return 0;
-	}
+	dev_priv->blc_adj1 = BLC_ADJUSTMENT_MAX;
+	dev_priv->blc_adj2 = BLC_ADJUSTMENT_MAX;
 
-	/* get bl_max_freq and pol from dev_priv */
-	if (!dev_priv->lvds_bl) {
-		DRM_ERROR("Has no valid LVDS backlight info\n");
-		return 1;
-	}
-	bl_max_freq = dev_priv->lvds_bl->freq;
-	blc_pol = dev_priv->lvds_bl->pol;
-	blc_pwm_precision_factor = PSB_BLC_PWM_PRECISION_FACTOR;
-	blc_brightnesscmd = dev_priv->lvds_bl->brightnesscmd;
-	blc_type = dev_priv->lvds_bl->type;
-
-	CoreClock = dev_priv->core_freq;
-
-	value = (CoreClock * MHz) / BLC_PWM_FREQ_CALC_CONSTANT;
-	value *= blc_pwm_precision_factor;
-	value /= bl_max_freq;
-	value /= blc_pwm_precision_factor;
-
-	if (ospm_power_using_hw_begin
-	    (OSPM_DISPLAY_ISLAND, OSPM_UHB_ONLY_IF_ON)) {
-		if (value > (unsigned long long)PSB_BLC_MAX_PWM_REG_FREQ ||
-		    value < (unsigned long long)PSB_BLC_MIN_PWM_REG_FREQ)
-			return 2;
-		else {
-			value &= PSB_BACKLIGHT_PWM_POLARITY_BIT_CLEAR;
-			REG_WRITE(BLC_PWM_CTL,
-				  (value << PSB_BACKLIGHT_PWM_CTL_SHIFT) |
-				  (value));
-		}
-		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-	}
 	return 0;
 }
 
@@ -197,20 +155,20 @@ int psb_backlight_init(struct drm_device *dev)
 {
 #ifdef CONFIG_BACKLIGHT_CLASS_DEVICE
 	int ret = 0;
-
 	struct backlight_properties props;
+
 	memset(&props, 0, sizeof(struct backlight_properties));
+	props.type = BACKLIGHT_PLATFORM;
 	props.max_brightness = BRIGHTNESS_MAX_LEVEL;
+	props.type = BACKLIGHT_RAW;
 
 	psb_backlight_device =
 	    backlight_device_register("psb-bl", NULL, (void *)dev, &psb_ops,
 				      &props);
-
 	if (IS_ERR(psb_backlight_device))
 		return PTR_ERR(psb_backlight_device);
 
-	ret = device_backlight_init(dev);
-	if (ret != 0)
+	if ((ret = device_backlight_init(dev)) != 0)
 		return ret;
 
 	psb_backlight_device->props.brightness = BRIGHTNESS_MAX_LEVEL;

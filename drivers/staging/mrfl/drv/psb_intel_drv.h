@@ -11,7 +11,7 @@
  * more details.
  *
  * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
+ * this program; if not, write to the Free Software Foundation, Inc., 
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
  *
  */
@@ -20,7 +20,7 @@
 #define __INTEL_DRV_H__
 
 #include <linux/i2c.h>
-/* #include <linux/i2c-id.h> */
+//#include <linux/i2c-id.h>
 #include <linux/i2c-algo-bit.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_crtc_helper.h>
@@ -94,7 +94,7 @@ enum s3d_structure {
 };
 
 /**
- * These define the S3D format in bit
+ * These define the S3D format in bit 
 */
 #define S3D_FRAME_PACKING_BIT (1 << S3D_FRAME_PACKING)
 #define S3D_FIELD_ALTERNATIVE_BIT (1 << S3D_FIELD_ALTERNATIVE)
@@ -135,13 +135,13 @@ struct psb_intel_mode_device {
 	/*
 	 * Abstracted memory manager operations
 	 */
-	void *(*bo_from_handle) (struct drm_device *dev,
-				 struct drm_file *file_priv,
+	void *(*bo_from_handle) (struct drm_device * dev,
+				 struct drm_file * file_priv,
 				 unsigned int handle);
-	 size_t(*bo_size) (struct drm_device *dev, void *bo);
-	 size_t(*bo_offset) (struct drm_device *dev, void *bo);
-	int (*bo_pin_for_scanout) (struct drm_device *dev, void *bo);
-	int (*bo_unpin_for_scanout) (struct drm_device *dev, void *bo);
+	 size_t(*bo_size) (struct drm_device * dev, void *bo);
+	 size_t(*bo_offset) (struct drm_device * dev, void *bo);
+	int (*bo_pin_for_scanout) (struct drm_device * dev, void *bo);
+	int (*bo_unpin_for_scanout) (struct drm_device * dev, void *bo);
 
 	/*
 	 * Cursor
@@ -228,7 +228,7 @@ struct psb_intel_crtc {
 
 	/*crtc mode setting flags */
 	u32 mode_flags;
-
+	u32 scaling_type;
 /*FIXME: Workaround to avoid MRST block.*/
 #ifndef CONFIG_X86_MRST
 	/* Saved Crtc HW states */
@@ -249,30 +249,10 @@ void mrst_init_TPO_MIPI(struct drm_device *dev);
 void aava_koski_dsi_init(struct drm_device *dev,
 			 struct psb_intel_mode_device *mode_dev);
 
-struct psb_intel_i2c_chan *psb_intel_i2c_create(struct drm_device *dev,
-						const u32 reg,
-						const char *name);
-void psb_intel_i2c_destroy(struct psb_intel_i2c_chan *chan);
-int psb_intel_ddc_get_modes(struct psb_intel_output *psb_intel_output);
-extern bool psb_intel_ddc_probe(struct psb_intel_output *psb_intel_output);
-
 extern void psb_intel_crtc_init(struct drm_device *dev, int pipe,
 				struct psb_intel_mode_device *mode_dev);
 extern void psb_intel_crt_init(struct drm_device *dev);
-extern void psb_intel_sdvo_init(struct drm_device *dev, int output_device);
-extern void psb_intel_dvo_init(struct drm_device *dev);
-extern void psb_intel_tv_init(struct drm_device *dev);
-extern void psb_intel_lvds_set_brightness(struct drm_device *dev, int level);
-extern void mrst_lvds_init(struct drm_device *dev,
-			   struct psb_intel_mode_device *mode_dev);
 extern void mrst_wait_for_INTR_PKT_SENT(struct drm_device *dev);
-extern void mrst_dsi_init(struct drm_device *dev,
-			  struct psb_intel_mode_device *mode_dev);
-extern void mid_dsi_init(struct drm_device *dev,
-			 struct psb_intel_mode_device *mode_dev, int dsi_num);
-extern void mdfld_hdmi_init(struct drm_device *dev,
-			    struct psb_intel_mode_device *mode_dev);
-extern void mdfld_wld_init(struct drm_device *dev);
 
 extern void psb_intel_crtc_load_lut(struct drm_crtc *crtc);
 extern void psb_intel_encoder_prepare(struct drm_encoder *encoder);
@@ -286,32 +266,13 @@ extern int psb_intel_get_pipe_from_crtc_id(struct drm_device *dev, void *data,
 					   struct drm_file *file_priv);
 extern struct drm_crtc *psb_intel_get_crtc_from_pipe(struct drm_device *dev,
 						     int pipe);
-extern struct drm_connector *psb_intel_sdvo_find(struct drm_device *dev,
-						 int sdvoB);
-extern int psb_intel_sdvo_supports_hotplug(struct drm_connector *connector);
-extern void psb_intel_sdvo_set_hotplug(struct drm_connector *connector,
-				       int enable);
-extern int intelfb_probe(struct drm_device *dev);
-extern int intelfb_remove(struct drm_device *dev, struct drm_framebuffer *fb);
 extern struct drm_framebuffer *psb_intel_framebuffer_create(struct drm_device
 							    *dev, struct
 							    drm_mode_fb_cmd
 							    *mode_cmd,
 							    void *mm_private);
-extern bool psb_intel_lvds_mode_fixup(struct drm_encoder *encoder,
-				      struct drm_display_mode *mode,
-				      struct drm_display_mode *adjusted_mode);
-extern int psb_intel_lvds_mode_valid(struct drm_connector *connector,
-				     struct drm_display_mode *mode);
-extern int psb_intel_lvds_set_property(struct drm_connector *connector,
-				       struct drm_property *property,
-				       uint64_t value);
-extern void psb_intel_lvds_destroy(struct drm_connector *connector);
-extern const struct drm_encoder_funcs psb_intel_lvds_enc_funcs;
 extern void mdfld_disable_crtc(struct drm_device *dev, int pipe);
 
-extern void mdfld_dbi_update_fb(struct drm_device *dev, int pipe);
-extern void mdfld_dbi_enter_dsr(struct drm_device *dev);
 extern void mdfld_dbi_update_panel(struct drm_device *dev, int pipe);
 extern void mdfld_dsi_brightness_control(struct drm_device *dev, int pipe,
 					 int level);
@@ -325,54 +286,44 @@ extern void mdfldWaitForPipeEnable(struct drm_device *dev, int pipe);
 extern uint8_t blc_pol;
 extern uint8_t blc_freq;
 
-extern void mrfld_setup_pll(struct drm_device *dev,
-				int pipe, int clk);
-extern int mrfld_s3d_flip_surf_addr(struct drm_device *dev,
-				int pipe,
-				struct mrfld_s3d_flip *ps3d_flip);
-extern int mrfld_s3d_to_line_interleave_half(struct drm_device *dev,
-					int pipe,
-					struct mrfld_s3d_flip *ps3d_flip);
-extern int mrfld_s3d_from_line_interleave_half(struct drm_device *dev,
-					int pipe, struct mrfld_s3d_flip *ps3d_flip);
-extern int mrfld_s3d_to_line_interleave(struct drm_device *dev,
-					int pipe, struct mrfld_s3d_flip *ps3d_flip);
-extern int mrfld_s3d_from_line_interleave(struct drm_device *dev,
-					int pipe, struct mrfld_s3d_flip *ps3d_flip);
-extern int mrfld_s3d_to_frame_packing(struct drm_device *dev,
-				int pipe, struct mrfld_s3d_flip *ps3d_flip);
-extern int mrfld_s3d_from_frame_packing(struct drm_device *dev,
-					int pipe,
-					struct mrfld_s3d_flip *ps3d_flip);
-extern int mrfld_s3d_to_top_and_bottom(struct drm_device *dev,
-					int pipe,
-					struct mrfld_s3d_flip *ps3d_flip);
-extern int mrfld_s3d_from_top_and_bottom(struct drm_device *dev,
-					int pipe,
-					struct mrfld_s3d_flip *ps3d_flip);
-extern int mrfld_s3d_to_full_side_by_side(struct drm_device *dev,
-					int pipe,
-					struct mrfld_s3d_flip *ps3d_flip);
-extern int mrfld_s3d_from_full_side_by_side(struct drm_device *dev,
-					int pipe,
-					struct mrfld_s3d_flip *ps3d_flip);
-extern int mrfld_s3d_to_half_side_by_side(struct drm_device *dev,
-					int pipe,
-					struct mrfld_s3d_flip *ps3d_flip);
-extern int mrfld_s3d_from_half_side_by_side(struct drm_device *dev,
-					int pipe,
-					struct mrfld_s3d_flip *ps3d_flip);
+extern void mrfld_setup_pll(struct drm_device *dev, int pipe, int clk);
+extern int mrfld_s3d_flip_surf_addr(struct drm_device *dev, int pipe, struct
+				    mrfld_s3d_flip *ps3d_flip);
+extern int mrfld_s3d_to_line_interleave_half(struct drm_device *dev, int pipe, struct
+					     mrfld_s3d_flip *ps3d_flip);
+extern int mrfld_s3d_from_line_interleave_half(struct drm_device *dev, int pipe, struct
+					       mrfld_s3d_flip *ps3d_flip);
+extern int mrfld_s3d_to_line_interleave(struct drm_device *dev, int pipe, struct
+					mrfld_s3d_flip *ps3d_flip);
+extern int mrfld_s3d_from_line_interleave(struct drm_device *dev, int pipe, struct
+					  mrfld_s3d_flip *ps3d_flip);
+extern int mrfld_s3d_to_frame_packing(struct drm_device *dev, int pipe, struct
+				      mrfld_s3d_flip *ps3d_flip);
+extern int mrfld_s3d_from_frame_packing(struct drm_device *dev, int pipe, struct
+					mrfld_s3d_flip *ps3d_flip);
+extern int mrfld_s3d_to_top_and_bottom(struct drm_device *dev, int pipe, struct
+				       mrfld_s3d_flip *ps3d_flip);
+extern int mrfld_s3d_from_top_and_bottom(struct drm_device *dev, int pipe, struct
+					 mrfld_s3d_flip *ps3d_flip);
+extern int mrfld_s3d_to_full_side_by_side(struct drm_device *dev, int pipe, struct
+					  mrfld_s3d_flip *ps3d_flip);
+extern int mrfld_s3d_from_full_side_by_side(struct drm_device *dev, int pipe, struct
+					    mrfld_s3d_flip *ps3d_flip);
+extern int mrfld_s3d_to_half_side_by_side(struct drm_device *dev, int pipe, struct
+					  mrfld_s3d_flip *ps3d_flip);
+extern int mrfld_s3d_from_half_side_by_side(struct drm_device *dev, int pipe, struct
+					    mrfld_s3d_flip *ps3d_flip);
 extern int mrfld_s3d_to_pixel_interleaving_full(struct drm_device *dev,
-						int pipe,
-						struct mrfld_s3d_flip *ps3d_flip);
+						int pipe, struct
+						mrfld_s3d_flip *ps3d_flip);
 extern int mrfld_s3d_from_pixel_interleaving_full(struct drm_device *dev,
-						int pipe,
-						struct mrfld_s3d_flip *ps3d_flip);
+						  int pipe, struct
+						  mrfld_s3d_flip *ps3d_flip);
 extern int mrfld_s3d_to_pixel_interleaving_half(struct drm_device *dev,
-						int pipe,
-						struct mrfld_s3d_flip *ps3d_flip);
+						int pipe, struct
+						mrfld_s3d_flip *ps3d_flip);
 extern int mrfld_s3d_from_pixel_interleaving_half(struct drm_device *dev,
-						int pipe,
-						struct mrfld_s3d_flip *ps3d_flip);
+						  int pipe, struct
+						  mrfld_s3d_flip *ps3d_flip);
 
 #endif				/* __INTEL_DRV_H__ */

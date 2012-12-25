@@ -175,7 +175,7 @@ static int psb_move_flip(struct ttm_buffer_object *bo,
 	ret = ttm_bo_move_ttm(bo, evict, false, no_wait, new_mem);
  out_cleanup:
 	if (tmp_mem.mm_node) {
-		/*spin_lock(&bdev->lru_lock); */
+		/*spin_lock(&bdev->lru_lock); */// lru_lock is removed from upstream TTM
 		drm_mm_put_block(tmp_mem.mm_node);
 		tmp_mem.mm_node = NULL;
 		/*spin_unlock(&bdev->lru_lock); */
@@ -222,14 +222,13 @@ static int drm_psb_tbe_populate(struct ttm_backend *backend,
 				unsigned long num_pages,
 				struct page **pages,
 				struct page *dummy_read_page,
-				dma_addr_t *dma_addrs)
+				dma_addr_t * dma_addrs)
 {
 	struct drm_psb_ttm_backend *psb_be =
 	    container_of(backend, struct drm_psb_ttm_backend, base);
 
 	psb_be->pages = pages;
-	/* Not concretely implemented by TTM yet */
-	psb_be->dma_addrs = dma_addrs;
+	psb_be->dma_addrs = dma_addrs;	/* Not concretely implemented by TTM yet */
 	return 0;
 }
 
@@ -387,9 +386,7 @@ static int psb_ttm_io_mem_reserve(struct ttm_bo_device *bdev,
 	case TTM_PL_TT:
 		mem->bus.offset = mem->start << PAGE_SHIFT;
 		mem->bus.base = pg->gatt_start;
-		/* Don't know whether it is IO_MEM,
-		this flag used in vm_fault handle */
-		mem->bus.is_iomem = false;
+		mem->bus.is_iomem = false;	/* Don't know whether it is IO_MEM, this flag used in vm_fault handle */
 		break;
 	case DRM_PSB_MEM_MMU:
 		mem->bus.offset = mem->start << PAGE_SHIFT;
@@ -397,12 +394,12 @@ static int psb_ttm_io_mem_reserve(struct ttm_bo_device *bdev,
 		break;
 	case TTM_PL_CI:
 		mem->bus.offset = mem->start << PAGE_SHIFT;
-		mem->bus.base = dev_priv->ci_region_start;
+		mem->bus.base = dev_priv->ci_region_start;;
 		mem->bus.is_iomem = true;
 		break;
 	case TTM_PL_RAR:
 		mem->bus.offset = mem->start << PAGE_SHIFT;
-		mem->bus.base = dev_priv->rar_region_start;
+		mem->bus.base = dev_priv->rar_region_start;;
 		mem->bus.is_iomem = true;
 		break;
 	default:

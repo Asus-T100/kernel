@@ -58,11 +58,10 @@
 
 #define NETLINK_DISPMGR		20
 
-static unsigned int g_pid;
+static unsigned int g_pid = 0;
 
-static struct drm_device *g_dev;
-
-struct sock *nl_sk;
+static struct drm_device *g_dev = NULL;
+struct sock *nl_sk = NULL;
 
 static void execute_recv_command(struct dispmgr_command_hdr *cmd_hdr)
 {
@@ -77,13 +76,11 @@ static void execute_recv_command(struct dispmgr_command_hdr *cmd_hdr)
 						    *((unsigned long *)
 						      cmd_hdr->data);
 						printk
-						("kdispmgr: received DISPMGR_"
-						"TEST cmd data = 0x%x.\n",
-						value);
+						    ("kdispmgr: received DISPMGR_TEST cmd data = 0x%x.\n",
+						     value);
 					} else
 						printk
-						("kdispmgr: received DISPMGR_"
-						"TEST cmd NO data.\n");
+						    ("kdispmgr: received DISPMGR_TEST cmd NO data.\n");
 
 					struct dispmgr_command_hdr send_cmd_hdr;
 					unsigned long data = 0xdeadbeef;
@@ -99,13 +96,11 @@ static void execute_recv_command(struct dispmgr_command_hdr *cmd_hdr)
 				{
 					if (cmd_hdr->data_size) {
 						printk
-						("kdispmgr: received DISPMGR_"
-						"TEST_TEXT cmd text = 0x%s.\n",
-						(char *)cmd_hdr->data);
+						    ("kdispmgr: received DISPMGR_TEST_TEXT cmd text = 0x%s.\n",
+						     (char *)cmd_hdr->data);
 					} else
 						printk
-						("kdispmgr: received DISPMGR_"
-						"TEST_TEXT cmd NO text.\n");
+						    ("kdispmgr: received DISPMGR_TEST_TEXT cmd NO text.\n");
 
 					struct dispmgr_command_hdr send_cmd_hdr;
 					char *data = "can you hear me?";
@@ -121,9 +116,8 @@ static void execute_recv_command(struct dispmgr_command_hdr *cmd_hdr)
 			default:
 				{
 					printk
-					("kdispmgr: received unknown "
-					"command = %d.\n",
-					cmd_hdr->cmd);
+					    ("kdispmgr: received unknown command = %d.\n",
+					     cmd_hdr->cmd);
 				};
 			};	/* switch */
 		}
@@ -135,9 +129,8 @@ static void execute_recv_command(struct dispmgr_command_hdr *cmd_hdr)
 		break;
 	default:
 		{
-			printk
-			("kdispmgr: received unknown "
-			"module = %d.\n", cmd_hdr->module);
+			printk("kdispmgr: received unknown module = %d.\n",
+			       cmd_hdr->module);
 		};
 	}			/* switch */
 }
@@ -162,8 +155,7 @@ void dispmgr_nl_send_msg(struct dispmgr_command_hdr *cmd_hdr)
 
 	skb_out = nlmsg_new(msg_size, 0);
 	if (!skb_out) {
-		printk
-		("kdispmgr: Failed to allocated skb\n");
+		printk("kdispmgr: Failed to allocated skb\n");
 		return;
 	}
 
@@ -186,8 +178,7 @@ static void nl_recv_msg(struct sk_buff *skb)
 	unsigned int hdr_size = sizeof(struct dispmgr_command_hdr);
 
 	if (skb == NULL) {
-		printk
-			("kdispmgr: received null command.\n");
+		printk("kdispmgr: received null command.\n");
 		return;
 	}
 
@@ -196,8 +187,9 @@ static void nl_recv_msg(struct sk_buff *skb)
 	printk(KERN_INFO "kdispmgr: received message from user mode\n");
 
 	memcpy((void *)(&cmd_hdr), NLMSG_DATA(nlh), hdr_size);
-	if (cmd_hdr.data_size)
+	if (cmd_hdr.data_size) {
 		cmd_hdr.data = NLMSG_DATA(nlh) + hdr_size;
+	}
 
 	execute_recv_command(&cmd_hdr);
 }

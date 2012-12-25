@@ -30,6 +30,7 @@
 /*Must be equal to IMG_CODEC_NUM*/
 #define PNW_TOPAZ_CODEC_NUM_MAX (11)
 #define PNW_TOPAZ_BIAS_TABLE_MAX_SIZE (2 * 1024)
+//#define TOPAZ_PDUMP
 
 #define PNW_IS_H264_ENC(codec) \
 	(codec == IMG_CODEC_H264_VBR || \
@@ -96,8 +97,7 @@ struct pnw_topaz_private {
 	uint32_t stored_initial_qp;
 	uint32_t topaz_dash_access_ctrl;
 
-	/* 4K->2K/2K for writeback/sync */
-	struct ttm_buffer_object *topaz_bo;
+	struct ttm_buffer_object *topaz_bo;	/* 4K->2K/2K for writeback/sync */
 	struct ttm_bo_kmap_obj topaz_bo_kmap;
 	uint32_t *topaz_mtx_wb;
 	uint32_t topaz_wb_offset;
@@ -114,7 +114,7 @@ struct pnw_topaz_private {
 	uint32_t topaz_num_cores;
 
 	/*Before load firmware, need to set up jitter according to resolution */
-	/*The data of MTX_CMDID_SW_NEW_CODEC command contains width and len*/
+	/*The data of MTX_CMDID_SW_NEW_CODEC command contains width and length. */
 	uint16_t frame_w;
 	uint16_t frame_h;
 };
@@ -150,13 +150,13 @@ extern void topaz_write_core_reg(struct drm_psb_private *dev_priv,
 				 uint32_t reg, const uint32_t val);
 extern void topaz_read_core_reg(struct drm_psb_private *dev_priv,
 				uint32_t core,
-				uint32_t reg, uint32_t *ret_val);
+				uint32_t reg, uint32_t * ret_val);
 #define PNW_TOPAZ_NEW_PMSTATE(drm_dev, topaz_priv, new_state)		\
 do { \
 	topaz_priv->pmstate = new_state;				\
 	sysfs_notify_dirent(topaz_priv->sysfs_pmstate);			\
 	PSB_DEBUG_PM("TOPAZ: %s\n",					\
-	(new_state == PSB_PMSTATE_POWERUP) ? "powerup" : "powerdown"); \
+		(new_state == PSB_PMSTATE_POWERUP) ? "powerup": "powerdown"); \
 } while (0)
 
 #endif				/* _PNW_TOPAZ_H_ */

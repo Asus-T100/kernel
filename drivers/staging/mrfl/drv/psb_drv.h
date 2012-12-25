@@ -48,9 +48,13 @@
 
 extern bool gbdispstatus;
 extern int drm_psb_debug;
+extern int drm_psb_dsr;
 extern int drm_psb_enable_pr2_cabc;
 extern int gfxrtdelay;
 extern int drm_psb_te_timer_delay;
+extern int drm_psb_enable_gamma;
+extern int drm_psb_enable_color_conversion;
+extern u32 DISP_PLANEB_STATUS;
 
 extern struct ttm_bo_driver psb_ttm_bo_driver;
 
@@ -74,6 +78,7 @@ enum panel_type {
 	TMD,
 	PYR,
 	HDMI,
+	JDI_VID,
 	GCT_DETECT
 };
 
@@ -99,6 +104,8 @@ enum panel_type {
 #define VECPM_PROC_ENTRY "mrfld_vec_pm"
 #define BLC_PROC_ENTRY "mrst_blc"
 #define DISPLAY_PROC_ENTRY "display_status"
+#define PANEL_PROC_ENTRY "panel_status"
+#define HDMI_PROC_ENTRY "hdmi_power"
 
 #define PSB_DRM_DRIVER_DATE "2009-03-10"
 #define PSB_DRM_DRIVER_MAJOR 8
@@ -116,21 +123,28 @@ enum panel_type {
 #define PSB_BO_HASH_ORDER 12
 
 #define PSB_VDC_OFFSET		 0x00000000
-#define PSB_VDC_SIZE		 0x000080000
+#define PSB_VDC_SIZE		 0x00080000
 #define PSB_MMIO_RESOURCE	 0
 #define PSB_GATT_RESOURCE	 2
 #define PSB_GTT_RESOURCE	 3
 #define PSB_GMCH_CTRL		 0x52
 #define PSB_BSM			 0x5C
+
+#define RGX_OFFSET		 0x00100000	/* GFX-IP IOSF-SB */
+#define RGX_SIZE		 0x00010000
+
+#define GFX_WRAPPER_OFFSET	 0x00160000	/* GFX Wrapper */
+#define GFX_WRAPPER_SIZE	 0x00001000
+
 #define MRFLD_MSAC		 0x60
 #define _APERTURE_SIZE_POS	 28
 #define _APERTURE_SIZE_MASK	 ((1<<28) | (1<<29))
 #define _1G_APERTURE_SIZE	 (1<<30)
 #define _512M_APERTURE_SIZE      (1<<29)
 #define _256M_APERTURE_SIZE      (1<<28)
-#define _1G_APERTURE		 0x0
-#define _512M_APERTURE		 0x1
-#define _256M_APERTURE		 0x2
+#define _1G_APERTURE 		 0x0
+#define _512M_APERTURE 		 0x1
+#define _256M_APERTURE 		 0x2
 #define MRFLD_BGSM		 0x70
 #define _PSB_GMCH_ENABLED	 0x4
 #define PSB_PGETBL_CTL		 0x2020
@@ -219,11 +233,8 @@ enum panel_type {
 #define _TNG_IRQ_VSP_FLAG	  (1<<21)
 
 /* This flag includes all the display IRQ bits excepts the vblank irqs. */
-#define _MDFLD_DISP_ALL_IRQ_FLAG \
-(_MDFLD_PIPEC_EVENT_FLAG | _MDFLD_PIPEB_EVENT_FLAG | \
-_PSB_PIPEA_EVENT_FLAG | _PSB_VSYNC_PIPEA_FLAG | \
-_MDFLD_MIPIA_FLAG | _MDFLD_MIPIC_FLAG)
-
+#define _MDFLD_DISP_ALL_IRQ_FLAG (_MDFLD_PIPEC_EVENT_FLAG | _MDFLD_PIPEB_EVENT_FLAG | \
+        _PSB_PIPEA_EVENT_FLAG | _PSB_VSYNC_PIPEA_FLAG | _MDFLD_MIPIA_FLAG | _MDFLD_MIPIC_FLAG)
 #define PSB_INT_IDENTITY_R	  0x20A4
 #define PSB_INT_MASK_R		  0x20A8
 #define PSB_INT_ENABLE_R	  0x20A0
@@ -292,16 +303,16 @@ _MDFLD_MIPIA_FLAG | _MDFLD_MIPIC_FLAG)
 #define MDFLD_PNW_B0 0x04
 #define MDFLD_PNW_C0 0x08
 
-#define MDFLD_DSR_2D_3D_0	BIT0
-#define MDFLD_DSR_2D_3D_2	BIT1
-#define MDFLD_DSR_CURSOR_0	BIT2
+#define MDFLD_DSR_2D_3D_0 	BIT0
+#define MDFLD_DSR_2D_3D_2 	BIT1
+#define MDFLD_DSR_CURSOR_0 	BIT2
 #define MDFLD_DSR_CURSOR_2	BIT3
-#define MDFLD_DSR_OVERLAY_0	BIT4
-#define MDFLD_DSR_OVERLAY_2	BIT5
+#define MDFLD_DSR_OVERLAY_0 	BIT4
+#define MDFLD_DSR_OVERLAY_2 	BIT5
 #define MDFLD_DSR_MIPI_CONTROL	BIT6
 #define MDFLD_DSR_DAMAGE_MASK_0	(BIT0 | BIT2 | BIT4)
 #define MDFLD_DSR_DAMAGE_MASK_2	(BIT1 | BIT3 | BIT5)
-#define MDFLD_DSR_2D_3D		(MDFLD_DSR_2D_3D_0 | MDFLD_DSR_2D_3D_2)
+#define MDFLD_DSR_2D_3D 	(MDFLD_DSR_2D_3D_0 | MDFLD_DSR_2D_3D_2)
 
 #define MDFLD_DSR_RR 45
 #define MDFLD_DPU_ENABLE BIT31
@@ -323,19 +334,6 @@ _MDFLD_MIPIA_FLAG | _MDFLD_MIPIC_FLAG)
 
 #define MDFLD_PLANE_MAX_WIDTH		2048
 #define MDFLD_PLANE_MAX_HEIGHT		2048
-
-struct opregion_header;
-struct opregion_acpi;
-struct opregion_swsci;
-struct opregion_asle;
-
-struct psb_intel_opregion {
-	struct opregion_header *header;
-	struct opregion_acpi *acpi;
-	struct opregion_swsci *swsci;
-	struct opregion_asle *asle;
-	int enabled;
-};
 
 /*
  *User options.
@@ -441,10 +439,10 @@ struct psb_video_ctx {
 	uint32_t mtx_ram_size;
 };
 
-#define MODE_SETTING_IN_CRTC	0x1
+#define MODE_SETTING_IN_CRTC 	0x1
 #define MODE_SETTING_IN_ENCODER 0x2
-#define MODE_SETTING_ON_GOING	0x3
-#define MODE_SETTING_IN_DSR	0x4
+#define MODE_SETTING_ON_GOING 	0x3
+#define MODE_SETTING_IN_DSR 	0x4
 #define MODE_SETTING_ENCODER_DONE 0x8
 #define GCT_R10_HEADER_SIZE	16
 #define GCT_R10_DISPLAY_DESC_SIZE	28
@@ -457,10 +455,18 @@ struct drm_psb_private {
 #ifdef CONFIG_MID_DSI_DPU
 	void *dbi_dpu_info;
 #endif
-	void *dsi_configs[2];
+	struct mdfld_dsi_config *dsi_configs[2];
 
 	struct work_struct te_work;
 	int te_pipe;
+	struct work_struct reset_panel_work;
+
+	struct work_struct vsync_event_work;
+	int vsync_pipe;
+
+	struct mutex vsync_lock;
+	wait_queue_head_t vsync_queue;
+	atomic_t *vblank_count;
 
 	/*
 	 *TTM Glue.
@@ -501,6 +507,8 @@ struct drm_psb_private {
 	struct psb_mmu_driver *vsp_mmu;
 	struct psb_mmu_pd *vsp_pf_pd;
 
+	uint8_t *rgx_reg;
+	uint8_t *wrapper_reg;
 	uint8_t *vdc_reg;
 	uint32_t gatt_free_offset;
 
@@ -593,8 +601,8 @@ struct drm_psb_private {
 	/*
 	 *OSPM info
 	 */
-	spinlock_t ospm_lock;
 	uint8_t panel_desc;
+	bool early_suspended;
 
 	/*
 	 * Sizes info
@@ -612,19 +620,6 @@ struct drm_psb_private {
 
 	/* pci revision id for B0:D2:F0 */
 	uint8_t platform_rev_id;
-
-	/*
-	 *LVDS info
-	 */
-	int backlight_duty_cycle;	/* restore backlight to this value */
-	bool panel_wants_dither;
-	struct drm_display_mode *panel_fixed_mode;
-	struct drm_display_mode *lfp_lvds_vbt_mode;
-	struct drm_display_mode *sdvo_lvds_vbt_mode;
-
-	/*LVDS backlight info from VBT */
-	struct bdb_lvds_backlight *lvds_bl;
-	struct psb_intel_i2c_chan *lvds_i2c_bus;
 
 	/* Feature bits from the VBIOS */
 	unsigned int int_tv_support:1;
@@ -948,16 +943,16 @@ struct drm_psb_private {
 	uint32_t saveMIPI_CONTROL_REG;
 	uint32_t saveMIPI;
 	uint32_t saveMIPI_C;
-	void (*init_drvIC) (struct drm_device *dev);
-	void (*dsi_prePowerState) (struct drm_device *dev);
-	void (*dsi_postPowerState) (struct drm_device *dev);
+	void (*init_drvIC) (struct drm_device * dev);
+	void (*dsi_prePowerState) (struct drm_device * dev);
+	void (*dsi_postPowerState) (struct drm_device * dev);
 
 	/* DPST Register Save */
 	uint32_t saveHISTOGRAM_INT_CONTROL_REG;
 	uint32_t saveHISTOGRAM_LOGIC_CONTROL_REG;
-	/* SH START DPST */
+	// SH START DPST
 	struct drm_connector *dpst_lvds_connector;
-	/* SH END DPST */
+	// SH END DPST
 	uint32_t savePWM_CONTROL_LOGIC;
 
 	/* MSI reg save */
@@ -988,7 +983,6 @@ struct drm_psb_private {
 	 */
 	spinlock_t lid_lock;
 	struct timer_list lid_timer;
-	struct psb_intel_opregion opregion;
 	u32 *lid_state;
 	u32 lid_last_state;
 
@@ -1051,7 +1045,7 @@ struct drm_psb_private {
 	uint32_t dsr_fb_update;
 	uint32_t dsr_idle_count;
 	bool b_is_in_idle;
-	void (*exit_idle) (struct drm_device *dev, u32 update_src,
+	void (*exit_idle) (struct drm_device * dev, u32 update_src,
 			   void *p_surfaceAddr, bool check_hw_on_only);
 	bool b_vblank_enable;
 
@@ -1072,26 +1066,61 @@ struct drm_psb_private {
 
 	uint32_t hdmi_audio_interrupt_mask;
 
-	/* RAJESH */
+	//RAJESH
 	struct mdfld_dsi_encoder *encoder0;
 	struct mdfld_dsi_encoder *encoder2;
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,35))
 	/*psb fb dev */
 	void *fbdev;
-
+#endif
 	uint32_t cur_pipe;
+
+	struct mutex dpms_mutex;
 
 	/* read register value through sysfs. */
 	int count;
 	char buf[256];
 
 	/*
-	 * HDMI config data
+	 * HDMI config data 
 	 */
 	void *hdmi_priv;
 
+#define DRM_PSB_HDMI_FLIP_ARRAY_SIZE 4
+	void *flip_array[DRM_PSB_HDMI_FLIP_ARRAY_SIZE];
+	unsigned int addr_array[DRM_PSB_HDMI_FLIP_ARRAY_SIZE];
+	unsigned int flip_valid_size;
+	unsigned int flip_head;
+	unsigned int flip_tail;
+	unsigned int flip_inited;
+	unsigned int head_fliped;
+	spinlock_t flip_lock;
+
+	/*hdmi connected status */
+	bool bhdmiconnected;
+	bool dpms_on_off;
+	struct workqueue_struct *hpd_detect;
+/*	check it later
+*	pfn_screen_event_handler pvr_screen_event_handler;
+*/
+	struct timer_list hdmi_timer;
+	/* fix Lock screen flip in resume issue */
+	unsigned long init_screen_start;
+	unsigned long init_screen_offset;
+	unsigned long init_screen_size;
+	unsigned long init_screen_stride;
+
+	/* gamma and csc setting lock*/
+	struct mutex gamma_csc_lock;
+	/* overlay setting lock*/
+	struct mutex overlay_lock;
+	uint32_t overlay_wait;
+	uint32_t overlay_fliped;
+	int brightness_adjusted;
+
 	/*
-	 * S3D state
+	 * S3D state 
 	 */
 	uint32_t cur_s3d_state;
 	/* whether is DVI port */
@@ -1122,9 +1151,9 @@ extern int psb_fence_signaled_ioctl(struct drm_device *dev, void *data,
 				    struct drm_file *file_priv);
 extern int psb_verify_access(struct ttm_buffer_object *bo, struct file *filp);
 extern ssize_t psb_ttm_read(struct file *filp, char __user * buf,
-			    size_t count, loff_t *f_pos);
+			    size_t count, loff_t * f_pos);
 extern ssize_t psb_ttm_write(struct file *filp, const char __user * buf,
-			     size_t count, loff_t *f_pos);
+			     size_t count, loff_t * f_pos);
 extern int psb_fence_finish_ioctl(struct drm_device *dev, void *data,
 				  struct drm_file *file_priv);
 extern int psb_fence_unref_ioctl(struct drm_device *dev, void *data,
@@ -1198,7 +1227,7 @@ extern void psb_mmu_remove_pages(struct psb_mmu_pd *pd,
 extern int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 			    struct drm_file *file_priv);
 extern int psb_reg_submit(struct drm_psb_private *dev_priv,
-			  uint32_t *regs, unsigned int cmds);
+			  uint32_t * regs, unsigned int cmds);
 
 extern void psb_fence_or_sync(struct drm_file *file_priv,
 			      uint32_t engine,
@@ -1246,6 +1275,8 @@ extern int mdfld_irq_enable_hdmi_audio(struct drm_device *dev);
 extern int mdfld_irq_disable_hdmi_audio(struct drm_device *dev);
 extern void psb_te_timer_func(unsigned long data);
 extern void mdfld_te_handler_work(struct work_struct *te_work);
+extern void mdfld_vsync_event_work(struct work_struct *work);
+extern u32 intel_vblank_count(struct drm_device *dev, int pipe);
 
 /*
  *psb_fence.c
@@ -1255,7 +1286,7 @@ extern void psb_fence_handler(struct drm_device *dev, uint32_t class);
 
 extern int psb_fence_emit_sequence(struct ttm_fence_device *fdev,
 				   uint32_t fence_class,
-				   uint32_t flags, uint32_t *sequence,
+				   uint32_t flags, uint32_t * sequence,
 				   unsigned long *timeout_jiffies);
 extern void psb_fence_error(struct drm_device *dev,
 			    uint32_t class,
@@ -1272,11 +1303,6 @@ extern int lnc_video_getparam(struct drm_device *dev, void *data,
 extern int psb_try_power_down_topaz(struct drm_device *dev);
 extern int psb_try_power_down_msvdx(struct drm_device *dev);
 extern int psb_try_power_down_vsp(struct drm_device *dev);
-
-/*
- * psb_opregion.c
- */
-extern int psb_intel_opregion_init(struct drm_device *dev);
 
 /*
  *psb_fb.c
@@ -1296,18 +1322,21 @@ extern void *psbfb_vdc_reg(struct drm_device *dev);
 extern void psb_schedule_watchdog(struct drm_psb_private *dev_priv);
 extern void psb_watchdog_init(struct drm_psb_private *dev_priv);
 extern void psb_watchdog_takedown(struct drm_psb_private *dev_priv);
-extern void psb_lid_timer_init(struct drm_psb_private *dev_priv);
-extern void psb_lid_timer_takedown(struct drm_psb_private *dev_priv);
 extern void psb_print_pagefault(struct drm_psb_private *dev_priv);
 extern void mdfld_dsr_timer_init(struct drm_psb_private *dev_priv);
 extern void mdfld_dsr_timer_takedown(struct drm_psb_private *dev_priv);
+
+extern int mid_irq_enable_hdmi_audio(struct drm_device *dev);
+extern int mid_irq_disable_hdmi_audio(struct drm_device *dev);
 
 /* modesetting */
 extern void psb_modeset_init(struct drm_device *dev);
 extern void psb_modeset_cleanup(struct drm_device *dev);
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,35))
 /*fbdev*/
 extern int psb_fbdev_init(struct drm_device *dev);
+#endif
 
 /* psb_bl.c */
 extern int psb_brightness;
@@ -1334,6 +1363,8 @@ struct backlight_device *psb_get_backlight_device(void);
 #define PSB_D_TOPAZ   (1 << 10)
 #define VSP_D_LOG   (1 << 11)
 #define VSP_D_PERF   (1 << 12)
+#define PSB_D_WARN    (1 << 13)
+#define PSB_D_MIPI    (1 << 14)
 
 #ifndef DRM_DEBUG_CODE
 /* To enable debug printout, set drm_psb_debug in psb_drv.c
@@ -1374,6 +1405,11 @@ extern int drm_topaz_sbuswa;
 	PSB_DEBUG(VSP_D_LOG, "VSP: "_fmt, ##_arg)
 #define VSP_PERF(_fmt, _arg...) \
 	PSB_DEBUG(VSP_D_PERF, "VSP PERFORMANCE: "_fmt, ##_arg)
+/* force to print WARN msg */
+#define PSB_DEBUG_WARN(_fmt, _arg...) \
+	PSB_DEBUG(PSB_D_WARN, _fmt, ##_arg)
+#define PSB_DEBUG_MIPI(_fmt, _arg...) \
+	PSB_DEBUG(PSB_D_MIPI, _fmt, ##_arg)
 
 #if DRM_DEBUG_CODE
 #define PSB_DEBUG(_flag, _fmt, _arg...)					\
@@ -1392,35 +1428,11 @@ extern int drm_topaz_sbuswa;
  */
 #define DRM_DRIVER_PRIVATE_T struct drm_psb_private
 
-static inline u32 MRFLD_EXT_MSG_READ32(struct pci_dev *pci_root, uint port,
-				       uint offset)
-{
-	int mcr = (0x10 << 24) | (port << 16) | ((offset & 0xff) << 8);
-	int mae = offset >> 8;
-	uint32_t ret_val = 0;
-	pci_write_config_dword(pci_root, 0xD8, mae);
-	pci_write_config_dword(pci_root, 0xD0, mcr);
-	pci_read_config_dword(pci_root, 0xD4, &ret_val);
-	pci_dev_put(pci_root);
-	return ret_val;
-}
-
-static inline void MRFLD_EXT_MSG_WRITE32(struct pci_dev *pci_root, uint port,
-					 uint offset, u32 value)
-{
-	int mcr = (0x11 << 24) | (port << 16) | ((offset & 0xff) << 8) | 0xF0;
-	int mae = offset >> 8;
-	pci_write_config_dword(pci_root, 0xD4, value);
-	pci_write_config_dword(pci_root, 0xD8, mae);
-	pci_write_config_dword(pci_root, 0xD0, mcr);
-	pci_dev_put(pci_root);
-}
-
 static inline uint32_t REGISTER_READ(struct drm_device *dev, uint32_t reg)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
 	int reg_val = ioread32(dev_priv->vdc_reg + (reg));
-	PSB_DEBUG_REG("reg = 0x%x. reg_val = 0x%x.\n", reg, reg_val);
+	PSB_DEBUG_REG("reg = 0x%x. reg_val = 0x%x. \n", reg, reg_val);
 	return reg_val;
 }
 
@@ -1441,7 +1453,7 @@ static inline void REGISTER_WRITE16(struct drm_device *dev,
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
 
-	PSB_DEBUG_REG("reg = 0x%x, val = 0x%x.\n", reg, val);
+	PSB_DEBUG_REG("reg = 0x%x, val = 0x%x. \n", reg, val);
 
 	iowrite16((val), dev_priv->vdc_reg + (reg));
 }
@@ -1453,7 +1465,7 @@ static inline void REGISTER_WRITE8(struct drm_device *dev,
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
 
-	PSB_DEBUG_REG("reg = 0x%x, val = 0x%x.\n", reg, val);
+	PSB_DEBUG_REG("reg = 0x%x, val = 0x%x. \n", reg, val);
 
 	iowrite8((val), dev_priv->vdc_reg + (reg));
 }
@@ -1461,11 +1473,52 @@ static inline void REGISTER_WRITE8(struct drm_device *dev,
 #define REG_WRITE8(reg, val)	 REGISTER_WRITE8(dev, (reg), (val))
 
 #define PSB_ALIGN_TO(_val, _align) \
-	(((_val) + ((_align) - 1)) & ~((_align) - 1))
+  (((_val) + ((_align) - 1)) & ~((_align) - 1))
 #define PSB_WVDC32(_val, _offs) \
-	iowrite32(_val, dev_priv->vdc_reg + (_offs))
+  iowrite32(_val, dev_priv->vdc_reg + (_offs));
+
 #define PSB_RVDC32(_offs) \
-	ioread32(dev_priv->vdc_reg + (_offs))
+  ioread32(dev_priv->vdc_reg + (_offs))
+
+static inline uint32_t RGX_REGISTER_READ(struct drm_device *dev, uint32_t reg)
+{
+       struct drm_psb_private *dev_priv = dev->dev_private;
+       int reg_val = ioread32(dev_priv->rgx_reg + (reg));
+       PSB_DEBUG_REG("rgx reg = 0x%x. reg_val = 0x%x. \n", reg, reg_val);
+       return reg_val;
+}
+
+#define RGX_REG_READ(reg)             RGX_REGISTER_READ(dev, (reg))
+static inline void RGX_REGISTER_WRITE(struct drm_device *dev, uint32_t reg,
+						uint32_t val)
+{
+       struct drm_psb_private *dev_priv = dev->dev_private;
+       PSB_DEBUG_REG("rgx reg = 0x%x, val = 0x%x. \n", reg, val);
+
+       iowrite32((val), dev_priv->rgx_reg + (reg));
+}
+
+#define RGX_REG_WRITE(reg, val)        RGX_REGISTER_WRITE(dev, (reg), (val))
+
+static inline uint32_t WRAPPER_REGISTER_READ(struct drm_device *dev, uint32_t reg)
+{
+       struct drm_psb_private *dev_priv = dev->dev_private;
+       int reg_val = ioread32(dev_priv->wrapper_reg + (reg));
+       PSB_DEBUG_REG("wrapper reg = 0x%x. reg_val = 0x%x. \n", reg, reg_val);
+       return reg_val;
+}
+
+#define WRAPPER_REG_READ(reg)             WRAPPER_REGISTER_READ(dev, (reg))
+static inline void WRAPPER_REGISTER_WRITE(struct drm_device *dev, uint32_t reg,
+						uint32_t val)
+{
+       struct drm_psb_private *dev_priv = dev->dev_private;
+       PSB_DEBUG_REG("wrapper reg = 0x%x, val = 0x%x. \n", reg, val);
+
+       iowrite32((val), dev_priv->wrapper_reg + (reg));
+}
+
+#define WRAPPER_REG_WRITE(reg, val)        WRAPPER_REGISTER_WRITE(dev, (reg), (val))
 
 #define MSVDX_REG_DUMP 0
 #if MSVDX_REG_DUMP
@@ -1475,29 +1528,32 @@ do {                                                \
 	printk(KERN_INFO"MSVDX: write %08x to reg 0x%08x\n", \
 			(unsigned int)(_val),       \
 			(unsigned int)(_offs));     \
-	iowrite32(_val, dev_priv->msvdx_reg + (_offs));   \
+  iowrite32(_val, dev_priv->msvdx_reg + (_offs));   \
 } while (0)
 #define PSB_RMSVDX32(_offs) \
-	ioread32(dev_priv->msvdx_reg + (_offs))
+  ioread32(dev_priv->msvdx_reg + (_offs))
 
 #else
 
 #define PSB_WMSVDX32(_val, _offs) \
-	iowrite32(_val, dev_priv->msvdx_reg + (_offs))
+  iowrite32(_val, dev_priv->msvdx_reg + (_offs))
 #define PSB_RMSVDX32(_offs) \
-	ioread32(dev_priv->msvdx_reg + (_offs))
+  ioread32(dev_priv->msvdx_reg + (_offs))
 
 #endif
 
 #define PSB_ALPL(_val, _base)			\
-	(((_val) >> (_base ## _ALIGNSHIFT)) << (_base ## _SHIFT))
+  (((_val) >> (_base ## _ALIGNSHIFT)) << (_base ## _SHIFT))
 #define PSB_ALPLM(_val, _base)			\
-	((((_val) >> (_base ## _ALIGNSHIFT)) << (_base ## _SHIFT)) \
-	& (_base ## _MASK))
+  ((((_val) >> (_base ## _ALIGNSHIFT)) << (_base ## _SHIFT)) & (_base ## _MASK))
 
+#define IS_POULSBO(dev) 0
 #define IS_PENWELL(dev) 0	/* FIXME */
 
 #define IS_MDFLD(dev) (((dev)->pci_device & 0xfff8) == 0x0130)
+#define IS_CTP(dev) (((dev->pci_device & 0xffff) == 0x08c0) ||	\
+		((dev->pci_device & 0xffff) == 0x08c7) ||  \
+		((dev->pci_device & 0xffff) == 0x08c8))
 #define IS_MRFLD(dev) (((dev)->pci_device & 0xfff8) == 0x1180)
 
 #define IS_MID(dev) (IS_MDFLD(dev) || IS_MRFLD(dev))

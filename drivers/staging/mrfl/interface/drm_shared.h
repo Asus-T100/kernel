@@ -18,6 +18,7 @@
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
  *
  **************************************************************************/
+#include <img_types.h>
 
 #ifndef _DRM_SHARED_H_
 #define _DRM_SHARED_H_
@@ -91,57 +92,44 @@
 #define DRM_PSB_GET_HDCP_STATUS		0x26
 #define DRM_PSB_ENABLE_HDCP		0x27
 #define DRM_PSB_DISABLE_HDCP		0x28
-#define DRM_PSB_GET_HDCP_LINK_STATUS	0x29
-
-/* S3D IOCTLs */
-#define DRM_PSB_S3D_QUERY               0x2A
-#define DRM_PSB_S3D_PREMODESET          0x2B
-#define DRM_PSB_S3D_ENABLE              0x2C
+#define DRM_PSB_CSC_GAMMA_SETTING	0x29
+#define DRM_PSB_ENABLE_HDCP_REPEATER	0x2c
+#define DRM_PSB_DISABLE_HDCP_REPEATER	0x2d
+#define DRM_PSB_HDCP_REPEATER_PRESENT	0x2e
 
 /* CSC IOCTLS */
-#define DRM_PSB_SET_CSC                 0x2D
-
-    /*****************************
-     *  BEGIN S3D OVERLAY
-     ****************************/
-
-    /*****************************
-     *  S3D OVERLAY IOCTLs
-     *
-     *      DRM_OVL_S3D_ACQUIRE
-     *          Gain access to the driver allowing use of the overlay
-     *          s3d features  for video display.  Returns a  non-zero
-     *          identifier in the value pointed to by 'data' and zero
-     *          on success or a negative error code.
-     *
-     *      DRM_OVL_S3D_RELEASE
-     *          When passed a valid non-zero identifier, releases the
-     *          exclusive access to the overlay s3d features. Returns
-     *          zero on success or a negative error.
-     *
-     *      DRM_OVL_S3D_UPDATE
-     *          Perform an update in accordance with a populated ovl_
-     *          s3d_update_t  record.  Returns  zero on success  or a
-     *          negative error.
-     *
-     *      DRM_OVL_S3D_CONFIG
-     *          Accepts a configuration record describing the desired
-     *          s3d overlay setup,  and  performs the setup.  Returns
-     *          zero on success or a negative error code.
-     */
-#define DRM_OVL_S3D_ACQUIRE             0x2E
-#define DRM_OVL_S3D_RELEASE             0x2F
-#define DRM_OVL_S3D_UPDATE              0x30
-#define DRM_OVL_S3D_CONFIG              0x31
-
-    /*****************************
-     *  This is for debugging and troubleshooting on the overlay reg-
-     *      isters; it may go away someday.  Individual registers may
-     *      be read and/or written.
-     */
-#define DRM_OVL_S3D_OVLREG              0x32
+#define DRM_PSB_SET_CSC			0x2A
+#define DRM_PSB_GET_HDCP_LINK_STATUS	0x2b
 
 #define DRM_PSB_DSR_ENABLE	0xfffffffe
 #define DRM_PSB_DSR_DISABLE	0xffffffff
+
+#if 0
+struct psb_gtt_mapping_arg {
+	void *hKernelMemInfo;
+	uint32_t offset_pages;
+	uint32_t page_align;
+};
+#endif
+
+#ifdef __KERNEL__
+    /*****************************
+     *  Clone  of a similarly named record in  pvrsrv_devmem_miw.h in
+     *      user space for use by the gtt mapping ioctl.  This one is
+     *      neutrally  typed.  This is what  actually appears in  the
+     *      'hKernelMemInfo' field above.
+     */
+typedef struct tagPVRSRVMEMINFO {
+    void               *hMemDesc;
+    IMG_DEV_VIRTADDR    sDevVirtAddr;
+
+#if !defined(PVRSRV_NO_MEMINFO_CPU_VIRT_ADDR)
+    void               *pvCpuVirtAddr;
+#endif
+
+    unsigned long long  uiAllocationSize;
+    unsigned long       uiMemAllocFlags;
+} PVRSRV_MEMINFO;
+#endif
 
 #endif

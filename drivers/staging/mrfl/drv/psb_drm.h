@@ -31,6 +31,8 @@
 #include "psb_ttm_fence_user.h"
 #include "psb_ttm_placement_user.h"
 
+#include "../interface/drm_shared.h"
+
 #define PSB_FIXED_SHIFT 16
 
 #define PSB_NUM_PIPE 3
@@ -48,10 +50,9 @@
 #define TTM_PL_RAR               TTM_PL_PRIV2
 #define TTM_PL_FLAG_RAR          TTM_PL_FLAG_PRIV2
 
-/*
 typedef int32_t psb_fixed;
 typedef uint32_t psb_ufixed;
-*/
+
 static inline int32_t psb_int_to_fixed(int a)
 {
 	return a * (1 << PSB_FIXED_SHIFT);
@@ -272,10 +273,8 @@ struct drm_video_displaying_frameinfo {
 	uint32_t luma_stride;	/* luma stride */
 	uint32_t chroma_u_stride;	/* chroma stride */
 	uint32_t chroma_v_stride;
-	/* luma offset from the beginning of the memory */
-	uint32_t luma_offset;
-	/* UV offset from the beginning of the memory */
-	uint32_t chroma_u_offset;
+	uint32_t luma_offset;	/* luma offset from the beginning of the memory */
+	uint32_t chroma_u_offset;	/* UV offset from the beginning of the memory */
 	uint32_t chroma_v_offset;
 	uint32_t reserved;
 };
@@ -343,7 +342,7 @@ struct mrst_timing_info {
 	uint8_t stereo:1;
 	uint8_t unknown6:1;
 	uint8_t interlaced:1;
-} __packed;
+} __attribute__ ((packed));
 
 struct gct_r10_timing_info {
 	uint16_t pixel_clock;
@@ -367,7 +366,7 @@ struct gct_r10_timing_info {
 	uint16_t vsync_pulse_width_hi:2;
 	uint16_t vsync_positive:1;
 	uint16_t rsvd_2:3;
-} __packed;
+} __attribute__ ((packed));
 
 struct mrst_panel_descriptor_v1 {
 	uint32_t Panel_Port_Control;	/* 1 dword, Register 0x61180 if LVDS */
@@ -377,8 +376,7 @@ struct mrst_panel_descriptor_v1 {
 	uint32_t Panel_Power_Cycle_Delay_and_Reference_Divisor;	/* 1 dword */
 	/* Register 0x61210 */
 	struct mrst_timing_info DTD;	/*18 bytes, Standard definition */
-	/* 16 bits, as follows */
-	uint16_t Panel_Backlight_Inverter_Descriptor;
+	uint16_t Panel_Backlight_Inverter_Descriptor;	/* 16 bits, as follows */
 	/* Bit 0, Frequency, 15 bits,0 - 32767Hz */
 	/* Bit 15, Polarity, 1 bit, 0: Normal, 1: Inverted */
 	uint16_t Panel_MIPI_Display_Descriptor;
@@ -397,7 +395,7 @@ struct mrst_panel_descriptor_v1 {
 	/* Bit 6, Reserved, 2 bits, 00b */
 	/* Bit 8, Minimum Supported Frame Rate, 6 bits, 0 - 63Hz */
 	/* Bit 14, Reserved, 2 bits, 00b */
-} __packed;
+} __attribute__ ((packed));
 
 struct mrst_panel_descriptor_v2 {
 	uint32_t Panel_Port_Control;	/* 1 dword, Register 0x61180 if LVDS */
@@ -427,31 +425,28 @@ struct mrst_panel_descriptor_v2 {
 	/* Bit 6, Reserved, 2 bits, 00b */
 	/* Bit 8, Minimum Supported Frame Rate, 6 bits, 0 - 63Hz */
 	/* Bit 14, Reserved, 2 bits, 00b */
-} __packed;
+} __attribute__ ((packed));
 
 union mrst_panel_rx {
 	struct {
-		/*Num of Lanes, 2 bits,0 = 1 lane, */
-		uint16_t NumberOfLanes:2;
+		uint16_t NumberOfLanes:2;	/*Num of Lanes, 2 bits,0 = 1 lane, */
 		/* 1 = 2 lanes, 2 = 3 lanes, 3 = 4 lanes. */
 		uint16_t MaxLaneFreq:3;	/* 0: 100MHz, 1: 200MHz, 2: 300MHz, */
 		/*3: 400MHz, 4: 500MHz, 5: 600MHz, 6: 700MHz, 7: 800MHz. */
 		uint16_t SupportedVideoTransferMode:2;	/*0: Non-burst only */
 		/* 1: Burst and non-burst */
 		/* 2/3: Reserved */
-		/*0: Continuous, 1: Non-continuous */
-		uint16_t HSClkBehavior:1;
+		uint16_t HSClkBehavior:1;	/*0: Continuous, 1: Non-continuous */
 		uint16_t DuoDisplaySupport:1;	/*1 bit,0: No, 1: Yes */
 		uint16_t ECC_ChecksumCapabilities:1;	/*1 bit,0: No, 1: Yes */
 		uint16_t BidirectionalCommunication:1;	/*1 bit,0: No, 1: Yes */
 		uint16_t Rsvd:5;	/*5 bits,00000b */
 	} panelrx;
 	uint16_t panel_receiver;
-} __packed;
+} __attribute__ ((packed));
 
 struct gct_ioctl_arg {
-	/* boot panel index, number of panel used during boot */
-	uint8_t bpi;
+	uint8_t bpi;		/* boot panel index, number of panel used during boot */
 	uint8_t pt;		/* panel type, 4 bit field, 0=lvds, 1=mipi */
 	struct mrst_timing_info DTD;	/* timing info for the selected panel */
 	uint32_t Panel_Port_Control;
@@ -460,7 +455,7 @@ struct gct_ioctl_arg {
 	uint32_t PP_Cycle_Delay;
 	uint16_t Panel_Backlight_Inverter_Descriptor;
 	uint16_t Panel_MIPI_Display_Descriptor;
-} __packed;
+} __attribute__ ((packed));
 
 struct mrst_vbt {
 	char Signature[4];	/*4 bytes,"$GCT" */
@@ -468,12 +463,12 @@ struct mrst_vbt {
 	uint8_t Size;		/*1 byte */
 	uint8_t Checksum;	/*1 byte,Calculated */
 	void *mrst_gct;
-} __packed;
+} __attribute__ ((packed));
 
-struct mrst_gct_v1 {	/* expect this table to change per customer request */
+struct mrst_gct_v1 {		/* expect this table to change per customer request */
 	union {			/*8 bits,Defined as follows: */
 		struct {
-			uint8_t PanelType:4;/*4 bits, Bit field for panels */
+			uint8_t PanelType:4;	/*4 bits, Bit field for panels */
 			/* 0 - 3: 0 = LVDS, 1 = MIPI */
 			/*2 bits,Specifies which of the */
 			uint8_t BootPanelIndex:2;
@@ -483,14 +478,14 @@ struct mrst_gct_v1 {	/* expect this table to change per customer request */
 		} PD;
 		uint8_t PanelDescriptor;
 	};
-	struct mrst_panel_descriptor_v1 panel[4];/*panel descrs,38 bytes each */
+	struct mrst_panel_descriptor_v1 panel[4];	/*panel descrs,38 bytes each */
 	union mrst_panel_rx panelrx[4];	/* panel receivers */
-} __packed;
+} __attribute__ ((packed));
 
-struct mrst_gct_v2 {	/* expect this table to change per customer request */
+struct mrst_gct_v2 {		/* expect this table to change per customer request */
 	union {			/*8 bits,Defined as follows: */
 		struct {
-			uint8_t PanelType:4;/*4 bits, Bit field for panels */
+			uint8_t PanelType:4;	/*4 bits, Bit field for panels */
 			/* 0 - 3: 0 = LVDS, 1 = MIPI */
 			/*2 bits,Specifies which of the */
 			uint8_t BootPanelIndex:2;
@@ -500,9 +495,9 @@ struct mrst_gct_v2 {	/* expect this table to change per customer request */
 		} PD;
 		uint8_t PanelDescriptor;
 	};
-	struct mrst_panel_descriptor_v2 panel[4];/*panel descrs,38 bytes each */
+	struct mrst_panel_descriptor_v2 panel[4];	/*panel descrs,38 bytes each */
 	union mrst_panel_rx panelrx[4];	/* panel receivers */
-} __packed;
+} __attribute__ ((packed));
 
 #define PSB_DC_CRTC_SAVE 0x01
 #define PSB_DC_CRTC_RESTORE 0x02
@@ -546,6 +541,29 @@ struct drm_psb_stolen_memory_arg {
 
 #define OVC_REGRWBITS_OVADD                  (1 << 2)
 #define OVC_REGRWBITS_OGAM_ALL			(1 << 3)
+
+/*vsync operation*/
+#define VSYNC_ENABLE				(1 << 0)
+#define VSYNC_DISABLE				(1 << 1)
+#define VSYNC_WAIT				(1 << 2)
+#define GET_VSYNC_COUNT			        (1 << 3)
+
+/*platform dependent macros*/
+#define INTEL_SPRITE_PLANE_NUM		3
+#define INTEL_OVERLAY_PLANE_NUM		2
+#define INTEL_DISPLAY_PLANE_NUM		5
+#define INVALID_INDEX			0xffffffff
+
+struct drm_psb_vsync_set_arg {
+	uint32_t vsync_operation_mask;
+
+	struct {
+		uint32_t pipe;
+		int vsync_pipe;
+		int vsync_count;
+		uint64_t timestamp;
+	} vsync;
+};
 
 struct drm_psb_register_rw_arg {
 	uint32_t b_force_hw_on;
@@ -611,10 +629,24 @@ struct drm_psb_register_rw_arg {
 	uint32_t subpicture_disable_mask;
 };
 
+enum {
+	PSB_GTT_MAP_TYPE_MEMINFO = 0,
+	PSB_GTT_MAP_TYPE_BCD,
+	PSB_GTT_MAP_TYPE_BCD_INFO,
+	PSB_GTT_MAP_TYPE_VIRTUAL,
+};
+
 struct psb_gtt_mapping_arg {
+	uint32_t type;
 	void *hKernelMemInfo;
 	uint32_t offset_pages;
 	uint32_t page_align;
+	uint32_t bcd_device_id;
+	uint32_t bcd_buffer_id;
+	uint32_t bcd_buffer_count;
+	uint32_t bcd_buffer_stride;
+	uint32_t vaddr;
+	uint32_t size;
 };
 
 struct drm_psb_getpageaddrs_arg {
@@ -623,14 +655,14 @@ struct drm_psb_getpageaddrs_arg {
 	unsigned long gtt_offset;
 };
 
-#define MAX_SLICES_PER_PICTURE 72
-struct drm_psb_msvdx_decode_status_t {
+#define MAX_SLICES_PER_PICTURE 2
+typedef struct drm_psb_msvdx_decode_status {
 	uint32_t fw_status;
 	uint32_t num_error_slice;
 	int32_t start_error_mb_list[MAX_SLICES_PER_PICTURE];
 	int32_t end_error_mb_list[MAX_SLICES_PER_PICTURE];
 	int32_t slice_missing_or_error[MAX_SLICES_PER_PICTURE];
-};
+} drm_psb_msvdx_decode_status_t;
 
 /* Controlling the kernel modesetting buffers */
 
@@ -689,175 +721,39 @@ struct drm_psb_msvdx_decode_status_t {
 #define DRM_PSB_DISABLE_HDCP_REPEATER	0x2d
 #define DRM_PSB_HDCP_REPEATER_PRESENT	0x2e
 
-/* S3D IOCTLs */
-/*
-#define DRM_PSB_S3D_QUERY               0x2A
-#define DRM_PSB_S3D_PREMODESET          0x2B
-#define DRM_PSB_S3D_ENABLE              0x2C
-*/
-
 /* CSC IOCTLS */
 #define DRM_PSB_SET_CSC			0x2A
 #define DRM_PSB_GET_HDCP_LINK_STATUS	0x2b
 
     /*****************************
-     *  BEGIN S3D OVERLAY
+     *  BEGIN HDMI TEST IOCTLS
      ****************************/
 
-    /*****************************
-     *  S3D OVERLAY IOCTLs
-     *
-     *      DRM_OVL_S3D_ACQUIRE
-     *          Gain access to the driver allowing use of the overlay
-     *          s3d features  for video display.  Returns a  non-zero
-     *          identifier in the value pointed to by 'data' and zero
-     *          on success or a negative error code.
-     *
-     *      DRM_OVL_S3D_RELEASE
-     *          When passed a valid non-zero identifier, releases the
-     *          exclusive access to the overlay s3d features. Returns
-     *          zero on success or a negative error.
-     *
-     *      DRM_OVL_S3D_UPDATE
-     *          Perform an update in accordance with a populated ovl_
-     *          s3d_update_t  record.  Returns  zero on success  or a
-     *          negative error.
-     *
-     *      DRM_OVL_S3D_CONFIG
-     *          Accepts a configuration record describing the desired
-     *          s3d overlay setup,  and  performs the setup.  Returns
-     *          zero on success or a negative error code.
-     */
-#define DRM_OVL_S3D_ACQUIRE             0x2E
-#define DRM_OVL_S3D_RELEASE             0x2F
-#define DRM_OVL_S3D_UPDATE              0x30
-#define DRM_OVL_S3D_CONFIG              0x31
+#define DRM_PSB_HDMITEST    0x32
 
-    /*****************************
-     *  This is for debugging and troubleshooting on the overlay reg-
-     *      isters; it may go away someday.  Individual registers may
-     *      be read and/or written.
-     */
-#define DRM_OVL_S3D_OVLREG              0x32
-
-    /*****************************
-     *  These  are all possible  S3D surface modes that a  3D display
-     *      could recognize.
-     */
-enum ovlmode_t {
-	OM_ERROR = -1,		/*  error occured               */
-	OM_NONE,		/*  no mode (or restore)        */
-	OM_LINEINTER,		/*  full line interleaved       */
-	OM_HALFLINEINTER,	/*  half line interleaved       */
-	OM_PIXINTER,		/*  full pixel interleaved      */
-	OM_HALFPIXINTER,	/*  half pixel interleaved      */
-	OM_SIDEBYSIDE,		/*  full side-by-side           */
-	OM_HALFSIDEBYSIDE,	/*  half side-by-side           */
-	OM_TOPBOTTOM,		/*  top-bottom mode             */
-	OM_HALFTOPBOTTOM	/*  half top-bottom mode        */
-};
-
-    /*****************************
-     *  These  definitions follow  similar pixel formats  for HDMI in
-     *      'psb_intel_hdmi.h'.
-     */
-enum ovlpixel_t {
-	OX_NONE,		/*  analagous to HDMI RGB       */
-	OX_NV12,		/*  12-bit planar format        */
-	OX_YUV422,		/*  16-bit packaed format       */
-	OX_YUV420,		/*  12-bit planar format        */
-	OX_FUTURE		/*  for future expansion        */
-};
-
-    /*****************************
-     *  These definitions  determine the destination pipe to use with
-     *      the s3d overlay mode.
-     */
-enum ovlpipe_t {
-	OP_NONE,		/*  No pipe selection given     */
-	OP_PIPEA,		/*  select pipe A               */
-	OP_PIPEB,		/*  select pipe B               */
-	OP_PIPEC,		/*  select pipe C               */
-	OP_RESERVED		/*  future expansion            */
-};
-
-    /*****************************
-     *  These are bits  set to determine  which of the fields  in the
-     *      following record are valid.
-     */
-#define OV_GEOMETRY 0x00000001	/*  sw, sh (input)              */
-#define OV_MODE     0x00000002	/*  mode (input)                */
-#define OV_PIXEL    0x00000004	/*  pixel (input)               */
-#define OV_PIPE     0x00000008	/*  pipe (input)                */
-#define OV_MMINFO   0x00000010	/*  mmap fields (input)         */
-#define OV_ALLITEMS 0x0000001F	/*  mask isolating all bits     */
-
-    /*****************************
-     *  ovl_s3d_config_t  -  record of a caller's request for overlay
-     *      S3D setup.
-     */
-typedef struct tagOVLS3DCONFIGURATION {
-	unsigned int valid;	/*  valid fields bitmask        */
-	int id,			/*  acquisition identifier      */
-	 sw, sh;		/*  source geometry             */
-	enum ovlmode_t mode;		/*  s3d overlay mode to set     */
-	enum ovlpixel_t pixel;	/*  surface pixel format        */
-	enum ovlpipe_t pipe;		/*  destination pipe            */
-	unsigned int mmlen,	/*  buffer size in bytes        */
-	 stride,		/*  horizontal stride in bytes  */
-	 uvstride,		/*  UV stride in planar modes   */
-	 yoffset,		/*  Y planar location           */
-	 uoffset,		/*  U planar location           */
-	 voffset;		/*  V planar location           */
-} ovl_s3d_config_t, *ovl_s3d_config_p;
-
-    /*****************************
-     *  These are bits  set to determine  which of the fields  in the
-     *      following record are valid.
-     */
-#define OU_SURFACE  0x00000001	/*  'lbuf' and 'rbuf'           */
-#define OU_PAN      0x00000002	/*  'sx' and 'sy'               */
-#define OU_GEOMETRY 0x00000004	/*  'x', 'y', 'w' and 'h'       */
-#define OU_ENABLE   0x00000008	/*  'enable'                    */
-#define OU_HCOEFF   0x00000010	/*  'hcoef'                     */
-
-    /*****************************
-     *  ovl_s3d_update_t - record used to "flip" the overlay surfaces
-     *      to a fresh set (right and left).
-     */
-typedef struct tagOVLS3DUPDATE {
-	unsigned int valid;	/*  ORed OU_xx flags            */
-	int id,			/*  acquisition identifier      */
-	 sx, sy,		/*  new pan origin              */
-	 x, y,			/*  new position                */
-	 w, h,			/*  new geometry                */
-	 enable,		/*  enable the overlays         */
-	 vwait;			/*  wait for vertical blanking  */
-	uint32_t lbuf,		/*  left buffer                 */
-	 rbuf,			/*  right buffer                */
-	*hcoef;			/*  64 user space coefficients  */
-} ovl_s3d_update_t, *ovl_s3d_update_p;
-
-#define OM_READ     1		/*  read an overlay register    */
-#define OM_WRITE    2		/*  write an overlay register   */
+#define HT_READ     1		/*  read an hdmi test register  */
+#define HT_WRITE    2		/*  write an hdmi test register */
+#define HT_FORCEON  4		/*  force power island on       */
 
     /*****************************
      *  Record to be passed  as an argument to the DRM_OVL_S3D_OVLREG
      *      ioctl.
      */
-typedef struct tagOVLS3DREGREADWRITE {
+typedef struct tagHDMITESTREGREADWRITE {
 	unsigned int reg,	/*  register offset             */
 	 data;			/*  input/output value          */
-	int ovc,		/*  0 -> overlay A              */
-	 mode;			/*  OR'ed combo of OM_xx flags  */
-} ovl_s3d_reg_t, *ovl_s3d_reg_p;
+	int mode;		/*  OR'ed combo of HT_xx flags  */
+} drm_psb_hdmireg_t, *drm_psb_hdmireg_p;
 
     /*****************************
-     *  END S3D OVERLAY
+     *  END HDMI TEST IOCTLS
      ****************************/
 
 #define DRM_PSB_DSR_ENABLE	0xfffffffe
 #define DRM_PSB_DSR_DISABLE	0xffffffff
+
+/* VSYNC IOCTLS */
+#define DRM_PSB_VSYNC_SET         0x33
 
 /*
  * TTM execbuf extension.
@@ -904,11 +800,76 @@ struct drm_psb_get_pipe_from_crtc_id_arg {
 };
 #define DRM_PSB_DISP_SAVE_HDMI_FB_HANDLE 1
 #define DRM_PSB_DISP_GET_HDMI_FB_HANDLE 2
+
+#define DRM_PSB_DISP_INIT_HDMI_FLIP_CHAIN 1
+#define DRM_PSB_DISP_QUEUE_BUFFER 2
 #define DRM_PSB_DISP_DEQUEUE_BUFFER 3
 #define DRM_PSB_DISP_PLANEB_DISABLE  4
 #define DRM_PSB_DISP_PLANEB_ENABLE  5
 #define DRM_PSB_HDMI_OSPM_ISLAND_DOWN 6
+#define DRM_PSB_HDMI_NOTIFY_HOTPLUG_TO_AUDIO 7
 
+/*csc gamma setting*/
+typedef enum {
+	GAMMA,
+	CSC,
+	GAMMA_INITIA,
+	GAMMA_SETTING,
+	CSC_INITIA,
+	CSC_CHROME_SETTING,
+	CSC_SETTING
+} setting_type;
+
+typedef enum {
+	/* gamma 0.5 */
+	GAMMA_05 = 1,
+	/* gamma 2.0 */
+	GAMMA_20,
+	/* gamma 0.5 + 2.0*/
+	GAMMA_05_20,
+	/* gamma 2.0 + 0.5*/
+	GAMMA_20_05,
+	/* gamma 1.0 */
+	GAMMA_10
+} gamma_mode;
+
+#define CHROME_COUNT 16
+#define CSC_COUNT    9
+
+struct csc_setting {
+	uint32_t pipe;
+	setting_type type;
+	bool enable_state;
+	uint32_t data_len;
+	union {
+		int chrome_data[CHROME_COUNT];
+		int64_t csc_data[CSC_COUNT];
+	} data;
+};
+#define GAMMA_10_BIT_TABLE_COUNT  129
+
+struct gamma_setting {
+	uint32_t pipe;
+	setting_type type;
+	bool enable_state;
+	gamma_mode initia_mode;
+	uint32_t data_len;
+	uint32_t gamma_tableX100[GAMMA_10_BIT_TABLE_COUNT];
+};
+struct drm_psb_csc_gamma_setting {
+	setting_type type;
+	union {
+		struct csc_setting csc_data;
+		struct gamma_setting gamma_data;
+	} data;
+};
+struct drm_psb_buffer_data {
+	void *h_buffer;
+};
+struct drm_psb_flip_chain_data {
+	void **h_buffer_array;
+	unsigned int size;
+};
 struct drm_psb_disp_ctrl {
 	uint32_t cmd;
 	uint32_t data;

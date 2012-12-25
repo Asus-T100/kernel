@@ -11,7 +11,7 @@
  * more details.
  *
  * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
+ * this program; if not, write to the Free Software Foundation, Inc., 
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
  *
  * Authors:
@@ -54,8 +54,7 @@ int psb_dpst_notify_change_um(enum dpst_event_enum event,
 		state->dpst_change_wq_data.dev_name_write--;
 		return IRQ_NONE;
 	}
-	if (state->dpst_change_wq_data.dev_name_write >
-	    DRM_DPST_RING_DEPTH_MAX) {
+	if (state->dpst_change_wq_data.dev_name_write > DRM_DPST_RING_DEPTH_MAX) {
 		state->dpst_change_wq_data.dev_name_write = 0;
 		state->dpst_change_wq_data.dev_name_write_wrap = 1;
 	}
@@ -63,8 +62,8 @@ int psb_dpst_notify_change_um(enum dpst_event_enum event,
 	queue_work(state->dpst_wq, &(state->dpst_change_wq_data.work));
 	return IRQ_HANDLED;
 }
-EXPORT_SYMBOL(psb_dpst_notify_change_um);
 
+EXPORT_SYMBOL(psb_dpst_notify_change_um);
 /**
  *
  * psb_dpst_create_and_notify_um - create and notify user mode of new dev
@@ -79,8 +78,8 @@ struct umevent_obj *psb_dpst_create_and_notify_um(const char *name,
 	return psb_create_umevent_obj(name, state->list);
 
 }
-EXPORT_SYMBOL(psb_dpst_create_and_notify_um);
 
+EXPORT_SYMBOL(psb_dpst_create_and_notify_um);
 /**
  * psb_dpst_device_pool_create_and_init - make new hotplug device pool
  *
@@ -89,8 +88,8 @@ EXPORT_SYMBOL(psb_dpst_create_and_notify_um);
  *
  */
 struct umevent_list *psb_dpst_device_pool_create_and_init(struct kobject
-						*parent_kobj, struct dpst_state
-						*state)
+							  *parent_kobj, struct dpst_state
+							  *state)
 {
 	struct umevent_list *new_hotplug_dev_list = NULL;
 	new_hotplug_dev_list = psb_umevent_create_list();
@@ -114,8 +113,8 @@ struct umevent_list *psb_dpst_device_pool_create_and_init(struct kobject
 
 	return new_hotplug_dev_list;
 }
-EXPORT_SYMBOL(psb_dpst_device_pool_create_and_init);
 
+EXPORT_SYMBOL(psb_dpst_device_pool_create_and_init);
 /**
  * psb_dpst_init - init dpst subsystem
  * @parent_kobj - parent kobject to associate dpst state with
@@ -144,8 +143,8 @@ struct dpst_state *psb_dpst_init(struct kobject *parent_kobj)
 
 	return state;
 }
-EXPORT_SYMBOL(psb_dpst_init);
 
+EXPORT_SYMBOL(psb_dpst_init);
 /**
  * psb_dpst_device_pool_destroy - destroy all dpst related resources
  *
@@ -169,8 +168,8 @@ void psb_dpst_device_pool_destroy(struct dpst_state *state)
 	psb_umevent_cleanup(list);
 	kfree(state);
 }
-EXPORT_SYMBOL(psb_dpst_device_pool_destroy);
 
+EXPORT_SYMBOL(psb_dpst_device_pool_destroy);
 /**
  * psb_dpst_dev_change_wq - change workqueue implementation
  *
@@ -194,7 +193,7 @@ void psb_dpst_dev_change_wq(struct work_struct *work)
 				    DRM_DPST_READ_COMPLETE;
 				curr_event_index = wq_data->dpst_events
 				    [wq_data->dev_name_read];
-				/* SH DPST psb_umevent_notify_change_gfxsock */
+				// SH DPST psb_umevent_notify_change_gfxsock
 				dpst_process_event
 				    (list_entry((wq_data->dev_umevent_arry
 						 [curr_event_index]),
@@ -213,7 +212,7 @@ void psb_dpst_dev_change_wq(struct work_struct *work)
 				    DRM_DPST_READ_COMPLETE;
 				curr_event_index = wq_data->dpst_events
 				    [wq_data->dev_name_read];
-				/* SH DPST psb_umevent_notify_change_gfxsock */
+				// SH DPST psb_umevent_notify_change_gfxsock
 				dpst_process_event
 				    (list_entry((wq_data->dev_umevent_arry
 						 [curr_event_index]),
@@ -232,7 +231,7 @@ void psb_dpst_dev_change_wq(struct work_struct *work)
 				    DRM_DPST_READ_COMPLETE;
 				curr_event_index = wq_data->dpst_events
 				    [wq_data->dev_name_read];
-				/* SH DPST psb_umevent_notify_change_gfxsock */
+				// SH DPST psb_umevent_notify_change_gfxsock
 				dpst_process_event
 				    (list_entry((wq_data->dev_umevent_arry
 						 [curr_event_index]),
@@ -245,4 +244,5 @@ void psb_dpst_dev_change_wq(struct work_struct *work)
 	if (wq_data->dev_name_read > DRM_DPST_RING_DEPTH_MAX)
 		wq_data->dev_name_read = 0;
 }
+
 EXPORT_SYMBOL(psb_dpst_dev_change_wq);

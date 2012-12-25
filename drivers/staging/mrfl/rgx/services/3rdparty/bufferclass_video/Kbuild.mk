@@ -15,9 +15,11 @@ ccflags-y += \
 	-I$(TOP)/../interface \
 	-I$(TOP)/services/3rdparty/bufferclass_video \
 	-I$(TOP)/codegen/pixfmts \
-  -DBC_DISCONTIG_BUFFERS
+	-I$(TOP)/include \
+  -DBC_DISCONTIG_BUFFERS -DLINUX
 
 
 bc_video-y += \
 	services/3rdparty/bufferclass_video/bufferclass_video.o \
 	services/3rdparty/bufferclass_video/bufferclass_video_linux.o
+	

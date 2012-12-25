@@ -27,19 +27,31 @@
 #define __DC_CALLBACKS_H__
 
 #include <drm/drmP.h>
+#include <displayclass_interface.h>
 
 struct psb_framebuffer;
 
 typedef int (*pfn_vsync_handler) (struct drm_device *dev, int pipe);
 
 void DCCBGetFramebuffer(struct drm_device *dev, struct psb_framebuffer **);
+int DCChangeFrameBuffer(struct drm_device *dev,
+			struct psb_framebuffer *psbfb);
 void DCCBEnableVSyncInterrupt(struct drm_device *dev);
 void DCCBDisableVSyncInterrupt(struct drm_device *dev);
 void DCCBInstallVSyncISR(struct drm_device *dev,
 			 pfn_vsync_handler pVsyncHandler);
 void DCCBUninstallVSyncISR(struct drm_device *dev);
-void DCCBFlipToSurface(struct drm_device *dev, unsigned long uiAddr,
+void DCCBFlipToSurface(struct drm_device *dev,
+				unsigned long uiAddr,
+				unsigned long uiFormat,
+				unsigned long uiStride,
 		       unsigned int pipeflag);
+void DCCBFlipOverlay(struct drm_device *dev,
+			struct intel_dc_overlay_ctx *ctx);
+void DCCBFlipSprite(struct drm_device *dev,
+			struct intel_dc_sprite_ctx *ctx);
+void DCCBFlipPrimary(struct drm_device *dev,
+			struct intel_dc_primary_ctx *ctx);
 void DCCBFlipDSRCb(struct drm_device *dev);
 void DCCBUnblankDisplay(struct drm_device *dev);
 int DCCBgttMapMemory(struct drm_device *dev,
@@ -49,5 +61,7 @@ int DCCBgttMapMemory(struct drm_device *dev,
 		     unsigned int ui32PagesNum, unsigned int *ui32Offset);
 int DCCBgttUnmapMemory(struct drm_device *dev,
 		       unsigned int hHandle, unsigned int ui32TaskId);
+bool DCChangeSwapChainProperty(unsigned long *psSwapChainGTTOffset,
+			int pipe);
 
 #endif				/* __DC_CALLBACKS_H__ */

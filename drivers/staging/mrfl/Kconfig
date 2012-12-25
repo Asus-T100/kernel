@@ -70,16 +70,23 @@ config MID_DSI_DPU
 	help
 	  xxxxxx
 
-config MID_DUAL_MIPI
-        bool "SUPPORT_DUAL_MIPI_DISPLAYS"
-        depends on DRM_INTEL_HANDSET
+config MDFD_HDMI
+        bool "SUPPORT_HDMI_DISPLAY"
+        depends on DRM_MDFLD || DRM_CTP || DRM_MRFLD
         default n
         help
           xxxxxx
 
-config MID_HDMI
+config MRFLD_HDMI
         bool "SUPPORT_HDMI_DISPLAY"
-        depends on DRM_INTEL_HANDSET
+        depends on DRM_MDFLD || DRM_CTP || DRM_MRFLD
+        default n
+        help
+          xxxxxx
+
+config SUPPORT_HDMI
+        bool "SUPPORT_HDMI_DISPLAY"
+        depends on DRM_MDFLD || DRM_CTP || DRM_MRFLD
         default n
         help
           xxxxxx

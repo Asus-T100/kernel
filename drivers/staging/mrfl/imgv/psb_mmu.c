@@ -107,7 +107,7 @@ static inline uint32_t psb_mmu_pd_index(uint32_t offset)
 #if defined(CONFIG_X86)
 static inline void psb_clflush(void *addr)
 {
-	__asm__ __volatile__("clflush (%0)\n" : : "r"(addr) : "memory");
+	__asm__ __volatile__("clflush (%0)\n"::"r"(addr):"memory");
 }
 
 static inline void psb_mmu_clflush(struct psb_mmu_driver *driver, void *addr)
@@ -158,7 +158,7 @@ static inline void psb_mmu_clflush(struct psb_mmu_driver *driver, void *addr)
 static void psb_pages_clflush(struct psb_mmu_driver *driver,
 			      struct page *page[], unsigned long num_pages)
 {
-	printk(KERN_INFO "Dumy psb_pages_clflush\n");
+	printk("Dumy psb_pages_clflush\n");
 }
 
 #endif
@@ -628,7 +628,7 @@ struct psb_mmu_pd *psb_mmu_get_default_pd(struct psb_mmu_driver *driver)
 }
 
 /* Returns the physical address of the PD shared by sgx/msvdx */
-uint32_t psb_get_default_pd_addr(struct psb_mmu_driver *driver)
+uint32_t psb_get_default_pd_addr(struct psb_mmu_driver * driver)
 {
 	struct psb_mmu_pd *pd;
 

@@ -36,12 +36,12 @@
 #include <drm/drm_edid.h>
 
 #include "psb_drv.h"
-#include "psb_intel_drv.h"
+#include "psb_intel_display.h"
 #include "psb_intel_reg.h"
 #include "psb_powermgmt.h"
 #include "mdfld_output.h"
 
-/* #include <asm/mrst.h> */
+#include <asm/intel-mid.h>
 
 #define DRM_MODE_ENCODER_MIPI  5
 
@@ -84,7 +84,8 @@
 #define DSI_DEVICE_READY				(0x1)
 #define DSI_POWER_STATE_ULPS_ENTER			(0x2 << 1)
 #define DSI_POWER_STATE_ULPS_EXIT			(0x1 << 1)
-#define DSI_POWER_STATE_ULPS_OFFSET			(0x1)
+#define DSI_POWER_STATE_ULPS_MASK			(0x3 << 1)
+
 
 #define DSI_ONE_DATA_LANE				(0x1)
 #define DSI_TWO_DATA_LANE				(0x2)
@@ -182,7 +183,7 @@ typedef enum {
 enum {
 	RESET_FROM_BOOT_UP = 0,
 	RESET_FROM_OSPM_RESUME,
-};
+} ;
 
 enum {
 	MDFLD_DSI_VIDEO_NON_BURST_MODE_SYNC_PULSE = 1,
@@ -211,8 +212,9 @@ struct mdfld_dsi_connector {
 	int pipe;
 	void *private;
 	void *pkg_sender;
+	void *err_detector;
 
-	/*connection status */
+	/*connection status*/
 	enum drm_connector_status status;
 };
 
@@ -225,7 +227,7 @@ struct mdfld_dsi_encoder {
 struct mdfld_dsi_hw_context {
 	u32 vgacntr;
 
-	/*plane */
+	/*plane*/
 	u32 dspcntr;
 	u32 dspsize;
 	u32 dspsurf;
@@ -233,7 +235,15 @@ struct mdfld_dsi_hw_context {
 	u32 dspstride;
 	u32 dsplinoff;
 
-	/*pipe regs */
+	/*overlay*/
+	u32 ovaadd;
+	u32 ovcadd;
+
+	/* gamma and csc */
+	u32 palette[256];
+	u32 color_coef[6];
+
+	/*pipe regs*/
 	u32 htotal;
 	u32 hblank;
 	u32 hsync;
@@ -248,10 +258,10 @@ struct mdfld_dsi_hw_context {
 	u32 fp;
 	u32 pipeconf;
 
-	/*mipi port */
+	/*mipi port*/
 	u32 mipi;
 
-	/*DSI controller regs */
+	/*DSI controller regs*/
 	u32 device_ready;
 	u32 intr_stat;
 	u32 intr_en;
@@ -287,27 +297,27 @@ struct mdfld_dsi_hw_context {
 	u32 dbi_bw_ctrl;
 	u32 clk_lane_switch_time_cnt;
 
-	/*MIPI adapter regs */
+	/*MIPI adapter regs*/
 	u32 mipi_control;
 	u32 mipi_data_addr;
 	u32 mipi_data_len;
 	u32 mipi_cmd_addr;
 	u32 mipi_cmd_len;
 
-	/*panel status */
+	/*panel status*/
 	int panel_on;
 	int backlight_level;
 
 	u32 pll_bypass_mode;
 	u32 cck_div;
-	/*brightness */
+	/*brightness*/
 	int lastbrightnesslevel;
 };
 
 struct mdfld_dsi_hw_registers {
 	u32 vgacntr_reg;
 
-	/*plane */
+	/*plane*/
 	u32 dspcntr_reg;
 	u32 dspsize_reg;
 	u32 dspsurf_reg;
@@ -315,7 +325,14 @@ struct mdfld_dsi_hw_registers {
 	u32 dsppos_reg;
 	u32 dspstride_reg;
 
-	/*pipe regs */
+	/*overlay*/
+	u32 ovaadd_reg;
+	u32 ovcadd_reg;
+
+	/* csc */
+	u32 color_coef_reg;
+
+	/*pipe regs*/
 	u32 htotal_reg;
 	u32 hblank_reg;
 	u32 hsync_reg;
@@ -329,11 +346,15 @@ struct mdfld_dsi_hw_registers {
 	u32 dpll_reg;
 	u32 fp_reg;
 	u32 pipeconf_reg;
+	u32 palette_reg;
+	u32 gamma_red_max_reg;
+	u32 gamma_green_max_reg;
+	u32 gamma_blue_max_reg;
 
-	/*mipi port */
+	/*mipi port*/
 	u32 mipi_reg;
 
-	/*DSI controller regs */
+	/*DSI controller regs*/
 	u32 device_ready_reg;
 	u32 intr_stat_reg;
 	u32 intr_en_reg;
@@ -369,7 +390,7 @@ struct mdfld_dsi_hw_registers {
 	u32 dbi_bw_ctrl_reg;
 	u32 clk_lane_switch_time_cnt_reg;
 
-	/*MIPI adapter regs */
+	/*MIPI adapter regs*/
 	u32 mipi_control_reg;
 	u32 mipi_data_addr_reg;
 	u32 mipi_data_len_reg;
@@ -392,40 +413,42 @@ struct mdfld_dsi_config {
 
 	struct mdfld_dsi_hw_registers regs;
 
-	/*DSI hw context */
-	spinlock_t context_lock;
+	/*DSI hw context*/
+	struct mutex context_lock;
 	struct mdfld_dsi_hw_context dsi_hw_context;
 
 	int pipe;
 	int changed;
 
-	int dvr_ic_inited;
+	int drv_ic_inited;
 
 	int bpp;
 	mdfld_dsi_encoder_t type;
 	int lane_count;
-	/*mipi data lane config */
+	/*mipi data lane config*/
 	int lane_config;
-	/*Virtual channel number for this encoder */
+	/*Virtual channel number for this encoder*/
 	int channel_num;
-	/*video mode configure */
+	/*video mode configure*/
 	int video_mode;
+
 	uint32_t s3d_format;
+
+	/*dsr*/
+	void *dsr;
 };
 
 #define MDFLD_DSI_CONNECTOR(psb_output) \
-		(container_of(psb_output, struct mdfld_dsi_connector, base))
+	(container_of(psb_output, struct mdfld_dsi_connector, base))
 
 #define MDFLD_DSI_ENCODER(encoder) \
-		(container_of(encoder, struct mdfld_dsi_encoder, base))
+	(container_of(encoder, struct mdfld_dsi_encoder, base))
 
-static inline struct mdfld_dsi_config *mdfld_dsi_get_config(struct
-							    mdfld_dsi_connector
-							    *connector)
+static inline struct mdfld_dsi_config *
+mdfld_dsi_get_config(struct mdfld_dsi_connector *connector)
 {
-	if (!connector) {
+	if (!connector)
 		return NULL;
-	}
 
 	return (struct mdfld_dsi_config *)connector->private;
 }
@@ -445,18 +468,16 @@ static inline void *mdfld_dsi_get_pkg_sender(struct mdfld_dsi_config *config)
 	return dsi_connector->pkg_sender;
 }
 
-static inline struct mdfld_dsi_config *mdfld_dsi_encoder_get_config(struct
-								    mdfld_dsi_encoder
-								    *encoder)
+static inline struct mdfld_dsi_config *
+mdfld_dsi_encoder_get_config(struct mdfld_dsi_encoder *encoder)
 {
 	if (!encoder)
 		return NULL;
 	return (struct mdfld_dsi_config *)encoder->private;
 }
 
-static inline struct mdfld_dsi_connector *mdfld_dsi_encoder_get_connector(struct
-									  mdfld_dsi_encoder
-									  *encoder)
+static inline struct mdfld_dsi_connector *
+mdfld_dsi_encoder_get_connector(struct mdfld_dsi_encoder *encoder)
 {
 	struct mdfld_dsi_config *config;
 
@@ -470,8 +491,8 @@ static inline struct mdfld_dsi_connector *mdfld_dsi_encoder_get_connector(struct
 	return config->connector;
 }
 
-static inline void *mdfld_dsi_encoder_get_pkg_sender(struct mdfld_dsi_encoder
-						     *encoder)
+static inline void *
+mdfld_dsi_encoder_get_pkg_sender(struct mdfld_dsi_encoder *encoder)
 {
 	struct mdfld_dsi_config *dsi_config;
 
@@ -498,24 +519,22 @@ static inline int mdfld_dsi_encoder_get_pipe(struct mdfld_dsi_encoder *encoder)
 
 /*Export functions*/
 extern void mdfld_dsi_gen_fifo_ready(struct drm_device *dev,
-				     u32 gen_fifo_stat_reg, u32 fifo_stat);
+		u32 gen_fifo_stat_reg, u32 fifo_stat);
 extern void mdfld_dsi_brightness_init(struct mdfld_dsi_config *dsi_config,
-				      int pipe);
+		int pipe);
 extern void mdfld_dsi_brightness_control(struct drm_device *dev, int pipe,
-					 int level);
+		int level);
 extern int mdfld_dsi_output_init(struct drm_device *dev,
-				 int pipe,
-				 struct mdfld_dsi_config *config,
-				 struct panel_funcs *p_cmd_funcs,
-				 struct panel_funcs *p_vid_funcs);
-extern void mdfld_dsi_controller_init(struct mdfld_dsi_config *dsi_config,
-				      int pipe);
-
+		int pipe,
+		struct mdfld_dsi_config *config,
+		struct panel_funcs *p_funcs);
+extern int mdfld_dsi_get_panel_status(struct mdfld_dsi_config *dsi_config,
+		u8 dcs,
+		u8 *data,
+		u8 transmission,
+		u32 len);
 extern int mdfld_dsi_get_power_mode(struct mdfld_dsi_config *dsi_config,
-				    u32 *mode, u8 transmission);
-extern int mdfld_dsi_get_diagnostic_result(struct mdfld_dsi_config *dsi_config,
-					   u32 *result, u8 transmission);
-extern int mdfld_dsi_panel_reset(struct mdfld_dsi_config *dsi_config,
-				 int reset_from);
+		u8 *mode,
+		u8 transmission);
 
 #endif /*__MDFLD_DSI_OUTPUT_H__*/

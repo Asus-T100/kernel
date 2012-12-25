@@ -252,7 +252,9 @@ int pnw_topaz_init(struct drm_device *dev)
 	if (device_create_file(&dev->pdev->dev, &dev_attr_topaz_pmstate))
 		DRM_ERROR("TOPAZ: could not create sysfs file\n");
 	topaz_priv->sysfs_pmstate = sysfs_get_dirent(dev->pdev->dev.kobj.sd,
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,35))
 						     NULL,
+#endif
 						     "topaz_pmstate");
 
 	topaz_priv = dev_priv->topaz_private;
@@ -336,8 +338,8 @@ int pnw_topaz_init(struct drm_device *dev)
 					       DRM_PSB_FLAG_MEM_MMU |
 					       TTM_PL_FLAG_NO_EVICT,
 					       0, 0, 0, NULL,
-					       &topaz_priv->
-					       topaz_mtx_data_mem[n]);
+					       &topaz_priv->topaz_mtx_data_mem
+					       [n]);
 		if (ret) {
 			DRM_ERROR("TOPAZ: failed to allocate ttm buffer for "
 				  "mtx data save of core (%d)\n", n);
@@ -743,8 +745,7 @@ int pnw_topaz_setup_fw(struct drm_device *dev, enum drm_pnw_topaz_codec codec)
 
 	/*start each MTX in turn MUST start with master to
 	 * enable comms to other cores*/
-	core_id = topaz_priv->topaz_num_cores - 1;
-	for (; core_id >= 0; core_id--) {
+	for (core_id = topaz_priv->topaz_num_cores - 1; core_id >= 0; core_id--) {
 		topaz_set_mtx_target(dev_priv, core_id, 0);
 		/* # reset mtx */
 		TOPAZ_WRITE32(TOPAZ_CR_IMG_TOPAZ_SRST,
@@ -870,8 +871,8 @@ int pnw_topaz_setup_fw(struct drm_device *dev, enum drm_pnw_topaz_codec codec)
 			     F_ENCODE(MEM_AND_CACHE,
 				      MVEA_CR_RECON_SBAND) |
 			     F_ENCODE(CACHE_ONLY,
-				MVEA_CR_REF_SBAND) | F_ENCODE(CACHE_ONLY,
-				MVEA_CR_ABOVE_PARAM_IN_SBAND)
+				      MVEA_CR_REF_SBAND) | F_ENCODE(CACHE_ONLY,
+								    MVEA_CR_ABOVE_PARAM_IN_SBAND)
 			     | F_ENCODE(CACHE_ONLY,
 					MVEA_CR_BELOW_PARAM_IN_SBAND) |
 			     F_ENCODE(MEMORY_ONLY,
@@ -934,8 +935,7 @@ int topaz_upload_fw(struct drm_device *dev, enum drm_pnw_topaz_codec codec,
 
 	/* # upload text. text_size is byte size */
 	text_size = cur_codec_fw->text_size / 4;
-	/* adjust transfer sizes of text and data sections
-	to match burst size */
+	/* adjust transfer sizes of text and data sections to match burst size */
 	text_size = ((text_size * 4 + (MTX_DMA_BURSTSIZE_BYTES - 1))
 		     & ~(MTX_DMA_BURSTSIZE_BYTES - 1)) / 4;
 
@@ -1203,6 +1203,7 @@ int topaz_dma_transfer(struct drm_psb_private *dev_priv, uint32_t channel,
 		return -1;
 	}
 
+	/* assert(0==(dmac_count & (MASK_IMG_SOC_EN | MASK_IMG_SOC_LIST_EN))); */
 
 	/* clear status of any previous interrupts */
 	DMAC_WRITE32(IMG_SOC_DMAC_IRQ_STAT(channel), 0);
@@ -1270,16 +1271,16 @@ void topaz_write_core_reg(struct drm_psb_private *dev_priv,
 
 	/* wait for operation finished */
 	pnw_topaz_wait_for_register(dev_priv,
-		REG_START_TOPAZ_MTX_HOST(core) +
-		MTX_CORE_CR_MTX_REGISTER_READ_WRITE_REQUEST_OFFSET,
-		MTX_CORE_CR_MTX_REGISTER_READ_WRITE_REQUEST_MTX_DREADY_MASK,
-		MTX_CORE_CR_MTX_REGISTER_READ_WRITE_REQUEST_MTX_DREADY_MASK);
+				    REG_START_TOPAZ_MTX_HOST(core) +
+				    MTX_CORE_CR_MTX_REGISTER_READ_WRITE_REQUEST_OFFSET,
+				    MTX_CORE_CR_MTX_REGISTER_READ_WRITE_REQUEST_MTX_DREADY_MASK,
+				    MTX_CORE_CR_MTX_REGISTER_READ_WRITE_REQUEST_MTX_DREADY_MASK);
 
 	release_mtx_control_from_dash(dev_priv, core);
 }
 
 void topaz_read_core_reg(struct drm_psb_private *dev_priv,
-			 uint32_t core, uint32_t reg, uint32_t *ret_val)
+			 uint32_t core, uint32_t reg, uint32_t * ret_val)
 {
 	uint32_t tmp;
 
@@ -1295,10 +1296,10 @@ void topaz_read_core_reg(struct drm_psb_private *dev_priv,
 
 	/* wait for operation finished */
 	pnw_topaz_wait_for_register(dev_priv,
-		REG_START_TOPAZ_MTX_HOST(core) +
-		MTX_CORE_CR_MTX_REGISTER_READ_WRITE_REQUEST_OFFSET,
-		MTX_CORE_CR_MTX_REGISTER_READ_WRITE_REQUEST_MTX_DREADY_MASK,
-		MTX_CORE_CR_MTX_REGISTER_READ_WRITE_REQUEST_MTX_DREADY_MASK);
+				    REG_START_TOPAZ_MTX_HOST(core) +
+				    MTX_CORE_CR_MTX_REGISTER_READ_WRITE_REQUEST_OFFSET,
+				    MTX_CORE_CR_MTX_REGISTER_READ_WRITE_REQUEST_MTX_DREADY_MASK,
+				    MTX_CORE_CR_MTX_REGISTER_READ_WRITE_REQUEST_MTX_DREADY_MASK);
 
 	/* read  */
 	MTX_READ32(MTX_CORE_CR_MTX_REGISTER_READ_WRITE_DATA_OFFSET,
@@ -1397,6 +1398,7 @@ void pnw_topaz_mmu_flushcache(struct drm_psb_private *dev_priv)
 
 	/* clear it */
 	mmu_control &= (~F_ENCODE(1, TOPAZ_CR_MMU_INVALDC));
+	//mmu_control &= (~F_ENCODE(1, TOPAZ_CR_MMU_FLUSH));
 	TOPAZ_WRITE32(TOPAZ_CR_MMU_CONTROL0, mmu_control, 0);
 	psb_gl3_global_invalidation(dev_priv->dev);
 }
@@ -1504,8 +1506,7 @@ int pnw_topaz_restore_mtx_state(struct drm_device *dev)
 			     core_id);
 	}
 
-	core_id = topaz_priv->topaz_num_cores - 1;
-	for (; core_id >= 0; core_id--) {
+	for (core_id = topaz_priv->topaz_num_cores - 1; core_id >= 0; core_id--) {
 		topaz_set_mtx_target(dev_priv, core_id, 0);
 
 		TOPAZ_WRITE32(TOPAZ_CR_IMG_TOPAZ_SRST,
@@ -1532,8 +1533,7 @@ int pnw_topaz_restore_mtx_state(struct drm_device *dev)
 		pnw_topaz_mmu_flushcache(dev_priv);
 	}
 
-	core_id = topaz_priv->topaz_num_cores - 1;
-	for (; core_id >= 0; core_id--) {
+	for (core_id = topaz_priv->topaz_num_cores - 1; core_id >= 0; core_id--) {
 		topaz_set_mtx_target(dev_priv, core_id, 0);
 
 		mtx_reg_state = topaz_priv->topaz_mtx_reg_state[core_id];
@@ -1702,12 +1702,12 @@ int pnw_topaz_save_mtx_state(struct drm_device *dev)
 
 		if (core == 0) {
 			if (0 != pnw_topaz_wait_for_register(dev_priv,
-						REG_START_TOPAZ_MTX_HOST
-						(core)
-						+
-						MTX_CORE_CR_MTX_TXRPT_OFFSET,
-						TXRPT_WAITONKICK_VALUE,
-						0xffffffff)) {
+							     REG_START_TOPAZ_MTX_HOST
+							     (core)
+							     +
+							     MTX_CORE_CR_MTX_TXRPT_OFFSET,
+							     TXRPT_WAITONKICK_VALUE,
+							     0xffffffff)) {
 				DRM_ERROR("TOPAZ: Stop MTX failed!\n");
 				topaz_priv->topaz_needs_reset = 1;
 				return -1;
@@ -1826,11 +1826,11 @@ int mtx_dma_read(struct drm_device *dev, uint32_t core,
 
 	/* wait for it transfer */
 	if (0 != pnw_topaz_wait_for_register(dev_priv,
-					IMG_SOC_DMAC_IRQ_STAT(0) +
-					DMAC_START, F_ENCODE(1,
-					IMG_SOC_TRANSFER_FIN),
-					F_ENCODE(1,
-						IMG_SOC_TRANSFER_FIN))) {
+					     IMG_SOC_DMAC_IRQ_STAT(0) +
+					     DMAC_START, F_ENCODE(1,
+								  IMG_SOC_TRANSFER_FIN),
+					     F_ENCODE(1,
+						      IMG_SOC_TRANSFER_FIN))) {
 		pnw_error_dump_reg(dev_priv, core);
 		return -1;
 	}
@@ -1868,8 +1868,7 @@ int mtx_dma_write(struct drm_device *dev, uint32_t core_id)
 
 	/* # upload text. text_size is byte size */
 	text_size = cur_codec_fw->text_size / 4;
-	/* adjust transfer sizes of text and
-	data sections to match burst size */
+	/* adjust transfer sizes of text and data sections to match burst size */
 	text_size = ((text_size * 4 + (MTX_DMA_BURSTSIZE_BYTES - 1))
 		     & ~(MTX_DMA_BURSTSIZE_BYTES - 1)) / 4;
 
@@ -1937,9 +1936,10 @@ int mtx_dma_write(struct drm_device *dev, uint32_t core_id)
 
 	/* #.# transfer the codec */
 	if (0 != topaz_dma_transfer(dev_priv, 0,
-				    topaz_priv->topaz_mtx_data_mem[core_id]->
-				    offset, 0, MTX_CR_MTX_SYSC_CDMAT, data_size,
-				    core_id, 0)) {
+				    topaz_priv->
+				    topaz_mtx_data_mem[core_id]->offset, 0,
+				    MTX_CR_MTX_SYSC_CDMAT, data_size, core_id,
+				    0)) {
 		pnw_error_dump_reg(dev_priv, core_id);
 		return -1;
 	}

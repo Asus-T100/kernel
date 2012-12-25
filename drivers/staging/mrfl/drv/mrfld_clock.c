@@ -21,7 +21,7 @@
  * DEALINGS IN THE SOFTWARE.
  *
  * Authors:
- *	Jim Liu <jim.liu@intel.com>
+ *	Jim Liu <jim.liu@intel.com>	
  */
 
 #include <drm/drmP.h>
@@ -31,6 +31,7 @@
 #include "psb_intel_reg.h"
 #include "psb_intel_display.h"
 #include "mrfld_clock.h"
+#include "mdfld_dsi_output.h"
 #include <asm/intel-mid.h>
 
 #define MRFLD_LIMT_DPLL_19	    0
@@ -79,44 +80,44 @@
 
 static const struct mrst_limit_t mrfld_limits[] = {
 	{			/* MRFLD_LIMT_DPLL_19 */
-	 .dot = {.min = MRFLD_DOT_MIN, .max = MRFLD_DOT_MAX},
-	 .m = {.min = MRFLD_DPLL_M_MIN_19, .max = MRFLD_DPLL_M_MAX_19},
-	 .p1 = {.min = MRFLD_DPLL_P1_MIN_19, .max = MRFLD_DPLL_P1_MAX_19},
+	 .dot = {.min = MRFLD_DOT_MIN,.max = MRFLD_DOT_MAX},
+	 .m = {.min = MRFLD_DPLL_M_MIN_19,.max = MRFLD_DPLL_M_MAX_19},
+	 .p1 = {.min = MRFLD_DPLL_P1_MIN_19,.max = MRFLD_DPLL_P1_MAX_19},
 	 },
 	{			/* MRFLD_LIMT_DPLL_25 */
-	 .dot = {.min = MRFLD_DOT_MIN, .max = MRFLD_DOT_MAX},
-	 .m = {.min = MRFLD_DPLL_M_MIN_25, .max = MRFLD_DPLL_M_MAX_25},
-	 .p1 = {.min = MRFLD_DPLL_P1_MIN_25, .max = MRFLD_DPLL_P1_MAX_25},
+	 .dot = {.min = MRFLD_DOT_MIN,.max = MRFLD_DOT_MAX},
+	 .m = {.min = MRFLD_DPLL_M_MIN_25,.max = MRFLD_DPLL_M_MAX_25},
+	 .p1 = {.min = MRFLD_DPLL_P1_MIN_25,.max = MRFLD_DPLL_P1_MAX_25},
 	 },
 	{			/* MRFLD_LIMT_DPLL_83 */
-	 .dot = {.min = MRFLD_DOT_MIN, .max = MRFLD_DOT_MAX},
-	 .m = {.min = MRFLD_DPLL_M_MIN_83, .max = MRFLD_DPLL_M_MAX_83},
-	 .p1 = {.min = MRFLD_DPLL_P1_MIN_83, .max = MRFLD_DPLL_P1_MAX_83},
+	 .dot = {.min = MRFLD_DOT_MIN,.max = MRFLD_DOT_MAX},
+	 .m = {.min = MRFLD_DPLL_M_MIN_83,.max = MRFLD_DPLL_M_MAX_83},
+	 .p1 = {.min = MRFLD_DPLL_P1_MIN_83,.max = MRFLD_DPLL_P1_MAX_83},
 	 },
 	{			/* MRFLD_LIMT_DPLL_100 */
-	 .dot = {.min = MRFLD_DOT_MIN, .max = MRFLD_DOT_MAX},
-	 .m = {.min = MRFLD_DPLL_M_MIN_100, .max = MRFLD_DPLL_M_MAX_100},
-	 .p1 = {.min = MRFLD_DPLL_P1_MIN_100, .max = MRFLD_DPLL_P1_MAX_100},
+	 .dot = {.min = MRFLD_DOT_MIN,.max = MRFLD_DOT_MAX},
+	 .m = {.min = MRFLD_DPLL_M_MIN_100,.max = MRFLD_DPLL_M_MAX_100},
+	 .p1 = {.min = MRFLD_DPLL_P1_MIN_100,.max = MRFLD_DPLL_P1_MAX_100},
 	 },
 	{			/* MRFLD_LIMT_DSIPLL_19 */
-	 .dot = {.min = MRFLD_DOT_MIN, .max = MRFLD_DOT_MAX},
-	 .m = {.min = MRFLD_DSIPLL_M_MIN_19, .max = MRFLD_DSIPLL_M_MAX_19},
-	 .p1 = {.min = MRFLD_DSIPLL_P1_MIN_19, .max = MRFLD_DSIPLL_P1_MAX_19},
+	 .dot = {.min = MRFLD_DOT_MIN,.max = MRFLD_DOT_MAX},
+	 .m = {.min = MRFLD_DSIPLL_M_MIN_19,.max = MRFLD_DSIPLL_M_MAX_19},
+	 .p1 = {.min = MRFLD_DSIPLL_P1_MIN_19,.max = MRFLD_DSIPLL_P1_MAX_19},
 	 },
 	{			/* MRFLD_LIMT_DSIPLL_25 */
-	 .dot = {.min = MRFLD_DOT_MIN, .max = MRFLD_DOT_MAX},
-	 .m = {.min = MRFLD_DSIPLL_M_MIN_25, .max = MRFLD_DSIPLL_M_MAX_25},
-	 .p1 = {.min = MRFLD_DSIPLL_P1_MIN_25, .max = MRFLD_DSIPLL_P1_MAX_25},
+	 .dot = {.min = MRFLD_DOT_MIN,.max = MRFLD_DOT_MAX},
+	 .m = {.min = MRFLD_DSIPLL_M_MIN_25,.max = MRFLD_DSIPLL_M_MAX_25},
+	 .p1 = {.min = MRFLD_DSIPLL_P1_MIN_25,.max = MRFLD_DSIPLL_P1_MAX_25},
 	 },
 	{			/* MRFLD_LIMT_DSIPLL_83 */
-	 .dot = {.min = MRFLD_DOT_MIN, .max = MRFLD_DOT_MAX},
-	 .m = {.min = MRFLD_DSIPLL_M_MIN_83, .max = MRFLD_DSIPLL_M_MAX_83},
-	 .p1 = {.min = MRFLD_DSIPLL_P1_MIN_83, .max = MRFLD_DSIPLL_P1_MAX_83},
+	 .dot = {.min = MRFLD_DOT_MIN,.max = MRFLD_DOT_MAX},
+	 .m = {.min = MRFLD_DSIPLL_M_MIN_83,.max = MRFLD_DSIPLL_M_MAX_83},
+	 .p1 = {.min = MRFLD_DSIPLL_P1_MIN_83,.max = MRFLD_DSIPLL_P1_MAX_83},
 	 },
 	{			/* MRFLD_LIMT_DSIPLL_100 */
-	 .dot = {.min = MRFLD_DOT_MIN, .max = MRFLD_DOT_MAX},
-	 .m = {.min = MRFLD_DSIPLL_M_MIN_100, .max = MRFLD_DSIPLL_M_MAX_100},
-	 .p1 = {.min = MRFLD_DSIPLL_P1_MIN_100, .max = MRFLD_DSIPLL_P1_MAX_100},
+	 .dot = {.min = MRFLD_DOT_MIN,.max = MRFLD_DOT_MAX},
+	 .m = {.min = MRFLD_DSIPLL_M_MIN_100,.max = MRFLD_DSIPLL_M_MAX_100},
+	 .p1 = {.min = MRFLD_DSIPLL_P1_MIN_100,.max = MRFLD_DSIPLL_P1_MAX_100},
 	 },
 };
 
@@ -189,7 +190,7 @@ static void mrfld_clock(int refclk, struct mrst_clock_t *clock)
 
 /**
  * Returns a set of divisors for the desired target clock with the given refclk,
- * or FALSE.
+ * or FALSE.  
  */
 static bool
 mrfld_find_best_PLL(struct drm_device *dev, int pipe, int target, int refclk,
@@ -227,26 +228,8 @@ mrfld_find_best_PLL(struct drm_device *dev, int pipe, int target, int refclk,
 	return err != target;
 }
 
-#define HDMIPHY_PORT			0x13
-#define CCK_PORT			0x14
-#define DSI_PLL_CTRL_REG		0x48
-#define _DSI_LDO_EN			(1 << 30)
-#define _CLK_EN_PLL_DSI0		(1 << 8)
-#define _CLK_EN_PLL_DSI1		(1 << 7)
-#define _CLK_EN_CCK_DSI0		(1 << 6)
-#define _CLK_EN_CCK_DSI1		(1 << 5)
-#define DSI_PLL_DIV_REG			0x4C
-#define FUSE_OVERRIDE_FREQ_CNTRL_REG3	0x54
-#define DPLL_STAGER_CTL_REG1		0x0230
-#define DPLL_STAGER_CTL_REG2		0x0430
-#define DPLL_DIV_REG			0x800C
-#define PLL_CTL_IN_MISC_TLDRV_REG	0x8014
-#define PLL_AFC_MISC_REG		0x801C
-#define LPF_COEFF_REG			0x8048
-#define GLOBAL_RCOMP_REG		0x80E0
-
 /**
- * Set up the display clock
+ * Set up the display clock 
  *
  */
 void mrfld_setup_pll(struct drm_device *dev, int pipe, int clk)
@@ -262,8 +245,26 @@ void mrfld_setup_pll(struct drm_device *dev, int pipe, int clk)
 	u32 pll = 0, fp = 0;
 	bool is_mipi = false, is_mipi2 = false, is_hdmi = false;
 	int timeout = 0;
+	struct mdfld_dsi_config *dsi_config = NULL;
+	struct mdfld_dsi_hw_context *ctx = NULL;
 
-	PSB_DEBUG_ENTRY("pipe = 0x%x \n", pipe);
+	PSB_DEBUG_ENTRY("pipe = 0x%x\n", pipe);
+
+	if (pipe == 0)
+		dsi_config = dev_priv->dsi_configs[0];
+	else if (pipe == 2)
+		dsi_config = dev_priv->dsi_configs[1];
+
+	if ((pipe != 1) && !dsi_config) {
+		DRM_ERROR("Invalid DSI config\n");
+		return;
+	}
+
+	if (pipe != 1) {
+		ctx = &dsi_config->dsi_hw_context;
+
+		mutex_lock(&dsi_config->context_lock);
+	}
 
 	switch (pipe) {
 	case 0:
@@ -326,8 +327,18 @@ void mrfld_setup_pll(struct drm_device *dev, int pipe, int clk)
 	ok = mrfld_find_best_PLL(dev, pipe, clk_tmp, refclk, &clock);
 	dev_priv->tmds_clock_khz = clock.dot / (clk_n * clk_p2 * clk_byte);
 
+	/*
+	 * FIXME: Hard code the divisors' value for JDI panel, and need to
+	 * calculate them according to the DSI PLL HAS spec.
+	 */
+	if (pipe != 1) {
+		clock.p1 = 4;
+		clk_n = 1;
+		clock.m = 120;
+	}
+
 	if (!ok) {
-		DRM_ERROR("mdfldFindBestPLL fail in mrfld_crtc_mode_set. \n");
+		DRM_ERROR("mdfldFindBestPLL fail in mrfld_crtc_mode_set.\n");
 	} else {
 		m_conv = mrfld_m_converts[(clock.m - MRFLD_M_MIN)];
 
@@ -336,43 +347,25 @@ void mrfld_setup_pll(struct drm_device *dev, int pipe, int clk)
 				clock.m, clock.p1, m_conv);
 	}
 
-	pll = intel_mid_msgbus_read32(CCK_PORT, DSI_PLL_CTRL_REG);
-
-	if (pll & DPLL_VCO_ENABLE) {
-		pll &= ~DPLL_VCO_ENABLE;
-		intel_mid_msgbus_write32(CCK_PORT, DSI_PLL_CTRL_REG, pll);
-	}
-
-	/* When ungating power of DPLL, needs to wait 0.5us before enable the VCO */
-	if (!(pll & _DSI_LDO_EN)) {
-		pll |= _DSI_LDO_EN;
-		intel_mid_msgbus_write32(CCK_PORT, DSI_PLL_CTRL_REG, pll);
-		/* FIXME_MRFLD PO - change 500 to 1 after PO */
-		udelay(500);
-	}
-
 	/* Write the N1 & M1 parameters into DSI_PLL_DIV_REG */
 	fp = (clk_n / 2) << 16;
 	fp |= m_conv;
-	intel_mid_msgbus_write32(CCK_PORT, DSI_PLL_DIV_REG, fp);
 
-	pll = 0;
-
-#if 0				/* FIXME revisit later */
-	if ((dev_priv->ksel == KSEL_CRYSTAL_19)
-	    || (dev_priv->ksel == KSEL_BYPASS_19)
-	    || (dev_priv->ksel == KSEL_BYPASS_25)) {
-		pll &= ~MDFLD_INPUT_REF_SEL;
-	} else if (dev_priv->ksel == KSEL_BYPASS_83_100) {
-		pll |= MDFLD_INPUT_REF_SEL;
-	}
-#endif				/* FIXME revisit later */
-
-	if (is_mipi)
+	if (is_mipi) {
+		/* Enable DSI PLL clocks for DSI0 rather than CCK. */
 		pll |= _CLK_EN_PLL_DSI0;
+		pll &= ~_CLK_EN_CCK_DSI0;
+		/* Select DSI PLL as the source of the mux input clocks. */
+		pll &= ~_DSI_MUX_SEL_CCK_DSI0;
+	}
 
-	if (is_mipi2)
+	if (is_mipi2) {
+		/* Enable DSI PLL clocks for DSI1 rather than CCK. */
 		pll |= _CLK_EN_PLL_DSI1;
+		pll &= ~_CLK_EN_CCK_DSI1;
+		/* Select DSI PLL as the source of the mux input clocks. */
+		pll &= ~_DSI_MUX_SEL_CCK_DSI1;
+	}
 
 	if (is_hdmi)
 		pll |= MDFLD_VCO_SEL;
@@ -380,17 +373,16 @@ void mrfld_setup_pll(struct drm_device *dev, int pipe, int clk)
 	/* compute bitmask from p1 value */
 	pll |= (1 << (clock.p1 - 2)) << 17;
 
-	pll |= DPLL_VCO_ENABLE;
-	intel_mid_msgbus_write32(CCK_PORT, DSI_PLL_CTRL_REG, pll);
+	if (pipe != 1) {
+		ctx->dpll = pll;
+		ctx->fp = fp;
 
-	/* FIXME_MRFLD PO - change 500 to 5 after PO */
-	/* the lock time for PLL is 5us */
-	/* or we can check for DSI PLL to lock */
-	udelay(500);
+		mutex_unlock(&dsi_config->context_lock);
+	}
 }
 
 /**
- * Set up the HDMI display clock
+ * Set up the HDMI display clock 
  *
  */
 void mrfld_setup_dpll(struct drm_device *dev, int clk)
@@ -417,8 +409,7 @@ void mrfld_setup_dpll(struct drm_device *dev, int clk)
 	clk_p2 = 5;
 	dpll_div = clk_m2 | (clk_m1 << 8) | (clk_n << 12) | (clk_p2 << 16) |
 	    (clk_p1 << 21);
-	MRFLD_EXT_MSG_WRITE32(dev_priv->pci_root, HDMIPHY_PORT, DPLL_DIV_REG,
-			      dpll_div);
+	intel_mid_msgbus_write32(HDMIPHY_PORT, DPLL_DIV_REG, dpll_div);
 
 	/* Set up LCPLL in Digital Mode. */
 	pllctl = 0;		/* idthsen reset to 0 for display operation. */
@@ -426,13 +417,12 @@ void mrfld_setup_dpll(struct drm_device *dev, int clk)
 	pllin = 0x73;		/* pllrefsel selects alt core ref clock(19.2MHz). */
 	pllmisc = 0x0D;		/* Digital mode for LCPLL, pllrefselorden set. */
 	dpll_tmp = pllctl | (tldrv << 8) | (pllin << 16) | (pllmisc << 24);
-	MRFLD_EXT_MSG_WRITE32(dev_priv->pci_root, HDMIPHY_PORT,
-			      PLL_CTL_IN_MISC_TLDRV_REG, dpll_tmp);
+	intel_mid_msgbus_write32(HDMIPHY_PORT, PLL_CTL_IN_MISC_TLDRV_REG,
+		dpll_tmp);
 
 	/* Program Co-efficients for LCPLL in Digital Mode. */
 	dpll_tmp = 0x001f0077;
-	MRFLD_EXT_MSG_WRITE32(dev_priv->pci_root, HDMIPHY_PORT, LPF_COEFF_REG,
-			      dpll_tmp);
+	intel_mid_msgbus_write32(HDMIPHY_PORT, LPF_COEFF_REG, dpll_tmp);
 
 	/* Enable DPLL VCO. */
 	pll |= DPLL_VCO_ENABLE;
@@ -440,20 +430,16 @@ void mrfld_setup_dpll(struct drm_device *dev, int clk)
 
 	/* Enable DCLP to core. */
 	dpll_tmp = 0x00030101;	/* FIXME need to read_mask_write. */
-	MRFLD_EXT_MSG_WRITE32(dev_priv->pci_root, HDMIPHY_PORT,
-			      PLL_AFC_MISC_REG, dpll_tmp);
+	intel_mid_msgbus_write32(HDMIPHY_PORT, PLL_AFC_MISC_REG, dpll_tmp);
 
 	/* Disable global rcomp. */
 	dpll_tmp = 0x07010101;	/* FIXME need to read_mask_write. */
-	MRFLD_EXT_MSG_WRITE32(dev_priv->pci_root, HDMIPHY_PORT,
-			      GLOBAL_RCOMP_REG, dpll_tmp);
+	intel_mid_msgbus_write32(HDMIPHY_PORT, GLOBAL_RCOMP_REG, dpll_tmp);
 
 	/* Stagger Programming */
 	dpll_tmp = 0x00401f00;
-	MRFLD_EXT_MSG_WRITE32(dev_priv->pci_root, HDMIPHY_PORT,
-			      DPLL_STAGER_CTL_REG1, dpll_tmp);
+	intel_mid_msgbus_write32(HDMIPHY_PORT, DPLL_STAGER_CTL_REG1, dpll_tmp);
 
 	dpll_tmp = 0x00541f00;
-	MRFLD_EXT_MSG_WRITE32(dev_priv->pci_root, HDMIPHY_PORT,
-			      DPLL_STAGER_CTL_REG2, dpll_tmp);
+	intel_mid_msgbus_write32(HDMIPHY_PORT, DPLL_STAGER_CTL_REG2, dpll_tmp);
 }

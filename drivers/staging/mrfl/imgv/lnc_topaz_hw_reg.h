@@ -459,7 +459,7 @@ do {                                   \
 		(((val)&MASK_TOPAZ_##basename)>>SHIFT_TOPAZ_##basename)
 
 #define TOPAZ_WAIT_UNTIL_IDLE \
-do { \
+    do { \
 	uint8_t tmp_poll_number = 0;\
 	uint32_t tmp_reg; \
 	if (topaz_priv->topaz_cmd_windex == WB_CCB_CTRL_RINDEX(dev_priv)) { \
@@ -467,19 +467,18 @@ do { \
 		if (0 != TOPAZ_READ_BITS(tmp_reg, VEC_BUSY)) { \
 			MTX_READ32(TOPAZ_MTX_TXRPT_OFFSET, &tmp_reg);\
 			while ((tmp_reg != 0x8ade0000) && \
-				(tmp_poll_number++ < 10)) \
+			       (tmp_poll_number++ < 10)) \
 				MTX_READ32(0xc, &tmp_reg); \
 			PSB_DEBUG_GENERAL(	\
-			"TOPAZ: TXRPT reg remain: %x,poll %d times.\n",\
-			tmp_reg, tmp_poll_number);\
+			  "TOPAZ: TXRPT reg remain: %x,poll %d times.\n",\
+			  tmp_reg, tmp_poll_number);\
 		} \
 	} \
-} while (0)
+    } while (0)
 
 /* **************** DMAC define **************** */
 enum DMAC_eBSwap {
-	/* !< No byte swapping will be performed. */
-	DMAC_BSWAP_NO_SWAP = 0x0,
+	DMAC_BSWAP_NO_SWAP = 0x0,	/* !< No byte swapping will be performed. */
 	DMAC_BSWAP_REVERSE = 0x1,	/* !< Byte order will be reversed. */
 };
 
@@ -650,9 +649,9 @@ do {								\
 			+ MTX_CCBCTRL_INITQP, qp)
 
 #define TOPAZ_BEGIN_CCB(dev_priv)					\
-topaz_write_mtx_mem_multiple_setup(dev_priv,			\
-((struct topaz_private *)dev_priv->topaz_private)->topaz_ccb_buffer_addr + \
-((struct topaz_private *)dev_priv->topaz_private)->topaz_cmd_windex * 4)
+	topaz_write_mtx_mem_multiple_setup(dev_priv,			\
+   ((struct topaz_private *)dev_priv->topaz_private)->topaz_ccb_buffer_addr + \
+   ((struct topaz_private *)dev_priv->topaz_private)->topaz_cmd_windex * 4)
 
 #define TOPAZ_OUT_CCB(dev_priv, cmd)					\
 do {									\
@@ -734,7 +733,7 @@ static inline uint32_t lnc_topaz_queryirq(struct drm_device *dev)
 
 	(void)topaz_priv;
 
-	if ((val == 0) /* && (iir == 0) */) {	/* no interrupt */
+	if ((val == 0) /* && (iir == 0) */ ) {	/* no interrupt */
 		PSB_DEBUG_GENERAL("TOPAZ: no interrupt,IIR=TOPAZ_INTSTAT=0\n");
 		return 0;
 	}

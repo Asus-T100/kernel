@@ -21,6 +21,9 @@
 #include "device_libs/platform_mrfl_pmic.h"
 #include "device_libs/platform_mrfl_ocd.h"
 #include "device_libs/platform_msic_power_btn.h"
+#ifdef CONFIG_SUPPORT_HDMI
+#include "device_libs/platform_hdmi.h"
+#endif
 #include <asm/platform_mrfld_audio.h>
 /* I2C Devices */
 #include "device_libs/platform_max17042.h"
@@ -77,13 +80,22 @@ struct devs_id __initconst device_ids[] = {
 	 * I2C devices for camera image subsystem which will not be load into
 	 * I2C core while initialize
 	 */
+#ifdef CONFIG_VIDEO_IMX175
 	{"imx175", SFI_DEV_TYPE_I2C, 0, &imx175_platform_data,
 					&intel_register_i2c_camera_device},
+#endif
+#ifdef CONFIG_VIDEO_OV9724
 	{"ov9724", SFI_DEV_TYPE_I2C, 0, &ov9724_platform_data,
 					&intel_register_i2c_camera_device},
+#endif
+#ifdef CONFIG_VIDEO_LM3559
 	{"lm3559", SFI_DEV_TYPE_I2C, 0, &lm3559_platform_data_func,
 					&intel_register_i2c_camera_device},
 	{"r69001-ts-i2c", SFI_DEV_TYPE_I2C, 0, &no_platform_data, NULL},
+#endif
+#ifdef CONFIG_SUPPORT_HDMI
+	{"hdmi", SFI_DEV_TYPE_IPC, 1, &hdmi_platform_data, NULL},
+#endif
 	{},
 };
 

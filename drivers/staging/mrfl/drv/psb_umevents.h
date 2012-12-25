@@ -11,7 +11,7 @@
  * more details.
  *
  * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
+ * this program; if not, write to the Free Software Foundation, Inc., 
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
  *
  * Authors:
@@ -78,10 +78,10 @@ struct umevent_list {
  */
 struct umevent_attribute {
 	struct attribute attr;
-	 ssize_t(*show) (struct umevent_obj *any_umevent_obj,
-			 struct umevent_attribute *attr, char *buf);
-	 ssize_t(*store) (struct umevent_obj *any_umevent_obj,
-			  struct umevent_attribute *attr,
+	 ssize_t(*show) (struct umevent_obj * any_umevent_obj,
+			 struct umevent_attribute * attr, char *buf);
+	 ssize_t(*store) (struct umevent_obj * any_umevent_obj,
+			  struct umevent_attribute * attr,
 			  const char *buf, size_t count);
 };
 /**
@@ -149,6 +149,8 @@ int psb_add_uevent_var(struct kobj_uevent_env *env, const char *format, ...)
     __attribute__ ((format(printf, 2, 3)));
 int psb_kobject_action_type(const char *buf,
 			    size_t count, enum kobject_action *type);
+
+extern void psb_sysfs_uevent(struct drm_device *dev, char *event_string);
 
 #if defined(CONFIG_NET)
 int psb_kobject_uevent_init(void);

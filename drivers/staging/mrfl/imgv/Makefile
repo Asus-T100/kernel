@@ -5,6 +5,7 @@ INCDIR=drivers/staging/mrfl
 
 ccflags-y += \
 	-I$(INCDIR)/ \
+	-I$(INCDIR)/rgx/include \
 	-I$(INCDIR)/interface \
 	-I$(INCDIR)/drv \
 	-I$(INCDIR)/imgv \
@@ -12,7 +13,7 @@ ccflags-y += \
 	-Iinclude/linux \
 	-Iinclude/drm
 
-ccflags-y += -DANDROID -D_linux_ -D__KERNEL__
+ccflags-y += -DANDROID -D_linux_ -DLINUX -D__KERNEL__
 
 obj-y += lnc_topaz.o \
 	lnc_topazinit.o \

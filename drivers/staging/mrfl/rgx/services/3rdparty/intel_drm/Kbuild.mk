@@ -13,7 +13,8 @@
 ccflags-y += \
  -I$(TOP)/../interface \
  -I$(TOP)/services/3rdparty/intel_drm \
- -DDC_NOHW_DISCONTIG_BUFFERS -DDC_NOHW_GET_BUFFER_DIMENSIONS
+ -I$(TOP)/include \
+ -DDC_NOHW_DISCONTIG_BUFFERS -DDC_NOHW_GET_BUFFER_DIMENSIONS -DLINUX
 
 dcnohw-y += \
 	services/3rdparty/intel_drm/dc_mrfld_displayclass.o \

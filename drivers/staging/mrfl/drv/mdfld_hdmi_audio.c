@@ -11,7 +11,7 @@
  * more details.
  *
  * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
+ * this program; if not, write to the Free Software Foundation, Inc., 
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
  *
  * Authors:
@@ -21,10 +21,10 @@
 #include <drm/drmP.h>
 #include "psb_drv.h"
 #include "psb_intel_reg.h"
-#include "psb_intel_hdmi_reg.h"
-#include "psb_intel_hdmi_edid.h"
-#include "psb_intel_hdmi.h"
 #include "mdfld_hdmi_audio_if.h"
+#include "android_hdmi.h"
+
+#ifdef CONFIG_SUPPORT_HDMI
 
 /*
  * Audio register range 0x69000 to 0x69117
@@ -35,22 +35,103 @@
 /*
  *
  */
-static struct mid_intel_hdmi_priv *hdmi_priv;
+static struct android_hdmi_priv *hdmi_priv;
 
-void mdfld_hdmi_audio_init(struct mid_intel_hdmi_priv *p_hdmi_priv)
+
+void mid_hdmi_audio_init(struct android_hdmi_priv *p_hdmi_priv)
 {
 	hdmi_priv = p_hdmi_priv;
 }
 
+/*
+ * return whether HDMI audio device is busy.
+*/
+bool mid_hdmi_audio_is_busy(struct drm_device *dev)
+{
+	struct drm_psb_private *dev_priv = dev->dev_private;
+	int hdmi_audio_busy = 0;
+	hdmi_audio_event_t hdmi_audio_event;
+
+	if (hdmi_state == 0) {
+		/* HDMI is not connected, assuming audio device is idle. */
+		return false;
+	}
+
+	if (dev_priv->had_interface) {
+		hdmi_audio_event.type = HAD_EVENT_QUERY_IS_AUDIO_BUSY;
+		hdmi_audio_busy = dev_priv->had_interface->query(
+			dev_priv->had_pvt_data,
+			hdmi_audio_event);
+		return hdmi_audio_busy != 0;
+	}
+	return false;
+}
+
+/*
+ * return whether HDMI audio device is suspended.
+*/
+bool mid_hdmi_audio_suspend(struct drm_device *dev)
+{
+	struct drm_psb_private *dev_priv = dev->dev_private;
+	hdmi_audio_event_t hdmi_audio_event;
+	int ret = 0;
+
+	PSB_DEBUG_ENTRY("%s: hdmi_state %d", __func__, hdmi_state);
+	if (hdmi_state == 0) {
+		/* HDMI is not connected,
+		*assuming audio device is suspended already.
+		*/
+		return true;
+	}
+
+	if (dev_priv->had_interface) {
+		hdmi_audio_event.type = 0;
+		ret = dev_priv->had_interface->suspend(
+						dev_priv->had_pvt_data,
+						hdmi_audio_event);
+		return (ret == 0) ? true : false;
+	}
+	return true;
+}
+
+void mid_hdmi_audio_resume(struct drm_device *dev)
+{
+	struct drm_psb_private *dev_priv = dev->dev_private;
+	PSB_DEBUG_ENTRY("%s: hdmi_state %d", __func__, hdmi_state);
+	if (hdmi_state == 0) {
+		/* HDMI is not connected,
+		*  there is no need to resume audio device.
+		*/
+		return;
+	}
+
+	if (dev_priv->had_interface)
+		dev_priv->had_interface->resume(dev_priv->had_pvt_data);
+}
+
+void mid_hdmi_audio_signal_event(
+						struct drm_device *dev,
+						enum had_event_type event)
+{
+	struct drm_psb_private *dev_priv = dev->dev_private;
+	if (dev_priv->mdfld_had_event_callbacks)
+		(*dev_priv->mdfld_had_event_callbacks)
+				(event, dev_priv->had_pvt_data);
+}
+
+
 /**
- * mdfld_hdmi_audio_write:
+ * mid_hdmi_audio_write:
  * used to write into display controller HDMI audio registers.
  *
  */
-static int mdfld_hdmi_audio_write(uint32_t reg, uint32_t val)
+static int mid_hdmi_audio_write(uint32_t reg, uint32_t val)
 {
 	struct drm_device *dev = hdmi_priv->dev;
 	int ret = 0;
+
+	if (hdmi_priv->monitor_type == MONITOR_TYPE_DVI)
+		return 0;
 
 	if (IS_HDMI_AUDIO_REG(reg))
 		REG_WRITE(reg, val);
@@ -61,14 +142,18 @@ static int mdfld_hdmi_audio_write(uint32_t reg, uint32_t val)
 }
 
 /**
- * mdfld_hdmi_audio_read:
- * used to get the register value read from display controller
- * HDMI audio registers.
+ * mid_hdmi_audio_read:
+ * used to get the register value read
+ * from display controller HDMI audio registers.
+ *
  */
-static int mdfld_hdmi_audio_read(uint32_t reg, uint32_t *val)
+static int mid_hdmi_audio_read(uint32_t reg, uint32_t *val)
 {
 	struct drm_device *dev = hdmi_priv->dev;
 	int ret = 0;
+
+	if (hdmi_priv->monitor_type == MONITOR_TYPE_DVI)
+		return 0;
 
 	if (IS_HDMI_AUDIO_REG(reg))
 		*val = REG_READ(reg);
@@ -79,11 +164,13 @@ static int mdfld_hdmi_audio_read(uint32_t reg, uint32_t *val)
 }
 
 /**
- * mdfld_hdmi_audio_rmw:
- * used to update the masked bits in display controller HDMI audio registers .
+ * mid_hdmi_audio_rmw:
+ * used to update the masked bits in display
+ * controller HDMI audio registers .
  *
  */
-static int mdfld_hdmi_audio_rmw(uint32_t reg, uint32_t val, uint32_t mask)
+static int mid_hdmi_audio_rmw(uint32_t reg,
+				uint32_t val, uint32_t mask)
 {
 	struct drm_device *dev = hdmi_priv->dev;
 	int ret = 0;
@@ -100,27 +187,28 @@ static int mdfld_hdmi_audio_rmw(uint32_t reg, uint32_t val, uint32_t mask)
 }
 
 /**
- * mdfld_hdmi_audio_get_caps:
+ * mid_hdmi_audio_get_caps:
  * used to return the HDMI audio capabilities.
  * e.g. resolution, frame rate.
  */
-static int mdfld_hdmi_audio_get_caps(enum had_caps_list get_element,
-				     void *capabilities)
+static int mid_hdmi_audio_get_caps(
+						enum had_caps_list get_element,
+						void *capabilities)
 {
 	struct drm_device *dev = hdmi_priv->dev;
 	struct drm_psb_private *dev_priv =
-	    (struct drm_psb_private *)dev->dev_private;
+			(struct drm_psb_private *) dev->dev_private;
 	int ret = 0;
 
 	PSB_DEBUG_ENTRY("\n");
 
 	switch (get_element) {
 	case HAD_GET_ELD:
-		memcpy(capabilities, &(hdmi_priv->eeld), sizeof(hdmi_eeld_t));
+		ret = android_hdmi_get_eld(dev, capabilities);
 		break;
 	case HAD_GET_SAMPLING_FREQ:
 		memcpy(capabilities, &(dev_priv->tmds_clock_khz),
-		       sizeof(uint32_t));
+				sizeof(uint32_t));
 		break;
 	default:
 		break;
@@ -130,16 +218,17 @@ static int mdfld_hdmi_audio_get_caps(enum had_caps_list get_element,
 }
 
 /**
- * mdfld_hdmi_audio_set_caps:
+ * mid_hdmi_audio_set_caps:
  * used to set the HDMI audio capabilities.
  * e.g. Audio INT.
  */
-static int mdfld_hdmi_audio_set_caps(enum had_caps_list set_element,
-				     void *capabilties)
+static int mid_hdmi_audio_set_caps(
+				enum had_caps_list set_element,
+				void *capabilties)
 {
 	struct drm_device *dev = hdmi_priv->dev;
 	struct drm_psb_private *dev_priv =
-	    (struct drm_psb_private *)dev->dev_private;
+				(struct drm_psb_private *) dev->dev_private;
 	int ret = 0;
 	u32 hdmib;
 	u32 int_masks = 0;
@@ -150,46 +239,40 @@ static int mdfld_hdmi_audio_set_caps(enum had_caps_list set_element,
 	case HAD_SET_ENABLE_AUDIO:
 		hdmib = REG_READ(hdmi_priv->hdmib_reg);
 
-		if ((hdmib & HDMIB_PORT_EN) && hdmi_priv->has_hdmi_sink)
-			hdmib |= HDMI_AUDIO_ENABLE;
+		if (hdmib & HDMIB_PORT_EN)
+			hdmib |= HDMIB_AUDIO_ENABLE;
 
 		REG_WRITE(hdmi_priv->hdmib_reg, hdmib);
 		REG_READ(hdmi_priv->hdmib_reg);
 		break;
 	case HAD_SET_DISABLE_AUDIO:
-		hdmib = REG_READ(hdmi_priv->hdmib_reg) & ~HDMI_AUDIO_ENABLE;
+		hdmib = REG_READ(hdmi_priv->hdmib_reg) & ~HDMIB_AUDIO_ENABLE;
 		REG_WRITE(hdmi_priv->hdmib_reg, hdmib);
 		REG_READ(hdmi_priv->hdmib_reg);
 		break;
 	case HAD_SET_ENABLE_AUDIO_INT:
-		if (*((u32 *) capabilties) & HDMI_AUDIO_UNDERRUN)
+		if (*((u32 *)capabilties) & HDMI_AUDIO_UNDERRUN)
 			int_masks |= PIPE_HDMI_AUDIO_UNDERRUN;
 
-		if (*((u32 *) capabilties) & HDMI_AUDIO_BUFFER_DONE)
+		if (*((u32 *)capabilties) & HDMI_AUDIO_BUFFER_DONE)
 			int_masks |= PIPE_HDMI_AUDIO_BUFFER_DONE;
 
-		if (dev_priv->hdmi_audio_interrupt_mask != int_masks) {
-			dev_priv->hdmi_audio_interrupt_mask |= int_masks;
-			mdfld_irq_enable_hdmi_audio(dev);
-		}
-
+		dev_priv->hdmi_audio_interrupt_mask |= int_masks;
+		mid_irq_enable_hdmi_audio(dev);
 		break;
 	case HAD_SET_DISABLE_AUDIO_INT:
-		if (*((u32 *) capabilties) & HDMI_AUDIO_UNDERRUN)
+		if (*((u32 *)capabilties) & HDMI_AUDIO_UNDERRUN)
 			int_masks |= PIPE_HDMI_AUDIO_UNDERRUN;
 
-		if (*((u32 *) capabilties) & HDMI_AUDIO_BUFFER_DONE)
+		if (*((u32 *)capabilties) & HDMI_AUDIO_BUFFER_DONE)
 			int_masks |= PIPE_HDMI_AUDIO_BUFFER_DONE;
 
-		if (dev_priv->hdmi_audio_interrupt_mask & int_masks) {
-			dev_priv->hdmi_audio_interrupt_mask &= ~int_masks;
+		dev_priv->hdmi_audio_interrupt_mask &= ~int_masks;
 
-			if (dev_priv->hdmi_audio_interrupt_mask)
-				mdfld_irq_enable_hdmi_audio(dev);
-			else
-				mdfld_irq_disable_hdmi_audio(dev);
-		}
-
+		if (dev_priv->hdmi_audio_interrupt_mask)
+			mid_irq_enable_hdmi_audio(dev);
+		else
+			mid_irq_disable_hdmi_audio(dev);
 		break;
 	default:
 		break;
@@ -198,55 +281,110 @@ static int mdfld_hdmi_audio_set_caps(enum had_caps_list set_element,
 	return ret;
 }
 
-static struct hdmi_audio_registers_ops mdfld_hdmi_audio_reg_ops = {
-	.hdmi_audio_read_register = mdfld_hdmi_audio_read,
-	.hdmi_audio_write_register = mdfld_hdmi_audio_write,
-	.hdmi_audio_read_modify = mdfld_hdmi_audio_rmw,
+static struct  hdmi_audio_registers_ops mid_hdmi_audio_reg_ops = {
+	.hdmi_audio_read_register = mid_hdmi_audio_read,
+	.hdmi_audio_write_register = mid_hdmi_audio_write,
+	.hdmi_audio_read_modify = mid_hdmi_audio_rmw,
 };
 
-static struct hdmi_audio_query_set_ops mdfld_hdmi_audio_get_set_ops = {
-	.hdmi_audio_get_caps = mdfld_hdmi_audio_get_caps,
-	.hdmi_audio_set_caps = mdfld_hdmi_audio_set_caps,
+static struct hdmi_audio_query_set_ops mid_hdmi_audio_get_set_ops = {
+	.hdmi_audio_get_caps = mid_hdmi_audio_get_caps,
+	.hdmi_audio_set_caps = mid_hdmi_audio_set_caps,
 };
 
-int intel_hdmi_audio_query_capabilities(had_event_call_back audio_callbacks,
-				struct hdmi_audio_registers_ops
-				*reg_ops, struct hdmi_audio_query_set_ops
-				*query_ops)
+int mid_hdmi_audio_setup(
+	had_event_call_back audio_callbacks,
+	struct hdmi_audio_registers_ops *reg_ops,
+	struct hdmi_audio_query_set_ops *query_ops)
 {
 	struct drm_device *dev = hdmi_priv->dev;
 	struct drm_psb_private *dev_priv =
-	    (struct drm_psb_private *)dev->dev_private;
+				(struct drm_psb_private *) dev->dev_private;
 	int ret = 0;
 
 	reg_ops->hdmi_audio_read_register =
-	    (mdfld_hdmi_audio_reg_ops.hdmi_audio_read_register);
+			(mid_hdmi_audio_reg_ops.hdmi_audio_read_register);
 	reg_ops->hdmi_audio_write_register =
-	    (mdfld_hdmi_audio_reg_ops.hdmi_audio_write_register);
+			(mid_hdmi_audio_reg_ops.hdmi_audio_write_register);
 	reg_ops->hdmi_audio_read_modify =
-	    (mdfld_hdmi_audio_reg_ops.hdmi_audio_read_modify);
+			(mid_hdmi_audio_reg_ops.hdmi_audio_read_modify);
 	query_ops->hdmi_audio_get_caps =
-	    mdfld_hdmi_audio_get_set_ops.hdmi_audio_get_caps;
+			mid_hdmi_audio_get_set_ops.hdmi_audio_get_caps;
 	query_ops->hdmi_audio_set_caps =
-	    mdfld_hdmi_audio_get_set_ops.hdmi_audio_set_caps;
+			mid_hdmi_audio_get_set_ops.hdmi_audio_set_caps;
 
 	dev_priv->mdfld_had_event_callbacks = audio_callbacks;
 
 	return ret;
 }
+EXPORT_SYMBOL(mid_hdmi_audio_setup);
 
-int display_register(struct snd_intel_had_interface *driver, void *had_data)
+int mid_hdmi_audio_register(struct snd_intel_had_interface *driver,
+							void *had_data)
 {
 	struct drm_device *dev = hdmi_priv->dev;
 	struct drm_psb_private *dev_priv =
-	    (struct drm_psb_private *)dev->dev_private;
+				(struct drm_psb_private *) dev->dev_private;
 	dev_priv->had_pvt_data = had_data;
 	dev_priv->had_interface = driver;
 
+	if (hdmi_priv->monitor_type == MONITOR_TYPE_DVI)
+		return 0;
+
 	/* The Audio driver is loading now and we need to notify
 	 * it if there is an HDMI device attached */
-	DRM_INFO("display_register: Scheduling HDMI audio work queue\n");
+	DRM_INFO("%s: Scheduling HDMI audio work queue\n", __func__);
 	schedule_work(&dev_priv->hdmi_audio_wq);
 
 	return 0;
 }
+EXPORT_SYMBOL(mid_hdmi_audio_register);
+
+
+#else /* CONFIG_SUPPORT_HDMI - HDMI is not supported. */
+
+bool mid_hdmi_audio_is_busy(struct drm_device *dev)
+{
+	/* always in idle state */
+	return false;
+}
+
+bool mid_hdmi_audio_suspend(struct drm_device *dev)
+{
+	/* always in suspend state */
+	return true;
+}
+
+void mid_hdmi_audio_resume(struct drm_device *dev)
+{
+}
+
+void mid_hdmi_audio_signal_event(struct drm_device *dev,
+					enum had_event_type event)
+{
+}
+
+void mid_hdmi_audio_init(struct android_hdmi_priv *hdmi_priv)
+{
+	DRM_INFO("%s: HDMI is not supported.\n", __func__);
+}
+
+int mid_hdmi_audio_setup(
+	had_event_call_back audio_callbacks,
+	struct hdmi_audio_registers_ops *reg_ops,
+	struct hdmi_audio_query_set_ops *query_ops)
+{
+	DRM_ERROR("%s: HDMI is not supported.\n", __func__);
+	return -ENODEV;
+}
+EXPORT_SYMBOL(mid_hdmi_audio_setup);
+
+int mid_hdmi_audio_register(struct snd_intel_had_interface *driver,
+				void *had_data)
+{
+	DRM_ERROR("%s: HDMI is not supported.\n", __func__);
+	return -ENODEV;
+}
+EXPORT_SYMBOL(mid_hdmi_audio_register);
+
+#endif

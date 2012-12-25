@@ -1,10 +1,45 @@
-									    /*************************************************************************//*!
-									       @File
-									       @Title          PVR Common Bridge Module (kernel side)
-									       @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
-									       @Description    Implements core PVRSRV API, server side
-									       @License        Strictly Confidential.
-    *//**************************************************************************/
+/*************************************************************************/ /*!
+@File
+@Title          PVR Common Bridge Module (kernel side)
+@Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
+@Description    Implements core PVRSRV API, server side
+@License        Dual MIT/GPLv2
+
+The contents of this file are subject to the MIT license as set out below.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+Alternatively, the contents of this file may be used under the terms of
+the GNU General Public License Version 2 ("GPL") in which case the provisions
+of GPL are applicable instead of those above.
+
+If you wish to allow use of your version of this file only under the terms of
+GPL, and not to allow others to use your version of this file under the terms
+of the MIT license, indicate your decision by deleting the provisions above
+and replace them with the notice and other provisions required by GPL as set
+out in the file called "GPL-COPYING" included in this distribution. If you do
+not delete the provisions above, a recipient may use your version of this file
+under the terms of either the MIT license or GPL.
+
+This License is also included in this distribution in the file called
+"MIT-COPYING".
+
+EXCEPT AS OTHERWISE STATED IN A NEGOTIATED AGREEMENT: (A) THE SOFTWARE IS
+PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING
+BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+PURPOSE AND NONINFRINGEMENT; AND (B) IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+*/ /**************************************************************************/
 
 #include <stddef.h>
 
@@ -17,7 +52,7 @@
 
 #include "pdump_km.h"
 
-#include "env_data.h"		/* FIXME when this is removed, -Werror should be re-enabled for this file */
+#include "env_data.h" /* FIXME when this is removed, -Werror should be re-enabled for this file */ 
 
 #include "srvkm.h"
 #include "allocmem.h"
@@ -27,71 +62,144 @@
 #include "power.h"
 #include "lists.h"
 
+#include "rgx_options_km.h"
+#include "pvrversion.h"
+
+
 /* For the purpose of maintainability, it is intended that this file should not
  * contain any OS specific #ifdefs. Please find a way to add e.g.
  * an osfunc.c abstraction or override the entire function in question within
  * env,*,pvr_bridge_k.c
  */
 
-PVRSRV_BRIDGE_DISPATCH_TABLE_ENTRY
-    g_BridgeDispatchTable[BRIDGE_DISPATCH_TABLE_ENTRY_COUNT];
+
+PVRSRV_BRIDGE_DISPATCH_TABLE_ENTRY g_BridgeDispatchTable[BRIDGE_DISPATCH_TABLE_ENTRY_COUNT];
 
 #if defined(DEBUG_BRIDGE_KM)
 PVRSRV_BRIDGE_GLOBAL_STATS g_BridgeGlobalStats;
 #endif
 
+
 /* FIXME: Why do we need psConnection? It's not used here or in OSCopyX */
 #if defined(DEBUG_BRIDGE_KM)
 PVRSRV_ERROR
-CopyFromUserWrapper(CONNECTION_DATA * psConnection,
-		    IMG_UINT32 ui32BridgeID,
-		    IMG_VOID * pvDest, IMG_VOID * pvSrc, IMG_UINT32 ui32Size)
+CopyFromUserWrapper(CONNECTION_DATA *psConnection,
+					IMG_UINT32 ui32BridgeID,
+					IMG_VOID *pvDest,
+					IMG_VOID *pvSrc,
+					IMG_UINT32 ui32Size)
 {
-	g_BridgeDispatchTable[ui32BridgeID].ui32CopyFromUserTotalBytes +=
-	    ui32Size;
-	g_BridgeGlobalStats.ui32TotalCopyFromUserBytes += ui32Size;
+	g_BridgeDispatchTable[ui32BridgeID].ui32CopyFromUserTotalBytes+=ui32Size;
+	g_BridgeGlobalStats.ui32TotalCopyFromUserBytes+=ui32Size;
 	return OSCopyFromUser(psConnection, pvDest, pvSrc, ui32Size);
 }
-
 PVRSRV_ERROR
-CopyToUserWrapper(CONNECTION_DATA * psConnection,
-		  IMG_UINT32 ui32BridgeID,
-		  IMG_VOID * pvDest, IMG_VOID * pvSrc, IMG_UINT32 ui32Size)
+CopyToUserWrapper(CONNECTION_DATA *psConnection,
+				  IMG_UINT32 ui32BridgeID,
+				  IMG_VOID *pvDest,
+				  IMG_VOID *pvSrc,
+				  IMG_UINT32 ui32Size)
 {
-	g_BridgeDispatchTable[ui32BridgeID].ui32CopyToUserTotalBytes +=
-	    ui32Size;
-	g_BridgeGlobalStats.ui32TotalCopyToUserBytes += ui32Size;
+	g_BridgeDispatchTable[ui32BridgeID].ui32CopyToUserTotalBytes+=ui32Size;
+	g_BridgeGlobalStats.ui32TotalCopyToUserBytes+=ui32Size;
 	return OSCopyToUser(psConnection, pvDest, pvSrc, ui32Size);
 }
 #endif
 
-PVRSRV_ERROR PVRSRVConnectKM(IMG_UINT32 ui32Flags)
+PVRSRV_ERROR
+PVRSRVConnectKM(IMG_UINT32 ui32Flags,
+				IMG_UINT32 ui32ClientBuildOptions,
+				IMG_UINT32 ui32ClientDDKVersion,
+				IMG_UINT32 ui32ClientDDKBuild)
 {
-	PVRSRV_ERROR eError = PVRSRV_OK;
-
-#if defined(PDUMP) && defined(FIXME)
-	/* Store the per process connection info.
-	 * FIXME: the Xserver initially connects via PVR2D which sets the persistent flag.
-	 * But, later the Xserver may connect via SGL which doesn't carry the flag (in
-	 * general SGL clients aren't persistent). So we OR in the flag so if it was set
-	 * before it remains set.
-	 */
-	if (ui32Flags & SRV_FLAGS_PERSIST) {
-		eError = PDumpAddPersistantProcess();
-	}
-#else
+	PVRSRV_ERROR		eError = PVRSRV_OK;
+	IMG_UINT32			ui32BuildOptions, ui32BuildOptionsMismatch;
+	IMG_UINT32			ui32DDKVersion, ui32DDKBuild;
+	
 	PVR_UNREFERENCED_PARAMETER(ui32Flags);
-#endif
 
+	ui32ClientBuildOptions &= RGX_BUILD_OPTIONS_MASK_KM;
+	/*
+	 * Validate the build options
+	 */
+	ui32BuildOptions = (RGX_BUILD_OPTIONS_KM);
+	if (ui32BuildOptions != ui32ClientBuildOptions)
+	{
+		ui32BuildOptionsMismatch = ui32BuildOptions ^ ui32ClientBuildOptions;
+		if ( (ui32ClientBuildOptions & ui32BuildOptionsMismatch) != 0)
+		{
+			PVR_LOG(("(FAIL) %s: Mismatch in client-side and KM driver build options; "
+				"extra options present in client-side driver: (0x%x). Please check rgx_options.h",
+				__FUNCTION__,
+				ui32ClientBuildOptions & ui32BuildOptionsMismatch ));
+		}
+
+		if ( (ui32BuildOptions & ui32BuildOptionsMismatch) != 0)
+		{
+			PVR_LOG(("(FAIL) %s: Mismatch in client-side and KM driver build options; "
+				"extra options present in KM driver: (0x%x). Please check rgx_options.h",
+				__FUNCTION__,
+				ui32BuildOptions & ui32BuildOptionsMismatch ));
+		}
+		eError = PVRSRV_ERROR_BUILD_OPTIONS_MISMATCH;
+		goto chk_exit;
+	}
+	else
+	{
+		PVR_DPF((PVR_DBG_MESSAGE, "%s: COMPAT_TEST: Client-side and KM driver build options match. [ OK ]", __FUNCTION__));
+	}
+
+	/*
+	 * Validate DDK version
+	 */
+	ui32DDKVersion = PVRVERSION_PACK(PVRVERSION_MAJ, PVRVERSION_MIN);
+	if (ui32ClientDDKVersion != ui32DDKVersion)
+	{
+		PVR_LOG(("(FAIL) %s: Incompatible driver DDK revision (%u.%u) / client DDK revision (%u.%u).",
+				__FUNCTION__,
+				PVRVERSION_MAJ, PVRVERSION_MIN,
+				PVRVERSION_UNPACK_MAJ(ui32ClientDDKVersion),
+				PVRVERSION_UNPACK_MIN(ui32ClientDDKVersion)));
+		eError = PVRSRV_ERROR_DDK_VERSION_MISMATCH;
+		PVR_DBG_BREAK;
+		goto chk_exit;
+	}
+	else
+	{
+		PVR_DPF((PVR_DBG_MESSAGE, "%s: COMPAT_TEST: driver DDK revision (%u.%u) and client DDK revision (%u.%u) match. [ OK ]",
+				__FUNCTION__,
+				PVRVERSION_MAJ, PVRVERSION_MIN, PVRVERSION_MAJ, PVRVERSION_MIN));
+	}
+	
+	/*
+	 * Validate DDK build
+	 */
+	ui32DDKBuild = PVRVERSION_BUILD;
+	if (ui32ClientDDKBuild != ui32DDKBuild)
+	{
+		PVR_LOG(("(FAIL) %s: Incompatible driver DDK build (%d) / client DDK build (%d).",
+				__FUNCTION__, ui32DDKBuild, ui32ClientDDKBuild));
+		eError = PVRSRV_ERROR_DDK_BUILD_MISMATCH;
+		PVR_DBG_BREAK;
+		goto chk_exit;
+	}
+	else
+	{
+		PVR_DPF((PVR_DBG_MESSAGE, "%s: COMPAT_TEST: driver DDK build (%d) and client DDK build (%d) match. [ OK ]",
+				__FUNCTION__, ui32DDKBuild, ui32ClientDDKBuild));
+	}
+chk_exit:	
 	return eError;
 }
 
-PVRSRV_ERROR PVRSRVDisconnectKM(IMG_VOID)
+PVRSRV_ERROR
+PVRSRVDisconnectKM(IMG_VOID)
 {
 	/* just return OK, per-process data is cleaned up by resmgr */
 
 	return PVRSRV_OK;
 }
+
 
 /*!
 ******************************************************************************
@@ -105,39 +213,61 @@ PVRSRV_ERROR PVRSRVDisconnectKM(IMG_VOID)
  @Input psDeviceNode	- The device node
  		va				- variable arguments list, not used
 ******************************************************************************/
-static IMG_VOID PVRSRVDumpDebugInfo_ForEachVaCb(PVRSRV_DEVICE_NODE *
-						psDeviceNode, va_list va)
+static IMG_VOID PVRSRVDumpDebugInfo_ForEachVaCb(PVRSRV_DEVICE_NODE *psDeviceNode, va_list va)
 {
 	PVR_UNREFERENCED_PARAMETER(va);
 
-	if (psDeviceNode->pfnDumpDebugInfo != IMG_NULL) {
+	if (psDeviceNode->pfnDumpDebugInfo != IMG_NULL)
+	{
 		psDeviceNode->pfnDumpDebugInfo(psDeviceNode);
 	}
 }
 
+
 /*
 	PVRSRVDumpDebugInfoKM
 */
-PVRSRV_ERROR PVRSRVDumpDebugInfoKM(IMG_VOID)
+PVRSRV_ERROR
+PVRSRVDumpDebugInfoKM(IMG_VOID)
 {
-	PVRSRV_DATA *psPVRSRVData = PVRSRVGetPVRSRVData();
-
+	PVRSRV_DATA	*psPVRSRVData = PVRSRVGetPVRSRVData();
+	
 	PVR_LOG(("User requested PVR debug info"));
 
-	/*
-	   Search through the device list for services managed devices, dumping
-	   debug info for each.
-	 */
-	List_PVRSRV_DEVICE_NODE_ForEach_va(psPVRSRVData->psDeviceNodeList,
-					   &PVRSRVDumpDebugInfo_ForEachVaCb);
+	/* Dump system specific debug info */
+	PVRSRVSystemDebugInfo();
 
+
+	/*
+		Search through the device list for services managed devices, dumping
+		debug info for each.
+	*/
+	List_PVRSRV_DEVICE_NODE_ForEach_va(psPVRSRVData->psDeviceNodeList,
+									   &PVRSRVDumpDebugInfo_ForEachVaCb);
+
+									   
+	return PVRSRV_OK;
+}
+
+
+/*
+	PVRSRVHWOpTimeoutKM
+*/
+PVRSRV_ERROR
+PVRSRVHWOpTimeoutKM(IMG_VOID)
+{
+#if defined(PVRSRV_RESET_ON_HWTIMEOUT)
+	PVR_LOG(("User requested OS reset"));
+	OSPanic();
+#endif
 	return PVRSRV_OK;
 }
 
 IMG_INT
 DummyBW(IMG_UINT32 ui32BridgeID,
-	IMG_VOID * psBridgeIn,
-	IMG_VOID * psBridgeOut, CONNECTION_DATA * psConnection)
+		IMG_VOID *psBridgeIn,
+		IMG_VOID *psBridgeOut,
+		CONNECTION_DATA *psConnection)
 {
 #if !defined(DEBUG)
 	PVR_UNREFERENCED_PARAMETER(ui32BridgeID);
@@ -148,16 +278,16 @@ DummyBW(IMG_UINT32 ui32BridgeID,
 
 #if defined(DEBUG_BRIDGE_KM)
 	PVR_DPF((PVR_DBG_ERROR, "%s: BRIDGE ERROR: BridgeID %u (%s) mapped to "
-		 "Dummy Wrapper (probably not what you want!)",
-		 __FUNCTION__, ui32BridgeID,
-		 g_BridgeDispatchTable[ui32BridgeID].pszIOCName));
+			 "Dummy Wrapper (probably not what you want!)",
+			 __FUNCTION__, ui32BridgeID, g_BridgeDispatchTable[ui32BridgeID].pszIOCName));
 #else
 	PVR_DPF((PVR_DBG_ERROR, "%s: BRIDGE ERROR: BridgeID %u mapped to "
-		 "Dummy Wrapper (probably not what you want!)",
-		 __FUNCTION__, ui32BridgeID));
+			 "Dummy Wrapper (probably not what you want!)",
+			 __FUNCTION__, ui32BridgeID));
 #endif
 	return -ENOTTY;
 }
+
 
 /*!
  * *****************************************************************************
@@ -173,11 +303,11 @@ DummyBW(IMG_UINT32 ui32BridgeID,
  ********************************************************************************/
 IMG_VOID
 _SetDispatchTableEntry(IMG_UINT32 ui32Index,
-		       const IMG_CHAR * pszIOCName,
-		       BridgeWrapperFunction pfFunction,
-		       const IMG_CHAR * pszFunctionName)
+					   const IMG_CHAR *pszIOCName,
+					   BridgeWrapperFunction pfFunction,
+					   const IMG_CHAR *pszFunctionName)
 {
-	static IMG_UINT32 ui32PrevIndex = ~0UL;	/* -1 */
+	static IMG_UINT32 ui32PrevIndex = ~0UL;		/* -1 */
 #if !defined(DEBUG)
 	PVR_UNREFERENCED_PARAMETER(pszIOCName);
 #endif
@@ -187,8 +317,7 @@ _SetDispatchTableEntry(IMG_UINT32 ui32Index,
 
 #if defined(DEBUG_BRIDGE_KM_DISPATCH_TABLE)
 	/* Enable this to dump out the dispatch table entries */
-	PVR_DPF((PVR_DBG_WARNING, "%s: %d %s %s", __FUNCTION__, ui32Index,
-		 pszIOCName, pszFunctionName));
+	PVR_DPF((PVR_DBG_WARNING, "%s: %d %s %s", __FUNCTION__, ui32Index, pszIOCName, pszFunctionName));
 #endif
 
 	/* If we are over-writing a previous entry that is a BUG!
@@ -196,19 +325,18 @@ _SetDispatchTableEntry(IMG_UINT32 ui32Index,
 	 * etc is likly to modify the available ioctls and thus be a point where
 	 * mistakes are exposed. This isn't run at at a performance critical time.
 	 */
-	if (g_BridgeDispatchTable[ui32Index].pfFunction) {
+	if(g_BridgeDispatchTable[ui32Index].pfFunction)
+	{
 #if defined(DEBUG_BRIDGE_KM)
 		PVR_DPF((PVR_DBG_ERROR,
-			 "%s: BUG!: Adding dispatch table entry for %s clobbers an existing entry for %s",
-			 __FUNCTION__, pszIOCName,
-			 g_BridgeDispatchTable[ui32Index].pszIOCName));
+				 "%s: BUG!: Adding dispatch table entry for %s clobbers an existing entry for %s",
+				 __FUNCTION__, pszIOCName, g_BridgeDispatchTable[ui32Index].pszIOCName));
 #else
 		PVR_DPF((PVR_DBG_ERROR,
-			 "%s: BUG!: Adding dispatch table entry for %s clobbers an existing entry (index=%u)",
-			 __FUNCTION__, pszIOCName, ui32Index));
+				 "%s: BUG!: Adding dispatch table entry for %s clobbers an existing entry (index=%u)",
+				 __FUNCTION__, pszIOCName, ui32Index));
 #endif
-		PVR_DPF((PVR_DBG_ERROR,
-			 "NOTE: Enabling DEBUG_BRIDGE_KM_DISPATCH_TABLE may help debug this issue."));
+		PVR_DPF((PVR_DBG_ERROR, "NOTE: Enabling DEBUG_BRIDGE_KM_DISPATCH_TABLE may help debug this issue."));
 		OSPanic();
 	}
 
@@ -222,24 +350,22 @@ _SetDispatchTableEntry(IMG_UINT32 ui32Index,
 	 * etc is likly to modify the available ioctls and thus be a point where
 	 * mistakes are exposed. This isn't run at at a performance critical time.
 	 */
-//      if((ui32PrevIndex != (IMG_UINT32)-1) &&
-	if ((ui32PrevIndex != ~0UL) &&
-	    ((ui32Index >= ui32PrevIndex + DISPATCH_TABLE_GAP_THRESHOLD) ||
-	     (ui32Index <= ui32PrevIndex))) {
+//	if((ui32PrevIndex != (IMG_UINT32)-1) &&
+	if((ui32PrevIndex != ~0UL) &&
+	   ((ui32Index >= ui32PrevIndex + DISPATCH_TABLE_GAP_THRESHOLD) ||
+		(ui32Index <= ui32PrevIndex)))
+	{
 #if defined(DEBUG_BRIDGE_KM)
 		PVR_DPF((PVR_DBG_WARNING,
-			 "%s: There is a gap in the dispatch table between indices %u (%s) and %u (%s)",
-			 __FUNCTION__, ui32PrevIndex,
-			 g_BridgeDispatchTable[ui32PrevIndex].pszIOCName,
-			 ui32Index, pszIOCName));
+				 "%s: There is a gap in the dispatch table between indices %u (%s) and %u (%s)",
+				 __FUNCTION__, ui32PrevIndex, g_BridgeDispatchTable[ui32PrevIndex].pszIOCName,
+				 ui32Index, pszIOCName));
 #else
 		PVR_DPF((PVR_DBG_WARNING,
-			 "%s: There is a gap in the dispatch table between indices %u and %u (%s)",
-			 __FUNCTION__, (IMG_UINT) ui32PrevIndex,
-			 (IMG_UINT) ui32Index, pszIOCName));
+				 "%s: There is a gap in the dispatch table between indices %u and %u (%s)",
+				 __FUNCTION__, (IMG_UINT)ui32PrevIndex, (IMG_UINT)ui32Index, pszIOCName));
 #endif
-		PVR_DPF((PVR_DBG_ERROR,
-			 "NOTE: Enabling DEBUG_BRIDGE_KM_DISPATCH_TABLE may help debug this issue."));
+		PVR_DPF((PVR_DBG_ERROR, "NOTE: Enabling DEBUG_BRIDGE_KM_DISPATCH_TABLE may help debug this issue."));
 		OSPanic();
 	}
 
@@ -254,14 +380,15 @@ _SetDispatchTableEntry(IMG_UINT32 ui32Index,
 	ui32PrevIndex = ui32Index;
 }
 
-PVRSRV_ERROR PVRSRVInitSrvConnectKM(CONNECTION_DATA * psConnection)
+PVRSRV_ERROR
+PVRSRVInitSrvConnectKM(CONNECTION_DATA *psConnection)
 {
-	/* PRQA S 3415 1 *//* side effects needed - if any step fails */
-	if ((OSProcHasPrivSrvInit() == IMG_FALSE)
-	    || PVRSRVGetInitServerState(PVRSRV_INIT_SERVER_RUNNING)
-	    || PVRSRVGetInitServerState(PVRSRV_INIT_SERVER_RAN)) {
+	/* PRQA S 3415 1 */ /* side effects needed - if any step fails */
+	if((OSProcHasPrivSrvInit() == IMG_FALSE) || PVRSRVGetInitServerState(PVRSRV_INIT_SERVER_RUNNING) || PVRSRVGetInitServerState(PVRSRV_INIT_SERVER_RAN))
+	{
 		return PVRSRV_ERROR_SRV_CONNECT_FAILED;
 	}
+
 #if defined (__linux__)
 	PVRSRVSetInitServerState(PVRSRV_INIT_SERVER_RUNNING, IMG_TRUE);
 #endif
@@ -270,13 +397,16 @@ PVRSRV_ERROR PVRSRVInitSrvConnectKM(CONNECTION_DATA * psConnection)
 	return PVRSRV_OK;
 }
 
+
 PVRSRV_ERROR
-PVRSRVInitSrvDisconnectKM(CONNECTION_DATA * psConnection,
-			  IMG_BOOL bInitSuccesful)
+PVRSRVInitSrvDisconnectKM(CONNECTION_DATA *psConnection,
+							IMG_BOOL bInitSuccesful,
+							IMG_UINT32 ui32ClientBuildOptions)
 {
 	PVRSRV_ERROR eError;
 
-	if (!psConnection->bInitProcess) {
+	if(!psConnection->bInitProcess)
+	{
 		return PVRSRV_ERROR_SRV_DISCONNECT_FAILED;
 	}
 
@@ -285,28 +415,28 @@ PVRSRVInitSrvDisconnectKM(CONNECTION_DATA * psConnection,
 	PVRSRVSetInitServerState(PVRSRV_INIT_SERVER_RUNNING, IMG_FALSE);
 	PVRSRVSetInitServerState(PVRSRV_INIT_SERVER_RAN, IMG_TRUE);
 
-	eError = PVRSRVFinaliseSystem(bInitSuccesful);
+	eError = PVRSRVFinaliseSystem(bInitSuccesful, ui32ClientBuildOptions);
 
-	PVRSRVSetInitServerState(PVRSRV_INIT_SERVER_SUCCESSFUL,
-				 ((eError == PVRSRV_OK) && (bInitSuccesful))
-				 ? IMG_TRUE : IMG_FALSE);
+	PVRSRVSetInitServerState( PVRSRV_INIT_SERVER_SUCCESSFUL ,
+				(eError == PVRSRV_OK) && bInitSuccesful);
 
 	return eError;
 }
 
 IMG_INT BridgedDispatchKM(CONNECTION_DATA * psConnection,
-			  PVRSRV_BRIDGE_PACKAGE * psBridgePackageKM)
+					  PVRSRV_BRIDGE_PACKAGE   * psBridgePackageKM)
 {
 
-	IMG_VOID *psBridgeIn;
-	IMG_VOID *psBridgeOut;
+	IMG_VOID   * psBridgeIn;
+	IMG_VOID   * psBridgeOut;
 	BridgeWrapperFunction pfBridgeHandler;
-	IMG_UINT32 ui32BridgeID = psBridgePackageKM->ui32BridgeID;
-	IMG_INT err = -EFAULT;
+	IMG_UINT32   ui32BridgeID = psBridgePackageKM->ui32BridgeID;
+	IMG_INT      err          = -EFAULT;
 
 #if defined(DEBUG_TRACE_BRIDGE_KM)
-	PVR_DPF((PVR_DBG_CALLTRACE, "%s: %s",
-		 __FUNCTION__, g_BridgeDispatchTable[ui32BridgeID].pszIOCName));
+	PVR_DPF((PVR_DBG_ERROR, "%s: %s",
+			 __FUNCTION__,
+			 g_BridgeDispatchTable[ui32BridgeID].pszIOCName));
 #endif
 
 #if defined(DEBUG_BRIDGE_KM)
@@ -314,143 +444,148 @@ IMG_INT BridgedDispatchKM(CONNECTION_DATA * psConnection,
 	g_BridgeGlobalStats.ui32IOCTLCount++;
 #endif
 
-	if (!psConnection->bInitProcess) {
-		if (PVRSRVGetInitServerState(PVRSRV_INIT_SERVER_RAN)) {
-			if (!PVRSRVGetInitServerState
-			    (PVRSRV_INIT_SERVER_SUCCESSFUL)) {
-				PVR_DPF((PVR_DBG_ERROR,
-					 "%s: Initialisation failed.  Driver unusable.",
-					 __FUNCTION__));
+	if(!psConnection->bInitProcess)
+	{
+		if(PVRSRVGetInitServerState(PVRSRV_INIT_SERVER_RAN))
+		{
+			if(!PVRSRVGetInitServerState(PVRSRV_INIT_SERVER_SUCCESSFUL))
+			{
+				PVR_DPF((PVR_DBG_ERROR, "%s: Initialisation failed.  Driver unusable.",
+						 __FUNCTION__));
 				goto return_fault;
 			}
-		} else {
-			if (PVRSRVGetInitServerState
-			    (PVRSRV_INIT_SERVER_RUNNING)) {
-				PVR_DPF((PVR_DBG_ERROR,
-					 "%s: Initialisation is in progress",
-					 __FUNCTION__));
-				goto return_fault;
-			} else {
-				/* Only certain operations are allowed */
-				switch (ui32BridgeID) {
-					/* FIXME: Bridge defines should never be used outside auto generated code,
-					   we need to rethink this */
-				case PVRSRV_GET_BRIDGE_ID(PVRSRV_BRIDGE_SRVCORE_CONNECT):
-				case PVRSRV_GET_BRIDGE_ID(PVRSRV_BRIDGE_SRVCORE_DISCONNECT):
-				case PVRSRV_GET_BRIDGE_ID(PVRSRV_BRIDGE_SRVCORE_INITSRVCONNECT):
-				case PVRSRV_GET_BRIDGE_ID(PVRSRV_BRIDGE_SRVCORE_INITSRVDISCONNECT):
-					break;
-				default:
-					PVR_DPF((PVR_DBG_ERROR,
-						 "%s: Driver initialisation not completed yet.",
+		}
+		else
+		{
+			if(PVRSRVGetInitServerState(PVRSRV_INIT_SERVER_RUNNING))
+			{
+				PVR_DPF((PVR_DBG_ERROR, "%s: Initialisation is in progress",
 						 __FUNCTION__));
-					goto return_fault;
+				goto return_fault;
+			}
+			else
+			{
+				/* Only certain operations are allowed */
+				switch(ui32BridgeID)
+				{
+					/* FIXME: Bridge defines should never be used outside auto generated code,
+					          we need to rethink this */
+					case PVRSRV_GET_BRIDGE_ID(PVRSRV_BRIDGE_SRVCORE_CONNECT):
+					case PVRSRV_GET_BRIDGE_ID(PVRSRV_BRIDGE_SRVCORE_DISCONNECT):
+					case PVRSRV_GET_BRIDGE_ID(PVRSRV_BRIDGE_SRVCORE_ACQUIREGLOBALEVENTOBJECT):
+					case PVRSRV_GET_BRIDGE_ID(PVRSRV_BRIDGE_SRVCORE_RELEASEGLOBALEVENTOBJECT):
+					case PVRSRV_GET_BRIDGE_ID(PVRSRV_BRIDGE_SRVCORE_INITSRVCONNECT):
+					case PVRSRV_GET_BRIDGE_ID(PVRSRV_BRIDGE_SRVCORE_INITSRVDISCONNECT):
+						break;
+					default:
+						PVR_DPF((PVR_DBG_ERROR, "%s: Driver initialisation not completed yet.",
+								 __FUNCTION__));
+						goto return_fault;
 				}
 			}
 		}
 	}
 
+
+
 #if defined(__linux__)
 	{
-		/* This should be moved into the linux specific code */
+		/* FIXME: This should be moved into the linux specific code */
 		ENV_DATA *psEnvData = OSGetEnvData();
 
 		/* We have already set up some static buffers to store our ioctl data... */
 		psBridgeIn = psEnvData->pvBridgeData;
-		psBridgeOut =
-		    (IMG_PVOID) ((IMG_PBYTE) psBridgeIn +
-				 PVRSRV_MAX_BRIDGE_IN_SIZE);
+		psBridgeOut = (IMG_PVOID)((IMG_PBYTE)psBridgeIn + PVRSRV_MAX_BRIDGE_IN_SIZE);
 
 		/* check we are not using a bigger bridge than allocated */
 #if defined(DEBUG)
-		PVR_ASSERT(psBridgePackageKM->ui32InBufferSize <
-			   PVRSRV_MAX_BRIDGE_IN_SIZE);
-		PVR_ASSERT(psBridgePackageKM->ui32OutBufferSize <
-			   PVRSRV_MAX_BRIDGE_OUT_SIZE);
+		PVR_ASSERT(psBridgePackageKM->ui32InBufferSize < PVRSRV_MAX_BRIDGE_IN_SIZE);
+		PVR_ASSERT(psBridgePackageKM->ui32OutBufferSize < PVRSRV_MAX_BRIDGE_OUT_SIZE);
 #endif
 
-		if (psBridgePackageKM->ui32InBufferSize > 0) {
-			if (!OSAccessOK(PVR_VERIFY_READ,
-					psBridgePackageKM->pvParamIn,
-					psBridgePackageKM->ui32InBufferSize)) {
-				PVR_DPF((PVR_DBG_ERROR,
-					 "%s: Invalid pvParamIn pointer",
-					 __FUNCTION__));
+		if(psBridgePackageKM->ui32InBufferSize > 0)
+		{
+			if(!OSAccessOK(PVR_VERIFY_READ,
+							psBridgePackageKM->pvParamIn,
+							psBridgePackageKM->ui32InBufferSize))
+			{
+				PVR_DPF((PVR_DBG_ERROR, "%s: Invalid pvParamIn pointer", __FUNCTION__));
 			}
 
-			if (CopyFromUserWrapper(psConnection,
-						ui32BridgeID,
-						psBridgeIn,
-						psBridgePackageKM->pvParamIn,
-						psBridgePackageKM->
-						ui32InBufferSize)
-			    != PVRSRV_OK) {
+			if(CopyFromUserWrapper(psConnection,
+					               ui32BridgeID,
+								   psBridgeIn,
+								   psBridgePackageKM->pvParamIn,
+								   psBridgePackageKM->ui32InBufferSize)
+			  != PVRSRV_OK)
+			{
 				goto return_fault;
 			}
 		}
 
-		if (psBridgePackageKM->ui32OutBufferSize > 0) {
+		if(psBridgePackageKM->ui32OutBufferSize > 0)
+		{
 			/*
 			 * Copy the output structure as it might contain
 			 * pointers which from our point of view are inputs
 			 */
-			if (CopyFromUserWrapper(psConnection,
-						ui32BridgeID,
-						psBridgeOut,
-						psBridgePackageKM->pvParamOut,
-						psBridgePackageKM->
-						ui32OutBufferSize)
-			    != PVRSRV_OK) {
+			if(CopyFromUserWrapper(psConnection,
+					               ui32BridgeID,
+								   psBridgeOut,
+								   psBridgePackageKM->pvParamOut,
+								   psBridgePackageKM->ui32OutBufferSize)
+			  != PVRSRV_OK)
+			{
 				goto return_fault;
 			}
 		}
 	}
 #else
-	psBridgeIn = psBridgePackageKM->pvParamIn;
+	psBridgeIn  = psBridgePackageKM->pvParamIn;
 	psBridgeOut = psBridgePackageKM->pvParamOut;
 #endif
 
-	if (ui32BridgeID >= (BRIDGE_DISPATCH_TABLE_ENTRY_COUNT)) {
-		PVR_DPF((PVR_DBG_ERROR,
-			 "%s: ui32BridgeID = %d is out if range!", __FUNCTION__,
-			 ui32BridgeID));
+	if(ui32BridgeID >= (BRIDGE_DISPATCH_TABLE_ENTRY_COUNT))
+	{
+		PVR_DPF((PVR_DBG_ERROR, "%s: ui32BridgeID = %d is out if range!",
+				 __FUNCTION__, ui32BridgeID));
 		goto return_fault;
 	}
 	pfBridgeHandler =
-	    (BridgeWrapperFunction) g_BridgeDispatchTable[ui32BridgeID].
-	    pfFunction;
-	err =
-	    pfBridgeHandler(ui32BridgeID, psBridgeIn, psBridgeOut,
-			    psConnection);
-	if (err < 0) {
+		(BridgeWrapperFunction)g_BridgeDispatchTable[ui32BridgeID].pfFunction;
+	err = pfBridgeHandler(ui32BridgeID,
+						  psBridgeIn,
+						  psBridgeOut,
+						  psConnection);
+	if(err < 0)
+	{
 		goto return_fault;
 	}
+
 
 #if defined(__linux__)
 	/* 
 	   This should always be true as a.t.m. all bridge calls have to
 	   return an error message, but this could change so we do this
 	   check to be safe.
-	 */
-	if (psBridgePackageKM->ui32OutBufferSize > 0) {
-		/* This should be moved into the linux specific code */
-		if (CopyToUserWrapper(psConnection,
-				      ui32BridgeID,
-				      psBridgePackageKM->pvParamOut,
-				      psBridgeOut,
-				      psBridgePackageKM->ui32OutBufferSize)
-		    != PVRSRV_OK) {
+	*/
+	if(psBridgePackageKM->ui32OutBufferSize > 0)
+	{
+		/* FIXME: This should be moved into the linux specific code */
+		if(CopyToUserWrapper(psConnection,
+							 ui32BridgeID,
+							 psBridgePackageKM->pvParamOut,
+							 psBridgeOut,
+							 psBridgePackageKM->ui32OutBufferSize)
+		   != PVRSRV_OK)
+		{
 			goto return_fault;
 		}
 	}
 #endif
 
 	err = 0;
- return_fault:
+return_fault:
 	ReleaseHandleBatch(psConnection);
 	return err;
 }
-
-/******************************************************************************
- End of file (bridged_pvr_bridge.c)
-******************************************************************************/

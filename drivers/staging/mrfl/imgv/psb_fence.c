@@ -48,13 +48,13 @@ static void psb_fence_poll(struct ttm_fence_device *fdev,
 	case LNC_ENGINE_ENCODE:
 		if (IS_MDFLD(dev))
 			sequence = *((uint32_t *)
-				     ((struct pnw_topaz_private *)dev_priv->
-				      topaz_private)->topaz_sync_addr + 1);
+				     ((struct pnw_topaz_private *)
+				      dev_priv->topaz_private)->
+				     topaz_sync_addr + 1);
 		if (IS_MRFLD(dev))
 			sequence = *((uint32_t *)
 				((struct tng_topaz_private *)dev_priv->
 				topaz_private)->topaz_sync_addr);
-
 		break;
 	case VSP_ENGINE_VPP:
 		sequence = vsp_fence_poll(dev_priv);
@@ -84,7 +84,7 @@ void psb_fence_error(struct drm_device *dev,
 
 int psb_fence_emit_sequence(struct ttm_fence_device *fdev,
 			    uint32_t fence_class,
-			    uint32_t flags, uint32_t *sequence,
+			    uint32_t flags, uint32_t * sequence,
 			    unsigned long *timeout_jiffies)
 {
 	struct drm_psb_private *dev_priv =
@@ -134,24 +134,22 @@ static void psb_fence_lockup(struct ttm_fence_object *fence,
 	struct drm_device *dev = (struct drm_device *)dev_priv->dev;
 
 	if (fence->fence_class == LNC_ENGINE_ENCODE) {
-		DRM_ERROR("TOPAZ timeout (probable lockup) detected,");
-		DRM_ERROR("flush queued cmdbuf");
+		DRM_ERROR
+		    ("TOPAZ timeout (probable lockup) detected,  flush queued cmdbuf");
 
 		write_lock(&fc->lock);
-
 		if (IS_MDFLD(dev))
 			pnw_topaz_handle_timeout(fence->fdev);
 		if (IS_MRFLD(dev))
 			tng_topaz_handle_timeout(fence->fdev);
-
 		ttm_fence_handler(fence->fdev, fence->fence_class,
 				  fence->sequence, fence_types, -EBUSY);
 		write_unlock(&fc->lock);
 	} else if (fence->fence_class == PSB_ENGINE_VIDEO) {
 		struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
 
-		DRM_ERROR("MSVDX timeout (probable lockup) detected,");
-		DRM_ERROR(" flush queued cmdbuf");
+		DRM_ERROR
+		    ("MSVDX timeout (probable lockup) detected, flush queued cmdbuf");
 
 		psb_msvdx_flush_cmd_queue(dev);
 

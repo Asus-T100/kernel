@@ -27,7 +27,6 @@
 #include "psb_fb.h"
 #include "psb_reg.h"
 #include "psb_intel_reg.h"
-#include "psb_intel_bios.h"
 #include "psb_msvdx.h"
 #include "vsp.h"
 #include "lnc_topaz.h"
@@ -60,18 +59,22 @@
 #endif
 #include "psb_intel_hdmi.h"
 
+#include "otm_hdmi.h"
+#include "android_hdmi.h"
 #include "bufferclass_interface.h"
 
 #include "mdfld_hdcp.h"
 #include "mdfld_csc.h"
 #include "mrfld_s3d.h"
-#include "mrfld_s3d_ovl.h"
 
 /* SH DPST */
 #include "psb_dpst_func.h"
-
+#define HDMI_MONITOR_NAME_LENGTH 20
 int drm_psb_debug;
 int drm_psb_enable_pr2_cabc = 1;
+int drm_psb_enable_gamma;
+int drm_psb_enable_color_conversion;
+
 /*EXPORT_SYMBOL(drm_psb_debug);*/
 static int drm_psb_trap_pagefaults;
 
@@ -100,23 +103,9 @@ int drm_psb_te_timer_delay = (DRM_HZ / 40);
 static int PanelID = GCT_DETECT;
 char HDMI_EDID[HDMI_MONITOR_NAME_LENGTH];
 int hdmi_state;
+u32 DISP_PLANEB_STATUS = ~DISPLAY_PLANE_ENABLE;
+int drm_psb_msvdx_tiling;
 
-    /*****************************
-     *  S3D OVERLAY MODULE DATA
-     */
-#ifdef OVL_DEBUG
-#define OVL_MSG     KERN_ALERT "[s3dovl] "
-#else
-#define OVL_MSG     KERN_ERR "[s3dovl] "
-#endif
-
-static int ovl_moduleid = 0,
-ovl_acquired = 0, ovl_configured = 0, ovl_modeset = 0;
-static ovl_s3d_priv_t ovl_state = { 0 };
-
-    /*
-     *  S3D OVERLAY MODULE DATA
-     ****************************/
 static int psb_probe(struct pci_dev *pdev, const struct pci_device_id *ent);
 
 MODULE_PARM_DESC(debug, "Enable debug output");
@@ -143,6 +132,9 @@ MODULE_PARM_DESC(vsp_pm, "Power on/off the VSP");
 MODULE_PARM_DESC(ved_pm, "Power on/off the Msvdx");
 MODULE_PARM_DESC(vec_pm, "Power on/off the Topaz");
 
+module_param_named(enable_color_conversion, drm_psb_enable_color_conversion,
+					int, 0600);
+module_param_named(enable_gamma, drm_psb_enable_gamma, int, 0600);
 module_param_named(debug, drm_psb_debug, int, 0600);
 module_param_named(psb_enable_pr2_cabc, drm_psb_enable_pr2_cabc, int, 0600);
 module_param_named(no_fb, drm_psb_no_fb, int, 0600);
@@ -170,7 +162,8 @@ module_param_named(te_delay, drm_psb_te_timer_delay, int, 0600);
 
 #ifndef MODULE
 /* Make ospm configurable via cmdline firstly,
-and others can be enabled if needed. */
+* and others can be enabled if needed.
+*/
 static int __init config_ospm(char *arg)
 {
 	/* ospm turn on/off control can be passed in as a cmdline parameter */
@@ -204,7 +197,7 @@ early_param("ospm", config_ospm);
 early_param("dsr", config_dsr);
 #endif
 
-static DEFINE_PCI_DEVICE_TABLE(pciidlist) = {
+static struct pci_device_id pciidlist[] = {
 #ifdef MEDFIELD
 	{0x8086, 0x4100, PCI_ANY_ID, PCI_ANY_ID, 0, 0, CHIP_MDFLD_0130},
 	{0x8086, 0x4101, PCI_ANY_ID, PCI_ANY_ID, 0, 0, CHIP_MDFLD_0130},
@@ -305,22 +298,24 @@ MODULE_DEVICE_TABLE(pci, pciidlist);
 	DRM_IOR(DRM_PSB_DPU_QUERY + DRM_COMMAND_BASE, unsigned int)
 #define DRM_IOCRL_PSB_DPU_DSR_ON \
 	DRM_IOW(DRM_PSB_DPU_DSR_ON + DRM_COMMAND_BASE, unsigned int)
-
+/* #define DRM_IOCRL_PSB_DPU_DSR_OFF \
+*	DRM_IOW(DRM_PSB_DPU_DSR_OFF + DRM_COMMAND_BASE, unsigned int)
+*/
 #define DRM_IOCRL_PSB_DPU_DSR_OFF \
-	DRM_IOW(DRM_PSB_DPU_DSR_OFF + DRM_COMMAND_BASE,\
-		struct drm_psb_drv_dsr_off_arg)
+	DRM_IOW(DRM_PSB_DPU_DSR_OFF + DRM_COMMAND_BASE, \
+	struct drm_psb_drv_dsr_off_arg)
 
 /*HDMI FB stuff*/
 #define DRM_IOCTL_PSB_HDMI_FB_CMD \
-	DRM_IOWR(DRM_PSB_HDMI_FB_CMD + DRM_COMMAND_BASE,\
-		struct drm_psb_disp_ctrl)
+	DRM_IOWR(DRM_PSB_HDMI_FB_CMD + DRM_COMMAND_BASE, \
+	struct drm_psb_disp_ctrl)
 
 /* HDCP IOCTLs */
 #define DRM_IOCTL_PSB_QUERY_HDCP \
 		DRM_IOR(DRM_PSB_QUERY_HDCP + DRM_COMMAND_BASE, uint32_t)
 #define DRM_IOCTL_PSB_VALIDATE_HDCP_KSV \
-		DRM_IOWR(DRM_PSB_VALIDATE_HDCP_KSV + DRM_COMMAND_BASE,\
-			sqword_t)
+		DRM_IOWR(DRM_PSB_VALIDATE_HDCP_KSV + \
+			DRM_COMMAND_BASE, sqword_tt)
 #define DRM_IOCTL_PSB_GET_HDCP_STATUS \
 		DRM_IOR(DRM_PSB_GET_HDCP_STATUS + DRM_COMMAND_BASE, uint32_t)
 #define DRM_IOCTL_PSB_ENABLE_HDCP \
@@ -330,27 +325,14 @@ MODULE_DEVICE_TABLE(pci, pciidlist);
 
 /* S3D IOCTLs */
 #define DRM_IOCTL_PSB_S3D_QUERY \
-		DRM_IOWR(DRM_PSB_S3D_QUERY + DRM_COMMAND_BASE,\
-			struct drm_psb_s3d_query)
+	DRM_IOWR(DRM_PSB_S3D_QUERY + DRM_COMMAND_BASE, \
+		struct drm_psb_s3d_query)
 #define DRM_IOCTL_PSB_S3D_PREMODESET \
-		DRM_IOW(DRM_PSB_S3D_PREMODESET + DRM_COMMAND_BASE,\
-			struct drm_psb_s3d_premodeset)
+	DRM_IOW(DRM_PSB_S3D_PREMODESET + DRM_COMMAND_BASE, \
+		struct drm_psb_s3d_premodeset)
 #define DRM_IOCTL_PSB_S3D_ENABLE \
-		DRM_IOW(DRM_PSB_S3D_ENABLE + DRM_COMMAND_BASE, uint32_t)
-
-    /*****************************
-     *  S3D OVERLAY IOCTLs
-     */
-#define DRM_IOCTL_OVL_S3D_ACQUIRE   \
-	DRM_IOR(DRM_OVL_S3D_ACQUIRE + DRM_COMMAND_BASE, uint32_t)
-#define DRM_IOCTL_OVL_S3D_RELEASE   \
-	DRM_IOW(DRM_OVL_S3D_RELEASE + DRM_COMMAND_BASE, uint32_t)
-#define DRM_IOCTL_OVL_S3D_UPDATE    \
-	DRM_IOW(DRM_OVL_S3D_UPDATE + DRM_COMMAND_BASE, ovl_s3d_update_t)
-#define DRM_IOCTL_OVL_S3D_CONFIG    \
-	DRM_IOWR(DRM_OVL_S3D_CONFIG + DRM_COMMAND_BASE, ovl_s3d_config_t)
-#define DRM_IOCTL_OVL_S3D_OVLREG    \
-	DRM_IOWR(DRM_OVL_S3D_OVLREG + DRM_COMMAND_BASE, ovl_s3d_reg_t)
+		DRM_IOW(DRM_PSB_S3D_ENABLE + DRM_COMMAND_BASE, \
+		uint32_t)
 
 /* CSC IOCTLS */
 #define DRM_IOCTL_PSB_SET_CSC \
@@ -395,12 +377,14 @@ MODULE_DEVICE_TABLE(pci, pciidlist);
 #define DRM_PSB_TTM_FENCE_FINISH   (TTM_FENCE_FINISH + DRM_PSB_FENCE_OFFSET)
 #define DRM_PSB_TTM_FENCE_UNREF    (TTM_FENCE_UNREF + DRM_PSB_FENCE_OFFSET)
 
-#define DRM_PSB_FLIP	   (DRM_PSB_TTM_FENCE_UNREF + 1)	/*20 */
+#define DRM_PSB_FLIP	   (DRM_PSB_TTM_FENCE_UNREF + 1)
+		/*20 */
 /* PSB video extension */
 #define DRM_LNC_VIDEO_GETPARAM		(DRM_PSB_FLIP + 1)
 
 /*BC_VIDEO ioctl*/
-#define DRM_BUFFER_CLASS_VIDEO	(DRM_LNC_VIDEO_GETPARAM + 1)
+#define DRM_BUFFER_CLASS_VIDEO      (DRM_LNC_VIDEO_GETPARAM + 1)
+	/*0x32 */
 
 #define DRM_IOCTL_PSB_TTM_PL_CREATE    \
 	DRM_IOWR(DRM_COMMAND_BASE + DRM_PSB_TTM_PL_CREATE,\
@@ -439,6 +423,17 @@ MODULE_DEVICE_TABLE(pci, pciidlist);
 	DRM_IOWR(DRM_COMMAND_BASE + DRM_LNC_VIDEO_GETPARAM, \
 		 struct drm_lnc_video_getparam_arg)
 
+    /*****************************
+     *  HDMI TEST IOCTLs
+     */
+#define DRM_IOCTL_PSB_HDMITEST    \
+	DRM_IOWR(DRM_PSB_HDMITEST + DRM_COMMAND_BASE, drm_psb_hdmireg_t)
+
+/* VSYNC IOCTL */
+#define DRM_IOCTL_PSB_VSYNC_SET \
+	DRM_IOWR(DRM_PSB_VSYNC_SET + DRM_COMMAND_BASE,		\
+			struct drm_psb_vsync_set_arg)
+
 struct user_printk_arg {
 	char string[512];
 };
@@ -464,6 +459,8 @@ static int psb_mode_operation_ioctl(struct drm_device *dev, void *data,
 				    struct drm_file *file_priv);
 static int psb_stolen_memory_ioctl(struct drm_device *dev, void *data,
 				   struct drm_file *file_priv);
+static int psb_vsync_set_ioctl(struct drm_device *dev, void *data,
+				 struct drm_file *file_priv);
 static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv);
 static int psb_hist_enable_ioctl(struct drm_device *dev, void *data,
@@ -489,6 +486,21 @@ static int psb_dpu_dsr_off_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv);
 static int psb_disp_ioctl(struct drm_device *dev, void *data,
 			  struct drm_file *file_priv);
+
+#ifdef CONFIG_SUPPORT_HDMI
+static int psb_query_hdcp_ioctl(struct drm_device *dev, void *data,
+				 struct drm_file *file_priv);
+static int psb_validate_hdcp_ksv_ioctl(struct drm_device *dev, void *data,
+				 struct drm_file *file_priv);
+static int psb_get_hdcp_status_ioctl(struct drm_device *dev, void *data,
+				 struct drm_file *file_priv);
+static int psb_enable_hdcp_ioctl(struct drm_device *dev, void *data,
+				 struct drm_file *file_priv);
+static int psb_disable_hdcp_ioctl(struct drm_device *dev, void *data,
+				 struct drm_file *file_priv);
+static int psb_get_hdcp_link_status_ioctl(struct drm_device *dev, void *data,
+				 struct drm_file *file_priv);
+#endif
 static int psb_query_hdcp_ioctl(struct drm_device *dev, void *data,
 				struct drm_file *file_priv);
 static int psb_validate_hdcp_ksv_ioctl(struct drm_device *dev, void *data,
@@ -499,28 +511,16 @@ static int psb_enable_hdcp_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv);
 static int psb_disable_hdcp_ioctl(struct drm_device *dev, void *data,
 				  struct drm_file *file_priv);
+#ifdef CONFIG_SUPPORT_HDMI
 static int psb_s3d_query_ioctl(struct drm_device *dev, void *data,
 			       struct drm_file *file_priv);
 static int psb_s3d_premodeset_ioctl(struct drm_device *dev, void *data,
 				    struct drm_file *file_priv);
 static int psb_s3d_enable_ioctl(struct drm_device *dev, void *data,
 				struct drm_file *file_priv);
+#endif
 static int psb_set_csc_ioctl(struct drm_device *dev, void *data,
 			     struct drm_file *file_priv);
-
-    /*****************************
-     *  S3D OVERLAY IOCTL HANDLERS
-     */
-static int psb_s3d_ovl_acquire_ioctl(struct drm_device *,
-				     void *, struct drm_file *);
-static int psb_s3d_ovl_release_ioctl(struct drm_device *,
-				     void *, struct drm_file *);
-static int psb_s3d_ovl_update_ioctl(struct drm_device *,
-				    void *, struct drm_file *);
-static int psb_s3d_ovl_config_ioctl(struct drm_device *,
-				    void *, struct drm_file *);
-static int psb_s3d_ovl_ovlreg_ioctl(struct drm_device *,
-				    void *, struct drm_file *);
 
 static int user_printk_ioctl(struct drm_device *dev, void *data,
 			     struct drm_file *file_priv)
@@ -530,8 +530,15 @@ static int user_printk_ioctl(struct drm_device *dev, void *data,
 	return 0;
 }
 
+    /****************************
+     *  HDMI TEST IOCTLS
+     */
+static int psb_drm_hdmi_test_ioctl(struct drm_device *,
+				   void *, struct drm_file *);
+
 #define PSB_IOCTL_DEF(ioctl, func, flags) \
-	[DRM_IOCTL_NR(ioctl) - DRM_COMMAND_BASE] = {ioctl, flags, func}
+	 [DRM_IOCTL_NR(ioctl) - DRM_COMMAND_BASE] = \
+	 {ioctl, flags, func}
 
 static struct drm_ioctl_desc psb_ioctls[] = {
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_KMS_OFF, psbfb_kms_off_ioctl,
@@ -577,8 +584,10 @@ static struct drm_ioctl_desc psb_ioctls[] = {
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_DPST, psb_dpst_ioctl, DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_GAMMA, psb_gamma_ioctl, DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_DPST_BL, psb_dpst_bl_ioctl, DRM_AUTH),
+#if 0
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_GET_PIPE_FROM_CRTC_ID,
 		      psb_intel_get_pipe_from_crtc_id, 0),
+#endif
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_CMDBUF, psb_cmdbuf_ioctl, DRM_AUTH),
 	/*to be removed later */
 	/*PSB_IOCTL_DEF(DRM_IOCTL_PSB_SCENE_UNREF, drm_psb_scene_unref_ioctl,
@@ -614,6 +623,7 @@ static struct drm_ioctl_desc psb_ioctls[] = {
 		      DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCRL_PSB_DPU_DSR_OFF, psb_dpu_dsr_off_ioctl,
 		      DRM_AUTH),
+#ifdef CONFIG_SUPPORT_HDMI
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_HDMI_FB_CMD, psb_disp_ioctl, 0),
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_QUERY_HDCP, psb_query_hdcp_ioctl, DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_VALIDATE_HDCP_KSV,
@@ -624,6 +634,7 @@ static struct drm_ioctl_desc psb_ioctls[] = {
 		      DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_DISABLE_HDCP, psb_disable_hdcp_ioctl,
 		      DRM_AUTH),
+#endif
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_SET_CSC, psb_set_csc_ioctl, DRM_AUTH),
 /*
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_S3D_QUERY, psb_s3d_query_ioctl, DRM_AUTH),
@@ -632,22 +643,15 @@ static struct drm_ioctl_desc psb_ioctls[] = {
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_S3D_ENABLE, psb_s3d_enable_ioctl, DRM_AUTH),
 */
     /*****************************
-     *  S3D OVERLAY IOCTLS
+     *  HDMI TEST IOCTLs
      */
-/*
-	PSB_IOCTL_DEF(DRM_IOCTL_OVL_S3D_ACQUIRE, psb_s3d_ovl_acquire_ioctl,
-		      DRM_AUTH),
-	PSB_IOCTL_DEF(DRM_IOCTL_OVL_S3D_RELEASE, psb_s3d_ovl_release_ioctl,
-		      DRM_AUTH),
-	PSB_IOCTL_DEF(DRM_IOCTL_OVL_S3D_UPDATE, psb_s3d_ovl_update_ioctl,
-		      DRM_AUTH),
-	PSB_IOCTL_DEF(DRM_IOCTL_OVL_S3D_CONFIG, psb_s3d_ovl_config_ioctl,
-		      DRM_AUTH),
-	PSB_IOCTL_DEF(DRM_IOCTL_OVL_S3D_OVLREG, psb_s3d_ovl_ovlreg_ioctl,
+	PSB_IOCTL_DEF(DRM_IOCTL_PSB_HDMITEST, psb_drm_hdmi_test_ioctl,
 		      DRM_AUTH),
 
+	PSB_IOCTL_DEF(DRM_IOCTL_PSB_VSYNC_SET, psb_vsync_set_ioctl,
+			DRM_AUTH | DRM_UNLOCKED),
+
 	PSB_IOCTL_DEF(DRM_IOCTL_USER_PRINTK, user_printk_ioctl, DRM_AUTH)
-*/
 };
 
 static void get_ci_info(struct drm_psb_private *dev_priv)
@@ -706,7 +710,7 @@ static void get_imr_info(struct drm_psb_private *dev_priv)
 	int size = 0;
 
 	low = intel_mid_msgbus_read32(PNW_IMR_MSG_PORT,
-			PNW_IMR4L_MSG_REGADDR);
+			PNW_IMR3L_MSG_REGADDR);
 	high = intel_mid_msgbus_read32(PNW_IMR_MSG_PORT,
 			PNW_IMR3H_MSG_REGADDR);
 	start = (low & PNW_IMR_ADDRESS_MASK) << PNW_IMR_ADDRESS_SHIFT;
@@ -1057,8 +1061,8 @@ bool mrst_get_vbt_data(struct drm_psb_private *dev_priv)
 		dev_priv->gct_data.Panel_Port_Control =
 		    ((struct mrst_gct_v1 *)pGCT)->panel[bpi].Panel_Port_Control;
 		dev_priv->gct_data.Panel_MIPI_Display_Descriptor =
-		    ((struct mrst_gct_v1 *)pGCT)->panel[bpi].
-		    Panel_MIPI_Display_Descriptor;
+		    ((struct mrst_gct_v1 *)pGCT)->
+		    panel[bpi].Panel_MIPI_Display_Descriptor;
 		break;
 	case 1:
 		pVBT->mrst_gct = NULL;
@@ -1076,19 +1080,18 @@ bool mrst_get_vbt_data(struct drm_psb_private *dev_priv)
 		dev_priv->gct_data.Panel_Port_Control =
 		    ((struct mrst_gct_v2 *)pGCT)->panel[bpi].Panel_Port_Control;
 		dev_priv->gct_data.Panel_MIPI_Display_Descriptor =
-		    ((struct mrst_gct_v2 *)pGCT)->panel[bpi].
-		    Panel_MIPI_Display_Descriptor;
+		    ((struct mrst_gct_v2 *)pGCT)->
+		    panel[bpi].Panel_MIPI_Display_Descriptor;
 		break;
 	case 0x10:
 		/*header definition changed from rev 01 (v2) to rev 10h. */
 		/*so, some values have changed location */
-		/*checksum contains lo size byte */
 		new_size = pVBT->Checksum;
+		/*checksum contains lo size byte */
 		/*LSB of mrst_gct contains hi size byte */
 		new_size |= ((0xff & (unsigned int)pVBT->mrst_gct)) << 8;
 
-		/*size contains the checksum */
-		pVBT->Checksum = pVBT->Size;
+		pVBT->Checksum = pVBT->Size;	/*size contains the checksum */
 		if (new_size > 0xff)
 			pVBT->Size = 0xff;	/*restrict size to 255 */
 		else
@@ -1150,15 +1153,9 @@ bool mrst_get_vbt_data(struct drm_psb_private *dev_priv)
 				dev_priv->panel_id = TMD_VID;
 				PanelID = TMD_VID;
 			} else {
-#if 1				/* FIXME MRFLD */
-				PSB_DEBUG_ENTRY("[GFX] Default Panel (TMD)\n");
-				dev_priv->panel_id = TMD_VID;
-				PanelID = TMD_VID;
-#else				/* FIXME MRFLD */
-				PSB_DEBUG_ENTRY("[GFX] Default Panel (TPO)\n");
-				dev_priv->panel_id = TPO_CMD;
-				PanelID = TPO_CMD;
-#endif				/* FIXME MRFLD */
+				PSB_DEBUG_ENTRY("Default Panel (JDI VID)\n");
+				dev_priv->panel_id = JDI_VID;
+				PanelID = JDI_VID;
 			}
 		} else {
 			PSB_DEBUG_ENTRY
@@ -1168,8 +1165,6 @@ bool mrst_get_vbt_data(struct drm_psb_private *dev_priv)
 	}
 #ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
 	dev_priv->panel_id = TMD_VID;
-
-	/* DIV5-MM-DISPLAY-NC-LCM_INIT-01 */
 	PSB_DEBUG_ENTRY("[DISPLAY] %s: TMD_VID Panel\n", __func__);
 #endif
 
@@ -1178,10 +1173,8 @@ bool mrst_get_vbt_data(struct drm_psb_private *dev_priv)
 	PanelID = TMD_6X10_VID;
 	printk(KERN_ALERT "%s: TMD_6X10_VID Panel\n", __func__);
 #endif
-
 	return true;
 }
-
 void hdmi_do_hotplug_wq(struct work_struct *work)
 {
 	u8 data = 0;
@@ -1210,37 +1203,81 @@ void hdmi_do_hotplug_wq(struct work_struct *work)
 		drm_sysfs_hotplug_event(dev_priv->dev);
 
 		if (dev_priv->had_interface)
-			dev_priv->had_interface->disconnect(dev_priv->
-							    had_pvt_data);
+			dev_priv->had_interface->
+			    disconnect(dev_priv->had_pvt_data);
 	}
 #endif
 
 	atomic_dec(&dev_priv->hotplug_wq_done);
 }
 
+#ifdef CONFIG_SUPPORT_HDMI
 void hdmi_do_audio_wq(struct work_struct *work)
 {
 	u8 data = 0;
 	struct drm_psb_private *dev_priv = container_of(work,
-							struct drm_psb_private,
-							hdmi_audio_wq);
+		struct drm_psb_private,
+		hdmi_audio_wq);
+	bool hdmi_hpd_connected = false;
 
-#ifdef CONFIG_X86_MRST
-	intel_scu_ipc_iowrite8(MSIC_VCC330CNT, VCC330_ON);
-	intel_scu_ipc_ioread8(MSIC_HDMI_STATUS, &data);
+	/* As in the hdmi_do_hotplug_wq() function above
+	* it seems we should not be running this section of
+	* code if we don't also have CONFIG_SUPPORT_HDMI set,
+	* some devices might not want/need support for HDMI
+	* early in the platform bring up and by having this
+	* available to run might produce unexpected results
+	* if HDMI connector is plugged in.
+	*/
+
 	DRM_INFO("hdmi_do_audio_wq: Checking for HDMI connection at boot\n");
-
-	if (data & HPD_SIGNAL_STATUS) {
+	hdmi_hpd_connected = android_hdmi_is_connected(dev_priv->dev);
+	if (hdmi_hpd_connected) {
 		DRM_INFO("hdmi_do_audio_wq: HDMI plugged in\n");
-		if (dev_priv->had_interface) {
-			DRM_INFO
-			    ("hdmi_do_audio_wq: HDMI calling audio probe\n");
-			dev_priv->had_interface->probe(dev_priv->had_pvt_data,
-						       0);
-		}
+		mid_hdmi_audio_signal_event(dev_priv->dev, HAD_EVENT_HOT_PLUG);
 	}
-#endif
 }
+#endif
+
+#ifdef CONFIG_SUPPORT_HDMI
+#define HDMI_HOTPLUG_DELAY (2*HZ)
+static void hdmi_hotplug_timer_func(unsigned long data)
+{
+	struct drm_device *dev = (struct drm_device *)data;
+
+	PSB_DEBUG_ENTRY("\n");
+	ospm_runtime_pm_allow(dev);
+}
+
+static int hdmi_hotplug_timer_init(struct drm_device *dev)
+{
+	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct timer_list *hdmi_timer = &dev_priv->hdmi_timer;
+
+	PSB_DEBUG_ENTRY("\n");
+
+	init_timer(hdmi_timer);
+
+	hdmi_timer->data = (unsigned long)dev;
+	hdmi_timer->function = hdmi_hotplug_timer_func;
+	hdmi_timer->expires = jiffies + HDMI_HOTPLUG_DELAY;
+
+	PSB_DEBUG_ENTRY("successfully\n");
+
+	return 0;
+}
+
+void hdmi_hotplug_timer_start(struct drm_device *dev)
+{
+	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct timer_list *hdmi_timer = &dev_priv->hdmi_timer;
+
+	PSB_DEBUG_ENTRY("\n");
+	if (!timer_pending(hdmi_timer)) {
+		hdmi_timer->expires = jiffies + HDMI_HOTPLUG_DELAY;
+		add_timer(hdmi_timer);
+	}
+}
+#endif
 
 static int psb_do_init(struct drm_device *dev)
 {
@@ -1427,7 +1464,14 @@ static int psb_driver_unload(struct drm_device *dev)
 			iounmap(dev_priv->vdc_reg);
 			dev_priv->vdc_reg = NULL;
 		}
-
+		if (dev_priv->rgx_reg) {
+			iounmap(dev_priv->rgx_reg);
+			dev_priv->rgx_reg = NULL;
+		}
+		if (dev_priv->wrapper_reg) {
+			iounmap(dev_priv->wrapper_reg);
+			dev_priv->wrapper_reg = NULL;
+		}
 		if (dev_priv->msvdx_reg) {
 			iounmap(dev_priv->msvdx_reg);
 			dev_priv->msvdx_reg = NULL;
@@ -1453,6 +1497,7 @@ static int psb_driver_unload(struct drm_device *dev)
 		if (dev_priv->has_global)
 			psb_ttm_global_release(dev_priv);
 
+		kfree(dev_priv->vblank_count);
 		kfree(dev_priv);
 		dev->dev_private = NULL;
 	}
@@ -1471,6 +1516,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	unsigned long irqflags;
 	int ret = -ENOMEM;
 	uint32_t tt_pages;
+	int i;
 
 	DRM_INFO("psb - %s\n", PSB_PACKAGE_VERSION);
 
@@ -1487,7 +1533,6 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 		dev_priv->num_pipe = 3;
 	else
 		dev_priv->num_pipe = 2;
-
 	atomic_set(&dev_priv->hotplug_wq_done, 1);
 
 	/*init DPST umcomm to NULL */
@@ -1518,7 +1563,9 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	INIT_LIST_HEAD(&dev_priv->context.validate_list);
 	INIT_LIST_HEAD(&dev_priv->context.kern_validate_list);
 
+	mutex_init(&dev_priv->dpms_mutex);
 	mutex_init(&dev_priv->dsr_mutex);
+	mutex_init(&dev_priv->vsync_lock);
 
 	spin_lock_init(&dev_priv->reloc_lock);
 
@@ -1576,8 +1623,28 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	if (!dev_priv->vdc_reg)
 		goto out_err;
 
-	dev_priv->pci_root = pci_get_bus_and_slot(0, 0);
+	if (IS_MRFLD(dev)) {
+		dev_priv->rgx_reg =
+			ioremap(resource_start + RGX_OFFSET,
+				RGX_SIZE);
 
+		if (!dev_priv->rgx_reg)
+			goto out_err;
+
+		dev_priv->wrapper_reg =
+			ioremap(resource_start + GFX_WRAPPER_OFFSET,
+				GFX_WRAPPER_SIZE);
+
+		if (!dev_priv->wrapper_reg)
+			goto out_err;
+
+	}
+
+	dev_priv->pci_root = pci_get_bus_and_slot(0, 0);
+#ifdef CONFIG_SUPPORT_HDMI
+	/* setup hdmi driver */
+	android_hdmi_driver_setup(dev);
+#endif
 	if (IS_MID(dev)) {
 		mrst_get_fuse_settings(dev);
 		mrst_get_vbt_data(dev_priv);
@@ -1752,6 +1819,17 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	if (ret)
 		goto out_err;
 
+	DRM_INIT_WAITQUEUE(&dev_priv->vsync_queue);
+
+	dev_priv->vblank_count =
+		kmalloc(sizeof(atomic_t) * dev_priv->num_pipe, GFP_KERNEL);
+
+	if (!dev_priv->vblank_count)
+		goto out_err;
+
+	for (i = 0; i < dev_priv->num_pipe; i++)
+		atomic_set(&dev_priv->vblank_count[i], 0);
+
 	/*
 	 * Install interrupt handlers prior to powering off SGX or else we will
 	 * crash.
@@ -1768,13 +1846,13 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 		drm_irq_install(dev);
 
 	dev->vblank_disable_allowed = 1;
-
-	/* only 24 bits of frame count */
 	dev->max_vblank_count = 0xffffff;
+	/* only 24 bits of frame count */
 
 	dev->driver->get_vblank_counter = psb_get_vblank_counter;
 
-	if (IS_FLDS(dev)) {
+	if (IS_FLDS(dev) &&
+			(is_panel_vid_or_cmd(dev) == MDFLD_DSI_ENCODER_DBI)) {
 #ifdef CONFIG_MID_DSI_DPU
 		/*init dpu info */
 		mdfld_dbi_dpu_init(dev);
@@ -1782,18 +1860,28 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 		mdfld_dbi_dsr_init(dev);
 #endif				/*CONFIG_MID_DSI_DPU */
 		INIT_WORK(&dev_priv->te_work, mdfld_te_handler_work);
+		INIT_WORK(&dev_priv->reset_panel_work,
+				mdfld_reset_panel_handler_work);
 	}
+
+	INIT_WORK(&dev_priv->vsync_event_work, mdfld_vsync_event_work);
 
 	if (drm_psb_no_fb == 0) {
 		psb_modeset_init(dev);
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 35))
 		psb_fbdev_init(dev);
 		drm_kms_helper_poll_init(dev);
+#else
+		drm_helper_initial_config(dev);
+#endif
 	}
 
 	/*must be after mrst_get_fuse_settings() */
 	ret = psb_backlight_init(dev);
-	if (ret)
+	if (ret) {
+		kfree(dev_priv->vblank_count);
 		return ret;
+	}
 
 	/* initialize HDMI Hotplug interrupt forwarding
 	 * notifications for user mode
@@ -1821,9 +1909,12 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	pm_runtime_set_active(&dev->pdev->dev);
 #endif
 
+#ifdef CONFIG_SUPPORT_HDMI
+	hdmi_hotplug_timer_init(dev);
 	atomic_set(&dev_priv->hotplug_wq_done, 0);
 	INIT_WORK(&dev_priv->hdmi_hotplug_wq, hdmi_do_hotplug_wq);
 	INIT_WORK(&dev_priv->hdmi_audio_wq, hdmi_do_audio_wq);
+#endif
 
 	/*Intel drm driver load is done, continue doing pvr load */
 	DRM_DEBUG("Pvr driver load\n");
@@ -1831,10 +1922,10 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	/* init display manager */
 	dispmgr_start(dev);
 
-	/* SH START DPST */
-	/* SH This hooks dpst with the device. */
+	/* SH START DPST
+	* SH This hooks dpst with the device.
+	*/
 	dpst_init(dev, 5, 1);
-	/* SH END DPST */
 
 	return PVRSRVDrmLoad(dev, chipset);
  out_err:
@@ -1926,14 +2017,9 @@ static int psb_vt_leave_ioctl(struct drm_device *dev, void *data,
 		goto out_unlock;
 
 	man = &bdev->man[TTM_PL_TT];
-
-	/* lru_lock is removed from upstream TTM */
-	/* spin_lock(&bdev->lru_lock); */
-
+	/*spin_lock(&bdev->lru_lock); */
 	clean = drm_mm_clean((struct drm_mm *)man->priv);
-
 	/*spin_unlock(&bdev->lru_lock); */
-
 	if (unlikely(!clean))
 		DRM_INFO("Warning: GATT was not clean after VT switch.\n");
 
@@ -1972,6 +2058,34 @@ static int psb_fuse_reg_ioctl(struct drm_device *dev, void *data,
 	return 0;
 }
 
+    /*****************************
+     *  HDMI TEST IOCTLS
+     */
+static int psb_drm_hdmi_test_ioctl(struct drm_device *dev,
+				   void *data, struct drm_file *file_priv)
+{
+	drm_psb_hdmireg_p reg = data;
+	struct drm_psb_private *dev_priv = dev->dev_private;
+
+	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
+				       (reg->mode & HT_FORCEON) ?
+				       OSPM_UHB_FORCE_POWER_ON : false))
+		return -EAGAIN;
+
+	if (reg->mode & HT_WRITE)
+		PSB_WVDC32(reg->data, reg->reg);
+
+	if (reg->mode & HT_READ)
+		reg->data = PSB_RVDC32(reg->reg);
+
+	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+	return 0;
+}				/* psb_drm_hdmi_test_ioctl */
+
+    /*
+     *  END HDMI TEST IOCTLS
+     ****************************/
+
 static int psb_vbt_ioctl(struct drm_device *dev, void *data,
 			 struct drm_file *file_priv)
 {
@@ -1988,496 +2102,102 @@ static int psb_disp_ioctl(struct drm_device *dev, void *data,
 {
 	static uint32_t hdmi_export_handle;
 	struct drm_psb_disp_ctrl *dp_ctrl = data;
-
+	/*DRM_COPY_FROM_USER(&dp_ctrl, data,
+		sizeof(struct drm_psb_disp_ctrl)); */
 	DRM_INFO("disp cmd:%d\n", dp_ctrl->cmd);
 	if (dp_ctrl->cmd == DRM_PSB_DISP_SAVE_HDMI_FB_HANDLE) {
 		hdmi_export_handle = dp_ctrl->data;
-		DRM_INFO("save hdmi export handle:%d\n", hdmi_export_handle);
+		DRM_INFO("save hdmi export handle:%d\n",
+						hdmi_export_handle);
 	} else if (dp_ctrl->cmd == DRM_PSB_DISP_GET_HDMI_FB_HANDLE) {
 		dp_ctrl->data = hdmi_export_handle;
+		/*DRM_COPY_TO_USER(data, &dp_ctrl,
+		sizeof(struct drm_psb_disp_ctrl)); */
 		DRM_INFO("retrive hdmi export handle:%d\n", hdmi_export_handle);
 	}
 	return 0;
 }
 
+#ifdef CONFIG_SUPPORT_HDMI
 static int psb_query_hdcp_ioctl(struct drm_device *dev, void *data,
-				struct drm_file *file_priv)
+				 struct drm_file *file_priv)
 {
 	uint32_t *arg = data;
-	sqword_t hw_bksv;
-	int ret;
+	uint8_t bksv[5];
 
 	/* Attempting to read the BKSV value from the HDMI device.
 	 * A successful read of this data indicates that HDCP is
 	 * supported.  A value of zero would indicate that it's
 	 * not.
 	 */
-	ret =
-	    read_hdcp_port(RX_TYPE_BKSV_DATA, &hw_bksv.byte[0],
-			   HDCP_BKSV_BYTES);
-
-	if (ret)
-		*arg = 1;
-	else
-		*arg = 0;
+	*arg = android_query_hdmi_hdcp_sink(dev, bksv);
 
 	return 0;
 }
-
 static int psb_validate_hdcp_ksv_ioctl(struct drm_device *dev, void *data,
-				       struct drm_file *file_priv)
+				 struct drm_file *file_priv)
 {
-	sqword_t *arg = data;
-	sqword_t hw_bksv;
-	int ret;
-
-	ret =
-	    read_hdcp_port(RX_TYPE_BKSV_DATA, &hw_bksv.byte[0],
-			   HDCP_BKSV_BYTES);
-
-	if (!ret)
-		ret = -1;
-	else {
+	sqword_tt *arg = data;
+	sqword_tt hw_bksv;
+	if (android_query_hdmi_hdcp_sink(dev, (uint8_t *)&hw_bksv)) {
 		*arg = hw_bksv;
-		ret = 0;
+		return 0;
 	}
 
-	return ret;
+	return -1;
 }
-
 static int psb_get_hdcp_status_ioctl(struct drm_device *dev, void *data,
-				     struct drm_file *file_priv)
+				 struct drm_file *file_priv)
 {
 	uint32_t *arg = data;
-	*arg = hdcp_is_enabled();
+	if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
+				OSPM_UHB_FORCE_POWER_ON)) {
+		*arg = android_check_hdmi_hdcp_enc_status(dev);
+		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+	}
 
 	return 0;
 }
-
 static int psb_enable_hdcp_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv)
 {
 	int ret;
-	ret = hdcp_enable(1);
-
-	if (!ret)
-		ret = -1;
-	else
-		ret = 0;
-
-	return ret;
+	if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
+				OSPM_UHB_FORCE_POWER_ON)) {
+		ret = android_enable_hdmi_hdcp(dev);
+		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+	}
+	if (ret)
+		return 0;
+	return -1;
 }
-
 static int psb_disable_hdcp_ioctl(struct drm_device *dev, void *data,
-				  struct drm_file *file_priv)
+				 struct drm_file *file_priv)
 {
 	int ret;
-	ret = hdcp_enable(0);
-
-	if (!ret)
-		ret = -1;
-	else
-		ret = 0;
-
-	return ret;
-}
-
-static int psb_s3d_query_ioctl(struct drm_device *dev, void *data,
-			       struct drm_file *file_priv)
-{
-	struct drm_psb_s3d_query *s3d_query = (struct drm_psb_s3d_query *)data;
-
-	return mrfld_s3d_query(dev, s3d_query);
-}
-
-static int psb_s3d_premodeset_ioctl(struct drm_device *dev, void *data,
-				    struct drm_file *file_priv)
-{
-	int ret = 0;
-	return ret;
-}
-
-static int psb_s3d_enable_ioctl(struct drm_device *dev, void *data,
-				struct drm_file *file_priv)
-{
-	int ret = 0;
-	return ret;
-}
-
-/*****************************
- *  S3D OVERLAY IOCTL HANDLERS
- ****************************/
-
-/*********************************
- *  psb_s3d_ovl_acquire_ioctl
- *
- *      Gain access to the overlays for use in displaying s3d video.
- *
- *      Inputs:
- *          dev         -   pointer to the drm device record.
- *          file_priv   -   pointer to the private file data.
- *
- *      Outputs:
- *          data        -   pointer to an integer to receive an id of
- *                          the overlay acquisition.
- *
- *      Return:
- *          Zero on success or a negative error code.
- */
-static int psb_s3d_ovl_acquire_ioctl(struct drm_device *dev,
-				     void *data, struct drm_file *file_priv)
-{
-	int res;
-	struct drm_psb_private *dev_priv =
-	    (struct drm_psb_private *)dev->dev_private;
-
-	/*
-	 *  If the overlays  are currently being used for s3d  then don't
-	 *  allow another! Make sure that the current states of the over-
-	 *  lays can be gotten OK.
-	 */
-	if (ovl_acquired)
-		return -EBUSY;
-	else {
-		res = mrfld_s3d_ovl_save(dev, &ovl_state);
-
-		if (res != 0)
-			return res;
+	if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
+				OSPM_UHB_FORCE_POWER_ON)) {
+		ret = android_disable_hdmi_hdcp(dev);
+		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 	}
-
-	/*
-	 *  Update the current identifier and grant the access.  Tell the
-	 *  user what the proper identifier is.  Mark our module as being
-	 *  in use and not yet configured.
-	 */
-	memset(&ovl_state, 0, sizeof ovl_state);
-
-	*(int *)data = ++ovl_moduleid;
-	ovl_acquired = 1;
-	ovl_configured = 0;
-	ovl_modeset = 0;
-	ovl_state.id = ovl_moduleid;
-
-	return 0;
-}				/* psb_s3d_ovl_acquire_ioctl */
-
-/*********************************
- *  psb_s3d_ovl_release_ioctl
- *
- *      Release a previous acquisition  for using the overlays as s3d
- *      video display.
- *
- *      Inputs:
- *          dev         -   pointer to the drm device record.
- *          data        -   pointer to an integer  containing  the id
- *                          returned by 'psb_s3d_ovl_acquire_ioctl'.
- *          file_priv   -   pointer to the private file data.
- *
- *      Return:
- *          Zero on success or a negative error code.
- */
-static int psb_s3d_ovl_release_ioctl(struct drm_device *dev,
-				     void *data, struct drm_file *file_priv)
-{
-	/*
-	 *  If the overlay for s3d is not in use, then don't complain. If
-	 *  the caller doesn't have the correct identifier, then fail.
-	 */
-	if (!ovl_acquired) {
+	if (ret)
 		return 0;
-	} else if (*(int *)data != ovl_moduleid) {
+	return -1;
+}
 
-		printk(OVL_MSG "Invalid s3d overlay module id - %d\n",
-		       *(int *)data);
-
-		return -EINVAL;
+static int psb_get_hdcp_link_status_ioctl(struct drm_device *dev, void *data,
+				 struct drm_file *file_priv)
+{
+	uint32_t *arg = data;
+	if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
+				OSPM_UHB_FORCE_POWER_ON)) {
+		*arg = android_check_hdmi_hdcp_link_status(dev);
+		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 	}
-
-	/*
-	 *  If this has ever been configured,  then restore  the previous
-	 *  condition. If the overlays  are currently enabled,  they will
-	 *  be disabled.
-	 */
-	if (ovl_configured)
-		mrfld_s3d_ovl_restore(dev, &ovl_state);
-
-	ovl_acquired = 0;
-	ovl_configured = 0;
-	ovl_modeset = 0;
-
 	return 0;
-}				/* psb_s3d_ovl_release_ioctl */
+}
 
-/*********************************
- *  psb_s3d_ovl_update_ioctl
- *
- *      Change the video frame or the position of the overlay on the
- *      display.
- *
- *      Inputs:
- *          dev         -   pointer to the drm device record.
- *          data        -   pointer to a ovl_s3d_update_t record con-
- *                          taining new position and/or buffer select
- *                          information.
- *          file_priv   -   pointer to the private file data.
- *
- *      Return:
- *          Zero on success or a negative error code.
- */
-static int psb_s3d_ovl_update_ioctl(struct drm_device *dev,
-				    void *data, struct drm_file *file_priv)
-{
-	ovl_s3d_update_p update = (ovl_s3d_update_p) data;
-
-	/*
-	 *  Make sure that the caller is the client and that they have an
-	 *  overlay capable of being updated. Note that you don't need to
-	 *  be enabled to update!
-	 */
-	if (!ovl_acquired) {
-
-		printk(OVL_MSG "No s3d overlay acquired\n");
-
-		return -ENODEV;
-	} else if (update->id != ovl_moduleid) {
-
-		printk(OVL_MSG "Invalid overlay id - %d\n", update->id);
-
-		return -EINVAL;
-	} else if (!ovl_configured) {
-
-		printk(OVL_MSG "S3d overlay configuration incomplete\n");
-
-		return -EINVAL;
-	}
-
-	/*
-	 *  If this update  has a geometry request,  and there  has never
-	 *  been any  set before,  set it now.  Make sure that there is a
-	 *  non-empty destination rectangle!
-	 */
-	if (((update->valid & OU_GEOMETRY) != 0) &&
-	    (!ovl_state.w || !ovl_state.h)) {
-
-		ovl_state.w = update->w;
-		ovl_state.h = update->h;
-
-		if ((ovl_state.w == 0) || (ovl_state.h == 0)) {
-
-			printk(OVL_MSG "Geometry is empty\n");
-
-			ovl_state.w = ovl_state.h = 0;
-			return -EINVAL;
-		}
-
-		ovl_state.x = update->x;
-		ovl_state.y = update->y;
-	}
-
-	/*
-	 *  On the first call to update the overlays  (with or without an
-	 *  enable) the requested s3d mode gets set.
-	 */
-	if (!ovl_modeset) {
-		int res;
-
-		switch (ovl_state.mode) {
-		case OM_LINEINTER:
-			res = mrfld_s3d_ovl_line_interleave(dev, &ovl_state);
-			break;
-
-		case OM_HALFLINEINTER:
-			res =
-			    mrfld_s3d_ovl_line_interleave_half(dev, &ovl_state);
-			break;
-
-		case OM_PIXINTER:
-			res = mrfld_s3d_ovl_pixel_interleave(dev, &ovl_state);
-			break;
-
-		case OM_HALFPIXINTER:
-			res =
-			    mrfld_s3d_ovl_pixel_interleave_half(dev,
-								&ovl_state);
-			break;
-
-		case OM_SIDEBYSIDE:
-			res = mrfld_s3d_ovl_sidebyside(dev, &ovl_state);
-			break;
-
-		case OM_HALFSIDEBYSIDE:
-			res = mrfld_s3d_ovl_sidebyside_half(dev, &ovl_state);
-			break;
-
-		case OM_TOPBOTTOM:
-			res = mrfld_s3d_ovl_topbottom(dev, &ovl_state);
-			break;
-
-		case OM_HALFTOPBOTTOM:
-			res = mrfld_s3d_ovl_topbottom_half(dev, &ovl_state);
-			break;
-
-		default:
-
-			printk(OVL_MSG "Unknown S3D mode (%d)\n",
-			       ovl_state.mode);
-
-			res = -EINVAL;
-			break;
-		}
-
-		if (res)
-			return res;
-
-		ovl_modeset = 1;
-	}
-
-	return mrfld_s3d_ovl_update(dev, &ovl_state, update);
-}				/* psb_s3d_ovl_update_ioctl */
-
-/*********************************
- *  psb_s3d_ovl_config_ioctl
- *
- *      Augment the initial s3d overlay configuration.
- *
- *      Inputs:
- *          dev         -   pointer to the drm device record.
- *          data        -   pointer to a ovl_s3d_config_t record con-
- *                          taining new configuration information.
- *          file_priv   -   pointer to the private file data.
- *
- *      Outputs:
- *          data        -   pointer to a ovl_s3d_config_t record con-
- *                          taining current configuration info.
- *      Return:
- *          Zero on success or a negative error code.
- */
-static int psb_s3d_ovl_config_ioctl(struct drm_device *dev,
-				    void *data, struct drm_file *file_priv)
-{
-	ovl_s3d_config_p config = (ovl_s3d_config_p) data;
-
-	if (!ovl_acquired) {
-
-		printk(OVL_MSG "No s3d overlay acquired\n");
-
-		return -ENODEV;
-	} else if (config->id != ovl_moduleid) {
-
-		printk(OVL_MSG "Invalid overlay id - %d\n", config->id);
-
-		return -EINVAL;
-	}
-
-	/*
-	 *  When we get a config request with the  'valid'  field cleared
-	 *  it is taken to be a request for the current settings.
-	 */
-	config->valid &= OV_ALLITEMS;
-	if (config->valid == 0)
-		goto reply_back;
-
-	/*
-	 *  Otherwise the current state cannot be enabled.  An active s3d
-	 *  setup can't be changed while displaying.
-	 */
-	else if (ovl_state.enabled) {
-
-		printk(OVL_MSG "Can't configure an active s3d overlay\n");
-
-		return -EBUSY;
-	}
-
-	if ((config->valid & OV_GEOMETRY) != 0) {
-		ovl_state.sw = config->sw;
-		ovl_state.sh = config->sh;
-	}
-
-	if ((config->valid & OV_MODE) != 0) {
-		if ((config->mode <= OM_NONE) ||
-			(OM_TOPBOTTOM < config->mode)) {
-
-			printk(OVL_MSG "Invalid s3d mode (%d)\n",
-			       (int)config->mode);
-
-			return -EINVAL;
-		}
-
-		ovl_state.mode = config->mode;
-	}
-
-	if ((config->valid & OV_PIXEL) != 0) {
-		if ((config->pixel <= OX_NONE) ||
-			(OX_FUTURE <= config->pixel)) {
-
-			printk(OVL_MSG "Invalid overlay pixel mode (%d)\n",
-			       (int)config->pixel);
-
-			return -EINVAL;
-		}
-
-		ovl_state.pixel = config->pixel;
-	}
-
-	if ((config->valid & OV_PIPE) != 0) {
-		if ((config->pipe <= OP_NONE) ||
-			(OP_RESERVED <= config->pipe)) {
-
-			printk(OVL_MSG "Invalid pipe (%d)\n",
-			       (int)config->pipe);
-
-			return -EINVAL;
-		}
-
-		ovl_state.pipe = config->pipe;
-	}
-
-	if ((config->valid & OV_MMINFO) != 0) {
-		ovl_state.mmlen = config->mmlen;
-		ovl_state.stride = config->stride;
-		ovl_state.uvstride = config->uvstride;
-		ovl_state.yoffset = config->yoffset;
-		ovl_state.uoffset = config->uoffset;
-		ovl_state.voffset = config->voffset;
-	}
-
-	ovl_state.valid |= config->valid;
-	ovl_configured = (ovl_state.valid & OV_ALLITEMS) == OV_ALLITEMS;
-
- reply_back:
-
-	memcpy(config, &ovl_state, sizeof(ovl_s3d_config_t));
-	return 0;
-}				/* psb_s3d_ovl_config_ioctl */
-
-/*********************************
- *  psb_s3d_ovl_ovlreg_ioctl
- *
- *      Read and/or write an s3d overlay register.
- *
- *      Inputs:
- *          dev         -   pointer to the drm device record.
- *          data        -   pointer to a ovl_s3d_reg_t record.
- *          file_priv   -   pointer to the private file data.
- *
- *      Outputs:
- *          data        -   pointer to a ovl_s3d_reg_t record.
- *
- *      Return:
- *          Zero on success or a negative error code.
- */
-static int psb_s3d_ovl_ovlreg_ioctl(struct drm_device *dev,
-				    void *data, struct drm_file *file_priv)
-{
-	ovl_s3d_reg_p reg = (ovl_s3d_reg_p) data;
-
-	return mrfld_s3d_ovl_regrw(dev, reg);
-}				/* psb_s3d_ovl_ovlreg_ioctl */
-
-/*****************************
- *  END S3D OVERLAY IOCTL HANDLERS
- ****************************/
-
+#endif
 static int psb_set_csc_ioctl(struct drm_device *dev, void *data,
 			     struct drm_file *file_priv)
 {
@@ -2920,7 +2640,6 @@ static int psb_dpu_query_ioctl(struct drm_device *dev, void *arg,
 		DRM_INFO("Not Medfield or Merrifield platform! return.");
 		return -EOPNOTSUPP;
 	}
-
 	DRM_INFO("dsr query.\n");
 
 	dev_priv->um_start = true;
@@ -3009,11 +2728,9 @@ static int psb_dpu_dsr_off_ioctl(struct drm_device *dev, void *arg,
 #elif defined(CONFIG_MID_DSI_DSR)
 	struct drm_psb_private *dev_priv =
 	    (struct drm_psb_private *)dev->dev_private;
-
-/*      pipe++; */
-
-	if ((dev_priv->dsr_fb_update & MDFLD_DSR_2D_3D) != MDFLD_DSR_2D_3D)
-		mdfld_dsi_dbi_exit_dsr(dev, MDFLD_DSR_2D_3D, 0, 0);
+	if ((dev_priv->dsr_fb_update & MDFLD_DSR_2D_3D) !=
+		MDFLD_DSR_2D_3D)
+			mdfld_dsi_dbi_exit_dsr(dev, MDFLD_DSR_2D_3D, 0, 0);
 #if 0
 	if (pipe > 0) {
 		pipe = 0;
@@ -3088,6 +2805,113 @@ static void overlay_wait_vblank(struct drm_device *dev, uint32_t ovadd)
 		DRM_ERROR("wait vblank timeout!\n");
 }
 
+static int psb_vsync_set_ioctl(struct drm_device *dev, void *data,
+				 struct drm_file *file_priv)
+{
+	struct drm_psb_private *dev_priv = psb_priv(dev);
+	struct drm_psb_vsync_set_arg *arg = data;
+	struct mdfld_dsi_config *dsi_config;
+	unsigned long irq_flags;
+	struct timespec now;
+	uint32_t vsync_enable = 0;
+	uint32_t pipe;
+	u32 vbl_count = 0;
+	s64 nsecs = 0;
+	int ret = 0;
+
+	mutex_lock(&dev_priv->vsync_lock);
+	if (arg->vsync_operation_mask) {
+		pipe = arg->vsync.pipe;
+
+		if (arg->vsync_operation_mask & GET_VSYNC_COUNT) {
+			vbl_count = intel_vblank_count(dev, pipe);
+
+			getrawmonotonic(&now);
+			nsecs = timespec_to_ns(&now);
+
+			arg->vsync.timestamp = (uint64_t)nsecs;
+			arg->vsync.vsync_count = (uint64_t)vbl_count;
+		}
+
+		if (arg->vsync_operation_mask & VSYNC_WAIT) {
+			vbl_count = intel_vblank_count(dev, pipe);
+
+			spin_lock_irqsave(&dev_priv->irqmask_lock, irq_flags);
+			vsync_enable = dev_priv->pipestat[pipe] &
+				(PIPE_TE_ENABLE | PIPE_VBLANK_INTERRUPT_ENABLE);
+			spin_unlock_irqrestore(&dev_priv->irqmask_lock,
+					irq_flags);
+
+			if (vsync_enable) {
+				DRM_WAIT_ON(ret, dev_priv->vsync_queue,
+						3 * DRM_HZ,
+						(intel_vblank_count(dev,
+								    pipe) !=
+						 vbl_count));
+
+				if (ret == -EINTR)
+					DRM_ERROR("Pipe %d vsync time out\n",
+							pipe);
+			}
+
+			getrawmonotonic(&now);
+			nsecs = timespec_to_ns(&now);
+
+			arg->vsync.timestamp = (uint64_t)nsecs;
+
+			mutex_unlock(&dev_priv->vsync_lock);
+			return 0;
+		}
+
+		dsi_config = dev_priv->dsi_configs[0];
+
+		if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, true)) {
+			mutex_unlock(&dev_priv->vsync_lock);
+			return -EINVAL;
+		}
+
+		if (arg->vsync_operation_mask & VSYNC_ENABLE) {
+			/*enable vblank/TE*/
+			/*drm_vblank_get(dev, pipe);*/
+			switch (pipe) {
+			case 0:
+			case 2:
+				/*mdfld_dsi_dsr_forbid(dsi_config);*/
+
+				if (is_panel_vid_or_cmd(dev) ==
+						MDFLD_DSI_ENCODER_DPI)
+					psb_enable_vblank(dev, pipe);
+				break;
+			case 1:
+				psb_enable_vblank(dev, pipe);
+				break;
+			}
+		}
+
+		if (arg->vsync_operation_mask & VSYNC_DISABLE) {
+			/*drm_vblank_put(dev, pipe);*/
+			switch (pipe) {
+			case 0:
+			case 2:
+				if (is_panel_vid_or_cmd(dev) ==
+						MDFLD_DSI_ENCODER_DPI)
+					psb_disable_vblank(dev, pipe);
+
+				/*mdfld_dsi_dsr_allow(dsi_config);*/
+				break;
+			case 1:
+				psb_disable_vblank(dev, pipe);
+				break;
+			}
+		}
+
+		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+	}
+
+	mutex_unlock(&dev_priv->vsync_lock);
+	return 0;
+}
+
 static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv)
 {
@@ -3095,7 +2919,7 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 	struct drm_psb_register_rw_arg *arg = data;
 	unsigned int iep_ble_status;
 	unsigned long iep_timeout;
-	enum UHBUsage usage =
+	UHBUsage usage =
 	    arg->b_force_hw_on ? OSPM_UHB_FORCE_POWER_ON : OSPM_UHB_ONLY_IF_ON;
 	uint32_t ovadd;
 
@@ -3110,8 +2934,8 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 					   PFIT_AUTO_RATIOS);
 			if (arg->display_write_mask &
 			    REGRWBITS_PFIT_PROGRAMMED_SCALE_RATIOS)
-				PSB_WVDC32(arg->display.
-					   pfit_programmed_scale_ratios,
+				PSB_WVDC32(arg->
+					   display.pfit_programmed_scale_ratios,
 					   PFIT_PGM_RATIOS);
 			if (arg->display_write_mask & REGRWBITS_PIPEASRC)
 				PSB_WVDC32(arg->display.pipeasrc, PIPEASRC);
@@ -3224,13 +3048,12 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 					overlay_wait_flip(dev);
 
 				if (IS_FLDS(dev)) {
-					if ((((arg->overlay.
-					       OVADD & OV_PIPE_SELECT)
+					if ((((arg->
+					       overlay.OVADD & OV_PIPE_SELECT)
 					      >> OV_PIPE_SELECT_POS) ==
 					     OV_PIPE_A)
 					    &&
-					    ((dev_priv->
-					      dsr_fb_update &
+					    ((dev_priv->dsr_fb_update &
 					      MDFLD_DSR_OVERLAY_0))) {
 #ifndef CONFIG_MID_DSI_DPU
 						mdfld_dsi_dbi_exit_dsr(dev,
@@ -3240,19 +3063,16 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 						/*TODO: report overlay damage */
 #endif
 					}
-
-					if ((((arg->overlay.
-					       OVADD & OV_PIPE_SELECT)
-					      >> OV_PIPE_SELECT_POS) ==
-					     OV_PIPE_C)
-					    &&
-					    ((dev_priv->
-					      dsr_fb_update &
-					      MDFLD_DSR_OVERLAY_2))) {
+				if ((((arg->overlay.OVADD &
+					OV_PIPE_SELECT) >>
+					OV_PIPE_SELECT_POS) ==
+					OV_PIPE_C) &&
+				    ((dev_priv->dsr_fb_update &
+				      MDFLD_DSR_OVERLAY_2))) {
 #ifndef CONFIG_MID_DSI_DPU
-						mdfld_dsi_dbi_exit_dsr(dev,
-							MDFLD_DSR_OVERLAY_2,
-							0, 0);
+					mdfld_dsi_dbi_exit_dsr(dev,
+					       MDFLD_DSR_OVERLAY_2,
+					       0, 0);
 #else
 						/*TODO: report overlay damage */
 #endif
@@ -3260,20 +3080,19 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 
 					if (arg->overlay.IEP_ENABLED) {
 						/* VBLANK period */
-						iep_timeout = jiffies + HZ / 10;
-						do {
-							iep_ble_status =
-							    PSB_RVDC32(0x31800);
-							if (time_after_eq
-							    (jiffies,
-							     iep_timeout)) {
-								DRM_ERROR
-								("IEP Lite "
-								"timeout\n");
+					iep_timeout = jiffies + HZ / 10;
+					do {
+						iep_ble_status =
+							PSB_RVDC32(0x31800);
+					if (time_after_eq(
+							jiffies,
+							iep_timeout)) {
+							DRM_ERROR(
+							"IEP Lite timeout\n");
 								break;
 							}
 							cpu_relax();
-						} while ((iep_ble_status >> 1)
+					} while ((iep_ble_status >> 1)
 							 != 1);
 
 						arg->overlay.IEP_BLE_MINMAX =
@@ -3293,7 +3112,7 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 					while (time_before_eq
 					       (jiffies, vblank_timeout)) {
 						temp = PSB_RVDC32(OVC_DOVCSTA);
-						if ((temp & (0x1 << 31)) != 0)
+					if ((temp & (0x1 << 31)) != 0)
 							break;
 						cpu_relax();
 					}
@@ -3374,8 +3193,8 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 	if (arg->sprite_enable_mask != 0) {
 		if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, usage)) {
 			PSB_WVDC32(0x1F3E, DSPARB);
-			PSB_WVDC32(arg->sprite.
-				   dspa_control | PSB_RVDC32(DSPACNTR),
+			PSB_WVDC32(arg->
+				   sprite.dspa_control | PSB_RVDC32(DSPACNTR),
 				   DSPACNTR);
 			PSB_WVDC32(arg->sprite.dspa_key_value, DSPAKEYVAL);
 			PSB_WVDC32(arg->sprite.dspa_key_mask, DSPAKEYMASK);
@@ -3543,9 +3362,8 @@ static long psb_unlocked_ioctl(struct file *filp, unsigned int cmd,
 	 * Not all old drm ioctls are thread-safe.
 	 */
 
-/*      lock_kernel();  */
 	ret = drm_ioctl(filp, cmd, arg);
-/*      unlock_kernel(); */
+
 	return ret;
 }
 
@@ -3649,7 +3467,8 @@ static int psb_gfx_pm_write(struct file *file, const char *buffer,
 	if (drm_psb_gfx_pm) {
 		printk(KERN_ALERT "\n Starting Test Sequence: %x\n",
 		       drm_psb_gfx_pm);
-
+#if 0	/* IF MRFLD */
+		/*  Invalid - MRFLD_GFX_ALL_ISLANDS is a bit mask.*/
 		for (i = 0; i < MRFLD_GFX_ALL_ISLANDS; i++) {
 			mrfld_set_power_state(OSPM_DISPLAY_ISLAND,
 						i,
@@ -3659,6 +3478,15 @@ static int psb_gfx_pm_write(struct file *file, const char *buffer,
 						i,
 						POWER_ISLAND_UP);
 		}
+#else
+		mrfld_set_power_state(OSPM_DISPLAY_ISLAND,
+					MRFLD_GFX_ALL_ISLANDS,
+					POWER_ISLAND_DOWN);
+		mdelay(1);
+		mrfld_set_power_state(OSPM_DISPLAY_ISLAND,
+					MRFLD_GFX_ALL_ISLANDS,
+					POWER_ISLAND_UP);
+#endif
 	}
 	return 0;
 }
@@ -3956,34 +3784,24 @@ static int psb_display_register_write(struct file *file, const char *buffer,
 
 	if (op != 'r' && op != 'w' && op != 'a') {
 		PSB_DEBUG_ENTRY("The input format is not right!\n");
-		PSB_DEBUG_ENTRY
-		    ("for exampe: r 70184		"
-			"(read register 70184.)\n");
-		PSB_DEBUG_ENTRY
-		    ("for exampe: w 70184 123	(write register 70184 "
-			"with value 123.)\n");
-		PSB_DEBUG_ENTRY
-		    ("for exmape: a 60000 60010(read all registers start "
-			"at 60000 and end at 60010.\n)");
+		PSB_DEBUG_ENTRY("for exampe: r 70184(read register 70184.)\n");
+		PSB_DEBUG_ENTRY("for exampe: w 70184 123(write register 70184 with value 123.)\n");
+		PSB_DEBUG_ENTRY("for exmape: a 60000 60010(read all registers start at 60000 and end at 60010.\n)");
 		return -EINVAL;
 	}
-	if ((reg < 0xa000 || reg > 0x720ff) && (reg < 0x40 || reg > 0x64)) {
-		PSB_DEBUG_ENTRY
-		    ("the register is out of display controller "
-			"registers rang.\n");
+	if ((reg < 0xa000 || reg > 0x720ff) &&
+				(reg < 0x40 || reg > 0x64)) {
+		PSB_DEBUG_ENTRY("the register is out of display controller registers rang.\n");
 		return -EINVAL;
 	}
 
 	if (val < 0) {
-		PSB_DEBUG_ENTRY
-		    ("the register value is should be greater than zero.\n");
+		PSB_DEBUG_ENTRY("the register value is should be greater than zero.\n");
 		return -EINVAL;
 	}
 
 	if ((reg % 0x4) != 0) {
-		PSB_DEBUG_ENTRY
-		    ("the register address should aligned to 4 byte."
-		" please refrence display controller specification.\n");
+		PSB_DEBUG_ENTRY("the register address should aligned to 4 byte. please refrence display controller specification.\n");
 		return -EINVAL;
 	}
 
@@ -3996,18 +3814,18 @@ static int psb_display_register_write(struct file *file, const char *buffer,
 #ifndef CONFIG_MID_DSI_DPU
 		if (!(dev_priv->dsr_fb_update & MDFLD_DSR_MIPI_CONTROL) &&
 		    (dev_priv->dbi_panel_on || dev_priv->dbi_panel_on2))
-			mdfld_dsi_dbi_exit_dsr(dev, MDFLD_DSR_MIPI_CONTROL,
-				0, 0);	/* assume cursor move once */
+			mdfld_dsi_dbi_exit_dsr(dev,
+			MDFLD_DSR_MIPI_CONTROL, 0, 0);
 #endif
 	}
 	if (op == 'r') {
 		if (reg >= 0xa000) {
 			reg_val = REG_READ(reg);
-			PSB_DEBUG_ENTRY("Read :reg=0x%08x , val=0x%08x.\n",
-					reg, reg_val);
+			PSB_DEBUG_ENTRY("Read :reg=0x%08x , val=0x%08x.\n", reg,
+					reg_val);
 		}
 		dev_priv->count = sprintf(dev_priv->buf, "%08x %08x\n", reg,
-					reg_val);
+					  reg_val);
 	}
 	if (op == 'w') {
 		if (reg >= 0xa000) {
@@ -4030,40 +3848,33 @@ static int psb_display_register_write(struct file *file, const char *buffer,
 		PSB_DEBUG_ENTRY("end:  0x%08x\n", end);
 		if ((start % 0x4) != 0) {
 			PSB_DEBUG_ENTRY
-			    ("The start address should be 4 byte aligned. "
-				"Please reference the display controller "
-				"specification.\n");
+			("The start address should be 4 byte aligned. Please reference the display controller specification.\n");
 			return -EINVAL;
 		}
 
 		if ((end % 0x4) != 0) {
 			PSB_DEBUG_ENTRY
-			    ("The end address should be 4 byte aligned. "
-				"Please reference the display controller "
-				"specification.\n");
+			("The end address should be 4 byte aligned. Please reference the display controller specification.\n");
 			return -EINVAL;
 		}
 
 		len = end - start + 1;
 		if (len <= 0)
-			PSB_DEBUG_ENTRY
-			    ("The end address should be greater than "
-				"the start address.\n");
+			PSB_DEBUG_ENTRY("The end address should be greater than the start address.\n");
 
 		if (end < 0xa000 || end > 0x720ff) {
 			PSB_DEBUG_ENTRY
-			    ("The end address is out of the display "
-				"controller register range.\n");
+			("The end address is out of the display controller register range.\n");
 			return -EINVAL;
 		}
 
 		if (start < 0xa000 || start > 0x720ff) {
 			PSB_DEBUG_ENTRY
-			    ("The start address is out of the display "
-				"controller register range.\n");
+			    ("The start address is out of the display controller register range.\n");
 			return -EINVAL;
 		}
-		for (Offset = start; Offset < end; Offset = Offset + 0x10) {
+		for (Offset = start; Offset < end;
+					Offset = Offset + 0x10) {
 			if (reg >= 0xa000) {
 				PSB_DEBUG_ENTRY
 				    ("0x%08x: 0x%08x 0x%08x 0x%08x 0x%08x\n",
@@ -4074,11 +3885,11 @@ static int psb_display_register_write(struct file *file, const char *buffer,
 
 				dev_priv->count +=
 				    sprintf(dev_priv->buf + dev_priv->count,
-					"%08x %08x %08x %08x %08x\n",
-					Offset, REG_READ(Offset + 0x0),
-					REG_READ(Offset + 0x4),
-					REG_READ(Offset + 0x8),
-					REG_READ(Offset + 0xc));
+						"%08x %08x %08x %08x %08x\n",
+					    Offset, REG_READ(Offset + 0x0),
+					    REG_READ(Offset + 0x4),
+					    REG_READ(Offset + 0x8),
+					    REG_READ(Offset + 0xc));
 			}
 		}
 	}
@@ -4191,10 +4002,10 @@ static struct drm_driver driver = {
 	.open = psb_driver_open,
 	.postclose = PVRSRVDrmPostClose,
 /*
-*      .get_map_ofs = drm_core_get_map_ofs,
-*      .get_reg_ofs = drm_core_get_reg_ofs,
-*      .proc_init = psb_proc_init,
-*      .proc_cleanup = psb_proc_cleanup,
+*	.get_map_ofs = drm_core_get_map_ofs,
+*	.get_reg_ofs = drm_core_get_reg_ofs,
+*	.proc_init = psb_proc_init,
+*	.proc_cleanup = psb_proc_cleanup,
 */
 	.preclose = psb_driver_preclose,
 	.fops = {
@@ -4278,7 +4089,9 @@ early_param("hdmi_edid", parse_hdmi_edid);
 static int __init psb_init(void)
 {
 	int ret;
-
+#ifdef CONFIG_SUPPORT_HDMI
+	struct drm_psb_private *dev_priv = NULL;
+#endif
 #if defined(MODULE) && defined(CONFIG_NET)
 	psb_kobject_uevent_init();
 #endif
@@ -4299,8 +4112,16 @@ static int __init psb_init(void)
 		return ret;
 #endif
 
-#ifdef CONFIG_MID_HDMI
-	msic_regsiter_driver();
+#ifdef CONFIG_SUPPORT_HDMI
+	if (gpDrmDevice) {
+		dev_priv = (struct drm_psb_private *)gpDrmDevice->dev_private;
+		if (dev_priv) {
+			if (otm_hdmi_hpd_init() == OTM_HDMI_SUCCESS)
+				DRM_INFO("OTM_HDMI_INIT_SUCCESS\n");
+			else
+				DRM_INFO("OTM_HDMI_INIT_FAILE\n");
+		}
+	}
 #endif
 
 	return ret;
@@ -4313,9 +4134,6 @@ static void __exit psb_exit(void)
 	ret = BCVideoModCleanup();
 	if (ret != 0)
 		return;
-#ifdef CONFIG_MID_HDMI
-	msic_unregister_driver();
-#endif
 	drm_pci_exit(&driver, &psb_pci_driver);
 }
 

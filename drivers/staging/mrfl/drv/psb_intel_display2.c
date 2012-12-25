@@ -26,7 +26,7 @@
 
 #include "mdfld_dsi_dbi.h"
 #include "mdfld_dsi_dpi.h"
-/* #include "mdfld_dsi_output.h" */
+//#include "mdfld_dsi_output.h"
 #ifdef CONFIG_MID_DSI_DPU
 #include "mdfld_dsi_dbi_dpu.h"
 #endif
@@ -197,8 +197,7 @@ static int mdfld_intel_crtc_cursor_set(struct drm_crtc *crtc,
 	}
 
 	/*insert this bo into gtt */
-	/* DRM_INFO("%s: map meminfo for hw cursor. handle %x,
-	pipe = %d \n", __FUNCTION__, handle, pipe); */
+//        DRM_INFO("%s: map meminfo for hw cursor. handle %x, pipe = %d \n", __FUNCTION__, handle, pipe);
 
 	ret = psb_gtt_map_meminfo(dev, (void *)handle, 0, &page_offset);
 	if (ret) {
@@ -399,20 +398,19 @@ int mdfld__intel_pipe_set_base(struct drm_crtc *crtc, int x, int y,
 	Start = mode_dev->bo_offset(dev, psbfb);
 	Offset = y * crtc->fb->pitch + x * (crtc->fb->bits_per_pixel / 8);
 
-	/* #ifdef FIXME_XU */
 	/* Try to attach/de-attach Plane B to an existing swap chain,
 	 * especially with another frame buffer inserted into GTT. */
+	/* TODO: remove it since there's no swap chain anymore*/
+#if 0
 	if (!DCChangeSwapChainProperty(&Start, swapchain_plane)) {
 		DRM_ERROR("Failed to attach/de-attach swapchain_plane %d to a"
 			  "swap chain.\n", pipe);
-
 #if 0				/* FIXME MRFLD */
 		ret = -EINVAL;
 		goto psb_intel_pipe_set_base_exit;
 #endif				/* FIXME MRFLD */
 	}
-	/* #endif */
-
+#endif
 	REG_WRITE(dspstride, crtc->fb->pitch);
 	dspcntr = REG_READ(dspcntr_reg);
 	dspcntr &= ~DISPPLANE_PIXFORMAT_MASK;
@@ -599,15 +597,15 @@ static void mdfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 	/* Ignore if system is already in DSR and in suspended state. */
 	if (gbgfxsuspended && gbdispstatus == false && mode == 3) {
 		if (dev_priv->rpm_enabled && pipe == 1) {
-			/* dev_priv->is_mipi_on = false; */
+			//          dev_priv->is_mipi_on = false;
 			pm_request_idle(&gpDrmDevice->pdev->dev);
 		}
 		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 		return;
 	} else if (mode == 0) {
-		/* do not need to set gbdispstatus=true in crtc.
-		 * this will be set in encoder such as mdfld_dsi_dbi_dpms */
-		/* gbdispstatus = true; */
+		//do not need to set gbdispstatus=true in crtc.
+		//this will be set in encoder such as mdfld_dsi_dbi_dpms
+		//gbdispstatus = true;
 	}
 #endif
 
@@ -896,44 +894,44 @@ static void mdfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 
 static const struct mrst_limit_t mdfld_limits[] = {
 	{			/* MDFLD_LIMT_DPLL_19 */
-	 .dot = {.min = MDFLD_DOT_MIN, .max = MDFLD_DOT_MAX},
-	 .m = {.min = MDFLD_DPLL_M_MIN_19, .max = MDFLD_DPLL_M_MAX_19},
-	 .p1 = {.min = MDFLD_DPLL_P1_MIN_19, .max = MDFLD_DPLL_P1_MAX_19},
+	 .dot = {.min = MDFLD_DOT_MIN,.max = MDFLD_DOT_MAX},
+	 .m = {.min = MDFLD_DPLL_M_MIN_19,.max = MDFLD_DPLL_M_MAX_19},
+	 .p1 = {.min = MDFLD_DPLL_P1_MIN_19,.max = MDFLD_DPLL_P1_MAX_19},
 	 },
 	{			/* MDFLD_LIMT_DPLL_25 */
-	 .dot = {.min = MDFLD_DOT_MIN, .max = MDFLD_DOT_MAX},
-	 .m = {.min = MDFLD_DPLL_M_MIN_25, .max = MDFLD_DPLL_M_MAX_25},
-	 .p1 = {.min = MDFLD_DPLL_P1_MIN_25, .max = MDFLD_DPLL_P1_MAX_25},
+	 .dot = {.min = MDFLD_DOT_MIN,.max = MDFLD_DOT_MAX},
+	 .m = {.min = MDFLD_DPLL_M_MIN_25,.max = MDFLD_DPLL_M_MAX_25},
+	 .p1 = {.min = MDFLD_DPLL_P1_MIN_25,.max = MDFLD_DPLL_P1_MAX_25},
 	 },
 	{			/* MDFLD_LIMT_DPLL_83 */
-	 .dot = {.min = MDFLD_DOT_MIN, .max = MDFLD_DOT_MAX},
-	 .m = {.min = MDFLD_DPLL_M_MIN_83, .max = MDFLD_DPLL_M_MAX_83},
-	 .p1 = {.min = MDFLD_DPLL_P1_MIN_83, .max = MDFLD_DPLL_P1_MAX_83},
+	 .dot = {.min = MDFLD_DOT_MIN,.max = MDFLD_DOT_MAX},
+	 .m = {.min = MDFLD_DPLL_M_MIN_83,.max = MDFLD_DPLL_M_MAX_83},
+	 .p1 = {.min = MDFLD_DPLL_P1_MIN_83,.max = MDFLD_DPLL_P1_MAX_83},
 	 },
 	{			/* MDFLD_LIMT_DPLL_100 */
-	 .dot = {.min = MDFLD_DOT_MIN, .max = MDFLD_DOT_MAX},
-	 .m = {.min = MDFLD_DPLL_M_MIN_100, .max = MDFLD_DPLL_M_MAX_100},
-	 .p1 = {.min = MDFLD_DPLL_P1_MIN_100, .max = MDFLD_DPLL_P1_MAX_100},
+	 .dot = {.min = MDFLD_DOT_MIN,.max = MDFLD_DOT_MAX},
+	 .m = {.min = MDFLD_DPLL_M_MIN_100,.max = MDFLD_DPLL_M_MAX_100},
+	 .p1 = {.min = MDFLD_DPLL_P1_MIN_100,.max = MDFLD_DPLL_P1_MAX_100},
 	 },
 	{			/* MDFLD_LIMT_DSIPLL_19 */
-	 .dot = {.min = MDFLD_DOT_MIN, .max = MDFLD_DOT_MAX},
-	 .m = {.min = MDFLD_DSIPLL_M_MIN_19, .max = MDFLD_DSIPLL_M_MAX_19},
-	 .p1 = {.min = MDFLD_DSIPLL_P1_MIN_19, .max = MDFLD_DSIPLL_P1_MAX_19},
+	 .dot = {.min = MDFLD_DOT_MIN,.max = MDFLD_DOT_MAX},
+	 .m = {.min = MDFLD_DSIPLL_M_MIN_19,.max = MDFLD_DSIPLL_M_MAX_19},
+	 .p1 = {.min = MDFLD_DSIPLL_P1_MIN_19,.max = MDFLD_DSIPLL_P1_MAX_19},
 	 },
 	{			/* MDFLD_LIMT_DSIPLL_25 */
-	 .dot = {.min = MDFLD_DOT_MIN, .max = MDFLD_DOT_MAX},
-	 .m = {.min = MDFLD_DSIPLL_M_MIN_25, .max = MDFLD_DSIPLL_M_MAX_25},
-	 .p1 = {.min = MDFLD_DSIPLL_P1_MIN_25, .max = MDFLD_DSIPLL_P1_MAX_25},
+	 .dot = {.min = MDFLD_DOT_MIN,.max = MDFLD_DOT_MAX},
+	 .m = {.min = MDFLD_DSIPLL_M_MIN_25,.max = MDFLD_DSIPLL_M_MAX_25},
+	 .p1 = {.min = MDFLD_DSIPLL_P1_MIN_25,.max = MDFLD_DSIPLL_P1_MAX_25},
 	 },
 	{			/* MDFLD_LIMT_DSIPLL_83 */
-	 .dot = {.min = MDFLD_DOT_MIN, .max = MDFLD_DOT_MAX},
-	 .m = {.min = MDFLD_DSIPLL_M_MIN_83, .max = MDFLD_DSIPLL_M_MAX_83},
-	 .p1 = {.min = MDFLD_DSIPLL_P1_MIN_83, .max = MDFLD_DSIPLL_P1_MAX_83},
+	 .dot = {.min = MDFLD_DOT_MIN,.max = MDFLD_DOT_MAX},
+	 .m = {.min = MDFLD_DSIPLL_M_MIN_83,.max = MDFLD_DSIPLL_M_MAX_83},
+	 .p1 = {.min = MDFLD_DSIPLL_P1_MIN_83,.max = MDFLD_DSIPLL_P1_MAX_83},
 	 },
 	{			/* MDFLD_LIMT_DSIPLL_100 */
-	 .dot = {.min = MDFLD_DOT_MIN, .max = MDFLD_DOT_MAX},
-	 .m = {.min = MDFLD_DSIPLL_M_MIN_100, .max = MDFLD_DSIPLL_M_MAX_100},
-	 .p1 = {.min = MDFLD_DSIPLL_P1_MIN_100, .max = MDFLD_DSIPLL_P1_MAX_100},
+	 .dot = {.min = MDFLD_DOT_MIN,.max = MDFLD_DOT_MAX},
+	 .m = {.min = MDFLD_DSIPLL_M_MIN_100,.max = MDFLD_DSIPLL_M_MAX_100},
+	 .p1 = {.min = MDFLD_DSIPLL_P1_MIN_100,.max = MDFLD_DSIPLL_P1_MAX_100},
 	 },
 };
 
@@ -1152,12 +1150,9 @@ static int mdfld_crtc_dsi_mode_set(struct drm_crtc *crtc,
 	fb_depth = crtc->fb->depth;
 	dev = crtc->dev;
 
-	spin_lock(&dsi_config->context_lock);
+	mutex_lock(&dsi_config->context_lock);
 
 	ctx->vgacntr = 0x80000000;
-
-	/*setup pll */
-	mdfld_crtc_dsi_pll_calc(crtc, dev, ctx, adjusted_mode);
 
 	/*set up pipe timings */
 	ctx->htotal = (mode->crtc_hdisplay - 1) |
@@ -1211,7 +1206,7 @@ static int mdfld_crtc_dsi_mode_set(struct drm_crtc *crtc,
 		break;
 	default:
 		DRM_ERROR("Unknown color depth\n");
-		spin_unlock(&dsi_config->context_lock);
+		mutex_unlock(&dsi_config->context_lock);
 		return -EINVAL;
 	}
 
@@ -1241,7 +1236,7 @@ static int mdfld_crtc_dsi_mode_set(struct drm_crtc *crtc,
 
 	ctx->pipeconf |= ((hdelay - 1) << 27);
 
-	spin_unlock(&dsi_config->context_lock);
+	mutex_unlock(&dsi_config->context_lock);
 	return 0;
 }
 

@@ -28,61 +28,34 @@
 #ifndef __MDFLD_DSI_DBI_H__
 #define __MDFLD_DSI_DBI_H__
 
-#include <linux/backlight.h>
-#include <linux/version.h>
-#include <drm/drmP.h>
-#include <drm/drm.h>
-#include <drm/drm_crtc.h>
-#include <drm/drm_edid.h>
-
-#include "psb_drv.h"
-#include "psb_intel_drv.h"
-#include "psb_intel_reg.h"
-#include "psb_powermgmt.h"
-
-#include "mdfld_dsi_output.h"
 #include "mdfld_output.h"
-
-#define DRM_MODE_ENCODER_MIPI  5
-
-extern int enter_dsr;
-extern struct mdfld_dsi_dbi_output *gdbi_output;
+#include "mdfld_dsi_output.h"
 
 /*
- * DBI encoder which inherits from mdfld_dsi_encoder
+ * DBI encoder which inherits from mdfld_dsi_encoder 
  */
 struct mdfld_dsi_dbi_output {
 	struct mdfld_dsi_encoder base;
-
 	struct drm_display_mode *panel_fixed_mode;
 
 	u8 last_cmd;
-
 	u8 lane_count;
-
 	u8 channel_num;
 
 	struct drm_device *dev;
 
-	/*backlight operations */
-
-	/*DSR timer */
-	spinlock_t dsr_timer_lock;
-	struct timer_list dsr_timer;
-	void (*dsi_timer_func) (unsigned long data);
+	/*DSR*/
 	u32 dsr_idle_count;
 	bool dsr_fb_update_done;
 
-	/*mode setting flags */
+	/*mode setting flags*/
 	u32 mode_flags;
 
-	/*panel status */
+	/*panel status*/
 	bool dbi_panel_on;
 	bool first_boot;
 	struct panel_funcs *p_funcs;
 };
-
-#define MDFLD_DSI_DBI_OUTPUT(dsi_encoder) container_of(dsi_encoder, struct mdfld_dsi_dbi_output, base)
 
 struct mdfld_dbi_dsr_info {
 	int dbi_output_num;
@@ -92,6 +65,9 @@ struct mdfld_dbi_dsr_info {
 	struct timer_list dsr_timer;
 	u32 dsr_idle_count;
 };
+
+#define MDFLD_DSI_DBI_OUTPUT(dsi_encoder) \
+	container_of(dsi_encoder, struct mdfld_dsi_dbi_output, base)
 
 #define DBI_CB_TIMEOUT_COUNT	0xffff
 
@@ -110,101 +86,19 @@ struct mdfld_dbi_dsr_info {
 #define CMD_DATA_SRC_SYSTEM_MEM	0
 #define CMD_DATA_SRC_PIPE	1
 
-static inline int mdfld_dsi_dbi_fifo_ready(struct mdfld_dsi_dbi_output
-					   *dbi_output)
-{
-	struct drm_device *dev = dbi_output->dev;
-	u32 retry = DBI_CB_TIMEOUT_COUNT;
-	int reg_offset = (dbi_output->channel_num == 1) ? MIPIC_REG_OFFSET : 0;
-	int ret = 0;
-
-#if 1				/* FIXME MRFLD */
-	return ret;
-#endif				/* FIXME MRFLD */
-	/*query the dbi fifo status */
-	retry = DBI_CB_TIMEOUT_COUNT;
-	while (retry--) {
-		if (REG_READ((MIPIA_GEN_FIFO_STAT_REG + reg_offset)) & BIT27) {
-			break;
-		}
-	}
-
-	if (!retry) {
-		DRM_ERROR("Timeout waiting for DBI FIFO empty\n");
-		ret = -EAGAIN;
-	}
-
-	return ret;
-}
-
-static inline int mdfld_dsi_dbi_cmd_sent(struct mdfld_dsi_dbi_output
-					 *dbi_output)
-{
-	struct drm_device *dev = dbi_output->dev;
-	u32 retry = DBI_CB_TIMEOUT_COUNT;
-	int reg_offset = (dbi_output->channel_num == 1) ? MIPIC_REG_OFFSET : 0;
-	int ret = 0;
-
-	/*query the command execution status */
-	while (retry--) {
-		if (!(REG_READ((MIPIA_CMD_ADD_REG + reg_offset)) & BIT0)) {
-			break;
-		}
-	}
-
-	if (!retry) {
-		DRM_ERROR("Timeout waiting for DBI Command status\n");
-		ret = -EAGAIN;
-	}
-
-	return ret;
-}
-
-static inline int mdfld_dsi_dbi_cb_ready(struct mdfld_dsi_dbi_output
-					 *dbi_output)
-{
-	int ret = 0;
-
-	/*query the command execution status */
-	ret = mdfld_dsi_dbi_cmd_sent(dbi_output);
-	if (ret) {
-		DRM_ERROR("Perpheral is busy\n");
-		ret = -EAGAIN;
-	}
-	/*query the dbi fifo status */
-	ret = mdfld_dsi_dbi_fifo_ready(dbi_output);
-	if (ret) {
-		DRM_ERROR("DBI FIFO is not empty\n");
-		ret = -EAGAIN;
-	}
-
-	return ret;
-}
-
 /*export functions*/
-extern void mdfld_dsi_dbi_output_init(struct drm_device *dev,
-				      struct psb_intel_mode_device *mode_dev,
-				      int pipe);
-extern void mdfld_dsi_dbi_exit_dsr(struct drm_device *dev, u32 update_src,
-				   void *p_surfaceAddr, bool check_hw_on_only);
+extern void mdfld_dsi_dbi_exit_dsr(struct drm_device *dev,
+		u32 update_src,
+		void *p_surfaceAddr,
+		bool check_hw_on_only);
 extern void mdfld_dsi_dbi_enter_dsr(struct mdfld_dsi_dbi_output *dbi_output,
-				    int pipe);
+		int pipe);
 extern int mdfld_dbi_dsr_init(struct drm_device *dev);
-extern void mdfld_dbi_dsr_exit(struct drm_device *dev);
-extern void mdfld_dbi_dsr_timer_start(struct mdfld_dbi_dsr_info *dsr_info);
 extern struct mdfld_dsi_encoder *mdfld_dsi_dbi_init(struct drm_device *dev,
-						    struct mdfld_dsi_connector
-						    *dsi_connector,
-						    struct panel_funcs
-						    *p_funcs);
-extern int mdfld_dsi_dbi_send_dcs(struct mdfld_dsi_dbi_output *dbi_output,
-				  u8 dcs, u8 *param, u32 num, u8 data_src);
-extern int mdfld_dsi_dbi_update_area(struct mdfld_dsi_dbi_output *dbi_output,
-				     u16 x1, u16 y1, u16 x2, u16 y2);
-extern void mdfld_dbi_dsr_timer_start(struct mdfld_dbi_dsr_info *dsr_info);
-extern int mdfld_dsi_dbi_update_power(struct mdfld_dsi_dbi_output *dbi_output,
-				      int mode);
-extern void mdfld_dsi_controller_dbi_init(struct mdfld_dsi_config *dsi_config,
-					  int pipe);
-
+		struct mdfld_dsi_connector *dsi_connector,
+		struct panel_funcs *p_funcs);
+extern void mdfld_reset_panel_handler_work(struct work_struct *work);
+extern void mdfld_dbi_update_panel(struct drm_device *dev, int pipe);
+extern int __dbi_power_on(struct mdfld_dsi_config *dsi_config);
+extern int __dbi_power_off(struct mdfld_dsi_config *dsi_config);
 #endif /*__MDFLD_DSI_DBI_H__*/

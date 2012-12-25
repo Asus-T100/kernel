@@ -39,7 +39,9 @@
 #include <linux/pm_runtime.h>
 #include <linux/intel_mid_pm.h>
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,34))
 #include <asm/intel_scu_ipc.h>
+#endif
 
 /* FIXME_MDFLD HDMI EDID supports */
 char EDID_Samsung[EDID_LENGTH + HDMI_CEA_EDID_BLOCK_SIZE] = {
@@ -340,7 +342,7 @@ struct hdmi_video_format_timing mdfld_hdmi_video_format_timing[] = {
 
 static int mdfld_hdmi_get_cached_edid_block(struct drm_connector *connector,
 					    uint32_t num_block,
-					    uint8_t *edid_block,
+					    uint8_t * edid_block,
 					    uint32_t size);
 
 static int mdfld_hdmi_timing_get_vic(struct drm_display_mode *mode)
@@ -398,7 +400,7 @@ static int mdfld_hdmi_get_aspect_ratio(int h_active, int v_active)
 	return aspect_ratio;
 }
 
-static uint8_t mdfld_hdmi_calc_hbuf_csum(uint8_t *data, uint8_t size)
+static uint8_t mdfld_hdmi_calc_hbuf_csum(uint8_t * data, uint8_t size)
 {
 	uint8_t csum = 0;
 	int i;
@@ -418,7 +420,7 @@ static int mdfld_hdmi_set_avi_infoframe(struct drm_device *dev,
 	int i = 0;
 	int aspect_ratio = 0xFF;
 	avi_if_t avi_if;
-	u32 *p_vsif = (u32 *) &avi_if;
+	u32 *p_vsif = (u32 *) & avi_if;
 	uint8_t edid_block[128];
 	ce_edid_t *cea_edid_block = NULL;
 
@@ -509,7 +511,7 @@ static int mdfld_hdmi_set_avi_infoframe(struct drm_device *dev,
 	avi_if.avi_info.byte13 = 0x00;
 
 	avi_if.avi_info.chksum =
-	    mdfld_hdmi_calc_hbuf_csum((uint8_t *) &avi_if,
+	    mdfld_hdmi_calc_hbuf_csum((uint8_t *) & avi_if,
 				      HDMI_AVI_TOTAL_LENGTH);
 
 	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
@@ -613,8 +615,9 @@ static bool mdfld_hdmi_mode_fixup(struct drm_encoder *encoder,
 			adjusted_mode->hdisplay, adjusted_mode->vdisplay);
 
 	/* Should never happen!! */
-	if (IS_MID(dev) && psb_intel_crtc->pipe != 1)
+	if (IS_MID(dev) && psb_intel_crtc->pipe != 1) {
 		printk(KERN_ERR "Only support HDMI on pipe B on MID\n");
+	}
 
 	/* FIXME: To make HDMI display with 1920x1080,
 	 * in 864x480 (TPO), 480x864 (PYR) or 480x854 (TMD) fixed mode. */
@@ -650,9 +653,7 @@ static bool mdfld_hdmi_mode_fixup(struct drm_encoder *encoder,
 					      CRTC_INTERLACE_HALVE_V);
 		}
 	}
-#if 0
-/* FIXME hard coded different HDMI timeings,
-* remove them after the MSIC HDMI HW issue is fixed. */
+#if 0				/* FIXME hard coded different HDMI timeings, remove them after the MSIC HDMI HW issue is fixed. */
 #if 0				/* 720p - Adeel */
 	adjusted_mode->hdisplay = 0x500;
 	adjusted_mode->htotal = 0x672;
@@ -817,13 +818,12 @@ static void mdfld_hdmi_connector_restore(struct drm_connector *connector)
 /* HDMI DIP related stuff */
 static int mdfld_hdmi_get_cached_edid_block(struct drm_connector *connector,
 					    uint32_t num_block,
-					    uint8_t *edid_block, uint32_t size)
+					    uint8_t * edid_block, uint32_t size)
 {
 	struct drm_display_info *displayinfo = &(connector->display_info);
 	if (num_block >= MAX_EDID_BLOCKS) {
 		DRM_ERROR
-		    ("mdfld_hdmi_get_cached_edid_block() -"
-			"Invalid EDID block\n");
+		    ("mdfld_hdmi_get_cached_edid_block() - Invalid EDID block\n");
 		return 0;
 	}
 	edid_block = &displayinfo->raw_edid[EDID_BLOCK_SIZE * num_block];
@@ -831,12 +831,9 @@ static int mdfld_hdmi_get_cached_edid_block(struct drm_connector *connector,
 }
 
 /**
- * This function parses v1.3 base EDID and
- * CEA-861b EDID Timing Extension
- * Version3 and creates EELD (Enhanced EDID Like Data) packet.
- * This EELD data contains audio configuration information and
- * other details read EDID.This can also contain
- * Vendor specific Data
+ * This function parses v1.3 base EDID and CEA-861b EDID Timing Extension
+ * Version3 and creates EELD (Enhanced EDID Like Data) packet. This EELD data contains
+ * audio configuration information and other details read EDID.This can also contain Vendor specific Data
  */
 static int mdfld_hdmi_create_eeld_packet(struct drm_connector *connector)
 {
@@ -858,24 +855,24 @@ static int mdfld_hdmi_create_eeld_packet(struct drm_connector *connector)
 	uint8_t *pSADBlocks = NULL;
 	uint8_t *pCurrentSADBlocks = NULL;
 	uint32_t ulNumSADBytes = 0;
-	/* vsdb_byte6_to_byte8_t *pVSDB = NULL; */
+	//vsdb_byte6_to_byte8_t *pVSDB = NULL;
 	uint32_t ulIndex = 0;
-	/* uint8_t b48kHzCADPresent = false; */
+	//uint8_t b48kHzCADPresent = false;
 
-	pEEld = (hdmi_eeld_t *) &hdmi_priv->eeld;
+	pEEld = (hdmi_eeld_t *) & hdmi_priv->eeld;
 
-	/* Fill Version info */
+	// Fill Version info
 	pEEld->cea_edid_rev_id = HDMI_EELD_CEA_EDID_VERSION;
 	pEEld->eld_ver = HDMI_EELD_VERSION;
 
-	/* Fill BaseLine ELD length
-	 * This is 80 bytes as per EELD proposal */
+	// Fill BaseLine ELD length
+	// This is 80 bytes as per EELD proposal
 	pEEld->baseline_eld_length = HDMI_EELD_BASELINE_DATA_LENGTH;
 
-	/* Zero out EDID block buffer */
+	//Zero out EDID block buffer
 	memset(ucEdidBlock, 0, sizeof(ucEdidBlock));
 
-	/* Get Extn EDID */
+	// Get Extn EDID
 	if (!mdfld_hdmi_get_cached_edid_block
 	    (connector, 1, ucEdidBlock, EDID_BLOCK_SIZE)) {
 		return 0;
@@ -887,113 +884,112 @@ static int mdfld_hdmi_create_eeld_packet(struct drm_connector *connector)
 	if (pCeEdid->ucTag != CEA_EDID_EXTENSION_TAG)
 		return 0;
 
-	/* allocate memory (48 bytes) for SAD Blocks buffer */
+	//allocate memory (48 bytes) for SAD Blocks buffer
 	pSADBlocks = kcalloc(1, 48, GFP_KERNEL);
 
 	if (pSADBlocks == NULL) {
 		DRM_ERROR
-		    ("mdfld_hdmi_create_eld_packaet() - "
-			"Failed to allocate mem for pSADBlocks\n");
+		    ("mdfld_hdmi_create_eld_packaet() - Failed to allocate mem for pSADBlocks\n");
 		return 0;
 	}
 
 	pCurrentSADBlocks = pSADBlocks;
 
-	/* Now pull out data from CEA Extension EDID
-	 * If Offset <= 4, we will not have CEA DataBlocks */
+	// Now pull out data from CEA Extension EDID
+	// If Offset <= 4, we will not have CEA DataBlocks
 	if (pCeEdid->ucDTDOffset > CEA_EDID_HEADER_SIZE) {
 		sizeOfCEADataBlock =
 		    pCeEdid->ucDTDOffset - CEA_EDID_HEADER_SIZE;
 
 		pDataBlock = (uint8_t *) pCeEdid;
 
-		/* skip header (first 4 bytes) in CEA EDID Timing Extension
-		 * and set pointer to start of DataBlocks collection */
+		// skip header (first 4 bytes) in CEA EDID Timing Extension
+		// and set pointer to start of DataBlocks collection
 		pDataBlock += CEA_EDID_HEADER_SIZE;
 
-/* General Format of CEA Data Block Collection
-* -----------+--------------------+-----------------------------------------+
-*            |Byte#   |bits5-7    |       bits 0-4                          |
-* -----------|--------------------+-----------------------------------------+
-*            |  1     | Video Tag |Length = total #of video bytes following |
-*            |        |    Code   |this byte (L1)                           |
-*            |--------------------+-----------------------------------------+
-*  Video     |  2     | CEA Short Video Descriptor 1                        |
-*  Data      |--------+-----------------------------------------------------|
-*  Block     |  3     | CEA Short Video Descriptor 2                        |
-*            |--------+-----------------------------------------------------|
-*            | ...    | ...                                                 |
-*            |--------------------------------------------------------------+
-*            | 1+L1   | CEA Short Video Descriptor L1                       |
-* -----------+--------------------+-----------------------------------------+
-*            | 2+L1   | Audio Tag |Length = total #of audio bytes following |
-*            |        |    Code   |this byte (L2)                           |
-*            |--------------------+-----------------------------------------+
-*  Audio     | 3+L1   |                                                     |
-*  Data      |--------+                                                     |
-*  Block     | 4+L1   | CEA Short Audio Descriptor 1                        |
-*            |--------+                                                     |
-*            | 5+L1   |                                                     |
-*            |--------------------------------------------------------------+
-*            | ...    |                                                     |
-*            |        |                                                     |
-*            |        |                                                     |
-*            | ...    |                                                     |
-*            |---------------------------------------------------------------
-*            |L1+L2   |                                                     |
-*            |--------|                                                     |
-*            |1+L1+L2 | CEA Short Audio Descriptor L2/3                     |
-*            |--------|                                                     |
-*            |2+L1+L2 |                                                     |
-* -----------+--------------------------------------------------------------+
-*            |3+L1+L2 |  Speaker  |Length = total #of SA bytes following    |
-*            |        | Tag Code  |this byte (L1)                           |
-*  Speaker   |--------------------------------------------------------------+
-*  Allocation|4+L1+L2 |                                                     |
-*  Data      |--------|                                                     |
-*  Block     |5+L1+L2 | Speaker Allocation Data Block Payload(3 bytes)      |
-*            |--------|                                                     |
-*            |6+L1+L2 |                                                     |
-* -----------+--------------------------------------------------------------+
-*            |7+L1+L2 | VSDB  Tag |Length = total #of VSDB bytes following  |
-*            |        |    Code   |this byte (L1)                           |
-*  Vendor    |--------------------------------------------------------------+
-*  Specific  |8+L1+L2 |                                                     |
-*  Data      |--------|                                                     |
-*  Block     |9+L1+L2 | 24-bit IEEE Registration Identifier (LSB first)     |
-*            |--------|                                                     |
-*            |10+L1+L2|                                                     |
-*            |--------------------------------------------------------------+
-*            | ...    | Vendor Specific Data block Payload                  |
-* -----------+--------------------------------------------------------------+
-*/
+		// General Format of CEA Data Block Collection
+		// -----------+--------------------+-----------------------------------------+
+		//            |Byte#   |bits5-7    |       bits 0-4                          |
+		// -----------|--------------------+-----------------------------------------+
+		//            |  1     | Video Tag |Length = total #of video bytes following |
+		//            |        |    Code   |this byte (L1)                           |
+		//            |--------------------+-----------------------------------------+
+		//  Video     |  2     | CEA Short Video Descriptor 1                        |
+		//  Data      |--------+-----------------------------------------------------|
+		//  Block     |  3     | CEA Short Video Descriptor 2                        |
+		//            |--------+-----------------------------------------------------|
+		//            | ...    | ...                                                 |
+		//            |--------------------------------------------------------------+
+		//            | 1+L1   | CEA Short Video Descriptor L1                       |
+		// -----------+--------------------+-----------------------------------------+
+		//            | 2+L1   | Audio Tag |Length = total #of audio bytes following |
+		//            |        |    Code   |this byte (L2)                           |
+		//            |--------------------+-----------------------------------------+
+		//  Audio     | 3+L1   |                                                     |
+		//  Data      |--------+                                                     |
+		//  Block     | 4+L1   | CEA Short Audio Descriptor 1                        |
+		//            |--------+                                                     |
+		//            | 5+L1   |                                                     |
+		//            |--------------------------------------------------------------+
+		//            | ...    |                                                     |
+		//            |        |                                                     |
+		//            |        |                                                     |
+		//            | ...    |                                                     |
+		//            |---------------------------------------------------------------
+		//            |L1+L2   |                                                     |
+		//            |--------|                                                     |
+		//            |1+L1+L2 | CEA Short Audio Descriptor L2/3                     |
+		//            |--------|                                                     |
+		//            |2+L1+L2 |                                                     |
+		// -----------+--------------------------------------------------------------+
+		//            |3+L1+L2 |  Speaker  |Length = total #of SA bytes following    |
+		//            |        | Tag Code  |this byte (L1)                           |
+		//  Speaker   |--------------------------------------------------------------+
+		//  Allocation|4+L1+L2 |                                                     |
+		//  Data      |--------|                                                     |
+		//  Block     |5+L1+L2 | Speaker Allocation Data Block Payload(3 bytes)      |
+		//            |--------|                                                     |
+		//            |6+L1+L2 |                                                     |
+		// -----------+--------------------------------------------------------------+
+		//            |7+L1+L2 | VSDB  Tag |Length = total #of VSDB bytes following  |
+		//            |        |    Code   |this byte (L1)                           |
+		//  Vendor    |--------------------------------------------------------------+
+		//  Specific  |8+L1+L2 |                                                     |
+		//  Data      |--------|                                                     |
+		//  Block     |9+L1+L2 | 24-bit IEEE Registration Identifier (LSB first)     |
+		//            |--------|                                                     |
+		//            |10+L1+L2|                                                     |
+		//            |--------------------------------------------------------------+
+		//            | ...    | Vendor Specific Data block Payload                  |
+		// -----------+--------------------------------------------------------------+
+
 		while (sizeOfCEADataBlock > 0) {
-			/* Get the Size of CEA DataBlock in bytes and TAG */
+			// Get the Size of CEA DataBlock in bytes and TAG
 			dwNumOfBytes = *pDataBlock & CEA_DATABLOCK_LENGTH_MASK;
 			ucDataBlockTag =
 			    (*pDataBlock & CEA_DATABLOCK_TAG_MASK) >> 5;
 
 			switch (ucDataBlockTag) {
 			case CEA_AUDIO_DATABLOCK:
-				/* move beyond tag/length byte */
+				// move beyond tag/length byte
 				++pDataBlock;
 				for (i = 0; i < (dwNumOfBytes / 3);
 				     ++i, pDataBlock += 3) {
 					pADB = (cea_861b_adb_t *) pDataBlock;
 					switch (pADB->audio_format_code) {
-					/* uncompressed audio (Linear PCM) */
+						// uncompressed audio (Linear PCM)
 					case AUDIO_LPCM:
 						memcpy(&(hdmi_priv->lpcm_sad),
 						       pDataBlock, 3);
-						/* save these blocks */
+						//save these blocks
 						memcpy(pCurrentSADBlocks,
 						       pDataBlock, 3);
-				/* move pointer in SAD blocks buffer */
+						// move pointer in SAD blocks buffer
 						pCurrentSADBlocks += 3;
-						/* update SADC field */
+						// update SADC field
 						pEEld->sadc += 1;
 						break;
-						/* compressed audio */
+						// compressed audio
 					case AUDIO_AC3:
 					case AUDIO_MPEG1:
 					case AUDIO_MP3:
@@ -1007,12 +1003,12 @@ static int mdfld_hdmi_create_eeld_packet(struct drm_connector *connector)
 					case AUDIO_MAT:
 					case AUDIO_DST:
 					case AUDIO_WMA_PRO:
-						/* save these blocks */
+						//save these blocks
 						memcpy(pCurrentSADBlocks,
 						       pDataBlock, 3);
-				/* move pointer in SAD blocks buffer */
+						// move pointer in SAD blocks buffer
 						pCurrentSADBlocks += 3;
-						/* update SADC field */
+						// update SADC field
 						pEEld->sadc += 1;
 						break;
 					}
@@ -1020,74 +1016,71 @@ static int mdfld_hdmi_create_eeld_packet(struct drm_connector *connector)
 				break;
 
 			case CEA_VENDOR_DATABLOCK:
-/* audio wants data from 6th byte of VSDB onwards
-* Sighting 94842:
+				// audio wants data from 6th byte of VSDB onwards
+				//Sighting 94842:
 
-* | Byte # |    bits[7-0]                                              |
-* |--------------------------------------------------------------------|
-* | 1-3    |24-bit IEEE Registration Identifier (0x000C03)             |
-* |--------------------------------------------------------------------|
-* | 4-5    |       Source Physical Address                             |
-* |--------------------------------------------------------------------|
-* | 6      |SupportsAI|DC48bit|DC36bit|Dc30bit|DCY444|Rsvd|Rsvd|DVIDual|
-* |--------------------------------------------------------------------|
-* | 7      |   Max TMDS clock                                          |
-* |--------------------------------------------------------------------|
-* | 8      |Latency_Field |I_Latency_Field| Reserved bits 5-0          |
-* |        |   _Present   |  _Present     |                            |
-* |--------------------------------------------------------------------|
-* | 9      |               Video Latency                               |
-* |--------------------------------------------------------------------|
-* | 10     |               Audio Latency                               |
-* |--------------------------------------------------------------------|
-* | 11     |            Interlaced Video Latency                       |
-* |--------------------------------------------------------------------|
-* | 12     |            Interlaced Audio Latency                       |
-* |--------------------------------------------------------------------|
-*/
+				// | Byte # |    bits[7-0]                                              |
+				// |--------------------------------------------------------------------|
+				// | 1-3    |24-bit IEEE Registration Identifier (0x000C03)             |
+				// |--------------------------------------------------------------------|
+				// | 4-5    |       Source Physical Address                             |
+				// |--------------------------------------------------------------------|
+				// | 6      |SupportsAI|DC48bit|DC36bit|Dc30bit|DCY444|Rsvd|Rsvd|DVIDual|
+				// |--------------------------------------------------------------------|
+				// | 7      |   Max TMDS clock                                          |
+				// |--------------------------------------------------------------------|
+				// | 8      |Latency_Field |I_Latency_Field| Reserved bits 5-0          |
+				// |        |   _Present   |  _Present     |                            |
+				// |--------------------------------------------------------------------|
+				// | 9      |               Video Latency                               |
+				// |--------------------------------------------------------------------|
+				// | 10     |               Audio Latency                               |
+				// |--------------------------------------------------------------------|
+				// | 11     |            Interlaced Video Latency                       |
+				// |--------------------------------------------------------------------|
+				// | 12     |            Interlaced Audio Latency                       |
+				// |--------------------------------------------------------------------|
+
 				++pDataBlock;
-				/* move pointer to next CEA Datablock */
+				// move pointer to next CEA Datablock
 				pDataBlock += dwNumOfBytes;
 				break;
 
 			case CEA_SPEAKER_DATABLOCK:
 				pEEld->speaker_allocation_block =
 				    *(++pDataBlock);
-				/* move pointer to next CEA Datablock */
+				// move pointer to next CEA Datablock
 				pDataBlock += dwNumOfBytes;
 				break;
 
 			default:
-				/* Move pointer to next CEA DataBlock */
+				// Move pointer to next CEA DataBlock
 				pDataBlock += (dwNumOfBytes + 1);
 			}
-			/* Decrement size of CEA DataBlock */
+			// Decrement size of CEA DataBlock
 			sizeOfCEADataBlock -= (dwNumOfBytes + 1);
 		}
 	}
-	/* Copy all the saved SAD blocks at the end of ELD
-	 * SAD blocks should be written after the Monitor
-	 * name and VSDB. See ELD definition in iHDMI.h
-	 * Size of each SAD block is 3 bytes */
-	ulNumSADBytes = (pEEld->sadc) * 3;
+	//Copy all the saved SAD blocks at the end of ELD
+	//SAD blocks should be written after the Monitor name and VSDB.
+	//See ELD definition in iHDMI.h
+	ulNumSADBytes = (pEEld->sadc) * 3;	//Size of each SAD block is 3 bytes
 
-	/* DCN 460119: Audio does not play on displays
-	 * which do not provide SAB in EDID.
-	 * Solution: Graphics driver should create a default SAB
-	 * in ELD with front left and front right speakers enabled
-	 * if the display supports basic audio. */
+	//DCN 460119: Audio does not play on displays which do not provide SAB in EDID.
+	//Solution: Graphics driver should create a default SAB in ELD with front left and front right
+	//speakers enabled if the display supports basic audio.
 	pDataBlock = (uint8_t *) pCeEdid;
 	if ((*(pDataBlock + HDMI_CEA_EXTENSION_BLOCK_BYTE_3) &
 	     HDMI_BASIC_AUDIO_SUPPORTED)
 	    && (pEEld->speaker_allocation_block == 0)) {
 		pEEld->flr = 1;
 	}
-	/* End of DCN 460119 */
+	//End of DCN 460119
 
-	/* zero out local buffers */
+	// zero out local buffers
 	memset(ucEdidBlock, 0, sizeof(ucEdidBlock));
 
-	/* Get base EDID */
+	// Get base EDID
 	if (!mdfld_hdmi_get_cached_edid_block
 	    (connector, 0, ucEdidBlock, EDID_BLOCK_SIZE)) {
 		return 0;
@@ -1096,24 +1089,24 @@ static int mdfld_hdmi_create_eeld_packet(struct drm_connector *connector)
 	pEdid = (baseedid_1_x_t *) ucEdidBlock;
 	pDTD = &pEdid->DTD[1];
 
-	/* Update the Manufacturer ID and Product Code here */
+	//Update the Manufacturer ID and Product Code here
 	memcpy(pEEld->manufacturer_id, pEdid->ManufacturerID, 2);
 	memcpy(pEEld->product_id, pEdid->ProductID, 2);
 
-	/* Now Fill the monitor string name
-	 * Search through DTD blocks, looking for monitor name */
+	// Now Fill the monitor string name
+	// Search through DTD blocks, looking for monitor name
 	for (i = 0; i < MAX_BASEEDID_DTD_BLOCKS - 1; ++i, ++pDTD) {
-		/* Set a uint8_t pointer to DTD data */
+		// Set a uint8_t pointer to DTD data
 		pData = (uint8_t *) pDTD;
 
-		/* Check the Flag (the first two bytes) to determine
-		 * if this block is used as descriptor */
+		// Check the Flag (the first two bytes) to determine
+		// if this block is used as descriptor
 		if (pData[0] == 0x00 && pData[1] == 0x00) {
-			/* And now check Data Type Tag within this descriptor
-			 * Tag = 0xFC, then monitor name stored as ASCII */
+			// And now check Data Type Tag within this descriptor
+			// Tag = 0xFC, then monitor name stored as ASCII
 			if (pData[3] == 0xFC) {
 				ulIndex = 0;
-				/* Copy monitor name */
+				// Copy monitor name
 				for (j = 0; (j < 13) && (pData[j + 5] != 0x0A);
 				     ++j) {
 					pEEld->mn_sand_sads[ulIndex] =
@@ -1126,20 +1119,16 @@ static int mdfld_hdmi_create_eeld_packet(struct drm_connector *connector)
 		}
 	}
 
-	/* Check if number of SAD Bytes > 0 and for size within
-	 * limits of allowed Base line Data size as
-	 * per EELD spec */
+	//Check if number of SAD Bytes > 0 and for size within limits of allowed Base line Data size as per EELD spec
 	if ((ulNumSADBytes > 0) && (ulNumSADBytes <= 64)) {
-		/* Copy the SADs immediately after
-		 * the Monitor Name String */
+		//Copy the SADs immediately after the Monitor Name String
 		memcpy(&pEEld->mn_sand_sads[j], pSADBlocks, ulNumSADBytes);
 	}
-	/* Header = 4, Baseline Data = 60 and
-	 * Vendor (INTEL) specific = 2
-	 * 4 + 60 + 2 = 66 */
+	// Header = 4, Baseline Data = 60 and Vendor (INTEL) specific = 2
+	// 4 + 60 + 2 = 66
 	hdmi_priv->hdmi_eeld_size = HDMI_EELD_SIZE;
 
-	/* free the buffer allocated for SAD blocks */
+	//free the buffer allocated for SAD blocks
 	kfree(pSADBlocks);
 	pSADBlocks = NULL;
 	pCurrentSADBlocks = NULL;
@@ -1149,7 +1138,7 @@ static int mdfld_hdmi_create_eeld_packet(struct drm_connector *connector)
 /* start of S3D functions */
 
 /**
- * Check if the HDMI display supports S3D. If so, report supported S3D formats
+ * Check if the HDMI display supports S3D. If so, report supported S3D formats 
  *
  */
 int mrfld_hdmi_s3d_query(struct drm_device *dev, struct drm_psb_s3d_query
@@ -1159,7 +1148,7 @@ int mrfld_hdmi_s3d_query(struct drm_device *dev, struct drm_psb_s3d_query
 	struct mid_intel_hdmi_priv *hdmi_priv = dev_priv->hdmi_priv;
 
 	if (!hdmi_priv) {
-		DRM_ERROR("%s, HDMI is not initialized.\n", __func__);
+		DRM_ERROR("%s, HDMI is not initialized. \n", __FUNCTION__);
 		return -EINVAL;
 	}
 
@@ -1192,7 +1181,7 @@ int mrfld_hdmi_s3d_query(struct drm_device *dev, struct drm_psb_s3d_query
 
 /**
  * This function parses v1.3 base EDID and CEA-861b EDID Timing Extension
- * Version3. It gets the VIC info for the first 16 HDMI display resolutions
+ * Version3. It gets the VIC info for the first 16 HDMI display resolutions 
  * and creates display 3D format packet. This packet contains the 3d
  * formats that are supported by the HDMI display device.
  */
@@ -1227,7 +1216,7 @@ static int mrfld_hdmi_get_s3d_formats(struct drm_connector *connector)
 	hdmi_3d_info_t *pS3D_info = NULL;
 	ce_edid_t *pCeEdid = NULL;
 
-	pS3D_info = (hdmi_3d_info_t *) &hdmi_priv->s3d_info;
+	pS3D_info = (hdmi_3d_info_t *) & hdmi_priv->s3d_info;
 
 	/* Fill Version info */
 	pS3D_info->cea_edid_rev_id = HDMI_S3D_CEA_EDID_VERSION;
@@ -1247,7 +1236,7 @@ static int mrfld_hdmi_get_s3d_formats(struct drm_connector *connector)
 	if (pCeEdid->ucTag != CEA_EDID_EXTENSION_TAG)
 		return result;
 
-    /**
+    /** 
     * Now pull out data from CEA Extension EDID. If Offset <= 4, we will not
     * have CEA DataBlocks
     */
@@ -1263,11 +1252,10 @@ static int mrfld_hdmi_get_s3d_formats(struct drm_connector *connector)
 	*/
 		pDataBlock += CEA_EDID_HEADER_SIZE;
 
-		/* Please see the General Format of CEA Data Block
-		 * Collection in the function of
-		 * mdfld_hdmi_create_eeld_packet */
+		/* Please see the General Format of CEA Data Block Collection in the
+		 *  function of mdfld_hdmi_create_eeld_packet */
 		while (sizeOfCEADataBlock > 0) {
-			/* Get the Size of CEA DataBlock in bytes and TAG */
+			// Get the Size of CEA DataBlock in bytes and TAG
 			DataBlockLenth =
 			    *pDataBlock & CEA_DATABLOCK_LENGTH_MASK;
 			DataBlockTag =
@@ -1392,8 +1380,7 @@ static int mrfld_hdmi_get_s3d_formats(struct drm_connector *connector)
 		result = 1;
 		pS3D_info->s3d_vic = true;
 
-		/* The following info is not needed in current HW/SW.
-		 * May need it later. */
+		/* The following info is not needed in current HW/SW. May need it later. */
 		if (s3d_structure & HDMI_3D_STRUCTURE_EXTRA_BIT) {
 			s3d_detail = (*pDataBlock & HDMI_3D_DETAILS_BITS)
 			    >> HDMI_3D_DETAILS_BITS_POS;
@@ -1430,8 +1417,7 @@ mdfld_hdmi_edid_detect(struct drm_connector *connector)
 	if (!output->hdmi_i2c_adapter) {
 		DRM_INFO("Enter mdfld_hdmi_get_modes, i2c_adapter is NULL.\n");
 
-		/* hard-coded the HDMI_I2C_ADAPTER_ID to be 3,
-		 * Should get from GCT */
+		/* hard-coded the HDMI_I2C_ADAPTER_ID to be 3, Should get from GCT */
 		output->hdmi_i2c_adapter = i2c_get_adapter(3);
 	}
 
@@ -1460,8 +1446,7 @@ mdfld_hdmi_edid_detect(struct drm_connector *connector)
 		kfree(edid);
 		dev_priv->hdmi_done_reading_edid = true;
 	} else {
-		/* Failed to read a valid EDID,
-		 * so we're using a hardcoded one */
+		/* Failed to read a valid EDID, so we're using a hardcoded one */
 		if ((HDMI_EDID == NULL)
 		    || (strlen(HDMI_EDID) > HDMI_MONITOR_NAME_LENGTH))
 			return status;
@@ -1523,7 +1508,7 @@ static enum drm_connector_status mdfld_hdmi_detect(struct drm_connector
 						   *connector)
 {
 #if 0				/* FIXME MRFLD */
-/* #ifdef CONFIG_X86_MRST */
+//#ifdef CONFIG_X86_MRST
 #endif				/* FIXME MRFLD */
 #if 1
 	struct drm_device *dev = connector->dev;
@@ -1535,12 +1520,12 @@ static enum drm_connector_status mdfld_hdmi_detect(struct drm_connector
 	struct mdfld_dsi_config *dsi_config = dev_priv->dsi_configs[0];
 	u8 data = 0;
 
-#if 0	/* FIXME MRFLD */
+#if 0				/* FIXME MRFLD */
 	/* Check if monitor is attached to HDMI connector. */
 	intel_scu_ipc_ioread8(MSIC_HDMI_STATUS, &data);
 
 	if (data & HPD_SIGNAL_STATUS) {
-#endif	/* FIXME MRFLD */
+#endif				/* FIXME MRFLD */
 		if (1) {
 			DRM_DEBUG("%s: HPD connected data = 0x%x.\n", __func__,
 				  data);
@@ -1554,8 +1539,8 @@ static enum drm_connector_status mdfld_hdmi_detect(struct drm_connector
 
 			if (connector->status == connector_status_connected) {
 				/*
-				 * Don't un-gate Display B if HDMI is connected
-				 * and in D0i3 state.
+				 * Don't un-gate Display B if HDMI is connected and in
+				 * D0i3 state.
 				 */
 				if (hdmi_state == 0)
 					hdmi_state = 1;
@@ -1566,10 +1551,10 @@ static enum drm_connector_status mdfld_hdmi_detect(struct drm_connector
 
 			dev_priv->panel_desc |= DISPLAY_B;
 			/*
-			   Handle Hot-plug of HDMI. Display B would be
-			   power-gated by ospm_post_init if HDMI is not
-			   detected during driver load. This will power-up
-			   Display B if HDMI is connected post driver load.
+			   Handle Hot-plug of HDMI. Display B would be power-gated
+			   by ospm_post_init if HDMI is not detected during driver load.
+			   This will power-up Display B if HDMI is
+			   connected post driver load.
 			 */
 			/*
 			   If pmu_nc_set_power_state fails then accessing HW
@@ -1597,16 +1582,15 @@ static enum drm_connector_status mdfld_hdmi_detect(struct drm_connector
 
 			/*
 			 * Clean up the HDMI connector attached encoder, to make
-			 * drm_crtc_helper_set_config() do mode setting each
-			 * time, especially when plug out HDMI from a sink
-			 * device and plug it in to another one with different
-			 * EDID.
+			 * drm_crtc_helper_set_config() do mode setting each time,
+			 * especially when plug out HDMI from a sink device and plug it
+			 * in to another one with different EDID.
 			 */
 			drm_helper_disable_unused_functions(dev);
 
 			/* FIXME: Need to power gate Display B sub-system.
-			 * Currently HDMI sometimes couldn't display after
-			 * plugging in cable. */
+			 * Currently HDMI sometimes couldn't display after plugging
+			 * in cable. */
 			hdmi_state = 0;
 			return connector_status_disconnected;
 		}
@@ -1621,12 +1605,13 @@ static int mdfld_hdmi_set_property(struct drm_connector *connector,
 {
 	struct drm_encoder *pEncoder = connector->encoder;
 
-	if (!strcmp(property->name, "scaling mode") && pEncoder)
-		PSB_DEBUG_ENTRY("scaling mode\n");
-	else if (!strcmp(property->name, "backlight") && pEncoder)
-		PSB_DEBUG_ENTRY("backlight\n");
-	else if (!strcmp(property->name, "DPMS") && pEncoder)
-		PSB_DEBUG_ENTRY("DPMS\n");
+	if (!strcmp(property->name, "scaling mode") && pEncoder) {
+		PSB_DEBUG_ENTRY("scaling mode \n");
+	} else if (!strcmp(property->name, "backlight") && pEncoder) {
+		PSB_DEBUG_ENTRY("backlight \n");
+	} else if (!strcmp(property->name, "DPMS") && pEncoder) {
+		PSB_DEBUG_ENTRY("DPMS \n");
+	}
 
 	if (!strcmp(property->name, "scaling mode") && pEncoder) {
 		struct psb_intel_crtc *pPsbCrtc =
@@ -1679,8 +1664,8 @@ static int mdfld_hdmi_set_property(struct drm_connector *connector,
 				struct drm_encoder_helper_funcs *pEncHFuncs =
 				    pEncoder->helper_private;
 				pEncHFuncs->mode_set(pEncoder,
-					&pPsbCrtc->saved_mode,
-					&pPsbCrtc->saved_adjusted_mode);
+						     &pPsbCrtc->saved_mode,
+						     &pPsbCrtc->saved_adjusted_mode);
 			}
 		}
 	}
@@ -1764,16 +1749,13 @@ static int mdfld_hdmi_get_modes(struct drm_connector *connector)
 	if (!psb_intel_output->hdmi_i2c_adapter) {
 		DRM_INFO("Enter mdfld_hdmi_get_modes, i2c_adapter is NULL.\n");
 
-		/*
-		 * hard-coded the HDMI_I2C_ADAPTER_ID to be 3,
-		 * Should get from GCT
-		*/
+		/* hard-coded the HDMI_I2C_ADAPTER_ID to be 3, Should get from GCT */
 		psb_intel_output->hdmi_i2c_adapter = i2c_get_adapter(3);
 	}
 
 	if (!psb_intel_output->hdmi_i2c_adapter) {
 		DRM_INFO
-		    ("Enter mdfld_hdmi_get_modes, no valid i2c_adapter .\n");
+		    ("Enter mdfld_hdmi_get_modes, no valid i2c_adapter . \n");
 #if 0				/* FIXME MRFLD */
 		return ret;
 #endif				/* FIXME MRFLD */
@@ -1783,10 +1765,11 @@ static int mdfld_hdmi_get_modes(struct drm_connector *connector)
 	if (dev_priv->platform_rev_id >= MDFLD_PNW_C0)
 		edid = connector->edid_blob_ptr->data;
 
-	if (edid)
+	if (edid) {
 		ret = drm_add_edid_modes(&psb_intel_output->base, edid);
-	else
+	} else {
 		ret = mdfld_hdmi_get_hardcoded_edid_modes(connector);
+	}
 
 	if (ret <= 0) {
 		/*
@@ -1825,10 +1808,11 @@ static int mdfld_hdmi_get_modes(struct drm_connector *connector)
 			     */
 			    ((hdmi_priv->edid_preferred_mode) &&
 			     (!drm_mode_equal(mode,
-			     hdmi_priv->edid_preferred_mode)))) {
+					      hdmi_priv->edid_preferred_mode))))
+			{
 				if (hdmi_priv->edid_preferred_mode)
 					drm_mode_destroy(dev,
-						hdmi_priv->edid_preferred_mode);
+							 hdmi_priv->edid_preferred_mode);
 
 				hdmi_priv->edid_preferred_mode =
 				    drm_mode_duplicate(dev, mode);
@@ -1899,8 +1883,9 @@ static void mdfld_hdmi_connector_dpms(struct drm_connector *connector, int mode)
 	if (!panel_on && !panel_on2
 	    && !(REG_READ(HDMIB_CONTROL) & HDMIB_PORT_EN)) {
 		/*request rpm idle */
-		if (dev_priv->rpm_enabled)
+		if (dev_priv->rpm_enabled) {
 			pm_request_idle(&dev->pdev->dev);
+		}
 	}
 
 	/**
@@ -1914,116 +1899,4 @@ static void mdfld_hdmi_connector_dpms(struct drm_connector *connector, int mode)
 		ospm_runtime_pm_allow(dev);
 #endif
 #endif
-}
-
-static const struct drm_encoder_helper_funcs mdfld_hdmi_helper_funcs = {
-	.dpms = mdfld_hdmi_dpms,
-	.save = mdfld_hdmi_encoder_save,
-	.restore = mdfld_hdmi_encoder_restore,
-	.mode_fixup = mdfld_hdmi_mode_fixup,
-	.prepare = psb_intel_encoder_prepare,
-	.mode_set = mdfld_hdmi_mode_set,
-	.commit = psb_intel_encoder_commit,
-};
-
-static const struct drm_connector_helper_funcs
-	mdfld_hdmi_connector_helper_funcs = {
-	.get_modes = mdfld_hdmi_get_modes,
-	.mode_valid = mdfld_hdmi_mode_valid,
-	.best_encoder = psb_intel_best_encoder,
-};
-
-static const struct drm_connector_funcs mdfld_hdmi_connector_funcs = {
-	.dpms = mdfld_hdmi_connector_dpms,
-	.save = mdfld_hdmi_connector_save,
-	.restore = mdfld_hdmi_connector_restore,
-	.detect = mdfld_hdmi_detect,
-	.fill_modes = drm_helper_probe_single_connector_modes,
-	.set_property = mdfld_hdmi_set_property,
-	.destroy = psb_intel_lvds_destroy,
-};
-
-void mdfld_hdmi_init(struct drm_device *dev,
-		     struct psb_intel_mode_device *mode_dev)
-{
-	struct drm_psb_private *dev_priv = dev->dev_private;
-	struct psb_intel_output *psb_intel_output;
-	struct drm_connector *connector;
-	struct drm_encoder *encoder;
-	struct mid_intel_hdmi_priv *hdmi_priv;
-
-	PSB_DEBUG_ENTRY("\n");
-
-	psb_intel_output = kzalloc(sizeof(struct psb_intel_output) +
-				   sizeof(struct mid_intel_hdmi_priv),
-				   GFP_KERNEL);
-	if (!psb_intel_output)
-		return;
-
-	hdmi_priv = (struct mid_intel_hdmi_priv *)(psb_intel_output + 1);
-	psb_intel_output->mode_dev = mode_dev;
-	connector = &psb_intel_output->base;
-	encoder = &psb_intel_output->enc;
-	drm_connector_init(dev, &psb_intel_output->base,
-			   &mdfld_hdmi_connector_funcs,
-			   DRM_MODE_CONNECTOR_DVID);
-
-	drm_encoder_init(dev, &psb_intel_output->enc, &psb_intel_lvds_enc_funcs,
-			 DRM_MODE_ENCODER_TMDS);
-
-	drm_mode_connector_attach_encoder(&psb_intel_output->base,
-					  &psb_intel_output->enc);
-	psb_intel_output->type = INTEL_OUTPUT_HDMI;
-	/*
-	 * FIXME: May need to get this somewhere,
-	 * but CG code seems hard coded it
-	*/
-	hdmi_priv->hdmib_reg = HDMIB_CONTROL;
-	hdmi_priv->has_hdmi_sink = false;
-	psb_intel_output->dev_priv = hdmi_priv;
-
-	drm_encoder_helper_add(encoder, &mdfld_hdmi_helper_funcs);
-	drm_connector_helper_add(connector, &mdfld_hdmi_connector_helper_funcs);
-	connector->display_info.subpixel_order = SubPixelHorizontalRGB;
-	connector->interlace_allowed = false;
-	connector->doublescan_allowed = false;
-
-	drm_connector_attach_property(connector,
-				      dev->mode_config.scaling_mode_property,
-				      DRM_MODE_SCALE_FULLSCREEN);
-
-	/* hard-coded the HDMI_I2C_ADAPTER_ID to be 3, Should get from GCT */
-	psb_intel_output->hdmi_i2c_adapter = i2c_get_adapter(3);
-
-	if (psb_intel_output->hdmi_i2c_adapter)
-		DRM_INFO("Enter mdfld_hdmi_init, i2c_adapter is availabe.\n");
-	else
-		printk(KERN_ALERT "No ddc adapter available!\n");
-
-	dev_priv->hdmi_priv = hdmi_priv;
-	hdmi_priv->is_hdcp_supported = true;
-	hdmi_priv->hdmi_i2c_adapter = psb_intel_output->hdmi_i2c_adapter;
-	hdmi_priv->dev = dev;
-	hdmi_priv->mimic_mode = NULL;
-	hdmi_priv->edid_preferred_mode = NULL;
-	mdfld_hdcp_init(hdmi_priv);
-	mdfld_hdmi_audio_init(hdmi_priv);
-	mdfld_msic_init(hdmi_priv);
-
-#ifdef CONFIG_X86_MRST
-	/* turn on HDMI power rails. These will be on in all non-S0iX
-	   states so that HPD and connection status will work. VCC330 will
-	   have ~1.7mW usage during idle states when the display is active. */
-	intel_scu_ipc_iowrite8(MSIC_VCC330CNT, VCC330_ON);
-
-	/* MSIC documentation requires that there be a 500us delay
-	   after enabling VCC330 before you can enable VHDMI */
-	usleep_range(500, 1000);
-
-	/* Extend VHDMI switch de-bounce time, to avoid redundant MSIC
-	 * VREG/HDMI interrupt during HDMI cable plugged in/out. */
-	intel_scu_ipc_iowrite8(MSIC_VHDMICNT, VHDMI_ON | VHDMI_DB_30MS);
-#endif
-	drm_sysfs_connector_add(connector);
-	return;
 }

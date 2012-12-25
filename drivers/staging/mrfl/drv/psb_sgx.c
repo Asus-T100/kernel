@@ -72,7 +72,7 @@ struct psb_validate_buffer {
 
 static int psb_check_presumed(struct psb_validate_req *req,
 			      struct ttm_buffer_object *bo,
-			      struct psb_validate_arg __user *data,
+			      struct psb_validate_arg __user * data,
 			      int *presumed_ok)
 {
 	struct psb_validate_req __user *user_req = &(data->d.req);
@@ -150,8 +150,7 @@ static int psb_reference_buffers(struct drm_file *file_priv,
 	int ret;
 
 	while (likely(data != 0)) {
-		if (unlikely(context->used_buffers >=
-		    PSB_NUM_VALIDATE_BUFFERS)) {
+		if (unlikely(context->used_buffers >= PSB_NUM_VALIDATE_BUFFERS)) {
 			DRM_ERROR("Too many buffers " "on validate list.\n");
 			ret = -EINVAL;
 			goto out_err0;
@@ -179,7 +178,7 @@ static int
 psb_placement_fence_type(struct ttm_buffer_object *bo,
 			 uint64_t set_val_flags,
 			 uint64_t clr_val_flags,
-			 uint32_t new_fence_class, uint32_t *new_fence_type)
+			 uint32_t new_fence_class, uint32_t * new_fence_type)
 {
 	int ret;
 	uint32_t n_fence_type;
@@ -197,8 +196,7 @@ psb_placement_fence_type(struct ttm_buffer_object *bo,
 		return -EINVAL;
 	}
 
-	/* User space driver doesn't set any TTM placement
-	 * flags in set_val_flags or clr_val_flags */
+	/* User space driver doesn't set any TTM placement flags in set_val_flags or clr_val_flags */
 	placement.num_placement = 0;	/* FIXME  */
 	placement.num_busy_placement = 0;
 	placement.fpfn = 0;
@@ -795,8 +793,7 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 					       OSPM_UHB_FORCE_POWER_ON))
 			return -EBUSY;
 	}
-
-	/*FIXME: for PO*/
+/*
 	PSB_DEBUG_GENERAL("by pass soc 0 %x\n", PSB_RMSVDX32(0x630));
 	PSB_DEBUG_GENERAL("by pass soc 1 %x\n", PSB_RMSVDX32(0x640));
 
@@ -808,6 +805,7 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 		PSB_WVDC32(0xffffffff, 0x2898);
 	}
 
+*/
 	ret = mutex_lock_interruptible(&dev_priv->cmdbuf_mutex);
 	if (unlikely(ret != 0))
 		goto out_err0;
@@ -896,10 +894,7 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 			deblock =
 			    ttm_buffer_object_lookup(tfile, (uint32_t) (*cmd));
 			*cmd = (uint32_t) deblock;
-
-			/* FIXME Should move this to interrupt handler? */
-			ttm_bo_unref(&deblock);
-
+			ttm_bo_unref(&deblock);	/* FIXME Should move this to interrupt handler? */
 			ttm_bo_kunmap(&cmd_kmap);
 		}
 
@@ -911,11 +906,9 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 			goto out_err4;
 		break;
 	case LNC_ENGINE_ENCODE:
-		if (IS_MDFLD(dev))
-			ret = pnw_cmdbuf_video(
-				file_priv, &context->validate_list,
-				context->fence_types, arg,
-				cmd_buffer, &fence_arg);
+		ret = pnw_cmdbuf_video(file_priv, &context->validate_list,
+				       context->fence_types, arg,
+				       cmd_buffer, &fence_arg);
 
 		if (IS_MRFLD(dev))
 			ret = tng_cmdbuf_video(

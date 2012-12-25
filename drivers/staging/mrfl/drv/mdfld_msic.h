@@ -24,8 +24,15 @@
  *	Jim Liu <jim.liu@intel.com>
  */
 
+#ifndef __MDFLD_MSIC_H__
+#define __MDFLD_MSIC_H__
+
 #define MSIC_PCI_DEVICE_ID 0x831
 
 int msic_regsiter_driver(void);
 int msic_unregister_driver(void);
 extern void hpd_notify_um(void);
+extern int msic_regsiter_driver(void);
+extern int msic_unregister_driver(void);
+
+#endif

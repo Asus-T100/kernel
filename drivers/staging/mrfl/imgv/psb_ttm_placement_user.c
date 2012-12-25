@@ -44,8 +44,8 @@ static uint32_t psb_busy_prios[] = {
 	TTM_PL_SYSTEM
 };
 
-const struct ttm_placement default_placement = {
-	0, 0, 0, NULL, 5, psb_busy_prios };
+const struct ttm_placement default_placement =
+    { 0, 0, 0, NULL, 5, psb_busy_prios };
 
 static size_t ttm_pl_size(struct ttm_bo_device *bdev, unsigned long num_pages)
 {
@@ -163,8 +163,7 @@ static inline size_t ttm_bo_size(struct ttm_bo_global *glob,
 	return glob->ttm_bo_size + 2 * page_array_size;
 }
 
-/* FIXME Copy from upstream TTM "ttm_bo_create",
-upstream TTM does not export this, so copy it here */
+/* FIXME Copy from upstream TTM "ttm_bo_create", upstream TTM does not export this, so copy it here */
 static int ttm_bo_create_private(struct ttm_bo_device *bdev,
 				 unsigned long size,
 				 enum ttm_bo_type type,
@@ -205,7 +204,6 @@ int psb_ttm_bo_check_placement(struct ttm_buffer_object *bo,
 			       struct ttm_placement *placement)
 {
 	int i;
-	uint32_t flag;
 
 	for (i = 0; i < placement->num_placement; i++) {
 		if (!capable(CAP_SYS_ADMIN)) {
@@ -218,8 +216,7 @@ int psb_ttm_bo_check_placement(struct ttm_buffer_object *bo,
 	}
 	for (i = 0; i < placement->num_busy_placement; i++) {
 		if (!capable(CAP_SYS_ADMIN)) {
-			flag = placement->busy_placement[i];
-			if (flag & TTM_PL_FLAG_NO_EVICT) {
+			if (placement->busy_placement[i] & TTM_PL_FLAG_NO_EVICT) {
 				printk(KERN_ERR TTM_PFX "Need to be root to "
 				       "modify NO_EVICT status.\n");
 				return -EINVAL;
@@ -600,8 +597,8 @@ int ttm_pl_waitidle_ioctl(struct ttm_object_file *tfile, void *data)
 
 	ret =
 	    psb_ttm_bo_block_reservation(bo, true,
-					 arg->
-					 mode & TTM_PL_WAITIDLE_MODE_NO_BLOCK);
+					 arg->mode &
+					 TTM_PL_WAITIDLE_MODE_NO_BLOCK);
 	if (unlikely(ret != 0))
 		goto out;
 	spin_lock(&bo->bdev->fence_lock);

@@ -1,6 +1,41 @@
 ########################################################################### ###
 #@Copyright     Copyright (c) Imagination Technologies Ltd. All Rights Reserved
-#@License       Strictly Confidential.
+#@License       Dual MIT/GPLv2
+# 
+# The contents of this file are subject to the MIT license as set out below.
+# 
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+# 
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+# 
+# Alternatively, the contents of this file may be used under the terms of
+# the GNU General Public License Version 2 ("GPL") in which case the provisions
+# of GPL are applicable instead of those above.
+# 
+# If you wish to allow use of your version of this file only under the terms of
+# GPL, and not to allow others to use your version of this file under the terms
+# of the MIT license, indicate your decision by deleting the provisions above
+# and replace them with the notice and other provisions required by GPL as set
+# out in the file called "GPL-COPYING" included in this distribution. If you do
+# not delete the provisions above, a recipient may use your version of this file
+# under the terms of either the MIT license or GPL.
+# 
+# This License is also included in this distribution in the file called
+# "MIT-COPYING".
+# 
+# EXCEPT AS OTHERWISE STATED IN A NEGOTIATED AGREEMENT: (A) THE SOFTWARE IS
+# PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING
+# BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+# PURPOSE AND NONINFRINGEMENT; AND (B) IN NO EVENT SHALL THE AUTHORS OR
+# COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+# IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+# CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ### ###########################################################################
 
 # from-one-* recipes make a thing from one source file, so they use $<. Others
@@ -15,14 +50,12 @@
 define host-o-from-one-c
 $(if $(V),,@echo "  HOST_CC " $(call relative-to-top,$<))
 $(HOST_CC) -MD -c $(MODULE_HOST_CFLAGS) $(MODULE_INCLUDE_FLAGS) \
-	-include $(RGX_BVNC_H) \
 	-include $(CONFIG_H) $< -o $@
 endef
 
 define target-o-from-one-c
 $(if $(V),,@echo "  CC      " $(call relative-to-top,$<))
 $(CC) -MD -c $(MODULE_CFLAGS) $(MODULE_INCLUDE_FLAGS) \
-	 -include $(RGX_BVNC_H) \
 	 -include $(CONFIG_H) $< -o $@
 endef
 
@@ -31,14 +64,12 @@ endef
 define host-o-from-one-cxx
 $(if $(V),,@echo "  HOST_CC " $(call relative-to-top,$<))
 $(HOST_CC) -MD -c $(MODULE_HOST_CXXFLAGS) $(MODULE_INCLUDE_FLAGS) \
-	 -include $(RGX_BVNC_H) \
 	 -include $(CONFIG_H) $< -o $@
 endef
 
 define target-o-from-one-cxx
 $(if $(V),,@echo "  CC      " $(call relative-to-top,$<))
 $(CC) -MD -c $(MODULE_CXXFLAGS) $(MODULE_INCLUDE_FLAGS) \
-	 -include $(RGX_BVNC_H) \
 	 -include $(CONFIG_H) $< -o $@
 endef
 
@@ -156,6 +187,25 @@ endef
 define check-exports
 endef
 
+# Check a source file with the program specified in $(CHECK).
+# If $(CHECK) is empty, don't do anything.
+ifeq ($(CHECK),)
+check-src :=
+else
+define check-src-1
+$(if $(V),,@echo "  CHECK   " $(call relative-to-top,$<))
+$(if $(IGNORE_CHECK_ERRORS),-,)$(CHECK) $(MODULE_INCLUDE_FLAGS) \
+	$(if $(CHECK_NO_CONFIG_H),,-include $(CONFIG_H)) \
+	$(filter -D%,$(if $(MODULE_HOST_BUILD),$(MODULE_HOST_CFLAGS),$(MODULE_CFLAGS))) \
+	$(CHECKFLAGS) $<
+endef
+# If CHECK_ONLY is set, only check files matching a Make pattern.
+# e.g. CHECK_ONLY=opengles1/%.c
+define check-src
+$(if $(if $(CHECK_ONLY),$(filter $(CHECK_ONLY),$<),true),$(check-src-1),@:)
+endef
+endif
+
 # Programs used in recipes
 
 BISON ?= bison
@@ -172,65 +222,42 @@ ifeq ($(USE_CCACHE),1)
 CCACHE ?= ccache
 endif
 
-# META tools
-ifeq ($(INTERNAL_CLOBBER_ONLY),)
-
-ifeq ($(strip $(METAG_INST_ROOT)),)
-# META_CC and LDLK point to the META compiler and post-linker. These are set
-# according to METAG_INST_ROOT and optionally MECC_INST_ROOT. If
-# METAG_INST_ROOT isn't set, error out.
-$(warning METAG_INST_ROOT is not set to indicate the location of the META)
-$(warning toolchain, which is required to build the firmware.)
-$(error No META toolchain)
-endif
-
-endif # INTERNAL_CLOBBER_ONLY
-
-LDLK := $(METAG_INST_ROOT)/metag-local/bin/ldlk
-# define the rgxfw compiler vars depending on whether we use mecc or not
-ifeq ($(MECC_INST_ROOT),)
-META_CC := $(METAG_INST_ROOT)/metag-local/bin/gcc
-else
-META_CC := $(MECC_INST_ROOT)/metag-local/bin/mecc
-endif
-
-override AR			:= $(if $(V),,@)$(CROSS_COMPILE)ar
-override BISON		:= $(if $(V),,@)$(BISON)
-override BZIP2		:= $(if $(V),,@)bzip2 -9
-override CAT		:= $(if $(V),,@)cat
-override CC			:= $(if $(V),,@)$(CCACHE) $(CROSS_COMPILE)$(CC)
-override CC_CHECK	:= $(if $(V),,@)$(MAKE_TOP)/tools/cc-check.sh
-override CXX		:= $(if $(V),,@)$(CCACHE) $(CROSS_COMPILE)$(CXX)
-override CHMOD		:= $(if $(V),,@)chmod
-override CP			:= $(if $(V),,@)cp
-override ECHO		:= $(if $(V),,@)echo
-override FLEX		:= $(if $(V),,@)flex
-override GAWK		:= $(if $(V),,@)gawk
-override GREP		:= $(if $(V),,@)grep
-override HOST_AR	:= $(if $(V),,@)ar
-override HOST_CC	:= $(if $(V),,@)$(CCACHE) $(HOST_CC)
-override HOST_CXX	:= $(if $(V),,@)$(CCACHE) $(HOST_CXX)
-override HOST_OBJCOPY := $(if $(V),,@)objcopy
-override HOST_STRIP := $(if $(V),,@)strip
-override INSTALL	:= $(if $(V),,@)install
-override JAR		:= $(if $(V),,@)$(JAR)
-override JAVA		:= $(if $(V),,@)$(JAVA)
-override JAVAC		:= $(if $(V),,@)$(JAVAC)
-override M4			:= $(if $(V),,@)m4
-override META_CC	:= $(if $(V),,@)$(CCACHE) $(META_CC)
-override LDLK 		:= $(if $(V),,@)$(LDLK)
-override MKDIR		:= $(if $(V),,@)mkdir
-override MV			:= $(if $(V),,@)mv
-override OBJCOPY	:= $(if $(V),,@)$(CROSS_COMPILE)objcopy
-override PERL		:= $(if $(V),,@)perl
-override PYTHON		:= $(if $(V),,@)python
-override RANLIB		:= $(if $(V),,@)$(CROSS_COMPILE)ranlib
-override RM			:= $(if $(V),,@)rm -f
-override ROGUEASM	:= $(if $(V),,@)$(HOST_OUT)/rogueasm
-override SED		:= $(if $(V),,@)sed
-override STRIP		:= $(if $(V),,@)$(CROSS_COMPILE)strip
-override TAR		:= $(if $(V),,@)tar
-override TOUCH  	:= $(if $(V),,@)touch
-override TEST		:= $(if $(V),,@)test
-override VHD2INC	:= $(if $(V),,@)$(HOST_OUT)/vhd2inc
-override ZIP		:= $(if $(V),,@)$(ZIP)
+override AR				:= $(if $(V),,@)$(CROSS_COMPILE)ar
+override BISON			:= $(if $(V),,@)$(BISON)
+override BZIP2			:= $(if $(V),,@)bzip2 -9
+override CAT			:= $(if $(V),,@)cat
+override CC				:= $(if $(V),,@)$(CCACHE) $(CROSS_COMPILE)$(CC)
+override CC_CHECK		:= $(if $(V),,@)$(MAKE_TOP)/tools/cc-check.sh
+override CXX			:= $(if $(V),,@)$(CCACHE) $(CROSS_COMPILE)$(CXX)
+override CHMOD			:= $(if $(V),,@)chmod
+override CHECK			:= $(if $(CHECK),$(if $(V),,@)$(CHECK),)
+override CP				:= $(if $(V),,@)cp
+override ECHO			:= $(if $(V),,@)echo
+override FLEX			:= $(if $(V),,@)flex
+override GAWK			:= $(if $(V),,@)gawk
+override GREP			:= $(if $(V),,@)grep
+override HOST_AR		:= $(if $(V),,@)ar
+override HOST_CC		:= $(if $(V),,@)$(CCACHE) $(HOST_CC)
+override HOST_CXX		:= $(if $(V),,@)$(CCACHE) $(HOST_CXX)
+override HOST_OBJCOPY	:= $(if $(V),,@)objcopy
+override HOST_STRIP		:= $(if $(V),,@)strip
+override INSTALL		:= $(if $(V),,@)install
+override JAR			:= $(if $(V),,@)$(JAR)
+override JAVA			:= $(if $(V),,@)$(JAVA)
+override JAVAC			:= $(if $(V),,@)$(JAVAC)
+override M4				:= $(if $(V),,@)m4
+override MKDIR			:= $(if $(V),,@)mkdir
+override MV				:= $(if $(V),,@)mv
+override OBJCOPY		:= $(if $(V),,@)$(CROSS_COMPILE)objcopy
+override PERL			:= $(if $(V),,@)perl
+override PYTHON			:= $(if $(V),,@)python
+override RANLIB			:= $(if $(V),,@)$(CROSS_COMPILE)ranlib
+override RM				:= $(if $(V),,@)rm -f
+override ROGUEASM		:= $(if $(V),,@)$(HOST_OUT)/rogueasm
+override SED			:= $(if $(V),,@)sed
+override STRIP			:= $(if $(V),,@)$(CROSS_COMPILE)strip
+override TAR			:= $(if $(V),,@)tar
+override TOUCH  		:= $(if $(V),,@)touch
+override TEST			:= $(if $(V),,@)test
+override VHD2INC		:= $(if $(V),,@)$(HOST_OUT)/vhd2inc
+override ZIP			:= $(if $(V),,@)$(ZIP)

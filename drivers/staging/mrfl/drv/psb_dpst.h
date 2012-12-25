@@ -11,7 +11,7 @@
  * more details.
  *
  * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
+ * this program; if not, write to the Free Software Foundation, Inc., 
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
  *
  * Authors:
@@ -77,12 +77,10 @@ struct dpst_state {
 extern struct dpst_state *psb_dpst_init(struct kobject *parent_kobj);
 extern int psb_dpst_notify_change_um(enum dpst_event_enum event,
 				     struct dpst_state *state);
-extern struct umevent_obj *psb_dpst_create_and_notify_um(const char *name,
-							 struct dpst_state
+extern struct umevent_obj *psb_dpst_create_and_notify_um(const char *name, struct dpst_state
 							 *state);
 extern struct umevent_list *psb_dpst_device_pool_create_and_init(struct kobject
-								 *parent_kobj,
-								 struct
+								 *parent_kobj, struct
 								 dpst_state
 								 *state);
 extern void psb_dpst_device_pool_destroy(struct dpst_state *state);

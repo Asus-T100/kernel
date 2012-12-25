@@ -1,14 +1,49 @@
-									    /*************************************************************************//*!
-									       @File
-									       @Title          Device Memory Management
-									       @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
-									       @Description    This file defines flags used on memory allocations and mappings
-									       These flags are relevant throughout the memory management 
-									       software stack and are specified by users of services and 
-									       understood by all levels of the memory management in both 
-									       client and server.
-									       @License        Strictly Confidential.
-    *//**************************************************************************/
+/*************************************************************************/ /*!
+@File
+@Title          Device Memory Management
+@Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
+@Description    This file defines flags used on memory allocations and mappings
+                These flags are relevant throughout the memory management 
+                software stack and are specified by users of services and 
+                understood by all levels of the memory management in both 
+                client and server.
+@License        Dual MIT/GPLv2
+
+The contents of this file are subject to the MIT license as set out below.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+Alternatively, the contents of this file may be used under the terms of
+the GNU General Public License Version 2 ("GPL") in which case the provisions
+of GPL are applicable instead of those above.
+
+If you wish to allow use of your version of this file only under the terms of
+GPL, and not to allow others to use your version of this file under the terms
+of the MIT license, indicate your decision by deleting the provisions above
+and replace them with the notice and other provisions required by GPL as set
+out in the file called "GPL-COPYING" included in this distribution. If you do
+not delete the provisions above, a recipient may use your version of this file
+under the terms of either the MIT license or GPL.
+
+This License is also included in this distribution in the file called
+"MIT-COPYING".
+
+EXCEPT AS OTHERWISE STATED IN A NEGOTIATED AGREEMENT: (A) THE SOFTWARE IS
+PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING
+BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+PURPOSE AND NONINFRINGEMENT; AND (B) IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+*/ /**************************************************************************/
 
 #ifndef PVRSRV_MEMALLOCFLAGS_H
 #define PVRSRV_MEMALLOCFLAGS_H
@@ -81,13 +116,14 @@ typedef IMG_UINT32 PVRSRV_MEMALLOCFLAGS_T;
  */
 #define PVRSRV_MEMALLOCFLAG_GPU_WRITEABLE (1U<<1)
 
-#define PVRSRV_MEMALLOCFLAG_GPU_READ_PERMITTED  (1U<<2)	/* DOXYGEN_FIXME */
-#define PVRSRV_MEMALLOCFLAG_GPU_WRITE_PERMITTED (1U<<3)	/* DOXYGEN_FIXME */
+#define PVRSRV_MEMALLOCFLAG_GPU_READ_PERMITTED  (1U<<2) /* DOXYGEN_FIXME */
+#define PVRSRV_MEMALLOCFLAG_GPU_WRITE_PERMITTED (1U<<3) /* DOXYGEN_FIXME */
 
-#define PVRSRV_MEMALLOCFLAG_CPU_READABLE        (1U<<4)	/*!< CPU will be able to read the memory */
-#define PVRSRV_MEMALLOCFLAG_CPU_WRITEABLE       (1U<<5)	/*!< CPU will be able to write to the memory */
-#define PVRSRV_MEMALLOCFLAG_CPU_READ_PERMITTED  (1U<<6)	/* DOXYGEN_FIXME */
-#define PVRSRV_MEMALLOCFLAG_CPU_WRITE_PERMITTED (1U<<7)	/* DOXYGEN_FIXME */
+#define PVRSRV_MEMALLOCFLAG_CPU_READABLE        (1U<<4) /*!< CPU will be able to read the memory */
+#define PVRSRV_MEMALLOCFLAG_CPU_WRITEABLE       (1U<<5) /*!< CPU will be able to write to the memory */
+#define PVRSRV_MEMALLOCFLAG_CPU_READ_PERMITTED  (1U<<6) /* DOXYGEN_FIXME */
+#define PVRSRV_MEMALLOCFLAG_CPU_WRITE_PERMITTED (1U<<7) /* DOXYGEN_FIXME */
+
 
 /*
  *  **********************************************************
@@ -204,10 +240,10 @@ typedef IMG_UINT32 PVRSRV_MEMALLOCFLAGS_T;
 #define CPU_CACHE_MODE(n)	(n & PVRSRV_MEMALLOCFLAG_CPU_CACHE_MODE_MASK)
 
 /* Helper flags for usual cases */
-#define PVRSRV_MEMALLOCFLAG_UNCACHED             (PVRSRV_MEMALLOCFLAG_GPU_UNCACHED | PVRSRV_MEMALLOCFLAG_CPU_UNCACHED)	/*!< Memory will be uncached */
-#define PVRSRV_MEMALLOCFLAG_WRITE_COMBINE        (PVRSRV_MEMALLOCFLAG_GPU_WRITE_COMBINE | PVRSRV_MEMALLOCFLAG_CPU_WRITE_COMBINE)	/*!< Memory will be write-combined */
-#define PVRSRV_MEMALLOCFLAG_CACHE_COHERENT       (PVRSRV_MEMALLOCFLAG_GPU_CACHE_COHERENT | PVRSRV_MEMALLOCFLAG_CPU_CACHE_COHERENT)	/*!< Memory will be cache-coherent */
-#define PVRSRV_MEMALLOCFLAG_CACHE_INCOHERENT     (PVRSRV_MEMALLOCFLAG_GPU_CACHE_INCOHERENT | PVRSRV_MEMALLOCFLAG_CPU_CACHE_INCOHERENT)	/*!< Memory will be cache-incoherent */
+#define PVRSRV_MEMALLOCFLAG_UNCACHED             (PVRSRV_MEMALLOCFLAG_GPU_UNCACHED | PVRSRV_MEMALLOCFLAG_CPU_UNCACHED) /*!< Memory will be uncached */
+#define PVRSRV_MEMALLOCFLAG_WRITE_COMBINE        (PVRSRV_MEMALLOCFLAG_GPU_WRITE_COMBINE | PVRSRV_MEMALLOCFLAG_CPU_WRITE_COMBINE)   /*!< Memory will be write-combined */
+#define PVRSRV_MEMALLOCFLAG_CACHE_COHERENT       (PVRSRV_MEMALLOCFLAG_GPU_CACHE_COHERENT | PVRSRV_MEMALLOCFLAG_CPU_CACHE_COHERENT)  /*!< Memory will be cache-coherent */
+#define PVRSRV_MEMALLOCFLAG_CACHE_INCOHERENT     (PVRSRV_MEMALLOCFLAG_GPU_CACHE_INCOHERENT | PVRSRV_MEMALLOCFLAG_CPU_CACHE_INCOHERENT) /*!< Memory will be cache-incoherent */
 
 /*!
    CPU MMU Flags mask -- intended for use internal to services only
@@ -234,6 +270,23 @@ typedef IMG_UINT32 PVRSRV_MEMALLOCFLAGS_T;
     some platforms.
  */
 #define PVRSRV_MEMALLOCFLAG_KERNEL_CPU_MAPPABLE (1U<<14)
+
+
+
+
+/*
+ *
+ *  **********************************************************
+ *  *                                                        *
+ *  *            ALLOC MEMORY FLAGS                          *
+ *  *                                                        *
+ *  **********************************************************
+ *
+ * (Bits 15)
+ *
+ */
+#define PVRSRV_MEMALLOCFLAG_NO_OSPAGES_ON_ALLOC (1U<<15)
+
 
 /*
  *
@@ -326,7 +379,8 @@ typedef IMG_UINT32 PVRSRV_MEMALLOCFLAGS_T;
                                             PVRSRV_MEMALLOCFLAG_POISON_ON_ALLOC | \
                                             PVRSRV_MEMALLOCFLAG_POISON_ON_FREE | \
                                             PVRSRV_MEMALLOCFLAGS_GPU_MMUFLAGSMASK | \
-                                            PVRSRV_MEMALLOCFLAGS_CPU_MMUFLAGSMASK)
+                                            PVRSRV_MEMALLOCFLAGS_CPU_MMUFLAGSMASK | \
+                                            PVRSRV_MEMALLOCFLAG_NO_OSPAGES_ON_ALLOC)
 
 #if ((~(PVRSRV_MEMALLOCFLAGS_PMRFLAGSMASK) & PVRSRV_MEMALLOCFLAGS_GPU_MMUFLAGSMASK) != 0)
 #error PVRSRV_MEMALLOCFLAGS_GPU_MMUFLAGSMASK is not a subset of PVRSRV_MEMALLOCFLAGS_PMRFLAGSMASK
@@ -350,7 +404,8 @@ typedef IMG_UINT32 PVRSRV_MEMALLOCFLAGS_T;
                                                       PVRSRV_MEMALLOCFLAG_GPU_CACHE_MODE_MASK | \
                                                       PVRSRV_MEMALLOCFLAG_CPU_CACHE_MODE_MASK | \
                                                       PVRSRV_MEMALLOCFLAG_POISON_ON_FREE | \
-                                                      PVRSRV_MEMALLOCFLAGS_PMRFLAGSMASK)
+                                                      PVRSRV_MEMALLOCFLAGS_PMRFLAGSMASK | \
+                                                      PVRSRV_MEMALLOCFLAG_NO_OSPAGES_ON_ALLOC)
 
 #if ((~(PVRSRV_MEMALLOCFLAGS_RA_DIFFERENTIATION_MASK) & PVRSRV_MEMALLOCFLAGS_PMRFLAGSMASK) != 0)
 #error PVRSRV_MEMALLOCFLAGS_PMRFLAGSMASK is not a subset of PVRSRV_MEMALLOCFLAGS_RA_DIFFERENTIATION_MASK
@@ -370,10 +425,12 @@ typedef IMG_UINT32 PVRSRV_MEMALLOCFLAGS_T;
                                                     PVRSRV_MEMALLOCFLAG_CPU_READABLE | \
                                                     PVRSRV_MEMALLOCFLAG_CPU_WRITEABLE | \
                                                     PVRSRV_MEMALLOCFLAG_GPU_CACHE_MODE_MASK | \
-                                                    PVRSRV_MEMALLOCFLAG_CPU_CACHE_MODE_MASK)
+                                                    PVRSRV_MEMALLOCFLAG_CPU_CACHE_MODE_MASK | \
+                                                    PVRSRV_MEMALLOCFLAG_NO_OSPAGES_ON_ALLOC)
 
 #if ((~(PVRSRV_MEMALLOCFLAGS_RA_DIFFERENTIATION_MASK) & PVRSRV_MEMALLOCFLAGS_PERMAPPINGFLAGSMASK) != 0)
 #error PVRSRV_MEMALLOCFLAGS_PERMAPPINGFLAGSMASK is not a subset of PVRSRV_MEMALLOCFLAGS_RA_DIFFERENTIATION_MASK
 #endif
 
-#endif				/* #ifndef PVRSRV_MEMALLOCFLAGS_H */
+#endif /* #ifndef PVRSRV_MEMALLOCFLAGS_H */
+

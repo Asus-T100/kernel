@@ -12,7 +12,7 @@
  * more details.
  *
  * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
+ * this program; if not, write to the Free Software Foundation, Inc., 
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
  *
  **************************************************************************/
@@ -200,7 +200,7 @@ static int psbfb_vm_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 	struct drm_psb_private *dev_priv =
 	    (struct drm_psb_private *)dev->dev_private;
 	struct psb_gtt *pg = dev_priv->pg;
-	unsigned long phys_addr = (unsigned long)pg->stolen_base;;
+	unsigned long phys_addr = (unsigned long)pg->stolen_base;
 
 	page_num = (vma->vm_end - vma->vm_start) >> PAGE_SHIFT;
 
@@ -209,7 +209,8 @@ static int psbfb_vm_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
 
 	for (i = 0; i < page_num; i++) {
-		pfn = (phys_addr >> PAGE_SHIFT);	/* phys_to_pfn(phys_addr); */
+		pfn = (phys_addr >> PAGE_SHIFT);
+		/*phys_to_pfn(phys_addr);*/
 
 		ret = vm_insert_mixed(vma, address, pfn);
 		if (unlikely((ret == -EBUSY) || (ret != 0 && i > 0)))
@@ -297,8 +298,9 @@ static struct fb_ops psbfb_ops = {
 	.fb_mmap = psbfb_mmap,
 };
 
-static struct drm_framebuffer *psb_framebuffer_create
-    (struct drm_device *dev, struct drm_mode_fb_cmd *r) {
+static struct drm_framebuffer *psb_framebuffer_create(struct drm_device *dev,
+	struct drm_mode_fb_cmd *r)
+{
 	struct psb_framebuffer *fb;
 	int ret;
 
@@ -320,11 +322,14 @@ static struct drm_framebuffer *psb_framebuffer_create
 	return NULL;
 }
 
-static struct drm_framebuffer *psb_user_framebuffer_create
-    (struct drm_device *dev, struct drm_file *filp, struct drm_mode_fb_cmd *r) {
+static struct drm_framebuffer *psb_user_framebuffer_create(
+	struct drm_device *dev, struct drm_file *filp,
+	struct drm_mode_fb_cmd *r)
+{
 	struct psb_framebuffer *psbfb;
 	struct drm_framebuffer *fb;
 	struct fb_info *info;
+	/*  FIXME - "r->handle" is u32, being cast into a pointer. */
 	void *hKernelMemInfo = r->handle;
 	struct drm_psb_private *dev_priv
 	    = (struct drm_psb_private *)dev->dev_private;
@@ -356,6 +361,10 @@ static struct drm_framebuffer *psb_user_framebuffer_create
 	    (pg->gatt_pages <
 	     PSB_TT_PRIV0_PLIMIT) ? pg->gatt_pages : PSB_TT_PRIV0_PLIMIT;
 
+	info = framebuffer_alloc(0, &dev->pdev->dev);
+	if (!info)
+		return NULL;
+
 	DRM_DEBUG("Mapping to gtt..., KernelMemInfo %p\n", hKernelMemInfo);
 
 	info->screen_base = PVRSRVGetMeminfoCPUAddr(hKernelMemInfo);
@@ -372,10 +381,6 @@ static struct drm_framebuffer *psb_user_framebuffer_create
 	} else {
 		psbfb->offset = 0;
 	}
-
-	info = framebuffer_alloc(0, &dev->pdev->dev);
-	if (!info)
-		return NULL;
 
 	strcpy(info->fix.id, "psbfb");
 
@@ -405,7 +410,9 @@ static struct drm_framebuffer *psb_user_framebuffer_create
 
 	fbdev->psb_fb_helper.fb = fb;
 	fbdev->psb_fb_helper.fbdev = info;
+
 	DCChangeFrameBuffer(dev, psbfb);
+
 	return fb;
 }
 
@@ -428,6 +435,7 @@ static int psbfb_create(struct psb_fbdev *fbdev,
 	 * is 608x1024(64 bits align), or the information between android
 	 * and Linux frame buffer is not consistent.
 	 */
+#if 0
 	if (get_panel_type(dev, 0) == TMD_6X10_VID)
 		mode_cmd.width = sizes->surface_width - 200;
 	else
@@ -435,8 +443,13 @@ static int psbfb_create(struct psb_fbdev *fbdev,
 	mode_cmd.height = sizes->surface_height;
 
 	mode_cmd.bpp = 32;
+#else
+	mode_cmd.width = 720;
+	mode_cmd.height = 1280;
+	mode_cmd.bpp = 32;
+#endif
 
-	/* HW requires pitch to be 64 byte aligned */
+	/*HW requires pitch to be 64 byte aligned*/
 	mode_cmd.pitch = ALIGN(mode_cmd.width * ((mode_cmd.bpp + 1) / 8), 64);
 	mode_cmd.depth = 24;
 
@@ -496,19 +509,29 @@ static int psbfb_create(struct psb_fbdev *fbdev,
 
 	info->fix.mmio_start = pci_resource_start(dev->pdev, 0);
 	info->fix.mmio_len = pci_resource_len(dev->pdev, 0);
-
+#if 1
 	info->pixmap.size = 64 * 1024;
 	info->pixmap.buf_align = 8;
 	info->pixmap.access_align = 32;
 	info->pixmap.flags = FB_PIXMAP_SYSTEM;
 	info->pixmap.scan_align = 1;
+#else
+	info->pixmap.size = 4096;
+	info->pixmap.buf_align = 4;
+	info->pixmap.scan_align = 1;
+	info->pixmap.access_align = 32;
+	info->pixmap.flags = FB_PIXMAP_SYSTEM;
+#endif
 
 	DRM_DEBUG("fb depth is %d\n", fb->depth);
 	DRM_DEBUG("   pitch is %d\n", fb->pitch);
 
 	printk(KERN_INFO "allocated %dx%d fb\n", psbfb->base.width,
 	       psbfb->base.height);
-
+#if 0
+	/*power on hdmi*/
+	hdmi_power_on(dev);
+#endif
 	mutex_unlock(&dev->struct_mutex);
 
 	return 0;
@@ -525,7 +548,7 @@ static void psbfb_gamma_set(struct drm_crtc *crtc, u16 red, u16 green, u16 blue,
 	DRM_DEBUG("%s\n", __func__);
 }
 
-static void psbfb_gamma_get(struct drm_crtc *crtc, u16 * red, u16 * green,
+static void psbfb_gamma_get(struct drm_crtc *crtc, u16 *red, u16 *green,
 			    u16 *blue, int regno)
 {
 	DRM_DEBUG("%s\n", __func__);
@@ -541,15 +564,14 @@ static int psbfb_probe(struct drm_fb_helper *helper,
 	PSB_DEBUG_ENTRY("\n");
 #if 1				/* FIXME MRFLD */
 	if (!helper) {
-		DRM_INFO(" helper == NULL. \n");
+		DRM_INFO(" helper == NULL.\n");
 		return 1;
 	}
 #endif				/* FIXME MRFLD */
 	if (!helper->fb) {
 		ret = psbfb_create(psb_fbdev, sizes);
-		if (ret) {
+		if (ret)
 			return ret;
-		}
 
 		new_fb = 1;
 	}
@@ -613,9 +635,8 @@ void psb_fbdev_fini(struct drm_device *dev)
 	struct drm_psb_private *dev_priv =
 	    (struct drm_psb_private *)dev->dev_private;
 
-	if (!dev_priv->fbdev) {
+	if (!dev_priv->fbdev)
 		return;
-	}
 
 	psb_fbdev_destroy(dev, dev_priv->fbdev);
 	kfree(dev_priv->fbdev);
@@ -639,10 +660,11 @@ int psbfb_remove(struct drm_device *dev, struct drm_framebuffer *fb)
 		return 0;
 
 	info = psbfb->fbdev;
+
 	DCChangeFrameBuffer(dev, psbfb);
-	if (info) {
+
+	if (info)
 		framebuffer_release(info);
-	}
 
 	return 0;
 }
@@ -666,9 +688,8 @@ static void psb_user_framebuffer_destroy(struct drm_framebuffer *fb)
 
 	/*ummap gtt pages */
 	psb_gtt_unmap_meminfo(dev, psbfb->hKernelMemInfo);
-	if (psbfb->fbdev) {
+	if (psbfb->fbdev)
 		psbfb_remove(dev, fb);
-	}
 
 	/* JB: TODO not drop, refcount buffer */
 	drm_framebuffer_cleanup(fb);
@@ -727,23 +748,23 @@ static void psb_setup_outputs(struct drm_device *dev)
 			clone_mask = (1 << INTEL_OUTPUT_SDVO);
 			break;
 		case INTEL_OUTPUT_LVDS:
-			PSB_DEBUG_ENTRY("LVDS. \n");
+			PSB_DEBUG_ENTRY("LVDS.\n");
 			crtc_mask = (1 << 1);
 
 			clone_mask = (1 << INTEL_OUTPUT_LVDS);
 			break;
 		case INTEL_OUTPUT_MIPI:
-			PSB_DEBUG_ENTRY("MIPI. \n");
+			PSB_DEBUG_ENTRY("MIPI.\n");
 			crtc_mask = (1 << 0);
 			clone_mask = (1 << INTEL_OUTPUT_MIPI);
 			break;
 		case INTEL_OUTPUT_MIPI2:
-			PSB_DEBUG_ENTRY("MIPI2. \n");
+			PSB_DEBUG_ENTRY("MIPI2.\n");
 			crtc_mask = (1 << 2);
 			clone_mask = (1 << INTEL_OUTPUT_MIPI2);
 			break;
 		case INTEL_OUTPUT_HDMI:
-			PSB_DEBUG_ENTRY("HDMI. \n");
+			PSB_DEBUG_ENTRY("HDMI.\n");
 			crtc_mask = (1 << 1);
 			clone_mask = (1 << INTEL_OUTPUT_HDMI);
 			break;
@@ -815,7 +836,7 @@ void psb_modeset_init(struct drm_device *dev)
 	/* set memory base */
 	/* MRST and PSB should use BAR 2 */
 	pci_read_config_dword(dev->pdev, PSB_BSM,
-			      (uint32_t *) &(dev->mode_config.fb_base));
+			      (uint32_t *) & (dev->mode_config.fb_base));
 
 	for (i = 0; i < dev_priv->num_pipe; i++)
 		psb_intel_crtc_init(dev, i, mode_dev);

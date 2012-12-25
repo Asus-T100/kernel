@@ -25,9 +25,6 @@
 #define _SYSIRQ_H_
 
 #include <drm/drmP.h>
-#include "psb_drv.h"
-
-extern int drm_psb_smart_vsync;
 
 bool sysirq_init(struct drm_device *dev);
 void sysirq_uninit(struct drm_device *dev);
@@ -49,4 +46,4 @@ int psb_enable_vblank(struct drm_device *dev, int pipe);
 void psb_disable_vblank(struct drm_device *dev, int pipe);
 u32 psb_get_vblank_counter(struct drm_device *dev, int pipe);
 
-#endif				/* _SYSIRQ_H_ */
+#endif				//_SYSIRQ_H_

@@ -39,7 +39,8 @@ static void *gpvAnchorVideo[BC_VIDEO_DEVICE_MAX_ID];
 
 static void *gpcAnchor;
 
-BC_VIDEO_DEVINFO *GetAnchorPtr(int id)
+BC_VIDEO_DEVINFO *
+GetAnchorPtr(int id)
 {
 	BC_VIDEO_DEVINFO *AnchorPtr = NULL;
 	if (id < BC_VIDEO_DEVICE_MAX_ID)
@@ -49,15 +50,17 @@ BC_VIDEO_DEVINFO *GetAnchorPtr(int id)
 	return AnchorPtr;
 }
 
-static void SetAnchorPtr(BC_VIDEO_DEVINFO * psDevInfo, int id)
+static void
+SetAnchorPtr(BC_VIDEO_DEVINFO * psDevInfo, int id)
 {
 	if (id < BC_VIDEO_DEVICE_MAX_ID)
-		gpvAnchorVideo[id] = (void *)psDevInfo;
+		gpvAnchorVideo[id] = (void *) psDevInfo;
 	else if (id == BC_CAMERA_DEVICEID)
-		gpcAnchor = (void *)psDevInfo;
+		gpcAnchor = (void *) psDevInfo;
 }
 
-static PVRSRV_ERROR OpenVBCDevice(IMG_UINT32 uDeviceID, IMG_HANDLE * phDevice)
+static PVRSRV_ERROR
+OpenVBCDevice(IMG_UINT32 uDeviceID, IMG_HANDLE * phDevice)
 {
 	BC_VIDEO_DEVINFO *psDevInfo;
 	int id;
@@ -73,19 +76,20 @@ static PVRSRV_ERROR OpenVBCDevice(IMG_UINT32 uDeviceID, IMG_HANDLE * phDevice)
 	return (PVRSRV_OK);
 }
 
-static PVRSRV_ERROR OpenCBCDevice(IMG_UINT32 uDeviceID, IMG_HANDLE * phDevice)
+static PVRSRV_ERROR OpenCBCDevice(IMG_UINT32 uDeviceID, IMG_HANDLE *phDevice)
 {
 	BC_VIDEO_DEVINFO *psDevInfo;
 
 	UNREFERENCED_PARAMETER(uDeviceID);
 	psDevInfo = GetAnchorPtr(BC_CAMERA_DEVICEID);
 
-	*phDevice = (IMG_HANDLE) psDevInfo;
+	*phDevice = (IMG_HANDLE)psDevInfo;
 
 	return (PVRSRV_OK);
 }
 
-static PVRSRV_ERROR CloseBCDevice(IMG_UINT32 uDeviceID, IMG_HANDLE hDevice)
+static PVRSRV_ERROR
+CloseBCDevice(IMG_UINT32 uDeviceID, IMG_HANDLE hDevice)
 {
 	UNREFERENCED_PARAMETER(uDeviceID);
 	UNREFERENCED_PARAMETER(hDevice);
@@ -95,7 +99,8 @@ static PVRSRV_ERROR CloseBCDevice(IMG_UINT32 uDeviceID, IMG_HANDLE hDevice)
 
 static PVRSRV_ERROR
 GetBCBuffer(IMG_HANDLE hDevice,
-	    IMG_UINT32 ui32BufferNumber, IMG_HANDLE * phBuffer)
+	    IMG_UINT32 ui32BufferNumber,
+	    IMG_HANDLE * phBuffer)
 {
 	BC_VIDEO_DEVINFO *psDevInfo;
 
@@ -106,8 +111,7 @@ GetBCBuffer(IMG_HANDLE hDevice,
 	psDevInfo = (BC_VIDEO_DEVINFO *) hDevice;
 
 	if (ui32BufferNumber < psDevInfo->sBufferInfo.ui32BufferCount) {
-		*phBuffer =
-		    (IMG_HANDLE) & psDevInfo->psSystemBuffer[ui32BufferNumber];
+		*phBuffer = (IMG_HANDLE) & psDevInfo->psSystemBuffer[ui32BufferNumber];
 	} else {
 		return (PVRSRV_ERROR_INVALID_PARAMS);
 	}
@@ -115,7 +119,8 @@ GetBCBuffer(IMG_HANDLE hDevice,
 	return (PVRSRV_OK);
 }
 
-static PVRSRV_ERROR GetBCInfo(IMG_HANDLE hDevice, BUFFER_INFO * psBCInfo)
+static PVRSRV_ERROR
+GetBCInfo(IMG_HANDLE hDevice, BUFFER_INFO * psBCInfo)
 {
 	BC_VIDEO_DEVINFO *psDevInfo;
 
@@ -159,7 +164,9 @@ GetBCBufferAddr(IMG_HANDLE hDevice,
 	return (PVRSRV_OK);
 }
 
-BCE_ERROR BC_Video_Register(int id)
+
+BCE_ERROR
+BC_Video_Register(int id)
 {
 	BC_VIDEO_DEVINFO *psDevInfo;
 
@@ -167,14 +174,13 @@ BCE_ERROR BC_Video_Register(int id)
 
 	if (psDevInfo == NULL) {
 		psDevInfo =
-		    (BC_VIDEO_DEVINFO *)
-		    BCAllocKernelMem(sizeof(BC_VIDEO_DEVINFO));
+			(BC_VIDEO_DEVINFO *) BCAllocKernelMem(sizeof(BC_VIDEO_DEVINFO));
 
 		if (!psDevInfo) {
 			return (BCE_ERROR_OUT_OF_MEMORY);
 		}
 
-		SetAnchorPtr((void *)psDevInfo, id);
+		SetAnchorPtr((void *) psDevInfo, id);
 
 		psDevInfo->ulRefCount = 0;
 
@@ -191,16 +197,14 @@ BCE_ERROR BC_Video_Register(int id)
 		psDevInfo->sBufferInfo.ui32BufferDeviceID = id;
 		psDevInfo->sBufferInfo.ui32Flags = 0;
 		psDevInfo->sBufferInfo.ui32BufferCount =
-		    (IMG_UINT32) psDevInfo->ulNumBuffers;
+			(IMG_UINT32) psDevInfo->ulNumBuffers;
 
 		if (id < BC_VIDEO_DEVICE_MAX_ID) {
 			strncpy(psDevInfo->sBufferInfo.szDeviceName,
-				VBUFFERCLASS_DEVICE_NAME,
-				MAX_BUFFER_DEVICE_NAME_SIZE);
+				VBUFFERCLASS_DEVICE_NAME, MAX_BUFFER_DEVICE_NAME_SIZE);
 		} else if (id == BC_CAMERA_DEVICEID) {
 			strncpy(psDevInfo->sBufferInfo.szDeviceName,
-				CBUFFERCLASS_DEVICE_NAME,
-				MAX_BUFFER_DEVICE_NAME_SIZE);
+				CBUFFERCLASS_DEVICE_NAME, MAX_BUFFER_DEVICE_NAME_SIZE);
 		}
 	}
 
@@ -209,7 +213,8 @@ BCE_ERROR BC_Video_Register(int id)
 	return (BCE_OK);
 }
 
-BCE_ERROR BC_Video_Unregister(int id)
+BCE_ERROR
+BC_Video_Unregister(int id)
 {
 	BC_VIDEO_DEVINFO *psDevInfo;
 
@@ -238,7 +243,8 @@ BCE_ERROR BC_Video_Unregister(int id)
 	return (BCE_OK);
 }
 
-BCE_ERROR BC_Video_Init(int id)
+BCE_ERROR
+BC_Video_Init(int id)
 {
 	BCE_ERROR eError;
 
@@ -250,7 +256,8 @@ BCE_ERROR BC_Video_Init(int id)
 	return (BCE_OK);
 }
 
-BCE_ERROR BC_Video_Deinit(int id)
+BCE_ERROR
+BC_Video_Deinit(int id)
 {
 	BCE_ERROR eError;
 

@@ -1,32 +1,50 @@
-/*!****************************************************************************
-@File           devicemem_server.h
-
+/**************************************************************************/ /*!
+@File
 @Title          Device Memory Management
-
-@Author         Imagination Technologies
-
-@Copyright      Copyright 2010 by Imagination Technologies Limited.
-                All rights reserved. No part of this software, either material
-                or conceptual may be copied or distributed, transmitted,
-                transcribed, stored in a retrieval system or translated into
-                any human or computer language in any form by any means,
-                electronic, mechanical, manual or otherwise, or disclosed
-                to third parties without the express written permission of
-                Imagination Technologies Limited, Home Park Estate,
-                Kings Langley, Hertfordshire, WD4 8LZ, U.K.
-
-@Platform       Generic
-
+@Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
 @Description    Header file for server side component of device memory management
+@License        Dual MIT/GPLv2
 
-@DoxygenVer
+The contents of this file are subject to the MIT license as set out below.
 
-******************************************************************************/
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+Alternatively, the contents of this file may be used under the terms of
+the GNU General Public License Version 2 ("GPL") in which case the provisions
+of GPL are applicable instead of those above.
+
+If you wish to allow use of your version of this file only under the terms of
+GPL, and not to allow others to use your version of this file under the terms
+of the MIT license, indicate your decision by deleting the provisions above
+and replace them with the notice and other provisions required by GPL as set
+out in the file called "GPL-COPYING" included in this distribution. If you do
+not delete the provisions above, a recipient may use your version of this file
+under the terms of either the MIT license or GPL.
+
+This License is also included in this distribution in the file called
+"MIT-COPYING".
+
+EXCEPT AS OTHERWISE STATED IN A NEGOTIATED AGREEMENT: (A) THE SOFTWARE IS
+PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING
+BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+PURPOSE AND NONINFRINGEMENT; AND (B) IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+*/ /***************************************************************************/
 
 #ifndef __DEVICEMEM_SERVER_H__
 #define __DEVICEMEM_SERVER_H__
 
-#include "device.h"		/* For device node */
+#include "device.h" /* For device node */
 #include "img_types.h"
 #include "pvr_debug.h"
 #include "pvrsrv_error.h"
@@ -35,9 +53,29 @@
 
 typedef struct _DEVMEMINT_CTX_ DEVMEMINT_CTX;
 typedef struct _DEVMEMINT_HEAP_ DEVMEMINT_HEAP;
-/* TODO: can we unify RESERVATION and MAPPING to save data structures? */
+/* FIXME: can we unify RESERVATION and MAPPING to save data structures? */
 typedef struct _DEVMEMINT_RESERVATION_ DEVMEMINT_RESERVATION;
 typedef struct _DEVMEMINT_MAPPING_ DEVMEMINT_MAPPING;
+
+/*
+ * DevmemServerGetImportHandle()
+ *
+ * For given exportable memory descriptor returns PMR handle
+ *
+ */
+PVRSRV_ERROR
+DevmemServerGetImportHandle(DEVMEM_MEMDESC *psMemDesc,
+						   IMG_HANDLE *phImport);
+
+/*
+ * DevmemServerGetHeapHandle()
+ *
+ * For given reservation returns the Heap handle
+ *
+ */
+PVRSRV_ERROR
+DevmemServerGetHeapHandle(DEVMEMINT_RESERVATION *psReservation,
+						   IMG_HANDLE *phHeap);
 
 /*
  * DevmemIntCtxCreate()
@@ -52,7 +90,7 @@ typedef struct _DEVMEMINT_MAPPING_ DEVMEMINT_MAPPING;
  * DevmemIntCtxDestroy()
  *
  * If you call DevmemIntCtxCreate() (and it succeeds) you are promising
- * to later call DevmemIntCtxDestory()
+ * to later call DevmemIntCtxDestroy()
  *
  * Note that this call will cause the device MMU code to do some work
  * for creating the device memory context, but it does not guarantee
@@ -62,16 +100,23 @@ typedef struct _DEVMEMINT_MAPPING_ DEVMEMINT_MAPPING;
  * Caller to provide storage for a pointer to the DEVMEM_CTX object
  * that will be created by this call.
  */
-extern PVRSRV_ERROR DevmemIntCtxCreate(PVRSRV_DEVICE_NODE * psDeviceNode,
-				       /* devnode / perproc / resman context etc */
-				       DEVMEMINT_CTX ** ppsDevmemCtxPtr,
-				       IMG_HANDLE * hPrivData);
+extern PVRSRV_ERROR
+DevmemIntCtxCreate(
+                 PVRSRV_DEVICE_NODE *psDeviceNode,
+                 /* devnode / perproc / resman context etc */
+
+                 DEVMEMINT_CTX **ppsDevmemCtxPtr,
+                 IMG_HANDLE *hPrivData
+                 );
 /*
  * DevmemIntCtxDestroy()
  *
  * Undoes a prior DevmemIntCtxCreate.
  */
-extern PVRSRV_ERROR DevmemIntCtxDestroy(DEVMEMINT_CTX * psDevmemCtx);
+extern PVRSRV_ERROR
+DevmemIntCtxDestroy(
+                  DEVMEMINT_CTX *psDevmemCtx
+                  );
 
 /*
  * DevmemIntHeapCreate()
@@ -97,11 +142,13 @@ extern PVRSRV_ERROR DevmemIntCtxDestroy(DEVMEMINT_CTX * psDevmemCtx);
  * that will be created by this call.
  */
 extern PVRSRV_ERROR
-DevmemIntHeapCreate(DEVMEMINT_CTX * psDevmemCtx,
-		    IMG_DEV_VIRTADDR sHeapBaseAddr,
-		    IMG_DEVMEM_SIZE_T uiHeapLength,
-		    IMG_UINT32 uiLog2DataPageSize,
-		    DEVMEMINT_HEAP ** ppsDevmemHeapPtr);
+DevmemIntHeapCreate(
+                   DEVMEMINT_CTX *psDevmemCtx,
+                   IMG_DEV_VIRTADDR sHeapBaseAddr,
+                   IMG_DEVMEM_SIZE_T uiHeapLength,
+                   IMG_UINT32 uiLog2DataPageSize,
+                   DEVMEMINT_HEAP **ppsDevmemHeapPtr
+                   );
 /*
  * DevmemIntHeapDestroy()
  *
@@ -110,7 +157,10 @@ DevmemIntHeapCreate(DEVMEMINT_CTX * psDevmemCtx,
  * All allocations from his heap must have been freed before this
  * call.
  */
-extern PVRSRV_ERROR DevmemIntHeapDestroy(DEVMEMINT_HEAP * psDevmemHeap);
+extern PVRSRV_ERROR
+DevmemIntHeapDestroy(
+                     DEVMEMINT_HEAP *psDevmemHeap
+                    );
 
 /*
  * DevmemIntMapPMR()
@@ -137,17 +187,18 @@ extern PVRSRV_ERROR DevmemIntHeapDestroy(DEVMEMINT_HEAP * psDevmemHeap);
  * promising that you shall later call DevmemIntUnmapPMR()
  */
 extern PVRSRV_ERROR
-DevmemIntMapPMR(DEVMEMINT_HEAP * psDevmemHeap,
-		DEVMEMINT_RESERVATION * psReservation,
-		PMR * psPMR,
-		PVRSRV_MEMALLOCFLAGS_T uiMapFlags,
-		DEVMEMINT_MAPPING ** ppsMappingPtr);
+DevmemIntMapPMR(DEVMEMINT_HEAP *psDevmemHeap,
+                DEVMEMINT_RESERVATION *psReservation,
+                PMR *psPMR,
+                PVRSRV_MEMALLOCFLAGS_T uiMapFlags,
+                DEVMEMINT_MAPPING **ppsMappingPtr);
 /*
  * DevmemIntUnmapPMR()
  *
  * Reverses the mapping caused by DevmemIntMapPMR()
  */
-extern PVRSRV_ERROR DevmemIntUnmapPMR(DEVMEMINT_MAPPING * psMapping);
+extern PVRSRV_ERROR
+DevmemIntUnmapPMR(DEVMEMINT_MAPPING *psMapping);
 
 /*
  * DevmemIntReserveRange()
@@ -162,17 +213,17 @@ extern PVRSRV_ERROR DevmemIntUnmapPMR(DEVMEMINT_MAPPING * psMapping);
  * are promising that you shall later call DevmemIntUnreserveRange()
  */
 extern PVRSRV_ERROR
-DevmemIntReserveRange(DEVMEMINT_HEAP * psDevmemHeap,
-		      IMG_DEV_VIRTADDR sAllocationDevVAddr,
-		      IMG_DEVMEM_SIZE_T uiAllocationSize,
-		      DEVMEMINT_RESERVATION ** ppsReservationPtr);
+DevmemIntReserveRange(DEVMEMINT_HEAP *psDevmemHeap,
+                      IMG_DEV_VIRTADDR sAllocationDevVAddr,
+                      IMG_DEVMEM_SIZE_T uiAllocationSize,
+                      DEVMEMINT_RESERVATION **ppsReservationPtr);
 /*
  * DevmemIntUnreserveRange()
  *
  * Undoes the state change caused by DevmemIntReserveRage()
  */
 extern PVRSRV_ERROR
-DevmemIntUnreserveRange(DEVMEMINT_RESERVATION * psDevmemReservation);
+DevmemIntUnreserveRange(DEVMEMINT_RESERVATION *psDevmemReservation);
 
 /*
  * SLCFlushInvalRequest()
@@ -182,7 +233,7 @@ DevmemIntUnreserveRange(DEVMEMINT_RESERVATION * psDevmemReservation);
  * of the allocation and hence depends on the underlying PMR
   */
 extern PVRSRV_ERROR
-DevmemSLCFlushInvalRequest(PVRSRV_DEVICE_NODE * psDeviceNode, PMR * psPmr);
+DevmemSLCFlushInvalRequest(PVRSRV_DEVICE_NODE *psDeviceNode, PMR *psPmr);
 
 #if defined(PDUMP)
 /*
@@ -194,39 +245,43 @@ DevmemSLCFlushInvalRequest(PVRSRV_DEVICE_NODE * psDeviceNode, PMR * psPmr);
 /* FIXME: uiArraySize shouldn't be here, and is an
    artefact of the bridging */
 extern PVRSRV_ERROR
-DevmemIntPDumpSaveToFileVirtual(DEVMEMINT_CTX * psDevmemCtx,
-				IMG_DEV_VIRTADDR sDevAddrStart,
-				IMG_DEVMEM_SIZE_T uiSize,
-				IMG_UINT32 uiArraySize,
-				const IMG_CHAR * pszFilename,
-				IMG_UINT32 ui32FileOffset,
-				IMG_UINT32 ui32PDumpFlags);
+DevmemIntPDumpSaveToFileVirtual(DEVMEMINT_CTX *psDevmemCtx,
+                                IMG_DEV_VIRTADDR sDevAddrStart,
+                                IMG_DEVMEM_SIZE_T uiSize,
+                                IMG_UINT32 uiArraySize,
+                                const IMG_CHAR *pszFilename,
+								IMG_UINT32 ui32FileOffset,
+								IMG_UINT32 ui32PDumpFlags);
+
+extern IMG_UINT32
+DevmemIntMMUContextID(DEVMEMINT_CTX *psDevMemContext);
 
 extern PVRSRV_ERROR
-DevmemIntPDumpBitmap(PVRSRV_DEVICE_NODE * psDeviceNode,
-		     IMG_CHAR * pszFileName,
-		     IMG_UINT32 ui32FileOffset,
-		     IMG_UINT32 ui32Width,
-		     IMG_UINT32 ui32Height,
-		     IMG_UINT32 ui32StrideInBytes,
-		     IMG_DEV_VIRTADDR sDevBaseAddr,
-		     DEVMEMINT_CTX * psDevMemContext,
-		     IMG_UINT32 ui32Size,
-		     PDUMP_PIXEL_FORMAT ePixelFormat,
-		     PDUMP_MEM_FORMAT eMemFormat, IMG_UINT32 ui32PDumpFlags);
-#else				/* PDUMP */
+DevmemIntPDumpBitmap(PVRSRV_DEVICE_NODE *psDeviceNode,
+						IMG_CHAR *pszFileName,
+						IMG_UINT32 ui32FileOffset,
+						IMG_UINT32 ui32Width,
+						IMG_UINT32 ui32Height,
+						IMG_UINT32 ui32StrideInBytes,
+						IMG_DEV_VIRTADDR sDevBaseAddr,
+						DEVMEMINT_CTX *psDevMemContext,
+						IMG_UINT32 ui32Size,
+						PDUMP_PIXEL_FORMAT ePixelFormat,
+						IMG_UINT32 ui32AddrMode,
+						IMG_UINT32 ui32PDumpFlags);
+#else	/* PDUMP */
 
 #ifdef INLINE_IS_PRAGMA
 #pragma inline(PVRSRVSyncPrimPDumpPolKM)
 #endif
 static INLINE PVRSRV_ERROR
-DevmemIntPDumpSaveToFileVirtual(DEVMEMINT_CTX * psDevmemCtx,
-				IMG_DEV_VIRTADDR sDevAddrStart,
-				IMG_DEVMEM_SIZE_T uiSize,
-				IMG_UINT32 uiArraySize,
-				const IMG_CHAR * pszFilename,
-				IMG_UINT32 ui32FileOffset,
-				IMG_UINT32 ui32PDumpFlags)
+DevmemIntPDumpSaveToFileVirtual(DEVMEMINT_CTX *psDevmemCtx,
+                                IMG_DEV_VIRTADDR sDevAddrStart,
+                                IMG_DEVMEM_SIZE_T uiSize,
+                                IMG_UINT32 uiArraySize,
+                                const IMG_CHAR *pszFilename,
+								IMG_UINT32 ui32FileOffset,
+								IMG_UINT32 ui32PDumpFlags)
 {
 	PVR_UNREFERENCED_PARAMETER(psDevmemCtx);
 	PVR_UNREFERENCED_PARAMETER(sDevAddrStart);
@@ -242,17 +297,18 @@ DevmemIntPDumpSaveToFileVirtual(DEVMEMINT_CTX * psDevmemCtx,
 #pragma inline(PVRSRVSyncPrimPDumpPolKM)
 #endif
 static INLINE PVRSRV_ERROR
-DevmemIntPDumpBitmap(PVRSRV_DEVICE_NODE * psDeviceNode,
-		     IMG_CHAR * pszFileName,
-		     IMG_UINT32 ui32FileOffset,
-		     IMG_UINT32 ui32Width,
-		     IMG_UINT32 ui32Height,
-		     IMG_UINT32 ui32StrideInBytes,
-		     IMG_DEV_VIRTADDR sDevBaseAddr,
-		     DEVMEMINT_CTX * psDevMemContext,
-		     IMG_UINT32 ui32Size,
-		     PDUMP_PIXEL_FORMAT ePixelFormat,
-		     PDUMP_MEM_FORMAT eMemFormat, IMG_UINT32 ui32PDumpFlags)
+DevmemIntPDumpBitmap(PVRSRV_DEVICE_NODE *psDeviceNode,
+						IMG_CHAR *pszFileName,
+						IMG_UINT32 ui32FileOffset,
+						IMG_UINT32 ui32Width,
+						IMG_UINT32 ui32Height,
+						IMG_UINT32 ui32StrideInBytes,
+						IMG_DEV_VIRTADDR sDevBaseAddr,
+						DEVMEMINT_CTX *psDevMemContext,
+						IMG_UINT32 ui32Size,
+						PDUMP_PIXEL_FORMAT ePixelFormat,
+						IMG_UINT32 ui32AddrMode,
+						IMG_UINT32 ui32PDumpFlags)
 {
 	PVR_UNREFERENCED_PARAMETER(psDeviceNode);
 	PVR_UNREFERENCED_PARAMETER(pszFileName);
@@ -264,9 +320,9 @@ DevmemIntPDumpBitmap(PVRSRV_DEVICE_NODE * psDeviceNode,
 	PVR_UNREFERENCED_PARAMETER(psDevMemContext);
 	PVR_UNREFERENCED_PARAMETER(ui32Size);
 	PVR_UNREFERENCED_PARAMETER(ePixelFormat);
-	PVR_UNREFERENCED_PARAMETER(eMemFormat);
+	PVR_UNREFERENCED_PARAMETER(ui32AddrMode);
 	PVR_UNREFERENCED_PARAMETER(ui32PDumpFlags);
 	return PVRSRV_OK;
 }
-#endif				/* PDUMP */
-#endif				/* ifndef __DEVICEMEM_SERVER_H__ */
+#endif	/* PDUMP */
+#endif /* ifndef __DEVICEMEM_SERVER_H__ */

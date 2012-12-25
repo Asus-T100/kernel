@@ -21,15 +21,16 @@
  * DEALINGS IN THE SOFTWARE.
  *
  * Authors:
- *	Jim Liu <jim.liu@intel.com>
+ *	Jim Liu <jim.liu@intel.com>	
  */
 
+#include "android_hdmi.h"
 /* Functions will be deleted after simulated on MDFLD_PLATFORM */
 
 /* MRFLD_PLATFORM start */
 
 /**
- * Set up the HDMI Vendor Specific InfoFrame Packet and send it to HDMI display
+ * Set up the HDMI Vendor Specific InfoFrame Packet and send it to HDMI display 
  *
  */
 static int mrfld_set_up_s3d_InfoFrame(struct drm_device *dev, enum
@@ -144,7 +145,10 @@ void mrfld_disable_crtc(struct drm_device *dev, int pipe, bool plane_d)
 	u32 gen_fifo_stat_reg = GEN_FIFO_STAT_REG;
 	u32 temp;
 
-	PSB_DEBUG_ENTRY("pipe = %d \n", pipe);
+	PSB_DEBUG_ENTRY("pipe = %d\n", pipe);
+
+	if (pipe != 1 && ((get_panel_type(dev, pipe) == JDI_VID)))
+		return;
 
 	switch (pipe) {
 	case 0:
@@ -230,7 +234,6 @@ static void mrfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 	bool enabled;
 
 	PSB_DEBUG_ENTRY("mode = %d, pipe = %d \n", mode, pipe);
-
 #ifndef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
 	/**
 	 * MIPI dpms
@@ -238,7 +241,8 @@ static void mrfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 	 * support all MIPI panels later.
 	 */
 	if (pipe != 1 && ((get_panel_type(dev, pipe) == TMD_VID) ||
-			  (get_panel_type(dev, pipe) == TMD_6X10_VID))) {
+				(get_panel_type(dev, pipe) == TMD_6X10_VID) ||
+				(get_panel_type(dev, pipe) == JDI_VID))) {
 		return;
 	}
 #endif
@@ -251,14 +255,14 @@ static void mrfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 	/* Ignore if system is already in DSR and in suspended state. */
 	if (gbgfxsuspended && gbdispstatus == false && mode == 3) {
 		if (dev_priv->rpm_enabled && pipe == 1) {
-			/* dev_priv->is_mipi_on = false; */
+			//          dev_priv->is_mipi_on = false;
 			pm_request_idle(&gpDrmDevice->pdev->dev);
 		}
 		return;
 	} else if (mode == 0) {
-		/* do not need to set gbdispstatus=true in crtc.
-		 * this will be set in encoder such as mdfld_dsi_dbi_dpms */
-		gbdispstatus = true;
+		//do not need to set gbdispstatus=true in crtc.
+		//this will be set in encoder such as mdfld_dsi_dbi_dpms
+		//gbdispstatus = true;
 	}
 #endif
 
@@ -476,296 +480,37 @@ static int mrfld_crtc_mode_set(struct drm_crtc *crtc,
 {
 	struct drm_device *dev = crtc->dev;
 	struct psb_intel_crtc *psb_intel_crtc = to_psb_intel_crtc(crtc);
-	struct drm_framebuffer *fb = crtc->fb;
-	DRM_DRIVER_PRIVATE_T *dev_priv = dev->dev_private;
-	int pipe = psb_intel_crtc->pipe;
-	int dspcntr_reg = DSPACNTR;
-	int pipeconf_reg = PIPEACONF;
-	int htot_reg = HTOTAL_A;
-	int hblank_reg = HBLANK_A;
-	int hsync_reg = HSYNC_A;
-	int vtot_reg = VTOTAL_A;
-	int vblank_reg = VBLANK_A;
-	int vsync_reg = VSYNC_A;
-	int dspsize_reg = DSPASIZE;
-	int dsppos_reg = DSPAPOS;
-	int pipesrc_reg = PIPEASRC;
-	u32 *pipeconf = &dev_priv->pipeconf;
-	u32 *dspcntr = &dev_priv->dspcntr;
-	bool is_mipi = false, is_mipi2 = false, is_hdmi = false;
-	struct drm_mode_config *mode_config = &dev->mode_config;
-	struct psb_intel_output *psb_intel_output = NULL;
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *)dev->dev_private;
 	struct mdfld_dsi_config *dsi_config;
-	uint64_t scalingType = DRM_MODE_SCALE_FULLSCREEN;
-	struct drm_encoder *encoder;
-	struct drm_connector *connector;
+	int pipe = psb_intel_crtc->pipe;
 
-	PSB_DEBUG_ENTRY("pipe = 0x%x \n", pipe);
-
-#ifndef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
-	/**
-	 * MIPI panel mode setting
-	 * NOTE: this path only works for TMD panel now. update it to
-	 * support all MIPI panels later.
-	 */
-	if (pipe != 1 && ((get_panel_type(dev, pipe) == TMD_VID) ||
-			  (get_panel_type(dev, pipe) == TMD_6X10_VID))) {
+	PSB_DEBUG_ENTRY("pipe = 0x%x\n", pipe);
+	if (pipe != 1) {
 		if (pipe == 0)
 			dsi_config = dev_priv->dsi_configs[0];
 		else if (pipe == 2)
 			dsi_config = dev_priv->dsi_configs[1];
-		else
-			return -EINVAL;
+
+		mrfld_setup_pll(dev, pipe, adjusted_mode->clock);
+
 		return mdfld_crtc_dsi_mode_set(crtc, dsi_config, mode,
-					       adjusted_mode, x, y, old_fb);
+				adjusted_mode, x, y, old_fb);
+	 } else {
+		 android_hdmi_crtc_mode_set(crtc, mode, adjusted_mode,
+				 x, y, old_fb);
+
+		 return 0;
 	}
-#endif
-
-	switch (pipe) {
-	case 0:
-		break;
-	case 1:
-		dspcntr_reg = DSPBCNTR;
-		pipeconf_reg = PIPEBCONF;
-		htot_reg = HTOTAL_B;
-		hblank_reg = HBLANK_B;
-		hsync_reg = HSYNC_B;
-		vtot_reg = VTOTAL_B;
-		vblank_reg = VBLANK_B;
-		vsync_reg = VSYNC_B;
-		dspsize_reg = DSPBSIZE;
-		dsppos_reg = DSPBPOS;
-		pipesrc_reg = PIPEBSRC;
-		pipeconf = &dev_priv->pipeconf1;
-		dspcntr = &dev_priv->dspcntr1;
-		break;
-	case 2:
-		dspcntr_reg = DSPCCNTR;
-		pipeconf_reg = PIPECCONF;
-		htot_reg = HTOTAL_C;
-		hblank_reg = HBLANK_C;
-		hsync_reg = HSYNC_C;
-		vtot_reg = VTOTAL_C;
-		vblank_reg = VBLANK_C;
-		vsync_reg = VSYNC_C;
-		dspsize_reg = DSPCSIZE;
-		dsppos_reg = DSPCPOS;
-		pipesrc_reg = PIPECSRC;
-		pipeconf = &dev_priv->pipeconf2;
-		dspcntr = &dev_priv->dspcntr2;
-		break;
-	default:
-		DRM_ERROR("Illegal Pipe Number. \n");
-		return 0;
-	}
-
-	PSB_DEBUG_ENTRY("adjusted_hdisplay = %d\n", adjusted_mode->hdisplay);
-	PSB_DEBUG_ENTRY("adjusted_vdisplay = %d\n", adjusted_mode->vdisplay);
-	PSB_DEBUG_ENTRY("adjusted_hsync_start = %d\n",
-			adjusted_mode->hsync_start);
-	PSB_DEBUG_ENTRY("adjusted_hsync_end = %d\n", adjusted_mode->hsync_end);
-	PSB_DEBUG_ENTRY("adjusted_htotal = %d\n", adjusted_mode->htotal);
-	PSB_DEBUG_ENTRY("adjusted_vsync_start = %d\n",
-			adjusted_mode->vsync_start);
-	PSB_DEBUG_ENTRY("adjusted_vsync_end = %d\n", adjusted_mode->vsync_end);
-	PSB_DEBUG_ENTRY("adjusted_vtotal = %d\n", adjusted_mode->vtotal);
-	PSB_DEBUG_ENTRY("adjusted_clock = %d\n", adjusted_mode->clock);
-	PSB_DEBUG_ENTRY("hdisplay = %d\n", mode->hdisplay);
-	PSB_DEBUG_ENTRY("vdisplay = %d\n", mode->vdisplay);
-
-	if (!ospm_power_using_hw_begin
-	    (OSPM_DISPLAY_ISLAND, OSPM_UHB_FORCE_POWER_ON))
-		return 0;
-
-	memcpy(&psb_intel_crtc->saved_mode, mode,
-	       sizeof(struct drm_display_mode));
-	memcpy(&psb_intel_crtc->saved_adjusted_mode, adjusted_mode,
-	       sizeof(struct drm_display_mode));
-
-	list_for_each_entry(connector, &mode_config->connector_list, head) {
-		if (!connector)
-			continue;
-
-		encoder = connector->encoder;
-
-		if (!encoder)
-			continue;
-
-		if (encoder->crtc != crtc)
-			continue;
-
-		psb_intel_output = to_psb_intel_output(connector);
-
-		PSB_DEBUG_ENTRY("output->type = 0x%x \n",
-				psb_intel_output->type);
-
-		switch (psb_intel_output->type) {
-		case INTEL_OUTPUT_MIPI:
-			is_mipi = true;
-			break;
-		case INTEL_OUTPUT_MIPI2:
-			is_mipi2 = true;
-			break;
-		case INTEL_OUTPUT_HDMI:
-			is_hdmi = true;
-			break;
-		}
-	}
-
-	/* Disable the VGA plane that we never use */
-	REG_WRITE(VGACNTRL, VGA_DISP_DISABLE);
-
-	/* Disable the panel fitter if it was on our pipe */
-	if (psb_intel_panel_fitter_pipe(dev) == pipe)
-		REG_WRITE(PFIT_CONTROL, 0);
-
-	if (psb_intel_output)
-		drm_connector_property_get_value(&psb_intel_output->base,
-						 dev->
-						 mode_config.scaling_mode_property,
-						 &scalingType);
-
-	PSB_DEBUG_ENTRY("scalingType 0x%x\n", scalingType);
-	/* pipesrc and dspsize control the size that is scaled from,
-	 * which should always be the user's requested size.
-	 */
-	if (pipe == 1) {
-		if (scalingType == DRM_MODE_SCALE_CENTER) {
-			/* This mode is used to support centering the screen by setting reg
-			 * in DISPLAY controller */
-			int startX = (1920 - fb->width) * fb->height / 1080 / 2;
-			int startY = 0x00;
-
-			PSB_DEBUG_ENTRY("fb height = %d; fb width = %d\n",
-					fb->height, fb->width);
-			PSB_DEBUG_ENTRY("startX = %d; startY = %d \n", startX,
-					startY);
-
-			REG_WRITE(dspsize_reg,
-				  ((fb->height - 1) << 16) | (fb->width - 1));
-			REG_WRITE(pipesrc_reg,
-				  (((1920 * fb->height /
-				     1080)) << 16) | (fb->height - 1));
-
-			REG_WRITE(dsppos_reg, (startY << 16) | startX);
-
-			if ((adjusted_mode->hdisplay != fb->width)
-			    || (adjusted_mode->vdisplay != fb->height))
-				REG_WRITE(PFIT_CONTROL,
-					  PFIT_ENABLE | PFIT_PIPE_SELECT_B);
-		} else {
-			/* Android will not change mode, however ,we have tools to change HDMI timing
-			   so there is some cases frame buffer no change ,but timing changed mode setting,
-			   in this case. mode information for source size is not right,
-			   so here use fb information for source/sprite size */
-
-			/* The defined sprite rectangle must always be completely contained within the displayable
-			 * area of the screen image (frame buffer). */
-			REG_WRITE(dspsize_reg,
-				  ((fb->height - 1) << 16) | (fb->width - 1));
-			/* Set the CRTC with encoder mode. */
-			REG_WRITE(pipesrc_reg,
-				  ((fb->width - 1) << 16) | (fb->height - 1));
-			if ((adjusted_mode->hdisplay != fb->width)
-			    || (adjusted_mode->vdisplay != fb->height))
-				REG_WRITE(PFIT_CONTROL,
-					  PFIT_ENABLE | PFIT_PIPE_SELECT_B);
-
-			REG_WRITE(dsppos_reg, 0);
-		}
-	} else {
-		REG_WRITE(dspsize_reg,
-			  ((mode->crtc_vdisplay -
-			    1) << 16) | (mode->crtc_hdisplay - 1));
-		REG_WRITE(pipesrc_reg,
-			  ((mode->crtc_hdisplay -
-			    1) << 16) | (mode->crtc_vdisplay - 1));
-		REG_WRITE(dsppos_reg, 0);
-	}
-
-	if (scalingType == DRM_MODE_SCALE_NO_SCALE) {
-		/*Moorestown doesn't have register support for centering so we need to
-		   mess with the h/vblank and h/vsync start and ends to get centering */
-		int offsetX = 0, offsetY = 0;
-
-		offsetX =
-		    (adjusted_mode->crtc_hdisplay - mode->crtc_hdisplay) / 2;
-		offsetY =
-		    (adjusted_mode->crtc_vdisplay - mode->crtc_vdisplay) / 2;
-
-		REG_WRITE(htot_reg, (mode->crtc_hdisplay - 1) |
-			  ((adjusted_mode->crtc_htotal - 1) << 16));
-		REG_WRITE(vtot_reg, (mode->crtc_vdisplay - 1) |
-			  ((adjusted_mode->crtc_vtotal - 1) << 16));
-		REG_WRITE(hblank_reg,
-			  (adjusted_mode->crtc_hblank_start - offsetX -
-			   1) | ((adjusted_mode->crtc_hblank_end - offsetX -
-				  1) << 16));
-		REG_WRITE(hsync_reg,
-			  (adjusted_mode->crtc_hsync_start - offsetX -
-			   1) | ((adjusted_mode->crtc_hsync_end - offsetX -
-				  1) << 16));
-		REG_WRITE(vblank_reg,
-			  (adjusted_mode->crtc_vblank_start - offsetY -
-			   1) | ((adjusted_mode->crtc_vblank_end - offsetY -
-				  1) << 16));
-		REG_WRITE(vsync_reg,
-			  (adjusted_mode->crtc_vsync_start - offsetY -
-			   1) | ((adjusted_mode->crtc_vsync_end - offsetY -
-				  1) << 16));
-	} else {
-		REG_WRITE(htot_reg, (adjusted_mode->crtc_hdisplay - 1) |
-			  ((adjusted_mode->crtc_htotal - 1) << 16));
-		REG_WRITE(vtot_reg, (adjusted_mode->crtc_vdisplay - 1) |
-			  ((adjusted_mode->crtc_vtotal - 1) << 16));
-		REG_WRITE(hblank_reg, (adjusted_mode->crtc_hblank_start - 1) |
-			  ((adjusted_mode->crtc_hblank_end - 1) << 16));
-		REG_WRITE(hsync_reg, (adjusted_mode->crtc_hsync_start - 1) |
-			  ((adjusted_mode->crtc_hsync_end - 1) << 16));
-		REG_WRITE(vblank_reg, (adjusted_mode->crtc_vblank_start - 1) |
-			  ((adjusted_mode->crtc_vblank_end - 1) << 16));
-		REG_WRITE(vsync_reg, (adjusted_mode->crtc_vsync_start - 1) |
-			  ((adjusted_mode->crtc_vsync_end - 1) << 16));
-	}
-
-	/* Flush the plane changes */
-	{
-		struct drm_crtc_helper_funcs *crtc_funcs = crtc->helper_private;
-		crtc_funcs->mode_set_base(crtc, x, y, old_fb);
-	}
-
-	/* setup pipeconf */
-	*pipeconf = PIPEACONF_ENABLE;
-
-	/* Set up the display plane register */
-	*dspcntr = REG_READ(dspcntr_reg);
-	*dspcntr |= pipe << DISPPLANE_SEL_PIPE_POS;
-	*dspcntr |= DISPLAY_PLANE_ENABLE;
-	mrfld_setup_pll(dev, pipe, adjusted_mode->clock);
-
-	if (is_mipi || is_mipi2)
-		goto mrst_crtc_mode_set_exit;
-
-	REG_WRITE(pipeconf_reg, *pipeconf);
-	REG_READ(pipeconf_reg);
-
-	REG_WRITE(dspcntr_reg, *dspcntr);
-	psb_intel_wait_for_vblank(dev);
-
- mrst_crtc_mode_set_exit:
-
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-
-	return 0;
 }
 
 /**
- * Perform display 3D mode set to half line interleaving 3D display with two buffers.
+ * Perform display 3D mode set to half line interleaving 3D display with two buffers.  
  *
- * FIXME modify the following function with option to disable PLL or not.
+ * FIXME modify the following function with option to disable PLL or not. 
  */
-int mrfld_s3d_flip_surf_addr(struct drm_device *dev, int pipe,
-				struct mrfld_s3d_flip *ps3d_flip)
+int mrfld_s3d_flip_surf_addr(struct drm_device *dev, int pipe, struct
+			     mrfld_s3d_flip *ps3d_flip)
 {
 	/* register */
 	u32 dspsurf_reg = DSPASURF;
@@ -801,15 +546,18 @@ int mrfld_s3d_flip_surf_addr(struct drm_device *dev, int pipe,
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 }
 
+/*
 extern void mdfld_dsi_tmd_drv_ic_init(struct mdfld_dsi_config *dsi_config,
 				      int pipe);
+*/
+
 /**
- * Perform display 3D mode set to half line interleaving 3D display with two buffers.
+ * Perform display 3D mode set to half line interleaving 3D display with two buffers.  
  *
- * FIXME modify the following function with option to disable PLL or not.
+ * FIXME modify the following function with option to disable PLL or not. 
  */
-int mrfld_s3d_to_line_interleave_half(struct drm_device *dev, int pipe,
-					struct mrfld_s3d_flip *ps3d_flip)
+int mrfld_s3d_to_line_interleave_half(struct drm_device *dev, int pipe, struct
+				      mrfld_s3d_flip *ps3d_flip)
 {
 	DRM_DRIVER_PRIVATE_T *dev_priv = dev->dev_private;
 	struct mdfld_dsi_config *dsi_config = dev_priv->dsi_configs[0];
@@ -894,12 +642,12 @@ int mrfld_s3d_to_line_interleave_half(struct drm_device *dev, int pipe,
 		REG_WRITE(mipi_reg, mipi_val);
 
 		/*setup MIPI adapter + MIPI IP registers */
-		mdfld_dsi_controller_init(dsi_config, pipe);
+		/* mdfld_dsi_controller_init(dsi_config, pipe); */
 		mdelay(20);	/* msleep(20); */
 
 		/* re-init the panel */
-		dsi_config->dvr_ic_inited = 0;
-		mdfld_dsi_tmd_drv_ic_init(dsi_config, pipe);
+		dsi_config->drv_ic_inited = 0;
+		/* mdfld_dsi_tmd_drv_ic_init(dsi_config, pipe); */
 	}
 
 	/*enable the plane */
@@ -922,8 +670,8 @@ int mrfld_s3d_to_line_interleave_half(struct drm_device *dev, int pipe,
  * Perform 2d mode set back from half line interleaving 3D display.
  *
  */
-int mrfld_s3d_from_line_interleave_half(struct drm_device *dev, int pipe,
-					struct mrfld_s3d_flip *ps3d_flip)
+int mrfld_s3d_from_line_interleave_half(struct drm_device *dev, int pipe, struct
+					mrfld_s3d_flip *ps3d_flip)
 {
 	DRM_DRIVER_PRIVATE_T *dev_priv = dev->dev_private;
 	struct mdfld_dsi_config *dsi_config = dev_priv->dsi_configs[0];
@@ -998,12 +746,12 @@ int mrfld_s3d_from_line_interleave_half(struct drm_device *dev, int pipe,
 		REG_WRITE(mipi_reg, mipi_val);
 
 		/*setup MIPI adapter + MIPI IP registers */
-		mdfld_dsi_controller_init(dsi_config, pipe);
+		/* mdfld_dsi_controller_init(dsi_config, pipe); */
 		mdelay(20);	/* msleep(20); */
 
 		/* re-init the panel */
-		dsi_config->dvr_ic_inited = 0;
-		mdfld_dsi_tmd_drv_ic_init(dsi_config, pipe);
+		dsi_config->drv_ic_inited = 0;
+		/* mdfld_dsi_tmd_drv_ic_init(dsi_config, pipe); */
 	}
 
 	/*enable the plane */
@@ -1021,14 +769,14 @@ int mrfld_s3d_from_line_interleave_half(struct drm_device *dev, int pipe,
 }
 
 /**
- * Perform display 3D mode set to line interleaving 3D display with two buffers.
+ * Perform display 3D mode set to line interleaving 3D display with two buffers.  
  *
  * FIXME: Assume the 3D buffer is the same as display resolution. Will re-visit
  * it for panel fitting mode.
  * Set up the pll, two times 2D clock.
  */
-int mrfld_s3d_to_line_interleave(struct drm_device *dev, int pipe,
-				struct mrfld_s3d_flip *ps3d_flip)
+int mrfld_s3d_to_line_interleave(struct drm_device *dev, int pipe, struct
+				 mrfld_s3d_flip *ps3d_flip)
 {
 	DRM_DRIVER_PRIVATE_T *dev_priv = dev->dev_private;
 	struct mdfld_dsi_config *dsi_config = dev_priv->dsi_configs[0];
@@ -1160,12 +908,12 @@ int mrfld_s3d_to_line_interleave(struct drm_device *dev, int pipe,
 		REG_WRITE(mipi_reg, mipi_val);
 
 		/*setup MIPI adapter + MIPI IP registers */
-		mdfld_dsi_controller_init(dsi_config, pipe);
+		/* mdfld_dsi_controller_init(dsi_config, pipe); */
 		mdelay(20);	/* msleep(20); */
 
 		/* re-init the panel */
-		dsi_config->dvr_ic_inited = 0;
-		mdfld_dsi_tmd_drv_ic_init(dsi_config, pipe);
+		dsi_config->drv_ic_inited = 0;
+		/* mdfld_dsi_tmd_drv_ic_init(dsi_config, pipe); */
 	}
 
 	/*enable the plane */
@@ -1192,8 +940,8 @@ int mrfld_s3d_to_line_interleave(struct drm_device *dev, int pipe,
  * Perform 2d mode set back from line interleaving 3D display.
  *
  */
-int mrfld_s3d_from_line_interleave(struct drm_device *dev, int pipe,
-				struct mrfld_s3d_flip *ps3d_flip)
+int mrfld_s3d_from_line_interleave(struct drm_device *dev, int pipe, struct
+				   mrfld_s3d_flip *ps3d_flip)
 {
 	DRM_DRIVER_PRIVATE_T *dev_priv = dev->dev_private;
 	struct mdfld_dsi_config *dsi_config = dev_priv->dsi_configs[0];
@@ -1317,12 +1065,12 @@ int mrfld_s3d_from_line_interleave(struct drm_device *dev, int pipe,
 		REG_WRITE(mipi_reg, mipi_val);
 
 		/*setup MIPI adapter + MIPI IP registers */
-		mdfld_dsi_controller_init(dsi_config, pipe);
+		/* mdfld_dsi_controller_init(dsi_config, pipe); */
 		mdelay(20);	/* msleep(20); */
 
 		/* re-init the panel */
-		dsi_config->dvr_ic_inited = 0;
-		mdfld_dsi_tmd_drv_ic_init(dsi_config, pipe);
+		dsi_config->drv_ic_inited = 0;
+		/* mdfld_dsi_tmd_drv_ic_init(dsi_config, pipe); */
 	}
 
 	/*enable the plane */
@@ -1344,14 +1092,14 @@ int mrfld_s3d_from_line_interleave(struct drm_device *dev, int pipe,
 }
 
 /**
- * Perform display 3D mode set to frame packing 3D display.
+ * Perform display 3D mode set to frame packing 3D display. 
  *
  * FIXME: Assume the 3D buffer is the same as display resolution. Will re-visit
  * it for panel fitting mode.
  * Set up the pll, two times 2D clock.
  */
-int mrfld_s3d_to_frame_packing(struct drm_device *dev, int pipe,
-				struct mrfld_s3d_flip *ps3d_flip)
+int mrfld_s3d_to_frame_packing(struct drm_device *dev, int pipe, struct
+			       mrfld_s3d_flip *ps3d_flip)
 {
 	/* register */
 	u32 pipeconf_reg = PIPEBCONF;
@@ -1485,8 +1233,8 @@ int mrfld_s3d_to_frame_packing(struct drm_device *dev, int pipe,
  * Perform 2d mode set back from frame packing 3D display.
  *
  */
-int mrfld_s3d_from_frame_packing(struct drm_device *dev, int pipe,
-				struct mrfld_s3d_flip *ps3d_flip)
+int mrfld_s3d_from_frame_packing(struct drm_device *dev, int pipe, struct
+				 mrfld_s3d_flip *ps3d_flip)
 {
 	/* register */
 	u32 pipeconf_reg = PIPEBCONF;
@@ -1597,13 +1345,13 @@ int mrfld_s3d_from_frame_packing(struct drm_device *dev, int pipe,
 }
 
 /**
- * Perform display 3D mode set to top_and_bottom 3D display.
+ * Perform display 3D mode set to top_and_bottom 3D display. 
  *
  * FIXME: Assume the 3D buffer is the same as display resolution. Will re-visit
  * it for panel fitting mode.
  */
-int mrfld_s3d_to_top_and_bottom(struct drm_device *dev, int pipe,
-				struct mrfld_s3d_flip *ps3d_flip)
+int mrfld_s3d_to_top_and_bottom(struct drm_device *dev, int pipe, struct
+				mrfld_s3d_flip *ps3d_flip)
 {
 	/* register */
 	u32 pipeconf_reg = PIPEBCONF;
@@ -1690,8 +1438,8 @@ int mrfld_s3d_to_top_and_bottom(struct drm_device *dev, int pipe,
  * Perform 2d mode set back from top_and_bottom 3D display.
  *
  */
-int mrfld_s3d_from_top_and_bottom(struct drm_device *dev, int pipe,
-				struct mrfld_s3d_flip *ps3d_flip)
+int mrfld_s3d_from_top_and_bottom(struct drm_device *dev, int pipe, struct
+				  mrfld_s3d_flip *ps3d_flip)
 {
 	/* register */
 	u32 pipeconf_reg = PIPEBCONF;
@@ -1760,14 +1508,14 @@ int mrfld_s3d_from_top_and_bottom(struct drm_device *dev, int pipe,
 }
 
 /**
- * Perform display 3D mode set to full side_by_side 3D display.
+ * Perform display 3D mode set to full side_by_side 3D display. 
  *
  * FIXME: Assume the 3D buffer is the same as display resolution. Will re-visit
  * it for panel fitting mode.
  * Set up the pll, two times 2D clock.
  */
-int mrfld_s3d_to_full_side_by_side(struct drm_device *dev, int pipe,
-				struct mrfld_s3d_flip *ps3d_flip)
+int mrfld_s3d_to_full_side_by_side(struct drm_device *dev, int pipe, struct
+				   mrfld_s3d_flip *ps3d_flip)
 {
 	/* register */
 	u32 pipeconf_reg = PIPEBCONF;
@@ -1891,8 +1639,8 @@ int mrfld_s3d_to_full_side_by_side(struct drm_device *dev, int pipe,
  * Perform 2d mode set back from full side_by_side 3D display.
  *
  */
-int mrfld_s3d_from_full_side_by_side(struct drm_device *dev, int pipe,
-				struct mrfld_s3d_flip *ps3d_flip)
+int mrfld_s3d_from_full_side_by_side(struct drm_device *dev, int pipe, struct
+				     mrfld_s3d_flip *ps3d_flip)
 {
 	/* register */
 	u32 pipeconf_reg = PIPEBCONF;
@@ -1995,13 +1743,13 @@ int mrfld_s3d_from_full_side_by_side(struct drm_device *dev, int pipe,
 }
 
 /**
- * Perform display 3D mode set to half side_by_side 3D display.
+ * Perform display 3D mode set to half side_by_side 3D display. 
  *
  * FIXME: Assume the 3D buffer is the same as display resolution. Will re-visit
  * it for panel fitting mode.
  */
-int mrfld_s3d_to_half_side_by_side(struct drm_device *dev, int pipe,
-				struct mrfld_s3d_flip *ps3d_flip)
+int mrfld_s3d_to_half_side_by_side(struct drm_device *dev, int pipe, struct
+				   mrfld_s3d_flip *ps3d_flip)
 {
 	/* register */
 	u32 pipeconf_reg = PIPEBCONF;
@@ -2089,8 +1837,8 @@ int mrfld_s3d_to_half_side_by_side(struct drm_device *dev, int pipe,
  * Perform 2d mode set back from half side_by_side 3D display.
  *
  */
-int mrfld_s3d_from_half_side_by_side(struct drm_device *dev, int pipe,
-				struct mrfld_s3d_flip *ps3d_flip)
+int mrfld_s3d_from_half_side_by_side(struct drm_device *dev, int pipe, struct
+				     mrfld_s3d_flip *ps3d_flip)
 {
 	/* register */
 	u32 pipeconf_reg = PIPEBCONF;
@@ -2157,14 +1905,14 @@ int mrfld_s3d_from_half_side_by_side(struct drm_device *dev, int pipe,
 }
 
 /**
- * Perform display 3D mode set to pixel alternative 3D display.
+ * Perform display 3D mode set to pixel alternative 3D display. 
  *
  * FIXME: Assume the 3D buffer is the same as display resolution. Will re-visit
  * it for panel fitting mode.
  * Set up the pll, two times 2D clock.
  */
-int mrfld_s3d_to_pixel_interleaving_full(struct drm_device *dev, int pipe,
-					struct mrfld_s3d_flip *ps3d_flip)
+int mrfld_s3d_to_pixel_interleaving_full(struct drm_device *dev, int pipe, struct
+					 mrfld_s3d_flip *ps3d_flip)
 {
 	DRM_DRIVER_PRIVATE_T *dev_priv = dev->dev_private;
 	struct mdfld_dsi_config *dsi_config = dev_priv->dsi_configs[0];
@@ -2292,12 +2040,12 @@ int mrfld_s3d_to_pixel_interleaving_full(struct drm_device *dev, int pipe,
 		REG_WRITE(mipi_reg, mipi_val);
 
 		/*setup MIPI adapter + MIPI IP registers */
-		mdfld_dsi_controller_init(dsi_config, pipe);
+		/* mdfld_dsi_controller_init(dsi_config, pipe); */
 		mdelay(20);	/* msleep(20); */
 
 		/* re-init the panel */
-		dsi_config->dvr_ic_inited = 0;
-		mdfld_dsi_tmd_drv_ic_init(dsi_config, pipe);
+		dsi_config->drv_ic_inited = 0;
+		/* mdfld_dsi_tmd_drv_ic_init(dsi_config, pipe); */
 	}
 
 	/*enable the plane */
@@ -2317,11 +2065,11 @@ int mrfld_s3d_to_pixel_interleaving_full(struct drm_device *dev, int pipe,
 }
 
 /**
- * Perform display 2D mode set from pixel alternative 3D display.
+ * Perform display 2D mode set from pixel alternative 3D display. 
  *
  */
-int mrfld_s3d_from_pixel_interleaving_full(struct drm_device *dev, int pipe,
-					struct mrfld_s3d_flip *ps3d_flip)
+int mrfld_s3d_from_pixel_interleaving_full(struct drm_device *dev, int pipe, struct
+					   mrfld_s3d_flip *ps3d_flip)
 {
 	DRM_DRIVER_PRIVATE_T *dev_priv = dev->dev_private;
 	struct mdfld_dsi_config *dsi_config = dev_priv->dsi_configs[0];
@@ -2436,12 +2184,12 @@ int mrfld_s3d_from_pixel_interleaving_full(struct drm_device *dev, int pipe,
 		REG_WRITE(mipi_reg, mipi_val);
 
 		/*setup MIPI adapter + MIPI IP registers */
-		mdfld_dsi_controller_init(dsi_config, pipe);
+		/* mdfld_dsi_controller_init(dsi_config, pipe); */
 		mdelay(20);	/* msleep(20); */
 
 		/* re-init the panel */
-		dsi_config->dvr_ic_inited = 0;
-		mdfld_dsi_tmd_drv_ic_init(dsi_config, pipe);
+		dsi_config->drv_ic_inited = 0;
+		/* mdfld_dsi_tmd_drv_ic_init(dsi_config, pipe); */
 	}
 
 	/*enable the plane */
@@ -2460,11 +2208,11 @@ int mrfld_s3d_from_pixel_interleaving_full(struct drm_device *dev, int pipe,
 
 /**
  * Perform display 3D mode set to pixel alternative 3D display with two
- * half-width L & R frame buffers.
+ * half-width L & R frame buffers. 
  *
  */
-int mrfld_s3d_to_pixel_interleaving_half(struct drm_device *dev, int pipe,
-					struct mrfld_s3d_flip *ps3d_flip)
+int mrfld_s3d_to_pixel_interleaving_half(struct drm_device *dev, int pipe, struct
+					 mrfld_s3d_flip *ps3d_flip)
 {
 	DRM_DRIVER_PRIVATE_T *dev_priv = dev->dev_private;
 	struct mdfld_dsi_config *dsi_config = dev_priv->dsi_configs[0];
@@ -2551,12 +2299,12 @@ int mrfld_s3d_to_pixel_interleaving_half(struct drm_device *dev, int pipe,
 		REG_WRITE(mipi_reg, mipi_val);
 
 		/*setup MIPI adapter + MIPI IP registers */
-		mdfld_dsi_controller_init(dsi_config, pipe);
+		/* mdfld_dsi_controller_init(dsi_config, pipe); */
 		mdelay(20);	/* msleep(20); */
 
 		/* re-init the panel */
-		dsi_config->dvr_ic_inited = 0;
-		mdfld_dsi_tmd_drv_ic_init(dsi_config, pipe);
+		dsi_config->drv_ic_inited = 0;
+		/* mdfld_dsi_tmd_drv_ic_init(dsi_config, pipe); */
 	}
 
 	/*enable the plane */
@@ -2576,12 +2324,12 @@ int mrfld_s3d_to_pixel_interleaving_half(struct drm_device *dev, int pipe,
 }
 
 /**
- * Perform display 2D mode set from pixel alternative 3D display with two
- * half-width L & R frame buffers.
+ * Perform display 2D mode set from pixel alternative 3D display with two 
+ * half-width L & R frame buffers. 
  *
  */
-int mrfld_s3d_from_pixel_interleaving_half(struct drm_device *dev, int pipe,
-					struct mrfld_s3d_flip *ps3d_flip)
+int mrfld_s3d_from_pixel_interleaving_half(struct drm_device *dev, int pipe, struct
+					   mrfld_s3d_flip *ps3d_flip)
 {
 	DRM_DRIVER_PRIVATE_T *dev_priv = dev->dev_private;
 	struct mdfld_dsi_config *dsi_config = dev_priv->dsi_configs[0];
@@ -2655,12 +2403,12 @@ int mrfld_s3d_from_pixel_interleaving_half(struct drm_device *dev, int pipe,
 		REG_WRITE(mipi_reg, mipi_val);
 
 		/*setup MIPI adapter + MIPI IP registers */
-		mdfld_dsi_controller_init(dsi_config, pipe);
+		/* mdfld_dsi_controller_init(dsi_config, pipe); */
 		mdelay(20);	/* msleep(20); */
 
 		/* re-init the panel */
-		dsi_config->dvr_ic_inited = 0;
-		mdfld_dsi_tmd_drv_ic_init(dsi_config, pipe);
+		dsi_config->drv_ic_inited = 0;
+		/* mdfld_dsi_tmd_drv_ic_init(dsi_config, pipe); */
 	}
 
 	/*enable the plane */
@@ -2708,7 +2456,7 @@ int mrfld_dsi_s3d_query(struct drm_device *dev, struct drm_psb_s3d_query
 }
 
 /**
- * Check if the display supports S3D. If so, report supported S3D formats.
+ * Check if the display supports S3D. If so, report supported S3D formats. 
  *
  */
 int mrfld_s3d_query(struct drm_device *dev, struct drm_psb_s3d_query
@@ -2731,7 +2479,7 @@ int mrfld_s3d_query(struct drm_device *dev, struct drm_psb_s3d_query
 #if 0
 
 /**
- * Perform display 3D mode set.
+ * Perform display 3D mode set. 
  *
  */
 static int mrfld_s3d_crtc_mode_set(struct drm_crtc *crtc,
@@ -2948,7 +2696,7 @@ static int mrfld_s3d_crtc_mode_set(struct drm_crtc *crtc,
 }
 
 /**
- * Perform display 3D mode set from half Top-and-Bottom to half Top-and-Bottom 3D display.
+ * Perform display 3D mode set from half Top-and-Bottom to half Top-and-Bottom 3D display. 
  *
  */
 static int mrfld_s3d_half_top_and_bottom(struct drm_device *dev, int pipe)
@@ -2987,7 +2735,7 @@ static int mrfld_s3d_half_top_and_bottom(struct drm_device *dev, int pipe)
 
 /**
  * Perform display 3D mode set from two full source inputs to line
- * interleaving 3D display.
+ * interleaving 3D display. 
  *
  */
 static int mrfld_s3d_line_interleaving(struct drm_device *dev, int pipe)
@@ -3051,8 +2799,8 @@ static int mrfld_s3d_line_interleaving(struct drm_device *dev, int pipe)
 	/* Set up the pll, two times 2D clock. */
 	/* mrfld_setup_pll (dev, pipe, adjusted_mode->clock); */
 
-	/* Set up from either full Top-and-Bottom or side-by-side to
-	 * full side-by-side display 3D format.
+	/* Set up from either full Top-and-Bottom or side-by-side to 
+	 * full side-by-side display 3D format. 
 	 */
 
 	/* set up pipe related registers */
@@ -3100,7 +2848,7 @@ static int mrfld_s3d_line_interleaving(struct drm_device *dev, int pipe)
 }
 
 /**
- * Perform display 3D mode set from full side-by-side to side-by-side 3D display.
+ * Perform display 3D mode set from full side-by-side to side-by-side 3D display. 
  *
  */
 static int mrfld_s3d_side_by_side(struct drm_device *dev, int pipe)
@@ -3211,7 +2959,7 @@ static int mrfld_s3d_side_by_side(struct drm_device *dev, int pipe)
 }
 
 /**
- * Perform display 3D mode set from half side-by-side to half side-by-side 3D display.
+ * Perform display 3D mode set from half side-by-side to half side-by-side 3D display. 
  *
  */
 static int mrfld_s3d_half_side_by_side(struct drm_device *dev, int pipe)
@@ -3249,7 +2997,7 @@ static int mrfld_s3d_half_side_by_side(struct drm_device *dev, int pipe)
 }
 
 /**
- * Perform display 3D mode set from full Top_Bottom to frame packing 3D display.
+ * Perform display 3D mode set from full Top_Bottom to frame packing 3D display. 
  *
  */
 static int mrfld_s3d_frame_packing(struct drm_device *dev, int pipe)
@@ -3373,7 +3121,7 @@ static int mrfld_s3d_frame_packing(struct drm_device *dev, int pipe)
 }
 
 /**
- * Perform display 3D mode set from half Top_Bottom to line interleaving 3D display.
+ * Perform display 3D mode set from half Top_Bottom to line interleaving 3D display. 
  *
  */
 static int mrfld_s3d_half_top_bottom_to_line_interleave(struct drm_device *dev,
@@ -3444,7 +3192,7 @@ static int mrfld_s3d_half_top_bottom_to_line_interleave(struct drm_device *dev,
 
 	/* Disable pipe and port, don't disable the PLL. */
 	/* FIXME modify the following function with option to disable PLL or
-	 *  not.
+	 *  not. 
 	 *  */
 	mrfld_disable_crtc(dev, pipe, true);
 
@@ -3471,12 +3219,12 @@ static int mrfld_s3d_half_top_bottom_to_line_interleave(struct drm_device *dev,
 	REG_WRITE(mipi_reg, mipi_val);
 
 	/*setup MIPI adapter + MIPI IP registers */
-	mdfld_dsi_controller_init(dsi_config, pipe);
+	/* mdfld_dsi_controller_init(dsi_config, pipe); */
 	mdelay(20);		/* msleep(20); */
 
 	/* re-init the panel */
-	dsi_config->dvr_ic_inited = 0;
-	mdfld_dsi_tmd_drv_ic_init(dsi_config, pipe);
+	dsi_config->drv_ic_inited = 0;
+	/* mdfld_dsi_tmd_drv_ic_init(dsi_config, pipe); */
 
 	/*enable the plane */
 	REG_WRITE(dspcntr_reg_d, dspcntr_val);
@@ -3648,8 +3396,7 @@ static int mdfld_intel_crtc_cursor_set(struct drm_crtc *crtc,
 	}
 
 	/*insert this bo into gtt */
-	/* DRM_INFO("%s: map meminfo for hw cursor. handle %x,
-	pipe = %d \n", __FUNCTION__, handle, pipe); */
+//        DRM_INFO("%s: map meminfo for hw cursor. handle %x, pipe = %d \n", __FUNCTION__, handle, pipe);
 
 	ret = psb_gtt_map_meminfo(dev, (IMG_HANDLE) handle, 0, &page_offset);
 	if (ret) {

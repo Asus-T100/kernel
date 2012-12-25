@@ -11,7 +11,7 @@
  * more details.
  *
  * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
+ * this program; if not, write to the Free Software Foundation, Inc., 
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
  *
  * Authors:
@@ -23,30 +23,30 @@
 
 /* Integrated HDMI specific registers */
 
-#define RESERVED2(x, y)  x##y
-#define RESERVED1(x, y)  RESERVED2(x, y)
-#define RANDOMNUMBER	__LINE__	/* __COUNTER__ */
+#define RESERVED2(x,y)  x##y
+#define RESERVED1(x,y)  RESERVED2(x,y)
+#define RANDOMNUMBER	__LINE__	// __COUNTER__
 #define UNIQUENAME(ValueName) RESERVED1(ValueName, RANDOMNUMBER)
 
 /* TBD: This may change when tested on actual system */
 #define HDCP_MAX_RI_QUERY_COUNT 4
-#define HDCP_MAX_NUM_DWORDS 4	/* 128 bits */
-#define HDCP_MAX_RANDOMNUM_LENGTH 2	/* In DWORD => 64 bits */
+#define HDCP_MAX_NUM_DWORDS 4	//128 bits
+#define HDCP_MAX_RANDOMNUM_LENGTH 2	//In DWORD => 64 bits
 #define HDCP_MAX_RETRY_DISABLE 2
 /*All sizes are defined in bytes */
 #define HDCP_SIZEOF_AKSV    8
 #define HDCP_SIZEOF_BKSV    8
 #define HDCP_SIZEOF_AN        5
 #define HDCP_SIZEOF_RI        2
-#define HDCP_ENCRYPTED_KEY_SIZE 12	/* Akeys, IV and MAC */
+#define HDCP_ENCRYPTED_KEY_SIZE 12	//Akeys, IV and MAC
 #define HDCP_NUM_AKEYS 40
 #define HDCP_NEXT_RI_FRAME 126
-#define HDCP_MAX_RANDOM_NUM_SIZE 4	/* in dwords */
+#define HDCP_MAX_RANDOM_NUM_SIZE 4	//in dwords
 
-#define HDCP_CONVERT_BIG_ENDIAN(x) (((x&0x000000ff) << 24)| \
-				((x&0x0000ff00) << 8)| \
-				((x&0x00ff0000) >> 8)| \
-				((x&0xff000000) >> 24))
+#define HDCP_CONVERT_BIG_ENDIAN(x) (((x&0x000000ff)<<24)|\
+                                    ((x&0x0000ff00)<<8)|\
+                                    ((x&0x00ff0000)>>8)|\
+                                    ((x&0xff000000)>>24))
 
 #define HDCP_MAX_AN_RETRY 100
 
@@ -54,11 +54,16 @@
 #define HDCP_AN_HI_INDEX 1
 
 uint32_t hdcp_invalid_an_list[6][2] = {
-	{0x881cf9e4, 0x38155bf4},
-	{0xb0e81640, 0xb5cac2ec},
-	{0x514fa3e7, 0x5bbb3806},
-	{0xd1b4923a, 0x6172afbb},
-	{0x0c16fd1c, 0x1b28baf5},
+	{0x881cf9e4, 0x38155bf4}
+	,
+	{0xb0e81640, 0xb5cac2ec}
+	,
+	{0x514fa3e7, 0x5bbb3806}
+	,
+	{0xd1b4923a, 0x6172afbb}
+	,
+	{0x0c16fd1c, 0x1b28baf5}
+	,
 	{0x00000000, 0x00000000}
 };
 
@@ -76,71 +81,71 @@ typedef enum _mdfld_hdcp_config_enum {
 } mdfld_hdcp_config_en;
 
 #define MDFLD_HDCP_CONFIG_REG 0x61400
-#define MDFLD_HDCP_CONFIG_PRESERVED_BITS    BITRANGE(3, 31)
+#define MDFLD_HDCP_CONFIG_PRESERVED_BITS    BITRANGE(3,31)
 typedef union _mdfld_hdcp_config {
 	uint32_t value;
 
 	struct {
-		uint32_t hdcp_config:3;	/* bit 2:0; uses HDCP_CONFIGURATION_EN */
-		uint32_t UNIQUENAME(Reserved) : 29;	/* bit 3:31 */
+		uint32_t hdcp_config:3;	//bit 2:0; uses HDCP_CONFIGURATION_EN
+		uint32_t UNIQUENAME(Reserved):29;	//bit 3:31
 	};
 } mdfld_hdcp_config_t;
 
 /* HDCP_STATUS */
 
 #define MDFLD_HDCP_STATUS_REG 0x61448
-#define MDFLD_HDCP_STATUS_PRESERVED_BITS    BITRANGE(24, 31)
+#define MDFLD_HDCP_STATUS_PRESERVED_BITS    BITRANGE(24,31)
 typedef union _mdfld_hdcp_status {
 	uint32_t value;
 
 	struct {
-		uint32_t ainfo:8;	/* Bit 7:0  */
-		uint32_t frame_count:8;	/* Bit 15:8 */
-		uint32_t cipher_hdcp_status:1;	/* Bit 16 */
-		uint32_t cipher_an_status:1;	/* Bit 17 */
-		uint32_t cipher_ri_ready_status:1;	/* Bit 18 */
-		uint32_t cipher_ri_match_status:1;	/* Bit 19 */
-		uint32_t cipher_encrypting_status:1;	/* Bit 20 */
-		uint32_t cipher_ready_for_encryption:1;	/* Bit 21 */
-		uint32_t cipher_mch_id_ready:1;	/* Bit 22 */
-		uint32_t cipher_mac_status:1;	/* Bit 23 */
-		uint32_t UNIQUENAME(Reserved) : 8;	/* Bit 31:24 */
+		uint32_t ainfo:8;	//Bit 7:0
+		uint32_t frame_count:8;	//Bit 15:8
+		uint32_t cipher_hdcp_status:1;	//Bit 16
+		uint32_t cipher_an_status:1;	//Bit 17
+		uint32_t cipher_ri_ready_status:1;	//Bit 18
+		uint32_t cipher_ri_match_status:1;	//Bit 19
+		uint32_t cipher_encrypting_status:1;	//Bit 20
+		uint32_t cipher_ready_for_encryption:1;	//Bit 21
+		uint32_t cipher_mch_id_ready:1;	//Bit 22
+		uint32_t cipher_mac_status:1;	//Bit 23
+		uint32_t UNIQUENAME(Reserved):8;	//Bit 31:24
 	};
 } mdfld_hdcp_status_t;
 
 /* HDCP_RI */
 #define MDFLD_HDCP_RECEIVER_RI_REG 0x61418
-#define MDFLD_HDCP_RECEIVER_RI_PRESERVED_BITS    BITRANGE(16, 31)
+#define MDFLD_HDCP_RECEIVER_RI_PRESERVED_BITS    BITRANGE(16,31)
 typedef union _mdfld_hdcp_receiver_ri {
 	uint32_t value;
 
 	struct {
-		uint32_t ri:16;	/* bit 15:0 */
-		uint32_t UNIQUENAME(Reserved) : 16;	/* bit 31:16 */
+		uint32_t ri:16;	//bit 15:0
+		uint32_t UNIQUENAME(Reserved):16;	//bit 31:16
 	};
 } mdfld_hdcp_receiver_ri_t;
 
 /* HDCP_BKSV_HI */
 #define MDFLD_HDCP_BKSV_HI_REG 0x6140C
-#define MDFLD_HDCP_BKSV_HI_PRESERVED_BITS BITRANGE(8, 31)
+#define MDFLD_HDCP_BKSV_HI_PRESERVED_BITS BITRANGE(8,31)
 typedef union _mdfld_hdcp_bksv_hi {
 	uint32_t value;
 
 	struct {
-		uint32_t bksv_hi:8;	/* bit 7:0 */
-		uint32_t UNIQUENAME(Reserved) : 24;	/* bit 31:8 */
+		uint32_t bksv_hi:8;	//bit 7:0
+		uint32_t UNIQUENAME(Reserved):24;	//bit 31:8
 	};
 } mdfld_hdcp_bksv_hi_t;
 
 /* HDCP_AKEY_HI */
 #define MDFLD_HDCP_AKEY_HI_REG 0x61424
-#define MDFLD_HDCP_AKEY_HI_PRESERVED_BITS BITRANGE(20, 31)
+#define MDFLD_HDCP_AKEY_HI_PRESERVED_BITS BITRANGE(20,31)
 typedef union _mdfld_hdcp_akey_hi {
 	uint32_t value;
 
 	struct {
-		uint32_t akey_hi:20;	/* bit 7:0 */
-		uint32_t UNIQUENAME(Reserved) : 12;	/* bit 31:8 */
+		uint32_t akey_hi:20;	//bit 7:0
+		uint32_t UNIQUENAME(Reserved):12;	//bit 31:8
 	};
 } mdfld_hdcp_akey_hi_t;
 
@@ -166,28 +171,28 @@ typedef enum _mdfld_hdcp_repeater_ctrl_enum {
 } mdfld_hdcp_repeater_ctrl_en;
 
 #define MDFLD_HDCP_REP_REG 0x61444
-#define MDFLD_HDCP_REP_PRESERVED_BITS BITRANGE(8, 31)
+#define MDFLD_HDCP_REP_PRESERVED_BITS BITRANGE(8,31)
 typedef union _mdfld_hdcp_rep {
 	uint32_t value;
 
 	struct {
-		uint32_t repeater_present:1;	/* bit 0   */
-		uint32_t repeater_control:3;	/* bit 3:1 */
-		uint32_t UNIQUENAME(Reserved) : 12;	/* bit 15:4 BUN#: 07ww44#1 */
-		const uint32_t repeater_status:4;	/* bit 19:16 */
-		uint32_t UNIQUENAME(Reserved) : 12;	/* bit 31:20 */
+		uint32_t repeater_present:1;	//bit 0
+		uint32_t repeater_control:3;	//bit 3:1
+		uint32_t UNIQUENAME(Reserved):12;	//bit 15:4 BUN#: 07ww44#1
+		const uint32_t repeater_status:4;	//bit 19:16
+		uint32_t UNIQUENAME(Reserved):12;	//bit 31:20
 	};
 } mdfld_hdcp_rep_t;
 
 /* HDCP_BKSV_HI */
 #define MDFLD_HDCP_AKSV_HI_REG 0x61450
-#define MDFLD_HDCP_AKSV_HI_PRESERVED_BITS BITRANGE(8, 31)
+#define MDFLD_HDCP_AKSV_HI_PRESERVED_BITS BITRANGE(8,31)
 typedef union _mdfld_hdcp_aksv_hi {
 	uint32_t value;
 
 	struct {
-		uint32_t aksv_hi:8;	/* bit 7:0 */
-		uint32_t UNIQUENAME(Reserved) : 24;	/*bit 31:8 */
+		uint32_t aksv_hi:8;	//bit 7:0
+		uint32_t UNIQUENAME(Reserved):24;	//bit 31:8
 	};
 } mdfld_hdcp_aksv_hi_t;
 

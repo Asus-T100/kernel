@@ -21,21 +21,21 @@
 #include "msvdx_power.h"
 #include "pvr_debug.h"
 
-PVRSRV_ERROR MSVDXRegisterDevice(PVRSRV_DEVICE_NODE * psDeviceNode)
+PVRSRV_ERROR MSVDXRegisterDevice(PVRSRV_DEVICE_NODE *psDeviceNode)
 {
 	/*********************
 	 * Device node setup *
 	 *********************/
 	/* Setup static data and callbacks on the device agnostic device node */
-	psDeviceNode->sDevId.eDeviceType = PVRSRV_DEVICE_TYPE_MSVDX;
-	psDeviceNode->sDevId.eDeviceClass = PVRSRV_DEVICE_CLASS_VIDEO;
+	psDeviceNode->sDevId.eDeviceType		= PVRSRV_DEVICE_TYPE_MSVDX;
+	psDeviceNode->sDevId.eDeviceClass		= PVRSRV_DEVICE_CLASS_VIDEO;
 
 	/* Configure MMU specific stuff */
 	/* ... */
 
 	psDeviceNode->pfnMMUCacheInvalidate = IMG_NULL;
 
-	psDeviceNode->pfnInitDeviceCompatCheck = IMG_NULL;
+	psDeviceNode->pfnInitDeviceCompatCheck	= IMG_NULL;
 
 	/* Register callbacks for creation of device memory contexts */
 	psDeviceNode->pfnRegisterMemoryContext = IMG_NULL;
@@ -53,7 +53,8 @@ PVRSRV_ERROR MSVDXRegisterDevice(PVRSRV_DEVICE_NODE * psDeviceNode)
 	return PVRSRV_OK;
 }
 
-PVRSRV_ERROR MSVDXUnregisterDevice(PVRSRV_DEVICE_NODE * psDeviceNode)
+
+PVRSRV_ERROR MSVDXUnregisterDevice(PVRSRV_DEVICE_NODE *psDeviceNode)
 {
 	return PVRSRV_OK;
 }

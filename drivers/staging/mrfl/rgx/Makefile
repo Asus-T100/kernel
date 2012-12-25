@@ -4,83 +4,110 @@
 RGXDIR=drivers/staging/mrfl/rgx
 
 ccflags-y += \
-	-I$(RGXDIR)/services/include \
-	-I$(RGXDIR)/services/include/shared \
-	-I$(RGXDIR)/services/3rdparty/bufferclass_video \
-	-I$(RGXDIR)/services/3rdparty/intel_drm \
-	-I$(RGXDIR)/services/server/include \
-	-I$(RGXDIR)/services/server/devices/rgx \
-	-I$(RGXDIR)/services/server/env/linux \
-	-I$(RGXDIR)/services/system/include \
-	-I$(RGXDIR)/services/system/rgx_nohw \
-	-I$(RGXDIR)/services/shared/include \
-	-I$(RGXDIR)/generated/hostportio_bridge \
-	-I$(RGXDIR)/generated/cmm_bridge \
+	-I$(RGXDIR)/include \
+	-I$(RGXDIR)/generated/rgxcmp_bridge \
+	-I$(RGXDIR)/generated/dmm_bridge \
+	-I$(RGXDIR)/generated/pdumpcmm_bridge \
 	-I$(RGXDIR)/generated/dc_bridge \
+	-I$(RGXDIR)/generated/cachegeneric_bridge \
+	-I$(RGXDIR)/generated/hostportio_bridge \
+	-I$(RGXDIR)/generated/rgxtq_bridge \
+	-I$(RGXDIR)/generated/mm_bridge \
+	-I$(RGXDIR)/generated/cmm_bridge \
+	-I$(RGXDIR)/generated/rgxpdump_bridge \
+	-I$(RGXDIR)/generated/smm_bridge \
 	-I$(RGXDIR)/generated/pdump_bridge \
+	-I$(RGXDIR)/generated/syncsexport_bridge \
+	-I$(RGXDIR)/generated/sync_bridge \
+	-I$(RGXDIR)/generated/debugmisc_bridge \
 	-I$(RGXDIR)/generated/syncexport_bridge \
-	-I$(RGXDIR)/generated/srvcore_bridge \
 	-I$(RGXDIR)/generated/dsync_bridge \
 	-I$(RGXDIR)/generated/rgxinit_bridge \
-	-I$(RGXDIR)/generated/breakpoint_bridge \
 	-I$(RGXDIR)/generated/pdumpmm_bridge \
-	-I$(RGXDIR)/generated/mm_bridge \
-	-I$(RGXDIR)/generated/rgxcmp_bridge \
-	-I$(RGXDIR)/generated/debugmisc_bridge \
-	-I$(RGXDIR)/generated/rgxccb_bridge \
-	-I$(RGXDIR)/generated/sync_bridge \
-	-I$(RGXDIR)/generated/rgxtq_bridge \
-	-I$(RGXDIR)/generated/dmm_bridge \
 	-I$(RGXDIR)/generated/rgxta3d_bridge \
-	-I$(RGXDIR)/generated/pdumpcmm_bridge \
-	-I$(RGXDIR)/generated/rgxpdump_bridge \
-	-I$(RGXDIR)/include \
-	-I$(RGXDIR)/hwdefs/km \
+	-I$(RGXDIR)/generated/rgxccb_bridge \
+	-I$(RGXDIR)/generated/srvcore_bridge \
+	-I$(RGXDIR)/generated/breakpoint_bridge \
+	-I$(RGXDIR)/generated/pvrtl_bridge \
+	-I$(RGXDIR)/generated/rgxhwperf_bridge \
 	-I$(RGXDIR)/tools/intern/debug/include \
 	-I$(RGXDIR)/tools/intern/debug/dbgdriv/common \
+	-I$(RGXDIR)/hwdefs \
+	-I$(RGXDIR)/hwdefs/km \
+	-I$(RGXDIR)/hwdefs/km/cores \
+	-I$(RGXDIR)/services/include \
+	-I$(RGXDIR)/services/include/shared \
+	-I$(RGXDIR)/services/include/env/linux \
+	-I$(RGXDIR)/services/3rdparty/intel_drm \
+	-I$(RGXDIR)/services/3rdparty/bufferclass_video \
+	-I$(RGXDIR)/services/system/include \
+	-I$(RGXDIR)/services/shared/devices/rgx \
+	-I$(RGXDIR)/services/shared/include \
+	-I$(RGXDIR)/services/server/devices/rgx \
+	-I$(RGXDIR)/services/server/env/linux \
+	-I$(RGXDIR)/services/server/include \
+	-I$(RGXDIR)/services/system/rgx_nohw \
 	-I$(RGXDIR)/../interface \
 	-Iinclude/linux \
-	-Iinclude/drm
+	-Iinclude/drm \
+	-Iarch/arm/include
+
 
 ccflags-y += \
 	-DANDROID \
 	-DLINUX -D__linux__ -D__KERNEL__\
 	-DPVRSRV_MODNAME="\"pvrsrvkm\"" \
-	-DPVR_BUILD_DIR="\"nohw_linux\"" \
-	-DRGXCORE=HOOD \
-	-DRGXHOOD \
-	-DRGXCONFIG=4 \
-	-DSUPPORT_RGX \
-	-DUSE_RGX_CORE_REV_HEAD \
+	-DPVR_BUILD_DIR="\"pc_android\"" \
+	-DPVR_LDM_DRIVER_REGISTRATION_NAME="\"pvrsrvkm\"" \
+	-DSUPPORT_RGX=1 \
 	-DPVR_SECURE_HANDLES \
+	-DRGX_BVNC_CORE_KM_HEADER="\"cores/rgxcore_km_1.14.4.4.h\"" \
 	-DDISPLAY_CONTROLLER=pvrlfb \
-	-DSUPPORT_RGX_HOST_FIRMWARE \
-	-DSUPPORT_PERCONTEXT_PB \
+	-DSUPPORT_RENDER_TARGET_ARRAYS \
 	-DSUPPORT_LINUX_X86_WRITECOMBINE \
 	-DSUPPORT_LINUX_X86_PAT \
-	-DSUPPORT_DRI_DRM \
-	-DSUPPORT_DRI_DRM_EXT \
+	-DSYS_USING_INTERRUPTS \
+	-DLDM_DEVICE_CLASS \
+	-DSUPPORT_DRM \
+	-DSUPPORT_DRM_EXT \
 	-DBC_DISCONTIG_BUFFERS \
-	-DCACHEFLUSH_TYPE=CACHEFLUSH_X86
+	-DCACHEFLUSH_TYPE=CACHEFLUSH_X86 \
+	-DSUPPORT_INSECURE_EXPORT \
+	-DSUPPORT_SECURE_EXPORT \
+	-DSYS_CUSTOM_POWERLOCK_WRAP \
+	-DRGX_FEATURE_BYPASS_SLC_COMBINER \
+	-DSUPPORT_HW_RECOVERY \
+	-DSUPPORT_RGXFW_LOG \
+	-DLMA \
+	-DTC_MEMORY_CONFIG=TC_MEMORY_LOCAL
 
-#	-DSUPPORT_SECURE_EXPORT
+# Skip the following dependencies on Merrifield Virtual Platform
+ifneq ($(CONFIG_BOARD_MRFLD_VP),y)
+ccflags-y += \
+	-DPVR_LINUX_USING_WORKQUEUES \
+	-DPVR_LINUX_MISR_USING_PRIVATE_WORKQUEUE \
+	-DPVR_LINUX_TIMERS_USING_WORKQUEUES
+endif
 
 # for PDUMP
-ccflags-y += -DPDUMP -DSUPPORT_DBGDRV_EVENT_OBJECTS
+ccflags-$(PDUMP) += -DPDUMP -DSUPPORT_DBGDRV_EVENT_OBJECTS
 
 # for no-hardware
 #ccflags-y += -DNO_HARDWARE
 
+# Either BUILD is debug or release. It can NOT be both.
 ccflags-$(CONFIG_DRM_HANDSET_RELEASE) += -DBUILD="\"release\"" -DPVR_BUILD_TYPE="\"release\"" -DRELEASE
 ccflags-$(CONFIG_DRM_HANDSET_DEBUG) += -DBUILD="\"debug\"" -DPVR_BUILD_TYPE="\"debug\"" -DDEBUG
-#ccflags-$(CONFIG_DRM_HANDSET_DEBUG) += -DDEBUG_LINUX_MEM_AREAS -DDEBUG_LINUX_MEMORY_ALLOCATIONS -DDEBUG_LINUX_MMAP_AREAS
-ccflags-$(CONFIG_DRM_HANDSET_DEBUG) += -DRGXFW_ALIGNCHECKS -DSUPPORT_RGXFW_LOG
-ccflags-$(CONFIG_DRM_HANDSET_DEBUG) += -DDEBUG_BRIDGE_KM -DDEBUG_TRACE_BRIDGE_KM -DDEBUG_BRIDGE_KM_DISPATCH_TABLE
+
+ccflags-$(CONFIG_DRM_HANDSET_DEBUG) += -DDEBUG_LINUX_MEM_AREAS -DDEBUG_LINUX_MEMORY_ALLOCATIONS -DDEBUG_LINUX_MMAP_AREAS
+ccflags-$(CONFIG_DRM_HANDSET_DEBUG) += -DRGXFW_ALIGNCHECKS
+
+# The following is an option, it can be enabled for more debug information
+# ccflags-$(CONFIG_DRM_HANDSET_DEBUG) += -DDEBUG_BRIDGE_KM -DDEBUG_TRACE_BRIDGE_KM -DDEBUG_BRIDGE_KM_DISPATCH_TABLE
 
 # pvrsrvkm
 merrifield_gfx-y += \
 	services/server/common/pmr.o \
-	services/server/common/mem_debug.o \
 	services/server/common/devicemem_server.o \
 	services/server/common/devicemem_heapcfg.o \
 	services/server/common/dc_server.o \
@@ -91,6 +118,7 @@ merrifield_gfx-y += \
 	services/server/common/physmem_lma.o \
 	services/server/common/power.o \
 	services/server/common/physheap.o \
+	services/server/common/cache_generic.o \
 	services/server/common/scp.o \
 	services/server/common/mmu_common.o \
 	services/server/common/srvcore.o \
@@ -112,16 +140,25 @@ merrifield_gfx-y += \
 	services/server/env/linux/devicemem_mmap_stub.o \
 	services/server/env/linux/module.o \
 	services/server/env/linux/mmap.o \
+	services/server/env/linux/lock.o \
+	services/server/env/linux/ossecure_export.o \
 	services/server/env/linux/pdump.o \
 	services/shared/common/dllist.o \
 	services/shared/common/devicemem.o \
 	services/shared/common/hash.o \
 	services/shared/common/devicemem_utils.o \
 	services/shared/common/sync.o \
-	services/shared/common/ra.o
+	services/shared/common/ra.o \
+	services/shared/devices/rgx/rgx_compat_bvnc.o \
+	services/server/common/tlintern.o \
+	services/server/common/tlstream.o \
+	services/server/common/tltest.o \
+	services/server/common/tlserver.o
+
+#	services/server/env/linux/physmem_ion.o
 
 # for PDUMP
-merrifield_gfx-y += \
+merrifield_gfx-$(PDUMP) += \
 	services/server/common/pdump_common.o \
 	services/server/common/pdump_mmu.o \
 	services/server/common/pdump_physmem.o \
@@ -148,11 +185,9 @@ merrifield_gfx-y += \
 	services/server/devices/rgx/rgxmem.o \
 	services/server/devices/rgx/rgxccb.o \
 	services/server/devices/rgx/rgxdebug.o \
-	services/server/devices/rgx/hostportio_server.o \
 	services/server/devices/rgx/rgxbreakpoint.o
 
 merrifield_gfx-y += \
-	generated/hostportio_bridge/server_hostportio_bridge.o \
 	generated/cmm_bridge/server_cmm_bridge.o \
 	generated/dc_bridge/server_dc_bridge.o \
 	generated/pdump_bridge/server_pdump_bridge.o \
@@ -170,12 +205,17 @@ merrifield_gfx-y += \
 	generated/dmm_bridge/client_mm_bridge.o \
 	generated/dpdumpmm_bridge/client_pdumpmm_bridge.o \
 	generated/rgxta3d_bridge/server_rgxta3d_bridge.o \
+	generated/cachegeneric_bridge/server_cachegeneric_bridge.o \
 	generated/pdumpcmm_bridge/server_pdumpcmm_bridge.o \
-	generated/rgxpdump_bridge/server_rgxpdump_bridge.o
+	generated/rgxpdump_bridge/server_rgxpdump_bridge.o \
+	generated/pvrtl_bridge/server_pvrtl_bridge.o \
+	generated/rgxhwperf_bridge/server_rgxhwperf_bridge.o
 
 # for SUPPORT_SECURE_EXPORT
 merrifield_gfx-y += \
-	generated/mm_bridge/server_mm_bridge.o
+	generated/mm_bridge/server_mm_bridge.o \
+	generated/smm_bridge/server_smm_bridge.o \
+	generated/syncsexport_bridge/server_syncsexport_bridge.o
 ccflags-y += \
 	-I$(RGXDIR)/generated/smm_bridge
 
@@ -190,7 +230,7 @@ merrifield_gfx-y += \
 	services/3rdparty/intel_drm/pvr_drm.o \
 	services/3rdparty/intel_drm/msvdx_power.o \
 	services/3rdparty/intel_drm/topaz_power.o \
-	services/3rdparty/intel_drm/dc_mrfld_displayclass.o \
+	services/3rdparty/intel_drm/dc_mrfld.o \
 	services/system/common/env/linux/pci_support.o
 
 obj-$(CONFIG_DRM_MRFLD) += merrifield_gfx.o

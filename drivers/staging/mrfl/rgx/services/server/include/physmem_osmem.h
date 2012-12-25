@@ -1,23 +1,7 @@
-/*!****************************************************************************
-@File		physmem_osmem.h
-
+/**************************************************************************/ /*!
+@File
 @Title		PMR implementation of OS derived physical memory
-
-@Author		Imagination Technologies
-
-@Copyright     	Copyright 2010 by Imagination Technologies Limited.
-                All rights reserved. No part of this software, either
-                material or conceptual may be copied or distributed,
-                transmitted, transcribed, stored in a retrieval system
-                or translated into any human or computer language in any
-                form by any means, electronic, mechanical, manual or
-                other-wise, or disclosed to third parties without the
-                express written permission of Imagination Technologies
-                Limited, Unit 8, HomePark Industrial Estate,
-                King's Langley, Hertfordshire, WD4 8LZ, U.K.
-
-@Platform	generic
-
+@Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
 @Description	Part of the memory management.  This module is
                 responsible for the an implementation of the "PMR"
                 abstraction.  This interface is for the
@@ -31,11 +15,43 @@
                 A dummy implementation is available in
                 physmem_osmem_dummy.c for operating systems that
                 cannot, or do not wish to, offer this functionality.
+@License        Dual MIT/GPLv2
 
-@DoxygenVer
+The contents of this file are subject to the MIT license as set out below.
 
-******************************************************************************/
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+Alternatively, the contents of this file may be used under the terms of
+the GNU General Public License Version 2 ("GPL") in which case the provisions
+of GPL are applicable instead of those above.
+
+If you wish to allow use of your version of this file only under the terms of
+GPL, and not to allow others to use your version of this file under the terms
+of the MIT license, indicate your decision by deleting the provisions above
+and replace them with the notice and other provisions required by GPL as set
+out in the file called "GPL-COPYING" included in this distribution. If you do
+not delete the provisions above, a recipient may use your version of this file
+under the terms of either the MIT license or GPL.
+
+This License is also included in this distribution in the file called
+"MIT-COPYING".
+
+EXCEPT AS OTHERWISE STATED IN A NEGOTIATED AGREEMENT: (A) THE SOFTWARE IS
+PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING
+BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+PURPOSE AND NONINFRINGEMENT; AND (B) IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+*/ /***************************************************************************/
 #ifndef _SRVSRV_PHYSMEM_OSMEM_H_
 #define _SRVSRV_PHYSMEM_OSMEM_H_
 
@@ -58,9 +74,14 @@
  * PVRSRV_ERROR_NOT_SUPPORTED should be returned)
  */
 extern PVRSRV_ERROR
-PhysmemNewOSRamBackedPMR(PVRSRV_DEVICE_NODE * psDevNode,
-			 IMG_DEVMEM_SIZE_T uiSize,
-			 IMG_UINT32 uiLog2PageSize,
-			 PVRSRV_MEMALLOCFLAGS_T uiFlags, PMR ** ppsPMROut);
+PhysmemNewOSRamBackedPMR(PVRSRV_DEVICE_NODE *psDevNode,
+                         IMG_DEVMEM_SIZE_T uiSize,
+						 IMG_DEVMEM_SIZE_T uiChunkSize,
+						 IMG_UINT32 ui32NumPhysChunks,
+						 IMG_UINT32 ui32NumVirtChunks,
+						 IMG_BOOL *pabMappingTable,
+                         IMG_UINT32 uiLog2PageSize,
+                         PVRSRV_MEMALLOCFLAGS_T uiFlags,
+                         PMR **ppsPMROut);
 
-#endif				/* #ifndef _SRVSRV_PHYSMEM_OSMEM_H_ */
+#endif /* #ifndef _SRVSRV_PHYSMEM_OSMEM_H_ */

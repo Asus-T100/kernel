@@ -40,7 +40,7 @@
  *
  *
  */
-static int64_t csc_matrix_mult_func(int64_t *M1, int64_t *M2)
+static int64_t csc_matrix_mult_func(int64_t * M1, int64_t * M2)
 {
 	int64_t result = 0;
 	int i = 0;
@@ -57,7 +57,7 @@ static int64_t csc_matrix_mult_func(int64_t *M1, int64_t *M2)
  *  3x3 matrix multiply 3x3 matrix
  *
  */
-static void csc_matrix_mult(int64_t *M1, int64_t *M2, int64_t *M3)
+static void csc_matrix_mult(int64_t * M1, int64_t * M2, int64_t * M3)
 {
 	int64_t temp1[3], temp2[3];
 	int i = 0;
@@ -135,7 +135,7 @@ static void csc_matrix_mult(int64_t *M1, int64_t *M2, int64_t *M3)
 static int64_t csc_div64(int64_t divident, int64_t divisor)
 {
 	bool sign = !(csc_sign(divident) ^ csc_sign(divisor));
-	uint64_t temp_N = (uint64_t) -1;
+	uint64_t temp_N = (uint64_t) - 1;
 	uint64_t temp_divid = 0, temp_divis = 0, temp_quot = 0;
 
 	if (divident < 0) {
@@ -167,9 +167,9 @@ static int64_t csc_div64(int64_t divident, int64_t divisor)
  *  M00 = V0, M01 = V1, M10 = V2, M11 = V3.
  *  det M = V0 * V3 - V1 * V2
  */
-int64_t csc_det_2x2_matric(int64_t *M2)
+int64_t csc_det_2x2_matric(int64_t * M2)
 {
-	return M2[0] * M2[3] - M2[1] * M2[2];
+	return ((M2[0] * M2[3]) - (M2[1] * M2[2]));
 }
 
 /**
@@ -182,7 +182,7 @@ int64_t csc_det_2x2_matric(int64_t *M2)
  *  = V7, M22 = V8.
  *  det M = V0*(V8*V4 - V7*V5) - V3*(V8*V1 - V7*V2) + V6*(V5*V1 - V4*V2)
  */
-int64_t csc_det_3x3_matric(int64_t *M3)
+int64_t csc_det_3x3_matric(int64_t * M3)
 {
 	int64_t M2_0[4], M2_1[4], M2_2[4];
 	int64_t det0 = 0;
@@ -207,7 +207,7 @@ int64_t csc_det_3x3_matric(int64_t *M3)
 	M2_2[3] = M3[5];
 	det2 = csc_det_2x2_matric(M2_2);
 
-	return ((M3[0] * det0) - M3[3] * det1 + M3[6] * det2);
+	return ((M3[0] * det0) - (M3[3] * det1) + (M3[6] * det2));
 }
 
 /**
@@ -219,7 +219,7 @@ int64_t csc_det_3x3_matric(int64_t *M3)
  *  M00 = V0, M01 = V1, M02 = V2, M10 = V3, M11 = V4, M12 = V5, M20 = V6, M21
  *  = V7, M22 = V8.
  */
-int64_t csc_inverse_3x3_matrix(int64_t *M3, int64_t *M3_out)
+int64_t csc_inverse_3x3_matrix(int64_t * M3, int64_t * M3_out)
 {
 	int64_t M2[4];
 	int64_t det_M3 = 0;
@@ -425,9 +425,9 @@ static void csc_XYZ(int *chrom, int64_t * M_csc)
  *  format {12, 10,1}
  *
  */
-static void csc_to_12bit_register_value(int64_t csc, u16 *reg_val)
+static void csc_to_12bit_register_value(int64_t csc, u16 * reg_val)
 {
-	uint64_t temp_N = (uint64_t) -1;
+	uint64_t temp_N = (uint64_t) - 1;
 	uint64_t temp64 = 0;
 	u32 temp_32_1;
 	u32 temp_32_2;

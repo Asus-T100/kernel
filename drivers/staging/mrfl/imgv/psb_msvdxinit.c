@@ -28,10 +28,10 @@
 
 #define MSVDX_REG (dev_priv->msvdx_reg)
 #define UPLOAD_FW_BY_DMA 1
-#define STACKGUARDWORD          (0x10101010)
-#define MSVDX_MTX_DATA_LOCATION (0x82880000)
-#define UNINITILISE_MEM		(0xcdcdcdcd)
-#define FIRMWAREID		(0x014d42ab)
+#define STACKGUARDWORD          ( 0x10101010 )
+#define MSVDX_MTX_DATA_LOCATION ( 0x82880000 )
+#define UNINITILISE_MEM 	( 0xcdcdcdcd )
+#define FIRMWAREID		( 0x014d42ab )
 
 uint8_t psb_rev_id;
 /*MSVDX FW header*/
@@ -54,9 +54,8 @@ int psb_wait_for_register(struct drm_psb_private *dev_priv,
 	uint32_t poll_cnt = 2000000;
 	while (poll_cnt) {
 		reg_value = PSB_RMSVDX32(offset);
-		/* All the bits are reset */
-		if (value == (reg_value & enable))
-			return 0;	/* So exit */
+		if (value == (reg_value & enable))	/* All the bits are reset   */
+			return 0;	/* So exit                      */
 
 		/* Wait a bit */
 		PSB_UDELAY(5);
@@ -113,9 +112,9 @@ void psb_write_mtx_core_reg(struct drm_psb_private *dev_priv,
 	PSB_WMSVDX32(reg, MSVDX_MTX_REGISTER_READ_WRITE_REQUEST);
 
 	psb_wait_for_register(dev_priv,
-		MSVDX_MTX_REGISTER_READ_WRITE_REQUEST,
-		MSVDX_MTX_REGISTER_READ_WRITE_REQUEST_MTX_DREADY_MASK,
-		MSVDX_MTX_REGISTER_READ_WRITE_REQUEST_MTX_DREADY_MASK);
+			      MSVDX_MTX_REGISTER_READ_WRITE_REQUEST,
+			      MSVDX_MTX_REGISTER_READ_WRITE_REQUEST_MTX_DREADY_MASK,
+			      MSVDX_MTX_REGISTER_READ_WRITE_REQUEST_MTX_DREADY_MASK);
 }
 
 #if UPLOAD_FW_BY_DMA
@@ -170,25 +169,16 @@ static void psb_upload_fw(struct drm_psb_private *dev_priv,
 	PSB_DEBUG_GENERAL("MSVDX: Upload firmware by DMA\n");
 	psb_get_mtx_control_from_dash(dev_priv);
 
-	/* dma transfers to/from the mtx have to be 32-bit aligned
-	and in multiples of 32 bits */
+	// dma transfers to/from the mtx have to be 32-bit aligned and in multiples of 32 bits
 	PSB_WMSVDX32(address, REGISTER(MTX_CORE, CR_MTX_SYSC_CDMAA));
 
-	/* burst size in multiples of 64 bits (allowed values are 2 or 4) */
-	REGIO_WRITE_FIELD_LITE(reg_val,
-			MTX_CORE_CR_MTX_SYSC_CDMAC, BURSTSIZE, 4);
-
-	/* false means write to mtx mem, true means read from mtx mem */
-	REGIO_WRITE_FIELD_LITE(reg_val, MTX_CORE_CR_MTX_SYSC_CDMAC, RNW, 0);
-	/* begin transfer */
-	REGIO_WRITE_FIELD_LITE(reg_val, MTX_CORE_CR_MTX_SYSC_CDMAC, ENABLE, 1);
-	/* This specifies the transfer size of the DMA operation
-	in terms of 32-bit words */
-	REGIO_WRITE_FIELD_LITE(reg_val, MTX_CORE_CR_MTX_SYSC_CDMAC,
-			LENGTH, words);
+	REGIO_WRITE_FIELD_LITE(reg_val, MTX_CORE_CR_MTX_SYSC_CDMAC, BURSTSIZE, 4);	// burst size in multiples of 64 bits (allowed values are 2 or 4)
+	REGIO_WRITE_FIELD_LITE(reg_val, MTX_CORE_CR_MTX_SYSC_CDMAC, RNW, 0);	// false means write to mtx mem, true means read from mtx mem
+	REGIO_WRITE_FIELD_LITE(reg_val, MTX_CORE_CR_MTX_SYSC_CDMAC, ENABLE, 1);	// begin transfer
+	REGIO_WRITE_FIELD_LITE(reg_val, MTX_CORE_CR_MTX_SYSC_CDMAC, LENGTH, words);	// This specifies the transfer size of the DMA operation in terms of 32-bit words
 	PSB_WMSVDX32(reg_val, REGISTER(MTX_CORE, CR_MTX_SYSC_CDMAC));
 
-	/* toggle channel 0 usage between mtx and other msvdx peripherals */
+	// toggle channel 0 usage between mtx and other msvdx peripherals
 	{
 		reg_val = PSB_RMSVDX32(REGISTER(MSVDX_CORE, CR_MSVDX_CONTROL));
 		REGIO_WRITE_FIELD(reg_val, MSVDX_CORE_CR_MSVDX_CONTROL,
@@ -224,11 +214,11 @@ static void psb_upload_fw(struct drm_psb_private *dev_priv,
 	/* Only use a single dma - assert that this is valid */
 	if ((size / 4) >= (1 << 15)) {
 		DRM_ERROR
-		("psb: DMA size beyond limited, aboart firmware uploading\n");
+		    ("psb: DMA size beyond limited, aboart firmware uploading\n");
 		return;
 	}
 
-	uCountReg = PSB_DMAC_VALUE_COUNT(PSB_DMAC_BSWAP_NO_SWAP, 0,/* 32 bits*/
+	uCountReg = PSB_DMAC_VALUE_COUNT(PSB_DMAC_BSWAP_NO_SWAP, 0,	/* 32 bits */
 					 PSB_DMAC_DIR_MEM_TO_PERIPH,
 					 0, (size / 4));
 	/* Set the number of bytes to dma */
@@ -276,7 +266,7 @@ static void psb_upload_fw(struct drm_psb_private *dev_priv,
 			  uint32_t address, const unsigned int words,
 			  const uint32_t * const data)
 {
-	uint32_t loop, ctrl, ram_id, addr, cur_bank = (uint32_t) ~0;
+	uint32_t loop, ctrl, ram_id, addr, cur_bank = (uint32_t) ~ 0;
 	uint32_t access_ctrl;
 
 	PSB_DEBUG_GENERAL("MSVDX: Upload firmware by register interface\n");
@@ -284,8 +274,8 @@ static void psb_upload_fw(struct drm_psb_private *dev_priv,
 	access_ctrl = PSB_RMSVDX32(MSVDX_MTX_RAM_ACCESS_CONTROL);
 
 	/* Wait for MCMSTAT to become be idle 1 */
-	psb_wait_for_register(dev_priv, MSVDX_MTX_RAM_ACCESS_STATUS, 1,
-			      0xffffffff /* Enables */);
+	psb_wait_for_register(dev_priv, MSVDX_MTX_RAM_ACCESS_STATUS, 1,	/* Required Value */
+			      0xffffffff /* Enables */ );
 
 	for (loop = 0; loop < words; loop++) {
 		ram_id = data_mem + (address / ram_bank_size);
@@ -309,8 +299,8 @@ static void psb_upload_fw(struct drm_psb_private *dev_priv,
 		PSB_WMSVDX32(data[loop], MSVDX_MTX_RAM_ACCESS_DATA_TRANSFER);
 
 		/* Wait for MCMSTAT to become be idle 1 */
-		psb_wait_for_register(dev_priv, MSVDX_MTX_RAM_ACCESS_STATUS, 1,
-				      0xffffffff /* Enables */);
+		psb_wait_for_register(dev_priv, MSVDX_MTX_RAM_ACCESS_STATUS, 1,	/* Required Value */
+				      0xffffffff /* Enables */ );
 	}
 	PSB_DEBUG_GENERAL("MSVDX: Upload done\n");
 
@@ -325,7 +315,7 @@ static int psb_verify_fw(struct drm_psb_private *dev_priv,
 			 const uint32_t data_mem, uint32_t address,
 			 const uint32_t words, const uint32_t * const data)
 {
-	uint32_t loop, ctrl, ram_id, addr, cur_bank = (uint32_t) ~0;
+	uint32_t loop, ctrl, ram_id, addr, cur_bank = (uint32_t) ~ 0;
 	uint32_t access_ctrl;
 	int ret = 0;
 
@@ -333,8 +323,8 @@ static int psb_verify_fw(struct drm_psb_private *dev_priv,
 	access_ctrl = PSB_RMSVDX32(MSVDX_MTX_RAM_ACCESS_CONTROL);
 
 	/* Wait for MCMSTAT to become be idle 1 */
-	psb_wait_for_register(dev_priv, MSVDX_MTX_RAM_ACCESS_STATUS, 1,
-			      0xffffffff /* Enables */);
+	psb_wait_for_register(dev_priv, MSVDX_MTX_RAM_ACCESS_STATUS, 1,	/* Required Value */
+			      0xffffffff /* Enables */ );
 
 	for (loop = 0; loop < words; loop++) {
 		uint32_t reg_value;
@@ -363,8 +353,8 @@ static int psb_verify_fw(struct drm_psb_private *dev_priv,
 		address += 4;
 
 		/* Wait for MCMSTAT to become be idle 1 */
-		psb_wait_for_register(dev_priv, MSVDX_MTX_RAM_ACCESS_STATUS, 1,
-				      0xffffffff /* Enables */);
+		psb_wait_for_register(dev_priv, MSVDX_MTX_RAM_ACCESS_STATUS, 1,	/* Required Value */
+				      0xffffffff /* Enables */ );
 
 		reg_value = PSB_RMSVDX32(MSVDX_MTX_RAM_ACCESS_DATA_TRANSFER);
 		if (data[loop] != reg_value) {
@@ -502,8 +492,8 @@ static uint32_t *msvdx_get_fw(struct drm_device *dev,
 			    ((struct msvdx_fw *)ptr)->text_size +
 			    sizeof(uint32_t) *
 			    ((struct msvdx_fw *)ptr)->data_size);
-		/* Resotre ptr to start of the firmware file */
-		ptr = (int *)((*raw))->data;
+
+		ptr = (int *)((*raw))->data;	/* Resotre ptr to start of the firmware file */
 	}
 
 	msvdx_priv->msvdx_fw = kzalloc(fw_size, GFP_KERNEL);
@@ -650,12 +640,11 @@ int psb_setup_fw(struct drm_device *dev)
 	else if (fw->text_size == 2841)
 		PSB_DEBUG_GENERAL("MSVDX: FW ver 1.00.10.0788\n");
 	else if (fw->text_size == 3147)
-		PSB_DEBUG_GENERAL("MSVDX:"
-		"FW ver BUILD_DXVA_FW1.00.10.1042 of SliceSwitch variant\n");
+		PSB_DEBUG_GENERAL
+		    ("MSVDX: FW ver BUILD_DXVA_FW1.00.10.1042 of SliceSwitch variant\n");
 	else if (fw->text_size == 3097)
-		PSB_DEBUG_GENERAL("MSVDX:"
-		" FW ver BUILD_DXVA_FW1.00.10.0963.02.0011 of"
-		" FrameSwitch variant\n");
+		PSB_DEBUG_GENERAL
+		    ("MSVDX: FW ver BUILD_DXVA_FW1.00.10.0963.02.0011 of FrameSwitch variant\n");
 	else
 		PSB_DEBUG_GENERAL("MSVDX: FW ver unknown\n");
 
@@ -707,9 +696,8 @@ int psb_setup_fw(struct drm_device *dev)
 	PSB_WMSVDX32(MSVDX_MTX_ENABLE_MTX_ENABLE_MASK, MSVDX_MTX_ENABLE);
 
 	/* Wait for the signature value to be written back */
-	ret = psb_wait_for_register(dev_priv, MSVDX_COMMS_SIGNATURE,
-				MSVDX_COMMS_SIGNATURE_VALUE,
-				0xffffffff /* Enabled bits */);
+	ret = psb_wait_for_register(dev_priv, MSVDX_COMMS_SIGNATURE, MSVDX_COMMS_SIGNATURE_VALUE,	/*Required value */
+				    0xffffffff /* Enabled bits */ );
 	if (ret) {
 		DRM_ERROR("MSVDX: firmware fails to initialize.\n");
 		goto out;
@@ -765,9 +753,8 @@ int psb_msvdx_reset(struct drm_psb_private *dev_priv)
 		PSB_DEBUG_GENERAL("Enabling clocks\n");
 		PSB_WMSVDX32(clk_enable_all, MSVDX_MAN_CLK_ENABLE);
 
-		/* Always pause the MMU as the core may be still active when
-		resetting.  It is very bad to have memory activity at the same
-		time as a reset - Very Very bad */
+		/* Always pause the MMU as the core may be still active when resetting.  It is very bad to have memory
+		   activity at the same time as a reset - Very Very bad */
 		PSB_WMSVDX32(2, MSVDX_MMU_CONTROL0);
 
 		for (loop = 0; loop < 50; loop++)
@@ -799,7 +786,7 @@ int psb_msvdx_reset(struct drm_psb_private *dev_priv)
 
 static int psb_allocate_ccb(struct drm_device *dev,
 			    struct ttm_buffer_object **ccb,
-			    uint32_t *base_addr, unsigned long size)
+			    uint32_t * base_addr, unsigned long size)
 {
 	struct drm_psb_private *dev_priv = psb_priv(dev);
 	struct ttm_bo_device *bdev = &dev_priv->bdev;
@@ -878,7 +865,7 @@ static void psb_msvdx_conceal_mb(char *ec_start, char *ref_start,
 		dst = ec_start + full_line_start + extra_line_start;
 		for (i = 0; i < mb_height; i++) {
 			memcpy(dst, src, size);
-			/*memset(dst, 255, size);*/
+			//memset(dst, 255, size);
 			src += stride;
 			dst += stride;
 		}
@@ -888,14 +875,14 @@ static void psb_msvdx_conceal_mb(char *ec_start, char *ref_start,
 	dst = ec_start + full_line_start;
 	size = full_line_end - full_line_start;
 	memcpy(dst, src, size);
-	/* memset(dst, 255, size);*/
+	//memset(dst, 255, size);
 	if (extra_line_end != 0) {
 		size = extra_line_end;
 		src = ref_start + full_line_end;
 		dst = ec_start + full_line_end;
 		for (i = 0; i < mb_height; i++) {
 			memcpy(dst, src, size);
-			/* memset(dst, 255, size); */
+			//memset(dst, 255, size);
 			src += stride;
 			dst += stride;
 		}
@@ -908,13 +895,13 @@ static void psb_msvdx_error_concealment(struct work_struct *data)
 	int ret;
 	struct msvdx_private *msvdx_priv =
 	    container_of(data, struct msvdx_private, ec_work);
-	struct drm_psb_msvdx_frame_info_t *ec_frame = NULL;
-	struct drm_psb_msvdx_frame_info_t *ref_frame = NULL;
+	struct drm_psb_msvdx_frame_info *ec_frame = NULL;
+	struct drm_psb_msvdx_frame_info *ref_frame = NULL;
 	static struct ttm_bo_kmap_obj ec_kmap, ref_kmap;
 	struct ttm_buffer_object *ec_bo = NULL;
 	struct ttm_buffer_object *ref_bo = NULL;
 	struct ttm_object_file *tfile = msvdx_priv->tfile;
-	struct drm_psb_msvdx_decode_status_t *decode_status = NULL;
+	drm_psb_msvdx_decode_status_t *decode_status = NULL;
 	bool is_iomem;
 	char *ec_start, *ref_start;
 
@@ -934,7 +921,7 @@ static void psb_msvdx_error_concealment(struct work_struct *data)
 	}
 	if (!ec_frame) {
 		DRM_ERROR
-		("MSVDX: didn't find frame_info which matched the ec fence\n");
+		    ("MSVDX: didn't find frame_info which matched the ec fence\n");
 		return;
 	}
 	decode_status = &ec_frame->decode_status;
@@ -968,8 +955,8 @@ static void psb_msvdx_error_concealment(struct work_struct *data)
 		}
 	}
 	if (!ref_frame) {
-		DRM_ERROR("MSVDX:"
-		"didn't find frame_info which matched the ref fence\n");
+		DRM_ERROR
+		    ("MSVDX: didn't find frame_info which matched the ref fence\n");
 		return;
 	}
 	ref_bo = ttm_buffer_object_lookup(tfile, ref_frame->handle);
@@ -1054,7 +1041,9 @@ int psb_msvdx_init(struct drm_device *dev)
 			DRM_ERROR("MSVDX: could not create sysfs file\n");
 		msvdx_priv->sysfs_pmstate =
 		    sysfs_get_dirent(dev->pdev->dev.kobj.sd,
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,35))
 				     NULL,
+#endif
 				     "msvdx_pmstate");
 
 		msvdx_priv->msvdx_needs_reset = 1;
@@ -1088,45 +1077,28 @@ int psb_msvdx_init(struct drm_device *dev)
 
 	/* Issue software reset for all but core */
 	/*
-	   PSB_WMSVDX32((uint32_t)
-			~MSVDX_CORE_CR_MSVDX_CONTROL_CR_MSVDX_SOFT_RESET_MASK,
-			REGISTER(MSVDX_CORE, CR_MSVDX_CONTROL));
+	   PSB_WMSVDX32((uint32_t) ~MSVDX_CORE_CR_MSVDX_CONTROL_CR_MSVDX_SOFT_RESET_MASK, REGISTER(MSVDX_CORE, CR_MSVDX_CONTROL));
 	   reg_value = PSB_RMSVDX32(REGISTER(MSVDX_CORE, CR_MSVDX_CONTROL));
 	   PSB_WMSVDX32(0, REGISTER(MSVDX_CORE, CR_MSVDX_CONTROL));
-	   PSB_WMSVDX32(MSVDX_CORE_CR_MSVDX_CONTROL_CR_MSVDX_SOFT_RESET_MASK,
-			REGISTER(MSVDX_CORE, CR_MSVDX_CONTROL));
+	   PSB_WMSVDX32(MSVDX_CORE_CR_MSVDX_CONTROL_CR_MSVDX_SOFT_RESET_MASK, REGISTER(MSVDX_CORE, CR_MSVDX_CONTROL));
 
 	   reg_val = 0;
-	   REGIO_WRITE_FIELD(reg_val, MSVDX_CORE_CR_FE_MSVDX_WDT_CONTROL,
-			FE_WDT_CNT_CTRL, 0x3);
-	   REGIO_WRITE_FIELD(reg_val, MSVDX_CORE_CR_FE_MSVDX_WDT_CONTROL,
-			FE_WDT_ENABLE, 0);
-	   REGIO_WRITE_FIELD(reg_val, MSVDX_CORE_CR_FE_MSVDX_WDT_CONTROL,
-			FE_WDT_ACTION0, 1);
-	   REGIO_WRITE_FIELD(reg_val, MSVDX_CORE_CR_FE_MSVDX_WDT_CONTROL,
-			FE_WDT_CLEAR_SELECT, 1);
-	   REGIO_WRITE_FIELD(reg_val, MSVDX_CORE_CR_FE_MSVDX_WDT_CONTROL,
-			FE_WDT_CLKDIV_SELECT, 7);
-	   PSB_WMSVDX32(820,
-		REGISTER( MSVDX_CORE, CR_FE_MSVDX_WDT_COMPAREMATCH));
-	   PSB_WMSVDX32(reg_val,
-		REGISTER( MSVDX_CORE, CR_FE_MSVDX_WDT_CONTROL));
+	   REGIO_WRITE_FIELD(reg_val, MSVDX_CORE_CR_FE_MSVDX_WDT_CONTROL, FE_WDT_CNT_CTRL, 0x3);
+	   REGIO_WRITE_FIELD(reg_val, MSVDX_CORE_CR_FE_MSVDX_WDT_CONTROL, FE_WDT_ENABLE, 0);
+	   REGIO_WRITE_FIELD(reg_val, MSVDX_CORE_CR_FE_MSVDX_WDT_CONTROL, FE_WDT_ACTION0, 1);
+	   REGIO_WRITE_FIELD(reg_val, MSVDX_CORE_CR_FE_MSVDX_WDT_CONTROL, FE_WDT_CLEAR_SELECT, 1);
+	   REGIO_WRITE_FIELD(reg_val, MSVDX_CORE_CR_FE_MSVDX_WDT_CONTROL, FE_WDT_CLKDIV_SELECT, 7);
+	   PSB_WMSVDX32(820, REGISTER( MSVDX_CORE, CR_FE_MSVDX_WDT_COMPAREMATCH ));
+	   PSB_WMSVDX32(reg_val, REGISTER( MSVDX_CORE, CR_FE_MSVDX_WDT_CONTROL ));
 
 	   reg_val = 0;
-	   REGIO_WRITE_FIELD(reg_val, MSVDX_CORE_CR_BE_MSVDX_WDT_CONTROL,
-			BE_WDT_CNT_CTRL, 0x7);
-	   REGIO_WRITE_FIELD(reg_val, MSVDX_CORE_CR_BE_MSVDX_WDT_CONTROL,
-			BE_WDT_ENABLE, 0);
-	   REGIO_WRITE_FIELD(reg_val, MSVDX_CORE_CR_BE_MSVDX_WDT_CONTROL,
-			BE_WDT_ACTION0, 1);
-	   REGIO_WRITE_FIELD(reg_val, MSVDX_CORE_CR_BE_MSVDX_WDT_CONTROL,
-			BE_WDT_CLEAR_SELECT, 0xd);
-	   REGIO_WRITE_FIELD(reg_val, MSVDX_CORE_CR_BE_MSVDX_WDT_CONTROL,
-			BE_WDT_CLKDIV_SELECT, 7);
-	   PSB_WMSVDX32(8200,
-		REGISTER(MSVDX_CORE, CR_BE_MSVDX_WDT_COMPAREMATCH));
-	   PSB_WMSVDX32(reg_val,
-		REGISTER(MSVDX_CORE, CR_BE_MSVDX_WDT_CONTROL));
+	   REGIO_WRITE_FIELD(reg_val, MSVDX_CORE_CR_BE_MSVDX_WDT_CONTROL, BE_WDT_CNT_CTRL, 0x7);
+	   REGIO_WRITE_FIELD(reg_val, MSVDX_CORE_CR_BE_MSVDX_WDT_CONTROL, BE_WDT_ENABLE, 0);
+	   REGIO_WRITE_FIELD(reg_val, MSVDX_CORE_CR_BE_MSVDX_WDT_CONTROL, BE_WDT_ACTION0, 1);
+	   REGIO_WRITE_FIELD(reg_val, MSVDX_CORE_CR_BE_MSVDX_WDT_CONTROL, BE_WDT_CLEAR_SELECT, 0xd);
+	   REGIO_WRITE_FIELD(reg_val, MSVDX_CORE_CR_BE_MSVDX_WDT_CONTROL, BE_WDT_CLKDIV_SELECT, 7);
+	   PSB_WMSVDX32(8200, REGISTER(MSVDX_CORE, CR_BE_MSVDX_WDT_COMPAREMATCH));
+	   PSB_WMSVDX32(reg_val, REGISTER(MSVDX_CORE, CR_BE_MSVDX_WDT_CONTROL));
 	 */
 	/* Enable MMU by removing all bypass bits */
 	PSB_WMSVDX32(0, MSVDX_MMU_CONTROL0);
@@ -1164,16 +1136,15 @@ int psb_msvdx_init(struct drm_device *dev)
 		if ((core_rev & 0xffffff) < 0x020000)
 			msvdx_priv->mtx_mem_size = 16 * 1024;
 		else
-			msvdx_priv->mtx_mem_size = 56 * 1024;
+			msvdx_priv->mtx_mem_size = 40 * 1024;
 
 		fw_bo_size = msvdx_priv->mtx_mem_size + 4096;
 
-		PSB_DEBUG_INIT("MSVDX: "
-		"MTX mem size is 0x%08x bytes allocate"
-		" firmware BO size 0x%08x\n",
-		msvdx_priv->mtx_mem_size, fw_bo_size);
+		PSB_DEBUG_INIT
+		    ("MSVDX: MTX mem size is 0x%08xbytes  allocate firmware BO size 0x%08x\n",
+		     msvdx_priv->mtx_mem_size, fw_bo_size);
 
-		ret = ttm_buffer_object_create(&dev_priv->bdev, fw_bo_size,
+		ret = ttm_buffer_object_create(&dev_priv->bdev, fw_bo_size,	/* DMA may run over a page */
 					       ttm_bo_type_kernel,
 					       DRM_PSB_FLAG_MEM_MMU |
 					       TTM_PL_FLAG_NO_EVICT, 0, 0, 0,
@@ -1206,18 +1177,17 @@ int psb_msvdx_init(struct drm_device *dev)
 		if ((core_rev & 0xffffff) < 0x020000)
 			msvdx_priv->mtx_mem_size = 16 * 1024;
 		else
-			msvdx_priv->mtx_mem_size = 56 * 1024;
+			msvdx_priv->mtx_mem_size = 40 * 1024;
 
-		PSB_DEBUG_INIT("MSVDX: "
-		"MTX mem size is 0x%08xbytes  allocate firmware BO size 0x%08x\n",
-		msvdx_priv->mtx_mem_size, msvdx_priv->mtx_mem_size + 4096);
+		PSB_DEBUG_INIT
+		    ("MSVDX: MTX mem size is 0x%08xbytes  allocate firmware BO size 0x%08x\n",
+		     msvdx_priv->mtx_mem_size, msvdx_priv->mtx_mem_size + 4096);
 
-		ret = ttm_buffer_object_create(&dev_priv->bdev,
-					msvdx_priv->mtx_mem_size + 4096,
-					ttm_bo_type_kernel,
-					DRM_PSB_FLAG_MEM_MMU |
-					TTM_PL_FLAG_NO_EVICT, 0, 0, 0,
-					NULL, &msvdx_priv->fw);
+		ret = ttm_buffer_object_create(&dev_priv->bdev, msvdx_priv->mtx_mem_size + 4096,	/* DMA may run over a page */
+					       ttm_bo_type_kernel,
+					       DRM_PSB_FLAG_MEM_MMU |
+					       TTM_PL_FLAG_NO_EVICT, 0, 0, 0,
+					       NULL, &msvdx_priv->fw);
 
 		if (ret) {
 			PSB_DEBUG_GENERAL("Allocate firmware BO fail\n");
@@ -1268,11 +1238,8 @@ int psb_msvdx_init(struct drm_device *dev)
 
 	{
 		cmd = 0;
-		/* VEC_SHIFTREG_CONTROL */
-		cmd = PSB_RMSVDX32(MSVDX_VEC_SHIFTREG_CONTROL);
-		/* Host */
-		REGIO_WRITE_FIELD(cmd, VEC_SHIFTREG_CONTROL,
-			SR_MASTER_SELECT, 1);
+		cmd = PSB_RMSVDX32(MSVDX_VEC_SHIFTREG_CONTROL);	/* VEC_SHIFTREG_CONTROL */
+		REGIO_WRITE_FIELD(cmd, VEC_SHIFTREG_CONTROL, SR_MASTER_SELECT, 1);	/* Host */
 		PSB_WMSVDX32(cmd, MSVDX_VEC_SHIFTREG_CONTROL);
 	}
 
@@ -1332,8 +1299,10 @@ int psb_msvdx_uninit(struct drm_device *dev)
 		psb_free_ccb(&msvdx_priv->ccb0);
 	if (msvdx_priv->ccb1)
 		psb_free_ccb(&msvdx_priv->ccb1);
-	kfree(msvdx_priv->msvdx_fw);
-	kfree(msvdx_priv->vec_local_mem_data);
+	if (msvdx_priv->msvdx_fw)
+		kfree(msvdx_priv->msvdx_fw);
+	if (msvdx_priv->vec_local_mem_data)
+		kfree(msvdx_priv->vec_local_mem_data);
 
 	if (msvdx_priv) {
 		/* pci_set_drvdata(dev->pdev, NULL); */

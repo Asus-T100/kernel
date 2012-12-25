@@ -43,9 +43,11 @@ struct ttm_fence_user_object {
 	struct ttm_fence_object fence;
 };
 
-static struct ttm_fence_user_object *ttm_fence_user_object_lookup(
-				struct ttm_object_file *tfile,
-				uint32_t handle)
+static struct ttm_fence_user_object *ttm_fence_user_object_lookup(struct
+								  ttm_object_file
+								  *tfile,
+								  uint32_t
+								  handle)
 {
 	struct ttm_base_object *base;
 
