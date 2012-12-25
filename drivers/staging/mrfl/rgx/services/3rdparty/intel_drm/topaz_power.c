@@ -20,21 +20,21 @@
 #include "topaz_power.h"
 #include "pvr_debug.h"
 
-PVRSRV_ERROR TOPAZRegisterDevice(PVRSRV_DEVICE_NODE * psDeviceNode)
+PVRSRV_ERROR TOPAZRegisterDevice(PVRSRV_DEVICE_NODE *psDeviceNode)
 {
 	/*********************
 	 * Device node setup *
 	 *********************/
 	/* Setup static data and callbacks on the device agnostic device node */
-	psDeviceNode->sDevId.eDeviceType = PVRSRV_DEVICE_TYPE_TOPAZ;
-	psDeviceNode->sDevId.eDeviceClass = PVRSRV_DEVICE_CLASS_VIDEO;
+	psDeviceNode->sDevId.eDeviceType		= PVRSRV_DEVICE_TYPE_TOPAZ;
+	psDeviceNode->sDevId.eDeviceClass		= PVRSRV_DEVICE_CLASS_VIDEO;
 
 	/* Configure MMU specific stuff */
 	/* ... */
 
 	psDeviceNode->pfnMMUCacheInvalidate = IMG_NULL;
 
-	psDeviceNode->pfnInitDeviceCompatCheck = IMG_NULL;
+	psDeviceNode->pfnInitDeviceCompatCheck	= IMG_NULL;
 
 	/* Register callbacks for creation of device memory contexts */
 	psDeviceNode->pfnRegisterMemoryContext = IMG_NULL;
@@ -52,7 +52,7 @@ PVRSRV_ERROR TOPAZRegisterDevice(PVRSRV_DEVICE_NODE * psDeviceNode)
 	return PVRSRV_OK;
 }
 
-PVRSRV_ERROR TOPAZUnregisterDevice(PVRSRV_DEVICE_NODE * psDeviceNode)
+PVRSRV_ERROR TOPAZUnregisterDevice(PVRSRV_DEVICE_NODE *psDeviceNode)
 {
 	return PVRSRV_OK;
 }

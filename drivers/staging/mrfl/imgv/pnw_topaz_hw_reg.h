@@ -50,8 +50,7 @@ do {                                   \
 #define F_ENCODE(val, basename)  \
 	(((val) << (F_SHIFT(basename))) & (F_MASK(basename)))
 
-#define F_EXTRACT(val, basename) \
-	(((val)&(F_MASK(basename)))>>(F_SHIFT(basename)))
+#define F_EXTRACT(val,basename) (((val)&(F_MASK(basename)))>>(F_SHIFT(basename)))
 
 /*! The number of TOPAZ cores present in the system */
 #define TOPAZSC_NUM_CORES 2
@@ -93,8 +92,8 @@ do {                                   \
 #define REG_SIZE_TOPAZ_ESB_HOST	0x00004000
 
 /* Topaz core registers MTX view */
-#define REG_OFFSET_TOPAZ_CORE_MTX	0x00010000
-#define REG_SIZE_TOPAZ_CORE_MTX	0x00010000
+#define REG_OFFSET_TOPAZ_CORE_MTX	0x00010000	// MUST confirm
+#define REG_SIZE_TOPAZ_CORE_MTX	0x00010000	// MUST confirm
 
 #define REG_OFFSET_TOPAZ_MTX_MTX	0x00000000
 #define REG_OFFSET_TOPAZ_TOPAZ_MTX	0x00000800
@@ -115,65 +114,39 @@ do {                                   \
 #define REG_SIZE_TOPAZ_ESB_MTX		0x00002000
 
 /* Register bank addresses - Host View */
-#define REG_START_TOPAZ_MULTICORE_HOST	\
-	(REG_BASE_HOST + REG_OFFSET_TOPAZ_MULTICORE)
-#define REG_END_TOPAZ_MULTICORE_HOST \
-	(REG_START_TOPAZ_MULTICORE_HOST + REG_SIZE_TOPAZ_MULTICORE)
+#define REG_START_TOPAZ_MULTICORE_HOST	(REG_BASE_HOST + REG_OFFSET_TOPAZ_MULTICORE)
+#define REG_END_TOPAZ_MULTICORE_HOST	(REG_START_TOPAZ_MULTICORE_HOST + REG_SIZE_TOPAZ_MULTICORE)
 
 #define REG_START_TOPAZ_DMAC_HOST	(REG_BASE_HOST + REG_OFFSET_TOPAZ_DMAC)
-#define REG_END_TOPAZ_DMAC_HOST	\
-	(REG_START_TOPAZ_DMAC_HOST + REG_SIZE_TOPAZ_DMAC)
+#define REG_END_TOPAZ_DMAC_HOST		(REG_START_TOPAZ_DMAC_HOST + REG_SIZE_TOPAZ_DMAC)
 
-#define REG_START_TOPAZ_MTX_HOST(core) \
-	(REG_BASE_HOST + (REG_SIZE_TOPAZ_CORE_HOST*core) + \
-	REG_OFFSET_TOPAZ_CORE_HOST + REG_OFFSET_TOPAZ_MTX_HOST)
-#define REG_END_TOPAZ_MTX_HOST(core) \
-	(REG_START_TOPAZ_MTX_HOST(core) + REG_SIZE_TOPAZ_MTX_HOST)
+#define REG_START_TOPAZ_MTX_HOST(core)	(REG_BASE_HOST + (REG_SIZE_TOPAZ_CORE_HOST*core) + REG_OFFSET_TOPAZ_CORE_HOST + REG_OFFSET_TOPAZ_MTX_HOST)
+#define REG_END_TOPAZ_MTX_HOST(core)	(REG_START_TOPAZ_MTX_HOST(core) + REG_SIZE_TOPAZ_MTX_HOST)
 
-#define REG_START_TOPAZ_TOPAZ_HOST(core) \
-	(REG_BASE_HOST + (REG_SIZE_TOPAZ_CORE_HOST*core) + \
-	REG_OFFSET_TOPAZ_CORE_HOST + REG_OFFSET_TOPAZ_TOPAZ_HOST)
-#define REG_END_TOPAZ_TOPAZ_HOST(core)	\
-	(REG_START_TOPAZ_TOPAZ_HOST(core) + REG_SIZE_TOPAZ_TOPAZ_HOST)
+#define REG_START_TOPAZ_TOPAZ_HOST(core)	(REG_BASE_HOST + (REG_SIZE_TOPAZ_CORE_HOST*core) + REG_OFFSET_TOPAZ_CORE_HOST + REG_OFFSET_TOPAZ_TOPAZ_HOST)
+#define REG_END_TOPAZ_TOPAZ_HOST(core)	(REG_START_TOPAZ_TOPAZ_HOST(core) + REG_SIZE_TOPAZ_TOPAZ_HOST)
 
-#define REG_START_TOPAZ_MVEA_HOST(core)	\
-	(REG_BASE_HOST + (REG_SIZE_TOPAZ_CORE_HOST*core) + \
-	REG_OFFSET_TOPAZ_CORE_HOST + REG_OFFSET_TOPAZ_MVEA_HOST)
-#define REG_END_TOPAZ_MVEA_HOST(core)	\
-	(REG_START_TOPAZ_MVEA_HOST(core) + REG_SIZE_TOPAZ_MVEA_HOST)
+#define REG_START_TOPAZ_MVEA_HOST(core)	(REG_BASE_HOST + (REG_SIZE_TOPAZ_CORE_HOST*core) + REG_OFFSET_TOPAZ_CORE_HOST + REG_OFFSET_TOPAZ_MVEA_HOST)
+#define REG_END_TOPAZ_MVEA_HOST(core)	(REG_START_TOPAZ_MVEA_HOST(core) + REG_SIZE_TOPAZ_MVEA_HOST)
 
 /* Register bank addresses - MTX view */
-#define REG_START_TOPAZ_MULTICORE_MTX	\
-	(REG_BASE_MTX + REG_OFFSET_TOPAZ_MULTICORE)
-#define REG_END_TOPAZ_MULTICORE_MTX \
-	(REG_START_TOPAZ_MULTICORE_MTX + REG_SIZE_TOPAZ_MULTICORE)
+#define REG_START_TOPAZ_MULTICORE_MTX	(REG_BASE_MTX + REG_OFFSET_TOPAZ_MULTICORE)
+#define REG_END_TOPAZ_MULTICORE_MTX	(REG_START_TOPAZ_MULTICORE_MTX + REG_SIZE_TOPAZ_MULTICORE)
 
 #define REG_START_TOPAZ_DMAC_MTX	(REG_BASE_MTX + REG_OFFSET_TOPAZ_DMAC)
-#define REG_END_TOPAZ_DMAC_MTX		\
-	(REG_START_TOPAZ_DMAC_MTX + REG_SIZE_TOPAZ_DMAC)
+#define REG_END_TOPAZ_DMAC_MTX		(REG_START_TOPAZ_DMAC_MTX + REG_SIZE_TOPAZ_DMAC)
 
-#define REG_START_TOPAZ_MTX_MTX(core)	\
-	(REG_BASE_MTX + (REG_SIZE_TOPAZ_CORE_MTX*core) + \
-	REG_OFFSET_TOPAZ_CORE_MTX + REG_OFFSET_TOPAZ_MTX_MTX)
-#define REG_END_TOPAZ_MTX_MTX(core)	\
-	(REG_START_TOPAZ_MTX_MTX(core) + REG_SIZE_TOPAZ_MTX_MTX)
+#define REG_START_TOPAZ_MTX_MTX(core)	(REG_BASE_MTX + (REG_SIZE_TOPAZ_CORE_MTX*core) + REG_OFFSET_TOPAZ_CORE_MTX + REG_OFFSET_TOPAZ_MTX_MTX)
+#define REG_END_TOPAZ_MTX_MTX(core)	(REG_START_TOPAZ_MTX_MTX(core) + REG_SIZE_TOPAZ_MTX_MTX)
 
-#define REG_START_TOPAZ_TOPAZ_MTX(core)	\
-	(REG_BASE_MTX + (REG_SIZE_TOPAZ_CORE_MTX*core) + \
-	REG_OFFSET_TOPAZ_CORE_MTX + REG_OFFSET_TOPAZ_TOPAZ_MTX)
-#define REG_END_TOPAZ_TOPAZ_MTX(core)	\
-	(REG_START_TOPAZ_TOPAZ_MTX(core) + REG_SIZE_TOPAZ_TOPAZ_MTX)
+#define REG_START_TOPAZ_TOPAZ_MTX(core)	(REG_BASE_MTX + (REG_SIZE_TOPAZ_CORE_MTX*core) + REG_OFFSET_TOPAZ_CORE_MTX + REG_OFFSET_TOPAZ_TOPAZ_MTX)
+#define REG_END_TOPAZ_TOPAZ_MTX(core)	(REG_START_TOPAZ_TOPAZ_MTX(core) + REG_SIZE_TOPAZ_TOPAZ_MTX)
 
-#define REG_START_TOPAZ_MVEA_MTX(core)	\
-	(REG_BASE_MTX + (REG_SIZE_TOPAZ_CORE_MTX*core) + \
-	REG_OFFSET_TOPAZ_CORE_MTX + REG_OFFSET_TOPAZ_MVEA_MTX)
-#define REG_END_TOPAZ_MVEA_MTX(core)	\
-	(REG_START_TOPAZ_MVEA_MTX(core) + REG_SIZE_TOPAZ_MVEA_MTX)
+#define REG_START_TOPAZ_MVEA_MTX(core)	(REG_BASE_MTX + (REG_SIZE_TOPAZ_CORE_MTX*core) + REG_OFFSET_TOPAZ_CORE_MTX + REG_OFFSET_TOPAZ_MVEA_MTX)
+#define REG_END_TOPAZ_MVEA_MTX(core)	(REG_START_TOPAZ_MVEA_MTX(core) + REG_SIZE_TOPAZ_MVEA_MTX)
 
 /* Every Topaz core has a 64K address space*/
-#define TOPAZ_CORE_REG_BASE(core) \
-	(REG_BASE_HOST + (REG_SIZE_TOPAZ_CORE_HOST*core) + \
-	REG_OFFSET_TOPAZ_CORE_HOST)
+#define TOPAZ_CORE_REG_BASE(core) (REG_BASE_HOST + (REG_SIZE_TOPAZ_CORE_HOST*core) + REG_OFFSET_TOPAZ_CORE_HOST)
 
 /* MVEA macro */
 #define MVEA_START 0x03000
@@ -181,26 +154,20 @@ do {                                   \
 #ifdef TOPAZ_PDUMP
 #define MVEA_WRITE32(offset, value, core) \
 	do { \
-		MM_WRITE32(MVEA_START + \
-			TOPAZ_CORE_REG_BASE(core), offset, value); \
-		DRM_ERROR("TOPAZ_PDUMP: MVEA core %d, REG_WT %x %x\n", \
-			core, offset, value); \
+		MM_WRITE32(MVEA_START + TOPAZ_CORE_REG_BASE(core), offset, value); \
+		DRM_ERROR("TOPAZ_PDUMP: MVEA core %d, REG_WT %x %x\n", core, offset, value); \
 	} while (0)
 #define MVEA_READ32(offset, pointer, core) \
 	do { \
-		MM_READ32(MVEA_START + TOPAZ_CORE_REG_BASE(core), \
-			offset, pointer); \
-		DRM_ERROR("TOPAZ_PDUMP: MVEA core %d, REG_RD %x %x\n", \
-			core, offset, *(uint32_t *)pointer);\
+		MM_READ32(MVEA_START + TOPAZ_CORE_REG_BASE(core), offset, pointer); \
+		DRM_ERROR("TOPAZ_PDUMP: MVEA core %d, REG_RD %x %x\n", core, offset, *(uint32_t *)pointer);\
 	} while (0)
 #else
 #define MVEA_WRITE32(offset, value, core) \
-		MM_WRITE32(MVEA_START + TOPAZ_CORE_REG_BASE(core), \
-		offset, value)
+		MM_WRITE32(MVEA_START + TOPAZ_CORE_REG_BASE(core), offset, value)
 
 #define MVEA_READ32(offset, pointer, core) \
-		MM_READ32(MVEA_START + TOPAZ_CORE_REG_BASE(core), \
-		offset, pointer)
+		MM_READ32(MVEA_START + TOPAZ_CORE_REG_BASE(core), offset, pointer)
 #endif
 
 #define F_MASK_MVEA(basename)  (MASK_MVEA_##basename)	/*     MVEA    */
@@ -245,25 +212,21 @@ do {                                   \
 #ifdef TOPAZ_PDUMP
 #define TOPAZ_WRITE32(offset, value, core) \
 	do {\
-		MM_WRITE32(TOPAZ_START + TOPAZ_CORE_REG_BASE(core), \
-		offset, value); \
-		DRM_ERROR("TOPAZ_PDUMP: TOPAZ_CORE %d REG_WT: %x %x\n", core, \
+		MM_WRITE32(TOPAZ_START + TOPAZ_CORE_REG_BASE(core), offset, value); \
+		DRM_ERROR("TOPAZ_PDUMP: TOPAZ_CORE %d REG_WT: %x %x\n", core,  \
 			 offset, value);\
 	} while (0)
 #define TOPAZ_READ32(offset, pointer, core) \
 	do { \
-		MM_READ32(TOPAZ_START + TOPAZ_CORE_REG_BASE(core), \
-			offset, pointer); \
+		MM_READ32(TOPAZ_START + TOPAZ_CORE_REG_BASE(core), offset, pointer); \
 		DRM_ERROR("TOPAZ_PDUMP: TOPAZ_CORE %d REG_RD: %x %x\n", core, \
 			offset, *(uint32_t *)pointer);\
 	} while (0)
 #else
 #define TOPAZ_WRITE32(offset, value, core) \
-		MM_WRITE32(TOPAZ_START + TOPAZ_CORE_REG_BASE(core), \
-			offset, value)
+		MM_WRITE32(TOPAZ_START + TOPAZ_CORE_REG_BASE(core), offset, value)
 #define TOPAZ_READ32(offset, pointer, core) \
-		MM_READ32(TOPAZ_START + TOPAZ_CORE_REG_BASE(core), \
-			offset, pointer)
+		MM_READ32(TOPAZ_START + TOPAZ_CORE_REG_BASE(core), offset, pointer)
 #endif
 #define F_MASK_TOPAZ(basename)  (MASK_TOPAZ_##basename)
 #define F_SHIFT_TOPAZ(basename) (SHIFT_TOPAZ_##basename)
@@ -276,27 +239,23 @@ do {                                   \
 #ifdef TOPAZ_PDUMP
 #define MTX_WRITE32(offset, value, core) \
 	do { \
-		MM_WRITE32(MTX_START + TOPAZ_CORE_REG_BASE(core), \
-			offset, value); \
+		MM_WRITE32(MTX_START + TOPAZ_CORE_REG_BASE(core), offset, value); \
 		DRM_ERROR("TOPAZ_PDUMP: MTX core %d REG_WT: %x %x\n", core,\
 			offset, value);\
 	} while (0)
 
 #define MTX_READ32(offset, pointer, core) \
 	do { \
-		MM_READ32(MTX_START + TOPAZ_CORE_REG_BASE(core), \
-			offset, pointer); \
+		MM_READ32(MTX_START + TOPAZ_CORE_REG_BASE(core), offset, pointer); \
 		DRM_ERROR("TOPAZ_PDUMP: MTX core %d REG_RD %x %x\n", core, \
 			offset, *(uint32_t *)pointer); \
 	} while (0);
 #else
 
 #define MTX_WRITE32(offset, value, core) \
-		MM_WRITE32(MTX_START + TOPAZ_CORE_REG_BASE(core), \
-			offset, value)
+		MM_WRITE32(MTX_START + TOPAZ_CORE_REG_BASE(core), offset, value)
 #define MTX_READ32(offset, pointer, core) \
-		MM_READ32(MTX_START + TOPAZ_CORE_REG_BASE(core), \
-			offset, pointer)
+		MM_READ32(MTX_START + TOPAZ_CORE_REG_BASE(core), offset, pointer)
 #endif
 
 /* DMAC macro */
@@ -305,15 +264,14 @@ do {                                   \
 #ifdef TOPAZ_DUMP
 #define DMAC_WRITE32(offset, value) \
 	do { \
-		MM_WRITE32(DMAC_START, offset, value);\
+		 MM_WRITE32(DMAC_START, offset, value);\
 		DRM_ERROR("TOPAZ_PDUMP: DMAC WT %x %x\n", offset, value);\
 	} while (0);
 
 #define DMAC_READ32(offset, pointer) \
 	do {\
 		MM_READ32(DMAC_START, offset, pointer);\
-		DRM_ERROR("TOPAZ_PDUMP: DMAC RD %x %x\n", \
-			offset, *(uint32_t *)pointer); \
+		DRM_ERROR("TOPAZ_PDUMP: DMAC RD %x %x\n", offset, *(uint32_t *)pointer); \
 	} while (0)
 #else
 
@@ -773,7 +731,7 @@ do {                                   \
 		(((val)&MASK_TOPAZ_##basename)>>SHIFT_TOPAZ_##basename)
 
 #define TOPAZ_WAIT_UNTIL_IDLE \
-do { \
+    do { \
 	uint8_t tmp_poll_number = 0;\
 	uint32_t tmp_reg; \
 	if (topaz_priv->topaz_cmd_windex == WB_CCB_CTRL_RINDEX(dev_priv)) { \
@@ -788,7 +746,7 @@ do { \
 			  tmp_reg, tmp_poll_number);\
 		} \
 	} \
-} while (0)
+    } while (0)
 
 /* Register CR_BUFFER_SIDEBAND */
 #define MVEA_CR_BUFFER_SIDEBAND     0x017C
@@ -1039,17 +997,17 @@ do { \
 #define MVEASETUPESBREGION(_OriginX_, _OriginY_, _PhysWidth_,\
 		_PhysHeight_, _LogWidth_, _RegType_)\
 ((F_ENCODE(ESB_POS_MANGLER_ORIGINX(_OriginX_),\
-	MVEA_CR_CMC_ESB_REGION_PHYS_ORIGIN_X))\
-	| (F_ENCODE(ESB_POS_MANGLER(_OriginY_),\
-		MVEA_CR_CMC_ESB_REGION_PHYS_ORIGIN_Y))\
-	| (F_ENCODE(ESB_SIZE_MANGLER(_PhysWidth_),\
+	   MVEA_CR_CMC_ESB_REGION_PHYS_ORIGIN_X))\
+ | (F_ENCODE(ESB_POS_MANGLER(_OriginY_),\
+		 MVEA_CR_CMC_ESB_REGION_PHYS_ORIGIN_Y))\
+ | (F_ENCODE(ESB_SIZE_MANGLER(_PhysWidth_),\
 		 MVEA_CR_CMC_ESB_REGION_PHYS_WIDTH))\
-	| (F_ENCODE(ESB_SIZE_MANGLER(_PhysHeight_),\
+ | (F_ENCODE(ESB_SIZE_MANGLER(_PhysHeight_),\
 		 MVEA_CR_CMC_ESB_REGION_PHYS_HEIGHT))\
-	| (F_ENCODE(ESB_SIZE_MANGLER(_LogWidth_),\
+ | (F_ENCODE(ESB_SIZE_MANGLER(_LogWidth_),\
 		 MVEA_CR_CMC_ESB_REGION_LOGICAL_WIDTH))\
-	| (F_ENCODE(_RegType_, MVEA_CR_CMC_ESB_REGION_TYPE))\
-	| (F_ENCODE(1, MVEA_CR_CMC_ESB_REGION_VALID)))
+ | (F_ENCODE(_RegType_, MVEA_CR_CMC_ESB_REGION_TYPE))\
+ | (F_ENCODE(1, MVEA_CR_CMC_ESB_REGION_VALID)))
 
 #define TOPAZ_MULTICORE_START		0x00000000
 
@@ -1057,20 +1015,18 @@ do { \
 #define TOPAZ_MULTICORE_WRITE32(offset, value) \
 	do { \
 		MM_WRITE32(TOPAZ_MULTICORE_START, offset, value); \
-		DRM_ERROR("TOPAZ_PDUMP: MULTICORE, REG_WT %x %x\n", \
-			offset, value);\
+		DRM_ERROR("TOPAZ_PDUMP: MULTICORE, REG_WT %x %x\n", offset, value);\
 	} while (0)
 
-#define TOPAZ_MULTICORE_READ32(offset, pointer) \
+#define TOPAZ_MULTICORE_READ32(offset,pointer) \
 	do { \
 		MM_READ32(TOPAZ_MULTICORE_START, offset, pointer); \
-		DRM_ERROR("TOPAZ_PDUMP: MULTICORE, REG_RD %x %x\n", \
-			offset, *(uint32_t *)pointer); \
+		DRM_ERROR("TOPAZ_PDUMP: MULTICORE, REG_RD %x %x\n", offset, *(uint32_t *)pointer); \
 	} while (0)
 #else
 #define TOPAZ_MULTICORE_WRITE32(offset, value) \
 	MM_WRITE32(TOPAZ_MULTICORE_START, offset, value)
-#define TOPAZ_MULTICORE_READ32(offset, pointer) \
+#define TOPAZ_MULTICORE_READ32(offset,pointer) \
 	MM_READ32(TOPAZ_MULTICORE_START, offset, pointer)
 #endif
 
@@ -1085,45 +1041,43 @@ do { \
 #define MTX_WRITEBACK_DATASIZE_ROUND 4
 
 #define TOPAZ_MTX_WB_READ32(base, core, word, pointer) \
-do { \
+    do { \
 	*(uint32_t *)(pointer) = *((uint32_t *)(base) + \
-		(core)*MTX_WRITEBACK_DATASIZE_ROUND + (word)); \
-} while (0)
+		(core)*MTX_WRITEBACK_DATASIZE_ROUND + (word) ); \
+    } while (0)
 
 #define TOPAZ_MTX_WB_WRITE32(base, core, word, value) \
-do { \
-	*((uint32_t *)(base) + (core) * MTX_WRITEBACK_DATASIZE_ROUND + \
-		(word)) \
-	= value; \
-} while (0)
+    do { \
+	 *((uint32_t *)(base) + (core)*MTX_WRITEBACK_DATASIZE_ROUND + (word) ) \
+	    = value; \
+    } while (0)
 
 #define TOPAZ_MTX_WB_OFFSET(base, core) \
-	((base) + (core)*MTX_WRITEBACK_DATASIZE_ROUND*4)
+    ((base) + (core)*MTX_WRITEBACK_DATASIZE_ROUND*4)
 
 #define POLL_TOPAZ_FREE_FIFO_SPACE(word_num, delay, retries, pointer) \
-do { \
-	uint32_t free_space = 0, i; \
-	for (i = 0; i < retries; i++) { \
-		TOPAZ_MULTICORE_READ32(TOPAZSC_CR_MULTICORE_CMD_FIFO_1, \
-				&free_space);\
-		free_space &= MASK_TOPAZSC_CR_CMD_FIFO_SPACE; \
-		if (free_space >= word_num) \
-			break; \
-		else \
-			PSB_UDELAY(delay);\
-	} \
-	if (i >= retries) { \
-		ret  = -1;\
-		DRM_ERROR("TOPAZ: poll FIFO free failed (%d words free)!\n",\
-			free_space); \
-	} else \
-		ret = 0; \
-		*pointer = free_space; \
-} while (0)
+    do { \
+	uint32_t free_space=0, i; \
+	for (i = 0; i < retries; i++) {\
+	    TOPAZ_MULTICORE_READ32(TOPAZSC_CR_MULTICORE_CMD_FIFO_1, &free_space);\
+	    free_space &= MASK_TOPAZSC_CR_CMD_FIFO_SPACE; \
+	    if (free_space >= word_num) \
+		break; \
+	    else \
+		PSB_UDELAY(delay);\
+	}\
+	if ( i >= retries){ \
+	    ret  = -1;\
+	    DRM_ERROR("TOPAZ: poll FIFO free space failed (%d words free)!\n", free_space); \
+	}\
+	else \
+	    ret = 0; \
+	*pointer = free_space; \
+    } while (0)
 
 /* **************** DMAC define **************** */
 enum DMAC_eBSwap {
-	DMAC_BSWAP_NO_SWAP = 0x0,	/*No byte swapping will be performed*/
+	DMAC_BSWAP_NO_SWAP = 0x0,	/* !< No byte swapping will be performed. */
 	DMAC_BSWAP_REVERSE = 0x1,	/* !< Byte order will be reversed. */
 };
 
@@ -1240,7 +1194,7 @@ int pnw_topaz_kick_null_cmd(struct drm_psb_private *dev_priv,
 			    uint32_t wb_offset,
 			    uint32_t sync_req, uint8_t irq_enable);
 int pnw_wait_on_sync(struct drm_psb_private *dev_priv,
-		     uint32_t sync_seq, uint32_t *sync_p);
+		     uint32_t sync_seq, uint32_t * sync_p);
 
 int pnw_video_frameskip(struct drm_device *dev, uint64_t user_pointer);
 
@@ -1276,8 +1230,7 @@ static inline char *cmd_to_string(int cmd_id)
 static inline char *codec_to_string(int codec)
 {
 	switch (codec) {
-	case IMG_CODEC_JPEG:
-		/* Just guess, is JPEG firmware included in topaz_bin? */
+	case IMG_CODEC_JPEG:	/* Just guess, is JPEG firmware included in topaz_bin? */
 		return "JPEG";
 	case IMG_CODEC_H264_NO_RC:
 		return "H264_NO_RC";
@@ -1327,7 +1280,7 @@ static inline uint32_t pnw_topaz_queryirq(struct drm_device *dev)
 
 	(void)topaz_priv;
 
-	if ((val == 0) /* && (iir == 0) */) {	/* no interrupt */
+	if ((val == 0) /* && (iir == 0) */ ) {	/* no interrupt */
 		PSB_DEBUG_GENERAL("TOPAZ: no interrupt,IIR=TOPAZ_INTSTAT=0\n");
 		return 0;
 	}

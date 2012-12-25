@@ -25,7 +25,7 @@
 #include "power.h"
 
 /* function define */
-PVRSRV_ERROR MSVDXRegisterDevice(PVRSRV_DEVICE_NODE * psDeviceNode);
-PVRSRV_ERROR MSVDXUnregisterDevice(PVRSRV_DEVICE_NODE * psDeviceNode);
+PVRSRV_ERROR MSVDXRegisterDevice(PVRSRV_DEVICE_NODE *psDeviceNode);
+PVRSRV_ERROR MSVDXUnregisterDevice (PVRSRV_DEVICE_NODE *psDeviceNode);
 
-#endif				/* !MSVDX_POWER_H_ */
+#endif /* !MSVDX_POWER_H_ */

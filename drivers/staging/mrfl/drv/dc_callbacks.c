@@ -27,6 +27,8 @@
 #include "psb_drv.h"
 #include "psb_fb.h"
 #include "psb_intel_reg.h"
+#include "displayclass_interface.h"
+#include "mdfld_dsi_output.h"
 
 static int FindCurPipe(struct drm_device *dev)
 {
@@ -66,6 +68,12 @@ void DCCBGetFramebuffer(struct drm_device *dev, struct psb_framebuffer **ppsb)
 		*ppsb = fbdev->pfb;
 }
 
+int DCChangeFrameBuffer(struct drm_device *dev,
+			struct psb_framebuffer *psbfb)
+{
+	return 0;
+}
+
 void DCCBEnableVSyncInterrupt(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv;
@@ -103,13 +111,21 @@ void DCCBUninstallVSyncISR(struct drm_device *dev)
 	dev_priv->psb_vsync_handler = NULL;
 }
 
-/* Note: revisit to add supports for displaying L-frame only S3D display. */
-/* Note: for upper layer driver or application to figure out which pipe to set s3d mode. */
-void MrfldFlipToSurface(struct drm_device *dev,
-			struct mrfld_s3d_flip *ps3d_flip, unsigned int pipeflag)
+void DCCBFlipToSurface(struct drm_device *dev, unsigned long uiAddr,
+				unsigned long uiFormat, unsigned long uiStride,
+		       unsigned int pipeflag)
 {
 	struct drm_psb_private *dev_priv =
 	    (struct drm_psb_private *)dev->dev_private;
+	u32 dspbase = (dev_priv->cur_pipe == 0 ? DSPABASE : DSPBBASE);
+	u32 dspsurf = (dev_priv->cur_pipe == 0 ? DSPASURF : DSPBSURF);
+	u32 dspcntr;
+	u32 dspstride;
+	u32 val;
+
+
+	DRM_DEBUG("%s %s %d, uiAddr = 0x%x\n", __FILE__, __func__,
+			  __LINE__, uiAddr);
 
 	if (!dev_priv->um_start) {
 		dev_priv->um_start = true;
@@ -117,405 +133,176 @@ void MrfldFlipToSurface(struct drm_device *dev,
 			dev_priv->b_dsr_enable = true;
 	}
 
-	if (dev_priv->cur_s3d_state == (ps3d_flip->s3d_state & S3D_STATE_MASK)) {
-		if (pipeflag & PVRSRV_SWAPCHAIN_ATTACHED_PLANE_A)
-			mrfld_s3d_flip_surf_addr(dev, 0, ps3d_flip);
-#if defined(CONFIG_MID_DUAL_MIPI)
-		if (pipeflag & PVRSRV_SWAPCHAIN_ATTACHED_PLANE_C)
-			mrfld_s3d_flip_surf_addr(dev, 2, ps3d_flip);
-#endif
-#ifdef CONFIG_MID_HDMI
-		if (pipeflag & PVRSRV_SWAPCHAIN_ATTACHED_PLANE_B)
-			mrfld_s3d_flip_surf_addr(dev, 1, ps3d_flip);
-#endif
+	/*flip mipi*/
+	dspsurf = DSPASURF;
+	dspcntr = DSPACNTR;
+	dspstride = DSPASTRIDE;
+	/*update format*/
+	val = (0x80000000 | uiFormat);
+	DCWriteReg(dev, dspcntr, val);
+	/*update stride*/
+	DCWriteReg(dev, dspstride, uiStride);
+	/*update surface address*/
+	DCWriteReg(dev, dspsurf, uiAddr);
 
-	} else if ((dev_priv->cur_s3d_state & S3D_STATE_ENALBLED) !=
-		   (ps3d_flip->s3d_state & S3D_STATE_ENALBLED)) {
-		dev_priv->cur_s3d_state = ps3d_flip->s3d_state & S3D_STATE_MASK;
+	/*flip hdmi*/
+	dspsurf = DSPBSURF;
+	dspcntr = DSPBCNTR;
+	dspstride = DSPBSTRIDE;
+	/*update format*/
+	val = (0x80000000 | uiFormat);
+	DCWriteReg(dev, dspcntr, val);
+	/*update stride*/
+	DCWriteReg(dev, dspstride, uiStride);
+	/*update surface address*/
+	DCWriteReg(dev, dspsurf, uiAddr);
+}
 
-		if (ps3d_flip->s3d_state & S3D_STATE_ENALBLED) {
-			/* Set s3d mode */
-			switch (ps3d_flip->s3d_format) {
-			case S3D_FRAME_PACKING:
-				if (pipeflag &
-				    PVRSRV_SWAPCHAIN_ATTACHED_PLANE_A)
-					mrfld_s3d_to_frame_packing(dev, 0,
-								   ps3d_flip);
-#if defined(CONFIG_MID_DUAL_MIPI)
-				if (pipeflag &
-				    PVRSRV_SWAPCHAIN_ATTACHED_PLANE_C)
-					mrfld_s3d_to_frame_packing(dev, 2,
-								   ps3d_flip);
-#endif
-#ifdef CONFIG_MID_HDMI
-				if (pipeflag &
-				    PVRSRV_SWAPCHAIN_ATTACHED_PLANE_B)
-					mrfld_s3d_to_frame_packing(dev, 1,
-								   ps3d_flip);
-#endif
-				break;
-			case S3D_LINE_ALTERNATIVE:
-				if (pipeflag &
-				    PVRSRV_SWAPCHAIN_ATTACHED_PLANE_A)
-					mrfld_s3d_to_line_interleave(dev, 0,
-								     ps3d_flip);
-#if defined(CONFIG_MID_DUAL_MIPI)
-				if (pipeflag &
-				    PVRSRV_SWAPCHAIN_ATTACHED_PLANE_C)
-					mrfld_s3d_to_line_interleave(dev, 2,
-								     ps3d_flip);
-#endif
-#ifdef CONFIG_MID_HDMI
-				if (pipeflag &
-				    PVRSRV_SWAPCHAIN_ATTACHED_PLANE_B)
-					mrfld_s3d_to_line_interleave(dev, 1,
-								     ps3d_flip);
-#endif
-				break;
-			case S3D_SIDE_BY_SIDE_FULL:
-				if (pipeflag &
-				    PVRSRV_SWAPCHAIN_ATTACHED_PLANE_A)
-					mrfld_s3d_to_full_side_by_side(dev, 0,
-								       ps3d_flip);
-#if defined(CONFIG_MID_DUAL_MIPI)
-				if (pipeflag &
-				    PVRSRV_SWAPCHAIN_ATTACHED_PLANE_C)
-					mrfld_s3d_to_full_side_by_side(dev, 2,
-								       ps3d_flip);
-#endif
-#ifdef CONFIG_MID_HDMI
-				if (pipeflag &
-				    PVRSRV_SWAPCHAIN_ATTACHED_PLANE_B)
-					mrfld_s3d_to_full_side_by_side(dev, 1,
-								       ps3d_flip);
-#endif
-				break;
-			case S3D_TOP_AND_BOTTOM:
-				if (pipeflag &
-				    PVRSRV_SWAPCHAIN_ATTACHED_PLANE_A)
-					mrfld_s3d_to_top_and_bottom(dev, 0,
-								    ps3d_flip);
-#if defined(CONFIG_MID_DUAL_MIPI)
-				if (pipeflag &
-				    PVRSRV_SWAPCHAIN_ATTACHED_PLANE_C)
-					mrfld_s3d_to_top_and_bottom(dev, 2,
-								    ps3d_flip);
-#endif
-#ifdef CONFIG_MID_HDMI
-				if (pipeflag &
-				    PVRSRV_SWAPCHAIN_ATTACHED_PLANE_B)
-					mrfld_s3d_to_top_and_bottom(dev, 1,
-								    ps3d_flip);
-#endif
-				break;
-			case S3D_SIDE_BY_SIDE_HALF:
-				if (pipeflag &
-				    PVRSRV_SWAPCHAIN_ATTACHED_PLANE_A)
-					mrfld_s3d_to_half_side_by_side(dev, 0,
-								       ps3d_flip);
-#if defined(CONFIG_MID_DUAL_MIPI)
-				if (pipeflag &
-				    PVRSRV_SWAPCHAIN_ATTACHED_PLANE_C)
-					mrfld_s3d_to_half_side_by_side(dev, 2,
-								       ps3d_flip);
-#endif
-#ifdef CONFIG_MID_HDMI
-				if (pipeflag &
-				    PVRSRV_SWAPCHAIN_ATTACHED_PLANE_B)
-					mrfld_s3d_to_half_side_by_side(dev, 1,
-								       ps3d_flip);
-#endif
-				break;
-			case S3D_LINE_ALTERNATIVE_HALF:
-				if (pipeflag &
-				    PVRSRV_SWAPCHAIN_ATTACHED_PLANE_A)
-					mrfld_s3d_to_line_interleave_half(dev,
-									  0,
-									  ps3d_flip);
-#if defined(CONFIG_MID_DUAL_MIPI)
-				if (pipeflag &
-				    PVRSRV_SWAPCHAIN_ATTACHED_PLANE_C)
-					mrfld_s3d_to_line_interleave_half(dev,
-									  2,
-									  ps3d_flip);
-#endif
-#ifdef CONFIG_MID_HDMI
-				if (pipeflag &
-				    PVRSRV_SWAPCHAIN_ATTACHED_PLANE_B)
-					mrfld_s3d_to_line_interleave_half(dev,
-									  1,
-									  ps3d_flip);
-#endif
-				break;
-			case S3D_PIXEL_INTERLEAVING_HALF:
-				if (pipeflag &
-				    PVRSRV_SWAPCHAIN_ATTACHED_PLANE_A)
-					mrfld_s3d_to_pixel_interleaving_half
-					    (dev, 0, ps3d_flip);
-#if defined(CONFIG_MID_DUAL_MIPI)
-				if (pipeflag &
-				    PVRSRV_SWAPCHAIN_ATTACHED_PLANE_C)
-					mrfld_s3d_to_pixel_interleaving_half
-					    (dev, 2, ps3d_flip);
-#endif
-#ifdef CONFIG_MID_HDMI
-				if (pipeflag &
-				    PVRSRV_SWAPCHAIN_ATTACHED_PLANE_B)
-					mrfld_s3d_to_pixel_interleaving_half
-					    (dev, 1, ps3d_flip);
-#endif
-				break;
-			case S3D_PIXEL_INTERLEAVING:
-				if (pipeflag &
-				    PVRSRV_SWAPCHAIN_ATTACHED_PLANE_A)
-					mrfld_s3d_to_pixel_interleaving_full
-					    (dev, 0, ps3d_flip);
-#if defined(CONFIG_MID_DUAL_MIPI)
-				if (pipeflag &
-				    PVRSRV_SWAPCHAIN_ATTACHED_PLANE_C)
-					mrfld_s3d_to_pixel_interleaving_full
-					    (dev, 2, ps3d_flip);
-#endif
-#ifdef CONFIG_MID_HDMI
-				if (pipeflag &
-				    PVRSRV_SWAPCHAIN_ATTACHED_PLANE_B)
-					mrfld_s3d_to_pixel_interleaving_full
-					    (dev, 1, ps3d_flip);
-#endif
-				break;
-			default:
-				DRM_ERROR("Invalid S3D format 0x(%x).",
-					  ps3d_flip->s3d_format);
+void DCCBFlipOverlay(struct drm_device *dev,
+			struct intel_dc_overlay_ctx *ctx)
+{
+	struct drm_psb_private *dev_priv;
+	u32 ovadd_reg = OV_OVADD;
 
-			}
+	if (!dev || !ctx)
+		return;
 
-		} else {
-			/* Set back to 2d mode */
-			switch (ps3d_flip->s3d_format) {
-			case S3D_FRAME_PACKING:
-				if (pipeflag &
-				    PVRSRV_SWAPCHAIN_ATTACHED_PLANE_A)
-					mrfld_s3d_from_frame_packing(dev, 0,
-								     ps3d_flip);
-#if defined(CONFIG_MID_DUAL_MIPI)
-				if (pipeflag &
-				    PVRSRV_SWAPCHAIN_ATTACHED_PLANE_C)
-					mrfld_s3d_from_frame_packing(dev, 2,
-								     ps3d_flip);
-#endif
-#ifdef CONFIG_MID_HDMI
-				if (pipeflag &
-				    PVRSRV_SWAPCHAIN_ATTACHED_PLANE_B)
-					mrfld_s3d_from_frame_packing(dev, 1,
-								     ps3d_flip);
-#endif
-				break;
-			case S3D_LINE_ALTERNATIVE:
-				if (pipeflag &
-				    PVRSRV_SWAPCHAIN_ATTACHED_PLANE_A)
-					mrfld_s3d_from_line_interleave(dev, 0,
-								       ps3d_flip);
-#if defined(CONFIG_MID_DUAL_MIPI)
-				if (pipeflag &
-				    PVRSRV_SWAPCHAIN_ATTACHED_PLANE_C)
-					mrfld_s3d_from_line_interleave(dev, 2,
-								       ps3d_flip);
-#endif
-#ifdef CONFIG_MID_HDMI
-				if (pipeflag &
-				    PVRSRV_SWAPCHAIN_ATTACHED_PLANE_B)
-					mrfld_s3d_from_line_interleave(dev, 1,
-								       ps3d_flip);
-#endif
-				break;
-			case S3D_SIDE_BY_SIDE_FULL:
-				if (pipeflag &
-				    PVRSRV_SWAPCHAIN_ATTACHED_PLANE_A)
-					mrfld_s3d_from_full_side_by_side(dev, 0,
-									 ps3d_flip);
-#if defined(CONFIG_MID_DUAL_MIPI)
-				if (pipeflag &
-				    PVRSRV_SWAPCHAIN_ATTACHED_PLANE_C)
-					mrfld_s3d_from_full_side_by_side(dev, 2,
-									 ps3d_flip);
-#endif
-#ifdef CONFIG_MID_HDMI
-				if (pipeflag &
-				    PVRSRV_SWAPCHAIN_ATTACHED_PLANE_B)
-					mrfld_s3d_from_full_side_by_side(dev, 1,
-									 ps3d_flip);
-#endif
-				break;
-			case S3D_TOP_AND_BOTTOM:
-				if (pipeflag &
-				    PVRSRV_SWAPCHAIN_ATTACHED_PLANE_A)
-					mrfld_s3d_from_top_and_bottom(dev, 0,
-								      ps3d_flip);
-#if defined(CONFIG_MID_DUAL_MIPI)
-				if (pipeflag &
-				    PVRSRV_SWAPCHAIN_ATTACHED_PLANE_C)
-					mrfld_s3d_from_top_and_bottom(dev, 2,
-								      ps3d_flip);
-#endif
-#ifdef CONFIG_MID_HDMI
-				if (pipeflag &
-				    PVRSRV_SWAPCHAIN_ATTACHED_PLANE_B)
-					mrfld_s3d_from_top_and_bottom(dev, 1,
-								      ps3d_flip);
-#endif
-				break;
-			case S3D_SIDE_BY_SIDE_HALF:
-				if (pipeflag &
-				    PVRSRV_SWAPCHAIN_ATTACHED_PLANE_A)
-					mrfld_s3d_from_half_side_by_side(dev, 0,
-									 ps3d_flip);
-#if defined(CONFIG_MID_DUAL_MIPI)
-				if (pipeflag &
-				    PVRSRV_SWAPCHAIN_ATTACHED_PLANE_C)
-					mrfld_s3d_from_half_side_by_side(dev, 2,
-									 ps3d_flip);
-#endif
-#ifdef CONFIG_MID_HDMI
-				if (pipeflag &
-				    PVRSRV_SWAPCHAIN_ATTACHED_PLANE_B)
-					mrfld_s3d_from_half_side_by_side(dev, 1,
-									 ps3d_flip);
-#endif
-				break;
-			case S3D_LINE_ALTERNATIVE_HALF:
-				if (pipeflag &
-				    PVRSRV_SWAPCHAIN_ATTACHED_PLANE_A)
-					mrfld_s3d_from_line_interleave_half(dev,
-									    0,
-									    ps3d_flip);
-#if defined(CONFIG_MID_DUAL_MIPI)
-				if (pipeflag &
-				    PVRSRV_SWAPCHAIN_ATTACHED_PLANE_C)
-					mrfld_s3d_from_line_interleave_half(dev,
-									    2,
-									    ps3d_flip);
-#endif
-#ifdef CONFIG_MID_HDMI
-				if (pipeflag &
-				    PVRSRV_SWAPCHAIN_ATTACHED_PLANE_B)
-					mrfld_s3d_from_line_interleave_half(dev,
-									    1,
-									    ps3d_flip);
-#endif
-				break;
-			case S3D_PIXEL_INTERLEAVING_HALF:
-				if (pipeflag &
-				    PVRSRV_SWAPCHAIN_ATTACHED_PLANE_A)
-					mrfld_s3d_from_pixel_interleaving_half
-					    (dev, 0, ps3d_flip);
-#if defined(CONFIG_MID_DUAL_MIPI)
-				if (pipeflag &
-				    PVRSRV_SWAPCHAIN_ATTACHED_PLANE_C)
-					mrfld_s3d_from_pixel_interleaving_half
-					    (dev, 2, ps3d_flip);
-#endif
-#ifdef CONFIG_MID_HDMI
-				if (pipeflag &
-				    PVRSRV_SWAPCHAIN_ATTACHED_PLANE_B)
-					mrfld_s3d_from_pixel_interleaving_half
-					    (dev, 1, ps3d_flip);
-#endif
-				break;
-			case S3D_PIXEL_INTERLEAVING:
-				if (pipeflag &
-				    PVRSRV_SWAPCHAIN_ATTACHED_PLANE_A)
-					mrfld_s3d_from_pixel_interleaving_full
-					    (dev, 0, ps3d_flip);
-#if defined(CONFIG_MID_DUAL_MIPI)
-				if (pipeflag &
-				    PVRSRV_SWAPCHAIN_ATTACHED_PLANE_C)
-					mrfld_s3d_from_pixel_interleaving_full
-					    (dev, 2, ps3d_flip);
-#endif
-#ifdef CONFIG_MID_HDMI
-				if (pipeflag &
-				    PVRSRV_SWAPCHAIN_ATTACHED_PLANE_B)
-					mrfld_s3d_from_pixel_interleaving_full
-					    (dev, 1, ps3d_flip);
-#endif
-				break;
-			default:
-				DRM_ERROR("Invalid S3D format 0x(%x).",
-					  ps3d_flip->s3d_format);
+	dev_priv = (struct drm_psb_private *)dev->dev_private;
 
-			}
+	if (ctx->index == 1)
+		ovadd_reg = OVC_OVADD;
 
-		}
+	ctx->ovadd |= ctx->pipe;
+	ctx->ovadd |= 1;
 
+	PSB_WVDC32(ctx->ovadd, ovadd_reg);
+}
+
+void DCCBFlipSprite(struct drm_device *dev,
+			struct intel_dc_sprite_ctx *ctx)
+{
+	struct drm_psb_private *dev_priv;
+	struct mdfld_dsi_config *dsi_config;
+	struct mdfld_dsi_hw_context *dsi_ctx;
+	u32 reg_offset;
+	int pipe;
+
+	if (!dev || !ctx)
+		return;
+
+	dev_priv = (struct drm_psb_private *)dev->dev_private;
+	dsi_config = dev_priv->dsi_configs[0];
+
+	if (ctx->index == 0) {
+		reg_offset = 0;
+		pipe = 0;
+	} else if (ctx->index == 1) {
+		reg_offset = 0x1000;
+		pipe = 1;
+	} else if (ctx->index == 2) {
+		reg_offset = 0x2000;
+		dsi_config = dev_priv->dsi_configs[1];
+		pipe = 2;
+	} else
+		return;
+
+	if ((ctx->update_mask & SPRITE_UPDATE_POSITION))
+		PSB_WVDC32(ctx->pos, DSPAPOS + reg_offset);
+	if ((ctx->update_mask & SPRITE_UPDATE_SIZE)) {
+		PSB_WVDC32(ctx->size, DSPASIZE + reg_offset);
+		PSB_WVDC32(ctx->stride, DSPASTRIDE + reg_offset);
+	}
+
+	if ((ctx->update_mask & SPRITE_UPDATE_CONTROL))
+		PSB_WVDC32(ctx->cntr, DSPACNTR + reg_offset);
+
+	if ((ctx->update_mask & SPRITE_UPDATE_SURFACE)) {
+		PSB_WVDC32(ctx->linoff, DSPALINOFF + reg_offset);
+		PSB_WVDC32(ctx->surf, DSPASURF + reg_offset);
+	}
+
+	if (dsi_config) {
+		dsi_ctx = &dsi_config->dsi_hw_context;
+		dsi_ctx->dsppos = ctx->pos;
+		dsi_ctx->dspsize = ctx->size;
+		dsi_ctx->dspstride = ctx->stride;
+		dsi_ctx->dspcntr = ctx->cntr;
+		dsi_ctx->dsplinoff = ctx->linoff;
+		dsi_ctx->dspsurf = ctx->surf;
 	}
 }
 
-void DCCBFlipToSurface(struct drm_device *dev, unsigned long uiAddr,
-		       unsigned int pipeflag)
+void DCCBFlipPrimary(struct drm_device *dev,
+			struct intel_dc_primary_ctx *ctx)
 {
-	struct drm_psb_private *dev_priv =
-	    (struct drm_psb_private *)dev->dev_private;
-	int dspbase = (dev_priv->cur_pipe == 0 ? DSPABASE : DSPBBASE);
-	int dspsurf = (dev_priv->cur_pipe == 0 ? DSPASURF : DSPBSURF);
+	struct drm_psb_private *dev_priv;
+	struct mdfld_dsi_config *dsi_config;
+	struct mdfld_dsi_hw_context *dsi_ctx;
+	u32 reg_offset;
+	int pipe;
 
-	DRM_ERROR("%s %s %d\n", __FILE__, __func__, __LINE__);
-#ifdef FIXME
-	if (IS_MRFLD(dev))
-		MrfldFlipToSurface(dev, uiAddr, pipeflag);
-#endif
-	DRM_ERROR("%s %s %d, uiAddr = 0x%x\n", __FILE__, __func__, __LINE__,
-		  uiAddr);
-	dspsurf = DSPASURF;
-	DCWriteReg(dev, dspsurf, uiAddr);
+	if (!dev || !ctx)
+		return;
 
-#if FIXME
-	if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, false)) {
-		if (IS_FLDS(dev)) {
-			if (!dev_priv->um_start) {
-				dev_priv->um_start = true;
-				if (dev_priv->b_dsr_enable_config)
-					dev_priv->b_dsr_enable = true;
-			}
+	dev_priv = (struct drm_psb_private *)dev->dev_private;
+	dsi_config = dev_priv->dsi_configs[0];
 
-			if (pipeflag & PVRSRV_SWAPCHAIN_ATTACHED_PLANE_A) {
-				dspsurf = DSPASURF;
-				DRM_ERROR("%s %s %d\n", __FILE__, __func__,
-					  __LINE__);
-				DCWriteReg(dev, dspsurf, uiAddr);
-			}
-#if defined(CONFIG_MID_DUAL_MIPI)
-			if (pipeflag & PVRSRV_SWAPCHAIN_ATTACHED_PLANE_C) {
-				dspsurf = DSPCSURF;
-				DRM_ERROR("%s %s %d\n", __FILE__, __func__,
-					  __LINE__);
-				DCWriteReg(dev, dspsurf, uiAddr);
-			}
-#endif
-#ifdef CONFIG_MID_HDMI
-			/* To avoid Plane B still fetches data from original frame
-			 * buffer. */
-			if (pipeflag & PVRSRV_SWAPCHAIN_ATTACHED_PLANE_B) {
-				dspsurf = DSPBSURF;
-				DRM_ERROR("%s %s %d\n", __FILE__, __func__,
-					  __LINE__);
-				DCWriteReg(dev, dspsurf, uiAddr);
-			}
-#endif
-		} else {
-			DRM_ERROR("%s %s %d\n", __FILE__, __func__, __LINE__);
-			DCWriteReg(dev, dspbase, uiAddr);
-		}
-		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+	if (ctx->index == 0) {
+		reg_offset = 0;
+		pipe = 0;
+	} else if (ctx->index == 1) {
+		reg_offset = 0x1000;
+		pipe = 1;
+	} else if (ctx->index == 2) {
+		reg_offset = 0x2000;
+		dsi_config = dev_priv->dsi_configs[1];
+		pipe = 2;
+	} else
+		return;
+
+	if ((ctx->update_mask & SPRITE_UPDATE_POSITION)) {
+		PSB_WVDC32(ctx->pos, DSPAPOS + reg_offset);
+		PSB_WVDC32(ctx->pos, DSPBPOS + reg_offset);
 	}
-#endif
+	if ((ctx->update_mask & SPRITE_UPDATE_SIZE)) {
+		PSB_WVDC32(ctx->size, DSPASIZE + reg_offset);
+		PSB_WVDC32(ctx->stride, DSPASTRIDE + reg_offset);
+		PSB_WVDC32(0x43702cf, DSPBSIZE + reg_offset);
+		PSB_WVDC32(ctx->stride, DSPBSTRIDE + reg_offset);
+	}
+
+	if ((ctx->update_mask & SPRITE_UPDATE_CONTROL)) {
+		PSB_WVDC32(ctx->cntr, DSPACNTR + reg_offset);
+		PSB_WVDC32(ctx->cntr, DSPBCNTR + reg_offset);
+	}
+
+	if ((ctx->update_mask & SPRITE_UPDATE_SURFACE)) {
+		PSB_WVDC32(ctx->linoff, DSPALINOFF + reg_offset);
+		PSB_WVDC32(ctx->surf, DSPASURF + reg_offset);
+		PSB_WVDC32(ctx->linoff, DSPBLINOFF + reg_offset);
+		PSB_WVDC32(ctx->surf, DSPBSURF + reg_offset);
+	}
+
+	if (dsi_config) {
+		dsi_ctx = &dsi_config->dsi_hw_context;
+		dsi_ctx->dsppos = ctx->pos;
+		dsi_ctx->dspsize = ctx->size;
+		dsi_ctx->dspstride = ctx->stride;
+		dsi_ctx->dspcntr = ctx->cntr;
+		dsi_ctx->dsplinoff = ctx->linoff;
+		dsi_ctx->dspsurf = ctx->surf;
+	}
 }
 
 void DCCBUnblankDisplay(struct drm_device *dev)
 {
 	int res;
-	struct psb_framebuffer *psb_fb;
+	struct psb_framebuffer *psb_fb = NULL;
 
 	DCCBGetFramebuffer(dev, &psb_fb);
+
+	if (!psb_fb)
+		return;
 
 	console_trylock();
 	res = fb_blank(psb_fb->fbdev, 0);

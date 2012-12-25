@@ -177,21 +177,21 @@ struct ttm_fence_class_init {
  */
 
 struct ttm_fence_driver {
-	bool(*has_irq) (struct ttm_fence_device *fdev,
+	bool(*has_irq) (struct ttm_fence_device * fdev,
 			uint32_t fence_class, uint32_t flags);
-	int (*emit) (struct ttm_fence_device *fdev,
+	int (*emit) (struct ttm_fence_device * fdev,
 		     uint32_t fence_class,
 		     uint32_t flags,
-		     uint32_t *breadcrumb, unsigned long *timeout_jiffies);
-	void (*flush) (struct ttm_fence_device *fdev, uint32_t fence_class);
-	void (*poll) (struct ttm_fence_device *fdev,
+		     uint32_t * breadcrumb, unsigned long *timeout_jiffies);
+	void (*flush) (struct ttm_fence_device * fdev, uint32_t fence_class);
+	void (*poll) (struct ttm_fence_device * fdev,
 		      uint32_t fence_class, uint32_t types);
 	 uint32_t(*needed_flush)
-	 (struct ttm_fence_object *fence);
-	int (*wait) (struct ttm_fence_object *fence, bool lazy,
+	 (struct ttm_fence_object * fence);
+	int (*wait) (struct ttm_fence_object * fence, bool lazy,
 		     bool interruptible, uint32_t mask);
-	void (*signaled) (struct ttm_fence_object *fence);
-	void (*lockup) (struct ttm_fence_object *fence, uint32_t fence_types);
+	void (*signaled) (struct ttm_fence_object * fence);
+	void (*lockup) (struct ttm_fence_object * fence, uint32_t fence_types);
 };
 
 /**
@@ -262,8 +262,9 @@ ttm_fence_handler(struct ttm_fence_device *fdev,
  * Returns a pointer to the fence driver struct.
  */
 
-static inline const struct ttm_fence_driver *ttm_fence_driver_from_dev(
-					struct ttm_fence_device *fdev)
+static inline const struct ttm_fence_driver *ttm_fence_driver_from_dev(struct
+								       ttm_fence_device
+								       *fdev)
 {
 	return fdev->driver;
 }

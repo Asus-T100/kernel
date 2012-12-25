@@ -1,26 +1,46 @@
-/******************************************************************************
- * Name         : devicemem_mmap.c
- * Title        : Device Memory Management
- * Author(s)    : Imagination Technologies
- * Created      : 
- *
- * Copyright    : 2010 by Imagination Technologies Limited.
- *                All rights reserved. No part of this software, either
- *                material or conceptual may be copied or distributed,
- *                transmitted, transcribed, stored in a retrieval system or
- *                translated into any human or computer language in any form
- *                by any means, electronic, mechanical, manual or otherwise,
- *                or disclosed to third parties without the express written
- *                permission of Imagination Technologies Limited,
- *                Home Park Estate, Kings Langley, Hertfordshire,
- *                WD4 8LZ, U.K.
- *
- * Description  : OS abstraction for the mmap2 interface for mapping PMRs into
- *                User Mode memory
- *
- * Platform     : ALL
- *
- *****************************************************************************/
+/*************************************************************************/ /*!
+@File
+@Title          Device Memory Management
+@Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
+@Description    OS abstraction for the mmap2 interface for mapping PMRs into
+                User Mode memory
+@License        Dual MIT/GPLv2
+
+The contents of this file are subject to the MIT license as set out below.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+Alternatively, the contents of this file may be used under the terms of
+the GNU General Public License Version 2 ("GPL") in which case the provisions
+of GPL are applicable instead of those above.
+
+If you wish to allow use of your version of this file only under the terms of
+GPL, and not to allow others to use your version of this file under the terms
+of the MIT license, indicate your decision by deleting the provisions above
+and replace them with the notice and other provisions required by GPL as set
+out in the file called "GPL-COPYING" included in this distribution. If you do
+not delete the provisions above, a recipient may use your version of this file
+under the terms of either the MIT license or GPL.
+
+This License is also included in this distribution in the file called
+"MIT-COPYING".
+
+EXCEPT AS OTHERWISE STATED IN A NEGOTIATED AGREEMENT: (A) THE SOFTWARE IS
+PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING
+BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+PURPOSE AND NONINFRINGEMENT; AND (B) IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+*/ /**************************************************************************/
 
 /* our exported API */
 #include "devicemem_mmap.h"
@@ -43,78 +63,72 @@
 
 IMG_INTERNAL PVRSRV_ERROR
 OSMMapPMR(IMG_HANDLE hBridge,
-	  IMG_HANDLE hPMR,
-	  IMG_DEVMEM_SIZE_T uiPMRSize,
-	  IMG_HANDLE * phOSMMapPrivDataOut,
-	  IMG_VOID ** ppvMappingAddressOut, IMG_SIZE_T * puiMappingLengthOut)
+          IMG_HANDLE hPMR,
+          IMG_DEVMEM_SIZE_T uiPMRSize,
+          IMG_HANDLE *phOSMMapPrivDataOut,
+          IMG_VOID **ppvMappingAddressOut,
+          IMG_SIZE_T *puiMappingLengthOut)
 {
-	PVRSRV_ERROR eError;
-	PMR *psPMR;
-	IMG_VOID *pvKernelAddress;
-	IMG_SIZE_T uiLength;
-	IMG_HANDLE hPriv;
+    PVRSRV_ERROR eError;
+    PMR *psPMR;
+    IMG_VOID *pvKernelAddress;
+    IMG_SIZE_T uiLength;
+    IMG_HANDLE hPriv;
 
-	PVR_UNREFERENCED_PARAMETER(hBridge);
+    PVR_UNREFERENCED_PARAMETER(hBridge);
 
-	/*
-	   Normally this function would mmap a PMR into the memory space of
-	   user process, but in this case we're taking a PMR and mapping it
-	   into kernel virtual space.  We keep the same function name for
-	   symmetry as this allows the higher layers of the software stack
-	   to not care whether they are user mode or kernel
-	 */
+    /*
+      Normally this function would mmap a PMR into the memory space of
+      user process, but in this case we're taking a PMR and mapping it
+      into kernel virtual space.  We keep the same function name for
+      symmetry as this allows the higher layers of the software stack
+      to not care whether they are user mode or kernel
+    */
 
-	psPMR = hPMR;
+    psPMR = hPMR;
 
-	/*
-	   TODO:
+    eError = PMRAcquireKernelMappingData(psPMR,
+                                         0,
+                                         0,
+                                         &pvKernelAddress,
+                                         &uiLength,
+                                         &hPriv);
+    if (eError != PVRSRV_OK)
+    {
+        goto e0;
+    }
+    
+    *phOSMMapPrivDataOut = hPriv;
+    *ppvMappingAddressOut = pvKernelAddress;
+    *puiMappingLengthOut = uiLength;
 
-	   Since we know we're in kernel, we can sidestep the bridge.
-	   We should "direct" bridge this function?  We certainly don't want
-	   to put it in the "normal" bridge, at least not without making it
-	   secure somehow.
-	   We can't afford for user mode processes to learn about kernel
-	   virtual addresses (although, one may argue it won't cause any
-	   _real_ harm)
-	 */
-	eError = PMRAcquireKernelMappingData(psPMR,
-					     0,
-					     0,
-					     &pvKernelAddress,
-					     &uiLength, &hPriv);
-	if (eError != PVRSRV_OK) {
-		goto e0;
-	}
+    PVR_ASSERT(*puiMappingLengthOut == uiPMRSize);
 
-	*phOSMMapPrivDataOut = hPriv;
-	*ppvMappingAddressOut = pvKernelAddress;
-	*puiMappingLengthOut = uiLength;
+    return PVRSRV_OK;
 
-	PVR_ASSERT(*puiMappingLengthOut == uiPMRSize);
-
-	return PVRSRV_OK;
-
-	/*
-	   error exit paths follow
-	 */
+    /*
+      error exit paths follow
+    */
 
  e0:
-	PVR_ASSERT(eError != PVRSRV_OK);
-	return eError;
+    PVR_ASSERT(eError != PVRSRV_OK);
+    return eError;
 }
 
 IMG_INTERNAL IMG_VOID
 OSMUnmapPMR(IMG_HANDLE hBridge,
-	    IMG_HANDLE hPMR,
-	    IMG_HANDLE hOSMMapPrivData,
-	    IMG_VOID * pvMappingAddress, IMG_SIZE_T uiMappingLength)
+            IMG_HANDLE hPMR,
+            IMG_HANDLE hOSMMapPrivData,
+            IMG_VOID *pvMappingAddress,
+            IMG_SIZE_T uiMappingLength)
 {
-	PMR *psPMR;
+    PMR *psPMR;
 
-	PVR_UNREFERENCED_PARAMETER(hBridge);
-	PVR_UNREFERENCED_PARAMETER(pvMappingAddress);
-	PVR_UNREFERENCED_PARAMETER(uiMappingLength);
+    PVR_UNREFERENCED_PARAMETER(hBridge);
+    PVR_UNREFERENCED_PARAMETER(pvMappingAddress);
+    PVR_UNREFERENCED_PARAMETER(uiMappingLength);
 
-	psPMR = hPMR;
-	PMRReleaseKernelMappingData(psPMR, hOSMMapPrivData);
+    psPMR = hPMR;
+    PMRReleaseKernelMappingData(psPMR,
+                                hOSMMapPrivData);
 }

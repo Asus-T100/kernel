@@ -34,7 +34,8 @@ void PVRSRVQueryIoctls(struct drm_ioctl_desc *ioctls);
 
 unsigned int PVRSRVGetMeminfoSize(void *hKernelMemInfo);
 void *PVRSRVGetMeminfoCPUAddr(void *hMemHandle);
-int PVRSRVGetMeminfoPages(void *hMemHandle, struct page ***pages);
+int PVRSRVGetMeminfoPages(void *hMemHandle, int npages, struct page ***pages);
+int PVRSRVGetMeminfoPfn(void *hMemHandle, int npages, unsigned long **pfns);
 int PVRSRVMMap(struct file *pFile, struct vm_area_struct *ps_vma);
 int PVRSRVInterrupt(struct drm_device *dev);
 

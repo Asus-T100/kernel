@@ -64,8 +64,8 @@
 unsigned int bc_video_id_usage[BC_VIDEO_DEVICE_MAX_ID];
 
 extern struct ttm_buffer_object *ttm_buffer_object_lookup(struct ttm_object_file
-							  *tfile,
-							  uint32_t handle);
+		*tfile,
+		uint32_t handle);
 
 MODULE_SUPPORTED_DEVICE(DEVNAME);
 
@@ -104,10 +104,11 @@ void BCVideoSetPriv(struct drm_file *file, void *fpriv)
 	psPrivateData->pPriv = fpriv;
 }
 
-int BCVideoModInit(void)
+int
+BCVideoModInit(void)
 {
 	int i, j;
-	/*LDM_PCI is defined, while LDM_PLATFORM and LMA are not defined. */
+	/*LDM_PCI is defined, while LDM_PLATFORM and LMA are not defined.*/
 #if defined(LDM_PLATFORM) || defined(LDM_PCI)
 	struct device *psDev;
 #endif
@@ -127,8 +128,7 @@ int BCVideoModInit(void)
 
 	if ((error = pci_enable_device(psPCIDev)) != 0) {
 		printk(KERN_ERR DRVNAME
-		       ": BCVideoModInit: pci_enable_device failed (%d)\n",
-		       error);
+		       ": BCVideoModInit: pci_enable_device failed (%d)\n", error);
 		goto ExitError;
 	}
 #endif
@@ -162,16 +162,15 @@ int BCVideoModInit(void)
 
 #if defined(LMA)
 	g_ulMemBase =
-	    pci_resource_start(psPCIDev,
-			       PVR_MEM_PCI_BASENUM) + PVR_BUFFERCLASS_MEMOFFSET;
+		pci_resource_start(psPCIDev,
+				   PVR_MEM_PCI_BASENUM) + PVR_BUFFERCLASS_MEMOFFSET;
 #endif
 
 	for (i = 0; i < BC_VIDEO_DEVICE_MAX_ID; i++) {
 		bc_video_id_usage[i] = 0;
 		if (BC_Video_Init(i) != BCE_OK) {
 			printk(KERN_ERR DRVNAME
-			       ": BCVideoModInit: can't init video bc device %d.\n",
-			       i);
+			       ": BCVideoModInit: can't init video bc device %d.\n", i);
 			for (j = i; j >= 0; j--) {
 				BC_Video_Deinit(j);
 			}
@@ -184,10 +183,10 @@ int BCVideoModInit(void)
 			BC_Video_Deinit(i);
 		}
 		BC_Video_Deinit(BC_CAMERA_DEVICEID);
-		printk(KERN_ERR DRVNAME
-		       ": BC_Camera_ModInit: can't init device\n");
+		printk(KERN_ERR DRVNAME ": BC_Camera_ModInit: can't init device\n");
 		goto ExitUnregister;
 	}
+
 #if defined(LMA)
 	pci_disable_device(psPCIDev);
 #endif
@@ -195,20 +194,21 @@ int BCVideoModInit(void)
 	return 0;
 
 #if defined(LDM_PLATFORM) || defined(LDM_PCI)
- ExitDestroyClass:
+ExitDestroyClass:
 	class_destroy(psPvrClass);
 #endif
- ExitUnregister:
+ExitUnregister:
 	unregister_chrdev(AssignedMajorNumber, DEVNAME);
 	//ExitDisable:
 #if defined(LMA)
 	pci_disable_device(psPCIDev);
- ExitError:
+ExitError:
 #endif
 	return -EBUSY;
 }
 
-int BCVideoModCleanup(void)
+int
+BCVideoModCleanup(void)
 {
 	int i;
 #if defined(LDM_PLATFORM) || defined(LDM_PCI)
@@ -234,12 +234,14 @@ int BCVideoModCleanup(void)
 	return 0;
 }
 
-void *BCAllocKernelMem(unsigned long ulSize)
+void *
+BCAllocKernelMem(unsigned long ulSize)
 {
 	return kmalloc(ulSize, GFP_KERNEL);
 }
 
-void BCFreeKernelMem(void *pvMem)
+void
+BCFreeKernelMem(void *pvMem)
 {
 	kfree(pvMem);
 }
@@ -261,8 +263,8 @@ BCAllocDiscontigMemory(unsigned long ulSize,
 	IMG_CPU_VIRTADDR LinAddr;
 
 	LinAddr =
-	    __vmalloc(ulSize, GFP_KERNEL | __GFP_HIGHMEM,
-		      pgprot_noncached(PAGE_KERNEL));
+		__vmalloc(ulSize, GFP_KERNEL | __GFP_HIGHMEM,
+			  pgprot_noncached(PAGE_KERNEL));
 	if (!LinAddr) {
 		return BCE_ERROR_OUT_OF_MEMORY;
 	}
@@ -295,7 +297,7 @@ BCFreeDiscontigMemory(unsigned long ulSize,
 
 	vfree(LinAddr);
 }
-#else				/* defined(BC_DISCONTIG_BUFFERS) */
+#else	/* defined(BC_DISCONTIG_BUFFERS) */
 
 BCE_ERROR
 BCAllocContigMemory(unsigned long ulSize,
@@ -304,6 +306,7 @@ BCAllocContigMemory(unsigned long ulSize,
 {
 #if defined(LMA)
 	void *pvLinAddr;
+
 
 	if (g_ulMemCurrent + ulSize >= PVR_BUFFERCLASS_MEMSIZE) {
 		return (BCE_ERROR_OUT_OF_MEMORY);
@@ -327,13 +330,12 @@ BCAllocContigMemory(unsigned long ulSize,
 	int iError;
 
 	pvLinAddr = kmalloc(ulAlignedSize, GFP_KERNEL);
-	BUG_ON(((unsigned long)pvLinAddr) & ~PAGE_MASK);
+	BUG_ON(((unsigned long) pvLinAddr) & ~PAGE_MASK);
 
-	iError = set_memory_wc((unsigned long)pvLinAddr, iPages);
+	iError = set_memory_wc((unsigned long) pvLinAddr, iPages);
 	if (iError != 0) {
 		printk(KERN_ERR DRVNAME
-		       ": BCAllocContigMemory:  set_memory_wc failed (%d)\n",
-		       iError);
+		       ": BCAllocContigMemory:  set_memory_wc failed (%d)\n", iError);
 		return (BCE_ERROR_OUT_OF_MEMORY);
 	}
 
@@ -372,11 +374,10 @@ BCFreeContigMemory(unsigned long ulSize,
 	int iError;
 	int iPages = (int)(ulAlignedSize >> PAGE_SHIFT);
 
-	iError = set_memory_wb((unsigned long)LinAddr, iPages);
+	iError = set_memory_wb((unsigned long) LinAddr, iPages);
 	if (iError != 0) {
 		printk(KERN_ERR DRVNAME
-		       ": BCFreeContigMemory:  set_memory_wb failed (%d)\n",
-		       iError);
+		       ": BCFreeContigMemory:  set_memory_wb failed (%d)\n", iError);
 	}
 	kfree(LinAddr);
 #else
@@ -384,34 +385,40 @@ BCFreeContigMemory(unsigned long ulSize,
 #endif
 #endif
 }
-#endif				/* defined(BC_DISCONTIG_BUFFERS) */
+#endif	/* defined(BC_DISCONTIG_BUFFERS) */
 
-IMG_SYS_PHYADDR CpuPAddrToSysPAddrBC(IMG_CPU_PHYADDR cpu_paddr)
+IMG_SYS_PHYADDR
+CpuPAddrToSysPAddrBC(IMG_CPU_PHYADDR cpu_paddr)
 {
 	IMG_SYS_PHYADDR sys_paddr;
 	sys_paddr.uiAddr = cpu_paddr.uiAddr;
 	return sys_paddr;
 }
 
-IMG_CPU_PHYADDR SysPAddrToCpuPAddrBC(IMG_SYS_PHYADDR sys_paddr)
+IMG_CPU_PHYADDR
+SysPAddrToCpuPAddrBC(IMG_SYS_PHYADDR sys_paddr)
 {
 	IMG_CPU_PHYADDR cpu_paddr;
 	cpu_paddr.uiAddr = sys_paddr.uiAddr;
 	return cpu_paddr;
 }
 
-BCE_ERROR BCOpenPVRServices(BCE_HANDLE * phPVRServices)
+BCE_ERROR
+BCOpenPVRServices(BCE_HANDLE * phPVRServices)
 {
 	*phPVRServices = 0;
 	return (BCE_OK);
 }
 
-BCE_ERROR BCClosePVRServices(BCE_HANDLE unref__ hPVRServices)
+
+BCE_ERROR
+BCClosePVRServices(BCE_HANDLE unref__ hPVRServices)
 {
 	return (BCE_OK);
 }
 
-static int BC_CreateBuffers(int id, bc_buf_params_t * p, IMG_BOOL is_conti_addr)
+static int
+BC_CreateBuffers(int id, bc_buf_params_t * p, IMG_BOOL is_conti_addr)
 {
 	BC_VIDEO_DEVINFO *psDevInfo;
 	IMG_UINT32 i, stride, size;
@@ -432,7 +439,7 @@ static int BC_CreateBuffers(int id, bc_buf_params_t * p, IMG_BOOL is_conti_addr)
 		break;
 	case BC_PIX_FMT_RGB565:
 		pixel_fmt = IMG_PIXFMT_B5G6R5_UNORM;
-		p->stride = p->stride << 1;	/* stride for RGB from user space is uncorrect */
+		p->stride = p->stride << 1;    /* stride for RGB from user space is uncorrect */
 		break;
 	case BC_PIX_FMT_YUYV:
 		pixel_fmt = IMG_PIXFMT_YUYV;
@@ -455,13 +462,12 @@ static int BC_CreateBuffers(int id, bc_buf_params_t * p, IMG_BOOL is_conti_addr)
 
 	psDevInfo->buf_type = p->type;
 	psDevInfo->psSystemBuffer =
-	    BCAllocKernelMem(sizeof(BC_VIDEO_BUFFER) * p->count);
+		BCAllocKernelMem(sizeof(BC_VIDEO_BUFFER) * p->count);
 
 	if (!psDevInfo->psSystemBuffer)
 		return -ENOMEM;
 
-	memset(psDevInfo->psSystemBuffer, 0,
-	       sizeof(BC_VIDEO_BUFFER) * p->count);
+	memset(psDevInfo->psSystemBuffer, 0, sizeof(BC_VIDEO_BUFFER) * p->count);
 	size = p->height * stride;
 	if (pixel_fmt == IMG_PIXFMT_YUV420_3PLANE)
 		size += (stride >> 1) * (p->height >> 1) << 1;
@@ -474,16 +480,14 @@ static int BC_CreateBuffers(int id, bc_buf_params_t * p, IMG_BOOL is_conti_addr)
 		/*for discontig buffers, allocate memory for pPhysAddr */
 		psDevInfo->psSystemBuffer[i].is_conti_addr = is_conti_addr;
 		if (is_conti_addr) {
-			pPhysAddr =
-			    BCAllocKernelMem(1 * sizeof(IMG_SYS_PHYADDR));
+			pPhysAddr = BCAllocKernelMem(1 * sizeof(IMG_SYS_PHYADDR));
 			if (!pPhysAddr) {
 				return BCE_ERROR_OUT_OF_MEMORY;
 			}
 			memset(pPhysAddr, 0, 1 * sizeof(IMG_SYS_PHYADDR));
 		} else {
 			unsigned long ulPages = RANGE_TO_PAGES(size);
-			pPhysAddr =
-			    BCAllocKernelMem(ulPages * sizeof(IMG_SYS_PHYADDR));
+			pPhysAddr = BCAllocKernelMem(ulPages * sizeof(IMG_SYS_PHYADDR));
 			if (!pPhysAddr) {
 				return BCE_ERROR_OUT_OF_MEMORY;
 			}
@@ -499,12 +503,13 @@ static int BC_CreateBuffers(int id, bc_buf_params_t * p, IMG_BOOL is_conti_addr)
 	psDevInfo->sBufferInfo.ui32Height = p->height;
 	psDevInfo->sBufferInfo.ui32ByteStride = stride;
 	psDevInfo->sBufferInfo.ui32BufferDeviceID = id;
-//      psDevInfo->sBufferInfo.ui32Flags = PVRSRV_BC_FLAGS_YUVCSC_FULL_RANGE |
-	//PVRSRV_BC_FLAGS_YUVCSC_BT601;
+//	psDevInfo->sBufferInfo.ui32Flags = PVRSRV_BC_FLAGS_YUVCSC_FULL_RANGE |
+					   //PVRSRV_BC_FLAGS_YUVCSC_BT601;
 	return 0;
 }
 
-int BCVideoDestroyBuffers(int id)
+int
+BCVideoDestroyBuffers(int id)
 {
 	BC_VIDEO_DEVINFO *psDevInfo;
 	IMG_UINT32 i;
@@ -515,7 +520,8 @@ int BCVideoDestroyBuffers(int id)
 		return 0;
 
 	if (id < 0 ||
-	    id >= BC_VIDEO_DEVICE_MAX_ID || bc_video_id_usage[id] != 1) {
+		id >= BC_VIDEO_DEVICE_MAX_ID ||
+	    bc_video_id_usage[id] != 1) {
 		return 0;;
 	}
 	bc_video_id_usage[id] = 0;
@@ -537,7 +543,8 @@ int BCVideoDestroyBuffers(int id)
 	return 0;
 }
 
-int GetBufferCount(unsigned int *puiBufferCount, int id)
+int
+GetBufferCount(unsigned int *puiBufferCount, int id)
 {
 	BC_VIDEO_DEVINFO *psDevInfo = GetAnchorPtr(id);
 
@@ -545,14 +552,14 @@ int GetBufferCount(unsigned int *puiBufferCount, int id)
 		return -1;
 	}
 
-	*puiBufferCount = (unsigned int)psDevInfo->sBufferInfo.ui32BufferCount;
+	*puiBufferCount = (unsigned int) psDevInfo->sBufferInfo.ui32BufferCount;
 
 	return 0;
 }
 
 static int
 BCVideoBridge(struct drm_device *dev, IMG_VOID * arg,
-	      struct drm_file *file_priv)
+		struct drm_file *file_priv)
 {
 	int err = -EFAULT;
 
@@ -583,207 +590,187 @@ BCVideoBridge(struct drm_device *dev, IMG_VOID * arg,
 		return -ENODEV;
 
 	switch (command) {
-	case BC_Video_ioctl_get_buffer_count:{
-			if (GetBufferCount(&psBridge->outputparam, id) == -1) {
-				printk(KERN_ERR DRVNAME
-				       " : GetBufferCount error in BCVideoBridge.\n");
-				return err;
-			}
-			return 0;
-			break;
-		}
-	case BC_Video_ioctl_get_buffer_index:{
-			int idx;
-			BC_VIDEO_BUFFER *buffer;
-
-			for (idx = 0; idx < devinfo->ulNumBuffers; idx++) {
-				buffer = &devinfo->psSystemBuffer[idx];
-
-				if (psBridge->inputparam ==
-				    buffer->sBufferHandle) {
-					psBridge->outputparam = idx;
-					return 0;
-				}
-			}
+	case BC_Video_ioctl_get_buffer_count: {
+		if (GetBufferCount(&psBridge->outputparam, id) == -1) {
 			printk(KERN_ERR DRVNAME
-			       ": BCIOGET_BUFFERIDX- buffer not found\n");
-			return -EINVAL;
-			break;
+			       " : GetBufferCount error in BCVideoBridge.\n");
+			return err;
 		}
-	case BC_Video_ioctl_request_buffers:{
-			bc_buf_params_t p;
-			if (copy_from_user
-			    (&p, (void __user *)(psBridge->inputparam),
-			     sizeof(p))) {
-				printk(KERN_ERR
-				       " : failed to copy inputparam to kernel.\n");
-				return -EFAULT;
-			}
-			psBridge->outputparam = id;
-			return BC_CreateBuffers(id, &p, IMG_FALSE);
-			break;
-		}
-	case BC_Video_ioctl_set_buffer_phyaddr:{
-			bc_buf_ptr_t p;
-			struct ttm_buffer_object *bo = NULL;
-			struct ttm_tt *ttm = NULL;
-			struct ttm_object_file *tfile =
-			    BCVideoGetPriv(file_priv)->tfile;
+		return 0;
+		break;
+	}
+	case BC_Video_ioctl_get_buffer_index: {
+		int idx;
+		BC_VIDEO_BUFFER *buffer;
 
-			if (copy_from_user
-			    (&p, (void __user *)(psBridge->inputparam),
-			     sizeof(p))) {
-				printk(KERN_ERR DRVNAME
-				       " : failed to copy inputparam to kernel.\n");
-				return -EFAULT;
-			}
-
-			if (p.index >= devinfo->ulNumBuffers || !p.handle) {
-				printk(KERN_ERR DRVNAME
-				       " : index big than NumBuffers or p.handle is NULL.\n");
-				return -EINVAL;
-			}
-
-			bo = ttm_buffer_object_lookup(tfile, p.handle);
-			if (unlikely(bo == NULL)) {
-				printk(KERN_ERR DRVNAME
-				       " : Could not find buffer object for setstatus.\n");
-				return -EINVAL;
-			}
-			ttm = bo->ttm;
-
-			devinfo->psSystemBuffer[p.index].sCPUVAddr = NULL;
-			devinfo->psSystemBuffer[p.index].sBufferHandle =
-			    p.handle;
-			for (i = 0; i < ttm->num_pages; i++) {
-				if (ttm->pages[i] == NULL) {
-					printk(KERN_ERR
-					       " : Debug: the page is NULL.\n");
-					return -EINVAL;
-				}
-				devinfo->psSystemBuffer[p.index].psSysAddr[i].
-				    uiAddr =
-				    page_to_pfn(ttm->pages[i]) << PAGE_SHIFT;
-			}
-			if (bo)
-				ttm_bo_unref(&bo);
-			return 0;
-			break;
-		}
-	case BC_Video_ioctl_release_buffer_device:{
-			bc_video_id_usage[id] = 0;
-
-			BCVideoDestroyBuffers(id);
-			return 0;
-			break;
-		}
-	case BC_Video_ioctl_alloc_buffer:{
-			bc_buf_ptr_t p;
-			IMG_VOID *pvBuf;
-			IMG_UINT32 ui32Size;
-			IMG_UINT32 ulCounter;
-			BUFFER_INFO *bufferInfo;
-
-			if (copy_from_user
-			    (&p, (void __user *)(psBridge->inputparam),
-			     sizeof(p))) {
-				printk(KERN_ERR DRVNAME
-				       " : failed to copy inputparam to kernel.\n");
-				return -EFAULT;
-			}
-
-			if (p.index >= devinfo->ulNumBuffers) {
-				printk(KERN_ERR DRVNAME
-				       " : index big than NumBuffers.\n");
-				return -EINVAL;
-			}
-
-			bufferInfo = &(devinfo->sBufferInfo);
-			if (bufferInfo->eIMGPixFmt != IMG_PIXFMT_YUV420_3PLANE) {
-				printk(KERN_ERR DRVNAME
-				       " : BC_Video_ioctl_alloc_buffer only support NV12 format.\n");
-				return -EINVAL;
-			}
-			ui32Size =
-			    bufferInfo->ui32Height * bufferInfo->ui32ByteStride;
-			ui32Size +=
-			    (bufferInfo->ui32ByteStride >> 1) *
-			    (bufferInfo->ui32Height >> 1) << 1;
-
-			pvBuf =
-			    __vmalloc(ui32Size, GFP_KERNEL | __GFP_HIGHMEM,
-				      __pgprot((pgprot_val(PAGE_KERNEL) &
-						~_PAGE_CACHE_MASK)
-					       | _PAGE_CACHE_WC));
-			if (pvBuf == NULL) {
-				printk(KERN_ERR DRVNAME
-				       " : Failed to allocate %d bytes buffer.\n",
-				       ui32Size);
-				return -EINVAL;
-			}
-			devinfo->psSystemBuffer[p.index].sCPUVAddr = pvBuf;
-			devinfo->psSystemBuffer[p.index].sBufferHandle = 0;
-
-			i = 0;
-
-			for (ulCounter = 0; ulCounter < ui32Size;
-			     ulCounter += PAGE_SIZE) {
-				devinfo->psSystemBuffer[p.index].psSysAddr[i++].
-				    uiAddr =
-				    vmalloc_to_pfn(pvBuf +
-						   ulCounter) << PAGE_SHIFT;
-			}
-
-			if (p.handle) {
-				printk(KERN_ERR DRVNAME
-				       " : fill data %d bytes from user space 0x%x.\n",
-				       ui32Size, (int)p.handle);
-				if (copy_from_user
-				    (pvBuf, (void __user *)p.handle,
-				     ui32Size)) {
-					printk(KERN_ERR DRVNAME
-					       " : failed to copy inputparam to kernel.\n");
-					return -EFAULT;
-				}
-
-			}
-			psBridge->outputparam = (int)pvBuf;
-
-			return 0;
-			break;
-		}
-	case BC_Video_ioctl_free_buffer:{
-			bc_buf_ptr_t p;
-
-			if (copy_from_user
-			    (&p, (void __user *)(psBridge->inputparam),
-			     sizeof(p))) {
-				printk(KERN_ERR DRVNAME
-				       " : failed to copy inputparam to kernel.\n");
-				return -EFAULT;
-			}
-
-			vfree(devinfo->psSystemBuffer[p.index].sCPUVAddr);
-			return 0;
-			break;
-		}
-	case BC_Video_ioctl_get_buffer_handle:{
-			int idx;
-			BC_VIDEO_BUFFER *buffer;
-
-			idx = (int)psBridge->inputparam;
-
-			if (idx > devinfo->ulNumBuffers || idx < 0) {
-				printk(KERN_ERR DRVNAME
-				       " : Invaild device ID %d\n", idx);
-				return -EINVAL;
-			}
-
+		for (idx = 0; idx < devinfo->ulNumBuffers; idx++) {
 			buffer = &devinfo->psSystemBuffer[idx];
-			psBridge->outputparam = buffer->sBufferHandle;
 
-			return 0;
+			if (psBridge->inputparam == buffer->sBufferHandle) {
+				psBridge->outputparam = idx;
+				return 0;
+			}
 		}
+		printk(KERN_ERR DRVNAME ": BCIOGET_BUFFERIDX- buffer not found\n");
+		return -EINVAL;
+		break;
+	}
+	case BC_Video_ioctl_request_buffers: {
+		bc_buf_params_t p;
+		if (copy_from_user
+		    (&p, (void __user *)(psBridge->inputparam), sizeof(p))) {
+			printk(KERN_ERR " : failed to copy inputparam to kernel.\n");
+			return -EFAULT;
+		}
+		psBridge->outputparam = id;
+		return BC_CreateBuffers(id, &p, IMG_FALSE);
+		break;
+	}
+	case BC_Video_ioctl_set_buffer_phyaddr: {
+		bc_buf_ptr_t p;
+		struct ttm_buffer_object *bo = NULL;
+		struct ttm_tt *ttm = NULL;
+		struct ttm_object_file *tfile = BCVideoGetPriv(file_priv)->tfile;
+
+		if (copy_from_user
+		    (&p, (void __user *)(psBridge->inputparam), sizeof(p))) {
+			printk(KERN_ERR DRVNAME
+			       " : failed to copy inputparam to kernel.\n");
+			return -EFAULT;
+		}
+
+		if (p.index >= devinfo->ulNumBuffers || !p.handle) {
+			printk(KERN_ERR DRVNAME
+			       " : index big than NumBuffers or p.handle is NULL.\n");
+			return -EINVAL;
+		}
+
+		bo = ttm_buffer_object_lookup(tfile, p.handle);
+		if (unlikely(bo == NULL)) {
+			printk(KERN_ERR DRVNAME
+			       " : Could not find buffer object for setstatus.\n");
+			return -EINVAL;
+		}
+		ttm = bo->ttm;
+
+		devinfo->psSystemBuffer[p.index].sCPUVAddr = NULL;
+		devinfo->psSystemBuffer[p.index].sBufferHandle = p.handle;
+		for (i = 0; i < ttm->num_pages; i++) {
+			if (ttm->pages[i] == NULL) {
+				printk(KERN_ERR " : Debug: the page is NULL.\n");
+				return -EINVAL;
+			}
+			devinfo->psSystemBuffer[p.index].psSysAddr[i].uiAddr =
+				page_to_pfn(ttm->pages[i]) << PAGE_SHIFT;
+		}
+		if (bo)
+			ttm_bo_unref(&bo);
+		return 0;
+		break;
+	}
+	case BC_Video_ioctl_release_buffer_device: {
+		bc_video_id_usage[id] = 0;
+
+		BCVideoDestroyBuffers(id);
+		return 0;
+		break;
+	}
+	case BC_Video_ioctl_alloc_buffer: {
+		bc_buf_ptr_t p;
+		IMG_VOID *pvBuf;
+		IMG_UINT32 ui32Size;
+		IMG_UINT32 ulCounter;
+		BUFFER_INFO *bufferInfo;
+
+		if (copy_from_user
+		    (&p, (void __user *)(psBridge->inputparam), sizeof(p))) {
+			printk(KERN_ERR DRVNAME
+			       " : failed to copy inputparam to kernel.\n");
+			return -EFAULT;
+		}
+
+		if (p.index >= devinfo->ulNumBuffers) {
+			printk(KERN_ERR DRVNAME " : index big than NumBuffers.\n");
+			return -EINVAL;
+		}
+
+		bufferInfo = &(devinfo->sBufferInfo);
+		if (bufferInfo->eIMGPixFmt != IMG_PIXFMT_YUV420_3PLANE) {
+			printk(KERN_ERR DRVNAME
+			       " : BC_Video_ioctl_alloc_buffer only support NV12 format.\n");
+			return -EINVAL;
+		}
+		ui32Size = bufferInfo->ui32Height * bufferInfo->ui32ByteStride;
+		ui32Size +=
+			(bufferInfo->ui32ByteStride >> 1) *
+			(bufferInfo->ui32Height >> 1) << 1;
+
+		pvBuf =
+			__vmalloc(ui32Size, GFP_KERNEL | __GFP_HIGHMEM,
+				  __pgprot((pgprot_val(PAGE_KERNEL) & ~_PAGE_CACHE_MASK)
+					   | _PAGE_CACHE_WC));
+		if (pvBuf == NULL) {
+			printk(KERN_ERR DRVNAME
+			       " : Failed to allocate %d bytes buffer.\n", ui32Size);
+			return -EINVAL;
+		}
+		devinfo->psSystemBuffer[p.index].sCPUVAddr = pvBuf;
+		devinfo->psSystemBuffer[p.index].sBufferHandle = 0;
+
+		i = 0;
+
+		for (ulCounter = 0; ulCounter < ui32Size; ulCounter += PAGE_SIZE) {
+			devinfo->psSystemBuffer[p.index].psSysAddr[i++].uiAddr =
+				vmalloc_to_pfn(pvBuf + ulCounter) << PAGE_SHIFT;
+		}
+
+		if (p.handle) {
+			printk(KERN_ERR DRVNAME
+			       " : fill data %d bytes from user space 0x%x.\n", ui32Size,
+			       (int) p.handle);
+			if (copy_from_user(pvBuf, (void __user *) p.handle, ui32Size)) {
+				printk(KERN_ERR DRVNAME
+				       " : failed to copy inputparam to kernel.\n");
+				return -EFAULT;
+			}
+
+		}
+		psBridge->outputparam = (int) pvBuf;
+
+		return 0;
+		break;
+	}
+	case BC_Video_ioctl_free_buffer: {
+		bc_buf_ptr_t p;
+
+		if (copy_from_user
+		    (&p, (void __user *)(psBridge->inputparam), sizeof(p))) {
+			printk(KERN_ERR DRVNAME
+			       " : failed to copy inputparam to kernel.\n");
+			return -EFAULT;
+		}
+
+		vfree(devinfo->psSystemBuffer[p.index].sCPUVAddr);
+		return 0;
+		break;
+	}
+	case BC_Video_ioctl_get_buffer_handle: {
+		int idx;
+		BC_VIDEO_BUFFER *buffer;
+
+		idx = (int)psBridge->inputparam;
+
+		if (idx > devinfo->ulNumBuffers || idx < 0) {
+			printk(KERN_ERR DRVNAME
+				" : Invaild device ID %d\n", idx);
+			return -EINVAL;
+		}
+
+		buffer = &devinfo->psSystemBuffer[idx];
+		psBridge->outputparam = buffer->sBufferHandle;
+
+		return 0;
+	}
 	default:
 		return err;
 	}
@@ -791,7 +778,8 @@ BCVideoBridge(struct drm_device *dev, IMG_VOID * arg,
 	return 0;
 }
 
-int BC_Camera_Bridge(BC_Video_ioctl_package * psBridge, unsigned long pAddr)
+int
+BC_Camera_Bridge(BC_Video_ioctl_package * psBridge, unsigned long pAddr)
 {
 	int err = -EFAULT;
 	BC_VIDEO_DEVINFO *devinfo;
@@ -802,122 +790,103 @@ int BC_Camera_Bridge(BC_Video_ioctl_package * psBridge, unsigned long pAddr)
 		return -ENODEV;
 
 	switch (command) {
-	case BC_Video_ioctl_get_buffer_count:{
-			if (GetBufferCount(&psBridge->outputparam, id) == -1) {
-				printk(KERN_ERR DRVNAME
-				       " : GetBufferCount error in BCVideoBridge.\n");
-				return err;
-			}
-			return 0;
-			break;
-		}
-	case BC_Video_ioctl_get_buffer_index:{
-			int idx;
-			BC_VIDEO_BUFFER *buffer;
-
-			for (idx = 0; idx < devinfo->ulNumBuffers; idx++) {
-				buffer = &devinfo->psSystemBuffer[idx];
-
-				if (psBridge->inputparam ==
-				    buffer->sBufferHandle) {
-					psBridge->outputparam = idx;
-					return 0;
-				}
-			}
+	case BC_Video_ioctl_get_buffer_count: {
+		if (GetBufferCount(&psBridge->outputparam, id) == -1) {
 			printk(KERN_ERR DRVNAME
-			       ": BCIOGET_BUFFERIDX- buffer not found\n");
-			return -EINVAL;
-			break;
+			       " : GetBufferCount error in BCVideoBridge.\n");
+			return err;
 		}
-	case BC_Video_ioctl_request_buffers:{
-			bc_buf_params_t p;
-			memcpy(&p, (void *)(psBridge->inputparam), sizeof(p));
-			if (p.type == BC_MEMORY_MMAP)
-				return BC_CreateBuffers(id, &p, IMG_TRUE);
-			else
-				return BC_CreateBuffers(id, &p, IMG_FALSE);
-			break;
-		}
-	case BC_Video_ioctl_release_buffer_device:{
-			return BCVideoDestroyBuffers(id);
-			break;
-		}
-	case BC_Video_ioctl_set_buffer_phyaddr:{
-			bc_buf_ptr_t p;
+		return 0;
+		break;
+	}
+	case BC_Video_ioctl_get_buffer_index: {
+		int idx;
+		BC_VIDEO_BUFFER *buffer;
 
-			if (copy_from_user
-			    (&p, (void __user *)(psBridge->inputparam),
-			     sizeof(p))) {
+		for (idx = 0; idx < devinfo->ulNumBuffers; idx++) {
+			buffer = &devinfo->psSystemBuffer[idx];
+
+			if (psBridge->inputparam == buffer->sBufferHandle) {
+				psBridge->outputparam = idx;
+				return 0;
+			}
+		}
+		printk(KERN_ERR DRVNAME ": BCIOGET_BUFFERIDX- buffer not found\n");
+		return -EINVAL;
+		break;
+	}
+	case BC_Video_ioctl_request_buffers: {
+		bc_buf_params_t p;
+		memcpy(&p, (void *)(psBridge->inputparam), sizeof(p));
+		if (p.type == BC_MEMORY_MMAP)
+			return BC_CreateBuffers(id, &p, IMG_TRUE);
+		else
+			return BC_CreateBuffers(id, &p, IMG_FALSE);
+		break;
+	}
+	case BC_Video_ioctl_release_buffer_device: {
+		return BCVideoDestroyBuffers(id);
+		break;
+	}
+	case BC_Video_ioctl_set_buffer_phyaddr: {
+		bc_buf_ptr_t p;
+
+		if (copy_from_user
+		    (&p, (void __user *)(psBridge->inputparam), sizeof(p))) {
+			printk(KERN_ERR DRVNAME
+			       " : failed to copy inputparam to kernel.\n");
+			return -EFAULT;
+		}
+
+		if (p.index >= devinfo->ulNumBuffers) {
+			printk(KERN_ERR DRVNAME " : index big than NumBuffers\n");
+			return -EINVAL;
+		}
+		if (devinfo->psSystemBuffer[p.index].is_conti_addr) {
+			/* Get the physical address of each frame */
+			devinfo->psSystemBuffer[p.index].psSysAddr[0].uiAddr =
+				pAddr +
+				p.index * PAGE_ALIGN(devinfo->psSystemBuffer[p.index].ulSize);
+		} else {
+			int i, num_pages, map_pages;
+			unsigned int start_addr = p.pa;
+			struct page **ppsPages;
+
+			if (start_addr & ~PAGE_MASK) {
 				printk(KERN_ERR DRVNAME
-				       " : failed to copy inputparam to kernel.\n");
+				       " : the virtual address must be PAGE aligned.\n");
 				return -EFAULT;
 			}
+			num_pages = (p.size + PAGE_SIZE - 1) / PAGE_SIZE;
 
-			if (p.index >= devinfo->ulNumBuffers) {
+			ppsPages = kmalloc((size_t)num_pages * sizeof(*ppsPages),  GFP_KERNEL);
+
+			if (ppsPages == NULL) {
 				printk(KERN_ERR DRVNAME
-				       " : index big than NumBuffers\n");
-				return -EINVAL;
+				       " : fails to alloc page array.\n");
+				return -EFAULT;
 			}
-			if (devinfo->psSystemBuffer[p.index].is_conti_addr) {
-				/* Get the physical address of each frame */
-				devinfo->psSystemBuffer[p.index].psSysAddr[0].
-				    uiAddr =
-				    pAddr +
-				    p.index *
-				    PAGE_ALIGN(devinfo->psSystemBuffer[p.index].
-					       ulSize);
-			} else {
-				int i, num_pages, map_pages;
-				unsigned int start_addr = p.pa;
-				struct page **ppsPages;
+			memset(ppsPages, 0, (size_t)num_pages * sizeof(*ppsPages));
 
-				if (start_addr & ~PAGE_MASK) {
-					printk(KERN_ERR DRVNAME
-					       " : the virtual address must be PAGE aligned.\n");
-					return -EFAULT;
-				}
-				num_pages =
-				    (p.size + PAGE_SIZE - 1) / PAGE_SIZE;
+			map_pages = get_user_pages(current, current->mm, p.pa, num_pages, 1, 0, ppsPages, NULL);
 
-				ppsPages =
-				    kmalloc((size_t) num_pages *
-					    sizeof(*ppsPages), GFP_KERNEL);
-
-				if (ppsPages == NULL) {
-					printk(KERN_ERR DRVNAME
-					       " : fails to alloc page array.\n");
-					return -EFAULT;
-				}
-				memset(ppsPages, 0,
-				       (size_t) num_pages * sizeof(*ppsPages));
-
-				map_pages =
-				    get_user_pages(current, current->mm, p.pa,
-						   num_pages, 1, 0, ppsPages,
-						   NULL);
-
-				if (map_pages != num_pages) {
-					printk(KERN_ERR DRVNAME
-					       " : Couldn't map all the pages needed (wanted: %d, got %d).\n",
-					       num_pages, map_pages);
-					return -EFAULT;
-				}
-				devinfo->psSystemBuffer[p.index].sCPUVAddr =
-				    NULL;
-				devinfo->psSystemBuffer[p.index].sBufferHandle =
-				    0;
-				for (i = 0; i < num_pages; i++) {
-					devinfo->psSystemBuffer[p.index].
-					    psSysAddr[i].uiAddr =
-					    page_to_pfn(ppsPages[i]) <<
-					    PAGE_SHIFT;
-				}
-
-				kfree(ppsPages);
+			if (map_pages != num_pages) {
+				printk(KERN_ERR DRVNAME
+				       " : Couldn't map all the pages needed (wanted: %d, got %d).\n", num_pages, map_pages);
+				return -EFAULT;
 			}
-			return 0;
-			break;
+			devinfo->psSystemBuffer[p.index].sCPUVAddr = NULL;
+			devinfo->psSystemBuffer[p.index].sBufferHandle = 0;
+			for (i = 0; i < num_pages; i++) {
+				devinfo->psSystemBuffer[p.index].psSysAddr[i].uiAddr =
+					page_to_pfn(ppsPages[i]) << PAGE_SHIFT;
+			}
+
+			kfree(ppsPages);
 		}
+		return 0;
+		break;
+	}
 	default:
 		return err;
 	}
@@ -931,8 +900,7 @@ int BC_Camera_Bridge(BC_Video_ioctl_package * psBridge, unsigned long pAddr)
 #define DRM_IOCTL_BUFFER_CLASS_VIDEO \
 	DRM_IOWR(DRM_COMMAND_BASE + PVR_DRM_BC_CMD, BC_Video_ioctl_package)
 
-#define IOCTL_DEF(ioctl, func, flags) \
-	[DRM_IOCTL_NR(ioctl) - DRM_COMMAND_BASE] = {ioctl, flags, func}
+#define IOCTL_DEF(ioctl, func, flags) {ioctl, flags, func}
 
 struct drm_ioctl_desc sBCdrmIoctls[] = {
 	IOCTL_DEF(DRM_IOCTL_BUFFER_CLASS_VIDEO, BCVideoBridge, DRM_AUTH)
@@ -944,9 +912,9 @@ void BCVideoQueryIoctls(struct drm_ioctl_desc *ioctls)
 {
 	int i;
 
-	for (i = 0; i < bc_max_ioctl; i++) {
-		unsigned int slot =
-		    DRM_IOCTL_NR(sBCdrmIoctls[i].cmd) - DRM_COMMAND_BASE;
+	for (i = 0; i < bc_max_ioctl; i++)
+	{
+		unsigned int slot = DRM_IOCTL_NR(sBCdrmIoctls[i].cmd) - DRM_COMMAND_BASE;
 		ioctls[slot] = sBCdrmIoctls[i];
 	}
 }

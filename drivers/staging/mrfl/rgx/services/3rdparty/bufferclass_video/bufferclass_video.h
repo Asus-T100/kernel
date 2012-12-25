@@ -31,10 +31,12 @@
 #include "bufferclass_interface.h"
 
 #if defined(__cplusplus)
-extern "C" {
+extern "C"
+{
 #endif
 
-	enum BC_memory {
+	enum BC_memory
+	{
 		BC_MEMORY_MMAP = 1,
 		BC_MEMORY_USERPTR = 2,
 	};
@@ -47,11 +49,11 @@ extern "C" {
 	 *   YUYV
 	 */
 	typedef struct bc_buf_params {
-		int count;	/*number of buffers, [in/out] */
-		int width;	/*buffer width in pixel, multiple of 8 or 32 */
-		int height;	/*buffer height in pixel */
+		int count;            /*number of buffers, [in/out] */
+		int width;            /*buffer width in pixel, multiple of 8 or 32 */
+		int height;            /*buffer height in pixel */
 		int stride;
-		unsigned int fourcc;	/*buffer pixel format */
+		unsigned int fourcc;    /*buffer pixel format */
 		enum BC_memory type;
 	} bc_buf_params_t;
 
@@ -139,15 +141,15 @@ extern "C" {
 				   IMG_SYS_PHYADDR * pPhysAddr);
 #else
 
-	BCE_ERROR BCAllocContigMemory(unsigned long ulSize,
-				      BCE_HANDLE * phMemHandle,
-				      IMG_CPU_VIRTADDR * pLinAddr,
-				      IMG_CPU_PHYADDR * pPhysAddr);
+	BCE_ERROR BCAllocContigMemory(unsigned long    ulSize,
+			BCE_HANDLE       *phMemHandle,
+			IMG_CPU_VIRTADDR *pLinAddr,
+			IMG_CPU_PHYADDR  *pPhysAddr);
 
 	void BCFreeContigMemory(unsigned long ulSize,
-				BCE_HANDLE hMemHandle,
-				IMG_CPU_VIRTADDR LinAddr,
-				IMG_CPU_PHYADDR PhysAddr);
+			BCE_HANDLE hMemHandle,
+			IMG_CPU_VIRTADDR LinAddr,
+			IMG_CPU_PHYADDR PhysAddr);
 #endif
 
 	IMG_SYS_PHYADDR CpuPAddrToSysPAddrBC(IMG_CPU_PHYADDR cpu_paddr);
@@ -164,4 +166,5 @@ extern "C" {
 #if defined(__cplusplus)
 }
 #endif
+
 #endif

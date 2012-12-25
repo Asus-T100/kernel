@@ -92,11 +92,11 @@ int mrfld_gtt_init(struct psb_gtt *pg, int resume)
 	pg->gtt_phys_start = pg->pge_ctl & PAGE_MASK;
 
 	pci_read_config_dword(dev->pdev, MRFLD_MSAC, &gtt_pages);
-	printk(KERN_INFO "01 gtt_pages = 0x%x\n", gtt_pages);
+	printk(KERN_INFO "01 gtt_pages = 0x%x \n", gtt_pages);
 	gtt_pages &= _APERTURE_SIZE_MASK;
 	gtt_pages >>= _APERTURE_SIZE_POS;
 
-	printk(KERN_INFO "02 gtt_pages = 0x%x\n", gtt_pages);
+	printk(KERN_INFO "02 gtt_pages = 0x%x \n", gtt_pages);
 	switch (gtt_pages) {
 	case _1G_APERTURE:
 		gtt_pages = _1G_APERTURE_SIZE >> PAGE_SHIFT;
@@ -115,7 +115,7 @@ int mrfld_gtt_init(struct psb_gtt *pg, int resume)
 	gtt_pages >>= PAGE_SHIFT;
 	gtt_pages *= 4;
 
-	printk(KERN_INFO "03 gtt_pages = 0x%x\n", gtt_pages);
+	printk(KERN_INFO "03 gtt_pages = 0x%x \n", gtt_pages);
 	/* HW removed the PSB_BSM, SW/FW needs it. */
 	pci_read_config_dword(dev->pdev, PSB_BSM, &pg->stolen_base);
 	vram_stolen_size = pg->gtt_phys_start - pg->stolen_base - PAGE_SIZE;
@@ -132,19 +132,19 @@ int mrfld_gtt_init(struct psb_gtt *pg, int resume)
 	       pg->gatt_start, pg->gatt_pages / 256);
 	printk(KERN_INFO "GTT (can map %dM RAM), and actual RAM base 0x%08x.\n",
 	       gtt_pages * 4, pg->gtt_phys_start);
-	printk(KERN_INFO "Stole memory information\n");
-	printk(KERN_INFO "      base in RAM: 0x%x\n", pg->stolen_base);
+	printk(KERN_INFO "Stole memory information \n");
+	printk(KERN_INFO "      base in RAM: 0x%x \n", pg->stolen_base);
 	printk(KERN_INFO
 	       "      size: %luK, calculated by (GTT RAM base) - (Stolen base).\n",
 	       vram_stolen_size / 1024);
 
 	if (ci_stolen_size > 0)
 		printk(KERN_INFO
-		       "CI Stole memory: RAM base = 0x%08x, size = %lu M\n",
+		       "CI Stole memory: RAM base = 0x%08x, size = %lu M \n",
 		       dev_priv->ci_region_start, ci_stolen_size / 1024 / 1024);
 	if (rar_stolen_size > 0)
 		printk(KERN_INFO
-		       "RAR Stole memory: RAM base = 0x%08x, size = %lu M\n",
+		       "RAR Stole memory: RAM base = 0x%08x, size = %lu M \n",
 		       dev_priv->rar_region_start,
 		       rar_stolen_size / 1024 / 1024);
 
@@ -175,7 +175,7 @@ int mrfld_gtt_init(struct psb_gtt *pg, int resume)
 		goto out_err;
 	}
 
-	DRM_INFO("%s: vram kernel virtual address %p\n", __func__,
+	DRM_INFO("%s: vram kernel virtual address %p\n", __FUNCTION__,
 		 pg->vram_addr);
 
 	tt_pages = (pg->gatt_pages < PSB_TT_PRIV0_PLIMIT) ?
@@ -329,23 +329,23 @@ int psb_gtt_init(struct psb_gtt *pg, int resume)
 	printk(KERN_INFO
 	       "GTTADR(region 3) start: 0x%08x (can map %dM RAM), and actual RAM base 0x%08x.\n",
 	       pg->gtt_start, gtt_pages * 4, pg->gtt_phys_start);
-	printk(KERN_INFO "Stole memory information\n");
-	printk(KERN_INFO "      base in RAM: 0x%x\n", pg->stolen_base);
+	printk(KERN_INFO "Stole memory information \n");
+	printk(KERN_INFO "      base in RAM: 0x%x \n", pg->stolen_base);
 	printk(KERN_INFO
 	       "      size: %luK, calculated by (GTT RAM base) - (Stolen base), seems wrong\n",
 	       vram_stolen_size / 1024);
 	dvmt_mode = (pg->gmch_ctrl >> 4) & 0x7;
 	printk(KERN_INFO
-	       "      the correct size should be: %dM(dvmt mode=%d)\n",
+	       "      the correct size should be: %dM(dvmt mode=%d) \n",
 	       (dvmt_mode == 1) ? 1 : (2 << (dvmt_mode - 1)), dvmt_mode);
 
 	if (ci_stolen_size > 0)
 		printk(KERN_INFO
-		       "CI Stole memory: RAM base = 0x%08x, size = %lu M\n",
+		       "CI Stole memory: RAM base = 0x%08x, size = %lu M \n",
 		       dev_priv->ci_region_start, ci_stolen_size / 1024 / 1024);
 	if (rar_stolen_size > 0)
 		printk(KERN_INFO
-		       "RAR Stole memory: RAM base = 0x%08x, size = %lu M\n",
+		       "RAR Stole memory: RAM base = 0x%08x, size = %lu M \n",
 		       dev_priv->rar_region_start,
 		       rar_stolen_size / 1024 / 1024);
 
@@ -376,7 +376,7 @@ int psb_gtt_init(struct psb_gtt *pg, int resume)
 		goto out_err;
 	}
 
-	DRM_INFO("%s: vram kernel virtual address %p\n", __func__,
+	DRM_INFO("%s: vram kernel virtual address %p\n", __FUNCTION__,
 		 pg->vram_addr);
 
 	tt_pages = (pg->gatt_pages < PSB_TT_PRIV0_PLIMIT) ?
@@ -455,6 +455,52 @@ int psb_gtt_init(struct psb_gtt *pg, int resume)
 	return ret;
 }
 
+/*********************************
+ *  Added  (imported from 'mrst')  because memory allocated by PVRSRV
+ *      won't succeed using 'get_user_pages' in PVRSRVGetMeminfoPages
+ *      So, we will follow pfn's obtained by PVRSRVGetMeminfoPfn.
+ *
+ *  williamx.f.schmidt@intel.com
+ */
+static int psb_gtt_insert_pfn_list(struct psb_gtt *pg, u32 * pfn_list,
+				   unsigned offset_pages, unsigned num_pages,
+				   unsigned desired_tile_stride,
+				   unsigned hw_tile_stride, int type)
+{
+	unsigned rows = 1;
+	unsigned add;
+	unsigned row_add;
+	unsigned i;
+	unsigned j;
+	uint32_t *cur_page = NULL;
+	uint32_t pte;
+
+	if (!pg || !pfn_list)
+		return -EINVAL;
+
+	if (hw_tile_stride)
+		rows = num_pages / desired_tile_stride;
+	else
+		desired_tile_stride = num_pages;
+
+	add = desired_tile_stride;
+	row_add = hw_tile_stride;
+
+	down_read(&pg->sem);
+	for (i = 0; i < rows; ++i) {
+		cur_page = pg->gtt_map + offset_pages;
+		for (j = 0; j < desired_tile_stride; ++j) {
+			pte = psb_gtt_mask_pte(*pfn_list++, type);
+			iowrite32(pte, cur_page++);
+		}
+		offset_pages += add;
+	}
+	(void)ioread32(cur_page - 1);
+	up_read(&pg->sem);
+
+	return 0;
+}
+
 int psb_gtt_insert_pages(struct psb_gtt *pg, struct page **pages,
 			 unsigned offset_pages, unsigned num_pages,
 			 unsigned desired_tile_stride,
@@ -499,15 +545,14 @@ int psb_gtt_insert_phys_addresses(struct psb_gtt *pg, uintptr_t * pPhysFrames,
 	uint32_t *cur_page = NULL;
 	uint32_t pte;
 
-	/* printk("Allocatng IMG GTT mem at %x (pages %d)\n",
-	 *	offset_pages,num_pages); */
+	//printk("Allocatng IMG GTT mem at %x (pages %d)\n",offset_pages,num_pages);
 	down_read(&pg->sem);
 
 	cur_page = pg->gtt_map + offset_pages;
 	for (j = 0; j < num_pages; ++j) {
 		pte = psb_gtt_mask_pte(*(pPhysFrames++) >> PAGE_SHIFT, type);
 		iowrite32(pte, cur_page++);
-		/* printk("PTE %d: %x/%x\n",j,(pPhysFrames-1)->uiAddr,pte); */
+		//printk("PTE %d: %x/%x\n",j,(pPhysFrames-1)->uiAddr,pte);
 	}
 	(void)ioread32(cur_page - 1);
 
@@ -865,9 +910,9 @@ psb_gtt_mm_alloc_insert_mem_mapping(struct psb_gtt_mm *mm,
 }
 
 static struct psb_gtt_mem_mapping *psb_gtt_mm_remove_mem_mapping_locked(struct
-								drm_open_hash
-								*ht,
-								u32 key)
+									drm_open_hash
+									*ht,
+									u32 key)
 {
 	struct psb_gtt_mem_mapping *tmp;
 	struct psb_gtt_hash_entry *entry;
@@ -1017,81 +1062,93 @@ static void psb_gtt_mm_free_mem(struct psb_gtt_mm *mm, struct drm_mm_node *node)
 
 static u32 gtt_get_tgid(void)
 {
-	if (in_interrupt())
+	if (in_interrupt()) {
 		return -1;
+	}
 
 	return task_tgid_nr(current);
 }
 
 int psb_gtt_map_meminfo(struct drm_device *dev,
 			void *hKernelMemInfo,
-			uint32_t page_align, uint32_t *offset)
+			uint32_t page_align, uint32_t * offset)
 {
-	struct drm_psb_private *dev_priv
-	    = (struct drm_psb_private *)dev->dev_private;
-	struct psb_gtt_mm *mm = dev_priv->gtt_mm;
-	struct psb_gtt *pg = dev_priv->pg;
+	struct drm_psb_private *dev_priv;
+	struct psb_gtt_mm *mm;
+	struct psb_gtt *pg;
 	uint32_t size, pages, offset_pages;
 	void *kmem;
 	struct drm_mm_node *node;
 	struct page **page_list;
-	struct psb_gtt_mem_mapping *mapping = NULL;
+	unsigned long *pfn_list;
+	struct psb_gtt_mem_mapping *mapping;
 	int ret;
+
+	/*
+	 *  Initialize locals then get  the allocation size and calculate
+	 *  the number of pages that this requires. To do this we use the
+	 *  interface routines provided in pvr_drm.c, a module.
+	 */
+	dev_priv = (struct drm_psb_private *)dev->dev_private;
+	mm = dev_priv->gtt_mm;
+	pg = dev_priv->pg;
+	mapping = NULL;
 
 	size = PVRSRVGetMeminfoSize(hKernelMemInfo);
 	kmem = PVRSRVGetMeminfoCPUAddr(hKernelMemInfo);
 	pages = (size + PAGE_SIZE - 1) >> PAGE_SHIFT;
 
-	DRM_DEBUG("KerMemInfo size %ld, cpuVadr %lx, pages %ld, osMemHdl %lx\n",
-		  size, kmem, pages, hKernelMemInfo);
+	/*
+	 *  Alloc memory in TT apeture and update the GTT mm...
+	 */
+	if ((ret = psb_gtt_mm_alloc_mem(mm, pages, page_align, &node)) != 0) {
+		DRM_DEBUG("alloc TT memory error\n");
 
-	if (!kmem)
-		DRM_DEBUG("kmem is NULL");
-
-	/*get pages */
-	ret = PVRSRVGetMeminfoPages(hKernelMemInfo, &page_list);
-	if (ret) {
-		DRM_DEBUG("get pages error\n");
 		return ret;
 	}
 
-	DRM_DEBUG("get %ld pages\n", pages);
-
-	/*alloc memory in TT apeture */
-	ret = psb_gtt_mm_alloc_mem(mm, pages, page_align, &node);
-	if (ret) {
-		DRM_DEBUG("alloc TT memory error\n");
-		goto failed_pages_alloc;
-	}
-
-	/*update psb_gtt_mm */
-	ret = psb_gtt_add_node(mm,
-			       (u32) gtt_get_tgid(),
-			       (u32) hKernelMemInfo, node, &mapping);
-	if (ret) {
+	if ((ret = psb_gtt_add_node(mm,
+				    (u32) gtt_get_tgid(),
+				    (u32) hKernelMemInfo,
+				    node, &mapping)) != 0) {
 		DRM_DEBUG("add_node failed");
-		goto failed_add_node;
+
+		psb_gtt_mm_free_mem(mm, node);
+		return ret;
 	}
 
 	node = mapping->node;
 	offset_pages = node->start;
 
-	DRM_DEBUG("get free node for %ld pages, offset %ld pages",
-		  pages, offset_pages);
+	/*
+	 *  Memory represented by  'hKernelMemInfo'  should either map by
+	 *  page records, or by pfn.  It will map user allocated memory -
+	 *  i.e., with malloc - by pages. PVRSRV allocations from general
+	 *  heap map via their pfn's.  Insert items that map into the gtt
+	 *  page table.
+	 */
+	if (PVRSRVGetMeminfoPages(hKernelMemInfo, pages, &page_list) == 0) {	/* Works with user space 'malloc' */
+		psb_gtt_insert_pages(pg, page_list,
+				     (unsigned)offset_pages,
+				     (unsigned)pages, 0, 0, 0);
+		kfree(page_list);
+	} else if ((ret = PVRSRVGetMeminfoPfn(hKernelMemInfo, pages, &pfn_list)) == 0) {	/* Works with 'PVRSRVAllocDeviceMemMIW' */
+		psb_gtt_insert_pfn_list(pg, pfn_list,
+					(unsigned)offset_pages,
+					(unsigned)pages, 0, 0, 0);
+		kfree(pfn_list);
+	} else {
+		psb_gtt_remove_node(mm,
+				    (u32) gtt_get_tgid(),
+				    (u32) hKernelMemInfo, &node);
+		psb_gtt_mm_free_mem(mm, node);
 
-	/*update gtt */
-	psb_gtt_insert_pages(pg, page_list,
-			     (unsigned)offset_pages, (unsigned)pages, 0, 0, 0);
+		return ret;
+	}
 
 	*offset = offset_pages;
 	return 0;
-
- failed_add_node:
-	psb_gtt_mm_free_mem(mm, node);
- failed_pages_alloc:
-	kfree(page_list);
-	return ret;
-}
+}				/* psb_gtt_map_meminfo */
 
 int psb_gtt_unmap_meminfo(struct drm_device *dev, void *hKernelMemInfo)
 {
@@ -1123,35 +1180,267 @@ int psb_gtt_unmap_meminfo(struct drm_device *dev, void *hKernelMemInfo)
 	return 0;
 }
 
+static int psb_gtt_unmap_common(struct drm_device *dev,
+			unsigned int ui32TaskId,
+			unsigned int hHandle)
+{
+	struct drm_psb_private *dev_priv
+	= (struct drm_psb_private *)dev->dev_private;
+	struct psb_gtt_mm *mm = dev_priv->gtt_mm;
+	struct psb_gtt *pg = dev_priv->pg;
+	uint32_t pages, offset_pages;
+	struct drm_mm_node *node;
+	int ret;
+
+	ret = psb_gtt_remove_node(mm,
+				  (u32)ui32TaskId,
+				  (u32)hHandle,
+				  &node);
+	if (ret) {
+		DRM_DEBUG("remove node failed\n");
+		return ret;
+	}
+
+	/*remove gtt entries*/
+	offset_pages = node->start;
+	pages = node->size;
+
+	psb_gtt_remove_pages(pg, offset_pages, pages, 0, 0, 1);
+
+
+	/*free tt node*/
+
+	psb_gtt_mm_free_mem(mm, node);
+	return 0;
+
+}
+
+static int psb_get_vaddr_pages(u32 vaddr, u32 size,
+				u32 **pfn_list, int *page_count)
+{
+	u32 num_pages;
+	struct page **pages = 0;
+	struct task_struct *task = current;
+	struct mm_struct *mm = task->mm;
+	struct vm_area_struct *vma;
+	u32 *pfns = 0;
+	int ret;
+	int i;
+
+	if (unlikely(!pfn_list || !page_count || !vaddr || !size))
+		return -EINVAL;
+
+	num_pages = (size + PAGE_SIZE - 1) >> PAGE_SHIFT;
+
+	pages = kzalloc(num_pages * sizeof(struct page *), GFP_KERNEL);
+	if (unlikely(!pages)) {
+		DRM_ERROR("Failed to allocate page list\n");
+		return -ENOMEM;
+	}
+
+	down_read(&mm->mmap_sem);
+	ret = get_user_pages(task, mm, vaddr, num_pages, 0, 0, pages, NULL);
+	up_read(&mm->mmap_sem);
+
+	if (ret <= 0) {
+		DRM_DEBUG("failed to get user pages\n");
+		kfree(pages);
+		pages = 0;
+	} else {
+		DRM_ERROR("num_pages %d, ret %d\n", num_pages, ret);
+		num_pages = ret;
+	}
+
+	/*allocate page list*/
+	pfns = kzalloc(num_pages * sizeof(u32), GFP_KERNEL);
+	if (!pfns) {
+		DRM_ERROR("No memory\n");
+		goto get_page_err;
+	}
+
+	if (!pages) {
+		DRM_DEBUG("No pages found, trying to follow pfn\n");
+		for (i = 0; i < num_pages; i++) {
+			vma = find_vma(mm, vaddr + i * PAGE_SIZE);
+			if (!vma) {
+				DRM_ERROR("failed to find vma\n");
+				goto find_vma_err;
+			}
+
+			ret = follow_pfn(vma,
+				(unsigned long)(vaddr + i * PAGE_SIZE),
+				(unsigned long *)&pfns[i]);
+			if (ret) {
+				DRM_ERROR("failed to follow pfn\n");
+				goto follow_pfn_err;
+			}
+		}
+	} else {
+		DRM_DEBUG("Found pages\n");
+		for (i = 0; i < num_pages; i++)
+			pfns[i] = page_to_pfn(pages[i]);
+	}
+
+	*pfn_list = pfns;
+	*page_count = num_pages;
+
+	kfree(pages);
+
+	return 0;
+find_vma_err:
+follow_pfn_err:
+	kfree(pfns);
+get_page_err:
+	if (pages) {
+		for (i = 0; i < num_pages; i++)
+			put_page(pages[i]);
+		kfree(pages);
+	}
+	return -EINVAL;
+}
+
+static int psb_gtt_map_vaddr(struct drm_device *dev,
+			uint32_t vaddr,
+			uint32_t size,
+			uint32_t page_align,
+			uint32_t *offset)
+{
+	struct drm_psb_private *dev_priv
+		= (struct drm_psb_private *)dev->dev_private;
+	struct psb_gtt_mm *mm = dev_priv->gtt_mm;
+	struct psb_gtt *pg = dev_priv->pg;
+	uint32_t pages, offset_pages;
+	struct drm_mm_node *node;
+	u32 *pfn_list = 0;
+	struct psb_gtt_mem_mapping *mapping = NULL;
+	int ret;
+
+	/*get pages*/
+	ret = psb_get_vaddr_pages(vaddr, size, &pfn_list, &pages);
+	if (ret) {
+		DRM_DEBUG("get pages error\n");
+		return ret;
+	}
+
+	DRM_DEBUG("get %d pages\n", pages);
+
+	/*alloc memory in TT apeture*/
+	ret = psb_gtt_mm_alloc_mem(mm, pages, page_align, &node);
+	if (ret) {
+		DRM_DEBUG("alloc TT memory error\n");
+		goto failed_pages_alloc;
+	}
+
+	/*update psb_gtt_mm*/
+	ret = psb_gtt_add_node(mm,
+			       (u32)gtt_get_tgid(),
+			       vaddr,
+			       node,
+			       &mapping);
+	if (ret) {
+		DRM_DEBUG("add_node failed");
+		goto failed_add_node;
+	}
+
+	node = mapping->node;
+	offset_pages = node->start;
+
+	DRM_DEBUG("get free node for %d pages, offset %d pages",
+		  pages, offset_pages);
+
+	/*update gtt*/
+	psb_gtt_insert_pfn_list(pg, pfn_list,
+			     (unsigned)offset_pages,
+			     (unsigned)pages,
+			     0,
+			     0,
+			     0);
+
+	/*free pfn_list if allocated*/
+	kfree(pfn_list);
+
+	*offset = offset_pages;
+	return 0;
+
+failed_add_node:
+	psb_gtt_mm_free_mem(mm, node);
+failed_pages_alloc:
+	kfree(pfn_list);
+	return ret;
+}
+
+static int psb_gtt_unmap_vaddr(struct drm_device *dev,
+			uint32_t vaddr,
+			uint32_t size)
+{
+	return psb_gtt_unmap_common(dev, gtt_get_tgid(), vaddr);
+
+}
+
 int psb_gtt_map_meminfo_ioctl(struct drm_device *dev, void *data,
 			      struct drm_file *file_priv)
 {
-	struct psb_gtt_mapping_arg *arg = (struct psb_gtt_mapping_arg *)data;
+	struct psb_gtt_mapping_arg *arg
+	= (struct psb_gtt_mapping_arg *)data;
 	uint32_t *offset_pages = &arg->offset_pages;
 	uint32_t page_align = arg->page_align;
+	uint32_t device_id = arg->bcd_device_id;
+	uint32_t buffer_id = arg->bcd_buffer_id;
+	uint32_t *buffer_count = &arg->bcd_buffer_count;
+	uint32_t *buffer_stride = &arg->bcd_buffer_stride;
+	uint32_t vaddr = arg->vaddr;
+	uint32_t size = arg->size;
+	uint32_t type = arg->type;
 
 	DRM_DEBUG("\n");
 
-	return psb_gtt_map_meminfo(dev,
-				   arg->hKernelMemInfo,
-				   page_align, offset_pages);
+	switch (type) {
+	case PSB_GTT_MAP_TYPE_MEMINFO:
+		return psb_gtt_map_meminfo(dev,
+				arg->hKernelMemInfo,
+				page_align,
+				offset_pages);
+	case PSB_GTT_MAP_TYPE_VIRTUAL:
+		return psb_gtt_map_vaddr(dev,
+					vaddr,
+					size,
+					page_align,
+					offset_pages);
+	default:
+		DRM_ERROR("unsupported buffer type %d\n", type);
+		return -EINVAL;
+	}
 }
 
 int psb_gtt_unmap_meminfo_ioctl(struct drm_device *dev, void *data,
 				struct drm_file *file_priv)
 {
 
-	struct psb_gtt_mapping_arg *arg = (struct psb_gtt_mapping_arg *)data;
+	struct psb_gtt_mapping_arg *arg
+		= (struct psb_gtt_mapping_arg *)data;
+	uint32_t device_id = arg->bcd_device_id;
+	uint32_t buffer_id = arg->bcd_buffer_id;
+	uint32_t vaddr = arg->vaddr;
+	uint32_t size = arg->size;
+	uint32_t type = arg->type;
 
 	DRM_DEBUG("\n");
 
-	return psb_gtt_unmap_meminfo(dev, arg->hKernelMemInfo);
+	switch (type) {
+	case PSB_GTT_MAP_TYPE_MEMINFO:
+		return psb_gtt_unmap_meminfo(dev, arg->hKernelMemInfo);
+	case PSB_GTT_MAP_TYPE_VIRTUAL:
+		return psb_gtt_unmap_vaddr(dev, vaddr, size);
+	default:
+		DRM_ERROR("unsupported buffer type %d\n", type);
+		return -EINVAL;
+	}
 }
 
 int DCCBgttMapMemory(struct drm_device *dev,
 		     unsigned int hHandle,
 		     unsigned int ui32TaskId,
-		     uintptr_t *pPages,
+		     uintptr_t * pPages,
 		     unsigned int ui32PagesNum, unsigned int *ui32Offset)
 {
 	struct drm_psb_private *dev_priv =

@@ -693,9 +693,6 @@ int tng_topaz_init(struct drm_device *dev)
 	PSB_DEBUG_TOPAZ("TOPAZ: Number of pipes: %d\n",
 		topaz_priv->topaz_num_pipes);
 
-	if (topaz_priv->topaz_num_pipes > 2)
-		topaz_priv->topaz_num_pipes = TOPAZHP_PIPE_NUM;
-
 	/* tng_topaz_mmu_flushcache(dev_priv); */
 
 	tng_topaz_mmu_hwsetup(dev_priv);
@@ -1253,7 +1250,7 @@ int tng_topaz_init_board(
 
 	PSB_DEBUG_TOPAZ("TOPAZ: will setup firmware ....\n");
 
-	topaz_priv->topaz_num_pipes = TOPAZHP_PIPE_NUM;
+	topaz_priv->topaz_num_pipes = 1;
 
 	MULTICORE_READ32(TOPAZHP_TOP_CR_MULTICORE_HW_CFG, &reg_val);
 	PSB_DEBUG_TOPAZ("TOPAZ: HW_CFG 0x%08x\n", reg_val);
@@ -1294,7 +1291,6 @@ int tng_topaz_init_board(
 	tng_topaz_mmu_flushcache(dev_priv);
 	tng_set_producer(dev, 0);
 	tng_set_consumer(dev, 0);
-	return 0;
 }
 #endif
 
@@ -1317,7 +1313,7 @@ int tng_topaz_setup_fw(
 
 	PSB_DEBUG_TOPAZ("TOPAZ: will setup firmware ....\n");
 
-	topaz_priv->topaz_num_pipes = TOPAZHP_PIPE_NUM;
+	topaz_priv->topaz_num_pipes = 1;
 
 	MULTICORE_READ32(TOPAZHP_TOP_CR_MULTICORE_HW_CFG, &reg_val);
 	PSB_DEBUG_TOPAZ("TOPAZ: HW_CFG 0x%08x\n", reg_val);

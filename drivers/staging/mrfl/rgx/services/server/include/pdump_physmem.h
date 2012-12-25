@@ -1,25 +1,45 @@
-/******************************************************************************
- * Name         : pdump_physmem.h
- * Title        : pdump functions to assist with physmem allocations
- * Author(s)    : Imagination Technologies
- * Created      :
- *
- * Copyright    : 2010 by Imagination Technologies Limited.
- *                All rights reserved. No part of this software, either
- *                material or conceptual may be copied or distributed,
- *                transmitted, transcribed, stored in a retrieval system or
- *                translated into any human or computer language in any form
- *                by any means, electronic, mechanical, manual or otherwise,
- *                or disclosed to third parties without the express written
- *                permission of Imagination Technologies Limited,
- *                Home Park Estate, Kings Langley, Hertfordshire,
- *                WD4 8LZ, U.K.
- *
- * Description  : Implements basic low level control of MMU.
- *
- * Platform     : ALL
- *
- *****************************************************************************/
+/**************************************************************************/ /*!
+@File
+@Title          pdump functions to assist with physmem allocations
+@Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
+@Description    Implements basic low level control of MMU.
+@License        Dual MIT/GPLv2
+
+The contents of this file are subject to the MIT license as set out below.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+Alternatively, the contents of this file may be used under the terms of
+the GNU General Public License Version 2 ("GPL") in which case the provisions
+of GPL are applicable instead of those above.
+
+If you wish to allow use of your version of this file only under the terms of
+GPL, and not to allow others to use your version of this file under the terms
+of the MIT license, indicate your decision by deleting the provisions above
+and replace them with the notice and other provisions required by GPL as set
+out in the file called "GPL-COPYING" included in this distribution. If you do
+not delete the provisions above, a recipient may use your version of this file
+under the terms of either the MIT license or GPL.
+
+This License is also included in this distribution in the file called
+"MIT-COPYING".
+
+EXCEPT AS OTHERWISE STATED IN A NEGOTIATED AGREEMENT: (A) THE SOFTWARE IS
+PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING
+BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+PURPOSE AND NONINFRINGEMENT; AND (B) IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+*/ /***************************************************************************/
 
 #ifndef SRVSRV_PDUMP_PHYSMEM_H
 #define SRVSRV_PDUMP_PHYSMEM_H
@@ -33,29 +53,32 @@
 typedef struct _PDUMP_PHYSMEM_INFO_T_ PDUMP_PHYSMEM_INFO_T;
 
 #if defined(PDUMP)
-/* TODO: this isn't really PMR specific any more
+/* FIXME: this isn't really PMR specific any more
    - perhaps this should go to a more common place? */
 extern PVRSRV_ERROR
-PDumpPMRMalloc(const IMG_CHAR * pszDevSpace,
-	       const IMG_CHAR * pszSymbolicAddress, IMG_UINT64 ui64Size,
-	       /* alignment is alignment of start of buffer _and_
-	          minimum contiguity - i.e. smallest allowable
-	          page-size.  TODO: review this decision. */
-	       IMG_UINT32 ui32Align,
-	       IMG_BOOL bForcePersistent, IMG_HANDLE * phHandlePtr);
+PDumpPMRMalloc(const IMG_CHAR *pszDevSpace,
+               const IMG_CHAR *pszSymbolicAddress,
+               IMG_UINT64 ui64Size,
+               /* alignment is alignment of start of buffer _and_
+                  minimum contiguity - i.e. smallest allowable
+                  page-size.  FIXME: review this decision. */
+               IMG_UINT32 ui32Align,
+               IMG_BOOL bForcePersistent,
+               IMG_HANDLE *phHandlePtr);
 extern
 PVRSRV_ERROR PDumpPMRFree(IMG_HANDLE hPDumpAllocationInfoHandle);
-#else				/* PDUMP */
+#else	/* PDUMP */
 
 #ifdef INLINE_IS_PRAGMA
 #pragma inline(PVRSRVSyncPrimPDumpPolKM)
 #endif
 static INLINE PVRSRV_ERROR
-PDumpPMRMalloc(const IMG_CHAR * pszDevSpace,
-	       const IMG_CHAR * pszSymbolicAddress,
-	       IMG_UINT64 ui64Size,
-	       IMG_UINT32 ui32Align,
-	       IMG_BOOL bForcePersistent, IMG_HANDLE * phHandlePtr)
+PDumpPMRMalloc(const IMG_CHAR *pszDevSpace,
+               const IMG_CHAR *pszSymbolicAddress,
+               IMG_UINT64 ui64Size,
+               IMG_UINT32 ui32Align,
+               IMG_BOOL bForcePersistent,
+               IMG_HANDLE *phHandlePtr)
 {
 	PVR_UNREFERENCED_PARAMETER(pszDevSpace);
 	PVR_UNREFERENCED_PARAMETER(pszSymbolicAddress);
@@ -70,15 +93,15 @@ PDumpPMRMalloc(const IMG_CHAR * pszDevSpace,
 #ifdef INLINE_IS_PRAGMA
 #pragma inline(PVRSRVSyncPrimPDumpPolKM)
 #endif
-static INLINE PVRSRV_ERROR PDumpPMRFree(IMG_HANDLE hPDumpAllocationInfoHandle)
+static INLINE PVRSRV_ERROR
+PDumpPMRFree(IMG_HANDLE hPDumpAllocationInfoHandle)
 {
 	PVR_UNREFERENCED_PARAMETER(hPDumpAllocationInfoHandle);
 	return PVRSRV_OK;
 }
-#endif				/* PDUMP */
+#endif	/* PDUMP */
 
 #define PMR_DEFAULT_PREFIX "PMR"
-#define PMR_DEFAULT_MEMSPACE_NAME "SYSMEM"
 #define PMR_SYMBOLICADDR_FMTSPEC "%s%llu"
 
 #if defined(PDUMP)
@@ -91,50 +114,63 @@ static INLINE PVRSRV_ERROR PDumpPMRFree(IMG_HANDLE hPDumpAllocationInfoHandle)
     ((void)(*phHandlePtr=IMG_NULL))
 #define PDUMP_PHYSMEM_FREE_OSPAGES(hHandle) \
     ((void)(0))
-#endif				// defined(PDUMP)
+#endif // defined(PDUMP)
 
 extern PVRSRV_ERROR
-PDumpPMRWRW(const IMG_CHAR * pszDevSpace,
-	    const IMG_CHAR * pszSymbolicName,
-	    IMG_DEVMEM_OFFSET_T uiOffset,
-	    IMG_UINT32 ui32Value, PDUMP_FLAGS_T uiPDumpFlags);
+PDumpPMRWRW32(const IMG_CHAR *pszDevSpace,
+            const IMG_CHAR *pszSymbolicName,
+            IMG_DEVMEM_OFFSET_T uiOffset,
+            IMG_UINT32 ui32Value,
+            PDUMP_FLAGS_T uiPDumpFlags);
 
 extern PVRSRV_ERROR
-PDumpPMRLDB(const IMG_CHAR * pszDevSpace,
-	    const IMG_CHAR * pszSymbolicName,
-	    IMG_DEVMEM_OFFSET_T uiOffset,
-	    IMG_DEVMEM_SIZE_T uiSize,
-	    const IMG_CHAR * pszFilename,
-	    IMG_UINT32 uiFileOffset, PDUMP_FLAGS_T uiPDumpFlags);
+PDumpPMRWRW64(const IMG_CHAR *pszDevSpace,
+            const IMG_CHAR *pszSymbolicName,
+            IMG_DEVMEM_OFFSET_T uiOffset,
+            IMG_UINT64 ui64Value,
+            PDUMP_FLAGS_T uiPDumpFlags);
 
 extern PVRSRV_ERROR
-PDumpPMRSAB(const IMG_CHAR * pszDevSpace,
-	    const IMG_CHAR * pszSymbolicName,
-	    IMG_DEVMEM_OFFSET_T uiOffset,
-	    IMG_DEVMEM_SIZE_T uiSize,
-	    const IMG_CHAR * pszFileName, IMG_UINT32 uiFileOffset);
+PDumpPMRLDB(const IMG_CHAR *pszDevSpace,
+            const IMG_CHAR *pszSymbolicName,
+            IMG_DEVMEM_OFFSET_T uiOffset,
+            IMG_DEVMEM_SIZE_T uiSize,
+            const IMG_CHAR *pszFilename,
+            IMG_UINT32 uiFileOffset,
+            PDUMP_FLAGS_T uiPDumpFlags);
+
+extern PVRSRV_ERROR
+PDumpPMRSAB(const IMG_CHAR *pszDevSpace,
+            const IMG_CHAR *pszSymbolicName,
+            IMG_DEVMEM_OFFSET_T uiOffset,
+            IMG_DEVMEM_SIZE_T uiSize,
+            const IMG_CHAR *pszFileName,
+            IMG_UINT32 uiFileOffset);
 
 /*
   PDumpPMRPOL()
 
   emits a POL to the PDUMP.
 */
-/* TODO: move to pdump_common, no longer PMR specific */
+/* FIXME: move to pdump_common, no longer PMR specific */
 extern PVRSRV_ERROR
-PDumpPMRPOL(const IMG_CHAR * pszMempaceName,
-	    const IMG_CHAR * pszSymbolicName,
-	    IMG_DEVMEM_OFFSET_T uiOffset,
-	    IMG_UINT32 ui32Value,
-	    IMG_UINT32 ui32Mask,
-	    PDUMP_POLL_OPERATOR eOperator,
-	    IMG_UINT32 uiCount, IMG_UINT32 uiDelay, PDUMP_FLAGS_T uiPDumpFlags);
+PDumpPMRPOL(const IMG_CHAR *pszMempaceName,
+            const IMG_CHAR *pszSymbolicName,
+            IMG_DEVMEM_OFFSET_T uiOffset,
+            IMG_UINT32 ui32Value,
+            IMG_UINT32 ui32Mask,
+            PDUMP_POLL_OPERATOR eOperator,
+            IMG_UINT32 uiCount,
+            IMG_UINT32 uiDelay,
+            PDUMP_FLAGS_T uiPDumpFlags);
 
 extern PVRSRV_ERROR
-PDumpPMRCBP(const IMG_CHAR * pszMemspaceName,
-	    const IMG_CHAR * pszSymbolicName,
-	    IMG_DEVMEM_OFFSET_T uiReadOffset,
-	    IMG_DEVMEM_OFFSET_T uiWriteOffset,
-	    IMG_DEVMEM_SIZE_T uiPacketSize, IMG_DEVMEM_SIZE_T uiBufferSize);
+PDumpPMRCBP(const IMG_CHAR *pszMemspaceName,
+            const IMG_CHAR *pszSymbolicName,
+            IMG_DEVMEM_OFFSET_T uiReadOffset,
+            IMG_DEVMEM_OFFSET_T uiWriteOffset,
+            IMG_DEVMEM_SIZE_T uiPacketSize,
+            IMG_DEVMEM_SIZE_T uiBufferSize);
 
 /*
  * PDumpWriteBuffer()
@@ -147,16 +183,17 @@ PDumpPMRCBP(const IMG_CHAR * pszMemspaceName,
  * Caller to provide buffer to receive filename, and declare the size
  * of that buffer
  */
-extern PVRSRV_ERROR PDumpWriteBuffer( /* const */ IMG_UINT8 * pcBuffer,
-				     /* FIXME:
-				        pcBuffer above ought to be :
-				        const IMG_UINT8 *pcBuffer
-				        but, PDumpOSWriteString takes pointer to non-const data.
-				      */
-				     IMG_SIZE_T uiNumBytes,
-				     PDUMP_FLAGS_T uiPDumpFlags,
-				     IMG_CHAR * pszFilenameOut,
-				     IMG_SIZE_T uiFilenameBufSz,
-				     PDUMP_FILEOFFSET_T * puiOffsetOut);
+extern PVRSRV_ERROR
+PDumpWriteBuffer(/* const */ IMG_UINT8 *pcBuffer,
+                 /* FIXME:
+                    pcBuffer above ought to be :
+                    const IMG_UINT8 *pcBuffer
+                    but, PDumpOSWriteString takes pointer to non-const data.
+                 */
+                 IMG_SIZE_T uiNumBytes,
+                 PDUMP_FLAGS_T uiPDumpFlags,
+                 IMG_CHAR *pszFilenameOut,
+                 IMG_SIZE_T uiFilenameBufSz,
+                 PDUMP_FILEOFFSET_T *puiOffsetOut);
 
-#endif				/* #ifndef SRVSRV_PDUMP_PHYSMEM_H */
+#endif /* #ifndef SRVSRV_PDUMP_PHYSMEM_H */

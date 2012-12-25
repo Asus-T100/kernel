@@ -1,15 +1,50 @@
-									    /*************************************************************************//*!
-									       @File
-									       @Title          Debug driver
-									       @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
-									       @Description    Debug Driver Interface
-									       @License        Strictly Confidential.
-    *//**************************************************************************/
+/*************************************************************************/ /*!
+@File
+@Title          Debug driver
+@Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
+@Description    Debug Driver Interface
+@License        Dual MIT/GPLv2
+
+The contents of this file are subject to the MIT license as set out below.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+Alternatively, the contents of this file may be used under the terms of
+the GNU General Public License Version 2 ("GPL") in which case the provisions
+of GPL are applicable instead of those above.
+
+If you wish to allow use of your version of this file only under the terms of
+GPL, and not to allow others to use your version of this file under the terms
+of the MIT license, indicate your decision by deleting the provisions above
+and replace them with the notice and other provisions required by GPL as set
+out in the file called "GPL-COPYING" included in this distribution. If you do
+not delete the provisions above, a recipient may use your version of this file
+under the terms of either the MIT license or GPL.
+
+This License is also included in this distribution in the file called
+"MIT-COPYING".
+
+EXCEPT AS OTHERWISE STATED IN A NEGOTIATED AGREEMENT: (A) THE SOFTWARE IS
+PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING
+BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+PURPOSE AND NONINFRINGEMENT; AND (B) IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+*/ /**************************************************************************/
 
 #ifndef _DBGDRVIF_
 #define _DBGDRVIF_
 
-#if defined(_MSC_VER)
+#if defined(_MSC_VER) 
 #pragma  warning(disable:4200)
 #endif
 
@@ -19,7 +54,7 @@
 #define METHOD_BUFFERED                 0
 #define FILE_ANY_ACCESS                 0
 
-#define CTL_CODE( DeviceType, Function, Method, Access ) (Function)
+#define CTL_CODE( DeviceType, Function, Method, Access ) (Function) 
 #define MAKEIOCTLINDEX(i)	((i) & 0xFFF)
 
 #else
@@ -117,11 +152,16 @@
  Debug driver device name
 *****************************************************************************/
 #if defined (DBGDRV_MODULE_NAME)
+#define REGISTRY_PATH_TO_DEBUG_DRIVER \
+	L"\\Registry\\Machine\\System\\CurrentControlSet\\Services\\" DBGDRV_MODULE_NAME
 #define DBGDRV_NT_DEVICE_NAME				L"\\Device\\" DBGDRV_MODULE_NAME
 #define DBGDRV_NT_SYMLINK					L"\\DosDevices\\" DBGDRV_MODULE_NAME
 #else
+#error Debug driver name must be specified
+/*
 #define DBGDRV_NT_DEVICE_NAME				L"\\Device\\VLDbgDrv"
 #define DBGDRV_NT_SYMLINK					L"\\DosDevices\\VLDBGDRV"
+*/
 #endif
 
 /* symbolic link name */
@@ -130,42 +170,52 @@
 #define DBGDRV_WINCE_DEVICE_NAME			L"DBD1:"
 #endif
 
-typedef enum _DBG_EVENT_ {
+typedef enum _DBG_EVENT_
+{
 	DBG_EVENT_STREAM_DATA = 1
 } DBG_EVENT;
+
 
 /*****************************************************************************
  In/Out Structures
 *****************************************************************************/
-typedef struct _DBG_IN_CREATESTREAM_ {
-	union {
+typedef struct _DBG_IN_CREATESTREAM_
+{
+	union
+	{
 		IMG_CHAR *pszName;
 		IMG_UINT64 ui64Name;
 	} u;
 	IMG_UINT32 ui32Pages;
 	IMG_UINT32 ui32CapMode;
 	IMG_UINT32 ui32OutMode;
-} DBG_IN_CREATESTREAM, *PDBG_IN_CREATESTREAM;
+}DBG_IN_CREATESTREAM, *PDBG_IN_CREATESTREAM;
 
-typedef struct _DBG_IN_FINDSTREAM_ {
-	union {
+typedef struct _DBG_IN_FINDSTREAM_
+{
+	union
+	{
 		IMG_CHAR *pszName;
 		IMG_UINT64 ui64Name;
-	} u;
+	}u;
 	IMG_BOOL bResetStream;
-} DBG_IN_FINDSTREAM, *PDBG_IN_FINDSTREAM;
+}DBG_IN_FINDSTREAM, *PDBG_IN_FINDSTREAM;
 
-typedef struct _DBG_IN_WRITESTRING_ {
-	union {
+typedef struct _DBG_IN_WRITESTRING_
+{
+	union
+	{
 		IMG_CHAR *pszString;
 		IMG_UINT64 ui64String;
 	} u;
 	IMG_SID hStream;
 	IMG_UINT32 ui32Level;
-} DBG_IN_WRITESTRING, *PDBG_IN_WRITESTRING;
+}DBG_IN_WRITESTRING, *PDBG_IN_WRITESTRING;
 
-typedef struct _DBG_IN_READSTRING_ {
-	union {
+typedef struct _DBG_IN_READSTRING_
+{
+	union
+	{
 		IMG_CHAR *pszString;
 		IMG_UINT64 ui64String;
 	} u;
@@ -173,7 +223,8 @@ typedef struct _DBG_IN_READSTRING_ {
 	IMG_UINT32 ui32StringLen;
 } DBG_IN_READSTRING, *PDBG_IN_READSTRING;
 
-typedef struct _DBG_IN_SETDEBUGMODE_ {
+typedef struct _DBG_IN_SETDEBUGMODE_
+{
 	IMG_SID hStream;
 	IMG_UINT32 ui32Mode;
 	IMG_UINT32 ui32Start;
@@ -181,23 +232,28 @@ typedef struct _DBG_IN_SETDEBUGMODE_ {
 	IMG_UINT32 ui32SampleRate;
 } DBG_IN_SETDEBUGMODE, *PDBG_IN_SETDEBUGMODE;
 
-typedef struct _DBG_IN_SETDEBUGOUTMODE_ {
+typedef struct _DBG_IN_SETDEBUGOUTMODE_
+{
 	IMG_SID hStream;
 	IMG_UINT32 ui32Mode;
 } DBG_IN_SETDEBUGOUTMODE, *PDBG_IN_SETDEBUGOUTMODE;
 
-typedef struct _DBG_IN_SETDEBUGLEVEL_ {
+typedef struct _DBG_IN_SETDEBUGLEVEL_
+{
 	IMG_SID hStream;
 	IMG_UINT32 ui32Level;
 } DBG_IN_SETDEBUGLEVEL, *PDBG_IN_SETDEBUGLEVEL;
 
-typedef struct _DBG_IN_SETFRAME_ {
+typedef struct _DBG_IN_SETFRAME_
+{
 	IMG_SID hStream;
 	IMG_UINT32 ui32Frame;
 } DBG_IN_SETFRAME, *PDBG_IN_SETFRAME;
 
-typedef struct _DBG_IN_WRITE_ {
-	union {
+typedef struct _DBG_IN_WRITE_
+{
+	union
+	{
 		IMG_UINT8 *pui8InBuffer;
 		IMG_UINT64 ui64InBuffer;
 	} u;
@@ -206,8 +262,10 @@ typedef struct _DBG_IN_WRITE_ {
 	IMG_UINT32 ui32TransferSize;
 } DBG_IN_WRITE, *PDBG_IN_WRITE;
 
-typedef struct _DBG_IN_READ_ {
-	union {
+typedef struct _DBG_IN_READ_
+{
+	union
+	{
 		IMG_UINT8 *pui8OutBuffer;
 		IMG_UINT64 ui64OutBuffer;
 	} u;
@@ -216,28 +274,33 @@ typedef struct _DBG_IN_READ_ {
 	IMG_UINT32 ui32OutBufferSize;
 } DBG_IN_READ, *PDBG_IN_READ;
 
-typedef struct _DBG_IN_OVERRIDEMODE_ {
+typedef struct _DBG_IN_OVERRIDEMODE_
+{
 	IMG_SID hStream;
 	IMG_UINT32 ui32Mode;
 } DBG_IN_OVERRIDEMODE, *PDBG_IN_OVERRIDEMODE;
 
-typedef struct _DBG_IN_ISCAPTUREFRAME_ {
+typedef struct _DBG_IN_ISCAPTUREFRAME_
+{
 	IMG_SID hStream;
 	IMG_BOOL bCheckPreviousFrame;
 } DBG_IN_ISCAPTUREFRAME, *PDBG_IN_ISCAPTUREFRAME;
 
-typedef struct _DBG_IN_SETMARKER_ {
+typedef struct _DBG_IN_SETMARKER_
+{
 	IMG_SID hStream;
 	IMG_UINT32 ui32Marker;
 } DBG_IN_SETMARKER, *PDBG_IN_SETMARKER;
 
-typedef struct _DBG_IN_WRITE_LF_ {
-	union {
+typedef struct _DBG_IN_WRITE_LF_
+{
+	union
+	{
 		IMG_UINT8 *pui8InBuffer;
 		IMG_UINT64 ui64InBuffer;
 	} u;
 	IMG_UINT32 ui32Flags;
-	IMG_SID hStream;
+	IMG_SID    hStream;
 	IMG_UINT32 ui32Level;
 	IMG_UINT32 ui32BufferSize;
 } DBG_IN_WRITE_LF, *PDBG_IN_WRITE_LF;
@@ -251,131 +314,90 @@ typedef struct _DBG_IN_WRITE_LF_ {
 	Common control structure (don't duplicate control in main stream
 	and init phase stream).
 */
-typedef struct _DBG_STREAM_CONTROL_ {
-	IMG_BOOL bInitPhaseComplete;	/*!< init phase has finished */
-	IMG_UINT32 ui32Flags;	/*!< flags (see DEBUG_FLAGS above) */
+typedef struct _DBG_STREAM_CONTROL_
+{
+	IMG_BOOL   bInitPhaseComplete;		/*!< init phase has finished */
+	IMG_UINT32 ui32Flags;			/*!< flags (see DEBUG_FLAGS above) */
 
-	IMG_UINT32 ui32CapMode;	/*!< capturing mode framed/hot key */
-	IMG_UINT32 ui32OutMode;	/*!< output mode, e.g. files */
+	IMG_UINT32 ui32CapMode;			/*!< capturing mode framed/hot key */
+	IMG_UINT32 ui32OutMode;			/*!< output mode, e.g. files */
 	IMG_UINT32 ui32DebugLevel;
 	IMG_UINT32 ui32DefaultMode;
-	IMG_UINT32 ui32Start;	/*!< first capture frame */
-	IMG_UINT32 ui32End;	/*!< last frame */
-	IMG_UINT32 ui32Current;	/*!< current frame */
-	IMG_UINT32 ui32SampleRate;	/*!< capture frequency */
+	IMG_UINT32 ui32Start;			/*!< first capture frame */
+	IMG_UINT32 ui32End;				/*!< last frame */
+	IMG_UINT32 ui32Current;			/*!< current frame */
+	IMG_UINT32 ui32SampleRate;		/*!< capture frequency */
 	IMG_UINT32 ui32Reserved;
 } DBG_STREAM_CONTROL, *PDBG_STREAM_CONTROL;
 /*
 	Per-buffer control structure.
 */
-typedef struct _DBG_STREAM_ {
+typedef struct _DBG_STREAM_
+{
 	struct _DBG_STREAM_ *psNext;
 	struct _DBG_STREAM_ *psInitStream;
 	DBG_STREAM_CONTROL *psCtrl;
-	IMG_BOOL bCircularAllowed;
-	IMG_PVOID pvBase;
+	IMG_BOOL   bCircularAllowed;
+	IMG_PVOID  pvBase;
 	IMG_UINT32 ui32Size;
 	IMG_UINT32 ui32RPtr;
 	IMG_UINT32 ui32WPtr;
 	IMG_UINT32 ui32DataWritten;
-	IMG_UINT32 ui32Marker;	/*!< marker for file splitting */
+	IMG_UINT32 ui32Marker;			/*!< marker for file splitting */
 	IMG_UINT32 ui32InitPhaseWOff;	/*!< snapshot offset for init phase end for follow-on pdump */
-	IMG_CHAR szName[30];	/* Give this a size, some compilers don't like [] */
-} DBG_STREAM, *PDBG_STREAM;
+	IMG_CHAR szName[30];		/* Give this a size, some compilers don't like [] */
+} DBG_STREAM,*PDBG_STREAM;
 
 /*
  * Allows dbgdrv to notify services when events happen, e.g. pdump.exe starts.
  * (better than resetting psDevInfo->psKernelCCBInfo->ui32CCBDumpWOff = 0
  * in SGXGetClientInfoKM.)
  */
-typedef struct _DBGKM_CONNECT_NOTIFIER_ {
-	IMG_VOID(IMG_CALLCONV * pfnConnectNotifier) (IMG_VOID);
+typedef struct _DBGKM_CONNECT_NOTIFIER_
+{
+	IMG_VOID (IMG_CALLCONV *pfnConnectNotifier)		(IMG_VOID);
 } DBGKM_CONNECT_NOTIFIER, *PDBGKM_CONNECT_NOTIFIER;
 
 /*****************************************************************************
  Kernel mode service table
 *****************************************************************************/
-typedef struct _DBGKM_SERVICE_TABLE_ {
+typedef struct _DBGKM_SERVICE_TABLE_
+{
 	IMG_UINT32 ui32Size;
-	IMG_VOID *(IMG_CALLCONV * pfnCreateStream) (IMG_CHAR * pszName,
-						    IMG_UINT32 ui32CapMode,
-						    IMG_UINT32 ui32OutMode,
-						    IMG_UINT32 ui32Flags,
-						    IMG_UINT32 ui32Pages);
-	 IMG_VOID(IMG_CALLCONV * pfnDestroyStream) (PDBG_STREAM psStream);
-	IMG_VOID *(IMG_CALLCONV * pfnFindStream) (IMG_CHAR * pszName,
-						  IMG_BOOL bResetInitBuffer);
-	 IMG_UINT32(IMG_CALLCONV * pfnWriteString) (PDBG_STREAM psStream,
-						    IMG_CHAR * pszString,
-						    IMG_UINT32 ui32Level);
-	 IMG_UINT32(IMG_CALLCONV * pfnReadString) (PDBG_STREAM psStream,
-						   IMG_CHAR * pszString,
-						   IMG_UINT32 ui32Limit);
-	 IMG_UINT32(IMG_CALLCONV * pfnWriteBIN) (PDBG_STREAM psStream,
-						 IMG_UINT8 * pui8InBuf,
-						 IMG_UINT32 ui32InBuffSize,
-						 IMG_UINT32 ui32Level);
-	 IMG_UINT32(IMG_CALLCONV * pfnReadBIN) (PDBG_STREAM psStream,
-						IMG_BOOL bReadInitBuffer,
-						IMG_UINT32 ui32OutBufferSize,
-						IMG_UINT8 * pui8OutBuf);
-	 IMG_VOID(IMG_CALLCONV * pfnSetCaptureMode) (PDBG_STREAM psStream,
-						     IMG_UINT32 ui32CapMode,
-						     IMG_UINT32 ui32Start,
-						     IMG_UINT32 ui32Stop,
-						     IMG_UINT32 ui32SampleRate);
-	 IMG_VOID(IMG_CALLCONV * pfnSetOutputMode) (PDBG_STREAM psStream,
-						    IMG_UINT32 ui32OutMode);
-	 IMG_VOID(IMG_CALLCONV * pfnSetDebugLevel) (PDBG_STREAM psStream,
-						    IMG_UINT32 ui32DebugLevel);
-	 IMG_VOID(IMG_CALLCONV * pfnSetFrame) (PDBG_STREAM psStream,
-					       IMG_UINT32 ui32Frame);
-	 IMG_UINT32(IMG_CALLCONV * pfnGetFrame) (PDBG_STREAM psStream);
-	 IMG_VOID(IMG_CALLCONV * pfnOverrideMode) (PDBG_STREAM psStream,
-						   IMG_UINT32 ui32Mode);
-	 IMG_VOID(IMG_CALLCONV * pfnDefaultMode) (PDBG_STREAM psStream);
-	 IMG_UINT32(IMG_CALLCONV * pfnDBGDrivWrite2) (PDBG_STREAM psStream,
-						      IMG_UINT8 * pui8InBuf,
-						      IMG_UINT32 ui32InBuffSize,
-						      IMG_UINT32 ui32Level);
-	 IMG_UINT32(IMG_CALLCONV * pfnWriteStringCM) (PDBG_STREAM psStream,
-						      IMG_CHAR * pszString,
-						      IMG_UINT32 ui32Level);
-	 IMG_UINT32(IMG_CALLCONV * pfnWriteBINCM) (PDBG_STREAM psStream,
-						   IMG_UINT8 * pui8InBuf,
-						   IMG_UINT32 ui32InBuffSize,
-						   IMG_UINT32 ui32Level);
-	 IMG_VOID(IMG_CALLCONV * pfnSetMarker) (PDBG_STREAM psStream,
-						IMG_UINT32 ui32Marker);
-	 IMG_UINT32(IMG_CALLCONV * pfnGetMarker) (PDBG_STREAM psStream);
-	 IMG_VOID(IMG_CALLCONV * pfnStartInitPhase) (PDBG_STREAM psStream);
-	 IMG_VOID(IMG_CALLCONV * pfnStopInitPhase) (PDBG_STREAM psStream);
-	 IMG_BOOL(IMG_CALLCONV * pfnIsCaptureFrame) (PDBG_STREAM psStream,
-						     IMG_BOOL
-						     bCheckPreviousFrame);
-	 IMG_UINT32(IMG_CALLCONV * pfnWriteLF) (PDBG_STREAM psStream,
-						IMG_UINT8 * pui8InBuf,
-						IMG_UINT32 ui32InBuffSize,
-						IMG_UINT32 ui32Level,
-						IMG_UINT32 ui32Flags);
-	 IMG_UINT32(IMG_CALLCONV * pfnReadLF) (PDBG_STREAM psStream,
-					       IMG_UINT32 ui32OutBuffSize,
-					       IMG_UINT8 * pui8OutBuf);
-	 IMG_UINT32(IMG_CALLCONV * pfnGetStreamOffset) (PDBG_STREAM psStream);
-	 IMG_VOID(IMG_CALLCONV * pfnSetStreamOffset) (PDBG_STREAM psStream,
-						      IMG_UINT32
-						      ui32StreamOffset);
-	 IMG_BOOL(IMG_CALLCONV * pfnIsLastCaptureFrame) (PDBG_STREAM psStream);
-	 IMG_VOID(IMG_CALLCONV * pfnWaitForEvent) (DBG_EVENT eEvent);
-	 IMG_VOID(IMG_CALLCONV *
-		  pfnSetConnectNotifier) (DBGKM_CONNECT_NOTIFIER fn_notifier);
-	 IMG_UINT32(IMG_CALLCONV * pfnWritePersist) (PDBG_STREAM psStream,
-						     IMG_UINT8 * pui8InBuf,
-						     IMG_UINT32 ui32InBuffSize,
-						     IMG_UINT32 ui32Level);
+	IMG_VOID * 	(IMG_CALLCONV *pfnCreateStream)			(IMG_CHAR * pszName,IMG_UINT32 ui32CapMode,IMG_UINT32 ui32OutMode,IMG_UINT32 ui32Flags,IMG_UINT32 ui32Pages);
+	IMG_VOID 	(IMG_CALLCONV *pfnDestroyStream)		(PDBG_STREAM psStream);
+	IMG_VOID * 	(IMG_CALLCONV *pfnFindStream) 			(IMG_CHAR * pszName, IMG_BOOL bResetInitBuffer);
+	IMG_UINT32 	(IMG_CALLCONV *pfnWriteString) 			(PDBG_STREAM psStream,IMG_CHAR * pszString,IMG_UINT32 ui32Level);
+	IMG_UINT32 	(IMG_CALLCONV *pfnReadString)			(PDBG_STREAM psStream,IMG_CHAR * pszString,IMG_UINT32 ui32Limit);
+	IMG_UINT32 	(IMG_CALLCONV *pfnWriteBIN)				(PDBG_STREAM psStream,IMG_UINT8 *pui8InBuf,IMG_UINT32 ui32InBuffSize,IMG_UINT32 ui32Level);
+	IMG_UINT32 	(IMG_CALLCONV *pfnReadBIN)				(PDBG_STREAM psStream,IMG_BOOL bReadInitBuffer, IMG_UINT32 ui32OutBufferSize,IMG_UINT8 *pui8OutBuf);
+	IMG_VOID 	(IMG_CALLCONV *pfnSetCaptureMode)		(PDBG_STREAM psStream,IMG_UINT32 ui32CapMode,IMG_UINT32 ui32Start,IMG_UINT32 ui32Stop,IMG_UINT32 ui32SampleRate);
+	IMG_VOID 	(IMG_CALLCONV *pfnSetOutputMode)		(PDBG_STREAM psStream,IMG_UINT32 ui32OutMode);
+	IMG_VOID 	(IMG_CALLCONV *pfnSetDebugLevel)		(PDBG_STREAM psStream,IMG_UINT32 ui32DebugLevel);
+	IMG_VOID 	(IMG_CALLCONV *pfnSetFrame)				(PDBG_STREAM psStream,IMG_UINT32 ui32Frame);
+	IMG_UINT32 	(IMG_CALLCONV *pfnGetFrame)				(PDBG_STREAM psStream);
+	IMG_VOID 	(IMG_CALLCONV *pfnOverrideMode)			(PDBG_STREAM psStream,IMG_UINT32 ui32Mode);
+	IMG_VOID 	(IMG_CALLCONV *pfnDefaultMode)			(PDBG_STREAM psStream);
+	IMG_UINT32	(IMG_CALLCONV *pfnDBGDrivWrite2)		(PDBG_STREAM psStream,IMG_UINT8 *pui8InBuf,IMG_UINT32 ui32InBuffSize,IMG_UINT32 ui32Level);
+	IMG_UINT32 	(IMG_CALLCONV *pfnWriteStringCM)		(PDBG_STREAM psStream,IMG_CHAR * pszString,IMG_UINT32 ui32Level);
+	IMG_UINT32	(IMG_CALLCONV *pfnWriteBINCM)			(PDBG_STREAM psStream,IMG_UINT8 *pui8InBuf,IMG_UINT32 ui32InBuffSize,IMG_UINT32 ui32Level);
+	IMG_VOID 	(IMG_CALLCONV *pfnSetMarker)			(PDBG_STREAM psStream,IMG_UINT32 ui32Marker);
+	IMG_UINT32 	(IMG_CALLCONV *pfnGetMarker)			(PDBG_STREAM psStream);
+	IMG_VOID 	(IMG_CALLCONV *pfnStartInitPhase)		(PDBG_STREAM psStream);
+	IMG_VOID 	(IMG_CALLCONV *pfnStopInitPhase)		(PDBG_STREAM psStream);
+	IMG_BOOL 	(IMG_CALLCONV *pfnIsInitPhase)			(PDBG_STREAM psStream);
+	IMG_BOOL 	(IMG_CALLCONV *pfnIsCaptureFrame)		(PDBG_STREAM psStream, IMG_BOOL bCheckPreviousFrame);
+	IMG_UINT32 	(IMG_CALLCONV *pfnWriteLF)				(PDBG_STREAM psStream, IMG_UINT8 *pui8InBuf, IMG_UINT32 ui32InBuffSize, IMG_UINT32 ui32Level, IMG_UINT32 ui32Flags);
+	IMG_UINT32 	(IMG_CALLCONV *pfnReadLF)				(PDBG_STREAM psStream, IMG_UINT32 ui32OutBuffSize, IMG_UINT8 *pui8OutBuf);
+	IMG_UINT32 	(IMG_CALLCONV *pfnGetStreamOffset)		(PDBG_STREAM psStream);
+	IMG_VOID	(IMG_CALLCONV *pfnSetStreamOffset)		(PDBG_STREAM psStream, IMG_UINT32 ui32StreamOffset);
+	IMG_BOOL 	(IMG_CALLCONV *pfnIsLastCaptureFrame)	(PDBG_STREAM psStream);
+	IMG_VOID 	(IMG_CALLCONV *pfnWaitForEvent)			(DBG_EVENT eEvent);
+	IMG_VOID 	(IMG_CALLCONV *pfnSetConnectNotifier)	(DBGKM_CONNECT_NOTIFIER fn_notifier);
+	IMG_UINT32 	(IMG_CALLCONV *pfnWritePersist)			(PDBG_STREAM psStream,IMG_UINT8 *pui8InBuf,IMG_UINT32 ui32InBuffSize,IMG_UINT32 ui32Level);
 } DBGKM_SERVICE_TABLE, *PDBGKM_SERVICE_TABLE;
 
-#if defined(_MSC_VER)
+#if defined(_MSC_VER) 
 #pragma  warning(default:4200)
 #endif
 

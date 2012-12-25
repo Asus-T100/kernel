@@ -27,6 +27,28 @@
 #ifndef _MRFLD_CLOCK_H_
 #define _MRFLD_CLOCK_H_
 
+#define HDMIPHY_PORT			0x13
+#define CCK_PORT			0x14
+#define DSI_PLL_CTRL_REG		0x48
+#define _DSI_LDO_EN			(1 << 30)
+#define _P1_POST_DIV_MASK		(0x1ff << 17)
+#define _DSI_MUX_SEL_CCK_DSI0		(1 << 10)
+#define _DSI_MUX_SEL_CCK_DSI1		(1 << 9)
+#define _CLK_EN_PLL_DSI0		(1 << 8)
+#define _CLK_EN_PLL_DSI1		(1 << 7)
+#define _CLK_EN_CCK_DSI0		(1 << 6)
+#define _CLK_EN_CCK_DSI1		(1 << 5)
+#define _DSI_PLL_LOCK			(1 << 0)
+#define DSI_PLL_DIV_REG			0x4C
+#define FUSE_OVERRIDE_FREQ_CNTRL_REG3	0x54
+#define DPLL_STAGER_CTL_REG1		0x0230
+#define DPLL_STAGER_CTL_REG2		0x0430
+#define DPLL_DIV_REG			0x800C
+#define PLL_CTL_IN_MISC_TLDRV_REG	0x8014
+#define PLL_AFC_MISC_REG		0x801C
+#define LPF_COEFF_REG			0x8048
+#define GLOBAL_RCOMP_REG		0x80E0
+
 struct psb_intel_range_t {
 	int min, max;
 };

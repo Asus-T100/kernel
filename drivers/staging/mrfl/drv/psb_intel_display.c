@@ -11,7 +11,7 @@
  * more details.
  *
  * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
+ * this program; if not, write to the Free Software Foundation, Inc., 
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
  *
  * Authors:
@@ -213,7 +213,7 @@ static bool psb_intel_crtc_mode_fixup(struct drm_crtc *crtc,
  * Return the pipe currently connected to the panel fitter,
  * or -1 if the panel fitter is not present or not in use
  */
-static int psb_intel_panel_fitter_pipe(struct drm_device *dev)
+int psb_intel_panel_fitter_pipe(struct drm_device *dev)
 {
 	u32 pfit_control;
 
@@ -255,12 +255,11 @@ void psb_intel_crtc_load_lut(struct drm_crtc *crtc)
 		palreg = PALETTE_C;
 		break;
 	default:
-		DRM_ERROR("Illegal Pipe Number.\n");
+		DRM_ERROR("Illegal Pipe Number. \n");
 		return;
 	}
 
-	if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
-		OSPM_UHB_ONLY_IF_ON)) {
+	if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, OSPM_UHB_ONLY_IF_ON)) {
 		for (i = 0; i < 256; i++) {
 			REG_WRITE(palreg + 4 * i,
 				  ((psb_intel_crtc->lut_r[i] +
@@ -454,8 +453,8 @@ static void psb_intel_crtc_restore(struct drm_crtc *crtc)
 }
 #endif
 
-static void psb_intel_crtc_gamma_set(struct drm_crtc *crtc, u16 *red,
-				     u16 *green, u16 *blue, uint32_t size)
+static void psb_intel_crtc_gamma_set(struct drm_crtc *crtc, u16 * red,
+				     u16 * green, u16 * blue, uint32_t size)
 {
 	struct psb_intel_crtc *psb_intel_crtc = to_psb_intel_crtc(crtc);
 	int i;
@@ -607,6 +606,153 @@ int psb_intel_connector_clones(struct drm_device *dev, int type_mask)
 	}
 	return index_mask;
 }
+
+#if 0				/* JB: Rework framebuffer code into something none device specific */
+static void psb_intel_user_framebuffer_destroy(struct drm_framebuffer *fb)
+{
+	struct psb_intel_framebuffer *psb_intel_fb =
+	    to_psb_intel_framebuffer(fb);
+	struct drm_device *dev = fb->dev;
+
+	if (fb->fbdev)
+		intelfb_remove(dev, fb);
+
+	drm_framebuffer_cleanup(fb);
+	drm_gem_object_unreference(fb->mm_private);
+
+	kfree(psb_intel_fb);
+}
+
+static int psb_intel_user_framebuffer_create_handle(struct drm_framebuffer *fb,
+						    struct drm_file *file_priv,
+						    unsigned int *handle)
+{
+	struct drm_gem_object *object = fb->mm_private;
+
+	return drm_gem_handle_create(file_priv, object, handle);
+}
+
+static const struct drm_framebuffer_funcs psb_intel_fb_funcs = {
+	.destroy = psb_intel_user_framebuffer_destroy,
+	.create_handle = psb_intel_user_framebuffer_create_handle,
+};
+
+struct drm_framebuffer *psb_intel_framebuffer_create(struct drm_device *dev, struct drm_mode_fb_cmd
+						     *mode_cmd,
+						     void *mm_private)
+{
+	struct psb_intel_framebuffer *psb_intel_fb;
+
+	psb_intel_fb = kzalloc(sizeof(*psb_intel_fb), GFP_KERNEL);
+	if (!psb_intel_fb)
+		return NULL;
+
+	if (!drm_framebuffer_init(dev,
+				  &psb_intel_fb->base, &psb_intel_fb_funcs))
+		return NULL;
+
+	drm_helper_mode_fill_fb_struct(&psb_intel_fb->base, mode_cmd);
+
+	return &psb_intel_fb->base;
+}
+
+static struct drm_framebuffer *psb_intel_user_framebuffer_create(struct
+								 drm_device
+								 *dev, struct
+								 drm_file
+								 *filp, struct
+								 drm_mode_fb_cmd
+								 *mode_cmd)
+{
+	struct drm_gem_object *obj;
+
+	obj = drm_gem_object_lookup(dev, filp, mode_cmd->handle);
+	if (!obj)
+		return NULL;
+
+	return psb_intel_framebuffer_create(dev, mode_cmd, obj);
+}
+
+static int psb_intel_insert_new_fb(struct drm_device *dev,
+				   struct drm_file *file_priv,
+				   struct drm_framebuffer *fb,
+				   struct drm_mode_fb_cmd *mode_cmd)
+{
+	struct psb_intel_framebuffer *psb_intel_fb;
+	struct drm_gem_object *obj;
+	struct drm_crtc *crtc;
+
+	psb_intel_fb = to_psb_intel_framebuffer(fb);
+
+	mutex_lock(&dev->struct_mutex);
+	obj = drm_gem_object_lookup(dev, file_priv, mode_cmd->handle);
+
+	if (!obj) {
+		mutex_unlock(&dev->struct_mutex);
+		return -EINVAL;
+	}
+	drm_gem_object_unreference(psb_intel_fb->base.mm_private);
+	drm_helper_mode_fill_fb_struct(fb, mode_cmd, obj);
+	mutex_unlock(&dev->struct_mutex);
+
+	list_for_each_entry(crtc, &dev->mode_config.crtc_list, head) {
+		if (crtc->fb == fb) {
+			struct drm_crtc_helper_funcs *crtc_funcs =
+			    crtc->helper_private;
+			crtc_funcs->mode_set_base(crtc, crtc->x, crtc->y);
+		}
+	}
+	return 0;
+}
+
+static const struct drm_mode_config_funcs psb_intel_mode_funcs = {
+	.resize_fb = psb_intel_insert_new_fb,
+	.fb_create = psb_intel_user_framebuffer_create,
+	.fb_changed = intelfb_probe,
+};
+#endif
+
+#if 0				/* Should be per device */
+void psb_intel_modeset_init(struct drm_device *dev)
+{
+	int num_pipe;
+	int i;
+
+	drm_mode_config_init(dev);
+
+	dev->mode_config.min_width = 0;
+	dev->mode_config.min_height = 0;
+
+	dev->mode_config.funcs = (void *)&psb_intel_mode_funcs;
+
+	if (IS_I965G(dev)) {
+		dev->mode_config.max_width = 8192;
+		dev->mode_config.max_height = 8192;
+	} else {
+		dev->mode_config.max_width = 2048;
+		dev->mode_config.max_height = 2048;
+	}
+
+	/* set memory base */
+	/* MRST and PSB should use BAR 2 */
+	dev->mode_config.fb_base = pci_resource_start(dev->pdev, 2);
+
+	if (IS_MOBILE(dev) || IS_I9XX(dev))
+		num_pipe = 2;
+	else
+		num_pipe = 1;
+	DRM_DEBUG("%d display pipe%s available.\n",
+		  num_pipe, num_pipe > 1 ? "s" : "");
+
+	for (i = 0; i < num_pipe; i++)
+		psb_intel_crtc_init(dev, i);
+
+	psb_intel_setup_outputs(dev);
+
+	/* setup fbs */
+	/* drm_initial_config(dev); */
+}
+#endif
 
 void psb_intel_modeset_cleanup(struct drm_device *dev)
 {

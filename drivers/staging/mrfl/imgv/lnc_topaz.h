@@ -93,8 +93,7 @@ struct topaz_private {
 	uint32_t stored_initial_qp;
 	uint32_t topaz_dash_access_ctrl;
 
-	/* 4K->2K/2K for writeback/sync */
-	struct ttm_buffer_object *topaz_bo;
+	struct ttm_buffer_object *topaz_bo;	/* 4K->2K/2K for writeback/sync */
 	struct ttm_bo_kmap_obj topaz_bo_kmap;
 	void *topaz_ccb_wb;
 	uint32_t topaz_wb_offset;

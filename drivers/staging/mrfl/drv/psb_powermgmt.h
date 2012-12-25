@@ -33,81 +33,34 @@
 #include <drm/drmP.h>
 #include <drm/drm_crtc.h>
 #include <linux/intel_mid_pm.h>
-#include "psb_drv.h"
+
+#include "pmu_tng.h"
 
 #define OSPM_GRAPHICS_ISLAND	APM_GRAPHICS_ISLAND
 #define OSPM_VIDEO_DEC_ISLAND	APM_VIDEO_DEC_ISLAND
 #define OSPM_VIDEO_ENC_ISLAND	APM_VIDEO_ENC_ISLAND
 #define OSPM_VIDEO_VPP_ISLAND   0x80
 #define OSPM_DISPLAY_ISLAND	0x40
-/*
-	As per TNG Punit HAS.
-*/
-#define GFX_SS_PM0		0x30
-#define GFX_SS_PM1		0x31
-#define VED_SS_PM0		0x32
-#define VED_SS_PM1		0x33
-#define VEC_SS_PM0		0x34
-#define VEC_SS_PM1		0x35
-#define DSP_SS_PM		0x36
-#define VSP_SS_PM0		0x37
-#define VSP_SS_PM1		0x38
-#define MIO_SS_PM		0x3b
-#define HDMIO_SS_PM		0x3c
-#define NC_PM_SSS		0x3f
 
-/*
-	gfx sub-systems
-*/
-#define DSPASSC			0x3
-#define DSPBSSC			0xc
-#define DSPCSSC			0x30
-#define DSPASSS			0x3000000
-#define DSPBSSS			0xc000000
-#define DSPCSSS			0x30000000
-#define MIOSSC			0x3
-#define MIOSSS			0x3000000
-#define HDMIOSSC		0x3
-#define HDMIOSSS		0x3000000
-#define GFX_SLC_SSC		0x3
-#define GFX_SDKCK_SSC		0xc
-#define GFX_RSCD_SSC		0x30
-#define GFX_SLC_LDO_SSC		0xc0
-#define GFX_SLC_SSS		0x3000000
-#define GFX_SDKCK_SSS		0xc000000
-#define GFX_RSCD_SSS		0x30000000
-#define GFX_SLC_LDO_SSS		0xc0000000
-/*
-	video sub-system
+/*  Non-hardware (just API) definitions. */
 
-	SSS--Subsystem Status (These bits read ONLY)
-	SSC--Subsystem Control
-	     00--i0,No clock gating or power gating
-	     01--i1,Clock gated
-	     10--i2,Soft reset
-	     11--D3,Power gated with no HW state retention
- */
-#define VSP_SSC			0x3
-#define VED_SSC			0x3
-#define VEC_SSC			0x3
-#define VSP_SSS			0x3000000
-#define VED_SSS			0x3000000
-#define VEC_SSS			0x3000000
+typedef enum _MRFLD_GFX_ISLANDS
+{
+	MRFLD_GFX_DSPA  = 0x1,
+	MRFLD_GFX_DSPB  = 0x2,
+	MRFLD_GFX_DSPC  = 0x4,
+	MRFLD_GFX_MIO   = 0x8,
+	MRFLD_GFX_HDMIO = 0x10,
+	MRFLD_GFX_SLC   = 0x20,
+	MRFLD_GFX_SDKCK = 0x40,
+	MRFLD_GFX_RSCD  = 0x80,
+	MRFLD_GFX_SLC_LDO = 0x100,
+	MRFLD_GFX_ALL_ISLANDS = 0x1FF,
+} MRFLD_GFX_ISLANDS;
 
-
-#define PUNIT_PORT		0x04
-enum MRFLD_GFX_ISLANDS {
-	MRFLD_GFX_DSPA = 0,
-	MRFLD_GFX_DSPB,
-	MRFLD_GFX_DSPC,
-	MRFLD_GFX_MIO,
-	MRFLD_GFX_HDMIO,
-	MRFLD_GFX_SLC,
-	MRFLD_GFX_SDKCK,
-	MRFLD_GFX_RSCD,
-	MRFLD_GFX_SLC_LDO,
-	MRFLD_GFX_ALL_ISLANDS,
-};
+/*  FIXME */
+#define MRFLD_GFX_ALL_GFX_ONLY (MRFLD_GFX_SLC | MRFLD_GFX_SDKCK | \
+	MRFLD_GFX_RSCD | MRFLD_GFX_SLC_LDO)
 
 #define POWER_ISLAND_DOWN 0
 #define POWER_ISLAND_UP 1
@@ -128,22 +81,21 @@ enum MRFLD_GFX_ISLANDS {
 #define DISPLAY_B 0x2
 #define DISPLAY_C 0x4
 
-extern int drm_psb_dsr;
 extern bool gbgfxsuspended;
 extern int lastFailedBrightness;
 extern struct drm_device *gpDrmDevice;
 
-enum UHBUsage {
-	OSPM_UHB_ONLY_IF_ON = 0,
-	OSPM_UHB_FORCE_POWER_ON,
-};
+typedef enum _UHBUsage {
+    OSPM_UHB_ONLY_IF_ON = 0,
+    OSPM_UHB_FORCE_POWER_ON,
+} UHBUsage;
 
 struct mdfld_dsi_config;
 void mdfld_save_display(struct drm_device *dev);
 void mdfld_dsi_dpi_set_power(struct drm_encoder *encoder, bool on);
 void mdfld_dsi_dbi_set_power(struct drm_encoder *encoder, bool on);
-/* extern int psb_check_msvdx_idle(struct drm_device *dev); */
-/* extern int lnc_check_topaz_idle(struct drm_device *dev); */
+//extern int psb_check_msvdx_idle(struct drm_device *dev);
+//extern int lnc_check_topaz_idle(struct drm_device *dev);
 /* Use these functions to power down video HW for D0i3 purpose  */
 void ospm_apm_power_down_msvdx(struct drm_device *dev);
 void ospm_apm_power_down_topaz(struct drm_device *dev);
@@ -165,7 +117,7 @@ int ospm_power_resume(struct pci_dev *pdev);
  * These are the functions the driver should use to wrap all hw access
  * (i.e. register reads and writes)
  */
-bool ospm_power_using_hw_begin(int hw_island, enum UHBUsage usage);
+bool ospm_power_using_hw_begin(int hw_island, UHBUsage usage);
 void ospm_power_using_hw_end(int hw_island);
 
 /*

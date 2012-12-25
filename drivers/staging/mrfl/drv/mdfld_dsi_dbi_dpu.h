@@ -52,47 +52,50 @@ struct mdfld_cursor_info {
 
 /**
  * enter DSR mode if screen has no update for 2 frames.
- * TODO: export this as a configuration variable.
+ * TODO: export this as a configuration variable. 
  * (or what's the PRD for this?)
  */
 #define MDFLD_MAX_IDLE_COUNT	2
 
 struct mdfld_dbi_dpu_info {
 	struct drm_device *dev;
-	/*lock */
+	/*lock*/
 	spinlock_t dpu_update_lock;
 
-	/*cursor postion */
+	/*cursor postion*/
 	struct mdfld_cursor_info cursors[2];
 
-	/*damaged area for each plane */
+	/*damaged area for each plane*/
 	struct psb_drm_dpu_rect damaged_rects[MDFLD_PLANE_NUM];
 
-	/*final damaged area */
+	/*final damaged area*/
 	struct psb_drm_dpu_rect damage_pipea;
 	struct psb_drm_dpu_rect damage_pipec;
 
-	/*pending */
+	/*pending*/
 	u32 pending;
 
-	/*dpu timer */
+	/*dpu timer*/
 	struct timer_list dpu_timer;
 	spinlock_t dpu_timer_lock;
 
-	/*dpu idle count */
+	/*dpu idle count*/
 	u32 idle_count;
 
-	/*dsi outputs */
+	/*dsi outputs*/
 	struct mdfld_dsi_dbi_output *dbi_outputs[2];
 	int dbi_output_num;
 };
 
 static inline int mdfld_dpu_region_extent(struct psb_drm_dpu_rect *origin,
-					  struct psb_drm_dpu_rect *rect)
+		struct psb_drm_dpu_rect *rect)
 {
 	int x1, y1, x2, y2;
 
-	/*PSB_DEBUG_ENTRY("rect (%d, %d, %d, %d)\n", rect->x, rect->y, rect->width, rect->height); */
+	/*
+	 * PSB_DEBUG_ENTRY("rect (%d, %d, %d, %d)\n", rect->x, rect->y,
+	 * rect->width, rect->height);
+	 */
 
 	x1 = origin->x + origin->width;
 	y1 = origin->y + origin->height;
@@ -109,20 +112,18 @@ static inline int mdfld_dpu_region_extent(struct psb_drm_dpu_rect *origin,
 }
 
 static inline void mdfld_check_boundary(struct mdfld_dbi_dpu_info *dpu_info,
-					struct psb_drm_dpu_rect *rect)
+		struct psb_drm_dpu_rect *rect)
 {
 	if (rect->x < 0)
 		rect->x = 0;
 	if (rect->y < 0)
 		rect->y = 0;
 
-	if ((rect->x + rect->width) > 864) {
+	if ((rect->x + rect->width) > 864)
 		rect->width = 864 - rect->x;
-	}
 
-	if ((rect->y + rect->height) > 480) {
+	if ((rect->y + rect->height) > 480)
 		rect->height = 480 - rect->height;
-	}
 
 	if (!rect->width)
 		rect->width = 1;
@@ -131,15 +132,14 @@ static inline void mdfld_check_boundary(struct mdfld_dbi_dpu_info *dpu_info,
 }
 
 static inline void mdfld_dpu_init_damage(struct mdfld_dbi_dpu_info *dpu_info,
-					 int pipe)
+		int pipe)
 {
 	struct psb_drm_dpu_rect *rect;
 
-	if (pipe == 0) {
+	if (pipe == 0)
 		rect = &dpu_info->damage_pipea;
-	} else {
+	else
 		rect = &dpu_info->damage_pipec;
-	}
 
 	rect->x = 864;
 	rect->y = 480;
@@ -148,10 +148,10 @@ static inline void mdfld_dpu_init_damage(struct mdfld_dbi_dpu_info *dpu_info,
 }
 
 extern int mdfld_dsi_dbi_dsr_off(struct drm_device *dev,
-				 struct psb_drm_dpu_rect *rect);
+		struct psb_drm_dpu_rect *rect);
 extern int mdfld_dbi_dpu_report_damage(struct drm_device *dev,
-				       mdfld_plane_t plane,
-				       struct psb_drm_dpu_rect *rect);
+		mdfld_plane_t plane,
+		struct psb_drm_dpu_rect *rect);
 extern int mdfld_dbi_dpu_report_fullscreen_damage(struct drm_device *dev);
 extern int mdfld_dpu_exit_dsr(struct drm_device *dev);
 extern void mdfld_dbi_dpu_timer_start(struct mdfld_dbi_dpu_info *dpu_info);

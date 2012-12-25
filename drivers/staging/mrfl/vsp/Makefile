@@ -6,6 +6,7 @@ INCDIR=drivers/staging/mrfl
 ccflags-y += \
 	-I$(INCDIR)/ \
 	-I$(INCDIR)/interface \
+	-I$(INCDIR)/rgx/include \
 	-I$(INCDIR)/drv \
 	-I$(INCDIR)/imgv \
 	-I$(INCDIR)/vsp \
@@ -13,7 +14,7 @@ ccflags-y += \
 	-Iinclude/linux \
 	-Iinclude/drm
 
-ccflags-y += -DANDROID -D_linux_ -D__KERNEL__
+ccflags-y += -DANDROID -D_linux_ -DLINUX -D__KERNEL__
 
 obj-y += vsp_init.o \
 	vsp.o

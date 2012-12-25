@@ -1,11 +1,46 @@
-									     /**************************************************************************//*!
-									        @File           devicemem.h
-									        @Title          Device Memory Management core internal
-									        @Author         Copyright (C) Imagination Technologies Limited.
-									        All rights reserved. Strictly Confidential.
-									        @Description    Services internal interface to core device memory management
-									        functions that are shared between client and server code.
-    *//***************************************************************************/
+/*************************************************************************/ /*!
+@File
+@Title          Device Memory Management core internal
+@Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
+@Description    Services internal interface to core device memory management
+                functions that are shared between client and server code.
+@License        Dual MIT/GPLv2
+
+The contents of this file are subject to the MIT license as set out below.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+Alternatively, the contents of this file may be used under the terms of
+the GNU General Public License Version 2 ("GPL") in which case the provisions
+of GPL are applicable instead of those above.
+
+If you wish to allow use of your version of this file only under the terms of
+GPL, and not to allow others to use your version of this file under the terms
+of the MIT license, indicate your decision by deleting the provisions above
+and replace them with the notice and other provisions required by GPL as set
+out in the file called "GPL-COPYING" included in this distribution. If you do
+not delete the provisions above, a recipient may use your version of this file
+under the terms of either the MIT license or GPL.
+
+This License is also included in this distribution in the file called
+"MIT-COPYING".
+
+EXCEPT AS OTHERWISE STATED IN A NEGOTIATED AGREEMENT: (A) THE SOFTWARE IS
+PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING
+BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+PURPOSE AND NONINFRINGEMENT; AND (B) IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+*/ /**************************************************************************/
 
 #ifndef SRVCLIENT_DEVICEMEM_H
 #define SRVCLIENT_DEVICEMEM_H
@@ -55,7 +90,7 @@
     This PMR terminology is introduced here for background
     information, but is generally of little concern to the caller of
     this API.  This API handles suballocations and mappings, and the
-    caller thus dealy primarily with MEMORY DESCRIPTORS representing
+    caller thus deals primarily with MEMORY DESCRIPTORS representing
     an allocation or suballocation, HEAPS representing ranges of
     virtual addresses in a CONTEXT.
 */
@@ -120,9 +155,9 @@ typedef IMG_HANDLE DEVMEM_BRIDGE_HANDLE;
  */
 extern PVRSRV_ERROR
 DevmemCreateContext(DEVMEM_BRIDGE_HANDLE hBridge,
-		    IMG_HANDLE hDeviceNode,
-		    DEVMEM_HEAPCFGID uiHeapBlueprintID,
-		    DEVMEM_CONTEXT ** ppsCtxPtr);
+                    IMG_HANDLE hDeviceNode,
+                    DEVMEM_HEAPCFGID uiHeapBlueprintID,
+                    DEVMEM_CONTEXT **ppsCtxPtr);
 
 /*
  * DevmemAcquireDevPrivData()
@@ -130,21 +165,24 @@ DevmemCreateContext(DEVMEM_BRIDGE_HANDLE hBridge,
  * Acquire the device private data for this memory context
  */
 PVRSRV_ERROR
-DevmemAcquireDevPrivData(DEVMEM_CONTEXT * psCtx, IMG_HANDLE * hPrivData);
+DevmemAcquireDevPrivData(DEVMEM_CONTEXT *psCtx,
+                         IMG_HANDLE *hPrivData);
 
 /*
  * DevmemReleaseDevPrivData()
  * 
  * Release the device private data for this memory context
  */
-PVRSRV_ERROR DevmemReleaseDevPrivData(DEVMEM_CONTEXT * psCtx);
+PVRSRV_ERROR
+DevmemReleaseDevPrivData(DEVMEM_CONTEXT *psCtx);
 
 /*
  * DevmemDestroyContext()
  *
  * Undoes that done by DevmemCreateContext()
  */
-extern PVRSRV_ERROR DevmemDestroyContext(DEVMEM_CONTEXT * psCtx);
+extern PVRSRV_ERROR
+DevmemDestroyContext(DEVMEM_CONTEXT *psCtx);
 
 /*
  * DevmemCreateHeap()
@@ -165,7 +203,7 @@ extern PVRSRV_ERROR DevmemDestroyContext(DEVMEM_CONTEXT * psCtx);
  * will be made from a "sub alloc RA" and will "import" chunks
  * according to this quantum)
  *
- * TODO: decide whether there's a need to distinguish between the
+ * FIXME: decide whether there's a need to distinguish between the
  * quantum and the device mmu page size?  I think not.
  *
  * Where imported PMRs (or, for example, PMRs created by device class
@@ -178,20 +216,21 @@ extern PVRSRV_ERROR DevmemDestroyContext(DEVMEM_CONTEXT * psCtx);
  * supported quantum sizes in that case shall be dictated by the OS
  * specific implementation of PhysmemNewOSRamBackedPMR() (see)
  */
-extern PVRSRV_ERROR DevmemCreateHeap(DEVMEM_CONTEXT * psCtxPtr,
-				     /* base and length of heap */
-				     IMG_DEV_VIRTADDR sBaseAddress,
-				     IMG_DEVMEM_SIZE_T uiLength,
-				     /* log2 of allocation quantum, i.e. "page" size.
-				        All allocations (that go to server side) are
-				        multiples of this.  We use a client-side RA to
-				        make sub-allocations from this */
-				     IMG_UINT32 ui32Log2Quantum,
-				     /* Name of heap for debug */
-				     /* N.B.  Okay to exist on caller's stack - this
-				        func takes a copy if it needs it. */
-				     const IMG_CHAR * pszName,
-				     DEVMEM_HEAP ** ppsHeapPtr);
+extern PVRSRV_ERROR
+DevmemCreateHeap(DEVMEM_CONTEXT *psCtxPtr,
+                 /* base and length of heap */
+                 IMG_DEV_VIRTADDR sBaseAddress,
+                 IMG_DEVMEM_SIZE_T uiLength,
+                 /* log2 of allocation quantum, i.e. "page" size.
+                    All allocations (that go to server side) are
+                    multiples of this.  We use a client-side RA to
+                    make sub-allocations from this */
+                 IMG_UINT32 ui32Log2Quantum,
+                 /* Name of heap for debug */
+                 /* N.B.  Okay to exist on caller's stack - this
+                    func takes a copy if it needs it. */
+                 const IMG_CHAR *pszName,
+                 DEVMEM_HEAP **ppsHeapPtr);
 /*
  * DevmemDestroyHeap()
  *
@@ -200,16 +239,15 @@ extern PVRSRV_ERROR DevmemCreateHeap(DEVMEM_CONTEXT * psCtxPtr,
  * N.B. All allocations must have been freed and all mappings must
  * have been unmapped before invoking this call
  */
-extern PVRSRV_ERROR DevmemDestroyHeap(DEVMEM_HEAP * psHeap);
+extern PVRSRV_ERROR
+DevmemDestroyHeap(DEVMEM_HEAP *psHeap);
 
 /*
  * DevmemExportalignAdjustSizeAndAlign()
  * Compute the Size and Align passed to avoid suballocations (used when allocation with PVRSRV_MEMALLOCFLAG_EXPORTALIGN)
  */
 IMG_INTERNAL IMG_VOID
-DevmemExportalignAdjustSizeAndAlign(DEVMEM_HEAP * psHeap,
-				    IMG_DEVMEM_SIZE_T * puiSize,
-				    IMG_DEVMEM_ALIGN_T * puiAlign);
+DevmemExportalignAdjustSizeAndAlign(DEVMEM_HEAP *psHeap, IMG_DEVMEM_SIZE_T *puiSize, IMG_DEVMEM_ALIGN_T *puiAlign);
 
 /*
  * DevmemAllocate()
@@ -222,7 +260,7 @@ DevmemExportalignAdjustSizeAndAlign(DEVMEM_HEAP * psHeap,
  * be mapped into GPU virtual memory and the physical memory to back
  * it will exist, by the time this call successfully completes.
  * 
- * TODO: The mapping of the PMR to the GPU is optional and controlled
+ * FIXME: The mapping of the PMR to the GPU is optional and controlled
  * by the flags passed in. This leads to the interesting question as
  * to if the allocation requests a GPU mapping should we map it in here
  * or do that as a 2nd to DevmemAcquireDevVirtAddr request same way we
@@ -243,25 +281,37 @@ DevmemExportalignAdjustSizeAndAlign(DEVMEM_HEAP * psHeap,
  * This happens only when the flags match exactly.
  *
  * Note that we don't currently have a flag to determine that an
- * allocation is to be marked as "exportable" - TODO: should we have
+ * allocation is to be marked as "exportable" - FIXME: should we have
  * such a flag?  In general it is assumed that the caller may make
  * small allocations (suballocations) _or_ export allocations to other
  * processes but not both.
  */
 
-PVRSRV_ERROR DevmemAllocate(DEVMEM_HEAP * psHeap,
-			    IMG_DEVMEM_SIZE_T uiSize,
-			    IMG_DEVMEM_ALIGN_T uiAlign,
-			    DEVMEM_FLAGS_T uiFlags,
-			    DEVMEM_MEMDESC ** ppsMemDescPtr);
+PVRSRV_ERROR DevmemAllocate(DEVMEM_HEAP *psHeap,
+                            IMG_DEVMEM_SIZE_T uiSize,
+                            IMG_DEVMEM_ALIGN_T uiAlign,
+                            DEVMEM_FLAGS_T uiFlags,
+                            DEVMEM_MEMDESC **ppsMemDescPtr);
 
 PVRSRV_ERROR
 DevmemAllocateExportable(IMG_HANDLE hBridge,
-			 IMG_HANDLE hDeviceNode,
-			 IMG_DEVMEM_SIZE_T uiSize,
-			 IMG_DEVMEM_ALIGN_T uiAlign,
-			 DEVMEM_FLAGS_T uiFlags,
-			 DEVMEM_MEMDESC ** ppsMemDescPtr);
+						 IMG_HANDLE hDeviceNode,
+						 IMG_DEVMEM_SIZE_T uiSize,
+						 IMG_DEVMEM_ALIGN_T uiAlign,
+						 DEVMEM_FLAGS_T uiFlags,
+						 DEVMEM_MEMDESC **ppsMemDescPtr);
+
+PVRSRV_ERROR
+DevmemAllocateSparse(IMG_HANDLE hBridge,
+					 IMG_HANDLE hDeviceNode,
+					 IMG_DEVMEM_SIZE_T uiSize,
+					 IMG_DEVMEM_SIZE_T uiChunkSize,
+					 IMG_UINT32 ui32NumPhysChunks,
+					 IMG_UINT32 ui32NumVirtChunks,
+					 IMG_BOOL *pabMappingTable,
+					 IMG_DEVMEM_ALIGN_T uiAlign,
+					 DEVMEM_FLAGS_T uiFlags,
+					 DEVMEM_MEMDESC **ppsMemDescPtr);
 
 /*
  * DevmemFree()
@@ -273,7 +323,8 @@ DevmemAllocateExportable(IMG_HANDLE hBridge,
  * properly refcounted, so the caller does not have to care.
  */
 
-extern IMG_VOID DevmemFree(DEVMEM_MEMDESC * psMemDesc);
+extern IMG_VOID
+DevmemFree(DEVMEM_MEMDESC *psMemDesc);
 
 /*
 	DevmemMapToDevice:
@@ -285,12 +336,12 @@ extern IMG_VOID DevmemFree(DEVMEM_MEMDESC * psMemDesc);
 	DevmemReleaseDevVirtAddr is used to release the reference
 	to the device mapping this function created, but it doesn't
 	mean that the memory will actually be unmapped from the
-	device as other references to the mapping abtained via
+	device as other references to the mapping obtained via
 	DevmemAcquireDevVirtAddr could still be active.
 */
-PVRSRV_ERROR DevmemMapToDevice(DEVMEM_MEMDESC * psMemDesc,
-			       DEVMEM_HEAP * psHeap,
-			       IMG_DEV_VIRTADDR * psDevVirtAddr);
+PVRSRV_ERROR DevmemMapToDevice(DEVMEM_MEMDESC *psMemDesc,
+							   DEVMEM_HEAP *psHeap,
+							   IMG_DEV_VIRTADDR *psDevVirtAddr);
 
 /*
 	DevmemAcquireDevVirtAddr
@@ -300,15 +351,16 @@ PVRSRV_ERROR DevmemMapToDevice(DEVMEM_MEMDESC * psMemDesc,
 	and is expected to be used be functions which didn't allocate
 	the MemDesc but need to know it's address
  */
-PVRSRV_ERROR DevmemAcquireDevVirtAddr(DEVMEM_MEMDESC * psMemDesc,
-				      IMG_DEV_VIRTADDR * psDevVirtAddrRet);
+PVRSRV_ERROR DevmemAcquireDevVirtAddr(DEVMEM_MEMDESC *psMemDesc,
+                                      IMG_DEV_VIRTADDR *psDevVirtAddrRet);
 /*
  * DevmemReleaseDevVirtAddr()
  *
  * give up the licence to use the device virtual address that was
  * acquired by "Acquire" or "MapToDevice"
  */
-extern IMG_VOID DevmemReleaseDevVirtAddr(DEVMEM_MEMDESC * psMemDesc);
+extern IMG_VOID
+DevmemReleaseDevVirtAddr(DEVMEM_MEMDESC *psMemDesc);
 
 /*
  * DevmemAcquireCpuVirtAddr()
@@ -320,21 +372,22 @@ extern IMG_VOID DevmemReleaseDevVirtAddr(DEVMEM_MEMDESC * psMemDesc);
  * _may_ become unmapped.  Later calling "Acquire" again, _may_ cause
  * the memory to be mapped at a different address.
  */
-PVRSRV_ERROR DevmemAcquireCpuVirtAddr(DEVMEM_MEMDESC * psMemDesc,
-				      IMG_VOID ** ppvCpuVirtAddr);
+PVRSRV_ERROR DevmemAcquireCpuVirtAddr(DEVMEM_MEMDESC *psMemDesc,
+                                      IMG_VOID **ppvCpuVirtAddr);
 /*
  * DevmemReleaseDevVirtAddr()
  *
  * give up the licence to use the cpu virtual address that was granted
  * with the "Get" call.
  */
-extern IMG_VOID DevmemReleaseCpuVirtAddr(DEVMEM_MEMDESC * psMemDesc);
+extern IMG_VOID
+DevmemReleaseCpuVirtAddr(DEVMEM_MEMDESC *psMemDesc);
 
 /*
  * DevmemExport()
  *
  * Given a memory allocation allocated with Devmem_Allocate() (N.B.
- * mustn't be a suballocated one, for security reasons... TODO:
+ * mustn't be a suballocated one, for security reasons... FIXME:
  * enforce by flag, perhaps?) create a "cookie" that can be passed
  * intact by the caller's own choice of secure IPC to another process
  * and used as the argument to "map" to map this memory into a heap in
@@ -344,21 +397,24 @@ extern IMG_VOID DevmemReleaseCpuVirtAddr(DEVMEM_MEMDESC * psMemDesc);
  * Note, the caller must later call Unexport before freeing the
  * memory.
  */
-PVRSRV_ERROR DevmemExport(DEVMEM_MEMDESC * psMemDesc,
-			  DEVMEM_EXPORTCOOKIE * psExportCookie);
+PVRSRV_ERROR DevmemExport(DEVMEM_MEMDESC *psMemDesc,
+                          DEVMEM_EXPORTCOOKIE *psExportCookie);
 
-IMG_VOID DevmemUnexport(DEVMEM_MEMDESC * psMemDesc,
-			DEVMEM_EXPORTCOOKIE * psExportCookie);
+
+IMG_VOID DevmemUnexport(DEVMEM_MEMDESC *psMemDesc,
+						DEVMEM_EXPORTCOOKIE *psExportCookie);
 
 PVRSRV_ERROR
 DevmemImport(IMG_HANDLE hBridge,
-	     DEVMEM_EXPORTCOOKIE * psCookie,
-	     DEVMEM_FLAGS_T uiFlags, DEVMEM_MEMDESC ** ppsMemDescPtr);
+			 DEVMEM_EXPORTCOOKIE *psCookie,
+			 DEVMEM_FLAGS_T uiFlags,
+			 DEVMEM_MEMDESC **ppsMemDescPtr);
 
 /*
  * DevmemIsValidExportCookie()
  * Check whether the Export Cookie contains a valid export */
-IMG_BOOL DevmemIsValidExportCookie(DEVMEM_EXPORTCOOKIE * psExportCookie);
+IMG_BOOL
+DevmemIsValidExportCookie(DEVMEM_EXPORTCOOKIE *psExportCookie);
 
 /*
  * DevmemMakeServerExportClientExport()
@@ -369,9 +425,8 @@ IMG_BOOL DevmemIsValidExportCookie(DEVMEM_EXPORTCOOKIE * psExportCookie);
  */
 PVRSRV_ERROR
 DevmemMakeServerExportClientExport(DEVMEM_BRIDGE_HANDLE hBridge,
-				   DEVMEM_SERVER_EXPORTCOOKIE
-				   hServerExportCookie,
-				   DEVMEM_EXPORTCOOKIE * psExportCookie);
+                                   DEVMEM_SERVER_EXPORTCOOKIE hServerExportCookie,
+                                   DEVMEM_EXPORTCOOKIE *psExportCookie);
 
 /*
  * DevmemUnmakeServerExportClientExport()
@@ -380,7 +435,7 @@ DevmemMakeServerExportClientExport(DEVMEM_BRIDGE_HANDLE hBridge,
  */
 PVRSRV_ERROR
 DevmemUnmakeServerExportClientExport(DEVMEM_BRIDGE_HANDLE hBridge,
-				     DEVMEM_EXPORTCOOKIE * psExportCookie);
+                                   DEVMEM_EXPORTCOOKIE *psExportCookie);
 
 /*
  *
@@ -389,14 +444,15 @@ DevmemUnmakeServerExportClientExport(DEVMEM_BRIDGE_HANDLE hBridge,
  *
  */
 
+
 /* Devmem_HeapConfigCount: returns the number of heap configs that
    this device has.  Note that there is no acquire/release semantics
    required, as this data is guaranteed to be constant for the
    lifetime of the device node */
 extern PVRSRV_ERROR
 DevmemHeapConfigCount(DEVMEM_BRIDGE_HANDLE hBridge,
-		      IMG_HANDLE hDeviceNode,
-		      IMG_UINT32 * puiNumHeapConfigsOut);
+                      IMG_HANDLE hDeviceNode,
+                      IMG_UINT32 *puiNumHeapConfigsOut);
 
 /* Devmem_HeapCount: returns the number of heaps that a given heap
    config on this device has.  Note that there is no acquire/release
@@ -404,8 +460,9 @@ DevmemHeapConfigCount(DEVMEM_BRIDGE_HANDLE hBridge,
    the lifetime of the device node */
 extern PVRSRV_ERROR
 DevmemHeapCount(DEVMEM_BRIDGE_HANDLE hBridge,
-		IMG_HANDLE hDeviceNode,
-		IMG_UINT32 uiHeapConfigIndex, IMG_UINT32 * puiNumHeapsOut);
+                IMG_HANDLE hDeviceNode,
+                IMG_UINT32 uiHeapConfigIndex,
+                IMG_UINT32 *puiNumHeapsOut);
 /* Devmem_HeapConfigName: return the name of the given heap config.
    The caller is to provide the storage for the returned string and
    indicate the number of bytes (including null terminator) for such
@@ -415,9 +472,10 @@ DevmemHeapCount(DEVMEM_BRIDGE_HANDLE hBridge,
  */
 extern PVRSRV_ERROR
 DevmemHeapConfigName(DEVMEM_BRIDGE_HANDLE hBridge,
-		     IMG_HANDLE hDeviceNode,
-		     IMG_UINT32 uiHeapConfigIndex,
-		     IMG_CHAR * pszConfigNameOut, IMG_UINT32 uiConfigNameBufSz);
+                     IMG_HANDLE hDeviceNode,
+                     IMG_UINT32 uiHeapConfigIndex,
+                     IMG_CHAR *pszConfigNameOut,
+                     IMG_UINT32 uiConfigNameBufSz);
 
 /* Devmem_HeapDetails: fetches all the metadata that is recorded in
    this heap "blueprint".  Namely: heap name (caller to provide
@@ -429,14 +487,14 @@ DevmemHeapConfigName(DEVMEM_BRIDGE_HANDLE hBridge,
    node. */
 extern PVRSRV_ERROR
 DevmemHeapDetails(DEVMEM_BRIDGE_HANDLE hBridge,
-		  IMG_HANDLE hDeviceNode,
-		  IMG_UINT32 uiHeapConfigIndex,
-		  IMG_UINT32 uiHeapIndex,
-		  IMG_CHAR * pszHeapNameOut,
-		  IMG_UINT32 uiHeapNameBufSz,
-		  IMG_DEV_VIRTADDR * psDevVAddrBaseOut,
-		  IMG_DEVMEM_SIZE_T * puiHeapLengthOut,
-		  IMG_UINT32 * puiLog2DataPageSize);
+                  IMG_HANDLE hDeviceNode,
+                  IMG_UINT32 uiHeapConfigIndex,
+                  IMG_UINT32 uiHeapIndex,
+                  IMG_CHAR *pszHeapNameOut,
+                  IMG_UINT32 uiHeapNameBufSz,
+                  IMG_DEV_VIRTADDR *psDevVAddrBaseOut,
+                  IMG_DEVMEM_SIZE_T *puiHeapLengthOut,
+                  IMG_UINT32 *puiLog2DataPageSize);
 
 /*
  * Devmem_FindHeapByName()
@@ -446,8 +504,9 @@ DevmemHeapDetails(DEVMEM_BRIDGE_HANDLE hBridge,
  * context from a blueprint
  */
 extern PVRSRV_ERROR
-DevmemFindHeapByName(const DEVMEM_CONTEXT * psCtx,
-		     const IMG_CHAR * pszHeapName, DEVMEM_HEAP ** ppsHeapRet);
+DevmemFindHeapByName(const DEVMEM_CONTEXT *psCtx,
+                     const IMG_CHAR *pszHeapName,
+                     DEVMEM_HEAP **ppsHeapRet);
 
 /*
  * DevmemGetHeapBaseDevVAddr()
@@ -456,9 +515,21 @@ DevmemFindHeapByName(const DEVMEM_CONTEXT * psCtx,
  */
 
 PVRSRV_ERROR
-DevmemGetHeapBaseDevVAddr(DEVMEM_HEAP * psHeap, IMG_DEV_VIRTADDR * pDevVAddr);
+DevmemGetHeapBaseDevVAddr(DEVMEM_HEAP *psHeap,
+			  IMG_DEV_VIRTADDR *pDevVAddr);
+
 
 extern PVRSRV_ERROR
-DevmemGetImportUID(DEVMEM_MEMDESC * psMemDesc, IMG_UINT64 * pui64UID);
+DevmemGetImportUID(DEVMEM_MEMDESC *psMemDesc,
+						   IMG_UINT64 *pui64UID);
 
-#endif				/* #ifndef SRVCLIENT_DEVICEMEM_CLIENT_H */
+PVRSRV_ERROR
+DevmemGetReservation(DEVMEM_MEMDESC *psMemDesc,
+				IMG_HANDLE *hReservation);
+
+IMG_INTERNAL PVRSRV_ERROR
+DevmemGetPMRData(DEVMEM_MEMDESC *psMemDesc,
+		IMG_HANDLE *hPMR,
+		IMG_DEVMEM_OFFSET_T *puiPMROffset);
+
+#endif /* #ifndef SRVCLIENT_DEVICEMEM_CLIENT_H */

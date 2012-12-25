@@ -68,8 +68,9 @@ enum {
 };
 
 enum {
-	MDFLD_DSI_PKG_SENDER_FREE = 0x0,
-	MDFLD_DSI_PKG_SENDER_BUSY = 0x1,
+	MDFLD_DSI_PKG_SENDER_FREE  = 0x0,
+	MDFLD_DSI_PKG_SENDER_BUSY  = 0x1,
+	MDFLD_DSI_CONTROL_ABNORMAL = 0x2,
 };
 
 enum {
@@ -83,20 +84,18 @@ struct mdfld_dsi_gen_short_pkg {
 };
 
 struct mdfld_dsi_gen_long_pkg {
-	u32 *data;
+	u8 *data;
 	u32 len;
 };
 
 struct mdfld_dsi_dcs_pkg {
 	u8 cmd;
-	u8 param[MDFLD_MAX_DCS_PARAM];
+	u8 *param;
 	u32 param_num;
 	u8 data_src;
 };
 
-struct mdfld_dsi_dpi_spk_pkg {
-	u32 cmd;
-};
+struct mdfld_dsi_dpi_spk_pkg { u32 cmd; };
 
 struct mdfld_dsi_pkg {
 	u8 pkg_type;
@@ -132,7 +131,10 @@ struct mdfld_dsi_pkg_sender {
 	u32 dbi_cb_phy;
 	void *dbi_cb_addr;
 
-	/*registers */
+	atomic64_t te_seq;
+	atomic64_t last_screen_update;
+
+	/*registers*/
 	u32 dpll_reg;
 	u32 dspcntr_reg;
 	u32 pipeconf_reg;
@@ -154,47 +156,68 @@ struct mdfld_dsi_pkg_sender {
 };
 
 extern int mdfld_dsi_pkg_sender_init(struct mdfld_dsi_connector *dsi_connector,
-				     int pipe);
+		int pipe);
 extern void mdfld_dsi_pkg_sender_destroy(struct mdfld_dsi_pkg_sender *sender);
+extern int mdfld_dsi_check_fifo_empty(struct mdfld_dsi_pkg_sender *sender);
 extern int mdfld_dsi_send_dcs(struct mdfld_dsi_pkg_sender *sender,
-			      u8 dcs, u8 *param, u32 param_num, u8 data_src,
-			      int delay);
+			u8 dcs, u8 *param, u32 param_num, u8 data_src,
+			int delay);
 extern int mdfld_dsi_send_mcs_short_hs(struct mdfld_dsi_pkg_sender *sender,
-				       u8 cmd, u8 param, u8 param_num,
-				       int delay);
+					u8 cmd, u8 param, u8 param_num,
+					int delay);
 extern int mdfld_dsi_send_mcs_short_lp(struct mdfld_dsi_pkg_sender *sender,
-				       u8 cmd, u8 param, u8 param_num,
-				       int delay);
+					u8 cmd, u8 param, u8 param_num,
+					int delay);
 extern int mdfld_dsi_send_mcs_long_hs(struct mdfld_dsi_pkg_sender *sender,
-				      u32 *data, u32 len, int delay);
+					u8 *data,
+					u32 len,
+					int delay);
 extern int mdfld_dsi_send_mcs_long_lp(struct mdfld_dsi_pkg_sender *sender,
-				      u32 *data, u32 len, int delay);
+					u8 *data,
+					u32 len,
+					int delay);
 extern int mdfld_dsi_send_gen_short_hs(struct mdfld_dsi_pkg_sender *sender,
-				       u8 param0, u8 param1, u8 param_num,
-				       int delay);
+					u8 param0, u8 param1, u8 param_num,
+					int delay);
 extern int mdfld_dsi_send_gen_short_lp(struct mdfld_dsi_pkg_sender *sender,
-				       u8 param0, u8 param1, u8 param_num,
-				       int delay);
+					u8 param0, u8 param1, u8 param_num,
+					int delay);
 extern int mdfld_dsi_send_gen_long_hs(struct mdfld_dsi_pkg_sender *sender,
-				      u32 *data, u32 len, int delay);
+				u8 *data,
+				u32 len,
+				int delay);
 extern int mdfld_dsi_send_gen_long_lp(struct mdfld_dsi_pkg_sender *sender,
-				      u32 *data, u32 len, int delay);
+				u8 *data,
+				u32 len,
+				int delay);
 extern int mdfld_dsi_send_dpi_spk_pkg_hs(struct mdfld_dsi_pkg_sender *sender,
-					 u32 spk_pkg);
+				u32 spk_pkg);
 extern int mdfld_dsi_send_dpi_spk_pkg_lp(struct mdfld_dsi_pkg_sender *sender,
-					 u32 spk_pkg);
-extern void mdfld_dsi_cmds_kick_out(struct mdfld_dsi_pkg_sender *sender);
+				u32 spk_pkg);
+extern int mdfld_dsi_cmds_kick_out(struct mdfld_dsi_pkg_sender *sender);
+extern void mdfld_dsi_report_te(struct mdfld_dsi_pkg_sender *sender);
+extern int mdfld_dsi_status_check(struct mdfld_dsi_pkg_sender *sender);
 
 /*read interfaces*/
 extern int mdfld_dsi_read_gen_hs(struct mdfld_dsi_pkg_sender *sender,
-				 u8 param0,
-				 u8 param1, u8 param_num, u32 *data, u16 len);
+			u8 param0,
+			u8 param1,
+			u8 param_num,
+			u8 *data,
+			u32 len);
 extern int mdfld_dsi_read_gen_lp(struct mdfld_dsi_pkg_sender *sender,
-				 u8 param0,
-				 u8 param1, u8 param_num, u32 *data, u16 len);
+			u8 param0,
+			u8 param1,
+			u8 param_num,
+			u8 *data,
+			u32 len);
 extern int mdfld_dsi_read_mcs_hs(struct mdfld_dsi_pkg_sender *sender,
-				 u8 cmd, u32 *data, u16 len);
+			u8 cmd,
+			u8 *data,
+			u32 len);
 extern int mdfld_dsi_read_mcs_lp(struct mdfld_dsi_pkg_sender *sender,
-				 u8 cmd, u32 *data, u16 len);
-
+			u8 cmd,
+			u8 *data,
+			u32 len);
+extern int mdfld_dsi_wait_for_fifos_empty(struct mdfld_dsi_pkg_sender *sender);
 #endif

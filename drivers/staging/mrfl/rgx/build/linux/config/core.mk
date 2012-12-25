@@ -2,7 +2,42 @@
 #@File
 #@Title         Root build configuration.
 #@Copyright     Copyright (c) Imagination Technologies Ltd. All Rights Reserved
-#@License       Strictly Confidential.
+#@License       Dual MIT/GPLv2
+# 
+# The contents of this file are subject to the MIT license as set out below.
+# 
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+# 
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+# 
+# Alternatively, the contents of this file may be used under the terms of
+# the GNU General Public License Version 2 ("GPL") in which case the provisions
+# of GPL are applicable instead of those above.
+# 
+# If you wish to allow use of your version of this file only under the terms of
+# GPL, and not to allow others to use your version of this file under the terms
+# of the MIT license, indicate your decision by deleting the provisions above
+# and replace them with the notice and other provisions required by GPL as set
+# out in the file called "GPL-COPYING" included in this distribution. If you do
+# not delete the provisions above, a recipient may use your version of this file
+# under the terms of either the MIT license or GPL.
+# 
+# This License is also included in this distribution in the file called
+# "MIT-COPYING".
+# 
+# EXCEPT AS OTHERWISE STATED IN A NEGOTIATED AGREEMENT: (A) THE SOFTWARE IS
+# PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING
+# BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+# PURPOSE AND NONINFRINGEMENT; AND (B) IN NO EVENT SHALL THE AUTHORS OR
+# COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+# IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+# CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ### ###########################################################################
 
 # Configuration wrapper for new build system. This file deals with
@@ -16,7 +51,14 @@
 # to this stage -- almost all options can go through config.h.
 #
 
+# Sanity check: Make sure preconfig has been included
+ifeq ($(TOP),)
+$(error TOP not defined: Was preconfig.mk included in root makefile?)
+endif
+
 ################################# MACROS ####################################
+
+ALL_TUNABLE_OPTIONS :=
 
 # Write out a kernel GNU make option.
 #
@@ -29,11 +71,12 @@ endef
 #
 define BothConfigMake
 $$(eval $$(call KernelConfigMake,$(1),$(2)))
+$$(eval $$(call UserConfigMake,$(1),$(2)))
 endef
 
 # Conditionally write out a kernel GNU make option
 #
-define TunableKernelConfigMake
+define _TunableKernelConfigMake
 ifneq ($$($(1)),)
 ifneq ($$($(1)),0)
 $$(eval $$(call KernelConfigMake,$(1),$$($(1))))
@@ -45,10 +88,25 @@ endif
 endif
 endef
 
+define TunableKernelConfigMake
+$$(eval $$(call _TunableKernelConfigMake,$(1),$(2)))
+ALL_TUNABLE_OPTIONS += $(1)
+ifeq ($(INTERNAL_DESCRIPTION_FOR_$(1)),)
+INTERNAL_DESCRIPTION_FOR_$(1) := $(3)
+endif
+INTERNAL_CONFIG_DEFAULT_FOR_$(1) := $(2)
+endef
+
 # Conditionally write out a GNU make option for both user & kernel
 #
 define TunableBothConfigMake
-$$(eval $$(call TunableKernelConfigMake,$(1),$(2)))
+$$(eval $$(call _TunableKernelConfigMake,$(1),$(2)))
+$$(eval $$(call _TunableUserConfigMake,$(1),$(2)))
+ALL_TUNABLE_OPTIONS += $(1)
+ifeq ($(INTERNAL_DESCRIPTION_FOR_$(1)),)
+INTERNAL_DESCRIPTION_FOR_$(1) := $(3)
+endif
+INTERNAL_CONFIG_DEFAULT_FOR_$(1) := $(2)
 endef
 
 # Write out a kernel-only option
@@ -62,11 +120,12 @@ endef
 #
 define BothConfigC
 $$(eval $$(call KernelConfigC,$(1),$(2)))
+$$(eval $$(call UserConfigC,$(1),$(2)))
 endef
 
 # Conditionally write out a kernel-only option
 #
-define TunableKernelConfigC
+define _TunableKernelConfigC
 ifneq ($$($(1)),)
 ifneq ($$($(1)),0)
 ifeq ($$($(1)),1)
@@ -86,10 +145,25 @@ endif
 endif
 endef
 
+define TunableKernelConfigC
+$$(eval $$(call _TunableKernelConfigC,$(1),$(2)))
+ALL_TUNABLE_OPTIONS += $(1)
+ifeq ($(INTERNAL_DESCRIPTION_FOR_$(1)),)
+INTERNAL_DESCRIPTION_FOR_$(1) := $(3)
+endif
+INTERNAL_CONFIG_DEFAULT_FOR_$(1) := $(2)
+endef
+
 # Conditionally write out an option for both user & kernel
 #
 define TunableBothConfigC
-$$(eval $$(call TunableKernelConfigC,$(1),$(2)))
+$$(eval $$(call _TunableKernelConfigC,$(1),$(2)))
+$$(eval $$(call _TunableUserConfigC,$(1),$(2)))
+ALL_TUNABLE_OPTIONS += $(1)
+ifeq ($(INTERNAL_DESCRIPTION_FOR_$(1)),)
+INTERNAL_DESCRIPTION_FOR_$(1) := $(3)
+endif
+INTERNAL_CONFIG_DEFAULT_FOR_$(1) := $(2)
 endef
 
 ############################### END MACROS ##################################
@@ -100,35 +174,6 @@ need := 3.81
 ifeq ($(filter $(need),$(firstword $(sort $(MAKE_VERSION) $(need)))),)
 $(error A version of GNU make >= $(need) is required - this is version $(MAKE_VERSION))
 endif
-
-# Try to guess PVRSW_ROOT if it wasn't set. Check this location.
-#
-_GUESSED_PVRSW_ROOT := $(abspath ../../..)
-ifneq ($(strip $(PVRSW_ROOT)),)
-# We don't want to warn about PVRSW_ROOT if it's empty: this might mean that
-# it's not set at all anywhere, but it could also mean that it's set like
-# "export PVRSW_ROOT=" or "make PVRSW_ROOT= sometarget". If it is set but
-# empty, we'll act as if it's unset and not warn.
-ifneq ($(strip $(PVRSW_ROOT)),$(_GUESSED_PVRSW_ROOT))
-$(warning PVRSW_ROOT is set (via: $(origin PVRSW_ROOT)), but its value does not)
-$(warning match the root of this source tree, so it is being ignored)
-$(warning PVRSW_ROOT is set to: $(PVRSW_ROOT))
-$(warning The detected root is: $(_GUESSED_PVRSW_ROOT))
-$(warning To suppress this message, unset PVRSW_ROOT or set it empty)
-endif
-# else, PVRSW_ROOT matched the actual root of the source tree: don't warn
-endif
-override PVRSW_ROOT := $(_GUESSED_PVRSW_ROOT)
-TOP := $(PVRSW_ROOT)
-
-ifneq ($(words $(TOP)),1)
-$(warning This source tree is located in a path which contains whitespace,)
-$(warning which is not supported.)
-$(warning $(space)The root is: $(TOP))
-$(error Whitespace found in $$(TOP))
-endif
-
-$(call directory-must-exist,$(TOP))
 
 include ../defs.mk
 
@@ -141,32 +186,23 @@ $(call directory-must-exist,$(TOP)/build/linux/$(PVR_BUILD_DIR))
 # Output directory for configuration, object code,
 # final programs/libraries, and install/rc scripts.
 #
-BUILD	?= release
-OUT		?= $(TOP)/binary_$(PVR_BUILD_DIR)_$(BUILD)
+BUILD        ?= release
+OUT          ?= $(TOP)/binary_$(PVR_BUILD_DIR)_$(BUILD)
 override OUT := $(if $(filter /%,$(OUT)),$(OUT),$(TOP)/$(OUT))
 
 CONFIG_MK			:= $(OUT)/config.mk
 CONFIG_H			:= $(OUT)/config.h
 CONFIG_KERNEL_MK	:= $(OUT)/config_kernel.mk
 CONFIG_KERNEL_H		:= $(OUT)/config_kernel.h
-RGX_BVNC_H			:= $(OUT)/config_bvnc.h
 
 # Convert commas to spaces in $(D). This is so you can say "make
 # D=config-changes,freeze-config" and have $(filter config-changes,$(D))
 # still work.
-comma := ,
-empty :=
-space := $(empty) $(empty)
 override D := $(subst $(comma),$(space),$(D))
 
-# Create the OUT directory and delete any previous intermediary files
+# Create the OUT directory 
 #
 $(shell mkdir -p $(OUT))
-$(shell \
-	for file in $(CONFIG_MK).new $(CONFIG_H).new $(RGX_BVNC_H).new \
-				$(CONFIG_KERNEL_MK).new $(CONFIG_KERNEL_H).new; do \
-		rm -f $$file; \
-	done)
 
 # Some targets don't need information about any modules. If we only specify
 # these targets on the make command line, set INTERNAL_CLOBBER_ONLY to
@@ -188,22 +224,34 @@ ifneq ($(INTERNAL_CLOBBER_ONLY),true)
 #
 # Core handling 
 
-# Check BVNC
-ifeq ($(RGX_BVNC),)
-$(error Need to define RGX_BVNC variable, e.g. RGX_BVNC=1.2.3.4)
+
+# delete any previous intermediary files
+$(shell \
+	for file in $(CONFIG_KERNEL_H).new $(CONFIG_KERNEL_MK).new ; do \
+		rm -f $$file; \
+	done)
+
+# Check BVNC version
+List_Of_KM_BVNCs_files=$(shell ls $(TOP)/hwdefs/km/cores/rgxcore_km_*h)
+List_Of_KM_BVNCs_filenames=$(notdir $(basename $(List_Of_KM_BVNCs_files)))
+List_Of_KM_BVNCs=$(subst rgxcore_km_,,$(List_Of_KM_BVNCs_filenames))
+List_Of_KM_BVNCs2=$(subst $(space),$(comma)$(space),$(List_Of_KM_BVNCs))
+ifeq ($(findstring $(RGX_BVNC),$(List_Of_KM_BVNCs)),)
+$(error Error: Invalid Kernel RGX_BVNC=${RGX_BVNC}. Valid Kernel BVNCs: $(List_Of_KM_BVNCs2))
 endif
 
-# Check rgxcore_BVNC.h file exist
-RGX_BVNC_CORE_H := $(TOP)/hwdefs/km/rgxcore_$(RGX_BVNC).h
-ifeq ($(wildcard $(RGX_BVNC_CORE_H)),)
-$(error Invalid BVNC $(RGX_BVNC). The file $(RGX_BVNC_CORE_H) does not exist)
+
+# Check if BVNC file exist
+RGX_BVNC_CORE_KM := $(TOP)/hwdefs/km/cores/rgxcore_km_$(RGX_BVNC).h
+RGX_BVNC_CORE_KM_HEADER := \"cores/rgxcore_km_$(RGX_BVNC).h\" 
+#"rgxcore_km_$(RGX_BVNC).h"
+ifeq ($(wildcard $(RGX_BVNC_CORE_KM)),)
+$(error The file $(RGX_BVNC_CORE_KM) does not exist. Valid BVNCs: $(List_Of_KM_BVNCs2))
 endif
-
-$(shell cp $(RGX_BVNC_CORE_H) $(RGX_BVNC_H).new)
-
 
 # Enforced dependencies. Move this to an include.
 #
+SUPPORT_LINUX_USING_WORKQUEUES ?= 1
 ifeq ($(SUPPORT_LINUX_USING_WORKQUEUES),1)
 override PVR_LINUX_USING_WORKQUEUES := 1
 override PVR_LINUX_MISR_USING_PRIVATE_WORKQUEUE := 1
@@ -225,52 +273,20 @@ override SYS_USING_INTERRUPTS := 0
 override SUPPORT_HW_RECOVERY := 0
 endif
 
-# The user didn't set CROSS_COMPILE. There's probably nothing wrong
-# with that, but we'll let them know anyway.
+# Rather than requiring the user to have to define two variables (one quoted,
+# one not), make PVRSRV_MODNAME a non-tunable and give it an overridable
+# default here.
 #
-ifeq ($(CROSS_COMPILE),)
-$(warning CROSS_COMPILE is not set. Target components will be built with the host compiler)
-endif
-
-# There shouldn't have been two options with different names to
-# set here (SUPPORT_ options implying components to build are
-# architecturally deprecated), but maintain some compatibility
-# here for a while.
-#
-ifeq ($(SUPPORT_PVR_REMOTE),1)
-$(warning SUPPORT_PVR_REMOTE=1 is deprecated and will go away. Use PVR_REMOTE=1 instead.)
-PVR_REMOTE := 1
-endif
-
-# The user is trying to set one of the old SUPPORT_ options on the
-# command line or in the environment. This isn't supported any more
-# and will often break the build. The user is generally only trying
-# to remove a component from the list of targets to build, so we'll
-# point them at the new way of doing this.
-define sanity-check-support-option-origin
-ifeq ($$(filter undefined file,$$(origin $(1))),)
-$$(warning *** Setting $(1) via $$(origin $(1)) is deprecated)
-$$(error If you are trying to disable a component, use e.g. EXCLUDED_APIS="opengles1 opengl")
-endif
-endef
-$(foreach _o,SYS_CFLAGS SYS_CXXFLAGS SYS_EXE_LDFLAGS SYS_LIB_LDFLAGS,$(eval $(call sanity-check-support-option-origin,$(_o))))
-
-# Check for words in EXCLUDED_APIS that aren't understood by the
-# common/apis/*.mk files. This should be kept in sync with all the tests on
-# EXCLUDED_APIS in those files
-_excludable_apis := opencl opengl opengles1 opengles3 ews unittests scripts xorg xorg_unittests
-
-_unrecognised := $(strip $(filter-out $(_excludable_apis),$(EXCLUDED_APIS)))
-ifneq ($(_unrecognised),)
-$(warning *** Unrecognised entries in EXCLUDED_APIS: $(_unrecognised))
-$(warning *** EXCLUDED_APIS was set via: $(origin EXCLUDED_APIS))
-$(error Excludable APIs are: $(_excludable_apis))
-endif
+PVRSRV_MODNAME ?= pvrsrvkm
 
 # Build's selected list of components.
 # - components.mk is a per-build file that specifies the components that are
 #   to be built
 -include components.mk
+
+ifeq ($(SUPPORT_ION_OMAP),1)
+override SUPPORT_ION := 1
+endif
 
 # PDUMP needs extra components
 #
@@ -278,7 +294,7 @@ ifeq ($(PDUMP),1)
 ifneq ($(COMPONENTS),)
 COMPONENTS += pdump
 endif
-ifeq ($(SUPPORT_DRI_DRM),1)
+ifeq ($(SUPPORT_DRM),1)
 EXTRA_PVRSRVKM_COMPONENTS += dbgdrv
 else
 KERNEL_COMPONENTS += dbgdrv
@@ -289,7 +305,7 @@ endif
 #
 ifeq ($(PVRGDB),1)
 ifneq ($(COMPONENTS),)
-COMPONENTS += pvrgdb
+COMPONENTS += pvrgdb pvrdebugipc
 endif
 endif
 
@@ -301,10 +317,10 @@ $(if $(filter config,$(D)),$(info Build configuration:))
 # KERNEL_COMPONENTS and KERNEL_ID
 #
 ifneq ($(strip $(KERNELDIR)),)
-include ../kernel_version.mk
 PVRSRV_MODULE_BASEDIR ?= /lib/modules/$(KERNEL_ID)/extra/
 $(eval $(call KernelConfigMake,KERNELDIR,$(KERNELDIR)))
 # Needed only by install script
+$(eval $(call UserConfigMake,KERNEL_ID,$(KERNEL_ID)))
 $(eval $(call KernelConfigMake,KERNEL_COMPONENTS,$(KERNEL_COMPONENTS)))
 $(eval $(call TunableKernelConfigMake,EXTRA_PVRSRVKM_COMPONENTS,))
 $(eval $(call TunableKernelConfigMake,EXTRA_KBUILD_SOURCE,))
@@ -334,6 +350,21 @@ and kernel configuration.)
 endif
 endif
 
+# Ubuntu ARM compilers need an explicit -marm option to build native ARM code,
+# rather than ARM thumb code.
+EXPLICIT_NOT_THUMB :=
+ifeq ($(CROSS_COMPILE),arm-linux-gnueabi-)
+EXPLICIT_NOT_THUMB = 1
+endif
+ifeq ($(CROSS_COMPILE),arm-linux-gnueabihf-)
+EXPLICIT_NOT_THUMB = 1
+endif
+
+ifeq ($(EXPLICIT_NOT_THUMB),1)
+SYS_CFLAGS += -marm
+endif
+
+$(eval $(call UserConfigC,PVRSRV_MODULE_BASEDIR,\"$(PVRSRV_MODULE_BASEDIR)\"))
 
 # Ideally configured by platform Makefiles, as necessary
 #
@@ -344,23 +375,24 @@ $(eval $(call BothConfigC,LINUX,))
 
 $(eval $(call BothConfigC,PVR_BUILD_DIR,"\"$(PVR_BUILD_DIR)\""))
 $(eval $(call BothConfigC,PVR_BUILD_TYPE,"\"$(BUILD)\""))
-$(eval $(call BothConfigC,PVRSRV_MODNAME,"\"pvrsrvkm\""))
+$(eval $(call BothConfigC,PVRSRV_MODNAME,"\"$(PVRSRV_MODNAME)\""))
+$(eval $(call UserConfigMake,PVRSRV_MODNAME,$(PVRSRV_MODNAME)))
+$(eval $(call UserConfigMake,PVR_BUILD_DIR,$(PVR_BUILD_DIR)))
+$(eval $(call UserConfigMake,PVR_BUILD_TYPE,$(BUILD)))
 
-$(eval $(call TunableBothConfigC,SUPPORT_RGX,1))
+$(eval $(call BothConfigC,SUPPORT_RGX,1))
+$(eval $(call UserConfigMake,SUPPORT_RGX,1))
 
 $(eval $(call BothConfigC,PVR_SECURE_HANDLES,))
-
-$(eval $(call BothConfigC,RGXCONFIG,$(RGXCONFIG)))
+$(eval $(call UserConfigC,USE_PTHREADS,))
 
 ifneq ($(DISPLAY_CONTROLLER),)
 $(eval $(call BothConfigC,DISPLAY_CONTROLLER,$(DISPLAY_CONTROLLER)))
+$(eval $(call UserConfigMake,DISPLAY_CONTROLLER,$(DISPLAY_CONTROLLER)))
 endif
 
-
-# Forming config options from make variables instead of using
-# TunableUserConfig* is a confusing thing to do, but it's necessary in this
-# case. FIXME: remove this when it's no longer needed
-GLES_MILESTONE ?= 4
+$(eval $(call UserConfigC,OPK_DEFAULT,"\"$(OPK_DEFAULT)\""))
+$(eval $(call UserConfigC,OPK_FALLBACK,"\"$(OPK_FALLBACK)\""))
 
 $(eval $(call BothConfigMake,PVR_SYSTEM,$(PVR_SYSTEM)))
 
@@ -374,15 +406,17 @@ $(eval $(call KernelConfigC,DEBUG_LINUX_MEMORY_ALLOCATIONS,))
 $(eval $(call KernelConfigC,DEBUG_LINUX_MEM_AREAS,))
 $(eval $(call KernelConfigC,DEBUG_LINUX_MMAP_AREAS,))
 $(eval $(call KernelConfigC,DEBUG_BRIDGE_KM,))
+$(eval $(call UserConfigC,DLL_METRIC,1))
 $(eval $(call TunableBothConfigC,RGXFW_ALIGNCHECKS,1))
-$(eval $(call TunableBothConfigC,SUPPORT_RGXFW_LOG,1))
 else ifeq ($(BUILD),release)
 $(eval $(call BothConfigC,RELEASE,))
 $(eval $(call TunableBothConfigMake,DEBUGLINK,1))
+# FIXME: Move the default value into a separate variable so we only have to
+# write the documentation for these options once.
 $(eval $(call TunableBothConfigC,RGXFW_ALIGNCHECKS,))
-$(eval $(call TunableBothConfigC,SUPPORT_RGXFW_LOG,))
 else ifeq ($(BUILD),timing)
 $(eval $(call BothConfigC,TIMING,))
+$(eval $(call UserConfigC,DLL_METRIC,1))
 $(eval $(call TunableBothConfigMake,DEBUGLINK,1))
 else
 $(error BUILD= must be either debug, release or timing)
@@ -390,31 +424,54 @@ endif
 
 # User-configurable options
 #
-$(eval $(call TunableBothConfigC,SUPPORT_PERCONTEXT_PB,1))
+
+$(eval $(call TunableBothConfigC,RGX_BVNC_CORE_KM_HEADER,))
+
 $(eval $(call TunableBothConfigC,SUPPORT_HW_RECOVERY,1))
+$(eval $(call TunableBothConfigC,SUPPORT_RENDER_TARGET_ARRAYS,1))
 $(eval $(call TunableBothConfigC,SUPPORT_PDUMP_MULTI_PROCESS,))
 $(eval $(call TunableBothConfigC,SUPPORT_DBGDRV_EVENT_OBJECTS,1))
-$(eval $(call TunableBothConfigC,PVR_DBG_BREAK_ASSERT_FAIL,))
-$(eval $(call TunableBothConfigC,PDUMP,))
+$(eval $(call TunableBothConfigC,PVR_DBG_BREAK_ASSERT_FAIL,,\
+Enable this to treat PVR_DBG_BREAK as PVR_ASSERT(0)._\
+Otherwise it is ignored._\
+))
+$(eval $(call TunableBothConfigC,PDUMP,,\
+Enable parameter dumping in the driver._\
+This adds code to record the parameters being sent to the hardware for_\
+later analysis._\
+))
 $(eval $(call TunableBothConfigC,NO_HARDWARE,))
 $(eval $(call TunableBothConfigC,PDUMP_DEBUG_OUTFILES,))
-$(eval $(call TunableBothConfigC,PVRSRV_RESET_ON_HWTIMEOUT,))
 $(eval $(call TunableBothConfigC,SYS_USING_INTERRUPTS,1))
-$(eval $(call TunableBothConfigC,PVRSRV_NEW_PVR_DPF,))
-$(eval $(call TunableBothConfigC,PVRSRV_NEED_PVR_DPF,))
-$(eval $(call TunableBothConfigC,PVRSRV_NEED_PVR_ASSERT,))
-$(eval $(call TunableBothConfigC,PVRSRV_NEED_PVR_TRACE,))
+$(eval $(call TunableBothConfigC,PVRSRV_NEED_PVR_DPF,,\
+Enable this to turn on PVR_DPF in release builds._\
+))
+$(eval $(call TunableBothConfigC,PVRSRV_NEED_PVR_ASSERT,,\
+Enable this to turn on PVR_ASSERT in release builds._\
+))
+$(eval $(call TunableBothConfigC,PVRSRV_NEED_PVR_TRACE,,\
+Enable this to turn on PVR_TRACE in release builds._\
+))
 $(eval $(call TunableBothConfigC,REFCOUNT_DEBUG,))
 $(eval $(call TunableBothConfigC,DC_DEBUG,))
 $(eval $(call TunableBothConfigC,SCP_DEBUG,))
 $(eval $(call TunableBothConfigC,PHSHEAP_DEBUG,))
 $(eval $(call TunableBothConfigC,CACHEFLUSH_TYPE,CACHEFLUSH_GENERIC))
-$(eval $(call TunableBothConfigC,SUPPORT_SECURE_EXPORT,))
+$(eval $(call TunableBothConfigC,SUPPORT_INSECURE_EXPORT,1))
+$(eval $(call TunableBothConfigC,SUPPORT_SECURE_EXPORT,1,\
+Enable support for secure device memory and sync export._\
+This replaces export handles with file descriptors$(comma) which can be passed_\
+between processes to share memory._\
+))
 $(eval $(call TunableBothConfigC,SUPPORT_PMMIF,))
+$(eval $(call TunableBothConfigC,SUPPORT_ION,))
+$(eval $(call TunableBothConfigC,RGXFW_HWR,))
+$(eval $(call TunableBothConfigC,SUPPORT_TRUSTED_ZONE,))
 
 $(eval $(call TunableKernelConfigC,SUPPORT_LINUX_X86_WRITECOMBINE,1))
 $(eval $(call TunableKernelConfigC,SUPPORT_LINUX_X86_PAT,1))
 $(eval $(call TunableKernelConfigC,SYS_CUSTOM_POWERLOCK_WRAP,))
+$(eval $(call TunableKernelConfigC,PVRSRV_RESET_ON_HWTIMEOUT,))
 $(eval $(call TunableKernelConfigC,PVR_LINUX_USING_WORKQUEUES,))
 $(eval $(call TunableKernelConfigC,PVR_LINUX_MISR_USING_WORKQUEUE,))
 $(eval $(call TunableKernelConfigC,PVR_LINUX_MISR_USING_PRIVATE_WORKQUEUE,))
@@ -427,20 +484,33 @@ $(eval $(call TunableKernelConfigC,LDM_DEVICE_CLASS,))
 $(eval $(call TunableKernelConfigC,LDM_PLATFORM,))
 $(eval $(call TunableKernelConfigC,LDM_PCI,))
 $(eval $(call TunableKernelConfigC,SYNC_DEBUG,))
+$(eval $(call TunableKernelConfigC,PVR_LINUX_DONT_USE_RANGE_BASED_INVALIDATE,))
 
 
 $(eval $(call TunableBothConfigMake,CACHEFLUSH_TYPE,CACHEFLUSH_GENERIC))
 $(eval $(call TunableBothConfigMake,PDUMP,))
-$(eval $(call TunableBothConfigMake,SUPPORT_SECURE_EXPORT,))
+$(eval $(call TunableBothConfigMake,SUPPORT_INSECURE_EXPORT,1))
+$(eval $(call TunableBothConfigMake,SUPPORT_SECURE_EXPORT,1))
 $(eval $(call TunableBothConfigMake,SUPPORT_PMMIF,))
+
+$(eval $(call TunableBothConfigMake,SUPPORT_ION,))
+$(eval $(call TunableKernelConfigMake,SUPPORT_ION_OMAP,))
 
 $(eval $(call TunableBothConfigMake,OPTIM,))
 
-
-$(eval $(call TunableBothConfigC,SUPPORT_RGXFW_UNITTESTS,))
+$(eval $(call TunableBothConfigC,SUPPORT_MMU_FREELIST,))
+$(eval $(call TunableBothConfigC,SUPPORT_VFP,))
 
 $(eval $(call TunableBothConfigC,SUPPORT_META_SLAVE_BOOT,))
 
+$(eval $(call UserConfigC,EGL_BASENAME_SUFFIX,\"$(EGL_BASENAME_SUFFIX)\"))
+
+
+
+
+$(eval $(call TunableBothConfigC,PVR_TRANSPORTLAYER_TESTING,,\
+Enable this to build in support for testing the PVR Transport Layer API._\
+))
 
 
 endif # INTERNAL_CLOBBER_ONLY
@@ -466,7 +536,7 @@ endif
 .PHONY: autogen
 autogen:
 ifeq ($(INTERNAL_CLOBBER_ONLY),)
-	@$(MAKE) -s --no-print-directory -C $(PVRSW_ROOT) \
+	@$(MAKE) -s --no-print-directory -C $(TOP) \
 		-f build/linux/prepare_tree.mk \
 		LDM_PCI=$(LDM_PCI) \
 		LDM_PLATFORM=$(LDM_PLATFORM) \
@@ -474,6 +544,8 @@ ifeq ($(INTERNAL_CLOBBER_ONLY),)
 else
 	@:
 endif
+
+include ../config/help.mk
 
 # This deletes built-in suffix rules. Otherwise the submake isn't run when
 # saying e.g. "make thingy.a"

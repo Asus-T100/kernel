@@ -55,37 +55,8 @@ struct mdfld_dsi_dpi_output {
 	container_of(dsi_encoder, struct mdfld_dsi_dpi_output, base)
 
 /*export functions*/
-void dsi_set_bridge_reset_state(int state);
-void mdfld_dsi_dpi_turn_on(struct mdfld_dsi_dpi_output *output, int pipe);
-void mdfld_init_TOSHIBA_MIPI(struct drm_device *dev);
-void mdfld_deinit_TOSHIBA_MIPI(struct drm_device *dev);
-
-extern int mdfld_dsi_dpi_timing_calculation(struct drm_display_mode *mode,
-					    struct mdfld_dsi_dpi_timing
-					    *dpi_timing, int num_lane, int bpp);
 extern struct mdfld_dsi_encoder *mdfld_dsi_dpi_init(struct drm_device *dev,
-						    struct mdfld_dsi_connector
-						    *dsi_connector,
-						    struct panel_funcs
-						    *p_funcs);
+				struct mdfld_dsi_connector *dsi_connector,
+				struct panel_funcs *p_funcs);
 
-/*MDFLD DPI helper functions*/
-extern void mdfld_dsi_dpi_dpms(struct drm_encoder *encoder, int mode);
-extern bool mdfld_dsi_dpi_mode_fixup(struct drm_encoder *encoder,
-				     struct drm_display_mode *mode,
-				     struct drm_display_mode *adjusted_mode);
-extern void mdfld_dsi_dpi_prepare(struct drm_encoder *encoder);
-extern void mdfld_dsi_dpi_commit(struct drm_encoder *encoder);
-extern void mdfld_dsi_dpi_mode_set(struct drm_encoder *encoder,
-				   struct drm_display_mode *mode,
-				   struct drm_display_mode *adjusted_mode);
-extern void mdfld_dsi_dpi_save(struct drm_encoder *encoder);
-extern void mdfld_dsi_dpi_restore(struct drm_encoder *encoder);
-extern void mdfld_dsi_dpi_turn_on(struct mdfld_dsi_dpi_output *output,
-				  int pipe);
-extern void mdfld_dsi_dpi_controller_init(struct mdfld_dsi_config *dsi_config,
-					  int pipe);
-extern void mid_enable_pipe_event(struct drm_psb_private *dev_priv, int pipe);
-extern void psb_enable_pipestat(struct drm_psb_private *dev_priv, int pipe,
-				u32 mask);
 #endif /*__MDFLD_DSI_DPI_H__*/

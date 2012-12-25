@@ -27,13 +27,14 @@
 
 #include "mdfld_dsi_dbi_dpu.h"
 #include "mdfld_dsi_dbi.h"
+#include "psb_intel_display.h"
 
 /**
  * NOTE: all mdlfd_x_damage funcs should be called by holding dpu_update_lock
  */
 static int mdfld_cursor_damage(struct mdfld_dbi_dpu_info *dpu_info,
-			       mdfld_plane_t plane,
-			       struct psb_drm_dpu_rect *damaged_rect)
+		mdfld_plane_t plane,
+		struct psb_drm_dpu_rect *damaged_rect)
 {
 	int x, y;
 	int new_x, new_y;
@@ -66,7 +67,7 @@ static int mdfld_cursor_damage(struct mdfld_dbi_dpu_info *dpu_info,
 
 	rect = &dpu_info->damaged_rects[plane];
 
-	/*move to right */
+	/*move to right*/
 	if (new_x >= x) {
 		if (new_y > y) {
 			rect->x = x;
@@ -95,7 +96,8 @@ static int mdfld_cursor_damage(struct mdfld_dbi_dpu_info *dpu_info,
 			rect->height = (y + cursor_size) - new_y;
 		}
 	}
- cursor_out:
+
+cursor_out:
 	if (new_x < 0)
 		cursor->x = 0;
 	else if (new_x > 864)
@@ -122,18 +124,18 @@ static int mdfld_cursor_damage(struct mdfld_dbi_dpu_info *dpu_info,
 
 	mdfld_dpu_region_extent(pipe_rect, rect);
 
-	/*update pending status of dpu_info */
+	/*update pending status of dpu_info*/
 	dpu_info->pending |= (1 << plane);
 
-	/*update fb panel as well */
+	/*update fb panel as well*/
 	dpu_info->pending |= (1 << fb_plane);
 
 	return 0;
 }
 
 static int mdfld_fb_damage(struct mdfld_dbi_dpu_info *dpu_info,
-			   mdfld_plane_t plane,
-			   struct psb_drm_dpu_rect *damaged_rect)
+		mdfld_plane_t plane,
+		struct psb_drm_dpu_rect *damaged_rect)
 {
 	struct psb_drm_dpu_rect *rect;
 
@@ -144,18 +146,18 @@ static int mdfld_fb_damage(struct mdfld_dbi_dpu_info *dpu_info,
 
 	mdfld_check_boundary(dpu_info, damaged_rect);
 
-	/*add fb damage area to this pipe */
+	/*add fb damage area to this pipe*/
 	mdfld_dpu_region_extent(rect, damaged_rect);
 
-	/*update pending status of dpu_info */
+	/*update pending status of dpu_info*/
 	dpu_info->pending |= (1 << plane);
 	return 0;
 }
 
 /*do nothing here, right now*/
 static int mdfld_overlay_damage(struct mdfld_dbi_dpu_info *dpu_info,
-				mdfld_plane_t plane,
-				struct psb_drm_dpu_rect *damaged_rect)
+		mdfld_plane_t plane,
+		struct psb_drm_dpu_rect *damaged_rect)
 {
 	PSB_DEBUG_ENTRY("\n");
 
@@ -163,14 +165,14 @@ static int mdfld_overlay_damage(struct mdfld_dbi_dpu_info *dpu_info,
 }
 
 int mdfld_dbi_dpu_report_damage(struct drm_device *dev,
-				mdfld_plane_t plane,
-				struct psb_drm_dpu_rect *rect)
+		mdfld_plane_t plane,
+		struct psb_drm_dpu_rect *rect)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
 	struct mdfld_dbi_dpu_info *dpu_info = dev_priv->dbi_dpu_info;
 	int ret = 0;
 
-	/*request lock */
+	/*request lock*/
 	spin_lock(&dpu_info->dpu_update_lock);
 
 	switch (plane) {
@@ -222,13 +224,14 @@ int mdfld_dbi_dpu_report_fullscreen_damage(struct drm_device *dev)
 			rect.x = rect.y = 0;
 			rect.width = dsi_config->fixed_mode->hdisplay;
 			rect.height = dsi_config->fixed_mode->vdisplay;
-			mdfld_dbi_dpu_report_damage(dev, i ? (MDFLD_PLANEC)
-						    : (MDFLD_PLANEA), &rect);
+			mdfld_dbi_dpu_report_damage(dev,
+					i ? (MDFLD_PLANEC) : (MDFLD_PLANEA),
+					&rect);
 
 		}
 	}
 
-	/*exit DSR state */
+	/*exit DSR state*/
 	mdfld_dpu_exit_dsr(dev);
 
 	return 0;
@@ -241,18 +244,18 @@ int mdfld_dsi_dbi_dsr_off(struct drm_device *dev, struct psb_drm_dpu_rect *rect)
 
 	mdfld_dbi_dpu_report_damage(dev, MDFLD_PLANEA, rect);
 
-	/*if dual display mode */
+	/*if dual display mode*/
 	if (dpu_info->dbi_output_num == 2)
 		mdfld_dbi_dpu_report_damage(dev, MDFLD_PLANEC, rect);
 
-	/*force dsi to exit DSR mode */
+	/*force dsi to exit DSR mode*/
 	mdfld_dpu_exit_dsr(dev);
 
 	return 0;
 }
 
 static void mdfld_dpu_cursor_plane_flush(struct mdfld_dbi_dpu_info *dpu_info,
-					 mdfld_plane_t plane)
+		mdfld_plane_t plane)
 {
 	struct drm_device *dev = dpu_info->dev;
 	u32 curpos_reg = CURAPOS;
@@ -269,14 +272,13 @@ static void mdfld_dpu_cursor_plane_flush(struct mdfld_dbi_dpu_info *dpu_info,
 
 	REG_WRITE(curcntr_reg, REG_READ(curcntr_reg));
 	REG_WRITE(curpos_reg,
-		  (((cursor->x & CURSOR_POS_MASK) << CURSOR_X_SHIFT) |
-		   ((cursor->y & CURSOR_POS_MASK)
-		    << CURSOR_Y_SHIFT)));
+			(((cursor->x & CURSOR_POS_MASK) << CURSOR_X_SHIFT) |
+			 ((cursor->y & CURSOR_POS_MASK) << CURSOR_Y_SHIFT)));
 	REG_WRITE(curbase_reg, REG_READ(curbase_reg));
 }
 
 static void mdfld_dpu_fb_plane_flush(struct mdfld_dbi_dpu_info *dpu_info,
-				     mdfld_plane_t plane)
+		mdfld_plane_t plane)
 {
 	u32 pipesrc_reg = PIPEASRC;
 	u32 dspsize_reg = DSPASIZE;
@@ -298,39 +300,40 @@ static void mdfld_dpu_fb_plane_flush(struct mdfld_dbi_dpu_info *dpu_info,
 	}
 
 	stride = REG_READ(dspstride_reg);
-	/*FIXME: should I do the pipe src update here? */
+	/*FIXME: should I do the pipe src update here?*/
 	REG_WRITE(pipesrc_reg, ((rect->width - 1) << 16) | (rect->height - 1));
-	/*flush plane */
+	/*flush plane*/
 	REG_WRITE(dspsize_reg, ((rect->height - 1) << 16) | (rect->width - 1));
 	REG_WRITE(dspoff_reg, ((rect->x * 4) + (rect->y * stride)));
 	REG_WRITE(dspsurf_reg, REG_READ(dspsurf_reg));
 
 	/**
-	 * TODO: wait for flip finished and restore the pipesrc reg,
+	 * TODO: wait for flip finished and restore the pipesrc reg, 
 	 * or cursor will be show at a wrong position
 	 */
 }
 
 static void mdfld_dpu_overlay_plane_flush(struct mdfld_dbi_dpu_info *dpu_info,
-					  mdfld_plane_t plane)
+		mdfld_plane_t plane)
 {
 	PSB_DEBUG_ENTRY("\n");
 }
 
 /**
- * TODO: we are still in dbi normal mode now, will try to use partial mode later.
+ * TODO: we are still in dbi normal mode now, will try to use partial mode
+ * later.
  */
 static int mdfld_dbi_prepare_cb(struct mdfld_dsi_dbi_output *dbi_output,
-				struct mdfld_dbi_dpu_info *dpu_info, int pipe)
+		struct mdfld_dbi_dpu_info *dpu_info, int pipe)
 {
-	u8 *cb_addr = (u8 *) dbi_output->dbi_cb_addr;
+	u8 *cb_addr = (u8 *)dbi_output->dbi_cb_addr;
 	u32 *index;
 	struct psb_drm_dpu_rect *rect =
-	    pipe ? (&dpu_info->damage_pipec) : (&dpu_info->damage_pipea);
+		pipe ? (&dpu_info->damage_pipec) : (&dpu_info->damage_pipea);
 
 	/*
-	 * FIXME: lock command buffer, this may lead to a dead lock,
-	 * we've already hold the dpu_update_lock
+	 * FIXME: lock command buffer, this may lead to a dead lock, we've
+	 * already hold the dpu_update_lock
 	 */
 	if (!spin_trylock(&dbi_output->cb_lock)) {
 		DRM_ERROR("lock command buffer failed, try again\n");
@@ -344,7 +347,7 @@ static int mdfld_dbi_prepare_cb(struct mdfld_dsi_dbi_output *dbi_output,
 		return -EAGAIN;
 	}
 
-	/*column address */
+	/*column address*/
 	*(cb_addr + ((*index)++)) = set_column_address;
 	*(cb_addr + ((*index)++)) = rect->x >> 8;
 	*(cb_addr + ((*index)++)) = rect->x;
@@ -353,7 +356,7 @@ static int mdfld_dbi_prepare_cb(struct mdfld_dsi_dbi_output *dbi_output,
 
 	*index = 8;
 
-	/*page address */
+	/*page address*/
 	*(cb_addr + ((*index)++)) = set_page_addr;
 	*(cb_addr + ((*index)++)) = rect->y >> 8;
 	*(cb_addr + ((*index)++)) = rect->y;
@@ -362,7 +365,7 @@ static int mdfld_dbi_prepare_cb(struct mdfld_dsi_dbi_output *dbi_output,
 
 	*index = 16;
 
-	/*write memory */
+	/*write memory*/
 	*(cb_addr + ((*index)++)) = write_mem_start;
 
 	return 0;
@@ -383,14 +386,14 @@ static int mdfld_dbi_flush_cb(struct mdfld_dsi_dbi_output *dbi_output, int pipe)
 
 	*index = 0;
 
-	/*FIXME: unlock command buffer */
+	/*FIXME: unlock command buffer*/
 	spin_unlock(&dbi_output->cb_lock);
 
 	return 0;
 }
 
 static int mdfld_dpu_update_pipe(struct mdfld_dsi_dbi_output *dbi_output,
-				 struct mdfld_dbi_dpu_info *dpu_info, int pipe)
+		struct mdfld_dbi_dpu_info *dpu_info, int pipe)
 {
 	struct drm_device *dev = dbi_output->dev;
 	struct drm_psb_private *dev_priv = dev->dev_private;
@@ -400,7 +403,7 @@ static int mdfld_dpu_update_pipe(struct mdfld_dsi_dbi_output *dbi_output,
 	int ret = 0;
 	u32 plane_mask = MDFLD_PIPEA_PLANE_MASK;
 
-	/*damaged rects on this pipe */
+	/*damaged rects on this pipe*/
 	if (pipe) {
 		cursor_plane = MDFLD_CURSORC;
 		fb_plane = MDFLD_PLANEC;
@@ -408,31 +411,31 @@ static int mdfld_dpu_update_pipe(struct mdfld_dsi_dbi_output *dbi_output,
 		plane_mask = MDFLD_PIPEC_PLANE_MASK;
 	}
 
-	/*update cursor which assigned to @pipe */
+	/*update cursor which assigned to @pipe*/
 	if (dpu_info->pending & (1 << cursor_plane))
 		mdfld_dpu_cursor_plane_flush(dpu_info, cursor_plane);
 
-	/*update fb which assigned to @pipe */
+	/*update fb which assigned to @pipe*/
 	if (dpu_info->pending & (1 << fb_plane))
 		mdfld_dpu_fb_plane_flush(dpu_info, fb_plane);
 
-	/*TODO: update overlay */
+	/*TODO: update overlay*/
 	if (dpu_info->pending & (1 << overlay_plane))
 		mdfld_dpu_overlay_plane_flush(dpu_info, overlay_plane);
 
-	/*flush damage area to panel fb */
+	/*flush damage area to panel fb*/
 	if (dpu_info->pending & plane_mask) {
 		ret = mdfld_dbi_prepare_cb(dbi_output, dpu_info, pipe);
 
 		/**
-		 * TODO: remove b_dsr_enable later,
+		 * TODO: remove b_dsr_enable later, 
 		 * added it so that text console could boot smoothly
 		 */
-		/*clean pending flags on this pipe */
+		/*clean pending flags on this pipe*/
 		if (!ret && dev_priv->b_dsr_enable) {
 			dpu_info->pending &= ~plane_mask;
 
-			/*reset overlay pipe damage rect */
+			/*reset overlay pipe damage rect*/
 			mdfld_dpu_init_damage(dpu_info, pipe);
 		}
 	}
@@ -466,7 +469,7 @@ static int mdfld_dpu_update_fb(struct drm_device *dev)
 	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, true))
 		return -EAGAIN;
 
-	/*try to prevent any new damage reports */
+	/*try to prevent any new damage reports*/
 	if (!spin_trylock_irqsave(&dpu_info->dpu_update_lock, irq_flags))
 		return -EAGAIN;
 
@@ -485,10 +488,13 @@ static int mdfld_dpu_update_fb(struct drm_device *dev)
 			reg_offset = MIPIC_REG_OFFSET;
 		}
 
-		if (!(REG_READ((MIPIA_GEN_FIFO_STAT_REG + reg_offset)) & BIT27)
-		    || !(REG_READ(dpll_reg) & DPLL_VCO_ENABLE)
-		    || !(REG_READ(dspcntr_reg) & DISPLAY_PLANE_ENABLE)
-		    || !(REG_READ(pipeconf_reg) & DISPLAY_PLANE_ENABLE)) {
+		if (!(REG_READ((MIPIA_GEN_FIFO_STAT_REG + reg_offset)) &
+					BIT27) ||
+				!(REG_READ(dpll_reg) & DPLL_VCO_ENABLE) ||
+				!(REG_READ(dspcntr_reg) &
+					DISPLAY_PLANE_ENABLE) ||
+				!(REG_READ(pipeconf_reg) &
+					DISPLAY_PLANE_ENABLE)) {
 			PSB_DEBUG_ENTRY("DBI FIFO is busy, DSI %d state %x\n",
 					pipe,
 					REG_READ(mipi_state_reg + reg_offset));
@@ -496,27 +502,27 @@ static int mdfld_dpu_update_fb(struct drm_device *dev)
 		}
 
 		/*
-		 * if dbi output is in a exclusive state,
-		 * pipe change won't be updated
+		 * If dbi output is in a exclusive state, pipe change won't be
+		 * updated.
 		 */
 		if (dbi_output[i]->dbi_panel_on &&
-		    !(dbi_output[i]->mode_flags & MODE_SETTING_ON_GOING) &&
-		    !(psb_crtc && psb_crtc->mode_flags & MODE_SETTING_ON_GOING)
-		    && !(dbi_output[i]->mode_flags & MODE_SETTING_IN_DSR)) {
-			ret =
-			    mdfld_dpu_update_pipe(dbi_output[i], dpu_info,
-						  dbi_output[i]->channel_num ? 2
-						  : 0);
+				!(dbi_output[i]->mode_flags &
+					MODE_SETTING_ON_GOING) &&
+				!(psb_crtc && psb_crtc->mode_flags &
+					MODE_SETTING_ON_GOING) &&
+				!(dbi_output[i]->mode_flags &
+					MODE_SETTING_IN_DSR)) {
+			ret = mdfld_dpu_update_pipe(dbi_output[i], dpu_info,
+					dbi_output[i]->channel_num ? 2 : 0);
 			if (!ret)
 				pipe_updated[i] = true;
 		}
 	}
 
 	for (i = 0; i < dpu_info->dbi_output_num; i++) {
-		if (pipe_updated[i]) {
+		if (pipe_updated[i])
 			mdfld_dbi_flush_cb(dbi_output[i],
-					   dbi_output[i]->channel_num ? 2 : 0);
-		}
+					dbi_output[i]->channel_num ? 2 : 0);
 	}
 
 	spin_unlock_irqrestore(&dpu_info->dpu_update_lock, irq_flags);
@@ -527,12 +533,12 @@ static int mdfld_dpu_update_fb(struct drm_device *dev)
 }
 
 static int __mdfld_dbi_exit_dsr(struct mdfld_dsi_dbi_output *dbi_output,
-				int pipe)
+		int pipe)
 {
 	struct drm_device *dev = dbi_output->dev;
 	struct drm_crtc *crtc = dbi_output->base.base.crtc;
 	struct psb_intel_crtc *psb_crtc =
-	    (crtc) ? to_psb_intel_crtc(crtc) : NULL;
+		(crtc) ? to_psb_intel_crtc(crtc) : NULL;
 	u32 reg_val;
 	u32 dpll_reg = MRST_DPLL_A;
 	u32 pipeconf_reg = PIPEACONF;
@@ -546,9 +552,10 @@ static int __mdfld_dbi_exit_dsr(struct mdfld_dsi_dbi_output *dbi_output,
 	if (!dbi_output)
 		return 0;
 
-	/*if mode setting on-going, back off */
+	/*if mode setting on-going, back off*/
 	if ((dbi_output->mode_flags & MODE_SETTING_ON_GOING) ||
-	    (psb_crtc && psb_crtc->mode_flags & MODE_SETTING_ON_GOING))
+			(psb_crtc &&
+			 psb_crtc->mode_flags & MODE_SETTING_ON_GOING))
 		return -EAGAIN;
 
 	if (pipe == 2) {
@@ -564,7 +571,7 @@ static int __mdfld_dbi_exit_dsr(struct mdfld_dsi_dbi_output *dbi_output,
 	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, true))
 		return -EAGAIN;
 
-	/*enable DPLL */
+	/*enable DPLL*/
 	reg_val = REG_READ(dpll_reg);
 	if (!(reg_val & DPLL_VCO_ENABLE)) {
 
@@ -580,22 +587,22 @@ static int __mdfld_dbi_exit_dsr(struct mdfld_dsi_dbi_output *dbi_output,
 		REG_READ(dpll_reg);
 		udelay(500);
 
-		/*FIXME: add timeout */
+		/*FIXME: add timeout*/
 		while (!(REG_READ(pipeconf_reg) & PIPECONF_DSIPLL_LOCK))
 			;
 	}
 
-	/*enable pipe */
+	/*enable pipe*/
 	reg_val = REG_READ(pipeconf_reg);
 	if (!(reg_val & PIPEACONF_ENABLE)) {
 		reg_val |= PIPEACONF_ENABLE;
 		REG_WRITE(pipeconf_reg, reg_val);
 		REG_READ(pipeconf_reg);
 		udelay(500);
-		mdfldWaitForPipeEnable(dev, pipe);
+		intel_wait_for_pipe_enable_disable(dev, pipe, true);
 	}
 
-	/*enable plane */
+	/*enable plane*/
 	reg_val = REG_READ(dspcntr_reg);
 	if (!(reg_val & DISPLAY_PLANE_ENABLE)) {
 		reg_val |= DISPLAY_PLANE_ENABLE;
@@ -606,7 +613,7 @@ static int __mdfld_dbi_exit_dsr(struct mdfld_dsi_dbi_output *dbi_output,
 
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 
-	/*clean IN_DSR flag */
+	/*clean IN_DSR flag*/
 	dbi_output->mode_flags &= ~MODE_SETTING_IN_DSR;
 
 	return 0;
@@ -623,23 +630,21 @@ int mdfld_dpu_exit_dsr(struct drm_device *dev)
 	dbi_output = dpu_info->dbi_outputs;
 
 	for (i = 0; i < dpu_info->dbi_output_num; i++) {
-		/*if this output is not in DSR mode, don't call exit dsr */
-		if (dbi_output[i]->mode_flags & MODE_SETTING_IN_DSR) {
+		/*if this output is not in DSR mode, don't call exit dsr*/
+		if (dbi_output[i]->mode_flags & MODE_SETTING_IN_DSR)
 			__mdfld_dbi_exit_dsr(dbi_output[i],
-					     dbi_output[i]->channel_num ? 2 :
-					     0);
-		}
+					dbi_output[i]->channel_num ? 2 : 0);
 	}
 
-	/*start dpu timer */
+	/*start dpu timer*/
 	if (dev_priv->platform_rev_id == MDFLD_PNW_A0)
 		mdfld_dbi_dpu_timer_start(dpu_info);
 	else {
-		/*enable te interrupt */
+		/*enable te interrupt*/
 		for (i = 0; i < dpu_info->dbi_output_num; i++) {
 			/*
-			 * if this output is not in DSR mode,
-			 * don't call exit dsr
+			 * If this output is not in DSR mode, don't call exit
+			 * dsr
 			 */
 			pipe = dbi_output[i]->channel_num ? 2 : 0;
 			if (dbi_output[i]->dbi_panel_on && pipe) {
@@ -668,13 +673,12 @@ static int mdfld_dpu_enter_dsr(struct drm_device *dev)
 	dbi_output = dpu_info->dbi_outputs;
 
 	for (i = 0; i < dpu_info->dbi_output_num; i++) {
-		/*if output is off or already in DSR state, don't enter again */
+		/*if output is off or already in DSR state, don't enter again*/
 		if (dbi_output[i]->dbi_panel_on &&
-		    !(dbi_output[i]->mode_flags & MODE_SETTING_IN_DSR)) {
+				!(dbi_output[i]->mode_flags &
+					MODE_SETTING_IN_DSR))
 			mdfld_dsi_dbi_enter_dsr(dbi_output[i],
-						dbi_output[i]->channel_num ? 2 :
-						0);
-		}
+					dbi_output[i]->channel_num ? 2 : 0);
 	}
 
 	return 0;
@@ -691,17 +695,16 @@ static void mdfld_dbi_dpu_timer_func(unsigned long data)
 	if (dpu_info->pending) {
 		dpu_info->idle_count = 0;
 
-		/*update panel fb with damaged area */
+		/*update panel fb with damaged area*/
 		mdfld_dpu_update_fb(dev);
-	} else {
+	} else
 		dpu_info->idle_count++;
-	}
 
 	if (dpu_info->idle_count >= MDFLD_MAX_IDLE_COUNT) {
-		/*enter dsr */
+		/*enter dsr*/
 		mdfld_dpu_enter_dsr(dev);
 
-		/*stop timer by return */
+		/*stop timer by return*/
 		return;
 	}
 
@@ -721,20 +724,19 @@ void mdfld_dpu_update_panel(struct drm_device *dev)
 	if (dpu_info->pending) {
 		dpu_info->idle_count = 0;
 
-		/*update panel fb with damaged area */
+		/*update panel fb with damaged area*/
 		mdfld_dpu_update_fb(dev);
-	} else {
+	} else
 		dpu_info->idle_count++;
-	}
 
 	if (dpu_info->idle_count >= MDFLD_MAX_IDLE_COUNT) {
-		/*enter dsr */
+		/*enter dsr*/
 		mdfld_dpu_enter_dsr(dev);
 	}
 }
 
 static int mdfld_dbi_dpu_timer_init(struct drm_device *dev,
-				    struct mdfld_dbi_dpu_info *dpu_info)
+		struct mdfld_dbi_dpu_info *dpu_info)
 {
 	struct timer_list *dpu_timer = &dpu_info->dpu_timer;
 	unsigned long flags;
@@ -776,8 +778,8 @@ int mdfld_dbi_dpu_init(struct drm_device *dev)
 	struct mdfld_dbi_dpu_info *dpu_info = dev_priv->dbi_dpu_info;
 
 	if (!dpu_info || IS_ERR(dpu_info)) {
-		dpu_info =
-		    kzalloc(sizeof(struct mdfld_dbi_dpu_info), GFP_KERNEL);
+		dpu_info = kzalloc(sizeof(struct mdfld_dbi_dpu_info),
+				GFP_KERNEL);
 		if (!dpu_info) {
 			DRM_ERROR("No memory\n");
 			return -ENOMEM;
@@ -791,13 +793,13 @@ int mdfld_dbi_dpu_init(struct drm_device *dev)
 	dpu_info->cursors[0].size = MDFLD_CURSOR_SIZE;
 	dpu_info->cursors[1].size = MDFLD_CURSOR_SIZE;
 
-	/*init dpu_update_lock */
+	/*init dpu_update_lock*/
 	spin_lock_init(&dpu_info->dpu_update_lock);
 
-	/*init dpu refresh timer */
+	/*init dpu refresh timer*/
 	mdfld_dbi_dpu_timer_init(dev, dpu_info);
 
-	/*init pipe damage area */
+	/*init pipe damage area*/
 	mdfld_dpu_init_damage(dpu_info, 0);
 	mdfld_dpu_init_damage(dpu_info, 2);
 
@@ -814,10 +816,10 @@ void mdfld_dbi_dpu_exit(struct drm_device *dev)
 	if (!dpu_info)
 		return;
 
-	/*delete dpu timer */
+	/*delete dpu timer*/
 	del_timer_sync(&dpu_info->dpu_timer);
 
-	/*free dpu info */
+	/*free dpu info*/
 	kfree(dpu_info);
 
 	dev_priv->dbi_dpu_info = NULL;

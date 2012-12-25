@@ -26,29 +26,37 @@
  *    Rajesh Poornachandran <rajesh.poornachandran@intel.com>
  *
  */
+
+#include <linux/earlysuspend.h>
+#include <linux/mutex.h>
+#include <asm/intel-mid.h>
+#include <asm/intel_scu_ipc.h>
+
+#ifdef CONFIG_GFX_RTPM
+#include <linux/pm_runtime.h>
+#endif
+
 #include "psb_powermgmt.h"
 #include "psb_drv.h"
 #include "psb_intel_reg.h"
 #include "psb_msvdx.h"
 #include "pnw_topaz.h"
 #include "vsp.h"
-#include <linux/mutex.h>
 #include "mdfld_dsi_dbi.h"
 #include "mdfld_dsi_dbi_dpu.h"
-#include <asm/intel_scu_ipc.h>
 #include "psb_intel_hdmi.h"
-#ifdef CONFIG_GFX_RTPM
-#include <linux/pm_runtime.h>
-#endif
+#include "pmu_tng.h"
+#include "tng_wa.h"
 
-#include <linux/earlysuspend.h>
-#include <asm/intel-mid.h>
+
+#define INCLUDE_UNUSED_CODE 0
+
+struct drm_device *gpDrmDevice;
+bool gbgfxsuspended;
 
 #undef OSPM_GFX_DPK
 #define SCU_CMD_VPROG2  0xe3
 
-/*extern int drm_psb_dsr; */
-struct drm_device *gpDrmDevice;
 static struct mutex g_ospm_mutex;
 static bool gbSuspendInProgress;
 static bool gbResumeInProgress;
@@ -60,14 +68,10 @@ static atomic_t g_videodec_access_count;
 static atomic_t g_videovsp_access_count;
 
 static bool gbSuspended;
-bool gbgfxsuspended;
 
-static void psb_runtimepm_wq_handler(struct work_struct *work);
-DECLARE_DELAYED_WORK(rtpm_work, psb_runtimepm_wq_handler);
-
-void psb_runtimepm_wq_handler(struct work_struct *work)
+static void psb_runtimepm_wq_handler(struct work_struct *work)
 {
-	struct drm_psb_private *dev_priv = gpDrmDevice->dev_private;
+	/*  struct drm_psb_private *dev_priv = gpDrmDevice->dev_private; */
 
 #ifdef CONFIG_GFX_RTPM
 	if (gbdispstatus == false)
@@ -75,30 +79,18 @@ void psb_runtimepm_wq_handler(struct work_struct *work)
 #endif
 }
 
-/*
- * gfx_early_suspend
- *
- */
-static void gfx_early_suspend(struct early_suspend *h);
-static void gfx_late_resume(struct early_suspend *h);
+static DECLARE_DELAYED_WORK(rtpm_work, psb_runtimepm_wq_handler);
 
-static struct early_suspend gfx_early_suspend_desc = {
-	/* .level = EARLY_SUSPEND_LEVEL_STOP_DRAWING, */
-	/* .suspend = gfx_early_suspend, */
-	/* .resume = gfx_late_resume, */
-};
 
 static int ospm_runtime_pm_topaz_suspend(struct drm_device *dev)
 {
 	int ret = 0;
 	struct drm_psb_private *dev_priv = dev->dev_private;
-	struct topaz_private *topaz_priv = dev_priv->topaz_private;
+	/* struct topaz_private *topaz_priv = dev_priv->topaz_private; */
 	struct pnw_topaz_private *pnw_topaz_priv = dev_priv->topaz_private;
 	struct psb_video_ctx *pos, *n;
 	int encode_ctx = 0, encode_running = 0;
-
 	return 0;
-
 	list_for_each_entry_safe(pos, n, &dev_priv->video_ctx, head) {
 		int entrypoint = pos->ctx_type & 0xff;
 		if (entrypoint == VAEntrypointEncSlice ||
@@ -159,12 +151,9 @@ static int ospm_runtime_pm_msvdx_resume(struct drm_device *dev)
 static int ospm_runtime_pm_topaz_resume(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
-	struct topaz_private *topaz_priv = dev_priv->topaz_private;
 	struct pnw_topaz_private *pnw_topaz_priv = dev_priv->topaz_private;
 	struct psb_video_ctx *pos, *n;
 	int encode_ctx = 0, encode_running = 0;
-
-	return 0;
 
 	/*printk(KERN_ALERT "ospm_runtime_pm_topaz_resume\n"); */
 
@@ -199,6 +188,7 @@ static int ospm_runtime_pm_topaz_resume(struct drm_device *dev)
 	return 0;
 }
 
+#if INCLUDE_UNUSED_CODE
 static int ospm_runtime_pm_vsp_suspend(struct drm_device *dev)
 {
 	int ret = 0;
@@ -230,6 +220,7 @@ static int ospm_runtime_pm_vsp_suspend(struct drm_device *dev)
 out:
 	return ret;
 }
+#endif /* if INCLUDE_UNUSED_CODE */
 
 static int ospm_runtime_pm_vsp_resume(struct drm_device *dev)
 {
@@ -314,7 +305,6 @@ void ospm_apm_power_down_msvdx(struct drm_device *dev)
 void ospm_apm_power_down_topaz(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
-	struct topaz_private *topaz_priv = dev_priv->topaz_private;
 	struct pnw_topaz_private *pnw_topaz_priv = dev_priv->topaz_private;
 
 	mutex_lock(&g_ospm_mutex);
@@ -378,52 +368,7 @@ out:
 	mutex_unlock(&g_ospm_mutex);
 }
 #endif
-/*
- * ospm_power_init
- *
- * Description: Initialize this ospm power management module
- */
-void ospm_power_init(struct drm_device *dev)
-{
-	struct drm_psb_private *dev_priv =
-	    (struct drm_psb_private *)dev->dev_private;
 
-	gpDrmDevice = dev;
-
-	mutex_init(&g_ospm_mutex);
-	spin_lock_init(&dev_priv->ospm_lock);
-	g_hw_power_status_mask = OSPM_GRAPHICS_ISLAND | OSPM_DISPLAY_ISLAND;
-	atomic_set(&g_display_access_count, 0);
-	atomic_set(&g_graphics_access_count, 0);
-	atomic_set(&g_videoenc_access_count, 0);
-	atomic_set(&g_videodec_access_count, 0);
-	atomic_set(&g_videovsp_access_count, 0);
-
-	register_early_suspend(&gfx_early_suspend_desc);
-
-#ifdef OSPM_STAT
-	dev_priv->graphics_state = PSB_PWR_STATE_ON;
-	dev_priv->gfx_last_mode_change = jiffies;
-	dev_priv->gfx_on_time = 0;
-	dev_priv->gfx_off_time = 0;
-#endif
-
-}
-
-/*
- * ospm_power_uninit
- *
- * Description: Uninitialize this ospm power management module
- */
-void ospm_power_uninit(void)
-{
-	unregister_early_suspend(&gfx_early_suspend_desc);
-	mutex_destroy(&g_ospm_mutex);
-#ifdef CONFIG_GFX_RTPM
-	pm_runtime_disable(&gpDrmDevice->pdev->dev);
-	pm_runtime_set_suspended(&gpDrmDevice->pdev->dev);
-#endif
-}
 
 /*
 * ospm_post_init
@@ -436,63 +381,23 @@ void ospm_post_init(struct drm_device *dev)
 	struct drm_psb_private *dev_priv =
 	    (struct drm_psb_private *)dev->dev_private;
 
-	if (IS_MDFLD(dev)) {
-		/*Save & Power gate un-used display islands. */
-		mdfld_save_display(dev);
+	if (!(dev_priv->panel_desc & DISPLAY_A))
+		dc_islands |= MRFLD_GFX_DSPA;
 
-		if (!(dev_priv->panel_desc & DISPLAY_A))
-			dc_islands |= OSPM_DISPLAY_A_ISLAND;
-
-		if (!(dev_priv->panel_desc & DISPLAY_B))
-			dc_islands |= OSPM_DISPLAY_B_ISLAND;
-
-		if (!(dev_priv->panel_desc & DISPLAY_C))
-			dc_islands |= OSPM_DISPLAY_C_ISLAND;
-
-		if (!(dev_priv->panel_desc))
-			dc_islands |= OSPM_MIPI_ISLAND;
-
-#ifdef OSPM_GFX_DPK
-		printk(KERN_ALERT
-		       "%s dc_islands: %x to be powered OFF\n",
-		       __func__, dc_islands);
-#endif
-		/*
-		   If pmu_nc_set_power_state fails then accessing HW
-		   reg would result in a crash - IERR/Fabric error.
-		 */
-		if (pmu_nc_set_power_state(dc_islands,
-					   OSPM_ISLAND_DOWN, OSPM_REG_TYPE))
-			BUG();
-
-#ifdef CONFIG_X86_MRST
-		/* if HDMI is disabled in the kernel .config, then we want to
-		   disable these MSIC power rails permanently.  */
-#ifndef CONFIG_MDFD_HDMI
-		/* turn off HDMI power rails */
-		intel_scu_ipc_iowrite8(MSIC_VHDMICNT, VHDMI_OFF);
-		intel_scu_ipc_iowrite8(MSIC_VCC330CNT, VCC330_OFF);
-#endif
-#endif
-	} else if (IS_MRFLD(dev)) {
-		if (!(dev_priv->panel_desc & DISPLAY_A))
-			dc_islands |= MRFLD_GFX_DSPA;
-
-		if (!(dev_priv->panel_desc & DISPLAY_B)) {
-			dc_islands |= MRFLD_GFX_DSPB;
-			dc_islands |= MRFLD_GFX_HDMIO;
-		}
-
-		if (!(dev_priv->panel_desc & DISPLAY_C))
-			dc_islands |= MRFLD_GFX_DSPC;
-
-		if (!(dev_priv->panel_desc))
-			dc_islands |= MRFLD_GFX_MIO;
-
-		mrfld_set_power_state(OSPM_DISPLAY_ISLAND,
-					dc_islands,
-					POWER_ISLAND_DOWN);
+	if (!(dev_priv->panel_desc & DISPLAY_B)) {
+		dc_islands |= MRFLD_GFX_DSPB;
+		dc_islands |= MRFLD_GFX_HDMIO;
 	}
+
+	if (!(dev_priv->panel_desc & DISPLAY_C))
+		dc_islands |= MRFLD_GFX_DSPC;
+
+	if (!(dev_priv->panel_desc))
+		dc_islands |= MRFLD_GFX_MIO;
+
+	mrfld_set_power_state(OSPM_DISPLAY_ISLAND,
+				dc_islands,
+				POWER_ISLAND_DOWN);
 }
 
 /*
@@ -561,7 +466,8 @@ static int mdfld_save_display_registers(struct drm_device *dev, int pipe)
 	 */
 #ifndef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
 	if (pipe != 1 && ((get_panel_type(dev, pipe) == TMD_VID) ||
-			  (get_panel_type(dev, pipe) == TMD_6X10_VID)))
+				(get_panel_type(dev, pipe) == TMD_6X10_VID) ||
+				(get_panel_type(dev, pipe) == JDI_VID)))
 		return 0;
 #endif
 
@@ -697,8 +603,8 @@ static int mdfld_save_display_registers(struct drm_device *dev, int pipe)
 /*
  * mdfld_save_cursor_overlay_registers
  *
- * Description: We are going to suspend so save current cursor
- * and overlay display register state.
+ * Description: We are going to suspend so save current cursor and overlay
+ * display register state.
  */
 static int mdfld_save_cursor_overlay_registers(struct drm_device *dev)
 {
@@ -736,6 +642,31 @@ static int mdfld_save_cursor_overlay_registers(struct drm_device *dev)
 
 	return 0;
 }
+
+
+/**
+ * in_atomic_or_interrupt() - Return non-zero if in atomic context.
+ * Problems with this code:
+ * - Function in_atomic is not guaranteed to detect the atomic state entered
+ *   by acquisition of a spinlock (and indeed does so only if CONFIG_PREEMPT).
+ *   For a discussion on the use of in_atomic and why is it considered (in
+ *   general) problematic, see: http://lwn.net/Articles/274695/
+ * - Therefore, scripts/checkpatch.pl will complain about use of function
+ *   in_atomic in non-core kernel.  For this reason, the several uses of
+ *   in_atomic in this file were centralized here (so only one warning).
+ *
+ * Note: The test herein was originally:
+ *   in_atomic() || in_interrupt()
+ * but the test for in_interrupt() is redundant with the in_atomic test.
+ */
+#if !defined CONFIG_PREEMPT
+#error Function in_atomic (in general) requires CONFIG_PREEMPT
+#endif
+static int in_atomic_or_interrupt(void)
+{
+	return in_atomic();
+}
+
 
 /*
  * mdfld_restore_display_registers
@@ -808,7 +739,8 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 	 */
 #ifndef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
 	if (pipe != 1 && ((get_panel_type(dev, pipe) == TMD_VID) ||
-			  (get_panel_type(dev, pipe) == TMD_6X10_VID)))
+				(get_panel_type(dev, pipe) == TMD_6X10_VID) ||
+				(get_panel_type(dev, pipe) == JDI_VID)))
 		return 0;
 #endif
 
@@ -984,11 +916,9 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 		PSB_WVDC32(mipi_val, mipi_reg);
 
 		/*setup MIPI adapter + MIPI IP registers */
-		mdfld_dsi_controller_init(dsi_config, pipe);
+		/* mdfld_dsi_controller_init(dsi_config, pipe); */
 
-		/* in_atomic() is forbid in checkpath.pl */
-		/*if (in_atomic() || in_interrupt())*/
-		if (in_interrupt())
+		if (in_atomic_or_interrupt())
 			mdelay(20);
 		else
 			msleep(20);
@@ -998,12 +928,10 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 		/*mdfld_dsi_tmd_drv_ic_init(dsi_config, pipe); */
 	}
 
-	/* enable the plane */
+	/*enable the plane */
 	PSB_WVDC32(dspcntr_val, dspcntr_reg);
 
-	/* in_atomic() is forbid in checkpath.pl */
-	/*if (in_atomic() || in_interrupt()) */
-	if (in_interrupt())
+	if (in_atomic_or_interrupt())
 		mdelay(20);
 	else
 		msleep(20);
@@ -1040,17 +968,15 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 	if (pipe == 1)
 		return 0;
 
-	if (IS_MRFLD(dev) && !is_panel_vid_or_cmd(dev))
+	if (!is_panel_vid_or_cmd(dev))
 		mdfld_enable_te(dev, pipe);
 
 	return 0;
 }
 
 /*
- * mdfld_restore_cursor_overlay_registers
- *
- * Description: We are going to resume so restore cursor and overlay
- * register state.
+ * mdfld_restore_cursor_overlay_registers() - Resuming, so restore cursor
+ * and overlay register state.
  */
 static int mdfld_restore_cursor_overlay_registers(struct drm_device *dev)
 {
@@ -1115,7 +1041,6 @@ void mdfld_save_display(struct drm_device *dev)
 void ospm_suspend_display(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
-	int pp_stat, ret = 0;
 	u32 temp = 0;
 	u32 device_ready_reg = DEVICE_READY_REG;
 	u32 mipi_reg = MIPI;
@@ -1180,7 +1105,6 @@ void ospm_resume_display(struct pci_dev *pdev)
 {
 	struct drm_device *dev = pci_get_drvdata(pdev);
 	struct drm_psb_private *dev_priv = dev->dev_private;
-	struct psb_gtt *pg = dev_priv->pg;
 
 	if (drm_psb_dsr) {
 		gbdispstatus = true;
@@ -1200,9 +1124,6 @@ void ospm_resume_display(struct pci_dev *pdev)
 
 	/* turn on the display power island */
 	ospm_power_island_up(OSPM_DISPLAY_ISLAND);
-
-	if (!IS_MRFLD(dev))
-		PSB_WVDC32(pg->pge_ctl | _PSB_PGETBL_ENABLED, PSB_PGETBL_CTL);
 
 	/* Don't reinitialize the GTT as it is unnecessary.  The gtt is
 	 * stored in memory so it will automatically be restored.  All
@@ -1362,7 +1283,8 @@ static void gfx_early_suspend(struct early_suspend *h)
 	/*Display off */
 	if (IS_FLDS(gpDrmDevice)) {
 		if ((dev_priv->panel_id == TMD_VID) ||
-		    (dev_priv->panel_id == TMD_6X10_VID)) {
+				(dev_priv->panel_id == TMD_6X10_VID) ||
+				(dev_priv->panel_id == JDI_VID)) {
 #ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
 			if (dev_priv->encoder0 &&
 			    (dev_priv->panel_desc & DISPLAY_A))
@@ -1433,43 +1355,42 @@ static void gfx_late_resume(struct early_suspend *h)
 		psb_irq_postinstall_islands(gpDrmDevice, OSPM_DISPLAY_ISLAND);
 
 #endif
-		if (IS_FLDS(gpDrmDevice)) {
-			if ((dev_priv->panel_id == TMD_VID) ||
-			    (dev_priv->panel_id == TMD_6X10_VID)) {
+		if ((dev_priv->panel_id == TMD_VID) ||
+				(dev_priv->panel_id == TMD_6X10_VID) ||
+				(dev_priv->panel_id == JDI_VID)) {
 #ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
-				if (dev_priv->encoder0 &&
-				    (dev_priv->panel_desc & DISPLAY_A))
-					mdfld_dsi_dpi_set_power
-					    (dev_priv->encoder0, true);
-				if (dev_priv->encoder2
-				    && (dev_priv->panel_desc & DISPLAY_C))
-					mdfld_dsi_dpi_set_power
-					    (dev_priv->encoder2, true);
+			if (dev_priv->encoder0 &&
+					(dev_priv->panel_desc & DISPLAY_A))
+				mdfld_dsi_dpi_set_power
+					(dev_priv->encoder0, true);
+			if (dev_priv->encoder2
+					&& (dev_priv->panel_desc & DISPLAY_C))
+				mdfld_dsi_dpi_set_power
+					(dev_priv->encoder2, true);
 #else
-				list_for_each_entry(encoder,
-						    &dev->
-						    mode_config.encoder_list,
-						    head) {
-					enc_funcs = encoder->helper_private;
-					if (!drm_helper_encoder_in_use(encoder))
-						continue;
-					if (enc_funcs && enc_funcs->restore)
-						enc_funcs->restore(encoder);
-				}
-#endif
-			} else if (dev_priv->panel_id == TPO_CMD) {
-				if (dev_priv->encoder0 &&
-				    (dev_priv->panel_desc & DISPLAY_A))
-					mdfld_dsi_dbi_set_power
-					    (&dev_priv->encoder0->base, true);
-				if (dev_priv->encoder2
-				    && (dev_priv->panel_desc & DISPLAY_C))
-					mdfld_dsi_dbi_set_power
-					    (&dev_priv->encoder2->base, true);
-			} else {
-				printk(KERN_ALERT "%s invalid panel\n",
-				       __func__);
+			list_for_each_entry(encoder,
+					&dev->
+					mode_config.encoder_list,
+					head) {
+				enc_funcs = encoder->helper_private;
+				if (!drm_helper_encoder_in_use(encoder))
+					continue;
+				if (enc_funcs && enc_funcs->restore)
+					enc_funcs->restore(encoder);
 			}
+#endif
+		} else if (dev_priv->panel_id == TPO_CMD) {
+			if (dev_priv->encoder0 &&
+					(dev_priv->panel_desc & DISPLAY_A))
+				mdfld_dsi_dbi_set_power
+					(&dev_priv->encoder0->base, true);
+			if (dev_priv->encoder2
+					&& (dev_priv->panel_desc & DISPLAY_C))
+				mdfld_dsi_dbi_set_power
+					(&dev_priv->encoder2->base, true);
+		} else {
+			printk(KERN_ALERT "%s invalid panel\n",
+					__func__);
 		}
 
 		gbdispstatus = true;
@@ -1524,10 +1445,13 @@ int ospm_power_suspend(struct pci_dev *pdev, pm_message_t state)
 		if (!ret) {
 			gbSuspendInProgress = true;
 
-	/* ! may cause runtime resume during early suspend
-	 * psb_irq_uninstall_islands(gpDrmDevice, OSPM_DISPLAY_ISLAND); */
+			/**
+			 * ! may cause runtime resume during early suspend
+			 *     psb_irq_uninstall_islands(gpDrmDevice,
+			 *             OSPM_DISPLAY_ISLAND);
+			 */
 			ospm_suspend_display(gpDrmDevice);
-#if 0			/* FIXME: video driver support for Linux Runtime PM */
+#if 0
 			/* FIXME: video driver support for Linux Runtime PM */
 			if (ospm_runtime_pm_msvdx_suspend(gpDrmDevice) != 0)
 				suspend_pci = false;
@@ -1541,8 +1465,7 @@ int ospm_power_suspend(struct pci_dev *pdev, pm_message_t state)
 			gbSuspendInProgress = false;
 		} else {
 			printk(KERN_ALERT
-			       "ospm_power_suspend: device busy: graphics %d "
-				"videoenc %d videodec %d display %d\n",
+			       "ospm_power_suspend: device busy: graphics %d videoenc %d videodec %d display %d\n",
 			       graphics_access_count, videoenc_access_count,
 			       videodec_access_count, display_access_count);
 		}
@@ -1591,10 +1514,6 @@ void ospm_power_island_up(int hw_islands)
 		if (dev_priv->panel_desc)
 			dc_islands |= OSPM_MIPI_ISLAND;
 
-		/*
-		   If pmu_nc_set_power_state fails then accessing HW
-		   reg would result in a crash - IERR/Fabric error.
-		 */
 		if (pmu_nc_set_power_state(dc_islands,
 					   OSPM_ISLAND_UP, OSPM_REG_TYPE))
 			BUG();
@@ -1605,16 +1524,16 @@ void ospm_power_island_up(int hw_islands)
 
 	if (hw_islands & OSPM_VIDEO_VPP_ISLAND) {
 		if (mrfld_set_power_state(
-			OSPM_DISPLAY_ISLAND,
-			MRFLD_GFX_SLC | MRFLD_GFX_SLC_LDO |
-			MRFLD_GFX_RSCD | MRFLD_GFX_SDKCK,
-			POWER_ISLAND_UP))
+			    OSPM_DISPLAY_ISLAND,
+			    MRFLD_GFX_SLC | MRFLD_GFX_SLC_LDO |
+				MRFLD_GFX_RSCD | MRFLD_GFX_SDKCK,
+			    POWER_ISLAND_UP))
 			BUG();
 
 		if (mrfld_set_power_state(
 				OSPM_VIDEO_VPP_ISLAND,
 				0,
-				OSPM_ISLAND_UP))
+				POWER_ISLAND_UP))
 			BUG();
 
 		/* handle other islands */
@@ -1623,16 +1542,16 @@ void ospm_power_island_up(int hw_islands)
 
 	if (hw_islands & OSPM_VIDEO_DEC_ISLAND) {
 		if (mrfld_set_power_state(
-			OSPM_DISPLAY_ISLAND,
-			MRFLD_GFX_SLC | MRFLD_GFX_SLC_LDO |
-			MRFLD_GFX_RSCD | MRFLD_GFX_SDKCK,
-			POWER_ISLAND_UP))
+			    OSPM_DISPLAY_ISLAND,
+			    MRFLD_GFX_SLC | MRFLD_GFX_SLC_LDO |
+				MRFLD_GFX_RSCD | MRFLD_GFX_SDKCK,
+			    POWER_ISLAND_UP))
 			BUG();
 
 		if (mrfld_set_power_state(
 				OSPM_VIDEO_DEC_ISLAND,
 				0,
-				OSPM_ISLAND_UP))
+				POWER_ISLAND_UP))
 			BUG();
 
 		/* handle other islands */
@@ -1641,16 +1560,16 @@ void ospm_power_island_up(int hw_islands)
 
 	if (hw_islands & OSPM_VIDEO_ENC_ISLAND) {
 		if (mrfld_set_power_state(
-			OSPM_DISPLAY_ISLAND,
-			MRFLD_GFX_SLC | MRFLD_GFX_SLC_LDO |
-			MRFLD_GFX_RSCD | MRFLD_GFX_SDKCK,
-			POWER_ISLAND_UP))
+			    OSPM_DISPLAY_ISLAND,
+			    MRFLD_GFX_SLC | MRFLD_GFX_SLC_LDO |
+				MRFLD_GFX_RSCD | MRFLD_GFX_SDKCK,
+			    POWER_ISLAND_UP))
 			BUG();
 
 		if (mrfld_set_power_state(
 				OSPM_VIDEO_ENC_ISLAND,
 				0,
-				OSPM_ISLAND_UP))
+				POWER_ISLAND_UP))
 			BUG();
 
 		/* handle other islands */
@@ -1662,10 +1581,6 @@ void ospm_power_island_up(int hw_islands)
 		printk(KERN_ALERT "%s other hw_islands: %x\n",
 		       __func__, gfx_islands);
 #endif
-		/*
-		   If pmu_nc_set_power_state fails then accessing HW
-		   reg would result in a crash - IERR/Fabric error.
-		 */
 		if (pmu_nc_set_power_state(gfx_islands,
 					   OSPM_ISLAND_UP, APM_REG_TYPE))
 			BUG();
@@ -1707,197 +1622,265 @@ int ospm_power_resume(struct pci_dev *pdev)
 	return 0;
 }
 
-static int wait_for_pm_cmd_complete(int verify_mask, int state_type,
-				    int reg_type)
+
+static int pm_cmd_freq_wait(u32 reg_freq)
 {
-	struct drm_psb_private *dev_priv =
-	    (struct drm_psb_private *)gpDrmDevice->dev_private;
-	u32 pwr_sts = 0;
-	u32 pwr_mask = 0;
-	u32 pwr_cnt = 0;
-	int count = 0;
+	int tcount;
+	u32 freq_val;
 
-#ifdef OSPM_GFX_DPK
-	printk(KERN_ALERT "%s: verify_mask: 0x%x reg_type: 0x%x\n", __func__,
-	       verify_mask, reg_type);
-#endif
-
-	if (reg_type < 0x30 && reg_type > 0x3f) {
-		printk(KERN_ALERT "ERROR: %s invalid reg_type\n", __func__);
-		return -EINVAL;
-	}
-	/* Request power state change */
-	pwr_cnt = intel_mid_msgbus_read32(PUNIT_PORT, reg_type);
-
-	pwr_mask = pwr_cnt;
-
-	if (state_type == POWER_ISLAND_DOWN)
-		pwr_mask |= verify_mask;
-	else if (state_type == POWER_ISLAND_UP)
-		pwr_mask &= ~verify_mask;
-	else {
-		printk(KERN_ALERT "ERROR: %s invalid power state: %d\n",
-		       __func__, state_type);
-		return -EINVAL;
-	}
-
-#ifdef OSPM_GFX_DPK
-	printk(KERN_ALERT "%s: current_value (reg_type:0x%x) :0x%x\n", __func__,
-	       reg_type, pwr_cnt);
-	printk(KERN_ALERT "%s: new value to be written: 0x%x\n", __func__,
-	       pwr_mask);
-#endif
-
-	if (pwr_mask != pwr_cnt)
-		intel_mid_msgbus_write32(PUNIT_PORT, reg_type, pwr_mask);
-	else
-		return 0;
-
-	/* Poll for new power state */
-	while (true) {
-		pwr_sts = intel_mid_msgbus_read32(PUNIT_PORT, reg_type);
-		if (state_type == POWER_ISLAND_DOWN) {
-			if ((pwr_sts & pwr_mask) == pwr_mask)
-				break;
-			else
-				udelay(10);
-		} else if (state_type == POWER_ISLAND_UP) {
-			if (pwr_sts == pwr_mask)
-				break;
-			else
-				udelay(10);
-		}
-		count++;
-		if (WARN_ONCE(count > 500000, "Timed out waiting for P-Unit"))
+	for (tcount = 0; ; tcount++) {
+		freq_val = intel_mid_msgbus_read32(PUNIT_PORT, reg_freq);
+		if ((freq_val & IP_FREQ_VALID) == 0)
+			break;
+		if (tcount > 500) {
+			WARN(1, "%s: P-Unit freq request wait timeout",
+				__func__);
 			return -EBUSY;
+		}
+		udelay(1);
 	}
+
 	return 0;
 }
 
-int mrfld_set_power_state(int islands, int sub_islands, int state_type)
-{
-	struct drm_psb_private *dev_priv =
-		(struct drm_psb_private *)gpDrmDevice->dev_private;
-	unsigned long flags;
-	int ret = 0;
 
-#ifdef OSPM_GFX_DPK
-	printk(KERN_ALERT "%s islands: 0x%x, sub_islands:0x%x,state_type:%s\n",
-			__func__, islands, sub_island,
-			state_type ? "on" : "off");
+static int pm_cmd_freq_set(u32 reg_freq, u32 freq_code)
+{
+	u32 freq_val;
+	int rva;
+
+	pm_cmd_freq_wait(reg_freq);
+
+	freq_val = IP_FREQ_VALID | freq_code;
+	intel_mid_msgbus_write32(PUNIT_PORT, reg_freq, freq_val);
+
+	rva = pm_cmd_freq_wait(reg_freq);
+
+#if (defined DEBUG_PM_CMD) && DEBUG_PM_CMD
+	freq_val = intel_mid_msgbus_read32(PUNIT_PORT, reg_freq);
+	printk(KERN_ALERT "%s: freq register %s (%#x): read: %#x\n",
+		__func__, pm_cmd_reg_name(reg_freq),
+		reg_freq, freq_val);
 #endif
 
-	spin_lock_irqsave(&dev_priv->ospm_lock, flags);
+	return rva;
+}
+
+
+/**
+ * mrfl_pwr_cmd_gfx - Change graphics power state.
+ * Change island power state in the require sequence.
+ *
+ * @gfx_mask: Mask of islands to be changed.
+ * @new_state: 0 for power-off, 1 for power-on.
+ */
+static int mrfl_pwr_cmd_gfx(u32 gfx_mask, int new_state)
+{
+	/*
+	 * pwrtab - gfx pwr sub-islands in required power-up order and
+	 * in reverse of required power-down order.
+	 */
+	static const u32 pwrtab[] = {
+		GFX_SLC_LDO_SHIFT,
+		GFX_SLC_SHIFT,
+		GFX_SDKCK_SHIFT,
+		GFX_RSCD_SHIFT,
+	};
+	const int pwrtablen = ARRAY_SIZE(pwrtab);
+	int i;
+	int j;
+	int ret;
+	u32 ns_mask;
+	u32 done_mask;
+	u32 this_mask;
+
+	if (new_state)
+		ns_mask = TNG_COMPOSITE_I0;
+	else
+		ns_mask = TNG_COMPOSITE_D3;
+
+	/*  Call underlying function separately for each step in the
+	    power sequence. */
+	done_mask = 0;
+	for (i = 0; i < pwrtablen ; i++) {
+		if (new_state)
+			j = i;
+		else
+			j = pwrtablen - i;
+
+		done_mask |= TNG_SSC_MASK << pwrtab[j];
+		this_mask = gfx_mask & done_mask;
+		if (this_mask) {
+			/*  FIXME - if (new_state == 0), check for required
+			    conditions per the SAS. */
+
+			ret = pmu_set_power_state_tng(GFX_SS_PM0,
+				this_mask, ns_mask);
+			if (ret)
+				return ret;
+		}
+		if ((gfx_mask & ~done_mask) == 0)
+			break;
+	}
+
+	pm_cmd_freq_set(GFX_SS_PM1, IP_FREQ_200_00);
+
+#if (defined DEBUG_PM_CMD) && DEBUG_PM_CMD
+	{
+		u32 pwr_state;
+		pwr_state = intel_mid_msgbus_read32(PUNIT_PORT, GFX_SS_PM1);
+		printk(KERN_ALERT "%s: after: %s: read: %#x\n",
+			__func__, pm_cmd_reg_name(GFX_SS_PM1), pwr_state);
+	}
+#endif
+
+	return 0;
+}
+
+
+/**
+ * mrfld_set_power_state() - Set power state as specified.
+ *
+ * @islands: Power island specification.  Although these symbols are defined
+ * as bit mask values, this function only supports having a single bit set
+ * in this parameter.  Values are:
+ *    OSPM_VIDEO_DEC_ISLAND
+ *    OSPM_VIDEO_ENC_ISLAND
+ *    OSPM_VIDEO_VPP_ISLAND
+ *    OSPM_DISPLAY_ISLAND
+ * FIXME - Also defined, but not used here or by callers.
+ * Graphics is instead included under OSPM_DISPLAY_ISLAND.
+ *    OSPM_GRAPHICS_ISLAND
+ *
+ * @sub_islands: Enumeration MRFLD_GFX_ISLANDS defines bit mask values:
+ *    Only interpreted if input islands == OSPM_DISPLAY_ISLAND:
+ *
+ * @new_state: 0 or 1 (for power down or power up).
+ *     Usually, a symbolic name is used:
+ *         #define POWER_ISLAND_DOWN 0
+ *         #define POWER_ISLAND_UP 1
+ *
+ * Notes: Write to proc file "gfx_pm" a string <char><nl> where <char> is
+ * anything other than '0' to do a test power-down, then power-up of
+ * OSPM_DISPLAY_ISLAND.
+ */
+int mrfld_set_power_state(int islands, int sub_islands, int new_state)
+{
+	int ret;
+	u32 ns_mask;
+
+#if 1 || defined OSPM_GFX_DPK
+	printk(KERN_ALERT "%s islands: 0x%x, sub_islands:0x%x,new_state:%s\n",
+			__func__, islands, sub_islands,
+			new_state ? "on" : "off");
+#endif
+
+/*  TEMP_SUPPRESS_POWER_OFF - FIXME - Temp for mrfl PO: 1 to suppress off. */
+#define TEMP_SUPPRESS_POWER_OFF 1
+#if TEMP_SUPPRESS_POWER_OFF
+	if (!new_state) {
+		printk(KERN_ALERT "%s: power-off request being ignored\n",
+			__func__);
+		return 0;
+	}
+#endif
+
+	if (new_state)
+		ns_mask = TNG_COMPOSITE_I0;
+	else
+		ns_mask = TNG_COMPOSITE_D3;
 
 	switch (islands) {
-	case OSPM_DISPLAY_ISLAND: {
-		u32 pwr_cnt = 0;
-		u32 pwr_mask = 0;
+	case OSPM_DISPLAY_ISLAND:
+	case OSPM_GRAPHICS_ISLAND:
+	{
 		u32 dsp_mask = 0;
 		u32 gfx_mask = 0;
 		u32 mio_mask = 0;
 		u32 hdmio_mask = 0;
 
-		switch (sub_islands) {
-		case MRFLD_GFX_DSPA:
-			dsp_mask |= DSPASSC;
-			break;
-		case MRFLD_GFX_DSPB:
-			dsp_mask |= DSPBSSC;
-			break;
-		case MRFLD_GFX_DSPC:
-			dsp_mask |= DSPCSSC;
-			break;
-		case MRFLD_GFX_MIO:
-			mio_mask |= MIOSSC;
-			break;
-		case MRFLD_GFX_HDMIO:
-			hdmio_mask |= HDMIOSSC;
-			break;
-		case MRFLD_GFX_SLC:
+		if (sub_islands & MRFLD_GFX_DSPA)
+			dsp_mask |= DPA_SSC;
+		if (sub_islands & MRFLD_GFX_DSPB)
+			dsp_mask |= DPB_SSC;
+		if (sub_islands & MRFLD_GFX_DSPC)
+			dsp_mask |= DPC_SSC;
+		if (sub_islands & MRFLD_GFX_MIO)
+			mio_mask |= MIO_SSC;
+		if (sub_islands & MRFLD_GFX_HDMIO)
+			hdmio_mask |= HDMIO_SSC;
+		if (sub_islands & MRFLD_GFX_SLC)
 			gfx_mask |= GFX_SLC_SSC;
-			break;
-		case MRFLD_GFX_SDKCK:
+		if (sub_islands & MRFLD_GFX_SDKCK)
 			gfx_mask |= GFX_SDKCK_SSC;
-			break;
-		case MRFLD_GFX_RSCD:
+		if (sub_islands & MRFLD_GFX_RSCD)
 			gfx_mask |= GFX_RSCD_SSC;
-			break;
-		case MRFLD_GFX_SLC_LDO:
+		if (sub_islands & MRFLD_GFX_SLC_LDO)
 			gfx_mask |= GFX_SLC_LDO_SSC;
-			break;
-		default:
-			spin_unlock_irqrestore(&dev_priv->ospm_lock, flags);
-			printk(KERN_ALERT "ERROR: %s invalid sub_islands: 0x%x\n",
-				__func__, sub_islands);
-
+		if (sub_islands > MRFLD_GFX_ALL_ISLANDS) {
 			return -EINVAL;
 		}
 
-		if (!ret && dsp_mask) {
-			ret = wait_for_pm_cmd_complete(
-						dsp_mask,
-						state_type,
-						DSP_SS_PM);
+		if (dsp_mask) {
+			ret = pmu_set_power_state_tng(DSP_SS_PM, dsp_mask,
+				ns_mask);
 			if (ret)
-				goto unlock;
+				return ret;
 		}
 
-		if (!ret && mio_mask) {
-			ret = wait_for_pm_cmd_complete(
-						mio_mask,
-						state_type,
-						MIO_SS_PM);
+		if (mio_mask) {
+			ret = pmu_set_power_state_tng(MIO_SS_PM, mio_mask,
+				ns_mask);
 			if (ret)
-				goto unlock;
+				return ret;
 		}
-		if (!ret && hdmio_mask) {
-			ret = wait_for_pm_cmd_complete(
-						hdmio_mask,
-						state_type,
-						HDMIO_SS_PM);
+		if (hdmio_mask) {
+			ret = pmu_set_power_state_tng(HDMIO_SS_PM, hdmio_mask,
+				ns_mask);
 			if (ret)
-				goto unlock;
+				return ret;
 		}
-		if (!ret && gfx_mask) {
-			ret = wait_for_pm_cmd_complete(
-						gfx_mask,
-						state_type,
-						GFX_SS_PM0);
+		if (gfx_mask) {
+			ret = mrfl_pwr_cmd_gfx(gfx_mask, new_state);
 			if (ret)
-				goto unlock;
+				return ret;
 		}
 	}
 		break;
 	case OSPM_VIDEO_VPP_ISLAND:
-		ret = wait_for_pm_cmd_complete(VSP_SSC, state_type, VSP_SS_PM0);
+		ret = pmu_set_power_state_tng(VSP_SS_PM0, VSP_SSC, ns_mask);
 		if (ret)
-			goto unlock;
+			return ret;
 		break;
 	case OSPM_VIDEO_DEC_ISLAND:
-		ret = wait_for_pm_cmd_complete(VED_SSC, state_type, VED_SS_PM0);
+		ret = pmu_set_power_state_tng(VED_SS_PM0, VED_SSC, ns_mask);
 		if (ret)
-			goto unlock;
+			return ret;
 		break;
 	case OSPM_VIDEO_ENC_ISLAND:
-		ret = wait_for_pm_cmd_complete(VEC_SSC, state_type, VEC_SS_PM0);
+		ret = pmu_set_power_state_tng(VEC_SS_PM0, VEC_SSC, ns_mask);
 		if (ret)
-			goto unlock;
+			return ret;
 		break;
 	default:
-		spin_unlock_irqrestore(&dev_priv->ospm_lock, flags);
 		printk(KERN_ALERT "Could NOT support island: %x\n", islands);
 		return -EINVAL;
 	}
 
-unlock:
-	spin_unlock_irqrestore(&dev_priv->ospm_lock, flags);
-	if (ret)
-		printk(KERN_ALERT "ERROR: wait_for_pm_cmd_complete FAILED!"
-			"ret=0x%x, island=%d, sub-island=%d, state=%d\n",
-			ret, islands, sub_islands, state_type);
-	return ret;
+#if A0_WORKAROUNDS
+	{
+		/* Apply A0 Workarounds */
+		struct drm_psb_private *dev_priv =
+			(struct drm_psb_private *)gpDrmDevice->dev_private;
+
+		apply_A0_workarounds(dev_priv->dev, islands, new_state);
+	}
+#endif
+
+	return 0;
 }
+EXPORT_SYMBOL(mrfld_set_power_state);
+
 
 /*
  * ospm_power_island_down
@@ -1921,10 +1904,6 @@ void ospm_power_island_down(int hw_islands)
 			       OSPM_DISPLAY_B_ISLAND |
 			       OSPM_DISPLAY_C_ISLAND | OSPM_MIPI_ISLAND);
 
-		/*
-		   If pmu_nc_set_power_state fails then accessing HW
-		   reg would result in a crash - IERR/Fabric error.
-		 */
 		if (pmu_nc_set_power_state(dc_islands,
 					   OSPM_ISLAND_DOWN, OSPM_REG_TYPE))
 			BUG();
@@ -1945,7 +1924,7 @@ void ospm_power_island_down(int hw_islands)
 		if (mrfld_set_power_state(
 				OSPM_VIDEO_VPP_ISLAND,
 				0,
-				OSPM_ISLAND_DOWN))
+				POWER_ISLAND_DOWN))
 			BUG();
 
 		/* handle other islands */
@@ -1956,7 +1935,7 @@ void ospm_power_island_down(int hw_islands)
 		if (mrfld_set_power_state(
 				OSPM_VIDEO_DEC_ISLAND,
 				0,
-				OSPM_ISLAND_DOWN))
+				POWER_ISLAND_DOWN))
 			BUG();
 
 		/* handle other islands */
@@ -1964,10 +1943,8 @@ void ospm_power_island_down(int hw_islands)
 	}
 
 	if (hw_islands & OSPM_VIDEO_ENC_ISLAND) {
-		if (mrfld_set_power_state(
-				OSPM_VIDEO_ENC_ISLAND,
-				0,
-				OSPM_ISLAND_DOWN))
+		if (mrfld_set_power_state(OSPM_VIDEO_ENC_ISLAND, 0,
+				POWER_ISLAND_DOWN))
 			BUG();
 
 		/* handle other islands */
@@ -1980,10 +1957,6 @@ void ospm_power_island_down(int hw_islands)
 		       __func__, gfx_islands);
 #endif
 
-		/*
-		   If pmu_nc_set_power_state fails then accessing HW
-		   reg would result in a crash - IERR/Fabric error.
-		 */
 		if (pmu_nc_set_power_state(gfx_islands,
 					   OSPM_ISLAND_DOWN, APM_REG_TYPE))
 			BUG();
@@ -2018,13 +1991,11 @@ bool ospm_power_is_hw_on(int hw_islands)
  * power state transition and the caller will be expected to handle that
  * even if force_on is set to true.
  */
-bool ospm_power_using_hw_begin(int hw_island, enum UHBUsage usage)
+bool ospm_power_using_hw_begin(int hw_island, UHBUsage usage)
 {
 	bool ret = true;
 	bool island_is_off = false;
-	/* in_atomic() is forbid in checkpath.pl */
-	/* bool b_atomic = (in_interrupt() || in_atomic());*/
-	bool b_atomic = in_interrupt();
+	bool b_atomic = in_atomic_or_interrupt();
 	bool locked = true;
 	struct pci_dev *pdev = gpDrmDevice->pdev;
 	bool force_on = usage ? true : false;
@@ -2041,8 +2012,10 @@ bool ospm_power_using_hw_begin(int hw_island, enum UHBUsage usage)
 		pm_runtime_get(&pdev->dev);
 	}
 #endif
-	/* quick path, not 100% race safe, but should be enough
-	 * comapre to current other code in this file */
+	/**
+	 * quick path, not 100% race safe, but should be enough compare to
+	 * current other code in this file.
+	 */
 	if (!force_on) {
 		if (hw_island & (OSPM_ALL_ISLANDS & ~g_hw_power_status_mask)) {
 #ifdef CONFIG_GFX_RTPM
@@ -2333,18 +2306,10 @@ int psb_runtime_idle(struct device *dev)
 {
 #ifdef CONFIG_SUPPORT_HDMI
 	struct drm_psb_private *dev_priv = gpDrmDevice->dev_private;
-	int hdmi_audio_busy = 0;
-	pm_event_t hdmi_audio_event;
+	bool hdmi_audio_busy = false;
+	hdmi_audio_busy = mid_hdmi_audio_is_busy(dev_priv->dev);
 #endif
 
-#ifdef CONFIG_SUPPORT_HDMI
-	if (dev_priv->had_pvt_data) {
-		hdmi_audio_event.event = 0;
-		hdmi_audio_busy =
-		    dev_priv->had_interface->suspend(dev_priv->had_pvt_data,
-						     hdmi_audio_event);
-	}
-#endif
 	if (atomic_read(&g_graphics_access_count)
 	    || atomic_read(&g_videoenc_access_count)
 	    || atomic_read(&g_videodec_access_count)
@@ -2358,4 +2323,64 @@ int psb_runtime_idle(struct device *dev)
 		return -EBUSY;
 	else
 		return 0;
+}
+
+
+#define FIXME_TEMP_DISABLE_EARLY_SUSPEND 1
+static struct early_suspend gfx_early_suspend_desc = {
+#if !FIXME_TEMP_DISABLE_EARLY_SUSPEND
+	.level = EARLY_SUSPEND_LEVEL_STOP_DRAWING,
+	.suspend = gfx_early_suspend,
+	.resume = gfx_late_resume,
+#endif /* if !FIXME_TEMP_DISABLE_EARLY_SUSPEND */
+};
+
+
+/*
+ * ospm_power_init
+ *
+ * Description: Initialize this ospm power management module
+ */
+void ospm_power_init(struct drm_device *dev)
+{
+	struct drm_psb_private *dev_priv =
+	    (struct drm_psb_private *)dev->dev_private;
+
+	gpDrmDevice = dev;
+
+	mutex_init(&g_ospm_mutex);
+	g_hw_power_status_mask = OSPM_ALL_ISLANDS;
+	atomic_set(&g_display_access_count, 0);
+	atomic_set(&g_graphics_access_count, 0);
+	atomic_set(&g_videoenc_access_count, 0);
+	atomic_set(&g_videodec_access_count, 0);
+	atomic_set(&g_videovsp_access_count, 0);
+
+	register_early_suspend(&gfx_early_suspend_desc);
+
+#ifdef OSPM_STAT
+	dev_priv->graphics_state = PSB_PWR_STATE_ON;
+	dev_priv->gfx_last_mode_change = jiffies;
+	dev_priv->gfx_on_time = 0;
+	dev_priv->gfx_off_time = 0;
+#endif
+
+	mrfld_set_power_state(OSPM_DISPLAY_ISLAND,
+				MRFLD_GFX_ALL_GFX_ONLY,
+				POWER_ISLAND_UP);
+}
+
+/*
+ * ospm_power_uninit
+ *
+ * Description: Uninitialize this ospm power management module
+ */
+void ospm_power_uninit(void)
+{
+	unregister_early_suspend(&gfx_early_suspend_desc);
+	mutex_destroy(&g_ospm_mutex);
+#ifdef CONFIG_GFX_RTPM
+	pm_runtime_disable(&gpDrmDevice->pdev->dev);
+	pm_runtime_set_suspended(&gpDrmDevice->pdev->dev);
+#endif
 }

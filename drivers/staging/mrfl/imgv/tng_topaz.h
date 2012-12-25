@@ -30,7 +30,6 @@
 /*#define TOPAZ_PDUMP*/
 
 /*#define TOPAZHP_IRQ_ENABLED*/
-#define TOPAZHP_PIPE_NUM 1
 
 #define TNG_IS_H264_ENC(codec) \
 	(codec == IMG_CODEC_H264_NO_RC || \

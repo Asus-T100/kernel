@@ -1,9 +1,44 @@
-									    /*************************************************************************//*!
-									       @File
-									       @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
-									       @Description     OS-independent interface to helper functions for pdump
-									       @License        Strictly Confidential.
-    *//**************************************************************************/
+/*************************************************************************/ /*!
+@File
+@Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
+@Description	OS-independent interface to helper functions for pdump
+@License        Dual MIT/GPLv2
+
+The contents of this file are subject to the MIT license as set out below.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+Alternatively, the contents of this file may be used under the terms of
+the GNU General Public License Version 2 ("GPL") in which case the provisions
+of GPL are applicable instead of those above.
+
+If you wish to allow use of your version of this file only under the terms of
+GPL, and not to allow others to use your version of this file under the terms
+of the MIT license, indicate your decision by deleting the provisions above
+and replace them with the notice and other provisions required by GPL as set
+out in the file called "GPL-COPYING" included in this distribution. If you do
+not delete the provisions above, a recipient may use your version of this file
+under the terms of either the MIT license or GPL.
+
+This License is also included in this distribution in the file called
+"MIT-COPYING".
+
+EXCEPT AS OTHERWISE STATED IN A NEGOTIATED AGREEMENT: (A) THE SOFTWARE IS
+PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING
+BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+PURPOSE AND NONINFRINGEMENT; AND (B) IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+*/ /**************************************************************************/
 
 #include <stdarg.h>
 
@@ -15,7 +50,8 @@
 extern "C" {
 #endif
 
-/* TODO
+
+/* FIXME
  * Some OSes (WinXP,CE) allocate the string on the stack, but some
  * (Linux) use a global variable/lock instead.
  * Would be good to use the same across all OSes.
@@ -47,7 +83,7 @@ extern "C" {
 	IMG_UINT32	ui32MaxLenFileName = MAX_PDUMP_STRING_LENGTH-1;	\
 	IMG_HANDLE	hScript = (IMG_HANDLE)pszScript;
 
-#else				/* WIN32 */
+#else	/* WIN32 */
 
 	/*
 	 * Linux
@@ -85,39 +121,37 @@ extern "C" {
 	if(eErrorPDump != PVRSRV_OK) return eErrorPDump;
 
 	/*!
-	 * @name        PDumpOSGetScriptString
-	 * @brief       Get the "script" buffer
-	 * @param       phScript - buffer handle for pdump script
-	 * @param       pui32MaxLen - max length of the script buffer
-	 *                      TODO: the max length should be internal to the OS-specific code
-	 * @return      error (always PVRSRV_OK on some OSes)
+	 * @name	PDumpOSGetScriptString
+	 * @brief	Get the "script" buffer
+	 * @param	phScript - buffer handle for pdump script
+	 * @param	pui32MaxLen - max length of the script buffer
+	 * 			FIXME: the max length should be internal to the OS-specific code
+	 * @return	error (always PVRSRV_OK on some OSes)
 	 */
-	PVRSRV_ERROR PDumpOSGetScriptString(IMG_HANDLE * phScript,
-					    IMG_UINT32 * pui32MaxLen);
+	PVRSRV_ERROR PDumpOSGetScriptString(IMG_HANDLE *phScript, IMG_UINT32 *pui32MaxLen);
 
 	/*!
-	 * @name        PDumpOSGetMessageString
-	 * @brief       Get the "message" buffer
-	 * @param       pszMsg - buffer pointer for pdump messages
-	 * @param       pui32MaxLen - max length of the message buffer
-	 *                      TODO: the max length should be internal to the OS-specific code
-	 * @return      error (always PVRSRV_OK on some OSes)
+	 * @name	PDumpOSGetMessageString
+	 * @brief	Get the "message" buffer
+	 * @param	pszMsg - buffer pointer for pdump messages
+	 * @param	pui32MaxLen - max length of the message buffer
+	 * 			FIXME: the max length should be internal to the OS-specific code
+	 * @return	error (always PVRSRV_OK on some OSes)
 	 */
-	PVRSRV_ERROR PDumpOSGetMessageString(IMG_CHAR ** ppszMsg,
-					     IMG_UINT32 * pui32MaxLen);
+	PVRSRV_ERROR PDumpOSGetMessageString(IMG_CHAR **ppszMsg, IMG_UINT32 *pui32MaxLen);
 
 	/*!
-	 * @name        PDumpOSGetFilenameString
-	 * @brief       Get the "filename" buffer
-	 * @param       ppszFile - buffer pointer for filename
-	 * @param       pui32MaxLen - max length of the filename buffer
-	 *                      TODO: the max length should be internal to the OS-specific code
-	 * @return      error (always PVRSRV_OK on some OSes)
+	 * @name	PDumpOSGetFilenameString
+	 * @brief	Get the "filename" buffer
+	 * @param	ppszFile - buffer pointer for filename
+	 * @param	pui32MaxLen - max length of the filename buffer
+	 * 			FIXME: the max length should be internal to the OS-specific code
+	 * @return	error (always PVRSRV_OK on some OSes)
 	 */
-	PVRSRV_ERROR PDumpOSGetFilenameString(IMG_CHAR ** ppszFile,
-					      IMG_UINT32 * pui32MaxLen);
+	PVRSRV_ERROR PDumpOSGetFilenameString(IMG_CHAR **ppszFile, IMG_UINT32 *pui32MaxLen);
 
-#endif				/* WIN32 */
+#endif /* WIN32 */
+
 
 /*
  * Define macro for processing variable args list in OS-independent
@@ -127,26 +161,27 @@ extern "C" {
 #define PDUMP_va_start	va_start
 #define PDUMP_va_end	va_end
 
+
 /*!
  * @name	PDumpOSGetStream
  * @brief	Get a handle to the labelled stream (cast the handle to PDBG_STREAM to use it)
  * @param	ePDumpStream - stream label
  */
-	IMG_HANDLE PDumpOSGetStream(IMG_UINT32 ePDumpStream);
+IMG_HANDLE PDumpOSGetStream(IMG_UINT32 ePDumpStream);
 
 /*!
  * @name	PDumpOSGetStreamOffset
  * @brief	Return current offset within the labelled stream
  * @param	ePDumpStream - stream label
  */
-	IMG_UINT32 PDumpOSGetStreamOffset(IMG_UINT32 ePDumpStream);
+IMG_UINT32 PDumpOSGetStreamOffset(IMG_UINT32 ePDumpStream);
 
 /*!
  * @name	PDumpOSGetParamFileNum
  * @brief	Return file number of the 'script' stream, in the case that the file was split
  * @param	ePDumpStream - stream label
  */
-	IMG_UINT32 PDumpOSGetParamFileNum(IMG_VOID);
+IMG_UINT32 PDumpOSGetParamFileNum(IMG_VOID);
 
 /*!
  * @name	PDumpOSCheckForSplitting
@@ -155,23 +190,21 @@ extern "C" {
  * @param	ui32Size - size of params to dump (bytes)
  * @param	ui32Flags - pdump flags
  */
-	IMG_VOID PDumpOSCheckForSplitting(IMG_HANDLE hStream,
-					  IMG_UINT32 ui32Size,
-					  IMG_UINT32 ui32Flags);
+IMG_VOID PDumpOSCheckForSplitting(IMG_HANDLE hStream, IMG_UINT32 ui32Size, IMG_UINT32 ui32Flags);
 
 /*!
  * @name	PDumpOSIsSuspended
  * @brief	Is the pdump stream busy?
  * @return	IMG_BOOL
  */
-	IMG_BOOL PDumpOSIsSuspended(IMG_VOID);
+IMG_BOOL PDumpOSIsSuspended(IMG_VOID);
 
 /*!
  * @name	PDumpOSIsSuspended
  * @brief	Is the pdump jump table initialised?
  * @return	IMG_BOOL
  */
-	IMG_BOOL PDumpOSJTInitialised(IMG_VOID);
+IMG_BOOL PDumpOSJTInitialised(IMG_VOID);
 
 /*!
  * @name	PDumpOSWriteString
@@ -183,9 +216,10 @@ extern "C" {
  * @param	ui32Flags - pdump flags
  * @return	error
  */
-	IMG_BOOL PDumpOSWriteString(IMG_HANDLE hDbgStream,
-				    IMG_UINT8 * psui8Data,
-				    IMG_UINT32 ui32Size, IMG_UINT32 ui32Flags);
+IMG_BOOL PDumpOSWriteString(IMG_HANDLE hDbgStream,
+		IMG_UINT8 *psui8Data,
+		IMG_UINT32 ui32Size,
+		IMG_UINT32 ui32Flags);
 
 /*!
  * @name	PDumpOSWriteString2
@@ -194,7 +228,7 @@ extern "C" {
  * @param	ui32Flags - pdump flags
  * @return	error
  */
-	IMG_BOOL PDumpOSWriteString2(IMG_HANDLE hScript, IMG_UINT32 ui32Flags);
+IMG_BOOL PDumpOSWriteString2(IMG_HANDLE	hScript, IMG_UINT32 ui32Flags);
 
 /*!
  * @name	PDumpOSBufprintf
@@ -203,18 +237,14 @@ extern "C" {
  * @param	ui32ScriptSizeMax - maximum size of data to write (not supported on all OSes)
  * @param	pszFormat - format string
  */
-	PVRSRV_ERROR PDumpOSBufprintf(IMG_HANDLE hBuf,
-				      IMG_UINT32 ui32ScriptSizeMax,
-				      IMG_CHAR * pszFormat,
-				      ...) IMG_FORMAT_PRINTF(3, 4);
+PVRSRV_ERROR PDumpOSBufprintf(IMG_HANDLE hBuf, IMG_UINT32 ui32ScriptSizeMax, IMG_CHAR* pszFormat, ...) IMG_FORMAT_PRINTF(3, 4);
 
 /*!
  * @name	PDumpOSDebugPrintf
  * @brief	Debug message during pdumping
  * @param	pszFormat - format string
  */
-	IMG_VOID PDumpOSDebugPrintf(IMG_CHAR * pszFormat,
-				    ...) IMG_FORMAT_PRINTF(1, 2);
+IMG_VOID PDumpOSDebugPrintf(IMG_CHAR* pszFormat, ...) IMG_FORMAT_PRINTF(1, 2);
 
 /*
  * Write into a IMG_CHAR* on all OSes. Can be allocated on the stack or heap.
@@ -225,10 +255,7 @@ extern "C" {
  * @param	pszComment - char array to print into
  * @param	pszFormat - format string
  */
-	PVRSRV_ERROR PDumpOSSprintf(IMG_CHAR * pszComment,
-				    IMG_UINT32 ui32ScriptSizeMax,
-				    IMG_CHAR * pszFormat,
-				    ...) IMG_FORMAT_PRINTF(3, 4);
+PVRSRV_ERROR PDumpOSSprintf(IMG_CHAR *pszComment, IMG_UINT32 ui32ScriptSizeMax, IMG_CHAR *pszFormat, ...) IMG_FORMAT_PRINTF(3, 4);
 
 /*!
  * @name	PDumpOSVSprintf
@@ -239,11 +266,7 @@ extern "C" {
  * @param	pszFormat - format string
  * @param	vaArgs - variable args structure (from stdarg.h)
  */
-	PVRSRV_ERROR PDumpOSVSprintf(IMG_CHAR * pszMsg,
-				     IMG_UINT32 ui32ScriptSizeMax,
-				     IMG_CHAR * pszFormat,
-				     PDUMP_va_list vaArgs) IMG_FORMAT_PRINTF(3,
-									     0);
+PVRSRV_ERROR PDumpOSVSprintf(IMG_CHAR *pszMsg, IMG_UINT32 ui32ScriptSizeMax, IMG_CHAR* pszFormat, PDUMP_va_list vaArgs) IMG_FORMAT_PRINTF(3, 0);
 
 /*!
  * @name	PDumpOSBuflen
@@ -251,8 +274,7 @@ extern "C" {
  * @param	ui32BuffeRSizeMax - max size of buffer (chars)
  * @return	length of buffer, will always be <= ui32BufferSizeMax
  */
-	IMG_UINT32 PDumpOSBuflen(IMG_HANDLE hBuffer,
-				 IMG_UINT32 ui32BufferSizeMax);
+IMG_UINT32 PDumpOSBuflen(IMG_HANDLE hBuffer, IMG_UINT32 ui32BufferSizeMax);
 
 /*!
  * @name	PDumpOSVerifyLineEnding
@@ -260,8 +282,7 @@ extern "C" {
  * @param	hBuffer - handle to buffer
  * @param	ui32BufferSizeMax - max size of buffer (chars)
  */
-	IMG_VOID PDumpOSVerifyLineEnding(IMG_HANDLE hBuffer,
-					 IMG_UINT32 ui32BufferSizeMax);
+IMG_VOID PDumpOSVerifyLineEnding(IMG_HANDLE hBuffer, IMG_UINT32 ui32BufferSizeMax);
 
 /*!
  * @name	PDumpOSCPUVAddrToDevPAddr
@@ -272,12 +293,12 @@ extern "C" {
  * @param	ui32PageSize	page size, used for assertion check
  * @return	psDevPAddr		device physical addr
  */
-	IMG_VOID PDumpOSCPUVAddrToDevPAddr(PVRSRV_DEVICE_TYPE eDeviceType,
-					   IMG_HANDLE hOSMemHandle,
-					   IMG_UINT32 ui32Offset,
-					   IMG_UINT8 * pui8LinAddr,
-					   IMG_UINT32 ui32PageSize,
-					   IMG_DEV_PHYADDR * psDevPAddr);
+IMG_VOID PDumpOSCPUVAddrToDevPAddr(PVRSRV_DEVICE_TYPE eDeviceType,
+        IMG_HANDLE hOSMemHandle,
+		IMG_UINT32 ui32Offset,
+		IMG_UINT8 *pui8LinAddr,
+		IMG_UINT32 ui32PageSize,
+		IMG_DEV_PHYADDR *psDevPAddr);
 
 /*!
  * @name	PDumpOSCPUVAddrToPhysPages
@@ -288,53 +309,59 @@ extern "C" {
  * @param	ui32DataPageMask	mask for data page (= data page size -1)
  * @return	pui32PageOffset	CPU page offset (same as device page offset if page sizes equal)
  */
-	IMG_VOID PDumpOSCPUVAddrToPhysPages(IMG_HANDLE hOSMemHandle,
-					    IMG_UINT32 ui32Offset,
-					    IMG_PUINT8 pui8LinAddr,
-					    IMG_UINT32 ui32DataPageMask,
-					    IMG_UINT32 * pui32PageOffset);
+IMG_VOID PDumpOSCPUVAddrToPhysPages(IMG_HANDLE hOSMemHandle,
+		IMG_UINT32 ui32Offset,
+		IMG_PUINT8 pui8LinAddr,
+		IMG_UINT32 ui32DataPageMask,
+		IMG_UINT32 *pui32PageOffset);
 
 /*!
  * @name	PDumpOSReleaseExecution
  * @brief	OS function to switch to another process, to clear pdump buffers
  */
-	IMG_VOID PDumpOSReleaseExecution(IMG_VOID);
+IMG_VOID PDumpOSReleaseExecution(IMG_VOID);
 
 /*!
  * @name	PDumpOSIsCaptureFrameKM
  * @brief	Is the current frame a capture frame?
  */
-	IMG_BOOL PDumpOSIsCaptureFrameKM(IMG_VOID);
+IMG_BOOL PDumpOSIsCaptureFrameKM(IMG_VOID);
+
+/*!
+ * @name	PDumpOSIsInitPhaseKM
+ * @brief	Is the initialisation phase currently active?
+ */
+IMG_BOOL PDumpOSIsInitPhaseKM(IMG_VOID);
 
 /*!
  * @name	PDumpOSSetFrameKM
  * @brief	Set frame counter
  */
-	PVRSRV_ERROR PDumpOSSetFrameKM(IMG_UINT32 ui32Frame);
+PVRSRV_ERROR PDumpOSSetFrameKM(IMG_UINT32 ui32Frame);
 
 /*!
  * @name	PDumpOSCreateLock
  * @brief	Create the global pdump lock
  */
-	PVRSRV_ERROR PDumpOSCreateLock(IMG_VOID);
+PVRSRV_ERROR PDumpOSCreateLock(IMG_VOID);
 
 /*!
  * @name	PDumpOSDestroyLock
  * @brief	Destroy the global pdump lock
  */
-	IMG_VOID PDumpOSDestroyLock(IMG_VOID);
+IMG_VOID PDumpOSDestroyLock(IMG_VOID);
 
 /*!
  * @name	PDumpOSLock
  * @brief	Acquire the global pdump lock
  */
-	IMG_VOID PDumpOSLock(IMG_VOID);
+IMG_VOID PDumpOSLock(IMG_VOID);
 
 /*!
  * @name	PDumpOSUnlock
  * @brief	Release the global pdump lock
  */
-	IMG_VOID PDumpOSUnlock(IMG_VOID);
+IMG_VOID PDumpOSUnlock(IMG_VOID);
 
 #if defined (__cplusplus)
 }

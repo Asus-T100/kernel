@@ -263,7 +263,7 @@ static void topaz_mtx_upload_by_register(struct drm_device *dev,
 static void topaz_write_core_reg(struct drm_psb_private *dev_priv,
 				 uint32_t reg, const uint32_t val);
 static void topaz_read_core_reg(struct drm_psb_private *dev_priv,
-				uint32_t reg, uint32_t *ret_val);
+				uint32_t reg, uint32_t * ret_val);
 static void get_mtx_control_from_dash(struct drm_psb_private *dev_priv);
 static void release_mtx_control_from_dash(struct drm_psb_private
 					  *dev_priv);
@@ -280,9 +280,9 @@ static int topaz_test_sync(struct drm_device *dev, uint32_t seq,
 			   uint32_t sync_seq);
 static void topaz_mmu_test(struct drm_device *dev, uint32_t sync_value);
 static void topaz_save_default_regs(struct drm_psb_private *dev_priv,
-				    uint32_t *data);
+				    uint32_t * data);
 static void topaz_restore_default_regs(struct drm_psb_private *dev_priv,
-				       uint32_t *data);
+				       uint32_t * data);
 static int topaz_test_sync_manual_alloc_page(struct drm_device *dev,
 					     uint32_t seq,
 					     uint32_t sync_seq,
@@ -463,7 +463,9 @@ int lnc_topaz_init(struct drm_device *dev)
 	if (device_create_file(&dev->pdev->dev, &dev_attr_topaz_pmstate))
 		DRM_ERROR("TOPAZ: could not create sysfs file\n");
 	topaz_priv->sysfs_pmstate = sysfs_get_dirent(dev->pdev->dev.kobj.sd,
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,35))
 						     NULL,
+#endif
 						     "topaz_pmstate");
 
 	topaz_priv = dev_priv->topaz_private;
@@ -1165,10 +1167,10 @@ void topaz_mtx_upload_by_register(struct drm_device *dev, uint32_t mtx_mem,
 	bank_count = (debug_reg & 0xf00) >> 8;
 
 	topaz_wait_for_register(dev_priv,
-		MTX_START +
-		MTX_CORE_CR_MTX_RAM_ACCESS_STATUS_OFFSET,
-		MTX_CORE_CR_MTX_RAM_ACCESS_STATUS_MTX_MTX_MCM_STAT_MASK,
-		MTX_CORE_CR_MTX_RAM_ACCESS_STATUS_MTX_MTX_MCM_STAT_MASK);
+				MTX_START +
+				MTX_CORE_CR_MTX_RAM_ACCESS_STATUS_OFFSET,
+				MTX_CORE_CR_MTX_RAM_ACCESS_STATUS_MTX_MTX_MCM_STAT_MASK,
+				MTX_CORE_CR_MTX_RAM_ACCESS_STATUS_MTX_MTX_MCM_STAT_MASK);
 
 	cur_ram_id = -1;
 	cur_addr = addr;
@@ -1191,10 +1193,10 @@ void topaz_mtx_upload_by_register(struct drm_device *dev, uint32_t mtx_mem,
 			    *(buf_p + lp));
 
 		topaz_wait_for_register(dev_priv,
-		MTX_CORE_CR_MTX_RAM_ACCESS_STATUS_OFFSET
-		+ MTX_START,
-		MTX_CORE_CR_MTX_RAM_ACCESS_STATUS_MTX_MTX_MCM_STAT_MASK,
-		MTX_CORE_CR_MTX_RAM_ACCESS_STATUS_MTX_MTX_MCM_STAT_MASK);
+					MTX_CORE_CR_MTX_RAM_ACCESS_STATUS_OFFSET
+					+ MTX_START,
+					MTX_CORE_CR_MTX_RAM_ACCESS_STATUS_MTX_MTX_MCM_STAT_MASK,
+					MTX_CORE_CR_MTX_RAM_ACCESS_STATUS_MTX_MTX_MCM_STAT_MASK);
 	}
 
 	ttm_bo_kunmap(&bo_kmap);
@@ -1263,6 +1265,7 @@ topaz_dma_transfer(struct drm_psb_private *dev_priv, uint32_t channel,
 	if (0 != (dmac_count & (MASK_IMG_SOC_EN | MASK_IMG_SOC_LIST_EN)))
 		DRM_ERROR("TOPAZ: there is tranfer in progress\n");
 
+	/* assert(0==(dmac_count & (MASK_IMG_SOC_EN | MASK_IMG_SOC_LIST_EN))); */
 
 	/* no hold off period */
 	DMAC_WRITE32(IMG_SOC_DMAC_PER_HOLD(channel), 0);
@@ -1325,16 +1328,16 @@ void topaz_write_core_reg(struct drm_psb_private *dev_priv, uint32_t reg,
 
 	/* wait for operation finished */
 	topaz_wait_for_register(dev_priv,
-		MTX_START +
-		MTX_CORE_CR_MTX_REGISTER_READ_WRITE_REQUEST_OFFSET,
-		MTX_CORE_CR_MTX_REGISTER_READ_WRITE_REQUEST_MTX_DREADY_MASK,
-		MTX_CORE_CR_MTX_REGISTER_READ_WRITE_REQUEST_MTX_DREADY_MASK);
+				MTX_START +
+				MTX_CORE_CR_MTX_REGISTER_READ_WRITE_REQUEST_OFFSET,
+				MTX_CORE_CR_MTX_REGISTER_READ_WRITE_REQUEST_MTX_DREADY_MASK,
+				MTX_CORE_CR_MTX_REGISTER_READ_WRITE_REQUEST_MTX_DREADY_MASK);
 
 	release_mtx_control_from_dash(dev_priv);
 }
 
 void topaz_read_core_reg(struct drm_psb_private *dev_priv, uint32_t reg,
-			 uint32_t *ret_val)
+			 uint32_t * ret_val)
 {
 	uint32_t tmp;
 
@@ -1349,10 +1352,10 @@ void topaz_read_core_reg(struct drm_psb_private *dev_priv, uint32_t reg,
 
 	/* wait for operation finished */
 	topaz_wait_for_register(dev_priv,
-		MTX_START +
-		MTX_CORE_CR_MTX_REGISTER_READ_WRITE_REQUEST_OFFSET,
-		MTX_CORE_CR_MTX_REGISTER_READ_WRITE_REQUEST_MTX_DREADY_MASK,
-		MTX_CORE_CR_MTX_REGISTER_READ_WRITE_REQUEST_MTX_DREADY_MASK);
+				MTX_START +
+				MTX_CORE_CR_MTX_REGISTER_READ_WRITE_REQUEST_OFFSET,
+				MTX_CORE_CR_MTX_REGISTER_READ_WRITE_REQUEST_MTX_DREADY_MASK,
+				MTX_CORE_CR_MTX_REGISTER_READ_WRITE_REQUEST_MTX_DREADY_MASK);
 
 	/* read  */
 	MTX_READ32(MTX_CORE_CR_MTX_REGISTER_READ_WRITE_DATA_OFFSET, ret_val);
@@ -1642,7 +1645,7 @@ static int topaz_test_null(struct drm_device *dev, uint32_t seq)
 	null_cmd.seq = seq;
 
 	TOPAZ_BEGIN_CCB(dev_priv);
-	TOPAZ_OUT_CCB(dev_priv, *((uint32_t *) &null_cmd));
+	TOPAZ_OUT_CCB(dev_priv, *((uint32_t *) & null_cmd));
 	TOPAZ_END_CCB(dev_priv, 1);
 
 	DRM_UDELAY(1000);	/* wait to finish */
@@ -1700,7 +1703,7 @@ void topaz_save_default_regs(struct drm_psb_private *dev_priv, uint32_t * data)
 }
 
 void topaz_restore_default_regs(struct drm_psb_private *dev_priv,
-				uint32_t *data)
+				uint32_t * data)
 {
 	int n;
 	int count;

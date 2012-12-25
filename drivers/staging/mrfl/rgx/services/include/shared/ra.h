@@ -1,12 +1,48 @@
-									    /*************************************************************************//*!
-									       @File
-									       @Title          Resource Allocator API
-									       @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
-									       @License        Strictly Confidential.
-    *//**************************************************************************/
+/*************************************************************************/ /*!
+@File
+@Title          Resource Allocator API
+@Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
+@License        Dual MIT/GPLv2
+
+The contents of this file are subject to the MIT license as set out below.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+Alternatively, the contents of this file may be used under the terms of
+the GNU General Public License Version 2 ("GPL") in which case the provisions
+of GPL are applicable instead of those above.
+
+If you wish to allow use of your version of this file only under the terms of
+GPL, and not to allow others to use your version of this file under the terms
+of the MIT license, indicate your decision by deleting the provisions above
+and replace them with the notice and other provisions required by GPL as set
+out in the file called "GPL-COPYING" included in this distribution. If you do
+not delete the provisions above, a recipient may use your version of this file
+under the terms of either the MIT license or GPL.
+
+This License is also included in this distribution in the file called
+"MIT-COPYING".
+
+EXCEPT AS OTHERWISE STATED IN A NEGOTIATED AGREEMENT: (A) THE SOFTWARE IS
+PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING
+BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+PURPOSE AND NONINFRINGEMENT; AND (B) IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+*/ /**************************************************************************/
 
 #ifndef _RA_H_
 #define _RA_H_
+
 
 #include "img_types.h"
 #include "pvrsrv_error.h"
@@ -14,7 +50,7 @@
 /** Resource arena.
  *  struct _RA_ARENA_ deliberately opaque
  */
-typedef struct _RA_ARENA_ RA_ARENA;	//PRQA S 3313
+typedef struct _RA_ARENA_ RA_ARENA;			//PRQA S 3313
 
 /*
  * Per-Arena handle - this is private data for the caller of the RA.
@@ -47,43 +83,46 @@ typedef IMG_UINT64 RA_LENGTH_T;
 typedef IMG_UINT32 RA_FLAGS_T;
 
 /** Enable support for arena statistics. */
-#define RA_STATS
+#define RA_STATS 
+
 
 /** Resource arena statistics. */
-struct _RA_STATISTICS_ {
+struct _RA_STATISTICS_
+{
     /** total number of segments add to the arena */
-	IMG_SIZE_T uSpanCount;
+    IMG_SIZE_T uSpanCount;
 
     /** number of current live segments within the arena */
-	IMG_SIZE_T uLiveSegmentCount;
+    IMG_SIZE_T uLiveSegmentCount;
 
     /** number of current free segments within the arena */
-	IMG_SIZE_T uFreeSegmentCount;
+    IMG_SIZE_T uFreeSegmentCount;
 
     /** total number of resource within the arena */
-	IMG_SIZE_T uTotalResourceCount;
-
+    IMG_SIZE_T uTotalResourceCount;
+    
     /** number of free resource within the arena */
-	IMG_SIZE_T uFreeResourceCount;
+    IMG_SIZE_T uFreeResourceCount;
 
     /** total number of resources allocated from the arena */
-	IMG_SIZE_T uCumulativeAllocs;
+    IMG_SIZE_T uCumulativeAllocs;
 
     /** total number of resources returned to the arena */
-	IMG_SIZE_T uCumulativeFrees;
+    IMG_SIZE_T uCumulativeFrees;
 
     /** total number of spans allocated by the callback mechanism */
-	IMG_SIZE_T uImportCount;
+    IMG_SIZE_T uImportCount;
 
     /** total number of spans deallocated by the callback mechanism */
-	IMG_SIZE_T uExportCount;
+    IMG_SIZE_T uExportCount;
 };
 typedef struct _RA_STATISTICS_ RA_STATISTICS;
 
-struct _RA_SEGMENT_DETAILS_ {
-	RA_LENGTH_T uiSize;
+struct _RA_SEGMENT_DETAILS_
+{
+	RA_LENGTH_T      uiSize;
 	IMG_CPU_PHYADDR sCpuPhyAddr;
-	IMG_HANDLE hSegment;
+	IMG_HANDLE      hSegment;
 };
 typedef struct _RA_SEGMENT_DETAILS_ RA_SEGMENT_DETAILS;
 
@@ -104,22 +143,27 @@ typedef struct _RA_SEGMENT_DETAILS_ RA_SEGMENT_DETAILS;
  *  @Input import_handle - handle passed to alloc and free or 0.
  *  @Return arena handle, or IMG_NULL.
  */
-RA_ARENA *RA_Create(IMG_CHAR * name,
-		    /* "initial" import */
-		    RA_BASE_T base,
-		    RA_LENGTH_T uSize, RA_FLAGS_T uFlags, IMG_HANDLE hPriv,
-		    /* subsequent imports: */
-		    RA_LOG2QUANTUM_T uLog2Quantum,
-		    IMG_BOOL(*imp_alloc) (RA_PERARENA_HANDLE _h,
-					  RA_LENGTH_T uSize,
-					  RA_FLAGS_T uFlags,
-					  RA_BASE_T * pBase,
-					  RA_LENGTH_T * pActualSize,
-					  RA_PERISPAN_HANDLE * phPriv),
-		    IMG_VOID(*imp_free) (RA_PERARENA_HANDLE,
-					 RA_BASE_T,
-					 RA_PERISPAN_HANDLE),
-		    RA_PERARENA_HANDLE import_handle);
+RA_ARENA *
+RA_Create (IMG_CHAR *name,
+
+           /* "initial" import */
+           RA_BASE_T base,
+           RA_LENGTH_T uSize,
+           RA_FLAGS_T uFlags,
+           IMG_HANDLE hPriv,
+
+           /* subsequent imports: */
+           RA_LOG2QUANTUM_T uLog2Quantum, 
+           IMG_BOOL (*imp_alloc)(RA_PERARENA_HANDLE _h,
+                                 RA_LENGTH_T uSize,
+                                 RA_FLAGS_T uFlags,
+                                 RA_BASE_T *pBase,
+                                 RA_LENGTH_T *pActualSize,
+                                 RA_PERISPAN_HANDLE *phPriv),
+           IMG_VOID (*imp_free) (RA_PERARENA_HANDLE,
+                                 RA_BASE_T,
+                                 RA_PERISPAN_HANDLE),
+           RA_PERARENA_HANDLE import_handle);
 
 /**
  *  @Function   RA_Delete
@@ -132,7 +176,8 @@ RA_ARENA *RA_Create(IMG_CHAR * name,
  *  @Input  pArena - the arena to delete.
  *  @Return None
  */
-IMG_VOID RA_Delete(RA_ARENA * pArena);
+IMG_VOID
+RA_Delete (RA_ARENA *pArena);
 
 /**
  *  @Function   RA_Add
@@ -148,7 +193,7 @@ IMG_VOID RA_Delete(RA_ARENA * pArena);
  *  @Return IMG_TRUE - success, IMG_FALSE - failure
  */
 IMG_BOOL
-RA_Add(RA_ARENA * pArena, RA_BASE_T base, RA_LENGTH_T uSize, RA_FLAGS_T uFlags);
+RA_Add (RA_ARENA *pArena, RA_BASE_T base, RA_LENGTH_T uSize, RA_FLAGS_T uFlags);
 
 /**
  *  @Function   RA_Alloc
@@ -170,12 +215,13 @@ RA_Add(RA_ARENA * pArena, RA_BASE_T base, RA_LENGTH_T uSize, RA_FLAGS_T uFlags);
  *  @Return IMG_TRUE - success, IMG_FALSE - failure
  */
 IMG_BOOL
-RA_Alloc(RA_ARENA * pArena,
-	 RA_LENGTH_T uSize,
-	 RA_FLAGS_T uFlags,
-	 RA_LENGTH_T uAlignment,
-	 RA_BASE_T * pBase,
-	 RA_LENGTH_T * pActualSize, RA_PERISPAN_HANDLE * phPriv);
+RA_Alloc (RA_ARENA *pArena, 
+          RA_LENGTH_T uSize,
+          RA_FLAGS_T uFlags,
+          RA_LENGTH_T uAlignment,
+          RA_BASE_T *pBase,
+          RA_LENGTH_T *pActualSize,
+          RA_PERISPAN_HANDLE *phPriv);
 
 /**
  *  @Function   RA_Free
@@ -188,7 +234,9 @@ RA_Alloc(RA_ARENA * pArena,
  *
  *  @Return None
  */
-IMG_VOID RA_Free(RA_ARENA * pArena, RA_BASE_T base);
+IMG_VOID 
+RA_Free (RA_ARENA *pArena, RA_BASE_T base);
+
 
 #ifdef RA_STATS
 
@@ -210,6 +258,7 @@ IMG_VOID RA_Free(RA_ARENA * pArena, RA_BASE_T base);
 	}										\
 }
 
+
 /**
  *  @Function   RA_GetStats
  *
@@ -221,12 +270,15 @@ IMG_VOID RA_Free(RA_ARENA * pArena, RA_BASE_T base);
  *
  *  @Return PVRSRV_ERROR
  */
-PVRSRV_ERROR RA_GetStats(RA_ARENA * pArena,
-			 IMG_CHAR ** ppszStr, IMG_UINT32 * pui32StrLen);
+PVRSRV_ERROR RA_GetStats(RA_ARENA *pArena,
+							IMG_CHAR **ppszStr, 
+							IMG_UINT32 *pui32StrLen);
 
-PVRSRV_ERROR RA_GetStatsFreeMem(RA_ARENA * pArena,
-				IMG_CHAR ** ppszStr, IMG_UINT32 * pui32StrLen);
+PVRSRV_ERROR RA_GetStatsFreeMem(RA_ARENA *pArena,
+								IMG_CHAR **ppszStr, 
+								IMG_UINT32 *pui32StrLen);
 
-#endif				/* #ifdef RA_STATS */
+#endif /* #ifdef RA_STATS */
 
 #endif
+

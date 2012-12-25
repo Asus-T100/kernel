@@ -23,105 +23,85 @@
  * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK
  *
  ******************************************************************************/
-
-#ifndef __MRSTLFB_H__
-#define __MRSTLFB_H__
+#ifndef __DC_MRFLD_H__
+#define __DC_MRFLD_H__
 
 #include <drm/drmP.h>
+#include <imgpixfmts_km.h>
 #include "kerneldisplay.h"
+#include "displayclass_interface.h"
 
-#define MAX_SWAPCHAINS			  10
+typedef enum {
+	DCMrfldEX_BUFFER_SOURCE_ALLOC,
+	DCMrfldEX_BUFFER_SOURCE_IMPORT,
+	DCMrfldEX_BUFFER_SOURCE_SYSTEM,
+} DCMrfldEX_BUFFER_SOURCE;
 
-#define PVRSRV_SWAPCHAIN_ATTACHED_PLANE_NONE (0 << 0)
-#define PVRSRV_SWAPCHAIN_ATTACHED_PLANE_A    (1 << 0)
-#define PVRSRV_SWAPCHAIN_ATTACHED_PLANE_B    (1 << 1)
-#define PVRSRV_SWAPCHAIN_ATTACHED_PLANE_C    (1 << 2)
+typedef enum {
+	DC_MRFLD_FLIP_SURFACE,
+	DC_MRFLD_FLIP_CONTEXT,
+} DC_MRFLD_FLIP_OP;
 
-typedef int (*MRSTLFB_VSYNC_ISR_PFN) (struct drm_device * psDrmDevice,
-				      int iPipe);
-
-typedef struct MRFLD_BUFFER_TAG {
+typedef struct {
 	IMG_HANDLE hDisplayContext;
 	IMG_PIXFMT ePixFormat;
 	IMG_UINT32 ui32BufferSize;
 	IMG_UINT32 ui32ByteStride;
 	IMG_UINT32 ui32Width;
 	IMG_UINT32 ui32Height;
+	/*physical sys page list*/
 	IMG_SYS_PHYADDR *psSysAddr;
+	/*physical device page list*/
+	IMG_DEV_PHYADDR *psDevAddr;
+	/*GTT offset*/
 	IMG_DEV_VIRTADDR sDevVAddr;
+	/*CPU virtual address*/
 	IMG_CPU_VIRTADDR sCPUVAddr;
 	IMG_BOOL bIsContiguous;
 	IMG_BOOL bIsAllocated;
 	IMG_UINT32 ui32OwnerTaskID;
 	IMG_HANDLE hImport;
 	IMG_UINT32 ui32RefCount;
-} MRFLD_BUFFER;
+	DCMrfldEX_BUFFER_SOURCE eSource;
+	DC_MRFLD_FLIP_OP eFlipOp;
+	DC_MRFLD_SURF_CUSTOM sContext;
+} DC_MRFLD_BUFFER;
 
-typedef struct MRSTLFB_VSYNC_FLIP_ITEM_TAG {
-	IMG_HANDLE hCmdComplete;
-	IMG_UINT32 ulSwapInterval;
-	IMG_BOOL bValid;
-	IMG_BOOL bFlipped;
-	IMG_BOOL bCmdCompleted;
-	MRFLD_BUFFER *psBuffer;
-} MRSTLFB_VSYNC_FLIP_ITEM;
-
-typedef struct MRSTLFB_SWAPCHAIN_TAG {
-	IMG_UINT32 ulBufferCount;
-	IMG_UINT32 ui32SwapChainID;
-	IMG_UINT32 ui32SwapChainPropertyFlag;
-	IMG_UINT32 ulSwapChainGTTOffset;
-	MRFLD_BUFFER **ppsBuffer;
-	IMG_UINT32 ulSwapChainLength;
-	MRSTLFB_VSYNC_FLIP_ITEM *psVSyncFlips;
-	IMG_UINT32 ulInsertIndex;
-	IMG_UINT32 ulRemoveIndex;
-
-	struct drm_driver *psDrmDriver;
-	struct drm_device *psDrmDev;
-	struct MRFLD_DEVINFO_TAG *psDevInfo;
-
-	struct MRSTLFB_SWAPCHAIN_TAG *psNext;
-} MRSTLFB_SWAPCHAIN;
-
-typedef struct MRFLD_DEVINFO_TAG {
-	struct drm_device *psDrmDevice;
+/*Display Controller Device*/
+typedef struct {
 	IMG_HANDLE hSrvHandle;
-	IMG_UINT32 ulRefCount;
-
-	MRFLD_BUFFER sSystemBuffer;
-
-	struct _DC_DEVICE_FUNCTIONS_ sDCJTable;
-
-	MRSTLFB_SWAPCHAIN *psCurrentSwapChain;
-	MRSTLFB_SWAPCHAIN *apsSwapChains[MAX_SWAPCHAINS];
-	IMG_UINT32 ui32SwapChainNum;
-	spinlock_t sSwapChainLock;
-	unsigned long ulLastFlipAddr;
-	IMG_BOOL bLastFlipAddrValid;
-
-	IMG_UINT32 ulSetFlushStateRefCount;
-
-	IMG_BOOL bFlushCommands;
-	IMG_BOOL bBlanked;
-
-	struct notifier_block sLINNotifBlock;
-
-	IMG_DEV_VIRTADDR sDisplayDevVAddr;
-	DC_DISPLAY_INFO sDisplayInfo;
+	struct drm_device *psDrmDevice;
+	DC_MRFLD_BUFFER *psSystemBuffer;
 	PVRSRV_SURFACE_INFO sPrimInfo;
+	DC_DISPLAY_INFO	sDisplayInfo;
 
-	IMG_BOOL bSuspended;
-} MRFLD_DEVINFO;
+	/*mutex lock for flip queue*/
+	struct mutex sFlipQueueLock;
+	/*context configure queue*/
+	struct list_head sFlipQueue;
+} DC_MRFLD_DEVICE;
 
-#define DISPLAY_DEVICE_NAME "Merrifield DRM"
-#define	DRVNAME	"Merrifield-DRM"
+typedef struct {
+	DC_MRFLD_DEVICE *psDevice;
+} DC_MRFLD_DISPLAY_CONTEXT;
 
-#ifndef UNREFERENCED_PARAMETER
-#define	UNREFERENCED_PARAMETER(param) (param) = (param)
-#endif
+/*flip status*/
+enum {
+	DC_MRFLD_FLIP_QUEUED = 0,
+	DC_MRFLD_FLIP_DC_UPDATED,
+	DC_MRFLD_FLIP_FLIPPED,
+};
 
-PVRSRV_ERROR MerrifieldDCInit(struct drm_device *dev);
+typedef struct {
+	struct list_head sFlip;
+	IMG_HANDLE hConfigData;
+	IMG_UINT32 eFlipState;
+	IMG_UINT32 uiNumBuffers;
+	DC_MRFLD_BUFFER asBuffers[0];
+} DC_MRFLD_FLIP;
+
+/*exported functions*/
+PVRSRV_ERROR MerrifieldDCInit(struct drm_device * dev);
 PVRSRV_ERROR MerrifieldDCDeinit(void);
 
-#endif
+#endif /* __DC_MRFLD_H__ */

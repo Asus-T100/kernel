@@ -1,30 +1,45 @@
-/*!****************************************************************************
-@File			handle.h
+/**************************************************************************/ /*!
+@File
+@Title          Handle Manager API
+@Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
+@Description    Provide handle management
+@License        Dual MIT/GPLv2
 
-@Title			Handle Manager API
+The contents of this file are subject to the MIT license as set out below.
 
-@Author			Imagination Technologies
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-@date   		14/05/07
- 
-@Copyright     	Copyright 2007 by Imagination Technologies Limited.
-                All rights reserved. No part of this software, either
-                material or conceptual may be copied or distributed,
-                transmitted, transcribed, stored in a retrieval system
-                or translated into any human or computer language in any
-                form by any means, electronic, mechanical, manual or
-                other-wise, or disclosed to third parties without the
-                express written permission of Imagination Technologies
-                Limited, Unit 8, HomePark Industrial Estate,
-                King's Langley, Hertfordshire, WD4 8LZ, U.K.
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
 
-@Platform		generic
+Alternatively, the contents of this file may be used under the terms of
+the GNU General Public License Version 2 ("GPL") in which case the provisions
+of GPL are applicable instead of those above.
 
-@Description	Provide handle management
+If you wish to allow use of your version of this file only under the terms of
+GPL, and not to allow others to use your version of this file under the terms
+of the MIT license, indicate your decision by deleting the provisions above
+and replace them with the notice and other provisions required by GPL as set
+out in the file called "GPL-COPYING" included in this distribution. If you do
+not delete the provisions above, a recipient may use your version of this file
+under the terms of either the MIT license or GPL.
 
-@DoxygenVer		
+This License is also included in this distribution in the file called
+"MIT-COPYING".
 
-******************************************************************************/
+EXCEPT AS OTHERWISE STATED IN A NEGOTIATED AGREEMENT: (A) THE SOFTWARE IS
+PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING
+BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+PURPOSE AND NONINFRINGEMENT; AND (B) IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+*/ /***************************************************************************/
 
 #ifndef __HANDLE_H__
 #define __HANDLE_H__
@@ -174,409 +189,376 @@ extern "C" {
 #include "hash.h"
 #include "resman.h"
 
-	typedef enum {
-		PVRSRV_HANDLE_TYPE_NONE = 0,
-		PVRSRV_HANDLE_TYPE_PERPROC_DATA,
-		PVRSRV_HANDLE_TYPE_DEV_NODE,
-		PVRSRV_HANDLE_TYPE_DEV_MEM_CONTEXT,
-		PVRSRV_HANDLE_TYPE_DEV_MEM_HEAP,
-		PVRSRV_HANDLE_TYPE_MEM_INFO,
-		PVRSRV_HANDLE_TYPE_SYNC_INFO,
-		PVRSRV_HANDLE_TYPE_DISP_INFO,
-		PVRSRV_HANDLE_TYPE_DISP_SWAP_CHAIN,
-		PVRSRV_HANDLE_TYPE_BUF_INFO,
-		PVRSRV_HANDLE_TYPE_DEVICE_BUFFER,
-		PVRSRV_HANDLE_TYPE_RGX_HW_TRANSFER_CONTEXT,
-		PVRSRV_HANDLE_TYPE_RGX_HW_2D_CONTEXT,
-		PVRSRV_HANDLE_TYPE_SHARED_PB_DESC,
-		PVRSRV_HANDLE_TYPE_MEM_INFO_REF,
-		PVRSRV_HANDLE_TYPE_SHARED_SYS_MEM_INFO,
-		PVRSRV_HANDLE_TYPE_SHARED_EVENT_OBJECT,
-		PVRSRV_HANDLE_TYPE_EVENT_OBJECT_CONNECT,
-		PVRSRV_HANDLE_TYPE_MMAP_INFO,
-		PVRSRV_HANDLE_TYPE_SOC_TIMER,
-		PVRSRV_HANDLE_TYPE_SYNC_INFO_MOD_OBJ,
-		PVRSRV_HANDLE_TYPE_PHYSMEM_CTX,
-		PVRSRV_HANDLE_TYPE_PHYSMEM_PMR,
-		PVRSRV_HANDLE_TYPE_PHYSMEM_PMR_EXPORT,
-		PVRSRV_HANDLE_TYPE_PHYSMEM_MMAP_DATA,
-		PVRSRV_HANDLE_TYPE_DEVMEMINT_CTX,
-		PVRSRV_HANDLE_TYPE_DEVMEMINT_HEAP,
-		PVRSRV_HANDLE_TYPE_DEVMEMINT_RESERVATION,
-		PVRSRV_HANDLE_TYPE_DEVMEMINT_MAPPING,
-		PVRSRV_HANDLE_TYPE_RGX_FW_MEMDESC,
-		PVRSRV_HANDLE_TYPE_RGX_RC_CLEANUP,
-		PVRSRV_HANDLE_TYPE_RGX_RTDATA_CLEANUP,
-		PVRSRV_HANDLE_TYPE_RGX_TQ3D_CLEANUP,
-		PVRSRV_HANDLE_TYPE_RGX_TQ2D_CLEANUP,
-		PVRSRV_HANDLE_TYPE_RGX_CC_CLEANUP,
-		PVRSRV_HANDLE_TYPE_RGX_CCB_CLEANUP,
-		PVRSRV_HANDLE_TYPE_SERVER_EXPORTCOOKIE,
-		PVRSRV_HANDLE_TYPE_SYNC_PRIMITIVE,
-		PVRSRV_HANDLE_TYPE_SYNC_PRIMITIVE_BLOCK,
-		PVRSRV_HANDLE_TYPE_SERVER_SYNC_PRIMITIVE,
-		PVRSRV_HANDLE_TYPE_SERVER_SYNC_EXPORT,
-		PVRSRV_HANDLE_TYPE_SERVER_OP_COOKIE,
-		PVRSRV_HANDLE_TYPE_RGX_FWIF_HWRTDATA,
-		PVRSRV_HANDLE_TYPE_RGX_FWIF_RENDERTARGET,
-		PVRSRV_HANDLE_TYPE_RGX_FWIF_FREELIST,
-		PVRSRV_HANDLE_TYPE_DC_DEVICE,
-		PVRSRV_HANDLE_TYPE_DC_DISPLAY_CONTEXT,
-		PVRSRV_HANDLE_TYPE_DC_BUFFER,
-		PVRSRV_HANDLE_TYPE_DC_PIN_HANDLE,
-		PVRSRV_HANDLE_TYPE_DEVMEM_MEM_IMPORT,
-		PVRSRV_HANDLE_TYPE_DEVMEM_MEM_EXPORT,
-		PVRSRV_HANDLE_TYPE_PHYSMEM_PMR_PAGELIST,
-	} PVRSRV_HANDLE_TYPE;
+typedef enum
+{
+	PVRSRV_HANDLE_TYPE_NONE = 0,
+	PVRSRV_HANDLE_TYPE_PERPROC_DATA,
+	PVRSRV_HANDLE_TYPE_DEV_NODE,
+	PVRSRV_HANDLE_TYPE_DEV_MEM_CONTEXT,
+	PVRSRV_HANDLE_TYPE_DEV_MEM_HEAP,
+	PVRSRV_HANDLE_TYPE_MEM_INFO,
+	PVRSRV_HANDLE_TYPE_SYNC_INFO,
+	PVRSRV_HANDLE_TYPE_DISP_INFO,
+	PVRSRV_HANDLE_TYPE_DISP_SWAP_CHAIN,
+	PVRSRV_HANDLE_TYPE_BUF_INFO,
+	PVRSRV_HANDLE_TYPE_DEVICE_BUFFER,
+	PVRSRV_HANDLE_TYPE_RGX_HW_TRANSFER_CONTEXT,
+	PVRSRV_HANDLE_TYPE_RGX_HW_2D_CONTEXT,
+	PVRSRV_HANDLE_TYPE_SHARED_PB_DESC,
+	PVRSRV_HANDLE_TYPE_MEM_INFO_REF,
+	PVRSRV_HANDLE_TYPE_SHARED_SYS_MEM_INFO,
+	PVRSRV_HANDLE_TYPE_SHARED_EVENT_OBJECT,
+	PVRSRV_HANDLE_TYPE_EVENT_OBJECT_CONNECT,
+	PVRSRV_HANDLE_TYPE_MMAP_INFO,
+	PVRSRV_HANDLE_TYPE_SOC_TIMER,
+	PVRSRV_HANDLE_TYPE_SYNC_INFO_MOD_OBJ,
+	PVRSRV_HANDLE_TYPE_PHYSMEM_CTX,
+	PVRSRV_HANDLE_TYPE_PHYSMEM_PMR,
+	PVRSRV_HANDLE_TYPE_PHYSMEM_PMR_EXPORT,
+	PVRSRV_HANDLE_TYPE_PHYSMEM_MMAP_DATA,
+	PVRSRV_HANDLE_TYPE_DEVMEMINT_CTX,
+	PVRSRV_HANDLE_TYPE_DEVMEMINT_HEAP,
+	PVRSRV_HANDLE_TYPE_DEVMEMINT_RESERVATION,
+	PVRSRV_HANDLE_TYPE_DEVMEMINT_MAPPING,
+	PVRSRV_HANDLE_TYPE_RGX_FW_MEMDESC,
+	PVRSRV_HANDLE_TYPE_RGX_RC_CLEANUP,
+	PVRSRV_HANDLE_TYPE_RGX_RTDATA_CLEANUP,
+	PVRSRV_HANDLE_TYPE_RGX_FREELIST,
+	PVRSRV_HANDLE_TYPE_RGX_MEMORY_BLOCK,
+	PVRSRV_HANDLE_TYPE_RGX_TQ3D_CLEANUP,
+	PVRSRV_HANDLE_TYPE_RGX_TQ2D_CLEANUP,
+	PVRSRV_HANDLE_TYPE_RGX_CC_CLEANUP,
+	PVRSRV_HANDLE_TYPE_RGX_CCB_CLEANUP,
+	PVRSRV_HANDLE_TYPE_SERVER_EXPORTCOOKIE,
+	PVRSRV_HANDLE_TYPE_SYNC_PRIMITIVE,
+	PVRSRV_HANDLE_TYPE_SYNC_PRIMITIVE_BLOCK,
+	PVRSRV_HANDLE_TYPE_SERVER_SYNC_PRIMITIVE,
+	PVRSRV_HANDLE_TYPE_SERVER_SYNC_EXPORT,
+	PVRSRV_HANDLE_TYPE_SERVER_OP_COOKIE,
+	PVRSRV_HANDLE_TYPE_RGX_FWIF_HWRTDATA,
+	PVRSRV_HANDLE_TYPE_RGX_FWIF_RENDERTARGET,
+	PVRSRV_HANDLE_TYPE_RGX_FWIF_ZSBUFFER,
+	PVRSRV_HANDLE_TYPE_RGX_POPULATION,
+	PVRSRV_HANDLE_TYPE_RGX_FWIF_FREELIST,
+	PVRSRV_HANDLE_TYPE_DC_DEVICE,
+	PVRSRV_HANDLE_TYPE_DC_DISPLAY_CONTEXT,
+	PVRSRV_HANDLE_TYPE_DC_BUFFER,
+	PVRSRV_HANDLE_TYPE_DC_PIN_HANDLE,
+	PVRSRV_HANDLE_TYPE_DEVMEM_MEM_IMPORT,
+	PVRSRV_HANDLE_TYPE_DEVMEM_MEM_EXPORT,
+	PVRSRV_HANDLE_TYPE_PHYSMEM_PMR_PAGELIST,
+	PVRSRV_HANDLE_TYPE_PVR_TL_SD
+} PVRSRV_HANDLE_TYPE;
 
-	typedef enum {
-		/* No flags */
-		PVRSRV_HANDLE_ALLOC_FLAG_NONE = 0,
-		/* Share a handle that already exists for a given data pointer */
-		PVRSRV_HANDLE_ALLOC_FLAG_SHARED = 0x01,
-		/* Muliple handles can point at the given data pointer */
-		PVRSRV_HANDLE_ALLOC_FLAG_MULTI = 0x02,
-		/* Subhandles are allocated in a private handle space */
-		PVRSRV_HANDLE_ALLOC_FLAG_PRIVATE = 0x04
-	} PVRSRV_HANDLE_ALLOC_FLAG;
+typedef enum
+{
+	/* No flags */
+	PVRSRV_HANDLE_ALLOC_FLAG_NONE = 		0,
+	/* Share a handle that already exists for a given data pointer */
+	PVRSRV_HANDLE_ALLOC_FLAG_SHARED = 		0x01,
+	/* Muliple handles can point at the given data pointer */
+	PVRSRV_HANDLE_ALLOC_FLAG_MULTI = 		0x02,
+	/* Subhandles are allocated in a private handle space */
+	PVRSRV_HANDLE_ALLOC_FLAG_PRIVATE = 		0x04
+} PVRSRV_HANDLE_ALLOC_FLAG;
 
-	struct _PVRSRV_HANDLE_BASE_;
-	typedef struct _PVRSRV_HANDLE_BASE_ PVRSRV_HANDLE_BASE;
+struct _PVRSRV_HANDLE_BASE_;
+typedef struct _PVRSRV_HANDLE_BASE_ PVRSRV_HANDLE_BASE;
 
 #ifdef	PVR_SECURE_HANDLES
-	extern PVRSRV_HANDLE_BASE *gpsKernelHandleBase;
+extern PVRSRV_HANDLE_BASE *gpsKernelHandleBase;
 
 #define	KERNEL_HANDLE_BASE (gpsKernelHandleBase)
 
-	PVRSRV_ERROR PVRSRVAllocHandle(PVRSRV_HANDLE_BASE * psBase,
-				       IMG_HANDLE * phHandle, IMG_VOID * pvData,
-				       PVRSRV_HANDLE_TYPE eType,
-				       PVRSRV_HANDLE_ALLOC_FLAG eFlag);
+PVRSRV_ERROR PVRSRVAllocHandle(PVRSRV_HANDLE_BASE *psBase, IMG_HANDLE *phHandle, IMG_VOID *pvData, PVRSRV_HANDLE_TYPE eType, PVRSRV_HANDLE_ALLOC_FLAG eFlag);
 
-	PVRSRV_ERROR PVRSRVAllocSubHandle(PVRSRV_HANDLE_BASE * psBase,
-					  IMG_HANDLE * phHandle,
-					  IMG_VOID * pvData,
-					  PVRSRV_HANDLE_TYPE eType,
-					  PVRSRV_HANDLE_ALLOC_FLAG eFlag,
-					  IMG_HANDLE hParent);
+PVRSRV_ERROR PVRSRVAllocSubHandle(PVRSRV_HANDLE_BASE *psBase, IMG_HANDLE *phHandle, IMG_VOID *pvData, PVRSRV_HANDLE_TYPE eType, PVRSRV_HANDLE_ALLOC_FLAG eFlag, IMG_HANDLE hParent);
 
-	PVRSRV_ERROR PVRSRVFindHandle(PVRSRV_HANDLE_BASE * psBase,
-				      IMG_HANDLE * phHandle, IMG_VOID * pvData,
-				      PVRSRV_HANDLE_TYPE eType);
+PVRSRV_ERROR PVRSRVFindHandle(PVRSRV_HANDLE_BASE *psBase, IMG_HANDLE *phHandle, IMG_VOID *pvData, PVRSRV_HANDLE_TYPE eType);
 
-	PVRSRV_ERROR PVRSRVLookupHandleAnyType(PVRSRV_HANDLE_BASE * psBase,
-					       IMG_PVOID * ppvData,
-					       PVRSRV_HANDLE_TYPE * peType,
-					       IMG_HANDLE hHandle);
+PVRSRV_ERROR PVRSRVLookupHandleAnyType(PVRSRV_HANDLE_BASE *psBase, IMG_PVOID *ppvData, PVRSRV_HANDLE_TYPE *peType, IMG_HANDLE hHandle);
 
-	PVRSRV_ERROR PVRSRVLookupHandle(PVRSRV_HANDLE_BASE * psBase,
-					IMG_PVOID * ppvData, IMG_HANDLE hHandle,
-					PVRSRV_HANDLE_TYPE eType);
+PVRSRV_ERROR PVRSRVLookupHandle(PVRSRV_HANDLE_BASE *psBase, IMG_PVOID *ppvData, IMG_HANDLE hHandle, PVRSRV_HANDLE_TYPE eType);
 
-	PVRSRV_ERROR PVRSRVLookupSubHandle(PVRSRV_HANDLE_BASE * psBase,
-					   IMG_PVOID * ppvData,
-					   IMG_HANDLE hHandle,
-					   PVRSRV_HANDLE_TYPE eType,
-					   IMG_HANDLE hAncestor);
+PVRSRV_ERROR PVRSRVLookupSubHandle(PVRSRV_HANDLE_BASE *psBase, IMG_PVOID *ppvData, IMG_HANDLE hHandle, PVRSRV_HANDLE_TYPE eType, IMG_HANDLE hAncestor);
 
-	PVRSRV_ERROR PVRSRVGetParentHandle(PVRSRV_HANDLE_BASE * psBase,
-					   IMG_PVOID * phParent,
-					   IMG_HANDLE hHandle,
-					   PVRSRV_HANDLE_TYPE eType);
+PVRSRV_ERROR PVRSRVGetParentHandle(PVRSRV_HANDLE_BASE *psBase, IMG_PVOID *phParent, IMG_HANDLE hHandle, PVRSRV_HANDLE_TYPE eType);
 
-	PVRSRV_ERROR PVRSRVLookupAndReleaseHandle(PVRSRV_HANDLE_BASE * psBase,
-						  IMG_PVOID * ppvData,
-						  IMG_HANDLE hHandle,
-						  PVRSRV_HANDLE_TYPE eType);
+PVRSRV_ERROR PVRSRVLookupAndReleaseHandle(PVRSRV_HANDLE_BASE *psBase, IMG_PVOID *ppvData, IMG_HANDLE hHandle, PVRSRV_HANDLE_TYPE eType);
 
-	PVRSRV_ERROR PVRSRVReleaseHandle(PVRSRV_HANDLE_BASE * psBase,
-					 IMG_HANDLE hHandle,
-					 PVRSRV_HANDLE_TYPE eType);
+PVRSRV_ERROR PVRSRVReleaseHandle(PVRSRV_HANDLE_BASE *psBase, IMG_HANDLE hHandle, PVRSRV_HANDLE_TYPE eType);
 
-	PVRSRV_ERROR PVRSRVNewHandleBatch(PVRSRV_HANDLE_BASE * psBase,
-					  IMG_UINT32 ui32BatchSize);
+PVRSRV_ERROR PVRSRVNewHandleBatch(PVRSRV_HANDLE_BASE *psBase, IMG_UINT32 ui32BatchSize);
 
-	PVRSRV_ERROR PVRSRVCommitHandleBatch(PVRSRV_HANDLE_BASE * psBase);
+PVRSRV_ERROR PVRSRVCommitHandleBatch(PVRSRV_HANDLE_BASE *psBase);
 
-	IMG_VOID PVRSRVReleaseHandleBatch(PVRSRV_HANDLE_BASE * psBase);
+IMG_VOID PVRSRVReleaseHandleBatch(PVRSRV_HANDLE_BASE *psBase);
 
-	PVRSRV_ERROR PVRSRVSetMaxHandle(PVRSRV_HANDLE_BASE * psBase,
-					IMG_UINT32 ui32MaxHandle);
+PVRSRV_ERROR PVRSRVSetMaxHandle(PVRSRV_HANDLE_BASE *psBase, IMG_UINT32 ui32MaxHandle);
 
-	IMG_UINT32 PVRSRVGetMaxHandle(PVRSRV_HANDLE_BASE * psBase);
+IMG_UINT32 PVRSRVGetMaxHandle(PVRSRV_HANDLE_BASE *psBase);
 
-	PVRSRV_ERROR PVRSRVEnableHandlePurging(PVRSRV_HANDLE_BASE * psBase);
+PVRSRV_ERROR PVRSRVEnableHandlePurging(PVRSRV_HANDLE_BASE *psBase);
 
-	PVRSRV_ERROR PVRSRVPurgeHandles(PVRSRV_HANDLE_BASE * psBase);
+PVRSRV_ERROR PVRSRVPurgeHandles(PVRSRV_HANDLE_BASE *psBase);
 
-	PVRSRV_ERROR PVRSRVAllocHandleBase(PVRSRV_HANDLE_BASE ** ppsBase);
+PVRSRV_ERROR PVRSRVAllocHandleBase(PVRSRV_HANDLE_BASE **ppsBase);
 
-	PVRSRV_ERROR PVRSRVFreeHandleBase(PVRSRV_HANDLE_BASE * psBase);
+PVRSRV_ERROR PVRSRVFreeHandleBase(PVRSRV_HANDLE_BASE *psBase);
 
-	PVRSRV_ERROR PVRSRVHandleInit(IMG_VOID);
+PVRSRV_ERROR PVRSRVHandleInit(IMG_VOID);
 
-	PVRSRV_ERROR PVRSRVHandleDeInit(IMG_VOID);
+PVRSRV_ERROR PVRSRVHandleDeInit(IMG_VOID);
 
-#else				/* #ifdef  PVR_SECURE_HANDLES */
+#else	/* #ifdef  PVR_SECURE_HANDLES */
 
 #define KERNEL_HANDLE_BASE IMG_NULL
 
 #ifdef INLINE_IS_PRAGMA
 #pragma inline(PVRSRVAllocHandle)
 #endif
-	static INLINE
-	    PVRSRV_ERROR PVRSRVAllocHandle(PVRSRV_HANDLE_BASE * psBase,
-					   IMG_HANDLE * phHandle,
-					   IMG_VOID * pvData,
-					   PVRSRV_HANDLE_TYPE eType,
-					   PVRSRV_HANDLE_ALLOC_FLAG eFlag) {
-		PVR_UNREFERENCED_PARAMETER(eType);
-		PVR_UNREFERENCED_PARAMETER(eFlag);
-		PVR_UNREFERENCED_PARAMETER(psBase);
+static INLINE
+PVRSRV_ERROR PVRSRVAllocHandle(PVRSRV_HANDLE_BASE *psBase, IMG_HANDLE *phHandle, IMG_VOID *pvData, PVRSRV_HANDLE_TYPE eType, PVRSRV_HANDLE_ALLOC_FLAG eFlag)
+{
+	PVR_UNREFERENCED_PARAMETER(eType);
+	PVR_UNREFERENCED_PARAMETER(eFlag);
+	PVR_UNREFERENCED_PARAMETER(psBase);
 
-		*phHandle = pvData;
-		return PVRSRV_OK;
-	}
+	*phHandle = pvData;
+	return PVRSRV_OK;
+}
+
 #ifdef INLINE_IS_PRAGMA
 #pragma inline(PVRSRVAllocSubHandle)
 #endif
-	static INLINE
-	    PVRSRV_ERROR PVRSRVAllocSubHandle(PVRSRV_HANDLE_BASE * psBase,
-					      IMG_HANDLE * phHandle,
-					      IMG_VOID * pvData,
-					      PVRSRV_HANDLE_TYPE eType,
-					      PVRSRV_HANDLE_ALLOC_FLAG eFlag,
-					      IMG_HANDLE hParent) {
-		PVR_UNREFERENCED_PARAMETER(eType);
-		PVR_UNREFERENCED_PARAMETER(eFlag);
-		PVR_UNREFERENCED_PARAMETER(hParent);
-		PVR_UNREFERENCED_PARAMETER(psBase);
+static INLINE
+PVRSRV_ERROR PVRSRVAllocSubHandle(PVRSRV_HANDLE_BASE *psBase, IMG_HANDLE *phHandle, IMG_VOID *pvData, PVRSRV_HANDLE_TYPE eType, PVRSRV_HANDLE_ALLOC_FLAG eFlag, IMG_HANDLE hParent)
+{
+	PVR_UNREFERENCED_PARAMETER(eType);
+	PVR_UNREFERENCED_PARAMETER(eFlag);
+	PVR_UNREFERENCED_PARAMETER(hParent);
+	PVR_UNREFERENCED_PARAMETER(psBase);
 
-		*phHandle = pvData;
-		return PVRSRV_OK;
-	}
+	*phHandle = pvData;
+	return PVRSRV_OK;
+}
 
 #ifdef INLINE_IS_PRAGMA
 #pragma inline(PVRSRVFindHandle)
 #endif
-	static INLINE
-	    PVRSRV_ERROR PVRSRVFindHandle(PVRSRV_HANDLE_BASE * psBase,
-					  IMG_HANDLE * phHandle,
-					  IMG_VOID * pvData,
-					  PVRSRV_HANDLE_TYPE eType) {
-		PVR_UNREFERENCED_PARAMETER(eType);
-		PVR_UNREFERENCED_PARAMETER(psBase);
+static INLINE
+PVRSRV_ERROR PVRSRVFindHandle(PVRSRV_HANDLE_BASE *psBase, IMG_HANDLE *phHandle, IMG_VOID *pvData, PVRSRV_HANDLE_TYPE eType)
+{
+	PVR_UNREFERENCED_PARAMETER(eType);
+	PVR_UNREFERENCED_PARAMETER(psBase);
 
-		*phHandle = pvData;
-		return PVRSRV_OK;
-	}
+	*phHandle = pvData;
+	return PVRSRV_OK;
+}
 
 #ifdef INLINE_IS_PRAGMA
 #pragma inline(PVRSRVLookupHandleAnyType)
 #endif
-	static INLINE
-	    PVRSRV_ERROR PVRSRVLookupHandleAnyType(PVRSRV_HANDLE_BASE * psBase,
-						   IMG_PVOID * ppvData,
-						   PVRSRV_HANDLE_TYPE * peType,
-						   IMG_HANDLE hHandle) {
-		PVR_UNREFERENCED_PARAMETER(psBase);
-		/*
-		 * Unlike the other functions here, the returned results will need
-		 * to be handled differently for the secure and non-secure cases.
-		 */
-		*peType = PVRSRV_HANDLE_TYPE_NONE;
+static INLINE
+PVRSRV_ERROR PVRSRVLookupHandleAnyType(PVRSRV_HANDLE_BASE *psBase, IMG_PVOID *ppvData, PVRSRV_HANDLE_TYPE *peType, IMG_HANDLE hHandle)
+{
+	PVR_UNREFERENCED_PARAMETER(psBase);
+	/*
+	 * Unlike the other functions here, the returned results will need
+	 * to be handled differently for the secure and non-secure cases.
+	 */
+	*peType = PVRSRV_HANDLE_TYPE_NONE;
 
-		*ppvData = hHandle;
-		return PVRSRV_OK;
-	}
+	*ppvData = hHandle;
+	return PVRSRV_OK;
+}
 
 #ifdef INLINE_IS_PRAGMA
 #pragma inline(PVRSRVLookupHandle)
 #endif
-	static INLINE
-	    PVRSRV_ERROR PVRSRVLookupHandle(PVRSRV_HANDLE_BASE * psBase,
-					    IMG_PVOID * ppvData,
-					    IMG_HANDLE hHandle,
-					    PVRSRV_HANDLE_TYPE eType) {
-		PVR_UNREFERENCED_PARAMETER(psBase);
-		PVR_UNREFERENCED_PARAMETER(eType);
+static INLINE
+PVRSRV_ERROR PVRSRVLookupHandle(PVRSRV_HANDLE_BASE *psBase, IMG_PVOID *ppvData, IMG_HANDLE hHandle, PVRSRV_HANDLE_TYPE eType)
+{
+	PVR_UNREFERENCED_PARAMETER(psBase);
+	PVR_UNREFERENCED_PARAMETER(eType);
 
-		*ppvData = hHandle;
-		return PVRSRV_OK;
-	}
+	*ppvData = hHandle;
+	return PVRSRV_OK;
+}
 
 #ifdef INLINE_IS_PRAGMA
 #pragma inline(PVRSRVLookupSubHandle)
 #endif
-	static INLINE
-	    PVRSRV_ERROR PVRSRVLookupSubHandle(PVRSRV_HANDLE_BASE * psBase,
-					       IMG_PVOID * ppvData,
-					       IMG_HANDLE hHandle,
-					       PVRSRV_HANDLE_TYPE eType,
-					       IMG_HANDLE hAncestor) {
-		PVR_UNREFERENCED_PARAMETER(psBase);
-		PVR_UNREFERENCED_PARAMETER(eType);
-		PVR_UNREFERENCED_PARAMETER(hAncestor);
+static INLINE
+PVRSRV_ERROR PVRSRVLookupSubHandle(PVRSRV_HANDLE_BASE *psBase, IMG_PVOID *ppvData, IMG_HANDLE hHandle, PVRSRV_HANDLE_TYPE eType, IMG_HANDLE hAncestor)
+{
+	PVR_UNREFERENCED_PARAMETER(psBase);
+	PVR_UNREFERENCED_PARAMETER(eType);
+	PVR_UNREFERENCED_PARAMETER(hAncestor);
 
-		*ppvData = hHandle;
-		return PVRSRV_OK;
-	}
+	*ppvData = hHandle;
+	return PVRSRV_OK;
+}
 
 #ifdef INLINE_IS_PRAGMA
 #pragma inline(PVRSRVGetParentHandle)
 #endif
-	static INLINE
-	    PVRSRV_ERROR PVRSRVGetParentHandle(PVRSRV_HANDLE_BASE * psBase,
-					       IMG_PVOID * phParent,
-					       IMG_HANDLE hHandle,
-					       PVRSRV_HANDLE_TYPE eType) {
-		PVR_UNREFERENCED_PARAMETER(psBase);
-		PVR_UNREFERENCED_PARAMETER(eType);
-		PVR_UNREFERENCED_PARAMETER(hHandle);
+static INLINE
+PVRSRV_ERROR PVRSRVGetParentHandle(PVRSRV_HANDLE_BASE *psBase, IMG_PVOID *phParent, IMG_HANDLE hHandle, PVRSRV_HANDLE_TYPE eType)
+{
+	PVR_UNREFERENCED_PARAMETER(psBase);
+	PVR_UNREFERENCED_PARAMETER(eType);
+	PVR_UNREFERENCED_PARAMETER(hHandle);
 
-		*phParent = IMG_NULL;
+	*phParent = IMG_NULL;
 
-		return PVRSRV_OK;
-	}
+	return PVRSRV_OK;
+}
 
 #ifdef INLINE_IS_PRAGMA
 #pragma inline(PVRSRVLookupAndReleaseHandle)
 #endif
-	static INLINE
-	    PVRSRV_ERROR PVRSRVLookupAndReleaseHandle(PVRSRV_HANDLE_BASE *
-						      psBase,
-						      IMG_PVOID * ppvData,
-						      IMG_HANDLE hHandle,
-						      PVRSRV_HANDLE_TYPE eType)
-	{
-		PVR_UNREFERENCED_PARAMETER(eType);
-		PVR_UNREFERENCED_PARAMETER(psBase);
+static INLINE
+PVRSRV_ERROR PVRSRVLookupAndReleaseHandle(PVRSRV_HANDLE_BASE *psBase, IMG_PVOID *ppvData, IMG_HANDLE hHandle, PVRSRV_HANDLE_TYPE eType)
+{
+	PVR_UNREFERENCED_PARAMETER(eType);
+	PVR_UNREFERENCED_PARAMETER(psBase);
 
-		*ppvData = hHandle;
-		return PVRSRV_OK;
-	}
+	*ppvData = hHandle;
+	return PVRSRV_OK;
+}
 
 #ifdef INLINE_IS_PRAGMA
 #pragma inline(PVRSRVReleaseHandle)
 #endif
-	static INLINE
-	    PVRSRV_ERROR PVRSRVReleaseHandle(PVRSRV_HANDLE_BASE * psBase,
-					     IMG_HANDLE hHandle,
-					     PVRSRV_HANDLE_TYPE eType) {
-		PVR_UNREFERENCED_PARAMETER(hHandle);
-		PVR_UNREFERENCED_PARAMETER(eType);
-		PVR_UNREFERENCED_PARAMETER(psBase);
+static INLINE
+PVRSRV_ERROR PVRSRVReleaseHandle(PVRSRV_HANDLE_BASE *psBase, IMG_HANDLE hHandle, PVRSRV_HANDLE_TYPE eType)
+{
+	PVR_UNREFERENCED_PARAMETER(hHandle);
+	PVR_UNREFERENCED_PARAMETER(eType);
+	PVR_UNREFERENCED_PARAMETER(psBase);
 
-		return PVRSRV_OK;
-	}
+	return PVRSRV_OK;
+}
 
 #ifdef INLINE_IS_PRAGMA
 #pragma inline(PVRSRVNewHandleBatch)
 #endif
-	static INLINE
-	    PVRSRV_ERROR PVRSRVNewHandleBatch(PVRSRV_HANDLE_BASE * psBase,
-					      IMG_UINT32 ui32BatchSize) {
-		PVR_UNREFERENCED_PARAMETER(psBase);
-		PVR_UNREFERENCED_PARAMETER(ui32BatchSize);
+static INLINE
+PVRSRV_ERROR PVRSRVNewHandleBatch(PVRSRV_HANDLE_BASE *psBase, IMG_UINT32 ui32BatchSize)
+{
+	PVR_UNREFERENCED_PARAMETER(psBase);
+	PVR_UNREFERENCED_PARAMETER(ui32BatchSize);
 
-		return PVRSRV_OK;
-	}
+	return PVRSRV_OK;
+}
 
 #ifdef INLINE_IS_PRAGMA
 #pragma inline(PVRSRVCommitHandleBatch)
 #endif
-	static INLINE
-	    PVRSRV_ERROR PVRSRVCommitHandleBatch(PVRSRV_HANDLE_BASE * psBase) {
-		PVR_UNREFERENCED_PARAMETER(psBase);
+static INLINE
+PVRSRV_ERROR PVRSRVCommitHandleBatch(PVRSRV_HANDLE_BASE *psBase)
+{
+	PVR_UNREFERENCED_PARAMETER(psBase);
 
-		return PVRSRV_OK;
-	}
+	return PVRSRV_OK;
+}
 
 #ifdef INLINE_IS_PRAGMA
 #pragma inline(PVRSRVReleaseHandleBatch)
 #endif
-	static INLINE
-	    IMG_VOID PVRSRVReleaseHandleBatch(PVRSRV_HANDLE_BASE * psBase) {
-		PVR_UNREFERENCED_PARAMETER(psBase);
-	}
+static INLINE
+IMG_VOID PVRSRVReleaseHandleBatch(PVRSRV_HANDLE_BASE *psBase)
+{
+	PVR_UNREFERENCED_PARAMETER(psBase);
+}
 
 #ifdef INLINE_IS_PRAGMA
 #pragma inline(PVRSRVSetMaxHandle)
 #endif
-	static INLINE
-	    PVRSRV_ERROR PVRSRVSetMaxHandle(PVRSRV_HANDLE_BASE * psBase,
-					    IMG_UINT32 ui32MaxHandle) {
-		PVR_UNREFERENCED_PARAMETER(psBase);
-		PVR_UNREFERENCED_PARAMETER(ui32MaxHandle);
+static INLINE
+PVRSRV_ERROR PVRSRVSetMaxHandle(PVRSRV_HANDLE_BASE *psBase, IMG_UINT32 ui32MaxHandle)
+{
+	PVR_UNREFERENCED_PARAMETER(psBase);
+	PVR_UNREFERENCED_PARAMETER(ui32MaxHandle);
 
-		return PVRSRV_ERROR_NOT_SUPPORTED;
-	}
+	return PVRSRV_ERROR_NOT_SUPPORTED;
+}
 
 #ifdef INLINE_IS_PRAGMA
 #pragma inline(PVRSRVGetMaxHandle)
 #endif
-	static INLINE IMG_UINT32 PVRSRVGetMaxHandle(PVRSRV_HANDLE_BASE * psBase) {
-		PVR_UNREFERENCED_PARAMETER(psBase);
+static INLINE
+IMG_UINT32 PVRSRVGetMaxHandle(PVRSRV_HANDLE_BASE *psBase)
+{
+	PVR_UNREFERENCED_PARAMETER(psBase);
 
-		return 0;
-	}
+	return 0;
+}
 
 #ifdef INLINE_IS_PRAGMA
 #pragma inline(PVRSRVEnableHandlePurging)
 #endif
-	static INLINE
-	    PVRSRV_ERROR PVRSRVEnableHandlePurging(PVRSRV_HANDLE_BASE * psBase)
-	{
-		PVR_UNREFERENCED_PARAMETER(psBase);
+static INLINE
+PVRSRV_ERROR PVRSRVEnableHandlePurging(PVRSRV_HANDLE_BASE *psBase)
+{
+	PVR_UNREFERENCED_PARAMETER(psBase);
 
-		return PVRSRV_OK;
-	}
+	return PVRSRV_OK;
+}
 
 #ifdef INLINE_IS_PRAGMA
 #pragma inline(PVRSRVPurgeHandles)
 #endif
-	static INLINE
-	    PVRSRV_ERROR PVRSRVPurgeHandles(PVRSRV_HANDLE_BASE * psBase) {
-		PVR_UNREFERENCED_PARAMETER(psBase);
+static INLINE
+PVRSRV_ERROR PVRSRVPurgeHandles(PVRSRV_HANDLE_BASE *psBase)
+{
+	PVR_UNREFERENCED_PARAMETER(psBase);
 
-		return PVRSRV_OK;
-	}
+	return PVRSRV_OK;
+}
 
 #ifdef INLINE_IS_PRAGMA
 #pragma inline(PVRSRVAllocHandleBase)
 #endif
-	static INLINE
-	    PVRSRV_ERROR PVRSRVAllocHandleBase(PVRSRV_HANDLE_BASE ** ppsBase) {
-		*ppsBase = IMG_NULL;
+static INLINE
+PVRSRV_ERROR PVRSRVAllocHandleBase(PVRSRV_HANDLE_BASE **ppsBase)
+{
+	*ppsBase = IMG_NULL;
 
-		return PVRSRV_OK;
-	}
+	return PVRSRV_OK;
+}
 
 #ifdef INLINE_IS_PRAGMA
 #pragma inline(PVRSRVFreeHandleBase)
 #endif
-	static INLINE
-	    PVRSRV_ERROR PVRSRVFreeHandleBase(PVRSRV_HANDLE_BASE * psBase) {
-		PVR_UNREFERENCED_PARAMETER(psBase);
+static INLINE
+PVRSRV_ERROR PVRSRVFreeHandleBase(PVRSRV_HANDLE_BASE *psBase)
+{
+	PVR_UNREFERENCED_PARAMETER(psBase);
 
-		return PVRSRV_OK;
-	}
+	return PVRSRV_OK;
+}
 
 #ifdef INLINE_IS_PRAGMA
 #pragma inline(PVRSRVHandleInit)
 #endif
-	static INLINE PVRSRV_ERROR PVRSRVHandleInit(IMG_VOID) {
-		return PVRSRV_OK;
-	}
+static INLINE
+PVRSRV_ERROR PVRSRVHandleInit(IMG_VOID)
+{
+	return PVRSRV_OK;
+}
 
 #ifdef INLINE_IS_PRAGMA
 #pragma inline(PVRSRVHandleDeInit)
 #endif
-	static INLINE PVRSRV_ERROR PVRSRVHandleDeInit(IMG_VOID) {
-		return PVRSRV_OK;
-	}
+static INLINE
+PVRSRV_ERROR PVRSRVHandleDeInit(IMG_VOID)
+{
+	return PVRSRV_OK;
+}
 
-#endif				/* #ifdef  PVR_SECURE_HANDLES */
+#endif	/* #ifdef  PVR_SECURE_HANDLES */
 
 /*
  * Versions of PVRSRVAllocHandle and PVRSRVAllocSubHandle with no return
@@ -593,7 +575,7 @@ extern "C" {
 }
 #endif
 
-#endif				/* __HANDLE_H__ */
+#endif /* __HANDLE_H__ */
 
 /******************************************************************************
  End of file (handle.h)

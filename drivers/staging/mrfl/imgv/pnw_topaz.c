@@ -39,6 +39,7 @@
 #include <linux/delay.h>
 
 #define TOPAZ_MAX_COMMAND_IN_QUEUE 0x1000
+//#define SYNC_FOR_EACH_COMMAND
 /* static function define */
 static int pnw_topaz_deliver_command(struct drm_device *dev,
 				     struct ttm_buffer_object *cmd_buffer,
@@ -116,6 +117,7 @@ bool pnw_topaz_interrupt(void *pvData)
 	return true;
 }
 
+//#define PSB_DEBUG_GENERAL DRM_ERROR
 static int pnw_submit_encode_cmdbuf(struct drm_device *dev,
 				    struct ttm_buffer_object *cmd_buffer,
 				    unsigned long cmd_offset,
@@ -205,8 +207,8 @@ static int pnw_submit_encode_cmdbuf(struct drm_device *dev,
 			return ret;
 		}
 	} else {
-		PSB_DEBUG_GENERAL("TOPAZ: queue command,sequence %08x\n",
-				sequence);
+		PSB_DEBUG_GENERAL("TOPAZ: queue command,sequence %08x \n",
+				  sequence);
 		cmd = NULL;
 
 		spin_unlock_irqrestore(&topaz_priv->topaz_lock, irq_flags);
@@ -297,7 +299,7 @@ int pnw_cmdbuf_video(struct drm_file *priv,
 }
 
 int pnw_wait_on_sync(struct drm_psb_private *dev_priv,
-		     uint32_t sync_seq, uint32_t *sync_p)
+		     uint32_t sync_seq, uint32_t * sync_p)
 {
 	int count = 10000;
 	if (sync_p == NULL) {
@@ -454,7 +456,7 @@ pnw_topaz_send(struct drm_device *dev, void *cmd,
 	while (cmd_size > 0) {
 		cur_cmd_header = (struct topaz_cmd_header *)command;
 		cur_cmd_id = cur_cmd_header->id;
-		PSB_DEBUG_GENERAL("TOPAZ: %s:\n", cmd_to_string(cur_cmd_id));
+		PSB_DEBUG_GENERAL("TOPAZ: %s: \n", cmd_to_string(cur_cmd_id));
 
 		switch (cur_cmd_id) {
 		case MTX_CMDID_SW_NEW_CODEC:
@@ -479,13 +481,13 @@ pnw_topaz_send(struct drm_device *dev, void *cmd,
 			break;
 
 		case MTX_CMDID_SW_ENTER_LOWPOWER:
-			PSB_DEBUG_GENERAL("TOPAZ: enter lowpower....\n");
+			PSB_DEBUG_GENERAL("TOPAZ: enter lowpower.... \n");
 			PSB_DEBUG_GENERAL("XXX: implement it\n");
 			cur_cmd_size = 1;
 			break;
 
 		case MTX_CMDID_SW_LEAVE_LOWPOWER:
-			PSB_DEBUG_GENERAL("TOPAZ: leave lowpower...\n");
+			PSB_DEBUG_GENERAL("TOPAZ: leave lowpower... \n");
 			PSB_DEBUG_GENERAL("XXX: implement it\n");
 			cur_cmd_size = 1;
 			break;
@@ -565,10 +567,9 @@ pnw_topaz_send(struct drm_device *dev, void *cmd,
 					  "0x%08x,0x%08x,0x%08x,0x%08x\n",
 					  cur_cmd_header->val,
 					  *((uint32_t *) (command) + 1),
-					  TOPAZ_MTX_WB_OFFSET(topaz_priv->
-							      topaz_wb_offset,
-							      cur_cmd_header->
-							      core),
+					  TOPAZ_MTX_WB_OFFSET
+					  (topaz_priv->topaz_wb_offset,
+					   cur_cmd_header->core),
 					  cur_cmd_header->seq);
 
 			TOPAZ_MULTICORE_WRITE32(TOPAZSC_CR_MULTICORE_CMD_FIFO_0,
@@ -576,9 +577,9 @@ pnw_topaz_send(struct drm_device *dev, void *cmd,
 			TOPAZ_MULTICORE_WRITE32(TOPAZSC_CR_MULTICORE_CMD_FIFO_0,
 						*((uint32_t *) (command) + 1));
 			TOPAZ_MULTICORE_WRITE32(TOPAZSC_CR_MULTICORE_CMD_FIFO_0,
-						TOPAZ_MTX_WB_OFFSET(topaz_priv->
-							topaz_wb_offset,
-							cur_cmd_header->core));
+						TOPAZ_MTX_WB_OFFSET
+						(topaz_priv->topaz_wb_offset,
+						 cur_cmd_header->core));
 			TOPAZ_MULTICORE_WRITE32(TOPAZSC_CR_MULTICORE_CMD_FIFO_0,
 						cur_cmd_header->seq);
 
@@ -598,7 +599,7 @@ pnw_topaz_send(struct drm_device *dev, void *cmd,
 			goto out;
 		}
 
-		/*cur_cmd_size indicate the number of words of cur command*/
+		/*cur_cmd_size indicate the number of words of current command */
 		command += cur_cmd_size * 4;
 		cmd_size -= cur_cmd_size * 4;
 	}
@@ -640,10 +641,9 @@ pnw_topaz_send(struct drm_device *dev, void *cmd,
 	topaz_priv->topaz_busy = 0;
 #else
 	PSB_DEBUG_GENERAL("Kick command with sequence %x\n", sync_seq);
-	/* This may be reset in topaz_setup_fw */
-	topaz_priv->topaz_busy = 1;
+	topaz_priv->topaz_busy = 1;	/* This may be reset in topaz_setup_fw */
 	pnw_topaz_kick_null_cmd(dev_priv, 0,
-			topaz_priv->topaz_sync_offset, sync_seq, 1);
+				topaz_priv->topaz_sync_offset, sync_seq, 1);
 #endif
  out:
 	return ret;

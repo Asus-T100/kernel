@@ -11,7 +11,7 @@
  * more details.
  *
  * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
+ * this program; if not, write to the Free Software Foundation, Inc., 
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
  *
  * Authors:
@@ -34,28 +34,28 @@ static const struct sysfs_ops umevent_obj_sysfs_ops = {
  */
 static struct umevent_attribute data_0 =
 __ATTR(data_0_val, 0666, psb_umevent_attr_show_imp,
-	psb_umevent_attr_store_imp);
+       psb_umevent_attr_store_imp);
 static struct umevent_attribute data_1 =
 __ATTR(data_1_val, 0666, psb_umevent_attr_show_imp,
-	psb_umevent_attr_store_imp);
+       psb_umevent_attr_store_imp);
 static struct umevent_attribute data_2 =
 __ATTR(data_2_val, 0666, psb_umevent_attr_show_imp,
-	psb_umevent_attr_store_imp);
+       psb_umevent_attr_store_imp);
 static struct umevent_attribute data_3 =
 __ATTR(data_3_val, 0666, psb_umevent_attr_show_imp,
-	psb_umevent_attr_store_imp);
+       psb_umevent_attr_store_imp);
 static struct umevent_attribute data_4 =
 __ATTR(data_4_val, 0666, psb_umevent_attr_show_imp,
-	psb_umevent_attr_store_imp);
+       psb_umevent_attr_store_imp);
 static struct umevent_attribute data_5 =
 __ATTR(data_5_val, 0666, psb_umevent_attr_show_imp,
-	psb_umevent_attr_store_imp);
+       psb_umevent_attr_store_imp);
 static struct umevent_attribute data_6 =
 __ATTR(data_6_val, 0666, psb_umevent_attr_show_imp,
-	psb_umevent_attr_store_imp);
+       psb_umevent_attr_store_imp);
 static struct umevent_attribute data_7 =
 __ATTR(data_7_val, 0666, psb_umevent_attr_show_imp,
-	psb_umevent_attr_store_imp);
+       psb_umevent_attr_store_imp);
 /**
  * define the structure used to seed our ktype.
  *
@@ -69,7 +69,7 @@ static struct attribute *umevent_obj_default_attrs[] = {
 	&data_5.attr,
 	&data_6.attr,
 	&data_7.attr,
-	NULL,	/* need to NULL terminate the list of attributes */
+	NULL,			/* need to NULL terminate the list of attributes */
 };
 
 /**
@@ -112,8 +112,8 @@ ssize_t psb_umevent_attr_show(struct kobject *kobj,
  * @len: character count
  *
  */
-ssize_t psb_umevent_attr_store(struct kobject *kobj,
-			       struct attribute *attr,
+ssize_t psb_umevent_attr_store(struct kobject * kobj,
+			       struct attribute * attr,
 			       const char *buf, size_t len)
 {
 	struct umevent_attribute *attribute;
@@ -182,8 +182,8 @@ ssize_t psb_umevent_attr_show_imp(struct umevent_obj
  *
  */
 ssize_t psb_umevent_attr_store_imp(struct umevent_obj
-				   *any_umevent_obj,
-				   struct umevent_attribute *attr,
+				   * any_umevent_obj,
+				   struct umevent_attribute * attr,
 				   const char *buf, size_t count)
 {
 	int var;
@@ -496,4 +496,11 @@ void psb_umevent_debug_dump_list(struct umevent_list *list)
 		i++;
 	}
 	spin_unlock_irqrestore(&list->list_lock, flags);
+}
+
+void psb_sysfs_uevent(struct drm_device *dev, char *event_string)
+{
+	char *envp[] = { event_string, NULL };
+
+	kobject_uevent_env(&dev->primary->kdev.kobj, KOBJ_CHANGE, envp);
 }

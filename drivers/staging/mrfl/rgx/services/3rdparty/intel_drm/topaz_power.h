@@ -26,7 +26,7 @@
 #include "power.h"
 
 /* function define */
-PVRSRV_ERROR TOPAZRegisterDevice(PVRSRV_DEVICE_NODE * psDeviceNode);
-PVRSRV_ERROR TOPAZUnregisterDevice(PVRSRV_DEVICE_NODE * psDeviceNode);
+PVRSRV_ERROR TOPAZRegisterDevice(PVRSRV_DEVICE_NODE *psDeviceNode);
+PVRSRV_ERROR TOPAZUnregisterDevice (PVRSRV_DEVICE_NODE *psDeviceNode);
 
-#endif				/* !TOPAZ_POWER_H_ */
+#endif /* !TOPAZ_POWER_H_ */

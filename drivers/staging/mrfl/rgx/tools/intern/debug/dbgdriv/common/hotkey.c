@@ -1,36 +1,58 @@
-									    /*************************************************************************//*!
-									       @File
-									       @Title          32 Bit Highlander kernel manager VxD Services
-									       @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
-									       @License        Strictly Confidential.
-    *//**************************************************************************/
+/*************************************************************************/ /*!
+@File
+@Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
+@License        Dual MIT/GPLv2
+
+The contents of this file are subject to the MIT license as set out below.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+Alternatively, the contents of this file may be used under the terms of
+the GNU General Public License Version 2 ("GPL") in which case the provisions
+of GPL are applicable instead of those above.
+
+If you wish to allow use of your version of this file only under the terms of
+GPL, and not to allow others to use your version of this file under the terms
+of the MIT license, indicate your decision by deleting the provisions above
+and replace them with the notice and other provisions required by GPL as set
+out in the file called "GPL-COPYING" included in this distribution. If you do
+not delete the provisions above, a recipient may use your version of this file
+under the terms of either the MIT license or GPL.
+
+This License is also included in this distribution in the file called
+"MIT-COPYING".
+
+EXCEPT AS OTHERWISE STATED IN A NEGOTIATED AGREEMENT: (A) THE SOFTWARE IS
+PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING
+BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+PURPOSE AND NONINFRINGEMENT; AND (B) IN NO EVENT SHALL THE AUTHORS OR
+COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+*/ /**************************************************************************/
 
 #if defined(_MSC_VER)
 #pragma  warning(disable:4201)
 #pragma  warning(disable:4214)
 #pragma  warning(disable:4115)
 #pragma  warning(disable:4514)
-#endif				/* defined(_MSC_VER) */
+#endif /* defined(_MSC_VER) */
 
 #if defined(UNDER_CE)
 #include <windows.h>
 #include <ceddk.h>
 #else
-#if defined(WIN9X)
-#define VXDBUILD
-#define WANTVXDWRAPS
-#include <basedef.h>
-#include <vmm.h>
-#include <vwin32.h>
-#include <vmmreg.h>
-#include <regstr.h>
-#include <vxdwraps.h>
-//#include "vxdutil.h"
-#else
 #if !defined(LINUX) && !defined(__SYMBIAN32__)
 #include <ntddk.h>
 #include <windef.h>
-#endif
 #endif
 #endif
 
@@ -44,25 +66,25 @@
 #if defined(_MSC_VER)
 #pragma  warning(default:4214)
 #pragma  warning(default:4115)
-#endif				/* defined(_MSC_VER) */
+#endif /* defined(_MSC_VER) */
+
+
 
 /*****************************************************************************
  Global vars
 *****************************************************************************/
-#ifdef WIN9X
-#pragma VxD_LOCKED_DATA_SEG
-#endif
-
-IMG_UINT32 g_ui32HotKeyFrame = 0xFFFFFFFF;
-IMG_BOOL g_bHotKeyPressed = IMG_FALSE;
-IMG_BOOL g_bHotKeyRegistered = IMG_FALSE;
+IMG_UINT32	g_ui32HotKeyFrame = 0xFFFFFFFF;
+IMG_BOOL	g_bHotKeyPressed = IMG_FALSE;
+IMG_BOOL	g_bHotKeyRegistered = IMG_FALSE;
 
 /* Hotkey stuff */
-PRIVATEHOTKEYDATA g_PrivateHotKeyData;
+PRIVATEHOTKEYDATA    g_PrivateHotKeyData;
+
 
 /*****************************************************************************
  Code
 *****************************************************************************/
+
 
 /******************************************************************************
  * Function Name: ReadInHotKeys
@@ -76,30 +98,24 @@ PRIVATEHOTKEYDATA g_PrivateHotKeyData;
  *****************************************************************************/
 IMG_VOID ReadInHotKeys(IMG_VOID)
 {
-//      PSTR    pszRegPath = "SOFTWARE\\VideoLogic\\DEBUG\\Streams";
-//      VMMHKEY hKey;
-
-	g_PrivateHotKeyData.ui32ScanCode = 0x58;	/* F12  */
+	g_PrivateHotKeyData.ui32ScanCode = 0x58;	/* F12	*/
 	g_PrivateHotKeyData.ui32ShiftState = 0x0;
 
 	/*
-	   Find buffer names etc..
-	 */
+		Find buffer names etc..
+	*/
 #if 0
-	if (_RegOpenKey(HKEY_LOCAL_MACHINE, pszRegPath, &hKey) == ERROR_SUCCESS) {
+	if (_RegOpenKey(HKEY_LOCAL_MACHINE,pszRegPath,&hKey) == ERROR_SUCCESS)
+	{
 		/*
-		   Read scan code and shift state.
-		 */
-		QueryReg(hKey, "ui32ScanCode",
-			 &g_PrivateHotKeyData.ui32ScanCode);
-		QueryReg(hKey, "ui32ShiftState",
-			 &g_PrivateHotKeyData.ui32ShiftState);
+			Read scan code and shift state.
+		*/
+		QueryReg(hKey,"ui32ScanCode",&g_PrivateHotKeyData.ui32ScanCode);
+		QueryReg(hKey,"ui32ShiftState",&g_PrivateHotKeyData.ui32ShiftState);
 	}
 #else
-	HostReadRegistryDWORDFromString("DEBUG\\Streams", "ui32ScanCode",
-					&g_PrivateHotKeyData.ui32ScanCode);
-	HostReadRegistryDWORDFromString("DEBUG\\Streams", "ui32ShiftState",
-					&g_PrivateHotKeyData.ui32ShiftState);
+	HostReadRegistryDWORDFromString("DEBUG\\Streams", "ui32ScanCode"  , &g_PrivateHotKeyData.ui32ScanCode);
+	HostReadRegistryDWORDFromString("DEBUG\\Streams", "ui32ShiftState", &g_PrivateHotKeyData.ui32ShiftState);
 #endif
 }
 
@@ -115,25 +131,26 @@ IMG_VOID ReadInHotKeys(IMG_VOID)
  *****************************************************************************/
 IMG_VOID RegisterKeyPressed(IMG_UINT32 dwui32ScanCode, PHOTKEYINFO pInfo)
 {
-	PDBG_STREAM psStream;
+	PDBG_STREAM	psStream;
 
 	PVR_UNREFERENCED_PARAMETER(pInfo);
 
-	if (dwui32ScanCode == g_PrivateHotKeyData.ui32ScanCode) {
-		PVR_DPF((PVR_DBG_MESSAGE, "PDUMP Hotkey pressed !\n"));
+	if (dwui32ScanCode == g_PrivateHotKeyData.ui32ScanCode)
+	{
+		PVR_DPF((PVR_DBG_MESSAGE,"PDUMP Hotkey pressed !\n"));
 
-		psStream =
-		    (PDBG_STREAM) g_PrivateHotKeyData.sHotKeyInfo.pvStream;
+		psStream = (PDBG_STREAM) g_PrivateHotKeyData.sHotKeyInfo.pvStream;
 
-		if (!g_bHotKeyPressed) {
+		if (!g_bHotKeyPressed)
+		{
 			/*
-			   Capture the next frame.
-			 */
+				Capture the next frame.
+			*/
 			g_ui32HotKeyFrame = psStream->psCtrl->ui32Current + 2;
 
 			/*
-			   Do the flag.
-			 */
+				Do the flag.
+			*/
 			g_bHotKeyPressed = IMG_TRUE;
 		}
 	}
@@ -152,27 +169,28 @@ IMG_VOID RegisterKeyPressed(IMG_UINT32 dwui32ScanCode, PHOTKEYINFO pInfo)
 IMG_VOID ActivateHotKeys(PDBG_STREAM psStream)
 {
 	/*
-	   Setup hotkeys.
-	 */
+		Setup hotkeys.
+	*/
 	ReadInHotKeys();
 
 	/*
-	   Has it already been allocated.
-	 */
-	if (!g_PrivateHotKeyData.sHotKeyInfo.hHotKey) {
-		if (g_PrivateHotKeyData.ui32ScanCode != 0) {
-			PVR_DPF((PVR_DBG_MESSAGE,
-				 "Activate HotKey for PDUMP.\n"));
+		Has it already been allocated.
+	*/
+	if (!g_PrivateHotKeyData.sHotKeyInfo.hHotKey)
+	{
+		if (g_PrivateHotKeyData.ui32ScanCode != 0)
+		{
+			PVR_DPF((PVR_DBG_MESSAGE,"Activate HotKey for PDUMP.\n"));
 
 			/*
-			   Add in stream data.
-			 */
+				Add in stream data.
+			*/
 			g_PrivateHotKeyData.sHotKeyInfo.pvStream = psStream;
 
-			DefineHotKey(g_PrivateHotKeyData.ui32ScanCode,
-				     g_PrivateHotKeyData.ui32ShiftState,
-				     &g_PrivateHotKeyData.sHotKeyInfo);
-		} else {
+			DefineHotKey(g_PrivateHotKeyData.ui32ScanCode, g_PrivateHotKeyData.ui32ShiftState, &g_PrivateHotKeyData.sHotKeyInfo);
+		}
+		else
+		{
 			g_PrivateHotKeyData.sHotKeyInfo.hHotKey = 0;
 		}
 	}
@@ -190,13 +208,15 @@ IMG_VOID ActivateHotKeys(PDBG_STREAM psStream)
  *****************************************************************************/
 IMG_VOID DeactivateHotKeys(IMG_VOID)
 {
-	if (g_PrivateHotKeyData.sHotKeyInfo.hHotKey != 0) {
-		PVR_DPF((PVR_DBG_MESSAGE, "Deactivate HotKey.\n"));
+	if (g_PrivateHotKeyData.sHotKeyInfo.hHotKey != 0)
+	{
+		PVR_DPF((PVR_DBG_MESSAGE,"Deactivate HotKey.\n"));
 
 		RemoveHotKey(g_PrivateHotKeyData.sHotKeyInfo.hHotKey);
 		g_PrivateHotKeyData.sHotKeyInfo.hHotKey = 0;
 	}
 }
+
 
 /*****************************************************************************
  End of file (HOTKEY.C)

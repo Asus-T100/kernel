@@ -11,7 +11,7 @@
  * more details.
  *
  * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
+ * this program; if not, write to the Free Software Foundation, Inc., 
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
  *
  * Authors:
@@ -21,16 +21,16 @@
 #ifndef MDFLD_HDCP_IF_H
 #define MDFLD_HDCP_IF_H
 
-/* Constants */
+// Constants
 #define CP_HDCP_KEY_SELECTION_VECTOR_SIZE       5
 
-/* Protection level (HDCP) */
+// Protection level (HDCP)
 typedef enum _cp_protection_level_hdcp {
 	CP_PROTECTION_LEVEL_HDCP_OFF = 0,
 	CP_PROTECTION_LEVEL_HDCP_ON = 1,
 } cp_protection_level_hdcp_t;
 
-/* Protection type */
+// Protection type
 typedef enum _cp_protection_type {
 	CP_PROTECTION_TYPE_UNKNOWN = 0x80000000,
 	CP_PROTECTION_TYPE_NONE = 0x00000000,
@@ -49,28 +49,28 @@ typedef enum _cp_status {
 	STATUS_INVALID_PARAMETER = 0x00000006,
 } cp_status_t;
 
-/* KSV */
+// KSV
 typedef struct _ksv_t {
 	uint8_t ab_ksv[CP_HDCP_KEY_SELECTION_VECTOR_SIZE];
 } ksv_t;
 
-/* HDCP */
+// HDCP
 typedef struct _hdcp_data {
-	uint32_t ksv_list_length;	/* Length of the revoked KSV list (set) */
-	/* ksv_t                       aksv;               // KSV of attached device */
-	/* ksv_t                       bksv;               // KSV of attached device */
-	ksv_t *ksv_list;	/* List of revoked KSVs (set) */
-	int perform_second_step;	/* True when the second authentication step is requested (get) */
-	int is_repeater;	/* True when a repeater is attached to the connector (get and set) */
+	uint32_t ksv_list_length;	// Length of the revoked KSV list (set)
+	//ksv_t                       aksv;               // KSV of attached device
+	//ksv_t                       bksv;               // KSV of attached device
+	ksv_t *ksv_list;	// List of revoked KSVs (set)
+	int perform_second_step;	// True when the second authentication step is requested (get)
+	int is_repeater;	// True when a repeater is attached to the connector (get and set)
 } hdcp_data_t;
 
-/* CP Parameters */
+// CP Parameters
 typedef struct _cp_parameters {
-	uint32_t protect_type_mask;	/* Protection type mask (get and set) */
-	uint32_t level;		/* Protection level (get and set) */
-	hdcp_data_t hdcp;	/* HDCP specific data (get and set) */
+	uint32_t protect_type_mask;	// Protection type mask (get and set)
+	uint32_t level;		// Protection level (get and set)
+	hdcp_data_t hdcp;	// HDCP specific data (get and set)
 } cp_parameters_t;
 
-extern uint32_t hdcp_set_cp_data(cp_parameters_t *cp);
-extern uint32_t hdcp_get_cp_data(cp_parameters_t *cp);
+extern uint32_t hdcp_set_cp_data(cp_parameters_t * cp);
+extern uint32_t hdcp_get_cp_data(cp_parameters_t * cp);
 #endif				/* MDFLD_HDCP_IF_H */
