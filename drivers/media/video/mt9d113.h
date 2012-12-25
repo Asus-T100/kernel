@@ -245,6 +245,7 @@ struct mt9d113_device {
 	unsigned int res;
 	int color_effect;
 	int run_mode;
+	int last_run_mode;
 };
 
 struct mt9d113_format_struct {
@@ -1445,6 +1446,14 @@ static struct misensor_reg const mt9d113_2m_15_init[] = {
 	{MISENSOR_16BIT, 0x990, 0x03},/*      = 3*/
 	{MISENSOR_16BIT, 0x98c, 0xa410},/*Min_amplitude*/
 	{MISENSOR_16BIT, 0x990, 0x0a},/*      = 10*/
+	{MISENSOR_TOK_TERM, 0, 0}
+};
+
+static struct misensor_reg const mt9d113_default_gain[] = {
+	{MISENSOR_16BIT, 0x098c, 0x221c}, /* ae virt gain */
+	{MISENSOR_16BIT, 0x0990, 0x20},
+	{MISENSOR_16BIT, 0x098c, 0x221f}, /* ae_d_gain */
+	{MISENSOR_16BIT, 0x0990, 0x0},
 	{MISENSOR_TOK_TERM, 0, 0}
 };
 

@@ -1212,6 +1212,34 @@ static int mt9d113_set_mbus_fmt(struct v4l2_subdev *sd,
 	if (ret)
 		return ret;
 
+	/*
+	 * In video mode, max exposure time is limited as to achieve
+	 * stable 30 fps. and gain is increased to large value by sensor's
+	 * 3A in dark environment;
+	 *
+	 * When switch back to preview, though the max exposure time is not
+	 * limited, it would not increase as gain value is already large
+	 * enougth to make the picture bright, which will make a lot noise
+	 * in picture.
+	 *
+	 * We need to reset the gain value to small value, as in preview mode
+	 * exposure value, instead of gain value, should take priority to
+	 * adjust picture brightness.
+	 *
+	 * The reset should only happen in switch from video to preview, and
+	 * not in other switchings, like preview to still.
+	 */
+	if (dev->last_run_mode == CI_MODE_VIDEO
+	    && dev->run_mode == CI_MODE_PREVIEW) {
+		/* write default ae virt gain and ae_d_gain */
+		ret = mt9d113_write_reg_array(c, mt9d113_default_gain);
+		if (ret) {
+			dev_err(&c->dev,
+				"err Write default gain: %d", ret);
+			return ret;
+		}
+	}
+
 	/* Limit max exposure if in video mode */
 	ret = mt9d113_write_reg(c, MISENSOR_16BIT,
 				MT9D113_MCU_VAR_ADDR,
@@ -1579,6 +1607,7 @@ mt9d113_s_config(struct v4l2_subdev *sd, int irq, void *platform_data)
 
 	dev->color_effect = V4L2_COLORFX_NONE;
 	dev->run_mode = CI_MODE_PREVIEW;
+	dev->last_run_mode = CI_MODE_PREVIEW;
 
 	return 0;
 
@@ -1634,6 +1663,7 @@ static int mt9d113_s_stream(struct v4l2_subdev *sd, int enable)
 {
 	int ret = 0;
 	struct i2c_client *c = v4l2_get_subdevdata(sd);
+	struct mt9d113_device *dev = to_mt9d113_sensor(sd);
 
 	if (enable) {
 		ret = mt9d113_set_suspend(sd, false);
@@ -1657,6 +1687,8 @@ static int mt9d113_s_stream(struct v4l2_subdev *sd, int enable)
 				 ret);
 			return ret;
 		}
+
+		dev->last_run_mode = dev->run_mode;
 	}
 
 	return 0;
