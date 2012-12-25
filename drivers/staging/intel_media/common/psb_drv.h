@@ -883,7 +883,6 @@ struct drm_psb_private {
 	struct dpst_state *psb_dpst_state;
 	pfn_vsync_handler psb_vsync_handler;
 
-	struct mutex dsr_mutex;
 	bool b_dsr_enable_config;
 	bool b_dsr_enable;
 	bool b_dsr_enable_status;
@@ -897,12 +896,6 @@ struct drm_psb_private {
 	bool b_vblank_enable;
 	int (*async_flip_update_fb)(struct drm_device *dev, int pipe);
 	int (*async_check_fifo_empty)(struct drm_device *dev);
-
-	/*
-	 * DSR TIMER
-	 */
-	spinlock_t dsr_lock;
-	struct timer_list dsr_timer;
 
 	bool dsi_device_ready;
 	bool um_start;
@@ -1048,8 +1041,6 @@ extern int psbfb_kms_on_ioctl(struct drm_device *dev, void *data,
 extern void *psbfb_vdc_reg(struct drm_device* dev);
 
 extern void psb_print_pagefault(struct drm_psb_private *dev_priv);
-extern void mdfld_dsr_timer_init(struct drm_psb_private *dev_priv);
-extern void mdfld_dsr_timer_takedown(struct drm_psb_private *dev_priv);
 
 /* modesetting */
 extern void psb_modeset_init(struct drm_device *dev);

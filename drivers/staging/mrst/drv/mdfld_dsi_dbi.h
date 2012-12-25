@@ -61,8 +61,6 @@ struct mdfld_dbi_dsr_info {
 	int dbi_output_num;
 	struct mdfld_dsi_dbi_output * dbi_outputs[2];
 	
-	spinlock_t dsr_timer_lock;
-	struct timer_list dsr_timer;
 	u32 dsr_idle_count;
 };
 
