@@ -1326,6 +1326,10 @@ int android_hdmi_crtc_mode_set(struct drm_crtc *crtc,
 		return 0;
 	}
 
+	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
+				OSPM_UHB_FORCE_POWER_ON))
+		return 0;
+
 	pr_debug("%s mode info:\n", __func__);
 	__android_hdmi_dump_crtc_mode(mode);
 	pr_debug("%s adjusted mode info:\n", __func__);
@@ -1377,6 +1381,7 @@ int android_hdmi_crtc_mode_set(struct drm_crtc *crtc,
 				fb_height, &clock_khz)) {
 		pr_err("%s: failed to perform hdmi crtc mode set",
 					__func__);
+		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 		return 0;
 	}
 
@@ -1391,6 +1396,8 @@ int android_hdmi_crtc_mode_set(struct drm_crtc *crtc,
 		dev_priv->tmds_clock_khz = otm_adjusted_mode.dclk;
 
 	psb_intel_wait_for_vblank(dev);
+
+	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 
 	pr_debug("Exit %s\n", __func__);
 	return 0;
@@ -1418,6 +1425,10 @@ void android_hdmi_enc_mode_set(struct drm_encoder *encoder,
 	if (encoder == NULL || mode == NULL || adjusted_mode == NULL)
 		return;
 
+	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
+				OSPM_UHB_FORCE_POWER_ON))
+		return;
+
 	/* get handles for required data */
 	dev = encoder->dev;
 	dev_priv = dev->dev_private;
@@ -1431,6 +1442,7 @@ void android_hdmi_enc_mode_set(struct drm_encoder *encoder,
 				&otm_adjusted_mode)) {
 		pr_err("%s: failed to perform hdmi enc mode set",
 					__func__);
+		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 		return;
 	}
 
@@ -1453,6 +1465,7 @@ void android_hdmi_enc_mode_set(struct drm_encoder *encoder,
 		pr_err("hdcp could not be enabled");
 #endif
 #endif
+	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 
 	return;
 }
