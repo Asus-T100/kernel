@@ -1347,9 +1347,6 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	*/
 #endif
 
-	mutex_init(&dev_priv->temp_mem);
-
-	mutex_init(&dev_priv->reset_mutex);
 	mutex_init(&dev_priv->dpms_mutex);
 
 	mutex_init(&dev_priv->dsr_mutex);
