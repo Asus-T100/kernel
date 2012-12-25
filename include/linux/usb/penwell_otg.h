@@ -407,6 +407,7 @@ struct otg_bc_cap {
 #define CHRG_CURR_UNKNOWN	0
 #define CHRG_CURR_DISCONN	0
 #define CHRG_CURR_SDP_SUSP	2
+#define CHRG_CURR_SDP_UNCONFIG	100
 #define CHRG_CURR_SDP_LOW	100
 #define CHRG_CURR_SDP_HIGH	500
 #define CHRG_CURR_SDP_INVAL	500
@@ -438,6 +439,7 @@ struct intel_mid_otg_pdata {
 	int gpio_vbus;
 	int gpio_cs;
 	int gpio_reset;
+	int charging_compliance;
 };
 
 struct penwell_otg {

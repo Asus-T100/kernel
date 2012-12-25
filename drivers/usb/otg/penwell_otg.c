@@ -572,6 +572,9 @@ static int penwell_otg_set_power(struct otg_transceiver *otg,
 			return 0;
 		}
 
+		if (!pnw->otg_pdata->charging_compliance)
+			mA = CHRG_CURR_SDP_HIGH;
+
 		_penwell_otg_update_chrg_cap(CHRG_SDP, mA);
 
 		spin_unlock_irqrestore(&pnw->charger_lock, flags);
@@ -580,6 +583,9 @@ static int penwell_otg_set_power(struct otg_transceiver *otg,
 
 		if (pnw->psc_cap.chrg_type != POWER_SUPPLY_TYPE_USB)
 			return 0;
+
+		if (!pnw->otg_pdata->charging_compliance)
+			mA = CHRG_CURR_SDP_HIGH;
 
 		event = kzalloc(sizeof(*event), GFP_ATOMIC);
 		if (!event) {
@@ -2630,7 +2636,7 @@ static int penwell_otg_iotg_notify(struct notifier_block *nb,
 		break;
 	case MID_OTG_NOTIFY_CRESET:
 		dev_dbg(pnw->dev, "PNW OTG Notify Client Bus reset Event\n");
-		penwell_otg_set_power(&pnw->iotg.otg, CHRG_CURR_SDP_SUSP);
+		penwell_otg_set_power(&pnw->iotg.otg, CHRG_CURR_SDP_UNCONFIG);
 		flag = 0;
 		break;
 	case MID_OTG_NOTIFY_HOSTADD:
