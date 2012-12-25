@@ -180,16 +180,6 @@ static int enter_dsr_locked(struct mdfld_dsi_config *dsi_config, int level)
 	return 0;
 }
 
-static void dsr_power_off_work(struct work_struct *work)
-{
-	DRM_INFO("mdfld_dsi_dsr: power off work\n");
-}
-
-static void dsr_power_on_work(struct work_struct *work)
-{
-	DRM_INFO("mdfld_dsi_dsr: power on work\n");
-}
-
 int mdfld_dsi_dsr_update_panel_fb(struct mdfld_dsi_config *dsi_config)
 {
 	struct mdfld_dsi_dsr *dsr;
@@ -534,10 +524,6 @@ int mdfld_dsi_dsr_init(struct mdfld_dsi_config *dsi_config)
 
 	/*set dsr state*/
 	dsr->dsr_state = DSR_INIT;
-
-	/*init power on/off works*/
-	INIT_WORK(&dsr->power_off_work, dsr_power_off_work);
-	INIT_WORK(&dsr->power_on_work, dsr_power_on_work);
 
 	/*init dsi config*/
 	dsr->dsi_config = dsi_config;

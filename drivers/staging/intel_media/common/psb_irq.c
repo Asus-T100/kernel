@@ -374,57 +374,6 @@ void mdfld_vsync_event_work(struct work_struct *work)
 	mdfld_vsync_event(dev, pipe);
 }
 
-void mdfld_async_flip_te_handler(struct drm_device *dev, uint32_t pipe)
-{
-	struct drm_psb_private *dev_priv =
-		(struct drm_psb_private *) dev->dev_private;
-	struct mdfld_dbi_dsr_info *dsr_info = dev_priv->dbi_dsr_info;
-	struct mdfld_dsi_dbi_output **dbi_outputs;
-	struct mdfld_dsi_dbi_output *dbi_output;
-	static unsigned long cnt;
-	u32 damage_mask = 0;
-
-	int ret = 0;
-
-	/*wake up all thread waiting for a vblank*/
-	drm_handle_vblank(dev, pipe);
-
-	/* Prior to processing vsync, check if HDMI-MIPI are in sync.
-	 * In case, they arent, drop the current MIPI frame to ensure
-	 * both MIPI and HDMI flush the same buffer.
-	 */
-	if (!mipi_te_hdmi_vsync_check(dev, pipe))
-		return;
-
-	if (dev_priv->psb_vsync_handler != NULL)
-		ret = (*dev_priv->psb_vsync_handler)(dev, pipe);
-
-	dbi_outputs = dsr_info->dbi_outputs;
-	dbi_output = pipe ? dbi_outputs[1] : dbi_outputs[0];
-
-	if (!dbi_output)
-		return ;
-
-	if (dev_priv->b_dsr_enable) {
-		mutex_lock(&dev_priv->dsr_mutex);
-
-		if (pipe == 0)
-			damage_mask = dev_priv->dsr_fb_update & MDFLD_DSR_DAMAGE_MASK_0;
-		else if (pipe == 2)
-			damage_mask = dev_priv->dsr_fb_update & MDFLD_DSR_DAMAGE_MASK_2;
-
-		if (damage_mask)
-			dev_priv->dsr_idle_count = 0;
-		 else {
-			if (dev_priv->dsr_idle_count > 50)
-				mdfld_dsi_dbi_enter_dsr(dbi_output, pipe);
-			else
-				dev_priv->dsr_idle_count++;
-		}
-		mutex_unlock(&dev_priv->dsr_mutex);
-	}
-}
-
 void mdfld_te_handler_work(struct work_struct *work)
 {
 	struct drm_psb_private *dev_priv =

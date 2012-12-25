@@ -1349,7 +1349,6 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 
 	mutex_init(&dev_priv->dpms_mutex);
 
-	mutex_init(&dev_priv->dsr_mutex);
 	mutex_init(&dev_priv->gamma_csc_lock);
 	mutex_init(&dev_priv->overlay_lock);
 	mutex_init(&dev_priv->vsync_lock);
@@ -1358,7 +1357,6 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	dev_priv->overlay_fliped = 0;
 
 	spin_lock_init(&dev_priv->reloc_lock);
-	spin_lock_init(&dev_priv->dsr_lock);
 
 	DRM_INIT_WAITQUEUE(&dev_priv->rel_mapped_queue);
 
