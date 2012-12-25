@@ -457,7 +457,6 @@ struct drm_psb_private {
 	int have_tt;
 	int have_mem_mmu;
 	int have_mem_mmu_tiling;
-	struct mutex temp_mem;
 
 	/*
 	 *Relocation buffer mapping.
@@ -828,7 +827,6 @@ struct drm_psb_private {
 	 *Scheduling.
 	 */
 
-	struct mutex reset_mutex;
 	struct mutex cmdbuf_mutex;
 	/*uint32_t ta_mem_pages;
 	struct psb_ta_mem *ta_mem;
