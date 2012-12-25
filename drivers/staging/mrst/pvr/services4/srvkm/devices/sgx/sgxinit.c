@@ -687,7 +687,7 @@ PVRSRV_ERROR SGXInitialise(PVRSRV_SGXDEV_INFO	*psDevInfo,
 		PVR_DPF((PVR_DBG_ERROR, "SGXInitialise: Wait for uKernel initialisation failed"));
 
 		SGXDumpDebugInfo(psDevInfo, IMG_FALSE);
-		PVR_DBG_BREAK;
+		BUG();
 
 		return PVRSRV_ERROR_RETRY;
 	}
