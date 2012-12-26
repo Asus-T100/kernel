@@ -490,6 +490,35 @@ out:
 	return retval;
 }
 
+static int
+snd_compr_set_metadata(struct snd_compr_stream *stream, unsigned long arg)
+{
+	struct snd_compr_metadata *metadata;
+	int retval;
+
+	/*
+	* we should allow parameter change only when stream has been
+	* opened not in other cases
+	*/
+	metadata = kmalloc(sizeof(*metadata), GFP_KERNEL);
+	if (!metadata)
+		return -ENOMEM;
+	if (copy_from_user(metadata, (void __user *)arg,
+				sizeof(*metadata))) {
+		retval = -EFAULT;
+		goto out;
+	}
+
+	pr_debug("metadata encoder delay=%x encoder padding=%x\n",
+			 metadata->encoder_delay,  metadata->encoder_padding);
+
+	if (stream->ops->set_metadata)
+		retval = stream->ops->set_metadata(stream, metadata);
+out:
+	kfree(metadata);
+	return retval;
+}
+
 static inline int
 snd_compr_tstamp(struct snd_compr_stream *stream, unsigned long arg)
 {
@@ -558,13 +587,27 @@ static int snd_compr_drain(struct snd_compr_stream *stream)
 	int retval;
 
 	if (stream->runtime->state == SNDRV_PCM_STATE_PREPARED ||
-			stream->runtime->state == SNDRV_PCM_STATE_SETUP)
+		stream->runtime->state == SNDRV_PCM_STATE_SETUP)
 		return -EPERM;
 	retval = stream->ops->trigger(stream, SND_COMPR_TRIGGER_DRAIN);
 	if (!retval) {
 		stream->runtime->state = SNDRV_PCM_STATE_DRAINING;
 		wake_up(&stream->runtime->sleep);
 	}
+	return retval;
+}
+
+static int snd_compr_partial_drain(struct snd_compr_stream *stream)
+{
+	int retval;
+	if (stream->runtime->state == SNDRV_PCM_STATE_PREPARED ||
+		stream->runtime->state == SNDRV_PCM_STATE_SETUP)
+		return -EPERM;
+	retval = stream->ops->trigger(stream, SND_COMPR_TRIGGER_PARTIAL_DRAIN);
+	if (retval)
+		pr_err("Partial drain returned failure\n");
+	else
+		stream->runtime->state = SNDRV_PCM_STATE_SETUP;
 	return retval;
 }
 
@@ -579,7 +622,7 @@ static long snd_compr_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 	stream = &data->stream;
 	if (snd_BUG_ON(!stream))
 		return -EFAULT;
-	mutex_lock(&stream->device->lock);
+
 	switch (_IOC_NR(cmd)) {
 	case _IOC_NR(SNDRV_COMPRESS_IOCTL_VERSION):
 		put_user(SNDRV_COMPRESS_VERSION,
@@ -596,6 +639,9 @@ static long snd_compr_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 		break;
 	case _IOC_NR(SNDRV_COMPRESS_GET_PARAMS):
 		retval = snd_compr_get_params(stream, arg);
+		break;
+	case _IOC_NR(SNDRV_COMPRESS_SET_METADATA):
+		retval = snd_compr_set_metadata(stream, arg);
 		break;
 	case _IOC_NR(SNDRV_COMPRESS_TSTAMP):
 		retval = snd_compr_tstamp(stream, arg);
@@ -618,8 +664,11 @@ static long snd_compr_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 	case _IOC_NR(SNDRV_COMPRESS_DRAIN):
 		retval = snd_compr_drain(stream);
 		break;
+	case _IOC_NR(SNDRV_COMPRESS_PARTIAL_DRAIN):
+		retval = snd_compr_partial_drain(stream);
+		break;
 	}
-	mutex_unlock(&stream->device->lock);
+
 	return retval;
 }
 
