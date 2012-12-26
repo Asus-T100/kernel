@@ -38,6 +38,14 @@ void psb_irq_preinstall_islands(struct drm_device *dev, int hw_islands);
 int  psb_irq_postinstall_islands(struct drm_device *dev, int hw_islands);
 void psb_irq_uninstall_islands(struct drm_device *dev, int hw_islands);
 
+void psb_irq_preinstall_graphics_islands(struct drm_device *dev,
+							int hw_islands);
+int  psb_irq_postinstall_graphics_islands(struct drm_device *dev,
+							int hw_islands);
+void psb_irq_uninstall_graphics_islands(struct drm_device *dev,
+							int hw_islands);
+
+
 int psb_irq_enable_dpst(struct drm_device *dev);
 int psb_irq_disable_dpst(struct drm_device *dev);
 void psb_irq_turn_on_dpst(struct drm_device *dev);
