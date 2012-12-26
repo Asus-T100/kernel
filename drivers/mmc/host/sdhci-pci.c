@@ -320,7 +320,8 @@ static int mfd_emmc_probe_slot(struct sdhci_pci_slot *slot)
 		sdhci_alloc_panic_host(slot->host);
 		slot->host->quirks2 |= SDHCI_QUIRK2_V2_0_SUPPORT_DDR50;
 		slot->host->mmc->caps |= MMC_CAP_1_8V_DDR;
-		slot->host->mmc->caps2 |= MMC_CAP2_INIT_CARD_SYNC;
+		slot->host->mmc->caps2 |= MMC_CAP2_INIT_CARD_SYNC |
+					MMC_CAP2_CACHE_CTRL;
 		/*
 		 * CLV host controller has a special POWER_CTL register,
 		 * which can do HW reset, so it doesn't need to operate
