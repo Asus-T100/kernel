@@ -31,12 +31,9 @@
 #include <linux/gpio.h>
 #include "psb_drv.h"
 
-static u8 yb_cmi_soft_reset[] = {0x01};
-static u8 yb_cmi_enter_sleep_mode[] = {0x10};
-static u8 yb_cmi_exit_sleep_mode[] = {0x11};
 static u8 yb_cmi_set_address_mode[] = {0x36, 0x01};
 /* enable cabc by default */
-static u8 yb_cmi_panel_control_1[] = {0xb1, 0xb0};
+static u8 yb_cmi_panel_control_1[] = {0xb1, 0xf0};
 static u8 yb_cmi_panel_control_2[] = {0xb2, 0x00};
 
 /**
@@ -45,9 +42,6 @@ static u8 yb_cmi_panel_control_2[] = {0xb2, 0x00};
 static int yb_cmi_gpio_panel_reset = 128;
 static int yb_cmi_gpio_panel_stdby = 33;
 static int yb_cmi_gpio_bklt_en = 162;
-static int yb_cmi_gpio_shlr;
-static int yb_cmi_gpio_updn;
-static int yb_cmi_gpio_cabc_en;
 
 #define YB_CMI_PANEL_WIDTH	165
 #define YB_CMI_PANEL_HEIGHT	105
@@ -76,7 +70,12 @@ int yb_cmi_vid_ic_init(struct mdfld_dsi_config *dsi_config)
 	gpio_direction_output(yb_cmi_gpio_panel_reset, 0);
 	mdelay(10);
 	gpio_direction_output(yb_cmi_gpio_panel_reset, 1);
-	mdelay(100);
+	msleep(100);
+
+	if (drm_psb_enable_cabc)
+		yb_cmi_panel_control_1[1] = 0xf0;
+	else
+		yb_cmi_panel_control_1[1] = 0x30;
 
 	mdfld_dsi_send_gen_short_lp(sender, yb_cmi_panel_control_1[0],
 			yb_cmi_panel_control_1[1], 2, 0);
@@ -201,7 +200,7 @@ int yb_cmi_vid_power_on(struct mdfld_dsi_config *dsi_config)
 
 	/*turn on backlight*/
 	gpio_direction_output(yb_cmi_gpio_bklt_en, 1);
-	mdelay(100);
+	msleep(100);
 
 	/*send TURN_ON packet*/
 	err = mdfld_dsi_send_dpi_spk_pkg_hs(sender,
@@ -210,7 +209,7 @@ int yb_cmi_vid_power_on(struct mdfld_dsi_config *dsi_config)
 		DRM_ERROR("Failed to send turn on packet\n");
 		return err;
 	}
-	mdelay(100);
+	msleep(100);
 
 	return 0;
 }
@@ -261,25 +260,13 @@ int yb_cmi_vid_set_brightness(struct mdfld_dsi_config *dsi_config, int level)
 
 	PSB_DEBUG_ENTRY("level = %d\n", level);
 
-	duty_val = (DUTY_VALUE_MAX * level) / BRIGHTNESS_LEVEL_MAX;
+	duty_val = ((DUTY_VALUE_MAX + 1) * level) / BRIGHTNESS_LEVEL_MAX;
 
 	ret = intel_scu_ipc_iowrite8(PWM0DUTYCYCLE, duty_val);
 	if (ret)
 		DRM_ERROR("write brightness duty value faild\n");
 
 	return ret;
-}
-
-static
-int yb_cmi_vid_panel_reset(struct mdfld_dsi_config *dsi_config)
-{
-	PSB_DEBUG_ENTRY("\n");
-
-	gpio_direction_output(yb_cmi_gpio_panel_reset, 1);
-
-	usleep_range(7000, 7100);
-
-	return 0;
 }
 
 struct drm_display_mode *yb_cmi_vid_get_config_mode(void)
@@ -322,73 +309,40 @@ void yb_cmi_vid_get_panel_info(int pipe, struct panel_info *pi)
 	}
 }
 
-static int yb_cmi_vid_gpio_init()
+static int yb_cmi_vid_gpio_init(void)
 {
 	int ret = 0;
 
-	gpio_request(yb_cmi_gpio_panel_reset, "lcd-reset");
-	gpio_request(yb_cmi_gpio_panel_stdby, "lcd-stdby");
-	gpio_request(yb_cmi_gpio_bklt_en, "lcd-bklt");
-
-#if 0
 	ret = get_gpio_by_name("lcd-reset");
 	if (ret < 0)
 		DRM_ERROR("Faild to get panel reset GPIO\n");
-	else {
+	else
 		yb_cmi_gpio_panel_reset = ret;
-		gpio_request(yb_cmi_gpio_panel_reset, "lcd-reset");
-	}
 
 	ret = get_gpio_by_name("lcd-stdby");
 	if (ret < 0)
 		DRM_ERROR("Faild to get panel reset GPIO\n");
-	else {
+	else
 		yb_cmi_gpio_panel_stdby = ret;
-		gpio_request(yb_cmi_gpio_panel_stdby, "lcd-stdby");
-	}
 
 	ret = get_gpio_by_name("lcd-bklt");
 	if (ret < 0)
 		DRM_ERROR("Faild to get panel reset GPIO\n");
-	else {
+	else
 		yb_cmi_gpio_bklt_en = ret;
-		gpio_request(yb_cmi_gpio_bklt_en, "lcd-bklt-en");
-	}
 
-	ret = get_gpio_by_name("lcd-shlr");
-	if (ret < 0)
-		DRM_ERROR("Faild to get panel reset GPIO\n");
-	else {
-		yb_cmi_gpio_shlr = ret;
-		gpio_request(yb_cmi_gpio_shlr, "lcd-shlr");
-	}
-
-	ret = get_gpio_by_name("lcd-updn");
-	if (ret < 0)
-		DRM_ERROR("Faild to get panel reset GPIO\n");
-	else {
-		yb_cmi_gpio_updn = ret;
-		gpio_request(yb_cmi_gpio_updn, "lcd-updn");
-	}
-
-	ret = get_gpio_by_name("lcd");
-	if (ret < 0)
-		DRM_ERROR("Faild to get panel reset GPIO\n");
-	else {
-		yb_cmi_gpio_cabc_en = ret;
-		gpio_request(yb_cmi_gpio_cabc_en, "lcd-cabc-en");
-	}
-#endif
+	gpio_request(yb_cmi_gpio_panel_reset, "lcd-reset");
+	gpio_request(yb_cmi_gpio_panel_stdby, "lcd-stdby");
+	gpio_request(yb_cmi_gpio_bklt_en, "lcd-bklt");
 
 	return 0;
 }
 
 #define PWM0CLKDIV1	0x61
 #define PWM0CLKDIV0	0x62
-static int yb_cmi_vid_brightness_init()
+static int yb_cmi_vid_brightness_init(void)
 {
 	int ret;
-	u8 pwmctrl;
 
 	PSB_DEBUG_ENTRY("\n");
 
