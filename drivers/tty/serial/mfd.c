@@ -2461,21 +2461,40 @@ static struct pci_driver hsu_pci_driver = {
 static int __init hsu_pci_init(void)
 {
 	int ret;
-	int *clkctl;
+	void *clkctl, *clksc;
+	u32 clk_src, clk_div;
 
 	switch (intel_mid_identify_cpu()) {
 	case INTEL_MID_CPU_CHIP_TANGIER:
 #define TNG_CLOCK_CTL 0xFF00B830
-		clkctl = ioremap_nocache(TNG_CLOCK_CTL, 4);
-		if (clkctl) {
-			if (*clkctl & (1 << 16))
-				clock = 100000; /* 100M */
-			else
-				clock = 19200; /* 19.2M */
+#define TNG_CLOCK_SC  0xFF00B868
+		clock = 100000;
 
+		clkctl = ioremap_nocache(TNG_CLOCK_CTL, 4);
+		if (!clkctl) {
+			pr_err("tng scu clk ctl ioremap error\n");
+			break;
+		}
+
+		clksc = ioremap_nocache(TNG_CLOCK_SC, 4);
+		if (!clksc) {
+			pr_err("tng scu clk sc ioremap error\n");
 			iounmap(clkctl);
-		} else
-			pr_err("tng scu clk ioremap error\n");
+			break;
+		}
+
+		clk_src = *((u32 *)clkctl);
+		clk_div = *((u32 *)clksc);
+
+		if (clk_src & (1 << 16))
+			/* source SCU fabric 100M */
+			clock = clock / ((clk_div & 0x7) + 1);
+		else
+			/* source OSC clock 19.2M */
+			clock = 19200;
+
+		iounmap(clkctl);
+		iounmap(clksc);
 		break;
 	case INTEL_MID_CPU_CHIP_PENWELL:
 	case INTEL_MID_CPU_CHIP_CLOVERVIEW:
