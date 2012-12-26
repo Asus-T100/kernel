@@ -141,6 +141,15 @@ static int sst_compr_free(struct snd_compr_stream *cstream)
 	return 0;
 }
 
+static int sst_compr_set_metadata(struct snd_compr_stream *cstream,
+				struct snd_compr_metadata *metadata)
+{
+	struct sst_stream *stream = (struct sst_stream *)cstream->private_data;
+
+	pr_debug("entry\n");
+	return stream->ops->set_metadata(stream->id, metadata);
+}
+
 static int sst_compr_set_params(struct snd_compr_stream *cstream,
 		struct snd_compr_params *params)
 {
@@ -255,6 +264,7 @@ static struct snd_compr_ops sst_compr_ops = {
 	.open = sst_compr_open,
 	.free = sst_compr_free,
 	.set_params = sst_compr_set_params,
+	.set_metadata = sst_compr_set_metadata,
 	.trigger = sst_compr_trigger,
 	.pointer = sst_compr_pointer,
 	.ack = sst_compr_ack,

@@ -522,13 +522,14 @@ int sst_start_stream(int str_id);
 int sst_send_byte_stream(void *sbytes);
 int sst_send_byte_stream_mrfld(void *sbytes);
 int sst_set_stream_param(int str_id, struct snd_sst_params *str_param);
+int sst_set_metadata(int str_id, char *params);
 int sst_get_fw_info(struct snd_sst_fw_info *info);
 int sst_get_stream_params(int str_id,
 		struct snd_sst_get_stream_params *get_params);
 int sst_get_stream(struct snd_sst_params *str_param);
 int sst_get_stream_allocated(struct snd_sst_params *str_param,
 				struct snd_sst_lib_download **lib_dnld);
-int sst_drain_stream(int str_id);
+int sst_drain_stream(int str_id, bool partial_drain);
 
 
 int sst_sync_post_message_mfld(struct ipc_post *msg);

@@ -898,7 +898,7 @@ int sst_drop_stream(int str_id)
 * This function is called by any function which wants to drain
 * a stream.
 */
-int sst_drain_stream(int str_id)
+int sst_drain_stream(int str_id, bool partial_drain)
 {
 	int retval = 0;
 	struct ipc_post *msg = NULL;
@@ -919,22 +919,21 @@ int sst_drain_stream(int str_id)
 			return -EBADRQC;
 	}
 
-	if (str_info->status == STREAM_INIT) {
-		if (sst_create_short_msg(&msg)) {
-			pr_err("SST ERR: mem allocation failed\n");
-			return -ENOMEM;
-		}
-		sst_fill_header(&msg->header, IPC_IA_DRAIN_STREAM, 0, str_id);
-		spin_lock_irqsave(&sst_drv_ctx->ipc_spin_lock, irq_flags);
-		list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
-		spin_unlock_irqrestore(&sst_drv_ctx->ipc_spin_lock, irq_flags);
-		ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
-		str_info->data_blk.condition = false;
-		str_info->data_blk.ret_code = 0;
-		str_info->data_blk.on = true;
-		retval = sst_wait_interruptible(sst_drv_ctx,
-						&str_info->data_blk);
+	if (sst_create_short_msg(&msg)) {
+		pr_err("SST ERR: mem allocation failed\n");
+		return -ENOMEM;
 	}
+	sst_fill_header(&msg->header, IPC_IA_DRAIN_STREAM, 0, str_id);
+	msg->header.part.data = partial_drain;
+	spin_lock_irqsave(&sst_drv_ctx->ipc_spin_lock, irq_flags);
+	list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
+	spin_unlock_irqrestore(&sst_drv_ctx->ipc_spin_lock, irq_flags);
+	ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
+	str_info->data_blk.condition = false;
+	str_info->data_blk.ret_code = 0;
+	str_info->data_blk.on = true;
+	retval = sst_wait_interruptible(sst_drv_ctx,
+					&str_info->data_blk);
 	return retval;
 }
 
@@ -1041,5 +1040,3 @@ int sst_free_stream(int str_id)
 
 	return retval;
 }
-
-
