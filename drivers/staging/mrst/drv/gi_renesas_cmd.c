@@ -149,7 +149,7 @@ static int gi_renesas_dbi_ic_init(struct mdfld_dsi_config *dsi_config)
 	mdfld_dsi_send_gen_long_hs(sender, gi_er61529_gamma_b, 25, 0);
 	mdfld_dsi_send_gen_long_hs(sender, gi_er61529_gamma_c, 25, 0);
 	mdfld_dsi_send_gen_long_hs(sender, gi_er61529_power_setting, 17, 0);
-	mdfld_dsi_send_gen_long_hs(sender, gi_er61529_vcom_setting, 5, 9);
+	mdfld_dsi_send_gen_long_hs(sender, gi_er61529_vcom_setting, 5, 0);
 	mdfld_dsi_send_mcs_long_hs(sender, gi_er61529_set_pixel_format, 2, 0);
 	mdfld_dsi_send_mcs_long_hs(sender, gi_er61529_set_column_address, 5, 0);
 	mdfld_dsi_send_mcs_long_hs(sender, gi_er61529_set_page_address, 5, 0);
