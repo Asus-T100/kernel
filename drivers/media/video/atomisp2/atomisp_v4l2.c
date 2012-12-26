@@ -445,19 +445,65 @@ static int atomisp_restore_iunit_reg(struct atomisp_device *isp)
 }
 
 #ifdef CONFIG_PM
+static int atomisp_mrfld_pre_power_down(struct atomisp_device *isp)
+{
+	struct pci_dev *dev = isp->pdev;
+	u32 irq;
+	unsigned long timeout;
+
+	if (isp->sw_contex.power_state == ATOM_ISP_POWER_DOWN)
+		return 0;
+
+	/*
+	 * MRFLD HAS requirement: cannot power off i-unit if
+	 * ISP has IRQ not serviced.
+	 * So, here we need to check if there is any pending
+	 * IRQ, if so, waiting for it to be served
+	 */
+	timeout = jiffies + msecs_to_jiffies(500);
+	while (1) {
+		pci_read_config_dword(dev, PCI_INTERRUPT_CTRL, &irq);
+		if (!(irq & (1 << INTR_IIR)))
+			break;
+		if (time_after(jiffies, timeout)) {
+			v4l2_err(&atomisp_dev,
+				"%s: IRQ raised!!!\n", __func__);
+			return -EAGAIN;
+		}
+		usleep_range(1000, 1500);
+	};
+
+	/*
+	* MRFLD WORKAROUND:
+	* before powering off IUNIT, clear the pending interrupts
+	* and disable the interrupt. driver should avoid writing 0
+	* to IIR. It could block subsequent interrupt messages.
+	* HW sighting:4568410.
+	*/
+	pci_read_config_dword(dev, PCI_INTERRUPT_CTRL, &irq);
+	irq = (irq & ~(1 << INTR_IER)) | (1 << INTR_IIR);
+	pci_write_config_dword(dev, PCI_INTERRUPT_CTRL, irq);
+	atomisp_freq_scaling(isp, ATOMISP_DFS_MODE_LOW);
+
+	return 0;
+}
+
 static int atomisp_runtime_suspend(struct device *dev)
 {
 	struct atomisp_device *isp = (struct atomisp_device *)
 		dev_get_drvdata(dev);
 	int ret;
 
+	if (IS_MRFLD) {
+		ret = atomisp_mrfld_pre_power_down(isp);
+		if (ret)
+			return ret;
+	}
+
 	/*Turn off the ISP d-phy*/
 	ret = atomisp_ospm_dphy_down(isp);
 	if (!ret)
 		pm_qos_update_request(&isp->pm_qos, PM_QOS_DEFAULT_VALUE);
-
-	if (IS_MRFLD && atomisp_freq_scaling(isp, ATOMISP_DFS_MODE_LOW) < 0)
-		v4l2_warn(&atomisp_dev, "DFS failed.\n");
 
 	return ret;
 }
@@ -483,9 +529,8 @@ static int atomisp_runtime_resume(struct device *dev)
 	if (isp->saved_regs.pcicmdsts)
 		atomisp_restore_iunit_reg(isp);
 
-	if (IS_MRFLD && atomisp_freq_scaling(isp, ATOMISP_DFS_MODE_LOW) < 0)
-		v4l2_warn(&atomisp_dev, "DFS failed.\n");
-
+	if (IS_MRFLD)
+		atomisp_freq_scaling(isp, ATOMISP_DFS_MODE_LOW);
 
 	return 0;
 }
@@ -512,6 +557,13 @@ static int atomisp_suspend(struct device *dev)
 		return -EINVAL;
 	}
 	spin_unlock_irqrestore(&isp->lock, flags);
+
+	/* Prepare for MRFLD IUNIT power down */
+	if (IS_MRFLD) {
+		ret = atomisp_mrfld_pre_power_down(isp);
+		if (ret)
+			return ret;
+	}
 
 	/*Turn off the ISP d-phy */
 	ret = atomisp_ospm_dphy_down(isp);
@@ -543,6 +595,9 @@ static int atomisp_resume(struct device *dev)
 	/*restore register values for iUnit and iUnitPHY registers*/
 	if (isp->saved_regs.pcicmdsts)
 		atomisp_restore_iunit_reg(isp);
+
+	if (IS_MRFLD)
+		atomisp_freq_scaling(isp, ATOMISP_DFS_MODE_LOW);
 
 	return 0;
 }
