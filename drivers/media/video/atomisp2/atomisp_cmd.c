@@ -4154,11 +4154,8 @@ int atomisp_ospm_dphy_down(struct atomisp_device *isp)
 	u32 pwr_cnt = 0;
 	int timeout = 100;
 	bool idle;
+	u32 reg;
 	v4l2_dbg(3, dbg_level, &atomisp_dev, "%s\n", __func__);
-
-	/* MRFLD IUNIT PHY is located in an always-power-on island */
-	if (IS_MRFLD)
-		return 0;
 
 	/* if ISP timeout, we can force powerdown */
 	if (isp->isp_timeout)
@@ -4183,12 +4180,25 @@ int atomisp_ospm_dphy_down(struct atomisp_device *isp)
 	}
 
 done:
-	/* power down DPHY */
-	pwr_cnt = intel_mid_msgbus_read32(MFLD_IUNITPHY_PORT, MFLD_CSI_CONTROL);
-	pwr_cnt |= 0x300;
-	intel_mid_msgbus_write32(MFLD_IUNITPHY_PORT, MFLD_CSI_CONTROL, pwr_cnt);
-	isp->sw_contex.power_state = ATOM_ISP_POWER_DOWN;
+	if (IS_MRFLD) {
+		/*
+		 * MRFLD IUNIT DPHY is located in an always-power-on island
+		 * MRFLD HW design need all CSI ports are disabled before
+		 * powering down the IUNIT.
+		 */
+		pci_read_config_dword(isp->pdev, MRFLD_PCI_CSI_CONTROL, &reg);
+		reg |= MRFLD_ALL_CSI_PORTS_OFF_MASK;
+		pci_write_config_dword(isp->pdev, MRFLD_PCI_CSI_CONTROL, reg);
+	} else {
+		/* power down DPHY */
+		pwr_cnt = intel_mid_msgbus_read32(MFLD_IUNITPHY_PORT,
+							MFLD_CSI_CONTROL);
+		pwr_cnt |= 0x300;
+		intel_mid_msgbus_write32(MFLD_IUNITPHY_PORT,
+						MFLD_CSI_CONTROL, pwr_cnt);
+	}
 
+	isp->sw_contex.power_state = ATOM_ISP_POWER_DOWN;
 	return 0;
 }
 
@@ -4198,14 +4208,15 @@ int atomisp_ospm_dphy_up(struct atomisp_device *isp)
 	u32 pwr_cnt = 0;
 	v4l2_dbg(3, dbg_level, &atomisp_dev, "%s\n", __func__);
 
-	/* MRFLD IUNIT PHY is located in an always-power-on island */
-	if (IS_MRFLD)
-		return 0;
-
-	/* power on DPHY */
-	pwr_cnt = intel_mid_msgbus_read32(MFLD_IUNITPHY_PORT, MFLD_CSI_CONTROL);
-	pwr_cnt &= ~0x300;
-	intel_mid_msgbus_write32(MFLD_IUNITPHY_PORT, MFLD_CSI_CONTROL, pwr_cnt);
+	/* MRFLD IUNIT DPHY is located in an always-power-on island */
+	if (!IS_MRFLD) {
+		/* power on DPHY */
+		pwr_cnt = intel_mid_msgbus_read32(MFLD_IUNITPHY_PORT,
+							MFLD_CSI_CONTROL);
+		pwr_cnt &= ~0x300;
+		intel_mid_msgbus_write32(MFLD_IUNITPHY_PORT,
+						MFLD_CSI_CONTROL, pwr_cnt);
+	}
 
 	isp->sw_contex.power_state = ATOM_ISP_POWER_UP;
 
