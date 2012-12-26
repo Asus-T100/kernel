@@ -1528,8 +1528,13 @@ otm_hdmi_ret_t otm_hdmi_crtc_mode_set(void *context, otm_hdmi_timing_t *mode,
 	}
 
 	/* program hdmi mode timing registers */
+#ifdef CONFIG_DRM_MRFLD
+	rc = mrfld_hdmi_crtc_mode_set_program_dpll(&ctx->dev,
+				adjusted_mode->dclk);
+#else
 	rc = ipil_hdmi_crtc_mode_set_program_dpll(&ctx->dev,
-						adjusted_mode->dclk);
+				adjusted_mode->dclk);
+#endif
 	if (rc != OTM_HDMI_SUCCESS) {
 		pr_debug("\nfailed to program dpll\n");
 		return rc;

@@ -314,10 +314,6 @@ otm_hdmi_ret_t ipil_hdmi_crtc_mode_set_program_dspregs(hdmi_device_t *dev,
 	 * Frame buffer size may beyond active region in case of
 	 * panning mode.
 	 */
-#if 1
-	adjusted_mode->width = 1920;
- 	adjusted_mode->height = 1080;
-#endif	
 	sprite_width = min_t(int, fb_width, adjusted_mode->width);
 	sprite_height = min_t(int, fb_height, adjusted_mode->height);
 
@@ -525,22 +521,6 @@ otm_hdmi_ret_t ipil_hdmi_crtc_mode_set_program_timings(hdmi_device_t *dev,
 			(adjusted_mode->vsync_start - offsetY - 1) |
 			((adjusted_mode->vsync_end - offsetY - 1) << 16));
 	} else {
-
-#if 1
-		adjusted_mode->width = 1920;
-		adjusted_mode->htotal = 2576;  
-		adjusted_mode->hblank_start = 1920;
-		adjusted_mode->hblank_end = 2576;
-		adjusted_mode->hsync_start = 2040; 
-		adjusted_mode->hsync_end = 2248;  
-	
-		adjusted_mode->height = 1080;
-		adjusted_mode->vtotal = 1118; 
-		adjusted_mode->vblank_start = 1080;
-		adjusted_mode->vblank_end = 1118;
-		adjusted_mode->vsync_start = 1081;
-		adjusted_mode->vsync_end = 1084;
-#endif
 		hdmi_write32(IPIL_HTOTAL_B,
 				(adjusted_mode->width - 1) |
 				((adjusted_mode->htotal - 1) << 16));
@@ -584,10 +564,6 @@ extern void hdmi_dll_program(void);
 otm_hdmi_ret_t	ipil_hdmi_crtc_mode_set_program_dpll(hdmi_device_t *dev,
 							unsigned long dclk)
 {
-#if 1
-	hdmi_dll_program();
-	dev->clock_khz = 148500;
-#else
 	otm_hdmi_ret_t rc = OTM_HDMI_SUCCESS;
 	u32 dpll_adj, fp;
 	u32 dpll;
@@ -643,7 +619,6 @@ otm_hdmi_ret_t	ipil_hdmi_crtc_mode_set_program_dpll(hdmi_device_t *dev,
 		udelay(150);
 		timeout++;
 	}
-#endif
 	return OTM_HDMI_SUCCESS;
 }
 

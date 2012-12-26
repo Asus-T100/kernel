@@ -103,6 +103,87 @@ static hdmi_context_t *g_context;
 #define PS_LS_OE_PULL_UP	1
 #define PS_LS_OE_PULL_DOWN	0
 
+struct data_rate_divider_selector_list_t {
+	uint32_t target_data_rate;
+	int m1;
+	int m2;
+	int n;
+	int p1;
+	int p2;
+};
+static struct data_rate_divider_selector_list_t
+	data_rate_divider_selector_list[] = {
+	{25200, 2, 105, 1, 2, 16},
+	{27000, 3, 75, 1, 2, 16},
+	{27027, 3, 75, 1, 2, 16},
+	{28320, 2, 118, 1, 2, 16},
+	{31500, 2, 123, 1, 3, 10},
+	{40000, 2, 125, 1, 3, 8},
+	{49500, 2, 116, 1, 3, 6},
+	{65000, 3, 79, 1, 2, 7},
+	{74250, 2, 145, 1, 3, 5},
+	{74481, 3, 97, 1, 3, 5},
+	{108000, 3, 75, 1, 2, 4},
+	{135000, 2, 141, 1, 2, 4},
+	{148352, 3, 103, 1, 2, 4},
+	{148500, 2, 116, 1, 3, 2}
+};
+
+#define NUM_SELECTOR_LIST (sizeof( \
+		data_rate_divider_selector_list) \
+	/ sizeof(struct data_rate_divider_selector_list_t))
+
+static void __iomem *io_base;
+void setiobase(uint8_t *value)
+{
+	io_base = value;
+}
+
+void gunit_sb_write(u32 arg0, u32 arg1, u32 arg2, u32 arg3)
+{
+	u32 ret;
+	int retry = 0;
+	u32 sb_pkt = (arg1 << 16) | (arg0 << 8) | 0xf0;
+
+	/* write the register to side band register address */
+	iowrite32(arg2, io_base + 0x2108);
+	iowrite32(arg3, io_base + 0x2104);
+	iowrite32(sb_pkt, io_base + 0x2100);
+
+	ret = ioread32(io_base + 0x210c);
+	while ((retry++ < 0x1000) && (ret != 0x2)) {
+		usleep_range(500, 1000);
+		ret = ioread32(io_base + 0x210c);
+	}
+
+	if (ret != 2)
+		pr_err("%s:Failed to received SB interrupt\n", __func__);
+}
+
+u32 gunit_sb_read(u32 arg0, u32 arg1, u32 arg2)
+{
+	u32 ret;
+	int retry = 0;
+	u32 sb_pkt = arg1 << 16 | arg0 << 8 | 0xf0;
+
+	/* write the register to side band register address */
+	iowrite32(arg2, io_base + 0x2108);
+	iowrite32(sb_pkt, io_base + 0x2100);
+
+	ret = ioread32(io_base + 0x210c);
+	while ((retry < 0x1000) && (ret != 2)) {
+		usleep_range(500, 1000);
+		ret = ioread32(io_base + 0x210c);
+	}
+
+	if (ret != 2)
+		pr_err("%s: Failed to received SB interrupt\n", __func__);
+	else
+		ret = ioread32(io_base + 0x2104);
+
+	return ret;
+}
+
 /* For Merrifield, it is required that SW pull up or pull down the
  * LS_OE GPIO pin based on cable status. This is needed before
  * performing any EDID read operation on Merrifield.
@@ -239,7 +320,7 @@ static void ps_hdmi_power_on_pipe(u32 msg_port, u32 msg_reg,
 		intel_mid_msgbus_write32(msg_port, msg_reg, ret & val_write);
 		ret = intel_mid_msgbus_read32(msg_port, msg_reg);
 		while ((retry < 1000) && ((ret & val_comp) != 0)) {
-			msleep(1);
+			usleep_range(500, 1000);
 			ret = intel_mid_msgbus_read32(msg_port, msg_reg);
 			retry++;
 		}
@@ -421,4 +502,92 @@ int ps_hdmi_hpd_unregister_driver(void)
 {
 	platform_driver_unregister(&ps_hdmi_hpd_driver); 
 	return 0;
+}
+
+static void mrfld_hdmi_set_program_dpll(unsigned int baseaddr,
+			int n, int p1, int p2, int m1, int m2)
+{
+	u32 ret, status;
+	void __iomem *io_base = (uint8_t *)baseaddr;
+
+	u32 arg3 = (0x11 << 24) | (0x1 << 11) |
+	(m1 << 8) | (m2) |
+	(p1 << 21) | (p2 << 16) |
+	(n << 12);
+
+	int retry = 0;
+
+	/* Common reset */
+	iowrite32(0x70006800, io_base + 0xF018);
+
+	gunit_sb_write(0x13, 0x1, 0x800c, arg3);
+	gunit_sb_write(0x13, 0x1, 0x8048, 0x009F0051);
+	gunit_sb_write(0x13, 0x1, 0x8014, 0x0D73cc00);
+
+	/* enable pll */
+	iowrite32(0xf0006800, io_base + 0xf018);
+	ret = ioread32(io_base + 0xf018);
+	ret &= 0x8000;
+	while ((retry++ < 1000) && (ret != 0x8000)) {
+		usleep_range(500, 1000);
+		ret = ioread32(io_base + 0xf018);
+		ret &= 0x8000;
+	}
+
+	if (ret != 0x8000) {
+		pr_err("%s: DPLL failed to lock, exit...\n",
+			__func__);
+		return;
+	}
+
+	/* Enabling firewall for modphy */
+	gunit_sb_write(0x13, 0x1, 0x801c, 0x01000000);
+	status = gunit_sb_read(0x13, 0x0, 0x801c);
+
+	/* Disabling global Rcomp */
+	gunit_sb_write(0x13, 0x1, 0x80E0, 0x8000);
+
+	/* Stagger Programming */
+	gunit_sb_write(0x13, 0x1, 0x0230, 0x401F00);
+	gunit_sb_write(0x13, 0x1, 0x0430, 0x541F00);
+}
+
+static bool mrfld_hdmi_get_divider_selector(
+			uint32_t dclk,
+			uint32_t *real_dclk,
+			int *m1, int *m2,
+			int *n, int *p1, int *p2)
+{
+	int i;
+	for (i = 0; i < NUM_SELECTOR_LIST; i++) {
+		if (dclk <=
+			data_rate_divider_selector_list[i].target_data_rate) {
+			*real_dclk =
+			data_rate_divider_selector_list[i].target_data_rate;
+			*m1 = data_rate_divider_selector_list[i].m1;
+			*m2 = data_rate_divider_selector_list[i].m2;
+			*n = data_rate_divider_selector_list[i].n;
+			*p1 = data_rate_divider_selector_list[i].p1;
+			*p2 = data_rate_divider_selector_list[i].p2;
+			return true;
+		}
+	}
+	pr_err("Could not find supported mode\n");
+	return false;
+}
+
+otm_hdmi_ret_t mrfld_hdmi_crtc_mode_set_program_dpll(
+				hdmi_device_t *dev,
+				unsigned long dclk)
+{
+	int n, p1, p2, m1, m2;
+	uint32_t target_dclk;
+	if (mrfld_hdmi_get_divider_selector(dclk,
+			&target_dclk, &m1, &m2, &n, &p1, &p2)) {
+		mrfld_hdmi_set_program_dpll(dev->io_address,
+				n, p1, p2, m1, m2);
+		dev->clock_khz = target_dclk;
+		return OTM_HDMI_SUCCESS;
+	} else
+		return OTM_HDMI_ERR_INVAL;
 }

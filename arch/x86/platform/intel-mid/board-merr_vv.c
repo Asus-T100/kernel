@@ -93,7 +93,7 @@ struct devs_id __initconst device_ids[] = {
 					&intel_register_i2c_camera_device},
 	{"r69001-ts-i2c", SFI_DEV_TYPE_I2C, 0, &no_platform_data, NULL},
 #endif
-#ifdef CONFIG_SUPPORT_HDMI
+#ifdef CONFIG_DRM_MRFLD
 	{"hdmi", SFI_DEV_TYPE_IPC, 1, &hdmi_platform_data, NULL},
 #endif
 	{},
