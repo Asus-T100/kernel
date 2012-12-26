@@ -122,6 +122,18 @@ struct snd_compr_codec_caps {
 };
 
 /**
+ * struct snd_compr_metadata: compressed stream metadata
+ * @encoder_delay: no of samples inserted by the encoder at the beginning
+ * of the track
+ * @encoder_padding: no of samples appended by the encoder at the end
+ * of the track
+ */
+struct snd_compr_metadata {
+	 __u32 encoder_delay;
+	 __u32 encoder_padding;
+};
+
+/**
  * compress path ioctl definitions
  * SNDRV_COMPRESS_GET_CAPS: Query capability of DSP
  * SNDRV_COMPRESS_GET_CODEC_CAPS: Query capability of a codec
@@ -145,6 +157,8 @@ struct snd_compr_codec_caps {
 						struct snd_compr_codec_caps)
 #define SNDRV_COMPRESS_SET_PARAMS	_IOW('C', 0x12, struct snd_compr_params)
 #define SNDRV_COMPRESS_GET_PARAMS	_IOR('C', 0x13, struct snd_codec)
+#define SNDRV_COMPRESS_SET_METADATA	_IOW('C', 0x14,\
+						 struct snd_compr_metadata)
 #define SNDRV_COMPRESS_TSTAMP		_IOR('C', 0x20, struct snd_compr_tstamp)
 #define SNDRV_COMPRESS_AVAIL		_IOR('C', 0x21, struct snd_compr_avail)
 #define SNDRV_COMPRESS_PAUSE		_IO('C', 0x30)
@@ -152,10 +166,12 @@ struct snd_compr_codec_caps {
 #define SNDRV_COMPRESS_START		_IO('C', 0x32)
 #define SNDRV_COMPRESS_STOP		_IO('C', 0x33)
 #define SNDRV_COMPRESS_DRAIN		_IO('C', 0x34)
+#define SNDRV_COMPRESS_PARTIAL_DRAIN	_IO('C', 0x35)
 /*
  * TODO
  * 1. add mmap support
  *
  */
 #define SND_COMPR_TRIGGER_DRAIN 7 /*FIXME move this to pcm.h */
+#define SND_COMPR_TRIGGER_PARTIAL_DRAIN 8
 #endif
