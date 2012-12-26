@@ -128,6 +128,8 @@ static u32 debug_modes_count;
 #define OTM_HDMI_I2C_ADAPTER_NUM 10
 #define OTM_HDMI_PIPE_NUM 1
 #define OTM_HDMI_MAX_DDC_WRITE_SIZE 20
+#define OTM_HDMI_MAX_HDISPLAY 1920
+#define OTM_HDMI_MAX_VDISPLAY 1080
 
 /* Default HDMI Edid - 640x480p 720x480p 1280x720p */
 static unsigned char default_edid[] = {
@@ -614,6 +616,12 @@ int android_hdmi_mode_valid(struct drm_connector *connector,
 
 	pr_debug("display info. hdisplay = %d, vdisplay = %d, clock = %d.\n",
 			mode->hdisplay, mode->vdisplay, mode->clock);
+
+	if (mode->hdisplay > OTM_HDMI_MAX_HDISPLAY)
+		return MODE_BAD_HVALUE;
+
+	if (mode->vdisplay > OTM_HDMI_MAX_VDISPLAY)
+		return MODE_BAD_VVALUE;
 
 	/* Restricting modes within the supported pixel clock */
 	if (OTM_HDMI_SUCCESS == otm_hdmi_get_pixel_clock_range(
