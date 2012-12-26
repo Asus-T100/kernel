@@ -167,17 +167,6 @@ void intel_scu_ipc_send_command(u32 cmd) /* Send ipc command */
 	ipcdev.cmd = cmd;
 	INIT_COMPLETION(ipcdev.cmd_complete);
 
-	/* Revert me:
-	 * This is a workaround here for MRFLD, because IPC interrupt for MRFLD
-	 * is still not supported on HVP. So we use polling mode to access PMIC
-	 * registers. Will remove when MRFLD IPC interrupt is functional.
-	 */
-	if (platform == INTEL_MID_CPU_CHIP_TANGIER) {
-		ipcdev.ioc = 0;
-		writel(cmd, ipcdev.ipc_base);
-		goto end;
-	}
-
 	if (system_state == SYSTEM_RUNNING) {
 		ipcdev.ioc = 1;
 		writel(cmd | IPC_IOC, ipcdev.ipc_base);
@@ -186,7 +175,6 @@ void intel_scu_ipc_send_command(u32 cmd) /* Send ipc command */
 		writel(cmd, ipcdev.ipc_base);
 	}
 
-end:
 	pmu_log_ipc(cmd);
 }
 
