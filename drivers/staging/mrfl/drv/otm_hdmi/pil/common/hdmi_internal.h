@@ -82,6 +82,10 @@
 extern otm_hdmi_attribute_t
 	otm_hdmi_attributes_table[OTM_HDMI_MAX_SUPPORTED_ATTRIBUTES];
 
+extern
+otm_hdmi_ret_t mrfld_hdmi_crtc_mode_set_program_dpll(
+						hdmi_device_t *dev,
+						unsigned long dclk);
 #define ATTRS otm_hdmi_attributes_table
 
 /* Note: this macro should **only** be used when time difference is less than
