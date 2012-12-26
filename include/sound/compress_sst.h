@@ -35,6 +35,8 @@ struct compress_sst_ops {
 	int (*tstamp) (unsigned int str_id, struct snd_compr_tstamp *tstamp);
 	int (*ack) (unsigned int str_id, unsigned long bytes);
 	int (*close) (unsigned int str_id);
+	int (*set_metadata) (unsigned int str_id,
+			struct snd_compr_metadata *metadata);
 	int (*get_caps) (struct snd_compr_caps *caps);
 	int (*get_codec_caps) (struct snd_compr_codec_caps *codec);
 

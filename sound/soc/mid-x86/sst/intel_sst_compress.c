@@ -116,6 +116,30 @@ static int sst_cdev_ack(unsigned int str_id, unsigned long bytes)
 
 }
 
+static int sst_cdev_set_metadata(unsigned int str_id,
+	struct snd_compr_metadata *metadata)
+{
+	int retval = 0;
+	struct ipc_post *msg = NULL;
+	struct stream_info *str_info;
+
+	pr_debug("set metadata for stream %d\n", str_id);
+
+	str_info = get_stream_info(str_id);
+	if (!str_info)
+		return -EINVAL;
+
+	if (sst_create_large_msg(&msg))
+		return -ENOMEM;
+
+	sst_fill_header(&msg->header, IPC_IA_SET_STREAM_PARAMS, 1, str_id);
+	msg->header.part.data = sizeof(u32) + sizeof(*metadata);
+	memcpy(msg->mailbox_data, &msg->header, sizeof(u32));
+	memcpy(msg->mailbox_data + sizeof(u32), metadata, sizeof(*metadata));
+	sst_drv_ctx->ops->sync_post_message(msg);
+	return retval;
+}
+
 static int sst_cdev_control(unsigned int cmd, unsigned int str_id)
 {
 	pr_debug("recieved cmd %d on stream %d\n", cmd, str_id);
@@ -136,7 +160,9 @@ static int sst_cdev_control(unsigned int cmd, unsigned int str_id)
 	case SNDRV_PCM_TRIGGER_STOP:
 		return sst_drop_stream(str_id);
 	case SND_COMPR_TRIGGER_DRAIN:
-		return sst_drain_stream(str_id);
+		return sst_drain_stream(str_id, false);
+	case SND_COMPR_TRIGGER_PARTIAL_DRAIN:
+		return sst_drain_stream(str_id, true);
 	}
 	return -EINVAL;
 }
@@ -218,6 +244,7 @@ static struct compress_sst_ops compress = {
 	.open = sst_cdev_open,
 	.close = sst_cdev_close,
 	.control = sst_cdev_control,
+	.set_metadata = sst_cdev_set_metadata,
 	.tstamp = sst_cdev_tstamp,
 	.ack = sst_cdev_ack,
 	.get_caps = sst_cdev_caps,
