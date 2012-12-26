@@ -117,6 +117,9 @@ void mdfld_save_display(struct drm_device *dev);
 void ospm_power_island_down(int hw_islands);
 void ospm_power_island_up(int hw_islands);
 void ospm_suspend_graphics(void);
+void ospm_power_graphics_island_down(int hw_islands);
+void ospm_power_graphics_island_up(int hw_islands);
+
 /*
  * GFX-Runtime PM callbacks
  */

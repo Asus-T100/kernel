@@ -734,6 +734,20 @@ void psb_irq_preinstall(struct drm_device *dev)
 	psb_irq_preinstall_islands(dev, OSPM_ALL_ISLANDS);
 }
 
+void psb_irq_preinstall_graphics_islands(struct drm_device *dev, int hw_islands)
+{
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *) dev->dev_private;
+	unsigned long irqflags;
+
+
+	if (hw_islands & OSPM_GRAPHICS_ISLAND)
+		dev_priv->vdc_irq_mask |= _PSB_IRQ_SGX_FLAG;
+	/*This register is safe even if display island is off*/
+	PSB_WVDC32(~dev_priv->vdc_irq_mask, PSB_INT_MASK_R);
+
+}
+
 /**
  * FIXME: should I remove display irq enable here??
  */
@@ -784,6 +798,23 @@ void psb_irq_preinstall_islands(struct drm_device *dev, int hw_islands)
 int psb_irq_postinstall(struct drm_device *dev)
 {
 	return psb_irq_postinstall_islands(dev, OSPM_ALL_ISLANDS);
+}
+
+int psb_irq_postinstall_graphics_islands(struct drm_device *dev, int hw_islands)
+{
+
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *) dev->dev_private;
+	unsigned long irqflags;
+
+	PSB_DEBUG_IRQ("\n");
+
+
+	/*This register is safe even if display island is off*/
+	PSB_WVDC32(dev_priv->vdc_irq_mask, PSB_INT_ENABLE_R);
+
+
+	return 0;
 }
 
 int psb_irq_postinstall_islands(struct drm_device *dev, int hw_islands)
@@ -878,6 +909,26 @@ int psb_irq_postinstall_islands(struct drm_device *dev, int hw_islands)
 void psb_irq_uninstall(struct drm_device *dev)
 {
 	psb_irq_uninstall_islands(dev, OSPM_ALL_ISLANDS);
+}
+
+void psb_irq_uninstall_graphics_islands(struct drm_device *dev, int hw_islands)
+{
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *) dev->dev_private;
+	unsigned long irqflags;
+
+	if (hw_islands & OSPM_GRAPHICS_ISLAND)
+		dev_priv->vdc_irq_mask &= ~_PSB_IRQ_SGX_FLAG;
+
+	/*These two registers are safe even if display island is off*/
+	PSB_WVDC32(~dev_priv->vdc_irq_mask, PSB_INT_MASK_R);
+	PSB_WVDC32(dev_priv->vdc_irq_mask, PSB_INT_ENABLE_R);
+
+	wmb();
+
+	/*This register is safe even if display island is off*/
+	PSB_WVDC32(PSB_RVDC32(PSB_INT_IDENTITY_R), PSB_INT_IDENTITY_R);
+
 }
 
 void psb_irq_uninstall_islands(struct drm_device *dev, int hw_islands)

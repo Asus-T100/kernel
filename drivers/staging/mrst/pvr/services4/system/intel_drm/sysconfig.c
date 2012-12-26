@@ -1220,12 +1220,7 @@ PVRSRV_ERROR SysDevicePrePowerState(IMG_UINT32			ui32DeviceIndex,
 #if defined(SUPPORT_DRI_DRM_EXT)
 			ospm_power_using_hw_end(OSPM_GRAPHICS_ISLAND);
 
-			/*! missed in IMG's DDK1.6,
-				may cause system hang after early resume
-			*/
-			psb_irq_uninstall_islands(
-				gpDrmDevice, OSPM_GRAPHICS_ISLAND);
-			ospm_power_island_down(OSPM_GRAPHICS_ISLAND);
+			ospm_power_graphics_island_down(OSPM_GRAPHICS_ISLAND);
 #endif
 #ifdef CONFIG_MDFD_GL3
 			/* Power off GL3 */

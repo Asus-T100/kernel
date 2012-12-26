@@ -38,6 +38,7 @@
 #include "mdfld_dsi_dpi.h"
 #include "android_hdmi.h"
 #include "psb_intel_display.h"
+#include "psb_irq.h"
 #ifdef CONFIG_GFX_RTPM
 #include <linux/pm_runtime.h>
 #endif
@@ -1200,6 +1201,37 @@ int ospm_power_suspend(struct pci_dev *pdev, pm_message_t state)
 	return ret;
 }
 
+void ospm_power_graphics_island_up(int hw_islands)
+{
+	unsigned long flags;
+	unsigned long irqflags;
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *) gpDrmDevice->dev_private;
+
+
+	if (hw_islands) {
+		spin_lock_irqsave(&dev_priv->irqmask_lock, irqflags);
+		/*
+		If pmu_nc_set_power_state fails then accessing HW
+		reg would result in a crash - IERR/Fabric error.
+		*/
+		spin_lock_irqsave(&dev_priv->ospm_lock, flags);
+		PSB_DEBUG_PM("power on gfx_islands: 0x%x\n", hw_islands);
+		if (pmu_nc_set_power_state(hw_islands,
+					   OSPM_ISLAND_UP, APM_REG_TYPE))
+			BUG();
+		if (hw_islands & OSPM_GRAPHICS_ISLAND)
+			atomic_inc(&g_graphics_access_count);
+		g_hw_power_status_mask |= hw_islands;
+		psb_irq_preinstall_graphics_islands(gpDrmDevice,
+							OSPM_GRAPHICS_ISLAND);
+		psb_irq_postinstall_graphics_islands(gpDrmDevice,
+							OSPM_GRAPHICS_ISLAND);
+		spin_unlock_irqrestore(&dev_priv->ospm_lock, flags);
+		spin_unlock_irqrestore(&dev_priv->irqmask_lock, irqflags);
+	}
+}
+
 /*
  * ospm_power_island_up
  *
@@ -1318,6 +1350,83 @@ static void ospm_power_island_down_video(int video_islands)
 		g_hw_power_status_mask &= ~OSPM_VIDEO_ENC_ISLAND;
 	}
 	spin_unlock_irqrestore(&dev_priv->ospm_lock, flags);
+}
+
+void ospm_power_graphics_island_down(int hw_islands)
+{
+	u32 dc_islands = 0;
+	u32 gfx_islands = hw_islands;
+
+	unsigned long flags;
+	unsigned long irqflags;
+	struct mdfld_dsi_config *dsi_config;
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *) gpDrmDevice->dev_private;
+
+	if (gfx_islands) {
+		spin_lock_irqsave(&dev_priv->irqmask_lock, irqflags);
+		spin_lock_irqsave(&dev_priv->ospm_lock, flags);
+		/* both graphics and GL3 based on graphics_access count */
+		if (gfx_islands & OSPM_GL3_CACHE_ISLAND) {
+#ifdef CONFIG_MDFD_GL3
+			/*
+			Make sure both GFX & Video aren't
+			using GL3
+			*/
+			if (atomic_read(&g_graphics_access_count) ||
+					(g_hw_power_status_mask &
+					(OSPM_VIDEO_DEC_ISLAND |
+					OSPM_VIDEO_ENC_ISLAND |
+					OSPM_GRAPHICS_ISLAND)) ||
+					(drm_psb_gl3_enable == 0)) {
+				gfx_islands &=  ~OSPM_GL3_CACHE_ISLAND;
+				if (!gfx_islands) {
+					spin_unlock_irqrestore(
+					&dev_priv->ospm_lock, flags);
+					spin_unlock_irqrestore(
+					&dev_priv->irqmask_lock, irqflags);
+					return ;
+				}
+			}
+#endif
+		}
+		if (gfx_islands & OSPM_GRAPHICS_ISLAND) {
+			if (atomic_read(&g_graphics_access_count))
+				gfx_islands &=  ~OSPM_GRAPHICS_ISLAND;
+			else
+				psb_irq_uninstall_graphics_islands(gpDrmDevice,
+							OSPM_GRAPHICS_ISLAND);
+		}
+
+		/*
+		If pmu_nc_set_power_state fails then accessing HW
+		reg would result in a crash - IERR/Fabric error.
+		*/
+		PSB_DEBUG_PM("power off gfx/gl3 island 0x%x.\n", gfx_islands);
+		g_hw_power_status_mask &= ~gfx_islands;
+		if (pmu_nc_set_power_state(gfx_islands,
+			OSPM_ISLAND_DOWN, APM_REG_TYPE))
+			BUG();
+
+		spin_unlock_irqrestore(&dev_priv->ospm_lock, flags);
+		spin_unlock_irqrestore(&dev_priv->irqmask_lock, irqflags);
+
+		/* From the test, after enter DSR level 1, only GFX island
+		** has chance to power on and leave PCI host power ungated
+		** Because after SGX complete a buffer, it will trigger
+		** PROCESS_QUEUES command to SGX even if there are no more
+		** 3D thing to do, hence power on SGX and PCI. Because there are
+		** nothing remain to flip, exit_dsr doesn't be called,
+		** so PCI host remain power ungated.
+		** here just give another chance to enter DSR
+		** Note:
+		*/
+		if (gfx_islands & OSPM_GRAPHICS_ISLAND) {
+			dsi_config = dev_priv->dsi_configs[0];
+			mdfld_dsi_dsr_forbid(dsi_config);
+			mdfld_dsi_dsr_allow(dsi_config);
+		}
+	}
 }
 
 /*
@@ -1759,16 +1868,14 @@ bool ospm_power_using_hw_begin(int hw_island, UHBUsage usage)
 		} else if (hw_island == OSPM_GRAPHICS_ISLAND) {
 				deviceID = gui32SGXDeviceID;
 #ifdef CONFIG_MDFD_GL3
-				ospm_power_island_up(OSPM_GRAPHICS_ISLAND |
+				ospm_power_graphics_island_up(
+						OSPM_GRAPHICS_ISLAND |
 						OSPM_GL3_CACHE_ISLAND);
 #else
-				ospm_power_island_up(OSPM_GRAPHICS_ISLAND);
+				ospm_power_graphics_island_up(
+						OSPM_GRAPHICS_ISLAND);
 #endif
-				psb_irq_preinstall_islands(gpDrmDevice,
-				OSPM_GRAPHICS_ISLAND);
-				psb_irq_postinstall_islands(gpDrmDevice,
-					OSPM_GRAPHICS_ISLAND);
-			}
+		}
 	}
 
 	if (!ret)
