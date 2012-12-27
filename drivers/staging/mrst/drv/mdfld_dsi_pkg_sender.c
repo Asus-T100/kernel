@@ -1315,7 +1315,7 @@ int mdfld_dsi_send_dcs(struct mdfld_dsi_pkg_sender * sender,
 			spin_unlock(&sender->lock);
 			if (dev_priv->b_async_flip_enable)
 				DRM_INFO("reject write_mem_start\n");
-			return 0;
+			return -EAGAIN;
 		}
 
 		/**
@@ -1331,7 +1331,7 @@ int mdfld_dsi_send_dcs(struct mdfld_dsi_pkg_sender * sender,
 		if (!retry) {
 			DRM_ERROR("DBI FIFO timeout, drop frame\n");
 			spin_unlock(&sender->lock);
-			return 0;
+			return -EAGAIN;
 		}
 
 		/*wait for generic fifo*/

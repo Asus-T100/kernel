@@ -374,7 +374,7 @@ static IMG_BOOL MRSTLFBFlipContexts(MRSTLFB_DEVINFO *psDevInfo,
 
 	if (!psDevInfo->bScreenState) {
 		if (mdfld_dsi_dsr_update_panel_fb(dev_priv->dsi_configs[0])) {
-			DRM_ERROR("mdfld_dsi_dsr: failed to update panel fb\n");
+			DRM_DEBUG("mdfld_dsi_dsr: failed to update panel fb\n");
 			ret = IMG_FALSE;
 		}
 	}
@@ -582,7 +582,7 @@ static IMG_BOOL DRMLFBFlipBuffer2(MRSTLFB_DEVINFO *psDevInfo,
 flip_out:
 	ret = MRSTLFBFlipContexts(psDevInfo, psContexts);
 	if (ret != IMG_TRUE)
-		DRM_INFO("%s: returning %d from MRSTLFBFlipContexts\n", __func__, ret);
+		DRM_DEBUG("%s: returning %d from MRSTLFBFlipContexts\n", __func__, ret);
 	return ret;
 }
 
@@ -1336,8 +1336,8 @@ static void timer_flip_handler(struct work_struct *work)
 		if (psLastItem->bValid && psLastItem->bFlipped && psLastItem->bCmdCompleted == MRST_FALSE)
 		{
 			MRSTFBFlipComplete(psSwapChain, NULL, MRST_TRUE);
-			goto ExitUnlock;
 		}
+		goto ExitUnlock;
 	}
 	printk(KERN_WARNING "MRSTLFBFlipTimerFn: swapchain is not empty, flush queue\n");
 
@@ -1758,9 +1758,6 @@ static IMG_BOOL ProcessFlip2(IMG_HANDLE hCmdCookie,
 
 	psFlipItem = &psSwapChain->psVSyncFlips[psSwapChain->ulInsertIndex];
 
-	/*start Flip watch dog*/
-	mod_timer(&psDevInfo->sFlipTimer, FLIP_TIMEOUT + jiffies);
-
 	if (hdmi_state) {
 		/*
 		 * Enable HDMI vblank interrupt, otherwise page flip would stuck
@@ -1779,14 +1776,19 @@ static IMG_BOOL ProcessFlip2(IMG_HANDLE hCmdCookie,
 			if (DRMLFBFlipBuffer2(
 				psDevInfo,
 				 psSwapChain, psPlaneContexts) == IMG_FALSE) {
-				DRM_INFO("%s: DRMLFBFlipBuffer2 failed\n", __func__);
-				psFlipItem->bFlipped = MRST_FALSE;
-				goto ExitErrorUnlock;
+				DRM_DEBUG("%s: DRMLFBFlipBuffer2 failed\n", __func__);
+				MRSTFBFlipComplete(psSwapChain, NULL, MRST_FALSE);
+				psSwapChain->psPVRJTable->pfnPVRSRVCmdComplete(hCmdCookie,
+						IMG_TRUE);
+				goto ExitTrueUnlock;
 			}
 			psFlipItem->bFlipped = MRST_TRUE;
 		} else {
 			psFlipItem->bFlipped = MRST_FALSE;
 		}
+
+		/*start Flip watch dog*/
+		mod_timer(&psDevInfo->sFlipTimer, FLIP_TIMEOUT + jiffies);
 
 		psFlipItem->hCmdComplete = (MRST_HANDLE)hCmdCookie;
 		psFlipItem->ulSwapInterval =
@@ -1949,9 +1951,6 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 
 	psFlipItem = &psSwapChain->psVSyncFlips[psSwapChain->ulInsertIndex];
 
-	/*start Flip watch dog*/
-	mod_timer(&psDevInfo->sFlipTimer, FLIP_TIMEOUT + jiffies);
-
 	if (hdmi_state) {
 		/*
 		 * Enable HDMI vblank interrupt, otherwise page flip would stuck
@@ -1970,17 +1969,20 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 		{
 			if (DRMLFBFlipBuffer(psDevInfo,
 				 psSwapChain, psBuffer) == IMG_FALSE) {
-				DRM_INFO("%s: DRMLFBFlipBuffer failed\n", __func__);
-				psFlipItem->bFlipped = MRST_FALSE;
-				goto ExitErrorUnlock;
+				DRM_DEBUG("%s: DRMLFBFlipBuffer failed\n", __func__);
+				MRSTFBFlipComplete(psSwapChain, NULL, MRST_FALSE);
+				psSwapChain->psPVRJTable->pfnPVRSRVCmdComplete(hCmdCookie,
+					IMG_TRUE);
+				goto ExitTrueUnlock;
 			}
-
 			psFlipItem->bFlipped = MRST_TRUE;
 		}
 		else
 		{
 			psFlipItem->bFlipped = MRST_FALSE;
 		}
+		/*start Flip watch dog*/
+		mod_timer(&psDevInfo->sFlipTimer, FLIP_TIMEOUT + jiffies);
 
 		psFlipItem->hCmdComplete = (MRST_HANDLE)hCmdCookie;
 		psFlipItem->ulSwapInterval = (unsigned long)psFlipCmd->ui32SwapInterval;
