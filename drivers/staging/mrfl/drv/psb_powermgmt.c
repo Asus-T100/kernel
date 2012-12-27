@@ -336,10 +336,10 @@ void ospm_apm_power_down_topaz(struct drm_device *dev)
 	if (IS_MRFLD(dev)) {
 		psb_irq_uninstall_islands(dev, OSPM_VIDEO_ENC_ISLAND);
 		tng_topaz_save_mtx_state(gpDrmDevice);
-#if 0
+		/*
 		TNG_TOPAZ_NEW_PMSTATE(dev, tng_topaz_priv,
 				      PSB_PMSTATE_POWERDOWN);
-#endif
+		*/
 	}
 
 	ospm_power_island_down(OSPM_VIDEO_ENC_ISLAND);

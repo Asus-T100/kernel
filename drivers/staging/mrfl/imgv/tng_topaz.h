@@ -239,7 +239,7 @@ extern int tng_check_topaz_idle(struct drm_device *dev);
 
 extern void tng_topaz_enableirq(struct drm_device *dev);
 
-extern void tng_topaz_disableirq(struct drm_psb_private *dev_priv);
+extern void tng_topaz_disableirq(struct drm_device *dev);
 
 extern int tng_topaz_init(struct drm_device *dev);
 

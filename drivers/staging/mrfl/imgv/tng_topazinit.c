@@ -651,6 +651,12 @@ int tng_topaz_init(struct drm_device *dev)
 	*/
 	pci_set_drvdata(dev->pdev, dev);
 
+	if (device_create_file(&dev->pdev->dev, &dev_attr_topaz_pmstate))
+		DRM_ERROR("TOPAZ: could not create sysfs file\n");
+	topaz_priv->sysfs_pmstate = sysfs_get_dirent(dev->pdev->dev.kobj.sd,
+						     NULL,
+						     "topaz_pmstate");
+
 	topaz_priv = dev_priv->topaz_private;
 	topaz_priv->dev = dev;
 	INIT_DELAYED_WORK(&topaz_priv->topaz_suspend_wq,
@@ -899,10 +905,10 @@ int tng_topaz_uninit(struct drm_device *dev)
 
 	if (topaz_priv) {
 		pci_set_drvdata(dev->pdev, NULL);
-		/* device_remove_file(&dev->pdev->dev,
-			&dev_attr_topaz_pmstate); */
-		/* sysfs_put(topaz_priv->sysfs_pmstate); */
-		/* topaz_priv->sysfs_pmstate = NULL; */
+		device_remove_file(&dev->pdev->dev,
+				   &dev_attr_topaz_pmstate);
+		sysfs_put(topaz_priv->sysfs_pmstate);
+		topaz_priv->sysfs_pmstate = NULL;
 
 		kfree(topaz_priv);
 		dev_priv->topaz_private = NULL;
@@ -1163,8 +1169,6 @@ static void tng_get_bank_size(
 }
 
 /* setup fw when start a new context */
-
-#if 1 /*_PO_DEBUG_*/
 int tng_topaz_init_board(
 	struct drm_device *dev,
 	struct psb_video_ctx *video_ctx,
@@ -1227,7 +1231,6 @@ int tng_topaz_init_board(
 	tng_set_consumer(dev, 0);
 	return 0;
 }
-#endif
 
 int tng_topaz_setup_fw(
 	struct drm_device *dev,
@@ -1263,9 +1266,7 @@ int tng_topaz_setup_fw(
 
 	tng_get_bank_size(dev, video_ctx, codec);
 
-	/*
 	tng_set_auto_clk_gating(dev, codec, 1);
-	*/
 
 	PSB_DEBUG_TOPAZ("TOPAZ: will upload firmware to %d pipes\n",
 			  topaz_priv->topaz_num_pipes);
