@@ -387,20 +387,21 @@ void mdfld_te_handler_work(struct work_struct *work)
 	drm_handle_vblank(dev, pipe);
 
 	if (dev_priv->b_async_flip_enable) {
-		mdfld_dsi_dsr_report_te(dev_priv->dsi_configs[0]);
+		if (mipi_te_hdmi_vsync_check(dev, pipe)) {
+			if (dev_priv->psb_vsync_handler != NULL)
+				(*dev_priv->psb_vsync_handler)(dev, pipe);
+		}
 
-		if (!mipi_te_hdmi_vsync_check(dev, pipe))
-			return;
+		mdfld_dsi_dsr_report_te(dev_priv->dsi_configs[0]);
 	} else {
 #ifdef CONFIG_MDFD_DSI_DPU
 		mdfld_dpu_update_panel(dev);
 #else
 		mdfld_dbi_update_panel(dev, pipe);
 #endif
+		if (dev_priv->psb_vsync_handler != NULL)
+			(*dev_priv->psb_vsync_handler)(dev, pipe);
 	}
-
-	if (dev_priv->psb_vsync_handler != NULL)
-		(*dev_priv->psb_vsync_handler)(dev, pipe);
 }
 
 static void update_te_counter(struct drm_device *dev, uint32_t pipe)
