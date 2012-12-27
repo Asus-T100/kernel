@@ -39,8 +39,8 @@
 #include <linux/delay.h>
 
 #define TOPAZ_MAX_COMMAND_IN_QUEUE 0x1000
+#define MASK_MTX_INT_ENAB 0x4000ff00
 /*static uint32_t setv_cnt = 0;*/
-/*#define MULTI_STREAM_TEST_IRQ*/
 
 enum MTX_MESSAGE_ID {
 	MTX_MESSAGE_ACK,   /* !< (no data)\n Null command does nothing\n */
@@ -93,6 +93,7 @@ void mtx_kick(struct drm_device *dev)
 	struct drm_psb_private *dev_priv = dev->dev_private;
 
 	mtx_set_target(dev_priv);
+	PSB_DEBUG_GENERAL("TOPAZ: Kick MTX to start\n");
 	MTX_WRITE32(MTX_CR_MTX_KICK, 1);
 }
 
@@ -572,10 +573,7 @@ bool tng_topaz_interrupt(void *pvData)
 		"dqueue cmd and schedule other work queue\n",
 		wb_msg->ui32WritebackVal);
 	psb_fence_handler(dev, LNC_ENGINE_ENCODE);
-#ifdef MULTI_STREAM_TEST_IRQ
-	if (topaz_priv->topaz_busy == 0)
-		schedule_delayed_work(&topaz_priv->topaz_suspend_wq, 0);
-#endif
+
 	topaz_priv->topaz_busy = 1;
 	tng_topaz_dequeue_send(dev);
 
@@ -589,7 +587,6 @@ bool tng_topaz_interrupt(void *pvData)
 	return true;
 }
 
-/* #define PSB_DEBUG_GENERAL DRM_ERROR */
 static int tng_submit_encode_cmdbuf(struct drm_device *dev,
 				    struct drm_file *file_priv,
 				    struct ttm_buffer_object *cmd_buffer,
@@ -766,14 +763,12 @@ int tng_cmdbuf_video(struct drm_file *file_priv,
 	return ret;
 }
 
-/* @{ */
 #define SHIFT_MTX_CMDWORD_ID    (0)
 #define MASK_MTX_CMDWORD_ID     (0xff << SHIFT_MTX_CMDWORD_ID)
 #define SHIFT_MTX_CMDWORD_CORE  (8)
 #define MASK_MTX_CMDWORD_CORE   (0xff << SHIFT_MTX_CMDWORD_CORE)
 #define SHIFT_MTX_CMDWORD_COUNT (16)
 #define MASK_MTX_CMDWORD_COUNT  (0xffff << SHIFT_MTX_CMDWORD_COUNT)
-/* @} */
 
 #define SHIFT_MTX_WBWORD_ID    (0)
 #define MASK_MTX_WBWORD_ID     (0xff << SHIFT_MTX_WBWORD_ID)
@@ -1099,12 +1094,6 @@ static int32_t tng_restore_bias_table(
 			MULTICORE_WRITE32(reg_off, reg_val);
 			break;
 		case TOPAZ_CORE_REG:
-			if (reg_off != TOPAZHP_CR_SEQUENCER_CONFIG &&
-			    reg_off != INTEL_CHE_CHK_CFG) {
-				DRM_ERROR("Invalid CORE REG %08x\n", reg_off);
-				ttm_bo_kunmap(&tmp_kmap);
-				return -1;
-			}
 			TOPAZCORE_WRITE32(0, reg_off, reg_val);
 			break;
 		case TOPAZ_VLC_REG:
@@ -1210,7 +1199,6 @@ int32_t tng_topaz_restore_mtx_state(struct drm_device *dev)
 	*/
 	PSB_DEBUG_GENERAL("TOPAZ: Restore context %08x(%s)\n",
 		(unsigned int)video_ctx, codec_to_string(video_ctx->codec));
-
 
 	MULTICORE_READ32(TOPAZHP_TOP_CR_MULTICORE_HW_CFG, &num_pipes);
 	num_pipes = num_pipes & MASK_TOPAZHP_TOP_CR_NUM_CORES_SUPPORTED;
@@ -1380,7 +1368,7 @@ int32_t tng_topaz_restore_mtx_state(struct drm_device *dev)
 	if (ret) {
 		DRM_ERROR("Failed to upload firmware for codec %s\n",
 			codec_to_string(video_ctx->codec));
-		/* tng_error_dump_reg(dev_priv); */
+			/* tng_error_dump_reg(dev_priv); */
 		return ret;
 	}
 
@@ -1388,17 +1376,24 @@ int32_t tng_topaz_restore_mtx_state(struct drm_device *dev)
 
 	/* Turn on MTX */
 	mtx_start(dev);
-	/*
+
 	ret = tng_restore_bias_table(dev, video_ctx);
 	if (ret) {
 		DRM_ERROR("Failed to restore BIAS table");
 		goto out;
 	}
-	*/
+
 	/* topaz_priv->topaz_mtx_saved = 0; */
 	PSB_DEBUG_GENERAL("TOPAZ: Restore MTX status successfully\n");
 
 	video_ctx->status &= ~MASK_TOPAZ_CONTEXT_SAVED;
+
+#ifdef TOPAZHP_IRQ_ENABLED
+	psb_irq_preinstall_islands(dev, OSPM_VIDEO_ENC_ISLAND);
+	psb_irq_postinstall_islands(dev, OSPM_VIDEO_ENC_ISLAND);
+
+	tng_topaz_enableirq(dev);
+#endif
 
 	return ret;
 
@@ -1912,21 +1907,6 @@ static int tng_context_switch(
 		return ret;
 	}
 
-#ifdef MULTI_STREAM_TEST_IRQ
-	PSB_DEBUG_GENERAL("TOPAZ: Restore context\n");
-	/* Context switch */
-	topaz_priv->cur_context = video_ctx;
-	topaz_priv->cur_codec = codec;
-	ret = tng_topaz_restore_mtx_state(dev);
-	if (ret) {
-		DRM_ERROR("Failed to restore mtx status");
-		return ret;
-	}
-
-	topaz_priv->cur_context = video_ctx;
-	topaz_priv->cur_codec = codec;
-#endif
-
 	/* Continue doing other commands */
 	if ((topaz_priv->cur_context == video_ctx) &&
 		!(video_ctx->status & MASK_TOPAZ_CONTEXT_SAVED)) {
@@ -2192,13 +2172,11 @@ static int tng_topaz_set_bias(
 	p_command = (uint32_t *)command;
 
 	/* For now, saving BIAS table no matter necessary or not */
-	/*
 	ret = tng_save_bias_table(dev, file_priv, p_command);
 	if (ret) {
 		DRM_ERROR("Failed to save BIAS table");
 		return ret;
 	}
-	*/
 
 	/* Update Globals */
 	if (codec != IMG_CODEC_JPEG) {
@@ -2246,6 +2224,11 @@ tng_topaz_send(
 	PSB_DEBUG_GENERAL("TOPAZ : send the command in the buffer " \
 		"one by one, cmdsize(%d), sequence(%08x)\n",
 		cmd_size, sync_seq);
+
+	/*
+	printk(KERN_ERR "\t\t\tFrame number = %d\n", \
+	       topaz_priv->frame_count);
+	*/
 
 	while (cmd_size > 0) {
 		cur_cmd_header = (struct tng_topaz_cmd_header *) command;
@@ -2343,12 +2326,14 @@ tng_topaz_send(
 		case MTX_CMDID_ISSUEBUFF:
 		case MTX_CMDID_SETUP:
 		case MTX_CMDID_SHUTDOWN:
+			/*
 			if (cur_cmd_header->id == MTX_CMDID_SHUTDOWN) {
 				cur_cmd_size = 4;
 				PSB_DEBUG_GENERAL("TOPAZ : Doesn't handle " \
 					"SHUTDOWN command for now\n");
 				break;
 			}
+			*/
 
 			/* Write command to FIFO */
 			ret = mtx_write_FIFO(dev, cur_cmd_header,
@@ -2367,6 +2352,8 @@ tng_topaz_send(
 				PSB_UDELAY(100);
 			}
 			*/
+			PSB_UDELAY(6);
+
 			/* Calculate command size */
 			switch (cur_cmd_id) {
 			case MTX_CMDID_SETVIDEO:
@@ -2429,7 +2416,6 @@ tng_topaz_send(
 	}
 #endif
 
-	printk(KERN_ERR "frame count = %d\n", topaz_priv->frame_count);
 	topaz_priv->frame_count++;
 
 out:
@@ -2457,12 +2443,14 @@ int tng_topaz_remove_ctx(
 	}*/
 
 	/* Stop the MTX */
+	/*
 	mtx_stop(dev_priv);
 	ret = mtx_wait_for_completion(dev_priv);
 	if (ret) {
 		DRM_ERROR("Mtx wait for completion error");
 		return ret;
 	}
+	*/
 
 	list_for_each_entry(pos, &dev_priv->video_ctx, head) {
 		if (pos->filp == filp) {
@@ -2553,8 +2541,7 @@ int32_t tng_check_topaz_idle(struct drm_device *dev)
 	struct tng_topaz_private *topaz_priv = dev_priv->topaz_private;
 	uint32_t reg_val;
 
-	if (dev_priv->topaz_ctx == NULL ||
-	    topaz_priv->irq_context == NULL) {
+	if (dev_priv->topaz_ctx == NULL) {
 		PSB_DEBUG_GENERAL("TOPAZ: topaz context is null\n");
 		return 0;
 	}
@@ -2669,6 +2656,7 @@ void tng_topaz_enableirq(struct drm_device *dev)
 	uint32_t crImgTopazIntenab;
 
 	PSB_DEBUG_GENERAL("TOPAZ: Enable TOPAZHP IRQ\n");
+
 	MULTICORE_READ32(TOPAZHP_TOP_CR_MULTICORE_HOST_INT_ENAB,
 		&crImgTopazIntenab);
 
@@ -2677,14 +2665,18 @@ void tng_topaz_enableirq(struct drm_device *dev)
 
 	MULTICORE_WRITE32(TOPAZHP_TOP_CR_MULTICORE_HOST_INT_ENAB,
 		crImgTopazIntenab);
+
+	MULTICORE_WRITE32(TOPAZHP_TOP_CR_MULTICORE_MTX_INT_ENAB,
+		MASK_MTX_INT_ENAB);
 #else
 	return 0;
 #endif
 }
 
-void tng_topaz_disableirq(struct drm_psb_private *dev_priv)
+void tng_topaz_disableirq(struct drm_device *dev)
 {
 	uint32_t crImgTopazIntenab;
+	struct drm_psb_private *dev_priv = dev->dev_private;
 
 	PSB_DEBUG_GENERAL("TOPAZ: Disable TOPAZHP IRQ\n");
 	MULTICORE_READ32(TOPAZHP_TOP_CR_MULTICORE_HOST_INT_ENAB,
