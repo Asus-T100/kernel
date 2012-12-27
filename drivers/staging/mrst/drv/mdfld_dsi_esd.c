@@ -29,7 +29,7 @@
 #include "mdfld_dsi_pkg_sender.h"
 #include "mdfld_dsi_dbi_dsr.h"
 
-#define MDFLD_ESD_SLEEP_MSECS	8000
+#define MDFLD_ESD_SLEEP_MSECS	3500
 
 /**
  * esd detection
