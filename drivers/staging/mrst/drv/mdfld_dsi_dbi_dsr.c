@@ -249,7 +249,7 @@ int mdfld_dsi_dsr_update_panel_fb(struct mdfld_dsi_config *dsi_config)
 				NULL, 0, CMD_DATA_SRC_PIPE,
 				MDFLD_DSI_SEND_PACKAGE);
 	if (err) {
-		DRM_ERROR("Failed to send write_mem_start");
+		DRM_DEBUG("Failed to send write_mem_start");
 		err = -EINVAL;
 		goto update_fb_out;
 	}
