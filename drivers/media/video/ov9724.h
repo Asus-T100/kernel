@@ -330,21 +330,24 @@ static struct ov9724_reg const ov9724_720p_15fps[] = {
 	{OV9724_8BIT, {0x0346},	0x00},/* Vertical start - Hi */
 	{OV9724_8BIT, {0x0347},	0x00},/* Vertical start - Low */
 	{OV9724_8BIT, {0x0348},	0x05},/* Horizontal end - Hi */
-	{OV9724_8BIT, {0x0349},	0x0b},/* Horizontal end - Low */
+	{OV9724_8BIT, {0x0349},	0x0f},/* Horizontal end - Low */
 	{OV9724_8BIT, {0x034a},	0x02},/* Vertical end - Hi */
-	{OV9724_8BIT, {0x034b},	0xdb},/* Vertical end - Low */
+	{OV9724_8BIT, {0x034b},	0xdf},/* Vertical end - Low */
 	{OV9724_8BIT, {0x034c},	0x05},/* Image width - Hi */
-	{OV9724_8BIT, {0x034d},	0x0c},/* Image width - Low */
+	{OV9724_8BIT, {0x034d},	0x10},/* Image width - Low */
 	{OV9724_8BIT, {0x034e},	0x02},/* Image Height - Hi */
-	{OV9724_8BIT, {0x034f},	0xdc},/* Image Height - Low */
+	{OV9724_8BIT, {0x034f},	0xe0},/* Image Height - Low */
 	{OV9724_8BIT, {0x4908},	0x14},
 	{OV9724_8BIT, {0x4909},	0x08},
 	{OV9724_8BIT, {0x3811},	0x0a},
 	{OV9724_8BIT, {0x3813},	0x04},
-	{OV9724_8BIT, {0x0340},	0x05},/* Vertical length - Hi */
-	{OV9724_8BIT, {0x0341},	0xf0},/* Vertical length - Low */
-	{OV9724_8BIT, {0x0342},	0x06},/* Horizontal length - Hi */
-	{OV9724_8BIT, {0x0343},	0x28},/* Horizontal length - Low */
+	{OV9724_8BIT, {0x0340},	0x03},/* Vertical length - Hi */
+	{OV9724_8BIT, {0x0341},	0x68},/* Vertical length - Low */
+	{OV9724_8BIT, {0x0342},	0x10},/* Horizontal length - Hi */
+	{OV9724_8BIT, {0x0343},	0x00},/* Horizontal length - Low */
+
+	{OV9724_8BIT, {0x0301},	0x0a},
+	{OV9724_8BIT, {0x0303},	0x08},/* System clk divider -Low */
 	{OV9724_8BIT, {0x0305},	0x02},/* Pre-pll divider -Low */
 	{OV9724_8BIT, {0x0307},	0x4b},/* Pll multi -Low */
 
@@ -855,14 +858,37 @@ struct ov9724_resolution ov9724_res_preview[] = {
 #define N_RES_PREVIEW (ARRAY_SIZE(ov9724_res_preview))
 
 struct ov9724_resolution ov9724_res_still[] = {
-
 	{
-		.desc = "ov9724_720p_15fps",
-		.regs = ov9724_720p_30fps,
-		.width = 1296,
-		.height = 736,
+		.desc =	"QVGA_strong_dvs_30fps",
+		.regs = ov9724_QVGA_strong_dvs_30fps,
+		.width =	408,
+		.height =	308,
 		.fps = 30,
 		.pixels_per_line = 0x0560, /* consistent with regs arrays */
+		.lines_per_frame = 0x0368, /* consistent with regs arrays */
+		.bin_factor_x =	1,
+		.bin_factor_y =	1,
+		.used = 0,
+	},
+	{
+		.desc = "VGA_strong_dvs_30fps",
+		.regs = ov9724_VGA_strong_dvs_30fps,
+		.width = 820,
+		.height = 616,
+		.fps = 30,
+		.pixels_per_line = 0x0560, /* consistent with regs arrays */
+		.lines_per_frame = 0x0368, /* consistent with regs arrays */
+		.bin_factor_x = 0,
+		.bin_factor_y = 0,
+		.used = 0,
+	},
+	{
+		.desc = "ov9724_720p_15fps",
+		.regs = ov9724_720p_15fps,
+		.width = 1296,
+		.height = 736,
+		.fps = 15,
+		.pixels_per_line = 0x1000, /* consistent with regs arrays */
 		.lines_per_frame = 0x0368, /* consistent with regs arrays */
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
@@ -957,12 +983,12 @@ struct ov9724_resolution ov9724_res_video[] = {
 		.bin_factor_y =	0,
 	},
 	{
-		.desc = "ov9724_720p_30fps",
-		.regs = ov9724_720p_30fps,
+		.desc = "ov9724_720p_15fps",
+		.regs = ov9724_720p_15fps,
 		.width = 1296,
 		.height =	736,
 		.fps = 30,
-		.pixels_per_line = 0x0560, /* consistent with regs arrays */
+		.pixels_per_line = 0x1000, /* consistent with regs arrays */
 		.lines_per_frame = 0x0368, /* consistent with regs arrays */
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
