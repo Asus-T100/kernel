@@ -3271,13 +3271,13 @@ static int psb_vsync_set_ioctl(struct drm_device *dev, void *data,
 			mutex_unlock(&dev_priv->vsync_lock);
 
 			if (vsync_enable) {
-				DRM_WAIT_ON(ret, dev_priv->vsync_queue,
-						3 * DRM_HZ,
-						(intel_vblank_count(dev,
-								    pipe) !=
-						 vbl_count));
+				ret = wait_event_interruptible_timeout(
+					    dev_priv->vsync_queue,
+					    (intel_vblank_count(dev, pipe) !=
+					     vbl_count),
+					    3 * DRM_HZ);
 
-				if (ret == -EINTR)
+				if (!ret)
 					DRM_ERROR("Pipe %d vsync time out\n",
 							pipe);
 			}
