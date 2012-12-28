@@ -131,4 +131,12 @@ void ospm_runtime_pm_forbid(struct drm_device *dev);
 void acquire_ospm_lock(void);
 void release_ospm_lock(void);
 
+
+/*
+ * If vec/ved/gfx are idle, submit a request to execute the subsystem-level
+ * idle callback for the device.
+ */
+#ifdef CONFIG_GFX_RTPM
+extern void psb_ospm_post_power_down(void);
+#endif
 #endif /*_PSB_POWERMGMT_H_*/

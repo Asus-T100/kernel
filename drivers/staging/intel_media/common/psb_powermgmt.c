@@ -220,6 +220,35 @@ out:
 	return ret;
 }
 
+#ifdef CONFIG_GFX_RTPM
+void psb_ospm_post_power_down()
+{
+	int ret;
+
+	if (likely(!gpDrmDevice->pdev->dev.power.runtime_auto))
+		return;
+
+	if (ospm_power_is_hw_on(OSPM_VIDEO_ENC_ISLAND |
+				OSPM_VIDEO_DEC_ISLAND |
+				OSPM_GRAPHICS_ISLAND))
+		return;
+
+	PSB_DEBUG_PM("request runtime idle\n");
+
+	ret = pm_request_idle(&gpDrmDevice->pdev->dev);
+
+	if (ret) {
+		PSB_DEBUG_PM("pm_request_idle fail, ret %d\n", ret);
+		ret = pm_runtime_barrier(&gpDrmDevice->pdev->dev);
+		if (!ret) {
+			ret = pm_request_idle(&gpDrmDevice->pdev->dev);
+			PSB_DEBUG_PM("pm_request_idle again, ret %d\n", ret);
+		}
+	}
+}
+#endif
+
+
 
 static int ospm_runtime_pm_msvdx_resume(struct drm_device *dev)
 {
