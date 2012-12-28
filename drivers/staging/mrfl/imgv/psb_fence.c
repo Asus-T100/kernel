@@ -34,6 +34,7 @@ static void psb_fence_poll(struct ttm_fence_device *fdev,
 	struct drm_device *dev = dev_priv->dev;
 	uint32_t sequence = 0;
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
+	struct vsp_private *vsp_priv = dev_priv->vsp_private;
 
 	if (unlikely(!dev_priv))
 		return;
@@ -57,7 +58,7 @@ static void psb_fence_poll(struct ttm_fence_device *fdev,
 				topaz_private)->topaz_sync_addr);
 		break;
 	case VSP_ENGINE_VPP:
-		sequence = vsp_fence_poll(dev_priv);
+		sequence = vsp_priv->current_sequence;
 		break;
 	default:
 		break;
@@ -171,7 +172,7 @@ static void psb_fence_lockup(struct ttm_fence_object *fence,
 				  -EBUSY);
 		write_unlock(&fc->lock);
 
-		vsp_priv->needs_reset = 1;
+		vsp_priv->vsp_state = VSP_STATE_DOWN;
 	} else
 		DRM_ERROR("Unsupported fence class\n");
 }
