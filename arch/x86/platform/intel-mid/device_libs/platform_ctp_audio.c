@@ -1,8 +1,9 @@
 /*
- * platform_clvs_audio.c: CLVS audio platform data initilization file
+ * platform_ctp_audio.c: CLVS audio platform data initilization file
  *
- * (C) Copyright 2008 Intel Corporation
- * Author:
+ * (C) Copyright 2008-2013 Intel Corporation
+ *  Author: KP Jeeja<jeeja.kp@intel.com>
+ *  Author: Dharageswari.R<dharageswari.r@intel.com>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -19,17 +20,19 @@
 #include <linux/platform_device.h>
 #include <asm/intel-mid.h>
 #include "platform_ipc.h"
-#include <asm/platform_clvs_audio.h>
+#include <asm/platform_ctp_audio.h>
 
-static struct clvcs_audio_platform_data clvcs_audio_pdata = {
+static struct ctp_audio_platform_data ctp_audio_pdata = {
 	.spid = &spid,
 };
 
-void *clvs_audio_platform_data(void *info)
+void *ctp_audio_platform_data(void *info)
 {
 	struct platform_device *pdev;
 	int ret;
 
+	ctp_audio_pdata.codec_gpio_hsdet = get_gpio_by_name("gpio_plugdet");
+	ctp_audio_pdata.codec_gpio_button = get_gpio_by_name("gpio_codec_int");
 	ret = add_sst_platform_device();
 	if (ret < 0)
 		return NULL;
@@ -61,5 +64,5 @@ void *clvs_audio_platform_data(void *info)
 		return NULL;
 	}
 
-	return &clvcs_audio_pdata;
+	return &ctp_audio_pdata;
 }

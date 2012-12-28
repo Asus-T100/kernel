@@ -35,7 +35,7 @@
 #include "device_libs/platform_pmic_audio.h"
 #include "device_libs/platform_msic_adc.h"
 #include "device_libs/platform_msic_gpio.h"
-#include <asm/platform_clvs_audio.h>
+#include <asm/platform_ctp_audio.h>
 #include "device_libs/platform_msic_power_btn.h"
 #include "device_libs/platform_msic_vdd.h"
 /*
@@ -117,7 +117,7 @@ struct devs_id __initconst device_ids[] = {
 	{"bq24192", SFI_DEV_TYPE_I2C, 1, &bq24192_platform_data},
 
 	/* Audio */
-	{"clvcs_audio", SFI_DEV_TYPE_IPC, 1, &clvs_audio_platform_data,
+	{"clvcs_audio", SFI_DEV_TYPE_IPC, 1, &ctp_audio_platform_data,
 					     NULL},
 	{"cs42l73", SFI_DEV_TYPE_I2C, 1, &no_platform_data, NULL},
 	{"audience_es305", SFI_DEV_TYPE_I2C, 0, &audience_platform_data,
