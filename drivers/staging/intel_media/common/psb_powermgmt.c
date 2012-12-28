@@ -637,6 +637,7 @@ static int mdfld_save_display_registers (struct drm_device *dev, int pipe)
 
 	dev_priv->saveHDMIPHYMISCCTL = REG_READ(HDMIPHYMISCCTL);
 	dev_priv->saveHDMIB_CONTROL = REG_READ(HDMIB_CONTROL);
+	dev_priv->saveDATALANES_B = REG_READ(HDMIB_LANES02);
 	return 0;
 }
 
@@ -792,6 +793,8 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 	REG_WRITE(PFIT_PGM_RATIOS, dev_priv->savePFIT_PGM_RATIOS);
 	REG_WRITE(HDMIPHYMISCCTL, dev_priv->saveHDMIPHYMISCCTL);
 	REG_WRITE(HDMIB_CONTROL, dev_priv->saveHDMIB_CONTROL);
+	REG_WRITE(HDMIB_LANES02, dev_priv->saveDATALANES_B);
+	REG_WRITE(HDMIB_LANES3, dev_priv->saveDATALANES_B);
 
 	/*save color_coef (chrome) */
 	for (i = 0; i < 6; i++)

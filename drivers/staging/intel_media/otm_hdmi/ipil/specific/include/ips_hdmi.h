@@ -95,29 +95,27 @@
 #define IPS_PFIT_PGM_RATIOS  (0x61234)
 #define IPS_HDMIPHYMISCCTL   (0x61134)
 #define IPS_HDMIB_CONTROL    (0x61140)
+#define IPS_HDMIB_LANES02    (0x61120)
+#define IPS_HDMIB_LANES3     (0x61124)
 #define IPS_PFIT_ENABLE		(1 << 31)
 
 /* HSYNC and VSYNC Polarity Mask Bits */
 #define IPS_HSYNC_POLARITY_MASK (1 << 3)
 #define IPS_VSYNC_POLARITY_MASK (1 << 4)
 
-/* Clock Related Definitions
- * Min/Max value based on DPLL parameter interface table
- * from Penwell Display HAS
- */
-#define IPS_DOT_MIN		19750
-#define IPS_DOT_MAX		120000
+struct ips_clock_t {
+	int dot;
+	int m;
+	int p1;
+};
 
-#define IPS_DPLL_M_MIN_19	105
-#define IPS_DPLL_M_MAX_19	197
-#define IPS_DPLL_P1_MIN_19	2
-#define IPS_DPLL_P1_MAX_19	10
-#define IPS_LIMIT_DPLL_19	0
-#define IPS_VCO_SEL		(1 << 16)
+struct ips_range_t {
+	int min, max;
+};
 
-#define IPS_M_MIN		21
-#define IPS_M_MAX		197
-
+struct ips_clock_limits_t {
+	struct ips_range_t dot, m, p1;
+};
 
 /**
  * Description: disable video infoframe
@@ -234,5 +232,19 @@ otm_hdmi_ret_t ips_get_pixel_clock_range(unsigned int *pc_min,
  * Returns true if preferred mode else false
  */
 bool ips_hdmi_is_preferred_mode(int hdisplay, int vdisplay, int refresh);
+
+/**
+ * Description: programs dpll clocks, enables dpll and waits
+ *		till it locks with DSI PLL
+ *
+ * @dev:	hdmi_device_t
+ * @dclk:	refresh rate dot clock in kHz of current mode
+ *
+ * Returns:	OTM_HDMI_SUCCESS on success
+ *		OTM_HDMI_ERR_INVAL on NULL input arguments
+ */
+otm_hdmi_ret_t	ips_hdmi_crtc_mode_set_program_dpll(hdmi_device_t *dev,
+							unsigned long dclk);
+
 
 #endif /* __IPS_HDMI_H */

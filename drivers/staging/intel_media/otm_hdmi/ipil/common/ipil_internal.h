@@ -135,18 +135,5 @@
 #define IPIL_VSYNC_POLARITY_MASK IPS_VSYNC_POLARITY_MASK
 #define CLEAR_BITS(val, mask) ((val) & (~mask))
 #define SET_BITS(val, mask)  ((val) | (mask))
-struct ipil_clock_t {
-	int dot;
-	int m;
-	int p1;
-};
-
-struct ipil_range_t {
-	int min, max;
-};
-
-struct ipil_clock_limits_t {
-	struct ipil_range_t dot, m, p1;
-};
 
 #endif /* __IPIL_INTERNAL_H */

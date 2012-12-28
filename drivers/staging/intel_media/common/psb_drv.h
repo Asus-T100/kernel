@@ -662,6 +662,7 @@ struct drm_psb_private {
 	uint32_t saveFPB0;
 	uint32_t saveFPB1;
 	uint32_t saveDPLL_B;
+	uint32_t saveDATALANES_B;
 	uint32_t saveDPLL_B_MD;
 	uint32_t saveHTOTAL_B;
 	uint32_t saveHBLANK_B;

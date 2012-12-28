@@ -563,9 +563,6 @@ otm_hdmi_ret_t	ipil_hdmi_crtc_mode_set_program_dpll(hdmi_device_t *dev,
 							unsigned long dclk)
 {
 	otm_hdmi_ret_t rc = OTM_HDMI_SUCCESS;
-	u32 dpll_adj, fp;
-	u32 dpll;
-	int timeout = 0;
 
 	/* NULL checks */
 	if (dev == NULL) {
@@ -574,50 +571,11 @@ otm_hdmi_ret_t	ipil_hdmi_crtc_mode_set_program_dpll(hdmi_device_t *dev,
 	}
 
 	/* get the adjusted clock value */
-	rc = ips_hdmi_get_adjusted_clk(dclk, &dpll_adj, &fp, &dev->clock_khz);
+	rc = ips_hdmi_crtc_mode_set_program_dpll(dev, dclk);
 	if (rc != OTM_HDMI_SUCCESS) {
 		pr_debug("\nfailed to calculate adjusted clock\n");
 		return rc;
 	}
-
-	dpll = hdmi_read32(IPIL_DPLL_B);
-	if (dpll & IPIL_DPLL_VCO_ENABLE) {
-		dpll &= ~IPIL_DPLL_VCO_ENABLE;
-		hdmi_write32(IPIL_DPLL_B, dpll);
-		hdmi_read32(IPIL_DPLL_B);
-
-		/* reset M1, N1 & P1 */
-		hdmi_write32(IPIL_DPLL_DIV0, 0);
-		dpll &= ~IPIL_P1_MASK;
-		hdmi_write32(IPIL_DPLL_B, dpll);
-	}
-
-	/*
-	 * When ungating power of DPLL, needs to wait 0.5us
-	 * before enable the VCO
-	 */
-	if (dpll & IPIL_PWR_GATE_EN) {
-		dpll &= ~IPIL_PWR_GATE_EN;
-		hdmi_write32(IPIL_DPLL_B, dpll);
-		udelay(1);
-	}
-
-	dpll = dpll_adj;
-	hdmi_write32(IPIL_DPLL_DIV0, fp);
-	hdmi_write32(IPIL_DPLL_B, dpll);
-	udelay(1);
-
-	dpll |= IPIL_DPLL_VCO_ENABLE;
-	hdmi_write32(IPIL_DPLL_B, dpll);
-	hdmi_read32(IPIL_DPLL_B);
-
-	/* wait for DSI PLL to lock */
-	while ((timeout < 20000) && !(hdmi_read32(IPIL_PIPEBCONF) &
-					IPIL_PIPECONF_PLL_LOCK)) {
-		udelay(150);
-		timeout++;
-	}
-
 	return OTM_HDMI_SUCCESS;
 }
 
