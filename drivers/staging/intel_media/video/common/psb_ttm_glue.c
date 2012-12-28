@@ -292,6 +292,9 @@ void psb_remove_videoctx(struct drm_psb_private *dev_priv, struct file *filp)
 			mutex_unlock(&msvdx_priv->msvdx_mutex);
 		}
 		kfree(found_ctx);
+		#ifdef CONFIG_GFX_RTPM
+		psb_ospm_post_power_down();
+		#endif
 	}
 }
 
