@@ -1552,31 +1552,31 @@ static struct misensor_reg const mt9d113_lowlight[] = {
 	{MISENSOR_16BIT, 0x098c, 0x2b2a}, /* MCU_ADDRESS [hg_ll_bg_stop]*/
 	{MISENSOR_16BIT, 0x0990, 0xb3b0}, /* 46000*/
 
-	{MISENSOR_16BIT, 0x098c, 0x2b20}, /* MCU_ADDRESS [hg_ll_sat1]*/
+	{MISENSOR_16BIT, 0x098c, 0xab20}, /* MCU_ADDRESS [hg_ll_sat1]*/
 	{MISENSOR_16BIT, 0x0990, 0x004b}, /* 75*/
-	{MISENSOR_16BIT, 0x098c, 0x2b24}, /* MCU_ADDRESS [hg_ll_sat2]*/
+	{MISENSOR_16BIT, 0x098c, 0xab24}, /* MCU_ADDRESS [hg_ll_sat2]*/
 	{MISENSOR_16BIT, 0x0990, 0x0000}, /* 0*/
-	{MISENSOR_16BIT, 0x098c, 0x2b25}, /* MCU_ADDRESS [hg_ll_thresh2]*/
+	{MISENSOR_16BIT, 0x098c, 0xab25}, /* MCU_ADDRESS [hg_ll_thresh2]*/
 	{MISENSOR_16BIT, 0x0990, 0x00ff}, /* 255*/
 
-	{MISENSOR_16BIT, 0x098c, 0x2b30}, /* MCU_ADDRESS [hg_nr_stop_r]*/
+	{MISENSOR_16BIT, 0x098c, 0xab30}, /* MCU_ADDRESS [hg_nr_stop_r]*/
 	{MISENSOR_16BIT, 0x0990, 0x00ff}, /* 255*/
-	{MISENSOR_16BIT, 0x098c, 0x2b31}, /* MCU_ADDRESS [hg_nr_stop_g]*/
+	{MISENSOR_16BIT, 0x098c, 0xab31}, /* MCU_ADDRESS [hg_nr_stop_g]*/
 	{MISENSOR_16BIT, 0x0990, 0x00ff}, /* 255*/
-	{MISENSOR_16BIT, 0x098c, 0x2b32}, /* MCU_ADDRESS [hg_nr_stop_b]*/
+	{MISENSOR_16BIT, 0x098c, 0xab32}, /* MCU_ADDRESS [hg_nr_stop_b]*/
 	{MISENSOR_16BIT, 0x0990, 0x00ff}, /* 255*/
-	{MISENSOR_16BIT, 0x098c, 0x2b33}, /* MCU_ADDRESS [hg_nr_stop_ol]*/
+	{MISENSOR_16BIT, 0x098c, 0xab33}, /* MCU_ADDRESS [hg_nr_stop_ol]*/
 	{MISENSOR_16BIT, 0x0990, 0x0057}, /* 87*/
 
-	{MISENSOR_16BIT, 0x098c, 0x2b34}, /* MCU_ADDRESS [hg_nr_gainstart]*/
+	{MISENSOR_16BIT, 0x098c, 0xab34}, /* MCU_ADDRESS [hg_nr_gainstart]*/
 	{MISENSOR_16BIT, 0x0990, 0x0080}, /* 128*/
-	{MISENSOR_16BIT, 0x098c, 0x2b35}, /* MCU_ADDRESS [hg_nr_gainstop]*/
+	{MISENSOR_16BIT, 0x098c, 0xab35}, /* MCU_ADDRESS [hg_nr_gainstop]*/
 	{MISENSOR_16BIT, 0x0990, 0x00ff}, /* 255*/
 
-	{MISENSOR_16BIT, 0x098c, 0x2b36}, /* MCU_ADDRESS [hg_clusterdc_th]*/
+	{MISENSOR_16BIT, 0x098c, 0xab36}, /* MCU_ADDRESS [hg_cluster_dc_th]*/
 	{MISENSOR_16BIT, 0x0990, 0x0014}, /* 20*/
 
-	{MISENSOR_16BIT, 0x098c, 0x2b37}, /* MCU_ADDRESS [hg_gamma_mor_ctrl]*/
+	{MISENSOR_16BIT, 0x098c, 0xab37}, /* MCU_ADDRESS [hg_gamma_mor_ctrl]*/
 	{MISENSOR_16BIT, 0x0990, 0x0003}, /* 3*/
 
 	{MISENSOR_16BIT, 0x098c, 0x2b38}, /* MCU_ADDRESS [hg_gammastartmor]*/
@@ -1584,8 +1584,8 @@ static struct misensor_reg const mt9d113_lowlight[] = {
 	{MISENSOR_16BIT, 0x098c, 0x2b3a}, /* MCU_ADDRESS [hg_gammastopmor]*/
 	{MISENSOR_16BIT, 0x0990, 0x7918}, /* 31000 [20 lux]*/
 
-	{MISENSOR_16BIT, 0x098c, 0x2b61}, /* MCU_ADDRESS [hg_ftb_start_bm]*/
-	{MISENSOR_16BIT, 0x0990, 0xffff}, /* Disable FTB*/
+	{MISENSOR_16BIT, 0x098c, 0x2b62}, /* MCU_ADDRESS [hg_ftb_start_bm]*/
+	{MISENSOR_16BIT, 0x0990, 0xfffe}, /* Disable FTB*/
 	{MISENSOR_16BIT, 0x098c, 0x2b64}, /* MCU_ADDRESS [hg_ftb_stop_bm]*/
 	{MISENSOR_16BIT, 0x0990, 0xffff}, /* Disable FTB*/
 
@@ -2009,6 +2009,24 @@ static struct misensor_reg const mt9d113_noise_reduce[] = {
 	{MISENSOR_16BIT, 0x098c, 0xab24}, /* MCU_ADDRESS [HG_LL_SaT2]*/
 	{MISENSOR_16BIT, 0x0990, 0x0000}, /* MCU_DATA_0*/
 
+	{MISENSOR_TOK_TERM, 0, 0}
+};
+
+/* Noise setting in video mode */
+static struct misensor_reg const mt9d113_video_noise_setting[] = {
+	{MISENSOR_16BIT, 0x098c, 0x2212}, /* MCU_ADDRESS [AE_MAX_DGAIN_AE1]*/
+	{MISENSOR_16BIT, 0x0990, 0x00c0}, /* MCU_DATA_0*/
+	{MISENSOR_16BIT, 0x098c, 0xab34}, /* MCU_ADDRESS [HG_NR_GAINSTART]*/
+	{MISENSOR_16BIT, 0x0990, 0x00b0}, /* MCU_DATA_0*/
+	{MISENSOR_TOK_TERM, 0, 0}
+};
+
+/* Noise setting in preview/still mode */
+static struct misensor_reg const mt9d113_preview_noise_setting[] = {
+	{MISENSOR_16BIT, 0x098c, 0x2212}, /* MCU_ADDRESS [AE_MAX_DGAIN_AE1]*/
+	{MISENSOR_16BIT, 0x0990, 0x01ee}, /* MCU_DATA_0*/
+	{MISENSOR_16BIT, 0x098c, 0xab34}, /* MCU_ADDRESS [HG_NR_GAINSTART]*/
+	{MISENSOR_16BIT, 0x0990, 0x0080}, /* MCU_DATA_0*/
 	{MISENSOR_TOK_TERM, 0, 0}
 };
 

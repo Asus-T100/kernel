@@ -1231,11 +1231,29 @@ static int mt9d113_set_mbus_fmt(struct v4l2_subdev *sd,
 	 */
 	if (dev->last_run_mode == CI_MODE_VIDEO
 	    && dev->run_mode == CI_MODE_PREVIEW) {
+		/* write preview noise setting in preview/still mode */
+		ret = mt9d113_write_reg_array(c,
+					mt9d113_preview_noise_setting);
+		if (ret) {
+			dev_err(&c->dev,
+				"err write preview noise setting: %d", ret);
+			return ret;
+		}
+
 		/* write default ae virt gain and ae_d_gain */
 		ret = mt9d113_write_reg_array(c, mt9d113_default_gain);
 		if (ret) {
 			dev_err(&c->dev,
 				"err Write default gain: %d", ret);
+			return ret;
+		}
+	} else if (dev->run_mode == CI_MODE_VIDEO) {
+		/* write video noise setting in video mode */
+		ret = mt9d113_write_reg_array(c,
+					mt9d113_video_noise_setting);
+		if (ret) {
+			dev_err(&c->dev,
+				"err write video noise setting: %d", ret);
 			return ret;
 		}
 	}
