@@ -135,6 +135,7 @@ typedef struct {
 	uint32_t savePFIT_PGM_RATIOS;
 	uint32_t saveHDMIPHYMISCCTL;
 	uint32_t saveHDMIB_CONTROL;
+	uint32_t saveHDMIB_DATALANES;
 } hdmi_register_state_t;
 
 /*
