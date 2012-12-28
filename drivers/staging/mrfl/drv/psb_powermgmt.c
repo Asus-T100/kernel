@@ -1788,7 +1788,7 @@ int mrfld_set_power_state(int islands, int sub_islands, int new_state)
 #endif
 
 /*  TEMP_SUPPRESS_POWER_OFF - FIXME - Temp for mrfl PO: 1 to suppress off. */
-#define TEMP_SUPPRESS_POWER_OFF 1
+#define TEMP_SUPPRESS_POWER_OFF 0
 #if TEMP_SUPPRESS_POWER_OFF
 	if (!new_state) {
 		printk(KERN_ALERT "%s: power-off request being ignored\n",

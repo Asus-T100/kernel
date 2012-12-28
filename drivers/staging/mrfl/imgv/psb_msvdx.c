@@ -1254,11 +1254,10 @@ static void psb_msvdx_mtx_interrupt(struct drm_device *dev)
 		    ("MSVDX Interrupt: there are more message to be read\n");
 		goto loop;
 	}
-#ifndef CONFIG_VIDEO_MRFLD_VP
+
 	/* we get a frame/slice done, try to save some power */
 	if (drm_msvdx_pmpolicy != PSB_PMPOLICY_NOPM)
 		schedule_delayed_work(&dev_priv->scheduler.msvdx_suspend_wq, 0);
-#endif
 	DRM_MEMORYBARRIER();	/* TBD check this... */
 }
 
