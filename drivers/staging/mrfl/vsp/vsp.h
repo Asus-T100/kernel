@@ -32,37 +32,60 @@
 /* reg define */
 #define SP1_SP_DMEM_IP 0x70000
 
-#define SP0_SP_REG_BASE 0x0
-#define SP1_SP_REG_BASE 0x50000
+/* processor */
+#define SP0_SP_REG_BASE 0x000000
+#define SP1_SP_REG_BASE 0x050000
+#define VP0_SP_REG_BASE 0x080000
+#define VP1_SP_REG_BASE 0x0C0000
+#define MEA_SP_REG_BASE 0x100000
 
+/* SP stat_ctrl */
 #define SP_STAT_AND_CTRL_REG 0x0
-#define SP_STAT_AND_CTRL_REG_RESET_FLAG 0
-#define SP_STAT_AND_CTRL_REG_START_FLAG 1
-#define SP_STAT_AND_CTRL_REG_RUN_FLAG 3
-#define SP_STAT_AND_CTRL_REG_READY_FLAG 5
-#define SP_STAT_AND_CTRL_REG_SLEEP_FLAG 6
-#define SP_STAT_AND_CTRL_REG_ICACHE_INVALID_FLAG 0xc
-#define SP_STAT_AND_CTRL_REG_ICACHE_PREFETCH_FLAG 0xd
+#define SP_STAT_AND_CTRL_REG_RESET_FLAG           0
+#define SP_STAT_AND_CTRL_REG_START_FLAG           1
+#define SP_STAT_AND_CTRL_REG_RUN_FLAG             3
+#define SP_STAT_AND_CTRL_REG_READY_FLAG           5
+#define SP_STAT_AND_CTRL_REG_SLEEP_FLAG           6
+#define SP_STAT_AND_CTRL_REG_ICACHE_INVALID_FLAG  0xC
+#define SP_STAT_AND_CTRL_REG_ICACHE_PREFETCH_FLAG 0xD
+
+/* offsets of registers in processors */
+#define VSP_STAT_CTRL_REG_OFFSET             0x00000
+#define VSP_START_PC_REG_OFFSET              0x00004
+#define VSP_ICACHE_BASE_REG_OFFSET           0x00010
 
 #define SP_BASE_ADDR_REG (0x1 * 4)
 
 #define SP_CFG_PMEM_MASTER 0x10
 
-#define MMU_INVALID 0x1B0000
-#define MMU_TABLE_ADDR 0x1B0004
+/* MMU */
+#define MMU_INVALID         0x1B0000
+#define MMU_TABLE_ADDR      0x1B0004
+#define VSP_MMU_PAGE_SHIFT  12
+#define VSP_MMU_PAGE_BYTES  4096
 
+/* IRQ controller */
 #define VSP_IRQ_REG_BASE 0x190000
+#define VSP_IRQ_CTRL_IRQ_EDGE            0x0
+#define VSP_IRQ_CTRL_IRQ_MASK            0x4
+#define VSP_IRQ_CTRL_IRQ_STATUS          0x8
+#define VSP_IRQ_CTRL_IRQ_CLR             0xC
+#define VSP_IRQ_CTRL_IRQ_ENB             0x10
+#define VSP_IRQ_CTRL_IRQ_LEVEL_PULSE     0x14
 
-#define VSP_IRQ_CTRL_IRQ_EDGE 0x0
-#define VSP_IRQ_CTRL_IRQ_MASK 0x4
-#define VSP_IRQ_CTRL_IRQ_STATUS 0x8
-#define VSP_IRQ_CTRL_IRQ_CLR 0xC
-#define VSP_IRQ_CTRL_IRQ_ENB 0x10
+#define VSP_SP0_IRQ_SHIFT 0x7
 #define VSP_SP1_IRQ_SHIFT 0x8
-#define IRQ_CTRL_IRQ_LEVEL_PLUS 0x14
 
 #define VSP_CONFIG_REG_SDRAM_BASE 0x1A0000
 #define VSP_CONFIG_REG_START 0x8
+
+static const unsigned int vsp_processor_base[] = {
+				SP0_SP_REG_BASE,
+				SP1_SP_REG_BASE,
+				VP0_SP_REG_BASE,
+				VP1_SP_REG_BASE,
+				MEA_SP_REG_BASE
+				};
 
 /* help macro */
 #define MM_WRITE32(base, offset, value)					\
@@ -84,20 +107,14 @@
 #define SP1_DMEM_READ32(offset, pointer)	\
 	MM_READ32(SP1_SP_DMEM_IP, offset, pointer)
 
-#define SP_REG_WRITE32(offset, value, processor)			\
-	do {								\
-		if ((processor) == vsp_sp0)				\
-			MM_WRITE32(SP0_SP_REG_BASE, offset, value);	\
-		else							\
-			MM_WRITE32(SP1_SP_REG_BASE, offset, value);	\
+#define SP_REG_WRITE32(offset, value, processor)			 \
+	do {								 \
+		MM_WRITE32(vsp_processor_base[processor], offset, value); \
 	} while (0)
 
 #define SP_REG_READ32(offset, pointer, processor)		\
 	do {							\
-		if ((processor) == vsp_sp0)				\
-			MM_READ32(SP0_SP_REG_BASE, offset, pointer);	\
-		else							\
-			MM_READ32(SP1_SP_REG_BASE, offset, pointer);	\
+		MM_READ32(vsp_processor_base[processor], offset, pointer); \
 	} while (0)
 
 
@@ -148,11 +165,18 @@ do {									\
 		: "clockgated"));					\
 } while (0)
 
+/* The status of vsp hardware */
+enum vsp_power_state {
+	VSP_STATE_DOWN,
+	VSP_STATE_IDLE,
+	VSP_STATE_ACTIVE
+};
+
 struct vsp_private {
 	uint32_t current_sequence;
 
 	int fw_loaded;
-	int needs_reset;
+	int vsp_state;
 
 	spinlock_t lock;
 
@@ -172,14 +196,16 @@ struct vsp_private {
 	struct ttm_bo_kmap_obj ack_kmap;
 	struct vss_response_t *ack_queue;
 
+	struct ttm_buffer_object *setting_bo;
+	struct ttm_bo_kmap_obj setting_kmap;
+	struct vsp_settings_t *setting;
+
 	struct vsp_config config;
 
 	struct vsp_ctrl_reg *ctrl;
 
-
 	unsigned int pmstate;
 	struct sysfs_dirent *sysfs_pmstate;
-	unsigned int vsp_busy;
 
 	uint64_t vss_cc_acc;
 };
@@ -250,4 +276,22 @@ void vsp_config_icache(struct drm_psb_private *dev_priv,
 
 	return;
 }
+
+static inline
+void vsp_start_function(struct drm_psb_private *dev_priv, unsigned int pc,
+		    unsigned int processor)
+{
+	unsigned int reg;
+
+	/* set the start addr */
+	SP_REG_WRITE32(SP_BASE_ADDR_REG, pc, processor);
+
+	/* set start command */
+	SP_REG_READ32(SP_STAT_AND_CTRL_REG, &reg, processor);
+	VSP_SET_FLAG(reg, SP_STAT_AND_CTRL_REG_RUN_FLAG);
+	VSP_SET_FLAG(reg, SP_STAT_AND_CTRL_REG_START_FLAG);
+	SP_REG_WRITE32(SP_STAT_AND_CTRL_REG, reg, processor);
+	return;
+}
+
 #endif	/* _VSP_H_ */

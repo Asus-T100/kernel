@@ -33,21 +33,12 @@
 
 #define FW_SZ (800 * 1024)
 
-#ifdef CONFIG_BOARD_MRFLD_VP
-#define VSP_RUNNING_ON_VP
-#define FW_NAME "vsp_VPP.bin"
-#else
 #define FW_NAME "vsp_VPP_sle.bin"
-#endif
 
 static inline void vsp_enter_start_mode(struct drm_psb_private *dev_priv,
 					unsigned int processor);
 static inline void vsp_leave_start_mode(struct drm_psb_private *dev_priv,
 					unsigned int processor);
-static inline void vsp_kick(struct drm_psb_private *dev_priv,
-			    unsigned int processor);
-static inline void vsp_start_func(struct drm_psb_private *dev_priv,
-				  unsigned int pc, unsigned int processor);
 static inline unsigned int vsp_set_firmware(struct drm_psb_private *dev_priv,
 					    unsigned int processor);
 static inline unsigned int vsp_set_firmware_vp(struct drm_psb_private *dev_priv,
@@ -99,9 +90,8 @@ int vsp_init(struct drm_device *dev)
 		"vsp_pmstate");
 
 	vsp_priv->fw_loaded = 0;
-	vsp_priv->needs_reset = 1;
 	vsp_priv->current_sequence = 0;
-	vsp_priv->vsp_busy = 0;
+	vsp_priv->vsp_state = VSP_STATE_DOWN;
 
 	dev_priv->vsp_private = vsp_priv;
 
@@ -144,6 +134,19 @@ int vsp_init(struct drm_device *dev)
 		goto out_clean;
 	}
 
+	/* Create setting buffer */
+	ret =  ttm_buffer_object_create(bdev,
+				       sizeof(struct vsp_settings_t),
+				       ttm_bo_type_kernel,
+				       DRM_PSB_FLAG_MEM_MMU |
+				       TTM_PL_FLAG_NO_EVICT,
+				       0, 0, 0, NULL, &vsp_priv->setting_bo);
+	if (ret != 0) {
+		DRM_ERROR("VSP: failed to allocate VSP setting buffer\n");
+		goto out_clean;
+	}
+
+
 	/* map cmd queue */
 	ret = ttm_bo_kmap(vsp_priv->cmd_queue_bo, 0,
 			  vsp_priv->cmd_queue_bo->num_pages,
@@ -173,6 +176,19 @@ int vsp_init(struct drm_device *dev)
 	vsp_priv->ack_queue = ttm_kmap_obj_virtual(&vsp_priv->ack_kmap,
 						   &is_iomem);
 
+	/* map vsp setting */
+	ret = ttm_bo_kmap(vsp_priv->setting_bo, 0,
+			  vsp_priv->setting_bo->num_pages,
+			  &vsp_priv->setting_kmap);
+	if (ret) {
+		DRM_ERROR("drm_bo_kmap setting_bo failed: %d\n", ret);
+		ttm_bo_unref(&vsp_priv->setting_bo);
+		ttm_bo_kunmap(&vsp_priv->setting_kmap);
+		goto out_clean;
+	}
+	vsp_priv->setting = ttm_kmap_obj_virtual(&vsp_priv->setting_kmap,
+						 &is_iomem);
+
 	spin_lock_init(&vsp_priv->lock);
 
 	return 0;
@@ -199,11 +215,19 @@ int vsp_deinit(struct drm_device *dev)
 		ttm_bo_kunmap(&vsp_priv->ack_kmap);
 		vsp_priv->ack_queue = NULL;
 	}
+	if (vsp_priv->setting) {
+		ttm_bo_kunmap(&vsp_priv->setting);
+		vsp_priv->setting = NULL;
+	}
+
 
 	if (vsp_priv->ack_queue_bo)
 		ttm_bo_unref(&vsp_priv->ack_queue_bo);
 	if (vsp_priv->cmd_queue_bo)
 		ttm_bo_unref(&vsp_priv->cmd_queue_bo);
+	if (vsp_priv->setting_bo)
+		ttm_bo_unref(&vsp_priv->setting_bo);
+
 
 	device_remove_file(&dev->pdev->dev, &dev_attr_vsp_pmstate);
 	sysfs_put(vsp_priv->sysfs_pmstate);
@@ -227,9 +251,9 @@ void vsp_enableirq(struct drm_device *dev)
 	IRQ_REG_READ32(VSP_IRQ_CTRL_IRQ_ENB, &enable);
 	clear = 0;
 
-	VSP_SET_FLAG(mask, VSP_SP1_IRQ_SHIFT);
-	VSP_SET_FLAG(enable, VSP_SP1_IRQ_SHIFT);
-	VSP_SET_FLAG(clear, VSP_SP1_IRQ_SHIFT);
+	VSP_SET_FLAG(mask, VSP_SP0_IRQ_SHIFT);
+	VSP_SET_FLAG(enable, VSP_SP0_IRQ_SHIFT);
+	VSP_SET_FLAG(clear, VSP_SP0_IRQ_SHIFT);
 
 	IRQ_REG_WRITE32(VSP_IRQ_CTRL_IRQ_EDGE, mask);
 	IRQ_REG_WRITE32(VSP_IRQ_CTRL_IRQ_CLR, clear);
@@ -247,8 +271,8 @@ void vsp_disableirq(struct drm_device *dev)
 	IRQ_REG_READ32(VSP_IRQ_CTRL_IRQ_MASK, &mask);
 	IRQ_REG_READ32(VSP_IRQ_CTRL_IRQ_ENB, &enable);
 
-	VSP_CLEAR_FLAG(mask, VSP_SP1_IRQ_SHIFT);
-	VSP_CLEAR_FLAG(enable, VSP_SP1_IRQ_SHIFT);
+	VSP_CLEAR_FLAG(mask, VSP_SP0_IRQ_SHIFT);
+	VSP_CLEAR_FLAG(enable, VSP_SP0_IRQ_SHIFT);
 
 	IRQ_REG_WRITE32(VSP_IRQ_CTRL_IRQ_MASK, mask);
 	IRQ_REG_WRITE32(VSP_IRQ_CTRL_IRQ_ENB, enable);
@@ -318,11 +342,6 @@ int vsp_init_fw(struct drm_device *dev)
 	VSP_DEBUG("api processor %x\n", config->api_processor);
 	VSP_DEBUG("boot program info:\n");
 	VSP_DEBUG("text_src %x\n", config->text_src);
-	VSP_DEBUG("data_src %x\n", config->data_src);
-	VSP_DEBUG("data_dst %x\n", config->data_dst);
-	VSP_DEBUG("data_size %x\n", config->data_size);
-	VSP_DEBUG("bss_dst %x\n", config->bss_dst);
-	VSP_DEBUG("bss_size %x\n", config->bss_size);
 	VSP_DEBUG("init_addr %x\n", config->init_addr);
 	VSP_DEBUG("main_addr %x\n", config->main_addr);
 
@@ -367,7 +386,7 @@ int vsp_init_fw(struct drm_device *dev)
 	ttm_bo_kunmap(&tmp_kmap);
 
 	vsp_priv->fw_loaded = 1;
-	vsp_priv->needs_reset = 1;
+	vsp_priv->vsp_state = VSP_STATE_DOWN;
 
 	vsp_priv->ctrl = (struct vsp_ctrl_reg *) (dev_priv->vsp_reg +
 						  VSP_CONFIG_REG_SDRAM_BASE +
@@ -385,7 +404,7 @@ int vsp_reset(struct drm_psb_private *dev_priv)
 
 	ret = vsp_setup_fw(dev_priv);
 
-	vsp_priv->needs_reset = 0;
+	vsp_priv->vsp_state = VSP_STATE_ACTIVE;
 
 	return ret;
 }
@@ -401,21 +420,19 @@ int vsp_setup_fw(struct drm_psb_private *dev_priv)
 		psb_get_default_pd_addr(dev_priv->vsp_mmu) >> PAGE_TABLE_SHIFT);
 	SET_MMU_PTD(psb_get_default_pd_addr(dev_priv->vsp_mmu) >> PAGE_SHIFT);
 
-	/* set cmd/ack queue address */
-	vsp_priv->ctrl->cmd_queue_addr = vsp_priv->cmd_queue_bo->offset;
-	vsp_priv->ctrl->ack_queue_addr = vsp_priv->ack_queue_bo->offset;
+	/* vsp setting */
+	vsp_priv->setting->command_queue_size = VSP_CMD_QUEUE_SIZE;
+	vsp_priv->setting->command_queue_addr = vsp_priv->cmd_queue_bo->offset;
+	vsp_priv->setting->response_queue_size = VSP_ACK_QUEUE_SIZE;
+	vsp_priv->setting->response_queue_addr = vsp_priv->ack_queue_bo->offset;
+
+	vsp_priv->ctrl->setting_addr = vsp_priv->setting_bo->offset;
 
 	/* init queue */
 	vsp_priv->ctrl->cmd_rd = 0;
 	vsp_priv->ctrl->cmd_wr = 0;
 	vsp_priv->ctrl->ack_rd = 0;
 	vsp_priv->ctrl->ack_wr = 0;
-
-	/* init context */
-	vsp_priv->ctrl->context_init_req = 0;
-	vsp_priv->ctrl->context_init_ack = 0;
-	vsp_priv->ctrl->context_uninit_req = 0;
-	vsp_priv->ctrl->context_uninit_ack = 0;
 
 	VSP_DEBUG("setup firmware\n");
 #ifdef VSP_RUNNING_ON_VP
@@ -428,17 +445,10 @@ int vsp_setup_fw(struct drm_psb_private *dev_priv)
 		return -1;
 	}
 
+	/* start the firmware */
 	vsp_priv->ctrl->entry_kind = vsp_entry_init;
-
-	/* init fw */
-	vsp_start_func(dev_priv, vsp_priv->config.init_addr,
-		       vsp_priv->config.boot_processor);
-	vsp_kick(dev_priv, vsp_priv->config.boot_processor);
-
-	/* wait it finished */
-	do {
-		udelay(10);
-	} while (!vsp_is_idle(dev_priv, vsp_priv->config.boot_processor));
+	vsp_start_function(dev_priv, vsp_priv->config.init_addr,
+			   vsp_priv->config.boot_processor);
 
 	/* enable irq */
 	psb_irq_preinstall_islands(dev_priv->dev, OSPM_VIDEO_VPP_ISLAND);
@@ -479,26 +489,6 @@ void vsp_leave_start_mode(struct drm_psb_private *dev_priv,
 	return;
 }
 
-void vsp_kick(struct drm_psb_private *dev_priv,
-	      unsigned int processor)
-{
-	unsigned int reg;
-
-	SP_REG_READ32(SP_STAT_AND_CTRL_REG, &reg, processor);
-	VSP_SET_FLAG(reg, SP_STAT_AND_CTRL_REG_RUN_FLAG);
-	VSP_SET_FLAG(reg, SP_STAT_AND_CTRL_REG_START_FLAG);
-	SP_REG_WRITE32(SP_STAT_AND_CTRL_REG, reg, processor);
-
-	return;
-}
-
-void vsp_start_func(struct drm_psb_private *dev_priv, unsigned int pc,
-		    unsigned int processor)
-{
-	SP_REG_WRITE32(SP_BASE_ADDR_REG, pc, processor);
-	return;
-}
-
 unsigned int vsp_set_firmware_vp(struct drm_psb_private *dev_priv,
 				 unsigned int processor)
 {
@@ -507,7 +497,7 @@ unsigned int vsp_set_firmware_vp(struct drm_psb_private *dev_priv,
 	char *input;
 
 	VSP_DEBUG("set firmware address in config reg 2\n");
-	vsp_priv->ctrl->firmware_addr = vsp_priv->firmware->offset;
+	vsp_priv->setting->firmware_addr = vsp_priv->firmware->offset;
 
 	VSP_DEBUG("enter special mode\n");
 	/* CSIM section on VP */
@@ -547,6 +537,7 @@ unsigned int vsp_set_firmware(struct drm_psb_private *dev_priv,
 		       vsp_priv->config.text_src,
 		       processor);
 
+	vsp_priv->setting->firmware_addr = vsp_priv->firmware->offset;
 	vsp_priv->ctrl->firmware_addr = vsp_priv->firmware->offset;
 
 	return 0;

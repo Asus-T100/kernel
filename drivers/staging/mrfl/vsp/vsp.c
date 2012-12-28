@@ -86,11 +86,11 @@ bool vsp_interrupt(void *pvData)
 	IRQ_REG_READ32(VSP_IRQ_CTRL_IRQ_STATUS, &status);
 	VSP_DEBUG("irq status %lx\n", status);
 	/* clear interrupt status */
-	if (!(status & (1 << VSP_SP1_IRQ_SHIFT))) {
+	if (!(status & (1 << VSP_SP0_IRQ_SHIFT))) {
 		DRM_ERROR("VSP: invalid irq\n");
 		return false;
 	} else {
-		IRQ_REG_WRITE32(VSP_IRQ_CTRL_IRQ_CLR, (1 << VSP_SP1_IRQ_SHIFT));
+		IRQ_REG_WRITE32(VSP_IRQ_CTRL_IRQ_CLR, (1 << VSP_SP0_IRQ_SHIFT));
 	}
 
 	sequence = vsp_priv->current_sequence;
@@ -124,6 +124,14 @@ bool vsp_interrupt(void *pvData)
 				  msg->vss_cc);
 			VSP_DEBUG("end of the sequence received\n");
 			vsp_priv->vss_cc_acc += msg->vss_cc;
+
+			/* power down the VSP */
+			vsp_priv->ctrl->entry_kind = vsp_exit;
+			vsp_priv->vsp_state = VSP_STATE_DOWN;
+			schedule_delayed_work(
+					&dev_priv->scheduler.vsp_suspend_wq,
+					0);
+
 			break;
 
 		case VssOutputSurfaceReadyResponse:
@@ -166,12 +174,37 @@ bool vsp_interrupt(void *pvData)
 			break;
 
 		case VssIdleResponse:
+		{
+			unsigned int cmd_rd, cmd_wr;
+
 			VSP_DEBUG("VSP is idle, can be powered off\n");
 			VSP_DEBUG("VSP clock cycles from pre response %x\n",
 				  msg->vss_cc);
 			vsp_priv->vss_cc_acc += msg->vss_cc;
-			break;
 
+			/* If there is still commands in the cmd buffer,
+			 * set CONTINUE command and start API main directly not
+			 * via the boot program. The boot program might damage
+			 * the application state.
+			 */
+			cmd_rd = vsp_priv->ctrl->cmd_rd;
+			cmd_wr = vsp_priv->ctrl->cmd_wr;
+
+			VSP_DEBUG("cmd_rd=%d, cmd_wr=%d\n", cmd_rd, cmd_wr);
+			if (cmd_rd == cmd_wr) {
+				VSP_DEBUG("The cmd_queue is empty!\n");
+				vsp_priv->vsp_state = VSP_STATE_IDLE;
+			} else {
+				VSP_DEBUG("cmd_queue has data,continue...\n");
+				vsp_priv->ctrl->entry_kind =
+						 vsp_entry_continue;
+				vsp_start_function(dev_priv,
+						vsp_priv->config.main_addr,
+						vsp_priv->config.api_processor
+						);
+			}
+			break;
+		}
 		default:
 			DRM_ERROR("VSP: Unknown response type %x\n",
 				  msg->type);
@@ -276,7 +309,7 @@ int vsp_submit_cmdbuf(struct drm_device *dev,
 	}
 
 	/* consider to invalidate/flush MMU */
-	if (vsp_priv->needs_reset) {
+	if (vsp_priv->vsp_state == VSP_STATE_DOWN) {
 		VSP_DEBUG("needs reset\n");
 
 		if (vsp_reset(dev_priv)) {
@@ -290,6 +323,17 @@ int vsp_submit_cmdbuf(struct drm_device *dev,
 	ret = vsp_send_command(dev, cmd_start, cmd_size);
 	if (ret != 0)
 		DRM_ERROR("VSP: failed to send command\n");
+
+	/* If the VSP is ind idle, need to send "Continue" */
+	if (vsp_priv->vsp_state == VSP_STATE_IDLE) {
+		vsp_priv->ctrl->entry_kind = vsp_entry_continue;
+		vsp_start_function(dev_priv,
+				vsp_priv->config.main_addr,
+				vsp_priv->config.api_processor
+				);
+
+		vsp_priv->vsp_state = VSP_STATE_ACTIVE;
+	}
 
 	return ret;
 }
@@ -354,9 +398,11 @@ int vsp_send_command(struct drm_device *dev,
 
 				VSP_DEBUG("set context base %x, size %x\n",
 					  cur_cmd->buffer, cur_cmd->size);
-				vsp_priv->ctrl->context_buf_addr =
-					cur_cmd->buffer;
-				vsp_priv->ctrl->context_buf_sz = cur_cmd->size;
+
+				vsp_priv->setting->state_buffer_size =
+							cur_cmd->size;
+				vsp_priv->setting->state_buffer_addr =
+							cur_cmd->buffer;
 
 				vsp_new_context(dev_priv->dev);
 
@@ -679,12 +725,37 @@ uint32_t vsp_fence_poll(struct drm_psb_private *dev_priv)
 			break;
 
 		case VssIdleResponse:
+		{
+			unsigned int rd, wr;
+
 			VSP_DEBUG("VSP is idle, can be powered off\n");
 			VSP_DEBUG("VSP clock cycles from pre response %x\n",
 				  msg->vss_cc);
 			vsp_priv->vss_cc_acc += msg->vss_cc;
-			break;
 
+			/* If there is still commands in the cmd buffer,
+			 * set CONTINUE command and start API main directly not
+			 * via the boot program. The boot program might damage
+			 * the application state.
+			 */
+			rd = vsp_priv->ctrl->cmd_rd;
+			wr = vsp_priv->ctrl->cmd_wr;
+
+			VSP_DEBUG("rd=%d, wr=%d\n", rd, wr);
+			if (rd == wr) {
+				VSP_DEBUG("The cmd_queue is empty!\n");
+				vsp_priv->vsp_state = VSP_STATE_IDLE;
+			} else {
+				VSP_DEBUG("cmd_queue has data,continue...\n");
+				vsp_priv->ctrl->entry_kind =
+						 vsp_entry_continue;
+				vsp_start_function(dev_priv,
+						vsp_priv->config.main_addr,
+						vsp_priv->config.api_processor
+						);
+			}
+			break;
+		}
 		default:
 			VSP_DEBUG("other response, skip for polling\n");
 			VSP_DEBUG("should correctly handle this response\n");
@@ -719,7 +790,7 @@ void vsp_new_context(struct drm_device *dev)
 		DRM_ERROR("VSP: vsp driver is not initialized correctly\n");
 		return;
 	}
-
+#if 0
 	ctx_uninit_ack = vsp_priv->ctrl->context_uninit_ack;
 	ctx_init_req = vsp_priv->ctrl->context_init_req;
 
@@ -731,7 +802,7 @@ void vsp_new_context(struct drm_device *dev)
 
 	VSP_REVERT_FLAG(ctx_init_req, ctx_id);
 	vsp_priv->ctrl->context_init_req = ctx_init_req;
-
+#endif
 	vsp_priv->vss_cc_acc = 0;
 
 	return;
@@ -761,7 +832,7 @@ void vsp_rm_context(struct drm_device *dev)
 
 	if (vsp_priv->ctrl == NULL)
 		return;
-
+#if 0
 	ctx_uninit_req = vsp_priv->ctrl->context_uninit_req;
 	ctx_uninit_ack = vsp_priv->ctrl->context_uninit_ack;
 
@@ -773,13 +844,9 @@ void vsp_rm_context(struct drm_device *dev)
 
 	VSP_REVERT_FLAG(ctx_uninit_ack, ctx_id);
 	vsp_priv->ctrl->context_uninit_ack = ctx_uninit_ack;
-
-	vsp_priv->ctrl->entry_kind = vsp_exit;
-	do {
-		udelay(10);
-	} while (!vsp_is_idle(dev_priv, vsp_priv->config.api_processor));
-
-	vsp_priv->needs_reset = 1;
+#endif
+	vsp_priv->vsp_state = VSP_STATE_DOWN;
+	vsp_priv->fw_loaded = 0;
 
 	/* FIXME: frequency should change */
 	VSP_PERF("the total time spend on VSP is %ld ms\n",
@@ -808,7 +875,7 @@ int psb_check_vsp_idle(struct drm_device *dev)
 	if (vsp_priv->fw_loaded == 0)
 		return 0;
 
-	if (vsp_priv->vsp_busy) {
+	if (vsp_priv->vsp_state != VSP_STATE_DOWN) {
 		PSB_DEBUG_PM("VSP: %s return busy", __func__);
 		return -EBUSY;
 	}
