@@ -6646,7 +6646,6 @@ sh_css_pipe_load_extension(struct sh_css_pipe *pipe,
 {
 	enum sh_css_err err = sh_css_success;
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_pipe_load_extension() enter:\n");
-	my_css.invalidate = true;
 	if (firmware->info.isp.type == SH_CSS_ACC_OUTPUT)
 		append_firmware(&pipe->output_stage, firmware);
 	else if (firmware->info.isp.type == SH_CSS_ACC_VIEWFINDER)
