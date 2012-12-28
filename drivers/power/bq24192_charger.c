@@ -1520,7 +1520,6 @@ static  bool bq24192_check_charge_full(struct bq24192_chip *chip, int vref)
 	int volt_now;
 	int cur_avg;
 	int ret;
-	struct bq24192_chrg_regs reg;
 
 	/* Read voltage and current from FG driver */
 	volt_now = fg_chip_get_property(POWER_SUPPLY_PROP_VOLTAGE_OCV);
@@ -2508,7 +2507,7 @@ static int ctp_set_safechrglimit(short int temp)
 static void init_batt_thresholds(struct bq24192_chip *chip)
 {
 	int ret;
-	u8 validate_smip_data[4];
+	u8 validate_smip_data[4] = {0};
 	u8 safetmp = 0;
 
 	/* Read the Signature verification data form SRAM */
