@@ -186,8 +186,11 @@ static int mipi_hdmi_vsync_check(struct drm_device *dev, uint32_t pipe)
 			pipeb_cntr = REG_READ(DSPBCNTR);
 			pipe_surf[pipe] = REG_READ(DSPASURF);
 			ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-		} else
+		} else {
+			spin_unlock_irqrestore(&dev_priv->irqmask_lock,
+							irqflags);
 			return 1;
+		}
 
 		/* PSB_DEBUG_ENTRY("[vsync irq] pipe : 0x%x, regsurf: 0x%x !\n", pipe, pipe_surf[pipe]); */
 
