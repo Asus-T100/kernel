@@ -604,7 +604,7 @@ static void restore_default_value(struct vdd_smip_data *vdata)
 static int program_bcu(struct ipc_device *pdev, struct vdd_info *vinfo)
 {
 	int ret;
-	struct vdd_smip_data vdata;
+	struct vdd_smip_data vdata = {0};
 
 	ret = intel_scu_ipc_read_mip((u8 *)&vdata, sizeof(struct
 		vdd_smip_data), BCU_SMIP_OFFSET, 1);
@@ -650,7 +650,7 @@ vdd_init_error:
 
 static int mid_vdd_probe(struct ipc_device *pdev)
 {
-	int i, ret;
+	int ret;
 	struct vdd_info *vinfo = devm_kzalloc(&pdev->dev,
 				sizeof(struct vdd_info), GFP_KERNEL);
 	if (!vinfo) {
