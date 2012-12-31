@@ -663,7 +663,8 @@ static PVRSRV_ERROR DC_MRFLD_BufferAlloc(IMG_HANDLE hDisplayContext,
 	*pui32PhysHeapID = 0;
 	*phBuffer = psBuffer;
 
-	DRM_DEBUG("%s: allocated buffer\n", __func__);
+	DRM_DEBUG("%s: allocated buffer: %dx%d\n", __func__,
+		psBuffer->ui32Width, psBuffer->ui32Height);
 
 	return PVRSRV_OK;
 phy_error:

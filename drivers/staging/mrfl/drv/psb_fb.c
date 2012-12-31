@@ -329,8 +329,6 @@ static struct drm_framebuffer *psb_user_framebuffer_create(
 	struct psb_framebuffer *psbfb;
 	struct drm_framebuffer *fb;
 	struct fb_info *info;
-	/*  FIXME - "r->handle" is u32, being cast into a pointer. */
-	void *hKernelMemInfo = r->handle;
 	struct drm_psb_private *dev_priv
 	    = (struct drm_psb_private *)dev->dev_private;
 	struct psb_fbdev *fbdev = dev_priv->fbdev;
@@ -339,7 +337,7 @@ static struct drm_framebuffer *psb_user_framebuffer_create(
 	uint32_t offset;
 	uint64_t size;
 
-	size = PVRSRVGetMeminfoSize(hKernelMemInfo);
+	size = r->height * r->pitch;
 	if (size < r->height * r->pitch)
 		return NULL;
 
@@ -354,33 +352,19 @@ static struct drm_framebuffer *psb_user_framebuffer_create(
 
 	psbfb = to_psb_fb(fb);
 	psbfb->size = size;
-	psbfb->hKernelMemInfo = hKernelMemInfo;
+	psbfb->hKernelMemInfo = 0;
 	psbfb->stolen_base = pg->stolen_base;
 	psbfb->vram_addr = pg->vram_addr;
 	psbfb->tt_pages =
 	    (pg->gatt_pages <
 	     PSB_TT_PRIV0_PLIMIT) ? pg->gatt_pages : PSB_TT_PRIV0_PLIMIT;
+	psbfb->offset = 0;
 
 	info = framebuffer_alloc(0, &dev->pdev->dev);
 	if (!info)
 		return NULL;
 
-	DRM_DEBUG("Mapping to gtt..., KernelMemInfo %p\n", hKernelMemInfo);
-
-	info->screen_base = PVRSRVGetMeminfoCPUAddr(hKernelMemInfo);
-
-	/*if not VRAM, map it into tt aperture */
-	if (info->screen_base != pg->vram_addr) {
-		ret = psb_gtt_map_meminfo(dev, hKernelMemInfo, 0, &offset);
-		if (ret) {
-			DRM_ERROR("map meminfo for 0x%x failed\n",
-				  (unsigned int)hKernelMemInfo);
-			return NULL;
-		}
-		psbfb->offset = (offset << PAGE_SHIFT);
-	} else {
-		psbfb->offset = 0;
-	}
+	info->screen_base = pg->vram_addr;
 
 	strcpy(info->fix.id, "psbfb");
 
