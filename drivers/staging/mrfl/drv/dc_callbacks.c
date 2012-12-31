@@ -262,25 +262,19 @@ void DCCBFlipPrimary(struct drm_device *dev,
 
 	if ((ctx->update_mask & SPRITE_UPDATE_POSITION)) {
 		PSB_WVDC32(ctx->pos, DSPAPOS + reg_offset);
-		PSB_WVDC32(ctx->pos, DSPBPOS + reg_offset);
 	}
 	if ((ctx->update_mask & SPRITE_UPDATE_SIZE)) {
 		PSB_WVDC32(ctx->size, DSPASIZE + reg_offset);
 		PSB_WVDC32(ctx->stride, DSPASTRIDE + reg_offset);
-		PSB_WVDC32(0x43702cf, DSPBSIZE + reg_offset);
-		PSB_WVDC32(ctx->stride, DSPBSTRIDE + reg_offset);
 	}
 
 	if ((ctx->update_mask & SPRITE_UPDATE_CONTROL)) {
 		PSB_WVDC32(ctx->cntr, DSPACNTR + reg_offset);
-		PSB_WVDC32(ctx->cntr, DSPBCNTR + reg_offset);
 	}
 
 	if ((ctx->update_mask & SPRITE_UPDATE_SURFACE)) {
 		PSB_WVDC32(ctx->linoff, DSPALINOFF + reg_offset);
 		PSB_WVDC32(ctx->surf, DSPASURF + reg_offset);
-		PSB_WVDC32(ctx->linoff, DSPBLINOFF + reg_offset);
-		PSB_WVDC32(ctx->surf, DSPBSURF + reg_offset);
 	}
 
 	if (dsi_config) {
