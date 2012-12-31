@@ -348,11 +348,90 @@ passive_show(struct device *dev, struct device_attribute *attr,
 	return sprintf(buf, "%d\n", tz->forced_passive);
 }
 
+static ssize_t
+slope_store(struct device *dev, struct device_attribute *attr,
+		    const char *buf, size_t count)
+{
+	int ret;
+	unsigned long slope;
+	struct thermal_zone_device *tz = to_thermal_zone(dev);
+
+	if (!tz->ops->set_slope)
+		return -EPERM;
+
+	if (kstrtoul(buf, 10, &slope))
+		return -EINVAL;
+
+	ret = tz->ops->set_slope(tz, slope);
+	if (ret)
+		return ret;
+
+	return count;
+}
+
+static ssize_t
+slope_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	int ret;
+	unsigned long slope;
+	struct thermal_zone_device *tz = to_thermal_zone(dev);
+
+	if (!tz->ops->get_slope)
+		return -EINVAL;
+
+	ret = tz->ops->get_slope(tz, &slope);
+	if (ret)
+		return ret;
+
+	return sprintf(buf, "%lu\n", slope);
+}
+
+static ssize_t
+intercept_store(struct device *dev, struct device_attribute *attr,
+		    const char *buf, size_t count)
+{
+	int ret;
+	unsigned long intercept;
+	struct thermal_zone_device *tz = to_thermal_zone(dev);
+
+	if (!tz->ops->set_intercept)
+		return -EPERM;
+
+	if (kstrtoul(buf, 10, &intercept))
+		return -EINVAL;
+
+	ret = tz->ops->set_intercept(tz, intercept);
+	if (ret)
+		return ret;
+
+	return count;
+}
+
+static ssize_t
+intercept_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	int ret;
+	unsigned long intercept;
+	struct thermal_zone_device *tz = to_thermal_zone(dev);
+
+	if (!tz->ops->get_intercept)
+		return -EINVAL;
+
+	ret = tz->ops->get_intercept(tz, &intercept);
+	if (ret)
+		return ret;
+
+	return sprintf(buf, "%lu\n", intercept);
+}
+
 static DEVICE_ATTR(type, 0444, type_show, NULL);
 static DEVICE_ATTR(temp, 0444, temp_show, NULL);
 static DEVICE_ATTR(mode, 0644, mode_show, mode_store);
 static DEVICE_ATTR(passive, S_IRUGO | S_IWUSR, passive_show, \
 		   passive_store);
+static DEVICE_ATTR(slope, S_IRUGO | S_IWUSR, slope_show, slope_store);
+static DEVICE_ATTR(intercept, S_IRUGO | S_IWUSR, intercept_show, \
+		intercept_store);
 
 /* sys I/F for cooling device */
 #define to_cooling_device(_dev)	\
@@ -1247,6 +1326,19 @@ struct thermal_zone_device *thermal_zone_device_register(char *type,
 	if (result)
 		goto unregister;
 
+	/* Create Sysfs for slope/intercept values */
+	if (tz->ops->get_slope) {
+		result = device_create_file(&tz->device, &dev_attr_slope);
+		if (result)
+			goto unregister;
+	}
+
+	if (tz->ops->get_intercept) {
+		result = device_create_file(&tz->device, &dev_attr_intercept);
+		if (result)
+			goto unregister;
+	}
+
 	result = thermal_add_hwmon_sysfs(tz);
 	if (result)
 		goto unregister;
@@ -1311,6 +1403,12 @@ void thermal_zone_device_unregister(struct thermal_zone_device *tz)
 	device_remove_file(&tz->device, &dev_attr_temp);
 	if (tz->ops->get_mode)
 		device_remove_file(&tz->device, &dev_attr_mode);
+
+	if (tz->ops->get_slope)
+		device_remove_file(&tz->device, &dev_attr_slope);
+
+	if (tz->ops->get_intercept)
+		device_remove_file(&tz->device, &dev_attr_intercept);
 
 	for (count = 0; count < tz->trips; count++) {
 		device_remove_file(&tz->device, &tz->trip_type_attrs[count]);
