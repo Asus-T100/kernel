@@ -1016,13 +1016,19 @@ static int _dlp_from_wait_to_ctrl(struct dlp_xfer_ctx *xfer_ctx)
 	int ret;
 
 	write_lock_irqsave(&xfer_ctx->lock, flags);
-	pdu = dlp_fifo_wait_pop(xfer_ctx);
-	write_unlock_irqrestore(&xfer_ctx->lock, flags);
-
+	pdu = dlp_fifo_head(&xfer_ctx->wait_pdus);
 	if (!pdu) {
+		write_unlock_irqrestore(&xfer_ctx->lock, flags);
 		ret = -ENOENT;
 		goto out;
 	}
+	if (pdu->status != HSI_STATUS_COMPLETED) {
+		write_unlock_irqrestore(&xfer_ctx->lock, flags);
+		ret = -EBUSY;
+		goto out;
+	}
+	pdu = dlp_fifo_wait_pop(xfer_ctx);
+	write_unlock_irqrestore(&xfer_ctx->lock, flags);
 
 	actual_len = pdu->actual_len;
 
@@ -1071,7 +1077,6 @@ void dlp_pop_wait_push_ctrl(struct dlp_xfer_ctx *xfer_ctx)
 		read_unlock_irqrestore(&xfer_ctx->lock, flags);
 
 		if ((!pdu) ||
-			(pdu->status != HSI_STATUS_COMPLETED) ||
 			(_dlp_from_wait_to_ctrl(xfer_ctx))) {
 				read_lock_irqsave(&xfer_ctx->lock, flags);
 				break;

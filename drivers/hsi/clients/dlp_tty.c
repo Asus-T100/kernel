@@ -836,8 +836,12 @@ int dlp_tty_do_write(struct dlp_xfer_ctx *xfer_ctx, unsigned char *buf,
 	read_lock_irqsave(&xfer_ctx->lock, flags);
 	pdu = dlp_fifo_tail(&xfer_ctx->wait_pdus);
 	if (pdu) {
-		offset = pdu->actual_len;
-		avail = xfer_ctx->payload_len - offset;
+		if (pdu->status != HSI_STATUS_PENDING) {
+			offset = pdu->actual_len;
+			avail = xfer_ctx->payload_len - offset;
+			if (avail)
+				pdu->status = HSI_STATUS_PENDING;
+		}
 	}
 	read_unlock_irqrestore(&xfer_ctx->lock, flags);
 
@@ -851,13 +855,14 @@ int dlp_tty_do_write(struct dlp_xfer_ctx *xfer_ctx, unsigned char *buf,
 			read_unlock_irqrestore(&xfer_ctx->lock, flags);
 
 			dlp_fifo_wait_push(xfer_ctx, pdu);
+
+			pdu->status = HSI_STATUS_PENDING;
 		}
 	}
 
 	if (!pdu)
 		goto out;
 
-	pdu->status = HSI_STATUS_PENDING;
 	/* Do a start TX on new frames only and after having marked
 	 * the current frame as pending, e.g. don't touch ! */
 	if (offset == 0) {
@@ -876,13 +881,13 @@ int dlp_tty_do_write(struct dlp_xfer_ctx *xfer_ctx, unsigned char *buf,
 
 	if (pdu->status != HSI_STATUS_ERROR) {	/* still valid ? */
 		pdu->actual_len = updated_actual_len;
-		pdu->status = HSI_STATUS_COMPLETED;
 
 		write_lock_irqsave(&xfer_ctx->lock, flags);
 		xfer_ctx->buffered += copied;
 		xfer_ctx->room -= copied;
 		write_unlock_irqrestore(&xfer_ctx->lock, flags);
 
+		pdu->status = HSI_STATUS_COMPLETED;
 		if (dlp_ctx_get_state(xfer_ctx) != IDLE)
 			dlp_pop_wait_push_ctrl(xfer_ctx);
 	} else {
