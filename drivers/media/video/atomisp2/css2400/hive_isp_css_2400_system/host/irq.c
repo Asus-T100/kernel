@@ -1,10 +1,7 @@
 #include "irq.h"
 #include "gp_device.h"	/* _REG_GP_IRQ_REQUEST_ADDR */
 
-#if !defined(_MSC_VER) && defined(HRT_CSIM)
-/* MW: This is an HRT backend function from "thread" */
-#include "hrt/host.h"	/* hrt_sleep() */
-#endif
+#include "platform_support.h"			/* hrt_sleep() */
 
 STORAGE_CLASS_INLINE void irq_wait_for_write_complete(
 	const irq_ID_t		ID);

@@ -372,6 +372,8 @@ assert(info != NULL);
 		/* we also store the raw downscaled width. This is used for
 		 * digital zoom in preview to zoom only on the width that
 		 * we actually want to keep, not on the aligned width. */
+			if (out_info == NULL) 
+				return sh_css_err_internal_error;
 			binary->vf_frame_info.width =
 				(out_info->width >> vf_log_ds);
 			binary->vf_frame_info.padded_width = vf_out_width;
@@ -527,17 +529,26 @@ sh_css_binary_find(struct sh_css_binary_descr *descr,
 	bool enable_yuv_ds = descr->enable_yuv_ds;
 	bool enable_high_speed = descr->enable_high_speed;
 	bool enable_dvs_6axis  = descr->enable_dvs_6axis;
-	enum sh_css_err err = sh_css_success;
+	enum sh_css_err err = sh_css_err_internal_error;
 	bool continuous = sh_css_continuous_is_enabled();
+	unsigned int isp_pipe_version = descr->isp_pipe_version;
+
+	if (cc_in_info == NULL || cc_out_info == NULL || cc_vf_info == NULL) {
+		sh_css_free(cc_in_info);
+		sh_css_free(cc_out_info);
+		sh_css_free(cc_vf_info);
+		return err;
+	}
 
 	if (mode == SH_CSS_BINARY_MODE_VIDEO) {
 		unsigned int dx, dy;
 		sh_css_get_zoom_factor(&dx, &dy);
 		sh_css_video_get_dis_envelope(&dvs_envelope_width,
 					      &dvs_envelope_height);
-
+		sh_css_video_get_enable_dz(&need_dz);
 		/* Video is the only mode that has a nodz variant. */
-		need_dz = ((dx != HRT_GDC_N) || (dy != HRT_GDC_N));
+		if (!need_dz)
+			need_dz = ((dx != HRT_GDC_N) || (dy != HRT_GDC_N));
 		need_dvs = dvs_envelope_width || dvs_envelope_height;
 	}
 
@@ -553,6 +564,9 @@ sh_css_binary_find(struct sh_css_binary_descr *descr,
 
 	for (candidate = binary_infos[mode]; candidate;
 	     candidate = candidate->next) {
+		if (mode == SH_CSS_BINARY_MODE_VIDEO &&
+		    candidate->isp_pipe_version != isp_pipe_version)
+			continue;
 		if (!candidate->enable.dvs_6axis && enable_dvs_6axis)
 			continue;
 		if (candidate->enable.high_speed && !enable_high_speed)
@@ -624,10 +638,12 @@ sh_css_binary_find(struct sh_css_binary_descr *descr,
 		} else {
 			*cc_in_info  = *req_in_info;
 			*cc_out_info = *req_out_info;
-			if (req_vf_info != NULL)
+			if (req_vf_info != NULL) {
 				*cc_vf_info  = *req_vf_info;
-			else
+			} else {
+				sh_css_free(cc_vf_info);
 				cc_vf_info  = NULL;
+			}
 		}
 
 		/* reconfigure any variable properties of the binary */
@@ -636,11 +652,14 @@ sh_css_binary_find(struct sh_css_binary_descr *descr,
 				       cc_out_info, cc_vf_info,
 				       binary, continuous);
 		if (err)
-			return err;
+			break;
 		init_metrics(&binary->metrics, binary->info);
-		return sh_css_success;
+		break;
 	}
-	return sh_css_err_internal_error;
+	sh_css_free(cc_in_info);
+	sh_css_free(cc_out_info);
+	sh_css_free(cc_vf_info);
+	return err;
 }
 
 unsigned

@@ -24,18 +24,15 @@
  * including ioctls to map and unmap acceleration parameters and buffers.
  */
 
-#include <linux/errno.h>
-#include <linux/atomisp.h>
-#include <linux/gfp.h>
-#include <linux/slab.h>
-#include <linux/list.h>
-#include <asm/page.h>
+#include <linux/init.h>
 
+#include "atomisp_acc.h"
+#include "atomisp_internal.h"
+
+#include "hrt/hive_isp_css_mm_hrt.h"
+#include "memory_access/memory_access.h"
 #include "sh_css.h"
 #include "sh_css_accelerate.h"
-#include "memory_access/memory_access.h"
-#include "hrt/hive_isp_css_mm_hrt.h"
-#include "atomisp_acc.h"
 
 #define ATOMISP_TO_CSS_MEMORY(m)	((enum sh_css_isp_memories)(m))
 
@@ -119,9 +116,6 @@ int atomisp_acc_load(struct atomisp_device *isp,
 	struct sh_css_fw_info *fw;
 	int ret = 0;
 
-	mutex_lock(&isp->input_lock);
-	mutex_lock(&isp->isp_lock);
-
 	if (isp->acc.fw_count == 0) {
 		/* First firmware, create pipeline */
 		isp->acc.pipeline = sh_css_create_pipeline();
@@ -155,8 +149,6 @@ int atomisp_acc_load(struct atomisp_device *isp,
 	}
 
 out:
-	mutex_unlock(&isp->isp_lock);
-	mutex_unlock(&isp->input_lock);
 	return ret;
 }
 
@@ -183,9 +175,6 @@ int atomisp_acc_unload(struct atomisp_device *isp, unsigned int *handle)
 {
 	int ret;
 
-	mutex_lock(&isp->input_lock);
-	mutex_lock(&isp->isp_lock);
-
 	if (sh_css_acceleration_stop() != sh_css_success) {
 		v4l2_err(&atomisp_dev,
 			 "%s: cannot stop acceleration pipeline\n", __func__);
@@ -194,8 +183,6 @@ int atomisp_acc_unload(struct atomisp_device *isp, unsigned int *handle)
 		ret = __acc_unload(isp, handle);
 	}
 
-	mutex_unlock(&isp->isp_lock);
-	mutex_unlock(&isp->input_lock);
 	return ret;
 }
 
@@ -206,9 +193,6 @@ void atomisp_acc_unload_all(struct atomisp_device *isp)
 
 	if (!isp)
 		return;
-
-	mutex_lock(&isp->input_lock);
-	mutex_lock(&isp->isp_lock);
 
 	for (i = 0; i < ATOMISP_ACC_FW_MAX; i++) {
 		fw = isp->acc.fw[i];
@@ -223,17 +207,11 @@ void atomisp_acc_unload_all(struct atomisp_device *isp)
 		}
 
 	}
-
-	mutex_unlock(&isp->isp_lock);
-	mutex_unlock(&isp->input_lock);
 }
 
 int atomisp_acc_start(struct atomisp_device *isp, unsigned int *handle)
 {
 	unsigned int ret = 0;
-
-	mutex_lock(&isp->input_lock);
-	mutex_lock(&isp->isp_lock);
 
 	/* Invalidate caches. FIXME: should flush only necessary buffers */
 	wbinvd();
@@ -243,8 +221,6 @@ int atomisp_acc_start(struct atomisp_device *isp, unsigned int *handle)
 		hrt_sleep();
 	sh_css_init_buffer_queues();
 
-	mutex_unlock(&isp->isp_lock);
-	mutex_unlock(&isp->input_lock);
 	return ret;
 }
 
@@ -253,15 +229,10 @@ int atomisp_acc_wait(struct atomisp_device *isp, unsigned int *handle)
 	int ret = 0;
 	int err;
 
-	mutex_lock(&isp->input_lock);
-	mutex_lock(&isp->isp_lock);
-
 	err = sh_css_wait_for_completion(SH_CSS_ACC_PIPELINE);
 	if (err != sh_css_success)
 		ret = -EIO;
 
-	mutex_unlock(&isp->isp_lock);
-	mutex_unlock(&isp->input_lock);
 	return ret;
 }
 
@@ -290,9 +261,6 @@ int atomisp_acc_map(struct atomisp_device *isp, struct atomisp_acc_map *map)
 
 	pgnr = PAGE_ALIGN(map->length) >> PAGE_SHIFT;
 
-	mutex_lock(&isp->input_lock);
-	mutex_lock(&isp->isp_lock);
-
 	if (__find_map(isp, map->css_ptr, map->length)) {
 		ret = -EEXIST;
 		goto out;
@@ -320,8 +288,6 @@ int atomisp_acc_map(struct atomisp_device *isp, struct atomisp_acc_map *map)
 	map->css_ptr = cssptr;
 
 out:
-	mutex_unlock(&isp->isp_lock);
-	mutex_unlock(&isp->input_lock);
 	return ret;
 }
 
@@ -333,9 +299,6 @@ int atomisp_acc_unmap(struct atomisp_device *isp, struct atomisp_acc_map *map)
 	if (map->flags)
 		return -EINVAL;
 
-	mutex_lock(&isp->input_lock);
-	mutex_lock(&isp->isp_lock);
-
 	atomisp_map = __find_map(isp, map->css_ptr, map->length);
 	if (!atomisp_map) {
 		ret = -EINVAL;
@@ -345,17 +308,13 @@ int atomisp_acc_unmap(struct atomisp_device *isp, struct atomisp_acc_map *map)
 	mmgr_free(atomisp_map->ptr);
 	kfree(atomisp_map);
 out:
-	mutex_unlock(&isp->isp_lock);
-	mutex_unlock(&isp->input_lock);
 	return ret;
 }
 
+#if 0
 void atomisp_acc_unmap_all(struct atomisp_device *isp)
 {
 	struct atomisp_map *atomisp_map, *t;
-
-	mutex_lock(&isp->input_lock);
-	mutex_lock(&isp->isp_lock);
 
 	list_for_each_entry_safe(atomisp_map, t, &isp->acc.memory_maps, list) {
 		list_del(&atomisp_map->list);
@@ -363,10 +322,9 @@ void atomisp_acc_unmap_all(struct atomisp_device *isp)
 		kfree(atomisp_map);
 	}
 
-	mutex_unlock(&isp->isp_lock);
-	mutex_unlock(&isp->input_lock);
 	return;
 }
+#endif
 
 int atomisp_acc_s_mapped_arg(struct atomisp_device *isp,
 			     struct atomisp_acc_s_mapped_arg *arg)
@@ -379,9 +337,6 @@ int atomisp_acc_s_mapped_arg(struct atomisp_device *isp,
 
 	if (arg->memory > ATOMISP_ACC_MEMORY_VAMEM2)
 		return -EINVAL;
-
-	mutex_lock(&isp->input_lock);
-	mutex_lock(&isp->isp_lock);
 
 	atomisp_map = __find_map(isp, arg->css_ptr, arg->length);
 	if (!atomisp_map) {
@@ -403,8 +358,6 @@ int atomisp_acc_s_mapped_arg(struct atomisp_device *isp,
 		ret = -EIO;
 
 out:
-	mutex_unlock(&isp->isp_lock);
-	mutex_unlock(&isp->input_lock);
 	return ret;
 
 }

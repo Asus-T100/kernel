@@ -318,6 +318,8 @@ struct atomisp_device {
 
 	struct vb2_buffer *vb_capture;
 	struct vb2_buffer *vb_preview;
+
+	atomic_t sequence;
 };
 
 #define v4l2_dev_to_atomisp_device(dev) \

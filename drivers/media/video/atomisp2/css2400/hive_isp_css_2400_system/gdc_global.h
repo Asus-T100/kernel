@@ -33,7 +33,7 @@
 
 /* The GDC is capable of higher internal precision than the parameter data structures */
 #define HRT_GDC_COORD_SCALE_BITS	6
-#define HRT_GDC_COORD_SCALE			(1 << HRT_GDC_COORD_SCALE_BITS)
+#define HRT_GDC_COORD_SCALE			(1 << HRT_GDC_COORD_SCALE_BITS) 
 
 typedef enum {
 	gdc_8_bpp  = 8,
@@ -41,5 +41,22 @@ typedef enum {
 	gdc_12_bpp = 12,
 	gdc_14_bpp = 14
 } gdc_bits_per_pixel_t;
+
+typedef struct {
+	unsigned int      origin_x;
+	unsigned int      origin_y;
+	unsigned int      in_addr_offset;
+	unsigned int      in_block_width;
+	unsigned int      in_block_height;
+	unsigned int      p0_x;
+	unsigned int      p0_y;
+	unsigned int      p1_x;
+	unsigned int      p1_y;
+	unsigned int      p2_x;
+	unsigned int      p2_y;
+	unsigned int      p3_x;
+	unsigned int      p3_y;
+} gdc_warp_param_mem_t;
+
 
 #endif /* __GDC_GLOBAL_H_INCLUDED__ */

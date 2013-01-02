@@ -620,6 +620,8 @@ static int atomisp_enum_framesizes(struct file *file, void *fh,
 	}
 
 	/* setting run mode to the sensor */
+	memset(&sensor_parm, 0, sizeof(sensor_parm));
+	sensor_parm.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 	sensor_parm.parm.capture.capturemode = CI_MODE_STILL_CAPTURE;
 	v4l2_subdev_call(input->camera, video, s_parm, &sensor_parm);
 
@@ -893,6 +895,10 @@ static int atomisp_qbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 		else
 			pipe->vf_info.type = buf->type;
 	}
+
+	ret = vb2_prepare_buf(&pipe->capq, buf);
+	if (ret)
+		return ret;
 
 	ret = vb2_qbuf(&pipe->capq, buf);
 	return ret;
@@ -1580,6 +1586,9 @@ static long atomisp_vidioc_default(struct file *file, void *fh,
 
 	case ATOMISP_IOC_S_ISP_GAMMA_CORRECTION:
 		return atomisp_gamma_correction(isp, 1, arg);
+
+	case ATOMISP_IOC_S_PARAMETERS:
+		return atomisp_set_parameters(isp, arg);
 
 	default:
 		return -EINVAL;

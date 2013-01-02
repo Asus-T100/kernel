@@ -178,6 +178,26 @@ struct atomisp_3a_statistics {
 	struct atomisp_3a_output __user *data;
 };
 
+/**
+ * struct atomisp_cont_capture_conf - continuous capture parameters
+ * @num_captures: number of still images to capture
+ * @skip_frames: number of frames to skip between 2 captures
+ * @offset: offset in ring buffer to start capture
+ *
+ * For example, to capture 1 frame from past, current, and 1 from future
+ * and skip one frame between each capture, parameters would be:
+ * num_captures:3
+ * skip_frames:1
+ * offset:-2
+ */
+
+struct atomisp_cont_capture_conf {
+	int num_captures;
+	unsigned int skip_frames;
+	int offset;
+	__u32 reserved[5];
+};
+
 /* White Balance (Gain Adjust) */
 struct atomisp_wb_config {
 	unsigned int integer_bits;
@@ -221,6 +241,11 @@ struct atomisp_dp_config {
 	unsigned int gain;
 };
 
+/* XNR threshold */
+struct atomisp_xnr_config {
+	unsigned int threshold;
+};
+
 struct atomisp_parm {
 	struct atomisp_grid_info info;
 	struct atomisp_wb_config wb_config;
@@ -232,6 +257,26 @@ struct atomisp_parm {
 	struct atomisp_nr_config nr_config;
 	struct atomisp_ee_config ee_config;
 	struct atomisp_tnr_config tnr_config;
+};
+
+struct atomisp_parameters {
+	struct atomisp_wb_config *wb_config;
+	struct atomisp_cc_config *cc_config;
+	struct atomisp_ob_config *ob_config;
+	struct atomisp_de_config *de_config;
+	struct atomisp_ce_config *ce_config;
+	struct atomisp_dp_config *dp_config;
+	struct atomisp_nr_config *nr_config;
+	struct atomisp_ee_config *ee_config;
+	struct atomisp_tnr_config *tnr_config;
+	struct atomisp_shading_table *shading_table;
+	struct atomisp_morph_table *morph_table;
+	struct atomisp_macc_config *macc_config;
+	struct atomisp_gamma_table *gamma_table;
+	struct atomisp_ctc_table *ctc_table;
+	struct atomisp_xnr_config *xnr_config;
+	struct atomisp_gc_config *gc_config;
+	struct atomisp_3a_config *a3a_config;
 };
 
 #define ATOMISP_GAMMA_TABLE_SIZE        1024
@@ -344,11 +389,26 @@ struct atomisp_overlay {
 	unsigned int overlay_start_y;
 };
 
-/* Sensor resolution specific data for AE calculation.
- * This contains sensor specific data, so we simply use an array of 64
- * bytes. */
+/* Sensor resolution specific data for AE calculation.*/
 struct atomisp_sensor_mode_data {
-	unsigned char data[64];
+	unsigned int coarse_integration_time_min;
+	unsigned int coarse_integration_time_max_margin;
+	unsigned int fine_integration_time_min;
+	unsigned int fine_integration_time_max_margin;
+	unsigned int fine_integration_time_def;
+	unsigned int frame_length_lines;
+	unsigned int line_length_pck;
+	unsigned int read_mode;
+	unsigned int vt_pix_clk_freq_mhz;
+	unsigned int crop_horizontal_start; /* Sensor crop start cord. (x0,y0)*/
+	unsigned int crop_vertical_start;
+	unsigned int crop_horizontal_end; /* Sensor crop end cord. (x1,y1)*/
+	unsigned int crop_vertical_end;
+	unsigned int output_width; /* input size to ISP after binning/scaling */
+	unsigned int output_height;
+	uint8_t binning_factor_x; /* horizontal binning factor used */
+	uint8_t binning_factor_y; /* vertical binning factor used */
+	uint8_t reserved[2];
 };
 
 struct atomisp_exposure {
@@ -695,6 +755,12 @@ struct v4l2_private_int_data {
 #define ATOMISP_IOC_ACC_S_MAPPED_ARG \
 	_IOW('v', BASE_VIDIOC_PRIVATE + 60, struct atomisp_acc_s_mapped_arg)
 
+#define ATOMISP_IOC_S_PARAMETERS \
+	_IOW('v', BASE_VIDIOC_PRIVATE + 61, struct atomisp_parameters)
+
+#define ATOMISP_IOC_S_CONT_CAPTURE_CONFIG \
+	_IOWR('v', BASE_VIDIOC_PRIVATE + 62, struct atomisp_cont_capture_conf)
+
 /*  ISP Private control IDs */
 #define V4L2_CID_ATOMISP_BAD_PIXEL_DETECTION \
 	(V4L2_CID_PRIVATE_BASE + 0)
@@ -745,6 +811,11 @@ struct v4l2_private_int_data {
 
 /* number of frames to skip at stream start */
 #define V4L2_CID_G_SKIP_FRAMES		   (V4L2_CID_CAMERA_LASTP1 + 17)
+
+/* Query sensor's 2A status */
+#define V4L2_CID_2A_STATUS                 (V4L2_CID_CAMERA_LASTP1 + 18)
+#define V4L2_2A_STATUS_AE_READY            (1 << 0)
+#define V4L2_2A_STATUS_AWB_READY           (1 << 1)
 
 #define V4L2_BUF_FLAG_BUFFER_INVALID       0x0400
 #define V4L2_BUF_FLAG_BUFFER_VALID         0x0800

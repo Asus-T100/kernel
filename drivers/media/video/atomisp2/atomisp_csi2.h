@@ -18,11 +18,9 @@
  * 02110-1301, USA.
  *
  */
-#ifndef _MIPI_CSI2_H_
-#define _MIPI_CSI2_H_
+#ifndef __ATOMISP_CSI2_H__
+#define __ATOMISP_CSI2_H__
 
-#include <linux/videodev2.h>
-#include <media/v4l2-device.h>
 #include <media/v4l2-subdev.h>
 #include <media/v4l2-ctrls.h>
 
@@ -32,6 +30,9 @@
 
 #define CSI2_OUTPUT_ISP_SUBDEV	(1 << 0)
 #define CSI2_OUTPUT_MEMORY	(1 << 1)
+
+struct atomisp_device;
+struct v4l2_device;
 
 struct atomisp_mipi_csi2_device {
 	struct v4l2_subdev subdev;
@@ -51,4 +52,4 @@ void atomisp_mipi_csi2_unregister_entities(
 int atomisp_mipi_csi2_register_entities(struct atomisp_mipi_csi2_device *csi2,
 			struct v4l2_device *vdev);
 
-#endif
+#endif /* __ATOMISP_CSI2_H__ */

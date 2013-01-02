@@ -20,13 +20,26 @@
  * 02110-1301, USA.
  *
  */
-#include <linux/async.h>
-#include "atomisp_ioctl.h"
+#include <linux/module.h>
+#include <linux/pci.h>
+#include <linux/pm_runtime.h>
+#include <linux/pm_qos.h>
+#include <linux/timer.h>
+#include <linux/interrupt.h>
+
+#include <asm/intel-mid.h>
+
 #include "atomisp_cmd.h"
+#include "atomisp_common.h"
 #include "atomisp_fops.h"
 #include "atomisp_file.h"
+#include "atomisp_ioctl.h"
+#include "atomisp_internal.h"
+#include "atomisp-regs.h"
 
 #include "device_access.h"
+#include <linux/intel_mid_pm.h>
+#include <asm/intel-mid.h>
 
 /* cross componnet debug message flag */
 int dbg_level = 0;
@@ -213,29 +226,6 @@ const struct atomisp_format_bridge atomisp_output_fmts[] = {
 
 const u32 atomisp_output_fmts_num = ARRAY_SIZE(atomisp_output_fmts);
 
-static struct atomisp_tvnorm tvnorms[] = {
-	{
-		.name = "atomisp format",
-		.id = V4L2_STD_NTSC_M,
-		.cxiformat = 0,
-		.cxoformat = 0x181f0008,
-	},
-	{
-		.name = "atomisp format NULL",
-		.id = V4L2_STD_NTSC_M_JP,
-		.cxiformat = 1,
-		.cxoformat = 0x181f0008,
-	}
-};
-
-static const struct video_device atomisp_video_dev = {
-	.name = "atomisp",
-	.minor = -1,
-	.fops = &atomisp_fops,
-	.release = video_device_release_empty,
-	.ioctl_ops = &atomisp_ioctl_ops
-};
-
 int atomisp_video_init(struct atomisp_video_pipe *video, const char *name)
 {
 	int ret;
@@ -267,7 +257,6 @@ int atomisp_video_init(struct atomisp_video_pipe *video, const char *name)
 		 "ATOMISP ISP %s %s", name, direction);
 	video->vdev.release = video_device_release_empty;
 	video_set_drvdata(&video->vdev, video->isp);
-	video->opened = false;
 
 	return 0;
 }
@@ -296,15 +285,146 @@ void atomisp_video_unregister(struct atomisp_video_pipe *video)
 	}
 }
 
+static int atomisp_save_iunit_reg(struct atomisp_device *isp)
+{
+	struct pci_dev *dev = isp->pdev;
+
+	dev_dbg(isp->dev, "%s\n", __func__);
+
+	pci_read_config_word(dev, PCI_COMMAND, &isp->saved_regs.pcicmdsts);
+	/* isp->saved_regs.ispmmadr is set from the atomisp_pci_probe() */
+	pci_read_config_dword(dev, PCI_MSI_CAPID, &isp->saved_regs.msicap);
+	pci_read_config_dword(dev, PCI_MSI_ADDR, &isp->saved_regs.msi_addr);
+	pci_read_config_word(dev, PCI_MSI_DATA,  &isp->saved_regs.msi_data);
+	pci_read_config_byte(dev, PCI_INTERRUPT_LINE, &isp->saved_regs.intr);
+	pci_read_config_dword(dev, PCI_INTERRUPT_CTRL,
+			      &isp->saved_regs.interrupt_control);
+
+	if (IS_MRFLD) {
+		pci_read_config_dword(dev, MRFLD_PCI_PMCS,
+				      &isp->saved_regs.pmcs);
+		/* Ensure read/write combining is enabled. */
+		pci_read_config_dword(dev, PCI_I_CONTROL,
+				&isp->saved_regs.i_control);
+		isp->saved_regs.i_control |=
+				MRFLD_PCI_I_CONTROL_ENABLE_READ_COMBINING |
+				MRFLD_PCI_I_CONTROL_ENABLE_WRITE_COMBINING;
+		pci_read_config_dword(dev, MRFLD_PCI_CSI_ACCESS_CTRL_VIOL,
+				      &isp->saved_regs.csi_access_viol);
+		pci_read_config_dword(dev, MRFLD_PCI_CSI_RCOMP_CONTROL,
+				      &isp->saved_regs.csi_rcomp_config);
+		pci_read_config_dword(dev, MRFLD_PCI_CSI_AFE_TRIM_CONTROL,
+				      &isp->saved_regs.csi_afe_dly);
+		pci_read_config_dword(dev, MRFLD_PCI_CSI_CONTROL,
+				      &isp->saved_regs.csi_control);
+		pci_read_config_dword(dev, MRFLD_PCI_CSI_AFE_RCOMP_CONTROL,
+				      &isp->saved_regs.csi_afe_rcomp_config);
+		pci_read_config_dword(dev, MRFLD_PCI_CSI_AFE_HS_CONTROL,
+				      &isp->saved_regs.csi_afe_hs_control);
+		pci_read_config_dword(dev, MRFLD_PCI_CSI_DEADLINE_CONTROL,
+				      &isp->saved_regs.csi_deadline_control);
+	} else {
+		pci_read_config_dword(dev, MFLD_PCI_PMCS,
+				      &isp->saved_regs.pmcs);
+
+		/* Ensure clock gating for ISPCLK, PERF and NOA monitoring. */
+		pci_read_config_dword(dev, MFLD_PCI_CG_DIS,
+				      &isp->saved_regs.cg_dis);
+		isp->saved_regs.cg_dis &= ~(MFLD_PCI_CG_DIS_DISABLED_ISPCLK |
+				MFLD_PCI_CG_DIS_DISABLED_PERF_MON |
+				MFLD_PCI_CG_DIS_DISABLED_NOA_MON);
+
+		/* Ensure read/write combining is enabled. */
+		pci_read_config_dword(dev, PCI_I_CONTROL,
+				&isp->saved_regs.i_control);
+		isp->saved_regs.i_control |=
+				MFLD_PCI_I_CONTROL_ENABLE_READ_COMBINING |
+				MFLD_PCI_I_CONTROL_ENABLE_WRITE_COMBINING;
+
+		isp->saved_regs.csi_rcomp_config = intel_mid_msgbus_read32(
+				MFLD_IUNITPHY_PORT, MFLD_CSI_RCOMP);
+		isp->saved_regs.csi_afe_dly = intel_mid_msgbus_read32(
+				MFLD_IUNITPHY_PORT, MFLD_CSI_AFE);
+
+		/* Ensure mipi1 and mipi4 configurations are enabled */
+		isp->saved_regs.csi_control = intel_mid_msgbus_read32(
+				MFLD_IUNITPHY_PORT, MFLD_CSI_CONTROL);
+		isp->saved_regs.csi_control &= ~(MFLD_CSI_CONTROL_DIS_MIPI4_IF |
+				MFLD_CSI_CONTROL_DIS_MIPI1_IF);
+		isp->saved_regs.csi_control |= MFLD_CSI_CONTROL_EN_MIPI4_LANE |
+				MFLD_CSI_CONTROL_EN_MIPI1_LANE;
+	}
+
+	return 0;
+}
+
+static int atomisp_restore_iunit_reg(struct atomisp_device *isp)
+{
+	struct pci_dev *dev = isp->pdev;
+
+	dev_dbg(isp->dev, "%s\n", __func__);
+
+	pci_write_config_word(dev, PCI_COMMAND, isp->saved_regs.pcicmdsts);
+	pci_write_config_dword(dev, PCI_BASE_ADDRESS_0,
+			       isp->saved_regs.ispmmadr);
+	pci_write_config_dword(dev, PCI_MSI_CAPID, isp->saved_regs.msicap);
+	pci_write_config_dword(dev, PCI_MSI_ADDR, isp->saved_regs.msi_addr);
+	pci_write_config_word(dev, PCI_MSI_DATA, isp->saved_regs.msi_data);
+	pci_write_config_byte(dev, PCI_INTERRUPT_LINE, isp->saved_regs.intr);
+	pci_write_config_dword(dev, PCI_INTERRUPT_CTRL,
+			       isp->saved_regs.interrupt_control);
+	pci_write_config_dword(dev, PCI_I_CONTROL,
+					isp->saved_regs.i_control);
+
+	if (IS_MRFLD) {
+		pci_write_config_dword(dev, MRFLD_PCI_PMCS,
+						isp->saved_regs.pmcs);
+		pci_write_config_dword(dev, MRFLD_PCI_CSI_ACCESS_CTRL_VIOL,
+				      isp->saved_regs.csi_access_viol);
+		pci_write_config_dword(dev, MRFLD_PCI_CSI_RCOMP_CONTROL,
+				      isp->saved_regs.csi_rcomp_config);
+		pci_write_config_dword(dev, MRFLD_PCI_CSI_AFE_TRIM_CONTROL,
+				      isp->saved_regs.csi_afe_dly);
+		pci_write_config_dword(dev, MRFLD_PCI_CSI_CONTROL,
+				      isp->saved_regs.csi_control);
+		pci_write_config_dword(dev, MRFLD_PCI_CSI_AFE_RCOMP_CONTROL,
+				      isp->saved_regs.csi_afe_rcomp_config);
+		pci_write_config_dword(dev, MRFLD_PCI_CSI_AFE_HS_CONTROL,
+				      isp->saved_regs.csi_afe_hs_control);
+		pci_write_config_dword(dev, MRFLD_PCI_CSI_DEADLINE_CONTROL,
+				      isp->saved_regs.csi_deadline_control);
+
+		/*
+		 * for MRFLD, Software/firmware needs to write a 1 to bit0
+		 * of the register at CSI_RECEIVER_SELECTION_REG to enable
+		 * SH CSI backend write 0 will enable Arasan CSI backend,
+		 * which has bugs(like sighting:4567697 and 4567699) and
+		 * will be removed in B0
+		 */
+		device_store_uint32(MRFLD_CSI_RECEIVER_SELECTION_REG, 1);
+
+	} else {
+		pci_write_config_dword(dev, MFLD_PCI_PMCS,
+				       isp->saved_regs.pmcs);
+		pci_write_config_dword(dev, MFLD_PCI_CG_DIS,
+						isp->saved_regs.cg_dis);
+		intel_mid_msgbus_write32(MFLD_IUNITPHY_PORT, MFLD_CSI_RCOMP,
+				    isp->saved_regs.csi_rcomp_config);
+		intel_mid_msgbus_write32(MFLD_IUNITPHY_PORT, MFLD_CSI_AFE,
+				    isp->saved_regs.csi_afe_dly);
+		intel_mid_msgbus_write32(MFLD_IUNITPHY_PORT, MFLD_CSI_CONTROL,
+				    isp->saved_regs.csi_control);
+	}
+
+	return 0;
+}
+
 #ifdef CONFIG_PM
 static int atomisp_runtime_suspend(struct device *dev)
 {
 	struct atomisp_device *isp = (struct atomisp_device *)
 		dev_get_drvdata(dev);
 	int ret;
-
-	/* save IUnit context */
-	atomisp_save_iunit_reg(isp);
 
 	/*Turn off the ISP d-phy*/
 	ret = atomisp_ospm_dphy_down(isp);
@@ -320,7 +440,7 @@ static int atomisp_runtime_resume(struct device *dev)
 		dev_get_drvdata(dev);
 	int ret;
 
-	pm_qos_update_request(&isp->pm_qos, ATOMISP_MAX_ISR_LATENCY);
+	pm_qos_update_request(&isp->pm_qos, isp->max_isr_latency);
 	if (isp->sw_contex.power_state == ATOM_ISP_POWER_DOWN) {
 		/*Turn on ISP d-phy */
 		ret = atomisp_ospm_dphy_up(isp);
@@ -332,9 +452,8 @@ static int atomisp_runtime_resume(struct device *dev)
 	}
 
 	/*restore register values for iUnit and iUnitPHY registers*/
-	if (isp->hw_contex.pcicmdsts)
+	if (isp->saved_regs.pcicmdsts)
 		atomisp_restore_iunit_reg(isp);
-	atomisp_save_iunit_reg(isp);
 
 	return 0;
 }
@@ -343,23 +462,24 @@ static int atomisp_suspend(struct device *dev)
 {
 	struct atomisp_device *isp = (struct atomisp_device *)
 		dev_get_drvdata(dev);
+	unsigned long flags;
 	int ret;
 
 	/*
 	 * FIXME: Suspend is not supported by sensors. Abort if any video
 	 * node was opened.
 	 */
-	if (isp->sw_contex.init == true)
+	if (atomisp_users(isp))
 		return -EBUSY;
 
-	if (isp->sw_contex.isp_streaming) {
+	spin_lock_irqsave(&isp->lock, flags);
+	if (isp->streaming != ATOMISP_DEVICE_STREAMING_DISABLED) {
+		spin_unlock_irqrestore(&isp->lock, flags);
 		v4l2_err(&atomisp_dev,
 			    "atomisp cannot suspend at this time.\n");
 		return -EINVAL;
 	}
-
-	/* save IUnit context */
-	atomisp_save_iunit_reg(isp);
+	spin_unlock_irqrestore(&isp->lock, flags);
 
 	/*Turn off the ISP d-phy */
 	ret = atomisp_ospm_dphy_down(isp);
@@ -378,7 +498,7 @@ static int atomisp_resume(struct device *dev)
 		dev_get_drvdata(dev);
 	int ret;
 
-	pm_qos_update_request(&isp->pm_qos, ATOMISP_MAX_ISR_LATENCY);
+	pm_qos_update_request(&isp->pm_qos, isp->max_isr_latency);
 
 	/*Turn on ISP d-phy */
 	ret = atomisp_ospm_dphy_up(isp);
@@ -389,9 +509,8 @@ static int atomisp_resume(struct device *dev)
 	}
 
 	/*restore register values for iUnit and iUnitPHY registers*/
-	if (isp->hw_contex.pcicmdsts)
+	if (isp->saved_regs.pcicmdsts)
 		atomisp_restore_iunit_reg(isp);
-	atomisp_save_iunit_reg(isp);
 
 	return 0;
 }
@@ -485,27 +604,27 @@ static int mrfld_csi_lane_config(struct atomisp_device *isp)
 
 static int atomisp_subdev_probe(struct atomisp_device *isp)
 {
-	struct atomisp_platform_data *pdata = NULL;
+	const struct atomisp_platform_data *pdata;
 	struct intel_v4l2_subdev_table *subdevs;
-	struct v4l2_subdev *subdev = NULL;
-	struct i2c_adapter *adapter = NULL;
-	struct i2c_board_info *board_info;
 	int raw_index = -1;
 
-	pdata = (struct atomisp_platform_data *)intel_get_v4l2_subdev_table();
+	pdata = atomisp_get_platform_data();
 	if (pdata == NULL) {
-		v4l2_err(&atomisp_dev, "no platform data available\n");
-		return -ENODEV;
+		dev_err(isp->dev, "no platform data available\n");
+		return 0;
 	}
 
 	for (subdevs = pdata->subdevs; subdevs->type; ++subdevs) {
-		board_info = &subdevs->v4l2_subdev.board_info;
+		struct v4l2_subdev *subdev;
+		struct i2c_board_info *board_info =
+			&subdevs->v4l2_subdev.board_info;
+		struct i2c_adapter *adapter =
+			i2c_get_adapter(subdevs->v4l2_subdev.i2c_adapter_id);
 
-		adapter = i2c_get_adapter(subdevs->v4l2_subdev.i2c_adapter_id);
 		if (adapter == NULL) {
-			v4l2_err(&atomisp_dev,
-				    "Failed to find i2c adapter for subdev %s\n"
-				    , board_info->type);
+			dev_err(isp->dev,
+				"Failed to find i2c adapter for subdev %s\n",
+				board_info->type);
 			break;
 		}
 
@@ -513,27 +632,23 @@ static int atomisp_subdev_probe(struct atomisp_device *isp)
 				board_info, NULL);
 
 		if (subdev == NULL) {
-			v4l2_warn(&atomisp_dev,
-				    "Subdev %s detection fail\n",
-				    board_info->type);
+			dev_warn(isp->dev, "Subdev %s detection fail\n",
+				 board_info->type);
 			continue;
 		}
 
-		v4l2_info(&atomisp_dev,
-			    "Subdev %s successfully register\n",
-			  board_info->type);
+		dev_info(isp->dev, "Subdev %s successfully register\n",
+			 board_info->type);
 
 		switch (subdevs->type) {
 		case RAW_CAMERA:
 			raw_index = isp->input_cnt;
-			v4l2_dbg(2, dbg_level, &atomisp_dev,
-					"%s, raw_index: %d\n", __func__, raw_index);
+			dev_dbg(isp->dev, "raw_index: %d\n", raw_index);
 		case SOC_CAMERA:
-			v4l2_dbg(2, dbg_level, &atomisp_dev,
-					"%s, SOC_INDEX: %d\n", __func__, isp->input_cnt);
+			dev_dbg(isp->dev, "SOC_INDEX: %d\n", isp->input_cnt);
 			if (isp->input_cnt >= ATOM_ISP_MAX_INPUTS) {
-				v4l2_warn(&atomisp_dev,
-					"too many atomisp inputs, ignored\n");
+				dev_warn(isp->dev,
+					 "too many atomisp inputs, ignored\n");
 				break;
 			}
 
@@ -558,8 +673,7 @@ static int atomisp_subdev_probe(struct atomisp_device *isp)
 			isp->flash = subdev;
 			break;
 		default:
-			v4l2_dbg(1, dbg_level, &atomisp_dev,
-				"unkonw subdev probed\n");
+			dev_dbg(isp->dev, "unknown subdev probed\n");
 			break;
 		}
 
@@ -575,8 +689,7 @@ static int atomisp_subdev_probe(struct atomisp_device *isp)
 
 	/*Check camera for at least one subdev in it */
 	if (!isp->inputs[0].camera) {
-		v4l2_err(&atomisp_dev, "atomisp: "
-		       "no camera attached or fail to detect\n");
+		dev_err(isp->dev, "no camera attached or fail to detect\n");
 		return -ENODEV;
 	}
 
@@ -824,130 +937,117 @@ load_firmware(struct device *dev)
 	return fw;
 }
 
-static struct pci_driver atomisp_pci_driver;
+#define ATOM_ISP_PCI_BAR	0
+
 static int __devinit atomisp_pci_probe(struct pci_dev *dev,
-					const struct pci_device_id *id)
+				       const struct pci_device_id *id)
 {
-	struct atomisp_device *isp = NULL;
-	unsigned int start, len;
-	void __iomem *base = NULL;
-	int err = 0;
+	const struct atomisp_platform_data *pdata;
+	struct atomisp_device *isp;
+	unsigned int start;
+	void __iomem *base;
+	int err;
 
 	if (!dev) {
-		v4l2_err(&atomisp_dev, "atomisp: erorr device ptr\n");
+		dev_err(&dev->dev, "atomisp: error device ptr\n");
 		return -EINVAL;
 	}
 
 	atomisp_pci_vendor = id->vendor;
 	atomisp_pci_device = id->device;
 
-	err = pci_enable_device(dev);
+	pdata = atomisp_get_platform_data();
+	if (pdata == NULL) {
+		dev_err(&dev->dev, "no platform data available\n");
+		return -ENODEV;
+	}
+
+	err = pcim_enable_device(dev);
 	if (err) {
-		v4l2_err(&atomisp_dev,
-			    "Failed to enable CI ISP device\n");
+		dev_err(&dev->dev, "Failed to enable CI ISP device (%d)\n",
+			err);
 		return err;
 	}
 
-	start = pci_resource_start(dev, 0);
-	len = pci_resource_len(dev, 0);
+	start = pci_resource_start(dev, ATOM_ISP_PCI_BAR);
+	v4l2_dbg(1, dbg_level, &atomisp_dev, "start: 0x%x\n", start);
 
-	err = pci_request_region(dev, 0, atomisp_pci_driver.name);
+	err = pcim_iomap_regions(dev, 1 << ATOM_ISP_PCI_BAR, pci_name(dev));
 	if (err) {
-		v4l2_err(&atomisp_dev,
-			    "Failed to request region 0x%1x-0x%Lx\n",
-			    start, (unsigned long long)pci_resource_end(dev,
-				0));
-		goto request_region_fail;
+		dev_err(&dev->dev, "Failed to I/O memory remapping (%d)\n",
+			err);
+		return err;
 	}
 
-	v4l2_dbg(1, dbg_level, &atomisp_dev, "start: 0x%x\n",
-			(unsigned int)start);
-	v4l2_dbg(1, dbg_level, &atomisp_dev, "len: 0x%x\n",
-			(unsigned int)len);
+	base = pcim_iomap_table(dev)[ATOM_ISP_PCI_BAR];
+	v4l2_dbg(1, dbg_level, &atomisp_dev, "base: %p\n", base);
 
-	base = ioremap_nocache(start, len);
-	v4l2_dbg(1, dbg_level, &atomisp_dev, "base: 0x%x\n",
-			(unsigned int)base);
-	if (!base) {
-		v4l2_err(&atomisp_dev,
-			    "Failed to I/O memory remapping\n");
-		err = -ENOMEM;
-		goto ioremap_fail;
-	}
+	atomisp_io_base = base;
 
-	isp = kzalloc(sizeof(struct atomisp_device), GFP_KERNEL);
+	v4l2_dbg(1, dbg_level, &atomisp_dev, "atomisp_io_base: %p\n",
+			atomisp_io_base);
+
+	isp = devm_kzalloc(&dev->dev, sizeof(struct atomisp_device), GFP_KERNEL);
 	if (!isp) {
-		v4l2_err(&atomisp_dev, "Failed to alloc CI ISP structure\n");
-		goto kzalloc_fail;
+		dev_err(&dev->dev, "Failed to alloc CI ISP structure\n");
+		return -ENOMEM;
 	}
-	isp->sw_contex.probed = false;
-	isp->sw_contex.init = false;
 	isp->pdev = dev;
 	isp->dev = &dev->dev;
 	isp->sw_contex.power_state = ATOM_ISP_POWER_UP;
-	isp->hw_contex.pci_root = pci_get_bus_and_slot(0, 0);
+	isp->pci_root = pci_get_bus_and_slot(0, 0);
+	if (!isp->pci_root) {
+		dev_err(&dev->dev, "Unable to find PCI host\n");
+		return -ENODEV;
+	}
+	isp->saved_regs.ispmmadr = start;
+
+	mutex_init(&isp->mutex);
+	mutex_init(&isp->streamoff_mutex);
+	spin_lock_init(&isp->lock);
+
+	isp->max_isr_latency = ATOMISP_MAX_ISR_LATENCY;
+	if ((pdata->spid->platform_family_id == INTEL_CLVTP_PHONE ||
+	     pdata->spid->platform_family_id == INTEL_CLVT_TABLET) &&
+	    isp->pdev->revision < 0x09) {
+		/* Workaround for Cloverview(+) older than stepping B0 */
+		isp->max_isr_latency = CSTATE_EXIT_LATENCY_C1;
+	}
 
 	/* Load isp firmware from user space */
 	isp->firmware = load_firmware(&dev->dev);
 	if (!isp->firmware) {
-		v4l2_err(&atomisp_dev, "Load firmwares failed\n");
+		dev_err(&dev->dev, "Load firmwares failed\n");
 		goto load_fw_fail;
-	}
-
-	err = atomisp_initialize_modules(isp);
-	if (err < 0) {
-		v4l2_err(&atomisp_dev, "atomisp_initialize_modules\n");
-		goto init_mod_fail;
-	}
-
-	err = atomisp_register_entities(isp);
-	if (err < 0) {
-		v4l2_err(&atomisp_dev, "atomisp_register_entities failed\n");
-		goto init_mod_fail;
 	}
 
 	INIT_LIST_HEAD(&isp->acc.memory_maps);
 	INIT_LIST_HEAD(&isp->s3a_stats);
 	INIT_LIST_HEAD(&isp->dis_stats);
 	init_completion(&isp->dis_state_complete);
-	spin_lock_init(&isp->irq_lock);
 
 	isp->wdt_work_queue = alloc_workqueue(isp->v4l2_dev.name, 0, 1);
 	if (isp->wdt_work_queue == NULL) {
-		v4l2_err(&atomisp_dev, "Failed to initialize work queue\n");
+		dev_err(&dev->dev, "Failed to initialize work queue\n");
 		goto work_queue_fail;
 	}
 	INIT_WORK(&isp->wdt_work, atomisp_wdt_work);
 
-	isp->hw_contex.ispmmadr = start;
-
 	pci_set_master(dev);
-	atomisp_io_base = base;
-
-	v4l2_dbg(1, dbg_level, &atomisp_dev, "atomisp_io_base: 0x%x\n",
-			(unsigned int)atomisp_io_base);
-
-	isp->tvnorm = tvnorms;
-	mutex_init(&isp->input_lock);
-	/* isp_lock is to protect race access of css functions */
-	mutex_init(&isp->isp_lock);
-	isp->sw_contex.updating_uptr = false;
-	isp->isp3a_stat_ready = false;
-
 	pci_set_drvdata(dev, isp);
 
 	err = pci_enable_msi(dev);
 	if (err) {
-		v4l2_err(&atomisp_dev,
-			    "Failed to enable msi\n");
+		dev_err(&dev->dev, "Failed to enable msi (%d)\n", err);
 		goto enable_msi_fail;
 	}
-	err = request_threaded_irq(dev->irq, atomisp_isr, atomisp_isr_thread,
-				   IRQF_SHARED, "isp_irq", isp);
+
+	err = devm_request_threaded_irq(&dev->dev, dev->irq,
+					atomisp_isr, atomisp_isr_thread,
+					IRQF_SHARED, "isp_irq", isp);
 	if (err) {
-		v4l2_err(&atomisp_dev,
-			    "Failed to request irq\n");
-		goto request_irq_fail;
+		dev_err(&dev->dev, "Failed to request irq (%d)\n", err);
+		goto enable_msi_fail;
 	}
 
 	setup_timer(&isp->wdt, atomisp_wdt, (unsigned long)isp);
@@ -968,31 +1068,33 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 		device_store_uint32(MRFLD_CSI_RECEIVER_SELECTION_REG, 1);
 	}
 
-#ifdef CONFIG_PM
+	err = atomisp_initialize_modules(isp);
+	if (err < 0) {
+		dev_err(&dev->dev, "atomisp_initialize_modules (%d)\n", err);
+		goto enable_msi_fail;
+	}
+
+	err = atomisp_register_entities(isp);
+	if (err < 0) {
+		dev_err(&dev->dev, "atomisp_register_entities failed (%d)\n",
+			err);
+		goto enable_msi_fail;
+	}
+
+	/* save the iunit context only once after all the values are init'ed. */
+	atomisp_save_iunit_reg(isp);
+
 	pm_runtime_put_noidle(&dev->dev);
 	pm_runtime_allow(&dev->dev);
-#endif
-	isp->sw_contex.probed = true;
 
 	return 0;
 
-request_irq_fail:
-	pci_disable_msi(dev);
 enable_msi_fail:
-	pci_set_drvdata(dev, NULL);
 	destroy_workqueue(isp->wdt_work_queue);
 work_queue_fail:
-	atomisp_unregister_entities(isp);
-init_mod_fail:
 	release_firmware(isp->firmware);
 load_fw_fail:
-	kfree(isp);
-kzalloc_fail:
-	iounmap(base);
-ioremap_fail:
-	pci_release_region(dev, 0);
-request_region_fail:
-	pci_disable_device(dev);
+	pci_dev_put(isp->pci_root);
 	return err;
 }
 
@@ -1006,22 +1108,13 @@ static void __devexit atomisp_pci_remove(struct pci_dev *dev)
 	pm_qos_remove_request(&isp->pm_qos);
 
 	atomisp_msi_irq_uninit(isp, dev);
-	free_irq(dev->irq, isp);
-	pci_disable_msi(dev);
-	pci_dev_put(isp->hw_contex.pci_root);
+	pci_dev_put(isp->pci_root);
 
 	atomisp_unregister_entities(isp);
 
 	destroy_workqueue(isp->wdt_work_queue);
 
-	iounmap(atomisp_io_base);
-	pci_set_drvdata(dev, NULL);
-	pci_release_region(dev, 0);
-	pci_disable_device(dev);
-
 	release_firmware(isp->firmware);
-
-	kfree(isp);
 }
 
 static DEFINE_PCI_DEVICE_TABLE(atomisp_pci_tbl) = {

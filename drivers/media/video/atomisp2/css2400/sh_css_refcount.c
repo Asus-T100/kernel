@@ -127,7 +127,7 @@ hrt_vaddress sh_css_refcount_retain(int32_t id, hrt_vaddress ptr)
 
 	entry = find_entry(ptr, false);
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_cssa_refcount_retain(%x) 0x%x\n", id, ptr);
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_refcount_retain(%x) 0x%x\n", id, ptr);
 
 	if (!entry) {
 		entry = find_entry(ptr, true);

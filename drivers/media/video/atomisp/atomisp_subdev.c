@@ -28,6 +28,7 @@
 
 #include <media/v4l2-event.h>
 #include <media/v4l2-mediabus.h>
+#include "atomisp_common.h"
 #include "atomisp_internal.h"
 
 static const unsigned int isp_subdev_input_fmts[] = {
@@ -129,11 +130,10 @@ static int isp_subdev_subscribe_event(struct v4l2_subdev *sd,
 	struct v4l2_fh *fh,
 	struct v4l2_event_subscription *sub)
 {
+	if (IS_MRFLD || sub->type != V4L2_EVENT_FRAME_SYNC)
+		return -EINVAL;
 
-	/* TBD
-	return v4l2_event_subscribe(fh, sub);
-	*/
-	return 0;
+	return v4l2_event_subscribe(fh, sub, 16, NULL);
 }
 
 static int isp_subdev_unsubscribe_event(struct v4l2_subdev *sd,

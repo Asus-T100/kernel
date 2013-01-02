@@ -4989,7 +4989,6 @@ sh_css_unload_acceleration(struct sh_css_acc_fw *firmware)
 	else if (firmware->header.type == SH_CSS_ACC_VIEWFINDER)
 		remove_firmware(&my_css.vf_stage, firmware);
 	my_css.standalone_acc = NULL;
-	sh_css_acc_unload(firmware);
 }
 
 /* Set argument <num> of size <size> to value <val> */

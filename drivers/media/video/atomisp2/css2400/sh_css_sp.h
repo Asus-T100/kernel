@@ -121,6 +121,14 @@ sh_css_update_host2sp_offline_frame(
 				unsigned frame_num,
 				struct sh_css_frame *frame);
 
+/**
+ * @brief Update the nr of offline frames to use in host_sp_communication.
+ *
+ * @param[in] num_frames The number of raw frames to use.
+ */
+void
+sh_css_update_host2sp_cont_num_raw_frames(unsigned num_frames);
+
 void
 sh_css_event_init_irq_mask(void);
 

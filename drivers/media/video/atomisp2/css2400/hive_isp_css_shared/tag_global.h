@@ -13,11 +13,13 @@
  *                      with this offset. This allows the user to
  *                      process RAW frames that were captured in the
  *                      past or future.
+ * exp_id		Exposure id of the RAW frame to tag.
  */
 struct sh_css_tag_descr {
 	int num_captures;
 	unsigned int skip;
 	int offset;
+	unsigned int exp_id;
 };
 
 #endif /* __TAG_GLOBAL_H_INCLUDED__ */

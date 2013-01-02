@@ -21,10 +21,19 @@
  *
  */
 
-#ifndef	__ATOMISP_FCTRL_H__
-#define	__ATOMISP_FCTRL_H__
+#ifndef	__ATOMISP_FOPS_H__
+#define	__ATOMISP_FOPS_H__
 
-#include "atomisp_common.h"
+int atomisp_q_video_buffers_to_css(struct atomisp_device *isp,
+			     struct atomisp_video_pipe *pipe,
+			     enum sh_css_buffer_type css_buf_type,
+			     enum sh_css_pipe_id css_pipe_id);
+
+int atomisp_q_s3a_buffers_to_css(struct atomisp_device *isp,
+			   enum sh_css_pipe_id css_pipe_id);
+
+int atomisp_q_dis_buffers_to_css(struct atomisp_device *isp,
+			   enum sh_css_pipe_id css_pipe_id);
 
 /*
  * Videobuf ops
@@ -44,6 +53,8 @@ void atomisp_buf_release(struct videobuf_queue *vq,
 
 int atomisp_init_struct(struct atomisp_device *isp);
 
+unsigned int atomisp_users(struct atomisp_device *isp);
+
 /*
  * Memory help functions for image frame and private parameters
  */
@@ -54,12 +65,11 @@ int atomisp_videobuf_mmap_mapper(struct videobuf_queue *q,
 int atomisp_file_mmap(struct file *file, struct vm_area_struct *vma);
 
 int atomisp_qbuf_to_css(struct atomisp_device *isp,
-			 struct atomisp_video_pipe *pipe,
-		 	 struct videobuf_buffer *vb);
+			struct atomisp_video_pipe *pipe,
+			struct videobuf_buffer *vb);
 
-int atomisp_qbuffers_to_css(struct atomisp_device *isp,
-			 struct atomisp_video_pipe *pipe);
+int atomisp_qbuffers_to_css(struct atomisp_device *isp);
 
-extern struct v4l2_device atomisp_dev;
+extern const struct v4l2_file_operations atomisp_fops;
 
-#endif
+#endif /* __ATOMISP_FOPS_H__ */

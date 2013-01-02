@@ -249,6 +249,20 @@ sh_css_set_macc_config(const struct sh_css_macc_config *macc_config);
 void
 sh_css_get_macc_config(const struct sh_css_macc_config **macc_config);
 
+/* Chroma Tone Control */
+void
+sh_css_set_ctc_config(const struct sh_css_ctc_config *ctc_config);
+
+void
+sh_css_get_ctc_config(const struct sh_css_ctc_config **ctc_config);
+
+/* Anti-Aliasing */
+void
+sh_css_set_aa_config(const struct sh_css_aa_config *aa_config);
+
+void
+sh_css_get_aa_config(const struct sh_css_aa_config **aa_config);
+
 /* Gamma Correction */
 void
 sh_css_set_gc_config(const struct sh_css_gc_config *gc_config);
@@ -281,16 +295,47 @@ sh_css_set_macc_table(const struct sh_css_macc_table *table);
 void
 sh_css_get_macc_table(const struct sh_css_macc_table **table);
 
-/* Shading Correction */
-bool
-sh_css_params_set_binning_factor(unsigned int sensor_binning);
-
 /* 6-axis DVS */
 void
 sh_css_set_dvs_6axis_config(const struct sh_css_dvs_6axis_config *dvs_config);
 
 void
 sh_css_get_dvs_6axis_config(const struct sh_css_dvs_6axis_config **dvs_config);
+
+/* sRGB Gamma Correction */
+void
+sh_css_set_r_gamma_table(const struct sh_css_rgb_gamma_table *table);
+
+void
+sh_css_get_r_gamma_table(const struct sh_css_rgb_gamma_table **table);
+
+void
+sh_css_set_g_gamma_table(const struct sh_css_rgb_gamma_table *table);
+
+void
+sh_css_get_g_gamma_table(const struct sh_css_rgb_gamma_table **table);
+
+void
+sh_css_set_b_gamma_table(const struct sh_css_rgb_gamma_table *table);
+
+void
+sh_css_get_b_gamma_table(const struct sh_css_rgb_gamma_table **table);
+
+void
+sh_css_set_yuv2rgb_cc_config(const struct sh_css_yuv2rgb_cc_config *config);
+
+void
+sh_css_get_yuv2rgb_cc_config(const struct sh_css_yuv2rgb_cc_config **config);
+
+void
+sh_css_set_rgb2yuv_cc_config(const struct sh_css_rgb2yuv_cc_config *config);
+
+void
+sh_css_get_rgb2yuv_cc_config(const struct sh_css_rgb2yuv_cc_config **config);
+
+/* Shading Correction */
+bool
+sh_css_params_set_binning_factor(unsigned int sensor_binning);
 
 bool
 sh_css_params_set_shading_table(

@@ -21,28 +21,27 @@
  *
  */
 
-#ifndef	__ATOMISP_CTRL_H__
-#define	__ATOMISP_CTRL_H__
+#ifndef	__ATOMISP_IOCTL_H__
+#define	__ATOMISP_IOCTL_H__
 
-#include "atomisp_common.h"
-#include "sh_css_types.h"
-/*
- * v4l2 ioctls
- */
-int atomisp_streamoff(struct file *file, void *fh,
-			      enum v4l2_buf_type type);
+#include <sh_css.h>
+
+struct atomisp_device;
+struct atomisp_video_pipe;
+
+int atomisp_alloc_css_stat_bufs(struct atomisp_device *isp);
+
+int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type);
 
 int atomisp_reqbufs(struct file *file, void *fh,
 			struct v4l2_requestbuffers *req);
 
-int atomisp_get_css_pipe_id(struct atomisp_device *isp, enum sh_css_pipe_id *pipe);
+enum sh_css_pipe_id atomisp_get_css_pipe_id(struct atomisp_device *isp);
 
 int atomisp_get_css_buf_type(struct atomisp_device *isp,
 			 struct atomisp_video_pipe *pipe);
 
 int is_pixelformat_raw(u32 pixelformat);
-
-extern const struct v4l2_file_operations atomisp_fops;
 
 extern const struct v4l2_file_operations atomisp_file_fops;
 
@@ -50,4 +49,4 @@ extern const struct v4l2_ioctl_ops atomisp_ioctl_ops;
 
 extern const struct v4l2_ioctl_ops atomisp_file_ioctl_ops;
 
-#endif
+#endif /* __ATOMISP_IOCTL_H__ */

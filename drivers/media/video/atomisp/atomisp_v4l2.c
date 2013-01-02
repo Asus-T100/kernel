@@ -398,23 +398,14 @@ static int atomisp_resume(struct device *dev)
 
 static int atomisp_subdev_probe(struct atomisp_device *isp)
 {
-	struct atomisp_platform_data *pdata = NULL;
+	const struct atomisp_platform_data *pdata;
 	struct intel_v4l2_subdev_table *subdevs;
 	struct v4l2_subdev *subdev = NULL;
 	struct i2c_adapter *adapter = NULL;
 	struct i2c_board_info *board_info;
 	int raw_index = -1;
 
-	/*
-	 * fixing me!
-	 * currently no function intel_get_v4l2_subdev_table()
-	 * defined in board specific source code
-	 */
-#ifndef CONFIG_X86_MRFLD
-	pdata = (struct atomisp_platform_data *)intel_get_v4l2_subdev_table();
-#else
-	pdata = NULL;
-#endif
+	pdata = atomisp_get_platform_data();
 	if (pdata == NULL) {
 		v4l2_err(&atomisp_dev, "no platform data available\n");
 		return -ENODEV;

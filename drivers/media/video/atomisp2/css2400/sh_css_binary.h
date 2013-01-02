@@ -58,6 +58,7 @@ struct sh_css_binary_descr {
 	struct sh_css_frame_info *in_info;
 	struct sh_css_frame_info *out_info;
 	struct sh_css_frame_info *vf_info;
+	unsigned int isp_pipe_version;
 };
 
 struct sh_css_binary {
@@ -139,9 +140,9 @@ struct sh_css_binary {
 	0, \
 	{ 0,0 },		/* dvs_envelope_info */			\
 	false,			/* online */				\
-	0,			/* uds_xc */				\
-	0,			/* uds_yc */				\
-	0,			/* left_padding */			\
+	0, 			/* uds_xc */				\
+	0, 			/* uds_yc */				\
+	0, 			/* left_padding */			\
 	DEFAULT_BINARY_METRICS	/* metrics */				\
 }
 

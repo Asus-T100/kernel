@@ -28,6 +28,7 @@
 
 #include <media/v4l2-event.h>
 #include <media/v4l2-mediabus.h>
+#include "atomisp_common.h"
 #include "atomisp_internal.h"
 
 static const unsigned int isp_subdev_input_fmts[] = {
@@ -35,6 +36,17 @@ static const unsigned int isp_subdev_input_fmts[] = {
 	V4L2_MBUS_FMT_SRGGB10_1X10,
 	V4L2_MBUS_FMT_SBGGR10_1X10,
 	V4L2_MBUS_FMT_SGBRG10_1X10,
+};
+
+static const unsigned int isp_subdev_preview_output_fmts[] = {
+	/* yuv420, nv12, yv12, nv21, rgb565 */
+	V4L2_MBUS_FMT_UYVY8_1X16,
+	V4L2_MBUS_FMT_YUYV8_1X16,
+	V4L2_PIX_FMT_YUV420,
+	V4L2_PIX_FMT_YVU420,
+	V4L2_PIX_FMT_NV12,
+	V4L2_PIX_FMT_RGB565,
+	V4L2_PIX_FMT_NV21,
 };
 
 static const unsigned int isp_subdev_vf_output_fmts[] = {
@@ -48,18 +60,7 @@ static const unsigned int isp_subdev_vf_output_fmts[] = {
 	V4L2_PIX_FMT_NV21,
 };
 
-static const unsigned int isp_subdev_ss_output_fmts[] = {
-	/* yuv420, nv12, yv12, nv21, rgb565 */
-	V4L2_MBUS_FMT_UYVY8_1X16,
-	V4L2_MBUS_FMT_YUYV8_1X16,
-	V4L2_PIX_FMT_YUV420,
-	V4L2_PIX_FMT_YVU420,
-	V4L2_PIX_FMT_NV12,
-	V4L2_PIX_FMT_RGB565,
-	V4L2_PIX_FMT_NV21,
-};
-
-static const unsigned int isp_subdev_mo_output_fmts[] = {
+static const unsigned int isp_subdev_capture_output_fmts[] = {
 	/* yuv420, nv12, yv12, nv21, rgb565, nv11, yuv422, nv16, yv16, yuy2 */
 	/* rgb565, rgb888 */
 	V4L2_MBUS_FMT_UYVY8_1X16,
@@ -140,11 +141,10 @@ static int isp_subdev_subscribe_event(struct v4l2_subdev *sd,
 	struct v4l2_fh *fh,
 	struct v4l2_event_subscription *sub)
 {
+	if (IS_MRFLD || sub->type != V4L2_EVENT_FRAME_SYNC)
+		return -EINVAL;
 
-	/* TBD
-	return v4l2_event_subscribe(fh, sub);
-	*/
-	return 0;
+	return v4l2_event_subscribe(fh, sub, 16, NULL);
 }
 
 static int isp_subdev_unsubscribe_event(struct v4l2_subdev *sd,
@@ -165,9 +165,9 @@ __isp_subdev_get_format(struct atomisp_sub_device *isp_subdev,
 		return v4l2_subdev_get_try_format(fh, pad);
 	case V4L2_SUBDEV_FORMAT_ACTIVE:
 		if (pad == ATOMISP_SUBDEV_PAD_SINK ||
+		    pad == ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW ||
 		    pad == ATOMISP_SUBDEV_PAD_SOURCE_VF ||
-		    pad == ATOMISP_SUBDEV_PAD_SOURCE_SS ||
-		    pad == ATOMISP_SUBDEV_PAD_SOURCE_MO)
+		    pad == ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE)
 			return &isp_subdev->formats[pad];
 		else
 			return NULL;
@@ -221,7 +221,7 @@ isp_subdev_try_format(struct atomisp_sub_device *isp_subdev,
 		break;
 
 	case ATOMISP_SUBDEV_PAD_SOURCE_VF:
-	case ATOMISP_SUBDEV_PAD_SOURCE_SS:
+	case ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW:
 		pixelcode = fmt->code;
 		format = __isp_subdev_get_format(isp_subdev, fh,
 			ATOMISP_SUBDEV_PAD_SINK, which);
@@ -249,7 +249,7 @@ isp_subdev_try_format(struct atomisp_sub_device *isp_subdev,
 		fmt->height = clamp_t(u32, height, 0, 1080);
 		break;
 
-	case ATOMISP_SUBDEV_PAD_SOURCE_MO:
+	case ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE:
 		pixelcode = fmt->code;
 		format = __isp_subdev_get_format(isp_subdev, fh,
 			ATOMISP_SUBDEV_PAD_SINK, which);
@@ -305,6 +305,13 @@ static int isp_subdev_enum_mbus_code(struct v4l2_subdev *sd,
 		code->code = isp_subdev_input_fmts[code->index];
 		break;
 
+	case ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW:
+		/* format conversion inside isp subdev */
+		if (code->index >= ARRAY_SIZE(isp_subdev_preview_output_fmts))
+			return -EINVAL;
+
+		code->code = isp_subdev_preview_output_fmts[code->index];
+		break;
 	case ATOMISP_SUBDEV_PAD_SOURCE_VF:
 		/* format conversion inside isp subdev */
 		if (code->index >= ARRAY_SIZE(isp_subdev_vf_output_fmts))
@@ -312,19 +319,12 @@ static int isp_subdev_enum_mbus_code(struct v4l2_subdev *sd,
 
 		code->code = isp_subdev_vf_output_fmts[code->index];
 		break;
-	case ATOMISP_SUBDEV_PAD_SOURCE_SS:
+	case ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE:
 		/* format conversion inside isp subdev */
-		if (code->index >= ARRAY_SIZE(isp_subdev_ss_output_fmts))
+		if (code->index >= ARRAY_SIZE(isp_subdev_capture_output_fmts))
 			return -EINVAL;
 
-		code->code = isp_subdev_vf_output_fmts[code->index];
-		break;
-	case ATOMISP_SUBDEV_PAD_SOURCE_MO:
-		/* format conversion inside isp subdev */
-		if (code->index >= ARRAY_SIZE(isp_subdev_mo_output_fmts))
-			return -EINVAL;
-
-		code->code = isp_subdev_mo_output_fmts[code->index];
+		code->code = isp_subdev_capture_output_fmts[code->index];
 		break;
 
 	default:
@@ -419,16 +419,22 @@ static int isp_subdev_set_format(struct v4l2_subdev *sd,
 	/* Propagate the format from sink to source */
 	if (fmt->pad == ATOMISP_SUBDEV_PAD_SINK) {
 		format = __isp_subdev_get_format(isp_subdev, fh,
+			ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW, fmt->which);
+		*format = fmt->format;
+		isp_subdev_try_format(isp_subdev, fh,
+			ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW, format, fmt->which);
+
+		format = __isp_subdev_get_format(isp_subdev, fh,
 			ATOMISP_SUBDEV_PAD_SOURCE_VF, fmt->which);
 		*format = fmt->format;
 		isp_subdev_try_format(isp_subdev, fh,
 			ATOMISP_SUBDEV_PAD_SOURCE_VF, format, fmt->which);
 
 		format = __isp_subdev_get_format(isp_subdev, fh,
-			ATOMISP_SUBDEV_PAD_SOURCE_MO, fmt->which);
+			ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE, fmt->which);
 		*format = fmt->format;
 		isp_subdev_try_format(isp_subdev, fh,
-			ATOMISP_SUBDEV_PAD_SOURCE_MO, format, fmt->which);
+			ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE, format, fmt->which);
 	}
 
 	return 0;
@@ -516,15 +522,15 @@ static int isp_subdev_link_setup(struct media_entity *entity,
 		}
 		break;
 
+	case ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW | MEDIA_ENT_T_DEVNODE:
+		/* always write to memory */
+		break;
+
 	case ATOMISP_SUBDEV_PAD_SOURCE_VF | MEDIA_ENT_T_DEVNODE:
 		/* always write to memory */
 		break;
 
-	case ATOMISP_SUBDEV_PAD_SOURCE_SS | MEDIA_ENT_T_DEVNODE:
-		/* always write to memory */
-		break;
-
-	case ATOMISP_SUBDEV_PAD_SOURCE_MO | MEDIA_ENT_T_DEVNODE:
+	case ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE | MEDIA_ENT_T_DEVNODE:
 		/* always write to memory */
 		break;
 
@@ -562,17 +568,17 @@ static int isp_subdev_init_entities(struct atomisp_sub_device *isp_subdev)
 	sd->flags |= V4L2_SUBDEV_FL_HAS_EVENTS | V4L2_SUBDEV_FL_HAS_DEVNODE;
 
 	pads[ATOMISP_SUBDEV_PAD_SINK].flags = MEDIA_PAD_FL_SINK;
+	pads[ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW].flags = MEDIA_PAD_FL_SOURCE;
 	pads[ATOMISP_SUBDEV_PAD_SOURCE_VF].flags = MEDIA_PAD_FL_SOURCE;
-	pads[ATOMISP_SUBDEV_PAD_SOURCE_SS].flags = MEDIA_PAD_FL_SOURCE;
-	pads[ATOMISP_SUBDEV_PAD_SOURCE_MO].flags = MEDIA_PAD_FL_SOURCE;
+	pads[ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE].flags = MEDIA_PAD_FL_SOURCE;
 
 	isp_subdev->formats[ATOMISP_SUBDEV_PAD_SINK].code =
 		V4L2_MBUS_FMT_SBGGR10_1X10;
+	isp_subdev->formats[ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW].code =
+		V4L2_MBUS_FMT_SBGGR10_1X10;
 	isp_subdev->formats[ATOMISP_SUBDEV_PAD_SOURCE_VF].code =
 		V4L2_MBUS_FMT_SBGGR10_1X10;
-	isp_subdev->formats[ATOMISP_SUBDEV_PAD_SOURCE_SS].code =
-		V4L2_MBUS_FMT_SBGGR10_1X10;
-	isp_subdev->formats[ATOMISP_SUBDEV_PAD_SOURCE_MO].code =
+	isp_subdev->formats[ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE].code =
 		V4L2_MBUS_FMT_SBGGR10_1X10;
 
 	me->ops = &isp_subdev_media_ops;
@@ -585,34 +591,34 @@ static int isp_subdev_init_entities(struct atomisp_sub_device *isp_subdev)
 	isp_subdev->video_in.isp = isp_subdev->isp;
 	spin_lock_init(&isp_subdev->video_in.irq_lock);
 
+	isp_subdev->video_out_preview.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+	isp_subdev->video_out_preview.isp = isp_subdev->isp;
+	isp_subdev->video_out_preview.pipe_type = ATOMISP_PIPE_PREVIEW;
+	spin_lock_init(&isp_subdev->video_out_preview.irq_lock);
+
 	isp_subdev->video_out_vf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 	isp_subdev->video_out_vf.isp = isp_subdev->isp;
 	isp_subdev->video_out_vf.pipe_type = ATOMISP_PIPE_VIEWFINDER;
 	spin_lock_init(&isp_subdev->video_out_vf.irq_lock);
 
-	isp_subdev->video_out_ss.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-	isp_subdev->video_out_ss.isp = isp_subdev->isp;
-	isp_subdev->video_out_ss.pipe_type = ATOMISP_PIPE_SNAPSHOT;
-	spin_lock_init(&isp_subdev->video_out_ss.irq_lock);
-
-	isp_subdev->video_out_mo.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-	isp_subdev->video_out_mo.isp = isp_subdev->isp;
-	isp_subdev->video_out_mo.pipe_type = ATOMISP_PIPE_MASTEROUTPUT;
-	spin_lock_init(&isp_subdev->video_out_mo.irq_lock);
+	isp_subdev->video_out_capture.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+	isp_subdev->video_out_capture.isp = isp_subdev->isp;
+	isp_subdev->video_out_capture.pipe_type = ATOMISP_PIPE_CAPTURE;
+	spin_lock_init(&isp_subdev->video_out_capture.irq_lock);
 
 	ret = atomisp_video_init(&isp_subdev->video_in, "MEMORY");
 	if (ret < 0)
 		return ret;
 
-	ret = atomisp_video_init(&isp_subdev->video_out_mo, "MAINOUTPUT");
-	if (ret < 0)
-		return ret;
-
-	ret = atomisp_video_init(&isp_subdev->video_out_ss, "SNAPSHOT");
+	ret = atomisp_video_init(&isp_subdev->video_out_capture, "CAPTURE");
 	if (ret < 0)
 		return ret;
 
 	ret = atomisp_video_init(&isp_subdev->video_out_vf, "VIEWFINDER");
+	if (ret < 0)
+		return ret;
+
+	ret = atomisp_video_init(&isp_subdev->video_out_preview, "PREVIEW");
 	if (ret < 0)
 		return ret;
 
@@ -623,20 +629,20 @@ static int isp_subdev_init_entities(struct atomisp_sub_device *isp_subdev)
 		return ret;
 
 	ret = media_entity_create_link(&isp_subdev->subdev.entity,
+		ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW,
+		&isp_subdev->video_out_preview.vdev.entity, 0, 0);
+	if (ret < 0)
+		return ret;
+
+	ret = media_entity_create_link(&isp_subdev->subdev.entity,
 		ATOMISP_SUBDEV_PAD_SOURCE_VF,
 		&isp_subdev->video_out_vf.vdev.entity, 0, 0);
 	if (ret < 0)
 		return ret;
 
 	ret = media_entity_create_link(&isp_subdev->subdev.entity,
-		ATOMISP_SUBDEV_PAD_SOURCE_SS,
-		&isp_subdev->video_out_ss.vdev.entity, 0, 0);
-	if (ret < 0)
-		return ret;
-
-	ret = media_entity_create_link(&isp_subdev->subdev.entity,
-		ATOMISP_SUBDEV_PAD_SOURCE_MO,
-		&isp_subdev->video_out_mo.vdev.entity, 0, 0);
+		ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE,
+		&isp_subdev->video_out_capture.vdev.entity, 0, 0);
 	if (ret < 0)
 		return ret;
 
@@ -649,9 +655,9 @@ void atomisp_subdev_unregister_entities(struct atomisp_sub_device *isp_subdev)
 
 	v4l2_device_unregister_subdev(&isp_subdev->subdev);
 	atomisp_video_unregister(&isp_subdev->video_in);
+	atomisp_video_unregister(&isp_subdev->video_out_preview);
 	atomisp_video_unregister(&isp_subdev->video_out_vf);
-	atomisp_video_unregister(&isp_subdev->video_out_ss);
-	atomisp_video_unregister(&isp_subdev->video_out_mo);
+	atomisp_video_unregister(&isp_subdev->video_out_capture);
 }
 
 int atomisp_subdev_register_entities(struct atomisp_sub_device *isp_subdev,
@@ -664,15 +670,15 @@ int atomisp_subdev_register_entities(struct atomisp_sub_device *isp_subdev,
 	if (ret < 0)
 		goto error;
 
-	ret = atomisp_video_register(&isp_subdev->video_out_mo, vdev);
-	if (ret < 0)
-		goto error;
-
-	ret = atomisp_video_register(&isp_subdev->video_out_ss, vdev);
+	ret = atomisp_video_register(&isp_subdev->video_out_capture, vdev);
 	if (ret < 0)
 		goto error;
 
 	ret = atomisp_video_register(&isp_subdev->video_out_vf, vdev);
+	if (ret < 0)
+		goto error;
+
+	ret = atomisp_video_register(&isp_subdev->video_out_preview, vdev);
 	if (ret < 0)
 		goto error;
 

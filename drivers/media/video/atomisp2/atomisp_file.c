@@ -21,15 +21,15 @@
  *
  */
 
+#include <media/v4l2-event.h>
+#include <media/v4l2-mediabus.h>
+
+#include <media/videobuf-vmalloc.h>
 
 #include <sh_css.h>
 
-#include <media/v4l2-event.h>
-#include <media/v4l2-mediabus.h>
 #include "atomisp_internal.h"
 #include "atomisp_common.h"
-#include "atomisp_subdev.h"
-#include "atomisp_cmd.h"
 #include "atomisp_file.h"
 
 static int file_input_s_stream(struct v4l2_subdev *sd, int enable)
@@ -45,7 +45,7 @@ static int file_input_s_stream(struct v4l2_subdev *sd, int enable)
 	int i, j;
 
 	/* extend RAW8 pixel type to unsigned short */
-	if (out_pipe->out_fmt->depth == 8) {
+	if (out_pipe->out_fmt.depth == 8) {
 		data = vmalloc(width*height*2);
 		if (!data) {
 			v4l2_err(&atomisp_dev,
@@ -73,32 +73,32 @@ static int file_input_s_stream(struct v4l2_subdev *sd, int enable)
 		case CI_MODE_STILL_CAPTURE:
 			if (isp->sw_contex.bypass)
 				/* copy mode */
-				height = isp->main_format->out.height +
+				height = isp->capture_format->out.height +
 				    ((isp->input_format->out.height -
-				      isp->main_format->out.height) >> 1) + 1;
+				     isp->capture_format->out.height) >> 1) + 1;
 			else
 				/* primary mode */
-				height = isp->main_format->out.height +
+				height = isp->capture_format->out.height +
 				    ((isp->input_format->out.height -
-				      isp->main_format->out.height) >> 1) + 5;
+				     isp->capture_format->out.height) >> 1) + 5;
 			break;
 		case CI_MODE_PREVIEW:
 			/* preview mode */
-			height = isp->main_format->out.height +
+			height = isp->capture_format->out.height +
 			    ((isp->input_format->out.height -
-			      isp->main_format->out.height) >> 1) + 5;
+			      isp->capture_format->out.height) >> 1) + 5;
 			break;
 		default:
 			/* video mode */
-			height = isp->main_format->out.height +
+			height = isp->capture_format->out.height +
 			    ((isp->input_format->out.height -
-			      isp->main_format->out.height) >> 1) + 5;
+			      isp->capture_format->out.height) >> 1) + 5;
 			break;
 		}
 	}
 	sh_css_send_input_frame(data, width, height);
 
-	if (out_pipe->out_fmt->depth == 8)
+	if (out_pipe->out_fmt.depth == 8)
 		vfree(data);
 	return 0;
 }
@@ -148,12 +148,12 @@ static int file_input_try_mbus_fmt(struct v4l2_subdev *sd,
 	if (fmt == NULL)
 		return -EINVAL;
 
-	if ((fmt->width > out_pipe->out_fmt->width) ||
-	    (fmt->height > out_pipe->out_fmt->height))
+	if ((fmt->width > out_pipe->out_fmt.width) ||
+	    (fmt->height > out_pipe->out_fmt.height))
 		return -EINVAL;
 
-	fmt->width = out_pipe->out_fmt->width;
-	fmt->height = out_pipe->out_fmt->height;
+	fmt->width = out_pipe->out_fmt.width;
+	fmt->height = out_pipe->out_fmt.height;
 	fmt->code = V4L2_MBUS_FMT_SGRBG10_1X10;
 
 	return 0;
@@ -169,8 +169,8 @@ static int file_input_g_mbus_fmt(struct v4l2_subdev *sd,
 	if (fmt == NULL)
 		return -EINVAL;
 
-	fmt->width = out_pipe->out_fmt->width;
-	fmt->height = out_pipe->out_fmt->height;
+	fmt->width = out_pipe->out_fmt.width;
+	fmt->height = out_pipe->out_fmt.height;
 	fmt->code = V4L2_MBUS_FMT_SGRBG10_1X10;
 
 	return 0;
@@ -194,8 +194,8 @@ static int file_input_s_mbus_fmt(struct v4l2_subdev *sd,
 		return ret;
 	}
 
-	fmt->width = out_pipe->out_fmt->width;
-	fmt->height = out_pipe->out_fmt->height;
+	fmt->width = out_pipe->out_fmt.width;
+	fmt->height = out_pipe->out_fmt.height;
 	fmt->code = V4L2_MBUS_FMT_SGRBG10_1X10;
 
 	sh_css_input_set_mode(SH_CSS_INPUT_MODE_FIFO);
@@ -205,9 +205,6 @@ static int file_input_s_mbus_fmt(struct v4l2_subdev *sd,
 static int file_input_g_chip_ident(struct v4l2_subdev *sd,
 			       struct v4l2_dbg_chip_ident *chip)
 {
-	struct atomisp_file_device *dev;
-	dev = container_of(sd, struct atomisp_file_device, sd);
-
 	if (!chip)
 		return -EINVAL;
 
@@ -300,10 +297,6 @@ static const struct v4l2_subdev_ops file_input_ops = {
 	.core = &file_input_core_ops,
 	.video = &file_input_video_ops,
 	.pad = &file_input_pad_ops,
-};
-
-static const struct media_entity_operations file_input_entity_ops = {
-/*	.set_power = v4l2_subdev_set_power,	*/
 };
 
 void

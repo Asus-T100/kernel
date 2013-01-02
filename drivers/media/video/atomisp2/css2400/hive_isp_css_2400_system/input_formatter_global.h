@@ -54,4 +54,7 @@ struct input_formatter_cfg_s {
 	uint32_t	block_no_reqs;
 };
 
+extern const hrt_address HIVE_IF_SRST_ADDRESS[N_INPUT_FORMATTER_ID];
+extern const hrt_data HIVE_IF_SRST_MASK[N_INPUT_FORMATTER_ID];
+
 #endif /* __INPUT_FORMATTER_GLOBAL_H_INCLUDED__ */

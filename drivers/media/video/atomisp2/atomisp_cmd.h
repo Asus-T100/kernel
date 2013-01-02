@@ -24,13 +24,16 @@
 #ifndef	__ATOMISP_CMD_H__
 #define	__ATOMISP_CMD_H__
 
-
-#include <linux/interrupt.h>
-#include <linux/delay.h>
-#include "sh_css_types.h"
-#include "atomisp_internal.h"
-
 #include <linux/atomisp.h>
+#include <linux/interrupt.h>
+#include <linux/videodev2.h>
+
+#include <media/v4l2-subdev.h>
+
+#include "sh_css_types.h"
+
+struct atomisp_device;
+struct sh_css_frame;
 
 #define MSI_ENABLE_BIT		16
 #define INTR_DISABLE_BIT	10
@@ -47,7 +50,7 @@ struct camera_mipi_info *atomisp_to_sensor_mipi_info(struct v4l2_subdev *sd);
 struct atomisp_video_pipe *atomisp_to_video_pipe(struct video_device *dev);
 int atomisp_reset(struct atomisp_device *isp);
 void atomisp_flush_bufs_and_wakeup(struct atomisp_device *isp);
-int atomisp_alloc_css_stat_bufs(struct atomisp_device *isp, int count);
+void atomisp_clear_css_buffer_counters(struct atomisp_device *isp);
 
 /* TODO:should be here instead of atomisp_helper.h
 extern void __iomem *atomisp_io_base;
@@ -188,6 +191,9 @@ int atomisp_set_dis_vector(struct atomisp_device *isp,
 int atomisp_3a_stat(struct atomisp_device *isp, int flag,
 		    struct atomisp_3a_statistics *config);
 
+int atomisp_set_parameters(struct atomisp_device *isp,
+		struct atomisp_parameters *arg);
+
 /*
  * Function to set/get isp parameters to isp
  */
@@ -280,8 +286,8 @@ void atomisp_free_all_shading_tables(struct atomisp_device *isp);
 int atomisp_set_shading_table(struct atomisp_device *isp,
 			      struct atomisp_shading_table *shading_table);
 
-int atomisp_save_iunit_reg(struct atomisp_device *isp);
-int atomisp_restore_iunit_reg(struct atomisp_device *isp);
+int atomisp_offline_capture_configure(struct atomisp_device *isp,
+				struct atomisp_cont_capture_conf *cvf_config);
 
 int atomisp_ospm_dphy_down(struct atomisp_device *isp);
 int atomisp_ospm_dphy_up(struct atomisp_device *isp);
@@ -293,4 +299,4 @@ void atomisp_free_3a_dis_buffers(struct atomisp_device *isp);
 
 int  atomisp_flash_enable(struct atomisp_device *isp, int num_frames);
 
-#endif
+#endif /* __ATOMISP_CMD_H__ */

@@ -33,6 +33,7 @@
 #include "hrt/bits.h"
 #include "linux/intel_mid_pm.h"
 #include <linux/kernel.h>
+#include <media/v4l2-event.h>
 #include <asm/intel-mid.h>
 
 /* We should never need to run the flash for more than 2 frames.
@@ -40,7 +41,7 @@
  * Each flash driver is supposed to set its own timeout, but
  * just in case someone else changed the timeout, we set it
  * here to make sure we don't damage the flash hardware. */
-#define FLASH_TIMEOUT 800 /* ms */
+#define FLASH_TIMEOUT 1024 /* ms */
 
 union host {
 	struct {
@@ -250,6 +251,19 @@ static void print_csi_rx_errors(void)
 		v4l2_err(&atomisp_dev, "  line sync error");
 }
 
+#ifndef CONFIG_X86_MRFLD
+static void atomisp_sof_event(struct atomisp_device *isp)
+{
+	struct v4l2_event event;
+
+	memset(&event, 0, sizeof(event));
+	event.type = V4L2_EVENT_FRAME_SYNC;
+	event.u.frame_sync.frame_sequence = atomic_read(&isp->sequence);
+
+	v4l2_event_queue(isp->isp_subdev.subdev.devnode, &event);
+}
+#endif /* CONFIG_X86_MRFLD */
+
 /* interrupt handling function*/
 irqreturn_t atomisp_isr(int irq, void *dev)
 {
@@ -290,6 +304,16 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 		spin_unlock_irqrestore(&isp->irq_lock, irqflags);
 		return IRQ_NONE;
 	}
+
+#ifndef CONFIG_X86_MRFLD
+	if (irq_infos & SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF) {
+		atomic_inc(&isp->sequence);
+		atomisp_sof_event(isp);
+	}
+#else /* CONFIG_X86_MRFLD */
+	if (irq_infos & SH_CSS_IRQ_INFO_FRAME_DONE)
+		atomic_inc(&isp->sequence);
+#endif /* CONFIG_X86_MRFLD */
 
 	if (irq_infos & SH_CSS_IRQ_INFO_FRAME_DONE ||
 	    irq_infos & SH_CSS_IRQ_INFO_START_NEXT_STAGE) {
@@ -624,6 +648,11 @@ static int atomisp_streamon_input(struct atomisp_device *isp)
 	}
 
 	if (isp->sw_contex.sensor_streaming == false) {
+#ifndef CONFIG_X86_MRFLD
+		sh_css_enable_interrupt(SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF,
+					true);
+#endif /* CONFIG_X86_MRFLD */
+
 		set_term_en_count(isp);
 		/*
 		 * stream on the sensor, power on is called before
@@ -642,6 +671,12 @@ static int atomisp_streamon_input(struct atomisp_device *isp)
 static void atomisp_pipe_reset(struct atomisp_device *isp)
 {
 	v4l2_warn(&atomisp_dev, "ISP timeout. Recovering\n");
+
+#ifndef CONFIG_X86_MRFLD
+	if (!isp->sw_contex.file_input)
+		sh_css_enable_interrupt(SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF,
+					false);
+#endif /* CONFIG_X86_MRFLD */
 
 	/* clear irq */
 	enable_isp_irq(hrt_isp_css_irq_sp, false);
@@ -797,6 +832,7 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error)
 	struct timespec ts;
 	struct timeval tv;
 	unsigned long flags;
+	unsigned int sequence = atomic_read(&isp->sequence);
 
 	ktime_get_ts(&ts);
 	tv.tv_sec = ts.tv_sec;
@@ -814,6 +850,7 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error)
 
 	if (vb_capture) {
 		vb_capture->v4l2_buf.timestamp = tv;
+		vb_capture->v4l2_buf.sequence = sequence;
 		/*mark videobuffer done for dequeue*/
 		vb2_buffer_done(vb_capture, error ? VB2_BUF_STATE_ERROR :
 				VB2_BUF_STATE_DONE);
@@ -821,6 +858,7 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error)
 
 	if (vb_preview) {
 		vb_preview->v4l2_buf.timestamp = tv;
+		vb_preview->v4l2_buf.sequence = sequence;
 		/*mark videobuffer done for dequeue*/
 		vb2_buffer_done(vb_preview, error ? VB2_BUF_STATE_ERROR :
 				VB2_BUF_STATE_DONE);
@@ -1011,8 +1049,12 @@ void atomisp_work(struct work_struct *work)
 		 * TODO: Check how to handle multiple firmwares.
 		 */
 		if (isp->marked_fw_for_unload != NULL) {
+			unsigned long irqflags;
 			__acc_fw_free_args(isp, isp->marked_fw_for_unload);
+			spin_lock_irqsave(&isp->irq_lock, irqflags);
 			sh_css_unload_acceleration(isp->marked_fw_for_unload);
+			spin_unlock_irqrestore(&isp->irq_lock, irqflags);
+			sh_css_acc_unload(isp->marked_fw_for_unload);
 			__acc_fw_free(isp, isp->marked_fw_for_unload);
 			isp->marked_fw_for_unload = NULL;
 			complete(&isp->acc_unload_fw_complete);
@@ -2139,6 +2181,257 @@ int atomisp_3a_stat(struct atomisp_device *isp, int flag,
 	return 0;
 }
 
+static int __atomisp_set_general_isp_parameters(struct atomisp_device *isp,
+					struct atomisp_parameters *arg)
+{
+	if (arg->wb_config) {
+		if (copy_from_user(&isp->params.wb_config, arg->wb_config,
+			sizeof(struct sh_css_wb_config)))
+			return -EFAULT;
+		sh_css_set_wb_config(&isp->params.wb_config);
+	}
+
+	if (arg->ob_config) {
+		if (copy_from_user(&isp->params.ob_config, arg->ob_config,
+			sizeof(struct sh_css_ob_config)))
+			return -EFAULT;
+		sh_css_set_ob_config(&isp->params.ob_config);
+	}
+
+	if (arg->dp_config) {
+		if (copy_from_user(&isp->params.dp_config, arg->dp_config,
+			sizeof(struct sh_css_dp_config)))
+			return -EFAULT;
+		sh_css_set_dp_config(&isp->params.dp_config);
+	}
+
+	if (arg->de_config) {
+		if (copy_from_user(&isp->params.de_config, arg->de_config,
+			sizeof(struct sh_css_de_config)))
+			return -EFAULT;
+		sh_css_set_de_config(&isp->params.de_config);
+	}
+
+	if (arg->ce_config) {
+		if (copy_from_user(&isp->params.ce_config, arg->ce_config,
+			sizeof(struct sh_css_ce_config)))
+			return -EFAULT;
+		sh_css_set_ce_config(&isp->params.ce_config);
+	}
+
+	if (arg->nr_config) {
+		if (copy_from_user(&isp->params.nr_config, arg->nr_config,
+			sizeof(struct sh_css_nr_config)))
+			return -EFAULT;
+		sh_css_set_nr_config(&isp->params.nr_config);
+	}
+
+	if (arg->ee_config) {
+		if (copy_from_user(&isp->params.ee_config, arg->ee_config,
+			sizeof(struct sh_css_ee_config)))
+			return -EFAULT;
+		sh_css_set_ee_config(&isp->params.ee_config);
+	}
+
+	if (arg->tnr_config) {
+		if (copy_from_user(&isp->params.tnr_config, arg->tnr_config,
+			sizeof(struct sh_css_tnr_config)))
+			return -EFAULT;
+		sh_css_set_tnr_config(&isp->params.tnr_config);
+	}
+
+	if (arg->cc_config) {
+		if (copy_from_user(&isp->params.cc_config, arg->cc_config,
+			sizeof(struct sh_css_cc_config)))
+			return -EFAULT;
+		sh_css_set_cc_config(&isp->params.cc_config);
+	}
+
+	if (arg->macc_config) {
+		if (copy_from_user(&isp->params.macc_table,
+			&arg->macc_config->table,
+			sizeof(struct sh_css_macc_table)))
+			return -EFAULT;
+		isp->params.color_effect = arg->macc_config->color_effect;
+		sh_css_set_macc_table(&isp->params.macc_table);
+	}
+
+	if (arg->gamma_table) {
+		if (copy_from_user(&isp->params.gamma_table, arg->gamma_table,
+			sizeof(isp->params.gamma_table)))
+			return -EFAULT;
+		sh_css_set_gamma_table(&isp->params.gamma_table);
+	}
+
+	if (arg->ctc_table) {
+		if (copy_from_user(&isp->params.ctc_table, arg->ctc_table,
+			sizeof(isp->params.ctc_table)))
+			return -EFAULT;
+		sh_css_set_ctc_table(&isp->params.ctc_table);
+	}
+
+	/*
+	 * TODO/FIXME: No implementation exists for setting the XNR threshold
+	 * in CSS. Enable this when CSS implementation is ready.
+	 */
+	/*
+	if (arg->xnr_config)
+		sh_css_xnr_config(xnr_config->threshold);
+	*/
+
+	if (arg->gc_config) {
+		if (copy_from_user(&isp->params.gc_config, arg->gc_config,
+			sizeof(*arg->gc_config)))
+			return -EFAULT;
+		sh_css_set_gc_config(&isp->params.gc_config);
+	}
+
+	if (arg->a3a_config) {
+		if (copy_from_user(&isp->params.s3a_config, arg->a3a_config,
+			sizeof(*arg->a3a_config)))
+			return -EFAULT;
+		sh_css_set_3a_config(&isp->params.s3a_config);
+	}
+
+	return 0;
+}
+
+static int __atomisp_set_lsc_table(struct atomisp_device *isp,
+			struct atomisp_shading_table *user_st)
+{
+	unsigned int i;
+	unsigned int len_table;
+	struct sh_css_shading_table *shading_table;
+	struct sh_css_shading_table *old_shading_table;
+
+	if (!user_st)
+		return 0;
+
+	old_shading_table = isp->inputs[isp->input_curr].shading_table;
+
+	/* user config is to disable the shading table. */
+	if (!user_st->enable) {
+		shading_table = NULL;
+		goto set_lsc;
+	}
+
+	/* Setting a new table. Validate first - all tables must be set */
+	for (i = 0; i < ATOMISP_NUM_SC_COLORS; i++) {
+		if (!user_st->data[i])
+			return -EINVAL;
+	}
+
+	/* Shading table size per color */
+	if (user_st->width > SH_CSS_MAX_SCTBL_WIDTH_PER_COLOR ||
+		user_st->height > SH_CSS_MAX_SCTBL_HEIGHT_PER_COLOR)
+		return -EINVAL;
+
+	shading_table = sh_css_shading_table_alloc(user_st->width,
+			user_st->height);
+	if (!shading_table)
+			return -ENOMEM;
+
+	len_table = user_st->width * user_st->height * ATOMISP_SC_TYPE_SIZE;
+	for (i = 0; i < ATOMISP_NUM_SC_COLORS; i++) {
+		if (copy_from_user(shading_table->data[i],
+			user_st->data[i], len_table)) {
+			sh_css_shading_table_free(shading_table);
+			return -EFAULT;
+		}
+
+	}
+	shading_table->sensor_width = user_st->sensor_width;
+	shading_table->sensor_height = user_st->sensor_height;
+	shading_table->fraction_bits = user_st->fraction_bits;
+
+set_lsc:
+	/* set LSC to CSS */
+	isp->inputs[isp->input_curr].shading_table = shading_table;
+	sh_css_set_shading_table(shading_table);
+	isp->params.sc_en = shading_table != NULL;
+
+	if (old_shading_table)
+		sh_css_shading_table_free(old_shading_table);
+
+	return 0;
+}
+
+static int __atomisp_set_morph_table(struct atomisp_device *isp,
+				struct atomisp_morph_table *user_morph_table)
+{
+	int ret = -EFAULT;
+	unsigned int i;
+	struct sh_css_morph_table *morph_table;
+	struct sh_css_morph_table *old_morph_table;
+
+	if (!user_morph_table)
+		return 0;
+
+	old_morph_table = isp->inputs[isp->input_curr].morph_table;
+
+	morph_table = sh_css_morph_table_allocate(user_morph_table->width,
+				user_morph_table->height);
+	if (!morph_table)
+		return -ENOMEM;
+
+	for (i = 0; i < SH_CSS_MORPH_TABLE_NUM_PLANES; i++) {
+		if (copy_from_user(morph_table->coordinates_x[i],
+			user_morph_table->coordinates_x[i],
+			user_morph_table->height * user_morph_table->width *
+			sizeof(*user_morph_table->coordinates_x[i])))
+			goto error;
+
+		if (copy_from_user(morph_table->coordinates_y[i],
+			user_morph_table->coordinates_y[i],
+			user_morph_table->height * user_morph_table->width *
+			sizeof(*user_morph_table->coordinates_y[i])))
+			goto error;
+	}
+
+	isp->inputs[isp->input_curr].morph_table = morph_table;
+	if (isp->params.gdc_cac_en)
+		sh_css_set_morph_table(morph_table);
+
+	if (old_morph_table)
+		sh_css_morph_table_free(old_morph_table);
+
+	return 0;
+
+error:
+	if (morph_table)
+		sh_css_morph_table_free(morph_table);
+	return ret;
+}
+
+/*
+* Function to configure ISP parameters
+*/
+int atomisp_set_parameters(struct atomisp_device *isp,
+			struct atomisp_parameters *arg)
+{
+	int ret;
+
+	mutex_lock(&isp->input_lock);
+	mutex_lock(&isp->isp_lock);
+
+	ret = __atomisp_set_general_isp_parameters(isp, arg);
+	if (ret)
+		goto out;
+
+	ret = __atomisp_set_lsc_table(isp, arg->shading_table);
+	if (ret)
+		goto out;
+
+	ret = __atomisp_set_morph_table(isp, arg->morph_table);
+	if (ret)
+		goto out;
+
+out:
+	mutex_unlock(&isp->isp_lock);
+	mutex_unlock(&isp->input_lock);
+	return ret;
+}
+
 /*
  * Function to set/get isp parameters to isp
  */
@@ -2690,6 +2983,7 @@ int atomisp_shading_correction(struct atomisp_device *isp, int flag,
 int atomisp_digital_zoom(struct atomisp_device *isp, int flag, __s32 *value)
 {
 	u32 zoom;
+	unsigned long irq_flag;
 
 	if (flag == 0) {
 		sh_css_get_zoom_factor(&zoom, &zoom);
@@ -2703,7 +2997,11 @@ int atomisp_digital_zoom(struct atomisp_device *isp, int flag, __s32 *value)
 			zoom = 64;
 		zoom = 64 - zoom;
 
+		mutex_lock(&isp->isp_lock);
+		spin_lock_irqsave(&isp->irq_lock, irq_flag);
 		sh_css_set_zoom_factor(zoom, zoom);
+		spin_unlock_irqrestore(&isp->irq_lock, irq_flag);
+		mutex_unlock(&isp->isp_lock);
 	}
 
 	return 0;
@@ -3350,6 +3648,8 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 		isp->params.online_process = 1;
 
 	/* setting run mode to the sensor */
+	memset(&sensor_parm, 0, sizeof(sensor_parm));
+	sensor_parm.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 	sensor_parm.parm.capture.capturemode = isp->sw_contex.run_mode;
 	v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
 				video, s_parm, &sensor_parm);
@@ -3580,12 +3880,10 @@ int atomisp_set_shading_table(struct atomisp_device *isp,
 	shading_table->fraction_bits = user_shading_table->fraction_bits;
 
 	mutex_lock(&isp->isp_lock);
-
 	free_table = isp->inputs[isp->input_curr].shading_table;
 	isp->inputs[isp->input_curr].shading_table = shading_table;
 	sh_css_set_shading_table(shading_table);
 	isp->params.sc_en = 1;
-
 	mutex_unlock(&isp->isp_lock);
 
 out:
@@ -3828,9 +4126,13 @@ static int __acc_unload(struct atomisp_device *isp, struct sh_css_acc_fw *fw)
 	}
 
 	if (isp->sw_contex.isp_streaming == false) {
+		unsigned long irqflags;
 		/* We're not streaming, so it's safe to unload now */
 		__acc_fw_free_args(isp, fw);
+		spin_lock_irqsave(&isp->irq_lock, irqflags);
 		sh_css_unload_acceleration(fw);
+		spin_unlock_irqrestore(&isp->irq_lock, irqflags);
+		sh_css_acc_unload(fw);
 		__acc_fw_free(isp, fw);
 		return 0;
 	}

@@ -1,6 +1,7 @@
 config VIDEO_ATOMISP_CSS15
 	tristate "Intel Atom Image Signal Processor CSS1.5 Driver"
 	depends on VIDEO_V4L2
+	depends on VIDEO_ATOMISP
 	select VIDEOBUF_VMALLOC
 
 	---help---

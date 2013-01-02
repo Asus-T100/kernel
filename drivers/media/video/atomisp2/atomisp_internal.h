@@ -20,40 +20,26 @@
  * 02110-1301, USA.
  *
  */
-#ifndef ATOMISP_INTERNAL_H_
-#define ATOMISP_INTERNAL_H_
+#ifndef __ATOMISP_INTERNAL_H__
+#define __ATOMISP_INTERNAL_H__
 
-#ifdef CONFIG_BOARD_CTP
-#include <linux/intel_mid_pm.h>
-#endif
-
-#include <linux/pm_qos.h>
-#include <media/v4l2-dev.h>
-#include <media/v4l2-device.h>
-#include <media/v4l2-subdev.h>
-#include <media/v4l2-common.h>
-#include <media/v4l2-ioctl.h>
-#include <media/videobuf-core.h>
-#include <media/videobuf-vmalloc.h>
-#include <linux/firmware.h>
-#include <media/media-device.h>
-#include <linux/kernel.h>
-#include <media/v4l2-device.h>
-#include <media/v4l2-common.h>
-
-#include <linux/atomisp.h>
 #include <linux/atomisp_platform.h>
+#include <linux/firmware.h>
+#include <linux/kernel.h>
+#include <linux/pm_qos.h>
+
+#include <media/media-device.h>
+#include <media/v4l2-subdev.h>
 
 #include <sh_css_types.h>
+
+#include "atomisp_csi2.h"
+#include "atomisp_file.h"
+#include "atomisp_subdev.h"
+#include "atomisp_tpg.h"
+
 #include "gp_device.h"
 #include "irq.h"
-
-#include "atomisp_subdev.h"
-#include "atomisp_csi2.h"
-#include "atomisp_tpg.h"
-#include "atomisp_file.h"
-
-#define MAGIC_NUMBER 0x73c5cc4
 
 #define ATOMISP_MAJOR		0
 #define ATOMISP_MINOR		5
@@ -94,6 +80,7 @@
 #define ATOMISP_ISP_MAX_TIMEOUT_COUNT	2
 
 #define ATOMISP_CSS_Q_DEPTH	3
+#define ATOMISP_CSS_EVENTS_MAX  16
 /*
  * Define how fast CPU should be able to serve ISP interrupts.
  * The bigger the value, the higher risk that the ISP is not
@@ -102,16 +89,12 @@
  * 1000 us is a reasonable value considering that the processing
  * time is typically ~2000 us.
  */
-#ifdef CONFIG_BOARD_CTP
-#define ATOMISP_MAX_ISR_LATENCY	CSTATE_EXIT_LATENCY_C1
-#else
 #define ATOMISP_MAX_ISR_LATENCY	1000
-#endif
 
-int atomisp_video_init(struct atomisp_video_pipe *video, const char *name);
-void atomisp_video_unregister(struct atomisp_video_pipe *video);
-int atomisp_video_register(struct atomisp_video_pipe *video,
-	struct v4l2_device *vdev);
+struct atomisp_css_event {
+	enum sh_css_pipe_id pipe;
+	enum sh_css_event_type event;
+};
 
 struct atomisp_input_subdev {
 	unsigned int type;
@@ -123,8 +106,7 @@ struct atomisp_input_subdev {
 	struct v4l2_frmsizeenum frame_size;
 };
 
-struct atomisp_hw_contex {
-
+struct atomisp_regs {
 	/* PCI config space info */
 	u16 pcicmdsts;
 	u32 ispmmadr;
@@ -135,6 +117,7 @@ struct atomisp_hw_contex {
 	u32 interrupt_control;
 	u32 pmcs;
 	u32 cg_dis;
+	u32 i_control;
 
 	/* I-Unit PHY related info */
 	u32 csi_rcomp_config;
@@ -146,34 +129,15 @@ struct atomisp_hw_contex {
 	u32 csi_afe_hs_control;
 	u32 csi_deadline_control;
 	u32 csi_access_viol;
-
-	/* ISP MMU base address */
-	void *mmu_l1_base;
-
-	/*
-	 * PCI Bus Root
-	 * Used to access internal message bus
-	 */
-	struct pci_dev *pci_root;
 };
 
 struct atomisp_sw_contex {
-	bool init;
-	bool probed;
-
-	bool work_queued;
-	bool sensor_streaming;
-	bool isp_streaming;
-
-	bool error;
 	bool bypass;
-	bool updating_uptr;
 	bool file_input;
-	bool grid_info_updated;
-	bool invalid_frame;
-	bool invalid_vf_frame;
-	bool invalid_s3a;
-	bool invalid_dis;
+	int  invalid_frame;
+	int  invalid_vf_frame;
+	int  invalid_s3a;
+	int  invalid_dis;
 
 	int power_state;
 	int run_mode;
@@ -200,6 +164,7 @@ struct atomisp_css_params {
 	bool fpn_en;
 	bool xnr_en;
 	bool low_light;
+	bool continuous_vf;
 	int false_color;
 	unsigned int histogram_elenum;
 
@@ -263,14 +228,10 @@ struct atomisp_css_params {
 	int num_flash_frames;
 	enum atomisp_flash_state flash_state;
 	enum atomisp_frame_status last_frame_status;
+	/* continuous capture */
+	struct atomisp_cont_capture_conf offline_parm;
 	/* Flag to check if driver needs to update params to css */
 	bool css_update_params_needed;
-};
-
-struct atomisp_video_pipe_format {
-	struct v4l2_pix_format out;
-	struct v4l2_pix_format in;
-	unsigned int out_sh_fmt;
 };
 
 struct atomisp_map {
@@ -278,6 +239,10 @@ struct atomisp_map {
 	size_t length;
 	struct list_head list;
 };
+
+#define ATOMISP_DEVICE_STREAMING_DISABLED	0
+#define ATOMISP_DEVICE_STREAMING_ENABLED	1
+#define ATOMISP_DEVICE_STREAMING_STOPPING	2
 
 /*
  * ci device struct
@@ -288,9 +253,12 @@ struct atomisp_device {
 	struct v4l2_device v4l2_dev;
 	struct media_device media_dev;
 	struct atomisp_platform_data *pdata;
+	void *mmu_l1_base;
+	struct pci_dev *pci_root;
 	const struct firmware *firmware;
 
 	struct pm_qos_request pm_qos;
+	s32 max_isr_latency;
 
 	struct {
 		struct sh_css_fw_info *fw[ATOMISP_ACC_FW_MAX];
@@ -299,9 +267,7 @@ struct atomisp_device {
 		struct list_head memory_maps;
 	} acc;
 
-	unsigned int frame_bufs_in_css;
-	unsigned int vf_frame_bufs_in_css;
-	unsigned int s3a_bufs_in_css;
+	unsigned int s3a_bufs_in_css[SH_CSS_NR_OF_PIPELINES];
 	unsigned int dis_bufs_in_css;
 
 	/* ISP modules */
@@ -315,23 +281,24 @@ struct atomisp_device {
 
 	struct completion dis_state_complete;
 
-	spinlock_t irq_lock;
+	/* Purpose of mutex is to protect and serialize use of isp data
+	 * structures and css API calls. */
+	struct mutex mutex;
+	/*
+	 * Serialise streamoff: mutex is dropped during streamoff to
+	 * cancel the watchdog queue. MUST be acquired BEFORE
+	 * "mutex".
+	 */
+	struct mutex streamoff_mutex;
 	struct list_head s3a_stats;
 	struct list_head dis_stats;
-	uint32_t irq_infos;
-	struct mutex input_lock;
-	struct mutex isp_lock;
-	struct atomisp_tvnorm *tvnorm;
 	bool isp3a_stat_ready;
 
-	struct atomisp_video_pipe_format *main_format;
-	struct atomisp_video_pipe_format *snapshot_format;
+	struct atomisp_video_pipe_format *capture_format;
 	struct atomisp_video_pipe_format *vf_format;
 	struct atomisp_video_pipe_format *input_format;
 	struct sh_css_frame *vf_frame; /* TODO: needed? */
-	struct sh_css_frame *ss_frame; /* TODO: needed? */
-	struct sh_css_frame *regular_output_frame; /* TODO: needed? */
-	struct sh_css_frame *raw_output_frame; /* TODO: needed? */
+	struct sh_css_frame *raw_output_frame;
 	enum atomisp_frame_status frame_status[VIDEO_MAX_FRAME];
 
 	int input_cnt;
@@ -340,7 +307,7 @@ struct atomisp_device {
 	struct v4l2_subdev *flash;
 	struct v4l2_subdev *motor;
 
-	struct atomisp_hw_contex hw_contex;
+	struct atomisp_regs saved_regs;
 	struct atomisp_sw_contex sw_contex;
 	struct atomisp_css_params params;
 
@@ -356,9 +323,12 @@ struct atomisp_device {
 	atomic_t wdt_count;
 	enum atomisp_frame_status fr_status;
 
-	struct videobuf_buffer *vb_capture; /* TODO: needed? */
-	struct videobuf_buffer *vb_snapshot; /* TODO: needed? */
-	struct videobuf_buffer *vb_preview; /* TODO: needed? */
+	atomic_t sof_count;
+	atomic_t sequence;      /* Sequence value that is assigned to buffer. */
+	atomic_t sequence_temp;
+
+	spinlock_t lock; /* Just for streaming below */
+	unsigned int streaming; /* Hold both mutex and lock to change this */
 };
 
 #define v4l2_dev_to_atomisp_device(dev) \
@@ -373,4 +343,4 @@ extern void atomisp_kernel_free(void *ptr);
 #define MFLD_FW_PATH	"shisp_css15.bin"
 #define MRFLD_FW_PATH   "shisp_2400.bin"
 
-#endif /* ATOMISP_INTERNAL_H_ */
+#endif /* __ATOMISP_INTERNAL_H__ */
