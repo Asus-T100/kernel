@@ -111,11 +111,11 @@ struct devs_id __initconst device_ids[] = {
 
 	/* I2C devices */
 	{"mt9e013", SFI_DEV_TYPE_I2C, 0, &mt9e013_platform_data,
-					&intel_ignore_i2c_device_register},
+					&intel_register_i2c_camera_device},
 	{"mt9m114", SFI_DEV_TYPE_I2C, 0, &mt9m114_platform_data,
-					&intel_ignore_i2c_device_register},
+					&intel_register_i2c_camera_device},
 	{"ov8830", SFI_DEV_TYPE_I2C, 0, &ov8830_platform_data,
-					&intel_ignore_i2c_device_register},
+					&intel_register_i2c_camera_device},
 	{"audience_es305", SFI_DEV_TYPE_I2C, 0, &audience_platform_data,
 						NULL},
 	{"cs42l73", SFI_DEV_TYPE_I2C, 1, &no_platform_data, NULL},
