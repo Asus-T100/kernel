@@ -225,12 +225,10 @@ static int check_timeouts(void)
 static int watchdog_set_timeouts(int timer_threshold, int warning_pretimeout,
 			    int reset_timeout)
 {
-	u32	*ipc_wbuf;
-	u8	cbuf[16] = { '\0' };
+	u32	ipc_wbuf[3];
 	int	ret = 0;
 	u32	freq = watchdog_device.timer7_tbl_ptr->freq_hz;
 
-	ipc_wbuf = (u32 *)&cbuf;
 	ipc_wbuf[0] = timer_threshold * freq;
 	ipc_wbuf[1] = warning_pretimeout * freq;
 	ipc_wbuf[2] = (reset_timeout - timer_threshold - warning_pretimeout)
@@ -243,7 +241,7 @@ static int watchdog_set_timeouts(int timer_threshold, int warning_pretimeout,
 	ret = rpmsg_send_command(watchdog_instance,
 					IPC_SET_WATCHDOG_TIMER,
 					IPC_SET_SUB_LOAD_THRES,
-					ipc_wbuf, NULL, 3, 0);
+					ipc_wbuf, NULL, 12, 0);
 	if (ret)
 		pr_crit(PFX "Error Setting SCU Watchdog Timer: %x\n", ret);
 

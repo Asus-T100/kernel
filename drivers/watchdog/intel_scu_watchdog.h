@@ -39,17 +39,8 @@
 #define MAX_TIME 170
 #define MAX_SOFT_TO_HARD_MARGIN (MAX_TIME-MIN_TIME_CYCLE)
 
-/* Offset of the reset counter in  OSNIB */
-#define OSNIB_WDOG_OFFSET 1
-
 /* Value 0 to reset the reset counter */
 #define OSNIB_WRITE_VALUE 0
-
-/* The number of bytes to write the value 0 to OSNIB */
-#define OSNIB_WRITE_SIZE 1
-
-/* The mask for OSNIB */
-#define OSNIB_WRITE_MASK 0x02
 
 struct intel_scu_watchdog_dev {
 	ulong driver_open;
