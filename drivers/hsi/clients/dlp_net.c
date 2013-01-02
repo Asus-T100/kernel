@@ -375,55 +375,40 @@ static void dlp_net_hsi_tx_timeout_cb(struct dlp_channel *ch_ctx)
  **/
 int dlp_net_open(struct net_device *dev)
 {
-	int ret;
+	int ret, state;
 	struct dlp_channel *ch_ctx = netdev_priv(dev);
 
-	/* Check & wait for modem readiness */
-	if (!dlp_ctrl_modem_is_ready()) {
-		pr_err(DRVNAME ": Unale to open NETIF%d (Modem NOT ready) !\n",
-				ch_ctx->hsi_channel);
+	/* Check if the the channel is not already opened for Trace */
+	state = dlp_ctrl_get_channel_state(ch_ctx->hsi_channel);
+	if (state != DLP_CH_STATE_CLOSED) {
+		pr_err(DRVNAME": Invalid channel state (%d)\n", state);
 		ret = -EBUSY;
 		goto out;
 	}
 
-	/* Is is a shared channel */
-	if (dlp_net_is_trace_channel(ch_ctx)) {
-		int state;
+	/* Update/Set the eDLP channel id */
+	dlp_drv.channels_hsi[ch_ctx->hsi_channel].edlp_channel = ch_ctx->ch_id;
 
-		/* Check if the the channel is not already opened for Trace */
-		state = dlp_ctrl_get_channel_state(ch_ctx);
-		if (state != DLP_CH_STATE_CLOSED) {
-			pr_err(DRVNAME": Invalid channel state (%d)\n", state);
-			ret = -EBUSY;
-			goto out;
-		}
-
-		/* Allocate TX FIFO */
-		ret = dlp_allocate_pdus_pool(ch_ctx, &ch_ctx->tx);
-		if (ret) {
-			pr_err(DRVNAME ": Cant allocate RX FIFO pdus for ch%d\n",
-					ch_ctx->hsi_channel);
-			goto out;
-		}
-
-		/* Allocate RX FIFO */
-		ret = dlp_allocate_pdus_pool(ch_ctx, &ch_ctx->rx);
-		if (ret) {
-			pr_err(DRVNAME ": Cant allocate RX FIFO pdus for ch%d\n",
-					ch_ctx->hsi_channel);
-			goto out;
-		}
+	/* Allocate TX FIFO */
+	ret = dlp_allocate_pdus_pool(ch_ctx, &ch_ctx->tx);
+	if (ret) {
+		pr_err(DRVNAME ": Cant allocate RX FIFO pdus for ch%d\n",
+				ch_ctx->ch_id);
+		goto out;
 	}
 
-	/* Reset the seq_num */
-
-	ch_ctx->rx.seq_num = 0 ;
-	ch_ctx->tx.seq_num = 0 ;
+	/* Allocate RX FIFO */
+	ret = dlp_allocate_pdus_pool(ch_ctx, &ch_ctx->rx);
+	if (ret) {
+		pr_err(DRVNAME ": Cant allocate RX FIFO pdus for ch%d\n",
+				ch_ctx->ch_id);
+		goto out;
+	}
 
 	/* Open the channel */
 	ret = dlp_ctrl_open_channel(ch_ctx);
 	if (ret) {
-		pr_err(DRVNAME ": ch%d open failed !\n", ch_ctx->hsi_channel);
+		pr_err(DRVNAME ": ch%d open failed !\n", ch_ctx->ch_id);
 		ret = -EIO;
 		goto out;
 	}
@@ -456,7 +441,8 @@ int dlp_net_stop(struct net_device *dev)
 
 	ret = dlp_ctrl_close_channel(ch_ctx);
 	if (ret)
-		pr_err(DRVNAME ": ch%d close failed !\n", ch_ctx->hsi_channel);
+		pr_err(DRVNAME ": %s (ch%d close failed (%d))\n",
+				__func__, ch_ctx->ch_id, ret);
 
 	/* RX */
 	del_timer_sync(&rx_ctx->timer);
@@ -504,7 +490,7 @@ static int dlp_net_start_xmit(struct sk_buff *skb, struct net_device *dev)
 		netif_stop_queue(net_ctx->ndev);
 
 		pr_warn(DRVNAME ": ch%d out of credits (%d)",
-				ch_ctx->hsi_channel, ch_ctx->tx.seq_num);
+				ch_ctx->ch_id, ch_ctx->tx.seq_num);
 		ret = NETDEV_TX_BUSY;
 		goto out;
 	}
@@ -598,6 +584,7 @@ static int dlp_net_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	ptr = dlp_buffer_alloc(desc_size, &sg_dma_address(sg));
 	if (!ptr) {
 		pr_err(DRVNAME ": Out of memory (msg_desc)\n");
+		ret = NETDEV_TX_BUSY;
 		goto free_msg;
 	}
 
@@ -746,7 +733,9 @@ void dlp_net_dev_setup(struct net_device *dev)
  *
  ***************************************************************************/
 
-struct dlp_channel *dlp_net_ctx_create(unsigned int index, struct device *dev)
+struct dlp_channel *dlp_net_ctx_create(unsigned int ch_id,
+		unsigned int hsi_channel,
+		struct device *dev)
 {
 	struct hsi_client *client = to_hsi_client(dev);
 	struct dlp_channel *ch_ctx;
@@ -792,7 +781,8 @@ struct dlp_channel *dlp_net_ctx_create(unsigned int index, struct device *dev)
 	ch_ctx = netdev_priv(ndev);
 
 	ch_ctx->ch_data = net_ctx;
-	ch_ctx->hsi_channel = index;
+	ch_ctx->ch_id = ch_id;
+	ch_ctx->hsi_channel = hsi_channel;
 	ch_ctx->use_flow_ctrl = 1;
 	ch_ctx->rx.config = client->rx_cfg;
 	ch_ctx->tx.config = client->tx_cfg;
@@ -831,7 +821,7 @@ struct dlp_channel *dlp_net_ctx_create(unsigned int index, struct device *dev)
 		ret = dlp_allocate_pdus_pool(ch_ctx, &ch_ctx->tx);
 		if (ret) {
 			pr_err(DRVNAME ": Cant allocate RX FIFO pdus for ch%d\n",
-					index);
+					ch_id);
 			goto cleanup;
 		}
 
@@ -839,7 +829,7 @@ struct dlp_channel *dlp_net_ctx_create(unsigned int index, struct device *dev)
 		ret = dlp_allocate_pdus_pool(ch_ctx, &ch_ctx->rx);
 		if (ret) {
 			pr_err(DRVNAME ": Cant allocate RX FIFO pdus for ch%d\n",
-					index);
+					ch_id);
 			goto cleanup;
 		}
 	}
@@ -855,13 +845,13 @@ free_ctx:
 
 free_dev:
 	free_netdev(ndev);
-	pr_err(DRVNAME": Failed to create context for ch%d\n", index);
+	pr_err(DRVNAME": Failed to create context for ch%d\n", ch_id);
 	return NULL;
 
 cleanup:
 	dlp_net_ctx_delete(ch_ctx);
 
-	pr_err(DRVNAME": Failed to create context for ch%d\n", index);
+	pr_err(DRVNAME": Failed to create context for ch%d\n", ch_id);
 	return NULL;
 }
 
