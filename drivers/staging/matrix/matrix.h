@@ -198,16 +198,16 @@ struct mtx_size_info {
 #define IOCTL_INIT_MEMORY _IOR(0xF8, 0x00000010, struct xchange_buffer_all *)
 #define IOCTL_FREE_MEMORY _IO(0xF8, 0x00000020)
 
-#define IOCTL_VERSION_INFO _IOW(0xF8, 0x00000100, char *)
-#define IOCTL_COPY_TO_USER _IOW(0xF8, 0x00000200, struct xchange_buffer_all *)
-#define IOCTL_READ_CONFIG_DB _IOW(0xF8, 0x00000400, unsigned long *)
-#define IOCTL_WRITE_CONFIG_DB _IOR(0xF8, 0x00001000, unsigned long *)
-#define IOCTL_OPERATE_ON_MSR _IOW(0xF8, 0x00100000, struct mtx_msr *)
+#define IOCTL_VERSION_INFO _IOW(0xF8, 0x00000001, char *)
+#define IOCTL_COPY_TO_USER _IOW(0xF8, 0x00000002, struct xchange_buffer_all *)
+#define IOCTL_READ_CONFIG_DB _IOW(0xF8, 0x00000004, unsigned long *)
+#define IOCTL_WRITE_CONFIG_DB _IOW(0xF8, 0x00000010, unsigned long *)
+#define IOCTL_OPERATE_ON_MSR _IOW(0xF8, 0x00000020, struct mtx_msr *)
 
-#define IOCTL_MSR _IOW(0xF8, 0x10000000, struct mtx_msr_container *)
-#define IOCTL_SRAM _IOW(0xF8, 0x20000000, struct memory_map *)
-#define IOCTL_GMCH_RESET _IOW(0xF8, 0x40000000, struct gmch_container *)
-#define IOCTL_GMCH _IOW(0xF8, 0x80000000, struct gmch_container *)
+#define IOCTL_MSR _IOW(0xF8, 0x00000040, struct mtx_msr_container *)
+#define IOCTL_SRAM _IOW(0xF8, 0x00000080, struct memory_map *)
+#define IOCTL_GMCH_RESET _IOW(0xF8, 0x00000003, struct gmch_container *)
+#define IOCTL_GMCH _IOW(0xF8, 0x00000005, struct gmch_container *)
 
 #define platform_pci_read32	intel_mid_msgbus_read32_raw
 #define platform_pci_write32	intel_mid_msgbus_write32_raw
