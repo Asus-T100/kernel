@@ -346,6 +346,7 @@ static void set_soc_intr_thresholds_s0(struct max17042_chip *chip, int offset);
 static void save_runtime_params(struct max17042_chip *chip);
 static void set_chip_config(struct max17042_chip *chip);
 static u16 fg_vfSoc;
+static bool fake_batt_full;
 static struct max17042_config_data *fg_conf_data;
 static struct i2c_client *max17042_client;
 
@@ -839,6 +840,15 @@ static int max17042_get_property(struct power_supply *psy,
 		val->intval = (ret >> 7) * 10000; /* Units of LSB = 10mV */
 		break;
 	case POWER_SUPPLY_PROP_CAPACITY:
+		/*
+		 * WA added to support power supply voltage
+		 * variations b/w supply and FG readings.
+		 */
+		if (fake_batt_full) {
+			val->intval = 100;
+			break;
+		}
+
 		/* Voltage Based shutdown method to avoid modem crash */
 		if (chip->pdata->is_volt_shutdown) {
 			ret = max17042_read_reg(chip->client,
@@ -2254,6 +2264,13 @@ static int max17042_reboot_callback(struct notifier_block *nfb,
 
 	return NOTIFY_OK;
 }
+
+int __init set_fake_batt_full(char *p)
+{
+	fake_batt_full = true;
+	return 0;
+}
+early_param("fake_batt_full", set_fake_batt_full);
 
 static int __init max17042_init(void)
 {
