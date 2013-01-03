@@ -2163,7 +2163,7 @@ static bool allow_for_suspend(struct uart_hsu_port *up)
 	int rx_count;
 	u32 loop = 100000;
 
-	if (!uart_circ_empty(xmit)) {
+	if (!uart_circ_empty(xmit) && !uart_tx_stopped(&up->port)) {
 		dev_dbg(up->dev, "%s: circ_not_empty\n", __func__);
 		return false;
 	}
