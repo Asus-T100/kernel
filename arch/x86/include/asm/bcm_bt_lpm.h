@@ -25,11 +25,12 @@ extern void bcm_bt_lpm_exit_lpm_locked(struct device *dev,
 							struct hci_dev *hdev);
 
 struct bcm_bt_lpm_platform_data {
-	unsigned int gpio_wake;		/* CPU -> BCM wakeup gpio */
-	unsigned int gpio_host_wake;	/* BCM -> CPU wakeup gpio */
-	unsigned int int_host_wake;	/* BCM -> CPU wakeup gpio */
-	unsigned int gpio_enable;	/* GPIO enable/disable BT/FM */
+	int gpio_wake;		/* CPU -> BCM wakeup gpio */
+	int gpio_host_wake;	/* BCM -> CPU wakeup gpio */
+	int int_host_wake;	/* BCM -> CPU wakeup irq */
+	int gpio_enable;	/* GPIO enable/disable BT/FM */
 
+	int port;			/* UART port to use with BT/FM */
 	/*
 	 * Callback to request the uart driver to clock off.
 	 * Called with uart spinlock held.
