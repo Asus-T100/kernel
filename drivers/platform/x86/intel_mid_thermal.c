@@ -109,17 +109,6 @@ struct thermal_device_info {
 	struct intel_mid_thermal_sensor *sensor;
 };
 
-static struct intel_mid_thermal_sensor *sensor_by_name(char *name)
-{
-	int index = 0;
-
-	for (index = 0; index < ipcinfo->num_sensors; index++) {
-		if (!strncmp(name, ipcinfo->sensors[index].name,
-				THERMAL_NAME_LENGTH))
-			return &ipcinfo->sensors[index];
-	}
-	return NULL;
-}
 /* SoC cooling device callbacks */
 static int soc_get_max_state(struct thermal_cooling_device *cdev,
 				unsigned long *state)
@@ -315,21 +304,19 @@ static int adc_to_temp(bool direct, uint16_t adc_val, unsigned long *tp)
 int skin0_temp_correlation(void *info, unsigned long temp, unsigned long *res)
 {
 	struct intel_mid_thermal_sensor *sensor = info;
-	int ret = 0;
 
 	*res = ((temp * sensor->slope) / 1000) + sensor->intercept;
 
-	return ret;
+	return 0;
 }
 
 int bptherm_temp_correlation(void *info, unsigned long temp, unsigned long *res)
 {
 	struct intel_mid_thermal_sensor *sensor = info;
-	int ret = 0;
 
 	*res = ((temp * sensor->slope) / 1000) + sensor->intercept;
 
-	return ret;
+	return 0;
 }
 
 int skin1_temp_correlation(void *info, unsigned long temp, unsigned long *res)
@@ -370,7 +357,6 @@ int skin1_temp_correlation(void *info, unsigned long temp, unsigned long *res)
 
 	return 0;
 }
-
 
 /**
  * mid_read_temp - read sensors for temperature
@@ -455,6 +441,46 @@ static int mid_thermal_suspend(struct device *dev)
 	return 0;
 }
 
+#ifdef CONFIG_THERMAL_DEBUG
+static int read_slope(struct thermal_zone_device *tzd, unsigned long *slope)
+{
+	struct thermal_device_info *td_info = tzd->devdata;
+
+	*slope = td_info->sensor->slope;
+
+	return 0;
+}
+
+static int update_slope(struct thermal_zone_device *tzd, unsigned long slope)
+{
+	struct thermal_device_info *td_info = tzd->devdata;
+
+	td_info->sensor->slope = slope;
+
+	return 0;
+}
+
+static int read_intercept(struct thermal_zone_device *tzd,
+			unsigned long *intercept)
+{
+	struct thermal_device_info *td_info = tzd->devdata;
+
+	*intercept = td_info->sensor->intercept;
+
+	return 0;
+}
+
+static int update_intercept(struct thermal_zone_device *tzd,
+			unsigned long intercept)
+{
+	struct thermal_device_info *td_info = tzd->devdata;
+
+	td_info->sensor->intercept = intercept;
+
+	return 0;
+}
+#endif
+
 /**
  * read_curr_temp - reads the current temperature and stores in temp
  * @temp: holds the current temperature value after reading
@@ -469,8 +495,13 @@ static int read_curr_temp(struct thermal_zone_device *tzd, unsigned long *temp)
 /* Can't be const */
 static struct thermal_zone_device_ops tzd_ops = {
 	.get_temp = read_curr_temp,
+#ifdef CONFIG_THERMAL_DEBUG
+	.get_slope = read_slope,
+	.set_slope = update_slope,
+	.get_intercept = read_intercept,
+	.set_intercept = update_intercept,
+#endif
 };
-
 
 /**
  * mid_thermal_probe - mfld thermal initialize
@@ -521,7 +552,6 @@ static int mid_thermal_probe(struct ipc_device *ipcdev)
 
 	/* initialize mutex locks */
 	mutex_init(&ipcinfo->cacheinfo.lock);
-
 
 	if (ipcinfo->soc_cooling)
 		mutex_init(&soc_cdev_info.lock_cool_state);

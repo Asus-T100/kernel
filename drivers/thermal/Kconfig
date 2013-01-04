@@ -23,6 +23,16 @@ config THERMAL_HWMON
 
 	  Say Y if your user-space is new enough.
 
+config THERMAL_DEBUG
+	bool "Thermal debug information support"
+	depends on THERMAL
+	help
+	  This enables debug sysfs interfaces/information for Thermal
+	  subsystem.
+
+	  Saying Y here will expose extra sysfs nodes under
+	  /sys/class/thermal/thermal_zoneX/
+
 config SENSORS_THERMAL_MRFLD
         tristate "Thermal driver for Intel Merrifield platform"
         depends on THERMAL && INTEL_SCU_IPC && BASINCOVE_GPADC
