@@ -2066,6 +2066,15 @@ static void atomisp_curr_user_grid_info(struct atomisp_device *isp,
 		isp->params.curr_grid_info.dvs_ver_coef_num;
 }
 
+static int atomisp_compare_grid(struct atomisp_device *isp,
+				struct atomisp_grid_info *atomgrid)
+{
+	struct atomisp_grid_info tmp;
+	memset(&tmp, 0, sizeof(tmp));
+	atomisp_curr_user_grid_info(isp, &tmp);
+	return memcmp(atomgrid, &tmp, sizeof(tmp));
+}
+
 /*
  * Function to update Gdc table for gdc
  */
@@ -2239,6 +2248,12 @@ int atomisp_get_dis_stat(struct atomisp_device *isp,
 	if (!isp->params.video_dis_en)
 		return -EINVAL;
 
+	if (atomisp_compare_grid(isp, &stats->grid_info) != 0)
+		/* If the grid info in the argument differs from the current
+		   grid info, we tell the caller to reset the grid size and
+		   try again. */
+		return -EAGAIN;
+
 	if (!isp->params.dis_proj_data_valid)
 		return -EBUSY;
 
@@ -2283,15 +2298,6 @@ int atomisp_set_dis_coefs(struct atomisp_device *isp,
 	isp->params.dis_proj_data_valid = false;
 
 	return 0;
-}
-
-static int atomisp_compare_grid(struct atomisp_device *isp,
-				struct atomisp_grid_info *atomgrid)
-{
-	struct atomisp_grid_info tmp;
-	memset(&tmp, 0, sizeof(tmp));
-	atomisp_curr_user_grid_info(isp, &tmp);
-	return memcmp(atomgrid, &tmp, sizeof(tmp));
 }
 
 /*
