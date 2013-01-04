@@ -1108,7 +1108,6 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 
 	INIT_LIST_HEAD(&isp->s3a_stats);
 	INIT_LIST_HEAD(&isp->dis_stats);
-	init_completion(&isp->dis_state_complete);
 
 	isp->wdt_work_queue = alloc_workqueue(isp->v4l2_dev.name, 0, 1);
 	if (isp->wdt_work_queue == NULL) {
