@@ -30,7 +30,8 @@ static int init_b_device(struct dwc_otg2 *otg);
 static int otg_id = -1;
 static struct mutex lock;
 #ifdef CONFIG_BOARD_MRFLD_VV
-static int enable_usb_phy(struct dwc_otg2 *otg);
+static int enable_usb_phy(struct dwc_otg2 *otg, bool on_off);
+static void reset_phy(struct dwc_otg2 *otg);
 #endif
 static const char driver_name[] = "dwc_otg3";
 static void __devexit dwc_otg_remove(struct pci_dev *pdev);
@@ -381,7 +382,7 @@ static void start_peripheral(struct dwc_otg2 *otg)
 		}
 	}
 	enable_adb();
-	enable_usb_phy(otg);
+	enable_usb_phy(otg, true);
 #endif
 	otg_dbg(otg, "\n");
 
@@ -1129,6 +1130,9 @@ static enum dwc_otg_state do_connector_id_status(struct dwc_otg2 *otg)
 
 	/* change mode to DRD mode to void ulpi access fail */
 	reset_hw(otg);
+#ifdef CONFIG_BOARD_MRFLD_VV
+	reset_phy(otg);
+#endif
 
 	/* Reset ADP related registers */
 	otg_write(otg, ADPCFG, 0);
@@ -1249,7 +1253,7 @@ static enum dwc_otg_state do_a_host(struct dwc_otg2 *otg)
 	}
 #endif
 #ifdef CONFIG_BOARD_MRFLD_VV
-	enable_usb_phy(otg);
+	enable_usb_phy(otg, true);
 #endif
 	rc = start_host(otg);
 	if (rc < 0) {
@@ -1420,19 +1424,35 @@ static int dwc_otg_handle_notification(struct notifier_block *nb,
 }
 
 #ifdef CONFIG_BOARD_MRFLD_VV
-/* This function will de-assert USBRST pin for USB2PHY. */
-static int enable_usb_phy(struct dwc_otg2 *otg)
+/* This function will assert/deassert USBRST pin for USB2PHY. */
+static int enable_usb_phy(struct dwc_otg2 *otg, bool on_off)
 {
 	int ret;
 
-	ret = intel_scu_ipc_iowrite8(PMIC_USBPHYCTRL, PMIC_USBPHYCTRL_D0);
-	if (ret)
-		otg_err(otg, "Fail to de-assert USBRST\n");
-
-	msleep(20);
+	if (on_off) {
+		ret = intel_scu_ipc_iowrite8(PMIC_USBPHYCTRL,
+				PMIC_USBPHYCTRL_D0);
+		if (ret)
+			otg_err(otg, "Fail to assert USBRST\n");
+		msleep(20);
+	} else {
+		ret = intel_scu_ipc_iowrite8(PMIC_USBPHYCTRL, 0);
+		if (ret)
+			otg_err(otg, "Fail to de-assert USBRST\n");
+	}
 
 	return 0;
 }
+
+static void reset_phy(struct dwc_otg2 *otg)
+{
+	enable_usb_phy(otg, false);
+
+	udelay(500);
+
+	enable_usb_phy(otg, true);
+}
+
 #endif
 
 
@@ -1457,7 +1477,7 @@ int otg_main_thread(void *data)
 
 	pm_runtime_get_sync(otg->dev);
 #ifdef CONFIG_BOARD_MRFLD_VV
-	enable_usb_phy(otg);
+	enable_usb_phy(otg, true);
 #endif
 
 
