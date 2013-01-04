@@ -324,7 +324,6 @@ struct atomisp_device {
 	struct mutex streamoff_mutex;
 	struct list_head s3a_stats;
 	struct list_head dis_stats;
-	bool isp3a_stat_ready;
 
 	struct atomisp_video_pipe_format *capture_format;
 	struct atomisp_video_pipe_format *vf_format;
