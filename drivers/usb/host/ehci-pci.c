@@ -254,9 +254,11 @@ static int ehci_pci_setup(struct usb_hcd *hcd)
 			hcd->rpm_resume = 0;
 			pm_runtime_set_active(&pdev->dev);
 		} else if (pdev->device == 0x119C) {
-			ehci_info(ehci, "Detected HSIC HC 0x119D\n");
-			hcd->has_tt = 1;
-			ehci->has_hostpc = 1;
+#ifndef CONFIG_MERR_USB_OTG_CONTROLLER_SUPPORT
+			ehci_info(ehci, "Abandon 0x119C pci device\n");
+			pci_set_power_state(pdev, PCI_D3hot);
+			return -ENODEV;
+#endif
 		} else if (pdev->device == 0x119D) {
 			ehci_info(ehci, "Detected HSIC HC 0x119D\n");
 			hcd->has_tt = 1;
