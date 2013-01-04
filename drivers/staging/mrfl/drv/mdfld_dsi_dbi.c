@@ -462,9 +462,6 @@ reset_recovery:
 		goto power_on_err;
 	}
 
-	/*enable TE, will need it in panel power on*/
-	mdfld_enable_te(dev, dsi_config->pipe);
-
 	/**
 	 * Different panel may have different ways to have
 	 * drvIC initialized. Support it!
@@ -605,9 +602,6 @@ static int __dbi_panel_power_off(struct mdfld_dsi_config *dsi_config,
 	/*wait for two TE, let pending PVR flip complete*/
 	msleep(32);
 
-	/*Disable TE, don't need it anymore*/
-	mdfld_disable_te(dev, dsi_config->pipe);
-
 	/**
 	 * Different panel may have different ways to have
 	 * panel turned off. Support it!
@@ -666,10 +660,9 @@ int mdfld_generic_dsi_dbi_set_power(struct drm_encoder *encoder, bool on)
 	if (dbi_output->first_boot &&
 	    dsi_config->dsi_hw_context.panel_on) {
 		if (on) {
-			/* When using smooth transition, enable TE
-			 * and wake up ESD detection thread.
+			/* When using smooth transition,
+			 * wake up ESD detection thread.
 			 */
-			mdfld_enable_te(dev, pipe);
 			mdfld_dsi_error_detector_wakeup(dsi_connector);
 		}
 		DRM_INFO("skip panle power setting for first boot! " \

@@ -639,26 +639,8 @@ int mdfld_dpu_exit_dsr(struct drm_device *dev)
 	/*start dpu timer*/
 	if (dev_priv->platform_rev_id == MDFLD_PNW_A0)
 		mdfld_dbi_dpu_timer_start(dpu_info);
-	else {
-		/*enable te interrupt*/
-		for (i = 0; i < dpu_info->dbi_output_num; i++) {
-			/*
-			 * If this output is not in DSR mode, don't call exit
-			 * dsr
-			 */
-			pipe = dbi_output[i]->channel_num ? 2 : 0;
-			if (dbi_output[i]->dbi_panel_on && pipe) {
-				mdfld_disable_te(dev, 0);
-				mdfld_enable_te(dev, 2);
-			} else if (dbi_output[i]->dbi_panel_on && !pipe) {
-				mdfld_disable_te(dev, 2);
-				mdfld_enable_te(dev, 0);
-			}
-		}
-	}
 
 	return 0;
-
 }
 
 static int mdfld_dpu_enter_dsr(struct drm_device *dev)

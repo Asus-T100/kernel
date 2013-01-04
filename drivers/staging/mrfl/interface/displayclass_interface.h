@@ -131,4 +131,6 @@ typedef struct intel_dc_plane_ctx {
 	} ctx;
 } DC_MRFLD_SURF_CUSTOM;
 
+IMG_VOID DCUnAttachPipe(IMG_UINT32 uiPipe);
+
 #endif				/* __DC_INTERFACE_H__ */
