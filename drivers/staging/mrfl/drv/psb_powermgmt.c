@@ -965,12 +965,6 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 	for (i = 0; i < 256; i++)
 		PSB_WVDC32(palette_val[i], palette_reg + (i << 2));
 
-	if (pipe == 1)
-		return 0;
-
-	if (!is_panel_vid_or_cmd(dev))
-		mdfld_enable_te(dev, pipe);
-
 	return 0;
 }
 

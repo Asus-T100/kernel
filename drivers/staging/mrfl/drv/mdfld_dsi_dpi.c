@@ -361,8 +361,6 @@ reset_recovery:
 	val |= BIT31;
 	REG_WRITE(regs->pipeconf_reg, val);
 
-	psb_enable_vblank(dev, dsi_config->pipe);
-
 	/*Wait for pipe enabling,when timing generator
 	  is wroking */
 	if (REG_READ(regs->mipi_reg) & BIT31) {
@@ -445,8 +443,6 @@ static int __dpi_panel_power_off(struct mdfld_dsi_config *dsi_config,
 	REG_WRITE(regs->dspcntr_reg, (val & ~BIT31));
 	/*Disable overlay & cursor panel assigned to this pipe*/
 	REG_WRITE(regs->pipeconf_reg, (tmp | (0x000c0000)));
-
-	psb_disable_vblank(dev, dsi_config->pipe);
 
 	/*Disable pipe*/
 	val = REG_READ(regs->pipeconf_reg);
@@ -890,9 +886,6 @@ void mdfld_dsi_dpi_exit_idle(struct drm_device *dev,
 		REG_WRITE(DSPCSURF, *((u32 *)p_surfaceAddr));
 #endif
 	}
-
-	mid_enable_pipe_event(dev_priv, 0);
-	psb_enable_pipestat(dev_priv, 0, PIPE_VBLANK_INTERRUPT_ENABLE);
 
 	spin_unlock_irqrestore(&dev_priv->irqmask_lock, irqflags);
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);

@@ -74,24 +74,26 @@ int DCChangeFrameBuffer(struct drm_device *dev,
 	return 0;
 }
 
-void DCCBEnableVSyncInterrupt(struct drm_device *dev)
+int DCCBEnableVSyncInterrupt(struct drm_device *dev, int pipe)
 {
 	struct drm_psb_private *dev_priv;
+	int ret = 0;
 
 	dev_priv = (struct drm_psb_private *)dev->dev_private;
-	dev_priv->cur_pipe = FindCurPipe(dev);
-	if (drm_vblank_get(dev, dev_priv->cur_pipe)) {
-		DRM_ERROR("Couldn't enable vsync interrupt");
+	if (drm_vblank_get(dev, pipe)) {
+		DRM_DEBUG("Couldn't enable vsync interrupt\n");
+		ret = -EINVAL;
 	}
+
+	return ret;
 }
 
-void DCCBDisableVSyncInterrupt(struct drm_device *dev)
+void DCCBDisableVSyncInterrupt(struct drm_device *dev, int pipe)
 {
 	struct drm_psb_private *dev_priv;
 
 	dev_priv = (struct drm_psb_private *)dev->dev_private;
-	dev_priv->cur_pipe = FindCurPipe(dev);
-	drm_vblank_put(dev, dev_priv->cur_pipe);
+	drm_vblank_put(dev, pipe);
 }
 
 void DCCBInstallVSyncISR(struct drm_device *dev,
@@ -122,7 +124,8 @@ void DCCBFlipToSurface(struct drm_device *dev, unsigned long uiAddr,
 	u32 dspcntr;
 	u32 dspstride;
 	u32 val;
-
+	struct mdfld_dsi_config *dsi_config;
+	struct mdfld_dsi_hw_context *dsi_ctx;
 
 	DRM_DEBUG("%s %s %d, uiAddr = 0x%x\n", __FILE__, __func__,
 			  __LINE__, uiAddr);
@@ -144,6 +147,18 @@ void DCCBFlipToSurface(struct drm_device *dev, unsigned long uiAddr,
 	DCWriteReg(dev, dspstride, uiStride);
 	/*update surface address*/
 	DCWriteReg(dev, dspsurf, uiAddr);
+
+	if (pipeflag == 0)
+		dsi_config = dev_priv->dsi_configs[0];
+	else if (pipeflag == 2)
+		dsi_config = dev_priv->dsi_configs[1];
+
+	if (dsi_config) {
+		dsi_ctx = &dsi_config->dsi_hw_context;
+		dsi_ctx->dspstride = uiStride;
+		dsi_ctx->dspcntr = val;
+		dsi_ctx->dspsurf = uiAddr;
+	}
 
 	/*flip hdmi*/
 	dspsurf = DSPBSURF;
@@ -208,6 +223,7 @@ void DCCBFlipSprite(struct drm_device *dev,
 
 	if ((ctx->update_mask & SPRITE_UPDATE_POSITION))
 		PSB_WVDC32(ctx->pos, DSPAPOS + reg_offset);
+
 	if ((ctx->update_mask & SPRITE_UPDATE_SIZE)) {
 		PSB_WVDC32(ctx->size, DSPASIZE + reg_offset);
 		PSB_WVDC32(ctx->stride, DSPASTRIDE + reg_offset);
@@ -260,17 +276,16 @@ void DCCBFlipPrimary(struct drm_device *dev,
 	} else
 		return;
 
-	if ((ctx->update_mask & SPRITE_UPDATE_POSITION)) {
+	if ((ctx->update_mask & SPRITE_UPDATE_POSITION))
 		PSB_WVDC32(ctx->pos, DSPAPOS + reg_offset);
-	}
+
 	if ((ctx->update_mask & SPRITE_UPDATE_SIZE)) {
 		PSB_WVDC32(ctx->size, DSPASIZE + reg_offset);
 		PSB_WVDC32(ctx->stride, DSPASTRIDE + reg_offset);
 	}
 
-	if ((ctx->update_mask & SPRITE_UPDATE_CONTROL)) {
+	if ((ctx->update_mask & SPRITE_UPDATE_CONTROL))
 		PSB_WVDC32(ctx->cntr, DSPACNTR + reg_offset);
-	}
 
 	if ((ctx->update_mask & SPRITE_UPDATE_SURFACE)) {
 		PSB_WVDC32(ctx->linoff, DSPALINOFF + reg_offset);
@@ -321,4 +336,10 @@ void DCCBFlipDSRCb(struct drm_device *dev)
 	if (dev_priv->b_dsr_enable && dev_priv->b_is_in_idle) {
 		dev_priv->exit_idle(dev, MDFLD_DSR_2D_3D, NULL, true);
 	}
+}
+
+u32 DCCBGetPipeCount(void)
+{
+	/* FIXME */
+	return 3;
 }

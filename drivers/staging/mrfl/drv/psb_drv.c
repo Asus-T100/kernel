@@ -2871,8 +2871,6 @@ static int psb_vsync_set_ioctl(struct drm_device *dev, void *data,
 		}
 
 		if (arg->vsync_operation_mask & VSYNC_ENABLE) {
-			/*enable vblank/TE*/
-			/*drm_vblank_get(dev, pipe);*/
 			switch (pipe) {
 			case 0:
 			case 2:
@@ -2880,27 +2878,36 @@ static int psb_vsync_set_ioctl(struct drm_device *dev, void *data,
 
 				if (is_panel_vid_or_cmd(dev) ==
 						MDFLD_DSI_ENCODER_DPI)
-					psb_enable_vblank(dev, pipe);
+					drm_vblank_get(dev, pipe);
 				break;
 			case 1:
-				psb_enable_vblank(dev, pipe);
+				drm_vblank_get(dev, pipe);
 				break;
 			}
 		}
 
 		if (arg->vsync_operation_mask & VSYNC_DISABLE) {
-			/*drm_vblank_put(dev, pipe);*/
 			switch (pipe) {
 			case 0:
 			case 2:
 				if (is_panel_vid_or_cmd(dev) ==
-						MDFLD_DSI_ENCODER_DPI)
-					psb_disable_vblank(dev, pipe);
+						MDFLD_DSI_ENCODER_DPI) {
+					spin_lock_irqsave(&dev->vbl_lock,
+							irq_flags);
+					if (dev->vblank_enabled[pipe])
+						drm_vblank_put(dev, pipe);
+					spin_unlock_irqrestore(&dev->vbl_lock,
+							irq_flags);
+				}
 
 				/*mdfld_dsi_dsr_allow(dsi_config);*/
 				break;
 			case 1:
-				psb_disable_vblank(dev, pipe);
+				spin_lock_irqsave(&dev->vbl_lock, irq_flags);
+				if (dev->vblank_enabled[pipe])
+					drm_vblank_put(dev, pipe);
+				spin_unlock_irqrestore(&dev->vbl_lock,
+						irq_flags);
 				break;
 			}
 		}

@@ -31,6 +31,8 @@
 #include "kerneldisplay.h"
 #include "displayclass_interface.h"
 
+#define MAX_PIPE_NUM	3
+
 typedef enum {
 	DCMrfldEX_BUFFER_SOURCE_ALLOC,
 	DCMrfldEX_BUFFER_SOURCE_IMPORT,
@@ -85,9 +87,14 @@ typedef struct {
 	DC_MRFLD_DEVICE *psDevice;
 } DC_MRFLD_DISPLAY_CONTEXT;
 
+struct DC_MRFLD_PIPE_INFO {
+	IMG_UINT32 uiSwapInterval;
+};
+
 /*flip status*/
-enum {
-	DC_MRFLD_FLIP_QUEUED = 0,
+enum DC_MRFLD_FLIP_STATUS {
+	DC_MRFLD_FLIP_ERROR = 0,
+	DC_MRFLD_FLIP_QUEUED,
 	DC_MRFLD_FLIP_DC_UPDATED,
 	DC_MRFLD_FLIP_FLIPPED,
 };
@@ -97,6 +104,8 @@ typedef struct {
 	IMG_HANDLE hConfigData;
 	IMG_UINT32 eFlipState;
 	IMG_UINT32 uiNumBuffers;
+	IMG_UINT32 uiSwapInterval;
+	struct DC_MRFLD_PIPE_INFO asPipeInfo[MAX_PIPE_NUM];
 	DC_MRFLD_BUFFER asBuffers[0];
 } DC_MRFLD_FLIP;
 

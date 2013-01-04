@@ -36,8 +36,8 @@ typedef int (*pfn_vsync_handler) (struct drm_device *dev, int pipe);
 void DCCBGetFramebuffer(struct drm_device *dev, struct psb_framebuffer **);
 int DCChangeFrameBuffer(struct drm_device *dev,
 			struct psb_framebuffer *psbfb);
-void DCCBEnableVSyncInterrupt(struct drm_device *dev);
-void DCCBDisableVSyncInterrupt(struct drm_device *dev);
+int DCCBEnableVSyncInterrupt(struct drm_device *dev, int pipe);
+void DCCBDisableVSyncInterrupt(struct drm_device *dev, int pipe);
 void DCCBInstallVSyncISR(struct drm_device *dev,
 			 pfn_vsync_handler pVsyncHandler);
 void DCCBUninstallVSyncISR(struct drm_device *dev);
@@ -63,5 +63,6 @@ int DCCBgttUnmapMemory(struct drm_device *dev,
 		       unsigned int hHandle, unsigned int ui32TaskId);
 bool DCChangeSwapChainProperty(unsigned long *psSwapChainGTTOffset,
 			int pipe);
+u32 DCCBGetPipeCount(void);
 
 #endif				/* __DC_CALLBACKS_H__ */

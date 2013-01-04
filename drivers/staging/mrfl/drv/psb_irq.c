@@ -86,28 +86,6 @@ static inline u32 mid_pipeconf(int pipe)
 	BUG();
 }
 
-/*********************************
- *  Added to support MIPI -> HDMI clone  (see 'mipi_hdmi_vsync_check'
- *      below).
- *
- *  williamx.f.schmidt@intel.com    7/16/2012
- */
-static inline u32 mid_pipesurf(int pipe)
-{
-	switch (pipe) {
-	case 0:
-		return DSPASURF;
-
-	case 1:
-		return DSPBSURF;
-
-	case 2:
-		return DSPCSURF;
-	}
-
-	BUG();
-}				/* mid_pipesurf */
-
 void psb_enable_pipestat(struct drm_psb_private *dev_priv, int pipe, u32 mask)
 {
 	if ((dev_priv->pipestat[pipe] & mask) != mask) {
@@ -166,94 +144,6 @@ void mid_disable_pipe_event(struct drm_psb_private *dev_priv, int pipe)
 	}
 }
 
-/*********************************
- *  Similar to the same-named routine for MRST : supports cloning the
- *      MIPI  display to HDMI,  ensuring that both surfaces are using
- *      the same buffers. This routine will return boolean true if
- *
- *          a)  both HDMI and MIPI have serviced their vsync irq's or
- *          b)  HDMI is inactive.
- *
- *      Otherwise it returns false, Thus, this routine returning true
- *      indicates that one could finalize the flip, since the pair is
- *      now in sync.
- *
- *  williamx.f.schmidt@intel.com
- */
-static int mipi_hdmi_vsync_check(struct drm_device *dev, uint32_t pipe)
-{
-#define TOO_BIG             0xffffffff
-
-	struct drm_psb_private *dev_priv;
-	struct mdfld_dsi_config *dsi_config;
-	struct mid_intel_hdmi_priv *hdmi_priv;
-	static uint32_t pipe_surf[2] = { TOO_BIG, TOO_BIG };
-	uint32_t pipea_stat, pipeb_stat, pipeb_ctl, pipeb_cntr;
-	unsigned long irqflags;
-
-	dev_priv = dev->dev_private;
-	dsi_config = dev_priv->dsi_configs[0];
-	hdmi_priv = dev_priv->hdmi_priv;
-
-	spin_lock_irqsave(&dev_priv->irqmask_lock, irqflags);
-
-	/*
-	 *  If there ain't no HDMI, or the MIPI's asleep, there's no need
-	 *  to do any checks.
-	 */
-	if (!hdmi_priv || !hdmi_priv->hdmi_device_connected ||
-			!dev_priv->dpi_panel_on)
-		goto checkDone;
-
-	/*
-	 *  If, for some reason, we can't get a powered up display island
-	 *  (shouldn't happen) then return something appropriate.
-	 */
-	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
-				       OSPM_UHB_ONLY_IF_ON)) {
-		goto checkNot;
-	}
-
-	pipea_stat = REG_READ(psb_pipestat(0));
-	pipeb_stat = REG_READ(psb_pipestat(1));
-	pipeb_ctl = REG_READ(HDMIB_CONTROL);
-	pipeb_cntr = REG_READ(DSPBCNTR);
-	pipe_surf[pipe] = REG_READ(mid_pipesurf(pipe));
-
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-
-	/*
-	 *  If indeed HDMI is connected, and it is enabled processing the
-	 *  vsync irq, then we have done both flips when the surfaces for
-	 *  HDMI and MIPI are identical. Further vsync's prior to another
-	 *  flip  will succeed because we'll junk the local surfaces with
-	 *  the 'TOO_BIG' value.
-	 */
-	if ((pipea_stat & PIPE_VBLANK_INTERRUPT_ENABLE) &&
-	    (pipeb_ctl & HDMIB_PORT_EN) &&
-	    (pipeb_cntr & DISPLAY_PLANE_ENABLE) &&
-	    (pipeb_stat & PIPE_VBLANK_INTERRUPT_ENABLE)) {
-		if (pipe_surf[0] == pipe_surf[1]) {
-			pipe_surf[0] = TOO_BIG;
-			pipe_surf[1] = TOO_BIG;
-		} else {
-
- checkNot:
-
-			spin_unlock_irqrestore(&dev_priv->irqmask_lock,
-					       irqflags);
-			return 0;
-		}
-	}
-
- checkDone:
-
-	spin_unlock_irqrestore(&dev_priv->irqmask_lock, irqflags);
-	return 1;
-
-#undef TOO_BIG
-}				/* mipi_hdmi_vsync_check */
-
 /**
  * Check if we can disable vblank for video MIPI display
  *
@@ -273,12 +163,9 @@ static void mid_check_vblank(struct drm_device *dev, uint32_t pipe)
 	}
 
 	spin_lock_irqsave(&dev_priv->irqmask_lock, irqflags);
-	if (dev_priv->dsr_idle_count > 50) {
-		mid_disable_pipe_event(dev_priv, pipe);
-		psb_disable_pipestat(dev_priv, pipe,
-				     PIPE_VBLANK_INTERRUPT_ENABLE);
+	if (dev_priv->dsr_idle_count > 50)
 		dev_priv->b_is_in_idle = true;
-	} else
+	else
 		dev_priv->dsr_idle_count++;
 	spin_unlock_irqrestore(&dev_priv->irqmask_lock, irqflags);
 }
@@ -303,16 +190,6 @@ static void mid_vblank_handler(struct drm_device *dev, uint32_t pipe)
 	    (struct drm_psb_private *)dev->dev_private;
 
 	drm_handle_vblank(dev, pipe);
-
-	/*
-	 *  We don't want to finalize a flip  unless both  HDMI and  MIPI
-	 *  have completed when in clone mode.  (Plus,  make sure nothing
-	 *  has removed the vsync handler!)
-	 */
-	if (!mipi_hdmi_vsync_check(dev, pipe) ||
-	    (dev_priv->psb_vsync_handler == NULL)) {
-		return;
-	}
 
 	if (dev_priv->psb_vsync_handler)
 		(*dev_priv->psb_vsync_handler)(dev, pipe);
@@ -682,62 +559,6 @@ int psb_irq_postinstall_islands(struct drm_device *dev, int hw_islands)
 	/*This register is safe even if display island is off */
 	PSB_WVDC32(dev_priv->vdc_irq_mask, PSB_INT_ENABLE_R);
 
-	if (hw_islands & OSPM_DISPLAY_ISLAND) {
-		if (true	/*powermgmt_is_hw_on(dev->pdev, PSB_DISPLAY_ISLAND) */
-		    ) {
-			if (dev->vblank_enabled[0]) {
-				if (dev_priv->platform_rev_id != MDFLD_PNW_A0 &&
-				    !is_panel_vid_or_cmd(dev)) {
-#if 0				/* FIXME need to revisit it */
-					psb_enable_pipestat(dev_priv, 0,
-							    PIPE_TE_ENABLE);
-#endif
-				} else
-					psb_enable_pipestat(dev_priv, 0,
-							    PIPE_VBLANK_INTERRUPT_ENABLE);
-			} else {
-				if (dev_priv->platform_rev_id != MDFLD_PNW_A0 &&
-				    !is_panel_vid_or_cmd(dev)) {
-#if 0				/* FIXME need to revisit it */
-					psb_disable_pipestat(dev_priv, 0,
-							     PIPE_TE_ENABLE);
-#endif
-				} else
-					psb_disable_pipestat(dev_priv, 0,
-							     PIPE_VBLANK_INTERRUPT_ENABLE);
-			}
-
-			if (dev->vblank_enabled[1])
-				psb_enable_pipestat(dev_priv, 1,
-						    PIPE_VBLANK_INTERRUPT_ENABLE);
-			else
-				psb_disable_pipestat(dev_priv, 1,
-						     PIPE_VBLANK_INTERRUPT_ENABLE);
-
-			if (dev->vblank_enabled[2]) {
-				if (dev_priv->platform_rev_id != MDFLD_PNW_A0 &&
-				    !is_panel_vid_or_cmd(dev)) {
-#if 0				/* FIXME need to revisit it */
-					psb_enable_pipestat(dev_priv, 2,
-							    PIPE_TE_ENABLE);
-#endif
-				} else
-					psb_enable_pipestat(dev_priv, 2,
-							    PIPE_VBLANK_INTERRUPT_ENABLE);
-			} else {
-				if (dev_priv->platform_rev_id != MDFLD_PNW_A0 &&
-				    !is_panel_vid_or_cmd(dev)) {
-#if 0				/* FIXME need to revisit it */
-					psb_disable_pipestat(dev_priv, 2,
-							     PIPE_TE_ENABLE);
-#endif
-				} else
-					psb_disable_pipestat(dev_priv, 2,
-							     PIPE_VBLANK_INTERRUPT_ENABLE);
-			}
-		}
-	}
-
 	if (IS_MID(dev) && !dev_priv->topaz_disabled)
 		if (hw_islands & OSPM_VIDEO_ENC_ISLAND)
 			if (ospm_power_is_hw_on(OSPM_VIDEO_ENC_ISLAND)) {
@@ -774,42 +595,12 @@ void psb_irq_uninstall_islands(struct drm_device *dev, int hw_islands)
 
 	spin_lock_irqsave(&dev_priv->irqmask_lock, irqflags);
 
-	if (hw_islands & OSPM_DISPLAY_ISLAND) {
-		if (true	/*powermgmt_is_hw_on(dev->pdev, PSB_DISPLAY_ISLAND) */
-		    ) {
-			if (dev->vblank_enabled[0]) {
-				if (dev_priv->platform_rev_id != MDFLD_PNW_A0 &&
-				    !is_panel_vid_or_cmd(dev)) {
-#if 0				/* FIXME need to revisit it */
-					psb_disable_pipestat(dev_priv, 0,
-							     PIPE_TE_ENABLE);
-#endif
-				} else
-					psb_disable_pipestat(dev_priv, 0,
-							     PIPE_VBLANK_INTERRUPT_ENABLE);
-			}
-
-			if (dev->vblank_enabled[1])
-				psb_disable_pipestat(dev_priv, 1,
-						     PIPE_VBLANK_INTERRUPT_ENABLE);
-
-			if (dev->vblank_enabled[2]) {
-				if (dev_priv->platform_rev_id != MDFLD_PNW_A0 &&
-				    !is_panel_vid_or_cmd(dev)) {
-#if 0				/* FIXME need to revisit it */
-					psb_disable_pipestat(dev_priv, 2,
-							     PIPE_TE_ENABLE);
-#endif
-				} else
-					psb_disable_pipestat(dev_priv, 2,
-							     PIPE_VBLANK_INTERRUPT_ENABLE);
-			}
-		}
+	if (hw_islands & OSPM_DISPLAY_ISLAND)
 		dev_priv->vdc_irq_mask &= _PSB_IRQ_SGX_FLAG |
 					  _PSB_IRQ_MSVDX_FLAG |
 					  _LNC_IRQ_TOPAZ_FLAG |
 					  _TNG_IRQ_VSP_FLAG;
-	}
+
 	/*TODO: remove follwoing code */
 	if (hw_islands & OSPM_GRAPHICS_ISLAND) {
 		dev_priv->vdc_irq_mask &= ~_PSB_IRQ_SGX_FLAG;
@@ -990,6 +781,7 @@ int psb_enable_vblank(struct drm_device *dev, int pipe)
 	psb_enable_pipestat(dev_priv, pipe, PIPE_VBLANK_INTERRUPT_ENABLE);
 
 	spin_unlock_irqrestore(&dev_priv->irqmask_lock, irqflags);
+	PSB_DEBUG_ENTRY("%s: Enabled VBlank for pipe %d\n", __func__, pipe);
 
 	return 0;
 }
@@ -1017,6 +809,7 @@ void psb_disable_vblank(struct drm_device *dev, int pipe)
 	psb_disable_pipestat(dev_priv, pipe, PIPE_VBLANK_INTERRUPT_ENABLE);
 
 	spin_unlock_irqrestore(&dev_priv->irqmask_lock, irqflags);
+	PSB_DEBUG_ENTRY("%s: Disabled VBlank for pipe %d\n", __func__, pipe);
 }
 
 /* Called from drm generic code, passed a 'crtc', which
@@ -1054,7 +847,7 @@ u32 psb_get_vblank_counter(struct drm_device *dev, int pipe)
 	reg_val = REG_READ(pipeconf_reg);
 
 	if (!(reg_val & PIPEACONF_ENABLE)) {
-		DRM_ERROR("trying to get vblank count for disabled pipe %d\n",
+		DRM_DEBUG("trying to get vblank count for disabled pipe %d\n",
 			  pipe);
 		goto psb_get_vblank_counter_exit;
 	}
@@ -1093,8 +886,6 @@ int mdfld_enable_te(struct drm_device *dev, int pipe)
 	uint32_t reg_val = 0;
 	uint32_t pipeconf_reg = mid_pipeconf(pipe);
 
-	PSB_DEBUG_ENTRY("pipe = %d, \n", pipe);
-
 	if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, OSPM_UHB_ONLY_IF_ON)) {
 		reg_val = REG_READ(pipeconf_reg);
 		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
@@ -1109,6 +900,7 @@ int mdfld_enable_te(struct drm_device *dev, int pipe)
 	psb_enable_pipestat(dev_priv, pipe, PIPE_TE_ENABLE);
 
 	spin_unlock_irqrestore(&dev_priv->irqmask_lock, irqflags);
+	PSB_DEBUG_ENTRY("%s: Enabled TE for pipe %d\n", __func__, pipe);
 
 	return 0;
 }
@@ -1122,14 +914,13 @@ void mdfld_disable_te(struct drm_device *dev, int pipe)
 	    (struct drm_psb_private *)dev->dev_private;
 	unsigned long irqflags;
 
-	PSB_DEBUG_ENTRY("\n");
-
 	spin_lock_irqsave(&dev_priv->irqmask_lock, irqflags);
 
 	mid_disable_pipe_event(dev_priv, pipe);
 	psb_disable_pipestat(dev_priv, pipe, PIPE_TE_ENABLE);
 
 	spin_unlock_irqrestore(&dev_priv->irqmask_lock, irqflags);
+	PSB_DEBUG_ENTRY("%s: Disabled TE for pipe %d\n", __func__, pipe);
 }
 
 int mid_irq_enable_hdmi_audio(struct drm_device *dev)

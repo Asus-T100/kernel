@@ -2315,7 +2315,6 @@ void android_hdmi_dpms(struct drm_encoder *encoder, int mode)
 
 		REG_WRITE(hdmi_priv->hdmib_reg,
 			hdmib & ~HDMIB_PORT_EN & ~HDMIB_AUDIO_ENABLE);
-		psb_disable_vblank(dev, 1);
 		REG_WRITE(HDMIPHYMISCCTL, hdmi_phy_misc | HDMI_PHY_POWER_DOWN);
 		rc = otm_hdmi_disable_all_infoframes(hdmi_priv->context);
 		if (rc != OTM_HDMI_SUCCESS)
@@ -2324,7 +2323,6 @@ void android_hdmi_dpms(struct drm_encoder *encoder, int mode)
 
 	} else {
 		REG_WRITE(HDMIPHYMISCCTL, hdmi_phy_misc & ~HDMI_PHY_POWER_DOWN);
-		psb_enable_vblank(dev, 1);
 		REG_WRITE(hdmi_priv->hdmib_reg, hdmib | HDMIB_PORT_EN);
 
 	if (is_monitor_hdmi && (hdmip_enabled == 0))
