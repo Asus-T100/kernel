@@ -208,26 +208,6 @@ int sst_alloc_stream_clv(char *params)
 	sst_drv_ctx->ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
 	return str_id;
 }
-static unsigned int get_mrfld_stream_info(u8 device_type, int *pipe_id)
-{
-	int str_id = 0;
-
-	if (device_type == SND_SST_DEVICE_HEADSET) {
-		*pipe_id = PIPE_MEDIA1_IN;
-		str_id = 1;
-	} else if (device_type == SND_SST_DEVICE_COMPRESSED_PLAYBACK) {
-		*pipe_id = PIPE_MEDIA0_IN;
-		str_id = 2;
-	} else if (device_type == SND_SST_DEVICE_CAPTURE) {
-		*pipe_id = PIPE_PCM1_OUT;
-		str_id = 3;
-	} else {
-		/* error case */
-		*pipe_id = PIPE_RSVD;
-	}
-
-	return str_id;
-}
 
 int sst_alloc_stream_mrfld(char *params)
 {
@@ -265,12 +245,11 @@ int sst_alloc_stream_mrfld(char *params)
 	pr_debug("ring_buf_addr = 0x%x\n", alloc_param.ring_buf_info[0].addr);
 	pr_debug("ring_buf_size = %d\n", alloc_param.ring_buf_info[0].size);
 	pr_debug("In alloc sg_count =%d\n", alloc_param.sg_count);
-	mutex_lock(&sst_drv_ctx->stream_lock);
-	str_id = get_mrfld_stream_info(str_params->device_type, &pipe_id);
-	mutex_unlock(&sst_drv_ctx->stream_lock);
-	if (str_id <= 0)
-		return -EBUSY;
+
+	str_id = str_params->stream_id;
+	pipe_id = str_params->device_type;
 	sst_drv_ctx->streams[str_id].pipe_id = pipe_id;
+
 	pvt_id = sst_assign_pvt_id(sst_drv_ctx);
 	alloc_param.ts = (sst_drv_ctx->mailbox_add +
 			sst_drv_ctx->tstamp + (str_id * sizeof(fw_tstamp)));
@@ -549,6 +528,8 @@ int sst_start_stream(int str_id)
 	if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID) {
 		pr_debug("start mrfld");
 		pvt_id = sst_assign_pvt_id(sst_drv_ctx);
+		pr_debug("pvt id = %d\n", pvt_id);
+		pr_debug("pipe id = %d\n", str_info->pipe_id);
 		sst_fill_header_mrfld(&msg->mrfld_header,
 			IPC_CMD, IPC_QUE_ID_MED, 1, pvt_id);
 
@@ -578,7 +559,6 @@ int sst_start_stream(int str_id)
 		memcpy(msg->mailbox_data, &len, sizeof(len));
 #endif
 	}
-
 	sst_drv_ctx->ops->sync_post_message(msg);
 	return retval;
 }

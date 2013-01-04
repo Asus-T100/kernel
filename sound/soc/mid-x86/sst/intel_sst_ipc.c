@@ -631,6 +631,7 @@ void sst_process_reply_mrfld(struct work_struct *work)
 		}
 	} else {
 		str_id = sst_get_stream_mrfld(sst_drv_ctx, drv_id);
+		pr_debug("after get_stream_mrfld str_id = %d\n", str_id);
 		if (str_id < 0)
 			goto end;
 		if (msg->mrfld_header.p.header_high.part.large) {
