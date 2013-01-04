@@ -311,8 +311,6 @@ struct atomisp_device {
 	struct atomisp_tpg_device tpg;
 	struct atomisp_file_device file_dev;
 
-	struct completion dis_state_complete;
-
 	/* Purpose of mutex is to protect and serialize use of isp data
 	 * structures and css API calls. */
 	struct mutex mutex;

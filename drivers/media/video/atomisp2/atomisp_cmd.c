@@ -838,8 +838,6 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error,
 					isp->params.dis_ver_proj_buf, buffer);
 
 				isp->params.dis_proj_data_valid = true;
-				/* wake up the sleep thread in atomisp_get_dis_stat */
-				complete(&isp->dis_state_complete);
 			}
 			isp->dis_bufs_in_css--;
 			break;
@@ -2223,7 +2221,6 @@ int atomisp_get_dis_stat(struct atomisp_device *isp,
 {
 	unsigned long flags;
 	int error;
-	long left;
 
 	if (stats->vertical_projections   == NULL ||
 	    stats->horizontal_projections == NULL ||
@@ -2242,28 +2239,8 @@ int atomisp_get_dis_stat(struct atomisp_device *isp,
 	if (!isp->params.video_dis_en)
 		return -EINVAL;
 
-	INIT_COMPLETION(isp->dis_state_complete);
-	/*this might be blocking other v4l2 calls*/
-	if(!isp->params.dis_proj_data_valid) {
-		/* ioctl is holding lock when this is called */
-		mutex_unlock(&isp->mutex);
-		left = wait_for_completion_timeout(&isp->dis_state_complete,
-						   1 * HZ);
-		mutex_lock(&isp->mutex);
-
-		/* Timeout to get the statistics */
-		if (left == 0) {
-			v4l2_err(&atomisp_dev,
-				 "Failed to wait frame DIS state\n");
-			return -EINVAL;
-		}
-		if (!isp->params.dis_proj_data_valid) {
-			v4l2_err(&atomisp_dev,
-			"%s: dis_proj_data_valid is not true, try again\n",
-					__func__);
-			return -EAGAIN;
-		}
-	}
+	if (!isp->params.dis_proj_data_valid)
+		return -EBUSY;
 
 	error = copy_to_user(stats->vertical_projections,
 			     isp->params.dis_ver_proj_buf,
@@ -2302,7 +2279,6 @@ int atomisp_set_dis_coefs(struct atomisp_device *isp,
 		return -EFAULT;
 	sh_css_set_dis_coefficients(isp->params.dis_hor_coef_buf,
 				    isp->params.dis_ver_coef_buf);
-
 
 	isp->params.dis_proj_data_valid = false;
 

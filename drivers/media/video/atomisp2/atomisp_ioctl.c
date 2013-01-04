@@ -1391,6 +1391,7 @@ static int atomisp_streamon(struct file *file, void *fh,
 	mod_timer(&isp->wdt, jiffies + ATOMISP_ISP_TIMEOUT_DURATION);
 	isp->fr_status = ATOMISP_FRAME_STATUS_OK;
 	isp->sw_contex.invalid_frame = false;
+	isp->params.dis_proj_data_valid = false;
 
 	atomisp_qbuffers_to_css(isp);
 
