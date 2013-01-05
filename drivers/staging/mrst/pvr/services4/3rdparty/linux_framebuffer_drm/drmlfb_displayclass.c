@@ -1320,8 +1320,13 @@ static void timer_flip_handler(struct work_struct *work)
 	MRSTLFB_DEVINFO *psDevInfo;
 	MRSTLFB_SWAPCHAIN *psSwapChain;
 	MRSTLFB_VSYNC_FLIP_ITEM *psLastItem;
+	struct drm_psb_private *dev_priv;
+	struct mdfld_dsi_config *dsi_config;
 
 	psDevInfo = container_of(work, MRSTLFB_DEVINFO, flip_complete_work);
+	dev_priv =
+		(struct drm_psb_private *)psDevInfo->psDrmDevice->dev_private;
+	dsi_config = dev_priv->dsi_configs[0];
 
 	mutex_lock(&psDevInfo->sSwapChainMutex);
 	psSwapChain = psDevInfo->psCurrentSwapChain;
@@ -1347,6 +1352,14 @@ static void timer_flip_handler(struct work_struct *work)
 	 */
 
 	FlushInternalVSyncQueue(psSwapChain, MRST_TRUE);
+
+	mutex_unlock(&psDevInfo->sSwapChainMutex);
+
+	if (dsi_config->flip_abnormal_count == 0)
+		psb_display_reg_dump(psDevInfo->psDrmDevice);
+
+	dsi_config->flip_abnormal_count++;
+	return;
 
 ExitUnlock:
 	mutex_unlock(&psDevInfo->sSwapChainMutex);

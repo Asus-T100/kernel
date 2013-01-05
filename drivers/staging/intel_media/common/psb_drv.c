@@ -2948,11 +2948,10 @@ static int psb_register_dump(struct drm_device *dev, int start, int end)
 					REG_READ(Offset + 0x8),
 					REG_READ(Offset + 0xc));
 	}
-
 	return ret;
 }
 
-static int psb_display_reg_dump(struct drm_device *dev)
+int psb_display_reg_dump(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *) dev->dev_private;

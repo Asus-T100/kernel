@@ -554,6 +554,7 @@ reset_recovery:
 	/*wait for all FIFOs empty*/
 	mdfld_dsi_wait_for_fifos_empty(sender);
 
+	dsi_config->flip_abnormal_count = 0;
 power_on_err:
 	if (err && reset_count) {
 		if (dev_priv->bhdmiconnected) {
@@ -1162,11 +1163,16 @@ void mdfld_reset_panel_handler_work(struct work_struct *work)
 	struct mdfld_dsi_config *dsi_config = NULL;
 	struct mdfld_dsi_dbi_output *dbi_output = NULL;
 	struct panel_funcs *p_funcs  = NULL;
+	struct drm_device *dev = NULL;
+	struct mdfld_dsi_connector *dsi_connector;
 
 	dbi_output = dev_priv->dbi_output;
 	dsi_config = dev_priv->dsi_configs[0];
 	if (!dsi_config || !dbi_output)
 		return;
+
+	dev = dsi_config->dev;
+	dsi_connector = mdfld_dsi_encoder_get_connector(dsi_config->encoder);
 
 	/*disable ESD when HDMI connected*/
 	if (hdmi_state)
@@ -1177,6 +1183,9 @@ void mdfld_reset_panel_handler_work(struct work_struct *work)
 	p_funcs = dbi_output->p_funcs;
 	if (p_funcs) {
 		mutex_lock(&dsi_config->context_lock);
+
+		if (dev_priv->pvr_screen_event_handler)
+			dev_priv->pvr_screen_event_handler(dev, 0);
 
 		if (__dbi_panel_power_off(dsi_config, p_funcs)) {
 			mutex_unlock(&dsi_config->context_lock);
@@ -1193,8 +1202,10 @@ void mdfld_reset_panel_handler_work(struct work_struct *work)
 			return;
 		}
 
-		mutex_unlock(&dsi_config->context_lock);
+		if (dev_priv->pvr_screen_event_handler)
+			dev_priv->pvr_screen_event_handler(dev, 1);
 
+		mutex_unlock(&dsi_config->context_lock);
 		DRM_INFO("%s: End panel reset\n", __func__);
 	} else {
 		DRM_INFO("%s invalid panel init\n", __func__);
