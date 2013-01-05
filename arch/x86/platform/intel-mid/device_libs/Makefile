@@ -70,6 +70,7 @@ obj-$(subst m,y,$(CONFIG_VIDEO_IMX135))					+= platform_imx135.o
 obj-$(subst m,y,$(CONFIG_VIDEO_OV9724))					+= platform_ov9724.o
 obj-$(subst m,y,$(CONFIG_VIDEO_LM3554))					+= platform_lm3554.o
 obj-$(subst m,y,$(CONFIG_VIDEO_LM3559))					+= platform_lm3559.o
+obj-$(subst m,y,$(CONFIG_VIDEO_OV5640))					+= platform_ov5640.o
 endif
 # SPI Devices
 obj-$(subst m,y,$(CONFIG_SERIAL_MRST_MAX3110))				+= platform_max3111.o
