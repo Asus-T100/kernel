@@ -1318,7 +1318,7 @@ extern int drm_psb_topaz_clockgating;
 
 extern char HDMI_EDID[20];
 extern int hdmi_state;
-
+int psb_display_reg_dump(struct drm_device *dev);
 /*
  * set cpu_relax = 1 in sysfs to use cpu_relax instead of udelay bysy loop
  * set udelay_divider to reduce the udelay values,e.g.= 10, reduce 10 times

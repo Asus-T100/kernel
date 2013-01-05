@@ -30,7 +30,6 @@
 #include "mdfld_dsi_dbi_dsr.h"
 
 #define MDFLD_ESD_SLEEP_MSECS	3500
-
 /**
  * esd detection
  */
@@ -51,6 +50,11 @@ static bool intel_dsi_dbi_esd_detection(struct mdfld_dsi_config *dsi_config)
 	 */
 	if ((ret == -EIO) || ((ret == 1) && ((data & 0x14) != 0x14)))
 		return true;
+
+	if (dsi_config->flip_abnormal_count) {
+		DRM_INFO("esd recovery happen because flip abnormal.\n");
+		return true;
+	}
 
 	return false;
 }
@@ -77,7 +81,6 @@ static int __esd_thread(void *data)
 			 kthread_should_stop()));
 
 		dbi_output = dev_priv->dbi_output;
-
 		if (!dbi_output)
 			goto esd_exit;
 
