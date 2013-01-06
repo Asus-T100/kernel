@@ -1004,6 +1004,7 @@ bool intel_mid_get_vbt_data(struct drm_psb_private *dev_priv)
 	}
 
 	dev_priv->panel_id = ret;
+	goto out; /* fix warning */
 
 out:
 	PanelID = dev_priv->panel_id;
@@ -1015,7 +1016,6 @@ out:
 #ifdef CONFIG_SUPPORT_HDMI
 void hdmi_do_audio_wq(struct work_struct *work)
 {
-	u8 data = 0;
 	struct drm_psb_private *dev_priv = container_of(work,
 		struct drm_psb_private,
 		hdmi_audio_wq);
@@ -1847,6 +1847,7 @@ static int psb_enable_ied_session_ioctl(struct drm_device *dev, void *data,
 {
 	struct drm_psb_private *dev_priv = psb_priv(dev);
 	struct mdfld_dsi_config *dsi_config = dev_priv->dsi_configs[0];
+	data = data;
 	DRM_INFO("Enabling IED session...\n");
 	if (file_priv == NULL) {
 		DRM_ERROR("%s: file_priv is NULL.\n", __func__);
@@ -1876,8 +1877,9 @@ static int psb_disable_ied_session_ioctl(struct drm_device *dev, void *data,
 {
 	int ret = 0;
 	struct drm_psb_private *dev_priv = psb_priv(dev);
-	DRM_INFO("Disabling IED session...\n");
 	struct mdfld_dsi_config *dsi_config = dev_priv->dsi_configs[0];
+	data = data;
+	DRM_INFO("Disabling IED session...\n");
 	if (file_priv == NULL) {
 		DRM_ERROR("%s: file_priv is NULL.\n", __func__);
 		return -1;
@@ -2108,7 +2110,7 @@ static int psb_get_hdcp_status_ioctl(struct drm_device *dev, void *data,
 static int psb_enable_hdcp_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv)
 {
-	int ret;
+	int ret = 0;
 	if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
 				OSPM_UHB_FORCE_POWER_ON)) {
 		ret = android_enable_hdmi_hdcp(dev);
@@ -2121,7 +2123,7 @@ static int psb_enable_hdcp_ioctl(struct drm_device *dev, void *data,
 static int psb_disable_hdcp_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv)
 {
-	int ret;
+	int ret = 0;
 	if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
 				OSPM_UHB_FORCE_POWER_ON)) {
 		ret = android_disable_hdmi_hdcp(dev);
@@ -2900,12 +2902,8 @@ out_err0:
 */
 static int psb_register_dump(struct drm_device *dev, int start, int end)
 {
-
-	struct drm_psb_private *dev_priv =
-		(struct drm_psb_private *) dev->dev_private;
 	int  len = 0;
 	int  Offset = 0;
-	int  add_size = 0;
 	int  ret = 0;
 
 	PSB_DEBUG_ENTRY("start:0x%08x\n", start);
@@ -3256,6 +3254,7 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 	}
 
 	if (arg->overlay_write_mask != 0) {
+		int pipenum;
 		uint32_t ovadd_pipe = (arg->overlay.OVADD >> 6) & 0x3;
 
 		if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, usage)) {
@@ -3329,7 +3328,7 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 
 				/* when switch back from HDMI to local
 				 * this ensures the Pipe B is fully disabled */
-				int pipenum = ((arg->overlay.OVADD >> 6) & 0x3) ? 1 : 0;
+				pipenum = ((arg->overlay.OVADD >> 6) & 0x3) ? 1 : 0;
 				wait_for_pipeb_finish(dev, pipenum);
 
 				if (arg->overlay.b_wait_vblank)
@@ -3630,12 +3629,6 @@ static int psb_driver_open(struct drm_device *dev, struct drm_file *priv)
 static long psb_unlocked_ioctl(struct file *filp, unsigned int cmd,
 			       unsigned long arg)
 {
-#ifdef CONFIG_GFX_RTPM
-	struct drm_file *file_priv = filp->private_data;
-	struct drm_device *dev = file_priv->minor->dev;
-	struct drm_psb_private *dev_priv = dev->dev_private;
-	static unsigned int runtime_allowed;
-#endif
 	unsigned int nr = DRM_IOCTL_NR(cmd);
 	long ret;
 
@@ -3841,19 +3834,14 @@ static int psb_panel_register_write(struct file *file, const char *buffer,
 	struct drm_device *dev = minor->dev;
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *) dev->dev_private;
-	struct mdfld_dsi_dbi_output **dbi_outputs;
-	struct mdfld_dsi_dbi_output *dbi_output;
-	struct mdfld_dbi_dsr_info *dsr_info = dev_priv->dbi_dsr_info;
 	struct mdfld_dsi_config *dsi_config = dev_priv->dsi_configs[0];
-	int reg_val = 0;
 	char buf[256];
 	char op = '0';
 	char type = '0';
-	int  cmd = 0, start = 0, end = 0;
+	int  cmd = 0;
 	char par[256];
 	int  pnum = 0;
-	int  len = 0;
-	int  Offset = 0, par_offset = 0;
+	int  par_offset = 0;
 	int  add_size = 0;
 	int  ret = 0;
 	u8 *pdata = NULL;
@@ -3931,15 +3919,13 @@ static int psb_panel_register_write(struct file *file, const char *buffer,
 						dev_priv->buf + dev_priv->count,
 						"cmd : 0x%02x\n", cmd);
 			for (i = 0; i < pnum; i++) {
-				PSB_DEBUG_ENTRY("par%d= 0x%02x\n",
-							 i, pdata[i], pdata[i]);
+				PSB_DEBUG_ENTRY("par%d= 0x%02x\n", i, pdata[i]);
 				add_size = sizeof("par1=0xFF 0xFF\n");
 			  if (dev_priv->buf && (dev_priv->count + add_size)
 						 < PSB_REG_PRINT_SIZE)
 					dev_priv->count += sprintf(
 					    dev_priv->buf + dev_priv->count,
-					   "par%d= 0x%02x\n",
-						 i, pdata[i], pdata[i]);
+					   "par%d= 0x%02x\n", i, pdata[i]);
 			}
 		} else {
 			PSB_DEBUG_ENTRY("get panel status fail\n");
@@ -4018,9 +4004,6 @@ static int psb_display_register_write(struct file *file, const char *buffer,
 	struct drm_device *dev = minor->dev;
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *) dev->dev_private;
-	struct mdfld_dsi_dbi_output **dbi_outputs;
-	struct mdfld_dsi_dbi_output *dbi_output;
-	struct mdfld_dbi_dsr_info *dsr_info = dev_priv->dbi_dsr_info;
 	struct mdfld_dsi_config *dsi_config = dev_priv->dsi_configs[0];
 	int reg_val = 0;
 	char buf[256];
@@ -4403,14 +4386,16 @@ out_err0:
 
 int psb_release(struct inode *inode, struct file *filp)
 {
-	struct drm_file *file_priv;
 	struct psb_fpriv *psb_fp;
 	struct drm_psb_private *dev_priv;
 	struct msvdx_private *msvdx_priv;
-	int ret, i, island_is_on;
-	struct psb_msvdx_ec_ctx *ec_ctx;
-	file_priv = (struct drm_file *) filp->private_data;
+	int ret, island_is_on;
+	struct drm_file *file_priv = (struct drm_file *) filp->private_data;
+#ifdef CONFIG_VIDEO_MRFLD
 	struct ttm_object_file *tfile = psb_fpriv(file_priv)->tfile;
+	int i;
+	struct psb_msvdx_ec_ctx *ec_ctx;
+#endif
 	struct mdfld_dsi_config *dsi_config;
 	psb_fp = psb_fpriv(file_priv);
 	dev_priv = psb_priv(file_priv->minor->dev);
@@ -4646,8 +4631,6 @@ static int __init psb_init(void)
 
 static void __exit psb_exit(void)
 {
-	int ret;
-
 #ifdef CONFIG_SUPPORT_HDMI
 	if (gpDrmDevice) {
 		struct drm_psb_private *dev_priv = NULL;

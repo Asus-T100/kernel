@@ -205,7 +205,7 @@ static void MRSTLFBFlipSprite(MRSTLFB_DEVINFO *psDevInfo,
 {
 	struct drm_device *dev;
 	struct drm_psb_private *dev_priv;
-	struct mdfld_dsi_config *dsi_config;
+	struct mdfld_dsi_config *dsi_config = 0;
 	struct mdfld_dsi_hw_context *ctx;
 	u32 reg_offset;
 	int pipe;
@@ -263,7 +263,7 @@ static void MRSTLFBFlipPrimary(MRSTLFB_DEVINFO *psDevInfo,
 {
 	struct drm_device *dev;
 	struct drm_psb_private *dev_priv;
-	struct mdfld_dsi_config *dsi_config = 0;
+	struct mdfld_dsi_config *dsi_config = NULL;
 	struct mdfld_dsi_hw_context *ctx = 0;
 	u32 reg_offset;
 	int pipe;
@@ -643,6 +643,7 @@ static IMG_VOID SetDCState(IMG_HANDLE hDevice, IMG_UINT32 ui32State)
 	return;
 }
 
+#if 0
 static int FrameBufferEvents(struct notifier_block *psNotif,
                              unsigned long event, void *data)
 {
@@ -669,6 +670,7 @@ static int FrameBufferEvents(struct notifier_block *psNotif,
 
 	return 0;
 }
+#endif
 
 static MRST_ERROR UnblankDisplay(MRSTLFB_DEVINFO *psDevInfo)
 {
@@ -743,7 +745,6 @@ static PVRSRV_ERROR OpenDCDevice(IMG_UINT32 ui32DeviceID,
                                  PVRSRV_SYNC_DATA* psSystemBufferSyncData)
 {
 	MRSTLFB_DEVINFO *psDevInfo;
-	MRST_ERROR eError;
 
 	UNREFERENCED_PARAMETER(ui32DeviceID);
 
@@ -950,7 +951,6 @@ static PVRSRV_ERROR CreateDCSwapChain(IMG_HANDLE hDevice,
 	IMG_UINT32 i;
 	IMG_UINT32 iSCId = MAX_SWAPCHAINS;
 	PVRSRV_ERROR eError = PVRSRV_ERROR_NOT_SUPPORTED;
-	unsigned long ulLockFlags;
 	struct drm_device* psDrmDev;
 	unsigned long ulSwapChainLength;
 	struct drm_psb_private *dev_priv = NULL;
@@ -1125,7 +1125,6 @@ static PVRSRV_ERROR DestroyDCSwapChain(IMG_HANDLE hDevice,
 {
 	MRSTLFB_DEVINFO	*psDevInfo;
 	MRSTLFB_SWAPCHAIN *psSwapChain;
-	unsigned long ulLockFlags;
 	int i;
 	IMG_UINT32 taskid;
 
@@ -1374,26 +1373,11 @@ void MRSTLFBFlipTimerFn(unsigned long arg)
 	schedule_work(&psDevInfo->flip_complete_work);
 }
 
-
-static PVRSRV_ERROR SwapToDCSystem(IMG_HANDLE hDevice,
-                                   IMG_HANDLE hSwapChain)
-{
-	if(!hDevice || !hSwapChain)
-	{
-		return (PVRSRV_ERROR_INVALID_PARAMS);
-	}
-
-
-	return (PVRSRV_OK);
-}
-
-
 static MRST_BOOL MRSTLFBVSyncIHandler(MRSTLFB_DEVINFO *psDevInfo, int iPipe)
 {
 	MRSTLFB_VSYNC_FLIP_ITEM *psFlipItem;
 	MRST_BOOL bStatus = MRST_TRUE;
 	unsigned long ulMaxIndex;
-	unsigned long ulLockFlags;
 	MRSTLFB_SWAPCHAIN *psSwapChain;
 
 	mutex_lock(&psDevInfo->sSwapChainMutex);
@@ -1656,7 +1640,6 @@ static IMG_BOOL ProcessFlip2(IMG_HANDLE hCmdCookie,
 #if defined(MRST_USING_INTERRUPTS)
 	MRSTLFB_VSYNC_FLIP_ITEM *psFlipItem;
 #endif
-	unsigned long ulLockFlags;
 	unsigned long irqflags;
 	struct drm_device *dev;
 	struct drm_psb_private *dev_priv;
@@ -1846,7 +1829,6 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 #if defined(MRST_USING_INTERRUPTS)
 	MRSTLFB_VSYNC_FLIP_ITEM* psFlipItem;
 #endif
-	unsigned long ulLockFlags;
 	unsigned long irqflags;
 	struct drm_device *dev;
 	struct drm_psb_private *dev_priv;
@@ -2059,7 +2041,6 @@ static void MRSTFBSetPar(struct fb_info *psLINFBInfo)
 void MRSTLFBSuspend(void)
 {
 	MRSTLFB_DEVINFO *psDevInfo = GetAnchorPtr();
-	unsigned long ulLockFlags;
 
 	mutex_lock(&psDevInfo->sSwapChainMutex);
 
@@ -2080,7 +2061,6 @@ void MRSTLFBSuspend(void)
 void MRSTLFBResume(void)
 {
 	MRSTLFB_DEVINFO *psDevInfo = GetAnchorPtr();
-	unsigned long ulLockFlags;
 
 	mutex_lock(&psDevInfo->sSwapChainMutex);
 
@@ -2211,7 +2191,6 @@ MRST_ERROR MRSTLFBChangeSwapChainProperty(unsigned long *psSwapChainGTTOffset,
 
 	int iSwapChainAttachedPlane = PVRSRV_SWAPCHAIN_ATTACHED_PLANE_NONE;
 	IMG_UINT32 ui32SwapChainID = 0;
-	unsigned long ulLockFlags;
 	unsigned long ulCurrentSwapChainGTTOffset = 0;
 	MRST_ERROR eError = MRST_ERROR_GENERIC;
 
@@ -2321,7 +2300,6 @@ static int MRSTLFBFindMainPipe(struct drm_device *dev)
 static int DRMLFBLeaveVTHandler(struct drm_device *dev)
 {
 	MRSTLFB_DEVINFO *psDevInfo = GetAnchorPtr();
-  	unsigned long ulLockFlags;
 
 	mutex_lock(&psDevInfo->sSwapChainMutex);
 
@@ -2347,7 +2325,6 @@ static int DRMLFBLeaveVTHandler(struct drm_device *dev)
 static int DRMLFBEnterVTHandler(struct drm_device *dev)
 {
 	MRSTLFB_DEVINFO *psDevInfo = GetAnchorPtr();
-  	unsigned long ulLockFlags;
 
 	mutex_lock(&psDevInfo->sSwapChainMutex);
 
