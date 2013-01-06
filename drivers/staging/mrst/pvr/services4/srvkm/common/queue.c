@@ -54,6 +54,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define DC_NUM_COMMANDS_PER_TYPE		1
 #endif
 
+#define DC_NUM_CMDS_COMPLETE_HISTORY  40 /*must be multiple of 4*/
 /*
  * List of private command processing function pointer tables and command
  * complete tables for a device in the system.
@@ -67,6 +68,8 @@ typedef struct _DEVICE_COMMAND_DATA_
 	IMG_UINT32				ui32CCBOffset;
 	IMG_UINT32				ui32MaxDstSyncCount;	/*!< Maximum number of dest syncs */
 	IMG_UINT32				ui32MaxSrcSyncCount;	/*!< Maximum number of source syncs */
+	unsigned long           aulCompTimeHis[DC_NUM_CMDS_COMPLETE_HISTORY];
+	IMG_UINT32              ui32THWriteOffset;
 } DEVICE_COMMAND_DATA;
 
 
@@ -368,11 +371,13 @@ static IMG_VOID QueueDumpDebugInfo_ForEachCb(PVRSRV_DEVICE_NODE *psDeviceNode)
 		SYS_DATA				*psSysData;
 		DEVICE_COMMAND_DATA		*psDeviceCommandData;
 		PCOMMAND_COMPLETE_DATA	psCmdCompleteData;
+		IMG_UINT32 i = 0, looper = 0;
 
 		SysAcquireData(&psSysData);
 
 
 		psDeviceCommandData = psSysData->apsDeviceCommandData[psDeviceNode->sDevId.ui32DeviceIndex];
+		PVR_LOG(("Current Jiffies: %lX", jiffies));
 
 		if (psDeviceCommandData != IMG_NULL)
 		{
@@ -380,8 +385,8 @@ static IMG_VOID QueueDumpDebugInfo_ForEachCb(PVRSRV_DEVICE_NODE *psDeviceNode)
 			{
 				psCmdCompleteData = psDeviceCommandData[DC_FLIP_COMMAND].apsCmdCompleteData[ui32CmdCounter];
 
-				PVR_LOG(("Flip Command Complete Data %u for display device %u:",
-						ui32CmdCounter, psDeviceNode->sDevId.ui32DeviceIndex))
+				PVR_LOG(("Flip Command Complete Data %u for display device %u:; queuetime:%lX",
+						ui32CmdCounter, psDeviceNode->sDevId.ui32DeviceIndex, psCmdCompleteData->ulQueueTime))
 
 				for (ui32SyncCounter = 0;
 					 ui32SyncCounter < psCmdCompleteData->ui32SrcSyncCount;
@@ -402,6 +407,19 @@ static IMG_VOID QueueDumpDebugInfo_ForEachCb(PVRSRV_DEVICE_NODE *psDeviceNode)
 		{
 			PVR_LOG(("There is no Command Complete Data for display device %u", psDeviceNode->sDevId.ui32DeviceIndex))
 		}
+		PVR_LOG(("Display complete history:"));
+		looper = psDeviceCommandData->ui32THWriteOffset;
+		for (i = 0; i < DC_NUM_CMDS_COMPLETE_HISTORY;) {
+			looper = ((looper + 3) & ~3) % DC_NUM_CMDS_COMPLETE_HISTORY;
+			printk(KERN_INFO "%08lX  %05lu          %08lX  %05lu",
+				psDeviceCommandData->aulCompTimeHis[looper], psDeviceCommandData->aulCompTimeHis[looper+1],
+				psDeviceCommandData->aulCompTimeHis[looper+2], psDeviceCommandData->aulCompTimeHis[looper+3]);
+			looper += 4;
+			if (looper >= DC_NUM_CMDS_COMPLETE_HISTORY)
+				looper = 0;
+			i += 4;
+		}
+
 	}
 }
 
@@ -1171,6 +1189,8 @@ PVRSRV_ERROR PVRSRVProcessCommand(SYS_DATA			*psSysData,
 	}
 
 	psCmdCompleteData->ui32Stamp = g_ui32OutStamp++;
+	psCmdCompleteData->ulQueueTime = jiffies;
+	psCmdCompleteData->ui32DevIndex = psCommand->ui32DevIndex;
 
 	/*
 		call the cmd specific handler:
@@ -1368,6 +1388,8 @@ IMG_VOID PVRSRVCommandCompleteKM(IMG_HANDLE	hCmdCookie,
 	IMG_UINT32				i;
 	COMMAND_COMPLETE_DATA	*psCmdCompleteData = (COMMAND_COMPLETE_DATA *)hCmdCookie;
 	SYS_DATA				*psSysData;
+	DEVICE_COMMAND_DATA		*psDeviceCommandData;
+	unsigned long time = 0;
 
 	SysAcquireData(&psSysData);
 
@@ -1379,6 +1401,15 @@ IMG_VOID PVRSRVCommandCompleteKM(IMG_HANDLE	hCmdCookie,
 		g_TimerHandle = IMG_NULL;
 	}
 #endif
+
+	if (psCmdCompleteData->bInUse  != IMG_TRUE)
+	{
+		PVR_DPF((PVR_DBG_ERROR, "PVRSRVCommandCompleteKM: complete on already completed CCD %p",
+				psCmdCompleteData));
+		return;
+	}
+
+	psDeviceCommandData = psSysData->apsDeviceCommandData[psCmdCompleteData->ui32DevIndex];
 
 	if (psCmdCompleteData->ui32Stamp != g_ui32InStamp)
 	{
@@ -1435,7 +1466,15 @@ IMG_VOID PVRSRVCommandCompleteKM(IMG_HANDLE	hCmdCookie,
 	{
 		psCmdCompleteData->pfnCommandComplete(psCmdCompleteData->hCallbackData);
 	}
-
+	/*save complete time history*/
+	time = jiffies - psCmdCompleteData->ulQueueTime;
+	if (jiffies_to_msecs(time) > 35) {
+		psDeviceCommandData->aulCompTimeHis[psDeviceCommandData->ui32THWriteOffset++] =
+			psCmdCompleteData->ulQueueTime;
+		psDeviceCommandData->aulCompTimeHis[psDeviceCommandData->ui32THWriteOffset++] = time;
+		if (psDeviceCommandData->ui32THWriteOffset >= DC_NUM_CMDS_COMPLETE_HISTORY)
+			psDeviceCommandData->ui32THWriteOffset = 0;
+	}
 	/* free command complete storage */
 	psCmdCompleteData->bInUse = IMG_FALSE;
 
@@ -1510,6 +1549,8 @@ PVRSRV_ERROR PVRSRVRegisterCmdProcListKM(IMG_UINT32		ui32DevIndex,
 	}
 
 	psSysData->apsDeviceCommandData[ui32DevIndex] = psDeviceCommandData;
+	OSMemSet(psDeviceCommandData->aulCompTimeHis, 0, DC_NUM_CMDS_COMPLETE_HISTORY*sizeof(unsigned long));
+	psDeviceCommandData->ui32THWriteOffset = 0;
 
 	for (ui32CmdTypeCounter = 0; ui32CmdTypeCounter < ui32CmdCount; ui32CmdTypeCounter++)
 	{

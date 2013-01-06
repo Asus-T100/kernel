@@ -76,6 +76,8 @@ extern "C" {
 	PFN_QUEUE_COMMAND_COMPLETE	pfnCommandComplete;	/*!< Command complete callback */
 	IMG_HANDLE					hCallbackData;		/*!< Command complete callback data */
 	IMG_UINT32					ui32Stamp;
+	unsigned long               ulQueueTime;
+	IMG_UINT32			ui32DevIndex;
  }COMMAND_COMPLETE_DATA, *PCOMMAND_COMPLETE_DATA;
 
 #if !defined(USE_CODE)
