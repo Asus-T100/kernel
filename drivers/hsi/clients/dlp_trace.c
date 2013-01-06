@@ -188,6 +188,14 @@ static void dlp_trace_complete_rx(struct hsi_msg *msg)
 	unsigned long flags;
 	int ret;
 
+	/* Check the link readiness (TTY still opened) */
+	if (!dlp_tty_is_link_valid()) {
+		pr_debug(DRVNAME ": TRACE: CH%d PDU ignored (close:%d, Time out: %d)\n",
+				ch_ctx->ch_id,
+				dlp_drv.tty_closed, dlp_drv.tx_timeout);
+		return;
+	}
+
 	/* Check the PDU status & signature */
 	if (msg->status != HSI_STATUS_COMPLETED) {
 		pr_err(DRVNAME": Invalid PDU status: %d (ignored)\n",
@@ -516,6 +524,8 @@ static const struct file_operations dlp_trace_ops = {
 	.release = dlp_trace_dev_close
 };
 
+static int dlp_trace_ctx_cleanup(struct dlp_channel *ch_ctx);
+
 /*
 * @brief
 *
@@ -559,8 +569,9 @@ struct dlp_channel *dlp_trace_ctx_create(unsigned int ch_id,
 	init_waitqueue_head(&trace_ctx->read_wq);
 	INIT_LIST_HEAD(&trace_ctx->rx_msgs);
 
-	/* */
+	/* Register debug, cleanup CBs */
 	ch_ctx->dump_state = dlp_dump_channel_state;
+	ch_ctx->cleanup = dlp_trace_ctx_cleanup;
 
 	/* Hangup context */
 	dlp_ctrl_hangup_ctx_init(ch_ctx, dlp_trace_dev_tx_timeout_cb);
@@ -625,27 +636,40 @@ free_ch:
 }
 
 /*
-* @brief
+* @brief This function will delete/unregister
+*	the char device and class
 *
-* @param ch_ctx
+* @param ch_ctx: Trace channel context
 *
-* @return
+* @return 0 when sucess, error code otherwise
 */
-int dlp_trace_ctx_delete(struct dlp_channel *ch_ctx)
+static int dlp_trace_ctx_cleanup(struct dlp_channel *ch_ctx)
 {
 	struct dlp_trace_ctx *trace_ctx = ch_ctx->ch_data;
 	int ret = 0;
 
-	/* Unregister the device */
+	/* Unregister/Delete char device & class */
+	device_destroy(trace_ctx->class, trace_ctx->tdev);
 	cdev_del(&trace_ctx->cdev);
 	unregister_chrdev_region(trace_ctx->tdev, 1);
 	class_destroy(trace_ctx->class);
+
+	return ret;
+}
+
+/*
+ * This function will release the allocated memory
+ * done in the _ctx_create function
+ */
+int dlp_trace_ctx_delete(struct dlp_channel *ch_ctx)
+{
+	struct dlp_trace_ctx *trace_ctx = ch_ctx->ch_data;
 
 	/* Free the Trace context */
 	kfree(trace_ctx);
 
 	/* Free the ch_ctx */
 	kfree(ch_ctx);
-	return ret;
+	return 0;
 }
 

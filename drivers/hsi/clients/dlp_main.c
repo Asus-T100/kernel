@@ -335,17 +335,6 @@ fail:
  */
 void dlp_pdu_free(struct hsi_msg *pdu, int hsi_ch)
 {
-	/* Revert to the real allocated size */
-	if (hsi_ch != -1) {
-		int length;
-
-		if (pdu->ttype == HSI_MSG_WRITE)
-			length = DLP_CHANNEL_CTX(hsi_ch)->tx.pdu_size;
-		else
-			length = DLP_CHANNEL_CTX(hsi_ch)->rx.pdu_size;
-
-		pdu->sgt.sgl->length = length;
-	}
 
 	/* Free the data buffer */
 	dlp_buffer_free(sg_virt(pdu->sgt.sgl),
@@ -363,14 +352,17 @@ void dlp_pdu_free(struct hsi_msg *pdu, int hsi_ch)
  * This function is either recycling the pdu if there are not too many pdus
  * in the system, otherwise destroy it and free its resource.
  */
-void dlp_pdu_delete(struct dlp_xfer_ctx *xfer_ctx, struct hsi_msg *pdu)
+void dlp_pdu_delete(struct dlp_xfer_ctx *xfer_ctx, struct hsi_msg *pdu,
+					unsigned long flags)
 {
 	int full;
 
 	full = (xfer_ctx->all_len > xfer_ctx->wait_max + xfer_ctx->ctrl_max);
 
 	if (full) {
+		write_unlock_irqrestore(&xfer_ctx->lock, flags);
 		dlp_pdu_free(pdu, pdu->channel);
+		write_lock_irqsave(&xfer_ctx->lock, flags);
 
 		xfer_ctx->all_len--;
 	} else {
@@ -401,7 +393,7 @@ void dlp_pdu_recycle(struct dlp_xfer_ctx *xfer_ctx, struct hsi_msg *pdu)
 
 	/* Recycle or Free the pdu */
 	write_lock_irqsave(&xfer_ctx->lock, flags);
-	dlp_pdu_delete(xfer_ctx, pdu);
+	dlp_pdu_delete(xfer_ctx, pdu, flags);
 	write_unlock_irqrestore(&xfer_ctx->lock, flags);
 
 	/* The CTRL still have space ? */
@@ -597,7 +589,7 @@ static void dlp_pdu_destructor(struct hsi_msg *pdu)
 	dlp_hsi_controller_pop(xfer_ctx);
 
 	/* Recycle or Free the pdu */
-	dlp_pdu_delete(xfer_ctx, pdu);
+	dlp_pdu_delete(xfer_ctx, pdu, flags);
 	write_unlock_irqrestore(&xfer_ctx->lock, flags);
 
 	if (xfer_ctx->ttype == HSI_MSG_READ)
@@ -758,18 +750,22 @@ int dlp_ctx_have_credits(struct dlp_xfer_ctx *xfer_ctx,
 	unsigned long flags;
 
 	spin_lock_irqsave(&ch_ctx->lock, flags);
-	/* No credits available once in hangup */
-	if (!ch_ctx->hangup.tx_timeout) {
-		if (ch_ctx->use_flow_ctrl) {
-			int ttype = xfer_ctx->ttype;
-			if ((ttype == HSI_MSG_READ) ||
-			   ((ttype == HSI_MSG_WRITE) && (ch_ctx->credits))) {
-				have_credits = 1;
-			}
-		} else {
+	/* No credits available if TX timeout/TTY closed */
+	if (!dlp_tty_is_link_valid())
+		goto out;
+
+	/* Flow control enabled ? */
+	if (ch_ctx->use_flow_ctrl) {
+		int ttype = xfer_ctx->ttype;
+		if ((ttype == HSI_MSG_READ) ||
+			((ttype == HSI_MSG_WRITE) && (ch_ctx->credits))) {
 			have_credits = 1;
 		}
+	} else {
+		have_credits = 1;
 	}
+
+out:
 	spin_unlock_irqrestore(&ch_ctx->lock, flags);
 	return have_credits;
 }
@@ -852,7 +848,7 @@ static inline void dlp_ctx_update_state_rx(struct dlp_xfer_ctx *xfer_ctx)
 static inline void dlp_ctx_update_state_tx(struct dlp_xfer_ctx *xfer_ctx)
 {
 	if (xfer_ctx->ctrl_len <= 0) {
-		del_timer(&xfer_ctx->channel->hangup.timer);
+		del_timer(&dlp_drv.timer[xfer_ctx->channel->ch_id]);
 
 		if (xfer_ctx->wait_len == 0) {
 			mod_timer(&xfer_ctx->timer, jiffies + xfer_ctx->delay);
@@ -1054,7 +1050,7 @@ static int _dlp_from_wait_to_ctrl(struct dlp_xfer_ctx *xfer_ctx)
 		read_unlock_irqrestore(&xfer_ctx->lock, flags);
 		if (ret) {
 			struct dlp_channel *ch_ctx  = xfer_ctx->channel;
-			mod_timer(&ch_ctx->hangup.timer,
+			mod_timer(&dlp_drv.timer[ch_ctx->ch_id],
 				  jiffies + usecs_to_jiffies(DLP_HANGUP_DELAY));
 			del_timer_sync(&xfer_ctx->timer);
 			dlp_ctx_set_state(xfer_ctx, ACTIVE);
@@ -1256,17 +1252,15 @@ int dlp_hsi_controller_push(struct dlp_xfer_ctx *xfer_ctx, struct hsi_msg *pdu)
 	err = hsi_async(pdu->cl, pdu);
 	if (!err) {
 		if ((pdu->ttype == HSI_MSG_WRITE) && (xfer_ctx->ctrl_len)) {
-			mod_timer(&ch_ctx->hangup.timer,
+			mod_timer(&dlp_drv.timer[ch_ctx->ch_id],
 				  jiffies + usecs_to_jiffies(DLP_HANGUP_DELAY));
 		}
 	} else {
 		unsigned int ctrl_len;
-
 		pr_err(DRVNAME ": hsi_async(ctrl_push) failed (%d)", err);
 
 		/* Failed to send pdu, set back counters values */
 		write_lock_irqsave(&xfer_ctx->lock, flags);
-
 		xfer_ctx->room += lost_room;
 		xfer_ctx->ctrl_len--;
 
@@ -1276,13 +1270,10 @@ int dlp_hsi_controller_push(struct dlp_xfer_ctx *xfer_ctx, struct hsi_msg *pdu)
 		}
 
 		ctrl_len = xfer_ctx->ctrl_len;
-
 		write_unlock_irqrestore(&xfer_ctx->lock, flags);
 
-		if (!ctrl_len) {
-			struct dlp_channel *ch_ctx = xfer_ctx->channel;
-			del_timer(&ch_ctx->hangup.timer);
-		}
+		if (!ctrl_len)
+			del_timer(&dlp_drv.timer[ch_ctx->ch_id]);
 	}
 
 out:
@@ -1659,13 +1650,35 @@ void dlp_xfer_ctx_clear(struct dlp_xfer_ctx *xfer_ctx)
  *
  ***************************************************************************/
 
+
 /**
- * dlp_driver_cleanup - Release driver allocated resources
+ * dlp_driver_cleanup - Cleanup driver allocated resources
+ *
+ * This helper function calls the "cleanup" function for each
+ *	channel context.
+ */
+static void dlp_driver_cleanup(void)
+{
+	int i;
+	struct dlp_channel *ch_ctx;
+
+	/* Cleanup eDLP channels */
+	for (i = DLP_CHANNEL_COUNT-1; i >= 0; i--) {
+		ch_ctx = dlp_drv.channels[i];
+		if ((ch_ctx) && (ch_ctx->cleanup)) {
+			ch_ctx->cleanup(ch_ctx);
+			ch_ctx->cleanup = NULL;
+		}
+	}
+}
+
+/**
+ * dlp_driver_delete - Free driver allocated resources
  *
  * This helper function calls the "delete" function for each
  *	channel context.
  */
-static void dlp_driver_cleanup(void)
+static void dlp_driver_delete(void)
 {
 	int i;
 
@@ -1673,16 +1686,16 @@ static void dlp_driver_cleanup(void)
 	/* NOTE : this array should be aligned with the context enum
 	 *                defined in the .h file */
 	dlp_context_delete delete_funcs[DLP_CHANNEL_COUNT] = {
+		dlp_ctrl_ctx_delete,		/* CTRL */
 		dlp_tty_ctx_delete,		/* TTY  */
 		dlp_net_ctx_delete,		/* NET  */
 		dlp_net_ctx_delete,		/* NET  */
 		dlp_net_ctx_delete,		/* NET  */
-		dlp_flash_ctx_delete,   /* BOOT/FLASHING */
-		dlp_trace_ctx_delete,   /* TRACE */
-		dlp_ctrl_ctx_delete};	/* CTRL */
+		dlp_flash_ctx_delete,		/* BOOT/FLASHING */
+		dlp_trace_ctx_delete};		/* TRACE */
 
 	/* Free DLP contexts */
-	for (i = 0; i < DLP_CHANNEL_COUNT; i++) {
+	for (i = DLP_CHANNEL_COUNT-1; i >= 0; i--) {
 		if (dlp_drv.channels[i]) {
 			delete_funcs[i] (dlp_drv.channels[i]);
 			dlp_drv.channels[i] = NULL;
@@ -1700,7 +1713,7 @@ static void dlp_driver_cleanup(void)
  * DLP protocol driver, creates the related TTY port and TTY entry in the
  * filesystem.
  */
-static int __init dlp_driver_probe(struct device *dev)
+static int __devinit dlp_driver_probe(struct device *dev)
 {
 	/* The parent of our device is the HSI port,
 	 * the parent of the HSI port is the HSI controller device */
@@ -1766,6 +1779,7 @@ static int __init dlp_driver_probe(struct device *dev)
 
 cleanup:
 	dlp_driver_cleanup();
+	dlp_driver_delete();
 	return ret;
 }
 
@@ -1778,18 +1792,32 @@ cleanup:
  * This function is freeing all resources hold by the context attached to the
  * requesting HSI device.
  */
-static int __exit dlp_driver_remove(struct device *dev)
+static int __devexit dlp_driver_remove(struct device *dev)
 {
 	struct hsi_client *client = to_hsi_client(dev);
 
+	/* Set TTY as closed to prevent RX/TX transaction */
+	dlp_tty_set_link_valid(1, 0);
+
+	/* Unregister the HSI client */
 	hsi_unregister_port_event(client);
 	hsi_client_set_drvdata(client, NULL);
 
+	/* Cleanup all channels */
 	dlp_driver_cleanup();
 
 	/* UnClaim the HSI port */
 	dlp_hsi_port_unclaim();
+
+	/* Free allocated memory */
+	dlp_driver_delete();
 	return 0;
+}
+
+static void dlp_driver_shutdown(struct device *dev)
+{
+	/* Clear context as when removing the driver */
+	dlp_driver_remove(dev);
 }
 
 /*
@@ -1800,7 +1828,8 @@ static struct hsi_client_driver dlp_driver_setup = {
 		   .name = DRVNAME,
 		   .owner = THIS_MODULE,
 		   .probe = dlp_driver_probe,
-		   .remove = dlp_driver_remove,
+		   .remove = __devexit_p(dlp_driver_remove),
+		   .shutdown = dlp_driver_shutdown,
 		   },
 };
 
