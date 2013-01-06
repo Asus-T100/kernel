@@ -965,16 +965,16 @@ static enum dwc_otg_state do_wait_vbus_fall(struct dwc_otg2 *otg)
 
 	if (otg_events & OEVT_A_DEV_SESS_END_DET_EVNT) {
 		otg_dbg(otg, "OEVT_A_DEV_SESS_END_DET_EVNT\n");
-		dwc_otg_notify_charger_type(otg,
+		if (otg->charging_cap.chrg_type == CHRG_ACA_DOCK)
+			dwc_otg_notify_charger_type(otg,
 				OTG_CHR_STATE_DISCONNECTED);
 		return DWC_STATE_INIT;
 	}
 
 	/* timeout*/
 	if (!ret) {
-		printk(KERN_ERR "for verify case, goto DWC_STATE_INIT\n");
+		printk(KERN_ERR "Haven't get VBus drop event! Maybe something wrong\n");
 		return DWC_STATE_INIT;
-		/*return DWC_STATE_CHARGER_DETECTION;*/
 	}
 
 	return DWC_STATE_INVALID;
@@ -1240,15 +1240,14 @@ static enum dwc_otg_state do_a_host(struct dwc_otg2 *otg)
 #ifdef CONFIG_DWC_CHARGER_DETECTION
 	int id = RID_UNKNOWN;
 	unsigned long flags;
-#endif
-#ifdef CONFIG_DWC_CHARGER_DETECTION
+
 	if (otg->charging_cap.chrg_type != CHRG_ACA_DOCK) {
 		dwc_otg_enable_vbus(otg, 1);
 
 		/* meant receive vbus valid event*/
 		if (do_wait_vbus_raise(otg) !=
 				DWC_STATE_CHARGER_DETECTION) {
-			otg_err(otg, "Drive VBUS maybe fail!\n");
+			printk(KERN_ERR "Drive VBUS maybe fail!\n");
 		}
 	}
 #endif
@@ -1308,7 +1307,6 @@ static enum dwc_otg_state do_a_host(struct dwc_otg2 *otg)
 				 * id change prior to vBus change
 				 */
 				stop_host(otg);
-				return DWC_STATE_WAIT_VBUS_FALL;
 			} else {
 				/* Normal USB device plug out */
 				spin_lock_irqsave(&otg->lock, flags);
@@ -1317,7 +1315,6 @@ static enum dwc_otg_state do_a_host(struct dwc_otg2 *otg)
 
 				stop_host(otg);
 				dwc_otg_enable_vbus(otg, 0);
-				return DWC_STATE_INIT;
 			}
 		} else {
 			otg_err(otg, "Meet invalid charger cases!");
@@ -1326,8 +1323,8 @@ static enum dwc_otg_state do_a_host(struct dwc_otg2 *otg)
 			spin_unlock_irqrestore(&otg->lock, flags);
 
 			stop_host(otg);
-			return DWC_STATE_WAIT_VBUS_FALL;
 		}
+		return DWC_STATE_WAIT_VBUS_FALL;
 	}
 #endif
 

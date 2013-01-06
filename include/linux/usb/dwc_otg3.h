@@ -567,7 +567,7 @@ struct dwc_otg2 {
 #define USBIDSTS_ID_FLOAT_STS	(1 << 3)
 #define PMIC_USBPHYCTRL_D0		(1 << 0)
 
-#define VBUS_TIMEOUT	50
+#define VBUS_TIMEOUT	300
 #define PCI_DEVICE_ID_DWC 0x119E
 
 #ifdef CONFIG_BOARD_MRFLD_VV
