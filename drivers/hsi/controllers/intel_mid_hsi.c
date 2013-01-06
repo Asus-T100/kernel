@@ -3118,12 +3118,15 @@ static void hsi_isr_tasklet(unsigned long hsi)
 		spin_lock_irqsave(&intel_hsi->hw_lock, flags);
 		if (irq_cfg) {
 			intel_hsi->irq_cfg |= irq_cfg;
-			hsi_enable_interrupt(ctrl, version, intel_hsi->irq_cfg);
+			if (intel_hsi->suspend_state == DEVICE_READY)
+				hsi_enable_interrupt(ctrl, version,
+							intel_hsi->irq_cfg);
 		}
 		if (err_cfg) {
 			intel_hsi->err_cfg |= err_cfg;
-			hsi_enable_error_interrupt(ctrl, version,
-						   intel_hsi->err_cfg);
+			if (intel_hsi->suspend_state == DEVICE_READY)
+				hsi_enable_error_interrupt(ctrl, version,
+							intel_hsi->err_cfg);
 		}
 		spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
 	}
