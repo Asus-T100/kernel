@@ -52,13 +52,14 @@
 #define N_TI_WL		22	/* for TI's WL BT, FM, GPS combo chips */
 #define N_TRACESINK	23	/* Trace data routing for MIPI P1149.7 */
 #define N_TRACEROUTER	24	/* Trace data routing for MIPI P1149.7 */
+#define N_PHONET	25  /* RMC specific */
 
 /*
  * This character is the same as _POSIX_VDISABLE: it cannot be used as
  * a c_cc[] character, but indicates that a particular special character
  * isn't in use (eg VINTR has no character etc)
  */
-#define __DISABLED_CHAR '\0'
+#define __DISABLED_CHAR ('\0')
 
 struct tty_buffer {
 	struct tty_buffer *next;
@@ -212,13 +213,13 @@ struct tty_port_operations {
 	void (*drop)(struct tty_port *port);
 	/* Called under the port mutex from tty_port_open, serialized using
 	   the port mutex */
-        /* FIXME: long term getting the tty argument *out* of this would be
-           good for consoles */
+	/* FIXME: long term getting the tty argument *out* of this would be
+	   good for consoles */
 	int (*activate)(struct tty_port *port, struct tty_struct *tty);
 	/* Called on the final put of a port */
 	void (*destruct)(struct tty_port *port);
 };
-	
+
 struct tty_port {
 	struct tty_struct	*tty;		/* Back pointer */
 	const struct tty_port_operations *ops;	/* Port operations */
