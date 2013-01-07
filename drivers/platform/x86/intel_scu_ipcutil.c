@@ -333,7 +333,7 @@ static int check_pmdb_buffer(struct scu_ipc_pmdb_buffer *p_buf)
 	}
 
 	return check_pmdb_sub_cmd(p_buf->sub) &&
-		(p_buf->count + p_buf->offset < size);
+		(p_buf->count + p_buf->offset <= size);
 }
 
 /**
