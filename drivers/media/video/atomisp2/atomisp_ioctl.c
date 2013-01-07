@@ -1491,6 +1491,9 @@ static int atomisp_g_ctrl(struct file *file, void *fh,
 	case V4L2_CID_SCENE_MODE:
 	case V4L2_CID_ISO_SENSITIVITY:
 	case V4L2_CID_EXPOSURE_METERING:
+	case V4L2_CID_CONTRAST:
+	case V4L2_CID_SATURATION:
+	case V4L2_CID_SHARPNESS:
 		mutex_unlock(&isp->mutex);
 		return v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
 				       core, g_ctrl, control);
@@ -1556,6 +1559,9 @@ static int atomisp_s_ctrl(struct file *file, void *fh,
 	case V4L2_CID_VFLIP:
 	case V4L2_CID_POWER_LINE_FREQUENCY:
 	case V4L2_CID_EXPOSURE_METERING:
+	case V4L2_CID_CONTRAST:
+	case V4L2_CID_SATURATION:
+	case V4L2_CID_SHARPNESS:
 		mutex_unlock(&isp->mutex);
 		return v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
 				       core, s_ctrl, control);
