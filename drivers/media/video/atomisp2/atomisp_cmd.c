@@ -958,7 +958,8 @@ void atomisp_wdt_work(struct work_struct *work)
 	enum sh_css_pipe_id css_pipe_id;
 	int ret;
 
-	dev_err(isp->dev, "timeout %d of %d\n", atomic_read(&isp->wdt_count),
+	dev_err(isp->dev, "timeout %d of %d\n",
+		atomic_read(&isp->wdt_count) + 1,
 		ATOMISP_ISP_MAX_TIMEOUT_COUNT);
 
 	mutex_lock(&isp->mutex);
