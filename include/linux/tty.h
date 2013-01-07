@@ -34,6 +34,7 @@
 #define N_TI_WL		22	/* for TI's WL BT, FM, GPS combo chips */
 #define N_TRACESINK	23	/* Trace data routing for MIPI P1149.7 */
 #define N_TRACEROUTER	24	/* Trace data routing for MIPI P1149.7 */
+#define N_PHONET	25  /* RMC specific */
 
 #ifdef __KERNEL__
 #include <linux/fs.h>
@@ -59,7 +60,7 @@
  * a c_cc[] character, but indicates that a particular special character
  * isn't in use (eg VINTR has no character etc)
  */
-#define __DISABLED_CHAR '\0'
+#define __DISABLED_CHAR ('\0')
 
 struct tty_buffer {
 	struct tty_buffer *next;
@@ -219,7 +220,7 @@ struct tty_port_operations {
 	/* Called on the final put of a port */
 	void (*destruct)(struct tty_port *port);
 };
-	
+
 struct tty_port {
 	struct tty_struct	*tty;		/* Back pointer */
 	const struct tty_port_operations *ops;	/* Port operations */
