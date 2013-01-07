@@ -975,6 +975,7 @@ void atomisp_wdt_work(struct work_struct *work)
 		atomic_set(&isp->wdt_count, 0);
 
 		atomisp_flush_bufs_and_wakeup(isp);
+		isp->isp_fatal_error = true;
 		break;
 	default:
 		sh_css_dump_sp_sw_debug_info();
