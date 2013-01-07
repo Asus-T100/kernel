@@ -352,5 +352,6 @@ source "net/caif/Kconfig"
 source "net/ceph/Kconfig"
 source "net/nfc/Kconfig"
 
+source "net/mhi/Kconfig"
 
 endif   # if NET
