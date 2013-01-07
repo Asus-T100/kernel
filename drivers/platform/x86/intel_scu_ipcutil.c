@@ -248,9 +248,15 @@ EXPORT_SYMBOL_GPL(intel_scu_ipc_set_osc_clk0);
 #define MSIC_VPROG2_CTRL        0xD7
 #endif
 
+#ifdef CONFIG_X86_MRFLD
+#define MSIC_VPROG1_ON	0xC1	/* 2.80V */
+#define MSIC_VPROG2_ON	0xC1	/* 2.80V */
+#define MSIC_VPROG_OFF	0	/* OFF */
+#else
 #define MSIC_VPROG2_ON          0x36 /*1.200V and Auto mode*/
 #define MSIC_VPROG1_ON          0xF6 /*2.800V and Auto mode*/
 #define MSIC_VPROG_OFF          0x24 /*1.200V and OFF*/
+#endif
 
 int intel_scu_ipc_msic_vprog1(int on)
 {
