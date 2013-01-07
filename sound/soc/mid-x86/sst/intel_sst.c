@@ -137,7 +137,7 @@ static irqreturn_t intel_sst_irq_thread_mrfld(int irq, void *context)
 		size = header.p.header_low_payload;
 	sst_drv_ctx->ipc_process_reply.mrfld_header = header;
 	memcpy_fromio(sst_drv_ctx->ipc_process_reply.mailbox,
-		drv->mailbox + SST_MAILBOX_RCV, size);
+		      drv->mailbox + SST_MAILBOX_RCV_MRFLD, size);
 	queue_work(sst_drv_ctx->process_reply_wq,
 			&sst_drv_ctx->ipc_process_reply.wq);
 	return IRQ_HANDLED;

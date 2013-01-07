@@ -458,24 +458,27 @@ static int process_fw_init(struct sst_ipc_msg_wq *msg)
 	int retval = 0;
 
 	pr_debug("*** FW Init msg came***\n");
-	if (init->result) {
-		sst_set_fw_state_locked(sst_drv_ctx, SST_ERROR);
-		pr_debug("FW Init failed, Error %x\n", init->result);
-		pr_err("FW Init failed, Error %x\n", init->result);
-		retval = -init->result;
-		return retval;
+	if (sst_drv_ctx->pci_id == SST_MFLD_PCI_ID ||
+	    sst_drv_ctx->pci_id == SST_CLV_PCI_ID) {
+		if (init->result) {
+			sst_set_fw_state_locked(sst_drv_ctx, SST_ERROR);
+			pr_debug("FW Init failed, Error %x\n", init->result);
+			pr_err("FW Init failed, Error %x\n", init->result);
+			retval = -init->result;
+			sst_wake_up_alloc_block(sst_drv_ctx, FW_DWNL_ID,
+						retval, NULL);
+			return retval;
+		}
+		pr_debug("FW Version %02x.%02x.%02x\n", init->fw_version.major,
+				init->fw_version.minor, init->fw_version.build);
+		pr_debug("Build Type %x\n", init->fw_version.type);
+		pr_debug("Build date %s Time %s\n",
+				init->build_info.date, init->build_info.time);
 	}
 	/* If there any runtime parameter to set, send it */
 	if (sst_drv_ctx->runtime_param.param.addr)
 		sst_send_runtime_param(&(sst_drv_ctx->runtime_param.param));
 
-	if (sst_drv_ctx->pci_id != SST_MRFLD_PCI_ID) {
-		pr_debug("FW Version %02x.%02x.%02x\n", init->fw_version.major,
-				init->fw_version.minor, init->fw_version.build);
-		pr_debug("Build Type %x\n", init->fw_version.type);
-		pr_debug(" Build date %s Time %s\n",
-				init->build_info.date, init->build_info.time);
-	}
 	sst_wake_up_alloc_block(sst_drv_ctx, FW_DWNL_ID, retval, NULL);
 	return retval;
 }
@@ -602,9 +605,11 @@ static int sst_get_stream_mrfld(struct intel_sst_drv *ctx, u32 drv_id)
 void sst_process_reply_mrfld(struct work_struct *work)
 {
 	struct sst_ipc_msg_wq *msg, *tmp;
-	unsigned int msg_id, drv_id;
+	unsigned int msg_id, drv_id, err_id;
 	int str_id;
 	void *data = NULL;
+	union ipc_header_high msg_high;
+	u32 msg_low;
 
 	/* copy the message before enabling interrupts */
 	tmp = container_of(work, struct sst_ipc_msg_wq, wq);
@@ -616,10 +621,17 @@ void sst_process_reply_mrfld(struct work_struct *work)
 	memcpy(msg, tmp, sizeof(*msg));
 	sst_drv_ctx->ops->clear_interrupt();
 
-	drv_id = msg->mrfld_header.p.header_high.part.str_id;
-	msg_id = msg->mrfld_header.p.header_low_payload & SST_UNSOLICITED_MSG_ID;
-	if (drv_id == SST_UNSOLICIT_MSG
-	    && !msg->mrfld_header.p.header_high.part.large) {
+	msg_high = msg->mrfld_header.p.header_high;
+	msg_low = msg->mrfld_header.p.header_low_payload;
+
+	drv_id = msg_high.part.str_id;
+	msg_id = msg_low & SST_UNSOLICITED_MSG_ID;
+	err_id = (msg_low & SST_UNSOLICITED_ERROR_MSG) >> 16;
+	if (err_id && !msg_high.part.large) {
+		pr_err("FW sent error 0x%x in msg 0x%x", err_id, msg_id);
+		goto end;
+	}
+	if (drv_id == SST_UNSOLICIT_MSG && !msg_high.part.large) {
 		switch (msg_id) {
 		case IPC_IA_FW_INIT_CMPLT_MRFLD:
 			intel_sst_clear_intr_mrfld();
@@ -634,12 +646,13 @@ void sst_process_reply_mrfld(struct work_struct *work)
 		pr_debug("after get_stream_mrfld str_id = %d\n", str_id);
 		if (str_id < 0)
 			goto end;
-		if (msg->mrfld_header.p.header_high.part.large) {
-			data = kzalloc(msg->mrfld_header.p.header_low_payload, GFP_KERNEL);
+		/* if it is a large message, the payload contains the size to
+		 * copy from mailbox */
+		if (msg_high.part.large) {
+			data = kzalloc(msg_low, GFP_KERNEL);
 			if (!data)
 				goto end;
-			memcpy(data, (void *) msg->mailbox,
-			       msg->mrfld_header.p.header_low_payload);
+			memcpy(data, (void *) msg->mailbox, msg_low);
 		}
 
 		if (!str_id) {
@@ -648,7 +661,7 @@ void sst_process_reply_mrfld(struct work_struct *work)
 				sst_drv_ctx->sst_byte_blk.on = false;
 				sst_drv_ctx->sst_byte_blk.condition = true;
 				sst_drv_ctx->sst_byte_blk.ret_code =
-					msg->mrfld_header.p.header_high.part.result;
+					msg_high.part.result;
 				wake_up(&sst_drv_ctx->wait_queue);
 			}
 		} else {
@@ -657,7 +670,7 @@ void sst_process_reply_mrfld(struct work_struct *work)
 				sst_drv_ctx->streams[str_id].ctrl_blk.on = false;
 				sst_drv_ctx->streams[str_id].ctrl_blk.condition = true;
 				sst_drv_ctx->streams[str_id].ctrl_blk.ret_code =
-					msg->mrfld_header.p.header_high.part.result;
+					msg_high.part.result;
 				wake_up(&sst_drv_ctx->wait_queue);
 			}
 		}
