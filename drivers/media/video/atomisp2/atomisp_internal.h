@@ -346,6 +346,7 @@ struct atomisp_device {
 
 	/* isp timeout status flag */
 	bool isp_timeout;
+	bool isp_fatal_error;
 	struct workqueue_struct *wdt_work_queue;
 	struct work_struct wdt_work;
 	struct timer_list wdt;

@@ -1083,6 +1083,11 @@ static int atomisp_qbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 	int ret = 0;
 
 	mutex_lock(&isp->mutex);
+	if (isp->isp_fatal_error) {
+		ret = -EIO;
+		goto error;
+	}
+
 	if (isp->streaming == ATOMISP_DEVICE_STREAMING_STOPPING) {
 		v4l2_err(&atomisp_dev, "ISP ERROR\n");
 		ret = -EIO;
@@ -1181,6 +1186,11 @@ static int atomisp_qbuf_file(struct file *file, void *fh,
 	int ret;
 
 	mutex_lock(&isp->mutex);
+	if (isp->isp_fatal_error) {
+		ret = -EIO;
+		goto error;
+	}
+
 	if (!buf || buf->index >= VIDEO_MAX_FRAME ||
 		!pipe->outq.bufs[buf->index]) {
 		v4l2_err(&atomisp_dev,
@@ -1222,6 +1232,11 @@ static int atomisp_dqbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 	int ret = 0;
 
 	mutex_lock(&isp->mutex);
+
+	if (isp->isp_fatal_error) {
+		mutex_unlock(&isp->mutex);
+		return -EIO;
+	}
 
 	if (isp->streaming == ATOMISP_DEVICE_STREAMING_STOPPING) {
 		mutex_unlock(&isp->mutex);

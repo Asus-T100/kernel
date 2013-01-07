@@ -381,6 +381,7 @@ int atomisp_init_struct(struct atomisp_device *isp)
 	isp->params.continuous_vf = false;
 	isp->sw_contex.file_input = 0;
 	isp->need_gfx_throttle = true;
+	isp->isp_fatal_error = false;
 
 	/*
 	 * For Merrifield, frequency is scalable.
