@@ -1723,7 +1723,7 @@ static int mrfl_pwr_cmd_gfx(u32 gfx_mask, int new_state)
 			break;
 	}
 
-	pm_cmd_freq_set(GFX_SS_PM1, IP_FREQ_200_00);
+	pm_cmd_freq_set(GFX_SS_PM1, IP_FREQ_320_00);
 
 #if (defined DEBUG_PM_CMD) && DEBUG_PM_CMD
 	{
