@@ -21,7 +21,7 @@
 
 
 static int camera_reset;
-static int camera_power_down;
+static int camera_vcm_power;
 static int camera_vprog1_on;
 
 /*
@@ -59,7 +59,24 @@ static int ov5640_flisclk_ctrl(struct v4l2_subdev *sd, int flag)
 
 static int ov5640_power_ctrl(struct v4l2_subdev *sd, int flag)
 {
+	int ret;
+
+	if (camera_vcm_power < 0) {
+		ret = camera_sensor_gpio(-1, GP_CAMERA_0_VCM_POWER,
+					 GPIOF_DIR_OUT, 1);
+		/*
+		 * on some HW, this pin is not a connected pin,
+		 * while on others, this indeed is avaiable.
+		 * so just operate it when available and continue
+		 * if it is failed.
+		 */
+		if (ret < 0)
+			pr_debug("%s not available.", GP_CAMERA_0_VCM_POWER);
+		camera_vcm_power = ret;
+	}
 	if (flag) {
+		if (camera_vcm_power >= 0)
+			gpio_set_value(camera_vcm_power, 1);
 		if (!camera_vprog1_on) {
 			camera_vprog1_on = 1;
 			intel_scu_ipc_msic_vprog1(1);
@@ -73,6 +90,9 @@ static int ov5640_power_ctrl(struct v4l2_subdev *sd, int flag)
 			camera_vprog1_on = 0;
 			intel_scu_ipc_msic_vprog1(0);
 		}
+		if (camera_vcm_power >= 0)
+			gpio_set_value(camera_vcm_power, 0);
+
 	}
 
 	return 0;
@@ -94,7 +114,7 @@ static struct camera_sensor_platform_data ov5640_sensor_platform_data = {
 void *ov5640_platform_data(void *info)
 {
 	camera_reset = -1;
-	camera_power_down = -1;
+	camera_vcm_power = -1;
 
 	return &ov5640_sensor_platform_data;
 }
