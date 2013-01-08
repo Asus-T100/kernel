@@ -544,7 +544,7 @@ bool tng_topaz_interrupt(void *pvData)
 	/* if interrupts enabled and fired */
 	if ((crMultiCoreIntStat & MASK_TOPAZHP_TOP_CR_INT_STAT_MTX) ==
 		MASK_TOPAZHP_TOP_CR_INT_STAT_MTX) {
-		PSB_DEBUG_IRQ("TOPAZ: Get MTX interrupt , clear IRQ\n");
+		PSB_DEBUG_GENERAL("TOPAZ: Get MTX interrupt , clear IRQ\n");
 		tng_topaz_Int_clear(dev_priv, MASK_TOPAZHP_TOP_CR_INTCLR_MTX);
 	} else
 		return 0;
@@ -552,7 +552,7 @@ bool tng_topaz_interrupt(void *pvData)
 	topaz_priv->consumer = tng_get_consumer(dev);
 	topaz_priv->producer = tng_get_producer(dev);
 
-	PSB_DEBUG_IRQ("TOPAZ: Dispatch write back message, " \
+	PSB_DEBUG_GENERAL("TOPAZ: Dispatch write back message, " \
 		"producer = %d, consumer = %d\n",
 		topaz_priv->producer, topaz_priv->consumer);
 
@@ -562,13 +562,13 @@ bool tng_topaz_interrupt(void *pvData)
 
 	wb_msg = (struct IMG_WRITEBACK_MSG *)
 		video_ctx->wb_addr[topaz_priv->producer - 1];
-	PSB_DEBUG_IRQ("TOPAZ: Context %08x(%s), command %s IRQ\n",
+	PSB_DEBUG_GENERAL("TOPAZ: Context %08x(%s), command %s IRQ\n",
 		(unsigned int)video_ctx, codec_to_string(video_ctx->codec),
 		cmd_to_string(wb_msg->ui32CmdWord));
 
 	*topaz_priv->topaz_sync_addr = wb_msg->ui32WritebackVal;
 
-	PSB_DEBUG_IRQ("TOPAZ: Set seq %08x, " \
+	PSB_DEBUG_GENERAL("TOPAZ: Set seq %08x, " \
 		"dqueue cmd and schedule other work queue\n",
 		wb_msg->ui32WritebackVal);
 	psb_fence_handler(dev, LNC_ENGINE_ENCODE);
@@ -2399,11 +2399,7 @@ tng_topaz_send(
 				goto out;
 			}
 
-#ifdef TOPAZHP_IRQ_ENABLED
-			/* Only sync MTX_CMDID_SETVIDEO in IRQ mode */
-			if (cur_cmd_id == MTX_CMDID_SETVIDEO)
-				tng_wait_on_sync(dev, sync_seq, cur_cmd_id);
-#else
+#ifndef TOPAZHP_IRQ_ENABLED
 			tng_wait_on_sync(dev, sync_seq, cur_cmd_id);
 #endif
 #if 0
