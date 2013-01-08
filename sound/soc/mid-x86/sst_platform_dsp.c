@@ -45,7 +45,7 @@ unsigned int sst_soc_read(struct snd_soc_platform *platform,
 	struct sst_data *sst = snd_soc_platform_get_drvdata(platform);
 
 	pr_debug("%s for reg %d\n", __func__, reg);
-	BUG_ON(reg > SST_NUM_WIDGETS);
+	BUG_ON(reg > (SST_NUM_WIDGETS - 1));
 	return sst->widget[reg];
 }
 
@@ -55,7 +55,7 @@ int sst_soc_write(struct snd_soc_platform *platform,
 	struct sst_data *sst = snd_soc_platform_get_drvdata(platform);
 
 	pr_debug("%s for reg %d val %d\n", __func__, reg, val);
-	BUG_ON(reg > SST_NUM_WIDGETS);
+	BUG_ON(reg > (SST_NUM_WIDGETS - 1));
 	sst->widget[reg] = val;
 	return 0;
 }
