@@ -169,8 +169,10 @@ IMG_BOOL  MRSTLFBFlipToSurface(MRSTLFB_DEVINFO *psDevInfo,
 					ctx->dspsurf = uiAddr;
 				}
 
-				if (mdfld_dsi_dsr_update_panel_fb(dsi_config))
+				if (mdfld_dsi_dsr_update_panel_fb(dsi_config)) {
+					ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 					return IMG_FALSE;
+				}
 			}
 #if defined(CONFIG_MDFD_DUAL_MIPI)
 			if (psCurrentSwapChain->ui32SwapChainPropertyFlag
@@ -188,8 +190,10 @@ IMG_BOOL  MRSTLFBFlipToSurface(MRSTLFB_DEVINFO *psDevInfo,
 					ctx->dspsurf = uiAddr;
 				}
 
-				if (mdfld_dsi_dsr_update_panel_fb(dsi_config))
+				if (mdfld_dsi_dsr_update_panel_fb(dsi_config)) {
+					ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 					return IMG_FALSE;
+				}
 			}
 #endif
 #ifdef CONFIG_SUPPORT_HDMI
