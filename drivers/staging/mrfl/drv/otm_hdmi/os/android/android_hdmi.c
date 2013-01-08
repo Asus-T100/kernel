@@ -127,7 +127,7 @@ static struct debug_modes__t {
 
 static u32 debug_modes_count;
 
-#define OTM_HDMI_I2C_ADAPTER_NUM 3
+#define OTM_HDMI_I2C_ADAPTER_NUM 10
 #define OTM_HDMI_PIPE_NUM 1
 #define OTM_HDMI_MAX_DDC_WRITE_SIZE 20
 
