@@ -124,9 +124,9 @@ struct uart_hsu_port {
 /* Top level data structure of HSU */
 struct hsu_port {
 	void __iomem	*reg;
+	int		dma_irq;
 	unsigned long	paddr;
 	unsigned long	iolen;
-	u32		irq;
 	struct uart_hsu_port	port[4];
 	struct hsu_dma_chan	chans[10];
 
@@ -2089,6 +2089,7 @@ static int serial_hsu_probe(struct pci_dev *pdev,
 			dchan++;
 		}
 		/* DMA controller */
+		phsu->dma_irq = pdev->irq;
 		ret = request_irq(pdev->irq, dma_irq, 0, "hsu_dma", phsu);
 		if (ret) {
 			dev_err(&pdev->dev, "can not get IRQ\n");
@@ -2269,6 +2270,7 @@ static bool allow_for_suspend(struct uart_hsu_port *up)
 			goto rx_dma_run;
 	}
 
+	synchronize_irq(phsu->dma_irq);
 	if (up->use_dma && up->dma_tx_on) {
 		dev_dbg(up->dev, "%s: dma_tx_on\n", __func__);
 		goto rx_dma_run;
