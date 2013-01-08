@@ -11,7 +11,6 @@
 #include <linux/delay.h>
 #include <linux/init.h>
 #include <linux/pci.h>
-#include <linux/pci_ids.h>
 #include <linux/pm.h>
 #include <linux/slab.h>
 #include <linux/module.h>
@@ -1294,17 +1293,6 @@ void __attribute__ ((weak)) pcibios_disable_device (struct pci_dev *dev) {}
 static void do_pci_disable_device(struct pci_dev *dev)
 {
 	u16 pci_command;
-#ifdef CONFIG_HSI_NO_MODEM
-	int err;
-
-	/* LSS:07 must stay in d0i1 */
-	if ((dev->device == 0x08F2) && (dev->vendor == PCI_VENDOR_ID_INTEL)) {
-		err = pci_set_power_state(dev, PCI_D1);
-		if (err < 0)
-			pr_err("unable to switch off SPH: err= %d\n", err);
-	}
-	pr_info("%s: EHCI SPH switched off\n", __func__);
-#endif
 	pci_read_config_word(dev, PCI_COMMAND, &pci_command);
 	if (pci_command & PCI_COMMAND_MASTER) {
 		pci_command &= ~PCI_COMMAND_MASTER;

@@ -183,9 +183,6 @@ struct ehci_regs {
 #define CLV_SPH_HOSTPC_PTS	(1<<30)	/* SPH HOSTPC PTS */
 #define CLV_SPHCFG		0x400	/* SPHCFG (16bit) */
 #define CLV_SPHCFG_ULPI1TYPE	(1<<0)	/* SPHCFG ULPI1TYPE */
-#ifdef CONFIG_HSI_NO_MODEM
-#define CLV_SPHCFG_REFCKDIS	(1<<1)	/* ULPI 1 REF-CLOCK */
-#endif
 
 /* Appendix C, Debug port ... intended for use with special "debug devices"
  * that can help if there's no serial console.  (nonstandard enumeration.)
