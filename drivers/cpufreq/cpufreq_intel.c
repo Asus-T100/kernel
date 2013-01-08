@@ -80,7 +80,6 @@ static spinlock_t down_cpumask_lock;
 static struct mutex set_speed_lock;
 
 /* Hi speed to bump to from lo speed when load burst (default max) */
-#define DEFAULT_HISPEED_FREQ 1200000
 static u64 hispeed_freq;
 
 /* Go to higher speed when CPU load at or above this value. */
@@ -1351,7 +1350,6 @@ static int __init cpufreq_intel_init(void)
 	down_differential = DEFAULT_DOWN_DIFFERENTIAL;
 	timer_keep_load = DEFAULT_TIMER_KEEP_LOAD;
 	load_for_deferrable = DEFAULT_LOAD_FOR_DEFERRABLE;
-	hispeed_freq = DEFAULT_HISPEED_FREQ;
 #ifdef CONFIG_COMPUTE_PHYSICAL_CORE_LOAD
 	use_physical_core_load = DEFAULT_USE_PHYSICAL_CORE_LOAD;
 #endif
