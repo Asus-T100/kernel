@@ -521,17 +521,17 @@ bool tng_topaz_interrupt(void *pvData)
 		return false;
 	}
 	dev = (struct drm_device *)pvData;
-#if 0
+	/*
 	minor = (struct drm_minor *)container_of(dev, struct drm_minor, dev);
 	file_priv = (struct drm_file *)container_of(minor,
 			struct drm_file, minor);
-#endif
-#if 0
+	*/
+	/*
 	if (!ospm_power_is_hw_on(OSPM_VIDEO_ENC_ISLAND)) {
 		DRM_ERROR("ERROR: interrupt arrived but HW is power off\n");
 		return false;
 	}
-#endif
+	*/
 	dev_priv = (struct drm_psb_private *) dev->dev_private;
 	if (!dev_priv)
 		DRM_ERROR("Failed to get dev_priv\n");
@@ -605,15 +605,7 @@ static int tng_submit_encode_cmdbuf(struct drm_device *dev,
 
 	PSB_DEBUG_GENERAL("TOPAZ: command submit, topaz busy = %d\n",
 		topaz_priv->topaz_busy);
-#if 0
-	if (dev_priv->last_topaz_ctx != dev_priv->topaz_ctx) {
-		/* todo: save current context into dev_priv->last_topaz_ctx
-		* and reload dev_priv->topaz_ctx context
-		*/
-		PSB_DEBUG_GENERAL("TOPAZ: context switch\n");
-		dev_priv->last_topaz_ctx = dev_priv->topaz_ctx;
-	}
-#endif
+
 	if (topaz_priv->topaz_fw_loaded == 0) {
 		/* #.# load fw to driver */
 		PSB_DEBUG_INIT("TOPAZ: load /lib/firmware/topazhp_fw.bin\n");
@@ -1091,8 +1083,9 @@ static int32_t tng_restore_bias_table(
 	size = *p_command++;
 
 	PSB_DEBUG_GENERAL("TOPAZ: Restore BIAS %d registers " \
-		"but TOPAZHP_CR_SEQUENCER_CONFIG of ctx %08x\n",
-		size - 1, (unsigned int)video_ctx);
+		"of ctx %08x(%s)\n",
+		size - 1, (unsigned int)video_ctx, \
+		codec_to_string(video_ctx->codec));
 	for (i = 0; i < size; i++) {
 		reg_id = *p_command;
 		p_command++;
@@ -1107,8 +1100,12 @@ static int32_t tng_restore_bias_table(
 			break;
 		case TOPAZ_CORE_REG:
 			if (reg_off != TOPAZHP_CR_SEQUENCER_CONFIG &&
-			    reg_off != INTEL_CHE_CHK_CFG)
-				TOPAZCORE_WRITE32(0, reg_off, reg_val);
+			    reg_off != INTEL_CHE_CHK_CFG) {
+				DRM_ERROR("Invalid CORE REG %08x\n", reg_off);
+				ttm_bo_kunmap(&tmp_kmap);
+				return -1;
+			}
+			TOPAZCORE_WRITE32(0, reg_off, reg_val);
 			break;
 		case TOPAZ_VLC_REG:
 			VLC_WRITE32(0, reg_off, reg_val);
@@ -1202,15 +1199,15 @@ int32_t tng_topaz_restore_mtx_state(struct drm_device *dev)
 	/*TopazSC will be reset, no need to restore context.*/
 	if (topaz_priv->topaz_needs_reset)
 		return ret;
-#if 0
 	/*There is no need to restore context for JPEG encoding*/
+	/*
 	if (TNG_IS_JPEG_ENC(topaz_priv->cur_codec)) {
 		if (tng_topaz_setup_fw(dev, 0, topaz_priv->cur_codec))
 			DRM_ERROR("TOPAZ: Setup JPEG firmware fails!\n");
 		topaz_priv->topaz_mtx_saved = 0;
 		return 0;
 	}
-#endif
+	*/
 	PSB_DEBUG_GENERAL("TOPAZ: Restore context %08x(%s)\n",
 		(unsigned int)video_ctx, codec_to_string(video_ctx->codec));
 
@@ -1391,13 +1388,13 @@ int32_t tng_topaz_restore_mtx_state(struct drm_device *dev)
 
 	/* Turn on MTX */
 	mtx_start(dev);
-
+	/*
 	ret = tng_restore_bias_table(dev, video_ctx);
 	if (ret) {
 		DRM_ERROR("Failed to restore BIAS table");
 		goto out;
 	}
-
+	*/
 	/* topaz_priv->topaz_mtx_saved = 0; */
 	PSB_DEBUG_GENERAL("TOPAZ: Restore MTX status successfully\n");
 
@@ -1497,15 +1494,6 @@ int tng_topaz_save_mtx_state(struct drm_device *dev)
 		topaz_priv->topaz_mtx_saved = 1;
 		return ret;
 	}
-
-#if 0
-	if (topaz_priv->topaz_mtx_data_mem[core] == NULL) {
-		PSB_DEBUG_GENERAL("TOPAZ: try to save context " \
-			"without space allocated, return"
-			" directly without save\n");
-		return -1;
-	}
-#endif
 
 	MULTICORE_READ32(TOPAZHP_TOP_CR_MULTICORE_HW_CFG, &num_pipes);
 	num_pipes = num_pipes & MASK_TOPAZHP_TOP_CR_NUM_CORES_SUPPORTED;
@@ -1793,31 +1781,6 @@ static int32_t tng_release_context(
 			"reg/data saving BO\n");
 	}
 
-#if 0
-	topaz_priv->ctx_cnt--;
-	topaz_priv->ctx_status[index] |= MASK_TOPAZ_FIRMWARE_EXIT;
-	topaz_priv->ctx_status[index] &= ~MASK_TOPAZ_FIRMWARE_ACTIVE;
-
-	/* only the last process could shut down */
-	if (topaz_priv->ctx_cnt > 0) {
-		PSB_DEBUG_GENERAL("TOPAZ : Currently %d process is running, " \
-			"bypass shutting down\n", topaz_priv->ctx_cnt);
-
-		PSB_DEBUG_GENERAL("TOPAZ : Unmap write back memory %d\n",
-			index);
-		ttm_bo_kunmap(&topaz_priv->wb_bo_kmap[index]);
-		PSB_DEBUG_GENERAL("TOPAZ : Unref write back BO %d\n", index);
-		ttm_bo_unref(&topaz_priv->wb_bo[index]);
-		topaz_priv->wb_bo[index] = NULL;
-
-		tng_topaz_mmu_flushcache(dev_priv);
-		return -1;
-	} else if (topaz_priv->ctx_cnt == 0) {
-		PSB_DEBUG_GENERAL("TOPAZ : The last process, " \
-			"executing MTX_CMDID_SHUTDOWN cmd\n");
-	} else
-		DRM_ERROR("Error context count %d\n", topaz_priv->ctx_cnt);
-#endif
 	return 0;
 }
 
@@ -1880,7 +1843,6 @@ int mtx_write_FIFO(
 		 cmd_header->high_cmd_count << 24 :
 		 cmd_header->low_cmd_count << 16;
 
-	/* Record cmd count for tng_topaz_shutdown_fw() */
 	topaz_priv->low_cmd_count = cmd_header->low_cmd_count;
 	topaz_priv->core_id = cmd_header->core;
 
@@ -2091,6 +2053,13 @@ static int tng_setup_new_context(
 			goto out;
 		}
 
+		ret = ttm_bo_reserve(video_ctx->reg_saving_bo , \
+				     true, true, false, 0);
+		if (ret) {
+			DRM_ERROR("Reserver register saving BO failed.\n");
+			return -1;
+		}
+
 		video_ctx->data_saving_bo = ttm_buffer_object_lookup(
 						tfile, data_handle);
 		if (unlikely(video_ctx->data_saving_bo == NULL)) {
@@ -2100,26 +2069,20 @@ static int tng_setup_new_context(
 			ret = -1;
 			goto out;
 		}
+
+		ret = ttm_bo_reserve(video_ctx->data_saving_bo , \
+				     true, true, false, 0);
+		if (ret) {
+			DRM_ERROR("Reserver data saving BO failed.\n");
+			return -1;
+		}
 	}
 
-#if 0
-	ret = tng_check_context_status(dev, file_priv,
-		reg_handle, data_handle, codec, &buf_idx);
-	if (ret) {
-		DRM_ERROR("Error on checking context status");
-		return ret;
-	}
-#if 0
+	/*
 	topaz_priv->frame_h = (uint16_t)((*((uint32_t *) cmd + 1)) & 0xffff);
 	topaz_priv->frame_w = (uint16_t)(((*((uint32_t *) cmd + 1))
 				& 0xffff0000)  >> 16) ;
-#endif
-	PSB_DEBUG_GENERAL("TOPAZ: setup new codec %s (%d)" \
-		" width %d, height %d\n",
-		codec_to_string(codec), codec,
-		topaz_priv->frame_w,
-		topaz_priv->frame_h);
-#endif
+	*/
 
 	/* Upload the new codec firmware */
 	ret = tng_topaz_init_board(dev, video_ctx, codec);
@@ -2137,10 +2100,6 @@ static int tng_setup_new_context(
 		/* tng_error_dump_reg(dev_priv, 0); */
 		goto out;
 	}
-#if 0
-	topaz_priv->ctx_cnt++;
-#endif
-
 out:
 	return ret;
 }
@@ -2230,15 +2189,16 @@ static int tng_topaz_set_bias(
 		}
 	}
 
-#if 0 /*_PO_DEBUG_*/
 	p_command = (uint32_t *)command;
+
 	/* For now, saving BIAS table no matter necessary or not */
+	/*
 	ret = tng_save_bias_table(dev, file_priv, p_command);
 	if (ret) {
 		DRM_ERROR("Failed to save BIAS table");
 		return ret;
 	}
-#endif
+	*/
 
 	/* Update Globals */
 	if (codec != IMG_CODEC_JPEG) {
@@ -2402,12 +2362,11 @@ tng_topaz_send(
 #ifndef TOPAZHP_IRQ_ENABLED
 			tng_wait_on_sync(dev, sync_seq, cur_cmd_id);
 #endif
-#if 0
+			/*
 			for (m = 0; m < 1000; m++) {
-				/* derive from reference driver */
 				PSB_UDELAY(100);
 			}
-#endif
+			*/
 			/* Calculate command size */
 			switch (cur_cmd_id) {
 			case MTX_CMDID_SETVIDEO:
@@ -2436,18 +2395,7 @@ tng_topaz_send(
 				  cur_cmd_id);
 			return -1;
 		}
-#if 0
-		/*Wait for MTX to shutdown on the last context's
-		shutdown command*/
-		if ((cur_cmd_id == MTX_CMDID_SHUTDOWN) &&
-		    (get_ctx_cnt(dev) == 1)) {
-			ret = tng_topaz_wait_for_completion(dev, file_priv);
-			if (ret) {
-				DRM_ERROR("Waiting for completion error");
-				return ret;
-			}
-		}
-#endif
+
 		/*cur_cmd_size indicate the number of words of
 		current command*/
 		command += cur_cmd_size * 4;
@@ -2559,49 +2507,7 @@ int tng_topaz_remove_ctx(
 	video_ctx->codec = 0;
 
 	topaz_priv->frame_count = 0;
-#if 0
-	if (dev_priv == NULL) {
-		PSB_DEBUG_GENERAL("TOPAZ: dev_priv is NULL!\n");
-		return -1;
-	}
 
-	topaz_priv = dev_priv->topaz_private;
-
-	if (topaz_priv == NULL) {
-		PSB_DEBUG_GENERAL("TOPAZ: topaz_priv is NULL!\n");
-		return -1;
-	}
-
-	tng_topaz_mmu_flushcache(dev_priv);
-
-	list_for_each_entry(pos, &dev_priv->video_ctx, head) {
-		if (pos->reg_saving_bo) {
-			ttm_bo_unref(&pos->reg_saving_bo);
-			pos->reg_saving_bo = NULL;
-		}
-
-		if (pos->data_saving_bo) {
-			ttm_bo_unref(&pos->data_saving_bo);
-			pos->data_saving_bo = NULL;
-		}
-
-		if (pos->wb_bo) {
-			ttm_bo_kunmap(&pos->wb_bo_kmap);
-			ttm_bo_unref(&pos->wb_bo);
-			pos->wb_bo = NULL;
-		}
-
-		pos->fw_data_dma_size = 0;
-		pos->fw_data_dma_offset = 0;
-		pos->status = 0;
-		pos->codec = 0;
-	}
-
-	if (topaz_priv->topaz_bo) {
-		ttm_bo_kunmap(&topaz_priv->topaz_bo_kmap);
-		ttm_bo_unref(&topaz_priv->topaz_bo);
-	}
-#endif
 	return 0;
 }
 
@@ -2648,18 +2554,20 @@ int32_t tng_check_topaz_idle(struct drm_device *dev)
 	uint32_t reg_val;
 
 	if (dev_priv->topaz_ctx == NULL ||
-	    topaz_priv->irq_context == NULL)
+	    topaz_priv->irq_context == NULL) {
+		PSB_DEBUG_GENERAL("TOPAZ: topaz context is null\n");
 		return 0;
+	}
 
 	/*HW is stuck. Need to power off TopazSC to reset HW*/
-	if (1 == topaz_priv->topaz_needs_reset)
+	if (1 == topaz_priv->topaz_needs_reset) {
+		PSB_DEBUG_GENERAL("TOPAZ: Topaz needs reset\n");
 		return 0;
+	}
 
-	if (topaz_priv->topaz_busy)
-		return -EBUSY;
-
-	if (topaz_priv->topaz_hw_busy) {
-		PSB_DEBUG_PM("TOPAZ: %s, HW is busy\n", __func__);
+	if (topaz_priv->topaz_busy) {
+		PSB_DEBUG_GENERAL("TOPAZ: can't save, topaz_busy = %d\n", \
+				   topaz_priv->topaz_busy);
 		return -EBUSY;
 	}
 

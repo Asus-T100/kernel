@@ -730,30 +730,7 @@ int tng_topaz_init(struct drm_device *dev)
 	*topaz_priv->topaz_sync_addr = ~0;
 
 	topaz_priv->cur_context = NULL;
-#if 0
-	for (n = 0; n < topaz_priv->topaz_num_pipes; n++) {
-		/* FIXME: each pipe need one? */
-		topaz_priv->topaz_mtx_reg_state[n] =
-			kmalloc(TOPAZ_MTX_REG_SIZE, GFP_KERNEL);
-		if (topaz_priv->topaz_mtx_reg_state[n] == NULL) {
-			DRM_ERROR("TOPAZ: failed to allocate space " \
-				"for mtx register\n");
-			goto out;
-		}
 
-		ret = ttm_buffer_object_create(bdev,
-			12 * 4096, ttm_bo_type_kernel,
-			TTM_PL_FLAG_VRAM | TTM_PL_FLAG_VRAM |
-			TTM_PL_FLAG_NO_EVICT,
-			0, 0, 0, NULL,
-			&topaz_priv->topaz_mtx_data_mem[n]);
-		if (ret) {
-			DRM_ERROR("TOPAZ: failed to allocate ttm buffer for " \
-				"mtx data save of pipe (%d)\n", n);
-			goto out;
-		}
-	}
-#endif
 	/* tng_topaz_mmu_flushcache(dev_priv); */
 
 	for (n = 0; n < topaz_priv->topaz_num_pipes; n++) {
@@ -821,15 +798,6 @@ int tng_topaz_init(struct drm_device *dev)
 		return ret;
 	}
 #endif
-
-#if 0
-	for (n = 0; n < MAX_TOPAZHP_CORES; n++) {
-		if (topaz_priv->topaz_mtx_data_mem[n] != NULL)
-			ttm_bo_unref(&topaz_priv->topaz_mtx_data_mem[n]);
-	if (topaz_priv->topaz_mtx_reg_state[n] != NULL)
-		kfree(topaz_priv->topaz_mtx_reg_state[n]);
-	}
-#endif
 	return ret;
 
 out:
@@ -888,30 +856,6 @@ int tng_topaz_reset(struct drm_psb_private *dev_priv)
 	return 0;
 }
 
-static void tng_topaz_shutdown_fw(struct drm_device *dev)
-{
-#if 0
-	uint32_t cmd;
-	struct drm_psb_private *dev_priv;
-	struct tng_topaz_private *topaz_priv;
-	topaz_priv->high_cmd_count = cmd_header->high_cmd_count;
-	topaz_priv->low_cmd_count = cmd_header->low_cmd_count;
-
-	dev_priv = dev->dev_private;
-	topaz_priv = dev_priv->topaz_private;
-
-	cmd = F_ENCODE(topaz_priv->core_id, MTX_MSG_CORE) |
-		       MTX_CMDID_SHUTDOWN;
-
-	cmd |= F_ENCODE(topaz_priv->low_cmd_count & 0xff,
-			MTX_MSG_COUNT);
-
-	mtx_write_FIFO(dev, cmd, 0, 0, 0);
-
-	tng_wait_on_sync(dev, 0);
-#endif
-}
-
 /* FIXME: When D0i3 enabled,
 flush mmu and reset may have issue because hw power down */
 int tng_topaz_uninit(struct drm_device *dev)
@@ -936,20 +880,7 @@ int tng_topaz_uninit(struct drm_device *dev)
 	tng_topaz_mmu_flushcache(dev_priv);
 
 	tng_topaz_reset(dev_priv);
-#if 0
-	PSB_DEBUG_TOPAZ("TOPAZ: Release MTX data memory");
-	for (n = 0; n < topaz_priv->topaz_num_pipes; n++) {
-		/* release mtx register save space */
-		kfree(topaz_priv->topaz_mtx_reg_state[n]);
 
-		/* release mtx data memory save space */
-		if (topaz_priv->topaz_mtx_data_mem[n])
-			ttm_bo_unref(&topaz_priv->topaz_mtx_data_mem[n]);
-
-		/* FIXME: pipe, core? */
-		kfree(topaz_priv->topaz_bias_table[n]);
-	}
-#endif
 	PSB_DEBUG_TOPAZ("TOPAZ: Release fiwmware text/data storage");
 
 	for (n = 0; n < IMG_CODEC_NUM; ++n) {
@@ -1331,9 +1262,10 @@ int tng_topaz_setup_fw(
 	MULTICORE_WRITE32(TOPAZHP_TOP_CR_MULTICORE_SRST, 0x0);
 
 	tng_get_bank_size(dev, video_ctx, codec);
-#if 0 /*_PO_DEBUG_*/
+
+	/*
 	tng_set_auto_clk_gating(dev, codec, 1);
-#endif
+	*/
 
 	PSB_DEBUG_TOPAZ("TOPAZ: will upload firmware to %d pipes\n",
 			  topaz_priv->topaz_num_pipes);
@@ -1403,12 +1335,6 @@ int tng_topaz_setup_fw(
 	/* While we aren't using comm serialization, we do still need to ensure
 	 * that the firmware has completed it's setup before continuing
 	 */
-
-#if 0 /*_PO_DEBUG_*/
-	PSB_DEBUG_TOPAZ("TOPAZ: Check Firmware\n");
-	tng_init_error_dump_reg(dev_priv);
-	PSB_DEBUG_TOPAZ("\n");
-#endif
 	PSB_DEBUG_TOPAZ("TOPAZ: Polling to ensure " \
 		"firmware has completed its setup before continuing\n");
 	ret = tng_topaz_wait_for_register(
@@ -1490,11 +1416,6 @@ int mtx_upload_fw(struct drm_device *dev,
 
 	PSB_DEBUG_TOPAZ("TOPAZ: Text offset %08x\n",
 		(unsigned int)cur_codec_fw->text->offset);
-#if 0 /*_PO_DEBUG_*/
-	PSB_DEBUG_TOPAZ("TOPAZ: before DMA\n");
-	tng_init_error_dump_reg(dev_priv);
-	PSB_DEBUG_TOPAZ("\n");
-#endif
 
 	ret = mtx_dmac_transfer(dev_priv, 0, cur_codec_fw->text->offset, 0,
 		MTX_DMA_MEMORY_BASE, text_size, 1);
@@ -1503,11 +1424,6 @@ int mtx_upload_fw(struct drm_device *dev,
 		/* tng_error_dump_reg(dev_priv); */
 		return ret;
 	}
-#if 0 /*_PO_DEBUG_*/
-	PSB_DEBUG_TOPAZ("TOPAZ: after DMA\n");
-	tng_init_error_dump_reg(dev_priv);
-	PSB_DEBUG_TOPAZ("\n");
-#endif
 
 	/* wait for it to finish */
 	ret = tng_topaz_wait_for_register(dev_priv, CHECKFUNC_ISEQUAL,
@@ -1816,10 +1732,9 @@ void tng_topaz_mmu_flushcache(struct drm_psb_private *dev_priv)
 	/* Clear Invalid flag */
 	mmu_control |= F_ENCODE(0, TOPAZHP_TOP_CR_MMU_INVALDC);
 	MULTICORE_WRITE32(TOPAZHP_TOP_CR_MMU_CONTROL0, mmu_control);
-
-#if 0
+	/*
 	psb_gl3_global_invalidation(dev_priv->dev);
-#endif
+	*/
 }
 
 int32_t mtx_dma_read(struct drm_device *dev, struct ttm_buffer_object *dst_bo,

@@ -41,6 +41,7 @@
 #include "psb_intel_reg.h"
 #include "psb_msvdx.h"
 #include "pnw_topaz.h"
+#include "tng_topaz.h"
 #include "vsp.h"
 #include "mdfld_dsi_dbi.h"
 #include "mdfld_dsi_dbi_dpu.h"
@@ -151,9 +152,13 @@ static int ospm_runtime_pm_msvdx_resume(struct drm_device *dev)
 static int ospm_runtime_pm_topaz_resume(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct topaz_private *topaz_priv = dev_priv->topaz_private;
 	struct pnw_topaz_private *pnw_topaz_priv = dev_priv->topaz_private;
 	struct psb_video_ctx *pos, *n;
 	int encode_ctx = 0, encode_running = 0;
+
+	if (IS_MRFLD(dev))
+		return 0;
 
 	/*printk(KERN_ALERT "ospm_runtime_pm_topaz_resume\n"); */
 
@@ -260,7 +265,7 @@ void ospm_apm_power_down_msvdx(struct drm_device *dev)
 
 void ospm_apm_power_down_topaz(struct drm_device *dev)
 {
-	return;			/* todo for OSPM */
+	return;                 /* todo for OSPM */
 
 	mutex_lock(&g_ospm_mutex);
 
@@ -313,17 +318,30 @@ void ospm_apm_power_down_topaz(struct drm_device *dev)
 		goto out;
 	if (atomic_read(&g_videoenc_access_count))
 		goto out;
-	if (IS_FLDS(dev))
+	if (IS_MDFLD(dev))
 		if (pnw_check_topaz_idle(dev))
+			goto out;
+	if (IS_MRFLD(dev))
+		if (tng_check_topaz_idle(dev))
 			goto out;
 
 	gbSuspendInProgress = true;
-	if (IS_FLDS(dev)) {
+	if (IS_MDFLD(dev)) {
 		psb_irq_uninstall_islands(dev, OSPM_VIDEO_ENC_ISLAND);
 		pnw_topaz_save_mtx_state(gpDrmDevice);
 		PNW_TOPAZ_NEW_PMSTATE(dev, pnw_topaz_priv,
 				      PSB_PMSTATE_POWERDOWN);
 	}
+
+	if (IS_MRFLD(dev)) {
+		psb_irq_uninstall_islands(dev, OSPM_VIDEO_ENC_ISLAND);
+		tng_topaz_save_mtx_state(gpDrmDevice);
+#if 0
+		TNG_TOPAZ_NEW_PMSTATE(dev, tng_topaz_priv,
+				      PSB_PMSTATE_POWERDOWN);
+#endif
+	}
+
 	ospm_power_island_down(OSPM_VIDEO_ENC_ISLAND);
 
 	gbSuspendInProgress = false;
@@ -1811,9 +1829,8 @@ int mrfld_set_power_state(int islands, int sub_islands, int new_state)
 			gfx_mask |= GFX_RSCD_SSC;
 		if (sub_islands & MRFLD_GFX_SLC_LDO)
 			gfx_mask |= GFX_SLC_LDO_SSC;
-		if (sub_islands > MRFLD_GFX_ALL_ISLANDS) {
+		if (sub_islands > MRFLD_GFX_ALL_ISLANDS)
 			return -EINVAL;
-		}
 
 		if (dsp_mask) {
 			ret = pmu_set_power_state_tng(DSP_SS_PM, dsp_mask,
