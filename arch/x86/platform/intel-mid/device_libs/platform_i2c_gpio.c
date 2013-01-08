@@ -33,7 +33,12 @@ static int hdmi_i2c_workaround(void)
 	 * is not supported by the current i2c controller, so we use
 	 * GPIO pin the simulate an i2c bus.
 	 */
-	pdev = platform_device_alloc(DEVICE_NAME, 8);
+
+	/* On Merrifield, bus number 8 is used for battery charger.
+	*  use 10 across medfield/ctp/merrifield platforms.
+	*/
+	pdev = platform_device_alloc(DEVICE_NAME, 10);
+
 	if (!pdev) {
 		pr_err("i2c-gpio: failed to alloc platform device\n");
 		ret = -ENOMEM;
@@ -47,8 +52,14 @@ static int hdmi_i2c_workaround(void)
 		ret = -ENOMEM;
 		goto out;
 	}
+#ifdef CONFIG_DRM_MRFLD
+	/* Pins 17 and 18 are used in Merrifield for HDMI i2c (bus 3) */
+	pdata->scl_pin = 17;
+	pdata->sda_pin = 18;
+#else
 	pdata->scl_pin = 35 + 96;
 	pdata->sda_pin = 36 + 96;
+#endif
 	pdata->sda_is_open_drain = 0;
 	pdata->scl_is_open_drain = 0;
 	pdev->dev.platform_data = pdata;
