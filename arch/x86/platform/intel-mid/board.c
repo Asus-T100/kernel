@@ -115,6 +115,7 @@
 #include "device_libs/platform_hsi_modem.h"
 #include "device_libs/platform_ffl_modem.h"
 #include "device_libs/platform_edlp_modem.h"
+#include "device_libs/platform_logical_modem.h"
 
 /*
  * WIFI devices
@@ -162,7 +163,7 @@ struct devs_id __initconst device_ids[] = {
 	{"hsi_ffl_modem", SFI_DEV_TYPE_HSI, 0, &ffl_modem_platform_data, NULL},
 	{"hsi_edlp_modem", SFI_DEV_TYPE_HSI, 0, &edlp_modem_platform_data,
 						NULL},
-
+	{"logical_hsi", SFI_DEV_TYPE_HSI, 0, &logical_platform_data, NULL},
 #endif
 	{"wl12xx_clk_vmmc", SFI_DEV_TYPE_SD, 0, &wl12xx_platform_data, NULL},
 	{"bcm43xx_vmmc", SFI_DEV_TYPE_SD, 0, &bcm43xx_platform_data, NULL},
