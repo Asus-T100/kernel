@@ -89,6 +89,7 @@ int sfi_mtimer_num;
 struct sfi_rtc_table_entry sfi_mrtc_array[SFI_MRTC_MAX];
 EXPORT_SYMBOL_GPL(sfi_mrtc_array);
 int sfi_mrtc_num;
+u32 nbr_hsi_clients = 2;
 
 void intel_mid_power_off(void)
 {
@@ -729,9 +730,10 @@ static void sfi_handle_hsi_dev(struct sfi_device_table_entry *pentry,
 
 	pdata = dev->get_platform_data(&hsi_info);
 	if (pdata) {
-		pr_info("SFI register platform data for HSI device %s\n",
-					dev->name);
-		hsi_register_board_info(pdata, 2);
+		pr_info("SFI register platform data for HSI device %s with %d number of clients\n",
+					dev->name,
+					nbr_hsi_clients);
+		hsi_register_board_info(pdata, nbr_hsi_clients);
 	}
 }
 

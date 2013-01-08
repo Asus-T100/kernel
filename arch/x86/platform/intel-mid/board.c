@@ -79,6 +79,7 @@
 #include "device_libs/platform_hsi_modem.h"
 #include "device_libs/platform_ffl_modem.h"
 #include "device_libs/platform_edlp_modem.h"
+#include "device_libs/platform_logical_modem.h"
 
 /* HSU devices */
 #include "device_libs/platform_hsu.h"
@@ -99,6 +100,9 @@ struct devs_id __initconst device_ids[] = {
 	/* SPI devices */
 	{"pmic_gpio", SFI_DEV_TYPE_SPI, 1, &pmic_gpio_platform_data, NULL},
 	{"spi_max3111", SFI_DEV_TYPE_SPI, 0, &max3111_platform_data, NULL},
+#ifndef CONFIG_HSI_NO_MODEM
+	{"logical_hsi", SFI_DEV_TYPE_HSI, 0, &logical_platform_data, NULL},
+#endif
 
 	/* MSIC subdevices */
 	{"msic_adc", SFI_DEV_TYPE_IPC, 1, &msic_adc_platform_data,
