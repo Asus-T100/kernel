@@ -1907,12 +1907,22 @@ static int dwc_otg_runtime_suspend(struct device *dev)
 	if (otg->state == DWC_STATE_A_HOST) {
 		dwc_otg_notify_charger_type(otg, \
 				OTG_CHR_STATE_SUSPENDED);
+		return 0;
 	}
+
+	set_sus_phy(otg, 1);
 
 	return 0;
 }
 static int dwc_otg_runtime_resume(struct device *dev)
 {
+	struct dwc_otg2 *otg = the_transceiver;
+
+	if (otg->state == DWC_STATE_A_HOST)
+		return 0;
+
+	set_sus_phy(otg, 0);
+
 	return 0;
 }
 

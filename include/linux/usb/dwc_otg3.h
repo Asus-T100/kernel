@@ -105,6 +105,7 @@ struct dwc_device_par {
 
 #define GUSB2PHYCFG0				0xc200
 #define GUSB2PHYCFG_SUS_PHY                     0x40
+#define GUSB2PHYCFG_PHYSOFTRST (1 << 31)
 
 #define EXTEND_ULPI_REGISTER_ACCESS_MASK	0xC0
 #define GUSB2PHYACC0	0xc280
@@ -124,6 +125,7 @@ struct dwc_device_par {
 #define GUSB3PIPECTL0                           0xc2c0
 #define GUSB3PIPECTL_SUS_EN                     0x20000
 #define GUSB3PIPE_DISRXDETP3                    (1 << 28)
+#define GUSB3PIPECTL_PHYSOFTRST (1 << 31)
 
 #define GHWPARAMS6				0xc158
 #define GHWPARAMS6_SRP_SUPPORT_ENABLED		0x0400
@@ -137,6 +139,7 @@ struct dwc_device_par {
 #define GCTL_PRT_CAP_DIR_DEV 2
 #define GCTL_PRT_CAP_DIR_OTG 3
 #define GCTL_GBL_HIBERNATION_EN 0x2
+#define GCTL_CORESOFTRESET (1 << 11)
 
 #define OCFG					0xcc00
 #define OCFG_SRP_CAP				0x01

@@ -30,9 +30,6 @@
 
 static struct platform_device *dwcdev;
 static int otg_irqnum;
-
-#define SRAM_PHY_ADDR 0xFFFC0000
-#define SRAM_LENGTH 0x20000
 static int xhci_start_host(struct usb_hcd *hcd);
 static int xhci_stop_host(struct usb_hcd *hcd);
 static int xhci_reset_port(struct usb_hcd *hcd);
@@ -163,6 +160,39 @@ static void dwc_set_host_mode(struct usb_hcd *hcd)
 	msleep(20);
 }
 
+static void dwc_core_reset(struct usb_hcd *hcd)
+{
+	u32 val;
+
+	val = readl(hcd->regs + GCTL);
+	val |= GCTL_CORESOFTRESET;
+	writel(val, hcd->regs + GCTL);
+
+	val = readl(hcd->regs + GUSB3PIPECTL0);
+	val |= GUSB3PIPECTL_PHYSOFTRST;
+	writel(val, hcd->regs + GUSB3PIPECTL0);
+
+	val = readl(hcd->regs + GUSB2PHYCFG0);
+	val |= GUSB2PHYCFG_PHYSOFTRST;
+	writel(val, hcd->regs + GUSB2PHYCFG0);
+
+	msleep(100);
+
+	val = readl(hcd->regs + GUSB3PIPECTL0);
+	val &= ~GUSB3PIPECTL_PHYSOFTRST;
+	writel(val, hcd->regs + GUSB3PIPECTL0);
+
+	val = readl(hcd->regs + GUSB2PHYCFG0);
+	val &= ~GUSB2PHYCFG_PHYSOFTRST;
+	writel(val, hcd->regs + GUSB2PHYCFG0);
+
+	msleep(20);
+
+	val = readl(hcd->regs + GCTL);
+	val &= ~GCTL_CORESOFTRESET;
+	writel(val, hcd->regs + GCTL);
+}
+
 /* This is a hardware workaround.
  * xHCI RxDetect state is not work well when USB3
  * PHY under P3 state. So force PHY change to P2 when
@@ -221,6 +251,7 @@ static int xhci_start_host(struct usb_hcd *hcd)
 
 	pm_runtime_get_sync(hcd->self.controller);
 
+	dwc_core_reset(hcd);
 	dwc_set_host_mode(hcd);
 	dwc_disable_ssphy_p3(hcd);
 
