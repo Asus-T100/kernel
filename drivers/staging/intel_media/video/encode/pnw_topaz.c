@@ -155,7 +155,6 @@ static int pnw_submit_encode_cmdbuf(struct drm_device *dev,
 	unsigned long irq_flags;
 	int ret = 0;
 	void *cmd;
-	uint32_t tmp;
 	uint32_t sequence = dev_priv->sequence[LNC_ENGINE_ENCODE];
 	struct pnw_topaz_private *topaz_priv = dev_priv->topaz_private;
 
@@ -184,10 +183,6 @@ static int pnw_submit_encode_cmdbuf(struct drm_device *dev,
 		}
 		topaz_priv->topaz_fw_loaded = 1;
 	}
-
-	tmp = atomic_cmpxchg(&dev_priv->topaz_mmu_invaldc, 1, 0);
-	if (tmp == 1)
-		pnw_topaz_mmu_flushcache(dev_priv);
 
 	/* # schedule watchdog */
 	/* psb_schedule_watchdog(dev_priv); */
@@ -516,9 +511,15 @@ pnw_topaz_send(struct drm_device *dev, unsigned char *cmd,
 	struct pnw_topaz_private *topaz_priv = dev_priv->topaz_private;
 	uint32_t reg_cnt;
 	uint32_t *p_command;
+	uint32_t tmp;
 
 	PSB_DEBUG_TOPAZ("TOPAZ: send encoding commands(seq 0x%08x) to HW\n",
 		sync_seq);
+
+	tmp = atomic_cmpxchg(&dev_priv->topaz_mmu_invaldc, 1, 0);
+	if (tmp)
+		pnw_topaz_mmu_flushcache(dev_priv);
+
 
 	/* Command header(struct topaz_cmd_header) is 32 bit */
 	while (cmd_size >= sizeof(struct topaz_cmd_header)) {
