@@ -1088,6 +1088,29 @@ static const struct snd_soc_dapm_route lm49453_audio_map[] = {
 	{ "Sidetone", "Sidetone Switch", "Sidetone Mixer" },
 };
 
+int lm49453_get_jack_type(struct snd_soc_codec *codec)
+{
+#define LM49453_HSD_PIN_CONFIG_MASK		0x0F
+	unsigned int hs_type;
+
+	hs_type = snd_soc_read(codec, LM49453_P0_HSD_PIN_CONFIG_REG);
+	pr_debug("jack pin config: 0x%x\n", hs_type);
+	switch (hs_type & LM49453_HSD_PIN_CONFIG_MASK) {
+	case LM49453_JACK_CONFIG1:
+	case LM49453_JACK_CONFIG2:
+		return SND_JACK_HEADSET;
+	case LM49453_JACK_CONFIG3:
+	case LM49453_JACK_CONFIG4:
+		return SND_JACK_MICROPHONE;
+	case LM49453_JACK_CONFIG5:
+		return SND_JACK_HEADPHONE;
+	default:
+		pr_err("invalid pin config detected\n");
+		return 0;
+	}
+}
+EXPORT_SYMBOL_GPL(lm49453_get_jack_type);
+
 static int lm49453_hw_params(struct snd_pcm_substream *substream,
 			     struct snd_pcm_hw_params *params,
 			     struct snd_soc_dai *dai)
@@ -1253,7 +1276,7 @@ static int lm49453_set_bias_level(struct snd_soc_codec *codec,
 			regcache_sync(lm49453->regmap);
 
 		snd_soc_update_bits(codec, LM49453_P0_PMC_SETUP_REG,
-				    LM49453_PMC_SETUP_CHIP_EN, LM49453_CHIP_EN);
+				    LM49453_PMC_SETUP_CHIP_EN, LM49453_CHIP_EN_HSD_DETECT);
 		break;
 
 	case SND_SOC_BIAS_OFF:
@@ -1403,12 +1426,12 @@ static int lm49453_probe(struct snd_soc_codec *codec)
 	snd_soc_write(codec, LM49453_P0_PMC_SETUP_REG, 0x14);
 
 	/* PLL CLK SELECTION-1 */
-	snd_soc_write(codec, LM49453_P0_PLL_CLK_SEL1_REG, 0x05);
+	snd_soc_write(codec, LM49453_P0_PLL_CLK_SEL1_REG, 0x04);
 
 	/* PLL CLK SELECTION-2 */
 	snd_soc_write(codec, LM49453_P0_PLL_CLK_SEL2_REG, 0x09);
 	/* PMC CLK DEV */
-	snd_soc_write(codec, LM49453_P0_PMC_CLK_DIV_REG, 0x5e);
+	snd_soc_write(codec, LM49453_P0_PMC_CLK_DIV_REG, 0x00);
 
 	/* PLL setting  - use the MCLK 19.2MHz as input
 	   and generates 12.288Mhz for codec */

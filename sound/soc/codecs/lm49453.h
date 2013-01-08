@@ -378,4 +378,6 @@
 #define LM49453_P1_DAC_CHOP_REG				0xC0
 
 #define	LM49453_CLK_SRC_MCLK				1
+
+int lm49453_get_jack_type(struct snd_soc_codec *codec);
 #endif
