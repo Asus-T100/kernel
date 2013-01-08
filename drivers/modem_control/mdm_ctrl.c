@@ -81,10 +81,17 @@ static irqreturn_t mdm_ctrl_coredump_it(int irq, void *data)
 
 	pr_err(DRVNAME": CORE_DUMP 0x%x", gpio_get_value(drv->gpio_cdump));
 
+	/* Ignoring event if we are in OFF state. */
+	if (mdm_ctrl_get_state(drv) == MDM_CTRL_STATE_OFF) {
+		pr_err(DRVNAME": CORE_DUMP while OFF\r\n");
+		goto out;
+	}
+
 	/* Set the reason & launch the work to handle the hangup */
 	drv->hangup_causes |= MDM_CTRL_HU_COREDUMP;
 	queue_work(drv->hu_wq, &drv->hangup_work);
 
+out:
 	return IRQ_HANDLED;
 }
 
@@ -99,6 +106,14 @@ static irqreturn_t mdm_ctrl_reset_it(int irq, void *data)
 	unsigned long flags;
 
 	value = gpio_get_value(drv->gpio_rst_out);
+
+	/* Ignoring event if we are in OFF state. */
+	if (mdm_ctrl_get_state(drv) == MDM_CTRL_STATE_OFF) {
+		/* Logging event in order to minimise risk of hidding bug */
+		pr_err(DRVNAME": RESET_OUT 0x%x while OFF\r\n", value);
+		goto out;
+	}
+
 	reset_ongoing = mdm_ctrl_get_reset_ongoing(drv);
 	if (reset_ongoing) {
 		pr_err(DRVNAME": RESET_OUT 0x%x\r\n", value);
@@ -774,5 +789,5 @@ module_param_call(modem_reset, mdm_ctrl_modem_reset, NULL, NULL, 0644);
 
 MODULE_AUTHOR("Faouaz Tenoutit <faouazx.tenoutit@intel.com>");
 MODULE_AUTHOR("Frederic Berat <fredericx.berat@intel.com>");
-MODULE_DESCRIPTION("IMC Modem boot driver");
+MODULE_DESCRIPTION("Intel Modem control driver");
 MODULE_LICENSE("GPL");
