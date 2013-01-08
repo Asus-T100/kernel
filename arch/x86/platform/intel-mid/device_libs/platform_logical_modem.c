@@ -98,7 +98,7 @@ static struct hsi_board_info hsi_info[HSI_MID_MAX_CLIENTS] = {
 		},
 	},
 	[4] = {
-		.name = "hsi_char",
+		.name = "hsi_flash",
 		.hsi_id = 0,
 		.port = 0,
 		.tx_cfg = {

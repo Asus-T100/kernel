@@ -4,7 +4,7 @@
 ccflags-y += -DDEBUG
 
 
-obj-$(CONFIG_HSI_CHAR)	  += hsi_char.o
+obj-$(CONFIG_HSI_LOGICAL)	+= hsi_flash.o
 obj-$(CONFIG_HSI_FFL_TTY) += hsi_ffl_tty.o
 obj-$(CONFIG_HSI_DLP) 	  += hsi_dlp.o
 obj-$(CONFIG_HSI_LOGICAL) += hsi_logical.o
