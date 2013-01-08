@@ -373,6 +373,12 @@ void yb_cmi_vid_init(struct drm_device *dev, struct panel_funcs *p_funcs)
 	p_funcs->power_off = yb_cmi_vid_power_off;
 	p_funcs->set_brightness = yb_cmi_vid_set_brightness;
 
+	/**
+	 * FIXME:
+	 * disable CABC by default due to HW bug, it'll be fixed in DV2
+	 */
+	drm_psb_enable_cabc = 0;
+
 	ret = yb_cmi_vid_gpio_init();
 	if (ret)
 		DRM_ERROR("Faild to request GPIO for yb cmi panel\n");
