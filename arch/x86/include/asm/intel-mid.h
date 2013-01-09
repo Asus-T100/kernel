@@ -107,6 +107,38 @@ enum intel_mid_cpu_type {
 
 extern enum intel_mid_cpu_type __intel_mid_cpu_chip;
 
+/**
+ * struct intel_mid_ops - Interface between intel-mid & sub archs
+ * @arch_setup:		arch_setup function to re-initialize platform
+ *			structures (x86_init, x86_platform_init)
+ *
+ * This structure can be extended if any new interface is required
+ * between intel-mid & its sub arch files.
+ */
+
+struct intel_mid_ops {
+	void (*arch_setup)(void);
+};
+
+/* Helper API's for INTEL_MID_OPS_INIT */
+#define DECLARE_INTEL_MID_OPS_INIT(cpuname, cpuid) [cpuid] = \
+		get_##cpuname##_ops,
+
+/* Maximum number of CPU ops */
+#define MAX_CPU_OPS(a) (sizeof(a)/sizeof(void *))
+
+/*
+ * For every new cpu addition, a weak get_<cpuname>_ops() function needs be
+ * declared in arch/x86/platform/intel_mid/intel_mid_weak_decls.h.
+ */
+#define INTEL_MID_OPS_INIT {\
+	DECLARE_INTEL_MID_OPS_INIT(lincroft, INTEL_MID_CPU_CHIP_LINCROFT) \
+	DECLARE_INTEL_MID_OPS_INIT(penwell, INTEL_MID_CPU_CHIP_PENWELL) \
+	DECLARE_INTEL_MID_OPS_INIT(cloverview, INTEL_MID_CPU_CHIP_CLOVERVIEW) \
+	DECLARE_INTEL_MID_OPS_INIT(tangier, INTEL_MID_CPU_CHIP_TANGIER) \
+};
+
+
 #ifdef CONFIG_X86_INTEL_MID
 
 static inline enum intel_mid_cpu_type intel_mid_identify_cpu(void)
@@ -629,7 +661,6 @@ extern const char s0i3_trampoline_data[], s0i3_trampoline_data_end[];
 
 extern int get_force_shutdown_occured(void);
 
-#ifdef CONFIG_X86_MRFLD
 enum intel_mrfl_sim_type {
 	INTEL_MRFL_CPU_SIMULATION_NONE = 0,
 	INTEL_MRFL_CPU_SIMULATION_VP,
@@ -643,8 +674,5 @@ static inline enum intel_mrfl_sim_type intel_mrfl_identify_sim(void)
 	return __intel_mrfl_sim_platform;
 }
 
-#else /* !CONFIG_X86_MRFLD */
-#define intel_mrfl_identify_sim()	(0)
-#endif /* !CONFIG_X86_MRFLD */
 #define INTEL_MID_IRQ_OFFSET 0x100
 #endif /* _ASM_X86_INTEL_MID_H */
