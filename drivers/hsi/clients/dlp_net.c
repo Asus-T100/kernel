@@ -336,6 +336,23 @@ void dlp_net_tx_stop(unsigned long param)
 	dlp_stop_tx(xfer_ctx);
 }
 
+
+/**
+ * dlp_net_rx_stop - update the RX state machine after expiration of the RX active
+ *		 timeout further to a no outstanding RX transaction status
+ * @param: a hidden reference to the RX context to consider
+ *
+ * This helper function updates the RX state if it is currently active and
+ * inform the HSI pduwork and attached controller.
+ */
+void dlp_net_rx_stop(unsigned long param)
+{
+	struct dlp_xfer_ctx *xfer_ctx = (struct dlp_xfer_ctx *)param;
+	struct dlp_channel *ch_ctx = xfer_ctx->channel;
+
+	dlp_stop_rx(xfer_ctx, ch_ctx);
+}
+
 /**
  * dlp_net_hsi_tx_timeout_cb - Called when we have an HSI TX timeout
  * @ch_ctx : Channel context ref
@@ -807,6 +824,7 @@ struct dlp_channel *dlp_net_ctx_create(unsigned int index, struct device *dev)
 	INIT_WORK(&ch_ctx->stop_tx_w, dlp_do_stop_tx);
 
 	ch_ctx->tx.timer.function = dlp_net_tx_stop;
+	ch_ctx->rx.timer.function = dlp_net_rx_stop;
 
 	if (!dlp_net_is_trace_channel(ch_ctx)) {
 		/* Allocate TX FIFO */
