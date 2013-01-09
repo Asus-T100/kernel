@@ -994,7 +994,7 @@ int ctp_get_battery_pack_temp(int *temp)
 	if (!power_supply_get_by_name(CHARGER_PS_NAME))
 		return -EAGAIN;
 
-	if (unlikely(chip->present)) {
+	if (unlikely(chip->present && chip->cached_temp)) {
 		*temp = chip->cached_temp;
 		return  0;
 	} else
@@ -1648,7 +1648,9 @@ static void bq24192_maintenance_worker(struct work_struct *work)
 		dev_err(&chip->client->dev, "failed to acquire batt temp\n");
 		goto sched_maint_work;
 	}
+	mutex_lock(&chip->event_lock);
 	chip->cached_temp = batt_temp;
+	mutex_unlock(&chip->event_lock);
 
 	/* find the temperature range */
 	idx = ctp_sfi_temp_range_lookup(batt_temp);
@@ -2035,6 +2037,9 @@ static void bq24192_event_worker(struct work_struct *work)
 				 * attached or is suspended and hence we
 				 * will not resume charging
 				 */
+				mutex_lock(&chip->event_lock);
+				chip->cached_temp = 0;
+				mutex_unlock(&chip->event_lock);
 				dev_dbg(&chip->client->dev,
 				"Charger not attached, dnt resume charging\n");
 				break;
