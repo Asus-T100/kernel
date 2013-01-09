@@ -254,6 +254,15 @@ static struct v4l2_queryctrl ci_v4l2_controls[] = {
 		.step = 1,
 		.default_value = 0,
 	},
+	{
+		.id = V4L2_CID_EXPOSURE_METERING,
+		.type = V4L2_CTRL_TYPE_MENU,
+		.name = "metering",
+		.minimum = 0,
+		.maximum = 2,
+		.step = 1,
+		.default_value = 1,
+	},
 };
 static const u32 ctrls_num = ARRAY_SIZE(ci_v4l2_controls);
 
@@ -1481,6 +1490,7 @@ static int atomisp_g_ctrl(struct file *file, void *fh,
 	case V4L2_CID_EXPOSURE:
 	case V4L2_CID_SCENE_MODE:
 	case V4L2_CID_ISO_SENSITIVITY:
+	case V4L2_CID_EXPOSURE_METERING:
 		mutex_unlock(&isp->mutex);
 		return v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
 				       core, g_ctrl, control);
@@ -1545,6 +1555,7 @@ static int atomisp_s_ctrl(struct file *file, void *fh,
 	case V4L2_CID_HFLIP:
 	case V4L2_CID_VFLIP:
 	case V4L2_CID_POWER_LINE_FREQUENCY:
+	case V4L2_CID_EXPOSURE_METERING:
 		mutex_unlock(&isp->mutex);
 		return v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
 				       core, s_ctrl, control);
