@@ -36,58 +36,13 @@ static struct hsic_tangier_priv hsic;
  */
 static void hsic_enter_exit_d3(int enter_exit)
 {
-	u32 tmp, count = 0;
-	void __iomem  *pm_base;
-
-	/* Reqeust IOMEM for PM */
-	pm_base = ioremap_nocache(PM_BASE, PM_REGISTER_LENGHT);
-	if (pm_base == NULL) {
-		dev_err(&pci_dev->dev,
-			"Mapping PMU failed\n");
-		return;
-	}
-
 	if (enter_exit) {
-		dev_dbg(&pci_dev->dev,
-			"HSIC Enter D3\n");
-		tmp = readl(pm_base + PM_SSC0);
-		tmp |= PM_SSC0_HSIC_D3_MODE;
-		writel(tmp, pm_base + PM_SSC0);
-
-		writel(0x201 | (0x1 << 21), pm_base + PM_CMD);
+		printk(KERN_CRIT "HSIC Enter D0I3!\n");
+		pci_set_power_state(pci_dev, PCI_D3cold);
 	} else {
-		dev_dbg(&pci_dev->dev,
-			"HSIC Exit D3\n");
-		tmp = readl(pm_base + PM_SSC0);
-		tmp &= ~PM_SSC0_HSIC_D3_MODE;
-		writel(tmp, pm_base + PM_SSC0);
-
-		writel(0x201 | (0x1 << 21), pm_base + PM_CMD);
+		printk(KERN_CRIT "HSIC Exit D0I3!\n");
+		pci_set_power_state(pci_dev, PCI_D0);
 	}
-
-	while (1) {
-		tmp = readl(pm_base);
-		if (tmp & (PM_STS_DONE)) {
-			mdelay(1);
-			if (count >= 10) {
-				count = 0;
-				dev_err(&pci_dev->dev,
-					"Waiting for enter/exit D3 completed\n");
-			}
-		} else
-			break;
-		count++;
-	}
-
-	/* Check if HSIC and DPHY both enter D3*/
-	tmp = readl(pm_base + PMU_HW_PEN0);
-	tmp &= HSIC_DPHY_D3_STATE_MASK;
-	if ((tmp != HSIC_DPHY_D3_STATE_MASK) &&
-		enter_exit)
-		dev_err(&pci_dev->dev,
-			"HSIC and DPHY enter D3 failed!\n");
-
-	iounmap(pm_base);
 }
 
 static void ehci_hsic_port_power(struct ehci_hcd *ehci, int is_on)
