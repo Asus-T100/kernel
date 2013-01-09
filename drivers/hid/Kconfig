@@ -348,6 +348,8 @@ config NTRIG_SPI
 	Say Y here if you want to get driver support for N-Trig touch
 	screen.
 
+source "drivers/hid/ntrig-g4/Kconfig"
+
 config HID_ORTEK
 	tristate "Ortek PKB-1700/WKB-2000/Skycable wireless keyboard and mouse trackpad"
 	depends on USB_HID

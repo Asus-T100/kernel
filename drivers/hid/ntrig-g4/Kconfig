@@ -1,0 +1,21 @@
+config HID_NTRIG_G4
+	tristate "N-Trig g4 touch screen"
+	depends on USB_HID
+	help
+	  Say Y here if you want to enable support for N-Trig g4
+	  touch screen.
+
+	  If unsure, say N.
+
+	  To compile this driver as a module, choose M here.
+
+config NTRIG_SPI_G4
+	tristate "NTrig"
+	help
+	  Say Y here if you want to enable support for N-Trig g4
+	  touch screen spi screen.
+
+	  If unsure, say N.
+
+	  To compile this driver as a module, choose M here.
+

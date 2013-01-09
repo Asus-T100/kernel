@@ -104,6 +104,7 @@
 #include "device_libs/platform_max3111.h"
 #include "device_libs/platform_ektf2136.h"
 #include "device_libs/platform_ntrig.h"
+#include "device_libs/platform_ntrig_g4.h"
 
 /*
  * HSI devices
@@ -151,6 +152,7 @@ struct devs_id __initconst device_ids[] = {
 	{"spi_max3111", SFI_DEV_TYPE_SPI, 0, &max3111_platform_data, NULL},
 #endif
 	{"ntrig_spi", SFI_DEV_TYPE_SPI, 1, &ntrig_platform_data, NULL},
+	{"ntrig_g4_spi", SFI_DEV_TYPE_SPI, 1, &ntrig_g4_platform_data, NULL},
 #ifndef CONFIG_HSI_NO_MODEM
 	{"hsi_ifx_modem", SFI_DEV_TYPE_HSI, 0, &hsi_modem_platform_data, NULL},
 #endif

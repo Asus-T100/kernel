@@ -52,6 +52,7 @@ else
 obj-$(subst m,y,$(CONFIG_TOUCHSCREEN_SYNAPTICS_I2C_RMI4))		+= platform_s3202.o
 endif
 obj-$(subst m,y,$(CONFIG_HID_NTRIG))					+= platform_ntrig.o
+obj-$(subst m,y,$(CONFIG_HID_NTRIG_G4))                                 += platform_ntrig_g4.o
 obj-$(subst m,y,$(CONFIG_PN544_NFC))					+= platform_pn544.o
 obj-$(subst m,y,$(CONFIG_GPIO_PCA953X))					+= platform_tca6416.o
 obj-$(subst m,y,$(CONFIG_SENSORS_LIS3LV02D))				+= platform_lis331.o
