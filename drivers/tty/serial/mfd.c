@@ -2340,8 +2340,6 @@ static int hsu_suspend_noirq(struct device *dev)
 	if (priv && (pdev->device != 0x081E) && (pdev->device != 0x08FF)
 	&& (pdev->device != 0x1192)) {
 		up = priv;
-		if (!allow_for_suspend(up))
-			return -EBUSY;
 
 #ifdef CONFIG_PM_RUNTIME
 		/* check if RPM suspend has been unlocked */
@@ -2397,7 +2395,6 @@ static int hsu_suspend(struct device *dev)
 		if (up->running) {
 			uart_suspend_port(&serial_hsu_reg, &up->port);
 			up->running = 1;
-			intel_mid_hsu_suspend(up->index);
 		}
 		up->suspended = 1;
 	}
