@@ -1116,8 +1116,10 @@ static int atomisp_qbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 			goto done;
 
 		if (__get_css_frame_info(isp, pipe->pipe_type,
-					   &frame_info))
+					   &frame_info)) {
+			ret = -EIO;
 			goto error;
+		}
 #ifdef CONFIG_ION
 		hrt_isp_css_mm_set_user_ptr(userptr, pgnr,
 			buf->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_ION
@@ -1167,8 +1169,7 @@ done:
 
 error:
 	mutex_unlock(&isp->mutex);
-	v4l2_err(&atomisp_dev, "<%s: get_output_frame_info error\n", __func__);
-	return -EINVAL;
+	return ret;
 }
 
 static int atomisp_qbuf_file(struct file *file, void *fh,
