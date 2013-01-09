@@ -1564,6 +1564,7 @@ IMG_VOID SGXDumpDebugInfo (PVRSRV_SGXDEV_INFO	*psDevInfo,
 		/*
 			Dump the raw microkernel trace buffer to the log.
 		*/
+		if (ui32LastStatusCode)
 		{
 			IMG_UINT32	ui32LoopCounter;
 
