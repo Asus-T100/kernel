@@ -73,7 +73,7 @@ int intel_scu_ipc_read_shim(u32 *data, u32 flis_addr, u32 offset)
 	ipc_wbuf[1] = offset;
 
 	ret = intel_scu_ipc_command(IPCMSG_SHIM_CONFIG, IPC_CMD_SHIM_RD,
-			(u8 *)ipc_wbuf, 8, data, 4);
+			(u8 *)ipc_wbuf, 8, data, 1);
 	if (ret)
 		pr_err("%s: failed to read shim, flis addr: 0x%x, offset: 0x%x\n",
 			__func__, flis_addr, offset);
