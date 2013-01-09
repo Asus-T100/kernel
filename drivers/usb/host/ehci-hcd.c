@@ -712,7 +712,7 @@ static int ehci_init(struct usb_hcd *hcd)
 static int ehci_run (struct usb_hcd *hcd)
 {
 	struct ehci_hcd		*ehci = hcd_to_ehci (hcd);
-#ifndef CONFIG_BOARD_MRFLD_VV
+#ifndef CONFIG_USB_HCD_HSIC
 	int			retval;
 #endif
 	u32			temp;
@@ -720,7 +720,7 @@ static int ehci_run (struct usb_hcd *hcd)
 
 	hcd->uses_new_polling = 1;
 
-#ifndef CONFIG_BOARD_MRFLD_VV
+#ifndef CONFIG_USB_HCD_HSIC
 	/* EHCI spec section 4.1 */
 	/*
 	 * TDI driver does the ehci_reset in their reset callback.
@@ -1263,7 +1263,7 @@ MODULE_LICENSE ("GPL");
 #include "ehci-langwell-pci.c"
 #define INTEL_MID_OTG_HOST_DRIVER	ehci_otg_driver
 #endif
-#ifdef CONFIG_BOARD_MRFLD_VV
+#ifdef CONFIG_USB_HCD_HSIC
 #include "ehci-tangier-hsic-pci.c"
 #define INTEL_MID_HSIC_HOST_DRIVER	ehci_hsic_driver
 #endif
@@ -1420,7 +1420,7 @@ static int __init ehci_hcd_init(void)
 	}
 #endif
 
-#ifdef CONFIG_BOARD_MRFLD_VV
+#ifdef CONFIG_USB_HCD_HSIC
 	retval = pci_register_driver(&INTEL_MID_HSIC_HOST_DRIVER);
 	if (retval < 0)
 		goto clean6;
@@ -1463,7 +1463,7 @@ static int __init ehci_hcd_init(void)
 #endif
 	return retval;
 
-#ifdef CONFIG_BOARD_MRFLD_VV
+#ifdef CONFIG_USB_HCD_HSIC
 clean6:
 	pci_unregister_driver(&INTEL_MID_HSIC_HOST_DRIVER);
 #endif

@@ -193,8 +193,9 @@ struct usb_hcd {
 	void (*otg_notify) (struct usb_device *udev, unsigned action);
 #endif
 
-#ifdef CONFIG_BOARD_MRFLD_VV
+#ifdef CONFIG_USB_HCD_HSIC
 	struct hsic_tangier_priv *hsic;
+	void (*hsic_notify)(struct usb_device *udev, unsigned action);
 #endif
 
 	/* The HC driver's private data is stored at the end of

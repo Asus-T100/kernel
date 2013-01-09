@@ -59,6 +59,17 @@ config USB_EHCI_HCD
 	  To compile this driver as a module, choose M here: the
 	  module will be called ehci-hcd.
 
+config USB_HCD_HSIC
+	bool "HSIC support"
+	depends on USB_EHCI_HCD
+	default n
+	---help---
+	  Say 'Y' to turn on HSIC support for the EHCI host controller driver.
+	  HSIC is used for AP and BP IPC. In AP side, it will work as a EHCI host.
+	  Some functionalities like AUX signal and LPM will be supported.
+
+	  If unsure, say N.
+
 config USB_EHCI_ROOT_HUB_TT
 	bool "Root Hub Transaction Translators"
 	depends on USB_EHCI_HCD

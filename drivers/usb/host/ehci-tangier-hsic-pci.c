@@ -27,6 +27,10 @@ static struct pci_dev	*pci_dev;
 
 static int ehci_hsic_start_host(struct pci_dev  *pdev);
 static int ehci_hsic_stop_host(struct pci_dev *pdev);
+static bool hsic_enable;
+static bool hsic_aux_irq_enable;
+/* Workaround as the Modem will request 2 IRQs */
+static int first_interrupt;
 
 /* Workaround for OSPM, set PMCMD to ask SCU
  * power gate EHCI controller and DPHY
@@ -113,7 +117,6 @@ err:
 static irqreturn_t hsic_aux_gpio_irq(int irq, void *data)
 {
 	struct device *dev = data;
-	static int first_interrupt;
 	struct usb_hcd *hcd = dev_get_drvdata(dev);
 
 	dev_dbg(dev,
@@ -129,17 +132,23 @@ static irqreturn_t hsic_aux_gpio_irq(int irq, void *data)
 		return IRQ_HANDLED;
 	}
 
+	if (hsic_aux_irq_enable == 0) {
+		printk(KERN_ERR "ignore as irq is being disabled\n");
+		return IRQ_HANDLED;
+	}
+
 	first_interrupt = 1;
 	schedule_delayed_work(&hcd->hsic->hsic_aux, 0);
 
 	return IRQ_HANDLED;
 }
 
-static int hsic_aux_irq_init(struct notifier_block *nb,
-		unsigned long action, void *data)
+static int hsic_aux_irq_init(void)
 {
 	int retval;
 
+	hsic_aux_irq_enable = 1;
+	first_interrupt = 0;
 	gpio_direction_input(HSIC_AUX_N);
 	retval = request_irq(gpio_to_irq(HSIC_AUX_N),
 			hsic_aux_gpio_irq,
@@ -154,6 +163,57 @@ static int hsic_aux_irq_init(struct notifier_block *nb,
 	return retval;
 }
 
+static void free_aux_irq(void)
+{
+	if (hsic_aux_irq_enable) {
+		hsic_aux_irq_enable = 0;
+		synchronize_irq(gpio_to_irq(HSIC_AUX_N));
+		lnw_gpio_set_alt(HSIC_AUX_N, 0);
+		gpio_direction_output(HSIC_AUX_N, 0);
+		free_irq(gpio_to_irq(HSIC_AUX_N), &pci_dev->dev);
+	}
+}
+
+/* the root hub will call this callback when device added/removed */
+static void hsic_notify(struct usb_device *udev, unsigned action)
+{
+	int retval;
+
+	/* Ignore root hub add/remove event */
+	if (!udev->parent) {
+		pr_debug("%s Ignore root hub otg_notify\n", __func__);
+		return;
+	}
+
+	/* Ignore USB devices on external hub */
+	if (udev->parent && udev->parent->parent)
+		return;
+
+	/* Only valid for hsic port1 */
+	if (udev->portnum == 2) {
+		pr_debug("%s ignore hsic port2\n", __func__);
+		return;
+	}
+
+	switch (action) {
+	case USB_DEVICE_ADD:
+		pr_debug("Notify HSIC add device\n");
+		retval = hsic_aux_irq_init();
+		if (retval)
+			dev_err(&pci_dev->dev,
+				"unable to request IRQ\n");
+		break;
+	case USB_DEVICE_REMOVE:
+		pr_debug("Notify HSIC delete device\n");
+		free_aux_irq();
+		break;
+	default:
+		pr_debug("Notify action not supported\n");
+		return ;
+	}
+	return;
+}
+
 static void hsic_aux_work(struct work_struct *work)
 {
 	ehci_hsic_stop_host(pci_dev);
@@ -162,6 +222,43 @@ static void hsic_aux_work(struct work_struct *work)
 	hsic_enter_exit_d3(0);
 	ehci_hsic_start_host(pci_dev);
 }
+
+static void hsic_enable_work(struct work_struct *work)
+{
+	if (hsic_enable) {
+		ehci_hsic_stop_host(pci_dev);
+		hsic_enter_exit_d3(1);
+		usleep_range(5000, 6000);
+		hsic_enter_exit_d3(0);
+		ehci_hsic_start_host(pci_dev);
+	}
+}
+
+static ssize_t hsic_port_enable_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", hsic_enable);
+}
+
+static ssize_t hsic_port_enable_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	int retval;
+	struct usb_hcd *hcd = dev_get_drvdata(dev);
+
+	if (size > sizeof(int))
+		return -EINVAL;
+
+	if (sscanf(buf, "%d", &hsic_enable) == 1) {
+		schedule_delayed_work(&hcd->hsic->hsic_enable, 0);
+		return size;
+	}
+
+	return -1;
+}
+
+static DEVICE_ATTR(hsic_enable, S_IRUGO | S_IWUSR, hsic_port_enable_show,
+						    hsic_port_enable_store);
 
 static int ehci_hsic_probe(struct pci_dev *pdev,
 				const struct pci_device_id *id)
@@ -237,18 +334,17 @@ static int ehci_hsic_probe(struct pci_dev *pdev,
 
 	pci_set_master(pdev);
 
-	INIT_DELAYED_WORK(&(private->hsic_aux), hsic_aux_work);
-
-	BLOCKING_INIT_NOTIFIER_HEAD(&(private->re_enum_notifier));
-	private->nb.notifier_call = hsic_aux_irq_init;
-	retval = blocking_notifier_chain_register(
-			&(private->re_enum_notifier),
-			&(private->nb));
-	if (retval) {
-		printk(KERN_ERR "Failed to register notifier\n");
-		retval = -EBUSY;
-		goto disable_pci;
+	retval = device_create_file(&pdev->dev, &dev_attr_hsic_enable);
+	if (retval < 0) {
+		dev_dbg(&pdev->dev, "error create hsic_enable\n");
+		goto release_mem_region;
 	}
+
+
+	INIT_DELAYED_WORK(&(private->hsic_aux), hsic_aux_work);
+	INIT_DELAYED_WORK(&private->hsic_enable, hsic_enable_work);
+
+	hcd->hsic_notify = hsic_notify;
 	hcd->hsic = private;
 
 	retval = usb_add_hcd(hcd, irq, IRQF_DISABLED | IRQF_SHARED);
@@ -318,11 +414,12 @@ static void ehci_hsic_remove(struct pci_dev *pdev)
 	} else {
 		release_region(hcd->rsrc_start, hcd->rsrc_len);
 	}
-	free_irq(gpio_to_irq(HSIC_AUX_N), &pci_dev->dev);
-	gpio_free(HSIC_AUX_N);
 	kfree(hcd->hsic);
-	dev_set_drvdata(&pdev->dev, NULL);
 	usb_put_hcd(hcd);
+	printk(KERN_ERR "%s--->aux_irq_disable\n", __func__);
+	free_aux_irq();
+	gpio_free(HSIC_AUX_N);
+	device_remove_file(&pdev->dev, &dev_attr_hsic_enable);
 	pci_disable_device(pdev);
 
 	hsic_enter_exit_d3(1);

@@ -30,7 +30,7 @@
 
 #include "usb.h"
 
-#ifdef CONFIG_BOARD_MRFLD_VV
+#ifdef CONFIG_USB_HCD_HSIC
 #include <linux/usb/ehci-tangier-hsic-pci.h>
 #endif
 
@@ -1650,6 +1650,24 @@ static inline void otg_notify(struct usb_device *udev, unsigned action)
 
 #endif
 
+#ifdef CONFIG_USB_HCD_HSIC
+
+static void hsic_notify(struct usb_device *udev, unsigned action)
+{
+	struct usb_hcd *hcd = bus_to_hcd(udev->bus);
+
+	if (hcd->hsic_notify)
+		hcd->hsic_notify(udev, action);
+}
+
+#else
+
+static inline void hsic_notify(struct usb_device *udev, unsigned action)
+{
+}
+
+#endif
+
 /**
  * usb_disconnect - disconnect a device (usbcore-internal)
  * @pdev: pointer to device being disconnected
@@ -1947,6 +1965,7 @@ int usb_new_device(struct usb_device *udev)
 	 */
 	err = device_add(&udev->dev);
 	otg_notify(udev, USB_DEVICE_ADD);
+	hsic_notify(udev, USB_DEVICE_ADD);
 	if (err) {
 		dev_err(&udev->dev, "can't device_add, error %d\n", err);
 		goto fail;
@@ -3411,18 +3430,6 @@ static void hub_port_connect_change(struct usb_hub *hub, int port1,
 		if (status)
 			goto loop_disable;
 
-#ifdef CONFIG_BOARD_MRFLD_VV
-		/* Notify hsic host driver that stage one enumeration done */
-		if ((udev->descriptor.idVendor ==
-				MODEM_7160_STAGE_ONE_VID) &&
-			(udev->descriptor.idProduct ==
-			 MODEM_7160_STAGE_ONE_PID)) {
-			dev_dbg(hub_dev, "%s: hsic notifier!\n", __func__);
-			blocking_notifier_call_chain(
-					&hcd->hsic->re_enum_notifier,
-					0, NULL);
-		}
-#endif
 		status = hub_power_remaining(hub);
 		if (status)
 			dev_dbg(hub_dev, "%dmA power budget left\n", status);

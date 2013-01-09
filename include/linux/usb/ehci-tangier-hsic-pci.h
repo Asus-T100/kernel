@@ -22,8 +22,7 @@
 
 struct hsic_tangier_priv {
 	struct delayed_work  hsic_aux;
-	struct blocking_notifier_head re_enum_notifier;
-	struct notifier_block nb;
+	struct delayed_work  hsic_enable;
 };
 
 enum {
