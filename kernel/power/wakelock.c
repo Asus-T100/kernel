@@ -58,19 +58,6 @@ static struct wake_lock unknown_wakeup;
 static struct wake_lock suspend_backoff_lock;
 static unsigned suspend_short_count;
 
-/*
- * We monitor that suspend worker thread is not stucked for some reason by
- * using a timer. When the timer timeouts, we consider that suspend thread
- * is stucked and we just BUG().
- */
-#define SUSPEND_WORK_TIMEOUT 10
-static void suspend_timeout_fn(unsigned long data)
-{
-	pr_err("suspend work timeout!\n");
-	BUG();
-}
-static DEFINE_TIMER(suspend_timer, suspend_timeout_fn, 0, 0);
-
 #ifdef CONFIG_WAKELOCK_STAT
 static struct wake_lock deleted_wake_locks;
 static ktime_t last_sleep_time_update;
@@ -455,9 +442,6 @@ static void suspend(struct work_struct *work)
 	int entry_event_num;
 	struct timespec ts_entry, ts_exit;
 
-	/* work is being handled by suspend thread, cancel timer */
-	del_timer(&suspend_timer);
-
 	if (has_wake_lock(WAKE_LOCK_SUSPEND) || !alarm_pm_wake_check()) {
 		if (debug_mask & DEBUG_SUSPEND)
 			pr_info("suspend: abort suspend\n");
@@ -512,14 +496,8 @@ static void expire_wake_locks(unsigned long data)
 	has_lock = has_wake_lock_locked(WAKE_LOCK_SUSPEND);
 	if (debug_mask & DEBUG_EXPIRE)
 		pr_info("expire_wake_locks: done, has_lock %ld\n", has_lock);
-	if ((has_lock == 0) && !work_pending(&suspend_work)) {
-		/* Arm timer to monitor if suspend worker thread is */
-		/* blocked. If the work is pending we don't want to */
-		/* modify timer expiration. */
-		mod_timer(&suspend_timer, jiffies +
-				SUSPEND_WORK_TIMEOUT * HZ);
+	if (has_lock == 0)
 		queue_work(suspend_work_queue, &suspend_work);
-	}
 	spin_unlock_irqrestore(&list_lock, irqflags);
 }
 static DEFINE_TIMER(expire_timer, expire_wake_locks, 0, 0);
@@ -670,15 +648,8 @@ static void wake_lock_internal(
 				if (debug_mask & DEBUG_EXPIRE)
 					pr_info("wake_lock: %s, stop expire timer\n",
 						lock->name);
-			if ((expire_in == 0) && !work_pending(&suspend_work)) {
-				/* Arm timer to monitor if suspend worker */
-				/* thread is blocked. If the work is      */
-				/* pending we don't want to modify timer  */
-				/* expiration. */
-				mod_timer(&suspend_timer, jiffies +
-						SUSPEND_WORK_TIMEOUT * HZ);
+			if (expire_in == 0)
 				queue_work(suspend_work_queue, &suspend_work);
-			}
 		}
 	}
 	trace_wake_lock(lock);
@@ -724,15 +695,8 @@ void wake_unlock(struct wake_lock *lock)
 				if (debug_mask & DEBUG_EXPIRE)
 					pr_info("wake_unlock: %s, stop expire "
 						"timer\n", lock->name);
-			if ((has_lock == 0) && !work_pending(&suspend_work)) {
-				/* Arm timer to monitor if suspend worker */
-				/* thread is blocked. If the work is      */
-				/* pending we don't want to modify timer  */
-				/* expiration */
-				mod_timer(&suspend_timer, jiffies +
-						SUSPEND_WORK_TIMEOUT * HZ);
+			if (has_lock == 0)
 				queue_work(suspend_work_queue, &suspend_work);
-			}
 		}
 		if (lock == &main_wake_lock) {
 			if (debug_mask & DEBUG_SUSPEND)

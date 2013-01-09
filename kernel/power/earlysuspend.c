@@ -45,30 +45,6 @@ enum {
 };
 static int state;
 
-/*
- * We monitor that suspend worker thread is not stucked for some reason by
- * using 2 timers, one for early_suspend and another one for late_resume.
- * When a timer timeouts, we consider that suspend thread is stucked and
- * we just BUG().
- */
-#define EARLY_SUSPEND_WORK_TIMEOUT 10
-enum {
-	EARLY_SUSPEND_QUEUED = 0,
-	LATE_RESUME_QUEUED
-};
-static void early_suspend_timeout_fn(unsigned long data)
-{
-	if (data == EARLY_SUSPEND_QUEUED)
-		pr_err("early_suspend work timeout!\n");
-	else
-		pr_err("late_resume work timeout!\n");
-	BUG();
-}
-static DEFINE_TIMER(early_suspend_timer, early_suspend_timeout_fn, 0,
-			EARLY_SUSPEND_QUEUED);
-static DEFINE_TIMER(late_resume_timer, early_suspend_timeout_fn, 0,
-			LATE_RESUME_QUEUED);
-
 void register_early_suspend(struct early_suspend *handler)
 {
 	struct list_head *pos;
@@ -100,9 +76,6 @@ static void early_suspend(struct work_struct *work)
 	struct early_suspend *pos;
 	unsigned long irqflags;
 	int abort = 0;
-
-	/* work is being handled by suspend thread, cancel timer */
-	del_timer(&early_suspend_timer);
 
 	mutex_lock(&early_suspend_lock);
 	spin_lock_irqsave(&state_lock, irqflags);
@@ -145,9 +118,6 @@ static void late_resume(struct work_struct *work)
 	struct early_suspend *pos;
 	unsigned long irqflags;
 	int abort = 0;
-
-	/* work is being handled by suspend thread, cancel timer */
-	del_timer(&late_resume_timer);
 
 	mutex_lock(&early_suspend_lock);
 	spin_lock_irqsave(&state_lock, irqflags);
@@ -200,25 +170,11 @@ void request_suspend_state(suspend_state_t new_state)
 	}
 	if (!old_sleep && new_state != PM_SUSPEND_ON) {
 		state |= SUSPEND_REQUESTED;
-		/* Arm timer to monitor if suspend worker thread is */
-		/* blocked. If the work is pending we don't want to */
-		/* modify timer expiration */
-		if (!work_pending(&early_suspend_work)) {
-			mod_timer(&early_suspend_timer, jiffies +
-					EARLY_SUSPEND_WORK_TIMEOUT * HZ);
-			queue_work(suspend_work_queue, &early_suspend_work);
-		}
+		queue_work(suspend_work_queue, &early_suspend_work);
 	} else if (old_sleep && new_state == PM_SUSPEND_ON) {
 		state &= ~SUSPEND_REQUESTED;
 		wake_lock(&main_wake_lock);
-		/* Arm timer to monitor if suspend worker thread is */
-		/* blocked. If the work is pending we don't want to */
-		/* modify timer expiration */
-		if (!work_pending(&late_resume_work)) {
-			mod_timer(&late_resume_timer, jiffies +
-					EARLY_SUSPEND_WORK_TIMEOUT * HZ);
-			queue_work(suspend_work_queue, &late_resume_work);
-		}
+		queue_work(suspend_work_queue, &late_resume_work);
 	}
 	requested_suspend_state = new_state;
 	spin_unlock_irqrestore(&state_lock, irqflags);
