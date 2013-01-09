@@ -345,87 +345,6 @@ static void ehci_hsic_shutdown(struct pci_dev *pdev)
 	dev_dbg(&pdev->dev, "%s <---\n", __func__);
 }
 
-static int tangier_hsic_suspend_noirq(struct device *dev)
-{
-	int			ret = 0;
-
-	dev_dbg(dev, "%s --->\n", __func__);
-
-	dev_dbg(dev, "%s <---\n", __func__);
-	return ret;
-}
-
-static int tangier_hsic_suspend(struct device *dev)
-{
-	int			ret = 0;
-
-	dev_dbg(dev, "%s --->\n", __func__);
-
-	dev_dbg(dev, "%s <---\n", __func__);
-	return ret;
-}
-
-static int tangier_hsic_resume_noirq(struct device *dev)
-{
-	int			ret = 0;
-
-	dev_dbg(dev, "%s --->\n", __func__);
-
-
-	dev_dbg(dev, "%s <---\n", __func__);
-	return ret;
-}
-
-static int tangier_hsic_resume(struct device *dev)
-{
-	int			ret = 0;
-
-	dev_dbg(dev, "%s --->\n", __func__);
-
-	dev_dbg(dev, "%s <---\n", __func__);
-	return ret;
-}
-
-#ifdef CONFIG_PM_RUNTIME
-/* Runtime PM */
-static int tangier_hsic_runtime_suspend(struct device *dev)
-{
-	int			ret = 0;
-
-	dev_dbg(dev, "%s --->\n", __func__);
-
-	dev_dbg(dev, "%s <---: ret = %d\n", __func__, ret);
-	return ret;
-}
-
-static int tangier_hsic_runtime_resume(struct device *dev)
-{
-	int			ret = 0;
-
-	dev_dbg(dev, "%s --->\n", __func__);
-
-	dev_dbg(dev, "%s <---\n", __func__);
-
-	return ret;
-}
-
-static int tangier_hsic_runtime_idle(struct device *dev)
-{
-	dev_dbg(dev, "%s --->\n", __func__);
-
-	dev_dbg(dev, "%s <---\n", __func__);
-
-	return -EBUSY;
-}
-
-#else
-
-#define tangier_hsic_runtime_suspend NULL
-#define tangier_hsic_runtime_resume NULL
-#define tangier_hsic_runtime_idle NULL
-
-#endif
-
 static DEFINE_PCI_DEVICE_TABLE(pci_hsic_ids) = {
 	{
 		.vendor =	0x8086,
@@ -435,16 +354,6 @@ static DEFINE_PCI_DEVICE_TABLE(pci_hsic_ids) = {
 		.driver_data =  (unsigned long) &ehci_pci_hc_driver,
 	},
 	{ /* end: all zeroes */ }
-};
-
-static const struct dev_pm_ops tangier_hsic_pm_ops = {
-	.runtime_suspend = tangier_hsic_runtime_suspend,
-	.runtime_resume = tangier_hsic_runtime_resume,
-	.runtime_idle = tangier_hsic_runtime_idle,
-	.suspend = tangier_hsic_suspend,
-	.suspend_noirq = tangier_hsic_suspend_noirq,
-	.resume = tangier_hsic_resume,
-	.resume_noirq = tangier_hsic_resume_noirq,
 };
 
 /* Intel HSIC EHCI driver */
@@ -457,7 +366,7 @@ static struct pci_driver ehci_hsic_driver = {
 
 #ifdef CONFIG_PM_SLEEP
 	.driver =	{
-		.pm =	&tangier_hsic_pm_ops
+		.pm =	&usb_hcd_pci_pm_ops
 	},
 #endif
 	.shutdown =	ehci_hsic_shutdown,
