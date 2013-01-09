@@ -1240,7 +1240,7 @@ static int mt9d113_set_mbus_fmt(struct v4l2_subdev *sd,
 			return ret;
 		}
 
-		/* write default ae virt gain and ae_d_gain */
+		/* write default ae_d_gain */
 		ret = mt9d113_write_reg_array(c, mt9d113_default_gain);
 		if (ret) {
 			dev_err(&c->dev,
@@ -1405,7 +1405,7 @@ static int mt9d113_get_iso(struct v4l2_subdev *sd, s32 *value)
 		return ret;
 	}
 
-	ret = mt9d113_read_reg(client, MISENSOR_8BIT,
+	ret = mt9d113_read_reg(client, MISENSOR_16BIT,
 				MT9D113_MCU_VAR_DATA0,
 				&ae_gain);
 	if (ret) {
