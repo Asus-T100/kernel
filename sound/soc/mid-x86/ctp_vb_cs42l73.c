@@ -293,10 +293,10 @@ static struct snd_soc_dai_link ctp_vb_dailink[] = {
 		.ops = &ctp_vb_asp_ops,
 	},
 	[CTP_COMMS_BT_SCO_DEV] = {
-		.name = "Cloverview XSP",
+		.name = "Cloverview BT XSP",
 		.stream_name = "BT-Audio",
 		.cpu_dai_name = "Voice-cpu-dai",
-		.codec_name = "cs42l73-asp",
+		.codec_dai_name = "cs42l73-xsp",
 		.codec_name = "cs42l73.1-004a",
 		.platform_name = "sst-platform",
 		.init = NULL,
@@ -304,7 +304,7 @@ static struct snd_soc_dai_link ctp_vb_dailink[] = {
 		.ops = &ctp_vb_bt_xsp_ops,
 	},
 	[CTP_COMMS_FM_DEV] = {
-		.name = "Cloverview XSP",
+		.name = "Cloverview FM XSP",
 		.stream_name = "FM-Audio",
 		.cpu_dai_name = "Voice-cpu-dai",
 		.codec_dai_name = "cs42l73-xsp",
