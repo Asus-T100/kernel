@@ -326,15 +326,20 @@ static int ehci_bus_suspend (struct usb_hcd *hcd)
 		while (port--) {
 			u32 __iomem	*hostpc_reg;
 			u32		t3;
+			struct pci_dev  *pdev =
+				to_pci_dev(hcd->self.controller);
 
-			hostpc_reg = (u32 __iomem *)((u8 *) ehci->regs
-					+ HOSTPC0 + 4 * port);
-			t3 = ehci_readl(ehci, hostpc_reg);
-			ehci_writel(ehci, t3 | HOSTPC_PHCD, hostpc_reg);
-			t3 = ehci_readl(ehci, hostpc_reg);
-			ehci_dbg(ehci, "Port %d phy low-power mode %s\n",
-					port, (t3 & HOSTPC_PHCD) ?
-					"succeeded" : "failed");
+			/* Temp bypass the phy low power mode for HSIC */
+			if (pdev->device != 0x119d) {
+				hostpc_reg = (u32 __iomem *)((u8 *) ehci->regs
+						+ HOSTPC0 + 4 * port);
+				t3 = ehci_readl(ehci, hostpc_reg);
+				ehci_writel(ehci, t3 | HOSTPC_PHCD, hostpc_reg);
+				t3 = ehci_readl(ehci, hostpc_reg);
+				ehci_dbg(ehci, "Port %d phy low-power mode %s\n",
+						port, (t3 & HOSTPC_PHCD) ?
+						"succeeded" : "failed");
+			}
 		}
 	}
 
