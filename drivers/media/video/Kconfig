@@ -310,6 +310,16 @@ config VIDEO_BT866
 	  To compile this driver as a module, choose M here: the
 	  module will be called bt866.
 
+config VIDEO_LM3554
+	tristate "LM3554 flash light driver"
+	depends on VIDEO_V4L2 && I2C
+	---help---
+	  This is a Video4Linux2 sub-dev driver for the LM3554
+	  flash light driver.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called lm3554
+
 config VIDEO_KS0127
 	tristate "KS0127 video decoder"
 	depends on VIDEO_V4L2 && I2C
