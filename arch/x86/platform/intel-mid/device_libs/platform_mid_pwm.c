@@ -21,23 +21,87 @@
 #include <asm/intel_mid_pwm.h>
 #include "platform_mid_pwm.h"
 
+static struct intel_mid_pwm_device_data mfld_pwms[] = {
+	[PWM_LED] = {
+		.reg_clkdiv0 = 0x62,
+		.reg_clkdiv1 = 0x61,
+		.reg_dutycyc = 0x67,
+		.val_clkdiv1 = 0x00,
+		.val_clkdiv0 = 0x03,
+	},
+	[PWM_VIBRATOR] = {
+		.reg_clkdiv0 = 0x64,
+		.reg_clkdiv1 = 0x63,
+		.reg_dutycyc = 0x68,
+		.val_clkdiv1 = 0x00,
+		.val_clkdiv0 = 0x03,
+	},
+	[PWM_LCD_BACKLIGHT] = {
+		.reg_clkdiv0 = 0x66,
+		.reg_clkdiv1 = 0x65,
+		.reg_dutycyc = 0x69,
+		.val_clkdiv1 = 0x00,
+		.val_clkdiv0 = 0x03,
+	},
+};
+
+static struct intel_mid_pwm_device_data ctp_pwms[] = {
+	[PWM_LED] = {
+		.reg_clkdiv0 = 0x62,
+		.reg_clkdiv1 = 0x61,
+		.reg_dutycyc = 0x67,
+		.val_clkdiv1 = 0x00,
+		.val_clkdiv0 = 0x63,
+	},
+	[PWM_VIBRATOR] = {
+		.reg_clkdiv0 = 0x64,
+		.reg_clkdiv1 = 0x63,
+		.reg_dutycyc = 0x68,
+		.val_clkdiv1 = 0x00,
+		.val_clkdiv0 = 0x03,
+	},
+	[PWM_LCD_BACKLIGHT] = {
+		.reg_clkdiv0 = 0x66,
+		.reg_clkdiv1 = 0x65,
+		.reg_dutycyc = 0x69,
+		.val_clkdiv1 = 0x00,
+		.val_clkdiv0 = 0x03,
+	},
+};
+
+static struct intel_mid_pwm_platform_data pdata[] = {
+	[mfld_pwm] = {
+		.pwm_num = PWM_NUM,
+		.ddata = mfld_pwms,
+	},
+	[ctp_pwm] = {
+		.pwm_num = PWM_NUM,
+		.ddata = ctp_pwms,
+	},
+};
+
+static void *get_pwm_platform_data()
+{
+	if (INTEL_MID_BOARD(1, PHONE, CLVTP) ||
+		(INTEL_MID_BOARD(1, TABLET, CLVT))) {
+		pr_info("%s, CLV board detected\n", __func__);
+		return &pdata[ctp_pwm];
+	} else {
+		pr_info("%s, MFLD board detected\n", __func__);
+		return &pdata[mfld_pwm];
+	}
+}
+
 static int __init intel_mid_pwm_init(void)
 {
 	int ret, i;
 	struct ipc_board_info board_info;
-	static struct intel_mid_pwm_platform_data mid_pwm_pdata;
-
-	for (i = 0; i < PWM_NUM; i++) {
-		mid_pwm_pdata.reg_clkdiv0[i] = MSIC_REG_PWM0CLKDIV0 + i * 2;
-		mid_pwm_pdata.reg_clkdiv1[i] = MSIC_REG_PWM0CLKDIV1 + i * 2;
-		mid_pwm_pdata.reg_dutycyc[i] = MSIC_REG_PWM0DUTYCYCLE + i;
-	}
 
 	memset(&board_info, 0, sizeof(board_info));
 	strncpy(board_info.name, DEVICE_NAME, 16);
 	board_info.bus_id = IPC_SCU;
 	board_info.id = -1;
-	board_info.platform_data = &mid_pwm_pdata;
+	board_info.platform_data = get_pwm_platform_data();
 
 	ret = ipc_new_device(&board_info);
 	if (ret) {

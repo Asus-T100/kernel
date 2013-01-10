@@ -1,11 +1,7 @@
 #ifndef __INTEL_MID_PWM_H__
 #define __INTEL_MID_PWM_H__
 
-#define	MSIC_REG_PWM0CLKDIV1	0x061
-#define	MSIC_REG_PWM0CLKDIV0	0x062
-#define	MSIC_REG_PWM0DUTYCYCLE	0x067
-
-#define MAX_DUTYCYCLE_PERCENTAGE	100
+#define MAX_DUTYCYCLE_PERCENTAGE 100
 
 enum {
 	PWM_LED = 0,
@@ -14,10 +10,17 @@ enum {
 	PWM_NUM,
 };
 
+struct intel_mid_pwm_device_data {
+	u16 reg_clkdiv0;
+	u16 reg_clkdiv1;
+	u16 reg_dutycyc;
+	u8 val_clkdiv0;
+	u8 val_clkdiv1;
+};
+
 struct intel_mid_pwm_platform_data {
-	int reg_clkdiv0[PWM_NUM];
-	int reg_clkdiv1[PWM_NUM];
-	int reg_dutycyc[PWM_NUM];
+	int pwm_num;
+	struct intel_mid_pwm_device_data *ddata;
 };
 
 int intel_mid_pwm(int id, int value);

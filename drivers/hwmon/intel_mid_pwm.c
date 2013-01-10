@@ -30,9 +30,8 @@
 
 struct pwm_info {
 	int initialized;
-	int *msic_reg_clkdiv0;
-	int *msic_reg_clkdiv1;
-	int *msic_reg_dutycyc;
+	int pwm_num;
+	struct intel_mid_pwm_device_data *ddata;
 	struct device *dev;
 	struct mutex lock;
 };
@@ -43,34 +42,44 @@ int intel_mid_pwm(int id, int value)
 {
 	int ret;
 	struct pwm_info *pi = &pwm_info;
-	int msic_reg_pwmclkdiv0 = *(pi->msic_reg_clkdiv0 + id);
-	int msic_reg_pwmclkdiv1 = *(pi->msic_reg_clkdiv1 + id);
-	int msic_reg_pwmdutycyc = *(pi->msic_reg_dutycyc + id);
+	u16 reg_pwmclkdiv0, reg_pwmclkdiv1, reg_pwmdutycyc;
+	u8 val_pwmclkdiv0, val_pwmclkdiv1;
 
 	if (!pi->initialized)
 		return -ENODEV;
+
+	if (id < 0 || id >= pi->pwm_num)
+		return -EINVAL;
 
 	if (value < 0 || value > MAX_DUTYCYCLE_PERCENTAGE) {
 		dev_err(pi->dev, "duty cycle value invalid\n");
 		return -EINVAL;
 	}
 
-	value = (value == 100) ? 99 : value;
+	value = (value == MAX_DUTYCYCLE_PERCENTAGE) ?
+			(MAX_DUTYCYCLE_PERCENTAGE - 1) : value;
+
+	reg_pwmclkdiv0 = pi->ddata[id].reg_clkdiv0;
+	reg_pwmclkdiv1 = pi->ddata[id].reg_clkdiv1;
+	reg_pwmdutycyc = pi->ddata[id].reg_dutycyc;
+	val_pwmclkdiv0 = pi->ddata[id].val_clkdiv0;
+	val_pwmclkdiv1 = pi->ddata[id].val_clkdiv1;
 
 	mutex_lock(&pi->lock);
-	ret = intel_scu_ipc_iowrite8(msic_reg_pwmclkdiv1, 0x00);
+	ret = intel_scu_ipc_iowrite8(reg_pwmclkdiv1, val_pwmclkdiv1);
 	if (ret) {
 		dev_err(pi->dev, "set MSIC_REG_PWMCLKDIV1 failed\n");
 		goto out;
 	}
 
-	ret = intel_scu_ipc_iowrite8(msic_reg_pwmclkdiv0, value ? 0x03 : 0x00);
+	ret = intel_scu_ipc_iowrite8(reg_pwmclkdiv0,
+				value ? val_pwmclkdiv0 : 0x00);
 	if (ret) {
 		dev_err(pi->dev, "set MSIC_REG_PWMCLKDIV0 failed\n");
 		goto out;
 	}
 
-	ret = intel_scu_ipc_iowrite8(msic_reg_pwmdutycyc, value);
+	ret = intel_scu_ipc_iowrite8(reg_pwmdutycyc, value);
 	if (ret)
 		dev_err(pi->dev, "set MSIC_REG_PWMDUTYCYCLE failed\n");
 
@@ -84,14 +93,19 @@ static int __devinit intel_mid_pwm_probe(struct ipc_device *ipcdev)
 	struct pwm_info *pi = &pwm_info;
 	struct intel_mid_pwm_platform_data *pdata = ipcdev->dev.platform_data;
 
+	if (!pdata) {
+		dev_err(&ipcdev->dev, "No platform data\n");
+		return -EINVAL;
+	}
+
 	mutex_init(&pi->lock);
 
 	pi->dev = &ipcdev->dev;
-	pi->msic_reg_clkdiv0 = pdata->reg_clkdiv0;
-	pi->msic_reg_clkdiv1 = pdata->reg_clkdiv1;
-	pi->msic_reg_dutycyc = pdata->reg_dutycyc;
+	pi->ddata = pdata->ddata;
+	pi->pwm_num = pdata->pwm_num;
 
-	pi->initialized = 1;
+	if (pi->pwm_num && pi->ddata)
+		pi->initialized = 1;
 
 	return 0;
 }

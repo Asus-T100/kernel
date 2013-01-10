@@ -13,4 +13,9 @@
 #define _PLATFORM_MID_PWM_H_
 
 #define DEVICE_NAME "intel_mid_pwm"
+
+enum {
+	mfld_pwm,
+	ctp_pwm,
+};
 #endif
