@@ -1,8 +1,9 @@
 /*
- *  clv_machine.h - ASoc Machine driver for Intel Cloverview MID platform
+ *  ctp_rhb_machine.h - ASoc Machine driver for Intel Cloverview MID platform
  *
- *  Copyright (C) 2011-12 Intel Corp
+ *  Copyright (C) 2011-13 Intel Corp
  *  Author: Selma Bensaid <selma.bensaid@intel.com>
+ *  Author: Dharageswari.R <dharageswari.r@intel.com>
  *  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -29,7 +30,6 @@
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
-
 #include "mid_ssp.h"
 
 /* Data path functionalities */
@@ -129,12 +129,13 @@ struct snd_pcm_hardware VOIP_alsa_hw_param = {
 
 
 enum {
-	CLV_AUD_ASP_DEV = 0,
-	CLV_AUD_VSP_DEV,
-	CLV_AUD_COMP_ASP_DEV,
-	CLV_COMMS_BT_SCO_DEV,
-	CLV_COMMS_MSIC_VOIP_DEV,
-	CLV_COMMS_IFX_MODEM_DEV,
+	CTP_AUD_ASP_DEV = 0,
+	CTP_AUD_VSP_DEV,
+	CTP_AUD_COMP_ASP_DEV,
+	CTP_COMMS_BT_SCO_DEV,
+	CTP_COMMS_MSIC_VOIP_DEV,
+	CTP_COMMS_IFX_MODEM_DEV,
+	CTP_COMMS_FM_DEV,
 };
 
 /*
@@ -183,7 +184,7 @@ static const struct soc_enum ssp_bt_sco_master_mode_enum =
 static const struct soc_enum ssp_voip_master_mode_enum =
 	SOC_ENUM_SINGLE_EXT(2, ssp_master_mode_text);
 
-static const struct soc_enum ssp_ifx_master_mode_enum =
+static const struct soc_enum ssp_modem_master_mode_enum =
 	SOC_ENUM_SINGLE_EXT(2, ssp_master_mode_text);
 
 #endif /* MFLD_SSP_WL1273_MACHINE_H_ */

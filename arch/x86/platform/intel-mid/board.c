@@ -37,7 +37,7 @@
 #include "device_libs/platform_msic_ocd.h"
 #include "device_libs/platform_msic_thermal.h"
 #include "device_libs/platform_msic_adc.h"
-#include <asm/platform_clvs_audio.h>
+#include <asm/platform_ctp_audio.h>
 
 /* I2C devices */
 #include "device_libs/platform_apds990x.h"
@@ -106,7 +106,7 @@ struct devs_id __initconst device_ids[] = {
 						&ipc_device_handler},
 	{"a_gfreq",   SFI_DEV_TYPE_IPC, 0, &no_platform_data,
 						&ipc_device_handler},
-	{"clvcs_audio", SFI_DEV_TYPE_IPC, 1, &clvs_audio_platform_data,
+	{"clvcs_audio", SFI_DEV_TYPE_IPC, 1, &ctp_audio_platform_data,
 						&ipc_device_handler},
 
 	/* I2C devices */
