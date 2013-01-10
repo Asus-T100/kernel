@@ -483,12 +483,11 @@ static int atomisp_subdev_probe(struct atomisp_device *isp)
 	if (isp->motor && raw_index >= 0)
 		isp->inputs[raw_index].motor = isp->motor;
 
-	/*Check camera for at least one subdev in it */
-	if (!isp->inputs[0].camera) {
+	/* Proceed even if no modules detected. For COS mode and no modules. */
+	if (!isp->inputs[0].camera)
 		v4l2_err(&atomisp_dev, "atomisp: "
 		       "no camera attached or fail to detect\n");
-		return -ENODEV;
-	}
+
 	return 0;
 }
 
