@@ -944,4 +944,13 @@ config SND_INTEL_ALSA_IFX
 	  This ALSA driver offers:
 	  1 modem device with 1 capture and 1 playback substreams
 
+config SND_INTEL_ALSA_SSP_MODEM_MASTER_MODE
+        depends on SND_INTEL_ALSA_IFX && SND_INTEL_MID_I2S
+	bool "Set the ALSA SSP MODEM device in MASTER instead SLAVE by default"
+	default n
+	help
+	   This is an option to select ALSA SSP MODEM in MASTER instead of default
+	   SLAVE.
+
+
 endif	# SND_PCI
