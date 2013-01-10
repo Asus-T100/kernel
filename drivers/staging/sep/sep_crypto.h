@@ -338,12 +338,15 @@ struct this_task_ctx {
 struct sep_system_ctx {
 	union key_t key;
 	size_t keylen;
+	int key_sent_enc;
+	int key_sent_dec;
 	int key_sent;
 	enum des_numkey des_nbr_keys;
 	enum aes_keysize aes_key_size;
 	unsigned long end_time;
 	struct sep_des_private_context des_private_ctx;
-	struct sep_aes_private_context aes_private_ctx;
+	struct sep_aes_private_context aes_private_ctx_enc;
+	struct sep_aes_private_context aes_private_ctx_dec;
 	struct sep_hash_private_context hash_private_ctx;
 	};
 

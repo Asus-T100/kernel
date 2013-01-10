@@ -58,6 +58,10 @@
 #include <asm/current.h>
 #include <linux/ioport.h>
 #include <linux/io.h>
+#include <linux/workqueue.h>
+#include <linux/blkdev.h>
+#include <linux/mmc/core.h>
+#include <linux/mmc/card.h>
 #include <linux/interrupt.h>
 #include <linux/pagemap.h>
 #include <asm/cacheflush.h>
@@ -73,6 +77,7 @@
 #include <crypto/aes.h>
 #include <crypto/des.h>
 #include <crypto/hash.h>
+#include <linux/intel_mid_pm.h>
 
 #include "sep_driver_hw_defs.h"
 #include "sep_driver_config.h"
@@ -80,8 +85,8 @@
 #include "sep_dev.h"
 #include "sep_crypto.h"
 
-#define CREATE_TRACE_POINTS
-#include "sep_trace_events.h"
+#define DRVNAME	"sep_sec"
+#define EMMC_BLK_NAME	"mmcblk0rpmb"
 
 /*
  * Let's not spend cycles iterating over message
@@ -89,9 +94,26 @@
  */
 #ifdef DEBUG
 #define sep_dump_message(sep)	_sep_dump_message(sep)
+#define sep_dump_emmc(sep, start_loc)	_sep_dump_emmc(sep, start_loc)
 #else
 #define sep_dump_message(sep)
+#define sep_dump_emmc(sep, start_loc)
 #endif
+
+#define PNW_IMR_MSG_PORT      3
+#define PNW_IMR4L_MSG_REGADDR 0x50
+#define PNW_IMR4H_MSG_REGADDR 0x51
+#define PNW_IMR_ADDRESS_MASK 0x00fffffcu
+#define PNW_IMR_ADDRESS_SHIFT 8
+
+uint32_t get_imr_base(void)
+{
+	u32 low, start;
+	low = intel_mid_msgbus_read32(PNW_IMR_MSG_PORT,
+			PNW_IMR4L_MSG_REGADDR);
+	start = (low & PNW_IMR_ADDRESS_MASK) << PNW_IMR_ADDRESS_SHIFT;
+	return start;
+}
 
 /**
  * Currenlty, there is only one SEP device per platform;
@@ -101,6 +123,391 @@
 
 struct sep_device *sep_dev;
 
+static u32 g_sep_host_gpr2;
+#define SEP_TO_HOST_COUNTER_MASK         (0x3FFFFFFF)
+
+/**
+ * sep_dump_message - dump the message that is pending
+ * @sep: SEP device
+ * This will only print dump if DEBUG is set; it does
+ * follow kernel debug print enabling
+ */
+void _sep_dump_message(struct sep_device *sep)
+{
+	int count;
+	u32 *p = sep->shared_addr;
+	for (count = 0; count < 20 * 4; count += 4)
+		dev_dbg(&sep->pdev->dev,
+			"[PID%d] Word %d of the message is %x\n",
+				current->pid, count/4, *p++);
+}
+
+/**
+ * sep_dump_emmc - dump the message that is pending
+ * @sep: SEP device
+ * This will only print dump if DEBUG is set; it does
+ * follow kernel debug print enabling
+ */
+void _sep_dump_emmc(struct sep_device *sep, void *start_loc)
+{
+	int count;
+	u32 *p = start_loc;
+	for (count = 0; count < 20 * 4; count += 4)
+		dev_dbg(&sep->pdev->dev,
+			"[PID%d] Word %d of the message is %.8x\n",
+				current->pid, count/4, *p++);
+}
+
+static int emmc_match(struct device *dev, void *data)
+{
+	if (strcmp(dev_name(dev), data) == 0)
+		return 1;
+	return 0;
+}
+
+static int mmc_blk_rpmb_req_handle(struct mmc_ioc_rpmb_req *req)
+{
+	struct device *emmc = NULL;
+
+	if (!req)
+		return -EINVAL;
+
+	emmc = class_find_device(&block_class, NULL, EMMC_BLK_NAME, emmc_match);
+	if (!emmc) {
+		pr_err("%s: eMMC card is not registered yet. Try it later\n",
+				__func__);
+		return -ENODEV;
+	}
+
+	return mmc_rpmb_req_handle(emmc, req);
+}
+
+static inline int is_correct_rpmb_opcodes(struct sep_device *sep,
+		u32 main_opcode, u32 sub_opcode)
+{
+	int ret = ((main_opcode == SEP_RPMB_COMMAND) &&
+			((sub_opcode == RQ_READ_IN_PROG) ||
+			(sub_opcode == RQ_WRITE_IN_PROG) ||
+			(sub_opcode == RQ_GET_WRITE_CTR)));
+
+	dev_dbg(&sep->pdev->dev,
+		"[PID%d] opcodes: "
+		"main=0x%.8x, sub=0x%.8x %s a valid rpmb command\n",
+		current->pid, main_opcode, sub_opcode, (ret) ? "is" : "is NOT");
+
+	return ret;
+}
+
+/**
+ *	rpmb_process_request
+ *	@data: pointer to sep_device
+ *	Process rpmb requests (runs as kernel workqueue so that
+ *	it can be put to sleep
+ */
+static void rpmb_process_request(struct work_struct *work)
+{
+	struct sep_device *sep = container_of(work,
+			struct sep_device, rpmb_work);
+	int res;
+
+	/*
+	 * Non data field of printk block; used for emmc
+	 * parameters from the sep; one of these is needed
+	 * for each iteration with the EMMC
+	 */
+	struct sep_non_data_field *sep_emmc_block;
+	struct sep_non_data_field *sep_emmc_resp_block;
+
+	/* Message pool head; used for messages between driver and sep */
+	struct sep_msgarea_hdr *msg_hdr_area;
+
+	/* Pointer to data to be exchanged */
+	struct sep_message_top_from_sep *sep_incomming_msg_area;
+	struct sep_message_top_to_sep *sep_outgoing_msg_area;
+
+
+	/* Pointer to total number of iterations */
+	u32 *total_iter_ptr_from_sep;
+	u32 *total_iter_ptr_to_sep;
+
+	/* structure to pass to the eMMC driver's rpmb API */
+	struct mmc_ioc_rpmb_req my_request_block;
+
+	int i;
+	u32 *tmp;
+
+	pr_debug("sep rpmb_process_request started\n");
+	if (work == 0) {
+		pr_debug("rpmb process; null data for work queue process\n");
+		return;
+	}
+
+	dev_dbg(&sep->pdev->dev, "[PID%d] rpmb process has sep dev\n",
+		current->pid);
+
+	dev_dbg(&sep->pdev->dev, "[PID%d] rpmb process message dump:\n",
+		current->pid);
+	sep_dump_message(sep);
+
+	/* point to message area (start of shared area) */
+	msg_hdr_area = (struct sep_msgarea_hdr *)sep->shared_addr;
+	dev_dbg(&sep->pdev->dev, "[PID%d] rpmb msg area start %p\n",
+		current->pid, msg_hdr_area);
+
+	dev_dbg(&sep->pdev->dev, "[PID%d] rpmb data area start %p\n",
+		current->pid, (u8 *)(sep->shared_addr + DATA_START_OFFSET));
+
+	/* point to total iterations */
+	total_iter_ptr_from_sep = (u32 *)(sep->shared_addr
+			+ SEP_ITERATION_OFFSET);
+	total_iter_ptr_to_sep = (u32 *)(sep->shared_addr
+			+ SEP_ITERATION_RESP_OFFSET);
+
+	dev_dbg(&sep->pdev->dev,
+		"[PID%d] rpmb msg total iteration loc: %p value: %.8x\n",
+		current->pid,
+		total_iter_ptr_from_sep,
+		*total_iter_ptr_from_sep);
+
+	/* point to non data fields (sep emmc block) */
+	sep_emmc_block = (struct sep_non_data_field *)(sep->shared_addr +
+		SEP_NONDATA_OFFSET);
+	sep_emmc_resp_block = (struct sep_non_data_field *)(sep->shared_addr +
+		SEP_NONDATA_RESP_OFFSET);
+
+	dev_dbg(&sep->pdev->dev, "[PID%d] rpmb emmc blk %p\n",
+		current->pid, sep_emmc_block);
+
+	/* What do we want to do? */
+	sep_incomming_msg_area = (struct sep_message_top_from_sep *)
+		(sep->shared_addr + MSG_TOP_SIZE);
+	sep_outgoing_msg_area = (struct sep_message_top_to_sep *)
+		(sep->shared_addr + MSG_TOP_SIZE);
+	dev_dbg(&sep->pdev->dev, "[PID%d] rpmb command is %.8x\n",
+		current->pid, sep_incomming_msg_area->rpmb_command);
+
+	/* Check the command word */
+	if (!is_correct_rpmb_opcodes(sep, msg_hdr_area->opcode,
+			sep_incomming_msg_area->rpmb_command)) {
+		dev_dbg(&sep->pdev->dev,
+			"[PID%d] incorrect rpmb opcodes: "
+			"main_opcode=0x%.8x, sub_opcode=0x%.8x\n",
+			current->pid, msg_hdr_area->opcode,
+			sep_incomming_msg_area->rpmb_command);
+		return;
+	}
+
+	dev_dbg(&sep->pdev->dev, "[PID%d] rpmb doing operation\n",
+		current->pid);
+
+	/* initialize counts and pointers */
+	sep->rpmb_iterations = 0;
+	sep->current_data_pointer = (u8 *)(sep->shared_addr +
+		DATA_START_OFFSET);
+	sep->current_emmc_block = sep_emmc_block;
+	sep->current_emmc_resp_block = sep_emmc_resp_block;
+
+	/* Iterate */
+	while (sep->rpmb_iterations < *total_iter_ptr_from_sep) {
+		dev_dbg(&sep->pdev->dev, "[PID%d] rpmb iter %.8x\n",
+			current->pid, sep->rpmb_iterations);
+
+		dev_dbg(&sep->pdev->dev, "[PID%d] emmc block dump\n",
+			current->pid);
+		sep_dump_emmc(sep, (void *)sep->current_emmc_block);
+
+		dev_dbg(&sep->pdev->dev,
+			"req_resp=%.8x, result=%.8x, bc=%.8x, addr=%.8x, wc=%.8x\n",
+			sep->current_emmc_block->req_resp,
+			sep->current_emmc_block->result,
+			sep->current_emmc_block->bc,
+			sep->current_emmc_block->addr,
+			sep->current_emmc_block->wc);
+
+		/* fill in the emmc operation block */
+		my_request_block.type =
+			sep->current_emmc_block->req_resp;
+		my_request_block.result =
+			&sep->current_emmc_block->result;
+		my_request_block.blk_cnt =
+			sep->current_emmc_block->bc;
+		my_request_block.addr =
+			sep->current_emmc_block->addr;
+		my_request_block.wc =
+			&sep->current_emmc_block->wc;
+		my_request_block.nonce =
+			sep->current_emmc_block->nonce;
+		my_request_block.data =
+			sep->current_data_pointer;
+		my_request_block.mac =
+			sep->current_emmc_block->mac;
+
+		tmp = (u32 *)my_request_block.mac;
+		for (i = 0; i < 4; i++)
+			dev_dbg(&sep->pdev->dev,
+				"[PID%d] Word %d of MAC is %.8x\n",
+					current->pid, i, *tmp++);
+
+		/* Call the emmc operation */
+		res = mmc_blk_rpmb_req_handle(&my_request_block);
+
+		/*
+		 * Fill in the response emmc block
+		 * Please note that result, nonce, wc, and mac are
+		 * passed by reference. Therefore, those will be
+		 * copied from the input emmc block
+		 */
+
+		memcpy(sep->current_emmc_resp_block->mac,
+			my_request_block.mac,
+			sizeof(sep->current_emmc_resp_block->mac));
+
+		memcpy(sep->current_emmc_resp_block->nonce,
+			my_request_block.nonce,
+			sizeof(sep->current_emmc_resp_block->nonce));
+
+		memcpy(&sep->current_emmc_resp_block->wc,
+			(my_request_block.wc),
+			sizeof(sep->current_emmc_resp_block->wc));
+
+		sep->current_emmc_resp_block->addr =
+			my_request_block.addr;
+
+		sep->current_emmc_resp_block->bc =
+			my_request_block.blk_cnt;
+
+		memcpy(&sep->current_emmc_resp_block->result,
+			(my_request_block.result),
+			sizeof(sep->current_emmc_resp_block->result));
+
+		sep->current_emmc_resp_block->req_resp =
+			my_request_block.type;
+
+		/* Debug print the results */
+		dev_dbg(&sep->pdev->dev,
+			"response:req_resp=%.8x, result=%.8x, bc=%.8x, addr=%.8x, wc=%.8x\n",
+			my_request_block.type, *(my_request_block.result),
+			my_request_block.blk_cnt, my_request_block.addr,
+			*(my_request_block.wc));
+
+		dev_dbg(&sep->pdev->dev,
+			"Copied to emmc resp NDF:req_resp=%.8x, result=%.8x, bc=%.8x, addr=%.8x, wc=%.8x\n",
+			sep->current_emmc_resp_block->req_resp,
+			sep->current_emmc_resp_block->result,
+			sep->current_emmc_resp_block->bc,
+			sep->current_emmc_resp_block->addr,
+			sep->current_emmc_resp_block->wc);
+
+		if (res || sep->current_emmc_resp_block->result) {
+			dev_warn(&sep->pdev->dev,
+				"[PID%d] rpmb error on emmc ret=0x%.8x, NDF result=0x%.8x\n",
+				current->pid, res,
+				sep->current_emmc_resp_block->result);
+
+			if (sep_incomming_msg_area->rpmb_command ==
+				RQ_READ_IN_PROG) {
+
+				sep_outgoing_msg_area->rpmb_command =
+					RSP_READ_FAILED;
+				dev_warn(&sep->pdev->dev,
+					"emmc read failure\n");
+
+			} else if (sep_incomming_msg_area->
+				rpmb_command == RQ_WRITE_IN_PROG) {
+
+				sep_outgoing_msg_area->rpmb_command =
+					RSP_WRITE_FAILED;
+				dev_warn(&sep->pdev->dev,
+					"emmc write failure\n");
+
+			} else if (sep_incomming_msg_area->
+				rpmb_command == RQ_GET_WRITE_CTR) {
+
+				sep_outgoing_msg_area->rpmb_command =
+					RSP_WRITE_CTR_FAILED;
+				dev_warn(&sep->pdev->dev,
+					"emmc write ctr failure\n");
+
+			} else {
+				dev_warn(&sep->pdev->dev,
+					"emmc unknown failure\n");
+				sep_outgoing_msg_area->rpmb_command =
+					RSP_WRITE_CTR_FAILED;
+			}
+
+			sep_outgoing_msg_area->emmc_result =
+				(sep->current_emmc_resp_block->result != 0) ?
+				sep->current_emmc_resp_block->result : res;
+
+			dev_warn(&sep->pdev->dev,
+				"[PID%d] outgoing msg dump\n",
+				current->pid);
+			sep_dump_message(sep);
+
+			goto exit;
+		}
+
+		/* bump up iteration */
+		sep->rpmb_iterations += 1;
+		sep->current_data_pointer +=
+			my_request_block.blk_cnt *
+			DATA_BLOCK_SIZE_IN_EMMC_RPMB_FRAME;
+		sep->current_emmc_block += 1;
+		sep->current_emmc_resp_block += 1;
+	}
+
+	/* complete - send completion back to sep and quit */
+
+	*total_iter_ptr_to_sep = sep->rpmb_iterations;
+
+	if (sep_incomming_msg_area->rpmb_command ==
+		RQ_READ_IN_PROG) {
+
+		sep_outgoing_msg_area->rpmb_command =
+			RSP_READ_COMPLETE;
+		dev_dbg(&sep->pdev->dev,
+			"emmc read completed\n");
+
+	} else if (sep_incomming_msg_area->
+		rpmb_command == RQ_WRITE_IN_PROG) {
+
+		sep_outgoing_msg_area->rpmb_command =
+			RSP_WRITE_COMPLETE;
+		dev_dbg(&sep->pdev->dev,
+			"emmc write completed\n");
+
+	} else if (sep_incomming_msg_area->
+		rpmb_command == RQ_GET_WRITE_CTR) {
+
+		sep_outgoing_msg_area->rpmb_command =
+			RSP_WRITE_CTR;
+		dev_dbg(&sep->pdev->dev,
+			"emmc write ctr complete\n");
+
+	} else {
+		dev_dbg(&sep->pdev->dev,
+			"emmc unknown complete\n");
+		sep_outgoing_msg_area->rpmb_command =
+			RSP_WRITE_CTR;
+	}
+
+	sep_outgoing_msg_area->emmc_result = 0;
+
+	dev_dbg(&sep->pdev->dev,
+		"[PID%d] emmc finished: outgoing msg dump\n",
+		current->pid);
+	sep_dump_message(sep);
+
+exit:
+	clear_bit(SEP_RPMB_ACCESS_LOCK_BIT,
+			&sep->in_use_flags);
+
+	/* Send interrupt to SEP */
+	sep_write_reg(sep, HW_HOST_HOST_SEP_GPR2_REG_ADDR, g_sep_host_gpr2);
+
+	return;
+}
+
 /**
  * sep_queue_status_remove - Removes transaction from status queue
  * @sep: SEP device
@@ -108,7 +515,7 @@ struct sep_device *sep_dev;
  *
  * This function will removes information about transaction from the queue.
  */
-void sep_queue_status_remove(struct sep_device *sep,
+inline void sep_queue_status_remove(struct sep_device *sep,
 				      struct sep_queue_info **queue_elem)
 {
 	unsigned long lck_flags;
@@ -147,7 +554,7 @@ void sep_queue_status_remove(struct sep_device *sep,
  * This function adds information about about transaction started to the status
  * queue.
  */
-struct sep_queue_info *sep_queue_status_add(
+inline struct sep_queue_info *sep_queue_status_add(
 						struct sep_device *sep,
 						u32 opcode,
 						u32 size,
@@ -183,6 +590,7 @@ struct sep_queue_info *sep_queue_status_add(
 	return my_elem;
 }
 
+
 /**
  *	sep_allocate_dmatables_region - Allocates buf for the MLLI/DMA tables
  *	@sep: SEP device
@@ -215,7 +623,7 @@ static int sep_allocate_dmatables_region(struct sep_device *sep,
 		return -EINVAL;
 	}
 
-	dev_dbg(&sep->pdev->dev, "[PID%d] newlen = 0x%08zX\n",
+	dev_dbg(&sep->pdev->dev, "[PID%d] newlen = 0x%08X\n",
 				current->pid, new_len);
 	dev_dbg(&sep->pdev->dev, "[PID%d] oldlen = 0x%08X\n", current->pid,
 				dma_ctx->dmatables_len);
@@ -330,28 +738,6 @@ static inline int sep_check_transaction_owner(struct sep_device *sep)
 	return 0;
 }
 
-#ifdef DEBUG
-
-/**
- * sep_dump_message - dump the message that is pending
- * @sep: SEP device
- * This will only print dump if DEBUG is set; it does
- * follow kernel debug print enabling
- */
-static void _sep_dump_message(struct sep_device *sep)
-{
-	int count;
-
-	u32 *p = sep->shared_addr;
-
-	for (count = 0; count < 10 * 4; count += 4)
-		dev_dbg(&sep->pdev->dev,
-			"[PID%d] Word %d of the message is %x\n",
-				current->pid, count/4, *p++);
-}
-
-#endif
-
 /**
  * sep_map_and_alloc_shared_area -allocate shared block
  * @sep: security processor
@@ -387,8 +773,6 @@ static void sep_unmap_and_free_shared_area(struct sep_device *sep)
 				sep->shared_addr, sep->shared_bus);
 }
 
-#ifdef DEBUG
-
 /**
  * sep_shared_bus_to_virt - convert bus/virt addresses
  * @sep: pointer to struct sep_device
@@ -402,8 +786,6 @@ static void *sep_shared_bus_to_virt(struct sep_device *sep,
 {
 	return sep->shared_addr + (bus_address - sep->shared_bus);
 }
-
-#endif
 
 /**
  * sep_open - device open method
@@ -608,6 +990,7 @@ static int sep_end_transaction_handler(struct sep_device *sep,
 	/* Update queue status */
 	sep_queue_status_remove(sep, my_queue_elem);
 
+
 	/* Check that all the DMA resources were freed */
 	if (dma_ctx)
 		sep_free_dma_table_data_handler(sep, dma_ctx);
@@ -799,7 +1182,9 @@ static unsigned int sep_poll(struct file *filp, poll_table *wait)
 
 	spin_lock_irqsave(&sep->snd_rply_lck, lock_irq_flag);
 
-	if (sep->send_ct == sep->reply_ct) {
+	if ((sep->send_ct == sep->reply_ct) &&
+			(test_bit(SEP_RPMB_ACCESS_LOCK_BIT,
+		    &sep->in_use_flags) == 0)) {
 		spin_unlock_irqrestore(&sep->snd_rply_lck, lock_irq_flag);
 		retval = sep_read_reg(sep, HW_HOST_SEP_HOST_GPR2_REG_ADDR);
 		dev_dbg(&sep->pdev->dev,
@@ -1025,12 +1410,15 @@ static int sep_crypto_dma(
 	}
 
 	for_each_sg(sg, temp_sg, count_mapped, ct1) {
-		sep_dma[ct1].dma_addr = sg_dma_address(temp_sg);
-		sep_dma[ct1].size = sg_dma_len(temp_sg);
-		dev_dbg(&sep->pdev->dev, "(all hex) map %x dma %lx len %lx\n",
-			ct1, (unsigned long)sep_dma[ct1].dma_addr,
-			(unsigned long)sep_dma[ct1].size);
+		if (temp_sg != NULL) {
+			sep_dma[ct1].dma_addr = sg_dma_address(temp_sg);
+			sep_dma[ct1].size = sg_dma_len(temp_sg);
+			dev_dbg(&sep->pdev->dev,
+				"(all hex) map %x dma %lx len %lx\n",
+				ct1, (unsigned long)sep_dma[ct1].dma_addr,
+				(unsigned long)sep_dma[ct1].size);
 		}
+	}
 
 	*dma_maps = sep_dma;
 	return count_mapped;
@@ -1303,7 +1691,7 @@ static int sep_lock_user_pages(struct sep_device *sep,
 		/* Fill the map array */
 		map_array[count].dma_addr =
 			dma_map_page(&sep->pdev->dev, page_array[count],
-			0, PAGE_SIZE, DMA_BIDIRECTIONAL);
+			0, PAGE_SIZE, /*dir*/DMA_BIDIRECTIONAL);
 
 		map_array[count].size = PAGE_SIZE;
 
@@ -1424,6 +1812,7 @@ static int sep_lli_table_secure_dma(struct sep_device *sep,
 {
 	int error = 0;
 	u32 count;
+
 	/* The the page of the end address of the user space buffer */
 	u32 end_page;
 	/* The page of the start address of the user space buffer */
@@ -1433,14 +1822,33 @@ static int sep_lli_table_secure_dma(struct sep_device *sep,
 	/* Array of lli */
 	struct sep_lli_entry *lli_array;
 
+	/**
+	 * Please note that the app_virt_addr is only and offset
+	 * We must get the base of the IMR from the IMR register
+	 * and then add the value in app_virt addr in order to
+	 * get the address that is to be used here.
+	 */
+
+	if (sep->imr_base == 0) {
+		dev_warn(&sep->pdev->dev,
+			"[PID%d] null imr base; get out\n",
+			current->pid);
+		return -EINVAL;
+	}
+
+	app_virt_addr += sep->imr_base;
+
+	dev_dbg(&sep->pdev->dev, "[PID%d] imr base is %x\n",
+		current->pid, sep->imr_base);
+
 	/* Set start and end pages  and num pages */
 	end_page = (app_virt_addr + data_size - 1) >> PAGE_SHIFT;
 	start_page = app_virt_addr >> PAGE_SHIFT;
 	num_pages = end_page - start_page + 1;
 
-	dev_dbg(&sep->pdev->dev, "[PID%d] lock user pages"
-		" app_virt_addr is %x\n", current->pid, app_virt_addr);
-
+	dev_dbg(&sep->pdev->dev,
+		"[PID%d] lock imr pages output physical addr is %x\n",
+		current->pid, app_virt_addr);
 	dev_dbg(&sep->pdev->dev, "[PID%d] data_size is (hex) %x\n",
 		current->pid, data_size);
 	dev_dbg(&sep->pdev->dev, "[PID%d] start_page is (hex) %x\n",
@@ -1618,7 +2026,7 @@ static void sep_build_lli_table(struct sep_device *sep,
 	/* Counter of lli array entry */
 	u32 array_counter;
 
-	/* Init current table data size and lli array entry counter */
+	/* Init currrent table data size and lli array entry counter */
 	curr_table_data_size = 0;
 	array_counter = 0;
 	*num_table_entries_ptr = 1;
@@ -1754,10 +2162,10 @@ static void sep_debug_print_lli_tables(struct sep_device *sep,
 	unsigned long num_table_entries,
 	unsigned long table_data_size)
 {
-#ifdef DEBUG
 	unsigned long table_count = 1;
 	unsigned long entries_count = 0;
 
+	return;
 	dev_dbg(&sep->pdev->dev, "[PID%d] sep_debug_print_lli_tables start\n",
 					current->pid);
 	if (num_table_entries == 0) {
@@ -1828,7 +2236,6 @@ static void sep_debug_print_lli_tables(struct sep_device *sep,
 	}
 	dev_dbg(&sep->pdev->dev, "[PID%d] sep_debug_print_lli_tables end\n",
 					current->pid);
-#endif
 }
 
 
@@ -1899,7 +2306,7 @@ static void sep_prepare_empty_lli_table(struct sep_device *sep,
  * Note that all bus addresses that are passed to the SEP
  * are in 32 bit format; the SEP is a 32 bit device
  */
-static int sep_prepare_input_dma_table(struct sep_device *sep,
+int sep_prepare_input_dma_table(struct sep_device *sep,
 	unsigned long app_virt_addr,
 	u32 data_size,
 	u32 block_size,
@@ -1929,16 +2336,16 @@ static int sep_prepare_input_dma_table(struct sep_device *sep,
 	/* Number of entries in lli table */
 	u32 num_entries_in_table = 0;
 	/* Next table address */
-	void *lli_table_alloc_addr = NULL;
-	void *dma_lli_table_alloc_addr = NULL;
-	void *dma_in_lli_table_ptr = NULL;
+	void *lli_table_alloc_addr = 0;
+	void *dma_lli_table_alloc_addr = 0;
+	void *dma_in_lli_table_ptr = 0;
 
-	dev_dbg(&sep->pdev->dev, "[PID%d] prepare intput dma "
-				 "tbl data size: (hex) %x\n",
-					current->pid, data_size);
+	dev_dbg(&sep->pdev->dev,
+		"[PID%d] prepare input dma tbl data size: (hex) %x\n",
+		current->pid, data_size);
 
 	dev_dbg(&sep->pdev->dev, "[PID%d] block_size is (hex) %x\n",
-					current->pid, block_size);
+		current->pid, block_size);
 
 	/* Initialize the pages pointers */
 	dma_ctx->dma_res_arr[dma_ctx->nr_dcb_creat].in_page_array = NULL;
@@ -2000,8 +2407,10 @@ static int sep_prepare_input_dma_table(struct sep_device *sep,
 					dmatables_region,
 					dma_ctx,
 					sep_lli_entries);
-		if (error)
+		if (error) {
+			kfree(lli_array_ptr);
 			return error;
+		}
 		lli_table_alloc_addr = *dmatables_region;
 	}
 
@@ -2145,20 +2554,20 @@ static int sep_construct_dma_tables_from_lli(
 	struct sep_dma_context *dma_ctx)
 {
 	/* Points to the area where next lli table can be allocated */
-	void *lli_table_alloc_addr = NULL;
+	void *lli_table_alloc_addr = 0;
 	/*
 	 * Points to the area in shared region where next lli table
 	 * can be allocated
 	 */
-	void *dma_lli_table_alloc_addr = NULL;
+	void *dma_lli_table_alloc_addr = 0;
 	/* Input lli table in dmatables_region or shared region */
 	struct sep_lli_entry *in_lli_table_ptr = NULL;
 	/* Input lli table location in the shared region */
-	struct sep_lli_entry *dma_in_lli_table_ptr = NULL;
+	struct sep_lli_entry *dma_in_lli_table_ptr = 0;
 	/* Output lli table in dmatables_region or shared region */
 	struct sep_lli_entry *out_lli_table_ptr = NULL;
 	/* Output lli table location in the shared region */
-	struct sep_lli_entry *dma_out_lli_table_ptr = NULL;
+	struct sep_lli_entry *dma_out_lli_table_ptr = 0;
 	/* Pointer to the info entry of the table - the last entry */
 	struct sep_lli_entry *info_in_entry_ptr = NULL;
 	/* Pointer to the info entry of the table - the last entry */
@@ -2235,6 +2644,18 @@ static int sep_construct_dma_tables_from_lli(
 
 		/* Update the number of the lli tables created */
 		dma_ctx->num_lli_tables_created += 2;
+
+		dev_dbg(&sep->pdev->dev,
+			"[PID%d] num_lli_tables_created (hex) %x. current_in_entry(%x) sep_in_lli_entries(%x)\n",
+			current->pid,
+			dma_ctx->num_lli_tables_created, current_in_entry,
+			sep_in_lli_entries);
+
+		dev_dbg(&sep->pdev->dev,
+			"[PID%d] num_lli_tables_created (hex) %x. current_in_entry(%x) sep_in_lli_entries(%x)\n",
+			current->pid,
+			dma_ctx->num_lli_tables_created, current_in_entry,
+			sep_in_lli_entries);
 
 		lli_table_alloc_addr += sizeof(struct sep_lli_entry) *
 			SEP_DRIVER_ENTRIES_PER_TABLE_IN_SEP;
@@ -2408,7 +2829,7 @@ static int sep_construct_dma_tables_from_lli(
  * Note that all bus addresses that are passed to the SEP
  * are in 32 bit format; the SEP is a 32 bit device
  */
-static int sep_prepare_input_output_dma_table(struct sep_device *sep,
+int sep_prepare_input_output_dma_table(struct sep_device *sep,
 	unsigned long app_virt_in_addr,
 	unsigned long app_virt_out_addr,
 	u32 data_size,
@@ -2434,6 +2855,12 @@ static int sep_prepare_input_output_dma_table(struct sep_device *sep,
 		goto end_function;
 	}
 
+	dev_dbg(&sep->pdev->dev, "[PID%d] prep in out dma table\n",
+		current->pid);
+
+	dev_dbg(&sep->pdev->dev, "[PID%d] prep in out dma table\n",
+		current->pid);
+
 	if (data_size == 0) {
 		/* Prepare empty table for input and output */
 		if (dmatables_region) {
@@ -2445,6 +2872,7 @@ static int sep_prepare_input_output_dma_table(struct sep_device *sep,
 		  if (error)
 			goto end_function;
 		}
+
 		sep_prepare_empty_lli_table(sep, lli_table_in_ptr,
 			in_num_entries_ptr, table_data_size_ptr,
 			dmatables_region, dma_ctx);
@@ -2544,17 +2972,18 @@ static int sep_prepare_input_output_dma_table(struct sep_device *sep,
 		}
 	}
 
-	dev_dbg(&sep->pdev->dev, "[PID%d] After lock; prep input output dma "
-		"table sep_in_num_pages is (hex) %x\n", current->pid,
+	dev_dbg(&sep->pdev->dev,
+		"[PID%d] After lock; prep input output dma table sep_in_num_pages is (hex) %x\n",
+		current->pid,
 		dma_ctx->dma_res_arr[dma_ctx->nr_dcb_creat].in_num_pages);
 
 	dev_dbg(&sep->pdev->dev, "[PID%d] sep_out_num_pages is (hex) %x\n",
 		current->pid,
 		dma_ctx->dma_res_arr[dma_ctx->nr_dcb_creat].out_num_pages);
 
-	dev_dbg(&sep->pdev->dev, "[PID%d] SEP_DRIVER_ENTRIES_PER_TABLE_IN_SEP"
-		" is (hex) %x\n", current->pid,
-		SEP_DRIVER_ENTRIES_PER_TABLE_IN_SEP);
+	dev_dbg(&sep->pdev->dev,
+		"[PID%d] SEP_DRIVER_ENTRIES_PER_TABLE_IN_SEP is (hex) %x\n",
+		current->pid, SEP_DRIVER_ENTRIES_PER_TABLE_IN_SEP);
 
 	/* Call the fucntion that creates table from the lli arrays */
 	dev_dbg(&sep->pdev->dev, "[PID%d] calling create table from lli\n",
@@ -2741,20 +3170,15 @@ int sep_prepare_input_output_dma_table_in_dcb(struct sep_device *sep,
 	dcb_table_ptr->tail_data_size = 0;
 	dcb_table_ptr->out_vr_tail_pt = 0;
 
-	if (isapplet == true) {
+	if ((isapplet == true) && (is_kva == false)) {
 
 		/* Check if there is enough data for DMA operation */
 		if (data_in_size < SEP_DRIVER_MIN_DATA_SIZE_PER_TABLE) {
-			if (is_kva == true) {
-				error = -ENODEV;
+			if (copy_from_user(dcb_table_ptr->tail_data,
+				(void __user *)app_in_address,
+				data_in_size)) {
+				error = -EFAULT;
 				goto end_function_error;
-			} else {
-				if (copy_from_user(dcb_table_ptr->tail_data,
-					(void __user *)app_in_address,
-					data_in_size)) {
-					error = -EFAULT;
-					goto end_function_error;
-				}
 			}
 
 			dcb_table_ptr->tail_data_size = data_in_size;
@@ -2784,19 +3208,12 @@ int sep_prepare_input_output_dma_table_in_dcb(struct sep_device *sep,
 			}
 		}
 		if (tail_size) {
-			if (tail_size > sizeof(dcb_table_ptr->tail_data))
-				return -EINVAL;
-			if (is_kva == true) {
-				error = -ENODEV;
+			/* We have tail data - copy it to DCB */
+			if (copy_from_user(dcb_table_ptr->tail_data,
+				(void *)(app_in_address +
+				data_in_size - tail_size), tail_size)) {
+				error = -EFAULT;
 				goto end_function_error;
-			} else {
-				/* We have tail data - copy it to DCB */
-				if (copy_from_user(dcb_table_ptr->tail_data,
-					(void __user *)(app_in_address +
-					data_in_size - tail_size), tail_size)) {
-					error = -EFAULT;
-					goto end_function_error;
-				}
 			}
 			if (app_out_address)
 				/*
@@ -2816,8 +3233,11 @@ int sep_prepare_input_output_dma_table_in_dcb(struct sep_device *sep,
 			data_in_size = (data_in_size - tail_size);
 		}
 	}
+	dev_dbg(&sep->pdev->dev, "[PID%d] app_out_addr is %x secure_dma is %x\n",
+		current->pid, (int)app_out_address, (int)secure_dma);
+
 	/* Check if we need to build only input table or input/output */
-	if (app_out_address) {
+	if ((app_out_address != 0) || (secure_dma != false)) {
 		/* Prepare input/output tables */
 		error = sep_prepare_input_output_dma_table(sep,
 				app_in_address,
@@ -2881,7 +3301,7 @@ end_function:
  *
  * This function frees the DMA tables and DCB
  */
-static int sep_free_dma_tables_and_dcb(struct sep_device *sep, bool isapplet,
+int sep_free_dma_tables_and_dcb(struct sep_device *sep, bool isapplet,
 	bool is_kva, struct sep_dma_context **dma_ctx)
 {
 	struct sep_dcblock *dcb_table_ptr;
@@ -2894,6 +3314,24 @@ static int sep_free_dma_tables_and_dcb(struct sep_device *sep, bool isapplet,
 
 	dev_dbg(&sep->pdev->dev, "[PID%d] sep_free_dma_tables_and_dcb\n",
 					current->pid);
+
+	if (sep == NULL) {
+		pr_warn("Sep driver: free dma tables; [PID%d] null sep\n",
+			current->pid);
+		return 0;
+	}
+
+	if (dma_ctx == NULL) {
+		dev_dbg(&sep->pdev->dev, "[PID%d] null dma_ctx\n",
+			current->pid);
+		return 0;
+	}
+
+	if (*dma_ctx == NULL) {
+		dev_dbg(&sep->pdev->dev, "[PID%d] null *dma_ctx\n",
+			current->pid);
+		return 0;
+	}
 
 	if (((*dma_ctx)->secure_dma == false) && (isapplet == true)) {
 		dev_dbg(&sep->pdev->dev, "[PID%d] handling applet\n",
@@ -2920,7 +3358,7 @@ static int sep_free_dma_tables_and_dcb(struct sep_device *sep, bool isapplet,
 					break;
 				} else {
 					error_temp = copy_to_user(
-						(void __user *)tail_pt,
+						tail_pt,
 						dcb_table_ptr->tail_data,
 						dcb_table_ptr->tail_data_size);
 				}
@@ -3015,18 +3453,22 @@ end_function:
 static int sep_free_dcb_handler(struct sep_device *sep,
 				struct sep_dma_context **dma_ctx)
 {
+	int error = 0;
+
 	if (!dma_ctx || !(*dma_ctx)) {
 		dev_dbg(&sep->pdev->dev,
 			"[PID%d] no dma context defined, nothing to free\n",
 			current->pid);
-		return -EINVAL;
+		return error;
 	}
 
 	dev_dbg(&sep->pdev->dev, "[PID%d] free dcbs num of DCBs %x\n",
 		current->pid,
 		(*dma_ctx)->nr_dcb_creat);
 
-	return sep_free_dma_tables_and_dcb(sep, false, false, dma_ctx);
+	error = sep_free_dma_tables_and_dcb(sep, false, false, dma_ctx);
+
+	return error;
 }
 
 /**
@@ -3045,6 +3487,7 @@ static long sep_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	struct sep_dma_context **dma_ctx = &private_data->dma_ctx;
 	struct sep_queue_info **my_queue_elem = &private_data->my_queue_elem;
 	int error = 0;
+	u32 *shared_place = NULL; /* used only for secure dma operation */
 
 	dev_dbg(&sep->pdev->dev, "[PID%d] ioctl cmd 0x%x\n",
 		current->pid, cmd);
@@ -3116,7 +3559,7 @@ static long sep_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 			current->pid);
 		if (1 == test_bit(SEP_LEGACY_SENDMSG_DONE_OFFSET,
 				  &call_status->status)) {
-			dev_dbg(&sep->pdev->dev,
+			dev_warn(&sep->pdev->dev,
 				"[PID%d] dcb prep needed before send msg\n",
 				current->pid);
 			error = -EPROTO;
@@ -3124,9 +3567,9 @@ static long sep_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		}
 
 		if (!arg) {
-			dev_dbg(&sep->pdev->dev,
+			dev_warn(&sep->pdev->dev,
 				"[PID%d] dcb null arg\n", current->pid);
-			error = -EINVAL;
+			error = EINVAL;
 			goto end_function;
 		}
 
@@ -3161,6 +3604,22 @@ static long sep_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		dev_dbg(&sep->pdev->dev, "[PID%d] SEP_IOCFREEDCB end\n",
 			current->pid);
 		break;
+	case SEP_DRIVER_INSERT_SHARE_ADDR_CMD:
+
+		/**
+		 * This is used only for some secure dma operations
+		 * Where the physical location of the shared memory
+		 * area is to be inserted into a specific location
+		 * of the message pool
+		 */
+		dev_dbg(&sep->pdev->dev, "Inserting shared memory physical\n");
+		shared_place = (u32 *)sep->shared_addr;
+		shared_place += SEP_SHARED_AREA_PHYSADDRESS_OFFSET;
+		*shared_place = (u32)sep->shared_bus;
+		dev_dbg(&sep->pdev->dev, "addr inserted %x by %x wd offset\n",
+			SEP_SHARED_AREA_PHYSADDRESS_OFFSET * 4,
+			SEP_SHARED_AREA_PHYSADDRESS_OFFSET);
+		break;
 	default:
 		error = -ENOTTY;
 		dev_dbg(&sep->pdev->dev, "[PID%d] default end\n",
@@ -3169,7 +3628,6 @@ static long sep_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	}
 
 end_function:
-	dev_dbg(&sep->pdev->dev, "[PID%d] ioctl end\n", current->pid);
 
 	return error;
 }
@@ -3185,6 +3643,8 @@ static irqreturn_t sep_inthandler(int irq, void *dev_id)
 	u32 reg_val, reg_val2 = 0;
 	struct sep_device *sep = dev_id;
 	irqreturn_t int_error = IRQ_HANDLED;
+	struct sep_msgarea_hdr *msg_hdr_area;
+	struct sep_message_top_from_sep *emmc_msg_area;
 
 	/* Are we in power save? */
 #if defined(CONFIG_PM_RUNTIME) && defined(SEP_ENABLE_RUNTIME_PM)
@@ -3202,21 +3662,22 @@ static irqreturn_t sep_inthandler(int irq, void *dev_id)
 	/* Read the IRR register to check if this is SEP interrupt */
 	reg_val = sep_read_reg(sep, HW_HOST_IRR_REG_ADDR);
 
-	dev_dbg(&sep->pdev->dev, "sep int: IRR REG val: %x\n", reg_val);
+	dev_dbg(&sep->pdev->dev, "sep int: IRR REG val: %.8x\n", reg_val);
 
 	if (reg_val & (0x1 << 13)) {
-
-		/* Lock and update the counter of reply messages */
-		spin_lock_irqsave(&sep->snd_rply_lck, lock_irq_flag);
-		sep->reply_ct++;
-		spin_unlock_irqrestore(&sep->snd_rply_lck, lock_irq_flag);
-
-		dev_dbg(&sep->pdev->dev, "sep int: send_ct %lx reply_ct %lx\n",
-					sep->send_ct, sep->reply_ct);
 
 		/* Is this a kernel client request */
 		if (sep->in_kernel) {
 			tasklet_schedule(&sep->finish_tasklet);
+
+			/* Lock and update the counter of reply messages */
+			spin_lock_irqsave(&sep->snd_rply_lck, lock_irq_flag);
+			sep->reply_ct++;
+			spin_unlock_irqrestore(&sep->snd_rply_lck, \
+					lock_irq_flag);
+
+			dev_dbg(&sep->pdev->dev, "sep int: send_ct %lx reply_ct %lx\n",
+						sep->send_ct, sep->reply_ct);
 			goto finished_interrupt;
 		}
 
@@ -3230,9 +3691,58 @@ static irqreturn_t sep_inthandler(int irq, void *dev_id)
 		if ((reg_val2 >> 30) & 0x1) {
 			dev_dbg(&sep->pdev->dev, "int: printf request\n");
 		} else if (reg_val2 >> 31) {
-			dev_dbg(&sep->pdev->dev, "int: daemon request\n");
+			dev_dbg(&sep->pdev->dev, "int: sep request\n");
+
+			/* Check if this is emmc request (special case) */
+
+			dev_dbg(&sep->pdev->dev, "int: msg is\n");
+			sep_dump_message(sep);
+
+			msg_hdr_area = (struct sep_msgarea_hdr *)
+				sep->shared_addr;
+			emmc_msg_area = (struct sep_message_top_from_sep *)
+				(sep->shared_addr + MSG_TOP_SIZE);
+
+			dev_dbg(&sep->pdev->dev, "int: opcode is " \
+				"%.8x rpmb cmd is %.8x sep_result is %.8x\n",
+				msg_hdr_area->opcode,
+				emmc_msg_area->rpmb_command,
+				emmc_msg_area->sep_result);
+
+			if (is_correct_rpmb_opcodes(sep, msg_hdr_area->opcode,
+					emmc_msg_area->rpmb_command) &&
+				(emmc_msg_area->sep_result == 0)) {
+
+				dev_dbg(&sep->pdev->dev,
+					"int: rpmb submit process\n");
+
+				set_bit(SEP_WORKING_LOCK_BIT,
+					&sep->in_use_flags);
+				set_bit(SEP_RPMB_ACCESS_LOCK_BIT,
+					&sep->in_use_flags);
+
+				g_sep_host_gpr2 = reg_val2 \
+						& SEP_TO_HOST_COUNTER_MASK;
+
+				/* initiate rpmb handling work queue */
+				queue_work(sep->rpmb_workqueue,
+						&sep->rpmb_work);
+			} else {
+				dev_dbg(&sep->pdev->dev,
+						"int: unknown sep request\n");
+			}
 		} else {
 			dev_dbg(&sep->pdev->dev, "int: SEP reply\n");
+
+			/* Lock and update the counter of reply messages */
+			spin_lock_irqsave(&sep->snd_rply_lck, lock_irq_flag);
+			sep->reply_ct++;
+			spin_unlock_irqrestore(&sep->snd_rply_lck, \
+					lock_irq_flag);
+			dev_dbg(&sep->pdev->dev, "sep int: send_ct %lx reply_ct %lx\n",
+					sep->send_ct, sep->reply_ct);
+
+			/* Normal return */
 			wake_up(&sep->event_interrupt);
 		}
 	} else {
@@ -3298,7 +3808,7 @@ static int sep_reconfig_shared_area(struct sep_device *sep)
  *	@dmatables_region: MLLI/DMA tables copy
  *	@dma_ctx: DMA context for current transaction
  */
-ssize_t sep_activate_dcb_dmatables_context(struct sep_device *sep,
+int sep_activate_dcb_dmatables_context(struct sep_device *sep,
 					struct sep_dcblock **dcb_region,
 					void **dmatables_region,
 					struct sep_dma_context *dma_ctx)
@@ -3307,7 +3817,7 @@ ssize_t sep_activate_dcb_dmatables_context(struct sep_device *sep,
 	void *dmaregion_free_end = NULL;
 	void *dcbregion_free_start = NULL;
 	void *dcbregion_free_end = NULL;
-	ssize_t error = 0;
+	int error = 0;
 
 	dev_dbg(&sep->pdev->dev, "[PID%d] activating dcb/dma region\n",
 		current->pid);
@@ -3382,7 +3892,6 @@ end_function:
 
 	return error;
 }
-
 /**
  *	sep_create_dcb_dmatables_context - Creates DCB & MLLI/DMA table context
  *	@sep: SEP device
@@ -3393,7 +3902,7 @@ end_function:
  *	@num_dcbs: Number of DCBs to create
  *	@secure_dma: Indicate use of IMR restricted memory secure dma
  */
-static ssize_t sep_create_dcb_dmatables_context(struct sep_device *sep,
+static int sep_create_dcb_dmatables_context(struct sep_device *sep,
 			struct sep_dcblock **dcb_region,
 			void **dmatables_region,
 			struct sep_dma_context **dma_ctx,
@@ -3422,7 +3931,7 @@ static ssize_t sep_create_dcb_dmatables_context(struct sep_device *sep,
 
 	dcb_args = kzalloc(num_dcbs * sizeof(struct build_dcb_struct),
 			   GFP_KERNEL);
-	if (!dcb_args) {
+	if (dcb_args == NULL) {
 		dev_warn(&sep->pdev->dev, "[PID%d] no memory for dcb args\n",
 			 current->pid);
 		error = -ENOMEM;
@@ -3470,7 +3979,8 @@ static ssize_t sep_create_dcb_dmatables_context(struct sep_device *sep,
 	}
 
 end_function:
-	kfree(dcb_args);
+	if (dcb_args != NULL)
+		kfree(dcb_args);
 	return error;
 
 }
@@ -3560,24 +4070,46 @@ end_function:
  *	@msg_region: Message area context buf
  *	@msg_len: Message area context buffer size
  */
-static ssize_t sep_activate_msgarea_context(struct sep_device *sep,
+static int sep_activate_msgarea_context(struct sep_device *sep,
 					    void **msg_region,
 					    const size_t msg_len)
 {
+	int error = 0;
+
 	dev_dbg(&sep->pdev->dev, "[PID%d] activating msg region\n",
 		current->pid);
 
-	if (!msg_region || !(*msg_region) ||
-	    SEP_DRIVER_MESSAGE_SHARED_AREA_SIZE_IN_BYTES < msg_len) {
+	if (msg_region == NULL) {
 		dev_warn(&sep->pdev->dev,
-			 "[PID%d] invalid act msgarea len 0x%08zX\n",
-			 current->pid, msg_len);
+			"[PID%d] msg region is null\n", current->pid);
+		/* Don't have to get rid if msg region; it never existed */
 		return -EINVAL;
+	}
+
+	if (*msg_region == NULL) {
+		dev_warn(&sep->pdev->dev,
+			"[PID%d] *msg region is null\n", current->pid);
+		/* Don't have to get rid if msg region; it never existed */
+		return -EINVAL;
+	}
+
+	if (SEP_DRIVER_MESSAGE_SHARED_AREA_SIZE_IN_BYTES < msg_len) {
+		dev_warn(&sep->pdev->dev,
+			 "[PID%d] invalid act msgarea len 0x%08X\n",
+			 current->pid, msg_len);
+		/* Cant return right away; gotta get rid of msg_region */
+		error = -EINVAL;
+		goto jump_to_end_and_clear;
 	}
 
 	memcpy(sep->shared_addr, *msg_region, msg_len);
 
-	return 0;
+jump_to_end_and_clear:
+
+	kfree(*msg_region);
+	*msg_region = NULL;
+
+	return error;
 }
 
 /**
@@ -3587,7 +4119,7 @@ static ssize_t sep_activate_msgarea_context(struct sep_device *sep,
  *	@msg_user: Content for msg area region from user
  *	@msg_len: Message area size
  */
-static ssize_t sep_create_msgarea_context(struct sep_device *sep,
+static int sep_create_msgarea_context(struct sep_device *sep,
 					  void **msg_region,
 					  const void __user *msg_user,
 					  const size_t msg_len)
@@ -3597,39 +4129,61 @@ static ssize_t sep_create_msgarea_context(struct sep_device *sep,
 	dev_dbg(&sep->pdev->dev, "[PID%d] creating msg region\n",
 		current->pid);
 
-	if (!msg_region ||
-	    !msg_user ||
-	    SEP_DRIVER_MAX_MESSAGE_SIZE_IN_BYTES < msg_len ||
-	    SEP_DRIVER_MIN_MESSAGE_SIZE_IN_BYTES > msg_len) {
+	if (msg_region == NULL) {
 		dev_warn(&sep->pdev->dev,
-			 "[PID%d] invalid creat msgarea len 0x%08zX\n",
-			 current->pid, msg_len);
+			"[PID%d] msg_region is NULL\n",
+			current->pid);
 		error = -EINVAL;
-		goto end_function;
+		goto end_jumpoint;
+	}
+
+	if (msg_user == NULL) {
+		dev_warn(&sep->pdev->dev,
+			"[PID%d] msg_user is NULL\n",
+			current->pid);
+		error = -EINVAL;
+		goto end_jumpoint;
+	}
+
+	if ((SEP_DRIVER_MAX_MESSAGE_SIZE_IN_BYTES < msg_len) ||
+	    (SEP_DRIVER_MIN_MESSAGE_SIZE_IN_BYTES > msg_len)) {
+		dev_warn(&sep->pdev->dev,
+			 "[PID%d] invalid create msgarea len 0x%08X\n",
+			 current->pid, msg_len);
+		/* gotta get rid of msg region if it exists */
+		error = -EINVAL;
+		goto end_jumpoint;
 	}
 
 	/* Allocate thread-specific memory for message buffer */
 	*msg_region = kzalloc(msg_len, GFP_KERNEL);
-	if (!(*msg_region)) {
+	if (*msg_region == NULL) {
 		dev_warn(&sep->pdev->dev,
 			 "[PID%d] no mem for msgarea context\n",
 			 current->pid);
+		/* gotta get rid of msg region if it exists */
 		error = -ENOMEM;
-		goto end_function;
+		goto end_jumpoint;
 	}
 
 	/* Copy input data to write() to allocated message buffer */
 	if (copy_from_user(*msg_region, msg_user, msg_len)) {
+		/* gotta get rid of msg region if it exists */
 		error = -EINVAL;
-		goto end_function;
 	}
 
-end_function:
-	if (error && msg_region) {
-		kfree(*msg_region);
-		*msg_region = NULL;
+end_jumpoint:
+
+	if (error) {
+		/* free *msg_region because of error */
+		if (msg_region != NULL)
+			if (*msg_region != NULL) {
+				kfree(*msg_region);
+				*msg_region = NULL;
+			}
 	}
 
+	/* This is zero on succss; -EINVAL otherwise */
 	return error;
 }
 
@@ -3653,14 +4207,14 @@ static ssize_t sep_read(struct file *filp,
 	struct sep_device *sep = private_data->device;
 	struct sep_dma_context **dma_ctx = &private_data->dma_ctx;
 	struct sep_queue_info **my_queue_elem = &private_data->my_queue_elem;
-	ssize_t error = 0, error_tmp = 0;
+	int error = 0, error_tmp = 0;
 
 	/* Am I the process that owns the transaction? */
 	error = sep_check_transaction_owner(sep);
 	if (error) {
 		dev_dbg(&sep->pdev->dev, "[PID%d] read pid is not owner\n",
 			current->pid);
-		goto end_function;
+		return error;
 	}
 
 	/* Checks that user has called necessarry apis */
@@ -3689,20 +4243,15 @@ static ssize_t sep_read(struct file *filp,
 
 	sep_dump_message(sep);
 
-	dev_dbg(&sep->pdev->dev, "[PID%d] count_user = 0x%08zX\n",
+	dev_dbg(&sep->pdev->dev, "[PID%d] count_user = 0x%08X\n",
 		current->pid, count_user);
 
 	/* In case user has allocated bigger buffer */
 	if (count_user > SEP_DRIVER_MESSAGE_SHARED_AREA_SIZE_IN_BYTES)
 		count_user = SEP_DRIVER_MESSAGE_SHARED_AREA_SIZE_IN_BYTES;
 
-	if (copy_to_user(buf_user, sep->shared_addr, count_user)) {
+	if (copy_to_user(buf_user, sep->shared_addr, count_user))
 		error = -EFAULT;
-		goto end_function_error;
-	}
-
-	dev_dbg(&sep->pdev->dev, "[PID%d] read succeeded\n", current->pid);
-	error = count_user;
 
 end_function_error:
 	/* Copy possible tail data to user and free DCB and MLLIs */
@@ -3719,8 +4268,12 @@ end_function_error:
 			 "[PID%d] ending transaction failed\n",
 			 current->pid);
 
-end_function:
-	return error;
+	if (error == 0)
+		/* proper etiquette is for read to return size read */
+		return count_user;
+	else
+		/* error is int; we return ssize_t */
+		return (ssize_t)error;
 }
 
 /**
@@ -3730,12 +4283,12 @@ end_function:
  *	@buf_user: User buffer for operation parameters
  *	@count_user: User buffer size
  */
-static inline ssize_t sep_fastcall_args_get(struct sep_device *sep,
+static inline int sep_fastcall_args_get(struct sep_device *sep,
 					    struct sep_fastcall_hdr *args,
 					    const char __user *buf_user,
 					    const size_t count_user)
 {
-	ssize_t error = 0;
+	int error = 0;
 	size_t actual_count = 0;
 
 	if (!buf_user) {
@@ -3748,7 +4301,7 @@ static inline ssize_t sep_fastcall_args_get(struct sep_device *sep,
 
 	if (count_user < sizeof(struct sep_fastcall_hdr)) {
 		dev_warn(&sep->pdev->dev,
-			 "[PID%d] too small message size 0x%08zX\n",
+			 "[PID%d] too small message size 0x%08X\n",
 			 current->pid, count_user);
 		error = -EINVAL;
 		goto end_function;
@@ -3789,7 +4342,7 @@ static inline ssize_t sep_fastcall_args_get(struct sep_device *sep,
 	if (actual_count != count_user) {
 		dev_warn(&sep->pdev->dev,
 			 "[PID%d] inconsistent message "
-			 "sizes 0x%08zX vs 0x%08zX\n",
+			 "sizes 0x%08X vs 0x%08X\n",
 			 current->pid, actual_count, count_user);
 		error = -EMSGSIZE;
 		goto end_function;
@@ -3818,10 +4371,11 @@ static ssize_t sep_write(struct file *filp,
 	struct sep_device *sep = private_data->device;
 	struct sep_dma_context *dma_ctx = NULL;
 	struct sep_fastcall_hdr call_hdr = {0};
+	u32 *insert_point;
 	void *msg_region = NULL;
 	void *dmatables_region = NULL;
 	struct sep_dcblock *dcb_region = NULL;
-	ssize_t error = 0;
+	int error = 0;
 	struct sep_queue_info *my_queue_elem = NULL;
 	bool my_secure_dma; /* are we using secure_dma (IMR)? */
 
@@ -3846,8 +4400,9 @@ static ssize_t sep_write(struct file *filp,
 	 * buffers created. Only SEP_DOUBLEBUF_USERS_LIMIT number
 	 * of threads can progress further at a time
 	 */
-	dev_dbg(&sep->pdev->dev, "[PID%d] waiting for double buffering "
-				 "region access\n", current->pid);
+	dev_dbg(&sep->pdev->dev,
+		"[PID%d] waiting for double buffering region access\n",
+		current->pid);
 	error = down_interruptible(&sep->sep_doublebuf);
 	dev_dbg(&sep->pdev->dev, "[PID%d] double buffering region start\n",
 					current->pid);
@@ -3866,8 +4421,7 @@ static ssize_t sep_write(struct file *filp,
 				&dcb_region,
 				&dmatables_region,
 				&dma_ctx,
-				(const struct build_dcb_struct __user *)
-					buf_user,
+				(const struct build_dcb_struct *)buf_user,
 				call_hdr.num_dcbs, my_secure_dma);
 		if (error)
 			goto end_function_error_doublebuf;
@@ -3882,6 +4436,7 @@ static ssize_t sep_write(struct file *filp,
 	if (error)
 		goto end_function_error_doublebuf;
 
+
 	dev_dbg(&sep->pdev->dev, "[PID%d] updating queue status\n",
 							current->pid);
 	my_queue_elem = sep_queue_status_add(sep,
@@ -3891,8 +4446,9 @@ static ssize_t sep_write(struct file *filp,
 				     current->comm, sizeof(current->comm));
 
 	if (!my_queue_elem) {
-		dev_dbg(&sep->pdev->dev, "[PID%d] updating queue"
-					"status error\n", current->pid);
+		dev_dbg(&sep->pdev->dev,
+			"[PID%d] updating queue status error\n",
+			current->pid);
 		error = -ENOMEM;
 		goto end_function_error_doublebuf;
 	}
@@ -3920,13 +4476,28 @@ static ssize_t sep_write(struct file *filp,
 
 	sep_dump_message(sep);
 
-	if (0 < call_hdr.num_dcbs) {
+	if ((0 != call_hdr.num_dcbs) && (dma_ctx != NULL)) {
 		error = sep_activate_dcb_dmatables_context(sep,
 				&dcb_region,
 				&dmatables_region,
 				dma_ctx);
 		if (error)
 			goto end_function_error_clear_transact;
+	}
+
+	/**
+	 * Check shared_phys_offset_insert; if this is greater than 0, then we
+	 * need to insert the physical address of the shared area into the
+	 * message;
+	 * this is a work around for a bug in the chaabi firmware
+	 */
+	if (call_hdr.shared_phys_offset_insert != 0) {
+		dev_dbg(&sep->pdev->dev,
+			"[PID%d] inserting shared phys in msg %x\n",
+			current->pid, call_hdr.shared_phys_offset_insert);
+		insert_point = (u32 *)sep->shared_addr;
+		insert_point += call_hdr.shared_phys_offset_insert;
+		*insert_point = (u32)sep->shared_bus;
 	}
 
 	/* Send command to SEP */
@@ -3938,7 +4509,6 @@ static ssize_t sep_write(struct file *filp,
 	private_data->dma_ctx = dma_ctx;
 	/* Update call status */
 	set_bit(SEP_FASTCALL_WRITE_DONE_OFFSET, &call_status->status);
-	error = count_user;
 
 	up(&sep->sep_doublebuf);
 	dev_dbg(&sep->pdev->dev, "[PID%d] double buffering region end\n",
@@ -3964,8 +4534,14 @@ end_function:
 	kfree(dmatables_region);
 	kfree(msg_region);
 
-	return error;
+	if (error == 0)
+		/* etiquette calls for write to return size written */
+		return count_user;
+	else
+		/* return error, but type casted to ssize_t */
+		return (ssize_t)error;
 }
+
 /**
  *	sep_seek - Handler for seek system call
  *	@filp: File pointer
@@ -3975,7 +4551,7 @@ end_function:
  *	Fastcall interface does not support seeking, all reads
  *	and writes are from/to offset zero
  */
-static loff_t sep_seek(struct file *filp, loff_t offset, int origin)
+loff_t sep_seek(struct file *filp, loff_t offset, int origin)
 {
 	return -ENOSYS;
 }
@@ -4064,7 +4640,7 @@ sep_sysfs_read(struct file *filp, struct kobject *kobj,
  * @read: function pointer to read this file
  * @size: maxinum size of binary attribute
  */
-static const struct bin_attribute queue_status = {
+const struct bin_attribute queue_status = {
 	.attr = {.name = "queue_status", .mode = 0444},
 	.read = sep_sysfs_read,
 	.size = sizeof(u32)
@@ -4099,6 +4675,7 @@ static int sep_register_driver_with_fs(struct sep_device *sep)
 			ret_val);
 		return ret_val;
 	}
+
 
 	return ret_val;
 }
@@ -4195,8 +4772,9 @@ static int __devinit sep_probe(struct pci_dev *pdev,
 
 	INIT_LIST_HEAD(&sep->sep_queue_status);
 
-	dev_dbg(&sep->pdev->dev, "sep probe: PCI obtained, "
-		"device being prepared\n");
+	dev_dbg(&sep->pdev->dev,
+		"sep probe: PCI obtained, device being prepared\n");
+	dev_dbg(&sep->pdev->dev, "revision is %d\n", sep->pdev->revision);
 
 	/* Set up our register area */
 	sep->reg_physical_addr = pci_resource_start(sep->pdev, 0);
@@ -4264,10 +4842,8 @@ static int __devinit sep_probe(struct pci_dev *pdev,
 	/* Set the IMR register - open only GPR 2 */
 	sep_write_reg(sep, HW_HOST_IMR_REG_ADDR, (~(0x1 << 13)));
 
-	/* Read send/receive counters from SEP */
-	sep->reply_ct = sep_read_reg(sep, HW_HOST_SEP_HOST_GPR2_REG_ADDR);
-	sep->reply_ct &= 0x3FFFFFFF;
-	sep->send_ct = sep->reply_ct;
+	/* Initialize send/receive counters */
+	sep->send_ct = sep->reply_ct = 0;
 
 	/* Get the interrupt line */
 	error = request_irq(pdev->irq, sep_inthandler, IRQF_SHARED,
@@ -4281,15 +4857,34 @@ static int __devinit sep_probe(struct pci_dev *pdev,
 	if (error)
 		goto end_function_free_irq;
 
+	/* Create the rpmb workqueue */
+	sep->rpmb_workqueue = create_workqueue(DRVNAME "-ewq");
+	if (unlikely(!sep->rpmb_workqueue)) {
+		dev_err(&sep->pdev->dev, "Unable to create rpmb workqueue");
+		error = -EFAULT;
+		goto end_function_free_irq;
+	}
+	INIT_WORK(&sep->rpmb_work, rpmb_process_request);
+
 	sep->in_use = 1;
+
+	/**
+	 * Get the IMR base register
+	 * Please note that we will not verify it here. We will
+	 * verify it at time of video decryption as not all devices
+	 * will support this. If as device does not support it, there
+	 * is no loss in trying to get it. It will be null and will not
+	 * be used.
+	 */
+	sep->imr_base = get_imr_base();
 
 	/* Finally magic up the device nodes */
 	/* Register driver with the fs */
 	error = sep_register_driver_with_fs(sep);
 
 	if (error) {
-		dev_err(&sep->pdev->dev, "error registering dev file\n");
-		goto end_function_free_irq;
+		dev_dbg(&sep->pdev->dev, "error registering dev file\n");
+		goto end_function_free_workqueue;
 	}
 
 	sep->in_use = 0; /* through touching the device */
@@ -4298,19 +4893,22 @@ static int __devinit sep_probe(struct pci_dev *pdev,
 	pm_runtime_allow(&sep->pdev->dev);
 	pm_runtime_set_autosuspend_delay(&sep->pdev->dev,
 		SUSPEND_DELAY);
-	pm_runtime_use_autosuspend(&sep->pdev->dev);
 	pm_runtime_mark_last_busy(&sep->pdev->dev);
+	pm_runtime_use_autosuspend(&sep->pdev->dev);
 	sep->power_save_setup = 1;
 #endif
 	/* register kernel crypto driver */
-#if defined(CONFIG_CRYPTO) || defined(CONFIG_CRYPTO_MODULE)
+#if defined(CONFIG_ENABLE_SEP_KERNEL_CRYPTO)
 	error = sep_crypto_setup();
 	if (error) {
-		dev_err(&sep->pdev->dev, "crypto setup failed\n");
-		goto end_function_free_irq;
+		dev_dbg(&sep->pdev->dev, "crypto setup fail\n");
+		goto end_function_free_workqueue;
 	}
 #endif
 	goto end_function;
+
+end_function_free_workqueue:
+	destroy_workqueue(sep->rpmb_workqueue);
 
 end_function_free_irq:
 	free_irq(pdev->irq, sep);
@@ -4346,19 +4944,21 @@ static void sep_remove(struct pci_dev *pdev)
 {
 	struct sep_device *sep = sep_dev;
 
+	/* Destroy rpmb workqueue */
+	destroy_workqueue(sep->rpmb_workqueue);
+
 	/* Unregister from fs */
 	misc_deregister(&sep->miscdev_sep);
 
 	/* Unregister from kernel crypto */
-#if defined(CONFIG_CRYPTO) || defined(CONFIG_CRYPTO_MODULE)
 	sep_crypto_takedown();
-#endif
+
 	/* Free the irq */
 	free_irq(sep->pdev->irq, sep);
 
 	/* Free the shared area  */
 	sep_unmap_and_free_shared_area(sep_dev);
-	iounmap(sep_dev->reg_addr);
+	iounmap((void *) sep_dev->reg_addr);
 
 #ifdef SEP_ENABLE_RUNTIME_PM
 	if (sep->in_use) {
@@ -4376,7 +4976,7 @@ static void sep_remove(struct pci_dev *pdev)
 static DEFINE_PCI_DEVICE_TABLE(sep_pci_id_tbl) = {
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x0826)},
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x08e9)},
- 	{0}
+	{0}
 };
 
 /* Export our pci_device_id structure to user space */
@@ -4395,8 +4995,14 @@ MODULE_DEVICE_TABLE(pci, sep_pci_id_tbl);
 static int sep_pci_resume(struct device *dev)
 {
 	struct sep_device *sep = sep_dev;
+	int error;
 
 	dev_dbg(&sep->pdev->dev, "pci resume called\n");
+
+	error = sep_wait_for_scu(sep);
+
+	if (error)
+		return error;
 
 	if (sep->power_state == SEP_DRIVER_POWERON)
 		return 0;
@@ -4408,7 +5014,6 @@ static int sep_pci_resume(struct device *dev)
 	sep_write_reg(sep, HW_HOST_IMR_REG_ADDR, (~(0x1 << 13)));
 
 	/* Read send/receive counters from SEP */
-	sep->reply_ct = sep_read_reg(sep, HW_HOST_SEP_HOST_GPR2_REG_ADDR);
 	sep->reply_ct &= 0x3FFFFFFF;
 	sep->send_ct = sep->reply_ct;
 
@@ -4443,7 +5048,6 @@ static int sep_pci_suspend(struct device *dev)
 
 	return 0;
 }
-
 /**
  * sep_pm_runtime_resume - runtime resume routine
  * @dev:	pointer to sep device
@@ -4453,34 +5057,15 @@ static int sep_pci_suspend(struct device *dev)
 static int sep_pm_runtime_resume(struct device *dev)
 {
 
-	u32 retval2;
-	u32 delay_count;
 	struct sep_device *sep = sep_dev;
+	int error;
 
 	dev_dbg(&sep->pdev->dev, "pm runtime resume called\n");
 
-	/**
-	 * Wait until the SCU boot is ready
-	 * This is done by iterating SCU_DELAY_ITERATION (10
-	 * microseconds each) up to SCU_DELAY_MAX (50) times.
-	 * This bit can be set in a random time that is less
-	 * than 500 microseconds after each power resume
-	 */
-	retval2 = 0;
-	delay_count = 0;
-	while ((!retval2) && (delay_count < SCU_DELAY_MAX)) {
-		retval2 = sep_read_reg(sep, HW_HOST_SEP_HOST_GPR3_REG_ADDR);
-		retval2 &= 0x00000008;
-		if (!retval2) {
-			udelay(SCU_DELAY_ITERATION);
-			delay_count += 1;
-		}
-	}
+	error = sep_wait_for_scu(sep);
 
-	if (!retval2) {
-		dev_warn(&sep->pdev->dev, "scu boot bit not set at resume\n");
-		return -EINVAL;
-	}
+	if (error)
+		return error;
 
 	/* Clear ICR register */
 	sep_write_reg(sep, HW_HOST_ICR_REG_ADDR, 0xFFFFFFFF);
@@ -4489,7 +5074,6 @@ static int sep_pm_runtime_resume(struct device *dev)
 	sep_write_reg(sep, HW_HOST_IMR_REG_ADDR, (~(0x1 << 13)));
 
 	/* Read send/receive counters from SEP */
-	sep->reply_ct = sep_read_reg(sep, HW_HOST_SEP_HOST_GPR2_REG_ADDR);
 	sep->reply_ct &= 0x3FFFFFFF;
 	sep->send_ct = sep->reply_ct;
 
@@ -4548,9 +5132,9 @@ static struct pci_driver sep_pci_driver = {
 };
 
 /**
- * sep_init - init function
+ *sep_init - init function
  *
- * Module load time. Register the PCI device driver.
+ *Module load time. Register the PCI device driver.
  */
 
 static int __init sep_init(void)
@@ -4562,7 +5146,8 @@ static int __init sep_init(void)
 /**
  * sep_exit - called to unload driver
  *
- * Unregister the driver The device will perform all the cleanup required.
+ * Drop the misc devices then remove and unmap the various resources
+ * that are not released by the driver remove method.
  */
 static void __exit sep_exit(void)
 {
@@ -4570,7 +5155,7 @@ static void __exit sep_exit(void)
 }
 
 
-module_init(sep_init);
+module_init_async(sep_init);
 module_exit(sep_exit);
 
 MODULE_LICENSE("GPL");

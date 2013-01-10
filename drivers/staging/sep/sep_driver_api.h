@@ -42,6 +42,79 @@
 #define SEP_DRIVER_POWERON		1
 #define SEP_DRIVER_POWEROFF		2
 
+/**
+ * Structures for RPMB EMMC access
+ */
+
+#define SEP_RPMB_COMMAND             0x0bc2
+
+#define RQ_READ_IN_PROG 0x1001
+#define RSP_READ_COMPLETE 0x1002
+#define RSP_READ_FAILED 0x1003
+#define RQ_READ_TRANS_END 0x1004
+
+#define RQ_WRITE_IN_PROG 0x2001
+#define RSP_WRITE_COMPLETE 0x2002
+#define RSP_WRITE_FAILED 0x2003
+#define RQ_WRITE_TRANS_END 0x2004
+
+#define RQ_GET_WRITE_CTR 0x3001
+#define RSP_WRITE_CTR 0x3002
+#define RSP_WRITE_CTR_FAILED 0x3003
+#define RQ_MAIN_TRANS_END 0x4001
+
+#define DATA_BLOCK_SIZE_IN_EMMC_RPMB_FRAME 256
+
+#define SCU_BOOT_BIT_MASK 0x00000008
+
+struct sep_message_top_to_sep {
+	u32	rpmb_command; /* Command / Respond with Firmware */
+	u32	job_id;
+	u32	data_size;
+	u32	emmc_result;
+	u32	reserve[2];
+};
+
+struct sep_message_top_from_sep {
+	u32	sep_result;
+	u32	rpmb_command; /* Command / Respond with Firmware */
+	u32	data_size;
+	u32	emmc_result;
+	u32	reserve[2];
+};
+
+/* Note that data buffer immediately follows */
+
+struct sep_non_data_field {
+	u8	mac[32];
+	u8	nonce[16];
+	u32	wc;
+	u16	addr;
+	u16	bc;
+	u16	result;
+	u16	req_resp;
+};
+
+/* work queue structures */
+struct rpmb_work_struct {
+	struct work_struct work;
+	void (*callback)(void *);
+	void *data;
+	};
+
+
+#define MAX_NO_ITERATIONS 15
+#define MSG_TOP_SIZE sizeof(struct sep_msgarea_hdr)
+#define DATA_START_OFFSET (MSG_TOP_SIZE + \
+	sizeof(struct sep_message_top_from_sep))
+#define SEP_ITERATION_OFFSET 5888
+#define SEP_NONDATA_OFFSET (SEP_ITERATION_OFFSET + sizeof(u32))
+#define SEP_NONDATA_SIZE 60
+#define SEP_ITERATION_RESP_OFFSET (SEP_NONDATA_OFFSET + \
+	(SEP_NONDATA_SIZE * MAX_NO_ITERATIONS))
+#define SEP_NONDATA_RESP_OFFSET (SEP_ITERATION_RESP_OFFSET + sizeof(u32))
+
+
 /* Following enums are used only for kernel crypto api */
 enum type_of_request {
 	NO_REQUEST,
@@ -208,6 +281,7 @@ struct sep_lli_entry {
 struct sep_fastcall_hdr {
 	u32 magic;
 	u32 secure_dma;
+	u32 shared_phys_offset_insert;
 	u32 msg_len;
 	u32 num_dcbs;
 };
@@ -262,7 +336,7 @@ struct sep_private_data {
  *
  * This function will removes information about transaction from the queue.
  */
-void sep_queue_status_remove(struct sep_device *sep,
+inline void sep_queue_status_remove(struct sep_device *sep,
 				      struct sep_queue_info **queue_elem);
 /**
  * sep_queue_status_add - Adds transaction to status queue
@@ -276,7 +350,7 @@ void sep_queue_status_remove(struct sep_device *sep,
  * This function adds information about about transaction started to the status
  * queue.
  */
-struct sep_queue_info *sep_queue_status_add(
+inline struct sep_queue_info *sep_queue_status_add(
 						struct sep_device *sep,
 						u32 opcode,
 						u32 size,
@@ -385,13 +459,14 @@ int sep_wait_transaction(struct sep_device *sep);
 #define SEP_IOCENDTRANSACTION	 \
 	_IO(SEP_IOC_MAGIC_NUMBER, 15)
 
+#define SEP_DRIVER_INSERT_SHARE_ADDR_CMD \
+	_IO(SEP_IOC_MAGIC_NUMBER, 0x30)
+
 #define SEP_IOCPREPAREDCB					\
 	_IOW(SEP_IOC_MAGIC_NUMBER, 35, struct build_dcb_struct)
 
 #define SEP_IOCFREEDCB					\
 	_IO(SEP_IOC_MAGIC_NUMBER, 36)
-
-struct sep_device;
 
 #define SEP_IOCPREPAREDCB_SECURE_DMA	\
 	_IOW(SEP_IOC_MAGIC_NUMBER, 38, struct build_dcb_struct)

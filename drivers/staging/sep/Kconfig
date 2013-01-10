@@ -9,3 +9,14 @@ config DX_SEP
 	  The driver's name is sep_driver.
 
 	  If unsure, select N.
+config ENABLE_SEP_KERNEL_CRYPTO
+	bool "Discretix SEP driver to support Kernel Crypto"
+	depends on DX_SEP
+	default n
+	help
+	  Selecting yes (y) on this will enable the Discretix SEP driver to
+	  support operation with the Linux kernel crypto infrastructure.
+
+	  This will work only with some Intel Mobeil Internet Device types.
+
+	  If unsure, select N

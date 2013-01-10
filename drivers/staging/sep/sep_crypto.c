@@ -74,11 +74,9 @@
 #include "sep_dev.h"
 #include "sep_crypto.h"
 
-#if defined(CONFIG_CRYPTO) || defined(CONFIG_CRYPTO_MODULE)
-
 /* Globals for queuing */
-static spinlock_t queue_lock;
-static struct crypto_queue sep_queue;
+spinlock_t	queue_lock;
+struct crypto_queue sep_queue;
 
 /* Declare of dequeuer */
 static void sep_dequeuer(void *data);
@@ -90,12 +88,12 @@ static void sep_dequeuer(void *data);
  * This will only print dump if DEBUG is set; it does
  * follow kernel debug print enabling
  */
-static void crypto_sep_dump_message(struct sep_device *sep, void *msg)
+void crypto_sep_dump_message(struct sep_device *sep, void *msg)
 {
-#if 0
 	u32 *p;
 	u32 *i;
 	int count;
+	return;
 
 	p = sep->shared_addr;
 	i = (u32 *)msg;
@@ -103,7 +101,35 @@ static void crypto_sep_dump_message(struct sep_device *sep, void *msg)
 		dev_dbg(&sep->pdev->dev,
 			"[PID%d] Word %d of the message is %x (local)%x\n",
 				current->pid, count/4, *p++, *i++);
-#endif
+}
+
+/**
+ *	sep_fix_null_buf
+ *	@req: ponter to struct ablkcipher_request
+ *	If the dst_ptr is NULL (not even in high memory),
+ *	then we need to do an in-place encrypt where both
+ *	the plaintext and encryption are in the same buffer
+ *	Please note that the source buffer has been checked
+ *	for NULL prior to this function being called. Please
+ *	also note that this check is for NULL output buffer;
+ *	not for the fact that the buffer may be in high memory.
+ */
+static void sep_fix_null_buf(struct ablkcipher_request *req)
+{
+	void *src_ptr;
+	void *dst_ptr;
+
+	/* please note that src ptr is checked for null prior to call here */
+	src_ptr = kmap(sg_page(req->src));
+	dst_ptr = kmap(sg_page(req->dst));
+
+	if (dst_ptr == NULL) {
+		pr_warn("fixing null buffer\n");
+		sg_set_buf(req->dst, src_ptr + req->src->offset, req->nbytes);
+	}
+
+	kunmap(sg_page(req->src));
+	kunmap(sg_page(req->dst));
 }
 
 /**
@@ -211,7 +237,7 @@ static struct scatterlist *sep_alloc_sg_buf(
 
 	current_size = 0;
 	sg_temp = sg;
-	for (ct1 = 0; ct1 < nbr_pages; ct1 += 1) {
+	for (ct1 = 0; (ct1 < nbr_pages) && (sg_temp != NULL); ct1 += 1) {
 		buf = (void *)get_zeroed_page(GFP_ATOMIC);
 		if (!buf) {
 			dev_warn(&sep->pdev->dev,
@@ -265,6 +291,7 @@ static void sep_copy_sg(
 {
 	u32 seg_size;
 	u32 in_offset, out_offset;
+	void *kmap_src, *kmap_dst;
 
 	u32 count = 0;
 	struct scatterlist *sg_src_tmp = sg_src;
@@ -279,7 +306,8 @@ static void sep_copy_sg(
 
 	dev_dbg(&sep->pdev->dev, "sep copy sg not null\n");
 
-	while (count < size) {
+	while ((count < size) && (sg_src_tmp != NULL) &&
+		(sg_dst_tmp != NULL)) {
 		if ((sg_src_tmp->length - in_offset) >
 			(sg_dst_tmp->length - out_offset))
 			seg_size = sg_dst_tmp->length - out_offset;
@@ -289,10 +317,20 @@ static void sep_copy_sg(
 		if (seg_size > (size - count))
 			seg_size = (size = count);
 
-		memcpy(sg_virt(sg_dst_tmp) + out_offset,
-			sg_virt(sg_src_tmp) + in_offset,
+		kmap_src = kmap(sg_page(sg_src_tmp)) + sg_src_tmp->offset;
+		kmap_dst = kmap(sg_page(sg_dst_tmp)) + sg_dst_tmp->offset;
+
+		if ((kmap_src == NULL) || (kmap_dst == NULL)) {
+			dev_dbg(&sep->pdev->dev, "kmap failure\n");
+			return;
+		}
+
+		memcpy(kmap_dst + out_offset,
+			kmap_src + in_offset,
 			seg_size);
 
+		kunmap(sg_page(sg_src_tmp));
+		kunmap(sg_page(sg_dst_tmp));
 		in_offset += seg_size;
 		out_offset += seg_size;
 		count += seg_size;
@@ -383,9 +421,8 @@ static int sep_oddball_pages(
 			sep_copy_sg(sep, sg, *new_sg, data_size);
 
 		return 1;
-	} else {
+	} else
 		return 0;
-	}
 }
 
 /**
@@ -414,6 +451,7 @@ static size_t sep_copy_offset_sg(
 	size_t length_within_page;
 	size_t length_remaining;
 	size_t current_offset;
+	void *src_kmap;
 
 	/* Find which page is beginning of segment */
 	page_start = 0;
@@ -431,7 +469,15 @@ static size_t sep_copy_offset_sg(
 	offset_within_page = offset - page_start;
 	if ((sg->length - offset_within_page) >= len) {
 		/* All within this page */
-		memcpy(dst, sg_virt(sg) + offset_within_page, len);
+		src_kmap = kmap(sg_page(sg)) + sg->offset;
+
+		if (src_kmap == NULL) {
+			dev_dbg(&sep->pdev->dev, "kmap failure\n");
+			return -ENOMEM;
+		}
+
+		memcpy(dst, src_kmap + offset_within_page, len);
+		kunmap(sg_page(sg));
 		return len;
 	} else {
 		/* Scattered multiple pages */
@@ -440,15 +486,29 @@ static size_t sep_copy_offset_sg(
 		while ((sg) && (current_offset < len)) {
 			length_within_page = sg->length - offset_within_page;
 			if (length_within_page >= length_remaining) {
+				src_kmap = kmap(sg_page(sg)) + sg->offset;
+				if (src_kmap == NULL) {
+					dev_dbg(&sep->pdev->dev, "kmap failure\n");
+					return -ENOMEM;
+				}
+
 				memcpy(dst+current_offset,
-					sg_virt(sg) + offset_within_page,
+					src_kmap + offset_within_page,
 					length_remaining);
+				kunmap(sg_page(sg));
 				length_remaining = 0;
 				current_offset = len;
 			} else {
+				src_kmap = kmap(sg_page(sg)) + sg->offset;
+				if (src_kmap == NULL) {
+					dev_dbg(&sep->pdev->dev, "kmap failure\n");
+					return -ENOMEM;
+				}
+
 				memcpy(dst+current_offset,
-					sg_virt(sg) + offset_within_page,
+					src_kmap + offset_within_page,
 					length_within_page);
+				kunmap(sg_page(sg));
 				length_remaining -= length_within_page;
 				current_offset += length_within_page;
 				offset_within_page = 0;
@@ -488,11 +548,13 @@ static int partial_overlap(void *src_ptr, void *dst_ptr, u32 nbytes)
 }
 
 /* Debug - prints only if DEBUG is defined; follows kernel debug model */
-static void sep_dump(struct sep_device *sep, char *stg, void *start, int len)
+void sep_dump(struct sep_device *sep, char *stg, void *start, int len)
 {
-#if 0
 	int ct1;
 	u8 *ptt;
+
+	/* TESTING */
+	return;
 
 	dev_dbg(&sep->pdev->dev,
 		"Dump of %s starting at %08lx for %08x bytes\n",
@@ -504,18 +566,18 @@ static void sep_dump(struct sep_device *sep, char *stg, void *start, int len)
 			dev_dbg(&sep->pdev->dev, "\n");
 	}
 	dev_dbg(&sep->pdev->dev, "\n");
-#endif
 }
 
 /* Debug - prints only if DEBUG is defined; follows kernel debug model */
-static void sep_dump_sg(struct sep_device *sep, char *stg,
-			struct scatterlist *sg)
+void sep_dump_sg(struct sep_device *sep, char *stg, struct scatterlist *sg)
 {
-#if 0
 	int ct1, ct2;
 	u8 *ptt;
+	void *src_kmap;
 
 	dev_dbg(&sep->pdev->dev, "Dump of scatterlist %s\n", stg);
+
+	return;
 
 	ct1 = 0;
 	while (sg) {
@@ -523,21 +585,29 @@ static void sep_dump_sg(struct sep_device *sep, char *stg,
 			sg->length);
 		dev_dbg(&sep->pdev->dev, "phys addr is %lx",
 			(unsigned long)sg_phys(sg));
-		ptt = sg_virt(sg);
+		src_kmap = kmap(sg_page(sg)) + sg->offset;
+		if (src_kmap == NULL) {
+			dev_dbg(&sep->pdev->dev, "kmap failure\n");
+			return;
+		}
+
+		dev_dbg(&sep->pdev->dev, "mapped addr is %p\n", src_kmap);
+		dev_dbg(&sep->pdev->dev, "sg addr is %p\n", sg);
+		dev_dbg(&sep->pdev->dev, "sg_virt is %p\n", sg_virt(sg));
+		ptt = (u8 *)src_kmap;
 		for (ct2 = 0; ct2 < sg->length; ct2 += 1) {
 			dev_dbg(&sep->pdev->dev, "byte %x is %02x\n",
 				ct2, (unsigned char)*(ptt + ct2));
 		}
-
+		kunmap(sg_page(sg));
 		ct1 += 1;
 		sg = sg_next(sg);
 	}
 	dev_dbg(&sep->pdev->dev, "\n");
-#endif
 }
 
 /* Debug - prints only if DEBUG is defined */
-static void sep_dump_ivs(struct ablkcipher_request *req, char *reason)
+void sep_dump_ivs(struct ablkcipher_request *req, char *reason)
 
 	{
 	unsigned char *cptr;
@@ -577,8 +647,13 @@ static void sep_dump_ivs(struct ablkcipher_request *req, char *reason)
 	} else if ((ta_ctx->current_request == AES_CBC) &&
 		(ta_ctx->aes_opmode == SEP_AES_CBC)) {
 
-		aes_internal = (struct sep_aes_internal_context *)
-			sctx->aes_private_ctx.cbuff;
+		if (ta_ctx->aes_encmode == SEP_AES_ENCRYPT)
+			aes_internal = (struct sep_aes_internal_context *)
+				sctx->aes_private_ctx_enc.cbuff;
+		else
+			aes_internal = (struct sep_aes_internal_context *)
+				sctx->aes_private_ctx_dec.cbuff;
+
 		/* print vendor */
 		dev_dbg(&ta_ctx->sep_used->pdev->dev,
 			"sep - vendor iv for AES\n");
@@ -601,7 +676,7 @@ static void sep_dump_ivs(struct ablkcipher_request *req, char *reason)
  * RFC2451: Weak key check
  * Returns: 1 (weak), 0 (not weak)
  */
-static int sep_weak_key(const u8 *key, unsigned int keylen)
+int sep_weak_key(const u8 *key, unsigned int keylen)
 {
 	static const u8 parity[] = {
 	8, 1, 0, 8, 0, 8, 8, 0, 0, 8, 8, 0, 8, 0, 2, 8,
@@ -738,7 +813,7 @@ static u32 sep_sg_nents(struct scatterlist *sg)
  *	@returns: offset to place for the next word in the message
  *	Set up pointer in message pool for new message
  */
-static u32 sep_start_msg(struct this_task_ctx *ta_ctx)
+u32 sep_start_msg(struct this_task_ctx *ta_ctx)
 {
 	u32 *word_ptr;
 	ta_ctx->msg_len_words = 2;
@@ -758,7 +833,7 @@ static u32 sep_start_msg(struct this_task_ctx *ta_ctx)
  *	End message; set length and CRC; and
  *	send interrupt to the SEP
  */
-static void sep_end_msg(struct this_task_ctx *ta_ctx, u32 msg_offset)
+void sep_end_msg(struct this_task_ctx *ta_ctx, u32 msg_offset)
 {
 	u32 *word_ptr;
 	/* Msg size goes into msg after token */
@@ -779,7 +854,7 @@ static void sep_end_msg(struct this_task_ctx *ta_ctx, u32 msg_offset)
  *	@returns: 0 for success; error value for failure
  *	Set up pointer in message pool for inbound message
  */
-static u32 sep_start_inbound_msg(struct this_task_ctx *ta_ctx, u32 *msg_offset)
+u32 sep_start_inbound_msg(struct this_task_ctx *ta_ctx, u32 *msg_offset)
 {
 	u32 *word_ptr;
 	u32 token;
@@ -810,7 +885,7 @@ end_function:
  *	@byte_array: flag ti indicate wheter endian must be changed
  *	Copies data into the message area from caller
  */
-static void sep_write_msg(struct this_task_ctx *ta_ctx, void *in_addr,
+void sep_write_msg(struct this_task_ctx *ta_ctx, void *in_addr,
 	u32 size, u32 max_size, u32 *msg_offset, u32 byte_array)
 {
 	u32 *word_ptr;
@@ -835,8 +910,7 @@ static void sep_write_msg(struct this_task_ctx *ta_ctx, void *in_addr,
  *	@op_code: op code to put into message
  *	Puts op code into message and updates offset
  */
-static void sep_make_header(struct this_task_ctx *ta_ctx, u32 *msg_offset,
-			    u32 op_code)
+void sep_make_header(struct this_task_ctx *ta_ctx, u32 *msg_offset, u32 op_code)
 {
 	u32 *word_ptr;
 
@@ -858,7 +932,7 @@ static void sep_make_header(struct this_task_ctx *ta_ctx, u32 *msg_offset,
  *	@byte_array: flag ti indicate wheter endian must be changed
  *	Copies data out of the message area to caller
  */
-static void sep_read_msg(struct this_task_ctx *ta_ctx, void *in_addr,
+void sep_read_msg(struct this_task_ctx *ta_ctx, void *in_addr,
 	u32 size, u32 max_size, u32 *msg_offset, u32 byte_array)
 {
 	u32 *word_ptr;
@@ -884,11 +958,10 @@ static void sep_read_msg(struct this_task_ctx *ta_ctx, void *in_addr,
  *      @msg_offset: pointer to current offset (is updated)
  *	@returns: 0 for success; error for failure
  */
-static u32 sep_verify_op(struct this_task_ctx *ta_ctx, u32 op_code,
-			 u32 *msg_offset)
+u32 sep_verify_op(struct this_task_ctx *ta_ctx, u32 op_code, u32 *msg_offset)
 {
 	u32 error;
-	u32 in_ary[2];
+	u32 in_ary[2] = { 0 };
 
 	struct sep_device *sep = ta_ctx->sep_used;
 
@@ -936,7 +1009,7 @@ return 0;
  * it skips over some words in the msg area depending on the size
  * of the context
  */
-static void sep_read_context(struct this_task_ctx *ta_ctx, u32 *msg_offset,
+void sep_read_context(struct this_task_ctx *ta_ctx, u32 *msg_offset,
 	void *dst, u32 len)
 {
 	u32 max_length = ((len + 3) / sizeof(u32)) * sizeof(u32);
@@ -955,7 +1028,7 @@ static void sep_read_context(struct this_task_ctx *ta_ctx, u32 *msg_offset,
  * it skips over some words in the msg area depending on the size
  * of the context
  */
-static void sep_write_context(struct this_task_ctx *ta_ctx, u32 *msg_offset,
+void sep_write_context(struct this_task_ctx *ta_ctx, u32 *msg_offset,
 	void *src, u32 len)
 {
 	u32 max_length = ((len + 3) / sizeof(u32)) * sizeof(u32);
@@ -969,7 +1042,7 @@ static void sep_write_context(struct this_task_ctx *ta_ctx, u32 *msg_offset,
  * to enable device to be used by anyone; either kernel
  * crypto or userspace app via middleware
  */
-static void sep_clear_out(struct this_task_ctx *ta_ctx)
+void sep_clear_out(struct this_task_ctx *ta_ctx)
 {
 	if (ta_ctx->src_sg_hold) {
 		sep_free_sg_buf(ta_ctx->src_sg_hold);
@@ -1033,7 +1106,7 @@ static void sep_clear_out(struct this_task_ctx *ta_ctx)
   * Release crypto infrastructure from EINPROGRESS and
   * clear sep_dev so that SEP is available to anyone
   */
-static void sep_crypto_release(struct sep_system_ctx *sctx,
+void sep_crypto_release(struct sep_system_ctx *sctx,
 	struct this_task_ctx *ta_ctx, u32 error)
 {
 	struct ahash_request *hash_req = ta_ctx->current_hash_req;
@@ -1081,7 +1154,7 @@ static void sep_crypto_release(struct sep_system_ctx *sctx,
  *	and it will return 0 if sep is now ours; error value if there
  *	were problems
  */
-static int sep_crypto_take_sep(struct this_task_ctx *ta_ctx)
+int sep_crypto_take_sep(struct this_task_ctx *ta_ctx)
 {
 	struct sep_device *sep = ta_ctx->sep_used;
 	int result;
@@ -1095,8 +1168,8 @@ static int sep_crypto_take_sep(struct this_task_ctx *ta_ctx)
 		current->comm, sizeof(current->comm));
 
 	if (!ta_ctx->queue_elem) {
-		dev_dbg(&sep->pdev->dev, "[PID%d] updating queue"
-			" status error\n", current->pid);
+		dev_dbg(&sep->pdev->dev,
+		"[PID%d] updating queue status error\n", current->pid);
 		return -EINVAL;
 	}
 
@@ -1207,7 +1280,7 @@ static int sep_crypto_block_data(struct ablkcipher_request *req)
 		req->nbytes, ta_ctx->walk.blocksize, &new_sg, 1);
 
 	if (int_error < 0) {
-		dev_warn(&ta_ctx->sep_used->pdev->dev, "oddball page eerror\n");
+		dev_warn(&ta_ctx->sep_used->pdev->dev, "oddball page error\n");
 		return -ENOMEM;
 	} else if (int_error == 1) {
 		ta_ctx->src_sg = new_sg;
@@ -1242,8 +1315,14 @@ static int sep_crypto_block_data(struct ablkcipher_request *req)
 		"block sg in", ta_ctx->src_sg);
 
 	/* check for valid data and proper spacing */
-	src_ptr = sg_virt(ta_ctx->src_sg);
-	dst_ptr = sg_virt(ta_ctx->dst_sg);
+	src_ptr = kmap(sg_page(ta_ctx->src_sg)) +
+		ta_ctx->src_sg->offset;
+	dst_ptr = kmap(sg_page(ta_ctx->dst_sg)) +
+		ta_ctx->dst_sg->offset;
+
+	/* Note that we are doing only arithmetic checks; not access */
+	kunmap(sg_page(ta_ctx->src_sg));
+	kunmap(sg_page(ta_ctx->dst_sg));
 
 	if (!src_ptr || !dst_ptr ||
 		(ta_ctx->current_cypher_req->nbytes %
@@ -1351,8 +1430,14 @@ static int sep_crypto_block_data(struct ablkcipher_request *req)
 
 		dev_dbg(&ta_ctx->sep_used->pdev->dev,
 			"overwrite vendor iv on AES\n");
-		aes_internal = (struct sep_aes_internal_context *)
-			sctx->aes_private_ctx.cbuff;
+
+		if (ta_ctx->aes_encmode == SEP_AES_ENCRYPT)
+			aes_internal = (struct sep_aes_internal_context *)
+				sctx->aes_private_ctx_enc.cbuff;
+		else
+			aes_internal = (struct sep_aes_internal_context *)
+				sctx->aes_private_ctx_dec.cbuff;
+
 		memcpy((void *)aes_internal->aes_ctx_iv,
 			ta_ctx->walk.iv, crypto_ablkcipher_ivsize(tfm));
 	}
@@ -1364,12 +1449,18 @@ static int sep_crypto_block_data(struct ablkcipher_request *req)
 			sizeof(struct sep_des_private_context));
 		sep_dump(ta_ctx->sep_used, "ctx to block des",
 			&sctx->des_private_ctx, 40);
-	} else {
+	} else if (ta_ctx->aes_encmode == SEP_AES_ENCRYPT) {
 		sep_write_context(ta_ctx, &msg_offset,
-			&sctx->aes_private_ctx,
+			&sctx->aes_private_ctx_enc,
 			sizeof(struct sep_aes_private_context));
 		sep_dump(ta_ctx->sep_used, "ctx to block aes",
-			&sctx->aes_private_ctx, 20);
+			&sctx->aes_private_ctx_enc, 20);
+	} else {
+		sep_write_context(ta_ctx, &msg_offset,
+			&sctx->aes_private_ctx_dec,
+			sizeof(struct sep_aes_private_context));
+		sep_dump(ta_ctx->sep_used, "ctx to block aes",
+			&sctx->aes_private_ctx_dec, 20);
 	}
 
 	/* conclude message */
@@ -1417,7 +1508,7 @@ static int sep_crypto_send_key(struct ablkcipher_request *req)
 		return -ENOMEM;
 	}
 
-	/* check iv */
+	/* Make sure that the IV exists where appropriate */
 	if ((ta_ctx->current_request == DES_CBC) &&
 		(ta_ctx->des_opmode == SEP_DES_CBC)) {
 		if (!ta_ctx->walk.iv) {
@@ -1535,7 +1626,23 @@ static void sep_crypto_block(void *data)
 	pr_debug("key_sent is %d\n", sctx->key_sent);
 
 	/* do we need to send the key */
-	if (sctx->key_sent == 0) {
+	if (((ta_ctx->aes_opmode == SEP_AES_CBC) &&
+		(ta_ctx->aes_encmode == SEP_AES_ENCRYPT) &&
+		(sctx->key_sent_enc == 0)) ||
+		((ta_ctx->aes_opmode == SEP_AES_CBC) &&
+		(ta_ctx->aes_encmode == SEP_AES_DECRYPT) &&
+		(sctx->key_sent_dec == 0)) ||
+		((ta_ctx->aes_opmode == SEP_AES_ECB) &&
+		(ta_ctx->aes_encmode == SEP_AES_ENCRYPT) &&
+		(sctx->key_sent_enc == 0)) ||
+		((ta_ctx->aes_opmode == SEP_AES_ECB) &&
+		(ta_ctx->aes_encmode == SEP_AES_DECRYPT) &&
+		(sctx->key_sent_dec == 0)) ||
+		((ta_ctx->aes_opmode == SEP_AES_CBC) &&
+		(sctx->key_sent == 0)) ||
+		((ta_ctx->aes_opmode == SEP_AES_ECB) &&
+		(sctx->key_sent == 0))) {
+
 		are_we_done_yet = 0;
 		result = sep_crypto_send_key(req); /* prep to send key */
 		if (result != 0) {
@@ -1569,6 +1676,19 @@ static void sep_crypto_block(void *data)
 
 		/* Set the key sent variable so this can be skipped later */
 		sctx->key_sent = 1;
+
+		if ((ta_ctx->aes_opmode == SEP_AES_CBC) &&
+			(ta_ctx->aes_encmode == SEP_AES_ENCRYPT))
+			sctx->key_sent_enc = 1;
+		else if ((ta_ctx->aes_opmode == SEP_AES_ECB) &&
+			(ta_ctx->aes_encmode == SEP_AES_ENCRYPT))
+			sctx->key_sent_enc = 1;
+		else if ((ta_ctx->aes_opmode == SEP_AES_CBC) &&
+			(ta_ctx->aes_encmode == SEP_AES_DECRYPT))
+			sctx->key_sent_dec = 1;
+		else if ((ta_ctx->aes_opmode == SEP_AES_ECB) &&
+			(ta_ctx->aes_encmode == SEP_AES_DECRYPT))
+			sctx->key_sent_dec = 1;
 	}
 
 	/* Key sent (or maybe not if we did not have to), now send block */
@@ -1613,7 +1733,7 @@ static void sep_crypto_block(void *data)
 /**
  * Post operation (after interrupt) for crypto block
  */
-static u32 crypto_post_op(struct sep_device *sep)
+u32 crypto_post_op(struct sep_device *sep)
 {
 	/* HERE */
 	u32 u32_error;
@@ -1640,11 +1760,11 @@ static u32 crypto_post_op(struct sep_device *sep)
 	tfm = crypto_ablkcipher_reqtfm(sep->current_cypher_req);
 	sctx = crypto_ablkcipher_ctx(tfm);
 
-	pr_debug("crypto_post op\n");
-	pr_debug("key_sent is %d tfm is %p sctx is %p ta_ctx is %p\n",
+	dev_dbg(&ta_ctx->sep_used->pdev->dev, "crypto_post op\n");
+	dev_dbg(&ta_ctx->sep_used->pdev->dev,
+		"key_sent is %d tfm is %p sctx is %p ta_ctx is %p\n",
 		sctx->key_sent, tfm, sctx, ta_ctx);
 
-	dev_dbg(&ta_ctx->sep_used->pdev->dev, "crypto post_op\n");
 	dev_dbg(&ta_ctx->sep_used->pdev->dev, "crypto post_op message dump\n");
 	crypto_sep_dump_message(ta_ctx->sep_used, ta_ctx->msg);
 
@@ -1652,8 +1772,23 @@ static u32 crypto_post_op(struct sep_device *sep)
 	memcpy(ta_ctx->msg, sep->shared_addr,
 		SEP_DRIVER_MESSAGE_SHARED_AREA_SIZE_IN_BYTES);
 
-	/* Is this the result of performing init (key to SEP */
-	if (sctx->key_sent == 0) {
+	/* do we need to send the key */
+	if (((ta_ctx->aes_opmode == SEP_AES_CBC) &&
+		(ta_ctx->aes_encmode == SEP_AES_ENCRYPT) &&
+		(sctx->key_sent_enc == 0)) ||
+		((ta_ctx->aes_opmode == SEP_AES_CBC) &&
+		(ta_ctx->aes_encmode == SEP_AES_DECRYPT) &&
+		(sctx->key_sent_dec == 0)) ||
+		((ta_ctx->aes_opmode == SEP_AES_ECB) &&
+		(ta_ctx->aes_encmode == SEP_AES_ENCRYPT) &&
+		(sctx->key_sent_enc == 0)) ||
+		((ta_ctx->aes_opmode == SEP_AES_ECB) &&
+		(ta_ctx->aes_encmode == SEP_AES_DECRYPT) &&
+		(sctx->key_sent_dec == 0)) ||
+		((ta_ctx->aes_opmode == SEP_AES_CBC) &&
+		(sctx->key_sent == 0)) ||
+		((ta_ctx->aes_opmode == SEP_AES_ECB) &&
+		(sctx->key_sent == 0))) {
 
 		/* Did SEP do it okay */
 		u32_error = sep_verify_op(ta_ctx, ta_ctx->init_opcode,
@@ -1673,19 +1808,24 @@ static u32 crypto_post_op(struct sep_device *sep)
 
 			sep_dump(ta_ctx->sep_used, "ctx init des",
 				&sctx->des_private_ctx, 40);
-		} else {
+		} else if (ta_ctx->aes_encmode == SEP_AES_ENCRYPT) {
 			sep_read_context(ta_ctx, &msg_offset,
-			&sctx->aes_private_ctx,
+			&sctx->aes_private_ctx_enc,
 			sizeof(struct sep_aes_private_context));
 
 			sep_dump(ta_ctx->sep_used, "ctx init aes",
-				&sctx->aes_private_ctx, 20);
+				&sctx->aes_private_ctx_enc, 20);
+		} else {
+			sep_read_context(ta_ctx, &msg_offset,
+			&sctx->aes_private_ctx_dec,
+			sizeof(struct sep_aes_private_context));
+
+			sep_dump(ta_ctx->sep_used, "ctx init aes",
+				&sctx->aes_private_ctx_dec, 20);
 		}
 
 		sep_dump_ivs(req, "after sending key to sep\n");
 
-		/* key sent went okay; release sep, and set are_we_done_yet */
-		sctx->key_sent = 1;
 		sep_crypto_release(sctx, ta_ctx, -EINPROGRESS);
 
 	} else {
@@ -1753,9 +1893,16 @@ static u32 crypto_post_op(struct sep_device *sep)
 			msg_offset += (sizeof(u32) * 4);
 
 			/* Read Context */
-			sep_read_context(ta_ctx, &msg_offset,
-				&sctx->aes_private_ctx,
-				sizeof(struct sep_aes_private_context));
+			if (ta_ctx->aes_encmode == SEP_AES_ENCRYPT)
+				sep_read_context(ta_ctx, &msg_offset,
+					&sctx->aes_private_ctx_enc,
+					sizeof(struct
+						sep_aes_private_context));
+			else
+				sep_read_context(ta_ctx, &msg_offset,
+					&sctx->aes_private_ctx_dec,
+					sizeof(struct
+						sep_aes_private_context));
 		}
 
 		sep_dump_sg(ta_ctx->sep_used,
@@ -1771,6 +1918,7 @@ static u32 crypto_post_op(struct sep_device *sep)
 		/**
 		 * Copy the iv's back to the walk.iv
 		 * This is required for dm_crypt
+		 * This gives the customer access to the result IV
 		 */
 		sep_dump_ivs(req, "got data block from sep\n");
 		if ((ta_ctx->current_request == DES_CBC) &&
@@ -1788,8 +1936,15 @@ static u32 crypto_post_op(struct sep_device *sep)
 
 			dev_dbg(&ta_ctx->sep_used->pdev->dev,
 				"returning result iv to walk on AES\n");
-			aes_internal = (struct sep_aes_internal_context *)
-				sctx->aes_private_ctx.cbuff;
+			if (ta_ctx->aes_encmode == SEP_AES_ENCRYPT)
+				aes_internal =
+					(struct sep_aes_internal_context *)
+					sctx->aes_private_ctx_enc.cbuff;
+			else
+				aes_internal =
+					(struct sep_aes_internal_context *)
+					sctx->aes_private_ctx_dec.cbuff;
+
 			memcpy(ta_ctx->walk.iv,
 				(void *)aes_internal->aes_ctx_iv,
 				crypto_ablkcipher_ivsize(tfm));
@@ -1798,14 +1953,15 @@ static u32 crypto_post_op(struct sep_device *sep)
 		/* finished, release everything */
 		sep_crypto_release(sctx, ta_ctx, 0);
 	}
-	pr_debug("crypto_post_op done\n");
-	pr_debug("key_sent is %d tfm is %p sctx is %p ta_ctx is %p\n",
+	dev_dbg(&ta_ctx->sep_used->pdev->dev, "crypto_post_op done\n");
+	dev_dbg(&ta_ctx->sep_used->pdev->dev,
+		"key_sent is %d tfm is %p sctx is %p ta_ctx is %p\n",
 		sctx->key_sent, tfm, sctx, ta_ctx);
 
 	return 0;
 }
 
-static u32 hash_init_post_op(struct sep_device *sep)
+u32 hash_init_post_op(struct sep_device *sep)
 {
 	u32 u32_error;
 	u32 msg_offset;
@@ -1840,7 +1996,7 @@ static u32 hash_init_post_op(struct sep_device *sep)
 	return 0;
 }
 
-static u32 hash_update_post_op(struct sep_device *sep)
+u32 hash_update_post_op(struct sep_device *sep)
 {
 	u32 u32_error;
 	u32 msg_offset;
@@ -1911,7 +2067,7 @@ static u32 hash_update_post_op(struct sep_device *sep)
 	return 0;
 }
 
-static u32 hash_final_post_op(struct sep_device *sep)
+u32 hash_final_post_op(struct sep_device *sep)
 {
 	int max_length;
 	u32 u32_error;
@@ -1959,7 +2115,7 @@ static u32 hash_final_post_op(struct sep_device *sep)
 	return 0;
 }
 
-static u32 hash_digest_post_op(struct sep_device *sep)
+u32 hash_digest_post_op(struct sep_device *sep)
 {
 	int max_length;
 	u32 u32_error;
@@ -2267,14 +2423,25 @@ static void sep_hash_update(void *data)
 		ta_ctx->src_sg_hold = NULL;
 	}
 
-	src_ptr = sg_virt(ta_ctx->src_sg);
-
 	if ((!req->nbytes) || (!ta_ctx->src_sg)) {
 		/* null data */
 		src_ptr = NULL;
-	}
+	} else {
+		/**
+		 * Please note that src_ptr is not used for access; it is
+		 * use for some arthmetic checking only
+		 */
+		src_ptr = kmap(sg_page(ta_ctx->src_sg)) +
+			ta_ctx->src_sg->offset;
+		if (src_ptr == NULL) {
+			dev_dbg(&ta_ctx->sep_used->pdev->dev, "kmap failure\n");
+			return;
+		}
 
-	sep_dump_sg(ta_ctx->sep_used, "hash block sg in", ta_ctx->src_sg);
+		kunmap(sg_page(ta_ctx->src_sg));
+		sep_dump_sg(ta_ctx->sep_used, "hash block sg in",
+			ta_ctx->src_sg);
+	}
 
 	ta_ctx->dcb_input_data.app_in_address = src_ptr;
 	ta_ctx->dcb_input_data.data_in_size =
@@ -2339,7 +2506,7 @@ static void sep_hash_update(void *data)
 	sep_write_msg(ta_ctx, &tail_len, sizeof(u32),
 		sizeof(u32), &msg_offset, 0);
 
-	if (tail_len) {
+	if ((tail_len) && (ta_ctx->src_sg != NULL)) {
 		copy_result = sep_copy_offset_sg(
 			ta_ctx->sep_used,
 			ta_ctx->src_sg,
@@ -2500,14 +2667,25 @@ static void sep_hash_digest(void *data)
 		ta_ctx->src_sg_hold = NULL;
 	}
 
-	src_ptr = sg_virt(ta_ctx->src_sg);
-
 	if ((!req->nbytes) || (!ta_ctx->src_sg)) {
 		/* null data */
 		src_ptr = NULL;
-	}
+	} else {
+		/**
+		 * Please note that src_ptr is not used for access; it is
+		 * use for some arthmetic checking only
+		 */
+		src_ptr = kmap(sg_page(ta_ctx->src_sg)) +
+			ta_ctx->src_sg->offset;
+		if (src_ptr == NULL) {
+			dev_dbg(&ta_ctx->sep_used->pdev->dev, "kmap failure\n");
+			return;
+		}
 
-	sep_dump_sg(ta_ctx->sep_used, "hash block sg in", ta_ctx->src_sg);
+		kunmap(sg_page(ta_ctx->src_sg));
+		sep_dump_sg(ta_ctx->sep_used, "hash block sg in",
+			ta_ctx->src_sg);
+	}
 
 	ta_ctx->dcb_input_data.app_in_address = src_ptr;
 	ta_ctx->dcb_input_data.data_in_size = req->nbytes - tail_len;
@@ -2548,7 +2726,7 @@ static void sep_hash_digest(void *data)
 	sep_write_msg(ta_ctx, &tail_len, sizeof(u32),
 		sizeof(u32), &msg_offset, 0);
 
-	if (tail_len) {
+	if ((tail_len) && (ta_ctx->src_sg != NULL)) {
 		copy_result = sep_copy_offset_sg(
 			ta_ctx->sep_used,
 			ta_ctx->src_sg,
@@ -2627,7 +2805,6 @@ static void sep_dequeuer(void *data)
 		pr_debug("sep crypto backlog set\n");
 		if (backlog->complete)
 			backlog->complete(backlog, -EINPROGRESS);
-		backlog = NULL;
 	}
 
 	if (!async_req->tfm) {
@@ -3422,6 +3599,8 @@ static int sep_aes_setkey(struct crypto_ablkcipher *tfm, const u8 *key,
 	sctx->keylen = keylen;
 	/* Indicate to encrypt/decrypt function to send key to SEP */
 	sctx->key_sent = 0;
+	sctx->key_sent_enc = 0;
+	sctx->key_sent_dec = 0;
 
 	return 0;
 }
@@ -3513,6 +3692,15 @@ static int sep_aes_cbc_encrypt(struct ablkcipher_request *req)
 	/* Clear out task context */
 	memset(ta_ctx, 0, sizeof(struct this_task_ctx));
 
+	/* Make sure that the input buffer is not NULL */
+	if (req->src == NULL) {
+		pr_debug(" sep - crypto - NULL input buffer\n");
+		return -EINVAL;
+	}
+
+	/* fix buffers */
+	sep_fix_null_buf(req);
+
 	pr_debug("tfm is %p sctx is %p and ta_ctx is %p\n",
 		crypto_ablkcipher_reqtfm(req), sctx, ta_ctx);
 
@@ -3557,6 +3745,15 @@ static int sep_aes_cbc_decrypt(struct ablkcipher_request *req)
 
 	/* Clear out task context */
 	memset(ta_ctx, 0, sizeof(struct this_task_ctx));
+
+	/* Make sure that the input buffer is not NULL */
+	if (req->src == NULL) {
+		pr_debug(" sep - crypto - NULL input buffer\n");
+		return -EINVAL;
+	}
+
+	/* fix buffers */
+	sep_fix_null_buf(req);
 
 	ta_ctx->sep_used = sep_dev;
 	ta_ctx->current_request = AES_CBC;
@@ -3637,6 +3834,15 @@ static int sep_des_ebc_encrypt(struct ablkcipher_request *req)
 	/* Clear out task context */
 	memset(ta_ctx, 0, sizeof(struct this_task_ctx));
 
+	/* Make sure that the input buffer is not NULL */
+	if (req->src == NULL) {
+		pr_debug(" sep - crypto - NULL input buffer\n");
+		return -EINVAL;
+	}
+
+	/* fix buffers */
+	sep_fix_null_buf(req);
+
 	ta_ctx->sep_used = sep_dev;
 	ta_ctx->current_request = DES_ECB;
 	ta_ctx->current_hash_req = NULL;
@@ -3673,6 +3879,15 @@ static int sep_des_ebc_decrypt(struct ablkcipher_request *req)
 
 	/* Clear out task context */
 	memset(ta_ctx, 0, sizeof(struct this_task_ctx));
+
+	/* Make sure that the input buffer is not NULL */
+	if (req->src == NULL) {
+		pr_debug(" sep - crypto - NULL input buffer\n");
+		return -EINVAL;
+	}
+
+	/* fix buffers */
+	sep_fix_null_buf(req);
 
 	ta_ctx->sep_used = sep_dev;
 	ta_ctx->current_request = DES_ECB;
@@ -3711,6 +3926,15 @@ static int sep_des_cbc_encrypt(struct ablkcipher_request *req)
 	/* Clear out task context */
 	memset(ta_ctx, 0, sizeof(struct this_task_ctx));
 
+	/* Make sure that the input buffer is not NULL */
+	if (req->src == NULL) {
+		pr_debug(" sep - crypto - NULL input buffer\n");
+		return -EINVAL;
+	}
+
+	/* fix buffers */
+	sep_fix_null_buf(req);
+
 	ta_ctx->sep_used = sep_dev;
 	ta_ctx->current_request = DES_CBC;
 	ta_ctx->current_hash_req = NULL;
@@ -3748,6 +3972,15 @@ static int sep_des_cbc_decrypt(struct ablkcipher_request *req)
 	/* Clear out task context */
 	memset(ta_ctx, 0, sizeof(struct this_task_ctx));
 
+	/* Make sure that the input buffer is not NULL */
+	if (req->src == NULL) {
+		pr_debug(" sep - crypto - NULL input buffer\n");
+		return -EINVAL;
+	}
+
+	/* fix buffers */
+	sep_fix_null_buf(req);
+
 	ta_ctx->sep_used = sep_dev;
 	ta_ctx->current_request = DES_CBC;
 	ta_ctx->current_hash_req = NULL;
@@ -3781,9 +4014,8 @@ static struct ahash_alg hash_algs[] = {
 	.final		= sep_sha1_final,
 	.digest		= sep_sha1_digest,
 	.finup		= sep_sha1_finup,
-	.halg		= {
-		.digestsize	= SHA1_DIGEST_SIZE,
-		.base	= {
+	.halg.digestsize	= SHA1_DIGEST_SIZE,
+	.halg.base	= {
 		.cra_name		= "sha1",
 		.cra_driver_name	= "sha1-sep",
 		.cra_priority		= 100,
@@ -3795,7 +4027,6 @@ static struct ahash_alg hash_algs[] = {
 		.cra_module		= THIS_MODULE,
 		.cra_init		= sep_hash_cra_init,
 		.cra_exit		= sep_hash_cra_exit,
-		}
 	}
 },
 {
@@ -3804,9 +4035,8 @@ static struct ahash_alg hash_algs[] = {
 	.final		= sep_md5_final,
 	.digest		= sep_md5_digest,
 	.finup		= sep_md5_finup,
-	.halg		= {
-		.digestsize	= MD5_DIGEST_SIZE,
-		.base	= {
+	.halg.digestsize	= MD5_DIGEST_SIZE,
+	.halg.base	= {
 		.cra_name		= "md5",
 		.cra_driver_name	= "md5-sep",
 		.cra_priority		= 100,
@@ -3818,7 +4048,6 @@ static struct ahash_alg hash_algs[] = {
 		.cra_module		= THIS_MODULE,
 		.cra_init		= sep_hash_cra_init,
 		.cra_exit		= sep_hash_cra_exit,
-		}
 	}
 },
 {
@@ -3827,9 +4056,8 @@ static struct ahash_alg hash_algs[] = {
 	.final		= sep_sha224_final,
 	.digest		= sep_sha224_digest,
 	.finup		= sep_sha224_finup,
-	.halg		= {
-		.digestsize	= SHA224_DIGEST_SIZE,
-		.base	= {
+	.halg.digestsize	= SHA224_DIGEST_SIZE,
+	.halg.base	= {
 		.cra_name		= "sha224",
 		.cra_driver_name	= "sha224-sep",
 		.cra_priority		= 100,
@@ -3841,7 +4069,6 @@ static struct ahash_alg hash_algs[] = {
 		.cra_module		= THIS_MODULE,
 		.cra_init		= sep_hash_cra_init,
 		.cra_exit		= sep_hash_cra_exit,
-		}
 	}
 },
 {
@@ -3850,9 +4077,8 @@ static struct ahash_alg hash_algs[] = {
 	.final		= sep_sha256_final,
 	.digest		= sep_sha256_digest,
 	.finup		= sep_sha256_finup,
-	.halg		= {
-		.digestsize	= SHA256_DIGEST_SIZE,
-		.base	= {
+	.halg.digestsize	= SHA256_DIGEST_SIZE,
+	.halg.base	= {
 		.cra_name		= "sha256",
 		.cra_driver_name	= "sha256-sep",
 		.cra_priority		= 100,
@@ -3864,7 +4090,6 @@ static struct ahash_alg hash_algs[] = {
 		.cra_module		= THIS_MODULE,
 		.cra_init		= sep_hash_cra_init,
 		.cra_exit		= sep_hash_cra_exit,
-		}
 	}
 }
 };
@@ -3993,7 +4218,6 @@ static struct crypto_alg crypto_algs[] = {
 	}
 }
 };
-
 int sep_crypto_setup(void)
 {
 	int err, i, j, k;
@@ -4009,20 +4233,14 @@ int sep_crypto_setup(void)
 		return -ENOMEM;
 	}
 
-	i = 0;
-	j = 0;
-
 	spin_lock_init(&queue_lock);
-
-	err = 0;
 
 	for (i = 0; i < ARRAY_SIZE(hash_algs); i++) {
 		err = crypto_register_ahash(&hash_algs[i]);
 		if (err)
-			goto err_algs;
+			goto err_hash_algs;
 	}
 
-	err = 0;
 	for (j = 0; j < ARRAY_SIZE(crypto_algs); j++) {
 		err = crypto_register_alg(&crypto_algs[j]);
 		if (err)
@@ -4031,15 +4249,15 @@ int sep_crypto_setup(void)
 
 	return err;
 
-err_algs:
+err_crypto_algs:
+	for (k = 0; k < j; k++)
+		crypto_unregister_alg(&crypto_algs[k]);
+
+err_hash_algs:
 	for (k = 0; k < i; k++)
 		crypto_unregister_ahash(&hash_algs[k]);
 	return err;
 
-err_crypto_algs:
-	for (k = 0; k < j; k++)
-		crypto_unregister_alg(&crypto_algs[k]);
-	goto err_algs;
 }
 
 void sep_crypto_takedown(void)
@@ -4054,5 +4272,3 @@ void sep_crypto_takedown(void)
 
 	tasklet_kill(&sep_dev->finish_tasklet);
 }
-
-#endif
