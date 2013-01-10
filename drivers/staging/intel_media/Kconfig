@@ -81,7 +81,6 @@ config DRM_CTP_PR1
 config GPU_BURST
 	tristate "GPU Burst support"
 	depends on DRM_CTP
-	default y
 	help
 	  Choose this option to support Intel system-on-a-chip GPU Burst,
 	  wherein the GPU clock frequency may be increased when meaasurement of
