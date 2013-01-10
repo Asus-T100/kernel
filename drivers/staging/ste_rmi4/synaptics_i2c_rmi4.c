@@ -94,6 +94,147 @@ enum finger_state {
 	F11_RESERVED = 3
 };
 
+/*
+#define REPORT_2D_Z
+*/
+
+#define RPT_TYPE (1 << 0)
+#define RPT_X_LSB (1 << 1)
+#define RPT_X_MSB (1 << 2)
+#define RPT_Y_LSB (1 << 3)
+#define RPT_Y_MSB (1 << 4)
+#define RPT_Z (1 << 5)
+#define RPT_WX (1 << 6)
+#define RPT_WY (1 << 7)
+#define RPT_DEFAULT (RPT_TYPE | RPT_X_LSB | RPT_X_MSB | RPT_Y_LSB | RPT_Y_MSB)
+
+struct synaptics_rmi4_f12_query_5 {
+	union {
+		struct {
+			unsigned char size_of_query6;
+			struct {
+				unsigned char ctrl0_is_present:1;
+				unsigned char ctrl1_is_present:1;
+				unsigned char ctrl2_is_present:1;
+				unsigned char ctrl3_is_present:1;
+				unsigned char ctrl4_is_present:1;
+				unsigned char ctrl5_is_present:1;
+				unsigned char ctrl6_is_present:1;
+				unsigned char ctrl7_is_present:1;
+			} __packed;
+			struct {
+				unsigned char ctrl8_is_present:1;
+				unsigned char ctrl9_is_present:1;
+				unsigned char ctrl10_is_present:1;
+				unsigned char ctrl11_is_present:1;
+				unsigned char ctrl12_is_present:1;
+				unsigned char ctrl13_is_present:1;
+				unsigned char ctrl14_is_present:1;
+				unsigned char ctrl15_is_present:1;
+			} __packed;
+			struct {
+				unsigned char ctrl16_is_present:1;
+				unsigned char ctrl17_is_present:1;
+				unsigned char ctrl18_is_present:1;
+				unsigned char ctrl19_is_present:1;
+				unsigned char ctrl20_is_present:1;
+				unsigned char ctrl21_is_present:1;
+				unsigned char ctrl22_is_present:1;
+				unsigned char ctrl23_is_present:1;
+			} __packed;
+			struct {
+				unsigned char ctrl24_is_present:1;
+				unsigned char ctrl25_is_present:1;
+				unsigned char ctrl26_is_present:1;
+				unsigned char ctrl27_is_present:1;
+				unsigned char ctrl28_is_present:1;
+				unsigned char ctrl29_is_present:1;
+				unsigned char ctrl30_is_present:1;
+				unsigned char ctrl31_is_present:1;
+			} __packed;
+		};
+		unsigned char data[5];
+	};
+};
+
+struct synaptics_rmi4_f12_query_8 {
+	union {
+		struct {
+			unsigned char size_of_query9;
+			struct {
+				unsigned char data0_is_present:1;
+				unsigned char data1_is_present:1;
+				unsigned char data2_is_present:1;
+				unsigned char data3_is_present:1;
+				unsigned char data4_is_present:1;
+				unsigned char data5_is_present:1;
+				unsigned char data6_is_present:1;
+				unsigned char data7_is_present:1;
+			} __packed;
+		};
+		unsigned char data[2];
+	};
+};
+
+struct synaptics_rmi4_f12_ctrl_8 {
+	union {
+		struct {
+			unsigned char max_x_coord_lsb;
+			unsigned char max_x_coord_msb;
+			unsigned char max_y_coord_lsb;
+			unsigned char max_y_coord_msb;
+			unsigned char rx_pitch_lsb;
+			unsigned char rx_pitch_msb;
+			unsigned char tx_pitch_lsb;
+			unsigned char tx_pitch_msb;
+			unsigned char low_rx_clip;
+			unsigned char high_rx_clip;
+			unsigned char low_tx_clip;
+			unsigned char high_tx_clip;
+			unsigned char num_of_rx;
+			unsigned char num_of_tx;
+		};
+		unsigned char data[14];
+	};
+};
+
+struct synaptics_rmi4_f12_ctrl_20 {
+	union {
+		struct {
+			unsigned char x_suppression;
+			unsigned char y_suppression;
+			struct {
+				unsigned char report_always:1;
+				unsigned char reserved:7;
+			} __packed;
+		};
+		unsigned char data[3];
+	};
+};
+
+struct synaptics_rmi4_f12_ctrl_23 {
+	union {
+		struct {
+			unsigned char obj_type_enable;
+			unsigned char max_reported_objects;
+		};
+		unsigned char data[2];
+	};
+};
+
+struct synaptics_rmi4_f12_finger_data {
+	unsigned char object_type_and_status;
+	unsigned char x_lsb;
+	unsigned char x_msb;
+	unsigned char y_lsb;
+	unsigned char y_msb;
+#ifdef REPORT_2D_Z
+	unsigned char z;
+#endif
+	unsigned char wx;
+	unsigned char wy;
+};
+
 static struct rmi4_fn_ops supported_fn_ops[] = {
 	{
 		.fn_number = RMI4_TOUCHPAD_FUNC_NUM,
@@ -101,6 +242,13 @@ static struct rmi4_fn_ops supported_fn_ops[] = {
 		.config = rmi4_touchpad_config,
 		.irq_handler = rmi4_touchpad_irq_handler,
 		.remove = rmi4_touchpad_remove,
+	},
+	{
+		.fn_number = RMI4_TOUCHPAD_F12_FUNC_NUM,
+		.detect = rmi4_touchpad_f12_detect,
+		.config = rmi4_touchpad_f12_config,
+		.irq_handler = rmi4_touchpad_f12_irq_handler,
+		.remove = rmi4_touchpad_f12_remove,
 	},
 	{
 		.fn_number = RMI4_BUTTON_FUNC_NUM,
@@ -393,6 +541,101 @@ int rmi4_touchpad_irq_handler(struct rmi4_data *pdata, struct rmi4_fn *rfi)
 	return touch_count;
 }
 
+/**
+ * rmi4_touchpad_f12_irq_handler() - reports for the rmi4 touchpad device
+ * @pdata: pointer to rmi4_data structure
+ * @rfi: pointer to rmi4_fn structure
+ *
+ * This function acts upon touch interrupts by reading the relevant touch data
+ * from the device and thereafter reporting the realized event.
+ */
+int rmi4_touchpad_f12_irq_handler(struct rmi4_data *pdata, struct rmi4_fn *rfi)
+{
+	int retval;
+	int touch_count = 0;
+	int finger, fingers_supported, finger_registers;
+	int x, y, wx, wy;
+	enum finger_state finger_status;
+	u16 data_base_addr;
+	struct rmi4_touchpad_data *touch_data;
+	struct i2c_client *client = pdata->i2c_client;
+	struct synaptics_rmi4_f12_finger_data *data;
+	struct synaptics_rmi4_f12_finger_data *finger_data;
+	const struct rmi4_touch_calib *calib =
+				&pdata->board->calibs[pdata->touch_type];
+
+	/* get 2D sensor finger data */
+	/*
+	 * First get the finger status field - the size of the finger status
+	 * field is determined by the number of finger supporte - 2 bits per
+	 * finger, so the number of registers to read is:
+	 * registerCount = ceil(numberOfFingers/4).
+	 * Read the required number of registers and check each 2 bit field to
+	 * determine if a finger is down.
+	 */
+	touch_data		= rfi->fn_data;
+	fingers_supported	= rfi->num_of_data_points;
+	finger_registers	= (fingers_supported + 3)/4;
+	data_base_addr		= rfi->data_base_addr + rfi->data1_offset;
+
+	/* Read all the finger registers data in one i2c read, twice i2c read
+	 * in irq handler may cause i2c controller timeout */
+	retval = rmi4_i2c_block_read(pdata, data_base_addr,
+					(unsigned char *)rfi->fn_data,
+					rfi->data_size);
+	if (retval != rfi->data_size) {
+		dev_err(&client->dev, "%s:read touch registers failed\n",
+								__func__);
+		return 0;
+	}
+
+	data = (struct synaptics_rmi4_f12_finger_data *)rfi->fn_data;
+
+	for (finger = 0; finger < fingers_supported; finger++) {
+		finger_data = data + finger;
+		finger_status = finger_data->object_type_and_status & MASK_2BIT;
+
+		if (finger_status) {
+			x = (finger_data->x_msb << 8) | (finger_data->x_lsb);
+			y = (finger_data->y_msb << 8) | (finger_data->y_lsb);
+			wx = finger_data->wx;
+			wy = finger_data->wy;
+			if (calib->swap_axes)
+				swap(x, y);
+			if (calib->x_flip)
+				x = pdata->sensor_max_x - x;
+			if (calib->y_flip)
+				y = pdata->sensor_max_y - y;
+
+			input_mt_slot(pdata->input_ts_dev, finger);
+			input_mt_report_slot_state(pdata->input_ts_dev,
+					MT_TOOL_FINGER, true);
+
+			input_report_abs(pdata->input_ts_dev,
+					ABS_MT_TOUCH_MAJOR, max(wx , wy));
+			input_report_abs(pdata->input_ts_dev,
+					ABS_MT_TOUCH_MINOR, min(wx , wy));
+			input_report_abs(pdata->input_ts_dev,
+					ABS_MT_POSITION_X, x);
+			input_report_abs(pdata->input_ts_dev,
+					ABS_MT_POSITION_Y, y);
+
+			pdata->finger_status[finger] = F11_PRESENT;
+
+		} else if (pdata->finger_status[finger] == F11_PRESENT) {
+			input_mt_slot(pdata->input_ts_dev, finger);
+			input_mt_report_slot_state(pdata->input_ts_dev,
+					MT_TOOL_FINGER, false);
+			pdata->finger_status[finger] = F11_NO_FINGER;
+		}
+	}
+
+	/* sync after groups of events */
+	input_sync(pdata->input_ts_dev);
+
+	return touch_count;
+}
+
 int rmi4_button_irq_handler(struct rmi4_data *pdata, struct rmi4_fn *rfi)
 {
 	int i;
@@ -615,6 +858,171 @@ alloc_buf_err:
 	return retval;
 }
 
+/**
+ * rmi4_rmi4_touchpad_detect() - detects the rmi4 touchpad device
+ * @pdata: pointer to rmi4_data structure
+ * @rfi: pointer to rmi4_fn structure
+ * @interruptcount: number of interrupts
+ *
+ * This function detects the rmi4 touchpad device
+ */
+int rmi4_touchpad_f12_detect(struct rmi4_data *pdata, struct rmi4_fn *rfi,
+						unsigned int interruptcount)
+{
+	unsigned short	intr_offset;
+	int	i;
+	int	retval;
+	struct	i2c_client *client = pdata->i2c_client;
+
+	unsigned char ctrl_8_offset;
+	unsigned char ctrl_23_offset;
+	unsigned char ctrl_28_offset;
+	struct synaptics_rmi4_f12_query_5 query_5;
+	struct synaptics_rmi4_f12_query_8 query_8;
+	struct synaptics_rmi4_f12_ctrl_8 ctrl_8;
+	struct synaptics_rmi4_f12_ctrl_23 ctrl_23;
+	unsigned char fingers_to_support = MAX_FINGERS;
+	unsigned char enable_mask;
+	unsigned char size_of_2d_data;
+
+
+	/*
+	 * need to get number of fingers supported, data size, etc.
+	 * to be used when getting data since the number of registers to
+	 * read depends on the number of fingers supported and data size.
+	 */
+	retval = rmi4_i2c_block_read(pdata,
+			rfi->query_base_addr+5,
+			query_5.data,
+			sizeof(query_5.data));
+	if (retval != sizeof(query_5.data)) {
+		dev_err(&client->dev, "%s:read function query registers 1\n",
+							__func__);
+		return retval;
+	}
+
+	ctrl_8_offset = query_5.ctrl0_is_present +
+			query_5.ctrl1_is_present +
+			query_5.ctrl2_is_present +
+			query_5.ctrl3_is_present +
+			query_5.ctrl4_is_present +
+			query_5.ctrl5_is_present +
+			query_5.ctrl6_is_present +
+			query_5.ctrl7_is_present;
+
+	ctrl_23_offset = ctrl_8_offset +
+			query_5.ctrl8_is_present +
+			query_5.ctrl9_is_present +
+			query_5.ctrl10_is_present +
+			query_5.ctrl11_is_present +
+			query_5.ctrl12_is_present +
+			query_5.ctrl13_is_present +
+			query_5.ctrl14_is_present +
+			query_5.ctrl15_is_present +
+			query_5.ctrl16_is_present +
+			query_5.ctrl17_is_present +
+			query_5.ctrl18_is_present +
+			query_5.ctrl19_is_present +
+			query_5.ctrl20_is_present +
+			query_5.ctrl21_is_present +
+			query_5.ctrl22_is_present;
+
+	ctrl_28_offset = ctrl_23_offset +
+			query_5.ctrl23_is_present +
+			query_5.ctrl24_is_present +
+			query_5.ctrl25_is_present +
+			query_5.ctrl26_is_present +
+			query_5.ctrl27_is_present;
+
+	retval = rmi4_i2c_block_read(pdata,
+			rfi->ctrl_base_addr + ctrl_23_offset,
+			ctrl_23.data,
+			sizeof(ctrl_23.data));
+	if (retval != sizeof(ctrl_23.data)) {
+		dev_err(&client->dev, "%s:read function query registers 2\n",
+							__func__);
+		return retval;
+	}
+
+	/* Maximum number of fingers supported */
+	rfi->num_of_data_points = min(ctrl_23.max_reported_objects,
+			fingers_to_support);
+
+	enable_mask = RPT_DEFAULT;
+#ifdef REPORT_2D_Z
+	enable_mask |= RPT_Z;
+#endif
+	enable_mask |= (RPT_WX | RPT_WY);
+
+	retval = rmi4_i2c_block_write(pdata,
+			rfi->ctrl_base_addr + ctrl_28_offset,
+			&enable_mask,
+			sizeof(enable_mask));
+	if (retval < 0)
+		return retval;
+
+	retval = rmi4_i2c_block_read(pdata,
+			rfi->query_base_addr + 8,
+			query_8.data,
+			sizeof(query_8.data));
+	if (retval < 0)
+		return retval;
+
+	/* Determine the presence of Data0 register */
+	rfi->data1_offset = query_8.data0_is_present;
+
+	retval = rmi4_i2c_block_read(pdata,
+			rfi->ctrl_base_addr + ctrl_8_offset,
+			ctrl_8.data,
+			sizeof(ctrl_8.data));
+	if (retval < 0)
+		return retval;
+
+	/* Maximum x and y */
+	pdata->sensor_max_x =
+			((unsigned short)ctrl_8.max_x_coord_lsb << 0) |
+			((unsigned short)ctrl_8.max_x_coord_msb << 8);
+	pdata->sensor_max_y =
+			((unsigned short)ctrl_8.max_y_coord_lsb << 0) |
+			((unsigned short)ctrl_8.max_y_coord_msb << 8);
+	dev_dbg(&pdata->i2c_client->dev,
+			"%s: Function %02x max x = %d max y = %d\n",
+			__func__, rfi->fn_number,
+			pdata->sensor_max_x,
+			pdata->sensor_max_y);
+
+	/* Need to get interrupt info for handling interrupts */
+	rfi->index_to_intr_reg = (interruptcount + 7)/8;
+	if (rfi->index_to_intr_reg != 0)
+		rfi->index_to_intr_reg -= 1;
+	/*
+	 * loop through interrupts for each source in fn $12
+	 * and or in a bit to the interrupt mask for each.
+	 */
+	intr_offset = interruptcount % 8;
+	rfi->intr_mask = 0;
+	for (i = intr_offset;
+		i < ((rfi->intr_src_count & MASK_3BIT) + intr_offset); i++)
+		rfi->intr_mask |= 1 << i;
+
+	size_of_2d_data = sizeof(struct synaptics_rmi4_f12_finger_data);
+
+	/* Allocate memory for finger data storage space */
+	rfi->data_size = rfi->num_of_data_points * size_of_2d_data;
+	rfi->fn_data = kmalloc(rfi->data_size, GFP_KERNEL);
+
+	if (!rfi->fn_data) {
+		dev_err(&client->dev, "kzalloc touchpad buffer failed\n");
+		retval = -ENOMEM;
+		goto alloc_buf_err;
+	}
+
+	return 0;
+
+alloc_buf_err:
+	return retval;
+}
+
 int rmi4_button_detect(struct rmi4_data *pdata, struct rmi4_fn *rfi,
 						unsigned int interruptcount)
 {
@@ -706,6 +1114,13 @@ void rmi4_touchpad_remove(struct rmi4_fn *rfi)
 	kfree(touch_data);
 }
 
+void rmi4_touchpad_f12_remove(struct rmi4_fn *rfi)
+{
+	if (!rfi->fn_data)
+		return;
+	kfree(rfi->fn_data);
+}
+
 /**
  * rmi4_rmi4_touchpad_config() - confiures the rmi4 touchpad device
  * @pdata: pointer to rmi4_data structure
@@ -757,7 +1172,6 @@ int rmi4_touchpad_config(struct rmi4_data *pdata, struct rmi4_fn *rfi)
 		dev_err(&client->dev, "Write DELTA_POS_THRESH failed\n");
 		return retval;
 	}
-
 	retval = rmi4_i2c_block_read(pdata,
 				rfi->ctrl_base_addr, data, DATA_BUF_LEN);
 	if (retval != DATA_BUF_LEN) {
@@ -774,6 +1188,78 @@ int rmi4_touchpad_config(struct rmi4_data *pdata, struct rmi4_fn *rfi)
 		swap(pdata->sensor_max_x, pdata->sensor_max_y);
 	dev_info(&client->dev, "sensor_max_x=%d, sensor_max_y=%d\n",
 				pdata->sensor_max_x, pdata->sensor_max_y);
+	return retval;
+}
+
+/**
+ * rmi4_rmi4_touchpad_f12_config() - confiures the rmi4 touchpad device
+ * @pdata: pointer to rmi4_data structure
+ * @rfi: pointer to rmi4_fn structure
+ *
+ * This function calls to confiures the rmi4 touchpad device
+ */
+int rmi4_touchpad_f12_config(struct rmi4_data *pdata, struct rmi4_fn *rfi)
+{
+	int retval = 0;
+	struct	i2c_client *client = pdata->i2c_client;
+	struct synaptics_rmi4_f12_query_5 query_5;
+	struct synaptics_rmi4_f12_ctrl_20 ctrl_20;
+	unsigned char ctrl_20_offset;
+
+	retval = rmi4_i2c_block_read(pdata,
+			rfi->query_base_addr+5,
+			query_5.data,
+			sizeof(query_5.data));
+	if (retval != sizeof(query_5.data)) {
+		dev_err(&client->dev, "%s:read query 5 failed 1\n",
+							__func__);
+		return retval;
+	}
+
+	ctrl_20_offset = query_5.ctrl0_is_present +
+			query_5.ctrl1_is_present +
+			query_5.ctrl2_is_present +
+			query_5.ctrl3_is_present +
+			query_5.ctrl4_is_present +
+			query_5.ctrl5_is_present +
+			query_5.ctrl6_is_present +
+			query_5.ctrl7_is_present +
+			query_5.ctrl8_is_present +
+			query_5.ctrl9_is_present +
+			query_5.ctrl10_is_present +
+			query_5.ctrl11_is_present +
+			query_5.ctrl12_is_present +
+			query_5.ctrl13_is_present +
+			query_5.ctrl14_is_present +
+			query_5.ctrl15_is_present +
+			query_5.ctrl16_is_present +
+			query_5.ctrl17_is_present +
+			query_5.ctrl18_is_present +
+			query_5.ctrl19_is_present;
+
+	retval = rmi4_i2c_block_read(pdata,
+			rfi->ctrl_base_addr + ctrl_20_offset,
+			ctrl_20.data,
+			sizeof(ctrl_20.data));
+	if (retval != sizeof(ctrl_20.data)) {
+		dev_err(&client->dev, "%s:read control 20 failed 2\n",
+							__func__);
+		return retval;
+	}
+
+	ctrl_20.x_suppression = DELTA_XPOS_THRESH;
+	ctrl_20.y_suppression = DELTA_YPOS_THRESH;
+	ctrl_20.report_always = 0;
+
+	retval = rmi4_i2c_block_write(pdata,
+			rfi->ctrl_base_addr + ctrl_20_offset,
+			ctrl_20.data,
+			sizeof(ctrl_20.data));
+	if (retval != sizeof(ctrl_20.data)) {
+		dev_err(&client->dev, "%s:write control 20 failed 3\n",
+							__func__);
+	}
+
 	return retval;
 }
 

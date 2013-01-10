@@ -29,6 +29,7 @@
 #define _SYNAPTICS_RMI4_H_
 
 #define RMI4_TOUCHPAD_FUNC_NUM      0x11
+#define RMI4_TOUCHPAD_F12_FUNC_NUM  0x12
 #define RMI4_BUTTON_FUNC_NUM        0x1a
 #define RMI4_DEV_CTL_FUNC_NUM       0x01
 #define RMI4_ANALOG_FUNC_NUM        0x54
@@ -101,9 +102,19 @@ struct rmi4_fn {
 	unsigned char size_of_data_register_block;
 	unsigned char index_to_intr_reg;
 	unsigned char intr_mask;
+	unsigned char data1_offset;
 	struct list_head    link;
 	struct rmi4_fn_ops  *ops;
 	void                *fn_data;
+	int data_size;
+};
+
+struct synaptics_rmi4_finger_state {
+	int x;
+	int y;
+	int wx;
+	int wy;
+	unsigned char status;
 };
 
 /**
@@ -321,6 +332,12 @@ int rmi4_touchpad_detect(struct rmi4_data *pdata,
 int rmi4_touchpad_config(struct rmi4_data *pdata, struct rmi4_fn *rfi);
 int rmi4_touchpad_irq_handler(struct rmi4_data *pdata, struct rmi4_fn *rfi);
 void rmi4_touchpad_remove(struct rmi4_fn *rfi);
+
+int rmi4_touchpad_f12_detect(struct rmi4_data *pdata,
+				struct rmi4_fn *rfi, unsigned int cnt);
+int rmi4_touchpad_f12_config(struct rmi4_data *pdata, struct rmi4_fn *rfi);
+int rmi4_touchpad_f12_irq_handler(struct rmi4_data *pdata, struct rmi4_fn *rfi);
+void rmi4_touchpad_f12_remove(struct rmi4_fn *rfi);
 
 int rmi4_button_detect(struct rmi4_data *pdata,
 				struct rmi4_fn *rfi, unsigned int cnt);
