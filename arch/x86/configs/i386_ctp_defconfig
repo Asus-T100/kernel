@@ -2655,7 +2655,7 @@ CONFIG_STAGING=y
 # CONFIG_VT6655 is not set
 # CONFIG_VT6656 is not set
 # CONFIG_VME_BUS is not set
-# CONFIG_DX_SEP is not set
+CONFIG_DX_SEP=yes
 # CONFIG_IIO is not set
 # CONFIG_ZRAM is not set
 # CONFIG_ZSMALLOC is not set
