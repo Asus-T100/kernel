@@ -21,6 +21,7 @@
 
 #include <linux/module.h>
 #include <linux/init.h>
+#include <linux/gpio.h>
 #include <linux/err.h>
 #include <linux/netdevice.h>
 #include <linux/if_ether.h>
@@ -31,6 +32,7 @@
 #include <linux/l2mux.h>
 #include <linux/phonet.h>
 #include <linux/platform_device.h>
+#include <linux/hsi/intel_mid_hsi.h>
 #include <linux/hsi/hsi_logical.h>
 #include <linux/hsi/hsi.h>
 #include <net/phonet/pn_dev.h>
@@ -84,6 +86,54 @@ static int traces_activation_done;
 #else
 # define DPRINTK(...)
 #endif
+
+static int configure_gpios(struct hsi_protocol_client *hsi)
+{
+	int ret;
+
+	ret = gpio_request(hsi->gpio_rst_out, "resetOUT");
+	if (ret < 0) {
+		printk(KERN_ERR "gpio_request failed for rst_out");
+		return -1;
+	}
+	ret = gpio_direction_input(hsi->gpio_rst_out);
+	if (ret < 0) {
+		printk(KERN_ERR "gpio_direction_input failed for rst_out");
+		goto err_rst_out;
+	}
+	ret = gpio_request(hsi->gpio_pwr_on, "powerON");
+	if (ret < 0) {
+		printk(KERN_ERR "gpio_request failed for pwr_on");
+		goto err_rst_out;
+	}
+	ret = gpio_direction_output(hsi->gpio_pwr_on, 0);
+	if (ret < 0) {
+		printk(KERN_ERR "gpio_direction_output failed for pwr_on");
+		goto err_pwr_on;
+	}
+	ret = gpio_export(hsi->gpio_rst_out, 0);
+	if (ret < 0) {
+		printk(KERN_ERR "gpio_export failed for rst_out");
+		goto err_pwr_on;
+	}
+	ret = gpio_export(hsi->gpio_pwr_on, 0);
+	if (ret < 0) {
+		printk(KERN_ERR "gpio_export failed for pwr_on");
+		goto err_pwr_on;
+	}
+	pr_info("GPIOs configuration - pwr_on:%d, rst_out: %d\n",
+		hsi->gpio_pwr_on,
+		hsi->gpio_rst_out);
+
+	return 0;
+
+err_pwr_on:
+	gpio_free(hsi->gpio_pwr_on);
+
+err_rst_out:
+	gpio_free(hsi->gpio_rst_out);
+	return ret;
+}
 
 /**
  * show_hsi_logical_traces_state - show HSI logical traces state
@@ -401,6 +451,8 @@ static int hsi_client_probe(struct device *dev)
 {
 	struct hsi_protocol_client *hsi;
 	struct hsi_client *cl = to_hsi_client(dev);
+	struct hsi_mid_platform_data *pd;
+	int err;
 
 	DPRINTK("hsi_client_probe\n");
 
@@ -434,12 +486,24 @@ static int hsi_client_probe(struct device *dev)
 	hsi_client_set_drvdata(cl, hsi);
 
 	hsi_protocol_context->nb_client++;
+
+	pd = dev->platform_data;
+	hsi->gpio_pwr_on = pd->gpio_mdm_pwr_on;
+	hsi->gpio_rst_out = pd->gpio_mdm_rst_out;
+	err = configure_gpios(hsi);
+	if (err < 0)
+		return err;
+
 	return 0;
 }
 
 static int  hsi_client_remove(struct device *dev)
 {
 	struct hsi_client *cl = to_hsi_client(dev);
+
+	struct hsi_protocol_client *hsi_control_client = hsi_client_drvdata(cl);
+	gpio_free(hsi_control_client->gpio_pwr_on);
+	gpio_free(hsi_control_client->gpio_rst_out);
 
 	kfree(hsi_client_drvdata(cl));
 	hsi_client_set_drvdata(cl, NULL);
@@ -489,6 +553,7 @@ static int hsi_net_device_probe(struct platform_device *dev)
 	struct hsi_protocol *context;
 
 	struct net_device *ndev;
+
 	int err;
 
 	DPRINTK(" hsi_net_device_probe\n");

@@ -161,6 +161,7 @@ static void
 hsi_logical_config_fail(unsigned long in)
 {
 	struct hsi_protocol *hsi_protocol_ctx = (struct hsi_protocol *)in;
+	int pwr_on = hsi_protocol_ctx->cl[0]->gpio_pwr_on;
 	wake_unlock(&wake_resoft);
 	if (hsi_protocol_ctx->main_state == HSI_CONFIG_EXCHANGE_NO_DONE) {
 		EPRINTK("hsi_logical state %d, tx_boot_info_req %d, " \
@@ -172,10 +173,9 @@ hsi_logical_config_fail(unsigned long in)
 			hsi_protocol_ctx->cfg_ex.rx_boot_info_resp_complete,
 			hsi_protocol_ctx->cfg_ex.received_modem_config);
 
-
 		EPRINTK("Configuration exchange with modem fails. " \
 			"HSI link is broken\n");
-		gpio_set_value(113, 0);
+		gpio_set_value(pwr_on, 0);
 	}
 }
 

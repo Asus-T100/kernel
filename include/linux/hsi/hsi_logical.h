@@ -196,6 +196,9 @@ struct hsi_protocol_client {
 	struct hsi_msg *rcv_msg;
 	spinlock_t rcv_msgs_lock;
 #endif /* HSI_USE_RCV_SCHEDULED */
+	int gpio_pwr_on;
+	int gpio_rst_out;
+
 };
 
 struct config_exchange {
