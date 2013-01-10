@@ -122,6 +122,8 @@ gfx-y += $(MEDIA_COMMON_DIR)/psb_drv.o \
 
 gfx-y += $(DISPLAYDIR)/psb_bl.o \
 		$(DISPLAYDIR)/psb_dpst.o \
+		$(DISPLAYDIR)/psb_dpst_func.o \
+		$(DISPLAYDIR)/dispmgrnl.o \
 		$(DISPLAYDIR)/psb_fb.o \
 		$(DISPLAYDIR)/psb_intel_display.o \
 		$(DISPLAYDIR)/mdfld_csc.o \

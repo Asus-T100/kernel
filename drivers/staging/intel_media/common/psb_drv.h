@@ -861,6 +861,9 @@ struct drm_psb_private {
 	uint32_t saveHISTOGRAM_LOGIC_CONTROL_REG;
 	uint32_t savePWM_CONTROL_LOGIC;
 
+	/* DPST: TODO - Assign Appropriate Connector here */
+	struct drm_connector *dpst_lvds_connector;
+
 	/* MSI reg save */
 
 	uint32_t msi_addr;

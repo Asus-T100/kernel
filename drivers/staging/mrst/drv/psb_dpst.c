@@ -21,6 +21,8 @@
 
 #include "psb_umevents.h"
 #include "psb_dpst.h"
+#include "psb_dpst_func.h"
+
 /**
  * inform the kernel of the work to be performed and related function.
  *
@@ -187,6 +189,7 @@ void psb_dpst_dev_change_wq(struct work_struct *work)
 	struct dpst_disp_workqueue_data *wq_data;
 	int curr_event_index;
 	wq_data = to_dpst_disp_workqueue_data(work);
+
 	if (wq_data->dev_name_write_wrap == 1) {
 		wq_data->dev_name_read_write_wrap_ack = 1;
 		wq_data->dev_name_write_wrap = 0;
@@ -203,8 +206,8 @@ void psb_dpst_dev_change_wq(struct work_struct *work)
 					DRM_ERROR("Invalid index!\n");
 					return;
 				}
-				psb_umevent_notify_change_gfxsock
-					(list_entry(
+					dpst_process_event(
+					list_entry(
 					   (wq_data->dev_umevent_arry
 					    [curr_event_index]),
 					   struct umevent_obj, head),
