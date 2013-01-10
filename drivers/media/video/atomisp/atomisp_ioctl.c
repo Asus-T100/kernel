@@ -232,7 +232,7 @@ static struct v4l2_queryctrl ci_v4l2_controls[] = {
 	},
 	{
 		.id = V4L2_CID_AUTO_FOCUS_STATUS,
-		.type = V4L2_CTRL_TYPE_INTEGER,
+		.type = V4L2_CTRL_TYPE_BITMASK,
 		.name = "focus status",
 		.minimum = 0,
 		.maximum = 3,
