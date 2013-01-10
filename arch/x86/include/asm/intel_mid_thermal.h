@@ -8,6 +8,7 @@
 #define SKIN1_NAME	"skin1"
 #define MSIC_DIE_NAME	"msicdie"
 #define MSIC_SYS_NAME	"sys"
+#define SYSTHERM1_NAME	"systherm1"
 
 /**
  * struct intel_mid_thermal_sensor - intel_mid_thermal sensor information

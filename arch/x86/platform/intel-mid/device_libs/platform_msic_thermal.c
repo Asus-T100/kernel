@@ -73,6 +73,15 @@ static struct intel_mid_thermal_sensor ctp_sensors[] = {
 		.temp_correlation = bptherm_temp_correlation,
 		.direct = false,
 	},
+	{
+		.name = SYSTHERM1_NAME,
+		.index = 4,
+		.slope = 1000,
+		.intercept = 0,
+		.adc_channel = 0x05 | CH_NEED_VREF | CH_NEED_VCALIB,
+		.temp_correlation = skin0_temp_correlation,
+		.direct = false,
+	},
 
 };
 
@@ -161,7 +170,7 @@ static struct intel_mid_thermal_platform_data pdata[] = {
 		.soc_cooling = false,
 	},
 	[ctp_thermal] = {
-		.num_sensors = 4,
+		.num_sensors = 5,
 		.sensors = ctp_sensors,
 		.soc_cooling = true,
 	},
