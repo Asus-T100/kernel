@@ -991,6 +991,10 @@ int mdfld_dsi_output_init(struct drm_device *dev,
 	
 	drm_sysfs_connector_add(connector);
 
+	/* DPST: TODO - get appropriate connector */
+	if (dev_priv->dpst_lvds_connector == 0)
+		dev_priv->dpst_lvds_connector = connector;
+
 	/*init dsr*/
 	if (mdfld_dsi_dsr_init(dsi_config))
 		DRM_INFO("%s: Failed to initialize DSR\n", __func__);

@@ -53,6 +53,7 @@
 
 #include "otm_hdmi.h"
 #include "android_hdmi.h"
+#include "dispmgrnl.h"
 
 /*IMG headers*/
 #include "pvr_drm_shared.h"
@@ -66,7 +67,7 @@
 struct workqueue_struct *te_wq;
 struct workqueue_struct *vsync_wq;
 
-
+#include "psb_dpst_func.h"
 
 #define HDMI_MONITOR_NAME_LENGTH 20
 
@@ -1753,6 +1754,11 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 
 	/*Intel drm driver load is done, continue doing pvr load*/
 	DRM_DEBUG("Pvr driver load\n");
+
+	/* init display manager */
+	dispmgr_start(dev);
+
+	dpst_init(dev, 5, 1);
 
 	mdfld_dsi_dsr_enable(dev_priv->dsi_configs[0]);
 
