@@ -1977,12 +1977,14 @@ static int psb_disp_ioctl(struct drm_device *dev, void *data,
 		if (DISP_PLANEB_STATUS == DISPLAY_PLANE_DISABLE)
 			ret = -1;
 		else {
-			if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, OSPM_UHB_ONLY_IF_ON)) {
+			if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
+						OSPM_UHB_FORCE_POWER_ON)) {
 				/* If data=1, then force setting plane status. */
 				if (dp_ctrl->u.data == 1)
 					DISP_PLANEB_STATUS = DISPLAY_PLANE_DISABLE;
 
-				return -1;
+				ret = -1;
+				goto exit;
 			}
 			/* Use Disable pipeB plane to turn off HDMI screen */
 			temp = REG_READ(dspcntr_reg);
@@ -2007,8 +2009,10 @@ static int psb_disp_ioctl(struct drm_device *dev, void *data,
 		if (DISP_PLANEB_STATUS == DISPLAY_PLANE_DISABLE)
 			ret = -1;
 		else {
-			if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, OSPM_UHB_ONLY_IF_ON)) {
-				return -1;
+			if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
+						OSPM_UHB_FORCE_POWER_ON)) {
+				ret = -1;
+				goto exit;
 			}
 			/*Restore pipe B plane to turn on HDMI screen*/
 			temp = REG_READ(dspcntr_reg);
