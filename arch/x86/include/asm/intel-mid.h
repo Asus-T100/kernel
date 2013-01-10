@@ -665,6 +665,7 @@ enum intel_mrfl_sim_type {
 	INTEL_MRFL_CPU_SIMULATION_NONE = 0,
 	INTEL_MRFL_CPU_SIMULATION_VP,
 	INTEL_MRFL_CPU_SIMULATION_SLE,
+	INTEL_MRFL_CPU_SIMULATION_HVP,
 };
 
 extern enum intel_mrfl_sim_type __intel_mrfl_sim_platform;
