@@ -22,14 +22,13 @@
  */
 struct intel_mid_thermal_sensor {
 	char name[THERMAL_NAME_LENGTH];
-	unsigned int index;
-	unsigned long slope;
-	unsigned long intercept;
+	int index;
+	long slope;
+	long intercept;
 	int adc_channel;
 	bool direct;
 	void *priv;
-	int (*temp_correlation)(void *info, unsigned long temp,
-		unsigned long *res);
+	int (*temp_correlation)(void *info, long temp, long *res);
 };
 
 /**
@@ -60,10 +59,9 @@ struct skin1_private_info {
 };
 
 /* skin0 sensor temperature correlation function*/
-int skin0_temp_correlation(void *info, unsigned long temp, unsigned long *res);
+int skin0_temp_correlation(void *info, long temp, long *res);
 /* skin1 sensor temperature correlation function*/
-int skin1_temp_correlation(void *info, unsigned long temp, unsigned long *res);
+int skin1_temp_correlation(void *info, long temp, long *res);
 /* bptherm sensor temperature correlation function*/
-int bptherm_temp_correlation(void *info, unsigned long temp,
-				unsigned long *res);
+int bptherm_temp_correlation(void *info, long temp, long *res);
 #endif

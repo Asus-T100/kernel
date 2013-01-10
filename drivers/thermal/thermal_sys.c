@@ -203,7 +203,7 @@ trip_point_temp_store(struct device *dev, struct device_attribute *attr,
 {
 	struct thermal_zone_device *tz = to_thermal_zone(dev);
 	int trip, ret;
-	unsigned long temperature;
+	long temperature;
 
 	if (!tz->ops->set_trip_temp)
 		return -EPERM;
@@ -247,7 +247,7 @@ trip_point_hyst_store(struct device *dev, struct device_attribute *attr,
 {
 	struct thermal_zone_device *tz = to_thermal_zone(dev);
 	int trip, ret;
-	unsigned long temperature;
+	long temperature;
 
 	if (!tz->ops->set_trip_hyst)
 		return -EPERM;
@@ -274,7 +274,7 @@ trip_point_hyst_show(struct device *dev, struct device_attribute *attr,
 {
 	struct thermal_zone_device *tz = to_thermal_zone(dev);
 	int trip, ret;
-	unsigned long temperature;
+	long temperature;
 
 	if (!tz->ops->get_trip_hyst)
 		return -EPERM;
@@ -353,7 +353,7 @@ slope_store(struct device *dev, struct device_attribute *attr,
 		    const char *buf, size_t count)
 {
 	int ret;
-	unsigned long slope;
+	long slope;
 	struct thermal_zone_device *tz = to_thermal_zone(dev);
 
 	if (!tz->ops->set_slope)
@@ -373,7 +373,7 @@ static ssize_t
 slope_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	int ret;
-	unsigned long slope;
+	long slope;
 	struct thermal_zone_device *tz = to_thermal_zone(dev);
 
 	if (!tz->ops->get_slope)
@@ -391,7 +391,7 @@ intercept_store(struct device *dev, struct device_attribute *attr,
 		    const char *buf, size_t count)
 {
 	int ret;
-	unsigned long intercept;
+	long intercept;
 	struct thermal_zone_device *tz = to_thermal_zone(dev);
 
 	if (!tz->ops->set_intercept)
@@ -411,7 +411,7 @@ static ssize_t
 intercept_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	int ret;
-	unsigned long intercept;
+	long intercept;
 	struct thermal_zone_device *tz = to_thermal_zone(dev);
 
 	if (!tz->ops->get_intercept)
@@ -620,7 +620,7 @@ thermal_add_hwmon_sysfs(struct thermal_zone_device *tz)
 		goto unregister_name;
 
 	if (tz->ops->get_crit_temp) {
-		unsigned long temperature;
+		long temperature;
 		if (!tz->ops->get_crit_temp(tz, &temperature)) {
 			snprintf(tz->temp_crit.name, THERMAL_NAME_LENGTH,
 				"temp%d_crit", hwmon->count);
