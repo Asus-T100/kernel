@@ -872,7 +872,11 @@ struct drm_psb_flip_chain_data {
 };
 struct drm_psb_disp_ctrl {
 	uint32_t cmd;
-	uint32_t data;
+	union {
+		uint32_t data;
+		struct drm_psb_buffer_data buf_data;
+		struct drm_psb_flip_chain_data flip_chain_data;
+	} u;
 };
 
 #define S3D_MIPIA_DISPLAY 0

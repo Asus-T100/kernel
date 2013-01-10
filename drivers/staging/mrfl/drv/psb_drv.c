@@ -2106,11 +2106,11 @@ static int psb_disp_ioctl(struct drm_device *dev, void *data,
 		sizeof(struct drm_psb_disp_ctrl)); */
 	DRM_INFO("disp cmd:%d\n", dp_ctrl->cmd);
 	if (dp_ctrl->cmd == DRM_PSB_DISP_SAVE_HDMI_FB_HANDLE) {
-		hdmi_export_handle = dp_ctrl->data;
+		hdmi_export_handle = dp_ctrl->u.data;
 		DRM_INFO("save hdmi export handle:%d\n",
 						hdmi_export_handle);
 	} else if (dp_ctrl->cmd == DRM_PSB_DISP_GET_HDMI_FB_HANDLE) {
-		dp_ctrl->data = hdmi_export_handle;
+		dp_ctrl->u.data = hdmi_export_handle;
 		/*DRM_COPY_TO_USER(data, &dp_ctrl,
 		sizeof(struct drm_psb_disp_ctrl)); */
 		DRM_INFO("retrive hdmi export handle:%d\n", hdmi_export_handle);
