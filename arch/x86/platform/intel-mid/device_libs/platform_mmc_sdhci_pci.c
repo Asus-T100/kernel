@@ -19,6 +19,8 @@
 #include <linux/lnw_gpio.h>
 #include <linux/delay.h>
 #include <asm/intel_scu_ipc.h>
+#include <linux/intel_mid_pm.h>
+#include <linux/hardirq.h>
 
 
 static struct sdhci_pci_data mfd_clv_emmc0_data;
@@ -179,6 +181,32 @@ static void mrfl_sdio_cleanup(struct sdhci_pci_data *data)
 {
 }
 
+static int intel_sdhci_emmc0_power_up(void *data)
+{
+	int ret;
+	bool atomic_context;
+	/*
+	 * Since pmu_set_emmc_to_d0i0_atomic function can
+	 * only be used in atomic context, before call this
+	 * function, do a check first and make sure this function
+	 * is used in atomic context.
+	 */
+	atomic_context = (!preemptible() || in_atomic_preempt_off());
+
+	if (!atomic_context) {
+		pr_err("%s: not in atomic context!\n", __func__);
+		return -EPERM;
+	}
+
+	ret = pmu_set_emmc_to_d0i0_atomic();
+	if (ret) {
+		pr_err("%s: power up host failed with err %d\n",
+				__func__, ret);
+	}
+
+	return ret;
+}
+
 static int __init sdhci_pci_platform_data_init(void)
 {
 	memset(&mfd_clv_emmc0_data, 0, sizeof(struct sdhci_pci_data));
@@ -189,6 +217,7 @@ static int __init sdhci_pci_platform_data_init(void)
 
 	mfd_clv_emmc0_data.rst_n_gpio = get_gpio_by_name("emmc0_rst");
 	mfd_clv_emmc0_data.cd_gpio = -EINVAL;
+	mfd_clv_emmc0_data.power_up = intel_sdhci_emmc0_power_up;
 
 	mfd_clv_emmc1_data.rst_n_gpio = get_gpio_by_name("emmc1_rst");
 	mfd_clv_emmc1_data.cd_gpio = -EINVAL;

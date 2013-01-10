@@ -15,6 +15,7 @@ struct sdhci_pci_data {
 	void		(*cleanup)(struct sdhci_pci_data *data);
 	void		(*register_embedded_control)(void *dev_id,
 			   void (*virtual_cd)(void *dev_id, int card_present));
+	int		(*power_up)(void *data);
 };
 
 extern struct sdhci_pci_data *(*sdhci_pci_get_data)(struct pci_dev *pdev,
