@@ -46,7 +46,7 @@
  */
 int hdmi_audio_query(void *haddata, hdmi_audio_event_t event)
 {
-	struct snd_pcm_substream *substream;
+	struct snd_pcm_substream *substream = NULL;
 	struct had_pvt_data *had_stream;
 	unsigned long flag_irqs;
 	struct snd_intelhad *intelhaddata = (struct snd_intelhad *)haddata;
