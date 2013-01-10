@@ -1345,9 +1345,11 @@ static int __init cpufreq_intel_init(void)
 
 	idle_notifier_register(&cpufreq_intel_idle_nb);
 	INIT_WORK(&inputopen.inputopen_work, cpufreq_intel_input_open);
+	wake_up_process(up_task);
 	return cpufreq_register_governor(&cpufreq_gov_intel);
 
 err_freeuptask:
+	kthread_stop(up_task);
 	put_task_struct(up_task);
 	return -ENOMEM;
 }

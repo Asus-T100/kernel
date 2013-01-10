@@ -1045,9 +1045,11 @@ static int __init cpufreq_interactive_init(void)
 
 	idle_notifier_register(&cpufreq_interactive_idle_nb);
 	INIT_WORK(&inputopen.inputopen_work, cpufreq_interactive_input_open);
+	wake_up_process(up_task);
 	return cpufreq_register_governor(&cpufreq_gov_interactive);
 
 err_freeuptask:
+	kthread_stop(up_task);
 	put_task_struct(up_task);
 	return -ENOMEM;
 }
