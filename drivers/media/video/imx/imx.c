@@ -331,6 +331,36 @@ static long imx_s_exposure(struct v4l2_subdev *sd,
 	return imx_set_exposure(sd, coarse_itg, gain);
 }
 
+/* FIXME -To be updated with real OTP reading */
+static int imx_g_priv_int_data(struct v4l2_subdev *sd,
+				   struct v4l2_private_int_data *priv)
+{
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	u8 __user *to = priv->data;
+	u32 read_size = priv->size;
+	int ret;
+
+	/* No need to copy data if size is 0 */
+	if (!read_size)
+		goto out;
+
+	/* Correct read_size value only if bigger than maximum */
+	if (read_size > sizeof(otpdata))
+		read_size = sizeof(otpdata);
+
+	ret = copy_to_user(to, otpdata, sizeof(otpdata));
+	if (ret) {
+		dev_err(&client->dev, "%s: failed to copy OTP data to user\n",
+			 __func__);
+		return -EFAULT;
+	}
+out:
+	/* Return correct size */
+	priv->size = sizeof(otpdata);
+
+	return 0;
+}
+
 static int __imx_init(struct v4l2_subdev *sd, u32 val)
 {
 
@@ -371,6 +401,8 @@ static long imx_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
 	switch (cmd) {
 	case ATOMISP_IOC_S_EXPOSURE:
 		return imx_s_exposure(sd, arg);
+	case ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA:
+		return imx_g_priv_int_data(sd, arg);
 	default:
 		return -EINVAL;
 	}
