@@ -228,6 +228,20 @@ int ctp_set_bias_level(struct snd_soc_card *card,
 		struct snd_soc_dapm_context *dapm,
 		enum snd_soc_bias_level level)
 {
+	struct snd_soc_codec *codec;
+
+	/* Clock management is done only if there is an associated codec
+	 * to dapm context and if this not the dummy codec
+	 */
+	if (dapm->codec) {
+		codec = dapm->codec;
+		if (!strcmp(codec->name, "snd-soc-dummy"))
+			return 0;
+	} else {
+		pr_info("In %s dapm context has no associated codec or it is dummy codec.", __func__);
+		return 0;
+	}
+
 	switch (level) {
 	case SND_SOC_BIAS_ON:
 	case SND_SOC_BIAS_PREPARE:
@@ -257,9 +271,18 @@ int ctp_set_bias_level_post(struct snd_soc_card *card,
 		enum snd_soc_bias_level level)
 {
 	struct snd_soc_codec *codec;
-	/* we have only one codec in this machine */
-	codec = list_entry(card->codec_dev_list.next, struct snd_soc_codec,
-			card_list);
+
+	/* Clock management is done only if there is an associated codec
+	 * to dapm context and if this not the dummy codec
+	 */
+	if (dapm->codec) {
+		codec = dapm->codec;
+		if (!strcmp(codec->name, "snd-soc-dummy"))
+			return 0;
+	} else {
+		pr_info("In %s dapm context has no associated codec or it is dummy codec.", __func__);
+		return 0;
+	}
 
 	switch (level) {
 	case SND_SOC_BIAS_ON:
