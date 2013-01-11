@@ -727,10 +727,8 @@ void init_nc_device_states(void)
 * if HSI is enabled.
 * We can choose between Standby/HSI based on enable_stadby 1/0.
 */
-#ifdef CONFIG_BOARD_CTP
 unsigned int enable_standby __read_mostly;
 module_param(enable_standby, uint, 0000);
-#endif
 
 static int wait_for_nc_pmcmd_complete(int verify_mask, int state_type
 					, int reg_type)
