@@ -239,6 +239,7 @@ sh_css_fill_binary_info(const struct sh_css_binary_info *info,
 	bool enable_vus = false;
 	bool is_out_format_rgba888 = false;
 	unsigned int tmp_width, tmp_height;
+	bool input_is_yuv_8 = input_format_is_yuv_8(stream_format);
 
 assert(info != NULL);
 
@@ -308,13 +309,18 @@ assert(info != NULL);
 	s3a_isp_width = _ISP_S3A_ELEMS_ISP_WIDTH(isp_input_width,
 		isp_internal_width, enable_hus || enable_yuv_ds,
 		info->left_cropping);
-	if (info->fixed_s3a_deci_log) /* { */
+	if (info->fixed_s3a_deci_log)
 		s3a_log_deci = info->fixed_s3a_deci_log;
-	/* } */
-	else /* { */
+	else
 		s3a_log_deci = sh_css_grid_deci_factor_log2(s3a_isp_width,
 							    isp_input_height);
-	/* } */
+
+	/* In the yuv-copy binary, we have an internal buffer where the copy
+	 * writes its output. Then the padded width should be bus-aligned */
+	if (info->mode == SH_CSS_BINARY_MODE_COPY && input_is_yuv_8) {
+		isp_input_width = CEIL_MUL(isp_input_width, 
+				2*HIVE_ISP_DDR_WORD_BYTES);
+	}
 
 	binary->vf_downscale_log2 = vf_log_ds;
 	binary->deci_factor_log2  = s3a_log_deci;
@@ -499,12 +505,14 @@ assert(info != NULL);
 
 enum sh_css_err
 sh_css_binary_find(struct sh_css_binary_descr *descr,
-		   struct sh_css_binary *binary)
+		   struct sh_css_binary *binary,
+		   bool is_video_usecase /* TODO: Remove this */)
 {
 	int mode = descr->mode;
 	bool online = descr->online;
 	bool two_ppc = descr->two_ppc;
 	enum sh_css_input_format stream_format = descr->stream_format;
+	bool input_is_yuv_8 = input_format_is_yuv_8(stream_format);
 	const struct sh_css_frame_info *req_in_info = descr->in_info,
 				       *req_out_info = descr->out_info,
 				       *req_vf_info = descr->vf_info;
@@ -549,7 +557,7 @@ sh_css_binary_find(struct sh_css_binary_descr *descr,
 			need_dz = ((dx != HRT_GDC_N) || (dy != HRT_GDC_N));
 		need_dvs = dvs_envelope_width || dvs_envelope_height;
 	}
-
+	
 	need_ds = req_in_info->width > req_out_info->width ||
 		  req_in_info->height > req_out_info->height;
 
@@ -562,7 +570,15 @@ sh_css_binary_find(struct sh_css_binary_descr *descr,
 
 	for (candidate = binary_infos[mode]; candidate;
 	     candidate = candidate->next) {
-	  //printf("sh_css_binary_find: evaluating candidate: %d\n",candidate->id);
+		/* @GC: Input format is the differentiating factor in binary
+		 * selection for the copy binaries although we dont know which
+		 * binaries support which input format. We hack it as the 
+		 * sequence of two copy binaries in FW is known to us.
+		 * TODO: Extend all binary defs with supported input format
+		 * field (see CR 1955) */
+		if (mode == SH_CSS_BINARY_MODE_COPY && candidate->enable.ds &&
+		    (!input_is_yuv_8 || !is_video_usecase)/*TODO: change this*/)
+			continue;
 		if (mode == SH_CSS_BINARY_MODE_VIDEO &&
 		    candidate->isp_pipe_version != isp_pipe_version)
 			continue;

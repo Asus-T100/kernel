@@ -910,6 +910,8 @@ sp_init_stage(struct sh_css_pipeline_stage *stage,
 		mem_if = firmware->memory_interface;
 	}
 
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sp_init_stage(): load binary: %s\n", binary_name);
 #ifdef __KERNEL__
 	printk(KERN_ERR "load binary: %s\n", binary_name);
 #endif
@@ -1113,22 +1115,35 @@ assert(frame_num < NUM_CONTINUOUS_FRAMES);
 }
 
 void
-sh_css_update_host2sp_cont_num_raw_frames(unsigned num_frames)
+sh_css_update_host2sp_cont_num_raw_frames(unsigned num_frames, bool set_avail)
 {
 	const struct sh_css_fw_info *fw;
 	unsigned int HIVE_ADDR_host_sp_com;
-	unsigned int o;
+	unsigned int extra_num_frames, avail_num_frames;
+	unsigned int o, o_extra;
 
 	(void)HIVE_ADDR_host_sp_com; /* Suppres warnings in CRUN */
 
 	/* Write new frame data into SP DMEM */
 	fw = &sh_css_sp_fw;
 	HIVE_ADDR_host_sp_com = fw->info.sp.host_sp_com;
-	o = offsetof(struct host_sp_communication, host2sp_cont_num_raw_frames)
-		/ sizeof(int);
+	if (set_avail) {
+
+		o = offsetof(struct host_sp_communication, host2sp_cont_avail_num_raw_frames)
+			/ sizeof(int);
+		avail_num_frames = load_sp_array_uint(host_sp_com, o);
+		extra_num_frames = num_frames - avail_num_frames;
+		o_extra = offsetof(struct host_sp_communication, host2sp_cont_extra_num_raw_frames)
+			/ sizeof(int);
+		store_sp_array_uint(host_sp_com, o_extra,
+				extra_num_frames);
+	} else
+		o = offsetof(struct host_sp_communication, host2sp_cont_target_num_raw_frames)
+			/ sizeof(int);
 
 	store_sp_array_uint(host_sp_com, o,
 				num_frames);
+
 }
 
 void
@@ -1154,7 +1169,9 @@ sh_css_sp_start_isp(void)
 	
 
 	sh_css_debug_pipe_graph_dump_epilogue();
+#if !defined(C_RUN) && !defined(HRT_UNSCHED)
 	sh_css_sp_store_init_dmem(&sh_css_sp_fw);
+#endif
 
 	store_sp_per_frame_data(fw);
 	
