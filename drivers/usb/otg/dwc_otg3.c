@@ -370,18 +370,6 @@ static void start_peripheral(struct dwc_otg2 *otg)
 	struct usb_gadget *gadget;
 
 #ifdef CONFIG_BOARD_MRFLD_VV
-	int count = 0;
-
-	while (!wait_adb_open) {
-		msleep(1000);
-		count++;
-		printk(KERN_ERR "adb is opened! start_peripheral!\n");
-		if (count >= 60) {
-			printk(KERN_ERR "start_peripheral without adb opended\n");
-			break;
-		}
-	}
-	enable_adb();
 	enable_usb_phy(otg, true);
 #endif
 	otg_dbg(otg, "\n");

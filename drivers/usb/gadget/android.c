@@ -1072,41 +1072,6 @@ static ssize_t enable_store(struct device *pdev, struct device_attribute *attr,
 	return size;
 }
 
-#ifdef CONFIG_BOARD_MRFLD_VV
-void enable_adb(void)
-{
-	struct android_dev *dev = _android_dev;
-	struct usb_composite_dev *cdev = dev->cdev;
-	struct android_usb_function *f;
-	struct android_usb_function **functions = dev->functions;
-
-	if (!dev->enabled) {
-		while ((f = *functions++)) {
-			if (!strcmp("adb", f->name)) {
-				list_add_tail(&f->enabled_list,
-						&dev->enabled_functions);
-				return 0;
-		}
-	}
-
-	mutex_lock(&dev->mutex);
-	cdev->desc.idVendor = device_desc.idVendor;
-	cdev->desc.idProduct = device_desc.idProduct;
-	cdev->desc.bcdDevice = device_desc.bcdDevice;
-	cdev->desc.bDeviceClass = device_desc.bDeviceClass;
-	cdev->desc.bDeviceSubClass = device_desc.bDeviceSubClass;
-	cdev->desc.bDeviceProtocol = device_desc.bDeviceProtocol;
-	list_for_each_entry(f, &dev->enabled_functions, enabled_list) {
-		if (f->enable)
-			f->enable(f);
-	}
-	android_enable(dev);
-	dev->enabled = true;
-	mutex_unlock(&dev->mutex);
-	}
-}
-#endif
-
 static ssize_t state_show(struct device *pdev, struct device_attribute *attr,
 			   char *buf)
 {

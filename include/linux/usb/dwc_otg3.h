@@ -570,9 +570,4 @@ struct dwc_otg2 {
 #define VBUS_TIMEOUT	300
 #define PCI_DEVICE_ID_DWC 0x119E
 
-#ifdef CONFIG_BOARD_MRFLD_VV
-extern void enable_adb(void);
-extern int wait_adb_open;
-#endif
-
 #endif /* __DWC_OTG_H__ */

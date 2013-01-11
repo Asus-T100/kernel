@@ -32,10 +32,6 @@
 /* number of tx requests to allocate */
 #define TX_REQ_MAX 4
 
-#ifdef CONFIG_BOARD_MRFLD_VV
-int wait_adb_open;
-#endif
-
 static const char adb_shortname[] = "android_adb";
 
 struct adb_dev {
@@ -483,10 +479,6 @@ static int adb_open(struct inode *ip, struct file *fp)
 
 #if 0
 	adb_ready_callback();
-#endif
-
-#ifdef CONFIG_BOARD_MRFLD_VV
-	wait_adb_open = 1;
 #endif
 
 	return 0;
