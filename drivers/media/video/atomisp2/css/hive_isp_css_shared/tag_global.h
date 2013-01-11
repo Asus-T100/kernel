@@ -17,8 +17,10 @@
  */
 struct sh_css_tag_descr {
 	int num_captures;
+	unsigned int num_captures_sign;
 	unsigned int skip;
 	int offset;
+	unsigned int offset_sign;
 	unsigned int exp_id;
 };
 

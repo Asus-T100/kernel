@@ -2520,8 +2520,27 @@ sh_css_video_set_isp_pipe_version(unsigned int version);
  *
  */
 void
-sh_css_init_host_sp_control_vars(struct sh_css_pipe *pipe);
+sh_css_init_host_sp_control_vars(void);
 
+/** @brief allocate continuous raw frames for continuous capture
+ * 
+ *  because this allocation takes a long time (around 120ms per frame),
+ *  we separate the allocation part and update part to let driver call
+ *  this function without locking. This function is the allocation part
+ *  and next one is update part
+ */
+enum sh_css_err
+sh_css_allocate_continuous_frames(
+	bool init_time);
+
+/** @brief allocate continuous raw frames for continuous capture
+ * 
+ *  because this allocation takes a long time (around 120ms per frame),
+ *  we separate the allocation part and update part to let driver call
+ *  this function without locking. This function is the update part
+ */
+void
+sh_css_update_continuous_frames(void);
 
 /* For convenience, so users only need to include sh_css.h
  * To be removed: the remaining sh_css_params functions should move to here.

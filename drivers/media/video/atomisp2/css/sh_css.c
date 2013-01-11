@@ -428,18 +428,6 @@ static struct sh_css_binary_descr preview_descr,
 #define MAX_HMM_BUFFER_NUM (SH_CSS_NUM_BUFFER_QUEUES * (SH_CSS_CIRCULAR_BUF_NUM_ELEMS + 2))
 static struct ia_css_i_host_rmgr_vbuf_handle *hmm_buffer_record_h[MAX_HMM_BUFFER_NUM];
 
-#ifdef __DISABLE_UNUSED_THREAD__
-/* Should be consistent with SH_CSS_MAX_SP_THREADS */
-/* See also pipe_threads in sp.hive.c, which should be consistent with this */
-#define PREVIEW_PIPELINE	(0)
-
-/* From enum sh_css_pipe_id to struct sh_css_pipeline * */
-static unsigned int sh_css_pipe_id_2_internal_thread_id[SH_CSS_NR_OF_PIPELINES]
-	 = { PREVIEW_PIPELINE,
-	 PREVIEW_PIPELINE,
-	 PREVIEW_PIPELINE,
-	 PREVIEW_PIPELINE};
-#else
 /* Should be consistent with SH_CSS_MAX_SP_THREADS */
 /* See also pipe_threads in sp.hive.c, which should be consistent with this */
 #define COPY_PIPELINE		(0)
@@ -455,7 +443,6 @@ static unsigned int sh_css_pipe_id_2_internal_thread_id[SH_CSS_NR_OF_PIPELINES]
 	     VIDEO_PIPELINE,
 	     CAPTURE_PIPELINE,
 	     ACCELERATION_PIPELINE };
-#endif
 
 #define GPIO_FLASH_PIN_MASK (1 << HIVE_GPIO_STROBE_TRIGGER_PIN)
 
@@ -478,12 +465,10 @@ static bool
 need_capture_pp(const struct sh_css_pipe *pipe);
 
 static enum sh_css_err
-sh_css_pipe_load_binaries(struct sh_css_pipe *pipe,
-			  struct sh_css_pipe *capture_pipe);
+sh_css_pipe_load_binaries(struct sh_css_pipe *pipe);
 
 static enum sh_css_err
 sh_css_pipe_get_output_frame_info(struct sh_css_pipe *pipe,
-				  struct sh_css_pipe *capture_pipe,
 				  struct sh_css_frame_info *info);
 
 static enum sh_css_err
@@ -592,6 +577,14 @@ input_format_is_yuv(enum sh_css_input_format format)
 	    format == SH_CSS_INPUT_FORMAT_YUV420_10 ||
 	    format == SH_CSS_INPUT_FORMAT_YUV422_8 ||
 	    format == SH_CSS_INPUT_FORMAT_YUV422_10;
+}
+
+bool
+input_format_is_yuv_8(enum sh_css_input_format format)
+{
+	return format == SH_CSS_INPUT_FORMAT_YUV420_8_LEGACY ||
+	    format == SH_CSS_INPUT_FORMAT_YUV420_8 ||
+	    format == SH_CSS_INPUT_FORMAT_YUV422_8;
 }
 
 static enum sh_css_err
@@ -895,10 +888,9 @@ program_input_formatter(struct sh_css_pipe *pipe,
 	err = input_start_line(pipe, cropped_height, &start_line);
 	if (err != sh_css_success)
 		return err;
-
 	err = input_start_column(pipe, cropped_width, &start_column);
-	if (err != sh_css_success)
-		return err;
+		if (err != sh_css_success)
+			return err;
 
 	if (!left_padding)
 		left_padding = binary->left_padding;
@@ -3065,7 +3057,7 @@ assert(copy_binary != NULL);
 
 	init_copy_descr(pipe, &copy_in_info, &copy_out_info);
 	copy_descr.mode = mode;
-	err = sh_css_binary_find(&copy_descr, copy_binary);
+	err = sh_css_binary_find(&copy_descr, copy_binary, false);
 	if (err != sh_css_success)
 		return err;
 	copy_binary->left_padding = left_padding;
@@ -3078,65 +3070,9 @@ primary_alloc_continuous_frames(
 	unsigned int stride);
 #endif
 
-static enum sh_css_err
-preview_alloc_continuous_frames(
-	struct sh_css_pipe *pipe,
-	struct sh_css_pipe *capture_pipe)
-{
-	enum sh_css_err err = sh_css_success;
-	struct sh_css_frame_info ref_info;
-	bool continuous = my_css.continuous;
-	bool input_needs_raw_binning = pipe->input_needs_raw_binning;
-	unsigned int i;
-	unsigned int left_cropping;
-	left_cropping = pipe->pipe.preview.preview_binary.info->left_cropping;
-
-	if (!continuous) {
-		ref_info = pipe->pipe.preview.preview_binary.in_frame_info;
-	} else if (input_needs_raw_binning
-	&& pipe->pipe.preview.preview_binary.info->enable.raw_binning) {
-		ref_info = pipe->pipe.preview.preview_binary.internal_frame_info;
-		/* TODO: Remove this when the decimated
-		 * resolution is available */
-		/* Only for continuous preview mode
-		 * where we need 2xOut resolution */
-		ref_info.padded_width *= 2;
-		ref_info.width *= 2;
-		ref_info.width -= left_cropping;
-		ref_info.height *= 2;
-		ref_info.height -= left_cropping;
-	} else if (my_css.cont_capt) {
-		ref_info =
-		  capture_pipe->pipe.capture.primary_binary.internal_frame_info;
-	} else {
-		ref_info =
-		  pipe->pipe.preview.preview_binary.internal_frame_info;
-	}
-
-	ref_info.format = SH_CSS_FRAME_FORMAT_RAW;
-
-	for (i = 0; i < NUM_CONTINUOUS_FRAMES; i++) {
-		/* free previous frame */
-		if (pipe->pipe.preview.continuous_frames[i]) {
-			sh_css_frame_free(pipe->pipe.preview.continuous_frames[i]);
-			pipe->pipe.preview.continuous_frames[i] = NULL;
-		}
-		/* check if new frame needed */
-		if (i < my_css.num_cont_raw_frames) {
-			/* allocate new frame */
-			err = sh_css_frame_allocate_from_info(
-				&pipe->pipe.preview.continuous_frames[i],
-				&ref_info);
-			if (err != sh_css_success)
-				return err;
-		}
-	}
-	return sh_css_success;
-}
 
 static enum sh_css_err load_preview_binaries(
-	struct sh_css_pipe *pipe,
-	struct sh_css_pipe *capture_pipe)
+	struct sh_css_pipe *pipe)
 {
 	struct sh_css_frame_info prev_in_info,
 				 prev_out_info;
@@ -3170,7 +3106,8 @@ assert(pipe != NULL);
 				     SH_CSS_FRAME_FORMAT_YUV_LINE);
 	init_preview_descr(pipe, &prev_in_info, &prev_out_info);
 	err = sh_css_binary_find(&preview_descr,
-				 &pipe->pipe.preview.preview_binary);
+				 &pipe->pipe.preview.preview_binary,
+				 false);
 	if (err != sh_css_success)
 		return err;
 
@@ -3179,7 +3116,8 @@ assert(pipe != NULL);
 			&pipe->pipe.preview.preview_binary.out_frame_info,
 			&pipe->output_info);
 	err = sh_css_binary_find(&vf_pp_descr,
-				 &pipe->pipe.preview.vf_pp_binary);
+				 &pipe->pipe.preview.vf_pp_binary,
+				 false);
 	if (err != sh_css_success)
 		return err;
 
@@ -3192,7 +3130,7 @@ assert(pipe != NULL);
 			return err;
 	}
 
-	err = preview_alloc_continuous_frames(pipe, capture_pipe);
+	err = sh_css_allocate_continuous_frames(true);
 	if (err != sh_css_success)
 		return err;
 #if 0
@@ -3433,8 +3371,7 @@ sh_css_init_buffer_queues(void)
 }
 
 static enum sh_css_err preview_start(
-	struct sh_css_pipe *pipe,
-	struct sh_css_pipe *capture_pipe)
+	struct sh_css_pipe *pipe)
 {
 	struct sh_css_pipeline *me = &pipe->pipeline;
 	struct sh_css_pipeline_stage *preview_stage, *copy_stage;
@@ -3477,7 +3414,7 @@ assert(pipe != NULL);
 		my_css.invalidate = false;
 	}
 
-	err = sh_css_pipe_load_binaries(pipe, capture_pipe);
+	err = sh_css_pipe_load_binaries(pipe);
 	if (err != sh_css_success)
 		return err;
 
@@ -3556,7 +3493,7 @@ assert(pipe != NULL);
 	if (my_css.continuous) {
 		bool low_light;
 #if 1
-
+		struct sh_css_pipe *capture_pipe = &my_css.capture_pipe;
 		err = construct_capture_pipe(capture_pipe);
 		if (err != sh_css_success)
 			return err;
@@ -3992,7 +3929,6 @@ enum sh_css_err sh_css_start(
 	enum sh_css_pipe_id pipe_id)
 {
 	enum sh_css_err err;
-	struct sh_css_pipe *pipe;
 
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_start() enter: pipe_id=%d\n", pipe_id);
@@ -4002,16 +3938,13 @@ enum sh_css_err sh_css_start(
 
 	switch (pipe_id) {
 	case SH_CSS_PREVIEW_PIPELINE:
-		err = preview_start(&my_css.preview_pipe, &my_css.capture_pipe);
-		pipe = &my_css.preview_pipe;
+		err = preview_start(&my_css.preview_pipe);
 		break;
 	case SH_CSS_VIDEO_PIPELINE:
 		err = video_start(&my_css.video_pipe);
-		pipe = &my_css.video_pipe;
 		break;
 	case SH_CSS_CAPTURE_PIPELINE:
 		err = capture_start(&my_css.capture_pipe);
-		pipe = &my_css.capture_pipe;
 		break;
 	default:
 		err = sh_css_err_invalid_arguments;
@@ -4027,7 +3960,7 @@ enum sh_css_err sh_css_start(
 	while (!sh_css_sp_has_booted())
 		hrt_sleep();
 
-	sh_css_init_host_sp_control_vars(pipe);
+	sh_css_init_host_sp_control_vars();
 
 	sh_css_init_buffer_queues();
 
@@ -4138,14 +4071,13 @@ enum sh_css_err sh_css_preview_get_input_resolution(
 	unsigned int *height)
 {
 	enum sh_css_err err;
-	struct sh_css_pipe *pipe = &my_css.preview_pipe,
-			   *capture_pipe = &my_css.capture_pipe;
+	struct sh_css_pipe *pipe = &my_css.preview_pipe;
 
 assert(width != NULL);
 assert(height != NULL);
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_preview_get_input_resolution() enter: void\n");
-	err = sh_css_pipe_load_binaries(pipe, capture_pipe);
+	err = sh_css_pipe_load_binaries(pipe);
 	if (err == sh_css_success) {
 		const struct sh_css_binary *binary;
 		if (pipe->pipe.preview.copy_binary.info)
@@ -4322,7 +4254,6 @@ assert(pipe != NULL);
 
 static enum sh_css_err sh_css_pipe_get_grid_info(
 	struct sh_css_pipe *pipe,
-	struct sh_css_pipe *capture_pipe,
 	struct sh_css_grid_info *info)
 {
 	enum sh_css_err err;
@@ -4333,7 +4264,7 @@ assert(pipe != NULL);
 assert(info != NULL);
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_pipe_get_grid_info() enter:\n");
 
-	err = sh_css_pipe_load_binaries(pipe, capture_pipe);
+	err = sh_css_pipe_load_binaries(pipe);
 	if (err == sh_css_success) {
 		struct sh_css_binary *s3a_binary = NULL;
 #if 0
@@ -4571,7 +4502,8 @@ assert(pipe != NULL);
 		video_descr.enable_reduced_pipe = true;
 	video_descr.isp_pipe_version = pipe->isp_pipe_version;
 	err = sh_css_binary_find(&video_descr,
-				 &pipe->pipe.video.video_binary);
+				 &pipe->pipe.video.video_binary,
+				 true);
 	if (err != sh_css_success)
 		return err;
 
@@ -4596,16 +4528,21 @@ assert(pipe != NULL);
 			&pipe->pipe.video.video_binary.vf_frame_info,
 			&pipe->vf_output_info);
 		err = sh_css_binary_find(&vf_pp_descr,
-				&pipe->pipe.video.vf_pp_binary);
+				&pipe->pipe.video.vf_pp_binary,
+				false);
 		if (err != sh_css_success)
 			return err;
 	}
 
-	/* yuv copy does not use reference frames */
 	if (input_format_is_yuv(pipe->input_format))
-		return sh_css_success;
-
-	ref_info = pipe->pipe.video.video_binary.internal_frame_info;
+		/* @GC: In case of YUV Zoom, we use reference frame
+		 * to buffer the copy output! Since the sensor input
+		 * is being copied, we need a buffer as big as
+		 * input resolution */
+		ref_info = pipe->pipe.video.video_binary.in_frame_info;
+	else
+		ref_info = pipe->pipe.video.video_binary.internal_frame_info;
+	
 	ref_info.format = SH_CSS_FRAME_FORMAT_YUV420;
 	ref_info.raw_bit_depth = SH_CSS_REF_BIT_DEPTH;
 
@@ -4635,6 +4572,9 @@ assert(pipe != NULL);
 		return err;
 #endif
 
+	/* YUV copy does not need tnr frames */
+	if (input_format_is_yuv(pipe->input_format))
+		return sh_css_success;
 
 	tnr_info = pipe->pipe.video.video_binary.internal_frame_info;
 	tnr_info.format = SH_CSS_FRAME_FORMAT_YUV_LINE;
@@ -4714,7 +4654,7 @@ assert(pipe != NULL);
 		my_css.invalidate = false;
 	}
 
-	err = sh_css_pipe_load_binaries(pipe, NULL);
+	err = sh_css_pipe_load_binaries(pipe);
 	if (err != sh_css_success)
 		return err;
 
@@ -4846,7 +4786,7 @@ assert(info != NULL);
 			sh_css_err_mode_does_not_have_raw_output);
 		return sh_css_err_mode_does_not_have_raw_output;
 	}
-	err = sh_css_pipe_load_binaries(pipe, NULL);
+	err = sh_css_pipe_load_binaries(pipe);
 	if (err == sh_css_success) {
 		*info = pipe->pipe.video.copy_binary.out_frame_info;
 	sh_css_dtrace(SH_DBG_TRACE,
@@ -4877,7 +4817,7 @@ assert(info != NULL);
 /* We could print the pointer as input arg, and the values as output */
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_video_get_viewfinder_frame_info() enter: void\n");
 
-	err = sh_css_pipe_load_binaries(pipe, NULL);
+	err = sh_css_pipe_load_binaries(pipe);
 	if (err != sh_css_success) {
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_video_get_viewfinder_frame_info() leave: return_err=%d\n",
@@ -4917,7 +4857,7 @@ assert(width != NULL);
 assert(height != NULL);
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_video_get_input_resolution() enter: void\n");
 
-	err = sh_css_pipe_load_binaries(pipe, NULL);
+	err = sh_css_pipe_load_binaries(pipe);
 	if (err == sh_css_success) {
 		const struct sh_css_binary *binary;
 		if (pipe->pipe.video.copy_binary.info)
@@ -5087,7 +5027,7 @@ assert(pipe != NULL);
 	    zoom.dy < HRT_GDC_N)
 		return true;
 
-	if (my_css.continuous)
+	if (my_css.cont_capt)
 		return true;
 
 	return false;
@@ -5339,7 +5279,8 @@ assert(pipe != NULL);
 	if (need_pp) {
 		init_capture_pp_descr(pipe, &prim_out_info, &vf_info);
 		err = sh_css_binary_find(&capture_pp_descr,
-					&mycs->capture_pp_binary);
+					&mycs->capture_pp_binary,
+					false);
 		if (err != sh_css_success)
 			return err;
 	} else {
@@ -5348,7 +5289,7 @@ assert(pipe != NULL);
 
 	/* Primary */
 	init_primary_descr(pipe, &prim_in_info, &prim_out_info, &vf_info);
-	err = sh_css_binary_find(&prim_descr, &mycs->primary_binary);
+	err = sh_css_binary_find(&prim_descr, &mycs->primary_binary, false);
 	if (err != sh_css_success)
 		return err;
 
@@ -5363,7 +5304,8 @@ assert(pipe != NULL);
 
 	init_vf_pp_descr(pipe, vf_pp_in_info, &pipe->vf_output_info);
 	err = sh_css_binary_find(&vf_pp_descr,
-				 &mycs->vf_pp_binary);
+				 &mycs->vf_pp_binary,
+				 false);
 	if (err != sh_css_success)
 		return err;
 
@@ -5422,7 +5364,8 @@ assert(pipe != NULL);
 	if (need_pp) {
 		init_capture_pp_descr(pipe, &post_out_info, &vf_info);
 		err = sh_css_binary_find(&capture_pp_descr,
-				&pipe->pipe.capture.capture_pp_binary);
+				&pipe->pipe.capture.capture_pp_binary,
+				false);
 		if (err != sh_css_success)
 			return err;
 	} else {
@@ -5432,7 +5375,8 @@ assert(pipe != NULL);
 	/* Post-gdc */
 	init_post_gdc_descr(pipe, &post_in_info, &post_out_info, &vf_info);
 	err = sh_css_binary_find(&post_gdc_descr,
-				 &pipe->pipe.capture.post_isp_binary);
+				 &pipe->pipe.capture.post_isp_binary,
+				 false);
 	if (err != sh_css_success)
 		return err;
 
@@ -5440,7 +5384,8 @@ assert(pipe != NULL);
 	init_gdc_descr(pipe, &gdc_in_info,
 		       &pipe->pipe.capture.post_isp_binary.in_frame_info);
 	err = sh_css_binary_find(&gdc_descr,
-				 &pipe->pipe.capture.gdc_binary);
+				 &pipe->pipe.capture.gdc_binary,
+				 false);
 	if (err != sh_css_success)
 		return err;
 	pipe->pipe.capture.gdc_binary.left_padding =
@@ -5450,7 +5395,8 @@ assert(pipe != NULL);
 	init_pre_gdc_descr(pipe, &pre_in_info,
 			   &pipe->pipe.capture.gdc_binary.in_frame_info);
 	err = sh_css_binary_find(&pre_gdc_descr,
-				 &pipe->pipe.capture.pre_isp_binary);
+				 &pipe->pipe.capture.pre_isp_binary,
+				 false);
 	if (err != sh_css_success)
 		return err;
 	pipe->pipe.capture.pre_isp_binary.left_padding =
@@ -5467,7 +5413,8 @@ assert(pipe != NULL);
 
 	init_vf_pp_descr(pipe, vf_pp_in_info, &pipe->vf_output_info);
 	err = sh_css_binary_find(&vf_pp_descr,
-				 &pipe->pipe.capture.vf_pp_binary);
+				 &pipe->pipe.capture.vf_pp_binary,
+				 false);
 	if (err != sh_css_success)
 		return err;
 
@@ -5505,7 +5452,8 @@ assert(pipe != NULL);
 			   &pipe->output_info);
 
 	err = sh_css_binary_find(&pre_anr_descr,
-				 &pipe->pipe.capture.pre_isp_binary);
+				 &pipe->pipe.capture.pre_isp_binary,
+				 false);
 
 	return err;
 }
@@ -5540,7 +5488,8 @@ assert(pipe != NULL);
 	if (need_pp) {
 		init_capture_pp_descr(pipe, &post_out_info, &vf_info);
 		err = sh_css_binary_find(&capture_pp_descr,
-				&pipe->pipe.capture.capture_pp_binary);
+				&pipe->pipe.capture.capture_pp_binary,
+				false);
 		if (err != sh_css_success)
 			return err;
 	} else {
@@ -5550,7 +5499,8 @@ assert(pipe != NULL);
 	/* Post-anr */
 	init_post_anr_descr(pipe, &post_in_info, &post_out_info, &vf_info);
 	err = sh_css_binary_find(&post_anr_descr,
-				 &pipe->pipe.capture.post_isp_binary);
+				 &pipe->pipe.capture.post_isp_binary,
+				 false);
 	if (err != sh_css_success)
 		return err;
 
@@ -5558,7 +5508,8 @@ assert(pipe != NULL);
 	init_anr_descr(pipe, &anr_in_info,
 		       &pipe->pipe.capture.post_isp_binary.in_frame_info);
 	err = sh_css_binary_find(&anr_descr,
-				 &pipe->pipe.capture.anr_binary);
+				 &pipe->pipe.capture.anr_binary,
+				 false);
 	if (err != sh_css_success)
 		return err;
 	pipe->pipe.capture.anr_binary.left_padding =
@@ -5568,7 +5519,8 @@ assert(pipe != NULL);
 	init_pre_anr_descr(pipe, &pre_in_info,
 			   &pipe->pipe.capture.anr_binary.in_frame_info);
 	err = sh_css_binary_find(&pre_anr_descr,
-				 &pipe->pipe.capture.pre_isp_binary);
+				 &pipe->pipe.capture.pre_isp_binary,
+				 false);
 	if (err != sh_css_success)
 		return err;
 	pipe->pipe.capture.pre_isp_binary.left_padding =
@@ -5585,7 +5537,8 @@ assert(pipe != NULL);
 
 	init_vf_pp_descr(pipe, vf_pp_in_info, &pipe->vf_output_info);
 	err = sh_css_binary_find(&vf_pp_descr,
-				 &pipe->pipe.capture.vf_pp_binary);
+				 &pipe->pipe.capture.vf_pp_binary,
+				 false);
 	if (err != sh_css_success)
 		return err;
 
@@ -5661,8 +5614,7 @@ assert(pipe != NULL);
 }
 
 static enum sh_css_err sh_css_pipe_load_binaries(
-	struct sh_css_pipe *pipe,
-	struct sh_css_pipe *capture_pipe)
+	struct sh_css_pipe *pipe)
 {
 	enum sh_css_err err = sh_css_success;
 
@@ -5673,7 +5625,7 @@ assert(pipe != NULL);
 
 	switch (pipe->mode) {
 	case SH_CSS_PREVIEW_PIPELINE:
-		err = load_preview_binaries(pipe, capture_pipe);
+		err = load_preview_binaries(pipe);
 		break;
 	case SH_CSS_VIDEO_PIPELINE:
 		err = load_video_binaries(pipe);
@@ -5728,7 +5680,7 @@ static enum sh_css_err construct_capture_pipe(
 		sh_css_pipe_invalidate_binaries(pipe);
 		my_css.invalidate = false;
 	}
-	err = sh_css_pipe_load_binaries(pipe, NULL);
+	err = sh_css_pipe_load_binaries(pipe);
 	if (err != sh_css_success)
 		return err;
 
@@ -5985,7 +5937,6 @@ static enum sh_css_err capture_start(
 
 static enum sh_css_err sh_css_pipe_get_output_frame_info(
 	struct sh_css_pipe *pipe,
-	struct sh_css_pipe *capture_pipe,
 	struct sh_css_frame_info *info)
 {
 	enum sh_css_err err;
@@ -5995,7 +5946,7 @@ assert(pipe != NULL);
 /* assert(capture_pipe != NULL); */
 assert(info != NULL);
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_pipe_get_output_frame_info() enter:\n");
-	err = sh_css_pipe_load_binaries(pipe, capture_pipe);
+	err = sh_css_pipe_load_binaries(pipe);
 	if (err == sh_css_success)
 		*info = pipe->output_info;
 	if (copy_on_sp(pipe) &&
@@ -6022,7 +5973,7 @@ assert(info != NULL);
 	if (pipe->capture_mode == SH_CSS_CAPTURE_MODE_RAW ||
 	    pipe->capture_mode == SH_CSS_CAPTURE_MODE_BAYER)
 		return sh_css_err_mode_does_not_have_viewfinder;
-	err = sh_css_pipe_load_binaries(pipe, NULL);
+	err = sh_css_pipe_load_binaries(pipe);
 	if (err == sh_css_success)
 		*info = pipe->vf_output_info;
 	sh_css_dtrace(SH_DBG_TRACE,
@@ -6048,7 +5999,7 @@ assert(info != NULL);
 	if (pipe->online || copy_on_sp(pipe)) {
 		return sh_css_err_mode_does_not_have_raw_output;
 	}
-	err = sh_css_pipe_load_binaries(pipe, NULL);
+	err = sh_css_pipe_load_binaries(pipe);
 	if (err == sh_css_success)
 		*info = pipe->pipe.capture.copy_binary.out_frame_info;
 
@@ -6081,7 +6032,7 @@ assert(height != NULL);
 		return sh_css_success;
 	}
 
-	err = sh_css_pipe_load_binaries(pipe, NULL);
+	err = sh_css_pipe_load_binaries(pipe);
 	if (err == sh_css_success) {
 		const struct sh_css_binary *binary;
 		if (pipe->pipe.capture.copy_binary.info)
@@ -7449,7 +7400,7 @@ assert(info != NULL);
 		"sh_css_capture_get_output_frame_info() enter: void\n");
 
 	err = sh_css_pipe_get_output_frame_info(&my_css.capture_pipe,
-						 NULL, info);
+						 info);
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_capture_get_output_frame_info() leave: "
 		"return_err=%d, "
@@ -7474,7 +7425,6 @@ assert(info != NULL);
 		"sh_css_preview_get_output_frame_info() enter: void\n");
 
 	err = sh_css_pipe_get_output_frame_info(&my_css.preview_pipe,
-						 &my_css.capture_pipe,
 						 info);
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_preview_get_output_frame_info() leave: "
@@ -7500,7 +7450,7 @@ assert(info != NULL);
 		"sh_css_video_get_output_frame_info() enter: void\n");
 
 	err = sh_css_pipe_get_output_frame_info(&my_css.video_pipe,
-						 NULL, info);
+						 info);
 
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_video_get_output_frame_info() leave: "
@@ -7526,7 +7476,6 @@ assert(info != NULL);
 		"sh_css_preview_get_grid_info() enter: void\n");
 
 	err = sh_css_pipe_get_grid_info(&my_css.preview_pipe,
-					 &my_css.capture_pipe,
 					 info);
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_preview_get_grid_info() leave: &info=%p\n", info);
@@ -7544,7 +7493,7 @@ assert(info != NULL);
 		"sh_css_video_get_grid_info() enter: void\n");
 
 	err = sh_css_pipe_get_grid_info(&my_css.video_pipe,
-					 NULL, info);
+					 info);
 
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_video_get_grid_info() leave: &info=%p\n", info);
@@ -7562,7 +7511,7 @@ assert(info != NULL);
 		"sh_css_capture_get_grid_info() enter: void\n");
 
 	err = sh_css_pipe_get_grid_info(&my_css.capture_pipe,
-					 NULL, info);
+					 info);
 
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_capture_get_grid_info() leave: &info=%p\n", info);
@@ -7987,7 +7936,7 @@ sh_css_event_init_irq_mask(void)
 }
 
 void
-sh_css_init_host_sp_control_vars(struct sh_css_pipe *pipe)
+sh_css_init_host_sp_control_vars(void)
 {
 	const struct sh_css_fw_info *fw;
 	unsigned int HIVE_ADDR_sp_isp_started;
@@ -8002,7 +7951,7 @@ sh_css_init_host_sp_control_vars(struct sh_css_pipe *pipe)
 				/ sizeof(int);
 
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_init_host_sp_control_vars() enter: pipe=%p\n", pipe);
+		"sh_css_init_host_sp_control_vars() enter:\n");
 
 	fw = &sh_css_sp_fw;
 	HIVE_ADDR_sp_isp_started = fw->info.sp.isp_started;
@@ -8045,12 +7994,15 @@ sh_css_init_host_sp_control_vars(struct sh_css_pipe *pipe)
 	store_sp_array_uint(host_sp_com, o, host2sp_cmd_ready);
 
 	sh_css_event_init_irq_mask();
-	if (my_css.continuous & (pipe != NULL)) {
+	if (my_css.continuous) {
 		int i;
+		struct sh_css_pipe *pipe = &my_css.preview_pipe;
 		sh_css_update_host2sp_cont_num_raw_frames
-			(my_css.num_cont_raw_frames);
+			(NUM_OFFLINE_INIT_CONTINUOUS_FRAMES, true);
+		sh_css_update_host2sp_cont_num_raw_frames
+			(my_css.num_cont_raw_frames, false);
 		if (pipe->mode == SH_CSS_PREVIEW_PIPELINE)
-			for (i = 0; i < NUM_CONTINUOUS_FRAMES; i++) {
+			for (i = 0; i < NUM_OFFLINE_INIT_CONTINUOUS_FRAMES; i++) {
 				sh_css_update_host2sp_offline_frame(i,
 					pipe->pipe.preview.continuous_frames[i]);
 			}
@@ -8065,4 +8017,99 @@ sh_css_init_host_sp_control_vars(struct sh_css_pipe *pipe)
 
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_init_host_sp_control_vars() leave: return_void\n");
+}
+
+enum sh_css_err
+sh_css_allocate_continuous_frames(
+	bool init_time)
+{
+	enum sh_css_err err = sh_css_success;
+	struct sh_css_frame_info ref_info;
+	struct sh_css_pipe *pipe = &my_css.preview_pipe;
+	bool input_needs_raw_binning = pipe->input_needs_raw_binning;
+	unsigned int i, idx;
+	unsigned int left_cropping;
+	unsigned int num_frames;
+	left_cropping = pipe->pipe.preview.preview_binary.info->left_cropping;
+
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_allocate_continuous_frames() enter: init_time=%d\n", init_time);
+
+	if (my_css.continuous) {
+		if (init_time)
+			num_frames = NUM_OFFLINE_INIT_CONTINUOUS_FRAMES;
+		else
+			num_frames = my_css.num_cont_raw_frames;
+	} else {
+		num_frames = NUM_ONLINE_INIT_CONTINUOUS_FRAMES;
+	}
+	
+	ref_info = pipe->pipe.preview.preview_binary.in_frame_info;
+	if (input_needs_raw_binning &&
+	    pipe->pipe.preview.preview_binary.info->enable.raw_binning) {
+		/* TODO: Remove this when the decimated
+		 * resolution is available */
+		/* Only for continuous preview mode
+		 * where we need 2xOut resolution */
+		ref_info.padded_width *= 2;
+		ref_info.width -= left_cropping;
+		ref_info.width *= 2;
+		/* In case of left-cropping, add 2 vectors */
+		ref_info.width += left_cropping ? 2*ISP_VEC_NELEMS : 0;
+		/* Must be even amount of vectors */
+		ref_info.width  = CEIL_MUL(ref_info.width,2*ISP_VEC_NELEMS);
+		ref_info.height -= left_cropping;
+		ref_info.height *= 2;
+		ref_info.height += left_cropping;
+	} else if (my_css.continuous) {
+		ref_info.width -= left_cropping;
+		/* In case of left-cropping, add 2 vectors */
+		ref_info.width += left_cropping ? 2*ISP_VEC_NELEMS : 0;
+		/* Must be even amount of vectors */
+		ref_info.width  = CEIL_MUL(ref_info.width,2*ISP_VEC_NELEMS);
+	}
+
+	ref_info.format = SH_CSS_FRAME_FORMAT_RAW;
+
+	if (init_time)
+		idx = 0;
+	else
+		idx = NUM_OFFLINE_INIT_CONTINUOUS_FRAMES;
+	for (i = idx; i < NUM_CONTINUOUS_FRAMES; i++) {
+		/* free previous frame */
+		if (pipe->pipe.preview.continuous_frames[i]) {
+			sh_css_frame_free(pipe->pipe.preview.continuous_frames[i]);
+			pipe->pipe.preview.continuous_frames[i] = NULL;
+		}
+		/* check if new frame needed */
+		if (i < num_frames) {
+			/* allocate new frame */
+			err = sh_css_frame_allocate_from_info(
+				&pipe->pipe.preview.continuous_frames[i],
+				&ref_info);
+			if (err != sh_css_success)
+				return err;
+		}
+	}
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_allocate_continuous_frames() leave: return success\n");
+	return sh_css_success;
+}
+
+void
+sh_css_update_continuous_frames(void)
+{
+	struct sh_css_pipe *pipe = &my_css.preview_pipe;
+	unsigned int i;
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_update_continuous_frames() enter:\n");
+
+	for (i = NUM_OFFLINE_INIT_CONTINUOUS_FRAMES; i < my_css.num_cont_raw_frames; i++) {
+		sh_css_update_host2sp_offline_frame(i,
+				pipe->pipe.preview.continuous_frames[i]);
+	}
+	sh_css_update_host2sp_cont_num_raw_frames
+			(my_css.num_cont_raw_frames, true);
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_update_continuous_frames() leave: return_void\n");
 }

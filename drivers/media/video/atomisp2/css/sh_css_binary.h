@@ -167,7 +167,8 @@ sh_css_fill_binary_info(const struct sh_css_binary_info *info,
 
 enum sh_css_err
 sh_css_binary_find(struct sh_css_binary_descr *descr,
-		   struct sh_css_binary *binary);
+		   struct sh_css_binary *binary,
+		   bool is_video_usecase /* TODO: Remove this */);
 
 enum sh_css_err
 sh_css_binary_grid_info(struct sh_css_binary *binary,

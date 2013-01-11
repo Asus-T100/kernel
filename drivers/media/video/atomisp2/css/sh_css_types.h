@@ -824,12 +824,16 @@ struct sh_css_binary_info {
 		uint8_t		tnr_out_channel;
 		uint8_t		dvs_in_channel;
 		uint8_t		dvs_coords_channel;
-		uint8_t		raw_channel;
 		uint8_t		output_channel;
 		uint8_t		c_channel;
 		uint8_t		vfout_channel;
 		uint8_t		claimed_by_isp;
 		/* uint8_t	padding[0]; */
+		struct {
+			uint8_t	 channel;  /* Dma channel used */
+			uint8_t	 height;   /* Buffer height */
+			uint16_t stride;   /* Buffer stride */
+		} raw;
 	} dma;
 	struct {
 		unsigned short	 bpp;

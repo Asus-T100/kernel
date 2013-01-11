@@ -202,7 +202,6 @@ static bool isp_params_changed,
 	    yuv2rgb_cc_config_changed,
 	    rgb2yuv_cc_config_changed;
 
-static hrt_vaddress last_one;
 
 static unsigned int sensor_binning;
 
@@ -5019,7 +5018,6 @@ enum sh_css_err sh_css_params_init(void)
 	motion_config = default_motion_config;
 	motion_config_changed = true;
 
-	last_one = mmgr_NULL;
 
 	/* now commit to ddr */
 	sh_css_param_update_isp_params(false);
@@ -5075,7 +5073,6 @@ sh_css_param_clear_param_sets(void)
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_param_clear_param_sets() enter:\n");
 
 	sh_css_refcount_clear(PARAM_SET_POOL, &free_map_callback);
-	last_one = mmgr_NULL;
 
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_param_clear_param_sets() leave:\n");
 }
@@ -5283,17 +5280,11 @@ static void sh_css_dequeue_param_buffers(void)
 			"sh_css_dequeue_param_buffers: "
 			"dequeued param set %x from %d\n",
 			cpy, 0);
-		if ((last_one != mmgr_NULL) && (last_one != cpy)) {
-			sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
 				"sh_css_dequeue_param_buffers: "
 				"release ref on param set %x\n",
-				last_one);
-			free_sh_css_ddr_address_map(last_one);
-		}
-		/* assert on two same coming out */
-		assert(last_one != cpy);
-		/* keep track of last_one dequeued */
-		last_one = cpy;
+				cpy);
+		free_sh_css_ddr_address_map(cpy);
 	}
 
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_dequeue_param_buffers() leave\n");

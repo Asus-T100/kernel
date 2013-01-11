@@ -127,7 +127,7 @@ sh_css_update_host2sp_offline_frame(
  * @param[in] num_frames The number of raw frames to use.
  */
 void
-sh_css_update_host2sp_cont_num_raw_frames(unsigned num_frames);
+sh_css_update_host2sp_cont_num_raw_frames(unsigned num_frames, bool set_avail);
 
 void
 sh_css_sp_start_isp(void);
