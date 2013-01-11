@@ -324,7 +324,7 @@ int vsp_submit_cmdbuf(struct drm_device *dev,
 	if (ret != 0)
 		DRM_ERROR("VSP: failed to send command\n");
 
-	/* If the VSP is ind idle, need to send "Continue" */
+	/* If the VSP is in idle, need to send "Continue" */
 	if (vsp_priv->vsp_state == VSP_STATE_IDLE) {
 		vsp_priv->ctrl->entry_kind = vsp_entry_continue;
 		vsp_start_function(dev_priv,
