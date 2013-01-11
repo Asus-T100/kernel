@@ -1432,6 +1432,7 @@ static int bq24261_probe(struct i2c_client *client,
 	chip->max_cc = 1500;
 	chip->chrgr_stat = BQ24261_CHRGR_STAT_UNKNOWN;
 	chip->chrgr_health = POWER_SUPPLY_HEALTH_UNKNOWN;
+	chip->bat_health = POWER_SUPPLY_HEALTH_GOOD;
 
 	mutex_init(&chip->lock);
 	ret = power_supply_register(&client->dev, &chip->psy_usb);
