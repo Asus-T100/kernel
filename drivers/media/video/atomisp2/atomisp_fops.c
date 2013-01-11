@@ -361,7 +361,6 @@ int atomisp_init_struct(struct atomisp_device *isp)
 
 	isp->capture_format = NULL;
 	isp->vf_format = NULL;
-	isp->input_format = NULL;
 	isp->sw_contex.run_mode = CI_MODE_STILL_CAPTURE;
 	isp->params.color_effect = V4L2_COLORFX_NONE;
 	isp->params.bad_pixel_en = 1;
@@ -555,6 +554,7 @@ static int atomisp_release(struct file *file)
 	struct video_device *vdev = video_devdata(file);
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
+	struct v4l2_mbus_framefmt isp_sink_fmt;
 	struct v4l2_requestbuffers req;
 	int ret = 0;
 
@@ -604,8 +604,10 @@ static int atomisp_release(struct file *file)
 	kfree(isp->vf_format);
 	isp->vf_format = NULL;
 
-	kfree(isp->input_format);
-	isp->input_format = NULL;
+	memset(&isp_sink_fmt, 0, sizeof(isp_sink_fmt));
+	atomisp_subdev_set_mfmt(&isp->isp_subdev.subdev, NULL,
+				V4L2_SUBDEV_FORMAT_ACTIVE,
+				ATOMISP_SUBDEV_PAD_SINK, &isp_sink_fmt);
 
 	if (atomisp_users(isp))
 		goto done;
