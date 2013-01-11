@@ -17,6 +17,22 @@
 #include <asm/intel-mid.h>
 #include "platform_hsi_modem.h"
 
+
+#if ((defined CONFIG_HSI_FFL_TTY) && (defined CONFIG_HSI_DLP))
+/* Selection of HSI_FFL_TTY and HSI_DLP.
+ * Needed for co-existance of FFL and DLP drivers for CTPSCALE
+ * Defaulting to HSI_DLP to not break CTP products except CTPSCALELT */
+#undef CONFIG_HSI_FFL_TTY
+#define HSI_CLIENT_CNT  2
+
+#elif (defined(CONFIG_HSI_FFL_TTY) || defined(CONFIG_HSI_DLP))
+#define HSI_CLIENT_CNT	2
+
+#else
+#define HSI_CLIENT_CNT	1
+#endif
+
+
 void *hsi_modem_platform_data(void *data)
 {
 	int rst_out = get_gpio_by_name("ifx_mdm_rst_out");
@@ -29,14 +45,6 @@ void *hsi_modem_platform_data(void *data)
 	static const char hsi_ffl_name[]	= "hsi-ffl";
 #elif defined(CONFIG_HSI_DLP)
 	static const char hsi_dlp_name[]	= "hsi-dlp";
-#endif
-
-#if ((defined CONFIG_HSI_FFL_TTY) && (defined CONFIG_HSI_DLP))
-#error "Only define one of HSI_FFL_TTY or HSI_DLP"
-#elif (defined(CONFIG_HSI_FFL_TTY) || defined(CONFIG_HSI_DLP))
-#define HSI_CLIENT_CNT	2
-#else
-#define HSI_CLIENT_CNT	1
 #endif
 
 	static struct hsi_board_info hsi_info[HSI_CLIENT_CNT] = {
