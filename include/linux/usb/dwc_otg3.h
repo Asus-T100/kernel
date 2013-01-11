@@ -401,6 +401,8 @@ struct dwc_otg2 {
 #define USER_ID_A_CHANGE_EVENT 0x40
 #define USER_ID_B_CHANGE_EVENT 0x80
 #endif
+	/** a_bus_drop event from userspace */
+#define USER_A_BUS_DROP 0x100
 
 	/* States */
 	enum dwc_otg_state prev;

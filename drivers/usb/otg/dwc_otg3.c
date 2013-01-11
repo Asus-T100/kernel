@@ -1228,7 +1228,12 @@ static enum dwc_otg_state do_a_host(struct dwc_otg2 *otg)
 #ifdef CONFIG_DWC_CHARGER_DETECTION
 	int id = RID_UNKNOWN;
 	unsigned long flags;
-
+#endif
+	if (otg->otg.vbus_state == VBUS_DISABLED) {
+		otg_uevent_trigger(&otg->otg);
+		return DWC_STATE_INIT;
+	}
+#ifdef CONFIG_DWC_CHARGER_DETECTION
 	if (otg->charging_cap.chrg_type != CHRG_ACA_DOCK) {
 		dwc_otg_enable_vbus(otg, 1);
 
@@ -1256,8 +1261,9 @@ static enum dwc_otg_state do_a_host(struct dwc_otg2 *otg)
 
 	otg_mask = OEVT_CONN_ID_STS_CHNG_EVNT | \
 			OEVT_A_DEV_SESS_END_DET_EVNT;
+	user_mask |= USER_A_BUS_DROP;
 #ifdef SUPPORT_USER_ID_CHANGE_EVENTS
-	user_mask =	USER_ID_B_CHANGE_EVENT;
+	user_mask |= USER_ID_B_CHANGE_EVENT;
 #endif
 
 	rc = sleep_until_event(otg,
@@ -1270,7 +1276,8 @@ static enum dwc_otg_state do_a_host(struct dwc_otg2 *otg)
 
 #ifdef CONFIG_DWC_CHARGER_DETECTION
 	/* Higher priority first */
-	if (otg_events & OEVT_A_DEV_SESS_END_DET_EVNT) {
+	if (otg_events & OEVT_A_DEV_SESS_END_DET_EVNT ||
+			user_events & USER_A_BUS_DROP) {
 		otg_dbg(otg, "OEVT_A_DEV_SESS_END_DET_EVNT\n");
 
 		/* ACA-Dock plug out */
@@ -1700,6 +1707,19 @@ show_otg_id(struct device *_dev, struct device_attribute *attr, char *buf)
 static DEVICE_ATTR(otg_id, S_IRUGO|S_IWUSR|S_IWGRP,\
 			show_otg_id, store_otg_id);
 
+static void dwc_a_bus_drop(struct otg_transceiver *x)
+{
+	struct dwc_otg2 *otg = the_transceiver;
+	unsigned long flags;
+
+	if (otg->otg.vbus_state == VBUS_DISABLED) {
+		spin_lock_irqsave(&otg->lock, flags);
+		otg->user_events |= USER_A_BUS_DROP;
+		wakeup_main_thread(otg);
+		spin_unlock_irqrestore(&otg->lock, flags);
+	}
+}
+
 static int dwc_otg_probe(struct pci_dev *pdev,
 			const struct pci_device_id *id)
 {
@@ -1769,6 +1789,8 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 	otg->state = DWC_STATE_INIT;
 	spin_lock_init(&otg->lock);
 	init_waitqueue_head(&otg->main_wq);
+	otg->otg.a_bus_drop = dwc_a_bus_drop;
+	otg->otg.vbus_state = VBUS_ENABLED;
 
 	otg_dbg(otg, "Version: %s\n", VERSION);
 	retval = otg_set_transceiver(&otg->otg);
