@@ -34,7 +34,6 @@ static void psb_fence_poll(struct ttm_fence_device *fdev,
 	struct drm_device *dev = dev_priv->dev;
 	uint32_t sequence = 0;
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
-	struct vsp_private *vsp_priv = dev_priv->vsp_private;
 
 	if (unlikely(!dev_priv))
 		return;
@@ -58,7 +57,7 @@ static void psb_fence_poll(struct ttm_fence_device *fdev,
 				topaz_private)->topaz_sync_addr);
 		break;
 	case VSP_ENGINE_VPP:
-		sequence = vsp_priv->current_sequence;
+		sequence = vsp_fence_poll(dev_priv);
 		break;
 	default:
 		break;
