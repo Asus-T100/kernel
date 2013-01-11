@@ -509,7 +509,12 @@ static int ov5640_g_focus_status(struct v4l2_subdev *sd, int *status)
 		*status = V4L2_AUTO_FOCUS_STATUS_REACHED;
 		break;
 	default:
-		return -EBUSY;
+		/*
+		 * when focus is idle, the status value is variable,
+		 * but it is different with status value above, and
+		 * the value is 0x20 in most of cases.
+		 */
+		*status = V4L2_AUTO_FOCUS_STATUS_IDLE;
 	}
 
 	return 0;
