@@ -1126,13 +1126,16 @@ static int bq24261_handle_irq(struct bq24261_charger *chip, u8 stat_reg)
 	switch (stat_reg & BQ24261_STAT_MASK) {
 	case BQ24261_STAT_READY:
 		chip->chrgr_stat = BQ24261_CHRGR_STAT_READY;
+		chip->chrgr_health = POWER_SUPPLY_HEALTH_GOOD;
 		dev_info(&client->dev, "Charger Status: Ready\n");
 		break;
 	case BQ24261_STAT_CHRG_PRGRSS:
 		chip->chrgr_stat = BQ24261_CHRGR_STAT_CHARGING;
+		chip->chrgr_health = POWER_SUPPLY_HEALTH_GOOD;
 		dev_info(&client->dev, "Charger Status: Charge Progress\n");
 		break;
 	case BQ24261_STAT_CHRG_DONE:
+		chip->chrgr_health = POWER_SUPPLY_HEALTH_GOOD;
 		dev_info(&client->dev, "Charger Status: Charge Done\n");
 
 		if (is_battery_full(chip))
@@ -1428,6 +1431,7 @@ static int bq24261_probe(struct i2c_client *client,
 	chip->psy_usb.supported_cables = POWER_SUPPLY_CHARGER_TYPE_USB;
 	chip->max_cc = 1500;
 	chip->chrgr_stat = BQ24261_CHRGR_STAT_UNKNOWN;
+	chip->chrgr_health = POWER_SUPPLY_HEALTH_UNKNOWN;
 
 	mutex_init(&chip->lock);
 	ret = power_supply_register(&client->dev, &chip->psy_usb);
