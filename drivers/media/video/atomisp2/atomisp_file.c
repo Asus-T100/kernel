@@ -39,14 +39,19 @@ static int file_input_s_stream(struct v4l2_subdev *sd, int enable)
 	struct atomisp_video_pipe *out_pipe = &isp->isp_subdev.video_in;
 	unsigned char *buf =
 		   videobuf_to_vmalloc(out_pipe->outq.bufs[0]);
-	int width = isp->input_format->out.width;
-	int height = isp->input_format->out.height;
+	struct v4l2_mbus_framefmt isp_sink_fmt;
+	unsigned int height;
 	unsigned short *data = (unsigned short *)buf;
 	int i, j;
 
+	isp_sink_fmt = *atomisp_subdev_get_mfmt(&isp->isp_subdev.subdev, NULL,
+						V4L2_SUBDEV_FORMAT_ACTIVE,
+						ATOMISP_SUBDEV_PAD_SINK);
+	height = isp_sink_fmt.height;
+
 	/* extend RAW8 pixel type to unsigned short */
 	if (out_pipe->out_fmt.depth == 8) {
-		data = vmalloc(width*height*2);
+		data = vmalloc(isp_sink_fmt.width * height * 2);
 		if (!data) {
 			v4l2_err(&atomisp_dev,
 				"Failed to allocate memory for file input\n");
@@ -54,9 +59,9 @@ static int file_input_s_stream(struct v4l2_subdev *sd, int enable)
 		}
 
 		for (i = 0; i < height; i++)
-			for (j = 0; j < width; j++)
+			for (j = 0; j < isp_sink_fmt.width; j++)
 				*data++ = (unsigned short)*buf++;
-		data -= width*height;
+		data -= isp_sink_fmt.width * height;
 	}
 
 	while (!sh_css_isp_has_started())
@@ -74,29 +79,29 @@ static int file_input_s_stream(struct v4l2_subdev *sd, int enable)
 			if (isp->sw_contex.bypass)
 				/* copy mode */
 				height = isp->capture_format->out.height +
-				    ((isp->input_format->out.height -
+				    ((isp_sink_fmt.height -
 				     isp->capture_format->out.height) >> 1) + 1;
 			else
 				/* primary mode */
 				height = isp->capture_format->out.height +
-				    ((isp->input_format->out.height -
+				    ((isp_sink_fmt.height -
 				     isp->capture_format->out.height) >> 1) + 5;
 			break;
 		case CI_MODE_PREVIEW:
 			/* preview mode */
 			height = isp->capture_format->out.height +
-			    ((isp->input_format->out.height -
+			    ((isp_sink_fmt.height -
 			      isp->capture_format->out.height) >> 1) + 5;
 			break;
 		default:
 			/* video mode */
 			height = isp->capture_format->out.height +
-			    ((isp->input_format->out.height -
+			    ((isp_sink_fmt.height -
 			      isp->capture_format->out.height) >> 1) + 5;
 			break;
 		}
 	}
-	sh_css_send_input_frame(data, width, height);
+	sh_css_send_input_frame(data, isp_sink_fmt.width, height);
 
 	if (out_pipe->out_fmt.depth == 8)
 		vfree(data);

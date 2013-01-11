@@ -197,6 +197,13 @@ int atomisp_subdev_set_mfmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 
 	*__ffmt = *ffmt;
 
+	switch (pad) {
+	case ATOMISP_SUBDEV_PAD_SINK:
+		if (which == V4L2_SUBDEV_FORMAT_ACTIVE)
+			sh_css_input_set_resolution(ffmt->width, ffmt->height);
+		break;
+	}
+
 	return 0;
 }
 

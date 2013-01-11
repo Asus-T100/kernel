@@ -330,7 +330,6 @@ struct atomisp_device {
 
 	struct atomisp_video_pipe_format *capture_format;
 	struct atomisp_video_pipe_format *vf_format;
-	struct atomisp_video_pipe_format *input_format;
 	struct sh_css_frame *vf_frame; /* TODO: needed? */
 	struct sh_css_frame *raw_output_frame;
 	enum atomisp_frame_status frame_status[VIDEO_MAX_FRAME];
