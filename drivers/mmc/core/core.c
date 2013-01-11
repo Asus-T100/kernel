@@ -2303,8 +2303,10 @@ void mmc_rescan(struct work_struct *work)
 	int i;
 	bool extend_wakelock = false;
 
-	if (host->rescan_disable)
+	if (host->rescan_disable) {
+		wake_unlock(&host->detect_wake_lock);
 		return;
+	}
 
 	mmc_bus_get(host);
 
