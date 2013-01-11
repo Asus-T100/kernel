@@ -1482,9 +1482,6 @@ int otg_main_thread(void *data)
 	set_freezable();
 	reset_hw(otg);
 
-	/* Register otg notifier to monitor ID and VBus change events */
-	otg_register_notifier(&otg->otg, &otg->nb);
-
 	otg_dbg(otg, "Thread running\n");
 	while (otg->state != DWC_STATE_TERMINATED) {
 		int next = DWC_STATE_INIT;
@@ -1550,7 +1547,7 @@ int otg_main_thread(void *data)
 static void start_main_thread(struct dwc_otg2 *otg)
 {
 	mutex_lock(&lock);
-	if (!otg->main_thread /* && otg->otg.gadget */&& otg->otg.host) {
+	if (!otg->main_thread && otg->otg.gadget && otg->otg.host) {
 		otg_dbg(otg, "Starting OTG main thread\n");
 		otg->main_thread = kthread_create(otg_main_thread, otg, "otg");
 		wake_up_process(otg->main_thread);
@@ -1847,7 +1844,10 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 	otg->host = dwc_host;
 	otg->gadget = dwc_gadget;
 	otg->irqnum = pdev->irq;
+	/* Register otg notifier to monitor ID and VBus change events */
 	otg->nb.notifier_call = dwc_otg_handle_notification;
+	otg_register_notifier(&otg->otg, &otg->nb);
+
 
 	retval = device_create_file(&pdev->dev, &dev_attr_otg_id);
 	if (retval < 0) {
