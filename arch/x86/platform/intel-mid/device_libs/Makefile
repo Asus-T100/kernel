@@ -57,6 +57,8 @@ endif
 obj-$(subst m,y,$(CONFIG_SERIAL_MRST_MAX3110))				+= platform_max3111.o
 # HSI Devices
 obj-$(subst m,y,$(CONFIG_HSI_ARASAN))					+= platform_hsi_modem.o
+obj-$(subst m,y,$(CONFIG_HSI_ARASAN))					+= platform_ffl_modem.o
+obj-$(subst m,y,$(CONFIG_HSI_ARASAN))					+= platform_edlp_modem.o
 # UART Devices
 obj-$(subst m,y,$(CONFIG_SERIAL_MFD_HSU))				+= platform_hsu.o
 # MISC Devices

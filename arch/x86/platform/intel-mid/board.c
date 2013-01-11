@@ -69,6 +69,8 @@
 
 /* HSI devices */
 #include "device_libs/platform_hsi_modem.h"
+#include "device_libs/platform_ffl_modem.h"
+#include "device_libs/platform_edlp_modem.h"
 
 /* HSU devices */
 #include "device_libs/platform_hsu.h"
@@ -155,6 +157,9 @@ struct devs_id __initconst device_ids[] = {
 	/* Modem */
 #ifndef CONFIG_HSI_NO_MODEM
 	{"hsi_ifx_modem", SFI_DEV_TYPE_HSI, 0, &hsi_modem_platform_data, NULL},
+	{"hsi_ffl_modem", SFI_DEV_TYPE_HSI, 0, &ffl_modem_platform_data, NULL},
+	{"hsi_edlp_modem", SFI_DEV_TYPE_HSI, 0, &edlp_modem_platform_data,
+						NULL},
 #endif
 
 	{},
