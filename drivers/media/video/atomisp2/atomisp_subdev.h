@@ -99,6 +99,8 @@ struct atomisp_video_pipe {
 
 struct atomisp_pad_format {
 	struct v4l2_mbus_framefmt fmt;
+	struct v4l2_rect crop;
+	struct v4l2_rect compose;
 };
 
 struct atomisp_sub_device {

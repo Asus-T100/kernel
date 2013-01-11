@@ -176,6 +176,45 @@ static int isp_subdev_enum_mbus_code(struct v4l2_subdev *sd,
 	return 0;
 }
 
+static int isp_subdev_validate_rect(struct v4l2_subdev *sd, uint32_t pad,
+				    uint32_t target)
+{
+	switch (pad) {
+	case ATOMISP_SUBDEV_PAD_SINK:
+		switch (target) {
+		case V4L2_SEL_TGT_CROP:
+			return 0;
+		}
+		break;
+	}
+
+	return -EINVAL;
+}
+
+struct v4l2_rect *atomisp_subdev_get_rect(struct v4l2_subdev *sd,
+					  struct v4l2_subdev_fh *fh,
+					  uint32_t which, uint32_t pad,
+					  uint32_t target)
+{
+	struct atomisp_sub_device *isp_sd = v4l2_get_subdevdata(sd);
+
+	if (which == V4L2_SUBDEV_FORMAT_TRY) {
+		switch (target) {
+		case V4L2_SEL_TGT_CROP:
+			return v4l2_subdev_get_try_crop(fh, pad);
+		}
+	}
+
+	switch (target) {
+	case V4L2_SEL_TGT_CROP:
+		return &isp_sd->fmt[pad].crop;
+	}
+
+	BUG();
+
+	return NULL;
+}
+
 struct v4l2_mbus_framefmt
 *atomisp_subdev_get_mfmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 			 uint32_t which, uint32_t pad)
@@ -186,6 +225,65 @@ struct v4l2_mbus_framefmt
 		return v4l2_subdev_get_try_format(fh, pad);
 
 	return &isp_sd->fmt[pad].fmt;
+}
+
+static void isp_subdev_propagate(struct v4l2_subdev *sd,
+				 struct v4l2_subdev_fh *fh,
+				 uint32_t which, uint32_t pad, uint32_t target)
+{
+	struct v4l2_mbus_framefmt *f =
+		atomisp_subdev_get_mfmt(sd, fh, which, pad);
+	struct v4l2_rect *crop =
+		atomisp_subdev_get_rect(sd, fh, which, pad, V4L2_SEL_TGT_CROP);
+
+	switch (pad) {
+	case ATOMISP_SUBDEV_PAD_SINK:
+		switch (target) {
+		case V4L2_SEL_TGT_CROP:
+			crop->width = f->width;
+			crop->height = f->height;
+			break;
+		}
+		break;
+	}
+}
+
+static int isp_subdev_get_selection(struct v4l2_subdev *sd,
+				    struct v4l2_subdev_fh *fh,
+				    struct v4l2_subdev_selection *sel)
+{
+	int rval = isp_subdev_validate_rect(sd, sel->pad, sel->target);
+	if (rval)
+		return rval;
+
+	sel->r = *atomisp_subdev_get_rect(sd, fh, sel->which, sel->pad,
+					   sel->target);
+
+	return 0;
+}
+
+int atomisp_subdev_set_selection(struct v4l2_subdev *sd,
+				 struct v4l2_subdev_fh *fh, uint32_t which,
+				 uint32_t pad, uint32_t target,
+				 struct v4l2_rect *r)
+{
+	struct v4l2_rect *__r = atomisp_subdev_get_rect(sd, fh, which, pad,
+							target);
+	*__r = *r;
+
+	return 0;
+}
+
+static int isp_subdev_set_selection(struct v4l2_subdev *sd,
+				    struct v4l2_subdev_fh *fh,
+				    struct v4l2_subdev_selection *sel)
+{
+	int rval = isp_subdev_validate_rect(sd, sel->pad, sel->target);
+	if (rval)
+		return rval;
+
+	return atomisp_subdev_set_selection(sd, fh, sel->which, sel->pad,
+					    sel->target, &sel->r);
 }
 
 int atomisp_subdev_set_mfmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
@@ -199,6 +297,9 @@ int atomisp_subdev_set_mfmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 
 	switch (pad) {
 	case ATOMISP_SUBDEV_PAD_SINK:
+		isp_subdev_propagate(sd, fh, which, pad,
+				     V4L2_SEL_TGT_CROP);
+
 		if (which == V4L2_SUBDEV_FORMAT_ACTIVE)
 			sh_css_input_set_resolution(ffmt->width, ffmt->height);
 		break;
@@ -255,6 +356,8 @@ static const struct v4l2_subdev_pad_ops isp_subdev_v4l2_pad_ops = {
 	 .enum_mbus_code = isp_subdev_enum_mbus_code,
 	 .get_fmt = isp_subdev_get_format,
 	 .set_fmt = isp_subdev_set_format,
+	 .get_selection = isp_subdev_get_selection,
+	 .set_selection = isp_subdev_set_selection,
 };
 
 /* V4L2 subdev operations */
