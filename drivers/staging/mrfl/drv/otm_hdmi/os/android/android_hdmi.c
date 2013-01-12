@@ -317,7 +317,6 @@ exit:
 			/* Delay ospm activity till hotplug has propogated
 			 * through the system
 			 */
-			drm_helper_hpd_irq_event(hdmi_priv->dev);
 			pr_debug("%s: Delaying any OSPM activity\n", __func__);
 			ospm_runtime_pm_forbid(hdmi_priv->dev);
 			schedule_delayed_work(&hdmi_priv->hdmi_delayed_wq, HDMI_HOTPLUG_DELAY);
@@ -2456,7 +2455,7 @@ void android_hdmi_driver_init(struct drm_device *dev,
 	connector->doublescan_allowed = false;
 
 	/* Disable polling */
-	connector->polled = DRM_CONNECTOR_POLL_HPD;
+	connector->polled = 0;
 	setiobase(dev_priv->vdc_reg);
 
 #ifdef OTM_HDMI_HDCP_ENABLE

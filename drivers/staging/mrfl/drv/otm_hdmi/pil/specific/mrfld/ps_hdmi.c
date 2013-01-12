@@ -69,12 +69,12 @@
 #include <linux/pci.h>
 #include <linux/delay.h>
 #include <linux/string.h>
-// #include <linux/ipc_device.h>
 #include "otm_hdmi.h"
 #include "ipil_hdmi.h"
 #include "ps_hdmi.h"
 #include <asm/intel_scu_ipc.h>
 #include <asm/intel_scu_pmic.h>
+
 
 /* Implementation of the Merrifield specific PCI driver for receiving
  * Hotplug and other device status signals.
@@ -83,7 +83,7 @@
  */
 
 /* Constants */
-#define PS_HDMI_HPD_PCI_DRIVER_NAME "hdmi"
+#define PS_HDMI_HPD_PCI_DRIVER_NAME "Merrifield HDMI HPD Driver"
 
 /* Globals */
 static hdmi_context_t *g_context;
@@ -91,6 +91,7 @@ static hdmi_context_t *g_context;
 #define PS_HDMI_MMIO_RESOURCE 0
 #define PS_VDC_OFFSET 0x00000000
 #define PS_VDC_SIZE 0x000080000
+#define PS_MSIC_PCI_DEVICE_ID 0x11A6
 #define PS_MSIC_HPD_GPIO_PIN 16
 /* HDMI_LS_EN GPIO pin is connected to Levelshifter's LS_OE pin */
 #define PS_MSIC_LS_EN_GPIO_PIN 177
@@ -101,8 +102,6 @@ static hdmi_context_t *g_context;
 #define PS_VCC330_ON				0x37
 */
 
-#define PS_LS_OE_PULL_UP	1
-#define PS_LS_OE_PULL_DOWN	0
 
 struct data_rate_divider_selector_list_t {
 	uint32_t target_data_rate;
@@ -135,6 +134,8 @@ static struct data_rate_divider_selector_list_t
 	/ sizeof(struct data_rate_divider_selector_list_t))
 
 static void __iomem *io_base;
+
+
 void setiobase(uint8_t *value)
 {
 	io_base = value;
@@ -200,9 +201,9 @@ static void __ps_gpio_configure_edid_read(void)
 	old_pin_value = new_pin_value;
 
 	if (new_pin_value == 0)
-		gpio_set_value(PS_MSIC_LS_EN_GPIO_PIN, PS_LS_OE_PULL_DOWN);
+		gpio_set_value(PS_MSIC_LS_EN_GPIO_PIN, 0);
 	else
-		gpio_set_value(PS_MSIC_LS_EN_GPIO_PIN, PS_LS_OE_PULL_UP);
+		gpio_set_value(PS_MSIC_LS_EN_GPIO_PIN, 1);
 
 	pr_debug("%s: CTP_HDMI_LS_OE pin = %d (%d)\n", __func__,
 		 gpio_get_value(PS_MSIC_LS_EN_GPIO_PIN), new_pin_value);
@@ -312,6 +313,8 @@ static void ps_hdmi_power_on_pipe(u32 msg_port, u32 msg_reg,
 	u32 ret;
 	int retry=0;
 
+	pr_debug("Entered %s\n", __func__);
+
 	ret = intel_mid_msgbus_read32(msg_port, msg_reg);
 
 	if ((ret & val_comp) == 0) {
@@ -331,16 +334,19 @@ static void ps_hdmi_power_on_pipe(u32 msg_port, u32 msg_reg,
 			pr_err("%s: skip powering up MIO AFE\n", __func__);
 		}
 	}
+	pr_debug("Leaving %s\n", __func__);
 }
+
 bool ps_hdmi_power_rails_on(void)
 {
 	pr_debug("Entered %s\n", __func__);
-	ps_hdmi_power_on_pipe(0x4, 0x36, 0xc000000, 0xfffffff3); 
+	ps_hdmi_power_on_pipe(0x4, 0x36, 0xc000000, 0xfffffff3);
 		/* pipe B */
-	ps_hdmi_power_on_pipe(0x4, 0x3c, 0x3000000, 0xfffffffc); 
+	ps_hdmi_power_on_pipe(0x4, 0x3c, 0x3000000, 0xfffffffc);
 		/* HDMI */
 
 	intel_scu_ipc_iowrite8(0x7F, 0x31);
+	pr_debug("Leaving %s\n", __func__);
 	return true;
 }
 
@@ -374,13 +380,10 @@ bool ps_hdmi_get_cable_status(void *context)
 	 */
 	__ps_gpio_configure_edid_read();
 
-	if (gpio_get_value(PS_MSIC_HPD_GPIO_PIN) == 0) {
-		pr_err("%s: no hdmi cable connected\n", __func__);
+	if (gpio_get_value(PS_MSIC_HPD_GPIO_PIN) == 0)
 		return false;
-	}
-	else {
+	else
 		return true;
-		}
 }
 
 /**
@@ -417,8 +420,9 @@ static int ps_hdmi_hpd_resume(struct device *dev)
 	return 0;
 }
 
-/* Probe function */
-static int __devinit ps_hdmi_hpd_probe(struct platform_device *pdev)
+/* PCI probe function */
+static int __devinit ps_hdmi_hpd_probe(struct pci_dev *pdev,
+				       const struct pci_device_id *id)
 {
 	int result = 0;
 	hdmi_context_t *ctx = g_context;
@@ -427,6 +431,23 @@ static int __devinit ps_hdmi_hpd_probe(struct platform_device *pdev)
 		pr_err("%s: called with NULL device or context\n", __func__);
 		result = -EINVAL;
 		return result;
+	}
+
+	/* Verify probe is called for the intended device */
+	if (pdev->device != PS_MSIC_PCI_DEVICE_ID) {
+		pr_err("%s: called for wrong device id = 0x%x\n", __func__,
+		       pdev->device);
+		result = -EINVAL;
+		goto exit;
+	}
+
+	pr_debug("pci_enable_device for 0x%x\n",
+					PS_MSIC_PCI_DEVICE_ID);
+	result = pci_enable_device(pdev);
+	if (result) {
+		pr_err("%s: Failed to enable MSIC PCI device = 0x%x\n",
+		       __func__, PS_MSIC_PCI_DEVICE_ID);
+		goto exit;
 	}
 
 	/* Perform the GPIO configuration */
@@ -471,37 +492,41 @@ static int __devinit ps_hdmi_hpd_probe(struct platform_device *pdev)
 exit3:
 	gpio_free(PS_MSIC_HPD_GPIO_PIN);
 exit2:
-
+	pci_disable_device(pdev);
+exit:
+	pci_dev_put(pdev);
 	return result;
 }
+
+/* PCI driver related structures */
+static DEFINE_PCI_DEVICE_TABLE(ps_hdmi_hpd_pci_id) = {
+	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, PS_MSIC_PCI_DEVICE_ID) },
+	{ 0 }
+};
 
 static const struct dev_pm_ops ps_hdmi_hpd_pm_ops = {
 	.suspend = ps_hdmi_hpd_suspend,
 	.resume = ps_hdmi_hpd_resume,
 };
 
-static struct platform_driver ps_hdmi_hpd_driver = {
+static struct pci_driver ps_hdmi_hpd_driver = {
+	.name = PS_HDMI_HPD_PCI_DRIVER_NAME,
+	.id_table = ps_hdmi_hpd_pci_id,
 	.probe = ps_hdmi_hpd_probe,
-	.driver = {
-		.name = PS_HDMI_HPD_PCI_DRIVER_NAME,
-		.pm = &ps_hdmi_hpd_pm_ops,
-	},
+	.driver.pm = &ps_hdmi_hpd_pm_ops,
 };
 
-/* Platform Driver registration function */
+/* PCI Driver registration function */
 int ps_hdmi_hpd_register_driver(void)
 {
-	int ret;
-	pr_debug("%s: Registering Platform driver for HDMI HPD\n", __func__);
-	ret = platform_driver_register(&ps_hdmi_hpd_driver); 
-
-	return ret;
+	pr_debug("%s: Registering PCI driver for HDMI HPD\n", __func__);
+	return pci_register_driver(&ps_hdmi_hpd_driver);
 }
 
-/* Platform Driver Cleanup function */
+/* PCI Driver Cleanup function */
 int ps_hdmi_hpd_unregister_driver(void)
 {
-	platform_driver_unregister(&ps_hdmi_hpd_driver); 
+	pci_unregister_driver(&ps_hdmi_hpd_driver);
 	return 0;
 }
 
