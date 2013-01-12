@@ -3660,35 +3660,6 @@ static void atomisp_set_dis_envelop(struct atomisp_device *isp,
 	isp->params.css_update_params_needed = true;
 }
 
-static int atomisp_get_sensor_bin_factor(struct atomisp_device *isp)
-{
-	struct v4l2_control ctrl;
-	int hbin, vbin;
-	int ret;
-
-	memset(&ctrl, 0, sizeof(ctrl));
-
-	ctrl.id = V4L2_CID_BIN_FACTOR_HORZ;
-	ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera, core,
-			       g_ctrl, &ctrl);
-	hbin = ctrl.value;
-	ctrl.id = V4L2_CID_BIN_FACTOR_VERT;
-	ret |= v4l2_subdev_call(isp->inputs[isp->input_curr].camera, core,
-				g_ctrl, &ctrl);
-	vbin = ctrl.value;
-
-	/*
-	 * ISP needs to know binning factor from sensor.
-	 * In case horizontal and vertical sensor's binning factors
-	 * are different or sensor does not support binning factor CID,
-	 * ISP will apply default 0 value.
-	 */
-	if (ret || hbin != vbin)
-		hbin = 0;
-
-	return hbin;
-}
-
 static int atomisp_set_fmt_to_snr(struct atomisp_device *isp,
 			  struct v4l2_format *f, unsigned int pixelformat,
 			  unsigned int padding_w, unsigned int padding_h,
@@ -3733,8 +3704,6 @@ static int atomisp_set_fmt_to_snr(struct atomisp_device *isp,
 	atomisp_subdev_set_mfmt(&isp->isp_subdev.subdev, NULL,
 				V4L2_SUBDEV_FORMAT_ACTIVE,
 				ATOMISP_SUBDEV_PAD_SINK, &ffmt);
-
-	sh_css_input_set_binning_factor(atomisp_get_sensor_bin_factor(isp));
 
 	return 0;
 }
