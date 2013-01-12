@@ -43,8 +43,6 @@ enum sh_css_pipe_id atomisp_get_css_pipe_id(struct atomisp_device *isp);
 int atomisp_get_css_buf_type(struct atomisp_device *isp,
 			 struct atomisp_video_pipe *pipe);
 
-int is_pixelformat_raw(u32 pixelformat);
-
 extern const struct v4l2_file_operations atomisp_file_fops;
 
 extern const struct v4l2_ioctl_ops atomisp_ioctl_ops;
