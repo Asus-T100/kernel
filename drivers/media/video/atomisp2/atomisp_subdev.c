@@ -286,10 +286,41 @@ static int isp_subdev_set_selection(struct v4l2_subdev *sd,
 					    sel->target, &sel->r);
 }
 
+static int atomisp_get_sensor_bin_factor(struct atomisp_device *isp)
+{
+	struct v4l2_control ctrl;
+	int hbin, vbin;
+	int ret;
+
+	memset(&ctrl, 0, sizeof(ctrl));
+
+	ctrl.id = V4L2_CID_BIN_FACTOR_HORZ;
+	ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera, core,
+			       g_ctrl, &ctrl);
+	hbin = ctrl.value;
+	ctrl.id = V4L2_CID_BIN_FACTOR_VERT;
+	ret |= v4l2_subdev_call(isp->inputs[isp->input_curr].camera, core,
+				g_ctrl, &ctrl);
+	vbin = ctrl.value;
+
+	/*
+	 * ISP needs to know binning factor from sensor.
+	 * In case horizontal and vertical sensor's binning factors
+	 * are different or sensor does not support binning factor CID,
+	 * ISP will apply default 0 value.
+	 */
+	if (ret || hbin != vbin)
+		hbin = 0;
+
+	return hbin;
+}
+
 int atomisp_subdev_set_mfmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 			    uint32_t which, uint32_t pad,
 			    struct v4l2_mbus_framefmt *ffmt)
 {
+	struct atomisp_sub_device *isp_sd = v4l2_get_subdevdata(sd);
+	struct atomisp_device *isp = isp_sd->isp;
 	struct v4l2_mbus_framefmt *__ffmt =
 		atomisp_subdev_get_mfmt(sd, fh, which, pad);
 
@@ -300,8 +331,12 @@ int atomisp_subdev_set_mfmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 		isp_subdev_propagate(sd, fh, which, pad,
 				     V4L2_SEL_TGT_CROP);
 
-		if (which == V4L2_SUBDEV_FORMAT_ACTIVE)
+		if (which == V4L2_SUBDEV_FORMAT_ACTIVE) {
 			sh_css_input_set_resolution(ffmt->width, ffmt->height);
+			sh_css_input_set_binning_factor(
+				atomisp_get_sensor_bin_factor(isp));
+		}
+
 		break;
 	}
 
