@@ -1364,7 +1364,7 @@ static u32 get_pixel_depth(u32 pixelformat)
 	}
 }
 
-int is_pixelformat_raw(u32 pixelformat)
+static int is_pixelformat_raw(u32 pixelformat)
 {
 	switch (pixelformat) {
 	case V4L2_PIX_FMT_SBGGR16:
@@ -1384,6 +1384,16 @@ int is_pixelformat_raw(u32 pixelformat)
 	default:
 		return 0;
 	}
+}
+
+int atomisp_is_mbuscode_raw(uint32_t code)
+{
+	const struct atomisp_format_bridge *b =
+		get_atomisp_format_bridge_from_mbus(code);
+
+	BUG_ON(!b);
+
+	return is_pixelformat_raw(b->pixelformat);
 }
 
 static int get_sh_input_format(u32 pixelformat)
