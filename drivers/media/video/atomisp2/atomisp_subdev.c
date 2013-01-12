@@ -324,10 +324,10 @@ int atomisp_subdev_set_mfmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 	struct v4l2_mbus_framefmt *__ffmt =
 		atomisp_subdev_get_mfmt(sd, fh, which, pad);
 
-	*__ffmt = *ffmt;
-
 	switch (pad) {
 	case ATOMISP_SUBDEV_PAD_SINK:
+		*__ffmt = *ffmt;
+
 		isp_subdev_propagate(sd, fh, which, pad,
 				     V4L2_SEL_TGT_CROP);
 
@@ -337,6 +337,11 @@ int atomisp_subdev_set_mfmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 				atomisp_get_sensor_bin_factor(isp));
 		}
 
+		break;
+	case ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE:
+	case ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW:
+	case ATOMISP_SUBDEV_PAD_SOURCE_VF:
+		__ffmt->code = ffmt->code;
 		break;
 	}
 
