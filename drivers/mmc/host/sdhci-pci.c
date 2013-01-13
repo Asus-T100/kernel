@@ -417,9 +417,10 @@ static int intel_mrfl_mmc_probe_slot(struct sdhci_pci_slot *slot)
 {
 	if ((PCI_FUNC(slot->chip->pdev->devfn) == 0) ||
 		(PCI_FUNC(slot->chip->pdev->devfn) == 1))
-		/* Fun 0 and 1 are eMMC - 8bit, nonremovable */
+		/* Fun 0 and 1 are eMMC - 8bit, nonremovable, 1.8V DDR */
 		slot->host->mmc->caps |= MMC_CAP_8_BIT_DATA |
-					MMC_CAP_NONREMOVABLE;
+					MMC_CAP_NONREMOVABLE |
+					MMC_CAP_1_8V_DDR;
 
 #ifdef CONFIG_BOARD_MRFLD_VP
 	/*
@@ -446,7 +447,8 @@ static void intel_mrfl_mmc_remove_slot(struct sdhci_pci_slot *slot, int dead)
 
 static const struct sdhci_pci_fixes sdhci_intel_mrfl_mmc = {
 	.quirks		= SDHCI_QUIRK_NO_ENDATTR_IN_NOPDESC,
-	.quirks2	= SDHCI_QUIRK2_BROKEN_AUTO_CMD23,
+	.quirks2	= SDHCI_QUIRK2_BROKEN_AUTO_CMD23 |
+			SDHCI_QUIRK2_HIGH_SPEED_SET_LATE,
 	.probe		= intel_mrfl_mmc_probe,
 	.probe_slot	= intel_mrfl_mmc_probe_slot,
 	.remove_slot	= intel_mrfl_mmc_remove_slot,

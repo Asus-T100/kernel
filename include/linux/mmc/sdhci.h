@@ -99,6 +99,8 @@ struct sdhci_host {
 #define SDHCI_QUIRK2_BROKEN_AUTO_CMD23			(1<<3)
 /* BRCM voltage support: advertise 2.0v support and force using 1.8v instead */
 #define SDHCI_QUIRK_ADVERTISE_2V0_FORCE_1V8			(1<<4)
+/* HC Reg High Speed must be set later than HC2 Reg 1.8v Signaling Enable */
+#define SDHCI_QUIRK2_HIGH_SPEED_SET_LATE		(1<<5)
 
 	int irq;		/* Device IRQ */
 	void __iomem *ioaddr;	/* Mapped address */

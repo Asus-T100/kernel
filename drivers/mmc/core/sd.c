@@ -766,6 +766,9 @@ try_again:
 				retry = true;
 				goto try_again;
 			}
+		} else {
+			/* Switch 1.8V success. Change vdd accordingly */
+			host->ios.vdd = ilog2(MMC_VDD_165_195);
 		}
 	}
 

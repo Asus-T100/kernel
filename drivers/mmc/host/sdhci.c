@@ -52,6 +52,8 @@ static void sdhci_finish_command(struct sdhci_host *);
 static int sdhci_execute_tuning(struct mmc_host *mmc);
 static void sdhci_tuning_timer(unsigned long data);
 static void sdhci_do_set_ios(struct sdhci_host *host, struct mmc_ios *ios);
+static int sdhci_do_start_signal_voltage_switch(struct sdhci_host *,
+						struct mmc_ios *, bool);
 
 #ifdef CONFIG_PM_RUNTIME
 static int sdhci_runtime_pm_get(struct sdhci_host *host);
@@ -1744,6 +1746,16 @@ static void sdhci_do_set_ios(struct sdhci_host *host, struct mmc_ios *ios)
 		clk &= ~SDHCI_CLOCK_CARD_EN;
 		sdhci_writew(host, clk, SDHCI_CLOCK_CONTROL);
 
+		/*
+		 * Some SDHC Host controller has dummy value of 1.8V
+		 * Signaling Enable bit in Host Control 2 Register.
+		 * No need to set the 1.8V Signaling Enable bit for
+		 * those kind of SDHC Host Controller.
+		 */
+		if (!(host->quirks2 & SDHCI_QUIRK2_V2_0_SUPPORT_DDR50))
+			sdhci_do_start_signal_voltage_switch(host,
+						&host->mmc->ios, false);
+
 		if (host->ops->set_uhs_signaling)
 			host->ops->set_uhs_signaling(host, ios->timing);
 		else {
@@ -1762,6 +1774,18 @@ static void sdhci_do_set_ios(struct sdhci_host *host, struct mmc_ios *ios)
 				ctrl_2 |= SDHCI_CTRL_UHS_DDR50;
 			sdhci_writew(host, ctrl_2, SDHCI_HOST_CONTROL2);
 		}
+
+		/*
+		 * Some buggy SDHC Host Controller requires the
+		 * Host Control Register High Speed Enable bit
+		 * must be set after Host Control 2 Register
+		 * 1.8V Signaling Enable bit set.
+		 * Otherwise it will fail to work on High Speed.
+		 * So, here we just write the Host control Register
+		 * with the same value again to workaround the issue.
+		 */
+		if (host->quirks2 & SDHCI_QUIRK2_HIGH_SPEED_SET_LATE)
+			sdhci_writeb(host, ctrl, SDHCI_HOST_CONTROL);
 
 		/* Re-enable SD Clock */
 		clock = host->clock;
@@ -1897,7 +1921,7 @@ static void sdhci_enable_sdio_irq(struct mmc_host *mmc, int enable)
 }
 
 static int sdhci_do_start_signal_voltage_switch(struct sdhci_host *host,
-						struct mmc_ios *ios)
+					struct mmc_ios *ios, bool cmd11)
 {
 	u8 pwr;
 	u16 clk, ctrl;
@@ -1915,7 +1939,8 @@ static int sdhci_do_start_signal_voltage_switch(struct sdhci_host *host,
 	 * to 3.3V. If so, we change the voltage to 3.3V and return quickly.
 	 */
 	ctrl = sdhci_readw(host, SDHCI_HOST_CONTROL2);
-	if (ios->signal_voltage == MMC_SIGNAL_VOLTAGE_330) {
+	if ((ctrl & SDHCI_CTRL_VDD_180) &&
+		(ios->signal_voltage == MMC_SIGNAL_VOLTAGE_330)) {
 		/* Set 1.8V Signal Enable in the Host Control2 register to 0 */
 		ctrl &= ~SDHCI_CTRL_VDD_180;
 		sdhci_writew(host, ctrl, SDHCI_HOST_CONTROL2);
@@ -1932,8 +1957,14 @@ static int sdhci_do_start_signal_voltage_switch(struct sdhci_host *host,
 				"signalling voltage failed\n");
 			return -EIO;
 		}
-	} else if (!(ctrl & SDHCI_CTRL_VDD_180) &&
-		  (ios->signal_voltage == MMC_SIGNAL_VOLTAGE_180)) {
+	} else if (ios->signal_voltage == MMC_SIGNAL_VOLTAGE_180) {
+		if (!cmd11) {
+			/* Set 1.8V Signal Enable in the Host Control2 Reg */
+			ctrl |= SDHCI_CTRL_VDD_180;
+			sdhci_writew(host, ctrl, SDHCI_HOST_CONTROL2);
+			return 0;
+		}
+
 		/* Stop SDCLK */
 		clk = sdhci_readw(host, SDHCI_CLOCK_CONTROL);
 		clk &= ~SDHCI_CLOCK_CARD_EN;
@@ -2004,7 +2035,7 @@ static int sdhci_start_signal_voltage_switch(struct mmc_host *mmc,
 	if (host->version < SDHCI_SPEC_300)
 		return 0;
 	sdhci_runtime_pm_get(host);
-	err = sdhci_do_start_signal_voltage_switch(host, ios);
+	err = sdhci_do_start_signal_voltage_switch(host, ios, true);
 	sdhci_runtime_pm_put(host);
 	return err;
 }
@@ -3545,7 +3576,6 @@ int sdhci_runtime_resume_host(struct sdhci_host *host)
 	host->clock = 0;
 	sdhci_do_set_ios(host, &host->mmc->ios);
 
-	sdhci_do_start_signal_voltage_switch(host, &host->mmc->ios);
 	if (host_flags & SDHCI_PV_ENABLED)
 		sdhci_do_enable_preset_value(host, true);
 

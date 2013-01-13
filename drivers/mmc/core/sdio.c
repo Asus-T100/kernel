@@ -583,6 +583,14 @@ static int mmc_sdio_init_card(struct mmc_host *host, u32 ocr,
 	WARN_ON(!host->claimed);
 
 	/*
+	 * If the host supports one of UHS-I modes, request the card
+	 * to switch to 1.8V signaling level.
+	 */
+	if (host->caps & (MMC_CAP_UHS_SDR12 | MMC_CAP_UHS_SDR25 |
+	    MMC_CAP_UHS_SDR50 | MMC_CAP_UHS_SDR104 | MMC_CAP_UHS_DDR50))
+		host->ocr |= R4_18V_PRESENT;
+
+	/*
 	 * Inform the card of the voltage
 	 */
 	if (!powered_resume) {
@@ -650,6 +658,9 @@ static int mmc_sdio_init_card(struct mmc_host *host, u32 ocr,
 		if (err) {
 			ocr &= ~R4_18V_PRESENT;
 			host->ocr &= ~R4_18V_PRESENT;
+		} else {
+			/* Switch 1.8V success. Change vdd accordingly */
+			host->ios.vdd = ilog2(MMC_VDD_165_195);
 		}
 		err = 0;
 	} else {
