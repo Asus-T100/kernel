@@ -39,6 +39,10 @@
 #include <media/v4l2-device.h>
 #include "imx.h"
 
+/* FIXME: workround for MERR Pre-alpha due to ISP performance */
+static int vb = 3142, hb = 4572;
+module_param(vb, int, 0644);
+module_param(hb, int, 0644);
 static int
 imx_read_reg(struct i2c_client *client, u16 len, u16 reg, u16 *val)
 {
@@ -1008,7 +1012,7 @@ static int get_resolution_index(int w, int h)
 static int imx_try_mbus_fmt(struct v4l2_subdev *sd,
 				struct v4l2_mbus_framefmt *fmt)
 {
-	int idx;
+	int idx = 0;
 
 	if ((fmt->width > IMX_RES_WIDTH_MAX)
 		|| (fmt->height > IMX_RES_HEIGHT_MAX)) {
@@ -1031,7 +1035,6 @@ static int imx_try_mbus_fmt(struct v4l2_subdev *sd,
 	}
 
 	fmt->code = V4L2_MBUS_FMT_SRGGB10_1X10;
-
 
 	return 0;
 }
@@ -1072,12 +1075,51 @@ static int imx_s_mbus_fmt(struct v4l2_subdev *sd,
 		mutex_unlock(&dev->input_lock);
 		return -EINVAL;
 	}
+	/* FIXME: workround for MERR Pre-alpha due to ISP perf - start */
+	if (imx_res[dev->fmt_idx].height >= 3120) {
+		vb = 3400;
+		hb = 16000;
+	} else if (imx_res[dev->fmt_idx].height >= 1936) {
+		vb = 3400;
+		hb = 15000;
+	} else if (imx_res[dev->fmt_idx].height >= 1320) {
+		vb = 3300;
+		hb = 8000;
+	} else if (imx_res[dev->fmt_idx].height >= 720) {
+		vb = 3300;
+		hb = 6000;
+	} else {
+		vb = 3142;
+		hb = 4572;
+	}
+	ret = imx_write_reg(client, IMX_8BIT, 0x0340, (vb>>8)&0xFF);
+	if (ret) {
+		mutex_unlock(&dev->input_lock);
+		return -EINVAL;
+	}
+	ret = imx_write_reg(client, IMX_8BIT, 0x0341, vb&0xFF);
+	if (ret) {
+		mutex_unlock(&dev->input_lock);
+		return -EINVAL;
+	}
+	ret = imx_write_reg(client, IMX_8BIT, 0x0342, (hb>>8)&0xFF);
+	if (ret) {
+		mutex_unlock(&dev->input_lock);
+		return -EINVAL;
+	}
+	ret = imx_write_reg(client, IMX_8BIT, 0x0343, hb&0xFF);
+	if (ret) {
+		mutex_unlock(&dev->input_lock);
+		return -EINVAL;
+	}
+	/* FIXME: workround for MERR Pre-alpha due to ISP perf - end */
 
 	ret = imx_write_reg_array(client, imx_param_update);
 	if (ret) {
 		mutex_unlock(&dev->input_lock);
 		return -EINVAL;
 	}
+
 	dev->fps = imx_res[dev->fmt_idx].fps;
 	dev->pixels_per_line = imx_res[dev->fmt_idx].pixels_per_line;
 	dev->lines_per_frame = imx_res[dev->fmt_idx].lines_per_frame;
@@ -1094,6 +1136,7 @@ static int imx_s_mbus_fmt(struct v4l2_subdev *sd,
 
 	return 0;
 }
+
 
 static int imx_g_mbus_fmt(struct v4l2_subdev *sd,
 			      struct v4l2_mbus_framefmt *fmt)

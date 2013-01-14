@@ -673,13 +673,24 @@ static int ov9724_set_mbus_fmt(struct v4l2_subdev *sd,
 	}
 
 	ov9724_def_reg = ov9724_res[dev->fmt_idx].regs;
+	/* enable group hold */
+	ret = ov9724_write_reg_array(client, ov9724_param_hold);
+	if (ret) {
+		mutex_unlock(&dev->input_lock);
+		return ret;
+	}
 
 	ret = ov9724_write_reg_array(client, ov9724_def_reg);
 	if (ret) {
 		mutex_unlock(&dev->input_lock);
 		return ret;
-		}
-
+	}
+	/* disable group hold */
+	ret = ov9724_write_reg_array(client, ov9724_param_update);
+	if (ret) {
+		mutex_unlock(&dev->input_lock);
+		return ret;
+	}
 	dev->fps = ov9724_res[dev->fmt_idx].fps;
 	dev->pixels_per_line = ov9724_res[dev->fmt_idx].pixels_per_line;
 	dev->lines_per_frame = ov9724_res[dev->fmt_idx].lines_per_frame;
