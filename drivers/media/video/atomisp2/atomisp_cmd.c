@@ -3664,6 +3664,7 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 		     padding_h = pad_h;
 	bool res_overflow = false;
 	struct v4l2_mbus_framefmt isp_sink_fmt;
+	struct v4l2_mbus_framefmt isp_source_fmt;
 	struct v4l2_rect isp_sink_crop;
 	uint16_t source_pad;
 	int ret;
@@ -3763,18 +3764,28 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	f->fmt.pix.height = snr_fmt.fmt.pix.height;
 
 	/*
-	 * bypass mode is enabled when sensor output format is not raw
-	 * or isp output format is raw.
+	 * Set mbus codes for bypass mode configuration, but do
+	 * nothing else.
 	 */
-	if (isp->inputs[isp->input_curr].type != TEST_PATTERN &&
-		(!is_pixelformat_raw(snr_fmt.fmt.pix.pixelformat) ||
-			is_pixelformat_raw(f->fmt.pix.pixelformat))) {
-		isp->sw_contex.bypass = true;
-		padding_h = 0;
-		padding_w = 0;
-	} else {
-		isp->sw_contex.bypass = false;
-	}
+	atomisp_subdev_get_ffmt(&isp->isp_subdev.subdev, NULL,
+				V4L2_SUBDEV_FORMAT_ACTIVE,
+				ATOMISP_SUBDEV_PAD_SINK)->code =
+		get_atomisp_format_bridge(
+			snr_fmt.fmt.pix.pixelformat)->mbus_code;
+
+	isp_sink_fmt = *atomisp_subdev_get_ffmt(&isp->isp_subdev.subdev, NULL,
+					    V4L2_SUBDEV_FORMAT_ACTIVE,
+					    ATOMISP_SUBDEV_PAD_SINK);
+
+	memset(&isp_source_fmt, 0, sizeof(isp_source_fmt));
+	isp_source_fmt.code = get_atomisp_format_bridge(
+		f->fmt.pix.pixelformat)->mbus_code;
+	atomisp_subdev_set_ffmt(&isp->isp_subdev.subdev, NULL,
+				V4L2_SUBDEV_FORMAT_ACTIVE,
+				source_pad, &isp_source_fmt);
+
+	if (isp->sw_contex.bypass)
+		padding_w = 0, padding_h = 0;
 
 	/* construct resolution supported by isp */
 	if (res_overflow && !isp->params.continuous_vf) {
@@ -3790,10 +3801,6 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 
 	atomisp_get_dis_envelop(isp, f->fmt.pix.width, f->fmt.pix.height,
 				&dvs_env_w, &dvs_env_h);
-
-	isp_sink_fmt = *atomisp_subdev_get_ffmt(&isp->isp_subdev.subdev, NULL,
-						V4L2_SUBDEV_FORMAT_ACTIVE,
-						ATOMISP_SUBDEV_PAD_SINK);
 
 	/*
 	 * set format info to sensor

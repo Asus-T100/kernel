@@ -28,6 +28,7 @@
 
 #include <media/v4l2-event.h>
 #include <media/v4l2-mediabus.h>
+#include "atomisp_cmd.h"
 #include "atomisp_common.h"
 #include "atomisp_internal.h"
 
@@ -475,6 +476,18 @@ int atomisp_subdev_set_ffmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 		atomisp_pad_str[pad], ffmt->width, ffmt->height,
 		which == V4L2_SUBDEV_FORMAT_TRY ? "V4L2_SUBDEV_FORMAT_TRY"
 		: "V4L2_SUBDEV_FORMAT_ACTIVE");
+
+	/* Set bypass mode. One must only set raw or non-raw formats
+	 * on the source pads. */
+	if (pad != ATOMISP_SUBDEV_PAD_SINK
+	    && which == V4L2_SUBDEV_FORMAT_ACTIVE) {
+		struct v4l2_mbus_framefmt *f =
+			atomisp_subdev_get_ffmt(sd, fh, which,
+						ATOMISP_SUBDEV_PAD_SINK);
+
+		isp->sw_contex.bypass = !atomisp_is_mbuscode_raw(f->code)
+			|| atomisp_is_mbuscode_raw(ffmt->code);
+	}
 
 	switch (pad) {
 	case ATOMISP_SUBDEV_PAD_SINK:
