@@ -128,6 +128,7 @@ int is_panel_vid_or_cmd(struct drm_device *dev)
 		if (panel_list[i].p_type == dev_priv->panel_id)
 			return panel_list[i].encoder_type;
 	}
+	return -1;
 }
 
 void init_panel(struct drm_device* dev, int mipi_pipe, enum panel_type p_type)

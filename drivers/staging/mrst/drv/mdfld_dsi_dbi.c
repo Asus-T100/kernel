@@ -57,6 +57,10 @@ int mdfld_dsi_dbi_async_check_fifo_empty(struct drm_device *dev)
 		return 0;
 
 	sender = mdfld_dsi_encoder_get_pkg_sender(&dbi_output->base);
+	if (!sender) {
+		DRM_ERROR("Cannot get sender\m");
+		return -EINVAL;
+	}
 
 	err = mdfld_dsi_check_fifo_empty(sender);
 	return err;
@@ -98,6 +102,11 @@ void intel_dsi_dbi_update_fb(struct mdfld_dsi_dbi_output *dbi_output)
 	u32 dspsurf_reg = DSPASURF;
 
 	/* if mode setting on-going, back off */
+
+	if (!sender) {
+		DRM_ERROR("Cannot get sender\n");
+		return -EINVAL;
+	}
 
 	if ((dbi_output->mode_flags & MODE_SETTING_ON_GOING) ||
 	    (psb_crtc && (psb_crtc->mode_flags & MODE_SETTING_ON_GOING)) ||
@@ -218,6 +227,10 @@ static int mdfld_initia_panel_inside_fb(struct mdfld_dsi_config *dsi_config)
 	}
 	/*clean on-panel FB*/
 	/*re-initizlize the te_seq count & screen update*/
+	if (!sender) {
+		DRM_ERROR("Cannot get sender\n");
+		return -EINVAL;
+	}
 	atomic64_set(&sender->last_screen_update, 0);
 	atomic64_set(&sender->te_seq, 1);
 	/*for initia clear directly write out,
@@ -247,6 +260,10 @@ static int __dbi_enter_ulps_locked(struct mdfld_dsi_config *dsi_config)
 	struct drm_device *dev = dsi_config->dev;
 	struct mdfld_dsi_pkg_sender *sender
 			= mdfld_dsi_get_pkg_sender(dsi_config);
+	if (!sender) {
+		DRM_ERROR("Cannot get sender\n");
+		return -EINVAL;
+	}
 
 	ctx->device_ready = REG_READ(regs->device_ready_reg);
 
@@ -488,6 +505,10 @@ static int __dbi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 	int err = 0;
 	struct mdfld_dsi_pkg_sender *sender
 			= mdfld_dsi_get_pkg_sender(dsi_config);
+	if (!sender) {
+		DRM_ERROR("Cannot get sender\n");
+		return -EINVAL;
+	}
 
 	PSB_DEBUG_ENTRY("\n");
 
@@ -742,6 +763,10 @@ int mdfld_generic_dsi_dbi_set_power(struct drm_encoder *encoder, bool on)
 	dbi_output = MDFLD_DSI_DBI_OUTPUT(dsi_encoder);
 	dsi_config = mdfld_dsi_encoder_get_config(dsi_encoder);
 	dsi_connector = mdfld_dsi_encoder_get_connector(dsi_encoder);
+	if (!dsi_connector) {
+		DRM_ERROR("Invalid connector\n");
+		return -EINVAL;
+	}
 	p_funcs = dbi_output->p_funcs;
 	dev = encoder->dev;
 	dev_priv = dev->dev_private;

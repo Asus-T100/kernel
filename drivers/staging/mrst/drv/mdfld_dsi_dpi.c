@@ -140,6 +140,11 @@ static int __dpi_enter_ulps_locked(struct mdfld_dsi_config *dsi_config)
 		return -EINVAL;
 	}
 
+	if (!sender) {
+		DRM_ERROR("Cannot get sender\n");
+		return -EINVAL;
+	}
+
 	/*wait for all FIFOs empty*/
 	mdfld_dsi_wait_for_fifos_empty(sender);
 
@@ -388,8 +393,9 @@ reset_recovery:
 	if (dev_priv->pvr_screen_event_handler)
 		dev_priv->pvr_screen_event_handler(dev, 1);
 
-	if (p_funcs->set_brightness(dsi_config, ctx->lastbrightnesslevel))
-		DRM_ERROR("Failed to set panel brightness\n");
+	if (p_funcs && p_funcs->set_brightness)
+		if (p_funcs->set_brightness(dsi_config, ctx->lastbrightnesslevel))
+			DRM_ERROR("Failed to set panel brightness\n");
 
 power_on_err:
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
@@ -427,8 +433,9 @@ static int __dpi_panel_power_off(struct mdfld_dsi_config *dsi_config,
 		return -EAGAIN;
 
 	ctx->lastbrightnesslevel = psb_brightness;
-	if (p_funcs->set_brightness(dsi_config, 0))
-		DRM_ERROR("Failed to set panel brightness\n");
+	if (p_funcs && p_funcs->set_brightness)
+		if (p_funcs->set_brightness(dsi_config, 0))
+			DRM_ERROR("Failed to set panel brightness\n");
 
 	/*Notify PVR module that screen is off*/
 	if (dev_priv->pvr_screen_event_handler)
@@ -606,6 +613,10 @@ static int __mdfld_dsi_dpi_set_power(struct drm_encoder *encoder, bool on)
 	p_funcs = dpi_output->p_funcs;
 	pipe = mdfld_dsi_encoder_get_pipe(dsi_encoder);
 	dsi_connector = mdfld_dsi_encoder_get_connector(dsi_encoder);
+	if (!dsi_connector) {
+		DRM_ERROR("Invalid connector\n");
+		return -EINVAL;
+	}
 	dev = dsi_config->dev;
 	dev_priv = dev->dev_private;
 

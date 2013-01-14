@@ -554,6 +554,10 @@ static int psbfb_kms_off(struct drm_device *dev, int suspend)
 	struct drm_framebuffer *fb = 0;
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,35))
 	struct psb_framebuffer * psbfb = to_psb_fb(fb);
+	if (!psbfb) {
+		DRM_ERROR("Invalid psbfb\n");
+		return -EINVAL;
+	}
 #endif
 	DRM_DEBUG("psbfb_kms_off_ioctl\n");
 
@@ -598,6 +602,10 @@ static int psbfb_kms_on(struct drm_device *dev, int resume)
 	struct drm_framebuffer *fb = 0;
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,35))
 	struct psb_framebuffer * psbfb = to_psb_fb(fb);
+	if (!psbfb) {
+		DRM_ERROR("Invalid psbfb\n");
+		return -EINVAL;
+	}
 #endif
 
 	DRM_DEBUG("psbfb_kms_on_ioctl\n");
@@ -1027,9 +1035,14 @@ static int psbfb_create(struct psb_fbdev * fbdev, struct drm_fb_helper_surface_s
         if (!fb) {
                 DRM_ERROR("failed to allocate fb.\n");
                 ret = -ENOMEM;
-                goto out_err0;
+                goto out_err1;
         }
         psbfb = to_psb_fb(fb);
+	if (!psbfb) {
+		DRM_ERROR("Invalid psbfb\n");
+		ret = -EINVAL;
+		goto out_err1;
+	}
         psbfb->size = size;
 
 	info = framebuffer_alloc(sizeof(struct psb_fbdev), device);

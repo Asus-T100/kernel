@@ -2159,6 +2159,10 @@ static int android_hdmi_set_property(struct drm_connector *connector,
 	uint64_t curValue;
 
 	pr_debug("Entered %s\n", __func__);
+	if (!pPsbCrtc) {
+		pr_err("Invalid pointer\n");
+		goto set_prop_error;
+	}
 	if (!strcmp(property->name, "scaling mode") && pEncoder) {
 		pr_debug("Property: scaling mode\n");
 	} else if (!strcmp(property->name, "DPMS") && pEncoder) {
