@@ -4284,7 +4284,7 @@ int atomisp_offline_capture_configure(struct atomisp_device *isp,
 	if (isp->params.offline_parm.num_captures) {
 		if (isp->streaming == ATOMISP_DEVICE_STREAMING_DISABLED) {
 			int num_raw_frames =
-				max_t(int, ATOMISP_CONT_RAW_FRAMES,
+				min_t(int, ATOMISP_CONT_RAW_FRAMES,
 				      isp->params.offline_parm.num_captures
 				      + 3);
 
