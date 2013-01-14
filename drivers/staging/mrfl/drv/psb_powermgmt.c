@@ -2360,7 +2360,7 @@ void ospm_power_init(struct drm_device *dev)
 	gpDrmDevice = dev;
 
 	mutex_init(&g_ospm_mutex);
-	g_hw_power_status_mask = OSPM_GRAPHICS_ISLAND | OSPM_DISPLAY_ISLAND;;
+	g_hw_power_status_mask = OSPM_GRAPHICS_ISLAND | OSPM_DISPLAY_ISLAND;
 	atomic_set(&g_display_access_count, 0);
 	atomic_set(&g_graphics_access_count, 0);
 	atomic_set(&g_videoenc_access_count, 0);

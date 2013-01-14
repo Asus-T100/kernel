@@ -793,7 +793,7 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 					       OSPM_UHB_FORCE_POWER_ON))
 			return -EBUSY;
 	}
-/*
+
 	PSB_DEBUG_GENERAL("by pass soc 0 %x\n", PSB_RMSVDX32(0x630));
 	PSB_DEBUG_GENERAL("by pass soc 1 %x\n", PSB_RMSVDX32(0x640));
 
@@ -805,7 +805,6 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 		PSB_WVDC32(0xffffffff, 0x2898);
 	}
 
-*/
 	ret = mutex_lock_interruptible(&dev_priv->cmdbuf_mutex);
 	if (unlikely(ret != 0))
 		goto out_err0;
@@ -906,9 +905,11 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 			goto out_err4;
 		break;
 	case LNC_ENGINE_ENCODE:
-		ret = pnw_cmdbuf_video(file_priv, &context->validate_list,
-				       context->fence_types, arg,
-				       cmd_buffer, &fence_arg);
+		if (IS_MDFLD(dev))
+			ret = pnw_cmdbuf_video(
+				file_priv, &context->validate_list,
+				context->fence_types, arg,
+				cmd_buffer, &fence_arg);
 
 		if (IS_MRFLD(dev))
 			ret = tng_cmdbuf_video(
