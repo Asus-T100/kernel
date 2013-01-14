@@ -794,7 +794,7 @@ int mdfld_intel_crtc_set_color_conversion(struct drm_device *dev,
 		REG_WRITE(regs->dspcntr_reg, val);
 	}
 
-	mdfld_dbi_update_panel(dev, pipe);
+	mdfld_dsi_dsr_update_panel_fb(dsi_config);
 	/*allow entering dsr*/
 	mdfld_dsi_dsr_allow(dsi_config);
 
