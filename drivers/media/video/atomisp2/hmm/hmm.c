@@ -94,8 +94,6 @@ void *hmm_alloc(size_t bytes, enum hmm_bo_type type,
 	struct hmm_buffer_object *bo;
 	int ret;
 
-	mutex_lock(&bo_device.mm_lock);
-
 	/*Get page number from size*/
 	pgnr = size_to_pgnr_ceil(bytes);
 
@@ -133,8 +131,6 @@ void *hmm_alloc(size_t bytes, enum hmm_bo_type type,
 		v4l2_err(&atomisp_dev, "hmm_bo_bind failed.\n");
 		goto bind_err;
 	}
-	mutex_unlock(&bo_device.mm_lock);
-
 	return (void *)bo->vm_node->start;
 
 bind_err:
@@ -144,7 +140,6 @@ alloc_page_err:
 alloc_vm_err:
 	hmm_bo_unref(bo);
 create_bo_err:
-	mutex_unlock(&bo_device.mm_lock);
 	return NULL;
 }
 

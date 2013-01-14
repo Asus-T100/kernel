@@ -69,7 +69,6 @@ int hmm_bo_device_init(struct hmm_bo_device *bdev,
 	INIT_LIST_HEAD(&bdev->active_bo_list);
 
 	spin_lock_init(&bdev->list_lock);
-	mutex_init(&bdev->mm_lock);
 #ifdef CONFIG_ION
 	/*
 	 * TODO:
