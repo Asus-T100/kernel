@@ -231,23 +231,42 @@ struct v4l2_mbus_framefmt
 	return &isp_sd->fmt[pad].fmt;
 }
 
+static void isp_get_fmt_rect(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
+			     uint32_t which, struct v4l2_mbus_framefmt **ffmt,
+			     struct v4l2_rect *crop[ATOMISP_SUBDEV_PADS_NUM],
+			     struct v4l2_rect *comp[ATOMISP_SUBDEV_PADS_NUM])
+{
+	unsigned int i;
+
+	for (i = 0; i < ATOMISP_SUBDEV_PADS_NUM; i++) {
+		ffmt[i] = atomisp_subdev_get_ffmt(sd, fh, which, i);
+		crop[i] = atomisp_subdev_get_rect(sd, fh, which, i,
+						  V4L2_SEL_TGT_CROP);
+		comp[i] = atomisp_subdev_get_rect(sd, fh, which, i,
+						  V4L2_SEL_TGT_COMPOSE);
+	}
+}
+
 static void isp_subdev_propagate(struct v4l2_subdev *sd,
 				 struct v4l2_subdev_fh *fh,
 				 uint32_t which, uint32_t pad, uint32_t target)
 {
-	struct v4l2_mbus_framefmt *f =
-		atomisp_subdev_get_ffmt(sd, fh, which, pad);
-	struct v4l2_rect *crop =
-		atomisp_subdev_get_rect(sd, fh, which, pad, V4L2_SEL_TGT_CROP);
+	struct v4l2_mbus_framefmt *ffmt[ATOMISP_SUBDEV_PADS_NUM];
+	struct v4l2_rect *crop[ATOMISP_SUBDEV_PADS_NUM],
+		*comp[ATOMISP_SUBDEV_PADS_NUM];
+	struct v4l2_rect r;
+
+	isp_get_fmt_rect(sd, fh, which, ffmt, crop, comp);
+
+	memset(&r, 0, sizeof(r));
 
 	switch (pad) {
 	case ATOMISP_SUBDEV_PAD_SINK:
-		switch (target) {
-		case V4L2_SEL_TGT_CROP:
-			crop->width = f->width;
-			crop->height = f->height;
-			break;
-		}
+		/* Only crop target supported on sink pad. */
+		r.width = ffmt[pad]->width;
+		r.height = ffmt[pad]->height;
+
+		atomisp_subdev_set_selection(sd, fh, which, pad, target, &r);
 		break;
 	}
 }
@@ -271,9 +290,66 @@ int atomisp_subdev_set_selection(struct v4l2_subdev *sd,
 				 uint32_t pad, uint32_t target,
 				 struct v4l2_rect *r)
 {
-	struct v4l2_rect *__r = atomisp_subdev_get_rect(sd, fh, which, pad,
-							target);
-	*__r = *r;
+	struct atomisp_sub_device *isp_sd = v4l2_get_subdevdata(sd);
+	struct atomisp_device *isp = isp_sd->isp;
+	struct v4l2_mbus_framefmt *ffmt[ATOMISP_SUBDEV_PADS_NUM];
+	struct v4l2_rect *crop[ATOMISP_SUBDEV_PADS_NUM],
+		*comp[ATOMISP_SUBDEV_PADS_NUM];
+
+	isp_get_fmt_rect(sd, fh, which, ffmt, crop, comp);
+
+	switch (pad) {
+	case ATOMISP_SUBDEV_PAD_SINK: {
+		/* Only crop target supported on sink pad. */
+		unsigned int dvs_w, dvs_h;
+
+		crop[pad]->width = ffmt[pad]->width;
+		crop[pad]->height = ffmt[pad]->height;
+
+		if (!isp->sw_contex.bypass && crop[pad]->width
+		    && crop[pad]->height)
+			crop[pad]->width -= pad_w, crop[pad]->height -= pad_h;
+
+		/* if subdev type is SOC camera,we do not need to set DVS */
+		if (isp->inputs[isp->input_curr].type == SOC_CAMERA)
+			isp->params.video_dis_en = 0;
+
+		if (isp->params.video_dis_en &&
+		    isp->sw_contex.run_mode == CI_MODE_VIDEO) {
+			/* This resolution contains 20 % of DVS slack
+			 * (of the desired captured image before
+			 * scaling, or 1 / 6 of what we get from the
+			 * sensor) in both width and height. Remove
+			 * it. */
+			crop[pad]->width = roundup(crop[pad]->width * 5 / 6,
+						   ATOM_ISP_STEP_WIDTH);
+			crop[pad]->height = roundup(crop[pad]->height * 5 / 6,
+						    ATOM_ISP_STEP_HEIGHT);
+		}
+
+		crop[pad]->width = min(crop[pad]->width, r->width);
+		crop[pad]->height = min(crop[pad]->height, r->height);
+
+		if (which == V4L2_SUBDEV_FORMAT_TRY)
+			break;
+
+		if (isp->params.video_dis_en &&
+		    isp->sw_contex.run_mode == CI_MODE_VIDEO) {
+			dvs_w = rounddown(crop[pad]->width / 5,
+					  ATOM_ISP_STEP_WIDTH);
+			dvs_h = rounddown(crop[pad]->height / 5,
+					  ATOM_ISP_STEP_HEIGHT);
+		} else {
+			dvs_w = dvs_h = 0;
+		}
+
+		sh_css_video_set_dis_envelope(dvs_w, dvs_h);
+
+		break;
+	}
+	}
+
+	*r = *atomisp_subdev_get_rect(sd, fh, which, pad, target);
 
 	return 0;
 }

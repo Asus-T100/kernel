@@ -3602,7 +3602,7 @@ static int atomisp_get_effective_resolution(struct atomisp_device *isp,
 	return 0;
 }
 
-static void atomisp_set_dis_envelop(struct atomisp_device *isp,
+static void atomisp_get_dis_envelop(struct atomisp_device *isp,
 			    unsigned int width, unsigned int height,
 			    unsigned int *dvs_env_w,
 			    unsigned int *dvs_env_h)
@@ -3622,10 +3622,6 @@ static void atomisp_set_dis_envelop(struct atomisp_device *isp,
 		*dvs_env_h = height / 5;
 		*dvs_env_w = *dvs_env_w - *dvs_env_w % ATOM_ISP_STEP_WIDTH;
 		*dvs_env_h = *dvs_env_h - *dvs_env_h % ATOM_ISP_STEP_HEIGHT;
-		sh_css_video_set_dis_envelope(*dvs_env_w, *dvs_env_h);
-	} else {
-		/* if DVS gets disabled, make sure it's indeed turned off */
-		sh_css_video_set_dis_envelope(0, 0);
 	}
 
 	isp->params.dis_proj_data_valid = false;
@@ -3846,8 +3842,7 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 				ATOM_ISP_MAX_HEIGHT), ATOM_ISP_STEP_HEIGHT);
 	}
 
-	/* set dis envelop if video and dis are enabled */
-	atomisp_set_dis_envelop(isp, f->fmt.pix.width, f->fmt.pix.height,
+	atomisp_get_dis_envelop(isp, f->fmt.pix.width, f->fmt.pix.height,
 				&dvs_env_w, &dvs_env_h);
 
 	isp_sink_fmt = *atomisp_subdev_get_ffmt(&isp->isp_subdev.subdev, NULL,

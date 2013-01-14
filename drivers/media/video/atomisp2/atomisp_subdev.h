@@ -125,6 +125,10 @@ struct atomisp_sub_device {
 struct v4l2_mbus_framefmt
 *atomisp_subdev_get_ffmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 			 uint32_t which, uint32_t pad);
+int atomisp_subdev_set_selection(struct v4l2_subdev *sd,
+				 struct v4l2_subdev_fh *fh, uint32_t which,
+				 uint32_t pad, uint32_t target,
+				 struct v4l2_rect *r);
 /* Actually set the format */
 int atomisp_subdev_set_ffmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 			    uint32_t which, uint32_t pad,
