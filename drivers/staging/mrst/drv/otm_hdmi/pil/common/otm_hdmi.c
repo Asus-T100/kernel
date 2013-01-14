@@ -1165,7 +1165,8 @@ static otm_hdmi_ret_t __pd_attr_declare(otm_hdmi_attribute_t *table,
 	/* Buffer sizes in 'otm_hdmi_attribute_t table' struct are
 	 * [OTM_HDMI_MAX_STRING_LENGTH + 1].
 	 */
-	strsiz = strlen(name);
+	if (name)
+		strsiz = strlen(name);
 	if ((name != NULL) && (strsiz <= OTM_HDMI_MAX_STRING_LENGTH))
 		strncpy(table[id].name, name, OTM_HDMI_MAX_STRING_LENGTH);
 	else
@@ -1186,7 +1187,8 @@ static otm_hdmi_ret_t __pd_attr_declare(otm_hdmi_attribute_t *table,
 		table[id].content._bool.value_default = (bool) value;
 		break;
 	case OTM_HDMI_ATTR_TYPE_STRING:
-		strsiz = strlen(value);
+		if (value)
+			strsiz = strlen(value);
 		if ((value != NULL) && strsiz <= OTM_HDMI_MAX_STRING_LENGTH)
 			strncpy(table[id].content.string.value,
 				(char *) value, OTM_HDMI_MAX_STRING_LENGTH);

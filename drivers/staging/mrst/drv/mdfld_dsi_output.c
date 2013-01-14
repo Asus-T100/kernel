@@ -439,11 +439,16 @@ static int mdfld_dsi_connector_get_modes(struct drm_connector * connector)
 	struct psb_intel_output * psb_output = to_psb_intel_output(connector);
 	struct mdfld_dsi_connector * dsi_connector = MDFLD_DSI_CONNECTOR(psb_output);
 	struct mdfld_dsi_config * dsi_config = mdfld_dsi_get_config(dsi_connector);
-	struct drm_display_mode * fixed_mode = dsi_config->fixed_mode;
+	struct drm_display_mode * fixed_mode = NULL;
 	struct drm_display_mode * dup_mode = NULL;
 	struct drm_device * dev = connector->dev;
 	
 	PSB_DEBUG_ENTRY("\n");
+	if (!dsi_config) {
+		DRM_ERROR("Invalid config\n");
+		return -EINVAL;
+	}
+	fixed_mode = dsi_config->fixed_mode;
 
 	connector->display_info.min_vfreq = 0;
 	connector->display_info.max_vfreq = 200;
@@ -468,7 +473,13 @@ static int mdfld_dsi_connector_mode_valid(struct drm_connector * connector, stru
 	struct psb_intel_output * psb_output = to_psb_intel_output(connector);
 	struct mdfld_dsi_connector * dsi_connector = MDFLD_DSI_CONNECTOR(psb_output);
 	struct mdfld_dsi_config * dsi_config = mdfld_dsi_get_config(dsi_connector);
-	struct drm_display_mode * fixed_mode = dsi_config->fixed_mode;
+	struct drm_display_mode * fixed_mode = NULL;
+
+	if (!dsi_config) {
+		DRM_ERROR("Invalid config\n");
+		return -EINVAL;
+	}
+	fixed_mode = dsi_config->fixed_mode;
 
 	PSB_DEBUG_ENTRY("mode %p, fixed mode %p\n", mode, fixed_mode);
 
@@ -542,6 +553,10 @@ static struct drm_encoder * mdfld_dsi_connector_best_encoder(struct drm_connecto
 	struct mdfld_dsi_connector * dsi_connector = MDFLD_DSI_CONNECTOR(psb_output);
 	struct mdfld_dsi_config * dsi_config = mdfld_dsi_get_config(dsi_connector);
 	struct mdfld_dsi_encoder * encoder = NULL;
+	if (!dsi_config) {
+		DRM_ERROR("Invalid config\n");
+		return -EINVAL;
+	}
 	
 	PSB_DEBUG_ENTRY("config type %d\n", dsi_config->type);
 	
@@ -828,7 +843,7 @@ int mdfld_dsi_output_init(struct drm_device *dev,
 	struct psb_intel_output * psb_output;
 	struct drm_connector * connector;
 	struct mdfld_dsi_encoder * encoder;
-	struct drm_psb_private * dev_priv = dev->dev_private;
+	struct drm_psb_private * dev_priv;
 	struct panel_info dsi_panel_info;
 	u32 width_mm, height_mm;
 
@@ -838,6 +853,7 @@ int mdfld_dsi_output_init(struct drm_device *dev,
 		DRM_ERROR("Invalid parameter\n");
 		return -EIO;
 	}
+	dev_priv = dev->dev_private;
 	
 	/*create a new connetor*/
 	dsi_connector = kzalloc(sizeof(struct mdfld_dsi_connector), GFP_KERNEL);

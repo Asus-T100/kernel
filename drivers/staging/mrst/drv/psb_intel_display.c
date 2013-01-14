@@ -1555,6 +1555,10 @@ mdfldFindBestPLL(struct drm_crtc *crtc, int target, int refclk,
 	int vco_clock;
 
 	memset(best_clock, 0, sizeof(*best_clock));
+	if (!limit) {
+		DRM_ERROR("Invalid limit\n");
+		return false;
+	}
 
 	PSB_DEBUG_ENTRY("%s: target = %d, m = [%d, %d], p = [%d, %d].\n",
 			__func__, target, limit->m.min, limit->m.max,
@@ -1858,7 +1862,7 @@ static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 	struct psb_intel_crtc *psb_intel_crtc = to_psb_intel_crtc(crtc);
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *)dev->dev_private;
-	struct mdfld_dsi_config *dsi_config;
+	struct mdfld_dsi_config *dsi_config = NULL;
 	int pipe = psb_intel_crtc->pipe;
 
 	PSB_DEBUG_ENTRY("pipe = 0x%x\n", pipe);

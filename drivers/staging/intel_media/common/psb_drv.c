@@ -664,11 +664,12 @@ static void psb_lastclose(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *) dev->dev_private;
-	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
+	struct msvdx_private *msvdx_priv = NULL;
 
 	if (!dev_priv)
 		return;
 
+	msvdx_priv = dev_priv->msvdx_private;
 	if (msvdx_priv) {
 		mutex_lock(&msvdx_priv->msvdx_mutex);
 		if (dev_priv->decode_context.buffers) {
@@ -894,6 +895,11 @@ bool mid_get_pci_revID(struct drm_psb_private *dev_priv)
 	uint32_t platform_rev_id = 0;
 	struct pci_dev *pci_gfx_root = pci_get_bus_and_slot(0, PCI_DEVFN(2, 0));
 
+	if (!pci_gfx_root) {
+		DRM_ERROR("Invalid root\n");
+		return false;
+	}
+
 	/*get the revison ID, B0:D2:F0;0x08 */
 	pci_read_config_dword(pci_gfx_root, 0x08, &platform_rev_id);
 	dev_priv->platform_rev_id = (uint8_t) platform_rev_id;
@@ -918,6 +924,11 @@ bool intel_mid_get_vbt_data(struct drm_psb_private *dev_priv)
 	int ret = 0;
 
 	PSB_DEBUG_ENTRY("\n");
+
+	if (!pci_gfx_root) {
+		DRM_ERROR("Invalid root\n");
+		return false;
+	}
 
 	/*get the address of the platform config vbt, B0:D2:F0;0xFC */
 	pci_read_config_dword(pci_gfx_root, 0xFC, &platform_config_address);
@@ -969,6 +980,11 @@ bool intel_mid_get_vbt_data(struct drm_psb_private *dev_priv)
 		panel_desc = (u8 *)pVBT->panel_descs +
 			(primary_panel * GCT_R11_DISPLAY_DESC_SIZE);
 
+		if (!panel_desc) {
+			DRM_ERROR("Invalid desc\n");
+			return false;
+		}
+
 		strncpy(panel_name, panel_desc, 16);
 
 		mipi_mode =
@@ -982,6 +998,11 @@ bool intel_mid_get_vbt_data(struct drm_psb_private *dev_priv)
 				GCT_R20_DISPLAY_DESC_SIZE * number_desc);
 		panel_desc = (u8 *)pVBT->panel_descs +
 			(primary_panel * GCT_R20_DISPLAY_DESC_SIZE);
+
+		if (!panel_desc) {
+			DRM_ERROR("Invalid desc\n");
+			return false;
+		}
 
 		strncpy(panel_name, panel_desc, 16);
 
@@ -1952,6 +1973,10 @@ static int psb_disp_ioctl(struct drm_device *dev, void *data,
 				DRM_MODE_OBJECT_FB);
 			fb = obj_to_fb(obj);
 			psbfb = to_psb_fb(fb);
+			if (!psbfb) {
+				ret = -EINVAL;
+				goto exit;
+			}
 			dev_priv->addr_array[i] = psbfb->offset;
 			/* DRM_INFO("adding id:%d to psb flip chain \n",
 				(uint32_t)dev_priv->flip_array[i]); */
@@ -3941,6 +3966,10 @@ static int psb_panel_register_write(struct file *file, const char *buffer,
 	if (op == 's' && pnum <= GENERIC_READ_FIFO_SIZE_MAX) {
 		struct mdfld_dsi_pkg_sender *sender =
 				 mdfld_dsi_get_pkg_sender(dsi_config);
+		if (!sender) {
+			DRM_ERROR("Invalid sender\n");
+			return -EINVAL;
+		}
 		pdata = kmalloc(sizeof(u8)*pnum, GFP_KERNEL);
 		if (!pdata) {
 			DRM_ERROR("No memory for long_pkg data\n");
@@ -4285,7 +4314,8 @@ static int psb_proc_init(struct drm_minor *minor)
 	ent_hdmi_status = create_proc_entry(HDMI_PROC_ENTRY, 0644, minor->proc_root);
 	csc_setting = create_proc_entry(CSC_PROC_ENTRY, 0644, minor->proc_root);
 
-	if (!ent || !ent1 || !rtpm || !ent_display_status)
+	if (!ent || !ent1 || !rtpm || !ent_display_status || !ent_panel_status
+		 || !ent_hdmi_status || !csc_setting)
 		return -1;
 	ent->read_proc = psb_ospm_read;
 	ent->write_proc = psb_ospm_write;

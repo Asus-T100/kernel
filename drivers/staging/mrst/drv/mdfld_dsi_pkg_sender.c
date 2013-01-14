@@ -1253,12 +1253,13 @@ int mdfld_dsi_status_check(struct mdfld_dsi_pkg_sender *sender)
 }
 int mdfld_dsi_check_fifo_empty(struct mdfld_dsi_pkg_sender *sender)
 {
-	struct drm_device *dev = sender->dev;
+	struct drm_device *dev = NULL;
 
 	if (!sender) {
 		DRM_ERROR("Invalid parameter\n");
 		return -EINVAL;
 	}
+	dev = sender->dev;
 
 	if (!sender->dbi_pkg_support) {
 		DRM_ERROR("No DBI pkg sending on this sender\n");
@@ -1273,17 +1274,28 @@ int mdfld_dsi_send_dcs(struct mdfld_dsi_pkg_sender * sender,
 			u8 dcs, u8 * param, u32 param_num, u8 data_src,
 			int delay)
 {
-	u32 cb_phy = sender->dbi_cb_phy;
-	struct drm_device *dev = sender->dev;
-	struct drm_psb_private *dev_priv = dev->dev_private;
+	u32 cb_phy;
+	struct drm_device *dev = NULL;
+	struct drm_psb_private *dev_priv = NULL;
 	u32 index = 0;
-	u8 *cb = (u8 *)sender->dbi_cb_addr;
+	u8 *cb = NULL;
 	int retry;
 	u8 *dst = NULL;
 	u8 *pSendparam = NULL;
 	int err = 0;
 
-	if (!sender || !dev_priv) {
+	if (!sender) {
+		DRM_ERROR("Invalid parameter\n");
+		return -EINVAL;
+	}
+
+	cb_phy = sender->dbi_cb_phy;
+	dev = sender->dev;
+	cb = (u8 *)sender->dbi_cb_addr;
+
+	if (dev)
+		dev_priv = dev->dev_private;
+	if (!dev_priv) {
 		DRM_ERROR("Invalid parameter\n");
 		return -EINVAL;
 	}
@@ -1588,19 +1600,22 @@ int mdfld_dsi_pkg_sender_init(struct mdfld_dsi_connector * dsi_connector, int pi
 	int ret;
 	struct mdfld_dsi_pkg_sender * pkg_sender;
 	struct mdfld_dsi_config * dsi_config = mdfld_dsi_get_config(dsi_connector);
-	struct drm_device * dev = dsi_config->dev;
-	struct drm_psb_private * dev_priv = dev->dev_private;
-	struct psb_gtt * pg = dev_priv->pg;
+	struct drm_device * dev = NULL;
+	struct drm_psb_private * dev_priv = NULL;
+	struct psb_gtt * pg = NULL;
 	int i;
 	struct mdfld_dsi_pkg * pkg, * tmp;
 
 	PSB_DEBUG_ENTRY("\n");
 
-	if(!dsi_connector) {
+	if(!dsi_connector || !dsi_config) {
 		DRM_ERROR("Invalid parameter\n");
 		return -EINVAL;
 	}
 
+	dev = dsi_config->dev;
+	dev_priv = dev->dev_private;
+	pg = dev_priv->pg;
 	pkg_sender = dsi_connector->pkg_sender;
 
 	if(!pkg_sender || IS_ERR(pkg_sender)) {
