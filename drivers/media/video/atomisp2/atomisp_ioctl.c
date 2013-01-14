@@ -1491,8 +1491,15 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 	 */
 	if (isp->sw_contex.run_mode != CI_MODE_VIDEO &&
 	    isp->params.continuous_vf &&
-	    pipe->pipe_type != ATOMISP_PIPE_PREVIEW)
+	    pipe->pipe_type != ATOMISP_PIPE_PREVIEW) {
+
+		/* stop continuous still capture if needed */
+		if (pipe->pipe_type == ATOMISP_PIPE_CAPTURE &&
+		    isp->params.offline_parm.num_captures == -1)
+			sh_css_offline_capture_configure(0, 0, 0);
+
 		return videobuf_streamoff(&pipe->capq);
+	}
 
 	if (!pipe->capq.streaming)
 		return 0;
