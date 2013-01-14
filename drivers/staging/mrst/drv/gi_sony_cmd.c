@@ -221,7 +221,53 @@ mdfld_gi_sony_dsi_controller_init(struct mdfld_dsi_config *dsi_config)
 {
 	struct mdfld_dsi_hw_context *hw_ctx =
 		&dsi_config->dsi_hw_context;
+	struct drm_device *dev = dsi_config->dev;
 
+	struct csc_setting csc = {	.pipe = 0,
+					.type = CSC_REG_SETTING,
+					.enable_state = true,
+					.data_len = CSC_REG_COUNT,
+					.data.csc_reg_data = {
+						0xF4A0474, 0x41, 0x3A20FF7, 0x66, 0xFBD001F, 0x423}
+				};
+	struct gamma_setting gamma = {	.pipe = 0,
+					.type = GAMMA_REG_SETTING,
+					.enable_state = true,
+					.data_len = GAMMA_10_BIT_TABLE_COUNT,
+					.gamma_tableX100 = {
+						0x000000, 0x020202, 0x030403, 0x050505,
+						0x070707, 0x080909, 0x0A0B0B, 0x0C0D0D,
+						0x0E0F0F, 0x101110, 0x121212, 0x131414,
+						0x151616, 0x171818, 0x191A1A, 0x1B1C1C,
+						0x1D1E1E, 0x1F2020, 0x212222, 0x222424,
+						0x242626, 0x262828, 0x282A29, 0x2A2C2B,
+						0x2C2D2D, 0x2E2F2F, 0x303131, 0x323333,
+						0x343535, 0x363737, 0x383939, 0x3A3B3B,
+						0x3C3D3D, 0x3D3F3F, 0x3F4141, 0x414343,
+						0x434545, 0x454747, 0x474949, 0x494B4B,
+						0x4B4D4D, 0x4D4F4F, 0x4F5151, 0x515353,
+						0x535555, 0x555757, 0x575959, 0x595B5B,
+						0x5B5D5D, 0x5D5F5F, 0x5F6161, 0x616363,
+						0x636565, 0x656767, 0x676969, 0x696B6B,
+						0x6B6D6D, 0x6D6F6F, 0x6F7171, 0x717373,
+						0x737575, 0x757777, 0x777979, 0x797B7B,
+						0x7B7D7D, 0x7D7F7F, 0x7F8181, 0x818383,
+						0x838585, 0x858787, 0x878989, 0x898B8B,
+						0x8B8D8D, 0x8D8F8F, 0x8F9191, 0x929393,
+						0x949595, 0x969797, 0x989999, 0x9A9B9B,
+						0x9C9D9D, 0x9E9F9F, 0xA0A1A1, 0xA2A3A3,
+						0xA4A5A5, 0xA6A7A7, 0xA8A9A9, 0xAAABAB,
+						0xACADAD, 0xAEAFAF, 0xB0B1B1, 0xB2B3B3,
+						0xB4B5B5, 0xB6B7B7, 0xB8BAB9, 0xBABCBB,
+						0xBDBEBE, 0xBFC0C0, 0xC1C2C2, 0xC3C4C4,
+						0xC5C6C6, 0xC7C8C8, 0xC9CACA, 0xCBCCCC,
+						0xCDCECE, 0xCFD0D0, 0xD1D2D2, 0xD3D4D4,
+						0xD5D6D6, 0xD7D8D8, 0xDADADA, 0xDCDCDC,
+						0xDEDEDE, 0xE0E0E0, 0xE2E2E2, 0xE4E4E4,
+						0xE6E6E6, 0xE8E8E8, 0xEAEAEA, 0xECEDED,
+						0xEEEFEF, 0xF0F1F1, 0xF2F3F3, 0xF5F5F5,
+						0xF7F7F7, 0xF9F9F9, 0xFBFBFB, 0xFDFDFD}
+					};
 	PSB_DEBUG_ENTRY("\n");
 
 	/* reconfig lane configuration */
@@ -233,6 +279,7 @@ mdfld_gi_sony_dsi_controller_init(struct mdfld_dsi_config *dsi_config)
 	 * MDFLD_DSI_DATA_LANE_4_0;
 	 */
 	dsi_config->lane_config = MDFLD_DSI_DATA_LANE_2_2;
+	dsi_config->enable_gamma_csc = ENABLE_GAMMA | ENABLE_CSC;
 	hw_ctx->pll_bypass_mode = 1;
 	/* This is for 400 mhz. Set it to 0 for 800mhz */
 	hw_ctx->cck_div = 1;
@@ -253,6 +300,18 @@ mdfld_gi_sony_dsi_controller_init(struct mdfld_dsi_config *dsi_config)
 	hw_ctx->mipi |= dsi_config->lane_config;
 	/*set up func_prg*/
 	hw_ctx->dsi_func_prg = (0xa000 | dsi_config->lane_count);
+
+	if (dsi_config->enable_gamma_csc & ENABLE_CSC) {
+		/* setting the tuned csc setting */
+		drm_psb_enable_color_conversion = 1;
+		mdfld_intel_crtc_set_color_conversion(dev, &csc);
+	}
+
+	if (dsi_config->enable_gamma_csc & ENABLE_GAMMA) {
+		/* setting the tuned gamma setting */
+		drm_psb_enable_gamma = 1;
+		mdfld_intel_crtc_set_gamma(dev, &gamma);
+	}
 }
 
 static

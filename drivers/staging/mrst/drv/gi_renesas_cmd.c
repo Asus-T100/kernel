@@ -166,11 +166,59 @@ gi_renesas_dsi_controller_init(struct mdfld_dsi_config *dsi_config)
 {
 	struct mdfld_dsi_hw_context *hw_ctx =
 		&dsi_config->dsi_hw_context;
+	struct drm_device *dev = dsi_config->dev;
+
+	struct csc_setting csc = {	.pipe = 0,
+					.type = CSC_REG_SETTING,
+					.enable_state = true,
+					.data_len = CSC_REG_COUNT,
+					.data.csc_reg_data = {
+						0xF510486, 0x27, 0x3F10FD0, 0x3E, 0x51000F, 0x39F}
+				};
+	struct gamma_setting gamma = {	.pipe = 0,
+					.type = GAMMA_REG_SETTING,
+					.enable_state = true,
+					.data_len = GAMMA_10_BIT_TABLE_COUNT,
+					.gamma_tableX100 = {
+						0x000000, 0x010101, 0x020202, 0x030303,
+						0x040404, 0x050505, 0x060606, 0x070807,
+						0x080908, 0x0A0B0A, 0x0B0C0B, 0x0D0D0D,
+						0x0E0F0E, 0x0F100F, 0x111211, 0x121312,
+						0x141514, 0x151715, 0x171817, 0x191A19,
+						0x1A1C1A, 0x1C1D1C, 0x1D1F1D, 0x1F211F,
+						0x212221, 0x222422, 0x242624, 0x262726,
+						0x272928, 0x292B29, 0x2B2D2B, 0x2D2F2D,
+						0x2E302F, 0x303230, 0x323432, 0x343634,
+						0x363836, 0x383A38, 0x393B39, 0x3B3D3B,
+						0x3D3F3D, 0x3F413F, 0x414341, 0x434543,
+						0x454745, 0x474947, 0x494B49, 0x4B4D4B,
+						0x4C4F4D, 0x4E514F, 0x505351, 0x525552,
+						0x545754, 0x565956, 0x585B58, 0x5A5D5A,
+						0x5C5F5D, 0x5E615F, 0x606361, 0x636563,
+						0x656765, 0x676967, 0x696B69, 0x6B6D6B,
+						0x6D6F6D, 0x6F716F, 0x717371, 0x737573,
+						0x757775, 0x777A78, 0x7A7C7A, 0x7C7E7C,
+						0x7E807E, 0x808280, 0x828482, 0x848684,
+						0x868887, 0x898B89, 0x8B8D8B, 0x8D8F8D,
+						0x8F918F, 0x919391, 0x949594, 0x969896,
+						0x989A98, 0x9A9C9A, 0x9D9E9D, 0x9FA09F,
+						0xA1A3A1, 0xA3A5A3, 0xA5A7A6, 0xA8A9A8,
+						0xAAACAA, 0xACAEAC, 0xAFB0AF, 0xB1B2B1,
+						0xB3B5B3, 0xB5B7B5, 0xB8B9B8, 0xBABBBA,
+						0xBCBEBC, 0xBFC0BF, 0xC1C2C1, 0xC3C5C3,
+						0xC6C7C6, 0xC8C9C8, 0xCACBCA, 0xCDCECD,
+						0xCFD0CF, 0xD1D2D1, 0xD4D5D4, 0xD6D7D6,
+						0xD8D9D8, 0xDBDCDB, 0xDDDEDD, 0xE0E0E0,
+						0xE2E3E2, 0xE4E5E4, 0xE7E7E7, 0xE9EAE9,
+						0xECECEC, 0xEEEEEE, 0xF0F1F0, 0xF3F3F3,
+						0xF5F5F5, 0xF8F8F8, 0xFAFAFA, 0xFDFDFD}
+					};
 
 	PSB_DEBUG_ENTRY("\n");
 
 	dsi_config->lane_count = 1;
 	dsi_config->lane_config = MDFLD_DSI_DATA_LANE_2_2;
+	dsi_config->enable_gamma_csc = ENABLE_GAMMA | ENABLE_CSC;
 	hw_ctx->pll_bypass_mode = 1;
 	hw_ctx->cck_div = 1;
 	hw_ctx->mipi_control = 0x00;
@@ -190,6 +238,18 @@ gi_renesas_dsi_controller_init(struct mdfld_dsi_config *dsi_config)
 	hw_ctx->mipi |= dsi_config->lane_config;
 	/*set up func_prg*/
 	hw_ctx->dsi_func_prg = (0xa000 | dsi_config->lane_count);
+
+	if (dsi_config->enable_gamma_csc & ENABLE_CSC) {
+		/* setting the tuned csc setting */
+		drm_psb_enable_color_conversion = 1;
+		mdfld_intel_crtc_set_color_conversion(dev, &csc);
+	}
+
+	if (dsi_config->enable_gamma_csc & ENABLE_GAMMA) {
+		/* setting the tuned gamma setting */
+		drm_psb_enable_gamma = 1;
+		mdfld_intel_crtc_set_gamma(dev, &gamma);
+	}
 }
 
 static
