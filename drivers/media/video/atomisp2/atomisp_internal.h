@@ -82,6 +82,11 @@
 #define ATOMISP_CSS_Q_DEPTH	3
 #define ATOMISP_CSS_EVENTS_MAX  16
 #define ATOMISP_CONT_RAW_FRAMES 4
+
+#define ATOMISP_DELAYED_INIT_NOT_QUEUED	0
+#define ATOMISP_DELAYED_INIT_QUEUED	1
+#define ATOMISP_DELAYED_INIT_DONE	2
+
 /*
  * Define how fast CPU should be able to serve ISP interrupts.
  * The bigger the value, the higher risk that the ISP is not
@@ -361,6 +366,10 @@ struct atomisp_device {
 	unsigned int streaming; /* Hold both mutex and lock to change this */
 
 	bool need_gfx_throttle;
+
+	struct workqueue_struct *delayed_init_workq;
+	unsigned int delayed_init;
+	struct work_struct delayed_init_work;
 };
 
 #define v4l2_dev_to_atomisp_device(dev) \

@@ -950,6 +950,17 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error,
 		atomisp_qbuffers_to_css(isp);
 }
 
+void atomisp_delayed_init_work(struct work_struct *work)
+{
+	struct atomisp_device *isp = container_of(work,
+						  struct atomisp_device,
+						  delayed_init_work);
+	sh_css_allocate_continuous_frames(false);
+	sh_css_update_continuous_frames();
+	isp->delayed_init = ATOMISP_DELAYED_INIT_DONE;
+}
+
+
 void atomisp_wdt_work(struct work_struct *work)
 {
 	struct atomisp_device *isp = container_of(work, struct atomisp_device,
@@ -1008,6 +1019,10 @@ void atomisp_wdt_work(struct work_struct *work)
 				SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF, false);
 #endif /* CONFIG_X86_MRFLD */
 
+		if (isp->delayed_init == ATOMISP_DELAYED_INIT_QUEUED) {
+			cancel_work_sync(&isp->delayed_init_work);
+			isp->delayed_init = ATOMISP_DELAYED_INIT_NOT_QUEUED;
+		}
 		css_pipe_id = atomisp_get_css_pipe_id(isp);
 		switch (css_pipe_id) {
 		case SH_CSS_PREVIEW_PIPELINE:
@@ -1066,6 +1081,13 @@ void atomisp_wdt_work(struct work_struct *work)
 					 "can't start streaming on sensor!\n");
 		}
 
+		if (isp->params.continuous_vf &&
+		    isp->sw_contex.run_mode != CI_MODE_VIDEO &&
+		    isp->delayed_init == ATOMISP_DELAYED_INIT_NOT_QUEUED) {
+			queue_work(isp->delayed_init_workq,
+				   &isp->delayed_init_work);
+			isp->delayed_init = ATOMISP_DELAYED_INIT_QUEUED;
+		}
 		/*
 		 * dequeueing buffers is not needed. CSS will recycle
 		 * buffers that it has.

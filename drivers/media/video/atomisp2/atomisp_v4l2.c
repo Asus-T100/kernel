@@ -1202,10 +1202,18 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 
 	isp->wdt_work_queue = alloc_workqueue(isp->v4l2_dev.name, 0, 1);
 	if (isp->wdt_work_queue == NULL) {
-		dev_err(&dev->dev, "Failed to initialize work queue\n");
-		goto work_queue_fail;
+		dev_err(&dev->dev, "Failed to initialize wdt work queue\n");
+		goto wdt_work_queue_fail;
 	}
 	INIT_WORK(&isp->wdt_work, atomisp_wdt_work);
+
+	isp->delayed_init_workq =
+		alloc_workqueue(isp->v4l2_dev.name, WQ_CPU_INTENSIVE, 1);
+	if (isp->delayed_init_workq == NULL) {
+		dev_err(&dev->dev, "Failed to initialize delayed init workq\n");
+		goto delayed_init_work_queue_fail;
+	}
+	INIT_WORK(&isp->delayed_init_work, atomisp_delayed_init_work);
 
 	pci_set_master(dev);
 	pci_set_drvdata(dev, isp);
@@ -1265,8 +1273,10 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	return 0;
 
 enable_msi_fail:
+	destroy_workqueue(isp->delayed_init_workq);
+delayed_init_work_queue_fail:
 	destroy_workqueue(isp->wdt_work_queue);
-work_queue_fail:
+wdt_work_queue_fail:
 	release_firmware(isp->firmware);
 load_fw_fail:
 	pci_dev_put(isp->pci_root);
