@@ -1355,6 +1355,8 @@ static int atomisp_streamon(struct file *file, void *fh,
 		if (isp->params.continuous_vf &&
 		    pipe->pipe_type == ATOMISP_PIPE_CAPTURE &&
 		    isp->sw_contex.run_mode != CI_MODE_VIDEO) {
+			if (isp->delayed_init != ATOMISP_DELAYED_INIT_DONE)
+				flush_work_sync(&isp->delayed_init_work);
 			ret = sh_css_offline_capture_configure(
 					isp->params.offline_parm.num_captures,
 					isp->params.offline_parm.skip_frames,
@@ -1395,6 +1397,12 @@ static int atomisp_streamon(struct file *file, void *fh,
 	if (ret) {
 		dev_err(isp->dev, "sh_css_start fails: %d\n", ret);
 		goto out;
+	}
+	if (isp->params.continuous_vf &&
+	    isp->sw_contex.run_mode != CI_MODE_VIDEO) {
+		queue_work(isp->delayed_init_workq,
+			   &isp->delayed_init_work);
+		isp->delayed_init = ATOMISP_DELAYED_INIT_QUEUED;
 	}
 
 	/* Make sure that update_isp_params is called at least once.*/
@@ -1523,6 +1531,10 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 		sh_css_enable_interrupt(SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF,
 					false);
 #endif /* CONFIG_X86_MRFLD */
+	if (isp->delayed_init == ATOMISP_DELAYED_INIT_QUEUED) {
+		cancel_work_sync(&isp->delayed_init_work);
+		isp->delayed_init = ATOMISP_DELAYED_INIT_NOT_QUEUED;
+	}
 
 	switch (atomisp_get_css_pipe_id(isp)) {
 	case SH_CSS_PREVIEW_PIPELINE:

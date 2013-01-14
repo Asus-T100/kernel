@@ -383,6 +383,7 @@ int atomisp_init_struct(struct atomisp_device *isp)
 	isp->sw_contex.file_input = 0;
 	isp->need_gfx_throttle = true;
 	isp->isp_fatal_error = false;
+	isp->delayed_init = ATOMISP_DELAYED_INIT_NOT_QUEUED;
 
 	/*
 	 * For Merrifield, frequency is scalable.

@@ -76,6 +76,7 @@ void atomisp_setup_flash(struct atomisp_device *isp);
 irqreturn_t atomisp_isr(int irq, void *dev);
 irqreturn_t atomisp_isr_thread(int irq, void *isp_ptr);
 int atomisp_get_frame_pgnr(const struct sh_css_frame *frame, u32 * p_pgnr);
+void atomisp_delayed_init_work(struct work_struct *work);
 
 /*
  * CSI-2 receiver configuration
