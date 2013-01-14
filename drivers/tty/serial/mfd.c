@@ -2522,6 +2522,7 @@ static int hsu_resume(struct device *dev)
 			if (up3->suspended && up3->running) {
 				up3->suspended = 0;
 				uart_resume_port(&serial_hsu_reg, &up3->port);
+				intel_mid_hsu_resume(up3->index);
 				schedule_work(&up3->qwork);
 			} else
 				up3->suspended = 0;
