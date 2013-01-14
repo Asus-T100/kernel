@@ -87,6 +87,9 @@ struct per_cpu_t {
 	u64 tsc;		  /* for recording the sampling time */
 	u64 active_tsc;		  /* active tsc recorded by this cpu */
 	u64 total_active_tsc;	  /* total core active tsc */
+#ifdef CONFIG_COUNT_GPU_BLOCKING_TIME
+	u64 prev_gpu_block_time;
+#endif
 };
 
 DEFINE_PER_CPU(struct per_cpu_t, pcpu_counts);
@@ -102,6 +105,11 @@ struct per_physical_core_t {
 	u64 busy_mask;		/*show the status of siblings in physical core*/
 	u64 active_start_tsc;	/*the active start time of the physical core*/
 	u64 accum_flag;		/*indicate the active period has been counted*/
+#ifdef CONFIG_COUNT_GPU_BLOCKING_TIME
+	u64 gpu_block_time;
+	u64 gpu_block_start_tsc;
+	atomic_t wait_for_gpu_count;
+#endif
 };
 
 DEFINE_PER_CPU(struct per_physical_core_t, pphycore_counts);
@@ -160,6 +168,16 @@ void update_cpu_active_tsc(int cpu, int enter_idle)
 				pcpu = &per_cpu(pcpu_counts, cpu);
 				if (tsc > old)
 					pcpu->active_tsc += tsc - old;
+#ifdef CONFIG_COUNT_GPU_BLOCKING_TIME
+				/*
+				 * If current physical core is blocked by GPU,
+				 * record entering idle tsc as the start of a
+				 * time slice blocked on GPU.
+				 */
+				if (atomic_read(&pphycore->wait_for_gpu_count)
+				    > 0)
+					pphycore->gpu_block_start_tsc = tsc;
+#endif
 				pphycore->accum_flag = 1;
 			}
 		}
@@ -170,8 +188,16 @@ void update_cpu_active_tsc(int cpu, int enter_idle)
 		 */
 		rdtscll(tsc);
 		if (phy_core_idle(pphycore->busy_mask)) {
-			if (1 == cmpxchg64(&(pphycore->accum_flag), 1, 0))
+			if (1 == cmpxchg64(&(pphycore->accum_flag), 1, 0)) {
 				*phycore_start = tsc;
+#ifdef CONFIG_COUNT_GPU_BLOCKING_TIME
+				if (atomic_read(&pphycore->wait_for_gpu_count)
+				    > 0 && pphycore->gpu_block_start_tsc > 0)
+					pphycore->gpu_block_time += tsc -
+						pphycore->gpu_block_start_tsc;
+				pphycore->gpu_block_start_tsc = 0;
+#endif
+			}
 		}
 		/* since the cpu exits idle, set its byte in mask as active */
 		set_cpu_busy(cpu, &(pphycore->busy_mask));
@@ -185,9 +211,17 @@ void update_cpu_active_tsc(int cpu, int enter_idle)
  * interval. This function is called in every sampling, and return the load
  * of that sampling interval.
  */
+#ifdef CONFIG_COUNT_GPU_BLOCKING_TIME
+static unsigned int cpufreq_get_load(struct cpufreq_policy *policy,
+			unsigned int cpu, unsigned int *gpu_block_load)
+{
+	u64 delta_gpu_block_time;
+	u64 tmp_block_start;
+#else
 static unsigned int cpufreq_get_load(struct cpufreq_policy *policy,
 				     unsigned int cpu)
 {
+#endif
 	u64 tsc;
 	u64 total_active_tsc = 0;
 	u64 delta_tsc, delta_active_tsc;
@@ -243,6 +277,29 @@ static unsigned int cpufreq_get_load(struct cpufreq_policy *policy,
 			load = 100;
 	} else
 		load = 0;
+
+#ifdef CONFIG_COUNT_GPU_BLOCKING_TIME
+	/*
+	 * if this sampling occurs at the same time when all logical cores
+	 * are in idle, accumulate GPU blocking timer from last block start
+	 * time.
+	 */
+	tmp_block_start = pphycore->gpu_block_start_tsc;
+	if (tmp_block_start > 0 && tmp_block_start < tsc &&
+	    tmp_block_start == pphycore->gpu_block_start_tsc &&
+	    tmp_block_start == cmpxchg64(&pphycore->gpu_block_start_tsc,
+					 tmp_block_start, tsc))
+		pphycore->gpu_block_time += tsc - tmp_block_start;
+	/*
+	 * compute GPU blocking time since last sampling,
+	 * and add the blocking time to CPU active time for
+	 * load computing
+	 */
+	delta_gpu_block_time = pphycore->gpu_block_time -
+		this_cpu->prev_gpu_block_time;
+	this_cpu->prev_gpu_block_time = pphycore->gpu_block_time;
+	*gpu_block_load = div64_u64(delta_gpu_block_time * 100, delta_tsc);
+#endif
 
 	return (unsigned int)load;
 }

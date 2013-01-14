@@ -373,8 +373,16 @@ PVRSRV_ERROR LinuxEventObjectSignal(IMG_HANDLE hOSEventObjectList)
  @Return   PVRSRV_ERROR  :  Error code
 
 ******************************************************************************/
+#ifdef CONFIG_COUNT_GPU_BLOCKING_TIME
+#define phy_core_id(cpu) (topology_core_id(cpu))
+#endif
 PVRSRV_ERROR LinuxEventObjectWait(IMG_HANDLE hOSEventObject, IMG_UINT32 ui32MSTimeout)
 {
+#ifdef CONFIG_COUNT_GPU_BLOCKING_TIME
+	u32 phycore_id;
+	struct per_physical_core_t *pphycore;
+#endif
+
 	IMG_UINT32 ui32TimeStamp;
 	DEFINE_WAIT(sWait);
 
@@ -394,8 +402,16 @@ PVRSRV_ERROR LinuxEventObjectWait(IMG_HANDLE hOSEventObject, IMG_UINT32 ui32MSTi
 
 		LinuxUnLockMutex(&gPVRSRVLock);		
 
+#ifdef CONFIG_COUNT_GPU_BLOCKING_TIME
+		phycore_id = phy_core_id(smp_processor_id());
+		pphycore = &per_cpu(pphycore_counts, phycore_id);
+		atomic_inc(&pphycore->wait_for_gpu_count);
+#endif
 		ui32TimeOutJiffies = (IMG_UINT32)schedule_timeout((IMG_INT32)ui32TimeOutJiffies);
-		
+#ifdef CONFIG_COUNT_GPU_BLOCKING_TIME
+		atomic_dec(&pphycore->wait_for_gpu_count);
+#endif
+
 		LinuxLockMutex(&gPVRSRVLock);
 #if defined(DEBUG)
 		psLinuxEventObject->ui32Stats++;

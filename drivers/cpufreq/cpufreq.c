@@ -1469,7 +1469,12 @@ int __cpufreq_driver_getavg(struct cpufreq_policy *policy, unsigned int cpu)
 }
 EXPORT_SYMBOL_GPL(__cpufreq_driver_getavg);
 
+#ifdef CONFIG_COUNT_GPU_BLOCKING_TIME
+int __cpufreq_driver_getload(struct cpufreq_policy *policy,
+				unsigned int cpu, unsigned int *gpu_block_load)
+#else
 int __cpufreq_driver_getload(struct cpufreq_policy *policy, unsigned int cpu)
+#endif
 {
 	int ret = 0;
 
@@ -1478,7 +1483,11 @@ int __cpufreq_driver_getload(struct cpufreq_policy *policy, unsigned int cpu)
 		return -EINVAL;
 
 	if (cpu_online(cpu) && cpufreq_driver->getload)
+#ifdef CONFIG_COUNT_GPU_BLOCKING_TIME
+		ret = cpufreq_driver->getload(policy, cpu, gpu_block_load);
+#else
 		ret = cpufreq_driver->getload(policy, cpu);
+#endif
 
 	cpufreq_cpu_put(policy);
 	return ret;

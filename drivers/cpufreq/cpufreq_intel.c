@@ -164,6 +164,23 @@ static unsigned long use_physical_core_load;
 static int input_boost_val;
 
 /*
+ * If cpu_load is greater than cpu_intensive_load, the
+ * workload is CPU intensive, we should consider to increase
+ * CPU freq. If the time CPU is blocked by GPU is greater
+ * than gpu_intensive_load, the workload is GPU intensive,
+ * we should consider the influence of GPU in adjust CPU
+ * frequency.
+ */
+#define DEFAULT_CPU_INTENSIVE_LOAD 70
+#define DEFAULT_GPU_INTENSIVE_LOAD 25
+static unsigned int cpu_intensive_load_val;
+static unsigned int gpu_intensive_load_val;
+#define DEFAULT_CPU_DOWN_DIFFERENTIAL 10
+static unsigned long cpu_down_differential;
+#define DEFAULT_GPU_BUSY_LOAD 40
+static unsigned long gpu_busy_load;
+
+/*
  * io_is_busy flag exposed so that it can be controlled
  * from sysfs
  */
@@ -223,6 +240,8 @@ static void cpufreq_intel_timer(unsigned long data)
 #ifdef CONFIG_COMPUTE_PHYSICAL_CORE_LOAD
 	unsigned int physical_core_load;
 #endif
+	unsigned int gpu_block_load = 0;
+	unsigned int critical_load;
 	unsigned int avg_near_prev_load, avg_long_prev_load;
 	unsigned int load_idx;
 
@@ -291,7 +310,12 @@ static void cpufreq_intel_timer(unsigned long data)
 		cpu_load = load_since_change;
 
 #ifdef CONFIG_COMPUTE_PHYSICAL_CORE_LOAD
+#ifdef CONFIG_COUNT_GPU_BLOCKING_TIME
+	physical_core_load = __cpufreq_driver_getload(pcpu->policy,
+						data, &gpu_block_load);
+#else
 	physical_core_load = __cpufreq_driver_getload(pcpu->policy, data);
+#endif
 	if (use_physical_core_load)
 		cpu_load = physical_core_load;
 #endif
@@ -328,13 +352,16 @@ static void cpufreq_intel_timer(unsigned long data)
 		pcpu->cpu_timer = &pcpu->deferrable_timer;
 	else
 		pcpu->cpu_timer = &pcpu->idle_driven_timer;
+
 	/*
-	 * If the load is very high in current sample interval,
-	 * then increase the freq. Or if the load of consecutive
-	 * three sample intervals is high. Try to increase
-	 * frequency to see if it can help.
+	 * If the critical load and cpu load are both very high in current
+	 * sample interval. Or if the load of consecutive three sample
+	 * intervals is high. Or there is an user request long-term boost.
+	 * Try to increase frequency to see if it can help.
 	 */
-	if (cpu_load >= go_hispeed_load || boost_val ||
+	critical_load = cpu_load + gpu_block_load;
+	if ((critical_load >= go_hispeed_load &&
+		 cpu_load >= cpu_intensive_load_val) || boost_val ||
 		(avg_near_prev_load >= HEURISTIC_LOAD_THRESHOLD &&
 		 cpu_load >= HEURISTIC_LOAD_THRESHOLD)) {
 		new_freq = pcpu->policy->cur * bump_freq_weight / 100;
@@ -349,9 +376,35 @@ static void cpufreq_intel_timer(unsigned long data)
 							   new_freq);
 				goto rearm;
 		}
-	} else if (cpu_load < (go_hispeed_load - down_differential)) {
-		new_freq = pcpu->policy->cur * cpu_load /
-				(go_hispeed_load - down_differential);
+	} else if ((critical_load < (go_hispeed_load - down_differential)) ||
+			   (cpu_load < (cpu_intensive_load_val -
+					cpu_down_differential))) {
+		/* Scale down CPU freq when critical_load is low, or it is
+		 * not a CPU sensitive workload even though critical_load
+		 * is relatively high. We use the condition that cpu_load
+		 * is lower than a predefined value or cpu_load is lower
+		 * than gpu_block_load to check if the workload is CPU
+		 * sensitive.
+		 */
+
+		/*
+		 * If gpu_block_load is within a range and cpu_load is higher
+		 * than gpu_block_load, that decreasing CPU freq too much may
+		 * impact a lot to performance, governor should not ignore
+		 * the GPU blocked time in computing new_freq. Since CPU is
+		 * blocked by GPU for gpu_block_load time, the actual time in
+		 * the sampling interval for CPU to complete its task is
+		 * (sampling_interval - gpu_block_load), so the actual cpu
+		 * load is (cpu_load * 100 / (100 - gpu_block_load))
+		 */
+		if (gpu_block_load >= gpu_intensive_load_val &&
+			gpu_block_load <= gpu_busy_load &&
+			cpu_load >= gpu_block_load)
+			new_freq = pcpu->policy->cur * cpu_load /
+				(100 - gpu_block_load);
+		else
+			new_freq = pcpu->policy->cur * cpu_load /
+					(go_hispeed_load - down_differential);
 	} else
 		goto rearm;
 
@@ -1306,6 +1359,10 @@ static int __init cpufreq_intel_init(void)
 #ifdef CONFIG_COMPUTE_PHYSICAL_CORE_LOAD
 	use_physical_core_load = DEFAULT_USE_PHYSICAL_CORE_LOAD;
 #endif
+	cpu_intensive_load_val = DEFAULT_CPU_INTENSIVE_LOAD;
+	gpu_intensive_load_val = DEFAULT_GPU_INTENSIVE_LOAD;
+	cpu_down_differential = DEFAULT_CPU_DOWN_DIFFERENTIAL;
+	gpu_busy_load = DEFAULT_GPU_BUSY_LOAD;
 
 	/* Initalize per-cpu timers */
 	for_each_possible_cpu(i) {
