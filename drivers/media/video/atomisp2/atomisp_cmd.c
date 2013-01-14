@@ -3383,9 +3383,17 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
 	const struct atomisp_format_bridge *format;
-	int effective_input_width = pipe->format.in.width;
-	int effective_input_height = pipe->format.in.height;
+	struct v4l2_rect *isp_sink_crop;
+	int effective_input_width;
+	int effective_input_height;
 	int ret;
+
+	isp_sink_crop = atomisp_subdev_get_rect(
+		&isp->isp_subdev.subdev, NULL, V4L2_SUBDEV_FORMAT_ACTIVE,
+		ATOMISP_SUBDEV_PAD_SINK, V4L2_SEL_TGT_CROP);
+
+	effective_input_width = isp_sink_crop->width;
+	effective_input_height = isp_sink_crop->height;
 
 	format = get_atomisp_format_bridge(pixelformat);
 	if (format == NULL)
@@ -3405,14 +3413,6 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 			mipi_info->input_format, pixelformat))
 			return -EINVAL;
 	}
-
-	if (sh_css_input_set_effective_resolution(effective_input_width,
-						  effective_input_height))
-		return -EINVAL;
-
-	v4l2_dbg(2, dbg_level, &atomisp_dev,
-			"sh css input effective width: %d, height: %d\n",
-			effective_input_width, effective_input_height);
 
 	if (!isp->vf_format)
 		isp->vf_format =
@@ -3555,53 +3555,6 @@ done:
 	return 0;
 }
 
-static int atomisp_get_effective_resolution(struct atomisp_device *isp,
-					    unsigned int pixelformat,
-					    int out_width, int out_height,
-					    int padding_w, int padding_h)
-{
-	const struct atomisp_format_bridge *format;
-	struct v4l2_pix_format *in_fmt = &isp->capture_format->in;
-	struct v4l2_mbus_framefmt isp_sink_fmt;
-	unsigned int no_padding_w, no_padding_h;
-
-	isp_sink_fmt = *atomisp_subdev_get_ffmt(&isp->isp_subdev.subdev, NULL,
-						V4L2_SUBDEV_FORMAT_ACTIVE,
-						ATOMISP_SUBDEV_PAD_SINK);
-
-	format = get_atomisp_format_bridge(pixelformat);
-	if (format == NULL)
-		return -EINVAL;
-	if (!isp->params.yuv_ds_en) {
-		in_fmt->width = out_width;
-		in_fmt->height = out_height;
-		return 0;
-	}
-	no_padding_w = isp_sink_fmt.width - padding_w;
-	no_padding_h = isp_sink_fmt.height - padding_h;
-	/* enable YUV downscaling automatically */
-	if (no_padding_w > out_width || no_padding_h > out_height) {
-		/* keep a right ratio of width and height*/
-		in_fmt->width = no_padding_w;
-		in_fmt->height = DIV_ROUND_UP(in_fmt->width * out_height,
-					      out_width);
-		if (in_fmt->height > no_padding_h) {
-			in_fmt->height = no_padding_h;
-			in_fmt->width = DIV_ROUND_UP(in_fmt->height * out_width,
-						     out_height);
-
-		}
-		in_fmt->width = (in_fmt->width &
-					~(ATOM_ISP_STEP_WIDTH - 1));
-		in_fmt->height = (in_fmt->height &
-					~(ATOM_ISP_STEP_HEIGHT - 1));
-	} else {
-		in_fmt->width = out_width;
-		in_fmt->height = out_height;
-	}
-	return 0;
-}
-
 static void atomisp_get_dis_envelop(struct atomisp_device *isp,
 			    unsigned int width, unsigned int height,
 			    unsigned int *dvs_env_w,
@@ -3673,44 +3626,6 @@ static int atomisp_set_fmt_to_snr(struct atomisp_device *isp,
 
 	return 0;
 }
-static void atomisp_get_yuv_ds_status(struct atomisp_device *isp,
-				      unsigned int width, unsigned int height)
-{
-	struct v4l2_mbus_framefmt isp_sink_fmt;
-	unsigned int w_tmp, h_tmp;
-
-	isp_sink_fmt = *atomisp_subdev_get_ffmt(&isp->isp_subdev.subdev, NULL,
-					    V4L2_SUBDEV_FORMAT_ACTIVE,
-					    ATOMISP_SUBDEV_PAD_SINK);
-
-	w_tmp = isp_sink_fmt.width - DIV_ROUND_UP(isp_sink_fmt.width, 10);
-	h_tmp = isp_sink_fmt.height - DIV_ROUND_UP(isp_sink_fmt.height, 10);
-
-	/* By default, enable YUV downscaling */
-	isp->params.yuv_ds_en = true;
-
-	/* YUV downscaling is enabled only when sensor output width is
-	 * 10% larger than isp output width and sensor output height also
-	 * is 10% larger than isp output height.
-	 */
-	if (w_tmp < width || h_tmp < height)
-		isp->params.yuv_ds_en = false;
-
-	/* Downscaling is disabled for file input */
-	if (isp->sw_contex.file_input)
-		isp->params.yuv_ds_en = false;
-
-	/* YUV downscaling is enabled for SoC sensor only in video mode */
-	if (isp->sw_contex.bypass &&
-	    isp->sw_contex.run_mode != CI_MODE_VIDEO)
-		isp->params.yuv_ds_en = false;
-
-	/* YUV downscaling is disabled in video mode without SoC sensor */
-	if (isp->sw_contex.run_mode == CI_MODE_VIDEO &&
-	    !isp->sw_contex.bypass)
-		isp->params.yuv_ds_en = false;
-
-}
 
 int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 {
@@ -3726,6 +3641,7 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	bool res_overflow = false;
 	struct v4l2_streamparm sensor_parm;
 	struct v4l2_mbus_framefmt isp_sink_fmt;
+	struct v4l2_rect isp_sink_crop;
 	uint16_t source_pad;
 	int ret;
 
@@ -3888,18 +3804,55 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 		return -EINVAL;
 	}
 
-	atomisp_get_yuv_ds_status(isp, f->fmt.pix.width, f->fmt.pix.height);
+	isp_sink_crop = *atomisp_subdev_get_rect(&isp->isp_subdev.subdev, NULL,
+						 V4L2_SUBDEV_FORMAT_ACTIVE,
+						 ATOMISP_SUBDEV_PAD_SINK,
+						 V4L2_SEL_TGT_CROP);
 
-	/*
-	 * calculate effective solution to enable yuv downscaling and keep
-	 * ratio of width and height
-	 */
-	ret = atomisp_get_effective_resolution(isp, f->fmt.pix.pixelformat,
-					       f->fmt.pix.width,
-					       f->fmt.pix.height,
-					       padding_w, padding_h);
-	if (ret)
-		return -EINVAL;
+	/* Try to enable YUV downscaling if ISP input is 10 % (either
+	 * width or height) bigger than the desired result. */
+	if (isp_sink_crop.width * 9 / 10 < f->fmt.pix.width
+	    || isp_sink_crop.height * 9 / 10 < f->fmt.pix.height
+	    || isp->sw_contex.file_input
+	    || (isp->sw_contex.bypass
+		&& isp->sw_contex.run_mode != CI_MODE_VIDEO)
+	    || (!isp->sw_contex.bypass
+		&& isp->sw_contex.run_mode == CI_MODE_VIDEO)) {
+		isp_sink_crop.width = f->fmt.pix.width;
+		isp_sink_crop.height = f->fmt.pix.height;
+		atomisp_subdev_set_selection(&isp->isp_subdev.subdev, NULL,
+					     V4L2_SUBDEV_FORMAT_ACTIVE,
+					     ATOMISP_SUBDEV_PAD_SINK,
+					     V4L2_SEL_TGT_CROP,
+					     V4L2_SEL_FLAG_KEEP_CONFIG,
+					     &isp_sink_crop);
+		atomisp_subdev_set_selection(&isp->isp_subdev.subdev, NULL,
+					     V4L2_SUBDEV_FORMAT_ACTIVE,
+					     source_pad, V4L2_SEL_TGT_COMPOSE,
+					     0, &isp_sink_crop);
+	} else {
+		struct v4l2_rect main_compose;
+
+		memset(&main_compose, 0, sizeof(main_compose));
+
+		main_compose.width = isp_sink_crop.width - padding_w;
+		main_compose.height =
+			DIV_ROUND_UP(main_compose.width * f->fmt.pix.height,
+				     f->fmt.pix.width);
+		if (main_compose.height > isp_sink_crop.height - padding_h) {
+			main_compose.height = isp_sink_crop.height - padding_h;
+			main_compose.width =
+				DIV_ROUND_UP(main_compose.height *
+					     f->fmt.pix.width,
+					     f->fmt.pix.height);
+		}
+
+		atomisp_subdev_set_selection(&isp->isp_subdev.subdev, NULL,
+					     V4L2_SUBDEV_FORMAT_ACTIVE,
+					     ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE,
+					     V4L2_SEL_TGT_COMPOSE, 0,
+					     &main_compose);
+	}
 
 	/* set format to isp */
 	ret = atomisp_set_fmt_to_isp(vdev, &output_info, &raw_output_info,

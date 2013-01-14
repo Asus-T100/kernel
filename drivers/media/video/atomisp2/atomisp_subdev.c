@@ -208,12 +208,16 @@ struct v4l2_rect *atomisp_subdev_get_rect(struct v4l2_subdev *sd,
 		switch (target) {
 		case V4L2_SEL_TGT_CROP:
 			return v4l2_subdev_get_try_crop(fh, pad);
+		case V4L2_SEL_TGT_COMPOSE:
+			return v4l2_subdev_get_try_compose(fh, pad);
 		}
 	}
 
 	switch (target) {
 	case V4L2_SEL_TGT_CROP:
 		return &isp_sd->fmt[pad].crop;
+	case V4L2_SEL_TGT_COMPOSE:
+		return &isp_sd->fmt[pad].compose;
 	}
 
 	return NULL;
@@ -300,8 +304,12 @@ int atomisp_subdev_set_selection(struct v4l2_subdev *sd,
 	struct v4l2_mbus_framefmt *ffmt[ATOMISP_SUBDEV_PADS_NUM];
 	struct v4l2_rect *crop[ATOMISP_SUBDEV_PADS_NUM],
 		*comp[ATOMISP_SUBDEV_PADS_NUM];
+	unsigned int i;
 
 	isp_get_fmt_rect(sd, fh, which, ffmt, crop, comp);
+
+	r->width = rounddown(r->width, ATOM_ISP_STEP_WIDTH);
+	r->height = rounddown(r->height, ATOM_ISP_STEP_HEIGHT);
 
 	switch (pad) {
 	case ATOMISP_SUBDEV_PAD_SINK: {
@@ -335,6 +343,17 @@ int atomisp_subdev_set_selection(struct v4l2_subdev *sd,
 		crop[pad]->width = min(crop[pad]->width, r->width);
 		crop[pad]->height = min(crop[pad]->height, r->height);
 
+		if (!(flags & V4L2_SEL_FLAG_KEEP_CONFIG)) {
+			for (i = ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE;
+			     i <= ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW; i++) {
+				struct v4l2_rect tmp = *crop[pad];
+
+				atomisp_subdev_set_selection(
+					sd, fh, which, i, V4L2_SEL_TGT_COMPOSE,
+					flags, &tmp);
+			}
+		}
+
 		if (which == V4L2_SUBDEV_FORMAT_TRY)
 			break;
 
@@ -349,6 +368,22 @@ int atomisp_subdev_set_selection(struct v4l2_subdev *sd,
 		}
 
 		sh_css_video_set_dis_envelope(dvs_w, dvs_h);
+		sh_css_input_set_effective_resolution(
+			crop[pad]->width, crop[pad]->height);
+
+		break;
+	}
+	case ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE: {
+		/* Only compose target is supported on source pads. */
+
+		if (crop[ATOMISP_SUBDEV_PAD_SINK]->width == r->width
+		    && crop[ATOMISP_SUBDEV_PAD_SINK]->height == r->height)
+			isp->params.yuv_ds_en = false;
+		else
+			isp->params.yuv_ds_en = true;
+
+		comp[pad]->width = r->width;
+		comp[pad]->height = r->height;
 
 		break;
 	}
