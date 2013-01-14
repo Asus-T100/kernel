@@ -249,39 +249,6 @@ int hmm_bo_alloc_vm(struct hmm_buffer_object *bo)
 	check_bo_status_no_goto(bo, HMM_BO_VM_ALLOCED, status_err);
 
 	bdev = bo->bdev;
-#if 0
-struct hmm_vm_node {
-	struct list_head list;
-	unsigned int start;
-	unsigned int pgnr;
-	unsigned int size;
-	struct hmm_vm *vm;
-};
-struct hmm_bo_device {
-	/* isp_mmu provides lock itself */
-	struct isp_mmu		mmu;
-
-	/* hmm_vm provides lock itself */
-	struct hmm_vm		vaddr_space;
-
-	struct list_head	free_bo_list;
-	struct list_head	active_bo_list;
-
-	/* list lock is used to protect both of the buffer object lists */
-	struct spinlock		list_lock;
-
-	int			flag;
-};
-struct hmm_vm {
-	unsigned int start;
-	unsigned int pgnr;
-	unsigned int size;
-	struct list_head vm_node_list;
-	spinlock_t lock;
-	struct kmem_cache *cache;
-};
-#endif
-
 	bo->vm_node = hmm_vm_alloc_node(&bdev->vaddr_space, bo->pgnr);
 	if (unlikely(!bo->vm_node)) {
 		v4l2_err(&atomisp_dev,

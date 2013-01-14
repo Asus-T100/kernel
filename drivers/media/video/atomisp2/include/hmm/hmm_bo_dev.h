@@ -61,7 +61,6 @@ struct hmm_bo_device {
 	struct ion_client	*iclient;
 #endif
 	int			flag;
-	struct mutex  mm_lock;
 };
 
 int hmm_bo_device_init(struct hmm_bo_device *bdev,
