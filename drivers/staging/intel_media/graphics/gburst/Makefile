@@ -20,7 +20,7 @@ endif
 
 # Assume the source tree is where the running kernel was built
 # You should set KERNELDIR in the environment if it's elsewhere
-KERNELDIR ?= $(ANDROID_BUILD_TOP)/hardware/intel/linux-2.6
+KERNELDIR ?= $(ANDROID_BUILD_TOP)/$(KERNEL_SRC_DIR)
 
 MODULE_SRC  := $(ANDROID_PRODUCT_OUT)/kernel_modules
 MODULE_DEST := $(ANDROID_PRODUCT_OUT)/root/lib/modules
