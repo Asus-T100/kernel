@@ -1223,20 +1223,32 @@ void dwc3_gadget_run_stop(struct dwc3 *dwc, int is_on)
 
 static int dwc3_gadget_pullup(struct usb_gadget *g, int is_on)
 {
-	struct dwc3		*dwc = gadget_to_dwc(g);
+	struct dwc3		*dwc;
 	unsigned long		flags;
 
-#ifdef CONFIG_USB_DWC_OTG_XCEIV
-	if (!dwc->got_irq) {
-		dev_info(dwc->dev,
-			 "exit from pullup as irq not enabled yet\n");
-		return 0;
-	}
-#endif
-	is_on = !!is_on;
+	if (!g)
+		return -ENODEV;
+
+	dwc = gadget_to_dwc(g);
 
 	spin_lock_irqsave(&dwc->lock, flags);
+	if (dwc->softconnected == !!is_on)
+		goto done;
+	dwc->softconnected = !!is_on;
+
+#ifdef CONFIG_USB_DWC_OTG_XCEIV
+	is_on = !!is_on;
+
+	if (!dwc->got_irq && is_on) {
+		dev_info(dwc->dev,
+			 "exit from pullup as irq not enabled yet\n");
+		goto done;
+	}
+#endif
+
 	dwc3_gadget_run_stop(dwc, is_on);
+
+done:
 	spin_unlock_irqrestore(&dwc->lock, flags);
 
 	return 0;
@@ -1373,15 +1385,18 @@ err0:
 	return ret;
 }
 
-static int dwc3_gadget_start(struct usb_gadget *g,
-		struct usb_gadget_driver *driver)
+static int dwc3_gadget_start(struct usb_gadget_driver *driver,
+		int (*bind)(struct usb_gadget *))
 {
-	struct dwc3		*dwc = gadget_to_dwc(g);
+	struct dwc3		*dwc = the_controller;
 	unsigned long		flags;
 	int			ret = 0;
 #ifdef CONFIG_USB_DWC_OTG_XCEIV
 	struct otg_transceiver	*otg;
 #endif
+
+	if (!dwc)
+		return -ENODEV;
 
 	spin_lock_irqsave(&dwc->lock, flags);
 
@@ -1389,39 +1404,38 @@ static int dwc3_gadget_start(struct usb_gadget *g,
 		dev_err(dwc->dev, "%s is already bound to %s\n",
 				dwc->gadget.name,
 				dwc->gadget_driver->driver.name);
-		ret = -EBUSY;
-		goto err0;
+		spin_unlock_irqrestore(&dwc->lock, flags);
+		return -EBUSY;
 	}
 
 	dwc->gadget_driver	= driver;
 	dwc->gadget.dev.driver	= &driver->driver;
 
+	spin_unlock_irqrestore(&dwc->lock, flags);
+
+	ret = bind(&dwc->gadget);
+	if (ret)
+		return ret;
+
 #ifdef CONFIG_USB_DWC_OTG_XCEIV
-	spin_unlock_irqrestore(&dwc->lock, flags);
 	otg = otg_get_transceiver();
-	if (!otg) {
-		dev_err(dwc->dev, "OTG driver not available\n");
-		return -ENODEV;
+
+	if (otg) {
+		otg_set_peripheral(otg, &dwc->gadget);
+		otg_put_transceiver(otg);
 	}
-
-	otg_set_peripheral(otg, &dwc->gadget);
-	otg_put_transceiver(otg);
-
-	return 0;
 #else
-	ret = dwc3_dev_init(dwc);
-#endif
-
-err0:
+	spin_lock_irqsave(&dwc->lock, flags);
+	dwc3_dev_init(dwc);
 	spin_unlock_irqrestore(&dwc->lock, flags);
 
-	return ret;
+#endif
+	return 0;
 }
 
-static int dwc3_gadget_stop(struct usb_gadget *g,
-		struct usb_gadget_driver *driver)
+static int dwc3_gadget_stop(struct usb_gadget_driver *driver)
 {
-	struct dwc3		*dwc = gadget_to_dwc(g);
+	struct dwc3		*dwc = the_controller;
 	unsigned long		flags;
 
 	spin_lock_irqsave(&dwc->lock, flags);
@@ -1494,7 +1508,8 @@ static int dwc3_start_peripheral(struct usb_gadget *g)
 		dev_err(dwc->dev, "failed to enable ep0\n");
 
 	/* Set Run/Stop bit */
-	dwc3_gadget_run_stop(dwc, 1);
+	if (dwc->softconnected)
+		dwc3_gadget_run_stop(dwc, 1);
 
 
 	if (dwc->hibernation.enabled)
@@ -1605,8 +1620,8 @@ static const struct usb_gadget_ops dwc3_gadget_ops = {
 	.wakeup			= dwc3_gadget_wakeup,
 	.set_selfpowered	= dwc3_gadget_set_selfpowered,
 	.pullup			= dwc3_gadget_pullup,
-	.udc_start		= dwc3_gadget_start,
-	.udc_stop		= dwc3_gadget_stop,
+	.start			= dwc3_gadget_start,
+	.stop			= dwc3_gadget_stop,
 #ifdef CONFIG_USB_DWC_OTG_XCEIV
 	.start_device		= dwc3_start_peripheral,
 	.stop_device		= dwc3_stop_peripheral,
