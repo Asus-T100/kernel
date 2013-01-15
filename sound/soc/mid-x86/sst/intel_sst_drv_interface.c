@@ -98,35 +98,12 @@ int sst_download_fw(void)
 {
 	int retval;
 
-	if (sst_drv_ctx->sst_state != SST_START_INIT)
-		return -EAGAIN;
-	if (!sst_drv_ctx->fw_in_mem) {
-		retval = sst_request_fw();
-		if (retval)
-			return retval;
-	}
-	sst_drv_ctx->alloc_block[0].sst_id = FW_DWNL_ID;
-	sst_drv_ctx->alloc_block[0].ops_block.condition = false;
-	/* Prevent C-states beyond C6 */
-	pm_qos_update_request(sst_drv_ctx->qos, CSTATE_EXIT_LATENCY_S0i1 - 1);
-	retval = sst_load_fw(sst_drv_ctx->fw_in_mem, NULL);
-	/* Re-enable Deeper C-states beyond C6 */
-	pm_qos_update_request(sst_drv_ctx->qos, PM_QOS_DEFAULT_VALUE);
+	retval = sst_load_fw();
 	if (retval)
 		goto end_restore;
-
-	retval = sst_wait_timeout(sst_drv_ctx,
-				&sst_drv_ctx->alloc_block[0].ops_block);
-	if (retval) {
-		pr_err("fw download failed %d\n" , retval);
-		/* assume FW d/l failed due to timeout*/
-		retval = -EBUSY;
-	}
+	pr_debug("fw loaded successful!!!\n");
 
 end_restore:
-	sst_drv_ctx->alloc_block[0].sst_id = BLOCK_UNINIT;
-	if (retval)
-		return retval;
 #ifndef MRFLD_TEST_ON_MFLD
 	if (sst_drv_ctx->pci_id != SST_MRFLD_PCI_ID)
 		sst_restore_fw_context();
