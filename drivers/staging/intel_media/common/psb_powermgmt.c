@@ -1421,11 +1421,13 @@ void ospm_power_graphics_island_down(int hw_islands)
 		** here just give another chance to enter DSR
 		** Note:
 		*/
+#if 0
 		if (gfx_islands & OSPM_GRAPHICS_ISLAND) {
 			dsi_config = dev_priv->dsi_configs[0];
 			mdfld_dsi_dsr_forbid(dsi_config);
 			mdfld_dsi_dsr_allow(dsi_config);
 		}
+#endif
 	}
 }
 
@@ -1533,11 +1535,13 @@ void ospm_power_island_down(int hw_islands)
 		** here just give another chance to enter DSR
 		** Note:
 		*/
+#if 0
 		if (gfx_islands & OSPM_GRAPHICS_ISLAND) {
 			dsi_config = dev_priv->dsi_configs[0];
 			mdfld_dsi_dsr_forbid(dsi_config);
 			mdfld_dsi_dsr_allow(dsi_config);
 		}
+#endif
 	}
 }
 
