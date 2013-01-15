@@ -3618,10 +3618,8 @@ static void atomisp_get_dis_envelop(struct atomisp_device *isp,
 		 * dvs envelope cannot be round up.
 		 * it would cause ISP timeout and color switch issue
 		 */
-		*dvs_env_w = width / 5;
-		*dvs_env_h = height / 5;
-		*dvs_env_w = *dvs_env_w - *dvs_env_w % ATOM_ISP_STEP_WIDTH;
-		*dvs_env_h = *dvs_env_h - *dvs_env_h % ATOM_ISP_STEP_HEIGHT;
+		*dvs_env_w = rounddown(width / 5, ATOM_ISP_STEP_WIDTH);
+		*dvs_env_h = rounddown(height / 5, ATOM_ISP_STEP_HEIGHT);
 	}
 
 	isp->params.dis_proj_data_valid = false;
