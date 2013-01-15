@@ -531,7 +531,6 @@ int intel_alsa_create_snd_card(void)
 
 	p_alsa_ssp_snd_card->ssp_wq = create_workqueue("ssp_transfer_data");
 	if (!p_alsa_ssp_snd_card->ssp_wq) {
-		destroy_workqueue(p_alsa_ssp_snd_card->ssp_wq);
 		kfree(p_alsa_ssp_snd_card);
 		pr_err("ALSA_SSP: Work queue failed\n");
 		return -ENOMEM;
