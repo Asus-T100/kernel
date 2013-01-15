@@ -309,17 +309,17 @@ void mrfld_early_console_init(void)
 			(MRFLD_REGBASE_SSP5 & (PAGE_SIZE - 1)));
 
 	/* mask interrupts, clear enable and set DSS config */
-#ifdef CONFIG_BOARD_MRFLD_VV
-	dw_writel(pssp, ctrl0, 0xc12c0f);
-#else
-	dw_writel(pssp, ctrl0, 0xc0000f);
-#endif
-	/* SSPSCLK on active transfers only */
-#ifdef CONFIG_BOARD_MRFLD_VV
-	dw_writel(pssp, ctrl1, 0x0);
-#else
-	dw_writel(pssp, ctrl1, 0x10000000);
-#endif
+	if ((intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER) &&
+		(intel_mrfl_identify_sim() == INTEL_MRFL_CPU_SIMULATION_NONE)) {
+		dw_writel(pssp, ctrl0, 0xc12c0f);
+		/* SSPSCLK on active transfers only */
+		dw_writel(pssp, ctrl1, 0x0);
+	} else {
+		dw_writel(pssp, ctrl0, 0xc0000f);
+		/* SSPSCLK on active transfers only */
+		dw_writel(pssp, ctrl1, 0x10000000);
+	}
+
 	dw_readl(pssp, sr);
 
 	/* enable port */
@@ -338,14 +338,20 @@ static int early_mrfld_putc(char c)
 	/* early putc need make sure the TX FIFO is not full*/
 	while (timeout--) {
 		sr = dw_readl(pssp, sr);
-#ifdef CONFIG_BOARD_MRFLD_VV
-		if (sr & 0xF00)
-#else
-		if (!(sr & SSP_SR_TF_NOT_FULL))
-#endif
-			cpu_relax();
-		else
-			break;
+
+		if ((intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER) &&
+			(intel_mrfl_identify_sim() ==
+					INTEL_MRFL_CPU_SIMULATION_NONE)) {
+			if (sr & 0xF00)
+				cpu_relax();
+			else
+				break;
+		} else {
+			if (!(sr & SSP_SR_TF_NOT_FULL))
+				cpu_relax();
+			else
+				break;
+		}
 	}
 
 	if (timeout == 0xffffffff) {
@@ -398,10 +404,9 @@ void mrfld_early_printk(const char *fmt, ...)
  * UART console.
  * For Clovertrail boards, HSU port 2 can be used as UART console.
  */
-#ifdef CONFIG_X86_MRFLD
-	#define HSU_PORT_PADDR  0xff010180
-	#define HSU_CLK_CTL  0xff00b830
-#else
+#define MRFL_HSU_PORT_PADDR  0xff010180
+#define MRFL_HSU_CLK_CTL  0xff00b830
+
 #if CONFIG_SERIAL_MFD_HSU_CONSOLE_PORT == 2
 	#define HSU_PORT_PADDR  0xffa28180
 #elif CONFIG_SERIAL_MFD_HSU_CONSOLE_PORT == 3
@@ -409,21 +414,23 @@ void mrfld_early_printk(const char *fmt, ...)
 #else
 	#warning "Unsupported CONFIG_SERIAL_MFD_HSU_CONSOLE_PORT, reset to 3"
 #endif
-#endif
 
 static void __iomem *phsu;
 
 void hsu_early_console_init(void)
 {
 	u8 lcr;
-#ifdef CONFIG_X86_MRFLD
+	unsigned long port_addr = HSU_PORT_PADDR;
 	int *clkctl;
 	int clk = 0;
-	clkctl = (int *)set_fixmap_offset_nocache(FIX_CLOCK_CTL,
-							HSU_CLK_CTL);
-#endif
+
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER) {
+		clkctl = (int *)set_fixmap_offset_nocache(FIX_CLOCK_CTL,
+						MRFL_HSU_CLK_CTL);
+		port_addr = MRFL_HSU_PORT_PADDR;
+	}
 	phsu = (void *)set_fixmap_offset_nocache(FIX_EARLYCON_MEM_BASE,
-							HSU_PORT_PADDR);
+						port_addr);
 
 	/* Disable FIFO */
 	writeb(0x0, phsu + UART_FCR);
@@ -436,15 +443,16 @@ void hsu_early_console_init(void)
 	writeb(lcr,  phsu + UART_LCR);
 	writel(0x0010, phsu + UART_ABR * 4);
 	writel(0x0010, phsu + UART_PS * 4);
-#ifdef CONFIG_X86_MRFLD
-	/* detect HSU clock is 50M or 19.2M */
-	if (*clkctl & (1 << 16))
-		writel(0x0120, phsu + UART_MUL * 4); /* for 100M */
-	else
-		writel(0x05DC, phsu + UART_MUL * 4);  /* for 19.2M */
-#else
-	writel(0x0240, phsu + UART_MUL * 4);
-#endif
+
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER) {
+		/* detect HSU clock is 50M or 19.2M */
+		if (*clkctl & (1 << 16))
+			writel(0x0120, phsu + UART_MUL * 4); /* for 100M */
+		else
+			writel(0x05DC, phsu + UART_MUL * 4);  /* for 19.2M */
+	} else
+		writel(0x0240, phsu + UART_MUL * 4);
+
 	writel(0x3D09, phsu + UART_DIV * 4);
 
 	writeb(0x8, phsu + UART_MCR);

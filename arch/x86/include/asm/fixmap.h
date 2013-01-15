@@ -118,8 +118,6 @@ enum fixed_addresses {
 	FIX_TEXT_POKE0, /* first page is last, because allocation is backward */
 #ifdef	CONFIG_X86_INTEL_MID
 	FIX_LNW_VRTC,
-#endif
-#ifdef CONFIG_X86_MRFLD
 	FIX_CLOCK_CTL,
 #endif
 	__end_of_permanent_fixed_addresses,
