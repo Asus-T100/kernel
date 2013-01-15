@@ -31,7 +31,6 @@
 #include <linux/ipc_device.h>
 #include <linux/async.h>
 #include <linux/gpio.h>
-#include <linux/delay.h>
 #include <asm/platform_mrfld_audio.h>
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
@@ -39,12 +38,13 @@
 #include <sound/jack.h>
 #include "../codecs/lm49453.h"
 
+extern void mid_headset_report(int state);
+
 static int mrfld_hw_params(struct snd_pcm_substream *substream,
 			   struct snd_pcm_hw_params *params)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_soc_dai *codec_dai = rtd->codec_dai;
-	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
 	unsigned int fmt;
 	int ret;
 
@@ -67,6 +67,21 @@ struct mrfld_mc_private {
 	struct snd_soc_jack jack;
 };
 
+inline void mrfld_jack_report(int status)
+{
+#ifdef CONFIG_SWITCH_MID
+	if (status) {
+		if (status == SND_JACK_HEADPHONE)
+			mid_headset_report((1<<1));
+		else if (status == SND_JACK_HEADSET)
+			mid_headset_report(1);
+	} else {
+		mid_headset_report(0);
+	}
+#endif
+	pr_debug("headset status: 0x%x\n", status);
+}
+
 static int mrfld_jack_gpio_detect(void);
 
 enum gpios {
@@ -76,7 +91,9 @@ enum gpios {
 static struct snd_soc_jack_gpio hs_gpio[] = {
 	[MRFLD_HSDET] = {
 		.name			= "mrfld-hsdet-gpio",
-		.report			= SND_JACK_HEADSET | SND_JACK_HEADPHONE | SND_JACK_MICROPHONE,
+		.report			= SND_JACK_HEADSET |
+					  SND_JACK_HEADPHONE |
+					  SND_JACK_BTN_0,
 		.debounce_time		= 50,
 		.jack_status_check	= mrfld_jack_gpio_detect,
 		.irq_flags		= IRQF_TRIGGER_RISING,
@@ -94,20 +111,16 @@ static int mrfld_jack_gpio_detect(void)
 	struct snd_soc_jack *jack = gpio->jack;
 	struct snd_soc_codec *codec = jack->codec;
 	unsigned int reg;
-	int status = 0;
+	int status = jack->status;
 
-	/* read register clears interrupt */
+	/* reading register clears interrupt */
 	reg = snd_soc_read(codec, LM49453_P0_HSD_IRQ1_REG);
-	pr_debug("interrupt received, val = 0x%x\n", (reg >> 4));
+	pr_debug("interrupt received, val = 0x%x, status = 0x%x\n",
+		 (reg >> 4), status);
 	if (reg & LM49453_DETECT_REPORT_INVALID_IRQ) {
 		pr_debug("invalid headset type - restart HSD\n");
-		snd_soc_update_bits(codec, LM49453_P0_PMC_SETUP_REG, LM49453_PMC_SETUP_CHIP_EN, 0);
-		snd_soc_update_bits(codec, LM49453_P0_PMC_SETUP_REG,
-				    LM49453_PMC_SETUP_CHIP_EN, LM49453_CHIP_EN_HSD_DETECT);
-		/* we want to wait till the codec is settled, per LM49453 codec
-		 * spec
-		 */
-		msleep(20);
+		lm49453_restart_hsd(codec);
+		return status;
 	}
 	/* if insertion bit also set,
 	 * decide on removal based on type detected
@@ -119,17 +132,35 @@ static int mrfld_jack_gpio_detect(void)
 	if (reg & LM49453_DETECT_REPORT_VALID_IRQ)
 		status = lm49453_get_jack_type(codec);
 
-#ifdef CONFIG_SWITCH_MID
-	if (status) {
-		if (status == SND_JACK_HEADPHONE)
-			mid_headset_report((1<<1));
-		else if (status == SND_JACK_HEADSET)
-			mid_headset_report(1);
-	} else {
-		mid_headset_report(0);
+	if ((jack->status & SND_JACK_HEADSET) == SND_JACK_HEADSET) {
+		status = lm49453_check_bp(codec, status);
+		if (status & SND_JACK_BTN_0) {
+			pr_debug("short press detected");
+			/* report the press - release will be reported by
+			 * jack_gpio framework when we return from this fn */
+			snd_soc_jack_report(jack, status, gpio->report);
+			status = SND_JACK_HEADSET;
+		} else if (status & SND_JACK_BTN_1) {
+			pr_debug("long press detected");
+			/* android only needs button press/release events for
+			 * long press so convert BTN_1 to BTN_0 */
+			status &= ~SND_JACK_BTN_1;
+			status |= SND_JACK_BTN_0;
+		} else if (jack->status & SND_JACK_BTN_0) {
+			pr_debug("long release detected");
+		}
 	}
-#endif
-	pr_debug("headset status: 0x%x\n", status);
+
+	if (status == SND_JACK_HEADSET && jack->status == 0) {
+		/* unmask button press interrupts */
+		snd_soc_write(codec, LM49453_P0_HSD_IRQ_MASK3_REG, 0x70);
+		lm49453_set_mic_bias(codec, "AMIC1Bias", true);
+	} else if (status == 0) {
+		snd_soc_write(codec, LM49453_P0_HSD_IRQ_MASK3_REG, 0);
+		lm49453_set_mic_bias(codec, "AMIC1Bias", false);
+	}
+
+	mrfld_jack_report(status);
 	return status;
 }
 
@@ -210,9 +241,7 @@ static int mrfld_init(struct snd_soc_pcm_runtime *runtime)
 	mrfld_set_bias_level(card, dapm, SND_SOC_BIAS_OFF);
 	card->dapm.idle_bias_off = true;
 
-	mutex_lock(&codec->mutex);
 	snd_soc_dapm_sync(dapm);
-	mutex_unlock(&codec->mutex);
 	/* FIXME
 	 * set all the nc_pins, set all the init control
 	 * and add any machine controls here
@@ -231,19 +260,22 @@ static int mrfld_init(struct snd_soc_pcm_runtime *runtime)
 		return ret;
 	}
 
+	/* using the 32.7khz RTC for HSD */
 	snd_soc_write(codec, LM49453_P0_HSDET_CLK_DIV_REG, 0x00);
 
 	/* set some magic reg in page 2 for jack detection to work well */
-	snd_soc_write(codec, LM49453_PAGE_REG, 2);
-	snd_soc_write(codec, 0xFC, 0xE);
-	snd_soc_write(codec, LM49453_PAGE_REG, 0);
+	lm49453_set_reg_on_page(codec, LM49453_PAGE2_SELECT, 0xFC, 0xE);
 
-	/* set default debounce time to 2s */
+	/* set default debounce time */
 	/* TODO: create control for this in codec drv */
-	snd_soc_write(codec, LM49453_P0_HSD_PD_DBNC_REG, 0xF);
+	snd_soc_write(codec, LM49453_P0_HSD_PD_DBNC_REG, 0xA);
+	/* button press debounce time */
+	snd_soc_write(codec, LM49453_P0_HSD_COMP_L_DBNC_TIME_REG, 0x83);
 
 	/* set HSD block to detect only CONFIG1 (LRGM) type headsets */
 	snd_soc_write(codec, LM49453_P0_HSD_PIN3_4_CFG_REG, LM49453_JACK_CONFIG1);
+	/* set btn long press timing to the smallest value */
+	snd_soc_update_bits(codec, LM49453_P0_HSD_PPB_TIMEOUT1_REG, 0xF0, 0);
 
 	snd_soc_write(codec, LM49453_P0_HSD_IRQ_MASK1_REG, 0xF0);
 	snd_soc_update_bits(codec, LM49453_P0_PMC_SETUP_REG,

@@ -234,6 +234,10 @@
 #define LM49453_P0_HSD_R0_PPB_H_REG			0xF6
 #define LM49453_P0_HSD_R0_PPB_U_REG			0xF7
 
+#define LM49453_PPB_LONG_PRESS				BIT(4)
+#define LM49453_PPB_SHORT_PRESS				BIT(5)
+#define LM49453_PPB_LONG_RELEASE			BIT(6)
+
 /* I/O PULLDOWN CONFIG */
 #define LM49453_P0_PULL_CONFIG1_REG			0xF8
 #define LM49453_P0_PULL_CONFIG2_REG			0xF9
@@ -300,6 +304,7 @@
 /* Page select register bits (0xFF) */
 #define LM49453_PAGE0_SELECT				0x0
 #define LM49453_PAGE1_SELECT				0x1
+#define LM49453_PAGE2_SELECT				0x2
 
 /* LM49453_P0_HSD_PIN3_4_CFG_REG (Jack Pin config - 0xD7) */
 #define LM49453_JACK_DISABLE				0x00
@@ -379,5 +384,11 @@
 
 #define	LM49453_CLK_SRC_MCLK				1
 
+int lm49453_check_bp(struct snd_soc_codec *codec, int status);
 int lm49453_get_jack_type(struct snd_soc_codec *codec);
+void lm49453_set_mic_bias(struct snd_soc_codec *codec,
+			  const char *bias_widget, bool enable);
+int lm49453_set_reg_on_page(struct snd_soc_codec *codec, unsigned int page_no,
+			    unsigned int reg, unsigned int val);
+void lm49453_restart_hsd(struct snd_soc_codec *codec);
 #endif

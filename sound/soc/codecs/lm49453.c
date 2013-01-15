@@ -567,8 +567,6 @@ static const struct snd_kcontrol_new lm49453_snd_controls[] = {
 	SOC_SINGLE("Port2 Capture Switch", LM49453_P0_AUDIO_PORT2_BASIC_REG,
 		    2, 1, 0),
 	SOC_SINGLE("Earpiece Switch", LM49453_P0_EP_REG, 0, 1, 0),
-	SOC_SINGLE("AMIC1Bias Switch", LM49453_P0_MICL_REG, 6, 1, 0),
-	SOC_SINGLE("AMIC2Bias Switch", LM49453_P0_MICR_REG, 6, 1, 0),
 	SOC_SINGLE("DMIC12 Switch", LM49453_P0_DIGITAL_MIC1_CONFIG_REG, 7, 1, 0),
 	SOC_SINGLE("DMIC34 Switch", LM49453_P0_DIGITAL_MIC2_CONFIG_REG, 7, 1, 0),
 	SOC_ENUM("DMIX CLK Selection", lm49453_dmix_input_sel_enum),
@@ -596,6 +594,9 @@ static const struct snd_soc_dapm_widget lm49453_dapm_widgets[] = {
 	SND_SOC_DAPM_INPUT("DMIC2DAT"),
 	SND_SOC_DAPM_INPUT("AUXL"),
 	SND_SOC_DAPM_INPUT("AUXR"),
+
+	SND_SOC_DAPM_MICBIAS("AMIC1Bias", LM49453_P0_MICL_REG, 6, 0),
+	SND_SOC_DAPM_MICBIAS("AMIC2Bias", LM49453_P0_MICR_REG, 6, 0),
 
 	SND_SOC_DAPM_PGA("PORT1_1_RX", SND_SOC_NOPM, 0, 0, NULL, 0),
 	SND_SOC_DAPM_PGA("PORT1_2_RX", SND_SOC_NOPM, 0, 0, NULL, 0),
@@ -1055,8 +1056,10 @@ static const struct snd_soc_dapm_route lm49453_audio_map[] = {
 	{ "PORT2_SDO", "Port2 Capture Switch", "P2_1_TX"},
 	{ "PORT2_SDO", "Port2 Capture Switch", "P2_2_TX"},
 
-	{ "Mic1 Input", "AMIC1Bias Switch", "AMIC1"},
-	{ "Mic2 Input", "AMIC2Bias Switch", "AMIC2"},
+	{ "AMIC1Bias", NULL, "AMIC1"},
+	{ "AMIC2Bias", NULL, "AMIC2"},
+	{ "Mic1 Input", NULL, "AMIC1Bias"},
+	{ "Mic2 Input", NULL, "AMIC2Bias"},
 
 	{ "AUXL Input", NULL, "AUXL" },
 	{ "AUXR Input", NULL, "AUXR" },
@@ -1088,13 +1091,63 @@ static const struct snd_soc_dapm_route lm49453_audio_map[] = {
 	{ "Sidetone", "Sidetone Switch", "Sidetone Mixer" },
 };
 
+inline void lm49453_restart_hsd(struct snd_soc_codec *codec)
+{
+	snd_soc_update_bits(codec, LM49453_P0_PMC_SETUP_REG,
+			    LM49453_PMC_SETUP_CHIP_EN, 0);
+	snd_soc_update_bits(codec, LM49453_P0_PMC_SETUP_REG,
+			    LM49453_PMC_SETUP_CHIP_EN,
+			    LM49453_CHIP_EN_HSD_DETECT);
+}
+EXPORT_SYMBOL_GPL(lm49453_restart_hsd);
+
+int lm49453_set_reg_on_page(struct snd_soc_codec *codec, unsigned int page_no,
+			    unsigned int reg, unsigned int val)
+{
+	int ret;
+	mutex_lock(&codec->mutex);
+	snd_soc_write(codec, LM49453_PAGE_REG, page_no);
+	ret = snd_soc_write(codec, reg, val);
+	snd_soc_write(codec, LM49453_PAGE_REG, LM49453_PAGE0_SELECT);
+	mutex_unlock(&codec->mutex);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(lm49453_set_reg_on_page);
+
+void lm49453_set_mic_bias(struct snd_soc_codec *codec,
+			  const char *bias_widget, bool enable)
+{
+	pr_debug("%s %s\n", enable ? "enable" : "disable", bias_widget);
+	if (enable)
+		snd_soc_dapm_force_enable_pin(&codec->dapm, bias_widget);
+	else
+		snd_soc_dapm_disable_pin(&codec->dapm, bias_widget);
+	snd_soc_dapm_sync(&codec->dapm);
+}
+EXPORT_SYMBOL_GPL(lm49453_set_mic_bias);
+
+int lm49453_check_bp(struct snd_soc_codec *codec, int status)
+{
+	unsigned int bp_reg;
+	bp_reg = snd_soc_read(codec, LM49453_P0_HSD_IRQ3_REG);
+	pr_debug("%s: button press: 0x%x\n", __func__, bp_reg >> 4);
+	if (bp_reg & LM49453_PPB_SHORT_PRESS)
+		return SND_JACK_HEADSET | SND_JACK_BTN_0;
+	else if (bp_reg & LM49453_PPB_LONG_PRESS)
+		return SND_JACK_HEADSET | SND_JACK_BTN_1;
+	else if (bp_reg & LM49453_PPB_LONG_RELEASE)
+		return SND_JACK_HEADSET;
+	return status;
+}
+EXPORT_SYMBOL_GPL(lm49453_check_bp);
+
 int lm49453_get_jack_type(struct snd_soc_codec *codec)
 {
 #define LM49453_HSD_PIN_CONFIG_MASK		0x0F
 	unsigned int hs_type;
 
 	hs_type = snd_soc_read(codec, LM49453_P0_HSD_PIN_CONFIG_REG);
-	pr_debug("jack pin config: 0x%x\n", hs_type);
+	pr_debug("%s: jack pin config: 0x%x\n", __func__, hs_type);
 	switch (hs_type & LM49453_HSD_PIN_CONFIG_MASK) {
 	case LM49453_JACK_CONFIG1:
 	case LM49453_JACK_CONFIG2:
@@ -1105,7 +1158,6 @@ int lm49453_get_jack_type(struct snd_soc_codec *codec)
 	case LM49453_JACK_CONFIG5:
 		return SND_JACK_HEADPHONE;
 	default:
-		pr_err("invalid pin config detected\n");
 		return 0;
 	}
 }
@@ -1275,13 +1327,15 @@ static int lm49453_set_bias_level(struct snd_soc_codec *codec,
 		if (codec->dapm.bias_level == SND_SOC_BIAS_OFF)
 			regcache_sync(lm49453->regmap);
 
-		snd_soc_update_bits(codec, LM49453_P0_PMC_SETUP_REG,
-				    LM49453_PMC_SETUP_CHIP_EN, LM49453_CHIP_EN_HSD_DETECT);
 		break;
 
 	case SND_SOC_BIAS_OFF:
+		/* need to set to 0 first for codec to be turned off */
 		snd_soc_update_bits(codec, LM49453_P0_PMC_SETUP_REG,
 				    LM49453_PMC_SETUP_CHIP_EN, 0);
+		snd_soc_update_bits(codec, LM49453_P0_PMC_SETUP_REG,
+				    LM49453_PMC_SETUP_CHIP_EN,
+				    LM49453_CHIP_EN_HSD_DETECT);
 		break;
 	}
 
