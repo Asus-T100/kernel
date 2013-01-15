@@ -7,8 +7,6 @@
 
 #include "assert_support.h"
 
-#include "platform_support.h"			/* hrt_sleep() */
-
 STORAGE_CLASS_IRQ_C void irq_reg_store(
 	const irq_ID_t		ID,
 	const unsigned int	reg,
@@ -17,12 +15,6 @@ STORAGE_CLASS_IRQ_C void irq_reg_store(
 assert(ID < N_IRQ_ID);
 assert(IRQ_BASE[ID] != (hrt_address)-1);
 	device_store_uint32(IRQ_BASE[ID] + reg*sizeof(hrt_data), value);
-/* This seems to be required in CSIM */
-#ifndef HRT_CSIM
-	(void)device_load_uint32(IRQ_BASE[ID] + reg*sizeof(hrt_data));
-#else
-	hrt_sleep();
-#endif
 return;
 }
 

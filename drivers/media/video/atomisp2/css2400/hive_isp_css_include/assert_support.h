@@ -5,7 +5,16 @@
 #include "assert.h"
 #define OP___assert(cnd) assert(cnd)
 #elif defined(__HIVECC)
+
+/*
+ * Enabling assert on cells has too many side effects, it should
+ * by default be limited to the unsched CSIM mode, or to only
+ * controller type processors. Presently there are not controls
+ * in place for that
+ */
+/* #define OP___assert(cnd) OP___csim_assert(cnd) */
 #define OP___assert(cnd) ((void)0)
+
 #elif defined(__KERNEL__) /* a.o. Android builds */
 
 #include "sh_css_debug.h"
@@ -25,13 +34,8 @@
 
 #elif defined(__FIST__)
 
-#include <fist/fist.h>
-#include <cyg/hal/plf_intr.h> /* for HAL_DELAY_US(us) */
-#define _FIST
-#define HRT_HW
-#define __HOST__
-#define assert(ignore)((void) 0)
-#define OP___assert(cnd)
+#include "assert.h"
+#define OP___assert(cnd) assert(cnd)
 
 #elif defined(__GNUC__)
 #include "assert.h"

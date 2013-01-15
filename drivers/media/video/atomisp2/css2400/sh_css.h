@@ -301,11 +301,12 @@ The CSS API and its implementation do not depend on any particular environment
  */
 /* deprecated */
 enum sh_css_input_mode {
-	SH_CSS_INPUT_MODE_SENSOR, /**< data from sensor */
-	SH_CSS_INPUT_MODE_FIFO,   /**< data from input-fifo */
-	SH_CSS_INPUT_MODE_TPG,    /**< data from test-pattern generator */
-	SH_CSS_INPUT_MODE_PRBS,   /**< data from pseudo-random bit stream */
-	SH_CSS_INPUT_MODE_MEMORY  /**< data from a frame in memory */
+	SH_CSS_INPUT_MODE_SENSOR,       /**< data from sensor */
+	SH_CSS_INPUT_MODE_MULTI_SENSOR, /**< data from multi sensor */
+	SH_CSS_INPUT_MODE_FIFO,         /**< data from input-fifo */
+	SH_CSS_INPUT_MODE_TPG,          /**< data from test-pattern generator */
+	SH_CSS_INPUT_MODE_PRBS,         /**< data from pseudo-random bit stream */
+	SH_CSS_INPUT_MODE_MEMORY        /**< data from a frame in memory */
 };
 
 /** The ISP streaming input interface supports the following formats.
@@ -530,7 +531,7 @@ enum sh_css_err {
 	sh_css_err_unsupported_input_mode,
 	sh_css_err_cannot_allocate_memory,
 	sh_css_err_invalid_arguments,
-	sh_css_err_too_may_colors,
+	sh_css_err_too_many_colors,
 	sh_css_err_unsupported_frame_format,
 	sh_css_err_frames_mismatch,
 	sh_css_err_not_implemented,
@@ -1487,6 +1488,51 @@ enum sh_css_err
 sh_css_frame_allocate_from_info(struct sh_css_frame **frame,
 				const struct sh_css_frame_info *info);
 
+/** @brief Allocate a CSS MIPI frame structure of given size in bytes..
+ *
+ * @param	frame	The allocated frame.
+ * @param[in]	size_bytes	The frame size in bytes.
+ * @param[in]	contiguous	Allocate memory physically contiguously or not.
+ * @return		The error code.
+ *
+ * Allocate a frame using the given size in bytes.
+ * The frame structure is partially null initialized.
+ */
+enum sh_css_err
+sh_css_mipi_frame_allocate(struct	sh_css_frame **frame,
+				const unsigned int	size_bytes,
+				const bool			contiguous);
+
+/** @brief Specify a CSS MIPI frame buffer.
+ *
+ * @param[in]	size_bytes	The frame size in memory words (32B).
+ * @param[in]	contiguous	Allocate memory physically contiguously or not.
+ * @return		The error code.
+ *
+ * Specifies a CSS MIPI frame buffer: size in memory words (32B).
+ */
+enum sh_css_err
+sh_css_mipi_frame_specify(const unsigned int	size_mem_words,
+				const bool contiguous);
+
+/** @brief Calculate the size of a mipi frame.
+ *
+ * @param[in]	width		The width (in pixels) of the frame.
+ * @param[in]	height		The height (in lines) of the frame.
+ * @param[in]	format		The frame (MIPI) format.
+ * @param[in]	embedded_data_size_words		Embedded data size in memory words.
+ * @param		size_mem_words					The mipi frame size in memory words (32B).
+ * @return			The error code.
+ *
+ * Calculate the size of a mipi frame, based on the resolution and format. 
+ */
+enum sh_css_err
+sh_css_mipi_frame_calculate_size(const unsigned int width,
+				const unsigned int height,
+				const enum sh_css_input_format format,
+				const unsigned int embedded_data_size_words,
+				unsigned int *size_mem_words);
+
 /** @brief Free a CSS frame structure.
  *
  * @param[in]	frame	Pointer to the frame.
@@ -1679,7 +1725,7 @@ sh_css_enable_continuous(bool enable);
  * Enable or disable continuous binaries if available. Default is disabled.
  */
 void
-sh_css_enable_cont_capt(bool enable);
+sh_css_enable_cont_capt(bool enable, bool stop_copy_preview);
 
 /** @brief Return whether continuous mode is enabled.
  *
@@ -2503,6 +2549,12 @@ sh_css_request_flash(void);
  */
 void
 sh_css_video_set_isp_pipe_version(unsigned int version);
+
+/** @brief initialize host-sp control variables.
+ *
+ */
+void
+sh_css_init_host_sp_control_vars(void);
 
 
 /* For convenience, so users only need to include sh_css.h

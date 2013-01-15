@@ -83,6 +83,7 @@ sh_css_sp_init_pipeline(struct sh_css_pipeline *me,
 			bool continuous,
 			bool offline,
 			bool input_is_raw_reordered,
+			bool isys_tokenhandler,
 			enum sh_css_pipe_config_override copy_ovrd);
 
 void

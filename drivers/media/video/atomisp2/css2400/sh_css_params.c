@@ -1926,7 +1926,7 @@ assert(dis_data->sdis_hor_proj != mmgr_NULL);
 		dis_data->sdis_hor_proj,dis_data->sdis_ver_proj);
 
 	if (current_3a_binary == NULL) {
-		sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_dis_projections() leave: return=void\n");
+		sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_dis_projections() leave: return_void\n");
 		return;
 	}
 
@@ -1946,7 +1946,7 @@ assert(dis_data->sdis_hor_proj != mmgr_NULL);
 		ver_ptr_isp += ver_num_isp * sizeof(int);
 		ver_ptr_3a  += ver_num_3a;
 	}
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_dis_projections() leave: return=void\n");
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_dis_projections() leave: return_void\n");
 }
 #endif
 
@@ -3079,7 +3079,7 @@ sh_css_set_gamma_table(const struct sh_css_gamma_table *table)
 	gamma_table_changed = true;
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_gamma_table() leave: \
-		return=void\n");
+		return_void\n");
 }
 
 void
@@ -3107,7 +3107,7 @@ sh_css_set_ctc_table(const struct sh_css_ctc_table *table)
 	ctc_table_changed = true;
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_ctc_table() leave: \
-		return=void\n");
+		return_void\n");
 }
 
 void
@@ -3115,27 +3115,27 @@ sh_css_get_ctc_table(const struct sh_css_ctc_table **table)
 {
 assert(table != NULL);
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_ctc_table() enter: \
-		table=%p\n",table);
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_ctc_table() enter: "
+		"table=%p\n",table);
 
 	*table = ctc_table;
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_ctc_table() leave: \
-		*table=%p\n",*table);
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_ctc_table() leave: "
+		"*table=%p\n",*table);
 }
 
 void
 sh_css_set_xnr_table(const struct sh_css_xnr_table *table)
 {
 /* table can be NULL */
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_xnr_table() enter: \
-		table=%p\n",table);
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_xnr_table() enter: "
+		"table=%p\n",table);
 
 	xnr_table = table;
 	xnr_table_changed = true;
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_xnr_table() leave: \
-		return=void\n");
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_xnr_table() leave: "
+		"return_void\n");
 }
 
 void
@@ -3143,27 +3143,27 @@ sh_css_get_xnr_table(const struct sh_css_xnr_table **table)
 {
 assert(table != NULL);
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_xnr_table() enter: \
-		table=%p\n",table);
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_xnr_table() enter: "
+		"table=%p\n",table);
 
 	*table = xnr_table;
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_xnr_table() leave: \
-		*table=%p\n",*table);
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_xnr_table() leave: "
+		"*table=%p\n",*table);
 }
 
 void
 sh_css_set_macc_table(const struct sh_css_macc_table *table)
 {
 /* table can be NULL */
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_macc_table() enter: \
-		table=%p\n",table);
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_macc_table() enter: "
+		"table=%p\n",table);
 
 	macc_table = table;
 	macc_table_changed = true;
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_macc_table() leave: \
-		return=void\n");
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_macc_table() leave: "
+		"return_void\n");
 }
 
 void
@@ -3326,7 +3326,7 @@ sh_css_set_morph_table(const struct sh_css_morph_table *table)
 	morph_table = table;
 	morph_table_changed = true;
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_morph_table() leave: \
-		return=void\n");
+		return_void\n");
 }
 
 void
@@ -3411,7 +3411,7 @@ assert(config != NULL);
 
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_set_3a_config() leave: \
-		return=void\n");
+		return_void\n");
 }
 
 void sh_css_get_3a_config(
@@ -3450,15 +3450,15 @@ void sh_css_set_wb_config(
 		wb_config = config;
 	} else {
 /* Checkpatch patch */
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_wb_config() enter: \
-		config=%p\n",config);
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_wb_config() enter: "
+		"config=%p\n",config);
 		wb_config = &disabled_wb_config;
 	}
 	wb_config_changed = true;
 
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_set_wb_config() leave: \
-		return=void\n");
+		"sh_css_set_wb_config() leave: "
+		"return_void\n");
 }
 
 void sh_css_get_wb_config(
@@ -3466,15 +3466,15 @@ void sh_css_get_wb_config(
 {
 assert(config != NULL);
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_wb_config() enter: \
-		config=%p\n",config);
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_wb_config() enter: "
+		"config=%p\n",config);
 
 	*config = wb_config;
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_wb_config() leave: \
-		config.integer_bits=%d, \
-		config.gr=%d, config.r=%d, \
-		config.b=%d,  config.gb=%d\n",
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_wb_config() leave: "
+		"config.integer_bits=%d, "
+		"config.gr=%d, config.r=%d, "
+		"config.b=%d,  config.gb=%d\n",
 		(*config)->integer_bits,
 		(*config)->gr, (*config)->r,
 		(*config)->b, (*config)->gb);
@@ -3489,12 +3489,12 @@ void sh_css_set_cc_config(
 
 	if (config != NULL) {
 /* Checkpatch patch */
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_cc_config() enter: \
-		config.fraction_bits=%d, config.matrix[0]=%d, \
-		config.matrix[1]=%d, config.matrix[2]=%d, \
-		config.matrix[3]=%d, config.matrix[4]=%d, \
-		config.matrix[5]=%d, config.matrix[6]=%d, \
-		config.matrix[7]=%d, config.matrix[8]=%d\n",
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_cc_config() enter: "
+		"config.fraction_bits=%d, config.m[0]=%d, "
+		"config.m[1]=%d, config.m[2]=%d, "
+		"config.m[3]=%d, config.m[4]=%d, "
+		"config.m[5]=%d, config.m[6]=%d, "
+		"config.m[7]=%d, config.m[8]=%d\n",
 		config->fraction_bits, config->matrix[0],
 		config->matrix[1], config->matrix[2],
 		config->matrix[3], config->matrix[4],
@@ -3503,16 +3503,16 @@ void sh_css_set_cc_config(
 		cc_config = config;
 	} else {
 /* Checkpatch patch */
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_cc_config() enter: \
-		config=%p\n",config);
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_cc_config() enter: "
+		"config=%p\n",config);
 		cc_config = &disabled_cc_config;
 	}
 
 	cc_config_changed = true;
 
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_set_cc_config() leave: \
-		return=void\n");
+		"sh_css_set_cc_config() leave: "
+		"return_void\n");
 }
 
 void sh_css_get_cc_config(
@@ -3520,17 +3520,17 @@ void sh_css_get_cc_config(
 {
 assert(config != NULL);
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_cc_config() enter: \
-		config=%p\n",config);
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_cc_config() enter: "
+		"config=%p\n",config);
 
 	*config = cc_config;
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_cc_config() leave: \
-		config.fraction_bits=%d, config.matrix[0]=%d, \
-		config.matrix[1]=%d, config.matrix[2]=%d, \
-		config.matrix[3]=%d, config.matrix[4]=%d, \
-		config.matrix[5]=%d, config.matrix[6]=%d, \
-		config.matrix[7]=%d, config.matrix[8]=%d\n",
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_cc_config() leave: "
+		"config.fraction_bits=%d, config.m[0]=%d, "
+		"config.m[1]=%d, config.m[2]=%d, "
+		"config.m[3]=%d, config.m[4]=%d, "
+		"config.m[5]=%d, config.m[6]=%d, "
+		"config.m[7]=%d, config.m[8]=%d\n",
 		(*config)->fraction_bits, (*config)->matrix[0],
 		(*config)->matrix[1], (*config)->matrix[2],
 		(*config)->matrix[3], (*config)->matrix[4],
@@ -3562,7 +3562,7 @@ void sh_css_set_tnr_config(
 
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_set_tnr_config() leave: \
-		return=void\n");
+		return_void\n");
 }
 
 void sh_css_get_tnr_config(
@@ -3610,7 +3610,7 @@ void sh_css_set_ob_config(
 
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_set_ob_config() leave: \
-		return=void\n");
+		return_void\n");
 }
 
 void sh_css_get_ob_config(
@@ -3654,7 +3654,7 @@ void sh_css_set_dp_config(const struct sh_css_dp_config *config)
 
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_set_ob_config() leave: \
-		return=void\n");
+		return_void\n");
 }
 
 void sh_css_get_dp_config(
@@ -3679,25 +3679,25 @@ void sh_css_set_nr_config(
 
 	if (config != NULL) {
 /* Checkpatch patch */
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_nr_config() enter: \
-		config.direction=%d, \
-		config.bnr_gain=%d, config.ynr_gain=%d, \
-		config.threshold_cb=%d, config.threshold_cr=%d\n",
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_nr_config() enter: "
+		"config.direction=%d, "
+		"config.bnr_gain=%d, config.ynr_gain=%d, "
+		"config.threshold_cb=%d, config.threshold_cr=%d\n",
 		config->direction,
 		config->bnr_gain, config->ynr_gain,
 		config->threshold_cb, config->threshold_cr);
 		nr_config = config;
 	} else {
 /* Checkpatch patch */
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_nr_config() enter: \
-		config=%p\n",config);
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_nr_config() enter: "
+		"config=%p\n",config);
 		nr_config = &disabled_nr_config;
 	}
 	nr_config_changed = true;
 
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_set_nr_config() leave: \
-		return=void\n");
+		"sh_css_set_nr_config() leave: "
+		"return_void\n");
 }
 
 void sh_css_get_nr_config(
@@ -3726,23 +3726,23 @@ void sh_css_set_ee_config(
 
 	if (config != NULL) {
 /* Checkpatch patch */
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_ee_config() enter: \
-		config.threshold=%d, \
-		config.gain=%d, config.detail_gain=%d\n",
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_ee_config() enter: "
+		"config.threshold=%d, "
+		"config.gain=%d, config.detail_gain=%d\n",
 		config->threshold,
 		config->gain, config->detail_gain);
 		ee_config = config;
 	} else {
 /* Checkpatch patch */
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_ee_config() enter: \
-		config=%p\n",config);
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_ee_config() enter: "
+		"config=%p\n",config);
 		ee_config = &disabled_ee_config;
 	}
 	ee_config_changed = true;
 
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_set_ee_config() leave: \
-		return=void\n");
+		"sh_css_set_ee_config() leave: "
+		"return_void\n");
 }
 
 void sh_css_get_ee_config(
@@ -3769,23 +3769,23 @@ void sh_css_set_de_config(
 
 	if (config != NULL) {
 /* Checkpatch patch */
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_de_config() enter: \
-		config.pixelnoise=%d, \
-		config.c1_coring_threshold=%d, config.c2_coring_threshold=%d\n",
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_de_config() enter: "
+		"config.pixelnoise=%d, "
+		"config.c1_coring_threshold=%d, config.c2_coring_threshold=%d\n",
 		config->pixelnoise,
 		config->c1_coring_threshold, config->c2_coring_threshold);
 		de_config = config;
 	} else {
 /* Checkpatch patch */
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_de_config() enter: \
-		config=%p\n",config);
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_de_config() enter: "
+		"config=%p\n",config);
 		de_config = &disabled_de_config;
 	}
 	de_config_changed = true;
 
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_set_de_config() leave: \
-		return=void\n");
+		"sh_css_set_de_config() leave: "
+		"return_void\n");
 }
 
 void sh_css_get_de_config(
@@ -3811,21 +3811,21 @@ void sh_css_set_gc_config(const struct sh_css_gc_config *config)
 
 	if (config != NULL) {
 /* Checkpatch patch */
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_gc_config() enter: \
-		config.gain_k1=%d, config.gain_k2=%d\n",
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_gc_config() enter: "
+		"config.gain_k1=%d, config.gain_k2=%d\n",
 		config->gain_k1, config->gain_k2);
 		gc_config = config;
 	} else {
 /* Checkpatch patch */
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_gc_config() enter: \
-		config=%p\n",config);
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_gc_config() enter: "
+		"config=%p\n",config);
 		gc_config = &disabled_gc_config;
 	}
 	gc_config_changed = true;
 
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_set_gc_config() leave: \
-		return=void\n");
+		"sh_css_set_gc_config() leave: "
+		"return_void\n");
 }
 
 void sh_css_get_gc_config(
@@ -3833,13 +3833,13 @@ void sh_css_get_gc_config(
 {
 assert(config != NULL);
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_gc_config() enter: \
-		config=%p\n",config);
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_gc_config() enter: "
+		"config=%p\n",config);
 
 	*config = gc_config;
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_gc_config() leave: \
-		config.gain_k1=%d, config.gain_k2=%d\n",
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_gc_config() leave: "
+		"config.gain_k1=%d, config.gain_k2=%d\n",
 		(*config)->gain_k1, (*config)->gain_k2);
 }
 
@@ -3850,21 +3850,21 @@ void sh_css_set_anr_config(
 
 	if (config != NULL) {
 /* Checkpatch patch */
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_anr_config() enter: \
-		config.threshold=%d\n",
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_anr_config() enter: "
+		"config.threshold=%d\n",
 		config->threshold);
 		anr_config = config;
 	} else {
 /* Checkpatch patch */
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_anr_config() enter: \
-		config=%p\n",config);
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_anr_config() enter: "
+		"config=%p\n",config);
 		anr_config = &default_anr_config;
 	}
 	anr_config_changed = true;
 
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_set_anr_config() leave: \
-		return=void\n");
+		"sh_css_set_anr_config() leave: "
+		"return_void\n");
 }
 
 void sh_css_get_anr_config(
@@ -3872,13 +3872,13 @@ void sh_css_get_anr_config(
 {
 assert(config != NULL);
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_anr_config() enter: \
-		config=%p\n",config);
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_anr_config() enter: "
+		"config=%p\n",config);
 
 	*config = anr_config;
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_anr_config() leave: \
-		config.threshold=%d\n",
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_anr_config() leave: "
+		"config.threshold=%d\n",
 		(*config)->threshold);
 }
 
@@ -3889,21 +3889,21 @@ void sh_css_set_ce_config(
 
 	if (config != NULL) {
 /* Checkpatch patch */
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_ce_config() enter: \
-		config.uv_level_min=%d, config.uv_level_max=%d\n",
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_ce_config() enter: "
+		"config.uv_level_min=%d, config.uv_level_max=%d\n",
 		config->uv_level_min, config->uv_level_max);
 		ce_config = config;
 	} else {
 /* Checkpatch patch */
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_ce_config() enter: \
-		config=%p\n",config);
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_ce_config() enter: "
+		"config=%p\n",config);
 		ce_config = &default_ce_config;
 	}
 	ce_config_changed = true;
 
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_set_ce_config() leave: \
-		return=void\n");
+		"sh_css_set_ce_config() leave: "
+		"return_void\n");
 }
 
 void sh_css_get_ce_config(
@@ -3911,13 +3911,13 @@ void sh_css_get_ce_config(
 {
 assert(config != NULL);
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_ce_config() enter: \
-		config=%p\n",config);
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_ce_config() enter: "
+		"config=%p\n",config);
 
 	*config = ce_config;
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_ce_config() leave: \
-		config.uv_level_min=%d, config.uv_level_max=%d\n",
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_ce_config() leave: "
+		"config.uv_level_min=%d, config.uv_level_max=%d\n",
 		(*config)->uv_level_min, (*config)->uv_level_max);
 }
 
@@ -3940,7 +3940,7 @@ void sh_css_set_dvs_6axis_config(
 
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_set_dvs_6axis_config() leave: "
-		"return=void\n");
+		"return_void\n");
 }
 
 void sh_css_get_dvs_6axis_config(
@@ -3956,7 +3956,7 @@ assert(dvs_config != NULL);
 /* Structure to big to print its contents under a single line requirement */
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_get_dvs_6axis_config() leave: "
-		"return=void\n");
+		"return_void\n");
 }
 
 void sh_css_set_ecd_config(
@@ -3978,7 +3978,7 @@ void sh_css_set_ecd_config(
 	ecd_config_changed = true;
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_ecd_config() leave: "
-		"return=void\n");
+		"return_void\n");
 return;
 }
 
@@ -4023,7 +4023,7 @@ void sh_css_set_ynr_config(
 
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_set_ynr_config() leave: "
-		"return=void\n");
+		"return_void\n");
 return;
 }
 
@@ -4074,7 +4074,7 @@ void sh_css_set_fc_config(
 
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_set_fc_config() leave: "
-		"return=void\n");
+		"return_void\n");
 return;
 }
 
@@ -4130,7 +4130,7 @@ void sh_css_set_cnr_config(
 
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_set_cnr_config() leave: "
-		"return=void\n");
+		"return_void\n");
 return;
 }
 
@@ -4177,7 +4177,7 @@ void sh_css_set_macc_config(
 
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_set_macc_config() leave: "
-		"return=void\n");
+		"return_void\n");
 return;
 }
 
@@ -4226,7 +4226,7 @@ void sh_css_set_ctc_config(
 
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_set_ctc_config() leave: "
-		"return=void\n");
+		"return_void\n");
 return;
 }
 
@@ -4261,21 +4261,21 @@ void sh_css_set_aa_config(
 
 	if (config != NULL) {
 /* Checkpatch patch */
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_aa_config() enter: \
-		config.scale=%d\n",
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_aa_config() enter: "
+		"config.scale=%d\n",
 		config->scale);
 		aa_config = config;
 	} else {
 /* Checkpatch patch */
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_aa_config() enter: \
-		config=%p\n",config);
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_aa_config() enter: "
+		"config=%p\n",config);
 		aa_config = &default_aa_config;
 	}
 	aa_config_changed = true;
 
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_set_aa_config() leave: \
-		return=void\n");
+		"sh_css_set_aa_config() leave: "
+		"return_void\n");
 }
 
 void sh_css_get_aa_config(
@@ -4283,13 +4283,13 @@ void sh_css_get_aa_config(
 {
 assert(config != NULL);
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_aa_config() enter: \
-		config=%p\n",config);
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_aa_config() enter: "
+		"config=%p\n",config);
 
 	*config = aa_config;
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_aa_config() leave: \
-		config.scale=%d\n",
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_aa_config() leave: "
+		"config.scale=%d\n",
 		(*config)->scale);
 }
 
@@ -4298,15 +4298,15 @@ void sh_css_set_r_gamma_table(
 {
 /* table can be NULL */
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_r_gamma_table() enter: \
-		table=%p\n",table);
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_r_gamma_table() enter: "
+		"table=%p\n",table);
 
 	r_gamma_table = table;
 	r_gamma_table_changed = true;
 
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_set_r_gamma_table() leave: \
-		return=void\n");
+		"sh_css_set_r_gamma_table() leave: "
+		"return_void\n");
 }
 
 void sh_css_get_r_gamma_table(
@@ -4318,8 +4318,8 @@ assert(table != NULL);
 
 	*table = r_gamma_table;
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_r_gamma_table() leave: \
-		*table=%p\n",*table);
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_r_gamma_table() leave: "
+		"*table=%p\n",*table);
 }
 
 void sh_css_set_g_gamma_table(
@@ -4327,15 +4327,15 @@ void sh_css_set_g_gamma_table(
 {
 /* table can be NULL */
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_g_gamma_table() enter: \
-		table=%p\n",table);
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_g_gamma_table() enter: "
+		"table=%p\n",table);
 
 	g_gamma_table = table;
 	g_gamma_table_changed = true;
 
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_set_g_gamma_table() leave: \
-		return=void\n");
+		"sh_css_set_g_gamma_table() leave: "
+		"return_void\n");
 }
 
 void sh_css_get_g_gamma_table(
@@ -4347,8 +4347,8 @@ assert(table != NULL);
 
 	*table = g_gamma_table;
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_g_gamma_table() leave: \
-		*table=%p\n",*table);
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_g_gamma_table() leave: "
+		"*table=%p\n",*table);
 }
 
 void sh_css_set_b_gamma_table(
@@ -4356,15 +4356,15 @@ void sh_css_set_b_gamma_table(
 {
 /* table can be NULL */
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_b_gamma_table() enter: \
-		table=%p\n",table);
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_b_gamma_table() enter: "
+		"table=%p\n",table);
 
 	b_gamma_table = table;
 	b_gamma_table_changed = true;
 
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_set_b_gamma_table() leave: \
-		return=void\n");
+		"sh_css_set_b_gamma_table() leave: "
+		"return_void\n");
 }
 
 void sh_css_get_b_gamma_table(
@@ -4375,8 +4375,8 @@ assert(table != NULL);
 
 	*table = b_gamma_table;
 	
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_g_gamma_table() leave: \
-		*table=%p\n",*table);
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_g_gamma_table() leave: "
+		"*table=%p\n",*table);
 }
 
 void sh_css_set_yuv2rgb_cc_config(
@@ -4384,12 +4384,12 @@ void sh_css_set_yuv2rgb_cc_config(
 {
 	if (config != NULL) {
 /* Checkpatch patch */
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_yuv2rgb_cc_config() enter: \
-		config.matrix[0]=%d, \
-		config.matrix[1]=%d, config.matrix[2]=%d, \
-		config.matrix[3]=%d, config.matrix[4]=%d, \
-		config.matrix[5]=%d, config.matrix[6]=%d, \
-		config.matrix[7]=%d, config.matrix[8]=%d\n",
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_yuv2rgb_cc_config() enter: "
+		"config.m[0]=%d, "
+		"config.m[1]=%d, config.m[2]=%d, "
+		"config.m[3]=%d, config.m[4]=%d, "
+		"config.m[5]=%d, config.m[6]=%d, "
+		"config.m[7]=%d, config.m[8]=%d\n",
 		config->matrix[0],
 		config->matrix[1], config->matrix[2],
 		config->matrix[3], config->matrix[4],
@@ -4398,15 +4398,15 @@ void sh_css_set_yuv2rgb_cc_config(
 		yuv2rgb_cc_config = config;
 	} else {
 /* Checkpatch patch */
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_yuv2rgb_cc_config() enter: \
-		config=%p\n",config);
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_yuv2rgb_cc_config() enter: "
+		"config=%p\n",config);
 		yuv2rgb_cc_config = &disabled_yuv2rgb_cc_config;
 	}
 	yuv2rgb_cc_config_changed = true;
 
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_set_yuv2rgb_cc_config() leave: \
-		return=void\n");
+		"sh_css_set_yuv2rgb_cc_config() leave: "
+		"return_void\n");
 }
 
 void sh_css_get_yuv2rgb_cc_config(
@@ -4418,12 +4418,12 @@ assert(config != NULL);
 
 	*config = yuv2rgb_cc_config;
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_yuv2rgb_cc_config() leave: \
-		config.matrix[0]=%d, \
-		config.matrix[1]=%d, config.matrix[2]=%d, \
-		config.matrix[3]=%d, config.matrix[4]=%d, \
-		config.matrix[5]=%d, config.matrix[6]=%d, \
-		config.matrix[7]=%d, config.matrix[8]=%d\n",
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_yuv2rgb_cc_config() leave: "
+		"config.m[0]=%d, "
+		"config.m[1]=%d, config.m[2]=%d, "
+		"config.m[3]=%d, config.m[4]=%d, "
+		"config.m[5]=%d, config.m[6]=%d, "
+		"config.m[7]=%d, config.m[8]=%d\n",
 		(*config)->matrix[0],
 		(*config)->matrix[1], (*config)->matrix[2],
 		(*config)->matrix[3], (*config)->matrix[4],
@@ -4438,12 +4438,12 @@ assert(config != NULL);
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_rgb2yuv_cc_config()\n");
 	if (config != NULL) {
 /* Checkpatch patch */
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_rgb2yuv_cc_config() enter: \
-		config.matrix[0]=%d, \
-		config.matrix[1]=%d, config.matrix[2]=%d, \
-		config.matrix[3]=%d, config.matrix[4]=%d, \
-		config.matrix[5]=%d, config.matrix[6]=%d, \
-		config.matrix[7]=%d, config.matrix[8]=%d\n",
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_rgb2yuv_cc_config() enter: "
+		"config.m[0]=%d, "
+		"config.m[1]=%d, config.m[2]=%d, "
+		"config.m[3]=%d, config.m[4]=%d, "
+		"config.m[5]=%d, config.m[6]=%d, "
+		"config.m[7]=%d, config.m[8]=%d\n",
 		config->matrix[0],
 		config->matrix[1], config->matrix[2],
 		config->matrix[3], config->matrix[4],
@@ -4460,7 +4460,7 @@ assert(config != NULL);
 
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_set_rgb2yuv_cc_config() leave: \
-		return=void\n");
+		return_void\n");
 }
 
 void sh_css_get_rgb2yuv_cc_config(
@@ -4472,12 +4472,12 @@ assert(config != NULL);
 
 	*config = rgb2yuv_cc_config;
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_rgb2yuv_cc_config() leave: \
-		config.matrix[0]=%d, \
-		config.matrix[1]=%d, config.matrix[2]=%d, \
-		config.matrix[3]=%d, config.matrix[4]=%d, \
-		config.matrix[5]=%d, config.matrix[6]=%d, \
-		config.matrix[7]=%d, config.matrix[8]=%d\n",
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_rgb2yuv_cc_config() leave: "
+		"config.m[0]=%d, "
+		"config.m[1]=%d, config.m[2]=%d, "
+		"config.m[3]=%d, config.m[4]=%d, "
+		"config.m[5]=%d, config.m[6]=%d, "
+		"config.m[7]=%d, config.m[8]=%d\n",
 		(*config)->matrix[0],
 		(*config)->matrix[1], (*config)->matrix[2],
 		(*config)->matrix[3], (*config)->matrix[4],
@@ -4519,7 +4519,7 @@ assert(config != NULL);
 	/* sh_css_set_xnr_config(&config->xnr_config); */
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_set_isp_config() leave: \
-		return=void\n");
+		return_void\n");
 return;
 }
 
@@ -4554,8 +4554,8 @@ void sh_css_get_isp_config(
 
 assert(config != NULL);
 assert(*config != NULL);
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_isp_config() enter: \
-		pipe=%d, config=%p\n",pipe, config);
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_isp_config() enter: "
+		"pipe=%d, config=%p\n",pipe, config);
 
 	sh_css_get_wb_config(&wb_config);
 	((struct sh_css_isp_config *)*config)->wb_config = *wb_config;
@@ -4605,8 +4605,8 @@ assert(*config != NULL);
 */
 /* The struct pointers have no information, the functions themselves will print their parameters */
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_get_isp_config() leave: \
-		return=void\n");
+		"sh_css_get_isp_config() leave: "
+		"return_void\n");
 return;
 }
 
@@ -4625,8 +4625,8 @@ void sh_css_set_zoom_factor(
 	isp_params_changed = true;
 
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_set_zoom_factor() leave: \
-		return=void\n");
+		"sh_css_set_zoom_factor() leave: "
+		"return_void\n");
 }
 
 void sh_css_get_zoom_factor(
@@ -4664,7 +4664,7 @@ void sh_css_video_set_dis_vector(
 	int y)
 {
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_video_set_dis_vector() in: x=%d, y=%d\n",
+		"sh_css_video_set_dis_vector() enter: x=%d, y=%d\n",
 		x, y);
 
 	motion_config.x = x;
@@ -4674,8 +4674,8 @@ void sh_css_video_set_dis_vector(
 	isp_params_changed = true;
 
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_video_set_dis_vector() leave: \
-		return=void\n");
+		"sh_css_video_set_dis_vector() leave: "
+		"return_void\n");
 }
 
 void sh_css_get_dis_motion(
@@ -4798,9 +4798,9 @@ enum sh_css_err sh_css_allocate_stat_buffers_from_info(
 
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_allocate_stat_buffers_from_info() "
-		"enter: s3a_ptr=%p, dvs_ptr=%p, \
-		grid.isp_in_width=%d grid.isp_in_height=%d, \
-		grid.dvs_hor_coef_num=%d grid.dvs_ver_coef_num=%d\n",
+		"enter: s3a_ptr=%p, dvs_ptr=%p, "
+		"grid.isp_in_width=%d grid.isp_in_height=%d, "
+		"grid.dvs_hor_coef_num=%d grid.dvs_ver_coef_num=%d\n",
 		s3a_ptr, dvs_ptr,
 		grid->isp_in_width, grid->isp_in_height,
 		grid->dvs_hor_coef_num, grid->dvs_ver_coef_num);
@@ -4851,8 +4851,8 @@ enum sh_css_err sh_css_allocate_stat_buffers_from_info(
 	}
 
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_allocate_stat_buffers_from_info() leave: \
-		return_err=%d\n",err);
+		"sh_css_allocate_stat_buffers_from_info() leave: "
+		"return_err=%d\n",err);
 
 	return err;
 }
@@ -4883,8 +4883,8 @@ void sh_css_free_stat_buffers(
 	}
 
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_free_stat_buffers() leave: \
-		return=void\n");
+		"sh_css_free_stat_buffers() leave: "
+		"return_void\n");
 }
 
 enum sh_css_err sh_css_params_init(void)
@@ -5031,8 +5031,8 @@ enum sh_css_err sh_css_params_init(void)
 	}
 
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_params_init() leave: \
-		return_err=%d\n",sh_css_success);
+		"sh_css_params_init() leave: "
+		"return_err=%d\n",sh_css_success);
 
 	return sh_css_success;
 }
@@ -5046,7 +5046,7 @@ void sh_css_params_reconfigure_gdc_lut(void)
 	for (i = 0; i < N_GDC_ID; i++)
 		gdc_lut_store(GDC0_ID, zoom_table);
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_params_reconfigure_gdc_lut() leave: return=void\n");
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_params_reconfigure_gdc_lut() leave: return_void\n");
 }
 
 static void free_map_callback(
@@ -5138,7 +5138,7 @@ sh_css_params_uninit(void)
 	sh_css_refcount_clear(PARAM_BUFFER, &free_buffer_callback);
 	sh_css_refcount_clear(-1, &free_buffer_callback);
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_params_uninit() leave: return=void\n");
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_params_uninit() leave: return_void\n");
 }
 
 static void write_morph_plane(
@@ -5311,7 +5311,7 @@ void sh_css_update_isp_params(void)
 
 	sh_css_param_update_isp_params(true);
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_update_isp_params() leave: return=void\n");
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_update_isp_params() leave: return_void\n");
 }
 void
 

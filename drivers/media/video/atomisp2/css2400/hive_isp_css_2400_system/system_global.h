@@ -103,10 +103,20 @@ typedef enum {
 	N_SP_ID
 } sp_ID_t;
 
+#if defined (IS_ISP_2400_MAMOIADA_SYSTEM)
+typedef enum {
+	MMU0_ID = 0,
+	MMU1_ID,
+	N_MMU_ID
+} mmu_ID_t;
+#elif defined (IS_ISP_2400A0_MAMOIADA_SYSTEM)
 typedef enum {
 	MMU0_ID = 0,
 	N_MMU_ID
 } mmu_ID_t;
+#else
+#error "system_global.h: SYSTEM must be one of {., A0}"
+#endif
 
 typedef enum {
 	DMA0_ID = 0,
@@ -161,7 +171,7 @@ typedef enum {
  * and put in the address maps of other devices we cannot
  * enumerate them as that assumes the instrances are the
  * same.
- *
+ * 
  * We define a single GP_DEVICE containing all gp_regs
  * w.r.t. a single base address
  *

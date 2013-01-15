@@ -12,8 +12,146 @@
 #include "isp_acquisition_defs.h"
 #include "input_system_ctrl_defs.h"
 
-typedef struct mipi_port_state_s	mipi_port_state_t;
-typedef struct rx_channel_state_s	rx_channel_state_t;
+
+typedef enum {
+	INPUT_SYSTEM_ERR_NO_ERROR = 0,
+	INPUT_SYSTEM_ERR_GENERIC,
+	INPUT_SYSTEM_ERR_CHANNEL_ALREADY_SET,
+	INPUT_SYSTEM_ERR_CONFLICT_ON_RESOURCE,
+	INPUT_SYSTEM_ERR_PARAMETER_NOT_SUPPORTED,
+	N_INPUT_SYSTEM_ERR
+} input_system_error_t; 
+
+typedef enum {
+    INPUT_SYSTEM_PORT_A = 0,
+    INPUT_SYSTEM_PORT_B,
+    INPUT_SYSTEM_PORT_C,
+    N_INPUT_SYSTEM_PORTS
+} input_system_csi_port_t;
+
+typedef struct ctrl_unit_cfg_s					ctrl_unit_cfg_t; 
+
+typedef struct input_system_network_cfg_s 		input_system_network_cfg_t;
+
+typedef struct target_cfg2400_s 				target_cfg2400_t;
+
+typedef struct channel_cfg_s 							channel_cfg_t;
+
+typedef struct backend_channel_cfg_s 					backend_channel_cfg_t;
+
+typedef struct input_system_cfg2400_s 					input_system_cfg2400_t;
+
+typedef struct mipi_port_state_s				mipi_port_state_t;
+
+typedef struct rx_channel_state_s				rx_channel_state_t;
+
+typedef struct input_switch_cfg_channel_s 		input_switch_cfg_channel_t;
+
+typedef struct input_switch_cfg_s 				input_switch_cfg_t;
+
+struct ctrl_unit_cfg_s {
+	ib_buffer_t		buffer_mipi[N_CAPTURE_UNIT_ID];
+	ib_buffer_t		buffer_acquire[N_ACQUISITION_UNIT_ID];
+};
+
+struct input_system_network_cfg_s {
+	input_system_connection_t	multicast_cfg[N_CAPTURE_UNIT_ID];
+	input_system_multiplex_t	mux_cfg;
+	ctrl_unit_cfg_t				ctrl_unit_cfg[N_CTRL_UNIT_ID];
+};
+
+typedef struct {
+// TBD.
+} target_isp_cfg_t;
+
+
+typedef struct {
+// TBD.
+} target_sp_cfg_t;
+
+
+typedef struct {
+// TBD.
+} target_strm2mem_cfg_t;
+
+struct input_switch_cfg_channel_s {
+	uint32_t hsync_data_reg[2];
+	uint32_t vsync_data_reg;
+};
+
+struct target_cfg2400_s {
+	input_switch_cfg_channel_t 		input_switch_channel_cfg;
+	target_isp_cfg_t	target_isp_cfg;
+	target_sp_cfg_t		target_sp_cfg;
+	target_strm2mem_cfg_t	target_strm2mem_cfg;
+};
+
+struct backend_channel_cfg_s {
+	uint32_t	fmt_control_word_1; // Format config.
+	uint32_t	fmt_control_word_2;
+	uint32_t	no_side_band;
+};
+
+typedef union  {
+	csi_cfg_t				csi_cfg;
+	tpg_cfg_t				tpg_cfg;	 
+    prbs_cfg_t				prbs_cfg;	 
+    gpfifo_cfg_t			gpfifo_cfg;
+} source_cfg_t;
+
+
+struct input_switch_cfg_s {
+	uint32_t hsync_data_reg[N_RX_CHANNEL_ID * 2];
+	uint32_t vsync_data_reg;
+};
+
+// Configuration of a channel.
+struct channel_cfg_s{   
+	uint32_t				ch_id;
+	backend_channel_cfg_t	backend_ch;
+
+	input_system_source_t	source_type;
+    source_cfg_t			source_cfg;
+
+	target_cfg2400_t		target_cfg;
+};
+
+
+// Complete configuration for input system.
+struct input_system_cfg2400_s {
+
+	input_system_source_t source_type;				input_system_config_flags_t	source_type_flags;
+	//channel_cfg_t		channel[N_CHANNELS];
+	input_system_config_flags_t	ch_flags[N_CHANNELS];
+	//  This is the place where the buffers' settings are collected, as given.
+	csi_cfg_t			csi_value[N_CSI_PORTS];		input_system_config_flags_t	csi_flags[N_CSI_PORTS];
+
+	// Possible another struct for ib.
+	// This buffers set at the end, based on the all configurations.
+	ib_buffer_t			csi_buffer[N_CSI_PORTS];	input_system_config_flags_t	csi_buffer_flags[N_CSI_PORTS];
+	ib_buffer_t			acquisition_buffer_unique;	input_system_config_flags_t	acquisition_buffer_unique_flags;
+	uint32_t			unallocated_ib_mem_words; // Used for check.DEFAULT = IB_CAPACITY_IN_WORDS.
+	//uint32_t			acq_allocated_ib_mem_words;
+
+	input_system_connection_t		multicast[N_CSI_PORTS];
+	input_system_multiplex_t		multiplexer;   					input_system_config_flags_t		multiplexer_flags;
+
+
+	tpg_cfg_t			tpg_value;			input_system_config_flags_t	tpg_flags;
+	prbs_cfg_t			prbs_value;			input_system_config_flags_t	prbs_flags;
+	gpfifo_cfg_t		gpfifo_value;		input_system_config_flags_t	gpfifo_flags;
+
+
+	input_switch_cfg_t		input_switch_cfg;
+
+
+	target_isp_cfg_t		target_isp      [N_CHANNELS];	input_system_config_flags_t	target_isp_flags      [N_CHANNELS];
+	target_sp_cfg_t			target_sp       [N_CHANNELS];	input_system_config_flags_t	target_sp_flags       [N_CHANNELS];
+	target_strm2mem_cfg_t	target_strm2mem [N_CHANNELS];	input_system_config_flags_t	target_strm2mem_flags [N_CHANNELS];
+
+	input_system_config_flags_t		session_flags;
+
+};
 
 /*
  * For each MIPI port
@@ -53,7 +191,7 @@ typedef struct rx_channel_state_s	rx_channel_state_t;
 #define _HRT_CSS_RECEIVER_COMP_SCHEME_VC3_REG1_IDX		_HRT_CSS_RECEIVER_2400_COMP_SCHEME_VC3_REG1_IDX
 
 /* Second backend is at offset 0x0700 w.r.t. the first port at offset 0x0100 */
-#define _HRT_CSS_BE_OFFSET                              480
+#define _HRT_CSS_BE_OFFSET                              448
 #define _HRT_CSS_RECEIVER_BE_GSP_ACC_OVL_REG_IDX        (_HRT_CSS_RECEIVER_2400_BE_GSP_ACC_OVL_REG_IDX + _HRT_CSS_BE_OFFSET)
 #define _HRT_CSS_RECEIVER_BE_SRST_REG_IDX               (_HRT_CSS_RECEIVER_2400_BE_SRST_REG_IDX + _HRT_CSS_BE_OFFSET)
 #define _HRT_CSS_RECEIVER_BE_TWO_PPC_REG_IDX            (_HRT_CSS_RECEIVER_2400_BE_TWO_PPC_REG_IDX + _HRT_CSS_BE_OFFSET)
@@ -100,7 +238,7 @@ typedef struct ctrl_unit_state_s		ctrl_unit_state_t;
  * formats need to be specified. In 2400, there are only 8
  * supported configurations but the HW is fused to support
  * only a single one.
- *
+ * 
  * In 2300 the compressed format types are programmed by the
  * user. In 2400 all stream formats are encoded on the stream.
  *
