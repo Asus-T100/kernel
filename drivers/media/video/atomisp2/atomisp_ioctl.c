@@ -1861,6 +1861,7 @@ static int atomisp_s_parm(struct file *file, void *fh,
 {
 	struct video_device *vdev = video_devdata(file);
 	struct atomisp_device *isp = video_get_drvdata(vdev);
+	struct v4l2_subdev_frame_interval fi;
 	int mode;
 	int rval;
 
@@ -1870,9 +1871,18 @@ static int atomisp_s_parm(struct file *file, void *fh,
 		return -EINVAL;
 	}
 
+	mutex_lock(&isp->mutex);
+
 	switch (parm->parm.capture.capturemode) {
 	case CI_MODE_NONE:
-		return 0;
+		memset(&fi, 0, sizeof(fi));
+		fi.interval = parm->parm.capture.timeperframe;
+
+		rval = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
+					video, s_frame_interval, &fi);
+		if (!rval)
+			parm->parm.capture.timeperframe = fi.interval;
+		goto out;
 	case CI_MODE_VIDEO:
 		mode = ATOMISP_RUN_MODE_VIDEO;
 		break;
@@ -1886,14 +1896,16 @@ static int atomisp_s_parm(struct file *file, void *fh,
 		mode = ATOMISP_RUN_MODE_PREVIEW;
 		break;
 	default:
-		return -EINVAL;
+		rval = -EINVAL;
+		goto out;
 	}
 
-	mutex_lock(&isp->mutex);
 	rval = v4l2_ctrl_s_ctrl(isp->isp_subdev.run_mode, mode);
+
+out:
 	mutex_unlock(&isp->mutex);
 
-	return rval;
+	return rval == -ENOIOCTLCMD ? 0 : rval;
 }
 
 static int atomisp_s_parm_file(struct file *file, void *fh,
