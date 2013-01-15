@@ -1370,8 +1370,6 @@ int android_hdmi_crtc_mode_set(struct drm_crtc *crtc,
 						adjusted_mode);
 
 	list_for_each_entry(connector, &mode_config->connector_list, head) {
-		if (!connector)
-			continue;
 		encoder = connector->encoder;
 		if (!encoder)
 			continue;
