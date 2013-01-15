@@ -1246,18 +1246,7 @@ static irqreturn_t bq24261_thread_handler(int id, void *data)
 {
 	struct bq24261_charger *chip = (struct bq24261_charger *)data;
 
-	/* FIXME: Move this to platform layer */
-#define IRQLVL1_MASK_ADDR		0x0c
-#define IRQLVL1_CHRGR_MASK		(0x01 << 5)
-
-
-	dev_dbg(&chip->client->dev,
-		"%s:Clearing IRQLVL1_MASK_ADDR\n", __func__);
-	intel_scu_ipc_update_register(IRQLVL1_MASK_ADDR, 0x00,
-			IRQLVL1_CHRGR_MASK);
-
 	queue_work(system_nrt_wq, &chip->irq_work);
-
 	return IRQ_HANDLED;
 }
 
@@ -1461,11 +1450,6 @@ static int bq24261_probe(struct i2c_client *client,
 			power_supply_unregister(&chip->psy_usb);
 			return ret;
 		}
-	/* FIXME: Move this to platform layer */
-#define MCHGRIRQ0_ADDR			0x12
-		/* unmask charger interrupts in second level IRQ register*/
-		intel_scu_ipc_update_register(MCHGRIRQ0_ADDR, 0x00,
-				chip->pdata->irq_mask);
 	}
 
 	if (register_otg_notifications(chip))
@@ -1562,7 +1546,7 @@ static int __init bq24261_init(void)
 	return i2c_add_driver(&bq24261_driver);
 }
 
-late_initcall(bq24261_init);
+module_init(bq24261_init);
 
 static void __exit bq24261_exit(void)
 {

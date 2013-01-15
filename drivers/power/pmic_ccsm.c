@@ -915,10 +915,10 @@ static void pmic_event_worker(struct work_struct *work)
 			handle_level0_interrupt(evt->chgrirq0_int,
 				evt->chgrirq0_stat, chgrirq0_info,
 				ARRAY_SIZE(chgrirq0_info));
+
 		if (evt->chgrirq1_stat)
 			handle_level1_interrupt(evt->chgrirq1_int,
 							evt->chgrirq1_stat);
-
 		kfree(evt);
 	}
 
@@ -953,6 +953,19 @@ static irqreturn_t pmic_thread_handler(int id, void *data)
 	pmic_intr = ioread16(chc.pmic_intr_iomap);
 	evt->chgrirq0_int = (u8)pmic_intr;
 	evt->chgrirq1_int = (u8)(pmic_intr >> 8);
+
+	/*
+	In case this is an external charger interrupt, we are
+	clearing the level 1 irq register and let external charger
+	driver handle the interrupt.
+	 */
+	if (!(evt->chgrirq1_int) &&
+		!(evt->chgrirq0_int & PMIC_CHRGR_CCSM_INT0_MASK)) {
+		intel_scu_ipc_update_register(IRQLVL1_MASK_ADDR, 0x00,
+				IRQLVL1_CHRGR_MASK);
+		kfree(evt);
+		return IRQ_NONE;
+	}
 
 	if (evt->chgrirq0_int) {
 		ret = intel_scu_ipc_ioread8(SCHGRIRQ0_ADDR,
@@ -1193,6 +1206,31 @@ static void set_pmic_batt_prof(struct ps_pse_mod_prof *new_prof,
 	return;
 }
 
+
+static int pmic_check_initial_events(void)
+{
+	struct pmic_event *evt;
+	int ret;
+
+	evt = kzalloc(sizeof(struct pmic_event), GFP_KERNEL);
+
+	ret = intel_scu_ipc_ioread8(SCHGRIRQ0_ADDR, &evt->chgrirq0_stat);
+	evt->chgrirq0_int = evt->chgrirq0_stat;
+	ret = intel_scu_ipc_ioread8(SCHGRIRQ1_ADDR, &evt->chgrirq1_stat);
+	evt->chgrirq1_int = evt->chgrirq1_stat;
+
+	if (evt->chgrirq1_stat || evt->chgrirq0_int) {
+		INIT_LIST_HEAD(&evt->node);
+		mutex_lock(&chc.evt_queue_lock);
+		list_add_tail(&evt->node, &chc.evt_queue);
+		mutex_unlock(&chc.evt_queue_lock);
+		schedule_work(&chc.evt_work);
+	}
+	pmic_bat_zone_changed();
+
+	return ret;
+}
+
 /**
  * pmic_charger_probe - PMIC charger probe function
  * @ipcdev: pmic ipc device structure
@@ -1302,6 +1340,9 @@ static int pmic_chrgr_probe(struct ipc_device *ipcdev)
 			chc.irq);
 		goto req_irq_failed;
 	}
+
+	pmic_check_initial_events();
+
 	/* unmask charger interrupts in second level IRQ register*/
 	retval = intel_scu_ipc_update_register(MCHGRIRQ0_ADDR, 0x00,
 			PMIC_CHRGR_INT0_MASK);
@@ -1444,7 +1485,7 @@ static void __exit pmic_chrgr_exit(void)
 
 /* Defer init call so that dependant drivers will be loaded. Using  async
  * for parallel driver initialization */
-module_init(pmic_chrgr_init);
+late_initcall(pmic_chrgr_init);
 module_exit(pmic_chrgr_exit);
 
 MODULE_AUTHOR("Jenny TC <jenny.tc@intel.com>");
