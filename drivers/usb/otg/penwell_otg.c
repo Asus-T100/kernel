@@ -4711,7 +4711,7 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 
 	retval = 0;
 
-	dev_info(&pdev->dev, "Intel Penwell USB OTG controller is detected.\n");
+	dev_info(&pdev->dev, "Intel OTG2.0 controller is detected.\n");
 	dev_info(&pdev->dev, "Driver version: " DRIVER_VERSION "\n");
 
 	if (pci_enable_device(pdev) < 0) {

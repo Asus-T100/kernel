@@ -58,7 +58,7 @@
 #include <linux/usb/penwell_otg.h>
 #endif
 
-#define	DRIVER_DESC	"Intel Langwell/Penwell USB Device Controller driver"
+#define	DRIVER_DESC	"Intel USB2.0 Device Controller driver"
 #define	DRIVER_VERSION	"June 3, 2010"
 
 static const char driver_name[] = "langwell_udc";
