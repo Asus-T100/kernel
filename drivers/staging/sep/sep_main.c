@@ -1417,7 +1417,8 @@ static int sep_crypto_dma(
 				"(all hex) map %x dma %lx len %lx\n",
 				ct1, (unsigned long)sep_dma[ct1].dma_addr,
 				(unsigned long)sep_dma[ct1].size);
-		}
+		} else
+			break;
 	}
 
 	*dma_maps = sep_dma;
