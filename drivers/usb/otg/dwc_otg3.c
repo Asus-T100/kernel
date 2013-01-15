@@ -1436,6 +1436,10 @@ static void reset_phy(struct dwc_otg2 *otg)
 	udelay(500);
 
 	enable_usb_phy(otg, true);
+
+	/* Set 0x7f for better quality in eye diagram
+	 * It means ZHSDRV = 0b11 and IHSTX = 0b1111*/
+	ulpi_write(otg, TUSB1211_VENDOR_SPECIFIC1_SET, 0x7f);
 }
 
 #endif
