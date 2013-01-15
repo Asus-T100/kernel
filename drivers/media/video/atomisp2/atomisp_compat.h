@@ -28,4 +28,11 @@
 	sh_css_enable_cont_capt(enable);
 #define sh_css_enable_raw_binning(enable) \
 	sh_css_enable_raw_reordered(enable)
+#define sh_css_update_continuous_frames()
+
+static inline enum sh_css_err sh_css_allocate_continuous_frames(bool enable)
+{
+	return sh_css_err_unsupported_configuration;
+}
+
 #endif
