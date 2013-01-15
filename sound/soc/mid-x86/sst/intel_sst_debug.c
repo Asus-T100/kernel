@@ -635,7 +635,12 @@ static ssize_t sst_debug_readme_read(struct file *file, char __user *user_buf,
 		"	echo <dbg_type> <module_id> <log_level> > lpe_log_enable.\n"
 		"5. echo 1 > fw_clear_context , This sets the flag to skip the context restore\n"
 		"6. echo 1 > fw_clear_cache , This sets the flag to clear the cached copy of firmware\n"
-		"7. echo 1 > fw_state ,This sets the fw state to uninit\n";
+		"7. echo 1 > fw_reset_state ,This sets the fw state to uninit\n"
+		"8. echo memcpy > fw_dwnld_mode, This will set the firmware download mode to memcpy\n"
+		"9. echo lli > fw_dwnld_mode, This will set the firmware download mode to\n"
+					"dma lli mode\n"
+		"10. echo dma > fw_dwnld_mode, This will set the firmware download mode to\n"
+					"dma single block mode\n";
 
 	return simple_read_from_buffer(user_buf, count, ppos,
 			buf, strlen(buf));
@@ -804,6 +809,62 @@ static const struct file_operations sst_debug_fw_reset_state = {
 	.write = sst_debug_fw_reset_state_write,
 };
 
+static ssize_t sst_debug_dwnld_mode_read(struct file *file,
+		char __user *user_buf, size_t count, loff_t *ppos)
+{
+	char *state;
+
+	if (atomic_read(&sst_drv_ctx->use_dma) == 0) {
+		state = "memcpy\n";
+	} else if (atomic_read(&sst_drv_ctx->use_dma) == 1) {
+		state = atomic_read(&sst_drv_ctx->use_lli) ? \
+				"lli\n" : "dma\n";
+
+	}
+
+	return simple_read_from_buffer(user_buf, count, ppos,
+			state, strlen(state));
+
+}
+
+static ssize_t sst_debug_dwnld_mode_write(struct file *file,
+		const char __user *user_buf, size_t count, loff_t *ppos)
+
+{
+	char buf[16];
+	int sz = min(count, sizeof(buf)-1);
+
+	if (atomic_read(&sst_drv_ctx->sst_state) != SST_SUSPENDED) {
+		pr_err("FW should be in suspended state\n");
+		return -EFAULT;
+	}
+
+	if (copy_from_user(buf, user_buf, sz))
+		return -EFAULT;
+	buf[sz] = '\0';
+
+	/* Firmware needs to be downloaded again to populate the lists */
+	atomic_set(&sst_drv_ctx->fw_clear_cache, 1);
+
+	if (!strncmp(buf, "memcpy\n", sz)) {
+		atomic_set(&sst_drv_ctx->use_dma, 0);
+	} else if (!strncmp(buf, "lli\n", sz)) {
+		atomic_set(&sst_drv_ctx->use_dma, 1);
+		atomic_set(&sst_drv_ctx->use_lli, 1);
+	} else if (!strncmp(buf, "dma\n", sz)) {
+		atomic_set(&sst_drv_ctx->use_dma, 1);
+		atomic_set(&sst_drv_ctx->use_lli, 0);
+	}
+	return sz;
+
+}
+
+static const struct file_operations sst_debug_dwnld_mode = {
+	.open = sst_debug_open,
+	.read = sst_debug_dwnld_mode_read,
+	.write = sst_debug_dwnld_mode_write,
+};
+
 void sst_debugfs_init(struct intel_sst_drv *sst)
 {
 	sst->debugfs.root = debugfs_create_dir("sst", NULL);
@@ -889,6 +950,13 @@ void sst_debugfs_init(struct intel_sst_drv *sst)
 	if (!debugfs_create_file("fw_reset_state", 0600, sst->debugfs.root,
 				sst, &sst_debug_fw_reset_state)) {
 		pr_err("Failed to create fw_reset_state file\n");
+		return;
+	}
+
+	/* fw/lib download mode interface */
+	if (!debugfs_create_file("fw_dwnld_mode", 0600, sst->debugfs.root,
+				sst, &sst_debug_dwnld_mode)) {
+		pr_err("Failed to create fw_dwnld_mode file\n");
 		return;
 	}
 

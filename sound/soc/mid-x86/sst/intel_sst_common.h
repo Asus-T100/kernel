@@ -307,7 +307,7 @@ struct fw_module_header {
 	u32 entry_point;
 };
 
-struct dma_block_info {
+struct fw_block_info {
 	enum sst_ram_type	type;	/* IRAM/DRAM */
 	u32			size;	/* Bytes */
 	u32			ram_offset; /* Offset in I/DRAM */
@@ -338,6 +338,14 @@ struct sst_sg_list {
 	struct scatterlist *dst;
 	int list_len;
 	unsigned int sg_idx;
+};
+
+struct sst_memcpy_list {
+	struct list_head memcpylist;
+	void __iomem *dstn;
+	void *src;
+
+	u32 size;
 };
 
 #ifdef CONFIG_DEBUG_FS
@@ -502,6 +510,10 @@ struct intel_sst_drv {
 	atomic_t fw_clear_context;
 	atomic_t fw_clear_cache;
 	struct mutex sst_in_mem_lock;
+	/* list used during FW download in memcpy mode */
+	struct list_head memcpy_list;
+	/* list used during LIB download in memcpy mode */
+	struct list_head libmemcpy_list;
 };
 
 extern struct intel_sst_drv *sst_drv_ctx;
@@ -558,10 +570,10 @@ long intel_sst_ioctl(struct file *file_ptr, unsigned int cmd,
 int intel_sst_open_cntrl(struct inode *i_node, struct file *file_ptr);
 int intel_sst_release_cntrl(struct inode *i_node, struct file *file_ptr);
 
-int sst_request_fw(void);
-int sst_load_fw(const void *fw_in_mem, void *context);
+int sst_load_fw(void);
 int sst_load_library(struct snd_sst_lib_download *lib, u8 ops);
 int sst_get_block_stream(struct intel_sst_drv *sst_drv_ctx);
+void sst_memcpy_free_resources(void);
 
 int sst_wait_interruptible(struct intel_sst_drv *sst_drv_ctx,
 				struct sst_block *block);

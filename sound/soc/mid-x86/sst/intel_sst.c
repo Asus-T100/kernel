@@ -410,6 +410,9 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 	sst_drv_ctx->use_lli = 1;
 	ops = sst_drv_ctx->ops;
 
+	INIT_LIST_HEAD(&sst_drv_ctx->memcpy_list);
+	INIT_LIST_HEAD(&sst_drv_ctx->libmemcpy_list);
+
 	INIT_LIST_HEAD(&sst_drv_ctx->ipc_dispatch_list);
 	INIT_WORK(&sst_drv_ctx->ipc_post_msg.wq, ops->post_message);
 	INIT_WORK(&sst_drv_ctx->ipc_process_msg.wq, ops->process_message);
@@ -673,6 +676,7 @@ static void __devexit intel_sst_remove(struct pci_dev *pci)
 	sst_drv_ctx->fw_sg_list.list_len = 0;
 	kfree(sst_drv_ctx->fw_in_mem);
 	sst_drv_ctx->fw_in_mem = NULL;
+	sst_memcpy_free_resources();
 	kfree(sst_drv_ctx);
 	sst_drv_ctx = NULL;
 	pci_release_regions(pci);
