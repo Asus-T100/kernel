@@ -445,13 +445,16 @@ int intel_mid_i2s_lli_rd_req(struct intel_mid_i2s_hdl *drv_data,
 {
 	struct dma_async_tx_descriptor *rxdesc = NULL;
 	struct scatterlist *temp_sg = NULL;
-	struct dma_chan *rxchan = drv_data->rxchan;
+	struct dma_chan *rxchan = NULL;
 	enum dma_ctrl_flags flag;
 	int i;
 
 	WARN(!drv_data, "Driver data=NULL\n");
 	if (!drv_data)
 		return -EFAULT;
+
+	rxchan = drv_data->rxchan;
+
 	if (!rxchan) {
 		dev_WARN(&(drv_data->pdev->dev), "rd_req FAILED no rxchan\n");
 		return -EINVAL;
@@ -529,13 +532,16 @@ int intel_mid_i2s_lli_wr_req(struct intel_mid_i2s_hdl *drv_data,
 {
 	struct dma_async_tx_descriptor *txdesc = NULL;
 	struct scatterlist *temp_sg = NULL;
-	struct dma_chan *txchan = drv_data->txchan;
+	struct dma_chan *txchan = NULL;
 	enum dma_ctrl_flags flag;
 	int i;
 
 	WARN(!drv_data, "Driver data=NULL\n");
 	if (!drv_data)
 		return -EFAULT;
+
+	txchan = drv_data->txchan;
+
 	if (!txchan) {
 		dev_WARN(&(drv_data->pdev->dev), "wr_req but no txchan\n");
 		return -EINVAL;
@@ -2540,7 +2546,7 @@ intel_mid_i2s_find_usage(struct pci_dev *pdev,
 			 struct intel_mid_ssp_gpio *ssp_gpio)
 {
 	int pos;
-	u16  adid;
+	u16  adid = 0;
 	int status = 0;
 
 	*usage = SSP_USAGE_UNASSIGNED;

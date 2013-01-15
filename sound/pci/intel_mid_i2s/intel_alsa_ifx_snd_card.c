@@ -531,7 +531,6 @@ int intel_alsa_ifx_create_snd_card(void)
 
 	p_alsa_ifx_snd_card->ssp_wq = create_workqueue("ifx_transfer_data");
 	if (!p_alsa_ifx_snd_card->ssp_wq) {
-		destroy_workqueue(p_alsa_ifx_snd_card->ssp_wq);
 		kfree(p_alsa_ifx_snd_card);
 		pr_err("ALSA_IFX: Work queue failed\n");
 		return -ENOMEM;
