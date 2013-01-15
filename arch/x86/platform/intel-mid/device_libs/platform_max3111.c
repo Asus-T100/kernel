@@ -17,22 +17,7 @@
 #include <linux/spi/intel_mid_ssp_spi.h>
 #include "platform_max3111.h"
 
-void __init *max3111_platform_data(void *info)
-{
-	struct spi_board_info *spi_info = info;
-	int intr = get_gpio_by_name("max3111_int");
-
-	spi_info->mode = SPI_MODE_0;
-	if (intr == -1)
-		return NULL;
-	spi_info->irq = intr + INTEL_MID_IRQ_OFFSET;
-	return NULL;
-}
-
-#ifdef CONFIG_X86_MRFLD
-/* REVERT ME workaround for invalid bus number in IAFW .25 */
-#define FORCE_SPI_BUS_NUM	5
-#define FORCE_CHIP_SELECT	0
+void __init *mrfl_platform_data(void *info);
 
 static struct intel_mid_ssp_spi_chip chip = {
 		.burst_size = DFLT_FIFO_BURST_SIZE,
@@ -41,7 +26,25 @@ static struct intel_mid_ssp_spi_chip chip = {
 		.dma_enabled = false,
 };
 
-void __init *max3111_vp_platform_data(void *info)
+void __init *max3111_platform_data(void *info)
+{
+	struct spi_board_info *spi_info = info;
+	int intr;
+
+	if ((intel_mrfl_identify_sim() == INTEL_MRFL_CPU_SIMULATION_VP) ||
+		(intel_mrfl_identify_sim() == INTEL_MRFL_CPU_SIMULATION_SLE) ||
+		(INTEL_MID_BOARD(1, PHONE, MRFL)))
+		return mrfl_platform_data(info);
+
+	spi_info->mode = SPI_MODE_0;
+	intr = get_gpio_by_name("max3111_int");
+	if (intr == -1)
+		return NULL;
+	spi_info->irq = intr + INTEL_MID_IRQ_OFFSET;
+	return NULL;
+}
+
+void __init *mrfl_platform_data(void *info)
 {
 	struct spi_board_info *spi_info = info;
 	spi_info->mode = SPI_MODE_0;
@@ -50,4 +53,3 @@ void __init *max3111_vp_platform_data(void *info)
 	spi_info->chip_select = FORCE_CHIP_SELECT;
 	return NULL;
 }
-#endif /* CONFIG_X86_MRFLD */

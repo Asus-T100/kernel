@@ -151,11 +151,7 @@ int penwell_otg_query_charging_cap(void *dummy)
 
 struct devs_id __initconst device_ids[] = {
 	{"pmic_gpio", SFI_DEV_TYPE_SPI, 1, &pmic_gpio_platform_data, NULL},
-#ifdef CONFIG_X86_MRFLD
-	{"spi_max3111", SFI_DEV_TYPE_SPI, 0, &max3111_vp_platform_data, NULL},
-#else
 	{"spi_max3111", SFI_DEV_TYPE_SPI, 0, &max3111_platform_data, NULL},
-#endif
 	{"ntrig_spi", SFI_DEV_TYPE_SPI, 1, &ntrig_platform_data, NULL},
 	{"ntrig_g4_spi", SFI_DEV_TYPE_SPI, 1, &ntrig_g4_platform_data, NULL},
 #ifndef CONFIG_HSI_NO_MODEM
