@@ -3793,21 +3793,31 @@ static void atomisp_get_yuv_ds_status(struct atomisp_device *isp,
 		DIV_ROUND_UP(isp->input_format->out.width, 10);
 	unsigned int h_tmp = isp->input_format->out.height -
 		DIV_ROUND_UP(isp->input_format->out.height, 10);
-	/*
-	 * yuv downscaling is not enabled in video binary,
-	 * ,raw format output, soc sensor. effective resolution should
-	 * be the same as isp output.
-	 * yuv-ds is enabled only when sensor output width is 10% larger
-	 * than isp output width and sensor output height also is 10%
-	 * larger than isp output height.
+
+	/* By default, enable YUV downscaling */
+	isp->params.yuv_ds_en = true;
+
+	/* YUV downscaling is enabled only when sensor output width is
+	 * 10% larger than isp output width and sensor output height also
+	 * is 10% larger than isp output height.
 	 */
-	if ((w_tmp < width || h_tmp < height)
-		|| isp->sw_contex.run_mode == CI_MODE_VIDEO
-		|| isp->sw_contex.bypass
-		|| isp->sw_contex.file_input)
+	if (w_tmp < width || h_tmp < height)
 		isp->params.yuv_ds_en = false;
-	else
-		isp->params.yuv_ds_en = true;
+
+	/* Downscaling is disabled for file input */
+	if (isp->sw_contex.file_input)
+		isp->params.yuv_ds_en = false;
+
+	/* YUV downscaling is enabled for SoC sensor only in video mode */
+	if (isp->sw_contex.bypass &&
+	    isp->sw_contex.run_mode != CI_MODE_VIDEO)
+		isp->params.yuv_ds_en = false;
+
+	/* YUV downscaling is disabled in video mode without SoC sensor */
+	if (isp->sw_contex.run_mode == CI_MODE_VIDEO &&
+	    !isp->sw_contex.bypass)
+		isp->params.yuv_ds_en = false;
+
 }
 
 int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
