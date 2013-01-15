@@ -809,6 +809,8 @@ static const struct snd_soc_dapm_route cs42l73_audio_map[] = {
 	{"HL Left Mixer", NULL, "VSPINOUT"},
 	{"HL Right Mixer", NULL, "VSPINOUT"},
 
+	{"VSPINOUT", NULL, "XSPIN"},
+
 	{"ASPIN", NULL, "ASP Playback"},
 	{"XSPIN", NULL, "XSP Playback"},
 	{"VSPINOUT", NULL, "VSP Playback"},
@@ -850,6 +852,9 @@ static const struct snd_soc_dapm_route cs42l73_audio_map[] = {
 
 	{"XSPOUT", "XSP-IP Volume", "XSPL Output Mixer"},
 	{"XSPOUT", "XSP-IP Volume", "XSPR Output Mixer"},
+
+	{"XSPL Output Mixer", NULL, "VSPINOUT"},
+	{"XSPR Output Mixer", NULL, "VSPINOUT"},
 
 	{"XSPOUT", NULL, "XSPL Output Mixer"},
 	{"XSPOUT", NULL, "XSPR Output Mixer"},
