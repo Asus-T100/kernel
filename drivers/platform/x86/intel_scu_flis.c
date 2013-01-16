@@ -31,9 +31,10 @@ static u32 shim_offset;
 static u32 shim_data;
 static char shim_ops[OPS_STR_LEN];
 
-static u32 pull_value;
+static u32 param_type;	/* flis param type: PULL/PIN DIRECTION/OPEN_DRAIN */
+static u8 param_value;	/* value of certain flis param */
 static enum pinname_t pin_name;
-static char pull_ops[OPS_STR_LEN];
+static char ops[OPS_STR_LEN];
 
 struct intel_scu_flis_info {
 	struct pinstruct_t *pin_t;
@@ -82,19 +83,69 @@ int intel_scu_ipc_read_shim(u32 *data, u32 flis_addr, u32 offset)
 }
 EXPORT_SYMBOL(intel_scu_ipc_read_shim);
 
-/* Configure pin pull up/down */
-int config_pin_flis(enum pinname_t name, enum pull_value_t val)
+int intel_scu_ipc_update_shim(u32 data, u32 mask, u32 flis_addr, u32 offset)
 {
-	u32 flis_addr, pullup_off;
+	u32 tmp;
+	int ret;
+
+	ret = intel_scu_ipc_read_shim(&tmp, flis_addr, offset);
+	if (ret) {
+		pr_err("read shim failed, addr = 0x%x, off = 0x%x\n",
+			flis_addr, offset);
+		goto end;
+	}
+
+	tmp &= ~mask;
+	tmp |= (data & mask);
+
+	ret = intel_scu_ipc_write_shim(tmp, flis_addr, offset);
+	if (ret) {
+		pr_err("write shim failed, addr = 0x%x, off = 0x%x\n",
+			flis_addr, offset);
+		goto end;
+	}
+
+	return 0;
+end:
+	return ret;
+}
+EXPORT_SYMBOL(intel_scu_ipc_update_shim);
+
+/**
+ * config_pin_flis -- configure pin direction,
+ *		      pull direction and strength and open-drain enable.
+ *
+ * @name: pin name
+ * @param: flis param
+ * @val: value to be set
+ *
+ * example:
+ * config pull up/down:
+ *	config_pin_flis(i2s_2_clk, PULL, UP_20K);
+ *	config_pin_flis(i2s_2_clk, PULL, DOWN_20K);
+ *
+ * config pin direction:
+ *	config_pin_flis(i2s_2_clk, PIN_DIRECTION, INPUT_LOW);
+ *	config_pin_flis(i2s_2_clk, PIN_DIRECTION, INPUT_HIGH);
+ *	config_pin_flis(i2s_2_clk, PIN_DIRECTION, OUTPUT_LOW);
+ *	config_pin_flis(i2s_2_clk, PIN_DIRECTION, OUTPUT_HIGH);
+ *
+ * config pin open-drain:
+ *	config_pin_flis(i2s_2_clk, OPEN_DRAIN, OD_ENABLE);
+ *	config_pin_flis(i2s_2_clk, OPEN_DRAIN, OD_DISABLE);
+ *
+ */
+int config_pin_flis(enum pinname_t name, enum flis_param_t param, u8 val)
+{
+	u32 flis_addr, off, data, mask;
 	int ret;
 	int pos;
-	u32 data;
 	struct intel_scu_flis_info *isfi = &flis_info;
 
 	if (!isfi->initialized)
 		return -ENODEV;
 
-	if (name < 0 || name >= isfi->pin_num || val < NONE || val > UP_910K)
+	if (name < 0 || name >= isfi->pin_num)
 		return -EINVAL;
 
 	/* Check if the pin is configurable */
@@ -102,50 +153,48 @@ int config_pin_flis(enum pinname_t name, enum pull_value_t val)
 		return -EINVAL;
 
 	flis_addr = isfi->pin_t[name].bus_address;
-	pullup_off = isfi->pin_t[name].pullup_offset;
-	pos = isfi->pin_t[name].pullup_lsb_pos;
-	pr_debug("addr = 0x%x, off = 0x%x, pos = %d\n",
-		flis_addr, pullup_off, pos);
 
-	/* Read then write, equal to read-mod-write */
-	ret = intel_scu_ipc_read_shim(&data, flis_addr, pullup_off);
-	if (ret) {
-		pr_err("read shim failed, addr = 0x%x, off = 0x%x\n",
-			flis_addr, pullup_off);
-		goto end;
+	switch (param) {
+	case PULL:
+		off = isfi->pin_t[name].pullup_offset;
+		pos = isfi->pin_t[name].pullup_lsb_pos;
+		mask = (PULL_MASK << pos);
+		break;
+	case PIN_DIRECTION:
+		off = isfi->pin_t[name].direction_offset;
+		pos = isfi->pin_t[name].direction_lsb_pos;
+		mask = (PIN_DIRECTION_MASK << pos);
+		break;
+	case OPEN_DRAIN:
+		off = isfi->pin_t[name].open_drain_offset;
+		pos = isfi->pin_t[name].open_drain_bit;
+		mask = (OPEN_DRAIN_MASK << pos);
+		break;
+	default:
+		pr_err("Please specify valid flis param\n");
+		return -EINVAL;
 	}
 
-	pr_debug("read: data = 0x%x\n", data);
+	data = (val << pos);
+	pr_debug("addr = 0x%x, off = 0x%x, pos = %d, mask = 0x%x, data = 0x%x\n",
+			flis_addr, off, pos, mask, data);
 
-	/* 0x3f: each pin has 6 control bits */
-	data &= ~(0x3f << pos);
-
-	if (val != NONE)
-		data |= ((1 << (val - 1)) << pos);
-
-	pr_debug("write: data = 0x%x\n", data);
-
-	ret = intel_scu_ipc_write_shim(data, flis_addr, pullup_off);
+	ret = intel_scu_ipc_update_shim(data, mask, flis_addr, off);
 	if (ret) {
-		pr_err("write shim failed, addr = 0x%x, off = 0x%x\n",
-			flis_addr, pullup_off);
-		goto end;
+		pr_err("update shim failed\n");
+		return ret;
 	}
 
 	return 0;
-
-end:
-	return ret;
 }
 EXPORT_SYMBOL_GPL(config_pin_flis);
 
-/* Get pin pull up/down configuration */
-int get_pin_flis(enum pinname_t name, u32 *val)
+int get_pin_flis(enum pinname_t name, enum flis_param_t param, u8 *val)
 {
-	u32 flis_addr, pullup_off;
+	u32 flis_addr, off, data;
 	int ret;
 	int pos;
-	u32 data;
+	u8 mask;
 	struct intel_scu_flis_info *isfi = &flis_info;
 
 	if (!isfi->initialized)
@@ -158,19 +207,36 @@ int get_pin_flis(enum pinname_t name, u32 *val)
 		return -EINVAL;
 
 	flis_addr = isfi->pin_t[name].bus_address;
-	pullup_off = isfi->pin_t[name].pullup_offset;
-	pos = isfi->pin_t[name].pullup_lsb_pos;
-	pr_debug("addr = 0x%x, off = 0x%x, pos = %d\n",
-		flis_addr, pullup_off, pos);
 
-	ret = intel_scu_ipc_read_shim(&data, flis_addr, pullup_off);
+	switch (param) {
+	case PULL:
+		off = isfi->pin_t[name].pullup_offset;
+		pos = isfi->pin_t[name].pullup_lsb_pos;
+		mask = PULL_MASK;
+		break;
+	case PIN_DIRECTION:
+		off = isfi->pin_t[name].direction_offset;
+		pos = isfi->pin_t[name].direction_lsb_pos;
+		mask = PIN_DIRECTION_MASK;
+		break;
+	case OPEN_DRAIN:
+		off = isfi->pin_t[name].open_drain_offset;
+		pos = isfi->pin_t[name].open_drain_bit;
+		mask = OPEN_DRAIN_MASK;
+		break;
+	default:
+		pr_err("Please specify valid flis param\n");
+		return -EINVAL;
+	}
+
+	ret = intel_scu_ipc_read_shim(&data, flis_addr, off);
 	if (ret) {
 		pr_err("read shim failed, addr = 0x%x, off = 0x%x\n",
-			flis_addr, pullup_off);
+			flis_addr, off);
 		goto end;
 	}
 
-	*val = (data >> pos) & 0x3f;
+	*val = (data >> pos) & mask;
 
 	pr_debug("read: data = 0x%x, val = 0x%x\n", data, *val);
 
@@ -205,8 +271,11 @@ static void flis_generic_store(const char *buf, int type)
 	case DBG_SHIM_DATA:
 		shim_data = tmp;
 		break;
-	case DBG_PULL_VAL:
-		pull_value = tmp;
+	case DBG_PARAM_VAL:
+		param_value = (u8)tmp;
+		break;
+	case DBG_PARAM_TYPE:
+		param_type = tmp;
 		break;
 	case DBG_PIN_NAME:
 		pin_name = (enum pinname_t)tmp;
@@ -285,16 +354,29 @@ static ssize_t shim_ops_store(struct device *dev,
 	return size;
 }
 
-static ssize_t pull_val_show(struct device *dev,
+static ssize_t param_val_show(struct device *dev,
 			struct device_attribute *attr, char *buf)
 {
-	return snprintf(buf, PAGE_SIZE, "%d\n", pull_value);
+	return snprintf(buf, PAGE_SIZE, "0x%x\n", param_value);
 }
 
-static ssize_t pull_val_store(struct device *dev,
+static ssize_t param_val_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size)
 {
-	flis_generic_store(buf, DBG_PULL_VAL);
+	flis_generic_store(buf, DBG_PARAM_VAL);
+	return size;
+}
+
+static ssize_t flis_param_type_show(struct device *dev,
+			struct device_attribute *attr, char *buf)
+{
+	return snprintf(buf, PAGE_SIZE, "%d\n", param_type);
+}
+
+static ssize_t flis_param_type_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	flis_generic_store(buf, DBG_PARAM_TYPE);
 	return size;
 }
 
@@ -311,23 +393,23 @@ static ssize_t pinname_store(struct device *dev,
 	return size;
 }
 
-static ssize_t pull_ops_store(struct device *dev,
+static ssize_t ops_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size)
 {
 	int ret;
 
-	memset(pull_ops, 0, sizeof(pull_ops));
+	memset(ops, 0, sizeof(ops));
 
-	ret = sscanf(buf, "%9s", pull_ops);
+	ret = sscanf(buf, "%9s", ops);
 	if (ret != 1) {
 		dev_err(dev, "input error\n");
 		return -EINVAL;
 	}
 
-	if (!strncmp("get", pull_ops, OPS_STR_LEN))
-		ret = get_pin_flis(pin_name, &pull_value);
-	else if (!strncmp("set", pull_ops, OPS_STR_LEN))
-		ret = config_pin_flis(pin_name, (enum pull_value_t)pull_value);
+	if (!strncmp("get", ops, OPS_STR_LEN))
+		ret = get_pin_flis(pin_name, param_type, &param_value);
+	else if (!strncmp("set", ops, OPS_STR_LEN))
+		ret = config_pin_flis(pin_name, param_type, param_value);
 	else {
 		dev_err(dev, "wrong ops\n");
 		ret = -EINVAL;
@@ -346,13 +428,13 @@ static DEVICE_ATTR(flis_addr, S_IRUGO|S_IWUSR,
 static DEVICE_ATTR(offset, S_IRUGO|S_IWUSR,
 		shim_offset_show, shim_offset_store);
 static DEVICE_ATTR(data, S_IRUGO|S_IWUSR, shim_data_show, shim_data_store);
-static DEVICE_ATTR(ops, S_IWUSR, NULL, shim_ops_store);
+static DEVICE_ATTR(flis_ops, S_IWUSR, NULL, shim_ops_store);
 
 static struct attribute *flis_attrs[] = {
 	&dev_attr_flis_addr.attr,
 	&dev_attr_offset.attr,
 	&dev_attr_data.attr,
-	&dev_attr_ops.attr,
+	&dev_attr_flis_ops.attr,
 	NULL,
 };
 
@@ -362,19 +444,22 @@ static struct attribute_group flis_attr_group = {
 };
 
 static DEVICE_ATTR(pin_name, S_IRUGO|S_IWUSR, pinname_show, pinname_store);
-static DEVICE_ATTR(pull_val, S_IRUGO|S_IWUSR, pull_val_show, pull_val_store);
-static DEVICE_ATTR(pull_ops, S_IWUSR, NULL, pull_ops_store);
+static DEVICE_ATTR(flis_param, S_IRUGO|S_IWUSR, flis_param_type_show,
+						flis_param_type_store);
+static DEVICE_ATTR(val, S_IRUGO|S_IWUSR, param_val_show, param_val_store);
+static DEVICE_ATTR(ops, S_IWUSR, NULL, ops_store);
 
-static struct attribute *pull_attrs[] = {
+static struct attribute *pin_config_attrs[] = {
 	&dev_attr_pin_name.attr,
-	&dev_attr_pull_val.attr,
-	&dev_attr_pull_ops.attr,
+	&dev_attr_flis_param.attr,
+	&dev_attr_val.attr,
+	&dev_attr_ops.attr,
 	NULL,
 };
 
-static struct attribute_group pull_attr_group = {
-	.name = "pull_debug",
-	.attrs = pull_attrs,
+static struct attribute_group pin_config_attr_group = {
+	.name = "pin_config_debug",
+	.attrs = pin_config_attrs,
 };
 
 static int __devinit scu_flis_probe(struct ipc_device *ipcdev)
@@ -400,15 +485,16 @@ static int __devinit scu_flis_probe(struct ipc_device *ipcdev)
 		goto end;
 	}
 
-	ret = sysfs_create_group(&ipcdev->dev.kobj, &pull_attr_group);
+	ret = sysfs_create_group(&ipcdev->dev.kobj, &pin_config_attr_group);
 	if (ret) {
-		dev_err(&ipcdev->dev, "Failed to create pull sysfs interface\n");
-		goto err_pull_sysfs;
+		dev_err(&ipcdev->dev,
+				"Failed to create pin config sysfs interface\n");
+		goto err_pin_config_sysfs;
 	}
 
 	return 0;
 
-err_pull_sysfs:
+err_pin_config_sysfs:
 	sysfs_remove_group(&ipcdev->dev.kobj, &flis_attr_group);
 end:
 	return ret;
@@ -416,7 +502,7 @@ end:
 
 static int __devexit scu_flis_remove(struct ipc_device *ipcdev)
 {
-	sysfs_remove_group(&ipcdev->dev.kobj, &pull_attr_group);
+	sysfs_remove_group(&ipcdev->dev.kobj, &pin_config_attr_group);
 	sysfs_remove_group(&ipcdev->dev.kobj, &flis_attr_group);
 
 	return 0;

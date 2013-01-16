@@ -1,15 +1,36 @@
 #ifndef _ASM_X86_INTEL_SCU_FLIS_H_
 #define _ASM_X86_INTEL_SCU_FLIS_H_
 
-enum pull_value_t {
-	NONE = 0,
-	DOWN_20K,
-	DOWN_2K,
-	/* DOWN_75K is reserved */
-	UP_20K = 4,
-	UP_2K,
-	UP_910K,
+enum flis_param_t {
+	PULL,
+	PIN_DIRECTION,
+	OPEN_DRAIN,
 };
+
+#define NONE		0
+#define DOWN_20K	(1 << 0)
+#define DOWN_2K		(1 << 1)
+/* DOWN_75K is reserved */
+#define UP_20K		(1 << 3)
+#define UP_2K		(1 << 4)
+#define UP_910K		(1 << 5)
+
+#define INPUT_EN	(1 << 0)
+#define INPUT_DIS	(0 << 0)
+#define OUTPUT_EN	(1 << 2)
+#define OUTPUT_DIS	(0 << 2)
+
+#define INPUT_LOW	(INPUT_EN | (0 << 1) | OUTPUT_DIS)
+#define INPUT_HIGH	(INPUT_EN | (1 << 1) | OUTPUT_DIS)
+#define OUTPUT_LOW	(OUTPUT_EN | (0 << 3) | INPUT_DIS)
+#define OUTPUT_HIGH	(OUTPUT_EN | (1 << 3) | INPUT_DIS)
+
+#define OD_ENABLE	(1 << 0)
+#define OD_DISABLE	(0 << 0)
+
+#define PULL_MASK		0x3F
+#define PIN_DIRECTION_MASK	0xF
+#define OPEN_DRAIN_MASK		0x1
 
 enum pinname_t {
 	i2s_2_clk = 0,
@@ -236,6 +257,8 @@ struct pinstruct_t {
 	u8 bus_address;
 	u8 pullup_offset;
 	u8 pullup_lsb_pos;
+	u8 direction_offset;
+	u8 direction_lsb_pos;
 	u8 open_drain_offset;
 	u8 open_drain_bit;
 };
@@ -252,13 +275,15 @@ enum {
 	DBG_SHIM_OFFSET,
 	DBG_SHIM_DATA,
 
-	DBG_PULL_VAL,
+	DBG_PARAM_VAL,
+	DBG_PARAM_TYPE,
 	DBG_PIN_NAME,
 };
 
 int intel_scu_ipc_write_shim(u32 data, u32 flis_addr, u32 offset);
 int intel_scu_ipc_read_shim(u32 *data, u32 flis_addr, u32 offset);
-int config_pin_flis(enum pinname_t name, enum pull_value_t val);
-int get_pin_flis(enum pinname_t name, u32 *val);
+int intel_scu_ipc_update_shim(u32 data, u32 mask, u32 flis_addr, u32 offset);
+int config_pin_flis(enum pinname_t name, enum flis_param_t param, u8 val);
+int get_pin_flis(enum pinname_t name, enum flis_param_t param, u8 *val);
 
 #endif
