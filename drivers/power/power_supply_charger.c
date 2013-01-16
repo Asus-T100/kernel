@@ -504,8 +504,8 @@ static inline void enable_supplied_by_charging
 	cnt = get_supplied_by_list(psy, chrgr_lst);
 	if (cnt == 0)
 		return;
-	while (--cnt) {
-		if (is_enable && IS_CHARGING_CAN_BE_ENABLED(psy))
+	while (cnt--) {
+		if (is_enable && IS_CHARGING_CAN_BE_ENABLED(chrgr_lst[cnt]))
 			enable_charging(chrgr_lst[cnt]);
 		else
 			disable_charging(chrgr_lst[cnt]);

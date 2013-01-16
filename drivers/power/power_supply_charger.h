@@ -52,6 +52,8 @@ static inline int get_ps_int_property(struct power_supply *psy,
 {
 	union power_supply_propval val;
 
+	val.intval = 0;
+
 	psy->get_property(psy, psp, &val);
 	return val.intval;
 }
