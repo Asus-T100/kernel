@@ -599,7 +599,6 @@ static void pmic_debugfs_exit(void)
 
 static void pmic_bat_zone_changed(void)
 {
-	static int prev_zone;
 	int retval;
 	int cur_zone;
 	u8 data = 0;
@@ -615,13 +614,12 @@ static void pmic_bat_zone_changed(void)
 	dev_info(chc.dev, "Battery Zone changed. Current zone is %d\n",
 			(data & THRMBATZONE_MASK));
 
-	/* if current zone and previous zone are same and if they are
-	 *  the top and bottom zones then report OVERHEAT
+	/* if current zone is the top and bottom zones then report OVERHEAT
 	 */
-	if ((prev_zone == cur_zone) && ((prev_zone == PMIC_BZONE_LOW) ||
-				(prev_zone == PMIC_BZONE_HIGH)))
+	if ((cur_zone == PMIC_BZONE_LOW) || (cur_zone == PMIC_BZONE_HIGH))
 		chc.health = POWER_SUPPLY_HEALTH_OVERHEAT;
-	prev_zone = cur_zone;
+	else
+		chc.health = POWER_SUPPLY_HEALTH_GOOD;
 
 	psy_bat = get_psy_battery();
 	if (psy_bat)
