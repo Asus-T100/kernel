@@ -512,10 +512,10 @@ static int atomisp_open(struct file *file)
 	mmgr_set_base_address(HOST_ADDRESS(isp->mmu_l1_base));
 
 	/* Init ISP */
-	if (sh_css_init(&my_env,
-			isp->firmware->data,
-			isp->firmware->size))
+	if (sh_css_init(&my_env, isp->firmware->data, isp->firmware->size)) {
+		ret = -EINVAL;
 		goto css_init_failed;
+	}
 	/*uncomment the following to lines to enable offline preview*/
 	/*sh_css_enable_continuous(true);*/
 	/*sh_css_preview_enable_online(false);*/
@@ -544,7 +544,7 @@ done:
 	return 0;
 
 css_init_failed:
-	v4l2_err(&atomisp_dev, "css init failed\n");
+	dev_err(isp->dev, "css init failed --- bad firmware?\n");
 	pm_runtime_put(vdev->v4l2_dev->dev);
 error:
 	mutex_unlock(&isp->mutex);
