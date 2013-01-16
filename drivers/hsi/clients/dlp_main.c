@@ -849,8 +849,10 @@ static inline void dlp_ctx_update_state_tx(struct dlp_xfer_ctx *xfer_ctx)
 		del_timer(&xfer_ctx->channel->hangup.timer);
 
 		if (xfer_ctx->wait_len == 0) {
-			/* wake_up(&main_ctx->tx_full_pipe_clean_event); */
 			mod_timer(&xfer_ctx->timer, jiffies + xfer_ctx->delay);
+
+			/* Wake_up dlp_tty_wait_until_ctx_sent */
+			wake_up(&xfer_ctx->channel->tx_empty_event);
 		}
 	}
 }
