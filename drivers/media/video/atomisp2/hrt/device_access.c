@@ -64,7 +64,7 @@ void device_store_uint8(
 	const uint8_t			data)
 {
 assert(base_address != (sys_address)-1);
-	hrt_master_port_store_8(base_address + addr, data);
+hrt_master_port_store_8(base_address + addr, data);
 return;
 }
 
@@ -74,7 +74,7 @@ void device_store_uint16(
 {
 assert(base_address != (sys_address)-1);
 assert((addr & 0x01) == 0);
-	hrt_master_port_store_16(base_address + addr, data);
+hrt_master_port_store_16(base_address + addr, data);
 return;
 }
 
@@ -84,7 +84,7 @@ void device_store_uint32(
 {
 assert(base_address != (sys_address)-1);
 assert((addr & 0x03) == 0);
-	hrt_master_port_store_32(base_address + addr, data);
+hrt_master_port_store_32(base_address + addr, data);
 return;
 }
 

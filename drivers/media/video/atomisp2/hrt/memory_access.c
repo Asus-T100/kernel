@@ -46,7 +46,7 @@ const hrt_vaddress	mmgr_NULL = (hrt_vaddress)0;
 #define INVALID_VBASE ((hrt_vaddress)-1)
 #define INVALID_SIZE ((unsigned long)-1)
 
-struct alloc_info{
+struct alloc_info {
 	hrt_vaddress  vbase;
 	unsigned long size;
 };
@@ -362,7 +362,7 @@ return;
 
 void mmgr_store(
 	const hrt_vaddress		vaddr,
-	const void			*data,
+	const void				*data,
 	const size_t			size)
 {
 #if SH_CSS_MEMORY_GUARDING
