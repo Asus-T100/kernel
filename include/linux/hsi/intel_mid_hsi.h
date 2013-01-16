@@ -33,9 +33,12 @@
  * @rx_dma_channels: HSI-channel indexed list of RX DMA channel (-1 if no DMA)
  * @rx_sg_entries: HSI-channel indexed list of RX scatter gather entries
  * @rx_fifo_size: HSI-channel indexed list of RX FIFO size in HSI frames
+ * @rx_fifo_thres: HSI-channel indexed list of RX FIFO threshold in HSI frames
  * @tx_dma_channels: HSI-channel indexed list of TX DMA channel (-1 if no DMA)
  * @tx_sg_entries: HSI-channel indexed list of TX scatter gather entries
  * @tx_fifo_size: HSI-channel indexed list of TX FIFO size in HSI frames
+ * @tx_fifo_thres: HSI-channel indexed list of TX FIFO threshold in HSI frames
+ * @tx_priorities: HSI-channel indexed list of TX priorities
  * @gpio_mdm_rst_out: GPIO index for modem reset input
  * @gpio_mdm_pwr_on: GPIO index for modem power on
  * @gpio_mdm_rst_bbn: GPIO index for modem reset request
@@ -45,9 +48,13 @@ struct hsi_mid_platform_data {
 	int	rx_dma_channels[HSI_MID_MAX_CHANNELS];
 	int	rx_sg_entries[HSI_MID_MAX_CHANNELS];
 	int	rx_fifo_sizes[HSI_MID_MAX_CHANNELS];
+	int	rx_fifo_thres[HSI_MID_MAX_CHANNELS];
+
 	int	tx_dma_channels[HSI_MID_MAX_CHANNELS];
 	int	tx_sg_entries[HSI_MID_MAX_CHANNELS];
 	int	tx_fifo_sizes[HSI_MID_MAX_CHANNELS];
+	int	tx_fifo_thres[HSI_MID_MAX_CHANNELS];
+	int	tx_priorities[HSI_MID_MAX_CHANNELS];
 
 	/* FIXME: the next four entries need to go in a separate client specific
 	 *        section */
