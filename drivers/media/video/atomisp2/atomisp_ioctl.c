@@ -739,7 +739,7 @@ error:
 /*
  * Initiate Memory Mapping or User Pointer I/O
  */
-int atomisp_reqbufs(struct file *file, void *fh,
+int __atomisp_reqbufs(struct file *file, void *fh,
 	struct v4l2_requestbuffers *req)
 {
 	struct video_device *vdev = video_devdata(file);
@@ -752,11 +752,11 @@ int atomisp_reqbufs(struct file *file, void *fh,
 
 	if (req->count == 0) {
 		atomisp_videobuf_free(&pipe->capq);
+		mutex_lock(&pipe->capq.vb_lock);
 		if (!list_empty(&pipe->capq.stream)) {
-			mutex_lock(&pipe->capq.vb_lock);
 			videobuf_queue_cancel(&pipe->capq);
-			mutex_unlock(&pipe->capq.vb_lock);
 		}
+		mutex_unlock(&pipe->capq.vb_lock);
 		return 0;
 	}
 
@@ -764,24 +764,19 @@ int atomisp_reqbufs(struct file *file, void *fh,
 	if (ret)
 		return ret;
 
-	mutex_lock(&isp->mutex);
-
 	atomisp_alloc_css_stat_bufs(isp);
 
 	/*
 	 * for user pointer type, buffers are not really allcated here,
 	 * buffers are setup in QBUF operation through v4l2_buffer structure
 	 */
-	if (req->memory == V4L2_MEMORY_USERPTR) {
-		mutex_unlock(&isp->mutex);
+	if (req->memory == V4L2_MEMORY_USERPTR)
 		return 0;
-	}
 
 	ret = __get_css_frame_info(isp, pipe->pipe_type, &frame_info);
-	if (ret) {
-		mutex_unlock(&isp->mutex);
+	if (ret)
 		return -EINVAL;
-	}
+
 	/*
 	 * Allocate the real frame here for selected node using our
 	 * memory management function
@@ -793,7 +788,6 @@ int atomisp_reqbufs(struct file *file, void *fh,
 		vm_mem->vaddr = frame;
 	}
 
-	mutex_unlock(&isp->mutex);
 	return ret;
 
 error:
@@ -805,8 +799,21 @@ error:
 	if (isp->vf_frame)
 		sh_css_frame_free(isp->vf_frame);
 
-	mutex_unlock(&isp->mutex);
 	return -ENOMEM;
+}
+
+int atomisp_reqbufs(struct file *file, void *fh,
+	struct v4l2_requestbuffers *req)
+{
+	struct video_device *vdev = video_devdata(file);
+	struct atomisp_device *isp = video_get_drvdata(vdev);
+	int ret;
+
+	mutex_lock(&isp->mutex);
+	ret = __atomisp_reqbufs(file, fh, req);
+	mutex_unlock(&isp->mutex);
+
+	return ret;
 }
 
 static int atomisp_reqbufs_file(struct file *file, void *fh,
