@@ -14,8 +14,8 @@ include_dirs := \
 		$(PVRINCS-y) \
 		-I$(INCDIR)/ \
 		-I$(DISPLAY_INCDIR) \
-		-I$(DISPLAY_INCDIR)/otm_hdmi/os/android/include \
-		-I$(DISPLAY_INCDIR)/otm_hdmi/pil/include \
+		-I$(INCDIR)/otm_hdmi/os/android/include \
+		-I$(INCDIR)/otm_hdmi/pil/include \
 		-I$(INCDIR)/video/decode \
 		-I$(INCDIR)/video/encode \
 		-I$(INCDIR)/video/common \
@@ -56,6 +56,7 @@ VIDEO_COMMON_DIR = ../../video/common
 DECODE_DIR = ../../video/decode
 ENCODE_DIR = ../../video/encode
 MEDIA_COMMON_DIR = ../../common
+HDMI_DIR := ../../otm_hdmi
 
 gfx-y += $(ENVDIR)/osfunc.o \
 		$(ENVDIR)/mutils.o \
@@ -168,4 +169,4 @@ gfx-$(CONFIG_MDFD_GL3) += $(MEDIA_COMMON_DIR)/mdfld_gl3.o
 obj-$(CONFIG_DRM_MDFLD) += gfx.o
 obj-$(CONFIG_DRM_CTP) += gfx.o
 
-obj-$(CONFIG_SUPPORT_HDMI) += $(DISPLAYDIR)/otm_hdmi/
+obj-$(CONFIG_SUPPORT_HDMI) += $(HDMI_DIR)/
