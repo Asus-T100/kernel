@@ -121,6 +121,15 @@ static struct intel_mid_thermal_sensor mfld_sensors[] = {
 		.adc_channel = 0x03 | CH_NEED_VCALIB,
 		.direct = true,
 	},
+	{
+		.name = SYSTHERM1_NAME,
+		.index = 4,
+		.slope = 1000,
+		.intercept = 0,
+		.adc_channel = 0x09 | CH_NEED_VREF | CH_NEED_VCALIB,
+		.temp_correlation = skin1_temp_correlation,
+		.direct = false,
+	},
 
 };
 
@@ -160,12 +169,21 @@ static struct intel_mid_thermal_sensor lex_sensors[] = {
 		.adc_channel = 0x03 | CH_NEED_VCALIB,
 		.direct = true,
 	},
+	{
+		.name = SYSTHERM1_NAME,
+		.index = 4,
+		.slope = 1000,
+		.intercept = 0,
+		.adc_channel = 0x09 | CH_NEED_VREF | CH_NEED_VCALIB,
+		.temp_correlation = skin1_temp_correlation,
+		.direct = false,
+	},
 
 };
 
 static struct intel_mid_thermal_platform_data pdata[] = {
 	[mfld_thermal] = {
-		.num_sensors = 4,
+		.num_sensors = 5,
 		.sensors = mfld_sensors,
 		.soc_cooling = false,
 	},
@@ -175,7 +193,7 @@ static struct intel_mid_thermal_platform_data pdata[] = {
 		.soc_cooling = true,
 	},
 	[lex_thermal] = {
-		.num_sensors = 4,
+		.num_sensors = 5,
 		.sensors = lex_sensors,
 		.soc_cooling = false,
 	},
