@@ -150,6 +150,26 @@ u16 pmic_inlmt[][2] = {
 	{ 1500, CHGRCTRL1_FUSB_INLMT_1500_MASK},
 };
 
+static inline struct power_supply *get_psy_battery(void)
+{
+	struct class_dev_iter iter;
+	struct device *dev;
+	struct power_supply *pst;
+
+	class_dev_iter_init(&iter, power_supply_class, NULL, NULL);
+	while ((dev = class_dev_iter_next(&iter))) {
+		pst = (struct power_supply *)dev_get_drvdata(dev);
+		if (pst->type == POWER_SUPPLY_TYPE_BATTERY) {
+			class_dev_iter_exit(&iter);
+			return pst;
+		}
+	}
+	class_dev_iter_exit(&iter);
+
+	return NULL;
+}
+
+
 /* Function definitions */
 static void lookup_regval(u16 tbl[][2], size_t size, u16 in_val, u8 *out_val)
 {
@@ -583,6 +603,7 @@ static void pmic_bat_zone_changed(void)
 	int retval;
 	int cur_zone;
 	u8 data = 0;
+	struct power_supply *psy_bat;
 
 	retval = intel_scu_ipc_ioread8(THRMBATZONE_ADDR, &data);
 	if (retval) {
@@ -601,6 +622,10 @@ static void pmic_bat_zone_changed(void)
 				(prev_zone == PMIC_BZONE_HIGH)))
 		chc.health = POWER_SUPPLY_HEALTH_OVERHEAT;
 	prev_zone = cur_zone;
+
+	psy_bat = get_psy_battery();
+	if (psy_bat)
+		power_supply_changed(psy_bat);
 
 	return;
 }
