@@ -805,7 +805,7 @@ static int bq24261_usb_set_property(struct power_supply *psy,
 
 	case POWER_SUPPLY_PROP_ENABLE_CHARGING:
 
-		ret = bq24261_enable_charging(chip, val);
+		ret = bq24261_enable_charging(chip, val->intval);
 
 		if (ret)
 			dev_err(&chip->client->dev,
