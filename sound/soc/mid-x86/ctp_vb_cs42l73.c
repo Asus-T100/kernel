@@ -152,10 +152,8 @@ static int ctp_vb_bt_xsp_hw_params(struct snd_pcm_substream *substream,
 	int ret , clk_source;
 	pr_debug("Slave Mode selected\n");
 
-	/* For PCM, CS42L73 can be configured in slave mode only */
-	/* TODO: Fix format */
-	fmt =   SND_SOC_DAIFMT_DSP_B | SND_SOC_DAIFMT_IB_NF
-		| SND_SOC_DAIFMT_CBS_CFS;
+	fmt =   SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF
+				| SND_SOC_DAIFMT_CBS_CFS;
 	clk_source = SND_SOC_CLOCK_IN;
 	/* Set codec DAI configuration */
 	ret = snd_soc_dai_set_fmt(codec_dai, fmt);
