@@ -451,10 +451,11 @@ int pnw_topaz_init(struct drm_device *dev)
 
 	PSB_DEBUG_GENERAL("TOPAZ:old clock gating reg = 0x%08x\n",
 		       PSB_RVDC32(PSB_TOPAZ_CLOCKGATING));
-	/* Don't change the value Punit firmware wrote to this reg
+	/* Disable vec auto clockgating due to random encoder HW hang
+	   during 1080p video recording */
 	PSB_DEBUG_INIT("TOPAZ:reset to disable clock gating\n");
 
-	PSB_WVDC32(0x007fffff, PSB_TOPAZ_CLOCKGATING); */
+	PSB_WVDC32(VEC_CG_DIS_MASK, PSB_TOPAZ_CLOCKGATING);
 
 	PSB_DEBUG_GENERAL("TOPAZ: Exit initialization\n");
 	return 0;
