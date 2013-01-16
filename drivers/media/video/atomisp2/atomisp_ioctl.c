@@ -270,7 +270,8 @@ static int __get_css_frame_info(struct atomisp_device *isp,
 		if (isp->sw_contex.run_mode == CI_MODE_VIDEO)
 			return sh_css_video_get_viewfinder_frame_info(
 					frame_info);
-		else if (isp->capture_format->out_sh_fmt !=
+		else if (isp->capture_format &&
+				isp->capture_format->out_sh_fmt !=
 			SH_CSS_FRAME_FORMAT_RAW)
 			return sh_css_capture_get_viewfinder_frame_info(
 					frame_info);
