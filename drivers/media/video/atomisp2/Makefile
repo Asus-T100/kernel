@@ -23,6 +23,8 @@ atomisp-objs := \
 		hmm/hmm_bo.o \
 		hmm/hmm_bo_dev.o \
 		hmm/hmm_vm.o \
+		hrt/device_access.o \
+		hrt/memory_access.o \
 		hrt/hive_isp_css_mm_hrt.o
 
 atomisp-objs += \
@@ -53,9 +55,7 @@ atomisp-objs += \
 		$(css_folder)/hive_isp_css_shared/host/sw_event.o \
 		$(css_folder)/$(css_platform_folder)/host/fifo_monitor.o \
 		$(css_folder)/$(css_platform_folder)/host/gp_device.o \
-		$(css_folder)/$(css_platform_folder)/host/input_formatter.o \
-		$(css_folder)/$(css_platform_folder)/device_access/device_access.o \
-		$(css_folder)/$(css_platform_folder)/memory_access/memory_access.o
+		$(css_folder)/$(css_platform_folder)/host/input_formatter.o
 
 obj-$(CONFIG_VIDEO_ATOMISP_CSS15) = atomisp.o
 
