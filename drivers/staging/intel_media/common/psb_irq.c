@@ -185,6 +185,11 @@ static int mipi_hdmi_vsync_check(struct drm_device *dev, uint32_t pipe)
 	int pipea_stat, pipeb_stat, pipeb_ctl, pipeb_cntr;
 	unsigned long irqflags;
 
+	/*check whether need to sync*/
+	if (dev_priv->vsync_te_working[0] == false ||
+		dev_priv->vsync_te_working[1] == false)
+		return 1;
+
 	spin_lock_irqsave(&dev_priv->irqmask_lock, irqflags);
 	if (dev_priv->bhdmiconnected && dsi_config->dsi_hw_context.panel_on) {
 		if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, OSPM_UHB_ONLY_IF_ON)) {
@@ -243,6 +248,11 @@ static int mipi_te_hdmi_vsync_check(struct drm_device *dev, uint32_t pipe)
 	struct mdfld_dsi_config *dsi_config = dev_priv->dsi_configs[0];
 	int pipea_stat, pipeb_stat, pipeb_ctl, pipeb_cntr;
 	unsigned long irqflags;
+
+	/*check whether need to sync*/
+	if (dev_priv->vsync_te_working[0] == false ||
+		dev_priv->vsync_te_working[1] == false)
+		return 1;
 
 	spin_lock_irqsave(&dev_priv->irqmask_lock, irqflags);
 #ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
@@ -379,6 +389,8 @@ void mdfld_vsync_event_work(struct work_struct *work)
 	int pipe = dev_priv->vsync_pipe;
 	struct drm_device *dev = dev_priv->dev;
 
+	dev_priv->vsync_te_worker_ts[pipe] = cpu_clock(0);
+
 	mid_vblank_handler(dev, pipe);
 
 	/*report vsync event*/
@@ -391,6 +403,8 @@ void mdfld_te_handler_work(struct work_struct *work)
 		container_of(work, struct drm_psb_private, te_work);
 	int pipe = 0;
 	struct drm_device *dev = dev_priv->dev;
+
+	dev_priv->vsync_te_worker_ts[pipe] = cpu_clock(0);
 
 	/*report vsync event*/
 	mdfld_vsync_event(dev, pipe);
@@ -452,7 +466,6 @@ static void get_use_cases_control_info()
 			DRM_INFO("BIT5 VSYNC off  disabled\n");
 	}
 }
-
 
 /**
  * Display controller interrupt handler for pipe event.
@@ -560,6 +573,8 @@ static void mid_pipe_event_handler(struct drm_device *dev, uint32_t pipe)
 	}
 
 	if (pipe_stat_val & PIPE_VBLANK_STATUS) {
+		dev_priv->vsync_te_irq_ts[pipe] = cpu_clock(0);
+		dev_priv->vsync_te_working[pipe] = true;
 		dev_priv->vsync_pipe = pipe;
 		atomic_inc(&dev_priv->vblank_count[pipe]);
 		queue_work(vsync_wq, &dev_priv->vsync_event_work);
@@ -567,6 +582,8 @@ static void mid_pipe_event_handler(struct drm_device *dev, uint32_t pipe)
 
 	if (pipe_stat_val & PIPE_TE_STATUS) {
 		/*update te sequence on this pipe*/
+		dev_priv->vsync_te_irq_ts[pipe] = cpu_clock(0);
+		dev_priv->vsync_te_working[pipe] = true;
 		update_te_counter(dev, pipe);
 		atomic_inc(&dev_priv->vblank_count[pipe]);
 		queue_work(te_wq, &dev_priv->te_work);
@@ -1200,9 +1217,9 @@ void psb_disable_vblank(struct drm_device *dev, int pipe)
 	spin_lock_irqsave(&dev_priv->irqmask_lock, irqflags);
 
 	drm_psb_disable_vsync = 1;
+	dev_priv->vsync_te_working[pipe] = false;
 	mid_disable_pipe_event(dev_priv, pipe);
 	psb_disable_pipestat(dev_priv, pipe, PIPE_VBLANK_INTERRUPT_ENABLE);
-
 	spin_unlock_irqrestore(&dev_priv->irqmask_lock, irqflags);
 }
 
@@ -1333,6 +1350,7 @@ void mdfld_disable_te(struct drm_device *dev, int pipe)
 		sender = mdfld_dsi_get_pkg_sender(dsi_config);
 		atomic64_set(&sender->last_screen_update, 0);
 		atomic64_set(&sender->te_seq, 0);
+		dev_priv->vsync_te_working[pipe] = false;
 	}
 	spin_unlock_irqrestore(&dev_priv->irqmask_lock, irqflags);
 }

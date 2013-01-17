@@ -439,8 +439,6 @@ struct mdfld_dsi_config {
 
 	/*dsr*/
 	void *dsr;
-
-	int flip_abnormal_count;
 };
 
 #define MDFLD_DSI_CONNECTOR(psb_output) \

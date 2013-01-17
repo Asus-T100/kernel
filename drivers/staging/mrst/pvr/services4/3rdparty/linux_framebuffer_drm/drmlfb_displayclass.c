@@ -433,7 +433,6 @@ static IMG_BOOL FlushInternalVSyncQueue(MRSTLFB_SWAPCHAIN *psSwapChain,
 					&psFlipItem->sPlaneContexts);
 			if (ret == IMG_FALSE) {
 				DRM_INFO("%s: returning %d from DRMLFBFlipBuffer2", __func__, ret);
-				return ret;
 			}
 
 		}
@@ -1320,12 +1319,10 @@ static void timer_flip_handler(struct work_struct *work)
 	MRSTLFB_SWAPCHAIN *psSwapChain;
 	MRSTLFB_VSYNC_FLIP_ITEM *psLastItem;
 	struct drm_psb_private *dev_priv;
-	struct mdfld_dsi_config *dsi_config;
 
 	psDevInfo = container_of(work, MRSTLFB_DEVINFO, flip_complete_work);
 	dev_priv =
 		(struct drm_psb_private *)psDevInfo->psDrmDevice->dev_private;
-	dsi_config = dev_priv->dsi_configs[0];
 
 	mutex_lock(&psDevInfo->sSwapChainMutex);
 	psSwapChain = psDevInfo->psCurrentSwapChain;
@@ -1343,6 +1340,8 @@ static void timer_flip_handler(struct work_struct *work)
 		}
 		goto ExitUnlock;
 	}
+	dev_priv->vsync_te_trouble_ts = cpu_clock(0);
+
 	printk(KERN_WARNING "MRSTLFBFlipTimerFn: swapchain is not empty, flush queue\n");
 
 	/*
@@ -1350,14 +1349,12 @@ static void timer_flip_handler(struct work_struct *work)
 	 * mutex_lock when freeing buffer.
 	 */
 
-	FlushInternalVSyncQueue(psSwapChain, MRST_TRUE);
+	FlushInternalVSyncQueue(psSwapChain, MRST_FALSE);
 
 	mutex_unlock(&psDevInfo->sSwapChainMutex);
 
-	if (dsi_config->flip_abnormal_count == 0)
-		psb_display_reg_dump(psDevInfo->psDrmDevice);
+	psb_flip_abnormal_debug_info(psDevInfo->psDrmDevice);
 
-	dsi_config->flip_abnormal_count++;
 	return;
 
 ExitUnlock:

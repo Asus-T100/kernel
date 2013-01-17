@@ -575,7 +575,6 @@ reset_recovery:
 	/*wait for all FIFOs empty*/
 	mdfld_dsi_wait_for_fifos_empty(sender);
 
-	dsi_config->flip_abnormal_count = 0;
 power_on_err:
 	if (err && reset_count) {
 		if (dev_priv->bhdmiconnected) {
