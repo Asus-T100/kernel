@@ -3726,7 +3726,23 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	bool res_overflow = false;
 	struct v4l2_streamparm sensor_parm;
 	struct v4l2_mbus_framefmt isp_sink_fmt;
+	uint16_t source_pad;
 	int ret;
+
+	switch (pipe->pipe_type) {
+	case ATOMISP_PIPE_CAPTURE:
+		source_pad = ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE;
+		break;
+	case ATOMISP_PIPE_VIEWFINDER:
+		source_pad = ATOMISP_SUBDEV_PAD_SOURCE_VF;
+		break;
+	case ATOMISP_PIPE_PREVIEW:
+		source_pad = ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW;
+		break;
+	default:
+		dev_err(isp->dev, "can't get source pad");
+		return -EINVAL;
+	}
 
 	if (f->type != V4L2_BUF_TYPE_VIDEO_CAPTURE &&
 	    f->type != V4L2_BUF_TYPE_PRIVATE) {
