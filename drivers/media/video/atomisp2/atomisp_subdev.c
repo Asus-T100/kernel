@@ -400,6 +400,17 @@ int atomisp_subdev_set_selection(struct v4l2_subdev *sd,
 
 		break;
 	}
+	case ATOMISP_SUBDEV_PAD_SOURCE_VF:
+	case ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW:
+		comp[pad]->width = r->width;
+		comp[pad]->height = r->height;
+		break;
+	}
+
+	/* Set format dimensions on non-sink pads as well. */
+	if (pad != ATOMISP_SUBDEV_PAD_SINK) {
+		ffmt[pad]->width = comp[pad]->width;
+		ffmt[pad]->height = comp[pad]->height;
 	}
 
 	*r = *atomisp_subdev_get_rect(sd, fh, which, pad, target);
