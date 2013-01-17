@@ -31,8 +31,9 @@
 #include <linux/videodev2.h>
 #include <linux/v4l2-mediabus.h>
 #include <linux/types.h>
+
 #include <media/media-entity.h>
-#include <media/v4l2-chip-ident.h>
+#include <media/v4l2-ctrls.h>
 #include <media/v4l2-device.h>
 #include <media/v4l2-subdev.h>
 
@@ -404,7 +405,6 @@ struct ov8830_device {
 	u16 digital_gain;
 	u16 pixels_per_line;
 	u16 lines_per_frame;
-	int run_mode;
 	struct drv201_device drv201;
 	struct mutex input_lock; /* serialize sensor's ioctl */
 
@@ -412,6 +412,9 @@ struct ov8830_device {
 	const struct ov8830_resolution *curr_res_table;
 	int entries_curr_table;
 	int fps_index;
+
+	struct v4l2_ctrl_handler ctrl_handler;
+	struct v4l2_ctrl *run_mode;
 };
 
 /*
