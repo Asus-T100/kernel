@@ -3697,28 +3697,34 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	if (format_bridge == NULL)
 		return -EINVAL;
 
-	if (pipe->pipe_type == ATOMISP_PIPE_VIEWFINDER ||
-	    (pipe->pipe_type == ATOMISP_PIPE_PREVIEW &&
-	     isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO)) {
-		/*
-		 * Check whether VF resolution configured larger
-		 * than Main Resolution. If so, Force VF resolution
-		 * to be the same as Main resolution
-		 */
-		if (isp->isp_subdev.video_out_capture.format.out.width &&
-		    isp->isp_subdev.video_out_capture.format.out.height &&
-		    (isp->isp_subdev.video_out_capture.format.out.width <
-		     f->fmt.pix.width ||
-		     isp->isp_subdev.video_out_capture.format.out.height
-		     < f->fmt.pix.height)) {
-			v4l2_warn(&atomisp_dev,
-				  "Force capture resolution to same as "
-				  "vf/preview\n");
-			f->fmt.pix.width = isp->isp_subdev.video_out_capture.
-				format.out.width;
-			f->fmt.pix.height = isp->isp_subdev.video_out_capture.
-				format.out.height;
+	if (source_pad == ATOMISP_SUBDEV_PAD_SOURCE_VF
+	    || (source_pad == ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW
+		&& isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO)) {
+		struct v4l2_rect *capture_comp = atomisp_subdev_get_rect(
+			&isp->isp_subdev.subdev, NULL,
+			V4L2_SUBDEV_FORMAT_ACTIVE,
+			ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE,
+			V4L2_SEL_TGT_COMPOSE);
+		struct v4l2_rect r;
+
+		memset(&r, 0, sizeof(r));
+
+		r.width = f->fmt.pix.width;
+		r.height = f->fmt.pix.height;
+
+		if (capture_comp->width < r.width
+		    || capture_comp->height < r.height) {
+			r.width = capture_comp->width;
+			r.height = capture_comp->height;
 		}
+
+		atomisp_subdev_set_selection(
+			&isp->isp_subdev.subdev, NULL,
+			V4L2_SUBDEV_FORMAT_ACTIVE,
+			source_pad, V4L2_SEL_TGT_COMPOSE, &r);
+
+		f->fmt.pix.width = r.width;
+		f->fmt.pix.height = r.height;
 
 		switch (isp->isp_subdev.run_mode->val) {
 		case ATOMISP_RUN_MODE_VIDEO:
