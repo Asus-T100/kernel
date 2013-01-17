@@ -35,6 +35,8 @@ int __init setup_hsu_rx_workarround_flag(char *p)
 }
 early_param("hsu_rx_wa", setup_hsu_rx_workarround_flag);
 
+#define DFLT_HSU_NUM 4
+
 static struct mfld_hsu_info default_hsu_info[] = {
 	[0] = {
 		.id = 0,
@@ -75,6 +77,7 @@ static struct mfld_hsu_info default_hsu_info[] = {
 };
 
 struct mfld_hsu_info *platform_hsu_info = default_hsu_info;
+int platform_hsu_num = DFLT_HSU_NUM;
 
 static irqreturn_t hsu_wakeup_isr(int irq, void *dev)
 {
@@ -181,7 +184,7 @@ void intel_mid_hsu_switch(int port)
 	struct mfld_hsu_info *tmp;
 	struct mfld_hsu_info *info = platform_hsu_info + port;
 
-	for (i = 0; i < MFLD_HSU_NUM; i++) {
+	for (i = 0; i < platform_hsu_num; i++) {
 		tmp = platform_hsu_info + i;
 		if (tmp != info && tmp->id == info->id)
 			hsu_port_disable(i);
@@ -208,8 +211,8 @@ void intel_mid_hsu_port_map(int *logic_idx, int *share_idx)
 {
 	int i, j;
 
-	for (i = 0; i < ARRAY_SIZE(default_hsu_info); i++) {
-		for (j = i + 1; j < ARRAY_SIZE(default_hsu_info); j++) {
+	for (i = 0; i < platform_hsu_num; i++) {
+		for (j = i + 1; j < platform_hsu_num; j++) {
 			if (platform_hsu_info[i].id ==
 			platform_hsu_info[j].id) {
 				*logic_idx = i;
@@ -244,7 +247,7 @@ int intel_mid_hsu_init(int port, struct device *dev, irq_handler_t wake_isr)
 
 	if (platform_hsu_info == NULL)
 		return -ENODEV;
-	if (port >= MFLD_HSU_NUM)
+	if (port >= platform_hsu_num)
 		return -ENODEV;
 	info = platform_hsu_info + port;
 	info->dev = dev;

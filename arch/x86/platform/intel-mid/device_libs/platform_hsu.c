@@ -49,6 +49,7 @@ static struct mfld_hsu_info tng_hsu_info[] = {
 static int __init tng_hsu_init(void)
 {
 	platform_hsu_info = tng_hsu_info;
+	platform_hsu_num = ARRAY_SIZE(tng_hsu_info);
 	return 0;
 }
 arch_initcall(tng_hsu_init);
@@ -105,6 +106,7 @@ static struct mfld_hsu_info ctp_hsu_info[] = {
 static int __init ctp_hsu_init(void)
 {
 	platform_hsu_info = ctp_hsu_info;
+	platform_hsu_num = ARRAY_SIZE(ctp_hsu_info);
 	return 0;
 }
 arch_initcall(ctp_hsu_init);

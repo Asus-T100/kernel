@@ -1,8 +1,6 @@
 #ifndef __INTEL_MID_HSU_H__
 #define __INTEL_MID_HSU_H__
 
-#define MFLD_HSU_NUM	4
-
 enum {
 	HSU_UART,
 	HSU_DMA,
@@ -26,6 +24,7 @@ struct mfld_hsu_info {
 };
 
 extern struct mfld_hsu_info *platform_hsu_info;
+extern int platform_hsu_num;
 extern unsigned char hsu_dma_enable;
 extern int hsu_rx_wa;
 void intel_mid_hsu_suspend(int port);
