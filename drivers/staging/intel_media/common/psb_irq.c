@@ -45,6 +45,10 @@
 extern int drm_psb_smart_vsync;
 extern atomic_t g_videoenc_access_count;
 extern atomic_t g_videodec_access_count;
+extern struct workqueue_struct *te_wq;
+extern struct workqueue_struct *vsync_wq;
+
+
 
 /*
  * inline functions
@@ -558,14 +562,15 @@ static void mid_pipe_event_handler(struct drm_device *dev, uint32_t pipe)
 	if (pipe_stat_val & PIPE_VBLANK_STATUS) {
 		dev_priv->vsync_pipe = pipe;
 		atomic_inc(&dev_priv->vblank_count[pipe]);
-		schedule_work(&dev_priv->vsync_event_work);
+		queue_work(vsync_wq, &dev_priv->vsync_event_work);
 	}
 
 	if (pipe_stat_val & PIPE_TE_STATUS) {
 		/*update te sequence on this pipe*/
 		update_te_counter(dev, pipe);
 		atomic_inc(&dev_priv->vblank_count[pipe]);
-		schedule_work(&dev_priv->te_work);
+		queue_work(te_wq, &dev_priv->te_work);
+
 	}
 
 	if (pipe_stat_val & PIPE_HDMI_AUDIO_UNDERRUN_STATUS)
