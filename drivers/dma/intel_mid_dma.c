@@ -246,6 +246,24 @@ static void disable_dma_interrupt(struct intel_mid_dma_chan *midc)
 	return;
 }
 
+/**
+ * clear_dma_channel_interrupt - clear channel interrupt
+ * @midc: dma channel for which clear interrupt is required
+ *
+ */
+static void clear_dma_channel_interrupt(struct intel_mid_dma_chan *midc)
+{
+	struct middma_device *mid = to_middma_device(midc->chan.device);
+
+	/*clearing this interrupts first*/
+	iowrite32((1 << midc->ch_id), mid->dma_base + CLEAR_TFR);
+	iowrite32((1 << midc->ch_id), mid->dma_base + CLEAR_BLOCK);
+	iowrite32((1 << midc->ch_id), mid->dma_base + CLEAR_ERR);
+
+
+	return;
+}
+
 /*****************************************************************************
 DMA channel helper Functions*/
 /**
@@ -636,14 +654,19 @@ static int intel_mid_dma_device_control(struct dma_chan *chan,
 		spin_unlock_bh(&midc->lock);
 		return 0;
 	}
+
+	/* Disable CH interrupts */
+	disable_dma_interrupt(midc);
+	/* clear channel interrupts */
+	clear_dma_channel_interrupt(midc);
+
 	/*Suspend and disable the channel*/
 	cfg_lo.cfg_lo = ioread32(midc->ch_regs + CFG_LOW);
 	cfg_lo.cfgx.ch_susp = 1;
 	iowrite32(cfg_lo.cfg_lo, midc->ch_regs + CFG_LOW);
 	iowrite32(DISABLE_CHANNEL(midc->ch_id), mid->dma_base + DMA_CHAN_EN);
 	midc->busy = false;
-	/* Disable interrupts */
-	disable_dma_interrupt(midc);
+
 	midc->descs_allocated = 0;
 
 	list_for_each_entry_safe(desc, _desc, &midc->active_list, desc_node) {
@@ -972,6 +995,10 @@ static void intel_mid_dma_free_chan_resources(struct dma_chan *chan)
 		/*trying to free ch in use!!!!!*/
 		pr_err("ERR_MDMA: trying to free ch in use\n");
 	}
+
+	/* Disable CH interrupts */
+	disable_dma_interrupt(midc);
+	clear_dma_channel_interrupt(midc);
 	spin_lock_bh(&midc->lock);
 	midc->descs_allocated = 0;
 	list_for_each_entry_safe(desc, _desc, &midc->active_list, desc_node) {
@@ -996,8 +1023,6 @@ static void intel_mid_dma_free_chan_resources(struct dma_chan *chan)
 
 	midc->in_use = false;
 	midc->busy = false;
-	/* Disable CH interrupts */
-	disable_dma_interrupt(midc);
 
 	pm_runtime_put(&mid->pdev->dev);
 }
