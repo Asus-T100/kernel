@@ -341,7 +341,7 @@ int atomisp_subdev_set_selection(struct v4l2_subdev *sd,
 			isp->params.video_dis_en = 0;
 
 		if (isp->params.video_dis_en &&
-		    isp->sw_contex.run_mode == CI_MODE_VIDEO) {
+		    isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO) {
 			/* This resolution contains 20 % of DVS slack
 			 * (of the desired captured image before
 			 * scaling, or 1 / 6 of what we get from the
@@ -371,7 +371,7 @@ int atomisp_subdev_set_selection(struct v4l2_subdev *sd,
 			break;
 
 		if (isp->params.video_dis_en &&
-		    isp->sw_contex.run_mode == CI_MODE_VIDEO) {
+		    isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO) {
 			dvs_w = rounddown(crop[pad]->width / 5,
 					  ATOM_ISP_STEP_WIDTH);
 			dvs_h = rounddown(crop[pad]->height / 5,
@@ -630,8 +630,61 @@ static const struct media_entity_operations isp_subdev_media_ops = {
 /*	 .set_power = v4l2_subdev_set_power,	*/
 };
 
+static int __atomisp_update_run_mode(struct atomisp_device *isp)
+{
+	struct v4l2_ctrl *ctrl = isp->isp_subdev.run_mode;
+	struct v4l2_ctrl *c;
+	struct v4l2_streamparm p;
+	int modes[] = { CI_MODE_NONE,
+			CI_MODE_VIDEO,
+			CI_MODE_STILL_CAPTURE,
+			CI_MODE_CONTINUOUS,
+			CI_MODE_PREVIEW };
+	s32 mode;
+
+	if (ctrl->val != ATOMISP_RUN_MODE_VIDEO &&
+	    isp->params.continuous_vf)
+		mode = ATOMISP_RUN_MODE_PREVIEW;
+	else
+		mode = ctrl->val;
+
+	c = v4l2_ctrl_find(
+		isp->inputs[isp->input_curr].camera->ctrl_handler,
+		V4L2_CID_RUN_MODE);
+
+	if (c)
+		return v4l2_ctrl_s_ctrl(c, mode);
+
+	/* Fall back to obsolete s_parm */
+	memset(&p, 0, sizeof(p));
+
+	p.parm.capture.capturemode = modes[mode];
+
+	return v4l2_subdev_call(
+		isp->inputs[isp->input_curr].camera, video, s_parm, &p);
+}
+
+int atomisp_update_run_mode(struct atomisp_device *isp)
+{
+	int rval;
+
+	mutex_lock(isp->isp_subdev.ctrl_handler.lock);
+	rval = __atomisp_update_run_mode(isp);
+	mutex_unlock(isp->isp_subdev.ctrl_handler.lock);
+
+	return rval;
+}
+
 static int s_ctrl(struct v4l2_ctrl *ctrl)
 {
+	struct atomisp_device *isp = container_of(
+		ctrl->handler, struct atomisp_sub_device, ctrl_handler)->isp;
+
+	switch (ctrl->id) {
+	case V4L2_CID_RUN_MODE:
+		return __atomisp_update_run_mode(isp);
+	}
+
 	return 0;
 }
 
@@ -647,6 +700,25 @@ static const struct v4l2_ctrl_config ctrl_fmt_auto = {
 	.min = 0,
 	.max = 1,
 	.def = 1,
+};
+
+static const char * const ctrl_run_mode_menu[] = {
+	NULL,
+	"Video",
+	"Still capture",
+	"Continuous capture",
+	"Preview",
+};
+
+static const struct v4l2_ctrl_config ctrl_run_mode = {
+	.ops = &ctrl_ops,
+	.id = V4L2_CID_RUN_MODE,
+	.name = "Atomisp run mode",
+	.type = V4L2_CTRL_TYPE_MENU,
+	.min = 1,
+	.def = 1,
+	.max = 4,
+	.qmenu = ctrl_run_mode_menu,
 };
 
 /*
@@ -754,6 +826,8 @@ static int isp_subdev_init_entities(struct atomisp_sub_device *isp_subdev)
 
 	isp_subdev->fmt_auto = v4l2_ctrl_new_custom(&isp_subdev->ctrl_handler,
 						    &ctrl_fmt_auto, NULL);
+	isp_subdev->run_mode = v4l2_ctrl_new_custom(&isp_subdev->ctrl_handler,
+						    &ctrl_run_mode, NULL);
 
 	/* Make controls visible on subdev as well. */
 	isp_subdev->subdev.ctrl_handler = &isp_subdev->ctrl_handler;

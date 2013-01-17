@@ -74,8 +74,8 @@ static int file_input_s_stream(struct v4l2_subdev *sd, int enable)
 	 * the requirement for enough lines do cropping
 	 */
 	if (IS_MRFLD) {
-		switch (isp->sw_contex.run_mode) {
-		case CI_MODE_STILL_CAPTURE:
+		switch (isp->isp_subdev.run_mode->val) {
+		case ATOMISP_RUN_MODE_STILL_CAPTURE:
 			if (isp->sw_contex.bypass)
 				/* copy mode */
 				height = isp->capture_format->out.height +
@@ -87,7 +87,7 @@ static int file_input_s_stream(struct v4l2_subdev *sd, int enable)
 				    ((isp_sink_fmt.height -
 				     isp->capture_format->out.height) >> 1) + 5;
 			break;
-		case CI_MODE_PREVIEW:
+		case ATOMISP_RUN_MODE_PREVIEW:
 			/* preview mode */
 			height = isp->capture_format->out.height +
 			    ((isp_sink_fmt.height -

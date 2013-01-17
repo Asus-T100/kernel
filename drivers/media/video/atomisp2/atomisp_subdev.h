@@ -119,6 +119,7 @@ struct atomisp_sub_device {
 	struct atomisp_device *isp;
 	struct v4l2_ctrl_handler ctrl_handler;
 	struct v4l2_ctrl *fmt_auto;
+	struct v4l2_ctrl *run_mode;
 };
 
 /* Get pointer to appropriate format */
@@ -137,6 +138,8 @@ int atomisp_subdev_set_selection(struct v4l2_subdev *sd,
 int atomisp_subdev_set_ffmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 			    uint32_t which, uint32_t pad,
 			    struct v4l2_mbus_framefmt *ffmt);
+
+int atomisp_update_run_mode(struct atomisp_device *isp);
 
 void atomisp_subdev_unregister_entities(struct atomisp_sub_device *isp_subdev);
 int atomisp_subdev_register_entities(struct atomisp_sub_device *isp_subdev,

@@ -134,28 +134,28 @@ static struct atomisp_freq_scaling_rule dfs_rules[] = {
 		.height = 1080,
 		.fps = 60,
 		.isp_freq = ISP_FREQ_400MHZ,
-		.run_mode = CI_MODE_VIDEO,
+		.run_mode = ATOMISP_RUN_MODE_VIDEO,
 	},
 	{
 		.width = 4192,
 		.height = 3104,
 		.fps = ISP_FREQ_RULE_ANY,
 		.isp_freq = ISP_FREQ_400MHZ,
-		.run_mode = CI_MODE_STILL_CAPTURE,
+		.run_mode = ATOMISP_RUN_MODE_STILL_CAPTURE,
 	},
 	{
 		.width = ISP_FREQ_RULE_ANY,
 		.height = ISP_FREQ_RULE_ANY,
 		.fps = ISP_FREQ_RULE_ANY,
 		.isp_freq = ISP_FREQ_320MHZ,
-		.run_mode = CI_MODE_STILL_CAPTURE,
+		.run_mode = ATOMISP_RUN_MODE_STILL_CAPTURE,
 	},
 	{
 		.width = 1280,
 		.height = 720,
 		.fps = 60,
 		.isp_freq = ISP_FREQ_320MHZ,
-		.run_mode = CI_MODE_VIDEO,
+		.run_mode = ATOMISP_RUN_MODE_VIDEO,
 	},
 };
 
@@ -269,7 +269,7 @@ int atomisp_freq_scaling(struct atomisp_device *isp, enum atomisp_dfs_mode mode)
 	curr_rules.width = isp->capture_format->out.width;
 	curr_rules.height = isp->capture_format->out.height;
 	curr_rules.fps = fps;
-	curr_rules.run_mode = isp->sw_contex.run_mode;
+	curr_rules.run_mode = isp->isp_subdev.run_mode->val;
 
 	/* search for the target frequency by looping freq rules*/
 	for (i = 0; i < ISP_FREQ_RULE_MAX; i++) {
@@ -705,7 +705,7 @@ static struct atomisp_video_pipe *__atomisp_get_pipe(struct atomisp_device *isp,
 		enum sh_css_buffer_type buf_type)
 {
 	/* video is same in online as in continuouscapture mode */
-	if (isp->sw_contex.run_mode == CI_MODE_VIDEO) {
+	if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO) {
 		if (buf_type == SH_CSS_BUFFER_TYPE_OUTPUT_FRAME)
 			return &isp->isp_subdev.video_out_capture;
 		return &isp->isp_subdev.video_out_preview;
@@ -1049,7 +1049,7 @@ void atomisp_wdt_work(struct work_struct *work)
 		}
 
 		if (isp->params.continuous_vf &&
-		    isp->sw_contex.run_mode != CI_MODE_VIDEO &&
+		    isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO &&
 		    isp->delayed_init == ATOMISP_DELAYED_INIT_NOT_QUEUED) {
 			queue_work(isp->delayed_init_workq,
 				   &isp->delayed_init_work);
@@ -1877,8 +1877,8 @@ static void atomisp_update_grid_info(struct atomisp_device *isp)
 {
 	int err;
 	struct sh_css_grid_info old_info = isp->params.curr_grid_info;
-	switch (isp->sw_contex.run_mode) {
-	case CI_MODE_PREVIEW:
+	switch (isp->isp_subdev.run_mode->val) {
+	case ATOMISP_RUN_MODE_PREVIEW:
 		v4l2_dbg(3, dbg_level, &atomisp_dev, "%s, preview\n",
 			 __func__);
 		err = sh_css_preview_get_grid_info(&isp->params.curr_grid_info);
@@ -1887,7 +1887,7 @@ static void atomisp_update_grid_info(struct atomisp_device *isp)
 				 "sh_css_preview_get_grid_info failed: %d\n",
 				 err);
 		break;
-	case CI_MODE_VIDEO:
+	case ATOMISP_RUN_MODE_VIDEO:
 		v4l2_dbg(3, dbg_level, &atomisp_dev, "%s, video\n", __func__);
 		err = sh_css_video_get_grid_info(&isp->params.curr_grid_info);
 		if (err)
@@ -3359,7 +3359,7 @@ atomisp_set_sensor_mipi_to_isp(struct camera_mipi_info *mipi_info)
 	}
 }
 
-static void __enable_continuous_vf(bool enable)
+static void __enable_continuous_vf(struct atomisp_device *isp, bool enable)
 {
 	sh_css_capture_set_mode(SH_CSS_CAPTURE_MODE_PRIMARY);
 	sh_css_capture_enable_online(!enable);
@@ -3371,6 +3371,7 @@ static void __enable_continuous_vf(bool enable)
 		sh_css_input_set_two_pixels_per_clock(false);
 	}
 	sh_css_input_set_mode(SH_CSS_INPUT_MODE_SENSOR);
+	atomisp_update_run_mode(isp);
 }
 
 static int atomisp_set_fmt_to_isp(struct video_device *vdev,
@@ -3439,15 +3440,15 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 	}
 
 	if (isp->params.continuous_vf) {
-		if (isp->sw_contex.run_mode != CI_MODE_VIDEO) {
-			__enable_continuous_vf(true);
+		if (isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO) {
+			__enable_continuous_vf(isp, true);
 			/* enable only if resolution is equal or above 5M */
 			if (width >= 2576 || height >= 1936) {
 				sh_css_enable_raw_binning(true);
 				sh_css_input_set_two_pixels_per_clock(false);
 			}
 		} else {
-			__enable_continuous_vf(false);
+			__enable_continuous_vf(isp, false);
 		}
 	}
 
@@ -3457,7 +3458,7 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 	}
 
 	/* video same in continuouscapture and online modes */
-	if (isp->sw_contex.run_mode == CI_MODE_VIDEO) {
+	if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO) {
 		if (sh_css_video_configure_viewfinder(
 					isp->vf_format->out.width,
 					isp->vf_format->out.height,
@@ -3531,10 +3532,12 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 						raw_output_info))
 				return -EINVAL;
 		if (!isp->params.continuous_vf &&
-		    isp->sw_contex.run_mode != CI_MODE_STILL_CAPTURE) {
+		    isp->isp_subdev.run_mode->val
+		    != ATOMISP_RUN_MODE_STILL_CAPTURE) {
 			v4l2_err(&atomisp_dev,
 				    "Need to set the running mode first\n");
-			isp->sw_contex.run_mode = CI_MODE_STILL_CAPTURE;
+			isp->isp_subdev.run_mode->val =
+				ATOMISP_RUN_MODE_STILL_CAPTURE;
 		}
 		break;
 	}
@@ -3565,7 +3568,7 @@ static void atomisp_get_dis_envelop(struct atomisp_device *isp,
 		isp->params.video_dis_en = 0;
 
 	if (isp->params.video_dis_en &&
-	    isp->sw_contex.run_mode == CI_MODE_VIDEO) {
+	    isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO) {
 		/* envelope is 20% of the output resolution */
 		/*
 		 * dvs envelope cannot be round up.
@@ -3639,7 +3642,6 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	unsigned int padding_w = pad_w,
 		     padding_h = pad_h;
 	bool res_overflow = false;
-	struct v4l2_streamparm sensor_parm;
 	struct v4l2_mbus_framefmt isp_sink_fmt;
 	struct v4l2_rect isp_sink_crop;
 	uint16_t source_pad;
@@ -3675,7 +3677,7 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 
 	if (pipe->pipe_type == ATOMISP_PIPE_VIEWFINDER ||
 	    (pipe->pipe_type == ATOMISP_PIPE_PREVIEW &&
-	     isp->sw_contex.run_mode == CI_MODE_VIDEO)) {
+	     isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO)) {
 		/*
 		 * Check whether VF resolution configured larger
 		 * than Main Resolution. If so, Force VF resolution
@@ -3696,8 +3698,8 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 				format.out.height;
 		}
 
-		switch (isp->sw_contex.run_mode) {
-		case CI_MODE_VIDEO:
+		switch (isp->isp_subdev.run_mode->val) {
+		case ATOMISP_RUN_MODE_VIDEO:
 			sh_css_video_configure_viewfinder(
 				f->fmt.pix.width, f->fmt.pix.height,
 				format_bridge->sh_fmt);
@@ -3733,16 +3735,6 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 		isp->params.online_process = 0;
 	else
 		isp->params.online_process = 1;
-
-	/* setting run mode to the sensor */
-	if (isp->sw_contex.run_mode != CI_MODE_VIDEO &&
-	    isp->params.continuous_vf)
-		sensor_parm.parm.capture.capturemode = CI_MODE_PREVIEW;
-	else
-		sensor_parm.parm.capture.capturemode = isp->sw_contex.run_mode;
-
-	v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
-				video, s_parm, &sensor_parm);
 
 	/* get sensor resolution and format */
 	atomisp_try_fmt(vdev, &snr_fmt, &res_overflow);
@@ -3789,7 +3781,7 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	 * capture pipe and usually has lower resolution than capture pipe.
 	 */
 	if (!isp->params.continuous_vf ||
-	    isp->sw_contex.run_mode == CI_MODE_VIDEO ||
+	    isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO ||
 	    (isp_sink_fmt.width < (f->fmt.pix.width + padding_w + dvs_env_w) &&
 	     isp_sink_fmt.height < (f->fmt.pix.height + padding_h +
 				    dvs_env_h))) {
@@ -3818,9 +3810,9 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	    || isp_sink_crop.height * 9 / 10 < f->fmt.pix.height
 	    || isp->sw_contex.file_input
 	    || (isp->sw_contex.bypass
-		&& isp->sw_contex.run_mode != CI_MODE_VIDEO)
+		&& isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO)
 	    || (!isp->sw_contex.bypass
-		&& isp->sw_contex.run_mode == CI_MODE_VIDEO)) {
+		&& isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO)) {
 		isp_sink_crop.width = f->fmt.pix.width;
 		isp_sink_crop.height = f->fmt.pix.height;
 		atomisp_subdev_set_selection(&isp->isp_subdev.subdev, NULL,
@@ -3887,7 +3879,7 @@ done:
 	 * If in video 480P case, no GFX throttle
 	 */
 	if (pipe->pipe_type == ATOMISP_PIPE_CAPTURE) {
-		if (isp->sw_contex.run_mode == CI_MODE_VIDEO &&
+		if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO &&
 		    f->fmt.pix.width == 720 && f->fmt.pix.height == 480)
 			isp->need_gfx_throttle = false;
 		else
@@ -4154,7 +4146,7 @@ int atomisp_offline_capture_configure(struct atomisp_device *isp,
 		isp->params.continuous_vf = true;
 	} else {
 		isp->params.continuous_vf = false;
-		__enable_continuous_vf(false);
+		__enable_continuous_vf(isp, false);
 	}
 
 	return 0;

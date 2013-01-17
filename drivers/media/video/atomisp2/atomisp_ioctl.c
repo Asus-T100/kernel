@@ -272,11 +272,11 @@ static int __get_css_frame_info(struct atomisp_device *isp,
 {
 	switch (pipe_type) {
 	case ATOMISP_PIPE_CAPTURE:
-		if (isp->sw_contex.run_mode == CI_MODE_VIDEO)
+		if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO)
 			return sh_css_video_get_output_frame_info(frame_info);
 		return sh_css_capture_get_output_frame_info(frame_info);
 	case ATOMISP_PIPE_VIEWFINDER:
-		if (isp->sw_contex.run_mode == CI_MODE_VIDEO)
+		if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO)
 			return sh_css_video_get_viewfinder_frame_info(
 					frame_info);
 		else if (isp->capture_format &&
@@ -286,7 +286,7 @@ static int __get_css_frame_info(struct atomisp_device *isp,
 					frame_info);
 		return -EINVAL;
 	case ATOMISP_PIPE_PREVIEW:
-		if (isp->sw_contex.run_mode == CI_MODE_VIDEO)
+		if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO)
 			return sh_css_video_get_viewfinder_frame_info(
 					frame_info);
 		return sh_css_preview_get_output_frame_info(frame_info);
@@ -1079,15 +1079,15 @@ static int atomisp_dqbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 enum sh_css_pipe_id atomisp_get_css_pipe_id(struct atomisp_device *isp)
 {
 	if (isp->params.continuous_vf &&
-	    isp->sw_contex.run_mode != CI_MODE_VIDEO)
+	    isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO)
 		return SH_CSS_PREVIEW_PIPELINE;
 
-	switch (isp->sw_contex.run_mode) {
-	case CI_MODE_PREVIEW:
+	switch (isp->isp_subdev.run_mode->val) {
+	case ATOMISP_RUN_MODE_PREVIEW:
 		return SH_CSS_PREVIEW_PIPELINE;
-	case CI_MODE_VIDEO:
+	case ATOMISP_RUN_MODE_VIDEO:
 		return SH_CSS_VIDEO_PIPELINE;
-	case CI_MODE_STILL_CAPTURE:
+	case ATOMISP_RUN_MODE_STILL_CAPTURE:
 		/* fall through */
 	default:
 		return SH_CSS_CAPTURE_PIPELINE;
@@ -1099,7 +1099,7 @@ int atomisp_get_css_buf_type(struct atomisp_device *isp,
 {
 	if (pipe->pipe_type == ATOMISP_PIPE_CAPTURE ||
 	    (pipe->pipe_type == ATOMISP_PIPE_PREVIEW &&
-	     isp->sw_contex.run_mode != CI_MODE_VIDEO))
+	     isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO))
 		return SH_CSS_BUFFER_TYPE_OUTPUT_FRAME;
 	else
 		return SH_CSS_BUFFER_TYPE_VF_OUTPUT_FRAME;
@@ -1107,8 +1107,8 @@ int atomisp_get_css_buf_type(struct atomisp_device *isp,
 
 static unsigned int atomisp_sensor_start_stream(struct atomisp_device *isp)
 {
-	if (isp->sw_contex.run_mode == CI_MODE_VIDEO ||
-	    (isp->sw_contex.run_mode == CI_MODE_STILL_CAPTURE &&
+	if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO ||
+	    (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_STILL_CAPTURE &&
 	     isp->capture_format &&
 	     isp->capture_format->out_sh_fmt != SH_CSS_FRAME_FORMAT_RAW &&
 	     !isp->params.continuous_vf))
@@ -1170,7 +1170,7 @@ static int atomisp_streamon(struct file *file, void *fh,
 		/* trigger still capture */
 		if (isp->params.continuous_vf &&
 		    pipe->pipe_type == ATOMISP_PIPE_CAPTURE &&
-		    isp->sw_contex.run_mode != CI_MODE_VIDEO) {
+		    isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO) {
 			if (isp->delayed_init != ATOMISP_DELAYED_INIT_DONE)
 				flush_work_sync(&isp->delayed_init_work);
 			ret = sh_css_offline_capture_configure(
@@ -1215,7 +1215,7 @@ static int atomisp_streamon(struct file *file, void *fh,
 		goto out;
 	}
 	if (isp->params.continuous_vf &&
-	    isp->sw_contex.run_mode != CI_MODE_VIDEO) {
+	    isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO) {
 		queue_work(isp->delayed_init_workq,
 			   &isp->delayed_init_work);
 		isp->delayed_init = ATOMISP_DELAYED_INIT_QUEUED;
@@ -1303,7 +1303,7 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 	 * do only videobuf_streamoff for capture & vf pipes in
 	 * case of continuous capture
 	 */
-	if (isp->sw_contex.run_mode != CI_MODE_VIDEO &&
+	if (isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO &&
 	    isp->params.continuous_vf &&
 	    pipe->pipe_type != ATOMISP_PIPE_PREVIEW) {
 
@@ -1850,7 +1850,7 @@ static int atomisp_g_parm(struct file *file, void *fh,
 	}
 
 	mutex_lock(&isp->mutex);
-	parm->parm.capture.capturemode = isp->sw_contex.run_mode;
+	parm->parm.capture.capturemode = isp->isp_subdev.run_mode->val;
 	mutex_unlock(&isp->mutex);
 
 	return 0;
@@ -1861,7 +1861,8 @@ static int atomisp_s_parm(struct file *file, void *fh,
 {
 	struct video_device *vdev = video_devdata(file);
 	struct atomisp_device *isp = video_get_drvdata(vdev);
-	int ret = 0;
+	int mode;
+	int rval;
 
 	if (parm->type != V4L2_BUF_TYPE_VIDEO_CAPTURE) {
 		v4l2_err(&atomisp_dev,
@@ -1869,23 +1870,30 @@ static int atomisp_s_parm(struct file *file, void *fh,
 		return -EINVAL;
 	}
 
+	switch (parm->parm.capture.capturemode) {
+	case CI_MODE_NONE:
+		return 0;
+	case CI_MODE_VIDEO:
+		mode = ATOMISP_RUN_MODE_VIDEO;
+		break;
+	case CI_MODE_STILL_CAPTURE:
+		mode = ATOMISP_RUN_MODE_STILL_CAPTURE;
+		break;
+	case CI_MODE_CONTINUOUS:
+		mode = ATOMISP_RUN_MODE_CONTINUOUS_CAPTURE;
+		break;
+	case CI_MODE_PREVIEW:
+		mode = ATOMISP_RUN_MODE_PREVIEW;
+		break;
+	default:
+		return -EINVAL;
+	}
+
 	mutex_lock(&isp->mutex);
-	isp->sw_contex.run_mode = parm->parm.capture.capturemode;
-	ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
-				video, s_parm, parm);
+	rval = v4l2_ctrl_s_ctrl(isp->isp_subdev.run_mode, mode);
 	mutex_unlock(&isp->mutex);
 
-	/*
-	 * why do we think the return value -ENOIOCTLCMD is ok?
-	 * that's because some sensor drivers may don't need s_parm
-	 * to set their run_mode and so have no the s_parm interface.
-	 */
-	if (ret && ret != -ENOIOCTLCMD) {
-		v4l2_err(&atomisp_dev,
-			    "failed to s_parm for sensor\n");
-		return ret;
-	}
-	return 0;
+	return rval;
 }
 
 static int atomisp_s_parm_file(struct file *file, void *fh,

@@ -192,7 +192,7 @@ int atomisp_qbuffers_to_css(struct atomisp_device *isp)
 	struct atomisp_video_pipe *vf_pipe = NULL;
 	struct atomisp_video_pipe *preview_pipe = NULL;
 
-	if (isp->sw_contex.run_mode == CI_MODE_VIDEO) {
+	if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO) {
 		capture_pipe = &isp->isp_subdev.video_out_capture;
 		preview_pipe = &isp->isp_subdev.video_out_preview;
 		css_capture_pipe_id = SH_CSS_VIDEO_PIPELINE;
@@ -205,12 +205,12 @@ int atomisp_qbuffers_to_css(struct atomisp_device *isp)
 		css_preview_pipe_id = SH_CSS_PREVIEW_PIPELINE;
 		css_capture_pipe_id = SH_CSS_CAPTURE_PIPELINE;
 	} else {
-		switch (isp->sw_contex.run_mode) {
-		case CI_MODE_PREVIEW:
+		switch (isp->isp_subdev.run_mode->val) {
+		case ATOMISP_RUN_MODE_PREVIEW:
 			preview_pipe = &isp->isp_subdev.video_out_preview;
 			css_preview_pipe_id = SH_CSS_PREVIEW_PIPELINE;
 			break;
-		case CI_MODE_STILL_CAPTURE:
+		case ATOMISP_RUN_MODE_STILL_CAPTURE:
 			/* fall through */
 		default:
 			capture_pipe = &isp->isp_subdev.video_out_capture;
@@ -359,7 +359,8 @@ int atomisp_init_struct(struct atomisp_device *isp)
 
 	isp->capture_format = NULL;
 	isp->vf_format = NULL;
-	isp->sw_contex.run_mode = CI_MODE_STILL_CAPTURE;
+	v4l2_ctrl_s_ctrl(isp->isp_subdev.run_mode,
+			 ATOMISP_RUN_MODE_STILL_CAPTURE);
 	isp->params.color_effect = V4L2_COLORFX_NONE;
 	isp->params.bad_pixel_en = 1;
 	isp->params.gdc_cac_en = 0;

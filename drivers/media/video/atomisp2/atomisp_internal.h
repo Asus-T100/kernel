@@ -159,7 +159,6 @@ struct atomisp_sw_contex {
 	int  invalid_dis;
 
 	int power_state;
-	int run_mode;
 	int output_mode;
 	int running_freq;
 };
