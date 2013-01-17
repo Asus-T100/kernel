@@ -324,7 +324,7 @@ int intel_scu_ipc_raw_cmd(u32 cmd, u32 sub, u8 *in, u8 inlen, u32 *out,
 		u32 outlen, u32 dptr, u32 sptr)
 {
 	int i, err;
-	u32 wbuf[4];
+	u32 wbuf[4] = { 0 };
 
 	if (ipcdev.pdev == NULL)
 		return -ENODEV;
