@@ -455,7 +455,6 @@ int intel_scu_ipc_medfw_upgrade(void)
 {
 	struct fw_ud *fw_ud_param = fui.fwud_pending;
 	struct mfld_fw_update	mfld_fw_upd;
-	u8 *fw_file_data = NULL;
 	u8 *fws = NULL;
 	u8 *fuph_start = NULL;
 	int ret_val = 0;
@@ -476,7 +475,6 @@ int intel_scu_ipc_medfw_upgrade(void)
 	mfld_fw_upd.wia = 0;
 	memset(mfld_fw_upd.mb_status, 0, sizeof(char) * 8);
 
-	fw_file_data = fw_ud_param->fw_file_data;
 	mfld_fw_upd.sram = ioremap_nocache(SRAM_ADDR, MAX_FW_CHUNK);
 	if (mfld_fw_upd.sram == NULL) {
 		dev_err(fui.dev, "unable to map sram\n");
@@ -913,6 +911,7 @@ static int intel_fw_update_sysfs_create(struct ipc_device *ipcdev)
 	if (ret) {
 		dev_err(&ipcdev->dev, "Unable to export sysfs interface\n");
 		ret = -EINVAL;
+		goto end;
 	}
 
 	ret = sysfs_create_bin_file(&ipcdev->dev.kobj, &bin_attr_dnx);
@@ -935,6 +934,7 @@ ifwi_err:
 	sysfs_remove_bin_file(&ipcdev->dev.kobj, &bin_attr_dnx);
 dnx_err:
 	sysfs_remove_group(&ipcdev->dev.kobj, &intel_fw_update_attr_group);
+end:
 	return ret;
 }
 
