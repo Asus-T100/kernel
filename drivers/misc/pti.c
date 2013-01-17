@@ -915,7 +915,7 @@ static int __init pti_init(void)
 	int retval = -EINVAL;
 
 #ifdef CONFIG_INTEL_SCU_IPC
-	u8 smip_pti;
+	u8 smip_pti = 0;
 
 	retval = intel_scu_ipc_read_mip(&smip_pti, 1, SMIP_PTI_OFFSET, 1);
 	if (retval) {
