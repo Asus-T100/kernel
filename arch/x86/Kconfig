@@ -452,6 +452,21 @@ config X86_MDFLD
 	  nor standard legacy replacement devices/features. e.g. Medfield does
 	  not contain i8259, i8254, HPET, legacy BIOS, most of the io ports.
 
+config X86_MRFLD
+	bool "Merrifield MID platform"
+	depends on PCI
+	depends on PCI_GOANY
+	depends on X86_IO_APIC
+	select X86_INTEL_MID
+	select SFI
+	select INTEL_SCU_IPC
+	select X86_PLATFORM_DEVICES
+	---help---
+	  Merrifield is Intel's Low Power Intel Architecture (LPIA) based Mobile
+	  Internet Device(MID) platform.
+	  Unlike Medfield or Clovertrail, Merrifield does have many legacy devices supported
+	  by the iLB unit. That includes i8259, i8254, HPET, ACPI, and RTC.
+
 choice
 	prompt "Intel MID board type"
 	depends on X86_INTEL_MID

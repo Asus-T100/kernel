@@ -477,6 +477,12 @@ enum {
 #define FSB_FREQ_100SKU	99840
 #define FSB_FREQ_133SKU	133000
 
+#define FSB_FREQ_167SKU	167000
+#define FSB_FREQ_200SKU	200000
+#define FSB_FREQ_267SKU	267000
+#define FSB_FREQ_333SKU	333000
+#define FSB_FREQ_400SKU	400000
+
 /* Bus Select SoC Fuse value */
 #define BSEL_SOC_FUSE_MASK	0x7
 #define BSEL_SOC_FUSE_001	0x1 /* FSB 133MHz */
@@ -506,6 +512,18 @@ extern void intel_mid_rtc_init(void);
 extern int get_force_shutdown_occured(void);
 
 extern const struct atomisp_platform_data *intel_get_v4l2_subdev_table(void);
+
+enum intel_mrfl_sim_type {
+	INTEL_MRFL_CPU_SIMULATION_NONE = 0,
+	INTEL_MRFL_CPU_SIMULATION_VP,
+	INTEL_MRFL_CPU_SIMULATION_SLE,
+	INTEL_MRFL_CPU_SIMULATION_HVP,
+};
+extern enum intel_mrfl_sim_type __intel_mrfl_sim_platform;
+static inline enum intel_mrfl_sim_type intel_mrfl_identify_sim(void)
+{
+	return __intel_mrfl_sim_platform;
+}
 
 #define INTEL_MID_IRQ_OFFSET 0x100
 #endif /* _ASM_X86_INTEL_MID_H */

@@ -79,6 +79,9 @@ static struct sfi_timer_table_entry sfi_mtimer_array[SFI_MTMR_MAX_NUM];
 enum intel_mid_cpu_type __intel_mid_cpu_chip;
 EXPORT_SYMBOL_GPL(__intel_mid_cpu_chip);
 
+enum intel_mrfl_sim_type __intel_mrfl_sim_platform;
+EXPORT_SYMBOL_GPL(__intel_mrfl_sim_platform);
+
 int sfi_mtimer_num;
 
 struct sfi_rtc_table_entry sfi_mrtc_array[SFI_MRTC_MAX];
@@ -284,6 +287,9 @@ static void __cpuinit intel_mid_arch_setup(void)
 		__intel_mid_cpu_chip = INTEL_MID_CPU_CHIP_LINCROFT;
 	else if (boot_cpu_data.x86 == 6 && boot_cpu_data.x86_model == 0x35)
 		__intel_mid_cpu_chip = INTEL_MID_CPU_CHIP_CLOVERVIEW;
+	else if (boot_cpu_data.x86 == 6 && (boot_cpu_data.x86_model == 0x3C ||
+					    boot_cpu_data.x86_model == 0x4A))
+		__intel_mid_cpu_chip = INTEL_MID_CPU_CHIP_TANGIER;
 	else {
 		pr_err("Unknown Moorestown CPU (%d:%d), default to Lincroft\n",
 			boot_cpu_data.x86, boot_cpu_data.x86_model);
