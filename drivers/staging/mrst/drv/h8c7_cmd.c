@@ -677,8 +677,6 @@ int mdfld_dsi_h8c7_cmd_set_brightness(struct mdfld_dsi_config *dsi_config,
 	int duty_val = 0;
 	static bool b_cabc_initialized = false;
 
-	PSB_DEBUG_ENTRY("level = %d\n", level);
-
 	if (!sender) {
 		DRM_ERROR("Failed to get DSI packet sender\n");
 		return -EINVAL;

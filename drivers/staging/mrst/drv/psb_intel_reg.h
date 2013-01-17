@@ -1273,6 +1273,7 @@ gamma settings.
 #define PIPEC_COLOR_COEF12 	0x6207c
 #define PIPEC_COLOR_COEF21 	0x62080
 #define PIPEC_COLOR_COEF22 	0x62084
+#define LVDS_PORT_CTRL		0x61180
 
 /* MDFLD HDMI power rails registers */
 #define MSIC_VCC330CNT      0xd3

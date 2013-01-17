@@ -82,8 +82,6 @@ int psb_set_brightness(struct backlight_device *bd)
 	else
 		level = lastFailedBrightness;
 
-	PSB_DEBUG_ENTRY("[DISPLAY] %s: level is %d\n", __func__, level);
-
 	/* Perform value bounds checking */
 	if (level < BRIGHTNESS_MIN_LEVEL)
 		level = BRIGHTNESS_MIN_LEVEL;
@@ -134,7 +132,8 @@ int psb_set_brightness(struct backlight_device *bd)
 			 * dev_priv->blc_adj2;
 			 */
 			adjusted_level = level * dev_priv->blc_adj2;
-			adjusted_level = adjusted_level / BLC_ADJUSTMENT_MAX;
+			adjusted_level =
+				adjusted_level / BLC_ADJUSTMENT_MAX / 100;
 			dev_priv->brightness_adjusted = adjusted_level;
 
 #ifndef CONFIG_MDFLD_DSI_DPU
@@ -188,7 +187,7 @@ static int device_backlight_init(struct drm_device *dev)
 	struct drm_psb_private *dev_priv = (struct drm_psb_private *) dev->dev_private;
 
 	dev_priv->blc_adj1 = BLC_ADJUSTMENT_MAX;
-	dev_priv->blc_adj2 = BLC_ADJUSTMENT_MAX;
+	dev_priv->blc_adj2 = BLC_ADJUSTMENT_MAX * 100;
 	return 0;
 }
 
