@@ -317,6 +317,14 @@ static int mrfld_init(struct snd_soc_pcm_runtime *runtime)
 			    LM49453_PMC_SETUP_CHIP_EN,
 			    LM49453_CHIP_EN_HSD_DETECT);
 
+	/* For AMIC, we need to configure the DAC ref for our machine to 1.8Vpp
+	 * levels to get full scale signals for AMIC record
+	 * These registers are in page 2, so set page table to 2 and write them
+	 */
+	snd_soc_write(codec, LM49453_PAGE_REG, 0x2);
+	snd_soc_write(codec, 0xF5, 0x02);
+	snd_soc_write(codec, 0x1E, 0xD5);
+	snd_soc_write(codec, LM49453_PAGE_REG, 0x0);
 	return 0;
 }
 
