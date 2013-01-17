@@ -768,11 +768,6 @@ static inline void pkg_sender_queue_pkg(struct mdfld_dsi_pkg_sender * sender,
 					struct mdfld_dsi_pkg * pkg,
 					int delay)
 {
-	if (pkg->transmission_type == MDFLD_DSI_HS_TRANSMISSION)
-		wait_for_hs_fifos_empty(sender);
-	else if (pkg->transmission_type == MDFLD_DSI_LP_TRANSMISSION)
-		wait_for_lp_fifos_empty(sender);
-
 	mutex_lock(&sender->lock);
 
 	if(!delay) {
@@ -1010,12 +1005,6 @@ static int __read_panel_data(struct mdfld_dsi_pkg_sender *sender,
 	 * 2) polling read data avail interrupt
 	 * 3) read data
 	 */
-
-	/* wait for fifo empty without spin lock first, otherwise if put it into
-	 * spin lock, then in worst cases, it will spend ~13ms to wait fifo
-	 * become empty, thus irq will be disabled for ~13ms.
-	 */
-	wait_for_all_fifos_empty(sender);
 
 	mutex_lock(&sender->lock);
 
