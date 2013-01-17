@@ -2488,6 +2488,14 @@ CONFIG_MRFLD_HDMI=y
 CONFIG_MDFD_HDMI=y
 
 #
+# Modem control driver
+#
+CONFIG_MDM_CTRL=y
+CONFIG_MDM_CTRL_DEV_NAME="mdm_ctrl"
+# CONFIG_MDM_IMC_6260 is not set
+CONFIG_MDM_IMC_7160=y
+
+#
 # Firmware Drivers
 #
 # CONFIG_EDD is not set

@@ -2393,6 +2393,16 @@ CONFIG_INTEL_MID_UMIP=y
 # CONFIG_GPS is not set
 
 #
+# Modem control driver
+#
+CONFIG_MDM_CTRL=y
+CONFIG_MDM_CTRL_DEV_NAME="mdm_ctrl"
+# CONFIG_MDM_IMC_6260 is not set
+CONFIG_MDM_IMC_7160=y
+CONFIG_MDM_CTRL_CHIPCNTRL=0x100
+CONFIG_MDM_CTRL_CHIPCNTRL_OFF=0x10
+
+#
 # Firmware Drivers
 #
 # CONFIG_EDD is not set
