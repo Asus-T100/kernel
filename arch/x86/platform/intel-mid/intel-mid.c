@@ -27,6 +27,7 @@
 #include <linux/irq.h>
 #include <linux/module.h>
 #include <linux/notifier.h>
+#include <linux/intel_mid_pm.h>
 #include <linux/hsi/hsi.h>
 #include <linux/spinlock.h>
 #include <linux/mmc/core.h>
@@ -74,19 +75,25 @@ __cpuinitdata enum intel_mid_timer_options intel_mid_timer_options;
 
 struct kobject *spid_kobj;
 struct sfi_soft_platform_id spid;
+/* intel_mid_ops to store sub arch ops */
+struct intel_mid_ops *intel_mid_ops;
+/* getter function for sub arch ops*/
+void* (*get_intel_mid_ops[])() = INTEL_MID_OPS_INIT;
 static u32 sfi_mtimer_usage[SFI_MTMR_MAX_NUM];
 static struct sfi_timer_table_entry sfi_mtimer_array[SFI_MTMR_MAX_NUM];
 enum intel_mid_cpu_type __intel_mid_cpu_chip;
 EXPORT_SYMBOL_GPL(__intel_mid_cpu_chip);
-
-enum intel_mrfl_sim_type __intel_mrfl_sim_platform;
-EXPORT_SYMBOL_GPL(__intel_mrfl_sim_platform);
 
 int sfi_mtimer_num;
 
 struct sfi_rtc_table_entry sfi_mrtc_array[SFI_MRTC_MAX];
 EXPORT_SYMBOL_GPL(sfi_mrtc_array);
 int sfi_mrtc_num;
+
+void intel_mid_power_off(void)
+{
+	pmu_power_off();
+};
 
 /* Unified message bus read/write operation */
 DEFINE_SPINLOCK(msgbus_lock);
@@ -295,6 +302,16 @@ static void __cpuinit intel_mid_arch_setup(void)
 			boot_cpu_data.x86, boot_cpu_data.x86_model);
 		__intel_mid_cpu_chip = INTEL_MID_CPU_CHIP_LINCROFT;
 	}
+
+	if (__intel_mid_cpu_chip < MAX_CPU_OPS(get_intel_mid_ops))
+		intel_mid_ops = get_intel_mid_ops[__intel_mid_cpu_chip]();
+	else {
+		intel_mid_ops = get_intel_mid_ops[INTEL_MID_CPU_CHIP_PENWELL]();
+		pr_info("ARCH: Uknown SoC, assuming PENWELL!\n");
+	}
+
+	if (intel_mid_ops->arch_setup)
+		intel_mid_ops->arch_setup();
 }
 
 /* MID systems don't have i8042 controller */

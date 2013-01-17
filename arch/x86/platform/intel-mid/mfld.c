@@ -38,8 +38,13 @@
 #include <asm/apb_timer.h>
 #include <asm/reboot.h>
 
+static void penwell_arch_setup(void);
+/* penwell arch ops */
+static struct intel_mid_ops penwell_ops = {
+	.arch_setup = penwell_arch_setup,
+};
 
-void intel_mid_power_off(void)
+static void mfld_power_off(void)
 {
 #if defined(CONFIG_INTEL_MID_OSIP) && !defined(CONFIG_BOARD_REDRIDGE)
 	if (!get_force_shutdown_occured() &&
@@ -58,7 +63,7 @@ void intel_mid_power_off(void)
 	pmu_power_off();
 }
 
-unsigned long __init intel_mid_calibrate_tsc(void)
+static unsigned long __init mfld_calibrate_tsc(void)
 {
 	unsigned long fast_calibrate;
 	u32 lo, hi, ratio, fsb;
@@ -101,4 +106,20 @@ unsigned long __init intel_mid_calibrate_tsc(void)
 		return fast_calibrate;
 
 	return 0;
+}
+
+static void penwell_arch_setup()
+{
+	x86_platform.calibrate_tsc = mfld_calibrate_tsc;
+	pm_power_off = mfld_power_off;
+}
+
+void *get_penwell_ops()
+{
+	return &penwell_ops;
+}
+
+void *get_cloverview_ops()
+{
+	return &penwell_ops;
 }
