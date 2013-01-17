@@ -289,6 +289,7 @@ static void gpadc_calc_zse_ge(struct gpadc_info *mgi)
 		gpadc_read(ADC1OFFSETL, &data);
 		zse += data & 0x3;
 		mgi->izse = zse;
+		mgi->ige = fse + zse;
 	}
 }
 
@@ -626,12 +627,6 @@ int get_gpadc_sample(void *handle, int sample_count, int *buffer)
 			gpadc_read(ADC1SNS0H + 2 * rq->addr[i] + 1, &data);
 			tmp += data & 0x3;
 
-			/**
-			 * Using the calibration data, we have the voltage and
-			 * current after calibration correction as below:
-			 * V_CAL_CODE = V_RAW_CODE - (VZSE+(VGE)*VRAW_CODE/1023)
-			 * I_CAL_CODE = I_RAW_CODE - (IZSE+(IGE)*IRAW_CODE/1023)
-			 */
 			if (rq->ch[i] & CH_NEED_VCALIB)
 				tmp = gpadc_calib(tmp, mgi->vzse, mgi->vge);
 			if (rq->ch[i] & CH_NEED_ICALIB)
