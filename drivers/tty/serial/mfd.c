@@ -2118,18 +2118,21 @@ err_disable:
 	return ret;
 }
 
+#define MFD_QWORK_TIMEOUT	(HZ/100)
 static void qwork(struct work_struct *work)
 {
 	struct uart_hsu_port *up =
 		container_of(work, struct uart_hsu_port, qwork);
 	unsigned long flags;
 	int cmd, offset, value, count = 0;
+	unsigned long end_time;
 
 	pm_runtime_get_sync(up->dev);
 	if (up->suspended) {
 		pm_runtime_put(up->dev);
 		return;
 	}
+	end_time = jiffies + MFD_QWORK_TIMEOUT;
 
 	spin_lock_irqsave(&up->qlock, flags);
 	while (get_q(up, &cmd, &offset, &value)){
@@ -2168,6 +2171,14 @@ static void qwork(struct work_struct *work)
 			break;
 		default:
 			dev_err(up->dev, "wrong queue cmd type!\n");
+		}
+
+		/* If this work get running for 10ms, we need to reschedule
+		 * to give other works chance to run.
+		 */
+		if (time_after(jiffies, end_time)) {
+			schedule_work(&up->qwork);
+			break;
 		}
 	}
 	spin_unlock_irqrestore(&up->qlock, flags);
