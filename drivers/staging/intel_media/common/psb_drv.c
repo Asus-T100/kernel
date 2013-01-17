@@ -63,6 +63,10 @@
 #include "mdfld_csc.h"
 #include "mdfld_dsi_dbi_dsr.h"
 #include "mdfld_dsi_pkg_sender.h"
+struct workqueue_struct *te_wq;
+struct workqueue_struct *vsync_wq;
+
+
 
 #define HDMI_MONITOR_NAME_LENGTH 20
 
@@ -1197,6 +1201,9 @@ static int psb_driver_unload(struct drm_device *dev)
 	if (drm_psb_no_fb == 0)
 		psb_modeset_cleanup(dev);
 
+	destroy_workqueue(te_wq);
+	destroy_workqueue(vsync_wq);
+
 	if (dev_priv) {
 		/* psb_watchdog_takedown(dev_priv); */
 		psb_do_takedown(dev);
@@ -1625,9 +1632,23 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 		mdfld_dbi_dsr_init(dev);
 #endif /*CONFIG_MDFLD_DSI_DPU*/
 		INIT_WORK(&dev_priv->te_work, mdfld_te_handler_work);
+
+		te_wq = alloc_workqueue("teworkq", WQ_UNBOUND, 1);
+		if (unlikely(!te_wq)) {
+			pr_err(": unable to create TE workqueue\n");
+			goto out_err;
+		}
 		INIT_WORK(&dev_priv->reset_panel_work,
 				mdfld_reset_panel_handler_work);
+
 		INIT_WORK(&dev_priv->vsync_event_work, mdfld_vsync_event_work);
+
+		vsync_wq = alloc_workqueue("vsyncworkq", WQ_UNBOUND, 1);
+		if (unlikely(!vsync_wq)) {
+			pr_err(": unable to create Vsync workqueue\n");
+			destroy_workqueue(te_wq);
+			goto out_err;
+		}
 	}
 
 	if (drm_psb_no_fb == 0) {
