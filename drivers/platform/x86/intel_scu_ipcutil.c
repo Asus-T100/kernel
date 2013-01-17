@@ -458,7 +458,6 @@ static long scu_ipc_ioctl(struct file *fp, unsigned int cmd,
 	int ret = -EINVAL;
 	struct scu_ipc_data  data;
 	void __user *argp = (void __user *)arg;
-	int platform;
 
 	/* Only IOCTL cmd allowed to pass through without capability check */
 	/* is getting fw version info, all others need to check to prevent */
@@ -469,7 +468,6 @@ static long scu_ipc_ioctl(struct file *fp, unsigned int cmd,
 		!capable(CAP_SYS_RAWIO))
 		return -EPERM;
 
-	platform = intel_mid_identify_cpu();
 	switch (cmd) {
 	case INTEL_SCU_IPC_S0IX_RESIDENCY:
 	{
