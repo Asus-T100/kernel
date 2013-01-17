@@ -126,6 +126,13 @@
 #define SEQ_CMD_REFRESH		0x0005
 #define MT9V113_VAR_SEQ_STATE	0xa104
 
+/* current integration time access */
+#define MT9V113_VAR_INTEGRATION_TIME	0x2222
+
+/* current virt_gain and d_gain access */
+#define MT9V113_VAR_AE_GAIN	0xa21c
+#define MT9V113_VAR_AE_D_GAIN	0x221f
+
 #define MT9V113_VAR_AE_MAX_INDEX	0xa20c
 #define MT9V113_AE_MAX_INDEX_0	0x0003
 #define MT9V113_AE_MAX_INDEX_1	0x000e
@@ -214,6 +221,7 @@ struct mt9v113_res_struct {
 	int height;
 	int fps;
 	int skip_frames;
+	int row_time;
 	bool used;
 	struct regval_list *regs;
 };
@@ -249,6 +257,7 @@ static struct mt9v113_res_struct mt9v113_res[] = {
 	.used	= 0,
 	.regs	= NULL,
 	.skip_frames = 1,
+	.row_time = 62,
 	},
 	{
 	.desc	= "QVGA",
@@ -259,6 +268,7 @@ static struct mt9v113_res_struct mt9v113_res[] = {
 	.used	= 0,
 	.regs	= NULL,
 	.skip_frames = 1,
+	.row_time = 62,
 	},
 	{
 	.desc	= "CIF",
@@ -269,6 +279,7 @@ static struct mt9v113_res_struct mt9v113_res[] = {
 	.used	= 0,
 	.regs	= NULL,
 	.skip_frames = 1,
+	.row_time = 62,
 	},
 	{
 	.desc	= "VGA",
@@ -279,6 +290,7 @@ static struct mt9v113_res_struct mt9v113_res[] = {
 	.used	= 0,
 	.regs	= NULL,
 	.skip_frames = 1,
+	.row_time = 62,
 	},
 };
 #define N_RES (ARRAY_SIZE(mt9v113_res))
@@ -293,6 +305,7 @@ static const struct i2c_device_id mt9v113_id[] = {
  * TBD
  * Optimize for two context config
  * Sensor pixel clock: 14MHZ
+ * Row Time: 62.286 / 872 clocks
  * hblank time: (853-648) * ( 1 / 14E6) = 14.6uS
  * vblank time: (547 - 488) * (853 / 14E6 ) = 3.59mS
  * frame time: 516 * (853 / 14E6) = 33.3mS
@@ -400,6 +413,7 @@ static struct misensor_reg const mt9v113_qcif_init[] = {
  * Optimize for two context config
  *
  * Sensor pixel clock: 14MHZ
+ * Row Time: 62.286 / 872 clocks
  * hblank time: (853-648) * ( 1 / 14E6) = 14.6uS
  * vblank time: (547 - 488) * (853 / 14E6 ) = 3.59mS
  * frame time: 516 * (853 / 14E6) = 33.3mS
@@ -506,6 +520,7 @@ static struct misensor_reg const mt9v113_cif_init[] = {
  * TBD
  * Optimize for two context config
  * Sensor pixel clock: 14MHZ
+ * Row Time: 62.286 / 872 clocks
  * hblank time: (853-648) * ( 1 / 14E6) = 14.6uS
  * vblank time: (547 - 488) * (853 / 14E6 ) = 3.59mS
  * frame time: 516 * (853 / 14E6) = 33.3mS
@@ -613,6 +628,7 @@ static struct misensor_reg const mt9v113_qvga_init[] = {
  * Optimize for two context config
  *
  * Sensor pixel clock: 14MHZ
+ * Row Time: 62.286 / 872 clocks
  * hblank time: (853-648) * ( 1 / 14E6) = 14.6uS
  * vblank time: (547 - 488) * (853 / 14E6 ) = 3.59mS
  * frame time: 516 * (853 / 14E6) = 33.3mS
