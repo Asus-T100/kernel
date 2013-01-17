@@ -2998,9 +2998,9 @@ static int psb_register_dump(struct drm_device *dev, int start, int end)
 	}
 	return ret;
 }
-
-int psb_display_reg_dump(struct drm_device *dev)
+static int psb_display_reg_dump(struct drm_device *dev)
 {
+
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *) dev->dev_private;
 	struct mdfld_dsi_config *dsi_config;
@@ -3031,6 +3031,20 @@ int psb_display_reg_dump(struct drm_device *dev)
 	psb_register_dump(dev, 0x70500, 0x70504);
 	printk(KERN_INFO "\n");
 
+	if (dev_priv->bhdmiconnected) {
+		/* PIPE B */
+		printk(KERN_INFO "[DISPLAY REG DUMP] PIPE B\n\n");
+		psb_register_dump(dev, 0x61000, 0x61100);
+		printk(KERN_INFO "\n");
+
+		/* Plane B */
+		printk(KERN_INFO "[DISPLAY REG DUMP] PLANE B\n\n");
+		psb_register_dump(dev, 0x71000, 0x710FC);
+		psb_register_dump(dev, 0x71180, 0x711F4);
+		psb_register_dump(dev, 0x71400, 0x7144C);
+		printk(KERN_INFO "\n");
+	}
+
 	/* OVERLAY */
 	printk(KERN_INFO "[DISPLAY REG DUMP] OVERLAY A\n\n");
 	psb_register_dump(dev, 0x30000, 0x30060);
@@ -3042,8 +3056,94 @@ int psb_display_reg_dump(struct drm_device *dev)
 	mdfld_dsi_dsr_allow(dsi_config);
 	return 0;
 }
+void psb_flip_abnormal_debug_info(struct drm_device *dev)
+{
+	struct drm_psb_private *dev_priv = NULL;
+	struct mdfld_dsi_config *dsi_config = NULL;
+	int pipe = 0;
+	unsigned long long interval = 0;
+	unsigned long long second = 0;
+	unsigned long nanosec_rem;
+	if (!dev) {
+		DRM_INFO("%s dev is NUL\n", __func__);
+		return;
+	}
+	dev_priv =
+	(struct drm_psb_private *) dev->dev_private;
 
+	if (!dev_priv) {
+		DRM_INFO("%s dev_priv is NUL\n", __func__);
+		return;
+	}
+	dsi_config = dev_priv->dsi_configs[0];
 
+	if (!dsi_config) {
+		DRM_INFO("%s dsi_config is NUL\n", __func__);
+		return;
+	}
+
+	DRM_INFO("\n1.level1 interrupt status\n");
+	DRM_INFO("PSB_INT_MASK_R mask 0x%x\n", PSB_RVDC32(PSB_INT_MASK_R));
+	DRM_INFO("PSB_INT_ENABLE_R mask 0x%x\n", PSB_RVDC32(PSB_INT_ENABLE_R));
+	DRM_INFO("dev_priv->vdc_irq_mask = 0x%x\n\n", dev_priv->vdc_irq_mask);
+
+	DRM_INFO("2.level2 interrupt register\n");
+	DRM_INFO("pipe 0 config 0x%x status 0x%x\n",
+		REG_READ(0x70008), REG_READ(0x70024));
+	DRM_INFO("pipe 1 config 0x%x status 0x%x\n\n",
+		REG_READ(0x71008), REG_READ(0x71024));
+
+	DRM_INFO("3.check irq and workqueue relationship\n");
+	second = dev_priv->vsync_te_trouble_ts;
+	nanosec_rem = do_div(second, 1000000000);
+	DRM_INFO("vsync_te trouble: [%5lu.%06lu]\n",
+			(unsigned long) second,
+			nanosec_rem / 1000);
+	for (pipe = 0; pipe < PSB_NUM_PIPE; pipe++) {
+		if (pipe == 2)
+			continue;
+		second = dev_priv->vsync_te_irq_ts[pipe];
+		nanosec_rem = do_div(second, 1000000000);
+		DRM_INFO("pipe %d last vsync_te irq: [%5lu.%06lu]\n",
+				pipe, (unsigned long) second,
+				nanosec_rem / 1000);
+
+		second = dev_priv->vsync_te_worker_ts[pipe];
+		nanosec_rem = do_div(second, 1000000000);
+		DRM_INFO("pipe %d last vsync_te workqueue : [%5lu.%06lu]\n",
+				pipe, (unsigned long) second,
+				nanosec_rem / 1000);
+
+		if (dev_priv->vsync_te_irq_ts[pipe] <
+			dev_priv->vsync_te_worker_ts[pipe]) {
+			/*workqueue delay*/
+			interval = dev_priv->vsync_te_worker_ts[pipe] -
+					dev_priv->vsync_te_irq_ts[pipe];
+			nanosec_rem = do_div(interval, 1000000000);
+			DRM_INFO("pipe %d workqueue be delayed : [%5lu.%06lu]\n",
+					pipe, (unsigned long) interval,
+					nanosec_rem / 1000);
+		} else {
+			/*workqueue block*/
+			interval = cpu_clock(0) -
+				dev_priv->vsync_te_irq_ts[pipe];
+			nanosec_rem = do_div(interval, 1000000000);
+			DRM_INFO("pipe %d workqueue be blocked : [%5lu.%06lu]\n\n",
+					pipe, (unsigned long) interval,
+					nanosec_rem / 1000);
+		}
+		/*check whether real vsync te missing*/
+		interval = cpu_clock(0) -
+			dev_priv->vsync_te_irq_ts[pipe];
+		nanosec_rem = do_div(interval, 1000000000);
+		if (nanosec_rem > 200000000) {
+			DRM_INFO("pipe %d vsync te missing %dms !\n\n",
+				 pipe, nanosec_rem/1000000);
+			dev_priv->vsync_te_working[pipe] = false;
+		}
+
+	}
+}
 
 static int psb_vsync_set_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv)

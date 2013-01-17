@@ -963,6 +963,11 @@ struct drm_psb_private {
 	bool ied_enabled;
 	/* indicate which source sets ied_enabled flag */
 	struct file *ied_context;
+
+	unsigned long long vsync_te_irq_ts[PSB_NUM_PIPE];
+	unsigned long long vsync_te_worker_ts[PSB_NUM_PIPE];
+	unsigned long long vsync_te_trouble_ts;
+	bool  vsync_te_working[PSB_NUM_PIPE];
 };
 
 struct psb_mmu_driver;
@@ -1318,7 +1323,7 @@ extern int drm_psb_topaz_clockgating;
 
 extern char HDMI_EDID[20];
 extern int hdmi_state;
-int psb_display_reg_dump(struct drm_device *dev);
+extern void psb_flip_abnormal_debug_info(struct drm_device *dev);
 /*
  * set cpu_relax = 1 in sysfs to use cpu_relax instead of udelay bysy loop
  * set udelay_divider to reduce the udelay values,e.g.= 10, reduce 10 times

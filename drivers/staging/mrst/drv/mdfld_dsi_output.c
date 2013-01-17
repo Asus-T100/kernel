@@ -888,7 +888,6 @@ int mdfld_dsi_output_init(struct drm_device *dev,
 	dsi_config->pipe = pipe;
 	dsi_config->changed = 1;
 	dsi_config->dev = dev;
-	dsi_config->flip_abnormal_count = 0;
 	
 	/*init fixed mode basing on DSI config type*/
 	if (dsi_config->type == MDFLD_DSI_ENCODER_DBI) {
