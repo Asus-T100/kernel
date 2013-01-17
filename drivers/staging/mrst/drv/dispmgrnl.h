@@ -52,6 +52,7 @@
 #define _DISPLAY_MANAGER_NETLINK_H_
 
 #include <drm/drmP.h>
+#include "mdfld_dsi_output.h"
 
 #define SUCCESS		1
 #define FAILED		0
@@ -74,8 +75,8 @@ enum dispmgr_dpst_event_enum {
 	DISPMGR_DPST_UPDATE_GUARD,
 	DISPMGR_DPST_HIST_ENABLE,
 	DISPMGR_DPST_HIST_DATA,
-	DISPMGR_DPST_BL_CMD,
-	DISPMGR_DPST_GAMMA_SET_CMD,
+	DISPMGR_DPST_BL_SET,
+	DISPMGR_DPST_GAMMA_SET,
 	DISPMGR_DPST_DIET_ENABLE,
 	DISPMGR_DPST_DIET_DISABLE,
 	DISPMGR_DPST_GET_MODE,
@@ -91,5 +92,6 @@ struct dispmgr_command_hdr {
 
 void dispmgr_start(struct drm_device *dev);
 void dispmgr_nl_send_msg(struct dispmgr_command_hdr *cmd_hdr);
+void dpstmgr_reg_restore_locked(struct mdfld_dsi_config *dsi_config);
 
 #endif				/* _DISPLAY_MANAGER_NETLINK_H_ */

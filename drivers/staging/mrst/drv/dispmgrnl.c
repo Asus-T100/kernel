@@ -55,6 +55,7 @@
 #include <linux/kernel.h>
 #include "dispmgrnl.h"
 #include "psb_dpst_func.h"
+#include "psb_powermgmt.h"
 
 #define NETLINK_DISPMGR		20
 
@@ -193,7 +194,7 @@ static void nl_recv_msg(struct sk_buff *skb)
 
 	nlh = (struct nlmsghdr *)skb->data;
 	g_pid = nlh->nlmsg_pid;
-	printk(KERN_INFO "kdispmgr: received message from user mode\n");
+	pr_debug("kdispmgr: received message from user mode\n");
 
 	memcpy((void *)(&cmd_hdr), NLMSG_DATA(nlh), hdr_size);
 	if (cmd_hdr.data_size)
@@ -234,4 +235,29 @@ void dispmgr_start(struct drm_device *dev)
 	printk("kdispmgr: display manager start.\n");
 	dispmgr_nl_init();
 	return;
+}
+
+/* this function is only called by dpms on or late resume function */
+void dpstmgr_reg_restore_locked(struct mdfld_dsi_config *dsi_config)
+{
+	struct mdfld_dsi_hw_context *ctx = NULL;
+	struct drm_psb_private *dev_priv = NULL;
+	struct mdfld_dsi_hw_registers *regs = NULL;
+
+	if (!dsi_config || !dsi_config->dev)
+		return;
+	ctx = &dsi_config->dsi_hw_context;
+	regs = &dsi_config->regs;
+	dev_priv = dsi_config->dev->dev_private;
+
+	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
+				OSPM_UHB_ONLY_IF_ON))
+			return;
+
+	PSB_WVDC32(ctx->histogram_intr_ctrl, regs->histogram_intr_ctrl_reg);
+	PSB_WVDC32(ctx->histogram_logic_ctrl, regs->histogram_logic_ctrl_reg);
+	PSB_WVDC32(ctx->aimg_enhance_bin, regs->aimg_enhance_bin_reg);
+	PSB_WVDC32(ctx->lvds_port_ctrl, regs->lvds_port_ctrl_reg);
+
+	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 }

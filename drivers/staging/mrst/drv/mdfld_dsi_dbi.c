@@ -31,6 +31,7 @@
 #include "mdfld_dsi_esd.h"
 #include "psb_powermgmt.h"
 #include "mdfld_dsi_dbi_dsr.h"
+#include "dispmgrnl.h"
 
 /**
  * Enter DSR 
@@ -484,6 +485,12 @@ int __dbi_power_on(struct mdfld_dsi_config *dsi_config)
 	/* restore palette (gamma) */
 	for (i = 0; i < 256; i++)
 		REG_WRITE(regs->palette_reg + (i<<2), ctx->palette[i]);
+
+	/* restore dpst setting */
+	if (dev_priv->psb_dpst_state) {
+		dpstmgr_reg_restore_locked(dsi_config);
+		psb_enable_pipestat(dev_priv, 0, PIPE_DPST_EVENT_ENABLE);
+	}
 
 	/*Setup plane*/
 	REG_WRITE(regs->dspsize_reg, ctx->dspsize);

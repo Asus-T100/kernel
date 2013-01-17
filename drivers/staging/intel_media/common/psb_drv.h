@@ -60,6 +60,7 @@ extern int drm_psb_adjust_brightness;
 extern int drm_psb_enable_color_conversion;
 extern u32 DISP_PLANEB_STATUS;
 extern int drm_psb_use_cases_control;
+extern int dpst_level;
 
 extern struct ttm_bo_driver psb_ttm_bo_driver;
 
@@ -1210,8 +1211,7 @@ static inline void REGISTER_WRITE(struct drm_device *dev, uint32_t reg,
 				  uint32_t val)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
-	if ((reg < 0x70084 || reg > 0x70088) && (reg < 0xa000 || reg > 0xa3ff))
-		PSB_DEBUG_REG("reg = 0x%x, val = 0x%x.\n", reg, val);
+
 	iowrite32((val), dev_priv->vdc_reg + (reg));
 }
 

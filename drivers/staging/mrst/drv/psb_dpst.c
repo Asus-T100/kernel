@@ -206,7 +206,7 @@ void psb_dpst_dev_change_wq(struct work_struct *work)
 					DRM_ERROR("Invalid index!\n");
 					return;
 				}
-					dpst_process_event(
+				dpst_process_event(
 					list_entry(
 					   (wq_data->dev_umevent_arry
 					    [curr_event_index]),
@@ -229,8 +229,8 @@ void psb_dpst_dev_change_wq(struct work_struct *work)
 					DRM_ERROR("Invalid index!\n");
 					return;
 				}
-				psb_umevent_notify_change_gfxsock
-					(list_entry(
+				dpst_process_event(
+					list_entry(
 					   (wq_data->dev_umevent_arry
 					    [curr_event_index]),
 					   struct umevent_obj, head),
@@ -252,8 +252,8 @@ void psb_dpst_dev_change_wq(struct work_struct *work)
 					DRM_ERROR("Invalid index!\n");
 					return;
 				}
-				psb_umevent_notify_change_gfxsock
-					(list_entry(
+				dpst_process_event(
+					list_entry(
 					   (wq_data->dev_umevent_arry
 					    [curr_event_index]),
 					   struct umevent_obj, head),

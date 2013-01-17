@@ -105,6 +105,7 @@ int gamma_setting[129] = {0};
 int csc_setting[6] = {0};
 int gamma_number = 129;
 int csc_number = 6;
+int dpst_level = 3;
 
 int drm_psb_msvdx_tiling = 1;
 struct drm_device *g_drm_dev;
@@ -136,6 +137,7 @@ MODULE_PARM_DESC(enable_color_conversion, "Enable display side color conversion"
 MODULE_PARM_DESC(enable_gamma, "Enable display side gamma");
 MODULE_PARM_DESC(use_cases_control, "Use to enable and disable use cases");
 MODULE_PARM_DESC(pm_history, "whether to dump pm history when SGX HWR");
+MODULE_PARM_DESC(dpst_level, "dpst aggressive level: 0~5");
 
 
 module_param_named(debug, drm_psb_debug, int, 0600);
@@ -166,6 +168,7 @@ module_param_named(psb_use_cases_control, drm_psb_use_cases_control, int, 0600);
 module_param_named(pm_history, drm_psb_dump_pm_history, int, 0600);
 module_param_array_named(gamma_adjust, gamma_setting, int, &gamma_number, 0600);
 module_param_array_named(csc_adjust, csc_setting, int, &csc_number, 0600);
+module_param_named(dpst_level, dpst_level, int, 0600);
 
 #ifndef MODULE
 /* Make ospm configurable via cmdline firstly, and others can be enabled if needed. */
@@ -292,6 +295,8 @@ MODULE_DEVICE_TABLE(pci, pciidlist);
 #define DRM_IOCTL_PSB_GAMMA	\
 		DRM_IOWR(DRM_PSB_GAMMA + DRM_COMMAND_BASE, \
 			 struct drm_psb_dpst_lut_arg)
+#define DRM_IOCTL_DPST_LEVEL	\
+	DRM_IOWR(DRM_PSB_DPST_LEVEL + DRM_COMMAND_BASE, uint32_t)
 #define DRM_IOCTL_PSB_DPST_BL	\
 		DRM_IOWR(DRM_PSB_DPST_BL + DRM_COMMAND_BASE, \
 			 uint32_t)
@@ -516,6 +521,8 @@ static int psb_enable_ied_session_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv);
 static int psb_disable_ied_session_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv);
+extern int psb_dpst_get_level_ioctl(struct drm_device *dev, void *data,
+		struct drm_file *file_priv);
 
 /* wrapper for PVR ioctl functions to avoid direct call */
 int PVRDRM_Dummy_ioctl2(struct drm_device *dev, void *arg,
@@ -626,6 +633,7 @@ static struct drm_ioctl_desc psb_ioctls[] = {
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_DPST, psb_dpst_ioctl, DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_GAMMA, psb_gamma_ioctl, DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_DPST_BL, psb_dpst_bl_ioctl, DRM_AUTH),
+	PSB_IOCTL_DEF(DRM_IOCTL_DPST_LEVEL, psb_dpst_get_level_ioctl, DRM_AUTH),
 #if defined(PDUMP)
 	PSB_IOCTL_DEF(PVR_DRM_DBGDRV_IOCTL, SYSPVRDBGDrivIoctl2, 0),
 #endif
