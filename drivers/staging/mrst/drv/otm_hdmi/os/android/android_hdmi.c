@@ -1022,6 +1022,10 @@ edid_is_ready:
 			 mode_present);
 		if (!mode_present) {
 			dup_mode = drm_mode_duplicate(dev, user_mode);
+			if (!dup_mode) {
+				pr_err("Invalid dup_mode\n");
+				break;
+			}
 			dup_mode->status = MODE_OK;
 			list_add_tail(&dup_mode->head, &connector->modes);
 			ret += 1;
@@ -2138,7 +2142,7 @@ static int android_hdmi_set_property(struct drm_connector *connector,
 				     uint64_t value)
 {
 	struct drm_encoder *pEncoder = connector->encoder;
-	struct psb_intel_crtc *pPsbCrtc = to_psb_intel_crtc(pEncoder->crtc);
+	struct psb_intel_crtc *pPsbCrtc = NULL;
 	bool bTransitionFromToCentered = false;
 	bool bTransitionFromToAspect = false;
 	uint64_t curValue;
@@ -2156,6 +2160,7 @@ static int android_hdmi_set_property(struct drm_connector *connector,
 	}
 
 	if (!strcmp(property->name, "scaling mode") && pEncoder) {
+		pPsbCrtc = to_psb_intel_crtc(pEncoder->crtc);
 
 		if (!pPsbCrtc)
 			goto set_prop_error;
