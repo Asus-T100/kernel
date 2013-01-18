@@ -296,7 +296,7 @@ static struct mt9d113_res_struct mt9d113_res[] = {
 	.fps	= 30,
 	.used	= 0,
 	.regs	= NULL,
-	.skip_frames = 1,
+	.skip_frames = 3,
 	.row_time = 48,
 	},
 	{
@@ -307,7 +307,7 @@ static struct mt9d113_res_struct mt9d113_res[] = {
 	.fps	= 30,
 	.used	= 0,
 	.regs	= NULL,
-	.skip_frames = 1,
+	.skip_frames = 3,
 	.row_time = 48,
 	},
 	{
@@ -318,7 +318,7 @@ static struct mt9d113_res_struct mt9d113_res[] = {
 	.fps	= 30,
 	.used	= 0,
 	.regs	= NULL,
-	.skip_frames = 1,
+	.skip_frames = 3,
 	.row_time = 48,
 	},
 	{
@@ -329,7 +329,7 @@ static struct mt9d113_res_struct mt9d113_res[] = {
 	.fps	= 29,
 	.used	= 0,
 	.regs	= NULL,
-	.skip_frames = 1,
+	.skip_frames = 3,
 	.row_time = 48,
 	},
 	{
@@ -340,7 +340,7 @@ static struct mt9d113_res_struct mt9d113_res[] = {
 	.fps	= 30,
 	.used	= 0,
 	.regs	= NULL,
-	.skip_frames = 1,
+	.skip_frames = 3,
 	.row_time = 48,
 	},
 	{
@@ -351,7 +351,7 @@ static struct mt9d113_res_struct mt9d113_res[] = {
 	.fps	= 30,
 	.used	= 0,
 	.regs	= NULL,
-	.skip_frames = 1,
+	.skip_frames = 3,
 	.row_time = 48,
 	},
 	{
@@ -362,7 +362,7 @@ static struct mt9d113_res_struct mt9d113_res[] = {
 	.fps	= 29,
 	.used	= 0,
 	.regs	= NULL,
-	.skip_frames = 1,
+	.skip_frames = 3,
 	.row_time = 42,
 	},
 	{
@@ -373,7 +373,7 @@ static struct mt9d113_res_struct mt9d113_res[] = {
 	.fps	= 15,
 	.used	= 0,
 	.regs	= NULL,
-	.skip_frames = 1,
+	.skip_frames = 3,
 	.row_time = 52,
 	},
 	{
@@ -384,7 +384,7 @@ static struct mt9d113_res_struct mt9d113_res[] = {
 	.fps	= 10,
 	.used	= 0,
 	.regs	= NULL,
-	.skip_frames = 1,
+	.skip_frames = 3,
 	.row_time = 52,
 	},
 };
