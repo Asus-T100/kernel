@@ -27,8 +27,6 @@
 
 /* CDB42L73 Y1 (6.144 MHz) )oscillator =  MCLK1 */
 #define DEFAULT_MCLK	19200000
-#define MIC_BIAS_DISABLE     1
-#define MIC_BIAS_ENABLE	0
 #define GPIO_AMP_ON 0x3d
 #define GPIO_AMP_OFF 0x0
 #define GPIOHVCTL 0x70
@@ -67,6 +65,7 @@ struct ctp_mc_private {
 	struct snd_soc_jack_gpio *hs_gpio_ops;
 	struct snd_soc_machine_ops *ops;
 	atomic_t bpirq_flag;
+	int bpirq;
 #ifdef CONFIG_HAS_WAKELOCK
 	struct wake_lock *jack_wake_lock;
 #endif
