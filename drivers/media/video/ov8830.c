@@ -813,40 +813,18 @@ static int ov8830_init_registers(struct v4l2_subdev *sd)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	struct ov8830_device *dev = to_ov8830_sensor(sd);
-	const struct ov8830_reg *init_res_reg_list;
-	int ret;
 
 	if (dev->sensor_id == OV8835_CHIP_ID) {
 		dev->curr_res_table = ov8835_res_preview;
 		dev->entries_curr_table = ARRAY_SIZE(ov8835_res_preview);
-		dev->pll_reg_list = ov8835_pll_278_4_mhz;
-		dev->basis_settings_list = ov8835_basic_settings;
-		init_res_reg_list = ov8835_preview_848x616_30fps;
+		dev->basic_settings_list = ov8835_basic_settings;
 	} else {
 		dev->curr_res_table = ov8830_res_preview;
 		dev->entries_curr_table = ARRAY_SIZE(ov8830_res_preview);
-		dev->pll_reg_list = ov8830_PLL192MHz;
-		dev->basis_settings_list = ov8830_BasicSettings;
-		init_res_reg_list = ov8830_PREVIEW_848x616_30fps;
+		dev->basic_settings_list = ov8830_BasicSettings;
 	}
 
-	ret = ov8830_write_reg_array(client, common_sw_reset);
-	if (ret)
-		return ret;
-
-	ret = ov8830_write_reg_array(client, dev->pll_reg_list);
-	if (ret)
-		return ret;
-
-	ret = ov8830_write_reg_array(client, common_mipi_settings_684_mbps);
-	if (ret)
-		return ret;
-
-	ret = ov8830_write_reg_array(client, dev->basis_settings_list);
-	if (ret)
-		return ret;
-
-	return ov8830_write_reg_array(client, init_res_reg_list);
+	return ov8830_write_reg_array(client, dev->basic_settings_list);
 }
 
 static int __ov8830_init(struct v4l2_subdev *sd, u32 val)
@@ -1569,7 +1547,7 @@ static int ov8830_s_mbus_fmt(struct v4l2_subdev *sd,
 	dev->lines_per_frame =
 		dev->curr_res_table[dev->fmt_idx].lines_per_frame;
 
-	ret = ov8830_get_intg_factor(sd, ov8830_info, dev->pll_reg_list);
+	ret = ov8830_get_intg_factor(sd, ov8830_info, dev->basic_settings_list);
 	if (ret) {
 		mutex_unlock(&dev->input_lock);
 		v4l2_err(sd, "failed to get integration_factor\n");

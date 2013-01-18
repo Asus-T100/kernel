@@ -396,8 +396,7 @@ struct ov8830_device {
 	struct drv201_device drv201;
 	struct mutex input_lock; /* serialize sensor's ioctl */
 
-	const struct ov8830_reg *pll_reg_list;
-	const struct ov8830_reg *basis_settings_list;
+	const struct ov8830_reg *basic_settings_list;
 	const struct ov8830_resolution *curr_res_table;
 	int entries_curr_table;
 };
@@ -430,14 +429,9 @@ static const struct ov8830_reg ov8835_module_detection[] = {
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
-static const struct ov8830_reg ov8830_SwReset[] = {
-	{ OV8830_8BIT, { 0x0100 }, 0x00 },
-	{ OV8830_8BIT, { 0x0103 }, 0x01 },
-	{ OV8830_TOK_DELAY, {0}, 5},
-	{ OV8830_8BIT, { 0x0103 }, 0x00 },
-	{ OV8830_TOK_TERM, {0}, 0}
-};
 static const struct ov8830_reg ov8830_BasicSettings[] = {
+	{ OV8830_8BIT, { 0x0103 }, 0x01 },
+	{ OV8830_8BIT, { 0x0100 }, 0x00 },
 	{ OV8830_8BIT, { 0x0102 }, 0x01 },
 	{ OV8830_8BIT, { 0x3000 }, 0x00 },
 	{ OV8830_8BIT, { 0x3001 }, 0x2a },
@@ -466,6 +460,20 @@ static const struct ov8830_reg ov8830_BasicSettings[] = {
 	{ OV8830_8BIT, { 0x3027 }, 0x00 },
 	{ OV8830_8BIT, { 0x3081 }, 0x02 },
 	{ OV8830_8BIT, { 0x3083 }, 0x01 },
+	{ OV8830_8BIT, { 0x3090 }, 0x01 }, /* PLL2 Settings SCLK 192mhZ*/
+	{ OV8830_8BIT, { 0x3091 }, 0x14 },
+	{ OV8830_8BIT, { 0x3094 }, 0x00 },
+	{ OV8830_8BIT, { 0x3092 }, 0x01 },
+	{ OV8830_8BIT, { 0x3093 }, 0x00 },
+	{ OV8830_8BIT, { 0x3098 }, 0x03 }, /* PLL3 Settings REF_CLK */
+	{ OV8830_8BIT, { 0x3099 }, 0x13 },
+	{ OV8830_8BIT, { 0x309a }, 0x00 },
+	{ OV8830_8BIT, { 0x309b }, 0x00 },
+	{ OV8830_8BIT, { 0x309c }, 0x01 },
+	{ OV8830_8BIT, { 0x30b3 }, 0x6b }, /* MIPI PLL1 Settings 684.4Mbps */
+	{ OV8830_8BIT, { 0x30b4 }, 0x03 },
+	{ OV8830_8BIT, { 0x30b5 }, 0x04 },
+	{ OV8830_8BIT, { 0x30b6 }, 0x01 },
 	{ OV8830_8BIT, { 0x3104 }, 0xa1 },
 	{ OV8830_8BIT, { 0x3106 }, 0x01 },
 	{ OV8830_8BIT, { 0x3300 }, 0x00 },
@@ -664,6 +672,7 @@ static const struct ov8830_reg ov8830_BasicSettings[] = {
 	{ OV8830_8BIT, { 0x4806 }, 0x00 },
 	{ OV8830_8BIT, { 0x481f }, 0x36 },
 	{ OV8830_8BIT, { 0x4831 }, 0x6c },
+	{ OV8830_8BIT, { 0x4837 }, 0x0c }, /* MIPI global timing */
 	{ OV8830_8BIT, { 0x4a00 }, 0xaa },
 	{ OV8830_8BIT, { 0x4a03 }, 0x01 },
 	{ OV8830_8BIT, { 0x4a05 }, 0x08 },
@@ -690,39 +699,7 @@ static const struct ov8830_reg ov8830_BasicSettings[] = {
 	{ OV8830_8BIT, { 0x5e10 }, 0x0c },
 	{ OV8830_TOK_TERM, {0}, 0}
 };
-static const struct ov8830_reg ov8830_PLL192MHz[] = {
-	/* PLL2 Settings SCLK Next 5*/
-	{ OV8830_8BIT, { 0x3090 }, 0x01 },
-	{ OV8830_8BIT, { 0x3091 }, 0x14 },
-	{ OV8830_8BIT, { 0x3094 }, 0x00 },
-	{ OV8830_8BIT, { 0x3092 }, 0x01 },
-	{ OV8830_8BIT, { 0x3093 }, 0x00 },
-	/* PLL3 Settings REF_CLK Next 4*/
-	{ OV8830_8BIT, { 0x3098 }, 0x03 },
-	{ OV8830_8BIT, { 0x3099 }, 0x13 },
-	{ OV8830_8BIT, { 0x309a }, 0x00 },
-	{ OV8830_8BIT, { 0x309b }, 0x00 },
-	{ OV8830_8BIT, { 0x309c }, 0x01 },
-	{ OV8830_TOK_TERM, {0}, 0}
-};
-static const struct ov8830_reg ov8830_MIPI_Settings_684Mbps[] = {
-	/* MIPI PLL1 Settings 684.4Mbps Next 4*/
-	{ OV8830_8BIT, { 0x30b3 }, 0x6b },
-	{ OV8830_8BIT, { 0x30b4 }, 0x03 },
-	{ OV8830_8BIT, { 0x30b5 }, 0x04 },
-	{ OV8830_8BIT, { 0x30b6 }, 0x01 },
-	{ OV8830_8BIT, { 0x4837 }, 0x0c },
-	{ OV8830_TOK_TERM, {0}, 0}
-};
-static const struct ov8830_reg ov8830_MIPI_Settings_614Mbps[] = {
-	/* MIPI PLL1 Settings 614.4Mbps PCLK 76.8*/
-	{ OV8830_8BIT, { 0x30b3 }, 0x20 },
-	{ OV8830_8BIT, { 0x30b4 }, 0x01 },
-	{ OV8830_8BIT, { 0x30b5 }, 0x04 },
-	{ OV8830_8BIT, { 0x30b6 }, 0x01 },
-	{ OV8830_8BIT, { 0x4837 }, 0x0d },
-	{ OV8830_TOK_TERM, {0}, 0}
-};
+
 /*****************************STILL********************************/
 
 static const struct ov8830_reg ov8830_cont_cap_720P_15fps[] = {
