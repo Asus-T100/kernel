@@ -5431,9 +5431,8 @@ sh_css_param_update_isp_params(bool commit)
 		/* now write the copy to ddr */
 		write_sh_css_address_map_to_ddr(&tmp_map, &cpy);
 
-		/* [PITBULL] disable for now */
-		/* pqiao: you can disable it forever */
-		//sh_css_enable_sp_invalidate_tlb();
+		/* still needed currently for css2400 */
+		sh_css_enable_sp_invalidate_tlb();
 		/* enqueue the set to sp */
 		if (err == sh_css_success) {
 			bool rc;
