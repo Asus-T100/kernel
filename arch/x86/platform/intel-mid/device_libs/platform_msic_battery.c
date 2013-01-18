@@ -178,7 +178,7 @@ static int intel_msic_store_refrenced_table(struct msic_batt_sfi_prop
 {
 	int mip_offset, ret, batt_index;
 	void *data;
-	u8 batt_id[BATTID_STR_LEN];
+	u8 batt_id[BATTID_STR_LEN] = {0};
 
 	pr_info("[sfi->batt_id]:%s\n", sfi_table->batt_id);
 

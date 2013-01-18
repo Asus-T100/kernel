@@ -474,7 +474,7 @@ static int mdf_multi_read_adc_regs(struct msic_power_module_info *mbi,
 	va_list args;
 	int ret = 0, i, sensor, tmp;
 	int *adc_val;
-	int temp_adc_val[MSIC_BATT_SENSORS];
+	int temp_adc_val[MSIC_BATT_SENSORS] = {0};
 
 	mutex_lock(&mbi->adc_val_lock);
 	if (!is_ttl_valid(adc_ttl) || (sample_count > 1)) {
