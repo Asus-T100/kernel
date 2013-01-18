@@ -47,6 +47,7 @@
 #define DRV201_VCM_FREQ				7
 
 #define DRV201_MAX_FOCUS_POS			1023
+#define DRV201_MODE_LINEAR			2
 
 /* drv201 device structure */
 struct drv201_device {

@@ -490,6 +490,11 @@ static int drv201_power_up(struct v4l2_subdev *sd)
 		goto fail_powerdown;
 	}
 
+	/* Use the liner mode to reduce the noise */
+	r = drv201_write8(sd, DRV201_MODE, DRV201_MODE_LINEAR);
+	if (r < 0)
+		goto fail_powerdown;
+
 	dev->focus = DRV201_MAX_FOCUS_POS;
 	dev->initialized = true;
 
