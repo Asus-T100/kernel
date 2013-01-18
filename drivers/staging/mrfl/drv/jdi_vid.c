@@ -289,7 +289,9 @@ static int mdfld_dsi_jdi_power_off(struct mdfld_dsi_config *dsi_config)
 	/* Wait for 3 frames after enter_sleep_mode. */
 	msleep(51);
 
-	__vpro2_power_ctrl(false);
+	/* Can not poweroff VPROG2, because many other module related to
+	 * this power supply, such as PSH sensor. */
+	/*__vpro2_power_ctrl(false);*/
 
 	return 0;
 
