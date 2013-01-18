@@ -43,7 +43,10 @@
 #define MRST_SPI_TIMEOUT		0x200000
 #define MRST_REGBASE_SPI0		0xff128000
 #define MRST_REGBASE_SPI1		0xff128400
+#define CLV_REGBASE_SPI1		0xff135000
 #define MRST_CLK_SPI0_REG		0xff11d86c
+#define MRFLD_SSP_TIMEOUT		0x200000
+#define MRFLD_REGBASE_SSP5		0xff189000
 
 /* Bit fields in CTRLR0 */
 #define SPI_DFS_OFFSET			0
@@ -77,9 +80,15 @@
 #define SR_TX_ERR			(1 << 5)
 #define SR_DCOL				(1 << 6)
 
+/* SR bit fields for SSP*/
+#define SSP_SR_TF_NOT_FULL		(1 << 2)
+
+static int ssp_timing_wr; /* Tangier A0 SSP timing workaround */
+
 static unsigned int early_pti_console_channel;
 static unsigned int early_pti_control_channel;
 
+/* SPI controller registers */
 struct dw_spi_reg {
 	u32	ctrl0;
 	u32	ctrl1;
@@ -110,6 +119,15 @@ struct dw_spi_reg {
 	u32	dr;
 } __packed;
 
+/* SSP controler registers */
+struct dw_ssp_reg {
+	u32 ctrl0;
+	u32 ctrl1;
+	u32 sr;
+	u32 ssitr;
+	u32 dr;
+} __packed;
+
 #define dw_readl(dw, name)		__raw_readl(&(dw)->name)
 #define dw_writel(dw, name, val)	__raw_writel((val), &(dw)->name)
 
@@ -119,6 +137,7 @@ static unsigned long mrst_spi_paddr = MRST_REGBASE_SPI0;
 static u32 *pclk_spi0;
 /* Always contains an accessible address, start with 0 */
 static struct dw_spi_reg *pspi;
+static struct dw_ssp_reg *pssp;
 
 static struct kmsg_dumper dw_dumper;
 static int dumper_registered;
@@ -140,7 +159,7 @@ static void dw_kmsg_dump(struct kmsg_dumper *dumper,
 }
 
 /* Set the ratio rate to 115200, 8n1, IRQ disabled */
-static void max3110_write_config(void)
+static void max3110_spi_write_config(void)
 {
 	u16 config;
 
@@ -149,12 +168,36 @@ static void max3110_write_config(void)
 }
 
 /* Translate char to a eligible word and send to max3110 */
-static void max3110_write_data(char c)
+static void max3110_spi_write_data(char c)
 {
 	u16 data;
 
 	data = 0x8000 | c;
 	dw_writel(pspi, dr, data);
+}
+
+/* similar to max3110_spi_write_config, but via SSP controller */
+static void max3110_ssp_write_config(void)
+{
+	u16 config;
+
+	config = 0xc001;
+	dw_writel(pssp, dr, config);
+	dw_readl(pssp, dr);
+	udelay(10);
+	return;
+}
+
+/* similar to max3110_spi_write_data, but via SSP controller */
+static void max3110_ssp_write_data(char c)
+{
+	u16 data;
+
+	data = 0x8000 | c;
+	dw_writel(pssp, dr, data);
+	dw_readl(pssp, dr);
+	udelay(10);
+	return;
 }
 
 void mrst_early_console_init(void)
@@ -171,6 +214,8 @@ void mrst_early_console_init(void)
 
 	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_PENWELL)
 		mrst_spi_paddr = MRST_REGBASE_SPI1;
+	else if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_CLOVERVIEW)
+		mrst_spi_paddr = CLV_REGBASE_SPI1;
 
 	pspi = (void *)set_fixmap_offset_nocache(FIX_EARLYCON_MEM_BASE,
 						mrst_spi_paddr);
@@ -203,7 +248,7 @@ void mrst_early_console_init(void)
 	dw_writel(pspi, ssienr, 0x1);
 
 	/* Set the default configuration */
-	max3110_write_config();
+	max3110_spi_write_config();
 
 	/* Register the kmsg dumper */
 	if (!dumper_registered) {
@@ -232,12 +277,12 @@ static void early_mrst_spi_putc(char c)
 	if (!timeout)
 		pr_warning("MRST earlycon: timed out\n");
 	else
-		max3110_write_data(c);
+		max3110_spi_write_data(c);
 }
 
 /* Early SPI only uses polling mode */
 static void early_mrst_spi_write(struct console *con, const char *str,
-				 unsigned n)
+				unsigned n)
 {
 	int i;
 
@@ -256,11 +301,108 @@ struct console early_mrst_console = {
 	.index =	-1,
 };
 
+void mrfld_early_console_init(void)
+{
+	u32 ctrlr0 = 0;
+
+	set_fixmap_nocache(FIX_EARLYCON_MEM_BASE, MRFLD_REGBASE_SSP5);
+
+	pssp = (void *)(__fix_to_virt(FIX_EARLYCON_MEM_BASE) +
+			(MRFLD_REGBASE_SSP5 & (PAGE_SIZE - 1)));
+
+	if (intel_mrfl_identify_sim() == INTEL_MRFL_CPU_SIMULATION_NONE)
+		ssp_timing_wr = 1;
+
+	/* mask interrupts, clear enable and set DSS config */
+	/* SSPSCLK on active transfers only */
+	if (ssp_timing_wr) {
+		dw_writel(pssp, ctrl0, 0xc12c0f);
+		dw_writel(pssp, ctrl1, 0x0);
+	} else {
+		dw_writel(pssp, ctrl0, 0xc0000f);
+		dw_writel(pssp, ctrl1, 0x10000000);
+	}
+
+	dw_readl(pssp, sr);
+
+	/* enable port */
+	ctrlr0 = dw_readl(pssp, ctrl0);
+	ctrlr0 |= 0x80;
+	dw_writel(pssp, ctrl0, ctrlr0);
+}
+
+/* slave select should be called in the read/write function */
+static int early_mrfld_putc(char c)
+{
+	unsigned int timeout;
+	u32 sr;
+
+	timeout = MRFLD_SSP_TIMEOUT;
+	/* early putc need make sure the TX FIFO is not full*/
+	while (timeout--) {
+		sr = dw_readl(pssp, sr);
+		if (ssp_timing_wr) {
+			if (sr & 0xF00)
+				cpu_relax();
+			else
+				break;
+		} else {
+			if (!(sr & SSP_SR_TF_NOT_FULL))
+				cpu_relax();
+			else
+				break;
+		}
+	}
+
+	if (timeout == 0xffffffff) {
+		printk(KERN_INFO "SSP: waiting timeout\n");
+		return -1;
+	}
+
+	max3110_ssp_write_data(c);
+	return 0;
+}
+
+static void early_mrfld_write(struct console *con,
+				const char *str, unsigned n)
+{
+	int  i;
+
+	for (i = 0; i < n && *str; i++) {
+		if (*str == '\n')
+			early_mrfld_putc('\r');
+		early_mrfld_putc(*str);
+
+		str++;
+	}
+}
+
+struct console early_mrfld_console = {
+	.name =		"earlymrfld",
+	.write =	early_mrfld_write,
+	.flags =	CON_PRINTBUFFER,
+	.index =	-1,
+};
+
+void mrfld_early_printk(const char *fmt, ...)
+{
+	char buf[512];
+	int n;
+	va_list ap;
+
+	va_start(ap, fmt);
+	n = vscnprintf(buf, 512, fmt, ap);
+	va_end(ap);
+
+	early_mrfld_console.write(&early_mrfld_console, buf, n);
+}
+
 /*
- * Following is the early console based on Medfield HSU (High
- * Speed UART) device.
+ * Following is the early console based on High Speed UART device.
  */
-#define HSU_PORT_BASE		0xffa28080
+#define MERR_HSU_PORT_BASE	0xff010180
+#define MERR_HSU_CLK_CTL	0xff00b830
+#define MFLD_HSU_PORT_BASE	0xffa28080
 
 static void __iomem *phsu;
 
@@ -268,6 +410,14 @@ void hsu_early_console_init(const char *s)
 {
 	unsigned long paddr, port = 0;
 	u8 lcr;
+	int *clkctl;
+
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER) {
+		paddr = MERR_HSU_PORT_BASE;
+		clkctl = (int *)set_fixmap_offset_nocache(FIX_CLOCK_CTL,
+							  MERR_HSU_CLK_CTL);
+	} else
+		paddr = MFLD_HSU_PORT_BASE;
 
 	/*
 	 * Select the early HSU console port if specified by user in the
@@ -276,7 +426,7 @@ void hsu_early_console_init(const char *s)
 	if (*s && !kstrtoul(s, 10, &port))
 		port = clamp_val(port, 0, 2);
 
-	paddr = HSU_PORT_BASE + port * 0x80;
+	paddr += port * 0x80;
 	phsu = (void *)set_fixmap_offset_nocache(FIX_EARLYCON_MEM_BASE, paddr);
 
 	/* Disable FIFO */
@@ -285,9 +435,22 @@ void hsu_early_console_init(const char *s)
 	/* Set to default 115200 bps, 8n1 */
 	lcr = readb(phsu + UART_LCR);
 	writeb((0x80 | lcr), phsu + UART_LCR);
-	writeb(0x18, phsu + UART_DLL);
+	writeb(0x01, phsu + UART_DLL);
+	writeb(0x00, phsu + UART_DLM);
 	writeb(lcr,  phsu + UART_LCR);
-	writel(0x3600, phsu + UART_MUL*4);
+	writel(0x0010, phsu + UART_ABR * 4);
+	writel(0x0010, phsu + UART_PS * 4);
+
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER) {
+		/* detect HSU clock is 50M or 19.2M */
+		if (*clkctl & (1 << 16))
+			writel(0x0120, phsu + UART_MUL * 4); /* for 50M */
+		else
+			writel(0x05DC, phsu + UART_MUL * 4);  /* for 19.2M */
+	} else
+		writel(0x0240, phsu + UART_MUL * 4);
+
+	writel(0x3D09, phsu + UART_DIV * 4);
 
 	writeb(0x8, phsu + UART_MCR);
 	writeb(0x7, phsu + UART_FCR);
