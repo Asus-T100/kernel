@@ -1576,6 +1576,8 @@ bool ospm_power_using_video_begin(int video_island)
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *)gpDrmDevice->dev_private;
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
+	bool  already_increase = false;
+
 	PSB_DEBUG_PM("MSVDX: need power on island 0x%x.\n", video_island);
 
 	if (!(video_island & (OSPM_VIDEO_DEC_ISLAND | OSPM_VIDEO_ENC_ISLAND)))
@@ -1586,14 +1588,49 @@ bool ospm_power_using_video_begin(int video_island)
 	 * call rpm_resume indirectly, it causes defferred_resume be set to
 	 * ture, so at the end of rpm_suspend(), rpm_resume() will be called.
 	 * it will block system from entering s0ix */
-	if (gbSuspendInProgress ||
-			pdev->dev.power.runtime_status == RPM_SUSPENDING) {
+	if (gbSuspendInProgress) {
 		DRM_INFO("%s: suspend in progress,"
 			"call pm_runtime_get_noresume\n", __func__);
 		pm_runtime_get_noresume(&pdev->dev);
 	} else {
 		pm_runtime_get(&pdev->dev);
 	}
+
+
+	/* Taking this lock is very important to keep consistent with
+	*runtime framework */
+	spin_lock_irq(&pdev->dev.power.lock);
+recheck:
+	if (pdev->dev.power.runtime_status == RPM_SUSPENDING) {
+		DEFINE_WAIT(wait);
+		/* Wait for the other suspend running to finish */
+		for (;;) {
+			prepare_to_wait(&pdev->dev.power.wait_queue, &wait,
+				TASK_UNINTERRUPTIBLE);
+			if (pdev->dev.power.runtime_status != RPM_SUSPENDING)
+				break;
+			spin_unlock_irq(&pdev->dev.power.lock);
+			schedule();
+			spin_lock_irq(&pdev->dev.power.lock);
+		}
+		finish_wait(&pdev->dev.power.wait_queue, &wait);
+		goto recheck;
+	}
+	/* Because !force_on has been done above, so here is force_on case
+	**it must be process context in current code base, so it will power on
+	** island defintely, so increase access_count here to prevent another
+	** suspending thread run async
+	*/
+	switch (video_island) {
+	case OSPM_VIDEO_ENC_ISLAND:
+		atomic_inc(&g_videoenc_access_count);
+		break;
+	case OSPM_VIDEO_DEC_ISLAND:
+		atomic_inc(&g_videodec_access_count);
+		break;
+	}
+	already_increase = true;
+	spin_unlock_irq(&pdev->dev.power.lock);
 #endif
 
 	/* Deal with force_on==true case. It must be process context */
@@ -1718,13 +1755,15 @@ out:
 	gbResumeInProgress = false;
 
 	if (ret) {
-		switch (video_island) {
-		case OSPM_VIDEO_ENC_ISLAND:
-			atomic_inc(&g_videoenc_access_count);
-			break;
-		case OSPM_VIDEO_DEC_ISLAND:
-			atomic_inc(&g_videodec_access_count);
-			break;
+		if (!already_increase) {
+			switch (video_island) {
+			case OSPM_VIDEO_ENC_ISLAND:
+				atomic_inc(&g_videoenc_access_count);
+				break;
+			case OSPM_VIDEO_DEC_ISLAND:
+				atomic_inc(&g_videodec_access_count);
+				break;
+			}
 		}
 	}
 #ifdef CONFIG_GFX_RTPM
