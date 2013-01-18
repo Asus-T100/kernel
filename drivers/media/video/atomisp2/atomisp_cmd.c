@@ -3748,15 +3748,19 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	 * than snapshot resolution. If so, force main resolution
 	 * to be the same as snapshot resolution
 	 */
-	if (pipe->pipe_type == ATOMISP_PIPE_CAPTURE &&
-	    isp->isp_subdev.video_out_vf.format.out.width &&
-	    isp->isp_subdev.video_out_vf.format.out.height &&
-	    (isp->isp_subdev.video_out_vf.format.out.width > f->fmt.pix.width ||
-	     isp->isp_subdev.video_out_vf.format.out.height
-	     > f->fmt.pix.height)) {
-		v4l2_warn(&atomisp_dev, "Main Resolution config "
-			  "smaller then Vf Resolution. Force "
-			  "to be equal with Vf Resolution.");
+	if (source_pad == ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE) {
+		struct v4l2_rect *r;
+
+		r = atomisp_subdev_get_rect(
+			&isp->isp_subdev.subdev, NULL,
+			V4L2_SUBDEV_FORMAT_ACTIVE,
+			ATOMISP_SUBDEV_PAD_SOURCE_VF, V4L2_SEL_TGT_COMPOSE);
+
+		if (r->width && r->height
+		    && (r->width > f->fmt.pix.width
+			|| r->height > f->fmt.pix.height))
+			dev_warn(isp->dev, 
+				 "Main Resolution config smaller then Vf Resolution. Force to be equal with Vf Resolution.");
 	}
 
 	/* V4L2_BUF_TYPE_PRIVATE will set offline processing */
