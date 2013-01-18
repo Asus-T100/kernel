@@ -852,10 +852,6 @@ static struct ov8830_reg const ov8835_video_480p_dvs_30fps[] = {
 	{ OV8830_8BIT, { 0x3809 }, 0xa8 },
 	{ OV8830_8BIT, { 0x380a }, 0x02 },
 	{ OV8830_8BIT, { 0x380b }, 0x5a },
-	{ OV8830_8BIT, { 0x380c }, 0x15 }, /* 5458x1700 278.4 30 15.25ms */
-	{ OV8830_8BIT, { 0x380d }, 0x52 },
-	{ OV8830_8BIT, { 0x380e }, 0x06 },
-	{ OV8830_8BIT, { 0x380f }, 0xa4 },
 	{ OV8830_8BIT, { 0x3814 }, 0x31 },
 	{ OV8830_8BIT, { 0x3815 }, 0x31 },
 	{ OV8830_8BIT, { 0x3820 }, 0x11 }, /* Binning on */
@@ -879,10 +875,6 @@ static struct ov8830_reg const ov8835_video_720p_dvs_30fps[] = {
 	{ OV8830_8BIT, { 0x3809 }, 0x20 },
 	{ OV8830_8BIT, { 0x380a }, 0x03 },
 	{ OV8830_8BIT, { 0x380b }, 0x70 },
-	{ OV8830_8BIT, { 0x380c }, 0x15 }, /* 5458x1700 278.4 30 15ms */
-	{ OV8830_8BIT, { 0x380d }, 0x52 },
-	{ OV8830_8BIT, { 0x380e }, 0x06 },
-	{ OV8830_8BIT, { 0x380f }, 0xa4 },
 	{ OV8830_8BIT, { 0x3814 }, 0x31 },
 	{ OV8830_8BIT, { 0x3815 }, 0x31 },
 	{ OV8830_8BIT, { 0x3820 }, 0x11 },
@@ -906,44 +898,12 @@ static const struct ov8830_reg ov8835_video_1080p_dvs_30fps[] = {
 	{ OV8830_8BIT, { 0x3809 }, 0x20 },
 	{ OV8830_8BIT, { 0x380a }, 0x05 },
 	{ OV8830_8BIT, { 0x380b }, 0x38 },
-	{ OV8830_8BIT, { 0x380c }, 0x10 }, /* 4300x2158 278.4 30FPS 4.6ms */
-	{ OV8830_8BIT, { 0x380d }, 0xcc },
-	{ OV8830_8BIT, { 0x380e }, 0x08 },
-	{ OV8830_8BIT, { 0x380f }, 0x6e },
 	{ OV8830_8BIT, { 0x3814 }, 0x11 },
 	{ OV8830_8BIT, { 0x3815 }, 0x11 },
 	{ OV8830_8BIT, { 0x3820 }, 0x10 },
 	{ OV8830_8BIT, { 0x3821 }, 0x0e },
 	{ OV8830_8BIT, { 0x4004 }, 0x08 }, /* BLC No. of blacklines used. */
 	{ OV8830_8BIT, { 0x404f }, 0x90 },
-	{ OV8830_TOK_TERM, {0}, 0}
-};
-
-static const struct ov8830_reg ov8835_video_1080p_dvs_off_30fps[] = {
-	{ OV8830_8BIT, { 0x3708 }, 0xe3 }, /* Binning Related e6 : e3 skip: eb*/
-	{ OV8830_8BIT, { 0x3800 }, 0x00 }, /* 4, 310, 3291, 2169 3288x1860 */
-	{ OV8830_8BIT, { 0x3801 }, 0x04 },
-	{ OV8830_8BIT, { 0x3802 }, 0x01 },
-	{ OV8830_8BIT, { 0x3803 }, 0x36 },
-	{ OV8830_8BIT, { 0x3804 }, 0x0c },
-	{ OV8830_8BIT, { 0x3805 }, 0xdb },
-	{ OV8830_8BIT, { 0x3806 }, 0x08 },
-	{ OV8830_8BIT, { 0x3807 }, 0x79 },
-	{ OV8830_8BIT, { 0x3808 }, 0x0c }, /* Output size 3280x1852 */
-	{ OV8830_8BIT, { 0x3808 }, 0x07 }, /* 1936 x 1104 DVS off O/p */
-	{ OV8830_8BIT, { 0x3809 }, 0x90 },
-	{ OV8830_8BIT, { 0x380a }, 0x04 },
-	{ OV8830_8BIT, { 0x380b }, 0x50 },
-	{ OV8830_8BIT, { 0x380c }, 0x10 }, /* 4300x2158 278.4 30FPS 4.6ms */
-	{ OV8830_8BIT, { 0x380d }, 0xcc },
-	{ OV8830_8BIT, { 0x380e }, 0x08 },
-	{ OV8830_8BIT, { 0x380f }, 0x6e },
-	{ OV8830_8BIT, { 0x3814 }, 0x11 },
-	{ OV8830_8BIT, { 0x3815 }, 0x11 },
-	{ OV8830_8BIT, { 0x3820 }, 0x10 },
-	{ OV8830_8BIT, { 0x3821 }, 0x0e },
-	{ OV8830_8BIT, { 0x4004 }, 0x08 }, /* BLC No. of blacklines used. */
-	{ OV8830_8BIT, { 0x404f }, 0xa0 },
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 

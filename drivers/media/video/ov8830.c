@@ -664,44 +664,33 @@ static int ov8830_g_priv_int_data(struct v4l2_subdev *sd,
 	return r;
 }
 
-static int __ov8830_check_and_update_vts(struct v4l2_subdev *sd, int exposure)
+static int __ov8830_update_frame_timing(struct v4l2_subdev *sd, int exposure,
+			u16 *hts, u16 *vts)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
-	struct ov8830_device *dev = to_ov8830_sensor(sd);
 	int ret;
-	u16 vts;
 
-	if (exposure > dev->curr_res_table[dev->fmt_idx].lines_per_frame
-			- OV8830_INTEGRATION_TIME_MARGIN) {
-		/* Increase the VTS to match exposure + 14 */
-		vts = (u16) exposure + OV8830_INTEGRATION_TIME_MARGIN;
-	} else if (dev->curr_res_table[dev->fmt_idx].lines_per_frame
-			!= dev->lines_per_frame) {
-		/*
-		 * Restore the VTS so that frame rate do not exceed than
-		 * what we claim
-		 */
-		vts = dev->curr_res_table[dev->fmt_idx].lines_per_frame;
-	} else {
-		/* No change in VTS. Return. */
-		return 0;
-	}
+	/* Increase the VTS to match exposure + 14 */
+	if (exposure > *vts - OV8830_INTEGRATION_TIME_MARGIN)
+		*vts = (u16) exposure + OV8830_INTEGRATION_TIME_MARGIN;
 
-	ret = ov8830_write_reg(client, OV8830_16BIT, OV8830_TIMING_VTS, vts);
+	ret = ov8830_write_reg(client, OV8830_16BIT, OV8830_TIMING_HTS, *hts);
 	if (ret)
 		return ret;
 
-	/* Update the device's lines per frame to new VTS */
-	dev->lines_per_frame = vts;
+	ret = ov8830_write_reg(client, OV8830_16BIT, OV8830_TIMING_VTS, *vts);
+	if (ret)
+		return ret;
 
 	return ret;
 }
 
-static int __ov8830_set_exposure(struct v4l2_subdev *sd, int exposure, int gain)
+static int __ov8830_set_exposure(struct v4l2_subdev *sd, int exposure, int gain,
+			u16 *hts, u16 *vts)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
-	struct ov8830_device *dev = to_ov8830_sensor(sd);
 	int exp_val, ret;
+	/* Expecting the group hold/launch to done by the calling function */
 
 	/*
 	 * Validate exposure: must not exceed the max supported or less than 0.
@@ -714,26 +703,11 @@ static int __ov8830_set_exposure(struct v4l2_subdev *sd, int exposure, int gain)
 	/* Validate gain: must not exceed maximum 8bit value or less than 0 */
 	gain = clamp_t(int, gain, 0, OV8830_MAX_GAIN_VALUE);
 
-	/* Group hold is valid only if sensor is streaming. */
-	if (dev->streaming) {
-		ret = ov8830_grouphold_start(sd);
-		if (ret)
-			goto out;
-	}
-
 	/*
-	 * The sensor mode has a default HTS and VTS value based on the maximum
-	 * FPS that we support fot that particular mode.
-	 *
-	 * Exposure must be less than VTS -14. So if the exposure is more than
-	 * the default value, we need to increase the VTS to accomodate the
-	 * set exposure. And once the VTS is increased, if it goes beyond the
-	 * default value we need to limit the VTS back to the default value
-	 * so that we dont exceed the max supported FPS for that mode.
-	 *
-	 * VTS will be adjusted as per the above rules in this function
+	 * Exposure must be less than VTS -14. Adjust the VTS beween maximum
+	 * FPS supported for a specific mode and exposure.
 	 */
-	ret = __ov8830_check_and_update_vts(sd, exposure);
+	ret = __ov8830_update_frame_timing(sd, exposure, hts, vts);
 	if (ret) {
 		v4l2_err(sd, "Could not set the appropriate VTS.\n");
 		goto out;
@@ -761,16 +735,6 @@ static int __ov8830_set_exposure(struct v4l2_subdev *sd, int exposure, int gain)
 	if (ret)
 		goto out;
 
-	/* Group hold launch - delayed launch */
-	if (dev->streaming) {
-		ret = ov8830_grouphold_launch(sd);
-		if (ret)
-			goto out;
-	}
-
-	dev->gain     = gain;
-	dev->exposure = exposure;
-
 out:
 	return ret;
 }
@@ -778,10 +742,35 @@ out:
 static int ov8830_set_exposure(struct v4l2_subdev *sd, int exposure, int gain)
 {
 	struct ov8830_device *dev = to_ov8830_sensor(sd);
+	u16 hts, vts;
 	int ret;
 
 	mutex_lock(&dev->input_lock);
-	ret = __ov8830_set_exposure(sd, exposure, gain);
+
+	/* Group hold is valid only if sensor is streaming. */
+	if (dev->streaming) {
+		ret = ov8830_grouphold_start(sd);
+		if (ret)
+			goto out;
+	}
+
+	hts = dev->curr_res_table[dev->fmt_idx].pixels_per_line;
+	vts = dev->curr_res_table[dev->fmt_idx].lines_per_frame;
+
+	ret = __ov8830_set_exposure(sd, exposure, gain, &hts, &vts);
+	if (ret)
+		goto out;
+
+	dev->gain     = gain;
+	dev->exposure = exposure;
+	dev->lines_per_frame = vts;
+	dev->pixels_per_line = hts;
+
+out:
+	/* Group hold launch - delayed launch */
+	if (dev->streaming)
+		ret = ov8830_grouphold_launch(sd);
+
 	mutex_unlock(&dev->input_lock);
 
 	return ret;
@@ -1511,59 +1500,55 @@ static int ov8830_s_mbus_fmt(struct v4l2_subdev *sd,
 	struct ov8830_device *dev = to_ov8830_sensor(sd);
 	struct camera_mipi_info *ov8830_info = NULL;
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	u16 hts, vts;
 	int ret;
 
 	ov8830_info = v4l2_get_subdev_hostdata(sd);
 	if (ov8830_info == NULL)
 		return -EINVAL;
 
-	ret = ov8830_try_mbus_fmt(sd, fmt);
-	if (ret) {
-		v4l2_err(sd, "try fmt fail\n");
-		return ret;
-	}
-
 	mutex_lock(&dev->input_lock);
-	dev->fmt_idx = get_resolution_index(sd, fmt->width, fmt->height);
 
+	ret = ov8830_try_mbus_fmt(sd, fmt);
+	if (ret)
+		goto out;
+
+	dev->fmt_idx = get_resolution_index(sd, fmt->width, fmt->height);
 	/* Sanity check */
 	if (unlikely(dev->fmt_idx == -1)) {
-		mutex_unlock(&dev->input_lock);
-		v4l2_err(sd, "get resolution fail\n");
-		return -EINVAL;
+		ret = -EINVAL;
+		goto out;
 	}
 
 	/* Write the selected resolution table values to the registers */
 	ret = ov8830_write_reg_array(client,
 				dev->curr_res_table[dev->fmt_idx].regs);
-	if (ret) {
-		mutex_unlock(&dev->input_lock);
-		return -EINVAL;
-	}
+	if (ret)
+		goto out;
 
-	dev->fps = dev->curr_res_table[dev->fmt_idx].fps;
-	dev->pixels_per_line =
-		dev->curr_res_table[dev->fmt_idx].pixels_per_line;
-	dev->lines_per_frame =
-		dev->curr_res_table[dev->fmt_idx].lines_per_frame;
-
-	ret = ov8830_get_intg_factor(sd, ov8830_info, dev->basic_settings_list);
-	if (ret) {
-		mutex_unlock(&dev->input_lock);
-		v4l2_err(sd, "failed to get integration_factor\n");
-		return -EINVAL;
-	}
+	/* Frame timing registers are updates as part of exposure */
+	hts = dev->curr_res_table[dev->fmt_idx].pixels_per_line;
+	vts = dev->curr_res_table[dev->fmt_idx].lines_per_frame;
 
 	/*
-	 * We do not reset the register settings on mode change. So that means
-	 * the exposure register had old values. So adjust the VTS accordingly.
+	 * update hts, vts, exposure and gain as one block. Note that the vts
+	 * will be changed according to the exposure used. But the maximum vts
+	 * dev->curr_res_table[dev->fmt_idx] should not be changed at all.
 	 */
-	if (dev->exposure)
-		__ov8830_check_and_update_vts(sd, dev->exposure);
+	ret = __ov8830_set_exposure(sd, dev->exposure, dev->gain, &hts, &vts);
+	if (ret)
+		goto out;
 
+	dev->pixels_per_line = hts;
+	dev->lines_per_frame = vts;
+	dev->fps = dev->curr_res_table[dev->fmt_idx].fps;
+
+	ret = ov8830_get_intg_factor(sd, ov8830_info, dev->basic_settings_list);
+
+out:
 	mutex_unlock(&dev->input_lock);
 
-	return 0;
+	return ret;
 }
 
 static int ov8830_g_mbus_fmt(struct v4l2_subdev *sd,
