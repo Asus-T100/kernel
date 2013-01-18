@@ -50,11 +50,9 @@ static const struct ov8830_reg ov8835_basic_settings[] = {
 	{ OV8830_8BIT, { 0x309a }, 0x00 },
 	{ OV8830_8BIT, { 0x309b }, 0x00 },
 	{ OV8830_8BIT, { 0x309c }, 0x01 },
-	/*
-	{ OV8830_8BIT, { 0x30a2 }, 0x01 },
+	{ OV8830_8BIT, { 0x30a2 }, 0x01 }, /* Ref Clk -> Manual mode enabled */
 	{ OV8830_8BIT, { 0x30b0 }, 0x05 },
 	{ OV8830_8BIT, { 0x30b2 }, 0x00 },
-	*/
 	{ OV8830_8BIT, { 0x30b3 }, 0x6b }, /* MIPI PLL1 Settings 684.4Mbps*/
 	{ OV8830_8BIT, { 0x30b4 }, 0x03 },
 	{ OV8830_8BIT, { 0x30b5 }, 0x04 },
