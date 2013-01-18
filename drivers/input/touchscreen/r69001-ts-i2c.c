@@ -28,9 +28,6 @@
 #include <linux/io.h>
 #include <linux/gpio.h>
 #include <linux/uaccess.h>
-#ifdef CONFIG_HAS_EARLYSUSPEND
-#include <linux/earlysuspend.h>
-#endif
 
 #define CONFIG_R69001_POLLING_TIME 10
 #include <linux/r69001-ts.h>
@@ -105,15 +102,10 @@ struct r69001_ts_before_regs {
 struct r69001_ts_data {
 	struct i2c_client *client;
 	struct input_dev *input_dev;
-	struct workqueue_struct *workqueue;
-	struct delayed_work init_delay_work;
 	struct r69001_ts_finger finger[MAX_FINGERS];
 	struct r69001_io_data data;
 	struct r69001_ts_before_regs regs;
 	struct r69001_platform_data *pdata;
-#ifdef CONFIG_HAS_EARLYSUSPEND
-	struct early_suspend early_suspend_info;
-#endif
 	u8 mode;
 	u8 t_num;
 };
@@ -252,27 +244,26 @@ static int r69001_ts_read_coordinates_data(struct r69001_ts_data *ts)
 	return 0;
 }
 
-/*
- * Used for both init and ealry resume cases, to make sure Touch Panel's
- * HW is inited after Display.
- */
-static void r69001_init_work_func(struct work_struct *work)
-{
-	struct r69001_ts_data *ts =
-		container_of(work, struct r69001_ts_data, init_delay_work.work);
-	struct i2c_client *client = ts->client;
-
-	ts->data.mode.mode = UNKNOW_MODE;
-	r69001_ts_write_data(ts, REG_CONTROL, REG_SCAN_CYCLE, SCAN_TIME);
-	r69001_set_mode(ts, ts->mode, POLL_INTERVAL);
-}
-
 static irqreturn_t r69001_ts_irq_handler(int irq, void *dev_id)
 {
 	struct r69001_ts_data *ts = dev_id;
+	u8 mode = 0;
+
+	r69001_ts_read_data(ts, REG_CONTROL, REG_SCAN_MODE, 1, &mode);
+
+	if (mode == SCAN_MODE_STOP) {
+		/* if receive a touchscreen interrupt, but the scan mode is stop
+		 * that means touch panel just power on, so re-init it
+		 */
+		ts->data.mode.mode = UNKNOW_MODE;
+		r69001_ts_write_data(ts, REG_CONTROL,
+					REG_SCAN_CYCLE, SCAN_TIME);
+		r69001_set_mode(ts, ts->mode, POLL_INTERVAL);
+	}
 
 	r69001_ts_read_coordinates_data(ts);
 	r69001_ts_report_coordinates_data(ts);
+
 	return IRQ_HANDLED;
 }
 
@@ -333,25 +324,6 @@ static void r69001_set_mode(struct r69001_ts_data *ts, u8 mode, u16 poll_time)
 	}
 }
 
-#ifdef CONFIG_HAS_EARLYSUSPEND
-static void r69001_early_suspend(struct early_suspend *h)
-{
-	struct r69001_ts_data *ts = i2c_get_clientdata(client_r69001);
-	struct i2c_client *client = ts->client;
-
-	disable_irq(client->irq);
-	r69001_ts_write_data(ts, REG_CONTROL, REG_SCAN_MODE, SCAN_MODE_STOP);
-}
-
-static void r69001_early_resume(struct early_suspend *h)
-{
-	struct r69001_ts_data *ts = i2c_get_clientdata(client_r69001);
-
-	/* Need be resumed after the Display */
-	queue_delayed_work(ts->workqueue, &ts->init_delay_work,
-			msecs_to_jiffies(1500));
-}
-#endif
 
 static int __devinit
 r69001_ts_probe(struct i2c_client *client, const struct i2c_device_id *id)
@@ -380,15 +352,6 @@ r69001_ts_probe(struct i2c_client *client, const struct i2c_device_id *id)
 		error = -EINVAL;
 		goto err1;
 	}
-
-	ts->workqueue = create_workqueue("r69001_ts_workqueue");
-	if (!ts->workqueue) {
-		dev_err(&client->dev, "Unable to create workqueue\n");
-		error =  -ENOMEM;
-		goto err1;
-	}
-
-	INIT_DELAYED_WORK(&ts->init_delay_work, r69001_init_work_func);
 
 	input_dev = input_allocate_device();
 	if (!input_dev) {
@@ -421,16 +384,7 @@ r69001_ts_probe(struct i2c_client *client, const struct i2c_device_id *id)
 
 	i2c_set_clientdata(client, ts);
 
-#ifdef CONFIG_HAS_EARLYSUSPEND
-	ts->early_suspend_info.suspend = r69001_early_suspend;
-	ts->early_suspend_info.resume = r69001_early_resume;
-	ts->early_suspend_info.level = EARLY_SUSPEND_LEVEL_DISABLE_FB;
-	register_early_suspend(&ts->early_suspend_info);
-#endif
-
 	ts->mode = INTERRUPT_MODE;
-	queue_delayed_work(ts->workqueue, &ts->init_delay_work,
-				msecs_to_jiffies(20000));
 
 	error = request_threaded_irq(client->irq, NULL, r69001_ts_irq_handler,
 			IRQF_ONESHOT, client->name, ts);
@@ -445,7 +399,6 @@ err4:
 err3:
 	input_free_device(ts->input_dev);
 err2:
-	destroy_workqueue(ts->workqueue);
 err1:
 	kfree(ts);
 	return error;
@@ -455,11 +408,7 @@ static int __devexit r69001_ts_remove(struct i2c_client *client)
 {
 	struct r69001_ts_data *ts = i2c_get_clientdata(client);
 
-#ifdef CONFIG_HAS_EARLYSUSPEND
-	unregister_early_suspend(&ts->early_suspend_info);
-#endif
 	input_unregister_device(ts->input_dev);
-	destroy_workqueue(ts->workqueue);
 	if (client->irq)
 		free_irq(client->irq, ts);
 	kfree(ts);
@@ -479,9 +428,6 @@ static struct i2c_driver r69001_ts_driver = {
 	.driver = {
 		.name = R69001_TS_NAME,
 		.owner = THIS_MODULE,
-#ifdef CONFIG_HAS_EARLYSUSPEND
-		.pm = NULL,
-#endif
 	},
 };
 
