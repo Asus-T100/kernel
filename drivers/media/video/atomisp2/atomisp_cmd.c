@@ -3765,6 +3765,10 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	else
 		isp->params.online_process = 1;
 
+	/* Pipeline configuration done through subdevs. Bail out now. */
+	if (!isp->isp_subdev.fmt_auto->val)
+		goto done;
+
 	/* get sensor resolution and format */
 	atomisp_try_fmt(vdev, &snr_fmt, &res_overflow);
 	f->fmt.pix.width = snr_fmt.fmt.pix.width;
