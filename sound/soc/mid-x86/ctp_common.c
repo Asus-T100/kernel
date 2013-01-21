@@ -660,7 +660,7 @@ const struct dev_pm_ops snd_ctp_mc_pm_ops = {
 static struct platform_driver snd_ctp_mc_driver = {
 	.driver = {
 		.owner = THIS_MODULE,
-		.name = "clvcs_audio",
+		.name = "ctp_audio",
 		.pm   = &snd_ctp_mc_pm_ops,
 	},
 	.probe = snd_ctp_mc_probe,

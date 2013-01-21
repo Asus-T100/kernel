@@ -65,7 +65,7 @@ void *ctp_audio_platform_data(void *info)
 		return NULL;
 	}
 
-	pdev = platform_device_alloc("clvcs_audio", -1);
+	pdev = platform_device_alloc("ctp_audio", -1);
 	if (!pdev) {
 		pr_err("failed to allocate clvcs_audio platform device\n");
 		return NULL;
