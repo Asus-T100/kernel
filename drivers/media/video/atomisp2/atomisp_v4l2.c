@@ -82,49 +82,49 @@ const struct atomisp_format_bridge atomisp_output_fmts[] = {
 	{
 		.pixelformat = V4L2_PIX_FMT_YUV420,
 		.depth = 12,
-		.mbus_code = V4L2_MBUS_FMT_FIXED,
+		.mbus_code = 0x8001,
 		.sh_fmt = SH_CSS_FRAME_FORMAT_YUV420,
 		.description = "YUV420, planner"},
 	{
 		.pixelformat = V4L2_PIX_FMT_YVU420,
 		.depth = 12,
-		.mbus_code = V4L2_MBUS_FMT_FIXED,
+		.mbus_code = 0x8002,
 		.sh_fmt = SH_CSS_FRAME_FORMAT_YV12,
 		.description = "YVU420, planner"},
 	{
 		.pixelformat = V4L2_PIX_FMT_YUV422P,
 		.depth = 16,
-		.mbus_code = V4L2_MBUS_FMT_FIXED,
+		.mbus_code = 0x8003,
 		.sh_fmt = SH_CSS_FRAME_FORMAT_YUV422,
 		.description = "YUV422, planner"},
 	{
 		.pixelformat = V4L2_PIX_FMT_YUV444,
 		.depth = 24,
-		.mbus_code = V4L2_MBUS_FMT_FIXED,
+		.mbus_code = 0x8004,
 		.sh_fmt = SH_CSS_FRAME_FORMAT_YUV444,
 		.description = "YUV444"},
 	{
 		.pixelformat = V4L2_PIX_FMT_NV12,
 		.depth = 12,
-		.mbus_code = V4L2_MBUS_FMT_FIXED,
+		.mbus_code = 0x8005,
 		.sh_fmt = SH_CSS_FRAME_FORMAT_NV12,
 		.description = "NV12, interleaved"},
 	{
 		.pixelformat = V4L2_PIX_FMT_NV21,
 		.depth = 12,
-		.mbus_code = V4L2_MBUS_FMT_FIXED,
+		.mbus_code = 0x8006,
 		.sh_fmt = SH_CSS_FRAME_FORMAT_NV21,
 		.description = "NV21, interleaved"},
 	{
 		.pixelformat = V4L2_PIX_FMT_NV16,
 		.depth = 16,
-		.mbus_code = V4L2_MBUS_FMT_FIXED,
+		.mbus_code = 0x8007,
 		.sh_fmt = SH_CSS_FRAME_FORMAT_NV16,
 		.description = "NV16, interleaved"},
 	{
 		.pixelformat = V4L2_PIX_FMT_YUYV,
 		.depth = 16,
-		.mbus_code = V4L2_MBUS_FMT_FIXED,
+		.mbus_code = 0x8008,
 		.sh_fmt = SH_CSS_FRAME_FORMAT_YUYV,
 		.description = "YUYV, interleaved"},
 	{
@@ -136,7 +136,7 @@ const struct atomisp_format_bridge atomisp_output_fmts[] = {
 	{
 		.pixelformat = V4L2_PIX_FMT_SBGGR16,
 		.depth = 16,
-		.mbus_code = V4L2_MBUS_FMT_FIXED,
+		.mbus_code = 0x8009,
 		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
 		.description = "Bayer 16"},
 	{
@@ -244,7 +244,7 @@ const struct atomisp_format_bridge atomisp_output_fmts[] = {
 	{
 		.pixelformat = V4L2_PIX_FMT_RGB32,
 		.depth = 32,
-		.mbus_code = V4L2_MBUS_FMT_FIXED,
+		.mbus_code = 0x800a,
 		.sh_fmt = SH_CSS_FRAME_FORMAT_RGBA888,
 		.description = "32 RGB 8-8-8-8"},
 	{
