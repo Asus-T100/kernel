@@ -178,7 +178,7 @@ struct devs_id __initconst device_ids[] = {
 					&ipc_device_handler},
 	{"msic_vdd", SFI_DEV_TYPE_IPC, 1, &msic_vdd_platform_data,
 					&ipc_device_handler},
-	{"clvcs_audio", SFI_DEV_TYPE_IPC, 1, &ctp_audio_platform_data,
+	{"ctp_audio", SFI_DEV_TYPE_IPC, 1, &ctp_audio_platform_data,
 					     NULL},
 	{"bcove_adc", SFI_DEV_TYPE_IPC, 1, &mrfl_adc_platform_data, NULL},
 	{"bcove_bcu", SFI_DEV_TYPE_IPC, 1, &mrfl_ocd_platform_data, NULL},
