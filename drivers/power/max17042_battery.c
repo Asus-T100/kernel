@@ -1193,7 +1193,7 @@ static void reset_vfsoc0_reg(struct max17042_chip *chip)
 
 static void load_new_capacity_params(struct max17042_chip *chip, bool is_por)
 {
-	u16 full_cap0, rem_cap, rep_cap, dq_acc;
+	u16 rem_cap, rep_cap, dq_acc;
 
 	if (is_por) {
 		/* fg_vfSoc needs to shifted by 8 bits to get the
@@ -1434,8 +1434,6 @@ static int init_max17042_chip(struct max17042_chip *chip)
 
 static void reset_max17042(struct max17042_chip *chip)
 {
-	int val;
-
 	/* do soft power reset */
 	enable_soft_POR(chip);
 

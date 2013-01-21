@@ -889,7 +889,7 @@ static ssize_t set_charge_current_limit(struct device *dev,
 			       size_t count)
 {
 	struct bq24192_chip *chip = i2c_get_clientdata(bq24192_client);
-	unsigned long value;
+	long value;
 	int chr_mode;
 	dev_info(&chip->client->dev, "+%s\n", __func__);
 
