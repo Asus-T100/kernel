@@ -203,7 +203,11 @@ void *max17042_platform_data(void *info)
 {
 	static struct max17042_platform_data platform_data;
 	struct i2c_board_info *i2c_info = (struct i2c_board_info *)info;
+#ifdef CONFIG_X86_MRFLD
+	int intr = get_gpio_by_name("fuel_guage_int");
+#else
 	int intr = get_gpio_by_name("max_fg_alert");
+#endif
 
 	i2c_info->irq = intr + INTEL_MID_IRQ_OFFSET;
 
