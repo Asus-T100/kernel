@@ -843,7 +843,7 @@ static struct misensor_reg const mt9v113_awb_ccm[] = {
 
 	/* AE */
 	{MISENSOR_16BIT, 0x098c, 0xa24f}, /* MCU_ADDRESS [AE_BASETARGET] */
-	{MISENSOR_16BIT, 0x0990, 0x0042}, /* MCU_DATA_0*/
+	{MISENSOR_16BIT, 0x0990, 0x0038}, /* MCU_DATA_0*/
 
 	{MISENSOR_16BIT, 0x098c, 0xa302}, /* MCU_ADDRESS [aWb_WINdOW_POS]*/
 	{MISENSOR_16BIT, 0x0990, 0x0000}, /* MCU_DATA_0*/
