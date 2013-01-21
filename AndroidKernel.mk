@@ -12,7 +12,7 @@ KERNEL_BUILD_FLAGS := -B
 endif
 
 menuconfig get_kernel_from_source: $(MINIGZIP)
-	+TARGET_TOOLS_PREFIX="$(ANDROID_BUILD_TOP)/$(TARGET_TOOLS_PREFIX)" TARGET_DEVICE="$(TARGET_DEVICE)" TARGET_BOARD_PLATFORM="$(TARGET_BOARD_PLATFORM)" DIFFCONFIGS="$(DIFFCONFIGS)" vendor/intel/support/kernel-build.sh $(KERNEL_BUILD_FLAGS) -o $@
+	+TARGET_TOOLS_PREFIX="$(ANDROID_BUILD_TOP)/$(TARGET_TOOLS_PREFIX)" TARGET_DEVICE="$(TARGET_DEVICE)" TARGET_BOARD_PLATFORM="$(TARGET_BOARD_PLATFORM)" DIFFCONFIGS="$(DIFFCONFIGS)" KERNEL_DIFFCONFIG_DIR="$(KERNEL_DIFFCONFIG_DIR)" vendor/intel/support/kernel-build.sh $(KERNEL_BUILD_FLAGS) -o $@
 
 # This rule is useful for creating a kernel that will be
 # shared with a tree that does not have kernel source.
