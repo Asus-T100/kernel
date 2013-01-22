@@ -143,6 +143,13 @@ struct atomisp_freq_scaling_rule dfs_rules[] = {
 		.run_mode = CI_MODE_VIDEO,
 	},
 	{
+		.width = 4192,
+		.height = 3104,
+		.fps = ISP_FREQ_RULE_ANY,
+		.isp_freq = ISP_FREQ_400MHZ,
+		.run_mode = CI_MODE_STILL_CAPTURE,
+	},
+	{
 		.width = ISP_FREQ_RULE_ANY,
 		.height = ISP_FREQ_RULE_ANY,
 		.fps = ISP_FREQ_RULE_ANY,
