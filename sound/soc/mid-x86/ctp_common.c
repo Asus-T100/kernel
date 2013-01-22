@@ -209,6 +209,7 @@ static int mc_driver_ops(struct ctp_mc_private *ctx,
 {
 	switch (pdata->spid->product_line_id) {
 	case INTEL_CLVTP_PHONE_RHB_ENG:
+	case INTEL_CLVTP_PHONE_RHB_PRO:
 		if (pdata->spid->hardware_id == CLVTP_PHONE_RHB_VBDV1) {
 			ctx->ops = ctp_get_vb_ops();
 			return 0;
