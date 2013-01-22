@@ -24,18 +24,31 @@
  */
 #include "mm.h"
 
-int psb_get_meminfo_by_handle(IMG_HANDLE hKernelMemInfo,
-				PVRSRV_KERNEL_MEM_INFO **ppsKernelMemInfo)
+IMG_UINT32 psb_get_tgid(void)
+{
+	/* from OSGetCurrentProcessIDKM() */
+	if (in_interrupt())
+		return KERNEL_ID;
+
+	return (IMG_UINT32)task_tgid_nr(current);
+}
+
+int psb_get_meminfo_by_handle(struct drm_psb_private *dev_priv,
+		IMG_HANDLE hKernelMemInfo,
+		PVRSRV_KERNEL_MEM_INFO **ppsKernelMemInfo)
 {
 	PVRSRV_KERNEL_MEM_INFO *psKernelMemInfo = IMG_NULL;
 	PVRSRV_PER_PROCESS_DATA *psPerProc = IMG_NULL;
 	PVRSRV_ERROR eError;
 
-	psPerProc = PVRSRVPerProcessData(OSGetCurrentProcessIDKM());
-	eError = PVRSRVLookupHandle(psPerProc->psHandleBase,
-				    (IMG_VOID *)&psKernelMemInfo,
-				    hKernelMemInfo,
-				    PVRSRV_HANDLE_TYPE_MEM_INFO);
+	BUG_ON(!dev_priv->pvr_ops);
+	psPerProc = dev_priv->pvr_ops->PVRSRVPerProcessData(
+			psb_get_tgid());
+	eError = dev_priv->pvr_ops->PVRSRVLookupHandle(
+			psPerProc->psHandleBase,
+			(IMG_VOID *)&psKernelMemInfo,
+			hKernelMemInfo,
+			PVRSRV_HANDLE_TYPE_MEM_INFO);
 	if (eError != PVRSRV_OK) {
 		DRM_ERROR("Cannot find kernel meminfo for handle 0x%x\n",
 			  (IMG_UINT32)hKernelMemInfo);
@@ -49,12 +62,8 @@ int psb_get_meminfo_by_handle(IMG_HANDLE hKernelMemInfo,
 	return 0;
 }
 
-IMG_UINT32 psb_get_tgid(void)
-{
-	return OSGetCurrentProcessIDKM();
-}
-
-int psb_get_pages_by_mem_handle(IMG_HANDLE hOSMemHandle,
+int psb_get_pages_by_mem_handle(struct drm_psb_private *dev_priv,
+				IMG_HANDLE hOSMemHandle,
 				u32 **pfn_list,
 				int page_count)
 {
@@ -76,8 +85,9 @@ int psb_get_pages_by_mem_handle(IMG_HANDLE hOSMemHandle,
 	for (i = 0; i < page_count; i++) {
 		phys_addr.uiAddr = 0;
 
-		phys_addr =
-			LinuxMemAreaToCpuPAddr(psLinuxMemArea, i * PAGE_SIZE);
+		BUG_ON(!dev_priv->pvr_ops);
+		phys_addr = dev_priv->pvr_ops->LinuxMemAreaToCpuPAddr(
+				psLinuxMemArea, i * PAGE_SIZE);
 		pfns[i] = ((u32)phys_addr.uiAddr) >> PAGE_SHIFT;
 	}
 

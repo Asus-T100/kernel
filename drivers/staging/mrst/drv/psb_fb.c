@@ -854,7 +854,8 @@ static struct drm_framebuffer *psb_user_framebuffer_create
 	uint32_t offset;
 	uint64_t size;
 
-	ret = psb_get_meminfo_by_handle(hKernelMemInfo, &psKernelMemInfo);
+	ret = psb_get_meminfo_by_handle(dev_priv, hKernelMemInfo,
+			&psKernelMemInfo);
 	if (ret) {
 		DRM_ERROR("Cannot get meminfo for handle 0x%x\n",
 			  (IMG_UINT32)hKernelMemInfo);
@@ -1756,8 +1757,11 @@ static void *psb_bo_from_handle(struct drm_device *dev,
 	PVRSRV_KERNEL_MEM_INFO *psKernelMemInfo = IMG_NULL;
 	IMG_HANDLE hKernelMemInfo = (IMG_HANDLE)handle;
 	int ret;
+	struct drm_psb_private *dev_priv =
+	    (struct drm_psb_private *) dev->dev_private;
 
-	ret = psb_get_meminfo_by_handle(hKernelMemInfo, &psKernelMemInfo);
+	ret = psb_get_meminfo_by_handle(dev_priv,
+			hKernelMemInfo, &psKernelMemInfo);
 	if (ret) {
 		DRM_ERROR("Cannot get meminfo for handle 0x%x\n",
 			  (IMG_UINT32)hKernelMemInfo);

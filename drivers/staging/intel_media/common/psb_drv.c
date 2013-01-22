@@ -106,6 +106,8 @@ int gamma_number = 129;
 int csc_number = 6;
 
 int drm_psb_msvdx_tiling = 1;
+struct drm_device *g_drm_dev;
+EXPORT_SYMBOL(g_drm_dev);
 
 static int psb_probe(struct pci_dev *pdev, const struct pci_device_id *ent);
 
@@ -514,6 +516,64 @@ static int psb_enable_ied_session_ioctl(struct drm_device *dev, void *data,
 static int psb_disable_ied_session_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv);
 
+/* wrapper for PVR ioctl functions to avoid direct call */
+int PVRDRM_Dummy_ioctl2(struct drm_device *dev, void *arg,
+			struct drm_file *pFile)
+{
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *) dev->dev_private;
+
+	BUG_ON(!dev_priv->pvr_ops);
+	return dev_priv->pvr_ops->PVRDRM_Dummy_ioctl(dev, arg, pFile);
+}
+int PVRSRV_BridgeDispatchKM2(struct drm_device unref__ * dev,
+		void *arg, struct drm_file *pFile)
+{
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *) dev->dev_private;
+
+	BUG_ON(!dev_priv->pvr_ops);
+	return dev_priv->pvr_ops->PVRSRV_BridgeDispatchKM(dev, arg, pFile);
+}
+int PVRDRMIsMaster2(struct drm_device *dev, void *arg,
+		struct drm_file *pFile)
+{
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *) dev->dev_private;
+
+	BUG_ON(!dev_priv->pvr_ops);
+	return dev_priv->pvr_ops->PVRDRMIsMaster(dev, arg, pFile);
+}
+int PVRDRMUnprivCmd2(struct drm_device *dev, void *arg,
+		struct drm_file *pFile)
+{
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *) dev->dev_private;
+
+	BUG_ON(!dev_priv->pvr_ops);
+	return dev_priv->pvr_ops->PVRDRMUnprivCmd(dev, arg, pFile);
+}
+void PVRSRVDrmPostClose2(struct drm_device *dev,
+		struct drm_file *file)
+{
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *) dev->dev_private;
+
+	BUG_ON(!dev_priv->pvr_ops);
+	return dev_priv->pvr_ops->PVRSRVDrmPostClose(dev, file);
+}
+#if defined(PDUMP)
+int SYSPVRDBGDrivIoctl2(struct drm_device *dev, IMG_VOID *arg,
+		struct drm_file *pFile)
+{
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *) dev->dev_private;
+
+	BUG_ON(!dev_priv->pvr_ops);
+	return dev_priv->pvr_ops->SYSPVRDBGDrivIoctl(dev, arg, pFile);
+}
+#endif
+
 #define PSB_IOCTL_DEF(ioctl, func, flags) \
 	[DRM_IOCTL_NR(ioctl) - DRM_COMMAND_BASE] = {ioctl, flags, func}
 
@@ -549,10 +609,11 @@ static struct drm_ioctl_desc psb_ioctls[] = {
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_GETPAGEADDRS,
 	psb_getpageaddrs_ioctl,
 	DRM_AUTH),
-	PSB_IOCTL_DEF(PVR_DRM_SRVKM_IOCTL, PVRSRV_BridgeDispatchKM, DRM_UNLOCKED),
-	PSB_IOCTL_DEF(PVR_DRM_DISP_IOCTL, PVRDRM_Dummy_ioctl, 0),
-	PSB_IOCTL_DEF(PVR_DRM_IS_MASTER_IOCTL, PVRDRMIsMaster, DRM_MASTER),
-	PSB_IOCTL_DEF(PVR_DRM_UNPRIV_IOCTL, PVRDRMUnprivCmd, DRM_UNLOCKED),
+	PSB_IOCTL_DEF(PVR_DRM_SRVKM_IOCTL, PVRSRV_BridgeDispatchKM2,
+		DRM_UNLOCKED),
+	PSB_IOCTL_DEF(PVR_DRM_DISP_IOCTL, PVRDRM_Dummy_ioctl2, 0),
+	PSB_IOCTL_DEF(PVR_DRM_IS_MASTER_IOCTL, PVRDRMIsMaster2, DRM_MASTER),
+	PSB_IOCTL_DEF(PVR_DRM_UNPRIV_IOCTL, PVRDRMUnprivCmd2, DRM_UNLOCKED),
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_HIST_ENABLE,
 	psb_hist_enable_ioctl,
 	DRM_AUTH),
@@ -565,7 +626,7 @@ static struct drm_ioctl_desc psb_ioctls[] = {
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_GAMMA, psb_gamma_ioctl, DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_DPST_BL, psb_dpst_bl_ioctl, DRM_AUTH),
 #if defined(PDUMP)
-	PSB_IOCTL_DEF(PVR_DRM_DBGDRV_IOCTL, SYSPVRDBGDrivIoctl, 0),
+	PSB_IOCTL_DEF(PVR_DRM_DBGDRV_IOCTL, SYSPVRDBGDrivIoctl2, 0),
 #endif
 #ifdef CONFIG_MDFD_VIDEO_DECODE
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_CMDBUF, psb_cmdbuf_ioctl,
@@ -1193,7 +1254,8 @@ static int psb_driver_unload(struct drm_device *dev)
 		(struct drm_psb_private *) dev->dev_private;
 
 	/*Fristly, unload pvr driver*/
-	PVRSRVDrmUnload(dev);
+	BUG_ON(!dev_priv->pvr_ops);
+	dev_priv->pvr_ops->PVRSRVDrmUnload(dev);
 
 	/*TODO: destroy DSR/DPU infos here*/
 	psb_backlight_exit(); /*writes minimum value to backlight HW reg */
@@ -1694,7 +1756,11 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 
 	mdfld_dsi_dsr_enable(dev_priv->dsi_configs[0]);
 
-	return PVRSRVDrmLoad(dev, chipset);
+	dev_priv->pvr_ops = NULL;
+	/* Delay PVRSRVDrmLoad to PVR module init */
+	g_drm_dev = dev;
+	return 0;
+
 out_err:
 	psb_driver_unload(dev);
 	return ret;
@@ -3772,8 +3838,12 @@ static unsigned int psb_poll(struct file *filp,
 
 static int psb_driver_open(struct drm_device *dev, struct drm_file *priv)
 {
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *) dev->dev_private;
+
 	DRM_DEBUG("\n");
-	return PVRSRVOpen(dev, priv);
+	BUG_ON(!dev_priv->pvr_ops);
+	return dev_priv->pvr_ops->PVRSRVOpen(dev, priv);
 }
 
 static long psb_unlocked_ioctl(struct file *filp, unsigned int cmd,
@@ -4469,8 +4539,6 @@ static const struct dev_pm_ops psb_pm_ops = {
 	.resume = psb_runtime_resume,
 };
 
-extern int PVRMMap(struct file *pFile, struct vm_area_struct *ps_vma);
-
 static struct vm_operations_struct psb_ttm_vm_ops;
 
 /**
@@ -4634,12 +4702,14 @@ int psb_mmap(struct file *filp, struct vm_area_struct *vma)
 	struct drm_psb_private *dev_priv;
 	int ret;
 
-	if (vma->vm_pgoff < DRM_PSB_FILE_PAGE_OFFSET ||
-	    vma->vm_pgoff > 2 * DRM_PSB_FILE_PAGE_OFFSET)
-		return PVRMMap(filp, vma);
-
 	file_priv = (struct drm_file *) filp->private_data;
 	dev_priv = psb_priv(file_priv->minor->dev);
+
+	if (vma->vm_pgoff < DRM_PSB_FILE_PAGE_OFFSET ||
+			vma->vm_pgoff > 2 * DRM_PSB_FILE_PAGE_OFFSET) {
+		BUG_ON(!dev_priv->pvr_ops);
+		return dev_priv->pvr_ops->PVRMMap(filp, vma);
+	}
 
 	ret = ttm_bo_mmap(filp, vma, &dev_priv->bdev);
 	if (unlikely(ret != 0))
@@ -4677,7 +4747,7 @@ static struct drm_driver driver = {
 	.firstopen = NULL,
 	.lastclose = psb_lastclose,
 	.open = psb_driver_open,
-	.postclose = PVRSRVDrmPostClose,
+	.postclose = PVRSRVDrmPostClose2,
 	.debugfs_init = psb_proc_init,
 	.debugfs_cleanup = psb_proc_cleanup,
 	.preclose = psb_driver_preclose,
@@ -4757,10 +4827,13 @@ static int __init psb_init(void)
 	psb_kobject_uevent_init();
 #endif
 
+#if 0
+	/* delay this until PVRSRVDrmLoad is to be loaded */
 	ret = SYSPVRInit();
 	if (ret != 0) {
 		return ret;
 	}
+#endif
 
 	ret = drm_pci_init(&driver, &psb_pci_driver);
 	if (ret != 0) {

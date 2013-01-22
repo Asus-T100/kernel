@@ -113,6 +113,7 @@ struct per_physical_core_t {
 };
 
 DEFINE_PER_CPU(struct per_physical_core_t, pphycore_counts);
+EXPORT_SYMBOL(pphycore_counts);
 #pragma pack()
 
 /*

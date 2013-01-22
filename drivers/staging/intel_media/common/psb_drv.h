@@ -329,6 +329,48 @@ struct psb_context;
 struct psb_validate_buffer;
 struct psb_video_ctx;
 
+/* PVR call back for display driver.
+ * Definition is copied from PVR code.
+ */
+struct gpu_pvr_ops {
+	IMG_BOOL (*PVRGetDisplayClassJTable)(PVRSRV_DC_DISP2SRV_KMJTABLE
+		*psJTable);
+#if defined(SUPPORT_DRI_DRM_EXT)
+	int (*SYSPVRServiceSGXInterrupt)(struct drm_device *dev);
+#endif
+	int (*PVRSRVDrmLoad)(struct drm_device *dev, unsigned long flags);
+	int (*SYSPVRInit)(void);
+	int (*PVRDRM_Dummy_ioctl)(struct drm_device *dev, void *arg,
+			struct drm_file *pFile);
+	int (*PVRMMap)(struct file *pFile, struct vm_area_struct *ps_vma);
+	void (*PVRSRVDrmPostClose)(struct drm_device *dev,
+			struct drm_file *file);
+	int (*PVRSRV_BridgeDispatchKM)(struct drm_device unref__ * dev,
+			void *arg, struct drm_file *pFile);
+	int (*PVRSRVOpen)(struct drm_device unref__ *dev,
+			struct drm_file *pFile);
+	int (*PVRDRMIsMaster)(struct drm_device *dev, void *arg,
+			struct drm_file *pFile);
+	int (*PVRDRMUnprivCmd)(struct drm_device *dev, void *arg,
+			struct drm_file *pFile);
+	int (*SYSPVRDBGDrivIoctl)(struct drm_device *dev, IMG_VOID *arg,
+			struct drm_file *pFile);
+	int (*PVRSRVDrmUnload)(struct drm_device *dev);
+	PVRSRV_PER_PROCESS_DATA *(*PVRSRVPerProcessData)(IMG_UINT32 ui32PID);
+#if defined (SUPPORT_SID_INTERFACE)
+	PVRSRV_ERROR (*PVRSRVLookupHandle)(PVRSRV_HANDLE_BASE *psBase,
+			IMG_PVOID *ppvData, IMG_SID hHandle,
+			PVRSRV_HANDLE_TYPE eType);
+#else
+	PVRSRV_ERROR (*PVRSRVLookupHandle)(PVRSRV_HANDLE_BASE *psBase,
+			IMG_PVOID *ppvData, IMG_HANDLE hHandle,
+			PVRSRV_HANDLE_TYPE eType);
+#endif
+	IMG_CPU_PHYADDR (*LinuxMemAreaToCpuPAddr)(LinuxMemArea *psLinuxMemArea,
+			IMG_UINT32 ui32ByteOffset);
+	PVRSRV_ERROR (*OSScheduleMISR2)(void);
+};
+
 struct drm_psb_private {
 	/*
 	 * DSI info.
@@ -964,11 +1006,11 @@ struct drm_psb_private {
 	bool ied_enabled;
 	/* indicate which source sets ied_enabled flag */
 	struct file *ied_context;
-
 	unsigned long long vsync_te_irq_ts[PSB_NUM_PIPE];
 	unsigned long long vsync_te_worker_ts[PSB_NUM_PIPE];
 	unsigned long long vsync_te_trouble_ts;
 	bool  vsync_te_working[PSB_NUM_PIPE];
+	struct gpu_pvr_ops * pvr_ops;
 };
 
 struct psb_mmu_driver;

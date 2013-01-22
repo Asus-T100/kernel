@@ -970,7 +970,8 @@ int psb_gtt_map_meminfo(struct drm_device *dev,
 	struct psb_gtt_mem_mapping *mapping = NULL;
 	int ret;
 
-	ret = psb_get_meminfo_by_handle(hKernelMemInfo, &psKernelMemInfo);
+	ret = psb_get_meminfo_by_handle(dev_priv, hKernelMemInfo,
+			&psKernelMemInfo);
 	if (ret) {
 		DRM_DEBUG("Cannot find kernelMemInfo handle %d\n",
 			  (int)hKernelMemInfo);
@@ -992,8 +993,9 @@ int psb_gtt_map_meminfo(struct drm_device *dev,
 		DRM_DEBUG("kmem is NULL");
 
 	/*get pages*/
-	ret = psb_get_pages_by_mem_handle(psKernelMemInfo->sMemBlk.hOSMemHandle,
-					  &pfn_list, pages);
+	ret = psb_get_pages_by_mem_handle(dev_priv,
+			psKernelMemInfo->sMemBlk.hOSMemHandle,
+			&pfn_list, pages);
 	if (ret) {
 		DRM_DEBUG("get pages error\n");
 		return ret;
