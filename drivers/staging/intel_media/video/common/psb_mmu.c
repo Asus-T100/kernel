@@ -18,6 +18,9 @@
 #include <drm/drmP.h>
 #include "psb_drv.h"
 #include "psb_reg.h"
+#ifdef SUPPORT_VSP
+#include "vsp.h"
+#endif
 
 /*
  * Code for the MSVDX/TOPAZ MMU:
@@ -68,6 +71,7 @@ struct psb_mmu_driver {
 	unsigned long clflush_mask;
 
 	struct drm_psb_private *dev_priv;
+	enum mmu_type_t mmu_type;
 };
 
 struct psb_mmu_pd;
@@ -165,11 +169,26 @@ static void psb_mmu_flush_pd_locked(struct psb_mmu_driver *driver,
 				    int force)
 {
 	if (atomic_read(&driver->needs_tlbflush) || force) {
-		if (driver->dev_priv) {
-			atomic_set(&driver->dev_priv->msvdx_mmu_invaldc, 1);
-			atomic_set(&driver->dev_priv->topaz_mmu_invaldc, 1);
+		if (!driver->dev_priv)
+			goto out;
+
+		if (driver->mmu_type == IMG_MMU) {
+			atomic_set(
+				&driver->dev_priv->msvdx_mmu_invaldc,
+				1);
+			atomic_set(
+				&driver->dev_priv->topaz_mmu_invaldc,
+				1);
+		} else if (driver->mmu_type == VSP_MMU) {
+#ifdef SUPPORT_VSP
+			INVALID_MMU;
+#endif
+		} else {
+			DRM_ERROR("MMU: invalid MMU type %d\n",
+				  driver->mmu_type);
 		}
 	}
+out:
 	atomic_set(&driver->needs_tlbflush, 0);
 }
 
@@ -186,10 +205,21 @@ void psb_mmu_flush(struct psb_mmu_driver *driver, int rc_prot)
 {
 	if (rc_prot)
 		down_write(&driver->sem);
-	if (driver->dev_priv) {
+
+	if (!driver->dev_priv)
+		goto out;
+
+	if (driver->mmu_type == IMG_MMU) {
 		atomic_set(&driver->dev_priv->msvdx_mmu_invaldc, 1);
 		atomic_set(&driver->dev_priv->topaz_mmu_invaldc, 1);
+	} else if (driver->mmu_type == VSP_MMU) {
+#ifdef SUPPORT_VSP
+		INVALID_MMU;
+#endif
+	} else {
+		DRM_ERROR("MMU: invalid MMU type %d\n", driver->mmu_type);
 	}
+out:
 	if (rc_prot)
 		up_write(&driver->sem);
 }
@@ -228,6 +258,13 @@ static inline uint32_t psb_mmu_mask_pte(uint32_t pfn, int type)
 	return (pfn << PAGE_SHIFT) | mask;
 }
 
+#ifdef SUPPORT_VSP
+static inline uint32_t vsp_mmu_mask_pte(uint32_t pfn, int type)
+{
+	return (pfn & VSP_PDE_MASK) | VSP_PTE_VALID;
+}
+#endif
+
 struct psb_mmu_pd *psb_mmu_alloc_pd(struct psb_mmu_driver *driver,
 				    int trap_pagefaults, int invalid_type) {
 	struct psb_mmu_pd *pd = kmalloc(sizeof(*pd), GFP_KERNEL);
@@ -248,12 +285,27 @@ struct psb_mmu_pd *psb_mmu_alloc_pd(struct psb_mmu_driver *driver,
 		goto out_err3;
 
 	if (!trap_pagefaults) {
-		pd->invalid_pde =
-			psb_mmu_mask_pte(page_to_pfn(pd->dummy_pt),
-					 invalid_type);
-		pd->invalid_pte =
-			psb_mmu_mask_pte(page_to_pfn(pd->dummy_page),
-					 invalid_type);
+		if (driver->mmu_type == IMG_MMU) {
+			pd->invalid_pde =
+				psb_mmu_mask_pte(page_to_pfn(pd->dummy_pt),
+						 invalid_type);
+			pd->invalid_pte =
+				psb_mmu_mask_pte(page_to_pfn(pd->dummy_page),
+						 invalid_type);
+		} else if (driver->mmu_type == VSP_MMU) {
+#ifdef SUPPORT_VSP
+			pd->invalid_pde =
+				vsp_mmu_mask_pte(page_to_pfn(pd->dummy_pt),
+						 invalid_type);
+			pd->invalid_pte =
+				vsp_mmu_mask_pte(page_to_pfn(pd->dummy_page),
+						 invalid_type);
+#endif
+		} else {
+			DRM_ERROR("MMU: invalid MMU type %d\n",
+				  driver->mmu_type);
+			goto out_err4;
+		}
 	} else {
 		pd->invalid_pde = 0;
 		pd->invalid_pte = 0;
@@ -390,6 +442,7 @@ struct psb_mmu_pt *psb_mmu_pt_alloc_map_lock(struct psb_mmu_pd *pd,
 	struct psb_mmu_pt *pt;
 	uint32_t *v;
 	spinlock_t *lock = &pd->driver->lock;
+	struct psb_mmu_driver *driver = pd->driver;
 
 	spin_lock(lock);
 	pt = pd->tables[index];
@@ -410,7 +463,17 @@ struct psb_mmu_pt *psb_mmu_pt_alloc_map_lock(struct psb_mmu_pd *pd,
 
 		v = kmap_atomic(pd->p, KM_USER0);
 		pd->tables[index] = pt;
-		v[index] = (page_to_pfn(pt->p) << 12) | pd->pd_mask;
+		if (driver->mmu_type == IMG_MMU)
+			v[index] = (page_to_pfn(pt->p) << 12) |
+				pd->pd_mask;
+#ifdef SUPPORT_VSP
+		else if (driver->mmu_type == VSP_MMU)
+			v[index] = (page_to_pfn(pt->p));
+#endif
+		else
+			DRM_ERROR("MMU: invalid MMU type %d\n",
+				  driver->mmu_type);
+
 		pt->index = index;
 		kunmap_atomic((void *) v, KM_USER0);
 
@@ -595,9 +658,10 @@ void psb_mmu_driver_takedown(struct psb_mmu_driver *driver)
 }
 
 struct psb_mmu_driver *psb_mmu_driver_init(uint8_t __iomem * registers,
-		int trap_pagefaults,
-		int invalid_type,
-		struct drm_psb_private *dev_priv) {
+					int trap_pagefaults,
+					int invalid_type,
+					struct drm_psb_private *dev_priv,
+					enum mmu_type_t mmu_type) {
 	struct psb_mmu_driver *driver;
 
 	driver = kmalloc(sizeof(*driver), GFP_KERNEL);
@@ -605,6 +669,7 @@ struct psb_mmu_driver *psb_mmu_driver_init(uint8_t __iomem * registers,
 		return NULL;
 
 	driver->dev_priv = dev_priv;
+	driver->mmu_type = mmu_type;
 
 	driver->default_pd = psb_mmu_alloc_pd(driver, trap_pagefaults,
 					      invalid_type);
@@ -809,6 +874,7 @@ int psb_mmu_insert_pfn_sequence(struct psb_mmu_pd *pd, uint32_t start_pfn,
 				int type)
 {
 	struct psb_mmu_pt *pt;
+	struct psb_mmu_driver *driver = pd->driver;
 	uint32_t pte;
 	unsigned long addr;
 	unsigned long end;
@@ -829,7 +895,19 @@ int psb_mmu_insert_pfn_sequence(struct psb_mmu_pd *pd, uint32_t start_pfn,
 			goto out;
 		}
 		do {
-			pte = psb_mmu_mask_pte(start_pfn++, type);
+			if (driver->mmu_type == IMG_MMU) {
+				pte = psb_mmu_mask_pte(start_pfn++, type);
+#ifdef SUPPORT_VSP
+			} else if (driver->mmu_type == VSP_MMU) {
+				pte = vsp_mmu_mask_pte(start_pfn++, type);
+#endif
+			} else {
+				DRM_ERROR("MMU: mmu type invalid %d\n",
+					  driver->mmu_type);
+				ret = -EINVAL;
+				goto out;
+			}
+
 			psb_mmu_set_pte(pt, addr, pte);
 			pt->count++;
 		} while (addr += PAGE_SIZE, addr < next);
@@ -855,6 +933,7 @@ int psb_mmu_insert_pages(struct psb_mmu_pd *pd, struct page **pages,
 			 uint32_t hw_tile_stride, int type)
 {
 	struct psb_mmu_pt *pt;
+	struct psb_mmu_driver *driver = pd->driver;
 	uint32_t rows = 1;
 	uint32_t i;
 	uint32_t pte;
@@ -892,9 +971,23 @@ int psb_mmu_insert_pages(struct psb_mmu_pd *pd, struct page **pages,
 				goto out;
 			}
 			do {
-				pte =
-					psb_mmu_mask_pte(page_to_pfn(*pages++),
-							 type);
+				if (driver->mmu_type == IMG_MMU) {
+					pte = psb_mmu_mask_pte(
+						page_to_pfn(*pages++),
+						type);
+#ifdef SUPPORT_VSP
+				} else if (driver->mmu_type == VSP_MMU) {
+					pte = vsp_mmu_mask_pte(
+						page_to_pfn(*pages++),
+						type);
+#endif
+				} else {
+					DRM_ERROR("MMU: mmu type invalid %d\n",
+						  driver->mmu_type);
+					ret = -EINVAL;
+					goto out;
+				}
+
 				psb_mmu_set_pte(pt, addr, pte);
 				pt->count++;
 			} while (addr += PAGE_SIZE, addr < next);

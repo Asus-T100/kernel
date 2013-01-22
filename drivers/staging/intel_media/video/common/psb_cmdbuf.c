@@ -24,7 +24,16 @@
 #include "psb_drm.h"
 #include "psb_reg.h"
 #include "psb_msvdx.h"
+#if !defined(DISABLE_ENCODE)
 #include "pnw_topaz.h"
+#ifdef MERRIFIELD
+#include "lnc_topaz.h"
+#include "tng_topaz.h"
+#endif
+#endif
+#ifdef SUPPORT_VSP
+#include "vsp.h"
+#endif
 #include "ttm/ttm_bo_api.h"
 #include "ttm/ttm_execbuf_util.h"
 #include "psb_ttm_userobj_api.h"
@@ -820,6 +829,7 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 		msvdx_priv->tfile = tfile;
 		context = &dev_priv->decode_context;
 	} else if (arg->engine == LNC_ENGINE_ENCODE) {
+#if !defined(DISABLE_ENCODE)
 		if (dev_priv->topaz_disabled) {
 			ret = -ENODEV;
 			goto out_err0;
@@ -834,10 +844,29 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 		if (unlikely(ret != 0))
 			goto out_err0;
 		context = &dev_priv->encode_context;
+#endif
+	} else if (arg->engine == VSP_ENGINE_VPP) {
+#ifdef SUPPORT_VSP
+		if (!ospm_power_using_hw_begin(OSPM_VIDEO_VPP_ISLAND,
+					       OSPM_UHB_FORCE_POWER_ON))
+			return -EBUSY;
+#endif
 	} else {
 		ret = -EINVAL;
 		goto out_err0;
 	}
+#if defined(MERRIFIELD)
+	PSB_DEBUG_GENERAL("by pass soc 0 %x\n", PSB_RMSVDX32(0x630));
+	PSB_DEBUG_GENERAL("by pass soc 1 %x\n", PSB_RMSVDX32(0x640));
+
+	{
+		PSB_WVDC32(0x103, 0x2850);
+		PSB_WVDC32(0xffffffff, 0x2884);
+		PSB_WVDC32(0xffffffff, 0x288c);
+		PSB_WVDC32(0xffffffff, 0x2894);
+		PSB_WVDC32(0xffffffff, 0x2898);
+	}
+#endif
 
 	context->used_buffers = 0;
 	context->fence_types = 0;
@@ -921,13 +950,33 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 		break;
 
 	case LNC_ENGINE_ENCODE:
-		ret = pnw_cmdbuf_video(file_priv, &context->validate_list,
-					       context->fence_types, arg,
-					       cmd_buffer, &fence_arg);
+#if !defined(DISABLE_ENCODE)
+		if (IS_MDFLD(dev))
+			ret = pnw_cmdbuf_video(
+				file_priv, &context->validate_list,
+				context->fence_types, arg,
+				cmd_buffer, &fence_arg);
+#ifdef MERRIFIELD
+		if (IS_MRFLD(dev))
+			ret = tng_cmdbuf_video(
+				file_priv, &context->validate_list,
+				context->fence_types, arg,
+				cmd_buffer, &fence_arg);
+#endif
 		if (unlikely(ret != 0))
 			goto out_err4;
 		break;
+#endif
+	case VSP_ENGINE_VPP:
+#ifdef SUPPORT_VSP
+		ret = vsp_cmdbuf_vpp(file_priv, &context->validate_list,
+				     context->fence_types, arg,
+				     cmd_buffer, &fence_arg);
 
+		if (unlikely(ret != 0))
+			goto out_err4;
+		break;
+#endif
 	default:
 		DRM_ERROR
 		("Unimplemented command submission mechanism (%x).\n",
@@ -960,8 +1009,13 @@ out_err0:
 	if (arg->engine == PSB_ENGINE_DECODE)
 		ospm_power_using_video_end(OSPM_VIDEO_DEC_ISLAND);
 
+#if !defined(DISABLE_ENCODE)
 	if (arg->engine == LNC_ENGINE_ENCODE)
 		ospm_power_using_video_end(OSPM_VIDEO_ENC_ISLAND);
-
+#endif
+#ifdef SUPPORT_VSP
+	if (arg->engine == VSP_ENGINE_VPP)
+		ospm_power_using_hw_end(OSPM_VIDEO_VPP_ISLAND);
+#endif
 	return ret;
 }

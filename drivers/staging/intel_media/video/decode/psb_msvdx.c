@@ -33,11 +33,14 @@
 #ifdef CONFIG_VIDEO_MRFLD
 #include "psb_msvdx_ec.h"
 #endif
-#include "pnw_topaz.h"
+
 #include "psb_powermgmt.h"
 #include <linux/io.h>
 #include <linux/delay.h>
+
+#ifdef CONFIG_MDFD_GL3
 #include "mdfld_gl3.h"
+#endif
 
 #ifndef list_first_entry
 #define list_first_entry(ptr, type, member) \
@@ -73,7 +76,7 @@ static int psb_msvdx_dequeue_send(struct drm_device *dev)
 	if (IS_MSVDX_MEM_TILE(dev) && drm_psb_msvdx_tiling)
 		psb_msvdx_set_tile(dev, msvdx_cmd->msvdx_tile);
 
-#ifdef CONFIG_VIDEO_MRFLD
+#ifdef CONFIG_VIDEO_MRFLD_EC
 	/* Seperate update frame and backup cmds because if a batch of cmds
 	 * doesn't have * host_be_opp message, no need to update frame info
 	 * but still need to backup cmds.
@@ -324,7 +327,7 @@ static int psb_msvdx_map_command(struct drm_device *dev,
 				((msvdx_priv->msvdx_ctx->ctx_type >> 16) & 0xff);
 			psb_msvdx_set_tile(dev, msvdx_tile);
 		}
-#ifdef CONFIG_VIDEO_MRFLD
+#ifdef CONFIG_VIDEO_MRFLD_EC
 		if (msvdx_priv->host_be_opp_enabled) {
 			psb_msvdx_update_frame_info(msvdx_priv,
 				msvdx_priv->tfile,
@@ -363,6 +366,10 @@ int psb_submit_video_cmdbuf(struct drm_device *dev,
 	spin_lock_irqsave(&msvdx_priv->msvdx_lock, irq_flags);
 
 	msvdx_priv->last_msvdx_ctx = msvdx_priv->msvdx_ctx;
+#ifdef MERRIFIELD
+	if (!msvdx_priv->msvdx_fw_loaded)
+		msvdx_priv->msvdx_needs_reset = 1;
+#endif
 	PSB_DEBUG_PM("sequence is 0x%x, needs_reset is 0x%x.\n",
 			sequence, msvdx_priv->msvdx_needs_reset);
 	if (msvdx_priv->msvdx_needs_reset) {
@@ -396,7 +403,7 @@ int psb_submit_video_cmdbuf(struct drm_device *dev,
 		}
 #endif
 
-#ifdef CONFIG_VIDEO_MRFLD
+#ifdef CONFIG_VIDEO_MRFLD_EC
 		/* restore the state when power up during EC */
 		if (msvdx_priv->vec_ec_mem_saved) {
 			for (offset = 0; offset < 4; ++offset)
@@ -1207,7 +1214,7 @@ int psb_msvdx_save_context(struct drm_device *dev)
 	msvdx_priv->vec_local_mem_saved = 1;
 #endif
 
-#ifdef CONFIG_VIDEO_MRFLD
+#ifdef CONFIG_VIDEO_MRFLD_EC
 	/* we should restore the state, if we power down/up during EC */
 	for (offset = 0; offset < 4; ++offset)
 		msvdx_priv->vec_ec_mem_data[offset] =

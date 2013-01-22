@@ -1520,7 +1520,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 #ifdef CONFIG_MDFD_VIDEO_DECODE
 	dev_priv->mmu = psb_mmu_driver_init((void *)0,
 					    drm_psb_trap_pagefaults, 0,
-					    dev_priv);
+					    dev_priv, IMG_MMU);
 	if (!dev_priv->mmu)
 		goto out_err;
 #endif

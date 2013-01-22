@@ -79,7 +79,6 @@ include_dirs := \
 	-I$(MEDIA_INCDIR)/bc_video \
 	-I$(MEDIA_INCDIR)/common \
 	-I$(MEDIA_INCDIR)/video/common \
-	-I$(INCDIR)/imgv \
 	-Iinclude/linux \
 	-Iinclude/drm
 

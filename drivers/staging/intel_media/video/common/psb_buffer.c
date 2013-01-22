@@ -120,6 +120,9 @@ static int drm_psb_tbe_unbind(struct ttm_backend *backend)
 	struct drm_psb_ttm_backend *psb_be =
 		container_of(backend, struct drm_psb_ttm_backend, base);
 	struct psb_mmu_pd *pd = psb_mmu_get_default_pd(dev_priv->mmu);
+#ifdef SUPPORT_VSP
+	struct psb_mmu_pd *vsp_pd = psb_mmu_get_default_pd(dev_priv->vsp_mmu);
+#endif
 
 	if (psb_be->mem_type == TTM_PL_TT) {
 		uint32_t gatt_p_offset =
@@ -135,7 +138,12 @@ static int drm_psb_tbe_unbind(struct ttm_backend *backend)
 			     psb_be->num_pages,
 			     psb_be->desired_tile_stride,
 			     psb_be->hw_tile_stride);
-
+#ifdef SUPPORT_VSP
+	psb_mmu_remove_pages(vsp_pd, psb_be->offset,
+			     psb_be->num_pages,
+			     psb_be->desired_tile_stride,
+			     psb_be->hw_tile_stride);
+#endif
 	return 0;
 }
 
@@ -148,6 +156,9 @@ static int drm_psb_tbe_bind(struct ttm_backend *backend,
 	struct drm_psb_ttm_backend *psb_be =
 		container_of(backend, struct drm_psb_ttm_backend, base);
 	struct psb_mmu_pd *pd = psb_mmu_get_default_pd(dev_priv->mmu);
+#ifdef SUPPORT_VSP
+	struct psb_mmu_pd *vsp_pd = psb_mmu_get_default_pd(dev_priv->vsp_mmu);
+#endif
 	struct ttm_mem_type_manager *man = &bdev->man[bo_mem->mem_type];
 	int type;
 	int ret = 0;
@@ -179,6 +190,15 @@ static int drm_psb_tbe_bind(struct ttm_backend *backend,
 				   psb_be->hw_tile_stride, type);
 	if (ret)
 		goto out_err;
+
+#ifdef SUPPORT_VSP
+	ret = psb_mmu_insert_pages(vsp_pd, psb_be->pages,
+				   psb_be->offset, psb_be->num_pages,
+				   psb_be->desired_tile_stride,
+				   psb_be->hw_tile_stride, type);
+	if (ret)
+		goto out_err;
+#endif
 
 	return 0;
 out_err:
@@ -257,6 +277,7 @@ static int psb_init_mem_type(struct ttm_bo_device *bdev, uint32_t type,
 					 TTM_PL_FLAG_UNCACHED | TTM_PL_FLAG_WC;
 		man->default_caching = TTM_PL_FLAG_WC;
 		break;
+#if !defined(MERRIFIELD)
 	case TTM_PL_IMR:	/* Unmappable IMR memory */
 		man->func = &ttm_bo_manager_func;
 		man->flags = TTM_MEMTYPE_FLAG_MAPPABLE |
@@ -265,6 +286,7 @@ static int psb_init_mem_type(struct ttm_bo_device *bdev, uint32_t type,
 		man->default_caching = TTM_PL_FLAG_UNCACHED;
 		man->gpu_offset = PSB_MEM_IMR_START;
 		break;
+#endif
 	case TTM_PL_TT:	/* Mappable GATT memory */
 		man->func = &ttm_bo_manager_func;
 #ifdef PSB_WORKING_HOST_MMU_ACCESS
@@ -276,8 +298,14 @@ static int psb_init_mem_type(struct ttm_bo_device *bdev, uint32_t type,
 		man->available_caching = TTM_PL_FLAG_CACHED |
 					 TTM_PL_FLAG_UNCACHED | TTM_PL_FLAG_WC;
 		man->default_caching = TTM_PL_FLAG_WC;
+#if defined(MERRIFIELD)
+		man->gpu_offset =
+		    pg->mmu_gatt_start + (pg->rar_start +
+					  dev_priv->rar_region_size);
+#else
 		man->gpu_offset = pg->mmu_gatt_start + pg->ci_start + pg->ci_stolen_size;
 		break;
+#endif
 	case DRM_PSB_MEM_MMU_TILING:
 		man->func = &ttm_bo_manager_func;
 		man->flags = TTM_MEMTYPE_FLAG_MAPPABLE |
@@ -317,7 +345,7 @@ static int psb_move(struct ttm_buffer_object *bo,
 		    bool no_wait, struct ttm_mem_reg *new_mem)
 {
 	struct ttm_mem_reg *old_mem = &bo->mem;
-
+#if !defined(MERRIFIELD)
 	if ((old_mem->mem_type == TTM_PL_IMR) ||
 	    (new_mem->mem_type == TTM_PL_IMR)) {
 		if (old_mem->mm_node) {
@@ -327,7 +355,9 @@ static int psb_move(struct ttm_buffer_object *bo,
 		}
 		old_mem->mm_node = NULL;
 		*old_mem = *new_mem;
-	} else if (old_mem->mem_type == TTM_PL_SYSTEM) {
+	} else
+#endif
+	if (old_mem->mem_type == TTM_PL_SYSTEM) {
 		return ttm_bo_move_memcpy(bo, evict, false, no_wait, new_mem);
 	} else if (new_mem->mem_type == TTM_PL_SYSTEM) {
 		int ret = psb_move_flip(bo, evict, interruptible,
@@ -391,11 +421,13 @@ static int psb_ttm_io_mem_reserve(struct ttm_bo_device *bdev, struct ttm_mem_reg
 		mem->bus.offset = mem->start << PAGE_SHIFT;
 		mem->bus.base = 0x00000000;
 		break;
+#if !defined(MERRIFIELD)
 	case TTM_PL_IMR:
 		mem->bus.offset = mem->start << PAGE_SHIFT;
 		mem->bus.base = dev_priv->imr_region_start;;
 		mem->bus.is_iomem = true;
 		break;
+#endif
 	case DRM_PSB_MEM_MMU_TILING:
 		mem->bus.offset = mem->start << PAGE_SHIFT;
 		mem->bus.base = 0x00000000;

@@ -75,6 +75,7 @@ int ttm_fence_wait_polling(struct ttm_fence_object *fence, bool lazy,
 				    TASK_INTERRUPTIBLE : TASK_UNINTERRUPTIBLE);
 		if (ttm_fence_object_signaled(fence, mask))
 			break;
+#if !(defined CONFIG_BOARD_MRFLD_VP || defined CONFIG_X86_MRFLD_ZILKER)
 		if (time_after_eq(jiffies, end_jiffies)) {
 			if (driver->lockup)
 				driver->lockup(fence, mask);
@@ -82,6 +83,7 @@ int ttm_fence_wait_polling(struct ttm_fence_object *fence, bool lazy,
 				ttm_fence_lockup(fence, mask);
 			continue;
 		}
+#endif
 		if (lazy)
 			schedule_timeout(1);
 		else if ((++count & 0x0F) == 0) {
@@ -351,9 +353,12 @@ retry:
 
 		cur_jiffies = jiffies;
 		to_jiffies = fence->timeout_jiffies;
-
+#if !(defined CONFIG_BOARD_MRFLD_VP || defined CONFIG_X86_MRFLD_ZILKER)
 		timeout = (time_after(to_jiffies, cur_jiffies)) ?
-			  to_jiffies - cur_jiffies : 1;
+		    to_jiffies - cur_jiffies : 1;
+#else
+		timeout = 3 * DRM_HZ;
+#endif
 
 		if (interruptible)
 			ret = wait_event_interruptible_timeout
@@ -368,10 +373,12 @@ retry:
 			return -ERESTART;
 
 		if (unlikely(ret == 0)) {
+#if !(defined CONFIG_BOARD_MRFLD_VP || defined CONFIG_X86_MRFLD_ZILKER)
 			if (driver->lockup)
 				driver->lockup(fence, mask);
 			else
 				ttm_fence_lockup(fence, mask);
+#endif
 			goto retry;
 		}
 
