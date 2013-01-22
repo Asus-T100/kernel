@@ -4239,11 +4239,9 @@ static int intel_mid_stop_peripheral(struct intel_mid_otg_xceiv *iotg)
 	if (dev->has_sram && dev->got_sram)
 		sram_deinit(dev);
 
-	if (dev) {
-		spin_lock_irqsave(&dev->lock, flags);
-		dev->vbus_active = 0;
-		spin_unlock_irqrestore(&dev->lock, flags);
-	}
+	spin_lock_irqsave(&dev->lock, flags);
+	dev->vbus_active = 0;
+	spin_unlock_irqrestore(&dev->lock, flags);
 
 	pm_runtime_put(&dev->pdev->dev);
 	wake_unlock(&dev->wake_lock);
