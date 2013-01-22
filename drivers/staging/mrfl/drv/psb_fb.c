@@ -339,7 +339,7 @@ static struct drm_framebuffer *psb_user_framebuffer_create(
 
 	size = r->height * r->pitch;
 	if (size < r->height * r->pitch)
-		return NULL;
+		return ERR_PTR(-ENOMEM);
 
 	/* JB: TODO not drop, refcount buffer */
 	/* return psb_framebuffer_create(dev, r, bo); */
@@ -347,7 +347,7 @@ static struct drm_framebuffer *psb_user_framebuffer_create(
 	fb = psb_framebuffer_create(dev, r);
 	if (!fb) {
 		DRM_ERROR("failed to allocate fb.\n");
-		return NULL;
+		return ERR_PTR(-EINVAL);
 	}
 
 	psbfb = to_psb_fb(fb);
@@ -362,7 +362,7 @@ static struct drm_framebuffer *psb_user_framebuffer_create(
 
 	info = framebuffer_alloc(0, &dev->pdev->dev);
 	if (!info)
-		return NULL;
+		return ERR_PTR(-ENOMEM);
 
 	info->screen_base = pg->vram_addr;
 

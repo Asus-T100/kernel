@@ -859,7 +859,7 @@ static struct drm_framebuffer *psb_user_framebuffer_create
 		DRM_ERROR("Cannot get meminfo for handle 0x%x\n",
 			  (IMG_UINT32)hKernelMemInfo);
 
-		return NULL;
+		return ERR_PTR(ret);
 	}
 
 	DRM_DEBUG("Got Kernel MemInfo for handle %lx\n",
@@ -868,7 +868,7 @@ static struct drm_framebuffer *psb_user_framebuffer_create
 	/* JB: TODO not drop, make smarter */
 	size = psKernelMemInfo->uAllocSize;
 	if (size < r->height * r->pitch)
-		return NULL;
+		return ERR_PTR(-ENOMEM);
 
 	/* JB: TODO not drop, refcount buffer */
 	/* return psb_framebuffer_create(dev, r, bo); */
@@ -876,7 +876,7 @@ static struct drm_framebuffer *psb_user_framebuffer_create
 	fb = psb_framebuffer_create(dev, r, (void *)psKernelMemInfo);
 	if (!fb) {
 		DRM_ERROR("failed to allocate fb.\n");
-		return NULL;
+		return ERR_PTR(-EINVAL);
 	}
 
 	psbfb = to_psb_fb(fb);
@@ -891,7 +891,7 @@ static struct drm_framebuffer *psb_user_framebuffer_create
 		if (ret) {
 			DRM_ERROR("map meminfo for 0x%x failed\n",
 				  (IMG_UINT32)hKernelMemInfo);
-			return NULL;
+			return ERR_PTR(-ENOMEM);
 		}
 		psbfb->offset = (offset << PAGE_SHIFT);
 	} else {
@@ -903,7 +903,7 @@ static struct drm_framebuffer *psb_user_framebuffer_create
 	info = framebuffer_alloc(0, &dev->pdev->dev);
 #endif
 	if (!info)
-		return NULL;
+		return ERR_PTR(-ENOMEM);
 
 	strcpy(info->fix.id, "psbfb");
 
