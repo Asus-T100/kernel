@@ -97,7 +97,7 @@ void mdfld_dsi_dbi_set_power(struct drm_encoder *encoder, bool on);
 //extern int psb_check_msvdx_idle(struct drm_device *dev);
 //extern int lnc_check_topaz_idle(struct drm_device *dev);
 /* Use these functions to power down video HW for D0i3 purpose  */
-void ospm_apm_power_down_msvdx(struct drm_device *dev);
+void ospm_apm_power_down_msvdx(struct drm_device *dev, int force_off);
 void ospm_apm_power_down_topaz(struct drm_device *dev);
 void ospm_apm_power_down_vsp(struct drm_device *dev);
 
@@ -119,6 +119,9 @@ int ospm_power_resume(struct pci_dev *pdev);
  */
 bool ospm_power_using_hw_begin(int hw_island, UHBUsage usage);
 void ospm_power_using_hw_end(int hw_island);
+
+bool ospm_power_using_video_begin(int hw_island);
+void ospm_power_using_video_end(int hw_island);
 
 /*
  * Use this function to do an instantaneous check for if the hw is on.

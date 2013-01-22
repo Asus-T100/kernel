@@ -160,6 +160,7 @@ struct drm_psb_reloc {
 #define PSB_ENGINE_DECODE 0
 #define LNC_ENGINE_ENCODE 1
 #define PSB_NUM_ENGINES 2
+#define VSP_ENGINE_VPP 6
 
 /*
  * For this fence class we have a couple of

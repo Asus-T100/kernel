@@ -22,7 +22,15 @@
 #include <drm/drmP.h>
 #include "psb_drv.h"
 #include "psb_msvdx.h"
+#if !defined(DISABLE_ENCODE)
 #include "pnw_topaz.h"
+#ifdef MERRIFIELD
+#include "tng_topaz.h"
+#endif
+#endif
+#ifdef SUPPORT_VSP
+#include "vsp.h"
+#endif
 
 int psb_fence_emit_sequence(struct ttm_fence_device *fdev,
 			    uint32_t fence_class,
@@ -49,11 +57,20 @@ int psb_fence_emit_sequence(struct ttm_fence_device *fdev,
 		seq += msvdx_priv->num_cmd;
 		spin_unlock(&dev_priv->sequence_lock);
 		break;
+#if !defined(DISABLE_ENCODE)
 	case LNC_ENGINE_ENCODE:
 		spin_lock(&dev_priv->sequence_lock);
 		seq = dev_priv->sequence[fence_class]++;
 		spin_unlock(&dev_priv->sequence_lock);
 		break;
+#endif
+#ifdef SUPPORT_VSP
+	case VSP_ENGINE_VPP:
+		spin_lock(&dev_priv->sequence_lock);
+		seq = dev_priv->sequence[fence_class]++;
+		spin_unlock(&dev_priv->sequence_lock);
+		break;
+#endif
 	default:
 		DRM_ERROR("Unexpected fence class\n");
 		return -EINVAL;
@@ -84,11 +101,27 @@ static void psb_fence_poll(struct ttm_fence_device *fdev,
 	case PSB_ENGINE_DECODE:
 		sequence = msvdx_priv->msvdx_current_sequence;
 		break;
+
 	case LNC_ENGINE_ENCODE:
+#if !defined(DISABLE_ENCODE)
 		if (IS_MDFLD(dev))
 			sequence = *((uint32_t *)
 				     ((struct pnw_topaz_private *)dev_priv->topaz_private)->topaz_sync_addr + 1);
+#ifdef MERRIFIELD
+		if (IS_MRFLD(dev))
+			sequence = *((uint32_t *)
+				     ((struct pnw_topaz_private *)
+				      dev_priv->topaz_private)->
+				     topaz_sync_addr + 1);
+#endif
+#endif
 		break;
+
+	case VSP_ENGINE_VPP:
+#ifdef SUPPORT_VSP
+		sequence = vsp_fence_poll(dev_priv);
+		break;
+#endif
 	default:
 		break;
 	}
@@ -108,19 +141,28 @@ static void psb_fence_lockup(struct ttm_fence_object *fence,
 	struct drm_device *dev = (struct drm_device *)dev_priv->dev;
 
 	if (fence->fence_class == LNC_ENGINE_ENCODE) {
+#if !defined(DISABLE_ENCODE)
 		DRM_ERROR("TOPAZ timeout (probable lockup) detected,  flush queued cmdbuf");
 
 		write_lock(&fc->lock);
-		pnw_topaz_handle_timeout(fence->fdev);
+		if (IS_MDFLD(dev))
+			pnw_topaz_handle_timeout(fence->fdev);
+#ifdef MERRIFIELD
+		if (IS_MRFLD(dev))
+			tng_topaz_handle_timeout(fence->fdev);
+#endif
 		ttm_fence_handler(fence->fdev, fence->fence_class,
 				  fence->sequence, fence_types, -EBUSY);
 		write_unlock(&fc->lock);
+#endif
 	} else if (fence->fence_class == PSB_ENGINE_DECODE) {
 		struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
 
 		PSB_DEBUG_WARN("MSVDX timeout (probable lockup) detected, flush queued cmdbuf");
+#if !defined(MERRIFIELD)
 		if (psb_get_power_state(OSPM_VIDEO_DEC_ISLAND) == 0)
 			PSB_DEBUG_WARN("WARN: msvdx is power off in accident.\n");
+#endif
 		PSB_DEBUG_WARN("WARN: MSVDX_COMMS_FW_STATUS reg is 0x%x.\n",
 				PSB_RMSVDX32(MSVDX_COMMS_FW_STATUS));
 		psb_msvdx_flush_cmd_queue(dev);
@@ -135,7 +177,20 @@ static void psb_fence_lockup(struct ttm_fence_object *fence,
 				MSVDX_RESET_NEEDS_INIT_FW;
 		else
 			msvdx_priv->msvdx_needs_reset = 1;
+	} else if (fence->fence_class == VSP_ENGINE_VPP) {
+#ifdef SUPPORT_VSP
+		struct vsp_private *vsp_priv = dev_priv->vsp_private;
 
+		DRM_ERROR("VSP timeout (probable lockup) detected,"
+			  " reset vsp\n");
+		write_lock(&fc->lock);
+		ttm_fence_handler(fence->fdev, fence->fence_class,
+				  fence->sequence, fence_types,
+				  -EBUSY);
+		write_unlock(&fc->lock);
+
+		vsp_priv->needs_reset = 1;
+#endif
 	} else {
 		DRM_ERROR("Unsupported fence class\n");
 	}

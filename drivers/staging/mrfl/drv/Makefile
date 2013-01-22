@@ -8,14 +8,14 @@ ccflags-y += \
 	-I$(INCDIR)/interface \
 	-I$(INCDIR)/rgx/include \
 	-I$(INCDIR)/drv \
-	-I$(INCDIR)/imgv \
-	-I$(INCDIR)/vsp \
 	-I$(INCDIR)/drv/otm_hdmi/os/android/include \
 	-I$(INCDIR)/drv/otm_hdmi/pil/include \
 	-Iinclude/linux \
-	-Iinclude/drm
+	-Iinclude/drm \
+	-I$(INCDIR)/../intel_media/video/common \
+	-I$(INCDIR)/../intel_media/video/decode
 
-ccflags-y += -DANDROID -DLINUX -D_linux_ -D__KERNEL__
+ccflags-y += -DANDROID -DLINUX -D_linux_ -D__KERNEL__ -DDISABLE_ENCODE
 
 ccflags-$(CONFIG_DRM_MDFLD) += -DMEDFIELD
 ccflags-$(CONFIG_DRM_MRFLD) += -DMERRIFIELD
@@ -34,8 +34,6 @@ obj-y += psb_bl.o \
 	mdfld_csc.o \
 	mdfld_intel_hdcp.o \
 	psb_intel_hdmi.o \
-	psb_schedule.o \
-	psb_sgx.o \
 	psb_socket.o \
 	psb_umevents.o \
 	mdfld_dsi_dbi.o \
