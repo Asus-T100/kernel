@@ -1654,7 +1654,8 @@ static ssize_t pmu_sync_d0ix_write(struct file *file,
 		 * flag is needed to distinguish between
 		 * S0ix vs interactive command in pmu_sc_irq()
 		 */
-		status = pmu_issue_interactive_command(&cur_pmsss, false);
+		status = pmu_issue_interactive_command(&cur_pmsss, false,
+							false);
 
 		if (unlikely(status != PMU_SUCCESS)) {
 			dev_dbg(&mid_pmu_cxt->pmu_dev->dev,
