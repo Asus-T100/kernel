@@ -68,10 +68,10 @@
 
 #define GBURST_DEBUG 1
 
-#include <utilf.h>
+#include "utilf.h"
 
 #include <gburst_interface.h>
-#include <gburst.h>
+#include "gburst.h"
 
 #define GBURST_GLOBAL_ENABLE_DEFAULT 1
 
@@ -3217,7 +3217,7 @@ err_interrupt:
  *
  * Function return value: negative to abort module installation.
  */
-static int __init gburst_module_init(void)
+int __init gburst_module_init(void)
 {
 	struct gburst_pvt_s *gbprv;
 	int rva;
@@ -3230,17 +3230,20 @@ static int __init gburst_module_init(void)
 
 	return rva;
 }
+EXPORT_SYMBOL(gburst_module_init);
 
 
 /**
  * gburst_module_exit() - Classic module exit function.
  */
-static void __exit gburst_module_exit(void)
+void __exit gburst_module_exit(void)
 {
 	gburst_cleanup(gburst_private_ptr);
 }
+EXPORT_SYMBOL(gburst_module_exit);
 
 
+#if 0
 #if (defined MODULE)
 module_init(gburst_module_init);
 #else
@@ -3253,7 +3256,8 @@ module_init(gburst_module_init);
 
 late_initcall_sync(gburst_module_init);
 #endif
+#endif
 
-module_exit(gburst_module_exit);
+/* module_exit(gburst_module_exit); */
 
 #endif /* if (defined CONFIG_GPU_BURST) || (defined CONFIG_GPU_BURST_MODULE) */

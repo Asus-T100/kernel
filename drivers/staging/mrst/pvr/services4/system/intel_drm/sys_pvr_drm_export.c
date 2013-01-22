@@ -46,6 +46,7 @@
 #include "sys_pvr_drm_import.h"
 
 #include "sys_pvr_drm_export.h"
+#include "psb_drv.h"
 
 int
 SYSPVRInit(void)
@@ -199,4 +200,52 @@ SYSPVRResume(struct drm_device *dev)
 	PVR_UNREFERENCED_PARAMETER(dev);
 #endif
 	return 0;
+}
+
+PVRSRV_ERROR OSScheduleMISR2(void)
+{
+	SYS_DATA *psSysData;
+	SysAcquireData(&psSysData);
+	OSScheduleMISR(psSysData);
+}
+
+void SYSPVRFillCallback(struct drm_device *ddev)
+{
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *)ddev->dev_private;
+	struct gpu_pvr_ops *pvr_ops =
+		kmalloc(sizeof(struct gpu_pvr_ops), GFP_KERNEL);
+
+	BUG_ON(!pvr_ops);
+	/* init wraper table */
+	pvr_ops->PVRGetDisplayClassJTable = PVRGetDisplayClassJTable;
+#if defined(SUPPORT_DRI_DRM_EXT)
+	pvr_ops->SYSPVRServiceSGXInterrupt = SYSPVRServiceSGXInterrupt;
+#endif
+	pvr_ops->PVRSRVDrmLoad = PVRSRVDrmLoad;
+	pvr_ops->SYSPVRInit = SYSPVRInit;
+	pvr_ops->PVRDRM_Dummy_ioctl = PVRDRM_Dummy_ioctl;
+	pvr_ops->PVRMMap = PVRMMap;
+	pvr_ops->PVRSRVDrmPostClose = PVRSRVDrmPostClose;
+	pvr_ops->PVRSRV_BridgeDispatchKM = PVRSRV_BridgeDispatchKM;
+	pvr_ops->PVRSRVOpen = PVRSRVOpen;
+	pvr_ops->PVRDRMIsMaster = PVRDRMIsMaster;
+	pvr_ops->PVRDRMUnprivCmd = PVRDRMUnprivCmd;
+	pvr_ops->SYSPVRDBGDrivIoctl = SYSPVRDBGDrivIoctl;
+	pvr_ops->PVRSRVDrmUnload = PVRSRVDrmUnload;
+	pvr_ops->PVRSRVPerProcessData = PVRSRVPerProcessData;
+	pvr_ops->PVRSRVLookupHandle = PVRSRVLookupHandle;
+	pvr_ops->LinuxMemAreaToCpuPAddr = LinuxMemAreaToCpuPAddr;
+	pvr_ops->OSScheduleMISR2 = OSScheduleMISR2;
+
+	dev_priv->pvr_ops = pvr_ops;
+}
+
+void SYSPVRClearCallback(struct drm_device *ddev)
+{
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *)ddev->dev_private;
+
+	kfree(dev_priv->pvr_ops);
+	dev_priv->pvr_ops = NULL;
 }

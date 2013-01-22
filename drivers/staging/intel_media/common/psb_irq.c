@@ -739,7 +739,8 @@ irqreturn_t psb_irq_handler(DRM_IRQ_ARGS)
 	}
 #endif
 	if (sgx_int) {
-		if (SYSPVRServiceSGXInterrupt(dev) != 0)
+		BUG_ON(!dev_priv->pvr_ops);
+		if (dev_priv->pvr_ops->SYSPVRServiceSGXInterrupt(dev) != 0)
 				handled = 1;
 	}
 

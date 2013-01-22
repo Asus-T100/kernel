@@ -69,6 +69,10 @@ static PFN_DC_GET_PVRJTABLE pfnGetPVRJTable = 0;
 static int FirstCleanFlag = 1;
 static IMG_BOOL DRMLFBFlipBlackScreen(MRSTLFB_DEVINFO *psDevInfo,
 					IMG_BOOL bAlpha);
+static MRST_ERROR MRSTLFBAllocBuffer(struct MRSTLFB_DEVINFO_TAG *psDevInfo,
+		IMG_UINT32 ui32Size, MRSTLFB_BUFFER **ppBuffer);
+static MRST_ERROR MRSTLFBFreeBuffer(struct MRSTLFB_DEVINFO_TAG *psDevInfo,
+		MRSTLFB_BUFFER **ppBuffer);
 
 static MRSTLFB_DEVINFO * GetAnchorPtr(void)
 {
@@ -112,9 +116,11 @@ static IMG_BOOL MRSTLFBFlip(MRSTLFB_DEVINFO *psDevInfo,
 static inline void MRSTFBFlipComplete(MRSTLFB_SWAPCHAIN *psSwapChain, MRSTLFB_VSYNC_FLIP_ITEM* psFlipItem, MRST_BOOL bSchedule)
 {
 	MRSTLFB_VSYNC_FLIP_ITEM *psLastItem;
-	SYS_DATA				*psSysData;
 	MRST_BOOL bMISRScheduled = MRST_FALSE;
-	SysAcquireData(&psSysData);
+	struct drm_driver         *psDrmDriver;
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *)psSwapChain->psDrmDev->dev_private;
+
 	if (psSwapChain) {
 		psLastItem = &(psSwapChain->sLastItem);
 		if (psLastItem->bValid && psLastItem->bFlipped && psLastItem->bCmdCompleted == MRST_FALSE)
@@ -126,10 +132,10 @@ static inline void MRSTFBFlipComplete(MRSTLFB_SWAPCHAIN *psSwapChain, MRSTLFB_VS
 		if (psFlipItem)
 			psSwapChain->sLastItem = *psFlipItem;
 	}
+	BUG_ON(!dev_priv->pvr_ops);
 	if (bSchedule && !bMISRScheduled)
-		OSScheduleMISR(psSysData);
+		dev_priv->pvr_ops->OSScheduleMISR2();
 }
-
 
 static void MRSTLFBFlipOverlay(MRSTLFB_DEVINFO *psDevInfo,
 			struct intel_overlay_context *psContext, u32 pipe_mask)
@@ -1366,7 +1372,7 @@ ExitUnlock:
 
 }
 
-void MRSTLFBFlipTimerFn(unsigned long arg)
+static void MRSTLFBFlipTimerFn(unsigned long arg)
 {
 	MRSTLFB_DEVINFO *psDevInfo = (MRSTLFB_DEVINFO *)arg;
 
@@ -2087,7 +2093,7 @@ void MRSTLFBResume(void)
 
 #ifdef DRM_PVR_USE_INTEL_FB
 #include "mm.h"
-int MRSTLFBHandleChangeFB(struct drm_device* dev, struct psb_framebuffer *psbfb)
+static int MRSTLFBHandleChangeFB(struct drm_device* dev, struct psb_framebuffer *psbfb)
 {
 	MRSTLFB_DEVINFO *psDevInfo = GetAnchorPtr();
 	int i;
@@ -2142,7 +2148,7 @@ int MRSTLFBHandleChangeFB(struct drm_device* dev, struct psb_framebuffer *psbfb)
 }
 #else
 
-int MRSTLFBHandleChangeFB(struct drm_device* dev, struct psb_framebuffer *psbfb)
+static int MRSTLFBHandleChangeFB(struct drm_device* dev, struct psb_framebuffer *psbfb)
 {
 	MRSTLFB_DEVINFO *psDevInfo = GetAnchorPtr();
 	int i;
@@ -2200,7 +2206,8 @@ MRST_ERROR MRSTLFBChangeSwapChainProperty(unsigned long *psSwapChainGTTOffset,
 	MRST_ERROR eError = MRST_ERROR_GENERIC;
 
 	if (psDevInfo == IMG_NULL) {
-		DRM_DEBUG("MRSTLFB hasn't been initialized\n");
+		DRM_ERROR("MRSTLFB hasn't been initialized, SGX unloaded?\n");
+		BUG();
 		/* Won't attach/de-attach the plane in case of no swap chain
 		 * created. */
 		eError = MRST_ERROR_INIT_FAILURE;
@@ -2471,7 +2478,7 @@ static MRST_ERROR InitDev(MRSTLFB_DEVINFO *psDevInfo)
 	return MRST_OK;
 }
 
-IMG_VOID MRSTQuerySwapCommand(IMG_HANDLE hDev, IMG_HANDLE hSwap, IMG_HANDLE hBuffer, IMG_HANDLE hTag, IMG_UINT16* ID, IMG_BOOL* bAddRef)
+static IMG_VOID MRSTQuerySwapCommand(IMG_HANDLE hDev, IMG_HANDLE hSwap, IMG_HANDLE hBuffer, IMG_HANDLE hTag, IMG_UINT16* ID, IMG_BOOL* bAddRef)
 {
 	UNREFERENCED_PARAMETER(hDev);
 	UNREFERENCED_PARAMETER(hSwap);
@@ -2486,9 +2493,7 @@ MRST_ERROR MRSTLFBInit(struct drm_device * dev)
 {
 
 	MRSTLFB_DEVINFO		*psDevInfo;
-#ifndef DRM_PVR_USE_INTEL_FB
 	struct drm_psb_private *psDrmPriv = (struct drm_psb_private *)dev->dev_private;
-#endif
 
 	psDevInfo = GetAnchorPtr();
 
@@ -2518,13 +2523,8 @@ MRST_ERROR MRSTLFBInit(struct drm_device * dev)
 			return (MRST_ERROR_INIT_FAILURE);
 		}
 
-		if(MRSTLFBGetLibFuncAddr ("PVRGetDisplayClassJTable", &pfnGetPVRJTable) != MRST_OK)
-		{
-			return (MRST_ERROR_INIT_FAILURE);
-		}
-
-
-		if(!(*pfnGetPVRJTable)(&psDevInfo->sPVRJTable))
+		if(!psDrmPriv->pvr_ops->PVRGetDisplayClassJTable(
+					&psDevInfo->sPVRJTable))
 		{
 			return (MRST_ERROR_INIT_FAILURE);
 		}
@@ -2696,7 +2696,7 @@ MRST_ERROR MRSTLFBDeinit(void)
 
 
 
-MRST_ERROR MRSTLFBAllocBuffer(struct MRSTLFB_DEVINFO_TAG *psDevInfo, IMG_UINT32 ui32Size, MRSTLFB_BUFFER **ppBuffer)
+static MRST_ERROR MRSTLFBAllocBuffer(struct MRSTLFB_DEVINFO_TAG *psDevInfo, IMG_UINT32 ui32Size, MRSTLFB_BUFFER **ppBuffer)
 {
 	IMG_VOID *pvBuf;
 	IMG_UINT32 ulPagesNumber;
@@ -2737,7 +2737,7 @@ MRST_ERROR MRSTLFBAllocBuffer(struct MRSTLFB_DEVINFO_TAG *psDevInfo, IMG_UINT32 
    	return MRST_OK;
 }
 
-MRST_ERROR MRSTLFBFreeBuffer(struct MRSTLFB_DEVINFO_TAG *psDevInfo, MRSTLFB_BUFFER **ppBuffer)
+static MRST_ERROR MRSTLFBFreeBuffer(struct MRSTLFB_DEVINFO_TAG *psDevInfo, MRSTLFB_BUFFER **ppBuffer)
 {
 	if( !(*ppBuffer)->bIsAllocated )
 		return MRST_ERROR_INVALID_PARAMS;

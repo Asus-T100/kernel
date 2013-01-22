@@ -35,8 +35,6 @@
 #include "servicesint.h"
 
 extern struct psb_framebuffer *psbfb;
-int MRSTLFBHandleChangeFB(struct drm_device *dev,
-		struct psb_framebuffer *psbfb);
 
 struct psb_framebuffer {
 	struct drm_framebuffer base;

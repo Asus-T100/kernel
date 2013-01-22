@@ -34,7 +34,7 @@
 #include <stddef.h>
 #include <linux/ctype.h>
 
-#include <utilf.h>
+#include "utilf.h"
 
 #include "gburst.h"
 #include <gburst_hw.h>

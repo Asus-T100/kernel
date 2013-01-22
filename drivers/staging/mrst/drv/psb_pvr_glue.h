@@ -19,10 +19,12 @@
 #include "psb_drv.h"
 #include "services_headers.h"
 
-extern int psb_get_meminfo_by_handle(IMG_HANDLE hKernelMemInfo,
+extern int psb_get_meminfo_by_handle(struct drm_psb_private *dev_priv,
+				IMG_HANDLE hKernelMemInfo,
 				PVRSRV_KERNEL_MEM_INFO **ppsKernelMemInfo);
 extern IMG_UINT32 psb_get_tgid(void);
-extern int psb_get_pages_by_mem_handle(IMG_HANDLE hOSMemHandle,
+extern int psb_get_pages_by_mem_handle(struct drm_psb_private *dev_priv,
+					IMG_HANDLE hOSMemHandle,
 					u32 **pfn_list,
 					int page_count);
 extern int psb_get_vaddr_pages(u32 vaddr, u32 size, u32 **pfn_list, int *pages);

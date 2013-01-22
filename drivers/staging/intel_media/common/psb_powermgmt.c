@@ -58,6 +58,7 @@
 #define SCU_CMD_VPROG2  0xe3
 
 struct drm_device *gpDrmDevice;
+EXPORT_SYMBOL(gpDrmDevice);
 struct mutex g_ospm_mutex;
 
 /* Lock strategy */
@@ -1478,6 +1479,7 @@ void ospm_power_graphics_island_down(int hw_islands)
 #endif
 	}
 }
+EXPORT_SYMBOL(ospm_power_graphics_island_down);
 
 /*
  * ospm_power_island_down
@@ -1592,6 +1594,7 @@ void ospm_power_island_down(int hw_islands)
 #endif
 	}
 }
+EXPORT_SYMBOL(ospm_power_island_down);
 
 /*
  * ospm_power_is_hw_on

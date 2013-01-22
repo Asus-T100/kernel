@@ -470,10 +470,47 @@ static void __exit PVRSRVDrmExit(void)
 	drm_pvr_dev_remove();
 #endif
 }
+#else
+#ifdef CONFIG_DRM_CTP
+extern int __init gburst_module_init(void);
+extern int __init gburst_module_exit(void);
+#endif
+extern void SYSPVRFillCallback(struct drm_device *ddev);
+extern void SYSPVRClearCallback(struct drm_device *ddev);
+extern struct drm_device *g_drm_dev;
 
+static int __init PVRSRVDrmInit(void)
+{
+	printk(KERN_INFO "__SGX_pvr init..\n");
+	SYSPVRFillCallback(g_drm_dev);
+	PVRDPFInit();
+	/* Do not care chipset, right? PVRSRVDrmLoad(dev, chipset) */
+	PVRSRVDrmLoad(g_drm_dev, 0);
+	printk(KERN_INFO "__SGX_pvr init ok\n");
+#ifdef CONFIG_DRM_CTP
+	return gburst_module_init();
+#endif
+	return 0;
+}
+
+static void __exit PVRSRVDrmExit(void)
+{
+	int ret = 0;
+	printk(KERN_INFO "__SGX_pvr exit..\n");
+#ifdef CONFIG_DRM_CTP
+	ret = gburst_module_exit();
+	if (ret)
+		return ret;
+#endif
+	PVRSRVDrmUnload(g_drm_dev);
+	SYSPVRClearCallback(g_drm_dev);
+	printk(KERN_INFO "__SGX_pvr exit ok..\n");
+	return 0;
+}
+
+#endif
 module_init(PVRSRVDrmInit);
 module_exit(PVRSRVDrmExit);
-#endif
 #endif
 
 
