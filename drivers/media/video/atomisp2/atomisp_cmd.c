@@ -668,67 +668,39 @@ static void get_buf_timestamp(struct timeval *tv)
 	tv->tv_usec = ts.tv_nsec / NSEC_PER_USEC;
 }
 
-/* Returns queued buffers back to video-core */
-void atomisp_flush_bufs_and_wakeup(struct atomisp_device *isp)
+void atomisp_flush_video_pipe(struct atomisp_device *isp,
+			      struct atomisp_video_pipe *pipe)
 {
-	struct atomisp_video_pipe *pipe;
 	unsigned long irqflags;
 	int i;
 
-	pipe = &isp->isp_subdev.video_out_capture;
-	if (pipe->users) {
-		for (i = 0; pipe->capq.bufs[i]; i++) {
-			spin_lock_irqsave(&pipe->irq_lock, irqflags);
-			if (pipe->capq.bufs[i]->state == VIDEOBUF_ACTIVE ||
-					pipe->capq.bufs[i]->state == VIDEOBUF_QUEUED) {
-				get_buf_timestamp(&pipe->capq.bufs[i]->ts);
-				pipe->capq.bufs[i]->field_count =
-					atomic_read(&isp->sequence) << 1;
-				pipe->capq.bufs[i]->state = VIDEOBUF_ERROR;
-				wake_up(&pipe->capq.bufs[i]->done);
-				v4l2_dbg(2, dbg_level, &atomisp_dev,
-					 "release buffer from capture queue\n");
-			}
-			spin_unlock_irqrestore(&pipe->irq_lock, irqflags);
-		}
-	}
+	if (!pipe->users)
+		return;
 
-	pipe = &isp->isp_subdev.video_out_vf;
-	if (pipe->users) {
-		for (i = 0; pipe->capq.bufs[i]; i++) {
-			spin_lock_irqsave(&pipe->irq_lock, irqflags);
-			if (pipe->capq.bufs[i]->state == VIDEOBUF_ACTIVE ||
-					pipe->capq.bufs[i]->state == VIDEOBUF_QUEUED) {
-				get_buf_timestamp(&pipe->capq.bufs[i]->ts);
-				/* videobuf field count == sequence * 2 */
-				pipe->capq.bufs[i]->field_count =
-					atomic_read(&isp->sequence) << 1;
-				pipe->capq.bufs[i]->state = VIDEOBUF_ERROR;
-				wake_up(&pipe->capq.bufs[i]->done);
-				v4l2_dbg(2, dbg_level, &atomisp_dev,
-					 "release buffer from vf queue\n");
-			}
-			spin_unlock_irqrestore(&pipe->irq_lock, irqflags);
+	for (i = 0; pipe->capq.bufs[i]; i++) {
+		spin_lock_irqsave(&pipe->irq_lock, irqflags);
+		if (pipe->capq.bufs[i]->state == VIDEOBUF_ACTIVE ||
+		    pipe->capq.bufs[i]->state == VIDEOBUF_QUEUED) {
+			get_buf_timestamp(&pipe->capq.bufs[i]->ts);
+			pipe->capq.bufs[i]->field_count =
+				atomic_read(&isp->sequence) << 1;
+			pipe->capq.bufs[i]->state = VIDEOBUF_ERROR;
+			wake_up(&pipe->capq.bufs[i]->done);
+			dev_dbg(isp->dev, "release buffer from pipe:%d\n",
+					pipe->pipe_type);
+			if (pipe->capq.bufs[i]->state == VIDEOBUF_QUEUED)
+				list_del_init(&pipe->capq.bufs[i]->queue);
 		}
+		spin_unlock_irqrestore(&pipe->irq_lock, irqflags);
 	}
+}
 
-	pipe = &isp->isp_subdev.video_out_preview;
-	if (pipe->users) {
-		for (i = 0; pipe->capq.bufs[i]; i++) {
-			spin_lock_irqsave(&pipe->irq_lock, irqflags);
-			if (pipe->capq.bufs[i]->state == VIDEOBUF_ACTIVE ||
-					pipe->capq.bufs[i]->state == VIDEOBUF_QUEUED) {
-				get_buf_timestamp(&pipe->capq.bufs[i]->ts);
-				pipe->capq.bufs[i]->field_count =
-					atomic_read(&isp->sequence) << 1;
-				pipe->capq.bufs[i]->state = VIDEOBUF_ERROR;
-				wake_up(&pipe->capq.bufs[i]->done);
-				v4l2_dbg(2, dbg_level, &atomisp_dev,
-					 "release buffer from preview queue\n");
-			}
-			spin_unlock_irqrestore(&pipe->irq_lock, irqflags);
-		}
-	}
+/* Returns queued buffers back to video-core */
+void atomisp_flush_bufs_and_wakeup(struct atomisp_device *isp)
+{
+	atomisp_flush_video_pipe(isp, &isp->isp_subdev.video_out_capture);
+	atomisp_flush_video_pipe(isp, &isp->isp_subdev.video_out_vf);
+	atomisp_flush_video_pipe(isp, &isp->isp_subdev.video_out_preview);
 }
 
 
