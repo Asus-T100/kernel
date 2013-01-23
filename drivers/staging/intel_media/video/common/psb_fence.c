@@ -39,7 +39,7 @@ int psb_fence_emit_sequence(struct ttm_fence_device *fdev,
 {
 	struct drm_psb_private *dev_priv =
 		container_of(fdev, struct drm_psb_private, fdev);
-	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
+	struct msvdx_private *msvdx_priv = NULL;
 	uint32_t seq = 0;
 
 	if (!dev_priv)
@@ -47,6 +47,8 @@ int psb_fence_emit_sequence(struct ttm_fence_device *fdev,
 
 	if (fence_class >= PSB_NUM_ENGINES)
 		return -EINVAL;
+
+	msvdx_priv = dev_priv->msvdx_private;
 
 	switch (fence_class) {
 	case PSB_ENGINE_DECODE:
