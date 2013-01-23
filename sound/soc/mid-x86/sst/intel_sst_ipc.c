@@ -590,7 +590,7 @@ static int sst_get_stream_mrfld(struct intel_sst_drv *ctx, u32 drv_id)
 	if (ctx->sst_byte_blk.drv_id == drv_id)
 		return 0;
 
-	for (i = 1; i < ctx->info.max_streams; i++) {
+	for (i = 1; i <= ctx->info.max_streams; i++) {
 		if (ctx->streams[i].ctrl_blk.drv_id == drv_id)
 			return i;
 	}
