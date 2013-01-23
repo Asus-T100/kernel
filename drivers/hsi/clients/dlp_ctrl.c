@@ -188,7 +188,7 @@ static void dlp_ctrl_handle_tx_timeout(struct work_struct *work)
 			/* Call the channel callback function */
 			ch_ctx->modem_tx_timeout_cb(ch_ctx);
 
-			/* TX timeout mangement done => reset the flag */
+			/* TX timeout mangement (tty hangup) done */
 			ch_ctx->hangup.tx_timeout = 0;
 		}
 	}

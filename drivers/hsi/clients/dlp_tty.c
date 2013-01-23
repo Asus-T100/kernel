@@ -497,6 +497,50 @@ inline void dlp_tty_wait_until_ctx_sent(struct dlp_channel *ch_ctx, int timeout)
 }
 
 /**
+ * dlp_tty_cleanup - clear timers and flush all TX/RX pending
+ * @ch_ctx : Channel context ref
+ *
+ */
+static void dlp_tty_cleanup(struct dlp_channel *ch_ctx)
+{
+	struct dlp_tty_context *tty_ctx;
+	struct dlp_xfer_ctx *tx_ctx;
+	struct dlp_xfer_ctx *rx_ctx;
+	int ret;
+
+	tty_ctx = ch_ctx->ch_data;
+	tx_ctx = &ch_ctx->tx;
+	rx_ctx = &ch_ctx->rx;
+
+	del_timer_sync(&ch_ctx->hangup.timer);
+
+	/* Flush any pending fw work */
+	flush_work_sync(&tty_ctx->do_tty_forward);
+
+	/* RX */
+	del_timer_sync(&rx_ctx->timer);
+	dlp_tty_rx_fifo_wait_recycle(rx_ctx);
+	dlp_stop_rx(rx_ctx, ch_ctx);
+
+	/* TX */
+	del_timer_sync(&tx_ctx->timer);
+	dlp_stop_tx(tx_ctx);
+	dlp_tty_tx_fifo_wait_recycle(tx_ctx);
+
+	dlp_ctx_set_state(tx_ctx, IDLE);
+
+	/* Close the HSI channel */
+	ret = dlp_ctrl_close_channel(ch_ctx);
+	if (ret)
+		pr_err(DRVNAME ": %s (close_channel failed :%d)\n",
+				__func__, ret);
+
+	/* Flush the ACWAKE works */
+	flush_work_sync(&ch_ctx->start_tx_w);
+	flush_work_sync(&ch_ctx->stop_tx_w);
+}
+
+/**
  * dlp_tty_port_activate - callback to the TTY port activate function
  * @port: a reference to the calling TTY port
  * @tty: a reference to the calling TTY
@@ -545,7 +589,6 @@ static void dlp_tty_port_shutdown(struct tty_port *port)
 	struct dlp_tty_context *tty_ctx;
 	struct dlp_xfer_ctx *tx_ctx;
 	struct dlp_xfer_ctx *rx_ctx;
-	int ret;
 
 	pr_debug(DRVNAME": port shutdown request\n");
 
@@ -555,35 +598,10 @@ static void dlp_tty_port_shutdown(struct tty_port *port)
 	rx_ctx = &ch_ctx->rx;
 
 	/* we need hang_up timer alive to avoid long wait here */
-	if (!ch_ctx->hangup.tx_timeout)
+	if (!ch_ctx->hangup.tx_timeout) {
 		dlp_tty_wait_until_ctx_sent(ch_ctx, 0);
-
-	del_timer_sync(&ch_ctx->hangup.timer);
-
-	/* Flush any pending fw work */
-	flush_work_sync(&tty_ctx->do_tty_forward);
-
-	/* RX */
-	del_timer_sync(&rx_ctx->timer);
-	dlp_tty_rx_fifo_wait_recycle(rx_ctx);
-	dlp_stop_rx(rx_ctx, ch_ctx);
-
-	/* TX */
-	del_timer_sync(&tx_ctx->timer);
-	dlp_stop_tx(tx_ctx);
-	dlp_tty_tx_fifo_wait_recycle(tx_ctx);
-
-	dlp_ctx_set_state(tx_ctx, IDLE);
-
-	/* Close the HSI channel */
-	ret = dlp_ctrl_close_channel(ch_ctx);
-	if (ret)
-		pr_err(DRVNAME ": %s (ch%d close failed (%d))\n",
-				__func__, ch_ctx->ch_id, ret);
-
-	/* Flush the ACWAKE works */
-	flush_work_sync(&ch_ctx->start_tx_w);
-	flush_work_sync(&ch_ctx->stop_tx_w);
+		dlp_tty_cleanup(ch_ctx);
+	}
 
 	pr_debug(DRVNAME ": port shutdown done\n");
 }
@@ -687,6 +705,13 @@ static void dlp_tty_hsi_tx_timeout_cb(struct dlp_channel *ch_ctx)
 
 	tty = tty_port_tty_get(&tty_ctx->tty_prt);
 	if (tty) {
+		/* Let's stop all queue and cleanup */
+		dlp_tty_cleanup(ch_ctx);
+
+		/* Clean any waiting data to release potential
+		   dlp_tty_wait_until_sent lock */
+		hsi_flush(dlp_drv.client);
+
 		tty_vhangup(tty);
 		tty_kref_put(tty);
 	}

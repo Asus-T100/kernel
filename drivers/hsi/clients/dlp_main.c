@@ -758,14 +758,17 @@ int dlp_ctx_have_credits(struct dlp_xfer_ctx *xfer_ctx,
 	unsigned long flags;
 
 	spin_lock_irqsave(&ch_ctx->lock, flags);
-	if (ch_ctx->use_flow_ctrl) {
-		int ttype = xfer_ctx->ttype;
-		if ((ttype == HSI_MSG_READ) ||
-			((ttype == HSI_MSG_WRITE) && (ch_ctx->credits))) {
+	/* No credits available once in hangup */
+	if (!ch_ctx->hangup.tx_timeout) {
+		if (ch_ctx->use_flow_ctrl) {
+			int ttype = xfer_ctx->ttype;
+			if ((ttype == HSI_MSG_READ) ||
+			   ((ttype == HSI_MSG_WRITE) && (ch_ctx->credits))) {
+				have_credits = 1;
+			}
+		} else {
 			have_credits = 1;
 		}
-	} else {
-		have_credits = 1;
 	}
 	spin_unlock_irqrestore(&ch_ctx->lock, flags);
 	return have_credits;
