@@ -279,9 +279,9 @@ static int __get_css_frame_info(struct atomisp_device *isp,
 		if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO)
 			return sh_css_video_get_viewfinder_frame_info(
 					frame_info);
-		else if ((&isp->isp_subdev.video_in)
-			 [isp->isp_subdev.capture_pad].sh_fmt !=
-			 SH_CSS_FRAME_FORMAT_RAW)
+		else if (!atomisp_is_mbuscode_raw(
+				 isp->isp_subdev.
+				 fmt[isp->isp_subdev.capture_pad].fmt.code))
 			return sh_css_capture_get_viewfinder_frame_info(
 					frame_info);
 		return -EINVAL;
@@ -1109,8 +1109,9 @@ static unsigned int atomisp_sensor_start_stream(struct atomisp_device *isp)
 {
 	if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO ||
 	    (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_STILL_CAPTURE &&
-	     (&isp->isp_subdev.video_in)[isp->isp_subdev.capture_pad].sh_fmt
-	     != SH_CSS_FRAME_FORMAT_RAW &&
+	     !atomisp_is_mbuscode_raw(
+		     isp->isp_subdev.fmt[
+			     isp->isp_subdev.capture_pad].fmt.code) &&
 	     !isp->params.continuous_vf))
 		return 2;
 	else
