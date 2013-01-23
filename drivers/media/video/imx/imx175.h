@@ -975,12 +975,12 @@ struct imx_resolution imx_res_still[] = {
 	},
 	{
 		.desc = "STILL_8M_15fps",
-		.regs = imx_STILL_8M_26fps,
+		.regs = imx_STILL_8M_15fps,
 		.width = 3280,
 		.height = 2464,
-		.fps = 26,
-		.pixels_per_line = 0x0D70, /* consistent with regs arrays */
-		.lines_per_frame = 0x0AF3, /* consistent with regs arrays */
+		.fps = 15,
+		.pixels_per_line = 0x1448, /* consistent with regs arrays */
+		.lines_per_frame = 0x0A90, /* consistent with regs arrays */
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.used = 0,
