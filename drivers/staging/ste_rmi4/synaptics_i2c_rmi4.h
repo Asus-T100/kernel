@@ -38,6 +38,7 @@
 #define RMI4_PAGE_SELECT_REG        0xff
 #define RMI4_MAX_PAGE               0xff
 #define RMI4_RESET_DELAY            50
+#define RMI4_MAX_BUTTON             8
 
 #define PDT_START_SCAN_LOCATION     0x00E9
 #define PDT_END_SCAN_LOCATION       0x000A
@@ -324,6 +325,7 @@ void rmi4_touchpad_remove(struct rmi4_fn *rfi);
 
 int rmi4_button_detect(struct rmi4_data *pdata,
 				struct rmi4_fn *rfi, unsigned int cnt);
+int rmi4_button_config(struct rmi4_data *pdata, struct rmi4_fn *rfi);
 int rmi4_button_irq_handler(struct rmi4_data *pdata, struct rmi4_fn *rfi);
 void rmi4_button_remove(struct rmi4_fn *);
 
