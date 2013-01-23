@@ -1300,6 +1300,17 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 		if (pipe->pipe_type == ATOMISP_PIPE_CAPTURE &&
 		    isp->params.offline_parm.num_captures == -1)
 			sh_css_offline_capture_configure(0, 0, 0);
+		/*
+		 * Currently there is no way to flush buffers queued to css.
+		 * When doing videobuf_streamoff, active buffers will be
+		 * marked as VIDEOBUF_NEEDS_INIT. HAL will be able to use
+		 * these buffers again, and these buffers might be queued to
+		 * css more than once! Warn here, if HAL has not dequeued all
+		 * buffers back before calling streamoff.
+		 */
+		if (pipe->buffers_in_css != 0)
+			WARN(1, "%s: buffers of pipe %d still in CSS!\n",
+					__func__, pipe->pipe_type);
 
 		return videobuf_streamoff(&pipe->capq);
 	}
