@@ -65,9 +65,9 @@ static inline int get_ps_int_property(struct power_supply *psy,
 #define enable_charging(psy) \
 		({if ((CABLE_TYPE(psy) != POWER_SUPPLY_CHARGER_TYPE_NONE) &&\
 			!IS_CHARGING_ENABLED(psy)) { \
+		enable_charger(psy); \
 		set_ps_int_property(psy, POWER_SUPPLY_PROP_ENABLE_CHARGING,\
-					true);\
-		enable_charger(psy); } })
+					true); } })
 #define disable_charging(psy) \
 		({if (IS_CHARGING_ENABLED(psy)) \
 		set_ps_int_property(psy,\

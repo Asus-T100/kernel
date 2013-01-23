@@ -643,22 +643,25 @@ int pmic_get_health(void)
 }
 EXPORT_SYMBOL(pmic_get_health);
 
-int pmic_enable_charger(bool enable)
+int pmic_enable_charging(bool enable)
 {
 	int ret;
 	u8 val;
+
+	if (enable) {
+		ret = intel_scu_ipc_update_register(CHGRCTRL1_ADDR,
+			CHGRCTRL1_FTEMP_EVENT_MASK, CHGRCTRL1_FTEMP_EVENT_MASK);
+		if (ret)
+			return ret;
+	}
 
 	val = (enable) ? 0 : EXTCHRDIS_ENABLE;
 
 	ret = intel_scu_ipc_update_register(CHGRCTRL0_ADDR,
 			val, CHGRCTRL0_EXTCHRDIS_MASK);
-	if (enable) {
-		ret = intel_scu_ipc_update_register(CHGRCTRL1_ADDR,
-			CHGRCTRL1_FTEMP_EVENT_MASK, CHGRCTRL1_FTEMP_EVENT_MASK);
-	}
 	return ret;
 }
-EXPORT_SYMBOL(pmic_enable_charger);
+EXPORT_SYMBOL(pmic_enable_charging);
 
 static inline int update_zone_cc(int zone, u8 reg_val)
 {
@@ -731,6 +734,10 @@ int pmic_set_cc(int new_cc)
 		}
 	}
 
+	/* send the new CC and CV */
+	intel_scu_ipc_update_register(CHGRCTRL1_ADDR,
+		CHGRCTRL1_FTEMP_EVENT_MASK, CHGRCTRL1_FTEMP_EVENT_MASK);
+
 	return 0;
 }
 EXPORT_SYMBOL(pmic_set_cc);
@@ -767,6 +774,10 @@ int pmic_set_cv(int new_cv)
 			r_bcprof->temp_mon_range[i].full_chrg_vol = new_cv1;
 		}
 	}
+
+	/* send the new CC and CV */
+	intel_scu_ipc_update_register(CHGRCTRL1_ADDR,
+		CHGRCTRL1_FTEMP_EVENT_MASK, CHGRCTRL1_FTEMP_EVENT_MASK);
 
 	return 0;
 }
@@ -982,6 +993,7 @@ static irqreturn_t pmic_thread_handler(int id, void *data)
 	clearing the level 1 irq register and let external charger
 	driver handle the interrupt.
 	 */
+
 	if (!(evt->chgrirq1_int) &&
 		!(evt->chgrirq0_int & PMIC_CHRGR_CCSM_INT0_MASK)) {
 		intel_scu_ipc_update_register(IRQLVL1_MASK_ADDR, 0x00,
@@ -990,7 +1002,7 @@ static irqreturn_t pmic_thread_handler(int id, void *data)
 		return IRQ_NONE;
 	}
 
-	if (evt->chgrirq0_int) {
+	if (evt->chgrirq0_int & PMIC_CHRGR_CCSM_INT0_MASK) {
 		ret = intel_scu_ipc_ioread8(SCHGRIRQ0_ADDR,
 				&evt->chgrirq0_stat);
 		if (ret) {
