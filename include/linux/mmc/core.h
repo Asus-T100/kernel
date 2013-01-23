@@ -173,7 +173,7 @@ extern int mmc_wait_for_cmd(struct mmc_host *, struct mmc_command *, int);
 extern int mmc_app_cmd(struct mmc_host *, struct mmc_card *);
 extern int mmc_wait_for_app_cmd(struct mmc_host *, struct mmc_card *,
 	struct mmc_command *, int);
-extern int mmc_switch(struct mmc_card *, u8, u8, u8, unsigned int);
+extern int mmc_switch(struct mmc_card *, u8, u8, u8, unsigned int, bool);
 
 extern int mmc_rpmb_partition_ops(struct mmc_core_rpmb_req *,
 		struct mmc_card *);

@@ -211,7 +211,7 @@ static ssize_t power_ro_lock_store(struct device *dev,
 	ret = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL, EXT_CSD_BOOT_WP,
 				card->ext_csd.boot_ro_lock |
 				EXT_CSD_BOOT_WP_B_PWR_WP_EN,
-				card->ext_csd.part_time);
+				card->ext_csd.part_time, true);
 	if (ret)
 		pr_err("%s: Locking boot partition ro until next power on failed: %d\n", md->disk->disk_name, ret);
 	else
@@ -578,7 +578,7 @@ static inline int mmc_blk_part_switch(struct mmc_card *card,
 
 		ret = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
 				 EXT_CSD_PART_CONFIG, part_config,
-				 card->ext_csd.part_time);
+				 card->ext_csd.part_time, true);
 		if (ret)
 			return ret;
 
@@ -1064,7 +1064,7 @@ retry:
 				 arg == MMC_TRIM_ARG ?
 				 INAND_CMD38_ARG_TRIM :
 				 INAND_CMD38_ARG_ERASE,
-				 0);
+				 0, true);
 		if (err)
 			goto out;
 	}
@@ -1121,7 +1121,7 @@ retry:
 				 arg == MMC_SECURE_TRIM1_ARG ?
 				 INAND_CMD38_ARG_SECTRIM1 :
 				 INAND_CMD38_ARG_SECERASE,
-				 0);
+				 0, true);
 		if (err)
 			goto out_retry;
 	}
@@ -1137,7 +1137,7 @@ retry:
 			err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
 					 INAND_CMD38_ARG_EXT_CSD,
 					 INAND_CMD38_ARG_SECTRIM2,
-					 0);
+					 0, true);
 			if (err)
 				goto out_retry;
 		}
@@ -1151,7 +1151,7 @@ retry:
 
 	if (mmc_can_sanitize(card))
 		err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
-				 EXT_CSD_SANITIZE_START, 1, 0);
+				 EXT_CSD_SANITIZE_START, 1, 0, false);
 out_retry:
 	if (err && !mmc_blk_reset(md, card->host, type))
 		goto retry;

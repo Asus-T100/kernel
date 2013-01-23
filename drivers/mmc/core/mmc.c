@@ -782,7 +782,7 @@ static int mmc_select_powerclass(struct mmc_card *card,
 		err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
 				 EXT_CSD_POWER_CLASS,
 				 pwrclass_val,
-				 card->ext_csd.generic_cmd6_time);
+				 card->ext_csd.generic_cmd6_time, true);
 	}
 
 	return err;
@@ -839,7 +839,7 @@ static int mmc_select_hs200(struct mmc_card *card)
 		err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
 				 EXT_CSD_BUS_WIDTH,
 				 ext_csd_bits[idx],
-				 card->ext_csd.generic_cmd6_time);
+				 card->ext_csd.generic_cmd6_time, true);
 		if (err)
 			continue;
 
@@ -856,7 +856,7 @@ static int mmc_select_hs200(struct mmc_card *card)
 	/* switch to HS200 mode if bus width set successfully */
 	if (!err)
 		err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
-				 EXT_CSD_HS_TIMING, 2, 0);
+				 EXT_CSD_HS_TIMING, 2, 0, true);
 err:
 	return err;
 }
@@ -1016,7 +1016,7 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 	    (card->ext_csd.rev >= 3 && (host->caps2 & MMC_CAP2_HC_ERASE_SZ))) {
 		err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
 				 EXT_CSD_ERASE_GROUP_DEF, 1,
-				 card->ext_csd.generic_cmd6_time);
+				 card->ext_csd.generic_cmd6_time, true);
 
 		if (err && err != -EBADMSG)
 			goto free_card;
@@ -1052,7 +1052,7 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 		card->ext_csd.part_config &= ~EXT_CSD_PART_CONFIG_ACC_MASK;
 		err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL, EXT_CSD_PART_CONFIG,
 				 card->ext_csd.part_config,
-				 card->ext_csd.part_time);
+				 card->ext_csd.part_time, true);
 		if (err && err != -EBADMSG)
 			goto free_card;
 	}
@@ -1066,7 +1066,7 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 		err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
 				 EXT_CSD_POWER_OFF_NOTIFICATION,
 				 EXT_CSD_POWER_ON,
-				 card->ext_csd.generic_cmd6_time);
+				 card->ext_csd.generic_cmd6_time, true);
 		if (err && err != -EBADMSG)
 			goto free_card;
 
@@ -1089,7 +1089,7 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 		else if	(host->caps & MMC_CAP_MMC_HIGHSPEED)
 			err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
 					 EXT_CSD_HS_TIMING, 1,
-					 card->ext_csd.generic_cmd6_time);
+					 card->ext_csd.generic_cmd6_time, true);
 
 		if (err && err != -EBADMSG)
 			goto free_card;
@@ -1218,7 +1218,7 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 			err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
 					 EXT_CSD_BUS_WIDTH,
 					 ext_csd_bits[idx][0],
-					 card->ext_csd.generic_cmd6_time);
+					 card->ext_csd.generic_cmd6_time, true);
 			if (!err) {
 				mmc_set_bus_width(card->host, bus_width);
 
@@ -1249,7 +1249,7 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 			err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
 					 EXT_CSD_BUS_WIDTH,
 					 ext_csd_bits[idx][1],
-					 card->ext_csd.generic_cmd6_time);
+					 card->ext_csd.generic_cmd6_time, true);
 		}
 		if (err) {
 			pr_warning("%s: switch to bus width %d ddr %d "
@@ -1289,7 +1289,7 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 	if (card->ext_csd.hpi) {
 		err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
 				EXT_CSD_HPI_MGMT, 1,
-				card->ext_csd.generic_cmd6_time);
+				card->ext_csd.generic_cmd6_time, true);
 		if (err && err != -EBADMSG)
 			goto free_card;
 		if (err) {
@@ -1308,7 +1308,7 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 			card->ext_csd.cache_size > 0) {
 		err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
 				EXT_CSD_CACHE_CTRL, 1,
-				card->ext_csd.generic_cmd6_time);
+				card->ext_csd.generic_cmd6_time, true);
 		if (err && err != -EBADMSG)
 			goto free_card;
 

@@ -1346,7 +1346,7 @@ static void mmc_poweroff_notify(struct mmc_host *host)
 
 		err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
 				 EXT_CSD_POWER_OFF_NOTIFICATION,
-				 notify_type, timeout);
+				 notify_type, timeout, true);
 
 		if (err && err != -EBADMSG)
 			pr_err("Device failed to respond within %d poweroff "
@@ -2492,7 +2492,7 @@ int mmc_flush_cache(struct mmc_card *card)
 			(card->ext_csd.cache_size > 0) &&
 			(card->ext_csd.cache_ctrl & 1)) {
 		err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
-				EXT_CSD_FLUSH_CACHE, 1, 0);
+				EXT_CSD_FLUSH_CACHE, 1, 0, true);
 		if (err)
 			pr_err("%s: cache flush error %d\n",
 					mmc_hostname(card->host), err);
@@ -2525,7 +2525,8 @@ int mmc_cache_ctrl(struct mmc_host *host, u8 enable)
 		if (card->ext_csd.cache_ctrl ^ enable) {
 			timeout = enable ? card->ext_csd.generic_cmd6_time : 0;
 			err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
-					EXT_CSD_CACHE_CTRL, enable, timeout);
+					EXT_CSD_CACHE_CTRL, enable, timeout,
+					true);
 			if (err)
 				pr_err("%s: cache %s error %d\n",
 						mmc_hostname(card->host),
