@@ -107,6 +107,7 @@ int atomisp_q_video_buffers_to_css(struct atomisp_device *isp,
 		vb = list_entry(pipe->activeq.next,
 				struct videobuf_buffer, queue);
 		list_del_init(&vb->queue);
+		vb->state = VIDEOBUF_ACTIVE;
 		spin_unlock_irqrestore(&pipe->irq_lock, irqflags);
 
 		vm_mem = vb->priv;
@@ -115,16 +116,13 @@ int atomisp_q_video_buffers_to_css(struct atomisp_device *isp,
 		if (err) {
 			spin_lock_irqsave(&pipe->irq_lock, irqflags);
 			list_add_tail(&vb->queue, &pipe->activeq);
+			vb->state = VIDEOBUF_QUEUED;
 			spin_unlock_irqrestore(&pipe->irq_lock, irqflags);
 			dev_err(isp->dev, "%s, css q fails: %d\n",
 					__func__, err);
 			return -EINVAL;
 		}
 		pipe->buffers_in_css++;
-
-		spin_lock_irqsave(&pipe->irq_lock, irqflags);
-		vb->state = VIDEOBUF_ACTIVE;
-		spin_unlock_irqrestore(&pipe->irq_lock, irqflags);
 		vb = NULL;
 	}
 	return 0;
