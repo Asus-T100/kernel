@@ -157,7 +157,7 @@ static void lps331ap_get_data(struct lps331ap_data *lps331ap,
 		s32 *data)
 {
 	int err;
-	u8 buf[3];
+	u8 buf[3] = { 0 };
 
 	err = i2c_smbus_read_i2c_block_data(lps331ap->client,
 			PRESS_OUT_XL | I2C_AUTO_INC, 3, buf);

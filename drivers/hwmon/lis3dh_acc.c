@@ -259,7 +259,7 @@ static int lis3dh_acc_i2c_write(struct lis3dh_acc_data *acc,
 static int lis3dh_acc_hw_init(struct lis3dh_acc_data *acc)
 {
 	int err = -1;
-	u8 buf[7];
+	u8 buf[7] = { 0 };
 
 	dev_dbg(&acc->client->dev, "hw init start\n");
 
@@ -358,7 +358,7 @@ int lis3dh_acc_update_g_range(struct lis3dh_acc_data *acc, u8 new_g_range)
 {
 	int err = -1;
 	u8 sensitivity;
-	u8 buf;
+	u8 buf = 0;
 	u8 updated_val;
 	u8 init_val;
 	u8 new_val;
@@ -414,7 +414,7 @@ int lis3dh_acc_update_odr(struct lis3dh_acc_data *acc, int poll_interval_ms)
 {
 	int err = -1;
 	int i;
-	u8 config;
+	u8 config = 0;
 
 	/* Following, looks for the longest possible odr interval scrolling the
 	 * odr_table vector from the end (shortest interval) backward (longest
@@ -451,7 +451,7 @@ static int lis3dh_acc_get_acceleration_data(struct lis3dh_acc_data *acc,
 {
 	int err = -1;
 	/* Data bytes from hardware xL, xH, yL, yH, zL, zH */
-	u8 acc_data[6];
+	u8 acc_data[6] = { 0 };
 	/* x,y,z hardware data */
 	s16 hw_d[3] = { 0 };
 
@@ -507,7 +507,7 @@ static void lis3dh_acc_launch_work(struct lis3dh_acc_data *acc)
 
 static int lis3dh_acc_get_int1_source(struct lis3dh_acc_data *acc)
 {
-	u8 data;
+	u8 data = 0;
 	int ret;
 
 	ret = lis3dh_acc_i2c_read(acc, INT_SRC1, &data, 1);
@@ -581,7 +581,7 @@ static ssize_t read_single_reg(struct device *dev, char *buf, u8 reg)
 	ssize_t ret;
 	struct lis3dh_acc_data *acc = dev_get_drvdata(dev);
 	int err;
-	u8 data;
+	u8 data = 0;
 
 	err = lis3dh_acc_i2c_read(acc, reg, &data, 1);
 	if (err < 0)
@@ -875,7 +875,7 @@ static ssize_t attr_reg_get(struct device *dev, struct device_attribute *attr,
 {
 	struct lis3dh_acc_data *acc = dev_get_drvdata(dev);
 	int rc;
-	u8 data;
+	u8 data = 0;
 
 	mutex_lock(&acc->lock);
 	rc = lis3dh_acc_i2c_read(acc, acc->reg_addr, &data, 1);
