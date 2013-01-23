@@ -210,7 +210,7 @@ static void lsm303cmp_report_data(struct lsm303cmp_driver_data *drv_data,
 
 static void lsm303cmp_work(struct work_struct *work)
 {
-	s16 xyz_data[3];
+	s16 xyz_data[3] = { 0 };
 	struct lsm303cmp_driver_data *drv_data;
 	struct i2c_client *client;
 	int i;

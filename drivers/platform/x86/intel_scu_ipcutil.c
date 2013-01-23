@@ -608,7 +608,7 @@ static long scu_ipc_ioctl(struct file *fp, unsigned int cmd,
 	}
 	case INTEL_SCU_IPC_READ_VBATTCRIT:
 	{
-		u32 value;
+		u32 value = 0;
 
 		pr_info("cmd = INTEL_SCU_IPC_READ_VBATTCRIT");
 		ret = intel_scu_ipc_read_mip((u8 *)&value, 4, 0x318, 1);
