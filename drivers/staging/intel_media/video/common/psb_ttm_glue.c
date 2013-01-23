@@ -515,10 +515,9 @@ int psb_video_getparam(struct drm_device *dev, void *data,
 			break;
 		/*Return the number of active entries*/
 		i = psb_entrypoint_number(dev_priv, handle);
-		if (i >= 0)
-			ret = copy_to_user((void __user *)
-					((unsigned long)arg->value),
-					&i, sizeof(i));
+		ret = copy_to_user((void __user *)
+				((unsigned long)arg->value),
+				&i, sizeof(i));
 		break;
 #if !defined(MERRIFIELD)
 	case IMG_VIDEO_IED_STATE:

@@ -47,7 +47,7 @@ int psb_wait_for_register(struct drm_psb_private *dev_priv,
 			  uint32_t offset, uint32_t value, uint32_t enable,
 			  uint32_t poll_cnt, uint32_t timeout)
 {
-	uint32_t reg_value;
+	uint32_t reg_value = 0;
 	/* uint32_t poll_cnt = 2000000; */
 	while (poll_cnt) {
 		reg_value = PSB_RMSVDX32(offset);
@@ -277,12 +277,15 @@ static ssize_t psb_msvdx_pmstate_show(struct device *dev,
 				      struct device_attribute *attr, char *buf)
 {
 	struct drm_device *drm_dev = dev_get_drvdata(dev);
-	struct drm_psb_private *dev_priv = drm_dev->dev_private;
-	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
+	struct drm_psb_private *dev_priv = NULL;
+	struct msvdx_private *msvdx_priv = NULL;
 	int ret = -EINVAL;
 
 	if (drm_dev == NULL)
 		return 0;
+
+	dev_priv = drm_dev->dev_private;
+	msvdx_priv = dev_priv->msvdx_private;
 
 	ret = snprintf(buf, 64, "MSVDX Power state 0x%s, gating count 0x%08x\n",
 		       ospm_power_is_hw_on(OSPM_VIDEO_DEC_ISLAND)
@@ -295,11 +298,23 @@ static DEVICE_ATTR(msvdx_pmstate, 0444, psb_msvdx_pmstate_show, NULL);
 
 static int32_t msvdx_alloc_ccb_for_rendec(struct drm_device *dev)
 {
-	struct drm_psb_private *dev_priv = dev->dev_private;
-	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
+	struct drm_psb_private *dev_priv = NULL;
+	struct msvdx_private *msvdx_priv = NULL;
 	int32_t ret = 0;
 
 	PSB_DEBUG_INIT("MSVDX: Setting up RENDEC,allocate CCB 0/1\n");
+
+	if (dev == NULL)
+		return 1;
+
+	dev_priv = dev->dev_private;
+	if (dev_priv == NULL)
+		return 1;
+
+	msvdx_priv = dev_priv->msvdx_private;
+	if (msvdx_priv == NULL)
+		return 1;
+
 	/* Allocate device virtual memory as required by rendec.... */
 	if (!msvdx_priv->ccb0) {
 		ret = msvdx_allocate_ccb(dev, &msvdx_priv->ccb0,
@@ -328,9 +343,9 @@ static int32_t msvdx_alloc_ccb_for_rendec(struct drm_device *dev)
 
 err_exit:
 	DRM_ERROR("MSVDX: %s failed.\n", __func__);
-	if (msvdx_priv && msvdx_priv->ccb0)
+	if (msvdx_priv->ccb0)
 		msvdx_free_ccb(&msvdx_priv->ccb0);
-	if (msvdx_priv && msvdx_priv->ccb1)
+	if (msvdx_priv->ccb1)
 		msvdx_free_ccb(&msvdx_priv->ccb1);
 
 	return 1;

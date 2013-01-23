@@ -4200,11 +4200,6 @@ static int psb_display_register_write(struct file *file, const char *buffer,
 		return -EINVAL;
 	}
 
-	if (val < 0) {
-		PSB_DEBUG_ENTRY("the register value is should be greater than zero.\n");
-		return -EINVAL;
-		}
-
 	if ((reg % 0x4) != 0) {
 		PSB_DEBUG_ENTRY("the register address should aligned to 4 byte.please refrence display controller specification.\n");
 		return -EINVAL;
