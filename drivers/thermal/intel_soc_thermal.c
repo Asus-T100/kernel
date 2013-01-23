@@ -35,6 +35,8 @@
 #include <linux/init.h>
 #include <linux/slab.h>
 #include <linux/err.h>
+#include <linux/debugfs.h>
+#include <linux/seq_file.h>
 
 #include <asm/intel-mid.h>
 
@@ -62,6 +64,118 @@ struct thermal_device_info {
 	struct mutex lock_aux;
 };
 
+static inline u32 read_soc_reg(unsigned int addr)
+{
+	return intel_mid_msgbus_read32(PUNIT_PORT, addr);
+}
+
+static inline void write_soc_reg(unsigned int addr, u32 val)
+{
+	intel_mid_msgbus_write32(PUNIT_PORT, addr, val);
+}
+
+#ifdef CONFIG_DEBUG_FS
+struct dts_regs {
+	char *name;
+	u32 addr;
+} dts_regs[] = {
+	/* Thermal Management Registers */
+	{"PTMC",	0x80},
+	{"TRR0",	0x81},
+	{"TRR1",	0x82},
+	{"TTS",		0x83},
+	{"TELB",	0x84},
+	{"TELT",	0x85},
+	{"GFXT",	0x88},
+	{"VEDT",	0x89},
+	{"VECT",	0x8A},
+	{"VSPT",	0x8B},
+	{"ISPT",	0x8C},
+	{"SWT",		0x8D},
+	/* Trip Event Registers */
+	{"DTSC",	0xB0},
+	{"TRR",		0xB1},
+	{"PTPS",	0xB2},
+	{"PTTS",	0xB3},
+	{"PTTSS",	0xB4},
+	{"TE_AUX0",	0xB5},
+	{"TE_AUX1",	0xB6},
+	{"TE_AUX2",	0xB7},
+	{"TE_AUX3",	0xB8},
+	{"TTE_VRIcc",	0xB9},
+	{"TTE_VRHOT",	0xBA},
+	{"TTE_PROCHOT",	0xBB},
+	{"TTE_SLM0",	0xBC},
+	{"TTE_SLM1",	0xBD},
+	{"BWTE",	0xBE},
+	{"TTE_SWT",	0xBF},
+	/* MSI Message Registers */
+	{"TMA",		0xC0},
+	{"TMD",		0xC1},
+};
+
+/* /sys/kernel/debug/tng_soc_dts */
+static struct dentry *soc_dts_dent;
+static struct dentry *tng_thermal_dir;
+
+static int soc_dts_debugfs_show(struct seq_file *s, void *unused)
+{
+	int i;
+	u32 val;
+
+	for (i = 0; i < ARRAY_SIZE(dts_regs); i++) {
+		val = read_soc_reg(dts_regs[i].addr);
+		seq_printf(s,
+			"%s[0x%X]	Val: 0x%X\n",
+			dts_regs[i].name, dts_regs[i].addr, val);
+	}
+	return 0;
+}
+
+static int debugfs_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, soc_dts_debugfs_show, NULL);
+}
+
+static const struct file_operations soc_dts_debugfs_fops = {
+	.open           = debugfs_open,
+	.read           = seq_read,
+	.llseek         = seq_lseek,
+	.release        = single_release,
+};
+
+static void create_soc_dts_debugfs(void)
+{
+	int err;
+
+	/* /sys/kernel/debug/tng_thermal/ */
+	tng_thermal_dir = debugfs_create_dir("tng_thermal", NULL);
+	if (IS_ERR(tng_thermal_dir)) {
+		err = PTR_ERR(tng_thermal_dir);
+		pr_err("debugfs_create_dir failed:%d\n", err);
+		return;
+	}
+
+	/* /sys/kernel/debug/tng_thermal/soc_dts */
+	soc_dts_dent = debugfs_create_file("soc_dts", S_IFREG | S_IRUGO,
+					tng_thermal_dir, NULL,
+					&soc_dts_debugfs_fops);
+	if (IS_ERR(soc_dts_dent)) {
+		err = PTR_ERR(soc_dts_dent);
+		debugfs_remove_recursive(tng_thermal_dir);
+		pr_err("debugfs_create_file failed:%d\n", err);
+	}
+}
+
+static void remove_soc_dts_debugfs(void)
+{
+	debugfs_remove_recursive(tng_thermal_dir);
+}
+#else
+static inline void create_soc_dts_debugfs(void) { }
+static inline void remove_soc_dts_debugfs(void) { }
+#endif
+
 static struct thermal_device_info *initialize_sensor(int index)
 {
 	struct thermal_device_info *td_info =
@@ -72,16 +186,6 @@ static struct thermal_device_info *initialize_sensor(int index)
 	td_info->sensor_index = index;
 	mutex_init(&td_info->lock_aux);
 	return td_info;
-}
-
-static inline u32 read_soc_reg(unsigned int addr)
-{
-	return intel_mid_msgbus_read32(PUNIT_PORT, addr);
-}
-
-static inline void write_soc_reg(unsigned int addr, u32 val)
-{
-	intel_mid_msgbus_write32(PUNIT_PORT, addr, val);
 }
 
 static void enable_soc_dts(void)
@@ -217,6 +321,8 @@ static int soc_thermal_probe(struct platform_device *pdev)
 	/* Enable DTS0 and DTS1 */
 	enable_soc_dts();
 
+	create_soc_dts_debugfs();
+
 	return 0;
 
 exit_reg:
@@ -243,6 +349,8 @@ static int soc_thermal_remove(struct platform_device *pdev)
 	}
 	platform_set_drvdata(pdev, NULL);
 	kfree(pdata);
+
+	remove_soc_dts_debugfs();
 
 	return 0;
 }
