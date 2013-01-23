@@ -260,8 +260,8 @@ static int imx_write_reg_array(struct i2c_client *client,
 	return __imx_flush_reg_array(client, &ctrl);
 }
 
-static long __imx_set_exposure(struct v4l2_subdev *sd, u16 coarse_itg,
-				 u16 gain)
+static long __imx_set_exposure(struct v4l2_subdev *sd, int coarse_itg,
+				 int gain, int digitgain)
 
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
@@ -273,12 +273,6 @@ static long __imx_set_exposure(struct v4l2_subdev *sd, u16 coarse_itg,
 	 */
 	 if (coarse_itg > dev->lines_per_frame - 4)
 		coarse_itg = dev->lines_per_frame - 4;
-
-	/* TODO - to be removed and implemented in 3a library
-	 * change gain to imx reg value
-	 */
-	if (gain > 0)
-		gain = 256 - 256 * 16 / gain;
 
 	/* enable group hold */
 	ret = imx_write_reg_array(client, imx_param_hold);
@@ -295,6 +289,55 @@ static long __imx_set_exposure(struct v4l2_subdev *sd, u16 coarse_itg,
 		IMX_GLOBAL_GAIN, gain);
 	if (ret)
 		goto out_disable;
+
+	/* set short analog gain */
+	ret = imx_write_reg(client, IMX_8BIT,
+			IMX_SHORT_AGC_GAIN, gain);
+	if (ret)
+		goto out;
+
+
+	/* set digital gain for channel 0*/
+	ret = imx_write_reg(client, IMX_8BIT,
+			IMX_DGC_ADJ, (digitgain >> 8) & 0xFF);
+	if (ret)
+		goto out;
+
+	ret = imx_write_reg(client, IMX_8BIT,
+			IMX_DGC_ADJ+1, digitgain & 0xFF);
+	if (ret)
+		goto out;
+
+	/* set digital gain for channel 1*/
+	ret = imx_write_reg(client, IMX_8BIT,
+			IMX_DGC_ADJ+2, (digitgain >> 8) & 0xFF);
+	if (ret)
+		goto out;
+
+	ret = imx_write_reg(client, IMX_8BIT,
+			IMX_DGC_ADJ+3, digitgain & 0xFF);
+	if (ret)
+		goto out;
+
+	/* set digital gain for channel 2*/
+	ret = imx_write_reg(client, IMX_8BIT,
+			IMX_DGC_ADJ+4, (digitgain >> 8) & 0xFF);
+	if (ret)
+		goto out;
+
+	ret = imx_write_reg(client, IMX_8BIT,
+			IMX_DGC_ADJ+5, digitgain & 0xFF);
+	if (ret)
+		goto out;
+
+	/* set digital gain for channel 3*/
+	ret = imx_write_reg(client, IMX_8BIT,
+			IMX_DGC_ADJ+6, (digitgain >> 8) & 0xFF);
+	if (ret)
+		goto out;
+
+	ret = imx_write_reg(client, IMX_8BIT,
+			IMX_DGC_ADJ+7, digitgain & 0xFF);
 	dev->gain       = gain;
 	dev->coarse_itg = coarse_itg;
 
@@ -305,13 +348,14 @@ out:
 	return ret;
 }
 
-static int imx_set_exposure(struct v4l2_subdev *sd, u16 exposure, u16 gain)
+static int imx_set_exposure(struct v4l2_subdev *sd, int exposure,
+	int gain, int digitgain)
 {
 	struct imx_device *dev = to_imx_sensor(sd);
 	int ret;
 
 	mutex_lock(&dev->input_lock);
-	ret = __imx_set_exposure(sd, exposure, gain);
+	ret = __imx_set_exposure(sd, exposure, gain, digitgain);
 	mutex_unlock(&dev->input_lock);
 
 	return ret;
@@ -320,10 +364,9 @@ static int imx_set_exposure(struct v4l2_subdev *sd, u16 exposure, u16 gain)
 static long imx_s_exposure(struct v4l2_subdev *sd,
 			       struct atomisp_exposure *exposure)
 {
-	u16 coarse_itg, gain;
-
-	coarse_itg = exposure->integration_time[0];
-	gain = exposure->gain[0];
+	int exp = exposure->integration_time[0];
+	int gain = exposure->gain[0];
+	int digitgain = exposure->gain[1];
 
 	/* we should not accept the invalid value below. */
 	if (gain == 0) {
@@ -332,7 +375,7 @@ static long imx_s_exposure(struct v4l2_subdev *sd,
 		return -EINVAL;
 	}
 
-	return imx_set_exposure(sd, coarse_itg, gain);
+	return imx_set_exposure(sd, exp, gain, digitgain);
 }
 
 /* FIXME -To be updated with real OTP reading */
@@ -538,9 +581,10 @@ static int imx_get_intg_factor(struct i2c_client *client,
 
 	const int ext_clk_freq_hz = 19200000;
 	struct sensor_mode_data buf;
-	int vt_pix_clk_freq_mhz, ret;
+	int ret;
 	u16 data[IMX_INTG_BUF_COUNT];
 
+	u32 vt_pix_clk_freq_mhz;
 	u32 coarse_integration_time_min;
 	u32 coarse_integration_time_max_margin;
 	u32 frame_length_lines;
@@ -600,7 +644,8 @@ static int imx_get_intg_factor(struct i2c_client *client,
 	div = pre_pll_clk_div*vt_sys_clk_div*vt_pix_clk_div;
 	if (div == 0)
 		return -EINVAL;
-	vt_pix_clk_freq_mhz = ext_clk_freq_hz*pll_multiplier/div;
+	vt_pix_clk_freq_mhz = 2 * ext_clk_freq_hz / div;
+	vt_pix_clk_freq_mhz *= pll_multiplier;
 
 	dev->vt_pix_clk_freq_mhz = vt_pix_clk_freq_mhz;
 	buf.coarse_integration_time_min = coarse_integration_time_min;
@@ -612,7 +657,7 @@ static int imx_get_intg_factor(struct i2c_client *client,
 	buf.vt_pix_clk_freq_mhz = vt_pix_clk_freq_mhz;
 	buf.line_length_pck = line_length_pck;
 	buf.frame_length_lines = frame_length_lines;
-	buf.read_mode = read_mode;
+	buf.read_mode = 0;
 
 	memcpy(&info->data, &buf, sizeof(buf));
 
