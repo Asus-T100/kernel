@@ -2177,9 +2177,23 @@ static void mmc_blk_shutdown(struct device *dev)
 {
 	struct mmc_card *card = mmc_dev_to_card(dev);
 	struct mmc_host *mmc = card->host;
+	struct mmc_blk_data *md = mmc_get_drvdata(card);
+	struct mmc_blk_data *part_md;
 
 	mmc_claim_host(mmc);
 	mmc_cache_ctrl(mmc, 0);
+	/*
+	 * stop the mmc queue so that no mmc card requests
+	 * can be sent to mmc driver
+	 */
+	if (md) {
+		mmc_queue_suspend(&md->queue);
+		list_for_each_entry(part_md, &md->part, part) {
+			mmc_queue_suspend(&part_md->queue);
+			if (part_md->part_type == EXT_CSD_PART_CONFIG_RPMB)
+				part_md->flags |= MMC_BLK_SUSPENDED;
+		}
+	}
 	mmc_release_host(mmc);
 }
 
