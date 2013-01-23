@@ -3394,7 +3394,8 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 				   struct sh_css_frame_info *output_info,
 				   struct sh_css_frame_info *raw_output_info,
 				   int width, int height,
-				   unsigned int pixelformat)
+				  unsigned int pixelformat,
+				  unsigned int source_pad)
 {
 	struct camera_mipi_info *mipi_info;
 	struct atomisp_device *isp = video_get_drvdata(vdev);
@@ -3416,7 +3417,7 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 	if (format == NULL)
 		return -EINVAL;
 
-	isp->capture_format->out_sh_fmt = format->sh_fmt;
+	pipe->sh_fmt = format->sh_fmt;
 	pipe->format.out.pixelformat = pixelformat;
 
 	if (isp->inputs[isp->input_curr].type != TEST_PATTERN &&
@@ -3442,7 +3443,7 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 
 	isp->vf_format->out.width = 640;
 	isp->vf_format->out.height = 480;
-	isp->vf_format->out_sh_fmt = SH_CSS_FRAME_FORMAT_YUV420;
+	isp->isp_subdev.video_out_vf.sh_fmt = SH_CSS_FRAME_FORMAT_YUV420;
 
 	if ((isp->vf_format->out.width > width) ||
 	    (isp->vf_format->out.height > height)) {
@@ -3478,7 +3479,7 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 		if (sh_css_video_configure_viewfinder(
 					isp->vf_format->out.width,
 					isp->vf_format->out.height,
-					isp->vf_format->out_sh_fmt))
+					isp->isp_subdev.video_out_vf.sh_fmt))
 			return -EINVAL;
 
 		if (sh_css_video_configure_output(width, height,
@@ -3518,7 +3519,7 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 		if (sh_css_capture_configure_viewfinder(
 					isp->vf_format->out.width,
 					isp->vf_format->out.height,
-					isp->vf_format->out_sh_fmt))
+					isp->isp_subdev.video_out_vf.sh_fmt))
 			return -EINVAL;
 		v4l2_dbg(3, dbg_level, &atomisp_dev,
 					"sh css capture vf output width: %d, height: %d\n",
@@ -3841,6 +3842,7 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 		v4l2_err(&atomisp_dev, "Internal error\n");
 		return -EINVAL;
 	}
+	isp->isp_subdev.capture_pad = source_pad;
 
 	isp_sink_crop = *atomisp_subdev_get_rect(&isp->isp_subdev.subdev, NULL,
 						 V4L2_SUBDEV_FORMAT_ACTIVE,
@@ -3895,7 +3897,7 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	/* set format to isp */
 	ret = atomisp_set_fmt_to_isp(vdev, &output_info, &raw_output_info,
 				     f->fmt.pix.width, f->fmt.pix.height,
-				     f->fmt.pix.pixelformat);
+				     f->fmt.pix.pixelformat, source_pad);
 	if (ret)
 		return -EINVAL;
 done:
@@ -3910,7 +3912,7 @@ done:
 	if (f->fmt.pix.field == V4L2_FIELD_ANY)
 		f->fmt.pix.field = V4L2_FIELD_NONE;
 	pipe->format.out.field = f->fmt.pix.field;
-	pipe->format.out_sh_fmt = format_bridge->sh_fmt;
+	pipe->sh_fmt = format_bridge->sh_fmt;
 
 	memcpy(&f->fmt.pix, &pipe->format.out, sizeof(struct v4l2_pix_format));
 	f->fmt.pix.priv = PAGE_ALIGN(pipe->format.out.width *

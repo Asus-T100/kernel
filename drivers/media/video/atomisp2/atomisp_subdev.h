@@ -95,6 +95,7 @@ struct atomisp_video_pipe {
 	struct atomisp_device *isp;
 	struct atomisp_fmt out_fmt;
 	struct atomisp_video_pipe_format format;
+	uint32_t sh_fmt;
 };
 
 struct atomisp_pad_format {
@@ -107,6 +108,7 @@ struct atomisp_sub_device {
 	struct v4l2_subdev subdev;
 	struct media_pad pads[ATOMISP_SUBDEV_PADS_NUM];
 	struct atomisp_pad_format fmt[ATOMISP_SUBDEV_PADS_NUM];
+	uint16_t capture_pad; /* main capture pad; defines much of isp config */
 
 	enum atomisp_subdev_input_entity input;
 	unsigned int output;

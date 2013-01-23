@@ -68,7 +68,6 @@ struct atomisp_fmt {
 struct atomisp_video_pipe_format {
 	struct v4l2_pix_format out;
 	struct v4l2_pix_format in;
-	unsigned int out_sh_fmt;
 };
 
 struct atomisp_buffer {
