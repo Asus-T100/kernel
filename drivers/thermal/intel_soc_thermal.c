@@ -50,6 +50,9 @@
 /* There are 4 Aux trips. Only Aux0, Aux1 are writeable */
 #define DTS_TRIP_RW		0x03
 
+#define TJMAX_TEMP		90
+#define TJMAX_CODE		0x7F
+
 struct platform_soc_data {
 	struct thermal_zone_device *tzd[SOC_THERMAL_SENSORS];
 };
@@ -71,17 +74,35 @@ static struct thermal_device_info *initialize_sensor(int index)
 	return td_info;
 }
 
-static void enable_soc_dts(void)
+static inline u32 read_soc_reg(unsigned int addr)
 {
-	intel_mid_msgbus_write32(PUNIT_PORT, DTS_ENABLE_REG, DTS_ENABLE);
+	return intel_mid_msgbus_read32(PUNIT_PORT, addr);
 }
 
-static ssize_t show_temp(struct thermal_zone_device *tzd, unsigned long *temp)
+static inline void write_soc_reg(unsigned int addr, u32 val)
+{
+	intel_mid_msgbus_write32(PUNIT_PORT, addr, val);
+}
+
+static void enable_soc_dts(void)
+{
+	/* Enable the DTS */
+	write_soc_reg(DTS_ENABLE_REG, DTS_ENABLE);
+}
+
+static ssize_t show_temp(struct thermal_zone_device *tzd, long *temp)
 {
 	struct thermal_device_info *td_info = tzd->devdata;
-	u32 val = intel_mid_msgbus_read32(PUNIT_PORT, PUNIT_TEMP_REG);
+	u32 val = read_soc_reg(PUNIT_TEMP_REG);
 
-	*temp = (val >> (8 * td_info->sensor_index)) & 0xFF;
+	/* Extract bits[0:7] or [8:15] using sensor_index */
+	*temp =  (val >> (8 * td_info->sensor_index)) & 0xFF;
+
+	/* Calibrate the temperature */
+	*temp = TJMAX_CODE - *temp + TJMAX_TEMP;
+
+	/* Convert to mC */
+	*temp *= 1000;
 
 	return 0;
 }
@@ -96,21 +117,30 @@ static ssize_t show_trip_type(struct thermal_zone_device *tzd,
 }
 
 static ssize_t show_trip_temp(struct thermal_zone_device *tzd,
-				int trip, unsigned long *trip_temp)
+				int trip, long *trip_temp)
 {
-	u32 aux_value = intel_mid_msgbus_read32(PUNIT_PORT, PUNIT_AUX_REG);
+	u32 aux_value = read_soc_reg(PUNIT_AUX_REG);
 
 	/* aux0 b[0:7], aux1 b[8:15], aux2 b[16:23], aux3 b[24:31] */
 	*trip_temp = (aux_value >> (8 * trip)) & 0xFF;
+
+	/* Calibrate the trip point temperature */
+	*trip_temp = TJMAX_TEMP - *trip_temp;
+
+	/* Convert to mC and report */
+	*trip_temp *= 1000;
 
 	return 0;
 }
 
 static ssize_t store_trip_temp(struct thermal_zone_device *tzd,
-				int trip, unsigned long trip_temp)
+				int trip, long trip_temp)
 {
 	u32 aux_trip, aux = 0;
 	struct thermal_device_info *td_info = tzd->devdata;
+
+	/* Convert from mC to C */
+	trip_temp /= 1000;
 
 	/* The trip temp is 8 bits wide (unsigned) */
 	if (trip_temp > 255)
@@ -119,8 +149,11 @@ static ssize_t store_trip_temp(struct thermal_zone_device *tzd,
 	/* Assign last byte to unsigned 32 */
 	aux_trip = trip_temp & 0xFF;
 
+	/* Calibrate w.r.t TJMAX_TEMP */
+	aux_trip = TJMAX_TEMP - aux_trip;
+
 	mutex_lock(&td_info->lock_aux);
-	aux = intel_mid_msgbus_read32(PUNIT_PORT, PUNIT_AUX_REG);
+	aux = read_soc_reg(PUNIT_AUX_REG);
 	switch (trip) {
 	case 0:
 		/* aux0 bits 0:7 */
@@ -139,7 +172,7 @@ static ssize_t store_trip_temp(struct thermal_zone_device *tzd,
 		aux = (aux & 0x00FFFFFF) | (aux_trip << (8 * trip));
 		break;
 	}
-	intel_mid_msgbus_write32(PUNIT_PORT, PUNIT_AUX_REG, aux);
+	write_soc_reg(PUNIT_AUX_REG, aux);
 
 	mutex_unlock(&td_info->lock_aux);
 
@@ -161,7 +194,7 @@ static int soc_thermal_probe(struct platform_device *pdev)
 {
 	struct platform_soc_data *pdata;
 	int i, ret;
-	static char *name[SOC_THERMAL_SENSORS] = {"SoCDTS0", "SoCDTS1"};
+	static char *name[SOC_THERMAL_SENSORS] = {"SoC_DTS0", "SoC_DTS1"};
 
 	pdata = kzalloc(sizeof(struct platform_soc_data), GFP_KERNEL);
 	if (!pdata)
