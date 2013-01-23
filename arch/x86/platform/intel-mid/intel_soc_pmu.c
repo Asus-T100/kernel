@@ -1567,48 +1567,51 @@ static int pmu_init(void)
 
 	pmu_initialized = true;
 
-	/* get the current status of each of the driver
-	 * and update it in SCU
-	 */
-	update_all_lss_states(&pmu_config);
+	if (platform_is(INTEL_ATOM_MFLD) || platform_is(INTEL_ATOM_CLV)) {
 
-	/* send a interactive command to fw */
-	mid_pmu_cxt->interactive_cmd_sent = true;
-	status = pmu_issue_interactive_command(&pmu_config, true);
-	if (status != PMU_SUCCESS) {
-		mid_pmu_cxt->interactive_cmd_sent = false;
-		dev_dbg(&mid_pmu_cxt->pmu_dev->dev,\
-		 "Failure from pmu mode change to interactive."
-		" = %d\n", status);
-		status = PMU_FAILED;
-		up(&mid_pmu_cxt->scu_ready_sem);
-		goto out_err2;
-	}
+		/* get the current status of each of the driver
+		 * and update it in SCU
+		 */
+		update_all_lss_states(&pmu_config);
 
-	/*
-	 * Wait for interactive command to complete.
-	 * If we dont wait, there is a possibility that
-	 * the driver may access the device before its
-	 * powered on in SCU.
-	 *
-	 */
-retry:
-	ret = _pmu2_wait_not_busy_yield();
-	if (unlikely(ret)) {
-		retry_times++;
-		if (retry_times < 60)
-			goto retry;
-		else {
-			pmu_dump_logs();
-			BUG();
+		/* send a interactive command to fw */
+		mid_pmu_cxt->interactive_cmd_sent = true;
+		status = pmu_issue_interactive_command(&pmu_config, true);
+		if (status != PMU_SUCCESS) {
+			mid_pmu_cxt->interactive_cmd_sent = false;
+			dev_dbg(&mid_pmu_cxt->pmu_dev->dev,\
+			 "Failure from pmu mode change to interactive."
+			" = %d\n", status);
+			status = PMU_FAILED;
+			up(&mid_pmu_cxt->scu_ready_sem);
+			goto out_err2;
 		}
-	}
 
-	/* In cases were gfx is not enabled
-	 * this will enable s0ix immediately
-	 */
-	if (pmu_ops->set_power_state_ops)
-		pmu_ops->set_power_state_ops(PCI_D3hot);
+		/*
+		 * Wait for interactive command to complete.
+		 * If we dont wait, there is a possibility that
+		 * the driver may access the device before its
+		 * powered on in SCU.
+		 *
+		 */
+retry:
+		ret = _pmu2_wait_not_busy_yield();
+		if (unlikely(ret)) {
+			retry_times++;
+			if (retry_times < 60)
+				goto retry;
+			else {
+				pmu_dump_logs();
+				BUG();
+			}
+		}
+
+		/* In cases were gfx is not enabled
+		 * this will enable s0ix immediately
+		 */
+		if (pmu_ops->set_power_state_ops)
+			pmu_ops->set_power_state_ops(PCI_D3hot);
+	}
 
 	up(&mid_pmu_cxt->scu_ready_sem);
 
