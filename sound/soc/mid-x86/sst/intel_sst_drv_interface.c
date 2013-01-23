@@ -191,7 +191,8 @@ int sst_get_stream_allocated(struct snd_sst_params *str_param,
 	}
 	pr_debug("Stream allocated %d\n", retval);
 	str_id = retval;
-	str_info = &sst_drv_ctx->streams[str_id];
+	str_info = get_stream_info(str_id);
+
 	/* Block the call for reply */
 	retval = sst_wait_timeout(sst_drv_ctx, &str_info->ctrl_blk);
 	if ((retval != 0) || (str_info->ctrl_blk.ret_code != 0)) {
