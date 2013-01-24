@@ -65,11 +65,6 @@ struct atomisp_fmt {
 	u32 bayer_order;
 };
 
-struct atomisp_video_pipe_format {
-	struct v4l2_pix_format out;
-	struct v4l2_pix_format in;
-};
-
 struct atomisp_buffer {
 	struct videobuf_buffer	vb;
 };

@@ -532,7 +532,7 @@ static int atomisp_g_fmt_file(struct file *file, void *fh,
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
 
 	mutex_lock(&isp->mutex);
-	f->fmt.pix = pipe->format.out;
+	f->fmt.pix = pipe->pix;
 	mutex_unlock(&isp->mutex);
 
 	return 0;
@@ -1027,7 +1027,7 @@ static int atomisp_dqbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 		return ret;
 	}
 	mutex_lock(&isp->mutex);
-	buf->bytesused = pipe->format.out.sizeimage;
+	buf->bytesused = pipe->pix.sizeimage;
 	buf->reserved = isp->frame_status[buf->index];
 	mutex_unlock(&isp->mutex);
 
