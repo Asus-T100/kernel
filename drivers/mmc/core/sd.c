@@ -726,6 +726,7 @@ struct device_type sd_type = {
 int mmc_sd_get_cid(struct mmc_host *host, u32 ocr, u32 *cid, u32 *rocr)
 {
 	int err;
+	bool retry = false;
 
 	/*
 	 * Since we're changing the OCR value, we seem to
@@ -772,7 +773,10 @@ try_again:
 		err = mmc_set_signal_voltage(host, MMC_SIGNAL_VOLTAGE_180, true);
 		if (err) {
 			ocr &= ~SD_OCR_S18R;
-			goto try_again;
+			if (retry == false) {
+				retry = true;
+				goto try_again;
+			}
 		}
 	}
 
