@@ -1134,6 +1134,56 @@ static int ov8830_get_intg_factor(struct v4l2_subdev *sd,
 		res->regs, &m->output_height);
 }
 
+static int __ov8830_s_frame_interval(struct v4l2_subdev *sd,
+			struct v4l2_subdev_frame_interval *interval)
+{
+	struct ov8830_device *dev = to_ov8830_sensor(sd);
+	struct camera_mipi_info *info = v4l2_get_subdev_hostdata(sd);
+	const struct ov8830_resolution *res =
+		res = &dev->curr_res_table[dev->fmt_idx];
+	int i;
+	int ret;
+	int fps;
+	u16 hts;
+	u16 vts;
+
+	if (!interval->interval.numerator)
+		interval->interval.numerator = 1;
+
+	fps = interval->interval.denominator / interval->interval.numerator;
+
+	/* Ignore if we are already using the required FPS. */
+	if (fps == res->fps_options[dev->fps_index].fps)
+		return 0;
+
+	dev->fps_index = 0;
+
+	/* Go through the supported FPS list */
+	for (i = 0; i < MAX_FPS_OPTIONS_SUPPORTED; i++) {
+		if (!res->fps_options[i].fps)
+			break;
+		if (abs(res->fps_options[i].fps - fps)
+		    < abs(res->fps_options[dev->fps_index].fps - fps))
+			dev->fps_index = i;
+	}
+
+	/* Get the new Frame timing values for new exposure */
+	hts = res->fps_options[dev->fps_index].pixels_per_line;
+	vts = res->fps_options[dev->fps_index].lines_per_frame;
+
+	/* update frametiming. Conside the curren exposure/gain as well */
+	ret = __ov8830_set_exposure(sd, dev->exposure, dev->gain, &hts, &vts);
+	if (ret)
+		return ret;
+
+	/* Update the global values */
+	dev->pixels_per_line = hts;
+	dev->lines_per_frame = vts;
+
+	/* Update the new values so that user side knows the current settings */
+	return ov8830_get_intg_factor(sd, info, dev->basic_settings_list);
+}
+
 /* This returns the exposure time being used. This should only be used
    for filling in EXIF data, not for actual image processing. */
 static int ov8830_q_exposure(struct v4l2_subdev *sd, s32 *value)
@@ -1573,7 +1623,6 @@ static int ov8830_s_mbus_fmt(struct v4l2_subdev *sd,
 
 	dev->pixels_per_line = hts;
 	dev->lines_per_frame = vts;
-	dev->fps = res->fps_options[dev->fps_index].fps;
 
 	ret = ov8830_get_intg_factor(sd, ov8830_info, dev->basic_settings_list);
 
@@ -1708,6 +1757,7 @@ static int ov8830_enum_frameintervals(struct v4l2_subdev *sd,
 	const struct ov8830_resolution *res;
 
 	mutex_lock(&dev->input_lock);
+
 	/*
 	 * since the isp will donwscale the resolution to the right size,
 	 * find the nearest one that will allow the isp to do so important to
@@ -1726,8 +1776,6 @@ static int ov8830_enum_frameintervals(struct v4l2_subdev *sd,
 		return -EINVAL;
 
 	fival->type = V4L2_FRMIVAL_TYPE_DISCRETE;
-/*	fival->width = ov8830_res[index].width;
-	fival->height = ov8830_res[index].height; */
 	fival->discrete.numerator = 1;
 	fival->discrete.denominator = res->fps_options[index].fps;
 
@@ -1944,6 +1992,19 @@ ov8830_g_frame_interval(struct v4l2_subdev *sd,
 	return 0;
 }
 
+static int ov8830_s_frame_interval(struct v4l2_subdev *sd,
+			struct v4l2_subdev_frame_interval *interval)
+{
+	struct ov8830_device *dev = to_ov8830_sensor(sd);
+	int ret;
+
+	mutex_lock(&dev->input_lock);
+	ret = __ov8830_s_frame_interval(sd, interval);
+	mutex_unlock(&dev->input_lock);
+
+	return ret;
+}
+
 static int ov8830_g_skip_frames(struct v4l2_subdev *sd, u32 *frames)
 {
 	struct ov8830_device *dev = to_ov8830_sensor(sd);
@@ -1963,6 +2024,7 @@ static const struct v4l2_subdev_video_ops ov8830_video_ops = {
 	.s_mbus_fmt = ov8830_s_mbus_fmt,
 	.s_parm = ov8830_s_parm,
 	.g_frame_interval = ov8830_g_frame_interval,
+	.s_frame_interval = ov8830_s_frame_interval,
 };
 
 static const struct v4l2_subdev_sensor_ops ov8830_sensor_ops = {
