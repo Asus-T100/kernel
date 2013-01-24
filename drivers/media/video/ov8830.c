@@ -669,6 +669,19 @@ static int ov8830_g_priv_int_data(struct v4l2_subdev *sd,
 	return r;
 }
 
+static int __ov8830_get_max_fps_index(
+				const struct ov8830_fps_setting *fps_settings)
+{
+	int i;
+
+	for (i = 0; i < MAX_FPS_OPTIONS_SUPPORTED; i++) {
+		if (fps_settings[i].fps == 0)
+			break;
+	}
+
+	return i - 1;
+}
+
 static int __ov8830_update_frame_timing(struct v4l2_subdev *sd, int exposure,
 			u16 *hts, u16 *vts)
 {
@@ -749,8 +762,14 @@ static int ov8830_set_exposure(struct v4l2_subdev *sd, int exposure, int gain)
 	struct ov8830_device *dev = to_ov8830_sensor(sd);
 	u16 hts, vts;
 	int ret;
+	const struct ov8830_resolution *res;
 
 	mutex_lock(&dev->input_lock);
+
+	if (exposure == dev->exposure && gain == dev->gain) {
+		mutex_unlock(&dev->input_lock);
+		return 0;
+	}
 
 	/* Group hold is valid only if sensor is streaming. */
 	if (dev->streaming) {
@@ -759,13 +778,15 @@ static int ov8830_set_exposure(struct v4l2_subdev *sd, int exposure, int gain)
 			goto out;
 	}
 
-	hts = dev->curr_res_table[dev->fmt_idx].pixels_per_line;
-	vts = dev->curr_res_table[dev->fmt_idx].lines_per_frame;
+	res = &dev->curr_res_table[dev->fmt_idx];
+	hts = res->fps_options[dev->fps_index].pixels_per_line;
+	vts = res->fps_options[dev->fps_index].lines_per_frame;
 
 	ret = __ov8830_set_exposure(sd, exposure, gain, &hts, &vts);
 	if (ret)
 		goto out;
 
+	/* Updated the device variable. These are the current values. */
 	dev->gain     = gain;
 	dev->exposure = exposure;
 	dev->lines_per_frame = vts;
@@ -1012,7 +1033,8 @@ static int ov8830_get_intg_factor(struct v4l2_subdev *sd,
 	const int ext_clk = 19200000; /* MHz */
 	struct atomisp_sensor_mode_data *m = &info->data;
 	struct ov8830_device *dev = to_ov8830_sensor(sd);
-	const struct ov8830_resolution *ov8830_res = dev->curr_res_table;
+	const struct ov8830_resolution *res =
+				&dev->curr_res_table[dev->fmt_idx];
 	int pll2_prediv;
 	int pll2_multiplier;
 	int pll2_divs;
@@ -1053,8 +1075,9 @@ static int ov8830_get_intg_factor(struct v4l2_subdev *sd,
 	m->vt_pix_clk_freq_mhz = sclk;
 
 	/* HTS and VTS */
-	m->frame_length_lines = ov8830_res[dev->fmt_idx].lines_per_frame;
-	m->line_length_pck = ov8830_res[dev->fmt_idx].pixels_per_line;
+	m->frame_length_lines =
+			res->fps_options[dev->fps_index].lines_per_frame;
+	m->line_length_pck = res->fps_options[dev->fps_index].pixels_per_line;
 
 	m->coarse_integration_time_min = 0;
 	m->coarse_integration_time_max_margin = OV8830_INTEGRATION_TIME_MARGIN;
@@ -1068,49 +1091,47 @@ static int ov8830_get_intg_factor(struct v4l2_subdev *sd,
 	 * the correct exposure value from the user side. So adapt the
 	 * read mode values accordingly.
 	 */
-	m->read_mode = ov8830_res[dev->fmt_idx].bin_factor_x ?
+	m->read_mode = res->bin_factor_x ?
 		OV8830_READ_MODE_BINNING_ON : OV8830_READ_MODE_BINNING_OFF;
 
-	ret = ov8830_get_register(sd, OV8830_TIMING_X_INC,
-		dev->curr_res_table[dev->fmt_idx].regs);
+	ret = ov8830_get_register(sd, OV8830_TIMING_X_INC, res->regs);
 	if (ret < 0)
 		return ret;
 	m->binning_factor_x = ((ret >> 4) + 1) / 2;
 
-	ret = ov8830_get_register(sd, OV8830_TIMING_Y_INC,
-		dev->curr_res_table[dev->fmt_idx].regs);
+	ret = ov8830_get_register(sd, OV8830_TIMING_Y_INC, res->regs);
 	if (ret < 0)
 		return ret;
 	m->binning_factor_y = ((ret >> 4) + 1) / 2;
 
 	/* Get the cropping and output resolution to ISP for this mode. */
 	ret =  ov8830_get_register_16bit(sd, OV8830_HORIZONTAL_START_H,
-		ov8830_res[dev->fmt_idx].regs, &m->crop_horizontal_start);
+		res->regs, &m->crop_horizontal_start);
 	if (ret)
 		return ret;
 
 	ret = ov8830_get_register_16bit(sd, OV8830_VERTICAL_START_H,
-		ov8830_res[dev->fmt_idx].regs, &m->crop_vertical_start);
+		res->regs, &m->crop_vertical_start);
 	if (ret)
 		return ret;
 
 	ret = ov8830_get_register_16bit(sd, OV8830_HORIZONTAL_END_H,
-		ov8830_res[dev->fmt_idx].regs, &m->crop_horizontal_end);
+		res->regs, &m->crop_horizontal_end);
 	if (ret)
 		return ret;
 
 	ret = ov8830_get_register_16bit(sd, OV8830_VERTICAL_END_H,
-		ov8830_res[dev->fmt_idx].regs, &m->crop_vertical_end);
+		res->regs, &m->crop_vertical_end);
 	if (ret)
 		return ret;
 
 	ret = ov8830_get_register_16bit(sd, OV8830_HORIZONTAL_OUTPUT_SIZE_H,
-		ov8830_res[dev->fmt_idx].regs, &m->output_width);
+		res->regs, &m->output_width);
 	if (ret)
 		return ret;
 
 	return ov8830_get_register_16bit(sd, OV8830_VERTICAL_OUTPUT_SIZE_H,
-		ov8830_res[dev->fmt_idx].regs, &m->output_height);
+		res->regs, &m->output_height);
 }
 
 /* This returns the exposure time being used. This should only be used
@@ -1507,6 +1528,7 @@ static int ov8830_s_mbus_fmt(struct v4l2_subdev *sd,
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	u16 hts, vts;
 	int ret;
+	const struct ov8830_resolution *res;
 
 	ov8830_info = v4l2_get_subdev_hostdata(sd);
 	if (ov8830_info == NULL)
@@ -1525,15 +1547,20 @@ static int ov8830_s_mbus_fmt(struct v4l2_subdev *sd,
 		goto out;
 	}
 
+	/* Sets the default FPS */
+	dev->fps_index = 0;
+
+	/* Get the current resolution setting */
+	res = &dev->curr_res_table[dev->fmt_idx];
+
 	/* Write the selected resolution table values to the registers */
-	ret = ov8830_write_reg_array(client,
-				dev->curr_res_table[dev->fmt_idx].regs);
+	ret = ov8830_write_reg_array(client, res->regs);
 	if (ret)
 		goto out;
 
 	/* Frame timing registers are updates as part of exposure */
-	hts = dev->curr_res_table[dev->fmt_idx].pixels_per_line;
-	vts = dev->curr_res_table[dev->fmt_idx].lines_per_frame;
+	hts = res->fps_options[dev->fps_index].pixels_per_line;
+	vts = res->fps_options[dev->fps_index].lines_per_frame;
 
 	/*
 	 * update hts, vts, exposure and gain as one block. Note that the vts
@@ -1546,7 +1573,7 @@ static int ov8830_s_mbus_fmt(struct v4l2_subdev *sd,
 
 	dev->pixels_per_line = hts;
 	dev->lines_per_frame = vts;
-	dev->fps = dev->curr_res_table[dev->fmt_idx].fps;
+	dev->fps = res->fps_options[dev->fps_index].fps;
 
 	ret = ov8830_get_intg_factor(sd, ov8830_info, dev->basic_settings_list);
 
@@ -1676,24 +1703,33 @@ static int ov8830_enum_frameintervals(struct v4l2_subdev *sd,
 				       struct v4l2_frmivalenum *fival)
 {
 	unsigned int index = fival->index;
+	int fmt_index;
 	struct ov8830_device *dev = to_ov8830_sensor(sd);
+	const struct ov8830_resolution *res;
 
-	if (index >= dev->entries_curr_table)
-		return -EINVAL;
-
-	/* since the isp will donwscale the resolution to the right size, find the nearest one that will allow the isp to do so
-	 * important to ensure that the resolution requested is padded correctly by the requester, which is the atomisp driver in this case.
+	mutex_lock(&dev->input_lock);
+	/*
+	 * since the isp will donwscale the resolution to the right size,
+	 * find the nearest one that will allow the isp to do so important to
+	 * ensure that the resolution requested is padded correctly by the
+	 * requester, which is the atomisp driver in this case.
 	 */
-	index = nearest_resolution_index(sd, fival->width, fival->height);
+	fmt_index = nearest_resolution_index(sd, fival->width, fival->height);
+	if (-1 == fmt_index)
+		fmt_index = dev->entries_curr_table - 1;
 
-	if (-1 == index)
-		index = dev->entries_curr_table - 1;
+	res = &dev->curr_res_table[fmt_index];
+	mutex_unlock(&dev->input_lock);
+
+	/* Check if this index is supported */
+	if (index > __ov8830_get_max_fps_index(res->fps_options))
+		return -EINVAL;
 
 	fival->type = V4L2_FRMIVAL_TYPE_DISCRETE;
 /*	fival->width = ov8830_res[index].width;
 	fival->height = ov8830_res[index].height; */
 	fival->discrete.numerator = 1;
-	fival->discrete.denominator = dev->curr_res_table[index].fps;
+	fival->discrete.denominator = res->fps_options[index].fps;
 
 	return 0;
 }

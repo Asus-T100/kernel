@@ -183,6 +183,8 @@ struct drv201_device {
 #define	OV8830_STATUS_ACTIVE		0x3
 #define	OV8830_STATUS_VIEWFINDER	0x4
 
+#define MAX_FPS_OPTIONS_SUPPORTED	3
+
 #define	v4l2_format_capture_type_entry(_width, _height, \
 		_pixelformat, _bytesperline, _colorspace) \
 	{\
@@ -329,6 +331,12 @@ struct ov8830_reg {
 	u32 val2;	/* optional: for rmw, OR mask */
 };
 
+struct ov8830_fps_setting {
+	int fps;
+	unsigned short pixels_per_line;
+	unsigned short lines_per_frame;
+};
+
 /* Store macro values' debug names */
 struct macro_string {
 	u8 val;
@@ -357,14 +365,12 @@ struct ov8830_resolution {
 	int res;
 	int width;
 	int height;
-	int fps;
 	bool used;
-	unsigned short pixels_per_line;
-	unsigned short lines_per_frame;
 	const struct ov8830_reg *regs;
 	u8 bin_factor_x;
 	u8 bin_factor_y;
 	unsigned short skip_frames;
+	const struct ov8830_fps_setting fps_options[MAX_FPS_OPTIONS_SUPPORTED];
 };
 
 struct ov8830_format {
@@ -400,6 +406,7 @@ struct ov8830_device {
 	const struct ov8830_reg *basic_settings_list;
 	const struct ov8830_resolution *curr_res_table;
 	int entries_curr_table;
+	int fps_index;
 };
 
 /*
@@ -1196,157 +1203,229 @@ static struct ov8830_resolution ov8830_res_preview[] = {
 		 .desc = "OV8830_PREVIEW_848x616",
 		 .width = 848,
 		 .height = 616,
-		 .fps = 30,
 		 .used = 0,
-		 .pixels_per_line = 3608,
-		 .lines_per_frame = 1773,
 		 .regs = ov8830_PREVIEW_848x616_30fps,
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
 		 .skip_frames = 0,
+		 .fps_options = {
+			{
+				.fps = 30,
+				.pixels_per_line = 3608,
+				.lines_per_frame = 2773,
+			},
+			{
+			}
+		}
 	},
 	{
 		 .desc = "ov8830_wide_preview_30fps",
 		 .width = 1280,
 		 .height = 720,
-		 .fps = 30,
 		 .used = 0,
-		 .pixels_per_line = 3608,
-		 .lines_per_frame = 1773,
 		 .regs = ov8830_PREVIEW_WIDE_PREVIEW_30fps,
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
 		 .skip_frames = 0,
+		 .fps_options = {
+			{
+				.fps = 30,
+				.pixels_per_line = 3608,
+				.lines_per_frame = 2773,
+			},
+			{
+			}
+		},
 	},
 	{
 		 .desc = "ov8830_cont_cap_qvga_15fps",
 		 .width = 336,
 		 .height = 256,
-		 .fps = 15,
 		 .used = 0,
-		 .pixels_per_line = 4696,
-		 .lines_per_frame = 2724,
 		 .regs = ov8830_cont_cap_qvga_15fps,
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
 		 .skip_frames = 0,
+		 .fps_options = {
+			{
+				.fps = 15,
+				.pixels_per_line = 4696,
+				.lines_per_frame = 2724,
+			},
+			{
+			}
+		},
 	},
 	{
 		 .desc = "ov8830_cont_cap_vga_15fps",
 		 .width = 656,
 		 .height = 496,
-		 .fps = 15,
 		 .used = 0,
-		 .pixels_per_line = 4696,
-		 .lines_per_frame = 2724,
 		 .regs = ov8830_VGA_STILL_15fps,
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
 		 .skip_frames = 0,
+		 .fps_options =  {
+			{
+				.fps = 15,
+				.pixels_per_line = 4696,
+				.lines_per_frame = 2724,
+			},
+			{
+			}
+		}
 	},
 	{
 		 .desc = "OV8830_PREVIEW1600x1200",
 		 .width = 1632,
 		 .height = 1224,
-		 .fps = 30,
 		 .used = 0,
-		 .pixels_per_line = 3608,
-		 .lines_per_frame = 1773,
 		 .regs = ov8830_PREVIEW_1632x1224_30fps	,
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
 		 .skip_frames = 0,
+		 .fps_options = {
+			{
+				.fps = 30,
+				.pixels_per_line = 3608,
+				.lines_per_frame = 2773,
+			},
+			{
+			}
+		},
 	},
 	{
 		 .desc = "ov8830_cont_cap_720P_15fps",
 		 .width = 1296,
 		 .height = 736,
-		 .fps = 15,
 		 .used = 0,
-		 .pixels_per_line = 4696,
-		 .lines_per_frame = 2724,
 		 .regs = ov8830_cont_cap_720P_15fps,
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
 		 .skip_frames = 0,
+		 .fps_options =  {
+			{
+				.fps = 15,
+				.pixels_per_line = 4696,
+				.lines_per_frame = 2724,
+			},
+			{
+			}
+		},
 	},
 	{
 		 .desc = "ov8830_cont_cap_1M_15fps",
 		 .width = 1040,
 		 .height = 784,
-		 .fps = 15,
 		 .used = 0,
-		 .pixels_per_line = 4696,
-		 .lines_per_frame = 2724,
 		 .regs = ov8830_1M_STILL_15fps,
 		 .bin_factor_x = 0,
 		 .bin_factor_y = 0,
 		 .skip_frames = 0,
+		 .fps_options =  {
+			{
+				.fps = 15,
+				.pixels_per_line = 4696,
+				.lines_per_frame = 2724,
+			},
+			{
+			}
+		},
 	},
 	{
 		 .desc = "ov8830_cont_cap_1080P_15fps",
 		 .width = 1936,
 		 .height = 1104,
-		 .fps = 15,
 		 .used = 0,
-		 .pixels_per_line = 4696,
-		 .lines_per_frame = 2724,
 		 .regs = ov8830_1080P_STILL_15fps,
 		 .bin_factor_x = 0,
 		 .bin_factor_y = 0,
 		 .skip_frames = 0,
+		 .fps_options =  {
+			{
+				.fps = 15,
+				.pixels_per_line = 4696,
+				.lines_per_frame = 2724,
+			},
+			{
+			}
+		},
 	},
 	{
 		.desc = "ov8830_cont_cap_3M_15fps",
 		.width = 2064,
 		.height = 1552,
-		.fps = 15,
 		.used = 0,
-		.pixels_per_line = 4696,
-		.lines_per_frame = 2724,
 		.regs = ov8830_3M_STILL_15fps,
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.skip_frames = 0,
+		.fps_options =  {
+			{
+				.fps = 15,
+				.pixels_per_line = 4696,
+				.lines_per_frame = 2724,
+			},
+			{
+			}
+		},
 	},
 	{
 		.desc = "ov8830_cont_cap_5M_15fps",
 		.width = 2576,
 		.height = 1936,
-		.fps = 15,
 		.used = 0,
-		.pixels_per_line = 4696,
-		.lines_per_frame = 2724,
 		.regs = ov8830_5M_STILL_15fps,
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.skip_frames = 0,
+		.fps_options =  {
+			{
+				.fps = 15,
+				.pixels_per_line = 4696,
+				.lines_per_frame = 2724,
+			},
+			{
+			}
+		},
 	},
 	{
 		 .desc = "ov8830_cont_cap_6M_15fps",
 		 .width = 3280,
 		 .height = 1852,
-		 .fps = 15,
 		 .used = 0,
-		 .pixels_per_line = 4696,
-		 .lines_per_frame = 2724,
 		 .regs = ov8830_6M_STILL_15fps,
 		 .bin_factor_x = 0,
 		 .bin_factor_y = 0,
 		 .skip_frames = 0,
+		 .fps_options =  {
+			{
+				.fps = 15,
+				.pixels_per_line = 4696,
+				.lines_per_frame = 2724,
+			},
+			{
+			}
+		},
 	},
 	{
 		.desc = "ov8830_cont_cap_8M_15fps",
 		.width = 3280,
 		.height = 2464,
-		.fps = 15,
 		.used = 0,
-		.pixels_per_line = 4464,
-		.lines_per_frame = 2867,
 		.regs = ov8830_8M_STILL_15fps,
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.skip_frames = 0,
+		.fps_options = {
+			{
+				.fps = 15,
+				.pixels_per_line = 4464,
+				.lines_per_frame = 2867,
+			},
+			{
+			}
+		},
 	},
 };
 
@@ -1355,105 +1434,153 @@ static struct ov8830_resolution ov8830_res_still[] = {
 		 .desc = "STILL_VGA_15fps",
 		 .width = 656,
 		 .height = 496,
-		 .fps = 15,
 		 .used = 0,
-		 .pixels_per_line = 4696,
-		 .lines_per_frame = 2724,
 		 .regs = ov8830_VGA_STILL_15fps,
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
 		 .skip_frames = 1,
+		 .fps_options =  {
+			{
+				.fps = 15,
+				.pixels_per_line = 4696,
+				.lines_per_frame = 2724,
+			},
+			{
+			}
+		},
 	},
 	{
 		 .desc = "STILL_1080P_15fps",
 		 .width = 1936,
 		 .height = 1104,
-		 .fps = 15,
 		 .used = 0,
-		 .pixels_per_line = 4696,
-		 .lines_per_frame = 2724,
 		 .regs = ov8830_1080P_STILL_15fps,
 		 .bin_factor_x = 0,
 		 .bin_factor_y = 0,
 		 .skip_frames = 1,
+		 .fps_options =  {
+			{
+				.fps = 15,
+				.pixels_per_line = 4696,
+				.lines_per_frame = 2724,
+			},
+			{
+			}
+		},
 	},
 	{
 		 .desc = "STILL_1M_15fps",
 		 .width = 1040,
 		 .height = 784,
-		 .fps = 15,
 		 .used = 0,
-		 .pixels_per_line = 4696,
-		 .lines_per_frame = 2724,
 		 .regs = ov8830_1M_STILL_15fps,
 		 .bin_factor_x = 0,
 		 .bin_factor_y = 0,
 		 .skip_frames = 1,
+		 .fps_options =  {
+			{
+				.fps = 15,
+				.pixels_per_line = 4696,
+				.lines_per_frame = 2724,
+			},
+			{
+			}
+		},
 	},
 	{
 		 .desc = "STILL_2M_15fps",
 		 .width = 1640,
 		 .height = 1232,
-		 .fps = 15,
 		 .used = 0,
-		 .pixels_per_line = 4696,
-		 .lines_per_frame = 2724,
 		 .regs = ov8830_2M_STILL_15fps,
 		 .bin_factor_x = 0,
 		 .bin_factor_y = 0,
 		 .skip_frames = 1,
+		 .fps_options =  {
+			{
+				.fps = 15,
+				.pixels_per_line = 4696,
+				.lines_per_frame = 2724,
+			},
+			{
+			}
+		},
 	},
 	{
 		.desc = "STILL_3M_15fps",
 		.width = 2064,
 		.height = 1552,
-		.fps = 15,
 		.used = 0,
-		.pixels_per_line = 4696,
-		.lines_per_frame = 2724,
 		.regs = ov8830_3M_STILL_15fps,
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.skip_frames = 1,
+		.fps_options =  {
+			{
+				.fps = 15,
+				.pixels_per_line = 4696,
+				.lines_per_frame = 2724,
+			},
+			{
+			}
+		},
 	},
 	{
 		.desc = "STILL_5M_15fps",
 		.width = 2576,
 		.height = 1936,
-		.fps = 15,
 		.used = 0,
-		.pixels_per_line = 4696,
-		.lines_per_frame = 2724,
 		.regs = ov8830_5M_STILL_15fps,
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.skip_frames = 1,
+		.fps_options =  {
+			{
+				.fps = 15,
+				.pixels_per_line = 4696,
+				.lines_per_frame = 2724,
+			},
+			{
+			}
+		},
 	},
 	{
 		 .desc = "STILL_6M_15fps",
 		 .width = 3280,
 		 .height = 1852,
-		 .fps = 15,
 		 .used = 0,
-		 .pixels_per_line = 4696,
-		 .lines_per_frame = 2724,
 		 .regs = ov8830_6M_STILL_15fps,
 		 .bin_factor_x = 0,
 		 .bin_factor_y = 0,
 		 .skip_frames = 1,
+		 .fps_options =  {
+			{
+				.fps = 15,
+				.pixels_per_line = 4696,
+				.lines_per_frame = 2724,
+			},
+			{
+			}
+		},
 	},
 	{
 		.desc = "STILL_8M_15fps",
 		.width = 3280,
 		.height = 2464,
-		.fps = 15,
 		.used = 0,
-		.pixels_per_line = 4464,
-		.lines_per_frame = 2867,
 		.regs = ov8830_8M_STILL_15fps,
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.skip_frames = 1,
+		.fps_options = {
+			{
+				.fps = 15,
+				.pixels_per_line = 4464,
+				.lines_per_frame = 2867,
+			},
+			{
+			}
+		},
 	},
 };
 
@@ -1462,92 +1589,114 @@ static struct ov8830_resolution ov8830_res_video[] = {
 		 .desc = "QCIF_strong_dvs_30fps",
 		 .width = 216,
 		 .height = 176,
-		 .fps = 30,
 		 .used = 0,
-		 .pixels_per_line = 4128,
-		 .lines_per_frame = 1550,
 		 .regs = ov8830_QCIF_strong_dvs_30fps,
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
 		 .skip_frames = 0,
+		 .fps_options = {
+			{
+				 .fps = 30,
+				 .pixels_per_line = 4128,
+				 .lines_per_frame = 1550,
+			},
+			{
+			}
+		},
 	},
 	{
 		 .desc = "QVGA_strong_dvs_30fps",
 		 .width = 408,
 		 .height = 308,
-		 .fps = 30,
 		 .used = 0,
-		 .pixels_per_line = 4128,
-		 .lines_per_frame = 1550,
 		 .regs = ov8830_QVGA_strong_dvs_30fps,
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
 		 .skip_frames = 0,
+		 .fps_options = {
+			{
+				 .fps = 30,
+				 .pixels_per_line = 4128,
+				 .lines_per_frame = 1550,
+			},
+			{
+			}
+		},
 	},
 	{
 		 .desc = "VGA_strong_dvs_30fps",
 		 .width = 820,
 		 .height = 616,
-		 .fps = 30,
 		 .used = 0,
-		 .pixels_per_line = 4128,
-		 .lines_per_frame = 1550,
 		 .regs = ov8830_VGA_strong_dvs_30fps,
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
 		 .skip_frames = 0,
+		 .fps_options = {
+			{
+				 .fps = 30,
+				 .pixels_per_line = 4128,
+				 .lines_per_frame = 1550,
+			},
+			{
+			}
+		},
 	},
 	{
 		.desc = "480p_strong_dvs_30fps",
 		.width = 936,
 		.height = 602,
-		.fps = 30,
-		.used = 0,
-		.pixels_per_line = 4128,
-		.lines_per_frame = 1550,
 		.regs = ov8830_480p_strong_dvs_30fps,
 		.bin_factor_x = 1,
 		.bin_factor_y = 1,
 		.skip_frames = 0,
+		.fps_options = {
+			{
+				 .fps = 30,
+				 .pixels_per_line = 4128,
+				 .lines_per_frame = 1550,
+			},
+			{
+			}
+		},
 	},
 	{
 		 .desc = "720p_strong_dvs_30fps",
 		 .width = 1568,
 		 .height = 880,
-		 .fps = 30,
 		 .used = 0,
-		 .pixels_per_line = 4128,
-		 .lines_per_frame = 1550,
 		 .regs = ov8830_720p_strong_dvs_30fps,
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
 		 .skip_frames = 0,
-	},
-	{
-		.desc = "MODE1920x1080_DVS_OFF",
-		.width = 1936,
-		.height = 1104,
-		.fps = 30,
-		.used = 0,
-		.pixels_per_line = 4100,
-		.lines_per_frame = 1561,
-		.regs = ov8830_1080p_30fps_dvs_off,
-		.bin_factor_x = 0,
-		.bin_factor_y = 0,
-		.skip_frames = 0,
+		 .fps_options = {
+			{
+				 .fps = 30,
+				 .pixels_per_line = 4128,
+				 .lines_per_frame = 1550,
+			},
+			{
+			}
+		},
 	},
 	{
 		 .desc = "MODE1920x1080",
 		 .width = 2336,
 		 .height = 1320,
-		 .fps = 30,
 		 .used = 0,
-		 .pixels_per_line = 4100,
-		 .lines_per_frame = 1561,
 		 .regs = ov8830_1080p_strong_dvs_30fps,
 		 .bin_factor_x = 0,
 		 .bin_factor_y = 0,
 		 .skip_frames = 0,
+		 .fps_options = {
+			{
+				 .fps = 30,
+				 .pixels_per_line = 4100,
+				 .lines_per_frame = 1561,
+			},
+			{
+			}
+		},
 	},
 };
 
