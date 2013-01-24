@@ -3416,9 +3416,6 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 	if (format == NULL)
 		return -EINVAL;
 
-	pipe->sh_fmt = format->sh_fmt;
-	pipe->pix.pixelformat = pixelformat;
-
 	if (isp->inputs[isp->input_curr].type != TEST_PATTERN &&
 		isp->inputs[isp->input_curr].type != FILE_INPUT) {
 		mipi_info = atomisp_to_sensor_mipi_info(
@@ -3684,6 +3681,9 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	if (format_bridge == NULL)
 		return -EINVAL;
 
+	pipe->sh_fmt = format_bridge->sh_fmt;
+	pipe->pix.pixelformat = f->fmt.pix.pixelformat;
+
 	if (source_pad == ATOMISP_SUBDEV_PAD_SOURCE_VF
 	    || (source_pad == ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW
 		&& isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO)) {
@@ -3893,9 +3893,8 @@ done:
 	if (f->fmt.pix.field == V4L2_FIELD_ANY)
 		f->fmt.pix.field = V4L2_FIELD_NONE;
 	pipe->pix.field = f->fmt.pix.field;
-	pipe->sh_fmt = format_bridge->sh_fmt;
 
-	memcpy(&f->fmt.pix, &pipe->pix, sizeof(struct v4l2_pix_format));
+	f->fmt.pix = pipe->pix;
 	f->fmt.pix.priv = PAGE_ALIGN(pipe->pix.width *
 				     pipe->pix.height * 2);
 
