@@ -324,7 +324,7 @@ i2c_dw_xfer_msg(struct dw_i2c_dev *dev)
 
 	raw_local_irq_save(flags);
 	/* if fifo only has one byte, it is not safe */
-	if ((dev->status & STATUS_WRITE_IN_PROGRESS) &&
+	if (!dev->enable_stop && (dev->status & STATUS_WRITE_IN_PROGRESS) &&
 		(dw_readl(dev, DW_IC_TXFLR) < 1)) {
 		dev_err(dev->dev, "TX FIFO underrun, addr: 0x%x.\n", addr);
 		dev->msg_err = -EAGAIN;
