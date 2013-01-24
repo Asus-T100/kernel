@@ -1263,10 +1263,6 @@ MODULE_LICENSE ("GPL");
 #include "ehci-langwell-pci.c"
 #define INTEL_MID_OTG_HOST_DRIVER	ehci_otg_driver
 #endif
-#ifdef CONFIG_USB_EHCI_HCD_SPH
-#include "ehci-sph-pci.c"
-#define INTEL_MID_SPH_HOST_DRIVER	ehci_sph_driver
-#endif
 #ifdef CONFIG_USB_HCD_HSIC
 #include "ehci-tangier-hsic-pci.c"
 #define INTEL_MID_HSIC_HOST_DRIVER	ehci_hsic_driver
@@ -1408,15 +1404,12 @@ static int __init ehci_hcd_init(void)
 		 sizeof(struct ehci_qh), sizeof(struct ehci_qtd),
 		 sizeof(struct ehci_itd), sizeof(struct ehci_sitd));
 
-#ifdef CONFIG_USB_EHCI_HCD_SPH
+#ifdef CONFIG_BOARD_CTP
 	if (sph_enabled()) {
 		retval = cloverview_sph_gpio_init();
 		if (retval < 0)
 			return retval;
 	}
-	retval = pci_register_driver(&INTEL_MID_SPH_HOST_DRIVER);
-	if (retval < 0)
-		goto err_sph;
 #endif
 
 #ifdef DEBUG
@@ -1505,11 +1498,9 @@ clean0:
 	ehci_debug_root = NULL;
 err_debug:
 #endif
-#ifdef CONFIG_USB_EHCI_HCD_SPH
-err_sph:
+#ifdef CONFIG_BOARD_CTP
 	if (sph_enabled())
 		cloverview_sph_gpio_cleanup();
-	pci_unregister_driver(&INTEL_MID_SPH_HOST_DRIVER);
 #endif
 	clear_bit(USB_EHCI_LOADED, &usb_hcds_loaded);
 	return retval;
@@ -1536,10 +1527,9 @@ static void __exit ehci_hcd_cleanup(void)
 #ifdef INTEL_MID_OTG_HOST_DRIVER
 	intel_mid_ehci_driver_unregister(&INTEL_MID_OTG_HOST_DRIVER);
 #endif
-#ifdef CONFIG_USB_EHCI_HCD_SPH
+#ifdef CONFIG_BOARD_CTP
 	if (sph_enabled())
 		cloverview_sph_gpio_cleanup();
-	pci_unregister_driver(&INTEL_MID_SPH_HOST_DRIVER);
 #endif
 #ifdef DEBUG
 	debugfs_remove(ehci_debug_root);

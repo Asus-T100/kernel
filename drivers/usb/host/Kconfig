@@ -126,18 +126,6 @@ config USB_EHCI_BIG_ENDIAN_DESC
 				    PPC_MPC512x || PMC_MSP || SPARC_LEON)
 	default y
 
-
-config USB_EHCI_HCD_SPH
-	bool "SPH support"
-	depends on USB_EHCI_HCD
-	default n
-	---help---
-		Say 'Y' to turn on SPH support for the EHCI host controller driver.
-		SPH is used for debugging and tracing between AP and BP.
-		In AP side, it will work as a EHCI host.
-
-		If unsure, say N
-
 config XPS_USB_HCD_XILINX
 	bool "Use Xilinx usb host EHCI controller core"
 	depends on USB_EHCI_HCD && (PPC32 || MICROBLAZE)
