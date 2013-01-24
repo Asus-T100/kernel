@@ -489,7 +489,7 @@ static int
 snd_compr_set_metadata(struct snd_compr_stream *stream, unsigned long arg)
 {
 	struct snd_compr_metadata *metadata;
-	int retval;
+	int retval = 0;
 
 	/*
 	* we should allow parameter change only when stream has been
