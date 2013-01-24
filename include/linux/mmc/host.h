@@ -183,6 +183,7 @@ struct mmc_panic_host {
 	unsigned int		max_req_size;
 	unsigned int		blkaddr;
 	unsigned int		caps;
+	unsigned int		caps2;
 	u32			ocr;		/* the current OCR setting */
 	struct mmc_ios		ios;		/* current io bus settings */
 	struct mmc_card		*card;

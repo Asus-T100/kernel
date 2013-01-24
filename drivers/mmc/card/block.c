@@ -2166,9 +2166,20 @@ static int mmc_blk_resume(struct mmc_card *card)
 #define mmc_blk_resume	NULL
 #endif
 
+static void mmc_blk_shutdown(struct device *dev)
+{
+	struct mmc_card *card = mmc_dev_to_card(dev);
+	struct mmc_host *mmc = card->host;
+
+	mmc_claim_host(mmc);
+	mmc_cache_ctrl(mmc, 0);
+	mmc_release_host(mmc);
+}
+
 static struct mmc_driver mmc_driver = {
 	.drv		= {
 		.name	= "mmcblk",
+		.shutdown = mmc_blk_shutdown,
 	},
 	.probe		= mmc_blk_probe,
 	.remove		= mmc_blk_remove,
