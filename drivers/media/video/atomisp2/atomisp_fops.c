@@ -358,7 +358,6 @@ int atomisp_init_struct(struct atomisp_device *isp)
 	if (isp == NULL)
 		return -EINVAL;
 
-	isp->capture_format = NULL;
 	isp->vf_format = NULL;
 	v4l2_ctrl_s_ctrl(isp->isp_subdev.run_mode,
 			 ATOMISP_RUN_MODE_STILL_CAPTURE);
@@ -595,8 +594,6 @@ static int atomisp_release(struct file *file)
 		videobuf_queue_cancel(&pipe->outq);
 		mutex_unlock(&pipe->outq.vb_lock);
 	}
-
-	isp->capture_format = NULL;
 
 	kfree(isp->vf_format);
 	isp->vf_format = NULL;
