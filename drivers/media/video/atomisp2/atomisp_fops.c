@@ -358,7 +358,6 @@ int atomisp_init_struct(struct atomisp_device *isp)
 	if (isp == NULL)
 		return -EINVAL;
 
-	isp->vf_format = NULL;
 	v4l2_ctrl_s_ctrl(isp->isp_subdev.run_mode,
 			 ATOMISP_RUN_MODE_STILL_CAPTURE);
 	isp->params.color_effect = V4L2_COLORFX_NONE;
@@ -594,9 +593,6 @@ static int atomisp_release(struct file *file)
 		videobuf_queue_cancel(&pipe->outq);
 		mutex_unlock(&pipe->outq.vb_lock);
 	}
-
-	kfree(isp->vf_format);
-	isp->vf_format = NULL;
 
 	memset(&isp_sink_fmt, 0, sizeof(isp_sink_fmt));
 	atomisp_subdev_set_ffmt(&isp->isp_subdev.subdev, NULL,
