@@ -1930,42 +1930,17 @@ ov8830_g_frame_interval(struct v4l2_subdev *sd,
 			struct v4l2_subdev_frame_interval *interval)
 {
 	struct ov8830_device *dev = to_ov8830_sensor(sd);
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
-	u16 lines_per_frame;
+	const struct ov8830_resolution *res;
 
-	/*
-	 * if no specific information to calculate the fps,
-	 * just used the value in sensor settings
-	 */
-	if (!dev->pixels_per_line || !dev->lines_per_frame) {
-		interval->interval.numerator = 1;
-		interval->interval.denominator = dev->fps;
-		return 0;
-	}
+	mutex_lock(&dev->input_lock);
 
-	/*
-	 * DS: if coarse_integration_time is set larger than
-	 * lines_per_frame the frame_size will be expanded to
-	 * coarse_integration_time+1
-	 */
-	if (dev->exposure > dev->lines_per_frame) {
-		if (dev->exposure == 0xFFFF) {
-			/*
-			 * we can not add 1 according to ds, as this will
-			 * cause over flow
-			 */
-			v4l2_warn(client, "%s: abnormal exposure:0x%x\n",
-				  __func__, dev->exposure);
-			lines_per_frame = dev->exposure;
-		} else
-			lines_per_frame = dev->exposure + 1;
-	} else
-		lines_per_frame = dev->lines_per_frame;
+	/* Return the currently selected settings' maximum frame interval */
+	res = &dev->curr_res_table[dev->fmt_idx];
 
-	interval->interval.numerator = dev->pixels_per_line *
-					lines_per_frame;
-	interval->interval.denominator = OV8830_MCLK * 1000000;
+	interval->interval.numerator = 1;
+	interval->interval.denominator = res->fps_options[dev->fps_index].fps;
 
+	mutex_unlock(&dev->input_lock);
 	return 0;
 }
 
