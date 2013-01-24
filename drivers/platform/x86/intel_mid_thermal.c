@@ -131,7 +131,7 @@ static int soc_set_cur_state(struct thermal_cooling_device *cdev,
 				unsigned long state)
 {
 	int ret;
-	if (state < 0 || state > SOC_MAX_STATES - 1) {
+	if (state > SOC_MAX_STATES - 1) {
 		pr_err("Invalid SoC throttle state:%ld\n", state);
 		return -EINVAL;
 	}
