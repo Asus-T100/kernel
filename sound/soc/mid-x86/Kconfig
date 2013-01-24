@@ -41,19 +41,6 @@ config SND_YUKKABEACH_MACHINE
           Say Y if you have such a device
           If unsure select "N".
 
-config SND_MRFLD_MACHINE
-	tristate "SOC Machine Audio driver for Intel Merrifield MID platform"
-	depends on INTEL_SCU_IPC && INTEL_SCU_IPC_UTIL && X86
-	select SND_SOC_CS42L73
-	select SND_SST_PLATFORM
-	select SND_INTEL_SST
-	default n
-	help
-	  This adds support for ASoC machine driver for Intel(R) MID Merrifield platform
-          used as alsa device in audio substem in Intel(R) MID devices
-          Say Y if you have such a device
-          If unsure select "N".
-
 config SND_CTP_MACHINE
 	tristate "SOC Machine Audio driver for Intel Cloverview MID platform"
 	depends on INTEL_SCU_IPC_UTIL && X86 && GPIO_LANGWELL

@@ -151,6 +151,36 @@ static int ctp_fg_save_config_data(const char *name, void *data, int len)
 }
 EXPORT_SYMBOL(ctp_fg_save_config_data);
 
+int mrfl_get_bat_health(void)
+{
+
+	int pbat_health = -ENODEV;
+	int bqbat_health = -ENODEV;
+#ifdef CONFIG_BQ24261_CHARGER
+	 bqbat_health = bq24261_get_bat_health();
+#endif
+#ifdef CONFIG_PMIC_CCSM
+	pbat_health = pmic_get_health();
+#endif
+
+	/*Battery temperature exceptions are reported to PMIC. ALl other
+	* exceptions are reported to bq24261 charger. Need to read the
+	* battery health reported by both drivers, before reporting
+	* the actual battery health
+	*/
+
+	/* FIXME: need to have a time stamp based implementation to
+	* report battery health
+	*/
+
+	if (pbat_health < 0 && bqbat_health < 0)
+		return pbat_health;
+	if (pbat_health > 0 && pbat_health != POWER_SUPPLY_HEALTH_GOOD)
+		return pbat_health;
+	else
+		return bqbat_health;
+}
+
 void *max17042_platform_data(void *info)
 {
 	static struct max17042_platform_data platform_data;
@@ -214,11 +244,9 @@ void *max17042_platform_data(void *info)
 #endif
 
 #ifdef CONFIG_X86_MRFLD
-	platform_data.enable_current_sense = true;
 	platform_data.technology = POWER_SUPPLY_TECHNOLOGY_LION;
-	platform_data.battery_health = bc_check_battery_health;
-	platform_data.battery_status = bc_check_battery_status;
-	platform_data.battery_pack_temp = bc_get_battery_pack_temp;
+	platform_data.file_sys_storage_enabled = 1;
+	platform_data.battery_health = mrfl_get_bat_health;
 #endif
 	return &platform_data;
 }
