@@ -3938,46 +3938,34 @@ int atomisp_set_fmt_file(struct video_device *vdev, struct v4l2_format *f)
 		return -EINVAL;
 	}
 
-	switch (isp->sw_contex.output_mode) {
-	case OUTPUT_MODE_FILE:
-		ret = atomisp_try_fmt_file(isp, f);
-		if (ret)
-			return ret;
+	ret = atomisp_try_fmt_file(isp, f);
+	if (ret)
+		return ret;
 
-		pipe->out_fmt.pixelformat = f->fmt.pix.pixelformat;
-		pipe->out_fmt.framesize = f->fmt.pix.sizeimage;
-		pipe->out_fmt.imagesize = f->fmt.pix.sizeimage;
-		pipe->out_fmt.depth = get_pixel_depth(f->fmt.pix.pixelformat);
-		pipe->out_fmt.bytesperline = f->fmt.pix.bytesperline;
+	pipe->out_fmt.pixelformat = f->fmt.pix.pixelformat;
+	pipe->out_fmt.framesize = f->fmt.pix.sizeimage;
+	pipe->out_fmt.imagesize = f->fmt.pix.sizeimage;
+	pipe->out_fmt.depth = get_pixel_depth(f->fmt.pix.pixelformat);
+	pipe->out_fmt.bytesperline = f->fmt.pix.bytesperline;
 
-		pipe->out_fmt.bayer_order = f->fmt.pix.priv;
-		pipe->out_fmt.width = f->fmt.pix.width;
-		pipe->out_fmt.height = f->fmt.pix.height;
-		sh_input_format = get_sh_input_format(
-						pipe->out_fmt.pixelformat);
-		if (sh_input_format == -EINVAL) {
-			v4l2_err(&atomisp_dev,
-					"Wrong v4l2 format for output\n");
-			return -EINVAL;
-		}
-
-		sh_css_input_set_format(sh_input_format);
-		sh_css_input_set_mode(SH_CSS_INPUT_MODE_FIFO);
-		sh_css_input_set_bayer_order(pipe->out_fmt.bayer_order);
-		sh_css_input_configure_port(
-				__get_mipi_port(ATOMISP_CAMERA_PORT_PRIMARY),
-						2, 0xffff4);
-		return 0;
-
-	case OUTPUT_MODE_TEXT:
-		pipe->out_fmt.framesize = f->fmt.pix.sizeimage;
-		pipe->out_fmt.imagesize = f->fmt.pix.sizeimage;
-		return 0;
-
-	default:
-		v4l2_err(&atomisp_dev, "Unspported output mode\n");
+	pipe->out_fmt.bayer_order = f->fmt.pix.priv;
+	pipe->out_fmt.width = f->fmt.pix.width;
+	pipe->out_fmt.height = f->fmt.pix.height;
+	sh_input_format = get_sh_input_format(
+		pipe->out_fmt.pixelformat);
+	if (sh_input_format == -EINVAL) {
+		dev_info(isp->dev, "Wrong v4l2 format for output\n");
 		return -EINVAL;
 	}
+
+	sh_css_input_set_format(sh_input_format);
+	sh_css_input_set_mode(SH_CSS_INPUT_MODE_FIFO);
+	sh_css_input_set_bayer_order(pipe->out_fmt.bayer_order);
+	sh_css_input_configure_port(
+		__get_mipi_port(ATOMISP_CAMERA_PORT_PRIMARY),
+		2, 0xffff4);
+
+	return 0;
 }
 
 void atomisp_free_all_shading_tables(struct atomisp_device *isp)

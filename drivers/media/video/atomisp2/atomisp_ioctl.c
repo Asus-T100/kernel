@@ -532,32 +532,17 @@ static int atomisp_g_fmt_file(struct file *file, void *fh,
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
 	int ret = 0;
 
-	if (f->type != V4L2_BUF_TYPE_VIDEO_OUTPUT) {
-		v4l2_err(&atomisp_dev,
-				"unsupported v4l2 buf type\n");
-		return -EINVAL;
-	}
-
 	memset(f, 0, sizeof(struct v4l2_format));
 	f->type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
 
 	mutex_lock(&isp->mutex);
-	switch (isp->sw_contex.output_mode) {
-	case OUTPUT_MODE_FILE:
-		f->fmt.pix.width = pipe->out_fmt.width;
-		f->fmt.pix.height = pipe->out_fmt.height;
-		f->fmt.pix.pixelformat = pipe->out_fmt.pixelformat;
-		f->fmt.pix.bytesperline = pipe->out_fmt.bytesperline;
-		f->fmt.pix.sizeimage = pipe->out_fmt.imagesize;
-		break;
-	case OUTPUT_MODE_TEXT:
-		f->fmt.pix.sizeimage = pipe->out_fmt.framesize;
-		break;
-	default:
-		v4l2_err(&atomisp_dev, "Unspported output mode\n");
-		ret = -EINVAL;
-		break;
-	}
+
+	f->fmt.pix.width = pipe->out_fmt.width;
+	f->fmt.pix.height = pipe->out_fmt.height;
+	f->fmt.pix.pixelformat = pipe->out_fmt.pixelformat;
+	f->fmt.pix.bytesperline = pipe->out_fmt.bytesperline;
+	f->fmt.pix.sizeimage = pipe->out_fmt.imagesize;
+
 	mutex_unlock(&isp->mutex);
 
 	return ret;
@@ -830,9 +815,7 @@ int atomisp_reqbufs(struct file *file, void *fh,
 static int atomisp_reqbufs_file(struct file *file, void *fh,
 		struct v4l2_requestbuffers *req)
 {
-	int ret;
 	struct video_device *vdev = video_devdata(file);
-	struct atomisp_device *isp = video_get_drvdata(vdev);
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
 
 	if (req->count == 0) {
@@ -842,22 +825,7 @@ static int atomisp_reqbufs_file(struct file *file, void *fh,
 		return 0;
 	}
 
-	ret = videobuf_reqbufs(&pipe->outq, req);
-	if (ret)
-		return ret;
-
-	mutex_lock(&isp->mutex);
-	if (isp->sw_contex.output_mode == OUTPUT_MODE_TEXT) {
-		mutex_unlock(&isp->mutex);
-		return 0;
-	}
-
-	/*
-	 *  TODO: Implement file input function
-	 */
-	mutex_unlock(&isp->mutex);
-
-	return 0;
+	return videobuf_reqbufs(&pipe->outq, req);
 }
 
 /* application query the status of a buffer */
@@ -1922,11 +1890,8 @@ static int atomisp_s_parm_file(struct file *file, void *fh,
 	}
 
 	mutex_lock(&isp->mutex);
-	isp->sw_contex.output_mode = parm->parm.output.outputmode;
-	if (isp->sw_contex.output_mode == OUTPUT_MODE_FILE)
-		isp->sw_contex.file_input = 1;
+	isp->sw_contex.file_input = 1;
 	mutex_unlock(&isp->mutex);
-
 
 	return 0;
 }
