@@ -242,6 +242,7 @@ static int write_target_freq_to_hw(int new_freq)
 }
 int atomisp_freq_scaling(struct atomisp_device *isp, enum atomisp_dfs_mode mode)
 {
+	struct atomisp_sub_device *asd = &isp->isp_subdev;
 	unsigned int new_freq;
 	struct atomisp_freq_scaling_rule curr_rules;
 	int i, ret;
@@ -257,17 +258,12 @@ int atomisp_freq_scaling(struct atomisp_device *isp, enum atomisp_dfs_mode mode)
 		goto done;
 	}
 
-	if (!isp->capture_format) {
-		v4l2_err(&atomisp_dev, "DFS need format to choose freq setting.\n");
-		return -EINVAL;
-	}
-
 	fps = atomisp_get_sensor_fps(isp);
 	if (fps == 0)
 		return -EINVAL;
 
-	curr_rules.width = isp->capture_format->out.width;
-	curr_rules.height = isp->capture_format->out.height;
+	curr_rules.width = asd->fmt[asd->capture_pad].fmt.width;
+	curr_rules.height = asd->fmt[asd->capture_pad].fmt.height;
 	curr_rules.fps = fps;
 	curr_rules.run_mode = isp->isp_subdev.run_mode->val;
 
@@ -3837,11 +3833,6 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	}
 
 	/* Only main stream pipe will be here */
-	isp->capture_format = &pipe->format;
-	if (!isp->capture_format) {
-		v4l2_err(&atomisp_dev, "Internal error\n");
-		return -EINVAL;
-	}
 	isp->isp_subdev.capture_pad = source_pad;
 
 	isp_sink_crop = *atomisp_subdev_get_rect(&isp->isp_subdev.subdev, NULL,

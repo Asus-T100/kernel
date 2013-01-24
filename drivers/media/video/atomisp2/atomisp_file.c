@@ -36,6 +36,7 @@ static int file_input_s_stream(struct v4l2_subdev *sd, int enable)
 {
 	struct atomisp_file_device *file_dev = v4l2_get_subdevdata(sd);
 	struct atomisp_device *isp = file_dev->isp;
+	struct atomisp_sub_device *asd = &isp->isp_subdev;
 	struct atomisp_video_pipe *out_pipe = &isp->isp_subdev.video_in;
 	unsigned char *buf =
 		   videobuf_to_vmalloc(out_pipe->outq.bufs[0]);
@@ -78,26 +79,28 @@ static int file_input_s_stream(struct v4l2_subdev *sd, int enable)
 		case ATOMISP_RUN_MODE_STILL_CAPTURE:
 			if (isp->sw_contex.bypass)
 				/* copy mode */
-				height = isp->capture_format->out.height +
-				    ((isp_sink_fmt.height -
-				     isp->capture_format->out.height) >> 1) + 1;
+				height = asd->fmt[asd->capture_pad].fmt.height +
+					((isp_sink_fmt.height -
+					  asd->fmt[asd->capture_pad].fmt.
+					  height) >> 1) + 1;
 			else
 				/* primary mode */
-				height = isp->capture_format->out.height +
+				height = asd->fmt[asd->capture_pad].fmt.height +
 				    ((isp_sink_fmt.height -
-				     isp->capture_format->out.height) >> 1) + 5;
+				      asd->fmt[asd->capture_pad].fmt.
+				      height) >> 1) + 5;
 			break;
 		case ATOMISP_RUN_MODE_PREVIEW:
 			/* preview mode */
-			height = isp->capture_format->out.height +
+			height = asd->fmt[asd->capture_pad].fmt.height +
 			    ((isp_sink_fmt.height -
-			      isp->capture_format->out.height) >> 1) + 5;
+			      asd->fmt[asd->capture_pad].fmt.height) >> 1) + 5;
 			break;
 		default:
 			/* video mode */
-			height = isp->capture_format->out.height +
+			height = asd->fmt[asd->capture_pad].fmt.height +
 			    ((isp_sink_fmt.height -
-			      isp->capture_format->out.height) >> 1) + 5;
+			      asd->fmt[asd->capture_pad].fmt.height) >> 1) + 5;
 			break;
 		}
 	}
