@@ -1303,7 +1303,7 @@ static const struct atomisp_format_bridge *get_atomisp_format_bridge(
 	return NULL;
 }
 
-static const struct atomisp_format_bridge *get_atomisp_format_bridge_from_mbus(
+const struct atomisp_format_bridge *get_atomisp_format_bridge_from_mbus(
 				enum v4l2_mbus_pixelcode mbus_code)
 {
 	unsigned int i;
@@ -3602,7 +3602,6 @@ static int atomisp_set_fmt_to_snr(struct atomisp_device *isp,
 {
 	const struct atomisp_format_bridge *format;
 	struct v4l2_mbus_framefmt snr_mbus_fmt;
-	struct atomisp_video_pipe *out_pipe = &isp->isp_subdev.video_in;
 	struct v4l2_mbus_framefmt ffmt;
 	int ret;
 
@@ -3610,32 +3609,23 @@ static int atomisp_set_fmt_to_snr(struct atomisp_device *isp,
 	if (format == NULL)
 		return -EINVAL;
 
-	if (!isp->sw_contex.file_input) {
-		v4l2_fill_mbus_format(&snr_mbus_fmt, &f->fmt.pix,
-					format->mbus_code);
-		snr_mbus_fmt.height += padding_h + dvs_env_h;
-		snr_mbus_fmt.width += padding_w + dvs_env_w;
+	v4l2_fill_mbus_format(&snr_mbus_fmt, &f->fmt.pix, format->mbus_code);
+	snr_mbus_fmt.height += padding_h + dvs_env_h;
+	snr_mbus_fmt.width += padding_w + dvs_env_w;
 
-		dev_dbg(isp->dev,
-			"s_mbus_fmt: ask %ux%u (padding %ux%u, dvs %ux%u)\n",
-			snr_mbus_fmt.width, snr_mbus_fmt.height, padding_w,
-			padding_h, dvs_env_w, dvs_env_h);
+	dev_dbg(isp->dev, "s_mbus_fmt: ask %ux%u (padding %ux%u, dvs %ux%u)\n",
+		snr_mbus_fmt.width, snr_mbus_fmt.height, padding_w, padding_h,
+		dvs_env_w, dvs_env_h);
 
-		ret = v4l2_subdev_call(
-				isp->inputs[isp->input_curr].camera,
-				video, s_mbus_fmt, &snr_mbus_fmt);
-		if (ret)
-			return ret;
+	ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera, video,
+			       s_mbus_fmt, &snr_mbus_fmt);
+	if (ret)
+		return ret;
 
-		dev_dbg(isp->dev, "s_mbus_fmt: got %ux%u\n",
-			snr_mbus_fmt.width, snr_mbus_fmt.height);
+	dev_dbg(isp->dev, "s_mbus_fmt: got %ux%u\n",
+		snr_mbus_fmt.width, snr_mbus_fmt.height);
 
-		ffmt = snr_mbus_fmt;
-	} else {	/* file input case */
-		memset(&ffmt, 0, sizeof(ffmt));
-		ffmt.width = out_pipe->out_fmt.width;
-		ffmt.height = out_pipe->out_fmt.height;
-	}
+	ffmt = snr_mbus_fmt;
 
 	if (ffmt.width < ATOM_ISP_STEP_WIDTH ||
 	    ffmt.height < ATOM_ISP_STEP_HEIGHT)
@@ -3930,40 +3920,25 @@ int atomisp_set_fmt_file(struct video_device *vdev, struct v4l2_format *f)
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
 	enum sh_css_input_format sh_input_format;
-	int ret = 0;
-
-	if (f->type != V4L2_BUF_TYPE_VIDEO_OUTPUT) {
-		v4l2_err(&atomisp_dev,
-				"Wrong v4l2 buf type for output\n");
-		return -EINVAL;
-	}
+	int ret;
 
 	ret = atomisp_try_fmt_file(isp, f);
 	if (ret)
 		return ret;
 
-	pipe->out_fmt.pixelformat = f->fmt.pix.pixelformat;
-	pipe->out_fmt.framesize = f->fmt.pix.sizeimage;
-	pipe->out_fmt.imagesize = f->fmt.pix.sizeimage;
-	pipe->out_fmt.depth = get_pixel_depth(f->fmt.pix.pixelformat);
-	pipe->out_fmt.bytesperline = f->fmt.pix.bytesperline;
-
-	pipe->out_fmt.bayer_order = f->fmt.pix.priv;
-	pipe->out_fmt.width = f->fmt.pix.width;
-	pipe->out_fmt.height = f->fmt.pix.height;
-	sh_input_format = get_sh_input_format(
-		pipe->out_fmt.pixelformat);
+	sh_input_format = get_sh_input_format(f->fmt.pix.pixelformat);
 	if (sh_input_format == -EINVAL) {
 		dev_info(isp->dev, "Wrong v4l2 format for output\n");
 		return -EINVAL;
 	}
 
+	pipe->format.out = f->fmt.pix;
+
 	sh_css_input_set_format(sh_input_format);
 	sh_css_input_set_mode(SH_CSS_INPUT_MODE_FIFO);
-	sh_css_input_set_bayer_order(pipe->out_fmt.bayer_order);
+	sh_css_input_set_bayer_order(f->fmt.pix.priv);
 	sh_css_input_configure_port(
-		__get_mipi_port(ATOMISP_CAMERA_PORT_PRIMARY),
-		2, 0xffff4);
+		__get_mipi_port(ATOMISP_CAMERA_PORT_PRIMARY), 2, 0xffff4);
 
 	return 0;
 }

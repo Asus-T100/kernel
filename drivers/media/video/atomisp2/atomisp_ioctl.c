@@ -530,22 +530,12 @@ static int atomisp_g_fmt_file(struct file *file, void *fh,
 	struct video_device *vdev = video_devdata(file);
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
-	int ret = 0;
-
-	memset(f, 0, sizeof(struct v4l2_format));
-	f->type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
 
 	mutex_lock(&isp->mutex);
-
-	f->fmt.pix.width = pipe->out_fmt.width;
-	f->fmt.pix.height = pipe->out_fmt.height;
-	f->fmt.pix.pixelformat = pipe->out_fmt.pixelformat;
-	f->fmt.pix.bytesperline = pipe->out_fmt.bytesperline;
-	f->fmt.pix.sizeimage = pipe->out_fmt.imagesize;
-
+	f->fmt.pix = pipe->format.out;
 	mutex_unlock(&isp->mutex);
 
-	return ret;
+	return 0;
 }
 
 /* This function looks up the closest available resolution. */
