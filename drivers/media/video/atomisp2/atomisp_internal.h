@@ -341,10 +341,6 @@ struct atomisp_device {
 	struct atomisp_sw_contex sw_contex;
 	struct atomisp_css_params params;
 
-	__u32 snr_max_width;
-	__u32 snr_max_height;
-	__u32 snr_pixelformat;
-
 	/* isp timeout status flag */
 	bool isp_timeout;
 	bool isp_fatal_error;
