@@ -42,7 +42,7 @@
 #include <linux/gpio.h>
 #include <linux/timer.h>
 #include <asm/intel_scu_ipc.h>
-#include <linux/kfifo.h>
+#include <linux/spinlock.h>
 
 #define DRIVER_NAME "msic_vdd"
 #define DEVICE_NAME "msic_vdd"
@@ -115,8 +115,6 @@
 /* defines reading BCU registers from SRAM */
 #define MSIC_BCU_STAT		0xFFFFEFC8
 #define MSIC_BCU_LEN		1
-#define IRQ_FIFO_MAX		16
-#define IRQ_KFIFO_ELEMENT	1
 
 #define BCU_SMIP_OFFSET		0x5A5
 
@@ -134,9 +132,9 @@
 enum { VWARNB_EVENT = 1, VWARNA_EVENT = 2, VCRIT_EVENT = 4};
 
 static DEFINE_MUTEX(vdd_update_lock);
+static DEFINE_SPINLOCK(vdd_interrupt_lock);
 
 /* defining the fifo to store the interrupt value */
-static DEFINE_KFIFO(irq_fifo, u8, IRQ_FIFO_MAX);
 
 struct vdd_info {
 	unsigned int irq;
@@ -146,6 +144,7 @@ struct vdd_info {
 	void __iomem *bcu_intr_addr;
 };
 
+static uint8_t global_irq_data;
 struct vdd_smip_data {
 	u8 vwarna_cfg;
 	u8 vwarnb_cfg;
@@ -496,14 +495,12 @@ static irqreturn_t vdd_intrpt_handler(int id, void *dev)
 {
 	struct vdd_info *vinfo = (struct vdd_info *)dev;
 	uint8_t irq_data;
-
-	if (unlikely(kfifo_is_full(&irq_fifo)))
-		return IRQ_WAKE_THREAD;
+	unsigned long __flags;
 
 	irq_data = readb(vinfo->bcu_intr_addr);
-
-	/* Interrupt Queuing */
-	kfifo_in(&irq_fifo, &irq_data, IRQ_KFIFO_ELEMENT);
+	spin_lock_irqsave(&vdd_interrupt_lock, __flags);
+	global_irq_data |= irq_data;
+	spin_unlock_irqrestore(&vdd_interrupt_lock, __flags);
 	return IRQ_WAKE_THREAD;
 };
 
@@ -518,17 +515,12 @@ static irqreturn_t vdd_interrupt_thread_handler(int irq, void *dev_data)
 	uint8_t irq_data, event = 0;
 	struct vdd_info *vinfo = (struct vdd_info *)dev_data;
 
-	if (!vinfo)
-		return IRQ_NONE;
-
-	if (unlikely(kfifo_is_empty(&irq_fifo))) {
-		dev_err(&vinfo->pdev->dev, "IRQ empty fifo\n");
-		return IRQ_NONE;
-	}
-
-	ret = kfifo_out(&irq_fifo, &irq_data, IRQ_KFIFO_ELEMENT);
-	if (ret != IRQ_KFIFO_ELEMENT)	{
-		dev_err(&vinfo->pdev->dev, "KFIFO underflow\n");
+	spin_lock_irq(&vdd_interrupt_lock);
+	irq_data = global_irq_data;
+	global_irq_data = 0;
+	spin_unlock_irq(&vdd_interrupt_lock);
+	if (irq_data == 0) {
+		dev_err(&vinfo->pdev->dev, "no more interrupt to process\n");
 		return IRQ_NONE;
 	}
 
@@ -621,13 +613,6 @@ static int program_bcu(struct ipc_device *pdev, struct vdd_info *vinfo)
 	 */
 	if (vdata.vwarna_cfg == 0)
 		restore_default_value(&vdata);
-
-	/*
-	 * workaround for the VWARNA not getting triggered
-	 */
-	vdata.bcudisa_beh = 0x01;
-	vdata.bcudisb_beh = 0x01;
-	vdata.bcuprochot_beh = 0x02;
 
 configure_register:
 	/* configure all related register */
