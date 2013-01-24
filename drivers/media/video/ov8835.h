@@ -861,6 +861,29 @@ static struct ov8830_reg const ov8835_video_480p_dvs_30fps[] = {
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
+static struct ov8830_reg const ov8835_video_720p_dvs_off[] = {
+	{ OV8830_8BIT, { 0x3708 }, 0xe6 }, /* Binning Related e6 : e3 */
+	{ OV8830_8BIT, { 0x3800 }, 0x00 }, /* 4, 310, 3291, 2169 3288x1860 */
+	{ OV8830_8BIT, { 0x3801 }, 0x04 },
+	{ OV8830_8BIT, { 0x3802 }, 0x01 },
+	{ OV8830_8BIT, { 0x3803 }, 0x36 },
+	{ OV8830_8BIT, { 0x3804 }, 0x0c },
+	{ OV8830_8BIT, { 0x3805 }, 0xdb },
+	{ OV8830_8BIT, { 0x3806 }, 0x08 },
+	{ OV8830_8BIT, { 0x3807 }, 0x79 },
+	{ OV8830_8BIT, { 0x3808 }, 0x05 }, /* O/p 1296x736 Bin+Scale */
+	{ OV8830_8BIT, { 0x3809 }, 0x10 },
+	{ OV8830_8BIT, { 0x380a }, 0x02 },
+	{ OV8830_8BIT, { 0x380b }, 0xe0 },
+	{ OV8830_8BIT, { 0x3814 }, 0x31 },
+	{ OV8830_8BIT, { 0x3815 }, 0x31 },
+	{ OV8830_8BIT, { 0x3820 }, 0x11 },
+	{ OV8830_8BIT, { 0x3821 }, 0x0f },
+	{ OV8830_8BIT, { 0x4004 }, 0x02 }, /* BLC No. of blacklines used. */
+	{ OV8830_8BIT, { 0x404f }, 0x90 },
+	{ OV8830_TOK_TERM, {0}, 0}
+};
+
 static struct ov8830_reg const ov8835_video_720p_dvs_30fps[] = {
 	{ OV8830_8BIT, { 0x3708 }, 0xe6 }, /* Binning Related e6 : e3 */
 	{ OV8830_8BIT, { 0x3800 }, 0x00 }, /* 4, 310, 3291, 2169 3288x1860 */
@@ -1327,6 +1350,30 @@ static struct ov8830_resolution ov8835_res_video[] = {
 				 .fps = 30,
 				 .pixels_per_line = 5458,
 				 .lines_per_frame = 1700,
+			},
+			{
+			}
+		},
+	},
+	{
+		 .desc = "ov8835_video_720p_dvs_off",
+		 .width = 1296,
+		 .height = 736,
+		 .used = 0,
+		 .regs = ov8835_video_720p_dvs_off,
+		 .bin_factor_x = 1,
+		 .bin_factor_y = 1,
+		 .skip_frames = 0,
+		 .fps_options = {
+			{
+				 .fps = 30,
+				 .pixels_per_line = 5458,
+				 .lines_per_frame = 1700,
+			},
+			{
+				 .fps = 60,
+				 .pixels_per_line = 4100,
+				 .lines_per_frame = 1200,
 			},
 			{
 			}
