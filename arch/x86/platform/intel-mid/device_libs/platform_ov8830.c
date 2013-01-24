@@ -74,10 +74,10 @@ static int ov8830_power_ctrl(struct v4l2_subdev *sd, int flag)
 			if (reg_err) {
 				printk(KERN_ALERT "Failed to enable regulator vprog1\n");
 				return reg_err;
+			}
 #else
 			intel_scu_ipc_msic_vprog1(0);
 #endif
-			}
 		}
 	} else {
 		if (camera_vprog1_on) {
