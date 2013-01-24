@@ -64,8 +64,8 @@ void __init *bq24261_platform_data(void *info)
 	bq24261_pdata.num_supplicants = ARRAY_SIZE(bq24261_supplied_to);
 	bq24261_pdata.throttle_states = bq24261_throttle_states;
 	bq24261_pdata.num_throttle_states = ARRAY_SIZE(bq24261_throttle_states);
-	bq24261_pdata.enable_charging = NULL;
-	bq24261_pdata.enable_charger = pmic_enable_charger;
+	bq24261_pdata.enable_charger = NULL;
+	bq24261_pdata.enable_charging = pmic_enable_charging;
 	bq24261_pdata.set_inlmt = pmic_set_ilimmA;
 	bq24261_pdata.set_cc = pmic_set_cc;
 	bq24261_pdata.set_cv = pmic_set_cv;
