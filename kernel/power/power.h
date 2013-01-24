@@ -296,4 +296,6 @@ extern int pm_wake_unlock(const char *buf);
 extern int __init early_suspend_init(void);
 /* kernel/power/earlysuspend.c */
 void request_suspend_state(suspend_state_t state);
+#else
+static inline int early_suspend_init(void) { return 0; }
 #endif
