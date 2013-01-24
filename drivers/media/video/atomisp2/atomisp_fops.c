@@ -69,7 +69,7 @@ int atomisp_buf_setup(struct videobuf_queue *vq,
 {
 	struct atomisp_video_pipe *pipe = vq->priv_data;
 
-	*size = pipe->format.out.sizeimage;
+	*size = pipe->pix.sizeimage;
 
 	return 0;
 }
@@ -80,9 +80,9 @@ int atomisp_buf_prepare(struct videobuf_queue *vq,
 {
 	struct atomisp_video_pipe *pipe = vq->priv_data;
 
-	vb->size = pipe->format.out.sizeimage;
-	vb->width = pipe->format.out.width;
-	vb->height = pipe->format.out.height;
+	vb->size = pipe->pix.sizeimage;
+	vb->width = pipe->pix.width;
+	vb->height = pipe->pix.height;
 	vb->field = field;
 	vb->state = VIDEOBUF_PREPARED;
 
@@ -275,7 +275,7 @@ static int atomisp_buf_setup_output(struct videobuf_queue *vq,
 {
 	struct atomisp_video_pipe *pipe = vq->priv_data;
 
-	*size = pipe->format.out.sizeimage;
+	*size = pipe->pix.sizeimage;
 
 	return 0;
 }
@@ -286,9 +286,9 @@ static int atomisp_buf_prepare_output(struct videobuf_queue *vq,
 {
 	struct atomisp_video_pipe *pipe = vq->priv_data;
 
-	vb->size = pipe->format.out.sizeimage;
-	vb->width = pipe->format.out.width;
-	vb->height = pipe->format.out.height;
+	vb->size = pipe->pix.sizeimage;
+	vb->width = pipe->pix.width;
+	vb->height = pipe->pix.height;
 	vb->field = field;
 	vb->state = VIDEOBUF_PREPARED;
 
@@ -783,7 +783,7 @@ static int atomisp_mmap(struct file *file, struct vm_area_struct *vma)
 		return -EINVAL;
 
 	mutex_lock(&isp->mutex);
-	new_size = pipe->format.out.width * pipe->format.out.height * 2;
+	new_size = pipe->pix.width * pipe->pix.height * 2;
 
 	/* mmap for ISP offline raw data */
 	if ((pipe->pipe_type == ATOMISP_PIPE_CAPTURE) &&
@@ -801,8 +801,8 @@ static int atomisp_mmap(struct file *file, struct vm_area_struct *vma)
 		}
 
 		ret = remove_pad_from_frame(raw_virt_addr,
-				      pipe->format.out.width,
-				      pipe->format.out.height);
+				      pipe->pix.width,
+				      pipe->pix.height);
 		if (ret < 0) {
 			v4l2_err(&atomisp_dev, "remove pad failed.\n");
 			goto error;
@@ -834,7 +834,7 @@ static int atomisp_mmap(struct file *file, struct vm_area_struct *vma)
 	/*
 	 * mmap for normal frames
 	 */
-	if (size != pipe->format.out.sizeimage) {
+	if (size != pipe->pix.sizeimage) {
 		v4l2_err(&atomisp_dev,
 			    "incorrect size for mmap ISP frames\n");
 		ret = -EINVAL;

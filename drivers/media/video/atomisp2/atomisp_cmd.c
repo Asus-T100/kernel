@@ -3178,8 +3178,8 @@ int atomisp_get_fmt(struct video_device *vdev, struct v4l2_format *f)
 
 	/* VIDIOC_S_FMT already called,*/
 	/* return fmt setted by app */
-	if (pipe->format.out.width != 0) {
-		memcpy(&f->fmt.pix, &pipe->format.out,
+	if (pipe->pix.width != 0) {
+		memcpy(&f->fmt.pix, &pipe->pix,
 			sizeof(struct v4l2_pix_format));
 	} else {
 		f->fmt.pix.width = 640;
@@ -3417,7 +3417,7 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 		return -EINVAL;
 
 	pipe->sh_fmt = format->sh_fmt;
-	pipe->format.out.pixelformat = pixelformat;
+	pipe->pix.pixelformat = pixelformat;
 
 	if (isp->inputs[isp->input_curr].type != TEST_PATTERN &&
 		isp->inputs[isp->input_curr].type != FILE_INPUT) {
@@ -3882,22 +3882,22 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	if (ret)
 		return -EINVAL;
 done:
-	pipe->format.out.width = f->fmt.pix.width;
-	pipe->format.out.height = f->fmt.pix.height;
-	pipe->format.out.pixelformat = f->fmt.pix.pixelformat;
-	pipe->format.out.bytesperline =
+	pipe->pix.width = f->fmt.pix.width;
+	pipe->pix.height = f->fmt.pix.height;
+	pipe->pix.pixelformat = f->fmt.pix.pixelformat;
+	pipe->pix.bytesperline =
 		DIV_ROUND_UP(format_bridge->depth * output_info.padded_width,
 			     8);
-	pipe->format.out.sizeimage =
-	    PAGE_ALIGN(f->fmt.pix.height * pipe->format.out.bytesperline);
+	pipe->pix.sizeimage =
+	    PAGE_ALIGN(f->fmt.pix.height * pipe->pix.bytesperline);
 	if (f->fmt.pix.field == V4L2_FIELD_ANY)
 		f->fmt.pix.field = V4L2_FIELD_NONE;
-	pipe->format.out.field = f->fmt.pix.field;
+	pipe->pix.field = f->fmt.pix.field;
 	pipe->sh_fmt = format_bridge->sh_fmt;
 
-	memcpy(&f->fmt.pix, &pipe->format.out, sizeof(struct v4l2_pix_format));
-	f->fmt.pix.priv = PAGE_ALIGN(pipe->format.out.width *
-				     pipe->format.out.height * 2);
+	memcpy(&f->fmt.pix, &pipe->pix, sizeof(struct v4l2_pix_format));
+	f->fmt.pix.priv = PAGE_ALIGN(pipe->pix.width *
+				     pipe->pix.height * 2);
 
 	pipe->capq.field = f->fmt.pix.field;
 
@@ -3932,7 +3932,7 @@ int atomisp_set_fmt_file(struct video_device *vdev, struct v4l2_format *f)
 		return -EINVAL;
 	}
 
-	pipe->format.out = f->fmt.pix;
+	pipe->pix = f->fmt.pix;
 
 	sh_css_input_set_format(sh_input_format);
 	sh_css_input_set_mode(SH_CSS_INPUT_MODE_FIFO);

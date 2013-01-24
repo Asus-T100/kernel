@@ -93,7 +93,7 @@ struct atomisp_video_pipe {
 	enum atomisp_pipe_type pipe_type;
 
 	struct atomisp_device *isp;
-	struct atomisp_video_pipe_format format;
+	struct v4l2_pix_format pix;
 	uint32_t sh_fmt;
 };
 
