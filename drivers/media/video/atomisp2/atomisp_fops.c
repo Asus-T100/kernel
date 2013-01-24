@@ -275,7 +275,7 @@ static int atomisp_buf_setup_output(struct videobuf_queue *vq,
 {
 	struct atomisp_video_pipe *pipe = vq->priv_data;
 
-	*size = pipe->out_fmt.imagesize;
+	*size = pipe->format.out.sizeimage;
 
 	return 0;
 }
@@ -286,9 +286,9 @@ static int atomisp_buf_prepare_output(struct videobuf_queue *vq,
 {
 	struct atomisp_video_pipe *pipe = vq->priv_data;
 
-	vb->size = pipe->out_fmt.imagesize;
-	vb->width = pipe->out_fmt.width;
-	vb->height = pipe->out_fmt.height;
+	vb->size = pipe->format.out.sizeimage;
+	vb->width = pipe->format.out.width;
+	vb->height = pipe->format.out.height;
 	vb->field = field;
 	vb->state = VIDEOBUF_PREPARED;
 
