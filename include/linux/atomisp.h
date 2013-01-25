@@ -23,6 +23,11 @@
 #define _ATOM_ISP_H
 
 #include <linux/types.h>
+#include <linux/version.h>
+
+#define ATOMISP_CSS_VERSION_15	KERNEL_VERSION(1, 5, 0)
+#define ATOMISP_CSS_VERSION_17	KERNEL_VERSION(1, 7, 0)
+#define ATOMISP_CSS_VERSION_20	KERNEL_VERSION(2, 0, 0)
 
 /*ISP binary running mode*/
 #define CI_MODE_PREVIEW		0x8000
