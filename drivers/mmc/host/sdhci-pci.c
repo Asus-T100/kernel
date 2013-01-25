@@ -389,28 +389,10 @@ static const struct sdhci_pci_fixes sdhci_intel_mfd_emmc = {
 	.remove_slot	= mfd_emmc_remove_slot,
 };
 
-static int intel_mrfl_mmc_probe(struct sdhci_pci_chip *chip)
+static int intel_mrfl_mmc_probe_slot(struct sdhci_pci_slot *slot)
 {
 	int ret = 0;
 
-#ifdef CONFIG_BOARD_MRFLD_HVP
-	/* Only mmc Func 0 (eMMC0) implemented in FPGA of MRFLD HVP board */
-	if (PCI_FUNC(chip->pdev->devfn) > 0) {
-		dev_info(&chip->pdev->dev, "Disable MMC Function %d.\n",
-			PCI_FUNC(chip->pdev->devfn));
-		ret = -ENODEV;
-	} else {
-		dev_info(&chip->pdev->dev, "Initialize MMC function %d\n",
-			PCI_FUNC(chip->pdev->devfn));
-		ret = 0;
-	}
-#endif
-
-	return ret;
-}
-
-static int intel_mrfl_mmc_probe_slot(struct sdhci_pci_slot *slot)
-{
 	if ((PCI_FUNC(slot->chip->pdev->devfn) == 0) ||
 		(PCI_FUNC(slot->chip->pdev->devfn) == 1))
 		/* Fun 0 and 1 are eMMC - 8bit, nonremovable, 1.8V DDR */
@@ -418,23 +400,20 @@ static int intel_mrfl_mmc_probe_slot(struct sdhci_pci_slot *slot)
 					MMC_CAP_NONREMOVABLE |
 					MMC_CAP_1_8V_DDR;
 
-#ifdef CONFIG_BOARD_MRFLD_VP
-	/*
-	 * The current eMMC component in Merrifield VP only
-	 * implementes boot partition 0, does not implements
-	 * boot partition 1. And the VP will crash if eMMC
-	 * boot partition 1 is accessed during kernel boot.
-	 * So, here we just disable boot partition support
-	 * for Merrifield VP platform.
-	 */
-	slot->host->mmc->caps2 |= MMC_CAP2_BOOTPART_NOACC;
-#endif
-
 	/* Enable eMMC v4.5 Power Off Notification feature */
 	slot->host->mmc->caps2 |= MMC_CAP2_POWEROFF_NOTIFY |
 					MMC_CAP2_POLL_R1B_BUSY;
 
-	return 0;
+	if (slot->data->platform_quirks & PLFM_QUIRK_NO_EMMC_BOOT_PART)
+		slot->host->mmc->caps2 |= MMC_CAP2_BOOTPART_NOACC;
+
+	if (slot->data->platform_quirks & PLFM_QUIRK_NO_HOST_CTRL_HW) {
+		dev_info(&slot->chip->pdev->dev, "Disable MMC Func %d.\n",
+			PCI_FUNC(slot->chip->pdev->devfn));
+		ret = -ENODEV;
+	}
+
+	return ret;
 }
 
 static void intel_mrfl_mmc_remove_slot(struct sdhci_pci_slot *slot, int dead)
@@ -445,7 +424,6 @@ static const struct sdhci_pci_fixes sdhci_intel_mrfl_mmc = {
 	.quirks		= SDHCI_QUIRK_NO_ENDATTR_IN_NOPDESC,
 	.quirks2	= SDHCI_QUIRK2_BROKEN_AUTO_CMD23 |
 			SDHCI_QUIRK2_HIGH_SPEED_SET_LATE,
-	.probe		= intel_mrfl_mmc_probe,
 	.probe_slot	= intel_mrfl_mmc_probe_slot,
 	.remove_slot	= intel_mrfl_mmc_remove_slot,
 };

@@ -90,18 +90,52 @@ static struct sdhci_pci_data *sdhci_host_get_data(struct pci_dev *pdev,
 		switch (PCI_FUNC(pdev->devfn)) {
 		case 0:
 			pdata = &mrfl_emmc0_data;
+			/*
+			 * The current eMMC device simulation in Merrifield
+			 * VP only implements boot partition 0, does not
+			 * implements boot partition 1. And the VP will
+			 * crash if eMMC boot partition 1 is accessed
+			 * during kernel boot. So, we just disable boot
+			 * partition support for Merrifield VP platform.
+			 */
+			if (intel_mrfl_identify_sim() ==
+					INTEL_MRFL_CPU_SIMULATION_VP)
+				pdata->platform_quirks |=
+					PLFM_QUIRK_NO_EMMC_BOOT_PART;
 			break;
 		case 1:
 			pdata = &mrfl_emmc1_data;
+			if (intel_mrfl_identify_sim() ==
+					INTEL_MRFL_CPU_SIMULATION_VP)
+				pdata->platform_quirks |=
+					PLFM_QUIRK_NO_EMMC_BOOT_PART;
+			/*
+			 * Merrifield HVP platform only implements
+			 * eMMC0 host controller in its FPGA, and
+			 * does not implements other 3 Merrifield
+			 * SDHCI host controllers.
+			 */
+			if (intel_mrfl_identify_sim() ==
+					INTEL_MRFL_CPU_SIMULATION_HVP)
+				pdata->platform_quirks |=
+					PLFM_QUIRK_NO_HOST_CTRL_HW;
 			break;
 		case 2:
 			pdata = &mrfl_sd_data;
+			if (intel_mrfl_identify_sim() ==
+					INTEL_MRFL_CPU_SIMULATION_HVP)
+				pdata->platform_quirks |=
+					PLFM_QUIRK_NO_HOST_CTRL_HW;
 			break;
 		case 3:
 			pdata = &mrfl_sdio_data;
+			if (intel_mrfl_identify_sim() ==
+					INTEL_MRFL_CPU_SIMULATION_HVP)
+				pdata->platform_quirks |=
+					PLFM_QUIRK_NO_HOST_CTRL_HW;
 			break;
 		default:
-			pr_err("File %s function %s: Invalid PCI device function number (%d)\n",
+			pr_err("%s func %s: Invalid PCI Dev func no. (%d)\n",
 				__FILE__, __func__, PCI_FUNC(pdev->devfn));
 			break;
 		}

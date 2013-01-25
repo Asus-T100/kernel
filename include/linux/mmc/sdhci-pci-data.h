@@ -9,6 +9,11 @@ struct sdhci_pci_data {
 	int		rst_n_gpio; /* Set to -EINVAL if unused */
 	int		cd_gpio;    /* Set to -EINVAL if unused */
 	int		quirks;
+	int		platform_quirks; /* Platform related quirks */
+/* Some Pre-Silicon platform not support all SDHCI HCs of the SoC */
+#define PLFM_QUIRK_NO_HOST_CTRL_HW		(1<<0)
+/* Some Pre-Silicon platform do not support eMMC boot partition access */
+#define PLFM_QUIRK_NO_EMMC_BOOT_PART		(1<<1)
 	int		mmc_caps;
 	int		mmc_pm_flags;
 	int		(*setup)(struct sdhci_pci_data *data);
