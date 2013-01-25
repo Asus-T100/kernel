@@ -909,6 +909,10 @@ static int atomisp_register_entities(struct atomisp_device *isp)
 
 	strlcpy(isp->media_dev.model, "Intel Atom ISP",
 		sizeof(isp->media_dev.model));
+	if (IS_MRFLD)
+		isp->media_dev.hw_revision = ATOMISP_CSS_VERSION_20;
+	else
+		isp->media_dev.hw_revision = ATOMISP_CSS_VERSION_15;
 
 	ret = media_device_register(&isp->media_dev);
 	if (ret < 0) {
