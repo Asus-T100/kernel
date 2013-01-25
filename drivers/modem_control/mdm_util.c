@@ -150,12 +150,10 @@ void mdm_ctrl_disable_flashing(unsigned long int param)
 {
 	struct mdm_ctrl *drv = (struct mdm_ctrl *) param;
 
-	del_timer(&drv->flashing_timer);
-
 	if (mdm_ctrl_get_state(drv) == MDM_CTRL_STATE_FW_DOWNLOAD_READY)
-		mdm_ctrl_launch_timer(&drv->flashing_timer,
-					MDM_WARM_RST_FLASHING_OVER,
-					MDM_TIMER_FLASH_DISABLE);
+		mdm_ctrl_launch_work(drv, MDM_CTRL_STATE_UNKNOWN);
+
+	del_timer(&drv->flashing_timer);
 }
 
 /**
