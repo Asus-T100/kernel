@@ -1186,12 +1186,12 @@ int tng_topaz_init_board(
 
 	/*psb_irq_uninstall_islands(dev, OSPM_VIDEO_ENC_ISLAND);*/
 
-	PSB_DEBUG_TOPAZ("TOPAZ: will setup firmware ....\n");
+	PSB_DEBUG_GENERAL("TOPAZ: will setup firmware ....\n");
 
 	topaz_priv->topaz_num_pipes = TOPAZHP_PIPE_NUM;
 
 	MULTICORE_READ32(TOPAZHP_TOP_CR_MULTICORE_HW_CFG, &reg_val);
-	PSB_DEBUG_TOPAZ("TOPAZ: HW_CFG 0x%08x\n", reg_val);
+	PSB_DEBUG_GENERAL("TOPAZ: HW_CFG 0x%08x\n", reg_val);
 
 
 	tng_topaz_mmu_flushcache(dev_priv);

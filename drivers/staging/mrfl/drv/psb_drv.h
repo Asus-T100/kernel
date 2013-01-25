@@ -328,10 +328,6 @@ struct drm_psb_uopt {
 	int pad;		/*keep it here in case we use it in future */
 };
 
-
-#define	LOG2_WB_FIFO_SIZE	(5)
-#define	WB_FIFO_SIZE		(1 << (LOG2_WB_FIFO_SIZE))
-
 #define MODE_SETTING_IN_CRTC 	0x1
 #define MODE_SETTING_IN_ENCODER 0x2
 #define MODE_SETTING_ON_GOING 	0x3

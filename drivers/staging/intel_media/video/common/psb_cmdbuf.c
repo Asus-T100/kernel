@@ -24,13 +24,16 @@
 #include "psb_drm.h"
 #include "psb_reg.h"
 #include "psb_msvdx.h"
-#if !defined(DISABLE_ENCODE)
-#include "pnw_topaz.h"
-#ifdef MERRIFIELD
+
+#ifdef SUPPORT_MRST
 #include "lnc_topaz.h"
+#endif
+#include "pnw_topaz.h"
+
+#ifdef MERRIFIELD
 #include "tng_topaz.h"
 #endif
-#endif
+
 #ifdef SUPPORT_VSP
 #include "vsp.h"
 #endif
@@ -829,7 +832,6 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 		msvdx_priv->tfile = tfile;
 		context = &dev_priv->decode_context;
 	} else if (arg->engine == LNC_ENGINE_ENCODE) {
-#if !defined(DISABLE_ENCODE)
 		if (dev_priv->topaz_disabled) {
 			ret = -ENODEV;
 			goto out_err0;
@@ -844,7 +846,6 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 		if (unlikely(ret != 0))
 			goto out_err0;
 		context = &dev_priv->encode_context;
-#endif
 	} else if (arg->engine == VSP_ENGINE_VPP) {
 #ifdef SUPPORT_VSP
 		if (!ospm_power_using_hw_begin(OSPM_VIDEO_VPP_ISLAND,
@@ -955,7 +956,6 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 		break;
 
 	case LNC_ENGINE_ENCODE:
-#if !defined(DISABLE_ENCODE)
 		if (IS_MDFLD(dev))
 			ret = pnw_cmdbuf_video(
 				file_priv, &context->validate_list,
@@ -971,7 +971,6 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 		if (unlikely(ret != 0))
 			goto out_err4;
 		break;
-#endif
 	case VSP_ENGINE_VPP:
 #ifdef SUPPORT_VSP
 		ret = vsp_cmdbuf_vpp(file_priv, &context->validate_list,
@@ -1014,10 +1013,8 @@ out_err0:
 	if (arg->engine == PSB_ENGINE_DECODE)
 		ospm_power_using_video_end(OSPM_VIDEO_DEC_ISLAND);
 
-#if !defined(DISABLE_ENCODE)
 	if (arg->engine == LNC_ENGINE_ENCODE)
 		ospm_power_using_video_end(OSPM_VIDEO_ENC_ISLAND);
-#endif
 #ifdef SUPPORT_VSP
 	if (arg->engine == VSP_ENGINE_VPP)
 		ospm_power_using_hw_end(OSPM_VIDEO_VPP_ISLAND);
