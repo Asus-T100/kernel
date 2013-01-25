@@ -375,6 +375,7 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 	int i, ret = 0;
 	struct intel_sst_ops *ops;
 	struct sst_probe_info *info;
+	int ddr_base;
 
 	pr_debug("Probe for DID %x\n", pci->device);
 	mutex_lock(&drv_ctx_lock);
@@ -471,6 +472,16 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 
 	if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID) {
 		sst_drv_ctx->ddr_base = pci_resource_start(pci, 0);
+		/*
+		* check that the relocated IMR base matches with FW Binary
+		* put temporary check till better soln is available for FW
+		*/
+		ddr_base = relocate_imr_addr_mrfld(sst_drv_ctx->ddr_base);
+		if (ddr_base != MRFLD_FW_LSP_DDR_BASE) {
+			pr_err("FW LSP DDR BASE does not match with IFWI\n");
+			ret = -EINVAL;
+			goto do_release_regions;
+		}
 		sst_drv_ctx->ddr_end = pci_resource_end(pci, 0);
 
 		sst_drv_ctx->ddr = pci_ioremap_bar(pci, 0);

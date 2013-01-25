@@ -49,6 +49,16 @@
 #define SST_UNSOLICIT_MSG 0x00
 #define SST_CONFIG_SSP_SIGN 0x7ffe8001
 
+/* FIXME: All this info should come from platform data
+ * move this when the base framework is ready to pass
+ * platform data to SST driver
+ */
+#define MRFLD_FW_VIRTUAL_BASE 0xC0000000
+#define MRFLD_FW_LSP_DDR_BASE 0xDF600000
+#define MRFLD_FW_DDR_BASE_OFFSET 0x0
+#define MRFLD_FW_FEATURE_BASE_OFFSET 0x4
+#define MRFLD_FW_BSS_RESET_BIT 0
+
 struct intel_sst_ops {
 	irqreturn_t (*interrupt) (int, void *);
 	irqreturn_t (*irq_thread) (int, void *);
@@ -342,10 +352,10 @@ struct sst_sg_list {
 
 struct sst_memcpy_list {
 	struct list_head memcpylist;
-	void __iomem *dstn;
+	void *dstn;
 	void *src;
-
 	u32 size;
+	bool is_io;
 };
 
 #ifdef CONFIG_DEBUG_FS
@@ -784,4 +794,20 @@ static inline void sst_debugfs_exit(struct intel_sst_drv *sst)
 {
 }
 #endif /* CONFIG_DEBUG_FS */
+
+/*
+ * FW should use virtual address 0xC000_0000 to map to the DDR
+ * reserved 2MB region at 512MB boundary. Currently the address of
+ * DDR region allocated by IA FW is not 512MB aligned. So FW is
+ * statically linking the DDR region at 0xDF600000. So we need to
+ * use the translated address to identify the DDR regions in the FW
+ * ELF binary.
+ */
+static inline u32 relocate_imr_addr_mrfld(u32 base_addr)
+{
+	/* Get the difference from 512MB aligned base addr */
+	/* relocate the base */
+	base_addr = MRFLD_FW_VIRTUAL_BASE + (base_addr % (512 * 1024 * 1024));
+	return base_addr;
+}
 #endif /* __INTEL_SST_COMMON_H__ */

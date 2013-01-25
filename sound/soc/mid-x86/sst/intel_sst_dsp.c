@@ -137,6 +137,7 @@ int sst_start_mrfld(void)
 	csr.full = sst_shim_read64(sst_drv_ctx->shim, SST_CSR);
 	pr_debug("value:0x%llx\n", csr.full);
 
+	csr.part.xt_snoop = 1;
 	csr.full &= ~(0x5);
 	sst_shim_write64(sst_drv_ctx->shim, SST_CSR, csr.full);
 
@@ -147,7 +148,7 @@ int sst_start_mrfld(void)
 }
 
 static int sst_fill_dstn(struct intel_sst_drv *sst, struct sst_probe_info info,
-			Elf32_Phdr *pr, void **dstn, unsigned int *dstn_phys)
+			Elf32_Phdr *pr, void **dstn, unsigned int *dstn_phys, int *mem_type)
 {
 #ifdef MRFLD_WORD_WA
 	/* work arnd-since only 4 byte align copying is only allowed for ICCM */
@@ -158,23 +159,27 @@ static int sst_fill_dstn(struct intel_sst_drv *sst, struct sst_probe_info info,
 			pr->p_filesz += 4 - data_size;
 		*dstn = sst->iram + (pr->p_paddr - info.iram_start);
 		*dstn_phys = sst->iram_base + pr->p_paddr - info.iram_start;
+		*mem_type = 1;
 #else
 	if ((pr->p_paddr >= info.iram_start) &&
 			(pr->p_paddr < info.iram_end)) {
 
 		*dstn = sst->iram + (pr->p_paddr - info.iram_start);
 		*dstn_phys = sst->iram_base + pr->p_paddr - info.iram_start;
+		*mem_type = 1;
 #endif
 	} else if ((pr->p_paddr >= info.dram_start) &&
 			(pr->p_paddr < info.dram_end)) {
 
 		*dstn = sst->dram + (pr->p_paddr - info.dram_start);
 		*dstn_phys = sst->dram_base + pr->p_paddr - info.dram_start;
+		*mem_type = 1;
 	} else if ((pr->p_paddr >= info.imr_start) &&
 			(pr->p_paddr < info.imr_end)) {
 
 		*dstn = sst->ddr + (pr->p_paddr - info.imr_start);
 		*dstn_phys =  sst->ddr_base + pr->p_paddr - info.imr_start;
+		*mem_type = 0;
 	} else {
 	       return -EINVAL;
 	}
@@ -203,8 +208,8 @@ static void sst_fill_info(struct intel_sst_drv *sst,
 		info->imr_start = sst->info.imr_start;
 		info->imr_end = sst->info.imr_end;
 	} else {
-		info->imr_start = sst->ddr_base;
-		info->imr_end = sst->ddr_end;
+		info->imr_start = relocate_imr_addr_mrfld(sst->ddr_base);
+		info->imr_end = relocate_imr_addr_mrfld(sst->ddr_end);
 	}
 }
 
@@ -565,8 +570,9 @@ static int sst_parse_elf_module_dma(struct intel_sst_drv *sst, const void *fw,
 	void *dstn;
 	unsigned int dstn_phys;
 	int ret_val = 0;
+	int mem_type;
 
-	ret_val = sst_fill_dstn(sst, info, pr, &dstn, &dstn_phys);
+	ret_val = sst_fill_dstn(sst, info, pr, &dstn, &dstn_phys, &mem_type);
 	if (ret_val)
 		return ret_val;
 
@@ -794,7 +800,7 @@ static int sst_do_dma(struct sst_sg_list *sg_list)
  */
 
 static int sst_fill_memcpy_list(struct list_head *memcpy_list,
-			void __iomem *destn, void *src, u32 size)
+			void *destn, void *src, u32 size, bool is_io)
 {
 	struct sst_memcpy_list *listnode;
 
@@ -804,6 +810,7 @@ static int sst_fill_memcpy_list(struct list_head *memcpy_list,
 	listnode->dstn = destn;
 	listnode->src = src;
 	listnode->size = size;
+	listnode->is_io = is_io;
 	list_add_tail(&listnode->memcpylist, memcpy_list);
 
 	return 0;
@@ -816,13 +823,14 @@ static int sst_parse_elf_module_memcpy(struct intel_sst_drv *sst,
 	void *dstn;
 	unsigned int dstn_phys;
 	int ret_val = 0;
+	int mem_type;
 
-	ret_val = sst_fill_dstn(sst, info, pr, &dstn, &dstn_phys);
+	ret_val = sst_fill_dstn(sst, info, pr, &dstn, &dstn_phys, &mem_type);
 	if (ret_val)
 		return ret_val;
 
 	ret_val = sst_fill_memcpy_list(memcpy_list,
-					dstn, fw + pr->p_offset, pr->p_filesz);
+					dstn, fw + pr->p_offset, pr->p_filesz, mem_type);
 	if (ret_val)
 		return ret_val;
 
@@ -899,7 +907,7 @@ static int sst_parse_module_memcpy(struct fw_module_header *module,
 
 		ret_val = sst_fill_memcpy_list(memcpy_list,
 				ram_iomem + block->ram_offset,
-				(void *)block + sizeof(*block), block->size);
+				(void *)block + sizeof(*block), block->size, 1);
 		if (ret_val)
 			return ret_val;
 
@@ -951,9 +959,13 @@ static void sst_do_memcpy(struct list_head *memcpy_list)
 {
 	struct sst_memcpy_list *listnode;
 
-	list_for_each_entry(listnode, memcpy_list, memcpylist)
-		memcpy_toio(listnode->dstn, listnode->src,
+	list_for_each_entry(listnode, memcpy_list, memcpylist) {
+		if (listnode->is_io == true)
+			memcpy_toio((void __iomem *)listnode->dstn, listnode->src,
 							listnode->size);
+		else
+			memcpy(listnode->dstn, listnode->src, listnode->size);
+	}
 }
 
 void sst_memcpy_free_resources(void)
@@ -1191,6 +1203,23 @@ free_resources:
 	return retval;
 }
 
+/*
+ * Writing the DDR physical base to DCCM offset
+ * so that FW can use it to setup TLB
+ */
+static void mrfld_dccm_config_write(u32 dram_base, u32 ddr_base)
+{
+	void __iomem *addr;
+	u32 bss_reset = 0;
+
+	addr = dram_base + MRFLD_FW_DDR_BASE_OFFSET;
+	memcpy_toio(addr, &ddr_base, sizeof(u32));
+	bss_reset |= (1 << MRFLD_FW_BSS_RESET_BIT);
+	addr = dram_base + MRFLD_FW_FEATURE_BASE_OFFSET;
+	memcpy_toio(addr, &bss_reset, sizeof(u32));
+	pr_debug("mrfld config written to DCCM\n");
+}
+
 /**
  * sst_load_fw - function to load FW into DSP
  *
@@ -1232,6 +1261,12 @@ int sst_load_fw(void)
 	} else {
 		sst_do_memcpy(&sst_drv_ctx->memcpy_list);
 	}
+
+	/* Write the DRAM config before enabling FW
+	 */
+	if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID)
+		mrfld_dccm_config_write(sst_drv_ctx->dram,
+						sst_drv_ctx->ddr_base);
 
 	sst_set_fw_state_locked(sst_drv_ctx, SST_FW_LOADED);
 	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID)
