@@ -27,10 +27,8 @@
 #include "psb_reg.h"
 #include "psb_msvdx.h"
 
-#if !defined(DISABLE_ENCODE)
 #include "pnw_topaz.h"
 #include "tng_topaz.h"
-#endif
 
 #ifdef SUPPORT_VSP
 #include "vsp.h"
@@ -462,7 +460,6 @@ irqreturn_t psb_irq_handler(DRM_IRQ_ARGS)
 		handled = 1;
 	}
 
-#if !defined(DISABLE_ENCODE)
 	if ((IS_MDFLD(dev) && topaz_int)) {
 		pnw_topaz_interrupt(dev);
 		handled = 1;
@@ -472,7 +469,6 @@ irqreturn_t psb_irq_handler(DRM_IRQ_ARGS)
 		tng_topaz_interrupt(dev);
 		handled = 1;
 	}
-#endif
 
 #ifdef SUPPORT_VSP
 	if (vsp_int) {
@@ -570,7 +566,6 @@ int psb_irq_postinstall_islands(struct drm_device *dev, int hw_islands)
 	/*This register is safe even if display island is off */
 	PSB_WVDC32(dev_priv->vdc_irq_mask, PSB_INT_ENABLE_R);
 
-#if !defined(DISABLE_ENCODE)
 	if (IS_MID(dev) && !dev_priv->topaz_disabled)
 		if (hw_islands & OSPM_VIDEO_ENC_ISLAND)
 			if (ospm_power_is_hw_on(OSPM_VIDEO_ENC_ISLAND)) {
@@ -580,7 +575,6 @@ int psb_irq_postinstall_islands(struct drm_device *dev, int hw_islands)
 					tng_topaz_enableirq(dev);
 
 			}
-#endif
 
 	if (hw_islands & OSPM_VIDEO_DEC_ISLAND)
 		psb_msvdx_enableirq(dev);
@@ -639,7 +633,6 @@ void psb_irq_uninstall_islands(struct drm_device *dev, int hw_islands)
 	/*This register is safe even if display island is off */
 	PSB_WVDC32(PSB_RVDC32(PSB_INT_IDENTITY_R), PSB_INT_IDENTITY_R);
 
-#if !defined(DISABLE_ENCODE)
 	if (IS_MID(dev) && !dev_priv->topaz_disabled)
 		if (hw_islands & OSPM_VIDEO_ENC_ISLAND)
 			if (ospm_power_is_hw_on(OSPM_VIDEO_ENC_ISLAND)) {
@@ -648,7 +641,6 @@ void psb_irq_uninstall_islands(struct drm_device *dev, int hw_islands)
 				if (IS_MRFLD(dev))
 					tng_topaz_disableirq(dev);
 			}
-#endif
 
 	if (hw_islands & OSPM_VIDEO_DEC_ISLAND)
 		if (ospm_power_is_hw_on(OSPM_VIDEO_DEC_ISLAND))

@@ -40,10 +40,9 @@
 #include "psb_drv.h"
 #include "psb_intel_reg.h"
 #include "psb_msvdx.h"
-#if !defined(DISABLE_ENCODE)
+
 #include "pnw_topaz.h"
 #include "tng_topaz.h"
-#endif
 
 #ifdef SUPPORT_VSP
 #include "vsp.h"
@@ -88,7 +87,6 @@ static void psb_runtimepm_wq_handler(struct work_struct *work)
 
 static DECLARE_DELAYED_WORK(rtpm_work, psb_runtimepm_wq_handler);
 
-#if !defined(DISABLE_ENCODE)
 static int ospm_runtime_pm_topaz_suspend(struct drm_device *dev)
 {
 	int ret = 0;
@@ -138,7 +136,6 @@ static int ospm_runtime_pm_topaz_suspend(struct drm_device *dev)
  out:
 	return ret;
 }
-#endif
 
 static int ospm_runtime_pm_msvdx_resume(struct drm_device *dev)
 {
@@ -156,7 +153,6 @@ static int ospm_runtime_pm_msvdx_resume(struct drm_device *dev)
 	return 0;
 }
 
-#if !defined(DISABLE_ENCODE)
 static int ospm_runtime_pm_topaz_resume(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
@@ -202,6 +198,7 @@ static int ospm_runtime_pm_topaz_resume(struct drm_device *dev)
 }
 
 #if INCLUDE_UNUSED_CODE
+#ifdef SUPPORT_VSP
 static int ospm_runtime_pm_vsp_suspend(struct drm_device *dev)
 {
 	int ret = 0;
@@ -233,22 +230,23 @@ static int ospm_runtime_pm_vsp_suspend(struct drm_device *dev)
 out:
 	return ret;
 }
+#endif /*SUPPORT_VSP*/
 #endif /* if INCLUDE_UNUSED_CODE */
 
+#ifdef SUPPORT_VSP
 static int ospm_runtime_pm_vsp_resume(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
 	struct vsp_private *vsp_priv = dev_priv->vsp_private;
 
 	/*printk(KERN_ALERT "%s\n", __func__);*/
-
 	psb_vsp_restore_context(dev);
 
 	VSP_NEW_PMSTATE(dev, vsp_priv, PSB_PMSTATE_POWERUP);
 
 	return 0;
 }
-#endif
+#endif /*SUPPORT_VSP*/
 
 #ifdef FIX_OSPM_POWER_DOWN
 void ospm_apm_power_down_msvdx(struct drm_device *dev)
@@ -272,7 +270,6 @@ void ospm_apm_power_down_msvdx(struct drm_device *dev)
 	return;
 }
 
-#if !defined(DISABLE_ENCODE)
 void ospm_apm_power_down_topaz(struct drm_device *dev)
 {
 	return;                 /* todo for OSPM */
@@ -292,7 +289,6 @@ void ospm_apm_power_down_topaz(struct drm_device *dev)
 	mutex_unlock(&g_ospm_mutex);
 	return;
 }
-#endif
 
 #else
 void ospm_apm_power_down_msvdx(struct drm_device *dev, int force_off)
@@ -331,7 +327,6 @@ out:
 	return;
 }
 
-#if !defined(DISABLE_ENCODE)
 void ospm_apm_power_down_topaz(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
@@ -375,6 +370,7 @@ void ospm_apm_power_down_topaz(struct drm_device *dev)
 	return;
 }
 
+#ifdef SUPPORT_VSP
 void ospm_apm_power_down_vsp(struct drm_device *dev)
 {
 
@@ -410,7 +406,7 @@ void ospm_apm_power_down_vsp(struct drm_device *dev)
 out:
 	mutex_unlock(&g_ospm_mutex);
 }
-#endif
+#endif /*SUPPORT_VSP*/
 #endif
 
 
@@ -1494,10 +1490,10 @@ int ospm_power_suspend(struct pci_dev *pdev, pm_message_t state)
 			if (ospm_runtime_pm_msvdx_suspend(gpDrmDevice) != 0)
 				suspend_pci = false;
 #endif
-#if !defined(DISABLE_ENCODE)
+
 			if (ospm_runtime_pm_topaz_suspend(gpDrmDevice) != 0)
 				suspend_pci = false;
-#endif
+
 			if (suspend_pci == true)
 				ospm_suspend_pci(pdev);
 
@@ -2121,7 +2117,7 @@ bool ospm_power_using_video_begin(int video_island)
 
 		break;
 	case OSPM_VIDEO_ENC_ISLAND:
-#if 0
+#ifdef SUPPORT_MRST
 		if (IS_MRST(gpDrmDevice) &&
 				(!ospm_power_is_hw_on(
 					OSPM_DISPLAY_ISLAND))) {
@@ -2131,6 +2127,7 @@ bool ospm_power_using_video_begin(int video_island)
 			psb_irq_postinstall_islands(gpDrmDevice,
 				OSPM_DISPLAY_ISLAND);
 		}
+#endif
 		if (!ospm_power_is_hw_on(OSPM_VIDEO_ENC_ISLAND)) {
 			/* printk(KERN_ALERT "%s power on video
 			** encode\n", __func__);
@@ -2150,7 +2147,6 @@ bool ospm_power_using_video_begin(int video_island)
 			ospm_power_island_up(OSPM_GL3_CACHE_ISLAND);
 #endif
 		}
-#endif
 		break;
 	default:
 		printk(KERN_ALERT "%s unknown island !!!!\n",

@@ -34,11 +34,12 @@
 #include "vsp.h"
 #endif
 
-#if !defined(DISABLE_ENCODE)
+#ifdef ENABLE_MRST
 #include "lnc_topaz.h"
+#endif
 #include "pnw_topaz.h"
 #include "tng_topaz.h"
-#endif
+
 #include <drm/drm_pciids.h>
 #include "psb_powermgmt.h"
 #include "dispmgrnl.h"
@@ -791,13 +792,11 @@ static void psb_do_takedown(struct drm_device *dev)
 		vsp_deinit(dev);
 #endif
 
-#if !defined(DISABLE_ENCODE)
 	if (IS_MDFLD(dev))
 		pnw_topaz_uninit(dev);
 
 	if (IS_MRFLD(dev))
 		tng_topaz_uninit(dev);
-#endif
 }
 
 static void psb_get_core_freq(struct drm_device *dev)
@@ -887,10 +886,10 @@ void mrst_get_fuse_settings(struct drm_device *dev)
 		dev_priv->topaz_disabled = 0;
 
 	dev_priv->video_device_fuse = fuse_value;
-#if !defined(DISABLE_ENCODE)
+
 	PSB_DEBUG_ENTRY("topaz is %s\n",
 			dev_priv->topaz_disabled ? "disabled" : "enabled");
-#endif
+
 	fuse_value = intel_mid_msgbus_read32_raw(IS_MDFLD(dev) ?
 			FB_REG09_MDFLD : FB_REG09_MRST);
 
@@ -1369,7 +1368,6 @@ static int psb_do_init(struct drm_device *dev)
 	}
 #endif
 
-#if !defined(DISABLE_ENCODE)
 	PSB_DEBUG_INIT("Init Topaz\n");
 	/* for sku100L and sku100M, VEC is disabled in fuses */
 	if (IS_MDFLD(dev))
@@ -1377,7 +1375,6 @@ static int psb_do_init(struct drm_device *dev)
 
 	if (IS_MRFLD(dev))
 		tng_topaz_init(dev);
-#endif
 
 	return 0;
  out_err:
@@ -1501,14 +1498,13 @@ static int psb_driver_unload(struct drm_device *dev)
 		}
 #endif
 
-#if !defined(DISABLE_ENCODE)
 		if (IS_TOPAZ(dev)) {
 			if (dev_priv->topaz_reg) {
 				iounmap(dev_priv->topaz_reg);
 				dev_priv->topaz_reg = NULL;
 			}
 		}
-#endif
+
 		if (dev_priv->tdev)
 			ttm_object_device_release(&dev_priv->tdev);
 

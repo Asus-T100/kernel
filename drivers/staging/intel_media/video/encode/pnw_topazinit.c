@@ -49,7 +49,10 @@
 #include "pnw_topaz.h"
 #include "psb_powermgmt.h"
 #include "pnw_topaz_hw_reg.h"
+
+#ifdef CONFIG_MDFD_GL3
 #include "mdfld_gl3.h"
+#endif
 
 /* WARNING: this define is very important */
 #define RAM_SIZE (1024 * 24)

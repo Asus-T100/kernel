@@ -22,11 +22,10 @@
 #include <drm/drmP.h>
 #include "psb_drv.h"
 #include "psb_msvdx.h"
-#if !defined(DISABLE_ENCODE)
+
 #include "pnw_topaz.h"
 #ifdef MERRIFIELD
 #include "tng_topaz.h"
-#endif
 #endif
 #ifdef SUPPORT_VSP
 #include "vsp.h"
@@ -59,13 +58,11 @@ int psb_fence_emit_sequence(struct ttm_fence_device *fdev,
 		seq += msvdx_priv->num_cmd;
 		spin_unlock(&dev_priv->sequence_lock);
 		break;
-#if !defined(DISABLE_ENCODE)
 	case LNC_ENGINE_ENCODE:
 		spin_lock(&dev_priv->sequence_lock);
 		seq = dev_priv->sequence[fence_class]++;
 		spin_unlock(&dev_priv->sequence_lock);
 		break;
-#endif
 #ifdef SUPPORT_VSP
 	case VSP_ENGINE_VPP:
 		spin_lock(&dev_priv->sequence_lock);
@@ -105,20 +102,16 @@ static void psb_fence_poll(struct ttm_fence_device *fdev,
 		break;
 
 	case LNC_ENGINE_ENCODE:
-#if !defined(DISABLE_ENCODE)
 		if (IS_MDFLD(dev))
 			sequence = *((uint32_t *)
 				     ((struct pnw_topaz_private *)dev_priv->topaz_private)->topaz_sync_addr + 1);
 #ifdef MERRIFIELD
 		if (IS_MRFLD(dev))
 			sequence = *((uint32_t *)
-				     ((struct pnw_topaz_private *)
-				      dev_priv->topaz_private)->
-				     topaz_sync_addr + 1);
-#endif
+				((struct tng_topaz_private *)dev_priv->
+				topaz_private)->topaz_sync_addr);
 #endif
 		break;
-
 	case VSP_ENGINE_VPP:
 #ifdef SUPPORT_VSP
 		sequence = vsp_fence_poll(dev_priv);
@@ -143,7 +136,6 @@ static void psb_fence_lockup(struct ttm_fence_object *fence,
 	struct drm_device *dev = (struct drm_device *)dev_priv->dev;
 
 	if (fence->fence_class == LNC_ENGINE_ENCODE) {
-#if !defined(DISABLE_ENCODE)
 		DRM_ERROR("TOPAZ timeout (probable lockup) detected,  flush queued cmdbuf");
 
 		write_lock(&fc->lock);
@@ -156,7 +148,6 @@ static void psb_fence_lockup(struct ttm_fence_object *fence,
 		ttm_fence_handler(fence->fdev, fence->fence_class,
 				  fence->sequence, fence_types, -EBUSY);
 		write_unlock(&fc->lock);
-#endif
 	} else if (fence->fence_class == PSB_ENGINE_DECODE) {
 		struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
 

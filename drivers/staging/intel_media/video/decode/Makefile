@@ -14,7 +14,7 @@ ccflags-y += \
 	-I$(INCDIR)/../../../include/drm \
 	-I$(INCDIR)/../../../include/drm/ttm
 
-ccflags-y += -DANDROID -D_linux_ -DLINUX -D__KERNEL__ -DDISABLE_ENCODE -DPSB_MSVDX_FW_LOADED_BY_HOST -DMERRIFIELD -DCONFIG_VIDEO_MRFLD
+ccflags-y += -DANDROID -D_linux_ -DLINUX -D__KERNEL__ -DPSB_MSVDX_FW_LOADED_BY_HOST -DMERRIFIELD -DCONFIG_VIDEO_MRFLD
 
 #VIDEO_COMMON_DIR = $(TOP_DIR)/driver/staging/intel_media/video/common
 #DECODE_DIR = $(TOP_DIR)/driver/staging/intel_media/video/decode

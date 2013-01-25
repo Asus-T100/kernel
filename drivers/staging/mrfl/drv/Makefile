@@ -13,9 +13,10 @@ ccflags-y += \
 	-Iinclude/linux \
 	-Iinclude/drm \
 	-I$(INCDIR)/../intel_media/video/common \
-	-I$(INCDIR)/../intel_media/video/decode
+	-I$(INCDIR)/../intel_media/video/decode \
+	-I$(INCDIR)/../intel_media/video/encode
 
-ccflags-y += -DANDROID -DLINUX -D_linux_ -D__KERNEL__ -DDISABLE_ENCODE
+ccflags-y += -DANDROID -DLINUX -D_linux_ -D__KERNEL__
 
 ccflags-$(CONFIG_DRM_MDFLD) += -DMEDFIELD
 ccflags-$(CONFIG_DRM_MRFLD) += -DMERRIFIELD

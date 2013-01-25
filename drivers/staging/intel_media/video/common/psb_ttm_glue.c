@@ -27,9 +27,7 @@
 #include <linux/io.h>
 #include <asm/intel-mid.h>
 #include "psb_msvdx.h"
-#if !defined(DISABLE_ENCODE)
 #include "pnw_topaz.h"
-#endif
 
 /*IMG Headers*/
 #include "private_data.h"
@@ -271,7 +269,6 @@ void psb_remove_videoctx(struct drm_psb_private *dev_priv, struct file *filp)
 				(found_ctx->ctx_type & 0xff)
 			|| VAEntrypointEncPicture ==
 				(found_ctx->ctx_type & 0xff)) {
-#if !defined(DISABLE_ENCODE)
 			if (dev_priv->topaz_ctx == found_ctx) {
 				pnw_reset_fw_status(dev_priv->dev,
 					PNW_TOPAZ_END_CTX);
@@ -282,7 +279,6 @@ void psb_remove_videoctx(struct drm_psb_private *dev_priv, struct file *filp)
 			}
 			if (dev_priv->last_topaz_ctx == found_ctx)
 				dev_priv->last_topaz_ctx = NULL;
-#endif
 		} else {
 			mutex_lock(&msvdx_priv->msvdx_mutex);
 			if (msvdx_priv->msvdx_ctx == found_ctx)
@@ -390,13 +386,11 @@ int psb_video_getparam(struct drm_device *dev, void *data,
 		mutex_lock(&dev_priv->video_ctx_mutex);
 		list_add(&video_ctx->head, &dev_priv->video_ctx);
 		mutex_unlock(&dev_priv->video_ctx_mutex);
-#if !defined(DISABLE_ENCODE)
 		if (IS_MDFLD(dev_priv->dev) &&
 				(VAEntrypointEncSlice ==
 				 (ctx_type & 0xff)))
 			pnw_reset_fw_status(dev_priv->dev,
 				PNW_TOPAZ_START_CTX);
-#endif
 		PSB_DEBUG_INIT("Video:add ctx profile %d, entry %d.\n",
 					((ctx_type >> 8) & 0xff),
 					(ctx_type & 0xff));

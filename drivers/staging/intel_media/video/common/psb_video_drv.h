@@ -228,11 +228,30 @@ struct psb_validate_buffer {
 	int po_correct;
 };
 
+#define	LOG2_WB_FIFO_SIZE	(5)
+#define	WB_FIFO_SIZE		(1 << (LOG2_WB_FIFO_SIZE))
+
 struct psb_video_ctx {
 	struct list_head head;
 	struct file *filp; /* DRM device file pointer */
 	int ctx_type; /* (msvdx_tile&0xff)<<16|profile<<8|entrypoint */
 	/* todo: more context specific data for multi-context support */
+	/* Context save and restore */
+	struct ttm_buffer_object *reg_saving_bo;
+	struct ttm_buffer_object *data_saving_bo;
+	uint32_t fw_data_dma_size;
+	uint32_t fw_data_dma_offset;
+	/* Write back buffer object */
+	struct ttm_buffer_object *wb_bo;
+	struct ttm_bo_kmap_obj wb_bo_kmap;
+	uint32_t wb_addr[WB_FIFO_SIZE];
+
+	uint32_t status;
+	uint32_t codec;
+	/* Firmware data section offset and size */
+	uint32_t mtx_debug_val;
+	uint32_t mtx_bank_size;
+	uint32_t mtx_ram_size;
 };
 
 #ifdef MERRIFIELD
