@@ -17,7 +17,7 @@ config HSI_CHAR
 config HSI_FFL_TTY
 	tristate "Fixed frame length protocol on HSI"
 	default n
-	depends on HSI && MDM_CTRL
+	depends on HSI
 	help
 	  If you say Y here, you will enable the fixed frame length protocol
 	  driver over an HSI physical link.
@@ -103,7 +103,7 @@ endif
 config HSI_DLP
 	tristate "Data Link Protocol protocol on HSI for LTE IMC modems"
 	default n
-	depends on HSI && MDM_CTRL
+	depends on HSI
 	help
 	  If you say Y here, you will enable the DLP protocol for LTE IMC modem
 	  over an HSI physical link.
