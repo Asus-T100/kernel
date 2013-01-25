@@ -13,6 +13,7 @@ ifeq ($(CONFIG_MDM_IMC_6260), y)
 endif
 
 ifeq ($(CONFIG_MDM_IMC_7160), y)
+  CFLAGS_mdm_ctrl.o += -DMDM_IMC_EARLY_POWER_OFF
   modem_control-objs += imc_7x6x.o
 endif
 

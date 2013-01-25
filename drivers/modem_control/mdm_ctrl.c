@@ -695,6 +695,9 @@ static int __init mdm_ctrl_module_init(void)
 		goto del_class;
 	}
 
+	mdm_ctrl_launch_work(new_drv, MDM_CTRL_STATE_OFF);
+	flush_workqueue(new_drv->change_state_wq);
+
 	/* FIXME: What if gpio doesn't exists ? */
 	/* Configure GPIOs/IRQs */
 	new_drv->gpio_rst_out = get_gpio_by_name(GPIO_RST_OUT);
@@ -707,6 +710,11 @@ static int __init mdm_ctrl_module_init(void)
 
 	/* Everything is OK */
 	mdm_drv = new_drv;
+
+#ifdef MDM_IMC_EARLY_POWER_OFF
+	/* Modem power off sequence */
+	mdm_ctrl_power_off(new_drv);
+#endif
 
 #ifdef MDM_IMC_EARLY_BOOT
 	/* Modem cold boot sequence */
