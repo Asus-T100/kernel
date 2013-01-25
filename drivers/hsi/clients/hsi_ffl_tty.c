@@ -4,10 +4,9 @@
  * Fixed frame length protocol over HSI, implements a TTY interface for
  * this protocol.
  *
- * Copyright (C) 2012 Intel Corporation. All rights reserved.
+ * Copyright (C) 2010-2011 Intel Corporation. All rights reserved.
  *
  * Contact: Olivier Stoltz Douchet <olivierx.stoltz-douchet@intel.com>
- *          Faouaz Tenoutit <faouazx.tenoutit@intel.com>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -23,6 +22,16 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
  * 02110-1301 USA
  */
+
+/* Set the following to use the IPC error recovery mechanism */
+#undef USE_IPC_ERROR_RECOVERY
+
+/* Set the following to use the WAKE post boot handshake */
+#define USE_WAKE_POST_BOOT_HANDSHAKE
+
+/* Set the following to ignore the TTY_THROTTLE bit */
+#define IGNORE_TTY_THROTTLE
+
 #include <linux/log2.h>
 #include <linux/slab.h>
 #include <linux/sched.h>
@@ -33,22 +42,16 @@
 #include <linux/hsi/hsi_ffl_tty.h>
 #include <linux/hsi/hsi.h>
 #include <linux/dma-mapping.h>
+#include <linux/gpio.h>
 #include <linux/wait.h>
 #include <linux/interrupt.h>
+#include <linux/irq.h>
 #include <linux/delay.h>
 #include <linux/version.h>
+#include <asm/intel_scu_ipc.h>
 
 #define DRVNAME				"hsi-ffl"
 #define TTYNAME				"tty"CONFIG_HSI_FFL_TTY_NAME
-
-/* Set the following to use the IPC error recovery mechanism */
-#undef USE_IPC_ERROR_RECOVERY
-
-/* Set the following to use the WAKE post boot handshake */
-#define USE_WAKE_POST_BOOT_HANDSHAKE
-
-/* Set the following to ignore the TTY_THROTTLE bit */
-#define IGNORE_TTY_THROTTLE
 
 /* Maximal number of TTY lines supported by this driver */
 #define FFL_TTY_MAX_LINES		8
@@ -204,14 +207,32 @@ struct ffl_xfer_ctx {
 
 /**
  * struct ffl_hangup_ctx - hangup context for the fixed frame length protocol
- * @tx_timeout: there was a tx timeout or not
+ * @cause: the current root cause of the hangup
+ * @last_cause: the previous root cause of the hangup
  * @timer: the timer for the TX timeout
  * @work: the context of for the TX timeout work queue
  */
 struct ffl_hangup_ctx {
-	int			tx_timeout;
+	int			cause;
+	int			last_cause;
 	struct timer_list	timer;
 	struct work_struct	work;
+};
+
+/**
+ * struct ffl_reset_ctx - reset context for the fixed frame length protocol
+ * @cd_irq: the modem core dump interrupt line
+ * @irq: the modem reset interrupt line
+ * @ongoing: a flag stating that a reset is ongoing
+ * @modem_awake_event: modem WAKE post boot handshake event
+ */
+struct ffl_reset_ctx {
+	int			cd_irq;
+	int			irq;
+	int			ongoing;
+#ifdef USE_WAKE_POST_BOOT_HANDSHAKE
+	wait_queue_head_t	modem_awake_event;
+#endif
 };
 
 #ifdef USE_IPC_ERROR_RECOVERY
@@ -252,7 +273,6 @@ struct ffl_recovery_ctx {
  * @hangup: hangup context
  * @reset: modem reset context
  * @recovery: error recovery context
- * @modem_awake_event: modem WAKE post boot handshake event
  */
 struct ffl_ctx {
 	struct hsi_client	*client;
@@ -267,11 +287,9 @@ struct ffl_ctx {
 	struct ffl_xfer_ctx	rx;
 	struct work_struct	do_tty_forward;
 	struct ffl_hangup_ctx	hangup;
+	struct ffl_reset_ctx	reset;
 #ifdef USE_IPC_ERROR_RECOVERY
 	struct ffl_recovery_ctx	recovery;
-#endif
-#ifdef USE_WAKE_POST_BOOT_HANDSHAKE
-	wait_queue_head_t	modem_awake_event;
 #endif
 };
 
@@ -300,6 +318,49 @@ static struct workqueue_struct *ffl_rx_wq;
 
 /* Workqueue for submitting hangup background tasks */
 static struct workqueue_struct *ffl_hu_wq;
+
+/*
+ * Modem power / reset managers
+ */
+
+/**
+ * do_modem_power - activity required to bring up modem
+ * @hsi: HSI controller
+ *
+ * Toggle gpios required to bring up modem power and start modem.
+ */
+static void do_modem_power(struct ffl_ctx *ctx)
+{
+	struct hsi_client *cl = ctx->client;
+	struct hsi_mid_platform_data *pd = cl->device.platform_data;
+
+	ctx->reset.ongoing = 1;
+
+	dev_dbg(&cl->device, "GPIO ON1 toggle");
+	gpio_set_value(pd->gpio_mdm_pwr_on, 1);
+	mdelay(PO_INTERLINE_DELAY);
+	gpio_set_value(pd->gpio_mdm_pwr_on, 0);
+	msleep(PO_POST_DELAY);
+}
+
+/**
+ * do_modem_reset - activity required to reset modem
+ * @hsi: HSI controller
+ *
+ * Toggle gpios required to reset modem.
+ */
+static void do_modem_reset(struct ffl_ctx *ctx)
+{
+	struct hsi_client *cl = ctx->client;
+	struct hsi_mid_platform_data *pd = cl->device.platform_data;
+
+	ctx->reset.ongoing = 1;
+
+	gpio_set_value(pd->gpio_mdm_rst_bbn, 0);
+	mdelay(PO_INTERLINE_DELAY);
+	gpio_set_value(pd->gpio_mdm_rst_bbn, 1);
+	msleep(PO_POST_DELAY);
+}
 
 /*
  * State handling routines
@@ -1064,7 +1125,7 @@ static __must_check int ffl_tx_full_pipe_is_clean(struct ffl_ctx *ctx)
 	ret = (_ffl_ctx_is_empty(tx_ctx) &&
 	       (likely(!_ffl_ctx_has_flag(tx_ctx,
 					  TX_TTY_WRITE_FORWARDING_BIT)))) ||
-	      (ctx->hangup.tx_timeout);
+	      (ctx->hangup.cause);
 	spin_unlock_irqrestore(&tx_ctx->lock, flags);
 
 	return ret;
@@ -1261,7 +1322,7 @@ static void ffl_start_rx(struct hsi_client *cl)
 	* <=> if !(tx_ctx->data_len<(FFL_DATA_LENGTH - 4))
 	*/
 	if (!(ctx->data_len < (FFL_DATA_LENGTH - 4)))
-		wake_up(&main_ctx->modem_awake_event);
+		wake_up(&main_ctx->reset.modem_awake_event);
 #endif
 	spin_unlock_irqrestore(&ctx->lock, flags);
 }
@@ -1587,6 +1648,9 @@ static void ffl_complete_tx(struct hsi_msg *frame)
 							 struct ffl_ctx, tx);
 	int			wakeup;
 	unsigned long		flags;
+
+	/* xfer done (Modem up & running) => clear the reset_ongoing flag */
+	main_ctx->reset.ongoing = 0;
 
 	spin_lock_irqsave(&ctx->lock, flags);
 	_ffl_fifo_ctrl_pop(ctx);
@@ -1978,7 +2042,8 @@ static int ffl_tty_port_activate(struct tty_port *port, struct tty_struct *tty)
 
 	/* Broadcast the port ready information */
 	spin_lock_irqsave(&tx_ctx->lock, flags);
-	ctx->hangup.tx_timeout = 0;
+	ctx->hangup.last_cause |= ctx->hangup.cause;
+	ctx->hangup.cause = 0;
 	_ffl_ctx_clear_flag(tx_ctx, TTY_OFF_BIT|ERROR_RECOVERY_TX_DRAINED_BIT);
 	spin_unlock_irqrestore(&tx_ctx->lock, flags);
 
@@ -1990,7 +2055,7 @@ static int ffl_tty_port_activate(struct tty_port *port, struct tty_struct *tty)
 	if (!(tx_ctx->data_len < (FFL_DATA_LENGTH - 4))) {
 		/* Wait for modem post boot WAKE handshake before continuing */
 		hsi_start_tx(ctx->client);
-		wait_event_interruptible_timeout(ctx->modem_awake_event,
+		wait_event_interruptible_timeout(ctx->reset.modem_awake_event,
 						 ffl_modem_is_awake(rx_ctx),
 					 POST_BOOT_HANDSHAKE_TIMEOUT_JIFFIES);
 		err = !ffl_modem_is_awake(rx_ctx);
@@ -2150,8 +2215,8 @@ static void ffl_tty_tx_timeout(unsigned long int param)
 	spin_lock_irqsave(&tx_ctx->lock, flags);
 	if (likely(tx_ctx->ctrl_len > 0)) {
 		do_hangup = ((!_ffl_ctx_has_flag(tx_ctx, TTY_OFF_BIT)) &&
-			     (!ctx->hangup.tx_timeout));
-		ctx->hangup.tx_timeout = 1;
+			     (!ctx->hangup.cause));
+		ctx->hangup.cause |= HU_TIMEOUT;
 		wake_up(&ctx->tx_full_pipe_clean_event);
 	}
 	spin_unlock_irqrestore(&tx_ctx->lock, flags);
@@ -2833,6 +2898,27 @@ static int ffl_tty_ioctl(struct tty_struct *tty,
 		break;
 #endif
 
+	case FFL_TTY_MODEM_RESET:
+		pr_debug("IO ctrl: %s(%d) reset modem\n",
+			 current->comm, current->pid);
+		pr_debug("reset modem\n");
+		do_modem_reset(ctx);
+		do_modem_power(ctx);
+		break;
+
+	case FFL_TTY_MODEM_STATE:
+		data = !(ctx->reset.ongoing);
+		return put_user(data, (unsigned int __user *)arg);
+		break;
+
+	case FFL_TTY_GET_HANGUP_REASON:
+		spin_lock_irqsave(&ctx->tx.lock, flags);
+		data = ctx->hangup.last_cause;
+		ctx->hangup.last_cause = 0;
+		spin_unlock_irqrestore(&ctx->tx.lock, flags);
+		return put_user(data, (unsigned int __user *)arg);
+		break;
+
 	default:
 		return -ENOIOCTLCMD;
 }
@@ -2841,6 +2927,293 @@ static int ffl_tty_ioctl(struct tty_struct *tty,
 		(void) queue_work(increase_pool_wq, increase_pool);
 
 	return 0;
+}
+
+/**
+ * reset_modem - modem reset command function
+ * @val: a reference to the string where the modem reset query is given
+ * @kp: an unused reference to the kernel parameter
+ *
+ * This call back function is resetting each and every one of the modem having
+ * a bit set in the /sys/module/hsi_ffl_tty/parameters/reset_modem sysFS file.
+ *
+ * The query value is actually a bit field of 1 bit per modem stating if the
+ * modem shall be reset or not. For instance, a query value of 0x1 means that
+ * the modem of ttyIFX0 will be reset.
+ */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 36)
+static int reset_modem(const char *val, struct kernel_param *kp)
+#else
+static int reset_modem(const char *val, const struct kernel_param *kp)
+#endif
+{
+	unsigned long reset_request;
+	struct ffl_ctx *ctx;
+	int i;
+
+	if (strict_strtoul(val, 16, &reset_request) < 0)
+		return -EINVAL;
+
+	for (i = 0; i < FFL_TTY_MAX_LINES; i++) {
+		ctx = ffl_drv.ctx[i];
+		if ((ctx != NULL) && (reset_request & (1<<i))) {
+			do_modem_reset(ctx);
+			do_modem_power(ctx);
+		}
+	}
+
+	return 0;
+}
+
+/**
+ * is_modem_reset - modem reset status module parameter callback function
+ * @val: a reference to the string where the modem reset status is returned
+ * @kp: an unused reference to the kernel parameter
+ *
+ * This call back function is exporting the current status of all connected
+ * modems when reading /sys/module/hsi_ffl_tty/parameters/reset_modem.
+ *
+ * The returned value is actually a bit field of 1 bit per modem stating if the
+ * modem is actually resetting or not. For instance, a returned value of 0x1 is
+ * meaning that the modem of ttyIFX0 is resetting.
+ */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 36)
+static int is_modem_reset(char *val, struct kernel_param *kp)
+#else
+static int is_modem_reset(char *val, const struct kernel_param *kp)
+#endif
+{
+	unsigned long reset_ongoing = 0;
+	struct ffl_ctx *ctx;
+	int i;
+
+	for (i = 0; i < FFL_TTY_MAX_LINES; i++) {
+		ctx = ffl_drv.ctx[i];
+		if (ctx)
+			reset_ongoing |= (ctx->reset.ongoing << i);
+	}
+
+	return sprintf(val, "%lu", reset_ongoing);
+}
+
+/**
+ * clear_hangup_reasons - clearing all hangup reasons
+ * @val: a reference to the string where the hangup reasons clear query is given
+ * @kp: an unused reference to the kernel parameter
+ *
+ * This call back function is clearing each and every one of the hangup reasons
+ * having a nibble set in the /sys/module/hsi_ffl_tty/parameters/hangup_reasons
+ * sysFS file.
+ *
+ * The query value is actually a nibble field of 1 bit per modem interface
+ * stating what the modem hangup reasons shall be reset or not. For instance, a
+ * query value of 0x5 means that the TX timeout and modem core dump hangup
+ * reasons of ttyIFX0 shall be reset.
+ *
+ * It is then advised to write down the same value as the one read on the
+ * /sys/module/hsi_ffl_tty/parameters/hangup_reasons sysFS file to only clear
+ * the hangup reasons that have been detected. Otherwise, to clear each and
+ * every reason inconditionnaly a nibble of 0xF per TTY interface shall be used.
+ */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 36)
+static int clear_hangup_reasons(const char *val, struct kernel_param *kp)
+#else
+static int clear_hangup_reasons(const char *val, const struct kernel_param *kp)
+#endif
+{
+	unsigned long hangup_reasons, flags;
+	struct ffl_ctx *ctx;
+	int i, mask;
+
+	if (strict_strtoul(val, 16, &hangup_reasons) < 0)
+		return -EINVAL;
+
+	for (i = 0; i < FFL_TTY_MAX_LINES; i++) {
+		ctx = ffl_drv.ctx[i];
+		mask = (hangup_reasons >> (4*i)) & 0xF;
+		if ((ctx != NULL) && (mask)) {
+			spin_lock_irqsave(&ctx->tx.lock, flags);
+			ctx->hangup.last_cause &= ~mask;
+			ctx->hangup.cause &= ~mask;
+			spin_unlock_irqrestore(&ctx->tx.lock, flags);
+		}
+	}
+
+	return 0;
+}
+
+/**
+ * hangup_reasons - modem hangup reasons module parameter callback function
+ * @val: a reference to the string where the hangup reasons are returned
+ * @kp: an unused reference to the kernel parameter
+ *
+ * This call back function is exporting all hangup reasons of each and every
+ * TTY interface when reading /sys/module/hsi_ffl_tty/parameters/hangup_reasons.
+ *
+ * The returned value is actually a nibble field of 4-bit per modem stating if
+ * the TTY interface has hang up and why it has hangup. For instance, a
+ * returned value of 5 is meaning that ttyIFX0 interface hang up because of
+ * both a TX timeout and a modem core dump.
+ */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 36)
+static int hangup_reasons(char *val, struct kernel_param *kp)
+#else
+static int hangup_reasons(char *val, const struct kernel_param *kp)
+#endif
+{
+	unsigned long flags, hangup_reasons = 0;
+	struct ffl_ctx *ctx;
+	int i;
+
+	for (i = 0; i < FFL_TTY_MAX_LINES; i++) {
+		ctx = ffl_drv.ctx[i];
+		if (ctx) {
+			spin_lock_irqsave(&ctx->tx.lock, flags);
+			hangup_reasons |=
+				(ctx->hangup.last_cause << (i*4)) |
+				(ctx->hangup.cause << (i*4));
+			spin_unlock_irqrestore(&ctx->tx.lock, flags);
+		}
+	}
+
+	return sprintf(val, "%lu", hangup_reasons);
+}
+
+/**
+  * modem_cold_reset - modem cold reset command function
+  * @val: a reference to the string where the cold reset reasons clear query is
+  * given
+  * @kp: an unused reference to the kernel parameter
+  *
+  * This callback performs a cold reset once a "1" is written into
+  * the /sys/module/hsi_ffl_tty/parameters/cold_reset_modem sysFS file
+  *
+  *
+  * To do a modem cold reset we have to:
+  * - Set the RESET_BB_N to low (better SIM protection)
+  * - Set the EXT1P35VREN field to low  during 20ms (V1P35CNT_W PMIC register)
+  * - set the EXT1P35VREN field to high during 10ms (V1P35CNT_W PMIC register)
+  */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 36)
+static int modem_cold_reset(const char *val, struct kernel_param *kp)
+#else
+static int modem_cold_reset(const char *val, const struct kernel_param *kp)
+#endif
+{
+	long request;
+	int err;
+	u16 addr = V1P35CNT_W;
+	u8 data, def_value;
+	struct ffl_ctx *ctx = ffl_drv.ctx[0]; /* Main context */
+	struct hsi_mid_platform_data *pd = ctx->client->device.platform_data;
+
+	if (strict_strtol(val, 10, &request) < 0)
+		return -EINVAL;
+
+	pr_info(DRVNAME " - %s (Modem cold reset requested !)", __func__);
+
+	/* Set the reset_bb to low */
+	ctx->reset.ongoing = 1;
+	gpio_set_value(pd->gpio_mdm_rst_bbn, 0);
+
+	/* Save the current register value */
+	err = intel_scu_ipc_readv(&addr, &def_value, 2);
+	if (err) {
+		pr_err(DRVNAME " - %s -  read error: %d", __func__, err);
+		goto out;
+	}
+
+	/* Write the new register value (V1P35_OFF) */
+	data = (def_value & 0xf8) | V1P35_OFF;
+	err =  intel_scu_ipc_writev(&addr, &data, 1);
+	if (err) {
+		pr_err(DRVNAME " - %s -  write error: %d", __func__, err);
+		goto out;
+	}
+	usleep_range(COLD_BOOT_DELAY_OFF, COLD_BOOT_DELAY_OFF);
+
+	/* Write the new register value (V1P35_ON) */
+	data = (def_value & 0xf8) | V1P35_ON;
+	err =  intel_scu_ipc_writev(&addr, &data, 1);
+	if (err) {
+		pr_err(DRVNAME " - %s -  write error: %d", __func__, err);
+		goto out;
+	}
+	usleep_range(COLD_BOOT_DELAY_ON, COLD_BOOT_DELAY_ON);
+
+	/* Write back the initial register value */
+	err =  intel_scu_ipc_writev(&addr, &def_value, 1);
+	if (err) {
+		pr_err(DRVNAME " - %s -  write error: %d", __func__, err);
+	} else {
+		/* Perform a complete modem reset */
+		reset_modem(val, kp);
+	}
+
+out:
+	return err;
+}
+
+/*
+ * Modem reset interrupt service routine
+ */
+
+/**
+ * ffl_reset_isr - modem reset / core dump interrupt service routine
+ * @irq: interrupt number
+ * @dev: our device pointer
+ */
+static irqreturn_t ffl_reset_isr(int irq, void *dev)
+{
+	struct ffl_ctx *ctx;
+	struct ffl_xfer_ctx *tx_ctx;
+	struct hsi_client *client;
+	struct hsi_mid_platform_data *pd = NULL;
+	int do_hangup, status, cause = 0;
+
+	ctx = (struct ffl_ctx *)dev;
+	tx_ctx = &ctx->tx;
+	client = ctx->client;
+	pd = client->device.platform_data;
+
+	if (unlikely(!pd))
+		return IRQ_HANDLED;
+
+	if (irq == ctx->reset.irq) {
+		status = gpio_get_value(pd->gpio_mdm_rst_out);
+		/* Prevent issuing hang-up for the usual reset toggling whilst
+		 * the modem is resetting */
+		cause = (ctx->reset.ongoing) ? 0 : HU_RESET;
+		dev_dbg(&client->device, "GPIO RESET_OUT %x (%d)", status,
+			cause);
+
+		/* RISING edge => Reset done (clear the flag )*/
+		if (status)
+			ctx->reset.ongoing = 0;
+	} else if (irq == ctx->reset.cd_irq) {
+		status = gpio_get_value(pd->gpio_fcdp_rb);
+		/* Skip fake core dump sequences */
+		cause = (ctx->reset.ongoing) ? 0 : HU_COREDUMP;
+		dev_dbg(&client->device, "GPIO CORE_DUMP %x (%d)", status,
+			cause);
+	}
+
+	if (cause) {
+		if (cause == HU_RESET)
+			ctx->reset.ongoing = 1;
+
+		spin_lock(&tx_ctx->lock);
+		do_hangup = ((!_ffl_ctx_has_flag(tx_ctx, TTY_OFF_BIT)) &&
+			     (!ctx->hangup.cause));
+		ctx->hangup.cause |= cause;
+		wake_up(&ctx->tx_full_pipe_clean_event);
+		spin_unlock(&tx_ctx->lock);
+
+		if (do_hangup)
+			queue_work(ffl_hu_wq, &ctx->hangup.work);
+	}
+
+	return IRQ_HANDLED;
 }
 
 #ifdef USE_IPC_ERROR_RECOVERY
@@ -3082,8 +3455,180 @@ static void ffl_recovery_ctx_clear(struct ffl_recovery_ctx *ctx_recovery)
 #endif
 
 /*
- * Hangup context initialisation and destruction helper functions
+ * Reset and hangup contexts initialisation and destruction helper functions
  */
+
+/**
+ * ffl_request_gpio - helper function for requesting a GPIO
+ * @gpio: the GPIO to use
+ * @dir: the direction of the GPIO (1: output, 0: input)
+ * @high_not_low: the default state of the output GPIO
+ * @dir_may_change: a flag stating if the direction of the GPIO can be changed
+ * @label: the label associated to this GPIO
+ * @name: the name of the GPIO
+ * @info: the information to display on error and logs
+ *
+ * Returns 0 if successful or an error code.
+ */
+static int ffl_request_gpio(unsigned int gpio, int dir, int high_not_low,
+			    bool dir_may_change, const char *label,
+			    const char *name, const char *info)
+{
+	int err;
+
+	err = gpio_request(gpio, label);
+	if (err)
+		goto no_gpio_request;
+
+	if (dir)
+		err = gpio_direction_output(gpio, high_not_low);
+	else
+		err = gpio_direction_input(gpio);
+	if (err)
+		goto exit_error;
+
+	err = gpio_export(gpio, dir_may_change);
+	if (err)
+		goto exit_error;
+
+	pr_info(DRVNAME ": GPIO %s %d\n", name, gpio);
+
+	return 0;
+
+exit_error:
+	gpio_free(gpio);
+no_gpio_request:
+	pr_err(DRVNAME ": unable to configure GPIO%d (%s)", gpio, info);
+	return err;
+}
+
+#define ffl_request_output_gpio(label, name, info, \
+				dir_may_change, high_not_low) \
+	do { \
+		err = ffl_request_gpio(pd->gpio_##name, 1, high_not_low, \
+				       dir_may_change, label, #name, info); \
+		if (err) \
+			goto no_##name##_gpio;\
+	} while (0)
+
+#define ffl_request_input_gpio(label, name, info) \
+	do { \
+		err = ffl_request_gpio(pd->gpio_##name, 0, 0, 0, label, \
+				       #name, info); \
+		if (err) \
+			goto no_##name##_gpio;\
+	} while (0)
+
+/**
+ * do_ffl_request_irq - helper function for requesting a GPIO-based interrupt
+ * @irq: a reference to the irq
+ * @gpio: the GPIO to use
+ * @flags: the interrupt flags
+ * @ctx: the FFL context to associate to the interrupt service routine
+ * @info: the information to display on error and logs
+ *
+ * This function is requesting a GPIO-based interrupt and setting the ISR to
+ * ffl_reset_isr().
+ *
+ * Returns 0 if successful or an error code.
+ */
+static int do_ffl_request_irq(int *irq, unsigned int gpio, unsigned long flags,
+			      struct ffl_ctx *ctx, const char *info)
+{
+	int err;
+
+	*irq = gpio_to_irq(gpio);
+	if (*irq < 0) {
+		*irq = 0;
+		pr_err(DRVNAME ": unable to map IRQ from GPIO%d (%s)",
+		       gpio, info);
+		return -ENODEV;
+	}
+
+	err = request_irq(*irq, ffl_reset_isr, flags, DRVNAME, (void *)ctx);
+	if (err)
+		pr_err(DRVNAME ": unable to request IRQ%d from GPIO%d (%s)",
+		       *irq, gpio, info);
+	else
+		pr_info(DRVNAME ": IRQ %d (%s)\n", *irq, info);
+
+	return err;
+}
+
+#define ffl_request_irq(irq_id, flags, name, info) \
+	do { \
+		err = do_ffl_request_irq(&ctx_reset->irq_id, pd->gpio_##name, \
+					 flags, ctx, info); \
+		if (err) \
+			goto no_##name##_irq; \
+	} while (0)
+
+/**
+ * ffl_reset_ctx_init - initialises a reset context after its creation
+ * @ctx_reset: a reference to the considered reset context
+ * @pd: a reference to the HSI platform data configuration
+ * Returns 0 if successful or an error code.
+ */
+static int ffl_reset_ctx_init(struct ffl_reset_ctx *ctx_reset,
+			      struct hsi_mid_platform_data *pd)
+{
+	struct ffl_ctx *ctx = container_of(ctx_reset, struct ffl_ctx, reset);
+	int err;
+
+	ctx_reset->ongoing	= 1;
+
+	ffl_request_output_gpio("ifxHSIModem", mdm_rst_bbn, "RESET", 1, 1);
+	ffl_request_output_gpio("ifxHSIModem", mdm_pwr_on, "ON", 1, 0);
+	ffl_request_input_gpio("ifxHSIModem", mdm_rst_out, "RST_OUT");
+	ffl_request_input_gpio("ifxHSIModem", fcdp_rb, "CORE DUMP");
+
+	ffl_request_irq(irq, IRQF_TRIGGER_RISING|IRQF_TRIGGER_FALLING|IRQF_NO_SUSPEND,
+			mdm_rst_out, "RST_OUT");
+	ffl_request_irq(cd_irq, IRQF_TRIGGER_RISING, fcdp_rb, "CORE DUMP");
+	enable_irq_wake(ctx_reset->irq);
+	enable_irq_wake(ctx_reset->cd_irq);
+
+#ifdef USE_WAKE_POST_BOOT_HANDSHAKE
+	init_waitqueue_head(&ctx_reset->modem_awake_event);
+#endif
+
+	do_modem_power(ctx);
+
+	return 0;
+
+no_fcdp_rb_irq:
+	free_irq(ctx_reset->irq, (void *)ctx);
+no_mdm_rst_out_irq:
+	gpio_free(pd->gpio_fcdp_rb);
+no_fcdp_rb_gpio:
+	gpio_free(pd->gpio_mdm_rst_out);
+no_mdm_rst_out_gpio:
+	gpio_free(pd->gpio_mdm_pwr_on);
+no_mdm_pwr_on_gpio:
+	gpio_free(pd->gpio_mdm_rst_bbn);
+no_mdm_rst_bbn_gpio:
+	return err;
+}
+
+/**
+ * ffl_reset_ctx_clear - clears a reset context prior to its deletion
+ * @ctx_reset: a reference to the considered reset context
+ * @pd: a reference to the HSI platform data configuration
+ */
+static void ffl_reset_ctx_clear(struct ffl_reset_ctx *ctx_reset,
+				struct hsi_mid_platform_data *pd)
+{
+	struct ffl_ctx *ctx = container_of(ctx_reset, struct ffl_ctx, reset);
+
+	free_irq(ctx_reset->cd_irq, (void *)ctx);
+	free_irq(ctx_reset->irq, (void *)ctx);
+
+	gpio_free(pd->gpio_fcdp_rb);
+	gpio_free(pd->gpio_mdm_rst_out);
+	gpio_free(pd->gpio_mdm_pwr_on);
+	gpio_free(pd->gpio_mdm_rst_bbn);
+}
+
 /**
  * ffl_hangup_ctx_init - initialises a hangup context after its creation
  * @ctx_hangup: a reference to the considered hangup context
@@ -3110,7 +3655,7 @@ static void ffl_hangup_ctx_clear(struct ffl_hangup_ctx *ctx_hangup)
 	int is_hunging_up;
 
 	spin_lock_irqsave(&tx_ctx->lock, flags);
-	is_hunging_up = (ctx_hangup->tx_timeout);
+	is_hunging_up = (ctx_hangup->cause);
 	spin_unlock_irqrestore(&tx_ctx->lock, flags);
 
 	/* No need to wait for the end of the calling work! */
@@ -3251,6 +3796,7 @@ static const struct tty_port_operations ffl_port_tty_ops = {
 static int __init ffl_driver_probe(struct device *dev)
 {
 	struct hsi_client	*client = to_hsi_client(dev);
+	struct hsi_mid_platform_data *pd = client->device.platform_data;
 	struct tty_port		*tty_prt;
 	struct ffl_ctx		*ctx;
 	int			i = 0;
@@ -3334,9 +3880,10 @@ static int __init ffl_driver_probe(struct device *dev)
 	/* Initialise the hangup context */
 	ffl_hangup_ctx_init(&ctx->hangup);
 
-#ifdef USE_WAKE_POST_BOOT_HANDSHAKE
-	init_waitqueue_head(&ctx->modem_awake_event);
-#endif
+	/* Initialise the reset context */
+	err = ffl_reset_ctx_init(&ctx->reset, pd);
+	if (unlikely(err))
+		goto no_reset_ctx_initialisation;
 
 #ifdef USE_IPC_ERROR_RECOVERY
 	/* Initialise the error recovery context */
@@ -3349,6 +3896,10 @@ static int __init ffl_driver_probe(struct device *dev)
 
 	dev_dbg(dev, "ffl_driver_probe completed\n");
 	return 0;
+
+no_reset_ctx_initialisation:
+	ffl_hangup_ctx_clear(&ctx->hangup);
+	tty_unregister_device(ffl_drv.tty_drv, ctx->index);
 
 no_tty_device_registration:
 	client->hsi_start_rx	= NULL;
@@ -3384,6 +3935,8 @@ static int __exit ffl_driver_remove(struct device *dev)
 #endif
 
 	ffl_hangup_ctx_clear(&ctx->hangup);
+
+	ffl_reset_ctx_clear(&ctx->reset, client->device.platform_data);
 
 	tty_unregister_device(ffl_drv.tty_drv, ctx->index);
 
@@ -3517,6 +4070,7 @@ no_rx_wq:
 no_tx_wq:
 	return err;
 }
+module_init(ffl_driver_init);
 
 /**
  * ffl_driver_exit - frees the resources taken by the FFL driver common parts
@@ -3535,15 +4089,45 @@ static void __exit ffl_driver_exit(void)
 
 	pr_debug(DRVNAME ": driver removed");
 }
-
-module_init(ffl_driver_init);
 module_exit(ffl_driver_exit);
+
+/*
+ * Module parameters to manage the modem status through sysfs
+ */
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 36)
+
+module_param_call(reset_modem, reset_modem, is_modem_reset, NULL, 0644);
+module_param_call(hangup_reasons, clear_hangup_reasons, hangup_reasons,
+		  NULL, 0644);
+module_param_call(cold_reset_modem, modem_cold_reset, NULL, NULL, 0644);
+
+#else
+
+static struct kernel_param_ops reset_modem_ops = {
+	.set = reset_modem,
+	.get = is_modem_reset,
+};
+module_param_cb(reset_modem, &reset_modem_ops, NULL, 0644);
+
+static struct kernel_param_ops hangup_reasons_ops = {
+	.set = clear_hangup_reasons,
+	.get = hangup_reasons,
+};
+module_param_cb(hangup_reasons, &hangup_reasons_ops, NULL, 0644);
+
+static struct kernel_param_ops cold_reset_modem_ops = {
+	.set = modem_cold_reset,
+	.get = NULL,
+};
+module_param_cb(cold_reset_modem, &cold_reset_modem_ops, NULL, 0644);
+
+#endif
 
 /*
  * Module information
  */
 MODULE_AUTHOR("Olivier Stoltz Douchet <olivierx.stoltz-douchet@intel.com>");
-MODULE_AUTHOR("Faouaz TENOUTIT <faouazx.tenoutit@intel.com>");
 MODULE_DESCRIPTION("Fixed frame length protocol on HSI driver");
 MODULE_LICENSE("GPL");
-MODULE_VERSION("1.0-HSI-FFL");
+MODULE_VERSION("0.1-HSI-FFL");

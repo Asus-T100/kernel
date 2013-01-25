@@ -27,6 +27,13 @@
 
 #include <linux/ioctl.h>
 
+/* reasons for hanging up tty */
+enum {
+	HU_TIMEOUT = 1,
+	HU_RESET = 2,
+	HU_COREDUMP = 4,
+};
+
 /**
  * struct hsi_ffl_stats - statistics related to the TX and RX side
  * @data_sz: total size of actual transferred data

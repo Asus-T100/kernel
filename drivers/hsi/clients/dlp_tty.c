@@ -42,6 +42,7 @@
 #include <linux/gpio.h>
 #include <linux/interrupt.h>
 #include <linux/irq.h>
+#include <linux/serial.h>
 
 #include "dlp_main.h"
 
@@ -89,6 +90,52 @@ static int dlp_tty_push_rx_pdus(struct dlp_channel *ch_ctx)
 	}
 
 	return ret;
+}
+
+/* Called to handle modem hangup (Reset/CoreDump)
+ *
+ * Dont need to call tty hangup if the port closure is ongoing:
+ *	- TTY Close -> Port Shutdown is ongoing + Modem Reset/Coredump event
+ */
+static void dlp_tty_modem_hangup(struct dlp_channel *ch_ctx, int reason)
+{
+	struct tty_struct *tty;
+	struct dlp_tty_context *tty_ctx = ch_ctx->ch_data;
+
+	pr_err(DRVNAME ": TTY hangup reason: 0x%X\n", reason);
+
+	ch_ctx->hangup.cause |= reason;
+	tty = tty_port_tty_get(&tty_ctx->tty_prt);
+	if (tty && !(tty_ctx->tty_prt.flags & ASYNC_CLOSING)) {
+		tty_vhangup(tty);
+		tty_kref_put(tty);
+	}
+}
+
+/**
+ *	dlp_tty_mdm_coredump_cb	-	Modem has signaled a core dump
+ *	@irq: interrupt number
+ *	@dev: our device pointer
+ *
+ *	The modem has indicated a core dump.
+ */
+static void dlp_tty_mdm_coredump_cb(struct dlp_channel *ch_ctx)
+{
+	pr_err(DRVNAME ": %s (Modem coredump)\n", __func__);
+	dlp_tty_modem_hangup(ch_ctx, DLP_MODEM_HU_COREDUMP);
+}
+
+/**
+ *	dlp_tty_mdm_reset_cb	-	Modem has changed reset state
+ *	@data: channel pointer
+ *
+ *	The modem has either entered or left reset state. Check the GPIO
+ *	line to see which.
+ */
+static void dlp_tty_mdm_reset_cb(struct dlp_channel *ch_ctx)
+{
+	pr_err(DRVNAME ": %s (Modem reset)\n", __func__);
+	dlp_tty_modem_hangup(ch_ctx, DLP_MODEM_HU_RESET);
 }
 
 /**
@@ -554,7 +601,7 @@ static void dlp_tty_port_shutdown(struct tty_port *port)
 	rx_ctx = &ch_ctx->rx;
 
 	/* we need hang_up timer alive to avoid long wait here */
-	if (!ch_ctx->hangup.tx_timeout)
+	if (!(ch_ctx->hangup.cause & DLP_MODEM_HU_TIMEOUT))
 		dlp_tty_wait_until_ctx_sent(ch_ctx, 0);
 
 	del_timer_sync(&ch_ctx->hangup.timer);
@@ -604,6 +651,14 @@ static int dlp_tty_open(struct tty_struct *tty, struct file *filp)
 
 	pr_debug(DRVNAME": TTY device open request (%s, %d)\n",
 			current->comm, current->pid);
+
+	/* Check & wait for modem readiness */
+	if (!dlp_ctrl_modem_is_ready()) {
+		pr_err(DRVNAME ": Unable to open TTY (Modem NOT ready)\n");
+
+		ret = -EBUSY;
+		goto out;
+	}
 
 	/* Get the context reference from the driver data if already opened */
 	ch_ctx = (struct dlp_channel *)tty->driver_data;
@@ -947,6 +1002,7 @@ static int dlp_tty_ioctl(struct tty_struct *tty,
 			 unsigned int cmd, unsigned long arg)
 {
 	struct dlp_channel *ch_ctx = (struct dlp_channel *)tty->driver_data;
+	unsigned int data;
 #ifdef CONFIG_HSI_DLP_TTY_STATS
 	struct hsi_dlp_stats stats;
 #endif
@@ -954,6 +1010,228 @@ static int dlp_tty_ioctl(struct tty_struct *tty,
 	int ret;
 
 	switch (cmd) {
+	case HSI_DLP_RESET_TX:
+		dlp_tty_tx_fifo_wait_recycle(&ch_ctx->tx);
+		break;
+
+	case HSI_DLP_RESET_RX:
+		dlp_tty_rx_fifo_wait_recycle(&ch_ctx->rx);
+		break;
+
+	case HSI_DLP_GET_TX_STATE:
+		data = dlp_ctx_get_state(&ch_ctx->tx);
+		return put_user(data, (unsigned int __user *)arg);
+		break;
+
+	case HSI_DLP_GET_RX_STATE:
+		data = dlp_ctx_get_state(&ch_ctx->rx);
+		return put_user(data, (unsigned int __user *)arg);
+		break;
+
+	case HSI_DLP_GET_TX_WAIT_MAX:
+		read_lock_irqsave(&ch_ctx->tx.lock, flags);
+		data = ch_ctx->tx.wait_max;
+		read_unlock_irqrestore(&ch_ctx->tx.lock, flags);
+		return put_user(data, (unsigned int __user *)arg);
+		break;
+
+	case HSI_DLP_GET_RX_WAIT_MAX:
+		read_lock_irqsave(&ch_ctx->rx.lock, flags);
+		data = ch_ctx->rx.wait_max;
+		read_unlock_irqrestore(&ch_ctx->rx.lock, flags);
+		return put_user(data, (unsigned int __user *)arg);
+		break;
+
+	case HSI_DLP_GET_TX_CTRL_MAX:
+		read_lock_irqsave(&ch_ctx->tx.lock, flags);
+		data = ch_ctx->tx.ctrl_max;
+		read_unlock_irqrestore(&ch_ctx->tx.lock, flags);
+		return put_user(data, (unsigned int __user *)arg);
+		break;
+
+	case HSI_DLP_GET_RX_CTRL_MAX:
+		read_lock_irqsave(&ch_ctx->rx.lock, flags);
+		data = ch_ctx->rx.ctrl_max;
+		read_unlock_irqrestore(&ch_ctx->rx.lock, flags);
+		return put_user(data, (unsigned int __user *)arg);
+		break;
+
+	case HSI_DLP_SET_TX_DELAY:
+		write_lock_irqsave(&ch_ctx->tx.lock, flags);
+		ch_ctx->tx.delay = from_usecs(arg);
+		write_unlock_irqrestore(&ch_ctx->tx.lock, flags);
+		break;
+
+	case HSI_DLP_GET_TX_DELAY:
+		read_lock_irqsave(&ch_ctx->tx.lock, flags);
+		data = jiffies_to_usecs(ch_ctx->tx.delay);
+		read_unlock_irqrestore(&ch_ctx->tx.lock, flags);
+		return put_user(data, (unsigned int __user *)arg);
+		break;
+
+	case HSI_DLP_SET_RX_DELAY:
+		write_lock_irqsave(&ch_ctx->rx.lock, flags);
+		ch_ctx->rx.delay = from_usecs(arg);
+		write_unlock_irqrestore(&ch_ctx->rx.lock, flags);
+		break;
+
+	case HSI_DLP_GET_RX_DELAY:
+		read_lock_irqsave(&ch_ctx->rx.lock, flags);
+		data = jiffies_to_usecs(ch_ctx->rx.delay);
+		read_unlock_irqrestore(&ch_ctx->rx.lock, flags);
+		return put_user(data, (unsigned int __user *)arg);
+		break;
+
+	case HSI_DLP_SET_TX_FLOW:
+		switch (arg) {
+		case HSI_FLOW_SYNC:
+		case HSI_FLOW_PIPE:
+			write_lock_irqsave(&ch_ctx->tx.lock, flags);
+			ch_ctx->tx.config.flow = arg;
+			write_unlock_irqrestore(&ch_ctx->tx.lock, flags);
+			break;
+		default:
+			return -EINVAL;
+		}
+		break;
+
+	case HSI_DLP_GET_TX_FLOW:
+		read_lock_irqsave(&ch_ctx->tx.lock, flags);
+		data = ch_ctx->tx.config.flow;
+		read_unlock_irqrestore(&ch_ctx->tx.lock, flags);
+		return put_user(data, (unsigned int __user *)arg);
+		break;
+
+	case HSI_DLP_SET_RX_FLOW:
+		switch (arg) {
+		case HSI_FLOW_SYNC:
+		case HSI_FLOW_PIPE:
+			write_lock_irqsave(&ch_ctx->rx.lock, flags);
+			dlp_drv.client->rx_cfg.flow = arg;
+			write_unlock_irqrestore(&ch_ctx->rx.lock, flags);
+			break;
+		default:
+			return -EINVAL;
+		}
+		break;
+
+	case HSI_DLP_GET_RX_FLOW:
+		read_lock_irqsave(&ch_ctx->rx.lock, flags);
+		data = ch_ctx->rx.config.flow;
+		read_unlock_irqrestore(&ch_ctx->rx.lock, flags);
+		return put_user(data, (unsigned int __user *)arg);
+		break;
+
+	case HSI_DLP_SET_TX_MODE:
+		switch (arg) {
+		case HSI_MODE_STREAM:
+		case HSI_MODE_FRAME:
+			write_lock_irqsave(&ch_ctx->tx.lock, flags);
+			ch_ctx->tx.config.mode = arg;
+			write_unlock_irqrestore(&ch_ctx->tx.lock, flags);
+			break;
+		default:
+			return -EINVAL;
+		}
+		break;
+
+	case HSI_DLP_GET_TX_MODE:
+		read_lock_irqsave(&ch_ctx->tx.lock, flags);
+		data = ch_ctx->tx.config.mode;
+		read_unlock_irqrestore(&ch_ctx->tx.lock, flags);
+		return put_user(data, (unsigned int __user *)arg);
+		break;
+
+	case HSI_DLP_SET_RX_MODE:
+		switch (arg) {
+		case HSI_MODE_STREAM:
+		case HSI_MODE_FRAME:
+			write_lock_irqsave(&ch_ctx->rx.lock, flags);
+			ch_ctx->rx.config.mode = arg;
+			write_unlock_irqrestore(&ch_ctx->rx.lock, flags);
+			break;
+		default:
+			return -EINVAL;
+		}
+		break;
+
+	case HSI_DLP_GET_RX_MODE:
+		read_lock_irqsave(&ch_ctx->rx.lock, flags);
+		data = ch_ctx->rx.config.mode;
+		read_unlock_irqrestore(&ch_ctx->rx.lock, flags);
+		return put_user(data, (unsigned int __user *)arg);
+		break;
+
+	case HSI_DLP_SET_TX_PDU_LEN:
+		if ((arg <= DLP_TTY_HEADER_LENGTH) ||
+			(arg > ch_ctx->tx.pdu_size))
+			return -EINVAL;
+
+		write_lock_irqsave(&ch_ctx->tx.lock, flags);
+		ch_ctx->tx.payload_len =
+		    ((arg + 3) / 4) * 4 - DLP_TTY_HEADER_LENGTH;
+		write_unlock_irqrestore(&ch_ctx->tx.lock, flags);
+		break;
+
+	case HSI_DLP_GET_TX_PDU_LEN:
+		read_lock_irqsave(&ch_ctx->tx.lock, flags);
+		data = ch_ctx->tx.payload_len + DLP_TTY_HEADER_LENGTH;
+		read_unlock_irqrestore(&ch_ctx->tx.lock, flags);
+		return put_user(data, (unsigned int __user *)arg);
+		break;
+
+	case HSI_DLP_SET_RX_PDU_LEN:
+		if ((arg <= DLP_TTY_HEADER_LENGTH) ||
+			(arg > ch_ctx->rx.pdu_size))
+			return -EINVAL;
+		write_lock_irqsave(&ch_ctx->rx.lock, flags);
+		ch_ctx->rx.payload_len =
+		    ((arg + 3) / 4) * 4 - DLP_TTY_HEADER_LENGTH;
+		write_unlock_irqrestore(&ch_ctx->rx.lock, flags);
+		break;
+
+	case HSI_DLP_GET_RX_PDU_LEN:
+		read_lock_irqsave(&ch_ctx->rx.lock, flags);
+		data = ch_ctx->rx.payload_len + DLP_TTY_HEADER_LENGTH;
+		read_unlock_irqrestore(&ch_ctx->rx.lock, flags);
+		return put_user(data, (unsigned int __user *)arg);
+		break;
+
+	case HSI_DLP_SET_TX_ARB_MODE:
+		switch (arg) {
+		case HSI_ARB_RR:
+		case HSI_ARB_PRIO:
+			write_lock_irqsave(&ch_ctx->tx.lock, flags);
+			ch_ctx->tx.config.arb_mode = arg;
+			write_unlock_irqrestore(&ch_ctx->tx.lock, flags);
+			break;
+		default:
+			return -EINVAL;
+		}
+		break;
+
+	case HSI_DLP_GET_TX_ARB_MODE:
+		read_lock_irqsave(&ch_ctx->tx.lock, flags);
+		data = ch_ctx->tx.config.arb_mode;
+		read_unlock_irqrestore(&ch_ctx->tx.lock, flags);
+		return put_user(data, (unsigned int __user *)arg);
+		break;
+
+	case HSI_DLP_SET_TX_FREQUENCY:
+		if (arg == 0)
+			return -EINVAL;
+		write_lock_irqsave(&ch_ctx->tx.lock, flags);
+		ch_ctx->tx.config.speed = arg;
+		write_unlock_irqrestore(&ch_ctx->tx.lock, flags);
+		break;
+
+	case HSI_DLP_GET_TX_FREQUENCY:
+		read_lock_irqsave(&ch_ctx->tx.lock, flags);
+		data = ch_ctx->tx.config.speed;
+		read_unlock_irqrestore(&ch_ctx->tx.lock, flags);
+		return put_user(data, (unsigned int __user *)arg);
+		break;
+
 #ifdef CONFIG_HSI_DLP_TTY_STATS
 	case HSI_DLP_RESET_TX_STATS:
 		write_lock_irqsave(&ch_ctx->tx.lock, flags);
@@ -989,6 +1267,24 @@ static int dlp_tty_ioctl(struct tty_struct *tty,
 		return copy_to_user((void __user *)arg, &stats, sizeof(stats));
 		break;
 #endif
+
+	case HSI_DLP_MODEM_RESET:
+		dlp_ctrl_normal_warm_reset(ch_ctx);
+		break;
+
+	case HSI_DLP_MODEM_STATE:
+		data = !(dlp_ctrl_get_reset_ongoing());
+		return put_user(data, (unsigned int __user *)arg);
+		break;
+
+	case HSI_DLP_GET_HANGUP_REASON:
+		ret = put_user(ch_ctx->hangup.cause,
+			       (unsigned int __user *)arg);
+		write_lock_irqsave(&ch_ctx->rx.lock, flags);
+		ch_ctx->hangup.cause = 0;
+		write_unlock_irqrestore(&ch_ctx->rx.lock, flags);
+		return ret;
+		break;
 
 	case HSI_DLP_SET_FLASHING_MODE:
 		ret = dlp_set_flashing_mode(arg);
@@ -1111,6 +1407,8 @@ struct dlp_channel *dlp_tty_ctx_create(unsigned int index, struct device *dev)
 	dlp_ctrl_hangup_ctx_init(ch_ctx, dlp_tty_hsi_tx_timeout_cb);
 
 	/* Register the PDUs push, Reset & Coredump CB */
+	ch_ctx->modem_coredump_cb = dlp_tty_mdm_coredump_cb;
+	ch_ctx->modem_reset_cb = dlp_tty_mdm_reset_cb;
 	ch_ctx->push_rx_pdus = dlp_tty_push_rx_pdus;
 	ch_ctx->dump_state = dlp_dump_channel_state;
 

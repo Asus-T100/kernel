@@ -39,6 +39,18 @@
 
 #define DRVNAME				"hsi-dlp"
 
+/* Delays for powering up/resetting the modem */
+#define DLP_ON1_DURATION   60 /* ON1 pulse duration (usec) */
+#define DLP_ON1_DELAY     200 /* ON1 wait duration (usec) */
+
+#define DLP_COLD_RST_DELAY       200 /* Delay for RESET_BB_N (usec) */
+#define DLP_COLD_REG_DELAY        20 /* Delay for CHIPCNTRL (msec) */
+
+#define DLP_WARM_RST_DURATION        60 /* RESET_BB_N pulse delay (usec) */
+#define DLP_WARM_RST_FLASHING_DELAY  30 /* RESET_BB_N wait duration (msec) */
+
+#define DLP_MODEM_READY_DELAY  60 /* Modem readiness wait duration (sec) */
+
 /* Defaut TX timeout delay (in microseconds) */
 #define DLP_HANGUP_DELAY	1000000
 
@@ -271,11 +283,13 @@ struct dlp_xfer_ctx {
 
 /**
  * struct dlp_hangup_ctx - Hangup management context
- * @tx_timeout: TX timeout error or not
+ * @cause: Current cause of the hangup
+ * @last_cause: Previous cause of the hangup
  * @timer: TX timeout timner
  */
 struct dlp_hangup_ctx {
-	unsigned int tx_timeout;
+	unsigned int cause;
+	unsigned int last_cause;
 	struct timer_list timer;
 };
 
@@ -309,8 +323,12 @@ struct dlp_channel {
 	struct dlp_xfer_ctx tx;
 	struct dlp_xfer_ctx rx;
 
-	/* TX Timeout flag & callback */
+	/* Hangup management */
 	struct dlp_hangup_ctx hangup;
+
+	/* Reset, TX Timeout & Coredump callbacks */
+	void (*modem_coredump_cb) (struct dlp_channel *ch_ctx);
+	void (*modem_reset_cb) (struct dlp_channel *ch_ctx);
 	void (*modem_tx_timeout_cb) (struct dlp_channel *ch_ctx);
 
 	/* Credits callback */
@@ -567,6 +585,24 @@ struct dlp_channel *dlp_ctrl_ctx_create(unsigned int index,
 
 int dlp_ctrl_ctx_delete(struct dlp_channel *ch_ctx);
 
+int dlp_ctrl_cold_boot(struct dlp_channel *ch_ctx);
+
+int dlp_ctrl_cold_reset(struct dlp_channel *ch_ctx);
+
+int dlp_ctrl_normal_warm_reset(struct dlp_channel *ch_ctx);
+
+int dlp_ctrl_flashing_warm_reset(struct dlp_channel *ch_ctx);
+
+inline int dlp_ctrl_get_reset_ongoing(void);
+
+inline void dlp_ctrl_set_reset_ongoing(int ongoing);
+
+inline int dlp_ctrl_get_hangup_reasons(void);
+
+inline void dlp_ctrl_set_hangup_reasons(unsigned int hsi_channel, int reason);
+
+inline unsigned int dlp_ctrl_modem_is_ready(void);
+
 int dlp_ctrl_open_channel(struct dlp_channel *ch_ctx);
 
 int dlp_ctrl_close_channel(struct dlp_channel *ch_ctx);
@@ -628,5 +664,9 @@ int dlp_trace_ctx_delete(struct dlp_channel *ch_ctx);
  *
  ***************************************************************************/
 extern struct dlp_driver dlp_drv;
+
+#ifdef CONFIG_ATOM_SOC_POWER
+extern unsigned int enable_standby;
+#endif
 
 #endif /* _DLP_MAIN_H_ */
