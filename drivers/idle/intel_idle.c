@@ -88,14 +88,12 @@ static struct cpuidle_device __percpu *intel_idle_cpuidle_devices;
 static int intel_idle(struct cpuidle_device *dev,
 			struct cpuidle_driver *drv, int index);
 
-#ifdef CONFIG_ATOM_SOC_POWER
+#if defined(CONFIG_INTEL_ATOM_MDFLD_POWER) || \
+	defined(CONFIG_INTEL_ATOM_CLV_POWER)
 static int soc_s0ix_idle(struct cpuidle_device *dev,
 			 struct cpuidle_driver *drv, int index);
 
 static atomic_t nr_cpus_in_c6;
-
-#else
-#define soc_s0ix_idle	intel_idle
 #endif
 
 static struct cpuidle_state *cpuidle_state_table;
@@ -211,6 +209,9 @@ static struct cpuidle_state atom_cstates[MWAIT_MAX_NUM_CSTATES] = {
 };
 
 #ifdef CONFIG_ATOM_SOC_POWER
+
+#if defined(CONFIG_INTEL_ATOM_MDFLD_POWER) || \
+	defined(CONFIG_INTEL_ATOM_CLV_POWER)
 static struct cpuidle_state mfld_cstates[MWAIT_MAX_NUM_CSTATES] = {
 	{ /* MWAIT C0 */
 		.power_usage = C0_POWER_USAGE },
@@ -270,6 +271,14 @@ static struct cpuidle_state mfld_cstates[MWAIT_MAX_NUM_CSTATES] = {
 #else
 #define mfld_cstates atom_cstates
 #endif
+#define mrfld_cstates atom_cstates
+
+#else /*if !CONFIG_ATOM_SOC_POWER*/
+
+#define mfld_cstates atom_cstates
+#define mrfld_cstates atom_cstates
+
+#endif
 
 static long get_driver_data(int cstate)
 {
@@ -311,7 +320,8 @@ static long get_driver_data(int cstate)
 	return driver_data;
 }
 
-#ifdef CONFIG_ATOM_SOC_POWER
+#if defined(CONFIG_INTEL_ATOM_MDFLD_POWER) || \
+	defined(CONFIG_INTEL_ATOM_CLV_POWER)
 static int enter_s0ix_state(u32 eax, int s0ix_state,
 		  struct cpuidle_device *dev, int index)
 {
@@ -584,6 +594,9 @@ static int intel_idle_probe(void)
 	case 0x35:	/* 53 - Cloverview Atom Processor */
 		cpuidle_state_table = mfld_cstates;
 		auto_demotion_disable_flags = ATM_LNC_C6_AUTO_DEMOTE;
+		break;
+	case 0x4a:	/*74 - Tangier Atom Processor */
+		cpuidle_state_table = mrfld_cstates;
 		break;
 	case 0x2A:	/* SNB */
 	case 0x2D:	/* SNB Xeon */
