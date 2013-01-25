@@ -339,6 +339,9 @@ static int mdfld_dsi_jdi_panel_reset(struct mdfld_dsi_config *dsi_config)
 
 	__vpro2_power_ctrl(true);
 
+	/* For meeting tRW1 panel spec */
+	usleep_range(2000, 2500);
+
 	vaddr = ioremap(0xff008000, 0x60);
 
 	reg_value = ioread32(vaddr);
@@ -354,11 +357,22 @@ static int mdfld_dsi_jdi_panel_reset(struct mdfld_dsi_config *dsi_config)
 		/* Clear the pin */
 		iowrite32(0x60000000, vaddr + 0x60);
 
+		/*
+		 * For meeting tRW1 panel spec in case RST pin starts from high
+		 */
+		usleep_range(2000, 2500);
+
 		/* set the pin */
 		iowrite32(0x40000000, vaddr + 0x48);
 
+		/* For meeting tsVSP panel spec */
+		usleep_range(2000, 2500);
+
 		/* set the pin */
 		iowrite32(0x20000000, vaddr + 0x48);
+
+		/* Additional delay for VSP and VSN to settle */
+		usleep_range(2000, 2500);
 	}
 
 	iounmap(vaddr);
