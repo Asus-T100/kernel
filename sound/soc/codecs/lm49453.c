@@ -1091,10 +1091,31 @@ static const struct snd_soc_dapm_route lm49453_audio_map[] = {
 	{ "Sidetone", "Sidetone Switch", "Sidetone Mixer" },
 };
 
+bool lm49453_jack_check_config5(struct snd_soc_codec *codec)
+{
+	unsigned int volt_electret, mic_impedance, hp_l_range, hp_r_range, tmp;
+
+	volt_electret = snd_soc_read(codec, LM49453_P0_HSD_VEL_L_FINALL_REG);
+	mic_impedance = snd_soc_read(codec, LM49453_P0_HSD_RO_FINALL_REG);
+	tmp = snd_soc_read(codec, LM49453_P0_HSD_R_HP_RANGE_REG);
+	hp_r_range = tmp & 0x7;
+	hp_l_range = (tmp >> 3) & 0x7;
+
+	/* check if inserted headphone is actually a valid one */
+	if (volt_electret <= 0xDA && mic_impedance <= 0x27)
+		/* check if measured resistances fall within range */
+		if ((1 <= hp_l_range && hp_l_range <= 5) &&
+		    (1 <= hp_r_range && hp_r_range <= 5))
+			return true;
+	return false;
+}
+EXPORT_SYMBOL_GPL(lm49453_jack_check_config5);
+
 inline void lm49453_restart_hsd(struct snd_soc_codec *codec)
 {
 	snd_soc_update_bits(codec, LM49453_P0_PMC_SETUP_REG,
-			    LM49453_PMC_SETUP_CHIP_EN, 0);
+			    LM49453_PMC_SETUP_CHIP_EN,
+			    LM49453_CHIP_EN);
 	snd_soc_update_bits(codec, LM49453_P0_PMC_SETUP_REG,
 			    LM49453_PMC_SETUP_CHIP_EN,
 			    LM49453_CHIP_EN_HSD_DETECT);

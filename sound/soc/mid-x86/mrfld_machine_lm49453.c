@@ -38,7 +38,9 @@
 #include <sound/jack.h>
 #include "../codecs/lm49453.h"
 
+#ifdef CONFIG_SWITCH_MID
 extern void mid_headset_report(int state);
+#endif
 
 static int mrfld_hw_params(struct snd_pcm_substream *substream,
 			   struct snd_pcm_hw_params *params)
@@ -65,6 +67,7 @@ static int mrfld_hw_params(struct snd_pcm_substream *substream,
 
 struct mrfld_mc_private {
 	struct snd_soc_jack jack;
+	int jack_retry;
 };
 
 inline void mrfld_jack_report(int status)
@@ -110,6 +113,7 @@ static int mrfld_jack_gpio_detect(void)
 	struct snd_soc_jack_gpio *gpio = &hs_gpio[MRFLD_HSDET];
 	struct snd_soc_jack *jack = gpio->jack;
 	struct snd_soc_codec *codec = jack->codec;
+	struct mrfld_mc_private *ctx = snd_soc_card_get_drvdata(codec->card);
 	unsigned int reg;
 	int status = jack->status;
 
@@ -118,9 +122,20 @@ static int mrfld_jack_gpio_detect(void)
 	pr_debug("interrupt received, val = 0x%x, status = 0x%x\n",
 		 (reg >> 4), status);
 	if (reg & LM49453_DETECT_REPORT_INVALID_IRQ) {
-		pr_debug("invalid headset type - restart HSD\n");
-		lm49453_restart_hsd(codec);
-		return status;
+		if (ctx->jack_retry == 0) {
+			ctx->jack_retry++;
+			pr_debug("invalid headset type - restart HSD\n");
+			lm49453_restart_hsd(codec);
+			return status;
+		}
+		ctx->jack_retry = 0;
+		if (lm49453_jack_check_config5(codec)) {
+			status = SND_JACK_HEADPHONE;
+			goto report_hs;
+		} else {
+			/* invalid type detected */
+			return status;
+		}
 	}
 	/* if insertion bit also set,
 	 * decide on removal based on type detected
@@ -160,6 +175,7 @@ static int mrfld_jack_gpio_detect(void)
 		lm49453_set_mic_bias(codec, "AMIC1Bias", false);
 	}
 
+report_hs:
 	mrfld_jack_report(status);
 	return status;
 }
@@ -191,13 +207,19 @@ static int mrfld_set_bias_level_post(struct snd_soc_card *card,
 				     enum snd_soc_bias_level level)
 {
 	struct snd_soc_codec *codec;
+	struct mrfld_mc_private *ctx = snd_soc_card_get_drvdata(card);
 	codec = list_entry(card->codec_dev_list.next,
 			struct snd_soc_codec, card_list);
 	switch (level) {
 	case SND_SOC_BIAS_ON:
 	case SND_SOC_BIAS_PREPARE:
 	case SND_SOC_BIAS_STANDBY:
-		/*No action required*/
+		/* workaround for CONFIG5 headsets - need CHIP_EN to be 11 for
+		 * playback to be heard */
+		if (ctx->jack.status == SND_JACK_HEADPHONE)
+			snd_soc_update_bits(codec, LM49453_P0_PMC_SETUP_REG,
+					    LM49453_PMC_SETUP_CHIP_EN,
+					    LM49453_CHIP_EN_INVALID_HSD);
 		break;
 	case SND_SOC_BIAS_OFF:
 		if (codec->dapm.bias_level != SND_SOC_BIAS_OFF)
@@ -247,6 +269,7 @@ static int mrfld_init(struct snd_soc_pcm_runtime *runtime)
 	 * and add any machine controls here
 	 */
 
+	ctx->jack_retry = 0;
 	ret = snd_soc_jack_new(codec, "Intel MID Audio Jack",
 			       SND_JACK_HEADSET | SND_JACK_HEADPHONE | SND_JACK_BTN_0,
 			       &ctx->jack);
@@ -265,6 +288,12 @@ static int mrfld_init(struct snd_soc_pcm_runtime *runtime)
 
 	/* set some magic reg in page 2 for jack detection to work well */
 	lm49453_set_reg_on_page(codec, LM49453_PAGE2_SELECT, 0xFC, 0xE);
+	/* set HSD mic thresholds to proper values */
+	lm49453_set_reg_on_page(codec, LM49453_PAGE2_SELECT, 0x61, 0xDC);
+	lm49453_set_reg_on_page(codec, LM49453_PAGE2_SELECT, 0x62, 0x5);
+	/* always detect CONFIG5 HS (headphones) as invalid because of removal
+	 * interrupt issues and use software workaround to detect its insertion */
+	lm49453_set_reg_on_page(codec, LM49453_PAGE2_SELECT, 0x5B, 0x0);
 
 	/* set default debounce time */
 	/* TODO: create control for this in codec drv */
@@ -279,7 +308,8 @@ static int mrfld_init(struct snd_soc_pcm_runtime *runtime)
 
 	snd_soc_write(codec, LM49453_P0_HSD_IRQ_MASK1_REG, 0xF0);
 	snd_soc_update_bits(codec, LM49453_P0_PMC_SETUP_REG,
-			    LM49453_PMC_SETUP_CHIP_EN, LM49453_CHIP_EN_HSD_DETECT);
+			    LM49453_PMC_SETUP_CHIP_EN,
+			    LM49453_CHIP_EN_HSD_DETECT);
 
 	return 0;
 }

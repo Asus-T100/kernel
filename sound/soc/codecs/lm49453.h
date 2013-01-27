@@ -391,4 +391,5 @@ void lm49453_set_mic_bias(struct snd_soc_codec *codec,
 int lm49453_set_reg_on_page(struct snd_soc_codec *codec, unsigned int page_no,
 			    unsigned int reg, unsigned int val);
 void lm49453_restart_hsd(struct snd_soc_codec *codec);
+bool lm49453_jack_check_config5(struct snd_soc_codec *codec);
 #endif
