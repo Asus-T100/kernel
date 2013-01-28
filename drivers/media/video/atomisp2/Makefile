@@ -57,6 +57,10 @@ atomisp-objs += \
 		$(css_folder)/$(css_platform_folder)/host/gp_device.o \
 		$(css_folder)/$(css_platform_folder)/host/input_formatter.o
 
+ifeq ($(CONFIG_X86_MRFLD), y)
+atomisp-objs += $(css_folder)/$(css_platform_folder)/host/input_system.o
+endif
+
 obj-$(CONFIG_VIDEO_ATOMISP_CSS15) = atomisp.o
 
 INCLUDES := -I$(srctree)/$(src)/include \
