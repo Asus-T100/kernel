@@ -402,22 +402,22 @@ static IMG_VOID QueueDumpDebugInfo_ForEachCb(PVRSRV_DEVICE_NODE *psDeviceNode)
 					QueueDumpCmdComplete(psCmdCompleteData, ui32SyncCounter, IMG_FALSE);
 				}
 			}
+			PVR_LOG(("Display complete history:"));
+			looper = psDeviceCommandData->ui32THWriteOffset;
+			for (i = 0; i < DC_NUM_CMDS_COMPLETE_HISTORY;) {
+				looper = ((looper + 3) & ~3) % DC_NUM_CMDS_COMPLETE_HISTORY;
+				printk(KERN_INFO "%08lX  %05lu          %08lX  %05lu",
+					psDeviceCommandData->aulCompTimeHis[looper], psDeviceCommandData->aulCompTimeHis[looper+1],
+					psDeviceCommandData->aulCompTimeHis[looper+2], psDeviceCommandData->aulCompTimeHis[looper+3]);
+				looper += 4;
+				if (looper >= DC_NUM_CMDS_COMPLETE_HISTORY)
+					looper = 0;
+				i += 4;
+			}
 		}
 		else
 		{
 			PVR_LOG(("There is no Command Complete Data for display device %u", psDeviceNode->sDevId.ui32DeviceIndex))
-		}
-		PVR_LOG(("Display complete history:"));
-		looper = psDeviceCommandData->ui32THWriteOffset;
-		for (i = 0; i < DC_NUM_CMDS_COMPLETE_HISTORY;) {
-			looper = ((looper + 3) & ~3) % DC_NUM_CMDS_COMPLETE_HISTORY;
-			printk(KERN_INFO "%08lX  %05lu          %08lX  %05lu",
-				psDeviceCommandData->aulCompTimeHis[looper], psDeviceCommandData->aulCompTimeHis[looper+1],
-				psDeviceCommandData->aulCompTimeHis[looper+2], psDeviceCommandData->aulCompTimeHis[looper+3]);
-			looper += 4;
-			if (looper >= DC_NUM_CMDS_COMPLETE_HISTORY)
-				looper = 0;
-			i += 4;
 		}
 
 	}
