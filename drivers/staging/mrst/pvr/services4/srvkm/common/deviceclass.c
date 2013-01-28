@@ -1,4 +1,5 @@
 /*************************************************************************/ /*!
+@File
 @Title          Device class services functions
 @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
 @Description    Kernel services functions for device class devices
@@ -1426,7 +1427,7 @@ PVRSRV_ERROR PVRSRVCreateDCSwapChainKM (PVRSRV_PER_PROCESS_DATA	*psPerProc,
 	psSwapChain->ui32RefCount = 1;
 	psSwapChain->ui32Flags = ui32Flags;
 
-	/* Save pointer in DC structure if ti's shared struct */
+	/* Save pointer in DC structure if it's shared struct */
 	if( ui32Flags & PVRSRV_CREATE_SWAPCHAIN_SHARED )
 	{
    		if(! psDCInfo->psDCSwapChainShared ) 

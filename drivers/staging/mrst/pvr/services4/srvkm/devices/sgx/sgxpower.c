@@ -428,6 +428,18 @@ PVRSRV_ERROR SGXPrePowerState (IMG_HANDLE				hDevHandle,
 				return eError;
 			}
 		}
+		else
+		{
+			#if defined(SUPPORT_HW_RECOVERY)
+			PVRSRV_ERROR	eError;
+
+			eError = OSDisableTimer(psDevInfo->hTimer);
+			if (eError != PVRSRV_OK)
+			{
+				PVR_DPF((PVR_DBG_ERROR,"SGXStartTimer : Failed to enable host timer"));
+			}
+			#endif /* SUPPORT_HW_RECOVERY */
+		}
 	}
 
 	return PVRSRV_OK;
