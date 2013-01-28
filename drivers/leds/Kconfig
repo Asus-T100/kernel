@@ -371,7 +371,7 @@ config LEDS_MC13783
 
 config LEDS_INTEL_KPD
         tristate "LED driver for Intel Keypad LED"
-        depends on INTEL_SCU_IPC
+        depends on INTEL_SCU_IPC && MID_PWM
         help
           This option enables to support for Intel Keypad LED on Medfield Platform
           LED brightness can be controlled via sysfs.
