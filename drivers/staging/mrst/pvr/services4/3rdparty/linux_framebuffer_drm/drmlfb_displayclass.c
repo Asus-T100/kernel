@@ -104,6 +104,7 @@ static IMG_BOOL MRSTLFBFlip(MRSTLFB_DEVINFO *psDevInfo,
 		memset(psDevInfo->sSystemBuffer.sCPUVAddr, 0,
 				psDevInfo->sSystemBuffer.ui32BufferSize);
 		FirstCleanFlag = 0;
+		DRMLFBFlipBlackScreen(psDevInfo, IMG_TRUE);
 	}
 	return IMG_TRUE;
 }
@@ -1665,6 +1666,7 @@ static IMG_BOOL ProcessFlip2(IMG_HANDLE hCmdCookie,
 	if (FirstCleanFlag == 1) {
 		memset(psDevInfo->sSystemBuffer.sCPUVAddr, 0,
 				psDevInfo->sSystemBuffer.ui32BufferSize);
+		DRMLFBFlipBlackScreen(psDevInfo, IMG_TRUE);
 		FirstCleanFlag = 0;
 	}
 
