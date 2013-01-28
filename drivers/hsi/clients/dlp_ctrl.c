@@ -1033,9 +1033,14 @@ int dlp_ctrl_send_ack_nack(struct dlp_channel *ch_ctx)
 		if (ret)
 			pr_err(DRVNAME ": ch%d will not opened\n",
 					ch_ctx->hsi_channel);
-		else
+		else {
 			pr_debug(DRVNAME ": ch%d open_conn response (0x%X) sent\n",
 						params->channel, response);
+			/* Once the answer has been sent,
+			 * remove the initial command */
+			hsi_ch->open_conn = 0 ;
+		}
+
 	}
 
 	return ret;
