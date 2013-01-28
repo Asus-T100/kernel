@@ -905,20 +905,25 @@ inline __must_check struct hsi_msg *dlp_fifo_tail(struct list_head *fifo)
 static void dlp_fifo_empty(struct list_head *fifo,
 			   struct dlp_xfer_ctx *xfer_ctx)
 {
-	struct hsi_msg *pdu;
+	struct hsi_msg *pdu, *tmp_pdu;
 	unsigned long flags;
+	LIST_HEAD(pdus_to_delete);
 
 	write_lock_irqsave(&xfer_ctx->lock, flags);
 
 	while ((pdu = dlp_fifo_head(fifo))) {
 		/* Remove the pdu from the list */
+		list_move_tail(&pdu->link, &pdus_to_delete);
+	}
+
+	write_unlock_irqrestore(&xfer_ctx->lock, flags);
+
+	list_for_each_entry_safe(pdu, tmp_pdu, &pdus_to_delete, link) {
 		list_del_init(&pdu->link);
 
 		/* pdu free */
 		dlp_pdu_free(pdu, pdu->channel);
 	}
-
-	write_unlock_irqrestore(&xfer_ctx->lock, flags);
 }
 
 /****************************************************************************
