@@ -16,6 +16,7 @@
 #include <linux/init.h>
 #include <asm/intel-mid.h>
 #include <asm/intel_mid_powerbtn.h>
+#include <asm/intel_scu_ipc.h>
 #include "platform_ipc.h"
 #include "platform_msic_power_btn.h"
 
@@ -34,6 +35,14 @@ static struct intel_ipc_dev_res ipc_msic_power_btn_res[] __initdata = {
 
 };
 
+static int mrfl_pb_irq_ack(struct intel_msic_power_btn_platform_data *pdata)
+{
+	intel_scu_ipc_update_register(pdata->pb_irq, 0, MSIC_PWRBTNM);
+	intel_scu_ipc_update_register(pdata->pb_irq_mask, 0, MSIC_PWRBTNM);
+
+	return 0;
+}
+
 void __init *msic_power_btn_platform_data(void *info)
 {
 	struct sfi_device_table_entry *entry = info;
@@ -45,7 +54,7 @@ void __init *msic_power_btn_platform_data(void *info)
 		msic_power_btn_pdata.irq_lvl1_mask = 0x0c;
 		msic_power_btn_pdata.pb_irq = 0x02;
 		msic_power_btn_pdata.pb_irq_mask = 0x0d;
-		msic_power_btn_pdata.irq_ack = pb_irq_ack;
+		msic_power_btn_pdata.irq_ack = mrfl_pb_irq_ack;
 	} else if (INTEL_MID_BOARD(1, PHONE, CLVTP)) {
 		msic_power_btn_pdata.pbstat = 0xffffefcb;
 		msic_power_btn_pdata.pb_level = (1 << 3);

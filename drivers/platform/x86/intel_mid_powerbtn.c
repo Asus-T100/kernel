@@ -27,35 +27,18 @@
 #include <asm/intel_scu_ipc.h>
 #include <asm/intel_mid_powerbtn.h>
 
-#define MSIC_PB_LEN	1
-#define MSIC_PWRBTNM	(1 << 0)
-
-#define DRIVER_NAME	"msic_power_btn"
-
 struct mfld_pb_priv {
 	struct input_dev *input;
 	int irq;
 	void __iomem *pb_stat;
-	u8 pb_level;
-	u8 irq_lvl1_mask;
-	u8 pb_irq;
-	u8 pb_irq_mask;
-	int (*irq_ack)(void *);
+	u16 pb_level;
+	u16 irq_lvl1_mask;
+	bool irq_ack;
 };
 
 static inline int pb_clear_bits(u16 addr, u8 mask)
 {
 	return intel_scu_ipc_update_register(addr, 0, mask);
-}
-
-int pb_irq_ack(void *dev_id)
-{
-	struct mfld_pb_priv *priv = dev_id;
-
-	pb_clear_bits(priv->pb_irq, MSIC_PWRBTNM);
-	pb_clear_bits(priv->pb_irq_mask, MSIC_PWRBTNM);
-
-	return 0;
 }
 
 static irqreturn_t mfld_pb_isr(int irq, void *dev_id)
@@ -101,7 +84,12 @@ static int __devinit mfld_pb_probe(struct ipc_device *ipcdev)
 	int ret;
 	int irq;
 	struct intel_msic_power_btn_platform_data *pdata =
-						ipcdev->dev.platform_data;
+					ipcdev->dev.platform_data;
+
+	if (pdata == NULL) {
+		dev_err(&ipcdev->dev, "No power button platform data\n");
+		return -EINVAL;
+	}
 
 	irq = ipc_get_irq(ipcdev, 0);
 	if (irq < 0)
@@ -139,14 +127,13 @@ static int __devinit mfld_pb_probe(struct ipc_device *ipcdev)
 
 	priv->pb_level = pdata->pb_level;
 	priv->irq_lvl1_mask = pdata->irq_lvl1_mask;
-	/* Currently on MRFL, the PBIRQ and MPBIRQ needs to be unmasked */
+
+	/* Unmask the PBIRQ and MPBIRQ on Tangier */
 	if (pdata->irq_ack) {
-		priv->irq_ack = pdata->irq_ack;
-		priv->pb_irq = pdata->pb_irq;
-		priv->pb_irq_mask = pdata->pb_irq_mask;
-		priv->irq_ack(priv);
+		pdata->irq_ack(pdata);
+		priv->irq_ack = true;
 	} else {
-		priv->irq_ack = NULL;
+		priv->irq_ack = false;
 	}
 
 	ret = request_threaded_irq(priv->irq, mfld_pb_isr, msic_pb_irq,
@@ -160,12 +147,9 @@ static int __devinit mfld_pb_probe(struct ipc_device *ipcdev)
 
 	/* SCU firmware might send power button interrupts to IA core before
 	 * kernel boots and doesn't get EOI from IA core. The first bit of
-	 * MSIC reg 0x21 is kept masked, and SCU firmware doesn't send new
+	 * MSIC lvl1 mask reg is kept masked, and SCU firmware doesn't send new
 	 * power interrupt to Android kernel. Unmask the bit when probing
 	 * power button in kernel.
-	 * There is a very narrow race between irq handler and power button
-	 * initialization. The race happens rarely. So we needn't worry
-	 * about it.
 	 */
 	pb_clear_bits(priv->irq_lvl1_mask, MSIC_PWRBTNM);
 
