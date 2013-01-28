@@ -574,6 +574,8 @@ int mmc_send_hpi_cmd(struct mmc_card *card, u32 *status)
 		cmd.flags = MMC_RSP_R1B | MMC_CMD_AC;
 	else if (opcode == MMC_SEND_STATUS)
 		cmd.flags = MMC_RSP_R1 | MMC_CMD_AC;
+	else
+		return -EINVAL;
 
 	cmd.opcode = opcode;
 	cmd.arg = card->rca << 16 | 1;
