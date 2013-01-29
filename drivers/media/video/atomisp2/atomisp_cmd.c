@@ -3725,8 +3725,6 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	const struct atomisp_format_bridge *format_bridge;
 	struct sh_css_frame_info output_info, raw_output_info;
 	struct v4l2_format snr_fmt = *f;
-	unsigned int width = f->fmt.pix.width;
-	unsigned int height = f->fmt.pix.height;
 	unsigned int sh_format;
 	unsigned int dvs_env_w = 0,
 		     dvs_env_h = 0;
@@ -3760,27 +3758,27 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 		if (isp->isp_subdev.video_out_capture.format.out.width &&
 		    isp->isp_subdev.video_out_capture.format.out.height &&
 		    (isp->isp_subdev.video_out_capture.format.out.width <
-		     width ||
+		     f->fmt.pix.width ||
 		     isp->isp_subdev.video_out_capture.format.out.height
-		     < height)) {
+		     < f->fmt.pix.height)) {
 			v4l2_warn(&atomisp_dev,
 				  "Force capture resolution to same as "
 				  "vf/preview\n");
-			width = isp->isp_subdev.video_out_capture.format.
-				out.width;
-			height = isp->isp_subdev.video_out_capture.format.
-				out.height;
+			f->fmt.pix.width = isp->isp_subdev.video_out_capture.
+				format.out.width;
+			f->fmt.pix.height = isp->isp_subdev.video_out_capture.
+				format.out.height;
 		}
 
 		switch (isp->sw_contex.run_mode) {
 		case CI_MODE_VIDEO:
 			sh_css_video_configure_viewfinder(
-					width, height, sh_format);
+				f->fmt.pix.width, f->fmt.pix.height, sh_format);
 			sh_css_video_get_viewfinder_frame_info(&output_info);
 			break;
 		default:
 			sh_css_capture_configure_viewfinder(
-					width, height, sh_format);
+				f->fmt.pix.width, f->fmt.pix.height, sh_format);
 			sh_css_capture_get_viewfinder_frame_info(&output_info);
 			break;
 		}
@@ -3794,8 +3792,9 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	if (pipe->pipe_type == ATOMISP_PIPE_CAPTURE &&
 	    isp->isp_subdev.video_out_vf.format.out.width &&
 	    isp->isp_subdev.video_out_vf.format.out.height &&
-	    (isp->isp_subdev.video_out_vf.format.out.width > width ||
-	     isp->isp_subdev.video_out_vf.format.out.height > height)) {
+	    (isp->isp_subdev.video_out_vf.format.out.width > f->fmt.pix.width ||
+	     isp->isp_subdev.video_out_vf.format.out.height
+	     > f->fmt.pix.height)) {
 		v4l2_warn(&atomisp_dev, "Main Resolution config "
 			  "smaller then Vf Resolution. Force "
 			  "to be equal with Vf Resolution.");
@@ -3819,8 +3818,8 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 
 	/* get sensor resolution and format */
 	atomisp_try_fmt(vdev, &snr_fmt, &res_overflow);
-	width = snr_fmt.fmt.pix.width;
-	height = snr_fmt.fmt.pix.height;
+	f->fmt.pix.width = snr_fmt.fmt.pix.width;
+	f->fmt.pix.height = snr_fmt.fmt.pix.height;
 
 	/*
 	 * bypass mode is enabled when sensor output format is not raw
@@ -3838,16 +3837,19 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 
 	/* construct resolution supported by isp */
 	if (res_overflow && !isp->params.continuous_vf) {
-		width = rounddown(
-			clamp_t(u32, width - padding_w, ATOM_ISP_MIN_WIDTH,
+		f->fmt.pix.width = rounddown(
+			clamp_t(u32, f->fmt.pix.width - padding_w,
+				ATOM_ISP_MIN_WIDTH,
 				ATOM_ISP_MAX_WIDTH), ATOM_ISP_STEP_WIDTH);
-		height = rounddown(
-			clamp_t(u32, height - padding_h, ATOM_ISP_MIN_HEIGHT,
+		f->fmt.pix.height = rounddown(
+			clamp_t(u32, f->fmt.pix.height - padding_h,
+				ATOM_ISP_MIN_HEIGHT,
 				ATOM_ISP_MAX_HEIGHT), ATOM_ISP_STEP_HEIGHT);
 	}
 
 	/* set dis envelop if video and dis are enabled */
-	atomisp_set_dis_envelop(isp, width, height, &dvs_env_w, &dvs_env_h);
+	atomisp_set_dis_envelop(isp, f->fmt.pix.width, f->fmt.pix.height,
+				&dvs_env_w, &dvs_env_h);
 
 	isp_sink_fmt = *atomisp_subdev_get_ffmt(&isp->isp_subdev.subdev, NULL,
 						V4L2_SUBDEV_FORMAT_ACTIVE,
@@ -3861,8 +3863,9 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	 */
 	if (!isp->params.continuous_vf ||
 	    isp->sw_contex.run_mode == CI_MODE_VIDEO ||
-	    (isp_sink_fmt.width < (width + padding_w + dvs_env_w) &&
-	     isp_sink_fmt.height < (height + padding_h + dvs_env_h))) {
+	    (isp_sink_fmt.width < (f->fmt.pix.width + padding_w + dvs_env_w) &&
+	     isp_sink_fmt.height < (f->fmt.pix.height + padding_h +
+				    dvs_env_h))) {
 		ret = atomisp_set_fmt_to_snr(isp, f, f->fmt.pix.pixelformat,
 					     padding_w, padding_h,
 					     dvs_env_w, dvs_env_h);
@@ -3877,32 +3880,34 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 		return -EINVAL;
 	}
 
-	atomisp_get_yuv_ds_status(isp, width, height);
+	atomisp_get_yuv_ds_status(isp, f->fmt.pix.width, f->fmt.pix.height);
 
 	/*
 	 * calculate effective solution to enable yuv downscaling and keep
 	 * ratio of width and height
 	 */
 	ret = atomisp_get_effective_resolution(isp, f->fmt.pix.pixelformat,
-					       width, height,
+					       f->fmt.pix.width,
+					       f->fmt.pix.height,
 					       padding_w, padding_h);
 	if (ret)
 		return -EINVAL;
 
 	/* set format to isp */
 	ret = atomisp_set_fmt_to_isp(vdev, &output_info, &raw_output_info,
-				     width, height, f->fmt.pix.pixelformat);
+				     f->fmt.pix.width, f->fmt.pix.height,
+				     f->fmt.pix.pixelformat);
 	if (ret)
 		return -EINVAL;
 done:
-	pipe->format.out.width = width;
-	pipe->format.out.height = height;
+	pipe->format.out.width = f->fmt.pix.width;
+	pipe->format.out.height = f->fmt.pix.height;
 	pipe->format.out.pixelformat = f->fmt.pix.pixelformat;
 	pipe->format.out.bytesperline =
 		DIV_ROUND_UP(format_bridge->depth * output_info.padded_width,
 			     8);
 	pipe->format.out.sizeimage =
-	    PAGE_ALIGN(height * pipe->format.out.bytesperline);
+	    PAGE_ALIGN(f->fmt.pix.height * pipe->format.out.bytesperline);
 	if (f->fmt.pix.field == V4L2_FIELD_ANY)
 		f->fmt.pix.field = V4L2_FIELD_NONE;
 	pipe->format.out.field = f->fmt.pix.field;
@@ -3919,7 +3924,7 @@ done:
 	 */
 	if (pipe->pipe_type == ATOMISP_PIPE_CAPTURE) {
 		if (isp->sw_contex.run_mode == CI_MODE_VIDEO &&
-		    width == 720 && height == 480)
+		    f->fmt.pix.width == 720 && f->fmt.pix.height == 480)
 			isp->need_gfx_throttle = false;
 		else
 			isp->need_gfx_throttle = true;
