@@ -3866,9 +3866,6 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 
 		width = width - width % ATOM_ISP_STEP_WIDTH;
 		height = height - height % ATOM_ISP_STEP_HEIGHT;
-
-		f->fmt.pix.width = width;
-		f->fmt.pix.height = height;
 	}
 
 	/* set dis envelop if video and dis are enabled */
