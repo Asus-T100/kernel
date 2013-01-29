@@ -1174,7 +1174,14 @@ static int __ov8830_s_frame_interval(struct v4l2_subdev *sd,
 	dev->lines_per_frame = vts;
 
 	/* Update the new values so that user side knows the current settings */
-	return ov8830_get_intg_factor(sd, info, dev->basic_settings_list);
+	ret = ov8830_get_intg_factor(sd, info, dev->basic_settings_list);
+	if (ret)
+		return ret;
+
+	interval->interval.denominator = res->fps_options[dev->fps_index].fps;
+	interval->interval.numerator = 1;
+
+	return 0;
 }
 
 /* This returns the exposure time being used. This should only be used
