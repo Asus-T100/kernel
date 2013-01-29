@@ -522,56 +522,6 @@ err:
 	return retval;
 }
 
-#ifdef CONFIG_HSI_NO_MODEM
-static int cloverview_sph_gpio_reset(void)
-{
-	int		retval = 0;
-	u32		board_id;
-
-	/* Bypass CTP_VV series for VV use different PHY(SMSC USB3340)
-	 * Do CS and reset operation for TI TUSB1212 PHY used by other boards
-	 */
-	if (is_board_ctp_prx()) {
-		if (gpio_is_valid(SPH_CS_N)) {
-			retval = gpio_request(SPH_CS_N, "SPH_CS_N");
-			if (retval < 0) {
-				printk(KERN_INFO "Request GPIO %d with error %d\n",
-				SPH_CS_N, retval);
-				retval = -ENODEV;
-				goto err;
-			}
-		} else {
-			retval = -ENODEV;
-			goto err;
-		}
-
-		if (gpio_is_valid(SPH_RST_N)) {
-			retval = gpio_request(SPH_RST_N, "SPH_RST_N");
-			if (retval < 0) {
-				printk(KERN_INFO "Request GPIO %d with error %d\n",
-				SPH_RST_N, retval);
-				retval = -ENODEV;
-				goto err1;
-			}
-		} else {
-			retval = -ENODEV;
-			goto err1;
-		}
-
-		/* power consumption saving */
-		gpio_direction_output(SPH_CS_N, 1);
-		gpio_direction_output(SPH_RST_N, 0);
-	}
-
-	return retval;
-
-err1:
-	gpio_free(SPH_CS_N);
-err:
-	return retval;
-}
-#endif
-
 static void cloverview_sph_gpio_cleanup(void)
 {
 	u32		board_id;

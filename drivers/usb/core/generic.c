@@ -195,10 +195,12 @@ static int generic_probe(struct usb_device *udev)
 		 * state per different mode.
 		 */
 
-		if (is_otg_vbusoff_testdev(udev) && hcd && hcd->otg_notify)
-			hcd->otg_notify(udev, USB_OTG_TESTDEV_VBUSOFF);
-		else
-			hcd->otg_notify(udev, USB_OTG_TESTDEV);
+		if (hcd && hcd->otg_notify) {
+			if (is_otg_vbusoff_testdev(udev))
+				hcd->otg_notify(udev, USB_OTG_TESTDEV_VBUSOFF);
+			else
+				hcd->otg_notify(udev, USB_OTG_TESTDEV);
+		}
 	}
 #endif
 	else {

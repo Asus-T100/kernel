@@ -231,14 +231,6 @@ static int ehci_pci_setup(struct usb_hcd *hcd)
 			/* Check SPH enabled or not */
 			if (!sph_enabled()) {
 				ehci_info(ehci, "USB SPH is disabled\n");
-#ifdef CONFIG_HSI_NO_MODEM
-				/* All need to bypass tll mode  */
-				temp = ehci_readl(ehci, hcd->regs + CLV_SPHCFG);
-				temp &= ~CLV_SPHCFG_ULPI1TYPE;
-				/* ULPI 1 ref-clock switch off */
-				temp |= CLV_SPHCFG_REFCKDIS;
-				ehci_writel(ehci, temp, hcd->regs + CLV_SPHCFG);
-#endif
 				return -ENODEV;
 			}
 

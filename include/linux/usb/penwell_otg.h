@@ -406,7 +406,8 @@ struct otg_bc_cap {
 	unsigned int		mA;
 #define CHRG_CURR_UNKNOWN	0
 #define CHRG_CURR_DISCONN	0
-#define CHRG_CURR_SDP_SUSP	CONFIG_USB_GADGET_SUSPEND_VBUS_DRAW
+#define CHRG_CURR_SDP_SUSP	2
+#define CHRG_CURR_SDP_UNCONFIG	100
 #define CHRG_CURR_SDP_LOW	100
 #define CHRG_CURR_SDP_HIGH	500
 #define CHRG_CURR_SDP_INVAL	500
@@ -434,9 +435,11 @@ struct otg_bc_event {
 #define USBCHRG_EVENT_RESUME	4
 #define USBCHRG_EVENT_UPDATE	5
 
-struct cloverview_usb_otg_pdata {
+struct intel_mid_otg_pdata {
+	int gpio_vbus;
 	int gpio_cs;
 	int gpio_reset;
+	int charging_compliance;
 };
 
 struct penwell_otg {
@@ -484,7 +487,7 @@ struct penwell_otg {
 	unsigned			rt_resuming;
 
 	unsigned			rt_quiesce;
-	struct cloverview_usb_otg_pdata *otg_pdata;
+	struct intel_mid_otg_pdata	*otg_pdata;
 
 	struct wake_lock		wake_lock;
 	spinlock_t			lock;

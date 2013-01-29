@@ -562,6 +562,9 @@ static int penwell_otg_set_power(struct usb_phy *otg, unsigned mA)
 			return 0;
 		}
 
+		if (!pnw->otg_pdata->charging_compliance)
+			mA = CHRG_CURR_SDP_HIGH;
+
 		_penwell_otg_update_chrg_cap(CHRG_SDP, mA);
 
 		spin_unlock_irqrestore(&pnw->charger_lock, flags);
@@ -570,6 +573,9 @@ static int penwell_otg_set_power(struct usb_phy *otg, unsigned mA)
 
 		if (pnw->psc_cap.chrg_type != POWER_SUPPLY_TYPE_USB)
 			return 0;
+
+		if (!pnw->otg_pdata->charging_compliance)
+			mA = CHRG_CURR_SDP_HIGH;
 
 		event = kzalloc(sizeof(*event), GFP_ATOMIC);
 		if (!event) {
@@ -783,6 +789,14 @@ static int penwell_otg_set_vbus(struct usb_otg *otg, bool enabled)
 
 		queue_work(pnw->chrg_qwork, &pnw->psc_notify);
 
+		goto done;
+	}
+
+	if (pnw->otg_pdata->gpio_vbus) {
+		dev_info(pnw->dev, "Turn %s VBUS using GPIO pin %d\n",
+			enabled ? "on" : "off", pnw->otg_pdata->gpio_vbus);
+		gpio_direction_output(pnw->otg_pdata->gpio_vbus,
+							enabled ? 1 : 0);
 		goto done;
 	}
 
@@ -2615,7 +2629,7 @@ static int penwell_otg_iotg_notify(struct notifier_block *nb,
 		break;
 	case MID_OTG_NOTIFY_CRESET:
 		dev_dbg(pnw->dev, "PNW OTG Notify Client Bus reset Event\n");
-		penwell_otg_set_power(&pnw->iotg.otg, CHRG_CURR_SDP_SUSP);
+		penwell_otg_set_power(&pnw->iotg.otg, CHRG_CURR_SDP_UNCONFIG);
 		flag = 0;
 		break;
 	case MID_OTG_NOTIFY_HOSTADD:
@@ -3391,8 +3405,19 @@ static void penwell_otg_work(struct work_struct *work)
 			/* Make sure current limit updated */
 			penwell_otg_update_chrg_cap(CHRG_ACA, CHRG_CURR_ACA);
 		} else if (hsm->id == ID_B) {
-			if (iotg->otg.set_power)
-				iotg->otg.set_power(&iotg->otg, 500);
+			spin_lock_irqsave(&pnw->charger_lock, flags);
+			ps_type = pnw->psc_cap.chrg_type;
+			spin_unlock_irqrestore(&pnw->charger_lock, flags);
+
+			if (ps_type == POWER_SUPPLY_TYPE_USB_ACA) {
+				/* Notify EM charger ACA removal event */
+				penwell_otg_update_chrg_cap(CHRG_UNKNOWN,
+						CHRG_CURR_DISCONN);
+				penwell_otg_charger_hwdet(false);
+				/* Set current when switch from ACA to SDP */
+				if (!hsm->a_bus_suspend && iotg->otg.set_power)
+					iotg->otg.set_power(&iotg->otg, 500);
+			}
 		}
 		break;
 
@@ -4673,7 +4698,7 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 
 	retval = 0;
 
-	dev_info(&pdev->dev, "Intel Penwell USB OTG controller is detected.\n");
+	dev_info(&pdev->dev, "Intel OTG2.0 controller is detected.\n");
 	dev_info(&pdev->dev, "Driver version: " DRIVER_VERSION "\n");
 
 	if (pci_enable_device(pdev) < 0) {
@@ -4807,15 +4832,29 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 		goto err;
 	}
 
-#ifdef CONFIG_BOARD_CTP
-	/* Set up gpio for Clovertrail */
-	pnw->otg_pdata = (struct cloverview_usb_otg_pdata *)
-			cloverview_usb_otg_get_pdata();
+	pnw->otg_pdata = (struct intel_mid_otg_pdata *)
+				intel_mid_otg_get_pdata(pdev);
 	if (pnw->otg_pdata == NULL) {
 		dev_err(pnw->dev, "Failed to get OTG platform data.\n");
 		retval = -ENODEV;
 		goto err;
 	}
+
+	if (!is_clovertrail(pdev)) {
+		if (pnw->otg_pdata->gpio_vbus) {
+			retval = gpio_request(pnw->otg_pdata->gpio_vbus,
+					"usb_otg_phy_reset");
+			if (retval < 0) {
+				dev_err(pnw->dev, "request gpio(%d) failed\n",
+						pnw->otg_pdata->gpio_vbus);
+				retval = -ENODEV;
+				goto err;
+			}
+		}
+	}
+
+#ifdef CONFIG_BOARD_CTP
+	/* Set up gpio for Clovertrail */
 	retval = gpio_request(pnw->otg_pdata->gpio_reset,
 				"usb_otg_phy_reset");
 	if (retval < 0) {
@@ -5012,9 +5051,13 @@ static int penwell_otg_suspend_noirq(struct device *dev)
 {
 	struct penwell_otg		*pnw = the_transceiver;
 	struct intel_mid_otg_xceiv	*iotg = &pnw->iotg;
+	struct pci_dev			*pdev = to_pci_dev(dev);
 	int				ret = 0;
 
 	dev_dbg(pnw->dev, "%s --->\n", __func__);
+
+	synchronize_irq(pdev->irq);
+	flush_workqueue(pnw->qwork);
 
 	switch (iotg->otg.state) {
 	case OTG_STATE_A_VBUS_ERR:

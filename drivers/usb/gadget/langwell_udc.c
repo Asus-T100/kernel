@@ -47,7 +47,7 @@
 #include <linux/usb/penwell_otg.h>
 #endif
 
-#define	DRIVER_DESC	"Intel Langwell/Penwell USB Device Controller driver"
+#define	DRIVER_DESC	"Intel USB2.0 Device Controller driver"
 #define	DRIVER_VERSION	"June 3, 2010"
 
 static const char driver_name[] = "langwell_udc";
@@ -1737,13 +1737,11 @@ static void langwell_udc_start(struct langwell_udc *dev)
 	dev_dbg(&dev->pdev->dev, "---> %s()\n", __func__);
 
 	/* enable interrupts */
-	usbintr = INTR_ULPIE	/* ULPI */
-		| INTR_SLE	/* suspend */
+	usbintr = INTR_SLE	/* suspend */
+		/* | INTR_ULPIE	 ULPI */
 		/* | INTR_SRE	SOF received */
 		| INTR_URE	/* USB reset */
-		| INTR_AAE	/* async advance */
 		| INTR_SEE	/* system error */
-		| INTR_FRE	/* frame list rollover */
 		| INTR_PCE	/* port change detect */
 		| INTR_UEE	/* USB error interrupt */
 		| INTR_UE;	/* USB interrupt */
@@ -2975,6 +2973,12 @@ static int process_ep_req(struct langwell_udc *dev, int index,
 
 				} else {
 					td_complete++;
+					if (i < curr_req->dtd_count - 1) {
+						WARN(1, "Short packet received on ep%d-IN,\n"
+							"but dTD isn't the last one.\n",
+							index / 2);
+						retval = -EREMOTEIO;
+					}
 					break;
 				}
 			}
@@ -3125,6 +3129,24 @@ static void handle_trans_complete(struct langwell_udc *dev)
 			status = process_ep_req(dev, i, curr_req);
 			dev_vdbg(&dev->pdev->dev, "%s req status: %d\n",
 					epn->name, status);
+
+			/* Short Read on non-last dTD is not recoverable due to
+			 * HW limitation. The best we can do is to recycle dTDs
+			 * and notify the caller that we screw up... :(
+			 */
+			if (unlikely(status == -EREMOTEIO)) {
+
+				u32 value;
+
+				value = readl(&dev->op_regs->endptctrl[ep_num]);
+				writel(value & ~EPCTRL_RXE,
+					&dev->op_regs->endptctrl[ep_num]);
+				nuke(epn, status);
+				value = readl(&dev->op_regs->endptctrl[ep_num]);
+				writel(value | EPCTRL_RXE,
+					&dev->op_regs->endptctrl[ep_num]);
+				break;
+			}
 
 			if (status == 1)
 				break;
@@ -4204,11 +4226,9 @@ static int intel_mid_stop_peripheral(struct intel_mid_otg_xceiv *iotg)
 	if (dev->has_sram && dev->got_sram)
 		sram_deinit(dev);
 
-	if (dev) {
-		spin_lock_irqsave(&dev->lock, flags);
-		dev->vbus_active = 0;
-		spin_unlock_irqrestore(&dev->lock, flags);
-	}
+	spin_lock_irqsave(&dev->lock, flags);
+	dev->vbus_active = 0;
+	spin_unlock_irqrestore(&dev->lock, flags);
 
 	pm_runtime_put(&dev->pdev->dev);
 	wake_unlock(&dev->wake_lock);
