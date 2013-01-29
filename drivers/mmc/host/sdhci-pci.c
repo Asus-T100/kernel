@@ -318,6 +318,7 @@ static int mfd_emmc_probe_slot(struct sdhci_pci_slot *slot)
 		 */
 		slot->host->mmc->caps |= MMC_CAP_HW_RESET;
 		slot->rst_n_gpio = -EINVAL;
+		break;
 	case PCI_DEVICE_ID_INTEL_CLV_EMMC1:
 		slot->host->mmc->caps |= MMC_CAP_1_8V_DDR;
 		slot->host->quirks2 |= SDHCI_QUIRK2_V2_0_SUPPORT_DDR50;
