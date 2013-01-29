@@ -282,8 +282,18 @@ static struct snd_soc_ops mrfld_ops = {
 	.hw_params = mrfld_hw_params,
 };
 
+enum {
+	MRFLD_AUDIO = 0,
+	MRFLD_COMPR = 1,
+	MRFLD_VOIP = 2,
+	MRFLD_PROBE = 3,
+	MRFLD_AWARE = 4,
+	MRFLD_VAD = 5,
+	MRFLD_POWER = 6,
+};
+
 struct snd_soc_dai_link mrfld_msic_dailink[] = {
-	{
+	[MRFLD_AUDIO] =	{
 		.name = "Merrifield Audio Port",
 		.stream_name = "Audio",
 		.cpu_dai_name = "Headset-cpu-dai",
@@ -294,17 +304,57 @@ struct snd_soc_dai_link mrfld_msic_dailink[] = {
 		.ignore_suspend = 1,
 		.ops = &mrfld_ops,
 	},
-	{
-		.name = "Merrifield Speaker Port",
-		.stream_name = "Speaker",
-		.cpu_dai_name = "Speaker-cpu-dai",
-		.codec_dai_name = "LM49453 Speaker",
-		.codec_name = "lm49453.1-001a",
+	[MRFLD_COMPR] = {
+		.name = "Merrifield Compress Port",
+		.stream_name = "Compress",
+		.cpu_dai_name = "Virtual-cpu-dai",
+		.codec_dai_name = "snd-soc-dummy-dai",
+		.codec_name = "snd-soc-dummy",
+		.platform_name = "sst-platform",
+	},
+	[MRFLD_VOIP] = {
+		.name = "Merrifield VOIP Port",
+		.stream_name = "Voip",
+		.cpu_dai_name = "Virtual-cpu-dai",
+		.codec_dai_name = "snd-soc-dummy-dai",
+		.codec_name = "snd-soc-dummy",
+		.platform_name = "sst-platform",
+	},
+	[MRFLD_PROBE] = {
+		.name = "Merrifield Probe Port",
+		.stream_name = "Probe",
+		.cpu_dai_name = "Virtual-cpu-dai",
+		.codec_dai_name = "snd-soc-dummy-dai",
+		.codec_name = "snd-soc-dummy",
+		.platform_name = "sst-platform",
+	},
+	[MRFLD_AWARE] = {
+		.name = "Merrifield Aware Port",
+		.stream_name = "Aware",
+		.cpu_dai_name = "Virtual-cpu-dai",
+		.codec_dai_name = "snd-soc-dummy-dai",
+		.codec_name = "snd-soc-dummy",
 		.platform_name = "sst-platform",
 		.init = NULL,
 		.ignore_suspend = 1,
-		.ops = &mrfld_ops,
 	},
+	[MRFLD_VAD] = {
+		.name = "Merrifield VAD Port",
+		.stream_name = "Vad",
+		.cpu_dai_name = "Virtual-cpu-dai",
+		.codec_dai_name = "snd-soc-dummy-dai",
+		.codec_name = "snd-soc-dummy",
+		.platform_name = "sst-platform",
+	},
+	[MRFLD_POWER] = {
+		.name = "Virtual Power Port",
+		.stream_name = "Power",
+		.cpu_dai_name = "Power-cpu-dai",
+		.platform_name = "sst-platform",
+		.codec_dai_name = "snd-soc-dummy-dai",
+		.codec_name = "snd-soc-dummy",
+	},
+
 };
 
 #ifdef CONFIG_PM_SLEEP

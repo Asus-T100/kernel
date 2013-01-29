@@ -121,6 +121,7 @@ struct sst_ops {
 	int (*device_control) (int cmd, void *arg);
 	int (*set_generic_params) (enum sst_controls cmd, void *arg);
 	int (*close) (unsigned int str_id);
+	int (*power) (bool state);
 };
 
 struct sst_runtime_stream {

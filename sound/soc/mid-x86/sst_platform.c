@@ -386,11 +386,26 @@ static int sst_media_prepare(struct snd_pcm_substream *substream,
 	return ret_val;
 }
 
+static inline int power_up_sst(struct sst_runtime_stream *sst)
+{
+	return sst->ops->power(true);
+}
+
+static inline int power_down_sst(struct sst_runtime_stream *sst)
+{
+	return sst->ops->power(false);
+}
+
 static int sst_media_hw_params(struct snd_pcm_substream *substream,
 				struct snd_pcm_hw_params *params,
 				struct snd_soc_dai *dai)
 {
+	struct sst_runtime_stream *sst =
+			substream->runtime->private_data;
 	pr_debug("%s\n", __func__);
+
+	if (strstr(dai->name, "Power-cpu-dai"))
+		return power_up_sst(sst);
 	snd_pcm_lib_malloc_pages(substream, params_buffer_bytes(params));
 	memset(substream->runtime->dma_area, 0, params_buffer_bytes(params));
 	return 0;
@@ -399,6 +414,11 @@ static int sst_media_hw_params(struct snd_pcm_substream *substream,
 static int sst_media_hw_free(struct snd_pcm_substream *substream,
 		struct snd_soc_dai *dai)
 {
+	struct sst_runtime_stream *sst =
+			substream->runtime->private_data;
+
+	if (strstr(dai->name, "Power-cpu-dai"))
+		return power_down_sst(sst);
 	return snd_pcm_lib_free_pages(substream);
 }
 
@@ -470,6 +490,16 @@ static struct snd_soc_dai_driver sst_platform_dai[] = {
 		.channels_max = SST_STEREO,
 		.rates = SNDRV_PCM_RATE_48000,
 		.formats = SNDRV_PCM_FMTBIT_S16_LE,
+	},
+},
+{
+	.name = "Power-cpu-dai",
+	.ops = &sst_media_dai_ops,
+	.playback = {
+		.channels_min = SST_MONO,
+		.channels_max = SST_STEREO,
+		.rates = SNDRV_PCM_RATE_8000_48000,
+		.formats = SNDRV_PCM_FMTBIT_CONTINUOUS,
 	},
 },
 };

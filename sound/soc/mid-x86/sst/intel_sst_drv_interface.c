@@ -412,6 +412,16 @@ void sst_process_mad_ops(struct work_struct *work)
 	return;
 }
 
+static int sst_power_control(bool state)
+{
+	pr_debug("%s for %d", __func__, state);
+
+	/* should we do ref count here, or rely on pcm handle?? */
+	if (state == true)
+		return intel_sst_check_device();
+	else
+		return pm_runtime_put(&sst_drv_ctx->pci->dev);
+}
 /*
  * sst_open_pcm_stream - Open PCM interface
  *
@@ -975,6 +985,7 @@ static struct sst_ops pcm_ops = {
 	.device_control = sst_device_control,
 	.set_generic_params = sst_set_generic_params,
 	.close = sst_close_pcm_stream,
+	.power = sst_power_control,
 };
 
 static struct compress_sst_ops compr_ops = {
