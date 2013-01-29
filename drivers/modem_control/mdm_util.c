@@ -166,6 +166,7 @@ void mdm_ctrl_disable_flashing(unsigned long int param)
 void mdm_ctrl_launch_timer(struct timer_list *timer, int delay,
 				unsigned int timer_type)
 {
+	/* FIXME: Review timer use
 	init_timer(timer);
 	timer->data = (unsigned long int) mdm_drv;
 	switch (timer_type) {
@@ -182,6 +183,7 @@ void mdm_ctrl_launch_timer(struct timer_list *timer, int delay,
 		break;
 	}
 	mod_timer(timer, jiffies + msecs_to_jiffies(delay));
+	*/
 }
 
 /**

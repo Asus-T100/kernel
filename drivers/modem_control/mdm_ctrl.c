@@ -773,8 +773,9 @@ static void __exit mdm_ctrl_module_exit(void)
 	gpio_free(mdm_drv->gpio_pwr_on);
 	gpio_free(mdm_drv->gpio_rst_bbn);
 
+	/* FIXME: Review timer use
 	del_timer(&mdm_drv->flashing_timer);
-	/* */
+	*/
 	mutex_destroy(&mdm_drv->lock);
 	/* Free the boot driver context */
 	kfree(mdm_drv);
