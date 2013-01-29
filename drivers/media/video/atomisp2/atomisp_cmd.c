@@ -3838,17 +3838,12 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 
 	/* construct resolution supported by isp */
 	if (res_overflow && !isp->params.continuous_vf) {
-		width -= padding_w;
-		height -= padding_h;
-		/* app vs isp */
-		width = min_t(u32, width, ATOM_ISP_MAX_WIDTH);
-		height = min_t(u32, height, ATOM_ISP_MAX_HEIGHT);
-
-		width = max_t(u32, width, ATOM_ISP_MIN_WIDTH);
-		height = max_t(u32, height, ATOM_ISP_MIN_HEIGHT);
-
-		width = width - width % ATOM_ISP_STEP_WIDTH;
-		height = height - height % ATOM_ISP_STEP_HEIGHT;
+		width = rounddown(
+			clamp_t(u32, width - padding_w, ATOM_ISP_MIN_WIDTH,
+				ATOM_ISP_MAX_WIDTH), ATOM_ISP_STEP_WIDTH);
+		height = rounddown(
+			clamp_t(u32, height - padding_h, ATOM_ISP_MIN_HEIGHT,
+				ATOM_ISP_MAX_HEIGHT), ATOM_ISP_STEP_HEIGHT);
 	}
 
 	/* set dis envelop if video and dis are enabled */
