@@ -70,8 +70,11 @@ static int imx175_power_ctrl(struct v4l2_subdev *sd, int flag)
 	if (flag) {
 		if (!camera_vprog1_on) {
 			ret = intel_scu_ipc_msic_vprog1(1);
-			if (!ret)
+			if (!ret) {
+				/* imx1x5 VDIG rise to XCLR release */
+				usleep_range(1000, 1200);
 				camera_vprog1_on = 1;
+			}
 			return ret;
 		}
 	} else {
