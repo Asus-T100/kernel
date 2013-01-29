@@ -3198,7 +3198,6 @@ int atomisp_try_fmt(struct video_device *vdev, struct v4l2_format *f,
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	struct v4l2_mbus_framefmt snr_mbus_fmt;
 	const struct atomisp_format_bridge *fmt;
-	u32 pixelformat = f->fmt.pix.pixelformat;
 	int ret;
 
 	if (f->type != V4L2_BUF_TYPE_VIDEO_CAPTURE) {
@@ -3209,7 +3208,7 @@ int atomisp_try_fmt(struct video_device *vdev, struct v4l2_format *f,
 	if (isp->inputs[isp->input_curr].camera == NULL)
 		return -EINVAL;
 
-	fmt = get_atomisp_format_bridge(pixelformat);
+	fmt = get_atomisp_format_bridge(f->fmt.pix.pixelformat);
 	if (fmt == NULL) {
 		v4l2_err(&atomisp_dev, "unsupported pixelformat!\n");
 		fmt = atomisp_output_fmts;
@@ -3239,12 +3238,10 @@ int atomisp_try_fmt(struct video_device *vdev, struct v4l2_format *f,
 		return ret;
 
 	fmt = get_atomisp_format_bridge_from_mbus(snr_mbus_fmt.code);
-	if (fmt == NULL) {
-		f->fmt.pix.pixelformat = pixelformat;
+	if (fmt == NULL)
 		v4l2_err(&atomisp_dev, "unknown sensor format.\n");
-	} else {
+	else
 		f->fmt.pix.pixelformat = fmt->pixelformat;
-	}
 
 	if (snr_mbus_fmt.width < f->fmt.pix.width
 	    && snr_mbus_fmt.height < f->fmt.pix.height) {
