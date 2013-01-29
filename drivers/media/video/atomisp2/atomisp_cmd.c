@@ -3199,8 +3199,6 @@ int atomisp_try_fmt(struct video_device *vdev, struct v4l2_format *f,
 	struct v4l2_mbus_framefmt snr_mbus_fmt;
 	const struct atomisp_format_bridge *fmt;
 	u32 pixelformat = f->fmt.pix.pixelformat;
-	u32 in_width = 0;
-	u32 in_height = 0;
 	int ret;
 
 	if (f->type != V4L2_BUF_TYPE_VIDEO_CAPTURE) {
@@ -3240,8 +3238,6 @@ int atomisp_try_fmt(struct video_device *vdev, struct v4l2_format *f,
 	if (ret)
 		return ret;
 
-	in_width = snr_mbus_fmt.width;
-	in_height = snr_mbus_fmt.height;
 	fmt = get_atomisp_format_bridge_from_mbus(snr_mbus_fmt.code);
 	if (fmt == NULL) {
 		f->fmt.pix.pixelformat = pixelformat;
@@ -3250,9 +3246,10 @@ int atomisp_try_fmt(struct video_device *vdev, struct v4l2_format *f,
 		f->fmt.pix.pixelformat = fmt->pixelformat;
 	}
 
-	if (in_width < f->fmt.pix.width && in_height < f->fmt.pix.height) {
-		f->fmt.pix.width = in_width;
-		f->fmt.pix.height = in_height;
+	if (snr_mbus_fmt.width < f->fmt.pix.width
+	    && snr_mbus_fmt.height < f->fmt.pix.height) {
+		f->fmt.pix.width = snr_mbus_fmt.width;
+		f->fmt.pix.height = snr_mbus_fmt.width;
 		/* Set the flag when resolution requested is
 		 * beyond the max value supported by sensor
 		 */
