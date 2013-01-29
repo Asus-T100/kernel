@@ -1,4 +1,4 @@
- # Makefile for the drm device driver. This driver provides support for the
+# Makefile for the drm device driver. This driver provides support for the
 # Direct Rendering Infrastructure (DRI) in XFree86 4.1.0 and higher.
 
 INCDIR=drivers/staging/mrfl
@@ -14,13 +14,15 @@ ccflags-y += \
 	-Iinclude/drm \
 	-I$(INCDIR)/../intel_media/video/common \
 	-I$(INCDIR)/../intel_media/video/decode \
-	-I$(INCDIR)/../intel_media/video/encode
+	-I$(INCDIR)/../intel_media/video/encode \
+	-I$(INCDIR)/../intel_media/video/vsp
 
 ccflags-y += -DANDROID -DLINUX -D_linux_ -D__KERNEL__
 
 ccflags-$(CONFIG_DRM_MDFLD) += -DMEDFIELD
 ccflags-$(CONFIG_DRM_MRFLD) += -DMERRIFIELD
 ccflags-$(CONFIG_PCI_MSI) += -DCONFIG_PCI_MSI
+ccflags-$(CONFIG_SUPPORT_VSP) += -DSUPPORT_VSP
 
 obj-y += psb_bl.o \
 	psb_dpst.o \
