@@ -3740,7 +3740,6 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	struct v4l2_format snr_fmt = *f;
 	unsigned int width = f->fmt.pix.width;
 	unsigned int height = f->fmt.pix.height;
-	unsigned int pixelformat = f->fmt.pix.pixelformat;
 	unsigned int sh_format;
 	unsigned int dvs_env_w = 0,
 		     dvs_env_h = 0;
@@ -3757,7 +3756,7 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 		return -EINVAL;
 	}
 
-	format_bridge = get_atomisp_format_bridge(pixelformat);
+	format_bridge = get_atomisp_format_bridge(f->fmt.pix.pixelformat);
 	if (format_bridge == NULL)
 		return -EINVAL;
 
@@ -3843,7 +3842,7 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	 */
 	if (isp->inputs[isp->input_curr].type != TEST_PATTERN &&
 		(!is_pixelformat_raw(snr_fmt.fmt.pix.pixelformat) ||
-			is_pixelformat_raw(pixelformat))) {
+			is_pixelformat_raw(f->fmt.pix.pixelformat))) {
 		isp->sw_contex.bypass = true;
 		padding_h = 0;
 		padding_w = 0;
@@ -3883,7 +3882,7 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	    isp->sw_contex.run_mode == CI_MODE_VIDEO ||
 	    (isp_sink_fmt.width < (width + padding_w + dvs_env_w) &&
 	     isp_sink_fmt.height < (height + padding_h + dvs_env_h))) {
-		ret = atomisp_set_fmt_to_snr(isp, f, pixelformat,
+		ret = atomisp_set_fmt_to_snr(isp, f, f->fmt.pix.pixelformat,
 					     padding_w, padding_h,
 					     dvs_env_w, dvs_env_h);
 		if (ret)
@@ -3903,20 +3902,21 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	 * calculate effective solution to enable yuv downscaling and keep
 	 * ratio of width and height
 	 */
-	ret = atomisp_get_effective_resolution(isp, pixelformat, width, height,
+	ret = atomisp_get_effective_resolution(isp, f->fmt.pix.pixelformat,
+					       width, height,
 					       padding_w, padding_h);
 	if (ret)
 		return -EINVAL;
 
 	/* set format to isp */
 	ret = atomisp_set_fmt_to_isp(vdev, &output_info, &raw_output_info,
-				     width, height, pixelformat);
+				     width, height, f->fmt.pix.pixelformat);
 	if (ret)
 		return -EINVAL;
 done:
 	pipe->format.out.width = width;
 	pipe->format.out.height = height;
-	pipe->format.out.pixelformat = pixelformat;
+	pipe->format.out.pixelformat = f->fmt.pix.pixelformat;
 	pipe->format.out.bytesperline =
 		DIV_ROUND_UP(format_bridge->depth * output_info.padded_width,
 			     8);
