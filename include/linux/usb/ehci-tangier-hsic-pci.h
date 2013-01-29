@@ -22,7 +22,8 @@
 
 struct hsic_tangier_priv {
 	struct delayed_work  hsic_aux;
-	struct delayed_work  hsic_enable;
+	struct mutex         hsic_mutex;
+	spinlock_t           hsic_lock;
 };
 
 enum {

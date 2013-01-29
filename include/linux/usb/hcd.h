@@ -194,7 +194,6 @@ struct usb_hcd {
 #endif
 
 #ifdef CONFIG_USB_HCD_HSIC
-	struct hsic_tangier_priv *hsic;
 	void (*hsic_notify)(struct usb_device *udev, unsigned action);
 #endif
 
