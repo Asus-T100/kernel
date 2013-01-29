@@ -2363,12 +2363,30 @@ static int wm8994_set_dai_sysclk(struct snd_soc_dai *dai,
 	 * If SYSCLK will be less than 50kHz adjust AIFnCLK dividers
 	 * for detection.
 	 */
-	if (max(wm8994->aifclk[0], wm8994->aifclk[1]) < 50000) {
+	if (max(wm8994->aifclk[0], wm8994->aifclk[1]) < 50000 &&
+	    !wm8994->aifdiv[0]) {
 		dev_dbg(codec->dev, "Configuring AIFs for 128fs\n");
+
+		wm8994->aifdiv[0] = snd_soc_read(codec, WM8994_AIF1_RATE)
+			& WM8994_AIF1CLK_RATE_MASK;
+		wm8994->aifdiv[1] = snd_soc_read(codec, WM8994_AIF2_RATE)
+			& WM8994_AIF1CLK_RATE_MASK;
+
 		snd_soc_update_bits(codec, WM8994_AIF1_RATE,
 				    WM8994_AIF1CLK_RATE_MASK, 0x1);
 		snd_soc_update_bits(codec, WM8994_AIF2_RATE,
 				    WM8994_AIF2CLK_RATE_MASK, 0x1);
+	} else if (max(wm8994->aifclk[0], wm8994->aifclk[1]) >= 50000 &&
+		   wm8994->aifdiv[0]) {
+		snd_soc_update_bits(codec, WM8994_AIF1_RATE,
+				    WM8994_AIF1CLK_RATE_MASK,
+				    wm8994->aifdiv[0]);
+		snd_soc_update_bits(codec, WM8994_AIF2_RATE,
+				    WM8994_AIF2CLK_RATE_MASK,
+				    wm8994->aifdiv[1]);
+
+		wm8994->aifdiv[0] = 0;
+		wm8994->aifdiv[1] = 0;
 	}
 
 	return 0;
