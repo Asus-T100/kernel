@@ -1510,11 +1510,6 @@ static int sst_check_binary_input(char *stream)
 		pr_err("taskid invalid %d\n", bytes->task_id);
 		return -EINVAL;
 	}
-	/* pardha says this is valid
-	if (bytes->pipe_id == 0) {
-		pr_err("null pipe\n");
-		return -EINVAL;
-	}*/
 
 	return 0;
 }
@@ -1530,7 +1525,7 @@ static int sst_byte_control_set(struct snd_kcontrol *kcontrol,
 	memcpy(sst->byte_stream, ucontrol->value.bytes.data, SST_MAX_BIN_BYTES);
 	if (0 != sst_check_binary_input(sst->byte_stream))
 		return -EINVAL;
-	dump_bytes((unsigned char *)sst->byte_stream, 32, 8);
+	/*dump_bytes((unsigned char *)sst->byte_stream, 32, 8);*/
 	mutex_lock(&sst->lock);
 	ret = sst_dsp->ops->set_generic_params(SST_SET_BYTE_STREAM, sst->byte_stream);
 	mutex_unlock(&sst->lock);
