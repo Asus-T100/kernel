@@ -3198,8 +3198,6 @@ int atomisp_try_fmt(struct video_device *vdev, struct v4l2_format *f,
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	struct v4l2_mbus_framefmt snr_mbus_fmt;
 	const struct atomisp_format_bridge *fmt;
-	u32 out_width = f->fmt.pix.width;
-	u32 out_height = f->fmt.pix.height;
 	u32 pixelformat = f->fmt.pix.pixelformat;
 	u32 in_width = 0;
 	u32 in_height = 0;
@@ -3234,8 +3232,8 @@ int atomisp_try_fmt(struct video_device *vdev, struct v4l2_format *f,
 		return 0;
 #endif
 	snr_mbus_fmt.code = fmt->mbus_code;
-	snr_mbus_fmt.height = out_height;
-	snr_mbus_fmt.width = out_width;
+	snr_mbus_fmt.width = f->fmt.pix.width;
+	snr_mbus_fmt.height = f->fmt.pix.height;
 
 	ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
 			video, try_mbus_fmt, &snr_mbus_fmt);
@@ -3252,9 +3250,9 @@ int atomisp_try_fmt(struct video_device *vdev, struct v4l2_format *f,
 		f->fmt.pix.pixelformat = fmt->pixelformat;
 	}
 
-	if (in_width < out_width && in_height < out_height) {
-		out_width = in_width;
-		out_height = in_height;
+	if (in_width < f->fmt.pix.width && in_height < f->fmt.pix.height) {
+		f->fmt.pix.width = in_width;
+		f->fmt.pix.height = in_height;
 		/* Set the flag when resolution requested is
 		 * beyond the max value supported by sensor
 		 */
@@ -3264,10 +3262,10 @@ int atomisp_try_fmt(struct video_device *vdev, struct v4l2_format *f,
 
 	/* app vs isp */
 	f->fmt.pix.width = rounddown(
-		clamp_t(u32, out_width, ATOM_ISP_MIN_WIDTH,
+		clamp_t(u32, f->fmt.pix.width, ATOM_ISP_MIN_WIDTH,
 			ATOM_ISP_MAX_WIDTH), ATOM_ISP_STEP_WIDTH);
 	f->fmt.pix.height = rounddown(
-		clamp_t(u32, out_height, ATOM_ISP_MIN_HEIGHT,
+		clamp_t(u32, f->fmt.pix.height, ATOM_ISP_MIN_HEIGHT,
 			ATOM_ISP_MAX_HEIGHT), ATOM_ISP_STEP_HEIGHT);
 
 	return 0;
