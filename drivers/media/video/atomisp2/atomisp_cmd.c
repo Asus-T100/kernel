@@ -3725,7 +3725,6 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	const struct atomisp_format_bridge *format_bridge;
 	struct sh_css_frame_info output_info, raw_output_info;
 	struct v4l2_format snr_fmt = *f;
-	unsigned int sh_format;
 	unsigned int dvs_env_w = 0,
 		     dvs_env_h = 0;
 	unsigned int padding_w = pad_w,
@@ -3744,8 +3743,6 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	format_bridge = get_atomisp_format_bridge(f->fmt.pix.pixelformat);
 	if (format_bridge == NULL)
 		return -EINVAL;
-
-	sh_format = format_bridge->sh_fmt;
 
 	if (pipe->pipe_type == ATOMISP_PIPE_VIEWFINDER ||
 	    (pipe->pipe_type == ATOMISP_PIPE_PREVIEW &&
@@ -3773,12 +3770,14 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 		switch (isp->sw_contex.run_mode) {
 		case CI_MODE_VIDEO:
 			sh_css_video_configure_viewfinder(
-				f->fmt.pix.width, f->fmt.pix.height, sh_format);
+				f->fmt.pix.width, f->fmt.pix.height,
+				format_bridge->sh_fmt);
 			sh_css_video_get_viewfinder_frame_info(&output_info);
 			break;
 		default:
 			sh_css_capture_configure_viewfinder(
-				f->fmt.pix.width, f->fmt.pix.height, sh_format);
+				f->fmt.pix.width, f->fmt.pix.height,
+				format_bridge->sh_fmt);
 			sh_css_capture_get_viewfinder_frame_info(&output_info);
 			break;
 		}
@@ -3911,7 +3910,7 @@ done:
 	if (f->fmt.pix.field == V4L2_FIELD_ANY)
 		f->fmt.pix.field = V4L2_FIELD_NONE;
 	pipe->format.out.field = f->fmt.pix.field;
-	pipe->format.out_sh_fmt = sh_format;
+	pipe->format.out_sh_fmt = format_bridge->sh_fmt;
 
 	memcpy(&f->fmt.pix, &pipe->format.out, sizeof(struct v4l2_pix_format));
 	f->fmt.pix.priv = PAGE_ALIGN(pipe->format.out.width *
