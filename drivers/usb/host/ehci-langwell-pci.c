@@ -20,6 +20,7 @@
 #include <linux/usb/otg.h>
 #include <linux/usb/intel_mid_otg.h>
 #include <linux/wakelock.h>
+#include <linux/usb/penwell_otg.h>
 
 static int usb_otg_suspend(struct usb_hcd *hcd)
 {
@@ -117,6 +118,7 @@ static int ehci_mid_probe(struct pci_dev *pdev,
 	struct hc_driver *driver;
 	struct otg_transceiver *otg;
 	struct intel_mid_otg_xceiv *iotg;
+	struct intel_mid_otg_pdata *otg_pdata;
 	struct usb_hcd *hcd;
 	struct ehci_hcd *ehci;
 	int irq;
@@ -166,6 +168,14 @@ static int ehci_mid_probe(struct pci_dev *pdev,
 		retval = -EFAULT;
 		goto err2;
 	}
+
+	otg_pdata = pdev->dev.platform_data;
+	if (otg_pdata == NULL) {
+		dev_err(&pdev->dev, "Failed to get OTG platform data.\n");
+		retval = -ENODEV;
+		goto err2;
+	}
+	hcd->power_budget = otg_pdata->power_budget;
 
 #ifdef CONFIG_USB_SUSPEND
 	/*get wakelock from itog*/
