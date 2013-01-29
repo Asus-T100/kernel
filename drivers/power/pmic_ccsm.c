@@ -713,7 +713,6 @@ int pmic_set_cc(int new_cc)
 	int i;
 	u8 reg_val;
 
-	return 0;
 	/* No need to write PMIC if CC = 0 */
 	if (!new_cc)
 		return 0;
@@ -751,7 +750,6 @@ int pmic_set_cv(int new_cv)
 	int ret;
 	int i;
 	u8 reg_val;
-	return 0;
 
 	/* No need to write PMIC if CV = 0 */
 	if (!new_cv)

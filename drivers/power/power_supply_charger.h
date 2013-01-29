@@ -76,8 +76,9 @@ static inline int get_ps_int_property(struct power_supply *psy,
 #define enable_charger(psy) \
 		set_ps_int_property(psy, POWER_SUPPLY_PROP_ENABLE_CHARGER, true)
 #define disable_charger(psy) \
-		set_ps_int_property(psy,\
-				POWER_SUPPLY_PROP_ENABLE_CHARGER, false)
+		({  disable_charging(psy); \
+			set_ps_int_property(psy,\
+				POWER_SUPPLY_PROP_ENABLE_CHARGER, false); })
 
 #define set_cc(psy, cc) \
 		set_ps_int_property(psy, POWER_SUPPLY_PROP_CHARGE_CURRENT, cc)

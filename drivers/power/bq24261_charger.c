@@ -253,6 +253,8 @@ static enum power_supply_property bq24261_usb_props[] = {
 	POWER_SUPPLY_PROP_ENABLE_CHARGER,
 	POWER_SUPPLY_PROP_CHARGE_TERM_CUR,
 	POWER_SUPPLY_PROP_CABLE_TYPE,
+	POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT,
+	POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT_MAX,
 };
 
 enum bq24261_chrgr_stat {
@@ -295,6 +297,7 @@ struct bq24261_charger {
 	int max_cv;
 	int iterm;
 	int cable_type;
+	int cntl_state;
 	enum bq24261_chrgr_stat chrgr_stat;
 	bool is_charging_enabled;
 	bool is_charger_enabled;
@@ -562,7 +565,6 @@ static inline int bq24261_enable_charging(
 	u8 reg_val;
 	int ret;
 
-
 	if (chip->pdata->enable_charging)
 		chip->pdata->enable_charging(val);
 
@@ -588,13 +590,22 @@ static inline int bq24261_enable_charger(
 	/* TODO: Implement enable/disable HiZ mode to enable/
 	*  disable charger
 	*/
+	u8 reg_val;
+	int ret;
 
-	return 0;
+	reg_val = val ? (~BQ24261_HZ_ENABLE & BQ24261_HZ_MASK)  :
+			BQ24261_HZ_ENABLE;
+
+	ret = bq24261_read_modify_reg(chip->client, BQ24261_CTRL_ADDR,
+		       BQ24261_HZ_MASK|BQ24261_RESET_MASK, reg_val);
+	return ret;
+
 }
 
 static inline int bq24261_set_cc(struct bq24261_charger *chip, int cc)
 {
 	u8 reg_val;
+
 	if (chip->pdata->set_cc)
 		return chip->pdata->set_cc(cc);
 
@@ -740,7 +751,8 @@ static inline bool bq24261_is_vsys_on(struct bq24261_charger *chip)
 		return false;
 	}
 
-	if ((ret & BQ24261_HZ_MASK) == BQ24261_HZ_ENABLE) {
+	if (((ret & BQ24261_HZ_MASK) == BQ24261_HZ_ENABLE) &&
+			chip->is_charger_enabled) {
 		dev_err(&client->dev, "Charger in Hi Z Mode\n");
 		bq24261_dump_regs(true);
 		return false;
@@ -886,6 +898,9 @@ static int bq24261_usb_set_property(struct power_supply *psy,
 		if (!ret)
 			chip->inlmt = val->intval;
 		break;
+	case POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT:
+		chip->cntl_state = val->intval;
+		break;
 	default:
 		ret = -ENODATA;
 	}
@@ -945,7 +960,12 @@ static int bq24261_usb_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_ENABLE_CHARGER:
 		val->intval = chip->is_charger_enabled;
 		break;
-
+	case POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT:
+		val->intval = chip->cntl_state;
+		break;
+	case POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT_MAX:
+		val->intval = chip->pdata->num_throttle_states;
+		break;
 	default:
 		mutex_unlock(&chip->lock);
 		return -EINVAL;

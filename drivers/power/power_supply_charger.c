@@ -600,6 +600,9 @@ static int select_chrgr_cable(struct device *dev, void *data)
 		set_inlmt(psy, max_mA_cable->cable_props.mA);
 	}
 
+	if (IS_CHARGER_CAN_BE_ENABLED(psy))
+		enable_charger(psy);
+
 	power_supply_trigger_charging_handler(psy);
 	/* Cable status is same as previous. No action to be taken */
 	return 0;
