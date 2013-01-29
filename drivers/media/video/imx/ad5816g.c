@@ -91,7 +91,7 @@ static int ad5816g_set_arc_mode(struct i2c_client *client)
 	return ret;
 }
 
-int imx_vcm_power_up(struct v4l2_subdev *sd)
+int ad5816g_vcm_power_up(struct v4l2_subdev *sd)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	int ret;
@@ -129,13 +129,13 @@ fail_powerdown:
 	return ret;
 }
 
-int imx_vcm_power_down(struct v4l2_subdev *sd)
+int ad5816g_vcm_power_down(struct v4l2_subdev *sd)
 {
 	return ad5816g_dev.platform_data->power_ctrl(sd, 0);
 }
 
 
-int imx_t_focus_vcm(struct v4l2_subdev *sd, u16 val)
+int ad5816g_t_focus_vcm(struct v4l2_subdev *sd, u16 val)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	u16 data = val & VCM_CODE_MASK;
@@ -143,12 +143,12 @@ int imx_t_focus_vcm(struct v4l2_subdev *sd, u16 val)
 	return ad5816g_i2c_wr16(client, AD5816G_VCM_CODE_MSB, data);
 }
 
-int imx_t_focus_abs(struct v4l2_subdev *sd, s32 value)
+int ad5816g_t_focus_abs(struct v4l2_subdev *sd, s32 value)
 {
 	int ret;
 
 	value = min(value, AD5816G_MAX_FOCUS_POS);
-	ret = imx_t_focus_vcm(sd, AD5816G_MAX_FOCUS_POS - value);
+	ret = ad5816g_t_focus_vcm(sd, AD5816G_MAX_FOCUS_POS - value);
 	if (ret == 0) {
 		ad5816g_dev.number_of_steps = value - ad5816g_dev.focus;
 		ad5816g_dev.focus = value;
@@ -158,13 +158,13 @@ int imx_t_focus_abs(struct v4l2_subdev *sd, s32 value)
 	return ret;
 }
 
-int imx_t_focus_rel(struct v4l2_subdev *sd, s32 value)
+int ad5816g_t_focus_rel(struct v4l2_subdev *sd, s32 value)
 {
 
-	return imx_t_focus_abs(sd, ad5816g_dev.focus + value);
+	return ad5816g_t_focus_abs(sd, ad5816g_dev.focus + value);
 }
 
-int imx_q_focus_status(struct v4l2_subdev *sd, s32 *value)
+int ad5816g_q_focus_status(struct v4l2_subdev *sd, s32 *value)
 {
 	u32 status = 0;
 	struct timespec temptime;
@@ -190,11 +190,11 @@ int imx_q_focus_status(struct v4l2_subdev *sd, s32 *value)
 	return 0;
 }
 
-int imx_q_focus_abs(struct v4l2_subdev *sd, s32 *value)
+int ad5816g_q_focus_abs(struct v4l2_subdev *sd, s32 *value)
 {
 	s32 val;
 
-	imx_q_focus_status(sd, &val);
+	ad5816g_q_focus_status(sd, &val);
 
 	if (val & ATOMISP_FOCUS_STATUS_MOVING)
 		*value  = ad5816g_dev.focus - ad5816g_dev.number_of_steps;
@@ -204,17 +204,17 @@ int imx_q_focus_abs(struct v4l2_subdev *sd, s32 *value)
 	return 0;
 }
 
-int imx_t_vcm_slew(struct v4l2_subdev *sd, s32 value)
+int ad5816g_t_vcm_slew(struct v4l2_subdev *sd, s32 value)
 {
 	return 0;
 }
 
-int imx_t_vcm_timing(struct v4l2_subdev *sd, s32 value)
+int ad5816g_t_vcm_timing(struct v4l2_subdev *sd, s32 value)
 {
 	return 0;
 }
 
-int imx_vcm_init(struct v4l2_subdev *sd)
+int ad5816g_vcm_init(struct v4l2_subdev *sd)
 {
 	ad5816g_dev.platform_data = camera_get_af_platform_data();
 	return (NULL == ad5816g_dev.platform_data) ? -ENODEV : 0;

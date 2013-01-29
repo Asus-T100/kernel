@@ -1,76 +1,6 @@
 #ifndef __IMX135_H__
 #define __IMX135_H__
-
-#define IMX_NAME	"imx135"
-#define IMX_ID	0x0135
-
-#define IMX_SC_CMMN_CHIP_ID_H	0x0016
-#define IMX_SC_CMMN_CHIP_ID_L	0x0017
-#define IMX_FOCAL_LENGTH_NUM	369	/*3.69mm*/
-#define IMX_FOCAL_LENGTH_DEM	100
-#define IMX_F_NUMBER_DEFAULT_NUM	22
-#define IMX_F_NUMBER_DEM	10
-
-#define IMX_RES_WIDTH_MAX	4208
-#define IMX_RES_HEIGHT_MAX	3120
-#define IMX_BIN_FACTOR_MAX			4
-/*
- * focal length bits definition:
- * bits 31-16: numerator, bits 15-0: denominator
- */
-#define IMX_FOCAL_LENGTH_DEFAULT 0x1710064
-
-/*
- * current f-number bits definition:
- * bits 31-16: numerator, bits 15-0: denominator
- */
-#define IMX_F_NUMBER_DEFAULT 0x16000a
-
-/*
- * f-number range bits definition:
- * bits 31-24: max f-number numerator
- * bits 23-16: max f-number denominator
- * bits 15-8: min f-number numerator
- * bits 7-0: min f-number denominator
- */
-#define IMX_F_NUMBER_RANGE 0x160a160a
-
-enum imx_tok_type {
-	IMX_8BIT  = 0x0001,
-	IMX_16BIT = 0x0002,
-	IMX_TOK_TERM   = 0xf000,	/* terminating token for reg list */
-	IMX_TOK_DELAY  = 0xfe00	/* delay token for reg list */
-};
-
-/**
- * struct imx_reg - MI sensor  register format
- * @type: type of the register
- * @reg: 16-bit offset to register
- * @val: 8/16/32-bit register value
- *
- * Define a structure for sensor register initialization values
- */
-struct imx_reg {
-	enum imx_tok_type type;
-	u16 sreg;
-	u32 val;	/* @set value for read/mod/write, @mask */
-};
-
-struct imx_resolution {
-	u8 *desc;
-	const struct imx_reg *regs;
-	int res;
-	int width;
-	int height;
-	int fps;
-	unsigned short pixels_per_line;
-	unsigned short lines_per_frame;
-	u8 bin_factor_x;
-	u8 bin_factor_y;
-	bool used;
-};
-#define GROUPED_PARAMETER_HOLD_ENABLE  {IMX_8BIT, 0x0104, 0x1}
-#define GROUPED_PARAMETER_HOLD_DISABLE  {IMX_8BIT, 0x0104, 0x0}
+#include "common.h"
 
 /********************** settings for imx from vendor*********************/
 
@@ -2984,7 +2914,7 @@ static struct imx_reg const imx135_QCIF_30fps[] = {
 	{IMX_TOK_TERM, 0, 0},
 };
 
-static struct imx_reg const imx_init_settings_bak[] = {
+static struct imx_reg const imx135_init_settings_bak[] = {
 	GROUPED_PARAMETER_HOLD_ENABLE,
 	/* Basic Config */
 	{IMX_8BIT, 0x0101, 0x00},
@@ -3022,7 +2952,7 @@ static struct imx_reg const imx_init_settings_bak[] = {
 };
 
 /********************** settings for imx - reference *********************/
-static struct imx_reg const imx_init_settings[] = {
+static struct imx_reg const imx135_init_settings[] = {
 	/* sw reset */
 	{ IMX_8BIT, 0x0100, 0x00 },
 	{ IMX_8BIT, 0x0103, 0x01 },
@@ -5102,7 +5032,7 @@ static const struct imx_reg imx135_1080p_strong_dvs_30fps[] = {
 };
 
 /* TODO settings of preview/still/video will be updated with new use case */
-struct imx_resolution imx_res_preview[] = {
+struct imx_resolution imx135_res_preview[] = {
 	{
 		.desc = "imx135_1M_16_9_30fps",
 		.regs = imx135_1M_16_9_30fps,
@@ -5129,7 +5059,7 @@ struct imx_resolution imx_res_preview[] = {
 	},
 };
 
-struct imx_resolution imx_res_still[] = {
+struct imx_resolution imx135_res_still[] = {
 	{
 		.desc = "imx135_QCIF_30fps",
 		.regs = imx135_QCIF_30fps,
@@ -5420,7 +5350,7 @@ struct imx_resolution imx_res_still[] = {
 	},
 };
 
-struct imx_resolution imx_res_video[] = {
+struct imx_resolution imx135_res_video[] = {
 	{
 		.desc = "imx135_QCIF_dvs_30fps",
 		.regs = imx135_QCIF_dvs_30fps,
@@ -5508,7 +5438,7 @@ struct imx_resolution imx_res_video[] = {
 
 };
 
-struct imx_resolution imx_res_video_nodvs[] = {
+struct imx_resolution imx135_res_video_nodvs[] = {
 	{
 		.desc = "imx135_QCIF_30fps",
 		.regs = imx135_QCIF_30fps,
@@ -5594,14 +5524,6 @@ struct imx_resolution imx_res_video_nodvs[] = {
 		.used = 0	,
 	},
 };
-
-#define N_RES_PREVIEW (ARRAY_SIZE(imx_res_preview))
-#define N_RES_STILL (ARRAY_SIZE(imx_res_still))
-#define N_RES_VIDEO (ARRAY_SIZE(imx_res_video))
-
-struct imx_resolution *imx_res = imx_res_preview;
-static int N_RES = N_RES_PREVIEW;
-
 
 #endif
 
