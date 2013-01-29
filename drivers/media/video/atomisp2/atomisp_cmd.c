@@ -3263,17 +3263,12 @@ int atomisp_try_fmt(struct video_device *vdev, struct v4l2_format *f,
 	}
 
 	/* app vs isp */
-	out_width = min_t(u32, out_width, ATOM_ISP_MAX_WIDTH);
-	out_height = min_t(u32, out_height, ATOM_ISP_MAX_HEIGHT);
-
-	out_width = max_t(u32, out_width, ATOM_ISP_MIN_WIDTH);
-	out_height = max_t(u32, out_height, ATOM_ISP_MIN_HEIGHT);
-
-	out_width = out_width - out_width % ATOM_ISP_STEP_WIDTH;
-	out_height = out_height - out_height % ATOM_ISP_STEP_HEIGHT;
-
-	f->fmt.pix.width = out_width;
-	f->fmt.pix.height = out_height;
+	f->fmt.pix.width = rounddown(
+		clamp_t(u32, out_width, ATOM_ISP_MIN_WIDTH,
+			ATOM_ISP_MAX_WIDTH), ATOM_ISP_STEP_WIDTH);
+	f->fmt.pix.height = rounddown(
+		clamp_t(u32, out_height, ATOM_ISP_MIN_HEIGHT,
+			ATOM_ISP_MAX_HEIGHT), ATOM_ISP_STEP_HEIGHT);
 
 	return 0;
 }
