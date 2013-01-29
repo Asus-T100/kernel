@@ -236,7 +236,7 @@ int ctp_set_bias_level(struct snd_soc_card *card,
 		if (!strcmp(codec->name, "snd-soc-dummy"))
 			return 0;
 	} else {
-		pr_info("In %s dapm context has no associated codec or it is dummy codec.", __func__);
+		pr_debug("In %s dapm context has no associated codec or it is dummy codec.", __func__);
 		return 0;
 	}
 
@@ -278,7 +278,7 @@ int ctp_set_bias_level_post(struct snd_soc_card *card,
 		if (!strcmp(codec->name, "snd-soc-dummy"))
 			return 0;
 	} else {
-		pr_info("In %s dapm context has no associated codec or it is dummy codec.", __func__);
+		pr_debug("In %s dapm context has no associated codec or it is dummy codec.", __func__);
 		return 0;
 	}
 
