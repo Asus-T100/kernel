@@ -3813,8 +3813,6 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 		v4l2_warn(&atomisp_dev, "Main Resolution config "
 			  "smaller then Vf Resolution. Force "
 			  "to be equal with Vf Resolution.");
-		width = isp->isp_subdev.video_out_vf.format.out.width;
-		height = isp->isp_subdev.video_out_vf.format.out.height;
 	}
 
 	/* V4L2_BUF_TYPE_PRIVATE will set offline processing */
