@@ -3729,20 +3729,18 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 			f->fmt.pix.height = r.height;
 		}
 
-		switch (isp->isp_subdev.run_mode->val) {
-		case ATOMISP_RUN_MODE_VIDEO:
+		if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO) {
 			sh_css_video_configure_viewfinder(
 				f->fmt.pix.width, f->fmt.pix.height,
 				format_bridge->sh_fmt);
 			sh_css_video_get_viewfinder_frame_info(&output_info);
-			break;
-		default:
+		} else {
 			sh_css_capture_configure_viewfinder(
 				f->fmt.pix.width, f->fmt.pix.height,
 				format_bridge->sh_fmt);
 			sh_css_capture_get_viewfinder_frame_info(&output_info);
-			break;
 		}
+
 		goto done;
 	}
 	/*
