@@ -19,6 +19,10 @@
 
 void *ffl_modem_platform_data(void *data)
 {
+	int rst_out = get_gpio_by_name("ifx_mdm_rst_out");
+	int pwr_on = get_gpio_by_name("ifx_mdm_pwr_on");
+	int rst_pmu = get_gpio_by_name("ifx_mdm_rst_pmu");
+	int fcdp_rb = get_gpio_by_name("modem-gpio2");
 
 	static const char hsi_char_name[]	= "hsi_char";
 	static const char hsi_ffl_name[]	= "hsi-ffl";
@@ -104,6 +108,17 @@ void *ffl_modem_platform_data(void *data)
 		.rx_fifo_sizes[6] = -1,
 		.rx_fifo_sizes[7] = -1,
 	};
+
+	pr_info("HSI FFL platform data setup\n");
+
+	pr_info("HSI FFL mdm GPIOs rst_out:%d, "\
+			 "pwr_on:%d, rst_bbn:%d, fcdp_rb:%d\n",
+		rst_out, pwr_on, rst_pmu, fcdp_rb);
+
+	mid_info.gpio_mdm_rst_out = rst_out;
+	mid_info.gpio_mdm_pwr_on = pwr_on;
+	mid_info.gpio_mdm_rst_bbn = rst_pmu;
+	mid_info.gpio_fcdp_rb = fcdp_rb;
 
 	hsi_info[0].platform_data = (void *)&mid_info;
 	hsi_info[1].platform_data = (void *)&mid_info;
