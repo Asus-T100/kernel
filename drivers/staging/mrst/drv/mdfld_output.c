@@ -180,11 +180,11 @@ static void Overwrite_fw_setting(struct mdfld_dsi_config *dsi_config)
 bool Check_fw_initilized_reusable(struct mdfld_dsi_config *dsi_config,
 				struct panel_funcs *p_funcs)
 {
-	struct drm_device *dev = dsi_config->dev;
-	struct mdfld_dsi_hw_registers *regs = &dsi_config->regs;
+	struct drm_device *dev = NULL;
+	struct mdfld_dsi_hw_registers *regs = NULL;
 	int fw_type = 0xff;
 	bool b_reuseable = true;
-	u32 pipe_config = REG_READ(regs->pipeconf_reg);
+	u32 pipe_config = 0;
 
 	PSB_DEBUG_ENTRY("\n");
 
@@ -192,6 +192,10 @@ bool Check_fw_initilized_reusable(struct mdfld_dsi_config *dsi_config,
 		DRM_ERROR("invalid parameter!\n");
 		return false;
 	}
+
+	dev = dsi_config->dev;
+	regs = &dsi_config->regs;
+	pipe_config = REG_READ(regs->pipeconf_reg);
 
 	if (!(pipe_config & PIPEACONF_ENABLE))
 		return false;
