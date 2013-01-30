@@ -47,12 +47,7 @@ static u8 h8c7_set_brightness[]      = {0x51, 0x00};
 static u8 h8c7_turn_on_backlight[]   = {0x53, 0x24};
 static u8 h8c7_turn_off_backlight[]  = {0x53, 0x00};
 static u8 h8c7_disable_cabc[]        = {0x55, 0x00};
-static u8 h8c7_set_mipi_ctrl[]       = {
-	0xba, 0x12, 0x83, 0x00,
-	0xd6, 0xc5, 0x00, 0x09,
-	0xff, 0x0f, 0x27, 0x03,
-	0x21, 0x27, 0x25, 0x20,
-	0x00, 0x10};
+static u8 h8c7_set_mipi_ctrl[]       = {0xba, 0x12};
 static u8 h8c7_command_mode[]        = {0xc2, 0x08};
 static u8 h8c7_set_panel[]           = {0xcc, 0x08};
 static u8 h8c7_set_eq_func_ltps[]    = {0xd4, 0x0c};
@@ -61,16 +56,16 @@ static u8 h8c7_set_te_scanline[]     = {0x44, 0x00, 0x00, 0x00};
 static u8 h8c7_set_pixel_format[]    = {0x3a, 0x77};
 static u8 h8c7_mcs_protect_off[]     = {0xb9, 0xff, 0x83, 0x92};
 static u8 h8c7_mcs_protect_on[]      = {0xb9, 0x00, 0x00, 0x00};
-static u8 h8c7_set_blanking_opt_2[]  = {0xc7, 0x00, 0x40};
+static u8 h8c7_set_blanking_opt_2[]  = {0xc7, 0x00, 0x40, 0x00};
 static u8 h8c7_mcs_clumn_addr[]      = {0x2a, 0x00, 0x00, 0x02, 0xcf};
 static u8 h8c7_mcs_page_addr[]       = {0x2b, 0x00, 0x00, 0x04, 0xff};
 static u8 h8c7_ic_bias_current[] = {
-	0xbf, 0x05, 0xe0, 0x02,
-	0x00};
+	0xbf, 0x05, 0x60, 0x82,
+	0x00, 0x00, 0x00, 0x00};
 static u8 h8c7_set_power[] = {
 	0xb1, 0x7c, 0x00, 0x44,
-	0x94, 0x00, 0x0d, 0x0d,
-	0x12, 0x1f, 0x3f, 0x3f,
+	0xa5, 0x00, 0x0d, 0x0d,
+	0x12, 0x1a, 0x3f, 0x3f,
 	0x42, 0x72};
 static u8 h8c7_set_power_dstb[] = {
 	0xb1, 0x01, 0x01, 0x00,
@@ -87,58 +82,56 @@ static u8 h8c7_set_command_cyc[] = {
 	0x00, 0xa0, 0x05, 0x16,
 	0x9d, 0x30, 0x03, 0x16,
 	0x00, 0x03, 0x03, 0x00,
-	0x1b, 0x04, 0x07, 0x07,
-	0x01, 0x00, 0x1a, 0x77};
+	0x1b, 0x06, 0x07, 0x07,
+	0x00};
 static u8 h8c7_set_ltps_ctrl_output[] = {
 	0xd5, 0x00, 0x08, 0x08,
 	0x00, 0x44, 0x55, 0x66,
 	0x77, 0xcc, 0xcc, 0xcc,
 	0xcc, 0x00, 0x77, 0x66,
 	0x55, 0x44, 0xcc, 0xcc,
-	0xcc, 0xcc};
+	0xcc, 0xcc, 0x00, 0x00};
 static u8 h8c7_set_video_cyc[] = {
-	0xd8, 0x00, 0x00, 0x05,
-	0x00, 0xa0, 0x05, 0x16,
+	0xd8, 0x00, 0x00, 0x04,
+	0x00, 0xa0, 0x04, 0x16,
 	0x9d, 0x30, 0x03, 0x16,
 	0x00, 0x03, 0x03, 0x00,
-	0x1b, 0x04, 0x07, 0x07,
-	0x01, 0x00, 0x1a, 0x77};
+	0x1b, 0x06, 0x07, 0x07,
+	0x00};
 static u8 h8c7_gamma_r[] = {
-	0xe0, 0x00, 0x1f, 0x23,
-	0x3f, 0x3f, 0x3f, 0x33,
-	0x55, 0x06, 0x0e, 0x0e,
-	0x11, 0x14, 0x12, 0x14,
-	0x1d, 0x1f, 0x00, 0x1f,
-	0x23, 0x3f, 0x3f, 0x3f,
-	0x33, 0x55, 0x06, 0x0e,
-	0x0e, 0x11, 0x14, 0x12,
-	0x14, 0x1d, 0x1f};
+	0xe0, 0x3a, 0x3e, 0x3c,
+	0x2f, 0x31, 0x32, 0x33,
+	0x46, 0x04, 0x08, 0x0c,
+	0x0d, 0x10, 0x0f, 0x11,
+	0x10, 0x17, 0x3a, 0x3e,
+	0x3c, 0x2f, 0x31, 0x32,
+	0x33, 0x46, 0x04, 0x08,
+	0x0c, 0x0d, 0x10, 0x0f,
+	0x11, 0x10, 0x17};
 static u8 h8c7_gamma_g[] = {
-	0xe0, 0x00, 0x1f, 0x23,
-	0x3f, 0x3f, 0x3f, 0x33,
-	0x55, 0x06, 0x0e, 0x0e,
-	0x11, 0x14, 0x12, 0x14,
-	0x1d, 0x1f, 0x00, 0x1f,
-	0x23, 0x3f, 0x3f, 0x3f,
-	0x33, 0x55, 0x06, 0x0e,
-	0x0e, 0x11, 0x14, 0x12,
-	0x14, 0x1d, 0x1f};
+	0xe1, 0x3b, 0x3e, 0x3d,
+	0x31, 0x31, 0x32, 0x33,
+	0x46, 0x03, 0x07, 0x0b,
+	0x0d, 0x10, 0x0e, 0x11,
+	0x10, 0x17, 0x3b, 0x3e,
+	0x3d, 0x31, 0x31, 0x32,
+	0x33, 0x46, 0x03, 0x07,
+	0x0b, 0x0d, 0x10, 0x0e,
+	0x11, 0x10, 0x17};
 static u8 h8c7_gamma_b[] = {
-	0xe0, 0x00, 0x1f, 0x23,
-	0x3f, 0x3f, 0x3f, 0x33,
-	0x55, 0x06, 0x0e, 0x0e,
-	0x11, 0x14, 0x12, 0x14,
-	0x1d, 0x1f, 0x00, 0x1f,
-	0x23, 0x3f, 0x3f, 0x3f,
-	0x33, 0x55, 0x06, 0x0e,
+	0xe2, 0x01, 0x06, 0x07,
+	0x2d, 0x2a, 0x32, 0x1f,
+	0x40, 0x05, 0x0c, 0x0e,
+	0x11, 0x14, 0x12, 0x13,
+	0x0f, 0x18, 0x01, 0x06,
+	0x07, 0x2d, 0x2a, 0x32,
+	0x1f, 0x40, 0x05, 0x0c,
 	0x0e, 0x11, 0x14, 0x12,
-	0x14, 0x1d, 0x1f};
+	0x13, 0x0f, 0x18};
 static u8 h8c7_enter_set_cabc[] = {
 	0xc9, 0x1f, 0x00, 0x1e,
 	0x1e, 0x00, 0x20, 0x00,
 	0x01, 0xe3};
-static u8 h8c7_set_stba[] = {
-	0xc0, 0x01, 0x94};
 
 static u8 h8c7_set_cabc_gain[] = {
 	0xca, 0x40, 0x3d, 0x3a,
@@ -150,7 +143,6 @@ static u8 h8c7_set_cabc_gain[] = {
 static
 int mdfld_h8c7_drv_ic_init(struct mdfld_dsi_config *dsi_config)
 {
-	struct drm_device *dev = dsi_config->dev;
 	struct mdfld_dsi_pkg_sender *sender
 			= mdfld_dsi_get_pkg_sender(dsi_config);
 
@@ -159,120 +151,115 @@ int mdfld_h8c7_drv_ic_init(struct mdfld_dsi_config *dsi_config)
 
 	PSB_DEBUG_ENTRY("\n");
 	sender->status = MDFLD_DSI_PKG_SENDER_FREE;
+	/**
+	 * soft reset will let panel exit from deep standby mode and
+	 * keep at standy mode.
+	 */
+	mdfld_dsi_send_gen_long_hs(sender, h8c7_soft_reset, 1, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	/*wait for 5ms*/
+	mdelay(5);
 
 	/* set password*/
-	mdfld_dsi_send_mcs_short_lp(sender, h8c7_exit_sleep_mode[0], 0, 0, 0);
+	mdfld_dsi_send_gen_long_hs(sender, h8c7_mcs_protect_off, 4, 0);
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
 
-	mdelay(150);
-
-	/* set password*/
-	mdfld_dsi_send_mcs_long_lp(sender, h8c7_mcs_protect_off, 4, 0);
-	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
-		return -EIO;
-
-	mdfld_dsi_send_mcs_long_lp(sender, h8c7_ic_bias_current, 5, 0);
-	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
-		return -EIO;
-
-	mdfld_dsi_send_mcs_long_lp(sender, h8c7_set_power, 14, 0);
-	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
-		return -EIO;
-
-	mdfld_dsi_send_mcs_long_lp(sender, h8c7_set_disp_reg, 13, 0);
-	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
-		return -EIO;
-
-	mdfld_dsi_send_mcs_long_lp(sender, h8c7_set_command_cyc, 24, 0);
-	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
-		return -EIO;
-
-	mdfld_dsi_send_mcs_long_lp(sender, h8c7_set_mipi_ctrl, 18, 0);
-	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
-		return -EIO;
-
-	mdfld_dsi_send_mcs_long_lp(sender, h8c7_set_stba, 3, 0);
-	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
-		return -EIO;
-
-	mdfld_dsi_send_mcs_short_lp(sender, h8c7_command_mode[0], h8c7_command_mode[1], 1, 0);
-	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
-		return -EIO;
-
-	mdfld_dsi_send_mcs_long_lp(sender, h8c7_set_blanking_opt_2, 4, 0);
-	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
-		return -EIO;
-
-	mdfld_dsi_send_mcs_short_lp(sender, h8c7_set_panel[0], h8c7_set_panel[1], 1, 0);
-	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
-		return -EIO;
-
-	mdfld_dsi_send_mcs_short_lp(sender, h8c7_set_eq_func_ltps[0], h8c7_set_eq_func_ltps[1], 1, 0);
-	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
-		return -EIO;
-
-	mdfld_dsi_send_mcs_long_lp(sender, h8c7_set_ltps_ctrl_output, 22, 0);
-	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
-		return -EIO;
-
-	mdfld_dsi_send_mcs_long_lp(sender, h8c7_set_video_cyc, 24, 0);
-	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
-		return -EIO;
-
-	mdfld_dsi_send_mcs_long_lp(sender, h8c7_gamma_r, 35, 0);
-	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
-		return -EIO;
-
-	mdfld_dsi_send_mcs_long_lp(sender, h8c7_gamma_g, 35, 0);
-	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
-		return -EIO;
-
-	mdfld_dsi_send_mcs_long_lp(sender, h8c7_gamma_b, 35, 0);
-	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
-		return -EIO;
-
-	mdfld_dsi_send_mcs_short_lp(sender, h8c7_set_pixel_format[0], h8c7_set_pixel_format[1], 1, 0);
-	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
-		return -EIO;
-
-	mdfld_dsi_send_mcs_long_lp(sender, h8c7_mcs_clumn_addr, 5, 0);
-	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
-		return -EIO;
-
-	mdfld_dsi_send_mcs_long_lp(sender, h8c7_mcs_page_addr, 5, 0);
-	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
-		return -EIO;
-
-	mdfld_dsi_send_mcs_short_lp(sender, h8c7_set_address_mode[0], h8c7_set_address_mode[1], 1, 0);
-	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
-		return -EIO;
-
-	mdfld_dsi_send_mcs_long_lp(sender, h8c7_set_te_scanline, 4, 0);
-	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
-		return -EIO;
-
-	mdfld_dsi_send_mcs_short_lp(sender, h8c7_set_tear_on[0], h8c7_set_tear_on[1], 1, 0);
-	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
-		return -EIO;
-
-	mdfld_dsi_send_mcs_long_lp(sender, h8c7_enter_set_cabc, 10, 0);
-	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
-
-		return -EIO;
 	/* set backlight on*/
-	mdfld_dsi_send_mcs_short_lp(sender, h8c7_turn_on_backlight[0], h8c7_turn_on_backlight[1], 1 , 0);
+	mdfld_dsi_send_mcs_long_hs(sender, h8c7_turn_on_backlight, 2, 0);
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
 
 	/* disalble CABC*/
-	mdfld_dsi_send_mcs_short_lp(sender, h8c7_disable_cabc[0], h8c7_disable_cabc[1], 1, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, h8c7_disable_cabc, 2, 0);
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
 
-	mdfld_dsi_send_mcs_long_lp(sender, h8c7_mcs_protect_on, 4, 0);
+	mdfld_dsi_send_gen_long_hs(sender, h8c7_ic_bias_current, 8, 0);
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
+
+	mdfld_dsi_send_gen_long_hs(sender, h8c7_set_power, 14, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	mdfld_dsi_send_gen_long_hs(sender, h8c7_set_disp_reg, 13, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	mdfld_dsi_send_gen_long_hs(sender, h8c7_set_command_cyc, 21, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	mdfld_dsi_send_gen_long_hs(sender, h8c7_set_mipi_ctrl, 2, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	mdfld_dsi_send_gen_long_hs(sender, h8c7_command_mode, 2, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	mdfld_dsi_send_gen_long_hs(sender, h8c7_set_blanking_opt_2, 4, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	mdfld_dsi_send_gen_long_hs(sender, h8c7_set_panel, 2, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	mdfld_dsi_send_gen_long_hs(sender, h8c7_set_eq_func_ltps, 2, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	mdfld_dsi_send_gen_long_hs(sender, h8c7_set_ltps_ctrl_output, 24, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	mdfld_dsi_send_gen_long_hs(sender, h8c7_set_video_cyc, 21, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	mdfld_dsi_send_gen_long_hs(sender, h8c7_gamma_r, 35, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	mdfld_dsi_send_gen_long_hs(sender, h8c7_gamma_g, 35, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	mdfld_dsi_send_gen_long_hs(sender, h8c7_gamma_b, 35, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	mdfld_dsi_send_mcs_long_hs(sender, h8c7_enter_set_cabc, 10, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	mdfld_dsi_send_mcs_long_hs(sender, h8c7_set_pixel_format, 2, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	mdfld_dsi_send_mcs_long_hs(sender, h8c7_mcs_clumn_addr, 5, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	mdfld_dsi_send_mcs_long_hs(sender, h8c7_mcs_page_addr, 5, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	mdfld_dsi_send_mcs_long_hs(sender, h8c7_set_address_mode, 2, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+	mdfld_dsi_send_mcs_long_hs(sender, h8c7_set_te_scanline, 4, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	mdfld_dsi_send_gen_long_hs(sender, h8c7_mcs_protect_on, 4, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
 	mdelay(5);
 	return 0;
 }
@@ -347,12 +334,11 @@ void mdfld_h8c7_dsi_controller_init(struct mdfld_dsi_config *dsi_config)
 	hw_ctx->lp_rx_timeout = 0xffffff;
 	hw_ctx->turn_around_timeout = 0x1f;
 	hw_ctx->device_reset_timer = 0xffff;
-	hw_ctx->high_low_switch_count = 0x20;
+	hw_ctx->high_low_switch_count = 0x28;
 	hw_ctx->init_count = 0xf0;
 	hw_ctx->eot_disable = 0x3;
 	hw_ctx->lp_byteclk = 0x4;
-	hw_ctx->clk_lane_switch_time_cnt = 0x20000E;
-	hw_ctx->hs_ls_dbi_enable = 0x0;
+	hw_ctx->clk_lane_switch_time_cnt = 0xa0014;
 	/* HW team suggested 1390 for bandwidth setting */
 	hw_ctx->dbi_bw_ctrl = 1390;
 	hw_ctx->dphy_param = 0x20124E1A;
@@ -526,10 +512,10 @@ static int mdfld_dsi_h8c7_cmd_power_off(struct mdfld_dsi_config *dsi_config)
 
 	/* turn off cabc */
 	h8c7_disable_cabc[1] = 0x0;
-	mdfld_dsi_send_mcs_long_lp(sender, h8c7_disable_cabc, 4, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, h8c7_disable_cabc, 4, 0);
 
 	/*turn off backlight*/
-	err = mdfld_dsi_send_mcs_long_lp(sender, h8c7_turn_off_backlight, 4, 0);
+	err = mdfld_dsi_send_mcs_long_hs(sender, h8c7_turn_off_backlight, 4, 0);
 	if (err) {
 		DRM_ERROR("%s: failed to turn off backlight\n", __func__);
 		goto out;
@@ -581,17 +567,17 @@ static int mdfld_dsi_h8c7_cmd_power_off(struct mdfld_dsi_config *dsi_config)
 	mdelay(5);
 
 	/*enter deep standby mode*/
-	err = mdfld_dsi_send_mcs_long_lp(sender, h8c7_mcs_protect_off, 4, 0);
+	err = mdfld_dsi_send_gen_long_hs(sender, h8c7_mcs_protect_off, 4, 0);
 	if (err) {
 		DRM_ERROR("Failed to turn off protection\n");
 		goto out;
 	}
 
-	err = mdfld_dsi_send_mcs_long_lp(sender, h8c7_set_power_dstb, 14, 0);
+	err = mdfld_dsi_send_gen_long_hs(sender, h8c7_set_power_dstb, 14, 0);
 	if (err)
 		DRM_ERROR("Failed to enter DSTB\n");
 	mdelay(5);
-	mdfld_dsi_send_mcs_long_lp(sender, h8c7_mcs_protect_on, 4, 0);
+	mdfld_dsi_send_gen_long_hs(sender, h8c7_mcs_protect_on, 4, 0);
 
 out:
 	if (!IS_ERR(h8c7_regulator_status.regulator)) {
@@ -651,7 +637,6 @@ int mdfld_dsi_h8c7_cmd_detect(struct mdfld_dsi_config *dsi_config)
 			mdfld_dsi_send_gen_long_hs(sender, h8c7_mcs_protect_off, 4, 0);
 			mdfld_dsi_send_gen_long_hs(sender, h8c7_set_disp_reg, 13, 0);
 			mdfld_dsi_send_gen_long_hs(sender, h8c7_mcs_protect_on, 4, 0);
-
 		} else {
 			dsi_config->dsi_hw_context.panel_on = false;
 			DRM_INFO("%s: panel is not detected!\n", __func__);
@@ -697,7 +682,7 @@ int mdfld_dsi_h8c7_cmd_set_brightness(struct mdfld_dsi_config *dsi_config,
 	duty_val = (255 * level) / 100;
 	h8c7_set_brightness[1] = duty_val;
 
-	mdfld_dsi_send_mcs_short_lp(sender, h8c7_set_brightness[0], h8c7_set_brightness[1], 1, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, h8c7_set_brightness, 2, 0);
 
 	return 0;
 }
@@ -751,7 +736,11 @@ void h8c7_cmd_init(struct drm_device *dev, struct panel_funcs *p_funcs)
 
 	p_funcs->get_config_mode = h8c7_cmd_get_config_mode;
 	p_funcs->get_panel_info = h8c7_cmd_get_panel_info;
-	p_funcs->reset = mdfld_dsi_h8c7_cmd_panel_reset;
+	/*For CMI panel, according stress test,
+	* soft reset is better than HW reset.
+	* soft reset will be set in ic init function
+	*/
+	p_funcs->reset = NULL;
 	p_funcs->drv_ic_init = mdfld_h8c7_drv_ic_init;
 	p_funcs->dsi_controller_init = mdfld_h8c7_dsi_controller_init;
 	p_funcs->detect = mdfld_dsi_h8c7_cmd_detect;

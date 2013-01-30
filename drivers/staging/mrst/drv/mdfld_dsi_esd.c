@@ -44,7 +44,7 @@ static bool intel_dsi_dbi_esd_detection(struct mdfld_dsi_config *dsi_config)
 
 	ret = mdfld_dsi_get_power_mode(dsi_config,
 			&data,
-			MDFLD_DSI_LP_TRANSMISSION);
+			MDFLD_DSI_HS_TRANSMISSION);
 
 	/**
 	 * if FIFO is not empty, need do ESD, ret equals -EIO means
