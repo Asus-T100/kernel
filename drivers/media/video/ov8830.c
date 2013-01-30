@@ -606,7 +606,7 @@ static int ov8830_grouphold_launch(struct v4l2_subdev *sd)
  * The caller must kfree the buffer when no more needed.
  * @size: set to the size of the returned EEPROM data.
  */
-static void *le24l042cs_read(struct i2c_client *client, int *size)
+static void *le24l042cs_read(struct i2c_client *client, u32 *size)
 {
 	static const unsigned int LE24L042CS_I2C_ADDR = 0xA0 >> 1;
 	static const unsigned int LE24L042CS_EEPROM_SIZE = 512;
@@ -654,8 +654,9 @@ static void *le24l042cs_read(struct i2c_client *client, int *size)
 static int ov8830_g_priv_int_data(struct v4l2_subdev *sd,
 				  struct v4l2_private_int_data *priv)
 {
-	int size, r = 0;
+	u32 size;
 	void *b = le24l042cs_read(v4l2_get_subdevdata(sd), &size);
+	int r = 0;
 
 	if (!b)
 		return -EIO;
