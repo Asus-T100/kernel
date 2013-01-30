@@ -660,7 +660,7 @@ static struct videobuf_buffer *atomisp_css_frame_to_vbuf(
 	for (i = 0; pipe->capq.bufs[i]; i++) {
 		vm_mem = pipe->capq.bufs[i]->priv;
 		handle = vm_mem->vaddr;
-		if (handle->data == frame->data)
+		if (handle && handle->data == frame->data)
 			return pipe->capq.bufs[i];
 	}
 
