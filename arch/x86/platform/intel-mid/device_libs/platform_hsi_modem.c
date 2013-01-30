@@ -196,9 +196,9 @@ void *hsi_modem_platform_data(void *data)
 		.rx_fifo_sizes[7] = -1,
 	};
 #endif
-	printk(KERN_INFO "HSI platform data setup\n");
+	pr_info("HSI platform data setup\n");
 
-	printk(KERN_INFO "HSI mdm GPIOs rst_out:%d,"
+	pr_info("HSI mdm GPIOs rst_out:%d,"\
 			" pwr_on:%d, rst_bbn:%d, fcdp_rb:%d\n",
 		rst_out, pwr_on, rst_pmu, fcdp_rb);
 
