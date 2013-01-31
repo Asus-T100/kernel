@@ -117,7 +117,7 @@ void dwc3_set_mode(struct dwc3 *dwc, u32 mode)
  * dwc3_core_soft_reset - Issues core soft reset and PHY reset
  * @dwc: pointer to our context structure
  */
-static void dwc3_core_soft_reset(struct dwc3 *dwc)
+void dwc3_core_soft_reset(struct dwc3 *dwc)
 {
 	u32		reg;
 
@@ -149,6 +149,7 @@ static void dwc3_core_soft_reset(struct dwc3 *dwc)
 	dwc3_writel(dwc->regs, DWC3_GUSB2PHYCFG(0), reg);
 
 	/* After PHYs are stable we can take Core out of reset state */
+	mdelay(20);
 	reg = dwc3_readl(dwc->regs, DWC3_GCTL);
 	reg &= ~DWC3_GCTL_CORESOFTRESET;
 	dwc3_writel(dwc->regs, DWC3_GCTL, reg);
@@ -266,6 +267,8 @@ static int __devinit dwc3_event_buffers_setup(struct dwc3 *dwc)
 				evt->buf, (unsigned long long) evt->dma,
 				evt->length);
 
+		memset(evt->buf, 0, evt->length);
+
 		dwc3_writel(dwc->regs, DWC3_GEVNTADRLO(n),
 				lower_32_bits(evt->dma));
 		dwc3_writel(dwc->regs, DWC3_GEVNTADRHI(n),
@@ -313,7 +316,7 @@ static void __devinit dwc3_cache_hwparams(struct dwc3 *dwc)
  *
  * Returns 0 on success otherwise negative errno.
  */
-static int __devinit dwc3_core_init(struct dwc3 *dwc)
+int dwc3_core_init(struct dwc3 *dwc)
 {
 	unsigned long		timeout;
 	u32			reg;
@@ -347,48 +350,15 @@ static int __devinit dwc3_core_init(struct dwc3 *dwc)
 		cpu_relax();
 	} while (true);
 
-	dwc3_cache_hwparams(dwc);
-
-	reg = dwc3_readl(dwc->regs, DWC3_GCTL);
-	reg &= ~DWC3_GCTL_SCALEDOWN_MASK;
-	reg &= ~DWC3_GCTL_DISSCRAMBLE;
-
-	switch (DWC3_GHWPARAMS1_EN_PWROPT(dwc->hwparams.hwparams1)) {
-	case DWC3_GHWPARAMS1_EN_PWROPT_CLK:
-		reg &= ~DWC3_GCTL_DSBLCLKGTNG;
-		break;
-	default:
-		dev_dbg(dwc->dev, "No power optimization available\n");
-	}
-
-	/*
-	 * WORKAROUND: DWC3 revisions <1.90a have a bug
-	 * where the device can fail to connect at SuperSpeed
-	 * and falls back to high-speed mode which causes
-	 * the device to enter a Connect/Disconnect loop
-	 */
-	if (dwc->revision < DWC3_REVISION_190A)
-		reg |= DWC3_GCTL_U2RSTECN;
-
-	dwc3_writel(dwc->regs, DWC3_GCTL, reg);
-
-	ret = dwc3_alloc_event_buffers(dwc, DWC3_EVENT_BUFFERS_SIZE);
-	if (ret) {
-		dev_err(dwc->dev, "failed to allocate event buffers\n");
-		ret = -ENOMEM;
-		goto err1;
-	}
-
 	ret = dwc3_event_buffers_setup(dwc);
 	if (ret) {
 		dev_err(dwc->dev, "failed to setup event buffers\n");
-		goto err1;
+		goto err0;
 	}
 
-	return 0;
+	dwc3_cache_hwparams(dwc);
 
-err1:
-	dwc3_free_event_buffers(dwc);
+	return 0;
 
 err0:
 	return ret;
@@ -405,15 +375,19 @@ static void dwc3_core_exit(struct dwc3 *dwc)
 static int __devinit dwc3_probe(struct platform_device *pdev)
 {
 	struct device_node	*node = pdev->dev.of_node;
-	struct resource		*res;
 	struct dwc3		*dwc;
 	struct device		*dev = &pdev->dev;
 
 	int			ret = -ENOMEM;
 	int			irq;
 
-	void __iomem		*regs;
-	void			*mem;
+	void *mem;
+#ifndef CONFIG_USB_DWC_OTG_XCEIV
+	struct resource     *res;
+	void __iomem        *regs;
+#else
+	struct dwc_device_par   *pdata;
+#endif
 
 	u8			mode;
 
@@ -425,6 +399,7 @@ static int __devinit dwc3_probe(struct platform_device *pdev)
 	dwc = PTR_ALIGN(mem, DWC3_ALIGN_MASK + 1);
 	dwc->mem = mem;
 
+#ifndef CONFIG_USB_DWC_OTG_XCEIV
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!res) {
 		dev_err(dev, "missing resource\n");
@@ -445,6 +420,14 @@ static int __devinit dwc3_probe(struct platform_device *pdev)
 		dev_err(dev, "ioremap failed\n");
 		return -ENOMEM;
 	}
+#else
+	pdata = (struct dwc_device_par *)pdev->dev.platform_data;
+	if (!pdata) {
+		dev_err(&pdev->dev,
+		"No platform data for %s.\n", dev_name(&pdev->dev));
+		goto err1;
+	}
+#endif
 
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0) {
@@ -455,8 +438,13 @@ static int __devinit dwc3_probe(struct platform_device *pdev)
 	spin_lock_init(&dwc->lock);
 	platform_set_drvdata(pdev, dwc);
 
+#ifndef CONFIG_USB_DWC_OTG_XCEIV
 	dwc->regs	= regs;
 	dwc->regs_size	= resource_size(res);
+#else
+	dwc->regs   = pdata->io_addr;
+	dwc->regs_size  = pdata->len;
+#endif
 	dwc->dev	= dev;
 	dwc->irq	= irq;
 
@@ -474,17 +462,23 @@ static int __devinit dwc3_probe(struct platform_device *pdev)
 	if (of_get_property(node, "tx-fifo-resize", NULL))
 		dwc->needs_fifo_resize = true;
 
+	pm_runtime_set_active(&pdev->dev);
 	pm_runtime_enable(dev);
-	pm_runtime_get_sync(dev);
-	pm_runtime_forbid(dev);
+	pm_runtime_set_suspended(&pdev->dev);
 
-	ret = dwc3_core_init(dwc);
+	dwc3_cache_hwparams(dwc);
+	ret = dwc3_alloc_event_buffers(dwc, DWC3_EVENT_BUFFERS_SIZE);
 	if (ret) {
-		dev_err(dev, "failed to initialize core\n");
+		dev_err(dwc->dev, "failed to allocate event buffers\n");
+		ret = -ENOMEM;
 		return ret;
 	}
 
+#ifndef CONFIG_USB_DWC_OTG_XCEIV
 	mode = DWC3_MODE(dwc->hwparams.hwparams0);
+#else
+	mode = DWC3_MODE_DEVICE;
+#endif
 
 	switch (mode) {
 	case DWC3_MODE_DEVICE:
@@ -529,8 +523,6 @@ static int __devinit dwc3_probe(struct platform_device *pdev)
 		goto err2;
 	}
 
-	pm_runtime_allow(dev);
-
 	return 0;
 
 err2:
@@ -551,7 +543,7 @@ err2:
 	}
 
 err1:
-	dwc3_core_exit(dwc);
+	dwc3_free_event_buffers(dwc);
 
 	return ret;
 }
@@ -559,9 +551,13 @@ err1:
 static int __devexit dwc3_remove(struct platform_device *pdev)
 {
 	struct dwc3	*dwc = platform_get_drvdata(pdev);
+#ifndef CONFIG_USB_DWC_OTG_XCEIV
 	struct resource	*res;
+#endif
 
+#ifndef CONFIG_USB_DWC_OTG_XCEIV
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+#endif
 
 	pm_runtime_put(&pdev->dev);
 	pm_runtime_disable(&pdev->dev);
@@ -589,11 +585,17 @@ static int __devexit dwc3_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static const struct dev_pm_ops dwc3_pm_ops = {
+	.runtime_suspend = dwc3_runtime_suspend,
+	.runtime_resume = dwc3_runtime_resume,
+};
+
 static struct platform_driver dwc3_driver = {
 	.probe		= dwc3_probe,
 	.remove		= __devexit_p(dwc3_remove),
 	.driver		= {
-		.name	= "dwc3",
+		.name	= "dwc3-device",
+		.pm =	&dwc3_pm_ops
 	},
 };
 

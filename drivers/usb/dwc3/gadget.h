@@ -41,9 +41,14 @@
 
 #include <linux/list.h>
 #include <linux/usb/gadget.h>
+#if defined(CONFIG_USB_DWC_OTG_XCEIV)
+#include <linux/usb/otg.h>
+#include <linux/usb/dwc_otg3.h>
+#endif
 #include "io.h"
 
 struct dwc3;
+int dwc3_core_init(struct dwc3 *dwc);
 #define to_dwc3_ep(ep)		(container_of(ep, struct dwc3_ep, endpoint))
 #define gadget_to_dwc(g)	(container_of(g, struct dwc3, gadget))
 
@@ -111,6 +116,18 @@ int dwc3_gadget_ep0_queue(struct usb_ep *ep, struct usb_request *request,
 int __dwc3_gadget_ep_set_halt(struct dwc3_ep *dep, int value);
 int dwc3_send_gadget_ep_cmd(struct dwc3 *dwc, unsigned ep,
 		unsigned cmd, struct dwc3_gadget_ep_cmd_params *params);
+int dwc3_send_gadget_cmd(struct dwc3 *dwc, unsigned cmd, unsigned param);
+void dwc3_gadget_run_stop(struct dwc3 *dwc, int is_on);
+void dwc3_gadget_keep_conn(struct dwc3 *dwc, int is_on);
+int __devinit dwc3_core_init(struct dwc3 *dwc);
+
+#ifdef CONFIG_PM_RUNTIME
+int dwc3_runtime_suspend(struct device *device);
+int dwc3_runtime_resume(struct device *device);
+#else
+#define dwc3_runtime_suspend NULL
+#define dwc3_runtime_resume NULL
+#endif
 
 /**
  * dwc3_gadget_ep_get_transfer_index - Gets transfer index from HW

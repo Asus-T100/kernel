@@ -1627,8 +1627,6 @@ composite_suspend(struct usb_gadget *gadget)
 {
 	struct usb_composite_dev	*cdev = get_gadget_data(gadget);
 	struct usb_function		*f;
-	struct usb_configuration	*c;
-	int				power;
 
 	/* REVISIT:  should we have config level
 	 * suspend/resume callbacks?
