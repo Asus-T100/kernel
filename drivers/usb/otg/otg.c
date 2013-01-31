@@ -138,7 +138,7 @@ int otg_set_transceiver(struct otg_transceiver *x)
 	int err;
 
 	if (!x)
-		goto err1;
+		return -EINVAL;
 
 	if (xceiv && x)
 		return -EBUSY;
