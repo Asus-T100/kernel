@@ -1574,6 +1574,9 @@ void gen6_gt_force_wake_get(struct drm_i915_private *dev_priv);
 void gen6_gt_force_wake_put(struct drm_i915_private *dev_priv);
 int __gen6_gt_wait_for_fifo(struct drm_i915_private *dev_priv);
 
+u32 intel_dpio_read(struct drm_i915_private *dev_priv, int reg);
+void intel_dpio_write(struct drm_i915_private *dev_priv, int reg, u32 val);
+
 #define __i915_read(x, y) \
 	u##x i915_read##x(struct drm_i915_private *dev_priv, u32 reg, bool trace);
 

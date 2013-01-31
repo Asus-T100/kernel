@@ -431,7 +431,7 @@ out_unlock:
 	return val;
 }
 
-static void intel_dpio_write(struct drm_i915_private *dev_priv, int reg,
+void intel_dpio_write(struct drm_i915_private *dev_priv, int reg,
 			     u32 val)
 {
 	unsigned long flags;
