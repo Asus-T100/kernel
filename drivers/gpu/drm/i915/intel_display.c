@@ -372,7 +372,7 @@ static const intel_limit_t intel_limits_vlv_dac = {
 	.m1 = { .min = 2, .max = 3 },
 	.m2 = { .min = 11, .max = 156 },
 	.p = { .min = 10, .max = 30 },
-	.p1 = { .min = 2, .max = 3 },
+	.p1 = { .min = 1, .max = 3 },
 	.p2 = { .dot_limit = 270000,
 		.p2_slow = 2, .p2_fast = 20 },
 	.find_pll = intel_vlv_find_best_pll,
@@ -386,7 +386,7 @@ static const intel_limit_t intel_limits_vlv_hdmi = {
 	.m1 = { .min = 2, .max = 3 },
 	.m2 = { .min = 15, .max = 149 },
 	.p = { .min = 10, .max = 30 },
-	.p1 = { .min = 2, .max = 3 },
+	.p1 = { .min = 1, .max = 3 },
 	.p2 = { .dot_limit = 270000,
 		.p2_slow = 2, .p2_fast = 20 },
 	.find_pll = intel_vlv_find_best_pll,
@@ -400,7 +400,7 @@ static const intel_limit_t intel_limits_vlv_dp = {
 	.m1 = { .min = 2, .max = 3 },
 	.m2 = { .min = 11, .max = 156 },
 	.p = { .min = 10, .max = 30 },
-	.p1 = { .min = 2, .max = 3 },
+	.p1 = { .min = 1, .max = 3 },
 	.p2 = { .dot_limit = 270000,
 		.p2_slow = 2, .p2_fast = 20 },
 	.find_pll = intel_vlv_find_best_pll,
@@ -858,15 +858,20 @@ intel_find_pll_g4x_dp(const intel_limit_t *limit, struct drm_crtc *crtc,
 	memcpy(best_clock, &clock, sizeof(intel_clock_t));
 	return true;
 }
+
 static bool
 intel_vlv_find_best_pll(const intel_limit_t *limit, struct drm_crtc *crtc,
 			int target, int refclk, intel_clock_t *match_clock,
 			intel_clock_t *best_clock)
 {
+#define LONG_OVERFLOW 0x7FFFFFFF
+#define DIFF_OVERFLOW (LONG_OVERFLOW/10000)
+
 	u32 p1, p2, m1, m2, vco, bestn, bestm1, bestm2, bestp1, bestp2;
 	u32 m, n, fastclk;
 	u32 updrate, minupdate, fracbits, p;
-	unsigned long bestppm, ppm, absppm;
+	long bestppm, ppm, absppm, ppmdiff, absppmdiff;
+	unsigned long ulMult = 1;
 	int dotclk, flag;
 
 	flag = 0;
@@ -888,19 +893,35 @@ intel_vlv_find_best_pll(const intel_limit_t *limit, struct drm_crtc *crtc,
 				if (p2 > 10)
 					p2 = p2 - 1;
 				p = p1 * p2;
-				/* based on hardware requirement, prefer bigger m1,m2 values */
-				for (m1 = limit->m1.min; m1 <= limit->m1.max; m1++) {
+				/* based on hardware requirement, prefer bigger
+				 * m1,m2 values
+				 */
+				for (m1 = limit->m1.min;
+					 m1 <= limit->m1.max; m1++) {
 					m2 = (((2*(fastclk * p * n / m1 )) +
-					       refclk) / (2*refclk));
+							refclk) / (2*refclk));
 					m = m1 * m2;
 					vco = updrate * m;
-					if (vco >= limit->vco.min && vco < limit->vco.max) {
-						ppm = 1000000 * ((vco / p) - fastclk) / fastclk;
-						absppm = (ppm > 0) ? ppm : (-ppm);
-						if (absppm < 100 && ((p1 * p2) > (bestp1 * bestp2))) {
-							bestppm = 0;
-							flag = 1;
-						}
+					if (vco >= limit->vco.min &&
+							vco < limit->vco.max) {
+						ppmdiff =
+						((100*vco)/p) - (100*fastclk);
+						absppmdiff = (ppmdiff > 0) ?
+							ppmdiff : (-ppmdiff);
+						ulMult = 1;
+					while (absppmdiff >
+						DIFF_OVERFLOW) {
+						absppmdiff /= 10;
+						ulMult *= 10;
+					}
+						absppm = ((absppmdiff*10000) /
+								fastclk)*ulMult;
+
+					if (absppm < 100 && ((p1 * p2) >
+						(bestp1 * bestp2))) {
+						bestppm = 0;
+						flag = 1;
+					}
 						if (absppm < bestppm - 10) {
 							bestppm = absppm;
 							flag = 1;
