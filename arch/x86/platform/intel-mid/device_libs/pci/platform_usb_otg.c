@@ -10,11 +10,31 @@
  * of the License.
  */
 
-#include <linux/usb/penwell_otg.h>
 #include <linux/pci.h>
 #include <asm/intel-mid.h>
 #include <asm/intel_scu_ipc.h>
 
+#ifdef CONFIG_USB_DWC_OTG_XCEIV
+#include <linux/usb/dwc_otg3.h>
+static struct intel_dwc_otg_pdata dwc_otg_pdata;
+static struct intel_dwc_otg_pdata *get_otg_platform_data(struct pci_dev *pdev)
+{
+	switch (pdev->device) {
+	case PCI_DEVICE_ID_INTEL_MRFLD_OTG:
+		if (intel_mrfl_identify_sim() == INTEL_MRFL_CPU_SIMULATION_HVP)
+			dwc_otg_pdata.is_hvp = 1;
+		return &dwc_otg_pdata;
+	default:
+		break;
+	}
+
+	return NULL;
+}
+
+#endif
+
+#ifdef CONFIG_USB_PENWELL_OTG
+#include <linux/usb/penwell_otg.h>
 static struct intel_mid_otg_pdata otg_pdata = {
 	.gpio_vbus = 0,
 	.gpio_cs = 0,
@@ -62,6 +82,7 @@ static struct intel_mid_otg_pdata *get_otg_platform_data(struct pci_dev *pdev)
 
 	return pdata;
 }
+#endif
 
 static void __devinit otg_pci_early_quirks(struct pci_dev *pci_dev)
 {
@@ -71,4 +92,6 @@ static void __devinit otg_pci_early_quirks(struct pci_dev *pci_dev)
 DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_MFD_OTG,
 			otg_pci_early_quirks);
 DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_CLV_OTG,
+			otg_pci_early_quirks);
+DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_MRFLD_OTG,
 			otg_pci_early_quirks);

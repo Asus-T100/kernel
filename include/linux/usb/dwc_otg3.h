@@ -25,8 +25,8 @@
 #include <linux/device.h>
 #include <linux/compiler.h>
 
-#define SUPPORT_USER_ID_CHANGE_EVENTS
 
+#define SUPPORT_USER_ID_CHANGE_EVENTS
 struct dwc_device_par {
 	void __iomem *io_addr;
 	int len;
@@ -76,7 +76,7 @@ struct dwc_device_par {
 		if (otg->dev->power.runtime_status == RPM_SUSPENDED) { \
 			dump_stack(); printk(KERN_ERR \
 				"dwc otg_write: meet fabric error!\n"); } \
-		writel(val, ((void *)((o)->otg.io_priv)) + reg);	\
+		writel(val, ((void *)((o)->phy.io_priv)) + reg);	\
 	} while (0)
 
 #define otg_read(o, reg) ({						\
@@ -84,7 +84,7 @@ struct dwc_device_par {
 		if (otg->dev->power.runtime_status == RPM_SUSPENDED) { \
 			dump_stack(); printk(KERN_ERR \
 				"dwc otg_read: meet fabirc error!\n"); } \
-		__r = readl(((void *)((o)->otg.io_priv)) + reg);	\
+		__r = readl(((void *)((o)->phy.io_priv)) + reg);	\
 		otg_dbg(o, "OTG_READ: reg=0x%05x, val=0x%08x\n", reg, __r); \
 		__r;							\
 	})
@@ -93,19 +93,21 @@ struct dwc_device_par {
 	if (otg->dev->power.runtime_status == RPM_SUSPENDED) { \
 		dump_stack(); printk(KERN_ERR \
 		"dwc otg_write: meet fabric error!\n"); } \
-		writel(val, ((void *)((o)->otg.io_priv)) + reg); \
+		writel(val, ((void *)((o)->phy.io_priv)) + reg); \
 	} while (0)
 #define otg_read(o, reg)	({ \
 	if (otg->dev->power.runtime_status == RPM_SUSPENDED) { \
 		dump_stack(); printk(KERN_ERR \
 		"dwc otg_read: meet fabirc error!\n"); } \
-		readl(((void *)((o)->otg.io_priv)) + reg); \
+		readl(((void *)((o)->phy.io_priv)) + reg); \
 	})
 #endif
 
 #define GUSB2PHYCFG0				0xc200
 #define GUSB2PHYCFG_SUS_PHY                     0x40
+#define GUSB2PHYCFG_PHYSOFTRST (1 << 31)
 
+#define EXTEND_ULPI_REGISTER_ACCESS_MASK	0xC0
 #define GUSB2PHYACC0	0xc280
 #define GUSB2PHYACC0_DISULPIDRVR  (1 << 26)
 #define GUSB2PHYACC0_NEWREGREQ  (1 << 25)
@@ -114,18 +116,25 @@ struct dwc_device_par {
 #define GUSB2PHYACC0_REGWR  (1 << 22)
 #define GUSB2PHYACC0_REGADDR(v)  ((v & 0x3F) << 16)
 #define GUSB2PHYACC0_EXTREGADDR(v)  ((v & 0x3F) << 8)
-#define GUSB2PHYACC0_VCTRL  (0xFF << 8)
+#define GUSB2PHYACC0_VCTRL(v)  ((v & 0xFF) << 8)
 #define GUSB2PHYACC0_REGDATA(v)  (v & 0xFF)
 #define GUSB2PHYACC0_REGDATA_MASK  0xFF
+#define DATACON_TIMEOUT		750
+#define DATACON_INTERVAL	10
 
 #define GUSB3PIPECTL0                           0xc2c0
 #define GUSB3PIPECTL_SUS_EN                     0x20000
 #define GUSB3PIPE_DISRXDETP3                    (1 << 28)
+#define GUSB3PIPECTL_PHYSOFTRST (1 << 31)
 
 #define GHWPARAMS6				0xc158
 #define GHWPARAMS6_SRP_SUPPORT_ENABLED		0x0400
 #define GHWPARAMS6_HNP_SUPPORT_ENABLED		0x0800
 #define GHWPARAMS6_ADP_SUPPORT_ENABLED		0x1000
+
+#define GUCTL 0xC12C
+#define GUCTL_CMDEVADDR		(1 << 15)
+#define APBFC_EXIOTG3_MISC0_REG			0xF90FF85C
 
 #define GCTL 0xc110
 #define GCTL_PRT_CAP_DIR 0x3000
@@ -134,6 +143,7 @@ struct dwc_device_par {
 #define GCTL_PRT_CAP_DIR_DEV 2
 #define GCTL_PRT_CAP_DIR_OTG 3
 #define GCTL_GBL_HIBERNATION_EN 0x2
+#define GCTL_CORESOFTRESET (1 << 11)
 
 #define OCFG					0xcc00
 #define OCFG_SRP_CAP				0x01
@@ -348,10 +358,15 @@ enum dwc_otg_state {
 	DWC_STATE_TERMINATED
 };
 
+struct intel_dwc_otg_pdata {
+	int is_hvp;
+};
+
 /** The main structure to keep track of OTG driver state. */
 struct dwc_otg2 {
 	/** OTG transceiver */
-	struct otg_transceiver	otg;
+	struct usb_otg	otg;
+	struct usb_phy	phy;
 	struct device		*dev;
 	int irqnum;
 
@@ -403,12 +418,14 @@ struct dwc_otg2 {
 	struct platform_device *gadget;
 
 	/* Charger detection */
+	struct otg_bc_cap charging_cap;
 	struct notifier_block nb;
-	enum usb_charger_type ctype;
-	int sdp_current;
-	int is_cdp;
+	struct delayed_work sdp_check_work;
+	struct intel_dwc_otg_pdata *otg_data;
 };
 
+/* Invalid SDP checking timeout */
+#define INVALID_SDP_TIMEOUT	(HZ * 15)
 #define sleep_main_thread_until_condition_timeout(otg, condition, msecs) ({ \
 		int __timeout = msecs;				\
 		while (!(condition)) {				\
@@ -457,9 +474,9 @@ struct dwc_otg2 {
 #define TUSB1211_SCRATCH_REG_CLR				0x18
 #define TUSB1211_ACCESS_EXT_REG_SET				0x2F
 
-#define TUSB1211_VENDOR_SPECIFIC1				0x3D
-#define TUSB1211_VENDOR_SPECIFIC1_SET			0x3E
-#define TUSB1211_VENDOR_SPECIFIC1_CLR			0x3F
+#define TUSB1211_VENDOR_SPECIFIC1				0x80
+#define TUSB1211_VENDOR_SPECIFIC1_SET			0x81
+#define TUSB1211_VENDOR_SPECIFIC1_CLR			0x82
 #define TUSB1211_POWER_CONTROL					0x3D
 #define TUSB1211_POWER_CONTROL_SET				0x3E
 #define TUSB1211_POWER_CONTROL_CLR				0x3F
@@ -515,6 +532,8 @@ struct dwc_otg2 {
 #define VS5_VBUS_MNTR_FALL_EN					(1 << 1)
 #define VS5_REG3V3IN_MNTR_EN					(1 << 0)
 
+#define DEBUG_LINESTATE                       (0x3 << 0)
+
 #define OTGCTRL_USEEXTVBUS_INDICATOR			(1 << 7)
 #define OTGCTRL_DRVVBUSEXTERNAL					(1 << 6)
 #define OTGCTRL_DRVVBUS							(1 << 5)
@@ -539,18 +558,26 @@ struct dwc_otg2 {
 #define PWCTRL_DET_COMP							(1 << 1)
 #define PWCTRL_SW_CONTROL						(1 << 0)
 
+
+#define PMIC_TLP1ESBS0I1VNNBASE		0X6B
+#define PMIC_I2COVRDADDR			0x59
+#define PMIC_I2COVROFFSET			0x5A
 #define PMIC_USBPHYCTRL				0x30
+#define PMIC_I2COVRWRDATA			0x5B
+#define PMIC_I2COVRCTRL				0x58
+#define PMIC_I2COVRCTL_I2CWR		0x01
+
 #define USBPHYCTRL_D0			(1 << 0)
 #define PMIC_USBIDCTRL				0x19
 #define USBIDCTRL_ACA_DETEN_D1	(1 << 1)
 #define USBIDCTRL_USB_IDEN_D0	(1 << 0)
 #define PMIC_USBIDSTS				0x1A
 #define USBIDSTS_ID_GND			(1 << 0)
-#define USBIDSTS_ID_RARBRC_STS(v)	((v & 0x3)  << 1)
+#define USBIDSTS_ID_RARBRC_STS(v)	((v & 0x3)  << 0)
 #define USBIDSTS_ID_FLOAT_STS	(1 << 3)
 #define PMIC_USBPHYCTRL_D0		(1 << 0)
 
-#define VBUS_TIMEOUT	50
+#define VBUS_TIMEOUT	300
 #define PCI_DEVICE_ID_DWC 0x119E
 
 #endif /* __DWC_OTG_H__ */

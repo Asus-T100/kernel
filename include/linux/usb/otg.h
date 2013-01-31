@@ -42,6 +42,7 @@ enum usb_phy_events {
 	USB_EVENT_ID,           /* id was grounded */
 	USB_EVENT_CHARGER,      /* usb dedicated charger */
 	USB_EVENT_ENUMERATED,   /* gadget driver enumerated */
+	USB_EVENT_DRIVE_VBUS,
 };
 
 struct usb_phy;
@@ -119,7 +120,7 @@ struct usb_phy {
 				int suspend);
 
 	/* for A or B-peripheral: host has released the bus.  */
-	int     (*host_release)(struct otg_transceiver *otg);
+	int     (*host_release)(struct usb_phy *otg);
 };
 
 
