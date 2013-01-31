@@ -34,12 +34,19 @@ endif
 
 ifeq ($(GPU_BURST_CONFIGURED),1)
 
-gfx-y += $(SYSCONFIGDIR)/gburst_interface.o
-gfx-y += $(SGXDIR)/gburst_hw.o
+ifeq ($(CONFIG_GPU_BURST), y)
+sgx-objs += $(SYSCONFIGDIR)/gburst_interface.o
+sgx-objs += $(SGXDIR)/gburst_hw.o
+endif
 
 endif
 
-obj-$(CONFIG_GPU_BURST) += ../../graphics/gburst/
+ifeq ($(CONFIG_GPU_BURST), y)
+GPU_BURST_DIR=../../graphics/gburst
+sgx-objs += $(GPU_BURST_DIR)/gburstm.o \
+		$(GPU_BURST_DIR)/gburst_stats.o \
+		$(GPU_BURST_DIR)/utilf.o
+endif
 
 ccflags-y += $(include_dirs)
 
@@ -58,7 +65,7 @@ ENCODE_DIR = ../../video/encode
 MEDIA_COMMON_DIR = ../../common
 HDMI_DIR := ../../otm_hdmi
 
-gfx-y += $(ENVDIR)/osfunc.o \
+sgx-objs += $(ENVDIR)/osfunc.o \
 		$(ENVDIR)/mutils.o \
 		$(ENVDIR)/mmap.o \
 		$(ENVDIR)/module.o \
@@ -70,9 +77,8 @@ gfx-y += $(ENVDIR)/osfunc.o \
 		$(ENVDIR)/mutex.o \
 		$(ENVDIR)/event.o \
 		$(ENVDIR)/osperproc.o \
-		$(ENVDIR)/pvr_drm.o
-
-gfx-y += $(COMMONDIR)/buffer_manager.o \
+		$(ENVDIR)/pvr_drm.o \
+		$(COMMONDIR)/buffer_manager.o \
 		$(COMMONDIR)/devicemem.o \
 		$(COMMONDIR)/deviceclass.o \
 		$(COMMONDIR)/handle.o \
@@ -89,17 +95,14 @@ gfx-y += $(COMMONDIR)/buffer_manager.o \
 		$(COMMONDIR)/queue.o \
 		$(COMMONDIR)/ra.o \
 		$(COMMONDIR)/refcount.o \
-		$(COMMONDIR)/resman.o
-
-gfx-y += $(BRIDGEDDIR)/bridged_support.o \
+		$(COMMONDIR)/resman.o \
+		$(BRIDGEDDIR)/bridged_support.o \
 		$(BRIDGEDDIR)/bridged_pvr_bridge.o \
-		$(BRIDGEDDIR)/sgx/bridged_sgx_bridge.o
-
-gfx-y += $(SYSCONFIGDIR)/sysconfig.o \
+		$(BRIDGEDDIR)/sgx/bridged_sgx_bridge.o \
+		$(SYSCONFIGDIR)/sysconfig.o \
 		$(SYSCONFIGDIR)/sysutils.o \
-		$(SYSCONFIGDIR)/sys_pvr_drm_export.o
-
-gfx-y += $(SGXDIR)/sgxinit.o \
+		$(SYSCONFIGDIR)/sys_pvr_drm_export.o \
+		$(SGXDIR)/sgxinit.o \
 		$(SGXDIR)/sgxpower.o \
 		$(SGXDIR)/sgxreset.o \
 		$(SGXDIR)/sgxutils.o \
@@ -107,6 +110,7 @@ gfx-y += $(SGXDIR)/sgxinit.o \
 		$(SGXDIR)/sgxtransfer.o \
 		$(SGXDIR)/mmu.o \
 		$(SGXDIR)/pb.o
+obj-m += sgx.o
 
 gfx-y += $(FBDEVDIR)/drmlfb_displayclass.o \
 		$(FBDEVDIR)/drmlfb_linux.o
