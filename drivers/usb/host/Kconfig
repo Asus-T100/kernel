@@ -70,6 +70,17 @@ config USB_HCD_HSIC
 
 	  If unsure, say N.
 
+config USB_EHCI_HCD_SPH
+	bool "SPH Support"
+	depends on USB_EHCI_HCD
+	default n
+	---help---
+	  Say 'Y' to turn on SPH support for the EHCI host controller driver.
+	  SPH is used for debugging and tracing between AP and BP.
+	  In AP side, it will work as a EHCI host.
+
+	  If unsure, say N
+
 config USB_EHCI_ROOT_HUB_TT
 	bool "Root Hub Transaction Translators"
 	depends on USB_EHCI_HCD
