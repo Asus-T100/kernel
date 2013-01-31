@@ -328,7 +328,7 @@ static ssize_t dlp_trace_dev_read(struct file *filp,
 	struct dlp_channel *ch_ctx = filp->private_data;
 	struct dlp_trace_ctx *trace_ctx = ch_ctx->ch_data;
 	struct hsi_msg *msg;
-	int ret, to_copy, copied, available;
+	int ret, to_copy, copied, available, more_packets;
 	unsigned int data_size, offset;
 	unsigned char *data_addr, *start_addr;
 	unsigned int *ptr;
@@ -372,28 +372,32 @@ static ssize_t dlp_trace_dev_read(struct file *filp,
 
 		ptr = sg_virt(msg->sgt.sgl);
 		start_addr = (unsigned char *)ptr;
-		/* Get the start offset */
-		ptr++;
-		offset = (*ptr);
 
-		/* Get the size & address */
-		ptr++;
-		data_size = DLP_HDR_DATA_SIZE((*ptr)) - DLP_HDR_SPACE_AP;
-		data_addr = start_addr + offset + DLP_HDR_SPACE_AP;
+		do {
+			/* Get the start offset */
+			ptr++;
+			offset = (*ptr);
 
-		/* Calculate the data size */
-		to_copy = MIN(data_size, available);
+			/* Get the size & address */
+			ptr++;
+			more_packets = (*ptr) & DLP_HDR_MORE_DESC;
+			data_size = DLP_HDR_DATA_SIZE((*ptr)) - DLP_HDR_SPACE_AP;
+			data_addr = start_addr + offset + DLP_HDR_SPACE_AP;
 
-		/* Copy data to the user buffer */
-		ret = copy_to_user(data+copied, data_addr, to_copy);
-		if (ret) {
-			/* Stop copying */
-			pr_err(DRVNAME": Unable to copy data to the user buffer\n");
-			break;
-		}
+			/* Calculate the data size */
+			to_copy = MIN(data_size, available);
 
-		copied += to_copy;
-		available -= to_copy;
+			/* Copy data to the user buffer */
+			ret = copy_to_user(data+copied, data_addr, to_copy);
+			if (ret) {
+				/* Stop copying */
+				pr_err(DRVNAME": Unable to copy data to the user buffer\n");
+				break;
+			}
+
+			copied += to_copy;
+			available -= to_copy;
+		} while ((more_packets) && (available));
 
 		/* Read done => Queue the RX msg again */
 		ret = hsi_async(msg->cl, msg);
