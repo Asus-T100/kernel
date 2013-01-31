@@ -1653,6 +1653,16 @@ static int __devinit mid_pmu_probe(struct pci_dev *dev,
 	mid_pmu_cxt->pmu_init_time =
 		cpu_clock(raw_smp_processor_id());
 
+	/*
+	 * FIXME: Since S3 is not enabled yet we need to take
+	 * a wake lock here. Else S3 will be triggered on display
+	 * time out and platform will hang
+	 */
+	if (!platform_is(INTEL_ATOM_MFLD) && !platform_is(INTEL_ATOM_CLV)) {
+#ifdef CONFIG_HAS_WAKELOCK
+		wake_lock(&mid_pmu_cxt->pmu_wake_lock);
+#endif
+	}
 	return 0;
 
 out_err5:
