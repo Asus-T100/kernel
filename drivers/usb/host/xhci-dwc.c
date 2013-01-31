@@ -31,14 +31,13 @@
 static struct platform_device *dwcdev;
 static int otg_irqnum;
 
-#define SRAM_PHY_ADDR 0xFFFC0000
-#define SRAM_LENGTH 0x20000
 static int xhci_start_host(struct usb_hcd *hcd);
 static int xhci_stop_host(struct usb_hcd *hcd);
 static int xhci_reset_port(struct usb_hcd *hcd);
 static int xhci_stop_host(struct usb_hcd *hcd);
 static int dwc_host_setup(struct usb_hcd *hcd);
 static int xhci_release_host(struct usb_hcd *hcd);
+static struct platform_driver xhci_dwc_driver;
 
 static void set_phy_suspend_resume(struct usb_hcd *hcd, int on_off)
 {
@@ -162,6 +161,39 @@ static void dwc_set_host_mode(struct usb_hcd *hcd)
 	msleep(20);
 }
 
+static void dwc_core_reset(struct usb_hcd *hcd)
+{
+	u32 val;
+
+	val = readl(hcd->regs + GCTL);
+	val |= GCTL_CORESOFTRESET;
+	writel(val, hcd->regs + GCTL);
+
+	val = readl(hcd->regs + GUSB3PIPECTL0);
+	val |= GUSB3PIPECTL_PHYSOFTRST;
+	writel(val, hcd->regs + GUSB3PIPECTL0);
+
+	val = readl(hcd->regs + GUSB2PHYCFG0);
+	val |= GUSB2PHYCFG_PHYSOFTRST;
+	writel(val, hcd->regs + GUSB2PHYCFG0);
+
+	msleep(100);
+
+	val = readl(hcd->regs + GUSB3PIPECTL0);
+	val &= ~GUSB3PIPECTL_PHYSOFTRST;
+	writel(val, hcd->regs + GUSB3PIPECTL0);
+
+	val = readl(hcd->regs + GUSB2PHYCFG0);
+	val &= ~GUSB2PHYCFG_PHYSOFTRST;
+	writel(val, hcd->regs + GUSB2PHYCFG0);
+
+	msleep(20);
+
+	val = readl(hcd->regs + GCTL);
+	val &= ~GCTL_CORESOFTRESET;
+	writel(val, hcd->regs + GCTL);
+}
+
 /* This is a hardware workaround.
  * xHCI RxDetect state is not work well when USB3
  * PHY under P3 state. So force PHY change to P2 when
@@ -220,6 +252,7 @@ static int xhci_start_host(struct usb_hcd *hcd)
 
 	pm_runtime_get_sync(hcd->self.controller);
 
+	dwc_core_reset(hcd);
 	dwc_set_host_mode(hcd);
 	dwc_disable_ssphy_p3(hcd);
 
@@ -261,6 +294,8 @@ static int xhci_start_host(struct usb_hcd *hcd)
 			"Can't register sysfs attribute: %d\n", ret);
 	}
 
+	xhci_dwc_driver.shutdown = usb_hcd_platform_shutdown;
+
 	return ret;
 
 put_usb3_hcd:
@@ -294,6 +329,8 @@ static int xhci_stop_host(struct usb_hcd *hcd)
 	xhci = hcd_to_xhci(hcd);
 
 	pm_runtime_get_sync(hcd->self.controller);
+
+	xhci_dwc_driver.shutdown = NULL;
 
 	if (HCD_RH_RUNNING(hcd))
 		set_phy_suspend_resume(hcd, 1);
@@ -478,11 +515,11 @@ static int xhci_release_host(struct usb_hcd *hcd)
 
 static int xhci_dwc_drv_probe(struct platform_device *pdev)
 {
+	struct usb_phy *usb_phy = usb_get_transceiver();
 	struct dwc_device_par *pdata;
 	struct usb_hcd *hcd;
 	struct resource *res;
 	int retval = 0;
-	struct otg_transceiver *otg = otg_get_transceiver();
 	dwcdev = pdev;
 
 	if (usb_disabled())
@@ -527,9 +564,9 @@ static int xhci_dwc_drv_probe(struct platform_device *pdev)
 	hcd->rsrc_start = res->start;
 	hcd->rsrc_len = res->end - res->start;
 
-	if (otg) {
-		otg_set_host(otg, &hcd->self);
-		otg_put_transceiver(otg);
+	if (usb_phy) {
+		otg_set_host(usb_phy->otg, &hcd->self);
+		usb_put_transceiver(usb_phy);
 	}
 	hcd->rpm_control = 1;
 	hcd->rpm_resume = 0;
@@ -543,12 +580,11 @@ static int xhci_dwc_drv_probe(struct platform_device *pdev)
 static int xhci_dwc_drv_remove(struct platform_device *pdev)
 {
 	struct usb_hcd *hcd = platform_get_drvdata(pdev);
-	struct otg_transceiver *otg = otg_get_transceiver();
+	struct usb_phy *usb_phy = usb_get_transceiver();
 	struct xhci_hcd *xhci = hcd_to_xhci(hcd);
 
-	printk(KERN_DEBUG "OTG: Removing host on otg=%p\n", otg);
-	otg_set_host(otg, NULL);
-	otg_put_transceiver(otg);
+	otg_set_host(usb_phy->otg, NULL);
+	usb_put_transceiver(usb_phy);
 
 	if (xhci)
 		xhci_stop_host(hcd);
@@ -668,10 +704,6 @@ static int dwc_hcd_resume_common(struct device *dev)
 		return 0;
 	}
 
-	clear_bit(HCD_FLAG_SAW_IRQ, &hcd->flags);
-	if (hcd->shared_hcd)
-		clear_bit(HCD_FLAG_SAW_IRQ, &hcd->shared_hcd->flags);
-
 	if (!HCD_DEAD(hcd)) {
 		retval = xhci_resume(xhci, false);
 		if (retval) {
@@ -754,7 +786,6 @@ static const struct dev_pm_ops dwc_usb_hcd_pm_ops = {
 static struct platform_driver xhci_dwc_driver = {
 	.probe = xhci_dwc_drv_probe,
 	.remove = xhci_dwc_drv_remove,
-	.shutdown = usb_hcd_platform_shutdown,
 	.driver = {
 		.name = "dwc3-host",
 #ifdef CONFIG_PM
