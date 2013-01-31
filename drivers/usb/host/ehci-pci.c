@@ -217,6 +217,7 @@ static int ehci_pci_setup(struct usb_hcd *hcd)
 			hcd->has_tt = 1;
 			ehci->has_hostpc = 1;
 		} else if (pdev->device == 0x08F2) {
+#ifdef CONFIG_USB_EHCI_HCD_SPH
 			/* Check SPH enabled or not */
 			if (!sph_enabled()) {
 				ehci_info(ehci, "USB SPH is disabled\n");
@@ -242,6 +243,7 @@ static int ehci_pci_setup(struct usb_hcd *hcd)
 			hcd->rpm_control = 1;
 			hcd->rpm_resume = 0;
 			pm_runtime_set_active(&pdev->dev);
+#endif
 		} else if (pdev->device == 0x119C) {
 #ifndef CONFIG_MERR_USB_OTG_CONTROLLER_SUPPORT
 			ehci_info(ehci, "Abandon 0x119C pci device\n");
