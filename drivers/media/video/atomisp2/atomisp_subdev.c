@@ -216,8 +216,6 @@ struct v4l2_rect *atomisp_subdev_get_rect(struct v4l2_subdev *sd,
 		return &isp_sd->fmt[pad].crop;
 	}
 
-	BUG();
-
 	return NULL;
 }
 
