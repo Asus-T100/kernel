@@ -67,6 +67,13 @@
 
 #define IMX_READ_MODE				0x0390
 
+#define IMX_HORIZONTAL_START_H 0x0344
+#define IMX_VERTICAL_START_H 0x0346
+#define IMX_HORIZONTAL_END_H 0x0348
+#define IMX_VERTICAL_END_H 0x034a
+#define IMX_HORIZONTAL_OUTPUT_SIZE_H 0x034c
+#define IMX_VERTICAL_OUTPUT_SIZE_H 0x034e
+
 #define IMX_COARSE_INTEGRATION_TIME		0x0202
 #define IMX_TEST_PATTERN_MODE			0x0600
 #define IMX_IMG_ORIENTATION			0x0101
@@ -315,18 +322,6 @@ struct imx_write_buffer {
 struct imx_write_ctrl {
 	int index;
 	struct imx_write_buffer buffer;
-};
-
-struct sensor_mode_data {
-	u32 coarse_integration_time_min;
-	u32 coarse_integration_time_max_margin;
-	u32 fine_integration_time_min;
-	u32 fine_integration_time_max_margin;
-	u32 fine_integration_time_def;
-	u32 frame_length_lines;
-	u32 line_length_pck;
-	u32 read_mode;
-	int vt_pix_clk_freq_mhz;
 };
 
 static const struct imx_reg imx_soft_standby[] = {

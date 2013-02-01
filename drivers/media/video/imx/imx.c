@@ -587,7 +587,7 @@ static int imx_get_intg_factor(struct i2c_client *client,
 	u32 op_sys_clk_div;
 
 	const int ext_clk_freq_hz = 19200000;
-	struct sensor_mode_data buf;
+	struct atomisp_sensor_mode_data *buf = &info->data;
 	int ret;
 	u16 data[IMX_INTG_BUF_COUNT];
 
@@ -655,18 +655,54 @@ static int imx_get_intg_factor(struct i2c_client *client,
 	vt_pix_clk_freq_mhz *= pll_multiplier;
 
 	dev->vt_pix_clk_freq_mhz = vt_pix_clk_freq_mhz;
-	buf.coarse_integration_time_min = coarse_integration_time_min;
-	buf.coarse_integration_time_max_margin
-		= coarse_integration_time_max_margin;
-	buf.fine_integration_time_min = IMX_FINE_INTG_TIME;
-	buf.fine_integration_time_max_margin = IMX_FINE_INTG_TIME;
-	buf.fine_integration_time_def = IMX_FINE_INTG_TIME;
-	buf.vt_pix_clk_freq_mhz = vt_pix_clk_freq_mhz;
-	buf.line_length_pck = line_length_pck;
-	buf.frame_length_lines = frame_length_lines;
-	buf.read_mode = 0;
 
-	memcpy(&info->data, &buf, sizeof(buf));
+	buf->vt_pix_clk_freq_mhz = vt_pix_clk_freq_mhz;
+	buf->coarse_integration_time_min = coarse_integration_time_min;
+	buf->coarse_integration_time_max_margin =
+				coarse_integration_time_max_margin;
+
+	buf->fine_integration_time_min = IMX_FINE_INTG_TIME;
+	buf->fine_integration_time_max_margin = IMX_FINE_INTG_TIME;
+	buf->fine_integration_time_def = IMX_FINE_INTG_TIME;
+	buf->frame_length_lines = frame_length_lines;
+	buf->line_length_pck = line_length_pck;
+	buf->read_mode = read_mode;
+
+	/* Get the cropping and output resolution to ISP for this mode. */
+	ret =  imx_read_reg(client, 2, IMX_HORIZONTAL_START_H, data);
+	if (ret)
+		return ret;
+	buf->crop_horizontal_start = data[0];
+
+	ret = imx_read_reg(client, 2, IMX_VERTICAL_START_H, data);
+	if (ret)
+		return ret;
+	buf->crop_vertical_start = data[0];
+
+	ret = imx_read_reg(client, 2, IMX_HORIZONTAL_END_H, data);
+	if (ret)
+		return ret;
+	buf->crop_horizontal_end = data[0];
+
+	ret = imx_read_reg(client, 2, IMX_VERTICAL_END_H, data);
+	if (ret)
+		return ret;
+	buf->crop_vertical_end = data[0];
+
+	ret = imx_read_reg(client, 2, IMX_HORIZONTAL_OUTPUT_SIZE_H, data);
+	if (ret)
+		return ret;
+	buf->output_width = data[0];
+
+	ret = imx_read_reg(client, 2, IMX_VERTICAL_OUTPUT_SIZE_H, data);
+	if (ret)
+		return ret;
+	buf->output_height = data[0];
+
+	buf->binning_factor_x = imx_res[dev->fmt_idx].bin_factor_x ?
+					imx_res[dev->fmt_idx].bin_factor_x : 1;
+	buf->binning_factor_y = imx_res[dev->fmt_idx].bin_factor_y ?
+					imx_res[dev->fmt_idx].bin_factor_y : 1;
 
 	return 0;
 }
