@@ -30,11 +30,6 @@ static struct power_supply_throttle bq24261_throttle_states[] = {
 	},
 	{
 		.throttle_action = PSY_THROTTLE_CC_LIMIT,
-		.throttle_val = BQ24261_CHRG_CUR_HIGH,
-
-	},
-	{
-		.throttle_action = PSY_THROTTLE_CC_LIMIT,
 		.throttle_val = BQ24261_CHRG_CUR_MEDIUM,
 
 	},
