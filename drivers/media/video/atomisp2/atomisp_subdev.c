@@ -294,6 +294,11 @@ static int isp_subdev_get_selection(struct v4l2_subdev *sd,
 	return 0;
 }
 
+static char *atomisp_pad_str[] = { "ATOMISP_SUBDEV_PAD_SINK",
+				   "ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE",
+				   "ATOMISP_SUBDEV_PAD_SOURCE_VF",
+				   "ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW" };
+
 int atomisp_subdev_set_selection(struct v4l2_subdev *sd,
 				 struct v4l2_subdev_fh *fh, uint32_t which,
 				 uint32_t pad, uint32_t target, uint32_t flags,
@@ -307,6 +312,14 @@ int atomisp_subdev_set_selection(struct v4l2_subdev *sd,
 	unsigned int i;
 
 	isp_get_fmt_rect(sd, fh, which, ffmt, crop, comp);
+
+	dev_dbg(isp->dev,
+		"sel: pad %s tgt %s l %d t %d w %d h %d which %s f 0x%8.8x\n",
+		atomisp_pad_str[pad], target == V4L2_SEL_TGT_CROP
+		? "V4L2_SEL_TGT_CROP" : "V4L2_SEL_TGT_COMPOSE",
+		r->left, r->top, r->width, r->height,
+		which == V4L2_SUBDEV_FORMAT_TRY ? "V4L2_SUBDEV_FORMAT_TRY"
+		: "V4L2_SUBDEV_FORMAT_ACTIVE", flags);
 
 	r->width = rounddown(r->width, ATOM_ISP_STEP_WIDTH);
 	r->height = rounddown(r->height, ATOM_ISP_STEP_HEIGHT);
@@ -391,6 +404,9 @@ int atomisp_subdev_set_selection(struct v4l2_subdev *sd,
 
 	*r = *atomisp_subdev_get_rect(sd, fh, which, pad, target);
 
+	dev_dbg(isp->dev, "sel actual: l %d t %d w %d h %d\n",
+		r->left, r->top, r->width, r->height);
+
 	return 0;
 }
 
@@ -443,6 +459,11 @@ int atomisp_subdev_set_ffmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 	struct atomisp_device *isp = isp_sd->isp;
 	struct v4l2_mbus_framefmt *__ffmt =
 		atomisp_subdev_get_ffmt(sd, fh, which, pad);
+
+	dev_dbg(isp->dev, "ffmt: pad %s w %d h %d which %s\n",
+		atomisp_pad_str[pad], ffmt->width, ffmt->height,
+		which == V4L2_SUBDEV_FORMAT_TRY ? "V4L2_SUBDEV_FORMAT_TRY"
+		: "V4L2_SUBDEV_FORMAT_ACTIVE");
 
 	switch (pad) {
 	case ATOMISP_SUBDEV_PAD_SINK:
