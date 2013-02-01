@@ -567,6 +567,15 @@ bool tng_topaz_interrupt(void *pvData)
 		(unsigned int)video_ctx, codec_to_string(video_ctx->codec),
 		cmd_to_string(wb_msg->ui32CmdWord));
 
+	if (video_ctx->codec == IMG_CODEC_JPEG)
+		/* The LAST ISSUEBUF cmd means encoding complete */
+		if (--topaz_priv->issuebuf_cmd_count) {
+			PSB_DEBUG_GENERAL("TOPAZ: JPEG ISSUEBUF cmd " \
+					  "count left %d, return\n", \
+					  topaz_priv->issuebuf_cmd_count);
+			return true;
+		}
+
 	*topaz_priv->topaz_sync_addr = wb_msg->ui32WritebackVal;
 
 	PSB_DEBUG_GENERAL("TOPAZ: Set seq %08x, " \
@@ -2002,12 +2011,13 @@ static int32_t tng_setup_WB_mem(
 static int tng_setup_new_context(
 	struct drm_device *dev,
 	struct drm_file *file_priv,
-	uint32_t reg_handle,
-	uint32_t data_handle,
+	uint32_t *cmd,
 	uint32_t codec)
 {
 	struct ttm_object_file *tfile = BCVideoGetPriv(file_priv)->tfile;
 	struct psb_video_ctx *video_ctx;
+	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct tng_topaz_private *topaz_priv = dev_priv->topaz_private;
 	int32_t ret = 0;
 
 	video_ctx = get_ctx_from_fp(dev, file_priv->filp);
@@ -2024,10 +2034,10 @@ static int tng_setup_new_context(
 
 	if (video_ctx->codec != IMG_CODEC_JPEG) {
 		video_ctx->reg_saving_bo = ttm_buffer_object_lookup(
-						tfile, reg_handle);
+						tfile, *(cmd + 2));
 		if (unlikely(video_ctx->reg_saving_bo == NULL)) {
 			DRM_ERROR("Failed to lookup (0x%x) handle\n",
-				reg_handle);
+				*(cmd + 2));
 			DRM_ERROR("in new context");
 			ret = -1;
 			goto out;
@@ -2041,10 +2051,10 @@ static int tng_setup_new_context(
 		}
 
 		video_ctx->data_saving_bo = ttm_buffer_object_lookup(
-						tfile, data_handle);
+						tfile, *(cmd + 3));
 		if (unlikely(video_ctx->data_saving_bo == NULL)) {
 			DRM_ERROR("Failed to lookup (0x%x) handle\n",
-				reg_handle);
+				*(cmd + 2));
 			DRM_ERROR("in new context");
 			ret = -1;
 			goto out;
@@ -2056,6 +2066,12 @@ static int tng_setup_new_context(
 			DRM_ERROR("Reserver data saving BO failed.\n");
 			return -1;
 		}
+	} else {
+		video_ctx->reg_saving_bo = NULL;
+		video_ctx->data_saving_bo = NULL;
+		topaz_priv->issuebuf_cmd_count = *(cmd + 2);
+		PSB_DEBUG_GENERAL("TOPAZ: JPEG ISSUEBUF cmd count is " \
+				  "%d\n", topaz_priv->issuebuf_cmd_count);
 	}
 
 	/*
@@ -2241,11 +2257,10 @@ tng_topaz_send(
 
 		switch (cur_cmd_id) {
 		case MTX_CMDID_SW_NEW_CODEC:
-			cur_cmd_size = 4;
 			codec = (*((uint32_t *) cmd) & 0xFF00) >> 8;
+			cur_cmd_size = (codec == IMG_CODEC_JPEG) ? 3 : 4;
 			ret = tng_setup_new_context(dev, file_priv,
-				*((uint32_t *)command + 2),
-				*((uint32_t *)command + 3),
+				(uint32_t *)command,
 				codec);
 			if (ret) {
 				DRM_ERROR("Failed to setup new context");
