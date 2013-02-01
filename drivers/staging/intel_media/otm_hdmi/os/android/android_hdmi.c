@@ -2321,7 +2321,7 @@ void android_hdmi_connector_dpms(struct drm_connector *connector, int mode)
  *
  * Returns:	none
  */
-void android_hdmi_dpms(struct drm_encoder *encoder, int mode)
+void android_hdmi_encoder_dpms(struct drm_encoder *encoder, int mode)
 {
 	struct drm_device *dev;
 	struct drm_psb_private *dev_priv;
@@ -2434,7 +2434,7 @@ void android_hdmi_dpms(struct drm_encoder *encoder, int mode)
  * Functions required to be implemented by Linux DRM framework
  */
 const struct drm_encoder_helper_funcs android_hdmi_enc_helper_funcs = {
-	.dpms = android_hdmi_dpms,
+	.dpms = android_hdmi_encoder_dpms,
 	.save = android_hdmi_encoder_save,
 	.restore = android_hdmi_encoder_restore,
 	.mode_fixup = android_hdmi_mode_fixup,
@@ -2444,7 +2444,7 @@ const struct drm_encoder_helper_funcs android_hdmi_enc_helper_funcs = {
 };
 
 const struct drm_connector_helper_funcs
-    android_hdmi_connector_helper_funcs = {
+	android_hdmi_connector_helper_funcs = {
 	.get_modes = android_hdmi_get_modes,
 	.mode_valid = android_hdmi_mode_valid,
 	.best_encoder = android_hdmi_best_encoder,
