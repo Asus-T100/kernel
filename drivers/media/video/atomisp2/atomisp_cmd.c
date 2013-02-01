@@ -3660,6 +3660,9 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 		return -EINVAL;
 	}
 
+	dev_dbg(isp->dev, "setting resolution %ux%u on pad %u\n",
+		f->fmt.pix.width, f->fmt.pix.height, source_pad);
+
 	if (f->type != V4L2_BUF_TYPE_VIDEO_CAPTURE &&
 	    f->type != V4L2_BUF_TYPE_PRIVATE) {
 		v4l2_err(&atomisp_dev, "Wrong v4l2 buf type\n");
