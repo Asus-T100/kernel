@@ -415,7 +415,7 @@ static int ov9724_get_intg_factor(struct i2c_client *client,
 	u32	op_sys_clk_div;
 
 	const int ext_clk_freq_hz = 19200000;
-	struct sensor_mode_data buf;
+	struct atomisp_sensor_mode_data *buf = &info->data;
 	int vt_pix_clk_freq_mhz;
 	u16 data[OV9724_INTG_BUF_COUNT];
 
@@ -500,18 +500,51 @@ static int ov9724_get_intg_factor(struct i2c_client *client,
 	vt_pix_clk_freq_mhz = ext_clk_freq_hz*pll_multiplier/div;
 
 	dev->vt_pix_clk_freq_mhz = vt_pix_clk_freq_mhz;
-	buf.coarse_integration_time_min = coarse_integration_time_min;
-	buf.coarse_integration_time_max_margin
+	buf->coarse_integration_time_min = coarse_integration_time_min;
+	buf->coarse_integration_time_max_margin
 		= coarse_integration_time_max_margin;
-	buf.fine_integration_time_min = fine_integration_time_min;
-	buf.fine_integration_time_max_margin = fine_integration_time_max_margin;
-	buf.fine_integration_time_def = fine_integration_time_max_margin;
-	buf.vt_pix_clk_freq_mhz = vt_pix_clk_freq_mhz;
-	buf.line_length_pck = line_length_pck;
-	buf.frame_length_lines = frame_length_lines;
-	buf.read_mode = read_mode;
+	buf->fine_integration_time_min = fine_integration_time_min;
+	buf->fine_integration_time_max_margin =
+					fine_integration_time_max_margin;
+	buf->fine_integration_time_def = fine_integration_time_max_margin;
+	buf->vt_pix_clk_freq_mhz = vt_pix_clk_freq_mhz;
+	buf->line_length_pck = line_length_pck;
+	buf->frame_length_lines = frame_length_lines;
+	buf->read_mode = read_mode;
 
-	memcpy(&info->data, &buf, sizeof(buf));
+	buf->binning_factor_x = ov9724_res[dev->fmt_idx].bin_factor_x ? 2 : 1;
+	buf->binning_factor_y = ov9724_res[dev->fmt_idx].bin_factor_y ? 2 : 1;
+
+	/* Get the cropping and output resolution to ISP for this mode. */
+	ret =  ov9724_read_reg(client, 2, OV9724_HORIZONTAL_START_H, data);
+	if (ret)
+		return ret;
+	buf->crop_horizontal_start = data[0];
+
+	ret = ov9724_read_reg(client, 2, OV9724_VERTICAL_START_H, data);
+	if (ret)
+		return ret;
+	buf->crop_vertical_start = data[0];
+
+	ret = ov9724_read_reg(client, 2, OV9724_HORIZONTAL_END_H, data);
+	if (ret)
+		return ret;
+	buf->crop_horizontal_end = data[0];
+
+	ret = ov9724_read_reg(client, 2, OV9724_VERTICAL_END_H, data);
+	if (ret)
+		return ret;
+	buf->crop_vertical_end = data[0];
+
+	ret = ov9724_read_reg(client, 2, OV9724_HORIZONTAL_OUTPUT_SIZE_H, data);
+	if (ret)
+		return ret;
+	buf->output_width = data[0];
+
+	ret = ov9724_read_reg(client, 2, OV9724_VERTICAL_OUTPUT_SIZE_H, data);
+	if (ret)
+		return ret;
+	buf->output_height = data[0];
 
 	return 0;
 }

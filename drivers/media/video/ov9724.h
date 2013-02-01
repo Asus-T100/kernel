@@ -85,6 +85,13 @@
 #define OV9724_BIN_FACTOR_MAX			1
 #define OV9724_MCLK		192
 
+#define OV9724_HORIZONTAL_START_H 0x0344
+#define OV9724_VERTICAL_START_H 0x0346
+#define OV9724_HORIZONTAL_END_H 0x0348
+#define OV9724_VERTICAL_END_H 0x034a
+#define OV9724_HORIZONTAL_OUTPUT_SIZE_H 0x034c
+#define OV9724_VERTICAL_OUTPUT_SIZE_H 0x034e
+
 /*
  * focal length bits definition:
  * bits 31-16: numerator, bits 15-0: denominator
@@ -281,18 +288,6 @@ struct ov9724_device {
 	u8 res;
 	u8 type;
 	u8 sensor_revision;
-};
-
-struct sensor_mode_data {
-	u32 coarse_integration_time_min;
-	u32 coarse_integration_time_max_margin;
-	u32 fine_integration_time_min;
-	u32 fine_integration_time_max_margin;
-	u32 fine_integration_time_def;
-	u32 frame_length_lines;
-	u32 line_length_pck;
-	u32 read_mode;
-	int vt_pix_clk_freq_mhz;
 };
 
 struct ov9724_format_struct {
