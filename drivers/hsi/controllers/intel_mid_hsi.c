@@ -418,17 +418,20 @@ module_param(wakeup_packet_len, uint, 0644);
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #endif
 
-#define hsi_msg_complete(msg)                                \
-	do {                                                     \
-		if (!intel_hsi->packet_dumped) {                     \
-			intel_hsi->packet_dumped = 1;                    \
+#define hsi_msg_complete(msg)                                    \
+do {                                                         \
+	if (!intel_hsi->packet_dumped) {                         \
+		intel_hsi->packet_dumped = 1;                        \
+		/* Check the BREAK frame */                          \
+		if (msg->sgt.sgl) {                                  \
 			print_hex_dump(KERN_DEBUG,                       \
 				DRVNAME": WAKE", DUMP_PREFIX_ADDRESS,        \
 				32, 4, sg_virt(msg->sgt.sgl),                \
 				MIN(wakeup_packet_len, msg->actual_len), 1); \
-			}                                                \
-		msg->complete(msg);                                  \
-	} while (0)
+		}                                                    \
+	}                                                        \
+	msg->complete(msg);                                      \
+} while (0)
 #else
 #define hsi_msg_complete(msg) do { msg->complete(msg); } while (0)
 #endif
