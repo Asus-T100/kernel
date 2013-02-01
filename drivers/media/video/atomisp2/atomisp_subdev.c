@@ -249,12 +249,16 @@ static void isp_get_fmt_rect(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 
 static void isp_subdev_propagate(struct v4l2_subdev *sd,
 				 struct v4l2_subdev_fh *fh,
-				 uint32_t which, uint32_t pad, uint32_t target)
+				 uint32_t which, uint32_t pad, uint32_t target,
+				 uint32_t flags)
 {
 	struct v4l2_mbus_framefmt *ffmt[ATOMISP_SUBDEV_PADS_NUM];
 	struct v4l2_rect *crop[ATOMISP_SUBDEV_PADS_NUM],
 		*comp[ATOMISP_SUBDEV_PADS_NUM];
 	struct v4l2_rect r;
+
+	if (flags & V4L2_SEL_FLAG_KEEP_CONFIG)
+		return;
 
 	isp_get_fmt_rect(sd, fh, which, ffmt, crop, comp);
 
@@ -266,7 +270,8 @@ static void isp_subdev_propagate(struct v4l2_subdev *sd,
 		r.width = ffmt[pad]->width;
 		r.height = ffmt[pad]->height;
 
-		atomisp_subdev_set_selection(sd, fh, which, pad, target, &r);
+		atomisp_subdev_set_selection(
+			sd, fh, which, pad, target, flags, &r);
 		break;
 	}
 }
@@ -280,14 +285,14 @@ static int isp_subdev_get_selection(struct v4l2_subdev *sd,
 		return rval;
 
 	sel->r = *atomisp_subdev_get_rect(sd, fh, sel->which, sel->pad,
-					   sel->target);
+					  sel->target);
 
 	return 0;
 }
 
 int atomisp_subdev_set_selection(struct v4l2_subdev *sd,
 				 struct v4l2_subdev_fh *fh, uint32_t which,
-				 uint32_t pad, uint32_t target,
+				 uint32_t pad, uint32_t target, uint32_t flags,
 				 struct v4l2_rect *r)
 {
 	struct atomisp_sub_device *isp_sd = v4l2_get_subdevdata(sd);
@@ -363,7 +368,7 @@ static int isp_subdev_set_selection(struct v4l2_subdev *sd,
 		return rval;
 
 	return atomisp_subdev_set_selection(sd, fh, sel->which, sel->pad,
-					    sel->target, &sel->r);
+					    sel->target, sel->flags, &sel->r);
 }
 
 static int atomisp_get_sensor_bin_factor(struct atomisp_device *isp)
@@ -409,7 +414,7 @@ int atomisp_subdev_set_ffmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 		*__ffmt = *ffmt;
 
 		isp_subdev_propagate(sd, fh, which, pad,
-				     V4L2_SEL_TGT_CROP);
+				     V4L2_SEL_TGT_CROP, 0);
 
 		if (which == V4L2_SUBDEV_FORMAT_ACTIVE) {
 			sh_css_input_set_resolution(ffmt->width, ffmt->height);
