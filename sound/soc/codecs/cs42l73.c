@@ -29,7 +29,6 @@
 #include <sound/initval.h>
 #include <sound/tlv.h>
 #include <sound/jack.h>
-#include <asm/intel-mid.h>
 #include "cs42l73.h"
 
 /* spec mentions this delay=15msec.
@@ -1339,6 +1338,29 @@ static int cs42l73_set_mic_bias(struct snd_soc_codec *codec, int state)
 
 	return 0;
 }
+
+void cs42l73_mclk_switch(struct device *dev, bool mode)
+{
+	struct snd_soc_card *card = dev_get_drvdata(dev);
+	if (mode) {
+		pr_debug("%s: switch mclk to normal mode\n", __func__);
+		snd_soc_update_bits(card->rtd->codec, CS42L73_DMMCC,
+				MCLK_DIV_MASK, MCLK_DIV_3<<1);
+		snd_soc_update_bits(card->rtd->codec, CS42L73_TST2, 0xff, 0x00);
+		snd_soc_update_bits(card->rtd->codec, CS42L73_TST0, 0xff, 0x00);
+	} else {
+		pr_debug("%s: swith mclk to lowpower mode\n", __func__);
+
+		 /* set the test bit to keep the debounce time constant
+		  * regardless of the MCLK frequency */
+		snd_soc_update_bits(card->rtd->codec, CS42L73_TST0, 0xff, 0x99);
+		snd_soc_update_bits(card->rtd->codec, CS42L73_TST1, 0xff, 0x81);
+		snd_soc_update_bits(card->rtd->codec, CS42L73_TST2, 0xff, 0x01);
+		snd_soc_update_bits(card->rtd->codec, CS42L73_DMMCC,
+				MCLK_DIV_MASK, MCLK_DIV_2<<1);
+	}
+}
+EXPORT_SYMBOL_GPL(cs42l73_mclk_switch);
 
 int cs42l73_bp_detection(struct snd_soc_codec *codec,
 			   struct snd_soc_jack *jack,

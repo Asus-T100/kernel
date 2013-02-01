@@ -127,6 +127,11 @@
 #define CS42L73_MAX_REGISTER	0x61	/* Total Registers */
 /* Bitfield Definitions */
 
+/* Reserved Register not include in the Data sheet */
+#define CS42L73_TST0            0x00
+#define CS42L73_TST1            0x7E
+#define CS42L73_TST2            0x7F
+
 /* CS42L73_PWRCTL1 */
 #define PDN_ADCB		(1 << 7)
 #define PDN_DMICB		(1 << 6)
@@ -178,11 +183,16 @@
 /* CS42L73_xSPMMCC */
 #define MS_MASTER		(1 << 7)
 
-
 /* CS42L73_DMMCC */
 #define MCLKDIS			(1 << 0)
 #define MCLKSEL_MCLK2		(1 << 4)
 #define MCLKSEL_MCLK1		(0 << 4)
+#define MCLK_DIV_MASK	        (7 << 1)
+#define MCLK_DIV_1              0
+#define MCLK_DIV_2              2
+#define MCLK_DIV_3              3
+#define MCLK_DIV_4              4
+#define MCLK_DIV_6              5
 
 /* CS42L73 MCLK derived from MCLK1 or MCLK2 */
 #define CS42L73_CLKID_MCLK1     0
@@ -231,6 +241,7 @@ extern int cs42l73_bp_detection(struct snd_soc_codec *codec,
 extern int cs42l73_hp_detection(struct snd_soc_codec *codec,
 				  struct snd_soc_jack *jack, int plug_status);
 
+extern void cs42l73_mclk_switch(struct device *dev, bool mode);
 #ifdef CONFIG_ANDROID_SWITCH_MID
 extern void mid_headset_report(int state);
 #endif

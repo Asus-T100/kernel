@@ -107,14 +107,7 @@ int ctp_startup_asp(struct snd_pcm_substream *substream)
 				&constraints_48000);
 	return 0;
 }
-int ctp_startup_vsp(struct snd_pcm_substream *substream)
-{
-	pr_debug("%s - applying rate constraint\n", __func__);
-	snd_pcm_hw_constraint_list(substream->runtime, 0,
-				SNDRV_PCM_HW_PARAM_RATE,
-				&constraints_16000);
-	return 0;
-}
+
 int ctp_startup_bt_xsp(struct snd_pcm_substream *substream)
 {
 	pr_debug("%s - applying rate constraint\n", __func__);
@@ -397,6 +390,7 @@ int ctp_soc_jack_gpio_detect(void)
 	status = ctx->ops->hp_detection(codec, jack, enable);
 	set_mic_bias(jack, "MIC2 Bias", false);
 	if (!status) {
+		ctx->headset_plug_flag = false;
 		/* Jack removed, Disable BP interrupts if not done already */
 		set_bp_interrupt(ctx, false);
 	} else { /* If jack inserted, schedule delayed_wq */
@@ -442,6 +436,7 @@ void headset_status_verify(struct work_struct *work)
 		set_bp_interrupt(ctx, true);
 		/* Decrease the debounce time for HS removal detection */
 		gpio->debounce_time = JACK_DEBOUNCE_REMOVE;
+		ctx->headset_plug_flag = true;
 	} else {
 		set_mic_bias(jack, "MIC2 Bias", false);
 		/* Disable Button_press interrupt if no Headset */
@@ -510,14 +505,36 @@ int ctp_soc_jack_gpio_detect_bp(void)
 
 static int snd_ctp_prepare(struct device *dev)
 {
+	struct snd_soc_card *card = dev_get_drvdata(dev);
+	struct ctp_mc_private *ctx = snd_soc_card_get_drvdata(card);
 	pr_debug("In %s device name\n", __func__);
+
+	/* switch the mclk to the lowpower mode */
+	if (ctx->headset_plug_flag && !ctx->voice_call_flag) {
+		if (ctx->ops->mclk_switch) {
+			ctx->ops->mclk_switch(dev, false);
+			/* Decrease the OSC clk to 4.8Mhz when suspend */
+			intel_scu_ipc_osc_clk(OSC_CLK_AUDIO, 4800);
+		}
+	}
 	return snd_soc_suspend(dev);
 }
 static int snd_ctp_complete(struct device *dev)
 {
+	struct snd_soc_card *card = dev_get_drvdata(dev);
+	struct ctp_mc_private *ctx = snd_soc_card_get_drvdata(card);
 	pr_debug("In %s\n", __func__);
+	/* switch the mclk to the normal mode */
+	if (ctx->headset_plug_flag && !ctx->voice_call_flag) {
+		if (ctx->ops->mclk_switch) {
+			/* recovery the OSC clk to 19.2Mhz when resume */
+			intel_scu_ipc_osc_clk(OSC_CLK_AUDIO, 19200);
+			ctx->ops->mclk_switch(dev, true);
+		}
+	}
 	snd_soc_resume(dev);
 }
+
 static void snd_ctp_poweroff(struct device *dev)
 {
 	pr_debug("In %s\n", __func__);
@@ -632,6 +649,7 @@ static int snd_ctp_mc_probe(struct platform_device *pdev)
 		}
 		ctx->bpirq = ret_val;
 	}
+	ctx->voice_call_flag = false;
 	ctx->hs_gpio_ops = hs_gpio;
 	snd_soc_card_set_drvdata(&snd_soc_card_ctp, ctx);
 	ret_val = snd_soc_register_card(&snd_soc_card_ctp);

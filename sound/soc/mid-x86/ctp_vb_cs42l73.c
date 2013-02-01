@@ -49,6 +49,7 @@ struct snd_soc_machine_ops ctp_vb_ops = {
 	.dai_link = vb_dai_link,
 	.bp_detection = vb_bp_detection,
 	.hp_detection = vb_hp_detection,
+	.mclk_switch = vb_mclk_switch,
 };
 inline void *ctp_get_vb_ops(void)
 {
@@ -252,6 +253,21 @@ int ctp_vb_init(struct snd_soc_pcm_runtime *runtime)
 	return ret;
 }
 
+static int ctp_startup_vsp(struct snd_pcm_substream *substream)
+{
+	pr_debug("%s - applying rate constraint\n", __func__);
+	snd_pcm_hw_constraint_list(substream->runtime, 0,
+				SNDRV_PCM_HW_PARAM_RATE,
+				&constraints_16000);
+	ctp_config_voicecall_flag(substream, true);
+	return 0;
+}
+
+static void ctp_shutdown_vsp(struct snd_pcm_substream *substream)
+{
+	ctp_config_voicecall_flag(substream, false);
+}
+
 static struct snd_soc_ops ctp_vb_asp_ops = {
 	.startup = ctp_startup_asp,
 	.hw_params = ctp_vb_asp_hw_params,
@@ -264,6 +280,7 @@ static struct snd_soc_compr_ops ctp_vb_asp_compr_ops = {
 static struct snd_soc_ops ctp_vb_vsp_ops = {
 	.startup = ctp_startup_vsp,
 	.hw_params = ctp_vb_vsp_hw_params,
+	.shutdown = ctp_shutdown_vsp,
 };
 static struct snd_soc_ops ctp_vb_bt_xsp_ops = {
 	.startup = ctp_startup_bt_xsp,
@@ -344,6 +361,12 @@ int vb_bp_detection(struct snd_soc_codec *codec,
 {
 	return cs42l73_bp_detection(codec, jack, enable);
 }
+
+void vb_mclk_switch(struct device *dev, bool mode)
+{
+	cs42l73_mclk_switch(dev, mode);
+}
+
 int vb_dai_link(struct snd_soc_card *card)
 {
 	card->dai_link = ctp_vb_dailink;

@@ -50,6 +50,7 @@ struct snd_soc_machine_ops ctp_rhb_ops = {
 	.dai_link = ctp_dai_link,
 	.bp_detection = ctp_bp_detection,
 	.hp_detection = ctp_hp_detection,
+	.mclk_switch = ctp_mclk_switch,
 };
 inline void *ctp_get_rhb_ops(void)
 {
@@ -474,6 +475,17 @@ int ctp_init(struct snd_soc_pcm_runtime *runtime)
 	return ret;
 }
 
+static int ctp_startup_vsp(struct snd_pcm_substream *substream)
+{
+	ctp_config_voicecall_flag(substream, true);
+	return 0;
+}
+
+static void ctp_shutdown_vsp(struct snd_pcm_substream *substream)
+{
+	ctp_config_voicecall_flag(substream, false);
+}
+
 static struct snd_soc_ops ctp_asp_ops = {
 	.startup = ctp_startup_asp,
 	.hw_params = ctp_asp_hw_params,
@@ -484,7 +496,9 @@ static struct snd_soc_compr_ops ctp_asp_compr_ops = {
 };
 
 static struct snd_soc_ops ctp_vsp_ops = {
+	.startup = ctp_startup_vsp,
 	.hw_params = ctp_vsp_hw_params,
+	.shutdown = ctp_shutdown_vsp,
 };
 static struct snd_soc_ops ctp_comms_dai_link_ops = {
 	.startup = ctp_comms_dai_link_startup,
@@ -584,6 +598,12 @@ int ctp_bp_detection(struct snd_soc_codec *codec,
 {
 	return cs42l73_bp_detection(codec, jack, enable);
 }
+
+void ctp_mclk_switch(struct device *dev, bool mode)
+{
+	cs42l73_mclk_switch(dev, mode);
+}
+
 int ctp_dai_link(struct snd_soc_card *card)
 {
 	card->dai_link = ctp_rhb_dailink;
