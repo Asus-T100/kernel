@@ -1616,7 +1616,7 @@ static IMG_BOOL bIllegalFlipContexts(IMG_VOID *pvData)
 
 			/* OVERLAY A/C have same policy */
 			if (psOverlayContext->pipe == 0x00 &&
-				(psDevInfo->bScreenState || hdmi_state)) {
+				psDevInfo->bScreenState) {
 				psOverlayContext->index = INVALID_INDEX;
 			} else if (psOverlayContext->pipe == 0x80 &&
 					hdmi_state &&
