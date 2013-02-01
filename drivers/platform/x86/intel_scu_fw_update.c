@@ -538,7 +538,12 @@ static int intel_scu_ipc_medfw_upgrade(void)
 	mb();
 
 	/* Write cmd to trigger an interrupt to SCU for firmware update*/
-	intel_scu_ipc_send_command(IPC_CMD_FW_UPDATE_GO);
+	ret_val = rpmsg_send_simple_command(fw_update_instance,
+					    IPC_CMD_FW_UPDATE_GO, 0);
+	if (ret_val) {
+		dev_err(fui.dev, "IPC_CMD_FW_UPDATE_GO failed\n");
+		goto term;
+	}
 
 	mfld_fw_upd.wscu = !mfld_fw_upd.wscu;
 
