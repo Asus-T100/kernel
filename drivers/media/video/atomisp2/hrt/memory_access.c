@@ -200,14 +200,14 @@ return 0;
 hrt_vaddress mmgr_malloc(
 	const size_t			size)
 {
-return mmgr_alloc_attr(size, MMGR_ATTRIBUTE_DEFAULT);
+return mmgr_alloc_attr(size, MMGR_ATTRIBUTE_CACHED);
 }
 
 hrt_vaddress mmgr_calloc(
 	const size_t			N,
 	const size_t			size)
 {
-return mmgr_alloc_attr(N * size, MMGR_ATTRIBUTE_CLEARED);
+return mmgr_alloc_attr(N * size, MMGR_ATTRIBUTE_CLEARED|MMGR_ATTRIBUTE_CACHED);
 }
 
 hrt_vaddress mmgr_realloc(
@@ -260,7 +260,7 @@ assert((attribute & MMGR_ATTRIBUTE_UNUSED) == 0);
 				ptr = hrt_isp_css_mm_calloc_contiguous(
 						aligned_size + extra_space);
 			/* } */ else /* { */
-				ptr = hrt_isp_css_mm_calloc(
+				ptr = hrt_isp_css_mm_calloc_cached(
 						aligned_size + extra_space);
 			/* } */
 		} else { /* !MMGR_ATTRIBUTE_CACHED */
@@ -278,7 +278,7 @@ assert((attribute & MMGR_ATTRIBUTE_UNUSED) == 0);
 				ptr = hrt_isp_css_mm_alloc_contiguous(
 						aligned_size + extra_space);
 			/* } */ else /* { */
-				ptr = hrt_isp_css_mm_alloc(
+				ptr = hrt_isp_css_mm_alloc_cached(
 						aligned_size + extra_space);
 			/* } */
 		} else { /* !MMGR_ATTRIBUTE_CACHED */

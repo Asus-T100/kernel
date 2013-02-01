@@ -318,6 +318,8 @@ int hmm_store(void *virt, const void *data, unsigned int bytes)
 #endif
 		src += len;
 
+		clflush_cache_range(des, len);
+
 		if (in_atomic())
 			/*
 			 * Note: kunmap_atomic requires return addr from
@@ -371,6 +373,8 @@ int hmm_set(void *virt, int c, unsigned int bytes)
 		ptr += len;
 
 		memset(des, c, len);
+
+		clflush_cache_range(des, len);
 
 		kunmap(bo->pages[idx]);
 	}
