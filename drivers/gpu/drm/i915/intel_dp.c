@@ -2353,13 +2353,12 @@ intel_dp_detect(struct drm_connector *connector, bool force)
 		      intel_dp->dpcd[3], intel_dp->dpcd[4], intel_dp->dpcd[5],
 		      intel_dp->dpcd[6], intel_dp->dpcd[7]);
 
-#if 0
 	/* HOTPLUG Detect is not working in some of VLV A0
 	 * boards. For those boards enable this WA
 	 */
 	if (IS_VALLEYVIEW(connector->dev))
 		status = connector_status_connected;
-#endif
+
 	if (status != connector_status_connected)
 		return status;
 
@@ -2635,17 +2634,13 @@ intel_dp_init(struct drm_device *dev, int output_reg, enum port port)
 		if (intel_dpd_is_edp(dev))
 			intel_dp->is_pch_edp = true;
 
-	/* FIXME: Identify right edp port on Valleyview
-	 * In VLV X0 DP_C is reworked to support eDP. Revisit this during
-	 * VLV A0 timeframe
+	/* FIXME: Identify right eDP port on Valleyview
+	 * Currently eDP is connected to DP_C port.
 	 */
-#if 0
 	if (IS_VALLEYVIEW(dev) && output_reg == DP_C) {
 		type = DRM_MODE_CONNECTOR_eDP;
 		intel_encoder->type = INTEL_OUTPUT_EDP;
 	} else if (output_reg == DP_A || is_pch_edp(intel_dp)) {
-#endif
-	if (output_reg == DP_A || is_pch_edp(intel_dp)) {
 		type = DRM_MODE_CONNECTOR_eDP;
 		intel_encoder->type = INTEL_OUTPUT_EDP;
 	} else {
