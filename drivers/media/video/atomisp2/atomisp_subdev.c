@@ -186,6 +186,12 @@ static int isp_subdev_validate_rect(struct v4l2_subdev *sd, uint32_t pad,
 			return 0;
 		}
 		break;
+	default:
+		switch (target) {
+		case V4L2_SEL_TGT_COMPOSE:
+			return 0;
+		}
+		break;
 	}
 
 	return -EINVAL;
