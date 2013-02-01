@@ -3475,6 +3475,19 @@ static void i9xx_crtc_disable(struct drm_crtc *crtc)
 	intel_crtc->active = false;
 	intel_update_fbc(dev);
 	intel_update_watermarks(dev);
+
+	/*Reset lane for VLV platform*/
+	if (IS_VALLEYVIEW(dev)) {
+		if (intel_pipe_has_type(crtc, INTEL_OUTPUT_HDMI)) {
+			intel_dpio_write(dev_priv, 0x8200, 0x00000000);
+			intel_dpio_write(dev_priv, 0x8204, 0x00e00060);
+		}
+
+		if (pipe) {
+			I915_WRITE(0x2110, 0x00000000);
+			I915_WRITE(0x2110, 0x00000001);
+		}
+	}
 }
 
 static void i9xx_crtc_dpms(struct drm_crtc *crtc, int mode)
