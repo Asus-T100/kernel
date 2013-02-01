@@ -48,7 +48,7 @@ static ssize_t Factory_UMIP_show(struct device *dev,
 				struct device_attribute *attr, char *buffer)
 {
 	int ret;
-	u8 data_read;
+	u8 data_read = 0;
 
 	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_PENWELL) {
 		ret = intel_scu_ipc_read_mip(&data_read,
@@ -70,7 +70,7 @@ ssize_t Factory_UMIP_store(struct device *dev,
 					const char *buffer, size_t count)
 {
 	int ret = 0;
-	u8 data_write;
+	u8 data_write = 0;
 	u8 yes;
 	u8 no;
 	bool bv;
@@ -142,7 +142,7 @@ static ssize_t usb_host_enable_timeout_show(struct device *dev,
 				struct device_attribute *attr, char *buffer)
 {
 	int ret_ipc;
-	u8 data_read;
+	u8 data_read = 0;
 	int i = 0;
 	char timeout[MAX_USB_TIMEOUT_LEN];
 
