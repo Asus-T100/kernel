@@ -39,11 +39,17 @@
 #include "psb_intel_display.h"
 #include "psb_intel_reg.h"
 #include "psb_powermgmt.h"
-#include "mdfld_output.h"
 
 #include <asm/intel-mid.h>
 
-#define DRM_MODE_ENCODER_MIPI  5
+/*  enum mdfld_dsi_encoder_t is required by mdfld_output.h */
+
+typedef enum {
+	MDFLD_DSI_ENCODER_DBI = 0,
+	MDFLD_DSI_ENCODER_DPI,
+} mdfld_dsi_encoder_t;
+
+#include "mdfld_output.h"
 
 /*mdfld DSI controller registers*/
 #define MIPIA_DEVICE_READY_REG				0xb000
@@ -174,11 +180,6 @@ enum {
 	MDFLD_DSI_DATA_LANE_3_1 = 1,
 	MDFLD_DSI_DATA_LANE_2_2 = 2,
 };
-
-typedef enum {
-	MDFLD_DSI_ENCODER_DBI = 0,
-	MDFLD_DSI_ENCODER_DPI,
-} mdfld_dsi_encoder_t;
 
 enum {
 	RESET_FROM_BOOT_UP = 0,
@@ -536,5 +537,7 @@ extern int mdfld_dsi_get_panel_status(struct mdfld_dsi_config *dsi_config,
 extern int mdfld_dsi_get_power_mode(struct mdfld_dsi_config *dsi_config,
 		u8 *mode,
 		u8 transmission);
+
+extern mdfld_dsi_encoder_t is_panel_vid_or_cmd(struct drm_device *dev);
 
 #endif /*__MDFLD_DSI_OUTPUT_H__*/

@@ -37,6 +37,8 @@
 #error "SUPPORT_DRM must be set"
 #endif
 
+#define KEEP_UNUSED_CODE 0
+
 static DC_MRFLD_DEVICE *gpsDevice;
 
 #define	 DRVNAME "Merrifield-DRM"
@@ -81,6 +83,7 @@ static IMG_BOOL _Is_Valid_PixelFormat(IMG_PIXFMT ePixelFormat)
 	return IMG_FALSE;
 }
 
+#if KEEP_UNUSED_CODE
 /*
  * NOTE: only use the 1st plane now.
  */
@@ -104,6 +107,7 @@ static IMG_BOOL _Is_Valid_DC_Buffer(DC_BUFFER_IMPORT_INFO *psBufferInfo)
 
 	return IMG_TRUE;
 }
+#endif /* if KEEP_UNUSED_CODE */
 
 static void _Flip_To_Surface(DC_MRFLD_DEVICE *psDevice,
 				IMG_UINT32 ulSurfAddr,
@@ -931,7 +935,7 @@ static PVRSRV_ERROR _SystemBuffer_Init(DC_MRFLD_DEVICE *psDevice)
 	psDevice->psSystemBuffer->sCPUVAddr = psPSBFb->vram_addr;
 	psDevice->psSystemBuffer->sDevVAddr.uiAddr = 0;
 	psDevice->psSystemBuffer->ui32BufferSize = psPSBFb->size;
-	psDevice->psSystemBuffer->ui32ByteStride = psPSBFb->base.pitch;
+	psDevice->psSystemBuffer->ui32ByteStride = psPSBFb->base.pitches[0];
 	psDevice->psSystemBuffer->ui32Height = psPSBFb->base.height;
 	psDevice->psSystemBuffer->ui32Width = psPSBFb->base.width;
 	psDevice->psSystemBuffer->ui32OwnerTaskID = -1;

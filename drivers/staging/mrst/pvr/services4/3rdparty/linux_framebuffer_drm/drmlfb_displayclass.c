@@ -44,8 +44,6 @@
 
 #include "mdfld_dsi_dbi_dsr.h"
 
-#include <portdefs.h>
-
 #if !defined(SUPPORT_DRI_DRM)
 #error "SUPPORT_DRI_DRM must be set"
 #endif
@@ -2106,7 +2104,7 @@ static int MRSTLFBHandleChangeFB(struct drm_device* dev, struct psb_framebuffer 
 	dev_priv = (struct drm_psb_private *)dev->dev_private;
 	pg = dev_priv->pg;
 
-	psDevInfo->sDisplayDim.ui32ByteStride = psbfb->base.MEMBER_PITCH;
+	psDevInfo->sDisplayDim.ui32ByteStride = psbfb->base.pitches[0];
 	psDevInfo->sDisplayDim.ui32Width = psbfb->base.width;
 	psDevInfo->sDisplayDim.ui32Height = psbfb->base.height;
 
@@ -2158,7 +2156,7 @@ static int MRSTLFBHandleChangeFB(struct drm_device* dev, struct psb_framebuffer 
 		MRSTLFBFreeKernelMem( psDevInfo->sSystemBuffer.uSysAddr.psNonCont );
 
 
-	psDevInfo->sDisplayDim.ui32ByteStride = psbfb->base.MEMBER_PITCH;
+	psDevInfo->sDisplayDim.ui32ByteStride = psbfb->base.pitches[0];
 	psDevInfo->sDisplayDim.ui32Width = psbfb->base.width;
 	psDevInfo->sDisplayDim.ui32Height = psbfb->base.height;
 
@@ -2418,7 +2416,7 @@ static MRST_ERROR InitDev(MRSTLFB_DEVINFO *psDevInfo)
 
 	hdisplay = psDrmFB->width;
 	vdisplay = psDrmFB->height;
-	FBSize = psDrmFB->MEMBER_PITCH * psDrmFB->height;
+	FBSize = psDrmFB->pitches[0] * psDrmFB->height;
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,35))
 	psLINFBInfo = (struct fb_info*)psPsbFBDev->psb_fb_helper.fbdev;

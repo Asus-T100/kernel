@@ -42,7 +42,7 @@ static bool intel_dsi_dbi_esd_detection(struct mdfld_dsi_config *dsi_config)
 	PSB_DEBUG_ENTRY("esd\n");
 
 	ret = mdfld_dsi_get_power_mode(dsi_config,
-			&data,
+			(u8 *) &data,
 			MDFLD_DSI_HS_TRANSMISSION);
 
 	/**

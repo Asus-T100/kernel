@@ -43,7 +43,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "img_types.h"
 #include "pvrsrv_device.h"
-#include "sysinfo.h"
+#include "rgxsysinfo.h"
 #include "syscommon.h"
 #include "sysconfig.h"
 #include "emu.h"

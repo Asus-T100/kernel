@@ -47,7 +47,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "allocmem.h"
 #include "pvrsrv_device.h"
 #include "syscommon.h"
-#include "sysinfo.h"
+#include "rgxsysinfo.h"
 #include "sysconfig.h"
 #include "physheap.h"
 #include "pci_support.h"

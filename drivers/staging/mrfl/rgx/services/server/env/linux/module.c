@@ -118,7 +118,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "linkage.h"
 #include "power.h"
 #include "env_connection.h"
-#include "sysinfo.h"
+#include "rgxsysinfo.h"
 
 #if defined(SUPPORT_DRM)
 #include "pvr_drm.h"

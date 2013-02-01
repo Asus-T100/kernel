@@ -32,6 +32,8 @@
 #include "bufferclass_video.h"
 #include "bufferclass_interface.h"
 
+#define KEEP_UNUSED_CODE 0
+
 #define VBUFFERCLASS_DEVICE_NAME "Video Bufferclass Device"
 #define CBUFFERCLASS_DEVICE_NAME "Camera Bufferclass Device"
 
@@ -59,6 +61,7 @@ SetAnchorPtr(BC_VIDEO_DEVINFO * psDevInfo, int id)
 		gpcAnchor = (void *) psDevInfo;
 }
 
+#if KEEP_UNUSED_CODE
 static PVRSRV_ERROR
 OpenVBCDevice(IMG_UINT32 uDeviceID, IMG_HANDLE * phDevice)
 {
@@ -75,7 +78,9 @@ OpenVBCDevice(IMG_UINT32 uDeviceID, IMG_HANDLE * phDevice)
 
 	return (PVRSRV_OK);
 }
+#endif /* if KEEP_UNUSED_CODE */
 
+#if KEEP_UNUSED_CODE
 static PVRSRV_ERROR OpenCBCDevice(IMG_UINT32 uDeviceID, IMG_HANDLE *phDevice)
 {
 	BC_VIDEO_DEVINFO *psDevInfo;
@@ -87,7 +92,9 @@ static PVRSRV_ERROR OpenCBCDevice(IMG_UINT32 uDeviceID, IMG_HANDLE *phDevice)
 
 	return (PVRSRV_OK);
 }
+#endif /* if KEEP_UNUSED_CODE */
 
+#if KEEP_UNUSED_CODE
 static PVRSRV_ERROR
 CloseBCDevice(IMG_UINT32 uDeviceID, IMG_HANDLE hDevice)
 {
@@ -96,7 +103,9 @@ CloseBCDevice(IMG_UINT32 uDeviceID, IMG_HANDLE hDevice)
 
 	return (PVRSRV_OK);
 }
+#endif /* if KEEP_UNUSED_CODE */
 
+#if KEEP_UNUSED_CODE
 static PVRSRV_ERROR
 GetBCBuffer(IMG_HANDLE hDevice,
 	    IMG_UINT32 ui32BufferNumber,
@@ -118,7 +127,9 @@ GetBCBuffer(IMG_HANDLE hDevice,
 
 	return (PVRSRV_OK);
 }
+#endif /* if KEEP_UNUSED_CODE */
 
+#if KEEP_UNUSED_CODE
 static PVRSRV_ERROR
 GetBCInfo(IMG_HANDLE hDevice, BUFFER_INFO * psBCInfo)
 {
@@ -134,7 +145,9 @@ GetBCInfo(IMG_HANDLE hDevice, BUFFER_INFO * psBCInfo)
 
 	return (PVRSRV_OK);
 }
+#endif /* if KEEP_UNUSED_CODE */
 
+#if KEEP_UNUSED_CODE
 static PVRSRV_ERROR
 GetBCBufferAddr(IMG_HANDLE hDevice,
 		IMG_HANDLE hBuffer,
@@ -163,6 +176,7 @@ GetBCBufferAddr(IMG_HANDLE hDevice,
 
 	return (PVRSRV_OK);
 }
+#endif /* if KEEP_UNUSED_CODE */
 
 
 BCE_ERROR

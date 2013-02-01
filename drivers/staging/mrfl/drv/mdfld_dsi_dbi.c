@@ -424,12 +424,11 @@ power_on_err:
 static int __dbi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 			struct panel_funcs *p_funcs)
 {
-	u32 val = 0;
 	struct mdfld_dsi_hw_registers *regs;
 	struct mdfld_dsi_hw_context *ctx;
 	struct drm_psb_private *dev_priv;
 	struct drm_device *dev;
-	int retry, reset_count = 10;
+	int reset_count = 10;
 	int err = 0;
 	struct mdfld_dsi_pkg_sender *sender
 			= mdfld_dsi_get_pkg_sender(dsi_config);
@@ -569,13 +568,10 @@ power_off_err:
 static int __dbi_panel_power_off(struct mdfld_dsi_config *dsi_config,
 			struct panel_funcs *p_funcs)
 {
-	u32 val = 0;
 	struct mdfld_dsi_hw_registers *regs;
 	struct mdfld_dsi_hw_context *ctx;
 	struct drm_device *dev;
 	struct drm_psb_private *dev_priv;
-	int pipe0_enabled;
-	int pipe2_enabled;
 	int err = 0;
 
 	if (!dsi_config)

@@ -12,7 +12,7 @@
  * more details.
  *
  * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc., 
+ * this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
  *
  **************************************************************************/
@@ -43,8 +43,6 @@
 #include "mdfld_dsi_output.h"
 #include "mdfld_output.h"
 #include "mdfld_dsi_dbi_dsr.h"
-
-#include "portdefs.h"
 
 
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,35))
@@ -150,7 +148,7 @@ static int psbfb_setcolreg(unsigned regno, unsigned red, unsigned green,
 #else
 	struct psb_fbdev * fbdev = info->par;
 	struct drm_framebuffer *fb = fbdev->psb_fb_helper.fb;
-#endif	
+#endif
 	uint32_t v;
 
 	if (!fb)
@@ -393,10 +391,10 @@ static int psbfb_set_par(struct fb_info *info)
 	fb->width = var->xres;
 	fb->height = var->yres;
 	fb->bits_per_pixel = bpp;
-	fb->MEMBER_PITCH = pitch;
+	fb->pitches[0] = pitch;
 	fb->depth = depth;
 
-	info->fix.line_length = psbfb->base.MEMBER_PITCH;
+	info->fix.line_length = psbfb->base.pitches[0];
 	info->fix.visual =
 	    (psbfb->base.depth ==
 	     8) ? FB_VISUAL_PSEUDOCOLOR : FB_VISUAL_DIRECTCOLOR;
@@ -695,7 +693,7 @@ static int psbfb_vm_fault(struct vm_area_struct * vma, struct vm_fault * vmf)
 		address += PAGE_SIZE;
 		phys_addr += PAGE_SIZE;
 	}
-	
+
 	return VM_FAULT_NOPAGE;
 }
 
@@ -846,7 +844,7 @@ static struct drm_framebuffer *psb_user_framebuffer_create
 	struct drm_framebuffer *fb;
 	struct fb_info *info;
 	PVRSRV_KERNEL_MEM_INFO *psKernelMemInfo = IMG_NULL;
-	IMG_HANDLE hKernelMemInfo = (IMG_HANDLE)r->MEMBER_HANDLE;
+	IMG_HANDLE hKernelMemInfo = (IMG_HANDLE)r->handles[0];
 	struct drm_psb_private *dev_priv
 		= (struct drm_psb_private *) dev->dev_private;
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,35))
@@ -871,7 +869,7 @@ static struct drm_framebuffer *psb_user_framebuffer_create
 
 	/* JB: TODO not drop, make smarter */
 	size = psKernelMemInfo->uAllocSize;
-	if (size < r->height * r->MEMBER_PITCH)
+	if (size < r->height * r->pitches[0])
 		return ERR_PTR(-ENOMEM);
 
 	/* JB: TODO not drop, refcount buffer */
@@ -929,7 +927,7 @@ static struct drm_framebuffer *psb_user_framebuffer_create
 	info->fix.ywrapstep = 0;
 	info->fix.accel = FB_ACCEL_I830;
 	info->fix.type_aux = 0;
-	info->fix.line_length = fb->MEMBER_PITCH;
+	info->fix.line_length = fb->pitches[0];
 
 	/* it is called for kms flip, the back buffer has been rendered,
 	 * then we should not clear it*/
@@ -954,7 +952,7 @@ static struct drm_framebuffer *psb_user_framebuffer_create
 
 	fill_fb_bitfield(&info->var, fb->depth);
 # else	/*KERNEL_VERSION > 2.6.35*/
-	drm_fb_helper_fill_fix(info, fb->MEMBER_PITCH, fb->depth);
+	drm_fb_helper_fill_fix(info, fb->pitches[0], fb->depth);
 	drm_fb_helper_fill_var(info, &fbdev->psb_fb_helper, fb->width, fb->height);
 #endif
 
@@ -1015,20 +1013,21 @@ static int psbfb_create(struct psb_fbdev * fbdev, struct drm_fb_helper_surface_s
 
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(3,3,0))
 	mode_cmd.bpp = 32;
-        mode_cmd.MEMBER_PITCH =  ALIGN(mode_cmd.width * ((mode_cmd.bpp + 1) / 8), 64);
+	mode_cmd.pitches[0] = ALIGN(mode_cmd.width *
+		((mode_cmd.bpp + 1) / 8), 64);
         mode_cmd.depth = 24;
 #else
 	/*  Note: sizes->surface_width == 800 and fixed_mode->hdisplay == 800,
 	    but mode_cmd.width may be 600. */
 
-	mode_cmd.MEMBER_PITCH = mode_cmd.width * (sizes->surface_bpp >> 3);
-	mode_cmd.MEMBER_PITCH = roundup(mode_cmd.MEMBER_PITCH, 64);
+	mode_cmd.pitches[0] = mode_cmd.width * (sizes->surface_bpp >> 3);
+	mode_cmd.pitches[0] = ALIGN(mode_cmd.pitches[0], 64);
 
 	mode_cmd.pixel_format = drm_mode_legacy_fb_format(sizes->surface_bpp,
 		sizes->surface_depth);
 #endif
 
-	size = mode_cmd.MEMBER_PITCH * mode_cmd.height;
+	size = mode_cmd.pitches[0] * mode_cmd.height;
 	aligned_size = roundup(size, PAGE_SIZE);
 
 	mutex_lock(&dev->struct_mutex);
@@ -1070,7 +1069,7 @@ static int psbfb_create(struct psb_fbdev * fbdev, struct drm_fb_helper_surface_s
 	info->screen_size = size;
 	/* memset(info->screen_base, 0, size); */
 
-	drm_fb_helper_fill_fix(info, fb->MEMBER_PITCH, fb->depth);
+	drm_fb_helper_fill_fix(info, fb->pitches[0], fb->depth);
 
 	if (get_panel_type(dev, 0) == TMD_6X10_VID)
 		drm_fb_helper_fill_var(info, &fbdev->psb_fb_helper, fb->width, fb->height);
@@ -1087,9 +1086,10 @@ static int psbfb_create(struct psb_fbdev * fbdev, struct drm_fb_helper_surface_s
 	info->pixmap.scan_align = 1;
 
 	DRM_DEBUG("fb depth is %d\n", fb->depth);
-	DRM_DEBUG("   pitch is %d\n", fb->MEMBER_PITCH);
+	DRM_DEBUG("   pitch is %d\n", fb->pitches[0]);
 
-	printk(KERN_INFO"allocated %dx%d fb\n", psbfb->base.width, psbfb->base.height);	
+	printk(KERN_INFO"allocated %dx%d fb\n",
+		psbfb->base.width, psbfb->base.height);
 
 	mutex_unlock(&dev->struct_mutex);
 
@@ -1152,17 +1152,17 @@ int psb_fbdev_destroy(struct drm_device * dev, struct psb_fbdev * fbdev)
 	drm_fb_helper_fini(&fbdev->psb_fb_helper);
 
 	drm_framebuffer_cleanup(&psbfb->base);
-	
+
 	return 0;
 }
 
-int psb_fbdev_init(struct drm_device * dev) 
+int psb_fbdev_init(struct drm_device *dev)
 {
-	struct psb_fbdev * fbdev;
-	struct drm_psb_private * dev_priv = 
+	struct psb_fbdev *fbdev;
+	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *)dev->dev_private;
 	int num_crtc;
-	
+
 	fbdev = kzalloc(sizeof(struct psb_fbdev), GFP_KERNEL);
 	if(!fbdev) {
 		DRM_ERROR("no memory\n");
@@ -1181,9 +1181,9 @@ int psb_fbdev_init(struct drm_device * dev)
 	return 0;
 }
 
-void psb_fbdev_fini(struct drm_device * dev)
+void psb_fbdev_fini(struct drm_device *dev)
 {
-	struct drm_psb_private * dev_priv = 
+	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *)dev->dev_private;
 
 	if(!dev_priv->fbdev) {
@@ -1683,7 +1683,7 @@ static int psb_bo_pin_for_scanout(struct drm_device *dev, void *bo)
 	 return 0;
 }
 
-static int psb_bo_unpin_for_scanout(struct drm_device *dev, void *bo) 
+static int psb_bo_unpin_for_scanout(struct drm_device *dev, void *bo)
 {
 	return 0;
 }
@@ -1735,7 +1735,7 @@ void psb_modeset_cleanup(struct drm_device *dev)
 
 	drm_kms_helper_poll_fini(dev);
 	psb_fbdev_fini(dev);
-	
+
 	drm_mode_config_cleanup(dev);
 
 	mutex_unlock(&dev->struct_mutex);

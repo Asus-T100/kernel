@@ -30,6 +30,9 @@
 #include "displayclass_interface.h"
 #include "mdfld_dsi_output.h"
 
+#define KEEP_UNUSED_CODE 0
+
+#if KEEP_UNUSED_CODE
 static int FindCurPipe(struct drm_device *dev)
 {
 	struct drm_crtc *crtc;
@@ -44,6 +47,7 @@ static int FindCurPipe(struct drm_device *dev)
 
 	return 0;
 }
+#endif /* if KEEP_UNUSED_CODE */
 
 static void DCWriteReg(struct drm_device *dev, unsigned long ulOffset,
 		       unsigned long ulValue)
@@ -119,7 +123,6 @@ void DCCBFlipToSurface(struct drm_device *dev, unsigned long uiAddr,
 {
 	struct drm_psb_private *dev_priv =
 	    (struct drm_psb_private *)dev->dev_private;
-	u32 dspbase = (dev_priv->cur_pipe == 0 ? DSPABASE : DSPBBASE);
 	u32 dspsurf = (dev_priv->cur_pipe == 0 ? DSPASURF : DSPBSURF);
 	u32 dspcntr;
 	u32 dspstride;
@@ -127,7 +130,7 @@ void DCCBFlipToSurface(struct drm_device *dev, unsigned long uiAddr,
 	struct mdfld_dsi_config *dsi_config;
 	struct mdfld_dsi_hw_context *dsi_ctx;
 
-	DRM_DEBUG("%s %s %d, uiAddr = 0x%x\n", __FILE__, __func__,
+	DRM_DEBUG("%s %s %d, uiAddr = 0x%lx\n", __FILE__, __func__,
 			  __LINE__, uiAddr);
 
 	if (!dev_priv->um_start) {
@@ -152,6 +155,8 @@ void DCCBFlipToSurface(struct drm_device *dev, unsigned long uiAddr,
 		dsi_config = dev_priv->dsi_configs[0];
 	else if (pipeflag == 2)
 		dsi_config = dev_priv->dsi_configs[1];
+	else
+		dsi_config = NULL;
 
 	if (dsi_config) {
 		dsi_ctx = &dsi_config->dsi_hw_context;

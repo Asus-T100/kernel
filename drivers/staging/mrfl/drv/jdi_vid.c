@@ -24,6 +24,8 @@
  * Austin Hu <austin.hu@intel.com>
  */
 
+#include <asm/intel_scu_pmic.h>
+
 #include "displays/jdi_vid.h"
 
 static u8 jdi_set_address_mode[] = {0x36, 0xc0, 0x00, 0x00};

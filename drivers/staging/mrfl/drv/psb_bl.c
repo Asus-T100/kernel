@@ -48,7 +48,6 @@
 
 int psb_brightness;
 static struct backlight_device *psb_backlight_device;
-static u8 blc_brightnesscmd;
 u8 blc_pol;
 u8 blc_type;
 
@@ -61,8 +60,6 @@ int psb_set_brightness(struct backlight_device *bd)
 	struct drm_psb_private *dev_priv =
 	    (struct drm_psb_private *)dev->dev_private;
 	int level;
-	u32 blc_pwm_ctl;
-	u32 max_pwm_blc;
 
 	if (bd != NULL)
 		level = bd->props.brightness;
@@ -136,12 +133,6 @@ const struct backlight_ops psb_ops = {
 
 static int device_backlight_init(struct drm_device *dev)
 {
-	unsigned long CoreClock;
-	/* u32 bl_max_freq; */
-	/* unsigned long value; */
-	u16 bl_max_freq;
-	uint32_t value;
-	uint32_t blc_pwm_precision_factor;
 	struct drm_psb_private *dev_priv =
 	    (struct drm_psb_private *)dev->dev_private;
 

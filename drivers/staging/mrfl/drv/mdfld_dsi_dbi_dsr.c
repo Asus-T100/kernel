@@ -44,7 +44,6 @@ static int exit_dsr_locked(struct mdfld_dsi_config *dsi_config)
 
 static int enter_dsr_locked(struct mdfld_dsi_config *dsi_config, int level)
 {
-	u32 val = 0;
 	struct mdfld_dsi_hw_registers *regs;
 	struct mdfld_dsi_hw_context *ctx;
 	struct drm_psb_private *dev_priv;
@@ -52,8 +51,6 @@ static int enter_dsr_locked(struct mdfld_dsi_config *dsi_config, int level)
 	struct mdfld_dsi_pkg_sender *sender;
 	int err;
 	pm_message_t state;
-	int pipe0_enabled;
-	int pipe2_enabled;
 
 	PSB_DEBUG_ENTRY("mdfld_dsi_dsr: enter dsr\n");
 

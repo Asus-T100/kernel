@@ -299,7 +299,7 @@ static struct fb_ops psbfb_ops = {
 };
 
 static struct drm_framebuffer *psb_framebuffer_create(struct drm_device *dev,
-	struct drm_mode_fb_cmd *r)
+	struct drm_mode_fb_cmd2 *r)
 {
 	struct psb_framebuffer *fb;
 	int ret;
@@ -324,7 +324,7 @@ static struct drm_framebuffer *psb_framebuffer_create(struct drm_device *dev,
 
 static struct drm_framebuffer *psb_user_framebuffer_create(
 	struct drm_device *dev, struct drm_file *filp,
-	struct drm_mode_fb_cmd *r)
+	struct drm_mode_fb_cmd2 *r)
 {
 	struct psb_framebuffer *psbfb;
 	struct drm_framebuffer *fb;
@@ -333,12 +333,10 @@ static struct drm_framebuffer *psb_user_framebuffer_create(
 	    = (struct drm_psb_private *)dev->dev_private;
 	struct psb_fbdev *fbdev = dev_priv->fbdev;
 	struct psb_gtt *pg = dev_priv->pg;
-	int ret;
-	uint32_t offset;
 	uint64_t size;
 
-	size = r->height * r->pitch;
-	if (size < r->height * r->pitch)
+	size = r->height * r->pitches[0];
+	if (size < r->height * r->pitches[0])
 		return ERR_PTR(-ENOMEM);
 
 	/* JB: TODO not drop, refcount buffer */
@@ -376,7 +374,7 @@ static struct drm_framebuffer *psb_user_framebuffer_create(
 
 	info->screen_size = size;
 
-	drm_fb_helper_fill_fix(info, fb->pitch, fb->depth);
+	drm_fb_helper_fill_fix(info, fb->pitches[0], fb->depth);
 	drm_fb_helper_fill_var(info, &fbdev->psb_fb_helper, fb->width,
 			       fb->height);
 
@@ -410,7 +408,7 @@ static int psbfb_create(struct psb_fbdev *fbdev,
 	struct fb_info *info;
 	struct drm_framebuffer *fb;
 	struct psb_framebuffer *psbfb;
-	struct drm_mode_fb_cmd mode_cmd;
+	struct drm_mode_fb_cmd2 mode_cmd;
 	struct device *device = &dev->pdev->dev;
 	int size;
 	int ret;
@@ -425,19 +423,21 @@ static int psbfb_create(struct psb_fbdev *fbdev,
 	else
 		mode_cmd.width = sizes->surface_width;
 	mode_cmd.height = sizes->surface_height;
-
-	mode_cmd.bpp = 32;
 #else
 	mode_cmd.width = 720;
 	mode_cmd.height = 1280;
-	mode_cmd.bpp = 32;
 #endif
 
-	/*HW requires pitch to be 64 byte aligned*/
-	mode_cmd.pitch = ALIGN(mode_cmd.width * ((mode_cmd.bpp + 1) / 8), 64);
-	mode_cmd.depth = 24;
+	mode_cmd.pitches[0] = mode_cmd.width * (sizes->surface_bpp >> 3);
 
-	size = ALIGN(mode_cmd.pitch * mode_cmd.height, PAGE_SIZE);
+	/* HW requires pitch to be 64 byte aligned. */
+	mode_cmd.pitches[0] = ALIGN(mode_cmd.pitches[0], 64);
+
+	mode_cmd.pixel_format = drm_mode_legacy_fb_format(sizes->surface_bpp,
+		sizes->surface_depth);
+
+	size = mode_cmd.pitches[0] * mode_cmd.height;
+	size = ALIGN(size, PAGE_SIZE);
 
 	mutex_lock(&dev->struct_mutex);
 
@@ -482,7 +482,7 @@ static int psbfb_create(struct psb_fbdev *fbdev,
 	info->screen_size = size;
 	memset(info->screen_base, 0, size);
 
-	drm_fb_helper_fill_fix(info, fb->pitch, fb->depth);
+	drm_fb_helper_fill_fix(info, fb->pitches[0], fb->depth);
 
 	if (get_panel_type(dev, 0) == TMD_6X10_VID)
 		drm_fb_helper_fill_var(info, &fbdev->psb_fb_helper,
@@ -508,7 +508,7 @@ static int psbfb_create(struct psb_fbdev *fbdev,
 #endif
 
 	DRM_DEBUG("fb depth is %d\n", fb->depth);
-	DRM_DEBUG("   pitch is %d\n", fb->pitch);
+	DRM_DEBUG("   pitch is %d\n", fb->pitches[0]);
 
 	printk(KERN_INFO "allocated %dx%d fb\n", psbfb->base.width,
 	       psbfb->base.height);
@@ -707,8 +707,6 @@ static int psb_create_backlight_property(struct drm_device *dev)
 
 static void psb_setup_outputs(struct drm_device *dev)
 {
-	struct drm_psb_private *dev_priv =
-	    (struct drm_psb_private *)dev->dev_private;
 	struct drm_connector *connector;
 
 	PSB_DEBUG_ENTRY("\n");

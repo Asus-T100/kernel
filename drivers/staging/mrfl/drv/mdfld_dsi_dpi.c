@@ -34,6 +34,8 @@
 
 #include "mrfld_clock.h"
 
+#define KEEP_UNUSED_CODE 0
+
 static
 u16 mdfld_dsi_dpi_to_byte_clock_count(int pixel_clock_count,
 		int num_lane, int bpp)
@@ -232,7 +234,7 @@ reset_recovery:
 
 	guit_val = intel_mid_msgbus_read32(CCK_PORT, DSI_PLL_CTRL_REG);
 	intel_mid_msgbus_write32(CCK_PORT, DSI_PLL_CTRL_REG,
-			(guit_val & ~_P1_POST_DIV_MASK |
+			((guit_val & ~_P1_POST_DIV_MASK) |
 			 (ctx->dpll & _P1_POST_DIV_MASK)));
 
 	ctx->dpll |= DPLL_VCO_ENABLE;
@@ -403,7 +405,6 @@ static int __dpi_panel_power_off(struct mdfld_dsi_config *dsi_config,
 	int i;
 	int err = 0;
 	u32 guit_val = 0;
-	dev_priv = dev->dev_private;
 
 	PSB_DEBUG_ENTRY("\n");
 
@@ -413,6 +414,7 @@ static int __dpi_panel_power_off(struct mdfld_dsi_config *dsi_config,
 	regs = &dsi_config->regs;
 	ctx = &dsi_config->dsi_hw_context;
 	dev = dsi_config->dev;
+	dev_priv = dev->dev_private;
 
 	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
 				OSPM_UHB_FORCE_POWER_ON))
@@ -498,6 +500,7 @@ power_off_err:
 	return err;
 }
 
+#if KEEP_UNUSED_CODE
 /**
  * Send TURN_ON package to dpi panel to turn it on
  */
@@ -521,7 +524,9 @@ static int mdfld_dsi_dpi_panel_turn_on(struct mdfld_dsi_config *dsi_config,
 
 	return err;
 }
+#endif /* if KEEP_UNUSED_CODE */
 
+#if KEEP_UNUSED_CODE
 /**
  * Send SHUT_DOWN package to dpi panel to turn if off
  */
@@ -546,6 +551,7 @@ static int mdfld_dsi_dpi_panel_shut_down(struct mdfld_dsi_config *dsi_config,
 
 	return err;
 }
+#endif /* if KEEP_UNUSED_CODE */
 
 /**
  * Setup Display Controller to turn on/off a video mode panel.

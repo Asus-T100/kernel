@@ -205,8 +205,6 @@ static IMG_VOID SysCpuPAddrToDevPAddr(IMG_HANDLE hPrivData,
 										IMG_DEV_PHYADDR *psDevPAddr,
 										IMG_CPU_PHYADDR *psCpuPAddr)
 {
-	PLAT_DATA *psPlatData = (PLAT_DATA *) hPrivData;
-
 	psDevPAddr->uiAddr = psCpuPAddr->uiAddr;
 }
 
@@ -214,8 +212,6 @@ static IMG_VOID SysDevPAddrToCpuPAddr(IMG_HANDLE hPrivData,
 										IMG_CPU_PHYADDR *psCpuPAddr,
 										IMG_DEV_PHYADDR *psDevPAddr)
 {
-	PLAT_DATA *psPlatData = (PLAT_DATA *) hPrivData;
-
 	psCpuPAddr->uiAddr = psDevPAddr->uiAddr;
 }
 

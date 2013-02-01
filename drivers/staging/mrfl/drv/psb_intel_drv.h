@@ -26,6 +26,8 @@
 #include <drm/drm_crtc_helper.h>
 #include <linux/gpio.h>
 
+#define KEEP_UNUSED_CODE_S3D 0
+
 /* Switch - don't change before PO */
 #define MDFLD_GET_SYNC_BURST 0	/* Consider BURST_MODE when calcaulation H/V sync counts */
 /* MDFLD FEATURE SWITCHES*/
@@ -111,6 +113,7 @@ enum s3d_structure {
 #define S3D_STATE_ENALBLED	(1 << 0)
 #define S3D_L_FRAME_ONLY	(1 << 1)
 
+#if KEEP_UNUSED_CODE_S3D
 struct mrfld_s3d_flip {
 	unsigned long uiAddr_l;
 	unsigned long uiAddr_r;
@@ -119,6 +122,7 @@ struct mrfld_s3d_flip {
 	unsigned long pitch_r;
 	unsigned long s3d_state;
 };
+#endif /* if KEEP_UNUSED_CODE_S3D */
 
 enum mipi_panel_type {
 	NSC_800X480 = 1,
@@ -268,7 +272,7 @@ extern struct drm_crtc *psb_intel_get_crtc_from_pipe(struct drm_device *dev,
 						     int pipe);
 extern struct drm_framebuffer *psb_intel_framebuffer_create(struct drm_device
 							    *dev, struct
-							    drm_mode_fb_cmd
+							    drm_mode_fb_cmd2
 							    *mode_cmd,
 							    void *mm_private);
 extern void mdfld_disable_crtc(struct drm_device *dev, int pipe);
@@ -287,6 +291,8 @@ extern uint8_t blc_pol;
 extern uint8_t blc_freq;
 
 extern void mrfld_setup_pll(struct drm_device *dev, int pipe, int clk);
+
+#if KEEP_UNUSED_CODE_S3D
 extern int mrfld_s3d_flip_surf_addr(struct drm_device *dev, int pipe, struct
 				    mrfld_s3d_flip *ps3d_flip);
 extern int mrfld_s3d_to_line_interleave_half(struct drm_device *dev, int pipe, struct
@@ -325,5 +331,6 @@ extern int mrfld_s3d_to_pixel_interleaving_half(struct drm_device *dev,
 extern int mrfld_s3d_from_pixel_interleaving_half(struct drm_device *dev,
 						  int pipe, struct
 						  mrfld_s3d_flip *ps3d_flip);
+#endif /* if KEEP_UNUSED_CODE_S3D */
 
 #endif				/* __INTEL_DRV_H__ */

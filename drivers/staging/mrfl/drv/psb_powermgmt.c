@@ -31,6 +31,7 @@
 #include <linux/mutex.h>
 #include <asm/intel-mid.h>
 #include <asm/intel_scu_ipc.h>
+#include <asm/intel_scu_pmic.h>
 
 #ifdef CONFIG_GFX_RTPM
 #include <linux/pm_runtime.h>
@@ -91,7 +92,6 @@ static int ospm_runtime_pm_topaz_suspend(struct drm_device *dev)
 {
 	int ret = 0;
 	struct drm_psb_private *dev_priv = dev->dev_private;
-	/* struct topaz_private *topaz_priv = dev_priv->topaz_private; */
 	struct pnw_topaz_private *pnw_topaz_priv = dev_priv->topaz_private;
 	struct psb_video_ctx *pos, *n;
 	int encode_ctx = 0, encode_running = 0;
@@ -156,7 +156,6 @@ static int ospm_runtime_pm_msvdx_resume(struct drm_device *dev)
 static int ospm_runtime_pm_topaz_resume(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
-	struct topaz_private *topaz_priv = dev_priv->topaz_private;
 	struct pnw_topaz_private *pnw_topaz_priv = dev_priv->topaz_private;
 	struct psb_video_ctx *pos, *n;
 	int encode_ctx = 0, encode_running = 0;
@@ -1527,7 +1526,7 @@ void ospm_power_island_up(int hw_islands)
 #endif
 	if (hw_islands & OSPM_DISPLAY_ISLAND) {
 
-#ifdef CONFIG_MDFD_HDMI
+#ifdef CONFIG_SUPPORT_HDMI
 		/* Always turn on MSIC VCC330 and VHDMI when display is on. */
 		intel_scu_ipc_iowrite8(MSIC_VCC330CNT, VCC330_ON);
 		/* MSIC documentation requires that there be a 500us delay
@@ -1941,7 +1940,7 @@ void ospm_power_island_down(int hw_islands)
 		if (pmu_nc_set_power_state(dc_islands,
 					   OSPM_ISLAND_DOWN, OSPM_REG_TYPE))
 			BUG();
-#ifdef CONFIG_MDFD_HDMI
+#ifdef CONFIG_SUPPORT_HDMI
 		/* Turn off MSIC VCC330 and VHDMI if HDMI is disconnected. */
 		if (!hdmi_state) {
 			/* turn off HDMI power rails */
@@ -2399,6 +2398,7 @@ int ospm_runtime_pm_allow(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
 	bool panel_on, panel_on2;
+	mdfld_dsi_encoder_t encoder_type;
 
 	PSB_DEBUG_ENTRY("%s\n", __func__);
 
@@ -2408,7 +2408,8 @@ int ospm_runtime_pm_allow(struct drm_device *dev)
 	if (dev_priv->rpm_enabled)
 		return 0;
 
-	if (is_panel_vid_or_cmd(dev)) {
+	encoder_type = is_panel_vid_or_cmd(dev);
+	if (encoder_type != MDFLD_DSI_ENCODER_DBI) {
 		/*DPI panel */
 		panel_on = dev_priv->dpi_panel_on;
 		panel_on2 = dev_priv->dpi_panel_on2;

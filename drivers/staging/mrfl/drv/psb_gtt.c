@@ -462,7 +462,7 @@ int psb_gtt_init(struct psb_gtt *pg, int resume)
  *
  *  williamx.f.schmidt@intel.com
  */
-static int psb_gtt_insert_pfn_list(struct psb_gtt *pg, u32 * pfn_list,
+static int psb_gtt_insert_pfn_list(struct psb_gtt *pg, unsigned long * pfn_list,
 				   unsigned offset_pages, unsigned num_pages,
 				   unsigned desired_tile_stride,
 				   unsigned hw_tile_stride, int type)
@@ -675,7 +675,7 @@ static int psb_gtt_mm_get_ht_by_pid_locked(struct psb_gtt_mm *mm,
 
 	ret = drm_ht_find_item(&mm->hash, tgid, &entry);
 	if (ret) {
-		DRM_DEBUG("Cannot find entry pid=%ld\n", tgid);
+		DRM_DEBUG("Cannot find entry pid=%d\n", tgid);
 		return ret;
 	}
 
@@ -736,7 +736,7 @@ static int psb_gtt_mm_alloc_insert_ht(struct psb_gtt_mm *mm,
 	spin_lock(&mm->lock);
 	ret = psb_gtt_mm_get_ht_by_pid_locked(mm, tgid, &hentry);
 	if (!ret) {
-		DRM_DEBUG("Entry for tgid %ld exist, hentry %p\n",
+		DRM_DEBUG("Entry for tgid %d exist, hentry %p\n",
 			  tgid, hentry);
 		*entry = hentry;
 		spin_unlock(&mm->lock);
@@ -744,7 +744,7 @@ static int psb_gtt_mm_alloc_insert_ht(struct psb_gtt_mm *mm,
 	}
 	spin_unlock(&mm->lock);
 
-	DRM_DEBUG("Entry for tgid %ld doesn't exist, will create it\n", tgid);
+	DRM_DEBUG("Entry for tgid %d doesn't exist, will create it\n", tgid);
 
 	hentry = kzalloc(sizeof(struct psb_gtt_hash_entry), GFP_KERNEL);
 	if (!hentry) {
@@ -776,7 +776,7 @@ static struct psb_gtt_hash_entry *psb_gtt_mm_remove_ht_locked(struct psb_gtt_mm
 
 	ret = psb_gtt_mm_get_ht_by_pid_locked(mm, tgid, &tmp);
 	if (ret) {
-		DRM_DEBUG("Cannot find entry pid %ld\n", tgid);
+		DRM_DEBUG("Cannot find entry pid %d\n", tgid);
 		return NULL;
 	}
 
@@ -817,7 +817,7 @@ psb_gtt_mm_get_mem_mapping_locked(struct drm_open_hash *ht,
 
 	ret = drm_ht_find_item(ht, key, &entry);
 	if (ret) {
-		DRM_DEBUG("Cannot find key %ld\n", key);
+		DRM_DEBUG("Cannot find key %d\n", key);
 		return ret;
 	}
 
@@ -880,7 +880,7 @@ psb_gtt_mm_alloc_insert_mem_mapping(struct psb_gtt_mm *mm,
 	spin_lock(&mm->lock);
 	ret = psb_gtt_mm_get_mem_mapping_locked(ht, key, &mapping);
 	if (!ret) {
-		DRM_DEBUG("mapping entry for key %ld exists, entry %p\n",
+		DRM_DEBUG("mapping entry for key %d exists, entry %p\n",
 			  key, mapping);
 		*entry = mapping;
 		spin_unlock(&mm->lock);
@@ -888,7 +888,7 @@ psb_gtt_mm_alloc_insert_mem_mapping(struct psb_gtt_mm *mm,
 	}
 	spin_unlock(&mm->lock);
 
-	DRM_DEBUG("Mapping entry for key %ld doesn't exist, will create it\n",
+	DRM_DEBUG("Mapping entry for key %d doesn't exist, will create it\n",
 		  key);
 
 	mapping = kzalloc(sizeof(struct psb_gtt_mem_mapping), GFP_KERNEL);
@@ -920,7 +920,7 @@ static struct psb_gtt_mem_mapping *psb_gtt_mm_remove_mem_mapping_locked(struct
 
 	ret = psb_gtt_mm_get_mem_mapping_locked(ht, key, &tmp);
 	if (ret) {
-		DRM_DEBUG("Cannot find key %ld\n", key);
+		DRM_DEBUG("Cannot find key %d\n", key);
 		return NULL;
 	}
 
@@ -990,7 +990,7 @@ static int psb_gtt_remove_node(struct psb_gtt_mm *mm,
 	spin_lock(&mm->lock);
 	ret = psb_gtt_mm_get_ht_by_pid_locked(mm, tgid, &hentry);
 	if (ret) {
-		DRM_DEBUG("Cannot find entry for pid %ld\n", tgid);
+		DRM_DEBUG("Cannot find entry for pid %d\n", tgid);
 		spin_unlock(&mm->lock);
 		return ret;
 	}
@@ -1009,7 +1009,7 @@ static int psb_gtt_remove_node(struct psb_gtt_mm *mm,
 
 	/*check the count of mapping entry */
 	if (!hentry->count) {
-		DRM_DEBUG("count of mapping entry is zero, tgid=%ld\n", tgid);
+		DRM_DEBUG("count of mapping entry is zero, tgid=%d\n", tgid);
 		psb_gtt_mm_remove_free_ht_locked(mm, tgid);
 	}
 
@@ -1216,14 +1216,14 @@ static int psb_gtt_unmap_common(struct drm_device *dev,
 }
 
 static int psb_get_vaddr_pages(u32 vaddr, u32 size,
-				u32 **pfn_list, int *page_count)
+				unsigned long **pfn_list, int *page_count)
 {
 	u32 num_pages;
 	struct page **pages = 0;
 	struct task_struct *task = current;
 	struct mm_struct *mm = task->mm;
 	struct vm_area_struct *vma;
-	u32 *pfns = 0;
+	unsigned long *pfns = 0;
 	int ret;
 	int i;
 
@@ -1269,7 +1269,7 @@ static int psb_get_vaddr_pages(u32 vaddr, u32 size,
 
 			ret = follow_pfn(vma,
 				(unsigned long)(vaddr + i * PAGE_SIZE),
-				(unsigned long *)&pfns[i]);
+				&pfns[i]);
 			if (ret) {
 				DRM_ERROR("failed to follow pfn\n");
 				goto follow_pfn_err;
@@ -1311,7 +1311,7 @@ static int psb_gtt_map_vaddr(struct drm_device *dev,
 	struct psb_gtt *pg = dev_priv->pg;
 	uint32_t pages, offset_pages;
 	struct drm_mm_node *node;
-	u32 *pfn_list = 0;
+	unsigned long *pfn_list = 0;
 	struct psb_gtt_mem_mapping *mapping = NULL;
 	int ret;
 
@@ -1384,10 +1384,6 @@ int psb_gtt_map_meminfo_ioctl(struct drm_device *dev, void *data,
 	= (struct psb_gtt_mapping_arg *)data;
 	uint32_t *offset_pages = &arg->offset_pages;
 	uint32_t page_align = arg->page_align;
-	uint32_t device_id = arg->bcd_device_id;
-	uint32_t buffer_id = arg->bcd_buffer_id;
-	uint32_t *buffer_count = &arg->bcd_buffer_count;
-	uint32_t *buffer_stride = &arg->bcd_buffer_stride;
 	uint32_t vaddr = arg->vaddr;
 	uint32_t size = arg->size;
 	uint32_t type = arg->type;
@@ -1418,8 +1414,6 @@ int psb_gtt_unmap_meminfo_ioctl(struct drm_device *dev, void *data,
 
 	struct psb_gtt_mapping_arg *arg
 		= (struct psb_gtt_mapping_arg *)data;
-	uint32_t device_id = arg->bcd_device_id;
-	uint32_t buffer_id = arg->bcd_buffer_id;
 	uint32_t vaddr = arg->vaddr;
 	uint32_t size = arg->size;
 	uint32_t type = arg->type;
@@ -1474,7 +1468,7 @@ int DCCBgttMapMemory(struct drm_device *dev,
 	node = mapping->node;
 	offset_pages = node->start;
 
-	DRM_DEBUG("get free node for %ld pages, offset %ld pages", pages,
+	DRM_DEBUG("get free node for %d pages, offset %d pages", pages,
 		  offset_pages);
 
 	/*update gtt */

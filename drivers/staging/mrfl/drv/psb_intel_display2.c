@@ -36,6 +36,8 @@
 #include "psb_intel_display.h"
 #include "displayclass_interface.h"
 
+#define KEEP_UNUSED_CODE 0
+
 #ifdef MIN
 #undef MIN
 #endif
@@ -116,9 +118,6 @@ static int mdfld_intel_crtc_cursor_set(struct drm_crtc *crtc,
 				       uint32_t width, uint32_t height)
 {
 	struct drm_device *dev = crtc->dev;
-	struct drm_psb_private *dev_priv =
-	    (struct drm_psb_private *)dev->dev_private;
-	struct psb_gtt *pg = dev_priv->pg;
 	struct psb_intel_crtc *psb_intel_crtc = to_psb_intel_crtc(crtc);
 	struct psb_intel_mode_device *mode_dev = psb_intel_crtc->mode_dev;
 	int pipe = psb_intel_crtc->pipe;
@@ -396,7 +395,7 @@ int mdfld__intel_pipe_set_base(struct drm_crtc *crtc, int x, int y,
 		return 0;
 
 	Start = mode_dev->bo_offset(dev, psbfb);
-	Offset = y * crtc->fb->pitch + x * (crtc->fb->bits_per_pixel / 8);
+	Offset = y * crtc->fb->pitches[0] + x * (crtc->fb->bits_per_pixel / 8);
 
 	/* Try to attach/de-attach Plane B to an existing swap chain,
 	 * especially with another frame buffer inserted into GTT. */
@@ -411,7 +410,7 @@ int mdfld__intel_pipe_set_base(struct drm_crtc *crtc, int x, int y,
 #endif				/* FIXME MRFLD */
 	}
 #endif
-	REG_WRITE(dspstride, crtc->fb->pitch);
+	REG_WRITE(dspstride, crtc->fb->pitches[0]);
 	dspcntr = REG_READ(dspcntr_reg);
 	dspcntr &= ~DISPPLANE_PIXFORMAT_MASK;
 
@@ -547,6 +546,7 @@ void mdfld_disable_crtc(struct drm_device *dev, int pipe)
 
 }
 
+#if KEEP_UNUSED_CODE
 /**
  * Sets the power management mode of the pipe and plane.
  *
@@ -847,6 +847,7 @@ static void mdfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 }
+#endif /* if KEEP_UNUSED_CODE */
 
 #define MDFLD_LIMT_DPLL_19	    0
 #define MDFLD_LIMT_DPLL_25	    1
@@ -957,6 +958,7 @@ static const u32 mdfld_m_converts[] = {
 	396, 198, 99, 305, 152, 76, 294, 403, 457, 228,	/* 171 - 180 */
 };
 
+#if KEEP_UNUSED_CODE
 static const struct mrst_limit_t *mdfld_limit(struct drm_crtc *crtc)
 {
 	const struct mrst_limit_t *limit = NULL;
@@ -997,13 +999,17 @@ static const struct mrst_limit_t *mdfld_limit(struct drm_crtc *crtc)
 
 	return limit;
 }
+#endif /* if KEEP_UNUSED_CODE */
 
+#if KEEP_UNUSED_CODE
 /** Derive the pixel clock for the given refclk and divisors for 8xx chips. */
 static void mdfld_clock(int refclk, struct mrst_clock_t *clock)
 {
 	clock->dot = (refclk * clock->m) / clock->p1;
 }
+#endif /* if KEEP_UNUSED_CODE */
 
+#if KEEP_UNUSED_CODE
 /**
  * Returns a set of divisors for the desired target clock with the given refclk,
  * or FALSE.  Divisor values are the actual divisors for
@@ -1044,7 +1050,9 @@ mdfldFindBestPLL(struct drm_crtc *crtc, int target, int refclk,
 
 	return err != target;
 }
+#endif /* if KEEP_UNUSED_CODE */
 
+#if KEEP_UNUSED_CODE
 static int mdfld_crtc_dsi_pll_calc(struct drm_crtc *crtc,
 				   struct drm_device *dev,
 				   struct mdfld_dsi_hw_context *ctx,
@@ -1113,6 +1121,7 @@ static int mdfld_crtc_dsi_pll_calc(struct drm_crtc *crtc,
 
 	return 0;
 }
+#endif /* if KEEP_UNUSED_CODE */
 
 static int mdfld_crtc_dsi_mode_set(struct drm_crtc *crtc,
 				   struct mdfld_dsi_config *dsi_config,
@@ -1146,7 +1155,7 @@ static int mdfld_crtc_dsi_mode_set(struct drm_crtc *crtc,
 	mode = adjusted_mode;
 	ctx = &dsi_config->dsi_hw_context;
 	fb_bpp = crtc->fb->bits_per_pixel;
-	fb_pitch = crtc->fb->pitch;
+	fb_pitch = crtc->fb->pitches[0];
 	fb_depth = crtc->fb->depth;
 	dev = crtc->dev;
 
@@ -1240,6 +1249,7 @@ static int mdfld_crtc_dsi_mode_set(struct drm_crtc *crtc,
 	return 0;
 }
 
+#if KEEP_UNUSED_CODE
 static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 			       struct drm_display_mode *mode,
 			       struct drm_display_mode *adjusted_mode,
@@ -1709,5 +1719,6 @@ static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 
 	return 0;
 }
+#endif /* if KEEP_UNUSED_CODE */
 
 /* MDFLD_PLATFORM end */

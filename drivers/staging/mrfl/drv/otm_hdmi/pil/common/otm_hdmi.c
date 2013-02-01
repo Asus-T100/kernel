@@ -62,14 +62,16 @@
 */
 
 
+#include <linux/kernel.h>
+#include <linux/module.h>
+#include <linux/types.h>
+#include <linux/export.h>
 #include <linux/time.h>
 #include <linux/pci.h>
 #include <linux/string.h>
 #include <linux/interrupt.h>
 #include <linux/slab.h>
 #include <linux/mutex.h>
-#include <linux/types.h>
-#include <linux/kernel.h>
 #include "otm_hdmi.h"
 #include "ipil_hdmi.h"
 

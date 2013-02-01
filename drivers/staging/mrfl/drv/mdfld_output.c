@@ -49,16 +49,22 @@ enum panel_type get_panel_type(struct drm_device *dev, int pipe)
 	return dev_priv->panel_id;
 }
 
-int is_panel_vid_or_cmd(struct drm_device *dev)
+/**
+ * is_panel_vid_or_cmd(struct drm_device *dev)
+ * Function return value: panel encoder type
+ */
+mdfld_dsi_encoder_t is_panel_vid_or_cmd(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *) dev->dev_private;
-	int i = 0;
+	int i;
 
 	for (i = 0; i < ARRAY_SIZE(panel_list); i++) {
 		if (panel_list[i].p_type == dev_priv->panel_id)
 			return panel_list[i].encoder_type;
 	}
+
+	BUG();
 }
 
 void init_panel(struct drm_device *dev, int mipi_pipe, enum panel_type p_type)
@@ -97,16 +103,19 @@ void init_panel(struct drm_device *dev, int mipi_pipe, enum panel_type p_type)
 
 void mdfld_output_init(struct drm_device *dev)
 {
-	enum panel_type p_type1, p_type2;
+	enum panel_type p_type1;
 
 	/* MIPI panel 1 */
 	p_type1 = get_panel_type(dev, 0);
 	init_panel(dev, 0, p_type1);
 
 #ifdef CONFIG_MDFD_DUAL_MIPI
-	/* MIPI panel 2 */
-	p_type2 = get_panel_type(dev, 2);
-	init_panel(dev, 2, p_type2);
+	{
+		/* MIPI panel 2 */
+		enum panel_type p_type2;
+		p_type2 = get_panel_type(dev, 2);
+		init_panel(dev, 2, p_type2);
+	}
 #endif
 
 #ifdef CONFIG_SUPPORT_HDMI

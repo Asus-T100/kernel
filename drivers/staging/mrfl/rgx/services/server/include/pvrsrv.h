@@ -50,7 +50,7 @@ extern "C" {
 #include "device.h"
 #include "resman.h"
 #include "power.h"
-#include "sysinfo.h"
+#include "rgxsysinfo.h"
 #include "physheap.h"
 
 

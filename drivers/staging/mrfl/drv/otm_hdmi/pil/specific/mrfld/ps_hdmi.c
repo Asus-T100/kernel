@@ -62,18 +62,19 @@
 */
 #include "otm_hdmi_types.h"
 
+#include <linux/kernel.h>
+#include <linux/module.h>
 #include <linux/io.h>
 #include <linux/gpio.h>
 #include <linux/pci.h>
-#include <linux/kernel.h>
-#include <linux/i2c.h>
 #include <linux/delay.h>
 #include <linux/string.h>
-#include <linux/ipc_device.h>
+// #include <linux/ipc_device.h>
 #include "otm_hdmi.h"
 #include "ipil_hdmi.h"
 #include "ps_hdmi.h"
 #include <asm/intel_scu_ipc.h>
+#include <asm/intel_scu_pmic.h>
 
 /* Implementation of the Merrifield specific PCI driver for receiving
  * Hotplug and other device status signals.
@@ -338,7 +339,7 @@ bool ps_hdmi_power_rails_on(void)
 		/* pipe B */
 	ps_hdmi_power_on_pipe(0x4, 0x3c, 0x3000000, 0xfffffffc); 
 		/* HDMI */
-	
+
 	intel_scu_ipc_iowrite8(0x7F, 0x31);
 	return true;
 }

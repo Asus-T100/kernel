@@ -37,6 +37,8 @@
 #include "mdfld_dsi_esd.h"
 #include "mdfld_dsi_dbi_dsr.h"
 
+#define KEEP_UNUSED_CODE 0
+
 #define MDFLD_DSI_BRIGHTNESS_MAX_LEVEL 100
 
 /* get the CABC LABC from command line. */
@@ -82,6 +84,7 @@ static int __init parse_LABC_control(char *arg)
 early_param("LABC", parse_LABC_control);
 #endif
 
+#if KEEP_UNUSED_CODE
 /**
  * make these MCS command global 
  * we don't need 'movl' everytime we send them.
@@ -94,20 +97,28 @@ static u32 mdfld_dbi_mcs_hysteresis[] = {
 	0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff,
 	0x000000ff,
 };
+#endif /* if KEEP_UNUSED_CODE */
 
+#if KEEP_UNUSED_CODE
 static u32 mdfld_dbi_mcs_display_profile[] = {
 	0x50281450, 0x0000c882, 0x00000000, 0x00000000,
 	0x00000000,
 };
+#endif /* if KEEP_UNUSED_CODE */
 
+#if KEEP_UNUSED_CODE
 static u32 mdfld_dbi_mcs_kbbc_profile[] = {
 	0x00ffcc60, 0x00000000, 0x00000000, 0x00000000,
 };
+#endif /* if KEEP_UNUSED_CODE */
 
+#if KEEP_UNUSED_CODE
 static u32 mdfld_dbi_mcs_gamma_profile[] = {
 	0x81111158, 0x88888888, 0x88888888,
 };
+#endif /* if KEEP_UNUSED_CODE */
 
+#if KEEP_UNUSED_CODE
 /**
  * write hysteresis values.
  */
@@ -123,11 +134,13 @@ static void mdfld_dsi_write_hysteresis(struct mdfld_dsi_config *dsi_config,
 	}
 
 	mdfld_dsi_send_mcs_long_hs(sender,
-			mdfld_dbi_mcs_hysteresis,
+			(u8 *) mdfld_dbi_mcs_hysteresis,
 			68,
 			MDFLD_DSI_SEND_PACKAGE);
 }
+#endif /* if KEEP_UNUSED_CODE */
 
+#if KEEP_UNUSED_CODE
 /**
  * write display profile values.
  */
@@ -143,11 +156,13 @@ static void mdfld_dsi_write_display_profile(struct mdfld_dsi_config *dsi_config,
 	}
 
 	mdfld_dsi_send_mcs_long_hs(sender,
-			mdfld_dbi_mcs_display_profile,
+			(u8 *) mdfld_dbi_mcs_display_profile,
 			20,
 			MDFLD_DSI_SEND_PACKAGE);
 }
+#endif /* if KEEP_UNUSED_CODE */
 
+#if KEEP_UNUSED_CODE
 /**
  * write KBBC profile values.
  */
@@ -163,11 +178,13 @@ static void mdfld_dsi_write_kbbc_profile(struct mdfld_dsi_config *dsi_config,
 	}
 
 	mdfld_dsi_send_mcs_long_hs(sender,
-			mdfld_dbi_mcs_kbbc_profile,
+			(u8 *) mdfld_dbi_mcs_kbbc_profile,
 			20,
 			MDFLD_DSI_SEND_PACKAGE);
 }
+#endif /* if KEEP_UNUSED_CODE */
 
+#if KEEP_UNUSED_CODE
 /**
  * write gamma setting.
  */
@@ -183,10 +200,11 @@ static void mdfld_dsi_write_gamma_setting(struct mdfld_dsi_config *dsi_config,
 	}
 
 	mdfld_dsi_send_mcs_long_hs(sender,
-			mdfld_dbi_mcs_gamma_profile,
+			(u8 *) mdfld_dbi_mcs_gamma_profile,
 			3,
 			MDFLD_DSI_SEND_PACKAGE);
 }
+#endif /* if KEEP_UNUSED_CODE */
 
 /**
  * Check and see if the generic control or data buffer is empty and ready.
@@ -329,13 +347,14 @@ static void mdfld_dsi_connector_restore(struct drm_connector *connector)
 	PSB_DEBUG_ENTRY("\n");
 }
 
-static enum drm_connector_status
-mdfld_dsi_connector_detect(struct drm_connector *connector)
+static enum drm_connector_status mdfld_dsi_connector_detect(
+	struct drm_connector *connector, bool force)
 {
 	struct psb_intel_output *psb_output =
 		to_psb_intel_output(connector);
 	struct mdfld_dsi_connector *dsi_connector =
 		MDFLD_DSI_CONNECTOR(psb_output);
+	(void) force;
 
 	PSB_DEBUG_ENTRY("\n");
 
@@ -521,14 +540,22 @@ static int mdfld_dsi_connector_mode_valid(struct drm_connector *connector,
 
 static void mdfld_dsi_connector_dpms(struct drm_connector *connector, int mode)
 {
+#ifdef CONFIG_PM_RUNTIME
+	struct drm_device *dev;
+	struct drm_psb_private *dev_priv;
+	struct mdfld_dsi_config **dsi_configs;
+	bool panel_on;
+	bool panel_on2;
+#endif
+
 	/*first, execute dpms*/
 	drm_helper_connector_dpms(connector, mode);
 
 #ifdef CONFIG_PM_RUNTIME
-	struct drm_device *dev = connector->dev;
-	struct drm_psb_private *dev_priv = dev->dev_private;
-	struct mdfld_dsi_config **dsi_configs;
-	bool panel_on = false, panel_on2 = false;
+	dev = connector->dev;
+	dev_priv = dev->dev_private;
+	panel_on = false;
+	panel_on2 = false;
 
 	dsi_configs = dev_priv->dsi_configs;
 

@@ -45,8 +45,6 @@
 #include "android_hdmi.h"
 #include "mdfld_dsi_dbi_dsr.h"
 
-#include "portdefs.h"
-
 #ifdef MIN
 #undef MIN
 #endif
@@ -1089,7 +1087,7 @@ static int mdfld__intel_pipe_set_base(struct drm_crtc *crtc, int x, int y,
 
 	Start = mode_dev->bo_offset(dev, psbfb);
 	Size = mode_dev->bo_size(dev, psbfb);
-	Offset = y * crtc->fb->MEMBER_PITCH + x * (crtc->fb->bits_per_pixel / 8);
+	Offset = y * crtc->fb->pitches[0] + x * (crtc->fb->bits_per_pixel / 8);
 
 	/* Try to attach/de-attach Plane B to an existing swap chain,
 	 * especially with another frame buffer inserted into GTT. */
@@ -1100,7 +1098,7 @@ static int mdfld__intel_pipe_set_base(struct drm_crtc *crtc, int x, int y,
 		goto psb_intel_pipe_set_base_exit;
 	}
 
-	REG_WRITE(dspstride, crtc->fb->MEMBER_PITCH);
+	REG_WRITE(dspstride, crtc->fb->pitches[0]);
 	dspcntr = REG_READ(dspcntr_reg);
 	dspcntr &= ~DISPPLANE_PIXFORMAT_MASK;
 
@@ -1721,7 +1719,7 @@ static int mdfld_crtc_dsi_mode_set(struct drm_crtc *crtc,
 	mode = adjusted_mode;
 	ctx = &dsi_config->dsi_hw_context;
 	fb_bpp = crtc->fb->bits_per_pixel;
-	fb_pitch = crtc->fb->MEMBER_PITCH;
+	fb_pitch = crtc->fb->pitches[0];
 	fb_depth = crtc->fb->depth;
 	dev = crtc->dev;
 	dev_priv = (struct drm_psb_private *)dev->dev_private;

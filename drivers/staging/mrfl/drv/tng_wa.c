@@ -28,7 +28,6 @@
 #include "tng_wa.h"
 
 /* A0 Workarounds */
-#define A0_WORKAROUNDS			1	/* 1 to enable */
 
 static void apply_HSD_4568161(struct drm_device *dev)
 {

@@ -41,13 +41,6 @@ static int mrfld_crtc_mode_set(struct drm_crtc *crtc,
 			       int x, int y, struct drm_framebuffer *old_fb);
 static void mrfld_crtc_dpms(struct drm_crtc *crtc, int mode);
 /*MRFLD defines end */
-/*MDFLD defines */
-static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
-			       struct drm_display_mode *mode,
-			       struct drm_display_mode *adjusted_mode,
-			       int x, int y, struct drm_framebuffer *old_fb);
-static void mdfld_crtc_dpms(struct drm_crtc *crtc, int mode);
-/*MDFLD defines end */
 
 struct psb_intel_clock_t {
 	/* given values */
@@ -102,7 +95,13 @@ bool psb_intel_pipe_has_type(struct drm_crtc *crtc, int type)
 void psb_intel_wait_for_vblank(struct drm_device *dev)
 {
 	/* Wait for 20ms, i.e. one cycle at 50hz. */
-	udelay(20000);
+
+	/*
+	 * Between kernel 3.0 and 3.3, udelay was made to complain at compile
+	 * time for argument == 20000 or more.
+	 * Therefore, reduce it from 20000 to 19999.
+	 */
+	udelay(19999);
 }
 
 int psb_intel_pipe_set_base(struct drm_crtc *crtc,
@@ -116,7 +115,6 @@ int psb_intel_pipe_set_base(struct drm_crtc *crtc,
 	int pipe = psb_intel_crtc->pipe;
 	unsigned long Start, Offset;
 	int dspbase = (pipe == 0 ? DSPABASE : DSPBBASE);
-	int dspsurf = (pipe == 0 ? DSPASURF : DSPBSURF);
 	int dspstride = (pipe == 0) ? DSPASTRIDE : DSPBSTRIDE;
 	int dspcntr_reg = (pipe == 0) ? DSPACNTR : DSPBCNTR;
 	u32 dspcntr;
@@ -135,9 +133,9 @@ int psb_intel_pipe_set_base(struct drm_crtc *crtc,
 		return 0;
 
 	Start = mode_dev->bo_offset(dev, psbfb);
-	Offset = y * crtc->fb->pitch + x * (crtc->fb->bits_per_pixel / 8);
+	Offset = y * crtc->fb->pitches[0] + x * (crtc->fb->bits_per_pixel / 8);
 
-	REG_WRITE(dspstride, crtc->fb->pitch);
+	REG_WRITE(dspstride, crtc->fb->pitches[0]);
 
 	dspcntr = REG_READ(dspcntr_reg);
 	dspcntr &= ~DISPPLANE_PIXFORMAT_MASK;
@@ -454,15 +452,14 @@ static void psb_intel_crtc_restore(struct drm_crtc *crtc)
 #endif
 
 static void psb_intel_crtc_gamma_set(struct drm_crtc *crtc, u16 * red,
-				     u16 * green, u16 * blue, uint32_t size)
+					u16 * green, u16 * blue,
+					uint32_t start, uint32_t size)
 {
 	struct psb_intel_crtc *psb_intel_crtc = to_psb_intel_crtc(crtc);
 	int i;
+	int brk = (start + size > 256) ? 256 : start + size;
 
-	if (size != 256)
-		return;
-
-	for (i = 0; i < 256; i++) {
+	for (i = start; i < brk; i++) {
 		psb_intel_crtc->lut_r[i] = red[i] >> 8;
 		psb_intel_crtc->lut_g[i] = green[i] >> 8;
 		psb_intel_crtc->lut_b[i] = blue[i] >> 8;
@@ -637,7 +634,7 @@ static const struct drm_framebuffer_funcs psb_intel_fb_funcs = {
 	.create_handle = psb_intel_user_framebuffer_create_handle,
 };
 
-struct drm_framebuffer *psb_intel_framebuffer_create(struct drm_device *dev, struct drm_mode_fb_cmd
+struct drm_framebuffer *psb_intel_framebuffer_create(struct drm_device *dev, struct drm_mode_fb_cmd2
 						     *mode_cmd,
 						     void *mm_private)
 {
@@ -661,7 +658,7 @@ static struct drm_framebuffer *psb_intel_user_framebuffer_create(struct
 								 *dev, struct
 								 drm_file
 								 *filp, struct
-								 drm_mode_fb_cmd
+								 drm_mode_fb_cmd2
 								 *mode_cmd)
 {
 	struct drm_gem_object *obj;
@@ -676,7 +673,7 @@ static struct drm_framebuffer *psb_intel_user_framebuffer_create(struct
 static int psb_intel_insert_new_fb(struct drm_device *dev,
 				   struct drm_file *file_priv,
 				   struct drm_framebuffer *fb,
-				   struct drm_mode_fb_cmd *mode_cmd)
+				   struct drm_mode_fb_cmd2 *mode_cmd)
 {
 	struct psb_intel_framebuffer *psb_intel_fb;
 	struct drm_gem_object *obj;

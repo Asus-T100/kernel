@@ -42,6 +42,9 @@
 #include "psb_irq.h"
 #include "psb_intel_hdmi.h"
 
+#define KEEP_UNUSED_CODE 0
+
+
 extern int drm_psb_smart_vsync;
 /*
  * inline functions
@@ -149,6 +152,7 @@ void mid_disable_pipe_event(struct drm_psb_private *dev_priv, int pipe)
 	}
 }
 
+#if KEEP_UNUSED_CODE
 /**
  * Check if we can disable vblank for video MIPI display
  *
@@ -174,6 +178,7 @@ static void mid_check_vblank(struct drm_device *dev, uint32_t pipe)
 		dev_priv->dsr_idle_count++;
 	spin_unlock_irqrestore(&dev_priv->irqmask_lock, irqflags);
 }
+#endif /* if KEEP_UNUSED_CODE */
 
 u32 intel_vblank_count(struct drm_device *dev, int pipe)
 {
@@ -769,10 +774,12 @@ int psb_enable_vblank(struct drm_device *dev, int pipe)
 	unsigned long irqflags;
 	uint32_t reg_val = 0;
 	uint32_t pipeconf_reg = mid_pipeconf(pipe);
+	mdfld_dsi_encoder_t encoder_type;
 
 	PSB_DEBUG_ENTRY("\n");
 
-	if (IS_MRFLD(dev) && !is_panel_vid_or_cmd(dev))
+	encoder_type = is_panel_vid_or_cmd(dev);
+	if (IS_MRFLD(dev) && (encoder_type == MDFLD_DSI_ENCODER_DBI))
 		return mdfld_enable_te(dev, pipe);
 
 	if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, OSPM_UHB_ONLY_IF_ON)) {
@@ -805,10 +812,12 @@ void psb_disable_vblank(struct drm_device *dev, int pipe)
 	struct drm_psb_private *dev_priv =
 	    (struct drm_psb_private *)dev->dev_private;
 	unsigned long irqflags;
+	mdfld_dsi_encoder_t encoder_type;
 
 	PSB_DEBUG_ENTRY("\n");
 
-	if (IS_MRFLD(dev) && !is_panel_vid_or_cmd(dev))
+	encoder_type = is_panel_vid_or_cmd(dev);
+	if (IS_MRFLD(dev) && (encoder_type == MDFLD_DSI_ENCODER_DBI))
 		mdfld_disable_te(dev, pipe);
 
 	dev_priv->b_vblank_enable = false;

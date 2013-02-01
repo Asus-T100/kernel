@@ -21,17 +21,21 @@
  * DEALINGS IN THE SOFTWARE.
  *
  * Authors:
- *	Jim Liu <jim.liu@intel.com>	
+ *	Jim Liu <jim.liu@intel.com>
  */
 
 #include "android_hdmi.h"
 #include "displayclass_interface.h"
+
+#define KEEP_UNUSED_CODE_S3D 0
+
 /* Functions will be deleted after simulated on MDFLD_PLATFORM */
 
 /* MRFLD_PLATFORM start */
 
+#if KEEP_UNUSED_CODE_S3D
 /**
- * Set up the HDMI Vendor Specific InfoFrame Packet and send it to HDMI display 
+ * Set up the HDMI Vendor Specific InfoFrame Packet and send it to HDMI display
  *
  */
 static int mrfld_set_up_s3d_InfoFrame(struct drm_device *dev, enum
@@ -98,7 +102,9 @@ static int mrfld_set_up_s3d_InfoFrame(struct drm_device *dev, enum
 
 	return 0;
 }
+#endif /* if KEEP_UNUSED_CODE_S3D */
 
+#if KEEP_UNUSED_CODE_S3D
 /**
  * Disable sending the HDMI Vendor Specific InfoFrame Packet.
  *
@@ -129,6 +135,7 @@ static int mrfld_disable_s3d_InfoFrame(struct drm_device *dev)
 
 	return 0;
 }
+#endif /* if KEEP_UNUSED_CODE_S3D */
 
 /**
  * Disable the pipe, plane and pll.
@@ -492,7 +499,7 @@ static int mrfld_crtc_mode_set(struct drm_crtc *crtc,
 	struct psb_intel_crtc *psb_intel_crtc = to_psb_intel_crtc(crtc);
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *)dev->dev_private;
-	struct mdfld_dsi_config *dsi_config;
+	struct mdfld_dsi_config *dsi_config = NULL;
 	int pipe = psb_intel_crtc->pipe;
 
 	PSB_DEBUG_ENTRY("pipe = 0x%x\n", pipe);
@@ -514,10 +521,15 @@ static int mrfld_crtc_mode_set(struct drm_crtc *crtc,
 	}
 }
 
+
+#if KEEP_UNUSED_CODE_S3D
+
 /**
- * Perform display 3D mode set to half line interleaving 3D display with two buffers.  
+ * Perform display 3D mode set to half line interleaving 3D display with two buffers.
  *
- * FIXME modify the following function with option to disable PLL or not. 
+ * FIXME modify the following function with option to disable PLL or not.
+ *
+ * Function return value: 0 if error, 1 if success.
  */
 int mrfld_s3d_flip_surf_addr(struct drm_device *dev, int pipe, struct
 			     mrfld_s3d_flip *ps3d_flip)
@@ -554,6 +566,8 @@ int mrfld_s3d_flip_surf_addr(struct drm_device *dev, int pipe, struct
 	}
 
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+
+	return 1;
 }
 
 /*
@@ -562,9 +576,9 @@ extern void mdfld_dsi_tmd_drv_ic_init(struct mdfld_dsi_config *dsi_config,
 */
 
 /**
- * Perform display 3D mode set to half line interleaving 3D display with two buffers.  
+ * Perform display 3D mode set to half line interleaving 3D display with two buffers.
  *
- * FIXME modify the following function with option to disable PLL or not. 
+ * FIXME modify the following function with option to disable PLL or not.
  */
 int mrfld_s3d_to_line_interleave_half(struct drm_device *dev, int pipe, struct
 				      mrfld_s3d_flip *ps3d_flip)
@@ -779,7 +793,7 @@ int mrfld_s3d_from_line_interleave_half(struct drm_device *dev, int pipe, struct
 }
 
 /**
- * Perform display 3D mode set to line interleaving 3D display with two buffers.  
+ * Perform display 3D mode set to line interleaving 3D display with two buffers.
  *
  * FIXME: Assume the 3D buffer is the same as display resolution. Will re-visit
  * it for panel fitting mode.
@@ -1102,7 +1116,7 @@ int mrfld_s3d_from_line_interleave(struct drm_device *dev, int pipe, struct
 }
 
 /**
- * Perform display 3D mode set to frame packing 3D display. 
+ * Perform display 3D mode set to frame packing 3D display.
  *
  * FIXME: Assume the 3D buffer is the same as display resolution. Will re-visit
  * it for panel fitting mode.
@@ -1355,7 +1369,7 @@ int mrfld_s3d_from_frame_packing(struct drm_device *dev, int pipe, struct
 }
 
 /**
- * Perform display 3D mode set to top_and_bottom 3D display. 
+ * Perform display 3D mode set to top_and_bottom 3D display.
  *
  * FIXME: Assume the 3D buffer is the same as display resolution. Will re-visit
  * it for panel fitting mode.
@@ -1518,7 +1532,7 @@ int mrfld_s3d_from_top_and_bottom(struct drm_device *dev, int pipe, struct
 }
 
 /**
- * Perform display 3D mode set to full side_by_side 3D display. 
+ * Perform display 3D mode set to full side_by_side 3D display.
  *
  * FIXME: Assume the 3D buffer is the same as display resolution. Will re-visit
  * it for panel fitting mode.
@@ -1753,7 +1767,7 @@ int mrfld_s3d_from_full_side_by_side(struct drm_device *dev, int pipe, struct
 }
 
 /**
- * Perform display 3D mode set to half side_by_side 3D display. 
+ * Perform display 3D mode set to half side_by_side 3D display.
  *
  * FIXME: Assume the 3D buffer is the same as display resolution. Will re-visit
  * it for panel fitting mode.
@@ -1915,7 +1929,7 @@ int mrfld_s3d_from_half_side_by_side(struct drm_device *dev, int pipe, struct
 }
 
 /**
- * Perform display 3D mode set to pixel alternative 3D display. 
+ * Perform display 3D mode set to pixel alternative 3D display.
  *
  * FIXME: Assume the 3D buffer is the same as display resolution. Will re-visit
  * it for panel fitting mode.
@@ -2075,7 +2089,7 @@ int mrfld_s3d_to_pixel_interleaving_full(struct drm_device *dev, int pipe, struc
 }
 
 /**
- * Perform display 2D mode set from pixel alternative 3D display. 
+ * Perform display 2D mode set from pixel alternative 3D display.
  *
  */
 int mrfld_s3d_from_pixel_interleaving_full(struct drm_device *dev, int pipe, struct
@@ -2218,7 +2232,7 @@ int mrfld_s3d_from_pixel_interleaving_full(struct drm_device *dev, int pipe, str
 
 /**
  * Perform display 3D mode set to pixel alternative 3D display with two
- * half-width L & R frame buffers. 
+ * half-width L & R frame buffers.
  *
  */
 int mrfld_s3d_to_pixel_interleaving_half(struct drm_device *dev, int pipe, struct
@@ -2334,8 +2348,8 @@ int mrfld_s3d_to_pixel_interleaving_half(struct drm_device *dev, int pipe, struc
 }
 
 /**
- * Perform display 2D mode set from pixel alternative 3D display with two 
- * half-width L & R frame buffers. 
+ * Perform display 2D mode set from pixel alternative 3D display with two
+ * half-width L & R frame buffers.
  *
  */
 int mrfld_s3d_from_pixel_interleaving_half(struct drm_device *dev, int pipe, struct
@@ -2466,7 +2480,7 @@ int mrfld_dsi_s3d_query(struct drm_device *dev, struct drm_psb_s3d_query
 }
 
 /**
- * Check if the display supports S3D. If so, report supported S3D formats. 
+ * Check if the display supports S3D. If so, report supported S3D formats.
  *
  */
 int mrfld_s3d_query(struct drm_device *dev, struct drm_psb_s3d_query
@@ -2486,10 +2500,12 @@ int mrfld_s3d_query(struct drm_device *dev, struct drm_psb_s3d_query
 	}
 }
 
+#endif /* if KEEP_UNUSED_CODE_S3D */
+
 #if 0
 
 /**
- * Perform display 3D mode set. 
+ * Perform display 3D mode set.
  *
  */
 static int mrfld_s3d_crtc_mode_set(struct drm_crtc *crtc,
@@ -2706,7 +2722,7 @@ static int mrfld_s3d_crtc_mode_set(struct drm_crtc *crtc,
 }
 
 /**
- * Perform display 3D mode set from half Top-and-Bottom to half Top-and-Bottom 3D display. 
+ * Perform display 3D mode set from half Top-and-Bottom to half Top-and-Bottom 3D display.
  *
  */
 static int mrfld_s3d_half_top_and_bottom(struct drm_device *dev, int pipe)
@@ -2745,7 +2761,7 @@ static int mrfld_s3d_half_top_and_bottom(struct drm_device *dev, int pipe)
 
 /**
  * Perform display 3D mode set from two full source inputs to line
- * interleaving 3D display. 
+ * interleaving 3D display.
  *
  */
 static int mrfld_s3d_line_interleaving(struct drm_device *dev, int pipe)
@@ -2809,8 +2825,8 @@ static int mrfld_s3d_line_interleaving(struct drm_device *dev, int pipe)
 	/* Set up the pll, two times 2D clock. */
 	/* mrfld_setup_pll (dev, pipe, adjusted_mode->clock); */
 
-	/* Set up from either full Top-and-Bottom or side-by-side to 
-	 * full side-by-side display 3D format. 
+	/* Set up from either full Top-and-Bottom or side-by-side to
+	 * full side-by-side display 3D format.
 	 */
 
 	/* set up pipe related registers */
@@ -2858,7 +2874,7 @@ static int mrfld_s3d_line_interleaving(struct drm_device *dev, int pipe)
 }
 
 /**
- * Perform display 3D mode set from full side-by-side to side-by-side 3D display. 
+ * Perform display 3D mode set from full side-by-side to side-by-side 3D display.
  *
  */
 static int mrfld_s3d_side_by_side(struct drm_device *dev, int pipe)
@@ -2969,7 +2985,7 @@ static int mrfld_s3d_side_by_side(struct drm_device *dev, int pipe)
 }
 
 /**
- * Perform display 3D mode set from half side-by-side to half side-by-side 3D display. 
+ * Perform display 3D mode set from half side-by-side to half side-by-side 3D display.
  *
  */
 static int mrfld_s3d_half_side_by_side(struct drm_device *dev, int pipe)
@@ -3007,7 +3023,7 @@ static int mrfld_s3d_half_side_by_side(struct drm_device *dev, int pipe)
 }
 
 /**
- * Perform display 3D mode set from full Top_Bottom to frame packing 3D display. 
+ * Perform display 3D mode set from full Top_Bottom to frame packing 3D display.
  *
  */
 static int mrfld_s3d_frame_packing(struct drm_device *dev, int pipe)
@@ -3131,7 +3147,7 @@ static int mrfld_s3d_frame_packing(struct drm_device *dev, int pipe)
 }
 
 /**
- * Perform display 3D mode set from half Top_Bottom to line interleaving 3D display. 
+ * Perform display 3D mode set from half Top_Bottom to line interleaving 3D display.
  *
  */
 static int mrfld_s3d_half_top_bottom_to_line_interleave(struct drm_device *dev,
@@ -3202,7 +3218,7 @@ static int mrfld_s3d_half_top_bottom_to_line_interleave(struct drm_device *dev,
 
 	/* Disable pipe and port, don't disable the PLL. */
 	/* FIXME modify the following function with option to disable PLL or
-	 *  not. 
+	 *  not.
 	 *  */
 	mrfld_disable_crtc(dev, pipe, true);
 

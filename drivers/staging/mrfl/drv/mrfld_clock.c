@@ -235,16 +235,12 @@ mrfld_find_best_PLL(struct drm_device *dev, int pipe, int target, int refclk,
 void mrfld_setup_pll(struct drm_device *dev, int pipe, int clk)
 {
 	DRM_DRIVER_PRIVATE_T *dev_priv = dev->dev_private;
-	struct pci_dev *pci_root = pci_get_bus_and_slot(0, 0);
-	int pipeconf_reg = PIPEACONF;
 	int refclk = 0;
 	int clk_n = 0, clk_p2 = 0, clk_byte = 1, m_conv = 0, clk_tmp = 0;
 	struct mrst_clock_t clock;
 	bool ok;
-	u32 mcr = 0;
 	u32 pll = 0, fp = 0;
 	bool is_mipi = false, is_mipi2 = false, is_hdmi = false;
-	int timeout = 0;
 	struct mdfld_dsi_config *dsi_config = NULL;
 	struct mdfld_dsi_hw_context *ctx = NULL;
 
@@ -387,11 +383,10 @@ void mrfld_setup_pll(struct drm_device *dev, int pipe, int clk)
  */
 void mrfld_setup_dpll(struct drm_device *dev, int clk)
 {
-	DRM_DRIVER_PRIVATE_T *dev_priv = dev->dev_private;
 	int clk_n = 0, clk_m1 = 0, clk_m2 = 0, clk_p1 = 0, clk_p2 = 0;
 	int dpll_div = 0;
 	int pllctl = 0, tldrv = 0, pllin = 0, pllmisc = 0;
-	int dpll_tmp = 0;
+	u32 dpll_tmp = 0;
 	u32 pll = 0;
 
 	pll = MRFLD_CRI_ICK_PLL | MRFLD_INPUT_REF_SSC;

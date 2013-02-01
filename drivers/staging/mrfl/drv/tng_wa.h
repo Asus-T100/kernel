@@ -31,6 +31,8 @@
 #include "psb_drv.h"
 #include "psb_intel_reg.h"
 
+#define A0_WORKAROUNDS			1	/* 1 to enable */
+
 /* Apply the A0 Workaround */
 void apply_A0_workarounds(struct drm_device *dev, int islands, int new_state);
 
