@@ -24,3 +24,5 @@ obj-$(CONFIG_INTEL_ATOM_MRFLD_POWER) += intel_soc_mrfld.o
 
 # BOARD files
 obj-$(CONFIG_X86_INTEL_MID) += board.o
+obj-$(CONFIG_X86_INTEL_MID)		+= board.o
+obj-$(CONFIG_X86_INTEL_MID)		+= intel_mid_sfi.o

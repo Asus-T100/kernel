@@ -48,7 +48,9 @@
 #include <asm/reboot.h>
 #include <asm/intel_mid_hsu.h>
 #include "intel_mid_weak_decls.h"
+
 #include "intel_mid_scu.h"
+#include "intel_mid_sfi.h"
 
 /*
  * the clockevent devices on Moorestown/Medfield can be APBT or LAPIC clock,
@@ -1035,10 +1037,10 @@ static int __init intel_mid_platform_init(void)
 		pr_err("SPID: failed to create /sys/spid\n");
 
 	/* Get MFD Validation SFI OEMB Layout */
-	sfi_table_parse(SFI_SIG_OEMB, NULL, NULL, sfi_parse_oemb);
-	sfi_table_parse(SFI_SIG_OEM0, NULL, NULL, sfi_parse_oem0);
-	sfi_table_parse(SFI_SIG_GPIO, NULL, NULL, sfi_parse_gpio);
-	sfi_table_parse(SFI_SIG_DEVS, NULL, NULL, sfi_parse_devs);
+	handle_sfi_table(SFI_SIG_OEMB, NULL, NULL, sfi_parse_oemb);
+	handle_sfi_table(SFI_SIG_OEM0, NULL, NULL, sfi_parse_oem0);
+	handle_sfi_table(SFI_SIG_GPIO, NULL, NULL, sfi_parse_gpio);
+	handle_sfi_table(SFI_SIG_DEVS, NULL, NULL, sfi_parse_devs);
 
 	intel_mid_rproc_init();
 
