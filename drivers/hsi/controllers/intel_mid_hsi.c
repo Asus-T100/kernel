@@ -1929,7 +1929,7 @@ static const struct file_operations hsi_debug_fops = {
 	.release	= single_release,
 };
 
-static int __init hsi_debug_add_ctrl(struct hsi_controller *hsi)
+static int hsi_debug_add_ctrl(struct hsi_controller *hsi)
 {
 	struct intel_controller *intel_hsi = hsi_controller_drvdata(hsi);
 	struct dentry *dir;
@@ -3820,7 +3820,7 @@ static void hsi_unmap_resources(struct intel_controller *intel_hsi,
  *
  * Returns success or an error code if the controller IRQ cannot be requested.
  */
-static int __devinit hsi_controller_init(struct intel_controller *intel_hsi)
+static int hsi_controller_init(struct intel_controller *intel_hsi)
 {
 	unsigned int ch;
 	int err;
@@ -4038,7 +4038,7 @@ static void hsi_rtpm_exit(struct intel_controller *intel_hsi)
  *
  * Returns success or an error code if any initialisation is failing.
  */
-static int __devinit hsi_add_controller(struct hsi_controller *hsi,
+static int hsi_add_controller(struct hsi_controller *hsi,
 				     struct pci_dev *pdev)
 {
 	struct intel_controller *intel_hsi;
@@ -4151,7 +4151,7 @@ static void hsi_remove_controller(struct hsi_controller *hsi,
  *
  * Returns success or an error code if any initialisation is failing.
  */
-static int __devinit intel_hsi_probe(struct pci_dev *pdev,
+static int intel_hsi_probe(struct pci_dev *pdev,
 			   const struct pci_device_id *ent)
 {
 	struct hsi_controller *hsi;
@@ -4181,7 +4181,7 @@ fail_add_controller:
  *
  * Remove the HSI controller from the HSI framework and free its memory.
  */
-static void __devexit intel_hsi_remove(struct pci_dev *pdev)
+static void intel_hsi_remove(struct pci_dev *pdev)
 {
 	struct hsi_controller *hsi =
 		(struct hsi_controller *) pci_get_drvdata(pdev);
@@ -4261,7 +4261,7 @@ static struct pci_driver intel_hsi_driver = {
 	.name =		"intel_hsi",
 	.id_table =	pci_ids,
 	.probe =	intel_hsi_probe,
-	.remove =	__devexit_p(intel_hsi_remove),
+	.remove =	intel_hsi_remove,
 	.shutdown = intel_hsi_shutdown
 };
 
