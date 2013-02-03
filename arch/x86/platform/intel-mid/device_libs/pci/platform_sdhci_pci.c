@@ -18,6 +18,7 @@
 #include <linux/lnw_gpio.h>
 #include <linux/delay.h>
 #include <asm/intel_scu_ipc.h>
+#include <asm/intel_scu_pmic.h>
 #include <linux/intel_mid_pm.h>
 #include <linux/hardirq.h>
 
@@ -200,9 +201,33 @@ static struct sdhci_pci_data mrfl_sdhci_pci_data[] = {
 };
 
 /* Board specific setup related to SD goes here */
-
 static int mrfl_sd_setup(struct sdhci_pci_data *data)
 {
+	u8 vldocnt = 0;
+	int err;
+
+	/*
+	 * Change necessary GPIO pin mode for SD card working.
+	 * This is something should be done in IA firmware.
+	 * But, anyway, just do it here in case IA firmware
+	 * forget to do so.
+	 */
+	lnw_gpio_set_alt(MRFLD_GPIO_SDIO_0_CD, 0);
+
+	err = intel_scu_ipc_ioread8(MRFLD_PMIC_VLDOCNT, &vldocnt);
+	if (err) {
+		printk(KERN_ERR "PMIC vldocnt IPC read error: %d\n", err);
+		return err;
+	}
+
+	vldocnt |= MRFLD_PMIC_VLDOCNT_VSWITCH_BIT;
+	err = intel_scu_ipc_iowrite8(MRFLD_PMIC_VLDOCNT, vldocnt);
+	if (err) {
+		printk(KERN_ERR "PMIC vldocnt IPC write error: %d\n", err);
+		return err;
+	}
+	msleep(20);
+
 	return 0;
 }
 
