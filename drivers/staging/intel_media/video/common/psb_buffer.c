@@ -551,8 +551,9 @@ static int psb_init_mem_type(struct ttm_bo_device *bdev, uint32_t type,
 					  dev_priv->rar_region_size);
 #else
 		man->gpu_offset = pg->mmu_gatt_start + pg->ci_start + pg->ci_stolen_size;
-		break;
 #endif
+		break;
+
 	case DRM_PSB_MEM_MMU_TILING:
 		man->func = &ttm_bo_manager_func;
 		man->flags = TTM_MEMTYPE_FLAG_MAPPABLE |
