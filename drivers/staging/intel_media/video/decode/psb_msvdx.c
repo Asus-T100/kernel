@@ -484,7 +484,9 @@ int psb_submit_video_cmdbuf(struct drm_device *dev,
 		msvdx_cmd->cmd = cmd;
 		msvdx_cmd->cmd_size = cmd_size;
 		msvdx_cmd->sequence = sequence;
-		msvdx_cmd->msvdx_tile =
+
+		if (msvdx_priv->msvdx_ctx)
+			msvdx_cmd->msvdx_tile =
 			((msvdx_priv->msvdx_ctx->ctx_type >> 16) & 0xff);
 		msvdx_cmd->deblock_cmd_offset =
 			msvdx_priv->deblock_cmd_offset;
