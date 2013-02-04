@@ -347,3 +347,95 @@ int pmu_get_wake_source(void)
 out:
 	return source;
 }
+
+static int wait_for_nc_pmcmd_complete(int verify_mask, int state_type
+					, int reg_type)
+{
+	int pwr_sts;
+	int count = 0;
+	u32 addr;
+
+	switch (reg_type) {
+	case APM_REG_TYPE:
+		addr = mid_pmu_cxt->apm_base + APM_STS;
+		break;
+	case OSPM_REG_TYPE:
+		addr = mid_pmu_cxt->ospm_base + OSPM_PM_SSS;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	while (true) {
+		pwr_sts = inl(addr);
+		if (state_type == OSPM_ISLAND_DOWN) {
+			if ((pwr_sts & verify_mask) == verify_mask)
+				break;
+			else
+				udelay(10);
+		} else if (state_type == OSPM_ISLAND_UP) {
+			if (pwr_sts  == verify_mask)
+				break;
+			else
+				udelay(10);
+		}
+		count++;
+		if (WARN_ONCE(count > 500000, "Timed out waiting for P-Unit"))
+			return -EBUSY;
+	}
+	return 0;
+}
+
+int mdfld_clv_nc_set_power_state(int islands, int state_type,
+					int reg_type, int *change)
+{
+	u32 pwr_cnt = 0;
+	u32 pwr_mask = 0;
+	int i, lss, mask;
+	int ret = 0;
+
+	*change = 0;
+
+	switch (reg_type) {
+	case APM_REG_TYPE:
+		pwr_cnt = inl(mid_pmu_cxt->apm_base + APM_STS);
+		break;
+	case OSPM_REG_TYPE:
+		pwr_cnt = inl(mid_pmu_cxt->ospm_base + OSPM_PM_SSS);
+		break;
+	default:
+		ret = -EINVAL;
+		goto unlock;
+	}
+
+	pwr_mask = pwr_cnt;
+	for (i = 0; i < OSPM_MAX_POWER_ISLANDS; i++) {
+		lss = islands & (0x1 << i);
+		if (lss) {
+			mask = D0I3_MASK << (BITS_PER_LSS * i);
+			if (state_type == OSPM_ISLAND_DOWN)
+				pwr_mask |= mask;
+			else if (state_type == OSPM_ISLAND_UP)
+				pwr_mask &= ~mask;
+		}
+	}
+
+	if (pwr_mask != pwr_cnt) {
+		switch (reg_type) {
+		case APM_REG_TYPE:
+			outl(pwr_mask, mid_pmu_cxt->apm_base + APM_CMD);
+			break;
+		case OSPM_REG_TYPE:
+			outl(pwr_mask, mid_pmu_cxt->ospm_base + OSPM_PM_SSC);
+			break;
+		}
+
+		ret =
+		wait_for_nc_pmcmd_complete(pwr_mask, state_type, reg_type);
+		if (!ret)
+			*change = 1;
+	}
+
+unlock:
+	return ret;
+}

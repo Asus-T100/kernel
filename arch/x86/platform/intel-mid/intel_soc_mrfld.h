@@ -24,6 +24,12 @@
 #define ISP_POS			7
 #define ISP_SUB_CLASS		0x80
 
+#define PUNIT_PORT		0x04
+#define SSS_SHIFT		24
+
+/* Soft reset mask */
+#define SR_MASK			0x2
+
 #define PMU1_MAX_DEVS			8
 #define PMU2_MAX_DEVS			32
 

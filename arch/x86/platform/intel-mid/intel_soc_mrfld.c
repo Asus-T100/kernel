@@ -44,11 +44,6 @@ static bool mrfld_pmu_enter(int s0ix_state)
 	return true;
 }
 
-struct platform_pmu_ops mrfld_pmu_ops = {
-	.init	 = mrfld_pmu_init,
-	.enter	 = mrfld_pmu_enter,
-};
-
 /**
  *      platform_set_pmu_ops - Set the global pmu method table.
  *      @ops:   Pointer to ops structure.
@@ -86,3 +81,82 @@ int get_extended_cstate_mode(char *buffer, struct kernel_param *kp)
 	strcpy(buffer, default_string);
 	return strlen(default_string);
 }
+
+static int wait_for_nc_pmcmd_complete(int verify_mask,
+				int status_mask, int state_type , int reg)
+{
+	int pwr_sts;
+	int count = 0;
+
+	while (true) {
+		pwr_sts = intel_mid_msgbus_read32(PUNIT_PORT, reg);
+		pwr_sts = pwr_sts >> SSS_SHIFT;
+		if (state_type == OSPM_ISLAND_DOWN ||
+					state_type == OSPM_ISLAND_SR) {
+			if ((pwr_sts & status_mask) ==
+						(verify_mask & status_mask))
+				break;
+			else
+				udelay(10);
+		} else if (state_type == OSPM_ISLAND_UP) {
+			if ((~pwr_sts & status_mask)  ==
+						(~verify_mask & status_mask))
+				break;
+			else
+				udelay(10);
+		}
+
+		count++;
+		if (WARN_ONCE(count > 500000, "Timed out waiting for P-Unit"))
+			return -EBUSY;
+	}
+	return 0;
+}
+
+static int mrfld_nc_set_power_state(int islands, int state_type,
+							int reg, int *change)
+{
+	u32 pwr_sts = 0;
+	u32 pwr_mask = 0;
+	int i, lss, mask;
+	int ret = 0;
+	int status_mask = 0;
+
+	*change = 0;
+	pwr_sts = intel_mid_msgbus_read32(PUNIT_PORT, reg);
+	pwr_mask = pwr_sts;
+
+	for (i = 0; i < OSPM_MAX_POWER_ISLANDS; i++) {
+		lss = islands & (0x1 << i);
+		if (lss) {
+			mask = D0I3_MASK << (BITS_PER_LSS * i);
+			status_mask = status_mask | mask;
+			if (state_type == OSPM_ISLAND_DOWN)
+				pwr_mask |= mask;
+			else if (state_type == OSPM_ISLAND_UP)
+				pwr_mask &= ~mask;
+			/* Soft reset case */
+			else if (state_type == OSPM_ISLAND_SR) {
+				pwr_mask &= ~mask;
+				mask = SR_MASK << (BITS_PER_LSS * i);
+				pwr_mask |= mask;
+			}
+		}
+	}
+
+	if (pwr_mask != pwr_sts) {
+		intel_mid_msgbus_write32(PUNIT_PORT, reg, pwr_mask);
+		ret = wait_for_nc_pmcmd_complete(pwr_mask,
+					status_mask, state_type, reg);
+		if (!ret)
+			*change = 1;
+	}
+
+	return ret;
+}
+
+struct platform_pmu_ops mrfld_pmu_ops = {
+	.init	 = mrfld_pmu_init,
+	.enter	 = mrfld_pmu_enter,
+	.nc_set_power_state = mrfld_nc_set_power_state,
+};

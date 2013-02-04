@@ -345,5 +345,7 @@
 extern void pmu_set_s0ix_possible(int state);
 extern void log_wakeup_irq(void);
 extern void s0ix_complete(void);
+extern int mdfld_clv_nc_set_power_state(int, int, int, int *);
+
 
 #endif
