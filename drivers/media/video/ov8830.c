@@ -697,80 +697,75 @@ static int __ov8830_update_frame_timing(struct v4l2_subdev *sd, int exposure,
 	if (ret)
 		return ret;
 
-	ret = ov8830_write_reg(client, OV8830_16BIT, OV8830_TIMING_VTS, *vts);
-	if (ret)
-		return ret;
-
-	return ret;
+	return ov8830_write_reg(client, OV8830_16BIT, OV8830_TIMING_VTS, *vts);
 }
 
 static int __ov8830_set_exposure(struct v4l2_subdev *sd, int exposure, int gain,
-			u16 *hts, u16 *vts)
+			int dig_gain, u16 *hts, u16 *vts)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	int exp_val, ret;
-	/* Expecting the group hold/launch to done by the calling function */
 
-	/*
-	 * Validate exposure: must not exceed the max supported or less than 0.
-	 * Exposure registers can hold 20bit value. Also xposure cannot
-	 * exceed VTS-14. VTS can support only 16bit value. So that makes the
-	 * maximum exposure that can support to Max(VTS)-14
-	 */
-	exposure = clamp_t(int, exposure, 0, OV8830_MAX_EXPOSURE_VALUE);
-
-	/* Validate gain: must not exceed maximum 8bit value or less than 0 */
-	gain = clamp_t(int, gain, 0, OV8830_MAX_GAIN_VALUE);
-
-	/*
-	 * Exposure must be less than VTS -14. Adjust the VTS beween maximum
-	 * FPS supported for a specific mode and exposure.
-	 */
+	/* Update frame timings. Expsure must be minimum <  vts-14 */
 	ret = __ov8830_update_frame_timing(sd, exposure, hts, vts);
-	if (ret) {
-		v4l2_err(sd, "Could not set the appropriate VTS.\n");
-		goto out;
-	}
+	if (ret)
+		return ret;
 
 	/* For OV8835, the low 4 bits are fraction bits and must be kept 0 */
 	exp_val = exposure << 4;
 	ret = ov8830_write_reg(client, OV8830_8BIT,
 			       OV8830_LONG_EXPO+2, exp_val & 0xFF);
 	if (ret)
-		goto out;
+		return ret;
 
 	ret = ov8830_write_reg(client, OV8830_8BIT,
 			       OV8830_LONG_EXPO+1, (exp_val >> 8) & 0xFF);
 	if (ret)
-		goto out;
+		return ret;
 
 	ret = ov8830_write_reg(client, OV8830_8BIT,
 			       OV8830_LONG_EXPO, (exp_val >> 16) & 0x0F);
 	if (ret)
-		goto out;
+		return ret;
+
+	/* Digital gain : to all channel gains */
+	ret = ov8830_write_reg(client, OV8830_16BIT,
+			OV8830_MWB_RED_GAIN_H, dig_gain);
+	if (ret)
+		return ret;
+
+	ret = ov8830_write_reg(client, OV8830_16BIT,
+			OV8830_MWB_GREEN_GAIN_H, dig_gain);
+	if (ret)
+		return ret;
+
+	ret = ov8830_write_reg(client, OV8830_16BIT,
+			OV8830_MWB_BLUE_GAIN_H, dig_gain);
+	if (ret)
+		return ret;
 
 	/* set global gain */
-	ret = ov8830_write_reg(client, OV8830_8BIT, OV8830_AGC_ADJ, gain);
-	if (ret)
-		goto out;
-
-out:
-	return ret;
+	return ov8830_write_reg(client, OV8830_8BIT, OV8830_AGC_ADJ, gain);
 }
 
-static int ov8830_set_exposure(struct v4l2_subdev *sd, int exposure, int gain)
+static int ov8830_set_exposure(struct v4l2_subdev *sd, int exposure, int gain,
+				int dig_gain)
 {
 	struct ov8830_device *dev = to_ov8830_sensor(sd);
+	const struct ov8830_resolution *res;
 	u16 hts, vts;
 	int ret;
-	const struct ov8830_resolution *res;
 
 	mutex_lock(&dev->input_lock);
 
-	if (exposure == dev->exposure && gain == dev->gain) {
-		mutex_unlock(&dev->input_lock);
-		return 0;
-	}
+	/* Validate exposure:  cannot exceed 16bit value */
+	exposure = clamp_t(int, exposure, 0, OV8830_MAX_EXPOSURE_VALUE);
+
+	/* Validate gain: must not exceed maximum 8bit value */
+	gain = clamp_t(int, gain, 0, OV8830_MAX_GAIN_VALUE);
+
+	/* Validate digital gain: must not exceed 12 bit value*/
+	dig_gain = clamp_t(int, dig_gain, 0, OV8830_MWB_GAIN_MAX);
 
 	/* Group hold is valid only if sensor is streaming. */
 	if (dev->streaming) {
@@ -783,13 +778,14 @@ static int ov8830_set_exposure(struct v4l2_subdev *sd, int exposure, int gain)
 	hts = res->fps_options[dev->fps_index].pixels_per_line;
 	vts = res->fps_options[dev->fps_index].lines_per_frame;
 
-	ret = __ov8830_set_exposure(sd, exposure, gain, &hts, &vts);
+	ret = __ov8830_set_exposure(sd, exposure, gain, dig_gain, &hts, &vts);
 	if (ret)
 		goto out;
 
 	/* Updated the device variable. These are the current values. */
-	dev->gain     = gain;
+	dev->gain = gain;
 	dev->exposure = exposure;
+	dev->digital_gain = dig_gain;
 	dev->lines_per_frame = vts;
 	dev->pixels_per_line = hts;
 
@@ -806,10 +802,8 @@ out:
 static int ov8830_s_exposure(struct v4l2_subdev *sd,
 			      struct atomisp_exposure *exposure)
 {
-	int exp = exposure->integration_time[0];
-	int gain = exposure->gain[0];
-
-	return ov8830_set_exposure(sd, exp, gain);
+	return ov8830_set_exposure(sd, exposure->integration_time[0],
+				exposure->gain[0], exposure->gain[1]);
 }
 
 static long ov8830_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
@@ -872,6 +866,7 @@ static void ov8830_uninit(struct v4l2_subdev *sd)
 
 	dev->exposure = 0;
 	dev->gain     = 0;
+	dev->digital_gain = 0;
 }
 
 static int power_up(struct v4l2_subdev *sd)
@@ -1173,7 +1168,8 @@ static int __ov8830_s_frame_interval(struct v4l2_subdev *sd,
 	vts = res->fps_options[dev->fps_index].lines_per_frame;
 
 	/* update frametiming. Conside the curren exposure/gain as well */
-	ret = __ov8830_set_exposure(sd, dev->exposure, dev->gain, &hts, &vts);
+	ret = __ov8830_set_exposure(sd, dev->exposure, dev->gain,
+					dev->digital_gain, &hts, &vts);
 	if (ret)
 		return ret;
 
@@ -1618,7 +1614,8 @@ static int ov8830_s_mbus_fmt(struct v4l2_subdev *sd,
 	 * will be changed according to the exposure used. But the maximum vts
 	 * dev->curr_res_table[dev->fmt_idx] should not be changed at all.
 	 */
-	ret = __ov8830_set_exposure(sd, dev->exposure, dev->gain, &hts, &vts);
+	ret = __ov8830_set_exposure(sd, dev->exposure, dev->gain,
+					dev->digital_gain, &hts, &vts);
 	if (ret)
 		goto out;
 

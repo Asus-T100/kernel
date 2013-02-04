@@ -127,6 +127,11 @@ struct drv201_device {
 #define OV8830_AGC_ADJ_H			0x3508
 #define OV8830_AGC_ADJ_L			0x3509
 
+#define OV8830_MWB_RED_GAIN_H			0x3400
+#define OV8830_MWB_GREEN_GAIN_H			0x3402
+#define OV8830_MWB_BLUE_GAIN_H			0x3404
+#define OV8830_MWB_GAIN_MAX			0x0fff
+
 #define OV8830_OTP_BANK0_PID			0x3d00
 #define OV8830_CHIP_ID_HIGH			0x300a
 #define OV8830_CHIP_ID_LOW			0x300b
@@ -396,6 +401,7 @@ struct ov8830_device {
 	u8 sensor_revision;
 	int exposure;
 	int gain;
+	u16 digital_gain;
 	u16 pixels_per_line;
 	u16 lines_per_frame;
 	int run_mode;
