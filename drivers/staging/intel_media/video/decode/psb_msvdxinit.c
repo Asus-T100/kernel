@@ -873,6 +873,9 @@ int psb_msvdx_init(struct drm_device *dev)
 			return 1;
 	}
 
+	if (dev_priv->msvdx_private == NULL)
+		return 1;
+
 	msvdx_priv = dev_priv->msvdx_private;
 
 	msvdx_priv->msvdx_busy = 0;

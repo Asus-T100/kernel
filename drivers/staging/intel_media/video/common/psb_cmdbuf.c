@@ -811,7 +811,7 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 	struct psb_video_ctx *pos, *n;
 	int engine, po_correct;
 	int found = 0;
-	struct psb_context *context;
+	struct psb_context *context = NULL;
 
 	ret = ttm_read_lock(&dev_priv->ttm_lock, true);
 	if (unlikely(ret != 0))
@@ -856,6 +856,12 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 		ret = -EINVAL;
 		goto out_err0;
 	}
+
+	if (context == NULL) {
+		ret = -EINVAL;
+		goto out_err0;
+	}
+
 #if defined(MERRIFIELD)
 	PSB_DEBUG_GENERAL("by pass soc 0 %x\n", PSB_RMSVDX32(0x630));
 	PSB_DEBUG_GENERAL("by pass soc 1 %x\n", PSB_RMSVDX32(0x640));
