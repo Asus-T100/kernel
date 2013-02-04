@@ -620,12 +620,6 @@ static int atomisp_release(struct file *file)
 	sh_css_uninit();
 	hrt_isp_css_mm_clear();
 
-	/*uninit the camera subdev*/
-	ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
-			       core, init, 0);
-	if (ret == -1 || ret == -EINVAL)
-		v4l2_err(&atomisp_dev, "sensor firmware failed\n");
-
 	ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
 				       core, s_power, 0);
 	if (ret)
