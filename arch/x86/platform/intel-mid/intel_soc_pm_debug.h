@@ -20,8 +20,35 @@
 #define _INTEL_SOC_PM_DEBUG_H
 #include <linux/intel_mid_pm.h>
 
-#define NANO_SEC 1000000000UL /* 10^9 in sec */
+#include "intel_soc_pmu.h"
+
+
+#define NANO_SEC		1000000000UL /* 10^9 in sec */
 #define PMU_LOG_INTERVAL_SECS	(60*5) /* 5 mins in secs */
+
+#define S0IX_LAT_SRAM_ADDR_CLVP		0xFFFF7FD0
+#define S0IX_LAT_SRAM_SIZE_CLVP		8
+
+#define IPC_CMD_S0IX_LATENCY_CLVP	0xCE
+#define IPC_SUB_MEASURE_START_CLVP	0x00
+#define IPC_SUB_MEASURE_STOP_CLVP	0x01
+
+struct s0ix_latency_stat {
+	u64 min_entry;
+	u64 max_entry;
+	u64 total_entry;
+	u64 min_exit;
+	u64 max_exit;
+	u64 total_exit;
+};
+
+struct latency_stat {
+	struct s0ix_latency_stat latency[SYS_STATE_MAX];
+	u64 count[SYS_STATE_MAX];
+	u32 __iomem *scu_s0ix_lat_addr;
+	struct dentry *dentry;
+	bool latency_measure;
+};
 
 struct island {
 	int type;

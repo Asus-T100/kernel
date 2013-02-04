@@ -17,8 +17,240 @@
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
  *
  */
-#include "intel_soc_pmu.h"
+#include <linux/time.h>
 #include "intel_soc_pm_debug.h"
+
+#ifdef CONFIG_PM_DEBUG
+static struct latency_stat *lat_stat;
+
+static void latency_measure_enable_disable(bool enable_measure)
+{
+	int err;
+	u32 sub;
+
+	if (enable_measure == lat_stat->latency_measure)
+		return;
+
+	if (enable_measure)
+		sub = IPC_SUB_MEASURE_START_CLVP;
+	else
+		sub = IPC_SUB_MEASURE_STOP_CLVP;
+
+	err = intel_scu_ipc_command(IPC_CMD_S0IX_LATENCY_CLVP,
+						sub, NULL, 0, NULL, 0);
+	if (unlikely(err)) {
+		pr_err("IPC to %s S0IX Latency Measurement failed!\n",
+					enable_measure ? "start" : "stop");
+		return;
+	}
+
+	if (enable_measure) {
+		memset(lat_stat->latency, 0, sizeof(lat_stat->latency));
+		memset(lat_stat->count, 0, sizeof(lat_stat->count));
+	}
+
+	lat_stat->latency_measure = enable_measure;
+}
+
+static int show_pmu_s0ix_lat(struct seq_file *s, void *unused)
+{
+	unsigned long long min, avg, max;
+	unsigned long long min_rem, avg_rem, max_rem;
+	int i = 0;
+
+	char *states[] = {
+		"S0I1",
+		"LPMP3",
+		"S0I3"
+	};
+
+	for (i = SYS_STATE_S0I1; i <= SYS_STATE_S0I3; i++) {
+		seq_printf(s, "\n%s(%llu)\n================\n",
+			states[i - SYS_STATE_S0I1], lat_stat->count[i]);
+
+		seq_printf(s, "%25s\n", "Latency");
+		seq_printf(s, "%32s\n", "min/avg/max(msec)");
+
+		/* Calculating stats for entry latency */
+		min = lat_stat->latency[i].min_entry;
+		max = lat_stat->latency[i].max_entry;
+		avg = lat_stat->latency[i].total_entry;
+
+		if (lat_stat->count[i])
+			do_div(avg, lat_stat->count[i]);
+
+		min_rem = avg_rem = max_rem = 0;
+		if (min)
+			min_rem = do_div(min, USEC_PER_MSEC);
+		if (max)
+			max_rem = do_div(max, USEC_PER_MSEC);
+		if (avg)
+			avg_rem = do_div(avg, USEC_PER_MSEC);
+
+		/* Printing stats for entry latency */
+		seq_printf(s, "%5s %5llu.%03llu/%5llu.%03llu/%5llu.%03llu\n",
+			"entry", min, min_rem, avg, avg_rem, max, max_rem);
+
+
+		/* Calculating stats for exit latency */
+		min = lat_stat->latency[i].min_exit;
+		max = lat_stat->latency[i].max_exit;
+		avg = lat_stat->latency[i].total_exit;
+
+		if (lat_stat->count[i])
+			do_div(avg, lat_stat->count[i]);
+
+		min_rem = avg_rem = max_rem = 0;
+		if (min)
+			min_rem = do_div(min, USEC_PER_MSEC);
+		if (max)
+			max_rem = do_div(max, USEC_PER_MSEC);
+		if (avg)
+			avg_rem = do_div(avg, USEC_PER_MSEC);
+
+		/* Printing stats for exit latency */
+		seq_printf(s, "%5s %5llu.%03llu/%5llu.%03llu/%5llu.%03llu\n",
+			"exit", min, min_rem, avg, avg_rem, max, max_rem);
+
+	}
+
+	return 0;
+}
+
+static int pmu_s0ix_lat_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, show_pmu_s0ix_lat, NULL);
+}
+
+static ssize_t pmu_s0ix_lat_write(struct file *file,
+		     const char __user *userbuf, size_t count, loff_t *ppos)
+{
+	char buf[32];
+	int buf_size = min(count, sizeof(buf)-1);
+
+	if (copy_from_user(buf, userbuf, buf_size))
+		return -EFAULT;
+
+
+	buf[buf_size] = 0;
+
+	if (((strlen("start") + 1) == buf_size) &&
+		!strncmp(buf, "start", strlen("start"))) {
+		latency_measure_enable_disable(true);
+	} else if (((strlen("stop") + 1) == buf_size) &&
+		!strncmp(buf, "stop", strlen("stop"))) {
+		latency_measure_enable_disable(false);
+	}
+
+	return buf_size;
+}
+
+static const struct file_operations s0ix_latency_ops = {
+	.open		= pmu_s0ix_lat_open,
+	.read		= seq_read,
+	.write		= pmu_s0ix_lat_write,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
+void s0ix_latency_stat(int type)
+{
+	u64 scu_entry_lat, scu_exit_lat;
+
+	if (!lat_stat || !lat_stat->latency_measure)
+		return;
+
+	if (type < SYS_STATE_S0I1 || type > SYS_STATE_S0I3)
+		return;
+
+	scu_entry_lat = readl(lat_stat->scu_s0ix_lat_addr);
+	scu_exit_lat = readl(lat_stat->scu_s0ix_lat_addr + 1);
+
+	if (!lat_stat->count[type]) { /* Collecting stats for first time */
+		lat_stat->latency[type].min_entry =
+		lat_stat->latency[type].max_entry =
+		lat_stat->latency[type].total_entry = scu_entry_lat;
+
+		lat_stat->latency[type].min_exit =
+		lat_stat->latency[type].max_exit =
+		lat_stat->latency[type].total_exit = scu_exit_lat;
+	} else {		/* Collecting stats for second time onwards */
+		if (scu_entry_lat > lat_stat->latency[type].max_entry)
+			lat_stat->latency[type].max_entry = scu_entry_lat;
+		else if (scu_entry_lat < lat_stat->latency[type].min_entry)
+			lat_stat->latency[type].min_entry = scu_entry_lat;
+
+		if (scu_exit_lat > lat_stat->latency[type].max_exit)
+			lat_stat->latency[type].max_exit = scu_exit_lat;
+		else if (scu_exit_lat < lat_stat->latency[type].min_exit)
+			lat_stat->latency[type].min_exit = scu_exit_lat;
+
+		lat_stat->latency[type].total_entry += scu_entry_lat;
+		lat_stat->latency[type].total_exit += scu_exit_lat;
+	}
+
+	lat_stat->count[type]++;
+}
+
+void s0ix_lat_stat_init(void)
+{
+	if (!platform_is(INTEL_ATOM_CLV))
+		return;
+
+	lat_stat = kzalloc(sizeof(struct latency_stat), GFP_KERNEL);
+	if (unlikely(!lat_stat)) {
+		pr_err("Failed to allocate memory for s0ix latency!\n");
+		goto out_err0;
+	}
+
+	lat_stat->scu_s0ix_lat_addr =
+		ioremap_nocache(S0IX_LAT_SRAM_ADDR_CLVP,
+					S0IX_LAT_SRAM_SIZE_CLVP);
+	if (unlikely(!lat_stat->scu_s0ix_lat_addr)) {
+		pr_err("Failed to map SCU_S0IX_LAT_ADDR!\n");
+		goto out_err1;
+	}
+
+	lat_stat->dentry = debugfs_create_file("s0ix_latency",
+			S_IFREG | S_IRUGO, NULL, NULL, &s0ix_latency_ops);
+	if (unlikely(!lat_stat->dentry)) {
+		pr_err("Failed to create debugfs for s0ix latency!\n");
+		goto out_err2;
+	}
+
+	return;
+
+out_err2:
+	iounmap(lat_stat->scu_s0ix_lat_addr);
+out_err1:
+	kfree(lat_stat);
+	lat_stat = NULL;
+out_err0:
+	pr_err("%s: Initialization failed\n", __func__);
+}
+
+void s0ix_lat_stat_finish(void)
+{
+	if (!platform_is(INTEL_ATOM_CLV))
+		return;
+
+	if (unlikely(!lat_stat))
+		return;
+
+	if (likely(lat_stat->scu_s0ix_lat_addr))
+		iounmap(lat_stat->scu_s0ix_lat_addr);
+
+	if (likely(lat_stat->dentry))
+		debugfs_remove(lat_stat->dentry);
+
+	kfree(lat_stat);
+	lat_stat = NULL;
+}
+#else /* CONFIG_PM_DEBUG */
+void s0ix_latency_stat(int type) {}
+void s0ix_lat_stat_init(void) {}
+void s0ix_lat_stat_finish(void) {}
+#endif /* CONFIG_PM_DEBUG */
 
 static char *dstates[] = {"D0", "D0i1", "D0i2", "D0i3"};
 
@@ -254,6 +486,7 @@ void pmu_stat_end(void)
 
 		mid_pmu_cxt->pmu_stats[type].count++;
 
+		s0ix_latency_stat(type);
 	}
 
 	mid_pmu_cxt->pmu_current_state = SYS_STATE_S0I0;
@@ -983,6 +1216,8 @@ void pmu_stats_init(void)
 	(void) debugfs_create_file("pmu_dev_stats", S_IFREG | S_IRUGO,
 				NULL, NULL, &pmu_dev_stat_operations);
 
+	s0ix_lat_stat_init();
+
 #ifdef CONFIG_PM_DEBUG
 	/* dynamic debug tracing in every 5 mins */
 	INIT_DELAYED_WORK_DEFERRABLE(&mid_pmu_cxt->log_work, pmu_log_stat);
@@ -996,7 +1231,6 @@ void pmu_stats_init(void)
 				NULL, NULL, &pmu_stats_log_operations);
 	if (fentry == NULL)
 		printk(KERN_ERR "Failed to create pmu_stats_log debugfs\n");
-
 #endif
 }
 
@@ -1005,6 +1239,7 @@ void pmu_stats_finish(void)
 #ifdef CONFIG_PM_DEBUG
 	cancel_delayed_work_sync(&mid_pmu_cxt->log_work);
 #endif
+	s0ix_lat_stat_finish();
 }
 
 #endif /*if CONFIG_X86_MDFLD_POWER || CONFIG_X86_CLV_POWER*/
