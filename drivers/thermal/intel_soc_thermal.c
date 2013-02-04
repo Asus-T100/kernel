@@ -40,7 +40,7 @@
 
 #include <asm/intel-mid.h>
 
-#define DRIVER_NAME	"intel_soc_thermal"
+#define DRIVER_NAME	"soc_thrm"
 
 /* SOC DTS Registers */
 #define SOC_THERMAL_SENSORS	2
@@ -371,24 +371,7 @@ static struct platform_driver soc_thermal_driver = {
 
 static int __init soc_thermal_module_init(void)
 {
-	int ret;
-	struct platform_device *pd;
-
-	ret = platform_driver_register(&soc_thermal_driver);
-	if (ret) {
-		pr_err("Platform driver register failed:%d\n", ret);
-		return ret;
-	}
-
-	/* TODO: Remove this code when we get an SFI table entry */
-	pd = platform_device_register_simple(DRIVER_NAME, -1, NULL, 0);
-	if (IS_ERR(pd)) {
-		ret = PTR_ERR(pd);
-		pr_err("Platform device register failed with %d\n", ret);
-		platform_driver_unregister(&soc_thermal_driver);
-	}
-
-	return ret;
+	return platform_driver_register(&soc_thermal_driver);
 }
 
 static void __exit soc_thermal_module_exit(void)
