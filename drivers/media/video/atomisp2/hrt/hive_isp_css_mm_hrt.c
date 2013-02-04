@@ -132,10 +132,11 @@ void *hrt_isp_css_mm_alloc(size_t bytes)
 
 void *hrt_isp_css_mm_alloc_user_ptr(size_t bytes, unsigned int userptr,
 				    unsigned int num_pages,
+				    enum hrt_userptr_type type,
 				    bool cached)
 {
 	return __hrt_isp_css_mm_alloc(bytes, userptr, num_pages,
-				      HRT_USR_PTR, cached);
+				      type, cached);
 }
 
 void *hrt_isp_css_mm_alloc_cached(size_t bytes)
