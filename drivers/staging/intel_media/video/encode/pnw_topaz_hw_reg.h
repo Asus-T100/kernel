@@ -524,6 +524,7 @@ do {                                   \
 #define REGNUM_TOPAZ_CR_MMU_FLUSH   0x0024
 
 #define TOPAZ_CR_MMU_CONTROL1       0x0028
+#define TOPAZ_CR_MMU_TILE_BASE0     0x0038
 
 /* Register CR_MMU_BANK_INDEX */
 #define TOPAZ_CR_MMU_BANK_INDEX     0x0040
