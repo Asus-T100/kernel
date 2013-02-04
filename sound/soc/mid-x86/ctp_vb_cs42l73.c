@@ -82,18 +82,14 @@ static const struct snd_soc_dapm_route ctp_vb_audio_map[] = {
 	{"Ext Spk", NULL, "SPKOUT"},
 };
 
-static int ctp_vb_asp_hw_params(struct snd_pcm_substream *substream,
-		struct snd_pcm_hw_params *params)
+int ctp_vb_set_asp_clk_fmt(struct snd_soc_dai *codec_dai)
 {
-	struct snd_soc_pcm_runtime *rtd = substream->private_data;
-	struct snd_soc_dai *codec_dai = rtd->codec_dai;
 	unsigned int fmt;
 	int ret;
 
 	/* CS42L73  Slave Mode`*/
 	fmt =   SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF
 				| SND_SOC_DAIFMT_CBS_CFS;
-
 	/* Set codec DAI configuration */
 	ret = snd_soc_dai_set_fmt(codec_dai, fmt);
 
@@ -101,13 +97,33 @@ static int ctp_vb_asp_hw_params(struct snd_pcm_substream *substream,
 		pr_err("can't set codec DAI configuration %d\n", ret);
 		return ret;
 	}
+
 	ret = snd_soc_dai_set_sysclk(codec_dai, CS42L73_CLKID_MCLK1,
-		DEFAULT_MCLK, SND_SOC_CLOCK_IN);
+					DEFAULT_MCLK, SND_SOC_CLOCK_IN);
+
 	if (ret < 0) {
 		pr_err("can't set codec clock %d\n", ret);
 		return ret;
 	}
+
 	return 0;
+}
+
+static int ctp_vb_asp_hw_params(struct snd_pcm_substream *substream,
+		struct snd_pcm_hw_params *params)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_dai *codec_dai = rtd->codec_dai;
+
+	return ctp_vb_set_asp_clk_fmt(codec_dai);
+}
+
+static int ctp_vb_asp_set_params(struct snd_compr_stream *cstream)
+{
+	struct snd_soc_pcm_runtime *rtd = cstream->private_data;
+	struct snd_soc_dai *codec_dai = rtd->codec_dai;
+
+	return ctp_vb_set_asp_clk_fmt(codec_dai);
 }
 
 static int ctp_vb_vsp_hw_params(struct snd_pcm_substream *substream,
@@ -241,6 +257,10 @@ static struct snd_soc_ops ctp_vb_asp_ops = {
 	.hw_params = ctp_vb_asp_hw_params,
 };
 
+static struct snd_soc_compr_ops ctp_vb_asp_compr_ops = {
+	.set_params = ctp_vb_asp_set_params,
+};
+
 static struct snd_soc_ops ctp_vb_vsp_ops = {
 	.startup = ctp_startup_vsp,
 	.hw_params = ctp_vb_vsp_hw_params,
@@ -288,7 +308,7 @@ static struct snd_soc_dai_link ctp_vb_dailink[] = {
 		.platform_name = "sst-platform",
 		.init = NULL,
 		.ignore_suspend = 1,
-		.ops = &ctp_vb_asp_ops,
+		.ops = &ctp_vb_asp_compr_ops,
 	},
 	[CTP_COMMS_BT_SCO_DEV] = {
 		.name = "Cloverview BT XSP",
