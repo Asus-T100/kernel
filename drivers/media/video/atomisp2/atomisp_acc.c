@@ -336,12 +336,10 @@ int atomisp_acc_map(struct atomisp_device *isp, struct atomisp_acc_map *map)
 	if (isp->acc.pipeline)
 		return -EBUSY;
 
-	/* FIXME: should implement mmgr_map() and use it instead */
 	pgnr = DIV_ROUND_UP(map->length, PAGE_SIZE);
-	hrt_isp_css_mm_set_user_ptr((unsigned int)map->user_ptr, pgnr,
-				    HRT_USR_PTR);
-	cssptr = mmgr_malloc(map->length);
-	hrt_isp_css_mm_set_user_ptr(0, 0, HRT_USR_PTR);
+	cssptr = (hrt_vaddress)hrt_isp_css_mm_alloc_user_ptr(
+			map->length, (unsigned int)map->user_ptr,
+			pgnr, HRT_USR_PTR, false);
 	if (!cssptr)
 		return -ENOMEM;
 
