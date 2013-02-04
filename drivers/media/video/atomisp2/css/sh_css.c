@@ -316,7 +316,6 @@ struct sh_css {
 	unsigned int                   left_padding;
 	struct sh_css_pipe            *curr_pipe;
 	bool                           reconfigure_css_rx;
-	bool                           invalidate;
 	void *(*malloc) (size_t bytes, bool zero_mem);
 	void (*free) (void *ptr);
 	void (*flush) (struct sh_css_acc_fw *fw);
@@ -347,7 +346,6 @@ struct sh_css {
 	0,                        /* left_padding */ \
 	NULL,                     /* curr_pipe */ \
 	true,                     /* reconfigure_css_rx */ \
-	false,                    /* invalidate */ \
 	NULL,                     /* malloc */ \
 	NULL,                     /* free */ \
 	NULL,                     /* flush */ \
@@ -3408,10 +3406,9 @@ assert(pipe != NULL);
 
 	copy_stage = NULL;
 
-	if (my_css.invalidate || pipe->zoom_changed) {
+	if (pipe->zoom_changed) {
 		sh_css_pipe_invalidate_binaries(pipe);
 		pipe->zoom_changed = false;
-		my_css.invalidate = false;
 	}
 
 	err = sh_css_pipe_load_binaries(pipe);
@@ -4542,7 +4539,7 @@ assert(pipe != NULL);
 		ref_info = pipe->pipe.video.video_binary.in_frame_info;
 	else
 		ref_info = pipe->pipe.video.video_binary.internal_frame_info;
-	
+
 	ref_info.format = SH_CSS_FRAME_FORMAT_YUV420;
 	ref_info.raw_bit_depth = SH_CSS_REF_BIT_DEPTH;
 
@@ -4648,10 +4645,9 @@ assert(pipe != NULL);
 	copy_stage = NULL;
 	in_stage = NULL;
 
-	if (my_css.invalidate || pipe->zoom_changed) {
+	if (pipe->zoom_changed) {
 		sh_css_pipe_invalidate_binaries(pipe);
 		pipe->zoom_changed = false;
-		my_css.invalidate = false;
 	}
 
 	err = sh_css_pipe_load_binaries(pipe);
@@ -5676,10 +5672,6 @@ static enum sh_css_err construct_capture_pipe(
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "construct_capture_pipe() enter:\n");
 	sh_css_pipeline_clean(me);
 
-	if (my_css.invalidate) {
-		sh_css_pipe_invalidate_binaries(pipe);
-		my_css.invalidate = false;
-	}
 	err = sh_css_pipe_load_binaries(pipe);
 	if (err != sh_css_success)
 		return err;
@@ -6548,6 +6540,50 @@ assert(frame != NULL);
 return err;
 }
 
+enum sh_css_err
+sh_css_frame_map(struct sh_css_frame **frame,
+                 const struct sh_css_frame_info *info,
+                 const void *data,
+                 uint16_t attribute,
+                 void *context)
+{
+	enum sh_css_err err = sh_css_success;
+	struct sh_css_frame *me = sh_css_malloc(sizeof(*me));
+
+	if (me == NULL)
+		return sh_css_err_cannot_allocate_memory;
+
+	me->info.width = info->width;
+	me->info.height = info->height;
+	me->info.format = info->format;
+	me->info.padded_width = info->padded_width;
+	me->info.raw_bit_depth = info->raw_bit_depth;
+	me->contiguous = false; /* doublecheck */
+	me->dynamic_data_index = SH_CSS_INVALID_FRAME_ID;
+
+	err = init_frame_planes(me);
+
+	if (err == sh_css_success) {
+		/* use mmgr_mmap to map */
+		me->data = mmgr_mmap(
+				     data,
+				     me->data_bytes,
+				     attribute,
+				     context);
+		if (me->data == mmgr_NULL)
+			err = sh_css_err_invalid_arguments;
+	};
+
+	if (err != sh_css_success) {
+		sh_css_free(me);
+		return err;
+	}
+
+	*frame = me;
+
+	return err;
+}
+
 void
 sh_css_frame_free(struct sh_css_frame *frame)
 {
@@ -6623,7 +6659,6 @@ sh_css_load_acceleration(struct sh_css_acc_fw *firmware)
 {
 	enum sh_css_err err = sh_css_success;
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_load_acceleration() enter:\n");
-	my_css.invalidate = true;
 	err = sh_css_acc_load(firmware);
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_load_acceleration() leave:\n");
 return err;
@@ -6634,7 +6669,6 @@ void
 sh_css_unload_acceleration(struct sh_css_acc_fw *firmware)
 {
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_unload_acceleration() enter:\n");
-	my_css.invalidate = true;
 	sh_css_acc_unload(firmware);
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_unload_acceleration() leave:\n");
 }
@@ -6661,7 +6695,6 @@ sh_css_pipe_unload_extension(struct sh_css_pipe *pipe,
 			     struct sh_css_fw_info *firmware)
 {
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_pipe_unload_extension() enter:\n");
-	my_css.invalidate = true;
 	if (firmware->info.isp.type == SH_CSS_ACC_OUTPUT)
 		remove_firmware(&pipe->output_stage, firmware);
 	else if (firmware->info.isp.type == SH_CSS_ACC_VIEWFINDER)
@@ -8042,7 +8075,7 @@ sh_css_allocate_continuous_frames(
 	} else {
 		num_frames = NUM_ONLINE_INIT_CONTINUOUS_FRAMES;
 	}
-	
+
 	ref_info = pipe->pipe.preview.preview_binary.in_frame_info;
 	if (input_needs_raw_binning &&
 	    pipe->pipe.preview.preview_binary.info->enable.raw_binning) {
