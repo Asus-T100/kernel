@@ -715,7 +715,7 @@ static const struct ov8830_reg ov8830_BasicSettings[] = {
 
 /*****************************STILL********************************/
 
-static const struct ov8830_reg ov8830_cont_cap_720P_15fps[] = {
+static const struct ov8830_reg ov8830_cont_cap_720P[] = {
 	{ OV8830_8BIT, { 0x3800 }, 0x00 },
 	{ OV8830_8BIT, { 0x3801 }, 0x0c },
 	{ OV8830_8BIT, { 0x3802 }, 0x01 },
@@ -739,7 +739,7 @@ static const struct ov8830_reg ov8830_cont_cap_720P_15fps[] = {
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
-static const struct ov8830_reg ov8830_1080P_STILL_15fps[] = {
+static const struct ov8830_reg ov8830_1080P_STILL[] = {
 	{ OV8830_8BIT, { 0x3800 }, 0x00 },
 	{ OV8830_8BIT, { 0x3801 }, 0x0c },
 	{ OV8830_8BIT, { 0x3802 }, 0x01 },
@@ -763,7 +763,7 @@ static const struct ov8830_reg ov8830_1080P_STILL_15fps[] = {
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
-static const struct ov8830_reg ov8830_cont_cap_qvga_15fps[] = {
+static const struct ov8830_reg ov8830_cont_cap_qvga[] = {
 	{ OV8830_8BIT, { 0x3800 }, 0x00 },
 	{ OV8830_8BIT, { 0x3801 }, 0x04 },
 	{ OV8830_8BIT, { 0x3802 }, 0x00 },
@@ -787,7 +787,7 @@ static const struct ov8830_reg ov8830_cont_cap_qvga_15fps[] = {
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
-static const struct ov8830_reg ov8830_VGA_STILL_15fps[] = {
+static const struct ov8830_reg ov8830_VGA_STILL[] = {
 	{ OV8830_8BIT, { 0x3800 }, 0x00 },
 	{ OV8830_8BIT, { 0x3801 }, 0x04 },
 	{ OV8830_8BIT, { 0x3802 }, 0x00 },
@@ -811,7 +811,7 @@ static const struct ov8830_reg ov8830_VGA_STILL_15fps[] = {
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
-static const struct ov8830_reg ov8830_1M_STILL_15fps[] = {
+static const struct ov8830_reg ov8830_1M_STILL[] = {
 	{ OV8830_8BIT, { 0x3800 }, 0x00 },
 	{ OV8830_8BIT, { 0x3801 }, 0x04 },
 	{ OV8830_8BIT, { 0x3802 }, 0x00 },
@@ -835,7 +835,7 @@ static const struct ov8830_reg ov8830_1M_STILL_15fps[] = {
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
-static const struct ov8830_reg ov8830_2M_STILL_15fps[] = {
+static const struct ov8830_reg ov8830_2M_STILL[] = {
 	{ OV8830_8BIT, { 0x3800 }, 0x00 },
 	{ OV8830_8BIT, { 0x3801 }, 0x04 },
 	{ OV8830_8BIT, { 0x3802 }, 0x00 },
@@ -859,7 +859,7 @@ static const struct ov8830_reg ov8830_2M_STILL_15fps[] = {
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
-static const struct ov8830_reg ov8830_3M_STILL_15fps[] = {
+static const struct ov8830_reg ov8830_3M_STILL[] = {
 	{ OV8830_8BIT, { 0x3800 }, 0x00 },
 	{ OV8830_8BIT, { 0x3801 }, 0x04 },
 	{ OV8830_8BIT, { 0x3802 }, 0x00 },
@@ -883,7 +883,7 @@ static const struct ov8830_reg ov8830_3M_STILL_15fps[] = {
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
-static const struct ov8830_reg ov8830_5M_STILL_15fps[] = {
+static const struct ov8830_reg ov8830_5M_STILL[] = {
 	{ OV8830_8BIT, { 0x3800 }, 0x00 },
 	{ OV8830_8BIT, { 0x3801 }, 0x04 },
 	{ OV8830_8BIT, { 0x3802 }, 0x00 },
@@ -907,7 +907,7 @@ static const struct ov8830_reg ov8830_5M_STILL_15fps[] = {
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
-static const struct ov8830_reg ov8830_6M_STILL_15fps[] = {
+static const struct ov8830_reg ov8830_6M_STILL[] = {
 	{ OV8830_8BIT, { 0x3800 }, 0x00 },
 	{ OV8830_8BIT, { 0x3801 }, 0x04 },
 	{ OV8830_8BIT, { 0x3802 }, 0x01 },
@@ -931,7 +931,7 @@ static const struct ov8830_reg ov8830_6M_STILL_15fps[] = {
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
-static const struct ov8830_reg ov8830_8M_STILL_15fps[] = {
+static const struct ov8830_reg ov8830_8M_STILL[] = {
 	{ OV8830_8BIT, { 0x3800 }, 0x00 },
 	{ OV8830_8BIT, { 0x3801 }, 0x04 },
 	{ OV8830_8BIT, { 0x3802 }, 0x00 },
@@ -956,7 +956,7 @@ static const struct ov8830_reg ov8830_8M_STILL_15fps[] = {
 };
 /*****************************OV8830 PREVIEW********************************/
 
-static struct ov8830_reg const ov8830_PREVIEW_848x616_30fps[] = {
+static struct ov8830_reg const ov8830_PREVIEW_848x616[] = {
 	{ OV8830_8BIT, { 0x3800 }, 0x00 },
 	{ OV8830_8BIT, { 0x3801 }, 0x08 },
 	{ OV8830_8BIT, { 0x3802 }, 0x00 },
@@ -980,7 +980,7 @@ static struct ov8830_reg const ov8830_PREVIEW_848x616_30fps[] = {
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
-static struct ov8830_reg const ov8830_PREVIEW_WIDE_PREVIEW_30fps[] = {
+static struct ov8830_reg const ov8830_PREVIEW_WIDE_PREVIEW[] = {
 	{ OV8830_8BIT, { 0x3800 }, 0x00 },
 	{ OV8830_8BIT, { 0x3801 }, 0x0c },
 	{ OV8830_8BIT, { 0x3802 }, 0x01 },
@@ -1008,7 +1008,7 @@ static struct ov8830_reg const ov8830_PREVIEW_WIDE_PREVIEW_30fps[] = {
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
-static struct ov8830_reg const ov8830_PREVIEW_1632x1224_30fps[] = {
+static struct ov8830_reg const ov8830_PREVIEW_1632x1224[] = {
 	{ OV8830_8BIT, { 0x3800 }, 0x00 },
 	{ OV8830_8BIT, { 0x3801 }, 0x08 },
 	{ OV8830_8BIT, { 0x3802 }, 0x00 },
@@ -1035,7 +1035,7 @@ static struct ov8830_reg const ov8830_PREVIEW_1632x1224_30fps[] = {
 
 /***************** OV8830 VIDEO ***************************************/
 
-static const struct ov8830_reg ov8830_QCIF_strong_dvs_30fps[] = {
+static const struct ov8830_reg ov8830_QCIF_strong_dvs[] = {
 	{ OV8830_8BIT, { 0x3800 }, 0x00 },
 	{ OV8830_8BIT, { 0x3801 }, 0x08 },
 	{ OV8830_8BIT, { 0x3802 }, 0x00 },
@@ -1059,7 +1059,7 @@ static const struct ov8830_reg ov8830_QCIF_strong_dvs_30fps[] = {
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
-static const struct ov8830_reg ov8830_QVGA_strong_dvs_30fps[] = {
+static const struct ov8830_reg ov8830_QVGA_strong_dvs[] = {
 	{ OV8830_8BIT, { 0x3800 }, 0x00 },
 	{ OV8830_8BIT, { 0x3801 }, 0x08 },
 	{ OV8830_8BIT, { 0x3802 }, 0x00 },
@@ -1083,7 +1083,7 @@ static const struct ov8830_reg ov8830_QVGA_strong_dvs_30fps[] = {
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
-static const struct ov8830_reg ov8830_VGA_strong_dvs_30fps[] = {
+static const struct ov8830_reg ov8830_VGA_strong_dvs[] = {
 	{ OV8830_8BIT, { 0x3800 }, 0x00 },
 	{ OV8830_8BIT, { 0x3801 }, 0x08 },
 	{ OV8830_8BIT, { 0x3802 }, 0x00 },
@@ -1107,7 +1107,7 @@ static const struct ov8830_reg ov8830_VGA_strong_dvs_30fps[] = {
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
-static struct ov8830_reg const ov8830_480p_strong_dvs_30fps[] = {
+static struct ov8830_reg const ov8830_480p_strong_dvs[] = {
 	{ OV8830_8BIT, { 0x3800 }, 0x01 },
 	{ OV8830_8BIT, { 0x3801 }, 0x09 },
 	{ OV8830_8BIT, { 0x3802 }, 0x01 },
@@ -1131,7 +1131,7 @@ static struct ov8830_reg const ov8830_480p_strong_dvs_30fps[] = {
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
-static struct ov8830_reg const ov8830_720p_strong_dvs_30fps[] = {
+static struct ov8830_reg const ov8830_720p_strong_dvs[] = {
 	{ OV8830_8BIT, { 0x3800 }, 0x00 },
 	{ OV8830_8BIT, { 0x3801 }, 0x0c },
 	{ OV8830_8BIT, { 0x3802 }, 0x01 },
@@ -1155,7 +1155,7 @@ static struct ov8830_reg const ov8830_720p_strong_dvs_30fps[] = {
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
-static const struct ov8830_reg ov8830_1080p_strong_dvs_30fps[] = {
+static const struct ov8830_reg ov8830_1080p_strong_dvs[] = {
 	{ OV8830_8BIT, { 0x3800 }, 0x01 },
 	{ OV8830_8BIT, { 0x3801 }, 0xd8 },
 	{ OV8830_8BIT, { 0x3802 }, 0x02 },
@@ -1179,37 +1179,13 @@ static const struct ov8830_reg ov8830_1080p_strong_dvs_30fps[] = {
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
-static const struct ov8830_reg ov8830_1080p_30fps_dvs_off[] = {
-	{ OV8830_8BIT, { 0x3800 }, 0x01 },
-	{ OV8830_8BIT, { 0x3801 }, 0xd8 },
-	{ OV8830_8BIT, { 0x3802 }, 0x02 },
-	{ OV8830_8BIT, { 0x3803 }, 0x36 },
-	{ OV8830_8BIT, { 0x3804 }, 0x0a },
-	{ OV8830_8BIT, { 0x3805 }, 0xff },
-	{ OV8830_8BIT, { 0x3806 }, 0x07 },
-	{ OV8830_8BIT, { 0x3807 }, 0x65 }, /* 2344 x 1328 Crop */
-	{ OV8830_8BIT, { 0x3808 }, 0x07 }, /* 1936 x 1104 DVS off O/p */
-	{ OV8830_8BIT, { 0x3809 }, 0x90 },
-	{ OV8830_8BIT, { 0x380a }, 0x04 },
-	{ OV8830_8BIT, { 0x380b }, 0x50 },
-	{ OV8830_8BIT, { 0x3810 }, 0x00 },
-	{ OV8830_8BIT, { 0x3811 }, 0x04 },
-	{ OV8830_8BIT, { 0x3812 }, 0x00 },
-	{ OV8830_8BIT, { 0x3813 }, 0x04 },
-	{ OV8830_8BIT, { 0x3814 }, 0x11 },
-	{ OV8830_8BIT, { 0x3815 }, 0x11 },
-	{ OV8830_8BIT, { 0x3820 }, 0x10 },
-	{ OV8830_8BIT, { 0x3821 }, 0x0e },
-	{ OV8830_TOK_TERM, {0}, 0}
-};
-
 static struct ov8830_resolution ov8830_res_preview[] = {
 	{
 		 .desc = "OV8830_PREVIEW_848x616",
 		 .width = 848,
 		 .height = 616,
 		 .used = 0,
-		 .regs = ov8830_PREVIEW_848x616_30fps,
+		 .regs = ov8830_PREVIEW_848x616,
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
 		 .skip_frames = 0,
@@ -1224,11 +1200,11 @@ static struct ov8830_resolution ov8830_res_preview[] = {
 		}
 	},
 	{
-		 .desc = "ov8830_wide_preview_30fps",
+		 .desc = "ov8830_wide_preview",
 		 .width = 1280,
 		 .height = 720,
 		 .used = 0,
-		 .regs = ov8830_PREVIEW_WIDE_PREVIEW_30fps,
+		 .regs = ov8830_PREVIEW_WIDE_PREVIEW,
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
 		 .skip_frames = 0,
@@ -1243,11 +1219,11 @@ static struct ov8830_resolution ov8830_res_preview[] = {
 		},
 	},
 	{
-		 .desc = "ov8830_cont_cap_qvga_15fps",
+		 .desc = "ov8830_cont_cap_qvga",
 		 .width = 336,
 		 .height = 256,
 		 .used = 0,
-		 .regs = ov8830_cont_cap_qvga_15fps,
+		 .regs = ov8830_cont_cap_qvga,
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
 		 .skip_frames = 0,
@@ -1262,11 +1238,11 @@ static struct ov8830_resolution ov8830_res_preview[] = {
 		},
 	},
 	{
-		 .desc = "ov8830_cont_cap_vga_15fps",
+		 .desc = "ov8830_cont_cap_vga",
 		 .width = 656,
 		 .height = 496,
 		 .used = 0,
-		 .regs = ov8830_VGA_STILL_15fps,
+		 .regs = ov8830_VGA_STILL,
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
 		 .skip_frames = 0,
@@ -1285,7 +1261,7 @@ static struct ov8830_resolution ov8830_res_preview[] = {
 		 .width = 1632,
 		 .height = 1224,
 		 .used = 0,
-		 .regs = ov8830_PREVIEW_1632x1224_30fps	,
+		 .regs = ov8830_PREVIEW_1632x1224,
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
 		 .skip_frames = 0,
@@ -1300,11 +1276,11 @@ static struct ov8830_resolution ov8830_res_preview[] = {
 		},
 	},
 	{
-		 .desc = "ov8830_cont_cap_720P_15fps",
+		 .desc = "ov8830_cont_cap_720P",
 		 .width = 1296,
 		 .height = 736,
 		 .used = 0,
-		 .regs = ov8830_cont_cap_720P_15fps,
+		 .regs = ov8830_cont_cap_720P,
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
 		 .skip_frames = 0,
@@ -1319,11 +1295,11 @@ static struct ov8830_resolution ov8830_res_preview[] = {
 		},
 	},
 	{
-		 .desc = "ov8830_cont_cap_1M_15fps",
+		 .desc = "ov8830_cont_cap_1M",
 		 .width = 1040,
 		 .height = 784,
 		 .used = 0,
-		 .regs = ov8830_1M_STILL_15fps,
+		 .regs = ov8830_1M_STILL,
 		 .bin_factor_x = 0,
 		 .bin_factor_y = 0,
 		 .skip_frames = 0,
@@ -1338,11 +1314,11 @@ static struct ov8830_resolution ov8830_res_preview[] = {
 		},
 	},
 	{
-		 .desc = "ov8830_cont_cap_1080P_15fps",
+		 .desc = "ov8830_cont_cap_1080P",
 		 .width = 1936,
 		 .height = 1104,
 		 .used = 0,
-		 .regs = ov8830_1080P_STILL_15fps,
+		 .regs = ov8830_1080P_STILL,
 		 .bin_factor_x = 0,
 		 .bin_factor_y = 0,
 		 .skip_frames = 0,
@@ -1357,11 +1333,11 @@ static struct ov8830_resolution ov8830_res_preview[] = {
 		},
 	},
 	{
-		.desc = "ov8830_cont_cap_3M_15fps",
+		.desc = "ov8830_cont_cap_3M",
 		.width = 2064,
 		.height = 1552,
 		.used = 0,
-		.regs = ov8830_3M_STILL_15fps,
+		.regs = ov8830_3M_STILL,
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.skip_frames = 0,
@@ -1376,11 +1352,11 @@ static struct ov8830_resolution ov8830_res_preview[] = {
 		},
 	},
 	{
-		.desc = "ov8830_cont_cap_5M_15fps",
+		.desc = "ov8830_cont_cap_5M",
 		.width = 2576,
 		.height = 1936,
 		.used = 0,
-		.regs = ov8830_5M_STILL_15fps,
+		.regs = ov8830_5M_STILL,
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.skip_frames = 0,
@@ -1395,11 +1371,11 @@ static struct ov8830_resolution ov8830_res_preview[] = {
 		},
 	},
 	{
-		 .desc = "ov8830_cont_cap_6M_15fps",
+		 .desc = "ov8830_cont_cap_6M",
 		 .width = 3280,
 		 .height = 1852,
 		 .used = 0,
-		 .regs = ov8830_6M_STILL_15fps,
+		 .regs = ov8830_6M_STILL,
 		 .bin_factor_x = 0,
 		 .bin_factor_y = 0,
 		 .skip_frames = 0,
@@ -1414,11 +1390,11 @@ static struct ov8830_resolution ov8830_res_preview[] = {
 		},
 	},
 	{
-		.desc = "ov8830_cont_cap_8M_15fps",
+		.desc = "ov8830_cont_cap_8M",
 		.width = 3280,
 		.height = 2464,
 		.used = 0,
-		.regs = ov8830_8M_STILL_15fps,
+		.regs = ov8830_8M_STILL,
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.skip_frames = 0,
@@ -1436,11 +1412,11 @@ static struct ov8830_resolution ov8830_res_preview[] = {
 
 static struct ov8830_resolution ov8830_res_still[] = {
 	{
-		 .desc = "STILL_VGA_15fps",
+		 .desc = "STILL_VGA",
 		 .width = 656,
 		 .height = 496,
 		 .used = 0,
-		 .regs = ov8830_VGA_STILL_15fps,
+		 .regs = ov8830_VGA_STILL,
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
 		 .skip_frames = 1,
@@ -1455,11 +1431,11 @@ static struct ov8830_resolution ov8830_res_still[] = {
 		},
 	},
 	{
-		 .desc = "STILL_1080P_15fps",
+		 .desc = "STILL_1080P",
 		 .width = 1936,
 		 .height = 1104,
 		 .used = 0,
-		 .regs = ov8830_1080P_STILL_15fps,
+		 .regs = ov8830_1080P_STILL,
 		 .bin_factor_x = 0,
 		 .bin_factor_y = 0,
 		 .skip_frames = 1,
@@ -1474,11 +1450,11 @@ static struct ov8830_resolution ov8830_res_still[] = {
 		},
 	},
 	{
-		 .desc = "STILL_1M_15fps",
+		 .desc = "STILL_1M",
 		 .width = 1040,
 		 .height = 784,
 		 .used = 0,
-		 .regs = ov8830_1M_STILL_15fps,
+		 .regs = ov8830_1M_STILL,
 		 .bin_factor_x = 0,
 		 .bin_factor_y = 0,
 		 .skip_frames = 1,
@@ -1493,11 +1469,11 @@ static struct ov8830_resolution ov8830_res_still[] = {
 		},
 	},
 	{
-		 .desc = "STILL_2M_15fps",
+		 .desc = "STILL_2M",
 		 .width = 1640,
 		 .height = 1232,
 		 .used = 0,
-		 .regs = ov8830_2M_STILL_15fps,
+		 .regs = ov8830_2M_STILL,
 		 .bin_factor_x = 0,
 		 .bin_factor_y = 0,
 		 .skip_frames = 1,
@@ -1512,11 +1488,11 @@ static struct ov8830_resolution ov8830_res_still[] = {
 		},
 	},
 	{
-		.desc = "STILL_3M_15fps",
+		.desc = "STILL_3M",
 		.width = 2064,
 		.height = 1552,
 		.used = 0,
-		.regs = ov8830_3M_STILL_15fps,
+		.regs = ov8830_3M_STILL,
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.skip_frames = 1,
@@ -1531,11 +1507,11 @@ static struct ov8830_resolution ov8830_res_still[] = {
 		},
 	},
 	{
-		.desc = "STILL_5M_15fps",
+		.desc = "STILL_5M",
 		.width = 2576,
 		.height = 1936,
 		.used = 0,
-		.regs = ov8830_5M_STILL_15fps,
+		.regs = ov8830_5M_STILL,
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.skip_frames = 1,
@@ -1550,11 +1526,11 @@ static struct ov8830_resolution ov8830_res_still[] = {
 		},
 	},
 	{
-		 .desc = "STILL_6M_15fps",
+		 .desc = "STILL_6M",
 		 .width = 3280,
 		 .height = 1852,
 		 .used = 0,
-		 .regs = ov8830_6M_STILL_15fps,
+		 .regs = ov8830_6M_STILL,
 		 .bin_factor_x = 0,
 		 .bin_factor_y = 0,
 		 .skip_frames = 1,
@@ -1569,11 +1545,11 @@ static struct ov8830_resolution ov8830_res_still[] = {
 		},
 	},
 	{
-		.desc = "STILL_8M_15fps",
+		.desc = "STILL_8M",
 		.width = 3280,
 		.height = 2464,
 		.used = 0,
-		.regs = ov8830_8M_STILL_15fps,
+		.regs = ov8830_8M_STILL,
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.skip_frames = 1,
@@ -1591,11 +1567,11 @@ static struct ov8830_resolution ov8830_res_still[] = {
 
 static struct ov8830_resolution ov8830_res_video[] = {
 	{
-		 .desc = "QCIF_strong_dvs_30fps",
+		 .desc = "QCIF_strong_dvs",
 		 .width = 216,
 		 .height = 176,
 		 .used = 0,
-		 .regs = ov8830_QCIF_strong_dvs_30fps,
+		 .regs = ov8830_QCIF_strong_dvs,
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
 		 .skip_frames = 0,
@@ -1610,11 +1586,11 @@ static struct ov8830_resolution ov8830_res_video[] = {
 		},
 	},
 	{
-		 .desc = "QVGA_strong_dvs_30fps",
+		 .desc = "QVGA_strong_dvs",
 		 .width = 408,
 		 .height = 308,
 		 .used = 0,
-		 .regs = ov8830_QVGA_strong_dvs_30fps,
+		 .regs = ov8830_QVGA_strong_dvs,
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
 		 .skip_frames = 0,
@@ -1629,11 +1605,11 @@ static struct ov8830_resolution ov8830_res_video[] = {
 		},
 	},
 	{
-		 .desc = "VGA_strong_dvs_30fps",
+		 .desc = "VGA_strong_dvs",
 		 .width = 820,
 		 .height = 616,
 		 .used = 0,
-		 .regs = ov8830_VGA_strong_dvs_30fps,
+		 .regs = ov8830_VGA_strong_dvs,
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
 		 .skip_frames = 0,
@@ -1648,10 +1624,10 @@ static struct ov8830_resolution ov8830_res_video[] = {
 		},
 	},
 	{
-		.desc = "480p_strong_dvs_30fps",
+		.desc = "480p_strong_dvs",
 		.width = 936,
 		.height = 602,
-		.regs = ov8830_480p_strong_dvs_30fps,
+		.regs = ov8830_480p_strong_dvs,
 		.bin_factor_x = 1,
 		.bin_factor_y = 1,
 		.skip_frames = 0,
@@ -1666,11 +1642,11 @@ static struct ov8830_resolution ov8830_res_video[] = {
 		},
 	},
 	{
-		 .desc = "720p_strong_dvs_30fps",
+		 .desc = "720p_strong_dvs",
 		 .width = 1568,
 		 .height = 880,
 		 .used = 0,
-		 .regs = ov8830_720p_strong_dvs_30fps,
+		 .regs = ov8830_720p_strong_dvs,
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
 		 .skip_frames = 0,
@@ -1689,7 +1665,7 @@ static struct ov8830_resolution ov8830_res_video[] = {
 		 .width = 2336,
 		 .height = 1320,
 		 .used = 0,
-		 .regs = ov8830_1080p_strong_dvs_30fps,
+		 .regs = ov8830_1080p_strong_dvs,
 		 .bin_factor_x = 0,
 		 .bin_factor_y = 0,
 		 .skip_frames = 0,

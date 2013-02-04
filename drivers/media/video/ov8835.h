@@ -267,7 +267,7 @@ static const struct ov8830_reg ov8835_basic_settings[] = {
 
 /*****************************STILL********************************/
 
-static const struct ov8830_reg ov8835_still_1080p_15fps[] = {
+static const struct ov8830_reg ov8835_still_1080p[] = {
 	{ OV8830_8BIT, { 0x3708 }, 0xe3 }, /* Binning Related */
 	{ OV8830_8BIT, { 0x3800 }, 0x00 }, /* 4, 310, 3291, 2169 3288x1860 */
 	{ OV8830_8BIT, { 0x3801 }, 0x04 },
@@ -290,7 +290,7 @@ static const struct ov8830_reg ov8835_still_1080p_15fps[] = {
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
-static const struct ov8830_reg ov8835_still_2M_15fps[] = {
+static const struct ov8830_reg ov8835_still_2M[] = {
 	{ OV8830_8BIT, { 0x3708 }, 0xe3 }, /* Binning Related e6 : e3 */
 	{ OV8830_8BIT, { 0x3800 }, 0x00 }, /* 4, 4, 3291, 2475, 3288X2472 */
 	{ OV8830_8BIT, { 0x3801 }, 0x04 },
@@ -313,7 +313,7 @@ static const struct ov8830_reg ov8835_still_2M_15fps[] = {
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
-static const struct ov8830_reg ov8835_still_3M_15fps[] = {
+static const struct ov8830_reg ov8835_still_3M[] = {
 	{ OV8830_8BIT, { 0x3708 }, 0xe3 }, /* Binning Related */
 	{ OV8830_8BIT, { 0x3800 }, 0x00 },
 	{ OV8830_8BIT, { 0x3801 }, 0x04 },
@@ -336,7 +336,7 @@ static const struct ov8830_reg ov8835_still_3M_15fps[] = {
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
-static const struct ov8830_reg ov8835_still_5M_15fps[] = {
+static const struct ov8830_reg ov8835_still_5M[] = {
 	{ OV8830_8BIT, { 0x3708 }, 0xe3 }, /* Binning Related */
 	{ OV8830_8BIT, { 0x3800 }, 0x00 },
 	{ OV8830_8BIT, { 0x3801 }, 0x04 },
@@ -359,7 +359,7 @@ static const struct ov8830_reg ov8835_still_5M_15fps[] = {
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
-static const struct ov8830_reg ov8835_still_6M_15fps[] = {
+static const struct ov8830_reg ov8835_still_6M[] = {
 	{ OV8830_8BIT, { 0x3708 }, 0xe3 }, /* Binning Related */
 	{ OV8830_8BIT, { 0x3800 }, 0x00 }, /* 4, 310, 3291, 2169 3288x1860 */
 	{ OV8830_8BIT, { 0x3801 }, 0x04 },
@@ -382,7 +382,7 @@ static const struct ov8830_reg ov8835_still_6M_15fps[] = {
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
-static const struct ov8830_reg ov8835_still_8M_15fps[] = {
+static const struct ov8830_reg ov8835_still_8M[] = {
 	{ OV8830_8BIT, { 0x3708 }, 0xe3 }, /* Binning Related */
 	{ OV8830_8BIT, { 0x3800 }, 0x00 }, /* 4, 4, 3291, 2475, 3288X2472 */
 	{ OV8830_8BIT, { 0x3801 }, 0x04 },
@@ -407,7 +407,7 @@ static const struct ov8830_reg ov8835_still_8M_15fps[] = {
 
 /*****************************OV8835 PREVIEW********************************/
 
-static struct ov8830_reg const ov8835_preview_848x616_30fps[] = {
+static struct ov8830_reg const ov8835_preview_848x616[] = {
 	{ OV8830_8BIT, { 0x3708 }, 0xe6 }, /* Binning Related e6 : e3 */
 	{ OV8830_8BIT, { 0x3800 }, 0x00 }, /* 4, 4, 3291, 2475 3288x2472 */
 	{ OV8830_8BIT, { 0x3801 }, 0x04 },
@@ -430,7 +430,7 @@ static struct ov8830_reg const ov8835_preview_848x616_30fps[] = {
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
-static struct ov8830_reg const ov8835_preview_1632x1224_30fps[] = {
+static struct ov8830_reg const ov8835_preview_1632x1224[] = {
 	{ OV8830_8BIT, { 0x3708 }, 0xe6 }, /* Binning Related e6 : e3 */
 	{ OV8830_8BIT, { 0x3800 }, 0x00 }, /* 4, 4, 3291, 2475, 3288X2472 */
 	{ OV8830_8BIT, { 0x3801 }, 0x04 },
@@ -453,7 +453,7 @@ static struct ov8830_reg const ov8835_preview_1632x1224_30fps[] = {
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
-static struct ov8830_reg const ov8835_cont_cap_qvga_30fps[] = {
+static struct ov8830_reg const ov8835_cont_cap_qvga[] = {
 	{ OV8830_8BIT, { 0x3708 }, 0xe6 }, /* Binning Related e6 : e3 */
 	{ OV8830_8BIT, { 0x3800 }, 0x00 }, /* 4, 4, 3291, 2475 3288x2472 */
 	{ OV8830_8BIT, { 0x3801 }, 0x04 },
@@ -476,7 +476,7 @@ static struct ov8830_reg const ov8835_cont_cap_qvga_30fps[] = {
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
-static struct ov8830_reg const ov8835_cont_cap_vga_30fps[] = {
+static struct ov8830_reg const ov8835_cont_cap_vga[] = {
 	{ OV8830_8BIT, { 0x3708 }, 0xe6 }, /* Binning Related e6 : e3 */
 	{ OV8830_8BIT, { 0x3800 }, 0x00 }, /* 4, 4, 3291, 2475 3288x2472 */
 	{ OV8830_8BIT, { 0x3801 }, 0x04 },
@@ -499,7 +499,7 @@ static struct ov8830_reg const ov8835_cont_cap_vga_30fps[] = {
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
-static struct ov8830_reg const ov8835_cont_cap_1M_30fps[] = {
+static struct ov8830_reg const ov8835_cont_cap_1M[] = {
 	{ OV8830_8BIT, { 0x3708 }, 0xe6 }, /* Binning Related e6 : e3 */
 	{ OV8830_8BIT, { 0x3800 }, 0x00 }, /* 4, 4, 3291, 2475, 3288X2472 */
 	{ OV8830_8BIT, { 0x3801 }, 0x04 },
@@ -522,7 +522,7 @@ static struct ov8830_reg const ov8835_cont_cap_1M_30fps[] = {
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
-static const struct ov8830_reg ov8835_cont_cap_720p_30fps[] = {
+static const struct ov8830_reg ov8835_cont_cap_720p[] = {
 	{ OV8830_8BIT, { 0x3708 }, 0xe6 }, /* Binning Related */
 	{ OV8830_8BIT, { 0x3800 }, 0x00 }, /* 4, 310, 3291, 2169 3288x1860 */
 	{ OV8830_8BIT, { 0x3801 }, 0x04 },
@@ -545,7 +545,7 @@ static const struct ov8830_reg ov8835_cont_cap_720p_30fps[] = {
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
-static const struct ov8830_reg ov8835_cont_cap_1080p_30fps[] = {
+static const struct ov8830_reg ov8835_cont_cap_1080p[] = {
 	{ OV8830_8BIT, { 0x3708 }, 0xe3 }, /* Binning Related */
 	{ OV8830_8BIT, { 0x3800 }, 0x00 }, /* 4, 310, 3291, 2169 3288x1860 */
 	{ OV8830_8BIT, { 0x3801 }, 0x04 },
@@ -568,7 +568,7 @@ static const struct ov8830_reg ov8835_cont_cap_1080p_30fps[] = {
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
-static const struct ov8830_reg ov8835_cont_cap_3M_maxfps[] = {
+static const struct ov8830_reg ov8835_cont_cap_3M[] = {
 	{ OV8830_8BIT, { 0x3708 }, 0xe3 }, /* Binning Related */
 	{ OV8830_8BIT, { 0x3800 }, 0x00 }, /* 4, 4, 3291, 2475, 3288X2472 */
 	{ OV8830_8BIT, { 0x3801 }, 0x04 },
@@ -591,7 +591,7 @@ static const struct ov8830_reg ov8835_cont_cap_3M_maxfps[] = {
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
-static const struct ov8830_reg ov8835_cont_cap_5M_maxfps[] = {
+static const struct ov8830_reg ov8835_cont_cap_5M[] = {
 	{ OV8830_8BIT, { 0x3708 }, 0xe3 }, /* Binning Related */
 	{ OV8830_8BIT, { 0x3800 }, 0x00 }, /* 4, 4, 3291, 2475, 3288X2472 */
 	{ OV8830_8BIT, { 0x3801 }, 0x04 },
@@ -614,7 +614,7 @@ static const struct ov8830_reg ov8835_cont_cap_5M_maxfps[] = {
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
-static const struct ov8830_reg ov8835_cont_cap_8M_maxfps[] = {
+static const struct ov8830_reg ov8835_cont_cap_8M[] = {
 	{ OV8830_8BIT, { 0x3708 }, 0xe3 }, /* Binning Related */
 	{ OV8830_8BIT, { 0x3800 }, 0x00 }, /* 4, 4, 3291, 2475, 3288X2472 */
 	{ OV8830_8BIT, { 0x3801 }, 0x04 },
@@ -637,7 +637,7 @@ static const struct ov8830_reg ov8835_cont_cap_8M_maxfps[] = {
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
-static const struct ov8830_reg ov8835_cont_cap_6M_30fps[] = {
+static const struct ov8830_reg ov8835_cont_cap_6M[] = {
 	{ OV8830_8BIT, { 0x3708 }, 0xe3 }, /* Binning Related */
 	{ OV8830_8BIT, { 0x3800 }, 0x00 }, /* 4, 310, 3291, 2169 3288x1860 */
 	{ OV8830_8BIT, { 0x3801 }, 0x04 },
@@ -662,7 +662,7 @@ static const struct ov8830_reg ov8835_cont_cap_6M_30fps[] = {
 
 /***************** OV8835 VIDEO ***************************************/
 
-static const struct ov8830_reg ov8835_video_qcif_dvs_30fps[] = {
+static const struct ov8830_reg ov8835_video_qcif_dvs[] = {
 	{ OV8830_8BIT, { 0x3708 }, 0xe6 }, /* Binning Related e6 : e3 */
 	{ OV8830_8BIT, { 0x3800 }, 0x00 }, /* 4, 4, 3291, 2475 3288x2472 */
 	{ OV8830_8BIT, { 0x3801 }, 0x04 },
@@ -685,7 +685,7 @@ static const struct ov8830_reg ov8835_video_qcif_dvs_30fps[] = {
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
-static const struct ov8830_reg ov8835_video_cif_dvs_30fps[] = {
+static const struct ov8830_reg ov8835_video_cif_dvs[] = {
 	{ OV8830_8BIT, { 0x3708 }, 0xe6 }, /* Binning Related e6 : e3 */
 	{ OV8830_8BIT, { 0x3800 }, 0x00 }, /* 4, 4, 3291, 2475 3288x2472 */
 	{ OV8830_8BIT, { 0x3801 }, 0x04 },
@@ -708,7 +708,7 @@ static const struct ov8830_reg ov8835_video_cif_dvs_30fps[] = {
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
-static const struct ov8830_reg ov8835_video_qvga_dvs_30fps[] = {
+static const struct ov8830_reg ov8835_video_qvga_dvs[] = {
 	{ OV8830_8BIT, { 0x3708 }, 0xe6 }, /* Binning Related e6 : e3 */
 	{ OV8830_8BIT, { 0x3800 }, 0x00 }, /* 4, 4, 3291, 2475 3288x2472 */
 	{ OV8830_8BIT, { 0x3801 }, 0x04 },
@@ -731,7 +731,7 @@ static const struct ov8830_reg ov8835_video_qvga_dvs_30fps[] = {
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
-static const struct ov8830_reg ov8835_video_vga_dvs_30fps[] = {
+static const struct ov8830_reg ov8835_video_vga_dvs[] = {
 	{ OV8830_8BIT, { 0x3708 }, 0xe6 }, /* Binning Related e6 : e3 */
 	{ OV8830_8BIT, { 0x3800 }, 0x00 }, /* 4, 4, 3291, 2475 3288x2472 */
 	{ OV8830_8BIT, { 0x3801 }, 0x04 },
@@ -754,7 +754,7 @@ static const struct ov8830_reg ov8835_video_vga_dvs_30fps[] = {
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
-static struct ov8830_reg const ov8835_video_480p_dvs_30fps[] = {
+static struct ov8830_reg const ov8835_video_480p_dvs[] = {
 	{ OV8830_8BIT, { 0x3708 }, 0xe6 }, /* Binning Related e6 : e3 */
 	{ OV8830_8BIT, { 0x3800 }, 0x01 },
 	{ OV8830_8BIT, { 0x3801 }, 0x08 },
@@ -800,7 +800,7 @@ static struct ov8830_reg const ov8835_video_720p_dvs_off[] = {
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
-static struct ov8830_reg const ov8835_video_720p_dvs_30fps[] = {
+static struct ov8830_reg const ov8835_video_720p_dvs[] = {
 	{ OV8830_8BIT, { 0x3708 }, 0xe6 }, /* Binning Related e6 : e3 */
 	{ OV8830_8BIT, { 0x3800 }, 0x00 }, /* 4, 310, 3291, 2169 3288x1860 */
 	{ OV8830_8BIT, { 0x3801 }, 0x04 },
@@ -823,7 +823,7 @@ static struct ov8830_reg const ov8835_video_720p_dvs_30fps[] = {
 	{ OV8830_TOK_TERM, {0}, 0}
 };
 
-static const struct ov8830_reg ov8835_video_1080p_dvs_30fps[] = {
+static const struct ov8830_reg ov8835_video_1080p_dvs[] = {
 	{ OV8830_8BIT, { 0x3708 }, 0xe3 }, /* Binning Related e6 : e3 */
 	{ OV8830_8BIT, { 0x3800 }, 0x00 }, /* 4, 310, 3291, 2169 3288x1860 */
 	{ OV8830_8BIT, { 0x3801 }, 0x04 },
@@ -848,11 +848,11 @@ static const struct ov8830_reg ov8835_video_1080p_dvs_30fps[] = {
 
 static struct ov8830_resolution ov8835_res_preview[] = {
 	{
-		 .desc = "ov8835_cont_cap_qvga_30fps",
+		 .desc = "ov8835_cont_cap_qvga",
 		 .width = 336,
 		 .height = 256,
 		 .used = 0,
-		 .regs = ov8835_cont_cap_qvga_30fps,
+		 .regs = ov8835_cont_cap_qvga,
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
 		 .skip_frames = 1,
@@ -867,11 +867,11 @@ static struct ov8830_resolution ov8835_res_preview[] = {
 		},
 	},
 	{
-		 .desc = "ov8835_cont_cap_vga_30fps",
+		 .desc = "ov8835_cont_cap_vga",
 		 .width = 656,
 		 .height = 496,
 		 .used = 0,
-		 .regs = ov8835_cont_cap_vga_30fps,
+		 .regs = ov8835_cont_cap_vga,
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
 		 .skip_frames = 1,
@@ -886,11 +886,11 @@ static struct ov8830_resolution ov8835_res_preview[] = {
 		},
 	},
 	{
-		 .desc = "ov8835_preview_848x616_30fps",
+		 .desc = "ov8835_preview_848x616",
 		 .width = 820,
 		 .height = 616,
 		 .used = 0,
-		 .regs = ov8835_preview_848x616_30fps,
+		 .regs = ov8835_preview_848x616,
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
 		 .skip_frames = 1,
@@ -905,11 +905,11 @@ static struct ov8830_resolution ov8835_res_preview[] = {
 		},
 	},
 	{
-		 .desc = "ov8835_cont_cap_720p_30fps",
+		 .desc = "ov8835_cont_cap_720p",
 		 .width = 1296,
 		 .height = 736,
 		 .used = 0,
-		 .regs = ov8835_cont_cap_720p_30fps,
+		 .regs = ov8835_cont_cap_720p,
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
 		 .skip_frames = 1,
@@ -924,11 +924,11 @@ static struct ov8830_resolution ov8835_res_preview[] = {
 		},
 	},
 	{
-		.desc = "ov8835_cont_cap_1M_maxfps",
+		.desc = "ov8835_cont_cap_1M",
 		.width = 1040,
 		.height = 784,
 		.used = 0,
-		.regs = ov8835_cont_cap_1M_30fps,
+		.regs = ov8835_cont_cap_1M,
 		.bin_factor_x = 1,
 		.bin_factor_y = 1,
 		.skip_frames = 1,
@@ -943,11 +943,11 @@ static struct ov8830_resolution ov8835_res_preview[] = {
 		},
 	},
 	{
-		 .desc = "ov8835_cont_cap_1080p_30fps",
+		 .desc = "ov8835_cont_cap_1080p",
 		 .width = 1936,
 		 .height = 1104,
 		 .used = 0,
-		 .regs = ov8835_cont_cap_1080p_30fps,
+		 .regs = ov8835_cont_cap_1080p,
 		 .bin_factor_x = 0,
 		 .bin_factor_y = 0,
 		 .skip_frames = 1,
@@ -962,11 +962,11 @@ static struct ov8830_resolution ov8835_res_preview[] = {
 		},
 	},
 	{
-		.desc = "ov8835_cont_cap_3M_maxfps",
+		.desc = "ov8835_cont_cap_3M",
 		.width = 2064,
 		.height = 1552,
 		.used = 0,
-		.regs = ov8835_cont_cap_3M_maxfps,
+		.regs = ov8835_cont_cap_3M,
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.skip_frames = 1,
@@ -981,11 +981,11 @@ static struct ov8830_resolution ov8835_res_preview[] = {
 		},
 	},
 	{
-		.desc = "ov8835_cont_cap_5M_maxfps",
+		.desc = "ov8835_cont_cap_5M",
 		.width = 2576,
 		.height = 1936,
 		.used = 0,
-		.regs = ov8835_cont_cap_5M_maxfps,
+		.regs = ov8835_cont_cap_5M,
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.skip_frames = 1,
@@ -1000,11 +1000,11 @@ static struct ov8830_resolution ov8835_res_preview[] = {
 		},
 	},
 	{
-		 .desc = "ov8835_cont_cap_6M_30fps",
+		 .desc = "ov8835_cont_cap_6M",
 		 .width = 3280,
 		 .height = 1852,
 		 .used = 0,
-		 .regs = ov8835_cont_cap_6M_30fps,
+		 .regs = ov8835_cont_cap_6M,
 		 .bin_factor_x = 0,
 		 .bin_factor_y = 0,
 		 .skip_frames = 1,
@@ -1019,11 +1019,11 @@ static struct ov8830_resolution ov8835_res_preview[] = {
 		},
 	},
 	{
-		.desc = "ov8835_cont_cap_8M_maxfps",
+		.desc = "ov8835_cont_cap_8M",
 		.width = 3280,
 		.height = 2464,
 		.used = 0,
-		.regs = ov8835_cont_cap_8M_maxfps,
+		.regs = ov8835_cont_cap_8M,
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.skip_frames = 1,
@@ -1038,11 +1038,11 @@ static struct ov8830_resolution ov8835_res_preview[] = {
 		},
 	},
 	{
-		 .desc = "ov8835_preview_1632x1224_30fps",
+		 .desc = "ov8835_preview_1632x1224",
 		 .width = 1632,
 		 .height = 1224,
 		 .used = 0,
-		 .regs = ov8835_preview_1632x1224_30fps,
+		 .regs = ov8835_preview_1632x1224,
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
 		 .skip_frames = 1,
@@ -1060,11 +1060,11 @@ static struct ov8830_resolution ov8835_res_preview[] = {
 
 static struct ov8830_resolution ov8835_res_still[] = {
 	{
-		 .desc = "ov8835_still_1080p_15fps",
+		 .desc = "ov8835_still_1080p",
 		 .width = 1936,
 		 .height = 1104,
 		 .used = 0,
-		 .regs = ov8835_still_1080p_15fps,
+		 .regs = ov8835_still_1080p,
 		 .bin_factor_x = 0,
 		 .bin_factor_y = 0,
 		 .skip_frames = 1,
@@ -1079,11 +1079,11 @@ static struct ov8830_resolution ov8835_res_still[] = {
 		},
 	},
 	{
-		.desc = "ov8835_still_2M_15fps",
+		.desc = "ov8835_still_2M",
 		.width = 1632,
 		.height = 1224,
 		.used = 0,
-		.regs = ov8835_still_2M_15fps,
+		.regs = ov8835_still_2M,
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.skip_frames = 1,
@@ -1098,11 +1098,11 @@ static struct ov8830_resolution ov8835_res_still[] = {
 		},
 	},
 	{
-		.desc = "ov8835_still_3M_15fps",
+		.desc = "ov8835_still_3M",
 		.width = 2064,
 		.height = 1552,
 		.used = 0,
-		.regs = ov8835_still_3M_15fps,
+		.regs = ov8835_still_3M,
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.skip_frames = 1,
@@ -1117,11 +1117,11 @@ static struct ov8830_resolution ov8835_res_still[] = {
 		},
 	},
 	{
-		.desc = "ov8835_still_5M_15fps",
+		.desc = "ov8835_still_5M",
 		.width = 2576,
 		.height = 1936,
 		.used = 0,
-		.regs = ov8835_still_5M_15fps,
+		.regs = ov8835_still_5M,
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.skip_frames = 1,
@@ -1136,11 +1136,11 @@ static struct ov8830_resolution ov8835_res_still[] = {
 		},
 	},
 	{
-		 .desc = "ov8835_still_6M_15fps",
+		 .desc = "ov8835_still_6M",
 		 .width = 3280,
 		 .height = 1852,
 		 .used = 0,
-		 .regs = ov8835_still_6M_15fps,
+		 .regs = ov8835_still_6M,
 		 .bin_factor_x = 0,
 		 .bin_factor_y = 0,
 		 .skip_frames = 1,
@@ -1155,11 +1155,11 @@ static struct ov8830_resolution ov8835_res_still[] = {
 		},
 	},
 	{
-		.desc = "ov8835_still_8M_15fps",
+		.desc = "ov8835_still_8M",
 		.width = 3280,
 		.height = 2464,
 		.used = 0,
-		.regs = ov8835_still_8M_15fps,
+		.regs = ov8835_still_8M,
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.skip_frames = 1,
@@ -1177,11 +1177,11 @@ static struct ov8830_resolution ov8835_res_still[] = {
 
 static struct ov8830_resolution ov8835_res_video[] = {
 	{
-		 .desc = "ov8835_video_qcif_dvs_30fps",
+		 .desc = "ov8835_video_qcif_dvs",
 		 .width = 216,
 		 .height = 176,
 		 .used = 0,
-		 .regs = ov8835_video_qcif_dvs_30fps,
+		 .regs = ov8835_video_qcif_dvs,
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
 		 .skip_frames = 0,
@@ -1196,11 +1196,11 @@ static struct ov8830_resolution ov8835_res_video[] = {
 		},
 	},
 	{
-		 .desc = "ov8835_video_cif_dvs_30fps",
+		 .desc = "ov8835_video_cif_dvs",
 		 .width = 388,
 		 .height = 318,
 		 .used = 0,
-		 .regs = ov8835_video_cif_dvs_30fps,
+		 .regs = ov8835_video_cif_dvs,
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
 		 .skip_frames = 0,
@@ -1215,11 +1215,11 @@ static struct ov8830_resolution ov8835_res_video[] = {
 		},
 	},
 	{
-		 .desc = "ov8835_video_qvga_dvs_30fps",
+		 .desc = "ov8835_video_qvga_dvs",
 		 .width = 408,
 		 .height = 308,
 		 .used = 0,
-		 .regs = ov8835_video_qvga_dvs_30fps,
+		 .regs = ov8835_video_qvga_dvs,
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
 		 .skip_frames = 0,
@@ -1234,11 +1234,11 @@ static struct ov8830_resolution ov8835_res_video[] = {
 		},
 	},
 	{
-		 .desc = "ov8835_video_vga_dvs_30fps",
+		 .desc = "ov8835_video_vga_dvs",
 		 .width = 820,
 		 .height = 616,
 		 .used = 0,
-		 .regs = ov8835_video_vga_dvs_30fps,
+		 .regs = ov8835_video_vga_dvs,
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
 		 .skip_frames = 0,
@@ -1253,11 +1253,11 @@ static struct ov8830_resolution ov8835_res_video[] = {
 		},
 	},
 	{
-		.desc = "ov8835_video_480p_dvs_30fps",
+		.desc = "ov8835_video_480p_dvs",
 		.width = 936,
 		.height = 602,
 		.used = 0,
-		.regs = ov8835_video_480p_dvs_30fps,
+		.regs = ov8835_video_480p_dvs,
 		.bin_factor_x = 1,
 		.bin_factor_y = 1,
 		.skip_frames = 0,
@@ -1296,11 +1296,11 @@ static struct ov8830_resolution ov8835_res_video[] = {
 		},
 	},
 	{
-		 .desc = "ov8835_video_720p_dvs_30fps",
+		 .desc = "ov8835_video_720p_dvs",
 		 .width = 1568,
 		 .height = 880,
 		 .used = 0,
-		 .regs = ov8835_video_720p_dvs_30fps,
+		 .regs = ov8835_video_720p_dvs,
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
 		 .skip_frames = 0,
@@ -1315,11 +1315,11 @@ static struct ov8830_resolution ov8835_res_video[] = {
 		},
 	},
 	{
-		 .desc = "ov8835_video_1080p_dvs_30fps",
+		 .desc = "ov8835_video_1080p_dvs",
 		 .width = 2336,
 		 .height = 1336,
 		 .used = 0,
-		 .regs = ov8835_video_1080p_dvs_30fps,
+		 .regs = ov8835_video_1080p_dvs,
 		 .bin_factor_x = 0,
 		 .bin_factor_y = 0,
 		 .skip_frames = 0,
