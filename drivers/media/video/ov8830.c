@@ -728,21 +728,23 @@ static int __ov8830_set_exposure(struct v4l2_subdev *sd, int exposure, int gain,
 	if (ret)
 		return ret;
 
-	/* Digital gain : to all channel gains */
-	ret = ov8830_write_reg(client, OV8830_16BIT,
-			OV8830_MWB_RED_GAIN_H, dig_gain);
-	if (ret)
-		return ret;
+	/* Digital gain : to all MWB channel gains */
+	if (dig_gain) {
+		ret = ov8830_write_reg(client, OV8830_16BIT,
+				OV8830_MWB_RED_GAIN_H, dig_gain);
+		if (ret)
+			return ret;
 
-	ret = ov8830_write_reg(client, OV8830_16BIT,
-			OV8830_MWB_GREEN_GAIN_H, dig_gain);
-	if (ret)
-		return ret;
+		ret = ov8830_write_reg(client, OV8830_16BIT,
+				OV8830_MWB_GREEN_GAIN_H, dig_gain);
+		if (ret)
+			return ret;
 
-	ret = ov8830_write_reg(client, OV8830_16BIT,
-			OV8830_MWB_BLUE_GAIN_H, dig_gain);
-	if (ret)
-		return ret;
+		ret = ov8830_write_reg(client, OV8830_16BIT,
+				OV8830_MWB_BLUE_GAIN_H, dig_gain);
+		if (ret)
+			return ret;
+	}
 
 	/* set global gain */
 	return ov8830_write_reg(client, OV8830_8BIT, OV8830_AGC_ADJ, gain);
