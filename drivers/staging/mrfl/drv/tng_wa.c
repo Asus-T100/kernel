@@ -27,13 +27,16 @@
 
 #include "tng_wa.h"
 
+/* psb_intel_reg.h - for BIT* definitions */
+#include "psb_intel_reg.h"
+
 /* A0 Workarounds */
 
 static void apply_HSD_4568161(struct drm_device *dev)
 {
 	/* HSD - 4568161: Local idle gating on SLC core clock
 	   causes SLC to drop video mem request if clock is
-	   heavely Throttling
+	   heavily Throttling
 	   Workaround: SW should set GFX_CG_DIS_0[8] at offset
 	   0x160000 whenever powering up GFX */
 
@@ -93,6 +96,8 @@ static void apply_HSD_4568152(struct drm_device *dev)
 			RGX_CR_SLC_CTRL_BYPASS_DATA);
 }
 
+#define WA_HSD_4569545 0
+#if WA_HSD_4569545
 static void apply_HSD_4569545(struct drm_device *dev)
 {
 	/* HSD 4569545: GFX idle gating adds latency on slc_core_clk
@@ -103,6 +108,7 @@ static void apply_HSD_4569545(struct drm_device *dev)
 	/* Workaround is same as HSD 4568161 */
 	apply_HSD_4568161(dev);
 }
+#endif /* if WA_HSD_4569545 */
 
 static void apply_HSD_4568473(struct drm_device *dev)
 {
@@ -167,6 +173,7 @@ static void apply_HSD_4582618(struct drm_device *dev)
 	/* HSD - 4582618: In order for video cores to access IMR
 	   Workaround: Read-Modify-Write to set GBYPASSENABLE[2:0]
 	   and GBYPASSENABLE[8] on same write at MMADR offset 0x2850 */
+	/*  Writes via mapping VDC. */
 	uint32_t GBYPASSENABLE_OFFSET = 0x2850 - PSB_VDC_OFFSET;
 	uint32_t GBYPASSENABLE_DATA = REG_READ(GBYPASSENABLE_OFFSET);
 
@@ -187,13 +194,11 @@ void apply_A0_workarounds(struct drm_device *dev, int islands, int new_state)
 	case OSPM_GRAPHICS_ISLAND:
 	case OSPM_DISPLAY_ISLAND:
 	{
-		/* 4568161, 3940227, 4569545,
-		   NO HSD, 4568473, 4582616 */
-		apply_HSD_4568161(dev);
+		/* NO HSD, 4568473, 4582616 */
+
+		/*  After powering up VSP */
 		apply_HSD_3940227(dev);
-		apply_HSD_4569545(dev);
-		apply_NO_HSD_Workaround(dev);
-		apply_HSD_4568473(dev);
+		/*  When display is powered-on. */
 		apply_HSD_4582616(dev);
 	}
 	break;
@@ -201,10 +206,42 @@ void apply_A0_workarounds(struct drm_device *dev, int islands, int new_state)
 	case OSPM_VIDEO_ENC_ISLAND:
 	case OSPM_VIDEO_VPP_ISLAND:
 	{
-		/* 4568479, 4568152 */
+		/*  Before powering-up VSP */
+		/*  FIXME - but this is after? */
 		apply_HSD_4568479(dev);
+
+		/*  Before powering up VED for VP8 decode */
+		/*  FIXME - but this is after? */
 		apply_HSD_4568152(dev);
+
+#if 0		/*  Was not being called */
+		/*  Writes via mapping VDC. */
+		apply_HSD_4582618(dev);
+#endif
 	}
 	break;
 	}
+}
+
+
+/*  tng_gfx_init -- Called when gfx is powered on.
+    */
+void tng_gfx_init(struct drm_device *dev)
+{
+	apply_HSD_4568161(dev);
+
+#if WA_HSD_4569545
+	apply_HSD_4569545(dev);
+#endif /* if WA_HSD_4569545 */
+
+	apply_HSD_4568473(dev);
+
+	/* Writes RGX_CR_SLC_CTRL_MISC */
+	/*  FIXME - what island must be powered up to do this? */
+	apply_NO_HSD_Workaround(dev);
+
+#if 0	/*  Was not being called */
+	/*  Why was this one not referenced? */
+	apply_HSD_4582997(dev);
+#endif
 }

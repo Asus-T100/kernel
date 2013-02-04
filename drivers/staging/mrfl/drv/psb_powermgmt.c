@@ -1727,6 +1727,9 @@ static int mrfl_pwr_cmd_gfx(u32 gfx_mask, int new_state)
 	u32 ns_mask;
 	u32 done_mask;
 	u32 this_mask;
+	u32 pwr_state_prev;
+
+	pwr_state_prev = intel_mid_msgbus_read32(PUNIT_PORT, GFX_SS_PM0);
 
 	if (new_state)
 		ns_mask = TNG_COMPOSITE_I0;
@@ -1761,12 +1764,25 @@ static int mrfl_pwr_cmd_gfx(u32 gfx_mask, int new_state)
 
 #if (defined DEBUG_PM_CMD) && DEBUG_PM_CMD
 	{
-		u32 pwr_state;
-		pwr_state = intel_mid_msgbus_read32(PUNIT_PORT, GFX_SS_PM1);
+		u32 freq_state;
+		freq_state = intel_mid_msgbus_read32(PUNIT_PORT, GFX_SS_PM1);
 		printk(KERN_ALERT "%s: after: %s: read: %#x\n",
-			__func__, pm_cmd_reg_name(GFX_SS_PM1), pwr_state);
+			__func__, pm_cmd_reg_name(GFX_SS_PM1), freq_state);
 	}
 #endif
+
+	/**
+	  * If turning some power on, and the power to be on includes SLC,
+	  * and SLC was not previously on, then setup some registers.
+	  */
+	if (new_state && ((gfx_mask & GFX_SLC_SSC) == GFX_SLC_SSC)
+		&& ((pwr_state_prev >> GFX_SLC_SHIFT) != TNG_SSC_I0)) {
+		/*  Perform GFX register setup. */
+		struct drm_psb_private *dev_priv =
+			(struct drm_psb_private *)gpDrmDevice->dev_private;
+
+		tng_gfx_init(dev_priv->dev);
+	}
 
 	return 0;
 }
