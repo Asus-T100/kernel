@@ -317,16 +317,15 @@ assert(0);
 return mmgr_NULL;
 }
 
-hrt_vaddress mmgr_mmap(
-	const void			*ptr)
+hrt_vaddress mmgr_mmap(const void *ptr, const size_t size, uint16_t attribute,
+		void *context)
 {
-assert(page_table_base_address != (sys_address)-1);
-assert(ptr != NULL);
-/*assert(isPageAligned(ptr)); */
-/* We don't have this one for sure */
-assert(0);
-(void)ptr;
-return mmgr_NULL;
+	struct hrt_userbuffer_attr *userbuffer_attr = context;
+	return (hrt_vaddress)hrt_isp_css_mm_alloc_user_ptr(
+			size, (unsigned int)ptr,
+			userbuffer_attr->pgnr,
+			userbuffer_attr->type,
+			attribute & HRT_BUF_FLAG_CACHED);
 }
 
 void mmgr_clear(
