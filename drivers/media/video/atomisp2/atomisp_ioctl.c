@@ -910,6 +910,7 @@ static int atomisp_qbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 	 * address and reprograme out page table properly
 	 */
 	if (buf->memory == V4L2_MEMORY_USERPTR) {
+		struct hrt_userbuffer_attr attributes;
 		vb = pipe->capq.bufs[buf->index];
 		vm_mem = vb->priv;
 		if (!vm_mem) {
@@ -928,21 +929,18 @@ static int atomisp_qbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 			ret = -EIO;
 			goto error;
 		}
+
+		attributes.pgnr = pgnr;
 #ifdef CONFIG_ION
-		hrt_isp_css_mm_set_user_ptr(userptr, pgnr,
-			buf->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_ION
-				? HRT_USR_ION : HRT_USR_PTR);
+		attributes.type = buf->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_ION
+					? HRT_USR_ION : HRT_USR_PTR;
 #else
-		hrt_isp_css_mm_set_user_ptr(userptr, pgnr, HRT_USR_PTR);
+		attributes.type = HRT_USR_PTR;
 #endif
-
-		ret = sh_css_frame_allocate_from_info(&handle,
-							&frame_info);
-
-		hrt_isp_css_mm_set_user_ptr(0, 0, HRT_USR_PTR);
-
+		ret = sh_css_frame_map(&handle, &frame_info, (void *)userptr,
+				       0, &attributes);
 		if (ret != sh_css_success) {
-			v4l2_err(&atomisp_dev, "Error to allocate frame\n");
+			dev_err(isp->dev, "Failed to map user buffer\n");
 			ret = -ENOMEM;
 			goto error;
 		}
