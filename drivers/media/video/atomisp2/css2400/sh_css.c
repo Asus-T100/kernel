@@ -6707,6 +6707,50 @@ assert(frame != NULL);
 return err;
 }
 
+enum sh_css_err
+sh_css_frame_map(struct sh_css_frame **frame,
+                 const struct sh_css_frame_info *info,
+                 const void *data,
+                 uint16_t attribute,
+                 void *context)
+{
+	enum sh_css_err err = sh_css_success;
+	struct sh_css_frame *me = sh_css_malloc(sizeof(*me));
+
+	if (me == NULL)
+		return sh_css_err_cannot_allocate_memory;
+
+	me->info.width = info->width;
+	me->info.height = info->height;
+	me->info.format = info->format;
+	me->info.padded_width = info->padded_width;
+	me->info.raw_bit_depth = info->raw_bit_depth;
+	me->contiguous = false; /* doublecheck */
+	me->dynamic_data_index = SH_CSS_INVALID_FRAME_ID;
+
+	err = init_frame_planes(me);
+
+	if (err == sh_css_success) {
+		/* use mmgr_mmap to map */
+		me->data = mmgr_mmap(
+				     data,
+				     me->data_bytes,
+				     attribute,
+				     context);
+		if (me->data == mmgr_NULL)
+			err = sh_css_err_invalid_arguments;
+	};
+
+	if (err != sh_css_success) {
+		sh_css_free(me);
+		return err;
+	}
+
+	*frame = me;
+
+	return err;
+}
+
 void
 sh_css_frame_free(struct sh_css_frame *frame)
 {

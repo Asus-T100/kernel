@@ -189,6 +189,12 @@ extern hrt_vaddress mmgr_realloc_attr(
  \param	ptr[in]				Pointer to an allocation in a different
 							virtual memory page table, but the same
 							physical memory
+ \param size[in]			Size of the memory of the pointer
+ \param	attribute[in]			Bit vector specifying the properties
+					of the allocation
+ \param context				Pointer of a context provided by
+					client/driver for additonal parameters
+					needed by the implementation
 
  \Note
 	This interface is tentative, limited to the desired function
@@ -197,7 +203,10 @@ extern hrt_vaddress mmgr_realloc_attr(
  \return vaddress
  */
 extern hrt_vaddress mmgr_mmap(
-	const void				*ptr);
+	const void *ptr,
+	const size_t size,
+	uint16_t attribute,
+	void *context);
 
 /*! Zero initialise an allocation in memory
 
