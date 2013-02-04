@@ -1130,12 +1130,13 @@ static int hsi_ctrl_set_cfg(struct intel_controller *intel_hsi)
 /**
  * hsi_ctrl_resume - HSI controller hardware resume
  * @intel_hsi: Intel HSI controller reference
+ * @rtpm: Called from PM (S3) or RTMP (S0iX) state machine
  *
  * Program the hardware back to its prior-suspend state and re-enable IRQ.
  *
  * Returns success or an error if it is not possible to reprogram the device.
  */
-static int hsi_ctrl_resume(struct intel_controller *intel_hsi)
+static int hsi_ctrl_resume(struct intel_controller *intel_hsi, int rtpm)
 	__acquires(&intel_hsi->hw_lock) __releases(&intel_hsi->hw_lock)
 {
 	unsigned long flags;
@@ -1161,13 +1162,14 @@ static int hsi_ctrl_resume(struct intel_controller *intel_hsi)
 /**
  * hsi_ctrl_suspend - HSI controller hardware suspend
  * @intel_hsi: Intel HSI controller reference
+ * @rtpm: Called from PM (S3) or RTMP (S0iX) state machine
  *
  * Stops pending DMA transfers, disable all interrupts and shut down the
  * controller clock.
  *
  * Returns 0 if successful or an error code
  */
-static int hsi_ctrl_suspend(struct intel_controller *intel_hsi)
+static int hsi_ctrl_suspend(struct intel_controller *intel_hsi, int rtpm)
 	__acquires(&intel_hsi->hw_lock) __releases(&intel_hsi->hw_lock)
 {
 	void __iomem *ctrl	= intel_hsi->ctrl_io;
@@ -1229,7 +1231,8 @@ static int hsi_ctrl_suspend(struct intel_controller *intel_hsi)
 		intel_hsi->suspend_state = DEVICE_SUSPENDED;
 
 #ifdef CONFIG_HSI_WAKEUP_PACKETS_DUMP
-		intel_hsi->packet_dumped = 0;
+		if (!rtpm)
+			intel_hsi->packet_dumped = 0;
 #endif
 #ifdef CONFIG_HAS_WAKELOCK
 		wake_unlock(&intel_hsi->stay_awake);
@@ -3750,7 +3753,7 @@ static int hsi_rtpm_suspend(struct device *dev)
 		(struct intel_controller *)hsi_controller_drvdata(hsi);
 
 	dev_dbg(dev, "hsi enter runtime suspend\n");
-	return hsi_ctrl_suspend(intel_hsi);
+	return hsi_ctrl_suspend(intel_hsi, 1);
 }
 
 /**
@@ -3768,7 +3771,7 @@ static int hsi_rtpm_resume(struct device *dev)
 	int err;
 
 	dev_dbg(dev, "hsi enter runtime resume\n");
-	err = hsi_ctrl_resume(intel_hsi);
+	err = hsi_ctrl_resume(intel_hsi, 1);
 	if (!err)
 		hsi_resume_dma_transfers(intel_hsi);
 
@@ -3790,7 +3793,7 @@ static int hsi_pm_suspend(struct device *dev)
 		(struct intel_controller *)hsi_controller_drvdata(hsi);
 
 	dev_dbg(dev, "hsi enter suspend\n");
-	return hsi_ctrl_suspend(intel_hsi);
+	return hsi_ctrl_suspend(intel_hsi, 0);
 }
 
 /**
@@ -3808,7 +3811,7 @@ static int hsi_pm_resume(struct device *dev)
 	int err;
 
 	dev_dbg(dev, "hsi enter resume\n");
-	err = hsi_ctrl_resume(intel_hsi);
+	err = hsi_ctrl_resume(intel_hsi, 0);
 	if (!err)
 		hsi_resume_dma_transfers(intel_hsi);
 
