@@ -37,6 +37,7 @@
 #include <linux/err.h>
 #include <linux/debugfs.h>
 #include <linux/seq_file.h>
+#include <linux/interrupt.h>
 
 #include <asm/intel-mid.h>
 
@@ -51,12 +52,31 @@
 #define DTS_ENABLE		0x02
 /* There are 4 Aux trips. Only Aux0, Aux1 are writeable */
 #define DTS_TRIP_RW		0x03
+#define SOC_THERMAL_TRIPS	4
 
 #define TJMAX_TEMP		90
 #define TJMAX_CODE		0x7F
 
+/* IRQ details */
+#define SOC_DTS_CONTROL		0x80
+#define TRIP_STATUS_RO		0xB3
+#define TRIP_STATUS_RW		0xB4
+/* TE stands for THERMAL_EVENT */
+#define TE_AUX0			0xB5
+#define TE_AUX1			0xB6
+#define TE_AUX2			0xB7
+#define TE_AUX3			0xB8
+#define ENABLE_AUX_INTRPT	0x0F
+#define ENABLE_CPU0		(1 << 16)
+#define RTE_ENABLE		(1 << 9)
+#define AUX0_EVENT		(1 << 0)
+#define AUX1_EVENT		(1 << 1)
+#define AUX2_EVENT		(1 << 2)
+#define AUX3_EVENT		(1 << 3)
+
 struct platform_soc_data {
 	struct thermal_zone_device *tzd[SOC_THERMAL_SENSORS];
+	int irq;
 };
 
 struct thermal_device_info {
@@ -190,8 +210,20 @@ static struct thermal_device_info *initialize_sensor(int index)
 
 static void enable_soc_dts(void)
 {
+	int i;
+	u32 val;
+
 	/* Enable the DTS */
 	write_soc_reg(DTS_ENABLE_REG, DTS_ENABLE);
+
+	val = read_soc_reg(SOC_DTS_CONTROL);
+	write_soc_reg(SOC_DTS_CONTROL, val | ENABLE_AUX_INTRPT | ENABLE_CPU0);
+
+	/* Enable Interrupts for all the AUX trips for the DTS */
+	for (i = 0; i < SOC_THERMAL_TRIPS; i++) {
+		val = read_soc_reg(TE_AUX0 + i);
+		write_soc_reg(TE_AUX0 + i, (val | RTE_ENABLE));
+	}
 }
 
 static ssize_t show_temp(struct thermal_zone_device *tzd, long *temp)
@@ -283,6 +315,51 @@ static ssize_t store_trip_temp(struct thermal_zone_device *tzd,
 	return 0;
 }
 
+static irqreturn_t soc_dts_intrpt(int irq, void *dev_data)
+{
+	u32 irq_sts;
+	struct thermal_zone_device *tzd;
+	char *event;
+	bool valid = true;
+	struct platform_soc_data *pdata = (struct platform_soc_data *)dev_data;
+
+	if (!pdata || !pdata->tzd[0])
+		return IRQ_NONE;
+
+	tzd = pdata->tzd[0];
+
+	irq_sts = read_soc_reg(TRIP_STATUS_RW);
+
+	/* The status bit is cleared by writing 1 to the bit */
+	if (irq_sts & AUX0_EVENT) {
+		event = "aux0_event";
+		irq_sts |= AUX0_EVENT;
+	} else if (irq_sts & AUX1_EVENT) {
+		event = "aux1_event";
+		irq_sts |= AUX1_EVENT;
+	} else if (irq_sts & AUX2_EVENT) {
+		event = "aux2_event";
+		irq_sts |= AUX2_EVENT;
+	} else if (irq_sts & AUX3_EVENT) {
+		event = "aux3_event";
+		irq_sts |= AUX3_EVENT;
+	} else {
+		event = "invalid_event";
+		valid = false;
+	}
+
+	dev_info(&tzd->device, "SoC DTS %s occurred\n", event);
+
+	/* Notify using UEvent, if it is a valid event */
+	if (valid) {
+		kobject_uevent(&tzd->device.kobj, KOBJ_CHANGE);
+		/* Clear the status bits */
+		write_soc_reg(TRIP_STATUS_RW, irq_sts);
+	}
+
+	return IRQ_HANDLED;
+}
+
 static struct thermal_zone_device_ops tzd_ops = {
 	.get_temp = show_temp,
 	.get_trip_type = show_trip_type,
@@ -318,6 +395,23 @@ static int soc_thermal_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, pdata);
 
+	ret = platform_get_irq(pdev, 0);
+	if (ret < 0) {
+		dev_err(&pdev->dev, "platform_get_irq failed:%d\n", ret);
+		goto exit_reg;
+	}
+
+	pdata->irq = ret;
+
+	/* Register for Interrupt Handler */
+	ret = request_threaded_irq(pdata->irq, NULL, soc_dts_intrpt,
+						IRQF_TRIGGER_RISING,
+						DRIVER_NAME, pdata);
+	if (ret) {
+		dev_err(&pdev->dev, "request_threaded_irq failed:%d\n", ret);
+		goto exit_reg;
+	}
+
 	/* Enable DTS0 and DTS1 */
 	enable_soc_dts();
 
@@ -348,6 +442,7 @@ static int soc_thermal_remove(struct platform_device *pdev)
 		thermal_zone_device_unregister(pdata->tzd[i]);
 	}
 	platform_set_drvdata(pdev, NULL);
+	free_irq(pdata->irq, pdata);
 	kfree(pdata);
 
 	remove_soc_dts_debugfs();
