@@ -63,6 +63,7 @@
 
 #define FIRMWARE_NAME "topazsc_fw.bin"
 
+extern int drm_psb_msvdx_tiling;
 /* static function define */
 static int topaz_upload_fw(struct drm_device *dev,
 			   enum drm_pnw_topaz_codec codec,
@@ -1439,6 +1440,7 @@ void release_mtx_control_from_dash(struct drm_psb_private *dev_priv,
 void pnw_topaz_mmu_hwsetup(struct drm_psb_private *dev_priv, uint32_t core_id)
 {
 	uint32_t pd_addr = psb_get_default_pd_addr(dev_priv->mmu);
+	u32 val;
 
 	PSB_DEBUG_GENERAL("TOPAZ: core (%d) MMU set up.\n", core_id);
 
@@ -1456,6 +1458,22 @@ void pnw_topaz_mmu_hwsetup(struct drm_psb_private *dev_priv, uint32_t core_id)
 
 	/* setup index register, all pointing to directory bank 0 */
 	TOPAZ_WRITE32(TOPAZ_CR_MMU_BANK_INDEX, 0, core_id);
+
+	if (drm_psb_msvdx_tiling && dev_priv->have_mem_mmu_tiling) {
+		uint32_t tile_start =
+			dev_priv->bdev.man[DRM_PSB_MEM_MMU_TILING].gpu_offset;
+		uint32_t tile_end = tile_start +
+			(dev_priv->bdev.man[DRM_PSB_MEM_MMU_TILING].size
+			<< PAGE_SHIFT);
+
+		/* Enable memory tiling */
+		val = ((tile_start >> 20) + (((tile_end >> 20) - 1) << 12) +
+		((0x8 | 2) << 24)); /* 2k stride */
+
+		PSB_DEBUG_GENERAL("Topax: Set up MMU Tiling register %08x\n",
+					val);
+		TOPAZ_WRITE32(TOPAZ_CR_MMU_TILE_BASE0, val, core_id);
+	}
 
 	/* now enable MMU access for all requestors */
 	TOPAZ_WRITE32(TOPAZ_CR_MMU_CONTROL0,
