@@ -967,6 +967,9 @@ static int atomisp_qbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 
 done:
 	ret = videobuf_qbuf(&pipe->capq, buf);
+	if (ret)
+		goto error;
+
 	/* TODO: do this better, not best way to queue to css */
 	if (isp->streaming == ATOMISP_DEVICE_STREAMING_ENABLED)
 		atomisp_qbuffers_to_css(isp);
