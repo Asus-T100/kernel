@@ -240,6 +240,9 @@
 /* Max no. of tries to clear the charger from Hi-Z mode */
 #define MAX_TRY		3
 
+/* Max no. of tries to reset the bq24192i WDT */
+#define MAX_RESET_WDT_RETRY 8
+
 /* Master Charge control register */
 #define MSIC_CHRCRTL	0x188
 #define MSIC_CHRGENBL	0x40
@@ -1216,14 +1219,17 @@ static int program_timers(struct bq24192_chip *chip, bool wdt_enable,
 /* This function should be called with the mutex held */
 static int reset_wdt_timer(struct bq24192_chip *chip)
 {
-	int ret;
+	int ret = 0, i;
 
 	/* reset WDT timer */
-	ret = bq24192_reg_read_modify(chip->client, BQ24192_POWER_ON_CFG_REG,
+	for (i = 0; i < MAX_RESET_WDT_RETRY; i++) {
+		ret = bq24192_reg_read_modify(chip->client,
+						BQ24192_POWER_ON_CFG_REG,
 						WDTIMER_RESET_MASK, true);
-	if (ret < 0)
-		dev_warn(&chip->client->dev, "I2C write failed:%s\n", __func__);
-
+		if (ret < 0)
+			dev_warn(&chip->client->dev, "I2C write failed:%s\n",
+							__func__);
+	}
 	return ret;
 }
 
