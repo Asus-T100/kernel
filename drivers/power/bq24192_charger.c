@@ -2037,9 +2037,6 @@ static void bq24192_event_worker(struct work_struct *work)
 				 * attached or is suspended and hence we
 				 * will not resume charging
 				 */
-				mutex_lock(&chip->event_lock);
-				chip->cached_temp = 0;
-				mutex_unlock(&chip->event_lock);
 				dev_dbg(&chip->client->dev,
 				"Charger not attached, dnt resume charging\n");
 				break;
@@ -2173,6 +2170,7 @@ static void bq24192_event_worker(struct work_struct *work)
 		}
 		chip->online = 0;
 		chip->batt_status = POWER_SUPPLY_STATUS_DISCHARGING;
+		chip->cached_temp = 0;
 		if (chip->votg) {
 				ret = bq24192_turn_otg_vbus(chip, false);
 				if (ret < 0) {
