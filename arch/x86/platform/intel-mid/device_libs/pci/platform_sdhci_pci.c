@@ -1,0 +1,323 @@
+/*
+ * platform_mmc_sdhci_pci.c: mmc sdhci pci platform data initilization file
+ *
+ * (C) Copyright 2012 Intel Corporation
+ * Author:
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; version 2
+ * of the License.
+ */
+
+#include <linux/init.h>
+#include <linux/kernel.h>
+#include <asm/intel-mid.h>
+#include <linux/mmc/sdhci-pci-data.h>
+#include <linux/gpio.h>
+#include <linux/lnw_gpio.h>
+#include <linux/delay.h>
+#include <asm/intel_scu_ipc.h>
+#include <linux/intel_mid_pm.h>
+#include <linux/hardirq.h>
+
+#include "platform_sdhci_pci.h"
+
+static int mfld_clv_emmc0_power_up(void *data);
+static int mrfl_sd_setup(struct sdhci_pci_data *data);
+static void mrfl_sd_cleanup(struct sdhci_pci_data *data);
+static int mrfl_sdio_setup(struct sdhci_pci_data *data);
+static void mrfl_sdio_cleanup(struct sdhci_pci_data *data);
+
+/* MFLD platform data */
+static struct sdhci_pci_data mfld_sdhci_pci_data[] = {
+	[EMMC0_INDEX] = {
+			.pdev = NULL,
+			.slotno = 0,
+			.rst_n_gpio = -EINVAL,
+			.cd_gpio = -EINVAL,
+			.quirks = 0,
+			.platform_quirks = 0,
+			.setup = 0,
+			.cleanup = 0,
+			.power_up = mfld_clv_emmc0_power_up,
+	},
+	[EMMC1_INDEX] = {
+			.pdev = NULL,
+			.slotno = 0,
+			.rst_n_gpio = -EINVAL,
+			.cd_gpio = -EINVAL,
+			.quirks = 0,
+			.platform_quirks = 0,
+			.setup = 0,
+			.cleanup = 0,
+			.power_up = 0,
+	},
+	[SD_INDEX] = {
+			.pdev = NULL,
+			.slotno = 0,
+			.rst_n_gpio = -EINVAL,
+			.cd_gpio = 69,
+			.quirks = 0,
+			.platform_quirks = 0,
+			.setup = 0,
+			.cleanup = 0,
+			.power_up = 0,
+	},
+	[SDIO_INDEX] = {
+			.pdev = NULL,
+			.slotno = 0,
+			.rst_n_gpio = -EINVAL,
+			.cd_gpio = -EINVAL,
+			.quirks = 0,
+			.platform_quirks = 0,
+			.setup = 0,
+			.cleanup = 0,
+			.power_up = 0,
+	},
+};
+
+/* CLV platform data */
+static struct sdhci_pci_data clv_sdhci_pci_data[] = {
+	[EMMC0_INDEX] = {
+			.pdev = NULL,
+			.slotno = 0,
+			.rst_n_gpio = -EINVAL,
+			.cd_gpio = -EINVAL,
+			.quirks = 0,
+			.platform_quirks = 0,
+			.setup = 0,
+			.cleanup = 0,
+			.power_up = mfld_clv_emmc0_power_up,
+	},
+	[EMMC1_INDEX] = {
+			.pdev = NULL,
+			.slotno = 0,
+			.rst_n_gpio = -EINVAL,
+			.cd_gpio = -EINVAL,
+			.quirks = 0,
+			.platform_quirks = 0,
+			.setup = 0,
+			.cleanup = 0,
+			.power_up = 0,
+	},
+	[SD_INDEX] = {
+			.pdev = NULL,
+			.slotno = 0,
+			.rst_n_gpio = -EINVAL,
+			.cd_gpio = 69,
+			.quirks = 0,
+			.platform_quirks = 0,
+			.setup = 0,
+			.cleanup = 0,
+			.power_up = 0,
+	},
+	[SDIO_INDEX] = {
+			.pdev = NULL,
+			.slotno = 0,
+			.rst_n_gpio = -EINVAL,
+			.cd_gpio = -EINVAL,
+			.quirks = 0,
+			.platform_quirks = 0,
+			.setup = 0,
+			.cleanup = 0,
+			.power_up = 0,
+	},
+};
+
+static int mfld_clv_emmc0_power_up(void *data)
+{
+	int ret;
+	bool atomic_context;
+	/*
+	 * Since pmu_set_emmc_to_d0i0_atomic function can
+	 * only be used in atomic context, before call this
+	 * function, do a check first and make sure this function
+	 * is used in atomic context.
+	 */
+	atomic_context = (!preemptible() || in_atomic_preempt_off());
+
+	if (!atomic_context) {
+		pr_err("%s: not in atomic context!\n", __func__);
+		return -EPERM;
+	}
+
+	ret = pmu_set_emmc_to_d0i0_atomic();
+	if (ret) {
+		pr_err("%s: power up host failed with err %d\n",
+				__func__, ret);
+	}
+
+	return ret;
+}
+
+/* MRFL platform data */
+static struct sdhci_pci_data mrfl_sdhci_pci_data[] = {
+	[EMMC0_INDEX] = {
+			.pdev = NULL,
+			.slotno = 0,
+			.rst_n_gpio = -EINVAL,
+			.cd_gpio = -EINVAL,
+			.quirks = 0,
+			.platform_quirks = 0,
+			.setup = 0,
+			.cleanup = 0,
+			.power_up = 0,
+	},
+	[EMMC1_INDEX] = {
+			.pdev = NULL,
+			.slotno = 0,
+			.rst_n_gpio = 97,
+			.cd_gpio = -EINVAL,
+			.quirks = 0,
+			.platform_quirks = 0,
+			.setup = 0,
+			.cleanup = 0,
+			.power_up = 0,
+	},
+	[SD_INDEX] = {
+			.pdev = NULL,
+			.slotno = 0,
+			.rst_n_gpio = -EINVAL,
+			.cd_gpio = 77,
+			.quirks = 0,
+			.platform_quirks = 0,
+			.setup = mrfl_sd_setup,
+			.cleanup = mrfl_sd_cleanup,
+			.power_up = 0,
+	},
+	[SDIO_INDEX] = {
+			.pdev = NULL,
+			.slotno = 0,
+			.rst_n_gpio = -EINVAL,
+			.cd_gpio = -EINVAL,
+			.quirks = 0,
+			.platform_quirks = 0,
+			.setup = mrfl_sdio_setup,
+			.cleanup = mrfl_sdio_cleanup,
+			.power_up = 0,
+	},
+};
+
+/* Board specific setup related to SD goes here */
+
+static int mrfl_sd_setup(struct sdhci_pci_data *data)
+{
+	return 0;
+}
+
+/* Board specific cleanup related to SD goes here */
+static void mrfl_sd_cleanup(struct sdhci_pci_data *data)
+{
+}
+
+/* Board specific setup related to SDIO goes here */
+static int mrfl_sdio_setup(struct sdhci_pci_data *data)
+{
+	return 0;
+}
+
+/* Board specific cleanup related to SDIO goes here */
+static void mrfl_sdio_cleanup(struct sdhci_pci_data *data)
+{
+}
+
+
+static struct sdhci_pci_data *get_sdhci_platform_data(struct pci_dev *pdev)
+{
+	struct sdhci_pci_data *pdata = NULL;
+
+	switch (pdev->device) {
+	case PCI_DEVICE_ID_INTEL_MFD_EMMC0:
+		pdata = &mfld_sdhci_pci_data[EMMC0_INDEX];
+		break;
+	case PCI_DEVICE_ID_INTEL_MFD_EMMC1:
+		pdata = &mfld_sdhci_pci_data[EMMC1_INDEX];
+		break;
+	case PCI_DEVICE_ID_INTEL_MFD_SD:
+		pdata = &mfld_sdhci_pci_data[SD_INDEX];
+		break;
+	case PCI_DEVICE_ID_INTEL_MFD_SDIO1:
+		pdata = &mfld_sdhci_pci_data[SDIO_INDEX];
+		break;
+	case PCI_DEVICE_ID_INTEL_CLV_EMMC0:
+		pdata = &clv_sdhci_pci_data[EMMC0_INDEX];
+		pdata->rst_n_gpio = get_gpio_by_name("emmc0_rst");
+		break;
+	case PCI_DEVICE_ID_INTEL_CLV_EMMC1:
+		pdata = &clv_sdhci_pci_data[EMMC1_INDEX];
+		pdata->rst_n_gpio = get_gpio_by_name("emmc1_rst");
+		break;
+	case PCI_DEVICE_ID_INTEL_CLV_SDIO0:
+		pdata = &clv_sdhci_pci_data[SD_INDEX];
+		break;
+	case PCI_DEVICE_ID_INTEL_CLV_SDIO1:
+		pdata = &clv_sdhci_pci_data[SDIO_INDEX];
+		break;
+	case PCI_DEVICE_ID_INTEL_MRFL_MMC:
+		switch (PCI_FUNC(pdev->devfn)) {
+		case 0:
+			pdata = &mrfl_sdhci_pci_data[EMMC0_INDEX];
+			break;
+		case 1:
+			pdata = &mrfl_sdhci_pci_data[EMMC1_INDEX];
+			break;
+		case 2:
+			pdata = &mrfl_sdhci_pci_data[SD_INDEX];
+			break;
+		case 3:
+			pdata = &mrfl_sdhci_pci_data[SDIO_INDEX];
+			break;
+		default:
+			pr_err("File %s function %s: Invalid PCI device function number (%d)\n",
+				__FILE__, __func__, PCI_FUNC(pdev->devfn));
+			break;
+		}
+		break;
+	default:
+		break;
+	}
+	return pdata;
+}
+
+static void __devinit mmc_sdhci_pci_early_quirks(struct pci_dev *pci_dev)
+{
+	pci_dev->dev.platform_data = get_sdhci_platform_data(pci_dev);
+}
+
+/* MRST MMC PCI IDs */
+DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_MRST_SD0,
+			mmc_sdhci_pci_early_quirks);
+DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_MRST_SD1,
+			mmc_sdhci_pci_early_quirks);
+DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_MRST_SD2,
+			mmc_sdhci_pci_early_quirks);
+
+/* MFLD MMC PCI IDs */
+DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_MFD_SD,
+			mmc_sdhci_pci_early_quirks);
+DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_MFD_SDIO1,
+			mmc_sdhci_pci_early_quirks);
+DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_MFD_SDIO2,
+			mmc_sdhci_pci_early_quirks);
+DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_MFD_EMMC0,
+			mmc_sdhci_pci_early_quirks);
+DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_MFD_EMMC1,
+			mmc_sdhci_pci_early_quirks);
+
+/* CLV MMC PCI IDs */
+DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_CLV_SDIO0,
+			mmc_sdhci_pci_early_quirks);
+DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_CLV_SDIO1,
+			mmc_sdhci_pci_early_quirks);
+DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_CLV_SDIO2,
+			mmc_sdhci_pci_early_quirks);
+DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_CLV_EMMC0,
+			mmc_sdhci_pci_early_quirks);
+DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_CLV_EMMC1,
+			mmc_sdhci_pci_early_quirks);
+
+/* MRFL MMC PCI IDs */
+DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_MRFL_MMC,
+			mmc_sdhci_pci_early_quirks);
+

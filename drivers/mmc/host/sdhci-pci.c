@@ -1409,6 +1409,7 @@ static struct sdhci_pci_slot * __devinit sdhci_pci_probe_slot(
 {
 	struct sdhci_pci_slot *slot;
 	struct sdhci_host *host;
+	struct sdhci_pci_data *pdata = pdev->dev.platform_data;
 	int ret, bar = first_bar + slotno;
 
 	if (!(pci_resource_flags(pdev, bar) & IORESOURCE_MEM)) {
@@ -1446,8 +1447,8 @@ static struct sdhci_pci_slot * __devinit sdhci_pci_probe_slot(
 	slot->cd_gpio = -EINVAL;
 
 	/* Retrieve platform data if there is any */
-	if (*sdhci_pci_get_data)
-		slot->data = sdhci_pci_get_data(pdev, slotno);
+	if (pdata->slotno == slotno)
+		slot->data = pdata;
 
 	if (slot->data) {
 		if (slot->data->setup) {
