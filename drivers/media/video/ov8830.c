@@ -840,24 +840,13 @@ static int ov8830_init_registers(struct v4l2_subdev *sd)
 	return ov8830_write_reg_array(client, dev->basic_settings_list);
 }
 
-static int __ov8830_init(struct v4l2_subdev *sd, u32 val)
-{
-	int ret = 0;
-
-	/* set inital registers */
-	ret = ov8830_init_registers(sd);
-
-	return ret;
-}
-
-
 static int ov8830_init(struct v4l2_subdev *sd, u32 val)
 {
 	struct ov8830_device *dev = to_ov8830_sensor(sd);
-	int ret = 0;
+	int ret;
 
 	mutex_lock(&dev->input_lock);
-	ret = __ov8830_init(sd, val);
+	ret = ov8830_init_registers(sd);
 	mutex_unlock(&dev->input_lock);
 
 	return ret;
@@ -949,8 +938,9 @@ static int __ov8830_s_power(struct v4l2_subdev *sd, int on)
 		drv201_power_up(sd);
 
 		dev->power = 1;
-		/* init motor initial position */
-		ret = __ov8830_init(sd, 0);
+
+		/* Initalise sensor settings */
+		ret = ov8830_init_registers(sd);
 	}
 
 	return ret;
