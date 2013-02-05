@@ -333,11 +333,19 @@ static int mdfld_dsi_jdi_set_brightness(struct mdfld_dsi_config *dsi_config,
 
 static int mdfld_dsi_jdi_panel_reset(struct mdfld_dsi_config *dsi_config)
 {
-	u8 *vaddr = NULL;
-	int reg_value = 0;
+	u8 *vaddr = NULL, *vaddr1 = NULL;
+	int reg_value = 0, reg_value_scl = 0;
 	int j = 0;
 
 	PSB_DEBUG_ENTRY("\n");
+
+	/* Because when reset touchscreen panel, touchscreen will pull i2c bus
+	 * to low, sometime this operation will cause i2c bus enter into wrong
+	 * status, so before reset, switch i2c scl pin */
+	vaddr1 = ioremap(0xff0c1d30, 4);
+	reg_value_scl = ioread32(vaddr1);
+	reg_value_scl &= ~0x1000;
+	iowrite32(reg_value_scl, vaddr1);
 
 	__vpro2_power_ctrl(true);
 
@@ -378,6 +386,11 @@ static int mdfld_dsi_jdi_panel_reset(struct mdfld_dsi_config *dsi_config)
 	}
 
 	iounmap(vaddr);
+
+	/* switch i2c scl pin back */
+	reg_value_scl |= 0x1000;
+	iowrite32(reg_value_scl, vaddr1);
+	iounmap(vaddr1);
 
 	return 0;
 }
