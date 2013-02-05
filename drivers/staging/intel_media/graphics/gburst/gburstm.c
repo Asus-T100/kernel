@@ -2889,7 +2889,12 @@ static int gburst_resume(struct gburst_pvt_s *gbprv)
 	/* Assume thermal state is current or will be updated soon. */
 
 	/* PWRGT_CNT to 0 except toggle and interrupt enable. */
-	set_state_pwrgt_cnt(gbprv, PWRGT_CNT_BURST_REQUEST_M_400);
+        if ((gbprv->gbp_burst_th_low == 0) &&
+             (gbprv->gbp_burst_th_high == 0)) {
+	        set_state_pwrgt_cnt(gbprv, PWRGT_CNT_BURST_REQUEST_M_533);
+	} else {
+		set_state_pwrgt_cnt(gbprv, PWRGT_CNT_BURST_REQUEST_M_400);
+	}
 
 	gbprv->gbp_suspended = 0;
 	smp_wmb();
