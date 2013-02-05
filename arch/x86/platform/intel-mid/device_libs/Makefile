@@ -59,6 +59,7 @@ obj-$(subst m,y,$(CONFIG_TOUCHSCREEN_SYNAPTICS_I2C_RMI4))              += platfo
 endif
 obj-$(subst m,y,$(CONFIG_BQ24261_CHARGER))                            += platform_bq24261.o
 obj-$(subst m,y,$(CONFIG_TOUCHSCREEN_R69001_I2C))			+= platform_r69001.o
+obj-$(subst m,y,$(CONFIG_SND_SOC_WM5102))				+= platform_wm5102.o
 # Camera
 obj-$(subst m,y,$(CONFIG_VIDEO_ATOMISP))				+= platform_camera.o
 ifdef CONFIG_VIDEO_ATOMISP

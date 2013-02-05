@@ -85,6 +85,7 @@
 #include "device_libs/platform_lis3dh.h"
 #include "device_libs/platform_bq24261.h"
 #include "device_libs/platform_r69001.h"
+#include "device_libs/platform_wm5102.h"
 
 /* SPI devices */
 #include "device_libs/platform_max3111.h"
@@ -209,6 +210,7 @@ struct devs_id __initconst device_ids[] = {
 	{"syn_3400_cgs", SFI_DEV_TYPE_I2C, 0, &rmi4_platform_data},
 	{"syn_3400_igzo", SFI_DEV_TYPE_I2C, 0, &rmi4_platform_data},
 	{"r69001-ts-i2c", SFI_DEV_TYPE_I2C, 0, &r69001_platform_data, NULL},
+	{"wm5102", SFI_DEV_TYPE_I2C, 0, &wm5102_platform_data, NULL},
 	{"pn544", SFI_DEV_TYPE_I2C, 0, &pn544_platform_data, NULL},
 	{"bq24192", SFI_DEV_TYPE_I2C, 1, &bq24192_platform_data},
 	{"max17042", SFI_DEV_TYPE_I2C, 1, &max17042_platform_data, NULL},
