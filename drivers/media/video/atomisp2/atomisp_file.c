@@ -32,6 +32,7 @@
 #include "atomisp_common.h"
 #include "atomisp_file.h"
 #include "atomisp_internal.h"
+#include "atomisp_ioctl.h"
 
 static int file_input_s_stream(struct v4l2_subdev *sd, int enable)
 {
@@ -51,7 +52,7 @@ static int file_input_s_stream(struct v4l2_subdev *sd, int enable)
 						V4L2_SUBDEV_FORMAT_ACTIVE,
 						ATOMISP_SUBDEV_PAD_SINK);
 	height = isp_sink_fmt.height;
-	bridge = get_atomisp_format_bridge_from_mbus(isp_sink_fmt.code);
+	bridge = atomisp_get_format_bridge_from_mbus(isp_sink_fmt.code);
 	if (!bridge)
 		return -ENOENT;
 

@@ -90,7 +90,6 @@ void atomisp_set_term_en_count(struct atomisp_device *isp);
  * Get internal fmt according to V4L2 fmt
  */
 
-int atomisp_is_pixelformat_supported(u32 pixelformat);
 bool atomisp_is_viewfinder_support(struct atomisp_device *isp);
 
 /*
