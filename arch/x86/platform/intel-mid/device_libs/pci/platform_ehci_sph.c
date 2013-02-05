@@ -37,7 +37,8 @@ static int is_board_ctp_prx(void)
 		 SPID_HARDWARE_ID(CLVTP, PHONE, RHB, PR20A)  ||
 		 SPID_HARDWARE_ID(CLVTP, PHONE, RHB, PR19M)  ||
 		 SPID_HARDWARE_ID(CLVTP, PHONE, RHB, PR199M) ||
-		 SPID_HARDWARE_ID(CLVTP, PHONE, RHB, PR20B));
+		 SPID_HARDWARE_ID(CLVTP, PHONE, RHB, PR20B)  ||
+		 SPID_HARDWARE_ID(CLVTP, PHONE, RHB, RSVD));
 }
 
 static struct ehci_sph_pdata *get_sph_platform_data(struct pci_dev *pdev)
