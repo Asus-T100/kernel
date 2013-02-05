@@ -571,6 +571,7 @@ static void assert_acwake(struct intel_controller *intel_hsi)
 {
 	unsigned long flags;
 	int do_wakeup = 0;
+	int do_wait = 0;
 
 	spin_lock_irqsave(&intel_hsi->hw_lock, flags);
 	if (hsi_pm) {
@@ -580,17 +581,18 @@ static void assert_acwake(struct intel_controller *intel_hsi)
 		do_wakeup = (intel_hsi->tx_state == TX_SLEEPING);
 		if (do_wakeup) {
 			intel_hsi->prg_cfg |= ARASAN_TX_ENABLE;
-			if (intel_hsi->suspend_state == DEVICE_READY)
+			if (intel_hsi->suspend_state == DEVICE_READY) {
+				do_wait = intel_hsi->acwake_delay ? 1 : 0;
 				iowrite32(intel_hsi->prg_cfg,
 						ARASAN_REG(PROGRAM));
+			}
 		}
 	}
 	intel_hsi->tx_state++;
 	spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
 
 	/* Wait only if needed */
-	if ((intel_hsi->acwake_delay) &&
-		(intel_hsi->suspend_state == DEVICE_READY))
+	if (do_wait)
 		udelay(intel_hsi->acwake_delay);
 
 	if (do_wakeup)
