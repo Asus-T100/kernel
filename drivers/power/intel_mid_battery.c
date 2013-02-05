@@ -151,8 +151,6 @@ struct battery_property {
 	u8  timer;	/* Charging timer */
 };
 
-#define IPCMSG_BATTERY		0xEF
-
 /* Battery coulomb counter accumulator commands */
 #define IPC_CMD_CC_WR		  0 /* Update coulomb counter value */
 #define IPC_CMD_CC_RD		  1 /* Read coulomb counter value */

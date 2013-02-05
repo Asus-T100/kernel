@@ -7,16 +7,16 @@
 #define INTEL_SCU_IPC_REGISTER_READ	0
 #define INTEL_SCU_IPC_REGISTER_WRITE	1
 #define INTEL_SCU_IPC_REGISTER_UPDATE	2
-#define INTEL_SCU_IPC_FW_UPDATE		0xA2
-#define INTEL_SCU_IPC_MEDFIELD_FW_UPDATE	0xA3
-#define INTEL_SCU_IPC_FW_REVISION_GET	0xB0
-#define INTEL_SCU_IPC_S0IX_RESIDENCY	0xB8
-#define INTEL_SCU_IPC_READ_RR_FROM_OSNIB	0xC1
-#define INTEL_SCU_IPC_WRITE_RR_TO_OSNIB	0xC2
-#define INTEL_SCU_IPC_READ_VBATTCRIT	0xC4
-#define INTEL_SCU_IPC_WRITE_ALARM_FLAG_TO_OSNIB	0xC5
-#define INTEL_SCU_IPC_OSC_CLK_CNTL	0xC6
-#define INTEL_SCU_IPC_PMDB_ACCESS       0xD0
+#define INTEL_SCU_IPC_FW_UPDATE			    0xA2
+#define INTEL_SCU_IPC_MEDFIELD_FW_UPDATE	    0xA3
+#define INTEL_SCU_IPC_FW_REVISION_GET		    0xB0
+#define INTEL_SCU_IPC_S0IX_RESIDENCY		    0xB8
+#define INTEL_SCU_IPC_READ_RR_FROM_OSNIB	    0xC1
+#define INTEL_SCU_IPC_WRITE_RR_TO_OSNIB		    0xC2
+#define INTEL_SCU_IPC_READ_VBATTCRIT		    0xC4
+#define INTEL_SCU_IPC_WRITE_ALARM_FLAG_TO_OSNIB	    0xC5
+#define INTEL_SCU_IPC_OSC_CLK_CNTL		    0xC6
+#define INTEL_SCU_IPC_PMDB_ACCESS		    0xD0
 
 struct scu_ipc_data {
 	__u32	count;  /* No. of registers */
@@ -42,7 +42,6 @@ struct osc_clk_t {
 #define PMDB_OTPCTL_SIZE       48
 #define PMDB_ACCESS_SIZE       16
 
-#define IPCMSG_PMDB_CMD        0xE0
 #define PMDB_SUB_CMD_R_WMDB    0
 #define PMDB_SUB_CMD_R_OTPDB   1
 #define PMDB_SUB_CMD_W_WMDB    2
@@ -82,10 +81,9 @@ int intel_scu_ipc_msic_vprog1(int on);
 int intel_scu_ipc_msic_vprog2(int on);
 
 /* OSHOB-OS Handoff Buffer read */
-int intel_scu_ipc_read_oshob(u8 *data, int len, int offset);
-/* OSNIB-OS No Init Buffer write */
-
 int intel_scu_ipc_get_oshob_size(void);
+
+/* OSNIB interface. */
 int intel_scu_ipc_write_osnib(u8 *data, int len, int offset);
 int intel_scu_ipc_read_osnib(u8 *data, int len, int offset);
 int intel_scu_ipc_write_osnib_extend(u8 *data, int len, int offset);

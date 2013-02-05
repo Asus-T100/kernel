@@ -5,8 +5,10 @@
 #include <asm/intel-mid.h>
 
 /* IPC defines the following message types */
+#define IPCMSG_GET_HOBADDR	0xE5 /* OSHOB access. */
 #define IPCMSG_BATTERY          0xEF /* Coulomb Counter Accumulator */
 #define IPCMSG_MIP_ACCESS       0xEC /* IA MIP access */
+#define IPCMSG_PMDB_CMD		0xE0
 #define IPCMSG_WARM_RESET	0xF0
 #define IPCMSG_COLD_RESET	0xF1
 #define IPCMSG_SOFT_RESET	0xF2
