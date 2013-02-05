@@ -500,8 +500,8 @@ int atomisp_subdev_set_ffmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 	struct v4l2_mbus_framefmt *__ffmt =
 		atomisp_subdev_get_ffmt(sd, fh, which, pad);
 
-	dev_dbg(isp->dev, "ffmt: pad %s w %d h %d which %s\n",
-		atomisp_pad_str[pad], ffmt->width, ffmt->height,
+	dev_dbg(isp->dev, "ffmt: pad %s w %d h %d code 0x%8.8x which %s\n",
+		atomisp_pad_str[pad], ffmt->width, ffmt->height, ffmt->code,
 		which == V4L2_SUBDEV_FORMAT_TRY ? "V4L2_SUBDEV_FORMAT_TRY"
 		: "V4L2_SUBDEV_FORMAT_ACTIVE");
 
@@ -518,7 +518,18 @@ int atomisp_subdev_set_ffmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 	}
 
 	switch (pad) {
-	case ATOMISP_SUBDEV_PAD_SINK:
+	case ATOMISP_SUBDEV_PAD_SINK: {
+		const struct atomisp_in_fmt_conv *fc =
+			atomisp_find_in_fmt_conv(ffmt->code);
+
+		if (!fc) {
+			ffmt->code = atomisp_in_fmt_conv[0].code;
+			dev_dbg(isp->dev, "using 0x%8.8x instead\n",
+				ffmt->code);
+			fc = atomisp_find_in_fmt_conv(ffmt->code);
+			BUG_ON(!fc);
+		}
+
 		*__ffmt = *ffmt;
 
 		isp_subdev_propagate(sd, fh, which, pad,
@@ -528,9 +539,12 @@ int atomisp_subdev_set_ffmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 			sh_css_input_set_resolution(ffmt->width, ffmt->height);
 			sh_css_input_set_binning_factor(
 				atomisp_get_sensor_bin_factor(isp));
+			sh_css_input_set_bayer_order(fc->bayer_order);
+			sh_css_input_set_format(fc->in_sh_fmt);
 		}
 
 		break;
+	}
 	case ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE:
 	case ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW:
 	case ATOMISP_SUBDEV_PAD_SOURCE_VF:

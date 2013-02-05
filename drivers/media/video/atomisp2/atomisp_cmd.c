@@ -3276,21 +3276,6 @@ atomisp_try_fmt_file(struct atomisp_device *isp, struct v4l2_format *f)
 	return 0;
 }
 
-static bool atomisp_input_format_is_raw(enum atomisp_input_format format)
-{
-	switch (format) {
-	case ATOMISP_INPUT_FORMAT_RAW_6:
-	case ATOMISP_INPUT_FORMAT_RAW_7:
-	case ATOMISP_INPUT_FORMAT_RAW_8:
-	case ATOMISP_INPUT_FORMAT_RAW_10:
-	case ATOMISP_INPUT_FORMAT_RAW_12:
-	case ATOMISP_INPUT_FORMAT_RAW_14:
-	case ATOMISP_INPUT_FORMAT_RAW_16:
-		return true;
-	default:
-		return false;
-	}
-}
 static mipi_port_ID_t __get_mipi_port(enum atomisp_camera_port port)
 {
 	switch (port) {
@@ -3311,9 +3296,6 @@ static mipi_port_ID_t __get_mipi_port(enum atomisp_camera_port port)
 static inline void
 atomisp_set_sensor_mipi_to_isp(struct camera_mipi_info *mipi_info)
 {
-	if (atomisp_input_format_is_raw(mipi_info->input_format))
-		sh_css_input_set_bayer_order(mipi_info->raw_bayer_order);
-	sh_css_input_set_format(mipi_info->input_format);
 	sh_css_input_configure_port(__get_mipi_port(mipi_info->port),
 				    mipi_info->num_lanes, 0xffff4);
 }
