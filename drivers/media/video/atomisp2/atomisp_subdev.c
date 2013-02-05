@@ -80,6 +80,34 @@ static const unsigned int isp_subdev_capture_output_fmts[] = {
 	V4L2_PIX_FMT_RGB32
 };
 
+const struct atomisp_in_fmt_conv atomisp_in_fmt_conv[] = {
+	{ V4L2_MBUS_FMT_SBGGR8_1X8, SH_CSS_INPUT_FORMAT_RAW_8, sh_css_bayer_order_bggr },
+	{ V4L2_MBUS_FMT_SGBRG8_1X8, SH_CSS_INPUT_FORMAT_RAW_8, sh_css_bayer_order_gbrg },
+	{ V4L2_MBUS_FMT_SGRBG8_1X8, SH_CSS_INPUT_FORMAT_RAW_8, sh_css_bayer_order_grbg },
+	{ V4L2_MBUS_FMT_SRGGB8_1X8, SH_CSS_INPUT_FORMAT_RAW_8, sh_css_bayer_order_rggb },
+	{ V4L2_MBUS_FMT_SBGGR10_1X10, SH_CSS_INPUT_FORMAT_RAW_10, sh_css_bayer_order_bggr },
+	{ V4L2_MBUS_FMT_SGBRG10_1X10, SH_CSS_INPUT_FORMAT_RAW_10, sh_css_bayer_order_gbrg },
+	{ V4L2_MBUS_FMT_SGRBG10_1X10, SH_CSS_INPUT_FORMAT_RAW_10, sh_css_bayer_order_grbg },
+	{ V4L2_MBUS_FMT_SRGGB10_1X10, SH_CSS_INPUT_FORMAT_RAW_10, sh_css_bayer_order_rggb },
+	{ V4L2_MBUS_FMT_SBGGR12_1X12, SH_CSS_INPUT_FORMAT_RAW_12, sh_css_bayer_order_bggr },
+	{ V4L2_MBUS_FMT_SGBRG12_1X12, SH_CSS_INPUT_FORMAT_RAW_12, sh_css_bayer_order_gbrg },
+	{ V4L2_MBUS_FMT_SGRBG12_1X12, SH_CSS_INPUT_FORMAT_RAW_12, sh_css_bayer_order_grbg },
+	{ V4L2_MBUS_FMT_SRGGB12_1X12, SH_CSS_INPUT_FORMAT_RAW_12, sh_css_bayer_order_rggb },
+	{ V4L2_MBUS_FMT_UYVY8_1X16, ATOMISP_INPUT_FORMAT_YUV422_8, 0 },
+};
+
+const struct atomisp_in_fmt_conv *atomisp_find_in_fmt_conv(
+	enum v4l2_mbus_pixelcode code)
+{
+	unsigned int i;
+
+	for (i = 0; i < ARRAY_SIZE(atomisp_in_fmt_conv); i++)
+		if (code == atomisp_in_fmt_conv[i].code)
+			return &atomisp_in_fmt_conv[i];
+
+	return NULL;
+}
+
 /*
  * V4L2 subdev operations
  */
