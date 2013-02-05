@@ -55,6 +55,7 @@
 #include "device_libs/platform_mxt224.h"
 #include "device_libs/platform_camera.h"
 #include "device_libs/platform_mt9e013.h"
+#include "device_libs/platform_mt9d113.h"
 #include "device_libs/platform_mt9m114.h"
 #include "device_libs/platform_lm3554.h"
 #include "device_libs/platform_a1026.h"
@@ -124,6 +125,8 @@ struct devs_id __initconst device_ids[] = {
 	{"lm3554", SFI_DEV_TYPE_I2C, 0, &lm3554_platform_data_func,
 					&intel_register_i2c_camera_device},
 	{"mt9e013", SFI_DEV_TYPE_I2C, 0, &mt9e013_platform_data,
+					&intel_register_i2c_camera_device},
+	{"mt9d113", SFI_DEV_TYPE_I2C, 0, &mt9d113_platform_data,
 					&intel_register_i2c_camera_device},
 	{"mt9m114", SFI_DEV_TYPE_I2C, 0, &mt9m114_platform_data,
 					&intel_register_i2c_camera_device},
