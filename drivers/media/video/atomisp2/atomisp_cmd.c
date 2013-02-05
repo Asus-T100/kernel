@@ -3411,16 +3411,11 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 	enum sh_css_err (*configure_pp_input)(unsigned int width,
 					      unsigned int height) =
 		configure_pp_input_nop;
-	int effective_input_width;
-	int effective_input_height;
 	int ret;
 
 	isp_sink_crop = atomisp_subdev_get_rect(
 		&isp->isp_subdev.subdev, NULL, V4L2_SUBDEV_FORMAT_ACTIVE,
 		ATOMISP_SUBDEV_PAD_SINK, V4L2_SEL_TGT_CROP);
-
-	effective_input_width = isp_sink_crop->width;
-	effective_input_height = isp_sink_crop->height;
 
 	format = get_atomisp_format_bridge(pixelformat);
 	if (format == NULL)
@@ -3489,11 +3484,6 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 		}
 	}
 
-	if (isp->params.continuous_vf) {
-		effective_input_width = 0;
-		effective_input_height = 0;
-	}
-
 	/* video same in continuouscapture and online modes */
 	if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO) {
 		configure_output = sh_css_video_configure_output;
@@ -3534,11 +3524,16 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 			width, height, format->sh_fmt);
 		return -EINVAL;
 	}
-	ret = configure_pp_input(effective_input_width, effective_input_height);
-	if (ret) {
-		dev_err(isp->dev, "configure_pp_input %ux%u\n",
-			effective_input_width, effective_input_height);
-		return -EINVAL;
+	if (isp->params.continuous_vf) {
+		configure_pp_input(0, 0);
+	} else {
+		ret = configure_pp_input(isp_sink_crop->width,
+					 isp_sink_crop->height);
+		if (ret) {
+			dev_err(isp->dev, "configure_pp_input %ux%u\n",
+				isp_sink_crop->width, isp_sink_crop->height);
+			return -EINVAL;
+		}
 	}
 	ret = get_frame_info(output_info);
 	if (ret) {
