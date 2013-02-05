@@ -88,18 +88,17 @@ static void close_delayed_work(struct work_struct *work)
 
 	mutex_lock_nested(&rtd->pcm_mutex, rtd->pcm_subclass);
 
-	dev_dbg(rtd->dev, "ASoC: pop wq checking: %s status: %s waiting: %s\n",
-		 codec_dai->driver->playback.stream_name,
-		 codec_dai->playback_active ? "active" : "inactive",
-		 rtd->pop_wait ? "yes" : "no");
+	dev_dbg (rtd->dev, "ASoC: pop wq checking: %s status: %s waiting: %s\n",
+			codec_dai->driver->playback.stream_name,
+			codec_dai->playback_active ? "active" : "inactive",
+			codec_dai->pop_wait ? "yes" : "no");
 
 	/* are we waiting on this codec DAI stream */
-	if (rtd->pop_wait == 1) {
-		rtd->pop_wait = 0;
+	if (codec_dai->pop_wait == 1) {
+		codec_dai->pop_wait = 0;
 		snd_soc_dapm_stream_event(rtd, SNDRV_PCM_STREAM_PLAYBACK,
-					  SND_SOC_DAPM_STREAM_STOP);
+					codec_dai, SND_SOC_DAPM_STREAM_STOP);
 	}
-
 	mutex_unlock(&rtd->pcm_mutex);
 }
 
@@ -121,7 +120,8 @@ static int soc_compr_free(struct snd_compr_stream *cstream)
 		codec_dai->capture_active--;
 	}
 
-	snd_soc_dai_digital_mute(codec_dai, 1);
+	if (!codec_dai->playback_active)
+		snd_soc_dai_digital_mute(codec_dai, 1);
 
 	cpu_dai->active--;
 	codec_dai->active--;
@@ -141,21 +141,23 @@ static int soc_compr_free(struct snd_compr_stream *cstream)
 		platform->driver->compr_ops->free(cstream);
 		cpu_dai->runtime = NULL;
 
-	if (cstream->direction == SND_COMPRESS_PLAYBACK) {
+	if (cstream->direction == SND_COMPRESS_PLAYBACK
+				&& !codec_dai->playback_active) {
 		if (!rtd->pmdown_time || codec->ignore_pmdown_time ||
 		    rtd->dai_link->ignore_pmdown_time) {
 			snd_soc_dapm_stream_event(rtd,
-					SNDRV_PCM_STREAM_PLAYBACK,
+					SNDRV_PCM_STREAM_PLAYBACK, codec_dai,
 					SND_SOC_DAPM_STREAM_STOP);
 		} else {
 			codec_dai->pop_wait = 1;
 			schedule_delayed_work(&rtd->delayed_work,
 				msecs_to_jiffies(rtd->pmdown_time));
 		}
-	} else {
+	} else if (cstream->direction == SND_COMPRESS_CAPTURE
+					&& !codec_dai->capture_active) {
 		/* capture streams can be powered down now */
 		snd_soc_dapm_stream_event(rtd,
-			SNDRV_PCM_STREAM_CAPTURE,
+			SNDRV_PCM_STREAM_CAPTURE, codec_dai,
 			SND_SOC_DAPM_STREAM_STOP);
 	}
 
@@ -178,11 +180,6 @@ static int soc_compr_trigger(struct snd_compr_stream *cstream, int cmd)
 		if (ret < 0)
 			goto out;
 	}
-
-	if (cmd == SNDRV_PCM_TRIGGER_START)
-		snd_soc_dai_digital_mute(codec_dai, 0);
-	else if (cmd == SNDRV_PCM_TRIGGER_STOP)
-		snd_soc_dai_digital_mute(codec_dai, 1);
 
 out:
 	mutex_unlock(&rtd->pcm_mutex);
@@ -217,8 +214,17 @@ static int soc_compr_set_params(struct snd_compr_stream *cstream,
 			goto out;
 	}
 
-	snd_soc_dapm_stream_event(rtd, SNDRV_PCM_STREAM_PLAYBACK,
-				SND_SOC_DAPM_STREAM_START);
+	/* cancel any delayed stream shutdown that is pending */
+	if (cstream->direction == SND_COMPRESS_PLAYBACK
+				 && codec_dai->pop_wait) {
+		codec_dai->pop_wait = 0;
+		cancel_delayed_work(&rtd->delayed_work);
+	}
+
+	snd_soc_dapm_stream_event(rtd, SNDRV_PCM_STREAM_PLAYBACK, codec_dai,
+					SND_SOC_DAPM_STREAM_START);
+
+	snd_soc_dai_digital_mute(codec_dai, 0);
 
 out:
 	mutex_unlock(&rtd->pcm_mutex);
@@ -303,11 +309,25 @@ static int soc_compr_pointer(struct snd_compr_stream *cstream,
 	return 0;
 }
 
+static int sst_compr_set_metadata(struct snd_compr_stream *cstream,
+				struct snd_compr_metadata *metadata)
+{
+	struct snd_soc_pcm_runtime *rtd = cstream->private_data;
+	struct snd_soc_platform *platform = rtd->platform;
+	int ret = 0;
+
+	if (platform->driver->compr_ops && platform->driver->compr_ops->set_metadata)
+		ret = platform->driver->compr_ops->set_metadata(cstream, metadata);
+
+	return ret;
+}
+
 /* ASoC Compress operations */
 static struct snd_compr_ops soc_compr_ops = {
 	.open		= soc_compr_open,
 	.free		= soc_compr_free,
 	.set_params	= soc_compr_set_params,
+	.set_metadata   = sst_compr_set_metadata,
 	.get_params	= soc_compr_get_params,
 	.trigger	= soc_compr_trigger,
 	.pointer	= soc_compr_pointer,
