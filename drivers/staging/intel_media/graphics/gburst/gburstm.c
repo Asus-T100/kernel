@@ -2899,7 +2899,11 @@ static int gburst_resume(struct gburst_pvt_s *gbprv)
 	gbprv->gbp_suspended = 0;
 	smp_wmb();
 
-	hrt_start(gbprv);
+	mutex_lock(&gbprv->gbp_mutex_pwrgt_sts);
+	if (!(read_PWRGT_STS_simple() & PWRGT_STS_FREQ_THROTTLE_M)) {
+		hrt_start(gbprv);
+	}
+	mutex_unlock(&gbprv->gbp_mutex_pwrgt_sts);
 
 	return 0;
 }
