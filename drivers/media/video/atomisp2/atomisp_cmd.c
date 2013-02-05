@@ -3311,23 +3311,11 @@ static mipi_port_ID_t __get_mipi_port(enum atomisp_camera_port port)
 static inline void
 atomisp_set_sensor_mipi_to_isp(struct camera_mipi_info *mipi_info)
 {
-	if (mipi_info) {
-		if (atomisp_input_format_is_raw(mipi_info->input_format))
-			sh_css_input_set_bayer_order(
-				mipi_info->raw_bayer_order);
-		sh_css_input_set_format((enum sh_css_input_format)
-					mipi_info->input_format);
-		sh_css_input_configure_port(__get_mipi_port(mipi_info->port),
-					    mipi_info->num_lanes,
-					    0xffff4);
-	} else {
-		/*Use default MIPI configuration*/
-		sh_css_input_set_bayer_order(sh_css_bayer_order_grbg);
-		sh_css_input_set_format(SH_CSS_INPUT_FORMAT_RAW_10);
-		sh_css_input_configure_port(
-				__get_mipi_port(ATOMISP_CAMERA_PORT_PRIMARY),
-				2, 0xffff4);
-	}
+	if (atomisp_input_format_is_raw(mipi_info->input_format))
+		sh_css_input_set_bayer_order(mipi_info->raw_bayer_order);
+	sh_css_input_set_format(mipi_info->input_format);
+	sh_css_input_configure_port(__get_mipi_port(mipi_info->port),
+				    mipi_info->num_lanes, 0xffff4);
 }
 
 static void __enable_continuous_vf(struct atomisp_device *isp, bool enable)
@@ -3384,6 +3372,10 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 		isp->inputs[isp->input_curr].type != FILE_INPUT) {
 		mipi_info = atomisp_to_sensor_mipi_info(
 			isp->inputs[isp->input_curr].camera);
+		if (!mipi_info) {
+			dev_err(isp->dev, "mipi_info is NULL\n");
+			return -EINVAL;
+		}
 		atomisp_set_sensor_mipi_to_isp(mipi_info);
 
 		if ((format->sh_fmt == SH_CSS_FRAME_FORMAT_RAW) &&
