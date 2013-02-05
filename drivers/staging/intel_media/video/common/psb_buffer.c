@@ -394,8 +394,6 @@ static int drm_psb_ttm_tt_populate(struct ttm_tt *ttm)
 	struct ttm_bo_device *bdev;
 	struct drm_psb_private *dev_priv;
 	struct drm_device *ddev;
-	unsigned i;
-	int r;
 
 	/*	The only use made of the structure pointed to
 		by ddev is reference to these members:
@@ -410,6 +408,15 @@ static int drm_psb_ttm_tt_populate(struct ttm_tt *ttm)
 
 	if (ttm->state != tt_unpopulated)
 		return 0;
+#if (LINUX_VERSION_CODE > KERNEL_VERSION(3, 3, 0))
+	bool slave = !!(ttm->page_flags & TTM_PAGE_FLAG_SG);
+	if (slave && ttm->sg) {
+		drm_prime_sg_to_page_addr_arrays(ttm->sg, ttm->pages,
+						 NULL, ttm->num_pages);
+		ttm->state = tt_unbound;
+		return 0;
+	}
+#endif
 
 #if __OS_HAS_AGP && 0
 	if (this_is_an_agp_device)
@@ -421,28 +428,7 @@ static int drm_psb_ttm_tt_populate(struct ttm_tt *ttm)
 		return ttm_dma_populate(ttm_dma, ddev->dev);
 #endif
 
-	r = ttm_pool_populate(ttm);
-	if (r)
-		return r;
-
-	for (i = 0; i < ttm->num_pages; i++) {
-		ttm_dma->dma_address[i] = pci_map_page(ddev->pdev,
-						ttm->pages[i],
-						0, PAGE_SIZE,
-						PCI_DMA_BIDIRECTIONAL);
-		if (pci_dma_mapping_error(ddev->pdev,
-				ttm_dma->dma_address[i])) {
-			while (--i) {
-				pci_unmap_page(ddev->pdev,
-					ttm_dma->dma_address[i],
-					PAGE_SIZE, PCI_DMA_BIDIRECTIONAL);
-				ttm_dma->dma_address[i] = 0;
-			}
-			ttm_pool_unpopulate(ttm);
-			return -EFAULT;
-		}
-	}
-	return 0;
+	return ttm_pool_populate(ttm);
 }
 
 static void drm_psb_ttm_tt_unpopulate(struct ttm_tt *ttm)
@@ -452,8 +438,12 @@ static void drm_psb_ttm_tt_unpopulate(struct ttm_tt *ttm)
 	struct drm_psb_private *dev_priv;
 	struct drm_device *ddev;
 
-	unsigned i;
+#if (LINUX_VERSION_CODE > KERNEL_VERSION(3, 3, 0))
+	bool slave = !!(ttm->page_flags & TTM_PAGE_FLAG_SG);
 
+	if (slave)
+		return;
+#endif
 	/*	The only use made of the structure pointed to
 		by ddev is reference to these members:
 			struct device *dev;
@@ -477,13 +467,6 @@ static void drm_psb_ttm_tt_unpopulate(struct ttm_tt *ttm)
 		return;
 	}
 #endif
-
-	for (i = 0; i < ttm->num_pages; i++) {
-		if (ttm_dma->dma_address[i]) {
-			pci_unmap_page(ddev->pdev, ttm_dma->dma_address[i],
-				PAGE_SIZE, PCI_DMA_BIDIRECTIONAL);
-		}
-	}
 
 	ttm_pool_unpopulate(ttm);
 }

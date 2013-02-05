@@ -29,6 +29,10 @@
 #include <linux/slab.h>
 #include <linux/sched.h>
 #include <linux/version.h>
+#include <linux/dma-buf.h>
+#include "drmP.h"
+#include "drm.h"
+
 
 struct ttm_bo_user_object {
 	struct ttm_base_object base;
@@ -311,12 +315,18 @@ int ttm_pl_create_ioctl(struct ttm_object_file *tfile,
 	if ((flags & TTM_PL_MASK_CACHING) == 0)
 		flags |=  TTM_PL_FLAG_WC | TTM_PL_FLAG_UNCACHED;
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 3, 0))
 	ret = ttm_bo_init(bdev, bo, req->size,
 			  ttm_bo_type_device, &placement,
 			  req->page_alignment, 0, true,
 			  NULL, acc_size, &ttm_bo_user_destroy);
+#else
+	ret = ttm_bo_init(bdev, bo, req->size,
+			  ttm_bo_type_device, &placement,
+			  req->page_alignment, 0, true,
+			  NULL, acc_size, NULL, &ttm_bo_user_destroy);
+#endif
 	ttm_read_unlock(lock);
-
 	/*
 	 * Note that the ttm_buffer_object_init function
 	 * would've called the destroy function on failure!!
@@ -410,7 +420,57 @@ int ttm_pl_ub_create_ioctl(struct ttm_object_file *tfile,
 
 #endif
 
+#if (LINUX_VERSION_CODE > KERNEL_VERSION(3, 3, 0))
+		/* Handle frame buffer allocated in user space, Convert
+		  user space virtual address into pages list */
+		unsigned int page_nr = 0;
+		struct vm_area_struct *vma = NULL;
+		struct sg_table *sg = NULL;
+		unsigned long num_pages = 0;
+		struct page **pages = 0;
 
+		num_pages = (req->size + PAGE_SIZE - 1) >> PAGE_SHIFT;
+		pages = kzalloc(num_pages * sizeof(struct page *), GFP_KERNEL);
+		if (unlikely(pages == NULL)) {
+			printk(KERN_ERR "kzalloc pages failed\n");
+			return -ENOMEM;
+		}
+
+		down_read(&current->mm->mmap_sem);
+		vma = find_vma(current->mm, req->user_address);
+		if (unlikely(vma == NULL)) {
+			up_read(&current->mm->mmap_sem);
+			kfree(pages);
+			printk(KERN_ERR "find_vma failed\n");
+			return -EFAULT;
+		}
+		unsigned long before_flags = vma->vm_flags;
+		if (vma->vm_flags & (VM_IO | VM_PFNMAP))
+			vma->vm_flags = vma->vm_flags & ((~VM_IO) & (~VM_PFNMAP));
+		page_nr = get_user_pages(current, current->mm,
+					 req->user_address,
+					 (int)(num_pages), 1, 0, pages,
+					 NULL);
+		vma->vm_flags = before_flags;
+		up_read(&current->mm->mmap_sem);
+
+		/* can be written by caller, not forced */
+		if (unlikely(page_nr < num_pages)) {
+			kfree(pages);
+			pages = 0;
+			printk(KERN_ERR "get_user_pages err.\n");
+			return -ENOMEM;
+		}
+		sg = drm_prime_pages_to_sg(pages, num_pages);
+		if (unlikely(sg == NULL)) {
+			kfree(pages);
+			printk(KERN_ERR "drm_prime_pages_to_sg err.\n");
+			return -ENOMEM;
+		}
+		kfree(pages);
+#endif
+
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 3, 0))
 	ret = ttm_bo_init(bdev,
 			  bo,
 			  req->size,
@@ -422,6 +482,20 @@ int ttm_pl_ub_create_ioctl(struct ttm_object_file *tfile,
 			  NULL,
 			  acc_size,
 			  &ttm_bo_user_destroy);
+#else
+	ret = ttm_bo_init(bdev,
+			  bo,
+			  req->size,
+			  ttm_bo_type_sg,
+			  &placement,
+			  req->page_alignment,
+			  req->user_address,
+			  true,
+			  NULL,
+			  acc_size,
+			  sg,
+			  &ttm_bo_user_destroy);
+#endif
 
 	/*
 	 * Note that the ttm_buffer_object_init function
