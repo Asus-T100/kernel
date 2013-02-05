@@ -422,6 +422,7 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 	INIT_LIST_HEAD(&sst_drv_ctx->libmemcpy_list);
 
 	INIT_LIST_HEAD(&sst_drv_ctx->ipc_dispatch_list);
+	INIT_LIST_HEAD(&sst_drv_ctx->block_list);
 	INIT_WORK(&sst_drv_ctx->ipc_post_msg.wq, ops->post_message);
 	INIT_WORK(&sst_drv_ctx->ipc_process_msg.wq, ops->process_message);
 	INIT_WORK(&sst_drv_ctx->ipc_process_reply.wq, ops->process_reply);
@@ -443,11 +444,9 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 	if (!sst_drv_ctx->process_reply_wq)
 		goto free_process_msg_wq;
 
-	for (i = 0; i < MAX_ACTIVE_STREAM; i++) {
-		sst_drv_ctx->alloc_block[i].sst_id = BLOCK_UNINIT;
-		sst_drv_ctx->alloc_block[i].ops_block.condition = false;
-	}
 	spin_lock_init(&sst_drv_ctx->ipc_spin_lock);
+	spin_lock_init(&sst_drv_ctx->block_lock);
+	spin_lock_init(&sst_drv_ctx->pvt_id_lock);
 
 	info = (void *)pci_id->driver_data;
 	memcpy(&sst_drv_ctx->info, info, sizeof(sst_drv_ctx->info));
@@ -699,6 +698,8 @@ static void sst_save_dsp_context(void)
 	unsigned int pvt_id;
 	struct ipc_post *msg = NULL;
 	unsigned long irq_flags;
+	struct sst_block *block;
+	pr_debug("%s: Enter\n", __func__);
 
 	/*check cpu type*/
 	if (sst_drv_ctx->pci_id == SST_MRST_PCI_ID)
@@ -710,12 +711,12 @@ static void sst_save_dsp_context(void)
 	}
 
 	/*send msg to fw*/
-	if (sst_create_large_msg(&msg))
-		return;
 	pvt_id = sst_assign_pvt_id(sst_drv_ctx);
-	sst_drv_ctx->alloc_block[0].sst_id = pvt_id;
-	sst_drv_ctx->alloc_block[0].ops_block.condition = false;
-	sst_drv_ctx->alloc_block[0].ops_block.on = true;
+	if (sst_create_block_and_ipc_msg(&msg, true, sst_drv_ctx, &block,
+				IPC_IA_GET_FW_CTXT, pvt_id)) {
+		pr_err("msg/block alloc failed. Not proceeding with context save\n");
+		return;
+	}
 	sst_fill_header(&msg->header, IPC_IA_GET_FW_CTXT, 1, pvt_id);
 	msg->header.part.data = sizeof(fw_context) + sizeof(u32);
 	fw_context.address = virt_to_phys((void *)sst_drv_ctx->fw_cntx);
@@ -728,11 +729,15 @@ static void sst_save_dsp_context(void)
 	spin_unlock_irqrestore(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 	sst_drv_ctx->ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
 	/*wait for reply*/
-	if (sst_wait_timeout(sst_drv_ctx,
-				&sst_drv_ctx->alloc_block[0].ops_block))
+	if (sst_wait_timeout(sst_drv_ctx, block))
 		pr_err("sst: err fw context save timeout  ...\n");
-	sst_drv_ctx->alloc_block[0].sst_id = BLOCK_UNINIT;
 	pr_debug("fw context saved  ...\n");
+	if (block->ret_code)
+		sst_drv_ctx->fw_cntx_size = 0;
+	else
+		sst_drv_ctx->fw_cntx_size = *sst_drv_ctx->fw_cntx;
+	pr_debug("fw copied data %x\n", sst_drv_ctx->fw_cntx_size);
+	sst_free_block(sst_drv_ctx, block);
 	return;
 }
 

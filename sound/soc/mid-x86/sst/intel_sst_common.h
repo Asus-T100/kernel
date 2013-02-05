@@ -233,9 +233,12 @@ fw/user call
 struct sst_block {
 	bool	condition; /* condition for blocking check */
 	int	ret_code; /* ret code when block is released */
-	int	drv_id;
 	void	*data; /* data to be appsed for block if any */
+	u32     size;
 	bool	on;
+	u32     msg_id;  /*msg_id = msgid in mfld/ctp, mrfld = 0 */
+	u32     drv_id; /* = str_id in mfld/ctp, = drv_id in mrfld*/
+	struct list_head node;
 };
 
 /**
@@ -243,13 +246,9 @@ struct sst_block {
  *
  * @status : stream current state
  * @prev : stream prev state
- * @codec : stream codec
- * @sst_id : stream id
  * @ops : stream operation pb/cp/drm...
  * @bufs: stream buffer list
  * @lock : stream mutex for protecting state
- * @data_blk : stream block for data operations
- * @ctrl_blk : stream block for ctrl operations
  * @pcm_substream : PCM substream
  * @period_elapsed : PCM period elapsed callback
  * @sfreq : stream sampling freq
@@ -265,8 +264,6 @@ struct stream_info {
 	unsigned int		prev;
 	unsigned int		ops;
 	struct mutex		lock; /* mutex */
-	struct sst_block	data_blk; /* stream ops block */
-	struct sst_block	ctrl_blk; /* stream control cmd block */
 	void			*pcm_substream;
 	void (*period_elapsed) (void *pcm_substream);
 	unsigned int		sfreq;
@@ -276,18 +273,6 @@ struct stream_info {
 	unsigned int		num_ch;
 	unsigned int		pipe_id;
 	unsigned int		str_id;
-};
-
-/*
- * struct stream_alloc_bloc - this structure is used for blocking the user's
- * alloc calls to fw's response to alloc calls
- *
- * @sst_id : session id of blocked stream
- * @ops_block : ops block struture
- */
-struct stream_alloc_block {
-	int			sst_id; /* session id of blocked stream */
-	struct sst_block	ops_block; /* ops block struture */
 };
 
 #define SST_FW_SIGN "$SST"
@@ -433,12 +418,6 @@ struct sst_probe_info {
  * @process_msg_wq : wq to process msgs from FW
  * @process_reply_wq : wq to process reply from FW
  * @streams : sst stream contexts
- * @alloc_block : block structure for alloc
- * @tgt_dev_blk : block structure for target device
- * @fw_info_blk : block structure for fw info block
- * @vol_info_blk : block structure for vol info block
- * @mute_info_blk : block structure for mute info block
- * @hs_info_blk : block structure for hs info block
  * @list_lock : sst driver list lock (deprecated)
  * @ipc_spin_lock : spin lock to handle audio shim access and ipc queue
  * @scard_ops : sst card ops
@@ -471,6 +450,7 @@ struct intel_sst_drv {
 	unsigned int		dram_end;
 	unsigned int		ddr_end;
 	unsigned int		ddr_base;
+	struct list_head        block_list;
 	struct list_head	ipc_dispatch_list;
 	struct snd_ssp_config   *ssp_config;
 	struct work_struct	ipc_post_msg_wq;
@@ -484,10 +464,10 @@ struct intel_sst_drv {
 	struct workqueue_struct *process_reply_wq;
 	unsigned int		tstamp;
 	struct stream_info streams[MAX_NUM_STREAMS+1]; /*str_id 0 is not used*/
-	struct stream_alloc_block alloc_block[MAX_ACTIVE_STREAM];
-	struct sst_block	fw_info_blk, ppp_params_blk, dma_info_blk;
 	struct mutex		list_lock;/* mutex for IPC list locking */
 	spinlock_t		ipc_spin_lock; /* lock for Shim reg access and ipc queue */
+	spinlock_t              block_lock; /* lock for adding block to block_list */
+	spinlock_t              pvt_id_lock; /* lock for allocating private id */
 	struct snd_pmic_ops	*scard_ops;
 	struct pci_dev		*pci;
 	struct mutex            sst_lock;
@@ -519,8 +499,6 @@ struct intel_sst_drv {
 #endif
 	struct pm_qos_request *qos;
 	struct sst_probe_info info;
-	u32 block_id;
-	struct sst_block sst_byte_blk;
 	unsigned int use_dma;
 	unsigned int use_lli;
 	atomic_t fw_clear_context;
@@ -537,10 +515,7 @@ extern struct intel_sst_drv *sst_drv_ctx;
 /* misc definitions */
 #define FW_DWNL_ID 0xFF
 
-int sst_alloc_stream(char *params);
-int sst_alloc_stream_response(unsigned int str_id,
-				struct snd_sst_alloc_response *response);
-int sst_alloc_stream_response_mrfld(unsigned int str_id);
+int sst_alloc_stream(char *params, struct sst_block *block);
 int sst_stalled(void);
 int sst_pause_stream(int id);
 int sst_resume_stream(int id);
@@ -595,10 +570,7 @@ int sst_wait_interruptible(struct intel_sst_drv *sst_drv_ctx,
 				struct sst_block *block);
 int sst_wait_timeout(struct intel_sst_drv *sst_drv_ctx,
 			struct sst_block *block);
-int sst_create_large_msg(struct ipc_post **arg);
-int sst_create_short_msg(struct ipc_post **arg);
-void sst_wake_up_alloc_block(struct intel_sst_drv *sst_drv_ctx,
-		u8 sst_id, int status, void *data);
+int sst_create_ipc_msg(struct ipc_post **arg, bool large);
 int sst_download_fw(void);
 void free_stream_context(unsigned int str_id);
 void sst_clean_stream(struct stream_info *stream);
@@ -612,6 +584,15 @@ int sst_get_num_channel(struct snd_sst_params *str_param);
 int sst_get_wdsize(struct snd_sst_params *str_param);
 int sst_get_sfreq(struct snd_sst_params *str_param);
 int intel_sst_check_device(void);
+
+struct sst_block *sst_create_block(struct intel_sst_drv *ctx,
+				u32 msg_id, u32 drv_id);
+int sst_create_block_and_ipc_msg(struct ipc_post **arg, bool large,
+		struct intel_sst_drv *sst_drv_ctx, struct sst_block **block,
+		u32 msg_id, u32 drv_id);
+int sst_free_block(struct intel_sst_drv *ctx, struct sst_block *freed);
+int sst_wake_up_block(struct intel_sst_drv *ctx, int result,
+		u32 drv_id, u32 ipc, void *data, u32 size);
 /*
  * sst_fill_header - inline to fill sst header
  *
@@ -636,13 +617,13 @@ static inline void sst_fill_header(union ipc_header *header,
 
 
 static inline void sst_fill_header_mrfld(union ipc_header_mrfld *header,
-				int msg, int task_id, int large, int str_id)
+				int msg, int task_id, int large, int drv_id)
 {
 	header->full = 0;
 	header->p.header_high.part.msg_id = msg;
 	header->p.header_high.part.task_id = task_id;
 	header->p.header_high.part.large = large;
-	header->p.header_high.part.str_id = str_id;
+	header->p.header_high.part.drv_id = drv_id;
 	header->p.header_high.part.done = 0;
 	header->p.header_high.part.busy = 1;
 	header->p.header_high.part.res_rqd = 1;
@@ -654,7 +635,7 @@ static inline void sst_fill_header_mrfld_32(u32 *h, u8 task, u8 msg, u8 drv_id,
 	union ipc_header_high header;
 	header.part.msg_id = msg;
 	header.part.task_id = task;
-	header.part.str_id = drv_id;
+	header.part.drv_id = drv_id;
 	header.part.res_rqd = block;
 	header.part.large = large;
 	header.part.done = 0;
@@ -682,9 +663,11 @@ static inline void sst_fill_header_dsp(struct ipc_dsp_hdr *dsp, int msg,
  */
 static inline unsigned int sst_assign_pvt_id(struct intel_sst_drv *sst_drv_ctx)
 {
+	spin_lock(&sst_drv_ctx->pvt_id_lock);
 	sst_drv_ctx->unique_id++;
 	if (sst_drv_ctx->unique_id > MAX_BLOCKS)
 		sst_drv_ctx->unique_id = 1;
+	spin_unlock(&sst_drv_ctx->pvt_id_lock);
 	return sst_drv_ctx->unique_id;
 }
 
@@ -707,14 +690,6 @@ static inline void sst_init_stream(struct stream_info *stream,
 	stream->status = STREAM_INIT;
 	stream->prev = STREAM_UN_INIT;
 	stream->ops = ops;
-	stream->data_blk.on = false;
-	stream->data_blk.condition = false;
-	stream->data_blk.ret_code = 0;
-	stream->data_blk.data = NULL;
-	stream->ctrl_blk.on = false;
-	stream->ctrl_blk.condition = false;
-	stream->ctrl_blk.ret_code = 0;
-	stream->ctrl_blk.data = NULL;
 }
 
 

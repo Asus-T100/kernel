@@ -48,34 +48,6 @@
 #define SST_EXCE_DUMP_SIZE ((SST_EXCE_DUMP_LEN)*(SST_EXCE_DUMP_WORD))
 
 /*
- * sst_get_block_stream - get a new block stream
- *
- * @sst_drv_ctx: Driver context structure
- *
- * This function assigns a block for the calls that dont have stream context yet
- * the blocks are used for waiting on Firmware's response for any operation
- * Should be called with stream lock held
- */
-int sst_get_block_stream(struct intel_sst_drv *sst_drv_ctx)
-{
-	int i;
-
-	for (i = 0; i < MAX_ACTIVE_STREAM; i++) {
-		if (sst_drv_ctx->alloc_block[i].sst_id == BLOCK_UNINIT) {
-			sst_drv_ctx->alloc_block[i].ops_block.condition = false;
-			sst_drv_ctx->alloc_block[i].ops_block.ret_code = 0;
-			sst_drv_ctx->alloc_block[i].sst_id = 0;
-			break;
-		}
-	}
-	if (i == MAX_ACTIVE_STREAM) {
-		pr_err("max alloc_stream reached\n");
-		i = -EBUSY; /* active stream limit reached */
-	}
-	return i;
-}
-
-/*
  * sst_wait_interruptible - wait on event
  *
  * @sst_drv_ctx: Driver context
@@ -281,51 +253,60 @@ int sst_wait_timeout(struct intel_sst_drv *sst_drv_ctx, struct sst_block *block)
 }
 
 /*
- * sst_create_large_msg - create a large IPC message
+ * sst_create_ipc_msg - create a IPC message
  *
  * @arg: ipc message
+ * @large: large or short message
  *
- * this function allocates structures to send a large message to the firmware
+ * this function allocates structures to send a large or short
+ * message to the firmware
  */
-int sst_create_large_msg(struct ipc_post **arg)
+int sst_create_ipc_msg(struct ipc_post **arg, bool large)
 {
 	struct ipc_post *msg;
 
 	msg = kzalloc(sizeof(struct ipc_post), GFP_ATOMIC);
 	if (!msg) {
-		pr_err("kzalloc msg failed\n");
+		pr_err("kzalloc ipc msg failed\n");
 		return -ENOMEM;
 	}
-
-	msg->mailbox_data = kzalloc(SST_MAILBOX_SIZE, GFP_ATOMIC);
-	if (!msg->mailbox_data) {
-		kfree(msg);
-		pr_err("kzalloc mailbox_data failed");
-		return -ENOMEM;
+	if (large) {
+		msg->mailbox_data = kzalloc(SST_MAILBOX_SIZE, GFP_ATOMIC);
+		if (!msg->mailbox_data) {
+			kfree(msg);
+			pr_err("kzalloc mailbox_data failed");
+			return -ENOMEM;
+		}
+	} else {
+		msg->mailbox_data = NULL;
 	}
 	*arg = msg;
 	return 0;
 }
 
 /*
- * sst_create_short_msg - create a short IPC message
- *
- * @arg: ipc message
- *
- * this function allocates structures to send a short message to the firmware
+ * sst_create_block_and_ipc_msg - Creates IPC message and sst block
+ * @arg: passed to sst_create_ipc_message API
+ * @large: large or short message
+ * @sst_drv_ctx: sst driver context
+ * @block: return block allocated
+ * @msg_id: IPC
+ * @drv_id: stream id or private id
  */
-int sst_create_short_msg(struct ipc_post **arg)
+int sst_create_block_and_ipc_msg(struct ipc_post **arg, bool large,
+		struct intel_sst_drv *sst_drv_ctx, struct sst_block **block,
+		u32 msg_id, u32 drv_id)
 {
-	struct ipc_post *msg;
-
-	msg = kzalloc(sizeof(*msg), GFP_ATOMIC);
-	if (!msg) {
-		pr_err("kzalloc msg failed\n");
+	int retval = 0;
+	retval = sst_create_ipc_msg(arg, large);
+	if (retval)
+		return retval;
+	*block = sst_create_block(sst_drv_ctx, msg_id, drv_id);
+	if (*block == NULL) {
+		kfree(*arg);
 		return -ENOMEM;
 	}
-	msg->mailbox_data = NULL;
-	*arg = msg;
-	return 0;
+	return retval;
 }
 
 /*
@@ -343,33 +324,5 @@ void sst_clean_stream(struct stream_info *stream)
 	mutex_lock(&stream->lock);
 	stream->cumm_bytes = 0;
 	mutex_unlock(&stream->lock);
-
-}
-
-/*
- * sst_wake_up_alloc_block - wake up waiting block
- *
- * @sst_drv_ctx: Driver context
- * @sst_id: stream id
- * @status: status of wakeup
- * @data: data pointer of wakeup
- *
- * This function wakes up a sleeping block event based on the response
- */
-void sst_wake_up_alloc_block(struct intel_sst_drv *sst_drv_ctx,
-		u8 sst_id, int status, void *data)
-{
-	int i;
-
-	/* Unblock with retval code */
-	for (i = 0; i < MAX_ACTIVE_STREAM; i++) {
-		if (sst_id == sst_drv_ctx->alloc_block[i].sst_id) {
-			sst_drv_ctx->alloc_block[i].ops_block.condition = true;
-			sst_drv_ctx->alloc_block[i].ops_block.ret_code = status;
-			sst_drv_ctx->alloc_block[i].ops_block.data = data;
-			wake_up(&sst_drv_ctx->wait_queue);
-			break;
-		}
-	}
 }
 

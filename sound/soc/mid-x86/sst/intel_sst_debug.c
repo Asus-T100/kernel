@@ -447,7 +447,7 @@ static ssize_t sst_debug_lpe_log_enable_write(struct file *file,
 		goto put_pm_runtime;
 	}
 
-	ret_val = sst_create_large_msg(&msg);
+	ret_val = sst_create_ipc_msg(&msg, true);
 	if (ret_val != 0)
 		goto put_pm_runtime;
 
