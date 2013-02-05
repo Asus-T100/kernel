@@ -3386,6 +3386,12 @@ static void __enable_continuous_vf(struct atomisp_device *isp, bool enable)
 	atomisp_update_run_mode(isp);
 }
 
+static enum sh_css_err configure_pp_input_nop(unsigned int width,
+					      unsigned int height)
+{
+	return 0;
+}
+
 static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 				   struct sh_css_frame_info *output_info,
 				   struct sh_css_frame_info *raw_output_info,
@@ -3396,9 +3402,15 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 	struct camera_mipi_info *mipi_info;
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	struct atomisp_sub_device *asd = &isp->isp_subdev;
-	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
 	const struct atomisp_format_bridge *format;
 	struct v4l2_rect *isp_sink_crop;
+	enum sh_css_err (*configure_output)(unsigned int width,
+					    unsigned int height,
+					    enum sh_css_frame_format sh_fmt);
+	enum sh_css_err (*get_frame_info)(struct sh_css_frame_info *finfo);
+	enum sh_css_err (*configure_pp_input)(unsigned int width,
+					      unsigned int height) =
+		configure_pp_input_nop;
 	int effective_input_width;
 	int effective_input_height;
 	int ret;
@@ -3484,33 +3496,13 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 
 	/* video same in continuouscapture and online modes */
 	if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO) {
-		if (sh_css_video_configure_output(width, height,
-						  format->sh_fmt))
-			return -EINVAL;
-
-		if (sh_css_video_get_output_frame_info(output_info))
-			return -EINVAL;
-		goto done;
-	}
-
-	switch (pipe->pipe_type) {
-	case ATOMISP_PIPE_PREVIEW:
-		if (sh_css_preview_configure_output(width, height,
-					format->sh_fmt))
-			return -EINVAL;
-
-		if (sh_css_preview_configure_pp_input(
-					effective_input_width,
-					effective_input_height))
-			return -EINVAL;
-
-		if (sh_css_preview_get_output_frame_info(output_info))
-			return -EINVAL;
-
-		break;
-	case ATOMISP_PIPE_CAPTURE:
-		/* fall through */
-	default:
+		configure_output = sh_css_video_configure_output;
+		get_frame_info = sh_css_video_get_output_frame_info;
+	} else if (source_pad == ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW) {
+		configure_output = sh_css_preview_configure_output;
+		get_frame_info = sh_css_preview_get_output_frame_info;
+		configure_pp_input = sh_css_preview_configure_pp_input;
+	} else {
 		if (format->sh_fmt == SH_CSS_FRAME_FORMAT_RAW) {
 			sh_css_capture_set_mode(SH_CSS_CAPTURE_MODE_RAW);
 		}
@@ -3518,25 +3510,10 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 			sh_css_capture_enable_online(
 					isp->params.online_process);
 
-		if (sh_css_capture_configure_output(width, height,
-						    format->sh_fmt))
-			return -EINVAL;
-		v4l2_dbg(3, dbg_level, &atomisp_dev,
-					"sh css capture main output width: %d, height: %d\n",
-					width, height);
+		configure_output = sh_css_capture_configure_output;
+		get_frame_info = sh_css_capture_get_output_frame_info;
+		configure_pp_input = sh_css_capture_configure_pp_input;
 
-		if (sh_css_capture_configure_pp_input(
-					effective_input_width,
-					effective_input_height))
-			return -EINVAL;
-
-		ret = sh_css_capture_get_output_frame_info(output_info);
-		if (ret) {
-			v4l2_err(&atomisp_dev,
-				    "Resolution set mismatach error %d\n",
-				    ret);
-			return -EINVAL;
-		}
 		if (!isp->params.online_process && !isp->params.continuous_vf)
 			if (sh_css_capture_get_output_raw_frame_info(
 						raw_output_info))
@@ -3549,10 +3526,26 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 			isp->isp_subdev.run_mode->val =
 				ATOMISP_RUN_MODE_STILL_CAPTURE;
 		}
-		break;
 	}
 
-done:
+	ret = configure_output(width, height, format->sh_fmt);
+	if (ret) {
+		dev_err(isp->dev, "configure_output %ux%u, format %8.8x\n",
+			width, height, format->sh_fmt);
+		return -EINVAL;
+	}
+	ret = configure_pp_input(effective_input_width, effective_input_height);
+	if (ret) {
+		dev_err(isp->dev, "configure_pp_input %ux%u\n",
+			effective_input_width, effective_input_height);
+		return -EINVAL;
+	}
+	ret = get_frame_info(output_info);
+	if (ret) {
+		dev_err(isp->dev, "get_frame_info %ux%u\n", width, height);
+		return -EINVAL;
+	}
+
 	atomisp_update_grid_info(isp);
 
 	/* Free the raw_dump buffer first */
