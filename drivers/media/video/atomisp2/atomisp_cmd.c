@@ -3397,8 +3397,6 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	struct atomisp_sub_device *asd = &isp->isp_subdev;
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
-	struct v4l2_rect vf_size;
-	struct v4l2_mbus_framefmt vf_ffmt;
 	const struct atomisp_format_bridge *format;
 	struct v4l2_rect *isp_sink_crop;
 	int effective_input_width;
@@ -3428,27 +3426,43 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 			return -EINVAL;
 	}
 
-	memset(&vf_size, 0, sizeof(vf_size));
-	if (width < 640 || height < 480) {
-		vf_size.width = width;
-		vf_size.height = height;
-	} else {
-		vf_size.width = 640;
-		vf_size.height = 480;
+	if (isp->isp_subdev.fmt_auto->val) {
+		struct v4l2_rect vf_size;
+		struct v4l2_mbus_framefmt vf_ffmt;
+
+		memset(&vf_size, 0, sizeof(vf_size));
+		if (width < 640 || height < 480) {
+			vf_size.width = width;
+			vf_size.height = height;
+		} else {
+			vf_size.width = 640;
+			vf_size.height = 480;
+		}
+
+		memset(&vf_ffmt, 0, sizeof(vf_ffmt));
+		/* FIXME: proper format name for this one. See
+		   atomisp_output_fmts[] in atomisp_v4l2.c */
+		vf_ffmt.code = 0x8001;
+
+		atomisp_subdev_set_selection(&asd->subdev, NULL,
+					     V4L2_SUBDEV_FORMAT_ACTIVE,
+					     ATOMISP_SUBDEV_PAD_SOURCE_VF,
+					     V4L2_SEL_TGT_COMPOSE, 0, &vf_size);
+		atomisp_subdev_set_ffmt(&asd->subdev, NULL,
+					V4L2_SUBDEV_FORMAT_ACTIVE,
+					ATOMISP_SUBDEV_PAD_SOURCE_VF, &vf_ffmt);
+
+		isp->isp_subdev.video_out_vf.sh_fmt = SH_CSS_FRAME_FORMAT_YUV420;
+
+		if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO)
+			sh_css_video_configure_viewfinder(
+				vf_size.width, vf_size.height,
+				isp->isp_subdev.video_out_vf.sh_fmt);
+		else if (source_pad != ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW)
+			sh_css_capture_configure_viewfinder(
+				vf_size.width, vf_size.height,
+				isp->isp_subdev.video_out_vf.sh_fmt);
 	}
-
-	memset(&vf_ffmt, 0, sizeof(vf_ffmt));
-	vf_ffmt.code = 0x8001; /* FIXME: proper format name for this one.
-				  See atomisp_output_fmts[] in atomisp_v4l2.c */
-
-	atomisp_subdev_set_selection(&asd->subdev, NULL,
-				     V4L2_SUBDEV_FORMAT_ACTIVE,
-				     ATOMISP_SUBDEV_PAD_SOURCE_VF,
-				     V4L2_SEL_TGT_COMPOSE, 0, &vf_size);
-	atomisp_subdev_set_ffmt(&asd->subdev, NULL, V4L2_SUBDEV_FORMAT_ACTIVE,
-				ATOMISP_SUBDEV_PAD_SOURCE_VF, &vf_ffmt);
-
-	isp->isp_subdev.video_out_vf.sh_fmt = SH_CSS_FRAME_FORMAT_YUV420;
 
 	if (isp->params.continuous_vf) {
 		if (isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO) {
@@ -3470,11 +3484,6 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 
 	/* video same in continuouscapture and online modes */
 	if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO) {
-		if (sh_css_video_configure_viewfinder(
-			    vf_size.width, vf_size.height,
-			    isp->isp_subdev.video_out_vf.sh_fmt))
-			return -EINVAL;
-
 		if (sh_css_video_configure_output(width, height,
 						  format->sh_fmt))
 			return -EINVAL;
@@ -3508,15 +3517,6 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 		if (!isp->params.continuous_vf)
 			sh_css_capture_enable_online(
 					isp->params.online_process);
-
-		if (sh_css_capture_configure_viewfinder(
-			    vf_size.width, vf_size.height,
-			    isp->isp_subdev.video_out_vf.sh_fmt))
-			return -EINVAL;
-
-		dev_dbg(isp->dev,
-			"sh css capture vf output width: %d, height: %d\n",
-			vf_size.width, vf_size.height);
 
 		if (sh_css_capture_configure_output(width, height,
 						    format->sh_fmt))
