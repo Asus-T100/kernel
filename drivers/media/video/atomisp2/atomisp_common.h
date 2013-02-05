@@ -72,7 +72,5 @@ struct atomisp_buffer {
 /*
  * supported V4L2 fmts and resolutions
  */
-extern const struct atomisp_format_bridge atomisp_output_fmts[];
-extern const u32 atomisp_output_fmts_num;
 extern struct v4l2_device atomisp_dev;
 #endif

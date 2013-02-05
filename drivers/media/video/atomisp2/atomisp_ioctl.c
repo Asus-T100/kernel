@@ -266,6 +266,189 @@ static struct v4l2_queryctrl ci_v4l2_controls[] = {
 };
 static const u32 ctrls_num = ARRAY_SIZE(ci_v4l2_controls);
 
+/*
+ * supported V4L2 fmts and resolutions
+ */
+const struct atomisp_format_bridge atomisp_output_fmts[] = {
+	{
+		.pixelformat = V4L2_PIX_FMT_YUV420,
+		.depth = 12,
+		.mbus_code = 0x8001,
+		.sh_fmt = SH_CSS_FRAME_FORMAT_YUV420,
+		.description = "YUV420, planner"
+	}, {
+		.pixelformat = V4L2_PIX_FMT_YVU420,
+		.depth = 12,
+		.mbus_code = 0x8002,
+		.sh_fmt = SH_CSS_FRAME_FORMAT_YV12,
+		.description = "YVU420, planner"
+	}, {
+		.pixelformat = V4L2_PIX_FMT_YUV422P,
+		.depth = 16,
+		.mbus_code = 0x8003,
+		.sh_fmt = SH_CSS_FRAME_FORMAT_YUV422,
+		.description = "YUV422, planner"
+	}, {
+		.pixelformat = V4L2_PIX_FMT_YUV444,
+		.depth = 24,
+		.mbus_code = 0x8004,
+		.sh_fmt = SH_CSS_FRAME_FORMAT_YUV444,
+		.description = "YUV444"
+	}, {
+		.pixelformat = V4L2_PIX_FMT_NV12,
+		.depth = 12,
+		.mbus_code = 0x8005,
+		.sh_fmt = SH_CSS_FRAME_FORMAT_NV12,
+		.description = "NV12, interleaved"
+	}, {
+		.pixelformat = V4L2_PIX_FMT_NV21,
+		.depth = 12,
+		.mbus_code = 0x8006,
+		.sh_fmt = SH_CSS_FRAME_FORMAT_NV21,
+		.description = "NV21, interleaved"
+	}, {
+		.pixelformat = V4L2_PIX_FMT_NV16,
+		.depth = 16,
+		.mbus_code = 0x8007,
+		.sh_fmt = SH_CSS_FRAME_FORMAT_NV16,
+		.description = "NV16, interleaved"
+	}, {
+		.pixelformat = V4L2_PIX_FMT_YUYV,
+		.depth = 16,
+		.mbus_code = 0x8008,
+		.sh_fmt = SH_CSS_FRAME_FORMAT_YUYV,
+		.description = "YUYV, interleaved"
+	}, {
+		.pixelformat = V4L2_PIX_FMT_UYVY,
+		.depth = 16,
+		.mbus_code = V4L2_MBUS_FMT_UYVY8_1X16,
+		.sh_fmt = SH_CSS_FRAME_FORMAT_UYVY,
+		.description = "UYVY, interleaved"
+	}, { /* This one is for parallel sensors! DO NOT USE! */
+		.pixelformat = V4L2_PIX_FMT_UYVY,
+		.depth = 16,
+		.mbus_code = V4L2_MBUS_FMT_UYVY8_2X8,
+		.sh_fmt = SH_CSS_FRAME_FORMAT_UYVY,
+		.description = "UYVY, interleaved"
+	}, {
+		.pixelformat = V4L2_PIX_FMT_SBGGR16,
+		.depth = 16,
+		.mbus_code = 0x8009,
+		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
+		.description = "Bayer 16"
+	}, {
+		.pixelformat = V4L2_PIX_FMT_SBGGR8,
+		.depth = 8,
+		.mbus_code = V4L2_MBUS_FMT_SBGGR8_1X8,
+		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
+		.description = "Bayer 8"
+	}, {
+		.pixelformat = V4L2_PIX_FMT_SGBRG8,
+		.depth = 8,
+		.mbus_code = V4L2_MBUS_FMT_SGBRG8_1X8,
+		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
+		.description = "Bayer 8"
+	}, {
+		.pixelformat = V4L2_PIX_FMT_SGRBG8,
+		.depth = 8,
+		.mbus_code = V4L2_MBUS_FMT_SGRBG8_1X8,
+		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
+		.description = "Bayer 8"
+	}, {
+		.pixelformat = V4L2_PIX_FMT_SRGGB8,
+		.depth = 8,
+		.mbus_code = V4L2_MBUS_FMT_SRGGB8_1X8,
+		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
+		.description = "Bayer 8"
+	}, {
+		.pixelformat = V4L2_PIX_FMT_SBGGR10,
+		.depth = 16,
+		.mbus_code = V4L2_MBUS_FMT_SBGGR10_1X10,
+		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
+		.description = "Bayer 10"
+	}, {
+		.pixelformat = V4L2_PIX_FMT_SGBRG10,
+		.depth = 16,
+		.mbus_code = V4L2_MBUS_FMT_SGBRG10_1X10,
+		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
+		.description = "Bayer 10"
+	}, {
+		.pixelformat = V4L2_PIX_FMT_SGRBG10,
+		.depth = 16,
+		.mbus_code = V4L2_MBUS_FMT_SGRBG10_1X10,
+		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
+		.description = "Bayer 10"
+	}, {
+		.pixelformat = V4L2_PIX_FMT_SRGGB10,
+		.depth = 16,
+		.mbus_code = V4L2_MBUS_FMT_SRGGB10_1X10,
+		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
+		.description = "Bayer 10"
+	}, {
+		.pixelformat = V4L2_PIX_FMT_SBGGR12,
+		.depth = 16,
+		.mbus_code = V4L2_MBUS_FMT_SBGGR12_1X12,
+		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
+		.description = "Bayer 12"
+	}, {
+		.pixelformat = V4L2_PIX_FMT_SGBRG12,
+		.depth = 16,
+		.mbus_code = V4L2_MBUS_FMT_SBGGR12_1X12,
+		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
+		.description = "Bayer 12"
+	}, {
+		.pixelformat = V4L2_PIX_FMT_SGRBG12,
+		.depth = 16,
+		.mbus_code = V4L2_MBUS_FMT_SBGGR12_1X12,
+		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
+		.description = "Bayer 12"
+	}, {
+		.pixelformat = V4L2_PIX_FMT_SRGGB12,
+		.depth = 16,
+		.mbus_code = V4L2_MBUS_FMT_SBGGR12_1X12,
+		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
+		.description = "Bayer 12"
+	}, {
+		.pixelformat = V4L2_PIX_FMT_RGB32,
+		.depth = 32,
+		.mbus_code = 0x800a,
+		.sh_fmt = SH_CSS_FRAME_FORMAT_RGBA888,
+		.description = "32 RGB 8-8-8-8"
+	}, {
+		.pixelformat = V4L2_PIX_FMT_RGB565,
+		.depth = 16,
+		.mbus_code = V4L2_MBUS_FMT_BGR565_2X8_LE,
+		.sh_fmt = SH_CSS_FRAME_FORMAT_RGB565,
+		.description = "16 RGB 5-6-5"
+	},
+};
+
+const struct atomisp_format_bridge *atomisp_get_format_bridge(
+	unsigned int pixelformat)
+{
+	unsigned int i;
+
+	for (i = 0; i < ARRAY_SIZE(atomisp_output_fmts); i++) {
+		if (atomisp_output_fmts[i].pixelformat == pixelformat)
+			return &atomisp_output_fmts[i];
+	}
+
+	return NULL;
+}
+
+const struct atomisp_format_bridge *atomisp_get_format_bridge_from_mbus(
+	enum v4l2_mbus_pixelcode mbus_code)
+{
+	unsigned int i;
+
+	for (i = 0; i < ARRAY_SIZE(atomisp_output_fmts); i++) {
+		if (mbus_code == atomisp_output_fmts[i].mbus_code)
+			return &atomisp_output_fmts[i];
+	}
+
+	return NULL;
+}
+
 static int __get_css_frame_info(struct atomisp_device *isp,
 				enum atomisp_pipe_type pipe_type,
 				struct sh_css_frame_info *frame_info)
@@ -481,31 +664,13 @@ error:
 static int atomisp_enum_fmt_cap(struct file *file, void *fh,
 	struct v4l2_fmtdesc *f)
 {
-	struct video_device *vdev = video_devdata(file);
-	struct atomisp_device *isp = video_get_drvdata(vdev);
-
-	u32 index = f->index;
-
-	/* check buf index */
-	if (index >= atomisp_output_fmts_num) {
-		v4l2_err(&atomisp_dev,
-			    "fmt index extends maxiumn"
-			    " supported fmts number\n");
+	if (f->index >= ARRAY_SIZE(atomisp_output_fmts))
 		return -EINVAL;
-	}
-	/* check buf type */
-	if (f->type != V4L2_BUF_TYPE_VIDEO_CAPTURE) {
-		v4l2_err(&atomisp_dev,
-			    "unsupported v4l2 buf type\n");
-		return -EINVAL;
-	}
 
-	mutex_lock(&isp->mutex);
-	f->pixelformat = atomisp_output_fmts[index].pixelformat;
-	memset(f->description, 0, sizeof(char)*32);
-	strncpy(f->description, atomisp_output_fmts[index].description,
-		strlen(atomisp_output_fmts[index].description));
-	mutex_unlock(&isp->mutex);
+	f->pixelformat = atomisp_output_fmts[f->index].pixelformat;
+	memset(f->description, 0, sizeof(f->description));
+	strncpy(f->description, atomisp_output_fmts[f->index].description,
+		strlen(atomisp_output_fmts[f->index].description));
 
 	return 0;
 }
@@ -613,7 +778,7 @@ static int atomisp_enum_frameintervals(struct file *file, void *fh,
 	if (arg->index != 0)
 		return -EINVAL;
 
-	if (!atomisp_is_pixelformat_supported(arg->pixel_format))
+	if (!atomisp_get_format_bridge(arg->pixel_format))
 		return -EINVAL;
 
 	if (!is_resolution_supported(arg->width, arg->height))

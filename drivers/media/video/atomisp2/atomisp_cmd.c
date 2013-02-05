@@ -1286,35 +1286,6 @@ static int raw_output_format_match_input(u32 input, u32 output)
 
 	return -EINVAL;
 }
-/*
- * 2 types of format: SH format, v4l2 format
- * atomisp_format_bridge is a wrapper format for the other 2
- */
-static const struct atomisp_format_bridge *get_atomisp_format_bridge(
-					unsigned int pixelformat)
-{
-	unsigned int i;
-
-	for (i = 0; i < atomisp_output_fmts_num; i++) {
-		if (atomisp_output_fmts[i].pixelformat == pixelformat)
-			return &atomisp_output_fmts[i];
-	}
-
-	return NULL;
-}
-
-const struct atomisp_format_bridge *get_atomisp_format_bridge_from_mbus(
-				enum v4l2_mbus_pixelcode mbus_code)
-{
-	unsigned int i;
-
-	for (i = 0; i < atomisp_output_fmts_num; i++) {
-		if (atomisp_output_fmts[i].mbus_code == mbus_code)
-			return &atomisp_output_fmts[i];
-	}
-
-	return NULL;
-}
 
 static u32 get_pixel_depth(u32 pixelformat)
 {
@@ -1380,7 +1351,7 @@ static int is_pixelformat_raw(u32 pixelformat)
 int atomisp_is_mbuscode_raw(uint32_t code)
 {
 	const struct atomisp_format_bridge *b =
-		get_atomisp_format_bridge_from_mbus(code);
+		atomisp_get_format_bridge_from_mbus(code);
 
 	BUG_ON(!b);
 
@@ -1423,18 +1394,6 @@ static int get_sh_input_format(u32 pixelformat)
 	default:
 		return -EINVAL;
 	}
-}
-
-/* return whether v4l2 format is supported */
-int atomisp_is_pixelformat_supported(u32 pixelformat)
-{
-	unsigned int i;
-
-	for (i = 0; i < atomisp_output_fmts_num; i++) {
-		if (pixelformat == atomisp_output_fmts[i].pixelformat)
-			return 1;
-	}
-	return 0;
 }
 
 /*
@@ -3214,7 +3173,7 @@ int atomisp_try_fmt(struct video_device *vdev, struct v4l2_format *f,
 	if (isp->inputs[isp->input_curr].camera == NULL)
 		return -EINVAL;
 
-	fmt = get_atomisp_format_bridge(f->fmt.pix.pixelformat);
+	fmt = atomisp_get_format_bridge(f->fmt.pix.pixelformat);
 	if (fmt == NULL) {
 		v4l2_err(&atomisp_dev, "unsupported pixelformat!\n");
 		fmt = atomisp_output_fmts;
@@ -3249,7 +3208,7 @@ int atomisp_try_fmt(struct video_device *vdev, struct v4l2_format *f,
 	dev_dbg(isp->dev, "try_mbus_fmt: got %ux%u\n",
 		snr_mbus_fmt.width, snr_mbus_fmt.height);
 
-	fmt = get_atomisp_format_bridge_from_mbus(snr_mbus_fmt.code);
+	fmt = atomisp_get_format_bridge_from_mbus(snr_mbus_fmt.code);
 	if (fmt == NULL)
 		v4l2_err(&atomisp_dev, "unknown sensor format.\n");
 	else
@@ -3291,7 +3250,7 @@ atomisp_try_fmt_file(struct atomisp_device *isp, struct v4l2_format *f)
 		return -EINVAL;
 	}
 
-	if (!atomisp_is_pixelformat_supported(pixelformat)) {
+	if (!atomisp_get_format_bridge(pixelformat)) {
 		v4l2_err(&atomisp_dev, "Wrong output pixelformat\n");
 		return -EINVAL;
 	}
@@ -3417,7 +3376,7 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 		&isp->isp_subdev.subdev, NULL, V4L2_SUBDEV_FORMAT_ACTIVE,
 		ATOMISP_SUBDEV_PAD_SINK, V4L2_SEL_TGT_CROP);
 
-	format = get_atomisp_format_bridge(pixelformat);
+	format = atomisp_get_format_bridge(pixelformat);
 	if (format == NULL)
 		return -EINVAL;
 
@@ -3589,7 +3548,7 @@ static int atomisp_set_fmt_to_snr(struct atomisp_device *isp,
 	struct v4l2_mbus_framefmt ffmt;
 	int ret;
 
-	format = get_atomisp_format_bridge(pixelformat);
+	format = atomisp_get_format_bridge(pixelformat);
 	if (format == NULL)
 		return -EINVAL;
 
@@ -3660,7 +3619,7 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 		return -EINVAL;
 	}
 
-	format_bridge = get_atomisp_format_bridge(f->fmt.pix.pixelformat);
+	format_bridge = atomisp_get_format_bridge(f->fmt.pix.pixelformat);
 	if (format_bridge == NULL)
 		return -EINVAL;
 
@@ -3755,7 +3714,7 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	atomisp_subdev_get_ffmt(&isp->isp_subdev.subdev, NULL,
 				V4L2_SUBDEV_FORMAT_ACTIVE,
 				ATOMISP_SUBDEV_PAD_SINK)->code =
-		get_atomisp_format_bridge(
+		atomisp_get_format_bridge(
 			snr_fmt.fmt.pix.pixelformat)->mbus_code;
 
 	isp_sink_fmt = *atomisp_subdev_get_ffmt(&isp->isp_subdev.subdev, NULL,
@@ -3763,7 +3722,7 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 					    ATOMISP_SUBDEV_PAD_SINK);
 
 	memset(&isp_source_fmt, 0, sizeof(isp_source_fmt));
-	isp_source_fmt.code = get_atomisp_format_bridge(
+	isp_source_fmt.code = atomisp_get_format_bridge(
 		f->fmt.pix.pixelformat)->mbus_code;
 	atomisp_subdev_set_ffmt(&isp->isp_subdev.subdev, NULL,
 				V4L2_SUBDEV_FORMAT_ACTIVE,
