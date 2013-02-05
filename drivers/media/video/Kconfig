@@ -392,6 +392,16 @@ config VIDEO_MT9M114
 	  mt9m114 1.3 Mpixel camera.
 
 	  mt9m114 is video camrea sensor.
+config VIDEO_MT9V113
+	tristate "Aptina mt9v113 sensor support"
+	depends on I2C && VIDEO_V4L2
+	---help---
+	  This is a Video4Linux2 sensor-level driver for the Micron
+	  mt9v113 vga camera.
+
+	  mt9v113 is video camerea sensor.
+
+	  It currently only works with the atomisp driver.
 
 	  It currently only works with the atomisp driver.
 
