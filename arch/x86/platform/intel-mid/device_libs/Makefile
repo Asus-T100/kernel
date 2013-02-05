@@ -70,6 +70,8 @@ obj-$(subst m,y,$(CONFIG_HSI_ARASAN))					+= platform_hsi_modem.o
 obj-$(subst m,y,$(CONFIG_HSI_ARASAN))					+= platform_ffl_modem.o
 obj-$(subst m,y,$(CONFIG_HSI_ARASAN))					+= platform_edlp_modem.o
 obj-$(subst m,y,$(CONFIG_HSI_ARASAN))					+= platform_logical_modem.o
+# Modem control Device
+obj-$(subst m,y,$(CONFIG_MDM_CTRL))					+= platform_modem_ctrl.o
 # UART Devices
 obj-$(subst m,y,$(CONFIG_SERIAL_MFD_HSU))				+= platform_hsu.o
 # MISC Devices
