@@ -35,6 +35,14 @@ struct lss_definition {
 	char *subsystem;
 };
 
+#ifdef CONFIG_INTEL_ATOM_MRFLD_POWER
+#define PUNIT_CR_CORE_C1_RES_MSR	0x660
+#define PUNIT_CR_CORE_C4_RES_MSR	0x3fc
+#define PUNIT_CR_CORE_C6_RES_MSR	0x3fd
+
+#define NUM_CSTATES_RES_MEASURE		3
+#endif
+
 /* platform dependency starts */
 #ifdef CONFIG_INTEL_ATOM_MDFLD_POWER
 
@@ -45,7 +53,6 @@ struct lss_definition {
 #define FUNC_ISP	0
 #define ISLANDS_ISP	2
 #define NC_DEVS		2
-
 
 static struct lss_definition lsses[] = {
 	{"Lss00", "Storage", "SDIO0 (HC2)"},
