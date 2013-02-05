@@ -651,6 +651,7 @@ static int ov9724_set_mbus_fmt(struct v4l2_subdev *sd,
 	struct camera_mipi_info *ov9724_info = NULL;
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	int ret;
+	u8 tmp;
 
 	ov9724_info = v4l2_get_subdev_hostdata(sd);
 	if (ov9724_info == NULL)
@@ -685,6 +686,26 @@ static int ov9724_set_mbus_fmt(struct v4l2_subdev *sd,
 		mutex_unlock(&dev->input_lock);
 		return ret;
 	}
+
+	/* FIXME: Workround for manual adjust gain */
+	ret = ov9724_read_reg(client, 1, 0x0006, &tmp);
+	if (ret) {
+		mutex_unlock(&dev->input_lock);
+		return ret;
+	}
+	ret = ov9724_write_reg(client, OV9724_8BIT,
+		0x5180, 0x6);
+	if (ret) {
+		mutex_unlock(&dev->input_lock);
+		return ret;
+	}
+	ret = ov9724_write_reg(client, OV9724_8BIT,
+		0x5184, 0x6);
+	if (ret) {
+		mutex_unlock(&dev->input_lock);
+		return ret;
+	}
+
 	/* disable group hold */
 	ret = ov9724_write_reg_array(client, ov9724_param_update);
 	if (ret) {
@@ -699,6 +720,7 @@ static int ov9724_set_mbus_fmt(struct v4l2_subdev *sd,
 	dev->gain = 0;
 
 	ret = ov9724_get_intg_factor(client, ov9724_info);
+	ov9724_info->raw_bayer_order = tmp;
 	mutex_unlock(&dev->input_lock);
 	if (ret) {
 		v4l2_err(sd, "failed to get integration_factor\n");
