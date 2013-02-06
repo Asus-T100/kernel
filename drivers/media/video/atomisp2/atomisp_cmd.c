@@ -3242,10 +3242,16 @@ int atomisp_try_fmt(struct video_device *vdev, struct v4l2_format *f,
 	snr_mbus_fmt.width = f->fmt.pix.width;
 	snr_mbus_fmt.height = f->fmt.pix.height;
 
+	dev_dbg(isp->dev, "try_mbus_fmt: asking for %ux%u\n",
+		snr_mbus_fmt.width, snr_mbus_fmt.height);
+
 	ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
 			video, try_mbus_fmt, &snr_mbus_fmt);
 	if (ret)
 		return ret;
+
+	dev_dbg(isp->dev, "try_mbus_fmt: got %ux%u\n",
+		snr_mbus_fmt.width, snr_mbus_fmt.height);
 
 	fmt = get_atomisp_format_bridge_from_mbus(snr_mbus_fmt.code);
 	if (fmt == NULL)
@@ -3613,15 +3619,20 @@ static int atomisp_set_fmt_to_snr(struct atomisp_device *isp,
 		snr_mbus_fmt.height += padding_h + dvs_env_h;
 		snr_mbus_fmt.width += padding_w + dvs_env_w;
 
+		dev_dbg(isp->dev,
+			"s_mbus_fmt: ask %ux%u (padding %ux%u, dvs %ux%u)\n",
+			snr_mbus_fmt.width, snr_mbus_fmt.height, padding_w,
+			padding_h, dvs_env_w, dvs_env_h);
+
 		ret = v4l2_subdev_call(
 				isp->inputs[isp->input_curr].camera,
 				video, s_mbus_fmt, &snr_mbus_fmt);
 		if (ret)
 			return ret;
 
-		v4l2_dbg(2, dbg_level, &atomisp_dev,
-			 "sensor width: %d, height: %d\n",
-			 snr_mbus_fmt.width, snr_mbus_fmt.height);
+		dev_dbg(isp->dev, "s_mbus_fmt: got %ux%u\n",
+			snr_mbus_fmt.width, snr_mbus_fmt.height);
+
 		ffmt = snr_mbus_fmt;
 	} else {	/* file input case */
 		memset(&ffmt, 0, sizeof(ffmt));
