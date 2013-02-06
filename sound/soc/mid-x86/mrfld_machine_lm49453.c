@@ -39,6 +39,10 @@
 #include <sound/jack.h>
 #include "../codecs/lm49453.h"
 
+#ifdef CONFIG_ANDROID_SWITCH_MID
+extern void mid_headset_report(int state);
+#endif
+
 static int mrfld_hw_params(struct snd_pcm_substream *substream,
 			   struct snd_pcm_hw_params *params)
 {
@@ -119,7 +123,7 @@ static int mrfld_jack_gpio_detect(void)
 	if (reg & LM49453_DETECT_REPORT_VALID_IRQ)
 		status = lm49453_get_jack_type(codec);
 
-#ifdef CONFIG_SWITCH_MID
+#ifdef CONFIG_ANDROID_SWITCH_MID
 	if (status) {
 		if (status == SND_JACK_HEADPHONE)
 			mid_headset_report((1<<1));

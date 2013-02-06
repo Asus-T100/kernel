@@ -432,7 +432,7 @@ bool mfld_therm_probe_on_connect(struct snd_soc_jack *jack)
 		tp_status = true;
 		if (tp_data_ptr->tp_status != tp_status) {
 			tp_data_ptr->tp_status = tp_status;
-#ifdef CONFIG_SWITCH_MID_USER_NOTIFY
+#ifdef CONFIG_ANDROID_SWITCH_MID_USER_NOTIFY
 			/*Notify userspace about thermal prove event*/
 			mid_user_notify(1);
 #endif
@@ -467,7 +467,7 @@ bool mfld_therm_probe_on_removal(struct snd_soc_jack *jack)
 	/* If thermal probe was removed, notify userspace */
 	if (tp_data_ptr->tp_status == true) {
 		tp_data_ptr->tp_status = false;
-#ifdef CONFIG_SWITCH_MID_USER_NOTIFY
+#ifdef CONFIG_ANDROID_SWITCH_MID_USER_NOTIFY
 		/*Notify userspace about thermal prove event*/
 		mid_user_notify(0);
 #endif

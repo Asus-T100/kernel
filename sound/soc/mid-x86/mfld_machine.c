@@ -119,7 +119,7 @@ static void mfld_jack_report(struct snd_soc_jack *jack, unsigned int status)
 						BIT(1), BIT(1));
 	}
 	snd_soc_jack_report(jack, status, mask);
-#ifdef CONFIG_SWITCH_MID
+#ifdef CONFIG_ANDROID_SWITCH_MID
 	/* report to the switch driver as well */
 	if (status) {
 		if (status == SND_JACK_HEADPHONE)

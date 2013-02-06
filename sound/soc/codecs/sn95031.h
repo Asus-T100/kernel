@@ -148,7 +148,7 @@ enum sn95031_pll_status {
 
 void sn95031_configure_pll(struct snd_soc_codec *codec, int operation);
 
-#ifdef CONFIG_SWITCH_MID
+#ifdef CONFIG_ANDROID_SWITCH_MID
 extern void mid_headset_report(int state);
 #endif
 

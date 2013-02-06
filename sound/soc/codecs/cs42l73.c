@@ -1387,7 +1387,7 @@ int cs42l73_hp_detection(struct snd_soc_codec *codec,
 		}
 	}
 
-#ifdef CONFIG_SWITCH_MID
+#ifdef CONFIG_ANDROID_SWITCH_MID
 	if (status) {
 		if (status == SND_JACK_HEADPHONE)
 			mid_headset_report((1<<1));

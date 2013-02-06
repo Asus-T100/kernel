@@ -231,6 +231,8 @@ extern int cs42l73_bp_detection(struct snd_soc_codec *codec,
 extern int cs42l73_hp_detection(struct snd_soc_codec *codec,
 				  struct snd_soc_jack *jack, int plug_status);
 
+#ifdef CONFIG_ANDROID_SWITCH_MID
 extern void mid_headset_report(int state);
+#endif
 
 #endif	/* __CS42L73_H__ */
