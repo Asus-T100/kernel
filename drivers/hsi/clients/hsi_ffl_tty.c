@@ -1410,15 +1410,23 @@ static inline void _ffl_recycle_frame(struct ffl_xfer_ctx *ctx,
  * _ffl_free_frame - deleting a frame created by a call to ffl_create_frame
  * @ctx: a reference to the FFL context (RX or TX) to consider
  * @frame: a reference to the frame to delete
+ * @flags: a reference to the flag used by the external spinlock, passed in to
+ *	   unlock it and end the atomic context temporarily.
  *
  * This function is either recycling the frame if there are not too many frames
  * in the system, otherwise destroy it and free its resource.
  */
 static void _ffl_free_frame(struct ffl_xfer_ctx *ctx,
-			    struct hsi_msg *frame)
+			    struct hsi_msg *frame,
+				unsigned long *flags)
 {
 	if (unlikely(ctx->all_len > (ctx->wait_max+ctx->ctrl_max))) {
+		if (flags)
+			spin_unlock_irqrestore(&ctx->lock, *flags);
 		ffl_delete_frame(frame, main_ctx(ctx));
+
+		if (flags)
+			spin_lock_irqsave(&ctx->lock, *flags);
 		--ctx->all_len;
 	} else {
 		frame->status		= HSI_STATUS_COMPLETED;
@@ -1447,7 +1455,7 @@ static void ffl_destruct_frame(struct hsi_msg *frame)
 
 	spin_lock_irqsave(&ctx->lock, flags);
 	_ffl_fifo_ctrl_pop(ctx);
-	_ffl_free_frame(ctx, frame);
+	_ffl_free_frame(ctx, frame, &flags);
 	if (xfer_ctx_is_rx_ctx(ctx))
 		_ffl_update_state_rx(ctx);
 	else
@@ -1490,7 +1498,7 @@ static void _ffl_tx_fifo_wait_recycle(struct ffl_xfer_ctx *ctx)
 		_ffl_fifo_wait_pop(ctx, frame);
 		ctx->room -= room_in(frame);
 		if (frame->status == HSI_STATUS_COMPLETED)
-			_ffl_free_frame(ctx, frame);
+			_ffl_free_frame(ctx, frame, NULL);
 		else
 			frame->status = HSI_STATUS_ERROR;
 	}
@@ -1510,7 +1518,7 @@ static void _ffl_rx_fifo_wait_recycle(struct ffl_xfer_ctx *ctx)
 	while ((frame = _ffl_fifo_head_safe(&ctx->wait_frames))) {
 		_ffl_fifo_wait_pop(ctx, frame);
 		ffl_rx_frame_reset(ctx, frame);
-		_ffl_free_frame(ctx, frame);
+		_ffl_free_frame(ctx, frame, NULL);
 	}
 }
 
@@ -1609,7 +1617,7 @@ static void ffl_complete_tx(struct hsi_msg *frame)
 
 	spin_lock_irqsave(&ctx->lock, flags);
 	_ffl_fifo_ctrl_pop(ctx);
-	_ffl_free_frame(ctx, frame);
+	_ffl_free_frame(ctx, frame, &flags);
 
 	/* Start new waiting frames (if any) */
 	_ffl_pop_wait_push_ctrl(ctx, &flags);
@@ -1676,7 +1684,7 @@ static void _ffl_rx_free_frame(struct ffl_xfer_ctx *ctx,
 	struct hsi_msg *new;
 
 	ffl_rx_frame_reset(ctx, frame);
-	_ffl_free_frame(ctx, frame);
+	_ffl_free_frame(ctx, frame, NULL);
 	if (ctx->ctrl_len < ctx->ctrl_max) {
 		new = _ffl_new_frame(ctx);
 		if (new && (unlikely(_ffl_fifo_ctrl_push(ctx, new, flags))))
@@ -2338,7 +2346,7 @@ static int do_ffl_tty_write(struct ffl_xfer_ctx *ctx, unsigned char *buf,
 			_ffl_pop_wait_push_ctrl(ctx, &flags);
 	} else {
 		/* ERROR frames have already been popped from the wait FIFO */
-		_ffl_free_frame(ctx, frame);
+		_ffl_free_frame(ctx, frame, &flags);
 	}
 	spin_unlock_irqrestore(&ctx->lock, flags);
 
