@@ -939,7 +939,7 @@ static struct ov8830_resolution ov8835_res_preview[] = {
 		 .regs = ov8835_cont_cap_qvga_30fps,
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
-		 .skip_frames = 0,
+		 .skip_frames = 1,
 		 .fps_options = {
 			{
 				 .fps = 30,
@@ -958,7 +958,7 @@ static struct ov8830_resolution ov8835_res_preview[] = {
 		 .regs = ov8835_cont_cap_vga_30fps,
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
-		 .skip_frames = 0,
+		 .skip_frames = 1,
 		 .fps_options = {
 			{
 				 .fps = 30,
@@ -977,7 +977,7 @@ static struct ov8830_resolution ov8835_res_preview[] = {
 		 .regs = ov8835_preview_848x616_30fps,
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
-		 .skip_frames = 0,
+		 .skip_frames = 1,
 		 .fps_options = {
 			{
 				 .fps = 30,
@@ -996,7 +996,7 @@ static struct ov8830_resolution ov8835_res_preview[] = {
 		 .regs = ov8835_cont_cap_720p_30fps,
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
-		 .skip_frames = 0,
+		 .skip_frames = 1,
 		 .fps_options = {
 			{
 				 .fps = 30,
@@ -1015,7 +1015,7 @@ static struct ov8830_resolution ov8835_res_preview[] = {
 		.regs = ov8835_cont_cap_1M_30fps,
 		.bin_factor_x = 1,
 		.bin_factor_y = 1,
-		.skip_frames = 0,
+		.skip_frames = 1,
 		.fps_options = {
 			{
 				 .fps = 30,
@@ -1034,7 +1034,7 @@ static struct ov8830_resolution ov8835_res_preview[] = {
 		 .regs = ov8835_cont_cap_1080p_30fps,
 		 .bin_factor_x = 0,
 		 .bin_factor_y = 0,
-		 .skip_frames = 0,
+		 .skip_frames = 1,
 		 .fps_options = {
 			{
 				 .fps = 30,
@@ -1053,7 +1053,7 @@ static struct ov8830_resolution ov8835_res_preview[] = {
 		.regs = ov8835_cont_cap_3M_maxfps,
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
-		.skip_frames = 0,
+		.skip_frames = 1,
 		.fps_options = {
 			{
 				.fps = 25,
@@ -1072,7 +1072,7 @@ static struct ov8830_resolution ov8835_res_preview[] = {
 		.regs = ov8835_cont_cap_5M_maxfps,
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
-		.skip_frames = 0,
+		.skip_frames = 1,
 		.fps_options = {
 			{
 				.fps = 25,
@@ -1091,7 +1091,7 @@ static struct ov8830_resolution ov8835_res_preview[] = {
 		 .regs = ov8835_cont_cap_6M_30fps,
 		 .bin_factor_x = 0,
 		 .bin_factor_y = 0,
-		 .skip_frames = 0,
+		 .skip_frames = 1,
 		 .fps_options = {
 			{
 				 .fps = 30,
@@ -1110,7 +1110,7 @@ static struct ov8830_resolution ov8835_res_preview[] = {
 		.regs = ov8835_cont_cap_8M_maxfps,
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
-		.skip_frames = 0,
+		.skip_frames = 1,
 		.fps_options = {
 			{
 				.fps = 25,
@@ -1129,7 +1129,7 @@ static struct ov8830_resolution ov8835_res_preview[] = {
 		 .regs = ov8835_preview_1632x1224_30fps,
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
-		 .skip_frames = 0,
+		 .skip_frames = 1,
 		 .fps_options = {
 			{
 				 .fps = 30,
