@@ -1674,6 +1674,14 @@ void sh_css_frame_info_set_width(
 	struct sh_css_frame_info *info,
 	unsigned int width)
 {
+	/* HACK: SGX requires 64-byte alignment.
+	 * Minimum requirement for width is 512. */
+	unsigned int align;
+	if (width <= 512)
+		align = 512;
+	else
+		align = CEIL_MUL(width, 64);
+
 assert(info != NULL);
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_frame_info_set_width() enter: "
@@ -1685,13 +1693,13 @@ assert(info != NULL);
 	   Y plane if the horizontal decimation is 2. */
 	if (info->format == SH_CSS_FRAME_FORMAT_YUV420 ||
 	    info->format == SH_CSS_FRAME_FORMAT_YV12)
-		info->padded_width = CEIL_MUL(width, 2*HIVE_ISP_DDR_WORD_BYTES);
+		info->padded_width = CEIL_MUL(align, 2*HIVE_ISP_DDR_WORD_BYTES);
 	else if (info->format == SH_CSS_FRAME_FORMAT_YUV_LINE)
-		info->padded_width = CEIL_MUL(width, 2*ISP_VEC_NELEMS);
+		info->padded_width = CEIL_MUL(align, 2*ISP_VEC_NELEMS);
 	else if (info->format == SH_CSS_FRAME_FORMAT_RAW)
-		info->padded_width = CEIL_MUL(width, 2*ISP_VEC_NELEMS);
+		info->padded_width = CEIL_MUL(align, 2*ISP_VEC_NELEMS);
 	else
-		info->padded_width = CEIL_MUL(width, HIVE_ISP_DDR_WORD_BYTES);
+		info->padded_width = CEIL_MUL(align, HIVE_ISP_DDR_WORD_BYTES);
 }
 
 static void sh_css_frame_info_set_format(
