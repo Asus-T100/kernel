@@ -114,14 +114,7 @@ void __init wl12xx_platform_data_init(void *info)
 
 void __init *wl12xx_platform_data(void *info)
 {
-	struct sd_board_info *sd_info;
-
-	sd_info = kmemdup(info, sizeof(*sd_info), GFP_KERNEL);
-	if (!sd_info) {
-		pr_err("MRST: fail to alloc mem for delayed wl12xx dev\n");
-		return NULL;
-	}
-	wl12xx_platform_data_init(sd_info);
+	wl12xx_platform_data_init(info);
 
 	return &mid_wifi_control;
 }
