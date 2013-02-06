@@ -408,8 +408,14 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 	sst_drv_ctx->fw = NULL;
 	sst_drv_ctx->fw_in_mem = NULL;
 	/* we use dma, so set to 1*/
-	sst_drv_ctx->use_dma = 1;
-	sst_drv_ctx->use_lli = 1;
+	if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID) {
+		sst_drv_ctx->use_dma = 0;
+		sst_drv_ctx->use_lli = 0;
+	} else {
+		sst_drv_ctx->use_dma = 1;
+		sst_drv_ctx->use_lli = 1;
+	}
+
 	ops = sst_drv_ctx->ops;
 
 	INIT_LIST_HEAD(&sst_drv_ctx->memcpy_list);
