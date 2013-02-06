@@ -1022,7 +1022,8 @@ CONFIG_A1026=y
 #
 # Texas Instruments shared transport line discipline
 #
-CONFIG_TI_ST=y
+CONFIG_TI_ST=m
+CONFIG_ST_HCI=m
 # CONFIG_SENSORS_LIS3_SPI is not set
 # CONFIG_SENSORS_LIS3_I2C is not set
 
