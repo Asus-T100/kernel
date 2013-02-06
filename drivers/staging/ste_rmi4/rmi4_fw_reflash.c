@@ -26,6 +26,7 @@
 #include <linux/stat.h>
 #include <linux/earlysuspend.h>
 #include <linux/synaptics_i2c_rmi4.h>
+#include <linux/interrupt.h>
 #include "synaptics_i2c_rmi4.h"
 
 #define HAS_BSR_MASK 0x20
@@ -87,6 +88,7 @@ struct reflash_data {
 	union f34_control_status	f34_controls;
 	const u8			*firmware_data;
 	const u8			*config_data;
+	unsigned int		int_count;
 };
 
 /* If this parameter is true, we will update the firmware regardless of
@@ -240,6 +242,53 @@ static int wait_for_idle(struct reflash_data *data, int timeout_ms)
 	return -ETIMEDOUT;
 }
 
+#define INT_SLEEP_TIME_MS 1
+static int wait_for_interrupt(struct reflash_data *data, int timeout_ms)
+{
+	int timeout_count = timeout_ms / INT_SLEEP_TIME_MS + 1;
+	int count = 0;
+	int int_count = data->int_count;
+	struct i2c_client *client = data->rmi4_dev->i2c_client;
+
+	do {
+		if (count || timeout_count == 1)
+			msleep(INT_SLEEP_TIME_MS);
+		count++;
+		if (data->int_count != int_count)
+			return 0;
+	} while (count < timeout_count);
+
+	dev_err(&client->dev, "%s, interrupt not detected within %d ms.\n",
+		__func__, timeout_ms);
+
+	return -ETIMEDOUT;
+}
+
+static irqreturn_t f34_irq_thread(int irq, void *data)
+{
+	u8 intr_status;
+	int retval;
+	struct reflash_data *pdata = data;
+	struct i2c_client *client = pdata->rmi4_dev->i2c_client;
+
+	pdata->int_count++;
+
+	/* Assuming we're in bootloader mode, we only read one interrupt
+	   register */
+	retval = rmi4_i2c_block_read(pdata->rmi4_dev,
+		pdata->f01_pdt->data_base_addr + 1,
+		&intr_status,
+		1);
+
+	if (retval != 1) {
+		dev_err(&client->dev,
+			"could not read interrupt status register\n");
+		return IRQ_NONE;
+	}
+
+	return IRQ_HANDLED;
+}
+
 static int read_f01_queries(struct reflash_data *data)
 {
 	int retval;
@@ -380,6 +429,8 @@ static int enter_flash_programming(struct reflash_data *data)
 	retval = write_f34_command(data, F34_ENABLE_FLASH_PROG);
 	if (retval < 0)
 		return retval;
+
+	wait_for_interrupt(data, F34_ENABLE_WAIT_MS);
 
 	retval = wait_for_idle(data, F34_ENABLE_WAIT_MS);
 	if (retval < 0) {
@@ -547,6 +598,8 @@ static void reflash_firmware(struct reflash_data *data)
 	if (retval < 0)
 		return;
 
+	wait_for_interrupt(data, F34_ERASE_WAIT_MS);
+
 	dev_info(&client->dev, "Waiting for idle...\n");
 	retval = wait_for_idle(data, F34_ERASE_WAIT_MS);
 	if (retval < 0) {
@@ -654,6 +707,8 @@ int rmi4_fw_update(struct rmi4_data *pdata,
 		.f34_pdt = f34_pdt,
 	};
 	const struct rmi4_touch_calib *calibs = pdata->board->calibs;
+	const struct rmi4_platform_data *platformdata =
+		client->dev.platform_data;
 
 	dev_info(&client->dev, "Enter %s.\n", __func__);
 #ifdef	DEBUG
@@ -720,10 +775,20 @@ int rmi4_fw_update(struct rmi4_data *pdata,
 		data.config_data = fw_entry->data + F34_FW_IMAGE_OFFSET +
 			header.image_size;
 
+	retval = request_threaded_irq(pdata->irq, NULL,
+		f34_irq_thread,
+		platformdata->irq_type,
+		"rmi4_f34", &data);
+	if (retval < 0) {
+		dev_err(&client->dev, "Unable to get attn irq %d\n",
+		pdata->irq);
+	}
+
 	reflash_firmware(&data);
 	reset_device(&data);
 	release_firmware(fw_entry);
 
+	free_irq(pdata->irq, &data);
 #ifdef	DEBUG
 	getnstimeofday(&end);
 	duration_ns = timespec_to_ns(&end) - timespec_to_ns(&start);
