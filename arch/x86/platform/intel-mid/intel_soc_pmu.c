@@ -806,7 +806,6 @@ int pmu_set_emmc_to_d0i0_atomic(void)
 		(D0I3_MASK << (sub_sys_pos * BITS_PER_LSS));
 	new_value = cur_pmssc.pmu2_states[sub_sys_index] &
 						(~pm_cmd_val);
-
 	if (new_value == cur_pmssc.pmu2_states[sub_sys_index])
 		goto err;
 
@@ -815,13 +814,6 @@ int pmu_set_emmc_to_d0i0_atomic(void)
 		goto err;
 
 	cur_pmssc.pmu2_states[sub_sys_index] = new_value;
-
-	/* set the lss positions that need
-	 * to be ignored to D0i0 */
-	cur_pmssc.pmu2_states[0] &= ~IGNORE_SSS0;
-	cur_pmssc.pmu2_states[1] &= ~IGNORE_SSS1;
-	cur_pmssc.pmu2_states[2] &= ~IGNORE_SSS2;
-	cur_pmssc.pmu2_states[3] &= ~IGNORE_SSS3;
 
 	/* Request SCU for PM interrupt enabling */
 	writel(PMU_PANIC_EMMC_UP_REQ_CMD, mid_pmu_cxt->emergeny_emmc_up_addr);
@@ -1266,7 +1258,6 @@ int __ref pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state)
 	/* First clear the LSS bits */
 	new_value = cur_pmssc.pmu2_states[sub_sys_index] &
 						(~pm_cmd_val);
-
 	if (state != PCI_D0) {
 		pm_cmd_val =
 			(pci_to_platform_state(state) <<
@@ -1275,18 +1266,13 @@ int __ref pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state)
 		new_value |= pm_cmd_val;
 	}
 
+	new_value &= ~mid_pmu_cxt->ignore_lss[sub_sys_index];
+
 	/* nothing to do, so dont do it... */
 	if (new_value == cur_pmssc.pmu2_states[sub_sys_index])
 		goto unlock;
 
 	cur_pmssc.pmu2_states[sub_sys_index] = new_value;
-
-	/* set the lss positions that need
-	 * to be ignored to D0i0 */
-	cur_pmssc.pmu2_states[0] &= ~IGNORE_SSS0;
-	cur_pmssc.pmu2_states[1] &= ~IGNORE_SSS1;
-	cur_pmssc.pmu2_states[2] &= ~IGNORE_SSS2;
-	cur_pmssc.pmu2_states[3] &= ~IGNORE_SSS3;
 
 	/* Issue the pmu command to PMU 2
 	 * flag is needed to distinguish between
@@ -1553,6 +1539,12 @@ static int pmu_init(void)
 	/* setup the wake capable devices */
 	mid_pmu_cxt->ss_config->wake_state.wake_enable[0] = WAKE_ENABLE_0;
 	mid_pmu_cxt->ss_config->wake_state.wake_enable[1] = WAKE_ENABLE_1;
+
+	/* setup the ignore lss list */
+	mid_pmu_cxt->ignore_lss[0] = IGNORE_SSS0;
+	mid_pmu_cxt->ignore_lss[1] = IGNORE_SSS1;
+	mid_pmu_cxt->ignore_lss[2] = IGNORE_SSS2;
+	mid_pmu_cxt->ignore_lss[3] = IGNORE_SSS3;
 
 	/*set wkc to appropriate value suitable for s0ix*/
 	writel(mid_pmu_cxt->ss_config->wake_state.wake_enable[0],

@@ -313,6 +313,7 @@ struct mid_pmu_dev {
 	u32 ss_per_reg;
 	u32 d0ix_stat[MAX_LSS_POSSIBLE][SS_STATE_D0I3+1];
 	u32 num_wakes[MAX_DEVICES][SYS_STATE_MAX];
+	u32 ignore_lss[4];
 
 	u32 __iomem *emergeny_emmc_up_addr;
 	u64 pmu_init_time;
