@@ -1660,7 +1660,7 @@ static void _ffl_rx_free_frame(struct ffl_xfer_ctx *ctx,
 	_ffl_free_frame(ctx, frame);
 	if (ctx->ctrl_len < ctx->ctrl_max) {
 		new = _ffl_new_frame(ctx);
-		if (unlikely(_ffl_fifo_ctrl_push(ctx, new, flags)))
+		if (new && (unlikely(_ffl_fifo_ctrl_push(ctx, new, flags))))
 			_ffl_recycle_frame(ctx, new);
 	}
 	_ffl_update_state_rx(ctx);
