@@ -84,6 +84,7 @@ struct android_hdmi_priv {
 	/*medfield specific */
 	u32 hdmib_reg;
 	u32 save_HDMIB;
+	u32 clock_khz;
 
 	/* Delayed Encoder Restore */
 	struct drm_display_mode *current_mode;
@@ -285,6 +286,15 @@ int android_hdmi_get_eld(struct drm_device *dev, void *eld);
 
 
 /**
+ * get DPLL clock in khz
+ * Input parameters:
+ * @dev: drm Device
+ *
+ * Returns:  clock in khz
+ */
+uint32_t android_hdmi_get_dpll_clock(struct drm_device *dev);
+
+/**
  * disable HDMI display
  * Input parameters:
  *	psDrmDev: Drm Device.
@@ -436,6 +446,9 @@ static inline void android_hdmi_save_display_registers(
 static inline void android_disable_hdmi(struct drm_device *dev) {}
 
 static inline int android_hdmi_get_eld(struct drm_device *dev, void *eld)
+{ return 0; }
+
+static uint32_t android_hdmi_get_dpll_clock(struct drm_device *dev)
 { return 0; }
 
 static inline bool android_enable_hdmi_hdcp(struct drm_device *dev)

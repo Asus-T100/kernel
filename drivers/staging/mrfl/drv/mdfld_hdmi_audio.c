@@ -196,8 +196,6 @@ static int mid_hdmi_audio_get_caps(
 						void *capabilities)
 {
 	struct drm_device *dev = hdmi_priv->dev;
-	struct drm_psb_private *dev_priv =
-			(struct drm_psb_private *) dev->dev_private;
 	int ret = 0;
 
 	PSB_DEBUG_ENTRY("\n");
@@ -207,9 +205,12 @@ static int mid_hdmi_audio_get_caps(
 		ret = android_hdmi_get_eld(dev, capabilities);
 		break;
 	case HAD_GET_SAMPLING_FREQ:
-		memcpy(capabilities, &(dev_priv->tmds_clock_khz),
-				sizeof(uint32_t));
+	{
+		uint32_t val;
+		val = android_hdmi_get_dpll_clock(dev);
+		memcpy(capabilities, &val, sizeof(uint32_t));
 		break;
+	}
 	default:
 		break;
 	}
