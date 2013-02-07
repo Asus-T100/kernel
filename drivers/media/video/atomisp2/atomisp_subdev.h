@@ -123,10 +123,10 @@ struct atomisp_sub_device {
 
 /* Get pointer to appropriate format */
 struct v4l2_mbus_framefmt
-*atomisp_subdev_get_mfmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
+*atomisp_subdev_get_ffmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 			 uint32_t which, uint32_t pad);
 /* Actually set the format */
-int atomisp_subdev_set_mfmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
+int atomisp_subdev_set_ffmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 			    uint32_t which, uint32_t pad,
 			    struct v4l2_mbus_framefmt *ffmt);
 

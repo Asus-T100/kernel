@@ -3578,7 +3578,7 @@ static int atomisp_get_effective_resolution(struct atomisp_device *isp,
 	struct v4l2_mbus_framefmt isp_sink_fmt;
 	unsigned int no_padding_w, no_padding_h;
 
-	isp_sink_fmt = *atomisp_subdev_get_mfmt(&isp->isp_subdev.subdev, NULL,
+	isp_sink_fmt = *atomisp_subdev_get_ffmt(&isp->isp_subdev.subdev, NULL,
 						V4L2_SUBDEV_FORMAT_ACTIVE,
 						ATOMISP_SUBDEV_PAD_SINK);
 
@@ -3686,7 +3686,7 @@ static int atomisp_set_fmt_to_snr(struct atomisp_device *isp,
 	    ffmt.height < ATOM_ISP_STEP_HEIGHT)
 			return -EINVAL;
 
-	atomisp_subdev_set_mfmt(&isp->isp_subdev.subdev, NULL,
+	atomisp_subdev_set_ffmt(&isp->isp_subdev.subdev, NULL,
 				V4L2_SUBDEV_FORMAT_ACTIVE,
 				ATOMISP_SUBDEV_PAD_SINK, &ffmt);
 
@@ -3698,7 +3698,7 @@ static void atomisp_get_yuv_ds_status(struct atomisp_device *isp,
 	struct v4l2_mbus_framefmt isp_sink_fmt;
 	unsigned int w_tmp, h_tmp;
 
-	isp_sink_fmt = *atomisp_subdev_get_mfmt(&isp->isp_subdev.subdev, NULL,
+	isp_sink_fmt = *atomisp_subdev_get_ffmt(&isp->isp_subdev.subdev, NULL,
 					    V4L2_SUBDEV_FORMAT_ACTIVE,
 					    ATOMISP_SUBDEV_PAD_SINK);
 
@@ -3874,7 +3874,7 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	/* set dis envelop if video and dis are enabled */
 	atomisp_set_dis_envelop(isp, width, height, &dvs_env_w, &dvs_env_h);
 
-	isp_sink_fmt = *atomisp_subdev_get_mfmt(&isp->isp_subdev.subdev, NULL,
+	isp_sink_fmt = *atomisp_subdev_get_ffmt(&isp->isp_subdev.subdev, NULL,
 						V4L2_SUBDEV_FORMAT_ACTIVE,
 						ATOMISP_SUBDEV_PAD_SINK);
 

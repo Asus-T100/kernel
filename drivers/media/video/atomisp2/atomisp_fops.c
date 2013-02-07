@@ -600,7 +600,7 @@ static int atomisp_release(struct file *file)
 	isp->vf_format = NULL;
 
 	memset(&isp_sink_fmt, 0, sizeof(isp_sink_fmt));
-	atomisp_subdev_set_mfmt(&isp->isp_subdev.subdev, NULL,
+	atomisp_subdev_set_ffmt(&isp->isp_subdev.subdev, NULL,
 				V4L2_SUBDEV_FORMAT_ACTIVE,
 				ATOMISP_SUBDEV_PAD_SINK, &isp_sink_fmt);
 

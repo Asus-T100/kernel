@@ -216,7 +216,7 @@ struct v4l2_rect *atomisp_subdev_get_rect(struct v4l2_subdev *sd,
 }
 
 struct v4l2_mbus_framefmt
-*atomisp_subdev_get_mfmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
+*atomisp_subdev_get_ffmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 			 uint32_t which, uint32_t pad)
 {
 	struct atomisp_sub_device *isp_sd = v4l2_get_subdevdata(sd);
@@ -232,7 +232,7 @@ static void isp_subdev_propagate(struct v4l2_subdev *sd,
 				 uint32_t which, uint32_t pad, uint32_t target)
 {
 	struct v4l2_mbus_framefmt *f =
-		atomisp_subdev_get_mfmt(sd, fh, which, pad);
+		atomisp_subdev_get_ffmt(sd, fh, which, pad);
 	struct v4l2_rect *crop =
 		atomisp_subdev_get_rect(sd, fh, which, pad, V4L2_SEL_TGT_CROP);
 
@@ -315,14 +315,14 @@ static int atomisp_get_sensor_bin_factor(struct atomisp_device *isp)
 	return hbin;
 }
 
-int atomisp_subdev_set_mfmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
+int atomisp_subdev_set_ffmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 			    uint32_t which, uint32_t pad,
 			    struct v4l2_mbus_framefmt *ffmt)
 {
 	struct atomisp_sub_device *isp_sd = v4l2_get_subdevdata(sd);
 	struct atomisp_device *isp = isp_sd->isp;
 	struct v4l2_mbus_framefmt *__ffmt =
-		atomisp_subdev_get_mfmt(sd, fh, which, pad);
+		atomisp_subdev_get_ffmt(sd, fh, which, pad);
 
 	switch (pad) {
 	case ATOMISP_SUBDEV_PAD_SINK:
@@ -361,7 +361,7 @@ int atomisp_subdev_set_mfmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 static int isp_subdev_get_format(struct v4l2_subdev *sd,
 	struct v4l2_subdev_fh *fh, struct v4l2_subdev_format *fmt)
 {
-	fmt->format = *atomisp_subdev_get_mfmt(sd, fh, fmt->which, fmt->pad);
+	fmt->format = *atomisp_subdev_get_ffmt(sd, fh, fmt->which, fmt->pad);
 
 	return 0;
 }
@@ -379,7 +379,7 @@ static int isp_subdev_get_format(struct v4l2_subdev *sd,
 static int isp_subdev_set_format(struct v4l2_subdev *sd,
 	struct v4l2_subdev_fh *fh, struct v4l2_subdev_format *fmt)
 {
-	return atomisp_subdev_set_mfmt(sd, fh, fmt->which, fmt->pad,
+	return atomisp_subdev_set_ffmt(sd, fh, fmt->which, fmt->pad,
 				       &fmt->format);
 }
 

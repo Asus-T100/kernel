@@ -44,7 +44,7 @@ static int file_input_s_stream(struct v4l2_subdev *sd, int enable)
 	unsigned short *data = (unsigned short *)buf;
 	int i, j;
 
-	isp_sink_fmt = *atomisp_subdev_get_mfmt(&isp->isp_subdev.subdev, NULL,
+	isp_sink_fmt = *atomisp_subdev_get_ffmt(&isp->isp_subdev.subdev, NULL,
 						V4L2_SUBDEV_FORMAT_ACTIVE,
 						ATOMISP_SUBDEV_PAD_SINK);
 	height = isp_sink_fmt.height;
