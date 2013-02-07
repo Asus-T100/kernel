@@ -108,6 +108,12 @@ extern long st_unregister(struct st_proto_s *);
 #define ST_REG_PENDING		3
 #define ST_WAITING_FOR_RESP	4
 
+/*
+ * Delay required to restart the chip
+ */
+#define WILINK_RESET_DELAY_US 5000
+#define WILINK_BOOT_DELAY_MS 100
+
 /**
  * struct st_data_s - ST core internal structure
  * @st_state: different states of ST like initializing, registration
@@ -215,7 +221,7 @@ void gps_chrdrv_stub_init(void);
 /* time in msec to wait for
  * line discipline to be installed
  */
-#define LDISC_TIME	1150
+#define LDISC_TIME	2000
 #define CMD_RESP_TIME	1000
 #define CMD_WR_TIME	5000
 #define MAKEWORD(a, b)  ((unsigned short)(((unsigned char)(a)) \

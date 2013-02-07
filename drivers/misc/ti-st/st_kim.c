@@ -32,6 +32,7 @@
 #include <linux/sched.h>
 #include <linux/sysfs.h>
 #include <linux/tty.h>
+#include <linux/pm_runtime.h>
 
 #include <linux/skbuff.h>
 #include <linux/ti_wilink_st.h>
@@ -445,6 +446,7 @@ long st_kim_start(void *kim_data)
 	long retry = POR_RETRY_COUNT;
 	struct ti_st_plat_data	*pdata;
 	struct kim_data_s	*kim_gdata = (struct kim_data_s *)kim_data;
+	struct device *tty_dev;
 
 	pr_info(" %s", __func__);
 	pdata = kim_gdata->kim_pdev->dev.platform_data;
@@ -454,11 +456,18 @@ long st_kim_start(void *kim_data)
 		if (pdata->chip_enable)
 			pdata->chip_enable(kim_gdata);
 
-		/* Configure BT nShutdown to HIGH state */
+		/*
+		 * Configure BT nShutdown to HIGH state
+		 * To reset the chip, nShutdown shall be asserted for
+		 * 5 ms at least. The original code provided by TI was using
+		 * mdelay to cover this requirements. Using sleepy functions is
+		 * more suitable, so usleep_range with a minimun of 5000 us is used
+		 * instead of mdelay(5).
+		 */
 		gpio_set_value(kim_gdata->nshutdown, GPIO_LOW);
-		mdelay(5);	/* FIXME: a proper toggle */
+		usleep_range(WILINK_RESET_DELAY_US, 2*WILINK_RESET_DELAY_US);
 		gpio_set_value(kim_gdata->nshutdown, GPIO_HIGH);
-		mdelay(100);
+		msleep(WILINK_BOOT_DELAY_MS);
 		/* re-initialize the completion */
 		INIT_COMPLETION(kim_gdata->ldisc_installed);
 		/* send notification to UIM */
@@ -477,8 +486,18 @@ long st_kim_start(void *kim_data)
 			continue;
 		} else {
 			/* ldisc installed now */
+			tty_dev = kim_gdata->core_data->tty_dev;
+			if (tty_dev)
+				pm_runtime_get_sync(tty_dev);
+			else
+				err = st_kim_stop(kim_gdata);
+
 			pr_info("line discipline installed");
 			err = download_firmware(kim_gdata);
+
+			if (tty_dev)
+				pm_runtime_put(tty_dev);
+
 			if (err != 0) {
 				/* ldisc installed but fw download failed,
 				 * flush uart & power cycle BT_EN */
