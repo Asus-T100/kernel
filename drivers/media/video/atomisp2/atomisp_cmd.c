@@ -94,15 +94,10 @@ int atomisp_dtrace_level = ATOMISP_DEFAULT_DTRACE_LEVEL;
 void *atomisp_kernel_malloc(size_t bytes)
 {
 	/* vmalloc() is preferable if allocating more than 1 page */
-	if (bytes > PAGE_SIZE) {
-		void *ptr = vmalloc(bytes);
-		if (ptr == NULL)
-			return NULL;
-		memset(ptr, 0, bytes);
-		return ptr;
-	}
+	if (bytes > PAGE_SIZE)
+		return vmalloc(bytes);
 
-	return kzalloc(bytes, GFP_KERNEL);
+	return kmalloc(bytes, GFP_KERNEL);
 }
 
 /* Free buffer allocated with atomisp_kernel_malloc() helper */
