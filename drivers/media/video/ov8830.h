@@ -433,8 +433,6 @@ struct ov8830_write_ctrl {
 	struct ov8830_write_buffer buffer;
 };
 
-#define MAX_FMTS 1
-
 #define OV8830_RES_WIDTH_MAX	3280
 #define OV8830_RES_HEIGHT_MAX	2464
 

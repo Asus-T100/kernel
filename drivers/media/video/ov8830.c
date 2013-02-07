@@ -1793,7 +1793,7 @@ static int
 ov8830_enum_mbus_code(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 		       struct v4l2_subdev_mbus_code_enum *code)
 {
-	if (code->index >= MAX_FMTS)
+	if (code->index)
 		return -EINVAL;
 	code->code = V4L2_MBUS_FMT_SBGGR10_1X10;
 
