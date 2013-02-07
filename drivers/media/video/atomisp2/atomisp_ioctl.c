@@ -657,13 +657,6 @@ static void atomisp_videobuf_free(struct videobuf_queue *q)
 	int i;
 	struct videobuf_vmalloc_memory *vm_mem;
 
-	mutex_lock(&q->vb_lock);
-
-	if (!q) {
-		mutex_unlock(&q->vb_lock);
-		return;
-	}
-
 	for (i = 0; i < VIDEO_MAX_FRAME; i++) {
 		if (NULL == q->bufs[i])
 			continue;
@@ -676,8 +669,6 @@ static void atomisp_videobuf_free(struct videobuf_queue *q)
 		kfree(q->bufs[i]);
 		q->bufs[i] = NULL;
 	}
-
-	mutex_unlock(&q->vb_lock);
 }
 
 int atomisp_alloc_css_stat_bufs(struct atomisp_device *isp)
@@ -752,11 +743,11 @@ int __atomisp_reqbufs(struct file *file, void *fh,
 	int ret = 0, i = 0;
 
 	if (req->count == 0) {
-		atomisp_videobuf_free(&pipe->capq);
 		mutex_lock(&pipe->capq.vb_lock);
 		if (!list_empty(&pipe->capq.stream)) {
 			videobuf_queue_cancel(&pipe->capq);
 		}
+		atomisp_videobuf_free(&pipe->capq);
 		mutex_unlock(&pipe->capq.vb_lock);
 		return 0;
 	}
@@ -826,7 +817,9 @@ static int atomisp_reqbufs_file(struct file *file, void *fh,
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
 
 	if (req->count == 0) {
+		mutex_lock(&pipe->outq.vb_lock);
 		atomisp_videobuf_free(&pipe->outq);
+		mutex_unlock(&pipe->outq.vb_lock);
 		return 0;
 	}
 
