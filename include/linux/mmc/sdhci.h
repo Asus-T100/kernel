@@ -95,6 +95,8 @@ struct sdhci_host {
 #define SDHCI_QUIRK2_V2_0_SUPPORT_DDR50			(1<<1)
 /* Controller has bug when enabling Auto CMD23 */
 #define SDHCI_QUIRK2_BROKEN_AUTO_CMD23			(1<<2)
+/* HC Reg High Speed must be set later than HC2 Reg 1.8v Signaling Enable */
+#define SDHCI_QUIRK2_HIGH_SPEED_SET_LATE		(1<<3)
 
 	int irq;		/* Device IRQ */
 	void __iomem *ioaddr;	/* Mapped address */

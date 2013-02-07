@@ -406,7 +406,8 @@ static int intel_mrfl_mmc_probe_slot(struct sdhci_pci_slot *slot)
 	if ((PCI_FUNC(slot->chip->pdev->devfn) == INTEL_MRFL_EMMC_0) ||
 		(PCI_FUNC(slot->chip->pdev->devfn) == INTEL_MRFL_EMMC_1))
 		slot->host->mmc->caps |= MMC_CAP_8_BIT_DATA |
-					MMC_CAP_NONREMOVABLE;
+					MMC_CAP_NONREMOVABLE |
+					MMC_CAP_1_8V_DDR;
 
 	/* Enable eMMC v4.5 Power Off Notification feature */
 	slot->host->mmc->caps2 |= MMC_CAP2_POWEROFF_NOTIFY |
@@ -430,7 +431,8 @@ static void intel_mrfl_mmc_remove_slot(struct sdhci_pci_slot *slot, int dead)
 
 static const struct sdhci_pci_fixes sdhci_intel_mrfl_mmc = {
 	.quirks		= SDHCI_QUIRK_NO_ENDATTR_IN_NOPDESC,
-	.quirks2	= SDHCI_QUIRK2_BROKEN_AUTO_CMD23,
+	.quirks2	= SDHCI_QUIRK2_BROKEN_AUTO_CMD23 |
+				SDHCI_QUIRK2_HIGH_SPEED_SET_LATE,
 	.probe_slot	= intel_mrfl_mmc_probe_slot,
 	.remove_slot	= intel_mrfl_mmc_remove_slot,
 };
