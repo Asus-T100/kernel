@@ -60,6 +60,10 @@
 #include "device_libs/platform_lm3554.h"
 #include "device_libs/platform_mt9v113.h"
 #include "device_libs/platform_ov5640.h"
+#include "device_libs/platform_imx175.h"
+#include "device_libs/platform_imx135.h"
+#include "device_libs/platform_ov9724.h"
+#include "device_libs/platform_lm3559.h"
 #include "device_libs/platform_a1026.h"
 #include "device_libs/platform_s3202.h"
 #include "device_libs/platform_bq24192.h"
@@ -137,6 +141,14 @@ struct devs_id __initconst device_ids[] = {
 	{"ov8830", SFI_DEV_TYPE_I2C, 0, &ov8830_platform_data,
 					&intel_register_i2c_camera_device},
 	{"ov5640", SFI_DEV_TYPE_I2C, 0, &ov5640_platform_data,
+					&intel_register_i2c_camera_device},
+	{"imx175", SFI_DEV_TYPE_I2C, 0, &imx175_platform_data,
+					&intel_register_i2c_camera_device},
+	{"imx135", SFI_DEV_TYPE_I2C, 0, &imx135_platform_data,
+					&intel_register_i2c_camera_device},
+	{"ov9724", SFI_DEV_TYPE_I2C, 0, &ov9724_platform_data,
+					&intel_register_i2c_camera_device},
+	{"lm3559", SFI_DEV_TYPE_I2C, 0, &lm3559_platform_data_func,
 					&intel_register_i2c_camera_device},
 	{"audience_es305", SFI_DEV_TYPE_I2C, 0, &audience_platform_data,
 						NULL},
