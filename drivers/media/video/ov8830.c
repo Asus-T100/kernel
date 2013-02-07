@@ -453,38 +453,6 @@ static int drv201_t_focus_abs(struct v4l2_subdev *sd, s32 value)
 	return 0;
 }
 
-static int drv201_q_focus_abs(struct v4l2_subdev *sd, s32 *value)
-{
-	struct drv201_device *dev = to_drv201_device(sd);
-	*value = dev->focus;
-	return 0;
-}
-
-static int drv201_q_focus_status(struct v4l2_subdev *sd, s32 *value)
-{
-	static const struct timespec move_time = {
-		/* The time required for focus motor to move the lens */
-		.tv_sec = 0,
-		.tv_nsec = 60000000
-	};
-	struct drv201_device *dev = to_drv201_device(sd);
-	struct timespec current_time, finish_time, delta_time;
-
-	getnstimeofday(&current_time);
-	finish_time = timespec_add(dev->focus_time, move_time);
-	delta_time = timespec_sub(current_time, finish_time);
-	if (delta_time.tv_sec >= 0 && delta_time.tv_nsec >= 0) {
-		/* VCM motor is not moving */
-		*value = ATOMISP_FOCUS_HP_COMPLETE |
-			 ATOMISP_FOCUS_STATUS_ACCEPTS_NEW_MOVE;
-	} else {
-		/* VCM motor is still moving */
-		*value = ATOMISP_FOCUS_STATUS_MOVING |
-			 ATOMISP_FOCUS_HP_IN_PROGRESS;
-	}
-	return 0;
-}
-
 /* Start group hold for the following register writes */
 static int ov8830_grouphold_start(struct v4l2_subdev *sd)
 {
@@ -1091,265 +1059,6 @@ static int __ov8830_s_frame_interval(struct v4l2_subdev *sd,
 	return 0;
 }
 
-/* This returns the exposure time being used. This should only be used
-   for filling in EXIF data, not for actual image processing. */
-static int ov8830_q_exposure(struct v4l2_subdev *sd, s32 *value)
-{
-	struct ov8830_device *dev = to_ov8830_sensor(sd);
-	*value = dev->exposure;
-	return 0;
-}
-
-static int ov8830_test_pattern(struct v4l2_subdev *sd, s32 value)
-{
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
-
-	return ov8830_write_reg(client, OV8830_16BIT, 0x3070, value);
-}
-
-static int ov8830_v_flip(struct v4l2_subdev *sd, s32 value)
-{
-	return -ENXIO;
-}
-
-static int ov8830_g_focal(struct v4l2_subdev *sd, s32 *val)
-{
-	*val = (OV8830_FOCAL_LENGTH_NUM << 16) | OV8830_FOCAL_LENGTH_DEM;
-	return 0;
-}
-
-static int ov8830_g_fnumber(struct v4l2_subdev *sd, s32 *val)
-{
-	/*const f number for ov8830*/
-	*val = (OV8830_F_NUMBER_DEFAULT_NUM << 16) | OV8830_F_NUMBER_DEM;
-	return 0;
-}
-
-static int ov8830_g_fnumber_range(struct v4l2_subdev *sd, s32 *val)
-{
-	*val = (OV8830_F_NUMBER_DEFAULT_NUM << 24) |
-		(OV8830_F_NUMBER_DEM << 16) |
-		(OV8830_F_NUMBER_DEFAULT_NUM << 8) | OV8830_F_NUMBER_DEM;
-	return 0;
-}
-
-static int ov8830_g_bin_factor_x(struct v4l2_subdev *sd, s32 *val)
-{
-	struct ov8830_device *dev = to_ov8830_sensor(sd);
-	int r = ov8830_get_register(sd, OV8830_TIMING_X_INC,
-		dev->curr_res_table[dev->fmt_idx].regs);
-
-	if (r < 0)
-		return r;
-
-	*val = fls((r >> 4) + (r & 0xF)) - 2;
-
-	return 0;
-}
-
-static int ov8830_g_bin_factor_y(struct v4l2_subdev *sd, s32 *val)
-{
-	struct ov8830_device *dev = to_ov8830_sensor(sd);
-	int r = ov8830_get_register(sd, OV8830_TIMING_Y_INC,
-		dev->curr_res_table[dev->fmt_idx].regs);
-
-	if (r < 0)
-		return r;
-
-	*val = fls((r >> 4) + (r & 0xF)) - 2;
-
-	return 0;
-}
-
-static struct ov8830_control ov8830_controls[] = {
-	{
-		.qc = {
-			.id = V4L2_CID_EXPOSURE_ABSOLUTE,
-			.type = V4L2_CTRL_TYPE_INTEGER,
-			.name = "exposure",
-			.minimum = 0x0,
-			.maximum = 0xffff,
-			.step = 0x01,
-			.default_value = 0x00,
-			.flags = 0,
-		},
-		.query = ov8830_q_exposure,
-	},
-	{
-		.qc = {
-			.id = V4L2_CID_TEST_PATTERN,
-			.type = V4L2_CTRL_TYPE_INTEGER,
-			.name = "Test pattern",
-			.minimum = 0,
-			.maximum = 0xffff,
-			.step = 1,
-			.default_value = 0,
-		},
-		.tweak = ov8830_test_pattern,
-	},
-	{
-		.qc = {
-			.id = V4L2_CID_VFLIP,
-			.type = V4L2_CTRL_TYPE_BOOLEAN,
-			.name = "Flip",
-			.minimum = 0,
-			.maximum = 1,
-			.step = 1,
-			.default_value = 0,
-		},
-		.tweak = ov8830_v_flip,
-	},
-	{
-		.qc = {
-			.id = V4L2_CID_FOCUS_ABSOLUTE,
-			.type = V4L2_CTRL_TYPE_INTEGER,
-			.name = "focus move absolute",
-			.minimum = 0,
-			.maximum = DRV201_MAX_FOCUS_POS,
-			.step = 1,
-			.default_value = 0,
-			.flags = 0,
-		},
-		.tweak = drv201_t_focus_abs,
-		.query = drv201_q_focus_abs,
-	},
-	{
-		.qc = {
-			.id = V4L2_CID_FOCUS_STATUS,
-			.type = V4L2_CTRL_TYPE_INTEGER,
-			.name = "focus status",
-			.minimum = 0,
-			.maximum = 100, /* allow enum to grow in the future */
-			.step = 1,
-			.default_value = 0,
-			.flags = 0,
-		},
-		.query = drv201_q_focus_status,
-	},
-	{
-		.qc = {
-			.id = V4L2_CID_FOCAL_ABSOLUTE,
-			.type = V4L2_CTRL_TYPE_INTEGER,
-			.name = "focal length",
-			.minimum = OV8830_FOCAL_LENGTH_DEFAULT,
-			.maximum = OV8830_FOCAL_LENGTH_DEFAULT,
-			.step = 0x01,
-			.default_value = OV8830_FOCAL_LENGTH_DEFAULT,
-			.flags = 0,
-		},
-		.query = ov8830_g_focal,
-	},
-	{
-		.qc = {
-			.id = V4L2_CID_FNUMBER_ABSOLUTE,
-			.type = V4L2_CTRL_TYPE_INTEGER,
-			.name = "f-number",
-			.minimum = OV8830_F_NUMBER_DEFAULT,
-			.maximum = OV8830_F_NUMBER_DEFAULT,
-			.step = 0x01,
-			.default_value = OV8830_F_NUMBER_DEFAULT,
-			.flags = 0,
-		},
-		.query = ov8830_g_fnumber,
-	},
-	{
-		.qc = {
-			.id = V4L2_CID_FNUMBER_RANGE,
-			.type = V4L2_CTRL_TYPE_INTEGER,
-			.name = "f-number range",
-			.minimum = OV8830_F_NUMBER_RANGE,
-			.maximum =  OV8830_F_NUMBER_RANGE,
-			.step = 0x01,
-			.default_value = OV8830_F_NUMBER_RANGE,
-			.flags = 0,
-		},
-		.query = ov8830_g_fnumber_range,
-	},
-	{
-		.qc = {
-			.id = V4L2_CID_BIN_FACTOR_HORZ,
-			.type = V4L2_CTRL_TYPE_INTEGER,
-			.name = "horizontal binning factor",
-			.minimum = 0,
-			.maximum = OV8830_BIN_FACTOR_MAX,
-			.step = 1,
-			.default_value = 0,
-			.flags = V4L2_CTRL_FLAG_READ_ONLY,
-		},
-		.query = ov8830_g_bin_factor_x,
-	},
-	{
-		.qc = {
-			.id = V4L2_CID_BIN_FACTOR_VERT,
-			.type = V4L2_CTRL_TYPE_INTEGER,
-			.name = "vertical binning factor",
-			.minimum = 0,
-			.maximum = OV8830_BIN_FACTOR_MAX,
-			.step = 1,
-			.default_value = 0,
-			.flags = V4L2_CTRL_FLAG_READ_ONLY,
-		},
-		.query = ov8830_g_bin_factor_y,
-	},
-};
-#define N_CONTROLS (ARRAY_SIZE(ov8830_controls))
-
-static struct ov8830_control *ov8830_find_control(u32 id)
-{
-	int i;
-
-	for (i = 0; i < N_CONTROLS; i++)
-		if (ov8830_controls[i].qc.id == id)
-			return &ov8830_controls[i];
-	return NULL;
-}
-
-static int ov8830_queryctrl(struct v4l2_subdev *sd, struct v4l2_queryctrl *qc)
-{
-	struct ov8830_control *ctrl = ov8830_find_control(qc->id);
-
-	*qc = ctrl->qc;
-
-	return 0;
-}
-
-/* ov8830 control set/get */
-static int ov8830_g_ctrl(struct v4l2_subdev *sd, struct v4l2_control *ctrl)
-{
-	struct ov8830_device *dev = to_ov8830_sensor(sd);
-	struct ov8830_control *s_ctrl;
-	int ret;
-
-	if (!ctrl)
-		return -EINVAL;
-
-	s_ctrl = ov8830_find_control(ctrl->id);
-	if ((s_ctrl == NULL) || (s_ctrl->query == NULL))
-		return -EINVAL;
-
-	mutex_lock(&dev->input_lock);
-	ret = s_ctrl->query(sd, &ctrl->value);
-	mutex_unlock(&dev->input_lock);
-
-	return ret;
-}
-
-static int ov8830_s_ctrl_old(struct v4l2_subdev *sd, struct v4l2_control *ctrl)
-{
-	struct ov8830_device *dev = to_ov8830_sensor(sd);
-	struct ov8830_control *octrl = ov8830_find_control(ctrl->id);
-	int ret;
-
-	if ((octrl == NULL) || (octrl->tweak == NULL))
-		return -EINVAL;
-
-	mutex_lock(&dev->input_lock);
-	ret = octrl->tweak(sd, ctrl->value);
-	mutex_unlock(&dev->input_lock);
-
-	return ret;
-}
-
 /*
  * distance - calculate the distance
  * @res: resolution
@@ -1852,42 +1561,103 @@ ov8830_set_pad_format(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 	return 0;
 }
 
-static int
-ov8830_s_ctrl(struct v4l2_ctrl *ctrl)
+static int ov8830_s_ctrl(struct v4l2_ctrl *ctrl)
 {
 	struct ov8830_device *dev = container_of(
 		ctrl->handler, struct ov8830_device, ctrl_handler);
+	struct i2c_client *client = v4l2_get_subdevdata(&dev->sd);
 
 	/* input_lock is taken by the control framework, so it
 	 * doesn't need to be taken here.
 	 */
 
 	/* We only handle V4L2_CID_RUN_MODE for now. */
-	switch (ctrl->val) {
-	case ATOMISP_RUN_MODE_VIDEO:
-		dev->curr_res_table = dev->sensor_id == OV8835_CHIP_ID ?
+	switch (ctrl->id) {
+	case V4L2_CID_RUN_MODE:
+		switch (ctrl->val) {
+		case ATOMISP_RUN_MODE_VIDEO:
+			dev->curr_res_table = dev->sensor_id == OV8835_CHIP_ID ?
 				ov8835_res_video : ov8830_res_video;
-		dev->entries_curr_table = dev->sensor_id == OV8835_CHIP_ID ?
+			dev->entries_curr_table =
+				dev->sensor_id == OV8835_CHIP_ID ?
 				ARRAY_SIZE(ov8835_res_video) :
 				ARRAY_SIZE(ov8830_res_video);
-		break;
-	case ATOMISP_RUN_MODE_STILL_CAPTURE:
-		dev->curr_res_table = dev->sensor_id == OV8835_CHIP_ID ?
+			break;
+		case ATOMISP_RUN_MODE_STILL_CAPTURE:
+			dev->curr_res_table = dev->sensor_id == OV8835_CHIP_ID ?
 				ov8835_res_still : ov8830_res_still;
-		dev->entries_curr_table = dev->sensor_id == OV8835_CHIP_ID ?
+			dev->entries_curr_table =
+				dev->sensor_id == OV8835_CHIP_ID ?
 				ARRAY_SIZE(ov8835_res_still) :
 				ARRAY_SIZE(ov8830_res_still);
-		break;
-	default:
-		dev->curr_res_table = dev->sensor_id == OV8835_CHIP_ID ?
+			break;
+		default:
+			dev->curr_res_table = dev->sensor_id == OV8835_CHIP_ID ?
 				ov8835_res_preview : ov8830_res_preview;
-		dev->entries_curr_table = dev->sensor_id == OV8835_CHIP_ID ?
+			dev->entries_curr_table =
+				dev->sensor_id == OV8835_CHIP_ID ?
 				ARRAY_SIZE(ov8835_res_preview) :
 				ARRAY_SIZE(ov8830_res_preview);
+		}
+
+		dev->fmt_idx = 0;
+		dev->fps_index = 0;
+
+		return 0;
+	case V4L2_CID_TEST_PATTERN:
+		return ov8830_write_reg(client, OV8830_16BIT, 0x3070,
+					ctrl->val);
+	case V4L2_CID_FOCUS_ABSOLUTE:
+		return drv201_t_focus_abs(&dev->sd, ctrl->val);
 	}
 
-	dev->fmt_idx = 0;
-	dev->fps_index = 0;
+	return -EINVAL; /* Should not happen. */
+}
+
+static int ov8830_g_ctrl(struct v4l2_ctrl *ctrl)
+{
+	struct ov8830_device *dev = container_of(
+		ctrl->handler, struct ov8830_device, ctrl_handler);
+
+	switch (ctrl->id) {
+	case V4L2_CID_FOCUS_STATUS: {
+		static const struct timespec move_time = {
+			/* The time required for focus motor to move the lens */
+			.tv_sec = 0,
+			.tv_nsec = 60000000,
+		};
+		struct drv201_device *drv201 = to_drv201_device(&dev->sd);
+		struct timespec current_time, finish_time, delta_time;
+
+		getnstimeofday(&current_time);
+		finish_time = timespec_add(drv201->focus_time, move_time);
+		delta_time = timespec_sub(current_time, finish_time);
+		if (delta_time.tv_sec >= 0 && delta_time.tv_nsec >= 0) {
+			/* VCM motor is not moving */
+			ctrl->val = ATOMISP_FOCUS_HP_COMPLETE |
+				ATOMISP_FOCUS_STATUS_ACCEPTS_NEW_MOVE;
+		} else {
+			/* VCM motor is still moving */
+			ctrl->val = ATOMISP_FOCUS_STATUS_MOVING |
+				ATOMISP_FOCUS_HP_IN_PROGRESS;
+		}
+		return 0;
+	}
+	case V4L2_CID_BIN_FACTOR_HORZ:
+	case V4L2_CID_BIN_FACTOR_VERT: {
+		uint16_t reg = ctrl->id == V4L2_CID_BIN_FACTOR_VERT ?
+			OV8830_TIMING_X_INC : OV8830_TIMING_Y_INC;
+		int r = ov8830_get_register(
+			&dev->sd, reg, dev->curr_res_table[dev->fmt_idx].regs);
+
+		if (r < 0)
+			return r;
+
+		ctrl->val = fls((r >> 4) + (r & 0xf)) - 2;
+
+		return 0;
+	}
+	}
 
 	return 0;
 }
@@ -1954,9 +1724,9 @@ static const struct v4l2_subdev_sensor_ops ov8830_sensor_ops = {
 
 static const struct v4l2_subdev_core_ops ov8830_core_ops = {
 	.g_chip_ident = ov8830_g_chip_ident,
-	.queryctrl = ov8830_queryctrl,
-	.g_ctrl = ov8830_g_ctrl,
-	.s_ctrl = ov8830_s_ctrl_old,
+	.queryctrl = v4l2_subdev_queryctrl,
+	.g_ctrl = v4l2_subdev_g_ctrl,
+	.s_ctrl = v4l2_subdev_s_ctrl,
 	.s_power = ov8830_s_power,
 	.ioctl = ov8830_ioctl,
 	.init = ov8830_init,
@@ -1999,6 +1769,7 @@ static int ov8830_remove(struct i2c_client *client)
 
 static const struct v4l2_ctrl_ops ctrl_ops = {
 	.s_ctrl = ov8830_s_ctrl,
+	.g_volatile_ctrl = ov8830_g_ctrl,
 };
 
 static const char * const ctrl_run_mode_menu[] = {
@@ -2020,10 +1791,97 @@ static const struct v4l2_ctrl_config ctrl_run_mode = {
 	.qmenu = ctrl_run_mode_menu,
 };
 
+static const struct v4l2_ctrl_config ctrls[] = {
+	{
+		.ops = &ctrl_ops,
+		.id = V4L2_CID_EXPOSURE_ABSOLUTE,
+		.name = "Absolute exposure",
+		.type = V4L2_CTRL_TYPE_MENU,
+		.max = 0xffff,
+		.qmenu = ctrl_run_mode_menu,
+	}, {
+		.ops = &ctrl_ops,
+		.id = V4L2_CID_TEST_PATTERN,
+		.name = "Test pattern",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.step = 1,
+		.max = 0xffff,
+	}, {
+		.ops = &ctrl_ops,
+		.id = V4L2_CID_FOCUS_ABSOLUTE,
+		.name = "Focus absolute",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.step = 1,
+		.max = DRV201_MAX_FOCUS_POS,
+	}, {
+		/* This one is junk: see the spec for proper use of this CID. */
+		.ops = &ctrl_ops,
+		.id = V4L2_CID_FOCUS_STATUS,
+		.name = "Focus status",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.step = 1,
+		.max = 100,
+		.flags = V4L2_CTRL_FLAG_READ_ONLY | V4L2_CTRL_FLAG_VOLATILE,
+	}, {
+		/* This is crap. For compatibility use only. */
+		.ops = &ctrl_ops,
+		.id = V4L2_CID_FOCAL_ABSOLUTE,
+		.name = "Focal lenght",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = (OV8830_FOCAL_LENGTH_NUM << 16) | OV8830_FOCAL_LENGTH_DEM,
+		.max = (OV8830_FOCAL_LENGTH_NUM << 16) | OV8830_FOCAL_LENGTH_DEM,
+		.step = 1,
+		.def = (OV8830_FOCAL_LENGTH_NUM << 16) | OV8830_FOCAL_LENGTH_DEM,
+		.flags = V4L2_CTRL_FLAG_READ_ONLY,
+	}, {
+		/* This one is crap, too. For compatibility use only. */
+		.ops = &ctrl_ops,
+		.id = V4L2_CID_FNUMBER_ABSOLUTE,
+		.name = "F-number",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = (OV8830_F_NUMBER_DEFAULT_NUM << 16) | OV8830_F_NUMBER_DEM,
+		.max = (OV8830_F_NUMBER_DEFAULT_NUM << 16) | OV8830_F_NUMBER_DEM,
+		.step = 1,
+		.def = (OV8830_F_NUMBER_DEFAULT_NUM << 16) | OV8830_F_NUMBER_DEM,
+		.flags = V4L2_CTRL_FLAG_READ_ONLY,
+	}, {
+		/*
+		 * The most utter crap. _Never_ use this, even for
+		 * compatibility reasons!
+		 */
+		.ops = &ctrl_ops,
+		.id = V4L2_CID_FNUMBER_RANGE,
+		.name = "F-number range",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = (OV8830_F_NUMBER_DEFAULT_NUM << 24) | (OV8830_F_NUMBER_DEM << 16) | (OV8830_F_NUMBER_DEFAULT_NUM << 8) | OV8830_F_NUMBER_DEM,
+		.max = (OV8830_F_NUMBER_DEFAULT_NUM << 24) | (OV8830_F_NUMBER_DEM << 16) | (OV8830_F_NUMBER_DEFAULT_NUM << 8) | OV8830_F_NUMBER_DEM,
+		.step = 1,
+		.def = (OV8830_F_NUMBER_DEFAULT_NUM << 24) | (OV8830_F_NUMBER_DEM << 16) | (OV8830_F_NUMBER_DEFAULT_NUM << 8) | OV8830_F_NUMBER_DEM,
+		.flags = V4L2_CTRL_FLAG_READ_ONLY,
+	}, {
+		.ops = &ctrl_ops,
+		.id = V4L2_CID_BIN_FACTOR_HORZ,
+		.name = "Horizontal binning factor",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.max = OV8830_BIN_FACTOR_MAX,
+		.step = 1,
+		.flags = V4L2_CTRL_FLAG_READ_ONLY | V4L2_CTRL_FLAG_VOLATILE,
+	}, {
+		.ops = &ctrl_ops,
+		.id = V4L2_CID_BIN_FACTOR_VERT,
+		.name = "Vertical binning factor",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.max = OV8830_BIN_FACTOR_MAX,
+		.step = 1,
+		.flags = V4L2_CTRL_FLAG_READ_ONLY | V4L2_CTRL_FLAG_VOLATILE,
+	}
+};
+
 static int ov8830_probe(struct i2c_client *client,
 			 const struct i2c_device_id *id)
 {
 	struct ov8830_device *dev;
+	unsigned int i;
 	int ret;
 
 	/* allocate sensor device & init sub device */
@@ -2055,7 +1913,7 @@ static int ov8830_probe(struct i2c_client *client,
 	dev->sd.entity.type = MEDIA_ENT_T_V4L2_SUBDEV_SENSOR;
 	dev->format.code = V4L2_MBUS_FMT_SBGGR10_1X10;
 
-	ret = v4l2_ctrl_handler_init(&dev->ctrl_handler, 1);
+	ret = v4l2_ctrl_handler_init(&dev->ctrl_handler, ARRAY_SIZE(ctrls) + 1);
 	if (ret) {
 		ov8830_remove(client);
 		return ret;
@@ -2063,6 +1921,9 @@ static int ov8830_probe(struct i2c_client *client,
 
 	dev->run_mode = v4l2_ctrl_new_custom(&dev->ctrl_handler,
 					     &ctrl_run_mode, NULL);
+
+	for (i = 0; i < ARRAY_SIZE(ctrls); i++)
+		v4l2_ctrl_new_custom(&dev->ctrl_handler, &ctrls[i], NULL);
 
 	if (dev->ctrl_handler.error) {
 		ov8830_remove(client);

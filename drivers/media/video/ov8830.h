@@ -37,8 +37,8 @@
 #include <media/v4l2-device.h>
 #include <media/v4l2-subdev.h>
 
-#define to_drv201_device(sd)	(&container_of(sd, struct ov8830_device, sd) \
-				->drv201)
+#define to_drv201_device(_sd) (&(container_of(_sd, struct ov8830_device, sd) \
+				 ->drv201))
 
 #define DRV201_I2C_ADDR				0x0E
 #define DRV201_CONTROL				2
