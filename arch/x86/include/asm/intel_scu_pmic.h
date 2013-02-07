@@ -1,6 +1,8 @@
 #ifndef __INTEL_SCU_PMIC_H__
 #define __INTEL_SCU_PMIC_H__
 
+#include <asm/types.h>
+
 #define KOBJ_PMIC_ATTR(_name, _mode, _show, _store) \
 	struct kobj_attribute _name##_attr = __ATTR(_name, _mode, _show, _store)
 
