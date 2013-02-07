@@ -884,9 +884,6 @@ static int ov8830_g_chip_ident(struct v4l2_subdev *sd,
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 
-	if (!chip)
-		return -EINVAL;
-
 	v4l2_chip_ident_i2c_client(client, chip, V4L2_IDENT_OV8830, 0);
 
 	return 0;
@@ -1329,9 +1326,6 @@ static struct ov8830_control *ov8830_find_control(u32 id)
 static int ov8830_queryctrl(struct v4l2_subdev *sd, struct v4l2_queryctrl *qc)
 {
 	struct ov8830_control *ctrl = ov8830_find_control(qc->id);
-
-	if (ctrl == NULL)
-		return -EINVAL;
 
 	*qc = ctrl->qc;
 
@@ -1858,8 +1852,6 @@ ov8830_get_pad_format(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 	struct v4l2_mbus_framefmt *format =
 			__ov8830_get_pad_format(dev, fh, fmt->pad, fmt->which);
 
-	if (format == NULL)
-		return -EINVAL;
 	fmt->format = *format;
 
 	return 0;
@@ -1873,8 +1865,6 @@ ov8830_set_pad_format(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 	struct v4l2_mbus_framefmt *format =
 			__ov8830_get_pad_format(dev, fh, fmt->pad, fmt->which);
 
-	if (format == NULL)
-		return -EINVAL;
 	if (fmt->which == V4L2_SUBDEV_FORMAT_ACTIVE)
 		dev->format = fmt->format;
 
