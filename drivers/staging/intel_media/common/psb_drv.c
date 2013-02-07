@@ -4407,32 +4407,6 @@ fun_exit:
 	return count;
 }
 
-static int psb_hdmi_power_read(char *buf, char **start, off_t offset, int request,
-				     int *eof, void *data)
-{
-	return 0;
-}
-
-static int psb_hdmi_power_write(struct file *file, const char *buffer,
-				      unsigned long count, void *data)
-{
-	char buf[2];
-	int  hdmi_power;
-	if (count != sizeof(buf)) {
-		return -EINVAL;
-	} else {
-		if (copy_from_user(buf, buffer, count))
-			return -EINVAL;
-		if (buf[count-1] != '\n')
-			return -EINVAL;
-		hdmi_power = buf[0] - '0';
-		PSB_DEBUG_ENTRY(" hdmi_power: %d\n", hdmi_power);
-
-		android_hdmi_set_power_rails(hdmi_power != 0);
-	}
-	return count;
-}
-
 static int csc_control_read(char *buf, char **start, off_t offset, int request,
 				     int *eof, void *data)
 {
@@ -4503,7 +4477,6 @@ static int psb_proc_init(struct drm_minor *minor)
 	struct proc_dir_entry *rtpm;
 	struct proc_dir_entry *ent_display_status;
 	struct proc_dir_entry *ent_panel_status;
-	struct proc_dir_entry *ent_hdmi_status;
 	struct proc_dir_entry *csc_setting;
 	ent = create_proc_entry(OSPM_PROC_ENTRY, 0644, minor->proc_root);
 	rtpm = create_proc_entry(RTPM_PROC_ENTRY, 0644, minor->proc_root);
@@ -4511,11 +4484,10 @@ static int psb_proc_init(struct drm_minor *minor)
 	ent_panel_status = create_proc_entry(PANEL_PROC_ENTRY,
 			 0644, minor->proc_root);
 	ent1 = proc_create_data(BLC_PROC_ENTRY, 0, minor->proc_root, &psb_blc_proc_fops, minor);
-	ent_hdmi_status = create_proc_entry(HDMI_PROC_ENTRY, 0644, minor->proc_root);
 	csc_setting = create_proc_entry(CSC_PROC_ENTRY, 0644, minor->proc_root);
 
 	if (!ent || !ent1 || !rtpm || !ent_display_status || !ent_panel_status
-		 || !ent_hdmi_status || !csc_setting)
+		 || !csc_setting)
 		return -1;
 	ent->read_proc = psb_ospm_read;
 	ent->write_proc = psb_ospm_write;
@@ -4528,9 +4500,6 @@ static int psb_proc_init(struct drm_minor *minor)
 	ent_panel_status->write_proc = psb_panel_register_write;
 	ent_panel_status->read_proc = psb_panel_register_read;
 	ent_panel_status->data = (void *)minor;
-	ent_hdmi_status->write_proc = psb_hdmi_power_write;
-	ent_hdmi_status->read_proc = psb_hdmi_power_read;
-	ent_hdmi_status->data = (void *)minor;
 	csc_setting->write_proc = csc_control_write;
 	csc_setting->read_proc = csc_control_read;
 	csc_setting->data = (void *)minor;

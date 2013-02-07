@@ -2137,21 +2137,6 @@ bool android_hdmi_is_connected(struct drm_device *dev)
 	return otm_hdmi_get_cable_status(hdmi_priv->context);
 }
 
-/**
- * Description: Turn on or off HDMI power rails.
- *
- * @on:	true or false
- *
- * Returns: none
- */
-
-void android_hdmi_set_power_rails(bool on)
-{
-	if (on)
-		otm_hdmi_power_rails_on();
-	else
-		otm_hdmi_power_rails_off();
-}
 static int android_hdmi_set_property(struct drm_connector *connector,
 				     struct drm_property *property,
 				     uint64_t value)

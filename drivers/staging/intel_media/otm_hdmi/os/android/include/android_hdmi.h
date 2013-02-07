@@ -243,14 +243,6 @@ bool android_query_hdmi_hdcp_sink(struct drm_device *dev, uint8_t *bksv);
  */
 bool android_hdmi_is_connected(struct drm_device *dev);
 
-/**
- * Description: Turn on or off HDMI power rails.
- *
- * @on:	true or false
- *
- * Returns: none
- */
-void android_hdmi_set_power_rails(bool on);
 
 #else /* CONFIG_SUPPORT_HDMI */
 
@@ -292,9 +284,6 @@ static inline bool android_query_hdmi_hdcp_sink(struct drm_device *dev,
 
 static inline bool android_hdmi_is_connected(struct drm_device *dev)
 { return false; }
-
-static inline void android_hdmi_set_power_rails(bool on)
-{}
 
 #endif /* CONFIG_SUPPORT_HDMI */
 
