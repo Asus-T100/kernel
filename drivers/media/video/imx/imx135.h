@@ -5375,6 +5375,8 @@ struct imx_resolution imx135_res_video[] = {
 		.bin_factor_y = 2,
 		.used = 0	,
 	},
+#if 0
+	/* This setting has wrong width and height, needs more check */
 	{
 		.desc = "imx135_CIF_dvs_30fps",
 		.regs = imx135_CIF_dvs_30fps,
@@ -5387,6 +5389,7 @@ struct imx_resolution imx135_res_video[] = {
 		.bin_factor_y = 2,
 		.used = 0	,
 	},
+#endif
 	{
 		.desc = "imx135_VGA_dvs_30fps",
 		.regs = imx135_VGA_dvs_30fps,
