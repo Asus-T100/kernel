@@ -414,6 +414,11 @@ struct dwc_otg2 {
 	struct otg_bc_cap charging_cap;
 	struct notifier_block nb;
 	struct delayed_work sdp_check_work;
+
+	/* pm request to prevent enter Cx state
+	 * Because it have big impact to USB performance
+	 * */
+	struct pm_qos_request_list *qos;
 };
 
 /* Invalid SDP checking timeout */
