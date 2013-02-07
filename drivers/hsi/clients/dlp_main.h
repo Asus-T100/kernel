@@ -92,6 +92,7 @@
 
 /* Header signature */
 #define DLP_HEADER_SIGNATURE	0xF9A80000
+#define DLP_HEADER_VALID_SIGNATURE(h) (((h) & 0xFFFF0000) == 0xF9A80000)
 
 /* header fields */
 #define DLP_HDR_DATA_SIZE(sz)	((sz) & 0x3FFFF)
@@ -142,11 +143,15 @@
  */
 #define DLP_TTY_DEV_NUM 1
 
+/*
+ * Number of HSI channels
+ */
+#define DLP_HSI_CHANNEL_COUNT 8
 
 /*
- * Get a ref to the given channel context
+ * Get a ref to the given eDLP channel context
  */
-#define DLP_CHANNEL_CTX(hsi_ch) (dlp_drv.channels[hsi_ch])
+#define DLP_CHANNEL_CTX(ch_id) (dlp_drv.channels[ch_id])
 
 /* RX and TX state machine definitions */
 enum {
@@ -175,6 +180,21 @@ enum {
 	DLP_CH_STATE_OPENING,	/* Opening ... (waiting for OPEN_CONN resp) */
 	DLP_CH_STATE_OPENED,	/* Channel correctly opened (OPEN_CONN + ACK) */
 	DLP_CH_STATE_NONE		/* No channel state set yet */
+};
+
+/* eDLP error code */
+enum {
+	EDLP_ERR_NONE,
+	EDLP_ERR_CH_ALREADY_OPENED,
+	EDLP_ERR_CH_ALREADY_CLOSED,
+	EDLP_ERR_CH_RX_ALREADY_CLOSED,
+	EDLP_ERR_CH_TX_ALREADY_CLOSED,
+	EDLP_ERR_CH_OUT_OF_RANGE,
+	EDLP_ERR_CH_NO_FLOW_CONTROL,
+	EDLP_ERR_WRONG_PDU_SIZE,
+	EDLP_ERR_RESOURCE_NOT_AVAILABLE,
+	EDLP_ERR_DATA_IN_PROCESS,
+	EDLP_ERR_UNKNOWN = 0xFF
 };
 
 /*  */
@@ -264,12 +284,23 @@ struct dlp_hangup_ctx {
 };
 
 /**
- * struct dlp_channel - HSI channel context
+ * struct dlp_hsi_channel - HSI channel context
+ * @open_conn: Store any OPEN_CONN request params
+ * @state: the current channel stated (Opened, Close, ...)
+ * @dlp_channel: the eDLP channel ID
+ */
+struct dlp_hsi_channel {
+	u32 open_conn;
+	unsigned int state;
+	unsigned int edlp_channel;
+};
+
+/**
+ * struct dlp_channel - eDLP channel context
  * @client: reference to this HSI client
  * @credits: credits value (nb of pdus that can be sent to the modem)
  * @credits_lock: credits lock
  * @use_flow_ctrl: specify if the flow control (CREDITS) is enabled
- * @state: the current channel stated (Opened, Close, ...)
  * @stop_tx_w: Work for making synchronous TX start request
  * @stop_tx: Work for making synchronous TX stop request
  * @controller: reference to the controller bound to this context
@@ -280,10 +311,10 @@ struct dlp_hangup_ctx {
  * @rx: current RX context
  */
 struct dlp_channel {
+	unsigned int ch_id;
 	unsigned int hsi_channel;
 	unsigned int credits;
 	spinlock_t	 lock;
-	unsigned int state;
 	unsigned int use_flow_ctrl;
 	struct work_struct start_tx_w;
 	struct work_struct stop_tx_w;
@@ -306,16 +337,16 @@ struct dlp_channel {
 	/* Debug */
 	void (*dump_state)(struct dlp_channel *ch_ctx, struct seq_file *m);
 
-	/* Channel sepecific data */
+	/* Channel specific data */
 	void *ch_data;
 };
 
 /**
  * struct dlp_driver - fixed pdu length protocol on HSI driver data
  * @channels: array of DLP Channel contex references
+ * @channels_hsi: The HSI channels context references
  * @is_dma_capable: a flag to check if the ctrl supports the DMA
  * @controller: a reference to the HSI controller
- * @channels: a reference to the HSI client
  * @recycle_wq: Workqueue for submitting pdu-recycling background tasks
  * @tx_hangup_wq: Workqueue for submitting tx timeout hangup background tasks
  * @modem_ready: The modem is up & running
@@ -330,6 +361,7 @@ struct dlp_channel {
  */
 struct dlp_driver {
 	struct dlp_channel *channels[DLP_CHANNEL_COUNT];
+	struct dlp_hsi_channel channels_hsi[DLP_HSI_CHANNEL_COUNT];
 
 	unsigned int is_dma_capable;
 	struct hsi_client *client;
@@ -366,8 +398,9 @@ struct dlp_driver {
 /*
  * Context alloc/free function proptype
  */
-typedef struct dlp_channel *(*dlp_context_create) (unsigned int index,
-						   struct device *dev);
+typedef struct dlp_channel *(*dlp_context_create) (unsigned int ch_id,
+		unsigned int hsi_channel,
+		struct device *dev);
 
 typedef int (*dlp_context_delete) (struct dlp_channel *ch_ctx);
 
@@ -542,7 +575,8 @@ inline unsigned long from_usecs(const unsigned long delay);
  * CONTROL channel exported functions
  *
  ***************************************************************************/
-struct dlp_channel *dlp_ctrl_ctx_create(unsigned int index,
+struct dlp_channel *dlp_ctrl_ctx_create(unsigned int ch_id,
+		unsigned int hsi_channel,
 		struct device *dev);
 
 int dlp_ctrl_ctx_delete(struct dlp_channel *ch_ctx);
@@ -553,11 +587,13 @@ int dlp_ctrl_close_channel(struct dlp_channel *ch_ctx);
 
 int dlp_ctrl_send_nop(struct dlp_channel *ch_ctx);
 
+int dlp_ctrl_send_ack_nack(struct dlp_channel *ch_ctx);
+
 inline void
-dlp_ctrl_set_channel_state(struct dlp_channel *, unsigned char);
+dlp_ctrl_set_channel_state(unsigned int hsi_channel, unsigned char);
 
 inline unsigned char
-dlp_ctrl_get_channel_state(struct dlp_channel *ch_ctx);
+dlp_ctrl_get_channel_state(unsigned int hsi_channel);
 
 void dlp_ctrl_hangup_ctx_init(struct dlp_channel *ch_ctx,
 		void (*timeout_func)(struct dlp_channel *ch_ctx));
@@ -569,7 +605,9 @@ void dlp_ctrl_hangup_ctx_deinit(struct dlp_channel *ch_ctx);
  * TTY channel exported functions
  *
  ***************************************************************************/
-struct dlp_channel *dlp_tty_ctx_create(unsigned int index, struct device *dev);
+struct dlp_channel *dlp_tty_ctx_create(unsigned int ch_id,
+		unsigned int hsi_channel,
+		struct device *dev);
 
 int dlp_tty_ctx_delete(struct dlp_channel *ch_ctx);
 
@@ -578,7 +616,9 @@ int dlp_tty_ctx_delete(struct dlp_channel *ch_ctx);
  * NETWORK channels exported functions
  *
  ***************************************************************************/
-struct dlp_channel *dlp_net_ctx_create(unsigned int index, struct device *dev);
+struct dlp_channel *dlp_net_ctx_create(unsigned int ch_id,
+		unsigned int hsi_channel,
+		struct device *dev);
 
 int dlp_net_ctx_delete(struct dlp_channel *ch_ctx);
 
@@ -587,7 +627,8 @@ int dlp_net_ctx_delete(struct dlp_channel *ch_ctx);
  * Boot/Flashing channel exported functions
  *
  ***************************************************************************/
-struct dlp_channel *dlp_flash_ctx_create(unsigned int index,
+struct dlp_channel *dlp_flash_ctx_create(unsigned int ch_id,
+		unsigned int hsi_channel,
 		struct device *dev);
 
 int dlp_flash_ctx_delete(struct dlp_channel *ch_ctx);
@@ -597,7 +638,8 @@ int dlp_flash_ctx_delete(struct dlp_channel *ch_ctx);
  * Modem Trace channel exported functions
  *
  ***************************************************************************/
-struct dlp_channel *dlp_trace_ctx_create(unsigned int index,
+struct dlp_channel *dlp_trace_ctx_create(unsigned int ch_id,
+		unsigned int hsi_channel,
 		struct device *dev);
 
 int dlp_trace_ctx_delete(struct dlp_channel *ch_ctx);

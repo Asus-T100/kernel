@@ -75,7 +75,8 @@ void dlp_dump_channel_state(struct dlp_channel *ch_ctx, struct seq_file *m)
 
 	seq_printf(m, "\nChannel: %d\n", ch_ctx->hsi_channel);
 	seq_printf(m, "-------------\n");
-	seq_printf(m, " state     : %d\n", ch_ctx->state);
+	seq_printf(m, " state     : %d\n",
+			dlp_drv.channels_hsi[ch_ctx->hsi_channel].state);
 	seq_printf(m, " credits   : %d\n", ch_ctx->credits);
 	seq_printf(m, " flow ctrl : %d\n", ch_ctx->use_flow_ctrl);
 
@@ -416,9 +417,11 @@ void dlp_pdu_recycle(struct dlp_xfer_ctx *xfer_ctx, struct hsi_msg *pdu)
 		new = dlp_fifo_recycled_pop(xfer_ctx);
 
 		/* Push the pdu */
-		ret = dlp_hsi_controller_push(xfer_ctx, new);
-		if (ret)
-			dlp_fifo_recycled_push(xfer_ctx, new);
+		if (new) {
+			ret = dlp_hsi_controller_push(xfer_ctx, new);
+			if (ret)
+				dlp_fifo_recycled_push(xfer_ctx, new);
+		}
 	}
 
 	dlp_ctx_update_state_rx(xfer_ctx);
@@ -441,7 +444,7 @@ inline int dlp_pdu_header_check(struct dlp_xfer_ctx *xfer_ctx,
 	xfer_ctx->seq_num++;
 
 	/* Check the PDU signature */
-	if (DLP_HEADER_SIGNATURE == (header[0] & 0xFFFF0000)) {
+	if (DLP_HEADER_VALID_SIGNATURE(header[0])) {
 		/* Check the seq number */
 		if (xfer_ctx->seq_num == (header[0] & 0x0000FFFF))
 			ret = 0;
@@ -849,8 +852,10 @@ static inline void dlp_ctx_update_state_tx(struct dlp_xfer_ctx *xfer_ctx)
 		del_timer(&xfer_ctx->channel->hangup.timer);
 
 		if (xfer_ctx->wait_len == 0) {
-			/* wake_up(&main_ctx->tx_full_pipe_clean_event); */
 			mod_timer(&xfer_ctx->timer, jiffies + xfer_ctx->delay);
+
+			/* Wake_up dlp_tty_wait_until_ctx_sent */
+			wake_up(&xfer_ctx->channel->tx_empty_event);
 		}
 	}
 }
@@ -903,25 +908,25 @@ inline __must_check struct hsi_msg *dlp_fifo_tail(struct list_head *fifo)
 static void dlp_fifo_empty(struct list_head *fifo,
 			   struct dlp_xfer_ctx *xfer_ctx)
 {
-	struct hsi_msg *pdu;
+	struct hsi_msg *pdu, *tmp_pdu;
 	unsigned long flags;
+	LIST_HEAD(pdus_to_delete);
 
 	write_lock_irqsave(&xfer_ctx->lock, flags);
 
-	/* Empty ? */
-	if (list_empty(fifo))
-		goto out;
-
-	while ((pdu = list_entry(fifo->next, struct hsi_msg, link))) {
+	while ((pdu = dlp_fifo_head(fifo))) {
 		/* Remove the pdu from the list */
+		list_move_tail(&pdu->link, &pdus_to_delete);
+	}
+
+	write_unlock_irqrestore(&xfer_ctx->lock, flags);
+
+	list_for_each_entry_safe(pdu, tmp_pdu, &pdus_to_delete, link) {
 		list_del_init(&pdu->link);
 
 		/* pdu free */
 		dlp_pdu_free(pdu, pdu->channel);
 	}
-
- out:
-	write_unlock_irqrestore(&xfer_ctx->lock, flags);
 }
 
 /****************************************************************************
@@ -1019,13 +1024,19 @@ static int _dlp_from_wait_to_ctrl(struct dlp_xfer_ctx *xfer_ctx)
 	int ret;
 
 	write_lock_irqsave(&xfer_ctx->lock, flags);
-	pdu = dlp_fifo_wait_pop(xfer_ctx);
-	write_unlock_irqrestore(&xfer_ctx->lock, flags);
-
+	pdu = dlp_fifo_head(&xfer_ctx->wait_pdus);
 	if (!pdu) {
+		write_unlock_irqrestore(&xfer_ctx->lock, flags);
 		ret = -ENOENT;
 		goto out;
 	}
+	if (pdu->status != HSI_STATUS_COMPLETED) {
+		write_unlock_irqrestore(&xfer_ctx->lock, flags);
+		ret = -EBUSY;
+		goto out;
+	}
+	pdu = dlp_fifo_wait_pop(xfer_ctx);
+	write_unlock_irqrestore(&xfer_ctx->lock, flags);
 
 	actual_len = pdu->actual_len;
 
@@ -1074,7 +1085,6 @@ void dlp_pop_wait_push_ctrl(struct dlp_xfer_ctx *xfer_ctx)
 		read_unlock_irqrestore(&xfer_ctx->lock, flags);
 
 		if ((!pdu) ||
-			(pdu->status != HSI_STATUS_COMPLETED) ||
 			(_dlp_from_wait_to_ctrl(xfer_ctx))) {
 				read_lock_irqsave(&xfer_ctx->lock, flags);
 				break;
@@ -1113,7 +1123,7 @@ struct hsi_msg *dlp_fifo_recycled_pop(struct dlp_xfer_ctx *xfer_ctx)
 	struct list_head *first;
 	unsigned long flags;
 
-	read_lock_irqsave(&xfer_ctx->lock, flags);
+	write_lock_irqsave(&xfer_ctx->lock, flags);
 	first = &xfer_ctx->recycled_pdus;
 
 	/* Empty ? */
@@ -1121,16 +1131,11 @@ struct hsi_msg *dlp_fifo_recycled_pop(struct dlp_xfer_ctx *xfer_ctx)
 		/* Get the fist pdu */
 		pdu = list_entry(first->next, struct hsi_msg, link);
 
-		read_unlock_irqrestore(&xfer_ctx->lock, flags);
-
 		/* Remove the pdu from the list */
-		write_lock_irqsave(&xfer_ctx->lock, flags);
 		list_del_init(&pdu->link);
-		write_unlock_irqrestore(&xfer_ctx->lock, flags);
-	} else {
-		read_unlock_irqrestore(&xfer_ctx->lock, flags);
 	}
 
+	write_unlock_irqrestore(&xfer_ctx->lock, flags);
 	return pdu;
 }
 
@@ -1559,11 +1564,9 @@ int dlp_allocate_pdus_pool(struct dlp_channel *ch_ctx,
 cleanup:
 	/* Have some items ? */
 	fifo = &xfer_ctx->recycled_pdus;
-	if (list_empty(fifo))
-		return ret;
 
 	/* Delete the allocated PDUs */
-	while ((pdu = list_entry(fifo->next, struct hsi_msg, link))) {
+	while ((pdu = dlp_fifo_head(fifo))) {
 		list_del_init(&pdu->link);
 		dlp_pdu_free(pdu, pdu->channel);
 	}
@@ -1714,6 +1717,9 @@ static int __init dlp_driver_probe(struct device *dev)
 		dlp_trace_ctx_create,   /* TRACE */
 		dlp_flash_ctx_create};	/* BOOT/FLASHING */
 
+	/* HSI channel mapping */
+	int hsi_ch[DLP_CHANNEL_COUNT] = {0, 1, 2, 3, 4, 4, 0};
+
 	/* Save the controller & client */
 	dlp_drv.controller = controller;
 	dlp_drv.client = client;
@@ -1736,14 +1742,13 @@ static int __init dlp_driver_probe(struct device *dev)
 	dlp_drv.flash_rx_cfg.channels = 1;
 	dlp_drv.flash_tx_cfg.channels = 1;
 
-	/* Start in IPC mode */
-	dlp_set_flashing_mode(0);
-
 	/* Create DLP contexts */
 	for (i = 0; i < DLP_CHANNEL_COUNT; i++) {
-		dlp_drv.channels[i] = create_funcs[i] (i, dev);
+		dlp_drv.channels[i] = create_funcs[i] (i, hsi_ch[i], dev);
 		if (!dlp_drv.channels[i])
 			goto cleanup;
+
+		dlp_drv.channels_hsi[i].edlp_channel = i;
 	}
 
 	/* HSI client events callback  */
@@ -1834,7 +1839,7 @@ static int __init dlp_module_init(void)
 
 	/* Create a single thread workqueue for hangup background tasks */
 	dlp_drv.hangup_wq = alloc_workqueue(DRVNAME "-hup_wq", WQ_UNBOUND, 1);
-	if (unlikely(!dlp_drv.rx_wq)) {
+	if (unlikely(!dlp_drv.hangup_wq)) {
 		pr_err(DRVNAME ": Unable to create Hangup workqueue\n");
 		err = -EFAULT;
 		goto no_hu_wq;
@@ -1869,7 +1874,7 @@ out:
 static void __exit dlp_module_exit(void)
 {
 	destroy_workqueue(dlp_drv.hangup_wq);
-	destroy_workqueue(dlp_drv.rx_wq);
+	destroy_workqueue(dlp_drv.tx_wq);
 	destroy_workqueue(dlp_drv.rx_wq);
 
 	hsi_unregister_client_driver(&dlp_driver_setup);

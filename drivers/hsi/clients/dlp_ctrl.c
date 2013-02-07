@@ -54,6 +54,7 @@
 #define LSB(b)    ((unsigned char) ((b) &  0xF))
 #define MSB(b)    ((unsigned char) ((b) >> 4))
 #define CMD_ID(b, id) (LSB(b) | (id << 4))
+#define CMD_ID_ERR(p, err) (CMD_ID(p->data3, p->id) | err)
 
 #define DLP_CMD_TX_TIMOUT		 1000  /* 1 sec */
 #define DLP_CMD_RX_TIMOUT	     1000  /* 1 sec */
@@ -210,6 +211,46 @@ static inline int dlp_ctrl_have_control_context(void)
 	return have_ctrl;
 }
 
+/*
+ * Check if the provided PDU size is compatible with the
+ * channel PDU size
+ *
+ *  Return the response to send ACK/NACK
+ */
+static int dlp_ctrl_check_pdu_size(struct dlp_channel *ch_ctx,
+					struct dlp_command_params *params,
+					struct dlp_command_params *tx_params)
+{
+	int size, response;
+
+	memcpy(tx_params, params, sizeof(struct dlp_command_params));
+
+	size = ((params->data2 << 8) | params->data1);
+
+	/* OPEN_CONN => ACK by default */
+	response = DLP_CMD_ACK;
+	tx_params->data3 = CMD_ID(params->data3, params->id);
+
+	/* Check the requested PDU size */
+	if (ch_ctx->rx.pdu_size != size) {
+		pr_err(DRVNAME ": ch%d wrong pdu size %d (expected %d)\n",
+				ch_ctx->hsi_channel,
+				size,
+				ch_ctx->rx.pdu_size);
+
+		/* OPEN_CONN => NACK (Unexpected PDU size) */
+		response = DLP_CMD_NACK;
+
+		/* Set the response params */
+		tx_params->data1 = 0;
+		tx_params->data2 = 0;
+		tx_params->data3 = CMD_ID_ERR(params,
+				EDLP_ERR_WRONG_PDU_SIZE);
+	}
+
+	return response;
+}
+
 /****************************************************************************
  *
  * Control flow
@@ -271,6 +312,73 @@ static void dlp_ctrl_msg_destruct(struct hsi_msg *msg)
 	kfree(dlp_cmd);
 }
 
+/*
+ * Send eDLP response
+ */
+
+/* Forward declaration */
+static void dlp_ctrl_complete_tx_async(struct hsi_msg *msg);
+
+static int dlp_ctrl_send_response(struct dlp_channel *ch_ctx,
+					struct dlp_command_params *tx_params,
+					int response)
+{
+	int ret;
+	struct hsi_msg *tx_msg;
+	struct dlp_command *dlp_cmd;
+
+	/* Allocate the eDLP response */
+	dlp_cmd = dlp_ctrl_cmd_alloc(ch_ctx,
+				     response,
+				     tx_params->data1,
+				     tx_params->data2, tx_params->data3);
+	if (!dlp_cmd) {
+		pr_err(DRVNAME ": Out of memory (dlp_cmd: 0x%X)\n", response);
+		return -ENOMEM;
+	}
+
+	/* Allocate a new TX msg */
+	tx_msg = dlp_pdu_alloc(DLP_CHANNEL_CTRL,
+			       HSI_MSG_WRITE,
+			       DLP_CTRL_TX_PDU_SIZE,
+			       1,
+			       dlp_cmd,
+			       dlp_ctrl_complete_tx_async,
+			       dlp_ctrl_msg_destruct);
+
+	if (!tx_msg) {
+		pr_err(DRVNAME ": TX alloc failed\n");
+
+		/* Delete the command */
+		kfree(dlp_cmd);
+		return -ENOMEM;
+	}
+
+	/* Copy the command data */
+	memcpy(sg_virt(tx_msg->sgt.sgl),
+	       &dlp_cmd->params, sizeof(struct dlp_command_params));
+
+	/* Send the TX HSI msg */
+	ret = hsi_async(tx_msg->cl, tx_msg);
+	if (ret) {
+		pr_err(DRVNAME ": TX xfer failed ! (cmd:0x%X, ret:%d)\n",
+			dlp_cmd->params.id, ret);
+
+		/* Free the TX msg */
+		dlp_pdu_free(tx_msg, tx_msg->channel);
+
+		/* Delete the command */
+		kfree(dlp_cmd);
+	} else {
+		/* Dump the TX command */
+		if (EDLP_CTRL_TX_DATA_REPORT)
+			pr_debug(DRVNAME ": CTRL_TX (0x%X)\n",
+					*((u32 *)&dlp_cmd->params));
+	}
+
+	return 0;
+}
+
 /**
  * Synchronous TX message callback
  *
@@ -321,16 +429,16 @@ static void dlp_ctrl_complete_rx(struct hsi_msg *msg)
 {
 	struct dlp_channel *ch_ctx;
 	struct dlp_ctrl_context *ctrl_ctx = DLP_CTRL_CTX;
-	struct dlp_command_params params;
-	struct dlp_command *dlp_cmd;
-	struct hsi_msg *tx_msg = NULL;
-	int hsi_channel, ret, response, msg_complete;
+	struct dlp_command_params params, tx_params;
+	unsigned long flags;
+	int hsi_channel, elp_channel, ret, response, msg_complete, state;
 
 	/* Copy the reponse */
 	memcpy(&params,
 	       sg_virt(msg->sgt.sgl), sizeof(struct dlp_command_params));
 
 	response = -1;
+	memcpy(&tx_params, &params, sizeof(struct dlp_command_params));
 	msg_complete = (msg->status == HSI_STATUS_COMPLETED);
 
 	/* Dump the RX command */
@@ -343,52 +451,69 @@ static void dlp_ctrl_complete_rx(struct hsi_msg *msg)
 		goto push_rx;
 	}
 
-	ch_ctx = DLP_CHANNEL_CTX(hsi_channel);
-
+	elp_channel = dlp_drv.channels_hsi[hsi_channel].edlp_channel;
+	ch_ctx = DLP_CHANNEL_CTX(elp_channel);
 	switch (params.id) {
 	case DLP_CMD_NOP:
 		break;
 
 	case DLP_CMD_CREDITS:
-		if (msg_complete) {
-			unsigned long flags;
+		if (!msg_complete)
+			break;
 
-			/* Increase the CREDITS counter */
-			spin_lock_irqsave(&ch_ctx->lock, flags);
-			ch_ctx->credits += params.data3;
-			ret = ch_ctx->credits;
-			spin_unlock_irqrestore(&ch_ctx->lock, flags);
+		/* Increase the CREDITS counter */
+		spin_lock_irqsave(&ch_ctx->lock, flags);
+		ch_ctx->credits += params.data3;
+		ret = ch_ctx->credits;
+		spin_unlock_irqrestore(&ch_ctx->lock, flags);
 
-			/* Credits available ==> Notify the channel */
-			if (ch_ctx->credits_available_cb)
-				ch_ctx->credits_available_cb(ch_ctx);
+		/* Credits available ==> Notify the channel */
+		if (ch_ctx->credits_available_cb)
+			ch_ctx->credits_available_cb(ch_ctx);
 
-			response = DLP_CMD_ACK;
-		}
+		/* CREDITS => ACK */
+		response = DLP_CMD_ACK;
+
+		/* Set the response params */
+		tx_params.data1 = params.data3;
+		tx_params.data2 = 0;
+		tx_params.data3 = 0;
 		break;
 
 	case DLP_CMD_OPEN_CONN:
-		if (msg_complete) {
-			ret = ((params.data2 << 8) | params.data1);
-			response = DLP_CMD_ACK;
-			pr_debug(DRVNAME ": ch%d open_conn received (size: %d)\n",
-					params.channel, ret);
+		if (!msg_complete)
+			break;
 
-			/* Check the requested PDU size */
-			if (ch_ctx->rx.pdu_size != ret) {
-				pr_err(DRVNAME ": Unexpected PDU size: %d => "
-						"Expected: %d (ch: %d)\n",
-						ret,
-						ch_ctx->rx.pdu_size,
-						ch_ctx->hsi_channel);
+		/* Ready ? if not, just save the OPEN_CONN request params */
+		state = dlp_ctrl_get_channel_state(hsi_channel);
+		if (state == DLP_CH_STATE_CLOSED) {
+			struct dlp_hsi_channel *hsi_ch;
 
-				response = DLP_CMD_NACK;
-			}
+			hsi_ch = &dlp_drv.channels_hsi[hsi_channel];
+			memcpy(&hsi_ch->open_conn, &params, sizeof(params));
+			response = -1;
+
+			pr_debug(DRVNAME ": ch%d open_conn received (postponed)\n",
+					params.channel);
+			goto push_rx;
 		}
+
+		pr_debug(DRVNAME ": ch%d open_conn received (size: %d)\n",
+					params.channel,
+					(params.data2 << 8) | params.data1);
+
+		/* Check the PDU size */
+		response = dlp_ctrl_check_pdu_size(ch_ctx, &params, &tx_params);
 		break;
 
 	case DLP_CMD_CLOSE_CONN:
+		/* CLOSE_CONN => ACK */
 		response = DLP_CMD_ACK;
+
+		/* Set the response params */
+		tx_params.data1 = params.data3;
+		tx_params.data2 = 0;
+		tx_params.data3 = CMD_ID(params.data3, params.id);
 		pr_debug(DRVNAME ": ch%d close_conn received\n",
 				params.channel);
 		break;
@@ -409,52 +534,7 @@ static void dlp_ctrl_complete_rx(struct hsi_msg *msg)
 	if (response == -1)
 		goto push_rx;
 
-	/* Set the response cmd_id */
-	params.data3 = CMD_ID(params.data3, params.id);
-
-	/* Allocate the eDLP response */
-	dlp_cmd = dlp_ctrl_cmd_alloc(ch_ctx,
-				     response,
-				     params.data1,
-				     params.data2, params.data3);
-	if (!dlp_cmd) {
-		pr_err(DRVNAME ": Out of memory (dlp_cmd: 0x%X)\n", response);
-		goto push_rx;
-	}
-
-	/* Allocate a new TX msg */
-	tx_msg = dlp_pdu_alloc(DLP_CHANNEL_CTRL,
-			       HSI_MSG_WRITE,
-			       DLP_CTRL_TX_PDU_SIZE,
-			       1,
-			       dlp_cmd,
-			       dlp_ctrl_complete_tx_async,
-			       dlp_ctrl_msg_destruct);
-
-	if (!tx_msg) {
-		pr_err(DRVNAME ": TX alloc failed\n");
-
-		/* Delete the command */
-		kfree(dlp_cmd);
-		goto push_rx;
-	}
-
-	/* Copy the command data */
-	memcpy(sg_virt(tx_msg->sgt.sgl),
-	       &dlp_cmd->params, sizeof(struct dlp_command_params));
-
-	/* Send the TX HSI msg */
-	ret = hsi_async(tx_msg->cl, tx_msg);
-	if (ret) {
-		pr_err(DRVNAME ": TX xfer failed ! (cmd:0x%X, ret:%d)\n",
-			dlp_cmd->params.id, ret);
-
-		/* Free the TX msg */
-		dlp_pdu_free(tx_msg, tx_msg->channel);
-
-		/* Delete the command */
-		kfree(dlp_cmd);
-	}
+	dlp_ctrl_send_response(ch_ctx, &tx_params, response);
 
 push_rx:
 	/* Push the RX msg again for futur response */
@@ -538,6 +618,11 @@ static int dlp_ctrl_cmd_send(struct dlp_channel *ch_ctx,
 		goto free_tx;
 	}
 
+	/* Dump the TX command */
+	if (EDLP_CTRL_TX_DATA_REPORT)
+		pr_debug(DRVNAME ": CTRL_TX (0x%X)\n",
+				*((u32 *)&dlp_cmd->params));
+
 	/* Wait for TX msg to be sent */
 	ret = wait_for_completion_timeout(&ch_ctx->tx.cmd_xfer_done,
 					  msecs_to_jiffies(DLP_CMD_TX_TIMOUT));
@@ -555,18 +640,13 @@ static int dlp_ctrl_cmd_send(struct dlp_channel *ch_ctx,
 				dlp_cmd->params.id);
 
 		ret = -EIO;
-		goto out;
+		goto free_cmd;
 	}
-
-	/* Dump the TX command */
-	if (EDLP_CTRL_TX_DATA_REPORT)
-		pr_debug(DRVNAME ": CTRL_TX (0x%X)\n",
-				*((u32 *)&dlp_cmd->params));
 
 	/* TX OK */
    /* 1. Set the intermidiate channel state */
 	if (interm_state != DLP_CH_STATE_NONE)
-		dlp_ctrl_set_channel_state(ch_ctx, interm_state);
+		dlp_ctrl_set_channel_state(ch_ctx->hsi_channel, interm_state);
 
 	/* Wait for response ? */
 	if (response_id == DLP_CMD_NONE) {
@@ -582,15 +662,26 @@ static int dlp_ctrl_cmd_send(struct dlp_channel *ch_ctx,
 			dlp_cmd->params.channel, dlp_cmd->params.id);
 
 		ret = -EIO;
-		goto out;
+		goto free_cmd;
 	}
 
 	/* Set the expected response params */
 	expected_resp.id = response_id;
 	expected_resp.channel = ch_ctx->hsi_channel;
-	expected_resp.data1 = param1;
-	expected_resp.data2 = param2;
-	expected_resp.data3 = CMD_ID(param3, id);
+
+	switch (id) {
+	case DLP_CMD_CLOSE_CONN:
+		expected_resp.data1 = param3;
+		expected_resp.data2 = param2;
+		expected_resp.data3 = CMD_ID(param1, id);
+		break;
+
+	case DLP_CMD_OPEN_CONN:
+	default:
+		expected_resp.data1 = param1;
+		expected_resp.data2 = param2;
+		expected_resp.data3 = CMD_ID(param3, id);
+	}
 
 	/* Check the received response params */
 	ret = 0;
@@ -608,7 +699,10 @@ static int dlp_ctrl_cmd_send(struct dlp_channel *ch_ctx,
 no_resp:
 	/* Response received & OK => set the new channel state */
 	if (final_state != DLP_CH_STATE_NONE)
-		dlp_ctrl_set_channel_state(ch_ctx, final_state);
+		dlp_ctrl_set_channel_state(ch_ctx->hsi_channel, final_state);
+
+	/* Free the DLP command */
+	dlp_ctrl_cmd_free(dlp_cmd);
 
 	/* Restore RX callback */
 	dlp_restore_rx_callbacks(&ctrl_ctx->ehandler);
@@ -712,12 +806,15 @@ static int dlp_ctrl_push_rx_pdus(struct dlp_channel *ch_ctx)
 /*
 * @brief
 *
-* @param index
+* @param ch_id
+* @param hsi_channel
 * @param dev
 *
 * @return
 */
-struct dlp_channel *dlp_ctrl_ctx_create(unsigned int index, struct device *dev)
+struct dlp_channel *dlp_ctrl_ctx_create(unsigned int ch_id,
+		unsigned int hsi_channel,
+		struct device *dev)
 {
 	struct hsi_client *client = to_hsi_client(dev);
 	struct dlp_channel *ch_ctx;
@@ -748,7 +845,8 @@ struct dlp_channel *dlp_ctrl_ctx_create(unsigned int index, struct device *dev)
 
 	/* Save params */
 	ch_ctx->ch_data = ctrl_ctx;
-	ch_ctx->hsi_channel = index;
+	ch_ctx->ch_id = ch_id;
+	ch_ctx->hsi_channel = hsi_channel;
 	ch_ctx->rx.config = client->rx_cfg;
 	ch_ctx->tx.config = client->tx_cfg;
 
@@ -817,12 +915,28 @@ int dlp_ctrl_open_channel(struct dlp_channel *ch_ctx)
 	unsigned char param1 = PARAM1(ch_ctx->tx.pdu_size);
 	unsigned char param2 = PARAM2(ch_ctx->tx.pdu_size);
 
+	/* Check if we have any waiting OPEN_CONN */
+	ret = dlp_ctrl_send_ack_nack(ch_ctx);
+	if (ret)
+		goto out;
+
 	/* Send the OPEN_CONN command */
 	ret = dlp_ctrl_cmd_send(ch_ctx,
 				DLP_CMD_OPEN_CONN, DLP_CMD_ACK,
 				DLP_CH_STATE_OPENING, DLP_CH_STATE_OPENED,
 				param1, param2, 0);
 
+	/* Channel correctly openned ? */
+	if (ret == 0) {
+		/* Reset the seq_num */
+		ch_ctx->rx.seq_num = 0 ;
+		ch_ctx->tx.seq_num = 0 ;
+
+		/* Reset old OPEN_CONN params */
+		dlp_drv.channels_hsi[ch_ctx->hsi_channel].open_conn = 0;
+	}
+
+out:
 	return ret;
 }
 
@@ -847,7 +961,7 @@ int dlp_ctrl_close_channel(struct dlp_channel *ch_ctx)
 	spin_unlock_irqrestore(&ch_ctx->lock, flags);
 
 	/* Check if the channel was correctly opened */
-	state = dlp_ctrl_get_channel_state(ch_ctx);
+	state = dlp_ctrl_get_channel_state(ch_ctx->hsi_channel);
 	if (state == DLP_CH_STATE_OPENED) {
 		/* Send the command */
 		ret = dlp_ctrl_cmd_send(ch_ctx,
@@ -888,20 +1002,63 @@ int dlp_ctrl_send_nop(struct dlp_channel *ch_ctx)
 }
 
 /*
-* @brief Get the current channel state
+* @brief Reply to any waiting OPEN_CONN command
 *
 * @param ch_ctx : The channel context to consider
 *
+* @return 0 when OK, error value otherwise
+*/
+int dlp_ctrl_send_ack_nack(struct dlp_channel *ch_ctx)
+{
+	int ret = 0;
+	struct dlp_hsi_channel *hsi_ch;
+
+	/* Get any saved OPEN_CONN params */
+	hsi_ch = &dlp_drv.channels_hsi[ch_ctx->hsi_channel];
+
+	/* Check if we have any waiting OPEN_CONN */
+	if (hsi_ch->open_conn) {
+		int response;
+		struct dlp_command_params *params;
+		struct dlp_command_params tx_params;
+
+		/* Check the PDU size */
+		params = (struct dlp_command_params *)&hsi_ch->open_conn;
+		response = dlp_ctrl_check_pdu_size(ch_ctx, params, &tx_params);
+
+		/* Send the response (ACK/NACK) */
+		ret = dlp_ctrl_send_response(ch_ctx, &tx_params, response);
+		if (ret)
+			pr_err(DRVNAME ": ch%d will not opened\n",
+					ch_ctx->hsi_channel);
+		else {
+			pr_debug(DRVNAME ": ch%d open_conn response (0x%X) sent\n",
+						params->channel, response);
+
+			/* Respnse set => clear the saved command */
+			hsi_ch->open_conn = 0 ;
+		}
+
+	}
+
+	return ret;
+}
+
+/*
+* @brief Get the current channel state
+*
+* @param hsi_channel : The HSI channel ID to consider
+*
 * @return the current channel state
 */
-inline unsigned char dlp_ctrl_get_channel_state(struct dlp_channel *ch_ctx)
+inline unsigned char dlp_ctrl_get_channel_state(unsigned int hsi_channel)
 {
 	unsigned long flags;
 	unsigned char state;
 
-	spin_lock_irqsave(&ch_ctx->lock, flags);
-	state = ch_ctx->state;
-	spin_unlock_irqrestore(&ch_ctx->lock, flags);
+	spin_lock_irqsave(&dlp_drv.lock, flags);
+	state = dlp_drv.channels_hsi[hsi_channel].state;
+	spin_unlock_irqrestore(&dlp_drv.lock, flags);
 
 	return state;
 }
@@ -909,18 +1066,18 @@ inline unsigned char dlp_ctrl_get_channel_state(struct dlp_channel *ch_ctx)
 /*
 * @brief Set the given channel state
 *
-* @param ch_ctx : The channel context to consider
+* @param hsi_channel : The HSI channel ID to consider
 * @param state : The new channel state to set
 *
 */
-inline void dlp_ctrl_set_channel_state(struct dlp_channel *ch_ctx,
+inline void dlp_ctrl_set_channel_state(unsigned int hsi_channel,
 				unsigned char state)
 {
 	unsigned long flags;
 
-	spin_lock_irqsave(&ch_ctx->lock, flags);
-	ch_ctx->state = state;
-	spin_unlock_irqrestore(&ch_ctx->lock, flags);
+	spin_lock_irqsave(&dlp_drv.lock, flags);
+	dlp_drv.channels_hsi[hsi_channel].state = state;
+	spin_unlock_irqrestore(&dlp_drv.lock, flags);
 }
 
 /****************************************************************************

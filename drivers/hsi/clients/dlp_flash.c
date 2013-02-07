@@ -311,6 +311,9 @@ static int dlp_flash_dev_open(struct inode *inode, struct file *filp)
 		goto out;
 	}
 
+	/* Update/Set the eDLP channel id */
+	dlp_drv.channels_hsi[ch_ctx->hsi_channel].edlp_channel = ch_ctx->ch_id;
+
 	/* Save private data for futur use */
 	filp->private_data = ch_ctx;
 
@@ -514,12 +517,15 @@ static const struct file_operations dlp_flash_ops = {
 /*
 * @brief
 *
-* @param index
+* @param ch_id
+* @param hsi_channel
 * @param dev
 *
 * @return
 */
-struct dlp_channel *dlp_flash_ctx_create(unsigned int index, struct device *dev)
+struct dlp_channel *dlp_flash_ctx_create(unsigned int ch_id,
+		unsigned int hsi_channel,
+		struct device *dev)
 {
 	int ret;
 	struct hsi_client *client = to_hsi_client(dev);
@@ -542,7 +548,8 @@ struct dlp_channel *dlp_flash_ctx_create(unsigned int index, struct device *dev)
 
 	/* Save params */
 	ch_ctx->ch_data = flash_ctx;
-	ch_ctx->hsi_channel = DLP_CHANNEL_CTRL; /* Same as ctrl channel (0) */
+	ch_ctx->ch_id = ch_id;
+	ch_ctx->hsi_channel = hsi_channel;
 	ch_ctx->rx.config = client->rx_cfg;
 	ch_ctx->tx.config = client->tx_cfg;
 

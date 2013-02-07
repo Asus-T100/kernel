@@ -35,6 +35,7 @@
 #include "dlp_main.h"
 
 #define TRACE_DEVNAME	CONFIG_HSI_TRACE_DEV_NAME
+#define HSI_TRACE_TEMP_BUFFERS	4
 
 /*
  * struct trace_driver - HSI Modem trace driver protocol
@@ -69,7 +70,19 @@ struct dlp_trace_ctx {
 	int rx_msgs_count;
 
 	struct dlp_channel *ch_ctx;
+
+#ifdef DEBUG
+	unsigned long dropped_data_size;
+#endif
+
 };
+
+
+#ifdef DEBUG
+/* Used to activate the dump of dropped packets */
+static unsigned int log_dropped_data;
+module_param_named(log_dropped_data, log_dropped_data, int, S_IRUGO | S_IWUSR);
+#endif
 
 
 /*
@@ -170,20 +183,41 @@ static void dlp_trace_complete_rx(struct hsi_msg *msg)
 {
 	struct dlp_channel *ch_ctx = msg->context;
 	struct dlp_trace_ctx *trace_ctx = ch_ctx->ch_data;
+	u32 *header = sg_virt(msg->sgt.sgl);
 	unsigned long flags;
 	int ret;
 
+	/* Check the PDU status & signature */
 	if (msg->status != HSI_STATUS_COMPLETED) {
-		pr_err(DRVNAME": Invalid msg status: %d (ignored)\n",
+		pr_err(DRVNAME": Invalid PDU status: %d (ignored)\n",
 				msg->status);
 		goto push_again;
+	} else if (!DLP_HEADER_VALID_SIGNATURE(header[0])) {
+		pr_err("\n" DRVNAME ": Invalid PDU signature 0x%x\n",
+				header[0]);
+
+		/* Dump the first 64 bytes */
+		print_hex_dump(KERN_DEBUG,
+				DRVNAME"_LOG", DUMP_PREFIX_OFFSET,
+				16, 4,
+				header, 64, 1);
+
+		goto push_again;
 	}
+
 
 	/* Still have space in the rx queue ? */
 	spin_lock_irqsave(&ch_ctx->lock, flags);
 	if (trace_ctx->rx_msgs_count >= DLP_HSI_RX_WAIT_FIFO) {
 		/* Just drop the msg */
 		spin_unlock_irqrestore(&ch_ctx->lock, flags);
+
+#ifdef DEBUG
+		trace_ctx->dropped_data_size += msg->actual_len;
+		if (log_dropped_data)
+			pr_debug(DRVNAME ": Packet dropped (dropped data size: %lu Bytes)\n",
+					trace_ctx->dropped_data_size);
+#endif
 		goto push_again;
 	}
 
@@ -196,6 +230,7 @@ static void dlp_trace_complete_rx(struct hsi_msg *msg)
 
 	/* Wakeup any waiting clients for read/poll */
 	wake_up_interruptible(&trace_ctx->read_wq);
+	return;
 
 push_again:
 	/* Push again the RX msg */
@@ -215,18 +250,21 @@ push_again:
  */
 static int dlp_trace_dev_open(struct inode *inode, struct file *filp)
 {
-	int ret = 0, state, opened;
+	int ret = 0, state, opened, count;
 	unsigned long flags;
 	struct dlp_channel *ch_ctx = DLP_CHANNEL_CTX(DLP_CHANNEL_TRACE);
 	struct dlp_trace_ctx *trace_ctx = ch_ctx->ch_data;
 
 	/* Check if the the channel is not already opened by the NET IF */
-	state = dlp_ctrl_get_channel_state(ch_ctx);
+	state = dlp_ctrl_get_channel_state(ch_ctx->hsi_channel);
 	if (state != DLP_CH_STATE_CLOSED) {
 		pr_err(DRVNAME": Invalid channel state (%d)\n", state);
 		ret = -EBUSY;
 		goto out;
 	}
+
+	/* Update/Set the eDLP channel id */
+	dlp_drv.channels_hsi[ch_ctx->hsi_channel].edlp_channel = ch_ctx->ch_id;
 
 	/* Only ONE instance of this device can be opened */
 	spin_lock_irqsave(&ch_ctx->lock, flags);
@@ -248,8 +286,17 @@ static int dlp_trace_dev_open(struct inode *inode, struct file *filp)
 	/* Disable the flow control */
 	ch_ctx->use_flow_ctrl = 1;
 
+	/* Reply to any waiting OPEN_CONN command */
+	ret = dlp_ctrl_send_ack_nack(ch_ctx);
+	if (ret) {
+		pr_err(DRVNAME ": ch%d open failed !\n", ch_ctx->ch_id);
+		ret = -EIO;
+		goto out;
+	}
+
 	/* Push RX PDUs */
-	for (ret = DLP_HSI_RX_WAIT_FIFO; ret; ret--)
+	count = DLP_HSI_RX_WAIT_FIFO + HSI_TRACE_TEMP_BUFFERS;
+	for (ret = count; ret; ret--)
 		dlp_trace_push_rx_pdu(ch_ctx);
 
 out:
@@ -281,7 +328,10 @@ static ssize_t dlp_trace_dev_read(struct file *filp,
 	struct dlp_channel *ch_ctx = filp->private_data;
 	struct dlp_trace_ctx *trace_ctx = ch_ctx->ch_data;
 	struct hsi_msg *msg;
-	int ret, to_copy, copied, available;
+	int ret, to_copy, copied, available, more_packets;
+	unsigned int data_size, offset;
+	unsigned char *data_addr, *start_addr;
+	unsigned int *ptr;
 	unsigned long flags;
 
 	/* Check the user buffer size */
@@ -315,20 +365,39 @@ static ssize_t dlp_trace_dev_read(struct file *filp,
 	available = count;
 
 	/* Parse RX msgs queue */
-	while ((msg = dlp_trace_peek_msg(ch_ctx))) {
-		/* Calculate the data size */
-		to_copy = MIN(msg->actual_len, available);
-
-		/* Copy data to the user buffer */
-		ret = copy_to_user(data+copied, sg_virt(msg->sgt.sgl), to_copy);
-		if (ret) {
-			/* Stop copying */
-			pr_err(DRVNAME": Uanble to copy data to the user buffer\n");
+	while (available) {
+		msg = dlp_trace_peek_msg(ch_ctx);
+		if (!msg)
 			break;
-		}
 
-		copied += to_copy;
-		available -= to_copy;
+		ptr = sg_virt(msg->sgt.sgl);
+		start_addr = (unsigned char *)ptr;
+
+		do {
+			/* Get the start offset */
+			ptr++;
+			offset = (*ptr);
+
+			/* Get the size & address */
+			ptr++;
+			more_packets = (*ptr) & DLP_HDR_MORE_DESC;
+			data_size = DLP_HDR_DATA_SIZE((*ptr)) - DLP_HDR_SPACE_AP;
+			data_addr = start_addr + offset + DLP_HDR_SPACE_AP;
+
+			/* Calculate the data size */
+			to_copy = MIN(data_size, available);
+
+			/* Copy data to the user buffer */
+			ret = copy_to_user(data+copied, data_addr, to_copy);
+			if (ret) {
+				/* Stop copying */
+				pr_err(DRVNAME": Unable to copy data to the user buffer\n");
+				break;
+			}
+
+			copied += to_copy;
+			available -= to_copy;
+		} while ((more_packets) && (available));
 
 		/* Read done => Queue the RX msg again */
 		ret = hsi_async(msg->cl, msg);
@@ -402,12 +471,15 @@ static const struct file_operations dlp_trace_ops = {
 /*
 * @brief
 *
-* @param index
+* @param ch_id
+* @param hsi_channel
 * @param dev
 *
 * @return
 */
-struct dlp_channel *dlp_trace_ctx_create(unsigned int index, struct device *dev)
+struct dlp_channel *dlp_trace_ctx_create(unsigned int ch_id,
+		unsigned int hsi_channel,
+		struct device *dev)
 {
 	int ret;
 	struct hsi_client *client = to_hsi_client(dev);
@@ -417,7 +489,7 @@ struct dlp_channel *dlp_trace_ctx_create(unsigned int index, struct device *dev)
 	/* Allocate channel struct data */
 	ch_ctx = kzalloc(sizeof(struct dlp_channel), GFP_KERNEL);
 	if (!ch_ctx) {
-		pr_err(DRVNAME": Out of memory (ch%d)\n", index);
+		pr_err(DRVNAME": Out of memory (ch%d)\n", ch_id);
 		return NULL;
 	}
 
@@ -430,13 +502,13 @@ struct dlp_channel *dlp_trace_ctx_create(unsigned int index, struct device *dev)
 
 	/* Save params */
 	ch_ctx->ch_data = trace_ctx;
-	ch_ctx->hsi_channel = DLP_CHANNEL_NET3; /* Same as NET channel3 (4) */
+	ch_ctx->ch_id = ch_id;
+	ch_ctx->hsi_channel = hsi_channel;
 	ch_ctx->rx.config = client->rx_cfg;
 	ch_ctx->tx.config = client->tx_cfg;
 
 	spin_lock_init(&ch_ctx->lock);
 	init_waitqueue_head(&trace_ctx->read_wq);
-	trace_ctx->ch_ctx = ch_ctx;
 	INIT_LIST_HEAD(&trace_ctx->rx_msgs);
 
 	/* */

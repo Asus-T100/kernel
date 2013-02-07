@@ -576,8 +576,8 @@ static void dlp_tty_port_shutdown(struct tty_port *port)
 	/* Close the HSI channel */
 	ret = dlp_ctrl_close_channel(ch_ctx);
 	if (ret)
-		pr_err(DRVNAME ": %s (close_channel failed :%d)\n",
-				__func__, ret);
+		pr_err(DRVNAME ": %s (ch%d close failed (%d))\n",
+				__func__, ch_ctx->ch_id, ret);
 
 	/* Flush the ACWAKE works */
 	flush_work_sync(&ch_ctx->start_tx_w);
@@ -627,6 +627,9 @@ static int dlp_tty_open(struct tty_struct *tty, struct file *filp)
 		/* Push RX pdus for ALL channels */
 		dlp_push_rx_pdus();
 	}
+
+	/* Update/Set the eDLP channel id */
+	dlp_drv.channels_hsi[ch_ctx->hsi_channel].edlp_channel = ch_ctx->ch_id;
 
 	/* Open the TTY port (calls port->activate on first opening) */
 	tty_ctx = ch_ctx->ch_data;
@@ -776,8 +779,12 @@ int dlp_tty_do_write(struct dlp_xfer_ctx *xfer_ctx, unsigned char *buf,
 	read_lock_irqsave(&xfer_ctx->lock, flags);
 	pdu = dlp_fifo_tail(&xfer_ctx->wait_pdus);
 	if (pdu) {
-		offset = pdu->actual_len;
-		avail = xfer_ctx->payload_len - offset;
+		if (pdu->status != HSI_STATUS_PENDING) {
+			offset = pdu->actual_len;
+			avail = xfer_ctx->payload_len - offset;
+			if (avail)
+				pdu->status = HSI_STATUS_PENDING;
+		}
 	}
 	read_unlock_irqrestore(&xfer_ctx->lock, flags);
 
@@ -791,13 +798,14 @@ int dlp_tty_do_write(struct dlp_xfer_ctx *xfer_ctx, unsigned char *buf,
 			read_unlock_irqrestore(&xfer_ctx->lock, flags);
 
 			dlp_fifo_wait_push(xfer_ctx, pdu);
+
+			pdu->status = HSI_STATUS_PENDING;
 		}
 	}
 
 	if (!pdu)
 		goto out;
 
-	pdu->status = HSI_STATUS_PENDING;
 	/* Do a start TX on new frames only and after having marked
 	 * the current frame as pending, e.g. don't touch ! */
 	if (offset == 0) {
@@ -816,13 +824,13 @@ int dlp_tty_do_write(struct dlp_xfer_ctx *xfer_ctx, unsigned char *buf,
 
 	if (pdu->status != HSI_STATUS_ERROR) {	/* still valid ? */
 		pdu->actual_len = updated_actual_len;
-		pdu->status = HSI_STATUS_COMPLETED;
 
 		write_lock_irqsave(&xfer_ctx->lock, flags);
 		xfer_ctx->buffered += copied;
 		xfer_ctx->room -= copied;
 		write_unlock_irqrestore(&xfer_ctx->lock, flags);
 
+		pdu->status = HSI_STATUS_COMPLETED;
 		if (dlp_ctx_get_state(xfer_ctx) != IDLE)
 			dlp_pop_wait_push_ctrl(xfer_ctx);
 	} else {
@@ -1038,7 +1046,9 @@ static const struct tty_port_operations dlp_port_tty_ops = {
  *
  ***************************************************************************/
 
-struct dlp_channel *dlp_tty_ctx_create(unsigned int index, struct device *dev)
+struct dlp_channel *dlp_tty_ctx_create(unsigned int ch_id,
+		unsigned int hsi_channel,
+		struct device *dev)
 {
 	struct hsi_client *client = to_hsi_client(dev);
 	struct tty_driver *new_drv;
@@ -1087,7 +1097,8 @@ struct dlp_channel *dlp_tty_ctx_create(unsigned int index, struct device *dev)
 	}
 
 	ch_ctx->ch_data = tty_ctx;
-	ch_ctx->hsi_channel = index;
+	ch_ctx->ch_id = ch_id;
+	ch_ctx->hsi_channel = hsi_channel;
 	/* Temporay test waiting for the modem FW */
 	if (dlp_drv.flow_ctrl)
 		ch_ctx->use_flow_ctrl = 1;
@@ -1139,7 +1150,7 @@ struct dlp_channel *dlp_tty_ctx_create(unsigned int index, struct device *dev)
 	ret = dlp_allocate_pdus_pool(ch_ctx, &ch_ctx->tx);
 	if (ret) {
 		pr_err(DRVNAME ": Cant allocate TX FIFO pdus for ch%d\n",
-				index);
+				ch_id);
 		goto cleanup;
 	}
 
@@ -1147,7 +1158,7 @@ struct dlp_channel *dlp_tty_ctx_create(unsigned int index, struct device *dev)
 	ret = dlp_allocate_pdus_pool(ch_ctx, &ch_ctx->rx);
 	if (ret) {
 		pr_err(DRVNAME ": Cant allocate RX FIFO pdus for ch%d\n",
-				index);
+				ch_id);
 		goto cleanup;
 	}
 
@@ -1165,13 +1176,13 @@ free_ctx:
 free_ch:
 	kfree(ch_ctx);
 
-	pr_err(DRVNAME": Failed to create context for ch%d", index);
+	pr_err(DRVNAME": Failed to create context for ch%d", ch_id);
 	return NULL;
 
 cleanup:
 	dlp_tty_ctx_delete(ch_ctx);
 
-	pr_err(DRVNAME": Failed to create context for ch%d", index);
+	pr_err(DRVNAME": Failed to create context for ch%d", ch_id);
 	return NULL;
 }
 
