@@ -700,8 +700,8 @@ static void atomisp_flush_video_pipe(struct atomisp_device *isp,
 				atomic_read(&isp->sequence) << 1;
 			pipe->capq.bufs[i]->state = VIDEOBUF_ERROR;
 			wake_up(&pipe->capq.bufs[i]->done);
-			dev_dbg(isp->dev, "release buffer from pipe:%d\n",
-					pipe->pipe_type);
+			dev_dbg(isp->dev, "release buffers on device %s\n",
+				pipe->vdev.name);
 			if (pipe->capq.bufs[i]->state == VIDEOBUF_QUEUED)
 				list_del_init(&pipe->capq.bufs[i]->queue);
 		}
@@ -979,14 +979,14 @@ void atomisp_wdt_work(struct work_struct *work)
 	default:
 		sh_css_dump_sp_sw_debug_info();
 		sh_css_dump_debug_info(debug_context);
-		dev_err(isp->dev, "%s, pipe[%d] buffers in css: %d\n", __func__,
-			isp->isp_subdev.video_out_capture.pipe_type,
+		dev_err(isp->dev, "%s, vdev %s buffers in css: %d\n", __func__,
+			isp->isp_subdev.video_out_capture.vdev.name,
 			isp->isp_subdev.video_out_capture.buffers_in_css);
-		dev_err(isp->dev, "%s, pipe[%d] buffers in css: %d\n", __func__,
-			isp->isp_subdev.video_out_vf.pipe_type,
+		dev_err(isp->dev, "%s, vdev %s buffers in css: %d\n", __func__,
+			isp->isp_subdev.video_out_vf.vdev.name,
 			isp->isp_subdev.video_out_vf.buffers_in_css);
-		dev_err(isp->dev, "%s, pipe[%d] buffers in css: %d\n", __func__,
-			isp->isp_subdev.video_out_preview.pipe_type,
+		dev_err(isp->dev, "%s, vdev %s buffers in css: %d\n", __func__,
+			isp->isp_subdev.video_out_preview.vdev.name,
 			isp->isp_subdev.video_out_preview.buffers_in_css);
 		dev_err(isp->dev, "%s, s3a buffers in css preview pipe: %d\n",
 			__func__,
@@ -3579,23 +3579,8 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	struct v4l2_mbus_framefmt isp_sink_fmt;
 	struct v4l2_mbus_framefmt isp_source_fmt;
 	struct v4l2_rect isp_sink_crop;
-	uint16_t source_pad;
+	uint16_t source_pad = atomisp_subdev_source_pad(vdev);
 	int ret;
-
-	switch (pipe->pipe_type) {
-	case ATOMISP_PIPE_CAPTURE:
-		source_pad = ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE;
-		break;
-	case ATOMISP_PIPE_VIEWFINDER:
-		source_pad = ATOMISP_SUBDEV_PAD_SOURCE_VF;
-		break;
-	case ATOMISP_PIPE_PREVIEW:
-		source_pad = ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW;
-		break;
-	default:
-		dev_err(isp->dev, "can't get source pad");
-		return -EINVAL;
-	}
 
 	dev_dbg(isp->dev, "setting resolution %ux%u on pad %u\n",
 		f->fmt.pix.width, f->fmt.pix.height, source_pad);
@@ -3833,7 +3818,7 @@ done:
 	/*
 	 * If in video 480P case, no GFX throttle
 	 */
-	if (pipe->pipe_type == ATOMISP_PIPE_CAPTURE) {
+	if (source_pad == ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE) {
 		if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO &&
 		    f->fmt.pix.width == 720 && f->fmt.pix.height == 480)
 			isp->need_gfx_throttle = false;

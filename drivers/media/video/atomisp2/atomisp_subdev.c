@@ -123,6 +123,11 @@ bool atomisp_subdev_format_conversion(struct atomisp_device *isp,
 		&& !atomisp_is_mbuscode_raw(src->code);
 }
 
+uint16_t atomisp_subdev_source_pad(struct video_device *vdev)
+{
+	return vdev->entity.links[0].source->index;
+}
+
 /*
  * V4L2 subdev operations
  */
@@ -845,22 +850,18 @@ static int isp_subdev_init_entities(struct atomisp_sub_device *isp_subdev)
 
 	isp_subdev->video_in.type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
 	isp_subdev->video_in.isp = isp_subdev->isp;
-	isp_subdev->video_in.pipe_type = ATOMISP_PIPE_FILEINPUT;
 	spin_lock_init(&isp_subdev->video_in.irq_lock);
 
 	isp_subdev->video_out_preview.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 	isp_subdev->video_out_preview.isp = isp_subdev->isp;
-	isp_subdev->video_out_preview.pipe_type = ATOMISP_PIPE_PREVIEW;
 	spin_lock_init(&isp_subdev->video_out_preview.irq_lock);
 
 	isp_subdev->video_out_vf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 	isp_subdev->video_out_vf.isp = isp_subdev->isp;
-	isp_subdev->video_out_vf.pipe_type = ATOMISP_PIPE_VIEWFINDER;
 	spin_lock_init(&isp_subdev->video_out_vf.irq_lock);
 
 	isp_subdev->video_out_capture.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 	isp_subdev->video_out_capture.isp = isp_subdev->isp;
-	isp_subdev->video_out_capture.pipe_type = ATOMISP_PIPE_CAPTURE;
 	spin_lock_init(&isp_subdev->video_out_capture.irq_lock);
 
 	ret = atomisp_video_init(&isp_subdev->video_in, "MEMORY");

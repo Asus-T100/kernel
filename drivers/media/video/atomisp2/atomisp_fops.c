@@ -182,6 +182,17 @@ int atomisp_q_dis_buffers_to_css(struct atomisp_device *isp,
 	return 0;
 }
 
+static int atomisp_get_css_buf_type(struct atomisp_device *isp,
+				    uint16_t source_pad)
+{
+	if (source_pad == ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE ||
+	    (source_pad == ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW &&
+	     isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO))
+		return SH_CSS_BUFFER_TYPE_OUTPUT_FRAME;
+	else
+		return SH_CSS_BUFFER_TYPE_VF_OUTPUT_FRAME;
+}
+
 /* queue all available buffers to css */
 int atomisp_qbuffers_to_css(struct atomisp_device *isp)
 {
@@ -221,19 +232,22 @@ int atomisp_qbuffers_to_css(struct atomisp_device *isp)
 	}
 
 	if (capture_pipe) {
-		buf_type = atomisp_get_css_buf_type(isp, capture_pipe);
+		buf_type = atomisp_get_css_buf_type(
+			isp, atomisp_subdev_source_pad(&capture_pipe->vdev));
 		atomisp_q_video_buffers_to_css(isp, capture_pipe, buf_type,
 					 css_capture_pipe_id);
 	}
 
 	if (vf_pipe) {
-		buf_type = atomisp_get_css_buf_type(isp, vf_pipe);
+		buf_type = atomisp_get_css_buf_type(
+			isp, atomisp_subdev_source_pad(&vf_pipe->vdev));
 		atomisp_q_video_buffers_to_css(isp, vf_pipe, buf_type,
 					 css_capture_pipe_id);
 	}
 
 	if (preview_pipe) {
-		buf_type = atomisp_get_css_buf_type(isp, preview_pipe);
+		buf_type = atomisp_get_css_buf_type(
+			isp, atomisp_subdev_source_pad(&preview_pipe->vdev));
 		atomisp_q_video_buffers_to_css(isp, preview_pipe, buf_type,
 					 css_preview_pipe_id);
 	}
@@ -458,8 +472,7 @@ static int atomisp_open(struct file *file)
 	my_env.sh_env.free = atomisp_kernel_free;
 	/* FIXME: my_env.sh_env.flush needs to be implemented */
 
-	v4l2_dbg(2, dbg_level, &atomisp_dev, ">%s [%d]\n",
-				__func__, pipe->pipe_type);
+	dev_dbg(isp->dev, "open device %s\n", vdev->name);
 
 	mutex_lock(&isp->mutex);
 
@@ -558,8 +571,7 @@ static int atomisp_release(struct file *file)
 	struct v4l2_requestbuffers req;
 	int ret = 0;
 
-	v4l2_dbg(2, dbg_level, &atomisp_dev, ">%s [%d]\n",
-				__func__, pipe->pipe_type);
+	dev_dbg(isp->dev, "release device %s\n", vdev->name);
 
 	req.count = 0;
 	if (isp == NULL)
@@ -802,8 +814,9 @@ static int atomisp_mmap(struct file *file, struct vm_area_struct *vma)
 	new_size = pipe->pix.width * pipe->pix.height * 2;
 
 	/* mmap for ISP offline raw data */
-	if ((pipe->pipe_type == ATOMISP_PIPE_CAPTURE) &&
-	    (vma->vm_pgoff == (ISP_PARAM_MMAP_OFFSET >> PAGE_SHIFT))) {
+	if (atomisp_subdev_source_pad(vdev)
+	    == ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE &&
+	    vma->vm_pgoff == (ISP_PARAM_MMAP_OFFSET >> PAGE_SHIFT)) {
 		if (isp->params.online_process != 0) {
 			ret = -EINVAL;
 			goto error;

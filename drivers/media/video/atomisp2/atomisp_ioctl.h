@@ -47,9 +47,6 @@ int atomisp_reqbufs(struct file *file, void *fh,
 
 enum sh_css_pipe_id atomisp_get_css_pipe_id(struct atomisp_device *isp);
 
-int atomisp_get_css_buf_type(struct atomisp_device *isp,
-			 struct atomisp_video_pipe *pipe);
-
 void atomisp_videobuf_free_buf(struct videobuf_buffer *vb);
 
 extern const struct v4l2_file_operations atomisp_file_fops;

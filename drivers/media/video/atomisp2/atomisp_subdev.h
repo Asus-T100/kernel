@@ -52,13 +52,6 @@ enum atomisp_subdev_input_entity {
 #define ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW	3
 #define ATOMISP_SUBDEV_PADS_NUM			4
 
-enum atomisp_pipe_type {
-	ATOMISP_PIPE_CAPTURE,
-	ATOMISP_PIPE_VIEWFINDER,
-	ATOMISP_PIPE_PREVIEW,
-	ATOMISP_PIPE_FILEINPUT
-};
-
 struct atomisp_in_fmt_conv {
 	enum v4l2_mbus_pixelcode code;
 	enum sh_css_input_format in_sh_fmt;
@@ -96,7 +89,6 @@ struct atomisp_video_pipe {
 	 * operations atomic. */
 	spinlock_t irq_lock;
 	unsigned int users;
-	enum atomisp_pipe_type pipe_type;
 
 	struct atomisp_device *isp;
 	struct v4l2_pix_format pix;
@@ -136,6 +128,7 @@ const struct atomisp_in_fmt_conv *atomisp_find_in_fmt_conv(
 	enum v4l2_mbus_pixelcode code);
 bool atomisp_subdev_format_conversion(struct atomisp_device *isp,
 				      unsigned int source_pad);
+uint16_t atomisp_subdev_source_pad(struct video_device *vdev);
 
 /* Get pointer to appropriate format */
 struct v4l2_mbus_framefmt
