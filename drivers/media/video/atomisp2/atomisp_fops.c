@@ -429,10 +429,14 @@ int atomisp_init_struct(struct atomisp_device *isp)
 	return 0;
 }
 
-static void *
-my_kernel_malloc(size_t bytes, bool zero_mem)
+static void *my_kernel_malloc(size_t bytes, bool zero_mem)
 {
-	return atomisp_kernel_malloc(bytes);
+	void *ptr = atomisp_kernel_malloc(bytes);
+
+	if (ptr && zero_mem)
+		memset(ptr, 0, bytes);
+
+	return ptr;
 }
 
 /*
