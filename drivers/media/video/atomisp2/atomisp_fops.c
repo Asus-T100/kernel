@@ -590,13 +590,6 @@ static int atomisp_release(struct file *file)
 		goto done;
 	}
 
-	/* in case image buf is not freed */
-	if (pipe->capq.bufs[0]) {
-		mutex_lock(&pipe->capq.vb_lock);
-		videobuf_queue_cancel(&pipe->capq);
-		mutex_unlock(&pipe->capq.vb_lock);
-	}
-
 	if (pipe->outq.bufs[0]) {
 		mutex_lock(&pipe->outq.vb_lock);
 		videobuf_queue_cancel(&pipe->outq);
