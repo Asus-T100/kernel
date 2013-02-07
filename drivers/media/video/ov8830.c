@@ -460,12 +460,6 @@ static int drv201_q_focus_abs(struct v4l2_subdev *sd, s32 *value)
 	return 0;
 }
 
-static int drv201_t_focus_rel(struct v4l2_subdev *sd, s32 value)
-{
-	struct drv201_device *dev = to_drv201_device(sd);
-	return drv201_t_focus_abs(sd, dev->focus + value);
-}
-
 static int drv201_q_focus_status(struct v4l2_subdev *sd, s32 *value)
 {
 	static const struct timespec move_time = {
@@ -1218,19 +1212,6 @@ static struct ov8830_control ov8830_controls[] = {
 		},
 		.tweak = drv201_t_focus_abs,
 		.query = drv201_q_focus_abs,
-	},
-	{
-		.qc = {
-			.id = V4L2_CID_FOCUS_RELATIVE,
-			.type = V4L2_CTRL_TYPE_INTEGER,
-			.name = "focus move relative",
-			.minimum = -DRV201_MAX_FOCUS_POS,
-			.maximum = DRV201_MAX_FOCUS_POS,
-			.step = 1,
-			.default_value = 0,
-			.flags = 0,
-		},
-		.tweak = drv201_t_focus_rel,
 	},
 	{
 		.qc = {
