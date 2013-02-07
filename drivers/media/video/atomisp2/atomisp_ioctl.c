@@ -1117,6 +1117,9 @@ done:
 	if (isp->streaming == ATOMISP_DEVICE_STREAMING_ENABLED)
 		atomisp_qbuffers_to_css(isp);
 	mutex_unlock(&isp->mutex);
+
+	dev_dbg(isp->dev, "qbuf buffer %d (%s)\n", buf->index, vdev->name);
+
 	return ret;
 
 error:
@@ -1203,6 +1206,8 @@ static int atomisp_dqbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 	buf->bytesused = pipe->pix.sizeimage;
 	buf->reserved = isp->frame_status[buf->index];
 	mutex_unlock(&isp->mutex);
+
+	dev_dbg(isp->dev, "dqbuf buffer %d (%s)\n", buf->index, vdev->name);
 
 	return 0;
 }
