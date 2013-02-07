@@ -555,7 +555,6 @@ static int atomisp_release(struct file *file)
 	struct video_device *vdev = video_devdata(file);
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
-	struct v4l2_mbus_framefmt isp_sink_fmt;
 	struct v4l2_requestbuffers req;
 	int ret = 0;
 
@@ -600,19 +599,20 @@ static int atomisp_release(struct file *file)
 	 * The sink pad setting can only be cleared when all device nodes
 	 * get released.
 	 */
-	if (!isp->sw_contex.file_input) {
-		memset(&isp_sink_fmt, 0, sizeof(isp_sink_fmt));
-		atomisp_subdev_set_ffmt(&isp->isp_subdev.subdev, NULL,
-				V4L2_SUBDEV_FORMAT_ACTIVE,
-				ATOMISP_SUBDEV_PAD_SINK, &isp_sink_fmt);
+	if (!isp->sw_contex.file_input && isp->isp_subdev.fmt_auto->val) {
+		struct v4l2_mbus_framefmt isp_sink_fmt = { 0 };
+		atomisp_subdev_set_ffmt(
+			&isp->isp_subdev.subdev, NULL,
+			V4L2_SUBDEV_FORMAT_ACTIVE, ATOMISP_SUBDEV_PAD_SINK,
+			&isp_sink_fmt);
 	}
 
 	if (atomisp_users(isp))
 		goto done;
 
 	/* clear the sink pad for file input */
-	if (isp->sw_contex.file_input) {
-		memset(&isp_sink_fmt, 0, sizeof(isp_sink_fmt));
+	if (isp->sw_contex.file_input && isp->isp_subdev.fmt_auto->val) {
+		struct v4l2_mbus_framefmt isp_sink_fmt = { 0 };
 		atomisp_subdev_set_ffmt(&isp->isp_subdev.subdev, NULL,
 				V4L2_SUBDEV_FORMAT_ACTIVE,
 				ATOMISP_SUBDEV_PAD_SINK, &isp_sink_fmt);
