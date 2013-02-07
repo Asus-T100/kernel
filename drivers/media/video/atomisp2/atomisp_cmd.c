@@ -3694,10 +3694,6 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	f->fmt.pix.width = snr_fmt.fmt.pix.width;
 	f->fmt.pix.height = snr_fmt.fmt.pix.height;
 
-	/*
-	 * Set mbus codes for bypass mode configuration, but do
-	 * nothing else.
-	 */
 	atomisp_subdev_get_ffmt(&isp->isp_subdev.subdev, NULL,
 				V4L2_SUBDEV_FORMAT_ACTIVE,
 				ATOMISP_SUBDEV_PAD_SINK)->code =
@@ -3715,7 +3711,7 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 				V4L2_SUBDEV_FORMAT_ACTIVE,
 				source_pad, &isp_source_fmt);
 
-	if (isp->sw_contex.bypass)
+	if (!atomisp_subdev_format_conversion(isp, source_pad))
 		padding_w = 0, padding_h = 0;
 
 	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2) {
@@ -3768,10 +3764,10 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	 * width or height) bigger than the desired result. */
 	if (isp_sink_crop.width * 9 / 10 < f->fmt.pix.width
 	    || isp_sink_crop.height * 9 / 10 < f->fmt.pix.height
-	    || (isp->sw_contex.bypass
+	    || (!atomisp_subdev_format_conversion(isp, source_pad)
 		&& isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO
 		&& isp->isp_subdev.enable_vfpp->val)
-	    || (!isp->sw_contex.bypass
+	    || (atomisp_subdev_format_conversion(isp, source_pad)
 		&& isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO)) {
 		isp_sink_crop.width = f->fmt.pix.width;
 		isp_sink_crop.height = f->fmt.pix.height;

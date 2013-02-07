@@ -134,6 +134,8 @@ extern const struct atomisp_in_fmt_conv atomisp_in_fmt_conv[];
 
 const struct atomisp_in_fmt_conv *atomisp_find_in_fmt_conv(
 	enum v4l2_mbus_pixelcode code);
+bool atomisp_subdev_format_conversion(struct atomisp_device *isp,
+				      unsigned int source_pad);
 
 /* Get pointer to appropriate format */
 struct v4l2_mbus_framefmt

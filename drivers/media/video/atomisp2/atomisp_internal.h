@@ -153,7 +153,6 @@ struct atomisp_regs {
 };
 
 struct atomisp_sw_contex {
-	bool bypass;
 	bool file_input;
 	int  invalid_frame;
 	int  invalid_vf_frame;
