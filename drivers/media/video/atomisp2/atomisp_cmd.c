@@ -136,6 +136,13 @@ struct atomisp_video_pipe *atomisp_to_video_pipe(struct video_device *dev)
 /* This is just a draft rules, should be tuned when sensor is ready*/
 struct atomisp_freq_scaling_rule dfs_rules[] = {
 	{
+		.width = ISP_FREQ_RULE_ANY,
+		.height = ISP_FREQ_RULE_ANY,
+		.fps = ISP_FREQ_RULE_ANY,
+		.isp_freq = ISP_FREQ_400MHZ,
+		.run_mode = CI_MODE_VIDEO,
+	},
+	{
 		.width = 1920,
 		.height = 1080,
 		.fps = 60,
