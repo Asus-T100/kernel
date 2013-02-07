@@ -33,6 +33,8 @@ void max17042_i2c_reset_workaround(void)
 #define I2C_GPIO_PIN 29
 #elif defined(CONFIG_X86_MRFLD)
 #define I2C_GPIO_PIN 21
+#else
+#define I2C_GPIO_PIN 27
 #endif
 	lnw_gpio_set_alt(I2C_GPIO_PIN, LNW_GPIO);
 	gpio_direction_output(I2C_GPIO_PIN, 0);
@@ -236,7 +238,9 @@ void *max17042_platform_data(void *info)
 	platform_data.soc_intr_mode_enabled = true;
 #endif
 #ifdef CONFIG_CHARGER_SMB347 /* redridge dv10 */
-	platform_data.battery_status = smb347_get_charging_status;
+	/* smb347 charger driver needs to be ported to k3.4 by FT
+	 * comment out this line to get salitpa compiled for now
+	platform_data.battery_status = smb347_get_charging_status; */
 #endif
 #ifdef CONFIG_CHARGER_BQ24192 /* clovertrail */
 	platform_data.battery_status = ctp_query_battery_status;
