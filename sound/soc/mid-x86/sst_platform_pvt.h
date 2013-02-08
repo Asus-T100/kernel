@@ -148,7 +148,6 @@ int sst_soc_write(struct snd_soc_platform *platform,
 #define SST_IP_MEDIA2		SST_MIX_IP(17)
 #define SST_IP_FM		SST_MIX_IP(18)
 
-
 struct sst_data {
 	struct platform_device *pdev;
 	struct sst_platform_data *pdata;

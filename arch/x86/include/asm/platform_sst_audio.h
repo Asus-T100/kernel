@@ -16,6 +16,53 @@
 #define MAX_DEVICES_MFLD 6
 #define MAX_DEVICES_CTP 4
 #define MAX_DEVICES_MRFLD 24
+#define LPE_MAX_SSP_PORTS 4
+#define LPE_MAX_DMA 2
+
+enum {
+	PDATA_CTP = 0,
+};
+enum {
+	BDATA_CTP = 0,
+};
+enum {
+	SST_SSP_AUDIO = 0,
+	SST_SSP_MODEM,
+	SST_SSP_BT,
+	SST_SSP_FM,
+};
+
+struct sst_ssp_platform_cfg {
+	u8 ssp_cfg_lpe;
+	u8 port_number;
+	u8 is_master;
+	u8 pack_mode;
+	u8 num_slots_per_frame;
+	u8 num_bits_per_slot;
+	u8 active_tx_map;
+	u8 active_rx_map;
+	u8 ssp_frame_format;
+	u8 frame_polarity;
+	u8 serial_bitrate_clk_mode;
+	u8 frame_sync_width;
+	u8 dma_handshake_interface_tx;
+	u8 dma_handshake_interface_rx;
+	u8 reserved[2];
+	u32 lpe_ssp_base_add;
+};
+struct sst_board_config_data {
+	struct sst_ssp_platform_cfg ssp_platform_data[LPE_MAX_SSP_PORTS];
+	u8 active_ssp_ports;
+	u8 platform_id;
+	u8 board_id;
+	u8 ihf_num_chan;
+	u32 ssp_clk_freq;
+};
+
+struct sst_platform_config_data {
+	u32 lpe_sram_buff_base;
+	u32 lpe_dma_base[LPE_MAX_DMA];
+};
 
 /* The stream map status is used to dynamically assign
  * device-id to a device, for example probe device. If
@@ -127,6 +174,8 @@ struct sst_platform_data {
 	const struct sfi_soft_platform_id *spid;
 	bool use_strm_map;
 	struct sst_dev_stream_map *pdev_strm_map;
+	struct sst_board_config_data *bdata;
+	struct sst_platform_config_data *pdata;
 	unsigned int strm_map_size;
 };
 
