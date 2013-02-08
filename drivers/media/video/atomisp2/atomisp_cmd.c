@@ -3123,25 +3123,8 @@ int atomisp_get_fmt(struct video_device *vdev, struct v4l2_format *f)
 		return -EINVAL;
 	}
 
-	memset(f, 0, sizeof(struct v4l2_format));
 	f->type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-
-	/* VIDIOC_S_FMT already called,*/
-	/* return fmt setted by app */
-	if (pipe->pix.width != 0) {
-		memcpy(&f->fmt.pix, &pipe->pix,
-			sizeof(struct v4l2_pix_format));
-	} else {
-		f->fmt.pix.width = 640;
-		f->fmt.pix.height = 480;
-		f->fmt.pix.pixelformat = atomisp_output_fmts[0].pixelformat;
-		f->fmt.pix.bytesperline =
-			get_pixel_depth(f->fmt.pix.pixelformat) *
-						f->fmt.pix.width;
-		f->fmt.pix.sizeimage = f->fmt.pix.height *
-						f->fmt.pix.bytesperline;
-		f->fmt.pix.colorspace = V4L2_COLORSPACE_SRGB;
-	}
+	f->fmt.pix = pipe->pix;
 
 	return 0;
 }
