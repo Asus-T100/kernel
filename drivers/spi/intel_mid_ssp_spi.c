@@ -762,12 +762,19 @@ static void poll_transfer(unsigned long data)
 	struct ssp_driver_context *drv_context =
 		(struct ssp_driver_context *)data;
 
+	bool delay = false;
+
+	if ((intel_mid_identify_sim() == INTEL_MID_CPU_SIMULATION_VP) ||
+	     intel_mid_identify_sim() == INTEL_MID_CPU_SIMULATION_HVP) {
+		delay = true;
+	}
+
 	if (drv_context->tx)
 		while (drv_context->tx != drv_context->tx_end) {
 			/* [REVERT ME] Tangier simulator requires a delay */
-			if (intel_mid_identify_sim() ==
-			    INTEL_MID_CPU_SIMULATION_VP)
+			if (delay) {
 				udelay(10);
+			}
 			if (ssp_timing_wr) {
 				while ((read_SSSR(drv_context->ioaddr)) &
 								0xF00)
@@ -938,8 +945,9 @@ static int handle_message(struct ssp_driver_context *drv_context)
 
 	/* [REVERT ME] Bug in status register clear for Tangier simulation */
 	if ((intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER) ||
-		(intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_ANNIEDALE)) {
-		if (intel_mid_identify_sim() != INTEL_MID_CPU_SIMULATION_VP)
+	    (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_ANNIEDALE)) {
+		if ((intel_mid_identify_sim() != INTEL_MID_CPU_SIMULATION_VP &&
+		    (intel_mid_identify_sim() != INTEL_MID_CPU_SIMULATION_HVP)))
 			write_SSSR(drv_context->clear_sr, reg);
 	} else /* Clear status  */
 		write_SSSR(drv_context->clear_sr, reg);
@@ -1564,3 +1572,4 @@ static void __exit intel_mid_ssp_spi_exit(void)
 }
 
 module_exit(intel_mid_ssp_spi_exit);
+

@@ -33,6 +33,13 @@ void __init *max3111_platform_data(void *info)
 
 	spi_info->mode = SPI_MODE_0;
 
+	/* max 3110 interrupt not supported by sim platforms */
+	if (intel_mid_identify_sim()) {
+		spi_info->controller_data = &chip;
+		spi_info->bus_num = FORCE_SPI_BUS_NUM;
+		return &max3110_pdata;
+	}
+
 	if (INTEL_MID_BOARD(1, PHONE, MRFL)) {
 		spi_info->controller_data = &chip;
 		spi_info->bus_num = FORCE_SPI_BUS_NUM;
