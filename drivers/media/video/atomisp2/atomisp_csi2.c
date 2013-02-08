@@ -40,11 +40,9 @@ static const unsigned int csi2_output_fmts[] = {
 
 /* V4L2 subdev operations */
 
-static struct v4l2_mbus_framefmt *
-__csi2_get_format(struct atomisp_mipi_csi2_device *csi2,
-		struct v4l2_subdev_fh *fh,
-		unsigned int pad,
-		enum v4l2_subdev_format_whence which)
+static struct v4l2_mbus_framefmt *__csi2_get_format(
+	struct atomisp_mipi_csi2_device *csi2, struct v4l2_subdev_fh *fh,
+	enum v4l2_subdev_format_whence which, unsigned int pad)
 {
 	if (which == V4L2_SUBDEV_FORMAT_TRY)
 		return v4l2_subdev_get_try_format(fh, pad);
@@ -69,12 +67,10 @@ isp_video_uncompressed_code(enum v4l2_mbus_pixelcode code)
 	}
 }
 
-static void
-csi2_try_format(struct atomisp_mipi_csi2_device *csi2,
-	struct v4l2_subdev_fh *fh,
-	unsigned int pad,
-	struct v4l2_mbus_framefmt *fmt,
-	enum v4l2_subdev_format_whence which)
+static void csi2_try_format(
+	struct atomisp_mipi_csi2_device *csi2,
+	struct v4l2_subdev_fh *fh, enum v4l2_subdev_format_whence which,
+	unsigned int pad, struct v4l2_mbus_framefmt *fmt)
 {
 	enum v4l2_mbus_pixelcode pixelcode;
 	struct v4l2_mbus_framefmt *format;
@@ -101,7 +97,7 @@ csi2_try_format(struct atomisp_mipi_csi2_device *csi2,
 		 * compression.
 		 */
 		pixelcode = fmt->code;
-		format = __csi2_get_format(csi2, fh, CSI2_PAD_SINK, which);
+		format = __csi2_get_format(csi2, fh, which, CSI2_PAD_SINK);
 		memcpy(fmt, format, sizeof(*fmt));
 
 		/* allow dpcm decompression */
@@ -138,8 +134,8 @@ static int csi2_enum_mbus_code(struct v4l2_subdev *sd,
 			return -EINVAL;
 		code->code = csi2_input_fmts[code->index];
 	} else {
-		format = __csi2_get_format(csi2, fh, CSI2_PAD_SINK,
-			V4L2_SUBDEV_FORMAT_TRY);
+		format = __csi2_get_format(
+			csi2, fh, V4L2_SUBDEV_FORMAT_TRY, CSI2_PAD_SINK);
 		switch (code->index) {
 		case 0:
 			/* Passthrough sink pad code */
@@ -172,7 +168,7 @@ static int csi2_get_format(struct v4l2_subdev *sd,
 	struct atomisp_mipi_csi2_device *csi2 = v4l2_get_subdevdata(sd);
 	struct v4l2_mbus_framefmt *format;
 
-	format = __csi2_get_format(csi2, fh, fmt->pad, fmt->which);
+	format = __csi2_get_format(csi2, fh, fmt->which, fmt->pad);
 
 	fmt->format = *format;
 
