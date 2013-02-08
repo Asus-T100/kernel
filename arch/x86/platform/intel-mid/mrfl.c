@@ -44,8 +44,10 @@ static struct intel_mid_ops tangier_ops = {
 
 static unsigned long __init tangier_calibrate_tsc(void)
 {
+
 	/* [REVERT ME] fast timer calibration method to be defined */
-	if (intel_mrfl_identify_sim() == INTEL_MRFL_CPU_SIMULATION_VP) {
+	if ((intel_mrfl_identify_sim() == INTEL_MRFL_CPU_SIMULATION_VP) ||
+		(intel_mrfl_identify_sim() == INTEL_MRFL_CPU_SIMULATION_HVP)) {
 		lapic_timer_frequency = 50000;
 		return 1000000;
 	}
@@ -165,7 +167,8 @@ static int __init get_plat_batt_config(void)
 static void __init tangier_time_init(void)
 {
 	/* [REVERT ME] ARAT capability not set in VP. Force setting */
-	if (intel_mrfl_identify_sim() == INTEL_MRFL_CPU_SIMULATION_VP)
+	if (intel_mrfl_identify_sim() == INTEL_MRFL_CPU_SIMULATION_VP ||
+		intel_mrfl_identify_sim() == INTEL_MRFL_CPU_SIMULATION_HVP)
 		set_cpu_cap(&boot_cpu_data, X86_FEATURE_ARAT);
 
 	if (intel_mid_timer_init)
