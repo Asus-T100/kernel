@@ -3200,10 +3200,13 @@ int atomisp_try_fmt(struct video_device *vdev, struct v4l2_format *f,
 		snr_mbus_fmt.width, snr_mbus_fmt.height);
 
 	fmt = atomisp_get_format_bridge_from_mbus(snr_mbus_fmt.code);
-	if (fmt == NULL)
-		v4l2_err(&atomisp_dev, "unknown sensor format.\n");
-	else
-		f->fmt.pix.pixelformat = fmt->pixelformat;
+	if (fmt == NULL) {
+		dev_err(isp->dev, "unknown sensor format 0x%8.8x\n",
+			snr_mbus_fmt.code);
+		return -EINVAL;
+	}
+
+	f->fmt.pix.pixelformat = fmt->pixelformat;
 
 	if (snr_mbus_fmt.width < f->fmt.pix.width
 	    && snr_mbus_fmt.height < f->fmt.pix.height) {
@@ -3675,7 +3678,9 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 		goto done;
 
 	/* get sensor resolution and format */
-	atomisp_try_fmt(vdev, &snr_fmt, &res_overflow);
+	ret = atomisp_try_fmt(vdev, &snr_fmt, &res_overflow);
+	if (ret)
+		return ret;
 	f->fmt.pix.width = snr_fmt.fmt.pix.width;
 	f->fmt.pix.height = snr_fmt.fmt.pix.height;
 
