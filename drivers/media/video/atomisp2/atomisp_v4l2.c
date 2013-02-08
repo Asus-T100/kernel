@@ -727,10 +727,6 @@ static int atomisp_register_entities(struct atomisp_device *isp)
 {
 	int ret = 0;
 	unsigned int i;
-	struct v4l2_subdev *subdev = NULL;
-	struct media_entity *input = NULL;
-	unsigned int flags;
-	unsigned int pad;
 
 	isp->media_dev.dev = isp->dev;
 
@@ -810,16 +806,14 @@ static int atomisp_register_entities(struct atomisp_device *isp)
 			goto link_failed;
 		}
 
-		subdev = isp->inputs[i].camera;
-		input = &isp->csi2_port[isp->inputs[i].port].subdev.entity;
-		pad = CSI2_PAD_SINK;
-		flags = 0;
-
-		ret = media_entity_create_link(&subdev->entity, 0,
-			input, pad, flags);
+		ret = media_entity_create_link(
+			&isp->inputs[i].camera->entity, 0,
+			&isp->csi2_port[isp->inputs[i].port].subdev.entity,
+			CSI2_PAD_SINK,
+			MEDIA_LNK_FL_ENABLED | MEDIA_LNK_FL_IMMUTABLE);
 		if (ret < 0) {
-			v4l2_err(&atomisp_dev,
-				"snr to mipi csi link failed\n");
+			dev_err(isp->dev,
+				"link create from sensor to csi-2 receiver failed\n");
 			goto link_failed;
 		}
 	}
