@@ -1517,21 +1517,10 @@ __ov8830_get_pad_format(struct ov8830_device *sensor,
 			 struct v4l2_subdev_fh *fh, unsigned int pad,
 			 enum v4l2_subdev_format_whence which)
 {
-	struct i2c_client *client = v4l2_get_subdevdata(&sensor->sd);
-
-	if (pad != 0) {
-		v4l2_err(client, "%s err. pad %x\n", __func__, pad);
-		return NULL;
-	}
-
-	switch (which) {
-	case V4L2_SUBDEV_FORMAT_TRY:
+	if (which == V4L2_SUBDEV_FORMAT_TRY)
 		return v4l2_subdev_get_try_format(fh, pad);
-	case V4L2_SUBDEV_FORMAT_ACTIVE:
-		return &sensor->format;
-	default:
-		return NULL;
-	}
+
+	return &sensor->format;
 }
 
 static int
@@ -1539,10 +1528,8 @@ ov8830_get_pad_format(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 		       struct v4l2_subdev_format *fmt)
 {
 	struct ov8830_device *dev = to_ov8830_sensor(sd);
-	struct v4l2_mbus_framefmt *format =
-			__ov8830_get_pad_format(dev, fh, fmt->pad, fmt->which);
 
-	fmt->format = *format;
+	fmt->format = *__ov8830_get_pad_format(dev, fh, fmt->pad, fmt->which);
 
 	return 0;
 }
@@ -1555,8 +1542,7 @@ ov8830_set_pad_format(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 	struct v4l2_mbus_framefmt *format =
 			__ov8830_get_pad_format(dev, fh, fmt->pad, fmt->which);
 
-	if (fmt->which == V4L2_SUBDEV_FORMAT_ACTIVE)
-		dev->format = fmt->format;
+	*format = fmt->format;
 
 	return 0;
 }
