@@ -161,15 +161,15 @@ int android_hdmi_crtc_mode_set(struct drm_crtc *crtc,
  *	psDrmDev: Drm Device.
  * Returns: none
  */
-void android_hdmi_restore_and_enable_display(struct drm_device *dev);
+void android_hdmi_resume_display(struct drm_device *dev);
 
 /**
- * Save the HDMI display registers
+ * Save the HDMI display registers and disable the display
  * Input parameters:
  *	psDrmDev: Drm Device.
  * Returns: none
  */
-void android_hdmi_save_display_registers(struct drm_device *dev);
+void android_hdmi_suspend_display(struct drm_device *dev);
 
 /**
  * Prepare HDMI EDID-like data and copy it to the given buffer
@@ -181,15 +181,6 @@ void android_hdmi_save_display_registers(struct drm_device *dev);
  *		-EINVAL on NULL input arguments
  */
 int android_hdmi_get_eld(struct drm_device *dev, void *eld);
-
-
-/**
- * disable HDMI display
- * Input parameters:
- *	psDrmDev: Drm Device.
- * Returns: none
- */
-void android_disable_hdmi(struct drm_device *dev);
 
 /**
  * Enable HDCP on HDMI display
@@ -260,10 +251,10 @@ static inline int android_hdmi_crtc_mode_set(struct drm_crtc *crtc,
 				int x, int y,
 				struct drm_framebuffer *old_fb) { return 0; }
 
-static inline void android_hdmi_restore_and_enable_display(
+static inline void android_hdmi_resume_display(
 				struct drm_device *dev) {}
 
-static inline void android_hdmi_save_display_registers(
+static inline void android_hdmi_suspend_display(
 				struct drm_device *dev) {}
 static inline void android_disable_hdmi(struct drm_device *dev) {}
 

@@ -235,14 +235,16 @@ static int edid_ready_in_hpd = 0;
 static irqreturn_t __hdmi_irq_handler_bottomhalf(void *data)
 {
 	struct android_hdmi_priv *hdmi_priv = data;
-	bool rails_on = otm_hdmi_power_rails_on();
 	static int processed_hdmi_status = -1;
 
-	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
-				       OSPM_UHB_FORCE_POWER_ON))
+	if (hdmi_priv == NULL || !hdmi_priv->dev)
 		return IRQ_HANDLED;
 
-	if ((true == rails_on) && (hdmi_priv != NULL)) {
+	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
+			OSPM_UHB_FORCE_POWER_ON)) {
+		pr_err("Unable to power on display island!");
+		return IRQ_HANDLED;
+	} else {
 		struct drm_mode_config *mode_config = NULL;
 		struct edid *edid = NULL;
 		struct drm_connector *connector = NULL;
@@ -250,16 +252,14 @@ static irqreturn_t __hdmi_irq_handler_bottomhalf(void *data)
 		bool hdmi_status = 0;
 		char *uevent_string = NULL;
 
-		if (!hdmi_priv->dev) {
-			ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-			return IRQ_HANDLED;
-		}
-
+		otm_hdmi_power_rails_on();
 		/* Check HDMI status, read EDID only if connected */
 		hdmi_status = otm_hdmi_get_cable_status(hdmi_priv->context);
 
 		/* if the cable status has not changed return */
 		if (hdmi_status == processed_hdmi_status) {
+			if (!hdmi_status)
+				otm_hdmi_power_rails_off();
 			ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 			return IRQ_HANDLED;
 		}
@@ -334,6 +334,7 @@ exit:
 			ospm_runtime_pm_forbid(hdmi_priv->dev);
 			schedule_delayed_work(&hdmi_priv->hdmi_delayed_wq, HDMI_HOTPLUG_DELAY);
 		} else {
+			otm_hdmi_power_rails_off();
 			hdmi_state = 0;
 			edid_ready_in_hpd = 0;
 			uevent_string = "HOTPLUG_OUT=1";
@@ -1494,12 +1495,12 @@ void android_hdmi_enc_mode_set(struct drm_encoder *encoder,
 }
 
 /**
- * save the register for HDMI display
+ * save the register for HDMI display and disable HDMI
  * @dev:		drm device
  *
  * Returns:	none.
  */
-void android_hdmi_save_display_registers(struct drm_device *dev)
+void android_hdmi_suspend_display(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv;
 	struct android_hdmi_priv *hdmi_priv;
@@ -1518,6 +1519,10 @@ void android_hdmi_save_display_registers(struct drm_device *dev)
 
 	otm_hdmi_save_display_registers(hdmi_priv->context,
 					data);
+
+	otm_disable_hdmi(hdmi_priv->context);
+
+	otm_hdmi_power_rails_off();
 	return;
 }
 
@@ -1564,7 +1569,7 @@ int android_hdmi_get_eld(struct drm_device *dev, void *eld)
  *
  * Returns:	none.
  */
-void android_hdmi_restore_and_enable_display(struct drm_device *dev)
+void android_hdmi_resume_display(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv;
 	struct android_hdmi_priv *hdmi_priv;
@@ -1578,11 +1583,14 @@ void android_hdmi_restore_and_enable_display(struct drm_device *dev)
 	if (NULL == hdmi_priv)
 		return;
 
+	otm_hdmi_power_rails_on();
 	/* Check if monitor is attached to HDMI connector. */
 	data = otm_hdmi_get_cable_status(hdmi_priv->context);
 
 	otm_hdmi_restore_and_enable_display(hdmi_priv->context,
 				data);
+	if (!data)
+		otm_hdmi_power_rails_off();
 }
 
 /**
@@ -1852,28 +1860,6 @@ void android_hdmi_connector_restore(struct drm_connector *connector)
 }
 
 /**
- * disable HDMI display
- * @dev:	drm device
- *
- * Returns:	none.
- */
-void android_disable_hdmi(struct drm_device *dev)
-{
-	struct drm_psb_private *dev_priv;
-	struct android_hdmi_priv *hdmi_priv;
-	if (NULL == dev)
-		return;
-	dev_priv = dev->dev_private;
-	if (NULL == dev_priv)
-		return;
-	hdmi_priv = dev_priv->hdmi_priv;
-	if (NULL == hdmi_priv)
-		return;
-	otm_disable_hdmi(hdmi_priv->context);
-	return;
-}
-
-/**
  * Enable HDCP on HDMI display
  * @dev:	drm device
  *
@@ -2110,6 +2096,7 @@ android_hdmi_detect(struct drm_connector *connector,
 			pr_debug("failed to disable hdcp\n");
 #endif
 #endif
+		otm_hdmi_power_rails_off();
 		return connector_status_disconnected;
 	}
 }

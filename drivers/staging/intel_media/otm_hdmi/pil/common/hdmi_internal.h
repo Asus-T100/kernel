@@ -227,6 +227,7 @@ typedef struct {
 	otm_hdmi_timing_t mode;	/* current mode */
 	bool mode_set;	/* mode switch completion indicator */
 	bool hdmi;	/* active transmission type */
+	bool is_connected; /* indicate whether cable is connected */
 
 	unsigned int irq_number;	/* IRQ number */
 	void *hpd_callback;	/* hot plug call back */
