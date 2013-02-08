@@ -617,6 +617,7 @@ static const struct v4l2_subdev_pad_ops isp_subdev_v4l2_pad_ops = {
 	 .set_fmt = isp_subdev_set_format,
 	 .get_selection = isp_subdev_get_selection,
 	 .set_selection = isp_subdev_set_selection,
+	 .link_validate = v4l2_subdev_link_validate_default,
 };
 
 /* V4L2 subdev operations */
@@ -705,6 +706,7 @@ static int isp_subdev_link_setup(struct media_entity *entity,
 /* media operations */
 static const struct media_entity_operations isp_subdev_media_ops = {
 	 .link_setup = isp_subdev_link_setup,
+	 .link_validate = v4l2_subdev_link_validate,
 /*	 .set_power = v4l2_subdev_set_power,	*/
 };
 
