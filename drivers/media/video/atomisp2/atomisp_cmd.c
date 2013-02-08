@@ -3116,8 +3116,7 @@ int atomisp_get_fmt(struct video_device *vdev, struct v4l2_format *f)
 {
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
 
-	if (f->type != V4L2_BUF_TYPE_VIDEO_CAPTURE &&
-	    f->type != V4L2_BUF_TYPE_VIDEO_OUTPUT) {
+	if (f->type != V4L2_BUF_TYPE_VIDEO_CAPTURE) {
 		v4l2_err(&atomisp_dev,
 			    "unsupported v4l2 buf type\n");
 		return -EINVAL;
