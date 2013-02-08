@@ -242,6 +242,7 @@ static const struct v4l2_subdev_pad_ops csi2_pad_ops = {
 	.enum_mbus_code = csi2_enum_mbus_code,
 	.get_fmt = csi2_get_format,
 	.set_fmt = csi2_set_format,
+	.link_validate = v4l2_subdev_link_validate_default,
 };
 
 /* subdev operations */
@@ -293,6 +294,7 @@ static int csi2_link_setup(struct media_entity *entity,
 /* media operations */
 static const struct media_entity_operations csi2_media_ops = {
 	.link_setup = csi2_link_setup,
+	.link_validate = v4l2_subdev_link_validate,
 };
 
 /*
