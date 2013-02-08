@@ -175,6 +175,28 @@ static int csi2_get_format(struct v4l2_subdev *sd,
 	return 0;
 }
 
+int atomisp_csi2_set_ffmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
+			  unsigned int which, uint16_t pad,
+			  struct v4l2_mbus_framefmt *ffmt)
+{
+	struct atomisp_mipi_csi2_device *csi2 = v4l2_get_subdevdata(sd);
+	struct v4l2_mbus_framefmt *format =
+		__csi2_get_format(csi2, fh, ffmt->which, ffmt->pad);
+
+	csi2_try_format(csi2, fh, which, pad, &ffmt);
+	*format = ffmt->format;
+
+	/* Propagate the format from sink to source */
+	if (ffmt->pad == CSI2_PAD_SINK) {
+		format = __csi2_get_format(
+			csi2, fh, ffmt->which, CSI2_PAD_SOURCE);
+		*format = ffmt->format;
+		csi2_try_format(csi2, fh, ffmt->which, CSI2_PAD_SOURCE, format);
+	}
+
+	return 0;
+}
+
 /*
  * csi2_set_format - Handle set format by pads subdev method
  * @sd : pointer to v4l2 subdev structure
@@ -186,23 +208,8 @@ static int csi2_get_format(struct v4l2_subdev *sd,
 static int csi2_set_format(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 		    struct v4l2_subdev_format *fmt)
 {
-	struct atomisp_mipi_csi2_device *csi2 = v4l2_get_subdevdata(sd);
-	struct v4l2_mbus_framefmt *format;
-
-	format = __csi2_get_format(csi2, fh, fmt->pad, fmt->which);
-
-	csi2_try_format(csi2, fh, fmt->pad, &fmt->format, fmt->which);
-	*format = fmt->format;
-
-	/* Propagate the format from sink to source */
-	if (fmt->pad == CSI2_PAD_SINK) {
-		format = __csi2_get_format(csi2, fh, CSI2_PAD_SOURCE,
-			fmt->which);
-		*format = fmt->format;
-		csi2_try_format(csi2, fh, CSI2_PAD_SOURCE, format, fmt->which);
-	}
-
-	return 0;
+	return atomisp_csi2_set_ffmt(sd, fh, fmt->which, fmt->pad,
+				     &fmt->format);
 }
 
 /*

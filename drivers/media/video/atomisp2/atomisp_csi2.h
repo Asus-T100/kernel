@@ -45,6 +45,9 @@ struct atomisp_mipi_csi2_device {
 	u32 output; /* output direction */
 };
 
+int atomisp_csi2_set_ffmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
+			  unsigned int which, uint16_t pad,
+			  struct v4l2_mbus_framefmt *ffmt);
 int atomisp_mipi_csi2_init(struct atomisp_device *isp);
 void atomisp_mipi_csi2_cleanup(struct atomisp_device *isp);
 void atomisp_mipi_csi2_unregister_entities(
