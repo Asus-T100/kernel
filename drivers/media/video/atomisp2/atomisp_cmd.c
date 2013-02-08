@@ -121,7 +121,7 @@ struct atomisp_video_pipe *atomisp_to_video_pipe(struct video_device *dev)
 }
 
 /* This is just a draft rules, should be tuned when sensor is ready*/
-struct atomisp_freq_scaling_rule dfs_rules[] = {
+static struct atomisp_freq_scaling_rule dfs_rules[] = {
 	{
 		.width = ISP_FREQ_RULE_ANY,
 		.height = ISP_FREQ_RULE_ANY,
@@ -616,7 +616,7 @@ void dump_sp_dmem(unsigned int addr, unsigned int size)
 	unsigned int data = 0;
 	unsigned int size32 = (size + (sizeof(u32) - 1)) / sizeof(u32);
 	v4l2_dbg(3, dbg_level, &atomisp_dev,
-		 "atomisp_io_base:0x%x\n",(unsigned int)atomisp_io_base);
+		 "atomisp_io_base:%p\n", atomisp_io_base);
 	v4l2_dbg(3, dbg_level, &atomisp_dev,
 		 "%s, addr:0x%x, size: %d, size32: %d\n",
 		 __func__, addr, size, size32);
@@ -663,8 +663,8 @@ static void get_buf_timestamp(struct timeval *tv)
 	tv->tv_usec = ts.tv_nsec / NSEC_PER_USEC;
 }
 
-void atomisp_flush_video_pipe(struct atomisp_device *isp,
-			      struct atomisp_video_pipe *pipe)
+static void atomisp_flush_video_pipe(struct atomisp_device *isp,
+				     struct atomisp_video_pipe *pipe)
 {
 	unsigned long irqflags;
 	int i;

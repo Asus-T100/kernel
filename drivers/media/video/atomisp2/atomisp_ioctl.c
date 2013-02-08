@@ -1265,7 +1265,6 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 	struct atomisp_video_pipe *vf_pipe = NULL;
 	struct atomisp_video_pipe *preview_pipe = NULL;
 	struct videobuf_buffer *vb = NULL;
-	unsigned int sensor_start_stream;
 	int ret;
 	unsigned long flags;
 	bool first_streamoff = false;
@@ -1281,7 +1280,6 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 		return -EINVAL;
 	}
 
-	sensor_start_stream = atomisp_sensor_start_stream(isp);
 	/*
 	 * do only videobuf_streamoff for capture & vf pipes in
 	 * case of continuous capture
