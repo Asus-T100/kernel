@@ -964,6 +964,46 @@ static struct attribute_group spid_attr_group = {
 	.attrs = spid_attrs,
 };
 
+/* size of SPID cmdline : androidboot.spid=vend:cust:manu:plat:prod:hard */
+#define SPID_CMDLINE_SIZE 46
+#define SPID_PARAM_NAME "androidboot.spid="
+#define SPID_DEFAULT_VALUE "xxxx:xxxx:xxxx:xxxx:xxxx:xxxx"
+
+void populate_spid_cmdline()
+{
+	char *spid_param, *spid_default_value;
+	char spid_cmdline[SPID_CMDLINE_SIZE+1];
+
+	/* parameter format : cust:vend:manu:plat:prod:hard */
+	snprintf(spid_cmdline, sizeof(spid_cmdline),
+			"%04x:%04x:%04x:%04x:%04x:%04x",
+			spid.vendor_id,
+			spid.customer_id,
+			spid.manufacturer_id,
+			spid.platform_family_id,
+			spid.product_line_id,
+			spid.hardware_id
+			);
+
+	/* is there a spid param ? */
+	spid_param = strstr(saved_command_line, SPID_PARAM_NAME);
+	if (spid_param) {
+		/* is the param set to default value ? */
+		spid_default_value = strstr(saved_command_line,
+						SPID_DEFAULT_VALUE);
+		if (spid_default_value) {
+			spid_param += strlen(SPID_PARAM_NAME);
+			if (strlen(spid_param) > strlen(spid_cmdline))
+				memcpy(spid_param, spid_cmdline,
+							strlen(spid_cmdline));
+			else
+				pr_err("Not enough free space for SPID in command line.\n");
+		} else
+			pr_warning("SPID already populated. Do not overwrite.\n");
+	} else
+		pr_err("SPID not found in kernel command line.\n");
+}
+
 static int __init intel_mid_platform_init(void)
 {
 	/* create sysfs entries for soft platform id */
@@ -980,6 +1020,9 @@ static int __init intel_mid_platform_init(void)
 	sfi_table_parse(SFI_SIG_DEVS, NULL, NULL, sfi_parse_devs);
 
 	intel_mid_rproc_init();
+
+	/* Populate command line with SPID values */
+	populate_spid_cmdline();
 
 	return 0;
 }
