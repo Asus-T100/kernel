@@ -47,6 +47,7 @@
 #define MAX_BASEUNIT 0x80
 #define SST_ICCM_BOUNDARY 4
 #define SST_UNSOLICIT_MSG 0x00
+#define SST_CONFIG_SSP_SIGN 0x7ffe8001
 
 struct intel_sst_ops {
 	irqreturn_t (*interrupt) (int, void *);
@@ -59,7 +60,6 @@ struct intel_sst_ops {
 	int (*sync_post_message) (struct ipc_post *msg);
 	void (*process_message) (struct work_struct *work);
 };
-
 enum sst_states {
 	SST_FW_LOADED = 1,
 	SST_FW_RUNNING,
@@ -367,6 +367,11 @@ enum snd_sst_bytes_type {
 	SND_SST_BYTES_GET = 0x2,
 };
 
+struct snd_ssp_config {
+	int size;
+	char bytes[0];
+};
+
 struct snd_sst_bytes {
 	u8 type;
 	u8 ipc_msg;
@@ -457,6 +462,7 @@ struct intel_sst_drv {
 	unsigned int		ddr_end;
 	unsigned int		ddr_base;
 	struct list_head	ipc_dispatch_list;
+	struct snd_ssp_config   *ssp_config;
 	struct work_struct	ipc_post_msg_wq;
 	struct sst_ipc_msg_wq	ipc_process_msg;
 	struct sst_ipc_msg_wq	ipc_process_reply;

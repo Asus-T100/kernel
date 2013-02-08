@@ -735,6 +735,10 @@ static int sst_set_generic_params(enum sst_controls cmd, void *arg)
 		sst_send_lpe_mixer_algo_params();
 		break;
 	}
+	case SST_SET_SSP_CONFIG: {
+		sst_drv_ctx->ssp_config = (struct sst_driver_data *)arg;
+		break;
+	}
 	case SST_SET_BYTE_STREAM: {
 		struct snd_sst_bytes *sst_bytes = (struct snd_sst_bytes *)arg;
 		ret_val = intel_sst_check_device();

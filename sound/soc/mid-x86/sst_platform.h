@@ -75,6 +75,7 @@ enum sst_controls {
 	SST_MAX_CONTROLS =		0x1010,
 	SST_SET_BYTE_STREAM =		0x1011,
 	SST_GET_BYTE_STREAM =		0x1012,
+	SST_SET_SSP_CONFIG =		0x1013,
 };
 
 struct pcm_stream_info {
@@ -113,6 +114,7 @@ struct sst_runtime_stream {
 	struct sst_ops *ops;
 	spinlock_t	status_lock;
 };
+
 
 struct sst_device {
 	char *name;

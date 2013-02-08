@@ -38,8 +38,9 @@
 #include <asm/intel-mid.h>
 #include "sst_platform.h"
 #include "sst_platform_pvt.h"
-
 struct sst_device *sst_dsp;
+struct device *sst_pdev;
+
 static DEFINE_MUTEX(sst_dsp_lock);
 
 static struct snd_pcm_hardware sst_platform_pcm_hw = {
@@ -625,10 +626,37 @@ static struct snd_soc_platform_driver sst_soc_platform_drv  __devinitdata = {
 	.read		= sst_soc_read,
 	.write		= sst_soc_write,
 };
-
-int sst_register_dsp(struct sst_device *dev)
+int sst_fill_config_data(struct sst_data *sst)
 {
-	if (!dev)
+	int len;
+	char *platform_data;
+	struct sst_platform_data *sst_pdata = sst->pdata;
+
+	pr_debug("%s called\n", __func__);
+	len = sizeof(*(sst_pdata->bdata)) + sizeof(*(sst_pdata->pdata));
+	platform_data = devm_kzalloc(sst_pdev,
+					(len + sizeof(u32)), GFP_KERNEL);
+	if (platform_data == NULL) {
+		pr_err("kzalloc failed\n");
+		return -ENOMEM;
+	}
+	memcpy(platform_data, &len, sizeof(len));
+	memcpy(platform_data + sizeof(int), sst_pdata->bdata,
+					sizeof(*(sst_pdata->bdata)));
+	memcpy(platform_data + sizeof(int) + sizeof(*(sst_pdata->bdata)),
+					sst_pdata->pdata, sizeof(*(sst_pdata->pdata)));
+	sst_dsp->ops->set_generic_params(SST_SET_SSP_CONFIG, platform_data);
+
+	return 0;
+}
+
+int sst_register_dsp(struct sst_device *sst_dev)
+{
+
+	struct sst_data *sst = dev_get_drvdata(sst_pdev);
+	struct sst_platform_data *sst_pdata = sst->pdata;
+
+	if (!sst_dev)
 		return -ENODEV;
 	mutex_lock(&sst_dsp_lock);
 	if (sst_dsp) {
@@ -636,8 +664,11 @@ int sst_register_dsp(struct sst_device *dev)
 		mutex_unlock(&sst_dsp_lock);
 		return -EEXIST;
 	}
-	pr_debug("registering device %s\n", dev->name);
-	sst_dsp = dev;
+	pr_debug("registering device %s\n", sst_dev->name);
+
+	sst_dsp = sst_dev;
+	if (!(sst_pdata->bdata == NULL) && !(sst_pdata->pdata == NULL))
+		sst_fill_config_data(sst);
 	mutex_unlock(&sst_dsp_lock);
 	return 0;
 }
@@ -673,25 +704,24 @@ static int __devinit sst_platform_probe(struct platform_device *pdev)
 		pr_err("kzalloc failed\n");
 		return -ENOMEM;
 	};
-
+	sst_pdev = &pdev->dev;
 	sst->pdata = pdata;
 	mutex_init(&sst->lock);
 	dev_set_drvdata(&pdev->dev, sst);
 
 	ret = snd_soc_register_platform(&pdev->dev,
 					 &sst_soc_platform_drv);
-
 	if (ret) {
 		pr_err("registering soc platform failed\n");
 		return ret;
 	}
-
 	ret = snd_soc_register_dais(&pdev->dev,
 				sst_platform_dai, ARRAY_SIZE(sst_platform_dai));
 	if (ret) {
 		pr_err("registering cpu dais failed\n");
 		snd_soc_unregister_platform(&pdev->dev);
 	}
+
 	return ret;
 }
 
