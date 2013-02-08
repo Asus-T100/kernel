@@ -173,10 +173,9 @@ static int csi2_get_format(struct v4l2_subdev *sd,
 	struct v4l2_mbus_framefmt *format;
 
 	format = __csi2_get_format(csi2, fh, fmt->pad, fmt->which);
-	if (format == NULL)
-		return -EINVAL;
 
 	fmt->format = *format;
+
 	return 0;
 }
 
@@ -195,8 +194,6 @@ static int csi2_set_format(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 	struct v4l2_mbus_framefmt *format;
 
 	format = __csi2_get_format(csi2, fh, fmt->pad, fmt->which);
-	if (format == NULL)
-		return -EINVAL;
 
 	csi2_try_format(csi2, fh, fmt->pad, &fmt->format, fmt->which);
 	*format = fmt->format;
