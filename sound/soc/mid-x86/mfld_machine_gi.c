@@ -26,13 +26,13 @@
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
 #include <linux/init.h>
+#include <linux/module.h>
 #include <linux/device.h>
 #include <linux/delay.h>
 #include <linux/slab.h>
 #include <linux/io.h>
 #include <linux/async.h>
 #include <linux/wakelock.h>
-#include <linux/ipc_device.h>
 #include <asm/intel-mid.h>
 #include <asm/intel_scu_ipcutil.h>
 #include <asm/intel_mid_gpadc.h>
@@ -726,10 +726,10 @@ ret:
 static ssize_t jack_retry_show(struct device *dev,
 				struct device_attribute *attr, char *buf)
 {
-	struct ipc_device *ipcdev =
-			container_of(dev, struct ipc_device, dev);
+	struct platform_device *pdev =
+			container_of(dev, struct platform_device, dev);
 
-	struct snd_soc_card *soc_card = ipc_get_drvdata(ipcdev);
+	struct snd_soc_card *soc_card = platform_get_drvdata(pdev);
 	struct mfld_mc_private *ctx = snd_soc_card_get_drvdata(soc_card);
 
 	return sprintf(buf, "%d\n", ctx->jack_poll_retry);
@@ -741,10 +741,10 @@ static ssize_t jack_retry_set(struct device *dev,
 {
 	int ret;
 	long value;
-	struct ipc_device *ipcdev =
-			container_of(dev, struct ipc_device, dev);
+	struct platform_device *pdev =
+			container_of(dev, struct platform_device, dev);
 
-	struct snd_soc_card *soc_card = ipc_get_drvdata(ipcdev);
+	struct snd_soc_card *soc_card = platform_get_drvdata(pdev);
 	struct mfld_mc_private *ctx = snd_soc_card_get_drvdata(soc_card);
 	ret = kstrtol(buf, 0, &value);
 	if (ret < 0) {
@@ -767,10 +767,10 @@ static DEVICE_ATTR(jack_poll_retry, 0644, jack_retry_show, jack_retry_set);
 static ssize_t jack_interval_show(struct device *dev,
 				struct device_attribute *attr, char *buf)
 {
-	struct ipc_device *ipcdev =
-			container_of(dev, struct ipc_device, dev);
+	struct platform_device *pdev =
+			container_of(dev, struct platform_device, dev);
 
-	struct snd_soc_card *soc_card = ipc_get_drvdata(ipcdev);
+	struct snd_soc_card *soc_card = platform_get_drvdata(pdev);
 	struct mfld_mc_private *ctx = snd_soc_card_get_drvdata(soc_card);
 
 	return sprintf(buf, "%ld\n", ctx->jack_poll_interval);
@@ -782,10 +782,10 @@ static ssize_t jack_interval_set(struct device *dev,
 {
 	int ret;
 	long value;
-	struct ipc_device *ipcdev =
-			container_of(dev, struct ipc_device, dev);
+	struct platform_device *pdev =
+			container_of(dev, struct platform_device, dev);
 
-	struct snd_soc_card *soc_card = ipc_get_drvdata(ipcdev);
+	struct snd_soc_card *soc_card = platform_get_drvdata(pdev);
 	struct mfld_mc_private *ctx = snd_soc_card_get_drvdata(soc_card);
 	ret = kstrtol(buf, 0, &value);
 	if (ret < 0) {
@@ -806,7 +806,7 @@ static ssize_t jack_interval_set(struct device *dev,
 
 static DEVICE_ATTR(jack_poll_interval, 0644, jack_interval_show, jack_interval_set);
 
-static int __devinit snd_mfld_mc_probe(struct ipc_device *ipcdev)
+static int __devinit snd_mfld_mc_probe(struct platform_device *pdev)
 {
 	int ret_val = 0, irq;
 	struct mfld_mc_private *ctx;
@@ -815,10 +815,10 @@ static int __devinit snd_mfld_mc_probe(struct ipc_device *ipcdev)
 
 	pr_debug("snd_mfld_mc_probe called\n");
 
-	pdata = ipcdev->dev.platform_data;
+	pdata = pdev->dev.platform_data;
 
 	/* retrive the irq number */
-	irq = ipc_get_irq(ipcdev, 0);
+	irq = platform_get_irq(pdev, 0);
 
 	/* audio interrupt base of SRAM location where
 	 * interrupts are stored by System FW
@@ -836,7 +836,7 @@ static int __devinit snd_mfld_mc_probe(struct ipc_device *ipcdev)
 		       WAKE_LOCK_SUSPEND, "jack_detect");
 #endif
 
-	irq_mem = ipc_get_resource_byname(ipcdev, IORESOURCE_MEM, "IRQ_BASE");
+	irq_mem = platform_get_resource_byname(pdev, IORESOURCE_MEM, "IRQ_BASE");
 	if (!irq_mem) {
 		pr_err("no mem resource given\n");
 		ret_val = -ENODEV;
@@ -859,11 +859,11 @@ static int __devinit snd_mfld_mc_probe(struct ipc_device *ipcdev)
 	ctx->jack_poll_interval = JACK_POLL_INTERVAL;
 	ctx->jack_status = 0;
 
-	ret_val = device_create_file(&ipcdev->dev, &dev_attr_jack_poll_retry);
+	ret_val = device_create_file(&pdev->dev, &dev_attr_jack_poll_retry);
 	if (ret_val < 0)
 		pr_err("Err createing poll_retry sysfs file %d\n", ret_val);
 
-	ret_val = device_create_file(&ipcdev->dev, &dev_attr_jack_poll_interval);
+	ret_val = device_create_file(&pdev->dev, &dev_attr_jack_poll_interval);
 	if (ret_val < 0)
 		pr_err("Err creating poll_interval sysfs file %d\n", ret_val);
 
@@ -890,13 +890,13 @@ static int __devinit snd_mfld_mc_probe(struct ipc_device *ipcdev)
 	ret_val = request_threaded_irq(irq, snd_mfld_jack_intr_handler,
 			snd_mfld_codec_intr_detection,
 			IRQF_SHARED | IRQF_NO_SUSPEND,
-			ipcdev->dev.driver->name, ctx);
+			pdev->dev.driver->name, ctx);
 	if (ret_val) {
 		pr_err("cannot register IRQ\n");
 		goto free_gpio;
 	}
 	/* register the soc card */
-	snd_soc_card_mfld.dev = &ipcdev->dev;
+	snd_soc_card_mfld.dev = &pdev->dev;
 	snd_soc_card_mfld.dapm.stream_event = mfld_card_stream_event;
 	snd_soc_card_set_drvdata(&snd_soc_card_mfld, ctx);
 	ret_val = snd_soc_register_card(&snd_soc_card_mfld);
@@ -904,8 +904,8 @@ static int __devinit snd_mfld_mc_probe(struct ipc_device *ipcdev)
 		pr_debug("snd_soc_register_card failed %d\n", ret_val);
 		goto freeirq;
 	}
-	ctx->pdata = ipcdev->dev.platform_data;
-	ipc_set_drvdata(ipcdev, &snd_soc_card_mfld);
+	ctx->pdata = pdev->dev.platform_data;
+	platform_set_drvdata(pdev, &snd_soc_card_mfld);
 	pr_debug("successfully exited probe\n");
 	return ret_val;
 
@@ -915,27 +915,27 @@ free_gpio:
 	gpio_free(ctx->jack_gpio);
 free_gpadc:
 	intel_mid_gpadc_free(ctx->audio_adc_handle);
-	device_remove_file(&ipcdev->dev, &dev_attr_jack_poll_retry);
-	device_remove_file(&ipcdev->dev, &dev_attr_jack_poll_interval);
+	device_remove_file(&pdev->dev, &dev_attr_jack_poll_retry);
+	device_remove_file(&pdev->dev, &dev_attr_jack_poll_interval);
 unalloc:
 	kfree(ctx);
 	return ret_val;
 }
 
-static int __devexit snd_mfld_mc_remove(struct ipc_device *ipcdev)
+static int __devexit snd_mfld_mc_remove(struct platform_device *pdev)
 {
-	struct snd_soc_card *soc_card = ipc_get_drvdata(ipcdev);
+	struct snd_soc_card *soc_card = platform_get_drvdata(pdev);
 	struct mfld_mc_private *ctx = snd_soc_card_get_drvdata(soc_card);
 	pr_debug("snd_mfld_mc_remove called\n");
-	free_irq(ipc_get_irq(ipcdev, 0), ctx);
+	free_irq(platform_get_irq(pdev, 0), ctx);
 #ifdef CONFIG_HAS_WAKELOCK
 	if (wake_lock_active(ctx->jack_wake_lock))
 		wake_unlock(ctx->jack_wake_lock);
 	wake_lock_destroy(ctx->jack_wake_lock);
 	kfree(ctx->jack_wake_lock);
 #endif
-	device_remove_file(&ipcdev->dev, &dev_attr_jack_poll_retry);
-	device_remove_file(&ipcdev->dev, &dev_attr_jack_poll_interval);
+	device_remove_file(&pdev->dev, &dev_attr_jack_poll_retry);
+	device_remove_file(&pdev->dev, &dev_attr_jack_poll_interval);
 	cancel_delayed_work(&ctx->jack_work.work);
 	intel_mid_gpadc_free(ctx->audio_adc_handle);
 	if (ctx->jack_gpio >= 0)
@@ -943,7 +943,7 @@ static int __devexit snd_mfld_mc_remove(struct ipc_device *ipcdev)
 	kfree(ctx);
 	snd_soc_card_set_drvdata(soc_card, NULL);
 	snd_soc_unregister_card(soc_card);
-	ipc_set_drvdata(ipcdev, NULL);
+	platform_set_drvdata(pdev, NULL);
 	return 0;
 }
 static const struct dev_pm_ops snd_mfld_mc_pm_ops = {
@@ -952,7 +952,7 @@ static const struct dev_pm_ops snd_mfld_mc_pm_ops = {
 	.poweroff = snd_mfld_mc_poweroff,
 };
 
-static struct ipc_driver snd_mfld_mc_driver = {
+static struct platform_driver snd_mfld_mc_driver = {
 	.driver = {
 		.owner = THIS_MODULE,
 		.name = "msic_audio",
@@ -965,14 +965,14 @@ static struct ipc_driver snd_mfld_mc_driver = {
 static int __init snd_mfld_driver_init(void)
 {
 	pr_info("snd_mfld_driver_init called\n");
-	return ipc_driver_register(&snd_mfld_mc_driver);
+	return platform_driver_register(&snd_mfld_mc_driver);
 }
 late_initcall(snd_mfld_driver_init);
 
 static void __exit snd_mfld_driver_exit(void)
 {
 	pr_debug("snd_mfld_driver_exit called\n");
-	ipc_driver_unregister(&snd_mfld_mc_driver);
+	platform_driver_unregister(&snd_mfld_mc_driver);
 }
 module_exit(snd_mfld_driver_exit);
 
