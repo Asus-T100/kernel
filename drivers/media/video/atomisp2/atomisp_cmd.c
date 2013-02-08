@@ -60,7 +60,6 @@
 
 #include "hrt/bits.h"
 
-#define ATOMISP_DEFAULT_DTRACE_LEVEL 5
 /* We should never need to run the flash for more than 2 frames.
  * At 15fps this means 133ms. We set the timeout a bit longer.
  * Each flash driver is supposed to set its own timeout, but
@@ -78,13 +77,6 @@ union host {
 		void *hmm_ptr;
 	} ptr;
 };
-
-int atomisp_dtrace_level = ATOMISP_DEFAULT_DTRACE_LEVEL;
-#define atomisp_dtrace(level, format, args...)          \
-	do {                                           \
-		if (atomisp_dtrace_level >= level)       \
-			trace_printk(format, ## args); \
-	} while (0)
 
 /*
  * atomisp_kernel_malloc: chooses whether kmalloc() or vmalloc() is preferable.
@@ -638,15 +630,9 @@ void dump_sp_dmem(unsigned int addr, unsigned int size)
 	do {
 		data = _hrt_master_port_uload_32(addr);
 
-		/* printk/dtrace */
-#if 1
 		v4l2_dbg(3, dbg_level, &atomisp_dev,
 			 "%s, \t [0x%x]:0x%x\n",
 			 __func__, addr, data);
-#else
-		atomisp_dtrace(2,"%s, \t [0x%x]:0x%x\n",
-				__func__, addr, data);
-#endif
 		addr += sizeof(unsigned int);
 		size32 -= 1;
 	} while(size32 > 0);
