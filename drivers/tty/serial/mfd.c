@@ -2435,25 +2435,6 @@ static int hsu_runtime_resume(struct device *dev)
 
 static int hsu_suspend_noirq(struct device *dev)
 {
-	struct pci_dev *pdev = to_pci_dev(dev);
-	void *priv = pci_get_drvdata(pdev);
-	struct uart_hsu_port *up;
-
-	/* Make sure this is not the internal dma controller */
-	if (priv && (pdev->device != 0x081E) && (pdev->device != 0x08FF)
-	&& (pdev->device != 0x1192)) {
-		up = priv;
-
-#ifdef CONFIG_PM_RUNTIME
-		/* check if RPM suspend has been unlocked */
-		if (atomic_read(&up->dev->power.usage_count) > 1
-		    || up->dev->power.disable_depth > 0) {
-			dev_dbg(up->dev, "%s: rmp is active\n", __func__);
-			return -EBUSY;
-		}
-#endif
-	}
-
 	return 0;
 }
 
@@ -2470,15 +2451,6 @@ static int hsu_suspend(struct device *dev)
 
 		if (query_q(up))
 			return -EBUSY;
-
-#ifdef CONFIG_PM_RUNTIME
-		/* check if RPM suspend has been unlocked */
-		if (atomic_read(&up->dev->power.usage_count) > 1
-			|| up->dev->power.disable_depth > 0) {
-			dev_info(up->dev, "%s: rmp is active\n", __func__);
-			return -EBUSY;
-		}
-#endif
 
 		if (!allow_for_suspend(up))
 			return -EBUSY;
