@@ -513,17 +513,17 @@ int ctp_soc_jack_gpio_detect_bp(void)
 
 #ifdef CONFIG_PM
 
-static int snd_ctp_suspend(struct device *dev)
+static int snd_ctp_prepare(struct device *dev)
 {
 	pr_debug("In %s device name\n", __func__);
 	return snd_soc_suspend(dev);
 }
-static int snd_ctp_resume(struct device *dev)
+static int snd_ctp_complete(struct device *dev)
 {
 	pr_debug("In %s\n", __func__);
-	return snd_soc_resume(dev);
+	snd_soc_resume(dev);
 }
-static int snd_ctp_poweroff(struct device *dev)
+static void snd_ctp_poweroff(struct device *dev)
 {
 	pr_debug("In %s\n", __func__);
 	snd_soc_poweroff(dev);
@@ -653,8 +653,8 @@ unalloc:
 }
 
 const struct dev_pm_ops snd_ctp_mc_pm_ops = {
-	.suspend = snd_ctp_suspend,
-	.resume = snd_ctp_resume,
+	.prepare = snd_ctp_prepare,
+	.complete = snd_ctp_complete,
 	.poweroff = snd_ctp_poweroff,
 };
 
