@@ -2561,7 +2561,10 @@ CONFIG_LEDS_TRIGGERS=y
 #
 # iptables trigger is under Netfilter config (LED target)
 #
-# CONFIG_SWITCH is not set
+
+CONFIG_ANDROID_SWITCH=y
+CONFIG_ANDROID_SWITCH_MID=y
+
 # CONFIG_ACCESSIBILITY is not set
 # CONFIG_INFINIBAND is not set
 CONFIG_EDAC=y
