@@ -2187,9 +2187,9 @@ static void mmc_blk_shutdown(struct device *dev)
 	 * can be sent to mmc driver
 	 */
 	if (md) {
-		mmc_queue_suspend(&md->queue);
+		mmc_queue_suspend_on_shutdown(&md->queue);
 		list_for_each_entry(part_md, &md->part, part) {
-			mmc_queue_suspend(&part_md->queue);
+			mmc_queue_suspend_on_shutdown(&part_md->queue);
 			if (part_md->part_type == EXT_CSD_PART_CONFIG_RPMB)
 				part_md->flags |= MMC_BLK_SUSPENDED;
 		}
