@@ -10,6 +10,8 @@
 #include <linux/delay.h>
 #include <linux/kthread.h>
 #include <linux/version.h>
+#include <linux/pm_qos_params.h>
+#include <linux/intel_mid_pm.h>
 
 #include <linux/usb.h>
 #include <linux/usb/hcd.h>
@@ -343,6 +345,7 @@ static int start_host(struct dwc_otg2 *otg)
 		return -ENODEV;
 	}
 
+	pm_qos_update_request(otg->qos, CSTATE_EXIT_LATENCY_C1 - 1);
 	/* Start host driver */
 	hcd = container_of(otg->otg.host, struct usb_hcd, self);
 	ret = hcd->driver->start_host(hcd);
@@ -362,6 +365,7 @@ static int stop_host(struct dwc_otg2 *otg)
 		ret = hcd->driver->stop_host(hcd);
 	}
 
+	pm_qos_update_request(otg->qos, PM_QOS_DEFAULT_VALUE);
 	return ret;
 }
 
@@ -380,6 +384,7 @@ static void start_peripheral(struct dwc_otg2 *otg)
 		return;
 	}
 
+	pm_qos_update_request(otg->qos, CSTATE_EXIT_LATENCY_C1 - 1);
 	gadget->ops->start_device(gadget);
 }
 
@@ -395,6 +400,7 @@ static void stop_peripheral(struct dwc_otg2 *otg)
 #endif
 	otg_dbg(otg, "\n");
 	gadget->ops->stop_device(gadget);
+	pm_qos_update_request(otg->qos, PM_QOS_DEFAULT_VALUE);
 }
 
 static int get_id(struct dwc_otg2 *otg)
@@ -1228,7 +1234,12 @@ static enum dwc_otg_state do_a_host(struct dwc_otg2 *otg)
 #ifdef CONFIG_DWC_CHARGER_DETECTION
 	int id = RID_UNKNOWN;
 	unsigned long flags;
-
+#endif
+	if (otg->otg.vbus_state == VBUS_DISABLED) {
+		otg_uevent_trigger(&otg->otg);
+		return DWC_STATE_INIT;
+	}
+#ifdef CONFIG_DWC_CHARGER_DETECTION
 	if (otg->charging_cap.chrg_type != CHRG_ACA_DOCK) {
 		dwc_otg_enable_vbus(otg, 1);
 
@@ -1256,8 +1267,9 @@ static enum dwc_otg_state do_a_host(struct dwc_otg2 *otg)
 
 	otg_mask = OEVT_CONN_ID_STS_CHNG_EVNT | \
 			OEVT_A_DEV_SESS_END_DET_EVNT;
+	user_mask |= USER_A_BUS_DROP;
 #ifdef SUPPORT_USER_ID_CHANGE_EVENTS
-	user_mask =	USER_ID_B_CHANGE_EVENT;
+	user_mask |= USER_ID_B_CHANGE_EVENT;
 #endif
 
 	rc = sleep_until_event(otg,
@@ -1270,7 +1282,8 @@ static enum dwc_otg_state do_a_host(struct dwc_otg2 *otg)
 
 #ifdef CONFIG_DWC_CHARGER_DETECTION
 	/* Higher priority first */
-	if (otg_events & OEVT_A_DEV_SESS_END_DET_EVNT) {
+	if (otg_events & OEVT_A_DEV_SESS_END_DET_EVNT ||
+			user_events & USER_A_BUS_DROP) {
 		otg_dbg(otg, "OEVT_A_DEV_SESS_END_DET_EVNT\n");
 
 		/* ACA-Dock plug out */
@@ -1700,6 +1713,19 @@ show_otg_id(struct device *_dev, struct device_attribute *attr, char *buf)
 static DEVICE_ATTR(otg_id, S_IRUGO|S_IWUSR|S_IWGRP,\
 			show_otg_id, store_otg_id);
 
+static void dwc_a_bus_drop(struct otg_transceiver *x)
+{
+	struct dwc_otg2 *otg = the_transceiver;
+	unsigned long flags;
+
+	if (otg->otg.vbus_state == VBUS_DISABLED) {
+		spin_lock_irqsave(&otg->lock, flags);
+		otg->user_events |= USER_A_BUS_DROP;
+		wakeup_main_thread(otg);
+		spin_unlock_irqrestore(&otg->lock, flags);
+	}
+}
+
 static int dwc_otg_probe(struct pci_dev *pdev,
 			const struct pci_device_id *id)
 {
@@ -1769,6 +1795,8 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 	otg->state = DWC_STATE_INIT;
 	spin_lock_init(&otg->lock);
 	init_waitqueue_head(&otg->main_wq);
+	otg->otg.a_bus_drop = dwc_a_bus_drop;
+	otg->otg.vbus_state = VBUS_ENABLED;
 
 	otg_dbg(otg, "Version: %s\n", VERSION);
 	retval = otg_set_transceiver(&otg->otg);
@@ -1848,6 +1876,12 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 		goto exit;
 	}
 
+	otg->qos = kzalloc(sizeof(struct pm_qos_request_list), GFP_KERNEL);
+	if (!otg->qos)
+		goto exit;
+	pm_qos_add_request(otg->qos, PM_QOS_CPU_DMA_LATENCY,\
+			PM_QOS_DEFAULT_VALUE);
+
 	/* Don't let phy go to suspend mode, which
 	 * will cause FS/LS devices enum failed in host mode.
 	 */
@@ -1859,6 +1893,11 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 
 	return 0;
 exit:
+	if (otg->qos) {
+		pm_qos_remove_request(otg->qos);
+		kfree(otg->qos);
+	}
+
 	if (the_transceiver)
 		dwc_otg_remove(pdev);
 	free_irq(otg->irqnum, NULL);
@@ -1887,6 +1926,12 @@ static void __devexit dwc_otg_remove(struct pci_dev *pdev)
 	pci_disable_device(pdev);
 	otg_set_transceiver(NULL);
 	otg_dbg(otg, "\n");
+
+	if (otg->qos) {
+		pm_qos_remove_request(otg->qos);
+		kfree(otg->qos);
+	}
+
 	kfree(otg);
 }
 

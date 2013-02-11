@@ -1410,13 +1410,10 @@ static int __init ehci_hcd_init(void)
 
 #ifdef CONFIG_USB_EHCI_HCD_SPH
 	if (sph_enabled()) {
-		retval = cloverview_sph_gpio_init();
+		retval = pci_register_driver(&INTEL_MID_SPH_HOST_DRIVER);
 		if (retval < 0)
-			return retval;
+			goto err_sph;
 	}
-	retval = pci_register_driver(&INTEL_MID_SPH_HOST_DRIVER);
-	if (retval < 0)
-		goto err_sph;
 #endif
 
 #ifdef DEBUG
@@ -1508,8 +1505,7 @@ err_debug:
 #ifdef CONFIG_USB_EHCI_HCD_SPH
 err_sph:
 	if (sph_enabled())
-		cloverview_sph_gpio_cleanup();
-	pci_unregister_driver(&INTEL_MID_SPH_HOST_DRIVER);
+		pci_unregister_driver(&INTEL_MID_SPH_HOST_DRIVER);
 #endif
 	clear_bit(USB_EHCI_LOADED, &usb_hcds_loaded);
 	return retval;
@@ -1538,8 +1534,7 @@ static void __exit ehci_hcd_cleanup(void)
 #endif
 #ifdef CONFIG_USB_EHCI_HCD_SPH
 	if (sph_enabled())
-		cloverview_sph_gpio_cleanup();
-	pci_unregister_driver(&INTEL_MID_SPH_HOST_DRIVER);
+		pci_unregister_driver(&INTEL_MID_SPH_HOST_DRIVER);
 #endif
 #ifdef DEBUG
 	debugfs_remove(ehci_debug_root);

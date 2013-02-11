@@ -19,4 +19,14 @@ config HSI_ARASAN_CONFIG
 	boolean
 	default y
 
+config HSI_WAKEUP_PACKETS_DUMP
+	bool "HSI Wakeup packets dump"
+	depends on HSI_ARASAN
+	default n
+	help
+		If you say Y here, you will enable the dump of the first packet after
+		the HSI controller resume
+
+		If unsure, say N.
+
 endif # HSI_ARASAN

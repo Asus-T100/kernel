@@ -206,6 +206,7 @@ static int mc_driver_ops(struct ctp_mc_private *ctx,
 {
 	switch (pdata->spid->product_line_id) {
 	case INTEL_CLVTP_PHONE_RHB_ENG:
+	case INTEL_CLVTP_PHONE_RHB_PRO:
 		if (pdata->spid->hardware_id == CLVTP_PHONE_RHB_VBDV1) {
 			ctx->ops = ctp_get_vb_ops();
 			return 0;
@@ -235,7 +236,7 @@ int ctp_set_bias_level(struct snd_soc_card *card,
 		if (!strcmp(codec->name, "snd-soc-dummy"))
 			return 0;
 	} else {
-		pr_info("In %s dapm context has no associated codec or it is dummy codec.", __func__);
+		pr_debug("In %s dapm context has no associated codec or it is dummy codec.", __func__);
 		return 0;
 	}
 
@@ -277,7 +278,7 @@ int ctp_set_bias_level_post(struct snd_soc_card *card,
 		if (!strcmp(codec->name, "snd-soc-dummy"))
 			return 0;
 	} else {
-		pr_info("In %s dapm context has no associated codec or it is dummy codec.", __func__);
+		pr_debug("In %s dapm context has no associated codec or it is dummy codec.", __func__);
 		return 0;
 	}
 
@@ -656,7 +657,7 @@ const struct dev_pm_ops snd_ctp_mc_pm_ops = {
 static struct ipc_driver snd_ctp_mc_driver = {
 	.driver = {
 		.owner = THIS_MODULE,
-		.name = "clvcs_audio",
+		.name = "ctp_audio",
 		.pm   = &snd_ctp_mc_pm_ops,
 	},
 	.probe = snd_ctp_mc_probe,

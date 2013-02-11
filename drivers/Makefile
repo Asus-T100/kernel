@@ -126,3 +126,5 @@ obj-y				+= clk/
 
 obj-$(CONFIG_HWSPINLOCK)	+= hwspinlock/
 obj-$(CONFIG_EXTCON)		+= extcon/
+
+obj-$(CONFIG_MDM_CTRL)		+= modem_control/

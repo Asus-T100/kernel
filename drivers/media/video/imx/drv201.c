@@ -75,7 +75,7 @@ static int drv201_i2c_wr16(struct i2c_client *client, u8 reg, u16 val)
 	return 0;
 }
 
-int imx_vcm_power_up(struct v4l2_subdev *sd)
+int drv201_vcm_power_up(struct v4l2_subdev *sd)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	int ret;
@@ -121,13 +121,13 @@ fail_powerdown:
 	return ret;
 }
 
-int imx_vcm_power_down(struct v4l2_subdev *sd)
+int drv201_vcm_power_down(struct v4l2_subdev *sd)
 {
 	return drv201_dev.platform_data->power_ctrl(sd, 0);
 }
 
 
-int imx_t_focus_vcm(struct v4l2_subdev *sd, u16 val)
+int drv201_t_focus_vcm(struct v4l2_subdev *sd, u16 val)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	u16 data = val & VCM_CODE_MASK;
@@ -137,12 +137,12 @@ int imx_t_focus_vcm(struct v4l2_subdev *sd, u16 val)
 	return drv201_i2c_wr16(client, DRV201_VCM_CURRENT, data);
 }
 
-int imx_t_focus_abs(struct v4l2_subdev *sd, s32 value)
+int drv201_t_focus_abs(struct v4l2_subdev *sd, s32 value)
 {
 	int ret;
 
 	value = min(value, DRV201_MAX_FOCUS_POS);
-	ret = imx_t_focus_vcm(sd, DRV201_MAX_FOCUS_POS - value);
+	ret = drv201_t_focus_vcm(sd, DRV201_MAX_FOCUS_POS - value);
 	if (ret == 0) {
 		drv201_dev.number_of_steps = value - drv201_dev.focus;
 		drv201_dev.focus = value;
@@ -152,13 +152,13 @@ int imx_t_focus_abs(struct v4l2_subdev *sd, s32 value)
 	return ret;
 }
 
-int imx_t_focus_rel(struct v4l2_subdev *sd, s32 value)
+int drv201_t_focus_rel(struct v4l2_subdev *sd, s32 value)
 {
 
-	return imx_t_focus_abs(sd, drv201_dev.focus + value);
+	return drv201_t_focus_abs(sd, drv201_dev.focus + value);
 }
 
-int imx_q_focus_status(struct v4l2_subdev *sd, s32 *value)
+int drv201_q_focus_status(struct v4l2_subdev *sd, s32 *value)
 {
 	u32 status = 0;
 	struct timespec temptime;
@@ -184,11 +184,11 @@ int imx_q_focus_status(struct v4l2_subdev *sd, s32 *value)
 	return 0;
 }
 
-int imx_q_focus_abs(struct v4l2_subdev *sd, s32 *value)
+int drv201_q_focus_abs(struct v4l2_subdev *sd, s32 *value)
 {
 	s32 val;
 
-	imx_q_focus_status(sd, &val);
+	drv201_q_focus_status(sd, &val);
 
 	if (val & ATOMISP_FOCUS_STATUS_MOVING)
 		*value  = drv201_dev.focus - drv201_dev.number_of_steps;
@@ -198,17 +198,17 @@ int imx_q_focus_abs(struct v4l2_subdev *sd, s32 *value)
 	return 0;
 }
 
-int imx_t_vcm_slew(struct v4l2_subdev *sd, s32 value)
+int drv201_t_vcm_slew(struct v4l2_subdev *sd, s32 value)
 {
 	return 0;
 }
 
-int imx_t_vcm_timing(struct v4l2_subdev *sd, s32 value)
+int drv201_t_vcm_timing(struct v4l2_subdev *sd, s32 value)
 {
 	return 0;
 }
 
-int imx_vcm_init(struct v4l2_subdev *sd)
+int drv201_vcm_init(struct v4l2_subdev *sd)
 {
 	drv201_dev.platform_data = camera_get_af_platform_data();
 	return (NULL == drv201_dev.platform_data) ? -ENODEV : 0;

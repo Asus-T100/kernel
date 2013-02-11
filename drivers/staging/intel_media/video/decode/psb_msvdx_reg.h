@@ -187,6 +187,9 @@ Offset address 			Name 			Identifier
 /************************** MTX registers end **************************/
 
 /**************** DMAC Registers: 0x0500 - 0x05FF (256B) ***************/
+#define DMAC_DMAC_COUNT_EN_MASK         		(0x00010000)
+#define DMAC_DMAC_IRQ_STAT_TRANSFER_FIN_MASK            (0x00020000)
+
 #define DMAC_DMAC_SETUP_OFFSET				(0x0500)
 
 #define DMAC_DMAC_COUNT_OFFSET				(0x0504)

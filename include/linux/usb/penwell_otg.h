@@ -147,9 +147,9 @@
 #define ULPI_USBINTEN_RISING		0xd
 #define ULPI_USBINTEN_RISINGSET		0xe
 #define ULPI_USBINTEN_RISINGCLR		0xf
-#define ULPI_USBINTEN_FALLING		0xa
-#define ULPI_USBINTEN_FALLINGSET	0xb
-#define ULPI_USBINTEN_FALLINGCLR	0xc
+#define ULPI_USBINTEN_FALLING		0x10
+#define ULPI_USBINTEN_FALLINGSET	0x11
+#define ULPI_USBINTEN_FALLINGCLR	0x12
 
 #	define IDGND			BIT(4)
 #	define SESSEND			BIT(3)
@@ -440,6 +440,7 @@ struct intel_mid_otg_pdata {
 	int gpio_cs;
 	int gpio_reset;
 	int charging_compliance;
+	unsigned power_budget;
 };
 
 struct penwell_otg {

@@ -31,8 +31,8 @@
  */
 
 /* Offsets for ARASAN v1.4 registers */
-#define ARASAN_SLAVE_DMA_CFG_V1          0x000
-#define ARASAN_SLAVE_DMA_CFG_STP_V1      4
+#define ARASAN_SDMA_CFG_V1               0x000
+#define ARASAN_SDMA_CFG_STP_V1           4
 #define ARASAN_TX_FIFO_SIZE_V1           0x040
 #define ARASAN_TX_FIFO_SIZE_STP_V1       0
 #define ARASAN_TX_FIFO_THRES_V1          0x044
@@ -74,8 +74,8 @@
 
 
 /* Offsets for ARASAN v1.9+ registers */
-#define ARASAN_SLAVE_DMA_CFG_V2          UNSUPP
-#define ARASAN_SLAVE_DMA_CFG_STP_V2      UNSUPP
+#define ARASAN_SDMA_CFG_V2               UNSUPP
+#define ARASAN_SDMA_CFG_STP_V2           UNSUPP
 #define ARASAN_TX_FIFO_SIZE_V2           0x020
 #define ARASAN_TX_FIFO_SIZE_STP_V2       8
 #define ARASAN_TX_FIFO_THRES_V2          0x024
@@ -138,14 +138,14 @@ static inline int is_arasan_v1(int version)
 #define ARASAN_REG(r)  ((is_arasan_v1(version) ? \
 			ARASAN_REG_V1(ctrl, r) : ARASAN_REG_V2(ctrl, r)))
 
-#define ARASAN_CHN_REG_V1(r, ch) \
+#define ARASAN_CHN_V1(r, ch) \
 	(ctrl+(ARASAN_ ## r ## _V1 + ch * ARASAN_ ## r ## _STP_V1))
 
-#define ARASAN_CHN_REG_V2(r, ch) \
+#define ARASAN_CHN_V2(r, ch) \
 	(ctrl+(ARASAN_ ## r ## _V2 + ch * ARASAN_ ## r ## _STP_V2))
 
 #define ARASAN_CHN_REG(r, ch) ((is_arasan_v1(version) ? \
-	ARASAN_CHN_REG_V1(r, ch) : ARASAN_CHN_REG_V2(r, ch)))
+	ARASAN_CHN_V1(r, ch) : ARASAN_CHN_V2(r, ch)))
 
 /*
  * Key register fields

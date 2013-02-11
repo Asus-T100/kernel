@@ -13,5 +13,11 @@
 
 /* __attribute__((weak)) makes these declarations overridable */
 extern struct devs_id *get_device_ptr(void) __attribute__((weak));
-extern void intel_mid_power_off(void) __attribute__((weak));
-extern unsigned long __init intel_mid_calibrate_tsc(void) __attribute__((weak));
+
+/* For every CPU addition a new get_<cpuname>_ops interface needs
+ * to be added.
+ */
+extern void * __init get_penwell_ops(void) __attribute__((weak));
+extern void * __init get_lincroft_ops(void) __attribute__((weak));
+extern void * __init get_cloverview_ops(void) __attribute__((weak));
+extern void * __init get_tangier_ops(void) __attribute__((weak));

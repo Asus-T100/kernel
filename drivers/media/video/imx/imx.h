@@ -34,11 +34,8 @@
 #include <media/v4l2-chip-ident.h>
 #include <media/v4l2-device.h>
 #include <media/v4l2-subdev.h>
-#if defined(CONFIG_VIDEO_IMX175)
 #include "imx175.h"
-#elif defined(CONFIG_VIDEO_IMX135)
 #include "imx135.h"
-#endif
 
 #define I2C_MSG_LENGTH		0x2
 
@@ -70,11 +67,20 @@
 
 #define IMX_READ_MODE				0x0390
 
+#define IMX_HORIZONTAL_START_H 0x0344
+#define IMX_VERTICAL_START_H 0x0346
+#define IMX_HORIZONTAL_END_H 0x0348
+#define IMX_VERTICAL_END_H 0x034a
+#define IMX_HORIZONTAL_OUTPUT_SIZE_H 0x034c
+#define IMX_VERTICAL_OUTPUT_SIZE_H 0x034e
+
 #define IMX_COARSE_INTEGRATION_TIME		0x0202
 #define IMX_TEST_PATTERN_MODE			0x0600
 #define IMX_IMG_ORIENTATION			0x0101
 #define IMX_VFLIP_BIT			1
 #define IMX_GLOBAL_GAIN			0x0205
+#define IMX_SHORT_AGC_GAIN		0x0233
+#define IMX_DGC_ADJ		0x020E
 
 /* Defines for register writes and register array processing */
 #define IMX_BYTE_MAX	30
@@ -83,6 +89,110 @@
 #define IMX_TOK_MASK	0xfff0
 
 #define MAX_FMTS 1
+
+#define IMX_NAME	"imx175"
+#define IMX175_ID	0x0175
+#define IMX135_ID	0x0135
+#define IMX_ID_DEFAULT	0x0000
+#define IMX175_CHIP_ID	0x0000
+#define IMX135_CHIP_ID	0x0016
+#define IMX175_RES_WIDTH_MAX	3280
+#define IMX175_RES_HEIGHT_MAX	2464
+#define IMX135_RES_WIDTH_MAX	4208
+#define IMX135_RES_HEIGHT_MAX	3120
+
+/* Defines for lens/VCM */
+#define IMX_FOCAL_LENGTH_NUM	369	/*3.69mm*/
+#define IMX_FOCAL_LENGTH_DEM	100
+#define IMX_F_NUMBER_DEFAULT_NUM	22
+#define IMX_F_NUMBER_DEM	10
+#define IMX_INVALID_CONFIG	0xffffffff
+#define IMX_MAX_FOCUS_POS	1023
+#define IMX_MAX_FOCUS_NEG	(-1023)
+#define IMX_VCM_SLEW_STEP_MAX	0x3f
+#define IMX_VCM_SLEW_TIME_MAX	0x1f
+
+#define IMX_BIN_FACTOR_MAX			4
+/*
+ * focal length bits definition:
+ * bits 31-16: numerator, bits 15-0: denominator
+ */
+#define IMX_FOCAL_LENGTH_DEFAULT 0x1710064
+
+/*
+ * current f-number bits definition:
+ * bits 31-16: numerator, bits 15-0: denominator
+ */
+#define IMX_F_NUMBER_DEFAULT 0x16000a
+
+/*
+ * f-number range bits definition:
+ * bits 31-24: max f-number numerator
+ * bits 23-16: max f-number denominator
+ * bits 15-8: min f-number numerator
+ * bits 7-0: min f-number denominator
+ */
+#define IMX_F_NUMBER_RANGE 0x160a160a
+
+struct imx_vcm {
+	int (*power_up)(struct v4l2_subdev *sd);
+	int (*power_down)(struct v4l2_subdev *sd);
+	int (*init)(struct v4l2_subdev *sd);
+	int (*t_focus_vcm)(struct v4l2_subdev *sd, u16 val);
+	int (*t_focus_abs)(struct v4l2_subdev *sd, s32 value);
+	int (*t_focus_rel)(struct v4l2_subdev *sd, s32 value);
+	int (*q_focus_status)(struct v4l2_subdev *sd, s32 *value);
+	int (*q_focus_abs)(struct v4l2_subdev *sd, s32 *value);
+	int (*t_vcm_slew)(struct v4l2_subdev *sd, s32 value);
+	int (*t_vcm_timing)(struct v4l2_subdev *sd, s32 value);
+};
+
+struct max_res {
+	int res_max_width;
+	int res_max_height;
+};
+
+struct max_res imx_max_res[] = {
+	[IMX175_ID] = {
+		.res_max_width = IMX175_RES_WIDTH_MAX,
+		.res_max_height = IMX175_RES_HEIGHT_MAX,
+	},
+	[IMX135_ID] = {
+		.res_max_width = IMX135_RES_WIDTH_MAX,
+		.res_max_height = IMX135_RES_HEIGHT_MAX,
+	},
+};
+
+struct imx_settings {
+	struct imx_reg const *init_settings;
+	struct imx_resolution *res_preview;
+	struct imx_resolution *res_still;
+	struct imx_resolution *res_video;
+	int n_res_preview;
+	int n_res_still;
+	int n_res_video;
+};
+
+struct imx_settings imx_sets[] = {
+	[IMX175_ID] = {
+		.init_settings = imx175_init_settings,
+		.res_preview = imx175_res_preview,
+		.res_still = imx175_res_still,
+		.res_video = imx175_res_video,
+		.n_res_preview = ARRAY_SIZE(imx175_res_preview),
+		.n_res_still = ARRAY_SIZE(imx175_res_still),
+		.n_res_video = ARRAY_SIZE(imx175_res_video),
+	},
+	[IMX135_ID] = {
+		.init_settings = imx135_init_settings,
+		.res_preview = imx135_res_preview,
+		.res_still = imx135_res_still,
+		.res_video = imx135_res_video,
+		.n_res_preview = ARRAY_SIZE(imx135_res_preview),
+		.n_res_still = ARRAY_SIZE(imx135_res_still),
+		.n_res_video = ARRAY_SIZE(imx135_res_video),
+	},
+};
 
 #define	v4l2_format_capture_type_entry(_width, _height, \
 		_pixelformat, _bytesperline, _colorspace) \
@@ -214,18 +324,6 @@ struct imx_write_ctrl {
 	struct imx_write_buffer buffer;
 };
 
-struct sensor_mode_data {
-	u32 coarse_integration_time_min;
-	u32 coarse_integration_time_max_margin;
-	u32 fine_integration_time_min;
-	u32 fine_integration_time_max_margin;
-	u32 fine_integration_time_def;
-	u32 frame_length_lines;
-	u32 line_length_pck;
-	u32 read_mode;
-	int vt_pix_clk_freq_mhz;
-};
-
 static const struct imx_reg imx_soft_standby[] = {
 	{IMX_8BIT, 0x0100, 0x00},
 	{IMX_TOK_TERM, 0, 0}
@@ -285,23 +383,63 @@ static const u8 otpdata[] = {
 	2, 223, 2, 222, 1, 249, 2, 186, 2, 223, 2, 221, 1, 147
 };
 
-#define IMX_INVALID_CONFIG	0xffffffff
-#define IMX_MAX_FOCUS_POS	1023
-#define IMX_MAX_FOCUS_NEG	(-1023)
-#define IMX_VCM_SLEW_STEP_MAX	0x3f
-#define IMX_VCM_SLEW_TIME_MAX	0x1f
+extern int ad5816g_vcm_power_up(struct v4l2_subdev *sd);
+extern int ad5816g_vcm_power_down(struct v4l2_subdev *sd);
+extern int ad5816g_vcm_init(struct v4l2_subdev *sd);
 
-extern int imx_vcm_power_up(struct v4l2_subdev *sd);
-extern int imx_vcm_power_down(struct v4l2_subdev *sd);
-extern int imx_vcm_init(struct v4l2_subdev *sd);
+extern int ad5816g_t_focus_vcm(struct v4l2_subdev *sd, u16 val);
+extern int ad5816g_t_focus_abs(struct v4l2_subdev *sd, s32 value);
+extern int ad5816g_t_focus_rel(struct v4l2_subdev *sd, s32 value);
+extern int ad5816g_q_focus_status(struct v4l2_subdev *sd, s32 *value);
+extern int ad5816g_q_focus_abs(struct v4l2_subdev *sd, s32 *value);
+extern int ad5816g_t_vcm_slew(struct v4l2_subdev *sd, s32 value);
+extern int ad5816g_t_vcm_timing(struct v4l2_subdev *sd, s32 value);
 
-extern int imx_t_focus_vcm(struct v4l2_subdev *sd, u16 val);
-extern int imx_t_focus_abs(struct v4l2_subdev *sd, s32 value);
-extern int imx_t_focus_rel(struct v4l2_subdev *sd, s32 value);
-extern int imx_q_focus_status(struct v4l2_subdev *sd, s32 *value);
-extern int imx_q_focus_abs(struct v4l2_subdev *sd, s32 *value);
-extern int imx_t_vcm_slew(struct v4l2_subdev *sd, s32 value);
-extern int imx_t_vcm_timing(struct v4l2_subdev *sd, s32 value);
+extern int drv201_vcm_power_up(struct v4l2_subdev *sd);
+extern int drv201_vcm_power_down(struct v4l2_subdev *sd);
+extern int drv201_vcm_init(struct v4l2_subdev *sd);
+
+extern int drv201_t_focus_vcm(struct v4l2_subdev *sd, u16 val);
+extern int drv201_t_focus_abs(struct v4l2_subdev *sd, s32 value);
+extern int drv201_t_focus_rel(struct v4l2_subdev *sd, s32 value);
+extern int drv201_q_focus_status(struct v4l2_subdev *sd, s32 *value);
+extern int drv201_q_focus_abs(struct v4l2_subdev *sd, s32 *value);
+extern int drv201_t_vcm_slew(struct v4l2_subdev *sd, s32 value);
+extern int drv201_t_vcm_timing(struct v4l2_subdev *sd, s32 value);
+
+extern int vcm_power_up(struct v4l2_subdev *sd);
+extern int vcm_power_down(struct v4l2_subdev *sd);
+
+struct imx_vcm imx_vcms[] = {
+	[IMX175_ID] = {
+		.power_up = drv201_vcm_power_up,
+		.power_down = drv201_vcm_power_down,
+		.init = drv201_vcm_init,
+		.t_focus_vcm = drv201_t_focus_vcm,
+		.t_focus_abs = drv201_t_focus_abs,
+		.t_focus_rel = drv201_t_focus_rel,
+		.q_focus_status = drv201_q_focus_status,
+		.q_focus_abs = drv201_q_focus_abs,
+		.t_vcm_slew = drv201_t_vcm_slew,
+		.t_vcm_timing = drv201_t_vcm_timing,
+	},
+	[IMX135_ID] = {
+		.power_up = ad5816g_vcm_power_up,
+		.power_down = ad5816g_vcm_power_down,
+		.init = ad5816g_vcm_init,
+		.t_focus_vcm = ad5816g_t_focus_vcm,
+		.t_focus_abs = ad5816g_t_focus_abs,
+		.t_focus_rel = ad5816g_t_focus_rel,
+		.q_focus_status = ad5816g_q_focus_status,
+		.q_focus_abs = ad5816g_q_focus_abs,
+		.t_vcm_slew = ad5816g_t_vcm_slew,
+		.t_vcm_timing = ad5816g_t_vcm_timing,
+	},
+	[IMX_ID_DEFAULT] = {
+		.power_up = vcm_power_up,
+		.power_down = vcm_power_down,
+	},
+};
 
 #endif
 

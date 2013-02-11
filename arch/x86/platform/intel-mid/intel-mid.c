@@ -78,21 +78,21 @@ __cpuinitdata enum intel_mid_timer_options intel_mid_timer_options;
 struct kobject *spid_kobj;
 struct sfi_soft_platform_id spid;
 u32 board_id;
+/* intel_mid_ops to store sub arch ops */
+struct intel_mid_ops *intel_mid_ops;
+/* getter function for sub arch ops*/
+void* (*get_intel_mid_ops[])() = INTEL_MID_OPS_INIT;
 static u32 sfi_mtimer_usage[SFI_MTMR_MAX_NUM];
 static struct sfi_timer_table_entry sfi_mtimer_array[SFI_MTMR_MAX_NUM];
 enum intel_mid_cpu_type __intel_mid_cpu_chip;
 EXPORT_SYMBOL_GPL(__intel_mid_cpu_chip);
-
-#ifdef CONFIG_X86_MRFLD
-enum intel_mrfl_sim_type __intel_mrfl_sim_platform;
-EXPORT_SYMBOL_GPL(__intel_mrfl_sim_platform);
-#endif /* X86_CONFIG_MRFLD */
 
 int sfi_mtimer_num;
 
 struct sfi_rtc_table_entry sfi_mrtc_array[SFI_MRTC_MAX];
 EXPORT_SYMBOL_GPL(sfi_mrtc_array);
 int sfi_mrtc_num;
+u32 nbr_hsi_clients = 2;
 #ifdef CONFIG_ATOM_SOC_POWER
 void (*saved_shutdown)(void);
 #include <intel_soc_pmu.h>
@@ -107,6 +107,11 @@ void mfld_shutdown(void)
 		saved_shutdown();
 }
 #endif
+
+void intel_mid_power_off(void)
+{
+	pmu_power_off();
+};
 
 /* Unified message bus read/write operation */
 static DEFINE_SPINLOCK(msgbus_lock);
@@ -336,12 +341,6 @@ static void __init intel_mid_time_init(void)
 {
 	sfi_table_parse(SFI_SIG_MTMR, NULL, NULL, sfi_parse_mtmr);
 
-/* [REVERT ME] ARAT capability not set in VP. Force setting */
-#ifdef CONFIG_X86_MRFLD
-	if (intel_mrfl_identify_sim() == INTEL_MRFL_CPU_SIMULATION_VP)
-		set_cpu_cap(&boot_cpu_data, X86_FEATURE_ARAT);
-#endif /* CONFIG_X86_MRFLD */
-
 	switch (intel_mid_timer_options) {
 	case INTEL_MID_TIMER_APBT_ONLY:
 		break;
@@ -377,6 +376,17 @@ static void __cpuinit intel_mid_arch_setup(void)
 			boot_cpu_data.x86, boot_cpu_data.x86_model);
 		__intel_mid_cpu_chip = INTEL_MID_CPU_CHIP_LINCROFT;
 	}
+
+	if (__intel_mid_cpu_chip < MAX_CPU_OPS(get_intel_mid_ops))
+		intel_mid_ops = get_intel_mid_ops[__intel_mid_cpu_chip]();
+	else {
+		pr_err("Invalid CPU id %d, default to penwell ops\n",
+					__intel_mid_cpu_chip);
+		intel_mid_ops = get_intel_mid_ops[INTEL_MID_CPU_CHIP_PENWELL]();
+	}
+
+	if (intel_mid_ops->arch_setup)
+		intel_mid_ops->arch_setup();
 }
 
 /* MID systems don't have i8042 controller */
@@ -493,88 +503,9 @@ __setup("x86_intel_mid_timer=", setup_x86_intel_mid_timer);
  */
 static struct sfi_table_header *oem0_table;
 
-#ifdef CONFIG_X86_MRFLD
-static struct ps_pse_mod_prof *batt_chrg_profile;
-static struct ps_batt_chg_prof *ps_batt_chrg_profile;
-
-static void set_batt_chrg_prof(struct ps_pse_mod_prof *batt_prof,
-				struct ps_pse_mod_prof *pentry)
-{
-	int i, j;
-
-	if (batt_prof == NULL || pentry == NULL) {
-		pr_err("%s: Invalid Pointer\n");
-		return;
-	}
-
-	memcpy(batt_prof->batt_id, pentry->batt_id, BATTID_STR_LEN);
-	batt_prof->battery_type = pentry->battery_type;
-	batt_prof->capacity = pentry->capacity;
-	batt_prof->voltage_max = pentry->voltage_max;
-	batt_prof->chrg_term_mA = pentry->chrg_term_mA;
-	batt_prof->low_batt_mV = pentry->low_batt_mV;
-	batt_prof->disch_tmp_ul = pentry->disch_tmp_ul;
-	batt_prof->disch_tmp_ll = pentry->disch_tmp_ll;
-	batt_prof->temp_low_lim = pentry->temp_low_lim;
-
-	for (i = 0, j = 0; i < pentry->temp_mon_ranges; i++) {
-		if (pentry->temp_mon_range[i].temp_up_lim != 0xff) {
-			memcpy(&batt_prof->temp_mon_range[j],
-				&pentry->temp_mon_range[i],
-				sizeof(struct ps_temp_chg_table));
-			j++ ;
-		}
-	}
-	batt_prof->temp_mon_ranges = j;
-	return;
-}
-#endif
-
 static int __init sfi_parse_oem0(struct sfi_table_header *table)
 {
-#ifdef CONFIG_X86_MRFLD
-	struct sfi_table_simple *sb;
-	struct ps_pse_mod_prof *pentry;
-	int totentrs = 0, totlen = 0;
-#endif
 	oem0_table = table;
-
-#ifdef CONFIG_X86_MRFLD
-	sb = (struct sfi_table_simple *)table;
-	totentrs = SFI_GET_NUM_ENTRIES(sb, struct ps_pse_mod_prof);
-	if (totentrs) {
-		batt_chrg_profile = kzalloc(
-				sizeof(*batt_chrg_profile), GFP_KERNEL);
-		if (!batt_chrg_profile) {
-			pr_info("%s(): Error in kzalloc\n", __func__);
-			return -ENOMEM;
-		}
-		pentry = (struct ps_pse_mod_prof *)sb->pentry;
-		totlen = totentrs * sizeof(*pentry);
-		if (totlen <= sizeof(*batt_chrg_profile)) {
-			set_batt_chrg_prof(batt_chrg_profile, pentry);
-			ps_batt_chrg_profile = kzalloc(
-					sizeof(*ps_batt_chrg_profile),
-					GFP_KERNEL);
-			ps_batt_chrg_profile->chrg_prof_type =
-				PSE_MOD_CHRG_PROF;
-			ps_batt_chrg_profile->batt_prof = batt_chrg_profile;
-#ifdef CONFIG_POWER_SUPPLY_BATTID
-			battery_prop_changed(POWER_SUPPLY_BATTERY_INSERTED,
-					ps_batt_chrg_profile);
-#endif
-		} else {
-			pr_err("%s: Error in copying batt charge profile\n",
-					__func__);
-			kfree(batt_chrg_profile);
-			return -ENOMEM;
-		}
-	} else {
-		pr_err("%s: Error in finding batt charge profile\n",
-				__func__);
-	}
-#endif
-
 	return 0;
 }
 
@@ -876,31 +807,6 @@ static void __init sfi_handle_spi_dev(struct sfi_device_table_entry *pentry,
 		spi_register_board_info(&spi_info, 1);
 }
 
-static void handle_r69001_i2c_dev(void)
-{
-	struct i2c_board_info i2c_info;
-	int ioapic;
-	struct io_apic_irq_attr irq_attr;
-
-	memset(&i2c_info, 0, sizeof(i2c_info));
-	strcpy(i2c_info.type, "r69001-ts-i2c");
-	i2c_info.irq = 42;
-	i2c_info.addr = 0x55;
-
-	ioapic = mp_find_ioapic(i2c_info.irq);
-
-	if (ioapic >= 0) {
-		irq_attr.ioapic = ioapic;
-		irq_attr.ioapic_pin = i2c_info.irq;
-		irq_attr.trigger = 1;
-		irq_attr.polarity = 1; /* fast_int2 need low level trigger */
-		io_apic_set_pci_routing(NULL, i2c_info.irq, &irq_attr);
-	} else {
-		pr_warn("can not find touch interrupt in ioapic\n");
-	}
-	i2c_register_board_info(7, &i2c_info, 1);
-}
-
 static void __init sfi_handle_i2c_dev(struct sfi_device_table_entry *pentry,
 					struct devs_id *dev)
 {
@@ -945,9 +851,10 @@ static void sfi_handle_hsi_dev(struct sfi_device_table_entry *pentry,
 	pdata = dev->get_platform_data(&hsi_info);
 
 	if (pdata) {
-		pr_info("SFI register platform data for HSI device %s\n",
-					dev->name);
-		hsi_register_board_info(pdata, 2);
+		pr_info("SFI register platform data for HSI device %s with %d number of clients\n",
+					dev->name,
+					nbr_hsi_clients);
+		hsi_register_board_info(pdata, nbr_hsi_clients);
 	}
 }
 
@@ -1000,7 +907,6 @@ static int __init sfi_parse_devs(struct sfi_table_header *table)
 	int num, i;
 	int ioapic;
 	struct io_apic_irq_attr irq_attr;
-	int r69001_found_in_sfi = 0;
 
 	sb = (struct sfi_table_simple *)table;
 	num = SFI_GET_NUM_ENTRIES(sb, struct sfi_device_table_entry);
@@ -1023,7 +929,6 @@ static int __init sfi_parse_devs(struct sfi_table_header *table)
 #ifdef CONFIG_X86_MRFLD
 				if (!strncmp(pentry->name,
 						"r69001-ts-i2c", 13)) {
-					r69001_found_in_sfi = 1;
 					irq_attr.polarity = 1; /* Active low */
 				} else {
 					irq_attr.polarity = 0; /* Active high */
@@ -1069,9 +974,6 @@ static int __init sfi_parse_devs(struct sfi_table_header *table)
 			}
 		}
 	}
-
-	if (!r69001_found_in_sfi)
-		handle_r69001_i2c_dev();
 
 	return 0;
 }

@@ -125,7 +125,7 @@ extract_header(const u8 *data, int pos, struct image_header *header)
 static int rescan_pdt(struct reflash_data *data)
 {
 	int i, retval;
-	bool f01_found, f34_found;
+	bool f01_found = false, f34_found = false;
 	struct rmi4_fn_desc rmi4_fn_desc;
 	struct rmi4_data *rmi4_dev = data->rmi4_dev;
 	struct rmi4_fn_desc *f34_pdt = data->f34_pdt;
@@ -647,7 +647,7 @@ int rmi4_fw_update(struct rmi4_data *pdata,
 	const struct firmware *fw_entry = NULL;
 	struct i2c_client *client = pdata->i2c_client;
 	union pdt_properties pdt_props;
-	struct image_header header;
+	struct image_header header = { 0 };
 	struct reflash_data data = {
 		.rmi4_dev = pdata,
 		.f01_pdt = f01_pdt,

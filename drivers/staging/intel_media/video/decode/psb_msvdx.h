@@ -320,7 +320,7 @@ static inline void psb_msvdx_mtx_set_clocks(struct drm_device *dev, uint32_t clo
 {
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *)dev->dev_private;
-	uint32_t old_clock_state;
+	uint32_t old_clock_state = 0;
 	/* PSB_DEBUG_MSVDX("SetClocks to %x.\n", clock_state); */
 	old_clock_state = PSB_RMSVDX32(MSVDX_MAN_CLK_ENABLE_OFFSET);
 	if (old_clock_state == clock_state)

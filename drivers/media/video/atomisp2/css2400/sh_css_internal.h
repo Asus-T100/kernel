@@ -59,11 +59,7 @@
 
 #define NUM_REF_FRAMES		2
 
-#if defined(HAS_SP_2400A0)
-#define NUM_CONTINUOUS_FRAMES	5
-#else
 #define NUM_CONTINUOUS_FRAMES	10
-#endif
 
 #define NUM_TNR_FRAMES		2
 
@@ -545,9 +541,10 @@ enum sh_css_stage_type {
 
 enum sh_css_sp_stage_func {
   SH_CSS_SP_RAW_COPY = 0,
-  SH_CSS_SP_BIN_COPY = 1
+  SH_CSS_SP_BIN_COPY = 1,
+  SH_CSS_SP_ISYS_COPY = 2
 };
-#define SH_CSS_NUM_STAGE_FUNCS 2
+#define SH_CSS_NUM_STAGE_FUNCS 3
 
 #define SH_CSS_PIPE_CONFIG_SAMPLE_PARAMS 	(1 << 0)
 #define SH_CSS_PIPE_CONFIG_SAMPLE_PARAMS_MASK \

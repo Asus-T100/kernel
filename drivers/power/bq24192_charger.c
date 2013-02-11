@@ -184,7 +184,7 @@
 #define BQ24192_DEF_VBATT_MAX		4192	/* 4192mV */
 #define BQ24192_DEF_SDP_ILIM_CUR	500	/* 500mA */
 #define BQ24192_DEF_DCP_ILIM_CUR	1500	/* 1500mA */
-#define BQ24192_DEF_CHRG_CUR		1500	/* 1500mA */
+#define BQ24192_DEF_CHRG_CUR		1000	/* 1000mA */
 
 #define BQ24192_CHRG_CUR_LOW		100	/* 100mA */
 #define BQ24192_CHRG_CUR_MEDIUM		500	/* 500mA */
@@ -239,6 +239,9 @@
 
 /* Max no. of tries to clear the charger from Hi-Z mode */
 #define MAX_TRY		3
+
+/* Max no. of tries to reset the bq24192i WDT */
+#define MAX_RESET_WDT_RETRY 8
 
 /* Master Charge control register */
 #define MSIC_CHRCRTL	0x188
@@ -1216,14 +1219,17 @@ static int program_timers(struct bq24192_chip *chip, bool wdt_enable,
 /* This function should be called with the mutex held */
 static int reset_wdt_timer(struct bq24192_chip *chip)
 {
-	int ret;
+	int ret = 0, i;
 
 	/* reset WDT timer */
-	ret = bq24192_reg_read_modify(chip->client, BQ24192_POWER_ON_CFG_REG,
+	for (i = 0; i < MAX_RESET_WDT_RETRY; i++) {
+		ret = bq24192_reg_read_modify(chip->client,
+						BQ24192_POWER_ON_CFG_REG,
 						WDTIMER_RESET_MASK, true);
-	if (ret < 0)
-		dev_warn(&chip->client->dev, "I2C write failed:%s\n", __func__);
-
+		if (ret < 0)
+			dev_warn(&chip->client->dev, "I2C write failed:%s\n",
+							__func__);
+	}
 	return ret;
 }
 
@@ -2037,9 +2043,6 @@ static void bq24192_event_worker(struct work_struct *work)
 				 * attached or is suspended and hence we
 				 * will not resume charging
 				 */
-				mutex_lock(&chip->event_lock);
-				chip->cached_temp = 0;
-				mutex_unlock(&chip->event_lock);
 				dev_dbg(&chip->client->dev,
 				"Charger not attached, dnt resume charging\n");
 				break;
@@ -2173,6 +2176,7 @@ static void bq24192_event_worker(struct work_struct *work)
 		}
 		chip->online = 0;
 		chip->batt_status = POWER_SUPPLY_STATUS_DISCHARGING;
+		chip->cached_temp = 0;
 		if (chip->votg) {
 				ret = bq24192_turn_otg_vbus(chip, false);
 				if (ret < 0) {

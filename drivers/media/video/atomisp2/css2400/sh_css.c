@@ -243,6 +243,7 @@ struct sh_css_video_settings {
 	struct sh_css_frame *ref_frames[NUM_VIDEO_REF_FRAMES];
 	struct sh_css_frame *tnr_frames[NUM_VIDEO_TNR_FRAMES];
 	struct sh_css_frame *vf_pp_in_frame;
+	struct sh_css_frame *mipi_frames[NUM_CONTINUOUS_FRAMES];
 };
 
 #define DEFAULT_VIDEO_SETTINGS \
@@ -253,6 +254,7 @@ struct sh_css_video_settings {
 	{ NULL },                /* ref_frames */ \
 	{ NULL },                /* tnr_frames */ \
 	NULL,                    /* vf_pp_in_frame */ \
+	{ NULL },                /* mipi_frames[] */ \
 }
 
 #define DEFAULT_VIDEO_PIPE \
@@ -330,10 +332,13 @@ struct sh_css {
 	bool                           check_system_idle;
 	bool                           continuous;
 	bool                           cont_capt;
+	bool						   stop_copy_preview;
 	unsigned int                   num_cont_raw_frames;
 	bool                           start_sp_copy;
 	hrt_vaddress                   sp_bin_addr;
-	hrt_data		       page_table_base_index;
+	hrt_data                       page_table_base_index;
+	unsigned int                   size_mem_words;
+	bool                           contiguous;
 };
 
 #define DEFAULT_CSS \
@@ -359,10 +364,13 @@ struct sh_css {
 	true,                     /* check_system_idle */ \
 	false,                    /* continuous */ \
 	false,                    /* cont_capt */ \
+	false,                    /* stop_copy_preview */ \
 	NUM_CONTINUOUS_FRAMES,    /* num_cont_raw_frames */ \
 	false,                    /* start_sp_copy */ \
 	0,                        /* sp_bin_addr */ \
 	0,                        /* page_table_base_index */ \
+	0,                        /* size_mem_words */ \
+	true                      /* contiguous */ \
 }
 
 #if defined(HAS_RX_VERSION_2)
@@ -1331,7 +1339,7 @@ start_binary(struct sh_css_pipe *pipe,
 
 	if (my_css.reconfigure_css_rx) {
 		pipe->mipi_config.is_two_ppc = pipe->two_ppc;
-		sh_css_rx_configure(&pipe->mipi_config);
+		sh_css_rx_configure(&pipe->mipi_config, pipe->input_mode);
 		my_css.reconfigure_css_rx = false;
 	}
 }
@@ -1363,7 +1371,7 @@ start_copy_on_sp(struct sh_css_pipe *pipe,
 	if (my_css.reconfigure_css_rx) {
 		/* do we need to wait for the IF do be ready? */
 		pipe->mipi_config.is_two_ppc = pipe->two_ppc;
-		sh_css_rx_configure(&pipe->mipi_config);
+		sh_css_rx_configure(&pipe->mipi_config, pipe->input_mode);
 		my_css.reconfigure_css_rx = false;
 	}
 
@@ -1648,6 +1656,7 @@ static void start_pipe(
 			 (me->capture_mode == SH_CSS_CAPTURE_MODE_LOW_LIGHT ||
 			  me->capture_mode == SH_CSS_CAPTURE_MODE_BAYER);
 	bool is_preview = me->mode == SH_CSS_PREVIEW_PIPELINE;
+	bool isys_tokenhandler = (me->input_mode == SH_CSS_INPUT_MODE_MULTI_SENSOR);
 
 assert(me != NULL);
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
@@ -1662,7 +1671,8 @@ assert(me != NULL);
 				my_css.continuous,
 				false,
 				me->input_is_raw_reordered,
-			copy_ovrd);
+				isys_tokenhandler,
+				copy_ovrd);
 
 	/* prepare update of params to ddr */
 	sh_css_commit_isp_config(&me->pipeline, false);
@@ -2229,6 +2239,14 @@ sh_css_uninit(void)
 			preview_pipe->pipe.preview.continuous_frames[i] = NULL;
 		}
 	}
+	/* cleanup video data */
+	for (i = 0; i < NUM_CONTINUOUS_FRAMES; i++) {
+		if (video_pipe->pipe.video.mipi_frames[i]) {
+			sh_css_frame_free(
+				video_pipe->pipe.video.mipi_frames[i]);
+			video_pipe->pipe.video.mipi_frames[i] = NULL;
+		}
+	}
 
 	/* cleanup video data */
 	sh_css_pipe_invalidate_binaries(video_pipe);
@@ -2312,10 +2330,13 @@ static unsigned int translate_sw_interrupt2(void)
 void
 sh_css_mmu_set_page_table_base_index(hrt_data base_index)
 {
+	mmu_ID_t	mmu_id;
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_mmu_set_page_table_base_index() enter: base_index=0x%08x\n",base_index);
 	my_css.page_table_base_index = base_index;
-	mmu_set_page_table_base_index(MMU0_ID, base_index);
-	mmu_invalidate_cache(MMU0_ID);
+	for (mmu_id = (mmu_ID_t)0;mmu_id < N_MMU_ID; mmu_id++) {
+		mmu_set_page_table_base_index(mmu_id, base_index);
+		mmu_invalidate_cache(mmu_id);
+	}
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_mmu_set_page_table_base_index() leave: return_void\n");
 }
 
@@ -2345,7 +2366,7 @@ enum sh_css_err sh_css_translate_interrupt(
 
 /* irq_infos can be NULL, but that would make the function useless */
 /* assert(irq_infos != NULL); */
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_translate_interrupt() enter: irq_infos=%d\n",irq_infos);
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_translate_interrupt() enter: irq_infos=%p\n",irq_infos);
 
 	while (status == hrt_isp_css_irq_status_more_irqs) {
 		status = irq_get_channel_id(IRQ0_ID, &irq);
@@ -2546,6 +2567,7 @@ enum sh_css_err sh_css_translate_interrupt(
 
 /* irq_infos can be NULL, but that would make the function useless */
 /* assert(irq_infos != NULL); */
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_translate_interrupt() enter: irq_infos=%p\n",irq_infos);
 
 	while (status == hrt_isp_css_irq_status_more_irqs) {
 		status = irq_get_channel_id(IRQ0_ID, &irq);
@@ -3520,10 +3542,11 @@ assert(pipe != NULL);
 				(capture_pipe->capture_mode ==
 				SH_CSS_CAPTURE_MODE_BAYER);
 
-		sh_css_sp_init_pipeline(&capture_pipe->pipeline, SH_CSS_CAPTURE_PIPELINE,
+		sh_css_sp_init_pipeline(&capture_pipe->pipeline,
+			SH_CSS_CAPTURE_PIPELINE,
 			false, low_light, pipe->xnr,
 			capture_pipe->two_ppc, false,
-			false, capture_pipe->input_is_raw_reordered,
+			false, capture_pipe->input_is_raw_reordered, false,
 			SH_CSS_PIPE_CONFIG_OVRD_THRD_1_2);
 
 
@@ -3972,6 +3995,8 @@ enum sh_css_err sh_css_start(
 	while (!sh_css_sp_has_initialized())
 		hrt_sleep();
 
+	sh_css_init_host_sp_control_vars();
+
 	sh_css_init_buffer_queues();
 
 	sh_css_dtrace(SH_DBG_TRACE,
@@ -4161,11 +4186,12 @@ sh_css_enable_continuous(bool enable)
 }
 
 void
-sh_css_enable_cont_capt(bool enable)
+sh_css_enable_cont_capt(bool enable, bool stop_copy_preview)
 {
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_enable_cont_capt() enter: enable=%d\n", enable);
 	my_css.cont_capt = enable;
+	my_css.stop_copy_preview = stop_copy_preview;
 }
 
 void
@@ -4462,7 +4488,7 @@ static enum sh_css_err load_video_binaries(
 				 *video_vf_info;
 	bool online;
 	enum sh_css_err err = sh_css_success;
-	int i;
+	unsigned int i;
 
 assert(pipe != NULL);
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "load_video_binaries() enter:\n");
@@ -4589,6 +4615,28 @@ assert(pipe != NULL);
 		sh_css_frame_zero(pipe->pipe.video.tnr_frames[0]);
 		sh_css_frame_zero(pipe->pipe.video.tnr_frames[1]);
 	}
+
+	if (pipe->input_mode == SH_CSS_INPUT_MODE_MULTI_SENSOR) {
+		for (i = 0; i < NUM_CONTINUOUS_FRAMES; i++) {
+			/* free previous frame */
+			if (pipe->pipe.video.mipi_frames[i])
+				sh_css_frame_free(
+					pipe->pipe.video.mipi_frames[i]);
+			/* check if new frame needed */
+			if (i < my_css.num_cont_raw_frames) {
+				/* allocate new frame */
+				err = sh_css_mipi_frame_allocate(
+					&pipe->pipe.video.mipi_frames[i],
+					my_css.size_mem_words * 32,
+					my_css.contiguous);
+				if (err != sh_css_success)
+					return err;
+			}
+		}
+		if (SH_CSS_PREVENT_UNINIT_READS)
+			sh_css_frame_zero(pipe->pipe.video.mipi_frames[0]);
+	}
+
 	return sh_css_success;
 }
 
@@ -4747,6 +4795,18 @@ printf("wouldhave prepare (%p, %d, ..., %p)\n", NULL,
 	video_stage->args.in_tnr_frame = pipe->pipe.video.tnr_frames[0];
 	video_stage->args.out_tnr_frame = pipe->pipe.video.tnr_frames[1];
 
+	/* multi stream video needs mipi buffers */
+	if (pipe->input_mode == SH_CSS_INPUT_MODE_MULTI_SENSOR) {
+		unsigned int i;
+		/* Hand-over the SP-internal mipi buffers */
+		for (i = 0; i < NUM_CONTINUOUS_FRAMES; i++) {
+			sh_css_update_host2sp_offline_frame(i,
+				pipe->pipe.video.mipi_frames[i]);
+		}
+		sh_css_update_host2sp_cont_num_raw_frames
+			(my_css.num_cont_raw_frames);
+	}
+
 	/* update the arguments with the latest info */
 	video_stage->args.out_frame = out_frame;
 
@@ -4828,7 +4888,7 @@ assert(info != NULL);
 	} else {
 		*info = pipe->vf_output_info;
 	}
-
+		
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_video_get_viewfinder_frame_info() leave: \
 		info.width=%d, info.height=%d, \
@@ -6471,8 +6531,140 @@ assert(frame != NULL);
 return err;
 }
 
-enum sh_css_err sh_css_frame_allocate_contiguous(
-	struct sh_css_frame **frame,
+enum sh_css_err
+sh_css_mipi_frame_allocate(struct	sh_css_frame **frame,
+				const unsigned int	size_bytes,
+				const bool			contiguous)
+{
+	/* AM: Body coppied from allocate_frame_and_data().*/
+	enum sh_css_err err;
+	struct sh_css_frame *me = sh_css_malloc(sizeof(*me));
+
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_mipi_frame_allocate()\n");
+	
+	if (me == NULL)
+		return sh_css_err_cannot_allocate_memory;
+
+	me->info.width = 0;
+	me->info.height = 0;
+	// To indicate it is not (yet) valid format.
+	me->info.format = N_SH_CSS_FRAME_FORMAT;
+	me->info.padded_width = 0;
+	me->info.raw_bit_depth = 0;
+	me->data_bytes = size_bytes;
+	me->contiguous = contiguous;
+	// To indicate it is not valid frame.
+	me->dynamic_data_index = SH_CSS_INVALID_FRAME_ID;
+
+	err = allocate_frame_data(me);
+
+	if (err != sh_css_success) {
+		sh_css_free(me);
+		return err;
+	}
+
+		*frame = me;
+
+	return err;
+}
+
+enum sh_css_err
+sh_css_mipi_frame_specify(const unsigned int size_mem_words,
+				const bool contiguous)
+{
+	enum sh_css_err err = sh_css_success;
+
+	my_css.size_mem_words 	= size_mem_words;
+	my_css.contiguous		= contiguous;		
+
+
+	return err;
+}
+
+/* Assumptions:
+ *	- A line is multiple of 4 bytes = 1 word.
+ *	- Each frame has SOF and EOF (each 1 word).
+ *	- Each line has SOL, format header and EOL (each 1 word).
+ *	- Odd and even lines of YUV420 format are different in bites per pixel size.
+ *	- Custom size of embedded data.
+ *
+ * Result is given in DDR mem words, 32B or 256 bits
+ */
+enum sh_css_err
+sh_css_mipi_frame_calculate_size(const unsigned int width,
+				const unsigned int height,
+				const enum sh_css_input_format format,
+				const unsigned int embedded_data_size_words,
+				unsigned int *size_mem_words)
+{
+	enum sh_css_err err = sh_css_success;
+	unsigned int words = 0; 
+	unsigned int bits_per_pixel = 0; 
+	unsigned int even_line_bytes = 0;
+	unsigned int odd_line_bytes = 0;
+
+	switch (format) {
+		case SH_CSS_INPUT_FORMAT_RAW_6:			/* 4p, 3B, 24bits */
+			bits_per_pixel = 6; 	break;
+		case SH_CSS_INPUT_FORMAT_RAW_7:			/* 8p, 7B, 56bits */
+			bits_per_pixel = 7;		break;
+		case SH_CSS_INPUT_FORMAT_RAW_8:			/* 1p, 1B, 8bits */
+		case SH_CSS_INPUT_FORMAT_BINARY_8:      /*  8bits, TODO: check. */
+		case SH_CSS_INPUT_FORMAT_YUV420_8:		/* odd 2p, 2B, 16bits, even 2p, 4B, 32bits */
+			bits_per_pixel = 8;		break;
+		case SH_CSS_INPUT_FORMAT_YUV420_10:		/* odd 4p, 5B, 40bits, even 4p, 10B, 80bits */
+		case SH_CSS_INPUT_FORMAT_RAW_10:		/* 4p, 5B, 40bits */
+			bits_per_pixel = 10;	break;
+		case SH_CSS_INPUT_FORMAT_YUV420_8_LEGACY:	/* 2p, 3B, 24bits */	
+		case SH_CSS_INPUT_FORMAT_RAW_12:			/* 2p, 3B, 24bits */			
+			bits_per_pixel = 12;	break;
+		case SH_CSS_INPUT_FORMAT_RAW_14:		/* 4p, 7B, 56bits */
+			bits_per_pixel = 14;	break;
+		case SH_CSS_INPUT_FORMAT_RGB_444:		/* 1p, 2B, 16bits */
+		case SH_CSS_INPUT_FORMAT_RGB_555:		/* 1p, 2B, 16bits */
+		case SH_CSS_INPUT_FORMAT_RGB_565:		/* 1p, 2B, 16bits */
+		case SH_CSS_INPUT_FORMAT_YUV422_8:		/* 2p, 4B, 32bits */
+			bits_per_pixel = 16;	break;
+		case SH_CSS_INPUT_FORMAT_RGB_666:		/* 4p, 9B, 72bits */
+			bits_per_pixel = 18;	break;
+		case SH_CSS_INPUT_FORMAT_YUV422_10:		/* 2p, 5B, 40bits */
+			bits_per_pixel = 20;	break;
+		case SH_CSS_INPUT_FORMAT_RGB_888:		/* 1p, 3B, 24bits */
+			bits_per_pixel = 24;	break;
+		
+		case SH_CSS_INPUT_FORMAT_RAW_16:        /* TODO: not specified in MIPI SPEC, check */
+		case N_SH_CSS_INPUT_FORMAT:
+		/* Fall through */
+		default:
+			return sh_css_err_unsupported_input_format;
+	}
+	
+	odd_line_bytes = (width * bits_per_pixel + 7) >> 3; /* Bits per line / 8, rounded to bigger integer. */
+
+	/* Even lines for YUV420 formats are double in bits_per_pixel. */
+	if (format == SH_CSS_INPUT_FORMAT_YUV420_8
+		|| format == SH_CSS_INPUT_FORMAT_YUV420_10) {
+		even_line_bytes = (width * 2 * bits_per_pixel + 7) >> 3; /* Bits per line / 8, rounded to bigger integer. */
+	} else {
+		even_line_bytes = odd_line_bytes; 
+	}
+
+	words += ((height + 1) >> 1 ) * ((odd_line_bytes  + 3) >> 2 ); /* ceil (height/2) * ceil(odd_line_bytes/4); word = 4 bytes */
+	words += ( height      >> 1 ) * ((even_line_bytes + 3) >> 2 ); /* floor(height/2) * ceil(odd_line_bytes/4); word = 4 bytes */
+
+	
+	words += 3 * height;	/* each line has SOL, format header, and EOL. */
+
+	words += embedded_data_size_words; 
+
+	words += 2;		/* Every frame has SOF and EOF word. */
+
+	*size_mem_words = (words + 7 )>> 3 ; /* ceil(words/8); mem word is 32B = 8words. */ 
+	return err;
+}
+
+enum sh_css_err
+sh_css_frame_allocate_contiguous(struct sh_css_frame **frame,
 	unsigned int width,
 	unsigned int height,
 	enum sh_css_frame_format format,
@@ -6836,7 +7028,7 @@ enum sh_css_err sh_css_append_stage(
 	enum sh_css_err err = sh_css_success;
 
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_append_stage() enter: "
-		"me=%p, isp_f%s, in=%p, out=%p, vf=%p\n",
+		"me=%p, isp_f=%p, in=%p, out=%p, vf=%p\n",
 		me, isp_fw, in, out, vf);
 
 	if (!*pipeline) {
@@ -6950,6 +7142,7 @@ sh_css_start_pipeline(enum sh_css_pipe_id pipe_id, void *me)
 	pipeline->pipe_id = pipe_id;
 	sh_css_sp_init_pipeline(pipeline, pipe_id,
 				false, true, false, false, false, true, false,
+				false,
 				SH_CSS_PIPE_CONFIG_OVRD_NO_OVRD);
 	if (sh_css_pipe_uses_params(pipeline)) {
 		sh_css_pipeline_stream_clear_pipelines();
@@ -7556,6 +7749,24 @@ sh_css_input_get_format(enum sh_css_input_format *format)
 void
 sh_css_input_set_mode(enum sh_css_input_mode mode)
 {
+
+#ifdef HAS_INPUT_SYSTEM_VERSION_2
+	unsigned int port;
+	if (mode == SH_CSS_INPUT_MODE_MULTI_SENSOR	) {
+/*
+ * AM: A bit of a hack, wiring the input system properly.
+ *    Just in case.
+ */
+		for (port = (mipi_port_ID_t)0; port < N_MIPI_PORT_ID; port++) {
+			input_system_sub_system_reg_store(INPUT_SYSTEM0_ID,
+				GPREGS_UNIT0_ID, HIVE_ISYS_GPREG_MULTICAST_A_IDX +
+				(unsigned int)port, INPUT_SYSTEM_INPUT_BUFFER);
+			input_system_sub_system_reg_store(INPUT_SYSTEM0_ID,
+				GPREGS_UNIT0_ID, HIVE_ISYS_GPREG_MUX_IDX,
+				INPUT_SYSTEM_ACQUISITION_UNIT);
+		}
+	}
+#endif	
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_input_set_mode() enter: mode=%d\n",
 		mode);
@@ -7647,24 +7858,27 @@ sh_css_disable_vf_pp(bool disable)
 		"sh_css_disable_vf_pp() leave: return_void\n");
 }
 
-void
-sh_css_enable_raw_reordered(bool enable)
+void sh_css_enable_raw_reordered(
+	bool enable)
 {
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_enable_raw_reordered() enter: enable=%d\n", enable);
 	sh_css_pipe_enable_raw_reordered(&my_css.preview_pipe, enable);
 	sh_css_pipe_enable_raw_reordered(&my_css.video_pipe, enable);
 	sh_css_pipe_enable_raw_reordered(&my_css.capture_pipe, enable);
+/* MW: Why is 2ppc unconditionally enabled  here ?*/
+/*	sh_css_input_set_two_pixels_per_clock(true); */
+/*	sh_css_input_set_two_pixels_per_clock(enable); */
 
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_enable_raw_reordered() leave: return_void\n");
 
 }
 
-enum sh_css_err
-sh_css_input_configure_port(const mipi_port_ID_t port,
-			    const unsigned int	 num_lanes,
-			    const unsigned int	 timeout)
+enum sh_css_err sh_css_input_configure_port(
+	const mipi_port_ID_t port,
+	const unsigned int	 num_lanes,
+	const unsigned int	 timeout)
 {
 	enum sh_css_err err;
 	sh_css_dtrace(SH_DBG_TRACE,
@@ -7789,7 +8003,7 @@ sh_css_video_set_isp_pipe_version(unsigned int version)
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_video_set_isp_pipe_version() leave: return=void\n");
 }
-#if 0
+
 void
 sh_css_init_host_sp_control_vars(void)
 {
@@ -7851,4 +8065,3 @@ sh_css_init_host_sp_control_vars(void)
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_init_host_sp_control_vars() leave: return_void\n");
 }
-#endif

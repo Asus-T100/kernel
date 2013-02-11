@@ -31,6 +31,7 @@
 #include "mdfld_dsi_esd.h"
 #include "psb_powermgmt.h"
 #include "mdfld_dsi_dbi_dsr.h"
+#include "dispmgrnl.h"
 
 /**
  * Enter DSR 
@@ -288,7 +289,39 @@ static int __dbi_enter_ulps_locked(struct mdfld_dsi_config *dsi_config)
 	PSB_DEBUG_ENTRY("%s: entered ULPS state\n", __func__);
 	return 0;
 }
+static bool mdfld_get_data_line_LP11_status(struct mdfld_dsi_config *dsi_config)
+{
+	struct mdfld_dsi_hw_registers *regs = NULL;
+	struct drm_device *dev = NULL;
+	int    retry = 1000;
+	bool   ret = false;
 
+	if (!dsi_config) {
+		ret = false;
+		goto __fun_exit;
+	}
+
+	dev = dsi_config->dev;
+	regs = &dsi_config->regs;
+	/*this check is depended clock stop feature at b05c[1]
+	if clock stop feature enabled, the clock line is synchronous
+	with data line, which means no data transferring, the clock
+	will stop and keep at LP11*/
+	while (!(REG_READ(regs->mipi_reg) & BIT17) && retry) {
+		mdelay(1);
+		retry--;
+	}
+
+	if (retry == 0) {
+		DRM_INFO("Can not get data line LP11\n");
+		ret = false;
+	}
+
+	ret = true;
+__fun_exit:
+	return ret;
+
+}
 static int __dbi_exit_ulps_locked(struct mdfld_dsi_config *dsi_config)
 {
 	struct mdfld_dsi_hw_registers *regs = &dsi_config->regs;
@@ -428,6 +461,7 @@ int __dbi_power_on(struct mdfld_dsi_config *dsi_config)
 	REG_WRITE(regs->lp_byteclk_reg, ctx->lp_byteclk);
 	REG_WRITE(regs->clk_lane_switch_time_cnt_reg,
 		ctx->clk_lane_switch_time_cnt);
+	REG_WRITE(regs->hs_ls_dbi_enable_reg, ctx->hs_ls_dbi_enable);
 	REG_WRITE(regs->dsi_func_prg_reg, ctx->dsi_func_prg);
 
 	/*DBI bw ctrl*/
@@ -451,6 +485,12 @@ int __dbi_power_on(struct mdfld_dsi_config *dsi_config)
 	/* restore palette (gamma) */
 	for (i = 0; i < 256; i++)
 		REG_WRITE(regs->palette_reg + (i<<2), ctx->palette[i]);
+
+	/* restore dpst setting */
+	if (dev_priv->psb_dpst_state) {
+		dpstmgr_reg_restore_locked(dsi_config);
+		psb_enable_pipestat(dev_priv, 0, PIPE_DPST_EVENT_ENABLE);
+	}
 
 	/*Setup plane*/
 	REG_WRITE(regs->dspsize_reg, ctx->dspsize);
@@ -528,9 +568,6 @@ static int __dbi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 reset_recovery:
 	--reset_count;
 	err = 0;
-	/*after entering dstb mode, need reset*/
-	if (p_funcs && p_funcs->reset)
-		p_funcs->reset(dsi_config);
 
 	if (__dbi_power_on(dsi_config)) {
 		DRM_ERROR("Failed to init display controller!\n");
@@ -540,6 +577,17 @@ reset_recovery:
 
 	/*enable TE, will need it in panel power on*/
 	mdfld_enable_te(dev, dsi_config->pipe);
+
+	/*according panel vender , panel reset prefer happens at LP11*/
+	mdfld_get_data_line_LP11_status(dsi_config);
+
+	/*after entering dstb mode, need reset*/
+	if (p_funcs && p_funcs->reset)
+		p_funcs->reset(dsi_config);
+
+	/*after reset keep in LP11 120ms*/
+	mdfld_get_data_line_LP11_status(dsi_config);
+	mdelay(120);
 
 	/**
 	 * Different panel may have different ways to have
@@ -575,7 +623,6 @@ reset_recovery:
 	/*wait for all FIFOs empty*/
 	mdfld_dsi_wait_for_fifos_empty(sender);
 
-	dsi_config->flip_abnormal_count = 0;
 power_on_err:
 	if (err && reset_count) {
 		if (dev_priv->bhdmiconnected) {

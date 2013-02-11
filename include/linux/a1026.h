@@ -23,7 +23,7 @@
 #include <linux/compat.h>
 #endif
 
-#define A1026_MAX_FW_SIZE	(128*1024)
+#define A1026_MAX_FW_SIZE	(256*1024)
 struct a1026img {
 	unsigned char *buf;
 	unsigned img_size;

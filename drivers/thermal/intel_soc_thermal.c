@@ -35,6 +35,8 @@
 #include <linux/init.h>
 #include <linux/slab.h>
 #include <linux/err.h>
+#include <linux/debugfs.h>
+#include <linux/seq_file.h>
 
 #include <asm/intel-mid.h>
 
@@ -50,6 +52,9 @@
 /* There are 4 Aux trips. Only Aux0, Aux1 are writeable */
 #define DTS_TRIP_RW		0x03
 
+#define TJMAX_TEMP		90
+#define TJMAX_CODE		0x7F
+
 struct platform_soc_data {
 	struct thermal_zone_device *tzd[SOC_THERMAL_SENSORS];
 };
@@ -58,6 +63,118 @@ struct thermal_device_info {
 	int sensor_index;
 	struct mutex lock_aux;
 };
+
+static inline u32 read_soc_reg(unsigned int addr)
+{
+	return intel_mid_msgbus_read32(PUNIT_PORT, addr);
+}
+
+static inline void write_soc_reg(unsigned int addr, u32 val)
+{
+	intel_mid_msgbus_write32(PUNIT_PORT, addr, val);
+}
+
+#ifdef CONFIG_DEBUG_FS
+struct dts_regs {
+	char *name;
+	u32 addr;
+} dts_regs[] = {
+	/* Thermal Management Registers */
+	{"PTMC",	0x80},
+	{"TRR0",	0x81},
+	{"TRR1",	0x82},
+	{"TTS",		0x83},
+	{"TELB",	0x84},
+	{"TELT",	0x85},
+	{"GFXT",	0x88},
+	{"VEDT",	0x89},
+	{"VECT",	0x8A},
+	{"VSPT",	0x8B},
+	{"ISPT",	0x8C},
+	{"SWT",		0x8D},
+	/* Trip Event Registers */
+	{"DTSC",	0xB0},
+	{"TRR",		0xB1},
+	{"PTPS",	0xB2},
+	{"PTTS",	0xB3},
+	{"PTTSS",	0xB4},
+	{"TE_AUX0",	0xB5},
+	{"TE_AUX1",	0xB6},
+	{"TE_AUX2",	0xB7},
+	{"TE_AUX3",	0xB8},
+	{"TTE_VRIcc",	0xB9},
+	{"TTE_VRHOT",	0xBA},
+	{"TTE_PROCHOT",	0xBB},
+	{"TTE_SLM0",	0xBC},
+	{"TTE_SLM1",	0xBD},
+	{"BWTE",	0xBE},
+	{"TTE_SWT",	0xBF},
+	/* MSI Message Registers */
+	{"TMA",		0xC0},
+	{"TMD",		0xC1},
+};
+
+/* /sys/kernel/debug/tng_soc_dts */
+static struct dentry *soc_dts_dent;
+static struct dentry *tng_thermal_dir;
+
+static int soc_dts_debugfs_show(struct seq_file *s, void *unused)
+{
+	int i;
+	u32 val;
+
+	for (i = 0; i < ARRAY_SIZE(dts_regs); i++) {
+		val = read_soc_reg(dts_regs[i].addr);
+		seq_printf(s,
+			"%s[0x%X]	Val: 0x%X\n",
+			dts_regs[i].name, dts_regs[i].addr, val);
+	}
+	return 0;
+}
+
+static int debugfs_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, soc_dts_debugfs_show, NULL);
+}
+
+static const struct file_operations soc_dts_debugfs_fops = {
+	.open           = debugfs_open,
+	.read           = seq_read,
+	.llseek         = seq_lseek,
+	.release        = single_release,
+};
+
+static void create_soc_dts_debugfs(void)
+{
+	int err;
+
+	/* /sys/kernel/debug/tng_thermal/ */
+	tng_thermal_dir = debugfs_create_dir("tng_thermal", NULL);
+	if (IS_ERR(tng_thermal_dir)) {
+		err = PTR_ERR(tng_thermal_dir);
+		pr_err("debugfs_create_dir failed:%d\n", err);
+		return;
+	}
+
+	/* /sys/kernel/debug/tng_thermal/soc_dts */
+	soc_dts_dent = debugfs_create_file("soc_dts", S_IFREG | S_IRUGO,
+					tng_thermal_dir, NULL,
+					&soc_dts_debugfs_fops);
+	if (IS_ERR(soc_dts_dent)) {
+		err = PTR_ERR(soc_dts_dent);
+		debugfs_remove_recursive(tng_thermal_dir);
+		pr_err("debugfs_create_file failed:%d\n", err);
+	}
+}
+
+static void remove_soc_dts_debugfs(void)
+{
+	debugfs_remove_recursive(tng_thermal_dir);
+}
+#else
+static inline void create_soc_dts_debugfs(void) { }
+static inline void remove_soc_dts_debugfs(void) { }
+#endif
 
 static struct thermal_device_info *initialize_sensor(int index)
 {
@@ -73,15 +190,23 @@ static struct thermal_device_info *initialize_sensor(int index)
 
 static void enable_soc_dts(void)
 {
-	intel_mid_msgbus_write32(PUNIT_PORT, DTS_ENABLE_REG, DTS_ENABLE);
+	/* Enable the DTS */
+	write_soc_reg(DTS_ENABLE_REG, DTS_ENABLE);
 }
 
-static ssize_t show_temp(struct thermal_zone_device *tzd, unsigned long *temp)
+static ssize_t show_temp(struct thermal_zone_device *tzd, long *temp)
 {
 	struct thermal_device_info *td_info = tzd->devdata;
-	u32 val = intel_mid_msgbus_read32(PUNIT_PORT, PUNIT_TEMP_REG);
+	u32 val = read_soc_reg(PUNIT_TEMP_REG);
 
-	*temp = (val >> (8 * td_info->sensor_index)) & 0xFF;
+	/* Extract bits[0:7] or [8:15] using sensor_index */
+	*temp =  (val >> (8 * td_info->sensor_index)) & 0xFF;
+
+	/* Calibrate the temperature */
+	*temp = TJMAX_CODE - *temp + TJMAX_TEMP;
+
+	/* Convert to mC */
+	*temp *= 1000;
 
 	return 0;
 }
@@ -96,21 +221,30 @@ static ssize_t show_trip_type(struct thermal_zone_device *tzd,
 }
 
 static ssize_t show_trip_temp(struct thermal_zone_device *tzd,
-				int trip, unsigned long *trip_temp)
+				int trip, long *trip_temp)
 {
-	u32 aux_value = intel_mid_msgbus_read32(PUNIT_PORT, PUNIT_AUX_REG);
+	u32 aux_value = read_soc_reg(PUNIT_AUX_REG);
 
 	/* aux0 b[0:7], aux1 b[8:15], aux2 b[16:23], aux3 b[24:31] */
 	*trip_temp = (aux_value >> (8 * trip)) & 0xFF;
+
+	/* Calibrate the trip point temperature */
+	*trip_temp = TJMAX_TEMP - *trip_temp;
+
+	/* Convert to mC and report */
+	*trip_temp *= 1000;
 
 	return 0;
 }
 
 static ssize_t store_trip_temp(struct thermal_zone_device *tzd,
-				int trip, unsigned long trip_temp)
+				int trip, long trip_temp)
 {
 	u32 aux_trip, aux = 0;
 	struct thermal_device_info *td_info = tzd->devdata;
+
+	/* Convert from mC to C */
+	trip_temp /= 1000;
 
 	/* The trip temp is 8 bits wide (unsigned) */
 	if (trip_temp > 255)
@@ -119,8 +253,11 @@ static ssize_t store_trip_temp(struct thermal_zone_device *tzd,
 	/* Assign last byte to unsigned 32 */
 	aux_trip = trip_temp & 0xFF;
 
+	/* Calibrate w.r.t TJMAX_TEMP */
+	aux_trip = TJMAX_TEMP - aux_trip;
+
 	mutex_lock(&td_info->lock_aux);
-	aux = intel_mid_msgbus_read32(PUNIT_PORT, PUNIT_AUX_REG);
+	aux = read_soc_reg(PUNIT_AUX_REG);
 	switch (trip) {
 	case 0:
 		/* aux0 bits 0:7 */
@@ -139,7 +276,7 @@ static ssize_t store_trip_temp(struct thermal_zone_device *tzd,
 		aux = (aux & 0x00FFFFFF) | (aux_trip << (8 * trip));
 		break;
 	}
-	intel_mid_msgbus_write32(PUNIT_PORT, PUNIT_AUX_REG, aux);
+	write_soc_reg(PUNIT_AUX_REG, aux);
 
 	mutex_unlock(&td_info->lock_aux);
 
@@ -161,7 +298,7 @@ static int soc_thermal_probe(struct platform_device *pdev)
 {
 	struct platform_soc_data *pdata;
 	int i, ret;
-	static char *name[SOC_THERMAL_SENSORS] = {"SoCDTS0", "SoCDTS1"};
+	static char *name[SOC_THERMAL_SENSORS] = {"SoC_DTS0", "SoC_DTS1"};
 
 	pdata = kzalloc(sizeof(struct platform_soc_data), GFP_KERNEL);
 	if (!pdata)
@@ -183,6 +320,8 @@ static int soc_thermal_probe(struct platform_device *pdev)
 
 	/* Enable DTS0 and DTS1 */
 	enable_soc_dts();
+
+	create_soc_dts_debugfs();
 
 	return 0;
 
@@ -210,6 +349,8 @@ static int soc_thermal_remove(struct platform_device *pdev)
 	}
 	platform_set_drvdata(pdev, NULL);
 	kfree(pdata);
+
+	remove_soc_dts_debugfs();
 
 	return 0;
 }

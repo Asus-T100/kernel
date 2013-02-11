@@ -62,35 +62,25 @@ static int ov8830_flisclk_ctrl(struct v4l2_subdev *sd, int flag)
 
 static int ov8830_power_ctrl(struct v4l2_subdev *sd, int flag)
 {
-#ifdef CONFIG_BOARD_CTP
 	int reg_err;
-#endif
 
 	if (flag) {
 		if (!camera_vprog1_on) {
 			camera_vprog1_on = 1;
-#ifdef CONFIG_BOARD_CTP
 			reg_err = regulator_enable(vprog1_reg);
 			if (reg_err) {
 				printk(KERN_ALERT "Failed to enable regulator vprog1\n");
 				return reg_err;
-#else
-			intel_scu_ipc_msic_vprog1(0);
-#endif
 			}
 		}
 	} else {
 		if (camera_vprog1_on) {
 			camera_vprog1_on = 0;
-#ifdef CONFIG_BOARD_CTP
 			reg_err = regulator_disable(vprog1_reg);
 			if (reg_err) {
 				printk(KERN_ALERT "Failed to disable regulator vprog1\n");
 				return reg_err;
 			}
-#else
-			intel_scu_ipc_msic_vprog1(1);
-#endif
 		}
 	}
 	return 0;
@@ -129,10 +119,8 @@ static struct camera_sensor_platform_data ov8830_sensor_platform_data = {
 	.flisclk_ctrl   = ov8830_flisclk_ctrl,
 	.power_ctrl     = ov8830_power_ctrl,
 	.csi_cfg        = ov8830_csi_configure,
-#ifdef CONFIG_BOARD_CTP
 	.platform_init = ov8830_platform_init,
 	.platform_deinit = ov8830_platform_deinit,
-#endif
 };
 
 void *ov8830_platform_data(void *info)

@@ -160,6 +160,7 @@ struct drm_psb_reloc {
 #define PSB_ENGINE_DECODE 0
 #define LNC_ENGINE_ENCODE 1
 #define PSB_NUM_ENGINES 2
+#define VSP_ENGINE_VPP 6
 
 /*
  * For this fence class we have a couple of
@@ -913,6 +914,8 @@ typedef struct drm_psb_msvdx_decode_status {
 #define DRM_PSB_HDCP_DISPLAY_IED_ON		0x34
 #define DRM_PSB_QUERY_HDCP_DISPLAY_IED_CAPS	0x35
 
+/* DPST LEVEL */
+#define DRM_PSB_DPST_LEVEL	0x36
 /* Do not use IOCTL between 0x40 and 0x4F */
 /* These will be reserved for OEM to use */
 /* OEM IOCTLs */

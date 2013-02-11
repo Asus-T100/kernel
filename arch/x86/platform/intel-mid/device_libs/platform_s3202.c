@@ -78,14 +78,14 @@ void *s3202_platform_data(void *info)
 		/* TOUCH_TYPE_OGS */
 		{
 			.swap_axes = true,
-			.customer_id = 20130101,
+			.customer_id = 20130123,
 			.fw_name = "s3202_ogs.img",
 			.key_dev_name = "rmi4_key",
 		},
 		/* TOUCH_TYPE_GFF */
 		{
 			.swap_axes = false,
-			.customer_id = 20130101,
+			.customer_id = 20130123,
 			.fw_name = "s3202_gff.img",
 			.key_dev_name = "rmi4_key_gff",
 		},

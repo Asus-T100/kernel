@@ -194,17 +194,6 @@ static int ehci_pci_setup(struct usb_hcd *hcd)
 #endif
 			force_otg_hc_mode = 1;
 
-#ifdef CONFIG_BOARD_REDRIDGE
-			hcd->power_budget = 500;
-#else
-			/* For Penwell, Power budget limit is 200mA,
-			 * For Cloverview, Power budget limit is 500mA */
-			if (pdev->device == 0x0829)
-				hcd->power_budget = 200;
-			else if (pdev->device == 0xE006)
-				hcd->power_budget = 500;
-#endif
-
 			hcd->has_sram = 1;
 			/*
 			 * Disable SRAM for CLVP A0 due to the silicon issue.
@@ -228,6 +217,7 @@ static int ehci_pci_setup(struct usb_hcd *hcd)
 			hcd->has_tt = 1;
 			ehci->has_hostpc = 1;
 		} else if (pdev->device == 0x08F2) {
+#ifdef CONFIG_USB_EHCI_HCD_SPH
 			/* Check SPH enabled or not */
 			if (!sph_enabled()) {
 				ehci_info(ehci, "USB SPH is disabled\n");
@@ -253,6 +243,7 @@ static int ehci_pci_setup(struct usb_hcd *hcd)
 			hcd->rpm_control = 1;
 			hcd->rpm_resume = 0;
 			pm_runtime_set_active(&pdev->dev);
+#endif
 		} else if (pdev->device == 0x119C) {
 #ifndef CONFIG_MERR_USB_OTG_CONTROLLER_SUPPORT
 			ehci_info(ehci, "Abandon 0x119C pci device\n");

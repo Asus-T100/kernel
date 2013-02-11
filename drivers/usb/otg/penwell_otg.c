@@ -4840,8 +4840,7 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 		goto err;
 	}
 
-	pnw->otg_pdata = (struct intel_mid_otg_pdata *)
-				intel_mid_otg_get_pdata(pdev);
+	pnw->otg_pdata = pdev->dev.platform_data;
 	if (pnw->otg_pdata == NULL) {
 		dev_err(pnw->dev, "Failed to get OTG platform data.\n");
 		retval = -ENODEV;
@@ -4861,33 +4860,33 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 		}
 	}
 
-#ifdef CONFIG_BOARD_CTP
-	/* Set up gpio for Clovertrail */
-	retval = gpio_request(pnw->otg_pdata->gpio_reset,
+	if (is_clovertrail(pdev)) {
+		/* Set up gpio for Clovertrail */
+		retval = gpio_request(pnw->otg_pdata->gpio_reset,
 				"usb_otg_phy_reset");
-	if (retval < 0) {
-		dev_err(pnw->dev, "request gpio(%d) for usb otg phy reset "
-			"failed\n", pnw->otg_pdata->gpio_reset);
-		retval = -ENODEV;
-		goto err;
-	}
-	retval = gpio_request(pnw->otg_pdata->gpio_cs,
+		if (retval < 0) {
+			dev_err(pnw->dev, "request phy reset gpio(%d) failed\n",
+						pnw->otg_pdata->gpio_reset);
+			retval = -ENODEV;
+			goto err;
+		}
+		retval = gpio_request(pnw->otg_pdata->gpio_cs,
 				"usb_otg_phy_cs");
-	if (retval < 0) {
-		dev_err(pnw->dev, "request gpio(%d) for usb otg phy cs "
-			"failed\n", pnw->otg_pdata->gpio_cs);
-		gpio_free(pnw->otg_pdata->gpio_reset);
-		retval = -ENODEV;
-		goto err;
-	}
-	/* Drive CS pin to high */
-	gpio_direction_output(pnw->otg_pdata->gpio_cs, 1);
+		if (retval < 0) {
+			dev_err(pnw->dev, "request phy cs gpio(%d) failed\n",
+						pnw->otg_pdata->gpio_cs);
+			gpio_free(pnw->otg_pdata->gpio_reset);
+			retval = -ENODEV;
+			goto err;
+		}
+		/* Drive CS pin to high */
+		gpio_direction_output(pnw->otg_pdata->gpio_cs, 1);
 
-	/* Reset the PHY (minimal reset width: 100us) */
-	gpio_direction_output(pnw->otg_pdata->gpio_reset, 0);
-	usleep_range(200, 500);
-	gpio_set_value(pnw->otg_pdata->gpio_reset, 1);
-#endif
+		/* Reset the PHY (minimal reset width: 100us) */
+		gpio_direction_output(pnw->otg_pdata->gpio_reset, 0);
+		usleep_range(200, 500);
+		gpio_set_value(pnw->otg_pdata->gpio_reset, 1);
+	}
 
 	mutex_init(&pnw->msic_mutex);
 	pnw->msic = penwell_otg_check_msic();
@@ -5020,8 +5019,6 @@ static void penwell_otg_remove(struct pci_dev *pdev)
 	if (pnw->region)
 		release_mem_region(pci_resource_start(pdev, 0),
 				pci_resource_len(pdev, 0));
-	if (is_clovertrail(pdev) && pnw->otg_pdata != NULL)
-		kfree(pnw->otg_pdata);
 
 	otg_set_transceiver(NULL);
 	pci_disable_device(pdev);

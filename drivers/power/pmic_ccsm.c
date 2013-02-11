@@ -150,6 +150,26 @@ u16 pmic_inlmt[][2] = {
 	{ 1500, CHGRCTRL1_FUSB_INLMT_1500_MASK},
 };
 
+static inline struct power_supply *get_psy_battery(void)
+{
+	struct class_dev_iter iter;
+	struct device *dev;
+	struct power_supply *pst;
+
+	class_dev_iter_init(&iter, power_supply_class, NULL, NULL);
+	while ((dev = class_dev_iter_next(&iter))) {
+		pst = (struct power_supply *)dev_get_drvdata(dev);
+		if (pst->type == POWER_SUPPLY_TYPE_BATTERY) {
+			class_dev_iter_exit(&iter);
+			return pst;
+		}
+	}
+	class_dev_iter_exit(&iter);
+
+	return NULL;
+}
+
+
 /* Function definitions */
 static void lookup_regval(u16 tbl[][2], size_t size, u16 in_val, u8 *out_val)
 {
@@ -579,10 +599,10 @@ static void pmic_debugfs_exit(void)
 
 static void pmic_bat_zone_changed(void)
 {
-	static int prev_zone;
 	int retval;
 	int cur_zone;
 	u8 data = 0;
+	struct power_supply *psy_bat;
 
 	retval = intel_scu_ipc_ioread8(THRMBATZONE_ADDR, &data);
 	if (retval) {
@@ -594,13 +614,16 @@ static void pmic_bat_zone_changed(void)
 	dev_info(chc.dev, "Battery Zone changed. Current zone is %d\n",
 			(data & THRMBATZONE_MASK));
 
-	/* if current zone and previous zone are same and if they are
-	 *  the top and bottom zones then report OVERHEAT
+	/* if current zone is the top and bottom zones then report OVERHEAT
 	 */
-	if ((prev_zone == cur_zone) && ((prev_zone == PMIC_BZONE_LOW) ||
-				(prev_zone == PMIC_BZONE_HIGH)))
+	if ((cur_zone == PMIC_BZONE_LOW) || (cur_zone == PMIC_BZONE_HIGH))
 		chc.health = POWER_SUPPLY_HEALTH_OVERHEAT;
-	prev_zone = cur_zone;
+	else
+		chc.health = POWER_SUPPLY_HEALTH_GOOD;
+
+	psy_bat = get_psy_battery();
+	if (psy_bat)
+		power_supply_changed(psy_bat);
 
 	return;
 }
@@ -620,22 +643,25 @@ int pmic_get_health(void)
 }
 EXPORT_SYMBOL(pmic_get_health);
 
-int pmic_enable_charger(bool enable)
+int pmic_enable_charging(bool enable)
 {
 	int ret;
 	u8 val;
+
+	if (enable) {
+		ret = intel_scu_ipc_update_register(CHGRCTRL1_ADDR,
+			CHGRCTRL1_FTEMP_EVENT_MASK, CHGRCTRL1_FTEMP_EVENT_MASK);
+		if (ret)
+			return ret;
+	}
 
 	val = (enable) ? 0 : EXTCHRDIS_ENABLE;
 
 	ret = intel_scu_ipc_update_register(CHGRCTRL0_ADDR,
 			val, CHGRCTRL0_EXTCHRDIS_MASK);
-	if (enable) {
-		ret = intel_scu_ipc_update_register(CHGRCTRL1_ADDR,
-			CHGRCTRL1_FTEMP_EVENT_MASK, CHGRCTRL1_FTEMP_EVENT_MASK);
-	}
 	return ret;
 }
-EXPORT_SYMBOL(pmic_enable_charger);
+EXPORT_SYMBOL(pmic_enable_charging);
 
 static inline int update_zone_cc(int zone, u8 reg_val)
 {
@@ -687,7 +713,6 @@ int pmic_set_cc(int new_cc)
 	int i;
 	u8 reg_val;
 
-	return 0;
 	/* No need to write PMIC if CC = 0 */
 	if (!new_cc)
 		return 0;
@@ -708,6 +733,10 @@ int pmic_set_cc(int new_cc)
 		}
 	}
 
+	/* send the new CC and CV */
+	intel_scu_ipc_update_register(CHGRCTRL1_ADDR,
+		CHGRCTRL1_FTEMP_EVENT_MASK, CHGRCTRL1_FTEMP_EVENT_MASK);
+
 	return 0;
 }
 EXPORT_SYMBOL(pmic_set_cc);
@@ -721,7 +750,6 @@ int pmic_set_cv(int new_cv)
 	int ret;
 	int i;
 	u8 reg_val;
-	return 0;
 
 	/* No need to write PMIC if CV = 0 */
 	if (!new_cv)
@@ -744,6 +772,10 @@ int pmic_set_cv(int new_cv)
 			r_bcprof->temp_mon_range[i].full_chrg_vol = new_cv1;
 		}
 	}
+
+	/* send the new CC and CV */
+	intel_scu_ipc_update_register(CHGRCTRL1_ADDR,
+		CHGRCTRL1_FTEMP_EVENT_MASK, CHGRCTRL1_FTEMP_EVENT_MASK);
 
 	return 0;
 }
@@ -959,6 +991,7 @@ static irqreturn_t pmic_thread_handler(int id, void *data)
 	clearing the level 1 irq register and let external charger
 	driver handle the interrupt.
 	 */
+
 	if (!(evt->chgrirq1_int) &&
 		!(evt->chgrirq0_int & PMIC_CHRGR_CCSM_INT0_MASK)) {
 		intel_scu_ipc_update_register(IRQLVL1_MASK_ADDR, 0x00,
@@ -967,7 +1000,7 @@ static irqreturn_t pmic_thread_handler(int id, void *data)
 		return IRQ_NONE;
 	}
 
-	if (evt->chgrirq0_int) {
+	if (evt->chgrirq0_int & PMIC_CHRGR_CCSM_INT0_MASK) {
 		ret = intel_scu_ipc_ioread8(SCHGRIRQ0_ADDR,
 				&evt->chgrirq0_stat);
 		if (ret) {

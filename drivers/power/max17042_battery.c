@@ -340,7 +340,7 @@ static struct notifier_block max17042_reboot_notifier_block = {
 static bool is_battery_online(struct max17042_chip *chip);
 static void configure_interrupts(struct max17042_chip *chip);
 /* Set SOC threshold in S3 state */
-static void set_soc_intr_thresholds_s3(struct max17042_chip *chip);
+static int set_soc_intr_thresholds_s3(struct max17042_chip *chip);
 /* Set SOC threshold to offset percentage in S0 state */
 static void set_soc_intr_thresholds_s0(struct max17042_chip *chip, int offset);
 static void save_runtime_params(struct max17042_chip *chip);
@@ -1546,11 +1546,6 @@ static void set_soc_intr_thresholds_s0(struct max17042_chip *chip, int offset)
 		return ;
 	}
 	soc = ret >> 8;
-	/* Check if MSB of lower byte is set
-	 * then round off the SOC to higher digit
-	 */
-	if (ret & 0x80)
-		soc += 1;
 
 	/* if upper threshold exceeds 100% then stop
 	 * the interrupt for upper thresholds */
@@ -1574,7 +1569,7 @@ static void set_soc_intr_thresholds_s0(struct max17042_chip *chip, int offset)
 			"SOC threshold write to maxim fail:%d", ret);
 }
 
-static void set_soc_intr_thresholds_s3(struct max17042_chip *chip)
+static int set_soc_intr_thresholds_s3(struct max17042_chip *chip)
 {
 	int ret, val, soc;
 
@@ -1585,7 +1580,7 @@ static void set_soc_intr_thresholds_s3(struct max17042_chip *chip)
 	if (ret < 0) {
 		dev_err(&chip->client->dev,
 			"maxim RepSOC read failed:%d\n", ret);
-		return ;
+		return ret;
 	}
 	val = ret;
 	soc = val >> 8;
@@ -1606,7 +1601,11 @@ static void set_soc_intr_thresholds_s3(struct max17042_chip *chip)
 	else
 		val = SOC_DEF_MAX_MIN3_THRLD;
 
-	max17042_write_reg(chip->client, MAX17042_SALRT_Th, val);
+	ret = max17042_write_reg(chip->client, MAX17042_SALRT_Th, val);
+	if (ret < 0)
+		return ret;
+	return 0;
+
 }
 
 static int max17042_get_batt_health(void)
@@ -2133,6 +2132,7 @@ static int __devexit max17042_remove(struct i2c_client *client)
 static int max17042_suspend(struct device *dev)
 {
 	struct max17042_chip *chip = dev_get_drvdata(dev);
+	int ret;
 
 	/*
 	 * disable irq here doesn't mean max17042 interrupt
@@ -2144,11 +2144,15 @@ static int max17042_suspend(struct device *dev)
 	 */
 	if (chip->client->irq > 0) {
 		/* set SOC alert thresholds */
-		set_soc_intr_thresholds_s3(chip);
+		ret = set_soc_intr_thresholds_s3(chip);
+		if (ret < 0)
+			return ret;
 		/* setting Vmin(3300mV) threshold to wake the
 		 * platfrom in under low battery conditions */
-		max17042_write_reg(chip->client, MAX17042_VALRT_Th,
+		ret = max17042_write_reg(chip->client, MAX17042_VALRT_Th,
 					VOLT_MIN_THRLD_ENBL);
+		if (ret < 0)
+			return ret;
 		disable_irq(chip->client->irq);
 		enable_irq_wake(chip->client->irq);
 	}
@@ -2165,14 +2169,19 @@ static int max17042_suspend(struct device *dev)
 static int max17042_resume(struct device *dev)
 {
 	struct max17042_chip *chip = dev_get_drvdata(dev);
+	int ret;
 
 	if (chip->client->irq > 0) {
 		/* Setting V-alrt threshold register to default values */
-		max17042_write_reg(chip->client, MAX17042_VALRT_Th,
+		ret = max17042_write_reg(chip->client, MAX17042_VALRT_Th,
 					VOLT_DEF_MAX_MIN_THRLD);
+		if (ret < 0)
+			return ret;
 		/* set SOC-alert threshold sholds to lowest value */
-		max17042_write_reg(chip->client, MAX17042_SALRT_Th,
+		ret = max17042_write_reg(chip->client, MAX17042_SALRT_Th,
 					SOC_DEF_MAX_MIN3_THRLD);
+		if (ret < 0)
+			return ret;
 		enable_irq(chip->client->irq);
 		disable_irq_wake(chip->client->irq);
 	}

@@ -39,18 +39,6 @@
 
 #define DRVNAME				"hsi-dlp"
 
-/* Delays for powering up/resetting the modem */
-#define DLP_ON1_DURATION   60 /* ON1 pulse duration (usec) */
-#define DLP_ON1_DELAY     200 /* ON1 wait duration (usec) */
-
-#define DLP_COLD_RST_DELAY       200 /* Delay for RESET_BB_N (usec) */
-#define DLP_COLD_REG_DELAY        20 /* Delay for CHIPCNTRL (msec) */
-
-#define DLP_WARM_RST_DURATION        60 /* RESET_BB_N pulse delay (usec) */
-#define DLP_WARM_RST_FLASHING_DELAY  30 /* RESET_BB_N wait duration (msec) */
-
-#define DLP_MODEM_READY_DELAY  60 /* Modem readiness wait duration (sec) */
-
 /* Defaut TX timeout delay (in microseconds) */
 #define DLP_HANGUP_DELAY	1000000
 
@@ -155,11 +143,15 @@
  */
 #define DLP_TTY_DEV_NUM 1
 
+/*
+ * Number of HSI channels
+ */
+#define DLP_HSI_CHANNEL_COUNT 8
 
 /*
- * Get a ref to the given channel context
+ * Get a ref to the given eDLP channel context
  */
-#define DLP_CHANNEL_CTX(hsi_ch) (dlp_drv.channels[hsi_ch])
+#define DLP_CHANNEL_CTX(ch_id) (dlp_drv.channels[ch_id])
 
 /* RX and TX state machine definitions */
 enum {
@@ -283,23 +275,32 @@ struct dlp_xfer_ctx {
 
 /**
  * struct dlp_hangup_ctx - Hangup management context
- * @cause: Current cause of the hangup
- * @last_cause: Previous cause of the hangup
+ * @tx_timeout: TX timeout error or not
  * @timer: TX timeout timner
  */
 struct dlp_hangup_ctx {
-	unsigned int cause;
-	unsigned int last_cause;
+	unsigned int tx_timeout;
 	struct timer_list timer;
 };
 
 /**
- * struct dlp_channel - HSI channel context
+ * struct dlp_hsi_channel - HSI channel context
+ * @open_conn: Store any OPEN_CONN request params
+ * @state: the current channel stated (Opened, Close, ...)
+ * @dlp_channel: the eDLP channel ID
+ */
+struct dlp_hsi_channel {
+	u32 open_conn;
+	unsigned int state;
+	unsigned int edlp_channel;
+};
+
+/**
+ * struct dlp_channel - eDLP channel context
  * @client: reference to this HSI client
  * @credits: credits value (nb of pdus that can be sent to the modem)
  * @credits_lock: credits lock
  * @use_flow_ctrl: specify if the flow control (CREDITS) is enabled
- * @state: the current channel stated (Opened, Close, ...)
  * @stop_tx_w: Work for making synchronous TX start request
  * @stop_tx: Work for making synchronous TX stop request
  * @controller: reference to the controller bound to this context
@@ -310,10 +311,10 @@ struct dlp_hangup_ctx {
  * @rx: current RX context
  */
 struct dlp_channel {
+	unsigned int ch_id;
 	unsigned int hsi_channel;
 	unsigned int credits;
 	spinlock_t	 lock;
-	unsigned int state;
 	unsigned int use_flow_ctrl;
 	struct work_struct start_tx_w;
 	struct work_struct stop_tx_w;
@@ -323,12 +324,8 @@ struct dlp_channel {
 	struct dlp_xfer_ctx tx;
 	struct dlp_xfer_ctx rx;
 
-	/* Hangup management */
+	/* TX Timeout flag & callback */
 	struct dlp_hangup_ctx hangup;
-
-	/* Reset, TX Timeout & Coredump callbacks */
-	void (*modem_coredump_cb) (struct dlp_channel *ch_ctx);
-	void (*modem_reset_cb) (struct dlp_channel *ch_ctx);
 	void (*modem_tx_timeout_cb) (struct dlp_channel *ch_ctx);
 
 	/* Credits callback */
@@ -340,16 +337,16 @@ struct dlp_channel {
 	/* Debug */
 	void (*dump_state)(struct dlp_channel *ch_ctx, struct seq_file *m);
 
-	/* Channel sepecific data */
+	/* Channel specific data */
 	void *ch_data;
 };
 
 /**
  * struct dlp_driver - fixed pdu length protocol on HSI driver data
  * @channels: array of DLP Channel contex references
+ * @channels_hsi: The HSI channels context references
  * @is_dma_capable: a flag to check if the ctrl supports the DMA
  * @controller: a reference to the HSI controller
- * @channels: a reference to the HSI client
  * @recycle_wq: Workqueue for submitting pdu-recycling background tasks
  * @tx_hangup_wq: Workqueue for submitting tx timeout hangup background tasks
  * @modem_ready: The modem is up & running
@@ -365,6 +362,7 @@ struct dlp_channel {
  */
 struct dlp_driver {
 	struct dlp_channel *channels[DLP_CHANNEL_COUNT];
+	struct dlp_hsi_channel channels_hsi[DLP_HSI_CHANNEL_COUNT];
 
 	unsigned int is_dma_capable;
 	struct hsi_client *client;
@@ -402,8 +400,9 @@ struct dlp_driver {
 /*
  * Context alloc/free function proptype
  */
-typedef struct dlp_channel *(*dlp_context_create) (unsigned int index,
-						   struct device *dev);
+typedef struct dlp_channel *(*dlp_context_create) (unsigned int ch_id,
+		unsigned int hsi_channel,
+		struct device *dev);
 
 typedef int (*dlp_context_delete) (struct dlp_channel *ch_ctx);
 
@@ -580,28 +579,11 @@ inline unsigned long from_usecs(const unsigned long delay);
  * CONTROL channel exported functions
  *
  ***************************************************************************/
-struct dlp_channel *dlp_ctrl_ctx_create(unsigned int index,
+struct dlp_channel *dlp_ctrl_ctx_create(unsigned int ch_id,
+		unsigned int hsi_channel,
 		struct device *dev);
 
 int dlp_ctrl_ctx_delete(struct dlp_channel *ch_ctx);
-
-int dlp_ctrl_cold_boot(struct dlp_channel *ch_ctx);
-
-int dlp_ctrl_cold_reset(struct dlp_channel *ch_ctx);
-
-int dlp_ctrl_normal_warm_reset(struct dlp_channel *ch_ctx);
-
-int dlp_ctrl_flashing_warm_reset(struct dlp_channel *ch_ctx);
-
-inline int dlp_ctrl_get_reset_ongoing(void);
-
-inline void dlp_ctrl_set_reset_ongoing(int ongoing);
-
-inline int dlp_ctrl_get_hangup_reasons(void);
-
-inline void dlp_ctrl_set_hangup_reasons(unsigned int hsi_channel, int reason);
-
-inline unsigned int dlp_ctrl_modem_is_ready(void);
 
 int dlp_ctrl_open_channel(struct dlp_channel *ch_ctx);
 
@@ -609,11 +591,13 @@ int dlp_ctrl_close_channel(struct dlp_channel *ch_ctx);
 
 int dlp_ctrl_send_nop(struct dlp_channel *ch_ctx);
 
+int dlp_ctrl_send_ack_nack(struct dlp_channel *ch_ctx);
+
 inline void
-dlp_ctrl_set_channel_state(struct dlp_channel *, unsigned char);
+dlp_ctrl_set_channel_state(unsigned int hsi_channel, unsigned char);
 
 inline unsigned char
-dlp_ctrl_get_channel_state(struct dlp_channel *ch_ctx);
+dlp_ctrl_get_channel_state(unsigned int hsi_channel);
 
 void dlp_ctrl_hangup_ctx_init(struct dlp_channel *ch_ctx,
 		void (*timeout_func)(struct dlp_channel *ch_ctx));
@@ -625,7 +609,9 @@ void dlp_ctrl_hangup_ctx_deinit(struct dlp_channel *ch_ctx);
  * TTY channel exported functions
  *
  ***************************************************************************/
-struct dlp_channel *dlp_tty_ctx_create(unsigned int index, struct device *dev);
+struct dlp_channel *dlp_tty_ctx_create(unsigned int ch_id,
+		unsigned int hsi_channel,
+		struct device *dev);
 
 int dlp_tty_ctx_delete(struct dlp_channel *ch_ctx);
 
@@ -634,7 +620,9 @@ int dlp_tty_ctx_delete(struct dlp_channel *ch_ctx);
  * NETWORK channels exported functions
  *
  ***************************************************************************/
-struct dlp_channel *dlp_net_ctx_create(unsigned int index, struct device *dev);
+struct dlp_channel *dlp_net_ctx_create(unsigned int ch_id,
+		unsigned int hsi_channel,
+		struct device *dev);
 
 int dlp_net_ctx_delete(struct dlp_channel *ch_ctx);
 
@@ -643,7 +631,8 @@ int dlp_net_ctx_delete(struct dlp_channel *ch_ctx);
  * Boot/Flashing channel exported functions
  *
  ***************************************************************************/
-struct dlp_channel *dlp_flash_ctx_create(unsigned int index,
+struct dlp_channel *dlp_flash_ctx_create(unsigned int ch_id,
+		unsigned int hsi_channel,
 		struct device *dev);
 
 int dlp_flash_ctx_delete(struct dlp_channel *ch_ctx);
@@ -653,7 +642,8 @@ int dlp_flash_ctx_delete(struct dlp_channel *ch_ctx);
  * Modem Trace channel exported functions
  *
  ***************************************************************************/
-struct dlp_channel *dlp_trace_ctx_create(unsigned int index,
+struct dlp_channel *dlp_trace_ctx_create(unsigned int ch_id,
+		unsigned int hsi_channel,
 		struct device *dev);
 
 int dlp_trace_ctx_delete(struct dlp_channel *ch_ctx);
@@ -664,9 +654,5 @@ int dlp_trace_ctx_delete(struct dlp_channel *ch_ctx);
  *
  ***************************************************************************/
 extern struct dlp_driver dlp_drv;
-
-#ifdef CONFIG_ATOM_SOC_POWER
-extern unsigned int enable_standby;
-#endif
 
 #endif /* _DLP_MAIN_H_ */

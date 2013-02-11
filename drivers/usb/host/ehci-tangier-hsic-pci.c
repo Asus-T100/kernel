@@ -27,10 +27,14 @@ static struct pci_dev	*pci_dev;
 
 static int ehci_hsic_start_host(struct pci_dev  *pdev);
 static int ehci_hsic_stop_host(struct pci_dev *pdev);
-static bool hsic_enable;
-static bool hsic_aux_irq_enable;
+static int hsic_enable = 1;
+static int hsic_aux_irq_enable;
 /* Workaround as the Modem will request 2 IRQs */
 static int first_interrupt;
+static int hsic_enable_created;
+static int hsic_mutex_init;
+static struct hsic_tangier_priv hsic;
+static int hsic_stopped;
 
 /* Workaround for OSPM, set PMCMD to ask SCU
  * power gate EHCI controller and DPHY
@@ -43,20 +47,22 @@ static void hsic_enter_exit_d3(int enter_exit)
 	/* Reqeust IOMEM for PM */
 	pm_base = ioremap_nocache(PM_BASE, PM_REGISTER_LENGHT);
 	if (pm_base == NULL) {
-		printk(KERN_ERR "%s: mapping PMU failed!\n",
-			__func__);
+		dev_err(&pci_dev->dev,
+			"Mapping PMU failed\n");
 		return;
 	}
 
 	if (enter_exit) {
-		printk(KERN_INFO "HSIC Enter D0I3!\n");
+		dev_dbg(&pci_dev->dev,
+			"HSIC Enter D3\n");
 		tmp = readl(pm_base + PM_SSC0);
 		tmp |= PM_SSC0_HSIC_D3_MODE;
 		writel(tmp, pm_base + PM_SSC0);
 
 		writel(0x201 | (0x1 << 21), pm_base + PM_CMD);
 	} else {
-		printk(KERN_INFO "HSIC Exit D0I3!\n");
+		dev_dbg(&pci_dev->dev,
+			"HSIC Exit D3\n");
 		tmp = readl(pm_base + PM_SSC0);
 		tmp &= ~PM_SSC0_HSIC_D3_MODE;
 		writel(tmp, pm_base + PM_SSC0);
@@ -70,7 +76,7 @@ static void hsic_enter_exit_d3(int enter_exit)
 			mdelay(1);
 			if (count >= 10) {
 				count = 0;
-				printk(KERN_INFO
+				dev_err(&pci_dev->dev,
 					"Waiting for enter/exit D3 completed\n");
 			}
 		} else
@@ -83,7 +89,8 @@ static void hsic_enter_exit_d3(int enter_exit)
 	tmp &= HSIC_DPHY_D3_STATE_MASK;
 	if ((tmp != HSIC_DPHY_D3_STATE_MASK) &&
 		enter_exit)
-		printk(KERN_ERR "HSIC and DPHY enter D3 failed!\n");
+		dev_err(&pci_dev->dev,
+			"HSIC and DPHY enter D3 failed!\n");
 
 	iounmap(pm_base);
 }
@@ -96,8 +103,9 @@ static int hsic_aux_gpio_init(void)
 	if (gpio_is_valid(HSIC_AUX_N)) {
 		retval = gpio_request(HSIC_AUX_N, "HSIC_AUX_N");
 		if (retval < 0) {
-			printk(KERN_ERR "Request GPIO %d with error %d\n",
-			HSIC_AUX_N, retval);
+			dev_err(&pci_dev->dev,
+				"Request GPIO %d with error %d\n",
+				HSIC_AUX_N, retval);
 			retval = -ENODEV;
 			goto err;
 		}
@@ -117,28 +125,35 @@ err:
 static irqreturn_t hsic_aux_gpio_irq(int irq, void *data)
 {
 	struct device *dev = data;
-	struct usb_hcd *hcd = dev_get_drvdata(dev);
 
 	dev_dbg(dev,
 		"%s hsic aux gpio request irq: %d\n",
 		__func__, irq);
+
+	if (hsic_aux_irq_enable == 0) {
+		dev_err(dev, "irq is disabled\n");
+		return IRQ_HANDLED;
+	}
 
 	/* This is modem firmware workaround.
 	 * There will be one more interrupts send from modem,
 	 * usb driver should just care the first one.
 	 */
 	if (first_interrupt) {
-		printk(KERN_ERR "ignore second HSIC interrupt!\n");
-		return IRQ_HANDLED;
-	}
-
-	if (hsic_aux_irq_enable == 0) {
-		printk(KERN_ERR "ignore as irq is being disabled\n");
+		dev_dbg(dev,
+			"ignore second HSIC interrupt\n");
 		return IRQ_HANDLED;
 	}
 
 	first_interrupt = 1;
-	schedule_delayed_work(&hcd->hsic->hsic_aux, 0);
+
+	if (delayed_work_pending(&hsic.hsic_aux)) {
+		dev_dbg(dev,
+		"ignore the aux irq as delay work busy\n");
+		return IRQ_HANDLED;
+	}
+
+	schedule_delayed_work(&hsic.hsic_aux, 0);
 
 	return IRQ_HANDLED;
 }
@@ -216,22 +231,16 @@ static void hsic_notify(struct usb_device *udev, unsigned action)
 
 static void hsic_aux_work(struct work_struct *work)
 {
-	ehci_hsic_stop_host(pci_dev);
+	dev_dbg(&pci_dev->dev, "------>\n");
+	mutex_lock(&hsic.hsic_mutex);
+	if (hsic_stopped == 0)
+		ehci_hsic_stop_host(pci_dev);
 	hsic_enter_exit_d3(1);
 	usleep_range(5000, 6000);
 	hsic_enter_exit_d3(0);
 	ehci_hsic_start_host(pci_dev);
-}
-
-static void hsic_enable_work(struct work_struct *work)
-{
-	if (hsic_enable) {
-		ehci_hsic_stop_host(pci_dev);
-		hsic_enter_exit_d3(1);
-		usleep_range(5000, 6000);
-		hsic_enter_exit_d3(0);
-		ehci_hsic_start_host(pci_dev);
-	}
+	first_interrupt = 0;
+	mutex_unlock(&hsic.hsic_mutex);
 }
 
 static ssize_t hsic_port_enable_show(struct device *dev,
@@ -244,21 +253,48 @@ static ssize_t hsic_port_enable_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size)
 {
 	int retval;
-	struct usb_hcd *hcd = dev_get_drvdata(dev);
 
 	if (size > sizeof(int))
 		return -EINVAL;
 
+	if (delayed_work_pending(&hsic.hsic_aux)) {
+		dev_dbg(&dev, "delay work busy\n");
+		return -EBUSY;
+	}
+
 	if (sscanf(buf, "%d", &hsic_enable) == 1) {
-		schedule_delayed_work(&hcd->hsic->hsic_enable, 0);
-		return size;
+		if (hsic_enable) {
+			dev_dbg(dev, "enable hsic\n");
+			mutex_lock(&hsic.hsic_mutex);
+			/* add this due to hcd release
+				 doesn't set hcd to NULL */
+			if (hsic_stopped == 0)
+				ehci_hsic_stop_host(pci_dev);
+			hsic_enter_exit_d3(1);
+			usleep_range(5000, 6000);
+			hsic_enter_exit_d3(0);
+			ehci_hsic_start_host(pci_dev);
+			mutex_unlock(&hsic.hsic_mutex);
+
+			return size;
+		} else {
+			dev_dbg(dev, "disable hsic\n");
+			mutex_lock(&hsic.hsic_mutex);
+			/* add this due to hcd release
+				 doesn't set hcd to NULL */
+			if (hsic_stopped == 0)
+				ehci_hsic_stop_host(pci_dev);
+			mutex_unlock(&hsic.hsic_mutex);
+
+			return size;
+		}
 	}
 
 	return -1;
 }
 
-static DEVICE_ATTR(hsic_enable, S_IRUGO | S_IWUSR, hsic_port_enable_show,
-						    hsic_port_enable_store);
+static DEVICE_ATTR(hsic_enable, S_IRUGO | S_IWUSR | S_IROTH | S_IWOTH,
+		hsic_port_enable_show, hsic_port_enable_store);
 
 static int ehci_hsic_probe(struct pci_dev *pdev,
 				const struct pci_device_id *id)
@@ -267,7 +303,6 @@ static int ehci_hsic_probe(struct pci_dev *pdev,
 	struct usb_hcd *hcd;
 	struct ehci_hcd *ehci;
 	int irq, retval;
-	struct hsic_tangier_priv *private;
 
 	pr_debug("initializing Intel EHCI HSIC Host Controller\n");
 
@@ -326,26 +361,25 @@ static int ehci_hsic_probe(struct pci_dev *pdev,
 		goto release_mem_region;
 	}
 
-	private = kmalloc(sizeof(struct hsic_tangier_priv), GFP_KERNEL);
-	if (!private) {
-		printk(KERN_ERR "kmalloc failed!\n");
-		return -ENOMEM;
-	}
-
 	pci_set_master(pdev);
 
-	retval = device_create_file(&pdev->dev, &dev_attr_hsic_enable);
-	if (retval < 0) {
-		dev_dbg(&pdev->dev, "error create hsic_enable\n");
-		goto release_mem_region;
+	if (hsic_enable_created == 0) {
+		retval = device_create_file(&pdev->dev, &dev_attr_hsic_enable);
+		if (retval < 0) {
+			dev_dbg(&pdev->dev, "error create hsic_enable\n");
+			goto release_mem_region;
+		}
+		hsic_enable_created = 1;
 	}
 
+	if (hsic_mutex_init == 0) {
+		mutex_init(&hsic.hsic_mutex);
+		hsic_mutex_init = 1;
+	}
 
-	INIT_DELAYED_WORK(&(private->hsic_aux), hsic_aux_work);
-	INIT_DELAYED_WORK(&private->hsic_enable, hsic_enable_work);
+	INIT_DELAYED_WORK(&(hsic.hsic_aux), hsic_aux_work);
 
 	hcd->hsic_notify = hsic_notify;
-	hcd->hsic = private;
 
 	retval = usb_add_hcd(hcd, irq, IRQF_DISABLED | IRQF_SHARED);
 	if (retval != 0)
@@ -363,6 +397,7 @@ static int ehci_hsic_probe(struct pci_dev *pdev,
 
 		pm_runtime_allow(&pdev->dev);
 	}
+	hsic_stopped = 0;
 
 	return retval;
 
@@ -399,6 +434,9 @@ static void ehci_hsic_remove(struct pci_dev *pdev)
 		pm_runtime_forbid(&pdev->dev);
 	}
 
+	/* Free the aux irq */
+	free_aux_irq();
+
 	/* Fake an interrupt request in order to give the driver a chance
 	 * to test whether the controller hardware has been removed (e.g.,
 	 * cardbus physical eject).
@@ -414,15 +452,12 @@ static void ehci_hsic_remove(struct pci_dev *pdev)
 	} else {
 		release_region(hcd->rsrc_start, hcd->rsrc_len);
 	}
-	kfree(hcd->hsic);
 	usb_put_hcd(hcd);
-	printk(KERN_ERR "%s--->aux_irq_disable\n", __func__);
-	free_aux_irq();
 	gpio_free(HSIC_AUX_N);
-	device_remove_file(&pdev->dev, &dev_attr_hsic_enable);
 	pci_disable_device(pdev);
 
 	hsic_enter_exit_d3(1);
+	hsic_stopped = 1;
 }
 
 static void ehci_hsic_shutdown(struct pci_dev *pdev)
@@ -442,6 +477,87 @@ static void ehci_hsic_shutdown(struct pci_dev *pdev)
 	dev_dbg(&pdev->dev, "%s <---\n", __func__);
 }
 
+static int tangier_hsic_suspend_noirq(struct device *dev)
+{
+	int			ret = 0;
+
+	dev_dbg(dev, "%s --->\n", __func__);
+
+	dev_dbg(dev, "%s <---\n", __func__);
+	return ret;
+}
+
+static int tangier_hsic_suspend(struct device *dev)
+{
+	int			ret = 0;
+
+	dev_dbg(dev, "%s --->\n", __func__);
+
+	dev_dbg(dev, "%s <---\n", __func__);
+	return ret;
+}
+
+static int tangier_hsic_resume_noirq(struct device *dev)
+{
+	int			ret = 0;
+
+	dev_dbg(dev, "%s --->\n", __func__);
+
+
+	dev_dbg(dev, "%s <---\n", __func__);
+	return ret;
+}
+
+static int tangier_hsic_resume(struct device *dev)
+{
+	int			ret = 0;
+
+	dev_dbg(dev, "%s --->\n", __func__);
+
+	dev_dbg(dev, "%s <---\n", __func__);
+	return ret;
+}
+
+#ifdef CONFIG_PM_RUNTIME
+/* Runtime PM */
+static int tangier_hsic_runtime_suspend(struct device *dev)
+{
+	int			ret = 0;
+
+	dev_dbg(dev, "%s --->\n", __func__);
+
+	dev_dbg(dev, "%s <---: ret = %d\n", __func__, ret);
+	return ret;
+}
+
+static int tangier_hsic_runtime_resume(struct device *dev)
+{
+	int			ret = 0;
+
+	dev_dbg(dev, "%s --->\n", __func__);
+
+	dev_dbg(dev, "%s <---\n", __func__);
+
+	return ret;
+}
+
+static int tangier_hsic_runtime_idle(struct device *dev)
+{
+	dev_dbg(dev, "%s --->\n", __func__);
+
+	dev_dbg(dev, "%s <---\n", __func__);
+
+	return -EBUSY;
+}
+
+#else
+
+#define tangier_hsic_runtime_suspend NULL
+#define tangier_hsic_runtime_resume NULL
+#define tangier_hsic_runtime_idle NULL
+
+#endif
+
 static DEFINE_PCI_DEVICE_TABLE(pci_hsic_ids) = {
 	{
 		.vendor =	0x8086,
@@ -451,6 +567,16 @@ static DEFINE_PCI_DEVICE_TABLE(pci_hsic_ids) = {
 		.driver_data =  (unsigned long) &ehci_pci_hc_driver,
 	},
 	{ /* end: all zeroes */ }
+};
+
+static const struct dev_pm_ops tangier_hsic_pm_ops = {
+	.runtime_suspend = tangier_hsic_runtime_suspend,
+	.runtime_resume = tangier_hsic_runtime_resume,
+	.runtime_idle = tangier_hsic_runtime_idle,
+	.suspend = tangier_hsic_suspend,
+	.suspend_noirq = tangier_hsic_suspend_noirq,
+	.resume = tangier_hsic_resume,
+	.resume_noirq = tangier_hsic_resume_noirq,
 };
 
 /* Intel HSIC EHCI driver */
@@ -463,7 +589,7 @@ static struct pci_driver ehci_hsic_driver = {
 
 #ifdef CONFIG_PM_SLEEP
 	.driver =	{
-		.pm =	&usb_hcd_pci_pm_ops
+		.pm =	&tangier_hsic_pm_ops
 	},
 #endif
 	.shutdown =	ehci_hsic_shutdown,

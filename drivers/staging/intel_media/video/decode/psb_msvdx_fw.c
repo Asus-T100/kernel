@@ -57,7 +57,7 @@ int32_t psb_msvdx_alloc_fw_bo(struct drm_psb_private *dev_priv)
 	if ((core_rev & 0xffffff) < 0x020000)
 		msvdx_priv->mtx_mem_size = 16 * 1024;
 	else
-		msvdx_priv->mtx_mem_size = 40 * 1024;
+		msvdx_priv->mtx_mem_size = 56 * 1024;
 
 	PSB_DEBUG_INIT("MSVDX: MTX mem size is 0x%08x bytes, allocate firmware BO size 0x%08x\n", msvdx_priv->mtx_mem_size,
 		       msvdx_priv->mtx_mem_size + 4096);
@@ -130,7 +130,7 @@ static void msvdx_upload_fw(struct drm_psb_private *dev_priv,
 
 	/* toggle channel 0 usage between mtx and other msvdx peripherals */
 	{
-		reg_val = PSB_RMSVDX32(MSVDX_CONTROL_OFFSET));
+		reg_val = PSB_RMSVDX32(MSVDX_CONTROL_OFFSET);
 		REGIO_WRITE_FIELD(reg_val, MSVDX_CONTROL, DMAC_CH0_SELECT,  0);
 		PSB_WMSVDX32(reg_val, MSVDX_CONTROL_OFFSET);
 	}
@@ -554,13 +554,14 @@ int psb_setup_fw(struct drm_device *dev)
 		goto out;
 	}
 
-	if (!msvdx_priv->is_load) /* Load firmware into BO */
+	if (!msvdx_priv->is_load) { /* Load firmware into BO */
 		PSB_DEBUG_GENERAL("MSVDX:load msvdx_fw.bin by udevd into BO\n");
-	ret = msvdx_get_fw_bo(dev, &raw, "msvdx_fw_mfld_DE2.0.bin");
-	if (ret) {
-		DRM_ERROR("MSVDX: failed to call msvdx_get_fw_bo.\n");
-		ret = 1;
-		goto out;
+		ret = msvdx_get_fw_bo(dev, &raw, "msvdx_fw_mfld_DE2.0.bin");
+		if (ret) {
+			DRM_ERROR("MSVDX: failed to call msvdx_get_fw_bo.\n");
+			ret = 1;
+			goto out;
+		}
 	}
 
 	fw = (struct msvdx_fw *) fw_ptr;

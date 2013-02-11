@@ -96,7 +96,7 @@ static void sst_restore_fw_context(void)
  */
 int sst_download_fw(void)
 {
-	int retval;
+	int retval = 0;
 
 	retval = sst_load_fw();
 	if (retval)
@@ -109,7 +109,6 @@ end_restore:
 		sst_restore_fw_context();
 #endif
 	sst_set_fw_state_locked(sst_drv_ctx, SST_FW_RUNNING);
-
 	return retval;
 }
 
@@ -179,6 +178,7 @@ int sst_get_stream_allocated(struct snd_sst_params *str_param,
 	int retval, str_id;
 	struct stream_info *str_info;
 
+	pr_debug("In %s\n", __func__);
 	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID) {
 		pr_debug("Sending LPE mixer algo Params\n");
 		sst_send_lpe_mixer_algo_params();
@@ -191,7 +191,8 @@ int sst_get_stream_allocated(struct snd_sst_params *str_param,
 	}
 	pr_debug("Stream allocated %d\n", retval);
 	str_id = retval;
-	str_info = &sst_drv_ctx->streams[str_id];
+	str_info = get_stream_info(str_id);
+
 	/* Block the call for reply */
 	retval = sst_wait_timeout(sst_drv_ctx, &str_info->ctrl_blk);
 	if ((retval != 0) || (str_info->ctrl_blk.ret_code != 0)) {
@@ -277,8 +278,10 @@ int sst_get_stream(struct snd_sst_params *str_param)
 	struct stream_info *str_info;
 	struct snd_sst_lib_download *lib_dnld;
 
+	pr_debug("In %s\n", __func__);
 	/* stream is not allocated, we are allocating */
 	retval = sst_get_stream_allocated(str_param, &lib_dnld);
+
 	if (retval == -(SST_LIB_ERR_LIB_DNLD_REQUIRED)) {
 		/* codec download is required */
 		struct snd_sst_alloc_response *response;
@@ -322,7 +325,6 @@ int sst_get_stream(struct snd_sst_params *str_param)
 	}
 	/*else
 		set_port_params(str_param, str_param->ops);*/
-
 	/* store sampling freq */
 	str_info = &sst_drv_ctx->streams[retval];
 	str_info->sfreq = sst_get_sfreq(str_param);
@@ -350,6 +352,7 @@ int intel_sst_check_device(void)
 {
 	int retval = 0;
 
+	pr_debug("In %s\n", __func__);
 	pm_runtime_get_sync(&sst_drv_ctx->pci->dev);
 	mutex_lock(&sst_drv_ctx->sst_lock);
 	if (sst_drv_ctx->sst_state == SST_UN_INIT) {
@@ -401,14 +404,6 @@ void sst_process_mad_ops(struct work_struct *work)
 	return;
 }
 
-void sst_fill_compressed_slot(unsigned int device_type)
-{
-	if (device_type == SND_SST_DEVICE_HEADSET)
-		sst_drv_ctx->compressed_slot = 0x03;
-	else if (device_type == SND_SST_DEVICE_IHF)
-		sst_drv_ctx->compressed_slot = 0x0C;
-}
-
 /*
  * sst_open_pcm_stream - Open PCM interface
  *
@@ -432,10 +427,9 @@ static int sst_open_pcm_stream(struct snd_sst_params *str_param)
 	if (retval)
 		return retval;
 	retval = sst_get_stream(str_param);
-	if (retval > 0) {
+	if (retval > 0)
 		sst_drv_ctx->stream_cnt++;
-		str_info = &sst_drv_ctx->streams[retval];
-	} else
+	else
 		pm_runtime_put(&sst_drv_ctx->pci->dev);
 	return retval;
 }

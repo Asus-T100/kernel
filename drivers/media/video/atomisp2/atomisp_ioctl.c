@@ -270,7 +270,8 @@ static int __get_css_frame_info(struct atomisp_device *isp,
 		if (isp->sw_contex.run_mode == CI_MODE_VIDEO)
 			return sh_css_video_get_viewfinder_frame_info(
 					frame_info);
-		else if (isp->capture_format->out_sh_fmt !=
+		else if (isp->capture_format &&
+				isp->capture_format->out_sh_fmt !=
 			SH_CSS_FRAME_FORMAT_RAW)
 			return sh_css_capture_get_viewfinder_frame_info(
 					frame_info);
@@ -333,85 +334,6 @@ static int atomisp_g_chip_ident(struct file *file, void *fh,
 	return ret;
 }
 
-/*
- * crop capability is the max resolution both ISP and Sensor supported
- */
-static int atomisp_cropcap(struct file *file, void *fh,
-	struct v4l2_cropcap *cropcap)
-{
-	struct video_device *vdev = video_devdata(file);
-	struct atomisp_device *isp = video_get_drvdata(vdev);
-	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
-	struct v4l2_mbus_framefmt snr_mbus_fmt;
-	int ret;
-
-	if (cropcap->type != V4L2_BUF_TYPE_VIDEO_CAPTURE) {
-		v4l2_err(&atomisp_dev, "unsupport v4l2 buf type\n");
-		return -EINVAL;
-	}
-
-	/*Only capture node supports cropcap*/
-	if (pipe->pipe_type != ATOMISP_PIPE_CAPTURE)
-		return 0;
-
-	mutex_lock(&isp->mutex);
-	cropcap->bounds.left = 0;
-	cropcap->bounds.top = 0;
-
-	snr_mbus_fmt.code = V4L2_MBUS_FMT_FIXED;
-	snr_mbus_fmt.height = ATOM_ISP_MAX_HEIGHT_TMP;
-	snr_mbus_fmt.width = ATOM_ISP_MAX_WIDTH_TMP;
-
-	ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
-			       video, try_mbus_fmt, &snr_mbus_fmt);
-	if (ret) {
-		v4l2_err(&atomisp_dev,
-			"failed to try_mbus_fmt for sensor"
-			", try try_fmt\n");
-	} else {
-		cropcap->bounds.width = snr_mbus_fmt.width;
-		cropcap->bounds.height = snr_mbus_fmt.height;
-		isp->snr_max_width = snr_mbus_fmt.width;
-		isp->snr_max_height = snr_mbus_fmt.height;
-		isp->snr_pixelformat = snr_mbus_fmt.code;
-	}
-
-	memcpy(&cropcap->defrect, &cropcap->bounds, sizeof(struct v4l2_rect));
-	cropcap->pixelaspect.numerator = 1;
-	cropcap->pixelaspect.denominator = 1;
-	mutex_unlock(&isp->mutex);
-
-	return 0;
-}
-/*
- *  FIXME:G_CROP and S_CROP are used for bayer downscaling case
- */
-static int atomisp_g_crop(struct file *file, void *fh,
-	struct v4l2_crop *crop)
-{
-	/*
-	 * g_crop is used to enable bayer downscaling previously.
-	 * current bayer ds is replaced by yuv ds.
-	 * so remove the support of cropping.
-	 */
-	v4l2_err(&atomisp_dev,
-		"crop is unavailable now\n");
-	return -EINVAL;
-
-}
-
-static int atomisp_s_crop(struct file *file, void *fh,
-	struct v4l2_crop *crop)
-{
-	/*
-	 * s_crop is used to enable bayer downscaling previously.
-	 * current bayer ds is replaced by yuv ds.
-	 * so remove the support of cropping.
-	 */
-	v4l2_err(&atomisp_dev,
-		"crop is unavailable now\n");
-	return -EINVAL;
-}
 /*
  * enum input are used to check primary/secondary camera
  */
@@ -673,132 +595,6 @@ static int atomisp_s_fmt_file(struct file *file, void *fh,
 }
 
 /*
- * This ioctl allows applications to enumerate all frame sizes that the
- * device supports for the given pixel format.
- * discrete means the applicatons should increase the index until EINVAL is
- * returned.
- * stepwise means the applications only need to set pixel_format, then
- * driver will return maximum value and minimum value of frame size supported
- * and step size.
- */
-static int atomisp_enum_framesizes(struct file *file, void *fh,
-	struct v4l2_frmsizeenum *arg)
-{
-	struct video_device *vdev = video_devdata(file);
-	struct atomisp_device *isp = video_get_drvdata(vdev);
-	struct v4l2_mbus_framefmt snr_mbus_fmt;
-	struct v4l2_streamparm sensor_parm;
-	struct atomisp_input_subdev *input;
-	unsigned int padding_w, padding_h;
-	int max_width, max_height, min_width, min_height;
-	int ret;
-	bool same_type;
-	u32 pixel_format;
-
-	if (arg->index != 0)
-		return -EINVAL;
-
-	if (!atomisp_is_pixelformat_supported(arg->pixel_format))
-		return -EINVAL;
-
-	mutex_lock(&isp->mutex);
-	input = &isp->inputs[isp->input_curr];
-
-	if (input->type != SOC_CAMERA && input->type != RAW_CAMERA) {
-		ret = -EINVAL;
-		goto error;
-	}
-
-	pixel_format = input->frame_size.pixel_format;
-	/*
-	 * only judge if the pixel format and previous pixel format are
-	 * the same type
-	 */
-	same_type = is_pixelformat_raw(pixel_format) ==
-					is_pixelformat_raw(arg->pixel_format);
-
-	/*
-	 * when frame size is requested previously, we can get the value
-	 * rapidly from cache.
-	 */
-	if (input->frame_size.pixel_format != 0 &&
-		same_type) {
-		memcpy(arg, &input->frame_size, sizeof(input->frame_size));
-		mutex_unlock(&isp->mutex);
-
-		return 0;
-	}
-
-	/* get padding value via subdev type and requested isp pixelformat */
-	if (input->type == SOC_CAMERA || (input->type == RAW_CAMERA &&
-				is_pixelformat_raw(arg->pixel_format))) {
-		padding_h = 0;
-		padding_w = 0;
-	} else {
-		padding_h = pad_h;
-		padding_w = pad_w;
-	}
-
-	/* setting run mode to the sensor */
-	sensor_parm.parm.capture.capturemode = CI_MODE_STILL_CAPTURE;
-	v4l2_subdev_call(input->camera, video, s_parm, &sensor_parm);
-
-	/* get the sensor max resolution supported */
-	snr_mbus_fmt.height = ATOM_ISP_MAX_HEIGHT;
-	snr_mbus_fmt.width = ATOM_ISP_MAX_WIDTH;
-
-	ret = v4l2_subdev_call(input->camera, video, try_mbus_fmt,
-							&snr_mbus_fmt);
-	if (ret < 0)
-		goto error;
-
-	max_width = snr_mbus_fmt.width - padding_w;
-	max_height = snr_mbus_fmt.height - padding_h;
-
-	/* app vs isp */
-	max_width = max_width - max_width % ATOM_ISP_STEP_WIDTH;
-	max_height = max_height - max_height % ATOM_ISP_STEP_HEIGHT;
-
-	max_width = clamp(max_width, ATOM_ISP_MIN_WIDTH, ATOM_ISP_MAX_WIDTH);
-	max_height = clamp(max_height, ATOM_ISP_MIN_HEIGHT,
-			   ATOM_ISP_MAX_HEIGHT);
-
-	/* set the supported minimum resolution to sub-QCIF resolution */
-	min_width = ATOM_RESOLUTION_SUBQCIF_WIDTH;
-	min_height = ATOM_RESOLUTION_SUBQCIF_HEIGHT;
-
-	/* app vs isp */
-	min_width = min_width - min_width % ATOM_ISP_STEP_WIDTH;
-	min_height = min_height - min_height % ATOM_ISP_STEP_HEIGHT;
-
-	min_width = clamp(min_width, ATOM_ISP_MIN_WIDTH, ATOM_ISP_MAX_WIDTH);
-	min_height = clamp(min_height, ATOM_ISP_MIN_HEIGHT,
-			   ATOM_ISP_MAX_HEIGHT);
-
-	arg->stepwise.max_width = max_width;
-	arg->stepwise.max_height = max_height;
-	arg->stepwise.min_width = min_width;
-	arg->stepwise.min_height = min_height;
-	arg->stepwise.step_width = ATOM_ISP_STEP_WIDTH;
-	arg->stepwise.step_height = ATOM_ISP_STEP_HEIGHT;
-	arg->type = V4L2_FRMSIZE_TYPE_STEPWISE;
-
-	/*
-	 * store frame size in particular struct of every subdev,
-	 * when enumerate frame size next,we can get it rapidly.
-	 */
-	memcpy(&input->frame_size, arg, sizeof(*arg));
-	mutex_unlock(&isp->mutex);
-
-	return 0;
-
-error:
-	mutex_unlock(&isp->mutex);
-
-	return ret;
-}
-
-/*
  * is_resolution_supported - Check whether resolution is supported
  * @width: check resolution width
  * @height: check resolution height
@@ -944,7 +740,7 @@ error:
 /*
  * Initiate Memory Mapping or User Pointer I/O
  */
-int atomisp_reqbufs(struct file *file, void *fh,
+int __atomisp_reqbufs(struct file *file, void *fh,
 	struct v4l2_requestbuffers *req)
 {
 	struct video_device *vdev = video_devdata(file);
@@ -957,11 +753,11 @@ int atomisp_reqbufs(struct file *file, void *fh,
 
 	if (req->count == 0) {
 		atomisp_videobuf_free(&pipe->capq);
+		mutex_lock(&pipe->capq.vb_lock);
 		if (!list_empty(&pipe->capq.stream)) {
-			mutex_lock(&pipe->capq.vb_lock);
 			videobuf_queue_cancel(&pipe->capq);
-			mutex_unlock(&pipe->capq.vb_lock);
 		}
+		mutex_unlock(&pipe->capq.vb_lock);
 		return 0;
 	}
 
@@ -969,24 +765,19 @@ int atomisp_reqbufs(struct file *file, void *fh,
 	if (ret)
 		return ret;
 
-	mutex_lock(&isp->mutex);
-
 	atomisp_alloc_css_stat_bufs(isp);
 
 	/*
 	 * for user pointer type, buffers are not really allcated here,
 	 * buffers are setup in QBUF operation through v4l2_buffer structure
 	 */
-	if (req->memory == V4L2_MEMORY_USERPTR) {
-		mutex_unlock(&isp->mutex);
+	if (req->memory == V4L2_MEMORY_USERPTR)
 		return 0;
-	}
 
 	ret = __get_css_frame_info(isp, pipe->pipe_type, &frame_info);
-	if (ret) {
-		mutex_unlock(&isp->mutex);
+	if (ret)
 		return -EINVAL;
-	}
+
 	/*
 	 * Allocate the real frame here for selected node using our
 	 * memory management function
@@ -998,7 +789,6 @@ int atomisp_reqbufs(struct file *file, void *fh,
 		vm_mem->vaddr = frame;
 	}
 
-	mutex_unlock(&isp->mutex);
 	return ret;
 
 error:
@@ -1010,8 +800,21 @@ error:
 	if (isp->vf_frame)
 		sh_css_frame_free(isp->vf_frame);
 
-	mutex_unlock(&isp->mutex);
 	return -ENOMEM;
+}
+
+int atomisp_reqbufs(struct file *file, void *fh,
+	struct v4l2_requestbuffers *req)
+{
+	struct video_device *vdev = video_devdata(file);
+	struct atomisp_device *isp = video_get_drvdata(vdev);
+	int ret;
+
+	mutex_lock(&isp->mutex);
+	ret = __atomisp_reqbufs(file, fh, req);
+	mutex_unlock(&isp->mutex);
+
+	return ret;
 }
 
 static int atomisp_reqbufs_file(struct file *file, void *fh,
@@ -1497,6 +1300,17 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 		if (pipe->pipe_type == ATOMISP_PIPE_CAPTURE &&
 		    isp->params.offline_parm.num_captures == -1)
 			sh_css_offline_capture_configure(0, 0, 0);
+		/*
+		 * Currently there is no way to flush buffers queued to css.
+		 * When doing videobuf_streamoff, active buffers will be
+		 * marked as VIDEOBUF_NEEDS_INIT. HAL will be able to use
+		 * these buffers again, and these buffers might be queued to
+		 * css more than once! Warn here, if HAL has not dequeued all
+		 * buffers back before calling streamoff.
+		 */
+		if (pipe->buffers_in_css != 0)
+			WARN(1, "%s: buffers of pipe %d still in CSS!\n",
+					__func__, pipe->pipe_type);
 
 		return videobuf_streamoff(&pipe->capq);
 	}
@@ -2348,13 +2162,9 @@ const struct v4l2_ioctl_ops atomisp_ioctl_ops = {
 	.vidioc_streamon = atomisp_streamon,
 	.vidioc_streamoff = atomisp_streamoff,
 	.vidioc_default = atomisp_vidioc_default,
-	.vidioc_cropcap = atomisp_cropcap,
-	.vidioc_enum_framesizes = atomisp_enum_framesizes,
 	.vidioc_enum_frameintervals = atomisp_enum_frameintervals,
 	.vidioc_s_parm = atomisp_s_parm,
 	.vidioc_g_parm = atomisp_g_parm,
-	.vidioc_g_crop = atomisp_g_crop,
-	.vidioc_s_crop = atomisp_s_crop,
 };
 
 const struct v4l2_ioctl_ops atomisp_file_ioctl_ops = {

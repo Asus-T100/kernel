@@ -31,6 +31,7 @@
 #include "psb_drv.h"
 #include "mdfld_csc.h"
 #include "psb_irq.h"
+#include "dispmgrnl.h"
 
 static
 u16 mdfld_dsi_dpi_to_byte_clock_count(int pixel_clock_count,
@@ -308,6 +309,12 @@ reset_recovery:
 	/* restore palette (gamma) */
 	for (i = 0; i < 256; i++)
 		REG_WRITE(regs->palette_reg + (i<<2), ctx->palette[i]);
+
+	/* restore dpst setting */
+	if (dev_priv->psb_dpst_state) {
+		dpstmgr_reg_restore_locked(dsi_config);
+		psb_enable_pipestat(dev_priv, 0, PIPE_DPST_EVENT_ENABLE);
+	}
 
 	/*exit ULPS state*/
 	__dpi_exit_ulps_locked(dsi_config);

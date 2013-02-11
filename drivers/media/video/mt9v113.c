@@ -1099,10 +1099,156 @@ static int mt9v113_g_fnumber_range(struct v4l2_subdev *sd, s32 *val)
 	return 0;
 }
 
+/* read shutter, in number of line period */
+static int mt9v113_get_shutter(struct v4l2_subdev *sd, s32 *shutter)
+{
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	struct mt9v113_device *dev = to_mt9v113_sensor(sd);
+	u32 inte_time, row_time;
+	int ret, i;
+
+	/* read integration time */
+	ret = mt9v113_write_reg(client, MISENSOR_16BIT,
+				MT9V113_MCU_VAR_ADDR,
+				MT9V113_VAR_INTEGRATION_TIME);
+	if (ret) {
+		dev_err(&client->dev, "err Write VAR ADDR: %d", ret);
+		return ret;
+	}
+
+	ret = mt9v113_read_reg(client, MISENSOR_16BIT,
+				MT9V113_MCU_VAR_DATA0,
+				&inte_time);
+	if (ret) {
+		dev_err(&client->dev,
+				"err read integration time: %d", ret);
+		return ret;
+	}
+
+	/* get row time */
+	for (i = 0; i < N_RES; i++) {
+		if (mt9v113_res[i].res == dev->res) {
+			row_time = mt9v113_res[i].row_time;
+			break;
+		}
+	}
+	if (i == N_RES)	{
+		dev_err(&client->dev,
+				"err get row  time: %d", ret);
+		return -EINVAL;
+	}
+
+	/* return exposure value is in units of 100us */
+	*shutter = inte_time * row_time / 100;
+
+	return 0;
+}
+
+/*
+ * This returns the exposure compensation value, which is expressed in
+ * terms of EV. The default EV value is 0, and driver don't support
+ * adjust EV value.
+ */
+static int mt9v113_get_exposure_bias(struct v4l2_subdev *sd, s32 *value)
+{
+	*value = 0;
+
+	return 0;
+}
+
+/*
+ * This returns ISO sensitivity.
+ */
+static int mt9v113_get_iso(struct v4l2_subdev *sd, s32 *value)
+{
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	u32 ae_gain, ae_d_gain;
+	int ret;
+
+	/* read ae virtual gain */
+	ret = mt9v113_write_reg(client, MISENSOR_16BIT,
+				MT9V113_MCU_VAR_ADDR,
+				MT9V113_VAR_AE_GAIN);
+	if (ret) {
+		dev_err(&client->dev, "err Write VAR ADDR: %d", ret);
+		return ret;
+	}
+
+	ret = mt9v113_read_reg(client, MISENSOR_16BIT,
+				MT9V113_MCU_VAR_DATA0,
+				&ae_gain);
+	if (ret) {
+		dev_err(&client->dev,
+				"err read ae virtual gain: %d", ret);
+		return ret;
+	}
+
+	/* read ae_d_gain */
+	ret = mt9v113_write_reg(client, MISENSOR_16BIT,
+				MT9V113_MCU_VAR_ADDR,
+				MT9V113_VAR_AE_D_GAIN);
+	if (ret) {
+		dev_err(&client->dev, "err Write VAR ADDR: %d", ret);
+		return ret;
+	}
+
+	ret = mt9v113_read_reg(client, MISENSOR_16BIT,
+				MT9V113_MCU_VAR_DATA0,
+				&ae_d_gain);
+	if (ret) {
+		dev_err(&client->dev,
+				"err read ae_d_gain: %d", ret);
+		return ret;
+	}
+
+	*value = ((ae_gain * 25) >> 4) + (((ae_d_gain - 128) * 200) >> 7);
+
+	return 0;
+}
+
 /*
  * More will be added in future
  */
 static struct mt9v113_control mt9v113_controls[] = {
+	{
+		.qc = {
+			.id = V4L2_CID_EXPOSURE_ABSOLUTE,
+			.type = V4L2_CTRL_TYPE_INTEGER,
+			.name = "exposure",
+			.minimum = 0x0,
+			.maximum = 0xffff,
+			.step = 0x01,
+			.default_value = 0x00,
+			.flags = 0,
+		},
+		.query = mt9v113_get_shutter,
+	},
+	{
+		.qc = {
+			.id = V4L2_CID_AUTO_EXPOSURE_BIAS,
+			.type = V4L2_CTRL_TYPE_INTEGER,
+			.name = "exposure bias",
+			.minimum = 0x0,
+			.maximum = 0xffff,
+			.step = 0x01,
+			.default_value = 0x00,
+			.flags = 0,
+		},
+		.query = mt9v113_get_exposure_bias,
+	},
+	{
+		.qc = {
+			.id = V4L2_CID_ISO_SENSITIVITY,
+			.type = V4L2_CTRL_TYPE_INTEGER,
+			.name = "iso",
+			.minimum = 0x0,
+			.maximum = 0xffff,
+			.step = 0x01,
+			.default_value = 0x00,
+			.flags = 0,
+		},
+		.query = mt9v113_get_iso,
+	},
 	{
 		.qc = {
 			.id = V4L2_CID_FOCAL_ABSOLUTE,

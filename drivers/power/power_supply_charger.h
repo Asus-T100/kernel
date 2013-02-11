@@ -52,6 +52,8 @@ static inline int get_ps_int_property(struct power_supply *psy,
 {
 	union power_supply_propval val;
 
+	val.intval = 0;
+
 	psy->get_property(psy, psp, &val);
 	return val.intval;
 }
@@ -63,9 +65,9 @@ static inline int get_ps_int_property(struct power_supply *psy,
 #define enable_charging(psy) \
 		({if ((CABLE_TYPE(psy) != POWER_SUPPLY_CHARGER_TYPE_NONE) &&\
 			!IS_CHARGING_ENABLED(psy)) { \
+		enable_charger(psy); \
 		set_ps_int_property(psy, POWER_SUPPLY_PROP_ENABLE_CHARGING,\
-					true);\
-		enable_charger(psy); } })
+					true); } })
 #define disable_charging(psy) \
 		({if (IS_CHARGING_ENABLED(psy)) \
 		set_ps_int_property(psy,\
@@ -74,8 +76,9 @@ static inline int get_ps_int_property(struct power_supply *psy,
 #define enable_charger(psy) \
 		set_ps_int_property(psy, POWER_SUPPLY_PROP_ENABLE_CHARGER, true)
 #define disable_charger(psy) \
-		set_ps_int_property(psy,\
-				POWER_SUPPLY_PROP_ENABLE_CHARGER, false)
+		({  disable_charging(psy); \
+			set_ps_int_property(psy,\
+				POWER_SUPPLY_PROP_ENABLE_CHARGER, false); })
 
 #define set_cc(psy, cc) \
 		set_ps_int_property(psy, POWER_SUPPLY_PROP_CHARGE_CURRENT, cc)

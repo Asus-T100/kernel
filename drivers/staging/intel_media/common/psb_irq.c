@@ -45,6 +45,10 @@
 extern int drm_psb_smart_vsync;
 extern atomic_t g_videoenc_access_count;
 extern atomic_t g_videodec_access_count;
+extern struct workqueue_struct *te_wq;
+extern struct workqueue_struct *vsync_wq;
+
+
 
 /*
  * inline functions
@@ -181,6 +185,11 @@ static int mipi_hdmi_vsync_check(struct drm_device *dev, uint32_t pipe)
 	int pipea_stat, pipeb_stat, pipeb_ctl, pipeb_cntr;
 	unsigned long irqflags;
 
+	/*check whether need to sync*/
+	if (dev_priv->vsync_te_working[0] == false ||
+		dev_priv->vsync_te_working[1] == false)
+		return 1;
+
 	spin_lock_irqsave(&dev_priv->irqmask_lock, irqflags);
 	if (dev_priv->bhdmiconnected && dsi_config->dsi_hw_context.panel_on) {
 		if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, OSPM_UHB_ONLY_IF_ON)) {
@@ -239,6 +248,11 @@ static int mipi_te_hdmi_vsync_check(struct drm_device *dev, uint32_t pipe)
 	struct mdfld_dsi_config *dsi_config = dev_priv->dsi_configs[0];
 	int pipea_stat, pipeb_stat, pipeb_ctl, pipeb_cntr;
 	unsigned long irqflags;
+
+	/*check whether need to sync*/
+	if (dev_priv->vsync_te_working[0] == false ||
+		dev_priv->vsync_te_working[1] == false)
+		return 1;
 
 	spin_lock_irqsave(&dev_priv->irqmask_lock, irqflags);
 #ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
@@ -375,6 +389,8 @@ void mdfld_vsync_event_work(struct work_struct *work)
 	int pipe = dev_priv->vsync_pipe;
 	struct drm_device *dev = dev_priv->dev;
 
+	dev_priv->vsync_te_worker_ts[pipe] = cpu_clock(0);
+
 	mid_vblank_handler(dev, pipe);
 
 	/*report vsync event*/
@@ -387,6 +403,8 @@ void mdfld_te_handler_work(struct work_struct *work)
 		container_of(work, struct drm_psb_private, te_work);
 	int pipe = 0;
 	struct drm_device *dev = dev_priv->dev;
+
+	dev_priv->vsync_te_worker_ts[pipe] = cpu_clock(0);
 
 	/*report vsync event*/
 	mdfld_vsync_event(dev, pipe);
@@ -449,7 +467,6 @@ static void get_use_cases_control_info()
 	}
 }
 
-
 /**
  * Display controller interrupt handler for pipe event.
  *
@@ -492,6 +509,7 @@ static void mid_pipe_event_handler(struct drm_device *dev, uint32_t pipe)
 	* status 'sticky' bits cannot be cleared by setting '1' to that
 	* bit once...
 	*/
+
 	for (i = 0; i < WAIT_STATUS_CLEAR_LOOP_COUNT; i++) {
 		PSB_WVDC32(pipe_stat_val_raw, pipe_stat_reg);
 		(void) PSB_RVDC32(pipe_stat_reg);
@@ -510,7 +528,7 @@ static void mid_pipe_event_handler(struct drm_device *dev, uint32_t pipe)
 	if (pipe == 1 && !dev_priv->bhdmiconnected)
 		return;
 
-	if ((pipe_stat_val & PIPE_DPST_EVENT_STATUS) &&
+	if ((pipe_stat_val & (PIPE_DPST_EVENT_STATUS)) &&
 	    (dev_priv->psb_dpst_state != NULL)) {
 		uint32_t pwm_reg = 0;
 		uint32_t hist_reg = 0;
@@ -521,7 +539,8 @@ static void mid_pipe_event_handler(struct drm_device *dev, uint32_t pipe)
 		hist_reg = PSB_RVDC32(HISTOGRAM_INT_CONTROL);
 
 		/* Determine if this is histogram or pwm interrupt */
-		if (hist_reg & HISTOGRAM_INT_CTRL_CLEAR) {
+		if ((hist_reg & HISTOGRAM_INT_CTRL_CLEAR) &&
+				(hist_reg & HISTOGRAM_INTERRUPT_ENABLE)) {
 			/* Notify UM of histogram interrupt */
 			psb_dpst_notify_change_um(DPST_EVENT_HIST_INTERRUPT,
 						  dev_priv->psb_dpst_state);
@@ -556,16 +575,21 @@ static void mid_pipe_event_handler(struct drm_device *dev, uint32_t pipe)
 	}
 
 	if (pipe_stat_val & PIPE_VBLANK_STATUS) {
+		dev_priv->vsync_te_irq_ts[pipe] = cpu_clock(0);
+		dev_priv->vsync_te_working[pipe] = true;
 		dev_priv->vsync_pipe = pipe;
 		atomic_inc(&dev_priv->vblank_count[pipe]);
-		schedule_work(&dev_priv->vsync_event_work);
+		queue_work(vsync_wq, &dev_priv->vsync_event_work);
 	}
 
 	if (pipe_stat_val & PIPE_TE_STATUS) {
 		/*update te sequence on this pipe*/
+		dev_priv->vsync_te_irq_ts[pipe] = cpu_clock(0);
+		dev_priv->vsync_te_working[pipe] = true;
 		update_te_counter(dev, pipe);
 		atomic_inc(&dev_priv->vblank_count[pipe]);
-		schedule_work(&dev_priv->te_work);
+		queue_work(te_wq, &dev_priv->te_work);
+
 	}
 
 	if (pipe_stat_val & PIPE_HDMI_AUDIO_UNDERRUN_STATUS)
@@ -714,7 +738,8 @@ irqreturn_t psb_irq_handler(DRM_IRQ_ARGS)
 	}
 #endif
 	if (sgx_int) {
-		if (SYSPVRServiceSGXInterrupt(dev) != 0)
+		BUG_ON(!dev_priv->pvr_ops);
+		if (dev_priv->pvr_ops->SYSPVRServiceSGXInterrupt(dev) != 0)
 				handled = 1;
 	}
 
@@ -1033,14 +1058,28 @@ void psb_irq_turn_on_dpst(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *) dev->dev_private;
+	struct mdfld_dsi_config *dsi_config = NULL;
+	struct mdfld_dsi_hw_context *ctx = NULL;
 	u32 hist_reg;
 	u32 pwm_reg;
+
+	if (!dev_priv)
+		return;
+
+	dsi_config = dev_priv->dsi_configs[0];
+	if (!dsi_config)
+		return;
+	ctx = &dsi_config->dsi_hw_context;
+
+	mdfld_dsi_dsr_forbid(dsi_config);
 
 	if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, OSPM_UHB_ONLY_IF_ON)) {
 		PSB_WVDC32(BIT31, HISTOGRAM_LOGIC_CONTROL);
 		hist_reg = PSB_RVDC32(HISTOGRAM_LOGIC_CONTROL);
+		ctx->histogram_logic_ctrl = hist_reg;
 		PSB_WVDC32(BIT31, HISTOGRAM_INT_CONTROL);
 		hist_reg = PSB_RVDC32(HISTOGRAM_INT_CONTROL);
+		ctx->histogram_intr_ctrl = hist_reg;
 
 		PSB_WVDC32(0x80010100, PWM_CONTROL_LOGIC);
 		pwm_reg = PSB_RVDC32(PWM_CONTROL_LOGIC);
@@ -1055,8 +1094,12 @@ void psb_irq_turn_on_dpst(struct drm_device *dev)
 		pwm_reg = PSB_RVDC32(PWM_CONTROL_LOGIC);
 		PSB_WVDC32(pwm_reg | 0x80010100 | PWM_PHASEIN_ENABLE, PWM_CONTROL_LOGIC);
 
+		PSB_WVDC32(0x0, LVDS_PORT_CTRL);
+		ctx->lvds_port_ctrl = 0x0;
+
 		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 	}
+	mdfld_dsi_dsr_allow(dsi_config);
 }
 
 int psb_irq_enable_dpst(struct drm_device *dev)
@@ -1067,13 +1110,8 @@ int psb_irq_enable_dpst(struct drm_device *dev)
 
 	PSB_DEBUG_ENTRY("\n");
 
-	spin_lock_irqsave(&dev_priv->irqmask_lock, irqflags);
-
-	/* enable DPST */
-	mid_enable_pipe_event(dev_priv, 0);
 	psb_irq_turn_on_dpst(dev);
 
-	spin_unlock_irqrestore(&dev_priv->irqmask_lock, irqflags);
 	return 0;
 }
 
@@ -1081,10 +1119,20 @@ void psb_irq_turn_off_dpst(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *) dev->dev_private;
+	struct mdfld_dsi_config *dsi_config = NULL;
 	u32 hist_reg;
 	u32 pwm_reg;
 
-	if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, OSPM_UHB_ONLY_IF_ON)) {
+	if (!dev_priv)
+		return;
+	dsi_config = dev_priv->dsi_configs[0];
+	if (!dsi_config)
+		return;
+
+	mdfld_dsi_dsr_forbid(dsi_config);
+
+	if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
+				OSPM_UHB_ONLY_IF_ON)) {
 		PSB_WVDC32(0x00000000, HISTOGRAM_INT_CONTROL);
 		hist_reg = PSB_RVDC32(HISTOGRAM_INT_CONTROL);
 
@@ -1096,6 +1144,8 @@ void psb_irq_turn_off_dpst(struct drm_device *dev)
 
 		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 	}
+
+	mdfld_dsi_dsr_allow(dsi_config);
 }
 
 int psb_irq_disable_dpst(struct drm_device *dev)
@@ -1106,12 +1156,7 @@ int psb_irq_disable_dpst(struct drm_device *dev)
 
 	PSB_DEBUG_ENTRY("\n");
 
-	spin_lock_irqsave(&dev_priv->irqmask_lock, irqflags);
-
-	mid_disable_pipe_event(dev_priv, 0);
 	psb_irq_turn_off_dpst(dev);
-
-	spin_unlock_irqrestore(&dev_priv->irqmask_lock, irqflags);
 
 	return 0;
 }
@@ -1195,9 +1240,9 @@ void psb_disable_vblank(struct drm_device *dev, int pipe)
 	spin_lock_irqsave(&dev_priv->irqmask_lock, irqflags);
 
 	drm_psb_disable_vsync = 1;
+	dev_priv->vsync_te_working[pipe] = false;
 	mid_disable_pipe_event(dev_priv, pipe);
 	psb_disable_pipestat(dev_priv, pipe, PIPE_VBLANK_INTERRUPT_ENABLE);
-
 	spin_unlock_irqrestore(&dev_priv->irqmask_lock, irqflags);
 }
 
@@ -1320,7 +1365,8 @@ void mdfld_disable_te(struct drm_device *dev, int pipe)
 	spin_lock_irqsave(&dev_priv->irqmask_lock, irqflags);
 
 	mid_disable_pipe_event(dev_priv, pipe);
-	psb_disable_pipestat(dev_priv, pipe, PIPE_TE_ENABLE);
+	psb_disable_pipestat(dev_priv, pipe,
+			(PIPE_TE_ENABLE | PIPE_DPST_EVENT_ENABLE));
 
 	if (dsi_config) {
 		/*reset te_seq, which make sure te_seq is really
@@ -1328,6 +1374,7 @@ void mdfld_disable_te(struct drm_device *dev, int pipe)
 		sender = mdfld_dsi_get_pkg_sender(dsi_config);
 		atomic64_set(&sender->last_screen_update, 0);
 		atomic64_set(&sender->te_seq, 0);
+		dev_priv->vsync_te_working[pipe] = false;
 	}
 	spin_unlock_irqrestore(&dev_priv->irqmask_lock, irqflags);
 }

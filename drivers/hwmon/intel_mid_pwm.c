@@ -87,6 +87,7 @@ out:
 	mutex_unlock(&pi->lock);
 	return ret;
 }
+EXPORT_SYMBOL(intel_mid_pwm);
 
 static int __devinit intel_mid_pwm_probe(struct ipc_device *ipcdev)
 {

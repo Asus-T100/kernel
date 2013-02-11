@@ -29,7 +29,8 @@
 /* CSS Receiver */
 
 void sh_css_rx_configure(
-	const rx_cfg_t	*config);
+	const rx_cfg_t	*config,
+	const enum sh_css_input_mode input_mode);
 
 void sh_css_rx_disable(void);
 

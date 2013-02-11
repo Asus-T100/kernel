@@ -273,9 +273,6 @@ typedef enum _MRST_ERROR_
 MRST_ERROR MRSTLFBInit(struct drm_device * dev);
 MRST_ERROR MRSTLFBDeinit(void);
 
-MRST_ERROR MRSTLFBAllocBuffer(struct MRSTLFB_DEVINFO_TAG *psDevInfo, IMG_UINT32 ui32Size, MRSTLFB_BUFFER **ppBuffer);
-MRST_ERROR MRSTLFBFreeBuffer(struct MRSTLFB_DEVINFO_TAG *psDevInfo, MRSTLFB_BUFFER **ppBuffer);
-
 void *MRSTLFBAllocKernelMem(unsigned long ulSize);
 void MRSTLFBFreeKernelMem(void *pvMem);
 MRST_ERROR MRSTLFBGetLibFuncAddr(char *szFunctionName, PFN_DC_GET_PVRJTABLE *ppfnFuncTable);

@@ -30,6 +30,7 @@
 #include <linux/interrupt.h>
 #include <linux/pm_runtime.h>
 #include <asm/intel-mid.h>
+#include <asm/intel_mid_hsu.h>
 
 static struct rfkill *bt_rfkill;
 static bool bt_enabled;
@@ -37,7 +38,7 @@ static bool host_wake_uart_enabled;
 static bool wake_uart_enabled;
 static bool int_handler_enabled;
 
-/* #define LPM_ON */
+#define LPM_ON
 
 static void activate_irq_handler(void);
 
@@ -58,6 +59,7 @@ struct bcm_bt_lpm {
 	struct wake_lock wake_lock;
 	char wake_lock_name[100];
 
+	int port;
 	void (*uart_enable)(struct device *tty);
 	void (*uart_disable)(struct device *tty);
 } bt_lpm;
@@ -183,7 +185,7 @@ static void activate_irq_handler(void)
 }
 
 
-void bcm_bt_lpm_exit_lpm_locked(struct device *dev, struct hci_dev *hdev)
+static void bcm_bt_lpm_wake_peer(struct device *dev)
 {
 	bt_lpm.tty_dev = dev;
 
@@ -206,11 +208,11 @@ void bcm_bt_lpm_exit_lpm_locked(struct device *dev, struct hci_dev *hdev)
 		HRTIMER_MODE_REL);
 
 }
-EXPORT_SYMBOL(bcm_bt_lpm_exit_lpm_locked);
 
 static int bcm_bt_lpm_init(struct platform_device *pdev)
 {
 	int ret;
+	struct device *tty_dev;
 
 	hrtimer_init(&bt_lpm.enter_lpm_timer, CLOCK_MONOTONIC,
 							HRTIMER_MODE_REL);
@@ -232,10 +234,21 @@ static int bcm_bt_lpm_init(struct platform_device *pdev)
 		return ret;
 	}
 
+	tty_dev = intel_mid_hsu_set_wake_peer(bt_lpm.port,
+			bcm_bt_lpm_wake_peer);
+	if (!tty_dev) {
+		pr_err("Error no tty dev");
+		gpio_free(bt_lpm.gpio_wake);
+		gpio_free(bt_lpm.gpio_host_wake);
+		return -ENODEV;
+	}
+
 	snprintf(bt_lpm.wake_lock_name, sizeof(bt_lpm.wake_lock_name),
 			"BTLowPower");
 	wake_lock_init(&bt_lpm.wake_lock, WAKE_LOCK_SUSPEND,
 			 bt_lpm.wake_lock_name);
+
+	bcm_bt_lpm_wake_peer(tty_dev);
 	return 0;
 }
 #endif
@@ -243,6 +256,7 @@ static int bcm_bt_lpm_init(struct platform_device *pdev)
 static int bcm43xx_bluetooth_probe(struct platform_device *pdev)
 {
 	struct bcm_bt_lpm_platform_data *pdata = pdev->dev.platform_data;
+	bool default_state = true;	/* off */
 	int ret = 0;
 
 	int_handler_enabled = false;
@@ -251,6 +265,19 @@ static int bcm43xx_bluetooth_probe(struct platform_device *pdev)
 		pr_err("Cannot register bcm_bt_lpm drivers, pdata is NULL\n");
 		return -EINVAL;
 	}
+
+	if (!gpio_is_valid(pdata->gpio_enable)) {
+		pr_err("%s: gpio not valid\n", __func__);
+		return -EINVAL;
+	}
+
+#ifdef LPM_ON
+	if (!gpio_is_valid(pdata->gpio_wake) ||
+		!gpio_is_valid(pdata->gpio_host_wake)) {
+		pr_err("%s: gpio not valid\n", __func__);
+		return -EINVAL;
+	}
+#endif
 
 	bt_lpm.gpio_wake = pdata->gpio_wake;
 	bt_lpm.gpio_host_wake = pdata->gpio_host_wake;
@@ -264,7 +291,7 @@ static int bcm43xx_bluetooth_probe(struct platform_device *pdev)
 		goto err_gpio_enable_req;
 	}
 
-	ret = gpio_direction_output(bt_lpm.gpio_enable_bt, 1);
+	ret = gpio_direction_output(bt_lpm.gpio_enable_bt, 0);
 	if (ret < 0) {
 		pr_err("%s: Unable to set int direction for gpio %d\n",
 					__func__, bt_lpm.gpio_enable_bt);
@@ -301,28 +328,26 @@ static int bcm43xx_bluetooth_probe(struct platform_device *pdev)
 	}
 #endif
 
+	bt_lpm.port = pdata->port;
 	bt_lpm.uart_disable = pdata->uart_disable;
 	WARN_ON(!bt_lpm.uart_disable);
 	bt_lpm.uart_enable = pdata->uart_enable;
 	WARN_ON(!bt_lpm.uart_enable);
 
-
 	bt_rfkill = rfkill_alloc("bcm43xx Bluetooth", &pdev->dev,
 				RFKILL_TYPE_BLUETOOTH, &bcm43xx_bt_rfkill_ops,
 				NULL);
-
 	if (unlikely(!bt_rfkill)) {
 		ret = -ENOMEM;
 		goto err_rfkill_alloc;
 	}
 
-	ret = rfkill_register(bt_rfkill);
+	bcm43xx_bt_rfkill_set_power(NULL, default_state);
+	rfkill_init_sw_state(bt_rfkill, default_state);
 
+	ret = rfkill_register(bt_rfkill);
 	if (unlikely(ret))
 		goto err_rfkill_register;
-
-	rfkill_set_states(bt_rfkill, true, false);
-	bcm43xx_bt_rfkill_set_power(NULL, true);
 
 #ifdef LPM_ON
 	ret = bcm_bt_lpm_init(pdev);
@@ -373,7 +398,6 @@ int bcm43xx_bluetooth_suspend(struct platform_device *pdev, pm_message_t state)
 
 	disable_irq(bt_lpm.int_host_wake);
 	host_wake = gpio_get_value(bt_lpm.gpio_host_wake);
-
 	if (host_wake) {
 		enable_irq(bt_lpm.int_host_wake);
 		pr_err("%s suspend error, gpio %d set\n", __func__,

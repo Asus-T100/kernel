@@ -53,6 +53,7 @@
 
 #include "otm_hdmi.h"
 #include "android_hdmi.h"
+#include "dispmgrnl.h"
 
 /*IMG headers*/
 #include "pvr_drm_shared.h"
@@ -63,6 +64,10 @@
 #include "mdfld_csc.h"
 #include "mdfld_dsi_dbi_dsr.h"
 #include "mdfld_dsi_pkg_sender.h"
+struct workqueue_struct *te_wq;
+struct workqueue_struct *vsync_wq;
+
+#include "psb_dpst_func.h"
 
 #define HDMI_MONITOR_NAME_LENGTH 20
 
@@ -100,8 +105,11 @@ int gamma_setting[129] = {0};
 int csc_setting[6] = {0};
 int gamma_number = 129;
 int csc_number = 6;
+int dpst_level = 3;
 
 int drm_psb_msvdx_tiling = 1;
+struct drm_device *g_drm_dev;
+EXPORT_SYMBOL(g_drm_dev);
 
 static int psb_probe(struct pci_dev *pdev, const struct pci_device_id *ent);
 
@@ -129,6 +137,7 @@ MODULE_PARM_DESC(enable_color_conversion, "Enable display side color conversion"
 MODULE_PARM_DESC(enable_gamma, "Enable display side gamma");
 MODULE_PARM_DESC(use_cases_control, "Use to enable and disable use cases");
 MODULE_PARM_DESC(pm_history, "whether to dump pm history when SGX HWR");
+MODULE_PARM_DESC(dpst_level, "dpst aggressive level: 0~5");
 
 
 module_param_named(debug, drm_psb_debug, int, 0600);
@@ -159,6 +168,7 @@ module_param_named(psb_use_cases_control, drm_psb_use_cases_control, int, 0600);
 module_param_named(pm_history, drm_psb_dump_pm_history, int, 0600);
 module_param_array_named(gamma_adjust, gamma_setting, int, &gamma_number, 0600);
 module_param_array_named(csc_adjust, csc_setting, int, &csc_number, 0600);
+module_param_named(dpst_level, dpst_level, int, 0600);
 
 #ifndef MODULE
 /* Make ospm configurable via cmdline firstly, and others can be enabled if needed. */
@@ -285,6 +295,8 @@ MODULE_DEVICE_TABLE(pci, pciidlist);
 #define DRM_IOCTL_PSB_GAMMA	\
 		DRM_IOWR(DRM_PSB_GAMMA + DRM_COMMAND_BASE, \
 			 struct drm_psb_dpst_lut_arg)
+#define DRM_IOCTL_DPST_LEVEL	\
+	DRM_IOWR(DRM_PSB_DPST_LEVEL + DRM_COMMAND_BASE, uint32_t)
 #define DRM_IOCTL_PSB_DPST_BL	\
 		DRM_IOWR(DRM_PSB_DPST_BL + DRM_COMMAND_BASE, \
 			 uint32_t)
@@ -509,6 +521,66 @@ static int psb_enable_ied_session_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv);
 static int psb_disable_ied_session_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv);
+extern int psb_dpst_get_level_ioctl(struct drm_device *dev, void *data,
+		struct drm_file *file_priv);
+
+/* wrapper for PVR ioctl functions to avoid direct call */
+int PVRDRM_Dummy_ioctl2(struct drm_device *dev, void *arg,
+			struct drm_file *pFile)
+{
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *) dev->dev_private;
+
+	BUG_ON(!dev_priv->pvr_ops);
+	return dev_priv->pvr_ops->PVRDRM_Dummy_ioctl(dev, arg, pFile);
+}
+int PVRSRV_BridgeDispatchKM2(struct drm_device unref__ * dev,
+		void *arg, struct drm_file *pFile)
+{
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *) dev->dev_private;
+
+	BUG_ON(!dev_priv->pvr_ops);
+	return dev_priv->pvr_ops->PVRSRV_BridgeDispatchKM(dev, arg, pFile);
+}
+int PVRDRMIsMaster2(struct drm_device *dev, void *arg,
+		struct drm_file *pFile)
+{
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *) dev->dev_private;
+
+	BUG_ON(!dev_priv->pvr_ops);
+	return dev_priv->pvr_ops->PVRDRMIsMaster(dev, arg, pFile);
+}
+int PVRDRMUnprivCmd2(struct drm_device *dev, void *arg,
+		struct drm_file *pFile)
+{
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *) dev->dev_private;
+
+	BUG_ON(!dev_priv->pvr_ops);
+	return dev_priv->pvr_ops->PVRDRMUnprivCmd(dev, arg, pFile);
+}
+void PVRSRVDrmPostClose2(struct drm_device *dev,
+		struct drm_file *file)
+{
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *) dev->dev_private;
+
+	BUG_ON(!dev_priv->pvr_ops);
+	return dev_priv->pvr_ops->PVRSRVDrmPostClose(dev, file);
+}
+#if defined(PDUMP)
+int SYSPVRDBGDrivIoctl2(struct drm_device *dev, IMG_VOID *arg,
+		struct drm_file *pFile)
+{
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *) dev->dev_private;
+
+	BUG_ON(!dev_priv->pvr_ops);
+	return dev_priv->pvr_ops->SYSPVRDBGDrivIoctl(dev, arg, pFile);
+}
+#endif
 
 #define PSB_IOCTL_DEF(ioctl, func, flags) \
 	[DRM_IOCTL_NR(ioctl) - DRM_COMMAND_BASE] = {ioctl, flags, func}
@@ -545,10 +617,11 @@ static struct drm_ioctl_desc psb_ioctls[] = {
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_GETPAGEADDRS,
 	psb_getpageaddrs_ioctl,
 	DRM_AUTH),
-	PSB_IOCTL_DEF(PVR_DRM_SRVKM_IOCTL, PVRSRV_BridgeDispatchKM, DRM_UNLOCKED),
-	PSB_IOCTL_DEF(PVR_DRM_DISP_IOCTL, PVRDRM_Dummy_ioctl, 0),
-	PSB_IOCTL_DEF(PVR_DRM_IS_MASTER_IOCTL, PVRDRMIsMaster, DRM_MASTER),
-	PSB_IOCTL_DEF(PVR_DRM_UNPRIV_IOCTL, PVRDRMUnprivCmd, DRM_UNLOCKED),
+	PSB_IOCTL_DEF(PVR_DRM_SRVKM_IOCTL, PVRSRV_BridgeDispatchKM2,
+		DRM_UNLOCKED),
+	PSB_IOCTL_DEF(PVR_DRM_DISP_IOCTL, PVRDRM_Dummy_ioctl2, 0),
+	PSB_IOCTL_DEF(PVR_DRM_IS_MASTER_IOCTL, PVRDRMIsMaster2, DRM_MASTER),
+	PSB_IOCTL_DEF(PVR_DRM_UNPRIV_IOCTL, PVRDRMUnprivCmd2, DRM_UNLOCKED),
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_HIST_ENABLE,
 	psb_hist_enable_ioctl,
 	DRM_AUTH),
@@ -560,8 +633,9 @@ static struct drm_ioctl_desc psb_ioctls[] = {
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_DPST, psb_dpst_ioctl, DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_GAMMA, psb_gamma_ioctl, DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_DPST_BL, psb_dpst_bl_ioctl, DRM_AUTH),
+	PSB_IOCTL_DEF(DRM_IOCTL_DPST_LEVEL, psb_dpst_get_level_ioctl, DRM_AUTH),
 #if defined(PDUMP)
-	PSB_IOCTL_DEF(PVR_DRM_DBGDRV_IOCTL, SYSPVRDBGDrivIoctl, 0),
+	PSB_IOCTL_DEF(PVR_DRM_DBGDRV_IOCTL, SYSPVRDBGDrivIoctl2, 0),
 #endif
 #ifdef CONFIG_MDFD_VIDEO_DECODE
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_CMDBUF, psb_cmdbuf_ioctl,
@@ -1189,13 +1263,17 @@ static int psb_driver_unload(struct drm_device *dev)
 		(struct drm_psb_private *) dev->dev_private;
 
 	/*Fristly, unload pvr driver*/
-	PVRSRVDrmUnload(dev);
+	BUG_ON(!dev_priv->pvr_ops);
+	dev_priv->pvr_ops->PVRSRVDrmUnload(dev);
 
 	/*TODO: destroy DSR/DPU infos here*/
 	psb_backlight_exit(); /*writes minimum value to backlight HW reg */
 
 	if (drm_psb_no_fb == 0)
 		psb_modeset_cleanup(dev);
+
+	destroy_workqueue(te_wq);
+	destroy_workqueue(vsync_wq);
 
 	if (dev_priv) {
 		/* psb_watchdog_takedown(dev_priv); */
@@ -1513,7 +1591,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 #ifdef CONFIG_MDFD_VIDEO_DECODE
 	dev_priv->mmu = psb_mmu_driver_init((void *)0,
 					    drm_psb_trap_pagefaults, 0,
-					    dev_priv);
+					    dev_priv, IMG_MMU);
 	if (!dev_priv->mmu)
 		goto out_err;
 #endif
@@ -1625,9 +1703,23 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 		mdfld_dbi_dsr_init(dev);
 #endif /*CONFIG_MDFLD_DSI_DPU*/
 		INIT_WORK(&dev_priv->te_work, mdfld_te_handler_work);
+
+		te_wq = alloc_workqueue("teworkq", WQ_UNBOUND, 1);
+		if (unlikely(!te_wq)) {
+			pr_err(": unable to create TE workqueue\n");
+			goto out_err;
+		}
 		INIT_WORK(&dev_priv->reset_panel_work,
 				mdfld_reset_panel_handler_work);
+
 		INIT_WORK(&dev_priv->vsync_event_work, mdfld_vsync_event_work);
+
+		vsync_wq = alloc_workqueue("vsyncworkq", WQ_UNBOUND, 1);
+		if (unlikely(!vsync_wq)) {
+			pr_err(": unable to create Vsync workqueue\n");
+			destroy_workqueue(te_wq);
+			goto out_err;
+		}
 	}
 
 	if (drm_psb_no_fb == 0) {
@@ -1671,9 +1763,18 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	/*Intel drm driver load is done, continue doing pvr load*/
 	DRM_DEBUG("Pvr driver load\n");
 
+	/* init display manager */
+	dispmgr_start(dev);
+
+	dpst_init(dev, 5, 1);
+
 	mdfld_dsi_dsr_enable(dev_priv->dsi_configs[0]);
 
-	return PVRSRVDrmLoad(dev, chipset);
+	dev_priv->pvr_ops = NULL;
+	/* Delay PVRSRVDrmLoad to PVR module init */
+	g_drm_dev = dev;
+	return 0;
+
 out_err:
 	psb_driver_unload(dev);
 	return ret;
@@ -2977,9 +3078,9 @@ static int psb_register_dump(struct drm_device *dev, int start, int end)
 	}
 	return ret;
 }
-
-int psb_display_reg_dump(struct drm_device *dev)
+static int psb_display_reg_dump(struct drm_device *dev)
 {
+
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *) dev->dev_private;
 	struct mdfld_dsi_config *dsi_config;
@@ -3010,6 +3111,20 @@ int psb_display_reg_dump(struct drm_device *dev)
 	psb_register_dump(dev, 0x70500, 0x70504);
 	printk(KERN_INFO "\n");
 
+	if (dev_priv->bhdmiconnected) {
+		/* PIPE B */
+		printk(KERN_INFO "[DISPLAY REG DUMP] PIPE B\n\n");
+		psb_register_dump(dev, 0x61000, 0x61100);
+		printk(KERN_INFO "\n");
+
+		/* Plane B */
+		printk(KERN_INFO "[DISPLAY REG DUMP] PLANE B\n\n");
+		psb_register_dump(dev, 0x71000, 0x710FC);
+		psb_register_dump(dev, 0x71180, 0x711F4);
+		psb_register_dump(dev, 0x71400, 0x7144C);
+		printk(KERN_INFO "\n");
+	}
+
 	/* OVERLAY */
 	printk(KERN_INFO "[DISPLAY REG DUMP] OVERLAY A\n\n");
 	psb_register_dump(dev, 0x30000, 0x30060);
@@ -3021,8 +3136,94 @@ int psb_display_reg_dump(struct drm_device *dev)
 	mdfld_dsi_dsr_allow(dsi_config);
 	return 0;
 }
+void psb_flip_abnormal_debug_info(struct drm_device *dev)
+{
+	struct drm_psb_private *dev_priv = NULL;
+	struct mdfld_dsi_config *dsi_config = NULL;
+	int pipe = 0;
+	unsigned long long interval = 0;
+	unsigned long long second = 0;
+	unsigned long nanosec_rem;
+	if (!dev) {
+		DRM_INFO("%s dev is NUL\n", __func__);
+		return;
+	}
+	dev_priv =
+	(struct drm_psb_private *) dev->dev_private;
 
+	if (!dev_priv) {
+		DRM_INFO("%s dev_priv is NUL\n", __func__);
+		return;
+	}
+	dsi_config = dev_priv->dsi_configs[0];
 
+	if (!dsi_config) {
+		DRM_INFO("%s dsi_config is NUL\n", __func__);
+		return;
+	}
+
+	DRM_INFO("\n1.level1 interrupt status\n");
+	DRM_INFO("PSB_INT_MASK_R mask 0x%x\n", PSB_RVDC32(PSB_INT_MASK_R));
+	DRM_INFO("PSB_INT_ENABLE_R mask 0x%x\n", PSB_RVDC32(PSB_INT_ENABLE_R));
+	DRM_INFO("dev_priv->vdc_irq_mask = 0x%x\n\n", dev_priv->vdc_irq_mask);
+
+	DRM_INFO("2.level2 interrupt register\n");
+	DRM_INFO("pipe 0 config 0x%x status 0x%x\n",
+		REG_READ(0x70008), REG_READ(0x70024));
+	DRM_INFO("pipe 1 config 0x%x status 0x%x\n\n",
+		REG_READ(0x71008), REG_READ(0x71024));
+
+	DRM_INFO("3.check irq and workqueue relationship\n");
+	second = dev_priv->vsync_te_trouble_ts;
+	nanosec_rem = do_div(second, 1000000000);
+	DRM_INFO("vsync_te trouble: [%5lu.%06lu]\n",
+			(unsigned long) second,
+			nanosec_rem / 1000);
+	for (pipe = 0; pipe < PSB_NUM_PIPE; pipe++) {
+		if (pipe == 2)
+			continue;
+		second = dev_priv->vsync_te_irq_ts[pipe];
+		nanosec_rem = do_div(second, 1000000000);
+		DRM_INFO("pipe %d last vsync_te irq: [%5lu.%06lu]\n",
+				pipe, (unsigned long) second,
+				nanosec_rem / 1000);
+
+		second = dev_priv->vsync_te_worker_ts[pipe];
+		nanosec_rem = do_div(second, 1000000000);
+		DRM_INFO("pipe %d last vsync_te workqueue : [%5lu.%06lu]\n",
+				pipe, (unsigned long) second,
+				nanosec_rem / 1000);
+
+		if (dev_priv->vsync_te_irq_ts[pipe] <
+			dev_priv->vsync_te_worker_ts[pipe]) {
+			/*workqueue delay*/
+			interval = dev_priv->vsync_te_worker_ts[pipe] -
+					dev_priv->vsync_te_irq_ts[pipe];
+			nanosec_rem = do_div(interval, 1000000000);
+			DRM_INFO("pipe %d workqueue be delayed : [%5lu.%06lu]\n",
+					pipe, (unsigned long) interval,
+					nanosec_rem / 1000);
+		} else {
+			/*workqueue block*/
+			interval = cpu_clock(0) -
+				dev_priv->vsync_te_irq_ts[pipe];
+			nanosec_rem = do_div(interval, 1000000000);
+			DRM_INFO("pipe %d workqueue be blocked : [%5lu.%06lu]\n\n",
+					pipe, (unsigned long) interval,
+					nanosec_rem / 1000);
+		}
+		/*check whether real vsync te missing*/
+		interval = cpu_clock(0) -
+			dev_priv->vsync_te_irq_ts[pipe];
+		nanosec_rem = do_div(interval, 1000000000);
+		if (nanosec_rem > 200000000) {
+			DRM_INFO("pipe %d vsync te missing %dms !\n\n",
+				 pipe, nanosec_rem/1000000);
+			dev_priv->vsync_te_working[pipe] = false;
+		}
+
+	}
+}
 
 static int psb_vsync_set_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv)
@@ -3651,8 +3852,12 @@ static unsigned int psb_poll(struct file *filp,
 
 static int psb_driver_open(struct drm_device *dev, struct drm_file *priv)
 {
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *) dev->dev_private;
+
 	DRM_DEBUG("\n");
-	return PVRSRVOpen(dev, priv);
+	BUG_ON(!dev_priv->pvr_ops);
+	return dev_priv->pvr_ops->PVRSRVOpen(dev, priv);
 }
 
 static long psb_unlocked_ioctl(struct file *filp, unsigned int cmd,
@@ -4079,11 +4284,6 @@ static int psb_display_register_write(struct file *file, const char *buffer,
 		return -EINVAL;
 	}
 
-	if (val < 0) {
-		PSB_DEBUG_ENTRY("the register value is should be greater than zero.\n");
-		return -EINVAL;
-		}
-
 	if ((reg % 0x4) != 0) {
 		PSB_DEBUG_ENTRY("the register address should aligned to 4 byte.please refrence display controller specification.\n");
 		return -EINVAL;
@@ -4353,8 +4553,6 @@ static const struct dev_pm_ops psb_pm_ops = {
 	.resume = psb_runtime_resume,
 };
 
-extern int PVRMMap(struct file *pFile, struct vm_area_struct *ps_vma);
-
 static struct vm_operations_struct psb_ttm_vm_ops;
 
 /**
@@ -4518,12 +4716,14 @@ int psb_mmap(struct file *filp, struct vm_area_struct *vma)
 	struct drm_psb_private *dev_priv;
 	int ret;
 
-	if (vma->vm_pgoff < DRM_PSB_FILE_PAGE_OFFSET ||
-	    vma->vm_pgoff > 2 * DRM_PSB_FILE_PAGE_OFFSET)
-		return PVRMMap(filp, vma);
-
 	file_priv = (struct drm_file *) filp->private_data;
 	dev_priv = psb_priv(file_priv->minor->dev);
+
+	if (vma->vm_pgoff < DRM_PSB_FILE_PAGE_OFFSET ||
+			vma->vm_pgoff > 2 * DRM_PSB_FILE_PAGE_OFFSET) {
+		BUG_ON(!dev_priv->pvr_ops);
+		return dev_priv->pvr_ops->PVRMMap(filp, vma);
+	}
 
 	ret = ttm_bo_mmap(filp, vma, &dev_priv->bdev);
 	if (unlikely(ret != 0))
@@ -4561,7 +4761,7 @@ static struct drm_driver driver = {
 	.firstopen = NULL,
 	.lastclose = psb_lastclose,
 	.open = psb_driver_open,
-	.postclose = PVRSRVDrmPostClose,
+	.postclose = PVRSRVDrmPostClose2,
 	.debugfs_init = psb_proc_init,
 	.debugfs_cleanup = psb_proc_cleanup,
 	.preclose = psb_driver_preclose,
@@ -4641,10 +4841,13 @@ static int __init psb_init(void)
 	psb_kobject_uevent_init();
 #endif
 
+#if 0
+	/* delay this until PVRSRVDrmLoad is to be loaded */
 	ret = SYSPVRInit();
 	if (ret != 0) {
 		return ret;
 	}
+#endif
 
 	ret = drm_pci_init(&driver, &psb_pci_driver);
 	if (ret != 0) {

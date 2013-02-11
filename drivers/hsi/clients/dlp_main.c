@@ -75,7 +75,8 @@ void dlp_dump_channel_state(struct dlp_channel *ch_ctx, struct seq_file *m)
 
 	seq_printf(m, "\nChannel: %d\n", ch_ctx->hsi_channel);
 	seq_printf(m, "-------------\n");
-	seq_printf(m, " state     : %d\n", ch_ctx->state);
+	seq_printf(m, " state     : %d\n",
+			dlp_drv.channels_hsi[ch_ctx->hsi_channel].state);
 	seq_printf(m, " credits   : %d\n", ch_ctx->credits);
 	seq_printf(m, " flow ctrl : %d\n", ch_ctx->use_flow_ctrl);
 
@@ -416,9 +417,11 @@ void dlp_pdu_recycle(struct dlp_xfer_ctx *xfer_ctx, struct hsi_msg *pdu)
 		new = dlp_fifo_recycled_pop(xfer_ctx);
 
 		/* Push the pdu */
-		ret = dlp_hsi_controller_push(xfer_ctx, new);
-		if (ret)
-			dlp_fifo_recycled_push(xfer_ctx, new);
+		if (new) {
+			ret = dlp_hsi_controller_push(xfer_ctx, new);
+			if (ret)
+				dlp_fifo_recycled_push(xfer_ctx, new);
+		}
 	}
 
 	dlp_ctx_update_state_rx(xfer_ctx);
@@ -905,20 +908,25 @@ inline __must_check struct hsi_msg *dlp_fifo_tail(struct list_head *fifo)
 static void dlp_fifo_empty(struct list_head *fifo,
 			   struct dlp_xfer_ctx *xfer_ctx)
 {
-	struct hsi_msg *pdu;
+	struct hsi_msg *pdu, *tmp_pdu;
 	unsigned long flags;
+	LIST_HEAD(pdus_to_delete);
 
 	write_lock_irqsave(&xfer_ctx->lock, flags);
 
 	while ((pdu = dlp_fifo_head(fifo))) {
 		/* Remove the pdu from the list */
+		list_move_tail(&pdu->link, &pdus_to_delete);
+	}
+
+	write_unlock_irqrestore(&xfer_ctx->lock, flags);
+
+	list_for_each_entry_safe(pdu, tmp_pdu, &pdus_to_delete, link) {
 		list_del_init(&pdu->link);
 
 		/* pdu free */
 		dlp_pdu_free(pdu, pdu->channel);
 	}
-
-	write_unlock_irqrestore(&xfer_ctx->lock, flags);
 }
 
 /****************************************************************************
@@ -1728,6 +1736,9 @@ static int __init dlp_driver_probe(struct device *dev)
 		dlp_trace_ctx_create,   /* TRACE */
 		dlp_flash_ctx_create};	/* BOOT/FLASHING */
 
+	/* HSI channel mapping */
+	int hsi_ch[DLP_CHANNEL_COUNT] = {0, 1, 2, 3, 4, 4, 0};
+
 	/* Save the controller & client */
 	dlp_drv.controller = controller;
 	dlp_drv.client = client;
@@ -1752,9 +1763,11 @@ static int __init dlp_driver_probe(struct device *dev)
 
 	/* Create DLP contexts */
 	for (i = 0; i < DLP_CHANNEL_COUNT; i++) {
-		dlp_drv.channels[i] = create_funcs[i] (i, dev);
+		dlp_drv.channels[i] = create_funcs[i] (i, hsi_ch[i], dev);
 		if (!dlp_drv.channels[i])
 			goto cleanup;
+
+		dlp_drv.channels_hsi[i].edlp_channel = i;
 	}
 
 	/*  */
@@ -1817,19 +1830,6 @@ static struct hsi_client_driver dlp_driver_setup = {
 static int __init dlp_module_init(void)
 {
 	int err, debug_value, flow_ctrl;
-
-/*
- * FIXME:: This is just a temporary W/A to allow PnP tests
- *
- * To activate this patch this param should be added to the
- * kernel boot cmdline: intel_soc_pmu.enable_standby=1
- */
-#ifdef CONFIG_ATOM_SOC_POWER
-	if (enable_standby) {
-		pr_warn(DRVNAME ": eDLP protcol will not be registered\n");
-		return -EBUSY;
-	}
-#endif
 
 	/* Save the module param value */
 	debug_value = dlp_drv.debug;

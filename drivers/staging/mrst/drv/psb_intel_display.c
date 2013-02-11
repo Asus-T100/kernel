@@ -337,14 +337,21 @@ void psb_intel_crtc_load_lut(struct drm_crtc *crtc)
 {
 	struct drm_device *dev = crtc->dev;
 	struct drm_psb_private *dev_priv =
-				(struct drm_psb_private *)dev->dev_private;
+		(struct drm_psb_private *)dev->dev_private;
 	struct psb_intel_crtc *psb_intel_crtc = to_psb_intel_crtc(crtc);
+	struct mdfld_dsi_config *dsi_config = NULL;
+	struct mdfld_dsi_hw_context *ctx = NULL;
 	int palreg = PALETTE_A;
 	int i;
 
 	/* The clocks have to be on to load the palette. */
-	if (!crtc->enabled)
+	if (!crtc->enabled || !dev_priv)
 		return;
+
+	dsi_config = dev_priv->dsi_configs[0];
+	if (!dsi_config)
+		return;
+	ctx = &dsi_config->dsi_hw_context;
 
 	switch (psb_intel_crtc->pipe) {
 	case 0:
@@ -361,16 +368,19 @@ void psb_intel_crtc_load_lut(struct drm_crtc *crtc)
 	}
 
 	if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
-				      OSPM_UHB_ONLY_IF_ON)) {
+				      OSPM_UHB_FORCE_POWER_ON)) {
+		mdfld_dsi_dsr_forbid(dsi_config);
 		for (i = 0; i < 256; i++) {
-			REG_WRITE(palreg + 4 * i,
+			ctx->palette[i] =
 				  ((psb_intel_crtc->lut_r[i] +
 				  psb_intel_crtc->lut_adj[i]) << 16) |
 				  ((psb_intel_crtc->lut_g[i] +
 				  psb_intel_crtc->lut_adj[i]) << 8) |
 				  (psb_intel_crtc->lut_b[i] +
-				  psb_intel_crtc->lut_adj[i]));
+				  psb_intel_crtc->lut_adj[i]);
+			REG_WRITE((palreg + 4 * i), ctx->palette[i]);
 		}
+		mdfld_dsi_dsr_allow(dsi_config);
 		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 	} else {
 		for (i = 0; i < 256; i++) {

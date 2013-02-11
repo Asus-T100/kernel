@@ -906,6 +906,18 @@ config COMPUTE_PHYSICAL_CORE_LOAD
 
 	  If in doubt, say N here
 
+config COUNT_GPU_BLOCKING_TIME
+	bool "Count CPU idle time blocked by GPU as CPU active time"
+	depends on COMPUTE_PHYSICAL_CORE_LOAD
+	---help---
+	  Enable to count CPU idle time blocked by GPU as CPU active time.
+	  In some graphic workloads, CPU is blocked by GPU. When GPU is in critical
+	  path, CPUFreq governor should account the time blocked by GPU into CPU
+	  active time to predict accurate CPU frequency.
+	  If the COUNT_GPU_BLOCKING_TIME is N, it will be disabled.
+
+	  If in doubt, say N here
+
 config IRQ_TIME_ACCOUNTING
 	bool "Fine granularity task level IRQ time accounting"
 	default n

@@ -28,10 +28,18 @@
 #include "psb_reg.h"
 #include "psb_intel_reg.h"
 #include "psb_msvdx.h"
+#include "psb_video_drv.h"
+
+#ifdef SUPPORT_VSP
 #include "vsp.h"
+#endif
+
+#ifdef ENABLE_MRST
 #include "lnc_topaz.h"
+#endif
 #include "pnw_topaz.h"
 #include "tng_topaz.h"
+
 #include <drm/drm_pciids.h>
 #include "psb_powermgmt.h"
 #include "dispmgrnl.h"
@@ -380,10 +388,10 @@ MODULE_DEVICE_TABLE(pci, pciidlist);
 #define DRM_PSB_FLIP	   (DRM_PSB_TTM_FENCE_UNREF + 1)
 		/*20 */
 /* PSB video extension */
-#define DRM_LNC_VIDEO_GETPARAM		(DRM_PSB_FLIP + 1)
+#define DRM_PSB_VIDEO_GETPARAM		(DRM_PSB_FLIP + 1)
 
 /*BC_VIDEO ioctl*/
-#define DRM_BUFFER_CLASS_VIDEO      (DRM_LNC_VIDEO_GETPARAM + 1)
+#define DRM_BUFFER_CLASS_VIDEO      (DRM_PSB_VIDEO_GETPARAM + 1)
 	/*0x32 */
 
 #define DRM_IOCTL_PSB_TTM_PL_CREATE    \
@@ -419,8 +427,8 @@ MODULE_DEVICE_TABLE(pci, pciidlist);
 #define DRM_IOCTL_PSB_FLIP \
 	DRM_IOWR(DRM_COMMAND_BASE + DRM_PSB_FLIP, \
 		 struct drm_psb_pageflip_arg)
-#define DRM_IOCTL_LNC_VIDEO_GETPARAM \
-	DRM_IOWR(DRM_COMMAND_BASE + DRM_LNC_VIDEO_GETPARAM, \
+#define DRM_IOCTL_PSB_VIDEO_GETPARAM \
+	DRM_IOWR(DRM_COMMAND_BASE + DRM_PSB_VIDEO_GETPARAM, \
 		 struct drm_lnc_video_getparam_arg)
 
     /*****************************
@@ -588,7 +596,9 @@ static struct drm_ioctl_desc psb_ioctls[] = {
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_GET_PIPE_FROM_CRTC_ID,
 		      psb_intel_get_pipe_from_crtc_id, 0),
 #endif
-	PSB_IOCTL_DEF(DRM_IOCTL_PSB_CMDBUF, psb_cmdbuf_ioctl, DRM_AUTH),
+	PSB_IOCTL_DEF(DRM_IOCTL_PSB_CMDBUF,
+		      psb_cmdbuf_ioctl,
+		      DRM_AUTH | DRM_UNLOCKED),
 	/*to be removed later */
 	/*PSB_IOCTL_DEF(DRM_IOCTL_PSB_SCENE_UNREF, drm_psb_scene_unref_ioctl,
 	   DRM_AUTH), */
@@ -615,8 +625,8 @@ static struct drm_ioctl_desc psb_ioctls[] = {
 		      DRM_AUTH),
 	/*to be removed later */
 	/*PSB_IOCTL_DEF(DRM_IOCTL_PSB_FLIP, psb_page_flip, DRM_AUTH), */
-	PSB_IOCTL_DEF(DRM_IOCTL_LNC_VIDEO_GETPARAM,
-		      lnc_video_getparam, DRM_AUTH),
+	PSB_IOCTL_DEF(DRM_IOCTL_PSB_VIDEO_GETPARAM,
+		psb_video_getparam, DRM_AUTH | DRM_UNLOCKED),
 	PSB_IOCTL_DEF(DRM_IOCRL_PSB_DPU_QUERY, psb_dpu_query_ioctl,
 		      DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCRL_PSB_DPU_DSR_ON, psb_dpu_dsr_on_ioctl,
@@ -738,18 +748,42 @@ static void psb_lastclose(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv =
 	    (struct drm_psb_private *)dev->dev_private;
+	struct msvdx_private *msvdx_priv;
+#ifdef SUPPORT_VSP
+	struct vsp_private *vsp_priv;
+#endif
 
-	return;
-
-	if (!dev->dev_private)
+	if (!dev_priv)
 		return;
 
+	msvdx_priv = dev_priv->msvdx_private;
+#ifdef SUPPORT_VSP
+	vsp_priv = dev_priv->vsp_private;
+#endif
 	mutex_lock(&dev_priv->cmdbuf_mutex);
-	if (dev_priv->context.buffers) {
-		vfree(dev_priv->context.buffers);
-		dev_priv->context.buffers = NULL;
+	if (dev_priv->encode_context.buffers) {
+		vfree(dev_priv->encode_context.buffers);
+		dev_priv->encode_context.buffers = NULL;
 	}
 	mutex_unlock(&dev_priv->cmdbuf_mutex);
+
+	if (msvdx_priv) {
+		mutex_lock(&msvdx_priv->msvdx_mutex);
+		if (dev_priv->decode_context.buffers) {
+			vfree(dev_priv->decode_context.buffers);
+			dev_priv->decode_context.buffers = NULL;
+		}
+		mutex_unlock(&msvdx_priv->msvdx_mutex);
+	}
+
+#ifdef SUPPORT_VSP
+	mutex_lock(&vsp_priv->vsp_mutex);
+	if (dev_priv->vsp_context.buffers) {
+		vfree(dev_priv->vsp_context.buffers);
+		dev_priv->vsp_context.buffers = NULL;
+	}
+	mutex_unlock(&vsp_priv->vsp_mutex);
+#endif
 }
 
 static void psb_do_takedown(struct drm_device *dev)
@@ -779,8 +813,9 @@ static void psb_do_takedown(struct drm_device *dev)
 
 	psb_msvdx_uninit(dev);
 
-	if (IS_MRFLD(dev))
-		vsp_deinit(dev);
+#ifdef SUPPORT_VSP
+	vsp_deinit(dev);
+#endif
 
 	if (IS_MDFLD(dev))
 		pnw_topaz_uninit(dev);
@@ -1351,11 +1386,12 @@ static int psb_do_init(struct drm_device *dev)
 
 	PSB_DEBUG_INIT("Init MSVDX\n");
 	psb_msvdx_init(dev);
-
+#ifdef SUPPORT_VSP
 	if (IS_MRFLD(dev)) {
 		VSP_DEBUG("Init VSP\n");
 		vsp_init(dev);
 	}
+#endif
 
 	PSB_DEBUG_INIT("Init Topaz\n");
 	/* for sku100L and sku100M, VEC is disabled in fuses */
@@ -1417,6 +1453,7 @@ static int psb_driver_unload(struct drm_device *dev)
 			dev_priv->mmu = NULL;
 		}
 
+#ifdef SUPPORT_VSP
 		if (dev_priv->vsp_mmu) {
 			struct psb_gtt *pg = dev_priv->pg;
 
@@ -1442,6 +1479,7 @@ static int psb_driver_unload(struct drm_device *dev)
 			psb_mmu_driver_takedown(dev_priv->vsp_mmu);
 			dev_priv->vsp_mmu = NULL;
 		}
+#endif
 
 		if (IS_MRFLD(dev))
 			mrfld_gtt_takedown(dev_priv->pg, 1);
@@ -1476,13 +1514,14 @@ static int psb_driver_unload(struct drm_device *dev)
 			iounmap(dev_priv->msvdx_reg);
 			dev_priv->msvdx_reg = NULL;
 		}
-
+#ifdef SUPPORT_VSP
 		if (IS_MRFLD(dev)) {
 			if (dev_priv->vsp_reg) {
 				iounmap(dev_priv->vsp_reg);
 				dev_priv->vsp_reg = NULL;
 			}
 		}
+#endif
 
 		if (IS_TOPAZ(dev)) {
 			if (dev_priv->topaz_reg) {
@@ -1529,6 +1568,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	if (dev_priv == NULL)
 		return -ENOMEM;
 	INIT_LIST_HEAD(&dev_priv->video_ctx);
+	mutex_init(&dev_priv->video_ctx_mutex);
 	if (IS_FLDS(dev))
 		dev_priv->num_pipe = 3;
 	else
@@ -1560,8 +1600,11 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	mutex_init(&dev_priv->temp_mem);
 	mutex_init(&dev_priv->cmdbuf_mutex);
 	mutex_init(&dev_priv->reset_mutex);
-	INIT_LIST_HEAD(&dev_priv->context.validate_list);
-	INIT_LIST_HEAD(&dev_priv->context.kern_validate_list);
+	INIT_LIST_HEAD(&dev_priv->decode_context.validate_list);
+	INIT_LIST_HEAD(&dev_priv->encode_context.validate_list);
+#ifdef SUPPORT_VSP
+	INIT_LIST_HEAD(&dev_priv->vsp_context.validate_list);
+#endif
 
 	mutex_init(&dev_priv->dpms_mutex);
 	mutex_init(&dev_priv->dsr_mutex);
@@ -1574,10 +1617,6 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	dev->dev_private = (void *)dev_priv;
 	dev_priv->chipset = chipset;
 	psb_set_uopt(&dev_priv->uopt);
-
-	PSB_DEBUG_GENERAL("Init watchdog and scheduler\n");
-	/* psb_watchdog_init(dev_priv); */
-	psb_scheduler_init(dev, &dev_priv->scheduler);
 
 	PSB_DEBUG_INIT("Mapping MMIO\n");
 	resource_start = pci_resource_start(dev->pdev, PSB_MMIO_RESOURCE);
@@ -1592,14 +1631,12 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	if (!dev_priv->msvdx_reg)
 		goto out_err;
 
-	if (IS_MRFLD(dev)) {
-		dev_priv->vsp_reg =
-			ioremap(resource_start + TNG_VSP_OFFSET,
-				TNG_VSP_SIZE);
-		if (!dev_priv->vsp_reg)
-			goto out_err;
-	}
-
+#ifdef SUPPORT_VSP
+	dev_priv->vsp_reg =
+		ioremap(resource_start + TNG_VSP_OFFSET, TNG_VSP_SIZE);
+	if (!dev_priv->vsp_reg)
+		goto out_err;
+#endif
 	if (IS_TOPAZ(dev)) {
 		if (IS_MRFLD(dev))
 			dev_priv->topaz_reg =
@@ -1664,7 +1701,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 		goto out_err;
 
 	/* For VXD385 DE2.x firmware support 16bit fence value */
-	if (IS_FLDS(dev) && IS_FW_UPDATED) {
+	if (IS_FLDS(dev)) {
 		dev_priv->fdev.fence_class[PSB_ENGINE_VIDEO].wrap_diff =
 		    (1 << 14);
 		dev_priv->fdev.fence_class[PSB_ENGINE_VIDEO].flush_diff =
@@ -1713,11 +1750,13 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	if (!dev_priv->mmu)
 		goto out_err;
 
+#ifdef SUPPORT_VSP
 	dev_priv->vsp_mmu = psb_mmu_driver_init((void *)0,
 					    drm_psb_trap_pagefaults, 0,
 					    dev_priv, VSP_MMU);
 	if (!dev_priv->vsp_mmu)
 		goto out_err;
+#endif
 
 	pg = dev_priv->pg;
 
@@ -1745,6 +1784,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 		if (ret)
 			goto out_err;
 
+#ifdef SUPPORT_VSP
 		down_read(&pg->sem);
 		ret = psb_mmu_insert_pfn_sequence(
 			psb_mmu_get_default_pd
@@ -1755,6 +1795,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 		up_read(&pg->sem);
 		if (ret)
 			goto out_err;
+#endif
 	}
 
 	/*
@@ -1774,7 +1815,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 		up_read(&pg->sem);
 		if (ret)
 			goto out_err;
-
+#ifdef SUPPORT_VSP
 		down_read(&pg->sem);
 		ret = psb_mmu_insert_pfn_sequence(
 			psb_mmu_get_default_pd(dev_priv->vsp_mmu),
@@ -1784,6 +1825,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 		up_read(&pg->sem);
 		if (ret)
 			goto out_err;
+#endif
 	}
 
 	dev_priv->pf_pd = psb_mmu_alloc_pd(dev_priv->mmu, 1, 0);
@@ -1792,10 +1834,10 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 
 	psb_mmu_set_pd_context(psb_mmu_get_default_pd(dev_priv->mmu), 0);
 	psb_mmu_set_pd_context(dev_priv->pf_pd, 1);
-
+#ifdef SUPPORT_VSP
 	/* for vsp mmu */
 	psb_mmu_set_pd_context(psb_mmu_get_default_pd(dev_priv->vsp_mmu), 0);
-
+#endif
 	spin_lock_init(&dev_priv->sequence_lock);
 
 	PSB_DEBUG_INIT("Begin to init MSVDX/Topaz\n");
@@ -1986,7 +2028,7 @@ int psb_extension_ioctl(struct drm_device *dev, void *data,
 	/* return the video rar offset */
 	if (strcmp(arg->extension, "lnc_video_getparam") == 0) {
 		rep->exists = 1;
-		rep->driver_ioctl_offset = DRM_LNC_VIDEO_GETPARAM;
+		rep->driver_ioctl_offset = DRM_PSB_VIDEO_GETPARAM;
 		rep->sarea_offset = 0;
 		rep->major = 1;
 		rep->minor = 0;
@@ -3987,6 +4029,137 @@ static const struct dev_pm_ops psb_pm_ops = {
 	.runtime_resume = psb_runtime_resume,
 	.runtime_idle = psb_runtime_idle,
 };
+
+static struct vm_operations_struct psb_ttm_vm_ops;
+
+/**
+ * NOTE: driver_private of drm_file is now a PVRSRV_FILE_PRIVATE_DATA struct
+ * pPriv in PVRSRV_FILE_PRIVATE_DATA contains the original psb_fpriv;
+ */
+int psb_open(struct inode *inode, struct file *filp)
+{
+	struct drm_file *file_priv;
+	struct drm_psb_private *dev_priv;
+	struct psb_fpriv *psb_fp;
+
+	int ret;
+
+	DRM_DEBUG("\n");
+
+	ret = drm_open(inode, filp);
+	if (unlikely(ret))
+		return ret;
+
+	psb_fp = kzalloc(sizeof(*psb_fp), GFP_KERNEL);
+
+	if (unlikely(psb_fp == NULL))
+		goto out_err0;
+
+	file_priv = (struct drm_file *) filp->private_data;
+
+	/* In case that the local file priv has created a master,
+	 * which has been referenced, even if it's not authenticated
+	 * (non-root user). */
+	if ((file_priv->minor->master)
+		&& (file_priv->master == file_priv->minor->master)
+		&& (!file_priv->is_master))
+		file_priv->is_master = 1;
+
+	dev_priv = psb_priv(file_priv->minor->dev);
+
+	DRM_DEBUG("is_master %d\n", file_priv->is_master ? 1 : 0);
+
+	psb_fp->tfile = ttm_object_file_init(dev_priv->tdev,
+					     PSB_FILE_OBJECT_HASH_ORDER);
+	psb_fp->bcd_index = -1;
+	if (unlikely(psb_fp->tfile == NULL))
+		goto out_err1;
+
+	if (!file_priv->driver_priv) {
+		DRM_ERROR("drm file private is NULL\n");
+		goto out_err1;
+	}
+
+	BCVideoSetPriv(file_priv, psb_fp);
+
+	if (unlikely(dev_priv->bdev.dev_mapping == NULL))
+		dev_priv->bdev.dev_mapping = dev_priv->dev->dev_mapping;
+
+	return 0;
+
+out_err1:
+	kfree(psb_fp);
+out_err0:
+	(void) drm_release(inode, filp);
+	return ret;
+}
+
+int psb_release(struct inode *inode, struct file *filp)
+{
+	struct drm_file *file_priv;
+	struct psb_fpriv *psb_fp;
+	struct drm_psb_private *dev_priv;
+	struct msvdx_private *msvdx_priv;
+	int ret;
+	uint32_t ui32_reg_value = 0;
+	file_priv = (struct drm_file *)filp->private_data;
+	psb_fp = BCVideoGetPriv(file_priv);
+	dev_priv = psb_priv(file_priv->minor->dev);
+	msvdx_priv = (struct msvdx_private *)dev_priv->msvdx_private;
+
+#if 0
+	/*cleanup for msvdx */
+	if (msvdx_priv->tfile == BCVideoGetPriv(file_priv)->tfile) {
+		msvdx_priv->fw_status = 0;
+		msvdx_priv->host_be_opp_enabled = 0;
+		memset(&msvdx_priv->frame_info, 0,
+		       sizeof(struct drm_psb_msvdx_frame_info) *
+		       MAX_DECODE_BUFFERS);
+	}
+#endif
+	BCVideoDestroyBuffers(psb_fp->bcd_index);
+
+	ttm_object_file_release(&psb_fp->tfile);
+	kfree(psb_fp);
+
+	/* remove video context */
+	/* psb_remove_videoctx(dev_priv, filp); */
+
+	ret = drm_release(inode, filp);
+
+	return ret;
+}
+
+/**
+ * if vm_pgoff < DRM_PSB_FILE_PAGE_OFFSET call directly to PVRMMap
+ */
+int psb_mmap(struct file *filp, struct vm_area_struct *vma)
+{
+	struct drm_file *file_priv;
+	struct drm_psb_private *dev_priv;
+	int ret;
+
+	if (vma->vm_pgoff < DRM_PSB_FILE_PAGE_OFFSET ||
+	    vma->vm_pgoff > 2 * DRM_PSB_FILE_PAGE_OFFSET)
+		return PVRSRVMMap(filp, vma);
+
+	file_priv = (struct drm_file *) filp->private_data;
+	dev_priv = psb_priv(file_priv->minor->dev);
+
+	ret = ttm_bo_mmap(filp, vma, &dev_priv->bdev);
+	if (unlikely(ret != 0))
+		return ret;
+
+	if (unlikely(dev_priv->ttm_vm_ops == NULL)) {
+		dev_priv->ttm_vm_ops = (struct vm_operations_struct *)vma->vm_ops;
+		psb_ttm_vm_ops = *vma->vm_ops;
+		psb_ttm_vm_ops.fault = &psb_ttm_fault;
+	}
+
+	vma->vm_ops = &psb_ttm_vm_ops;
+
+	return 0;
+}
 
 static struct drm_driver driver = {
 	.driver_features = DRIVER_HAVE_IRQ | DRIVER_IRQ_SHARED |

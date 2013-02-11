@@ -866,7 +866,7 @@ struct sh_css_sp_info {
 	unsigned int	sleep_mode;  /**< different mode to halt SP */
 	unsigned int	invalidate_tlb;		/**< inform SP to invalidate mmu TLB */
 	unsigned int	request_flash;	/**< inform SP to switch on flash for next frame */
-	unsigned int	flash_in_use;
+	unsigned int	stop_copy_preview;
 	unsigned int	debug_buffer_ddr_address;	/**< inform SP the address
 	of DDR debug queue */
 	unsigned int	ddr_parameter_address; /**< acc param ddrptr, sp dmem */

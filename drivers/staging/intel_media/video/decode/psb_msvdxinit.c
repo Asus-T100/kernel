@@ -47,7 +47,7 @@ int psb_wait_for_register(struct drm_psb_private *dev_priv,
 			  uint32_t offset, uint32_t value, uint32_t enable,
 			  uint32_t poll_cnt, uint32_t timeout)
 {
-	uint32_t reg_value;
+	uint32_t reg_value = 0;
 	/* uint32_t poll_cnt = 2000000; */
 	while (poll_cnt) {
 		reg_value = PSB_RMSVDX32(offset);
@@ -217,7 +217,7 @@ int psb_msvdx_reset(struct drm_psb_private *dev_priv)
 	PSB_WMSVDX32(MSVDX_CONTROL__MSVDX_SOFT_RESET_MASK, MSVDX_CONTROL_OFFSET);
 
 	ret = psb_wait_for_register(dev_priv, MSVDX_CONTROL_OFFSET, 0,
-			MSVDX_CONTROL__MSVDX_SOFT_RESET_MASK);
+			MSVDX_CONTROL__MSVDX_SOFT_RESET_MASK, 2000000, 5);
 	if (!ret) {
 		/* Clear interrupt enabled flag */
 		PSB_WMSVDX32(0, MSVDX_HOST_INTERRUPT_ENABLE_OFFSET);
@@ -277,12 +277,15 @@ static ssize_t psb_msvdx_pmstate_show(struct device *dev,
 				      struct device_attribute *attr, char *buf)
 {
 	struct drm_device *drm_dev = dev_get_drvdata(dev);
-	struct drm_psb_private *dev_priv = drm_dev->dev_private;
-	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
+	struct drm_psb_private *dev_priv = NULL;
+	struct msvdx_private *msvdx_priv = NULL;
 	int ret = -EINVAL;
 
 	if (drm_dev == NULL)
 		return 0;
+
+	dev_priv = drm_dev->dev_private;
+	msvdx_priv = dev_priv->msvdx_private;
 
 	ret = snprintf(buf, 64, "MSVDX Power state 0x%s, gating count 0x%08x\n",
 		       ospm_power_is_hw_on(OSPM_VIDEO_DEC_ISLAND)
@@ -295,11 +298,23 @@ static DEVICE_ATTR(msvdx_pmstate, 0444, psb_msvdx_pmstate_show, NULL);
 
 static int32_t msvdx_alloc_ccb_for_rendec(struct drm_device *dev)
 {
-	struct drm_psb_private *dev_priv = dev->dev_private;
-	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
+	struct drm_psb_private *dev_priv = NULL;
+	struct msvdx_private *msvdx_priv = NULL;
 	int32_t ret = 0;
 
 	PSB_DEBUG_INIT("MSVDX: Setting up RENDEC,allocate CCB 0/1\n");
+
+	if (dev == NULL)
+		return 1;
+
+	dev_priv = dev->dev_private;
+	if (dev_priv == NULL)
+		return 1;
+
+	msvdx_priv = dev_priv->msvdx_private;
+	if (msvdx_priv == NULL)
+		return 1;
+
 	/* Allocate device virtual memory as required by rendec.... */
 	if (!msvdx_priv->ccb0) {
 		ret = msvdx_allocate_ccb(dev, &msvdx_priv->ccb0,
@@ -328,9 +343,9 @@ static int32_t msvdx_alloc_ccb_for_rendec(struct drm_device *dev)
 
 err_exit:
 	DRM_ERROR("MSVDX: %s failed.\n", __func__);
-	if (msvdx_priv && msvdx_priv->ccb0)
+	if (msvdx_priv->ccb0)
 		msvdx_free_ccb(&msvdx_priv->ccb0);
-	if (msvdx_priv && msvdx_priv->ccb1)
+	if (msvdx_priv->ccb1)
 		msvdx_free_ccb(&msvdx_priv->ccb1);
 
 	return 1;
@@ -475,7 +490,7 @@ static void msvdx_tile_setup(struct drm_psb_private *dev_priv)
 	return;
 }
 
-#ifdef CONFIG_VIDEO_MRFLD
+#ifdef CONFIG_VIDEO_MRFLD_EC
 static void msvdx_init_ec(struct msvdx_private *msvdx_priv)
 {
 	struct drm_psb_private *dev_priv = msvdx_priv->dev_priv;
@@ -545,10 +560,15 @@ static int msvdx_startup_init(struct drm_device *dev)
 	memset(msvdx_priv, 0, sizeof(struct msvdx_private));
 	msvdx_priv->dev_priv = dev_priv;
 	msvdx_priv->dev = dev;
-	msvdx_priv->fw_loaded_by_punit =
-		((dev)->pdev->revision >= 0xc) || \
-		(((dev)->pci_device & 0xffff) == 0x08c7) || \
-		(((dev)->pci_device & 0xffff) == 0x08c8);
+#ifdef MERRIFIELD
+	if (IS_MRFLD(dev))
+		msvdx_priv->fw_loaded_by_punit = 0;
+	else
+#endif
+		msvdx_priv->fw_loaded_by_punit =
+			((dev)->pdev->revision >= 0xc) || \
+			(((dev)->pci_device & 0xffff) == 0x08c7) || \
+			(((dev)->pci_device & 0xffff) == 0x08c8);
 	msvdx_tile_setup(dev_priv);
 	msvdx_priv->pm_gating_count = 0;
 
@@ -566,7 +586,7 @@ static int msvdx_startup_init(struct drm_device *dev)
 					    NULL,
 #endif
 					    "msvdx_pmstate");
-#ifdef CONFIG_VIDEO_MRFLD
+#ifdef CONFIG_VIDEO_MRFLD_EC
 	msvdx_init_ec(msvdx_priv);
 #endif
 	INIT_DELAYED_WORK(&msvdx_priv->msvdx_suspend_wq,
@@ -728,7 +748,7 @@ int psb_msvdx_post_boot_init(struct drm_device *dev)
 
 #ifdef PSB_MSVDX_FW_LOADED_BY_HOST
 	/* set watchdog timer here */
-	reg_val = 0;
+	int reg_val = 0;
 	REGIO_WRITE_FIELD(reg_val, FE_MSVDX_WDT_CONTROL, FE_WDT_CNT_CTRL, 0x3);
 	REGIO_WRITE_FIELD(reg_val, FE_MSVDX_WDT_CONTROL, FE_WDT_ENABLE, 0);
 	REGIO_WRITE_FIELD(reg_val, FE_MSVDX_WDT_CONTROL, FE_WDT_ACTION0, 1);
@@ -809,7 +829,7 @@ int psb_msvdx_init(struct drm_device *dev)
 		msvdx_priv->msvdx_fw_loaded = 0; /* need to load firware */
 		/* it should be set at punit post boot init phase */
 		PSB_WMSVDX32(820, FE_MSVDX_WDT_COMPAREMATCH_OFFSET);
-		PSB_WMSVDX32(8200, _BE_MSVDX_WDT_COMPAREMATCH_OFFSET);
+		PSB_WMSVDX32(8200, BE_MSVDX_WDT_COMPAREMATCH_OFFSET);
 
 		PSB_WMSVDX32(820, FE_MSVDX_WDT_COMPAREMATCH_OFFSET);
 		PSB_WMSVDX32(8200, BE_MSVDX_WDT_COMPAREMATCH_OFFSET);

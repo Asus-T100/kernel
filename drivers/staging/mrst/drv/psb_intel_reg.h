@@ -760,6 +760,8 @@ struct dpst_guardband {
 #define DIP_RAM_ADDR_MASK             0xf
 #define DIP_RAM_ADDR_INDEX_MAX	      0xf
 #define VIDEO_DIP_DATA         0x61178
+#define HDMIB_LANES02          0x61120
+#define HDMIB_LANES3           0x61124
 
 #define AUDIO_DIP_CTL   0x69060
 
@@ -1271,6 +1273,7 @@ gamma settings.
 #define PIPEC_COLOR_COEF12 	0x6207c
 #define PIPEC_COLOR_COEF21 	0x62080
 #define PIPEC_COLOR_COEF22 	0x62084
+#define LVDS_PORT_CTRL		0x61180
 
 /* MDFLD HDMI power rails registers */
 #define MSIC_VCC330CNT      0xd3

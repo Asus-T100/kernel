@@ -25,6 +25,11 @@
 #include "psb_drv.h"
 #include "ttm/ttm_execbuf_util.h"
 
+#ifdef MERRIFIELD
+#include "bufferclass_interface.h"
+#include "pvrsrv_interface.h"
+#endif
+
 struct drm_psb_private;
 
 /*
@@ -32,9 +37,15 @@ struct drm_psb_private;
  */
 #define DRM_PSB_FILE_PAGE_OFFSET (0x100000000ULL >> PAGE_SHIFT)
 
+#ifdef MERRIFIELD
+#define PSB_OBJECT_HASH_ORDER 13
+#define PSB_FILE_OBJECT_HASH_ORDER 12
+#define PSB_BO_HASH_ORDER 12
+#else
 #define PSB_OBJECT_HASH_ORDER 9
 #define PSB_FILE_OBJECT_HASH_ORDER 8
 #define PSB_BO_HASH_ORDER 8
+#endif
 
 #define PSB_TT_PRIV0_LIMIT	 (256*1024*1024)
 #define PSB_TT_PRIV0_PLIMIT	 (PSB_TT_PRIV0_LIMIT >> PAGE_SHIFT)
@@ -47,6 +58,11 @@ struct drm_psb_private;
 
 #define PSB_MAX_RELOC_PAGES 1024
 
+/* MMU type */
+enum mmu_type_t {
+	IMG_MMU = 1,
+	VSP_MMU = 2
+};
 
 /* psb_cmdbuf.c */
 int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
@@ -114,9 +130,8 @@ void psb_remove_videoctx(struct drm_psb_private *dev_priv, struct file *filp);
  * psb_mmu.c
  */
 struct psb_mmu_driver *psb_mmu_driver_init(uint8_t __iomem *registers,
-		int trap_pagefaults,
-		int invalid_type,
-		struct drm_psb_private *dev_priv);
+		int trap_pagefaults, int invalid_type,
+		struct drm_psb_private *dev_priv, enum mmu_type_t mmu_type);
 void psb_mmu_driver_takedown(struct psb_mmu_driver *driver);
 struct psb_mmu_pd *psb_mmu_get_default_pd(struct psb_mmu_driver
 							*driver);
@@ -165,7 +180,8 @@ enum VAProfile {
 	VAProfileVC1Advanced		= 10,
 	VAProfileH263Baseline		= 11,
 	VAProfileJPEGBaseline           = 12,
-	VAProfileH264ConstrainedBaseline = 13
+	VAProfileH264ConstrainedBaseline = 13,
+	VAProfileMax
 };
 
 /* Currently defined entrypoints */
@@ -176,7 +192,9 @@ enum VAEntrypoint {
 	VAEntrypointMoComp	= 4,
 	VAEntrypointDeblocking	= 5,
 	VAEntrypointEncSlice	= 6,	/* slice level encode */
-	VAEntrypointEncPicture 	= 7	/* pictuer encode, JPEG, etc */
+	VAEntrypointEncPicture  = 7,    /* pictuer encode, JPEG, etc */
+	VAEntrypointVideoProc   = 10,   /* video pre/post processing */
+	VAEntrypointMax
 };
 
 #define VA_RT_FORMAT_PROTECTED	0x80000000
@@ -213,11 +231,34 @@ struct psb_validate_buffer {
 	int po_correct;
 };
 
+#define	LOG2_WB_FIFO_SIZE	(5)
+#define	WB_FIFO_SIZE		(1 << (LOG2_WB_FIFO_SIZE))
+
 struct psb_video_ctx {
 	struct list_head head;
 	struct file *filp; /* DRM device file pointer */
 	int ctx_type; /* (msvdx_tile&0xff)<<16|profile<<8|entrypoint */
 	/* todo: more context specific data for multi-context support */
+	/* Context save and restore */
+	struct ttm_buffer_object *reg_saving_bo;
+	struct ttm_buffer_object *data_saving_bo;
+	uint32_t fw_data_dma_size;
+	uint32_t fw_data_dma_offset;
+	/* Write back buffer object */
+	struct ttm_buffer_object *wb_bo;
+	struct ttm_bo_kmap_obj wb_bo_kmap;
+	uint32_t wb_addr[WB_FIFO_SIZE];
+
+	uint32_t status;
+	uint32_t codec;
+	/* Firmware data section offset and size */
+	uint32_t mtx_debug_val;
+	uint32_t mtx_bank_size;
+	uint32_t mtx_ram_size;
 };
+
+#ifdef MERRIFIELD
+struct psb_fpriv *psb_fpriv(struct drm_file *file_priv);
+#endif
 
 #endif

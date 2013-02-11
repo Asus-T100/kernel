@@ -95,6 +95,7 @@
 #include "device_libs/platform_s3202.h"
 #include "device_libs/platform_bq24261.h"
 #include "device_libs/platform_imx175.h"
+#include "device_libs/platform_imx135.h"
 #include "device_libs/platform_ov9724.h"
 #include "device_libs/platform_lm3559.h"
 
@@ -112,6 +113,9 @@
  */
 
 #include "device_libs/platform_hsi_modem.h"
+#include "device_libs/platform_ffl_modem.h"
+#include "device_libs/platform_edlp_modem.h"
+#include "device_libs/platform_logical_modem.h"
 
 /*
  * WIFI devices
@@ -147,17 +151,18 @@ int penwell_otg_query_charging_cap(void *dummy)
 
 struct devs_id __initconst device_ids[] = {
 	{"pmic_gpio", SFI_DEV_TYPE_SPI, 1, &pmic_gpio_platform_data, NULL},
-#ifdef CONFIG_X86_MRFLD
-	{"spi_max3111", SFI_DEV_TYPE_SPI, 0, &max3111_vp_platform_data, NULL},
-#else
 	{"spi_max3111", SFI_DEV_TYPE_SPI, 0, &max3111_platform_data, NULL},
-#endif
 	{"ntrig_spi", SFI_DEV_TYPE_SPI, 1, &ntrig_platform_data, NULL},
 	{"ntrig_g4_spi", SFI_DEV_TYPE_SPI, 1, &ntrig_g4_platform_data, NULL},
 #ifndef CONFIG_HSI_NO_MODEM
 	{"hsi_ifx_modem", SFI_DEV_TYPE_HSI, 0, &hsi_modem_platform_data, NULL},
+	{"hsi_ffl_modem", SFI_DEV_TYPE_HSI, 0, &ffl_modem_platform_data, NULL},
+	{"hsi_edlp_modem", SFI_DEV_TYPE_HSI, 0, &edlp_modem_platform_data,
+						NULL},
+	{"logical_hsi", SFI_DEV_TYPE_HSI, 0, &logical_platform_data, NULL},
 #endif
 	{"wl12xx_clk_vmmc", SFI_DEV_TYPE_SD, 0, &wl12xx_platform_data, NULL},
+	{"bcm43xx_vmmc", SFI_DEV_TYPE_SD, 0, &bcm43xx_platform_data, NULL},
 	{"bcm43xx_clk_vmmc", SFI_DEV_TYPE_SD, 0, &bcm43xx_platform_data, NULL},
 
 	/* MSIC subdevices */
@@ -178,7 +183,7 @@ struct devs_id __initconst device_ids[] = {
 					&ipc_device_handler},
 	{"msic_vdd", SFI_DEV_TYPE_IPC, 1, &msic_vdd_platform_data,
 					&ipc_device_handler},
-	{"clvcs_audio", SFI_DEV_TYPE_IPC, 1, &ctp_audio_platform_data,
+	{"ctp_audio", SFI_DEV_TYPE_IPC, 1, &ctp_audio_platform_data,
 					     NULL},
 	{"bcove_adc", SFI_DEV_TYPE_IPC, 1, &mrfl_adc_platform_data, NULL},
 	{"bcove_bcu", SFI_DEV_TYPE_IPC, 1, &mrfl_ocd_platform_data, NULL},
@@ -213,6 +218,8 @@ struct devs_id __initconst device_ids[] = {
 	{"ov8830", SFI_DEV_TYPE_I2C, 0, &ov8830_platform_data,
 					&intel_register_i2c_camera_device},
 	{"imx175", SFI_DEV_TYPE_I2C, 0, &imx175_platform_data,
+					&intel_register_i2c_camera_device},
+	{"imx135", SFI_DEV_TYPE_I2C, 0, &imx135_platform_data,
 					&intel_register_i2c_camera_device},
 	{"ov9724", SFI_DEV_TYPE_I2C, 0, &ov9724_platform_data,
 					&intel_register_i2c_camera_device},

@@ -45,6 +45,12 @@ enum usb_xceiv_events {
 	USB_EVENT_DRIVE_VBUS,   /* usb host ready to start enumeration */
 };
 
+enum vbus_state {
+	UNKNOW_STATE,
+	VBUS_ENABLED,			/* vbus at normal state */
+	VBUS_DISABLED,			/* vbus disabled by a_bus_drop */
+};
+
 struct otg_transceiver;
 
 /* for transceivers connected thru an ULPI interface, the user must
@@ -83,6 +89,11 @@ struct otg_transceiver {
 	u16			port_status;
 	u16			port_change;
 
+	/* Porivde sysfs interface to userspace for set a_bus_drop argument */
+	struct class *usb_otg_class;
+	struct device *class_dev;
+	int vbus_state;
+
 	/* initialize/shutdown the OTG controller */
 	int	(*init)(struct otg_transceiver *otg);
 	void	(*shutdown)(struct otg_transceiver *otg);
@@ -115,6 +126,9 @@ struct otg_transceiver {
 
 	/* for A or B-peripheral: host has released the bus.  */
 	int     (*host_release)(struct otg_transceiver *otg);
+
+	/* for a_bus_drop handler fromed user space */
+	void (*a_bus_drop)(struct otg_transceiver *otg);
 };
 
 
@@ -274,4 +288,5 @@ static inline int is_otg_vbusoff_testdev(struct usb_device *udev)
 	return le16_to_cpu(udev->descriptor.bcdDevice) & USB_DT_BCD_VBUSOFF;
 }
 
+void otg_uevent_trigger(struct otg_transceiver *otg);
 #endif /* __LINUX_USB_OTG_H */

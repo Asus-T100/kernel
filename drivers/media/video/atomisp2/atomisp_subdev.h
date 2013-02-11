@@ -21,6 +21,7 @@
 #ifndef __ATOMISP_SUBDEV_H__
 #define __ATOMISP_SUBDEV_H__
 
+#include <media/v4l2-ctrls.h>
 #include <media/v4l2-device.h>
 #include <media/v4l2-subdev.h>
 #include <media/videobuf-core.h>
@@ -96,10 +97,16 @@ struct atomisp_video_pipe {
 	struct atomisp_video_pipe_format format;
 };
 
+struct atomisp_pad_format {
+	struct v4l2_mbus_framefmt fmt;
+	struct v4l2_rect crop;
+	struct v4l2_rect compose;
+};
+
 struct atomisp_sub_device {
 	struct v4l2_subdev subdev;
 	struct media_pad pads[ATOMISP_SUBDEV_PADS_NUM];
-	struct v4l2_mbus_framefmt formats[ATOMISP_SUBDEV_PADS_NUM];
+	struct atomisp_pad_format fmt[ATOMISP_SUBDEV_PADS_NUM];
 
 	enum atomisp_subdev_input_entity input;
 	unsigned int output;
@@ -110,7 +117,18 @@ struct atomisp_sub_device {
 	/* struct isp_subdev_params params; */
 	spinlock_t lock;
 	struct atomisp_device *isp;
+	struct v4l2_ctrl_handler ctrl_handler;
+	struct v4l2_ctrl *fmt_auto;
 };
+
+/* Get pointer to appropriate format */
+struct v4l2_mbus_framefmt
+*atomisp_subdev_get_mfmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
+			 uint32_t which, uint32_t pad);
+/* Actually set the format */
+int atomisp_subdev_set_mfmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
+			    uint32_t which, uint32_t pad,
+			    struct v4l2_mbus_framefmt *ffmt);
 
 void atomisp_subdev_unregister_entities(struct atomisp_sub_device *isp_subdev);
 int atomisp_subdev_register_entities(struct atomisp_sub_device *isp_subdev,

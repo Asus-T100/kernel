@@ -28,11 +28,21 @@
 #include <asm/intel-mid.h>
 #include "psb_msvdx.h"
 #include "pnw_topaz.h"
+#ifdef SUPPORT_VSP
+#include "vsp.h"
+#endif
 
 /*IMG Headers*/
 #include "private_data.h"
 
 static int ied_enabled;
+
+#ifdef MERRIFIELD
+struct psb_fpriv *psb_fpriv(struct drm_file *file_priv)
+{
+	return (struct psb_fpriv *) BCVideoGetPriv(file_priv);
+}
+#endif
 
 int psb_fence_signaled_ioctl(struct drm_device *dev, void *data,
 			     struct drm_file *file_priv)
@@ -272,6 +282,12 @@ void psb_remove_videoctx(struct drm_psb_private *dev_priv, struct file *filp)
 			}
 			if (dev_priv->last_topaz_ctx == found_ctx)
 				dev_priv->last_topaz_ctx = NULL;
+#ifdef SUPPORT_VSP
+		} else if (VAEntrypointVideoProc ==
+					(found_ctx->ctx_type & 0xff)) {
+			PSB_DEBUG_PM("Remove vsp context.\n");
+			vsp_rm_context(dev_priv->dev);
+#endif
 		} else {
 			mutex_lock(&msvdx_priv->msvdx_mutex);
 			if (msvdx_priv->msvdx_ctx == found_ctx)
@@ -281,6 +297,9 @@ void psb_remove_videoctx(struct drm_psb_private *dev_priv, struct file *filp)
 			mutex_unlock(&msvdx_priv->msvdx_mutex);
 		}
 		kfree(found_ctx);
+		#ifdef CONFIG_GFX_RTPM
+		psb_ospm_post_power_down();
+		#endif
 	}
 }
 
@@ -342,6 +361,7 @@ int psb_video_getparam(struct drm_device *dev, void *data,
 	uint32_t imr_info[2], ci_info[2];
 
 	switch (arg->key) {
+#if !defined(MERRIFIELD)
 	case LNC_VIDEO_GETPARAM_IMR_INFO:
 		imr_info[0] = dev_priv->imr_region_start;
 		imr_info[1] = dev_priv->imr_region_size;
@@ -349,6 +369,7 @@ int psb_video_getparam(struct drm_device *dev, void *data,
 				   &imr_info[0],
 				   sizeof(imr_info));
 		break;
+#endif
 	case LNC_VIDEO_DEVICE_INFO:
 		device_info = 0xffff & dev_priv->video_device_fuse;
 		device_info |= (0xffff & dev->pci_device) << 16;
@@ -374,13 +395,15 @@ int psb_video_getparam(struct drm_device *dev, void *data,
 		mutex_lock(&dev_priv->video_ctx_mutex);
 		list_add(&video_ctx->head, &dev_priv->video_ctx);
 		mutex_unlock(&dev_priv->video_ctx_mutex);
-
 		if (IS_MDFLD(dev_priv->dev) &&
 				(VAEntrypointEncSlice ==
 				 (ctx_type & 0xff)))
 			pnw_reset_fw_status(dev_priv->dev,
 				PNW_TOPAZ_START_CTX);
-
+#ifdef SUPPORT_VSP
+		if (VAEntrypointEncSlice == (ctx_type & 0xff))
+			vsp_new_context(dev);
+#endif
 		PSB_DEBUG_INIT("Video:add ctx profile %d, entry %d.\n",
 					((ctx_type >> 8) & 0xff),
 					(ctx_type & 0xff));
@@ -502,11 +525,11 @@ int psb_video_getparam(struct drm_device *dev, void *data,
 			break;
 		/*Return the number of active entries*/
 		i = psb_entrypoint_number(dev_priv, handle);
-		if (i >= 0)
-			ret = copy_to_user((void __user *)
-					((unsigned long)arg->value),
-					&i, sizeof(i));
+		ret = copy_to_user((void __user *)
+				((unsigned long)arg->value),
+				&i, sizeof(i));
 		break;
+#if !defined(MERRIFIELD)
 	case IMG_VIDEO_IED_STATE:
 		if (IS_MDFLD(dev)) {
 			int enabled = dev_priv->ied_enabled ? 1 : 0;
@@ -518,13 +541,12 @@ int psb_video_getparam(struct drm_device *dev, void *data,
 			return -EFAULT;
 		}
 		break;
-
+#endif
 	default:
 		ret = -EFAULT;
 		break;
 	}
 
-out:
 	if (ret) {
 		DRM_ERROR("%s: failed to call sub-ioctl 0x%x",
 			__func__, arg->key);

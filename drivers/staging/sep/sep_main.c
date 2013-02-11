@@ -1417,7 +1417,8 @@ static int sep_crypto_dma(
 				"(all hex) map %x dma %lx len %lx\n",
 				ct1, (unsigned long)sep_dma[ct1].dma_addr,
 				(unsigned long)sep_dma[ct1].size);
-		}
+		} else
+			break;
 	}
 
 	*dma_maps = sep_dma;
@@ -4730,6 +4731,10 @@ static int __devinit sep_probe(struct pci_dev *pdev,
 	int error = 0;
 	struct sep_device *sep = NULL;
 
+	/* Used for telling the sep our new shared memory physical address */
+	struct sep_msg_shared_mem_addr_to_sep *shm_to_sep = NULL;
+	struct sep_msg_shared_mem_addr_from_sep *shm_from_sep = NULL;
+
 	if (sep_dev != NULL) {
 		dev_dbg(&pdev->dev, "only one SEP supported.\n");
 		return -EBUSY;
@@ -4905,6 +4910,111 @@ static int __devinit sep_probe(struct pci_dev *pdev,
 		goto end_function_free_workqueue;
 	}
 #endif
+
+	/**
+	 * Now we need to tell the sep the newly acquired shared
+	 * memory physical address.
+	 * This also serves the purpose of informing the sep that
+	 * we are in post-os boot; ie; that it's the os that is
+	 * now using the sep and no longer the scu. This is required
+	 * for the RPMB functionality.
+	 * Please note that some platforms will crash if this
+	 * is attempted. We are blocking this with the
+	 * CONFIG_ENABLE_SEP_PRESENT_PHYSICAL
+	 * kernel configuration parameter
+	 */
+
+	/* First set the outgoing and incomming message pointers */
+	dev_dbg(&sep->pdev->dev, "Sending shared phys to sep\n");
+
+	shm_to_sep = (struct sep_msg_shared_mem_addr_to_sep *)
+		(sep->shared_addr +
+		SEP_DRIVER_MESSAGE_AREA_OFFSET_IN_BYTES);
+
+	shm_from_sep = (struct sep_msg_shared_mem_addr_from_sep *)
+		(sep->shared_addr +
+		SEP_DRIVER_MESSAGE_AREA_OFFSET_IN_BYTES);
+
+	/* fill in the outgoing meessage to the sep */
+
+	shm_to_sep->token = SEP_START_MSG_TOKEN;
+	shm_to_sep->command = DX_SEP_HOST_SEP_SEP_DRIVER_LOADED_OP_CODE;
+	shm_to_sep->shared_phys = (u32)sep->shared_bus;
+	shm_to_sep->crc = 0;
+	shm_to_sep->size = 7;
+
+	/* Now send this command */
+	error = sep_send_command_handler(sep);
+	if (error) {
+		dev_err(&sep->pdev->dev, "sep_send_command_handler fails\n");
+		goto end_function_free_workqueue;
+	}
+
+	/* Now wait for sep */
+	error = wait_event_timeout(sep->event_interrupt,
+		(test_bit(SEP_WORKING_LOCK_BIT,
+			&sep->in_use_flags) == 0),
+		(WAIT_TIME * HZ));
+
+	if (!error) {
+		/* Oops, the timer elapsed; sep did not respond */
+		error = -EBUSY;
+		dev_err(&sep->pdev->dev, "timeout!\n");
+		goto end_function_free_workqueue;
+	}
+
+	/* Temporarily assume error until all checks done */
+	error = -EINVAL;
+
+	/* see if the sep got the message okay */
+	if (shm_from_sep->token != SEP_START_MSG_TOKEN) {
+
+		dev_err(&sep->pdev->dev, "shm_from_sep->token incorrect\n");
+		goto end_function_free_workqueue;
+	}
+
+	if (shm_from_sep->command !=
+		DX_SEP_HOST_SEP_SEP_DRIVER_LOADED_OP_CODE) {
+
+		dev_err(&sep->pdev->dev, "shm_from_sep->command incorrect\n");
+		goto end_function_free_workqueue;
+	}
+
+	/**
+	 * Not all firmware will support this opcode. Therefore, we
+	 * will ignore the incorrect op code error and continue on
+	 * initializing this driver and device.
+	 */
+	if ((shm_from_sep->result == 0) ||
+		(shm_from_sep->result == DX_SEP_HOST_INCORRECT_OP_CODE)) {
+
+		/* It's okay, clear error; drop through & continue init */
+		error = 0;
+		if (shm_from_sep->result == DX_SEP_HOST_INCORRECT_OP_CODE)
+			dev_dbg(&sep->pdev->dev,
+				"Ignoring invalid opcode error from sep\n");
+	} else {
+		dev_err(&sep->pdev->dev, "shm_from_sep->result incorrect\n");
+		dev_err(&sep->pdev->dev, "got %x instead of %x\n",
+			shm_from_sep->result, 0);
+		/* It's not okay, leave error as -1 */
+		goto end_function_free_workqueue;
+	}
+
+	/* clear the lock bit */
+	clear_bit(SEP_WORKING_LOCK_BIT, &sep->in_use_flags);
+
+	/* start suspend delay */
+#ifdef SEP_ENABLE_RUNTIME_PM
+	if (sep->in_use) {
+		sep->in_use = 0;
+		pm_runtime_mark_last_busy(&sep->pdev->dev);
+		pm_runtime_put_autosuspend(&sep->pdev->dev);
+	}
+#endif
+
+	dev_dbg(&sep->pdev->dev, "Done sending shared phys to sep\n");
+
 	goto end_function;
 
 end_function_free_workqueue:

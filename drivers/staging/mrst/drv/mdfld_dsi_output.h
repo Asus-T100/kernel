@@ -312,6 +312,12 @@ struct mdfld_dsi_hw_context {
 	u32 cck_div;
 	/*brightness*/
 	int lastbrightnesslevel;
+
+	/*dpst register values*/
+	u32 histogram_intr_ctrl;
+	u32 histogram_logic_ctrl;
+	u32 aimg_enhance_bin;
+	u32 lvds_port_ctrl;
 };
 
 struct mdfld_dsi_hw_registers {
@@ -396,6 +402,12 @@ struct mdfld_dsi_hw_registers {
 	u32 mipi_data_len_reg;
 	u32 mipi_cmd_addr_reg;
 	u32 mipi_cmd_len_reg;
+
+	/*dpst registers*/
+	u32 histogram_intr_ctrl_reg;
+	u32 histogram_logic_ctrl_reg;
+	u32 aimg_enhance_bin_reg;
+	u32 lvds_port_ctrl_reg;
 };
 
 #define NO_GAMMA_CSC			0x0
@@ -439,8 +451,6 @@ struct mdfld_dsi_config {
 
 	/*dsr*/
 	void *dsr;
-
-	int flip_abnormal_count;
 };
 
 #define MDFLD_DSI_CONNECTOR(psb_output) \

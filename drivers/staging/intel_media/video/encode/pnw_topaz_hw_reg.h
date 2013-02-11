@@ -1068,6 +1068,8 @@ do {                                   \
 
 #define MAX_TOPAZ_CMD_COUNT	(0x1000) /* max syncStatus value used*/
 
+/* It's the default value after reset */
+#define VEC_CG_DIS_MASK (0x007fffff)
 
 #define MTX_WRITEBACK_DATASIZE_ROUND 4
 

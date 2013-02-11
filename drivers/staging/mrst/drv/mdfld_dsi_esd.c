@@ -30,6 +30,7 @@
 #include "mdfld_dsi_dbi_dsr.h"
 
 #define MDFLD_ESD_SLEEP_MSECS	3500
+#define WAIT_TIME_FOR_ONE_FRAME 20
 /**
  * esd detection
  */
@@ -37,6 +38,8 @@ static bool intel_dsi_dbi_esd_detection(struct mdfld_dsi_config *dsi_config)
 {
 	int ret;
 	u32 data = 0;
+	struct drm_device *dev = dsi_config->dev;
+	struct drm_psb_private *dev_priv = dev->dev_private;
 
 	PSB_DEBUG_ENTRY("esd\n");
 
@@ -51,7 +54,12 @@ static bool intel_dsi_dbi_esd_detection(struct mdfld_dsi_config *dsi_config)
 	if ((ret == -EIO) || ((ret == 1) && ((data & 0x14) != 0x14)))
 		return true;
 
-	if (dsi_config->flip_abnormal_count) {
+	/*Before checking whether Vsync TE working, wait for one
+	frame coming. this wait is benifit at the begining
+	of VSYNC(TE) enable. because ESD may come early than first Vsync(TE)*/
+	msleep(WAIT_TIME_FOR_ONE_FRAME);
+
+	if (dev_priv->vsync_te_working[0] == false) {
 		DRM_INFO("esd recovery happen because flip abnormal.\n");
 		return true;
 	}

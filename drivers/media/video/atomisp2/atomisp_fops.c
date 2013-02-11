@@ -107,6 +107,7 @@ int atomisp_q_video_buffers_to_css(struct atomisp_device *isp,
 		vb = list_entry(pipe->activeq.next,
 				struct videobuf_buffer, queue);
 		list_del_init(&vb->queue);
+		vb->state = VIDEOBUF_ACTIVE;
 		spin_unlock_irqrestore(&pipe->irq_lock, irqflags);
 
 		vm_mem = vb->priv;
@@ -115,16 +116,13 @@ int atomisp_q_video_buffers_to_css(struct atomisp_device *isp,
 		if (err) {
 			spin_lock_irqsave(&pipe->irq_lock, irqflags);
 			list_add_tail(&vb->queue, &pipe->activeq);
+			vb->state = VIDEOBUF_QUEUED;
 			spin_unlock_irqrestore(&pipe->irq_lock, irqflags);
 			dev_err(isp->dev, "%s, css q fails: %d\n",
 					__func__, err);
 			return -EINVAL;
 		}
 		pipe->buffers_in_css++;
-
-		spin_lock_irqsave(&pipe->irq_lock, irqflags);
-		vb->state = VIDEOBUF_ACTIVE;
-		spin_unlock_irqrestore(&pipe->irq_lock, irqflags);
 		vb = NULL;
 	}
 	return 0;
@@ -362,7 +360,6 @@ int atomisp_init_struct(struct atomisp_device *isp)
 
 	isp->capture_format = NULL;
 	isp->vf_format = NULL;
-	isp->input_format = NULL;
 	isp->sw_contex.run_mode = CI_MODE_STILL_CAPTURE;
 	isp->params.color_effect = V4L2_COLORFX_NONE;
 	isp->params.bad_pixel_en = 1;
@@ -512,10 +509,10 @@ static int atomisp_open(struct file *file)
 	mmgr_set_base_address(HOST_ADDRESS(isp->mmu_l1_base));
 
 	/* Init ISP */
-	if (sh_css_init(&my_env,
-			isp->firmware->data,
-			isp->firmware->size))
+	if (sh_css_init(&my_env, isp->firmware->data, isp->firmware->size)) {
+		ret = -EINVAL;
 		goto css_init_failed;
+	}
 	/*uncomment the following to lines to enable offline preview*/
 	/*sh_css_enable_continuous(true);*/
 	/*sh_css_preview_enable_online(false);*/
@@ -544,7 +541,7 @@ done:
 	return 0;
 
 css_init_failed:
-	v4l2_err(&atomisp_dev, "css init failed\n");
+	dev_err(isp->dev, "css init failed --- bad firmware?\n");
 	pm_runtime_put(vdev->v4l2_dev->dev);
 error:
 	mutex_unlock(&isp->mutex);
@@ -556,6 +553,7 @@ static int atomisp_release(struct file *file)
 	struct video_device *vdev = video_devdata(file);
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
+	struct v4l2_mbus_framefmt isp_sink_fmt;
 	struct v4l2_requestbuffers req;
 	int ret = 0;
 
@@ -581,7 +579,7 @@ static int atomisp_release(struct file *file)
 	if (pipe->users)
 		goto done;
 
-	if (atomisp_reqbufs(file, NULL, &req)) {
+	if (__atomisp_reqbufs(file, NULL, &req)) {
 		dev_err(isp->dev,
 			"atomisp_reqbufs failed on release, driver bug");
 		goto done;
@@ -605,8 +603,10 @@ static int atomisp_release(struct file *file)
 	kfree(isp->vf_format);
 	isp->vf_format = NULL;
 
-	kfree(isp->input_format);
-	isp->input_format = NULL;
+	memset(&isp_sink_fmt, 0, sizeof(isp_sink_fmt));
+	atomisp_subdev_set_mfmt(&isp->isp_subdev.subdev, NULL,
+				V4L2_SUBDEV_FORMAT_ACTIVE,
+				ATOMISP_SUBDEV_PAD_SINK, &isp_sink_fmt);
 
 	if (atomisp_users(isp))
 		goto done;

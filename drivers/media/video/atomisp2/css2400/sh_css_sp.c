@@ -293,6 +293,74 @@ assert(out_frame != NULL);
 	sh_css_store_sp_per_frame_data(pipe_id, &sh_css_sp_fw);
 }
 
+static void
+sh_css_sp_start_isys_copy(struct sh_css_binary *binary,
+			 struct sh_css_frame *out_frame,
+			 unsigned two_ppc,
+			 bool input_is_raw_reordered,
+			 enum sh_css_pipe_config_override pipe_conf_override)
+{
+	enum sh_css_pipe_id pipe_id;
+	unsigned int thread_id;
+	unsigned stage_num = 0;
+	struct sh_css_sp_pipeline *pipe;
+
+//assert(out_frame != NULL);
+(void)out_frame;
+
+	{
+		/**
+		 * Clear sh_css_sp_stage for easy debugging.
+		 * program_input_circuit must be saved as it is set outside
+		 * this function.
+		 */
+		unsigned int program_input_circuit;
+		program_input_circuit = sh_css_sp_stage.program_input_circuit;
+		memset(&sh_css_sp_stage, 0, sizeof(sh_css_sp_stage));
+		sh_css_sp_stage.program_input_circuit = program_input_circuit;
+	}
+
+	pipe_id = SH_CSS_COPY_PIPELINE;
+	sh_css_query_sp_thread_id(pipe_id, &thread_id);
+	pipe = &sh_css_sp_group.pipe[thread_id];
+/*
+	pipe->copy.raw.height	    = out_frame->info.height;
+	pipe->copy.raw.width	    = out_frame->info.width;
+	pipe->copy.raw.padded_width  = out_frame->info.padded_width;
+	pipe->copy.raw.raw_bit_depth = out_frame->info.raw_bit_depth;
+	pipe->copy.raw.max_input_width = binary->info->max_input_width;
+*/
+	pipe->num_stages = 1;
+	pipe->pipe_id = pipe_id;
+	/* TODO: next indicates from which queues parameters need to be
+		 sampled, needs checking/improvement */
+	if (pipe_conf_override == SH_CSS_PIPE_CONFIG_OVRD_NO_OVRD)
+		pipe->pipe_config =
+			(SH_CSS_PIPE_CONFIG_SAMPLE_PARAMS << thread_id);
+	else
+		pipe->pipe_config = pipe_conf_override;
+
+pipe->pipe_config = 0;
+
+	sh_css_sp_group.config.input_formatter.isp_2ppc = two_ppc;
+	sh_css_sp_group.config.input_is_raw_reordered =
+						input_is_raw_reordered;
+
+	sh_css_sp_stage.num = stage_num;
+	sh_css_sp_stage.irq_buf_flags = 1 << sh_css_frame_out;
+	sh_css_sp_stage.xmem_bin_addr = binary->info->xmem_addr;
+	sh_css_sp_stage.stage_type = SH_CSS_SP_STAGE_TYPE;
+	sh_css_sp_stage.func =
+		(unsigned int)SH_CSS_SP_ISYS_COPY;
+/*
+	set_output_frame_buffer(out_frame,
+						(unsigned)pipe_id, stage_num);
+*/
+	/* sp_raw_copy_init on the SP does not deal with dynamica/static yet */
+	/* For now always update the dynamic data from out frames. */
+	sh_css_store_sp_per_frame_data(pipe_id, &sh_css_sp_fw);
+}
+
 unsigned int
 sh_css_sp_get_binary_copy_size(void)
 {
@@ -909,6 +977,10 @@ sp_init_stage(struct sh_css_pipeline_stage *stage,
 		mem_if = firmware->memory_interface;
 	}
 
+#ifdef __KERNEL__
+	printk(KERN_ERR "load binary: %s\n", binary_name);
+#endif
+
 	sh_css_sp_init_stage(binary,
 			     (const char *)binary_name,
 			     blob_info,
@@ -933,6 +1005,7 @@ sh_css_sp_init_pipeline(struct sh_css_pipeline *me,
 			bool continuous,
 			bool offline,
 			bool input_is_raw_reordered,
+			bool isys_tokenhandler,
 			enum sh_css_pipe_config_override copy_ovrd)
 {
 	/* Get first stage */
@@ -972,6 +1045,13 @@ sh_css_sp_init_pipeline(struct sh_css_pipeline *me,
 
 			sh_css_debug_pipe_graph_dump_sp_raw_copy(first_args->cc_frame);
 		}
+	/* for Video using multistream and new input system on 2400 */
+		if (isys_tokenhandler) {
+			sh_css_sp_start_isys_copy(first_binary,
+				first_args->cc_frame,
+				two_ppc, input_is_raw_reordered,
+				copy_ovrd);
+		}
 	} /* if (first_binary != NULL) */
 
 	/* Init stage data */
@@ -1006,7 +1086,7 @@ sh_css_sp_uninit_pipeline(enum sh_css_pipe_id pipe_id)
 	/*memset(&sh_css_sp_group.pipe[thread_id], 0, sizeof(struct sh_css_sp_pipeline));*/
 	sh_css_sp_group.pipe[thread_id].num_stages = 0;
 }
-
+#if 0
 static void
 init_host2sp_command(void)
 {
@@ -1017,6 +1097,7 @@ init_host2sp_command(void)
 	(void)HIVE_ADDR_host_sp_com; /* Suppres warnings in CRUN */
 	store_sp_array_uint(host_sp_com, o, host2sp_cmd_ready);
 }
+#endif
 
 void
 sh_css_write_host2sp_command(enum host2sp_commands host2sp_command)
@@ -1228,55 +1309,28 @@ void
 sh_css_sp_start_isp(void)
 {
 	const struct sh_css_fw_info *fw;
-	unsigned int HIVE_ADDR_sp_isp_started;
 	unsigned int HIVE_ADDR_sp_sw_state;
-	unsigned int HIVE_ADDR_host_sp_queues_initialized;
-	unsigned int HIVE_ADDR_sp_sleep_mode;
-	unsigned int HIVE_ADDR_sp_invalidate_tlb;
-	unsigned int HIVE_ADDR_sp_request_flash;
-
+	
 	fw = &sh_css_sp_fw;
-	HIVE_ADDR_sp_isp_started = fw->info.sp.isp_started;
 	HIVE_ADDR_sp_sw_state = fw->info.sp.sw_state;
-	HIVE_ADDR_host_sp_queues_initialized =
-		fw->info.sp.host_sp_queues_initialized;
-	HIVE_ADDR_sp_sleep_mode = fw->info.sp.sleep_mode;
-	HIVE_ADDR_sp_invalidate_tlb = fw->info.sp.invalidate_tlb;
-	HIVE_ADDR_sp_request_flash = fw->info.sp.request_flash;
+	
 
 	if (sp_running)
 		return;
 
-	(void)HIVE_ADDR_sp_isp_started; /* Suppres warnings in CRUN */
 	(void)HIVE_ADDR_sp_sw_state; /* Suppres warnings in CRUN */
-	(void)HIVE_ADDR_sp_sleep_mode;
-	(void)HIVE_ADDR_sp_invalidate_tlb;
-	(void)HIVE_ADDR_sp_request_flash;
+	
 
 	sh_css_debug_pipe_graph_dump_epilogue();
 
 	store_sp_per_frame_data(fw);
-	sp_dmem_store_uint32(SP0_ID,
-		(unsigned int)sp_address_of(sp_isp_started),
-		(uint32_t)(0));
+	
 	sp_dmem_store_uint32(SP0_ID,
 		(unsigned int)sp_address_of(sp_sw_state),
 		(uint32_t)(SP_SW_STATE_NULL));
-	sp_dmem_store_uint32(SP0_ID,
-		(unsigned int)sp_address_of(host_sp_queues_initialized),
-		(uint32_t)(0));
-	sp_dmem_store_uint32(SP0_ID,
-		(unsigned int)sp_address_of(sp_sleep_mode),
-		(uint32_t)(0));
-	sp_dmem_store_uint32(SP0_ID,
-		(unsigned int)sp_address_of(sp_invalidate_tlb),
-		(uint32_t)(0));
-	sp_dmem_store_uint32(SP0_ID,
-		(unsigned int)sp_address_of(sp_request_flash),
-		(uint32_t)(0));
 
 
-	init_host2sp_command();
+	//init_host2sp_command();
 	/* Note 1: The sp_start_isp function contains a wait till
 	 * the input network is configured by the SP.
 	 * Note 2: Not all SP binaries supports host2sp_commands.
@@ -1413,3 +1467,4 @@ sh_css_sp_snd_event(int evt_id, int evt_payload_0, int evt_payload_1, int evt_pa
 	while (!host2sp_enqueue_sp_event(sw_event))
 		hrt_sleep();
 }
+

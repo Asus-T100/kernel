@@ -26,9 +26,14 @@
 #include "psb_drv.h"
 #include "psb_reg.h"
 #include "psb_msvdx.h"
+
 #include "pnw_topaz.h"
 #include "tng_topaz.h"
+
+#ifdef SUPPORT_VSP
 #include "vsp.h"
+#endif
+
 #include "psb_intel_reg.h"
 #include "psb_powermgmt.h"
 
@@ -465,10 +470,12 @@ irqreturn_t psb_irq_handler(DRM_IRQ_ARGS)
 		handled = 1;
 	}
 
+#ifdef SUPPORT_VSP
 	if (vsp_int) {
 		vsp_interrupt(dev);
 		handled = 1;
 	}
+#endif
 
 	if (sgx_int) {
 		if (PVRSRVInterrupt(dev) != 0)
@@ -572,8 +579,10 @@ int psb_irq_postinstall_islands(struct drm_device *dev, int hw_islands)
 	if (hw_islands & OSPM_VIDEO_DEC_ISLAND)
 		psb_msvdx_enableirq(dev);
 
+#ifdef SUPPORT_VSP
 	if (hw_islands & OSPM_VIDEO_VPP_ISLAND)
 		vsp_enableirq(dev);
+#endif
 
 	spin_unlock_irqrestore(&dev_priv->irqmask_lock, irqflags);
 
@@ -632,14 +641,16 @@ void psb_irq_uninstall_islands(struct drm_device *dev, int hw_islands)
 				if (IS_MRFLD(dev))
 					tng_topaz_disableirq(dev);
 			}
+
 	if (hw_islands & OSPM_VIDEO_DEC_ISLAND)
 		if (ospm_power_is_hw_on(OSPM_VIDEO_DEC_ISLAND))
 			psb_msvdx_disableirq(dev);
 
+#ifdef SUPPORT_VSP
 	if (hw_islands & OSPM_VIDEO_VPP_ISLAND)
 		if (ospm_power_is_hw_on(OSPM_VIDEO_VPP_ISLAND))
 			vsp_disableirq(dev);
-
+#endif
 	spin_unlock_irqrestore(&dev_priv->irqmask_lock, irqflags);
 }
 

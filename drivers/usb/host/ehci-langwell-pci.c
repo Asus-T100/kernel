@@ -20,6 +20,7 @@
 #include <linux/usb/otg.h>
 #include <linux/usb/intel_mid_otg.h>
 #include <linux/wakelock.h>
+#include <linux/usb/penwell_otg.h>
 
 static int usb_otg_suspend(struct usb_hcd *hcd)
 {
@@ -117,6 +118,7 @@ static int ehci_mid_probe(struct pci_dev *pdev,
 	struct hc_driver *driver;
 	struct otg_transceiver *otg;
 	struct intel_mid_otg_xceiv *iotg;
+	struct intel_mid_otg_pdata *otg_pdata;
 	struct usb_hcd *hcd;
 	struct ehci_hcd *ehci;
 	int irq;
@@ -166,6 +168,14 @@ static int ehci_mid_probe(struct pci_dev *pdev,
 		retval = -EFAULT;
 		goto err2;
 	}
+
+	otg_pdata = pdev->dev.platform_data;
+	if (otg_pdata == NULL) {
+		dev_err(&pdev->dev, "Failed to get OTG platform data.\n");
+		retval = -ENODEV;
+		goto err2;
+	}
+	hcd->power_budget = otg_pdata->power_budget;
 
 #ifdef CONFIG_USB_SUSPEND
 	/*get wakelock from itog*/
@@ -445,78 +455,3 @@ static void intel_mid_ehci_driver_unregister(struct pci_driver *host_driver)
 
 	otg_put_transceiver(otg);
 }
-
-#ifdef CONFIG_BOARD_CTP
-#include <linux/gpio.h>
-#include <asm/intel-mid.h>
-#define SPH_CS_N	51
-#define SPH_RST_N	169
-
-static int cloverview_sph_gpio_init(void)
-{
-	int		retval = 0;
-	u32		board_id;
-
-	board_id = get_board_id();
-
-	/* Bypass CTP_VV series for VV use different PHY(SMSC USB3340)
-	 * Do CS and reset operation for TI TUSB1212 PHY used by other boards
-	 */
-	if (board_id != CTP_BID_VV) {
-
-		if (gpio_is_valid(SPH_CS_N)) {
-			retval = gpio_request(SPH_CS_N, "SPH_CS_N");
-			if (retval < 0) {
-				printk(KERN_INFO "Request GPIO %d with error %d\n",
-				SPH_CS_N, retval);
-				retval = -ENODEV;
-				goto err;
-			}
-		} else {
-			retval = -ENODEV;
-			goto err;
-		}
-
-		if (gpio_is_valid(SPH_RST_N)) {
-			retval = gpio_request(SPH_RST_N, "SPH_RST_N");
-			if (retval < 0) {
-				printk(KERN_INFO "Request GPIO %d with error %d\n",
-				SPH_RST_N, retval);
-				retval = -ENODEV;
-				goto err1;
-			}
-		} else {
-			retval = -ENODEV;
-			goto err1;
-		}
-
-		gpio_direction_output(SPH_CS_N, 0);
-
-		gpio_direction_output(SPH_RST_N, 0);
-		usleep_range(200, 500);
-		gpio_set_value(SPH_RST_N, 1);
-	}
-
-	return retval;
-
-err1:
-	gpio_free(SPH_CS_N);
-err:
-	return retval;
-}
-
-static void cloverview_sph_gpio_cleanup(void)
-{
-	u32		board_id;
-
-	board_id = get_board_id();
-
-	if (board_id != CTP_BID_VV) {
-		if (gpio_is_valid(SPH_CS_N))
-			gpio_free(SPH_CS_N);
-		if (gpio_is_valid(SPH_RST_N))
-			gpio_free(SPH_RST_N);
-	}
-}
-#endif
-

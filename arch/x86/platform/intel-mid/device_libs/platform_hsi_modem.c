@@ -10,33 +10,35 @@
  * of the License.
  */
 
-#include <linux/gpio.h>
-#include <linux/lnw_gpio.h>
 #include <linux/hsi/hsi.h>
 #include <linux/hsi/intel_mid_hsi.h>
 #include <asm/intel-mid.h>
 #include "platform_hsi_modem.h"
 
+
+#if ((defined CONFIG_HSI_FFL_TTY) && (defined CONFIG_HSI_DLP))
+/* Selection of HSI_FFL_TTY and HSI_DLP.
+ * Needed for co-existance of FFL and DLP drivers for CTPSCALE
+ * Defaulting to HSI_DLP to not break CTP products except CTPSCALELT */
+#undef CONFIG_HSI_FFL_TTY
+#define HSI_CLIENT_CNT  2
+
+#elif (defined(CONFIG_HSI_FFL_TTY) || defined(CONFIG_HSI_DLP))
+#define HSI_CLIENT_CNT	2
+
+#else
+#define HSI_CLIENT_CNT	1
+#endif
+
+extern int nbr_hsi_clients;
+
 void *hsi_modem_platform_data(void *data)
 {
-	int rst_out = get_gpio_by_name("ifx_mdm_rst_out");
-	int pwr_on = get_gpio_by_name("ifx_mdm_pwr_on");
-	int rst_pmu = get_gpio_by_name("ifx_mdm_rst_pmu");
-	int fcdp_rb = get_gpio_by_name("modem-gpio2");
-
 	static const char hsi_char_name[]	= "hsi_char";
 #if defined(CONFIG_HSI_FFL_TTY)
 	static const char hsi_ffl_name[]	= "hsi-ffl";
 #elif defined(CONFIG_HSI_DLP)
 	static const char hsi_dlp_name[]	= "hsi-dlp";
-#endif
-
-#if ((defined CONFIG_HSI_FFL_TTY) && (defined CONFIG_HSI_DLP))
-#error "Only define one of HSI_FFL_TTY or HSI_DLP"
-#elif (defined(CONFIG_HSI_FFL_TTY) || defined(CONFIG_HSI_DLP))
-#define HSI_CLIENT_CNT	2
-#else
-#define HSI_CLIENT_CNT	1
 #endif
 
 	static struct hsi_board_info hsi_info[HSI_CLIENT_CNT] = {
@@ -190,19 +192,14 @@ void *hsi_modem_platform_data(void *data)
 #else
 	static struct hsi_mid_platform_data mid_info = {};
 #endif
-	printk(KERN_INFO "HSI platform data setup\n");
+	pr_info("HSI platform data setup\n");
 
-	printk(KERN_INFO "HSI mdm GPIOs rst_out:%d,"
-			" pwr_on:%d, rst_bbn:%d, fcdp_rb:%d\n",
-		rst_out, pwr_on, rst_pmu, fcdp_rb);
-
-	mid_info.gpio_mdm_rst_out = rst_out;
-	mid_info.gpio_mdm_pwr_on = pwr_on;
-	mid_info.gpio_mdm_rst_bbn = rst_pmu;
-	mid_info.gpio_fcdp_rb = fcdp_rb;
-
+#if (defined(CONFIG_HSI_FFL_TTY) || defined(CONFIG_HSI_DLP))
 	hsi_info[0].platform_data = (void *)&mid_info;
 	hsi_info[1].platform_data = (void *)&mid_info;
+#endif
+
+	nbr_hsi_clients = HSI_CLIENT_CNT;
 
 	return &hsi_info[0];
 }

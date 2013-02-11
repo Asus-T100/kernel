@@ -3468,4 +3468,10 @@ config VMXNET3
 	  To compile this driver as a module, choose M here: the
 	  module will be called vmxnet3.
 
+config HSI_MHI
+	   bool "HSI net device"
+	   default n
+	   help
+	    This is the hsi net device manadatory used to access HSI network
+
 endif # NETDEVICES

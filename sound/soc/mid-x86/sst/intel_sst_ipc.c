@@ -590,7 +590,7 @@ static int sst_get_stream_mrfld(struct intel_sst_drv *ctx, u32 drv_id)
 	if (ctx->sst_byte_blk.drv_id == drv_id)
 		return 0;
 
-	for (i = 1; i < ctx->info.max_streams; i++) {
+	for (i = 1; i <= ctx->info.max_streams; i++) {
 		if (ctx->streams[i].ctrl_blk.drv_id == drv_id)
 			return i;
 	}
@@ -631,6 +631,7 @@ void sst_process_reply_mrfld(struct work_struct *work)
 		}
 	} else {
 		str_id = sst_get_stream_mrfld(sst_drv_ctx, drv_id);
+		pr_debug("after get_stream_mrfld str_id = %d\n", str_id);
 		if (str_id < 0)
 			goto end;
 		if (msg->mrfld_header.p.header_high.part.large) {

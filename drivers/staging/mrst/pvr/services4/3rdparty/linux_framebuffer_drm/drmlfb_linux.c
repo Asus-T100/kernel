@@ -77,19 +77,6 @@ void MRSTLFBFreeKernelMem(void *pvMem)
 }
 
 
-MRST_ERROR MRSTLFBGetLibFuncAddr (char *szFunctionName, PFN_DC_GET_PVRJTABLE *ppfnFuncTable)
-{
-	if(strcmp("PVRGetDisplayClassJTable", szFunctionName) != 0)
-	{
-		return (MRST_ERROR_INVALID_PARAMS);
-	}
-
-
-	*ppfnFuncTable = PVRGetDisplayClassJTable;
-
-	return (MRST_OK);
-}
-
 static void MRSTLFBVSyncWriteReg(MRSTLFB_DEVINFO *psDevInfo, unsigned long ulOffset, unsigned long ulValue)
 {
 
@@ -233,6 +220,7 @@ int PVR_DRM_MAKENAME(DISPLAY_CONTROLLER, _Init)(struct drm_device unref__ *dev)
 
 	return 0;
 }
+EXPORT_SYMBOL(PVR_DRM_MAKENAME(DISPLAY_CONTROLLER, _Init));
 
 void PVR_DRM_MAKENAME(DISPLAY_CONTROLLER, _Cleanup)(struct drm_device unref__ *dev)
 {
@@ -241,6 +229,7 @@ void PVR_DRM_MAKENAME(DISPLAY_CONTROLLER, _Cleanup)(struct drm_device unref__ *d
 		printk(KERN_WARNING DRIVER_PREFIX ": %s: can't deinit device\n", __FUNCTION__);
 	}
 }
+EXPORT_SYMBOL(PVR_DRM_MAKENAME(DISPLAY_CONTROLLER, _Cleanup));
 
 int PVR_DRM_MAKENAME(DISPLAY_CONTROLLER, _Suspend)(struct drm_device unref__ *dev)
 {
@@ -248,6 +237,7 @@ int PVR_DRM_MAKENAME(DISPLAY_CONTROLLER, _Suspend)(struct drm_device unref__ *de
 
 	return 0;
 }
+EXPORT_SYMBOL(PVR_DRM_MAKENAME(DISPLAY_CONTROLLER, _Suspend));
 
 int PVR_DRM_MAKENAME(DISPLAY_CONTROLLER, _Resume)(struct drm_device unref__ *dev)
 {
@@ -255,4 +245,5 @@ int PVR_DRM_MAKENAME(DISPLAY_CONTROLLER, _Resume)(struct drm_device unref__ *dev
 
 	return 0;
 }
+EXPORT_SYMBOL(PVR_DRM_MAKENAME(DISPLAY_CONTROLLER, _Resume));
 

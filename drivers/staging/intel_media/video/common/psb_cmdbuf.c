@@ -24,7 +24,19 @@
 #include "psb_drm.h"
 #include "psb_reg.h"
 #include "psb_msvdx.h"
+
+#ifdef SUPPORT_MRST
+#include "lnc_topaz.h"
+#endif
 #include "pnw_topaz.h"
+
+#ifdef MERRIFIELD
+#include "tng_topaz.h"
+#endif
+
+#ifdef SUPPORT_VSP
+#include "vsp.h"
+#endif
 #include "ttm/ttm_bo_api.h"
 #include "ttm/ttm_execbuf_util.h"
 #include "psb_ttm_userobj_api.h"
@@ -699,10 +711,10 @@ void psb_fence_or_sync(struct drm_file *file_priv,
 		fence_arg->signaled_types = info.signaled_types;
 		fence_arg->error = 0;
 	} else {
-		ret =
-			ttm_ref_object_base_unref(tfile, handle,
-						  ttm_fence_type);
-		BUG_ON(ret);
+		ret = ttm_ref_object_base_unref(tfile, handle,
+						ttm_fence_type);
+		if (ret)
+			DRM_ERROR("Failed to unref buffer object.\n");
 	}
 
 	if (fence_p)
@@ -796,6 +808,9 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *)file_priv->minor->dev->dev_private;
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
+#ifdef SUPPORT_VSP
+	struct vsp_private *vsp_priv = dev_priv->vsp_private;
+#endif
 	struct psb_video_ctx *pos, *n;
 	int engine, po_correct;
 	int found = 0;
@@ -834,14 +849,43 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 		if (unlikely(ret != 0))
 			goto out_err0;
 		context = &dev_priv->encode_context;
+	} else if (arg->engine == VSP_ENGINE_VPP) {
+#ifdef SUPPORT_VSP
+		if (!ospm_power_using_video_begin(OSPM_VIDEO_VPP_ISLAND)) {
+			ret = -EBUSY;
+			goto out_err0;
+		}
+
+		ret = mutex_lock_interruptible(&vsp_priv->vsp_mutex);
+		if (unlikely(ret != 0))
+			goto out_err0;
+		context = &dev_priv->vsp_context;
+#endif
 	} else {
 		ret = -EINVAL;
 		goto out_err0;
 	}
+#if defined(MERRIFIELD)
+	PSB_DEBUG_GENERAL("by pass soc 0 %x\n", PSB_RMSVDX32(0x630));
+	PSB_DEBUG_GENERAL("by pass soc 1 %x\n", PSB_RMSVDX32(0x640));
+
+	{
+		PSB_WVDC32(0x103, 0x2850);
+		PSB_WVDC32(0xffffffff, 0x2884);
+		PSB_WVDC32(0xffffffff, 0x288c);
+		PSB_WVDC32(0xffffffff, 0x2894);
+		PSB_WVDC32(0xffffffff, 0x2898);
+	}
+#endif
 
 	context->used_buffers = 0;
 	context->fence_types = 0;
-	BUG_ON(!list_empty(&context->validate_list));
+	if (!list_empty(&context->validate_list)) {
+		DRM_ERROR("context->validate_list is not null.\n");
+		ret = -EINVAL;
+		goto out_err1;
+	}
+
 	/* BUG_ON(!list_empty(&context->kern_validate_list)); */
 
 	if (unlikely(context->buffers == NULL)) {
@@ -899,7 +943,7 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 			if (entrypoint == VAEntrypointEncSlice ||
 			    entrypoint == VAEntrypointEncPicture)
 				dev_priv->topaz_ctx = pos;
-			else
+			else if (entrypoint != VAEntrypointVideoProc)
 				msvdx_priv->msvdx_ctx = pos;
 			found = 1;
 			break;
@@ -921,13 +965,31 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 		break;
 
 	case LNC_ENGINE_ENCODE:
-		ret = pnw_cmdbuf_video(file_priv, &context->validate_list,
-					       context->fence_types, arg,
-					       cmd_buffer, &fence_arg);
+		if (IS_MDFLD(dev))
+			ret = pnw_cmdbuf_video(
+				file_priv, &context->validate_list,
+				context->fence_types, arg,
+				cmd_buffer, &fence_arg);
+#ifdef MERRIFIELD
+		if (IS_MRFLD(dev))
+			ret = tng_cmdbuf_video(
+				file_priv, &context->validate_list,
+				context->fence_types, arg,
+				cmd_buffer, &fence_arg);
+#endif
 		if (unlikely(ret != 0))
 			goto out_err4;
 		break;
+	case VSP_ENGINE_VPP:
+#ifdef SUPPORT_VSP
+		ret = vsp_cmdbuf_vpp(file_priv, &context->validate_list,
+				     context->fence_types, arg,
+				     cmd_buffer, &fence_arg);
 
+		if (unlikely(ret != 0))
+			goto out_err4;
+		break;
+#endif
 	default:
 		DRM_ERROR
 		("Unimplemented command submission mechanism (%x).\n",
@@ -954,6 +1016,10 @@ out_err1:
 		mutex_unlock(&msvdx_priv->msvdx_mutex);
 	if (arg->engine == LNC_ENGINE_ENCODE)
 		mutex_unlock(&dev_priv->cmdbuf_mutex);
+	if (arg->engine == VSP_ENGINE_VPP)
+#ifdef SUPPORT_VSP
+		mutex_unlock(&vsp_priv->vsp_mutex);
+#endif
 out_err0:
 	ttm_read_unlock(&dev_priv->ttm_lock);
 
@@ -962,6 +1028,9 @@ out_err0:
 
 	if (arg->engine == LNC_ENGINE_ENCODE)
 		ospm_power_using_video_end(OSPM_VIDEO_ENC_ISLAND);
-
+#ifdef SUPPORT_VSP
+	if (arg->engine == VSP_ENGINE_VPP)
+		ospm_power_using_video_end(OSPM_VIDEO_VPP_ISLAND);
+#endif
 	return ret;
 }

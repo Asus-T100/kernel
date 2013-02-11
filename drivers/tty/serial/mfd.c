@@ -2471,17 +2471,17 @@ static int hsu_suspend(struct device *dev)
 		if (query_q(up))
 			return -EBUSY;
 
-		if (!allow_for_suspend(up))
-			return -EBUSY;
-
 #ifdef CONFIG_PM_RUNTIME
 		/* check if RPM suspend has been unlocked */
 		if (atomic_read(&up->dev->power.usage_count) > 1
-		    || up->dev->power.disable_depth > 0) {
-			dev_dbg(up->dev, "%s: rmp is active\n", __func__);
+			|| up->dev->power.disable_depth > 0) {
+			dev_info(up->dev, "%s: rmp is active\n", __func__);
 			return -EBUSY;
 		}
 #endif
+
+		if (!allow_for_suspend(up))
+			return -EBUSY;
 
 		disable_irq(up->port.irq);
 		if (up->index == logic_idx) {

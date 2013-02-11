@@ -69,6 +69,7 @@ static struct snd_pcm_hardware sst_platform_pcm_hw = {
 	.fifo_size = SST_FIFO_SIZE,
 };
 
+
 int sst_set_mixer_param(unsigned int device_input_mixer)
 {
 	if (!sst_dsp) {
@@ -158,14 +159,78 @@ static void sst_fill_pcm_params(struct snd_pcm_substream *substream,
 
 }
 
-static int sst_platform_alloc_stream(struct snd_pcm_substream *substream)
+static int sst_get_device_id(int dev, int sdev, int dir,
+	const struct sst_dev_stream_map *map, int size, int *str_id)
+{
+	int index;
+
+	if (map == NULL)
+		return -EINVAL;
+
+	/* index 0 is not used in stream map */
+	for (index = 1; index < size; index++) {
+		if ((map[index].dev_num == dev) &&
+			(map[index].subdev_num == sdev) &&
+			(map[index].direction == dir) &&
+			(map[index].status == SST_DEV_MAP_IN_USE))
+				break;
+	}
+
+	if (index == size) {
+		*str_id = 0;
+		return 0;
+	}
+
+	*str_id = index;
+	return map[index].device_id;
+}
+
+static int sst_fill_stream_params(struct snd_pcm_substream *substream,
+	const struct sst_data *ctx, struct snd_sst_params *str_params)
+{
+	int str_id = 0;
+	bool use_strm_map;
+	int map_size;
+	const struct sst_dev_stream_map *map;
+
+	use_strm_map = ctx->pdata->use_strm_map;
+	map = ctx->pdata->pdev_strm_map;
+	map_size = ctx->pdata->strm_map_size;
+
+	if (use_strm_map) {
+		str_params->device_type = (u8)sst_get_device_id(substream->pcm->device,
+				substream->number, substream->stream,
+				map, map_size,
+				&str_id);
+		if (str_params->device_type <= 0)
+			return -EINVAL;
+		pr_debug(" str_id = %d, device_type = %d", str_id, str_params->device_type);
+		str_params->stream_id = str_id;
+	} else {
+		if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+			str_params->device_type = substream->pcm->device + 1;
+			pr_debug("Playback stream, Device %d\n",
+						substream->pcm->device);
+		} else {
+			str_params->device_type = SND_SST_DEVICE_CAPTURE;
+			pr_debug("Capture stream, Device %d\n",
+						substream->pcm->device);
+		}
+	}
+	str_params->ops = (u8)substream->stream;
+	return 0;
+}
+
+static int sst_platform_alloc_stream(struct snd_pcm_substream *substream,
+		struct snd_soc_platform *platform)
 {
 	struct sst_runtime_stream *stream =
 			substream->runtime->private_data;
 	struct snd_sst_stream_params param = {{{0,},},};
 	struct snd_sst_params str_params = {0};
 	struct snd_sst_alloc_params_ext alloc_params = {0};
-	int ret_val;
+	int ret_val = 0;
+	struct sst_data *ctx = snd_soc_platform_get_drvdata(platform);
 
 	/* set codec params and inform SST driver the same */
 	sst_fill_pcm_params(substream, &param);
@@ -174,22 +239,16 @@ static int sst_platform_alloc_stream(struct snd_pcm_substream *substream)
 	str_params.sparams = param;
 	str_params.aparams = alloc_params;
 	str_params.codec = SST_CODEC_TYPE_PCM;
-	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
-		str_params.ops = STREAM_OPS_PLAYBACK;
-		str_params.device_type = substream->pcm->device + 1;
-		pr_debug("Playback stream, Device %d\n",
-					substream->pcm->device);
-	} else {
-		str_params.ops = STREAM_OPS_CAPTURE;
-		str_params.device_type = SND_SST_DEVICE_CAPTURE;
-		pr_debug("Capture stream, Device %d\n",
-					substream->pcm->device);
-	}
+	/* fill the device type and stream id to pass to SST driver */
+	ret_val = sst_fill_stream_params(substream, ctx, &str_params);
+	pr_debug("platform prepare: fill stream params ret_val = 0x%x\n", ret_val);
+	if (ret_val < 0)
+		return ret_val;
+
 	ret_val = stream->ops->open(&str_params);
 	pr_debug("platform prepare: stream open ret_val = 0x%x\n", ret_val);
 	if (ret_val <= 0)
 		return ret_val;
-
 	stream->stream_info.str_id = ret_val;
 	pr_debug("platform allocated strid:  %d\n", stream->stream_info.str_id);
 
@@ -312,7 +371,7 @@ static int sst_media_prepare(struct snd_pcm_substream *substream,
 	if (stream->stream_info.str_id)
 		return ret_val;
 
-	ret_val = sst_platform_alloc_stream(substream);
+	ret_val = sst_platform_alloc_stream(substream, dai->platform);
 	if (ret_val <= 0)
 		return ret_val;
 	snprintf(substream->pcm->id, sizeof(substream->pcm->id),

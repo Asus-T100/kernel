@@ -14,8 +14,8 @@ include_dirs := \
 		$(PVRINCS-y) \
 		-I$(INCDIR)/ \
 		-I$(DISPLAY_INCDIR) \
-		-I$(DISPLAY_INCDIR)/otm_hdmi/os/android/include \
-		-I$(DISPLAY_INCDIR)/otm_hdmi/pil/include \
+		-I$(INCDIR)/otm_hdmi/os/android/include \
+		-I$(INCDIR)/otm_hdmi/pil/include \
 		-I$(INCDIR)/video/decode \
 		-I$(INCDIR)/video/encode \
 		-I$(INCDIR)/video/common \
@@ -34,12 +34,19 @@ endif
 
 ifeq ($(GPU_BURST_CONFIGURED),1)
 
-gfx-y += $(SYSCONFIGDIR)/gburst_interface.o
-gfx-y += $(SGXDIR)/gburst_hw.o
+ifeq ($(CONFIG_GPU_BURST), y)
+sgx-objs += $(SYSCONFIGDIR)/gburst_interface.o
+sgx-objs += $(SGXDIR)/gburst_hw.o
+endif
 
 endif
 
-obj-$(CONFIG_GPU_BURST) += ../../graphics/gburst/
+ifeq ($(CONFIG_GPU_BURST), y)
+GPU_BURST_DIR=../../graphics/gburst
+sgx-objs += $(GPU_BURST_DIR)/gburstm.o \
+		$(GPU_BURST_DIR)/gburst_stats.o \
+		$(GPU_BURST_DIR)/utilf.o
+endif
 
 ccflags-y += $(include_dirs)
 
@@ -56,8 +63,9 @@ VIDEO_COMMON_DIR = ../../video/common
 DECODE_DIR = ../../video/decode
 ENCODE_DIR = ../../video/encode
 MEDIA_COMMON_DIR = ../../common
+HDMI_DIR := ../../otm_hdmi
 
-gfx-y += $(ENVDIR)/osfunc.o \
+sgx-objs += $(ENVDIR)/osfunc.o \
 		$(ENVDIR)/mutils.o \
 		$(ENVDIR)/mmap.o \
 		$(ENVDIR)/module.o \
@@ -69,9 +77,8 @@ gfx-y += $(ENVDIR)/osfunc.o \
 		$(ENVDIR)/mutex.o \
 		$(ENVDIR)/event.o \
 		$(ENVDIR)/osperproc.o \
-		$(ENVDIR)/pvr_drm.o
-
-gfx-y += $(COMMONDIR)/buffer_manager.o \
+		$(ENVDIR)/pvr_drm.o \
+		$(COMMONDIR)/buffer_manager.o \
 		$(COMMONDIR)/devicemem.o \
 		$(COMMONDIR)/deviceclass.o \
 		$(COMMONDIR)/handle.o \
@@ -88,17 +95,14 @@ gfx-y += $(COMMONDIR)/buffer_manager.o \
 		$(COMMONDIR)/queue.o \
 		$(COMMONDIR)/ra.o \
 		$(COMMONDIR)/refcount.o \
-		$(COMMONDIR)/resman.o
-
-gfx-y += $(BRIDGEDDIR)/bridged_support.o \
+		$(COMMONDIR)/resman.o \
+		$(BRIDGEDDIR)/bridged_support.o \
 		$(BRIDGEDDIR)/bridged_pvr_bridge.o \
-		$(BRIDGEDDIR)/sgx/bridged_sgx_bridge.o
-
-gfx-y += $(SYSCONFIGDIR)/sysconfig.o \
+		$(BRIDGEDDIR)/sgx/bridged_sgx_bridge.o \
+		$(SYSCONFIGDIR)/sysconfig.o \
 		$(SYSCONFIGDIR)/sysutils.o \
-		$(SYSCONFIGDIR)/sys_pvr_drm_export.o
-
-gfx-y += $(SGXDIR)/sgxinit.o \
+		$(SYSCONFIGDIR)/sys_pvr_drm_export.o \
+		$(SGXDIR)/sgxinit.o \
 		$(SGXDIR)/sgxpower.o \
 		$(SGXDIR)/sgxreset.o \
 		$(SGXDIR)/sgxutils.o \
@@ -106,6 +110,7 @@ gfx-y += $(SGXDIR)/sgxinit.o \
 		$(SGXDIR)/sgxtransfer.o \
 		$(SGXDIR)/mmu.o \
 		$(SGXDIR)/pb.o
+obj-m += sgx.o
 
 gfx-y += $(FBDEVDIR)/drmlfb_displayclass.o \
 		$(FBDEVDIR)/drmlfb_linux.o
@@ -117,6 +122,8 @@ gfx-y += $(MEDIA_COMMON_DIR)/psb_drv.o \
 
 gfx-y += $(DISPLAYDIR)/psb_bl.o \
 		$(DISPLAYDIR)/psb_dpst.o \
+		$(DISPLAYDIR)/psb_dpst_func.o \
+		$(DISPLAYDIR)/dispmgrnl.o \
 		$(DISPLAYDIR)/psb_fb.o \
 		$(DISPLAYDIR)/psb_intel_display.o \
 		$(DISPLAYDIR)/mdfld_csc.o \
@@ -168,4 +175,4 @@ gfx-$(CONFIG_MDFD_GL3) += $(MEDIA_COMMON_DIR)/mdfld_gl3.o
 obj-$(CONFIG_DRM_MDFLD) += gfx.o
 obj-$(CONFIG_DRM_CTP) += gfx.o
 
-obj-$(CONFIG_SUPPORT_HDMI) += $(DISPLAYDIR)/otm_hdmi/
+obj-$(CONFIG_SUPPORT_HDMI) += $(HDMI_DIR)/

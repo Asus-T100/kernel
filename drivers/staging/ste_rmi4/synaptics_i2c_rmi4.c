@@ -69,8 +69,9 @@
 #define MASK_4BIT		0x0F
 #define MASK_3BIT		0x07
 #define MASK_2BIT		0x03
-#define TOUCHPAD_CTRL_INTR	0x8
 
+#define TOUCHPAD_CTRL_INTR	0x8
+#define BUTTON_THRESH		50
 #define DELTA_XPOS_THRESH	1
 #define DELTA_YPOS_THRESH	1
 #define TOUCH_REDUCE_MODE	1
@@ -78,7 +79,6 @@
 #define F01_CTRL0_CONFIGURED (1 << 7)
 #define F01_CTRL0_SLEEP      (1 << 0)
 #define F01_CTRL0_NOSLEEP    (1 << 2)
-
 #define BOOT_MODE_MOS	0
 #define BOOT_MODE_COS	1
 
@@ -104,7 +104,7 @@ static struct rmi4_fn_ops supported_fn_ops[] = {
 	{
 		.fn_number = RMI4_BUTTON_FUNC_NUM,
 		.detect  = rmi4_button_detect,
-		.config = NULL,
+		.config = rmi4_button_config,
 		.irq_handler = rmi4_button_irq_handler,
 		.remove = rmi4_button_remove,
 	},
@@ -680,6 +680,36 @@ alloc_map_err:
 alloc_status_err:
 	kfree(button_data);
 	return retval;
+}
+
+int rmi4_button_config(struct rmi4_data *pdata, struct rmi4_fn *rfi)
+{
+	int i, ret = -1;
+	int offset;
+	u8 thresh[RMI4_MAX_BUTTON];
+	struct i2c_client *client = pdata->i2c_client;
+	struct rmi4_button_data *button_data = rfi->fn_data;
+
+	if (button_data->num_of_bttns > RMI4_MAX_BUTTON) {
+		dev_err(&client->dev, "%s: Button number not supported\n",
+				__func__);
+		return ret;
+	}
+
+	for (i = 0; i < button_data->num_of_bttns; i++)
+		thresh[i] = BUTTON_THRESH;
+	offset = 2 + button_data->num_of_bttns * 2;
+	ret = rmi4_i2c_block_write(pdata,
+			rfi->ctrl_base_addr + offset + 1,
+			thresh, button_data->num_of_bttns);
+	if (ret < 0) {
+		dev_err(&client->dev, "%s: failed to set thresh of button\n",
+				__func__);
+		return ret;
+	}
+	dev_info(&client->dev, "%s: set button threshold to %d\n",
+			__func__, BUTTON_THRESH);
+	return 0;
 }
 
 void rmi4_button_remove(struct rmi4_fn *rfi)

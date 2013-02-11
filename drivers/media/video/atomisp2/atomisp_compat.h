@@ -24,8 +24,6 @@
 
 #ifdef CONFIG_X86_MRFLD
 #define sh_css_sp_has_booted() sh_css_sp_has_initialized()
-#define sh_css_enable_cont_capt(enable, stop_copy_preview) \
-	sh_css_enable_cont_capt(enable);
 #define sh_css_enable_raw_binning(enable) \
 	sh_css_enable_raw_reordered(enable)
 #define sh_css_update_continuous_frames()

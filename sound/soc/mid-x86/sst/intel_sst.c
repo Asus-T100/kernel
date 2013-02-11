@@ -100,7 +100,7 @@ static struct miscdevice lpe_ctrl = {
 static inline int get_stream_id_mrfld(u32 pipe_id)
 {
 	int i;
-	for (i = 1; i < sst_drv_ctx->info.max_streams; i++)
+	for (i = 1; i <= sst_drv_ctx->info.max_streams; i++)
 		if (pipe_id == sst_drv_ctx->streams[i].pipe_id)
 			return i;
 
@@ -870,7 +870,7 @@ static DEFINE_PCI_DEVICE_TABLE(intel_sst_ids) = {
 		INFO(0, 0, false,
 			0, 0, false,
 			0, 0, false,
-			true, 24)},
+			true, 23)},
 	{ 0, }
 };
 MODULE_DEVICE_TABLE(pci, intel_sst_ids);
