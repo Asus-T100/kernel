@@ -163,7 +163,9 @@ static struct drm_ioctl_desc drm_ioctls[] = {
 	DRM_IOCTL_DEF(DRM_IOCTL_MODE_DIRTYFB, drm_mode_dirtyfb_ioctl, DRM_MASTER|DRM_CONTROL_ALLOW|DRM_UNLOCKED),
 	DRM_IOCTL_DEF(DRM_IOCTL_MODE_CREATE_DUMB, drm_mode_create_dumb_ioctl, DRM_MASTER|DRM_CONTROL_ALLOW|DRM_UNLOCKED),
 	DRM_IOCTL_DEF(DRM_IOCTL_MODE_MAP_DUMB, drm_mode_mmap_dumb_ioctl, DRM_MASTER|DRM_CONTROL_ALLOW|DRM_UNLOCKED),
-	DRM_IOCTL_DEF(DRM_IOCTL_MODE_DESTROY_DUMB, drm_mode_destroy_dumb_ioctl, DRM_MASTER|DRM_CONTROL_ALLOW|DRM_UNLOCKED)
+	DRM_IOCTL_DEF(DRM_IOCTL_MODE_DESTROY_DUMB, drm_mode_destroy_dumb_ioctl, DRM_MASTER|DRM_CONTROL_ALLOW|DRM_UNLOCKED),
+	DRM_IOCTL_DEF(DRM_IOCTL_MODE_OBJ_GETPROPERTIES, drm_mode_obj_get_properties_ioctl, DRM_MASTER|DRM_CONTROL_ALLOW|DRM_UNLOCKED),
+	DRM_IOCTL_DEF(DRM_IOCTL_MODE_OBJ_SETPROPERTY, drm_mode_obj_set_property_ioctl, DRM_MASTER|DRM_CONTROL_ALLOW|DRM_UNLOCKED),
 };
 
 #define DRM_CORE_IOCTL_COUNT	ARRAY_SIZE( drm_ioctls )
@@ -180,7 +182,6 @@ static struct drm_ioctl_desc drm_ioctls[] = {
 int drm_lastclose(struct drm_device * dev)
 {
 	struct drm_vma_entry *vma, *vma_temp;
-	int i;
 
 	DRM_DEBUG("\n");
 
@@ -225,16 +226,6 @@ int drm_lastclose(struct drm_device * dev)
 		list_del(&vma->head);
 		kfree(vma);
 	}
-
-	if (drm_core_check_feature(dev, DRIVER_DMA_QUEUE) && dev->queuelist) {
-		for (i = 0; i < dev->queue_count; i++) {
-			kfree(dev->queuelist[i]);
-			dev->queuelist[i] = NULL;
-		}
-		kfree(dev->queuelist);
-		dev->queuelist = NULL;
-	}
-	dev->queue_count = 0;
 
 	if (drm_core_check_feature(dev, DRIVER_HAVE_DMA) &&
 	    !drm_core_check_feature(dev, DRIVER_MODESET))
@@ -432,15 +423,14 @@ long drm_ioctl(struct file *filp,
 	if ((nr == DRM_IOCTL_NR(DRM_IOCTL_DMA)) && dev->driver->dma_ioctl)
 		func = dev->driver->dma_ioctl;
 
-	/* workaround drm authentification issue on Android
-	* don't need following check for DRM_AUTH
-	* otherwise maybe it will be reset before the check
-	*/
-	file_priv->authenticated = 1;
-
 	if (!func) {
 		DRM_DEBUG("no function\n");
 		retcode = -EINVAL;
+	} else if (((ioctl->flags & DRM_ROOT_ONLY) && !capable(CAP_SYS_ADMIN)) ||
+		   ((ioctl->flags & DRM_AUTH) && !file_priv->authenticated) ||
+		   ((ioctl->flags & DRM_MASTER) && !file_priv->is_master) ||
+		   (!(ioctl->flags & DRM_CONTROL_ALLOW) && (file_priv->minor->type == DRM_MINOR_CONTROL))) {
+		retcode = -EACCES;
 	} else {
 		if (cmd & (IOC_IN | IOC_OUT)) {
 			if (asize <= sizeof(stack_kdata)) {
@@ -485,7 +475,7 @@ long drm_ioctl(struct file *filp,
 		kfree(kdata);
 	atomic_dec(&dev->ioctl_count);
 	if (retcode)
-		DRM_DEBUG("ret = %x\n", retcode);
+		DRM_DEBUG("ret = %d\n", retcode);
 	return retcode;
 }
 

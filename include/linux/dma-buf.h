@@ -98,6 +98,11 @@ struct dma_buf_ops {
 	void (*kunmap)(struct dma_buf *, unsigned long, void *);
 
 	int (*mmap)(struct dma_buf *, struct vm_area_struct *vma);
+
+	/*  Begin - drm backport from kernel 3.6 to 3.4 */
+	void *(*vmap)(struct dma_buf *);
+	void (*vunmap)(struct dma_buf *, void *vaddr);
+	/*  End - drm backport from kernel 3.6 to 3.4 */
 };
 
 /**

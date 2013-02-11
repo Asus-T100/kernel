@@ -114,10 +114,9 @@ static void udlfb_dpy_deferred_io(struct fb_info *info,
 	list_for_each_entry(cur, &fbdefio->pagelist, lru) {
 
 		if (udl_render_hline(dev, (ufbdev->ufb.base.bits_per_pixel / 8),
-				     &urb, (char *) info->fix.smem_start,
-				     &cmd, cur->index << PAGE_SHIFT,
-				     cur->index << PAGE_SHIFT,
-				     PAGE_SIZE, &bytes_identical, &bytes_sent))
+				  &urb, (char *) info->fix.smem_start,
+				  &cmd, cur->index << PAGE_SHIFT,
+				  PAGE_SIZE, &bytes_identical, &bytes_sent))
 			goto error;
 		bytes_rendered += PAGE_SIZE;
 	}
@@ -157,8 +156,17 @@ int udl_handle_damage(struct udl_framebuffer *fb, int x, int y,
 	if (!fb->active_16)
 		return 0;
 
-	if (!fb->obj->vmapping)
-		udl_gem_vmap(fb->obj);
+	if (!fb->obj->vmapping) {
+		ret = udl_gem_vmap(fb->obj);
+		if (ret == -ENOMEM) {
+			DRM_ERROR("failed to vmap fb\n");
+			return 0;
+		}
+		if (!fb->obj->vmapping) {
+			DRM_ERROR("failed to vmapping\n");
+			return 0;
+		}
+	}
 
 	start_cycles = get_cycles();
 
@@ -179,11 +187,10 @@ int udl_handle_damage(struct udl_framebuffer *fb, int x, int y,
 	for (i = y; i < y + height ; i++) {
 		const int line_offset = fb->base.pitches[0] * i;
 		const int byte_offset = line_offset + (x * bpp);
-		const int dev_byte_offset = (fb->base.width * bpp * i) + (x * bpp);
+
 		if (udl_render_hline(dev, bpp, &urb,
 				     (char *) fb->obj->vmapping,
-				     &cmd, byte_offset, dev_byte_offset,
-				     width * bpp,
+				     &cmd, byte_offset, width * bpp,
 				     &bytes_identical, &bytes_sent))
 			goto error;
 	}
@@ -595,10 +602,19 @@ udl_fb_user_fb_create(struct drm_device *dev,
 	struct drm_gem_object *obj;
 	struct udl_framebuffer *ufb;
 	int ret;
+	uint32_t size;
 
 	obj = drm_gem_object_lookup(dev, file, mode_cmd->handles[0]);
 	if (obj == NULL)
 		return ERR_PTR(-ENOENT);
+
+	size = mode_cmd->pitches[0] * mode_cmd->height;
+	size = ALIGN(size, PAGE_SIZE);
+
+	if (size > obj->size) {
+		DRM_ERROR("object size not sufficient for fb %d %zu %d %d\n", size, obj->size, mode_cmd->pitches[0], mode_cmd->height);
+		return ERR_PTR(-ENOMEM);
+	}
 
 	ufb = kzalloc(sizeof(*ufb), GFP_KERNEL);
 	if (ufb == NULL)

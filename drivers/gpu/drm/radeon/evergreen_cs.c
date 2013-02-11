@@ -444,7 +444,7 @@ static int evergreen_cs_track_validate_cb(struct radeon_cs_parser *p, unsigned i
 		 * command stream.
 		 */
 		if (!surf.mode) {
-			volatile u32 *ib = p->ib->ptr;
+			volatile u32 *ib = p->ib.ptr;
 			unsigned long tmp, nby, bsize, size, min = 0;
 
 			/* find the height the ddx wants */
@@ -788,6 +788,13 @@ static int evergreen_cs_track_validate_texture(struct radeon_cs_parser *p,
 	case V_030000_SQ_TEX_DIM_1D_ARRAY:
 	case V_030000_SQ_TEX_DIM_2D_ARRAY:
 		depth = 1;
+		break;
+	case V_030000_SQ_TEX_DIM_2D_MSAA:
+	case V_030000_SQ_TEX_DIM_2D_ARRAY_MSAA:
+		surf.nsamples = 1 << llevel;
+		llevel = 0;
+		depth = 1;
+		break;
 	case V_030000_SQ_TEX_DIM_3D:
 		break;
 	default:
@@ -961,13 +968,15 @@ static int evergreen_cs_track_check(struct radeon_cs_parser *p)
 
 	if (track->db_dirty) {
 		/* Check stencil buffer */
-		if (G_028800_STENCIL_ENABLE(track->db_depth_control)) {
+		if (G_028044_FORMAT(track->db_s_info) != V_028044_STENCIL_INVALID &&
+		    G_028800_STENCIL_ENABLE(track->db_depth_control)) {
 			r = evergreen_cs_track_validate_stencil(p);
 			if (r)
 				return r;
 		}
 		/* Check depth buffer */
-		if (G_028800_Z_ENABLE(track->db_depth_control)) {
+		if (G_028040_FORMAT(track->db_z_info) != V_028040_Z_INVALID &&
+		    G_028800_Z_ENABLE(track->db_depth_control)) {
 			r = evergreen_cs_track_validate_depth(p);
 			if (r)
 				return r;
@@ -1096,7 +1105,7 @@ static int evergreen_cs_packet_parse_vline(struct radeon_cs_parser *p)
 	uint32_t header, h_idx, reg, wait_reg_mem_info;
 	volatile uint32_t *ib;
 
-	ib = p->ib->ptr;
+	ib = p->ib.ptr;
 
 	/* parse the WAIT_REG_MEM */
 	r = evergreen_cs_packet_parse(p, &wait_reg_mem, p->idx);
@@ -1254,7 +1263,7 @@ static int evergreen_cs_check_reg(struct radeon_cs_parser *p, u32 reg, u32 idx)
 		if (!(evergreen_reg_safe_bm[i] & m))
 			return 0;
 	}
-	ib = p->ib->ptr;
+	ib = p->ib.ptr;
 	switch (reg) {
 	/* force following reg to 0 in an attempt to disable out buffer
 	 * which will need us to better understand how it works to perform
@@ -1937,7 +1946,7 @@ static int evergreen_packet3_check(struct radeon_cs_parser *p,
 	u32 idx_value;
 
 	track = (struct evergreen_cs_track *)p->track;
-	ib = p->ib->ptr;
+	ib = p->ib.ptr;
 	idx = pkt->idx + 1;
 	idx_value = radeon_get_ib_value(p, idx);
 
@@ -2651,8 +2660,8 @@ int evergreen_cs_parse(struct radeon_cs_parser *p)
 		}
 	} while (p->idx < p->chunks[p->chunk_ib_idx].length_dw);
 #if 0
-	for (r = 0; r < p->ib->length_dw; r++) {
-		printk(KERN_INFO "%05d  0x%08X\n", r, p->ib->ptr[r]);
+	for (r = 0; r < p->ib.length_dw; r++) {
+		printk(KERN_INFO "%05d  0x%08X\n", r, p->ib.ptr[r]);
 		mdelay(1);
 	}
 #endif
@@ -2671,9 +2680,6 @@ static bool evergreen_vm_reg_valid(u32 reg)
 	/* check config regs */
 	switch (reg) {
 	case GRBM_GFX_INDEX:
-	case CP_STRMOUT_CNTL:
-	case CP_COHER_CNTL:
-	case CP_COHER_SIZE:
 	case VGT_VTX_VECT_EJECT_REG:
 	case VGT_CACHE_INVALIDATION:
 	case VGT_GS_VERTEX_REUSE:
@@ -2778,7 +2784,6 @@ static bool evergreen_vm_reg_valid(u32 reg)
 	case CAYMAN_SQ_EX_ALLOC_TABLE_SLOTS:
 		return true;
 	default:
-		DRM_ERROR("Invalid register 0x%x in CS\n", reg);
 		return false;
 	}
 }

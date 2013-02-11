@@ -22,7 +22,15 @@ menuconfig DRM
 config DRM_USB
 	tristate
 	depends on DRM
+	depends on USB_ARCH_HAS_HCD
 	select USB
+
+config NO_GPU_AUTHENTICATION
+	bool "Disable GPU authentication"
+	depends on DRM
+	default n
+	help
+	  Choose this option if you want to disable GPU authentication.
 
 config DRM_KMS_HELPER
 	tristate
@@ -186,3 +194,9 @@ source "drivers/gpu/drm/vmwgfx/Kconfig"
 source "drivers/gpu/drm/gma500/Kconfig"
 
 source "drivers/gpu/drm/udl/Kconfig"
+
+source "drivers/gpu/drm/ast/Kconfig"
+
+source "drivers/gpu/drm/mgag200/Kconfig"
+
+source "drivers/gpu/drm/cirrus/Kconfig"
