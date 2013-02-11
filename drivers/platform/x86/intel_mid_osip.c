@@ -197,6 +197,24 @@ bd_put:
 #define SIGNED_RECOVERY_ATTR	0x0C
 #define SIGNED_POSCOS_ATTR	0x10
 
+static int osip_invalidate(struct OSIP_header *osip, void *data)
+{
+	int id = (int)data;
+	osip->desc[id].ddr_load_address = 0;
+	osip->desc[id].entry_point = 0;
+	return 1;
+}
+static int osip_restore(struct OSIP_header *osip, void *data)
+{
+	int id = (int)data;
+	/* hardcoding addresses. According to the FAS, this is how
+	   the OS image blob has to be loaded, and where is the
+	   bootstub entry point.
+	*/
+	osip->desc[id].ddr_load_address = 0x1100000;
+	osip->desc[id].entry_point = 0x1101000;
+	return 1;
+}
 static int osip_reboot_notifier_call(struct notifier_block *notifier,
 				     unsigned long what, void *data)
 {
@@ -271,7 +289,8 @@ static int osip_reboot_notifier_call(struct notifier_block *notifier,
 	}
 
 	if (data && 0 == strncmp(cmd, "recovery", 9)) {
-		pr_warn("[SHTDWN] %s, rebooting into Recovery\n", __func__);
+		pr_warn("[SHTDWN] %s, invalidating osip and rebooting into "
+			"Recovery\n", __func__);
 #ifdef DEBUG
 		intel_scu_ipc_read_osnib_rr(&rbt_reason);
 #endif
@@ -279,20 +298,24 @@ static int osip_reboot_notifier_call(struct notifier_block *notifier,
 		if (ret_ipc < 0)
 			pr_err("%s cannot write reboot reason in OSNIB\n",
 				__func__);
+		access_osip_record(osip_invalidate, (void *)0);
 		ret = NOTIFY_OK;
 	} else if (data && 0 == strncmp(cmd, "bootloader", 11)) {
-		pr_warn("[SHTDWN] %s, rebooting into Fastboot\n", __func__);
+		pr_warn("[SHTDWN] %s, invalidating osip and rebooting into "
+			"Fastboot\n", __func__);
 		ret_ipc = intel_scu_ipc_write_osnib_rr(SIGNED_POS_ATTR);
 		if (ret_ipc < 0)
 			pr_err("%s cannot write reboot reason in OSNIB\n",
 				__func__);
 		ret = NOTIFY_OK;
 	} else {
-		pr_warn("[SHTDWN] %s, rebooting into Android\n", __func__);
+		pr_warn("[SHTDWN] %s, restoring OSIP and rebooting into "
+			"Android\n", __func__);
 		ret_ipc = intel_scu_ipc_write_osnib_rr(SIGNED_MOS_ATTR);
 		if (ret_ipc < 0)
 			pr_err("%s cannot write reboot reason in OSNIB\n",
 				 __func__);
+		access_osip_record(osip_restore, (void *)0);
 		ret = NOTIFY_OK;
 	}
 	return ret;
