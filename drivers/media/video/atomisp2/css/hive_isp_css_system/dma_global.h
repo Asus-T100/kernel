@@ -45,40 +45,32 @@ typedef enum {
 #define hive_dma_snd(dma_id, token) OP_std_snd(dma_id, (unsigned int)(token))
 
 #ifdef __HIVECC
-#define hive_dma_move_b2a_data(dma_id, channel, to_addr, from_addr, to_is_var, from_is_var) \
+#define hive_dma_move_data(dma_id, read, channel, a_addr, b_addr, a_is_var, b_is_var) \
 { \
-  hive_dma_snd(dma_id, DMA_PACK_CMD_CHANNEL(_DMA_READ_COMMAND, channel)); \
-  hive_dma_snd(dma_id, to_addr); \
-  hive_dma_snd(dma_id, from_addr); \
+  hive_dma_snd(dma_id, DMA_PACK_CMD_CHANNEL(read?_DMA_READ_COMMAND:_DMA_WRITE_COMMAND, channel)); \
+  hive_dma_snd(dma_id, a_addr); \
+  hive_dma_snd(dma_id, b_addr); \
 }
 #else
-#define hive_dma_move_b2a_data(dma_id, channel, to_addr, from_addr, to_is_var, from_is_var) \
+#define hive_dma_move_data(dma_id, read, channel, a_addr, b_addr, a_is_var, b_is_var) \
 { \
-  hive_dma_snd(dma_id, DMA_PACK_CMD_CHANNEL(_DMA_READ_COMMAND, channel) | (1 << _DMA_CRUN_IDX)); \
-  hive_dma_snd(dma_id, to_addr); \
-  hive_dma_snd(dma_id, from_addr); \
-  hive_dma_snd(dma_id, to_is_var); \
-  hive_dma_snd(dma_id, from_is_var); \
+  hive_dma_snd(dma_id, DMA_PACK_CMD_CHANNEL(read?_DMA_READ_COMMAND:_DMA_WRITE_COMMAND, channel) | (1 << _DMA_CRUN_IDX)); \
+  hive_dma_snd(dma_id, a_addr); \
+  hive_dma_snd(dma_id, b_addr); \
+  hive_dma_snd(dma_id, a_is_var); \
+  hive_dma_snd(dma_id, b_is_var); \
 }
 #endif
 
-#ifdef __HIVECC
-#define hive_dma_move_a2b_data(dma_id, channel, from_addr, to_addr, from_is_var, to_is_var) \
+#define hive_dma_move_b2a_data(dma_id, channel, a_addr, b_addr, a_is_var, b_is_var) \
 { \
-  hive_dma_snd(dma_id, DMA_PACK_CMD_CHANNEL(_DMA_WRITE_COMMAND, channel)); \
-  hive_dma_snd(dma_id, from_addr); \
-  hive_dma_snd(dma_id, to_addr); \
+  hive_dma_move_data (dma_id, true, channel, a_addr, b_addr, a_is_var, b_is_var); \
 }
-#else
-#define hive_dma_move_a2b_data(dma_id, channel, from_addr, to_addr, from_is_var, to_is_var) \
+
+#define hive_dma_move_a2b_data(dma_id, channel, a_addr, b_addr, a_is_var, b_is_var) \
 { \
-  hive_dma_snd(dma_id, DMA_PACK_CMD_CHANNEL(_DMA_WRITE_COMMAND, channel) | (1 << _DMA_CRUN_IDX)); \
-  hive_dma_snd(dma_id, from_addr); \
-  hive_dma_snd(dma_id, to_addr); \
-  hive_dma_snd(dma_id, from_is_var); \
-  hive_dma_snd(dma_id, to_is_var); \
+  hive_dma_move_data (dma_id, false, channel, a_addr, b_addr, a_is_var, b_is_var); \
 }
-#endif
 
 #ifdef __HIVECC
 #define hive_dma_set_data(dma_id, channel, address, value, is_var) \

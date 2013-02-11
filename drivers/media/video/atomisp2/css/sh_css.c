@@ -5643,8 +5643,7 @@ static enum sh_css_err construct_capture_pipe(
 	enum sh_css_err err = sh_css_success;
 	enum sh_css_capture_mode mode = pipe->capture_mode;
 
-	struct sh_css_pipeline_stage *out_stage, *vf_pp_stage, *copy_stage,
-					*in_stage, *post_stage;
+	struct sh_css_pipeline_stage *vf_pp_stage, *post_stage;
 
 	struct sh_css_frame *cc_frame = NULL;
 	struct sh_css_binary *copy_binary,
@@ -5657,6 +5656,7 @@ static enum sh_css_err construct_capture_pipe(
 			     *capture_pp_binary,
 			     *sc_binary = NULL;
 	bool need_pp = false;
+	bool enable_vfpp = false;
 	bool raw = mode == SH_CSS_CAPTURE_MODE_RAW;
 	bool raw_copy = raw && copy_on_sp(pipe);
 
@@ -5685,12 +5685,13 @@ static enum sh_css_err construct_capture_pipe(
 	if (err != sh_css_success)
 		return err;
 
+	need_pp = need_capture_pp(pipe) || pipe->output_stage;
+
+	enable_vfpp = (mode != SH_CSS_CAPTURE_MODE_RAW &&
+			mode != SH_CSS_CAPTURE_MODE_BAYER );
+
 	/* Construct vf_frame info (only in case we have VF) */
-	if (mode == SH_CSS_CAPTURE_MODE_RAW ||
-			mode == SH_CSS_CAPTURE_MODE_BAYER) {
-		/* These modes don't support viewfinder output */
-		vf_frame = NULL;
-	} else {
+	if (enable_vfpp) {
 		sh_css_capture_get_viewfinder_frame_info(&vf_frame->info);
 		vf_frame->contiguous = false;
 		vf_frame->flash_state = SH_CSS_FRAME_NO_FLASH;
@@ -5698,10 +5699,9 @@ static enum sh_css_err construct_capture_pipe(
 		err = init_frame_planes(vf_frame);
 		if (err != sh_css_success)
 			return err;
+	} else {
+		vf_frame = NULL;
 	}
-
-	copy_stage = NULL;
-	in_stage = NULL;
 
 	copy_binary       = &pipe->pipe.capture.copy_binary;
 	primary_binary    = &pipe->pipe.capture.primary_binary;
@@ -5711,7 +5711,6 @@ static enum sh_css_err construct_capture_pipe(
 	post_isp_binary   = &pipe->pipe.capture.post_isp_binary;
 	anr_binary        = &pipe->pipe.capture.anr_binary;
 	capture_pp_binary = &pipe->pipe.capture.capture_pp_binary;
-	need_pp = need_capture_pp(pipe) || pipe->output_stage;
 
 	if (pipe->pipe.capture.copy_binary.info && !raw_copy) {
 		err = sh_css_pipeline_add_stage(me, copy_binary, NULL,
@@ -5720,10 +5719,8 @@ static enum sh_css_err construct_capture_pipe(
 				NULL, &post_stage);
 		if (err != sh_css_success)
 			return err;
-		in_stage = post_stage;
 	} else if (my_css.continuous) {
 		in_frame = my_css.preview_pipe.pipe.preview.continuous_frames[0];
-		//cc_frame = pipe->pipe.capture.continuous_frames[1];
 	}
 
 	if (mode == SH_CSS_CAPTURE_MODE_PRIMARY) {
@@ -5737,8 +5734,7 @@ static enum sh_css_err construct_capture_pipe(
 		/* If we use copy iso primary,
 		   the input must be yuv iso raw */
 		post_stage->args.copy_vf =
-			primary_binary->info->mode ==
-			SH_CSS_BINARY_MODE_COPY;
+			primary_binary->info->mode == SH_CSS_BINARY_MODE_COPY;
 		post_stage->args.copy_output = post_stage->args.copy_vf;
 		sc_binary = primary_binary;
 	} else if (mode == SH_CSS_CAPTURE_MODE_ADVANCED) {
@@ -5788,9 +5784,6 @@ static enum sh_css_err construct_capture_pipe(
 			return err;
 		sc_binary = pre_isp_binary;
 	}
-	if (!in_stage)
-		in_stage = post_stage;
-
 	if (need_pp) {
 		err = add_capture_pp_stage(pipe, me, out_frame,
 					   capture_pp_binary,
@@ -5798,92 +5791,13 @@ static enum sh_css_err construct_capture_pipe(
 		if (err != sh_css_success)
 			return err;
 	}
-	if (mode != SH_CSS_CAPTURE_MODE_RAW &&
-		mode != SH_CSS_CAPTURE_MODE_BAYER) {
+	if (enable_vfpp) {
 		err = add_vf_pp_stage(pipe, vf_frame, vf_pp_binary,
 				      post_stage, &vf_pp_stage);
 		if (err != sh_css_success)
 			return err;
 	}
 	number_stages(pipe);
-
-	/**
-	 * Maybe we can return earlier but this was the original position
-	 * in the original version of capture_start()
-	 */
-	if (pipe->capture_mode == SH_CSS_CAPTURE_MODE_RAW ||
-	    pipe->capture_mode == SH_CSS_CAPTURE_MODE_BAYER) {
-		if (copy_on_sp(pipe))
-			return sh_css_success;
-	}
-
-	if (mode == SH_CSS_CAPTURE_MODE_RAW) {
-		err = sh_css_pipeline_get_stage(me, copy_binary->info->mode,
-						&out_stage);
-		if (err != sh_css_success)
-			return err;
-		copy_stage = out_stage;
-	} else if (mode == SH_CSS_CAPTURE_MODE_BAYER) {
-		err = sh_css_pipeline_get_stage(me,
-				pre_isp_binary->info->mode,
-				&out_stage);
-		if (err != sh_css_success)
-			return err;
-	} else {
-		if (copy_binary->info) {
-			err = sh_css_pipeline_get_stage(me,
-							copy_binary->info->mode,
-							&copy_stage);
-			if (err != sh_css_success)
-				return err;
-		}
-		if (capture_pp_binary->info) {
-			err = sh_css_pipeline_get_stage(me,
-					capture_pp_binary->info->mode,
-					&out_stage);
-			if (err != sh_css_success)
-				return err;
-		} else if (mode ==
-			   SH_CSS_CAPTURE_MODE_PRIMARY) {
-			err = sh_css_pipeline_get_stage(me,
-					primary_binary->info->mode, &out_stage);
-			if (err != sh_css_success)
-				return err;
-		} else if (mode ==
-			   SH_CSS_CAPTURE_MODE_LOW_LIGHT) {
-			err = sh_css_pipeline_get_stage(me,
-					post_isp_binary->info->mode,
-					&out_stage);
-			if (err != sh_css_success)
-				return err;
-		} else {
-			err = sh_css_pipeline_get_stage(me,
-					post_isp_binary->info->mode,
-					&out_stage);
-			if (err != sh_css_success)
-				return err;
-		}
-		err = sh_css_pipeline_get_output_stage(me,
-						       vf_pp_binary->info->mode,
-						       &vf_pp_stage);
-		if (err != sh_css_success)
-			return err;
-	}
-	if (mode != SH_CSS_CAPTURE_MODE_RAW &&
-	    mode != SH_CSS_CAPTURE_MODE_BAYER)
-		vf_pp_stage->args.out_frame = vf_frame;
-
-	/* rvanimme: why is this? */
-	/* TODO: investigate if this can be removed */
-	if (!pipe->output_stage)
-		out_stage->args.out_frame = out_frame;
-
-	if (copy_stage && in_frame)
-		copy_stage->args.out_frame = in_frame;
-
-	sh_css_set_irq_buffer(in_stage,    sh_css_frame_in,  in_frame);
-	sh_css_set_irq_buffer(out_stage,   sh_css_frame_out, out_frame);
-	sh_css_set_irq_buffer(vf_pp_stage, sh_css_frame_in,  vf_frame);
 
 	return sh_css_success;
 
@@ -7978,6 +7892,7 @@ sh_css_init_host_sp_control_vars(void)
 	unsigned int HIVE_ADDR_sp_invalidate_tlb;
 	unsigned int HIVE_ADDR_sp_request_flash;
 	unsigned int HIVE_ADDR_sp_stop_copy_preview;
+	unsigned int HIVE_ADDR_sp_copy_pack;
 	unsigned int HIVE_ADDR_host_sp_com;
 	unsigned int o = offsetof(struct host_sp_communication, host2sp_command)
 				/ sizeof(int);
@@ -7994,6 +7909,7 @@ sh_css_init_host_sp_control_vars(void)
 	HIVE_ADDR_sp_invalidate_tlb = fw->info.sp.invalidate_tlb;
 	HIVE_ADDR_sp_request_flash = fw->info.sp.request_flash;
 	HIVE_ADDR_sp_stop_copy_preview = fw->info.sp.stop_copy_preview;
+	HIVE_ADDR_sp_copy_pack = fw->info.sp.copy_pack;
 	HIVE_ADDR_host_sp_com = fw->info.sp.host_sp_com;
 
 	(void)HIVE_ADDR_sp_isp_started; /* Suppres warnings in CRUN */
@@ -8002,6 +7918,7 @@ sh_css_init_host_sp_control_vars(void)
 	(void)HIVE_ADDR_sp_invalidate_tlb;
 	(void)HIVE_ADDR_sp_request_flash;
 	(void)HIVE_ADDR_sp_stop_copy_preview;
+	(void)HIVE_ADDR_sp_copy_pack;
 	(void)HIVE_ADDR_host_sp_com;
 
 	sp_dmem_store_uint32(SP0_ID,
@@ -8046,6 +7963,15 @@ sh_css_init_host_sp_control_vars(void)
 			}
 #endif
 	}
+	if (my_css.continuous && (my_css.curr_state != sh_css_state_executing_sp_bin_copy)) {
+		sp_dmem_store_uint32(SP0_ID,
+		(unsigned int)sp_address_of(sp_copy_pack),
+		(uint32_t)(1));
+	} else {
+		sp_dmem_store_uint32(SP0_ID,
+		(unsigned int)sp_address_of(sp_copy_pack),
+		(uint32_t)(0));
+	}
 
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_init_host_sp_control_vars() leave: return_void\n");
@@ -8060,9 +7986,10 @@ sh_css_allocate_continuous_frames(
 	struct sh_css_pipe *pipe = &my_css.preview_pipe;
 	bool input_needs_raw_binning = pipe->input_needs_raw_binning;
 	unsigned int i, idx;
-	unsigned int left_cropping;
+	unsigned int left_cropping, top_cropping;
 	unsigned int num_frames;
 	left_cropping = pipe->pipe.preview.preview_binary.info->left_cropping;
+	top_cropping = pipe->pipe.preview.preview_binary.info->top_cropping;
 
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_allocate_continuous_frames() enter: init_time=%d\n", init_time);
@@ -8090,9 +8017,9 @@ sh_css_allocate_continuous_frames(
 		ref_info.width += left_cropping ? 2*ISP_VEC_NELEMS : 0;
 		/* Must be even amount of vectors */
 		ref_info.width  = CEIL_MUL(ref_info.width,2*ISP_VEC_NELEMS);
-		ref_info.height -= left_cropping;
+		ref_info.height -= top_cropping;
 		ref_info.height *= 2;
-		ref_info.height += left_cropping;
+		ref_info.height += top_cropping;
 	} else if (my_css.continuous) {
 		ref_info.width -= left_cropping;
 		/* In case of left-cropping, add 2 vectors */
