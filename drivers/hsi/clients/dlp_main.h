@@ -324,8 +324,6 @@ struct dlp_channel {
  * @ipc_xx_cfg: HSI client configuration (Used for IPC RX)
  * @flash_tx_cfg: HSI client configuration (Used for Boot/Flashing TX)
  * @flash_rx_cfg: HSI client configuration (Used for Boot/Flashing RX)
- * @start_rx_cb: HSI client start RX callback
- * @stop_rx_cb: HSI client stop RX callback
  * @ehandler: HSI client events handler
  * @debug: Dynamic debug variable
  * @debug_dir: Debugfs directy entry (for debugging)
@@ -345,10 +343,6 @@ struct dlp_driver {
 	/* Modem readiness */
 	int modem_ready;
 	spinlock_t lock;
-
-	/* RX start/stop callbacks */
-	hsi_client_cb start_rx_cb;
-	hsi_client_cb stop_rx_cb;
 
 	/* HSI client events callback */
 	hsi_client_cb ehandler;
@@ -518,11 +512,9 @@ int dlp_hsi_port_claim(void);
 
 inline void dlp_hsi_port_unclaim(void);
 
-void dlp_save_rx_callbacks(hsi_client_cb *start_rx_cb,
-			   hsi_client_cb *stop_rx_cb);
+void dlp_save_rx_callbacks(hsi_client_cb *event_cb);
 
-void dlp_restore_rx_callbacks(hsi_client_cb *start_rx_cb,
-			      hsi_client_cb *stop_rx_cb);
+void dlp_restore_rx_callbacks(hsi_client_cb *event_cb);
 
 /****************************************************************************
  *

@@ -134,8 +134,7 @@ struct dlp_command {
  * @readiness_work: Modem readiness work
  * @ready_event: Modem readiness wait event
  * @response: Received response from the modem
- * @start_rx_cb: HSI client start RX CB
- * @stop_rx_cb: HSI client stop RX CB
+ * @ehandler: HSI client events CB
  * @xfers_list: The list of ALL the RX/TX msgs exchanged on channel 0
  */
 struct dlp_ctrl_context {
@@ -146,9 +145,8 @@ struct dlp_ctrl_context {
 	/* Modem response */
 	struct dlp_command response;
 
-	/* RX start/stop callbacks */
-	hsi_client_cb start_rx_cb;
-	hsi_client_cb stop_rx_cb;
+	/* HSI events callback */
+	hsi_client_cb ehandler;
 };
 
 /**
@@ -503,7 +501,7 @@ static int dlp_ctrl_cmd_send(struct dlp_channel *ch_ctx,
 	struct hsi_msg *tx_msg = NULL;
 
 	/* Backup RX callback */
-	dlp_save_rx_callbacks(&ctrl_ctx->start_rx_cb, &ctrl_ctx->stop_rx_cb);
+	dlp_save_rx_callbacks(&ctrl_ctx->ehandler);
 
 	/* Allocate the DLP command */
 	dlp_cmd = dlp_ctrl_cmd_alloc(ch_ctx, id, param1, param2, param3);
@@ -613,7 +611,7 @@ no_resp:
 		dlp_ctrl_set_channel_state(ch_ctx, final_state);
 
 	/* Restore RX callback */
-	dlp_restore_rx_callbacks(&ctrl_ctx->start_rx_cb, &ctrl_ctx->stop_rx_cb);
+	dlp_restore_rx_callbacks(&ctrl_ctx->ehandler);
 
 	/* Everything is OK */
 	return ret;
@@ -628,7 +626,7 @@ free_cmd:
 
 out:
 	/* Restore RX callback */
-	dlp_restore_rx_callbacks(&ctrl_ctx->start_rx_cb, &ctrl_ctx->stop_rx_cb);
+	dlp_restore_rx_callbacks(&ctrl_ctx->ehandler);
 	return ret;
 }
 

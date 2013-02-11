@@ -1435,10 +1435,9 @@ inline void dlp_hsi_port_unclaim(void)
 }
 
 /**
- * dlp_hsi_start_rx_cb - update the internal RX state machine
+ * dlp_hsi_ehandler - HSI client events callback
  * @cl: a reference to HSI client to consider
- *
- * This helper function updates the RX state and wakes the device.
+ * @event: HSI event (START/STOP RX)
  */
 static void dlp_hsi_ehandler(struct hsi_client *cl, unsigned long event)
 {
@@ -1457,39 +1456,30 @@ static void dlp_hsi_ehandler(struct hsi_client *cl, unsigned long event)
 }
 
 /*
-* @brief This function is used to deactivate the HSI client RX callbacks
+* @brief Used to deactivate the HSI client events callbacks
 *
-* @param start_rx_cb : Start RX callback backup function
-* @param stop_rx_cb : Stop RX callback backup function
+* @param event_cb : Events callback to set
 */
-void dlp_save_rx_callbacks(hsi_client_cb *start_rx_cb,
-			   hsi_client_cb *stop_rx_cb)
+void dlp_save_rx_callbacks(hsi_client_cb *event_cb)
 {
 	/* Save the current events CB */
-	(*start_rx_cb) = dlp_drv.client->hsi_start_rx;
-	(*stop_rx_cb) = dlp_drv.client->hsi_stop_rx;
+	(*event_cb) = dlp_drv.client->ehandler;
 
-	/* Set to NULL the CB pointer */
-	dlp_drv.client->hsi_start_rx = NULL;
-	dlp_drv.client->hsi_stop_rx = NULL;
+	/* Unregister the events callback */
+	if (hsi_port_claimed(dlp_drv.client))
+		hsi_unregister_port_event(dlp_drv.client);
 }
 
 /*
-* @brief This function is used to reactivate the HSI client RX callbacks
+* @brief Used to reactivate the HSI client events callbacks
 *
-* @param start_rx_cb : Start RX callback to set
-* @param stop_rx_cb : Stop RX callback to set
+* @param event_cb : Events callback to set
 */
-void dlp_restore_rx_callbacks(hsi_client_cb *start_rx_cb,
-			      hsi_client_cb *stop_rx_cb)
+void dlp_restore_rx_callbacks(hsi_client_cb *event_cb)
 {
-	/* Restore the client CB */
-	dlp_drv.client->hsi_start_rx = (*start_rx_cb);
-	dlp_drv.client->hsi_stop_rx = (*stop_rx_cb);
-
-	/* Set to NULL the CB pointer */
-	start_rx_cb = NULL;
-	stop_rx_cb = NULL;
+	/* Restore the events callback*/
+	if (hsi_port_claimed(dlp_drv.client))
+		hsi_register_port_event(dlp_drv.client, (*event_cb));
 }
 
 /*
@@ -1514,16 +1504,14 @@ int dlp_set_flashing_mode(int flashing)
 		dlp_drv.client->rx_cfg = dlp_drv.flash_rx_cfg;
 
 		/* Disable the HSI events cb */
-		dlp_save_rx_callbacks(&dlp_drv.start_rx_cb,
-				      &dlp_drv.stop_rx_cb);
+		dlp_save_rx_callbacks(&dlp_drv.ehandler);
 	} else {
 		/* Set IPC configs */
 		dlp_drv.client->tx_cfg = dlp_drv.ipc_tx_cfg;
 		dlp_drv.client->rx_cfg = dlp_drv.ipc_rx_cfg;
 
 		/* Restore the HSI events cb */
-		dlp_restore_rx_callbacks(&dlp_drv.start_rx_cb,
-					 &dlp_drv.stop_rx_cb);
+		dlp_restore_rx_callbacks(&dlp_drv.ehandler);
 	}
 
 	/* Claim the HSI port (to use for IPC) */
