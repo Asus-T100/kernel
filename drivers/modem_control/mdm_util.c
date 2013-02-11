@@ -107,6 +107,7 @@ inline void mdm_ctrl_set_state(struct work_struct *work)
 
 		}
 		wake_up(&drv->event);
+		kfree(new_state);
 	}
 }
 
