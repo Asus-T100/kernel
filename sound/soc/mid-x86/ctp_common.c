@@ -206,7 +206,6 @@ static int mc_driver_ops(struct ctp_mc_private *ctx,
 {
 	switch (pdata->spid->product_line_id) {
 	case INTEL_CLVTP_PHONE_RHB_ENG:
-	case INTEL_CLVTP_PHONE_RHB_PRO:
 		if (pdata->spid->hardware_id == CLVTP_PHONE_RHB_VBDV1) {
 			ctx->ops = ctp_get_vb_ops();
 			return 0;
@@ -657,7 +656,7 @@ const struct dev_pm_ops snd_ctp_mc_pm_ops = {
 static struct ipc_driver snd_ctp_mc_driver = {
 	.driver = {
 		.owner = THIS_MODULE,
-		.name = "ctp_audio",
+		.name = "clvcs_audio",
 		.pm   = &snd_ctp_mc_pm_ops,
 	},
 	.probe = snd_ctp_mc_probe,
