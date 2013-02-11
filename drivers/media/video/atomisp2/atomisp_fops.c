@@ -434,7 +434,7 @@ static int atomisp_open(struct file *file)
 	mutex_lock(&isp->mutex);
 
 	if (!isp->input_cnt) {
-		v4l2_err(&atomisp_dev, "no camera attached\n");
+		dev_err(isp->dev, "no camera attached\n");
 		ret = -EINVAL;
 		goto error;
 	}
@@ -447,15 +447,14 @@ static int atomisp_open(struct file *file)
 		goto error;
 
 	if (atomisp_users(isp)) {
-		v4l2_err(&atomisp_dev, "skip init isp in open\n");
+		dev_err(isp->dev, "skip init isp in open\n");
 		goto done;
 	}
 
 	/* runtime power management, turn on ISP */
 	ret = pm_runtime_get_sync(vdev->v4l2_dev->dev);
 	if (ret < 0) {
-		v4l2_err(&atomisp_dev,
-				"Failed to power on device\n");
+		dev_err(isp->dev, "Failed to power on device\n");
 		goto error;
 	}
 
@@ -556,7 +555,7 @@ static int atomisp_release(struct file *file)
 	ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
 				       core, s_power, 0);
 	if (ret)
-		v4l2_warn(&atomisp_dev, "Failed to power-off sensor\n");
+		dev_warn(isp->dev, "Failed to power-off sensor\n");
 
 	/* store L1 base address for next time we init the CSS */
 /*
@@ -567,6 +566,7 @@ static int atomisp_release(struct file *file)
 			(void *)sh_css_mmu_get_page_table_base_index();
 
 	if (pm_runtime_put_sync(vdev->v4l2_dev->dev) < 0)
+		dev_err(isp->dev, "Failed to power off device\n");
 		v4l2_err(&atomisp_dev, "Failed to power off device\n");
 done:
 	mutex_unlock(&isp->mutex);
@@ -578,8 +578,9 @@ done:
 /*
  * Memory help functions for image frame and private parameters
  */
-static int do_isp_mm_remap(struct vm_area_struct *vma,
-		    void *isp_virt, u32 host_virt, u32 pgnr)
+static int do_isp_mm_remap(struct atomisp_device *isp,
+			   struct vm_area_struct *vma,
+			   void *isp_virt, u32 host_virt, u32 pgnr)
 {
 	u32 pfn;
 
@@ -587,8 +588,7 @@ static int do_isp_mm_remap(struct vm_area_struct *vma,
 		pfn = hmm_virt_to_phys(isp_virt) >> PAGE_SHIFT;
 		if (remap_pfn_range(vma, host_virt, pfn,
 				    PAGE_SIZE, PAGE_SHARED)) {
-			v4l2_err(&atomisp_dev,
-				    "remap_pfn_range err.\n");
+			dev_err(isp->dev, "remap_pfn_range err.\n");
 			return -EAGAIN;
 		}
 
@@ -600,24 +600,23 @@ static int do_isp_mm_remap(struct vm_area_struct *vma,
 	return 0;
 }
 
-static int frame_mmap(const struct sh_css_frame *frame,
-	struct vm_area_struct *vma)
+static int frame_mmap(struct atomisp_device *isp,
+	const struct sh_css_frame *frame, struct vm_area_struct *vma)
 {
 	void *isp_virt;
 	u32 host_virt;
 	u32 pgnr;
 
 	if (!frame) {
-		v4l2_err(&atomisp_dev,
-			    "%s: NULL frame pointer.\n", __func__);
+		dev_err(isp->dev, "%s: NULL frame pointer.\n", __func__);
 		return -EINVAL;
 	}
 
 	host_virt = vma->vm_start;
 	isp_virt = (void *)frame->data;
-	atomisp_get_frame_pgnr(frame, &pgnr);
+	atomisp_get_frame_pgnr(isp, frame, &pgnr);
 
-	if (do_isp_mm_remap(vma, isp_virt, host_virt, pgnr))
+	if (do_isp_mm_remap(isp, vma, isp_virt, host_virt, pgnr))
 		return -EAGAIN;
 
 	return 0;
@@ -628,13 +627,15 @@ int atomisp_videobuf_mmap_mapper(struct videobuf_queue *q,
 {
 	u32 offset = vma->vm_pgoff << PAGE_SHIFT;
 	int ret = -EINVAL, i;
+	struct atomisp_device *isp =
+		((struct atomisp_video_pipe *)(q->priv_data))->isp;
 	struct videobuf_vmalloc_memory *vm_mem;
 	struct videobuf_mapping *map;
 
 	MAGIC_CHECK(q->int_ops->magic, MAGIC_QTYPE_OPS);
 	if (!(vma->vm_flags & VM_WRITE) || !(vma->vm_flags & VM_SHARED)) {
-		v4l2_err(&atomisp_dev, "map appl bug:"
-			    " PROT_WRITE and MAP_SHARED are required\n");
+		dev_err(isp->dev, "map appl bug: PROT_WRITE and MAP_SHARED "
+				  "are required\n");
 		return -EINVAL;
 	}
 
@@ -658,7 +659,7 @@ int atomisp_videobuf_mmap_mapper(struct videobuf_queue *q,
 		if (buf && buf->memory == V4L2_MEMORY_MMAP &&
 		    buf->boff == offset) {
 			vm_mem = buf->priv;
-			ret = frame_mmap(vm_mem->vaddr, vma);
+			ret = frame_mmap(isp, vm_mem->vaddr, vma);
 			vma->vm_flags |= VM_DONTEXPAND | VM_RESERVED;
 			break;
 		}
@@ -672,8 +673,8 @@ int atomisp_videobuf_mmap_mapper(struct videobuf_queue *q,
  * There is always ISP_LEFT_PAD padding on the left side.
  * There is also padding on the right (padded_width - width).
  */
-static int
-remove_pad_from_frame(struct sh_css_frame *in_frame, __u32 width, __u32 height)
+static int remove_pad_from_frame(struct atomisp_device *isp,
+		struct sh_css_frame *in_frame, __u32 width, __u32 height)
 {
 	unsigned int i;
 	unsigned short *buffer;
@@ -683,7 +684,7 @@ remove_pad_from_frame(struct sh_css_frame *in_frame, __u32 width, __u32 height)
 
 	buffer = kmalloc(width*sizeof(*load), GFP_KERNEL);
 	if (!buffer) {
-		v4l2_err(&atomisp_dev, "out of memory.\n");
+		dev_err(isp->dev, "out of memory.\n");
 		return -ENOMEM;
 	}
 
@@ -738,33 +739,30 @@ static int atomisp_mmap(struct file *file, struct vm_area_struct *vma)
 		}
 		raw_virt_addr = isp->raw_output_frame;
 		if (raw_virt_addr == NULL) {
-			v4l2_err(&atomisp_dev,
-				 "Failed to request RAW frame\n");
+			dev_err(isp->dev, "Failed to request RAW frame\n");
 			ret = -EINVAL;
 			goto error;
 		}
 
-		ret = remove_pad_from_frame(raw_virt_addr,
+		ret = remove_pad_from_frame(isp, raw_virt_addr,
 				      pipe->pix.width,
 				      pipe->pix.height);
 		if (ret < 0) {
-			v4l2_err(&atomisp_dev, "remove pad failed.\n");
+			dev_err(isp->dev, "remove pad failed.\n");
 			goto error;
 		}
 		origin_size = raw_virt_addr->data_bytes;
 		raw_virt_addr->data_bytes = new_size;
 
 		if (size != PAGE_ALIGN(new_size)) {
-			v4l2_err(&atomisp_dev,
-				 "incorrect size for mmap ISP"
+			dev_err(isp->dev, "incorrect size for mmap ISP"
 				 " Raw Frame\n");
 			ret = -EINVAL;
 			goto error;
 		}
 
-		if (frame_mmap(raw_virt_addr, vma)) {
-			v4l2_err(&atomisp_dev,
-				 "frame_mmap failed.\n");
+		if (frame_mmap(isp, raw_virt_addr, vma)) {
+			dev_err(isp->dev, "frame_mmap failed.\n");
 			raw_virt_addr->data_bytes = origin_size;
 			ret = -EAGAIN;
 			goto error;
@@ -779,8 +777,7 @@ static int atomisp_mmap(struct file *file, struct vm_area_struct *vma)
 	 * mmap for normal frames
 	 */
 	if (size != pipe->pix.sizeimage) {
-		v4l2_err(&atomisp_dev,
-			    "incorrect size for mmap ISP frames\n");
+		dev_err(isp->dev, "incorrect size for mmap ISP frames\n");
 		ret = -EINVAL;
 		goto error;
 	}

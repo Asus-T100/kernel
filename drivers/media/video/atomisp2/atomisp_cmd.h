@@ -46,7 +46,8 @@ struct sh_css_frame;
 /*
  * Helper function
  */
-void dump_sp_dmem(unsigned int addr, unsigned int size);
+void dump_sp_dmem(struct atomisp_device *isp, unsigned int addr,
+		  unsigned int size);
 struct camera_mipi_info *atomisp_to_sensor_mipi_info(struct v4l2_subdev *sd);
 struct atomisp_video_pipe *atomisp_to_video_pipe(struct video_device *dev);
 int atomisp_reset(struct atomisp_device *isp);
@@ -80,7 +81,8 @@ irqreturn_t atomisp_isr_thread(int irq, void *isp_ptr);
 const struct atomisp_format_bridge *get_atomisp_format_bridge_from_mbus(
 	enum v4l2_mbus_pixelcode mbus_code);
 int atomisp_is_mbuscode_raw(uint32_t code);
-int atomisp_get_frame_pgnr(const struct sh_css_frame *frame, u32 * p_pgnr);
+int atomisp_get_frame_pgnr(struct atomisp_device *isp,
+			   const struct sh_css_frame *frame, u32 * p_pgnr);
 void atomisp_delayed_init_work(struct work_struct *work);
 
 /*

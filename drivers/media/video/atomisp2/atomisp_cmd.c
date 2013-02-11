@@ -220,14 +220,14 @@ static unsigned short atomisp_get_sensor_fps(struct atomisp_device *isp)
  * 4. Wait for FREQVALID to be cleared by P-Unit.
  * 5. Wait for field ISPFREQSTAT40 in ISPSSPM1 turn to ratio set in 3.
  */
-static int write_target_freq_to_hw(int new_freq)
+static int write_target_freq_to_hw(struct atomisp_device *isp, int new_freq)
 {
 	int ratio, timeout;
 	u32 isp_sspm1 = 0;
+
 	isp_sspm1 = intel_mid_msgbus_read32(PUNIT_PORT, ISPSSPM1);
 	if (isp_sspm1 & ISP_FREQ_VALID_MASK) {
-		v4l2_dbg(3, dbg_level, &atomisp_dev,
-			  "clearing ISPSSPM1 valid bit.\n");
+		dev_dbg(isp->dev, "clearing ISPSSPM1 valid bit.\n");
 		intel_mid_msgbus_write32(PUNIT_PORT, ISPSSPM1,
 				    isp_sspm1 & ~(1 << ISP_FREQ_VALID_OFFSET));
 	}
@@ -245,13 +245,12 @@ static int write_target_freq_to_hw(int new_freq)
 	timeout = 10;
 	while ((isp_sspm1 & ISP_FREQ_VALID_MASK) && timeout) {
 		isp_sspm1 = intel_mid_msgbus_read32(PUNIT_PORT, ISPSSPM1);
-		v4l2_dbg(3, dbg_level, &atomisp_dev,
-			"waiting for ISPSSPM1 valid bit to be 0.\n");
+		dev_dbg(isp->dev, "waiting for ISPSSPM1 valid bit to be 0.\n");
 		udelay(100);
 		timeout--;
 	}
 	if (timeout == 0) {
-		v4l2_err(&atomisp_dev, "DFS failed due to HW error.\n");
+		dev_err(isp->dev, "DFS failed due to HW error.\n");
 		return -EINVAL;
 	}
 
@@ -259,14 +258,13 @@ static int write_target_freq_to_hw(int new_freq)
 	timeout = 10;
 	while (((isp_sspm1 >> ISP_FREQ_STAT_OFFSET) != ratio) && timeout) {
 		isp_sspm1 = intel_mid_msgbus_read32(PUNIT_PORT, ISPSSPM1);
-		v4l2_dbg(3, dbg_level, &atomisp_dev,
-				"waiting for ISPSSPM1 status bit to be 0x%x.\n",
-				 new_freq);
+		dev_dbg(isp->dev, "waiting for ISPSSPM1 status bit to be "
+				"0x%x.\n", new_freq);
 		udelay(100);
 		timeout--;
 	}
 	if (timeout == 0) {
-		v4l2_err(&atomisp_dev, "DFS target freq is rejected by HW.\n");
+		dev_err(isp->dev, "DFS target freq is rejected by HW.\n");
 		return -EINVAL;
 	}
 
@@ -281,7 +279,7 @@ int atomisp_freq_scaling(struct atomisp_device *isp, enum atomisp_dfs_mode mode)
 	unsigned short fps = 0;
 
 	if (isp->sw_contex.power_state != ATOM_ISP_POWER_UP) {
-		v4l2_err(&atomisp_dev, "DFS cannot proceed due to no power.\n");
+		dev_err(isp->dev, "DFS cannot proceed due to no power.\n");
 		return -EINVAL;
 	}
 
@@ -337,14 +335,13 @@ done:
 	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2)
 		new_freq = ISP_FREQ_320MHZ;
 
-	v4l2_dbg(3, dbg_level, &atomisp_dev,
-		 "DFS target frequency=%d.\n", new_freq);
+	dev_dbg(isp->dev, "DFS target frequency=%d.\n", new_freq);
+
 	if (new_freq == isp->sw_contex.running_freq) {
-		v4l2_dbg(3, dbg_level, &atomisp_dev,
-			 "ignoring DFS target freq.\n");
+		dev_dbg(isp->dev, "ignoring DFS target freq.\n");
 		return 0;
 	}
-	ret = write_target_freq_to_hw(new_freq);
+	ret = write_target_freq_to_hw(isp, new_freq);
 	if (!ret)
 		isp->sw_contex.running_freq = new_freq;
 	return ret;
@@ -357,11 +354,12 @@ int atomisp_reset(struct atomisp_device *isp)
 {
 	/* Reset ISP by power-cycling it */
 	int ret = 0;
-	v4l2_dbg(2, dbg_level, &atomisp_dev, "%s\n",__func__);
+
+	dev_dbg(isp->dev, "%s\n", __func__);
 	sh_css_suspend();
 	ret = pm_runtime_put_sync(isp->dev);
 	if (ret < 0) {
-		v4l2_err(&atomisp_dev, "can not disable ISP power\n");
+		dev_err(isp->dev, "can not disable ISP power\n");
 	} else {
 		ret = pm_runtime_get_sync(isp->dev);
 		if (ret < 0)
@@ -458,39 +456,37 @@ static void atomisp_sof_event(struct atomisp_device *isp)
 	v4l2_event_queue(isp->isp_subdev.subdev.devnode, &event);
 }
 
-static void print_csi_rx_errors(void)
+static void print_csi_rx_errors(struct atomisp_device *isp)
 {
 	u32 infos = 0;
+
 	sh_css_rx_get_interrupt_info(&infos);
 
-	v4l2_err(&atomisp_dev, "CSI Receiver errors:\n");
+	dev_err(isp->dev, "CSI Receiver errors:\n");
 	if (infos & SH_CSS_RX_IRQ_INFO_BUFFER_OVERRUN)
-		v4l2_err(&atomisp_dev, "  buffer overrun");
+		dev_err(isp->dev, "  buffer overrun");
 	if (infos & SH_CSS_RX_IRQ_INFO_ERR_SOT)
-		v4l2_err(&atomisp_dev,
-				"  start-of-transmission error");
+		dev_err(isp->dev, "  start-of-transmission error");
 	if (infos & SH_CSS_RX_IRQ_INFO_ERR_SOT_SYNC)
-		v4l2_err(&atomisp_dev,
-				"  start-of-transmission sync error");
+		dev_err(isp->dev, "  start-of-transmission sync error");
 	if (infos & SH_CSS_RX_IRQ_INFO_ERR_CONTROL)
-		v4l2_err(&atomisp_dev, "  control error");
+		dev_err(isp->dev, "  control error");
 	if (infos & SH_CSS_RX_IRQ_INFO_ERR_ECC_DOUBLE)
-		v4l2_err(&atomisp_dev, "  2 or more ECC errors");
+		dev_err(isp->dev, "  2 or more ECC errors");
 	if (infos & SH_CSS_RX_IRQ_INFO_ERR_CRC)
-		v4l2_err(&atomisp_dev, "  CRC mismatch");
+		dev_err(isp->dev, "  CRC mismatch");
 	if (infos & SH_CSS_RX_IRQ_INFO_ERR_UNKNOWN_ID)
-		v4l2_err(&atomisp_dev, "  unknown error");
+		dev_err(isp->dev, "  unknown error");
 	if (infos & SH_CSS_RX_IRQ_INFO_ERR_FRAME_SYNC)
-		v4l2_err(&atomisp_dev, "  frame sync error");
+		dev_err(isp->dev, "  frame sync error");
 	if (infos & SH_CSS_RX_IRQ_INFO_ERR_FRAME_DATA)
-		v4l2_err(&atomisp_dev, "  frame data error");
+		dev_err(isp->dev, "  frame data error");
 	if (infos & SH_CSS_RX_IRQ_INFO_ERR_DATA_TIMEOUT)
-		v4l2_err(&atomisp_dev, "  data timeout");
+		dev_err(isp->dev, "  data timeout");
 	if (infos & SH_CSS_RX_IRQ_INFO_ERR_UNKNOWN_ESC)
-		v4l2_err(&atomisp_dev,
-				"  unknown escape command entry");
+		dev_err(isp->dev, "  unknown escape command entry");
 	if (infos & SH_CSS_RX_IRQ_INFO_ERR_LINE_SYNC)
-		v4l2_err(&atomisp_dev, "  line sync error");
+		dev_err(isp->dev, "  line sync error");
 }
 
 /* interrupt handling function*/
@@ -503,10 +499,10 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 	int err;
 
 	err = sh_css_translate_interrupt(&irq_infos);
-	v4l2_dbg(5, dbg_level, &atomisp_dev, "irq:0x%x\n", irq_infos);
+	dev_dbg(isp->dev, "irq:0x%x\n", irq_infos);
 
 	if (err != sh_css_success) {
-		v4l2_warn(&atomisp_dev, "%s:failed to translate irq (err = %d,"
+		dev_warn(isp->dev, "%s: failed to translate irq (err = %d,"
 			  " infos = %d)\n", __func__, err, irq_infos);
 		return IRQ_NONE;
 	}
@@ -548,7 +544,8 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 #endif
 		/* handle mipi receiver error */
 		u32 rx_infos;
-		print_csi_rx_errors();
+
+		print_csi_rx_errors(isp);
 		sh_css_rx_get_interrupt_info(&rx_infos);
 		sh_css_rx_clear_interrupt_info(rx_infos);
 		/* TODO: handle SH_CSS_RX_IRQ_INFO_BUFFER_OVERRUN */
@@ -649,31 +646,28 @@ bool atomisp_buffers_queued(struct atomisp_device *isp)
 /* 0x100000 is the start of dmem inside SP */
 #define SP_DMEM_BASE	0x100000
 
-void dump_sp_dmem(unsigned int addr, unsigned int size)
+void dump_sp_dmem(struct atomisp_device *isp, unsigned int addr,
+		  unsigned int size)
 {
 	unsigned int data = 0;
-	unsigned int size32 = (size + (sizeof(u32) - 1)) / sizeof(u32);
-	v4l2_dbg(3, dbg_level, &atomisp_dev,
-		 "atomisp_io_base:%p\n", atomisp_io_base);
-	v4l2_dbg(3, dbg_level, &atomisp_dev,
-		 "%s, addr:0x%x, size: %d, size32: %d\n",
-		 __func__, addr, size, size32);
+	unsigned int size32 = DIV_ROUND_UP(size, sizeof(u32));
+
+	dev_dbg(isp->dev, "atomisp_io_base:%p\n", atomisp_io_base);
+	dev_dbg(isp->dev, "%s, addr:0x%x, size: %d, size32: %d\n", __func__,
+			addr, size, size32);
 	if (size32 * 4 + addr > 0x4000) {
-		v4l2_err(&atomisp_dev,
-			 "illegal size (%d) or addr (0x%x)\n",
-			 size32, addr);
+		dev_err(isp->dev, "illegal size (%d) or addr (0x%x)\n",
+				size32, addr);
 		return;
 	}
 	addr += SP_DMEM_BASE;
 	do {
 		data = _hrt_master_port_uload_32(addr);
 
-		v4l2_dbg(3, dbg_level, &atomisp_dev,
-			 "%s, \t [0x%x]:0x%x\n",
-			 __func__, addr, data);
+		dev_dbg(isp->dev, "%s, \t [0x%x]:0x%x\n", __func__, addr, data);
 		addr += sizeof(unsigned int);
 		size32 -= 1;
-	} while(size32 > 0);
+	} while (size32 > 0);
 }
 
 static struct videobuf_buffer *atomisp_css_frame_to_vbuf(
@@ -780,8 +774,7 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error,
 	    buf_type != SH_CSS_BUFFER_TYPE_OUTPUT_FRAME &&
 	    buf_type != SH_CSS_BUFFER_TYPE_RAW_OUTPUT_FRAME &&
 	    buf_type != SH_CSS_BUFFER_TYPE_VF_OUTPUT_FRAME) {
-		v4l2_err(&atomisp_dev,
-			"%s, unsupported buffer type: %d\n",
+		dev_err(isp->dev, "%s, unsupported buffer type: %d\n",
 			__func__, buf_type);
 		return;
 	}
@@ -790,9 +783,7 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error,
 			buf_type,
 			(void **)&buffer);
 	if (err) {
-		v4l2_err(&atomisp_dev,
-			"sh_css_dequeue_buffer failed: 0x%x\n",
-			err);
+		dev_err(isp->dev, "sh_css_dequeue_buffer failed: 0x%x\n", err);
 		return;
 	}
 
@@ -822,8 +813,8 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error,
 				if (err == sh_css_success)
 					isp->params.s3a_buf_data_valid = true;
 				else
-					v4l2_err(&atomisp_dev,
-						"get 3a statistics failed, not enough memory\n");
+					dev_err(isp->dev, "get 3a statistics "
+						"failed, not enough memory\n");
 			}
 			isp->s3a_bufs_in_css[css_pipe_id]--;
 			break;
@@ -852,9 +843,8 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error,
 			if (isp->sw_contex.invalid_vf_frame) {
 				error = true;
 				isp->sw_contex.invalid_vf_frame = 0;
-				v4l2_dbg(3, dbg_level, &atomisp_dev,
-				 "%s css has marked this vf frame as invalid\n",
-				 __func__);
+				dev_dbg(isp->dev, "%s css has marked this "
+					"vf frame as invalid\n", __func__);
 			}
 
 			pipe->buffers_in_css--;
@@ -862,25 +852,26 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error,
 			if (isp->params.flash_state == ATOMISP_FLASH_ONGOING) {
 				if (frame->flash_state
 				    == SH_CSS_FRAME_PARTIAL_FLASH)
-					v4l2_dbg(3, dbg_level, &atomisp_dev, "%s thumb partially flashed\n",__func__);
+					dev_dbg(isp->dev, "%s thumb partially "
+						"flashed\n", __func__);
 				else if (frame->flash_state
 					 == SH_CSS_FRAME_FULLY_FLASH)
-					v4l2_dbg(3, dbg_level, &atomisp_dev, "%s thumb completely flashed\n",__func__);
+					dev_dbg(isp->dev, "%s thumb completely "
+						"flashed\n", __func__);
 				else
-					v4l2_dbg(3, dbg_level, &atomisp_dev, "%s thumb no flash in this frame\n",__func__);
+					dev_dbg(isp->dev, "%s thumb no flash "
+						"in this frame\n", __func__);
 			}
 			vb = atomisp_css_frame_to_vbuf(pipe, buffer);
 			if (!vb)
-				v4l2_err(&atomisp_dev,
-						"dequeued frame unknown!");
+				dev_err(isp->dev, "dequeued frame unknown!");
 			break;
 		case SH_CSS_BUFFER_TYPE_OUTPUT_FRAME:
 			if (isp->sw_contex.invalid_frame) {
 				error = true;
 				isp->sw_contex.invalid_frame = 0;
-				v4l2_dbg(3, dbg_level, &atomisp_dev,
-				   "%s css has marked this frame as invalid\n",
-				   __func__);
+				dev_dbg(isp->dev, "%s css has marked this "
+					"frame as invalid\n", __func__);
 			}
 			pipe->buffers_in_css--;
 			vb = atomisp_css_frame_to_vbuf(pipe, buffer);
@@ -891,7 +882,7 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error,
 				    == SH_CSS_FRAME_PARTIAL_FLASH) {
 					isp->frame_status[vb->i] =
 						ATOMISP_FRAME_STATUS_FLASH_PARTIAL;
-					v4l2_dbg(3, dbg_level, &atomisp_dev,
+					dev_dbg(isp->dev,
 						 "%s partially flashed\n",
 						 __func__);
 				} else if (frame->flash_state
@@ -899,13 +890,13 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error,
 					isp->frame_status[vb->i] =
 						ATOMISP_FRAME_STATUS_FLASH_EXPOSED;
 					isp->params.num_flash_frames--;
-					v4l2_dbg(3, dbg_level, &atomisp_dev,
+					dev_dbg(isp->dev,
 						 "%s completely flashed\n",
 						 __func__);
 				} else {
 					isp->frame_status[vb->i] =
 						ATOMISP_FRAME_STATUS_OK;
-					v4l2_dbg(3, dbg_level, &atomisp_dev,
+					dev_dbg(isp->dev,
 						 "%s no flash in this frame\n",
 						 __func__);
 				}
@@ -920,8 +911,7 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error,
 			isp->params.last_frame_status = isp->frame_status[vb->i];
 
 			if (!vb)
-				v4l2_err(&atomisp_dev,
-						"dequeued frame unknown!");
+				dev_err(isp->dev, "dequeued frame unknown!");
 			break;
 		default:
 			break;
@@ -949,7 +939,7 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error,
 	if (requeue) {
 		err = sh_css_queue_buffer(css_pipe_id, buf_type, buffer);
 		if (err)
-			v4l2_err(&atomisp_dev,"%s, q to css fails: %d\n",
+			dev_err(isp->dev, "%s, q to css fails: %d\n",
 					__func__, err);
 		return;
 	}
@@ -1123,7 +1113,7 @@ void atomisp_setup_flash(struct atomisp_device *isp)
 		ctrl.value = FLASH_TIMEOUT;
 
 		if (v4l2_subdev_call(isp->flash, core, s_ctrl, &ctrl)) {
-			v4l2_err(&atomisp_dev, "flash timeout configure failed\n");
+			dev_err(isp->dev, "flash timeout configure failed\n");
 			return;
 		}
 		sh_css_request_flash();
@@ -1144,7 +1134,7 @@ irqreturn_t atomisp_isr_thread(int irq, void *isp_ptr)
 	bool reset_wdt_timer = false;
 	DEFINE_KFIFO(events, struct atomisp_css_event, ATOMISP_CSS_EVENTS_MAX);
 
-	v4l2_dbg(5, dbg_level, &atomisp_dev, ">%s\n", __func__);
+	dev_dbg(isp->dev, ">%s\n", __func__);
 	mutex_lock(&isp->mutex);
 
 	spin_lock_irqsave(&isp->lock, flags);
@@ -1238,7 +1228,7 @@ out:
 		v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
 				video, s_stream, 1);
 
-	v4l2_dbg(5, dbg_level, &atomisp_dev, "<%s\n", __func__);
+	dev_dbg(isp->dev, "<%s\n", __func__);
 
 	return IRQ_HANDLED;
 }
@@ -1247,12 +1237,11 @@ out:
  * utils for buffer allocation/free
  */
 
-int atomisp_get_frame_pgnr(const struct sh_css_frame *frame, u32 *p_pgnr)
+int atomisp_get_frame_pgnr(struct atomisp_device *isp,
+			   const struct sh_css_frame *frame, u32 *p_pgnr)
 {
 	if (!frame) {
-		v4l2_err(&atomisp_dev,
-			    "%s: NULL frame pointer ERROR.\n",
-			    __func__);
+		dev_err(isp->dev, "%s: NULL frame pointer ERROR.\n", __func__);
 		return -EINVAL;
 	}
 
@@ -1498,8 +1487,7 @@ int atomisp_nr(struct atomisp_device *isp, int flag,
 		return -EINVAL;
 
 	if (sizeof(*arg) != sizeof(isp->params.nr_config)) {
-		v4l2_err(&atomisp_dev,
-			"%s: incompatible param.\n", __func__);
+		dev_err(isp->dev, "%s: incompatible param.\n", __func__);
 		return -EINVAL;
 	}
 
@@ -1528,8 +1516,7 @@ int atomisp_tnr(struct atomisp_device *isp, int flag,
 		return -EINVAL;
 
 	if (sizeof(*config) != sizeof(isp->params.tnr_config)) {
-		v4l2_err(&atomisp_dev,
-			"%s: incompatible param.\n", __func__);
+		dev_err(isp->dev, "%s: incompatible param.\n", __func__);
 		return -EINVAL;
 	}
 
@@ -1563,38 +1550,33 @@ int atomisp_histogram(struct atomisp_device *isp, int flag, void *config)
 		return -EINVAL;
 
 	if (sizeof(*arg) != sizeof(*histogram)) {
-		v4l2_err(&atomisp_dev,
-			"%s: incompatible param.\n", __func__);
+		dev_err(isp->dev, "%s: incompatible param.\n", __func__);
 		return -EINVAL;
 	}
 
 	if (flag == 0) {
 		buffer = kzalloc(2048 * sizeof(unsigned int), GFP_KERNEL);
 		if (buffer == NULL) {
-			v4l2_err(&atomisp_dev,
-					"buffer allocate error\n");
+			dev_err(isp->dev, "buffer allocate error\n");
 			return -ENOMEM;
 		}
 
 		ret = sh_css_histogram_allocate(2048, &histogram);
 		if (ret != sh_css_success) {
-			v4l2_err(&atomisp_dev,
-					"sh_css_histogram_allocate failed\n");
+			dev_err(isp->dev, "sh_css_histogram_allocate failed\n");
 			ret = -ENOMEM;
 			goto buffer_free;
 		}
 
 		if (isp->vf_frame == NULL) {
-			v4l2_err(&atomisp_dev,
-					"No frame for histogram\n");
+			dev_err(isp->dev, "No frame for histogram\n");
 			ret = -EINVAL;
 			goto histogram_free;
 		}
 
 		ret = sh_css_histogram_start(isp->vf_frame, histogram);
 		if (ret != sh_css_success) {
-			v4l2_err(&atomisp_dev,
-					"sh_css_get_y_histogram failed\n");
+			dev_err(isp->dev, "sh_css_get_y_histogram failed\n");
 			ret = -EIO;
 			goto histogram_free;
 		}
@@ -1603,15 +1585,14 @@ int atomisp_histogram(struct atomisp_device *isp, int flag, void *config)
 		ret = hmm_load(histogram->data, buffer,
 			histogram->num_elements * sizeof(unsigned int));
 		if (ret) {
-			v4l2_err(&atomisp_dev, "hmm_load failed\n");
+			dev_err(isp->dev, "hmm_load failed\n");
 			goto histogram_free;
 		}
 
 		ret = copy_to_user(arg->data, buffer,
 			histogram->num_elements * sizeof(unsigned int));
 		if (ret) {
-			v4l2_err(&atomisp_dev,
-					"copy to user failed\n");
+			dev_err(isp->dev, "copy to user failed\n");
 			ret = -EFAULT;
 			goto histogram_free;
 		}
@@ -1642,8 +1623,7 @@ int atomisp_black_level(struct atomisp_device *isp, int flag,
 		return -EINVAL;
 
 	if (sizeof(*config) != sizeof(isp->params.ob_config)) {
-		v4l2_err(&atomisp_dev,
-			"%s: incompatible param.\n", __func__);
+		dev_err(isp->dev, "%s: incompatible param.\n", __func__);
 		return -EINVAL;
 	}
 
@@ -1673,8 +1653,7 @@ int atomisp_ee(struct atomisp_device *isp, int flag,
 		return -EINVAL;
 
 	if (sizeof(*config) != sizeof(isp->params.ee_config)) {
-		v4l2_err(&atomisp_dev,
-			"%s: incompatible param.\n", __func__);
+		dev_err(isp->dev, "%s: incompatible param.\n", __func__);
 		return -EINVAL;
 	}
 
@@ -1704,8 +1683,7 @@ int atomisp_gamma(struct atomisp_device *isp, int flag,
 		return -EINVAL;
 
 	if (sizeof(*config) != sizeof(isp->params.gamma_table)) {
-		v4l2_err(&atomisp_dev,
-			"%s: incompatible param.\n", __func__);
+		dev_err(isp->dev, "%s: incompatible param.\n", __func__);
 		return -EINVAL;
 	}
 
@@ -1734,8 +1712,7 @@ int atomisp_ctc(struct atomisp_device *isp, int flag,
 		return -EINVAL;
 
 	if (sizeof(*config) != sizeof(isp->params.ctc_table)) {
-		v4l2_err(&atomisp_dev,
-			"%s: incompatible param.\n", __func__);
+		dev_err(isp->dev, "%s: incompatible param.\n", __func__);
 		return -EINVAL;
 	}
 
@@ -1761,8 +1738,7 @@ int atomisp_gamma_correction(struct atomisp_device *isp, int flag,
 	struct atomisp_gc_config *config)
 {
 	if (sizeof(*config) != sizeof(isp->params.gc_config)) {
-		v4l2_err(&atomisp_dev,
-			"%s: incompatible param.\n", __func__);
+		dev_err(isp->dev, "%s: incompatible param.\n", __func__);
 		return -EINVAL;
 	}
 
@@ -2018,6 +1994,7 @@ static int atomisp_compare_grid(struct atomisp_device *isp,
 				struct atomisp_grid_info *atomgrid)
 {
 	struct atomisp_grid_info tmp;
+
 	memset(&tmp, 0, sizeof(tmp));
 	atomisp_curr_user_grid_info(isp, &tmp);
 	return memcmp(atomgrid, &tmp, sizeof(tmp));
@@ -2045,7 +2022,7 @@ int atomisp_gdc_cac_table(struct atomisp_device *isp, int flag,
 				tab->coordinates_x[i], tab->height *
 				tab->width * sizeof(*tab->coordinates_x[i]));
 			if (ret) {
-				v4l2_err(&atomisp_dev,
+				dev_err(isp->dev,
 					"Failed to copy to User for x\n");
 				return -EFAULT;
 			}
@@ -2053,7 +2030,7 @@ int atomisp_gdc_cac_table(struct atomisp_device *isp, int flag,
 				tab->coordinates_y[i], tab->height *
 				tab->width * sizeof(*tab->coordinates_y[i]));
 			if (ret) {
-				v4l2_err(&atomisp_dev,
+				dev_err(isp->dev,
 					"Failed to copy to User for y\n");
 				return -EFAULT;
 			}
@@ -2073,7 +2050,7 @@ int atomisp_gdc_cac_table(struct atomisp_device *isp, int flag,
 						  config->height);
 
 		if (!tab) {
-			v4l2_err(&atomisp_dev, "out of memory\n");
+			dev_err(isp->dev, "out of memory\n");
 			return -EINVAL;
 		}
 
@@ -2083,7 +2060,7 @@ int atomisp_gdc_cac_table(struct atomisp_device *isp, int flag,
 				config->height * config->width *
 				sizeof(*config->coordinates_x[i]));
 			if (ret) {
-				v4l2_err(&atomisp_dev,
+				dev_err(isp->dev,
 				"Failed to copy from User for x, ret %d\n",
 				ret);
 				sh_css_morph_table_free(tab);
@@ -2094,7 +2071,7 @@ int atomisp_gdc_cac_table(struct atomisp_device *isp, int flag,
 				config->height * config->width *
 				sizeof(*config->coordinates_y[i]));
 			if (ret) {
-				v4l2_err(&atomisp_dev,
+				dev_err(isp->dev,
 				"Failed to copy from User for y, ret is %d\n",
 				ret);
 				sh_css_morph_table_free(tab);
@@ -2118,8 +2095,7 @@ int atomisp_macc_table(struct atomisp_device *isp, int flag,
 		return -EINVAL;
 
 	if (sizeof(config->table) != sizeof(*macc_table)) {
-		v4l2_err(&atomisp_dev,
-			"%s: incompatible param.\n", __func__);
+		dev_err(isp->dev, "%s: incompatible param.\n", __func__);
 		return -EINVAL;
 	}
 
@@ -2275,7 +2251,7 @@ int atomisp_3a_stat(struct atomisp_device *isp, int flag,
 
 	/* This is done in the atomisp_s3a_buf_done() */
 	if(!isp->params.s3a_buf_data_valid) {
-		v4l2_err(&atomisp_dev, "3a statistics is not valid.\n");
+		dev_err(isp->dev, "3a statistics is not valid.\n");
 		return -EAGAIN;
 	}
 
@@ -2283,8 +2259,8 @@ int atomisp_3a_stat(struct atomisp_device *isp, int flag,
 			   isp->params.s3a_output_buf,
 			   isp->params.s3a_output_bytes);
 	if (ret) {
-		v4l2_err(&atomisp_dev,
-			    "copy to user failed: copied %lu bytes\n", ret);
+		dev_err(isp->dev, "copy to user failed: copied %lu bytes\n",
+				ret);
 		return -EFAULT;
 	}
 	return 0;
@@ -2547,8 +2523,7 @@ int atomisp_param(struct atomisp_device *isp, int flag,
 	/* Read parameter for 3A bianry info */
 	if (flag == 0) {
 		if (&config->info == NULL) {
-			v4l2_err(&atomisp_dev,
-				    "ERROR: NULL pointer in grid_info\n");
+			dev_err(isp->dev, "ERROR: NULL pointer in grid_info\n");
 			return -EINVAL;
 		}
 		atomisp_curr_user_grid_info(isp, &config->info);
@@ -2556,23 +2531,23 @@ int atomisp_param(struct atomisp_device *isp, int flag,
 	}
 
 	if (sizeof(config->wb_config) != sizeof(isp->params.wb_config))
-		goto INVALID_PARM;
+		goto invalid_parm;
 	if (sizeof(config->cc_config) != sizeof(isp->params.cc_config))
-		goto INVALID_PARM;
+		goto invalid_parm;
 	if (sizeof(config->ob_config) != sizeof(isp->params.ob_config))
-		goto INVALID_PARM;
+		goto invalid_parm;
 	if (sizeof(config->de_config) != sizeof(isp->params.de_config))
-		goto INVALID_PARM;
+		goto invalid_parm;
 	if (sizeof(config->ce_config) != sizeof(isp->params.ce_config))
-		goto INVALID_PARM;
+		goto invalid_parm;
 	if (sizeof(config->dp_config) != sizeof(isp->params.dp_config))
-		goto INVALID_PARM;
+		goto invalid_parm;
 	if (sizeof(config->nr_config) != sizeof(isp->params.nr_config))
-		goto INVALID_PARM;
+		goto invalid_parm;
 	if (sizeof(config->ee_config) != sizeof(isp->params.ee_config))
-		goto INVALID_PARM;
+		goto invalid_parm;
 	if (sizeof(config->tnr_config) != sizeof(isp->params.tnr_config))
-		goto INVALID_PARM;
+		goto invalid_parm;
 
 	memcpy(&isp->params.wb_config, &config->wb_config,
 	       sizeof(struct sh_css_wb_config));
@@ -2619,9 +2594,8 @@ int atomisp_param(struct atomisp_device *isp, int flag,
 
 	return 0;
 
-INVALID_PARM:
-	v4l2_err(&atomisp_dev,
-		"%s: incompatible param.\n", __func__);
+invalid_parm:
+	dev_err(isp->dev, "%s: incompatible param.\n", __func__);
 	return -EINVAL;
 }
 
@@ -2752,8 +2726,7 @@ int atomisp_bad_pixel_param(struct atomisp_device *isp, int flag,
 		return -EINVAL;
 
 	if (sizeof(*config) != sizeof(isp->params.dp_config)) {
-		v4l2_err(&atomisp_dev,
-			"%s: incompatible param.\n", __func__);
+		dev_err(isp->dev, "%s: incompatible param.\n", __func__);
 		return -EINVAL;
 	}
 
@@ -3001,8 +2974,7 @@ int atomisp_false_color_param(struct atomisp_device *isp, int flag,
 		return -EINVAL;
 
 	if (sizeof(*config) != sizeof(isp->params.de_config)) {
-		v4l2_err(&atomisp_dev,
-			"%s: incompatible param.\n", __func__);
+		dev_err(isp->dev, "%s: incompatible param.\n", __func__);
 		return -EINVAL;
 	}
 
@@ -3029,8 +3001,7 @@ int atomisp_white_balance_param(struct atomisp_device *isp, int flag,
 		return -EINVAL;
 
 	if (sizeof(*config) != sizeof(isp->params.wb_config)) {
-		v4l2_err(&atomisp_dev,
-			"%s: incompatible param.\n", __func__);
+		dev_err(isp->dev, "%s: incompatible param.\n", __func__);
 		return -EINVAL;
 	}
 
@@ -3050,13 +3021,12 @@ int atomisp_white_balance_param(struct atomisp_device *isp, int flag,
 int atomisp_3a_config_param(struct atomisp_device *isp, int flag,
 			    struct atomisp_3a_config *config)
 {
-	v4l2_dbg(5, dbg_level, &atomisp_dev, ">%s %d\n", __func__, flag);
+	dev_dbg(isp->dev, ">%s %d\n", __func__, flag);
 	if (config == NULL)
 		return -EINVAL;
 
 	if (sizeof(*config) != sizeof(isp->params.s3a_config)) {
-		v4l2_err(&atomisp_dev,
-			"%s: incompatible param.\n", __func__);
+		dev_err(isp->dev, "%s: incompatible param.\n", __func__);
 		return -EINVAL;
 	}
 
@@ -3071,7 +3041,7 @@ int atomisp_3a_config_param(struct atomisp_device *isp, int flag,
 		/* isp->params.s3a_buf_data_valid = false; */
 	}
 
-	v4l2_dbg(5, dbg_level, &atomisp_dev, "<%s %d\n", __func__, flag);
+	dev_dbg(isp->dev, "<%s %d\n", __func__, flag);
 	return 0;
 }
 
@@ -3115,8 +3085,7 @@ int atomisp_digital_zoom(struct atomisp_device *isp, int flag, __s32 *value)
 
 		zoom = max_zoom - min_t(u32, max_zoom, (*value));
 
-		v4l2_dbg(3, dbg_level, &atomisp_dev, "%s, zoom: %d\n",
-			 __func__, zoom);
+		dev_dbg(isp->dev, "%s, zoom: %d\n", __func__, zoom);
 		sh_css_set_zoom_factor(zoom, zoom);
 		isp->params.css_update_params_needed = true;
 	}
@@ -3145,10 +3114,10 @@ int atomisp_get_sensor_mode_data(struct atomisp_device *isp,
 int atomisp_get_fmt(struct video_device *vdev, struct v4l2_format *f)
 {
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
+	struct atomisp_device *isp = video_get_drvdata(vdev);
 
 	if (f->type != V4L2_BUF_TYPE_VIDEO_CAPTURE) {
-		v4l2_err(&atomisp_dev,
-			    "unsupported v4l2 buf type\n");
+		dev_err(isp->dev, "unsupported v4l2 buf type\n");
 		return -EINVAL;
 	}
 
@@ -3169,7 +3138,7 @@ int atomisp_try_fmt(struct video_device *vdev, struct v4l2_format *f,
 	int ret;
 
 	if (f->type != V4L2_BUF_TYPE_VIDEO_CAPTURE) {
-		v4l2_err(&atomisp_dev, "Wrong v4l2 buf type\n");
+		dev_err(isp->dev, "Wrong v4l2 buf type\n");
 		return -EINVAL;
 	}
 
@@ -3178,7 +3147,7 @@ int atomisp_try_fmt(struct video_device *vdev, struct v4l2_format *f,
 
 	fmt = atomisp_get_format_bridge(f->fmt.pix.pixelformat);
 	if (fmt == NULL) {
-		v4l2_err(&atomisp_dev, "unsupported pixelformat!\n");
+		dev_err(isp->dev, "unsupported pixelformat!\n");
 		fmt = atomisp_output_fmts;
 	}
 
@@ -3252,12 +3221,12 @@ atomisp_try_fmt_file(struct atomisp_device *isp, struct v4l2_format *f)
 	u32 depth;
 
 	if (f->type != V4L2_BUF_TYPE_VIDEO_OUTPUT) {
-		v4l2_err(&atomisp_dev, "Wrong v4l2 buf type\n");
+		dev_err(isp->dev, "Wrong v4l2 buf type\n");
 		return -EINVAL;
 	}
 
 	if (!atomisp_get_format_bridge(pixelformat)) {
-		v4l2_err(&atomisp_dev, "Wrong output pixelformat\n");
+		dev_err(isp->dev, "Wrong output pixelformat\n");
 		return -EINVAL;
 	}
 
@@ -3266,7 +3235,7 @@ atomisp_try_fmt_file(struct atomisp_device *isp, struct v4l2_format *f)
 	if (!field || field == V4L2_FIELD_ANY)
 		field = V4L2_FIELD_NONE;
 	else if (field != V4L2_FIELD_NONE) {
-		v4l2_err(&atomisp_dev, "Wrong output field\n");
+		dev_err(isp->dev, "Wrong output field\n");
 		return -EINVAL;
 	}
 
@@ -3282,7 +3251,8 @@ atomisp_try_fmt_file(struct atomisp_device *isp, struct v4l2_format *f)
 	return 0;
 }
 
-static mipi_port_ID_t __get_mipi_port(enum atomisp_camera_port port)
+static mipi_port_ID_t __get_mipi_port(struct atomisp_device *isp,
+				      enum atomisp_camera_port port)
 {
 	switch (port) {
 	case ATOMISP_CAMERA_PORT_PRIMARY:
@@ -3294,13 +3264,13 @@ static mipi_port_ID_t __get_mipi_port(enum atomisp_camera_port port)
 			return MIPI_PORT1_ID + 1;
 		/* go through down for else case */
 	default:
-		v4l2_err(&atomisp_dev, "unsupported port: %d\n", port);
+		dev_err(isp->dev, "unsupported port: %d\n", port);
 		return MIPI_PORT0_ID;
 	}
 }
 
-static inline void
-atomisp_set_sensor_mipi_to_isp(struct camera_mipi_info *mipi_info)
+static inline void atomisp_set_sensor_mipi_to_isp(struct atomisp_device *isp,
+		struct camera_mipi_info *mipi_info)
 {
 	/* Compatibility for sensors which provide no media bus code
 	 * in s_mbus_framefmt() nor support pad formats. */
@@ -3308,7 +3278,7 @@ atomisp_set_sensor_mipi_to_isp(struct camera_mipi_info *mipi_info)
 		sh_css_input_set_bayer_order(mipi_info->raw_bayer_order);
 		sh_css_input_set_format(mipi_info->input_format);
 	}
-	sh_css_input_configure_port(__get_mipi_port(mipi_info->port),
+	sh_css_input_configure_port(__get_mipi_port(isp, mipi_info->port),
 				    mipi_info->num_lanes, 0xffff4);
 }
 
@@ -3374,7 +3344,7 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 			dev_err(isp->dev, "mipi_info is NULL\n");
 			return -EINVAL;
 		}
-		atomisp_set_sensor_mipi_to_isp(mipi_info);
+		atomisp_set_sensor_mipi_to_isp(isp, mipi_info);
 
 		if ((format->sh_fmt == SH_CSS_FRAME_FORMAT_RAW) &&
 		     raw_output_format_match_input(
@@ -3472,7 +3442,7 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 		if (!isp->params.continuous_vf &&
 		    isp->isp_subdev.run_mode->val
 		    != ATOMISP_RUN_MODE_STILL_CAPTURE) {
-			v4l2_err(&atomisp_dev,
+			dev_err(isp->dev,
 				    "Need to set the running mode first\n");
 			isp->isp_subdev.run_mode->val =
 				ATOMISP_RUN_MODE_STILL_CAPTURE;
@@ -3602,7 +3572,7 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 
 	if (f->type != V4L2_BUF_TYPE_VIDEO_CAPTURE &&
 	    f->type != V4L2_BUF_TYPE_PRIVATE) {
-		v4l2_err(&atomisp_dev, "Wrong v4l2 buf type\n");
+		dev_err(isp->dev, "Wrong v4l2 buf type\n");
 		return -EINVAL;
 	}
 
@@ -3872,7 +3842,7 @@ int atomisp_set_fmt_file(struct video_device *vdev, struct v4l2_format *f)
 	pipe->pix = f->fmt.pix;
 	sh_css_input_set_mode(SH_CSS_INPUT_MODE_FIFO);
 	sh_css_input_configure_port(
-		__get_mipi_port(ATOMISP_CAMERA_PORT_PRIMARY), 2, 0xffff4);
+		__get_mipi_port(isp, ATOMISP_CAMERA_PORT_PRIMARY), 2, 0xffff4);
 
 	ffmt.width = f->fmt.pix.width;
 	ffmt.height = f->fmt.pix.height;
@@ -3970,7 +3940,8 @@ int atomisp_ospm_dphy_down(struct atomisp_device *isp)
 	int timeout = 100;
 	bool idle;
 	u32 reg;
-	v4l2_dbg(3, dbg_level, &atomisp_dev, "%s\n", __func__);
+
+	dev_dbg(isp->dev, "%s\n", __func__);
 
 	/* if ISP timeout, we can force powerdown */
 	if (isp->isp_timeout)
@@ -3980,16 +3951,14 @@ int atomisp_ospm_dphy_down(struct atomisp_device *isp)
 		goto done;
 
 	idle = sh_css_hrt_system_is_idle();
-	v4l2_dbg(3, dbg_level, &atomisp_dev,
-		 "%s system_is_idle:%d\n", __func__, idle);
+	dev_dbg(isp->dev, "%s system_is_idle:%d\n", __func__, idle);
 	while (!idle && timeout--) {
 		udelay(20);
 		idle = sh_css_hrt_system_is_idle();
 	}
 
 	if (timeout < 0) {
-		v4l2_err(&atomisp_dev,
-			 "Timeout to stop ISP HW\n");
+		dev_err(isp->dev, "Timeout to stop ISP HW\n");
 		/* force power down here */
 		/* return -EINVAL; */
 	}
@@ -4021,7 +3990,7 @@ done:
 int atomisp_ospm_dphy_up(struct atomisp_device *isp)
 {
 	u32 pwr_cnt = 0;
-	v4l2_dbg(3, dbg_level, &atomisp_dev, "%s\n", __func__);
+	dev_dbg(isp->dev, "%s\n", __func__);
 
 	/* MRFLD IUNIT DPHY is located in an always-power-on island */
 	if (!IS_ISP2400) {
@@ -4047,22 +4016,21 @@ int atomisp_exif_makernote(struct atomisp_device *isp,
 	ctrl.id = V4L2_CID_FOCAL_ABSOLUTE;
 	if (v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
 				 core, g_ctrl, &ctrl))
-		v4l2_warn(&atomisp_dev, "failed to g_ctrl for focal length\n");
+		dev_warn(isp->dev, "failed to g_ctrl for focal length\n");
 	else
 		config->focal_length = ctrl.value;
 
 	ctrl.id = V4L2_CID_FNUMBER_ABSOLUTE;
 	if (v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
 				core, g_ctrl, &ctrl))
-		v4l2_warn(&atomisp_dev, "failed to g_ctrl for f-number\n");
+		dev_warn(isp->dev, "failed to g_ctrl for f-number\n");
 	else
 		config->f_number_curr = ctrl.value;
 
 	ctrl.id = V4L2_CID_FNUMBER_RANGE;
 	if (v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
 				core, g_ctrl, &ctrl))
-		v4l2_warn(&atomisp_dev,
-				"failed to g_ctrl for f number range\n");
+		dev_warn(isp->dev, "failed to g_ctrl for f number range\n");
 	else
 		config->f_number_range = ctrl.value;
 
@@ -4096,14 +4064,14 @@ int atomisp_offline_capture_configure(struct atomisp_device *isp,
 int atomisp_flash_enable(struct atomisp_device *isp, int num_frames)
 {
 	if (num_frames < 0) {
-		v4l2_dbg(3, dbg_level, &atomisp_dev,
-			 "%s ERROR: num_frames: %d\n", __func__, num_frames);
+		dev_dbg(isp->dev, "%s ERROR: num_frames: %d\n", __func__,
+				num_frames);
 		return -EINVAL;
 	}
 	/* a requested flash is still in progress. */
 	if (num_frames && isp->params.flash_state != ATOMISP_FLASH_IDLE) {
-		v4l2_dbg(3, dbg_level, &atomisp_dev, "%s flash busy: %d frames left: %d\n",__func__,
-				isp->params.flash_state,
+		dev_dbg(isp->dev, "%s flash busy: %d frames left: %d\n",
+				__func__, isp->params.flash_state,
 				isp->params.num_flash_frames);
 		return -EBUSY;
 	}
