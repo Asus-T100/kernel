@@ -1,4 +1,5 @@
 /*
+#ifdef __KERNEL__
  * Devices PM QoS constraints management
  *
  * Copyright (C) 2011 Texas Instruments, Inc.
