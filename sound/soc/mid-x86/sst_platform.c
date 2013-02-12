@@ -492,6 +492,15 @@ static struct snd_soc_dai_driver sst_platform_dai[] = {
 		.formats = SNDRV_PCM_FMTBIT_CONTINUOUS,
 	},
 },
+{
+	.name = "Virtual-cpu-dai",
+	.playback = {
+		.channels_min = SST_STEREO,
+		.channels_max = SST_STEREO,
+		.rates = SNDRV_PCM_RATE_48000,
+		.formats = SNDRV_PCM_FMTBIT_S16_LE,
+	},
+},
 };
 
 static int sst_platform_open(struct snd_pcm_substream *substream)
