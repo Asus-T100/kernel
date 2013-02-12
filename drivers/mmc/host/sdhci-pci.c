@@ -1498,7 +1498,7 @@ static struct sdhci_pci_slot * __devinit sdhci_pci_probe_slot(
 	slot->cd_gpio = -EINVAL;
 
 	/* Retrieve platform data if there is any */
-	if (pdata->slotno == slotno)
+	if (pdata && (pdata->slotno == slotno))
 		slot->data = pdata;
 
 	if (slot->data) {
