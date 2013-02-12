@@ -519,13 +519,6 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 		goto do_unmap_dram;
 	pr_debug("Registered IRQ 0x%x\n", pci->irq);
 
-	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID) {
-		ret = intel_sst_register_compress(sst_drv_ctx);
-		if (ret) {
-			pr_err("couldn't register compress device\n");
-			goto do_free_irq;
-		}
-	}
 	/*Register LPE Control as misc driver*/
 	ret = misc_register(&lpe_ctrl);
 	if (ret) {
@@ -653,8 +646,6 @@ static void __devexit intel_sst_remove(struct pci_dev *pci)
 	pci_dev_put(sst_drv_ctx->pci);
 	sst_set_fw_state_locked(sst_drv_ctx, SST_UN_INIT);
 	misc_deregister(&lpe_ctrl);
-	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID)
-		intel_sst_remove_compress(sst_drv_ctx);
 	free_irq(pci->irq, sst_drv_ctx);
 	iounmap(sst_drv_ctx->dram);
 	iounmap(sst_drv_ctx->iram);

@@ -36,10 +36,18 @@
 #include <linux/pm_qos_params.h>
 #include <linux/intel_mid_pm.h>
 #include <sound/intel_sst_ioctl.h>
+#include <sound/compress_offload.h>
 #include <sound/pcm.h>
 #include "../sst_platform.h"
 #include "intel_sst_fw_ipc.h"
 #include "intel_sst_common.h"
+
+#define NUM_CODEC 2
+#define MIN_FRAGMENT 2
+#define MAX_FRAGMENT 4
+#define MIN_FRAGMENT_SIZE (50 * 1024)
+#define MAX_FRAGMENT_SIZE (1024 * 1024)
+#define SST_GET_BYTES_PER_SAMPLE(pcm_wd_sz)  (((pcm_wd_sz + 15) >> 4) << 1)
 
 static void sst_restore_fw_context(void)
 {
@@ -444,6 +452,207 @@ static int sst_open_pcm_stream(struct snd_sst_params *str_param)
 	return retval;
 }
 
+static int sst_cdev_open(struct snd_sst_params *str_params,
+		struct sst_compress_cb *cb)
+{
+	int str_id, retval;
+	struct stream_info *stream;
+
+	retval = intel_sst_check_device();
+	if (retval)
+		return retval;
+
+	str_id = sst_get_stream(str_params);
+	if (str_id > 0) {
+		pr_debug("stream allocated in sst_cdev_open %d\n", str_id);
+		stream = &sst_drv_ctx->streams[str_id];
+		stream->compr_cb = cb->compr_cb;
+		stream->compr_cb_param = cb->param;
+	} else {
+		pr_err("stream encountered error during alloc %d\n", str_id);
+		str_id = -EINVAL;
+	}
+	return str_id;
+}
+
+static int sst_cdev_close(unsigned int str_id)
+{
+	int retval;
+	retval = sst_free_stream(str_id);
+	pm_runtime_put(&sst_drv_ctx->pci->dev);
+	return retval;
+
+}
+
+static int sst_cdev_ack(unsigned int str_id, unsigned long bytes)
+{
+	struct stream_info *stream;
+	struct snd_sst_tstamp fw_tstamp = {0,};
+	int offset;
+	void __iomem *addr;
+
+	pr_debug("sst:  ackfor %d\n", str_id);
+	stream = get_stream_info(str_id);
+	if (!stream)
+		return -EINVAL;
+
+	/* update bytes sent */
+	stream->cumm_bytes += bytes;
+	pr_debug("bytes copied %d inc by %ld\n", stream->cumm_bytes, bytes);
+
+	memcpy_fromio(&fw_tstamp,
+		((void *)(sst_drv_ctx->mailbox + sst_drv_ctx->tstamp)
+		+(str_id * sizeof(fw_tstamp))),
+		sizeof(fw_tstamp));
+
+	fw_tstamp.bytes_copied = stream->cumm_bytes;
+	pr_debug("bytes sent to fw %d inc by %ld\n", fw_tstamp.bytes_copied,
+							 bytes);
+
+	addr =  ((void *)(sst_drv_ctx->mailbox + sst_drv_ctx->tstamp)) +
+			(str_id * sizeof(fw_tstamp));
+	offset =  offsetof(struct snd_sst_tstamp, bytes_copied);
+
+	if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID)
+		sst_shim_write64(addr, offset, fw_tstamp.bytes_copied);
+	else
+		sst_shim_write(addr, offset, fw_tstamp.bytes_copied);
+	return 0;
+
+}
+
+static int sst_cdev_set_metadata(unsigned int str_id,
+				struct snd_compr_metadata *metadata)
+{
+	int retval = 0;
+	struct ipc_post *msg = NULL;
+	struct stream_info *str_info;
+
+	pr_debug("set metadata for stream %d\n", str_id);
+
+	str_info = get_stream_info(str_id);
+	if (!str_info)
+		return -EINVAL;
+
+	if (sst_create_large_msg(&msg))
+		return -ENOMEM;
+
+	sst_fill_header(&msg->header, IPC_IA_SET_STREAM_PARAMS, 1, str_id);
+	msg->header.part.data = sizeof(u32) + sizeof(*metadata);
+	memcpy(msg->mailbox_data, &msg->header, sizeof(u32));
+	memcpy(msg->mailbox_data + sizeof(u32), metadata, sizeof(*metadata));
+	sst_drv_ctx->ops->sync_post_message(msg);
+	return retval;
+}
+
+static int sst_cdev_control(unsigned int cmd, unsigned int str_id)
+{
+	pr_debug("recieved cmd %d on stream %d\n", cmd, str_id);
+	switch (cmd) {
+	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
+		return sst_pause_stream(str_id);
+	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
+		return sst_resume_stream(str_id);
+	case SNDRV_PCM_TRIGGER_START: {
+		struct stream_info *str_info;
+		str_info = get_stream_info(str_id);
+		if (!str_info)
+			return -EINVAL;
+		str_info->prev = str_info->status;
+		str_info->status = STREAM_RUNNING;
+		return sst_start_stream(str_id);
+	}
+	case SNDRV_PCM_TRIGGER_STOP:
+		return sst_drop_stream(str_id);
+	case SND_COMPR_TRIGGER_DRAIN:
+		return sst_drain_stream(str_id, false);
+	case SND_COMPR_TRIGGER_PARTIAL_DRAIN:
+		return sst_drain_stream(str_id, true);
+	}
+	return -EINVAL;
+}
+
+static int sst_cdev_tstamp(unsigned int str_id, struct snd_compr_tstamp *tstamp)
+{
+	struct snd_sst_tstamp fw_tstamp = {0,};
+	struct stream_info *stream;
+
+	memcpy_fromio(&fw_tstamp,
+		((void *)(sst_drv_ctx->mailbox + SST_TIME_STAMP)
+		+(str_id * sizeof(fw_tstamp))),
+		sizeof(fw_tstamp));
+
+	stream = get_stream_info(str_id);
+	if (!stream)
+		return -EINVAL;
+	pr_debug("rb_counter %d in bytes\n", fw_tstamp.ring_buffer_counter);
+
+	tstamp->copied_total = fw_tstamp.ring_buffer_counter;
+	tstamp->pcm_frames = fw_tstamp.frames_decoded;
+	tstamp->pcm_io_frames = fw_tstamp.hardware_counter /
+			((stream->num_ch) * SST_GET_BYTES_PER_SAMPLE(24));
+	tstamp->sampling_rate = fw_tstamp.sampling_frequency;
+	pr_debug("PCM  = %d\n", tstamp->pcm_io_frames);
+	pr_debug("Pointer Query on strid = %d  copied_total %d, decodec %ld\n",
+		str_id, tstamp->copied_total, tstamp->pcm_frames);
+	pr_debug("rendered %ld\n", tstamp->pcm_io_frames);
+	return 0;
+}
+
+static int sst_cdev_caps(struct snd_compr_caps *caps)
+{
+	caps->num_codecs = NUM_CODEC;
+	caps->min_fragment_size = MIN_FRAGMENT_SIZE;  /* 50KB */
+	caps->max_fragment_size = MAX_FRAGMENT_SIZE;  /* 1024KB */
+	caps->min_fragments = MIN_FRAGMENT;
+	caps->max_fragments = MAX_FRAGMENT;
+	caps->codecs[0] = SND_AUDIOCODEC_MP3;
+	caps->codecs[1] = SND_AUDIOCODEC_AAC;
+	return 0;
+}
+
+static int sst_cdev_codec_caps(struct snd_compr_codec_caps *codec)
+{
+
+	if (codec->codec == SND_AUDIOCODEC_MP3) {
+		codec->num_descriptors = 2;
+		codec->descriptor[0].max_ch = 2;
+		codec->descriptor[0].sample_rates = SNDRV_PCM_RATE_8000_48000;
+		codec->descriptor[0].bit_rate[0] = 320; /* 320kbps */
+		codec->descriptor[0].bit_rate[1] = 192;
+		codec->descriptor[0].num_bitrates = 2;
+		codec->descriptor[0].profiles = 0;
+		codec->descriptor[0].modes = SND_AUDIOCHANMODE_MP3_STEREO;
+		codec->descriptor[0].formats = 0;
+	} else if (codec->codec == SND_AUDIOCODEC_AAC) {
+		codec->num_descriptors = 2;
+		codec->descriptor[1].max_ch = 2;
+		codec->descriptor[1].sample_rates = SNDRV_PCM_RATE_8000_48000;
+		codec->descriptor[1].bit_rate[0] = 320; /* 320kbps */
+		codec->descriptor[1].bit_rate[1] = 192;
+		codec->descriptor[1].num_bitrates = 2;
+		codec->descriptor[1].profiles = 0;
+		codec->descriptor[1].modes = 0;
+		codec->descriptor[1].formats =
+			(SND_AUDIOSTREAMFORMAT_MP4ADTS |
+				SND_AUDIOSTREAMFORMAT_RAW);
+	} else {
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+void sst_cdev_fragment_elapsed(int str_id)
+{
+	struct stream_info *stream;
+
+	pr_debug("fragment elapsed from firmware for str_id %d\n", str_id);
+	stream = &sst_drv_ctx->streams[str_id];
+	if (stream->compr_cb)
+		stream->compr_cb(stream->compr_cb_param);
+}
+
 /*
  * sst_close_pcm_stream - Close PCM interface
  *
@@ -587,9 +796,9 @@ static int sst_device_control(int cmd, void *arg)
 {
 	int retval = 0, str_id = 0;
 
-	if (sst_drv_ctx->sst_state == SST_UN_INIT) {
+	if (sst_drv_ctx->sst_state == SST_UN_INIT)
 		return 0;
-	}
+
 	switch (cmd) {
 	case SST_SND_PAUSE:
 	case SST_SND_RESUME: {
@@ -775,10 +984,23 @@ static struct sst_ops pcm_ops = {
 	.power = sst_power_control,
 };
 
+static struct compress_sst_ops compr_ops = {
+	.open = sst_cdev_open,
+	.close = sst_cdev_close,
+	.control = sst_cdev_control,
+	.tstamp = sst_cdev_tstamp,
+	.ack = sst_cdev_ack,
+	.get_caps = sst_cdev_caps,
+	.get_codec_caps = sst_cdev_codec_caps,
+	.set_metadata = sst_cdev_set_metadata,
+};
+
+
 static struct sst_device sst_dsp_device = {
 	.name = "Intel(R) SST LPE",
 	.dev = NULL,
 	.ops = &pcm_ops,
+	.compr_ops = &compr_ops,
 };
 
 /*

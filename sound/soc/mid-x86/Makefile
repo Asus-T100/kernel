@@ -22,10 +22,6 @@ obj-$(CONFIG_SND_CTP_MACHINE) += snd-soc-ctp-machine.o
 snd-mrfld-machine-lm49453-objs := mrfld_machine_lm49453.o
 obj-$(CONFIG_SND_MRFLD_MACHINE) += snd-mrfld-machine-lm49453.o
 
-# SST Compress framework driver
-snd-compress-sst-objs := compress_sst.o
-obj-$(CONFIG_SND_COMPRESS_SST) += snd-compress-sst.o
-
 # DSP driver
 obj-$(CONFIG_SND_INTEL_SST) += sst/
 
