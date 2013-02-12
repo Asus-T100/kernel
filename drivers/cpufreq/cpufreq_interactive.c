@@ -88,6 +88,33 @@ static unsigned long timer_rate;
 static unsigned long above_hispeed_delay_val;
 
 /*
+ * Boost pulse to hispeed on touchscreen input.
+ */
+
+static int input_boost_val;
+
+/*
+ * The variable indicating the touch events for
+ * Power HAL.This variable is set from powerHAL
+ */
+
+static int touch_event_val;
+
+/*
+ * The variable indicating the vsync count for
+ * Power HAL.This variable is set from powerHAL
+ */
+
+static int vsync_count_val;
+
+struct cpufreq_interactive_inputopen {
+	struct input_handle *handle;
+	struct work_struct inputopen_work;
+};
+
+static struct cpufreq_interactive_inputopen inputopen;
+
+/*
  * Non-zero means longer-term speed boost active.
  */
 
@@ -573,6 +600,82 @@ static ssize_t store_timer_rate(struct kobject *kobj,
 static struct global_attr timer_rate_attr = __ATTR(timer_rate, 0644,
 		show_timer_rate, store_timer_rate);
 
+static ssize_t show_input_boost(struct kobject *kobj, struct attribute *attr,
+				char *buf)
+{
+	return sprintf(buf, "%u\n", input_boost_val);
+}
+
+static ssize_t store_input_boost(struct kobject *kobj, struct attribute *attr,
+				 const char *buf, size_t count)
+{
+	int ret;
+	unsigned long val;
+
+	ret = kstrtoul(buf, 0, &val);
+	if (ret < 0)
+		return ret;
+	input_boost_val = val;
+	return count;
+}
+
+define_one_global_rw(input_boost);
+
+static ssize_t show_touch_event(struct kobject *kobj, struct attribute *attr,
+				char *buf)
+{
+	return sprintf(buf, "%u\n", touch_event_val);
+}
+
+static ssize_t store_touch_event(struct kobject *kobj, struct attribute *attr,
+				 const char *buf, size_t count)
+{
+	int ret;
+	unsigned long val;
+	ret = kstrtoul(buf, 0, &val);
+	if (ret < 0)
+		return ret;
+	touch_event_val = val;
+	return count;
+}
+define_one_global_rw(touch_event);
+
+static ssize_t show_vsync_count(struct kobject *kobj, struct attribute *attr,
+				char *buf)
+{
+	return sprintf(buf, "%u\n", vsync_count_val);
+}
+
+static ssize_t store_vsync_count(struct kobject *kobj, struct attribute *attr,
+				 const char *buf, size_t count)
+{
+	int ret;
+	unsigned long val;
+	ret = kstrtoul(buf, 0, &val);
+	if (ret < 0)
+		return ret;
+	vsync_count_val = val;
+	return count;
+}
+
+define_one_global_rw(vsync_count);
+
+static ssize_t store_vsync_dec(struct kobject *kobj, struct attribute *attr,
+				const char *buf, size_t count)
+{
+	int ret;
+	unsigned long val;
+
+	ret = kstrtoul(buf, 0, &val);
+	if (ret < 0)
+		return ret;
+	vsync_count_val--;
+	return count;
+}
+
+static struct global_attr vsync_dec =
+	__ATTR(vsync_dec, 0200, NULL, store_vsync_dec);
+
 static ssize_t show_boost(struct kobject *kobj, struct attribute *attr,
 			  char *buf)
 {
@@ -627,8 +730,12 @@ static struct attribute *interactive_attributes[] = {
 	&above_hispeed_delay.attr,
 	&min_sample_time_attr.attr,
 	&timer_rate_attr.attr,
+	&input_boost.attr,
+	&touch_event.attr,
+	&vsync_count.attr,
 	&boost.attr,
 	&boostpulse.attr,
+	&vsync_dec.attr,
 	NULL,
 };
 
