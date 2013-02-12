@@ -1794,7 +1794,7 @@ void android_hdmi_encoder_restore(struct drm_encoder *encoder)
  * This is currently not required.
  */
 bool android_hdmi_mode_fixup(struct drm_encoder *encoder,
-		struct drm_display_mode *mode,
+		const struct drm_display_mode *mode,
 		struct drm_display_mode *adjusted_mode)
 {
 	pr_debug("%s: Nothing be done here\n", __func__);

@@ -956,6 +956,12 @@ set_size:
 		mode->height_mm = edid->height_cm * 10;
 	}
 
+	/* Mark the aspect ratio based on max width, height info from EDID */
+	if (mode->width_mm/4 == mode->height_mm/3)
+		mode->flags |= DRM_MODE_FLAG_PAR4_3;
+	if (mode->width_mm/16 == mode->height_mm/9)
+		mode->flags |= DRM_MODE_FLAG_PAR16_9;
+
 	mode->type = DRM_MODE_TYPE_DRIVER;
 	drm_mode_set_name(mode);
 
