@@ -3531,12 +3531,13 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 		if (sh_css_preview_configure_output(width, height,
 					format->sh_fmt))
 			return -EINVAL;
-		if (sh_css_preview_get_output_frame_info(output_info))
-			return -EINVAL;
 
 		if (sh_css_preview_configure_pp_input(
 					effective_input_width,
 					effective_input_height))
+			return -EINVAL;
+
+		if (sh_css_preview_get_output_frame_info(output_info))
 			return -EINVAL;
 
 		break;
