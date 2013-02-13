@@ -1215,11 +1215,147 @@ static ssize_t ignore_remove_write(struct file *file,
 	return buf_size;
 }
 
-
 static const struct file_operations ignore_remove_ops = {
 	.open		= ignore_remove_open,
 	.read		= seq_read,
 	.write		= ignore_remove_write,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
+static int pmu_sync_d0ix_show(struct seq_file *s, void *unused)
+{
+	int i;
+	u32 local_os_sss[4];
+	struct pmu_ss_states cur_pmsss;
+
+	/* Acquire the scu_ready_sem */
+	down(&mid_pmu_cxt->scu_ready_sem);
+	_pmu2_wait_not_busy();
+	/* Read SCU SSS */
+	pmu_read_sss(&cur_pmsss);
+	/* Read OS SSS */
+	memcpy(local_os_sss, mid_pmu_cxt->os_sss, (sizeof(u32)*4));
+	up(&mid_pmu_cxt->scu_ready_sem);
+
+	for (i = 0; i < 4; i++)
+		seq_printf(s, "OS_SSS[%d]: %08X\tSSS[%d]: %08lX\n", i,
+				local_os_sss[i], i, cur_pmsss.pmu2_states[i]);
+
+	return 0;
+}
+static int pmu_sync_d0ix_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, pmu_sync_d0ix_show, NULL);
+}
+
+static ssize_t pmu_sync_d0ix_write(struct file *file,
+		     const char __user *userbuf, size_t count, loff_t *ppos)
+{
+	char buf[32];
+	int res, i;
+	bool send_cmd;
+	int buf_size = min(count, sizeof(buf)-1);
+	u32 lss, local_os_sss[4];
+	int sub_sys_pos, sub_sys_index;
+	u32 pm_cmd_val;
+
+	struct pmu_ss_states cur_pmsss;
+
+
+	if (copy_from_user(buf, userbuf, buf_size))
+		return -EFAULT;
+
+	buf[buf_size] = 0;
+
+	res = kstrtou32(buf, 10, &lss);
+
+	if (res)
+		return -EINVAL;
+
+	if (lss > MAX_LSS_POSSIBLE)
+		return -EINVAL;
+
+	/* Acquire the scu_ready_sem */
+	down(&mid_pmu_cxt->scu_ready_sem);
+	_pmu2_wait_not_busy();
+	/* Read SCU SSS */
+	pmu_read_sss(&cur_pmsss);
+
+	for (i = 0; i < 4; i++)
+		local_os_sss[i] = mid_pmu_cxt->os_sss[i] &
+				~mid_pmu_cxt->ignore_lss[i];
+
+	send_cmd = false;
+	for (i = 0; i < 4; i++) {
+		if (local_os_sss[i] != cur_pmsss.pmu2_states[i]) {
+			send_cmd = true;
+			break;
+		}
+	}
+
+	if (send_cmd) {
+		int status;
+
+		if (lss == MAX_LSS_POSSIBLE) {
+			memcpy(cur_pmsss.pmu2_states, local_os_sss,
+							 (sizeof(u32)*4));
+		} else {
+			bool same;
+			sub_sys_index	= lss / mid_pmu_cxt->ss_per_reg;
+			sub_sys_pos	= lss % mid_pmu_cxt->ss_per_reg;
+			pm_cmd_val =
+				(D0I3_MASK << (sub_sys_pos * BITS_PER_LSS));
+
+			/* dont send d0ix request if its same */
+			same =
+			((cur_pmsss.pmu2_states[sub_sys_index] & pm_cmd_val)
+			== (mid_pmu_cxt->os_sss[sub_sys_index] & pm_cmd_val));
+
+			if (same)
+				goto unlock;
+
+			cur_pmsss.pmu2_states[sub_sys_index] |=
+					mid_pmu_cxt->os_sss[sub_sys_index]
+								& pm_cmd_val;
+		}
+
+		/* Issue the pmu command to PMU 2
+		 * flag is needed to distinguish between
+		 * S0ix vs interactive command in pmu_sc_irq()
+		 */
+		status = pmu_issue_interactive_command(&cur_pmsss, false);
+
+		if (unlikely(status != PMU_SUCCESS)) {
+			dev_dbg(&mid_pmu_cxt->pmu_dev->dev,
+				 "Failed to Issue a PM command to PMU2\n");
+			goto unlock;
+		}
+
+		/*
+		 * Wait for interactive command to complete.
+		 * If we dont wait, there is a possibility that
+		 * the driver may access the device before its
+		 * powered on in SCU.
+		 *
+		 */
+		status = _pmu2_wait_not_busy();
+		if (unlikely(status)) {
+			printk(KERN_CRIT "%s: D0ix transition failure\n",
+				__func__);
+		}
+	}
+
+unlock:
+	up(&mid_pmu_cxt->scu_ready_sem);
+
+	return buf_size;
+}
+
+static const struct file_operations pmu_sync_d0ix_ops = {
+	.open		= pmu_sync_d0ix_open,
+	.read		= seq_read,
+	.write		= pmu_sync_d0ix_write,
 	.llseek		= seq_lseek,
 	.release	= single_release,
 };
@@ -1252,6 +1388,9 @@ void pmu_stats_init(void)
 		/* /sys/kernel/debug/ignore_remove */
 		(void) debugfs_create_file("ignore_remove", S_IFREG | S_IRUGO,
 					NULL, NULL, &ignore_remove_ops);
+		/* /sys/kernel/debug/pmu_sync_d0ix */
+		(void) debugfs_create_file("pmu_sync_d0ix", S_IFREG | S_IRUGO,
+					NULL, NULL, &pmu_sync_d0ix_ops);
 	}
 #endif
 }

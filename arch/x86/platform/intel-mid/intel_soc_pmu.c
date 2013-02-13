@@ -1258,12 +1258,16 @@ int __ref pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state)
 	/* First clear the LSS bits */
 	new_value = cur_pmssc.pmu2_states[sub_sys_index] &
 						(~pm_cmd_val);
+	mid_pmu_cxt->os_sss[sub_sys_index] &= ~pm_cmd_val;
+
 	if (state != PCI_D0) {
 		pm_cmd_val =
 			(pci_to_platform_state(state) <<
 				(sub_sys_pos * BITS_PER_LSS));
 
 		new_value |= pm_cmd_val;
+
+		mid_pmu_cxt->os_sss[sub_sys_index] |= pm_cmd_val;
 	}
 
 	new_value &= ~mid_pmu_cxt->ignore_lss[sub_sys_index];
