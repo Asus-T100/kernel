@@ -114,17 +114,6 @@ struct thermal_device_info {
 	struct intel_mid_thermal_sensor *sensor;
 };
 
-static struct intel_mid_thermal_sensor *sensor_by_name(char *name)
-{
-	int index = 0;
-
-	for (index = 0; index < platforminfo->num_sensors; index++) {
-		if (!strncmp(name, platforminfo->sensors[index].name,
-				THERMAL_NAME_LENGTH))
-			return &platforminfo->sensors[index];
-	}
-	return NULL;
-}
 /* SoC cooling device callbacks */
 static int soc_get_max_state(struct thermal_cooling_device *cdev,
 				unsigned long *state)
@@ -690,7 +679,7 @@ static void mid_therm_rpmsg_cb(struct rpmsg_channel *rpdev, void *data,
 }
 
 static struct rpmsg_device_id mid_therm_id_table[] = {
-	{ .name = "rpmsg_mid_therm" },
+	{ .name = "rpmsg_mid_thermal" },
 	{ },
 };
 
@@ -718,10 +707,10 @@ static void __exit mid_therm_rpmsg_exit(void)
 
 /* Changing _init call to make the thermal driver
  * load _after_ the GPADC driver
- * module_init(mid_therm_module_init);
+ * module_init(mid_therm_rpmsg_init);
  */
-late_initcall(mid_therm_module_init);
-module_exit(mid_therm_module_exit);
+late_initcall(mid_therm_rpmsg_init);
+module_exit(mid_therm_rpmsg_exit);
 
 MODULE_AUTHOR("Durgadoss R <durgadoss.r@intel.com>");
 MODULE_DESCRIPTION("Intel Medfield Platform Thermal Driver");

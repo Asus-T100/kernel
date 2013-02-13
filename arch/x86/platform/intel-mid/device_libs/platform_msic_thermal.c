@@ -177,22 +177,19 @@ static struct intel_mid_thermal_platform_data pdata[] = {
 
 void __init *msic_thermal_platform_data(void)
 {
-	int ret;
-
 	struct platform_device *pdev;
-
 
 	pdev = platform_device_alloc(MSIC_THERM_DEV_NAME, -1);
 	if (!pdev) {
 		pr_err("out of memory for SFI platform dev %s\n",
 			MSIC_THERM_DEV_NAME);
-		return -1;
+		return NULL;
 	}
 
 	if (platform_device_add(pdev)) {
 		pr_err("failed to add thermal platform device\n");
 		platform_device_put(pdev);
-		return -1;
+		return NULL;
 	}
 
 	if (INTEL_MID_BOARD(1, PHONE, CLVTP) ||
@@ -205,11 +202,6 @@ void __init *msic_thermal_platform_data(void)
 		pdev->dev.platform_data = &pdata[mfld_thermal];
 
 	register_rpmsg_service("rpmsg_mid_thermal", RPROC_SCU, RP_MSIC_THERMAL);
-
-	if (ret) {
-		pr_err("failed to create ipc device: msic_thermal\n");
-		return -1;
-	}
 
 	return 0;
 }
