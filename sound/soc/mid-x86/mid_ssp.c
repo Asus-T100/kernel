@@ -436,6 +436,8 @@ static int ssp_probe(struct snd_soc_dai *cpu_dai)
 	}
 
 	ssp_config->intel_mid_dma_alloc = false;
+	ssp_config->ssp_dai_tx_allocated = false;
+	ssp_config->ssp_dai_rx_allocated = false;
 
 	ssp_config->i2s_settings = ssp_platform_i2s_config;
 	pr_info("SSP DAI: FCT %s ssp_config %p\n",
@@ -532,14 +534,14 @@ static int ssp_dai_startup(struct snd_pcm_substream *substream,
 		if (!strcmp(cpudai_drv->name, SSP_BT_DAI_NAME)) {
 			ssp_config->i2s_handle =
 				intel_mid_i2s_open(SSP_USAGE_BLUETOOTH_FM);
-			pr_debug("opening the CPU_DAI for"\
+			pr_debug("opening the CPU_DAI for "\
 					"SSP_USAGE_BLUETOOTH_FM, i2s_handle = %p\n",
 					ssp_config->i2s_handle);
 
 		} else if (!strcmp(cpudai_drv->name, SSP_MODEM_DAI_NAME)) {
 			ssp_config->i2s_handle =
 				intel_mid_i2s_open(SSP_USAGE_MODEM);
-			pr_debug("opening the CPU_DAI for"\
+			pr_debug("opening the CPU_DAI for "\
 					"SSP_USAGE_MODEM, i2s_handle = %p\n",
 					ssp_config->i2s_handle);
 
@@ -609,7 +611,7 @@ static void ssp_dai_shutdown(struct snd_pcm_substream *substream,
 			pr_debug("SSP DAI: FCT %s TX DMA Channel released\n",
 					__func__);
 		}
-		ssp_info->ssp_dai_tx_allocated = false;
+		ssp_config->ssp_dai_tx_allocated = false;
 		break;
 
 	case SNDRV_PCM_STREAM_CAPTURE:
@@ -623,7 +625,7 @@ static void ssp_dai_shutdown(struct snd_pcm_substream *substream,
 			pr_debug("SSP DAI: FCT %s RX DMA Channel released\n",
 					__func__);
 		}
-		ssp_info->ssp_dai_rx_allocated = false;
+		ssp_config->ssp_dai_rx_allocated = false;
 		break;
 
 	default:
@@ -853,7 +855,6 @@ static int ssp_set_dai_sysclk(struct snd_soc_dai *cpu_dai,
 		i2s_config->ssp_psp_T4 = 0;
 		i2s_config->ssp_psp_T5 = 0;
 		i2s_config->ssp_psp_T6 = 1;
-
 		break;
 
 	case 11025:
@@ -863,14 +864,14 @@ static int ssp_set_dai_sysclk(struct snd_soc_dai *cpu_dai,
 						freq);
 		return -EINVAL;
 
-
 	case 16000:
 		i2s_config->master_mode_standard_freq = SSP_FRM_FREQ_16_000;
-		pr_err("SSP DAI: %s Bad freq_out=%d\n",
-						__func__,
-						freq);
-		return -EINVAL;
-
+		i2s_config->ssp_psp_T1 = 6;
+		i2s_config->ssp_psp_T2 = 2;
+		i2s_config->ssp_psp_T4 = 0;
+		i2s_config->ssp_psp_T5 = 14;
+		i2s_config->ssp_psp_T6 = 16;
+		break;
 
 	case 22050:
 		i2s_config->master_mode_standard_freq = SSP_FRM_FREQ_22_050;
@@ -878,7 +879,6 @@ static int ssp_set_dai_sysclk(struct snd_soc_dai *cpu_dai,
 						__func__,
 						freq);
 		return -EINVAL;
-
 
 	case 44100:
 		i2s_config->master_mode_standard_freq = SSP_FRM_FREQ_44_100;
@@ -903,7 +903,6 @@ static int ssp_set_dai_sysclk(struct snd_soc_dai *cpu_dai,
 				freq);
 		return -EINVAL;
 	}
-
 	return 0;
 }
 
@@ -1080,25 +1079,24 @@ static int ssp_dai_prepare(struct snd_pcm_substream *substream,
 	if (!cpu_dai)
 		return -EINVAL;
 
-
 	ssp_info = dev_get_drvdata(cpu_dai->dev);
 	WARN(!ssp_info, "SSP DAI: ERROR NULL ssp_info\n");
 	if (!ssp_info)
 		return -EINVAL;
 
 	ssp_config = snd_soc_dai_get_dma_data(cpu_dai, substream);
-	pr_debug("SSP DAI: FCT %s ssp_dai_tx_allocated %d"\
+	pr_debug("SSP DAI: FCT %s ssp_dai_tx_allocated %d "\
 			"ssp_dai_rx_allocated %d\n",
 			__func__,
-			ssp_info->ssp_dai_tx_allocated,
-			ssp_info->ssp_dai_rx_allocated);
+			ssp_config->ssp_dai_tx_allocated,
+			ssp_config->ssp_dai_rx_allocated);
 
 	/*
 	 * The set HW Config is only once for a CPU DAI
 	 */
 
-	if (!ssp_info->ssp_dai_tx_allocated && !ssp_info->ssp_dai_rx_allocated) {
-
+	if (!ssp_config->ssp_dai_tx_allocated &&
+			!ssp_config->ssp_dai_rx_allocated) {
 		intel_mid_i2s_command(ssp_config->i2s_handle,
 						SSP_CMD_SET_HW_CONFIG,
 						&(ssp_config->i2s_settings));
@@ -1106,24 +1104,24 @@ static int ssp_dai_prepare(struct snd_pcm_substream *substream,
 
 	switch (substream->stream) {
 	case SNDRV_PCM_STREAM_PLAYBACK:
-		if (!ssp_info->ssp_dai_tx_allocated) {
+		if (!ssp_config->ssp_dai_tx_allocated) {
 			if (intel_mid_i2s_command(ssp_config->i2s_handle,
 					SSP_CMD_ALLOC_TX, NULL)) {
 				pr_err("can not alloc TX DMA Channel\n");
 				return -EBUSY;
 			}
-			ssp_info->ssp_dai_tx_allocated = true;
+			ssp_config->ssp_dai_tx_allocated = true;
 		}
 		break;
 
 	case SNDRV_PCM_STREAM_CAPTURE:
-		if (!ssp_info->ssp_dai_rx_allocated) {
+		if (!ssp_config->ssp_dai_rx_allocated) {
 			if (intel_mid_i2s_command(ssp_config->i2s_handle,
 					SSP_CMD_ALLOC_RX, NULL)) {
 				pr_err("can not alloc RX DMA Channel\n");
 				return -EBUSY;
 			}
-			ssp_info->ssp_dai_rx_allocated = true;
+			ssp_config->ssp_dai_rx_allocated = true;
 		}
 		break;
 
@@ -1244,9 +1242,6 @@ static int ssp_dai_probe(struct platform_device *pdev)
 	}
 
 	ssp_info->ssp_dai_wq = create_workqueue("ssp_transfer_data");
-	ssp_info->ssp_dai_tx_allocated = false;
-	ssp_info->ssp_dai_rx_allocated = false;
-
 
 	if (!ssp_info->ssp_dai_wq) {
 		pr_err("work queue failed\n");
