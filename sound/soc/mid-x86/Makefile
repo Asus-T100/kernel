@@ -18,10 +18,6 @@ obj-$(CONFIG_SND_YUKKABEACH_MACHINE) += snd-soc-yukkabeach-machine.o
 snd-soc-ctp-machine-objs := ctp_common.o ctp_rhb_cs42l73.o ctp_vb_cs42l73.o
 obj-$(CONFIG_SND_CTP_MACHINE) += snd-soc-ctp-machine.o
 
-# SST Compress framework driver
-snd-compress-sst-objs := compress_sst.o
-obj-$(CONFIG_SND_COMPRESS_SST) += snd-compress-sst.o
-
 # Merrfield board
 snd-soc-mrfld-machine-objs := mrfld_machine.o
 obj-$(CONFIG_SND_MRFLD_MACHINE) += snd-soc-mrfld-machine.o
