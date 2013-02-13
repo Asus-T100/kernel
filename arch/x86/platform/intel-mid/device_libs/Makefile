@@ -18,6 +18,8 @@ obj-$(subst m,y,$(CONFIG_INTEL_MID_POWER_BUTTON))			+= platform_msic_power_btn.o
 obj-$(subst m,y,$(CONFIG_GPIO_INTEL_PMIC))				+= platform_pmic_gpio.o
 obj-$(subst m,y,$(CONFIG_INTEL_MFLD_THERMAL))				+= platform_msic_thermal.o
 obj-$(subst m,y,$(CONFIG_SENSORS_MID_VDD))				+= platform_msic_vdd.o
+obj-$(subst m,y,$(CONFIG_PMIC_CCSM))                                    += platform_mrfl_pmic.o
+obj-$(subst m,y,$(CONFIG_I2C_PMIC))                                    += platform_mrfl_pmic_i2c.o
 # I2C Devices
 obj-$(subst m,y,$(CONFIG_SENSORS_EMC1403))				+= platform_emc1403.o
 obj-$(subst m,y,$(CONFIG_SENSORS_HMC5883))				+= platform_hmc5883.o
@@ -45,6 +47,7 @@ obj-$(subst m,y,$(CONFIG_TOUCHSCREEN_SYNAPTICS_RMI4_I2C))		+= platform_s3202.o
 else
 obj-$(subst m,y,$(CONFIG_TOUCHSCREEN_SYNAPTICS_I2C_RMI4))		+= platform_s3202.o
 endif
+obj-$(subst m,y,$(CONFIG_BQ24261_CHARGER))                            += platform_bq24261.o
 # Camera
 obj-$(subst m,y,$(CONFIG_VIDEO_ATOMISP))				+= platform_camera.o
 ifdef CONFIG_VIDEO_ATOMISP

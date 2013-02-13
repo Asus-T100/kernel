@@ -48,6 +48,10 @@
 #define RP_MSIC_ADC		0x16
 #define RP_BQ24192		0x17
 #define RP_MSIC_CLV_AUDIO	0x18
+#define RP_PMIC_CCSM		0x19
+#define RP_PMIC_I2C		0x20
+
+
 
 enum rproc_type {
 	RPROC_SCU = 0,

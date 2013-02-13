@@ -12,6 +12,7 @@ struct batt_props {
 	long current_now;
 	int temperature;
 	long status;
+	unsigned long tstamp;
 };
 
 struct charger_props {
@@ -21,6 +22,7 @@ struct charger_props {
 	bool status;
 	bool online;
 	unsigned long cable;
+	unsigned long tstamp;
 };
 
 struct charging_algo {
@@ -50,16 +52,22 @@ static inline int get_ps_int_property(struct power_supply *psy,
 {
 	union power_supply_propval val;
 
+	val.intval = 0;
+
 	psy->get_property(psy, psp, &val);
 	return val.intval;
 }
-
+/* Define a TTL for some properies to optimize the frequency of
+* algorithm calls. This can be used by properties which will be changed
+* very frequently (eg. current, volatge..)
+*/
+#define PROP_TTL (HZ)
 #define enable_charging(psy) \
 		({if ((CABLE_TYPE(psy) != POWER_SUPPLY_CHARGER_TYPE_NONE) &&\
-			!IS_CHARGING_ENABLED(psy)) \
+			!IS_CHARGING_ENABLED(psy)) { \
+		enable_charger(psy); \
 		set_ps_int_property(psy, POWER_SUPPLY_PROP_ENABLE_CHARGING,\
-					true);\
-		enable_charger(psy); })
+					true); } })
 #define disable_charging(psy) \
 		({if (IS_CHARGING_ENABLED(psy)) \
 		set_ps_int_property(psy,\
@@ -68,8 +76,9 @@ static inline int get_ps_int_property(struct power_supply *psy,
 #define enable_charger(psy) \
 		set_ps_int_property(psy, POWER_SUPPLY_PROP_ENABLE_CHARGER, true)
 #define disable_charger(psy) \
-		set_ps_int_property(psy,\
-				POWER_SUPPLY_PROP_ENABLE_CHARGER, false)
+		({  disable_charging(psy); \
+			set_ps_int_property(psy,\
+				POWER_SUPPLY_PROP_ENABLE_CHARGER, false); })
 
 #define set_cc(psy, cc) \
 		set_ps_int_property(psy, POWER_SUPPLY_PROP_CHARGE_CURRENT, cc)
@@ -136,7 +145,8 @@ static inline int get_ps_int_property(struct power_supply *psy,
 
 #define IS_BAT_PROP_CHANGED(bat_prop, bat_cache)\
 	((bat_cache.voltage_now != bat_prop.voltage_now) || \
-	(bat_cache.current_now != bat_prop.current_now) || \
+	(time_after64(bat_prop.tstamp, (bat_cache.tstamp + PROP_TTL)) &&\
+	 bat_cache.current_now != bat_prop.current_now) || \
 	(bat_cache.temperature != bat_prop.temperature))
 
 #define THROTTLE_ACTION(psy, state)\
