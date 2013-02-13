@@ -2180,8 +2180,6 @@ static void mmc_blk_shutdown(struct device *dev)
 	struct mmc_blk_data *md = mmc_get_drvdata(card);
 	struct mmc_blk_data *part_md;
 
-	mmc_claim_host(mmc);
-	mmc_cache_ctrl(mmc, 0);
 	/*
 	 * stop the mmc queue so that no mmc card requests
 	 * can be sent to mmc driver
@@ -2190,10 +2188,16 @@ static void mmc_blk_shutdown(struct device *dev)
 		mmc_queue_suspend_on_shutdown(&md->queue);
 		list_for_each_entry(part_md, &md->part, part) {
 			mmc_queue_suspend_on_shutdown(&part_md->queue);
-			if (part_md->part_type == EXT_CSD_PART_CONFIG_RPMB)
+			if (part_md->part_type == EXT_CSD_PART_CONFIG_RPMB) {
+				mmc_claim_host(mmc);
 				part_md->flags |= MMC_BLK_SUSPENDED;
+				mmc_release_host(mmc);
+			}
 		}
 	}
+
+	mmc_claim_host(mmc);
+	mmc_cache_ctrl(mmc, 0);
 	mmc_release_host(mmc);
 }
 
