@@ -60,30 +60,46 @@ static int ov8830_flisclk_ctrl(struct v4l2_subdev *sd, int flag)
 	return intel_scu_ipc_osc_clk(OSC_CLK_CAM0, flag ? clock_khz : 0);
 }
 
+/*
+ * Checking the SOC type is temporary workaround to enable OV8830
+ * on Bodegabay (tangier) platform. Once standard regulator devices
+ * (e.g. vprog1, vprog2) and control functions (pmic_avp) are added
+ * for the platforms with tangier, then we can revert this change.
+ * (dongwon.kim@intel.com)
+ */
 static int ov8830_power_ctrl(struct v4l2_subdev *sd, int flag)
 {
-	int reg_err;
+	int ret = 0;
 
 	if (flag) {
 		if (!camera_vprog1_on) {
-			camera_vprog1_on = 1;
-			reg_err = regulator_enable(vprog1_reg);
-			if (reg_err) {
+			if (intel_mid_identify_cpu() ==
+			   INTEL_MID_CPU_CHIP_TANGIER)
+				ret = intel_scu_ipc_msic_vprog1(1);
+			else
+				ret = regulator_enable(vprog1_reg);
+			if (!ret)
+				camera_vprog1_on = 1;
+			else
 				printk(KERN_ALERT "Failed to enable regulator vprog1\n");
-				return reg_err;
-			}
+			return ret;
 		}
 	} else {
 		if (camera_vprog1_on) {
-			camera_vprog1_on = 0;
-			reg_err = regulator_disable(vprog1_reg);
-			if (reg_err) {
+			if (intel_mid_identify_cpu() ==
+			   INTEL_MID_CPU_CHIP_TANGIER)
+				ret = intel_scu_ipc_msic_vprog1(0);
+			else
+				ret = regulator_disable(vprog1_reg);
+
+			if (!ret)
+				camera_vprog1_on = 0;
+			else
 				printk(KERN_ALERT "Failed to disable regulator vprog1\n");
-				return reg_err;
-			}
+			return ret;
 		}
 	}
-	return 0;
+	return ret;
 }
 
 static int ov8830_csi_configure(struct v4l2_subdev *sd, int flag)
@@ -93,9 +109,18 @@ static int ov8830_csi_configure(struct v4l2_subdev *sd, int flag)
 		ATOMISP_INPUT_FORMAT_RAW_10, atomisp_bayer_order_bggr, flag);
 }
 
+/*
+ * Checking the SOC type is temporary workaround to enable OV8830
+ * on Bodegabay (tangier) platform. Once standard regulator devices
+ * (e.g. vprog1, vprog2) and control functions (pmic_avp) are added
+ * for the platforms with tangier, then we can revert this change.
+ * (dongwon.kim@intel.com)
+ */
 static int ov8830_platform_init(struct i2c_client *client)
 {
 	int ret;
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER)
+		return 0;
 
 	vprog1_reg = regulator_get(&client->dev, "vprog1");
 	if (IS_ERR(vprog1_reg)) {
@@ -110,8 +135,17 @@ static int ov8830_platform_init(struct i2c_client *client)
 	return ret;
 }
 
+/*
+ * Checking the SOC type is temporary workaround to enable OV8830 on Bodegabay
+ * (tangier) platform once standard regulator devices (e.g. vprog1, vprog2) and
+ * control functions (pmic_avp) are added for the platforms with tangier, then
+ * we can revert this change.(dongwon.kim@intel.com
+ */
 static int ov8830_platform_deinit(void)
 {
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER)
+		return 0;
+
 	regulator_put(vprog1_reg);
 }
 static struct camera_sensor_platform_data ov8830_sensor_platform_data = {
