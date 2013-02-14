@@ -795,8 +795,6 @@ static struct snd_compr_ops sst_platform_compr_ops = {
 
 static int __devinit sst_soc_probe(struct snd_soc_platform *platform)
 {
-	struct sst_data *ctx = snd_soc_platform_get_drvdata(platform);
-
 	pr_debug("%s called\n", __func__);
 	if (INTEL_MID_BOARD(1, PHONE, CLVTP)) {
 		return sst_platform_clv_init(platform);
@@ -807,12 +805,6 @@ static int __devinit sst_soc_probe(struct snd_soc_platform *platform)
 		sst_dsp_init(platform);
 #endif
 	}
-	/* FIXME: workaround till SPID value becomes right for MRFLD */
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
-	pr_err("SPID for MRFLD: reported %lu, expected %lu\n",
-			spid->platform_family_id, INTEL_MRFL_PHONE);
-	sst_dsp_init(platform);
-#endif
 	return 0;
 }
 

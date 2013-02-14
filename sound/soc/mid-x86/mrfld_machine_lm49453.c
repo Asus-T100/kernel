@@ -25,13 +25,18 @@
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
 #include <linux/init.h>
+#include <linux/module.h>
+#include <linux/platform_device.h>
 #include <linux/device.h>
 #include <linux/slab.h>
 #include <linux/io.h>
-#include <linux/ipc_device.h>
 #include <linux/async.h>
 #include <linux/gpio.h>
 #include <linux/delay.h>
+#include <linux/rpmsg.h>
+#include <asm/intel_scu_pmic.h>
+#include <asm/intel_mid_rpmsg.h>
+#include <asm/intel_mid_remoteproc.h>
 #include <asm/platform_mrfld_audio.h>
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
@@ -341,7 +346,7 @@ static struct snd_soc_card snd_soc_card_mrfld = {
 	.num_dapm_routes = ARRAY_SIZE(map),
 };
 
-static int snd_mrfld_mc_probe(struct ipc_device *ipcdev)
+static int snd_mrfld_mc_probe(struct platform_device *pdev)
 {
 	int ret_val = 0;
 	struct mrfld_mc_private *drv;
@@ -354,18 +359,18 @@ static int snd_mrfld_mc_probe(struct ipc_device *ipcdev)
 		pr_err("allocation failed\n");
 		return -ENOMEM;
 	}
-	pdata = ipcdev->dev.platform_data;
+	pdata = pdev->dev.platform_data;
 	hs_gpio[MRFLD_HSDET].gpio = pdata->codec_gpio;
 
 	/* register the soc card */
-	snd_soc_card_mrfld.dev = &ipcdev->dev;
+	snd_soc_card_mrfld.dev = &pdev->dev;
 	snd_soc_card_set_drvdata(&snd_soc_card_mrfld, drv);
 	ret_val = snd_soc_register_card(&snd_soc_card_mrfld);
 	if (ret_val) {
 		pr_err("snd_soc_register_card failed %d\n", ret_val);
 		goto unalloc;
 	}
-	ipc_set_drvdata(ipcdev, &snd_soc_card_mrfld);
+	platform_set_drvdata(pdev, &snd_soc_card_mrfld);
 	pr_info("%s successful\n", __func__);
 	return ret_val;
 
@@ -374,9 +379,9 @@ unalloc:
 	return ret_val;
 }
 
-static int __devexit snd_mrfld_mc_remove(struct ipc_device *ipcdev)
+static int __devexit snd_mrfld_mc_remove(struct platform_device *pdev)
 {
-	struct snd_soc_card *soc_card = ipc_get_drvdata(ipcdev);
+	struct snd_soc_card *soc_card = platform_get_drvdata(pdev);
 	struct mrfld_mc_private *drv = snd_soc_card_get_drvdata(soc_card);
 
 	pr_debug("In %s\n", __func__);
@@ -384,7 +389,7 @@ static int __devexit snd_mrfld_mc_remove(struct ipc_device *ipcdev)
 	kfree(drv);
 	snd_soc_card_set_drvdata(soc_card, NULL);
 	snd_soc_unregister_card(soc_card);
-	ipc_set_drvdata(ipcdev, NULL);
+	platform_set_drvdata(pdev, NULL);
 	return 0;
 }
 
@@ -394,7 +399,7 @@ const struct dev_pm_ops snd_mrfld_mc_pm_ops = {
 	.poweroff = snd_mrfld_poweroff,
 };
 
-static struct ipc_driver snd_mrfld_mc_driver = {
+static struct platform_driver snd_mrfld_mc_driver = {
 	.driver = {
 		.owner = THIS_MODULE,
 		.name = "mrfld_lm49453",
@@ -406,21 +411,77 @@ static struct ipc_driver snd_mrfld_mc_driver = {
 
 static int __init snd_mrfld_driver_init(void)
 {
-	ipc_driver_register(&snd_mrfld_mc_driver);
 	pr_info("Merrifield Machine Driver mrfld_lm49453 registerd\n");
-	return 0;
+	return platform_driver_register(&snd_mrfld_mc_driver);
 }
 
 static void __exit snd_mrfld_driver_exit(void)
 {
 	pr_debug("In %s\n", __func__);
-	ipc_driver_unregister(&snd_mrfld_mc_driver);
+	platform_driver_unregister(&snd_mrfld_mc_driver);
 }
 
-late_initcall(snd_mrfld_driver_init);
-module_exit(snd_mrfld_driver_exit);
+static int snd_mrfld_rpmsg_probe(struct rpmsg_channel *rpdev)
+{
+	int ret = 0;
+
+	if (rpdev == NULL) {
+		pr_err("rpmsg channel not created\n");
+		ret = -ENODEV;
+		goto out;
+	}
+
+	dev_info(&rpdev->dev, "Probed snd_mrfld rpmsg device\n");
+
+	ret = snd_mrfld_driver_init();
+
+out:
+	return ret;
+}
+
+static void __devexit snd_mrfld_rpmsg_remove(struct rpmsg_channel *rpdev)
+{
+	snd_mrfld_driver_exit();
+	dev_info(&rpdev->dev, "Removed snd_mrfld rpmsg device\n");
+}
+
+static void snd_mrfld_rpmsg_cb(struct rpmsg_channel *rpdev, void *data,
+				int len, void *priv, u32 src)
+{
+	dev_warn(&rpdev->dev, "unexpected, message\n");
+
+	print_hex_dump(KERN_DEBUG, __func__, DUMP_PREFIX_NONE, 16, 1,
+			data, len,  true);
+}
+
+static struct rpmsg_device_id snd_mrfld_rpmsg_id_table[] = {
+	{ .name = "rpmsg_msic_mrfld_audio" },
+	{ },
+};
+MODULE_DEVICE_TABLE(rpmsg, snd_mrfld_rpmsg_id_table);
+
+static struct rpmsg_driver snd_mrfld_rpmsg = {
+	.drv.name	= KBUILD_MODNAME,
+	.drv.owner	= THIS_MODULE,
+	.id_table	= snd_mrfld_rpmsg_id_table,
+	.probe		= snd_mrfld_rpmsg_probe,
+	.callback	= snd_mrfld_rpmsg_cb,
+	.remove		= __devexit_p(snd_mrfld_rpmsg_remove),
+};
+
+static int __init snd_mrfld_rpmsg_init(void)
+{
+	return register_rpmsg_driver(&snd_mrfld_rpmsg);
+}
+late_initcall(snd_mrfld_rpmsg_init);
+
+static void __exit snd_mrfld_rpmsg_exit(void)
+{
+	return unregister_rpmsg_driver(&snd_mrfld_rpmsg);
+}
+module_exit(snd_mrfld_rpmsg_exit);
 
 MODULE_DESCRIPTION("ASoC Intel(R) Merrifield MID Machine driver");
 MODULE_AUTHOR("Vinod Koul <vinod.koul@linux.intel.com>");
 MODULE_LICENSE("GPL v2");
-MODULE_ALIAS("platform:msic-audio");
+MODULE_ALIAS("platform:mrfld-audio");

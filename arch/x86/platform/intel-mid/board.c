@@ -40,6 +40,7 @@
 #include <asm/platform_ctp_audio.h>
 #include "device_libs/platform_mrfl_pmic.h"
 #include "device_libs/platform_mrfl_pmic_i2c.h"
+#include <asm/platform_mrfld_audio.h>
 
 /* I2C devices */
 #include "device_libs/platform_apds990x.h"
@@ -136,6 +137,10 @@ struct devs_id __initconst device_ids[] = {
 						&ipc_device_handler},
 	{"i2c_pmic_adap", SFI_DEV_TYPE_IPC, 1, &mrfl_pmic_i2c_platform_data,
 						&ipc_device_handler},
+	{"mrfld_cs42l73", SFI_DEV_TYPE_IPC, 1, &merfld_audio_platform_data,
+						&ipc_device_handler},
+	{"mrfld_lm49453", SFI_DEV_TYPE_IPC, 1, &merfld_audio_platform_data,
+						&ipc_device_handler},
 
 	/* I2C devices for camera image subsystem */
 	{"lm3554", SFI_DEV_TYPE_I2C, 0, &lm3554_platform_data_func,
@@ -188,6 +193,7 @@ struct devs_id __initconst device_ids[] = {
 	{"gyro", SFI_DEV_TYPE_I2C, 0, &gyro_platform_data, NULL},
 	{"als", SFI_DEV_TYPE_I2C, 0, &ltr502als_platform_data, NULL},
 	{"bq24261_charger", SFI_DEV_TYPE_I2C, 1, &bq24261_platform_data, NULL},
+	{"lm49453_codec", SFI_DEV_TYPE_I2C, 1, &no_platform_data, NULL},
 
 	/* Modem */
 #ifndef CONFIG_HSI_NO_MODEM
