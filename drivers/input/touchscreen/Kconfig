@@ -859,4 +859,11 @@ config TOUCHSCREEN_ATMEL_MXT224
 		Say Y here if you have a mXT224 touchscreen
 		If unsure, say N.
 
+config TOUCHSCREEN_R69001_I2C
+	tristate "JDI R69001 touchscreen"
+	depends on I2C
+	default n
+	help
+		Say Y here if you have a R69001 touchscreen
+		If unsure, say N.
 endif
