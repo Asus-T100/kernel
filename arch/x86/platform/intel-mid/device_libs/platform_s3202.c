@@ -75,19 +75,26 @@ void *s3202_platform_data(void *info)
 	s3202_sensordata.rst_gpio_number  = get_gpio_by_name("ts_rst");
 #else
 	static const struct rmi4_touch_calib calibs[] = {
-		/* TOUCH_TYPE_OGS */
+		/* TOUCH_TYPE_S3202_OGS */
 		{
 			.swap_axes = true,
 			.customer_id = 20130101,
 			.fw_name = "s3202_ogs.img",
 			.key_dev_name = "rmi4_key",
 		},
-		/* TOUCH_TYPE_GFF */
+		/* TOUCH_TYPE_S3202_GFF */
 		{
 			.swap_axes = false,
 			.customer_id = 20130101,
 			.fw_name = "s3202_gff.img",
 			.key_dev_name = "rmi4_key_gff",
+		},
+		/* TOUCH_TYPE_S3408 */
+		{
+			.swap_axes = false,
+			.customer_id = 0,
+			.fw_name = "s3408.img",
+			.key_dev_name = "rmi4_key",
 		},
 	};
 

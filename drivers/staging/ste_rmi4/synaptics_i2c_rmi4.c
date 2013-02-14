@@ -2128,6 +2128,7 @@ void rmi4_late_resume(struct early_suspend *h)
 
 static const struct i2c_device_id rmi4_id_table[] = {
 	{ "synaptics_3202", 0 },
+	{ "synaptics_3400", 0 },
 	{ },
 };
 MODULE_DEVICE_TABLE(i2c, rmi4_id_table);

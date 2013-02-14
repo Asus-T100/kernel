@@ -28,8 +28,9 @@
 #ifndef _SYNAPTICS_RMI4_H_INCLUDED_
 #define _SYNAPTICS_RMI4_H_INCLUDED_
 
-#define TOUCH_TYPE_OGS	0
-#define TOUCH_TYPE_GFF	1
+#define TOUCH_TYPE_S3202_OGS	0
+#define TOUCH_TYPE_S3202_GFF	1
+#define TOUCH_TYPE_S3408	2
 
 struct rmi4_touch_calib {
 	bool x_flip;

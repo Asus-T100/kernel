@@ -170,6 +170,7 @@ struct devs_id __initconst device_ids[] = {
 	{"cs42l73", SFI_DEV_TYPE_I2C, 1, &no_platform_data, NULL},
 	{"mxt224", SFI_DEV_TYPE_I2C, 0, &mxt224_platform_data, NULL},
 	{"synaptics_3202", SFI_DEV_TYPE_I2C, 0, &s3202_platform_data},
+	{"synaptics_3400", SFI_DEV_TYPE_I2C, 0, &s3202_platform_data},
 	{"pn544", SFI_DEV_TYPE_I2C, 0, &pn544_platform_data, NULL},
 	{"bq24192", SFI_DEV_TYPE_I2C, 1, &bq24192_platform_data},
 	{"max17042", SFI_DEV_TYPE_I2C, 1, &max17042_platform_data, NULL},

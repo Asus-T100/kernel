@@ -45,6 +45,7 @@
 
 /* F34 register offsets. */
 #define F34_BLOCK_DATA_OFFSET 2
+#define F34_BLOCK_DATA_OFFSET_V1 1
 
 /* F34 commands */
 #define F34_WRITE_FW_BLOCK          0x2
@@ -62,7 +63,10 @@
 #define IS_IDLE(ctl_ptr)      ((!ctl_ptr->status) && (!ctl_ptr->command))
 #define extract_u32(ptr)      (le32_to_cpu(*(__le32 *)(ptr)))
 
-#define FIRMWARE_NAME_FORCE	"s3202.img"
+#define FIRMWARE_NAME_FORCE	"rmi4.img"
+#define PID_S3202_GFF 0
+#define PID_S3202_OGS "TM2178"
+#define PID_S3408 "s3408_ver5"
 
 /** Image file V5, Option 0
  */
@@ -88,7 +92,7 @@ struct reflash_data {
 	union f34_control_status	f34_controls;
 	const u8			*firmware_data;
 	const u8			*config_data;
-	unsigned int		int_count;
+	unsigned int			int_count;
 };
 
 /* If this parameter is true, we will update the firmware regardless of
@@ -175,7 +179,23 @@ static int rescan_pdt(struct reflash_data *data)
 
 static int read_f34_controls(struct reflash_data *data)
 {
-	return rmi4_i2c_byte_read(data->rmi4_dev,
+	struct rmi4_data *rmi4_dev = data->rmi4_dev;
+	struct i2c_client *client = rmi4_dev->i2c_client;
+	int retval;
+	union f34_control_status_v1 f34ctrlsts1;
+	if (data->bootloader_id[1] > '5') {
+		retval = rmi4_i2c_block_read(data->rmi4_dev,
+			data->f34_controls.address, f34ctrlsts1.regs,
+			sizeof(f34ctrlsts1.regs));
+
+		data->f34_controls.command = f34ctrlsts1.command;
+		data->f34_controls.status = f34ctrlsts1.status;
+		data->f34_controls.program_enabled =
+			f34ctrlsts1.program_enabled;
+
+		return retval;
+	} else
+		return rmi4_i2c_byte_read(data->rmi4_dev,
 			data->f34_controls.address, data->f34_controls.regs);
 }
 
@@ -337,7 +357,14 @@ static int read_f34_queries(struct reflash_data *data)
 			retval);
 		return retval;
 	}
-	retval = rmi4_i2c_block_read(data->rmi4_dev,
+
+	if (data->bootloader_id[1] > '5')
+		retval = rmi4_i2c_block_read(data->rmi4_dev,
+			data->f34_pdt->query_base_addr+1,
+			data->f34_queries.regs,
+			ARRAY_SIZE(data->f34_queries.regs));
+	else
+		retval = rmi4_i2c_block_read(data->rmi4_dev,
 			data->f34_pdt->query_base_addr+2,
 			data->f34_queries.regs,
 			ARRAY_SIZE(data->f34_queries.regs));
@@ -372,7 +399,11 @@ static int read_f34_queries(struct reflash_data *data)
 	dev_dbg(&client->dev, "F34 config blocks: %d\n",
 			data->f34_queries.config_block_count);
 
-	data->f34_controls.address = data->f34_pdt->data_base_addr +
+	if (data->bootloader_id[1] > '5')
+		data->f34_controls.address = data->f34_pdt->data_base_addr +
+			F34_BLOCK_DATA_OFFSET_V1 + 1;
+	else
+		data->f34_controls.address = data->f34_pdt->data_base_addr +
 			F34_BLOCK_DATA_OFFSET + data->f34_queries.block_size;
 
 	return 0;
@@ -385,7 +416,12 @@ static int write_bootloader_id(struct reflash_data *data)
 	struct rmi4_fn_desc *f34_pdt = data->f34_pdt;
 	struct i2c_client *client = data->rmi4_dev->i2c_client;
 
-	retval = rmi4_i2c_block_write(rmi4_dev,
+	if (data->bootloader_id[1] > '5') {
+		retval = rmi4_i2c_block_write(rmi4_dev,
+			f34_pdt->data_base_addr + F34_BLOCK_DATA_OFFSET_V1,
+			data->bootloader_id, ARRAY_SIZE(data->bootloader_id));
+	} else
+		retval = rmi4_i2c_block_write(rmi4_dev,
 			f34_pdt->data_base_addr + F34_BLOCK_DATA_OFFSET,
 			data->bootloader_id, ARRAY_SIZE(data->bootloader_id));
 	if (retval < 0) {
@@ -521,6 +557,9 @@ static int write_blocks(struct reflash_data *data, u8 *block_ptr,
 	int retval;
 	u16 addr = data->f34_pdt->data_base_addr + F34_BLOCK_DATA_OFFSET;
 	struct i2c_client *client = data->rmi4_dev->i2c_client;
+
+	if (data->bootloader_id[1] > '5')
+		addr = data->f34_pdt->data_base_addr + F34_BLOCK_DATA_OFFSET_V1;
 
 	retval = rmi4_i2c_block_write(data->rmi4_dev,
 					data->f34_pdt->data_base_addr,
@@ -735,10 +774,20 @@ int rmi4_fw_update(struct rmi4_data *pdata,
 		return -1;
 	}
 
-	if (data.product_id[0] == 0)
-		touch_type = TOUCH_TYPE_GFF;
-	else
-		touch_type = TOUCH_TYPE_OGS;
+	if (data.product_id[0] == PID_S3202_GFF)
+		touch_type = TOUCH_TYPE_S3202_GFF;
+	else if (strcmp(data.product_id, PID_S3202_OGS) == 0)
+		touch_type = TOUCH_TYPE_S3202_OGS;
+	else if (strcmp(data.product_id, PID_S3408) == 0)
+		touch_type = TOUCH_TYPE_S3408;
+	else {
+		dev_err(&client->dev, "Unsupported touch screen type, product ID: %s\n",
+				data.product_id);
+		if (!force) {
+			dev_err(&client->dev, "Use S3202 OGS as default type\n");
+			return TOUCH_TYPE_S3202_OGS;
+		}
+	}
 
 	if (force)
 		firmware_name = FIRMWARE_NAME_FORCE;

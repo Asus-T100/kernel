@@ -317,6 +317,20 @@ union f34_control_status {
 	};
 };
 
+union f34_control_status_v1 {
+	struct {
+		u8 command:6;
+		u8 reserved_2:2;
+		u8 status:6;
+		u8 reserved_1:1;
+		u8 program_enabled:1;
+	} __packed;
+	struct {
+		u8 regs[2];
+		u16 address;
+	};
+};
+
 #ifdef CONFIG_HAS_EARLYSUSPEND
 void rmi4_early_suspend(struct early_suspend *h);
 void rmi4_late_resume(struct early_suspend *h);
