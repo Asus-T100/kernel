@@ -37,3 +37,14 @@ config DEBUG_THERMAL
 	  Saying Y here will expose extra sysfs nodes under
 	  /sys/class/thermal/thermal_zoneX/
 
+config SENSORS_THERMAL_MRFLD
+        tristate "Thermal driver for Intel Merrifield platform"
+        depends on THERMAL && INTEL_SCU_IPC && BASINCOVE_GPADC
+        help
+          Say Y here to enable thermal driver on Intel Merrifield
+          platform.
+
+          To load this driver as a module, select M here. The module
+          will be called "mrfl_thermal"
+
+
