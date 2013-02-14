@@ -146,7 +146,6 @@ enum sh_css_state {
 }
 
 #define DEFAULT_PIPE \
-	false,                     /* zoom_changed */ \
 	true,                      /* online */ \
 	NULL,                      /* shading_table */ \
 	DEFAULT_PIPELINE_SETTINGS, /* pipeline */ \
@@ -269,7 +268,6 @@ struct sh_css_video_settings {
 
 struct sh_css_pipe {
 	enum sh_css_pipe_id          mode;
-	bool                         zoom_changed;
 	bool                         online;
 	struct sh_css_shading_table *shading_table;
 	struct sh_css_pipeline       pipeline;
@@ -2264,8 +2262,9 @@ static bool sh_css_frame_ready(void)
 	if (my_css.curr_state == sh_css_state_executing_sp_bin_copy) {
 		my_css.capture_pipe.pipe.capture.output_frame->planes.binary.size =
 			sh_css_sp_get_binary_copy_size();
+		return true;
 	}
-	return true;
+	return false;
 }
 
 static unsigned int translate_sw_interrupt(unsigned value)
@@ -2429,14 +2428,15 @@ enum sh_css_err sh_css_translate_interrupt(
 		case hrt_isp_css_irq_sw_1:
 			infos |= translate_sw_interrupt1();
 
-			/* pqiao TODO: also assumption here */
-			if (sh_css_frame_ready()) {
-				if (my_css.curr_pipe &&
-				    my_css.curr_pipe->invalid_first_frame) {
-					infos |=
-					  SH_CSS_IRQ_INFO_INVALID_FIRST_FRAME;
-					my_css.curr_pipe->invalid_first_frame = false;
-				}
+			if (my_css.curr_state == sh_css_state_executing_sp_bin_copy) {
+				my_css.capture_pipe.pipe.capture.output_frame->planes.binary.size =
+					sh_css_sp_get_binary_copy_size();
+			}
+			if (my_css.curr_pipe &&
+					my_css.curr_pipe->invalid_first_frame) {
+				infos |=
+					 SH_CSS_IRQ_INFO_INVALID_FIRST_FRAME;
+				my_css.curr_pipe->invalid_first_frame = false;
 			}
 			break;
 		default:
@@ -2587,14 +2587,15 @@ enum sh_css_err sh_css_translate_interrupt(
 		case hrt_isp_css_irq_sw_pin_1:
 			infos |= translate_sw_interrupt1();
 
-			/* pqiao TODO: also assumption here */
-			if (sh_css_frame_ready()) {
-				if (my_css.curr_pipe &&
-				    my_css.curr_pipe->invalid_first_frame) {
-					infos |=
-					  SH_CSS_IRQ_INFO_INVALID_FIRST_FRAME;
-					my_css.curr_pipe->invalid_first_frame = false;
-				}
+			if (my_css.curr_state == sh_css_state_executing_sp_bin_copy) {
+				my_css.capture_pipe.pipe.capture.output_frame->planes.binary.size =
+					sh_css_sp_get_binary_copy_size();
+			}
+			if (my_css.curr_pipe &&
+					my_css.curr_pipe->invalid_first_frame) {
+				infos |=
+					 SH_CSS_IRQ_INFO_INVALID_FIRST_FRAME;
+				my_css.curr_pipe->invalid_first_frame = false;
 			}
 			break;
 		default:
@@ -3343,8 +3344,6 @@ sh_css_init_buffer_queues(void)
 		hmm_buffer_record_h[i] = NULL;
 
 
-	sh_css_event_init_irq_mask();
-
 	fw = &sh_css_sp_fw;
 	HIVE_ADDR_host_sp_queues_initialized =
 		fw->info.sp.host_sp_queues_initialized;
@@ -3359,11 +3358,6 @@ sh_css_init_buffer_queues(void)
 	sp_dmem_store_uint32(SP0_ID,
 		(unsigned int)sp_address_of(host_sp_queues_initialized),
 		(uint32_t)(1));
-
-	/* Force ISP parameter calculation after a mode change */
-	sh_css_invalidate_params();
-
-	sh_css_param_update_isp_params(true);
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_init_buffer_queues() leave:\n");
 }
@@ -3405,11 +3399,6 @@ assert(pipe != NULL);
 		return err;
 
 	copy_stage = NULL;
-
-	if (pipe->zoom_changed) {
-		sh_css_pipe_invalidate_binaries(pipe);
-		pipe->zoom_changed = false;
-	}
 
 	err = sh_css_pipe_load_binaries(pipe);
 	if (err != sh_css_success)
@@ -3533,6 +3522,9 @@ assert(me != NULL);
 		me);
 
 	err = sh_css_pipeline_stop(me->mode);
+
+	/* more settings should be reset here, maybe use the DEFAULT_PIPE */
+	//pipe->input_needs_raw_binning = false;
 
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_pipe_stop() leave: return_err=%d\n",err);
@@ -3959,7 +3951,16 @@ enum sh_css_err sh_css_start(
 
 	sh_css_init_host_sp_control_vars();
 
+	sh_css_event_init_irq_mask();
+
 	sh_css_init_buffer_queues();
+
+	/* Force ISP parameter calculation after a mode change */
+	sh_css_invalidate_params();
+	/* now only preview pipe supports raw binning. if more pipes support it later, we need to change this */
+	sh_css_params_set_raw_binning(my_css.preview_pipe.input_needs_raw_binning);
+
+	sh_css_param_update_isp_params(true);
 
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_start() leave: return_err=%d\n", err);
@@ -4644,11 +4645,6 @@ assert(pipe != NULL);
 
 	copy_stage = NULL;
 	in_stage = NULL;
-
-	if (pipe->zoom_changed) {
-		sh_css_pipe_invalidate_binaries(pipe);
-		pipe->zoom_changed = false;
-	}
 
 	err = sh_css_pipe_load_binaries(pipe);
 	if (err != sh_css_success)

@@ -787,6 +787,8 @@ struct sh_css_binary_info {
 		unsigned char     dvs_6axis;
 		unsigned char     block_output;
 		unsigned char     ds;
+		unsigned char     fixed_bayer_ds;
+		unsigned char     bayer_fir_6db;
 		unsigned char     raw_binning;
 		unsigned char     continuous;
 		unsigned char     s3a;
