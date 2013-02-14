@@ -101,6 +101,8 @@ obj-$(subst m,y,$(CONFIG_BCM43XX_PLATFORM_DATA))			+= platform_bcm43xx.o
 # Bluetooth
 obj-$(subst m,y,$(CONFIG_TI_ST))					+= platform_btwilink.o
 obj-$(subst m,y,$(CONFIG_BCM_BT_LPM))					+= platform_btlpm.o
+# GPS
+obj-$(subst m,y,$(CONFIG_INTEL_MID_GPS))				+= platform_gps.o
 # Pin Control
 obj-$(subst m,y,$(CONFIG_PINCTRL_INTEL_MID))				+= platform_mid_pinctrl.o
 obj-$(subst m,y,$(CONFIG_INTEL_MID_OSNIB_ILB))				+= platform_osnib_ilb.o
