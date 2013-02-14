@@ -25,8 +25,7 @@
  * ----------------------------------------------------------------------------
  *
  */
-#ifndef I2C_DESIGNWARE_CORE_H
-#define I2C_DESIGNWARE_CORE_H
+
 /*
  * Registers offset
  */
@@ -37,6 +36,8 @@
 #define DW_IC_SS_SCL_LCNT	0x18
 #define DW_IC_FS_SCL_HCNT	0x1c
 #define DW_IC_FS_SCL_LCNT	0x20
+#define DW_IC_HS_SCL_HCNT	0x24
+#define DW_IC_HS_SCL_LCNT	0x28
 #define DW_IC_INTR_STAT		0x2c
 #define DW_IC_INTR_MASK		0x30
 #define DW_IC_RAW_INTR_STAT	0x34
@@ -69,6 +70,10 @@
 #define DW_IC_CON_RESTART_EN		0x20
 #define DW_IC_CON_SLAVE_DISABLE		0x40
 
+#define INTEL_MID_STD_CFG  (DW_IC_CON_MASTER |			\
+				DW_IC_CON_SLAVE_DISABLE |	\
+				DW_IC_CON_RESTART_EN)
+
 #define DW_IC_INTR_RX_UNDER	0x001
 #define DW_IC_INTR_RX_OVER	0x002
 #define DW_IC_INTR_RX_FULL	0x004
@@ -92,6 +97,8 @@
 #define DW_IC_ERR_TX_ABRT	0x1
 
 #define DW_IC_CMD_STOP		0x200
+
+#define DW_IC_SPEED_MASK	0x6
 
 /*
  * status codes
@@ -156,6 +163,19 @@
 #define CLV_HS_SCLK_HCNT		0x8
 #define CLV_HS_SCLK_LCNT		0x17
 
+/* inofficial configuration
+#define MERR_SS_SCLK_HCNT 0x2c8
+#define MERR_SS_SCLK_LCNT 0x380
+#define MERR_FS_SCLK_HCNT 0x084
+#define MERR_FS_SCLK_LCNT 0x100
+*/
+#define MERR_SS_SCLK_HCNT 0x2f8
+#define MERR_SS_SCLK_LCNT 0x37b
+#define MERR_FS_SCLK_HCNT 0x087
+#define MERR_FS_SCLK_LCNT 0x10a
+#define MERR_HS_SCLK_HCNT 0x8
+#define MERR_HS_SCLK_LCNT 0x20
+
 /**
  * struct dw_i2c_dev - private i2c-designware data
  * @dev: driver model device node
@@ -211,6 +231,9 @@ struct dw_i2c_dev {
 	u32			master_cfg;
 	unsigned int		tx_fifo_depth;
 	unsigned int		rx_fifo_depth;
+	int			use_dyn_clk;	/* use dynamic clk setting */
+	u32			clk_khz;	/* input clock */
+	u32			speed_cfg;
 };
 
 extern u32 dw_readl(struct dw_i2c_dev *dev, int offset);
@@ -226,5 +249,4 @@ extern void i2c_dw_disable(struct dw_i2c_dev *dev);
 extern void i2c_dw_clear_int(struct dw_i2c_dev *dev);
 extern void i2c_dw_disable_int(struct dw_i2c_dev *dev);
 extern u32 i2c_dw_read_comp_param(struct dw_i2c_dev *dev);
-#endif
 
