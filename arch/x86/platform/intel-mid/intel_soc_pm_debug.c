@@ -1073,6 +1073,158 @@ static const struct file_operations devices_state_operations = {
 	.release	= single_release,
 };
 
+#ifdef CONFIG_PM_DEBUG
+static int ignore_lss_show(struct seq_file *s, void *unused)
+{
+	u32 local_ignore_lss[4];
+
+	/* Acquire the scu_ready_sem */
+	down(&mid_pmu_cxt->scu_ready_sem);
+	memcpy(local_ignore_lss, mid_pmu_cxt->ignore_lss, (sizeof(u32)*4));
+	up(&mid_pmu_cxt->scu_ready_sem);
+
+	seq_printf(s, "IGNORE_LSS[0]: %08X\n", local_ignore_lss[0]);
+	seq_printf(s, "IGNORE_LSS[1]: %08X\n", local_ignore_lss[1]);
+	seq_printf(s, "IGNORE_LSS[2]: %08X\n", local_ignore_lss[2]);
+	seq_printf(s, "IGNORE_LSS[3]: %08X\n", local_ignore_lss[3]);
+
+	return 0;
+}
+
+static int ignore_add_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, ignore_lss_show, NULL);
+}
+
+static ssize_t ignore_add_write(struct file *file,
+		     const char __user *userbuf, size_t count, loff_t *ppos)
+{
+	char buf[32];
+	int res;
+	int buf_size = min(count, sizeof(buf)-1);
+	int sub_sys_pos, sub_sys_index;
+	u32 lss, local_ignore_lss[4];
+	u32 pm_cmd_val;
+
+	if (copy_from_user(buf, userbuf, buf_size))
+		return -EFAULT;
+
+	buf[buf_size] = 0;
+
+	res = kstrtou32(buf, 10, &lss);
+
+	if (res)
+		return -EINVAL;
+
+	if (lss > MAX_LSS_POSSIBLE)
+		return -EINVAL;
+
+	/* Acquire the scu_ready_sem */
+	down(&mid_pmu_cxt->scu_ready_sem);
+	memcpy(local_ignore_lss, mid_pmu_cxt->ignore_lss, (sizeof(u32)*4));
+	up(&mid_pmu_cxt->scu_ready_sem);
+
+	/* If set to MAX_LSS_POSSIBLE it means
+	 * ignore all.
+	 */
+	if (lss == MAX_LSS_POSSIBLE) {
+		local_ignore_lss[0] = 0xFFFFFFFF;
+		local_ignore_lss[1] = 0xFFFFFFFF;
+		local_ignore_lss[2] = 0xFFFFFFFF;
+		local_ignore_lss[3] = 0xFFFFFFFF;
+	} else {
+		sub_sys_index	= lss / mid_pmu_cxt->ss_per_reg;
+		sub_sys_pos	= lss % mid_pmu_cxt->ss_per_reg;
+
+		pm_cmd_val =
+			(D0I3_MASK << (sub_sys_pos * BITS_PER_LSS));
+		local_ignore_lss[sub_sys_index] |= pm_cmd_val;
+	}
+
+	/* Acquire the scu_ready_sem */
+	down(&mid_pmu_cxt->scu_ready_sem);
+	memcpy(mid_pmu_cxt->ignore_lss, local_ignore_lss, (sizeof(u32)*4));
+	up(&mid_pmu_cxt->scu_ready_sem);
+
+	return buf_size;
+}
+
+static const struct file_operations ignore_add_ops = {
+	.open		= ignore_add_open,
+	.read		= seq_read,
+	.write		= ignore_add_write,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
+static int ignore_remove_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, ignore_lss_show, NULL);
+}
+
+static ssize_t ignore_remove_write(struct file *file,
+		     const char __user *userbuf, size_t count, loff_t *ppos)
+{
+	char buf[32];
+	int res;
+	int buf_size = min(count, sizeof(buf)-1);
+	int sub_sys_pos, sub_sys_index;
+	u32 lss, local_ignore_lss[4];
+	u32 pm_cmd_val;
+
+	if (copy_from_user(buf, userbuf, buf_size))
+		return -EFAULT;
+
+	buf[buf_size] = 0;
+
+	res = kstrtou32(buf, 10, &lss);
+
+	if (res)
+		return -EINVAL;
+
+	if (lss > MAX_LSS_POSSIBLE)
+		return -EINVAL;
+
+	/* Acquire the scu_ready_sem */
+	down(&mid_pmu_cxt->scu_ready_sem);
+	memcpy(local_ignore_lss, mid_pmu_cxt->ignore_lss, (sizeof(u32)*4));
+	up(&mid_pmu_cxt->scu_ready_sem);
+
+	/* If set to MAX_LSS_POSSIBLE it means
+	 * remove all from ignore list.
+	 */
+	if (lss == MAX_LSS_POSSIBLE) {
+		local_ignore_lss[0] = 0;
+		local_ignore_lss[1] = 0;
+		local_ignore_lss[2] = 0;
+		local_ignore_lss[3] = 0;
+	} else {
+		sub_sys_index	= lss / mid_pmu_cxt->ss_per_reg;
+		sub_sys_pos	= lss % mid_pmu_cxt->ss_per_reg;
+
+		pm_cmd_val =
+			(D0I3_MASK << (sub_sys_pos * BITS_PER_LSS));
+		local_ignore_lss[sub_sys_index] &= ~pm_cmd_val;
+	}
+
+	/* Acquire the scu_ready_sem */
+	down(&mid_pmu_cxt->scu_ready_sem);
+	memcpy(mid_pmu_cxt->ignore_lss, local_ignore_lss, (sizeof(u32)*4));
+	up(&mid_pmu_cxt->scu_ready_sem);
+
+	return buf_size;
+}
+
+
+static const struct file_operations ignore_remove_ops = {
+	.open		= ignore_remove_open,
+	.read		= seq_read,
+	.write		= ignore_remove_write,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+#endif
+
 /*These are place holders and will be enabled in next patch*/
 
 void pmu_log_pmu_irq(int status, bool interactive_cmd_sent) { return; };
@@ -1092,6 +1244,16 @@ void pmu_stats_init(void)
 	/* /sys/kernel/debug/mid_pmu_states */
 	(void) debugfs_create_file("mid_pmu_states", S_IFREG | S_IRUGO,
 				NULL, NULL, &devices_state_operations);
+#ifdef CONFIG_PM_DEBUG
+	if (platform_is(INTEL_ATOM_MRFLD)) {
+		/* /sys/kernel/debug/ignore_add */
+		(void) debugfs_create_file("ignore_add", S_IFREG | S_IRUGO,
+					NULL, NULL, &ignore_add_ops);
+		/* /sys/kernel/debug/ignore_remove */
+		(void) debugfs_create_file("ignore_remove", S_IFREG | S_IRUGO,
+					NULL, NULL, &ignore_remove_ops);
+	}
+#endif
 }
 
 #endif /*if CONFIG_INTEL_ATOM_MRFLD_POWER*/
