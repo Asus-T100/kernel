@@ -539,6 +539,11 @@ CONFIG_X86_SFI_CPUFREQ=y
 # CONFIG_X86_E_POWERSAVER is not set
 
 #
+# PnP Tools
+#
+CONFIG_TOOL_MATRIX=m
+
+#
 # shared options
 #
 # CONFIG_X86_SPEEDSTEP_LIB is not set
