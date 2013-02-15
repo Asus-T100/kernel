@@ -1860,7 +1860,7 @@ static int __init dlp_module_init(void)
 
 	/* Create a single thread workqueue for hangup background tasks */
 	dlp_drv.hangup_wq = alloc_workqueue(DRVNAME "-hup_wq", WQ_UNBOUND, 1);
-	if (unlikely(!dlp_drv.rx_wq)) {
+	if (unlikely(!dlp_drv.hangup_wq)) {
 		pr_err(DRVNAME ": Unable to create Hangup workqueue\n");
 		err = -EFAULT;
 		goto no_hu_wq;
@@ -1895,7 +1895,7 @@ out:
 static void __exit dlp_module_exit(void)
 {
 	destroy_workqueue(dlp_drv.hangup_wq);
-	destroy_workqueue(dlp_drv.rx_wq);
+	destroy_workqueue(dlp_drv.tx_wq);
 	destroy_workqueue(dlp_drv.rx_wq);
 
 	hsi_unregister_client_driver(&dlp_driver_setup);

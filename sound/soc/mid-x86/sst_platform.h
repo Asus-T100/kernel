@@ -39,7 +39,7 @@ enum sst_audio_device_type {
 	SND_SST_DEVICE_VIBRA,
 	SND_SST_DEVICE_HAPTIC,
 	SND_SST_DEVICE_CAPTURE,
-	SND_SST_DEVICE_COMPRESSED_PLAYBACK,
+	SND_SST_DEVICE_COMPRESS,
 };
 
 enum snd_sst_input_stream {
@@ -75,6 +75,7 @@ enum sst_controls {
 	SST_MAX_CONTROLS =		0x1010,
 	SST_SET_BYTE_STREAM =		0x1011,
 	SST_GET_BYTE_STREAM =		0x1012,
+	SST_SET_SSP_CONFIG =		0x1013,
 };
 
 struct pcm_stream_info {
@@ -86,9 +87,24 @@ struct pcm_stream_info {
 	int sfreq;
 };
 
+struct sst_compress_cb {
+	void *param;
+	void (*compr_cb)(void *param);
+};
 
+struct compress_sst_ops {
+	const char *name;
+	int (*open) (struct snd_sst_params *str_params,
+			struct sst_compress_cb *cb);
+	int (*control) (unsigned int cmd, unsigned int str_id);
+	int (*tstamp) (unsigned int str_id, struct snd_compr_tstamp *tstamp);
+	int (*ack) (unsigned int str_id, unsigned long bytes);
+	int (*close) (unsigned int str_id);
+	int (*get_caps) (struct snd_compr_caps *caps);
+	int (*get_codec_caps) (struct snd_compr_codec_caps *codec);
+	int (*set_metadata) (unsigned int str_id, struct snd_compr_metadata *metadata);
 
-
+};
 
 enum lpe_param_types_mixer {
 	SST_ALGO_PARAM_MIXER_STREAM_CFG = 0x801,
@@ -105,21 +121,26 @@ struct sst_ops {
 	int (*device_control) (int cmd, void *arg);
 	int (*set_generic_params) (enum sst_controls cmd, void *arg);
 	int (*close) (unsigned int str_id);
+	int (*power) (bool state);
 };
 
 struct sst_runtime_stream {
 	int     stream_status;
+	unsigned int id;
+	size_t bytes_written;
 	struct pcm_stream_info stream_info;
 	struct sst_ops *ops;
+	struct compress_sst_ops *compr_ops;
 	spinlock_t	status_lock;
 };
+
 
 struct sst_device {
 	char *name;
 	struct device *dev;
 	struct sst_ops *ops;
 	struct platform_device *pdev;
-	unsigned int usage_count;
+	struct compress_sst_ops *compr_ops;
 };
 
 int sst_register_dsp(struct sst_device *sst);

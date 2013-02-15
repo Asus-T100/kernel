@@ -750,6 +750,7 @@ struct sh_css_binary_info {
 	unsigned int		xmem_addr; /* hrt_vaddress */
 	unsigned int		c_subsampling;
 	unsigned int		output_num_chunks;
+	unsigned int		input_num_chunks;
 	unsigned int		num_stripes;
 	unsigned int		pipelining;
 	unsigned int		fixed_s3a_deci_log;

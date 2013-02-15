@@ -1583,11 +1583,10 @@ sh_css_frame_allocate_contiguous_from_info(struct sh_css_frame **frame,
 
 /** @brief Map an existing frame data pointer to a CSS frame.
  *
- * @param	width		The width of the frame, in pixels.
- * @param	height		The height of the frame, in lines.
- * @param	format		The frame format.
- * @param	padded_width	The padded width (stride) in pixels.
+ * @param[in]	info		The frame info.
  * @param[in]	data		Pointer to the allocated frame data.
+ * @param[in]	attribute	Attributes to be passed to mmgr_mmap.
+ * @param[in]	context		Pointer to the a context to be passed to mmgr_mmap.
  * @return			The allocated frame structure.
  *
  * This function maps a pre-allocated pointer into a CSS frame. This can be
@@ -1597,12 +1596,12 @@ sh_css_frame_allocate_contiguous_from_info(struct sh_css_frame **frame,
  * ia_css_frame_allocate() does, but instead of allocating the memory, it will
  * map the pre-allocated memory into the CSS address space.
  */
-struct ia_css_frame *
-sh_css_frame_map(unsigned int width,
-		 unsigned int height,
-		 enum sh_css_frame_format format,
-		 unsigned int padded_width,
-		 void *data);
+enum sh_css_err
+sh_css_frame_map(struct sh_css_frame **frame,
+                 const struct sh_css_frame_info *info,
+                 const void *data,
+                 uint16_t attribute,
+                 void *context);
 
 /** @brief Unmap a CSS frame structure.
  *
@@ -1613,7 +1612,7 @@ sh_css_frame_map(unsigned int width,
  * using ia_css_frame_map().
  */
 void
-sh_css_frame_unmap(struct ia_css_frame *frame);
+sh_css_frame_unmap(struct sh_css_frame *frame);
 
 #if 0
 /* ===== PREVIEW ===== */

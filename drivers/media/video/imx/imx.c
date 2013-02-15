@@ -1098,7 +1098,7 @@ static int imx_s_ctrl(struct v4l2_subdev *sd, struct v4l2_control *ctrl)
  * res->width/height smaller than w/h wouldn't be considered.
  * Returns the value of gap or -1 if fail.
  */
-#define LARGEST_ALLOWED_RATIO_MISMATCH 140
+#define LARGEST_ALLOWED_RATIO_MISMATCH 800
 static int distance(struct imx_resolution *res, u32 w, u32 h)
 {
 	unsigned int w_ratio = ((res->width << 13)/w);
@@ -1550,8 +1550,8 @@ imx_s_parm(struct v4l2_subdev *sd, struct v4l2_streamparm *param)
 	mutex_lock(&dev->input_lock);
 	switch (dev->run_mode) {
 	case CI_MODE_VIDEO:
-		imx_res = imx_sets[dev->sensor_id].res_preview;
-		N_RES = imx_sets[dev->sensor_id].n_res_preview;
+		imx_res = imx_sets[dev->sensor_id].res_video;
+		N_RES = imx_sets[dev->sensor_id].n_res_video;
 		break;
 	case CI_MODE_STILL_CAPTURE:
 		imx_res = imx_sets[dev->sensor_id].res_still;

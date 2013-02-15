@@ -65,7 +65,7 @@ extern int drm_psb_3D_vblank;
 
 static PFN_DC_GET_PVRJTABLE pfnGetPVRJTable = 0;
 static int FirstCleanFlag = 1;
-static IMG_BOOL DRMLFBFlipBlackScreen(MRSTLFB_DEVINFO *psDevInfo,
+static IMG_BOOL DRMLFBFlipBlackScreen(struct drm_device *dev, int pipe,
 					IMG_BOOL bAlpha);
 static MRST_ERROR MRSTLFBAllocBuffer(struct MRSTLFB_DEVINFO_TAG *psDevInfo,
 		IMG_UINT32 ui32Size, MRSTLFB_BUFFER **ppBuffer);
@@ -106,7 +106,8 @@ static IMG_BOOL MRSTLFBFlip(MRSTLFB_DEVINFO *psDevInfo,
 		memset(psDevInfo->sSystemBuffer.sCPUVAddr, 0,
 				psDevInfo->sSystemBuffer.ui32BufferSize);
 		FirstCleanFlag = 0;
-		DRMLFBFlipBlackScreen(psDevInfo, IMG_TRUE);
+		DRMLFBFlipBlackScreen(psDevInfo->psDrmDevice,
+				psDevInfo->ui32MainPipe, IMG_TRUE);
 	}
 	return IMG_TRUE;
 }
@@ -169,8 +170,10 @@ static void MRSTLFBFlipOverlay(MRSTLFB_DEVINFO *psDevInfo,
 		* disabling sprite plane. As we find that it causes
 		* overlay update always to be failure when disable and
 		* re-enable overlay on CTP */
-		if (dev_priv->init_screen_start != PSB_RVDC32(DSPASURF))
-			DRMLFBFlipBlackScreen(psDevInfo, IMG_TRUE);
+		if (dev_priv->init_screen_start != PSB_RVDC32(DSPASURF)) {
+			DRMLFBFlipBlackScreen(dev, psDevInfo->ui32MainPipe,
+						IMG_TRUE);
+		}
 #if 0
 		uDspCntr = PSB_RVDC32(DSPACNTR);
 		if (uDspCntr & DISPLAY_PLANE_ENABLE) {
@@ -184,6 +187,9 @@ static void MRSTLFBFlipOverlay(MRSTLFB_DEVINFO *psDevInfo,
 #endif
 	} else if (((psContext->pipe >> 6) & 0x3) == 0x2 &&
 		!(pipe_mask & (1 << 1))) {
+		if (dev_priv->init_screen_start != PSB_RVDC32(DSPBSURF))
+			DRMLFBFlipBlackScreen(dev, 1, IMG_TRUE);
+#if 0
 		uDspCntr = PSB_RVDC32(DSPACNTR + 0x1000);
 		if (uDspCntr & DISPLAY_PLANE_ENABLE) {
 			uDspCntr &= ~DISPLAY_PLANE_ENABLE;
@@ -193,6 +199,7 @@ static void MRSTLFBFlipOverlay(MRSTLFB_DEVINFO *psDevInfo,
 			// display freeze due to some limitation unknown
 			//PSB_WVDC32(0, DSPBSURF);
 		}
+#endif
 	} else if (((psContext->pipe >> 6) & 0x3) == 0x1 &&
 		!(pipe_mask & (1 << 2))) {
 		uDspCntr = PSB_RVDC32(DSPACNTR + 0x2000);
@@ -510,34 +517,21 @@ static IMG_BOOL DRMLFBFlipBuffer(MRSTLFB_DEVINFO *psDevInfo,
 	return ret;
 }
 
-static IMG_BOOL DRMLFBFlipBlackScreen(MRSTLFB_DEVINFO *psDevInfo,
+static IMG_BOOL DRMLFBFlipBlackScreen(struct drm_device *dev, int pipe,
 					IMG_BOOL bAlpha)
 {
-	struct drm_psb_private *dev_priv;
+	struct drm_psb_private *dev_priv = dev->dev_private;
 	u32 offset;
 	u32 dspcntr;
 
-	if (!psDevInfo) {
-		DRM_ERROR("Invalid parameters\n");
-		return IMG_FALSE;
-	}
-
-	if (psDevInfo->ui32MainPipe == 0)
+	if (pipe == 0)
 		offset = 0x0000;
-	else if (psDevInfo->ui32MainPipe == 1)
+	else if (pipe == 1)
 		offset = 0x1000;
-	else if (psDevInfo->ui32MainPipe == 2)
+	else if (pipe == 2)
 		offset = 0x2000;
 	else
 		return IMG_FALSE;
-
-	dev_priv =
-		(struct drm_psb_private *)psDevInfo->psDrmDevice->dev_private;
-
-	if (!dev_priv) {
-		DRM_ERROR("Invalid parameters\n");
-		return IMG_FALSE;
-	}
 
 	dspcntr = PSB_RVDC32(DSPACNTR + offset);
 	/* mask alpha and pixel format if bAlpha to be false*/
@@ -1158,7 +1152,7 @@ static PVRSRV_ERROR DestroyDCSwapChain(IMG_HANDLE hDevice,
 	{
 		DRMLFBFlipBuffer(psDevInfo, NULL, &psDevInfo->sSystemBuffer);
 		MRSTLFBClearSavedFlip(psDevInfo);
-		DRMLFBFlipBlackScreen(psDevInfo, IMG_FALSE);
+		DRMLFBFlipBlackScreen(psDevInfo->psDrmDevice, psDevInfo->ui32MainPipe, IMG_FALSE);
 	}
 
 	if (psDevInfo->psCurrentSwapChain == psSwapChain ||
@@ -1616,7 +1610,7 @@ static IMG_BOOL bIllegalFlipContexts(IMG_VOID *pvData)
 
 			/* OVERLAY A/C have same policy */
 			if (psOverlayContext->pipe == 0x00 &&
-				(psDevInfo->bScreenState || hdmi_state)) {
+				psDevInfo->bScreenState) {
 				psOverlayContext->index = INVALID_INDEX;
 			} else if (psOverlayContext->pipe == 0x80 &&
 					hdmi_state &&
@@ -1670,7 +1664,7 @@ static IMG_BOOL ProcessFlip2(IMG_HANDLE hCmdCookie,
 	if (FirstCleanFlag == 1) {
 		memset(psDevInfo->sSystemBuffer.sCPUVAddr, 0,
 				psDevInfo->sSystemBuffer.ui32BufferSize);
-		DRMLFBFlipBlackScreen(psDevInfo, IMG_TRUE);
+		DRMLFBFlipBlackScreen(dev, psDevInfo->ui32MainPipe, IMG_TRUE);
 		FirstCleanFlag = 0;
 	}
 

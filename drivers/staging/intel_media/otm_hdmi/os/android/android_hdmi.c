@@ -121,7 +121,7 @@ static const struct {
 
 /* Function declarations for interrupt routines */
 static irqreturn_t android_hdmi_irq_callback(int irq, void *data);
-static irqreturn_t __hdmi_irq_handler_bottomhalf(void *data);
+irqreturn_t __hdmi_irq_handler_bottomhalf(void *data);
 
 static int calculate_refresh_rate(struct drm_display_mode *mode);
 void android_hdmi_encoder_restore_wq(struct work_struct *work);
@@ -232,12 +232,18 @@ static int edid_ready_in_hpd = 0;
  * IRQ interrupt bottomhalf handler callback. This callback
  * will be called for hdmi plug/unplug interrupts
  */
-static irqreturn_t __hdmi_irq_handler_bottomhalf(void *data)
+extern struct drm_device *g_drm_dev;
+irqreturn_t __hdmi_irq_handler_bottomhalf(void *data)
 {
 	struct android_hdmi_priv *hdmi_priv = data;
 	bool rails_on = otm_hdmi_power_rails_on();
 	static int processed_hdmi_status = -1;
+	struct drm_psb_private *dev_priv = g_drm_dev->dev_private;
 
+	if (! dev_priv->pvr_ops){
+		pr_debug("Delay handling HDMI device till SGX is ready\n");
+		return IRQ_HANDLED;
+	}
 	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
 				       OSPM_UHB_FORCE_POWER_ON))
 		return IRQ_HANDLED;
@@ -343,6 +349,7 @@ exit:
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 	return IRQ_HANDLED;
 }
+EXPORT_SYMBOL(__hdmi_irq_handler_bottomhalf);
 
 #ifdef OTM_HDMI_HDCP_ENABLE
 static int hdmi_ddc_read_write(bool read,
@@ -917,6 +924,10 @@ int android_hdmi_get_modes(struct drm_connector *connector)
 	struct i2c_adapter *adapter = NULL;
 	struct drm_display_mode *pref_mode_assigned;
 
+	if (! dev_priv->pvr_ops){
+		pr_debug("Delay hdmi get_modes till SGX ready\n");
+		return -1;
+	}
 	debug_modes_count = 0;
 	pr_debug("Enter %s\n", __func__);
 

@@ -65,6 +65,8 @@
 #include "lock.h"
 #include "linkage.h"
 #include "pvr_drm.h"
+#include "android_hdmi.h"
+#include "psb_drv.h"
 
 #if defined(PVR_DRI_DRM_NOT_PCI)
 #include "pvr_drm_mod.h"
@@ -481,6 +483,8 @@ extern struct drm_device *g_drm_dev;
 
 static int __init PVRSRVDrmInit(void)
 {
+	struct drm_psb_private *dev_priv = NULL;
+
 	printk(KERN_INFO "__SGX_pvr init..\n");
 	SYSPVRFillCallback(g_drm_dev);
 	PVRDPFInit();
@@ -489,6 +493,10 @@ static int __init PVRSRVDrmInit(void)
 	printk(KERN_INFO "__SGX_pvr init ok\n");
 #ifdef CONFIG_DRM_CTP
 	return gburst_module_init();
+#endif
+#ifdef CONFIG_SUPPORT_HDMI
+	dev_priv = g_drm_dev->dev_private;
+	__hdmi_irq_handler_bottomhalf(dev_priv->hdmi_priv);
 #endif
 	return 0;
 }

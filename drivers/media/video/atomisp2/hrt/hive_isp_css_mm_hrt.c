@@ -132,10 +132,11 @@ void *hrt_isp_css_mm_alloc(size_t bytes)
 
 void *hrt_isp_css_mm_alloc_user_ptr(size_t bytes, unsigned int userptr,
 				    unsigned int num_pages,
+				    enum hrt_userptr_type type,
 				    bool cached)
 {
 	return __hrt_isp_css_mm_alloc(bytes, userptr, num_pages,
-				      HRT_USR_PTR, cached);
+				      type, cached);
 }
 
 void *hrt_isp_css_mm_alloc_cached(size_t bytes)
@@ -177,37 +178,6 @@ void *hrt_isp_css_mm_calloc_cached(size_t bytes)
 	return ptr;
 }
 
-#if 0
-int hrt_isp_css_mm_load_int(void *virt_addr, int *data)
-{
-	return hrt_isp_css_mm_load(virt_addr, data, sizeof(*data));
-}
-
-int hrt_isp_css_mm_load_short(void *virt_addr, short *data)
-{
-	return hrt_isp_css_mm_load(virt_addr, data, sizeof(*data));
-}
-
-int hrt_isp_css_mm_load_char(void *virt_addr, char *data)
-{
-	return hrt_isp_css_mm_load(virt_addr, data, sizeof(*data));
-}
-
-int hrt_isp_css_mm_store_char(void *virt_addr, char data)
-{
-	return hrt_isp_css_mm_store(virt_addr, &data, sizeof(data));
-}
-
-int hrt_isp_css_mm_store_short(void *virt_addr, short data)
-{
-	return hrt_isp_css_mm_store(virt_addr, &data, sizeof(data));
-}
-
-int hrt_isp_css_mm_store_int(void *virt_addr, int data)
-{
-	return hrt_isp_css_mm_store(virt_addr, &data, sizeof(data));
-}
-#endif
 void *hrt_isp_css_virt_to_phys(void *virt_addr)
 {
 	return (void *)(u32)hmm_virt_to_phys(virt_addr);

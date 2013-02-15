@@ -501,4 +501,5 @@ void otm_print_cmdline_option(void);
  */
 void test_otm_hdmi_report_edid_full(void);
 
+irqreturn_t __hdmi_irq_handler_bottomhalf(void *data);
 #endif /* __ANDROID_HDMI_H */

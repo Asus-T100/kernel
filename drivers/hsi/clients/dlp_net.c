@@ -578,6 +578,9 @@ static int dlp_net_start_xmit(struct sk_buff *skb, struct net_device *dev)
 
 		/* Set the packet SG entry */
 		sg = sg_next(sg);
+		if (!sg)
+			break;
+
 		sg_set_buf(sg, skb_data, skb_len);
 		sg->dma_address = dma_map_single(dlp_drv.controller,
 						 skb_data,

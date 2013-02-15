@@ -40,6 +40,9 @@
 #include <asm/platform_ctp_audio.h>
 
 #define HPDETECT_POLL_INTERVAL	msecs_to_jiffies(1000)	/* 1sec */
+#define JACK_DEBOUNCE_REMOVE	50
+#define JACK_DEBOUNCE_INSERT	100
+
 
 struct snd_soc_card snd_soc_card_ctp = {
 	.name = "cloverview_audio",
@@ -79,7 +82,7 @@ static struct snd_soc_jack_gpio hs_gpio[] = {
 	[CTP_HSDET_GPIO] = {
 		.name = "cs-hsdet-gpio",
 		.report = SND_JACK_HEADSET,
-		.debounce_time = 100,
+		.debounce_time = JACK_DEBOUNCE_INSERT,
 		.jack_status_check = ctp_soc_jack_gpio_detect,
 		.irq_flags = IRQF_TRIGGER_FALLING,
 	},
@@ -306,19 +309,17 @@ int ctp_set_bias_level_post(struct snd_soc_card *card,
 	return 0;
 }
 
-static int set_mic_bias(struct snd_soc_jack *jack, int state)
+static int set_mic_bias(struct snd_soc_jack *jack,
+			const char *bias_widget, bool enable)
 {
 	struct snd_soc_codec *codec = jack->codec;
 	struct snd_soc_dapm_context *dapm = &codec->dapm;
 
-	switch (state) {
-	case MIC_BIAS_DISABLE:
-		snd_soc_dapm_disable_pin(dapm, "MIC2 Bias");
-		break;
-	case MIC_BIAS_ENABLE:
-		snd_soc_dapm_force_enable_pin(dapm, "MIC2 Bias");
-		break;
-	}
+	if (enable)
+		snd_soc_dapm_force_enable_pin(dapm, bias_widget);
+	else
+		snd_soc_dapm_disable_pin(dapm, bias_widget);
+
 	snd_soc_dapm_sync(&codec->dapm);
 	return 0;
 }
@@ -342,43 +343,51 @@ int ctp_amp_event(struct snd_soc_dapm_widget *w,
 	return 0;
 }
 
+static inline void set_bp_interrupt(struct ctp_mc_private *ctx, bool enable)
+{
+	if (!enable) {
+		if (!atomic_dec_return(&ctx->bpirq_flag)) {
+			pr_debug("Disable %d interrupt line\n", ctx->bpirq);
+			disable_irq_nosync(ctx->bpirq);
+		} else
+			atomic_inc(&ctx->bpirq_flag);
+	} else {
+		if (atomic_inc_return(&ctx->bpirq_flag) == 1) {
+			/* If BP intr not enabled */
+			pr_debug("Enable %d interrupt line\n", ctx->bpirq);
+			enable_irq(ctx->bpirq);
+		} else
+			atomic_dec(&ctx->bpirq_flag);
+	}
+}
 
 int ctp_soc_jack_gpio_detect(void)
 {
 	struct snd_soc_jack_gpio *gpio = &hs_gpio[CTP_HSDET_GPIO];
 	int enable, status;
-	int irq;
 	struct snd_soc_jack *jack = gpio->jack;
 	struct snd_soc_codec *codec = jack->codec;
 	struct ctp_mc_private *ctx =
 		container_of(jack, struct ctp_mc_private, ctp_jack);
 
-	/* Get Jack status */
-	gpio = &hs_gpio[CTP_HSDET_GPIO];
+	/* During jack removal, spurious BP interrupt may occur.
+	 * Better to disable interrupt until jack insert/removal stabilize */
+	set_bp_interrupt(ctx, false);
 	enable = gpio_get_value(gpio->gpio);
 	if (gpio->invert)
 		enable = !enable;
 	pr_debug("%s:gpio->%d=0x%d\n", __func__, gpio->gpio, enable);
 	pr_debug("Current jack status = 0x%x\n", jack->status);
-	set_mic_bias(jack, MIC_BIAS_ENABLE);
+
+	set_mic_bias(jack, "MIC2 Bias", true);
 	status = ctx->ops->hp_detection(codec, jack, enable);
 	if (!status) {
-		set_mic_bias(jack, MIC_BIAS_DISABLE);
+		set_mic_bias(jack, "MIC2 Bias", false);
 		/* Jack removed, Disable BP interrupts if not done already */
-		if (!atomic_dec_return(&ctx->bpirq_flag)) {
-			gpio = &hs_gpio[CTP_BTN_GPIO];
-			irq = gpio_to_irq(gpio->gpio);
-			if (irq < 0) {
-				pr_err("%d:Failed to map gpio_to_irq\n", irq);
-				return status;
-			}
-			/* Disable Button_press interrupt if no Headset */
-			pr_debug("Disable %d interrupt line\n", irq);
-			disable_irq_nosync(irq);
-		} else {
-			atomic_inc(&ctx->bpirq_flag);
-		}
+		set_bp_interrupt(ctx, false);
 	} else { /* If jack inserted, schedule delayed_wq */
+		cancel_delayed_work_sync(&ctx->jack_work);
+		set_mic_bias(jack, "MIC2 Bias", false);
 		schedule_delayed_work(&ctx->jack_work, HPDETECT_POLL_INTERVAL);
 #ifdef CONFIG_HAS_WAKELOCK
 		/*
@@ -390,6 +399,7 @@ int ctp_soc_jack_gpio_detect(void)
 				HPDETECT_POLL_INTERVAL + msecs_to_jiffies(50));
 #endif
 	}
+
 	return status;
 }
 
@@ -397,7 +407,7 @@ int ctp_soc_jack_gpio_detect(void)
 void headset_status_verify(struct work_struct *work)
 {
 	struct snd_soc_jack_gpio *gpio = &hs_gpio[CTP_HSDET_GPIO];
-	int enable, status, irq;
+	int enable, status;
 	struct snd_soc_jack *jack = gpio->jack;
 	struct snd_soc_codec *codec = jack->codec;
 	unsigned int mask = SND_JACK_HEADSET;
@@ -411,38 +421,21 @@ void headset_status_verify(struct work_struct *work)
 	pr_debug("Current jack status = 0x%x\n", jack->status);
 
 	status = ctx->ops->hp_detection(codec, jack, enable);
-	gpio = &hs_gpio[CTP_BTN_GPIO];
-	irq = gpio_to_irq(gpio->gpio);
-	if (irq < 0) {
-		pr_err("%d:Failed to map gpio_to_irq\n", irq);
-		return;
-	}
 
 	/* Enable Button_press interrupt if HS is inserted
 	 * and interrupts are not already enabled
 	 */
 	if (status == SND_JACK_HEADSET) {
-		if (atomic_inc_return(&ctx->bpirq_flag) == 1) {
-			/* If BP intr not enabled */
-			pr_debug("Enable %d interrupt line\n", irq);
-			enable_irq(irq);
-		} else {
-			atomic_dec(&ctx->bpirq_flag);
-		}
-		/* else do nothing as interrupts are already enabled
-		 * This case occurs during slow insertion when
-		 * multiple plug-in events are reported
-		 */
+		set_mic_bias(jack, "MIC2 Bias", true);
+		set_bp_interrupt(ctx, true);
+		/* Decrease the debounce time for HS removal detection */
+		gpio->debounce_time = JACK_DEBOUNCE_REMOVE;
 	} else {
-		set_mic_bias(jack, MIC_BIAS_DISABLE);
-		if (!atomic_dec_return(&ctx->bpirq_flag)) {
-			/* Disable Button_press interrupt if no Headset */
-			pr_debug("Disable %d interrupt line\n", irq);
-			disable_irq_nosync(irq);
-		} else {
-			atomic_inc(&ctx->bpirq_flag);
-		}
-
+		set_mic_bias(jack, "MIC2 Bias", false);
+		/* Disable Button_press interrupt if no Headset */
+		set_bp_interrupt(ctx, false);
+		/* Restore the debounce time for HS insertion detection */
+		gpio->debounce_time = JACK_DEBOUNCE_INSERT;
 	}
 
 	if (jack->status != status)
@@ -454,7 +447,7 @@ void headset_status_verify(struct work_struct *work)
 int ctp_soc_jack_gpio_detect_bp(void)
 {
 	struct snd_soc_jack_gpio *gpio = &hs_gpio[CTP_BTN_GPIO];
-	int enable, hs_status, status, irq;
+	int enable, hs_status, status;
 	struct snd_soc_jack *jack = gpio->jack;
 	struct snd_soc_codec *codec = jack->codec;
 	struct ctp_mc_private *ctx =
@@ -472,35 +465,29 @@ int ctp_soc_jack_gpio_detect_bp(void)
 	if (gpio->invert)
 		hs_status = !hs_status;
 	pr_debug("%s: gpio->%d=0x%x\n", __func__, gpio->gpio, hs_status);
-	if (!hs_status) {/* HS present, process the interrupt */
-		if (!enable)
-			status = ctx->ops->bp_detection(codec, jack, enable);
-		else {
+	pr_debug("Jack status = %x\n", jack->status);
+	if (((jack->status & SND_JACK_HEADSET) == SND_JACK_HEADSET)
+						&& (!hs_status)) {
+		/* HS present, process the interrupt */
+		if (!enable) {
+			/* Jack removal might be in progress, check interrupt status
+			 * before proceeding for button press detection */
+			if (!atomic_dec_return(&ctx->bpirq_flag)) {
+				status = ctx->ops->bp_detection(codec, jack, enable);
+				atomic_inc(&ctx->bpirq_flag);
+			} else
+				atomic_inc(&ctx->bpirq_flag);
+		} else {
 			status = jack->status;
 			pr_debug("%s:Invalid BP interrupt\n", __func__);
 		}
 	} else {
-		pr_debug("%s:Spurious BP interrupt : HS_status 0x%x\n",
-				__func__, hs_status);
-		/* Disbale BP interrupts, in case enabled */
-		if (!atomic_dec_return(&ctx->bpirq_flag)) {
-			set_mic_bias(jack, MIC_BIAS_DISABLE);
-			gpio = &hs_gpio[CTP_BTN_GPIO];
-			irq = gpio_to_irq(gpio->gpio);
-			if (irq < 0) {
-				pr_err("%d:Failed to map gpio_to_irq\n", irq);
-				return status;
-			}
-
-			/* Disable Button_press interrupt if no Headset */
-			pr_debug("Disable %d interrupt line\n", irq);
-			disable_irq_nosync(irq);
-		} else {
-			atomic_inc(&ctx->bpirq_flag);
-		}
-
+		pr_debug("%s:Spurious BP interrupt : jack_status 0x%x, HS_status 0x%x\n",
+				__func__, jack->status, hs_status);
+		set_mic_bias(jack, "MIC2 Bias", false);
+		/* Disable Button_press interrupt if no Headset */
+		set_bp_interrupt(ctx, false);
 	}
-
 	pr_debug("%s: status 0x%x\n", __func__, status);
 
 	return status;
@@ -627,6 +614,12 @@ static int snd_ctp_mc_probe(struct ipc_device *ipcdev)
 	if (pdata->codec_gpio_hsdet >= 0 && pdata->codec_gpio_button >= 0) {
 		hs_gpio[CTP_HSDET_GPIO].gpio = pdata->codec_gpio_hsdet;
 		hs_gpio[CTP_BTN_GPIO].gpio = pdata->codec_gpio_button;
+		ret_val = gpio_to_irq(hs_gpio[CTP_BTN_GPIO].gpio);
+		if (ret_val < 0) {
+			pr_err("%d:Failed to map button irq\n", ret_val);
+			goto unalloc;
+		}
+		ctx->bpirq = ret_val;
 	}
 	ctx->hs_gpio_ops = hs_gpio;
 	snd_soc_card_set_drvdata(&snd_soc_card_ctp, ctx);

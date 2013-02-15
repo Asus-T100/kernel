@@ -1,7 +1,7 @@
 /*
  *  sst_platform.c - Intel MID Platform driver
  *
- *  Copyright (C) 2010 Intel Corp
+ *  Copyright (C) 2010-2013 Intel Corp
  *  Author: Vinod Koul <vinod.koul@intel.com>
  *  Author: Harsha Priya <priya.harsha@intel.com>
  *  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -37,8 +37,9 @@
 #include <asm/intel-mid.h>
 #include "sst_platform.h"
 #include "sst_platform_pvt.h"
-
 struct sst_device *sst_dsp;
+struct device *sst_pdev;
+
 static DEFINE_MUTEX(sst_dsp_lock);
 
 static struct snd_pcm_hardware sst_platform_pcm_hw = {
@@ -384,11 +385,26 @@ static int sst_media_prepare(struct snd_pcm_substream *substream,
 	return ret_val;
 }
 
+static inline int power_up_sst(struct sst_runtime_stream *sst)
+{
+	return sst->ops->power(true);
+}
+
+static inline int power_down_sst(struct sst_runtime_stream *sst)
+{
+	return sst->ops->power(false);
+}
+
 static int sst_media_hw_params(struct snd_pcm_substream *substream,
 				struct snd_pcm_hw_params *params,
 				struct snd_soc_dai *dai)
 {
+	struct sst_runtime_stream *sst =
+			substream->runtime->private_data;
 	pr_debug("%s\n", __func__);
+
+	if (strstr(dai->name, "Power-cpu-dai"))
+		return power_up_sst(sst);
 	snd_pcm_lib_malloc_pages(substream, params_buffer_bytes(params));
 	memset(substream->runtime->dma_area, 0, params_buffer_bytes(params));
 	return 0;
@@ -397,6 +413,11 @@ static int sst_media_hw_params(struct snd_pcm_substream *substream,
 static int sst_media_hw_free(struct snd_pcm_substream *substream,
 		struct snd_soc_dai *dai)
 {
+	struct sst_runtime_stream *sst =
+			substream->runtime->private_data;
+
+	if (strstr(dai->name, "Power-cpu-dai"))
+		return power_down_sst(sst);
 	return snd_pcm_lib_free_pages(substream);
 }
 
@@ -452,8 +473,8 @@ static struct snd_soc_dai_driver sst_platform_dai[] = {
 	},
 },
 {
-	.name = "Virtual-cpu-dai",
-	.id = 5,
+	.name = "Compress-cpu-dai",
+	.compress_dai = 1,
 	.playback = {
 		.channels_min = SST_STEREO,
 		.channels_max = SST_STEREO,
@@ -461,7 +482,25 @@ static struct snd_soc_dai_driver sst_platform_dai[] = {
 		.formats = SNDRV_PCM_FMTBIT_S16_LE,
 	},
 },
-
+{
+	.name = "Power-cpu-dai",
+	.ops = &sst_media_dai_ops,
+	.playback = {
+		.channels_min = SST_MONO,
+		.channels_max = SST_STEREO,
+		.rates = SNDRV_PCM_RATE_8000_48000,
+		.formats = SNDRV_PCM_FMTBIT_CONTINUOUS,
+	},
+},
+{
+	.name = "Virtual-cpu-dai",
+	.playback = {
+		.channels_min = SST_STEREO,
+		.channels_max = SST_STEREO,
+		.rates = SNDRV_PCM_RATE_48000,
+		.formats = SNDRV_PCM_FMTBIT_S16_LE,
+	},
+},
 };
 
 static int sst_platform_open(struct snd_pcm_substream *substream)
@@ -586,6 +625,203 @@ static int sst_pcm_new(struct snd_soc_pcm_runtime *rtd)
 	return retval;
 }
 
+/* compress stream operations */
+static void sst_compr_fragment_elapsed(void *arg)
+{
+	struct snd_compr_stream *cstream = (struct snd_compr_stream *)arg;
+
+	pr_debug("fragment elapsed by driver\n");
+	if (cstream)
+		snd_compr_fragment_elapsed(cstream);
+}
+
+static int sst_platform_compr_open(struct snd_compr_stream *cstream)
+{
+
+	int ret_val = 0;
+	struct snd_compr_runtime *runtime = cstream->runtime;
+	struct sst_runtime_stream *stream;
+
+	stream = kzalloc(sizeof(*stream), GFP_KERNEL);
+	if (!stream)
+		return -ENOMEM;
+
+	spin_lock_init(&stream->status_lock);
+
+	/* get the sst ops */
+	if (!sst_dsp || !try_module_get(sst_dsp->dev->driver->owner)) {
+		pr_err("no device available to run\n");
+		ret_val = -ENODEV;
+		goto out_ops;
+	}
+	stream->compr_ops = sst_dsp->compr_ops;
+
+	stream->id = 0;
+	sst_set_stream_status(stream, SST_PLATFORM_INIT);
+	runtime->private_data = stream;
+	return 0;
+out_ops:
+	kfree(stream);
+	return ret_val;
+}
+
+static int sst_platform_compr_free(struct snd_compr_stream *cstream)
+{
+	struct sst_runtime_stream *stream;
+	int ret_val = 0, str_id;
+
+	stream = cstream->runtime->private_data;
+	/*need to check*/
+	str_id = stream->id;
+	if (str_id)
+		ret_val = stream->compr_ops->close(str_id);
+	module_put(sst_dsp->dev->driver->owner);
+	kfree(stream);
+	pr_debug("%s: %d\n", __func__, ret_val);
+	return 0;
+}
+
+static int sst_platform_compr_set_params(struct snd_compr_stream *cstream,
+					struct snd_compr_params *params)
+{
+	struct sst_runtime_stream *stream;
+	int retval;
+	struct snd_sst_params str_params;
+	struct sst_compress_cb cb;
+
+	stream = cstream->runtime->private_data;
+	/* construct fw structure for this*/
+	memset(&str_params, 0, sizeof(str_params));
+
+	str_params.ops = STREAM_OPS_PLAYBACK;
+	str_params.stream_type = SST_STREAM_TYPE_MUSIC;
+	str_params.device_type = SND_SST_DEVICE_COMPRESS;
+
+	switch (params->codec.id) {
+	case SND_AUDIOCODEC_MP3: {
+		str_params.codec = SST_CODEC_TYPE_MP3;
+		str_params.sparams.uc.mp3_params.num_chan = params->codec.ch_in;
+		str_params.sparams.uc.mp3_params.pcm_wd_sz = 16;
+		break;
+	}
+
+	case SND_AUDIOCODEC_AAC: {
+		str_params.codec = SST_CODEC_TYPE_AAC;
+		str_params.sparams.uc.aac_params.num_chan = params->codec.ch_in;
+		str_params.sparams.uc.aac_params.pcm_wd_sz = 16;
+		if (params->codec.format == SND_AUDIOSTREAMFORMAT_MP4ADTS)
+			str_params.sparams.uc.aac_params.bs_format =
+							AAC_BIT_STREAM_ADTS;
+		else if (params->codec.format == SND_AUDIOSTREAMFORMAT_RAW)
+			str_params.sparams.uc.aac_params.bs_format =
+							AAC_BIT_STREAM_RAW;
+		else {
+			pr_err("Undefined format%d\n", params->codec.format);
+			return -EINVAL;
+		}
+		str_params.sparams.uc.aac_params.externalsr =
+						params->codec.sample_rate;
+		break;
+	}
+
+	default:
+		pr_err("codec not supported, id =%d\n", params->codec.id);
+		return -EINVAL;
+	}
+
+	str_params.aparams.ring_buf_info[0].addr  =
+					virt_to_phys(cstream->runtime->buffer);
+	str_params.aparams.ring_buf_info[0].size =
+					cstream->runtime->buffer_size;
+	str_params.aparams.sg_count = 1;
+	str_params.aparams.frag_size = cstream->runtime->fragment_size;
+
+	cb.param = cstream;
+	cb.compr_cb = sst_compr_fragment_elapsed;
+
+	retval = stream->compr_ops->open(&str_params, &cb);
+	if (retval < 0) {
+		pr_err("stream allocation failed %d\n", retval);
+		return retval;
+	}
+
+	stream->id = retval;
+	return 0;
+}
+
+static int sst_platform_compr_trigger(struct snd_compr_stream *cstream, int cmd)
+{
+	struct sst_runtime_stream *stream =
+		cstream->runtime->private_data;
+
+	return stream->compr_ops->control(cmd, stream->id);
+}
+
+static int sst_platform_compr_pointer(struct snd_compr_stream *cstream,
+					struct snd_compr_tstamp *tstamp)
+{
+	struct sst_runtime_stream *stream;
+
+	stream  = cstream->runtime->private_data;
+	stream->compr_ops->tstamp(stream->id, tstamp);
+	tstamp->byte_offset = tstamp->copied_total %
+				 (u32)cstream->runtime->buffer_size;
+	pr_debug("calc bytes offset/copied bytes as %d\n", tstamp->byte_offset);
+	return 0;
+}
+
+static int sst_platform_compr_ack(struct snd_compr_stream *cstream,
+					size_t bytes)
+{
+	struct sst_runtime_stream *stream;
+
+	stream  = cstream->runtime->private_data;
+	stream->compr_ops->ack(stream->id, (unsigned long)bytes);
+	stream->bytes_written += bytes;
+
+	return 0;
+}
+
+static int sst_platform_compr_get_caps(struct snd_compr_stream *cstream,
+					struct snd_compr_caps *caps)
+{
+	struct sst_runtime_stream *stream =
+		cstream->runtime->private_data;
+
+	return stream->compr_ops->get_caps(caps);
+}
+
+static int sst_platform_compr_get_codec_caps(struct snd_compr_stream *cstream,
+					struct snd_compr_codec_caps *codec)
+{
+	struct sst_runtime_stream *stream =
+		cstream->runtime->private_data;
+
+	return stream->compr_ops->get_codec_caps(codec);
+}
+
+static int sst_platform_compr_set_metadata(struct snd_compr_stream *cstream,
+					struct snd_compr_metadata *metadata)
+{
+	struct sst_runtime_stream *stream  =
+		 cstream->runtime->private_data;
+
+	return stream->compr_ops->set_metadata(stream->id, metadata);
+}
+
+static struct snd_compr_ops sst_platform_compr_ops = {
+
+	.open = sst_platform_compr_open,
+	.free = sst_platform_compr_free,
+	.set_params = sst_platform_compr_set_params,
+	.set_metadata = sst_platform_compr_set_metadata,
+	.trigger = sst_platform_compr_trigger,
+	.pointer = sst_platform_compr_pointer,
+	.ack = sst_platform_compr_ack,
+	.get_caps = sst_platform_compr_get_caps,
+	.get_codec_caps = sst_platform_compr_get_codec_caps,
+};
+
 static int __devinit sst_soc_probe(struct snd_soc_platform *platform)
 {
 	struct sst_data *ctx = snd_soc_platform_get_drvdata(platform);
@@ -620,15 +856,43 @@ static struct snd_soc_platform_driver sst_soc_platform_drv  __devinitdata = {
 	.probe		= sst_soc_probe,
 	.remove		= sst_soc_remove,
 	.ops		= &sst_platform_ops,
+	.compr_ops	= &sst_platform_compr_ops,
 	.pcm_new	= sst_pcm_new,
 	.pcm_free	= sst_pcm_free,
 	.read		= sst_soc_read,
 	.write		= sst_soc_write,
 };
-
-int sst_register_dsp(struct sst_device *dev)
+int sst_fill_config_data(struct sst_data *sst)
 {
-	if (!dev)
+	int len;
+	char *platform_data;
+	struct sst_platform_data *sst_pdata = sst->pdata;
+
+	pr_debug("%s called\n", __func__);
+	len = sizeof(*(sst_pdata->bdata)) + sizeof(*(sst_pdata->pdata));
+	platform_data = devm_kzalloc(sst_pdev,
+					(len + sizeof(u32)), GFP_KERNEL);
+	if (platform_data == NULL) {
+		pr_err("kzalloc failed\n");
+		return -ENOMEM;
+	}
+	memcpy(platform_data, &len, sizeof(len));
+	memcpy(platform_data + sizeof(int), sst_pdata->bdata,
+					sizeof(*(sst_pdata->bdata)));
+	memcpy(platform_data + sizeof(int) + sizeof(*(sst_pdata->bdata)),
+					sst_pdata->pdata, sizeof(*(sst_pdata->pdata)));
+	sst_dsp->ops->set_generic_params(SST_SET_SSP_CONFIG, platform_data);
+
+	return 0;
+}
+
+int sst_register_dsp(struct sst_device *sst_dev)
+{
+
+	struct sst_data *sst = dev_get_drvdata(sst_pdev);
+	struct sst_platform_data *sst_pdata = sst->pdata;
+
+	if (!sst_dev)
 		return -ENODEV;
 	mutex_lock(&sst_dsp_lock);
 	if (sst_dsp) {
@@ -636,8 +900,11 @@ int sst_register_dsp(struct sst_device *dev)
 		mutex_unlock(&sst_dsp_lock);
 		return -EEXIST;
 	}
-	pr_debug("registering device %s\n", dev->name);
-	sst_dsp = dev;
+	pr_debug("registering device %s\n", sst_dev->name);
+
+	sst_dsp = sst_dev;
+	if (!(sst_pdata->bdata == NULL) && !(sst_pdata->pdata == NULL))
+		sst_fill_config_data(sst);
 	mutex_unlock(&sst_dsp_lock);
 	return 0;
 }
@@ -673,25 +940,24 @@ static int __devinit sst_platform_probe(struct platform_device *pdev)
 		pr_err("kzalloc failed\n");
 		return -ENOMEM;
 	};
-
+	sst_pdev = &pdev->dev;
 	sst->pdata = pdata;
 	mutex_init(&sst->lock);
 	dev_set_drvdata(&pdev->dev, sst);
 
 	ret = snd_soc_register_platform(&pdev->dev,
 					 &sst_soc_platform_drv);
-
 	if (ret) {
 		pr_err("registering soc platform failed\n");
 		return ret;
 	}
-
 	ret = snd_soc_register_dais(&pdev->dev,
 				sst_platform_dai, ARRAY_SIZE(sst_platform_dai));
 	if (ret) {
 		pr_err("registering cpu dais failed\n");
 		snd_soc_unregister_platform(&pdev->dev);
 	}
+
 	return ret;
 }
 

@@ -49,6 +49,7 @@
 #include "device_libs/platform_mrfl_pmic.h"
 #include "device_libs/platform_mrfl_ocd.h"
 #include "device_libs/platform_hdmi.h"
+#include "device_libs/platform_soc_thermal.h"
 #include <asm/platform_ctp_audio.h>
 #include <asm/platform_mrfld_audio.h>
 
@@ -198,6 +199,8 @@ struct devs_id __initconst device_ids[] = {
 	{"pmic_ccsm", SFI_DEV_TYPE_IPC, 1, &mrfl_pmic_platform_data, NULL},
 	{"i2c_pmic_adap", SFI_DEV_TYPE_IPC, 1, &no_platform_data, NULL},
 	{"hdmi", SFI_DEV_TYPE_IPC, 1, &hdmi_platform_data, NULL},
+	{"soc_thrm", SFI_DEV_TYPE_IPC, 1, &no_platform_data,
+					&soc_thrm_device_handler},
 
 
 

@@ -30,11 +30,18 @@
 #endif
 #include <hmm/hmm.h>
 
+#define HRT_BUF_FLAG_CACHED (1 << 0)
+
 enum hrt_userptr_type {
 	HRT_USR_PTR = 0,
 #ifdef CONFIG_ION
 	HRT_USR_ION,
 #endif
+};
+
+struct hrt_userbuffer_attr {
+	enum hrt_userptr_type	type;
+	unsigned int		pgnr;
 };
 
 void hrt_isp_css_mm_set_user_ptr(unsigned int userptr,
@@ -46,6 +53,7 @@ int hrt_isp_css_mm_set(void *virt_addr, int c, size_t bytes);
 void *hrt_isp_css_mm_alloc(size_t bytes);
 void *hrt_isp_css_mm_alloc_user_ptr(size_t bytes, unsigned int userptr,
 				    unsigned int num_pages,
+				    enum hrt_userptr_type,
 				    bool cached);
 void *hrt_isp_css_mm_alloc_cached(size_t bytes);
 

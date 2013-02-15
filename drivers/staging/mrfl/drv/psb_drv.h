@@ -474,6 +474,7 @@ struct drm_psb_private {
 	int have_rar;
 	int have_tt;
 	int have_mem_mmu;
+	int have_mem_mmu_tiling;
 	struct mutex temp_mem;
 
 	/*

@@ -77,7 +77,7 @@ static int sst_check_device_type(u32 device, u32 num_chan, u32 *pcm_slot)
 			*pcm_slot = 0x0F;
 		else if (device == SND_SST_DEVICE_CAPTURE && num_chan > 4)
 			*pcm_slot = 0x1F;
-		else if (device == SND_SST_DEVICE_COMPRESSED_PLAYBACK &&
+		else if (device == SND_SST_DEVICE_COMPRESS &&
 				(num_chan == 2 || num_chan == 1))
 			*pcm_slot = sst_drv_ctx->compressed_slot;
 		else {
@@ -109,7 +109,7 @@ static unsigned int get_clv_stream_id(u32 device)
 		str_id = 1;
 	else if (device == SND_SST_DEVICE_CAPTURE)
 		str_id = 2;
-	else if (device == SND_SST_DEVICE_COMPRESSED_PLAYBACK)
+	else if (device == SND_SST_DEVICE_COMPRESS)
 		str_id = 3;
 	else
 		return -EINVAL;

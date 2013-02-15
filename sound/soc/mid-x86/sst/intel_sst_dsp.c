@@ -744,6 +744,20 @@ static void sst_dma_free_resources(struct sst_dma *dma)
 	dma_release_channel(dma->ch);
 }
 
+void sst_fill_config(struct intel_sst_drv *sst_ctx)
+{
+	u32 sign;
+	int len;
+
+	sign = SST_CONFIG_SSP_SIGN;
+	len = sst_ctx->ssp_config->size;
+
+	memcpy_toio(sst_ctx->dram, &sign, sizeof(u32));
+	memcpy_toio(sst_ctx->dram + sizeof(u32), (sst_ctx->ssp_config->bytes), len);
+	memcpy_toio(sst_ctx->dram + len + sizeof(u32), &sst_ctx->shim_phy_add, sizeof(u32));
+	memcpy_toio(sst_ctx->dram + len + sizeof(u64), &sst_ctx->mailbox_add, sizeof(u32));
+}
+
 /**
  * sst_do_dma - function allocs and initiates the DMA
  *
@@ -1219,6 +1233,9 @@ int sst_load_fw(void)
 	}
 
 	sst_set_fw_state_locked(sst_drv_ctx, SST_FW_LOADED);
+	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID)
+		sst_fill_config(sst_drv_ctx);
+
 	/* bring sst out of reset */
 	ret_val = sst_drv_ctx->ops->start();
 	if (ret_val)
