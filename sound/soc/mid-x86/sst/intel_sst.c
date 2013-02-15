@@ -466,11 +466,6 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 		mutex_init(&stream->lock);
 	}
 
-	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID) {
-		sst_drv_ctx->device_input_mixer = SST_STREAM_DEVICE_IHF
-							| SST_INPUT_STREAM_PCM;
-	}
-
 	/* Init the device */
 	ret = pci_enable_device(pci);
 	if (ret) {

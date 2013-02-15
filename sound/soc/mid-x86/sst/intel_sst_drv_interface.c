@@ -189,10 +189,6 @@ int sst_get_stream_allocated(struct snd_sst_params *str_param,
 	struct stream_info *str_info;
 
 	pr_debug("In %s\n", __func__);
-	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID) {
-		pr_debug("Sending LPE mixer algo Params\n");
-		sst_send_lpe_mixer_algo_params();
-	}
 	block = sst_create_block(sst_drv_ctx, 0, 0);
 	if (block == NULL)
 		return -ENOMEM;
