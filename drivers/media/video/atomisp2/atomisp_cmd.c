@@ -1883,44 +1883,26 @@ static void atomisp_update_grid_info(struct atomisp_device *isp)
 			 __func__);
 		err = sh_css_preview_get_grid_info(&isp->params.curr_grid_info);
 		if(err)
-			v4l2_err(&atomisp_dev,
-				 "sh_css_capture_get_grid_info failed: %d\n",
+			dev_err(isp->dev,
+				 "sh_css_preview_get_grid_info failed: %d\n",
 				 err);
-		/*err = sh_css_preview_get_s3a_dis_info(&isp->stat_info);*/
-		if (err) {
-			v4l2_err(&atomisp_dev,
-				 "sh_css_capture_get_s3a_dis_info failed: %d\n",
-				 err);
-		}
 		break;
 	case CI_MODE_VIDEO:
 		v4l2_dbg(3, dbg_level, &atomisp_dev, "%s, video\n", __func__);
 		err = sh_css_video_get_grid_info(&isp->params.curr_grid_info);
 		if (err)
-			v4l2_err(&atomisp_dev,
-				 "sh_css_capture_get_grid_info failed: %d\n",
+			dev_err(isp->dev,
+				 "sh_css_video_get_grid_info failed: %d\n",
 				 err);
-		/*err = sh_css_video_get_s3a_dis_info(&isp->stat_info);*/
-		if (err) {
-			v4l2_err(&atomisp_dev,
-				 "sh_css_capture_get_s3a_dis_info failed: %d\n",
-				 err);
-		}
 		break;
 	default:
 		v4l2_dbg(3, dbg_level, &atomisp_dev, "%s, default(capture)\n",
 			 __func__);
 		err = sh_css_capture_get_grid_info(&isp->params.curr_grid_info);
 		if (err)
-			v4l2_err(&atomisp_dev,
+			dev_err(isp->dev,
 				 "sh_css_capture_get_grid_info failed: %d\n",
 				 err);
-		/*err = sh_css_capture_get_s3a_dis_info(&isp->stat_info);*/
-		if (err) {
-			v4l2_err(&atomisp_dev,
-				 "sh_css_capture_get_s3a_dis_info failed: %d\n",
-				 err);
-		}
 		break;
 	}
 	/* If the grid info has changed, we need to reallocate
@@ -1933,8 +1915,7 @@ static void atomisp_update_grid_info(struct atomisp_device *isp)
 
 		err = atomisp_alloc_css_stat_bufs(isp);
 		if (err) {
-			v4l2_err(&atomisp_dev,
-					"stat_buf allocate error\n");
+			dev_err(isp->dev, "stat_buf allocate error\n");
 			goto err_3a;
 		}
 
@@ -2012,15 +1993,13 @@ err_3a:
 		/* For SOC sensor happens s3a_output_bytes == 0,
 		*  using if condition to exclude false error log
 		*/
-		v4l2_err(&atomisp_dev,
-			    "Failed allocate memory for 3A statistics\n");
+		dev_err(isp->dev, "Failed allocate memory for 3A statistics\n");
 	}
 	atomisp_free_3a_dis_buffers(isp);
 	return;
 
 err_dis:
-	v4l2_err(&atomisp_dev,
-		    "Failed allocate memory for DIS statistics\n");
+	dev_err(isp->dev, "Failed allocate memory for DIS statistics\n");
 	atomisp_free_3a_dis_buffers(isp);
 }
 
