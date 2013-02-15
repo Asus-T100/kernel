@@ -1,0 +1,5 @@
+config TOOL_MATRIX
+        tristate "Matrix Performance Monitoring tool"
+        help
+          An interface for performance monitoring tool called Matrx. This tool
+	  currently runs on Medfield/Moorestown platforms.

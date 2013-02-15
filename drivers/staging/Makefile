@@ -59,3 +59,4 @@ obj-$(CONFIG_RAMSTER)		+= ramster/
 obj-$(CONFIG_USB_WPAN_HCD)	+= ozwpan/
 obj-$(CONFIG_DRM_INTEL_MID)     += intel_media/
 obj-$(CONFIG_DRM_INTEL_HANDSET) += mrfl/
+obj-$(CONFIG_TOOL_MATRIX)	+= matrix/
