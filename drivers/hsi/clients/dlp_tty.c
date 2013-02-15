@@ -123,22 +123,6 @@ inline void dlp_tty_pdu_set_length(struct hsi_msg *pdu, u32 sz)
 }
 
 /**
- * dlp_tty_pdu_skip - skip a chunk of data at the beginning of a pdu
- * @pdu: a reference to the considered pdu
- * @copied: the length of the chunk to skip
- *
- * This helper function is simply updating the scatterlist information.
- */
-inline void dlp_tty_pdu_skip(struct hsi_msg *pdu, unsigned int copied)
-{
-	struct scatterlist *sg = pdu->sgt.sgl;
-
-	sg->offset += copied;
-	sg->length += copied;
-	pdu->actual_len -= copied;
-};
-
-/**
  * dlp_tty_wakeup - wakeup an asleep TTY write function call
  * @ch_ctx: a reference to the context related to this TTY
  *
@@ -174,9 +158,9 @@ static void _dlp_forward_tty(struct tty_struct *tty,
 {
 	struct hsi_msg *pdu;
 	unsigned long flags;
-	unsigned char *data_ptr;
-	unsigned int copied;
-	int do_push, ret;
+	unsigned char *data_addr, *start_addr;
+	unsigned int copied, data_size, offset, more_packets;
+	int *ptr, do_push, ret;
 	char tty_flag;
 
 	/* Initialised to 1 to prevent unexpected TTY forwarding resume
@@ -187,7 +171,6 @@ static void _dlp_forward_tty(struct tty_struct *tty,
 	del_timer(&xfer_ctx->timer);
 
 	read_lock_irqsave(&xfer_ctx->lock, flags);
-
 	while (xfer_ctx->wait_len > 0) {
 		read_unlock_irqrestore(&xfer_ctx->lock, flags);
 
@@ -206,8 +189,12 @@ static void _dlp_forward_tty(struct tty_struct *tty,
 		if (unlikely(!tty))
 			goto free_pdu;
 
-		while (pdu->actual_len > 0) {
+		/* Read packets desc  */
+		/*---------------------*/
+		ptr = sg_virt(pdu->sgt.sgl);
+		start_addr = (unsigned char *)ptr;
 
+		do {
 			if (test_bit(TTY_THROTTLED, &tty->flags)) {
 				/* Initialised to 1 to prevent unexpected TTY
 				 * forwarding resume function schedule */
@@ -216,24 +203,39 @@ static void _dlp_forward_tty(struct tty_struct *tty,
 				goto no_more_tty_insert;
 			}
 
-			/* Copy the data to the flip buffers */
-			data_ptr = dlp_tty_pdu_data_ptr(pdu, 0);
-			copied = (unsigned int)
-			    tty_insert_flip_string_fixed_flag(tty,
-							      data_ptr,
-							      tty_flag,
-							      pdu->actual_len);
-			dlp_tty_pdu_skip(pdu, copied);
+			/* Get the start offset */
+			ptr++;
+			offset = (*ptr);
 
-			/* We'll push the flip buffers each time something has
-			 * been written to them to allow low latency */
-			do_push |= (copied > 0);
+			/* Get the size & address */
+			ptr++;
+			more_packets = (*ptr) & DLP_HDR_MORE_DESC;
+			data_size = DLP_HDR_DATA_SIZE((*ptr)) ;
+			data_addr = start_addr + offset;
 
-			if (copied == 0) {
+			/* Copy the data to the TTY buffer */
+			do {
+				copied = (unsigned int)
+					tty_insert_flip_string_fixed_flag(tty,
+							data_addr,
+							tty_flag,
+							data_size);
+
+				data_addr += copied;
+				data_size -= copied;
+
+				/* We'll push the flip buffers each
+				 * time something has been written
+				 * to them to allow low latency */
+				do_push |= (copied > 0);
+			} while ((data_size) || (!copied));
+
+			/* Still have not copied data ? */
+			if (data_size) {
 				dlp_fifo_wait_push_back(xfer_ctx, pdu);
 				goto no_more_tty_insert;
 			}
-		}
+		} while ((more_packets) && (copied));
 
 free_pdu:
 		/* Reset the pdu offset & length */
