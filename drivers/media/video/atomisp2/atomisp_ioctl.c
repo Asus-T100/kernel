@@ -2021,7 +2021,6 @@ static int atomisp_s_parm(struct file *file, void *fh,
 {
 	struct video_device *vdev = video_devdata(file);
 	struct atomisp_device *isp = video_get_drvdata(vdev);
-	struct v4l2_subdev_frame_interval fi;
 	int mode;
 	int rval;
 
@@ -2034,8 +2033,9 @@ static int atomisp_s_parm(struct file *file, void *fh,
 	mutex_lock(&isp->mutex);
 
 	switch (parm->parm.capture.capturemode) {
-	case CI_MODE_NONE:
-		memset(&fi, 0, sizeof(fi));
+	case CI_MODE_NONE: {
+		struct v4l2_subdev_frame_interval fi = {0};
+
 		fi.interval = parm->parm.capture.timeperframe;
 
 		rval = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
@@ -2043,6 +2043,7 @@ static int atomisp_s_parm(struct file *file, void *fh,
 		if (!rval)
 			parm->parm.capture.timeperframe = fi.interval;
 		goto out;
+	}
 	case CI_MODE_VIDEO:
 		mode = ATOMISP_RUN_MODE_VIDEO;
 		break;

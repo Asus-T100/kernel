@@ -274,24 +274,24 @@ static void isp_subdev_propagate(struct v4l2_subdev *sd,
 	struct v4l2_mbus_framefmt *ffmt[ATOMISP_SUBDEV_PADS_NUM];
 	struct v4l2_rect *crop[ATOMISP_SUBDEV_PADS_NUM],
 		*comp[ATOMISP_SUBDEV_PADS_NUM];
-	struct v4l2_rect r;
 
 	if (flags & V4L2_SEL_FLAG_KEEP_CONFIG)
 		return;
 
 	isp_get_fmt_rect(sd, fh, which, ffmt, crop, comp);
 
-	memset(&r, 0, sizeof(r));
-
 	switch (pad) {
-	case ATOMISP_SUBDEV_PAD_SINK:
+	case ATOMISP_SUBDEV_PAD_SINK: {
+		struct v4l2_rect r = {0};
+
 		/* Only crop target supported on sink pad. */
 		r.width = ffmt[pad]->width;
 		r.height = ffmt[pad]->height;
 
-		atomisp_subdev_set_selection(
-			sd, fh, which, pad, target, flags, &r);
+		atomisp_subdev_set_selection(sd, fh, which, pad, target, flags,
+					     &r);
 		break;
+	}
 	}
 }
 
@@ -450,15 +450,13 @@ static int isp_subdev_set_selection(struct v4l2_subdev *sd,
 
 static int atomisp_get_sensor_bin_factor(struct atomisp_device *isp)
 {
-	struct v4l2_control ctrl;
+	struct v4l2_control ctrl = {0};
 	int hbin, vbin;
 	int ret;
 
 	if (isp->inputs[isp->input_curr].type == FILE_INPUT ||
 		isp->inputs[isp->input_curr].type == TEST_PATTERN)
 		return 0;
-
-	memset(&ctrl, 0, sizeof(ctrl));
 
 	ctrl.id = V4L2_CID_BIN_FACTOR_HORZ;
 	ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera, core,
@@ -680,7 +678,7 @@ static int __atomisp_update_run_mode(struct atomisp_device *isp)
 {
 	struct v4l2_ctrl *ctrl = isp->isp_subdev.run_mode;
 	struct v4l2_ctrl *c;
-	struct v4l2_streamparm p;
+	struct v4l2_streamparm p = {0};
 	int modes[] = { CI_MODE_NONE,
 			CI_MODE_VIDEO,
 			CI_MODE_STILL_CAPTURE,
@@ -702,8 +700,6 @@ static int __atomisp_update_run_mode(struct atomisp_device *isp)
 		return v4l2_ctrl_s_ctrl(c, mode);
 
 	/* Fall back to obsolete s_parm */
-	memset(&p, 0, sizeof(p));
-
 	p.parm.capture.capturemode = modes[mode];
 
 	return v4l2_subdev_call(

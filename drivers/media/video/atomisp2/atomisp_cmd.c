@@ -447,9 +447,8 @@ void atomisp_msi_irq_uninit(struct atomisp_device *isp, struct pci_dev *dev)
 
 static void atomisp_sof_event(struct atomisp_device *isp)
 {
-	struct v4l2_event event;
+	struct v4l2_event event = {0};
 
-	memset(&event, 0, sizeof(event));
 	event.type = V4L2_EVENT_FRAME_SYNC;
 	event.u.frame_sync.frame_sequence = atomic_read(&isp->sof_count);
 
@@ -1915,9 +1914,8 @@ static void atomisp_curr_user_grid_info(struct atomisp_device *isp,
 static int atomisp_compare_grid(struct atomisp_device *isp,
 				struct atomisp_grid_info *atomgrid)
 {
-	struct atomisp_grid_info tmp;
+	struct atomisp_grid_info tmp = {0};
 
-	memset(&tmp, 0, sizeof(tmp));
 	atomisp_curr_user_grid_info(isp, &tmp);
 	return memcmp(atomgrid, &tmp, sizeof(tmp));
 }
@@ -3280,10 +3278,9 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 	 */
 	if (isp->isp_subdev.fmt_auto->val
 	    || !isp->isp_subdev.enable_vfpp->val) {
-		struct v4l2_rect vf_size;
-		struct v4l2_mbus_framefmt vf_ffmt;
+		struct v4l2_rect vf_size = {0};
+		struct v4l2_mbus_framefmt vf_ffmt = {0};
 
-		memset(&vf_size, 0, sizeof(vf_size));
 		if (width < 640 || height < 480) {
 			vf_size.width = width;
 			vf_size.height = height;
@@ -3292,7 +3289,6 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 			vf_size.height = 480;
 		}
 
-		memset(&vf_ffmt, 0, sizeof(vf_ffmt));
 		/* FIXME: proper format name for this one. See
 		   atomisp_output_fmts[] in atomisp_v4l2.c */
 		vf_ffmt.code = 0x8001;
@@ -3484,7 +3480,7 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 		     padding_h = pad_h;
 	bool res_overflow = false;
 	struct v4l2_mbus_framefmt isp_sink_fmt;
-	struct v4l2_mbus_framefmt isp_source_fmt;
+	struct v4l2_mbus_framefmt isp_source_fmt = {0};
 	struct v4l2_rect isp_sink_crop;
 	uint16_t source_pad = atomisp_subdev_source_pad(vdev);
 	int ret;
@@ -3515,9 +3511,7 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 					V4L2_SUBDEV_FORMAT_ACTIVE,
 					ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE,
 					V4L2_SEL_TGT_COMPOSE);
-			struct v4l2_rect r;
-
-			memset(&r, 0, sizeof(r));
+			struct v4l2_rect r = {0};
 
 			r.width = f->fmt.pix.width;
 			r.height = f->fmt.pix.height;
@@ -3598,7 +3592,6 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 					    V4L2_SUBDEV_FORMAT_ACTIVE,
 					    ATOMISP_SUBDEV_PAD_SINK);
 
-	memset(&isp_source_fmt, 0, sizeof(isp_source_fmt));
 	isp_source_fmt.code = atomisp_get_format_bridge(
 		f->fmt.pix.pixelformat)->mbus_code;
 	atomisp_subdev_set_ffmt(&isp->isp_subdev.subdev, NULL,
@@ -3676,9 +3669,7 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 					     source_pad, V4L2_SEL_TGT_COMPOSE,
 					     0, &isp_sink_crop);
 	} else {
-		struct v4l2_rect main_compose;
-
-		memset(&main_compose, 0, sizeof(main_compose));
+		struct v4l2_rect main_compose = {0};
 
 		main_compose.width = isp_sink_crop.width - padding_w;
 		main_compose.height =

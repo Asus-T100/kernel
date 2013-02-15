@@ -201,10 +201,9 @@ int atomisp_acc_load_to_pipe(struct atomisp_device *isp,
 int atomisp_acc_load(struct atomisp_device *isp,
 		     struct atomisp_acc_fw_load *user_fw)
 {
-	struct atomisp_acc_fw_load_to_pipe ltp;
+	struct atomisp_acc_fw_load_to_pipe ltp = {0};
 	int r;
 
-	memset(&ltp, 0, sizeof(ltp));
 	ltp.flags = ATOMISP_ACC_FW_LOAD_FL_ACC;
 	ltp.type = ATOMISP_ACC_FW_LOAD_TYPE_STANDALONE;
 	ltp.size = user_fw->size;
