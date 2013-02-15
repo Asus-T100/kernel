@@ -33,30 +33,72 @@
 #include "atomisp_internal.h"
 
 const struct atomisp_in_fmt_conv atomisp_in_fmt_conv[] = {
-	{ V4L2_MBUS_FMT_SBGGR8_1X8, SH_CSS_INPUT_FORMAT_RAW_8, sh_css_bayer_order_bggr },
-	{ V4L2_MBUS_FMT_SGBRG8_1X8, SH_CSS_INPUT_FORMAT_RAW_8, sh_css_bayer_order_gbrg },
-	{ V4L2_MBUS_FMT_SGRBG8_1X8, SH_CSS_INPUT_FORMAT_RAW_8, sh_css_bayer_order_grbg },
-	{ V4L2_MBUS_FMT_SRGGB8_1X8, SH_CSS_INPUT_FORMAT_RAW_8, sh_css_bayer_order_rggb },
-	{ V4L2_MBUS_FMT_SBGGR10_1X10, SH_CSS_INPUT_FORMAT_RAW_10, sh_css_bayer_order_bggr },
-	{ V4L2_MBUS_FMT_SGBRG10_1X10, SH_CSS_INPUT_FORMAT_RAW_10, sh_css_bayer_order_gbrg },
-	{ V4L2_MBUS_FMT_SGRBG10_1X10, SH_CSS_INPUT_FORMAT_RAW_10, sh_css_bayer_order_grbg },
-	{ V4L2_MBUS_FMT_SRGGB10_1X10, SH_CSS_INPUT_FORMAT_RAW_10, sh_css_bayer_order_rggb },
-	{ V4L2_MBUS_FMT_SBGGR12_1X12, SH_CSS_INPUT_FORMAT_RAW_12, sh_css_bayer_order_bggr },
-	{ V4L2_MBUS_FMT_SGBRG12_1X12, SH_CSS_INPUT_FORMAT_RAW_12, sh_css_bayer_order_gbrg },
-	{ V4L2_MBUS_FMT_SGRBG12_1X12, SH_CSS_INPUT_FORMAT_RAW_12, sh_css_bayer_order_grbg },
-	{ V4L2_MBUS_FMT_SRGGB12_1X12, SH_CSS_INPUT_FORMAT_RAW_12, sh_css_bayer_order_rggb },
-	{ V4L2_MBUS_FMT_UYVY8_1X16, ATOMISP_INPUT_FORMAT_YUV422_8, 0 },
-	{ V4L2_MBUS_FMT_YUYV8_1X16, ATOMISP_INPUT_FORMAT_YUV422_8, 0 },
+	{ V4L2_MBUS_FMT_SBGGR8_1X8, 8, 8, SH_CSS_INPUT_FORMAT_RAW_8, sh_css_bayer_order_bggr },
+	{ V4L2_MBUS_FMT_SGBRG8_1X8, 8, 8, SH_CSS_INPUT_FORMAT_RAW_8, sh_css_bayer_order_gbrg },
+	{ V4L2_MBUS_FMT_SGRBG8_1X8, 8, 8, SH_CSS_INPUT_FORMAT_RAW_8, sh_css_bayer_order_grbg },
+	{ V4L2_MBUS_FMT_SRGGB8_1X8, 8, 8, SH_CSS_INPUT_FORMAT_RAW_8, sh_css_bayer_order_rggb },
+	{ V4L2_MBUS_FMT_SBGGR10_1X10, 10, 10, SH_CSS_INPUT_FORMAT_RAW_10, sh_css_bayer_order_bggr },
+	{ V4L2_MBUS_FMT_SGBRG10_1X10, 10, 10, SH_CSS_INPUT_FORMAT_RAW_10, sh_css_bayer_order_gbrg },
+	{ V4L2_MBUS_FMT_SGRBG10_1X10, 10, 10, SH_CSS_INPUT_FORMAT_RAW_10, sh_css_bayer_order_grbg },
+	{ V4L2_MBUS_FMT_SRGGB10_1X10, 10, 10, SH_CSS_INPUT_FORMAT_RAW_10, sh_css_bayer_order_rggb },
+	{ V4L2_MBUS_FMT_SBGGR10_DPCM8_1X8, 10, 8, SH_CSS_INPUT_FORMAT_RAW_8, sh_css_bayer_order_bggr },
+	{ V4L2_MBUS_FMT_SGBRG10_DPCM8_1X8, 10, 8, SH_CSS_INPUT_FORMAT_RAW_8, sh_css_bayer_order_gbrg },
+	{ V4L2_MBUS_FMT_SGRBG10_DPCM8_1X8, 10, 8, SH_CSS_INPUT_FORMAT_RAW_8, sh_css_bayer_order_grbg },
+	{ V4L2_MBUS_FMT_SRGGB10_DPCM8_1X8, 10, 8, SH_CSS_INPUT_FORMAT_RAW_8, sh_css_bayer_order_rggb },
+	{ V4L2_MBUS_FMT_SBGGR12_1X12, 12, 12, SH_CSS_INPUT_FORMAT_RAW_12, sh_css_bayer_order_bggr },
+	{ V4L2_MBUS_FMT_SGBRG12_1X12, 12, 12, SH_CSS_INPUT_FORMAT_RAW_12, sh_css_bayer_order_gbrg },
+	{ V4L2_MBUS_FMT_SGRBG12_1X12, 12, 12, SH_CSS_INPUT_FORMAT_RAW_12, sh_css_bayer_order_grbg },
+	{ V4L2_MBUS_FMT_SRGGB12_1X12, 12, 12, SH_CSS_INPUT_FORMAT_RAW_12, sh_css_bayer_order_rggb },
+	{ V4L2_MBUS_FMT_UYVY8_1X16, 8, 8, ATOMISP_INPUT_FORMAT_YUV422_8, 0 },
+	{ V4L2_MBUS_FMT_YUYV8_1X16, 8, 8, ATOMISP_INPUT_FORMAT_YUV422_8, 0 },
+	{}
 };
 
-const struct atomisp_in_fmt_conv *atomisp_find_in_fmt_conv(
+static const struct {
+	enum v4l2_mbus_pixelcode code;
+	enum v4l2_mbus_pixelcode compressed;
+} compressed_codes[] = {
+	{ V4L2_MBUS_FMT_SBGGR10_1X10, V4L2_MBUS_FMT_SBGGR10_DPCM8_1X8 },
+	{ V4L2_MBUS_FMT_SGBRG10_1X10, V4L2_MBUS_FMT_SGBRG10_DPCM8_1X8 },
+	{ V4L2_MBUS_FMT_SGRBG10_1X10, V4L2_MBUS_FMT_SGRBG10_DPCM8_1X8 },
+	{ V4L2_MBUS_FMT_SRGGB10_1X10, V4L2_MBUS_FMT_SRGGB10_DPCM8_1X8 },
+};
+
+enum v4l2_mbus_pixelcode atomisp_subdev_uncompressed_code(
 	enum v4l2_mbus_pixelcode code)
 {
 	unsigned int i;
 
-	for (i = 0; i < ARRAY_SIZE(atomisp_in_fmt_conv); i++)
-		if (code == atomisp_in_fmt_conv[i].code)
-			return &atomisp_in_fmt_conv[i];
+	for (i = 0; i < ARRAY_SIZE(compressed_codes); i++)
+		if (code == compressed_codes[i].compressed)
+			return compressed_codes[i].code;
+
+	return code;
+}
+
+bool atomisp_subdev_is_compressed(enum v4l2_mbus_pixelcode code)
+{
+	const struct atomisp_in_fmt_conv *ic = atomisp_in_fmt_conv;
+
+	while (ic->code) {
+		if (code == ic->code)
+			return ic->bpp != ic->depth;
+		ic++;
+	}
+
+	return false;
+}
+
+const struct atomisp_in_fmt_conv *atomisp_find_in_fmt_conv(
+	enum v4l2_mbus_pixelcode code)
+{
+	const struct atomisp_in_fmt_conv *ic = atomisp_in_fmt_conv;
+
+	while (ic->code) {
+		if (code == ic->code)
+			return ic;
+		ic++;
+	}
 
 	return NULL;
 }
@@ -141,7 +183,7 @@ static int isp_subdev_enum_mbus_code(struct v4l2_subdev *sd,
 	struct v4l2_subdev_fh *fh,
 	struct v4l2_subdev_mbus_code_enum *code)
 {
-	if (code->index >= ARRAY_SIZE(atomisp_in_fmt_conv))
+	if (code->index >= ARRAY_SIZE(atomisp_in_fmt_conv) - 1)
 		return -EINVAL;
 
 	code->code = atomisp_in_fmt_conv[code->index].code;
