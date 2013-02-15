@@ -80,6 +80,7 @@ enum panel_type {
 	PYR,
 	HDMI,
 	JDI_VID,
+	H8C7_VID,
 	GCT_DETECT
 };
 
