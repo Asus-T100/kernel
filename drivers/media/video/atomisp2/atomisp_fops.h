@@ -35,22 +35,6 @@ int atomisp_q_s3a_buffers_to_css(struct atomisp_device *isp,
 int atomisp_q_dis_buffers_to_css(struct atomisp_device *isp,
 			   enum sh_css_pipe_id css_pipe_id);
 
-/*
- * Videobuf ops
- */
-int atomisp_buf_setup(struct videobuf_queue *vq,
-			unsigned int *count,
-			unsigned int *size);
-
-int atomisp_buf_prepare(struct videobuf_queue *vq,
-			  struct videobuf_buffer *vb,
-			  enum v4l2_field field);
-
-void atomisp_buf_queue(struct videobuf_queue *vq, struct videobuf_buffer *vb);
-
-void atomisp_buf_release(struct videobuf_queue *vq,
-			   struct videobuf_buffer *vb);
-
 int atomisp_init_struct(struct atomisp_device *isp);
 
 unsigned int atomisp_users(struct atomisp_device *isp);
@@ -61,8 +45,6 @@ unsigned int atomisp_users(struct atomisp_device *isp);
 
 int atomisp_videobuf_mmap_mapper(struct videobuf_queue *q,
 				     struct vm_area_struct *vma);
-
-int atomisp_file_mmap(struct file *file, struct vm_area_struct *vma);
 
 int atomisp_qbuf_to_css(struct atomisp_device *isp,
 			struct atomisp_video_pipe *pipe,

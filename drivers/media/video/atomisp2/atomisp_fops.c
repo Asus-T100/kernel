@@ -64,9 +64,8 @@
 /*
  * Videobuf ops
  */
-int atomisp_buf_setup(struct videobuf_queue *vq,
-		      unsigned int *count,
-		      unsigned int *size)
+static int atomisp_buf_setup(struct videobuf_queue *vq, unsigned int *count,
+			     unsigned int *size)
 {
 	struct atomisp_video_pipe *pipe = vq->priv_data;
 
@@ -75,9 +74,9 @@ int atomisp_buf_setup(struct videobuf_queue *vq,
 	return 0;
 }
 
-int atomisp_buf_prepare(struct videobuf_queue *vq,
-			struct videobuf_buffer *vb,
-			enum v4l2_field field)
+static int atomisp_buf_prepare(struct videobuf_queue *vq,
+			       struct videobuf_buffer *vb,
+			       enum v4l2_field field)
 {
 	struct atomisp_video_pipe *pipe = vq->priv_data;
 
@@ -263,8 +262,8 @@ int atomisp_qbuffers_to_css(struct atomisp_device *isp)
 	return 0;
 }
 
-void atomisp_buf_queue(struct videobuf_queue *vq,
-		       struct videobuf_buffer *vb)
+static void atomisp_buf_queue(struct videobuf_queue *vq,
+			      struct videobuf_buffer *vb)
 {
 	struct atomisp_video_pipe *pipe = vq->priv_data;
 
@@ -272,8 +271,8 @@ void atomisp_buf_queue(struct videobuf_queue *vq,
 	vb->state = VIDEOBUF_QUEUED;
 }
 
-void atomisp_buf_release(struct videobuf_queue *vq,
-			 struct videobuf_buffer *vb)
+static void atomisp_buf_release(struct videobuf_queue *vq,
+				struct videobuf_buffer *vb)
 {
 	vb->state = VIDEOBUF_NEEDS_INIT;
 	atomisp_videobuf_free_buf(vb);
@@ -791,7 +790,7 @@ error:
 	return ret;
 }
 
-int atomisp_file_mmap(struct file *file, struct vm_area_struct *vma)
+static int atomisp_file_mmap(struct file *file, struct vm_area_struct *vma)
 {
 	struct video_device *vdev = video_devdata(file);
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
@@ -799,8 +798,8 @@ int atomisp_file_mmap(struct file *file, struct vm_area_struct *vma)
 	return videobuf_mmap_mapper(&pipe->outq, vma);
 }
 
-static unsigned int
-atomisp_poll(struct file *file, struct poll_table_struct *pt)
+static unsigned int atomisp_poll(struct file *file,
+				 struct poll_table_struct *pt)
 {
 	struct video_device *vdev = video_devdata(file);
 	struct atomisp_device *isp = video_get_drvdata(vdev);

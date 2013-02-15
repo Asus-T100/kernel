@@ -2371,5 +2371,4 @@ const struct v4l2_ioctl_ops atomisp_file_ioctl_ops = {
 	.vidioc_reqbufs = atomisp_reqbufs_file,
 	.vidioc_querybuf = atomisp_querybuf_file,
 	.vidioc_qbuf = atomisp_qbuf_file,
-	/* .vidioc_streamon = atomisp_streamon_out, */
 };
