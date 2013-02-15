@@ -43,6 +43,7 @@ static struct msic_audio_platform_data msic_audio_pdata = {
 
 void *msic_audio_platform_data(void *info)
 {
+	int i;
 	void *pdata = NULL;
 	struct platform_device *pdev = NULL;
 	struct sfi_device_table_entry *entry = info;
@@ -76,11 +77,17 @@ void *msic_audio_platform_data(void *info)
 			MSIC_AUDIO_DEVICE_NAME);
 		goto out;
 	}
-	install_irq_resource(pdev, entry->irq);
+	msic_audio_pdata.jack_gpio = get_gpio_by_name("audio_jack_gpio");
 	if (platform_device_add_data(pdev, &msic_audio_pdata,
 			sizeof(struct msic_audio_platform_data))) {
 		pr_err("failed to add audio platform data\n");
 		goto pdev_add_fail;
+	}
+	for (i = 0; i < ARRAY_SIZE(msic_audio_resources); i++) {
+		if (msic_audio_resources[i].flags & IORESOURCE_IRQ) {
+			msic_audio_resources[i].start = entry->irq;
+			break;
+		}
 	}
 	if (platform_device_add_resources(pdev, &msic_audio_resources,
 			ARRAY_SIZE(msic_audio_resources))) {
@@ -92,7 +99,6 @@ void *msic_audio_platform_data(void *info)
 			MSIC_AUDIO_DEVICE_NAME);
 		goto pdev_add_fail;
 	}
-	msic_audio_pdata.jack_gpio = get_gpio_by_name("audio_jack_gpio");
 	pdata = &msic_audio_pdata;
 	register_rpmsg_service("rpmsg_msic_audio", RPROC_SCU, RP_MSIC_AUDIO);
 
