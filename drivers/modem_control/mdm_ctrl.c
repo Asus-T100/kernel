@@ -706,7 +706,7 @@ static int __init mdm_ctrl_module_init(void)
 	new_drv->gpio_cdump   = get_gpio_by_name(GPIO_CDUMP);
 
 	if (mdm_ctrl_setup_irq_gpio(new_drv))
-		goto del_class;
+		goto del_dev;
 
 	/* Everything is OK */
 	mdm_drv = new_drv;
@@ -722,6 +722,9 @@ static int __init mdm_ctrl_module_init(void)
 #endif
 
 	return 0;
+
+del_dev:
+	device_destroy(new_drv->class, new_drv->tdev);
 
 del_class:
 	class_destroy(new_drv->class);
