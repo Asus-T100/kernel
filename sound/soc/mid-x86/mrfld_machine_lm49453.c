@@ -304,6 +304,8 @@ static int mrfld_init(struct snd_soc_pcm_runtime *runtime)
 	/* set default debounce time */
 	/* TODO: create control for this in codec drv */
 	snd_soc_write(codec, LM49453_P0_HSD_PD_DBNC_REG, 0xA);
+	/* jack remove debounce time as 192ms */
+	snd_soc_write(codec, LM49453_P0_HSD_COMP_H_DBNC_TIME_REG, 0xA);
 	/* button press debounce time */
 	snd_soc_write(codec, LM49453_P0_HSD_COMP_L_DBNC_TIME_REG, 0x83);
 
