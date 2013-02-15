@@ -2121,14 +2121,6 @@ static long atomisp_vidioc_default(struct file *file, void *fh,
 		err = atomisp_tnr(isp, 1, arg);
 		break;
 
-	case ATOMISP_IOC_G_HISTOGRAM:
-		err = atomisp_histogram(isp, 0, arg);
-		break;
-
-	case ATOMISP_IOC_S_HISTOGRAM:
-		err = atomisp_histogram(isp, 1, arg);
-		break;
-
 	case ATOMISP_IOC_G_BLACK_LEVEL_COMP:
 		err = atomisp_black_level(isp, 0, arg);
 		break;

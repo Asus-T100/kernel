@@ -130,12 +130,6 @@ int atomisp_tnr(struct atomisp_device *isp, int flag,
 		struct atomisp_tnr_config *config);
 
 /*
- * Function to get histogram data for image frame
- */
-int atomisp_histogram(struct atomisp_device *isp,
-	int flag, void *config);
-
-/*
  * Function to configure black level compensation
  */
 int atomisp_black_level(struct atomisp_device *isp, int flag,
