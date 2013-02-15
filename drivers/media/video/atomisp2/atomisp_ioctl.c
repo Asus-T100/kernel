@@ -1558,8 +1558,6 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 
 	spin_lock_irqsave(&pipe->irq_lock, flags);
 	list_for_each_entry_safe(vb, _vb, &pipe->activeq, queue) {
-		if (!vb)
-			break;
 		vb->state = VIDEOBUF_PREPARED;
 		list_del(&vb->queue);
 	}
