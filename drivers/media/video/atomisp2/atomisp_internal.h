@@ -219,10 +219,6 @@ struct atomisp_css_params {
 	struct sh_css_gamma_table gamma_table;
 	struct sh_css_ctc_table   ctc_table;
 	struct sh_css_macc_table  macc_table;
-	/*
-	 * overlay removed from css 1.5
-	 * struct sh_css_overlay	*vf_overlay;
-	 */
 
 	/* Current grid info */
 	struct sh_css_grid_info curr_grid_info;

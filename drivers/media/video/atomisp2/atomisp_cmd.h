@@ -235,12 +235,6 @@ int atomisp_fixed_pattern_table(struct atomisp_device *isp,
 				struct v4l2_framebuffer *config);
 
 /*
- * Function to configure vf overlay image
- */
-int atomisp_vf_overlay(struct atomisp_device *isp, int flag,
-		       struct atomisp_overlay *overlay);
-
-/*
  * Function to configure false color correction
  */
 int atomisp_false_color(struct atomisp_device *isp, int flag, __s32 * value);

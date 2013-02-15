@@ -2230,14 +2230,6 @@ static long atomisp_vidioc_default(struct file *file, void *fh,
 		err = atomisp_fixed_pattern_table(isp, arg);
 		break;
 
-	case ATOMISP_IOC_G_ISP_OVERLAY:
-		err = atomisp_vf_overlay(isp, 0, arg);
-		break;
-
-	case ATOMISP_IOC_S_ISP_OVERLAY:
-		err = atomisp_vf_overlay(isp, 1, arg);
-		break;
-
 	case ATOMISP_IOC_ISP_MAKERNOTE:
 		err = atomisp_exif_makernote(isp, arg);
 		break;

@@ -1685,15 +1685,6 @@ void atomisp_free_internal_buffers(struct atomisp_device *isp)
 		sh_css_morph_table_free(tab);
 		isp->inputs[isp->input_curr].morph_table = NULL;
 	}
-#if 0
-	/* TODO: check overlay functionality with css 1.5 */
-	if (isp->params.vf_overlay) {
-		if (isp->params.vf_overlay->frame)
-			sh_css_frame_free(isp->params.vf_overlay->frame);
-		kfree(isp->params.vf_overlay);
-		isp->params.vf_overlay = NULL;
-	}
-#endif
 	if (isp->raw_output_frame) {
 		sh_css_frame_free(isp->raw_output_frame);
 		isp->raw_output_frame = NULL;
@@ -2799,65 +2790,6 @@ int atomisp_fixed_pattern_table(struct atomisp_device *isp,
 		ret = -ENOMEM;
 
 	sh_css_frame_free(raw_black_frame);
-	return ret;
-}
-
-/*
- * Function to configure vf overlay image
- */
-int atomisp_vf_overlay(struct atomisp_device *isp, int flag,
-		       struct atomisp_overlay *arg)
-{
-	int ret = 0;
-
-	if (arg == NULL)
-		return -EINVAL;
-#if 0	/* TODO: Check overlay functionality with css1.5 */
-	/* NULL means disable the feature */
-	if (!arg->frame) {
-		sh_css_overlay_set_for_viewfinder(NULL);
-		return 0;
-	}
-
-	if (isp->params.vf_overlay) {
-		if (isp->params.vf_overlay->frame)
-			sh_css_frame_free(isp->params.vf_overlay->frame);
-		kfree(isp->params.vf_overlay);
-	}
-
-	isp->params.vf_overlay = kzalloc(sizeof(struct sh_css_overlay),
-							GFP_KERNEL);
-	if (!isp->params.vf_overlay) {
-		ret =  -ENOMEM;
-		goto err;
-	}
-
-	ret = atomisp_v4l2_framebuffer_to_sh_css_frame(arg->frame,
-						&isp->params.vf_overlay->frame);
-	if (ret)
-		goto err;
-
-	isp->params.vf_overlay->bg_y               = arg->bg_y;
-	isp->params.vf_overlay->bg_u               = arg->bg_u;
-	isp->params.vf_overlay->bg_v               = arg->bg_v;
-	isp->params.vf_overlay->blend_input_perc_y = arg->blend_input_perc_y;
-	isp->params.vf_overlay->blend_input_perc_u = arg->blend_input_perc_u;
-	isp->params.vf_overlay->blend_input_perc_v = arg->blend_input_perc_v;
-	isp->params.vf_overlay->blend_overlay_perc_y =
-						arg->blend_overlay_perc_y;
-	isp->params.vf_overlay->blend_overlay_perc_u =
-						arg->blend_overlay_perc_u;
-	isp->params.vf_overlay->blend_overlay_perc_v =
-						arg->blend_overlay_perc_v;
-	isp->params.vf_overlay->overlay_start_x    = arg->overlay_start_x;
-	isp->params.vf_overlay->overlay_start_y    = arg->overlay_start_y;
-
-	sh_css_overlay_set_for_viewfinder(isp->params.vf_overlay);
-
-err:
-	if (ret && isp->params.vf_overlay)
-		kfree(isp->params.vf_overlay);
-#endif
 	return ret;
 }
 
