@@ -86,6 +86,58 @@ static int get_ch_index(int status, unsigned int base)
 	return -1;
 }
 
+static void dump_dma_reg(struct dma_chan *chan)
+{
+	struct intel_mid_dma_chan	*midc = to_intel_mid_dma_chan(chan);
+	struct middma_device	*mid = to_middma_device(chan->device);
+
+	if (!mid->pimr_base)
+		return;
+
+	pr_debug("<<<<<<<<<<<< DMA Dump Start >>>>>>>>>>>>");
+	pr_debug("DMA Dump for Channel id:%d & Chnl Base:%#x",
+					midc->ch_id, midc->ch_regs);
+	/* dump common DMA registers */
+	pr_debug("PIMR:\t%#x", readl(mid->mask_reg) - 8);
+	pr_debug("ISRX:\t%#x", readl(mid->mask_reg));
+	pr_debug("ISRD:\t%#x", readl(mid->mask_reg + 0x8));
+	pr_debug("IMRX:\t%#x", readl(mid->mask_reg + 0x10));
+	pr_debug("IMRD:\t%#x", readl(mid->mask_reg + 0x18));
+	pr_debug("DMA_CHAN_EN:\t%#x", readl(midc->dma_base + DMA_CHAN_EN));
+	pr_debug("DMA_CFG:\t%#x", readl(midc->dma_base + DMA_CFG));
+	pr_debug("INTR_STATUS:\t%#x", readl(midc->dma_base + INTR_STATUS));
+	pr_debug("MASK_TFR:\t%#x", readl(midc->dma_base + MASK_TFR));
+	pr_debug("MASK_BLOCK:\t%#x", readl(midc->dma_base + MASK_BLOCK));
+	pr_debug("MASK_ERR:\t%#x", readl(midc->dma_base + MASK_ERR));
+	pr_debug("RAW_TFR:\t%#x", readl(midc->dma_base + RAW_TFR));
+	pr_debug("RAW_BLOCK:\t%#x", readl(midc->dma_base + RAW_BLOCK));
+	pr_debug("RAW_ERR:\t%#x", readl(midc->dma_base + RAW_ERR));
+	pr_debug("STATUS_TFR:\t%#x", readl(midc->dma_base + STATUS_TFR));
+	pr_debug("STATUS_BLOCK:\t%#x", readl(midc->dma_base + STATUS_BLOCK));
+	pr_debug("STATUS_ERR:\t%#x", readl(midc->dma_base + STATUS_ERR));
+	if (!mid->dword_trf) {
+		pr_debug("FIFO_PARTITION0_LO:\t%#x",
+				readl(midc->dma_base + FIFO_PARTITION0_LO));
+		pr_debug("FIFO_PARTITION0_HI:\t%#x",
+				readl(midc->dma_base + FIFO_PARTITION0_HI));
+		pr_debug("FIFO_PARTITION1_LO:\t%#x",
+				readl(midc->dma_base + FIFO_PARTITION1_LO));
+		pr_debug("FIFO_PARTITION1_HI:\t%#x",
+				readl(midc->dma_base + FIFO_PARTITION1_HI));
+		pr_debug("CH_SAI_ERR:\t%#x", readl(midc->dma_base + CH_SAI_ERR));
+	}
+
+	/* dump channel specific registers */
+	pr_debug("SAR:\t%#x", readl(midc->ch_regs + SAR));
+	pr_debug("DAR:\t%#x", readl(midc->ch_regs + DAR));
+	pr_debug("LLP:\t%#x", readl(midc->ch_regs + LLP));
+	pr_debug("CTL_LOW:\t%#x", readl(midc->ch_regs + CTL_LOW));
+	pr_debug("CTL_HIGH:\t%#x", readl(midc->ch_regs + CTL_HIGH));
+	pr_debug("CFG_LOW:\t%#x", readl(midc->ch_regs + CFG_LOW));
+	pr_debug("CFG_HIGH:\t%#x", readl(midc->ch_regs + CFG_HIGH));
+	pr_debug("<<<<<<<<<<<< DMA Dump ends >>>>>>>>>>>>");
+}
+
 /**
  * get_block_ts	-	calculates dma transaction length
  * @len: dma transfer length
@@ -990,6 +1042,7 @@ static void intel_mid_dma_free_chan_resources(struct dma_chan *chan)
 	if (true == midc->busy) {
 		/*trying to free ch in use!!!!!*/
 		pr_err("ERR_MDMA: trying to free ch in use\n");
+		dump_dma_reg(chan);
 	}
 
 	/* Disable CH interrupts */
@@ -1425,6 +1478,15 @@ static int mid_setup_dma(struct pci_dev *pdev)
 		pr_debug("setting up tasklet2 for DMAC2\n");
 		tasklet_init(&dma->tasklet, dma_tasklet2, (unsigned long)dma);
 	}
+	if (!dma->dword_trf) {
+		/* program FIFO Partition registers - 128 bytes for each ch */
+		iowrite32(DMA_FIFO_SIZE, dma->dma_base + FIFO_PARTITION0_HI);
+		iowrite32(DMA_FIFO_SIZE, dma->dma_base + FIFO_PARTITION1_LO);
+		iowrite32(DMA_FIFO_SIZE, dma->dma_base + FIFO_PARTITION1_HI);
+		iowrite32(DMA_FIFO_SIZE | BIT(26), dma->dma_base + FIFO_PARTITION0_LO);
+		/* Mask all interrupts from DMA controller to IA by default */
+		dmac1_mask_periphral_intr(dma);
+	}
 	return 0;
 
 err_engine:
@@ -1632,8 +1694,6 @@ static int dma_runtime_idle(struct device *dev)
 	struct middma_device *device = dev_get_drvdata(dev);
 	int i;
 
-	if (device->pci_id == INTEL_MRFLD_DMAC0_ID)
-		return -EAGAIN;
 	for (i = 0; i < device->max_chan; i++) {
 		if (device->ch[i].in_use)
 			return -EAGAIN;
@@ -1662,7 +1722,7 @@ static struct pci_device_id intel_mid_dma_ids[] = {
 	{ PCI_VDEVICE(INTEL, INTEL_MRFLD_GP_DMAC2_ID),
 					INFO(4, 0, 131072, 0, 0, 0, 0)},
 	{ PCI_VDEVICE(INTEL, INTEL_MRFLD_DMAC0_ID),
-					INFO(4, 0, 131072, 0xFF0000, 0xFF340018, 0, 0x10)},
+					INFO(2, 6, 131072, 0xFF0000, 0xFF340018, 0, 0x10)},
 	{ 0, }
 };
 MODULE_DEVICE_TABLE(pci, intel_mid_dma_ids);

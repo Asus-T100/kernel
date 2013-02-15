@@ -50,6 +50,8 @@
 /*registers associated with channel programming*/
 #define DMA_REG_SIZE		0x400
 #define DMA_CH_SIZE		0x58
+#define DMA_FIFO_SIZE 0x100080
+
 
 /*CH X REG = (DMA_CH_SIZE)*CH_NO + REG*/
 #define SAR			0x00 /* Source Address Register*/
@@ -83,6 +85,11 @@
 #define INTR_STATUS		0x360
 #define DMA_CFG			0x398
 #define DMA_CHAN_EN		0x3A0
+#define FIFO_PARTITION0_LO	0x400
+#define FIFO_PARTITION0_HI	0x404
+#define FIFO_PARTITION1_LO	0x408
+#define FIFO_PARTITION1_HI	0x40C
+#define CH_SAI_ERR		0x410
 
 /*DMA channel control registers*/
 union intel_mid_dma_ctl_lo {
