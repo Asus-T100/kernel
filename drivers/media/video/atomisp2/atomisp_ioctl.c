@@ -1426,7 +1426,7 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 	struct atomisp_video_pipe *capture_pipe = NULL;
 	struct atomisp_video_pipe *vf_pipe = NULL;
 	struct atomisp_video_pipe *preview_pipe = NULL;
-	struct videobuf_buffer *vb = NULL;
+	struct videobuf_buffer *vb, *_vb;
 	int ret;
 	unsigned long flags;
 	bool first_streamoff = false;
@@ -1557,8 +1557,7 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 	/*atomisp_flush_bufs_in_css(isp);*/
 
 	spin_lock_irqsave(&pipe->irq_lock, flags);
-	while (!list_empty(&pipe->activeq)) {
-		vb = list_first_entry(&pipe->activeq, struct videobuf_buffer, queue);
+	list_for_each_entry_safe(vb, _vb, &pipe->activeq, queue) {
 		if (!vb)
 			break;
 		vb->state = VIDEOBUF_PREPARED;
