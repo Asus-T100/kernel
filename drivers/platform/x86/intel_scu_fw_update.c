@@ -40,7 +40,8 @@
  * Below macros and structs apply for medfield firmware update
  */
 
-#define IPC_CMD_FW_UPDATE_GO	0x20FE
+#define IPC_CMD_FW_UPDATE	0xFE
+#define IPC_CMD_FW_UPDATE_GO	0x02
 
 #define MAX_FW_CHUNK		(128*1024)
 #define IFWX_CHUNK_SIZE		(96*1024)
@@ -539,7 +540,8 @@ static int intel_scu_ipc_medfw_upgrade(void)
 
 	/* Write cmd to trigger an interrupt to SCU for firmware update*/
 	ret_val = rpmsg_send_simple_command(fw_update_instance,
-					    IPC_CMD_FW_UPDATE_GO, 0);
+					    IPC_CMD_FW_UPDATE,
+					    IPC_CMD_FW_UPDATE_GO);
 	if (ret_val) {
 		dev_err(fui.dev, "IPC_CMD_FW_UPDATE_GO failed\n");
 		goto term;
