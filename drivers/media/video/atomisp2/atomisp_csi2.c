@@ -23,23 +23,6 @@
 #include <media/v4l2-mediabus.h>
 #include "atomisp_internal.h"
 
-static const unsigned int csi2_input_fmts[] = {
-	V4L2_MBUS_FMT_SGRBG10_1X10,
-	V4L2_MBUS_FMT_SRGGB10_1X10,
-	V4L2_MBUS_FMT_SBGGR10_1X10,
-	V4L2_MBUS_FMT_SGBRG10_1X10,
-};
-
-static const unsigned int csi2_output_fmts[] = {
-	V4L2_MBUS_FMT_SGRBG10_1X10,
-	V4L2_MBUS_FMT_SRGGB10_1X10,
-	V4L2_MBUS_FMT_SBGGR10_1X10,
-	V4L2_MBUS_FMT_SGBRG10_1X10,
-};
-
-
-/* V4L2 subdev operations */
-
 static struct v4l2_mbus_framefmt *__csi2_get_format(
 	struct atomisp_mipi_csi2_device *csi2, struct v4l2_subdev_fh *fh,
 	enum v4l2_subdev_format_whence which, unsigned int pad)
@@ -48,23 +31,6 @@ static struct v4l2_mbus_framefmt *__csi2_get_format(
 		return v4l2_subdev_get_try_format(fh, pad);
 	else
 		return &csi2->formats[pad];
-}
-
-static enum v4l2_mbus_pixelcode
-isp_video_uncompressed_code(enum v4l2_mbus_pixelcode code)
-{
-	switch (code) {
-	case V4L2_MBUS_FMT_SBGGR10_DPCM8_1X8:
-		return V4L2_MBUS_FMT_SBGGR10_1X10;
-	case V4L2_MBUS_FMT_SGRBG10_DPCM8_1X8:
-		return V4L2_MBUS_FMT_SGRBG10_1X10;
-	case V4L2_MBUS_FMT_SRGGB10_DPCM8_1X8:
-		return V4L2_MBUS_FMT_SRGGB10_1X10;
-	case V4L2_MBUS_FMT_SGBRG10_DPCM8_1X8:
-		return V4L2_MBUS_FMT_SGBRG10_1X10;
-	default:
-		return code;
-	}
 }
 
 /*
@@ -78,32 +44,18 @@ static int csi2_enum_mbus_code(struct v4l2_subdev *sd,
 			struct v4l2_subdev_fh *fh,
 			struct v4l2_subdev_mbus_code_enum *code)
 {
-	struct atomisp_mipi_csi2_device *csi2 = v4l2_get_subdevdata(sd);
-	struct v4l2_mbus_framefmt *format;
+	const struct atomisp_in_fmt_conv *ic = atomisp_in_fmt_conv;
+	unsigned int i = 0;
 
-	if (code->pad == CSI2_PAD_SINK) {
-		if (code->index >= ARRAY_SIZE(csi2_input_fmts))
-			return -EINVAL;
-		code->code = csi2_input_fmts[code->index];
-	} else {
-		format = __csi2_get_format(
-			csi2, fh, V4L2_SUBDEV_FORMAT_TRY, CSI2_PAD_SINK);
-		switch (code->index) {
-		case 0:
-			/* Passthrough sink pad code */
-			code->code = format->code;
-			break;
-		case 1:
-			/* Uncompressed code */
-			code->code = isp_video_uncompressed_code(format->code);
-			break;
-		default:
-			/* Fallthrough if above is false */
-			return -EINVAL;
+	while (ic->code) {
+		if (i == code->index) {
+			code->code = ic->code;
+			return 0;
 		}
+		i++, ic++;
 	}
 
-	return 0;
+	return -EINVAL;
 }
 
 /*
