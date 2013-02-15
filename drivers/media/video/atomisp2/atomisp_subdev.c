@@ -32,54 +32,6 @@
 #include "atomisp_common.h"
 #include "atomisp_internal.h"
 
-static const unsigned int isp_subdev_input_fmts[] = {
-	V4L2_MBUS_FMT_SGRBG10_1X10,
-	V4L2_MBUS_FMT_SRGGB10_1X10,
-	V4L2_MBUS_FMT_SBGGR10_1X10,
-	V4L2_MBUS_FMT_SGBRG10_1X10,
-};
-
-static const unsigned int isp_subdev_preview_output_fmts[] = {
-	/* yuv420, nv12, yv12, nv21, rgb565 */
-	V4L2_MBUS_FMT_UYVY8_1X16,
-	V4L2_MBUS_FMT_YUYV8_1X16,
-	V4L2_PIX_FMT_YUV420,
-	V4L2_PIX_FMT_YVU420,
-	V4L2_PIX_FMT_NV12,
-	V4L2_PIX_FMT_RGB565,
-	V4L2_PIX_FMT_NV21,
-};
-
-static const unsigned int isp_subdev_vf_output_fmts[] = {
-	/* yuv420, nv12, yv12, nv21, rgb565 */
-	V4L2_MBUS_FMT_UYVY8_1X16,
-	V4L2_MBUS_FMT_YUYV8_1X16,
-	V4L2_PIX_FMT_YUV420,
-	V4L2_PIX_FMT_YVU420,
-	V4L2_PIX_FMT_NV12,
-	V4L2_PIX_FMT_RGB565,
-	V4L2_PIX_FMT_NV21,
-};
-
-static const unsigned int isp_subdev_capture_output_fmts[] = {
-	/* yuv420, nv12, yv12, nv21, rgb565, nv11, yuv422, nv16, yv16, yuy2 */
-	/* rgb565, rgb888 */
-	V4L2_MBUS_FMT_UYVY8_1X16,
-	V4L2_MBUS_FMT_YUYV8_1X16,
-	V4L2_PIX_FMT_YUV420,
-	V4L2_PIX_FMT_YVU420,
-	V4L2_PIX_FMT_YUV422P,
-	V4L2_PIX_FMT_YUV444,
-	V4L2_PIX_FMT_NV12,
-	V4L2_PIX_FMT_NV21,
-	V4L2_PIX_FMT_NV16,
-	V4L2_PIX_FMT_NV61,
-	V4L2_PIX_FMT_YUYV,
-	V4L2_PIX_FMT_UYVY,
-	V4L2_PIX_FMT_RGB565,
-	V4L2_PIX_FMT_RGB32
-};
-
 const struct atomisp_in_fmt_conv atomisp_in_fmt_conv[] = {
 	{ V4L2_MBUS_FMT_SBGGR8_1X8, SH_CSS_INPUT_FORMAT_RAW_8, sh_css_bayer_order_bggr },
 	{ V4L2_MBUS_FMT_SGBRG8_1X8, SH_CSS_INPUT_FORMAT_RAW_8, sh_css_bayer_order_gbrg },
@@ -94,6 +46,7 @@ const struct atomisp_in_fmt_conv atomisp_in_fmt_conv[] = {
 	{ V4L2_MBUS_FMT_SGRBG12_1X12, SH_CSS_INPUT_FORMAT_RAW_12, sh_css_bayer_order_grbg },
 	{ V4L2_MBUS_FMT_SRGGB12_1X12, SH_CSS_INPUT_FORMAT_RAW_12, sh_css_bayer_order_rggb },
 	{ V4L2_MBUS_FMT_UYVY8_1X16, ATOMISP_INPUT_FORMAT_YUV422_8, 0 },
+	{ V4L2_MBUS_FMT_YUYV8_1X16, ATOMISP_INPUT_FORMAT_YUV422_8, 0 },
 };
 
 const struct atomisp_in_fmt_conv *atomisp_find_in_fmt_conv(
@@ -188,39 +141,10 @@ static int isp_subdev_enum_mbus_code(struct v4l2_subdev *sd,
 	struct v4l2_subdev_fh *fh,
 	struct v4l2_subdev_mbus_code_enum *code)
 {
-	switch (code->pad) {
-	case ATOMISP_SUBDEV_PAD_SINK:
-		if (code->index >= ARRAY_SIZE(isp_subdev_input_fmts))
-			return -EINVAL;
-
-		code->code = isp_subdev_input_fmts[code->index];
-		break;
-
-	case ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW:
-		/* format conversion inside isp subdev */
-		if (code->index >= ARRAY_SIZE(isp_subdev_preview_output_fmts))
-			return -EINVAL;
-
-		code->code = isp_subdev_preview_output_fmts[code->index];
-		break;
-	case ATOMISP_SUBDEV_PAD_SOURCE_VF:
-		/* format conversion inside isp subdev */
-		if (code->index >= ARRAY_SIZE(isp_subdev_vf_output_fmts))
-			return -EINVAL;
-
-		code->code = isp_subdev_vf_output_fmts[code->index];
-		break;
-	case ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE:
-		/* format conversion inside isp subdev */
-		if (code->index >= ARRAY_SIZE(isp_subdev_capture_output_fmts))
-			return -EINVAL;
-
-		code->code = isp_subdev_capture_output_fmts[code->index];
-		break;
-
-	default:
+	if (code->index >= ARRAY_SIZE(atomisp_in_fmt_conv))
 		return -EINVAL;
-	}
+
+	code->code = atomisp_in_fmt_conv[code->index].code;
 
 	return 0;
 }
