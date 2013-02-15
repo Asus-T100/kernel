@@ -2288,10 +2288,6 @@ static long atomisp_vidioc_default(struct file *file, void *fh,
 		err = atomisp_acc_s_mapped_arg(isp, arg);
 		break;
 
-	case ATOMISP_IOC_CAMERA_BRIDGE:
-		err = -EINVAL;
-		break;
-
 	case ATOMISP_IOC_S_ISP_SHD_TAB:
 		err = atomisp_set_shading_table(isp, arg);
 		break;
