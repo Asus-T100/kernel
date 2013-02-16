@@ -13,6 +13,7 @@
 #define IPCMSG_COLD_RESET	0xF1
 #define IPCMSG_SOFT_RESET	0xF2
 #define IPCMSG_COLD_BOOT	0xF3
+#define IPCMSG_COLD_OFF		0x80 /* for TNG only */
 #define IPCMSG_FW_REVISION      0xF4 /* Get firmware revision */
 #define IPCMSG_WATCHDOG_TIMER   0xF8 /* Set Kernel Watchdog Threshold */
 #define IPCMSG_VRTC		0xFA	 /* Set vRTC device */

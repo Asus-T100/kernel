@@ -123,6 +123,8 @@ struct devs_id __initconst device_ids[] = {
 					&ipc_device_handler},
 	{"msic_thermal", SFI_DEV_TYPE_IPC, 1, &msic_thermal_platform_data,
 					&ipc_device_handler},
+	{"bcove_power_btn", SFI_DEV_TYPE_IPC, 1,
+			&msic_power_btn_platform_data, NULL},
 
 	/* IPC devices */
 	{"pmic_gpio", SFI_DEV_TYPE_IPC, 1, &pmic_gpio_platform_data,

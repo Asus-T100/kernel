@@ -233,6 +233,21 @@ static int osip_reboot_notifier_call(struct notifier_block *notifier,
 			} else {
 				pr_warn("[SHTDWN] %s, Shutdown without charger plugged in\n",
 					__func__);
+								/*
+				 * PNW and CLVP depend on watchdog driver to
+				 * send COLD OFF message to SCU.
+				 * SCU watchdog is not available from TNG A0,
+				 * so SCU FW provides a new IPC message to shut
+				 * down the system.
+				 */
+				if (intel_mid_identify_cpu() ==
+					INTEL_MID_CPU_CHIP_TANGIER) {
+					ret = intel_scu_ipc_simple_command(
+						IPCMSG_COLD_OFF, 0);
+					if (ret)
+						pr_err("%s(): COLD_OFF ipc failed\n",
+								 __func__);
+				}
 			}
 		} else {
 			pr_warn("[SHTDWN] %s, invalid value\n", __func__);
