@@ -33,9 +33,12 @@
 #include <linux/io.h>
 #include <linux/async.h>
 #include <linux/wakelock.h>
+#include <linux/rpmsg.h>
 #include <asm/intel-mid.h>
 #include <asm/intel_scu_ipcutil.h>
 #include <asm/intel_mid_gpadc.h>
+#include <asm/intel_mid_rpmsg.h>
+#include <asm/intel_mid_remoteproc.h>
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
@@ -967,14 +970,73 @@ static int __init snd_mfld_driver_init(void)
 	pr_info("snd_mfld_driver_init called\n");
 	return platform_driver_register(&snd_mfld_mc_driver);
 }
-late_initcall(snd_mfld_driver_init);
 
 static void __exit snd_mfld_driver_exit(void)
 {
 	pr_debug("snd_mfld_driver_exit called\n");
 	platform_driver_unregister(&snd_mfld_mc_driver);
 }
-module_exit(snd_mfld_driver_exit);
+
+static int snd_mfld_rpmsg_probe(struct rpmsg_channel *rpdev)
+{
+	int ret = 0;
+
+	if (rpdev == NULL) {
+		pr_err("rpmsg channel not created\n");
+		ret = -ENODEV;
+		goto out;
+	}
+
+	dev_info(&rpdev->dev, "Probed snd_mfld rpmsg device\n");
+
+	ret = snd_mfld_driver_init();
+
+out:
+	return ret;
+}
+
+static void __devexit snd_mfld_rpmsg_remove(struct rpmsg_channel *rpdev)
+{
+	snd_mfld_driver_exit();
+	dev_info(&rpdev->dev, "Removed snd_mfld rpmsg device\n");
+}
+
+static void snd_mfld_rpmsg_cb(struct rpmsg_channel *rpdev, void *data,
+				int len, void *priv, u32 src)
+{
+	dev_warn(&rpdev->dev, "unexpected, message\n");
+
+	print_hex_dump(KERN_DEBUG, __func__, DUMP_PREFIX_NONE, 16, 1,
+			data, len,  true);
+}
+
+static struct rpmsg_device_id snd_mfld_rpmsg_id_table[] = {
+	{ .name = "rpmsg_msic_audio" },
+	{ },
+};
+MODULE_DEVICE_TABLE(rpmsg, snd_mfld_rpmsg_id_table);
+
+static struct rpmsg_driver snd_mfld_rpmsg = {
+	.drv.name	= KBUILD_MODNAME,
+	.drv.owner	= THIS_MODULE,
+	.id_table	= snd_mfld_rpmsg_id_table,
+	.probe		= snd_mfld_rpmsg_probe,
+	.callback	= snd_mfld_rpmsg_cb,
+	.remove		= __devexit_p(snd_mfld_rpmsg_remove),
+};
+
+static int __init snd_mfld_rpmsg_init(void)
+{
+	return register_rpmsg_driver(&snd_mfld_rpmsg);
+}
+
+late_initcall(snd_mfld_rpmsg_init);
+
+static void __exit snd_mfld_rpmsg_exit(void)
+{
+	return unregister_rpmsg_driver(&snd_mfld_rpmsg);
+}
+module_exit(snd_mfld_rpmsg_exit);
 
 MODULE_DESCRIPTION("ASoC Intel(R) MID Machine driver");
 MODULE_AUTHOR("Vinod Koul <vinod.koul@intel.com>");
