@@ -42,8 +42,12 @@
 #include "psb_intel_reg.h"
 #include "psb_msvdx.h"
 
+#ifdef MEDFIELD
 #include "pnw_topaz.h"
+#endif
+#ifdef MERRIFIELD
 #include "tng_topaz.h"
+#endif
 
 #ifdef SUPPORT_VSP
 #include "vsp.h"
@@ -92,7 +96,9 @@ static int ospm_runtime_pm_topaz_suspend(struct drm_device *dev)
 {
 	int ret = 0;
 	struct drm_psb_private *dev_priv = dev->dev_private;
+#ifdef MEDFIELD
 	struct pnw_topaz_private *pnw_topaz_priv = dev_priv->topaz_private;
+#endif
 	struct psb_video_ctx *pos, *n;
 	int encode_ctx = 0, encode_running = 0;
 	return 0;
@@ -118,19 +124,23 @@ static int ospm_runtime_pm_topaz_suspend(struct drm_device *dev)
 	}
 
 	if (IS_FLDS(dev)) {
+#ifdef MEDFIELD
 		if (pnw_check_topaz_idle(dev)) {
 			ret = -2;
 			goto out;
 		}
+#endif
 	}
 
 	psb_irq_uninstall_islands(gpDrmDevice, OSPM_VIDEO_ENC_ISLAND);
 
 	if (IS_FLDS(dev)) {
+#ifdef MEDFIELD
 		if (encode_running)	/* has encode session running */
 			pnw_topaz_save_mtx_state(gpDrmDevice);
 		PNW_TOPAZ_NEW_PMSTATE(dev, pnw_topaz_priv,
 				      PSB_PMSTATE_POWERDOWN);
+#endif
 	}
 	ospm_power_island_down(OSPM_VIDEO_ENC_ISLAND);
  out:
@@ -156,12 +166,15 @@ static int ospm_runtime_pm_msvdx_resume(struct drm_device *dev)
 static int ospm_runtime_pm_topaz_resume(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
+#ifdef MEDFIELD
 	struct pnw_topaz_private *pnw_topaz_priv = dev_priv->topaz_private;
+#endif
 	struct psb_video_ctx *pos, *n;
 	int encode_ctx = 0, encode_running = 0;
-
+#ifdef MERRIFIELD
 	if (IS_MRFLD(dev))
 		return 0;
+#endif
 
 	/*printk(KERN_ALERT "ospm_runtime_pm_topaz_resume\n"); */
 
@@ -188,9 +201,13 @@ static int ospm_runtime_pm_topaz_resume(struct drm_device *dev)
 		if (encode_running) {	/* has encode session running */
 			psb_irq_uninstall_islands(gpDrmDevice,
 						  OSPM_VIDEO_ENC_ISLAND);
+#ifdef MEDFIELD
 			pnw_topaz_restore_mtx_state(gpDrmDevice);
+#endif
 		}
+#ifdef MEDFIELD
 		PNW_TOPAZ_NEW_PMSTATE(dev, pnw_topaz_priv, PSB_PMSTATE_POWERUP);
+#endif
 	}
 
 	return 0;
@@ -329,29 +346,35 @@ out:
 void ospm_apm_power_down_topaz(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
+#ifdef MEDFIELD
 	struct pnw_topaz_private *pnw_topaz_priv = dev_priv->topaz_private;
-
+#endif
 	mutex_lock(&g_ospm_mutex);
 
 	if (!ospm_power_is_hw_on(OSPM_VIDEO_ENC_ISLAND))
 		goto out;
 	if (atomic_read(&g_videoenc_access_count))
 		goto out;
+#ifdef MEDFIELD
 	if (IS_MDFLD(dev))
 		if (pnw_check_topaz_idle(dev))
 			goto out;
+#endif
+#ifdef MERRIFIELD
 	if (IS_MRFLD(dev))
 		if (tng_check_topaz_idle(dev))
 			goto out;
-
+#endif
 	gbSuspendInProgress = true;
+#ifdef MEDFIELD
 	if (IS_MDFLD(dev)) {
 		psb_irq_uninstall_islands(dev, OSPM_VIDEO_ENC_ISLAND);
 		pnw_topaz_save_mtx_state(gpDrmDevice);
 		PNW_TOPAZ_NEW_PMSTATE(dev, pnw_topaz_priv,
 				      PSB_PMSTATE_POWERDOWN);
 	}
-
+#endif
+#ifdef MERRIFIELD
 	if (IS_MRFLD(dev)) {
 		psb_irq_uninstall_islands(dev, OSPM_VIDEO_ENC_ISLAND);
 		tng_topaz_save_mtx_state(gpDrmDevice);
@@ -360,7 +383,7 @@ void ospm_apm_power_down_topaz(struct drm_device *dev)
 				      PSB_PMSTATE_POWERDOWN);
 		*/
 	}
-
+#endif
 	ospm_power_island_down(OSPM_VIDEO_ENC_ISLAND);
 
 	gbSuspendInProgress = false;

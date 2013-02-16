@@ -20,8 +20,5 @@ ccflags-y += -DANDROID -D_linux_ -DLINUX -D__KERNEL__ -DCONFIG_VIDEO_MRFLD
 #VIDEO_COMMON_DIR = $(TOP_DIR)/driver/staging/intel_media/video/common
 #DECODE_DIR = $(TOP_DIR)/driver/staging/intel_media/video/decode
 
-obj-y += \
-	pnw_topaz.o \
-	pnw_topazinit.o \
-	tng_topaz.o \
-	tng_topazinit.o
+obj-y += tng_topaz.o tng_topazinit.o
+

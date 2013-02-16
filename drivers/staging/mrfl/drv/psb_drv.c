@@ -37,8 +37,12 @@
 #ifdef ENABLE_MRST
 #include "lnc_topaz.h"
 #endif
+#ifdef MEDFIELD
 #include "pnw_topaz.h"
+#endif
+#ifdef MERRIFIELD
 #include "tng_topaz.h"
+#endif
 
 #include <drm/drm_pciids.h>
 #include "psb_powermgmt.h"
@@ -794,12 +798,14 @@ static void psb_do_takedown(struct drm_device *dev)
 	if (IS_MRFLD(dev))
 		vsp_deinit(dev);
 #endif
-
+#ifdef MEDFIELD
 	if (IS_MDFLD(dev))
 		pnw_topaz_uninit(dev);
-
+#endif
+#ifdef MERRIFIELD
 	if (IS_MRFLD(dev))
 		tng_topaz_uninit(dev);
+#endif
 }
 
 #if KEEP_UNUSED_CODE
@@ -1377,12 +1383,14 @@ static int psb_do_init(struct drm_device *dev)
 
 	PSB_DEBUG_INIT("Init Topaz\n");
 	/* for sku100L and sku100M, VEC is disabled in fuses */
+#ifdef MEDFIELD
 	if (IS_MDFLD(dev))
 		pnw_topaz_init(dev);
-
+#endif
+#ifdef MERRIFIELD
 	if (IS_MRFLD(dev))
 		tng_topaz_init(dev);
-
+#endif
 	return 0;
  out_err:
 	psb_do_takedown(dev);

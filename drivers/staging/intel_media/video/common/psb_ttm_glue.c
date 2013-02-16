@@ -27,7 +27,10 @@
 #include <linux/io.h>
 #include <asm/intel-mid.h>
 #include "psb_msvdx.h"
+
+#ifndef MERRIFIELD
 #include "pnw_topaz.h"
+#endif
 
 /*IMG Headers*/
 #include "private_data.h"
@@ -269,6 +272,7 @@ void psb_remove_videoctx(struct drm_psb_private *dev_priv, struct file *filp)
 				(found_ctx->ctx_type & 0xff)
 			|| VAEntrypointEncPicture ==
 				(found_ctx->ctx_type & 0xff)) {
+#ifndef MERRIFIELD
 			if (dev_priv->topaz_ctx == found_ctx) {
 				pnw_reset_fw_status(dev_priv->dev,
 					PNW_TOPAZ_END_CTX);
@@ -277,6 +281,7 @@ void psb_remove_videoctx(struct drm_psb_private *dev_priv, struct file *filp)
 				PSB_DEBUG_PM("Remove a inactive "\
 						"encoding context.\n");
 			}
+#endif
 			if (dev_priv->last_topaz_ctx == found_ctx)
 				dev_priv->last_topaz_ctx = NULL;
 		} else {
@@ -386,11 +391,13 @@ int psb_video_getparam(struct drm_device *dev, void *data,
 		mutex_lock(&dev_priv->video_ctx_mutex);
 		list_add(&video_ctx->head, &dev_priv->video_ctx);
 		mutex_unlock(&dev_priv->video_ctx_mutex);
+#ifndef MERRIFIELD
 		if (IS_MDFLD(dev_priv->dev) &&
 				(VAEntrypointEncSlice ==
 				 (ctx_type & 0xff)))
 			pnw_reset_fw_status(dev_priv->dev,
 				PNW_TOPAZ_START_CTX);
+#endif
 		PSB_DEBUG_INIT("Video:add ctx profile %d, entry %d.\n",
 					((ctx_type >> 8) & 0xff),
 					(ctx_type & 0xff));
