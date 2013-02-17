@@ -813,7 +813,7 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 #ifdef SUPPORT_VSP
 	struct vsp_private *vsp_priv = dev_priv->vsp_private;
 #endif
-	struct psb_video_ctx *pos, *n;
+	struct psb_video_ctx *pos, *n, *msvdx_ctx;
 	int engine, po_correct;
 	int found = 0;
 	struct psb_context *context = NULL;
@@ -874,9 +874,6 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 	}
 
 #if defined(MERRIFIELD)
-	PSB_DEBUG_GENERAL("by pass soc 0 %x\n", PSB_RMSVDX32(0x630));
-	PSB_DEBUG_GENERAL("by pass soc 1 %x\n", PSB_RMSVDX32(0x640));
-
 	{
 		PSB_WVDC32(0x103, 0x2850);
 		PSB_WVDC32(0xffffffff, 0x2884);
@@ -944,15 +941,16 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 		if (pos->filp == file_priv->filp) {
 			int entrypoint = pos->ctx_type & 0xff;
 
-			PSB_DEBUG_GENERAL("cmds for profile %d, entrypoint %d",
+		PSB_DEBUG_GENERAL("cmds for profile %d, entrypoint %d\n",
 					(pos->ctx_type >> 8) & 0xff,
 					(pos->ctx_type & 0xff));
 
 			if (entrypoint == VAEntrypointEncSlice ||
 			    entrypoint == VAEntrypointEncPicture)
 				dev_priv->topaz_ctx = pos;
-			else if (entrypoint != VAEntrypointVideoProc)
-				msvdx_priv->msvdx_ctx = pos;
+			else if (entrypoint != VAEntrypointVideoProc ||
+				arg->engine == PSB_ENGINE_DECODE)
+				msvdx_ctx = pos;
 			found = 1;
 			break;
 		}
@@ -967,7 +965,7 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 	case PSB_ENGINE_DECODE:
 		ret = psb_cmdbuf_video(file_priv, &context->validate_list,
 				       context->fence_types, arg,
-				       cmd_buffer, &fence_arg);
+				       cmd_buffer, &fence_arg, msvdx_ctx);
 		if (unlikely(ret != 0))
 			goto out_err4;
 		break;

@@ -550,6 +550,11 @@ static int msvdx_startup_init(struct drm_device *dev)
 	int ret;
 	struct msvdx_private *msvdx_priv;
 
+	printk(KERN_INFO "MSVDX: core id	%x\n",
+				PSB_RMSVDX32(MSVDX_CORE_ID_OFFSET));
+	printk(KERN_INFO "MSVDX: core rev	%x\n",
+				PSB_RMSVDX32(MSVDX_CORE_REV_OFFSET));
+
 	msvdx_priv = kmalloc(sizeof(struct msvdx_private), GFP_KERNEL);
 	if (msvdx_priv == NULL) {
 		DRM_ERROR("MSVDX: alloc msvdx_private failed.\n");
@@ -561,6 +566,8 @@ static int msvdx_startup_init(struct drm_device *dev)
 	msvdx_priv->dev_priv = dev_priv;
 	msvdx_priv->dev = dev;
 #ifdef MERRIFIELD
+	msvdx_priv->msvdx_needs_reset = 1;
+
 	if (IS_MRFLD(dev))
 		msvdx_priv->fw_loaded_by_punit = 0;
 	else
