@@ -71,12 +71,21 @@ typedef struct {
 }PVRSRV_LINUX_MUTEX;
 
 #endif
+
+enum PVRSRV_MUTEX_LOCK_CLASS
+{
+	PVRSRV_LOCK_CLASS_BRIDGE,
+	PVRSRV_LOCK_CLASS_MMAP,
+};
+
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,15))
 #define LinuxInitMutex(psPVRSRVMutex) mutex_init(psPVRSRVMutex)
 #else
 extern IMG_VOID LinuxInitMutex(PVRSRV_LINUX_MUTEX *psPVRSRVMutex);
 #endif
 extern IMG_VOID LinuxLockMutex(PVRSRV_LINUX_MUTEX *psPVRSRVMutex);
+
+extern IMG_VOID LinuxLockMutexNested(PVRSRV_LINUX_MUTEX *psPVRSRVMutex, unsigned int uiLockClass);
 
 extern PVRSRV_ERROR LinuxLockMutexInterruptible(PVRSRV_LINUX_MUTEX *psPVRSRVMutex);
 

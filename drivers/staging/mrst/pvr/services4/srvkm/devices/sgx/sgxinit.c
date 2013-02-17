@@ -1957,8 +1957,10 @@ IMG_BOOL SGX_ISRHandler (IMG_VOID *pvData)
 			/* clear the events */
 			OSWriteHWReg(psDevInfo->pvRegsBaseKM, EUR_CR_EVENT_HOST_CLEAR, ui32EventClear);
 			OSWriteHWReg(psDevInfo->pvRegsBaseKM, EUR_CR_EVENT_HOST_CLEAR2, ui32EventClear2);
-			/* Sample the current count from the uKernel _before_ we clear the
-			 interrupt.
+
+			/*
+				Sample the current count from the uKernel _after_ we've cleared the
+				interrupt.
 			*/
 			g_ui32HostIRQCountSample = psDevInfo->psSGXHostCtl->ui32InterruptCount;
 		}
