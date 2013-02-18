@@ -648,6 +648,8 @@ static int mt9m114_get_mbus_fmt(struct v4l2_subdev *sd,
 	int width, height;
 	int ret;
 
+	fmt->code = V4L2_MBUS_FMT_UYVY8_1X16;
+
 	ret = mt9m114_res2size(dev->res, &width, &height);
 	if (ret)
 		return ret;
