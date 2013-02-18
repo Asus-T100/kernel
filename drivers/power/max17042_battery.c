@@ -1538,11 +1538,6 @@ static void set_soc_intr_thresholds_s0(struct max17042_chip *chip, int offset)
 		return ;
 	}
 	soc = ret >> 8;
-	/* Check if MSB of lower byte is set
-	 * then round off the SOC to higher digit
-	 */
-	if (ret & 0x80)
-		soc += 1;
 
 	/* if upper threshold exceeds 100% then stop
 	 * the interrupt for upper thresholds */
@@ -1556,7 +1551,7 @@ static void set_soc_intr_thresholds_s0(struct max17042_chip *chip, int offset)
 	if ((soc - offset) < 1)
 		soc_tr |= 1;
 	else
-		soc_tr |= (soc - offset);
+		soc_tr |= soc;
 
 	dev_info(&chip->client->dev,
 		"soc perc: soc: %d, offset: %d\n", soc, offset);

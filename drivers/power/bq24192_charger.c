@@ -303,7 +303,6 @@ struct bq24192_chip {
 	int input_curr;
 	int cached_chrg_cur_cntl;
 	bool is_pwr_good;
-	int cached_temp;
 	struct power_supply_charger_cap cached_cap;
 	/* Wake lock to prevent platform from going to S3 when charging */
 	struct wake_lock wakelock;
@@ -1010,11 +1009,7 @@ int ctp_get_battery_pack_temp(int *temp)
 	if (!power_supply_get_by_name(CHARGER_PS_NAME))
 		return -EAGAIN;
 
-	if (unlikely(chip->present && chip->cached_temp)) {
-		*temp = chip->cached_temp;
-		return  0;
-	} else
-		return ctp_read_adc_temp(temp);
+	return ctp_read_adc_temp(temp);
 }
 EXPORT_SYMBOL(ctp_get_battery_pack_temp);
 
@@ -1698,9 +1693,6 @@ static void bq24192_maintenance_worker(struct work_struct *work)
 		dev_err(&chip->client->dev, "failed to acquire batt temp\n");
 		goto sched_maint_work;
 	}
-	mutex_lock(&chip->event_lock);
-	chip->cached_temp = batt_temp;
-	mutex_unlock(&chip->event_lock);
 
 	/* find the temperature range */
 	idx = ctp_sfi_temp_range_lookup(batt_temp);
@@ -1996,9 +1988,8 @@ sched_maint_work:
 		mutex_lock(&chip->event_lock);
 		chip->batt_status = battery_status;
 		mutex_unlock(&chip->event_lock);
+		power_supply_changed(&chip->usb);
 	}
-
-	power_supply_changed(&chip->usb);
 
 	schedule_delayed_work(&chip->maint_chrg_wrkr, MAINTENANCE_CHRG_JIFFIES);
 	dev_info(&chip->client->dev, "battery mode is  %d\n", chip->batt_mode);
@@ -2251,7 +2242,6 @@ static void bq24192_event_worker(struct work_struct *work)
 		}
 		chip->online = 0;
 		chip->batt_status = POWER_SUPPLY_STATUS_DISCHARGING;
-		chip->cached_temp = 0;
 		if (chip->votg) {
 				ret = bq24192_turn_otg_vbus(chip, false);
 				if (ret < 0) {
