@@ -66,6 +66,10 @@
 					* configuration
 					*/
 
+#define PTI_PNW_PCI_ID			0x082B
+#define PTI_CLV_PCI_ID			0x0900
+#define PTI_TNG_PCI_ID			0x119F
+
 struct pti_tty {
 	struct pti_masterchannel *mc;
 };
@@ -88,8 +92,9 @@ struct pti_dev {
 static DEFINE_MUTEX(alloclock);
 
 static struct pci_device_id pci_ids[] __devinitconst = {
-	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x082B)},
-	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x0900)},
+	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, PTI_PNW_PCI_ID)},
+	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, PTI_CLV_PCI_ID)},
+	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, PTI_TNG_PCI_ID)},
 	{0}
 };
 
@@ -289,6 +294,30 @@ static struct pti_masterchannel *get_id(u8 *id_array,
 	/* write new master Id / channel Id allocation to channel control */
 	pti_control_frame_built_and_sent(mc, thread_name);
 	return mc;
+}
+
+/**
+ * pti_get_pci_ressource_index()- Get pci_dev struct ressource index to use
+ *                                with current HW.
+ *
+ * @device: current PCI device ID
+ *
+ * Returns:
+ *	ressource index
+ *
+ * pci_resource_start shall be called with the right index to retrieve
+ * correct address.
+ * This index is chip dependent.
+ */
+
+static int pti_get_pci_ressource_index(unsigned short device)
+{
+	int pci_bar = 1;
+
+	if (device == PTI_TNG_PCI_ID)
+		pci_bar = 2;
+
+	return pci_bar;
 }
 
 /*
@@ -838,7 +867,7 @@ static int __devinit pti_pci_probe(struct pci_dev *pdev,
 		const struct pci_device_id *ent)
 {
 	int retval = -EINVAL;
-	int pci_bar = 1;
+	int pci_bar = pti_get_pci_ressource_index(pdev->device);
 
 	dev_dbg(&pdev->dev, "%s %s(%d): PTI PCI ID %04x:%04x\n", __FILE__,
 			__func__, __LINE__, pdev->vendor, pdev->device);
