@@ -64,7 +64,15 @@
  * set input voltage lim to 4.68V. This will help in charger
  * instability issue when duty cycle reaches 100%.
  */
-#define INPUT_SRC_VOLT_LMT			(5 << 4)
+#define INPUT_SRC_VOLT_LMT_DEF                 (3 << 4)
+#define INPUT_SRC_VOLT_LMT_444                 (7 << 3)
+#define INPUT_SRC_VOLT_LMT_468                 (5 << 4)
+
+#define INPUT_SRC_VINDPM_MASK                  (0xF << 3)
+#define INPUT_SRC_LOW_VBAT_LIMIT               3600
+#define INPUT_SRC_MID_VBAT_LIMIT               4000
+#define INPUT_SRC_HIG_VBAT_LIMIT               4200
+
 /* D0, D1, D2 represent the input current limit */
 #define INPUT_SRC_CUR_LMT0		0x0	/* 100mA */
 #define INPUT_SRC_CUR_LMT1		0x1	/* 150mA */
@@ -1115,7 +1123,8 @@ static u8 chrg_ilim_to_reg(int ilim)
 	u8 reg;
 
 	/* set voltage to 5V */
-	reg = INPUT_SRC_VOLT_LMT;
+	reg = INPUT_SRC_VOLT_LMT_DEF;
+
 
 	/* Set the input source current limit
 	 * between 100 to 1500mA */
@@ -1436,6 +1445,46 @@ static int fg_chip_get_property(enum power_supply_property psp)
 	return ret;
 }
 
+/*
+ *This function will modify the VINDPM as per the battery voltage
+ */
+static int bq24192_modify_vindpm(u8 vindpm)
+{
+	int ret;
+	u8 vindpm_prev;
+	struct bq24192_chip *chip = i2c_get_clientdata(bq24192_client);
+
+	dev_info(&chip->client->dev, "%s\n", __func__);
+
+	/* Get the input src ctrl values programmed */
+	ret = bq24192_read_reg(chip->client,
+				BQ24192_INPUT_SRC_CNTL_REG);
+
+	if (ret < 0) {
+		dev_warn(&chip->client->dev, "INPUT CTRL reg read failed\n");
+		return ret;
+	}
+
+	/* Assign the return value of REG00 to vindpm_prev */
+	vindpm_prev = ret & INPUT_SRC_VINDPM_MASK;
+	ret &= ~INPUT_SRC_VINDPM_MASK;
+
+	/*
+	 * If both the previous and current values are same do not program
+	 * the register.
+	*/
+	if (vindpm_prev != vindpm) {
+		vindpm |= ret;
+		ret = bq24192_write_reg(chip->client,
+					BQ24192_INPUT_SRC_CNTL_REG, vindpm);
+		if (ret < 0) {
+			dev_info(&chip->client->dev, "VINDPM failed\n");
+			return ret;
+		}
+	}
+	return ret;
+}
+
 /* check if charger automatically terminated charging
  * even when charging is enabled */
 static bool bq24192_is_chrg_terminated(struct bq24192_chip *chip)
@@ -1613,6 +1662,7 @@ static void bq24192_maintenance_worker(struct work_struct *work)
 	bool is_chrg_term = false, is_chrg_full = false;
 	static int chrg_cur_cntl = USER_SET_CHRG_NOLMT;
 	bool sysfs_stat = false;
+	u8 vindpm = INPUT_SRC_VOLT_LMT_DEF;
 
 	dev_dbg(&chip->client->dev, "+ %s\n", __func__);
 
@@ -1621,16 +1671,6 @@ static void bq24192_maintenance_worker(struct work_struct *work)
 	if (ret < 0)
 		dev_warn(&chip->client->dev, "WDT reset failed\n");
 	mutex_unlock(&chip->event_lock);
-
-	/*
-	 * FIXEME: Hw issue in TI charger. Hi-Z needs to be cleared continuously
-	 * as long as charger is connected
-	 */
-	ret = bq24192_clear_hiz(chip);
-	if (ret < 0) {
-		dev_warn(&chip->client->dev, "%s HiZ clr failed\n", __func__);
-		goto sched_maint_work;
-	}
 
 	/*
 	 * We update the battery charging status as per the type of
@@ -1701,6 +1741,24 @@ static void bq24192_maintenance_worker(struct work_struct *work)
 			dev_warn(&chip->client->dev, "Already Stopped Charging\n");
 		}
 		goto sched_maint_work;
+	} else {
+		/*
+		 * PMIC does not stop the charging automatically in case the
+		 * phone is applied to -ve temperature condition. Since the
+		 * driver explicitly disables the charging on coming back to
+		 * the normal temperature charger should enable the charging
+		 */
+		mutex_lock(&chip->event_lock);
+		ret = bq24192_reg_multi_bitset(chip->client,
+						BQ24192_POWER_ON_CFG_REG,
+						POWER_ON_CFG_CHRG_CFG_EN,
+						CHR_CFG_BIT_POS,
+						CHR_CFG_BIT_LEN);
+		if (ret < 0) {
+			dev_warn(&chip->client->dev,
+				"I2C write failed:%s\n", __func__);
+		}
+		mutex_unlock(&chip->event_lock);
 	}
 
 	dev_info(&chip->client->dev, "temperature zone idx = %d\n", idx);
@@ -1715,6 +1773,19 @@ static void bq24192_maintenance_worker(struct work_struct *work)
 	/* convert voltage into millivolts */
 	vbatt /= 1000;
 	dev_info(&chip->client->dev, "vbatt = %d\n", vbatt);
+
+	if (vbatt > INPUT_SRC_LOW_VBAT_LIMIT &&
+		vbatt < INPUT_SRC_MID_VBAT_LIMIT)
+		vindpm = INPUT_SRC_VOLT_LMT_444;
+	else if (vbatt > INPUT_SRC_MID_VBAT_LIMIT &&
+		vbatt < INPUT_SRC_HIG_VBAT_LIMIT)
+		vindpm = INPUT_SRC_VOLT_LMT_468;
+
+	mutex_lock(&chip->event_lock);
+	ret = bq24192_modify_vindpm(vindpm);
+	if (ret < 0)
+		dev_err(&chip->client->dev, "%s failed\n", __func__);
+	mutex_unlock(&chip->event_lock);
 
 	/* read the charge current based upon user setting */
 	if (chip->chrg_cur_cntl != chrg_cur_cntl) {
@@ -1776,7 +1847,7 @@ static void bq24192_maintenance_worker(struct work_struct *work)
 			 */
 			chip->batt_mode = BATT_CHRG_FULL;
 			mutex_unlock(&chip->event_lock);
-		} else if ((idx > -1) || (sysfs_stat == true)) {
+		} else if ((sysfs_stat == true)) {
 			/* If there is change in temperature zone
 			 * or user mode charge current settings */
 			ret = bq24192_do_charging(
@@ -1824,7 +1895,7 @@ static void bq24192_maintenance_worker(struct work_struct *work)
 				"Discharging and withing maintenance mode range\n");
 
 			/* if within the range */
-			if ((idx > -1) || (sysfs_stat == true)) {
+			if ((sysfs_stat == true)) {
 				dev_info(&chip->client->dev,
 					"Change in Temp Zone or User Setting:\n");
 				ret = bq24192_do_charging(
