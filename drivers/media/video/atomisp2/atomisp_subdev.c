@@ -144,7 +144,7 @@ static int isp_subdev_subscribe_event(struct v4l2_subdev *sd,
 	struct v4l2_fh *fh,
 	struct v4l2_event_subscription *sub)
 {
-	if (IS_MRFLD || sub->type != V4L2_EVENT_FRAME_SYNC)
+	if (sub->type != V4L2_EVENT_FRAME_SYNC)
 		return -EINVAL;
 
 	return v4l2_event_subscribe(fh, sub, 16, NULL);

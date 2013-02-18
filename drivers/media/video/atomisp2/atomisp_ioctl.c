@@ -1388,10 +1388,8 @@ start_sensor:
 	}
 
 	if (!isp->sw_contex.file_input) {
-#ifndef CONFIG_X86_MRFLD
 		sh_css_enable_interrupt(SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF,
 					true);
-#endif /* CONFIG_X86_MRFLD */
 
 		atomisp_set_term_en_count(isp);
 
@@ -1498,11 +1496,10 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 
 	atomisp_clear_css_buffer_counters(isp);
 
-#ifndef CONFIG_X86_MRFLD
 	if (!isp->sw_contex.file_input)
 		sh_css_enable_interrupt(SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF,
 					false);
-#endif /* CONFIG_X86_MRFLD */
+
 	if (isp->delayed_init == ATOMISP_DELAYED_INIT_QUEUED) {
 		cancel_work_sync(&isp->delayed_init_work);
 		isp->delayed_init = ATOMISP_DELAYED_INIT_NOT_QUEUED;

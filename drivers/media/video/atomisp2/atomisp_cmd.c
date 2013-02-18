@@ -413,7 +413,6 @@ void atomisp_msi_irq_uninit(struct atomisp_device *isp, struct pci_dev *dev)
 	pci_write_config_word(dev, PCI_COMMAND, msg16);
 }
 
-#ifndef CONFIG_X86_MRFLD
 static void atomisp_sof_event(struct atomisp_device *isp)
 {
 	struct v4l2_event event;
@@ -424,7 +423,6 @@ static void atomisp_sof_event(struct atomisp_device *isp)
 
 	v4l2_event_queue(isp->isp_subdev.subdev.devnode, &event);
 }
-#endif /* CONFIG_X86_MRFLD */
 
 static void print_csi_rx_errors(void)
 {
@@ -488,15 +486,10 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 	if (isp->streaming != ATOMISP_DEVICE_STREAMING_ENABLED)
 		goto out_nowake;
 
-#ifndef CONFIG_X86_MRFLD
 	if (irq_infos & SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF) {
 		atomic_inc(&isp->sof_count);
 		atomisp_sof_event(isp);
 		irq_infos &= ~SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF;
-#else /* CONFIG_X86_MRFLD */
-	if (irq_infos & SH_CSS_IRQ_INFO_PIPELINE_DONE) {
-		atomic_inc(&isp->sequence);
-#endif /* CONFIG_X86_MRFLD */
 
 		/* If sequence_temp and sequence are the same
 		 * there where no frames lost so we can increase sequence_temp.
@@ -992,11 +985,9 @@ void atomisp_wdt_work(struct work_struct *work)
 		/*sh_css_dump_sp_state();*/
 		/*sh_css_dump_isp_state();*/
 
-#ifndef CONFIG_X86_MRFLD
 		if (!isp->sw_contex.file_input)
 			sh_css_enable_interrupt(
 				SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF, false);
-#endif /* CONFIG_X86_MRFLD */
 
 		if (isp->delayed_init == ATOMISP_DELAYED_INIT_QUEUED) {
 			cancel_work_sync(&isp->delayed_init_work);
@@ -1047,10 +1038,9 @@ void atomisp_wdt_work(struct work_struct *work)
 
 		sh_css_start(css_pipe_id);
 		if (!isp->sw_contex.file_input) {
-#ifndef CONFIG_X86_MRFLD
 			sh_css_enable_interrupt(
 				SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF, true);
-#endif /* CONFIG_X86_MRFLD */
+
 			atomisp_set_term_en_count(isp);
 			ret = v4l2_subdev_call(
 				isp->inputs[isp->input_curr].camera, video,
