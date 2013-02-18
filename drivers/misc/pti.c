@@ -957,6 +957,7 @@ static int __init pti_init(void)
 	int retval = -EINVAL;
 
 #ifdef CONFIG_INTEL_SCU_IPC
+#ifndef CONFIG_INTEL_PTI_UNSECURED
 	u8 smip_pti;
 
 	retval = intel_scu_ipc_read_mip(&smip_pti, 1, SMIP_PTI_OFFSET, 1);
@@ -970,6 +971,7 @@ static int __init pti_init(void)
 			__func__, __LINE__);
 		return -EPERM;
 	}
+#endif /* CONFIG_INTEL_PTI_UNSECURED */
 #endif /* CONFIG_INTEL_SCU_IPC */
 
 	/* First register module as tty device */
