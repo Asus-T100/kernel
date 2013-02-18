@@ -51,15 +51,17 @@
 
 #define SP_DEBUG SP_DEBUG_NONE
 
-#ifdef __DISABLE_UNUSED_THREAD__
-#define SH_CSS_MAX_SP_THREADS	1 /* preview */
-#else
 #define SH_CSS_MAX_SP_THREADS	4 /* raw_copy, preview, capture, acceleration */
-#endif
 
 #define NUM_REF_FRAMES		2
 
+#if defined(HAS_SP_2400A0)
+#define NUM_CONTINUOUS_FRAMES	5
+#else
 #define NUM_CONTINUOUS_FRAMES	10
+#endif
+#define NUM_OFFLINE_INIT_CONTINUOUS_FRAMES	3
+#define NUM_ONLINE_INIT_CONTINUOUS_FRAMES	2
 
 #define NUM_TNR_FRAMES		2
 
@@ -325,6 +327,8 @@ struct sh_css_isp_params {
 	int rgb_to_yuv_20;
 	int rgb_to_yuv_21;
 	int rgb_to_yuv_22;
+#else
+	int aa_scale;
 #endif /* SH_CSS_ISP_PARAMS_VERSION == 2 */
 };
 
@@ -459,6 +463,7 @@ struct sh_css_sp_debug_trace {
 	uint16_t line;
 	uint16_t pixel_distance;
 	uint16_t mipi_used_dword;
+	uint16_t sp_index;
 };
 
 struct sh_css_sp_debug_state {
@@ -516,7 +521,7 @@ struct sh_css_sp_debug_command {
 /* SP configuration information */
 struct sh_css_sp_config {
 	uint8_t			is_offline;  /* Run offline, with continuous copy */
-	uint8_t			input_is_raw_reordered;
+	uint8_t			input_needs_raw_binning;
 	uint8_t			no_isp_sync; /* Signal host immediately after start */
 	struct {
 		uint8_t					a_changed;
@@ -541,10 +546,9 @@ enum sh_css_stage_type {
 
 enum sh_css_sp_stage_func {
   SH_CSS_SP_RAW_COPY = 0,
-  SH_CSS_SP_BIN_COPY = 1,
-  SH_CSS_SP_ISYS_COPY = 2
+  SH_CSS_SP_BIN_COPY = 1
 };
-#define SH_CSS_NUM_STAGE_FUNCS 3
+#define SH_CSS_NUM_STAGE_FUNCS 2
 
 #define SH_CSS_PIPE_CONFIG_SAMPLE_PARAMS 	(1 << 0)
 #define SH_CSS_PIPE_CONFIG_SAMPLE_PARAMS_MASK \
@@ -556,6 +560,7 @@ struct sh_css_sp_pipeline {
 	uint32_t	thread_id;	/* the sp thread ID */
 	uint32_t	pipe_config;	/* the pipe config */
 	uint32_t	num_stages;
+	uint32_t	running;
 	hrt_vaddress	sp_stage_addr[SH_CSS_MAX_STAGES];
 	struct sh_css_sp_stage *stage; /* Current stage for this pipeline */
 	union {
@@ -862,7 +867,9 @@ struct host_sp_communication {
 	 *   Remove it when the Host and the SP is decoupled.
 	 */
 	hrt_vaddress host2sp_offline_frames[NUM_CONTINUOUS_FRAMES];
-	unsigned int host2sp_cont_num_raw_frames;
+	unsigned int host2sp_cont_avail_num_raw_frames;
+	unsigned int host2sp_cont_extra_num_raw_frames;
+	unsigned int host2sp_cont_target_num_raw_frames;
 	struct sh_css_event_irq_mask host2sp_event_irq_mask[NR_OF_PIPELINES];
 
 };
@@ -1048,5 +1055,9 @@ sh_css_query_sp_thread_id(enum sh_css_pipe_id key,
 bool
 sh_css_query_internal_queue_id(enum sh_css_buffer_type key,
 		enum sh_css_buffer_queue_id *val);
+
+
+bool
+input_format_is_yuv_8(enum sh_css_input_format format);
 
 #endif /* _SH_CSS_INTERNAL_H_ */

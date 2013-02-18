@@ -87,7 +87,7 @@ sh_css_pipe_disable_vf_pp(struct sh_css_pipe *pipe,
 			  bool disable);
 
 void
-sh_css_pipe_enable_raw_reordered(struct sh_css_pipe *pipe,
+sh_css_pipe_enable_raw_binning(struct sh_css_pipe *pipe,
 				 bool enable);
 
 enum sh_css_err

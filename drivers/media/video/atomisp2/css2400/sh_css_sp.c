@@ -233,7 +233,7 @@ void
 sh_css_sp_start_raw_copy(struct sh_css_binary *binary,
 			 struct sh_css_frame *out_frame,
 			 unsigned two_ppc,
-			 bool input_is_raw_reordered,
+			 bool input_needs_raw_binning,
 			 enum sh_css_pipe_config_override pipe_conf_override)
 {
 	enum sh_css_pipe_id pipe_id;
@@ -275,8 +275,8 @@ assert(out_frame != NULL);
 		pipe->pipe_config = pipe_conf_override;
 
 	sh_css_sp_group.config.input_formatter.isp_2ppc = two_ppc;
-	sh_css_sp_group.config.input_is_raw_reordered =
-						input_is_raw_reordered;
+	sh_css_sp_group.config.input_needs_raw_binning =
+						input_needs_raw_binning;
 
 	sh_css_sp_stage.num = stage_num;
 	sh_css_sp_stage.irq_buf_flags = 1 << sh_css_frame_out;
@@ -288,74 +288,6 @@ assert(out_frame != NULL);
 	set_output_frame_buffer(out_frame,
 						(unsigned)pipe_id, stage_num);
 
-	/* sp_raw_copy_init on the SP does not deal with dynamica/static yet */
-	/* For now always update the dynamic data from out frames. */
-	sh_css_store_sp_per_frame_data(pipe_id, &sh_css_sp_fw);
-}
-
-static void
-sh_css_sp_start_isys_copy(struct sh_css_binary *binary,
-			 struct sh_css_frame *out_frame,
-			 unsigned two_ppc,
-			 bool input_is_raw_reordered,
-			 enum sh_css_pipe_config_override pipe_conf_override)
-{
-	enum sh_css_pipe_id pipe_id;
-	unsigned int thread_id;
-	unsigned stage_num = 0;
-	struct sh_css_sp_pipeline *pipe;
-
-//assert(out_frame != NULL);
-(void)out_frame;
-
-	{
-		/**
-		 * Clear sh_css_sp_stage for easy debugging.
-		 * program_input_circuit must be saved as it is set outside
-		 * this function.
-		 */
-		unsigned int program_input_circuit;
-		program_input_circuit = sh_css_sp_stage.program_input_circuit;
-		memset(&sh_css_sp_stage, 0, sizeof(sh_css_sp_stage));
-		sh_css_sp_stage.program_input_circuit = program_input_circuit;
-	}
-
-	pipe_id = SH_CSS_COPY_PIPELINE;
-	sh_css_query_sp_thread_id(pipe_id, &thread_id);
-	pipe = &sh_css_sp_group.pipe[thread_id];
-/*
-	pipe->copy.raw.height	    = out_frame->info.height;
-	pipe->copy.raw.width	    = out_frame->info.width;
-	pipe->copy.raw.padded_width  = out_frame->info.padded_width;
-	pipe->copy.raw.raw_bit_depth = out_frame->info.raw_bit_depth;
-	pipe->copy.raw.max_input_width = binary->info->max_input_width;
-*/
-	pipe->num_stages = 1;
-	pipe->pipe_id = pipe_id;
-	/* TODO: next indicates from which queues parameters need to be
-		 sampled, needs checking/improvement */
-	if (pipe_conf_override == SH_CSS_PIPE_CONFIG_OVRD_NO_OVRD)
-		pipe->pipe_config =
-			(SH_CSS_PIPE_CONFIG_SAMPLE_PARAMS << thread_id);
-	else
-		pipe->pipe_config = pipe_conf_override;
-
-pipe->pipe_config = 0;
-
-	sh_css_sp_group.config.input_formatter.isp_2ppc = two_ppc;
-	sh_css_sp_group.config.input_is_raw_reordered =
-						input_is_raw_reordered;
-
-	sh_css_sp_stage.num = stage_num;
-	sh_css_sp_stage.irq_buf_flags = 1 << sh_css_frame_out;
-	sh_css_sp_stage.xmem_bin_addr = binary->info->xmem_addr;
-	sh_css_sp_stage.stage_type = SH_CSS_SP_STAGE_TYPE;
-	sh_css_sp_stage.func =
-		(unsigned int)SH_CSS_SP_ISYS_COPY;
-/*
-	set_output_frame_buffer(out_frame,
-						(unsigned)pipe_id, stage_num);
-*/
 	/* sp_raw_copy_init on the SP does not deal with dynamica/static yet */
 	/* For now always update the dynamic data from out frames. */
 	sh_css_store_sp_per_frame_data(pipe_id, &sh_css_sp_fw);
@@ -918,7 +850,7 @@ sh_css_sp_init_stage(struct sh_css_binary *binary,
 	if (err != sh_css_success)
 		return err;
 
-	if (continuous &&  binary->info->enable.rawdeci) {
+	if (continuous &&  binary->info->enable.raw_binning) {
 		/* TODO: Remove this after preview output decimation is fixed
 		 * by configuring out&vf info fiels properly */
 		sh_css_sp_stage.frames.out.info.padded_width
@@ -977,6 +909,8 @@ sp_init_stage(struct sh_css_pipeline_stage *stage,
 		mem_if = firmware->memory_interface;
 	}
 
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sp_init_stage(): load binary: %s\n", binary_name);
 #ifdef __KERNEL__
 	printk(KERN_ERR "load binary: %s\n", binary_name);
 #endif
@@ -1004,8 +938,7 @@ sh_css_sp_init_pipeline(struct sh_css_pipeline *me,
 			bool two_ppc,
 			bool continuous,
 			bool offline,
-			bool input_is_raw_reordered,
-			bool isys_tokenhandler,
+			bool input_needs_raw_binning,
 			enum sh_css_pipe_config_override copy_ovrd)
 {
 	/* Get first stage */
@@ -1040,17 +973,10 @@ sh_css_sp_init_pipeline(struct sh_css_pipeline *me,
 				(void *)first_args->cc_frame);
 #endif
 			sh_css_sp_start_raw_copy(first_binary, first_args->cc_frame,
-				two_ppc, input_is_raw_reordered,
+				two_ppc, input_needs_raw_binning,
 				copy_ovrd);
 
 			sh_css_debug_pipe_graph_dump_sp_raw_copy(first_args->cc_frame);
-		}
-	/* for Video using multistream and new input system on 2400 */
-		if (isys_tokenhandler) {
-			sh_css_sp_start_isys_copy(first_binary,
-				first_args->cc_frame,
-				two_ppc, input_is_raw_reordered,
-				copy_ovrd);
 		}
 	} /* if (first_binary != NULL) */
 
@@ -1188,115 +1114,35 @@ assert(frame_num < NUM_CONTINUOUS_FRAMES);
 }
 
 void
-sh_css_update_host2sp_cont_num_raw_frames(unsigned num_frames)
+sh_css_update_host2sp_cont_num_raw_frames(unsigned num_frames, bool set_avail)
 {
 	const struct sh_css_fw_info *fw;
 	unsigned int HIVE_ADDR_host_sp_com;
-	unsigned int o;
+	unsigned int extra_num_frames, avail_num_frames;
+	unsigned int o, o_extra;
 
 	(void)HIVE_ADDR_host_sp_com; /* Suppres warnings in CRUN */
 
 	/* Write new frame data into SP DMEM */
 	fw = &sh_css_sp_fw;
 	HIVE_ADDR_host_sp_com = fw->info.sp.host_sp_com;
-	o = offsetof(struct host_sp_communication, host2sp_cont_num_raw_frames)
-		/ sizeof(int);
+	if (set_avail) {
+
+		o = offsetof(struct host_sp_communication, host2sp_cont_avail_num_raw_frames)
+			/ sizeof(int);
+		avail_num_frames = load_sp_array_uint(host_sp_com, o);
+		extra_num_frames = num_frames - avail_num_frames;
+		o_extra = offsetof(struct host_sp_communication, host2sp_cont_extra_num_raw_frames)
+			/ sizeof(int);
+		store_sp_array_uint(host_sp_com, o_extra,
+				extra_num_frames);
+	} else
+		o = offsetof(struct host_sp_communication, host2sp_cont_target_num_raw_frames)
+			/ sizeof(int);
 
 	store_sp_array_uint(host_sp_com, o,
 				num_frames);
-}
 
-void
-sh_css_event_init_irq_mask(void)
-{
-	int i;
-	const struct sh_css_fw_info *fw = &sh_css_sp_fw;
-	unsigned int HIVE_ADDR_host_sp_com = fw->info.sp.host_sp_com;
-	unsigned int offset;
-
-	struct sh_css_event_irq_mask event_irq_mask_init = {
-		.or_mask  = SH_CSS_EVENT_IRQ_MASK_ALL,
-		.and_mask = SH_CSS_EVENT_IRQ_MASK_ALL };
-
-	(void)HIVE_ADDR_host_sp_com; /* Suppres warnings in CRUN */
-
-	assert(sizeof(event_irq_mask_init) % HRT_BUS_BYTES == 0);
-	for (i = 0; i < SH_CSS_NR_OF_PIPELINES; i++) {
-		offset = offsetof(struct host_sp_communication,
-						host2sp_event_irq_mask[i]);
-		assert(offset % HRT_BUS_BYTES == 0);
-		sp_dmem_store(SP0_ID,
-			(unsigned int)sp_address_of(host_sp_com) + offset,
-			&event_irq_mask_init, sizeof(event_irq_mask_init));
-	}
-
-}
-
-enum sh_css_err
-sh_css_event_set_irq_mask(
-	enum sh_css_pipe_id pipe_id,
-	unsigned int or_mask,
-	unsigned int and_mask)
-{
-	const struct sh_css_fw_info *fw = &sh_css_sp_fw;
-	unsigned int HIVE_ADDR_host_sp_com = fw->info.sp.host_sp_com;
-	unsigned int offset;
-	struct sh_css_event_irq_mask event_irq_mask;
-
-	(void)HIVE_ADDR_host_sp_com; /* Suppres warnings in CRUN */
-
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_event_set_irq_mask()\n");
-
-	assert(SH_CSS_NR_OF_PIPELINES == NR_OF_PIPELINES);
-	assert(pipe_id < SH_CSS_NR_OF_PIPELINES);
-	assert(or_mask <= UINT16_MAX);
-	assert(and_mask <= UINT16_MAX);
-
-	event_irq_mask.or_mask  = (uint16_t)or_mask;
-	event_irq_mask.and_mask = (uint16_t)and_mask;
-
-	offset = offsetof(struct host_sp_communication,
-					host2sp_event_irq_mask[pipe_id]);
-	assert(offset % HRT_BUS_BYTES == 0);
-	sp_dmem_store(SP0_ID,
-		(unsigned int)sp_address_of(host_sp_com) + offset,
-		&event_irq_mask, sizeof(event_irq_mask));
-
-	return sh_css_success;
-}
-
-enum sh_css_err
-sh_css_event_get_irq_mask(
-	enum sh_css_pipe_id pipe_id,
-	unsigned int *or_mask,
-	unsigned int *and_mask)
-{
-	const struct sh_css_fw_info *fw = &sh_css_sp_fw;
-	unsigned int HIVE_ADDR_host_sp_com = fw->info.sp.host_sp_com;
-	unsigned int offset;
-	struct sh_css_event_irq_mask event_irq_mask;
-
-	(void)HIVE_ADDR_host_sp_com; /* Suppres warnings in CRUN */
-
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_event_get_irq_mask()\n");
-
-	assert(SH_CSS_NR_OF_PIPELINES == NR_OF_PIPELINES);
-	assert(pipe_id < SH_CSS_NR_OF_PIPELINES);
-
-	offset = offsetof(struct host_sp_communication,
-					host2sp_event_irq_mask[pipe_id]);
-	assert(offset % HRT_BUS_BYTES == 0);
-	sp_dmem_load(SP0_ID,
-		(unsigned int)sp_address_of(host_sp_com) + offset,
-		&event_irq_mask, sizeof(event_irq_mask));
-
-	if (or_mask)
-		*or_mask = event_irq_mask.or_mask;
-
-	if (and_mask)
-		*and_mask = event_irq_mask.and_mask;
-
-	return sh_css_success;
 }
 
 void
@@ -1322,12 +1168,15 @@ sh_css_sp_start_isp(void)
 	
 
 	sh_css_debug_pipe_graph_dump_epilogue();
+#if !defined(C_RUN) && !defined(HRT_UNSCHED)
+	sh_css_sp_store_init_dmem(&sh_css_sp_fw);
+#endif
 
 	store_sp_per_frame_data(fw);
 	
 	sp_dmem_store_uint32(SP0_ID,
 		(unsigned int)sp_address_of(sp_sw_state),
-		(uint32_t)(SP_SW_STATE_NULL));
+		(uint32_t)(SP_READY_TO_START));
 
 
 	//init_host2sp_command();
@@ -1357,13 +1206,13 @@ sh_css_isp_has_started(void)
 }
 
 bool
-sh_css_sp_has_initialized(void)
+sh_css_sp_has_booted(void)
 {
 	const struct sh_css_fw_info *fw = &sh_css_sp_fw;
 	unsigned int HIVE_ADDR_sp_sw_state = fw->info.sp.sw_state;
 	(void)HIVE_ADDR_sp_sw_state; /* Suppres warnings in CRUN */
 
-	return (load_sp_uint(sp_sw_state) == SP_SW_INITIALIZED);
+	return (load_sp_uint(sp_sw_state) == SP_BOOTED);
 }
 
 bool
@@ -1372,7 +1221,7 @@ sh_css_sp_has_terminated(void)
 	const struct sh_css_fw_info *fw = &sh_css_sp_fw;
 	unsigned int HIVE_ADDR_sp_sw_state = fw->info.sp.sw_state;
 	(void)HIVE_ADDR_sp_sw_state; /* Suppres warnings in CRUN */
-	return (load_sp_uint(sp_sw_state) == SP_SW_TERMINATED);
+	return (load_sp_uint(sp_sw_state) == SP_TERMINATED);
 }
 
 /**
@@ -1466,5 +1315,15 @@ sh_css_sp_snd_event(int evt_id, int evt_payload_0, int evt_payload_1, int evt_pa
 	/* queue the software event (busy-waiting) */
 	while (!host2sp_enqueue_sp_event(sw_event))
 		hrt_sleep();
+}
+
+void
+sh_css_sp_reset_global_vars(void)
+{
+	memset(&sh_css_sp_group, 0, sizeof(struct sh_css_sp_group));
+	memset(&sh_css_sp_stage, 0, sizeof(struct sh_css_sp_stage));
+	memset(&sh_css_isp_stage, 0, sizeof(struct sh_css_isp_stage));
+	memset(&sh_css_sp_output, 0, sizeof(struct sh_css_sp_output));
+	memset(&per_frame_data, 0, sizeof(struct sh_css_sp_per_frame_data));
 }
 

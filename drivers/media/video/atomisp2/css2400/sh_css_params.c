@@ -135,7 +135,6 @@ static struct sh_css_fpn_table fpn_table;
 static struct sh_css_zoom zoom_config;
 static struct sh_css_vector motion_config;
 static const struct sh_css_morph_table   *morph_table;
-static const struct sh_css_shading_table *sc_table;
 static const struct sh_css_macc_table    *macc_table;
 static const struct sh_css_gamma_table   *gamma_table;
 static const struct sh_css_ctc_table     *ctc_table;
@@ -171,7 +170,6 @@ static bool isp_params_changed,
 	    motion_config_changed,
 	    dis_coef_table_changed,
 	    morph_table_changed,
-	    sc_table_changed,
 	    macc_table_changed,
 	    gamma_table_changed,
 	    ctc_table_changed,
@@ -202,9 +200,9 @@ static bool isp_params_changed,
 	    yuv2rgb_cc_config_changed,
 	    rgb2yuv_cc_config_changed;
 
-static hrt_vaddress last_one;
 
 static unsigned int sensor_binning;
+static bool raw_binning;
 
 /* local buffers, used to re-order the 3a statistics in vmem-format */
 static unsigned short s3a_tbl_hi_buf[ISP_S3ATBL_HI_LO_STRIDE *
@@ -1770,9 +1768,17 @@ static const struct sh_css_ctc_config default_ctc_config = {
 	SH_CSS_BAYER_MAXVAL * 4 / 5,	/* To be implemented */
 };
 
+#if SH_CSS_ISP_PARAMS_VERSION == 1
+static const struct sh_css_aa_config default_aa_config = {
+	8140,
+};
+#elif SH_CSS_ISP_PARAMS_VERSION == 2
 static const struct sh_css_aa_config default_aa_config = {
 	8191,
 };
+#else
+#error "sh_css_params.c: PARAMS_VERSION must be one of {1,2}"
+#endif
 
 static const struct sh_css_yuv2rgb_cc_config
 default_yuv2rgb_cc_config = {
@@ -2391,62 +2397,6 @@ assert(raw_black_frame != NULL);
 	return sh_css_success;
 }
 
-struct sh_css_shading_table *sh_css_shading_table_alloc(
-	unsigned int width,
-	unsigned int height)
-{
-	unsigned int i;
-	struct sh_css_shading_table *me = sh_css_malloc(sizeof(*me));
-
-	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_shading_table_alloc() enter:\n");
-
-	if (me == NULL) {
-/* Checkpatch patch */
-		return me;
-	}
-	me->width		 = width;
-	me->height		= height;
-	me->sensor_width  = 0;
-	me->sensor_height = 0;
-	me->fraction_bits = 0;
-	for (i = 0; i < SH_CSS_SC_NUM_COLORS; i++) {
-		me->data[i] =
-		    sh_css_malloc(width * height * sizeof(*me->data[0]));
-		if (me->data[i] == NULL) {
-			unsigned int j;
-			for (j = 0; j < i; j++)
-				sh_css_free(me->data[j]);
-			sh_css_free(me);
-			return NULL;
-		}
-	}
-
-	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_shading_table_alloc() leave:\n");
-
-	return me;
-}
-
-void
-sh_css_shading_table_free(struct sh_css_shading_table *table)
-{
-	unsigned int i;
-
-	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_shading_table_free() enter:\n");
-
-	if (table == NULL) {
-		sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_shading_table_free() leave:\n");
-		return;
-	}
-
-	for (i = 0; i < SH_CSS_SC_NUM_COLORS; i++) {
-		if (table->data[i])
-			sh_css_free(table->data[i]);
-	}
-	sh_css_free(table);
-
-	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_shading_table_free() leave:\n");
-}
-
 bool
 sh_css_params_set_binning_factor(unsigned int binning_fact)
 {
@@ -2456,66 +2406,18 @@ sh_css_params_set_binning_factor(unsigned int binning_fact)
 
 	if (sensor_binning != binning_fact) {
 		sensor_binning = binning_fact;
-		sc_table_changed = true;
+		sh_css_param_shading_table_changed_set(true);
 	}
 	
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_params_set_binning_factor() leave:\n");
 
-	return sc_table_changed;
+	return sh_css_param_shading_table_changed_get();
 }
 
-bool
-sh_css_params_set_shading_table(const struct sh_css_shading_table *table)
+void
+sh_css_params_set_raw_binning(bool needs_raw_binning)
 {
-/* input can be NULL ?? */
-	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_params_set_shading_table() enter:\n");
-
-	if (table != sc_table) {
-		sc_table = table;
-		sc_table_changed = true;
-	}
-
-	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_params_set_shading_table() leave:\n");
-
-	return sc_table_changed;
-}
-
-static void
-store_sctbl(const struct sh_css_binary *binary,
-	    hrt_vaddress ddr_addr,
-	    const struct sh_css_shading_table *shading_table)
-{
-	unsigned int i, j, aligned_width, row_padding;
-
-assert(binary != NULL);
-assert(ddr_addr != mmgr_NULL);
-	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "store_sctbl() enter:\n");
-
-	if (shading_table == NULL) {
-/* Checkpatch patch */
-	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "store_sctbl() leave:\n");
-		return;
-	}
-
-	aligned_width = binary->sctbl_aligned_width_per_color;
-	isp_parameters.sc_gain_shift = shading_table->fraction_bits;
-	row_padding = aligned_width - shading_table->width;
-
-	for (i = 0; i < shading_table->height; i++) {
-		for (j = 0; j < SH_CSS_SC_NUM_COLORS; j++) {
-			mmgr_store(ddr_addr,
-				   &shading_table->data[j]
-					[i*shading_table->width],
-				   shading_table->width * sizeof(short));
-			ddr_addr += shading_table->width * sizeof(short);
-			mmgr_clear(ddr_addr,
-				   row_padding * sizeof(short));
-			ddr_addr += row_padding * sizeof(short);
-		}
-	}
-	isp_params_changed = true;
-
-	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "store_sctbl() leave:\n");
+	raw_binning = needs_raw_binning;
 }
 
 static void
@@ -3016,10 +2918,8 @@ static void
 sh_css_process_aa(void)
 {
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_process_aa() enter:\n");
-
-#if SH_CSS_ISP_PARAMS_VERSION == 2
+/* ISP 1.0 has a decimation filter for large input images */
 	isp_parameters.aa_scale = aa_config->scale;
-#endif /* SH_CSS_ISP_PARAMS_VERSION == 2 */
 
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_process_aa() leave:\n");
 }
@@ -5012,14 +4912,14 @@ enum sh_css_err sh_css_params_init(void)
 	isp_parameters.fpn_enabled = 0;
 	morph_table = NULL;
 	morph_table_changed = true;
-	sc_table = NULL;
-	sc_table_changed = true;
+
+	sh_css_param_shading_table_init();
+
 	zoom_config = default_zoom_config;
 	zoom_config_changed = true;
 	motion_config = default_motion_config;
 	motion_config_changed = true;
 
-	last_one = mmgr_NULL;
 
 	/* now commit to ddr */
 	sh_css_param_update_isp_params(false);
@@ -5075,7 +4975,6 @@ sh_css_param_clear_param_sets(void)
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_param_clear_param_sets() enter:\n");
 
 	sh_css_refcount_clear(PARAM_SET_POOL, &free_map_callback);
-	last_one = mmgr_NULL;
 
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_param_clear_param_sets() leave:\n");
 }
@@ -5283,17 +5182,11 @@ static void sh_css_dequeue_param_buffers(void)
 			"sh_css_dequeue_param_buffers: "
 			"dequeued param set %x from %d\n",
 			cpy, 0);
-		if ((last_one != mmgr_NULL) && (last_one != cpy)) {
-			sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
 				"sh_css_dequeue_param_buffers: "
 				"release ref on param set %x\n",
-				last_one);
-			free_sh_css_ddr_address_map(last_one);
-		}
-		/* assert on two same coming out */
-		assert(last_one != cpy);
-		/* keep track of last_one dequeued */
-		last_one = cpy;
+				cpy);
+		free_sh_css_ddr_address_map(cpy);
 	}
 
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_dequeue_param_buffers() leave\n");
@@ -5482,7 +5375,9 @@ sh_css_param_update_isp_params(bool commit)
 	fpn_table_changed = false;
 	zoom_config_changed = false;
 	motion_config_changed = false;
-	sc_table_changed = false;
+
+	sh_css_param_shading_table_changed_set(false);
+
 	ctc_table_changed = false;
 	xnr_table_changed = false;
 	gamma_table_changed = false;
@@ -5542,6 +5437,7 @@ assert(ddr_map_size != NULL);
 		}
 	}
 	if (binary->info->enable.sc) {
+		bool sc_table_changed = sh_css_param_shading_table_changed_get();
 		buff_realloced = reallocate_buffer(&ddr_map->sc_tbl,
 			&ddr_map_size->sc_tbl,
 			(size_t)(SCTBL_BYTES(binary)),
@@ -5550,18 +5446,14 @@ assert(ddr_map_size != NULL);
 		if (err != sh_css_success)
 			return err;
 		if (sc_table_changed || buff_realloced) {
-			/* shading table is full resolution, reduce */
-			struct sh_css_shading_table *tmp_sc_table;
-
-			prepare_shading_table(
-				(const struct sh_css_shading_table *)sc_table,
+			isp_params_changed =
+				sh_css_param_shading_table_store(
+					ddr_map->sc_tbl,
 				sensor_binning,
-				&tmp_sc_table,
+				raw_binning,
 				binary);
-
-			store_sctbl(binary, ddr_map->sc_tbl, tmp_sc_table);
-
-			sh_css_shading_table_free(tmp_sc_table);
+			isp_parameters.sc_gain_shift =
+				sh_css_param_shading_table_fraction_bits_get();
 		}
 	}
 
@@ -5852,47 +5744,6 @@ const struct sh_css_fpn_table *sh_css_get_fpn_table(void)
 	return &fpn_table;
 }
 
-struct sh_css_shading_table * sh_css_get_shading_table(void)
-{
-	struct sh_css_shading_table *tmp_sc_table;
-	struct sh_css_binary *binary = NULL;
-	unsigned num_pipes, i;
-	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_get_shading_table() enter:\n");
-
-	sh_css_pipeline_stream_get_num_pipelines(&num_pipes);
-	for (i = 0; i < num_pipes; i++) {
-		struct sh_css_pipeline *pipeline;
-		struct sh_css_pipeline_stage *stage;
-		unsigned int thread_id;
-		sh_css_pipeline_stream_get_pipeline(i, &pipeline);
-
-assert(pipeline != NULL);
-
-		sh_css_query_sp_thread_id(pipeline->pipe_id, &thread_id);
-
-		for (stage = pipeline->stages; stage; stage = stage->next) {
-			if (stage && stage->binary) {
-				if (stage->binary->info->enable.sc) {
-					binary = stage->binary;
-					break;
-				}
-			}
-		}
-		if (binary)
-			break;
-	}
-	if (binary)
-		prepare_shading_table(
-			(const struct sh_css_shading_table *)sc_table,
-			sensor_binning,
-			&tmp_sc_table,
-			binary);
-
-	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_get_shading_table() leave:\n");
-
-	return tmp_sc_table;
-}
-
 const struct sh_css_isp_params *sh_css_get_isp_params(void)
 {
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_get_isp_params() enter & leave:\n");
@@ -5957,6 +5808,19 @@ assert(vertical_coefficients != NULL);
 
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_get_isp_dis_coefficients() leave\n");
 	return;
+}
+
+struct sh_css_shading_table *
+sh_css_get_shading_table(void)
+{
+	return sh_css_param_shading_table_get(sensor_binning, raw_binning);
+}
+
+bool
+sh_css_params_set_shading_table(
+	const struct sh_css_shading_table *table)
+{
+	return sh_css_param_shading_table_set(table);
 }
 
 /* pqiao: this function seems to be not used anywhere,
@@ -6117,7 +5981,9 @@ void sh_css_invalidate_params(void)
 	fpn_table_changed = true;
 	dis_coef_table_changed = true;
 	morph_table_changed = true;
-	sc_table_changed = true;
+
+	sh_css_param_shading_table_changed_set(true);
+
 	macc_table_changed = true;
 	gamma_table_changed = true;
 	ctc_table_changed = true;

@@ -750,6 +750,7 @@ struct sh_css_binary_info {
 	unsigned int		xmem_addr; /* hrt_vaddress */
 	unsigned int		c_subsampling;
 	unsigned int		output_num_chunks;
+	unsigned int		input_num_chunks;
 	unsigned int		num_stripes;
 	unsigned int		pipelining;
 	unsigned int		fixed_s3a_deci_log;
@@ -786,7 +787,9 @@ struct sh_css_binary_info {
 		unsigned char     dvs_6axis;
 		unsigned char     block_output;
 		unsigned char     ds;
-		unsigned char     rawdeci;
+		unsigned char     fixed_bayer_ds;
+		unsigned char     bayer_fir_6db;
+		unsigned char     raw_binning;
 		unsigned char     continuous;
 		unsigned char     s3a;
 		unsigned char     fpnr;
@@ -824,12 +827,16 @@ struct sh_css_binary_info {
 		uint8_t		tnr_out_channel;
 		uint8_t		dvs_in_channel;
 		uint8_t		dvs_coords_channel;
-		uint8_t		raw_channel;
 		uint8_t		output_channel;
 		uint8_t		c_channel;
 		uint8_t		vfout_channel;
 		uint8_t		claimed_by_isp;
 		/* uint8_t	padding[0]; */
+		struct {
+			uint8_t	 channel;  /* Dma channel used */
+			uint8_t	 height;   /* Buffer height */
+			uint16_t stride;   /* Buffer stride */
+		} raw;
 	} dma;
 	struct {
 		unsigned short	 bpp;
@@ -866,7 +873,8 @@ struct sh_css_sp_info {
 	unsigned int	sleep_mode;  /**< different mode to halt SP */
 	unsigned int	invalidate_tlb;		/**< inform SP to invalidate mmu TLB */
 	unsigned int	request_flash;	/**< inform SP to switch on flash for next frame */
-	unsigned int	stop_copy_preview;
+	unsigned int	stop_copy_preview;	/**< suspend copy and preview pipe when capture */
+	unsigned int	copy_pack;	/**< use packed memory layout for raw data */
 	unsigned int	debug_buffer_ddr_address;	/**< inform SP the address
 	of DDR debug queue */
 	unsigned int	ddr_parameter_address; /**< acc param ddrptr, sp dmem */
@@ -1011,9 +1019,9 @@ enum sh_css_sp_sleep_mode {
 };
 
 enum sh_css_sp_sw_state {
-	SP_SW_STATE_NULL = 0,
-	SP_SW_INITIALIZED,
-	SP_SW_TERMINATED
+	SP_READY_TO_START = 0,
+	SP_BOOTED,
+	SP_TERMINATED
 };
 
 #endif /* _SH_CSS_TYPES_H_ */
