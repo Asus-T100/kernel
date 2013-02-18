@@ -195,9 +195,9 @@ struct ucred {
 #define AF_CAIF		37	/* CAIF sockets			*/
 #define AF_ALG		38	/* Algorithm sockets		*/
 #define AF_NFC		39	/* NFC sockets			*/
-#define AF_MHI		40	/* MHI sockets                  */
-#define AF_RAW		41	/* RAW sockets                  */
-#define AF_MAX		42	/* For now.. */
+#define AF_MHI		139	/* MHI sockets                  */
+#define AF_RAW		140	/* RAW sockets                  */
+#define AF_MAX		141	/* For now.. */
 
 /* Protocol families, same as address families. */
 #define PF_UNSPEC	AF_UNSPEC
