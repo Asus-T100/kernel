@@ -104,7 +104,7 @@ struct scu_ipc_osnib {
 };
 
 static u32 scutxl_base;
-static u32 scutxl_ext[OSHOB_SCU_BUFFER_SIZE]; /* For MDFLD (CONFIG_X86_MRFLD)*/
+static u32 scutxl_ext[OSHOB_SCU_BUFFER_SIZE]; /* For MRFLD (CONFIG_X86_MRFLD)*/
 
 /* Default OSHOB allocation. */
 struct scu_ipc_oshob {
@@ -750,6 +750,8 @@ int intel_scu_ipc_read_osnib(u8 *data, int len, int offset)
 		goto exit;
 	}
 
+	pr_debug("OSNIB read addr (remapped) is %x\n", osnibr_addr);
+
 	/* Make a chksum verification for osnib */
 	for (i = 0; i < oshob_info->osnib_size; i++)
 		check += readb(osnibr_addr + i);
@@ -812,6 +814,8 @@ int intel_scu_ipc_write_osnib(u8 *data, int len, int offset)
 			    oshob_info->offs_add;
 	osnibr_addr = oshob_addr + struct_offs;
 
+	pr_debug("OSNIB read addr (remapped) in OSHOB at %x\n", osnibr_addr);
+
 	for (i = 0; i < oshob_info->osnib_size; i++) {
 		osnib_data[i] = readb(osnibr_addr + i);
 		check += osnib_data[i];
@@ -835,7 +839,7 @@ int intel_scu_ipc_write_osnib(u8 *data, int len, int offset)
 		pr_err("ERR: osnibw ptr from oshob is 0, manually set it here\n");
 	}
 
-	pr_debug("POSNIB address: %x\n", osnibw_ptr);
+	pr_debug("POSNIB write address: %x\n", osnibw_ptr);
 
 	osnibw_addr = ioremap_nocache(osnibw_ptr, oshob_info->osnib_size);
 	if (!osnibw_addr) {
@@ -1049,7 +1053,7 @@ exit:
  */
 int intel_scu_ipc_write_osnib_rr(u8 rr)
 {
-	pr_debug("intel_scu_ipc_write_osnib_rr: reboot reason %x\n", rr);
+	pr_info("intel_scu_ipc_write_osnib_rr: reboot reason %x\n", rr);
 
 	return oshob_info->scu_ipc_write_osnib(
 			&rr,
@@ -1218,10 +1222,13 @@ int intel_scu_ipc_read_oshob_def_param(void __iomem *poshob_addr)
 
 	struct_offs = offsetof(struct scu_ipc_oshob, osnibr) +
 			    oshob_info->offs_add;
-	oshob_info->osnibr_ptr = readl(poshob_addr + struct_offs);
+	oshob_info->osnibr_ptr = poshob_addr + struct_offs;
 
 	pr_info("Using DEFAULT OSHOB structure size = %d bytes\n",
 					oshob_info->oshob_size);
+
+	pr_debug("Using DEFAULT OSHOB structure OSNIB read ptr %x\n",
+		oshob_info->osnibr_ptr);
 
 	return ret;
 }
@@ -1262,12 +1269,12 @@ int intel_scu_ipc_read_oshob_info(void)
 	oshob_info->platform_type = intel_mid_identify_cpu();
 
 	if (oshob_info->platform_type == INTEL_MID_CPU_CHIP_TANGIER) {
-		pr_debug("Platform = INTEL_MID_CPU_CHIP_TANGIER\n");
-		oshob_info->offs_add = OSHOB_SCU_BUFFER_SIZE_BYTES;
+		pr_info("(oshob) identified platform = INTEL_MID_CPU_CHIP_TANGIER\n");
+		oshob_info->offs_add = OSHOB_SCU_BUFFER_SIZE * 3;
 	} else
 		oshob_info->offs_add = 0;
 
-	pr_info("Additional offset = %d\n", oshob_info->offs_add);
+	pr_info("(oshob) additional offset = 0x%x\n", oshob_info->offs_add);
 
 	/* Extract magic number that will help identifying the good OSHOB  */
 	/* that is going to be used.                                       */
@@ -1281,11 +1288,27 @@ int intel_scu_ipc_read_oshob_info(void)
 			goto unmap_oshob;
 		}
 
-		scu_ipc_oshob_extend_struct.scutxl_ptr = scutxl_ext;
+		if (oshob_info->platform_type == INTEL_MID_CPU_CHIP_TANGIER) {
+			scu_ipc_oshob_extend_struct.scutxl_ptr = scutxl_ext;
+			pr_info("(extend oshob) SCU buffer size is %d bytes\n",
+				OSHOB_SCU_BUFFER_SIZE_BYTES);
+		} else {
+			scu_ipc_oshob_extend_struct.scutxl_ptr = &scutxl_base;
+			pr_info("(extend oshob) SCU buffer size is %d bytes\n",
+				OSHOB_SCU_BUFFER_SIZE);
+		}
 	} else {
 		ret = intel_scu_ipc_read_oshob_def_param(oshob_addr);
 
-		scu_ipc_oshob_default.scutxl_ptr = &scutxl_base;
+		if (oshob_info->platform_type == INTEL_MID_CPU_CHIP_TANGIER) {
+			scu_ipc_oshob_default.scutxl_ptr = scutxl_ext;
+			pr_info("(default oshob) SCU buffer size is %d bytes\n",
+				OSHOB_SCU_BUFFER_SIZE_BYTES);
+		} else {
+			scu_ipc_oshob_default.scutxl_ptr = &scutxl_base;
+			pr_info("(default oshob) SCU buffer size is %d bytes\n",
+				OSHOB_SCU_BUFFER_SIZE);
+		}
 	}
 
 unmap_oshob:
@@ -1527,7 +1550,7 @@ int intel_scu_ipc_read_osnib_wd(u8 *wd)
  */
 int intel_scu_ipc_write_osnib_wd(u8 *wd)
 {
-	pr_debug("intel_scu_ipc_write_osnib_wd: write WATCHDOG %x\n", *wd);
+	pr_info("intel_scu_ipc_write_osnib_wd: write WATCHDOG %x\n", *wd);
 
 	return oshob_info->scu_ipc_write_osnib(
 			wd,
@@ -1715,7 +1738,7 @@ static ssize_t intel_scu_ipc_oemnib_write(struct file *file,
 		return -EFAULT;
 	}
 
-	pr_debug("Write OEMNIB: number bytes = %d\n", count);
+	pr_info("Write OEMNIB: number bytes = %d\n", count);
 
 	/* Note: when the string is passed through debugfs interface, the  */
 	/* real count value includes the end of line \n. So we must take   */
@@ -1983,12 +2006,8 @@ static int oshob_init(void)
 	}
 
 	if (oshob_info->platform_type == INTEL_MID_CPU_CHIP_TANGIER) {
-		pr_warn("[BOOT] SCU_TR=");
-
 		for (i = 0; i < OSHOB_SCU_BUFFER_SIZE; i++)
-			pr_warn("0x%08x ", scu_trace[i]);
-
-		pr_warn("(oshob)\n");
+			pr_warn("BOOT] SCU_TR[%d]=0x%08x\n", i, scu_trace[i]);
 	} else
 		pr_warn("[BOOT] SCU_TR=0x%08x (oshob)\n", scu_trace[0]);
 
