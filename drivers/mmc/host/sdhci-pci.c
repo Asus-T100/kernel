@@ -27,6 +27,8 @@
 #include <linux/mmc/sdhci-pci-data.h>
 
 #include <asm/intel_scu_ipc.h>
+#include <asm/intel_scu_flis.h>
+#include <asm/intel_scu_pmic.h>
 
 #include "sdhci.h"
 
@@ -93,6 +95,8 @@ struct sdhci_pci_chip {
 
 	int			num_slots;	/* Slots on controller */
 	struct sdhci_pci_slot	*slots[MAX_SLOTS]; /* Pointers to host slots */
+	unsigned int		enctrl0_orig;
+	unsigned int		enctrl1_orig;
 };
 
 
@@ -379,9 +383,134 @@ static const struct sdhci_pci_fixes sdhci_intel_mrst_hc1_hc2 = {
 	.probe		= mrst_hc_probe,
 };
 
+#define VCCSDIO_ADDR		0xd5
+#define VCCSDIO_OFF		0x4
+#define VCCSDIO_NORMAL		0x7
+
+#define ENCTRL0_ISOLATE		0x55555557
+#define ENCTRL1_ISOLATE		0x5555
+#define STORAGESTIO_FLISNUM	0x8
+#define ENCTRL0_OFF		0x10
+#define ENCTRL1_OFF		0x11
+
+static int intel_mfld_clv_sd_suspend(struct sdhci_pci_chip *chip,
+		pm_message_t state)
+{
+	int err, i;
+	u16 addr;
+	u8 data;
+
+	if (chip->pdev->device != PCI_DEVICE_ID_INTEL_CLV_SDIO0)
+		return 0;
+
+	/*
+	 * Make this function only be called when entering S3 but
+	 * not D0i3.
+	 *
+	 * As PM core designed, when entering S3, the device will
+	 * be blocked to enter D0i3, that is to say the
+	 * runtime_suspended should be false when calling this.
+	 */
+	for (i = 0; i < chip->num_slots; i++) {
+		if (chip->slots[i]->host->runtime_suspended == true)
+			return 0;
+	}
+
+	err = intel_scu_ipc_read_shim(&chip->enctrl0_orig,
+			STORAGESTIO_FLISNUM, ENCTRL0_OFF);
+	if (err) {
+		pr_err("SDHCI device 0x%4X: ENCTRL0 read failed\n",
+				chip->pdev->device);
+		return err;
+	}
+	err = intel_scu_ipc_read_shim(&chip->enctrl1_orig,
+			STORAGESTIO_FLISNUM, ENCTRL1_OFF);
+	if (err) {
+		pr_err("SDHCI device 0x%4X: ENCTRL1 read failed\n",
+				chip->pdev->device);
+		return err;
+	}
+
+	/* isolate shim */
+	err = intel_scu_ipc_write_shim(ENCTRL0_ISOLATE,
+			STORAGESTIO_FLISNUM, ENCTRL0_OFF);
+	if (err) {
+		pr_err("SDHCI device 0x%4X: ENCTRL0 ISOLATE failed\n",
+				chip->pdev->device);
+		return err;
+	}
+
+	err = intel_scu_ipc_write_shim(ENCTRL1_ISOLATE,
+			STORAGESTIO_FLISNUM, ENCTRL1_OFF);
+	if (err) {
+		pr_err("SDHCI device 0x%4X: ENCTRL1 ISOLATE failed\n",
+				chip->pdev->device);
+		return err;
+	}
+
+	addr = VCCSDIO_ADDR;
+	data = VCCSDIO_OFF;
+	err = intel_scu_ipc_writev(&addr, &data, 1);
+	if (err)
+		pr_err("SDHCI device 0x%4X: VCCSDIO turn off failed\n",
+				chip->pdev->device);
+	return err;
+}
+
+static int intel_mfld_clv_sd_resume(struct sdhci_pci_chip *chip)
+{
+	int err, i;
+	u16 addr;
+	u8 data;
+
+	if (chip->pdev->device != PCI_DEVICE_ID_INTEL_CLV_SDIO0)
+		return 0;
+
+	/*
+	 * Make this function only be called when entering S3 but
+	 * not D0i3.
+	 *
+	 * As PM core designed, when entering S3, the device will
+	 * be blocked to enter D0i3, that is to say the
+	 * runtime_suspended should be false when calling this.
+	 */
+	for (i = 0; i < chip->num_slots; i++) {
+		if (chip->slots[i]->host->runtime_suspended == true)
+			return 0;
+	}
+
+	addr = VCCSDIO_ADDR;
+	data = VCCSDIO_NORMAL;
+	err = intel_scu_ipc_writev(&addr, &data, 1);
+	if (err) {
+		pr_err("SDHCI device 0x%4X: VCCSDIO turn on failed\n",
+				chip->pdev->device);
+		return err;
+	}
+
+	/* reconnect shim */
+	err = intel_scu_ipc_write_shim(chip->enctrl0_orig,
+			STORAGESTIO_FLISNUM, ENCTRL0_OFF);
+	if (err) {
+		pr_err("SDHCI device 0x%4X: ENCTRL0 CONNECT shim failed\n",
+				chip->pdev->device);
+		return err;
+	}
+
+	err = intel_scu_ipc_write_shim(chip->enctrl1_orig,
+			STORAGESTIO_FLISNUM, ENCTRL1_OFF);
+	if (err)
+		pr_err("SDHCI device 0x%4X: ENCTRL1 CONNECT shim failed\n",
+				chip->pdev->device);
+
+	return err;
+}
+
 static const struct sdhci_pci_fixes sdhci_intel_mfd_sd = {
 	.quirks		= SDHCI_QUIRK_NO_ENDATTR_IN_NOPDESC,
 	.allow_runtime_pm = true,
+	.suspend	= intel_mfld_clv_sd_suspend,
+	.resume		= intel_mfld_clv_sd_resume,
 };
 
 static const struct sdhci_pci_fixes sdhci_intel_mfd_sdio = {
