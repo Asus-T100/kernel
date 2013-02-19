@@ -307,12 +307,12 @@ static int pmic_update_tt(u8 addr, u8 mask, u8 data)
 	int ret;
 
 	mutex_lock(&pmic_lock);
-	ret = __pmic_read_tt(addr, &data);
+	ret = __pmic_read_tt(addr, &tdata);
 	if (unlikely(ret))
 		goto exit;
 
-	tdata = (tdata & mask) | data;
-	ret = __pmic_write_tt(addr, data);
+	tdata = (tdata & ~mask) | (data & mask);
+	ret = __pmic_write_tt(addr, tdata);
 exit:
 	mutex_unlock(&pmic_lock);
 	return ret;
@@ -1126,6 +1126,9 @@ static int pmic_init(void)
 			}
 		}
 	}
+	ret = pmic_update_tt(TT_CUSTOMFIELDEN_ADDR,
+				TT_HOT_COLD_LC_MASK,
+				TT_HOT_COLD_LC_DIS);
 	return ret;
 }
 
@@ -1168,7 +1171,7 @@ static int find_tempzone_index(short int *interval,
 				short int *temp_up_lim)
 {
 	struct ps_pse_mod_prof *bprof = chc.sfi_bcprof->batt_prof;
-	int up_lim_index = -1, low_lim_index = -1;
+	int up_lim_index = 0, low_lim_index = -1;
 	int diff = 0;
 	int i;
 
