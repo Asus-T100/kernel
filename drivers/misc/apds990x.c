@@ -111,6 +111,8 @@
 #define APDS990X_ID_0		0x0
 #define APDS990X_ID_4		0x4
 #define APDS990X_ID_29		0x29
+#define APDS993X_ID_30		0x30
+#define APDS993X_ID_39		0x39
 
 /* pgain and pdiode settings */
 #define APDS_PGAIN_1X	       0x0
@@ -191,6 +193,7 @@ struct apds990x_chip {
 	u16	prox_calib;
 
 	char	chipname[10];
+	u8      id;
 	u8	revision;
 };
 
@@ -668,9 +671,8 @@ static int apds990x_detect(struct apds990x_chip *chip)
 {
 	struct i2c_client *client = chip->client;
 	int ret;
-	u8 id;
 
-	ret = apds990x_read_byte(chip, APDS990X_ID, &id);
+	ret = apds990x_read_byte(chip, APDS990X_ID, &chip->id);
 	if (ret < 0) {
 		dev_err(&client->dev, "ID read failed\n");
 		return ret;
@@ -682,11 +684,15 @@ static int apds990x_detect(struct apds990x_chip *chip)
 		return ret;
 	}
 
-	switch (id) {
+	switch (chip->id) {
 	case APDS990X_ID_0:
 	case APDS990X_ID_4:
 	case APDS990X_ID_29:
 		snprintf(chip->chipname, sizeof(chip->chipname), "APDS-990x");
+		break;
+	case APDS993X_ID_30:
+	case APDS993X_ID_39:
+		snprintf(chip->chipname, sizeof(chip->chipname), "APDS-993x");
 		break;
 	default:
 		ret = -ENODEV;
@@ -1403,12 +1409,21 @@ static void apds990x_init_params(struct apds990x_chip *chip)
 {
 	if (chip->pdata->cf.ga == 0) {
 		/* set uncovered sensor default parameters */
-		chip->cf.ga = 1966; /* 0.48 * APDS_PARAM_SCALE */
-		chip->cf.cf1 = 4096; /* 1.00 * APDS_PARAM_SCALE */
-		chip->cf.irf1 = 9134; /* 2.23 * APDS_PARAM_SCALE */
-		chip->cf.cf2 = 2867; /* 0.70 * APDS_PARAM_SCALE */
-		chip->cf.irf2 = 5816; /* 1.42 * APDS_PARAM_SCALE */
-		chip->cf.df = 52;
+		if (chip->id == APDS993X_ID_30 || chip->id == APDS993X_ID_39) {
+			chip->cf.ga = 2007; /* 0.49 * APDS_PARAM_SCALE */
+			chip->cf.cf1 = 4096; /* 1.00 * APDS_PARAM_SCALE */
+			chip->cf.irf1 = 7627; /* 1.862 * APDS_PARAM_SCALE */
+			chip->cf.cf2 = 3056; /* 0.746 * APDS_PARAM_SCALE */
+			chip->cf.irf2 = 5288; /* 1.291 * APDS_PARAM_SCALE */
+			chip->cf.df = 52;
+		} else {
+			chip->cf.ga = 1966; /* 0.48 * APDS_PARAM_SCALE */
+			chip->cf.cf1 = 4096; /* 1.00 * APDS_PARAM_SCALE */
+			chip->cf.irf1 = 9134; /* 2.23 * APDS_PARAM_SCALE */
+			chip->cf.cf2 = 2867; /* 0.70 * APDS_PARAM_SCALE */
+			chip->cf.irf2 = 5816; /* 1.42 * APDS_PARAM_SCALE */
+			chip->cf.df = 52;
+		}
 	} else {
 		chip->cf = chip->pdata->cf;
 	}
@@ -1470,14 +1485,13 @@ static int __devinit apds990x_probe(struct i2c_client *client,
 		}
 	}
 
-	apds990x_init_params(chip);
-
 	err = apds990x_detect(chip);
 	if (err < 0) {
 		dev_err(&client->dev, "APDS990X not found\n");
 		goto fail2;
 	}
 
+	apds990x_init_params(chip);
 	apds990x_configure(chip);
 	apds990x_set_arate(chip, APDS_LUX_DEFAULT_RATE);
 	apds990x_switch(chip, APDS_POWER_DOWN);
