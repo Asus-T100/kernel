@@ -235,6 +235,9 @@ static void free_cached_lists(struct ehci_hcd *ehci);
 /*-------------------------------------------------------------------------*/
 
 #include <linux/usb/ehci_def.h>
+#ifdef CONFIG_USB_EHCI_HCD_SPH
+#include <linux/usb/ehci_sph_pci.h>
+#endif
 
 /*-------------------------------------------------------------------------*/
 
