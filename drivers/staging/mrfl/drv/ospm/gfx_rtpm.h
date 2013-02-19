@@ -25,16 +25,23 @@
  *    Hitesh K. Patel <hitesh.k.patel@intel.com>
  */
 
-#ifndef _TNG_WORKAROUNDS_H_
-#define _TNG_WORKAROUNDS_H_
+#ifndef _INTEL_MEDIA_RUNTIME_PM_H_
+#define _INTEL_MEDIA_RUNTIME_PM_H_
 
-#include "psb_drv.h"
+#include <linux/types.h>
+#include <drm/drmP.h>
 
-#define A0_WORKAROUNDS			1	/* 1 to enable */
+void rtpm_init(struct drm_device *dev);
+void rtpm_uninit(struct drm_device *dev);
+void rtpm_enable(struct drm_device *dev);
 
-extern struct drm_device *gpDrmDevice;
+/*
+* GFX-Runtime PM callbacks
+*/
+int rtpm_suspend(struct device *dev);
+int rtpm_resume(struct device *dev);
+int rtpm_idle(struct device *dev);
+int rtpm_allow(struct drm_device *dev);
+void rtpm_forbid(struct drm_device *dev);
 
-/* Apply the A0 Workaround */
-void apply_A0_workarounds(int islands, int pre_po);
-
-#endif	/* _TNG_WORKAROUNDS_H_ */
+#endif /* _INTEL_MEDIA_RUNTIME_PM_H_ */

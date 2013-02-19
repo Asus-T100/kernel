@@ -29,6 +29,7 @@
 #include "psb_intel_reg.h"
 #include "displayclass_interface.h"
 #include "mdfld_dsi_output.h"
+#include "pwr_mgmt.h"
 
 #define KEEP_UNUSED_CODE 0
 
@@ -139,6 +140,9 @@ void DCCBFlipToSurface(struct drm_device *dev, unsigned long uiAddr,
 			dev_priv->b_dsr_enable = true;
 	}
 
+	if (!power_island_get(OSPM_DISPLAY_ISLAND))
+		return;
+
 	/*flip mipi*/
 	dspsurf = DSPASURF;
 	dspcntr = DSPACNTR;
@@ -176,6 +180,8 @@ void DCCBFlipToSurface(struct drm_device *dev, unsigned long uiAddr,
 	DCWriteReg(dev, dspstride, uiStride);
 	/*update surface address*/
 	DCWriteReg(dev, dspsurf, uiAddr);
+
+	power_island_put(OSPM_DISPLAY_ISLAND);
 }
 
 void DCCBFlipOverlay(struct drm_device *dev,
@@ -195,7 +201,12 @@ void DCCBFlipOverlay(struct drm_device *dev,
 	ctx->ovadd |= ctx->pipe;
 	ctx->ovadd |= 1;
 
+	if (!power_island_get(OSPM_DISPLAY_ISLAND))
+		return;
+
 	PSB_WVDC32(ctx->ovadd, ovadd_reg);
+
+	power_island_put(OSPM_DISPLAY_ISLAND);
 }
 
 void DCCBFlipSprite(struct drm_device *dev,
@@ -226,6 +237,9 @@ void DCCBFlipSprite(struct drm_device *dev,
 	} else
 		return;
 
+	if (!power_island_get(OSPM_DISPLAY_ISLAND))
+		return;
+
 	if ((ctx->update_mask & SPRITE_UPDATE_POSITION))
 		PSB_WVDC32(ctx->pos, DSPAPOS + reg_offset);
 
@@ -241,6 +255,8 @@ void DCCBFlipSprite(struct drm_device *dev,
 		PSB_WVDC32(ctx->linoff, DSPALINOFF + reg_offset);
 		PSB_WVDC32(ctx->surf, DSPASURF + reg_offset);
 	}
+
+	power_island_put(OSPM_DISPLAY_ISLAND);
 
 	if (dsi_config) {
 		dsi_ctx = &dsi_config->dsi_hw_context;
@@ -281,6 +297,9 @@ void DCCBFlipPrimary(struct drm_device *dev,
 	} else
 		return;
 
+	if (!power_island_get(OSPM_DISPLAY_ISLAND))
+		return;
+
 	if ((ctx->update_mask & SPRITE_UPDATE_POSITION))
 		PSB_WVDC32(ctx->pos, DSPAPOS + reg_offset);
 
@@ -296,6 +315,8 @@ void DCCBFlipPrimary(struct drm_device *dev,
 		PSB_WVDC32(ctx->linoff, DSPALINOFF + reg_offset);
 		PSB_WVDC32(ctx->surf, DSPASURF + reg_offset);
 	}
+
+	power_island_put(OSPM_DISPLAY_ISLAND);
 
 	if (dsi_config) {
 		dsi_ctx = &dsi_config->dsi_hw_context;

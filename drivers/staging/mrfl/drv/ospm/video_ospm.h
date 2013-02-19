@@ -25,16 +25,22 @@
  *    Hitesh K. Patel <hitesh.k.patel@intel.com>
  */
 
-#ifndef _TNG_WORKAROUNDS_H_
-#define _TNG_WORKAROUNDS_H_
+#ifndef _INTEL_MEDIA_VIDEO_OSPM_H_
+#define _INTEL_MEDIA_VIDEO_OSPM_H_
 
-#include "psb_drv.h"
+#include "pwr_mgmt.h"
 
-#define A0_WORKAROUNDS			1	/* 1 to enable */
+#define PMU_VPP			0x1
+#define PMU_ENC			0x1
+#define PMU_DEC			0x1
 
-extern struct drm_device *gpDrmDevice;
+void ospm_vsp_init(struct drm_device *dev,
+			struct ospm_power_island *p_island);
 
-/* Apply the A0 Workaround */
-void apply_A0_workarounds(int islands, int pre_po);
+void ospm_ved_init(struct drm_device *dev,
+			struct ospm_power_island *p_island);
 
-#endif	/* _TNG_WORKAROUNDS_H_ */
+void ospm_vec_init(struct drm_device *dev,
+			struct ospm_power_island *p_island);
+
+#endif	/* _INTEL_MEDIA_VIDEO_OSPM_H_*/

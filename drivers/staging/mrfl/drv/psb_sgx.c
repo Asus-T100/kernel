@@ -38,7 +38,7 @@
 #include "ttm/ttm_placement.h"
 #include "psb_sgx.h"
 #include "psb_intel_reg.h"
-#include "psb_powermgmt.h"
+#include "pwr_mgmt.h"
 
 static inline int psb_same_page(unsigned long offset, unsigned long offset2)
 {

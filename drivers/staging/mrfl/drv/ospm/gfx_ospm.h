@@ -25,16 +25,19 @@
  *    Hitesh K. Patel <hitesh.k.patel@intel.com>
  */
 
-#ifndef _TNG_WORKAROUNDS_H_
-#define _TNG_WORKAROUNDS_H_
+#ifndef _TNG_GRAPHICS_OSPM_H_
+#define _TNG_GRAPHICS_OSPM_H_
 
-#include "psb_drv.h"
+#include "pwr_mgmt.h"
 
-#define A0_WORKAROUNDS			1	/* 1 to enable */
+#define PMU_SLC			0x1
+#define PMU_SDKCK		0x2
+#define PMU_RSCD		0x4
+#define PMU_LDO			0x8
 
-extern struct drm_device *gpDrmDevice;
+void ospm_gfx_init(struct drm_device *dev,
+			struct ospm_power_island *p_island);
 
-/* Apply the A0 Workaround */
-void apply_A0_workarounds(int islands, int pre_po);
+int set_gpu_freq(u32 freq_code);
 
-#endif	/* _TNG_WORKAROUNDS_H_ */
+#endif	/* _TNG_GRAPHICS_OSPM_H_*/

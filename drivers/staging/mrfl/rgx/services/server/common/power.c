@@ -40,6 +40,9 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */ /**************************************************************************/
+#include <stddef.h>
+#include <linux/kernel.h>
+#include <linux/types.h>
 
 #include "pdump_km.h"
 #include "allocmem.h"
@@ -609,7 +612,7 @@ PVRSRV_ERROR PVRSRVSystemPostPowerStateKM(PVRSRV_SYS_POWER_STATE eNewSysPowerSta
 	PVRSRV_DATA				*psPVRSRVData = PVRSRVGetPVRSRVData();
 	PVRSRV_DEV_POWER_STATE	eNewDevicePowerState;
 
-		PVR_LOG(("DEBUG: PVRSRVSysPostPowerState: %d", eNewSysPowerState));
+	PVR_LOG(("DEBUG: PVRSRVSysPostPowerState: %d", eNewSysPowerState));
 	if (eNewSysPowerState != psPVRSRVData->eCurrentPowerState)
 	{
 		/* Perform system-specific power transitions. */

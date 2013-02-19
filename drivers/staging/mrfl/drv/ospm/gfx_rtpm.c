@@ -25,16 +25,60 @@
  *    Hitesh K. Patel <hitesh.k.patel@intel.com>
  */
 
-#ifndef _TNG_WORKAROUNDS_H_
-#define _TNG_WORKAROUNDS_H_
+#include <linux/mutex.h>
+#include <asm/intel-mid.h>
+#include <asm/intel_scu_ipc.h>
 
+#include <linux/pm_runtime.h>
 #include "psb_drv.h"
 
-#define A0_WORKAROUNDS			1	/* 1 to enable */
 
-extern struct drm_device *gpDrmDevice;
+int rtpm_suspend(struct device *dev)
+{
+	OSPM_DPF("%s\n", __func__);
+	return -EBUSY;
+}
 
-/* Apply the A0 Workaround */
-void apply_A0_workarounds(int islands, int pre_po);
+int rtpm_resume(struct device *dev)
+{
+	OSPM_DPF("%s\n", __func__);
+	return -EBUSY;
+}
 
-#endif	/* _TNG_WORKAROUNDS_H_ */
+int rtpm_idle(struct device *dev)
+{
+	OSPM_DPF("%s\n", __func__);
+	return -EBUSY;
+}
+
+int rtpm_allow(struct drm_device *dev)
+{
+	struct drm_psb_private *dev_priv = dev->dev_private;
+	dev_priv->rpm_enabled = 1;
+	return -EBUSY;
+}
+
+void rtpm_forbid(struct drm_device *dev)
+{
+	struct drm_psb_private *dev_priv = dev->dev_private;
+	pm_runtime_forbid(&dev->pdev->dev);
+	dev_priv->rpm_enabled = 0;
+	return;
+}
+
+void rtpm_init(struct drm_device *dev)
+{
+}
+
+void rtpm_enable(struct drm_device *dev)
+{
+	/*enable runtime pm at last */
+	pm_runtime_enable(&dev->pdev->dev);
+	pm_runtime_set_active(&dev->pdev->dev);
+}
+
+void rtpm_uninit(struct drm_device *dev)
+{
+	pm_runtime_disable(&dev->pdev->dev);
+	pm_runtime_set_suspended(&dev->pdev->dev);
+}

@@ -25,16 +25,13 @@
  *    Hitesh K. Patel <hitesh.k.patel@intel.com>
  */
 
-#ifndef _TNG_WORKAROUNDS_H_
-#define _TNG_WORKAROUNDS_H_
+#ifndef _INTEL_MEDIA_EARLY_SUSPEND_H_
+#define _INTEL_MEDIA_EARLY_SUSPEND_H_
 
-#include "psb_drv.h"
+#include <linux/types.h>
+#include <drm/drmP.h>
 
-#define A0_WORKAROUNDS			1	/* 1 to enable */
+void intel_media_early_suspend_init(struct drm_device *dev);
+void intel_media_early_suspend_uninit(void);
 
-extern struct drm_device *gpDrmDevice;
-
-/* Apply the A0 Workaround */
-void apply_A0_workarounds(int islands, int pre_po);
-
-#endif	/* _TNG_WORKAROUNDS_H_ */
+#endif /* _INTEL_MEDIA_EARLY_SUSPEND_H_ */

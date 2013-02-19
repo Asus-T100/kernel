@@ -42,6 +42,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */ /**************************************************************************/
 
 #include <stddef.h>
+#include <linux/kernel.h>
+#include <linux/types.h>
 
 #include "rgxpower.h"
 #include "rgx_fwif_km.h"

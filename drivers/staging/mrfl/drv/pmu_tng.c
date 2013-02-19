@@ -163,7 +163,6 @@ int pmu_set_power_state_tng(u32 reg_pm0, u32 si_mask, u32 ns_mask)
 	printk(KERN_ALERT "%s: before: %s: read: %#x\n",
 		__func__, pm_cmd_reg_name(reg_pm0), pwr_cur);
 #endif
-
 	/*  Return if already in desired state. */
 	if ((((pwr_cur >> SSC_TO_SSS_SHIFT) ^ ns_mask) & si_mask) == 0)
 		return 0;

@@ -145,7 +145,7 @@
 #define TNG_COMPOSITE_I0    (0b00000000)
 #define TNG_COMPOSITE_D3    (0b11111111)
 
-#define DEBUG_PM_CMD 1
+#define DEBUG_PM_CMD 0
 #if !defined DEBUG_PM_CMD
 #define DEBUG_PM_CMD 1
 #endif

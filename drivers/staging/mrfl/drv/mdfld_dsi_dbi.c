@@ -29,7 +29,7 @@
 #include "mdfld_dsi_dbi_dpu.h"
 #include "mdfld_dsi_pkg_sender.h"
 #include "mdfld_dsi_esd.h"
-#include "psb_powermgmt.h"
+#include "pwr_mgmt.h"
 #include "mdfld_dsi_dbi_dsr.h"
 
 /**
@@ -494,8 +494,11 @@ reset_recovery:
 
 power_on_err:
 	if (err && reset_count) {
+		/* FIXME: hkpatel - Adapt to new ospm */
+#if 0
 		ospm_power_island_down(OSPM_DISPLAY_A_ISLAND);
 		ospm_power_island_up(OSPM_DISPLAY_A_ISLAND);
+#endif
 		DRM_ERROR("Failed to init panel, try  reset it again!\n");
 		goto reset_recovery;
 	}
@@ -1047,9 +1050,11 @@ void mdfld_reset_panel_handler_work(struct work_struct *work)
 			mutex_unlock(&dsi_config->context_lock);
 			return;
 		}
-
+		/* FIXME: hkpatel - Adapt to new ospm */
+#if 0
 		ospm_power_island_down(OSPM_DISPLAY_ISLAND);
 		ospm_power_island_up(OSPM_DISPLAY_ISLAND);
+#endif
 
 		if (__dbi_panel_power_on(dsi_config, p_funcs)) {
 			mutex_unlock(&dsi_config->context_lock);
