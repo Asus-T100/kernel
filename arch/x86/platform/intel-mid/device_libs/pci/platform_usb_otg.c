@@ -40,6 +40,7 @@ static struct intel_mid_otg_pdata otg_pdata = {
 	.gpio_cs = 0,
 	.gpio_reset = 0,
 	.charging_compliance = 0,
+	.power_budget = 500
 };
 
 static struct intel_mid_otg_pdata *get_otg_platform_data(struct pci_dev *pdev)
@@ -52,6 +53,10 @@ static struct intel_mid_otg_pdata *get_otg_platform_data(struct pci_dev *pdev)
 		if (INTEL_MID_BOARD(2, TABLET, MFLD, SLP, PRO) ||
 			INTEL_MID_BOARD(2, TABLET, MFLD, SLP, ENG))
 			pdata->gpio_vbus = 54;
+
+		if (!INTEL_MID_BOARD(2, TABLET, MFLD, RR, PRO) &&
+			!INTEL_MID_BOARD(2, TABLET, MFLD, RR, ENG))
+			pdata->power_budget = 200;
 		break;
 
 	case PCI_DEVICE_ID_INTEL_CLV_OTG:
