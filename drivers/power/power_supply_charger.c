@@ -63,7 +63,6 @@ static struct charger_cable cable_list[] = {
 	 },
 };
 
-#ifdef CONFIG_DWC_CHARGER_DETECTION
 static int otg_handle_notification(struct notifier_block *nb,
 				   unsigned long event, void *data);
 struct usb_phy *otg_xceiver;
@@ -170,15 +169,6 @@ otg_reg_failed:
 
 	return -EIO;
 }
-
-#else
-
-int otg_register(void)
-{
-	return 0;
-}
-
-#endif
 
 static int charger_cable_notifier(struct notifier_block *nb,
 				  unsigned long event, void *ptr);
