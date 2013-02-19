@@ -51,6 +51,8 @@ int gburst_hw_inq_counter_id(unsigned int ctr_ix, int *ctr_grp,
 
 int gburst_hw_inq_counter_coeff(unsigned int ctr_ix);
 
+int gburst_hw_set_counter_coeff(unsigned int ctr_ix, int coeff);
+
 int gburst_hw_perf_data_get_indices(int *ix_roff, int *ix_woff);
 
 int gburst_hw_perf_data_get_data(uint32_t *time_stamp, int *counters_storable,
@@ -58,6 +60,11 @@ int gburst_hw_perf_data_get_data(uint32_t *time_stamp, int *counters_storable,
 
 int gburst_hw_perf_data_read_index_incr(uint32_t *ix_roff);
 
+int gburst_hw_mutex_lock(void);
+
+int gburst_hw_mutex_unlock(void);
+
+int gburst_hw_is_access_denied(void);
 
 #endif /* if (defined CONFIG_GPU_BURST) || (defined CONFIG_GPU_BURST_MODULE) */
 
