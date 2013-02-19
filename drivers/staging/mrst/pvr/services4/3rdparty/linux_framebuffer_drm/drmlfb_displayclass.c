@@ -48,6 +48,22 @@
 #error "SUPPORT_DRI_DRM must be set"
 #endif
 
+#define MAXFLIPCOMMANDS 3
+
+struct flip_command {
+	IMG_HANDLE  hCmdCookie;
+	IMG_UINT32  ui32DataSize;
+	IMG_VOID   *pvData;
+	IMG_BOOL bFlush;
+};
+
+static struct display_flip_work {
+	struct work_struct flip_work;
+	struct flip_command p_flip_command[MAXFLIPCOMMANDS];
+	u32 read_index, write_index;
+	spinlock_t flip_commands_lock;
+} display_flip_work_t;
+
 static void *gpvAnchor;
 extern int drm_psb_3D_vblank;
 
@@ -1636,6 +1652,7 @@ static IMG_BOOL bIllegalFlipContexts(IMG_VOID *pvData)
 	return bIllegal;
 }
 
+
 static IMG_BOOL ProcessFlip2(IMG_HANDLE hCmdCookie,
 			IMG_UINT32 ui32DataSize,
 			IMG_VOID *pvData)
@@ -1749,6 +1766,9 @@ static IMG_BOOL ProcessFlip2(IMG_HANDLE hCmdCookie,
 			psDevInfo,
 			 psSwapChain, psPlaneContexts) == IMG_FALSE) {
 			DRM_INFO("%s: DRMLFBFlipBuffer2 failed\n", __func__);
+			MRSTFBFlipComplete(psSwapChain, NULL, MRST_FALSE);
+			psSwapChain->psPVRJTable->pfnPVRSRVCmdComplete(
+					hCmdCookie, IMG_TRUE);
 			goto ExitErrorUnlock;
 		}
 		MRSTFBFlipComplete(psSwapChain, NULL, MRST_FALSE);
@@ -1824,7 +1844,8 @@ ExitTrueUnlock:
 	return IMG_TRUE;
 }
 
-static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
+
+static void ProcessFlip(IMG_HANDLE  hCmdCookie,
                             IMG_UINT32  ui32DataSize,
                             IMG_VOID   *pvData, IMG_BOOL bFlush)
 {
@@ -1843,12 +1864,12 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 	int retry = MAX_TRANS_TIME_FOR_ONE_FRAME * SWAP_BUFFER_COUNT;
 
 	if(!hCmdCookie || !pvData)
-		return IMG_FALSE;
+		return ;
 
 	psFlipCmd = (DISPLAYCLASS_FLIP_COMMAND*)pvData;
 
 	if (psFlipCmd == IMG_NULL)
-		return IMG_FALSE;
+		return ;
 
 	psDevInfo = (MRSTLFB_DEVINFO*)psFlipCmd->hExtDevice;
 	dev = psDevInfo->psDrmDevice;
@@ -1864,7 +1885,7 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 		MRSTFBFlipComplete(psSwapChain, NULL, MRST_FALSE);
 		psSwapChain->psPVRJTable->pfnPVRSRVCmdComplete(hCmdCookie, IMG_TRUE);
 		mutex_unlock(&psDevInfo->sSwapChainMutex);
-		return IMG_TRUE;
+		return ;
 	}
 
 	if (!dev_priv->um_start) {
@@ -1874,8 +1895,10 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 			dev_priv->b_dsr_enable = true;
 	}
 
-	if (!psBuffer)
-		return ProcessFlip2(hCmdCookie, ui32DataSize, pvData);
+	if (!psBuffer) {
+		ProcessFlip2(hCmdCookie, ui32DataSize, pvData);
+		return ;
+	}
 
 	dsi_config = dev_priv->dsi_configs[0];
 
@@ -1897,7 +1920,7 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 
 		mutex_unlock(&psDevInfo->sSwapChainMutex);
 		mutex_unlock(&dsi_config->context_lock);
-		return IMG_TRUE;
+		return ;
 	}
 
 	if (contextlocked)
@@ -1926,7 +1949,7 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 				mdfld_dsi_dsr_allow_locked(dsi_config);
 				mutex_unlock(&dsi_config->context_lock);
 			}
-			return IMG_TRUE;
+			return ;
 		}
 	}
 
@@ -1940,14 +1963,17 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 		if (DRMLFBFlipBuffer(
 			psDevInfo, psSwapChain, psBuffer) == IMG_FALSE) {
 			DRM_INFO("%s: DRMLFBFlipBuffer failed\n", __func__);
-			goto ExitErrorUnlock;
+			MRSTFBFlipComplete(psSwapChain, NULL, MRST_FALSE);
+			psSwapChain->psPVRJTable->pfnPVRSRVCmdComplete(
+					hCmdCookie, IMG_TRUE);
+			goto Unlock;
 		}
 
 		MRSTFBFlipComplete(psSwapChain, NULL, MRST_FALSE);
 		psSwapChain->psPVRJTable->pfnPVRSRVCmdComplete(hCmdCookie, IMG_TRUE);
 
 #if defined(MRST_USING_INTERRUPTS)
-		goto ExitTrueUnlock;
+		goto Unlock;
 	}
 
 	psFlipItem = &psSwapChain->psVSyncFlips[psSwapChain->ulInsertIndex];
@@ -1974,7 +2000,7 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 				MRSTFBFlipComplete(psSwapChain, NULL, MRST_FALSE);
 				psSwapChain->psPVRJTable->pfnPVRSRVCmdComplete(hCmdCookie,
 					IMG_TRUE);
-				goto ExitTrueUnlock;
+				goto Unlock;
 			}
 			psFlipItem->bFlipped = MRST_TRUE;
 		}
@@ -1996,17 +2022,8 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 			psSwapChain->ulInsertIndex = 0;
 		}
 
-		goto ExitTrueUnlock;
 	}
-ExitErrorUnlock:
-	mutex_unlock(&psDevInfo->sSwapChainMutex);
-	if (contextlocked) {
-		mdfld_dsi_dsr_allow_locked(dsi_config);
-		mutex_unlock(&dsi_config->context_lock);
-	}
-	return IMG_FALSE;
-
-ExitTrueUnlock:
+Unlock:
 #endif
 	mutex_unlock(&psDevInfo->sSwapChainMutex);
 	if (contextlocked) {
@@ -2016,6 +2033,69 @@ ExitTrueUnlock:
 	return IMG_TRUE;
 }
 
+
+static void DisplayFlipWork(struct work_struct *work)
+{
+	struct display_flip_work *p_flip_work =
+		container_of(work, struct display_flip_work, flip_work);
+	u32 read_index;
+	IMG_HANDLE  hCmdCookie;
+	IMG_UINT32  ui32DataSize;
+	IMG_VOID   *pvData;
+	IMG_BOOL bFlush;
+
+	spin_lock(&display_flip_work_t.flip_commands_lock);
+
+	while (display_flip_work_t.read_index !=
+		display_flip_work_t.write_index) {
+		read_index = display_flip_work_t.read_index;
+
+		display_flip_work_t.read_index =
+			(display_flip_work_t.read_index + 1) % MAXFLIPCOMMANDS;
+
+		hCmdCookie =
+			display_flip_work_t.
+			p_flip_command[read_index].hCmdCookie;
+		ui32DataSize =
+			display_flip_work_t.
+			p_flip_command[read_index].ui32DataSize;
+		pvData =
+			display_flip_work_t.p_flip_command[read_index].pvData;
+		bFlush =
+			display_flip_work_t.p_flip_command[read_index].bFlush;
+		spin_unlock(&display_flip_work_t.flip_commands_lock);
+		ProcessFlip(hCmdCookie, ui32DataSize, pvData, bFlush);
+		spin_lock(&display_flip_work_t.flip_commands_lock);
+	}
+
+	spin_unlock(&display_flip_work_t.flip_commands_lock);
+}
+
+
+static IMG_BOOL DisplayFlip(IMG_HANDLE  hCmdCookie,
+		IMG_UINT32  ui32DataSize,
+		IMG_VOID   *pvData, IMG_BOOL bFlush)
+{
+	u32 write_index;
+
+	spin_lock(&display_flip_work_t.flip_commands_lock);
+
+	write_index = display_flip_work_t.write_index;
+	display_flip_work_t.p_flip_command[write_index].hCmdCookie = hCmdCookie;
+	display_flip_work_t.p_flip_command[write_index].ui32DataSize =
+		ui32DataSize;
+	display_flip_work_t.p_flip_command[write_index].pvData = pvData;
+	display_flip_work_t.p_flip_command[write_index].bFlush = bFlush;
+	display_flip_work_t.write_index =
+		(display_flip_work_t.write_index + 1) % MAXFLIPCOMMANDS;
+
+	spin_unlock(&display_flip_work_t.flip_commands_lock);
+
+	if (!schedule_work(&display_flip_work_t.flip_work))
+		DRM_INFO("Schedule work failed, too heavy system load?\n");
+
+	return IMG_TRUE;
+}
 
 #if defined(PVR_MRST_FB_SET_PAR_ON_INIT)
 static void MRSTFBSetPar(struct fb_info *psLINFBInfo)
@@ -2609,7 +2689,12 @@ MRST_ERROR MRSTLFBInit(struct drm_device * dev)
 #endif
 
 
-	pfnCmdProcList[DC_FLIP_COMMAND] = ProcessFlip;
+	INIT_WORK(&display_flip_work_t.flip_work, DisplayFlipWork);
+	display_flip_work_t.read_index = 0;
+	display_flip_work_t.write_index = 0;
+	spin_lock_init(&display_flip_work_t.flip_commands_lock);
+
+	pfnCmdProcList[DC_FLIP_COMMAND] = DisplayFlip;
 
 
 	aui32SyncCountList[DC_FLIP_COMMAND][0] = 0;
