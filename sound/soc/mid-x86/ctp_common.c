@@ -365,6 +365,14 @@ static inline void set_bp_interrupt(struct ctp_mc_private *ctx, bool enable)
 	}
 }
 
+void cancel_all_work(struct ctp_mc_private *ctx)
+{
+	struct snd_soc_jack_gpio *gpio;
+	cancel_delayed_work_sync(&ctx->jack_work);
+	gpio = &hs_gpio[CTP_BTN_GPIO];
+	cancel_delayed_work_sync(&gpio->work);
+}
+
 int ctp_soc_jack_gpio_detect(void)
 {
 	struct snd_soc_jack_gpio *gpio = &hs_gpio[CTP_HSDET_GPIO];
@@ -375,7 +383,9 @@ int ctp_soc_jack_gpio_detect(void)
 		container_of(jack, struct ctp_mc_private, ctp_jack);
 
 	/* During jack removal, spurious BP interrupt may occur.
-	 * Better to disable interrupt until jack insert/removal stabilize */
+	 * Better to disable interrupt until jack insert/removal stabilize.
+	 * Also cancel the BP and jack_status_verify work if already sceduled */
+	cancel_all_work(ctx);
 	set_bp_interrupt(ctx, false);
 	enable = gpio_get_value(gpio->gpio);
 	if (gpio->invert)
@@ -385,13 +395,11 @@ int ctp_soc_jack_gpio_detect(void)
 
 	set_mic_bias(jack, "MIC2 Bias", true);
 	status = ctx->ops->hp_detection(codec, jack, enable);
+	set_mic_bias(jack, "MIC2 Bias", false);
 	if (!status) {
-		set_mic_bias(jack, "MIC2 Bias", false);
 		/* Jack removed, Disable BP interrupts if not done already */
 		set_bp_interrupt(ctx, false);
 	} else { /* If jack inserted, schedule delayed_wq */
-		cancel_delayed_work_sync(&ctx->jack_work);
-		set_mic_bias(jack, "MIC2 Bias", false);
 		schedule_delayed_work(&ctx->jack_work, HPDETECT_POLL_INTERVAL);
 #ifdef CONFIG_HAS_WAKELOCK
 		/*
@@ -424,13 +432,13 @@ void headset_status_verify(struct work_struct *work)
 	pr_debug("%s:gpio->%d=0x%d\n", __func__, gpio->gpio, enable);
 	pr_debug("Current jack status = 0x%x\n", jack->status);
 
+	set_mic_bias(jack, "MIC2 Bias", true);
 	status = ctx->ops->hp_detection(codec, jack, enable);
 
 	/* Enable Button_press interrupt if HS is inserted
 	 * and interrupts are not already enabled
 	 */
 	if (status == SND_JACK_HEADSET) {
-		set_mic_bias(jack, "MIC2 Bias", true);
 		set_bp_interrupt(ctx, true);
 		/* Decrease the debounce time for HS removal detection */
 		gpio->debounce_time = JACK_DEBOUNCE_REMOVE;
