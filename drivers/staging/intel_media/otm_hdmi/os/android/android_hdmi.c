@@ -2077,6 +2077,10 @@ android_hdmi_detect(struct drm_connector *connector,
 			hdmi_state = 1;
 			first_boot = false;
 		}
+		if (!dev_priv->pvr_ops) {
+			pr_debug("Delay handling HDMI till SGX is ready\n");
+			return connector_status_disconnected;
+		}
 		if (connector->status == connector_status_connected)
 			return connector_status_connected;
 		/*
