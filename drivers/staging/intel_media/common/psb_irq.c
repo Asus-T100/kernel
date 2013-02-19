@@ -557,10 +557,6 @@ static void mid_pipe_event_handler(struct drm_device *dev, uint32_t pipe)
 			ie_hist_cont_reg.data = PSB_RVDC32(HISTOGRAM_LOGIC_CONTROL);
 			ie_hist_cont_reg.ie_histogram_enable = 0;
 			PSB_WVDC32(ie_hist_cont_reg.data, HISTOGRAM_LOGIC_CONTROL);
-
-			irqCtrl = PSB_RVDC32(PIPEASTAT);
-			irqCtrl &= ~PIPE_DPST_EVENT_ENABLE;
-			PSB_WVDC32(irqCtrl, PIPEASTAT);
 		}
 		pwm_reg = PSB_RVDC32(PWM_CONTROL_LOGIC);
 		if ((pwm_reg & PWM_PHASEIN_INT_ENABLE) &&
