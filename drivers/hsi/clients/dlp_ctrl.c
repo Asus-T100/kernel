@@ -615,7 +615,10 @@ static int dlp_ctrl_cmd_send(struct dlp_channel *ch_ctx,
 		pr_err(DRVNAME ": Unable to send 0x%X cmd (ret:%d)\n",
 			dlp_cmd->params.id, ret);
 
-		goto free_tx;
+		/* Free the TX msg */
+		dlp_pdu_free(tx_msg, tx_msg->channel);
+
+		goto free_cmd;
 	}
 
 	/* Dump the TX command */
@@ -631,7 +634,12 @@ static int dlp_ctrl_cmd_send(struct dlp_channel *ch_ctx,
 			dlp_cmd->params.channel, dlp_cmd->params.id);
 
 		ret = -EIO;
-		goto out;
+		/* free only the cmd, because
+		 * the message is already in the controller fifo.
+		 * It will be freed when the controller fifo will be
+		 * flushed/freed
+		 */
+		goto free_cmd;
 	}
 
 	/* TX msg sent, check the status */
@@ -640,6 +648,10 @@ static int dlp_ctrl_cmd_send(struct dlp_channel *ch_ctx,
 				dlp_cmd->params.id);
 
 		ret = -EIO;
+		/* free only the command because
+		 * the message has been already freed by the complete_tx
+		 * callback
+		 */
 		goto free_cmd;
 	}
 
@@ -700,19 +712,6 @@ no_resp:
 	/* Response received & OK => set the new channel state */
 	if (final_state != DLP_CH_STATE_NONE)
 		dlp_ctrl_set_channel_state(ch_ctx->hsi_channel, final_state);
-
-	/* Free the DLP command */
-	dlp_ctrl_cmd_free(dlp_cmd);
-
-	/* Restore RX callback */
-	dlp_restore_rx_callbacks(&ctrl_ctx->ehandler);
-
-	/* Everything is OK */
-	return ret;
-
-free_tx:
-	/* Free the TX msg */
-	dlp_pdu_free(tx_msg, tx_msg->channel);
 
 free_cmd:
 	/* Free the DLP command */
