@@ -58,7 +58,8 @@ static int sfi_cpufreq_num;
 static u32 sfi_cpu_num;
 
 #define		SFI_FREQ_MAX            32
-#define		INTEL_MSR_RANGE				(0xffff)
+#define		INTEL_MSR_RANGE		(0xffff)
+#define		INTEL_MSR_BUSRATIO_MASK	(0xff00)
 #define		SFI_CPU_MAX        8
 
 
@@ -192,12 +193,16 @@ static unsigned extract_freq(u32 msr, struct sfi_cpufreq_data *data)
 {
 	int i;
 	struct sfi_processor_performance *perf;
+	unsigned freq;
+	u32 sfi_ctrl;
 
-	msr &= INTEL_MSR_RANGE;
+	msr &= INTEL_MSR_BUSRATIO_MASK;
 	perf = data->sfi_data;
 
 	for (i = 0; data->freq_table[i].frequency != CPUFREQ_TABLE_END; i++) {
-		if (msr == perf->states[data->freq_table[i].index].control)
+		sfi_ctrl = perf->states[data->freq_table[i].index].control
+			& INTEL_MSR_BUSRATIO_MASK;
+		if (sfi_ctrl == msr)
 			return data->freq_table[i].frequency;
 	}
 	return data->freq_table[0].frequency;
