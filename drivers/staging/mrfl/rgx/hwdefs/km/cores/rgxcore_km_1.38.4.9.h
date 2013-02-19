@@ -1,5 +1,5 @@
 /*************************************************************************/ /*!
-@Title          RGX Config BVNC 1.38.4.20
+@Title          RGX Config BVNC 1.38.4.9
 @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
 @License        Dual MIT/GPLv2
 
@@ -39,21 +39,21 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */ /**************************************************************************/
 
-#ifndef _RGXCONFIG_KM_1_38_4_20_H_
-#define _RGXCONFIG_KM_1_38_4_20_H_
+#ifndef _RGXCONFIG_KM_1_38_4_9_H_
+#define _RGXCONFIG_KM_1_38_4_9_H_
 
-/***** Automatically generated file (1/9/2013 5:43:25 PM): Do not edit manually ********************/
-/***** Timestamp:  (1/9/2013 5:43:25 PM)************************************************************/
+/***** Automatically generated file (1/9/2013 5:43:26 PM): Do not edit manually ********************/
+/***** Timestamp:  (1/9/2013 5:43:26 PM)************************************************************/
 /***** CS: @2160803 ******************************************************************/
 
 
 /******************************************************************************
- * BVNC = 1.38.4.20 
+ * BVNC = 1.38.4.9 
  *****************************************************************************/
 #define RGX_BVNC_B 1
 #define RGX_BVNC_V 38
 #define RGX_BVNC_N 4
-#define RGX_BVNC_C 20
+#define RGX_BVNC_C 9
 
 /******************************************************************************
  * Errata 
@@ -71,14 +71,13 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 /******************************************************************************
  * DDK Defines
  *****************************************************************************/
-#define RGX_FEATURE_SLC_SIZE_IN_BYTES (128*1024)
+#define RGX_FEATURE_SLC_SIZE_IN_BYTES (256*1024)
 #define RGX_FEATURE_PHYS_BUS_WIDTH (40)
-#define RGX_FEATURE_AXI_ACELITE 
 #define RGX_FEATURE_SLC_CACHE_LINE_SIZE_BITS (512)
 #define RGX_FEATURE_VIRTUAL_ADDRESS_SPACE_BITS (40)
 
 
-#endif /* _RGXCONFIG_KM_1_38_4_20_H_ */
+#endif /* _RGXCONFIG_KM_1_38_4_9_H_ */
 
 
 

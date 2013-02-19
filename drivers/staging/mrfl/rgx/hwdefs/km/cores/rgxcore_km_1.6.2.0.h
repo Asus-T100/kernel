@@ -42,8 +42,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #ifndef _RGXCONFIG_KM_1_6_2_0_H_
 #define _RGXCONFIG_KM_1_6_2_0_H_
 
-/***** Automatically generated file (12/18/2012 9:49:28 AM): Do not edit manually ********************/
-/***** Timestamp:  (12/18/2012 9:49:28 AM)************************************************************/
+/***** Automatically generated file (1/9/2013 5:43:27 PM): Do not edit manually ********************/
+/***** Timestamp:  (1/9/2013 5:43:27 PM)************************************************************/
 /***** CS: @803276 ******************************************************************/
 
 
