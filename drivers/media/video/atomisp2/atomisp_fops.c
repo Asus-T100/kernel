@@ -264,10 +264,8 @@ void atomisp_buf_queue(struct videobuf_queue *vq,
 void atomisp_buf_release(struct videobuf_queue *vq,
 			 struct videobuf_buffer *vb)
 {
-	/*
-	 * only set flag here. buffer free will done by req 0 buffer
-	 */
 	vb->state = VIDEOBUF_NEEDS_INIT;
+	atomisp_videobuf_free_buf(vb);
 }
 
 static int atomisp_buf_setup_output(struct videobuf_queue *vq,

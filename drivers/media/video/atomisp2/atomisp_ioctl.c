@@ -658,23 +658,33 @@ static int atomisp_enum_frameintervals(struct file *file, void *fh,
 
 	return 0;
 }
+
 /*
- * this function is used to free video buffer
+ * Free videobuffer buffer priv data
  */
-static void atomisp_videobuf_free(struct videobuf_queue *q)
+void atomisp_videobuf_free_buf(struct videobuf_buffer *vb)
 {
-	int i;
 	struct videobuf_vmalloc_memory *vm_mem;
 
-	for (i = 0; i < VIDEO_MAX_FRAME; i++) {
-		if (NULL == q->bufs[i])
-			continue;
-		vm_mem = q->bufs[i]->priv;
+	if (vb == NULL)
+		return;
 
-		if (vm_mem && vm_mem->vaddr) {
-			sh_css_frame_free(vm_mem->vaddr);
-			vm_mem->vaddr = NULL;
-		}
+	vm_mem = vb->priv;
+	if (vm_mem && vm_mem->vaddr) {
+		sh_css_frame_free(vm_mem->vaddr);
+		vm_mem->vaddr = NULL;
+	}
+}
+
+/*
+ * this function is used to free video buffer queue
+ */
+static void atomisp_videobuf_free_queue(struct videobuf_queue *q)
+{
+	int i;
+
+	for (i = 0; i < VIDEO_MAX_FRAME; i++) {
+		atomisp_videobuf_free_buf(q->bufs[i]);
 		kfree(q->bufs[i]);
 		q->bufs[i] = NULL;
 	}
@@ -756,7 +766,7 @@ int __atomisp_reqbufs(struct file *file, void *fh,
 		if (!list_empty(&pipe->capq.stream)) {
 			videobuf_queue_cancel(&pipe->capq);
 		}
-		atomisp_videobuf_free(&pipe->capq);
+		atomisp_videobuf_free_queue(&pipe->capq);
 		mutex_unlock(&pipe->capq.vb_lock);
 		return 0;
 	}
@@ -827,7 +837,7 @@ static int atomisp_reqbufs_file(struct file *file, void *fh,
 
 	if (req->count == 0) {
 		mutex_lock(&pipe->outq.vb_lock);
-		atomisp_videobuf_free(&pipe->outq);
+		atomisp_videobuf_free_queue(&pipe->outq);
 		mutex_unlock(&pipe->outq.vb_lock);
 		return 0;
 	}
