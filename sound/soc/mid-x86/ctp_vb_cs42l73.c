@@ -286,6 +286,7 @@ static struct snd_soc_dai_link ctp_vb_dailink[] = {
 		.init = snd_ctp_init,
 		.ignore_suspend = 1,
 		.ops = &ctp_vb_asp_ops,
+		.playback_count = 2,
 	},
 	[CTP_AUD_VSP_DEV] = {
 		.name = "Cloverview VSP",

@@ -1044,7 +1044,7 @@ static DEFINE_PCI_DEVICE_TABLE(intel_sst_ids) = {
 		INFO(0, 0, false,
 			0, 0, false,
 			0, 0, false,
-			false, 3)},
+			false, 4)},
 	{ PCI_VDEVICE(INTEL, SST_MRFLD_PCI_ID),
 		INFO(0, 0, false,
 			0, 0, false,
