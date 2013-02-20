@@ -62,7 +62,12 @@ MODULE_VERSION(SST_DRIVER_VERSION);
 #define CLV_I2S_3_TXD_GPIO_PIN	74
 #define CLV_I2S_3_RXD_GPIO_PIN	75
 
+/* FIXME: Remove the hardcoding after SSP changes */
+#define SSP_BASE_CTP 0xFFA23000
+#define SSP_SIZE_CTP 0x1000
 
+#define DMA_BASE_CTP 0xFFAF8000
+#define DMA_SIZE_CTP 0x1000
 
 #define INFO(_iram_start, _iram_end, _iram_use,		\
 		_dram_start, _dram_end, _dram_use,	\
@@ -527,13 +532,35 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 		goto do_unmap_iram;
 	pr_debug("DRAM Ptr %p\n", sst_drv_ctx->dram);
 
+	/* FIXME: Support for other platforms after SSP Patch */
+	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID) {
+
+		/* SSP Register */
+		sst_drv_ctx->debugfs.ssp = ioremap(SSP_BASE_CTP, SSP_SIZE_CTP);
+		if (!sst_drv_ctx->debugfs.ssp)
+			goto do_unmap_dram;
+
+		pr_debug("\n ssp io 0x%x ssp 0x%x size 0x%x",
+			sst_drv_ctx->debugfs.ssp,
+			SSP_BASE_CTP, SSP_SIZE_CTP);
+
+		/* DMA Register */
+		sst_drv_ctx->debugfs.dma_reg = ioremap(DMA_BASE_CTP, DMA_SIZE_CTP);
+		if (!sst_drv_ctx->debugfs.dma_reg)
+			goto do_unmap_ssp;
+
+		pr_debug("\n dma io 0x%x ssp 0x%x size 0x%x",
+			sst_drv_ctx->debugfs.dma_reg,
+			DMA_BASE_CTP, DMA_SIZE_CTP);
+	}
+
 	sst_set_fw_state_locked(sst_drv_ctx, SST_UN_INIT);
 	/* Register the ISR */
 	ret = request_threaded_irq(pci->irq, sst_drv_ctx->ops->interrupt,
 		sst_drv_ctx->ops->irq_thread, NULL, SST_DRV_NAME,
 		sst_drv_ctx);
 	if (ret)
-		goto do_unmap_dram;
+		goto do_unmap;
 	pr_debug("Registered IRQ 0x%x\n", pci->irq);
 
 	/*Register LPE Control as misc driver*/
@@ -627,6 +654,14 @@ do_free_misc:
 	misc_deregister(&lpe_ctrl);
 do_free_irq:
 	free_irq(pci->irq, sst_drv_ctx);
+do_unmap:
+	/* FIXME: Support for other platforms after SSP Patch */
+	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID)
+		iounmap(sst_drv_ctx->debugfs.dma_reg);
+do_unmap_ssp:
+	/* FIXME: Support for other platforms after SSP Patch */
+	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID)
+		iounmap(sst_drv_ctx->debugfs.ssp);
 do_unmap_dram:
 	iounmap(sst_drv_ctx->dram);
 do_unmap_iram:
@@ -677,6 +712,12 @@ static void __devexit intel_sst_remove(struct pci_dev *pci)
 	sst_set_fw_state_locked(sst_drv_ctx, SST_UN_INIT);
 	misc_deregister(&lpe_ctrl);
 	free_irq(pci->irq, sst_drv_ctx);
+
+	/* FIXME: Support for other platforms after SSP Patch */
+	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID) {
+		iounmap(sst_drv_ctx->debugfs.dma_reg);
+		iounmap(sst_drv_ctx->debugfs.ssp);
+	}
 	iounmap(sst_drv_ctx->dram);
 	iounmap(sst_drv_ctx->iram);
 	iounmap(sst_drv_ctx->mailbox);
