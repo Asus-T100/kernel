@@ -351,16 +351,12 @@ static int pmic_chrgr_tt_reg_show(struct seq_file *seq, void *unused)
 
 	addr = *((u8 *)seq->private);
 
-	if ((addr == CHRGRIRQ1_ADDR) || (addr == CHGRIRQ0_ADDR))
-		val = ioread16(chc.pmic_intr_iomap);
-	else {
-		ret = pmic_read_tt(addr, &val);
-		if (ret != 0) {
-			dev_err(chc.dev,
-				"Error reading tt register 0x%2x\n",
-				addr);
-			return -EIO;
-		}
+	ret = pmic_read_tt(addr, &val);
+	if (ret != 0) {
+		dev_err(chc.dev,
+			"Error reading tt register 0x%2x\n",
+			addr);
+		return -EIO;
 	}
 
 	seq_printf(seq, "0x%x\n", val);
