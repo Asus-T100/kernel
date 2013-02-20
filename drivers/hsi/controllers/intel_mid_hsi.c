@@ -1630,7 +1630,7 @@ static int hsi_ctrl_full_reset(struct intel_controller *intel_hsi)
 	seq_printf(m, #r "%d\t\t: 0x%08x\n", ch,\
 			ioread32(ARASAN_CHN_V2(r, ch)))
 
-static int hsi_debug_show(struct seq_file *m, void *p)
+static int hsi_regs_show(struct seq_file *m, void *p)
 {
 	struct hsi_port *port = m->private;
 	struct intel_controller *intel_hsi = hsi_port_drvdata(port);
@@ -1701,7 +1701,7 @@ static int hsi_debug_show(struct seq_file *m, void *p)
 	seq_printf(m, #F " %d\t\t: 0x%08x\n", i,\
 		   ioread32(HSI_DWAHB_ ## F(dma, i)))
 
-static int hsi_debug_dma_show(struct seq_file *m, void *p)
+static int hsi_dma_regs_show(struct seq_file *m, void *p)
 {
 	struct hsi_controller *hsi = m->private;
 	struct intel_controller *intel_hsi = hsi_controller_drvdata(hsi);
@@ -1759,14 +1759,98 @@ static int hsi_debug_dma_show(struct seq_file *m, void *p)
 	return 0;
 }
 
+static void hsi_dump_queue(struct list_head *queue,
+						int ch,
+						struct seq_file *m)
+{
+	if (list_empty(queue))
+		seq_printf(m, "   [%d]: Empty\n", ch);
+	else {
+		int i = 0;
+		struct hsi_msg *msg;
+
+		seq_printf(m, "   [%d]:\n", ch);
+		list_for_each_entry(msg, queue, link)
+			seq_printf(m, "      %02d: 0x%p\n", i++, msg);
+	}
+}
+
+static int hsi_debug_show(struct seq_file *m, void *p)
+{
+	struct hsi_controller *hsi = m->private;
+	struct intel_controller *intel_hsi = hsi_controller_drvdata(hsi);
+	struct wakeup_source *ws = &intel_hsi->stay_awake.ws;
+	int ch;
+
+	/* Devices and resources */
+	seq_printf(m, "PCI Region  : 0x%p\n", intel_hsi->ctrl_io);
+	seq_printf(m, "DMA Region  : 0x%p\n", intel_hsi->dma_io);
+	seq_printf(m, "IRQ number  : %d\n", intel_hsi->irq);
+	seq_printf(m, "Frequcenty  : %d\n", intel_hsi->ip_freq);
+	seq_printf(m, "Break delay : %d\n", intel_hsi->brk_us_delay);
+
+	/* Current RX and TX states (0 for idle) */
+	seq_printf(m, "\nHSI States : RX:%d, TX:%d, Suspend:%d\n",
+						intel_hsi->rx_state,
+						intel_hsi->tx_state,
+						intel_hsi->suspend_state);
+
+	seq_printf(m, "DMA Running: 0x%08x\n", intel_hsi->dma_running);
+	seq_printf(m, "DMA Resumed: 0x%08x\n", intel_hsi->dma_resumed);
+
+#ifdef CONFIG_HAS_WAKELOCK
+	/* Android PM support */
+	seq_printf(m, "\nWAKELOCK INFO:\n");
+	seq_printf(m, "   timer_expires: %ld\n",     ws->timer_expires);
+	seq_printf(m, "   total_time   : %lld us\n",
+			ktime_to_us(ws->total_time));
+	seq_printf(m, "   max_time     : %lld us\n",
+			ktime_to_us(ws->max_time));
+	seq_printf(m, "   last_time    : %lld us\n",
+			ktime_to_us(ws->last_time));
+	seq_printf(m, "   start_prevent_time: %lld us\n",
+			ktime_to_us(ws->start_prevent_time));
+	seq_printf(m, "   prevent_sleep_time: %lld us\n",
+			ktime_to_us(ws->prevent_sleep_time));
+	seq_printf(m, "   event_count       : %ld\n", ws->event_count);
+	seq_printf(m, "   active_count      : %ld\n", ws->active_count);
+	seq_printf(m, "   relax_count       : %ld\n", ws->relax_count);
+	seq_printf(m, "   expire_count      : %ld\n", ws->expire_count);
+	seq_printf(m, "   wakeup_count      : %ld\n", ws->wakeup_count);
+	seq_printf(m, "   active            : %d\n",  ws->active);
+	seq_printf(m, "   autosleep_enabled : %d\n",  ws->autosleep_enabled);
+#endif
+
+	/* Software FIFO */
+	seq_printf(m, "\nTX Queues:\n");
+	for (ch = 0; ch < HSI_MID_MAX_CHANNELS; ch++)
+		hsi_dump_queue(&intel_hsi->tx_queue[ch], ch, m);
+
+	seq_printf(m, "\nRX Queues:\n");
+	for (ch = 0; ch < HSI_MID_MAX_CHANNELS; ch++)
+		hsi_dump_queue(&intel_hsi->rx_queue[ch], ch, m);
+
+	seq_printf(m, "\nBREAK Queue:\n");
+	hsi_dump_queue(&intel_hsi->brk_queue, 0, m);
+
+	seq_printf(m, "\nFWD Queue:\n");
+	hsi_dump_queue(&intel_hsi->fwd_queue, 0, m);
+	return 0;
+}
+
 static int hsi_regs_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, hsi_debug_show, inode->i_private);
+	return single_open(file, hsi_regs_show, inode->i_private);
 }
 
 static int hsi_dma_regs_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, hsi_debug_dma_show, inode->i_private);
+	return single_open(file, hsi_dma_regs_show, inode->i_private);
+}
+
+static int hsi_debug_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, hsi_debug_show, inode->i_private);
 }
 
 static const struct file_operations hsi_regs_fops = {
@@ -1778,6 +1862,13 @@ static const struct file_operations hsi_regs_fops = {
 
 static const struct file_operations hsi_dma_regs_fops = {
 	.open		= hsi_dma_regs_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
+static const struct file_operations hsi_debug_fops = {
+	.open		= hsi_debug_open,
 	.read		= seq_read,
 	.llseek		= seq_lseek,
 	.release	= single_release,
@@ -1797,6 +1888,9 @@ static int __init hsi_debug_add_ctrl(struct hsi_controller *hsi)
 
 	/* HSI slave DMA */
 	debugfs_create_file("regs_dma", S_IRUGO, dir, hsi, &hsi_dma_regs_fops);
+
+	/* HSI useful debug information */
+	debugfs_create_file("debug", S_IRUGO, dir, hsi, &hsi_debug_fops);
 
 	intel_hsi->dir = dir;
 	return 0;
