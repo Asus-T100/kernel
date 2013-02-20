@@ -188,6 +188,11 @@ struct usb_hcd {
 	 */
 	void (*otg_notify) (struct usb_device *udev, unsigned action);
 #endif
+
+#ifdef CONFIG_USB_HCD_HSIC
+	void (*hsic_notify)(struct usb_device *udev, unsigned action);
+#endif
+
 	/* The HC driver's private data is stored at the end of
 	 * this structure.
 	 */
