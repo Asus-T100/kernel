@@ -31,9 +31,10 @@ static struct sst_dev_stream_map mfld_strm_map[MAX_DEVICES_MFLD] = {
 
 static struct sst_dev_stream_map ctp_strm_map[MAX_DEVICES_CTP] = {
 	{0xFF, 0xFF, 0xFF, 0xFF, 0xFF}, /* Reserved, not in use */
-	{0, 0, SNDRV_PCM_STREAM_PLAYBACK, SST_PCM_OUT, SST_DEV_MAP_IN_USE},
-	{0, 0, SNDRV_PCM_STREAM_CAPTURE, SST_CAPTURE_IN, SST_DEV_MAP_IN_USE},
+	{0, 0, SNDRV_PCM_STREAM_PLAYBACK, SST_PCM_OUT0, SST_DEV_MAP_IN_USE},
+	{0, 1, SNDRV_PCM_STREAM_PLAYBACK, SST_PCM_OUT1, SST_DEV_MAP_IN_USE},
 	{2, 0, SNDRV_PCM_STREAM_PLAYBACK, SST_COMPRESSED_OUT, SST_DEV_MAP_IN_USE},
+	{0, 0, SNDRV_PCM_STREAM_CAPTURE, SST_CAPTURE_IN, SST_DEV_MAP_IN_USE},
 };
 
 static struct sst_dev_stream_map mrfld_strm_map[MAX_DEVICES_MRFLD] = {
