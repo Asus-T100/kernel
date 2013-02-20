@@ -550,8 +550,9 @@ static IMG_BOOL DRMLFBFlipBlackScreen(MRSTLFB_DEVINFO *psDevInfo,
 	}
 
 	PSB_WVDC32(0x0, DSPAPOS + offset);
-	PSB_WVDC32(dev_priv->init_screen_size, DSPASIZE + offset);
-	PSB_WVDC32(dev_priv->init_screen_stride, DSPASTRIDE + offset);
+	/* We use small size buffer to avoid unnecessary bandwidth */
+	PSB_WVDC32(32 | (32 << 16), DSPASIZE + offset);
+	PSB_WVDC32(128, DSPASTRIDE + offset);
 	PSB_WVDC32(dev_priv->init_screen_offset, DSPALINOFF + offset);
 	PSB_WVDC32(dspcntr, DSPACNTR + offset);
 	PSB_WVDC32(dev_priv->init_screen_start, DSPASURF + offset);
