@@ -606,6 +606,8 @@ static int dlp_net_start_xmit(struct sk_buff *skb, struct net_device *dev)
 				skb_len = align_size - skb_len;
 
 				sg = sg_next(sg);
+				if (!sg)
+					break;
 				sg_set_buf(sg, skb_data, skb_len);
 
 				sg->dma_address =
@@ -625,10 +627,12 @@ static int dlp_net_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	/*---------------------------------------------------*/
 	padding_len = ch_ctx->tx.pdu_size - offset;
 	padding_len = (padding_len / 4) * 4;
-	if (padding_len) {
+	if (sg && padding_len) {
 		sg = sg_next(sg);
-		sg_set_buf(sg, net_ctx->net_padd, padding_len);
-		sg->dma_address = net_ctx->net_padd_dma;
+		if (sg) {
+			sg_set_buf(sg, net_ctx->net_padd, padding_len);
+			sg->dma_address = net_ctx->net_padd_dma;
+		}
 	}
 
 	ret = dlp_hsi_controller_push(&ch_ctx->tx, new);
