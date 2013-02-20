@@ -17,9 +17,8 @@
 
 #include <linux/pci-acpi.h>
 #include <linux/pm_runtime.h>
+#include <linux/pm_qos.h>
 #include "pci.h"
-
-static DEFINE_MUTEX(pci_acpi_pm_notify_mtx);
 
 /**
  * pci_acpi_wake_bus - Wake-up notification handler for root buses.
@@ -48,6 +47,12 @@ static void pci_acpi_wake_dev(acpi_handle handle, u32 event, void *context)
 	if (event != ACPI_NOTIFY_DEVICE_WAKE || !pci_dev)
 		return;
 
+	if (pci_dev->current_state == PCI_D3cold) {
+		pci_wakeup_event(pci_dev);
+		pm_runtime_resume(&pci_dev->dev);
+		return;
+	}
+
 	if (!pci_dev->pm_cap || !pci_dev->pme_support
 	     || pci_check_pme_status(pci_dev)) {
 		if (pci_dev->pme_poll)
@@ -62,67 +67,6 @@ static void pci_acpi_wake_dev(acpi_handle handle, u32 event, void *context)
 }
 
 /**
- * add_pm_notifier - Register PM notifier for given ACPI device.
- * @dev: ACPI device to add the notifier for.
- * @context: PCI device or bus to check for PME status if an event is signaled.
- *
- * NOTE: @dev need not be a run-wake or wake-up device to be a valid source of
- * PM wake-up events.  For example, wake-up events may be generated for bridges
- * if one of the devices below the bridge is signaling PME, even if the bridge
- * itself doesn't have a wake-up GPE associated with it.
- */
-static acpi_status add_pm_notifier(struct acpi_device *dev,
-				   acpi_notify_handler handler,
-				   void *context)
-{
-	acpi_status status = AE_ALREADY_EXISTS;
-
-	mutex_lock(&pci_acpi_pm_notify_mtx);
-
-	if (dev->wakeup.flags.notifier_present)
-		goto out;
-
-	status = acpi_install_notify_handler(dev->handle,
-					     ACPI_SYSTEM_NOTIFY,
-					     handler, context);
-	if (ACPI_FAILURE(status))
-		goto out;
-
-	dev->wakeup.flags.notifier_present = true;
-
- out:
-	mutex_unlock(&pci_acpi_pm_notify_mtx);
-	return status;
-}
-
-/**
- * remove_pm_notifier - Unregister PM notifier from given ACPI device.
- * @dev: ACPI device to remove the notifier from.
- */
-static acpi_status remove_pm_notifier(struct acpi_device *dev,
-				      acpi_notify_handler handler)
-{
-	acpi_status status = AE_BAD_PARAMETER;
-
-	mutex_lock(&pci_acpi_pm_notify_mtx);
-
-	if (!dev->wakeup.flags.notifier_present)
-		goto out;
-
-	status = acpi_remove_notify_handler(dev->handle,
-					    ACPI_SYSTEM_NOTIFY,
-					    handler);
-	if (ACPI_FAILURE(status))
-		goto out;
-
-	dev->wakeup.flags.notifier_present = false;
-
- out:
-	mutex_unlock(&pci_acpi_pm_notify_mtx);
-	return status;
-}
-
-/**
  * pci_acpi_add_bus_pm_notifier - Register PM notifier for given PCI bus.
  * @dev: ACPI device to add the notifier for.
  * @pci_bus: PCI bus to walk checking for PME status if an event is signaled.
@@ -130,7 +74,7 @@ static acpi_status remove_pm_notifier(struct acpi_device *dev,
 acpi_status pci_acpi_add_bus_pm_notifier(struct acpi_device *dev,
 					 struct pci_bus *pci_bus)
 {
-	return add_pm_notifier(dev, pci_acpi_wake_bus, pci_bus);
+	return acpi_add_pm_notifier(dev, pci_acpi_wake_bus, pci_bus);
 }
 
 /**
@@ -139,7 +83,7 @@ acpi_status pci_acpi_add_bus_pm_notifier(struct acpi_device *dev,
  */
 acpi_status pci_acpi_remove_bus_pm_notifier(struct acpi_device *dev)
 {
-	return remove_pm_notifier(dev, pci_acpi_wake_bus);
+	return acpi_remove_pm_notifier(dev, pci_acpi_wake_bus);
 }
 
 /**
@@ -150,7 +94,7 @@ acpi_status pci_acpi_remove_bus_pm_notifier(struct acpi_device *dev)
 acpi_status pci_acpi_add_pm_notifier(struct acpi_device *dev,
 				     struct pci_dev *pci_dev)
 {
-	return add_pm_notifier(dev, pci_acpi_wake_dev, pci_dev);
+	return acpi_add_pm_notifier(dev, pci_acpi_wake_dev, pci_dev);
 }
 
 /**
@@ -159,7 +103,7 @@ acpi_status pci_acpi_add_pm_notifier(struct acpi_device *dev,
  */
 acpi_status pci_acpi_remove_pm_notifier(struct acpi_device *dev)
 {
-	return remove_pm_notifier(dev, pci_acpi_wake_dev);
+	return acpi_remove_pm_notifier(dev, pci_acpi_wake_dev);
 }
 
 /*
@@ -187,9 +131,13 @@ acpi_status pci_acpi_remove_pm_notifier(struct acpi_device *dev)
 
 static pci_power_t acpi_pci_choose_state(struct pci_dev *pdev)
 {
-	int acpi_state;
+	int acpi_state, d_max;
 
-	acpi_state = acpi_pm_device_sleep_state(&pdev->dev, NULL);
+	if (pdev->no_d3cold)
+		d_max = ACPI_STATE_D3_HOT;
+	else
+		d_max = ACPI_STATE_D3_COLD;
+	acpi_state = acpi_pm_device_sleep_state(&pdev->dev, NULL, d_max);
 	if (acpi_state < 0)
 		return PCI_POWER_ERROR;
 
@@ -233,11 +181,16 @@ static int acpi_pci_set_power_state(struct pci_dev *dev, pci_power_t state)
 		return -ENODEV;
 
 	switch (state) {
+	case PCI_D3cold:
+		if (dev_pm_qos_flags(&dev->dev, PM_QOS_FLAG_NO_POWER_OFF) ==
+				PM_QOS_FLAGS_ALL) {
+			error = -EBUSY;
+			break;
+		}
 	case PCI_D0:
 	case PCI_D1:
 	case PCI_D2:
 	case PCI_D3hot:
-	case PCI_D3cold:
 		error = acpi_bus_set_power(handle, state_conv[state]);
 	}
 
@@ -296,7 +249,13 @@ static void acpi_pci_propagate_run_wake(struct pci_bus *bus, bool enable)
 
 static int acpi_pci_run_wake(struct pci_dev *dev, bool enable)
 {
-	if (dev->pme_interrupt)
+	/*
+	 * Per PCI Express Base Specification Revision 2.0 section
+	 * 5.3.3.2 Link Wakeup, platform support is needed for D3cold
+	 * waking up to power on the main link even if there is PME
+	 * support for D3cold
+	 */
+	if (dev->pme_interrupt && !dev->runtime_d3cold)
 		return 0;
 
 	if (!acpi_pm_device_run_wake(&dev->dev, enable))
