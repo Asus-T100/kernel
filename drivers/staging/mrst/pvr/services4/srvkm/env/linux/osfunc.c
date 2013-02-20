@@ -95,10 +95,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "ion.h"
 #endif
 
-#if defined (CONFIG_X86_PAE)
-#error Physical Address Extension not supported with the driver
-#endif
-
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,27))
 #define ON_EACH_CPU(func, info, wait) on_each_cpu(func, info, wait)
 #else
