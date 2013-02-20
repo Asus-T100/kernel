@@ -40,6 +40,9 @@
 #include <linux/dma-mapping.h>
 #include <linux/intel_mid_dma.h>
 #include <linux/pm_qos.h>
+#include <linux/pm_runtime.h>
+#include <linux/wakelock.h>
+#include <linux/completion.h>
 #include <asm/intel-mid.h>
 
 #include <linux/spi/spi.h>
@@ -688,6 +691,7 @@ static void int_transfer_complete(struct ssp_driver_context *drv_context)
 	msg = drv_context->cur_msg;
 	if (likely(msg->complete))
 		msg->complete(msg->context);
+	complete(&drv_context->msg_done);
 }
 
 static void int_transfer_complete_work(struct work_struct *work)
@@ -711,6 +715,7 @@ static void poll_transfer_complete(struct ssp_driver_context *drv_context)
 	msg = drv_context->cur_msg;
 	if (likely(msg->complete))
 		msg->complete(msg->context);
+	complete(&drv_context->msg_done);
 }
 
 /**
@@ -865,6 +870,24 @@ static int transfer(struct spi_device *spi, struct spi_message *msg)
 {
 	struct ssp_driver_context *drv_context = \
 	spi_master_get_devdata(spi->master);
+	unsigned long flags;
+	struct device *dev = &drv_context->pdev->dev;
+
+	pm_runtime_get(dev);
+	msg->actual_length = 0;
+	msg->status = -EINPROGRESS;
+	spin_lock_irqsave(&drv_context->lock, flags);
+	list_add_tail(&msg->queue, &drv_context->queue);
+	spin_unlock_irqrestore(&drv_context->lock, flags);
+	queue_work(drv_context->workqueue, &drv_context->pump_messages);
+	pm_runtime_put(dev);
+
+	return 0;
+}
+
+static int handle_message(struct ssp_driver_context *drv_context,
+				struct spi_message *msg)
+{
 	struct chip_data *chip = NULL;
 	struct spi_transfer *transfer = NULL;
 	void *reg = drv_context->ioaddr;
@@ -872,8 +895,6 @@ static int transfer(struct spi_device *spi, struct spi_message *msg)
 	struct device *dev = &drv_context->pdev->dev;
 	chip = spi_get_ctldata(msg->spi);
 
-	msg->actual_length = 0;
-	msg->status = -EINPROGRESS;
 	drv_context->cur_msg = msg;
 
 	/* We handle only one transfer message since the protocol module has to
@@ -892,6 +913,7 @@ static int transfer(struct spi_device *spi, struct spi_message *msg)
 
 		if (msg->complete)
 			msg->complete(msg->context);
+		complete(&drv_context->msg_done);
 
 		return 0;
 	}
@@ -984,6 +1006,32 @@ static int transfer(struct spi_device *spi, struct spi_message *msg)
 	}
 
 	return 0;
+}
+
+static void pump_messages(struct work_struct *work)
+{
+	struct ssp_driver_context *drv_context =
+		container_of(work, struct ssp_driver_context, pump_messages);
+	struct device *dev = &drv_context->pdev->dev;
+	unsigned long flags;
+	struct spi_message *msg;
+
+	wake_lock(&drv_context->stay_awake);
+	pm_runtime_get_sync(dev);
+	spin_lock_irqsave(&drv_context->lock, flags);
+	while (!list_empty(&drv_context->queue)) {
+		msg = list_entry(drv_context->queue.next,
+				struct spi_message, queue);
+		list_del_init(&msg->queue);
+		spin_unlock_irqrestore(&drv_context->lock, flags);
+		INIT_COMPLETION(drv_context->msg_done);
+		handle_message(drv_context, msg);
+		wait_for_completion(&drv_context->msg_done);
+		spin_lock_irqsave(&drv_context->lock, flags);
+	}
+	spin_unlock_irqrestore(&drv_context->lock, flags);
+	pm_runtime_put(dev);
+	wake_unlock(&drv_context->stay_awake);
 }
 
 /**
@@ -1301,8 +1349,16 @@ static int intel_mid_ssp_spi_probe(struct pci_dev *pdev,
 		iowrite32(ioread32(syscfg_ioaddr) | 2, syscfg_ioaddr);
 	}
 
+	wake_lock_init(&drv_context->stay_awake, WAKE_LOCK_SUSPEND,
+			dev_name(&pdev->dev));
+	INIT_LIST_HEAD(&drv_context->queue);
+	init_completion(&drv_context->msg_done);
+	spin_lock_init(&drv_context->lock);
 	tasklet_init(&drv_context->poll_transfer, poll_transfer,
 		(unsigned long)drv_context);
+	INIT_WORK(&drv_context->pump_messages, pump_messages);
+	drv_context->workqueue = create_singlethread_workqueue(
+				dev_name(&pdev->dev));
 
 	/* Register with the SPI framework */
 	dev_info(dev, "register with SPI framework (bus spi%d)\n",
@@ -1322,6 +1378,9 @@ static int intel_mid_ssp_spi_probe(struct pci_dev *pdev,
 		pm_qos_add_request(&drv_context->pm_qos_req,
 		PM_QOS_CPU_DMA_LATENCY,
 		PM_QOS_DEFAULT_VALUE);
+
+	pm_runtime_put_noidle(&pdev->dev);
+	pm_runtime_allow(&pdev->dev);
 
 	return status;
 
@@ -1356,6 +1415,9 @@ static void __devexit intel_mid_ssp_spi_remove(struct pci_dev *pdev)
 	if (!drv_context)
 		return;
 
+	pm_runtime_forbid(&pdev->dev);
+	pm_runtime_get_noresume(&pdev->dev);
+	wake_lock_destroy(&drv_context->stay_awake);
 	/* Release IRQ */
 	free_irq(drv_context->irq, drv_context);
 
@@ -1374,37 +1436,54 @@ static void __devexit intel_mid_ssp_spi_remove(struct pci_dev *pdev)
 }
 
 #ifdef CONFIG_PM
-/**
- * intel_mid_ssp_spi_suspend() - Driver suspend procedure
- * @pdev:	Pointer to the pci_dev struct
- * @state:	pm_message_t
- */
-static int intel_mid_ssp_spi_suspend(struct pci_dev *pdev, pm_message_t state)
+static int intel_mid_ssp_spi_suspend(struct device *dev)
 {
-	struct ssp_driver_context *drv_context = pci_get_drvdata(pdev);
-	dev_dbg(&pdev->dev, "suspend\n");
-
-	tasklet_disable(&drv_context->poll_transfer);
-
+	dev_dbg(dev, "suspend\n");
 	return 0;
 }
 
-/**
- * intel_mid_ssp_spi_resume() - Driver resume procedure
- * @pdev:	Pointer to the pci_dev struct
- */
-static int intel_mid_ssp_spi_resume(struct pci_dev *pdev)
+static int intel_mid_ssp_spi_resume(struct device *dev)
 {
-	struct ssp_driver_context *drv_context = pci_get_drvdata(pdev);
-	dev_dbg(&pdev->dev, "resume\n");
-
-	tasklet_enable(&drv_context->poll_transfer);
-
+	dev_dbg(dev, "resume\n");
 	return 0;
+}
+
+static int intel_mid_ssp_spi_runtime_suspend(struct device *dev)
+{
+	dev_dbg(dev, "runtime suspend called\n");
+	return 0;
+}
+
+static int intel_mid_ssp_spi_runtime_resume(struct device *dev)
+{
+	dev_dbg(dev, "runtime resume called\n");
+	return 0;
+}
+
+static int intel_mid_ssp_spi_runtime_idle(struct device *dev)
+{
+	int err;
+
+	dev_dbg(dev, "runtime idle called\n");
+	if (system_state == SYSTEM_BOOTING)
+		/* if SSP SPI UART is set as default console and earlyprintk
+		 * is enabled, it cannot shutdown SSP controller during booting.
+		 */
+		err = pm_schedule_suspend(dev, 30000);
+	else
+		err = pm_schedule_suspend(dev, 500);
+
+	if (err != 0)
+		return 0;
+
+	return -EBUSY;
 }
 #else
 #define intel_mid_ssp_spi_suspend NULL
 #define intel_mid_ssp_spi_resume NULL
+#define intel_mid_ssp_spi_runtime_suspend NULL
+#define intel_mid_ssp_spi_runtime_resume NULL
+#define intel_mid_ssp_spi_runtime_idle NULL
 #endif /* CONFIG_PM */
 
 
@@ -1422,13 +1501,22 @@ static const struct pci_device_id pci_ids[] __devinitdata = {
 	{},
 };
 
+static const struct dev_pm_ops intel_mid_ssp_spi_pm_ops = {
+	.suspend = intel_mid_ssp_spi_suspend,
+	.resume = intel_mid_ssp_spi_resume,
+	.runtime_suspend = intel_mid_ssp_spi_runtime_suspend,
+	.runtime_resume = intel_mid_ssp_spi_runtime_resume,
+	.runtime_idle = intel_mid_ssp_spi_runtime_idle,
+};
+
 static struct pci_driver intel_mid_ssp_spi_driver = {
 	.name =		DRIVER_NAME,
 	.id_table =	pci_ids,
 	.probe =	intel_mid_ssp_spi_probe,
 	.remove =	__devexit_p(intel_mid_ssp_spi_remove),
-	.suspend =	intel_mid_ssp_spi_suspend,
-	.resume =	intel_mid_ssp_spi_resume,
+	.driver =	{
+		.pm	= &intel_mid_ssp_spi_pm_ops,
+	},
 };
 
 static int __init intel_mid_ssp_spi_init(void)
