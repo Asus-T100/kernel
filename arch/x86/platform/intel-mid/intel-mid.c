@@ -683,6 +683,23 @@ static void __init sfi_handle_ipc_dev(struct sfi_device_table_entry *pentry,
 	intel_scu_device_register(pdev);
 }
 
+#ifdef CONFIG_INTEL_PSH_IPC
+static int __init intel_psh_ipc_subdev_init(void)
+{
+	struct platform_device *psh;
+	psh = platform_device_alloc("psh", 0);
+	if (psh == NULL) {
+		pr_err("out of memory for platform device psh.\n");
+		return -1;
+	}
+
+	platform_device_add(psh);
+
+	return 0;
+}
+device_initcall(intel_psh_ipc_subdev_init);
+#endif
+
 static void __init sfi_handle_spi_dev(struct sfi_device_table_entry *pentry,
 					struct devs_id *dev)
 {
