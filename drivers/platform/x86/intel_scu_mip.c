@@ -19,8 +19,11 @@
 #include <linux/delay.h>
 #include <linux/rpmsg.h>
 #include <asm/intel_scu_ipc.h>
+#include <asm/intel_mip.h>
 #include <asm/intel_mid_rpmsg.h>
 #include <asm/intel_mid_remoteproc.h>
+
+#define DRIVER_NAME "intel_scu_mip"
 
 #define IPC_MIP_BASE     0xFFFD8000	/* sram base address for mip accessing*/
 #define IPC_MIP_MAX_ADDR 0x1000
@@ -30,6 +33,7 @@
 
 static struct kobject *scu_mip_kobj;
 static struct rpmsg_instance *mip_instance;
+static struct scu_mip_platform_data *pdata;
 
 static void __iomem *intel_mip_base;
 
@@ -80,6 +84,36 @@ int intel_scu_ipc_read_mip(u8 *data, int len, int offset, int issigned)
 	return ret;
 }
 EXPORT_SYMBOL(intel_scu_ipc_read_mip);
+
+int get_smip_property_by_name(enum platform_prop pp)
+{
+	u8 data[SMIP_MAX_PROP_LEN];
+	int i, val, ret;
+	struct smip_platform_prop prop[SMIP_NUM_CONFIG_PROPS];
+
+	if (!pdata->smip_prop)
+		return -EINVAL;
+
+	for (i = 0; i < SMIP_NUM_CONFIG_PROPS; i++)
+		prop[i] = pdata->smip_prop[i];
+
+	/* Read the property requested by the caller */
+	ret = intel_scu_ipc_read_mip(data, prop[pp].len, prop[pp].offset, 1);
+	if (ret)
+		return ret;
+
+	/* Adjust the bytes according to the length and return the int */
+	val = data[0];
+	for (i = 1; i < prop[pp].len; i++)
+		val = val << 8 | data[i];
+
+	/* If the requested property is a bit field, return that bit value */
+	if (prop[pp].is_bit_field)
+		val &= prop[pp].mask;
+
+	return val;
+}
+EXPORT_SYMBOL(get_smip_property_by_name);
 
 int intel_scu_ipc_write_umip(u8 *data, int len, int offset)
 {
@@ -362,6 +396,47 @@ static struct attribute_group mip_attr_group = {
 	.attrs = mip_attrs,
 };
 
+static int scu_mip_probe(struct platform_device *pdev)
+{
+	if (intel_mid_identify_cpu() != INTEL_MID_CPU_CHIP_PENWELL) {
+		if (!pdev->dev.platform_data)
+			return -EINVAL;
+		pdata =
+		(struct scu_mip_platform_data *)pdev->dev.platform_data;
+	}
+	return 0;
+}
+
+static int scu_mip_remove(struct platform_device *pdev)
+{
+	platform_set_drvdata(pdev, NULL);
+	return 0;
+}
+
+static const struct platform_device_id scu_mip_table[] = {
+		{DRIVER_NAME, 1 },
+};
+
+static struct platform_driver scu_mip_driver = {
+	.driver = {
+		.name = DRIVER_NAME,
+		.owner = THIS_MODULE,
+	},
+	.probe = scu_mip_probe,
+	.remove = __devexit_p(scu_mip_remove),
+	.id_table = scu_mip_table,
+};
+
+static int __init scu_mip_init(void)
+{
+	return platform_driver_register(&scu_mip_driver);
+}
+
+static void scu_mip_exit(void)
+{
+	platform_driver_unregister(&scu_mip_driver);
+}
+
 static int mip_rpmsg_probe(struct rpmsg_channel *rpdev)
 {
 	int ret = 0;
@@ -406,6 +481,7 @@ static int mip_rpmsg_probe(struct rpmsg_channel *rpdev)
 		goto mip_base_err;
 	}
 
+	ret = scu_mip_init();
 	goto out;
 mip_base_err:
 	iounmap(intel_mip_base);
@@ -417,6 +493,7 @@ out:
 
 static void __devexit mip_rpmsg_remove(struct rpmsg_channel *rpdev)
 {
+	scu_mip_exit();
 	iounmap(intel_mip_base);
 	free_rpmsg_instance(rpdev, &mip_instance);
 	sysfs_remove_group(scu_mip_kobj, &mip_attr_group);
