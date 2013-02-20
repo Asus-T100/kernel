@@ -343,10 +343,13 @@ struct sst_memcpy_list {
 	bool is_io;
 };
 
-#ifdef CONFIG_DEBUG_FS
 struct sst_debugfs {
-	struct dentry *root;
-	int runtime_pm_status;
+#ifdef CONFIG_DEBUG_FS
+	struct dentry		*root;
+#endif
+	int			runtime_pm_status;
+	void __iomem            *ssp;
+	void __iomem            *dma_reg;
 };
 
 struct lpe_log_buf_hdr {
@@ -355,7 +358,6 @@ struct lpe_log_buf_hdr {
 	u32 rd_addr;
 	u32 wr_addr;
 };
-#endif
 
 enum snd_sst_bytes_type {
 	SND_SST_BYTES_SET = 0x1,
@@ -501,9 +503,7 @@ struct intel_sst_drv {
 	struct dma_async_tx_descriptor *desc;
 	struct sst_sg_list fw_sg_list, library_list;
 	struct intel_sst_ops	*ops;
-#ifdef CONFIG_DEBUG_FS
 	struct sst_debugfs debugfs;
-#endif
 	struct pm_qos_request *qos;
 	struct sst_probe_info info;
 	unsigned int use_dma;
@@ -733,6 +733,20 @@ static inline u32 sst_shim_read(void __iomem *addr, int offset)
 	return readl(addr + offset);
 }
 
+static inline u32 sst_reg_read(void __iomem *addr, int offset)
+{
+
+	return readl(addr + offset);
+}
+
+static inline u64 sst_reg_read64(void __iomem *addr, int offset)
+{
+	u64 val;
+
+	memcpy_fromio(&val, addr + offset, sizeof(val));
+
+	return val;
+}
 
 static inline int sst_shim_write64(void __iomem *addr, int offset, u64 value)
 {
