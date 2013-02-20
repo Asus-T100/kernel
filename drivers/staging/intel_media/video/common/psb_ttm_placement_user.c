@@ -113,6 +113,80 @@ static void ttm_bo_user_destroy(struct ttm_buffer_object *bo)
 	kfree(user_bo);
 }
 
+/* This is used for sg_table which is derived from user-pointer */
+static void ttm_tt_free_user_pages(struct ttm_buffer_object *bo)
+{
+	struct page *page;
+	struct page **pages = NULL;
+	int i, ret;
+/*
+	struct page **pages_to_wb;
+
+	pages_to_wb = kmalloc(ttm->num_pages * sizeof(struct page *),
+			GFP_KERNEL);
+
+	if (pages_to_wb && ttm->caching_state != tt_cached) {
+		int num_pages_wb = 0;
+
+		for (i = 0; i < ttm->num_pages; ++i) {
+			page = ttm->pages[i];
+			if (page == NULL)
+				continue;
+			pages_to_wb[num_pages_wb++] = page;
+		}
+
+		if (set_pages_array_wb(pages_to_wb, num_pages_wb))
+			printk(KERN_ERR TTM_PFX "Failed to set pages to wb\n");
+
+	} else if (NULL == pages_to_wb) {
+		printk(KERN_ERR TTM_PFX
+		       "Failed to allocate memory for set wb operation.\n");
+	}
+
+*/
+	pages = kzalloc(bo->num_pages * sizeof(struct page *), GFP_KERNEL);
+	if (unlikely(pages == NULL)) {
+		printk(KERN_ERR "TTM bo free: kzalloc failed\n");
+		return ;
+	}
+
+	ret = drm_prime_sg_to_page_addr_arrays(bo->sg, pages,
+						 NULL, bo->num_pages);
+	if (ret) {
+		printk(KERN_ERR "sg to pages: kzalloc failed\n");
+		return ;
+	}
+
+	for (i = 0; i < bo->num_pages; ++i) {
+		page = pages[i];
+		if (page == NULL)
+			continue;
+
+		put_page(page);
+	}
+	/* kfree(pages_to_wb); */
+	kfree(pages);
+}
+
+/* This is used for sg_table which is derived from user-pointer */
+static void ttm_ub_bo_user_destroy(struct ttm_buffer_object *bo)
+{
+	struct ttm_bo_user_object *user_bo =
+		container_of(bo, struct ttm_bo_user_object, bo);
+
+#if (LINUX_VERSION_CODE > KERNEL_VERSION(3, 3, 0))
+	if (bo->sg) {
+		ttm_tt_free_user_pages(bo);
+		sg_free_table(bo->sg);
+		kfree(bo->sg);
+		bo->sg = NULL;
+	}
+#endif
+
+	ttm_mem_global_free(bo->glob->mem_glob, bo->acc_size);
+	kfree(user_bo);
+}
+
 static void ttm_bo_user_release(struct ttm_base_object **p_base)
 {
 	struct ttm_bo_user_object *user_bo;
@@ -494,7 +568,7 @@ int ttm_pl_ub_create_ioctl(struct ttm_object_file *tfile,
 			  NULL,
 			  acc_size,
 			  sg,
-			  &ttm_bo_user_destroy);
+			  &ttm_ub_bo_user_destroy);
 #endif
 
 	/*
