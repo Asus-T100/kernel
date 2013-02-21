@@ -415,7 +415,7 @@ static int intel_mrfl_mmc_probe_slot(struct sdhci_pci_slot *slot)
 
 	/* Enable eMMC v4.5 Power Off Notification feature */
 	slot->host->mmc->caps2 |= MMC_CAP2_POWEROFF_NOTIFY |
-					MMC_CAP2_POLL_R1B_BUSY;
+			MMC_CAP2_POLL_R1B_BUSY | MMC_CAP2_INIT_CARD_SYNC;
 
 	if (slot->data->platform_quirks & PLFM_QUIRK_NO_EMMC_BOOT_PART)
 		slot->host->mmc->caps2 |= MMC_CAP2_BOOTPART_NOACC;
