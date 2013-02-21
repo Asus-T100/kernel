@@ -2439,16 +2439,16 @@ out:
 
 int tng_topaz_remove_ctx(
 	struct drm_psb_private *dev_priv,
-	struct file *filp)
+	struct psb_video_ctx *video_ctx)
 {
 	struct tng_topaz_private *topaz_priv;
-	struct psb_video_ctx *video_ctx;
+	/* struct psb_video_ctx *video_ctx; */
 	struct psb_video_ctx *pos;
 	int32_t ret;
 
 	topaz_priv = dev_priv->topaz_private;
 	topaz_priv->topaz_busy = 0;
-	video_ctx = NULL;
+	/* video_ctx = NULL; */
 
 	/* Disable ISR */
 	/*if (TOPAZHP_IRQ_ENABLED) {
@@ -2465,7 +2465,6 @@ int tng_topaz_remove_ctx(
 		DRM_ERROR("Mtx wait for completion error");
 		return ret;
 	}
-	*/
 
 	list_for_each_entry(pos, &dev_priv->video_ctx, head) {
 		if (pos->filp == filp) {
@@ -2473,6 +2472,7 @@ int tng_topaz_remove_ctx(
 			break;
 		}
 	}
+	*/
 
 	if (video_ctx == NULL) {
 		DRM_ERROR("Invalid video context\n");
@@ -2482,7 +2482,7 @@ int tng_topaz_remove_ctx(
 	PSB_DEBUG_GENERAL("TOPAZ: release context %08x(%s)\n",
 		(unsigned int)video_ctx, codec_to_string(video_ctx->codec));
 
-	tng_topaz_mmu_flushcache(dev_priv);
+	/* tng_topaz_mmu_flushcache(dev_priv); */
 
 	if (video_ctx->reg_saving_bo) {
 		PSB_DEBUG_GENERAL("TOPAZ: unref reg saving bo\n");
