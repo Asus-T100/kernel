@@ -1580,22 +1580,25 @@ static int rmi4_config_gpio(struct rmi4_data *pdata)
 	int_gpio = pdata->board->int_gpio_number;
 	rst_gpio = pdata->board->rst_gpio_number;
 
-	ret = gpio_request(int_gpio, "rmi4_int");
-	if (ret < 0) {
-		pr_err("Failed to request INT GPIO %d\n", int_gpio);
-		goto err_out;
+	/* if there's GPIO assigned for touch interrupt in the platform data */
+	if (int_gpio > -1) {
+		ret = gpio_request(int_gpio, "rmi4_int");
+		if (ret < 0) {
+			pr_err("Failed to request INT GPIO %d\n", int_gpio);
+			goto err_out;
+		}
+		ret = gpio_direction_input(int_gpio);
+		if (ret < 0) {
+			pr_err("Failed to config INT GPIO %d\n", int_gpio);
+			goto err_int;
+		}
+		ret = gpio_to_irq(int_gpio);
+		if (ret < 0) {
+			pr_err("Config GPIO %d to IRQ Error!\n", int_gpio);
+			goto err_int;
+		}
+		pdata->irq = ret;
 	}
-	ret = gpio_direction_input(int_gpio);
-	if (ret < 0) {
-		pr_err("Failed to config INT GPIO %d\n", int_gpio);
-		goto err_int;
-	}
-	ret = gpio_to_irq(int_gpio);
-	if (ret < 0) {
-		pr_err("Config GPIO %d to IRQ Error!\n", int_gpio);
-		goto err_int;
-	}
-	pdata->irq = ret;
 
 	ret = gpio_request(rst_gpio, "rmi4_rst");
 	if (ret < 0) {
@@ -1913,6 +1916,7 @@ static int __devinit rmi4_probe(struct i2c_client *client,
 	/* So we set the page correctly the first time */
 	rmi4_data->current_page		= MASK_16BIT;
 	rmi4_data->board		= platformdata;
+	rmi4_data->irq			= client->irq;
 
 	mutex_init(&(rmi4_data->rmi4_page_mutex));
 

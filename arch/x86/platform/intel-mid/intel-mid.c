@@ -849,6 +849,10 @@ static int __init sfi_parse_devs(struct sfi_table_header *table)
 						"r69001-ts-i2c", 13))
 						/* active low */
 						irq_attr.polarity = 1;
+					else if (!strncmp(pentry->name,
+						"synaptics_3202", 14))
+						/* active low */
+						irq_attr.polarity = 1;
 					else
 						/* active high */
 						irq_attr.polarity = 0;
