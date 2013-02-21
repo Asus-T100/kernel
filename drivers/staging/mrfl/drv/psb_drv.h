@@ -339,6 +339,7 @@ struct drm_psb_uopt {
 struct psb_context;
 struct psb_validate_buffer;
 struct psb_video_ctx;
+
 struct drm_psb_private {
 	/*
 	 * DSI info.

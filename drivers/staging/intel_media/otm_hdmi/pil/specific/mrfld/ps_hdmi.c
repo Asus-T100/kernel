@@ -5,7 +5,7 @@
 
   GPL LICENSE SUMMARY
 
-  Copyright(c) 2011 Intel Corporation. All rights reserved.
+  Copyright(c) 2012 Intel Corporation. All rights reserved.
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of version 2 of the GNU General Public License as
@@ -62,25 +62,28 @@
 */
 #include "otm_hdmi_types.h"
 
-#include <asm/io.h>
-#include <linux/pci.h>
 #include <linux/kernel.h>
-#include <linux/string.h>
+#include <linux/module.h>
+#include <linux/io.h>
+#include <linux/gpio.h>
+#include <linux/pci.h>
 #include <linux/delay.h>
+#include <linux/string.h>
 #include "otm_hdmi.h"
 #include "ipil_hdmi.h"
 #include "ps_hdmi.h"
+#include <asm/intel_scu_pmic.h>
+#include <asm/intel-mid.h>
 
-#include <asm/intel_scu_ipc.h>
 
-/* Implementation of the Medfield specific PCI driver for receiving
+/* Implementation of the Merrifield specific PCI driver for receiving
  * Hotplug and other device status signals.
- * In Medfield platform, the HPD and OCP signals are delivered to the
- * display sub-system from the MSIC chip.
+ * In Merrifield platform, the HPD and OCP signals are delivered to the
+ * display sub-system using the TI TPD Companion chip.
  */
 
 /* Constants */
-#define PS_HDMI_HPD_PCI_DRIVER_NAME "Medfield HDMI MSIC Driver"
+#define PS_HDMI_HPD_PCI_DRIVER_NAME "Merrifield HDMI HPD Driver"
 
 /* Globals */
 static hdmi_context_t *g_context;
@@ -88,25 +91,34 @@ static hdmi_context_t *g_context;
 #define PS_HDMI_MMIO_RESOURCE 0
 #define PS_VDC_OFFSET 0x00000000
 #define PS_VDC_SIZE 0x000080000
-#define PS_MSIC_PCI_DEVICE_ID 0x0831
-#define PS_MSIC_VRINT_ADDR 0xFFFF7FCB
-#define PS_MSIC_VRINT_IOADDR_LEN 0x02
+#define PS_MSIC_PCI_DEVICE_ID 0x11A6
+#define PS_MSIC_HPD_GPIO_PIN 16
+/* HDMI_LS_EN GPIO pin is connected to Levelshifter's LS_OE pin */
+#define PS_MSIC_LS_EN_GPIO_PIN 177
 
-#define PS_HDMI_OCP_STATUS			(1 << 2)
-#define PS_HDMI_HPD_STATUS_BIT			(1 << 3)
 
-#define PS_MSIC_VCC330CNT			0xd3
-#define PS_VCC330_OFF				0x24
-#define PS_VCC330_ON				0x37
-#define PS_MSIC_VHDMICNT			0xde
-#define PS_VHDMI_OFF				0x24
-#define PS_VHDMI_ON				0xa4
-#define PS_VHDMI_DB_30MS			0x60
-#define PS_MSIC_HDMI_STATUS_CMD                 0x281
-#define PS_MSIC_HDMI_STATUS                     (1 << 0)
-#define PS_MSIC_IRQLVL1_MASK                    0x21
-#define PS_VREG_MASK                            (1 << 5)
+/* For Merrifield, it is required that SW pull up or pull down the
+ * LS_OE GPIO pin based on cable status. This is needed before
+ * performing any EDID read operation on Merrifield.
+ */
+static void __ps_gpio_configure_edid_read(void)
+{
+	static int old_pin_value  = -1;
+	int new_pin_value = gpio_get_value(PS_MSIC_HPD_GPIO_PIN);
 
+	if (new_pin_value == old_pin_value)
+		return;
+
+	old_pin_value = new_pin_value;
+
+	if (new_pin_value == 0)
+		gpio_set_value(PS_MSIC_LS_EN_GPIO_PIN, 0);
+	else
+		gpio_set_value(PS_MSIC_LS_EN_GPIO_PIN, 1);
+
+	pr_debug("%s: CTP_HDMI_LS_OE pin = %d (%d)\n", __func__,
+		 gpio_get_value(PS_MSIC_LS_EN_GPIO_PIN), new_pin_value);
+}
 
 otm_hdmi_ret_t ps_hdmi_pci_dev_init(void *context, struct pci_dev *pdev)
 {
@@ -149,6 +161,27 @@ otm_hdmi_ret_t ps_hdmi_pci_dev_init(void *context, struct pci_dev *pdev)
 	ctx->dev.id = pci_dev_revision;
 	/* Store this context for use by MSIC PCI driver */
 	g_context = ctx;
+
+	/* Handle Merrifield specific GPIO configuration
+	 * to enable EDID reads
+	 */
+	if (gpio_request(PS_MSIC_LS_EN_GPIO_PIN, "HDMI_LS_EN")) {
+		pr_err("%s: Unable to request gpio %d\n", __func__,
+		       PS_MSIC_LS_EN_GPIO_PIN);
+		rc = OTM_HDMI_ERR_FAILED;
+		goto exit;
+	}
+
+	if (!gpio_is_valid(PS_MSIC_LS_EN_GPIO_PIN)) {
+		pr_err("%s: Unable to validate gpio %d\n", __func__,
+		       PS_MSIC_LS_EN_GPIO_PIN);
+		rc = OTM_HDMI_ERR_FAILED;
+		goto exit;
+	}
+
+	/* Set the GPIO based on cable status */
+	__ps_gpio_configure_edid_read();
+
 exit:
 	return rc;
 }
@@ -165,8 +198,10 @@ otm_hdmi_ret_t ps_hdmi_pci_dev_deinit(void *context)
 	ctx = (hdmi_context_t *)context;
 
 	/* unmap IO region */
-	iounmap(ctx->io_address) ;
+	iounmap(ctx->io_address);
 
+	/* Free GPIO resources */
+	gpio_free(PS_MSIC_LS_EN_GPIO_PIN);
 exit:
 	return rc;
 }
@@ -183,86 +218,56 @@ otm_hdmi_ret_t ps_hdmi_i2c_edid_read(void *ctx, unsigned int sp,
 	return OTM_HDMI_SUCCESS;
 }
 
-static unsigned char vrint_data;
+static void ps_hdmi_power_on_pipe(u32 msg_port, u32 msg_reg,
+							u32 val_comp, u32 val_write)
+{
+	u32 ret;
+	int retry = 0;
+
+	pr_debug("Entered %s\n", __func__);
+
+	ret = intel_mid_msgbus_read32(msg_port, msg_reg);
+
+	if ((ret & val_comp) == 0) {
+		pr_err("%s: pipe is already powered on\n", __func__);
+		return;
+	} else {
+		intel_mid_msgbus_write32(msg_port, msg_reg, ret & val_write);
+		ret = intel_mid_msgbus_read32(msg_port, msg_reg);
+		while ((retry < 1000) && ((ret & val_comp) != 0)) {
+			usleep_range(500, 1000);
+			ret = intel_mid_msgbus_read32(msg_port, msg_reg);
+			retry++;
+		}
+		if ((ret & val_comp) != 0)
+			pr_err("%s: powering on pipe failed\n", __func__);
+		if (msg_port == 0x4 && msg_reg == 0x3b)
+			pr_err("%s: skip powering up MIO AFE\n", __func__);
+	}
+	pr_debug("Leaving %s\n", __func__);
+}
 
 bool ps_hdmi_power_rails_on(void)
 {
-	int ret = 0;
 	pr_debug("Entered %s\n", __func__);
+	ps_hdmi_power_on_pipe(0x4, 0x36, 0xc000000, 0xfffffff3);
+		/* pipe B */
+	ps_hdmi_power_on_pipe(0x4, 0x3c, 0x3000000, 0xfffffffc);
+		/* HDMI */
 
-	/* Turn on HDMI power rails. These will be on in all non-S0iX
-	 * states so that HPD and connection status will work. VCC330
-	 * will have ~1.7mW usage during idle states when the display
-	 * is active
-	 */
-	ret = intel_scu_ipc_iowrite8(PS_MSIC_VCC330CNT, PS_VCC330_ON);
-	if (ret) {
-		pr_debug("%s: Failed to power on VCC330.\n", __func__);
-		return false;
-	}
-
-	if (vrint_data & PS_HDMI_OCP_STATUS) {
-		/* When there occurs overcurrent in MSIC HDMI HDP,
-		 * need to reset VHDMIEN by clearing to 0 then set to 1
-		 */
-		ret = intel_scu_ipc_iowrite8(PS_MSIC_VHDMICNT,
-					PS_VHDMI_OFF);
-		if (ret) {
-			pr_debug("%s: Failed to power off VHDMI.\n", __func__);
-			goto err;
-		}
-	}
-
-	/* MSIC documentation requires that there be a 500us
-	 * delay after enabling VCC330 before you can enable
-	 * VHDMI
-	 */
-	usleep_range(500, 1000);
-
-	/* Extend VHDMI switch de-bounce time, to avoid
-	 * redundant MSIC VREG/HDMI interrupt during HDMI
-	 * cable plugged in/out
-	 */
-	ret = intel_scu_ipc_iowrite8(PS_MSIC_VHDMICNT,
-				PS_VHDMI_ON |
-				PS_VHDMI_DB_30MS);
-	if (ret) {
-		pr_debug("%s: Failed to power on VHDMI.\n", __func__);
-		goto err;
-	}
-
+	intel_scu_ipc_iowrite8(0x7F, 0x31);
+	pr_debug("Leaving %s\n", __func__);
 	return true;
-
-err:
-	ret = intel_scu_ipc_iowrite8(PS_MSIC_VCC330CNT, PS_VCC330_OFF);
-	if (ret) {
-		pr_debug("%s: Failed to power off VCC330 during clean up.\n",
-				__func__);
-		/* Fall through */
-	}
-	return false;
 }
-
 
 bool ps_hdmi_power_rails_off(void)
 {
-	int ret = 0;
 	pr_debug("Entered %s\n", __func__);
 
-	ret = intel_scu_ipc_iowrite8(PS_MSIC_VHDMICNT, PS_VHDMI_OFF);
-	if (ret) {
-		pr_debug("%s: Failed to power off VHDMI.\n", __func__);
-		return false;
-	}
+	return 0;
 
-	ret = intel_scu_ipc_iowrite8(PS_MSIC_VCC330CNT, PS_VCC330_OFF);
-	if (ret) {
-		pr_debug("%s: Failed to power off VCC330.\n", __func__);
-		return false;
-	}
-
-	return true;
 }
+
 
 /*
  * ps_hdmi_get_cable_status - Get HDMI cable connection status
@@ -275,21 +280,24 @@ bool ps_hdmi_power_rails_off(void)
 bool ps_hdmi_get_cable_status(void *context)
 {
 	hdmi_context_t *ctx = (hdmi_context_t *)context;
-	u8 data = 0;
-
 	if (ctx == NULL)
 		return false;
 
-	/* Read HDMI cable status from MSIC chip */
-	intel_scu_ipc_ioread8(PS_MSIC_HDMI_STATUS_CMD, &data);
-	if (data & PS_MSIC_HDMI_STATUS)
-		return true;
-	else
+	/* Read HDMI cable status from GPIO */
+	/* For Merrifield, it is required that SW pull up or pull down the
+	 * LS_OE GPIO pin based on cable status. This is needed before
+	 * performing any EDID read operation on Merrifield.
+	 */
+	__ps_gpio_configure_edid_read();
+
+	if (gpio_get_value(PS_MSIC_HPD_GPIO_PIN) == 0)
 		return false;
+	else
+		return true;
 }
 
 /**
- * hdmi interrupt handler (upper half).
+ * hdmi interrupt handler (top half).
  * @irq:	irq number
  * @data:	data for the interrupt handler
  *
@@ -301,137 +309,25 @@ bool ps_hdmi_get_cable_status(void *context)
  */
 irqreturn_t ps_hdmi_irq_handler(int irq, void *data)
 {
-	/* Read interrupt status register */
-	if (g_context != NULL) {
-		vrint_data = readb(g_context->dev.irq_io_address);
+	if (g_context == NULL)
+		return IRQ_HANDLED;
 
-		/* handle HDMI HPD interrupts. */
-		if (vrint_data & (PS_HDMI_HPD_STATUS_BIT|PS_HDMI_OCP_STATUS))
-			return IRQ_WAKE_THREAD;
-	}
-	return IRQ_HANDLED;
+	return IRQ_WAKE_THREAD;
 }
 
 /* Power management functions */
-
-/*
- * Platform specific resume function after deep-sleep
- * This function is used to carry out any specific actviity
- * to aid HDMI IP resume in the context of system resume.
- * This function will always be scheduled to execute after
- * the system has finished resuming.
- */
-void ps_post_resume_wq(struct work_struct *work)
-{
-	hdmi_context_t *ctx = container_of(work,
-					   hdmi_context_t,
-					   post_resume_work);
-	int ret = 0;
-
-	pr_debug("Entered %s\n", __func__);
-	if (ctx == NULL) {
-		pr_err("%s: NULL context!\n", __func__);
-		return;
-	}
-
-	/* While going to suspend state, the HPD interrupts from MSIC
-	 * were masked. During the resume, we do not immediately unmask
-	 * the interrupt to avoid race between the resultant hotplug
-	 * handlers and system resume activity. Instead, we simply turn
-	 * on the HDMI MSIC power rails and schedule this function to be
-	 * called after the system finishes a complete resume. At this
-	 * time, it is safe to re-enable HPD interrupts.
-	 */
-	ret = intel_scu_ipc_update_register(PS_MSIC_IRQLVL1_MASK, 0x0,
-					    PS_VREG_MASK);
-	if (ret) {
-		pr_debug("%s: Failed to unmask VREG IRQ.\n",
-			__func__);
-		goto exit;
-	}
-
-exit:
-	pr_debug("Exiting %s\n", __func__);
-}
-
 static int ps_hdmi_hpd_suspend(struct device *dev)
 {
-	int ret = 0, err = 0;
-
 	pr_debug("Entered %s\n", __func__);
-
-	ret = intel_scu_ipc_update_register(PS_MSIC_IRQLVL1_MASK, 0xff,
-					    PS_VREG_MASK);
-	if (ret) {
-		pr_debug("%s: Failed to mask VREG IRQ.\n",
-			  __func__);
-		goto err1;
-	}
-
-	ret = intel_scu_ipc_iowrite8(PS_MSIC_VHDMICNT, PS_VHDMI_OFF);
-	if (ret) {
-		pr_debug("%s: Failed to power off VHDMI.\n",
-			  __func__);
-		goto err2;
-	}
-
-	ret = intel_scu_ipc_iowrite8(PS_MSIC_VCC330CNT, PS_VCC330_OFF);
-	if (ret) {
-		pr_debug("%s: Failed to power off VCC330.\n",
-			  __func__);
-		goto err3;
-	}
-
-	pr_debug("Exiting %s\n", __func__);
-	return ret;
-
-err3:
-	err |= intel_scu_ipc_iowrite8(PS_MSIC_VHDMICNT,
-				      PS_VHDMI_ON | PS_VHDMI_DB_30MS);
-err2:
-	err |= intel_scu_ipc_update_register(PS_MSIC_IRQLVL1_MASK, 0x0,
-					     PS_VREG_MASK);
-err1:
-	pr_debug("Exiting %s and err = %d\n", __func__, err);
-	return ret;
+	ps_hdmi_power_rails_off();
+	return 0;
 }
 
 static int ps_hdmi_hpd_resume(struct device *dev)
 {
-	int ret = 0;
-
 	pr_debug("Entered %s\n", __func__);
-
-	ret = intel_scu_ipc_iowrite8(PS_MSIC_VCC330CNT, PS_VCC330_ON);
-	if (ret) {
-		pr_debug("%s: Failed to power on VCC330.\n",
-			  __func__);
-		goto err;
-	}
-
-	/* MSIC documentation requires that there be a 500us delay
-	   after enabling VCC330 before you can enable VHDMI */
-	usleep_range(500, 1000);
-
-	ret = intel_scu_ipc_iowrite8(PS_MSIC_VHDMICNT,
-				     PS_VHDMI_ON | PS_VHDMI_DB_30MS);
-	if (ret) {
-		pr_debug("%s: Failed to power on VHDMI.\n",
-			  __func__);
-		goto err;
-	}
-
-	/* We schedule a delayed wok item to be executed only after the
-	 * the full system has resumed.
-	 */
-	queue_work(g_context->post_resume_wq, &g_context->post_resume_work);
-
-	pr_debug("Exiting %s\n", __func__);
-	return ret;
-
-err:
-	pr_debug("Exiting %s\n", __func__);
-	return ret;
+	ps_hdmi_power_rails_on();
+	return 0;
 }
 
 /* PCI probe function */
@@ -464,17 +360,33 @@ static int __devinit ps_hdmi_hpd_probe(struct pci_dev *pdev,
 		goto exit;
 	}
 
-	/* Map IO region for IRQ registers */
-	ctx->dev.irq_io_address = ioremap_nocache(PS_MSIC_VRINT_ADDR,
-						  PS_MSIC_VRINT_IOADDR_LEN);
-	if (!ctx->dev.irq_io_address) {
-		pr_err("%s: Failed to map IO region for MSIC IRQ\n", __func__);
-		result = -ENOMEM;
+	/* Perform the GPIO configuration */
+	result = gpio_request(PS_MSIC_HPD_GPIO_PIN, "hdmi_hpd");
+	if (result) {
+		pr_debug("%s: Failed to request GPIO %d for kbd IRQ\n",
+			 __func__, PS_MSIC_HPD_GPIO_PIN);
 		goto exit2;
 	}
 
-	ctx->irq_number = pdev->irq;
-	pr_debug("%s: IRQ number assigned = %d\n", __func__, pdev->irq);
+	result = gpio_direction_input(PS_MSIC_HPD_GPIO_PIN);
+	if (result) {
+		pr_debug("%s: Failed to set GPIO %d as input\n",
+			 __func__, PS_MSIC_HPD_GPIO_PIN);
+		goto exit3;
+	}
+
+	ctx->irq_number = gpio_to_irq(PS_MSIC_HPD_GPIO_PIN);
+	pr_debug("%s: IRQ number assigned = %d\n", __func__, ctx->irq_number);
+
+	result = irq_set_irq_type(ctx->irq_number, IRQ_TYPE_EDGE_BOTH);
+	if (result) {
+		pr_debug("%s: Failed to set HDMI HPD IRQ type for IRQ %d\n",
+			 __func__, ctx->irq_number);
+		goto exit3;
+	}
+
+	/* This is unused on Merrifield platform, since we use GPIO */
+	ctx->dev.irq_io_address = 0;
 
 	result = request_threaded_irq(ctx->irq_number, ps_hdmi_irq_handler,
 				      ctx->hpd_callback, IRQF_SHARED,
@@ -485,20 +397,10 @@ static int __devinit ps_hdmi_hpd_probe(struct pci_dev *pdev,
 			 __func__, ctx->irq_number);
 		goto exit3;
 	}
-
-	/* Create Freezable workqueue for post resume HPD operations */
-	ctx->post_resume_wq = create_freezable_workqueue("MFLD Post-Resume WQ");
-	if (!ctx->post_resume_wq) {
-		pr_debug("%s: Failed to create post-resume workqueue\n",
-			 __func__);
-		goto exit3;
-	}
-
-	INIT_WORK(&ctx->post_resume_work, ps_post_resume_wq);
 	return result;
 
 exit3:
-	iounmap(ctx->dev.irq_io_address);
+	gpio_free(PS_MSIC_HPD_GPIO_PIN);
 exit2:
 	pci_disable_device(pdev);
 exit:
@@ -534,9 +436,8 @@ int ps_hdmi_hpd_register_driver(void)
 /* PCI Driver Cleanup function */
 int ps_hdmi_hpd_unregister_driver(void)
 {
-	/* unmap IO region */
-	iounmap((void *)g_context->dev.irq_io_address);
 	pci_unregister_driver(&ps_hdmi_hpd_driver);
-
 	return 0;
 }
+
+

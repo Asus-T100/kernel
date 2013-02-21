@@ -395,12 +395,22 @@ static void ips_hdcp_off(void)
 bool ips_hdcp_is_ready(void)
 {
 	struct ips_hdcp_status_reg_t status;
-	status.value = ips_hdcp_get_status();
+	int count = 20;
+	bool ret  = false;
 
-	if (status.fus_success && status.fus_complete)
-		return true;
+	hdmi_write32(MDFLD_HDCP_CONFIG_REG,
+		HDCP_FUSE_PULL_ENABLE | HDCP_PULL_FUSE);
+	while ((count--) > 0) {
+		udelay(20);
+		status.value = ips_hdcp_get_status();
+		if (status.fus_success && status.fus_complete) {
+			ret = true;
+			break;
+		}
+	}
 
-	return false;
+	pr_info("hdcp - read count left=%d\n", count);
+	return ret;
 }
 
 /**
@@ -617,10 +627,11 @@ bool ips_hdcp_compute_tx_v(uint8_t *rep_ksv_list,
 	temp_buffer += 8;
 
 	/* 4. Pad the buffer with extra bytes
-	 *. The first padding byte must be 0x80 based on SHA1 message digest algorithm
-	 * HW automatically appends 0x80 while creating
+	 *. The first padding byte must be 0x80 based on SHA1 message digest
+	 *. algorithm. HW automatically appends 0x80 while creating
 	 * the buffer if M0 is not 32-bit aligned
-	 * If M0 is 32-bit aligned we need to explicitly inject 0x80 to the buffer
+	 * If M0 is 32-bit aligned we need to explicitly inject 0x80 to
+	 * the buffer
 	 */
 	if (num_pad_bytes && ((num_devices * HDCP_KSV_SIZE + BSTAT_M0) % 4 == 0))
 		*temp_buffer = 0x80;

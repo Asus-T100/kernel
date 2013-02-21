@@ -1,15 +1,16 @@
- # Makefile for the drm device driver. This driver provides support for the
+# Makefile for the drm device driver. This driver provides support for the
 # Direct Rendering Infrastructure (DRI) in XFree86 4.1.0 and higher.
 
 INCDIR=drivers/staging/mrfl
+HDMI_DIR=drivers/staging/intel_media/otm_hdmi
 
 ccflags-y += \
 	-I$(INCDIR)/ \
 	-I$(INCDIR)/interface \
 	-I$(INCDIR)/rgx/include \
 	-I$(INCDIR)/drv \
-	-I$(INCDIR)/drv/otm_hdmi/os/android/include \
-	-I$(INCDIR)/drv/otm_hdmi/pil/include \
+	-I$(HDMI_DIR)/os/android/include \
+	-I$(HDMI_DIR)/pil/include \
 	-Iinclude/linux \
 	-Iinclude/drm \
 	-I$(INCDIR)/../intel_media/video/common \

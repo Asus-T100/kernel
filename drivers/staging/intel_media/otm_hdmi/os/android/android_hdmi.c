@@ -1409,7 +1409,7 @@ int android_hdmi_crtc_mode_set(struct drm_crtc *crtc,
 		return 0;
 	}
 
-	dev_priv->tmds_clock_khz = clock_khz;
+	hdmi_priv->clock_khz = clock_khz;
 
 	/*
 	 * SW workaround for Compliance 7-29 ACR test on 576p@50
@@ -1417,7 +1417,7 @@ int android_hdmi_crtc_mode_set(struct drm_crtc *crtc,
 	 */
 	if (otm_adjusted_mode.metadata == 17 ||
 			otm_adjusted_mode.metadata == 18)
-		dev_priv->tmds_clock_khz = otm_adjusted_mode.dclk;
+		hdmi_priv->clock_khz = otm_adjusted_mode.dclk;
 
 	psb_intel_wait_for_vblank(dev);
 
@@ -1562,6 +1562,28 @@ int android_hdmi_get_eld(struct drm_device *dev, void *eld)
 	return -EINVAL;
 }
 
+
+/**
+ * get DPLL clock in khz
+ * Input parameters:
+ * @dev: drm Device
+*
+ * Returns:  DPLL clock in khz
+ */
+
+uint32_t android_hdmi_get_dpll_clock(struct drm_device *dev)
+{
+	struct drm_psb_private *dev_priv;
+	struct android_hdmi_priv *hdmi_priv;
+
+	if (NULL == dev || NULL == dev->dev_private)
+		return 0;
+	dev_priv = dev->dev_private;
+	hdmi_priv = dev_priv->hdmi_priv;
+	if (NULL == hdmi_priv)
+		return 0;
+	return hdmi_priv->clock_khz;
+}
 
 /**
  * Restore the register and enable the HDMI display
@@ -2063,10 +2085,19 @@ android_hdmi_detect(struct drm_connector *connector,
 			hdmi_state = 1;
 			first_boot = false;
 		}
+
+/* pvr_ops is not supported in merrifield gfx driver yet.
+ * So skip the check temporarily.
+ *
+ * TODO: wait for solution about pvr_ops. Then change this workaround
+ *       accordingly.
+ */
+#ifndef CONFIG_DRM_MRFLD
 		if (!dev_priv->pvr_ops) {
 			pr_debug("Delay handling HDMI till SGX is ready\n");
 			return connector_status_disconnected;
 		}
+#endif
 		if (connector->status == connector_status_connected)
 			return connector_status_connected;
 		/*

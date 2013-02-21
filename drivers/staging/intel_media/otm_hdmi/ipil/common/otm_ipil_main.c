@@ -564,6 +564,8 @@ otm_hdmi_ret_t	ipil_hdmi_crtc_mode_set_program_dpll(hdmi_device_t *dev,
 {
 	otm_hdmi_ret_t rc = OTM_HDMI_SUCCESS;
 
+	pr_debug("enter %s\n", __func__);
+
 	/* NULL checks */
 	if (dev == NULL) {
 		pr_debug("\ninvalid argument\n");

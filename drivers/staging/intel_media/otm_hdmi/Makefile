@@ -65,19 +65,29 @@ TARGET = otm_hdmi
 OTM_HDMI_TOP = .
 OTM_HDMI_INCDIR = $(srctree)/$(src)/$(OTM_HDMI_TOP)
 
-INCDIR=drivers/staging/mrst
 MEDIA_INCDIR=drivers/staging/intel_media
+
+ifeq ($(filter y, $(CONFIG_DRM_MDFLD) $(CONFIG_DRM_CTP)), y)
+INCDIR=drivers/staging/mrst
 GFX_INCDIR=drivers/staging/mrst/pvr
-
-include $(MEDIA_INCDIR)/build/pvrdefs.mk
-
+else ifeq ($(CONFIG_DRM_MRFLD),y)
+INCDIR=drivers/staging/mrfl
+GFX_INCDIR=drivers/staging/mrfl/rgx
 include_dirs := \
+	-I$(INCDIR)/interface \
+	-I$(INCDIR)/rgx/include \
+	-I$(MEDIA_INCDIR)/bc_video
+endif
+
+include_dirs += \
 	$(PVRINCS-y) \
 	-I$(INCDIR)/drv \
 	-I$(MEDIA_INCDIR)/common \
 	-I$(MEDIA_INCDIR)/video/common \
 	-Iinclude/linux \
 	-Iinclude/drm
+
+include $(MEDIA_INCDIR)/build/pvrdefs.mk
 
 ccflags-y += $(PVRDEFS-y)
 ccflags-y += $(include_dirs)
@@ -96,7 +106,7 @@ ccflags-y += \
 ccflags-y += -Werror
 
 #uncomment for debug prints
-#ccflags-y += -DDEBUG
+ccflags-y += -DDEBUG
 
 #only for internal testing
 ccflags-y += -DOTM_HDMI_UNIT_TEST
@@ -112,6 +122,10 @@ ccflags-y += \
 else ifeq ($(CONFIG_DRM_MDFLD),y)
 ccflags-y += \
 	-I$(OTM_HDMI_INCDIR)/pil/specific/mfld \
+	-I$(OTM_HDMI_INCDIR)/ipil/specific/mfld
+else ifeq ($(CONFIG_DRM_MRFLD),y)
+ccflags-y += \
+	-I$(OTM_HDMI_INCDIR)/pil/specific/mrfld \
 	-I$(OTM_HDMI_INCDIR)/ipil/specific/mfld
 endif
 
@@ -145,6 +159,12 @@ $(TARGET)-y += \
 	$(OTM_HDMI_TOP)/ipil/specific/mfld/ips_hdcp.o \
 	$(OTM_HDMI_TOP)/ipil/specific/mfld/ips_hdmi_priv.o \
 	$(OTM_HDMI_TOP)/pil/specific/mfld/ps_hdmi.o
+else ifeq ($(CONFIG_DRM_MRFLD),y)
+$(TARGET)-y += \
+	$(OTM_HDMI_TOP)/ipil/specific/mfld/ips_hdmi.o \
+	$(OTM_HDMI_TOP)/ipil/specific/mrfld/ips_hdcp.o \
+	$(OTM_HDMI_TOP)/ipil/specific/mrfld/ips_hdmi_priv.o \
+	$(OTM_HDMI_TOP)/pil/specific/mrfld/ps_hdmi.o
 endif
 
 obj-$(CONFIG_SUPPORT_HDMI) += $(TARGET).o
