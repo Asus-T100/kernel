@@ -1390,6 +1390,69 @@ static const struct file_operations pmu_sync_d0ix_ops = {
 };
 #endif
 
+DEFINE_PER_CPU(u64[NUM_CSTATES_RES_MEASURE], c_states_res);
+
+static int read_c_states_res(void)
+{
+	int cpu, i;
+	u32 lo, hi;
+
+	u32 c_states_res_msr[NUM_CSTATES_RES_MEASURE] = {
+		PUNIT_CR_CORE_C1_RES_MSR,
+		PUNIT_CR_CORE_C4_RES_MSR,
+		PUNIT_CR_CORE_C6_RES_MSR
+	};
+
+	for_each_online_cpu(cpu)
+		for (i = 0; i < NUM_CSTATES_RES_MEASURE; i++) {
+			u64 temp;
+			rdmsr_on_cpu(cpu, c_states_res_msr[i], &lo, &hi);
+			temp = hi;
+			temp <<= 32;
+			temp |= lo;
+			per_cpu(c_states_res, cpu)[i] = temp;
+		}
+
+	return 0;
+}
+
+static int c_states_stat_show(struct seq_file *s, void *unused)
+{
+	char *c_states_name[] = {
+		"C1",
+		"C4",
+		"C6"
+	};
+
+	int i, cpu;
+
+	seq_printf(s, "C STATES: %20s\n", "Residecy");
+	for_each_online_cpu(cpu)
+		seq_printf(s, "%18s %d", "Core", cpu);
+	seq_printf(s, "\n");
+
+	read_c_states_res();
+	for (i = 0; i < NUM_CSTATES_RES_MEASURE; i++) {
+		seq_printf(s, "%s", c_states_name[i]);
+		for_each_online_cpu(cpu)
+			seq_printf(s, "%18llu", per_cpu(c_states_res, cpu)[i]);
+		seq_printf(s, "\n");
+	}
+	return 0;
+}
+
+static int c_states_stat_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, c_states_stat_show, NULL);
+}
+
+static const struct file_operations c_states_stat_ops = {
+	.open		= c_states_stat_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
 /*These are place holders and will be enabled in next patch*/
 
 void pmu_log_pmu_irq(int status, bool interactive_cmd_sent) { return; };
@@ -1409,6 +1472,10 @@ void pmu_stats_init(void)
 	/* /sys/kernel/debug/mid_pmu_states */
 	(void) debugfs_create_file("mid_pmu_states", S_IFREG | S_IRUGO,
 				NULL, NULL, &devices_state_operations);
+
+	/* /sys/kernel/debug/c_p_states_stat */
+	(void) debugfs_create_file("c_states_stat", S_IFREG | S_IRUGO,
+				NULL, NULL, &c_states_stat_ops);
 #ifdef CONFIG_PM_DEBUG
 	if (platform_is(INTEL_ATOM_MRFLD)) {
 		/* /sys/kernel/debug/ignore_add */
