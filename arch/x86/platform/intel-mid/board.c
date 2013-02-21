@@ -140,6 +140,7 @@ struct devs_id __initconst device_ids[] = {
 	/* IPC devices */
 	{"pmic_gpio", SFI_DEV_TYPE_IPC, 1, &pmic_gpio_platform_data,
 						&ipc_device_handler},
+	{"pmic_charger", SFI_DEV_TYPE_IPC, 1, &no_platform_data, NULL},
 	{"pmic_audio", SFI_DEV_TYPE_IPC, 1, &no_platform_data,
 						&ipc_device_handler},
 	{"a_gfreq",   SFI_DEV_TYPE_IPC, 0, &no_platform_data,
