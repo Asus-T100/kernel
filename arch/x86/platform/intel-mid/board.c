@@ -197,6 +197,7 @@ struct devs_id __initconst device_ids[] = {
 	{"lsm303dl", SFI_DEV_TYPE_I2C, 0, &lsm303dlhc_accel_platform_data},
 	{"lsm303cmp", SFI_DEV_TYPE_I2C, 0, &no_platform_data, NULL},
 	{"apds990x", SFI_DEV_TYPE_I2C, 0, &apds990x_platform_data},
+	{"l3gd20", SFI_DEV_TYPE_I2C, 0, &l3g4200d_platform_data, NULL},
 	{"l3g4200d", SFI_DEV_TYPE_I2C, 0, &l3g4200d_platform_data},
 	{"gyro", SFI_DEV_TYPE_I2C, 0, &gyro_platform_data, NULL},
 	{"als", SFI_DEV_TYPE_I2C, 0, &ltr502als_platform_data, NULL},
