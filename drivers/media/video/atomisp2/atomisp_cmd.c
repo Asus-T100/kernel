@@ -1911,94 +1911,96 @@ static void atomisp_update_grid_info(struct atomisp_device *isp)
 		}
 		break;
 	}
-	/* If the grid info has changed, we need to reallocate
-	   the buffers for 3A and DIS statistics. */
-	if (memcmp(&old_info, &isp->params.curr_grid_info, sizeof(old_info)) ||
-	    !isp->params.s3a_output_buf || !isp->params.dis_hor_coef_buf) {
-		/* We must free all buffers because they no longer match
-		   the grid size. */
-		atomisp_free_3a_dis_buffers(isp);
 
-		err = atomisp_alloc_css_stat_bufs(isp);
-		if (err) {
-			dev_err(isp->dev, "stat_buf allocate error\n");
-			goto err_3a;
-		}
+	/* If the grid info has not changed and the buffers for 3A and
+	 * DIS statistics buffers are allocated or buffer size would be zero
+	 * then no need to do anything. */
+	if (!memcmp(&old_info, &isp->params.curr_grid_info, sizeof(old_info)) &&
+		isp->params.s3a_output_buf && isp->params.dis_hor_coef_buf)
+		return;
 
-		/* 3A statistics. These can be big, so we use vmalloc. */
-		isp->params.s3a_output_bytes =
-			isp->params.curr_grid_info.s3a_grid.width *
-			isp->params.curr_grid_info.s3a_grid.height *
-			sizeof(*isp->params.s3a_output_buf);
+	/* We must free all buffers because they no longer match
+	   the grid size. */
+	atomisp_free_3a_dis_buffers(isp);
 
-		v4l2_dbg(3, dbg_level, &atomisp_dev,
-			 "isp->params.s3a_output_bytes: %d\n",
-			 isp->params.s3a_output_bytes);
-		isp->params.s3a_output_buf = vmalloc(
-				isp->params.s3a_output_bytes);
-
-		if (isp->params.s3a_output_buf == NULL &&
-		    isp->params.s3a_output_bytes != 0)
-			goto err_3a;
-
-		memset(isp->params.s3a_output_buf, 0, isp->params.s3a_output_bytes);
-		isp->params.s3a_buf_data_valid = false;
-
-		/* DIS coefficients. */
-		isp->params.dis_hor_coef_bytes =
-				isp->params.curr_grid_info.dvs_hor_coef_num *
-				SH_CSS_DIS_NUM_COEF_TYPES *
-				sizeof(*isp->params.dis_hor_coef_buf);
-
-		isp->params.dis_ver_coef_bytes =
-				isp->params.curr_grid_info.dvs_ver_coef_num *
-				SH_CSS_DIS_NUM_COEF_TYPES *
-				sizeof(*isp->params.dis_ver_coef_buf);
-
-		isp->params.dis_hor_coef_buf =
-			kzalloc(isp->params.dis_hor_coef_bytes, GFP_KERNEL);
-		if (isp->params.dis_hor_coef_buf == NULL &&
-		    isp->params.dis_hor_coef_bytes != 0)
-			goto err_dis;
-
-		isp->params.dis_ver_coef_buf =
-			kzalloc(isp->params.dis_ver_coef_bytes, GFP_KERNEL);
-		if (isp->params.dis_ver_coef_buf == NULL &&
-		    isp->params.dis_ver_coef_bytes != 0)
-			goto err_dis;
-
-		/* DIS projections. */
-		isp->params.dis_proj_data_valid = false;
-		isp->params.dis_hor_proj_bytes =
-				isp->params.curr_grid_info.dvs_grid.aligned_height *
-				SH_CSS_DIS_NUM_COEF_TYPES *
-				sizeof(*isp->params.dis_hor_proj_buf);
-
-		isp->params.dis_ver_proj_bytes =
-				isp->params.curr_grid_info.dvs_grid.aligned_width *
-				SH_CSS_DIS_NUM_COEF_TYPES *
-				sizeof(*isp->params.dis_ver_proj_buf);
-
-		isp->params.dis_hor_proj_buf =
-			kzalloc(isp->params.dis_hor_proj_bytes, GFP_KERNEL);
-		if (isp->params.dis_hor_proj_buf == NULL &&
-		    isp->params.dis_hor_proj_bytes != 0)
-			goto err_dis;
-
-		isp->params.dis_ver_proj_buf =
-			kzalloc(isp->params.dis_ver_proj_bytes, GFP_KERNEL);
-		if (isp->params.dis_ver_proj_buf == NULL &&
-		    isp->params.dis_ver_proj_bytes != 0)
-			goto err_dis;
+	err = atomisp_alloc_css_stat_bufs(isp);
+	if (err) {
+		dev_err(isp->dev, "stat_buf allocate error\n");
+		goto err_3a;
 	}
+
+	/* 3A statistics. These can be big, so we use vmalloc. */
+	isp->params.s3a_output_bytes =
+		isp->params.curr_grid_info.s3a_grid.width *
+		isp->params.curr_grid_info.s3a_grid.height *
+		sizeof(*isp->params.s3a_output_buf);
+
+	v4l2_dbg(3, dbg_level, &atomisp_dev,
+			"isp->params.s3a_output_bytes: %d\n",
+			isp->params.s3a_output_bytes);
+	isp->params.s3a_output_buf = vmalloc(isp->params.s3a_output_bytes);
+
+	if (isp->params.s3a_output_buf == NULL &&
+			isp->params.s3a_output_bytes != 0)
+		goto err_3a;
+
+	memset(isp->params.s3a_output_buf, 0, isp->params.s3a_output_bytes);
+	isp->params.s3a_buf_data_valid = false;
+
+	/* DIS coefficients. */
+	isp->params.dis_hor_coef_bytes =
+		isp->params.curr_grid_info.dvs_hor_coef_num *
+		SH_CSS_DIS_NUM_COEF_TYPES *
+		sizeof(*isp->params.dis_hor_coef_buf);
+
+	isp->params.dis_ver_coef_bytes =
+		isp->params.curr_grid_info.dvs_ver_coef_num *
+		SH_CSS_DIS_NUM_COEF_TYPES *
+		sizeof(*isp->params.dis_ver_coef_buf);
+
+	isp->params.dis_hor_coef_buf =
+		kzalloc(isp->params.dis_hor_coef_bytes, GFP_KERNEL);
+	if (isp->params.dis_hor_coef_buf == NULL &&
+			isp->params.dis_hor_coef_bytes != 0)
+		goto err_dis;
+
+	isp->params.dis_ver_coef_buf =
+		kzalloc(isp->params.dis_ver_coef_bytes, GFP_KERNEL);
+	if (isp->params.dis_ver_coef_buf == NULL &&
+			isp->params.dis_ver_coef_bytes != 0)
+		goto err_dis;
+
+	/* DIS projections. */
+	isp->params.dis_proj_data_valid = false;
+	isp->params.dis_hor_proj_bytes =
+		isp->params.curr_grid_info.dvs_grid.aligned_height *
+		SH_CSS_DIS_NUM_COEF_TYPES *
+		sizeof(*isp->params.dis_hor_proj_buf);
+
+	isp->params.dis_ver_proj_bytes =
+		isp->params.curr_grid_info.dvs_grid.aligned_width *
+		SH_CSS_DIS_NUM_COEF_TYPES *
+		sizeof(*isp->params.dis_ver_proj_buf);
+
+	isp->params.dis_hor_proj_buf = kzalloc(isp->params.dis_hor_proj_bytes,
+			GFP_KERNEL);
+	if (isp->params.dis_hor_proj_buf == NULL &&
+			isp->params.dis_hor_proj_bytes != 0)
+		goto err_dis;
+
+	isp->params.dis_ver_proj_buf = kzalloc(isp->params.dis_ver_proj_bytes,
+			GFP_KERNEL);
+	if (isp->params.dis_ver_proj_buf == NULL &&
+			isp->params.dis_ver_proj_bytes != 0)
+		goto err_dis;
+
 	return;
 
 	/* Failure for 3A buffers does not influence DIS buffers */
 err_3a:
 	if (isp->params.s3a_output_bytes != 0) {
 		/* For SOC sensor happens s3a_output_bytes == 0,
-		*  using if condition to exclude false error log
-		*/
+		*  using if condition to exclude false error log */
 		dev_err(isp->dev, "Failed allocate memory for 3A statistics\n");
 	}
 	atomisp_free_3a_dis_buffers(isp);
