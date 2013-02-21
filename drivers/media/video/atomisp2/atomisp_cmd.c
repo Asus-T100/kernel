@@ -1882,27 +1882,33 @@ static void atomisp_update_grid_info(struct atomisp_device *isp)
 		v4l2_dbg(3, dbg_level, &atomisp_dev, "%s, preview\n",
 			 __func__);
 		err = sh_css_preview_get_grid_info(&isp->params.curr_grid_info);
-		if(err)
+		if(err) {
 			dev_err(isp->dev,
 				 "sh_css_preview_get_grid_info failed: %d\n",
 				 err);
+			return;
+		}
 		break;
 	case ATOMISP_RUN_MODE_VIDEO:
 		v4l2_dbg(3, dbg_level, &atomisp_dev, "%s, video\n", __func__);
 		err = sh_css_video_get_grid_info(&isp->params.curr_grid_info);
-		if (err)
+		if (err) {
 			dev_err(isp->dev,
 				 "sh_css_video_get_grid_info failed: %d\n",
 				 err);
+			return;
+		}
 		break;
 	default:
 		v4l2_dbg(3, dbg_level, &atomisp_dev, "%s, default(capture)\n",
 			 __func__);
 		err = sh_css_capture_get_grid_info(&isp->params.curr_grid_info);
-		if (err)
+		if (err) {
 			dev_err(isp->dev,
 				 "sh_css_capture_get_grid_info failed: %d\n",
 				 err);
+			return;
+		}
 		break;
 	}
 	/* If the grid info has changed, we need to reallocate
