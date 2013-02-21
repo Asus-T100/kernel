@@ -660,7 +660,11 @@ static ssize_t sst_debug_readme_read(struct file *file, char __user *user_buf,
 		"10. echo dma > fw_dwnld_mode, This will set the firmware download mode to\n"
 					"dma single block mode\n"
 		"11. cat fw_ssp_reg,This will dump the ssp register contents\n"
-		"12. cat fw_dma_reg,This will dump the dma register contents\n";
+		"12. cat fw_dma_reg,This will dump the dma register contents\n"
+		"13. iram_dump & dram_dump, interfaces provide mmap support to\n"
+		"get the iram and dram dump these, buffers will have data only\n"
+		"after the recovery is triggered\n";
+
 
 	return simple_read_from_buffer(user_buf, count, ppos,
 			buf, strlen(buf));
@@ -982,6 +986,81 @@ static const struct file_operations sst_debug_dma_reg = {
 		.read = sst_debug_dma_reg_read,
 };
 
+/**
+ * sst_debug_remap - function remaps the iram/dram buff to userspace
+ *
+ * @vma: vm_area_struct passed from userspace
+ * @buf: Physical addr of the pointer to be remapped
+ * @type: type of the buffer
+ *
+ * Remaps the kernel buffer to the userspace
+ */
+static int sst_debug_remap(struct vm_area_struct *vma, char *buf,
+					enum sst_ram_type type)
+{
+	int retval, length;
+	void *mem_area;
+
+	if (!buf)
+		return -EIO;
+
+	length = vma->vm_end - vma->vm_start;
+	pr_debug("iram length 0x%x\n", length);
+
+	/* round it up to the page bondary  */
+	mem_area = (void *)PAGE_ALIGN((unsigned int)buf);
+
+	/* map the whole physically contiguous area in one piece  */
+	retval = remap_pfn_range(vma,
+			vma->vm_start,
+			virt_to_phys((void *)mem_area) >> PAGE_SHIFT,
+			length,
+			vma->vm_page_prot);
+	if (retval)
+		pr_err("mapping failed %d ", retval);
+	return retval;
+}
+
+int sst_debug_iram_dump_mmap(struct file *file, struct vm_area_struct *vma)
+{
+	int retval;
+	struct intel_sst_drv *sst = sst_drv_ctx;
+
+	if (sst->pci_id == SST_MRFLD_PCI_ID) {
+		pr_err("Currently not supported for mrfld\n");
+		return -EPERM;
+	}
+
+	retval = sst_debug_remap(vma, sst->dump_buf.iram_buf.buf, SST_IRAM);
+
+	return retval;
+}
+
+static const struct file_operations sst_debug_iram_dump = {
+	.open = sst_debug_open,
+	.mmap = sst_debug_iram_dump_mmap,
+};
+
+int sst_debug_dram_dump_mmap(struct file *file, struct vm_area_struct *vma)
+{
+	int retval;
+	struct intel_sst_drv *sst = sst_drv_ctx;
+
+	if (sst->pci_id == SST_MRFLD_PCI_ID) {
+		pr_err("Currently not supported for mrfld\n");
+		return -EPERM;
+	}
+
+	retval = sst_debug_remap(vma, sst->dump_buf.dram_buf.buf, SST_DRAM);
+
+	return retval;
+}
+
+static const struct file_operations sst_debug_dram_dump = {
+	.open = sst_debug_open,
+	.mmap = sst_debug_dram_dump_mmap,
+};
+
 void sst_debugfs_init(struct intel_sst_drv *sst)
 {
 	sst->debugfs.root = debugfs_create_dir("sst", NULL);
@@ -1088,6 +1167,20 @@ void sst_debugfs_init(struct intel_sst_drv *sst)
 	if (!debugfs_create_file("fw_dma_reg", 0400, sst->debugfs.root,
 				sst, &sst_debug_dma_reg)) {
 		pr_err("Failed to create fw_dma_reg file\n");
+		return;
+	}
+
+	/* Dump Iram */
+	if (!debugfs_create_file("iram_dump", 0400, sst->debugfs.root,
+				sst, &sst_debug_iram_dump)) {
+		pr_err("Failed to create iram_dump file\n");
+		return;
+	}
+
+	/* dump Dram */
+	if (!debugfs_create_file("dram_dump", 0400, sst->debugfs.root,
+				sst, &sst_debug_dram_dump)) {
+		pr_err("Failed to create dram_dump file\n");
 		return;
 	}
 

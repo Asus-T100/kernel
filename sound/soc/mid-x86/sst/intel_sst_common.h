@@ -67,6 +67,7 @@ struct intel_sst_ops {
 	void (*post_message) (struct work_struct *work);
 	int (*sync_post_message) (struct ipc_post *msg);
 	void (*process_message) (struct work_struct *work);
+	void (*set_bypass)(bool set);
 };
 enum sst_states {
 	SST_FW_LOADED = 1,
@@ -404,6 +405,17 @@ struct sst_fw_context {
 	unsigned int saved;
 };
 
+struct sst_ram_buf {
+	u32 size;
+	char *buf;
+};
+
+struct sst_dump_buf {
+	/* buffers for iram-dram dump crash */
+	struct sst_ram_buf iram_buf;
+	struct sst_ram_buf dram_buf;
+};
+
 /***
  * struct intel_sst_drv - driver ops
  *
@@ -514,6 +526,10 @@ struct intel_sst_drv {
 	/* list used during LIB download in memcpy mode */
 	struct list_head libmemcpy_list;
 	struct sst_fw_context context;
+	/* holds the stucts of iram/dram local buffers for dump*/
+	struct sst_dump_buf dump_buf;
+	/* Lock for CSR register change */
+	struct mutex	csr_lock;
 };
 
 extern struct intel_sst_drv *sst_drv_ctx;
@@ -549,6 +565,7 @@ int sst_start_mfld(void);
 int intel_sst_reset_dsp_mfld(void);
 void intel_sst_clear_intr_mfld(void);
 void intel_sst_clear_intr_mrfld32(void);
+void intel_sst_set_bypass_mfld(bool set);
 
 int sst_sync_post_message_mrfld(struct ipc_post *msg);
 void sst_post_message_mrfld(struct work_struct *work);

@@ -314,6 +314,7 @@ static struct intel_sst_ops mrfld_ops = {
 	.sync_post_message = sst_sync_post_message_mrfld,
 	.process_message = sst_process_message_mrfld,
 	.process_reply = sst_process_reply_mrfld,
+	.set_bypass = NULL,
 };
 
 #ifndef MRFLD_TEST_ON_MFLD
@@ -327,6 +328,7 @@ static struct intel_sst_ops mfld_ops = {
 	.sync_post_message = sst_sync_post_message_mfld,
 	.process_message = sst_process_message_mfld,
 	.process_reply = sst_process_reply_mfld,
+	.set_bypass = intel_sst_set_bypass_mfld,
 };
 #else
 static struct intel_sst_ops mrfld32_ops = {
@@ -339,6 +341,7 @@ static struct intel_sst_ops mrfld32_ops = {
 	.sync_post_message = sst_sync_post_message_mrfld32,
 	.process_message = sst_process_message_mrfld,
 	.process_reply = sst_process_reply_mrfld,
+	.set_bypass = NULL,
 };
 #endif
 
@@ -406,6 +409,7 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 	mutex_init(&sst_drv_ctx->sst_lock);
 	mutex_init(&sst_drv_ctx->mixer_ctrl_lock);
 	mutex_init(&sst_drv_ctx->sst_in_mem_lock);
+	mutex_init(&sst_drv_ctx->csr_lock);
 
 	sst_drv_ctx->stream_cnt = 0;
 	sst_drv_ctx->pb_streams = 0;
@@ -553,14 +557,36 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 			sst_drv_ctx->debugfs.dma_reg,
 			DMA_BASE_CTP, DMA_SIZE_CTP);
 	}
+#ifdef CONFIG_DEBUG_FS
+	sst_drv_ctx->dump_buf.iram_buf.size = pci_resource_len(pci, 3);
+	sst_drv_ctx->dump_buf.iram_buf.buf = kzalloc(sst_drv_ctx->dump_buf.iram_buf.size,
+						GFP_KERNEL);
+	if (!sst_drv_ctx->dump_buf.iram_buf.buf) {
+		pr_err("%s: no memory\n", __func__);
+		ret = -ENOMEM;
+		goto do_unmap;
+	}
 
+	sst_drv_ctx->dump_buf.dram_buf.size = pci_resource_len(pci, 4);
+	sst_drv_ctx->dump_buf.dram_buf.buf = kzalloc(sst_drv_ctx->dump_buf.dram_buf.size,
+						GFP_KERNEL);
+	if (!sst_drv_ctx->dump_buf.dram_buf.buf) {
+		pr_err("%s: no memory\n", __func__);
+		ret = -ENOMEM;
+		goto do_free_iram_buf;
+	}
+
+	pr_debug("\niram len 0x%x dram len 0x%x",
+			sst_drv_ctx->dump_buf.iram_buf.size,
+			sst_drv_ctx->dump_buf.dram_buf.size);
+#endif
 	sst_set_fw_state_locked(sst_drv_ctx, SST_UN_INIT);
 	/* Register the ISR */
 	ret = request_threaded_irq(pci->irq, sst_drv_ctx->ops->interrupt,
 		sst_drv_ctx->ops->irq_thread, NULL, SST_DRV_NAME,
 		sst_drv_ctx);
 	if (ret)
-		goto do_unmap;
+		goto do_free_dram_buf;
 	pr_debug("Registered IRQ 0x%x\n", pci->irq);
 
 	/*Register LPE Control as misc driver*/
@@ -654,6 +680,12 @@ do_free_misc:
 	misc_deregister(&lpe_ctrl);
 do_free_irq:
 	free_irq(pci->irq, sst_drv_ctx);
+do_free_dram_buf:
+#ifdef CONFIG_DEBUG_FS
+	kfree(sst_drv_ctx->dump_buf.dram_buf.buf);
+do_free_iram_buf:
+	kfree(sst_drv_ctx->dump_buf.iram_buf.buf);
+#endif
 do_unmap:
 	/* FIXME: Support for other platforms after SSP Patch */
 	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID)
@@ -722,6 +754,10 @@ static void __devexit intel_sst_remove(struct pci_dev *pci)
 	iounmap(sst_drv_ctx->iram);
 	iounmap(sst_drv_ctx->mailbox);
 	iounmap(sst_drv_ctx->shim);
+#ifdef CONFIG_DEBUG_FS
+	kfree(sst_drv_ctx->dump_buf.iram_buf.buf);
+	kfree(sst_drv_ctx->dump_buf.dram_buf.buf);
+#endif
 	kfree(sst_drv_ctx->fw_cntx);
 	kfree(sst_drv_ctx->runtime_param.param.addr);
 	flush_scheduled_work();
