@@ -266,7 +266,7 @@ static inline void cache_chrgr_prop(struct charger_props *chrgr_prop_new)
 	}
 
 	chrgr_cache = kzalloc(sizeof(*chrgr_cache), GFP_KERNEL);
-	if (IS_ERR(chrgr_cache)) {
+	if (chrgr_cache == NULL) {
 		pr_err("%s:%dError in allocating memory\n", __FILE__, __LINE__);
 		return;
 	}
@@ -319,7 +319,7 @@ static inline void cache_bat_prop(struct batt_props *bat_prop_new)
 	}
 
 	bat_cache = kzalloc(sizeof(*bat_cache), GFP_KERNEL);
-	if (IS_ERR(bat_cache)) {
+	if (bat_cache == NULL) {
 		pr_err("%s:%dError in allocating memory\n", __FILE__, __LINE__);
 		return;
 	}
@@ -711,6 +711,10 @@ int power_supply_register_charging_algo(struct charging_algo *algo)
 	struct charging_algo *algo_new;
 
 	algo_new = kzalloc(sizeof(*algo_new), GFP_KERNEL);
+	if (algo_new == NULL) {
+		pr_err("%s: Error allocating memory for algo!!", __func__);
+		return -1;
+	}
 	algo_new->get_next_cc_cv = algo->get_next_cc_cv;
 	algo_new->name = algo->name;
 	algo_new->chrg_prof_type = algo->chrg_prof_type;
