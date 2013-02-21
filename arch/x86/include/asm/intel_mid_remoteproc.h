@@ -18,6 +18,7 @@
 #define	RP_PMIC_ACCESS		0xFF
 #define	RP_DFU_REQUEST		0xFE
 #define	RP_SET_WATCHDOG		0xF8
+#define	RP_FLIS_ACCESS		0xF5
 #define	RP_GET_FW_REVISION	0xF4
 #define	RP_COLD_BOOT		0xF3
 #define	RP_COLD_RESET		0xF1

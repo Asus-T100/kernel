@@ -15,6 +15,7 @@
 #define IPCMSG_COLD_BOOT	0xF3
 #define IPCMSG_COLD_OFF		0x80 /* for TNG only */
 #define IPCMSG_FW_REVISION      0xF4 /* Get firmware revision */
+#define IPCMSG_SHIM_CONFIG	0xF5 /* Configure SHIM */
 #define IPCMSG_WATCHDOG_TIMER   0xF8 /* Set Kernel Watchdog Threshold */
 #define IPCMSG_VRTC		0xFA	 /* Set vRTC device */
 #define IPCMSG_FW_UPDATE        0xFE /* Firmware update */
@@ -50,6 +51,10 @@
 #define IPC_CMD_VRTC_SETTIME      1 /* Set time */
 #define IPC_CMD_VRTC_SETALARM     2 /* Set alarm */
 #define IPC_CMD_VRTC_SYNC_RTC     3 /* Sync MSIC/PMIC RTC to VRTC */
+
+/* Command id associated with message IPCMSG_SHIM_CONFIG */
+#define IPC_CMD_SHIM_RD		0 /* SHIM read */
+#define IPC_CMD_SHIM_WR		1 /* SHIM write */
 
 /* Send ipc command and check ipc status */
 void intel_scu_ipc_send_command(u32 cmd);

@@ -834,4 +834,13 @@ config INTEL_MID_UMIP
 	  This driver builds the UMIP Sysfs Iterface. We could read write
 	  the USB HOst enable timeout values using these interfaces.
 
+config INTEL_SCU_FLIS
+	tristate "scu flis driver config"
+	depends on INTEL_SCU_IPC
+	default y
+	help
+	  This driver builds the SCU Flis Access Sysfs Interfaces.
+	  We could read write the flis address and configure the
+	  pin pull up/down using these interfaces.
+
 endif # X86_PLATFORM_DEVICES

@@ -158,6 +158,7 @@ int scu_ipc_rpmsg_handle(void *rx_buf, void *tx_buf, u32 *r_len, u32 *s_len)
 	switch (tx_hdr->dst) {
 	case RP_PMIC_ACCESS:
 	case RP_SET_WATCHDOG:
+	case RP_FLIS_ACCESS:
 		tmp_msg->status = scu_ipc_command(tx_msg);
 		break;
 	case RP_MIP_ACCESS:
