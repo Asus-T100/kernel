@@ -1915,8 +1915,10 @@ static void atomisp_update_grid_info(struct atomisp_device *isp)
 	/* If the grid info has not changed and the buffers for 3A and
 	 * DIS statistics buffers are allocated or buffer size would be zero
 	 * then no need to do anything. */
-	if (!memcmp(&old_info, &isp->params.curr_grid_info, sizeof(old_info)) &&
-		isp->params.s3a_output_buf && isp->params.dis_hor_coef_buf)
+	if ((!memcmp(&old_info, &isp->params.curr_grid_info, sizeof(old_info)) &&
+		isp->params.s3a_output_buf && isp->params.dis_hor_coef_buf) ||
+		isp->params.curr_grid_info.s3a_grid.width == 0 ||
+		isp->params.curr_grid_info.s3a_grid.height == 0)
 		return;
 
 	/* We must free all buffers because they no longer match
