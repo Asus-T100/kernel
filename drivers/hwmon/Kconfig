@@ -1470,6 +1470,15 @@ config SENSORS_PSH
           This driver can also be built as a module. If so, the module
           will be called psh.
 
+config MID_PWM
+	tristate "MID PWM driver for Intel Medfield platform"
+        depends on INTEL_SCU_IPC
+        help
+	  Say Y here to enable MID PWM driver on Intel Medfield Platform.
+	  This driver provides an interface to control the duty cycle of
+	  an output signal. For more information, please refer to the driver
+	  source code.
+
 if ACPI
 
 comment "ACPI drivers"

@@ -53,6 +53,8 @@
 #define RP_PMIC_CCSM		0x19
 #define RP_PMIC_I2C		0x20
 #define RP_MSIC_MRFLD_AUDIO	0x21
+#define RP_MSIC_PWM		0x22
+#define RP_MSIC_KPD_LED		0x23
 
 enum rproc_type {
 	RPROC_SCU = 0,
