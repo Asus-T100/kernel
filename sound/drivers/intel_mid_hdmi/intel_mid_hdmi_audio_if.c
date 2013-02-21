@@ -321,12 +321,11 @@ int had_process_buffer_done(struct snd_intelhad *intelhaddata)
 
 int had_process_buffer_underrun(struct snd_intelhad *intelhaddata)
 {
-	int i = 0, retval = 0;
+	int retval = 0;
 	enum intel_had_aud_buf_type buf_id;
 	struct pcm_stream_info *stream;
 	struct had_pvt_data *had_stream;
 	enum had_status_stream stream_type;
-	u32 hdmi_status;
 	unsigned long flag_irqs;
 	int drv_status;
 
@@ -346,29 +345,8 @@ int had_process_buffer_underrun(struct snd_intelhad *intelhaddata)
 	pr_debug("Enter:%s buf_id=%d, stream_type=%d\n",
 			__func__, buf_id, stream_type);
 
-	/* Handle Underrun interrupt within Audio Unit */
-	had_write_register(AUD_CONFIG, 0);
-	/* Reset buffer pointers */
-	had_write_register(AUD_HDMI_STATUS, 1);
-	had_write_register(AUD_HDMI_STATUS, 0);
-	/**
-	 * The interrupt status 'sticky' bits might not be cleared by
-	 * setting '1' to that bit once...
-	 */
-	do { /* clear bit30, 31 AUD_HDMI_STATUS */
-		had_read_register(AUD_HDMI_STATUS, &hdmi_status);
-		pr_debug("HDMI status =0x%x\n", hdmi_status);
-		if (hdmi_status & AUD_CONFIG_MASK_UNDERRUN) {
-			i++;
-			hdmi_status &= (AUD_CONFIG_MASK_SRDBG |
-					AUD_CONFIG_MASK_FUNCRST);
-			hdmi_status |= ~AUD_CONFIG_MASK_UNDERRUN;
-			had_write_register(AUD_HDMI_STATUS, hdmi_status);
-		} else
-			break;
-	} while (i < MAX_CNT);
-	if (i >= MAX_CNT)
-		pr_err("Unable to clear UNDERRUN bits\n");
+	intelhaddata->ops->handle_underrun(intelhaddata);
+
 	if (drv_status == HAD_DRV_DISCONNECTED) {
 		pr_err("%s:Device already disconnected\n", __func__);
 		return retval;

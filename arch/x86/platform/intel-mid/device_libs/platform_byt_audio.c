@@ -79,6 +79,19 @@ static int __init byt_audio_platform_init(void)
 		return 0;
 	}
 
+	pdev = platform_device_alloc("hdmi-audio", -1);
+	if (!pdev) {
+		pr_err("failed to allocate hdmi-audio platform device\n");
+		return 0;
+	}
+
+	ret = platform_device_add(pdev);
+	if (ret) {
+		pr_err("failed to add hdmi-audio platform device\n");
+		platform_device_put(pdev);
+		return 0;
+	}
+
 	return 0;
 }
 device_initcall(byt_audio_platform_init);
