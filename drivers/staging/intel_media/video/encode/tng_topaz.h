@@ -298,7 +298,7 @@ int mtx_write_FIFO(struct drm_device *dev,
 	uint32_t param, uint32_t param_addr, uint32_t sync_seq);
 
 int tng_topaz_remove_ctx(struct drm_psb_private *dev,
-	struct file *filp);
+	struct psb_video_ctx *video_ctx);
 
 extern int tng_topaz_save_mtx_state(struct drm_device *dev);
 
