@@ -669,13 +669,19 @@ EXPORT_SYMBOL(pmic_enable_charging);
 
 static inline int update_zone_cc(int zone, u8 reg_val)
 {
+	int ret;
 	u8 rval;
 	u8 addr_cc = TT_CHRCCHOTVAL_ADDR - zone;
 
 	dev_dbg(chc.dev, "%s:%X=%X\n", __func__, addr_cc, reg_val);
-	pmic_write_tt(addr_cc, reg_val);
+	ret = pmic_write_tt(addr_cc, reg_val);
+	if (unlikely(ret))
+		return ret;
 
-	pmic_read_tt(addr_cc, &rval);
+	ret = pmic_read_tt(addr_cc, &rval);
+	if (unlikely(ret))
+		return ret;
+
 	if (rval != reg_val) {
 		dev_err(chc.dev,
 			"%s:Error in writing to TT reg :%x Wrote=%X:Read=%X\n",
@@ -985,6 +991,11 @@ static irqreturn_t pmic_thread_handler(int id, void *data)
 	int ret;
 
 	evt = kzalloc(sizeof(*evt), GFP_ATOMIC);
+	if (evt == NULL) {
+		dev_dbg(chc.dev, "Error allocating evt structure in fn:\n",
+			__func__);
+		return IRQ_NONE;
+	}
 
 	pmic_intr = ioread16(chc.pmic_intr_iomap);
 	evt->chgrirq0_int = (u8)pmic_intr;
@@ -1250,6 +1261,11 @@ static int pmic_check_initial_events(void)
 	int ret;
 
 	evt = kzalloc(sizeof(struct pmic_event), GFP_KERNEL);
+	if (evt == NULL) {
+		dev_dbg(chc.dev, "Error allocating evt structure in fn:\n",
+			__func__);
+		return -1;
+	}
 
 	ret = intel_scu_ipc_ioread8(SCHGRIRQ0_ADDR, &evt->chgrirq0_stat);
 	evt->chgrirq0_int = evt->chgrirq0_stat;
@@ -1378,7 +1394,12 @@ static int pmic_chrgr_probe(struct platform_device *pdev)
 		goto req_irq_failed;
 	}
 
-	pmic_check_initial_events();
+	retval = pmic_check_initial_events();
+	if (unlikely(retval)) {
+		dev_err(&pdev->dev,
+			"Error posting initial events\n");
+		goto req_irq_failed;
+	}
 
 	/* unmask charger interrupts in second level IRQ register*/
 	retval = intel_scu_ipc_update_register(MCHGRIRQ0_ADDR, 0x00,
