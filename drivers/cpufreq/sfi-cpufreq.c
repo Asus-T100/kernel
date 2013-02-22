@@ -409,6 +409,7 @@ static int sfi_cpufreq_cpu_exit(struct cpufreq_policy *policy)
 		per_cpu(drv_data, policy->cpu) = NULL;
 		sfi_processor_unregister_performance(data->sfi_data,
 							policy->cpu);
+		kfree(data->freq_table);
 		kfree(data);
 	}
 
