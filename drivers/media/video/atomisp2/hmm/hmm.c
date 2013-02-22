@@ -49,6 +49,7 @@
 #endif
 
 static struct hmm_bo_device bo_device;
+struct hmm_pool	dynamic_pool;
 struct hmm_pool	reserved_pool;
 static void *dummy_ptr;
 
@@ -66,6 +67,12 @@ int hmm_init(void)
 	if (ret)
 		v4l2_err(&atomisp_dev,
 			    "hmm_bo_device_init failed.\n");
+
+	ret = hmm_pool_register((unsigned int)dypool_enable,
+						HMM_POOL_TYPE_DYNAMIC);
+	if (ret)
+		v4l2_err(&atomisp_dev,
+			    "Failed to register dynamic memory pool.\n");
 
 	/*
 	 * As hmm use NULL to indicate invalid ISP virtual address,
@@ -87,6 +94,7 @@ void hmm_cleanup(void)
 	dummy_ptr = NULL;
 
 	hmm_bo_device_exit(&bo_device);
+	hmm_pool_unregister(HMM_POOL_TYPE_DYNAMIC);
 }
 
 void *hmm_alloc(size_t bytes, enum hmm_bo_type type,
@@ -441,6 +449,10 @@ int hmm_pool_register(unsigned int pool_size,
 		reserved_pool.pops = &reserved_pops;
 		return reserved_pool.pops->pool_init(&reserved_pool.pool_info,
 							pool_size);
+	case HMM_POOL_TYPE_DYNAMIC:
+		dynamic_pool.pops = &dynamic_pops;
+		return dynamic_pool.pops->pool_init(&dynamic_pool.pool_info,
+							pool_size);
 	default:
 		v4l2_err(&atomisp_dev, "invalid pool type.\n");
 		return -EINVAL;
@@ -453,6 +465,10 @@ void hmm_pool_unregister(enum hmm_pool_type pool_type)
 	case HMM_POOL_TYPE_RESERVED:
 		if (reserved_pool.pops->pool_exit)
 			reserved_pool.pops->pool_exit(&reserved_pool.pool_info);
+		break;
+	case HMM_POOL_TYPE_DYNAMIC:
+		if (dynamic_pool.pops->pool_exit)
+			dynamic_pool.pops->pool_exit(&dynamic_pool.pool_info);
 		break;
 	default:
 		v4l2_err(&atomisp_dev, "invalid pool type.\n");

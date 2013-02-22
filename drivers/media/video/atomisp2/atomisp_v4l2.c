@@ -49,6 +49,11 @@ module_param(repool_pgnr, uint, 0644);
 MODULE_PARM_DESC(repool_pgnr,
 		"Set the reserved memory pool size in page (default:0)");
 
+bool dypool_enable;
+module_param(dypool_enable, bool, 0644);
+MODULE_PARM_DESC(dypool_enable,
+		"dynamic memory pool enable/disable (default:disable)");
+
 /* cross componnet debug message flag */
 int dbg_level = 0;
 module_param(dbg_level, int, 0644);

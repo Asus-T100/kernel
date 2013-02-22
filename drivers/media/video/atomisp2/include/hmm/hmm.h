@@ -77,4 +77,6 @@ void *hmm_vmap(void *virt);
  */
 int hmm_mmap(struct vm_area_struct *vma, void *virt);
 
+extern bool dypool_enable;
+
 #endif

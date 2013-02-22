@@ -37,6 +37,7 @@
 
 enum hmm_pool_type {
 	HMM_POOL_TYPE_RESERVED,
+	HMM_POOL_TYPE_DYNAMIC,
 };
 
 /**
@@ -86,11 +87,33 @@ struct hmm_reserved_pool_info {
 	bool			initialized;
 };
 
+/**
+ * struct hmm_dynamic_pool_info  -  represents dynamic pool private data.
+ * @pages_list:			    a list that store physical pages.
+ *				    The pages list is as dynamic memory pool.
+ * @list_lock:			    list lock is used to protect the operation
+ *				    to dynamic memory pool.
+ * @flag:			    dynamic memory pool state flag.
+ * @pgptr_cache:		    struct kmem_cache, manages a cache.
+ */
+struct hmm_dynamic_pool_info {
+	struct list_head	pages_list;
+
+	/* list lock is used to protect the free pages block lists */
+	struct spinlock		list_lock;
+
+#ifdef USE_KMEM_CACHE
+	struct kmem_cache	*pgptr_cache;
+#endif
+	bool			initialized;
+};
+
 struct hmm_page {
 	struct page		*page;
 	struct list_head	list;
 };
 
 extern struct hmm_pool_ops	reserved_pops;
+extern struct hmm_pool_ops	dynamic_pops;
 
 #endif

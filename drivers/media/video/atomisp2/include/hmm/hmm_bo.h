@@ -85,6 +85,7 @@ enum hmm_bo_type {
 
 enum hmm_page_type {
 	HMM_PAGE_TYPE_RESERVED,
+	HMM_PAGE_TYPE_DYNAMIC,
 	HMM_PAGE_TYPE_GENERAL,
 };
 
@@ -302,6 +303,7 @@ void *hmm_bo_vmap(struct hmm_buffer_object *bo);
 int hmm_bo_mmap(struct vm_area_struct *vma,
 		struct hmm_buffer_object *bo);
 
+extern struct hmm_pool	dynamic_pool;
 extern struct hmm_pool	reserved_pool;
 
 #endif
