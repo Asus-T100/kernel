@@ -187,39 +187,67 @@ static int sst_get_device_id(int dev, int sdev, int dir,
 	return map[index].device_id;
 }
 
-static int sst_fill_stream_params(struct snd_pcm_substream *substream,
-	const struct sst_data *ctx, struct snd_sst_params *str_params)
+static int sst_fill_stream_params(void *substream,
+	const struct sst_data *ctx, struct snd_sst_params *str_params, bool is_compress)
 {
 	int str_id = 0;
 	bool use_strm_map;
 	int map_size;
 	const struct sst_dev_stream_map *map;
+	struct snd_pcm_substream *pstream = NULL;
+	struct snd_compr_stream *cstream = NULL;
 
 	use_strm_map = ctx->pdata->use_strm_map;
 	map = ctx->pdata->pdev_strm_map;
 	map_size = ctx->pdata->strm_map_size;
 
-	if (use_strm_map) {
-		str_params->device_type = (u8)sst_get_device_id(substream->pcm->device,
-				substream->number, substream->stream,
-				map, map_size,
-				&str_id);
-		if (str_params->device_type <= 0)
-			return -EINVAL;
-		pr_debug(" str_id = %d, device_type = %d", str_id, str_params->device_type);
-		str_params->stream_id = str_id;
-	} else {
-		if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
-			str_params->device_type = substream->pcm->device + 1;
-			pr_debug("Playback stream, Device %d\n",
-						substream->pcm->device);
+	if (is_compress == true)
+		cstream = (struct snd_compr_stream *)substream;
+	else
+		pstream = (struct snd_pcm_substream *)substream;
+
+	str_params->stream_type = SST_STREAM_TYPE_MUSIC;
+
+	/* For pcm streams */
+	if (pstream) {
+		if (use_strm_map) {
+			str_params->device_type = (u8)sst_get_device_id(pstream->pcm->device,
+					pstream->number, pstream->stream,
+					map, map_size,
+					&str_id);
+			if (str_params->device_type <= 0)
+				return -EINVAL;
+			pr_debug(" str_id = %d, device_type = %d", str_id, str_params->device_type);
+			str_params->stream_id = str_id;
 		} else {
-			str_params->device_type = SND_SST_DEVICE_CAPTURE;
-			pr_debug("Capture stream, Device %d\n",
-						substream->pcm->device);
+			if (pstream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+				str_params->device_type = pstream->pcm->device + 1;
+				pr_debug("Playback stream, Device %d\n",
+						pstream->pcm->device);
+			} else {
+				str_params->device_type = SND_SST_DEVICE_CAPTURE;
+				pr_debug("Capture stream, Device %d\n",
+						pstream->pcm->device);
+			}
 		}
+		str_params->ops = (u8)pstream->stream;
 	}
-	str_params->ops = (u8)substream->stream;
+
+	if (cstream) {
+		if (use_strm_map) {
+			/* FIXME: Add support for subdevice number in
+			 * snd_compr_stream */
+			str_params->device_type = (u8)sst_get_device_id(cstream->device->device,
+					0, cstream->direction,
+					map, map_size,
+					&str_id);
+			if (str_params->device_type <= 0)
+				return -EINVAL;
+			pr_debug("compress str_id = %d, device_type = %d", str_id, str_params->device_type);
+			str_params->stream_id = str_id;
+		}
+		str_params->ops = (u8)cstream->direction;
+	}
 	return 0;
 }
 
@@ -242,7 +270,7 @@ static int sst_platform_alloc_stream(struct snd_pcm_substream *substream,
 	str_params.aparams = alloc_params;
 	str_params.codec = SST_CODEC_TYPE_PCM;
 	/* fill the device type and stream id to pass to SST driver */
-	ret_val = sst_fill_stream_params(substream, ctx, &str_params);
+	ret_val = sst_fill_stream_params(substream, ctx, &str_params, false);
 	pr_debug("platform prepare: fill stream params ret_val = 0x%x\n", ret_val);
 	if (ret_val < 0)
 		return ret_val;
@@ -642,6 +670,10 @@ static int sst_platform_compr_open(struct snd_compr_stream *cstream)
 	int ret_val = 0;
 	struct snd_compr_runtime *runtime = cstream->runtime;
 	struct sst_runtime_stream *stream;
+	struct snd_soc_pcm_runtime *rtd = cstream->private_data;
+	struct snd_soc_dai_link *dai_link = rtd->dai_link;
+
+	pr_debug("%s called:%s\n", __func__, dai_link->cpu_dai_name);
 
 	stream = kzalloc(sizeof(*stream), GFP_KERNEL);
 	if (!stream)
@@ -686,17 +718,23 @@ static int sst_platform_compr_set_params(struct snd_compr_stream *cstream,
 					struct snd_compr_params *params)
 {
 	struct sst_runtime_stream *stream;
-	int retval;
+	int retval = 0;
 	struct snd_sst_params str_params;
 	struct sst_compress_cb cb;
+	struct snd_soc_pcm_runtime *rtd = cstream->private_data;
+	struct snd_soc_platform *platform = rtd->platform;
+	struct sst_data *ctx = snd_soc_platform_get_drvdata(platform);
 
+	pr_debug("In function %s\n", __func__);
 	stream = cstream->runtime->private_data;
 	/* construct fw structure for this*/
 	memset(&str_params, 0, sizeof(str_params));
 
-	str_params.ops = STREAM_OPS_PLAYBACK;
-	str_params.stream_type = SST_STREAM_TYPE_MUSIC;
-	str_params.device_type = SND_SST_DEVICE_COMPRESS;
+	/* fill the device type and stream id to pass to SST driver */
+	retval = sst_fill_stream_params(cstream, ctx, &str_params, true);
+	pr_debug("compr_set_params: fill stream params ret_val = 0x%x\n", retval);
+	if (retval < 0)
+		return retval;
 
 	switch (params->codec.id) {
 	case SND_AUDIOCODEC_MP3: {

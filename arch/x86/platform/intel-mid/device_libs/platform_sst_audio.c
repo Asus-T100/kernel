@@ -119,7 +119,7 @@ static void set_ctp_platform_config(void)
 	sst_platform_pdata.bdata = &sst_bdata[BDATA_CTP];
 	memcpy(sst_platform_pdata.bdata->ssp_platform_data,
 					&ssp_ctp_data, sizeof(ssp_ctp_data));
-	sst_platform_pdata.use_strm_map = false;
+	sst_platform_pdata.use_strm_map = true;
 	sst_platform_pdata.pdev_strm_map = &ctp_strm_map;
 	sst_platform_pdata.strm_map_size = MAX_DEVICES_CTP;
 }
