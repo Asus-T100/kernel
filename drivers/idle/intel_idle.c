@@ -398,6 +398,7 @@ static int soc_s0ix_idle(struct cpuidle_device *dev,
 	s64 usec_delta;
 	int cpu = smp_processor_id();
 	int s0ix_state   = 0;
+	unsigned int cstate;
 
 	/* Check if s0ix is already in progress,
 	 * This is required to demote C6 while S0ix
@@ -417,7 +418,10 @@ static int soc_s0ix_idle(struct cpuidle_device *dev,
 	if (state->flags & CPUIDLE_FLAG_TLB_FLUSHED)
 		leave_mm(cpu);
 
-	clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_ENTER, &cpu);
+	cstate = (((eax) >> MWAIT_SUBSTATE_SIZE) & MWAIT_CSTATE_MASK) + 1;
+
+	if (!(lapic_timer_reliable_states & (1 << (cstate))))
+		clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_ENTER, &cpu);
 
 	kt_before = ktime_get_real();
 
@@ -433,7 +437,8 @@ static int soc_s0ix_idle(struct cpuidle_device *dev,
 
 	local_irq_enable();
 
-	clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_EXIT, &cpu);
+	if (!(lapic_timer_reliable_states & (1 << (cstate))))
+		clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_EXIT, &cpu);
 
 	/* Update cpuidle counters */
 	dev->last_residency = (int)usec_delta;
