@@ -512,25 +512,6 @@ static int dwc_otg_enable_vbus(struct dwc_otg2 *otg, int enable)
 	atomic_notifier_call_chain(&otg->phy.notifier, USB_EVENT_DRIVE_VBUS,
 			&enable);
 
-	/** Hard code to drive VBus for workaround of EM driver
-	 ** Below code should be removed after EM driver port done.
-	 **/
-	ret = intel_scu_ipc_iowrite8(PMIC_I2COVRDADDR, PMIC_TLP1ESBS0I1VNNBASE);
-	if (ret)
-		otg_err(otg, "Fail to Write the I2C address for Charger IC\n");
-
-	ret = intel_scu_ipc_iowrite8(PMIC_I2COVROFFSET, 0x0);
-	if (ret)
-		otg_err(otg, "Fail to Load offset\n");
-	ret = intel_scu_ipc_iowrite8(PMIC_I2COVRWRDATA, 0x40);
-	if (ret)
-		otg_err(otg, "Fail to Load the data to be writen\n");
-
-	ret = intel_scu_ipc_iowrite8(PMIC_I2COVRCTRL, PMIC_I2COVRCTL_I2CWR);
-	if (ret)
-		otg_err(otg, "Fail to Set I2CWR bit\n");
-
-
 	return ret;
 }
 
