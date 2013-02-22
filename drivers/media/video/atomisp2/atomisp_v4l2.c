@@ -37,10 +37,17 @@
 #include "atomisp_internal.h"
 #include "atomisp_acc.h"
 #include "atomisp-regs.h"
+#include "hmm/hmm.h"
 
 #include "device_access.h"
 #include <linux/intel_mid_pm.h>
 #include <asm/intel-mid.h>
+
+/* set reserved memory pool size in page */
+unsigned int repool_pgnr;
+module_param(repool_pgnr, uint, 0644);
+MODULE_PARM_DESC(repool_pgnr,
+		"Set the reserved memory pool size in page (default:0)");
 
 /* cross componnet debug message flag */
 int dbg_level = 0;
@@ -1007,6 +1014,10 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	pm_runtime_put_noidle(&dev->dev);
 	pm_runtime_allow(&dev->dev);
 
+	err = hmm_pool_register(repool_pgnr, HMM_POOL_TYPE_RESERVED);
+	if (err)
+		dev_err(&dev->dev, "Failed to register reserved memory pool.\n");
+
 	return 0;
 
 enable_msi_fail:
@@ -1039,6 +1050,8 @@ static void __devexit atomisp_pci_remove(struct pci_dev *dev)
 	destroy_workqueue(isp->wdt_work_queue);
 
 	release_firmware(isp->firmware);
+
+	hmm_pool_unregister(HMM_POOL_TYPE_RESERVED);
 }
 
 static DEFINE_PCI_DEVICE_TABLE(atomisp_pci_tbl) = {

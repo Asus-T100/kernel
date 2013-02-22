@@ -83,6 +83,11 @@ enum hmm_bo_type {
 #endif
 };
 
+enum hmm_page_type {
+	HMM_PAGE_TYPE_RESERVED,
+	HMM_PAGE_TYPE_GENERAL,
+};
+
 #define	HMM_BO_VM_ALLOCED	0x1
 #define	HMM_BO_PAGE_ALLOCED	0x2
 #define	HMM_BO_BINDED		0x4
@@ -90,6 +95,11 @@ enum hmm_bo_type {
 #define	HMM_BO_ACTIVE		0x1000
 #define	HMM_BO_MEM_TYPE_USER     0x1
 #define	HMM_BO_MEM_TYPE_PFN      0x2
+
+struct hmm_page_object {
+	struct page		*page;
+	enum hmm_page_type	type;
+};
 
 struct hmm_buffer_object {
 	struct hmm_bo_device	*bdev;
@@ -99,7 +109,7 @@ struct hmm_buffer_object {
 	/* mutex protecting this BO */
 	struct mutex		mutex;
 	enum hmm_bo_type	type;
-	struct page		**pages;	/* physical pages */
+	struct hmm_page_object	*page_obj;	/* physical pages */
 	unsigned int		pgnr;	/* page number */
 	int			from_highmem;
 	int			mmap_count;
@@ -266,7 +276,7 @@ int hmm_bo_page_allocated(struct hmm_buffer_object *bo);
  * get physical page info of the bo.
  */
 int hmm_bo_get_page_info(struct hmm_buffer_object *bo,
-		struct page ***pages, int *pgnr);
+		struct hmm_page_object **page_obj, int *pgnr);
 
 /*
  * bind/unbind the physical pages to a virtual address space.
@@ -291,5 +301,7 @@ void *hmm_bo_vmap(struct hmm_buffer_object *bo);
  */
 int hmm_bo_mmap(struct vm_area_struct *vma,
 		struct hmm_buffer_object *bo);
+
+extern struct hmm_pool	reserved_pool;
 
 #endif

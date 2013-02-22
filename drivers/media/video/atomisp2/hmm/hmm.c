@@ -30,6 +30,7 @@
 #include <linux/io.h>		/* for page_to_phys */
 
 #include "hmm/hmm.h"
+#include "hmm/hmm_pool.h"
 #include "hmm/hmm_bo.h"
 #include "hmm/hmm_bo_dev.h"
 
@@ -48,6 +49,7 @@
 #endif
 
 static struct hmm_bo_device bo_device;
+struct hmm_pool	reserved_pool;
 static void *dummy_ptr;
 
 int hmm_init(void)
@@ -98,11 +100,6 @@ void *hmm_alloc(size_t bytes, enum hmm_bo_type type,
 	pgnr = size_to_pgnr_ceil(bytes);
 
 	/*Buffer object structure init*/
-	/*
-	 * allocates hmm_bubber_object and initializes it
-	 * adds bo to active_bo_list in bo_device
-	 * doesn't allocate memory
-	 */
 	bo = hmm_bo_create(&bo_device, pgnr);
 	if (!bo) {
 		v4l2_err(&atomisp_dev, "hmm_bo_create failed.\n");
@@ -151,7 +148,7 @@ void hmm_free(void *virt)
 
 	if (!bo) {
 		v4l2_err(&atomisp_dev,
-			    "free - can not find buffer object start with "
+			    "can not find buffer object start with "
 			    "address 0x%x\n", (unsigned int)virt);
 		return;
 	}
@@ -169,7 +166,7 @@ static inline int hmm_check_bo(struct hmm_buffer_object *bo, unsigned int ptr)
 {
 	if (!bo) {
 		v4l2_err(&atomisp_dev,
-			    "check bo - can not find buffer object contains "
+			    "can not find buffer object contains "
 			    "address 0x%x\n", ptr);
 		return -EINVAL;
 	}
@@ -211,7 +208,7 @@ static int load_and_flush(void *virt, void *data, unsigned int bytes)
 		idx = (ptr - bo->vm_node->start) >> PAGE_SHIFT;
 		offset = (ptr - bo->vm_node->start) - (idx << PAGE_SHIFT);
 
-		src = (char *)kmap(bo->pages[idx]);
+		src = (char *)kmap(bo->page_obj[idx].page);
 		if (!src) {
 			v4l2_err(&atomisp_dev,
 				    "kmap buffer object page failed: "
@@ -243,7 +240,7 @@ static int load_and_flush(void *virt, void *data, unsigned int bytes)
 
 		clflush_cache_range(src, len);
 
-		kunmap(bo->pages[idx]);
+		kunmap(bo->page_obj[idx].page);
 	}
 
 	return 0;
@@ -288,9 +285,9 @@ int hmm_store(void *virt, const void *data, unsigned int bytes)
 		offset = (ptr - bo->vm_node->start) - (idx << PAGE_SHIFT);
 
 		if (in_atomic())
-			des = (char *)kmap_atomic(bo->pages[idx]);
+			des = (char *)kmap_atomic(bo->page_obj[idx].page);
 		else
-			des = (char *)kmap(bo->pages[idx]);
+			des = (char *)kmap(bo->page_obj[idx].page);
 
 		if (!des) {
 			v4l2_err(&atomisp_dev,
@@ -327,7 +324,7 @@ int hmm_store(void *virt, const void *data, unsigned int bytes)
 			 */
 			kunmap_atomic(des - offset);
 		else
-			kunmap(bo->pages[idx]);
+			kunmap(bo->page_obj[idx].page);
 	}
 
 	return 0;
@@ -353,7 +350,7 @@ int hmm_set(void *virt, int c, unsigned int bytes)
 		idx = (ptr - bo->vm_node->start) >> PAGE_SHIFT;
 		offset = (ptr - bo->vm_node->start) - (idx << PAGE_SHIFT);
 
-		des = (char *)kmap(bo->pages[idx]);
+		des = (char *)kmap(bo->page_obj[idx].page);
 		if (!des) {
 			v4l2_err(&atomisp_dev,
 				    "kmap buffer object page failed: "
@@ -376,7 +373,7 @@ int hmm_set(void *virt, int c, unsigned int bytes)
 
 		clflush_cache_range(des, len);
 
-		kunmap(bo->pages[idx]);
+		kunmap(bo->page_obj[idx].page);
 	}
 
 	return 0;
@@ -392,7 +389,7 @@ phys_addr_t hmm_virt_to_phys(void *virt)
 	bo = hmm_bo_device_search_in_range(&bo_device, ptr);
 	if (!bo) {
 		v4l2_err(&atomisp_dev,
-			    "virt_to_phys - can not find buffer object contains "
+			    "can not find buffer object contains "
 			    "address 0x%x\n", ptr);
 		return -1;
 	}
@@ -400,7 +397,7 @@ phys_addr_t hmm_virt_to_phys(void *virt)
 	idx = (ptr - bo->vm_node->start) >> PAGE_SHIFT;
 	offset = (ptr - bo->vm_node->start) - (idx << PAGE_SHIFT);
 
-	return page_to_phys(bo->pages[idx]) + offset;
+	return page_to_phys(bo->page_obj[idx].page) + offset;
 }
 
 int hmm_mmap(struct vm_area_struct *vma, void *virt)
@@ -411,7 +408,7 @@ int hmm_mmap(struct vm_area_struct *vma, void *virt)
 	bo = hmm_bo_device_search_start(&bo_device, ptr);
 	if (!bo) {
 		v4l2_err(&atomisp_dev,
-			    "mmap - can not find buffer object start with "
+			    "can not find buffer object start with "
 			    "address 0x%x\n", (unsigned int)virt);
 		return -EINVAL;
 	}
@@ -428,10 +425,39 @@ void *hmm_vmap(void *virt)
 	bo = hmm_bo_device_search_start(&bo_device, ptr);
 	if (!bo) {
 		v4l2_err(&atomisp_dev,
-			    "vmap - can not find buffer object start with "
+			    "can not find buffer object start with "
 			    "address 0x%x\n", (unsigned int)virt);
 		return NULL;
 	}
 
 	return hmm_bo_vmap(bo);
+}
+
+int hmm_pool_register(unsigned int pool_size,
+			enum hmm_pool_type pool_type)
+{
+	switch (pool_type) {
+	case HMM_POOL_TYPE_RESERVED:
+		reserved_pool.pops = &reserved_pops;
+		return reserved_pool.pops->pool_init(&reserved_pool.pool_info,
+							pool_size);
+	default:
+		v4l2_err(&atomisp_dev, "invalid pool type.\n");
+		return -EINVAL;
+	}
+}
+
+void hmm_pool_unregister(enum hmm_pool_type pool_type)
+{
+	switch (pool_type) {
+	case HMM_POOL_TYPE_RESERVED:
+		if (reserved_pool.pops->pool_exit)
+			reserved_pool.pops->pool_exit(&reserved_pool.pool_info);
+		break;
+	default:
+		v4l2_err(&atomisp_dev, "invalid pool type.\n");
+		break;
+	}
+
+	return;
 }

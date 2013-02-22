@@ -23,6 +23,7 @@ atomisp-objs := \
 		hmm/hmm_bo.o \
 		hmm/hmm_bo_dev.o \
 		hmm/hmm_vm.o \
+		hmm/hmm_reserved_pool.o \
 		hrt/device_access.o \
 		hrt/memory_access.o \
 		hrt/hive_isp_css_mm_hrt.o
