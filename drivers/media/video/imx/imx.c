@@ -1589,7 +1589,7 @@ imx_g_frame_interval(struct v4l2_subdev *sd,
 	 * coarse_integration_time+1
 	 */
 	if (dev->coarse_itg > dev->lines_per_frame) {
-		if (dev->coarse_itg == 0xFFFF) {
+		if ((dev->coarse_itg + 4) < dev->coarse_itg) {
 			/*
 			 * we can not add 4 according to ds, as this will
 			 * cause over flow
