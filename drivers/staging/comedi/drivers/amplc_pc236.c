@@ -134,10 +134,8 @@ static const struct pc236_board pc236_boards[] = {
 
 #ifdef CONFIG_COMEDI_PCI
 static DEFINE_PCI_DEVICE_TABLE(pc236_pci_table) = {
-	{
-	PCI_VENDOR_ID_AMPLICON, PCI_DEVICE_ID_AMPLICON_PCI236,
-		    PCI_ANY_ID, PCI_ANY_ID, 0, 0, 0}, {
-	0}
+	{ PCI_DEVICE(PCI_VENDOR_ID_AMPLICON, PCI_DEVICE_ID_AMPLICON_PCI236) },
+	{0}
 };
 
 MODULE_DEVICE_TABLE(pci, pc236_pci_table);
@@ -470,7 +468,7 @@ static int pc236_detach(struct comedi_device *dev)
 {
 	printk(KERN_DEBUG "comedi%d: %s: detach\n", dev->minor,
 	       PC236_DRIVER_NAME);
-	if (devpriv)
+	if (dev->iobase)
 		pc236_intr_disable(dev);
 
 	if (dev->irq)

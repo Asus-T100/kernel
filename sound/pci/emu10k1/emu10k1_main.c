@@ -35,6 +35,7 @@
 #include <linux/kthread.h>
 #include <linux/delay.h>
 #include <linux/init.h>
+#include <linux/module.h>
 #include <linux/interrupt.h>
 #include <linux/pci.h>
 #include <linux/slab.h>
@@ -1415,6 +1416,15 @@ static struct snd_emu_chip_details emu_chip_details[] = {
 	 .ca0108_chip = 1,
 	 .spk71 = 1,
 	 .emu_model = EMU_MODEL_EMU1010B}, /* EMU 1010 new revision */
+	/* Tested by Maxim Kachur <mcdebugger@duganet.ru> 17th Oct 2012. */
+	/* This is MAEM8986, 0202 is MAEM8980 */
+	{.vendor = 0x1102, .device = 0x0008, .subsystem = 0x40071102,
+	 .driver = "Audigy2", .name = "E-mu 1010 PCIe [MAEM8986]",
+	 .id = "EMU1010",
+	 .emu10k2_chip = 1,
+	 .ca0108_chip = 1,
+	 .spk71 = 1,
+	 .emu_model = EMU_MODEL_EMU1010B}, /* EMU 1010 PCIe */
 	/* Tested by James@superbug.co.uk 8th July 2005. */
 	/* This is MAEM8810, 0202 is MAEM8820 */
 	{.vendor = 0x1102, .device = 0x0004, .subsystem = 0x40011102,
@@ -1471,6 +1481,18 @@ static struct snd_emu_chip_details emu_chip_details[] = {
 	 */
 	{.vendor = 0x1102, .device = 0x0004, .subsystem = 0x20061102,
 	 .driver = "Audigy2", .name = "SB Audigy 2 [SB0350b]",
+	 .id = "Audigy2",
+	 .emu10k2_chip = 1,
+	 .ca0102_chip = 1,
+	 .ca0151_chip = 1,
+	 .spk71 = 1,
+	 .spdif_bug = 1,
+	 .invert_shared_spdif = 1,	/* digital/analog switch swapped */
+	 .ac97_chip = 1} ,
+	/* 0x20051102 also has SB0350 written on it, treated as Audigy 2 ZS by
+	   Creative's Windows driver */
+	{.vendor = 0x1102, .device = 0x0004, .subsystem = 0x20051102,
+	 .driver = "Audigy2", .name = "SB Audigy 2 ZS [SB0350a]",
 	 .id = "Audigy2",
 	 .emu10k2_chip = 1,
 	 .ca0102_chip = 1,
@@ -1912,7 +1934,7 @@ int __devinit snd_emu10k1_create(struct snd_card *card,
 
 	/* irq handler must be registered after I/O ports are activated */
 	if (request_irq(pci->irq, snd_emu10k1_interrupt, IRQF_SHARED,
-			"EMU10K1", emu)) {
+			KBUILD_MODNAME, emu)) {
 		err = -EBUSY;
 		goto error;
 	}

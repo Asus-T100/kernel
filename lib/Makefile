@@ -10,19 +10,19 @@ endif
 lib-y := ctype.o string.o vsprintf.o cmdline.o \
 	 rbtree.o radix-tree.o dump_stack.o timerqueue.o\
 	 idr.o int_sqrt.o extable.o prio_tree.o \
-	 sha1.o irq_regs.o reciprocal_div.o argv_split.o \
+	 sha1.o md5.o irq_regs.o reciprocal_div.o argv_split.o \
 	 proportions.o prio_heap.o ratelimit.o show_mem.o \
-	 is_single_threaded.o plist.o decompress.o find_next_bit.o
+	 is_single_threaded.o plist.o decompress.o
 
 lib-$(CONFIG_MMU) += ioremap.o
 lib-$(CONFIG_SMP) += cpumask.o
 
-lib-y	+= kobject.o kref.o klist.o
+lib-y	+= kobject.o klist.o
 
 obj-y += bcd.o div64.o sort.o parser.o halfmd4.o debug_locks.o random32.o \
 	 bust_spinlocks.o hexdump.o kasprintf.o bitmap.o scatterlist.o \
 	 string_helpers.o gcd.o lcm.o list_sort.o uuid.o flex_array.o \
-	 bsearch.o find_last_bit.o
+	 bsearch.o find_last_bit.o find_next_bit.o llist.o
 obj-y += kstrtox.o
 obj-$(CONFIG_TEST_KSTRTOX) += test-kstrtox.o
 
@@ -33,6 +33,7 @@ endif
 
 lib-$(CONFIG_HOTPLUG) += kobject_uevent.o
 obj-$(CONFIG_GENERIC_IOMAP) += iomap.o
+obj-$(CONFIG_GENERIC_PCI_IOMAP) += pci_iomap.o
 obj-$(CONFIG_HAS_IOMEM) += iomap_copy.o devres.o
 obj-$(CONFIG_CHECK_SIGNATURE) += check_signature.o
 obj-$(CONFIG_DEBUG_LOCKING_API_SELFTESTS) += locking-selftest.o
@@ -61,6 +62,7 @@ obj-$(CONFIG_CRC_ITU_T)	+= crc-itu-t.o
 obj-$(CONFIG_CRC32)	+= crc32.o
 obj-$(CONFIG_CRC7)	+= crc7.o
 obj-$(CONFIG_LIBCRC32C)	+= libcrc32c.o
+obj-$(CONFIG_CRC8)	+= crc8.o
 obj-$(CONFIG_GENERIC_ALLOCATOR) += genalloc.o
 
 obj-$(CONFIG_ZLIB_INFLATE) += zlib_inflate/
@@ -112,6 +114,35 @@ obj-$(CONFIG_AVERAGE) += average.o
 
 obj-$(CONFIG_CPU_RMAP) += cpu_rmap.o
 
+obj-$(CONFIG_CORDIC) += cordic.o
+
+obj-$(CONFIG_DQL) += dynamic_queue_limits.o
+
+obj-$(CONFIG_MPILIB) += mpi/
+obj-$(CONFIG_SIGNATURE) += digsig.o
+
+obj-$(CONFIG_CLZ_TAB) += clz_tab.o
+
+obj-$(CONFIG_CORDIC) += cordic.o
+
+obj-$(CONFIG_MPILIB) += mpi/
+
+obj-$(CONFIG_CLZ_TAB) += clz_tab.o
+
+obj-$(CONFIG_DDR) += jedec_ddr_data.o
+
+obj-$(CONFIG_GENERIC_STRNCPY_FROM_USER) += strncpy_from_user.o
+obj-$(CONFIG_GENERIC_STRNLEN_USER) += strnlen_user.o
+
+obj-$(CONFIG_STMP_DEVICE) += stmp_device.o
+
+libfdt_files = fdt.o fdt_ro.o fdt_wip.o fdt_rw.o fdt_sw.o fdt_strerror.o
+$(foreach file, $(libfdt_files), \
+	$(eval CFLAGS_$(file) = -I$(src)/../scripts/dtc/libfdt))
+lib-$(CONFIG_LIBFDT) += $(libfdt_files)
+
+obj-$(CONFIG_ASN1) += asn1_decoder.o
+
 hostprogs-y	:= gen_crc32table
 clean-files	:= crc32table.h
 
@@ -122,3 +153,19 @@ quiet_cmd_crc32 = GEN     $@
 
 $(obj)/crc32table.h: $(obj)/gen_crc32table
 	$(call cmd,crc32)
+
+#
+# Build a fast OID lookip registry from include/linux/oid_registry.h
+#
+obj-$(CONFIG_OID_REGISTRY) += oid_registry.o
+
+$(obj)/oid_registry.c: $(obj)/oid_registry_data.c
+
+$(obj)/oid_registry_data.c: $(srctree)/include/linux/oid_registry.h \
+			    $(src)/build_OID_registry
+	$(call cmd,build_OID_registry)
+
+quiet_cmd_build_OID_registry = GEN     $@
+      cmd_build_OID_registry = perl $(srctree)/$(src)/build_OID_registry $< $@
+
+clean-files	+= oid_registry_data.c

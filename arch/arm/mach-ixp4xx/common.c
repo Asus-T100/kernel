@@ -17,7 +17,6 @@
 #include <linux/mm.h>
 #include <linux/init.h>
 #include <linux/serial.h>
-#include <linux/sched.h>
 #include <linux/tty.h>
 #include <linux/platform_device.h>
 #include <linux/serial_core.h>
@@ -28,14 +27,18 @@
 #include <linux/clocksource.h>
 #include <linux/clockchips.h>
 #include <linux/io.h>
+#include <linux/export.h>
+#include <linux/gpio.h>
 
 #include <mach/udc.h>
 #include <mach/hardware.h>
+#include <mach/io.h>
 #include <asm/uaccess.h>
 #include <asm/pgtable.h>
 #include <asm/page.h>
 #include <asm/irq.h>
 #include <asm/sched_clock.h>
+#include <asm/system_misc.h>
 
 #include <asm/mach/map.h>
 #include <asm/mach/irq.h>
@@ -105,7 +108,7 @@ static signed char irq2gpio[32] = {
 	 7,  8,  9, 10, 11, 12, -1, -1,
 };
 
-int gpio_to_irq(int gpio)
+static int ixp4xx_gpio_to_irq(struct gpio_chip *chip, unsigned gpio)
 {
 	int irq;
 
@@ -115,7 +118,6 @@ int gpio_to_irq(int gpio)
 	}
 	return -EINVAL;
 }
-EXPORT_SYMBOL(gpio_to_irq);
 
 int irq_to_gpio(unsigned int irq)
 {
@@ -235,6 +237,12 @@ static struct irq_chip ixp4xx_irq_chip = {
 void __init ixp4xx_init_irq(void)
 {
 	int i = 0;
+
+	/*
+	 * ixp4xx does not implement the XScale PWRMODE register
+	 * so it must not call cpu_do_idle().
+	 */
+	disable_hlt();
 
 	/* Route all sources to IRQ instead of FIQ */
 	*IXP4XX_ICLR = 0x0;
@@ -375,11 +383,55 @@ static struct platform_device *ixp46x_devices[] __initdata = {
 unsigned long ixp4xx_exp_bus_size;
 EXPORT_SYMBOL(ixp4xx_exp_bus_size);
 
+static int ixp4xx_gpio_direction_input(struct gpio_chip *chip, unsigned gpio)
+{
+	gpio_line_config(gpio, IXP4XX_GPIO_IN);
+
+	return 0;
+}
+
+static int ixp4xx_gpio_direction_output(struct gpio_chip *chip, unsigned gpio,
+					int level)
+{
+	gpio_line_set(gpio, level);
+	gpio_line_config(gpio, IXP4XX_GPIO_OUT);
+
+	return 0;
+}
+
+static int ixp4xx_gpio_get_value(struct gpio_chip *chip, unsigned gpio)
+{
+	int value;
+
+	gpio_line_get(gpio, &value);
+
+	return value;
+}
+
+static void ixp4xx_gpio_set_value(struct gpio_chip *chip, unsigned gpio,
+				  int value)
+{
+	gpio_line_set(gpio, value);
+}
+
+static struct gpio_chip ixp4xx_gpio_chip = {
+	.label			= "IXP4XX_GPIO_CHIP",
+	.direction_input	= ixp4xx_gpio_direction_input,
+	.direction_output	= ixp4xx_gpio_direction_output,
+	.get			= ixp4xx_gpio_get_value,
+	.set			= ixp4xx_gpio_set_value,
+	.to_irq			= ixp4xx_gpio_to_irq,
+	.base			= 0,
+	.ngpio			= 16,
+};
+
 void __init ixp4xx_sys_init(void)
 {
 	ixp4xx_exp_bus_size = SZ_16M;
 
 	platform_add_devices(ixp4xx_devices, ARRAY_SIZE(ixp4xx_devices));
+
+	gpiochip_add(&ixp4xx_gpio_chip);
 
 	if (cpu_is_ixp46x()) {
 		int region;
@@ -402,18 +454,9 @@ void __init ixp4xx_sys_init(void)
 /*
  * sched_clock()
  */
-static DEFINE_CLOCK_DATA(cd);
-
-unsigned long long notrace sched_clock(void)
+static u32 notrace ixp4xx_read_sched_clock(void)
 {
-	u32 cyc = *IXP4XX_OSTS;
-	return cyc_to_sched_clock(&cd, cyc, (u32)~0);
-}
-
-static void notrace ixp4xx_update_sched_clock(void)
-{
-	u32 cyc = *IXP4XX_OSTS;
-	update_sched_clock(&cd, cyc, (u32)~0);
+	return *IXP4XX_OSTS;
 }
 
 /*
@@ -429,7 +472,7 @@ unsigned long ixp4xx_timer_freq = IXP4XX_TIMER_FREQ;
 EXPORT_SYMBOL(ixp4xx_timer_freq);
 static void __init ixp4xx_clocksource_init(void)
 {
-	init_sched_clock(&cd, ixp4xx_update_sched_clock, 32, ixp4xx_timer_freq);
+	setup_sched_clock(ixp4xx_read_sched_clock, 32, ixp4xx_timer_freq);
 
 	clocksource_mmio_init(NULL, "OSTS", ixp4xx_timer_freq, 200, 32,
 			ixp4xx_clocksource_read);
@@ -500,3 +543,55 @@ static void __init ixp4xx_clockevent_init(void)
 
 	clockevents_register_device(&clockevent_ixp4xx);
 }
+
+void ixp4xx_restart(char mode, const char *cmd)
+{
+	if ( 1 && mode == 's') {
+		/* Jump into ROM at address 0 */
+		soft_restart(0);
+	} else {
+		/* Use on-chip reset capability */
+
+		/* set the "key" register to enable access to
+		 * "timer" and "enable" registers
+		 */
+		*IXP4XX_OSWK = IXP4XX_WDT_KEY;
+
+		/* write 0 to the timer register for an immediate reset */
+		*IXP4XX_OSWT = 0;
+
+		*IXP4XX_OSWE = IXP4XX_WDT_RESET_ENABLE | IXP4XX_WDT_COUNT_ENABLE;
+	}
+}
+
+#ifdef CONFIG_IXP4XX_INDIRECT_PCI
+/*
+ * In the case of using indirect PCI, we simply return the actual PCI
+ * address and our read/write implementation use that to drive the
+ * access registers. If something outside of PCI is ioremap'd, we
+ * fallback to the default.
+ */
+
+static void __iomem *ixp4xx_ioremap_caller(unsigned long addr, size_t size,
+					   unsigned int mtype, void *caller)
+{
+	if (!is_pci_memory(addr))
+		return __arm_ioremap_caller(addr, size, mtype, caller);
+
+	return (void __iomem *)addr;
+}
+
+static void ixp4xx_iounmap(void __iomem *addr)
+{
+	if (!is_pci_memory((__force u32)addr))
+		__iounmap(addr);
+}
+
+void __init ixp4xx_init_early(void)
+{
+	arch_ioremap_caller = ixp4xx_ioremap_caller;
+	arch_iounmap = ixp4xx_iounmap;
+}
+#else
+void __init ixp4xx_init_early(void) {}
+#endif

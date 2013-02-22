@@ -24,7 +24,6 @@
 
 #include <asm/pgtable.h>
 #include <asm/page.h>
-#include <asm/system.h>
 #include <asm/uaccess.h>
 #include <asm/ptrace.h>
 #include <asm/elf.h>
@@ -146,6 +145,9 @@ int ptrace_setxregs(struct task_struct *child, void __user *uregs)
 	struct pt_regs *regs = task_pt_regs(child);
 	elf_xtregs_t *xtregs = uregs;
 	int ret = 0;
+
+	if (!access_ok(VERIFY_READ, uregs, sizeof(elf_xtregs_t)))
+		return -EFAULT;
 
 #if XTENSA_HAVE_COPROCESSORS
 	/* Flush all coprocessors before we overwrite them. */
@@ -331,8 +333,7 @@ void do_syscall_trace_enter(struct pt_regs *regs)
 		do_syscall_trace();
 
 #if 0
-	if (unlikely(current->audit_context))
-		audit_syscall_entry(current, AUDIT_ARCH_XTENSA..);
+	audit_syscall_entry(current, AUDIT_ARCH_XTENSA..);
 #endif
 }
 

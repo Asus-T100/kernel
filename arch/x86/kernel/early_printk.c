@@ -9,12 +9,12 @@
 #include <linux/errno.h>
 #include <asm/io.h>
 #include <asm/processor.h>
+#include <asm/intel-mid.h>
 #include <asm/fcntl.h>
 #include <asm/setup.h>
 #include <xen/hvc-console.h>
 #include <asm/pci-direct.h>
 #include <asm/fixmap.h>
-#include <asm/mrst.h>
 #include <asm/pgtable.h>
 #include <linux/usb/ehci_def.h>
 
@@ -240,16 +240,21 @@ static int __init setup_early_printk(char *buf)
 		if (!strncmp(buf, "xen", 3))
 			early_console_register(&xenboot_console, keep);
 #endif
-#ifdef CONFIG_EARLY_PRINTK_MRST
+#ifdef CONFIG_EARLY_PRINTK_INTEL_MID
 		if (!strncmp(buf, "mrst", 4)) {
 			mrst_early_console_init();
 			early_console_register(&early_mrst_console, keep);
 		}
-
+		if (!strncmp(buf, "mrfld", 5)) {
+			mrfld_early_console_init();
+			early_console_register(&early_mrfld_console, keep);
+		}
 		if (!strncmp(buf, "hsu", 3)) {
-			hsu_early_console_init();
+			hsu_early_console_init(buf + 3);
 			early_console_register(&early_hsu_console, keep);
 		}
+		if (!strncmp(buf, "pti", 3))
+			early_console_register(&early_pti_console, keep);
 #endif
 		buf++;
 	}

@@ -22,6 +22,7 @@
 #ifdef __KERNEL__
 
 #include <linux/rwsem.h>
+#include <linux/wakelock.h>
 
 #define MAX_TOPO_LEVEL		6
 
@@ -86,6 +87,7 @@ struct usb_hcd {
 	struct urb		*status_urb;	/* the current status urb */
 #ifdef CONFIG_USB_SUSPEND
 	struct work_struct	wakeup_work;	/* for remote wakeup */
+	struct wake_lock	*wake_lock;	/* for add time-delay */
 #endif
 
 	/*
@@ -99,7 +101,6 @@ struct usb_hcd {
 	 */
 	unsigned long		flags;
 #define HCD_FLAG_HW_ACCESSIBLE		0	/* at full power */
-#define HCD_FLAG_SAW_IRQ		1
 #define HCD_FLAG_POLL_RH		2	/* poll for rh status? */
 #define HCD_FLAG_POLL_PENDING		3	/* status has changed? */
 #define HCD_FLAG_WAKEUP_PENDING		4	/* root hub is resuming? */
@@ -110,7 +111,6 @@ struct usb_hcd {
 	 * be slightly faster than test_bit().
 	 */
 #define HCD_HW_ACCESSIBLE(hcd)	((hcd)->flags & (1U << HCD_FLAG_HW_ACCESSIBLE))
-#define HCD_SAW_IRQ(hcd)	((hcd)->flags & (1U << HCD_FLAG_SAW_IRQ))
 #define HCD_POLL_RH(hcd)	((hcd)->flags & (1U << HCD_FLAG_POLL_RH))
 #define HCD_POLL_PENDING(hcd)	((hcd)->flags & (1U << HCD_FLAG_POLL_PENDING))
 #define HCD_WAKEUP_PENDING(hcd)	((hcd)->flags & (1U << HCD_FLAG_WAKEUP_PENDING))
@@ -128,8 +128,15 @@ struct usb_hcd {
 	unsigned		wireless:1;	/* Wireless USB HCD */
 	unsigned		authorized_default:1;
 	unsigned		has_tt:1;	/* Integrated TT in root hub */
+	unsigned		has_sram:1;	/* Local SRAM for caching */
+	unsigned		sram_no_payload:1; /* sram not for payload */
 
-	int			irq;		/* irq allocated */
+	/* Runtime-PM control field for host controller driver, set
+	*  rpm_control to 1 to let it work. */
+	unsigned		rpm_control:1;	/* Runtime-PM control flag */
+	int			rpm_resume;	/* Runtime-PM flow control */
+
+	unsigned int		irq;		/* irq allocated */
 	void __iomem		*regs;		/* device memory/io */
 	u64			rsrc_start;	/* memory/io resource start */
 	u64			rsrc_len;	/* memory/io resource length */
@@ -174,11 +181,18 @@ struct usb_hcd {
 	 * (ohci 32, uhci 1024, ehci 256/512/1024).
 	 */
 
+#ifdef CONFIG_USB_OTG
+	/* some otg HCDs need this to get USB_DEVICE_ADD and USB_DEVICE_REMOVE
+	 * from root hub, we do not want to use USB notification chain, since
+	 * it would be a over kill to use high level notification.
+	 */
+	void (*otg_notify) (struct usb_device *udev, unsigned action);
+#endif
 	/* The HC driver's private data is stored at the end of
 	 * this structure.
 	 */
 	unsigned long hcd_priv[0]
-			__attribute__ ((aligned(sizeof(unsigned long))));
+			__attribute__ ((aligned(sizeof(s64))));
 };
 
 /* 2.4 does this a bit differently ... */
@@ -343,6 +357,14 @@ struct hc_driver {
 		 * address is set
 		 */
 	int	(*update_device)(struct usb_hcd *, struct usb_device *);
+
+#ifdef CONFIG_USB_OTG
+	int	(*start_host) (struct usb_hcd *hcd);
+	int	(*stop_host) (struct usb_hcd *hcd);
+	int	(*reset_port) (struct usb_hcd *hcd);
+	int	(*release_host) (struct usb_hcd *hcd);
+#endif
+	int	(*set_usb2_hw_lpm)(struct usb_hcd *, struct usb_device *, int);
 };
 
 extern int usb_hcd_link_urb_to_ep(struct usb_hcd *hcd, struct urb *urb);
@@ -413,6 +435,8 @@ extern irqreturn_t usb_hcd_irq(int irq, void *__hcd);
 
 extern void usb_hc_died(struct usb_hcd *hcd);
 extern void usb_hcd_poll_rh_status(struct usb_hcd *hcd);
+extern void usb_wakeup_notification(struct usb_device *hdev,
+		unsigned int portnum);
 
 /* The D0/D1 toggle bits ... USE WITH CAUTION (they're almost hcd-internal) */
 #define usb_gettoggle(dev, ep, out) (((dev)->toggle[out] >> (ep)) & 1)

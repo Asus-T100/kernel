@@ -181,7 +181,7 @@ static u32 __devinit mpc512x_can_get_clock(struct platform_device *ofdev,
 
 		if (!clock_name || !strcmp(clock_name, "sys")) {
 			sys_clk = clk_get(&ofdev->dev, "sys_clk");
-			if (!sys_clk) {
+			if (IS_ERR(sys_clk)) {
 				dev_err(&ofdev->dev, "couldn't get sys_clk\n");
 				goto exit_unmap;
 			}
@@ -204,7 +204,7 @@ static u32 __devinit mpc512x_can_get_clock(struct platform_device *ofdev,
 
 		if (clocksrc < 0) {
 			ref_clk = clk_get(&ofdev->dev, "ref_clk");
-			if (!ref_clk) {
+			if (IS_ERR(ref_clk)) {
 				dev_err(&ofdev->dev, "couldn't get ref_clk\n");
 				goto exit_unmap;
 			}
@@ -411,17 +411,7 @@ static struct platform_driver mpc5xxx_can_driver = {
 #endif
 };
 
-static int __init mpc5xxx_can_init(void)
-{
-	return platform_driver_register(&mpc5xxx_can_driver);
-}
-module_init(mpc5xxx_can_init);
-
-static void __exit mpc5xxx_can_exit(void)
-{
-	platform_driver_unregister(&mpc5xxx_can_driver);
-};
-module_exit(mpc5xxx_can_exit);
+module_platform_driver(mpc5xxx_can_driver);
 
 MODULE_AUTHOR("Wolfgang Grandegger <wg@grandegger.com>");
 MODULE_DESCRIPTION("Freescale MPC5xxx CAN driver");

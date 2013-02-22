@@ -31,6 +31,7 @@
 #include <net/tcp_states.h>
 
 #include <linux/phonet.h>
+#include <linux/export.h>
 #include <net/phonet/phonet.h>
 #include <net/phonet/pep.h>
 #include <net/phonet/pn_dev.h>
@@ -71,6 +72,89 @@ static struct hlist_head *pn_hash_list(u16 obj)
 
 /*
  * Find address based on socket address, match only certain fields.
+ * Also grab sock if it was found. Remember to sock_put it later.
+ */
+struct sock *pn_find_sock_by_sa_and_skb(struct net *net,
+					const struct sockaddr_pn *spn,
+					struct sk_buff *skb)
+{
+	struct hlist_node *node;
+	struct sock *sknode;
+	struct sock *rval = NULL;
+	u16 obj = pn_sockaddr_get_object(spn);
+	u8 res = spn->spn_resource;
+	struct hlist_head *hlist = pnsocks.hlist;
+	unsigned h;
+	u8 type;
+	u8 subtype;
+
+	rcu_read_lock();
+
+	for (h = 0; h < PN_HASHSIZE; h++) {
+		sk_for_each_rcu(sknode, node, hlist) {
+			struct pn_sock *pn = pn_sk(sknode);
+			BUG_ON(!pn->sobject); /* unbound socket */
+			if (!net_eq(sock_net(sknode), net))
+				continue;
+
+			if ((PN_PREFIX == pn->resource) && (PN_PREFIX == res)) {
+
+				if (skb_shinfo(skb)->nr_frags) {
+					struct page *msg_page;
+					u8 *msg;
+					skb_frag_t *msg_frag = \
+						&skb_shinfo(skb)->frags[0];
+
+					msg_page = msg_frag->page.p;
+					msg = page_address(msg_page);
+
+					type = msg[msg_frag->page_offset + 2];
+					subtype = \
+						msg[msg_frag->page_offset + 3];
+
+				} else {
+					type = *(skb->data + 2);
+					subtype = *(skb->data + 3);
+				}
+
+				if (type	!= pn->resource_type)
+					continue;
+
+				if (subtype != pn->resource_subtype)
+					continue;
+			}
+
+			/* If port is zero, look up by resource */
+			if (pn_port(obj)) {
+				/* Look up socket by port */
+				if (pn_port(pn->sobject) != pn_port(obj))
+					continue;
+			} else {
+
+				/* If port is zero, look up by resource */
+				if (pn->resource != res)
+					continue;
+			}
+
+			if (pn_addr(pn->sobject) &&
+			    pn_addr(pn->sobject) != pn_addr(obj))
+				continue;
+
+			rval = sknode;
+			sock_hold(sknode);
+			goto out;
+		}
+		hlist++;
+	}
+
+out:
+	rcu_read_unlock();
+
+	return rval;
+}
+
+
+/* Find address based on socket address, match only certain fields.
  * Also grab sock if it was found. Remember to sock_put it later.
  */
 struct sock *pn_find_sock_by_sa(struct net *net, const struct sockaddr_pn *spn)
@@ -369,6 +453,25 @@ static int pn_socket_ioctl(struct socket *sock, unsigned int cmd,
 {
 	struct sock *sk = sock->sk;
 	struct pn_sock *pn = pn_sk(sk);
+
+	if (cmd == SIOCCONFIGTYPE) {
+		u16 type;
+		if (get_user(type, (__u16 __user *)arg))
+			return -EFAULT;
+
+		pn->resource_type = type;
+		return 0;
+	}
+
+	if (cmd == SIOCCONFIGSUBTYPE) {
+		u16 subtype;
+
+		if (get_user(subtype, (__u16 __user *)arg))
+			return -EFAULT;
+
+		pn->resource_subtype = subtype;
+		return 0;
+	}
 
 	if (cmd == SIOCPNGETOBJECT) {
 		struct net_device *dev;
@@ -695,7 +798,7 @@ int pn_sock_unbind_res(struct sock *sk, u8 res)
 
 	mutex_lock(&resource_mutex);
 	if (pnres.sk[res] == sk) {
-		rcu_assign_pointer(pnres.sk[res], NULL);
+		RCU_INIT_POINTER(pnres.sk[res], NULL);
 		ret = 0;
 	}
 	mutex_unlock(&resource_mutex);
@@ -714,7 +817,7 @@ void pn_sock_unbind_all_res(struct sock *sk)
 	mutex_lock(&resource_mutex);
 	for (res = 0; res < 256; res++) {
 		if (pnres.sk[res] == sk) {
-			rcu_assign_pointer(pnres.sk[res], NULL);
+			RCU_INIT_POINTER(pnres.sk[res], NULL);
 			match++;
 		}
 	}

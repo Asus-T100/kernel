@@ -13,9 +13,10 @@
 #ifndef __LINUX_POWER_SUPPLY_H__
 #define __LINUX_POWER_SUPPLY_H__
 
-#include <linux/device.h>
 #include <linux/workqueue.h>
 #include <linux/leds.h>
+
+struct device;
 
 /*
  * All voltages, currents, charges, energies, time and temperatures in uV,
@@ -74,6 +75,20 @@ enum {
 	POWER_SUPPLY_CAPACITY_LEVEL_FULL,
 };
 
+enum {
+	POWER_SUPPLY_SCOPE_UNKNOWN = 0,
+	POWER_SUPPLY_SCOPE_SYSTEM,
+	POWER_SUPPLY_SCOPE_DEVICE,
+};
+
+enum {
+	POWER_SUPPLY_CHARGE_CURRENT_LIMIT_ZERO = 0,
+	POWER_SUPPLY_CHARGE_CURRENT_LIMIT_LOW,
+	POWER_SUPPLY_CHARGE_CURRENT_LIMIT_MEDIUM,
+	POWER_SUPPLY_CHARGE_CURRENT_LIMIT_HIGH,
+	POWER_SUPPLY_CHARGE_CURRENT_LIMIT_NONE,
+};
+
 enum power_supply_property {
 	/* Properties of type `int' */
 	POWER_SUPPLY_PROP_STATUS = 0,
@@ -89,6 +104,7 @@ enum power_supply_property {
 	POWER_SUPPLY_PROP_VOLTAGE_MIN_DESIGN,
 	POWER_SUPPLY_PROP_VOLTAGE_NOW,
 	POWER_SUPPLY_PROP_VOLTAGE_AVG,
+	POWER_SUPPLY_PROP_VOLTAGE_OCV,
 	POWER_SUPPLY_PROP_CURRENT_MAX,
 	POWER_SUPPLY_PROP_CURRENT_NOW,
 	POWER_SUPPLY_PROP_CURRENT_AVG,
@@ -101,6 +117,14 @@ enum power_supply_property {
 	POWER_SUPPLY_PROP_CHARGE_NOW,
 	POWER_SUPPLY_PROP_CHARGE_AVG,
 	POWER_SUPPLY_PROP_CHARGE_COUNTER,
+	POWER_SUPPLY_CHARGE_CURRENT_LIMIT,
+	POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT,
+	POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT_MAX,
+	POWER_SUPPLY_PROP_CHARGE_CURRENT,
+	POWER_SUPPLY_PROP_MAX_CHARGE_CURRENT,
+	POWER_SUPPLY_PROP_CHARGE_VOLTAGE,
+	POWER_SUPPLY_PROP_MAX_CHARGE_VOLTAGE,
+	POWER_SUPPLY_PROP_INLMT,
 	POWER_SUPPLY_PROP_ENERGY_FULL_DESIGN,
 	POWER_SUPPLY_PROP_ENERGY_EMPTY_DESIGN,
 	POWER_SUPPLY_PROP_ENERGY_FULL,
@@ -110,12 +134,24 @@ enum power_supply_property {
 	POWER_SUPPLY_PROP_CAPACITY, /* in percents! */
 	POWER_SUPPLY_PROP_CAPACITY_LEVEL,
 	POWER_SUPPLY_PROP_TEMP,
+	POWER_SUPPLY_PROP_MAX_TEMP,
+	POWER_SUPPLY_PROP_MIN_TEMP,
 	POWER_SUPPLY_PROP_TEMP_AMBIENT,
 	POWER_SUPPLY_PROP_TIME_TO_EMPTY_NOW,
 	POWER_SUPPLY_PROP_TIME_TO_EMPTY_AVG,
 	POWER_SUPPLY_PROP_TIME_TO_FULL_NOW,
 	POWER_SUPPLY_PROP_TIME_TO_FULL_AVG,
 	POWER_SUPPLY_PROP_TYPE, /* use power_supply.type instead */
+	POWER_SUPPLY_PROP_CHARGE_TERM_CUR,
+	POWER_SUPPLY_PROP_ENABLE_CHARGING,
+	POWER_SUPPLY_PROP_ENABLE_CHARGER,
+	POWER_SUPPLY_PROP_CABLE_TYPE,
+	POWER_SUPPLY_PROP_PRIORITY,
+	POWER_SUPPLY_PROP_SCOPE,
+	/* Local extensions */
+	POWER_SUPPLY_PROP_USB_HC,
+	POWER_SUPPLY_PROP_USB_OTG,
+	POWER_SUPPLY_PROP_CHARGE_ENABLED,
 	/* Properties of type `const char *' */
 	POWER_SUPPLY_PROP_MODEL_NAME,
 	POWER_SUPPLY_PROP_MANUFACTURER,
@@ -123,20 +159,64 @@ enum power_supply_property {
 };
 
 enum power_supply_type {
-	POWER_SUPPLY_TYPE_BATTERY = 0,
+	POWER_SUPPLY_TYPE_UNKNOWN = 0,
+	POWER_SUPPLY_TYPE_BATTERY,
 	POWER_SUPPLY_TYPE_UPS,
 	POWER_SUPPLY_TYPE_MAINS,
 	POWER_SUPPLY_TYPE_USB,		/* Standard Downstream Port */
+	POWER_SUPPLY_TYPE_USB_INVAL,	/* Invalid Standard Downstream Port */
 	POWER_SUPPLY_TYPE_USB_DCP,	/* Dedicated Charging Port */
 	POWER_SUPPLY_TYPE_USB_CDP,	/* Charging Downstream Port */
 	POWER_SUPPLY_TYPE_USB_ACA,	/* Accessory Charger Adapters */
+	POWER_SUPPLY_TYPE_USB_HOST,	/* To support OTG devices */
 };
+
+enum power_supply_charger_event {
+	POWER_SUPPLY_CHARGER_EVENT_CONNECT = 0,
+	POWER_SUPPLY_CHARGER_EVENT_UPDATE,
+	POWER_SUPPLY_CHARGER_EVENT_RESUME,
+	POWER_SUPPLY_CHARGER_EVENT_SUSPEND,
+	POWER_SUPPLY_CHARGER_EVENT_DISCONNECT,
+};
+
+struct power_supply_charger_cap {
+	enum power_supply_charger_event	chrg_evt;
+	enum power_supply_type		chrg_type;
+	unsigned int			mA;	/* input current limit */
+};
+
+enum power_supply_charger_cable_type {
+	POWER_SUPPLY_CHARGER_TYPE_NONE = 0,
+	POWER_SUPPLY_CHARGER_TYPE_USB_SDP = 1 << 0,
+	POWER_SUPPLY_CHARGER_TYPE_USB_DCP = 1 << 1,
+	POWER_SUPPLY_CHARGER_TYPE_USB_CDP = 1 << 2,
+	POWER_SUPPLY_CHARGER_TYPE_USB_ACA = 1 << 3,
+	POWER_SUPPLY_CHARGER_TYPE_AC = 1 << 4,
+};
+
+#define POWER_SUPPLY_CHARGER_TYPE_USB \
+	(POWER_SUPPLY_CHARGER_TYPE_USB_SDP | \
+	POWER_SUPPLY_CHARGER_TYPE_USB_DCP | \
+	POWER_SUPPLY_CHARGER_TYPE_USB_CDP | \
+	POWER_SUPPLY_CHARGER_TYPE_USB_ACA)
 
 union power_supply_propval {
 	int intval;
 	const char *strval;
 };
 
+enum psy_throttle_action {
+
+	PSY_THROTTLE_DISABLE_CHARGER = 0,
+	PSY_THROTTLE_DISABLE_CHARGING,
+	PSY_THROTTLE_CC_LIMIT,
+	PSY_THROTTLE_INPUT_LIMIT,
+};
+
+struct power_supply_throttle {
+	enum psy_throttle_action throttle_action;
+	unsigned throttle_val;
+};
 struct power_supply {
 	const char *name;
 	enum power_supply_type type;
@@ -144,7 +224,10 @@ struct power_supply {
 	size_t num_properties;
 
 	char **supplied_to;
+	unsigned long supported_cables;
 	size_t num_supplicants;
+	struct power_supply_throttle *throttle_states;
+	size_t num_throttle_states;
 
 	int (*get_property)(struct power_supply *psy,
 			    enum power_supply_property psp,
@@ -156,6 +239,8 @@ struct power_supply {
 				     enum power_supply_property psp);
 	void (*external_power_changed)(struct power_supply *psy);
 	void (*set_charged)(struct power_supply *psy);
+	void (*charging_port_changed)(struct power_supply *psy,
+				struct power_supply_charger_cap *cap);
 
 	/* For APM emulation, think legacy userspace. */
 	int use_for_apm;
@@ -163,6 +248,12 @@ struct power_supply {
 	/* private */
 	struct device *dev;
 	struct work_struct changed_work;
+#ifdef CONFIG_THERMAL
+	struct thermal_zone_device *tzd;
+	struct thermal_cooling_device *tcd;
+#endif
+	spinlock_t changed_lock;
+	bool changed;
 
 #ifdef CONFIG_LEDS_TRIGGERS
 	struct led_trigger *charging_full_trig;
@@ -200,7 +291,11 @@ struct power_supply_info {
 extern struct power_supply *power_supply_get_by_name(char *name);
 extern void power_supply_changed(struct power_supply *psy);
 extern int power_supply_am_i_supplied(struct power_supply *psy);
+extern int power_supply_is_battery_connected(void);
 extern int power_supply_set_battery_charged(struct power_supply *psy);
+extern void power_supply_charger_event(struct power_supply_charger_cap cap);
+extern void power_supply_query_charger_caps(struct power_supply_charger_cap
+									*cap);
 
 #if defined(CONFIG_POWER_SUPPLY) || defined(CONFIG_POWER_SUPPLY_MODULE)
 extern int power_supply_is_system_supplied(void);
@@ -211,6 +306,7 @@ static inline int power_supply_is_system_supplied(void) { return -ENOSYS; }
 extern int power_supply_register(struct device *parent,
 				 struct power_supply *psy);
 extern void power_supply_unregister(struct power_supply *psy);
+extern int power_supply_powers(struct power_supply *psy, struct device *dev);
 
 /* For APM emulation, think legacy userspace. */
 extern struct class *power_supply_class;
@@ -251,6 +347,7 @@ static inline bool power_supply_is_watt_property(enum power_supply_property psp)
 	case POWER_SUPPLY_PROP_VOLTAGE_MIN_DESIGN:
 	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
 	case POWER_SUPPLY_PROP_VOLTAGE_AVG:
+	case POWER_SUPPLY_PROP_VOLTAGE_OCV:
 	case POWER_SUPPLY_PROP_POWER_NOW:
 		return 1;
 	default:

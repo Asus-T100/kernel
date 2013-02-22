@@ -18,6 +18,7 @@
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+#include <linux/export.h>
 #include <net/xfrm.h>
 
 u32 xfrm_replay_seqhi(struct xfrm_state *x, __be32 net_seq)
@@ -166,7 +167,7 @@ static void xfrm_replay_advance(struct xfrm_state *x, __be32 net_seq)
 	}
 
 	if (xfrm_aevent_is_on(xs_net(x)))
-		xfrm_replay_notify(x, XFRM_REPLAY_UPDATE);
+		x->repl->notify(x, XFRM_REPLAY_UPDATE);
 }
 
 static int xfrm_replay_overflow_bmp(struct xfrm_state *x, struct sk_buff *skb)
@@ -203,8 +204,6 @@ static int xfrm_replay_check_bmp(struct xfrm_state *x,
 	if (!replay_esn->replay_window)
 		return 0;
 
-	pos = (replay_esn->seq - 1) % replay_esn->replay_window;
-
 	if (unlikely(seq == 0))
 		goto err;
 
@@ -216,19 +215,18 @@ static int xfrm_replay_check_bmp(struct xfrm_state *x,
 		goto err;
 	}
 
-	if (pos >= diff) {
+	pos = (replay_esn->seq - 1) % replay_esn->replay_window;
+
+	if (pos >= diff)
 		bitnr = (pos - diff) % replay_esn->replay_window;
-		nr = bitnr >> 5;
-		bitnr = bitnr & 0x1F;
-		if (replay_esn->bmp[nr] & (1U << bitnr))
-			goto err_replay;
-	} else {
+	else
 		bitnr = replay_esn->replay_window - (diff - pos);
-		nr = bitnr >> 5;
-		bitnr = bitnr & 0x1F;
-		if (replay_esn->bmp[nr] & (1U << bitnr))
-			goto err_replay;
-	}
+
+	nr = bitnr >> 5;
+	bitnr = bitnr & 0x1F;
+	if (replay_esn->bmp[nr] & (1U << bitnr))
+		goto err_replay;
+
 	return 0;
 
 err_replay:
@@ -259,41 +257,29 @@ static void xfrm_replay_advance_bmp(struct xfrm_state *x, __be32 net_seq)
 				bitnr = bitnr & 0x1F;
 				replay_esn->bmp[nr] &=  ~(1U << bitnr);
 			}
-
-			bitnr = (pos + diff) % replay_esn->replay_window;
-			nr = bitnr >> 5;
-			bitnr = bitnr & 0x1F;
-			replay_esn->bmp[nr] |= (1U << bitnr);
 		} else {
 			nr = (replay_esn->replay_window - 1) >> 5;
 			for (i = 0; i <= nr; i++)
 				replay_esn->bmp[i] = 0;
-
-			bitnr = (pos + diff) % replay_esn->replay_window;
-			nr = bitnr >> 5;
-			bitnr = bitnr & 0x1F;
-			replay_esn->bmp[nr] |= (1U << bitnr);
 		}
 
+		bitnr = (pos + diff) % replay_esn->replay_window;
 		replay_esn->seq = seq;
 	} else {
 		diff = replay_esn->seq - seq;
 
-		if (pos >= diff) {
+		if (pos >= diff)
 			bitnr = (pos - diff) % replay_esn->replay_window;
-			nr = bitnr >> 5;
-			bitnr = bitnr & 0x1F;
-			replay_esn->bmp[nr] |= (1U << bitnr);
-		} else {
+		else
 			bitnr = replay_esn->replay_window - (diff - pos);
-			nr = bitnr >> 5;
-			bitnr = bitnr & 0x1F;
-			replay_esn->bmp[nr] |= (1U << bitnr);
-		}
 	}
 
+	nr = bitnr >> 5;
+	bitnr = bitnr & 0x1F;
+	replay_esn->bmp[nr] |= (1U << bitnr);
+
 	if (xfrm_aevent_is_on(xs_net(x)))
-		xfrm_replay_notify(x, XFRM_REPLAY_UPDATE);
+		x->repl->notify(x, XFRM_REPLAY_UPDATE);
 }
 
 static void xfrm_replay_notify_bmp(struct xfrm_state *x, int event)
@@ -390,8 +376,6 @@ static int xfrm_replay_check_esn(struct xfrm_state *x,
 	if (!wsize)
 		return 0;
 
-	pos = (replay_esn->seq - 1) % replay_esn->replay_window;
-
 	if (unlikely(seq == 0 && replay_esn->seq_hi == 0 &&
 		     (replay_esn->seq < replay_esn->replay_window - 1)))
 		goto err;
@@ -415,19 +399,18 @@ static int xfrm_replay_check_esn(struct xfrm_state *x,
 		goto err;
 	}
 
-	if (pos >= diff) {
+	pos = (replay_esn->seq - 1) % replay_esn->replay_window;
+
+	if (pos >= diff)
 		bitnr = (pos - diff) % replay_esn->replay_window;
-		nr = bitnr >> 5;
-		bitnr = bitnr & 0x1F;
-		if (replay_esn->bmp[nr] & (1U << bitnr))
-			goto err_replay;
-	} else {
+	else
 		bitnr = replay_esn->replay_window - (diff - pos);
-		nr = bitnr >> 5;
-		bitnr = bitnr & 0x1F;
-		if (replay_esn->bmp[nr] & (1U << bitnr))
-			goto err_replay;
-	}
+
+	nr = bitnr >> 5;
+	bitnr = bitnr & 0x1F;
+	if (replay_esn->bmp[nr] & (1U << bitnr))
+		goto err_replay;
+
 	return 0;
 
 err_replay:
@@ -435,6 +418,18 @@ err_replay:
 err:
 	xfrm_audit_state_replay(x, skb, net_seq);
 	return -EINVAL;
+}
+
+static int xfrm_replay_recheck_esn(struct xfrm_state *x,
+				   struct sk_buff *skb, __be32 net_seq)
+{
+	if (unlikely(XFRM_SKB_CB(skb)->seq.input.hi !=
+		     htonl(xfrm_replay_seqhi(x, net_seq)))) {
+			x->stats.replay_window++;
+			return -EINVAL;
+	}
+
+	return xfrm_replay_check_esn(x, skb, net_seq);
 }
 
 static void xfrm_replay_advance_esn(struct xfrm_state *x, __be32 net_seq)
@@ -465,22 +460,13 @@ static void xfrm_replay_advance_esn(struct xfrm_state *x, __be32 net_seq)
 				bitnr = bitnr & 0x1F;
 				replay_esn->bmp[nr] &=  ~(1U << bitnr);
 			}
-
-			bitnr = (pos + diff) % replay_esn->replay_window;
-			nr = bitnr >> 5;
-			bitnr = bitnr & 0x1F;
-			replay_esn->bmp[nr] |= (1U << bitnr);
 		} else {
 			nr = (replay_esn->replay_window - 1) >> 5;
 			for (i = 0; i <= nr; i++)
 				replay_esn->bmp[i] = 0;
-
-			bitnr = (pos + diff) % replay_esn->replay_window;
-			nr = bitnr >> 5;
-			bitnr = bitnr & 0x1F;
-			replay_esn->bmp[nr] |= (1U << bitnr);
 		}
 
+		bitnr = (pos + diff) % replay_esn->replay_window;
 		replay_esn->seq = seq;
 
 		if (unlikely(wrap > 0))
@@ -488,26 +474,24 @@ static void xfrm_replay_advance_esn(struct xfrm_state *x, __be32 net_seq)
 	} else {
 		diff = replay_esn->seq - seq;
 
-		if (pos >= diff) {
+		if (pos >= diff)
 			bitnr = (pos - diff) % replay_esn->replay_window;
-			nr = bitnr >> 5;
-			bitnr = bitnr & 0x1F;
-			replay_esn->bmp[nr] |= (1U << bitnr);
-		} else {
+		else
 			bitnr = replay_esn->replay_window - (diff - pos);
-			nr = bitnr >> 5;
-			bitnr = bitnr & 0x1F;
-			replay_esn->bmp[nr] |= (1U << bitnr);
-		}
 	}
 
+	nr = bitnr >> 5;
+	bitnr = bitnr & 0x1F;
+	replay_esn->bmp[nr] |= (1U << bitnr);
+
 	if (xfrm_aevent_is_on(xs_net(x)))
-		xfrm_replay_notify(x, XFRM_REPLAY_UPDATE);
+		x->repl->notify(x, XFRM_REPLAY_UPDATE);
 }
 
 static struct xfrm_replay xfrm_replay_legacy = {
 	.advance	= xfrm_replay_advance,
 	.check		= xfrm_replay_check,
+	.recheck	= xfrm_replay_check,
 	.notify		= xfrm_replay_notify,
 	.overflow	= xfrm_replay_overflow,
 };
@@ -515,6 +499,7 @@ static struct xfrm_replay xfrm_replay_legacy = {
 static struct xfrm_replay xfrm_replay_bmp = {
 	.advance	= xfrm_replay_advance_bmp,
 	.check		= xfrm_replay_check_bmp,
+	.recheck	= xfrm_replay_check_bmp,
 	.notify		= xfrm_replay_notify_bmp,
 	.overflow	= xfrm_replay_overflow_bmp,
 };
@@ -522,6 +507,7 @@ static struct xfrm_replay xfrm_replay_bmp = {
 static struct xfrm_replay xfrm_replay_esn = {
 	.advance	= xfrm_replay_advance_esn,
 	.check		= xfrm_replay_check_esn,
+	.recheck	= xfrm_replay_recheck_esn,
 	.notify		= xfrm_replay_notify_bmp,
 	.overflow	= xfrm_replay_overflow_esn,
 };

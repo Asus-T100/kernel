@@ -20,6 +20,7 @@
 #include <linux/mmc/card.h>
 #include <linux/mmc/sdio.h>
 #include <linux/mmc/sdio_func.h>
+#include <linux/ratelimit.h>
 
 #include "sdio_cis.h"
 #include "sdio_ops.h"
@@ -132,7 +133,7 @@ static int cis_tpl_parse(struct mmc_card *card, struct sdio_func *func,
 			ret = -EINVAL;
 		}
 		if (ret && ret != -EILSEQ && ret != -ENOENT) {
-			printk(KERN_ERR "%s: bad %s tuple 0x%02x (%u bytes)\n",
+			pr_err("%s: bad %s tuple 0x%02x (%u bytes)\n",
 			       mmc_hostname(card->host), tpl_descr, code, size);
 		}
 	} else {
@@ -313,7 +314,8 @@ static int sdio_read_cis(struct mmc_card *card, struct sdio_func *func)
 
 			if (ret == -ENOENT) {
 				/* warn about unknown tuples */
-				printk(KERN_WARNING "%s: queuing unknown"
+				printk_ratelimited(
+					KERN_WARNING "%s: queuing unknown"
 				       " CIS tuple 0x%02x (%u bytes)\n",
 				       mmc_hostname(card->host),
 				       tpl_code, tpl_link);

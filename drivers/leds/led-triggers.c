@@ -17,7 +17,6 @@
 #include <linux/list.h>
 #include <linux/spinlock.h>
 #include <linux/device.h>
-#include <linux/sysdev.h>
 #include <linux/timer.h>
 #include <linux/rwsem.h>
 #include <linux/leds.h>
@@ -103,6 +102,12 @@ EXPORT_SYMBOL_GPL(led_trigger_show);
 void led_trigger_set(struct led_classdev *led_cdev, struct led_trigger *trigger)
 {
 	unsigned long flags;
+	char *event = NULL;
+	char *envp[2];
+	const char *name;
+
+	name = trigger ? trigger->name : "none";
+	event = kasprintf(GFP_KERNEL, "TRIGGER=%s", name);
 
 	/* Remove any existing trigger */
 	if (led_cdev->trigger) {
@@ -122,6 +127,13 @@ void led_trigger_set(struct led_classdev *led_cdev, struct led_trigger *trigger)
 		led_cdev->trigger = trigger;
 		if (trigger->activate)
 			trigger->activate(led_cdev);
+	}
+
+	if (event) {
+		envp[0] = event;
+		envp[1] = NULL;
+		kobject_uevent_env(&led_cdev->dev->kobj, KOBJ_CHANGE, envp);
+		kfree(event);
 	}
 }
 EXPORT_SYMBOL_GPL(led_trigger_set);
@@ -261,9 +273,12 @@ void led_trigger_register_simple(const char *name, struct led_trigger **tp)
 	if (trigger) {
 		trigger->name = name;
 		err = led_trigger_register(trigger);
-		if (err < 0)
+		if (err < 0) {
+			kfree(trigger);
+			trigger = NULL;
 			printk(KERN_WARNING "LED trigger %s failed to register"
 				" (%d)\n", name, err);
+		}
 	} else
 		printk(KERN_WARNING "LED trigger %s failed to register"
 			" (no memory)\n", name);

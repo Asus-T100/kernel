@@ -59,13 +59,13 @@ const struct cred *dns_resolver_cache;
  *        "ip1,ip2,...#foo=bar"
  */
 static int
-dns_resolver_instantiate(struct key *key, const void *_data, size_t datalen)
+dns_resolver_instantiate(struct key *key, struct key_preparsed_payload *prep)
 {
 	struct user_key_payload *upayload;
 	unsigned long derrno;
 	int ret;
-	size_t result_len = 0;
-	const char *data = _data, *end, *opt;
+	size_t datalen = prep->datalen, result_len = 0;
+	const char *data = prep->data, *end, *opt;
 
 	kenter("%%%d,%s,'%*.*s',%zu",
 	       key->serial, key->description,
@@ -281,6 +281,7 @@ static int __init init_dns_resolver(void)
 
 	/* instruct request_key() to use this special keyring as a cache for
 	 * the results it looks up */
+	set_bit(KEY_FLAG_ROOT_CAN_CLEAR, &keyring->flags);
 	cred->thread_keyring = keyring;
 	cred->jit_keyring = KEY_REQKEY_DEFL_THREAD_KEYRING;
 	dns_resolver_cache = cred;

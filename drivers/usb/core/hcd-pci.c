@@ -187,7 +187,10 @@ int usb_hcd_pci_probe(struct pci_dev *dev, const struct pci_device_id *id)
 		return -ENODEV;
 	dev->current_state = PCI_D0;
 
-	if (!dev->irq) {
+	/* The xHCI driver supports MSI and MSI-X,
+	 * so don't fail if the BIOS doesn't provide a legacy IRQ.
+	 */
+	if (!dev->irq && (driver->flags & HCD_MASK) != HCD_USB3) {
 		dev_err(&dev->dev,
 			"Found HC with no IRQ.  Check BIOS/PCI %s setup!\n",
 			pci_name(dev));
@@ -242,13 +245,23 @@ int usb_hcd_pci_probe(struct pci_dev *dev, const struct pci_device_id *id)
 
 	pci_set_master(dev);
 
-	retval = usb_add_hcd(hcd, dev->irq, IRQF_DISABLED | IRQF_SHARED);
+	retval = usb_add_hcd(hcd, dev->irq, IRQF_SHARED);
 	if (retval != 0)
 		goto unmap_registers;
 	set_hs_companion(dev, hcd);
 
 	if (pci_dev_run_wake(dev))
 		pm_runtime_put_noidle(&dev->dev);
+
+	/* Enable Runtime-PM if hcd->rpm_control == 1 */
+	if (hcd->rpm_control) {
+		/* Check here to avoid to call pm_runtime_put_noidle() twice */
+		if (!pci_dev_run_wake(dev))
+			pm_runtime_put_noidle(&dev->dev);
+
+		pm_runtime_allow(&dev->dev);
+	}
+
 	return retval;
 
 unmap_registers:
@@ -293,6 +306,13 @@ void usb_hcd_pci_remove(struct pci_dev *dev)
 
 	if (pci_dev_run_wake(dev))
 		pm_runtime_get_noresume(&dev->dev);
+
+	if (hcd->rpm_control) {
+		if (!pci_dev_run_wake(dev))
+			pm_runtime_get_noresume(&dev->dev);
+
+		pm_runtime_forbid(&dev->dev);
+	}
 
 	/* Fake an interrupt request in order to give the driver a chance
 	 * to test whether the controller hardware has been removed (e.g.,
@@ -377,6 +397,7 @@ static int check_root_hub_suspended(struct device *dev)
 	return 0;
 }
 
+#if defined(CONFIG_PM_SLEEP) || defined(CONFIG_PM_RUNTIME)
 static int suspend_common(struct device *dev, bool do_wakeup)
 {
 	struct pci_dev		*pci_dev = to_pci_dev(dev);
@@ -453,10 +474,6 @@ static int resume_common(struct device *dev, int event)
 
 	pci_set_master(pci_dev);
 
-	clear_bit(HCD_FLAG_SAW_IRQ, &hcd->flags);
-	if (hcd->shared_hcd)
-		clear_bit(HCD_FLAG_SAW_IRQ, &hcd->shared_hcd->flags);
-
 	if (hcd->driver->pci_resume && !HCD_DEAD(hcd)) {
 		if (event != PM_EVENT_AUTO_RESUME)
 			wait_for_companions(pci_dev, hcd);
@@ -472,6 +489,7 @@ static int resume_common(struct device *dev, int event)
 	}
 	return retval;
 }
+#endif	/* SLEEP || RUNTIME */
 
 #ifdef	CONFIG_PM_SLEEP
 
@@ -565,11 +583,21 @@ static int hcd_pci_runtime_suspend(struct device *dev)
 
 static int hcd_pci_runtime_resume(struct device *dev)
 {
-	int	retval;
+	int			retval;
+	struct pci_dev		*pci_dev = to_pci_dev(dev);
+	struct usb_hcd		*hcd = pci_get_drvdata(pci_dev);
 
 	powermac_set_asic(to_pci_dev(dev), 1);
 	retval = resume_common(dev, PM_EVENT_AUTO_RESUME);
 	dev_dbg(dev, "hcd_pci_runtime_resume: %d\n", retval);
+
+	if (hcd->rpm_control) {
+		if (hcd->rpm_resume) {
+			struct device		*rpm_dev = hcd->self.controller;
+			hcd->rpm_resume = 0;
+			pm_runtime_put(rpm_dev);
+		}
+	}
 	return retval;
 }
 

@@ -713,6 +713,7 @@ static int llc_ui_recvmsg(struct kiocb *iocb, struct socket *sock,
 	struct sk_buff *skb = NULL;
 	struct sock *sk = sock->sk;
 	struct llc_sock *llc = llc_sk(sk);
+	unsigned long cpu_flags;
 	size_t copied = 0;
 	u32 peek_seq = 0;
 	u32 *seq;
@@ -833,14 +834,16 @@ static int llc_ui_recvmsg(struct kiocb *iocb, struct socket *sock,
 		copied += used;
 		len -= used;
 
-		if (!(flags & MSG_PEEK)) {
-			sk_eat_skb(sk, skb, 0);
-			*seq = 0;
-		}
-
 		/* For non stream protcols we get one packet per recvmsg call */
 		if (sk->sk_type != SOCK_STREAM)
 			goto copy_uaddr;
+
+		if (!(flags & MSG_PEEK)) {
+			spin_lock_irqsave(&sk->sk_receive_queue.lock, cpu_flags);
+			sk_eat_skb(sk, skb, 0);
+			spin_unlock_irqrestore(&sk->sk_receive_queue.lock, cpu_flags);
+			*seq = 0;
+		}
 
 		/* Partial read */
 		if (used + offset < skb->len)
@@ -857,6 +860,14 @@ copy_uaddr:
 	}
 	if (llc_sk(sk)->cmsg_flags)
 		llc_cmsg_rcv(msg, skb);
+
+	if (!(flags & MSG_PEEK)) {
+			spin_lock_irqsave(&sk->sk_receive_queue.lock, cpu_flags);
+			sk_eat_skb(sk, skb, 0);
+			spin_unlock_irqrestore(&sk->sk_receive_queue.lock, cpu_flags);
+			*seq = 0;
+	}
+
 	goto out;
 }
 
@@ -960,14 +971,13 @@ static int llc_ui_getname(struct socket *sock, struct sockaddr *uaddr,
 	struct sockaddr_llc sllc;
 	struct sock *sk = sock->sk;
 	struct llc_sock *llc = llc_sk(sk);
-	int rc = 0;
+	int rc = -EBADF;
 
 	memset(&sllc, 0, sizeof(sllc));
 	lock_sock(sk);
 	if (sock_flag(sk, SOCK_ZAPPED))
 		goto out;
 	*uaddrlen = sizeof(sllc);
-	memset(uaddr, 0, *uaddrlen);
 	if (peer) {
 		rc = -ENOTCONN;
 		if (sk->sk_state != TCP_ESTABLISHED)

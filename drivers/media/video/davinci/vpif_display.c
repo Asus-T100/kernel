@@ -29,7 +29,6 @@
 #include <linux/i2c.h>
 #include <linux/platform_device.h>
 #include <linux/io.h>
-#include <linux/version.h>
 #include <linux/slab.h>
 
 #include <asm/irq.h>
@@ -40,13 +39,12 @@
 #include <media/v4l2-ioctl.h>
 #include <media/v4l2-chip-ident.h>
 
-#include <mach/dm646x.h>
-
 #include "vpif_display.h"
 #include "vpif.h"
 
 MODULE_DESCRIPTION("TI DaVinci VPIF Display driver");
 MODULE_LICENSE("GPL");
+MODULE_VERSION(VPIF_DISPLAY_VERSION);
 
 #define DM646X_V4L2_STD (V4L2_STD_525_60 | V4L2_STD_625_50)
 
@@ -701,7 +699,6 @@ static int vpif_querycap(struct file *file, void  *priv,
 {
 	struct vpif_display_config *config = vpif_dev->platform_data;
 
-	cap->version = VPIF_DISPLAY_VERSION_CODE;
 	cap->capabilities = V4L2_CAP_VIDEO_OUTPUT | V4L2_CAP_STREAMING;
 	strlcpy(cap->driver, "vpif display", sizeof(cap->driver));
 	strlcpy(cap->bus_info, "Platform", sizeof(cap->bus_info));
@@ -1740,10 +1737,8 @@ static __init int vpif_probe(struct platform_device *pdev)
 		vfd->v4l2_dev = &vpif_obj.v4l2_dev;
 		vfd->release = video_device_release;
 		snprintf(vfd->name, sizeof(vfd->name),
-			 "DM646x_VPIFDisplay_DRIVER_V%d.%d.%d",
-			 (VPIF_DISPLAY_VERSION_CODE >> 16) & 0xff,
-			 (VPIF_DISPLAY_VERSION_CODE >> 8) & 0xff,
-			 (VPIF_DISPLAY_VERSION_CODE) & 0xff);
+			 "DM646x_VPIFDisplay_DRIVER_V%s",
+			 VPIF_DISPLAY_VERSION);
 
 		/* Set video_dev to the video device */
 		ch->video_dev = vfd;
@@ -1783,6 +1778,10 @@ static __init int vpif_probe(struct platform_device *pdev)
 		v4l2_prio_init(&ch->prio);
 		ch->common[VPIF_VIDEO_INDEX].fmt.type =
 						V4L2_BUF_TYPE_VIDEO_OUTPUT;
+		/* Locking in file operations other than ioctl should be done
+		   by the driver, not the V4L2 core.
+		   This driver needs auditing so that this flag can be removed. */
+		set_bit(V4L2_FL_LOCK_ALL_FOPS, &ch->video_dev->flags);
 		ch->video_dev->lock = &common->lock;
 
 		/* register video device */

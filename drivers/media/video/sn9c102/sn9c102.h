@@ -21,7 +21,6 @@
 #ifndef _SN9C102_H_
 #define _SN9C102_H_
 
-#include <linux/version.h>
 #include <linux/usb.h>
 #include <linux/videodev2.h>
 #include <media/v4l2-common.h>
@@ -183,7 +182,7 @@ do {                                                                          \
 #	define V4LDBG(level, name, cmd)                                       \
 do {                                                                          \
 	if (debug >= (level))                                                 \
-		v4l_print_ioctl(name, cmd);                                   \
+		v4l_printk_ioctl(name, cmd);                                  \
 } while (0)
 #	define KDBG(level, fmt, args...)                                      \
 do {                                                                          \

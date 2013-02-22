@@ -28,6 +28,8 @@ extern int usb_remove_device(struct usb_device *udev);
 
 extern int usb_get_device_descriptor(struct usb_device *dev,
 		unsigned int size);
+extern int usb_get_bos_descriptor(struct usb_device *dev);
+extern void usb_release_bos_descriptor(struct usb_device *dev);
 extern char *usb_cache_string(struct usb_device *udev, int index);
 extern int usb_set_configuration(struct usb_device *dev, int configuration);
 extern int usb_choose_configuration(struct usb_device *udev);
@@ -54,6 +56,7 @@ extern void usb_major_cleanup(void);
 
 extern int usb_suspend(struct device *dev, pm_message_t msg);
 extern int usb_resume(struct device *dev, pm_message_t msg);
+extern int usb_resume_complete(struct device *dev);
 
 extern int usb_port_suspend(struct usb_device *dev, pm_message_t msg);
 extern int usb_port_resume(struct usb_device *dev, pm_message_t msg);
@@ -80,6 +83,7 @@ extern int usb_remote_wakeup(struct usb_device *dev);
 extern int usb_runtime_suspend(struct device *dev);
 extern int usb_runtime_resume(struct device *dev);
 extern int usb_runtime_idle(struct device *dev);
+extern int usb_set_usb2_hardware_lpm(struct usb_device *udev, int enable);
 
 #else
 
@@ -94,6 +98,10 @@ static inline int usb_remote_wakeup(struct usb_device *udev)
 	return 0;
 }
 
+static inline int usb_set_usb2_hardware_lpm(struct usb_device *udev, int enable)
+{
+	return 0;
+}
 #endif
 
 extern struct bus_type usb_bus_type;
@@ -125,20 +133,6 @@ static inline int is_usb_device_driver(struct device_driver *drv)
 			for_devices;
 }
 
-/* translate USB error codes to codes user space understands */
-static inline int usb_translate_errors(int error_code)
-{
-	switch (error_code) {
-	case 0:
-	case -ENOMEM:
-	case -ENODEV:
-		return error_code;
-	default:
-		return -EIO;
-	}
-}
-
-
 /* for labeling diagnostics */
 extern const char *usbcore_name;
 
@@ -162,3 +156,11 @@ extern void usb_notify_remove_device(struct usb_device *udev);
 extern void usb_notify_add_bus(struct usb_bus *ubus);
 extern void usb_notify_remove_bus(struct usb_bus *ubus);
 
+/* uevent notify stuff */
+#define USB_WARNING_NOT_SUPPORT		1
+#define USB_WARNING_NO_RESPONSE		2
+#define USB_WARNING_VBUS_INVALID	3
+#define USB_WARNING_HUB_MAX_TIER	4
+#define USB_WARNING_INSUFF_POWER	5
+
+extern void usb_notify_warning(struct usb_device *udev, int error);

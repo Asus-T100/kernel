@@ -110,6 +110,7 @@ int con_debug_leave(void);
 #define CON_BOOT	(8)
 #define CON_ANYTIME	(16) /* Safe to call when cpu is offline */
 #define CON_BRL		(32) /* Used for a braille device */
+#define CON_IGNORELEVEL	(64) /* Used to ignore log level for a console */
 
 struct console {
 	char	name[16];
@@ -152,7 +153,7 @@ extern int braille_register_console(struct console *, int index,
 		char *console_options, char *braille_options);
 extern int braille_unregister_console(struct console *);
 extern void console_sysfs_notify(void);
-extern int console_suspend_enabled;
+extern bool console_suspend_enabled;
 
 /* Suspend and resume console messages over PM events */
 extern void suspend_console(void);

@@ -47,6 +47,7 @@
 #include <linux/usb.h>
 #include <linux/wait.h>
 #include <linux/usb/audio.h>
+#include <linux/module.h>
 
 #include <sound/core.h>
 #include <sound/control.h>
@@ -147,6 +148,7 @@ struct snd_usb_midi_out_endpoint {
 		struct snd_usb_midi_out_endpoint* ep;
 		struct snd_rawmidi_substream *substream;
 		int active;
+		bool autopm_reference;
 		uint8_t cable;		/* cable number << 4 */
 		uint8_t state;
 #define STATE_UNKNOWN	0
@@ -816,6 +818,22 @@ static struct usb_protocol_ops snd_usbmidi_raw_ops = {
 	.output = snd_usbmidi_raw_output,
 };
 
+/*
+ * FTDI protocol: raw MIDI bytes, but input packets have two modem status bytes.
+ */
+
+static void snd_usbmidi_ftdi_input(struct snd_usb_midi_in_endpoint* ep,
+				   uint8_t* buffer, int buffer_length)
+{
+	if (buffer_length > 2)
+		snd_usbmidi_input_data(ep, 0, buffer + 2, buffer_length - 2);
+}
+
+static struct usb_protocol_ops snd_usbmidi_ftdi_ops = {
+	.input = snd_usbmidi_ftdi_input,
+	.output = snd_usbmidi_raw_output,
+};
+
 static void snd_usbmidi_us122l_input(struct snd_usb_midi_in_endpoint *ep,
 				     uint8_t *buffer, int buffer_length)
 {
@@ -1059,7 +1077,8 @@ static int snd_usbmidi_output_open(struct snd_rawmidi_substream *substream)
 		return -ENXIO;
 	}
 	err = usb_autopm_get_interface(umidi->iface);
-	if (err < 0)
+	port->autopm_reference = err >= 0;
+	if (err < 0 && err != -EACCES)
 		return -EIO;
 	substream->runtime->private_data = port;
 	port->state = STATE_UNKNOWN;
@@ -1070,9 +1089,11 @@ static int snd_usbmidi_output_open(struct snd_rawmidi_substream *substream)
 static int snd_usbmidi_output_close(struct snd_rawmidi_substream *substream)
 {
 	struct snd_usb_midi* umidi = substream->rmidi->private_data;
+	struct usbmidi_out_port *port = substream->runtime->private_data;
 
 	substream_open(substream, 0);
-	usb_autopm_put_interface(umidi->iface);
+	if (port->autopm_reference)
+		usb_autopm_put_interface(umidi->iface);
 	return 0;
 }
 
@@ -2162,6 +2183,17 @@ int snd_usbmidi_create(struct snd_card *card,
 		err = snd_usbmidi_detect_per_port_endpoints(umidi, endpoints);
 		/* endpoint 1 is input-only */
 		endpoints[1].out_cables = 0;
+		break;
+	case QUIRK_MIDI_FTDI:
+		umidi->usb_protocol_ops = &snd_usbmidi_ftdi_ops;
+
+		/* set baud rate to 31250 (48 MHz / 16 / 96) */
+		err = usb_control_msg(umidi->dev, usb_sndctrlpipe(umidi->dev, 0),
+				      3, 0x40, 0x60, 0, NULL, 0, 1000);
+		if (err < 0)
+			break;
+
+		err = snd_usbmidi_detect_per_port_endpoints(umidi, endpoints);
 		break;
 	default:
 		snd_printd(KERN_ERR "invalid quirk type %d\n", quirk->type);

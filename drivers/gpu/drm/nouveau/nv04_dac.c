@@ -32,6 +32,7 @@
 #include "nouveau_connector.h"
 #include "nouveau_crtc.h"
 #include "nouveau_hw.h"
+#include "nouveau_gpio.h"
 #include "nvreg.h"
 
 int nv04_dac_output_offset(struct drm_encoder *encoder)
@@ -209,7 +210,7 @@ out:
 	NVWriteVgaCrtc(dev, 0, NV_CIO_CR_MODE_INDEX, saved_cr_mode);
 
 	if (blue == 0x18) {
-		NV_INFO(dev, "Load detected on head A\n");
+		NV_DEBUG(dev, "Load detected on head A\n");
 		return connector_status_connected;
 	}
 
@@ -220,7 +221,6 @@ uint32_t nv17_dac_sample_load(struct drm_encoder *encoder)
 {
 	struct drm_device *dev = encoder->dev;
 	struct drm_nouveau_private *dev_priv = dev->dev_private;
-	struct nouveau_gpio_engine *gpio = &dev_priv->engine.gpio;
 	struct dcb_entry *dcb = nouveau_encoder(encoder)->dcb;
 	uint32_t sample, testval, regoffset = nv04_dac_output_offset(encoder);
 	uint32_t saved_powerctrl_2 = 0, saved_powerctrl_4 = 0, saved_routput,
@@ -252,11 +252,11 @@ uint32_t nv17_dac_sample_load(struct drm_encoder *encoder)
 		nvWriteMC(dev, NV_PBUS_POWERCTRL_4, saved_powerctrl_4 & 0xffffffcf);
 	}
 
-	saved_gpio1 = gpio->get(dev, DCB_GPIO_TVDAC1);
-	saved_gpio0 = gpio->get(dev, DCB_GPIO_TVDAC0);
+	saved_gpio1 = nouveau_gpio_func_get(dev, DCB_GPIO_TVDAC1);
+	saved_gpio0 = nouveau_gpio_func_get(dev, DCB_GPIO_TVDAC0);
 
-	gpio->set(dev, DCB_GPIO_TVDAC1, dcb->type == OUTPUT_TV);
-	gpio->set(dev, DCB_GPIO_TVDAC0, dcb->type == OUTPUT_TV);
+	nouveau_gpio_func_set(dev, DCB_GPIO_TVDAC1, dcb->type == OUTPUT_TV);
+	nouveau_gpio_func_set(dev, DCB_GPIO_TVDAC0, dcb->type == OUTPUT_TV);
 
 	msleep(4);
 
@@ -306,8 +306,8 @@ uint32_t nv17_dac_sample_load(struct drm_encoder *encoder)
 		nvWriteMC(dev, NV_PBUS_POWERCTRL_4, saved_powerctrl_4);
 	nvWriteMC(dev, NV_PBUS_POWERCTRL_2, saved_powerctrl_2);
 
-	gpio->set(dev, DCB_GPIO_TVDAC1, saved_gpio1);
-	gpio->set(dev, DCB_GPIO_TVDAC0, saved_gpio0);
+	nouveau_gpio_func_set(dev, DCB_GPIO_TVDAC1, saved_gpio1);
+	nouveau_gpio_func_set(dev, DCB_GPIO_TVDAC0, saved_gpio0);
 
 	return sample;
 }
@@ -323,7 +323,7 @@ nv17_dac_detect(struct drm_encoder *encoder, struct drm_connector *connector)
 
 	if (nv17_dac_sample_load(encoder) &
 	    NV_PRAMDAC_TEST_CONTROL_SENSEB_ALLHI) {
-		NV_INFO(dev, "Load detected on output %c\n",
+		NV_DEBUG(dev, "Load detected on output %c\n",
 			'@' + ffs(dcb->or));
 		return connector_status_connected;
 	} else {
@@ -398,7 +398,7 @@ static void nv04_dac_commit(struct drm_encoder *encoder)
 
 	helper->dpms(encoder, DRM_MODE_DPMS_ON);
 
-	NV_INFO(dev, "Output %s is running on CRTC %d using output %c\n",
+	NV_DEBUG(dev, "Output %s is running on CRTC %d using output %c\n",
 		drm_get_connector_name(&nouveau_encoder_connector_get(nv_encoder)->base),
 		nv_crtc->index, '@' + ffs(nv_encoder->dcb->or));
 }
@@ -447,7 +447,7 @@ static void nv04_dac_dpms(struct drm_encoder *encoder, int mode)
 		return;
 	nv_encoder->last_dpms = mode;
 
-	NV_INFO(dev, "Setting dpms mode %d on vga encoder (output %d)\n",
+	NV_DEBUG(dev, "Setting dpms mode %d on vga encoder (output %d)\n",
 		     mode, nv_encoder->dcb->index);
 
 	nv04_dac_update_dacclk(encoder, mode == DRM_MODE_DPMS_ON);

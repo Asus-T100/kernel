@@ -11,6 +11,7 @@
 struct irq_affinity_notify;
 struct proc_dir_entry;
 struct timer_rand_state;
+struct module;
 /**
  * struct irq_desc - interrupt descriptor
  * @irq_data:		per irq and chip data passed down to chip functions
@@ -38,7 +39,6 @@ struct timer_rand_state;
  */
 struct irq_desc {
 	struct irq_data		irq_data;
-	struct timer_rand_state *timer_rand_state;
 	unsigned int __percpu	*kstat_irqs;
 	irq_flow_handler_t	handle_irq;
 #ifdef CONFIG_IRQ_PREFLOW_FASTEOI
@@ -53,6 +53,7 @@ struct irq_desc {
 	unsigned long		last_unhandled;	/* Aging timer for unhandled count */
 	unsigned int		irqs_unhandled;
 	raw_spinlock_t		lock;
+	struct cpumask		*percpu_enabled;
 #ifdef CONFIG_SMP
 	const struct cpumask	*affinity_hint;
 	struct irq_affinity_notify *affinity_notify;
@@ -66,6 +67,7 @@ struct irq_desc {
 #ifdef CONFIG_PROC_FS
 	struct proc_dir_entry	*dir;
 #endif
+	struct module		*owner;
 	const char		*name;
 } ____cacheline_internodealigned_in_smp;
 
@@ -118,6 +120,13 @@ static inline int irq_has_action(unsigned int irq)
 {
 	struct irq_desc *desc = irq_to_desc(irq);
 	return desc->action != NULL;
+}
+
+/* Test to see if the IRQ is chained */
+static inline int irq_is_chained(unsigned int irq)
+{
+	struct irq_desc *desc = irq_to_desc(irq);
+	return desc->status_use_accessors & IRQ_CHAINED;
 }
 
 /* caller has locked the irq_desc and both params are valid */

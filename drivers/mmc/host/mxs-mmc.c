@@ -37,10 +37,11 @@
 #include <linux/mmc/sdio.h>
 #include <linux/gpio.h>
 #include <linux/regulator/consumer.h>
+#include <linux/module.h>
+#include <linux/fsl/mxs-dma.h>
 
 #include <mach/mxs.h>
 #include <mach/common.h>
-#include <mach/dma.h>
 #include <mach/mmc.h>
 
 #define DRIVER_NAME	"mxs-mmc"
@@ -153,6 +154,7 @@ struct mxs_mmc_host {
 	struct dma_chan         	*dmach;
 	struct mxs_dma_data		dma_data;
 	unsigned int			dma_dir;
+	enum dma_transfer_direction	slave_dirn;
 	u32				ssp_pio_words[SSP_PIO_NUM];
 
 	unsigned int			version;
@@ -278,10 +280,10 @@ static irqreturn_t mxs_mmc_irq_handler(int irq, void *dev_id)
 	writel(stat & MXS_MMC_IRQ_BITS,
 	       host->base + HW_SSP_CTRL1 + MXS_CLR_ADDR);
 
+	spin_unlock(&host->lock);
+
 	if ((stat & BM_SSP_CTRL1_SDIO_IRQ) && (stat & BM_SSP_CTRL1_SDIO_IRQ_EN))
 		mmc_signal_sdio_irq(host->mmc);
-
-	spin_unlock(&host->lock);
 
 	if (stat & BM_SSP_CTRL1_RESP_TIMEOUT_IRQ)
 		cmd->error = -ETIMEDOUT;
@@ -303,7 +305,7 @@ static irqreturn_t mxs_mmc_irq_handler(int irq, void *dev_id)
 }
 
 static struct dma_async_tx_descriptor *mxs_mmc_prep_dma(
-	struct mxs_mmc_host *host, unsigned int append)
+	struct mxs_mmc_host *host, unsigned long flags)
 {
 	struct dma_async_tx_descriptor *desc;
 	struct mmc_data *data = host->data;
@@ -322,8 +324,8 @@ static struct dma_async_tx_descriptor *mxs_mmc_prep_dma(
 		sg_len = SSP_PIO_NUM;
 	}
 
-	desc = host->dmach->device->device_prep_slave_sg(host->dmach,
-				sgl, sg_len, host->dma_dir, append);
+	desc = dmaengine_prep_slave_sg(host->dmach,
+				sgl, sg_len, host->slave_dirn, flags);
 	if (desc) {
 		desc->callback = mxs_mmc_dma_irq_callback;
 		desc->callback_param = host;
@@ -355,11 +357,13 @@ static void mxs_mmc_bc(struct mxs_mmc_host *host)
 	host->ssp_pio_words[1] = cmd0;
 	host->ssp_pio_words[2] = cmd1;
 	host->dma_dir = DMA_NONE;
-	desc = mxs_mmc_prep_dma(host, 0);
+	host->slave_dirn = DMA_TRANS_NONE;
+	desc = mxs_mmc_prep_dma(host, DMA_CTRL_ACK);
 	if (!desc)
 		goto out;
 
 	dmaengine_submit(desc);
+	dma_async_issue_pending(host->dmach);
 	return;
 
 out:
@@ -394,11 +398,13 @@ static void mxs_mmc_ac(struct mxs_mmc_host *host)
 	host->ssp_pio_words[1] = cmd0;
 	host->ssp_pio_words[2] = cmd1;
 	host->dma_dir = DMA_NONE;
-	desc = mxs_mmc_prep_dma(host, 0);
+	host->slave_dirn = DMA_TRANS_NONE;
+	desc = mxs_mmc_prep_dma(host, DMA_CTRL_ACK);
 	if (!desc)
 		goto out;
 
 	dmaengine_submit(desc);
+	dma_async_issue_pending(host->dmach);
 	return;
 
 out:
@@ -432,6 +438,7 @@ static void mxs_mmc_adtc(struct mxs_mmc_host *host)
 	int i;
 
 	unsigned short dma_data_dir, timeout;
+	enum dma_transfer_direction slave_dirn;
 	unsigned int data_size = 0, log2_blksz;
 	unsigned int blocks = data->blocks;
 
@@ -447,9 +454,11 @@ static void mxs_mmc_adtc(struct mxs_mmc_host *host)
 
 	if (data->flags & MMC_DATA_WRITE) {
 		dma_data_dir = DMA_TO_DEVICE;
+		slave_dirn = DMA_MEM_TO_DEV;
 		read = 0;
 	} else {
 		dma_data_dir = DMA_FROM_DEVICE;
+		slave_dirn = DMA_DEV_TO_MEM;
 		read = BM_SSP_CTRL0_READ;
 	}
 
@@ -509,6 +518,7 @@ static void mxs_mmc_adtc(struct mxs_mmc_host *host)
 	host->ssp_pio_words[1] = cmd0;
 	host->ssp_pio_words[2] = cmd1;
 	host->dma_dir = DMA_NONE;
+	host->slave_dirn = DMA_TRANS_NONE;
 	desc = mxs_mmc_prep_dma(host, 0);
 	if (!desc)
 		goto out;
@@ -517,11 +527,13 @@ static void mxs_mmc_adtc(struct mxs_mmc_host *host)
 	WARN_ON(host->data != NULL);
 	host->data = data;
 	host->dma_dir = dma_data_dir;
-	desc = mxs_mmc_prep_dma(host, 1);
+	host->slave_dirn = slave_dirn;
+	desc = mxs_mmc_prep_dma(host, DMA_PREP_INTERRUPT | DMA_CTRL_ACK);
 	if (!desc)
 		goto out;
 
 	dmaengine_submit(desc);
+	dma_async_issue_pending(host->dmach);
 	return;
 out:
 	dev_warn(mmc_dev(host->mmc),
@@ -564,40 +576,38 @@ static void mxs_mmc_request(struct mmc_host *mmc, struct mmc_request *mrq)
 
 static void mxs_mmc_set_clk_rate(struct mxs_mmc_host *host, unsigned int rate)
 {
-	unsigned int ssp_rate, bit_rate;
-	u32 div1, div2;
+	unsigned int ssp_clk, ssp_sck;
+	u32 clock_divide, clock_rate;
 	u32 val;
 
-	ssp_rate = clk_get_rate(host->clk);
+	ssp_clk = clk_get_rate(host->clk);
 
-	for (div1 = 2; div1 < 254; div1 += 2) {
-		div2 = ssp_rate / rate / div1;
-		if (div2 < 0x100)
+	for (clock_divide = 2; clock_divide <= 254; clock_divide += 2) {
+		clock_rate = DIV_ROUND_UP(ssp_clk, rate * clock_divide);
+		clock_rate = (clock_rate > 0) ? clock_rate - 1 : 0;
+		if (clock_rate <= 255)
 			break;
 	}
 
-	if (div1 >= 254) {
+	if (clock_divide > 254) {
 		dev_err(mmc_dev(host->mmc),
 			"%s: cannot set clock to %d\n", __func__, rate);
 		return;
 	}
 
-	if (div2 == 0)
-		bit_rate = ssp_rate / div1;
-	else
-		bit_rate = ssp_rate / div1 / div2;
+	ssp_sck = ssp_clk / clock_divide / (1 + clock_rate);
 
 	val = readl(host->base + HW_SSP_TIMING);
 	val &= ~(BM_SSP_TIMING_CLOCK_DIVIDE | BM_SSP_TIMING_CLOCK_RATE);
-	val |= BF_SSP(div1, TIMING_CLOCK_DIVIDE);
-	val |= BF_SSP(div2 - 1, TIMING_CLOCK_RATE);
+	val |= BF_SSP(clock_divide, TIMING_CLOCK_DIVIDE);
+	val |= BF_SSP(clock_rate, TIMING_CLOCK_RATE);
 	writel(val, host->base + HW_SSP_TIMING);
 
-	host->clk_rate = bit_rate;
+	host->clk_rate = ssp_sck;
 
 	dev_dbg(mmc_dev(host->mmc),
-		"%s: div1 %d, div2 %d, ssp %d, bit %d, rate %d\n",
-		__func__, div1, div2, ssp_rate, bit_rate, rate);
+		"%s: clock_divide %d, clock_rate %d, ssp_clk %d, rate_actual %d, rate_requested %d\n",
+		__func__, clock_divide, clock_rate, ssp_clk, ssp_sck, rate);
 }
 
 static void mxs_mmc_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
@@ -714,7 +724,7 @@ static int mxs_mmc_probe(struct platform_device *pdev)
 		ret = PTR_ERR(host->clk);
 		goto out_iounmap;
 	}
-	clk_enable(host->clk);
+	clk_prepare_enable(host->clk);
 
 	mxs_mmc_reset(host);
 
@@ -773,7 +783,7 @@ out_free_dma:
 	if (host->dmach)
 		dma_release_channel(host->dmach);
 out_clk_put:
-	clk_disable(host->clk);
+	clk_disable_unprepare(host->clk);
 	clk_put(host->clk);
 out_iounmap:
 	iounmap(host->base);
@@ -799,7 +809,7 @@ static int mxs_mmc_remove(struct platform_device *pdev)
 	if (host->dmach)
 		dma_release_channel(host->dmach);
 
-	clk_disable(host->clk);
+	clk_disable_unprepare(host->clk);
 	clk_put(host->clk);
 
 	iounmap(host->base);
@@ -820,7 +830,7 @@ static int mxs_mmc_suspend(struct device *dev)
 
 	ret = mmc_suspend_host(mmc);
 
-	clk_disable(host->clk);
+	clk_disable_unprepare(host->clk);
 
 	return ret;
 }
@@ -831,7 +841,7 @@ static int mxs_mmc_resume(struct device *dev)
 	struct mxs_mmc_host *host = mmc_priv(mmc);
 	int ret = 0;
 
-	clk_enable(host->clk);
+	clk_prepare_enable(host->clk);
 
 	ret = mmc_resume_host(mmc);
 
@@ -856,18 +866,7 @@ static struct platform_driver mxs_mmc_driver = {
 	},
 };
 
-static int __init mxs_mmc_init(void)
-{
-	return platform_driver_register(&mxs_mmc_driver);
-}
-
-static void __exit mxs_mmc_exit(void)
-{
-	platform_driver_unregister(&mxs_mmc_driver);
-}
-
-module_init(mxs_mmc_init);
-module_exit(mxs_mmc_exit);
+module_platform_driver(mxs_mmc_driver);
 
 MODULE_DESCRIPTION("FREESCALE MXS MMC peripheral");
 MODULE_AUTHOR("Freescale Semiconductor");

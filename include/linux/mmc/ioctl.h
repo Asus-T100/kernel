@@ -1,5 +1,8 @@
 #ifndef LINUX_MMC_IOCTL_H
 #define LINUX_MMC_IOCTL_H
+
+#include <linux/types.h>
+
 struct mmc_ioc_cmd {
 	/* Implies direction of data.  true = write, false = read */
 	int write_flag;
@@ -44,6 +47,18 @@ struct mmc_ioc_cmd {
 
 #define MMC_IOC_CMD _IOWR(MMC_BLOCK_MAJOR, 0, struct mmc_ioc_cmd)
 
+struct mmc_ioc_rpmb_req {
+	__u16 type;			/* RPMB request type */
+	__u16 *result;			/* response or request result */
+	__u16 blk_cnt;			/* Number of blocks(half sector 256B) */
+	__u16 addr;			/* data address */
+	__u32 *wc;			/* write counter */
+	__u8 *nonce;			/* Ramdom number */
+	__u8 *data;			/* Buffer of the user data */
+	__u8 *mac;			/* Message Authentication Code */
+};
+
+#define MMC_IOC_RPMB_REQ _IOWR(MMC_BLOCK_MAJOR, 1, struct mmc_ioc_rpmb_req)
 /*
  * Since this ioctl is only meant to enhance (and not replace) normal access
  * to the mmc bus device, an upper data transfer limit of MMC_IOC_MAX_BYTES
@@ -51,4 +66,4 @@ struct mmc_ioc_cmd {
  * block device operations.
  */
 #define MMC_IOC_MAX_BYTES  (512L * 256)
-#endif  /* LINUX_MMC_IOCTL_H */
+#endif /* LINUX_MMC_IOCTL_H */

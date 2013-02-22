@@ -14,11 +14,45 @@ menuconfig THERMAL
 	  If you want this support, you should say Y or M here.
 
 config THERMAL_HWMON
-	bool "Hardware monitoring support"
+	bool
 	depends on THERMAL
 	depends on HWMON=y || HWMON=THERMAL
-	help
-	  The generic thermal sysfs driver's hardware monitoring support
-	  requires a 2.10.7/3.0.2 or later lm-sensors userspace.
+	default y
 
-	  Say Y if your user-space is new enough.
+config SPEAR_THERMAL
+	bool "SPEAr thermal sensor driver"
+	depends on THERMAL
+	depends on PLAT_SPEAR
+	help
+	  Enable this to plug the SPEAr thermal sensor driver into the Linux
+	  thermal framework
+
+config DEBUG_THERMAL
+	bool "Thermal debug information support"
+	depends on THERMAL
+	help
+	  This enables debug sysfs interfaces/information for Thermal
+	  subsystem.
+
+	  Saying Y here will expose extra sysfs nodes under
+	  /sys/class/thermal/thermal_zoneX/
+
+config SENSORS_THERMAL_MRFLD
+        tristate "Thermal driver for Intel Merrifield platform"
+        depends on THERMAL && INTEL_SCU_IPC && BASINCOVE_GPADC
+        help
+          Say Y here to enable thermal driver on Intel Merrifield
+          platform.
+
+          To load this driver as a module, select M here. The module
+          will be called "mrfl_thermal"
+
+config SOC_THERMAL
+	tristate "SoC Thermal driver"
+	depends on THERMAL
+	help
+	  SoC Thermal driver registers to Generic Thermal Framework.
+	  Exposes SoC DTS and aux trip point values through the framework.
+
+          Say Y here to enable thermal driver on Intel Merrifield
+          platform. To load this driver as a module, select M here.

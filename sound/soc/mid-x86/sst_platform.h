@@ -27,37 +27,124 @@
 #ifndef __SST_PLATFORMDRV_H__
 #define __SST_PLATFORMDRV_H__
 
-#define SST_MONO		1
-#define SST_STEREO		2
-#define SST_MAX_CAP		5
+#include <sound/soc.h>
 
-#define SST_MIN_RATE		8000
-#define SST_MAX_RATE		48000
-#define SST_MIN_CHANNEL		1
-#define SST_MAX_CHANNEL		5
-#define SST_MAX_BUFFER		(800*1024)
-#define SST_MIN_BUFFER		(800*1024)
-#define SST_MIN_PERIOD_BYTES	32
-#define SST_MAX_PERIOD_BYTES	SST_MAX_BUFFER
-#define SST_MIN_PERIODS		2
-#define SST_MAX_PERIODS		(1024*2)
-#define SST_FIFO_SIZE		0
-#define SST_CARD_NAMES		"intel_mid_card"
-#define MSIC_VENDOR_ID		3
+#define SST_MAX_BIN_BYTES 1024
+
+struct sst_data;
+
+enum sst_audio_device_type {
+	SND_SST_DEVICE_HEADSET = 1,
+	SND_SST_DEVICE_IHF,
+	SND_SST_DEVICE_VIBRA,
+	SND_SST_DEVICE_HAPTIC,
+	SND_SST_DEVICE_CAPTURE,
+	SND_SST_DEVICE_COMPRESS,
+};
+
+enum snd_sst_input_stream {
+	SST_INPUT_STREAM_PCM = 0x2,
+	SST_INPUT_STREAM_COMPRESS = 0x8,
+	SST_INPUT_STREAM_MIXED = 0xA,
+};
+
+enum sst_stream_ops {
+	STREAM_OPS_PLAYBACK = 0,        /* Decode */
+	STREAM_OPS_CAPTURE,             /* Encode */
+	STREAM_OPS_COMPRESSED_PATH,     /* Offload playback/capture */
+
+};
+enum snd_sst_stream_type {
+	SST_STREAM_DEVICE_HS = 32,
+	SST_STREAM_DEVICE_IHF = 33,
+	SST_STREAM_DEVICE_MIC0 = 34,
+	SST_STREAM_DEVICE_MIC1 = 35,
+};
+
+enum sst_controls {
+	SST_SND_ALLOC =			0x1000,
+	SST_SND_PAUSE =			0x1001,
+	SST_SND_RESUME =		0x1002,
+	SST_SND_DROP =			0x1003,
+	SST_SND_FREE =			0x1004,
+	SST_SND_BUFFER_POINTER =	0x1005,
+	SST_SND_STREAM_INIT =		0x1006,
+	SST_SND_START	 =		0x1007,
+	SST_SET_RUNTIME_PARAMS =	0x1008,
+	SST_SET_ALGO_PARAMS =		0x1009,
+	SST_MAX_CONTROLS =		0x1010,
+	SST_SET_BYTE_STREAM =		0x1011,
+	SST_GET_BYTE_STREAM =		0x1012,
+	SST_SET_SSP_CONFIG =		0x1013,
+};
+
+struct pcm_stream_info {
+	int str_id;
+	void *mad_substream;
+	void (*period_elapsed) (void *mad_substream);
+	unsigned long long buffer_ptr;
+	unsigned long long pcm_delay;
+	int sfreq;
+};
+
+struct sst_compress_cb {
+	void *param;
+	void (*compr_cb)(void *param);
+};
+
+struct compress_sst_ops {
+	const char *name;
+	int (*open) (struct snd_sst_params *str_params,
+			struct sst_compress_cb *cb);
+	int (*control) (unsigned int cmd, unsigned int str_id);
+	int (*tstamp) (unsigned int str_id, struct snd_compr_tstamp *tstamp);
+	int (*ack) (unsigned int str_id, unsigned long bytes);
+	int (*close) (unsigned int str_id);
+	int (*get_caps) (struct snd_compr_caps *caps);
+	int (*get_codec_caps) (struct snd_compr_codec_caps *codec);
+	int (*set_metadata) (unsigned int str_id, struct snd_compr_metadata *metadata);
+
+};
+
+enum lpe_param_types_mixer {
+	SST_ALGO_PARAM_MIXER_STREAM_CFG = 0x801,
+};
+
+struct mad_ops_wq {
+	int stream_id;
+	enum sst_controls control_op;
+	struct work_struct wq;
+};
+
+struct sst_ops {
+	int (*open) (struct snd_sst_params *str_param);
+	int (*device_control) (int cmd, void *arg);
+	int (*set_generic_params) (enum sst_controls cmd, void *arg);
+	int (*close) (unsigned int str_id);
+	int (*power) (bool state);
+};
 
 struct sst_runtime_stream {
 	int     stream_status;
+	unsigned int id;
+	size_t bytes_written;
 	struct pcm_stream_info stream_info;
-	struct intel_sst_card_ops *sstdrv_ops;
+	struct sst_ops *ops;
+	struct compress_sst_ops *compr_ops;
 	spinlock_t	status_lock;
 };
 
-enum sst_drv_status {
-	SST_PLATFORM_INIT = 1,
-	SST_PLATFORM_STARTED,
-	SST_PLATFORM_RUNNING,
-	SST_PLATFORM_PAUSED,
-	SST_PLATFORM_DROPPED,
+
+struct sst_device {
+	char *name;
+	struct device *dev;
+	struct sst_ops *ops;
+	struct platform_device *pdev;
+	struct compress_sst_ops *compr_ops;
 };
 
+int sst_register_dsp(struct sst_device *sst);
+int sst_unregister_dsp(struct sst_device *sst);
+int sst_platform_clv_init(struct snd_soc_platform *platform);
+int sst_set_mixer_param(unsigned int device_input_mixer);
 #endif

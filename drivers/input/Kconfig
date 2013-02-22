@@ -3,7 +3,7 @@
 #
 
 menu "Input device support"
-	depends on !S390
+	depends on !S390 && !UML
 
 config INPUT
 	tristate "Generic input layer (needed for keyboard, mouse, ...)" if EXPERT
@@ -24,6 +24,10 @@ config INPUT
 	  module will be called input.
 
 if INPUT
+
+config INPUT_OF_MATRIX_KEYMAP
+	depends on USE_OF
+	bool
 
 config INPUT_FF_MEMLESS
 	tristate "Support for memoryless force-feedback devices"
@@ -160,6 +164,15 @@ config INPUT_APMPOWER
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called apm-power.
+
+config INPUT_KEYRESET
+	tristate "Reset key"
+	depends on INPUT
+	---help---
+	  Say Y here if you want to reboot when some keys are pressed;
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called keyreset.
 
 comment "Input Device Drivers"
 

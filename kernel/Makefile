@@ -2,16 +2,15 @@
 # Makefile for the linux kernel.
 #
 
-obj-y     = sched.o fork.o exec_domain.o panic.o printk.o \
+obj-y     = fork.o exec_domain.o panic.o printk.o \
 	    cpu.o exit.o itimer.o time.o softirq.o resource.o \
 	    sysctl.o sysctl_binary.o capability.o ptrace.o timer.o user.o \
 	    signal.o sys.o kmod.o workqueue.o pid.o \
 	    rcupdate.o extable.o params.o posix-timers.o \
 	    kthread.o wait.o kfifo.o sys_ni.o posix-cpu-timers.o mutex.o \
 	    hrtimer.o rwsem.o nsproxy.o srcu.o semaphore.o \
-	    notifier.o ksysfs.o pm_qos_params.o sched_clock.o cred.o \
-	    async.o range.o jump_label.o
-obj-y += groups.o
+	    notifier.o ksysfs.o cred.o \
+	    async.o range.o groups.o
 
 ifdef CONFIG_FUNCTION_TRACER
 # Do not trace debug files and internal ftrace files
@@ -20,13 +19,14 @@ CFLAGS_REMOVE_lockdep_proc.o = -pg
 CFLAGS_REMOVE_mutex-debug.o = -pg
 CFLAGS_REMOVE_rtmutex-debug.o = -pg
 CFLAGS_REMOVE_cgroup-debug.o = -pg
-CFLAGS_REMOVE_sched_clock.o = -pg
 CFLAGS_REMOVE_irq_work.o = -pg
 endif
 
+obj-y += sched/
+obj-y += power/
+
 obj-$(CONFIG_FREEZER) += freezer.o
 obj-$(CONFIG_PROFILING) += profile.o
-obj-$(CONFIG_SYSCTL_SYSCALL_CHECK) += sysctl_check.o
 obj-$(CONFIG_STACKTRACE) += stacktrace.o
 obj-y += time/
 obj-$(CONFIG_DEBUG_MUTEXES) += mutex-debug.o
@@ -51,9 +51,8 @@ obj-$(CONFIG_DEBUG_SPINLOCK) += spinlock.o
 obj-$(CONFIG_PROVE_LOCKING) += spinlock.o
 obj-$(CONFIG_UID16) += uid16.o
 obj-$(CONFIG_MODULES) += module.o
+obj-$(CONFIG_MODULE_SIG) += module_signing.o modsign_pubkey.o
 obj-$(CONFIG_KALLSYMS) += kallsyms.o
-obj-$(CONFIG_PM) += power/
-obj-$(CONFIG_FREEZER) += power/
 obj-$(CONFIG_BSD_PROCESS_ACCT) += acct.o
 obj-$(CONFIG_KEXEC) += kexec.o
 obj-$(CONFIG_BACKTRACE_SELF_TEST) += backtracetest.o
@@ -99,23 +98,15 @@ obj-$(CONFIG_TRACING) += trace/
 obj-$(CONFIG_X86_DS) += trace/
 obj-$(CONFIG_RING_BUFFER) += trace/
 obj-$(CONFIG_TRACEPOINTS) += trace/
-obj-$(CONFIG_SMP) += sched_cpupri.o
 obj-$(CONFIG_IRQ_WORK) += irq_work.o
+obj-$(CONFIG_CPU_PM) += cpu_pm.o
 
 obj-$(CONFIG_PERF_EVENTS) += events/
 
 obj-$(CONFIG_USER_RETURN_NOTIFIER) += user-return-notifier.o
 obj-$(CONFIG_PADATA) += padata.o
 obj-$(CONFIG_CRASH_DUMP) += crash_dump.o
-
-ifneq ($(CONFIG_SCHED_OMIT_FRAME_POINTER),y)
-# According to Alan Modra <alan@linuxcare.com.au>, the -fno-omit-frame-pointer is
-# needed for x86 only.  Why this used to be enabled for all architectures is beyond
-# me.  I suspect most platforms don't need this, but until we know that for sure
-# I turn this off for IA-64 only.  Andreas Schwab says it's also needed on m68k
-# to get a correct value for the wait-channel (WCHAN in ps). --davidm
-CFLAGS_sched.o := $(PROFILING) -fno-omit-frame-pointer
-endif
+obj-$(CONFIG_JUMP_LABEL) += jump_label.o
 
 $(obj)/configs.o: $(obj)/config_data.h
 
@@ -125,11 +116,10 @@ targets += config_data.gz
 $(obj)/config_data.gz: $(KCONFIG_CONFIG) FORCE
 	$(call if_changed,gzip)
 
-quiet_cmd_ikconfiggz = IKCFG   $@
-      cmd_ikconfiggz = (echo "static const char kernel_config_data[] __used = MAGIC_START"; cat $< | scripts/bin2c; echo "MAGIC_END;") > $@
+      filechk_ikconfiggz = (echo "static const char kernel_config_data[] __used = MAGIC_START"; cat $< | scripts/bin2c; echo "MAGIC_END;")
 targets += config_data.h
 $(obj)/config_data.h: $(obj)/config_data.gz FORCE
-	$(call if_changed,ikconfiggz)
+	$(call filechk,ikconfiggz)
 
 $(obj)/time.o: $(obj)/timeconst.h
 
@@ -138,3 +128,79 @@ quiet_cmd_timeconst  = TIMEC   $@
 targets += timeconst.h
 $(obj)/timeconst.h: $(src)/timeconst.pl FORCE
 	$(call if_changed,timeconst)
+
+ifeq ($(CONFIG_MODULE_SIG),y)
+#
+# Pull the signing certificate and any extra certificates into the kernel
+#
+extra_certificates:
+	touch $@
+
+kernel/modsign_pubkey.o: signing_key.x509 extra_certificates
+
+###############################################################################
+#
+# If module signing is requested, say by allyesconfig, but a key has not been
+# supplied, then one will need to be generated to make sure the build does not
+# fail and that the kernel may be used afterwards.
+#
+###############################################################################
+sign_key_with_hash :=
+ifeq ($(CONFIG_MODULE_SIG_SHA1),y)
+sign_key_with_hash := -sha1
+endif
+ifeq ($(CONFIG_MODULE_SIG_SHA224),y)
+sign_key_with_hash := -sha224
+endif
+ifeq ($(CONFIG_MODULE_SIG_SHA256),y)
+sign_key_with_hash := -sha256
+endif
+ifeq ($(CONFIG_MODULE_SIG_SHA384),y)
+sign_key_with_hash := -sha384
+endif
+ifeq ($(CONFIG_MODULE_SIG_SHA512),y)
+sign_key_with_hash := -sha512
+endif
+ifeq ($(sign_key_with_hash),)
+$(error Could not determine digest type to use from kernel config)
+endif
+
+signing_key.priv signing_key.x509: x509.genkey
+	@echo "###"
+	@echo "### Now generating an X.509 key pair to be used for signing modules."
+	@echo "###"
+	@echo "### If this takes a long time, you might wish to run rngd in the"
+	@echo "### background to keep the supply of entropy topped up.  It"
+	@echo "### needs to be run as root, and should use a hardware random"
+	@echo "### number generator if one is available, eg:"
+	@echo "###"
+	@echo "###     rngd -r /dev/hwrandom"
+	@echo "###"
+	openssl req -new -nodes -utf8 $(sign_key_with_hash) -days 36500 -batch \
+		-x509 -config x509.genkey \
+		-outform DER -out signing_key.x509 \
+		-keyout signing_key.priv
+	@echo "###"
+	@echo "### Key pair generated."
+	@echo "###"
+
+x509.genkey:
+	@echo Generating X.509 key generation config
+	@echo  >x509.genkey "[ req ]"
+	@echo >>x509.genkey "default_bits = 4096"
+	@echo >>x509.genkey "distinguished_name = req_distinguished_name"
+	@echo >>x509.genkey "prompt = no"
+	@echo >>x509.genkey "string_mask = utf8only"
+	@echo >>x509.genkey "x509_extensions = myexts"
+	@echo >>x509.genkey
+	@echo >>x509.genkey "[ req_distinguished_name ]"
+	@echo >>x509.genkey "O = Magrathea"
+	@echo >>x509.genkey "CN = Glacier signing key"
+	@echo >>x509.genkey "emailAddress = slartibartfast@magrathea.h2g2"
+	@echo >>x509.genkey
+	@echo >>x509.genkey "[ myexts ]"
+	@echo >>x509.genkey "basicConstraints=critical,CA:FALSE"
+	@echo >>x509.genkey "keyUsage=digitalSignature"
+	@echo >>x509.genkey "subjectKeyIdentifier=hash"
+	@echo >>x509.genkey "authorityKeyIdentifier=keyid"
+endif

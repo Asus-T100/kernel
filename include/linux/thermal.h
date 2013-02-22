@@ -58,6 +58,16 @@ struct thermal_zone_device_ops {
 		enum thermal_trip_type *);
 	int (*get_trip_temp) (struct thermal_zone_device *, int,
 			      unsigned long *);
+	int (*set_trip_temp) (struct thermal_zone_device *, int,
+			      unsigned long);
+	int (*get_trip_hyst) (struct thermal_zone_device *, int,
+			      unsigned long *);
+	int (*set_trip_hyst) (struct thermal_zone_device *, int,
+			      unsigned long);
+	int (*get_slope) (struct thermal_zone_device *, long *);
+	int (*set_slope) (struct thermal_zone_device *, long);
+	int (*get_intercept) (struct thermal_zone_device *, long *);
+	int (*set_intercept) (struct thermal_zone_device *, long);
 	int (*get_crit_temp) (struct thermal_zone_device *, unsigned long *);
 	int (*notify) (struct thermal_zone_device *, int,
 		       enum thermal_trip_type);
@@ -76,6 +86,8 @@ struct thermal_cooling_device {
 	int id;
 	char type[THERMAL_NAME_LENGTH];
 	struct device device;
+	struct device_attribute trip_temp_attrs[THERMAL_MAX_TRIPS];
+	struct device_attribute trip_type_attrs[THERMAL_MAX_TRIPS];
 	void *devdata;
 	const struct thermal_cooling_device_ops *ops;
 	struct list_head node;
@@ -85,26 +97,13 @@ struct thermal_cooling_device {
 				((long)t-2732+5)/10 : ((long)t-2732-5)/10)
 #define CELSIUS_TO_KELVIN(t)	((t)*10+2732)
 
-#if defined(CONFIG_THERMAL_HWMON)
-/* thermal zone devices with the same type share one hwmon device */
-struct thermal_hwmon_device {
-	char type[THERMAL_NAME_LENGTH];
-	struct device *device;
-	int count;
-	struct list_head tz_list;
-	struct list_head node;
-};
-
-struct thermal_hwmon_attr {
-	struct device_attribute attr;
-	char name[16];
-};
-#endif
-
 struct thermal_zone_device {
 	int id;
 	char type[THERMAL_NAME_LENGTH];
 	struct device device;
+	struct device_attribute trip_temp_attrs[THERMAL_MAX_TRIPS];
+	struct device_attribute trip_type_attrs[THERMAL_MAX_TRIPS];
+	struct device_attribute trip_hyst_attrs[THERMAL_MAX_TRIPS];
 	void *devdata;
 	int trips;
 	int tc1;
@@ -120,12 +119,6 @@ struct thermal_zone_device {
 	struct mutex lock;	/* protect cooling devices list */
 	struct list_head node;
 	struct delayed_work poll_queue;
-#if defined(CONFIG_THERMAL_HWMON)
-	struct list_head hwmon_node;
-	struct thermal_hwmon_device *hwmon;
-	struct thermal_hwmon_attr temp_input;	/* hwmon sys attr */
-	struct thermal_hwmon_attr temp_crit;	/* hwmon sys attr */
-#endif
 };
 /* Adding event notification support elements */
 #define THERMAL_GENL_FAMILY_NAME                "thermal_event"
@@ -159,9 +152,9 @@ enum {
 };
 #define THERMAL_GENL_CMD_MAX (__THERMAL_GENL_CMD_MAX - 1)
 
-struct thermal_zone_device *thermal_zone_device_register(char *, int, void *,
-		const struct thermal_zone_device_ops *, int tc1, int tc2,
-		int passive_freq, int polling_freq);
+struct thermal_zone_device *thermal_zone_device_register(char *, int, int,
+		void *, const struct thermal_zone_device_ops *, int tc1,
+		int tc2, int passive_freq, int polling_freq);
 void thermal_zone_device_unregister(struct thermal_zone_device *);
 
 int thermal_zone_bind_cooling_device(struct thermal_zone_device *, int,
@@ -174,9 +167,9 @@ struct thermal_cooling_device *thermal_cooling_device_register(char *, void *,
 void thermal_cooling_device_unregister(struct thermal_cooling_device *);
 
 #ifdef CONFIG_NET
-extern int generate_netlink_event(u32 orig, enum events event);
+extern int thermal_generate_netlink_event(u32 orig, enum events event);
 #else
-static inline int generate_netlink_event(u32 orig, enum events event)
+static inline int thermal_generate_netlink_event(u32 orig, enum events event)
 {
 	return 0;
 }

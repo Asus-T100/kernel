@@ -17,7 +17,6 @@
 #include <linux/notifier.h>
 #include <linux/kobject.h>
 #include <linux/percpu.h>
-#include <linux/sysdev.h>
 #include <linux/errno.h>
 #include <linux/sched.h>
 #include <linux/sysfs.h>
@@ -52,6 +51,7 @@ struct threshold_block {
 	unsigned int		cpu;
 	u32			address;
 	u16			interrupt_enable;
+	bool			interrupt_capable;
 	u16			threshold_limit;
 	struct kobject		kobj;
 	struct list_head	miscj;
@@ -64,11 +64,9 @@ struct threshold_bank {
 };
 static DEFINE_PER_CPU(struct threshold_bank * [NR_BANKS], threshold_banks);
 
-#ifdef CONFIG_SMP
 static unsigned char shared_bank[NR_BANKS] = {
 	0, 0, 0, 0, 1
 };
-#endif
 
 static DEFINE_PER_CPU(unsigned char, bank_map);	/* see which banks are on */
 
@@ -85,6 +83,21 @@ struct thresh_restart {
 	int			lvt_off;
 	u16			old_limit;
 };
+
+static bool lvt_interrupt_supported(unsigned int bank, u32 msr_high_bits)
+{
+	/*
+	 * bank 4 supports APIC LVT interrupts implicitly since forever.
+	 */
+	if (bank == 4)
+		return true;
+
+	/*
+	 * IntP: interrupt present; if this bit is set, the thresholding
+	 * bank can generate APIC LVT interrupts
+	 */
+	return msr_high_bits & BIT(28);
+}
 
 static int lvt_off_valid(struct threshold_block *b, int apic, u32 lo, u32 hi)
 {
@@ -107,8 +120,10 @@ static int lvt_off_valid(struct threshold_block *b, int apic, u32 lo, u32 hi)
 	return 1;
 };
 
-/* must be called with correct cpu affinity */
-/* Called via smp_call_function_single() */
+/*
+ * Called via smp_call_function_single(), must be called with correct
+ * cpu affinity.
+ */
 static void threshold_restart_bank(void *_tr)
 {
 	struct thresh_restart *tr = _tr;
@@ -131,6 +146,12 @@ static void threshold_restart_bank(void *_tr)
 		    (new_count & THRESHOLD_MAX);
 	}
 
+	/* clear IntType */
+	hi &= ~MASK_INT_TYPE_HI;
+
+	if (!tr->b->interrupt_capable)
+		goto done;
+
 	if (tr->set_lvt_off) {
 		if (lvt_off_valid(tr->b, tr->lvt_off, lo, hi)) {
 			/* set new lvt offset */
@@ -139,9 +160,10 @@ static void threshold_restart_bank(void *_tr)
 		}
 	}
 
-	tr->b->interrupt_enable ?
-	    (hi = (hi & ~MASK_INT_TYPE_HI) | INT_TYPE_APIC) :
-	    (hi &= ~MASK_INT_TYPE_HI);
+	if (tr->b->interrupt_enable)
+		hi |= INT_TYPE_APIC;
+
+ done:
 
 	hi |= MASK_COUNT_EN_HI;
 	wrmsr(tr->b->address, lo, hi);
@@ -202,18 +224,20 @@ void mce_amd_feature_init(struct cpuinfo_x86 *c)
 
 			if (!block)
 				per_cpu(bank_map, cpu) |= (1 << bank);
-#ifdef CONFIG_SMP
 			if (shared_bank[bank] && c->cpu_core_id)
 				break;
-#endif
-			offset = setup_APIC_mce(offset,
-						(high & MASK_LVTOFF_HI) >> 20);
 
 			memset(&b, 0, sizeof(b));
-			b.cpu		= cpu;
-			b.bank		= bank;
-			b.block		= block;
-			b.address	= address;
+			b.cpu			= cpu;
+			b.bank			= bank;
+			b.block			= block;
+			b.address		= address;
+			b.interrupt_capable	= lvt_interrupt_supported(bank, high);
+
+			if (b.interrupt_capable) {
+				int new = (high & MASK_LVTOFF_HI) >> 20;
+				offset  = setup_APIC_mce(offset, new);
+			}
 
 			mce_threshold_block_init(&b, offset);
 			mce_threshold_vector = amd_threshold_interrupt;
@@ -312,6 +336,9 @@ store_interrupt_enable(struct threshold_block *b, const char *buf, size_t size)
 {
 	struct thresh_restart tr;
 	unsigned long new;
+
+	if (!b->interrupt_capable)
+		return -EINVAL;
 
 	if (strict_strtoul(buf, 0, &new) < 0)
 		return -EINVAL;
@@ -471,6 +498,7 @@ static __cpuinit int allocate_threshold_blocks(unsigned int cpu,
 	b->cpu			= cpu;
 	b->address		= address;
 	b->interrupt_enable	= 0;
+	b->interrupt_capable	= lvt_interrupt_supported(bank, high);
 	b->threshold_limit	= THRESHOLD_MAX;
 
 	INIT_LIST_HEAD(&b->miscj);
@@ -527,6 +555,7 @@ static __cpuinit int threshold_create_bank(unsigned int cpu, unsigned int bank)
 {
 	int i, err = 0;
 	struct threshold_bank *b = NULL;
+	struct device *dev = per_cpu(mce_device, cpu);
 	char name[32];
 
 	sprintf(name, "threshold_bank%i", bank);
@@ -548,8 +577,7 @@ static __cpuinit int threshold_create_bank(unsigned int cpu, unsigned int bank)
 		if (!b)
 			goto out;
 
-		err = sysfs_create_link(&per_cpu(mce_dev, cpu).kobj,
-					b->kobj, name);
+		err = sysfs_create_link(&dev->kobj, b->kobj, name);
 		if (err)
 			goto out;
 
@@ -571,7 +599,7 @@ static __cpuinit int threshold_create_bank(unsigned int cpu, unsigned int bank)
 		goto out;
 	}
 
-	b->kobj = kobject_create_and_add(name, &per_cpu(mce_dev, cpu).kobj);
+	b->kobj = kobject_create_and_add(name, &dev->kobj);
 	if (!b->kobj)
 		goto out_free;
 
@@ -591,8 +619,9 @@ static __cpuinit int threshold_create_bank(unsigned int cpu, unsigned int bank)
 		if (i == cpu)
 			continue;
 
-		err = sysfs_create_link(&per_cpu(mce_dev, i).kobj,
-					b->kobj, name);
+		dev = per_cpu(mce_device, i);
+		if (dev)
+			err = sysfs_create_link(&dev->kobj,b->kobj, name);
 		if (err)
 			goto out;
 
@@ -655,6 +684,7 @@ static void deallocate_threshold_block(unsigned int cpu,
 static void threshold_remove_bank(unsigned int cpu, int bank)
 {
 	struct threshold_bank *b;
+	struct device *dev;
 	char name[32];
 	int i = 0;
 
@@ -669,7 +699,8 @@ static void threshold_remove_bank(unsigned int cpu, int bank)
 #ifdef CONFIG_SMP
 	/* sibling symlink */
 	if (shared_bank[bank] && b->blocks->cpu != cpu) {
-		sysfs_remove_link(&per_cpu(mce_dev, cpu).kobj, name);
+		dev = per_cpu(mce_device, cpu);
+		sysfs_remove_link(&dev->kobj, name);
 		per_cpu(threshold_banks, cpu)[bank] = NULL;
 
 		return;
@@ -681,7 +712,9 @@ static void threshold_remove_bank(unsigned int cpu, int bank)
 		if (i == cpu)
 			continue;
 
-		sysfs_remove_link(&per_cpu(mce_dev, i).kobj, name);
+		dev = per_cpu(mce_device, i);
+		if (dev)
+			sysfs_remove_link(&dev->kobj, name);
 		per_cpu(threshold_banks, i)[bank] = NULL;
 	}
 

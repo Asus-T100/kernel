@@ -11,6 +11,7 @@
  */
 #include <net/mac80211.h>
 #include <linux/usb.h>
+#include <linux/module.h>
 
 #include "core.h"
 #include "mds_f.h"
@@ -24,7 +25,7 @@ MODULE_DESCRIPTION("IS89C35 802.11bg WLAN USB Driver");
 MODULE_LICENSE("GPL");
 MODULE_VERSION("0.1");
 
-static const struct usb_device_id wb35_table[] __devinitconst = {
+static const struct usb_device_id wb35_table[] = {
 	{ USB_DEVICE(0x0416, 0x0035) },
 	{ USB_DEVICE(0x18E8, 0x6201) },
 	{ USB_DEVICE(0x18E8, 0x6206) },
@@ -277,7 +278,7 @@ static int wbsoft_config(struct ieee80211_hw *dev, u32 changed)
 	return 0;
 }
 
-static u64 wbsoft_get_tsf(struct ieee80211_hw *dev)
+static u64 wbsoft_get_tsf(struct ieee80211_hw *dev, struct ieee80211_vif *vif)
 {
 	printk("wbsoft_get_tsf called\n");
 	return 0;
@@ -864,15 +865,4 @@ static struct usb_driver wb35_driver = {
 	.disconnect	= wb35_disconnect,
 };
 
-static int __init wb35_init(void)
-{
-	return usb_register(&wb35_driver);
-}
-
-static void __exit wb35_exit(void)
-{
-	usb_deregister(&wb35_driver);
-}
-
-module_init(wb35_init);
-module_exit(wb35_exit);
+module_usb_driver(wb35_driver);

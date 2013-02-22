@@ -9,6 +9,7 @@
  * your option) any later version.
  */
 
+#include <linux/export.h>
 #include <linux/mmc/host.h>
 #include <linux/mmc/card.h>
 #include <linux/mmc/sdio.h>
@@ -195,6 +196,9 @@ static inline unsigned int sdio_max_byte_size(struct sdio_func *func)
 	else
 		mval = min(mval, func->max_blksize);
 
+	if (mmc_card_broken_byte_mode_512(func->card))
+		return min(mval, 511u);
+
 	return min(mval, 512u); /* maximum size for byte mode */
 }
 
@@ -313,7 +317,7 @@ static int sdio_io_rw_ext_helper(struct sdio_func *func, int write,
 			func->card->host->max_seg_size / func->cur_blksize);
 		max_blocks = min(max_blocks, 511u);
 
-		while (remainder > func->cur_blksize) {
+		while (remainder >= func->cur_blksize) {
 			unsigned blocks;
 
 			blocks = remainder / func->cur_blksize;
@@ -338,8 +342,9 @@ static int sdio_io_rw_ext_helper(struct sdio_func *func, int write,
 	while (remainder > 0) {
 		size = min(remainder, sdio_max_byte_size(func));
 
+		/* Indicate byte mode by setting "blocks" = 0 */
 		ret = mmc_io_rw_extended(func->card, write, func->num, addr,
-			 incr_addr, buf, 1, size);
+			 incr_addr, buf, 0, size);
 		if (ret)
 			return ret;
 
@@ -381,6 +386,39 @@ u8 sdio_readb(struct sdio_func *func, unsigned int addr, int *err_ret)
 	return val;
 }
 EXPORT_SYMBOL_GPL(sdio_readb);
+
+/**
+ *	sdio_readb_ext - read a single byte from a SDIO function
+ *	@func: SDIO function to access
+ *	@addr: address to read
+ *	@err_ret: optional status value from transfer
+ *	@in: value to add to argument
+ *
+ *	Reads a single byte from the address space of a given SDIO
+ *	function. If there is a problem reading the address, 0xff
+ *	is returned and @err_ret will contain the error code.
+ */
+unsigned char sdio_readb_ext(struct sdio_func *func, unsigned int addr,
+	int *err_ret, unsigned in)
+{
+	int ret;
+	unsigned char val;
+
+	BUG_ON(!func);
+
+	if (err_ret)
+		*err_ret = 0;
+
+	ret = mmc_io_rw_direct(func->card, 0, func->num, addr, (u8)in, &val);
+	if (ret) {
+		if (err_ret)
+			*err_ret = ret;
+		return 0xFF;
+	}
+
+	return val;
+}
+EXPORT_SYMBOL_GPL(sdio_readb_ext);
 
 /**
  *	sdio_writeb - write a single byte to a SDIO function

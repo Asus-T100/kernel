@@ -27,6 +27,8 @@
 #ifndef _DRM_MODE_H
 #define _DRM_MODE_H
 
+#include <linux/types.h>
+
 #define DRM_DISPLAY_INFO_LEN	32
 #define DRM_CONNECTOR_NAME_LEN	32
 #define DRM_DISPLAY_MODE_LEN	32
@@ -56,6 +58,11 @@
 #define DRM_MODE_FLAG_PIXMUX	(1<<11)
 #define DRM_MODE_FLAG_DBLCLK	(1<<12)
 #define DRM_MODE_FLAG_CLKDIV2	(1<<13)
+
+/*  FIXME - Begin - Added at Intel - move this to a file owned by HDMI code? */
+#define DRM_MODE_FLAG_PAR16_9  (1<<14)
+#define DRM_MODE_FLAG_PAR4_3   (1<<15)
+/*  FIXME - End   - Added at Intel - move this to a file owned by HDMI code? */
 
 /* DPMS flags */
 /* bit compatible with the xorg definitions. */
@@ -120,11 +127,50 @@ struct drm_mode_crtc {
 	struct drm_mode_modeinfo mode;
 };
 
+#define DRM_MODE_PRESENT_TOP_FIELD	(1<<0)
+#define DRM_MODE_PRESENT_BOTTOM_FIELD	(1<<1)
+
+/* Planes blend with or override other bits on the CRTC */
+struct drm_mode_set_plane {
+	__u32 plane_id;
+	__u32 crtc_id;
+	__u32 fb_id; /* fb object contains surface format type */
+	__u32 flags; /* see above flags */
+
+	/* Signed dest location allows it to be partially off screen */
+	__s32 crtc_x, crtc_y;
+	__u32 crtc_w, crtc_h;
+
+	/* Source values are 16.16 fixed point */
+	__u32 src_x, src_y;
+	__u32 src_h, src_w;
+};
+
+struct drm_mode_get_plane {
+	__u32 plane_id;
+
+	__u32 crtc_id;
+	__u32 fb_id;
+
+	__u32 possible_crtcs;
+	__u32 gamma_size;
+
+	__u32 count_format_types;
+	__u64 format_type_ptr;
+};
+
+struct drm_mode_get_plane_res {
+	__u64 plane_id_ptr;
+	__u32 count_planes;
+};
+
 #define DRM_MODE_ENCODER_NONE	0
 #define DRM_MODE_ENCODER_DAC	1
 #define DRM_MODE_ENCODER_TMDS	2
 #define DRM_MODE_ENCODER_LVDS	3
 #define DRM_MODE_ENCODER_TVDAC	4
+#define DRM_MODE_ENCODER_MIPI	5
+#define DRM_MODE_ENCODER_VIRTUAL 6
 
 struct drm_mode_get_encoder {
 	__u32 encoder_id;
@@ -162,6 +208,8 @@ struct drm_mode_get_encoder {
 #define DRM_MODE_CONNECTOR_HDMIB	12
 #define DRM_MODE_CONNECTOR_TV		13
 #define DRM_MODE_CONNECTOR_eDP		14
+#define DRM_MODE_CONNECTOR_MIPI 	15
+#define DRM_MODE_CONNECTOR_VIRTUAL	16
 
 struct drm_mode_get_connector {
 
@@ -229,9 +277,38 @@ struct drm_mode_fb_cmd {
 	__u32 handle;
 };
 
+#define DRM_MODE_FB_INTERLACED	(1<<0) /* for interlaced framebuffers */
+
+struct drm_mode_fb_cmd2 {
+	__u32 fb_id;
+	__u32 width, height;
+	__u32 pixel_format; /* fourcc code from drm_fourcc.h */
+	__u32 flags; /* see above flags */
+
+	/*
+	 * In case of planar formats, this ioctl allows up to 4
+	 * buffer objects with offets and pitches per plane.
+	 * The pitch and offset order is dictated by the fourcc,
+	 * e.g. NV12 (http://fourcc.org/yuv.php#NV12) is described as:
+	 *
+	 *   YUV 4:2:0 image with a plane of 8 bit Y samples
+	 *   followed by an interleaved U/V plane containing
+	 *   8 bit 2x2 subsampled colour difference samples.
+	 *
+	 * So it would consist of Y as offset[0] and UV as
+	 * offeset[1].  Note that offset[0] will generally
+	 * be 0.
+	 */
+	__u32 handles[4];
+	__u32 pitches[4]; /* pitch for each plane */
+	__u32 offsets[4]; /* offset of each plane */
+};
+
 #define DRM_MODE_FB_DIRTY_ANNOTATE_COPY 0x01
 #define DRM_MODE_FB_DIRTY_ANNOTATE_FILL 0x02
 #define DRM_MODE_FB_DIRTY_FLAGS         0x03
+
+#define DRM_MODE_FB_DIRTY_MAX_CLIPS     256
 
 /*
  * Mark a region of a framebuffer as dirty.
@@ -273,8 +350,9 @@ struct drm_mode_mode_cmd {
 	struct drm_mode_modeinfo mode;
 };
 
-#define DRM_MODE_CURSOR_BO	(1<<0)
-#define DRM_MODE_CURSOR_MOVE	(1<<1)
+#define DRM_MODE_CURSOR_BO	0x01
+#define DRM_MODE_CURSOR_MOVE	0x02
+#define DRM_MODE_CURSOR_FLAGS	0x03
 
 /*
  * depending on the value in flags different members are used.

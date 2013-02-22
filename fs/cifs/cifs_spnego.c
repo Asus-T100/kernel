@@ -31,18 +31,18 @@
 
 /* create a new cifs key */
 static int
-cifs_spnego_key_instantiate(struct key *key, const void *data, size_t datalen)
+cifs_spnego_key_instantiate(struct key *key, struct key_preparsed_payload *prep)
 {
 	char *payload;
 	int ret;
 
 	ret = -ENOMEM;
-	payload = kmalloc(datalen, GFP_KERNEL);
+	payload = kmalloc(prep->datalen, GFP_KERNEL);
 	if (!payload)
 		goto error;
 
 	/* attach the data */
-	memcpy(payload, data, datalen);
+	memcpy(payload, prep->data, prep->datalen);
 	key->payload.data = payload;
 	ret = 0;
 
@@ -113,8 +113,10 @@ cifs_get_spnego_key(struct cifs_ses *sesInfo)
 		   MAX_MECH_STR_LEN +
 		   UID_KEY_LEN + (sizeof(uid_t) * 2) +
 		   CREDUID_KEY_LEN + (sizeof(uid_t) * 2) +
-		   USER_KEY_LEN + strlen(sesInfo->user_name) +
 		   PID_KEY_LEN + (sizeof(pid_t) * 2) + 1;
+
+	if (sesInfo->user_name)
+		desc_len += USER_KEY_LEN + strlen(sesInfo->user_name);
 
 	spnego_key = ERR_PTR(-ENOMEM);
 	description = kzalloc(desc_len, GFP_KERNEL);
@@ -152,8 +154,10 @@ cifs_get_spnego_key(struct cifs_ses *sesInfo)
 	dp = description + strlen(description);
 	sprintf(dp, ";creduid=0x%x", sesInfo->cred_uid);
 
-	dp = description + strlen(description);
-	sprintf(dp, ";user=%s", sesInfo->user_name);
+	if (sesInfo->user_name) {
+		dp = description + strlen(description);
+		sprintf(dp, ";user=%s", sesInfo->user_name);
+	}
 
 	dp = description + strlen(description);
 	sprintf(dp, ";pid=0x%x", current->pid);

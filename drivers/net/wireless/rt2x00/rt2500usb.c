@@ -39,7 +39,7 @@
 /*
  * Allow hardware encryption to be disabled.
  */
-static int modparam_nohwcrypt;
+static bool modparam_nohwcrypt;
 module_param_named(nohwcrypt, modparam_nohwcrypt, bool, S_IRUGO);
 MODULE_PARM_DESC(nohwcrypt, "Disable hardware encryption.");
 
@@ -283,7 +283,7 @@ static int rt2500usb_rfkill_poll(struct rt2x00_dev *rt2x00dev)
 	u16 reg;
 
 	rt2500usb_register_read(rt2x00dev, MAC_CSR19, &reg);
-	return rt2x00_get_field32(reg, MAC_CSR19_BIT7);
+	return rt2x00_get_field16(reg, MAC_CSR19_BIT7);
 }
 
 #ifdef CONFIG_RT2X00_LIB_LEDS
@@ -1768,6 +1768,7 @@ static int rt2500usb_probe_hw_mode(struct rt2x00_dev *rt2x00dev)
 static int rt2500usb_probe_hw(struct rt2x00_dev *rt2x00dev)
 {
 	int retval;
+	u16 reg;
 
 	/*
 	 * Allocate eeprom data.
@@ -1779,6 +1780,14 @@ static int rt2500usb_probe_hw(struct rt2x00_dev *rt2x00dev)
 	retval = rt2500usb_init_eeprom(rt2x00dev);
 	if (retval)
 		return retval;
+
+	/*
+	 * Enable rfkill polling by setting GPIO direction of the
+	 * rfkill switch GPIO pin correctly.
+	 */
+	rt2500usb_register_read(rt2x00dev, MAC_CSR19, &reg);
+	rt2x00_set_field16(&reg, MAC_CSR19_BIT8, 0);
+	rt2500usb_register_write(rt2x00dev, MAC_CSR19, reg);
 
 	/*
 	 * Initialize hw specifications.
@@ -1827,6 +1836,7 @@ static const struct ieee80211_ops rt2500usb_mac80211_ops = {
 	.set_antenna		= rt2x00mac_set_antenna,
 	.get_antenna		= rt2x00mac_get_antenna,
 	.get_ringparam		= rt2x00mac_get_ringparam,
+	.tx_frames_pending	= rt2x00mac_tx_frames_pending,
 };
 
 static const struct rt2x00lib_ops rt2500usb_rt2x00_ops = {
@@ -1981,15 +1991,4 @@ static struct usb_driver rt2500usb_driver = {
 	.resume		= rt2x00usb_resume,
 };
 
-static int __init rt2500usb_init(void)
-{
-	return usb_register(&rt2500usb_driver);
-}
-
-static void __exit rt2500usb_exit(void)
-{
-	usb_deregister(&rt2500usb_driver);
-}
-
-module_init(rt2500usb_init);
-module_exit(rt2500usb_exit);
+module_usb_driver(rt2500usb_driver);

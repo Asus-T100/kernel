@@ -1,0 +1,70 @@
+Last reviewed: 19/01/2012
+
+          Intel_SCU 0.2:  An Intel SCU IOH Based Watchdog Device
+                          for Intel part #(s):
+                            - AF82MP20 PCH
+           Documentation and Driver by Yann Puech and Mark Allyn
+             <yannx.puech@intel.com> <mark.a.allyn@intel.com>
+
+Principle
+=========
+
+This watchdog device is handled throught external timer 7 of the SCU.
+The timer timeout is defined here to allow the watchdog daemon to write
+sometimes to the watchdog device. We use this non standard technique because
+the timer used for the watchdog is stopped when the platform enters C6 or
+higher.
+
+Here is depicted the time line of the watchdog timer:
+
+0s                         50s        60s           75s (*)
+|___________________________|__________|_____________|
+|<----- timer_timeout ----->|<schedule>|<pre_timeout>|
+|<--------------------- timeout -------------------->|
+
+(*) The given values are default ones and can be overridden using ioctl.
+
+timer_timeout: The daemon is waiting for MSI #7
+schedule:      The daemon will write to the device when scheduled
+pre_timeout:   This range is reached if the device has not been kicked by the
+               daemon (so the system is down). We are going to dump kernel
+               stacks and CPU regs.
+timeout:       When the timer expires, the platform issues a cold_reset.
+
+
+module params
+=============
+
+Production
+----------
+  pre_timeout:   accessor for the pre timeout
+  timeout:       accessor for the timeout
+  timer_timeout: accessor for the timer timeout
+
+debug purpose
+-------------
+  disable_kernel_watchdog: disable the watchdog at boot time (useful with gdb)
+  reset_on_release:        avoid to reset straight away after killing the daemon
+  kicking_active:          disable the kicking at low level (so a cold reset will
+                           occur soon)
+
+ioctl
+=====
+
+standard
+--------
+
+  WDIOC_GETSUPPORT:
+  WDIOC_GETSTATUS:
+  WDIOC_GETBOOTSTATUS:
+  WDIOC_KEEPALIVE:
+  WDIOC_SETPRETIMEOUT:
+  WDIOC_SETTIMEOUT:
+  WDIOC_GETTIMEOUT:
+  WDIOC_SETOPTIONS:
+    WDIOS_DISABLECARD
+    WDIOS_ENABLECARD
+
+custom
+------
+  WDIOC_SETTIMERTIMEOUT: sets the timeout of the timer for deblocking the daemon.

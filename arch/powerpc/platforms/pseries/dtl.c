@@ -25,10 +25,10 @@
 #include <linux/debugfs.h>
 #include <linux/spinlock.h>
 #include <asm/smp.h>
-#include <asm/system.h>
 #include <asm/uaccess.h>
 #include <asm/firmware.h>
 #include <asm/lppaca.h>
+#include <asm/debug.h>
 
 #include "plpar_wrappers.h"
 
@@ -181,7 +181,7 @@ static void dtl_stop(struct dtl *dtl)
 
 	lppaca_of(dtl->cpu).dtl_enable_mask = 0x0;
 
-	unregister_dtl(hwcpu, __pa(dtl->buf));
+	unregister_dtl(hwcpu);
 }
 
 static u64 dtl_current_index(struct dtl *dtl)

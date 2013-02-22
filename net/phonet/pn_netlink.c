@@ -70,8 +70,10 @@ static int addr_doit(struct sk_buff *skb, struct nlmsghdr *nlh, void *attr)
 	int err;
 	u8 pnaddr;
 
+#if !defined(CONFIG_MHI)
 	if (!capable(CAP_SYS_ADMIN))
 		return -EPERM;
+#endif
 
 	ASSERT_RTNL();
 
@@ -228,9 +230,10 @@ static int route_doit(struct sk_buff *skb, struct nlmsghdr *nlh, void *attr)
 	int err;
 	u8 dst;
 
+#if !defined(CONFIG_MHI)
 	if (!capable(CAP_SYS_ADMIN))
 		return -EPERM;
-
+#endif
 	ASSERT_RTNL();
 
 	err = nlmsg_parse(nlh, sizeof(*rtm), tb, RTA_MAX, rtm_phonet_policy);
@@ -289,15 +292,16 @@ out:
 
 int __init phonet_netlink_register(void)
 {
-	int err = __rtnl_register(PF_PHONET, RTM_NEWADDR, addr_doit, NULL);
+	int err = __rtnl_register(PF_PHONET, RTM_NEWADDR, addr_doit,
+				  NULL, NULL);
 	if (err)
 		return err;
 
 	/* Further __rtnl_register() cannot fail */
-	__rtnl_register(PF_PHONET, RTM_DELADDR, addr_doit, NULL);
-	__rtnl_register(PF_PHONET, RTM_GETADDR, NULL, getaddr_dumpit);
-	__rtnl_register(PF_PHONET, RTM_NEWROUTE, route_doit, NULL);
-	__rtnl_register(PF_PHONET, RTM_DELROUTE, route_doit, NULL);
-	__rtnl_register(PF_PHONET, RTM_GETROUTE, NULL, route_dumpit);
+	__rtnl_register(PF_PHONET, RTM_DELADDR, addr_doit, NULL, NULL);
+	__rtnl_register(PF_PHONET, RTM_GETADDR, NULL, getaddr_dumpit, NULL);
+	__rtnl_register(PF_PHONET, RTM_NEWROUTE, route_doit, NULL, NULL);
+	__rtnl_register(PF_PHONET, RTM_DELROUTE, route_doit, NULL, NULL);
+	__rtnl_register(PF_PHONET, RTM_GETROUTE, NULL, route_dumpit, NULL);
 	return 0;
 }
