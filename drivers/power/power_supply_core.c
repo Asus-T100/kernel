@@ -80,6 +80,11 @@ void power_supply_changed(struct power_supply *psy)
 {
 	unsigned long flags;
 
+	if (psy == NULL) {
+		power_supply_trigger_charging_handler(psy);
+		return;
+	}
+
 	dev_dbg(psy->dev, "%s\n", __func__);
 
 	spin_lock_irqsave(&psy->changed_lock, flags);
