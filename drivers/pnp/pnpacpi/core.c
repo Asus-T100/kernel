@@ -320,14 +320,9 @@ static int __init acpi_pnp_match(struct device *dev, void *_pnp)
 {
 	struct acpi_device *acpi = to_acpi_device(dev);
 	struct pnp_dev *pnp = _pnp;
-	struct device *physical_device;
-
-	physical_device = acpi_get_physical_device(acpi->handle);
-	if (physical_device)
-		put_device(physical_device);
 
 	/* true means it matched */
-	return !physical_device
+	return !acpi_get_physical_device(acpi->handle)
 	    && compare_pnp_id(pnp->id, acpi_device_hid(acpi));
 }
 

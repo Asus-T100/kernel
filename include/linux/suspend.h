@@ -34,58 +34,6 @@ typedef int __bitwise suspend_state_t;
 #define PM_SUSPEND_MEM		((__force suspend_state_t) 3)
 #define PM_SUSPEND_MAX		((__force suspend_state_t) 4)
 
-enum suspend_stat_step {
-	SUSPEND_FREEZE = 1,
-	SUSPEND_PREPARE,
-	SUSPEND_SUSPEND,
-	SUSPEND_SUSPEND_NOIRQ,
-	SUSPEND_RESUME_NOIRQ,
-	SUSPEND_RESUME
-};
-
-struct suspend_stats {
-	int	success;
-	int	fail;
-	int	failed_freeze;
-	int	failed_prepare;
-	int	failed_suspend;
-	int	failed_suspend_noirq;
-	int	failed_resume;
-	int	failed_resume_noirq;
-#define	REC_FAILED_NUM	2
-	int	last_failed_dev;
-	char	failed_devs[REC_FAILED_NUM][40];
-	int	last_failed_errno;
-	int	errno[REC_FAILED_NUM];
-	int	last_failed_step;
-	enum suspend_stat_step	failed_steps[REC_FAILED_NUM];
-};
-
-extern struct suspend_stats suspend_stats;
-
-static inline void dpm_save_failed_dev(const char *name)
-{
-	strlcpy(suspend_stats.failed_devs[suspend_stats.last_failed_dev],
-		name,
-		sizeof(suspend_stats.failed_devs[0]));
-	suspend_stats.last_failed_dev++;
-	suspend_stats.last_failed_dev %= REC_FAILED_NUM;
-}
-
-static inline void dpm_save_failed_errno(int err)
-{
-	suspend_stats.errno[suspend_stats.last_failed_errno] = err;
-	suspend_stats.last_failed_errno++;
-	suspend_stats.last_failed_errno %= REC_FAILED_NUM;
-}
-
-static inline void dpm_save_failed_step(enum suspend_stat_step step)
-{
-	suspend_stats.failed_steps[suspend_stats.last_failed_step] = step;
-	suspend_stats.last_failed_step++;
-	suspend_stats.last_failed_step %= REC_FAILED_NUM;
-}
-
 /**
  * struct platform_suspend_ops - Callbacks for managing platform dependent
  *	system sleep states.
@@ -311,14 +259,6 @@ static inline void hibernation_set_ops(const struct platform_hibernation_ops *op
 static inline int hibernate(void) { return -ENOSYS; }
 static inline bool system_entering_hibernation(void) { return false; }
 #endif /* CONFIG_HIBERNATION */
-
-/* Hibernation and suspend events */
-#define PM_HIBERNATION_PREPARE	0x0001 /* Going to hibernate */
-#define PM_POST_HIBERNATION	0x0002 /* Hibernation finished */
-#define PM_SUSPEND_PREPARE	0x0003 /* Going to suspend the system */
-#define PM_POST_SUSPEND		0x0004 /* Suspend finished */
-#define PM_RESTORE_PREPARE	0x0005 /* Going to restore a saved image */
-#define PM_POST_RESTORE		0x0006 /* Restore failed */
 
 #ifdef CONFIG_PM_SLEEP
 void save_processor_state(void);

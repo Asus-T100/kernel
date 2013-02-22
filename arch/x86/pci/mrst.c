@@ -43,18 +43,6 @@
 #define PCI_FIXED_BAR_4_SIZE	0x14
 #define PCI_FIXED_BAR_5_SIZE	0x1c
 
-/* Lincroft and Penwell have just one PCI bus (00) */
-#define MID_PCI_BUS	0
-
-/*
- * Use type 1 PCI config access for host bridge(00:00.0), gfx(00:02.0)
- * and ISP(00:03.0) and MMCFG for all other devices.
- */
-#define MID_PCI_DEV_HOST_BRIDGE	PCI_DEVFN(0, 0)
-#define MID_PCI_DEV_GFX		PCI_DEVFN(2, 0)
-#define MID_PCI_DEV_ISP		PCI_DEVFN(3, 0)
-#define ISP_PCI_PMCS		0xD4
-
 /**
  * fixed_bar_cap - return the offset of the fixed BAR cap if found
  * @bus: PCI bus
@@ -160,26 +148,8 @@ static bool type1_access_ok(unsigned int bus, unsigned int devfn, int reg)
 	 */
 	if (reg >= 0x100 || reg == PCI_STATUS || reg == PCI_HEADER_TYPE)
 		return 0;
-
-	/*
-	 * Workaround for ISP driver.
-	 * When runtime pm is enabled, PCI core needs access PMCS register when
-	 * ISP power island is off, this will cause pci_set_power_state() to
-	 * fail, thus block the system to enter S0i3.
-	 * We force MMCFG for PCI config access to ISP PMCS register to
-	 * make sure pci_set_power_state() can succeed. All other config
-	 * access is routed to type 1.
-	 */
-	if (bus == MID_PCI_BUS && devfn == MID_PCI_DEV_ISP &&
-			reg == ISP_PCI_PMCS)
-		return 0;
-
-	/* Use type 1 for real PCI devices(0:0:0, 0:2:0 and 0:3:0) */
-	if (bus == MID_PCI_BUS && (devfn == MID_PCI_DEV_HOST_BRIDGE ||
-					devfn == MID_PCI_DEV_GFX ||
-					devfn == MID_PCI_DEV_ISP))
+	if (bus == 0 && (devfn == PCI_DEVFN(2, 0) || devfn == PCI_DEVFN(0, 0)))
 		return 1;
-
 	return 0; /* langwell on others */
 }
 
@@ -229,7 +199,7 @@ static int pci_write(struct pci_bus *bus, unsigned int devfn, int where,
 			       where, size, value);
 }
 
-static int intel_mid_pci_irq_enable(struct pci_dev *dev)
+static int mrst_pci_irq_enable(struct pci_dev *dev)
 {
 	u8 pin;
 	struct io_apic_irq_attr irq_attr;
@@ -242,33 +212,29 @@ static int intel_mid_pci_irq_enable(struct pci_dev *dev)
 	irq_attr.ioapic = mp_find_ioapic(dev->irq);
 	irq_attr.ioapic_pin = dev->irq;
 	irq_attr.trigger = 1; /* level */
-#ifdef CONFIG_X86_MRFLD
-	irq_attr.polarity = 0; /* active high */
-#else
 	irq_attr.polarity = 1; /* active low */
-#endif
 	io_apic_set_pci_routing(&dev->dev, dev->irq, &irq_attr);
 
 	return 0;
 }
 
-struct pci_ops intel_mid_pci_ops = {
+struct pci_ops pci_mrst_ops = {
 	.read = pci_read,
 	.write = pci_write,
 };
 
 /**
- * intel_mid_pci_init - installs intel_mid_pci_ops
+ * pci_mrst_init - installs pci_mrst_ops
  *
  * Moorestown has an interesting PCI implementation (see above).
  * Called when the early platform detection installs it.
  */
-int __init intel_mid_pci_init(void)
+int __init pci_mrst_init(void)
 {
 	printk(KERN_INFO "Moorestown platform detected, using MRST PCI ops\n");
 	pci_mmcfg_late_init();
-	pcibios_enable_irq = intel_mid_pci_irq_enable;
-	pci_root_ops = intel_mid_pci_ops;
+	pcibios_enable_irq = mrst_pci_irq_enable;
+	pci_root_ops = pci_mrst_ops;
 	/* Continue with standard init */
 	return 1;
 }
@@ -299,95 +265,3 @@ static void __devinit pci_fixed_bar_fixup(struct pci_dev *dev)
 	}
 }
 DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_INTEL, PCI_ANY_ID, pci_fixed_bar_fixup);
-
-/* Langwell devices are not true pci devices, they are not subject to 10 ms
- * d3 to d0 delay required by pci spec.
- */
-static void __devinit pci_d3delay_fixup(struct pci_dev *dev)
-{
-	/* true pci devices in lincroft should allow type 1 access, the rest
-	 * are langwell fake pci devices.
-	 */
-	if (type1_access_ok(dev->bus->number, dev->devfn, PCI_DEVICE_ID))
-		return;
-	dev->d3_delay = 0;
-}
-DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_INTEL, PCI_ANY_ID, pci_d3delay_fixup);
-
-static void __devinit intel_mid_power_off_unused_dev(struct pci_dev *dev)
-{
-	pci_set_power_state(dev, PCI_D3cold);
-}
-DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_INTEL, 0x0801,
-			intel_mid_power_off_unused_dev);
-DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_INTEL, 0x0809,
-			intel_mid_power_off_unused_dev);
-DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_INTEL, 0x080C,
-			intel_mid_power_off_unused_dev);
-DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_INTEL, 0x0812,
-			intel_mid_power_off_unused_dev);
-DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_INTEL, 0x0815,
-			intel_mid_power_off_unused_dev);
-
-/*
- * The Firmware should program the Langwell keypad registers to indicate
- * system specific configuration.  This quirk can be removed when firmware
- * actually does this properly.
- */
-static void __devinit langwell_keypad_fixup(struct pci_dev *dev)
-{
-	void __iomem *base;
-	u32 val;
-
-	base = pci_ioremap_bar(dev, 0);
-
-	if (base == NULL)
-		return;
-
-	val = readl(base);
-
-	/*
-	 * set the KPC register.  Please see the Langwell Docs
-	 * for more detail.
-	 *
-	 * Bit 31: Reserved
-	 * Bit 30: Automatic Scan Bit
-	 * Bit 29: Automatic Scan on Activity bit
-	 * Bit 28:26 : Matrix keypad row number
-	 *		000 == 1, 001 == 2, ... 111 == 8
-	 * Bit 25:23 : Matrix keypad column number
-	 *		000 ==1, 001 == 2, ... 111 == 8
-	 * Bit 22: Matrix Interrupt Bit
-	 * Bit 21: Ignore Multiple Key Press
-	 * Bit 20: Manual Matrix Scan line 7
-	 * Bit 19: Manual Matrix Scan line 6
-	 * Bit 18: Manual Matrix Scan line 5
-	 * Bit 17: Manual Matrix Scan line 4
-	 * Bit 16: Manual Matrix Scan line 3
-	 * Bit 15: Manual Matrix Scan line 2
-	 * Bit 14: Manual Matrix Scan line 1
-	 * Bit 13: Manual Matrix Scan line 0
-	 * Bit 12: Matrix Keypad Enable
-	 * Bit 11: Matrix Interrupt Enable
-	 * Bit 10:9  : Reserved
-	 * Bit 8:6   : Direct Key Number + Roatry encoder sensor input
-	 *		000 == 1, 001 == 2, ... 111 == 8
-	 * Bit 5: Direct Interrupt bit
-	 * Bit 4: Reserved
-	 * Bit 3: Rotary Encoder 1 enable
-	 * Bit 2: Rotary Encoder 0 enable
-	 * Bit 1: Direct Keypad enable
-	 * Bit 0: Direct Keypad Interrupt enable
-	 */
-	if (val == 0)
-		writel(0x3f9ff800, base);
-
-	val = readl(base + 0x24);
-
-	/* set the debounce interval (KPKDI) to 100ms */
-	if (val == 0)
-		writel(100, base + 0x24);
-
-	iounmap(base);
-}
-DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_INTEL, 0x0805, langwell_keypad_fixup);

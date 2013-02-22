@@ -1553,15 +1553,8 @@ static int wait_consider_task(struct wait_opts *wo, int ptrace,
 	}
 
 	/* dead body doesn't have much to contribute */
-	if (unlikely(p->exit_state == EXIT_DEAD)) {
-		/*
-		 * But do not ignore this task until the tracer does
-		 * wait_task_zombie()->do_notify_parent().
-		 */
-		if (likely(!ptrace) && unlikely(ptrace_reparented(p)))
-			wo->notask_error = 0;
+	if (p->exit_state == EXIT_DEAD)
 		return 0;
-	}
 
 	/* slay zombie? */
 	if (p->exit_state == EXIT_ZOMBIE) {

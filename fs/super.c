@@ -397,12 +397,12 @@ void sync_supers(void)
 	list_for_each_entry(sb, &super_blocks, s_list) {
 		if (list_empty(&sb->s_instances))
 			continue;
-		if (sb->s_op->write_super && sb_is_dirty(sb)) {
+		if (sb->s_op->write_super && sb->s_dirt) {
 			sb->s_count++;
 			spin_unlock(&sb_lock);
 
 			down_read(&sb->s_umount);
-			if (sb->s_root && sb_is_dirty(sb))
+			if (sb->s_root && sb->s_dirt)
 				sb->s_op->write_super(sb);
 			up_read(&sb->s_umount);
 
@@ -1009,8 +1009,6 @@ int freeze_super(struct super_block *sb)
 			printk(KERN_ERR
 				"VFS:Filesystem freeze failed\n");
 			sb->s_frozen = SB_UNFROZEN;
-			smp_wmb();
-			wake_up(&sb->s_wait_unfrozen);
 			deactivate_locked_super(sb);
 			return ret;
 		}

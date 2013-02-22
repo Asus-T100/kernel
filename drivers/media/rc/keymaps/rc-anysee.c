@@ -19,7 +19,6 @@
  */
 
 #include <media/rc-map.h>
-#include <linux/module.h>
 
 static struct rc_map_table anysee[] = {
 	{ 0x0800, KEY_0 },

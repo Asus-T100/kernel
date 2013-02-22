@@ -258,7 +258,7 @@ static int ac97_prepare(struct snd_pcm_substream *substream,
 			SNDRV_PCM_RATE_32000 | SNDRV_PCM_RATE_44100 | \
 			SNDRV_PCM_RATE_48000)
 
-static const struct snd_soc_dai_ops wm9705_dai_ops = {
+static struct snd_soc_dai_ops wm9705_dai_ops = {
 	.prepare	= ac97_prepare,
 };
 
@@ -306,7 +306,7 @@ static int wm9705_reset(struct snd_soc_codec *codec)
 }
 
 #ifdef CONFIG_PM
-static int wm9705_soc_suspend(struct snd_soc_codec *codec)
+static int wm9705_soc_suspend(struct snd_soc_codec *codec, pm_message_t msg)
 {
 	soc_ac97_ops.write(codec->ac97, AC97_POWERDOWN, 0xffff);
 
@@ -351,7 +351,7 @@ static int wm9705_soc_probe(struct snd_soc_codec *codec)
 	if (ret)
 		goto reset_err;
 
-	snd_soc_add_codec_controls(codec, wm9705_snd_ac97_controls,
+	snd_soc_add_controls(codec, wm9705_snd_ac97_controls,
 				ARRAY_SIZE(wm9705_snd_ac97_controls));
 
 	return 0;
@@ -406,7 +406,17 @@ static struct platform_driver wm9705_codec_driver = {
 	.remove = __devexit_p(wm9705_remove),
 };
 
-module_platform_driver(wm9705_codec_driver);
+static int __init wm9705_init(void)
+{
+	return platform_driver_register(&wm9705_codec_driver);
+}
+module_init(wm9705_init);
+
+static void __exit wm9705_exit(void)
+{
+	platform_driver_unregister(&wm9705_codec_driver);
+}
+module_exit(wm9705_exit);
 
 MODULE_DESCRIPTION("ASoC WM9705 driver");
 MODULE_AUTHOR("Ian Molton");

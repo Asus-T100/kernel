@@ -3,7 +3,7 @@
  *
  * Copyright (C) 2008 Nokia Corporation
  *
- * Contact: Jarkko Nikula <jarkko.nikula@bitmer.com>
+ * Contact: Jarkko Nikula <jhnikula@gmail.com>
  *          Peter Ujfalusi <peter.ujfalusi@ti.com>
  *
  * This program is free software; you can redistribute it and/or
@@ -24,8 +24,6 @@
 
 #ifndef __OMAP_PCM_H__
 #define __OMAP_PCM_H__
-
-struct snd_pcm_substream;
 
 struct omap_pcm_dma_data {
 	char		*name;		/* stream identifier */

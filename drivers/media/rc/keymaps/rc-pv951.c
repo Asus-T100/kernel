@@ -11,7 +11,6 @@
  */
 
 #include <media/rc-map.h>
-#include <linux/module.h>
 
 /* Mark Phalan <phalanm@o2.ie> */
 

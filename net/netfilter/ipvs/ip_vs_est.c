@@ -198,9 +198,7 @@ int __net_init __ip_vs_estimator_init(struct net *net)
 
 	INIT_LIST_HEAD(&ipvs->est_list);
 	spin_lock_init(&ipvs->est_lock);
-	ipvs->est_timer.function = estimation_timer;
-	ipvs->est_timer.data = (unsigned long)net;
-	init_timer_deferrable(&ipvs->est_timer);
+	setup_timer(&ipvs->est_timer, estimation_timer, (unsigned long)net);
 	mod_timer(&ipvs->est_timer, jiffies + 2 * HZ);
 	return 0;
 }

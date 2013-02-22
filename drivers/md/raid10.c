@@ -667,22 +667,9 @@ static void wait_barrier(conf_t *conf)
 	spin_lock_irq(&conf->resync_lock);
 	if (conf->barrier) {
 		conf->nr_waiting++;
-		/* Wait for the barrier to drop.
-		 * However if there are already pending
-		 * requests (preventing the barrier from
-		 * rising completely), and the
-		 * pre-process bio queue isn't empty,
-		 * then don't wait, as we need to empty
-		 * that queue to get the nr_pending
-		 * count down.
-		 */
-		wait_event_lock_irq(conf->wait_barrier,
-				    !conf->barrier ||
-				    (conf->nr_pending &&
-				     current->bio_list &&
-				     !bio_list_empty(current->bio_list)),
+		wait_event_lock_irq(conf->wait_barrier, !conf->barrier,
 				    conf->resync_lock,
-			);
+				    );
 		conf->nr_waiting--;
 	}
 	conf->nr_pending++;
@@ -2344,7 +2331,7 @@ static int run(mddev_t *mddev)
 	return 0;
 
 out_free_conf:
-	md_unregister_thread(&mddev->thread);
+	md_unregister_thread(mddev->thread);
 	if (conf->r10bio_pool)
 		mempool_destroy(conf->r10bio_pool);
 	safe_put_page(conf->tmppage);
@@ -2362,7 +2349,8 @@ static int stop(mddev_t *mddev)
 	raise_barrier(conf, 0);
 	lower_barrier(conf);
 
-	md_unregister_thread(&mddev->thread);
+	md_unregister_thread(mddev->thread);
+	mddev->thread = NULL;
 	blk_sync_queue(mddev->queue); /* the unplug fn references 'conf'*/
 	if (conf->r10bio_pool)
 		mempool_destroy(conf->r10bio_pool);

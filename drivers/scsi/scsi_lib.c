@@ -213,8 +213,6 @@ int scsi_execute(struct scsi_device *sdev, const unsigned char *cmd,
 	int ret = DRIVER_ERROR << 24;
 
 	req = blk_get_request(sdev->request_queue, write, __GFP_WAIT);
-	if (!req)
-		return ret;
 
 	if (bufflen &&	blk_rq_map_kern(sdev->request_queue, req,
 					buffer, bufflen, __GFP_WAIT))
@@ -404,6 +402,10 @@ static void scsi_run_queue(struct request_queue *q)
 	LIST_HEAD(starved_list);
 	unsigned long flags;
 
+	/* if the device is dead, sdev will be NULL, so no queue to run */
+	if (!sdev)
+		return;
+
 	shost = sdev->host;
 	if (scsi_target(sdev)->single_lun)
 		scsi_single_lun_run(sdev);
@@ -434,14 +436,11 @@ static void scsi_run_queue(struct request_queue *q)
 			continue;
 		}
 
-		scsi_device_get(sdev);
 		spin_unlock(shost->host_lock);
-
 		spin_lock(sdev->request_queue->queue_lock);
 		__blk_run_queue(sdev->request_queue);
-		spin_unlock_irq(sdev->request_queue->queue_lock);
-		scsi_device_put(sdev);
-		spin_lock_irq(shost->host_lock);
+		spin_unlock(sdev->request_queue->queue_lock);
+		spin_lock(shost->host_lock);
 	}
 	/* put any unprocessed entries back */
 	list_splice(&starved_list, &shost->starved_list);
@@ -1371,27 +1370,24 @@ static inline int scsi_host_queue_ready(struct request_queue *q,
  * may be changed after request stacking drivers call the function,
  * regardless of taking lock or not.
  *
- * When scsi can't dispatch I/Os anymore and needs to kill I/Os scsi
- * needs to return 'not busy'. Otherwise, request stacking drivers
- * may hold requests forever.
+ * When scsi can't dispatch I/Os anymore and needs to kill I/Os
+ * (e.g. !sdev), scsi needs to return 'not busy'.
+ * Otherwise, request stacking drivers may hold requests forever.
  */
 static int scsi_lld_busy(struct request_queue *q)
 {
 	struct scsi_device *sdev = q->queuedata;
 	struct Scsi_Host *shost;
+	struct scsi_target *starget;
 
-	if (test_bit(QUEUE_FLAG_DEAD, &q->queue_flags))
+	if (!sdev)
 		return 0;
 
 	shost = sdev->host;
+	starget = scsi_target(sdev);
 
-	/*
-	 * Ignore host/starget busy state.
-	 * Since block layer does not have a concept of fairness across
-	 * multiple queues, congestion of host/starget needs to be handled
-	 * in SCSI layer.
-	 */
-	if (scsi_host_in_recovery(shost) || scsi_device_is_busy(sdev))
+	if (scsi_host_in_recovery(shost) || scsi_host_is_busy(shost) ||
+	    scsi_target_is_busy(starget) || scsi_device_is_busy(sdev))
 		return 1;
 
 	return 0;
@@ -1408,8 +1404,6 @@ static void scsi_kill_request(struct request *req, struct request_queue *q)
 	struct Scsi_Host *shost;
 
 	blk_start_request(req);
-
-	scmd_printk(KERN_INFO, cmd, "killing request\n");
 
 	sdev = cmd->device;
 	starget = scsi_target(sdev);
@@ -1490,6 +1484,13 @@ static void scsi_request_fn(struct request_queue *q)
 	struct Scsi_Host *shost;
 	struct scsi_cmnd *cmd;
 	struct request *req;
+
+	if (!sdev) {
+		printk("scsi: killing requests for dead queue\n");
+		while ((req = blk_peek_request(q)) != NULL)
+			scsi_kill_request(req, q);
+		return;
+	}
 
 	if(!get_device(&sdev->sdev_gendev))
 		/* We must be tearing the block queue down already */
@@ -1690,6 +1691,11 @@ struct request_queue *scsi_alloc_queue(struct scsi_device *sdev)
 	blk_queue_rq_timed_out(q, scsi_times_out);
 	blk_queue_lld_busy(q, scsi_lld_busy);
 	return q;
+}
+
+void scsi_free_queue(struct request_queue *q)
+{
+	blk_cleanup_queue(q);
 }
 
 /*

@@ -26,8 +26,8 @@
 #include "ar-internal.h"
 
 static int rxrpc_vet_description_s(const char *);
-static int rxrpc_instantiate(struct key *, struct key_preparsed_payload *);
-static int rxrpc_instantiate_s(struct key *, struct key_preparsed_payload *);
+static int rxrpc_instantiate(struct key *, const void *, size_t);
+static int rxrpc_instantiate_s(struct key *, const void *, size_t);
 static void rxrpc_destroy(struct key *);
 static void rxrpc_destroy_s(struct key *);
 static void rxrpc_describe(const struct key *, struct seq_file *);
@@ -680,7 +680,7 @@ error:
  *
  * if no data is provided, then a no-security key is made
  */
-static int rxrpc_instantiate(struct key *key, struct key_preparsed_payload *prep)
+static int rxrpc_instantiate(struct key *key, const void *data, size_t datalen)
 {
 	const struct rxrpc_key_data_v1 *v1;
 	struct rxrpc_key_token *token, **pp;
@@ -688,26 +688,26 @@ static int rxrpc_instantiate(struct key *key, struct key_preparsed_payload *prep
 	u32 kver;
 	int ret;
 
-	_enter("{%x},,%zu", key_serial(key), prep->datalen);
+	_enter("{%x},,%zu", key_serial(key), datalen);
 
 	/* handle a no-security key */
-	if (!prep->data && prep->datalen == 0)
+	if (!data && datalen == 0)
 		return 0;
 
 	/* determine if the XDR payload format is being used */
-	if (prep->datalen > 7 * 4) {
-		ret = rxrpc_instantiate_xdr(key, prep->data, prep->datalen);
+	if (datalen > 7 * 4) {
+		ret = rxrpc_instantiate_xdr(key, data, datalen);
 		if (ret != -EPROTO)
 			return ret;
 	}
 
 	/* get the key interface version number */
 	ret = -EINVAL;
-	if (prep->datalen <= 4 || !prep->data)
+	if (datalen <= 4 || !data)
 		goto error;
-	memcpy(&kver, prep->data, sizeof(kver));
-	prep->data += sizeof(kver);
-	prep->datalen -= sizeof(kver);
+	memcpy(&kver, data, sizeof(kver));
+	data += sizeof(kver);
+	datalen -= sizeof(kver);
 
 	_debug("KEY I/F VERSION: %u", kver);
 
@@ -717,11 +717,11 @@ static int rxrpc_instantiate(struct key *key, struct key_preparsed_payload *prep
 
 	/* deal with a version 1 key */
 	ret = -EINVAL;
-	if (prep->datalen < sizeof(*v1))
+	if (datalen < sizeof(*v1))
 		goto error;
 
-	v1 = prep->data;
-	if (prep->datalen != sizeof(*v1) + v1->ticket_length)
+	v1 = data;
+	if (datalen != sizeof(*v1) + v1->ticket_length)
 		goto error;
 
 	_debug("SCIX: %u", v1->security_index);
@@ -786,17 +786,17 @@ error:
  * instantiate a server secret key
  * data should be a pointer to the 8-byte secret key
  */
-static int rxrpc_instantiate_s(struct key *key,
-			       struct key_preparsed_payload *prep)
+static int rxrpc_instantiate_s(struct key *key, const void *data,
+			       size_t datalen)
 {
 	struct crypto_blkcipher *ci;
 
-	_enter("{%x},,%zu", key_serial(key), prep->datalen);
+	_enter("{%x},,%zu", key_serial(key), datalen);
 
-	if (prep->datalen != 8)
+	if (datalen != 8)
 		return -EINVAL;
 
-	memcpy(&key->type_data, prep->data, 8);
+	memcpy(&key->type_data, data, 8);
 
 	ci = crypto_alloc_blkcipher("pcbc(des)", 0, CRYPTO_ALG_ASYNC);
 	if (IS_ERR(ci)) {
@@ -804,7 +804,7 @@ static int rxrpc_instantiate_s(struct key *key,
 		return PTR_ERR(ci);
 	}
 
-	if (crypto_blkcipher_setkey(ci, prep->data, 8) < 0)
+	if (crypto_blkcipher_setkey(ci, data, 8) < 0)
 		BUG();
 
 	key->payload.data = ci;

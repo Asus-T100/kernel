@@ -19,7 +19,6 @@
  */
 
 #include <media/rc-map.h>
-#include <linux/module.h>
 
 /* A-Link DTU(m) slim remote, 6 rows, 3 columns. */
 static struct rc_map_table alink_dtu_m[] = {

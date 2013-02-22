@@ -24,7 +24,6 @@
 #include <linux/gpio.h>
 #include <linux/delay.h>
 #include <linux/regulator/consumer.h>
-#include <linux/module.h>
 
 #include <sound/core.h>
 #include <sound/pcm.h>
@@ -49,7 +48,23 @@ static int omap3pandora_hw_params(struct snd_pcm_substream *substream,
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_soc_dai *codec_dai = rtd->codec_dai;
 	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
+	int fmt = SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF |
+		  SND_SOC_DAIFMT_CBS_CFS;
 	int ret;
+
+	/* Set codec DAI configuration */
+	ret = snd_soc_dai_set_fmt(codec_dai, fmt);
+	if (ret < 0) {
+		pr_err(PREFIX "can't set codec DAI configuration\n");
+		return ret;
+	}
+
+	/* Set cpu DAI configuration */
+	ret = snd_soc_dai_set_fmt(cpu_dai, fmt);
+	if (ret < 0) {
+		pr_err(PREFIX "can't set cpu DAI configuration\n");
+		return ret;
+	}
 
 	/* Set the codec system clock for DAC and ADC */
 	ret = snd_soc_dai_set_sysclk(codec_dai, 0, 26000000,
@@ -174,8 +189,10 @@ static int omap3pandora_out_init(struct snd_soc_pcm_runtime *rtd)
 	if (ret < 0)
 		return ret;
 
-	return snd_soc_dapm_add_routes(dapm, omap3pandora_out_map,
+	snd_soc_dapm_add_routes(dapm, omap3pandora_out_map,
 		ARRAY_SIZE(omap3pandora_out_map));
+
+	return snd_soc_dapm_sync(dapm);
 }
 
 static int omap3pandora_in_init(struct snd_soc_pcm_runtime *rtd)
@@ -195,8 +212,10 @@ static int omap3pandora_in_init(struct snd_soc_pcm_runtime *rtd)
 	if (ret < 0)
 		return ret;
 
-	return snd_soc_dapm_add_routes(dapm, omap3pandora_in_map,
+	snd_soc_dapm_add_routes(dapm, omap3pandora_in_map,
 		ARRAY_SIZE(omap3pandora_in_map));
+
+	return snd_soc_dapm_sync(dapm);
 }
 
 static struct snd_soc_ops omap3pandora_ops = {
@@ -208,23 +227,19 @@ static struct snd_soc_dai_link omap3pandora_dai[] = {
 	{
 		.name = "PCM1773",
 		.stream_name = "HiFi Out",
-		.cpu_dai_name = "omap-mcbsp.2",
+		.cpu_dai_name = "omap-mcbsp-dai.1",
 		.codec_dai_name = "twl4030-hifi",
 		.platform_name = "omap-pcm-audio",
 		.codec_name = "twl4030-codec",
-		.dai_fmt = SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF |
-			   SND_SOC_DAIFMT_CBS_CFS,
 		.ops = &omap3pandora_ops,
 		.init = omap3pandora_out_init,
 	}, {
 		.name = "TWL4030",
 		.stream_name = "Line/Mic In",
-		.cpu_dai_name = "omap-mcbsp.4",
+		.cpu_dai_name = "omap-mcbsp-dai.3",
 		.codec_dai_name = "twl4030-hifi",
 		.platform_name = "omap-pcm-audio",
 		.codec_name = "twl4030-codec",
-		.dai_fmt = SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF |
-			   SND_SOC_DAIFMT_CBS_CFS,
 		.ops = &omap3pandora_ops,
 		.init = omap3pandora_in_init,
 	}
@@ -233,7 +248,6 @@ static struct snd_soc_dai_link omap3pandora_dai[] = {
 /* SoC card */
 static struct snd_soc_card snd_soc_card_omap3pandora = {
 	.name = "omap3pandora",
-	.owner = THIS_MODULE,
 	.dai_link = omap3pandora_dai,
 	.num_links = ARRAY_SIZE(omap3pandora_dai),
 };

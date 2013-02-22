@@ -36,7 +36,7 @@ static char *fimc_clocks[MAX_FIMC_CLOCKS] = {
 static struct fimc_fmt fimc_formats[] = {
 	{
 		.name		= "RGB565",
-		.fourcc		= V4L2_PIX_FMT_RGB565,
+		.fourcc		= V4L2_PIX_FMT_RGB565X,
 		.depth		= { 16 },
 		.color		= S5P_FIMC_RGB565,
 		.memplanes	= 1,
@@ -458,7 +458,7 @@ int fimc_prepare_addr(struct fimc_ctx *ctx, struct vb2_buffer *vb,
 	dbg("memplanes= %d, colplanes= %d, pix_size= %d",
 		frame->fmt->memplanes, frame->fmt->colplanes, pix_size);
 
-	paddr->y = vb2_dma_contig_plane_dma_addr(vb, 0);
+	paddr->y = vb2_dma_contig_plane_paddr(vb, 0);
 
 	if (frame->fmt->memplanes == 1) {
 		switch (frame->fmt->colplanes) {
@@ -486,10 +486,10 @@ int fimc_prepare_addr(struct fimc_ctx *ctx, struct vb2_buffer *vb,
 		}
 	} else {
 		if (frame->fmt->memplanes >= 2)
-			paddr->cb = vb2_dma_contig_plane_dma_addr(vb, 1);
+			paddr->cb = vb2_dma_contig_plane_paddr(vb, 1);
 
 		if (frame->fmt->memplanes == 3)
-			paddr->cr = vb2_dma_contig_plane_dma_addr(vb, 2);
+			paddr->cr = vb2_dma_contig_plane_paddr(vb, 2);
 	}
 
 	dbg("PHYS_ADDR: y= 0x%X  cb= 0x%X cr= 0x%X ret= %d",
@@ -692,9 +692,9 @@ static void fimc_job_abort(void *priv)
 	fimc_m2m_shutdown(priv);
 }
 
-static int fimc_queue_setup(struct vb2_queue *vq, const struct v4l2_format *fmt,
-			    unsigned int *num_buffers, unsigned int *num_planes,
-			    unsigned int sizes[], void *allocators[])
+static int fimc_queue_setup(struct vb2_queue *vq, unsigned int *num_buffers,
+			    unsigned int *num_planes, unsigned long sizes[],
+			    void *allocators[])
 {
 	struct fimc_ctx *ctx = vb2_get_drv_priv(vq);
 	struct fimc_frame *f;
@@ -1518,10 +1518,6 @@ static int fimc_register_m2m_device(struct fimc_dev *fimc)
 	vfd->minor	= -1;
 	vfd->release	= video_device_release;
 	vfd->lock	= &fimc->lock;
-	/* Locking in file operations other than ioctl should be done
-	   by the driver, not the V4L2 core.
-	   This driver needs auditing so that this flag can be removed. */
-	set_bit(V4L2_FL_LOCK_ALL_FOPS, &vfd->flags);
 
 	snprintf(vfd->name, sizeof(vfd->name), "%s:m2m", dev_name(&pdev->dev));
 

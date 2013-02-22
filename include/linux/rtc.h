@@ -97,14 +97,11 @@ struct rtc_pll_info {
 #define RTC_AF 0x20	/* Alarm interrupt */
 #define RTC_UF 0x10	/* Update interrupt for 1Hz RTC */
 
-
-#define RTC_MAX_FREQ	8192
-
 #ifdef __KERNEL__
 
 #include <linux/types.h>
 #include <linux/interrupt.h>
-extern int alarm_pm_wake_check(void);
+
 extern int rtc_month_days(unsigned int month, unsigned int year);
 extern int rtc_year_days(unsigned int day, unsigned int month, unsigned int year);
 extern int rtc_valid_tm(struct rtc_time *tm);

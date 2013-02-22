@@ -19,7 +19,6 @@
  */
 
 #include <media/rc-map.h>
-#include <linux/module.h>
 
 /* Initial keytable is from Jose Alberto Reguero <jareguero@telefonica.net>
    and Felipe Morales Moreno <felipe.morales.moreno@gmail.com> */

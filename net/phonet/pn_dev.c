@@ -298,7 +298,7 @@ static int phonet_device_notify(struct notifier_block *me, unsigned long what,
 
 	switch (what) {
 	case NETDEV_REGISTER:
-		if (dev->type == ARPHRD_PHONET || dev->type == ARPHRD_MHI)
+		if (dev->type == ARPHRD_PHONET)
 			phonet_device_autoconf(dev);
 		break;
 	case NETDEV_UNREGISTER:

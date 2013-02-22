@@ -11,7 +11,6 @@
  */
 
 #include <media/rc-map.h>
-#include <linux/module.h>
 
 /* Norwood Micro (non-Pro) TV Tuner
    By Peter Naulls <peter@chocky.org>

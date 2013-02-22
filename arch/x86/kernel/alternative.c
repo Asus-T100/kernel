@@ -518,35 +518,6 @@ extern struct paravirt_patch_site __start_parainstructions[],
 	__stop_parainstructions[];
 #endif	/* CONFIG_PARAVIRT */
 
-#ifdef CONFIG_X86_USE_SSE
-
-static void std_clear_page(void *page)
-{
-	int d0, d1;
-	asm volatile("cld\n\t"
-		     "rep; stosl"
-		     : "=&c" (d0), "=&D" (d1)
-		     : "a" (0), "0" (PAGE_SIZE/4), "1" (page)
-		     : "memory");
-}
-
-static void std_copy_page(void *to, void *from)
-{
-	int d0, d1, d2;
-	asm volatile("cld\n\t"
-		     "rep; movsl"
-		     : "=&c" (d0), "=&D" (d1), "=&S" (d2)
-		     : "0" (PAGE_SIZE/4), "1" (to), "2" (from)
-		     : "memory");
-}
-
-void (*__sse_clear_page)(void *) = &std_clear_page;
-void (*__sse_copy_page)(void *, void *) = &std_copy_page;
-EXPORT_SYMBOL(__sse_clear_page);
-EXPORT_SYMBOL(__sse_copy_page);
-#endif
-
-
 void __init alternative_instructions(void)
 {
 	/* The patching is not fully atomic, so try to avoid local interruptions
@@ -565,18 +536,7 @@ void __init alternative_instructions(void)
 	 * patching.
 	 */
 
-	/* FIXME:
-	 * The 64bit version of MRFLD_VP panics in apply_alternatives.
-	 * Since it is optional, turn it off for now.
-	 * Need to go back and find out what's broken here.
-	 */
-#if !defined(CONFIG_64BIT) || !defined(CONFIG_BOARD_MRFLD_VP)
-	extern void activate_sse_replacements(void);
 	apply_alternatives(__alt_instructions, __alt_instructions_end);
-# ifdef CONFIG_X86_USE_SSE
-	activate_sse_replacements();
-# endif
-#endif
 
 	/* switch to patch-once-at-boottime-only mode and free the
 	 * tables in case we know the number of CPUs will never ever

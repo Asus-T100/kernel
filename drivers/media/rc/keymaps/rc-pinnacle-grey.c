@@ -11,7 +11,6 @@
  */
 
 #include <media/rc-map.h>
-#include <linux/module.h>
 
 static struct rc_map_table pinnacle_grey[] = {
 	{ 0x3a, KEY_0 },

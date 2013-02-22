@@ -8,14 +8,9 @@
 #include <linux/pnp.h>
 #include <linux/of.h>
 
-#ifdef CONFIG_X86_INTEL_MID
-#include <asm/intel_scu_ipc.h>
-#endif
 #include <asm/vsyscall.h>
 #include <asm/x86_init.h>
 #include <asm/time.h>
-#include <asm/intel-mid.h>
-#include <asm/io_apic.h>
 
 #ifdef CONFIG_X86_32
 /*
@@ -181,11 +176,6 @@ int update_persistent_clock(struct timespec now)
 	retval = x86_platform.set_wallclock(now.tv_sec);
 	spin_unlock_irqrestore(&rtc_lock, flags);
 
-#ifdef CONFIG_X86_INTEL_MID
-	if (!retval)
-		retval = intel_scu_ipc_simple_command(
-				IPCMSG_VRTC, IPC_CMD_VRTC_SETTIME);
-#endif
 	return retval;
 }
 
@@ -208,26 +198,6 @@ unsigned long long native_read_tsc(void)
 }
 EXPORT_SYMBOL(native_read_tsc);
 
-static int handle_mrfl_dev_ioapic(int irq)
-{
-	int ret = 0;
-	int ioapic;
-	struct io_apic_irq_attr irq_attr;
-
-	ioapic = mp_find_ioapic(irq);
-	if (ioapic >= 0) {
-		irq_attr.ioapic = ioapic;
-		irq_attr.ioapic_pin = irq;
-		irq_attr.trigger = 1;
-		irq_attr.polarity = 0; /* Active high */
-		io_apic_set_pci_routing(NULL, irq, &irq_attr);
-	} else {
-		pr_warn("can not find interrupt %d in ioapic\n", irq);
-		ret = -EINVAL;
-	}
-
-	return ret;
-}
 
 static struct resource rtc_resources[] = {
 	[0] = {
@@ -251,8 +221,6 @@ static struct platform_device rtc_device = {
 
 static __init int add_rtc_cmos(void)
 {
-	int ret;
-
 #ifdef CONFIG_PNP
 	static const char *ids[] __initconst =
 	    { "PNP0b00", "PNP0b01", "PNP0b02", };
@@ -271,17 +239,6 @@ static __init int add_rtc_cmos(void)
 #endif
 	if (of_have_populated_dt())
 		return 0;
-
-	/* Intel MID platforms don't have ioport rtc
-	 * except Tangier platform, which doesn't have vRTC
-	 */
-	if (intel_mid_identify_cpu() &&
-	    intel_mid_identify_cpu() != INTEL_MID_CPU_CHIP_TANGIER)
-		return -ENODEV;
-
-	ret = handle_mrfl_dev_ioapic(RTC_IRQ);
-	if (ret)
-		return ret;
 
 	platform_device_register(&rtc_device);
 	dev_info(&rtc_device.dev,

@@ -24,7 +24,6 @@
 #include <linux/init.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
-#include <linux/module.h>
 
 #include <sound/asound.h>
 #include <sound/control.h>
@@ -846,7 +845,7 @@ static int __devinit snd_ps3_allocate_irq(void)
 		return ret;
 	}
 
-	ret = request_irq(the_card.irq_no, snd_ps3_interrupt, 0,
+	ret = request_irq(the_card.irq_no, snd_ps3_interrupt, IRQF_DISABLED,
 			  SND_PS3_DRIVER_NAME, &the_card);
 	if (ret) {
 		pr_info("%s: request_irq failed (%d)\n", __func__, ret);
@@ -876,7 +875,7 @@ static void __devinit snd_ps3_audio_set_base_addr(uint64_t ioaddr_start)
 		(0x0fUL << 12) |
 		(PS3_AUDIO_IOID);
 
-	ret = lv1_gpu_attribute(0x100, 0x007, val);
+	ret = lv1_gpu_attribute(0x100, 0x007, val, 0, 0);
 	if (ret)
 		pr_info("%s: gpu_attribute failed %d\n", __func__,
 			ret);

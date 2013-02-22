@@ -493,21 +493,8 @@ static int fb_show_logo_line(struct fb_info *info, int rotate,
 		fb_set_logo(info, logo, logo_new, fb_logo.depth);
 	}
 
-#ifdef CONFIG_LOGO_CENTERED
-        /*
-          At IAFW side, the framebuffer resolution is 608x1024, but the scrren
-          size is 600x1024, IAFW draw logo framebuffer centered, not scrren
-          centered, so we need this 4-pixels shift workaround to make sure
-          linux draw logo at the same posotion with IAFW.
-          This workaround just for demo, should be removed when IAFW fix the issue.
-        */
-	#define LOGO_SHIFT 4
-	image.dx = LOGO_SHIFT + (info->var.xres - (n * logo->width)) / 2;
-	image.dy = (info->var.yres - logo->height) / 2;
-#else
 	image.dx = 0;
 	image.dy = y;
-#endif
 	image.width = logo->width;
 	image.height = logo->height;
 
@@ -742,12 +729,7 @@ static struct fb_info *file_fb_info(struct file *file)
 {
 	struct inode *inode = file->f_path.dentry->d_inode;
 	int fbidx = iminor(inode);
-	struct fb_info *info = (struct fb_info *)NULL;
-
-	if (fbidx >= (sizeof(registered_fb) / sizeof(registered_fb[0])))
-		return (struct fb_info *)NULL;
-
-	info = registered_fb[fbidx];
+	struct fb_info *info = registered_fb[fbidx];
 
 	if (info != file->private_data)
 		info = NULL;
@@ -1641,11 +1623,6 @@ static int do_register_framebuffer(struct fb_info *fb_info)
 
 	fb_var_to_videomode(&mode, &fb_info->var);
 	fb_add_videomode(&mode, &fb_info->modelist);
-
-	/* KW issue 115161 */
-	if (i >= (sizeof(registered_fb) / sizeof(registered_fb[0]))) {
-		return -EINVAL;
-	} else {
 	registered_fb[i] = fb_info;
 
 	event.info = fb_info;
@@ -1653,7 +1630,6 @@ static int do_register_framebuffer(struct fb_info *fb_info)
 		return -ENODEV;
 	fb_notifier_call_chain(FB_EVENT_FB_REGISTERED, &event);
 	unlock_fb_info(fb_info);
-	}
 	return 0;
 }
 
@@ -1675,7 +1651,6 @@ static int do_unregister_framebuffer(struct fb_info *fb_info)
 	if (ret)
 		return -EINVAL;
 
-	unlink_framebuffer(fb_info);
 	if (fb_info->pixmap.addr &&
 	    (fb_info->pixmap.flags & FB_PIXMAP_DEFAULT))
 		kfree(fb_info->pixmap.addr);
@@ -1683,6 +1658,7 @@ static int do_unregister_framebuffer(struct fb_info *fb_info)
 	registered_fb[i] = NULL;
 	num_registered_fb--;
 	fb_cleanup_device(fb_info);
+	device_destroy(fb_class, MKDEV(FB_MAJOR, i));
 	event.info = fb_info;
 	fb_notifier_call_chain(FB_EVENT_FB_UNREGISTERED, &event);
 
@@ -1690,22 +1666,6 @@ static int do_unregister_framebuffer(struct fb_info *fb_info)
 	put_fb_info(fb_info);
 	return 0;
 }
-
-int unlink_framebuffer(struct fb_info *fb_info)
-{
-	int i;
-
-	i = fb_info->node;
-	if (i < 0 || i >= FB_MAX || registered_fb[i] != fb_info)
-		return -EINVAL;
-
-	if (fb_info->dev) {
-		device_destroy(fb_class, MKDEV(FB_MAJOR, i));
-		fb_info->dev = NULL;
-	}
-	return 0;
-}
-EXPORT_SYMBOL(unlink_framebuffer);
 
 void remove_conflicting_framebuffers(struct apertures_struct *a,
 				     const char *name, bool primary)
@@ -1778,6 +1738,8 @@ void fb_set_suspend(struct fb_info *info, int state)
 {
 	struct fb_event event;
 
+	if (!lock_fb_info(info))
+		return;
 	event.info = info;
 	if (state) {
 		fb_notifier_call_chain(FB_EVENT_SUSPEND, &event);
@@ -1786,6 +1748,7 @@ void fb_set_suspend(struct fb_info *info, int state)
 		info->state = FBINFO_STATE_RUNNING;
 		fb_notifier_call_chain(FB_EVENT_RESUME, &event);
 	}
+	unlock_fb_info(info);
 }
 
 /**

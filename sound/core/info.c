@@ -24,7 +24,6 @@
 #include <linux/mm.h>
 #include <linux/slab.h>
 #include <linux/string.h>
-#include <linux/module.h>
 #include <sound/core.h>
 #include <sound/minors.h>
 #include <sound/info.h>
@@ -532,7 +531,7 @@ int __init snd_info_init(void)
 {
 	struct proc_dir_entry *p;
 
-	p = proc_mkdir("asound", NULL);
+	p = create_proc_entry("asound", S_IFDIR | S_IRUGO | S_IXUGO, NULL);
 	if (p == NULL)
 		return -ENOMEM;
 	snd_proc_root = p;

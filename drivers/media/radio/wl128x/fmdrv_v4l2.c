@@ -191,7 +191,7 @@ static int fm_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
 
 	switch (ctrl->id) {
 	case  V4L2_CID_TUNE_ANTENNA_CAPACITOR:
-		ctrl->val = fm_tx_get_tune_cap_val(fmdev);
+		ctrl->cur.val = fm_tx_get_tune_cap_val(fmdev);
 		break;
 	default:
 		fmwarn("%s: Unknown IOCTL: %d\n", __func__, ctrl->id);
@@ -514,10 +514,6 @@ int fm_v4l2_init_video_device(struct fmdev *fmdev, int radio_nr)
 	video_set_drvdata(gradio_dev, fmdev);
 
 	gradio_dev->lock = &fmdev->mutex;
-	/* Locking in file operations other than ioctl should be done
-	   by the driver, not the V4L2 core.
-	   This driver needs auditing so that this flag can be removed. */
-	set_bit(V4L2_FL_LOCK_ALL_FOPS, &gradio_dev->flags);
 
 	/* Register with V4L2 subsystem as RADIO device */
 	if (video_register_device(gradio_dev, VFL_TYPE_RADIO, radio_nr)) {
@@ -562,7 +558,7 @@ int fm_v4l2_init_video_device(struct fmdev *fmdev, int radio_nr)
 			255, 1, 255);
 
 	if (ctrl)
-		ctrl->flags |= V4L2_CTRL_FLAG_VOLATILE;
+		ctrl->is_volatile = 1;
 
 	return 0;
 }

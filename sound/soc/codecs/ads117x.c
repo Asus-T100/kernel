@@ -14,7 +14,6 @@
 #include <linux/slab.h>
 #include <linux/init.h>
 #include <linux/device.h>
-#include <linux/module.h>
 #include <sound/core.h>
 #include <sound/pcm.h>
 #include <sound/initval.h>
@@ -58,7 +57,17 @@ static struct platform_driver ads117x_codec_driver = {
 	.remove = __devexit_p(ads117x_remove),
 };
 
-module_platform_driver(ads117x_codec_driver);
+static int __init ads117x_init(void)
+{
+	return platform_driver_register(&ads117x_codec_driver);
+}
+module_init(ads117x_init);
+
+static void __exit ads117x_exit(void)
+{
+	platform_driver_unregister(&ads117x_codec_driver);
+}
+module_exit(ads117x_exit);
 
 MODULE_DESCRIPTION("ASoC ads117x driver");
 MODULE_AUTHOR("Graeme Gregory");

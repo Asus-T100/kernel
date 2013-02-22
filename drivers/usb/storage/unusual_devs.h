@@ -1854,13 +1854,6 @@ UNUSUAL_DEV(  0x1370, 0x6828, 0x0110, 0x0110,
 		USB_SC_DEVICE, USB_PR_DEVICE, NULL,
 		US_FL_IGNORE_RESIDUE ),
 
-/* Reported by Qinglin Ye <yestyle@gmail.com> */
-UNUSUAL_DEV(  0x13fe, 0x3600, 0x0100, 0x0100,
-		"Kingston",
-		"DT 101 G2",
-		USB_SC_DEVICE, USB_PR_DEVICE, NULL,
-		US_FL_BULK_IGNORE_TAG ),
-
 /* Reported by Francesco Foresti <frafore@tiscali.it> */
 UNUSUAL_DEV(  0x14cd, 0x6600, 0x0201, 0x0201,
 		"Super Top",
@@ -1884,13 +1877,6 @@ UNUSUAL_DEV(  0x1652, 0x6600, 0x0201, 0x0201,
 		"HD-35PUK-B",
 		USB_SC_DEVICE, USB_PR_DEVICE, NULL,
 		US_FL_IGNORE_RESIDUE ),
-
-/* Reported by Jesse Feddema <jdfeddema@gmail.com> */
-UNUSUAL_DEV(  0x177f, 0x0400, 0x0000, 0x0000,
-		"Yarvik",
-		"PMP400",
-		USB_SC_DEVICE, USB_PR_DEVICE, NULL,
-		US_FL_BULK_IGNORE_TAG | US_FL_MAX_SECTORS_64 ),
 
 /* Reported by Hans de Goede <hdegoede@redhat.com>
  * These Appotech controllers are found in Picture Frames, they provide a
@@ -2001,16 +1987,6 @@ UNUSUAL_DEV(  0x4146, 0xba01, 0x0100, 0x0100,
 		"Iomega",
 		"Micro Mini 1GB",
 		USB_SC_DEVICE, USB_PR_DEVICE, NULL, US_FL_NOT_LOCKABLE ),
-
-/*
- * Nick Bowler <nbowler@elliptictech.com>
- * SCSI stack spams (otherwise harmless) error messages.
- */
-UNUSUAL_DEV(  0xc251, 0x4003, 0x0100, 0x0100,
-		"Keil Software, Inc.",
-		"V2M MotherBoard",
-		USB_SC_DEVICE, USB_PR_DEVICE, NULL,
-		US_FL_NOT_LOCKABLE),
 
 /* Reported by Andrew Simmons <andrew.simmons@gmail.com> */
 UNUSUAL_DEV(  0xed06, 0x4500, 0x0001, 0x0001,

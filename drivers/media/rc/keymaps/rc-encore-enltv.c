@@ -11,7 +11,6 @@
  */
 
 #include <media/rc-map.h>
-#include <linux/module.h>
 
 /* Encore ENLTV-FM  - black plastic, white front cover with white glowing buttons
     Juan Pablo Sormani <sorman@gmail.com> */

@@ -19,7 +19,6 @@
  */
 
 #include <media/rc-map.h>
-#include <linux/module.h>
 
 /* MSI DIGIVOX mini III */
 /* Uses NEC extended 0x61d6. */

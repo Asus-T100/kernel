@@ -32,7 +32,6 @@
 #include <linux/sched.h>
 #include <linux/sysfs.h>
 #include <linux/tty.h>
-#include <linux/pm_runtime.h>
 
 #include <linux/skbuff.h>
 #include <linux/ti_wilink_st.h>
@@ -69,7 +68,6 @@ void validate_firmware_response(struct kim_data_s *kim_gdata)
 	if (unlikely(skb->data[5] != 0)) {
 		pr_err("no proper response during fw download");
 		pr_err("data6 %x", skb->data[5]);
-		kfree_skb(skb);
 		return;		/* keep waiting for the proper response */
 	}
 	/* becos of all the script being downloaded */
@@ -165,9 +163,9 @@ void kim_int_recv(struct kim_data_s *kim_gdata,
 		}		/* end of if rx_state */
 		switch (*ptr) {
 			/* Bluetooth event packet? */
-		case ST_BT:
+		case 0x04:
 			kim_gdata->rx_state = ST_W4_HEADER;
-			kim_gdata->rx_count = HCI_EVENT_HDR_SIZE;
+			kim_gdata->rx_count = 2;
 			type = *ptr;
 			break;
 		default:
@@ -179,7 +177,7 @@ void kim_int_recv(struct kim_data_s *kim_gdata,
 		ptr++;
 		count--;
 		kim_gdata->rx_skb =
-			alloc_skb(HCI_MAX_FRAME_SIZE + 4, GFP_ATOMIC);
+			alloc_skb(1024+8, GFP_ATOMIC);
 		if (!kim_gdata->rx_skb) {
 			pr_err("can't allocate mem for new packet");
 			kim_gdata->rx_state = ST_W4_PACKET_TYPE;
@@ -212,7 +210,6 @@ static long read_local_version(struct kim_data_s *kim_gdata, char *bts_scr_name)
 		pr_err(" waiting for ver info- timed out ");
 		return -ETIMEDOUT;
 	}
-	INIT_COMPLETION(kim_gdata->kim_rcvd);
 
 	version =
 		MAKEWORD(kim_gdata->resp_buffer[13],
@@ -301,7 +298,6 @@ static long download_firmware(struct kim_data_s *kim_gdata)
 
 		switch (((struct bts_action *)ptr)->type) {
 		case ACTION_SEND_COMMAND:	/* action send */
-			pr_debug("S");
 			action_ptr = &(((struct bts_action *)ptr)->data[0]);
 			if (unlikely
 			    (((struct hci_command *)action_ptr)->opcode ==
@@ -339,10 +335,6 @@ static long download_firmware(struct kim_data_s *kim_gdata)
 				release_firmware(kim_gdata->fw_entry);
 				return -ETIMEDOUT;
 			}
-			/* reinit completion before sending for the
-			 * relevant wait
-			 */
-			INIT_COMPLETION(kim_gdata->kim_rcvd);
 
 			/*
 			 * Free space found in uart buffer, call st_int_write
@@ -369,7 +361,6 @@ static long download_firmware(struct kim_data_s *kim_gdata)
 			}
 			break;
 		case ACTION_WAIT_EVENT:  /* wait */
-			pr_debug("W");
 			if (!wait_for_completion_timeout
 					(&kim_gdata->kim_rcvd,
 					 msecs_to_jiffies(CMD_RESP_TIME))) {
@@ -443,22 +434,11 @@ long st_kim_start(void *kim_data)
 {
 	long err = 0;
 	long retry = POR_RETRY_COUNT;
-	struct ti_st_plat_data	*pdata;
 	struct kim_data_s	*kim_gdata = (struct kim_data_s *)kim_data;
-	struct device *tty_dev;
 
 	pr_info(" %s", __func__);
-	pdata = kim_gdata->kim_pdev->dev.platform_data;
 
 	do {
-		tty_dev = kim_gdata->core_data->tty_dev;
-		if (tty_dev)
-			pm_runtime_get_sync(tty_dev);
-
-		/* platform specific enabling code here */
-		if (pdata->chip_enable)
-			pdata->chip_enable(kim_gdata->core_data);
-
 		/* Configure BT nShutdown to HIGH state */
 		gpio_set_value(kim_gdata->nshutdown, GPIO_LOW);
 		mdelay(5);	/* FIXME: a proper toggle */
@@ -466,47 +446,34 @@ long st_kim_start(void *kim_data)
 		mdelay(100);
 		/* re-initialize the completion */
 		INIT_COMPLETION(kim_gdata->ldisc_installed);
-
 		/* send notification to UIM */
-		if (!kim_gdata->ldisc_install) {
-			kim_gdata->ldisc_install = 1;
-			pr_info("ldisc_install = 1");
-			sysfs_notify(&kim_gdata->kim_pdev->dev.kobj,
-				     NULL, "install");
-		}
-
-		/*
-		 * tty_dev is unknown until l_disc is registered so skip the
-		 * first retry quickly.
-		 */
-		if (!tty_dev) {
-			__st_kim_stop(kim_gdata);
-			continue;
-		}
-
+		kim_gdata->ldisc_install = 1;
+		pr_info("ldisc_install = 1");
+		sysfs_notify(&kim_gdata->kim_pdev->dev.kobj,
+				NULL, "install");
 		/* wait for ldisc to be installed */
 		err = wait_for_completion_timeout(&kim_gdata->ldisc_installed,
 				msecs_to_jiffies(LDISC_TIME));
-		if (!err) {
-			/* ldisc installation timeout,
-			 * flush uart, power cycle BT_EN */
-			pr_err("ldisc installation timeout");
-			__st_kim_stop(kim_gdata);
-			pm_runtime_put_sync(tty_dev);
+		if (!err) {	/* timeout */
+			pr_err("line disc installation timed out ");
+			kim_gdata->ldisc_install = 0;
+			pr_info("ldisc_install = 0");
+			sysfs_notify(&kim_gdata->kim_pdev->dev.kobj,
+					NULL, "install");
+			err = -ETIMEDOUT;
 			continue;
 		} else {
 			/* ldisc installed now */
-			pr_info("line discipline installed");
+			pr_info(" line discipline installed ");
 			err = download_firmware(kim_gdata);
 			if (err != 0) {
-				/* ldisc installed but fw download failed,
-				 * flush uart & power cycle BT_EN */
 				pr_err("download firmware failed");
-				__st_kim_stop(kim_gdata);
-				pm_runtime_put_sync(tty_dev);
+				kim_gdata->ldisc_install = 0;
+				pr_info("ldisc_install = 0");
+				sysfs_notify(&kim_gdata->kim_pdev->dev.kobj,
+						NULL, "install");
 				continue;
 			} else {	/* on success don't retry */
-				pm_runtime_put_sync(tty_dev);
 				break;
 			}
 		}
@@ -514,16 +481,32 @@ long st_kim_start(void *kim_data)
 	return err;
 }
 
-void __st_kim_stop(void *kim_data)
+/**
+ * st_kim_stop - called from ST Core, on the last un-registration
+ *	toggle low the chip enable gpio
+ */
+long st_kim_stop(void *kim_data)
 {
+	long err = 0;
 	struct kim_data_s	*kim_gdata = (struct kim_data_s *)kim_data;
-	struct tty_struct	*tty = kim_gdata->core_data->tty;
 
-	if (tty) {	/* can be called before ldisc is installed */
-		/* Flush any pending characters in the driver and discipline. */
-		tty_ldisc_flush(tty);
-		tty_driver_flush_buffer(tty);
-		tty->ops->flush_buffer(tty);
+	INIT_COMPLETION(kim_gdata->ldisc_installed);
+
+	/* Flush any pending characters in the driver and discipline. */
+	tty_ldisc_flush(kim_gdata->core_data->tty);
+	tty_driver_flush_buffer(kim_gdata->core_data->tty);
+
+	/* send uninstall notification to UIM */
+	pr_info("ldisc_install = 0");
+	kim_gdata->ldisc_install = 0;
+	sysfs_notify(&kim_gdata->kim_pdev->dev.kobj, NULL, "install");
+
+	/* wait for ldisc to be un-installed */
+	err = wait_for_completion_timeout(&kim_gdata->ldisc_installed,
+			msecs_to_jiffies(LDISC_TIME));
+	if (!err) {		/* timeout */
+		pr_err(" timed out waiting for ldisc to be un-installed");
+		return -ETIMEDOUT;
 	}
 
 	/* By default configure BT nShutdown to LOW state */
@@ -532,50 +515,7 @@ void __st_kim_stop(void *kim_data)
 	gpio_set_value(kim_gdata->nshutdown, GPIO_HIGH);
 	mdelay(1);
 	gpio_set_value(kim_gdata->nshutdown, GPIO_LOW);
-
-	/* send uninstall notification to UIM */
-	if (kim_gdata->ldisc_install) {
-		pr_info("ldisc_install = 0");
-		kim_gdata->ldisc_install = 0;
-		sysfs_notify(&kim_gdata->kim_pdev->dev.kobj, NULL, "install");
-	}
-}
-
-/**
- * st_kim_stop - stop communication with chip.
- *	This can be called from ST Core/KIM, on the-
- *	(a) last un-register when chip need not be powered there-after,
- *	(b) upon failure to either install ldisc or download firmware.
- *	The function is responsible to (a) notify UIM about un-installation,
- *	(b) flush UART if the ldisc was installed.
- *	(c) reset BT_EN - pull down nshutdown at the end.
- *	(d) invoke platform's chip disabling routine.
- */
-long st_kim_stop(void *kim_data)
-{
-	long err = 0;
-	int ret = 0;
-	struct kim_data_s	*kim_gdata = (struct kim_data_s *)kim_data;
-	struct ti_st_plat_data	*pdata =
-		kim_gdata->kim_pdev->dev.platform_data;
-
-	INIT_COMPLETION(kim_gdata->ldisc_installed);
-
-	__st_kim_stop(kim_data);
-
-	/* wait for ldisc to be un-installed */
-	err = wait_for_completion_timeout(&kim_gdata->ldisc_installed,
-			msecs_to_jiffies(LDISC_TIME));
-	if (!err) {		/* timeout */
-		pr_err(" timed out waiting for ldisc to be un-installed");
-		ret = -ETIMEDOUT;
-	}
-
-	/* platform specific disable */
-	if (pdata->chip_disable)
-		pdata->chip_disable(kim_gdata->core_data);
-
-	return ret;
+	return err;
 }
 
 /**********************************************************************/
@@ -809,14 +749,6 @@ static int kim_remove(struct platform_device *pdev)
 int kim_suspend(struct platform_device *pdev, pm_message_t state)
 {
 	struct ti_st_plat_data	*pdata = pdev->dev.platform_data;
-	struct kim_data_s *kim_data = dev_get_drvdata(&pdev->dev);
-	struct st_data_s *st_data = kim_data->core_data;
-
-	if (st_data->ll_state != ST_LL_ASLEEP &&
-	    st_data->ll_state != ST_LL_INVALID) {
-		pr_info("Shared Transport LL state : %lu", st_data->ll_state);
-		return -EBUSY;
-	}
 
 	if (pdata->suspend)
 		return pdata->suspend(pdev, state);

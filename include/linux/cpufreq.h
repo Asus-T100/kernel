@@ -196,14 +196,6 @@ extern int __cpufreq_driver_target(struct cpufreq_policy *policy,
 extern int __cpufreq_driver_getavg(struct cpufreq_policy *policy,
 				   unsigned int cpu);
 
-#ifdef CONFIG_COUNT_GPU_BLOCKING_TIME
-extern int __cpufreq_driver_getload(struct cpufreq_policy *policy,
-				unsigned int cpu, unsigned int *gpu_block_load);
-#else
-extern int __cpufreq_driver_getload(struct cpufreq_policy *policy,
-				   unsigned int cpu);
-#endif
-
 int cpufreq_register_governor(struct cpufreq_governor *governor);
 void cpufreq_unregister_governor(struct cpufreq_governor *governor);
 
@@ -238,15 +230,6 @@ struct cpufreq_driver {
 	/* optional */
 	unsigned int (*getavg)	(struct cpufreq_policy *policy,
 				 unsigned int cpu);
-
-#ifdef CONFIG_COUNT_GPU_BLOCKING_TIME
-	unsigned int (*getload)	(struct cpufreq_policy *policy,
-				unsigned int cpu, unsigned int *gpu_block_load);
-#else
-	unsigned int (*getload)	(struct cpufreq_policy *policy,
-				 unsigned int cpu);
-#endif
-
 	int	(*bios_limit)	(int cpu, unsigned int *limit);
 
 	int	(*exit)		(struct cpufreq_policy *policy);
@@ -375,12 +358,6 @@ extern struct cpufreq_governor cpufreq_gov_ondemand;
 #elif defined(CONFIG_CPU_FREQ_DEFAULT_GOV_CONSERVATIVE)
 extern struct cpufreq_governor cpufreq_gov_conservative;
 #define CPUFREQ_DEFAULT_GOVERNOR	(&cpufreq_gov_conservative)
-#elif defined(CONFIG_CPU_FREQ_DEFAULT_GOV_INTERACTIVE)
-extern struct cpufreq_governor cpufreq_gov_interactive;
-#define CPUFREQ_DEFAULT_GOVERNOR	(&cpufreq_gov_interactive)
-#elif defined(CONFIG_CPU_FREQ_DEFAULT_GOV_INTEL)
-extern struct cpufreq_governor cpufreq_gov_intel;
-#define CPUFREQ_DEFAULT_GOVERNOR	(&cpufreq_gov_intel)
 #endif
 
 

@@ -184,12 +184,7 @@ static void flush_tlb_others_ipi(const struct cpumask *cpumask,
 
 	f->flush_mm = mm;
 	f->flush_va = va;
-
-	cpumask_and(to_cpumask(f->flush_cpumask), cpumask, cpu_online_mask);
-	if (cpumask_andnot(to_cpumask(f->flush_cpumask),
-				to_cpumask(f->flush_cpumask),
-				cpumask_of(smp_processor_id()))) {
-
+	if (cpumask_andnot(to_cpumask(f->flush_cpumask), cpumask, cpumask_of(smp_processor_id()))) {
 		/*
 		 * We have to send the IPI only to
 		 * CPUs affected.

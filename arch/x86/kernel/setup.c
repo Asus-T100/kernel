@@ -68,7 +68,6 @@
 #include <linux/percpu.h>
 #include <linux/crash_dump.h>
 #include <linux/tboot.h>
-#include <asm/intel-mid.h>
 
 #include <video/edid.h>
 
@@ -930,14 +929,6 @@ void __init setup_arch(char **cmdline_p)
 
 	setup_trampolines();
 
-#ifdef CONFIG_X86_MRST
-	mrst_reserve_memory();
-#endif
-
-#ifdef CONFIG_INTEL_MID_RAM_CONSOLE
-	ram_consle_reserve_memory();
-#endif
-
 	init_gbpages();
 
 	/* max_pfn_mapped is updated here */
@@ -1053,8 +1044,6 @@ void __init setup_arch(char **cmdline_p)
 	x86_init.oem.banner();
 
 	x86_init.timers.wallclock_init();
-
-	x86_platform.wallclock_init();
 
 	mcheck_init();
 

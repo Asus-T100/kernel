@@ -9,7 +9,6 @@
  */
 
 #include <media/rc-map.h>
-#include <linux/module.h>
 
 /*
  * Initial mapping is for the TiVo remote included in the Nero LiquidTV bundle,

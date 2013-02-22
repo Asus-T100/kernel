@@ -36,7 +36,7 @@
 #include <linux/platform_device.h>
 #include <linux/gpio.h>
 #include <linux/sfi.h>
-#include <asm/intel-mid.h>
+#include <asm/mrst.h>
 #include "max3107.h"
 
 /* GPIO direction to input function */
@@ -340,5 +340,5 @@ module_exit(max3107_exit);
 
 MODULE_DESCRIPTION("MAX3107 driver");
 MODULE_AUTHOR("Aavamobile");
-MODULE_ALIAS("spi:aava-max3107");
+MODULE_ALIAS("aava-max3107-spi");
 MODULE_LICENSE("GPL v2");

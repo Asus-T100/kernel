@@ -192,22 +192,13 @@ static void sas_set_ex_phy(struct domain_device *dev, int phy_id,
 	phy->attached_sata_ps   = dr->attached_sata_ps;
 	phy->attached_iproto = dr->iproto << 1;
 	phy->attached_tproto = dr->tproto << 1;
-	/* help some expanders that fail to zero sas_address in the 'no
-	 * device' case
-	 */
-	if (phy->attached_dev_type == NO_DEVICE ||
-	    phy->linkrate < SAS_LINK_RATE_1_5_GBPS)
-		memset(phy->attached_sas_addr, 0, SAS_ADDR_SIZE);
-	else
-		memcpy(phy->attached_sas_addr, dr->attached_sas_addr, SAS_ADDR_SIZE);
+	memcpy(phy->attached_sas_addr, dr->attached_sas_addr, SAS_ADDR_SIZE);
 	phy->attached_phy_id = dr->attached_phy_id;
 	phy->phy_change_count = dr->change_count;
 	phy->routing_attr = dr->routing_attr;
 	phy->virtual = dr->virtual;
 	phy->last_da_index = -1;
 
-	phy->phy->identify.sas_address = SAS_ADDR(phy->attached_sas_addr);
-	phy->phy->identify.device_type = phy->attached_dev_type;
 	phy->phy->identify.initiator_port_protocols = phy->attached_iproto;
 	phy->phy->identify.target_port_protocols = phy->attached_tproto;
 	phy->phy->identify.phy_identifier = phy_id;
@@ -858,9 +849,6 @@ static struct domain_device *sas_ex_discover_expander(
 
 	res = sas_discover_expander(child);
 	if (res) {
-		spin_lock_irq(&parent->port->dev_list_lock);
-		list_del(&child->dev_list_node);
-		spin_unlock_irq(&parent->port->dev_list_lock);
 		kfree(child);
 		return NULL;
 	}
@@ -1639,17 +1627,9 @@ static int sas_find_bcast_phy(struct domain_device *dev, int *phy_id,
 		int phy_change_count = 0;
 
 		res = sas_get_phy_change_count(dev, i, &phy_change_count);
-		switch (res) {
-		case SMP_RESP_PHY_VACANT:
-		case SMP_RESP_NO_PHY:
-			continue;
-		case SMP_RESP_FUNC_ACC:
-			break;
-		default:
-			return res;
-		}
-
-		if (phy_change_count != ex->ex_phy[i].phy_change_count) {
+		if (res)
+			goto out;
+		else if (phy_change_count != ex->ex_phy[i].phy_change_count) {
 			if (update)
 				ex->ex_phy[i].phy_change_count =
 					phy_change_count;
@@ -1657,7 +1637,8 @@ static int sas_find_bcast_phy(struct domain_device *dev, int *phy_id,
 			return 0;
 		}
 	}
-	return 0;
+out:
+	return res;
 }
 
 static int sas_get_ex_change_count(struct domain_device *dev, int *ecc)
@@ -1737,7 +1718,7 @@ static int sas_find_bcast_dev(struct domain_device *dev,
 	list_for_each_entry(ch, &ex->children, siblings) {
 		if (ch->dev_type == EDGE_DEV || ch->dev_type == FANOUT_DEV) {
 			res = sas_find_bcast_dev(ch, src_dev);
-			if (*src_dev)
+			if (src_dev)
 				return res;
 		}
 	}
@@ -1785,12 +1766,10 @@ static void sas_unregister_devs_sas_addr(struct domain_device *parent,
 		sas_disable_routing(parent, phy->attached_sas_addr);
 	}
 	memset(phy->attached_sas_addr, 0, SAS_ADDR_SIZE);
-	if (phy->port) {
-		sas_port_delete_phy(phy->port, phy->phy);
-		if (phy->port->num_phys == 0)
-			sas_port_delete(phy->port);
-		phy->port = NULL;
-	}
+	sas_port_delete_phy(phy->port, phy->phy);
+	if (phy->port->num_phys == 0)
+		sas_port_delete(phy->port);
+	phy->port = NULL;
 }
 
 static int sas_discover_bfs_by_root_level(struct domain_device *root,

@@ -3,7 +3,6 @@
 # x86 Platform-Specific Drivers
 #
 obj-$(CONFIG_ASUS_LAPTOP)	+= asus-laptop.o
-obj-$(CONFIG_ANDROID_BOOTMODE)	+= android_bootmode.o
 obj-$(CONFIG_ASUS_WMI)		+= asus-wmi.o
 obj-$(CONFIG_ASUS_NB_WMI)	+= asus-nb-wmi.o
 obj-$(CONFIG_EEEPC_LAPTOP)	+= eeepc-laptop.o
@@ -32,14 +31,11 @@ obj-$(CONFIG_ACPI_ASUS)		+= asus_acpi.o
 obj-$(CONFIG_TOPSTAR_LAPTOP)	+= topstar-laptop.o
 obj-$(CONFIG_ACPI_TOSHIBA)	+= toshiba_acpi.o
 obj-$(CONFIG_TOSHIBA_BT_RFKILL)	+= toshiba_bluetooth.o
-obj-$(CONFIG_INTEL_SCU_IPC)	+= intel_scu_ipc.o intel_scu_pmic.o intel_scu_mip.o intel_scu_fw_update.o
+obj-$(CONFIG_INTEL_SCU_IPC)	+= intel_scu_ipc.o
 obj-$(CONFIG_INTEL_SCU_IPC_UTIL) += intel_scu_ipcutil.o
-obj-$(CONFIG_INTEL_PSH_IPC)	+= intel_psh_ipc.o
-obj-$(CONFIG_INTEL_SCU_FLIS)	+= intel_scu_flis.o
 obj-$(CONFIG_INTEL_MFLD_THERMAL) += intel_mid_thermal.o
 obj-$(CONFIG_RAR_REGISTER)	+= intel_rar_register.o
 obj-$(CONFIG_INTEL_IPS)		+= intel_ips.o
-obj-$(CONFIG_GPIO_INTEL_MSIC)	+= intel_msic_gpio.o
 obj-$(CONFIG_GPIO_INTEL_PMIC)	+= intel_pmic_gpio.o
 obj-$(CONFIG_XO1_RFKILL)	+= xo1-rfkill.o
 obj-$(CONFIG_XO15_EBOOK)	+= xo15-ebook.o
@@ -47,6 +43,4 @@ obj-$(CONFIG_IBM_RTL)		+= ibm_rtl.o
 obj-$(CONFIG_SAMSUNG_LAPTOP)	+= samsung-laptop.o
 obj-$(CONFIG_MXM_WMI)		+= mxm-wmi.o
 obj-$(CONFIG_INTEL_MID_POWER_BUTTON)	+= intel_mid_powerbtn.o
-obj-$(CONFIG_INTEL_MID_OSIP)   += intel_mid_osip.o
-obj-$(CONFIG_INTEL_MID_UMIP)   += intel_mid_umip.o
 obj-$(CONFIG_INTEL_OAKTRAIL)	+= intel_oaktrail.o

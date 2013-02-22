@@ -249,8 +249,6 @@ ktime_t ktime_get(void)
 		secs = xtime.tv_sec + wall_to_monotonic.tv_sec;
 		nsecs = xtime.tv_nsec + wall_to_monotonic.tv_nsec;
 		nsecs += timekeeping_get_ns();
-		/* If arch requires, add in gettimeoffset() */
-		nsecs += arch_gettimeoffset();
 
 	} while (read_seqretry(&xtime_lock, seq));
 	/*
@@ -282,8 +280,6 @@ void ktime_get_ts(struct timespec *ts)
 		*ts = xtime;
 		tomono = wall_to_monotonic;
 		nsecs = timekeeping_get_ns();
-		/* If arch requires, add in gettimeoffset() */
-		nsecs += arch_gettimeoffset();
 
 	} while (read_seqretry(&xtime_lock, seq));
 
@@ -608,12 +604,6 @@ static struct timespec timekeeping_suspend_time;
  */
 static void __timekeeping_inject_sleeptime(struct timespec *delta)
 {
-	if (!timespec_valid(delta)) {
-		printk(KERN_WARNING "__timekeeping_inject_sleeptime: Invalid "
-					"sleep delta value!\n");
-		return;
-	}
-
 	xtime = timespec_add(xtime, *delta);
 	wall_to_monotonic = timespec_sub(wall_to_monotonic, *delta);
 	total_sleep_time = timespec_add(total_sleep_time, *delta);
@@ -656,6 +646,7 @@ void timekeeping_inject_sleeptime(struct timespec *delta)
 	clock_was_set();
 }
 
+
 /**
  * timekeeping_resume - Resumes the generic timekeeping subsystem.
  *
@@ -667,35 +658,19 @@ static void timekeeping_resume(void)
 {
 	unsigned long flags;
 	struct timespec ts;
-	cycle_t cycle_now, cycle_delta;
-	struct clocksource *clock;
-	s64 nsec;
 
-	ts.tv_sec = ts.tv_nsec = 0;
-	clock = timekeeper.clock;
+	read_persistent_clock(&ts);
 
-	if (!(clock->flags & CLOCK_SOURCE_SUSPEND_NONSTOP)) {
-		read_persistent_clock(&ts);
-		clocksource_resume();
-	}
+	clocksource_resume();
 
 	write_seqlock_irqsave(&xtime_lock, flags);
 
-	if (clock->flags & CLOCK_SOURCE_SUSPEND_NONSTOP) {
-		cycle_now = clock->read(clock);
-		cycle_delta = (cycle_now - clock->cycle_last) & clock->mask;
-		clock->cycle_last = cycle_now;
-
-		nsec = clocksource_cyc2ns(cycle_delta, timekeeper.mult,
-					  timekeeper.shift);
-		ts = ns_to_timespec(nsec);
-	} else if (timespec_compare(&ts, &timekeeping_suspend_time) > 0)
+	if (timespec_compare(&ts, &timekeeping_suspend_time) > 0) {
 		ts = timespec_sub(ts, timekeeping_suspend_time);
-
-	__timekeeping_inject_sleeptime(&ts);
-
+		__timekeeping_inject_sleeptime(&ts);
+	}
 	/* re-base the last cycle value */
-	clock->cycle_last = timekeeper.clock->read(timekeeper.clock);
+	timekeeper.clock->cycle_last = timekeeper.clock->read(timekeeper.clock);
 	timekeeper.ntp_error = 0;
 	timekeeping_suspended = 0;
 	write_sequnlock_irqrestore(&xtime_lock, flags);

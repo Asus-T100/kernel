@@ -95,18 +95,13 @@ struct eth_dev {
 
 #ifdef CONFIG_USB_GADGET_DUALSPEED
 
-static unsigned qmult = 8;
+static unsigned qmult = 5;
 module_param(qmult, uint, S_IRUGO|S_IWUSR);
 MODULE_PARM_DESC(qmult, "queue length multiplier at high speed");
 
 #else	/* full speed (low speed doesn't do bulk) */
 #define qmult		1
 #endif
-
-/* Add padding space before the NET_IP_ALIGN to ensure the address of data
-buffer align on 64B */
-#define DMA_ALIGN_64    64
-#define DMA_IP_ALIGN_PAD   (DMA_ALIGN_64 - NET_IP_ALIGN)
 
 /* for dual-speed hardware, use deeper queues at highspeed */
 static inline int qlen(struct usb_gadget *gadget)
@@ -248,7 +243,7 @@ rx_submit(struct eth_dev *dev, struct usb_request *req, gfp_t gfp_flags)
 	if (dev->port_usb->is_fixed)
 		size = max_t(size_t, size, dev->port_usb->fixed_out_len);
 
-	skb = alloc_skb(size + NET_IP_ALIGN + DMA_IP_ALIGN_PAD, gfp_flags);
+	skb = alloc_skb(size + NET_IP_ALIGN, gfp_flags);
 	if (skb == NULL) {
 		DBG(dev, "no rx skb\n");
 		goto enomem;
@@ -258,7 +253,7 @@ rx_submit(struct eth_dev *dev, struct usb_request *req, gfp_t gfp_flags)
 	 * but on at least one, checksumming fails otherwise.  Note:
 	 * RNDIS headers involve variable numbers of LE32 values.
 	 */
-	skb_reserve(skb, NET_IP_ALIGN + DMA_IP_ALIGN_PAD);
+	skb_reserve(skb, NET_IP_ALIGN);
 
 	req->buf = skb->data;
 	req->length = size;
@@ -747,7 +742,7 @@ static const struct net_device_ops eth_netdev_ops = {
 	.ndo_stop		= eth_stop,
 	.ndo_start_xmit		= eth_start_xmit,
 	.ndo_change_mtu		= ueth_change_mtu,
-	.ndo_set_mac_address	= eth_mac_addr,
+	.ndo_set_mac_address 	= eth_mac_addr,
 	.ndo_validate_addr	= eth_validate_addr,
 };
 
@@ -769,26 +764,6 @@ static struct device_type gadget_type = {
  * Returns negative errno, or zero on success
  */
 int gether_setup(struct usb_gadget *g, u8 ethaddr[ETH_ALEN])
-{
-	return gether_setup_name(g, ethaddr, "usb");
-}
-
-/**
- * gether_setup_name - initialize one ethernet-over-usb link
- * @g: gadget to associated with these links
- * @ethaddr: NULL, or a buffer in which the ethernet address of the
- *	host side of the link is recorded
- * @netname: name for network device (for example, "usb")
- * Context: may sleep
- *
- * This sets up the single network link that may be exported by a
- * gadget driver using this framework.  The link layer addresses are
- * set up using module parameters.
- *
- * Returns negative errno, or zero on success
- */
-int gether_setup_name(struct usb_gadget *g, u8 ethaddr[ETH_ALEN],
-		const char *netname)
 {
 	struct eth_dev		*dev;
 	struct net_device	*net;
@@ -812,7 +787,7 @@ int gether_setup_name(struct usb_gadget *g, u8 ethaddr[ETH_ALEN],
 
 	/* network device setup */
 	dev->net = net;
-	snprintf(net->name, sizeof(net->name), "%s%%d", netname);
+	strcpy(net->name, "usb%d");
 
 	if (get_ether_addr(dev_addr, net->dev_addr))
 		dev_warn(&g->dev,
@@ -968,6 +943,7 @@ void gether_disconnect(struct gether *link)
 	struct eth_dev		*dev = link->ioport;
 	struct usb_request	*req;
 
+	WARN_ON(!dev);
 	if (!dev)
 		return;
 

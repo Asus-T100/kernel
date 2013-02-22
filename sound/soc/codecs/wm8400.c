@@ -353,6 +353,13 @@ SOC_SINGLE("RIN34 Mute Switch", WM8400_RIGHT_LINE_INPUT_3_4_VOLUME,
 
 };
 
+/* add non dapm controls */
+static int wm8400_add_controls(struct snd_soc_codec *codec)
+{
+	return snd_soc_add_controls(codec, wm8400_snd_controls,
+				ARRAY_SIZE(wm8400_snd_controls));
+}
+
 /*
  * _DAPM_ Controls
  */
@@ -376,7 +383,7 @@ static int inmixer_event (struct snd_soc_dapm_widget *w,
 		(1 << WM8400_AINRMUX_PWR))) {
 		reg |= WM8400_AINR_ENA;
 	} else {
-		reg &= ~WM8400_AINR_ENA;
+		reg &= ~WM8400_AINL_ENA;
 	}
 	wm8400_write(w->codec, WM8400_POWER_MANAGEMENT_2, reg);
 
@@ -759,8 +766,8 @@ SND_SOC_DAPM_PGA("ROPGA", WM8400_POWER_MANAGEMENT_3, WM8400_ROPGA_ENA_SHIFT, 0,
 	NULL, 0),
 
 /* MICBIAS */
-SND_SOC_DAPM_SUPPLY("MICBIAS", WM8400_POWER_MANAGEMENT_1,
-		    WM8400_MIC1BIAS_ENA_SHIFT, 0, NULL, 0),
+SND_SOC_DAPM_MICBIAS("MICBIAS", WM8400_POWER_MANAGEMENT_1,
+	WM8400_MIC1BIAS_ENA_SHIFT, 0),
 
 SND_SOC_DAPM_OUTPUT("LON"),
 SND_SOC_DAPM_OUTPUT("LOP"),
@@ -776,7 +783,7 @@ SND_SOC_DAPM_OUTPUT("RON"),
 SND_SOC_DAPM_OUTPUT("Internal DAC Sink"),
 };
 
-static const struct snd_soc_dapm_route wm8400_dapm_routes[] = {
+static const struct snd_soc_dapm_route audio_map[] = {
 	/* Make DACs turn on when playing even if not mixed into any outputs */
 	{"Internal DAC Sink", NULL, "Left DAC"},
 	{"Internal DAC Sink", NULL, "Right DAC"},
@@ -901,6 +908,17 @@ static const struct snd_soc_dapm_route wm8400_dapm_routes[] = {
 	{"ROP", NULL, "ROPMIX"},
 	{"RON", NULL, "RONMIX"},
 };
+
+static int wm8400_add_widgets(struct snd_soc_codec *codec)
+{
+	struct snd_soc_dapm_context *dapm = &codec->dapm;
+
+	snd_soc_dapm_new_controls(dapm, wm8400_dapm_widgets,
+				  ARRAY_SIZE(wm8400_dapm_widgets));
+	snd_soc_dapm_add_routes(dapm, audio_map, ARRAY_SIZE(audio_map));
+
+	return 0;
+}
 
 /*
  * Clock after FLL and dividers
@@ -1041,7 +1059,7 @@ static int wm8400_set_dai_pll(struct snd_soc_dai *codec_dai, int pll_id,
 	wm8400_write(codec, WM8400_FLL_CONTROL_3, factors.n);
 
 	reg = wm8400_read(codec, WM8400_FLL_CONTROL_4);
-	reg &= ~WM8400_FLL_OUTDIV_MASK;
+	reg &= WM8400_FLL_OUTDIV_MASK;
 	reg |= factors.outdiv;
 	wm8400_write(codec, WM8400_FLL_CONTROL_4, reg);
 
@@ -1298,7 +1316,7 @@ static int wm8400_set_bias_level(struct snd_soc_codec *codec,
 #define WM8400_FORMATS (SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S20_3LE |\
 	SNDRV_PCM_FMTBIT_S24_LE)
 
-static const struct snd_soc_dai_ops wm8400_dai_ops = {
+static struct snd_soc_dai_ops wm8400_dai_ops = {
 	.hw_params = wm8400_hw_params,
 	.digital_mute = wm8400_mute,
 	.set_fmt = wm8400_set_dai_fmt,
@@ -1334,7 +1352,7 @@ static struct snd_soc_dai_driver wm8400_dai = {
 	.ops = &wm8400_dai_ops,
 };
 
-static int wm8400_suspend(struct snd_soc_codec *codec)
+static int wm8400_suspend(struct snd_soc_codec *codec, pm_message_t state)
 {
 	wm8400_set_bias_level(codec, SND_SOC_BIAS_OFF);
 
@@ -1365,8 +1383,7 @@ static int wm8400_codec_probe(struct snd_soc_codec *codec)
 	int ret;
 	u16 reg;
 
-	priv = devm_kzalloc(codec->dev, sizeof(struct wm8400_priv),
-			    GFP_KERNEL);
+	priv = kzalloc(sizeof(struct wm8400_priv), GFP_KERNEL);
 	if (priv == NULL)
 		return -ENOMEM;
 
@@ -1378,7 +1395,7 @@ static int wm8400_codec_probe(struct snd_soc_codec *codec)
 				 ARRAY_SIZE(power), &power[0]);
 	if (ret != 0) {
 		dev_err(codec->dev, "Failed to get regulators: %d\n", ret);
-		return ret;
+	        goto err;
 	}
 
 	INIT_WORK(&priv->work, wm8400_probe_deferred);
@@ -1403,15 +1420,20 @@ static int wm8400_codec_probe(struct snd_soc_codec *codec)
 		ret = -EINVAL;
 		goto err_regulator;
 	}
+	wm8400_add_controls(codec);
+	wm8400_add_widgets(codec);
 	return 0;
 
 err_regulator:
 	regulator_bulk_free(ARRAY_SIZE(power), power);
+err:
+	kfree(priv);
 	return ret;
 }
 
 static int  wm8400_codec_remove(struct snd_soc_codec *codec)
 {
+	struct wm8400_priv *priv = snd_soc_codec_get_drvdata(codec);
 	u16 reg;
 
 	reg = wm8400_read(codec, WM8400_POWER_MANAGEMENT_1);
@@ -1419,6 +1441,7 @@ static int  wm8400_codec_remove(struct snd_soc_codec *codec)
 		     reg & (~WM8400_CODEC_ENA));
 
 	regulator_bulk_free(ARRAY_SIZE(power), power);
+	kfree(priv);
 
 	return 0;
 }
@@ -1431,13 +1454,6 @@ static struct snd_soc_codec_driver soc_codec_dev_wm8400 = {
 	.read = wm8400_read,
 	.write = wm8400_write,
 	.set_bias_level = wm8400_set_bias_level,
-
-	.controls = wm8400_snd_controls,
-	.num_controls = ARRAY_SIZE(wm8400_snd_controls),
-	.dapm_widgets = wm8400_dapm_widgets,
-	.num_dapm_widgets = ARRAY_SIZE(wm8400_dapm_widgets),
-	.dapm_routes = wm8400_dapm_routes,
-	.num_dapm_routes = ARRAY_SIZE(wm8400_dapm_routes),
 };
 
 static int __devinit wm8400_probe(struct platform_device *pdev)
@@ -1461,7 +1477,17 @@ static struct platform_driver wm8400_codec_driver = {
 	.remove = __devexit_p(wm8400_remove),
 };
 
-module_platform_driver(wm8400_codec_driver);
+static __init int wm8400_init(void)
+{
+	return platform_driver_register(&wm8400_codec_driver);
+}
+module_init(wm8400_init);
+
+static __exit void wm8400_exit(void)
+{
+	platform_driver_unregister(&wm8400_codec_driver);
+}
+module_exit(wm8400_exit);
 
 MODULE_DESCRIPTION("ASoC WM8400 driver");
 MODULE_AUTHOR("Mark Brown");

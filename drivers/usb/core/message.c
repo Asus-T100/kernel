@@ -308,8 +308,7 @@ static void sg_complete(struct urb *urb)
 				retval = usb_unlink_urb(io->urbs [i]);
 				if (retval != -EINPROGRESS &&
 				    retval != -ENODEV &&
-				    retval != -EBUSY &&
-				    retval != -EIDRM)
+				    retval != -EBUSY)
 					dev_err(&io->dev->dev,
 						"%s, unlink --> %d\n",
 						__func__, retval);
@@ -318,6 +317,7 @@ static void sg_complete(struct urb *urb)
 		}
 		spin_lock(&io->lock);
 	}
+	urb->dev = NULL;
 
 	/* on the last completion, signal usb_sg_wait() */
 	io->bytes += urb->actual_length;
@@ -524,6 +524,7 @@ void usb_sg_wait(struct usb_sg_request *io)
 		case -ENXIO:	/* hc didn't queue this one */
 		case -EAGAIN:
 		case -ENOMEM:
+			io->urbs[i]->dev = NULL;
 			retval = 0;
 			yield();
 			break;
@@ -541,6 +542,7 @@ void usb_sg_wait(struct usb_sg_request *io)
 
 			/* fail any uncompleted urbs */
 		default:
+			io->urbs[i]->dev = NULL;
 			io->urbs[i]->status = retval;
 			dev_dbg(&io->dev->dev, "%s, submit --> %d\n",
 				__func__, retval);
@@ -591,10 +593,7 @@ void usb_sg_cancel(struct usb_sg_request *io)
 			if (!io->urbs [i]->dev)
 				continue;
 			retval = usb_unlink_urb(io->urbs [i]);
-			if (retval != -EINPROGRESS
-					&& retval != -ENODEV
-					&& retval != -EBUSY
-					&& retval != -EIDRM)
+			if (retval != -EINPROGRESS && retval != -EBUSY)
 				dev_warn(&io->dev->dev, "%s, unlink --> %d\n",
 					__func__, retval);
 		}
@@ -1136,6 +1135,8 @@ void usb_disable_interface(struct usb_device *dev, struct usb_interface *intf,
  * Deallocates hcd/hardware state for the endpoints (nuking all or most
  * pending urbs) and usbcore state for the interfaces, so that usbcore
  * must usb_set_configuration() before any interfaces could be used.
+ *
+ * Must be called with hcd->bandwidth_mutex held.
  */
 void usb_disable_device(struct usb_device *dev, int skip_ep0)
 {
@@ -1188,9 +1189,7 @@ void usb_disable_device(struct usb_device *dev, int skip_ep0)
 			usb_disable_endpoint(dev, i + USB_DIR_IN, false);
 		}
 		/* Remove endpoints from the host controller internal state */
-		mutex_lock(hcd->bandwidth_mutex);
 		usb_hcd_alloc_bandwidth(dev, NULL, NULL, NULL);
-		mutex_unlock(hcd->bandwidth_mutex);
 		/* Second pass: remove endpoint pointers */
 	}
 	for (i = skip_ep0; i < 16; ++i) {
@@ -1750,6 +1749,7 @@ free_interfaces:
 	/* if it's already configured, clear out old state first.
 	 * getting rid of old interfaces means unbinding their drivers.
 	 */
+	mutex_lock(hcd->bandwidth_mutex);
 	if (dev->state != USB_STATE_ADDRESS)
 		usb_disable_device(dev, 1);	/* Skip ep0 */
 
@@ -1762,7 +1762,6 @@ free_interfaces:
 	 * host controller will not allow submissions to dropped endpoints.  If
 	 * this call fails, the device state is unchanged.
 	 */
-	mutex_lock(hcd->bandwidth_mutex);
 	ret = usb_hcd_alloc_bandwidth(dev, cp, NULL, NULL);
 	if (ret < 0) {
 		mutex_unlock(hcd->bandwidth_mutex);
@@ -1770,22 +1769,9 @@ free_interfaces:
 		goto free_interfaces;
 	}
 
-#ifdef CONFIG_USB_PENWELL_OTG_TEST
-	if (le16_to_cpu(dev->descriptor.idVendor) == 0x1a0a &&
-		le16_to_cpu(dev->descriptor.idProduct) != 0x0200) {
-		dev_dbg(&dev->dev, "Don't send set configuration msg to test device 0x0101 - 0x0108\n");
-		ret = 0;
-	} else {
-		ret = usb_control_msg(dev, usb_sndctrlpipe(dev, 0),
-			      USB_REQ_SET_CONFIGURATION, 0, configuration, 0,
-			      NULL, 0, USB_CTRL_SET_TIMEOUT);
-	}
-#else
 	ret = usb_control_msg(dev, usb_sndctrlpipe(dev, 0),
 			      USB_REQ_SET_CONFIGURATION, 0, configuration, 0,
 			      NULL, 0, USB_CTRL_SET_TIMEOUT);
-#endif
-
 	if (ret < 0) {
 		/* All the old state is gone, so what else can we do?
 		 * The device is probably useless now anyway.

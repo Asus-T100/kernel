@@ -127,23 +127,6 @@ static const u8 edid_header[] = {
 	0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00
 };
 
- /*
- * Sanity check the header of the base EDID block.  Return 8 if the header
- * is perfect, down to 0 if it's totally wrong.
- */
-int drm_edid_header_is_valid(const u8 *raw_edid)
-{
-	int i, score = 0;
-
-	for (i = 0; i < sizeof(edid_header); i++)
-		if (raw_edid[i] == edid_header[i])
-			score++;
-
-	return score;
-}
-EXPORT_SYMBOL(drm_edid_header_is_valid);
-
-
 /*
  * Sanity check the EDID block (base or extension).  Return 0 if the block
  * doesn't check out, or 1 if it's valid.
@@ -156,7 +139,12 @@ drm_edid_block_valid(u8 *raw_edid)
 	struct edid *edid = (struct edid *)raw_edid;
 
 	if (raw_edid[0] == 0x00) {
-		int score = drm_edid_header_is_valid(raw_edid);
+		int score = 0;
+
+		for (i = 0; i < sizeof(edid_header); i++)
+			if (raw_edid[i] == edid_header[i])
+				score++;
+
 		if (score == 8) ;
 		else if (score >= 6) {
 			DRM_DEBUG("Fixing EDID header, your hardware may be failing\n");
@@ -241,8 +229,7 @@ static int
 drm_do_probe_ddc_edid(struct i2c_adapter *adapter, unsigned char *buf,
 		      int block, int len)
 {
-	unsigned char segment = block / 2;
-	unsigned char start = (block % 2) * EDID_LENGTH;
+	unsigned char start = block * EDID_LENGTH;
 	int ret, retries = 5;
 
 	/* The core i2c driver will automatically retry the transfer if the
@@ -251,50 +238,24 @@ drm_do_probe_ddc_edid(struct i2c_adapter *adapter, unsigned char *buf,
 	 * generate spurious NAKs and timeouts. Retrying the transfer
 	 * of the individual block a few times seems to overcome this.
 	 */
-	if (segment > 0) {
-		do {
-			struct i2c_msg msgs[] = {
-				{
-					.addr	= DDC_SEGMENT_ADDR,
-					.flags	= 0,
-					.len	= 1,
-					.buf	= &segment,
-				}, {
-					.addr	= DDC_ADDR,
-					.flags	= 0,
-					.len	= 1,
-					.buf	= &start,
-				}, {
-					.addr	= DDC_ADDR,
-					.flags	= I2C_M_RD,
-					.len	= len,
-					.buf	= buf,
-				}
-			};
-			ret = i2c_transfer(adapter, msgs, 3);
-		} while (ret != 3 && --retries);
+	do {
+		struct i2c_msg msgs[] = {
+			{
+				.addr	= DDC_ADDR,
+				.flags	= 0,
+				.len	= 1,
+				.buf	= &start,
+			}, {
+				.addr	= DDC_ADDR,
+				.flags	= I2C_M_RD,
+				.len	= len,
+				.buf	= buf,
+			}
+		};
+		ret = i2c_transfer(adapter, msgs, 2);
+	} while (ret != 2 && --retries);
 
-		return ret == 3 ? 0 : -1;
-	} else {
-		do {
-			struct i2c_msg msgs[] = {
-				{
-					.addr	= DDC_ADDR,
-					.flags	= 0,
-					.len	= 1,
-					.buf	= &start,
-				}, {
-					.addr	= DDC_ADDR,
-					.flags	= I2C_M_RD,
-					.len	= len,
-					.buf	= buf,
-				}
-			};
-			ret = i2c_transfer(adapter, msgs, 2);
-		} while (ret != 2 && --retries);
-
-		return ret == 2 ? 0 : -1;
-	}
+	return ret == 2 ? 0 : -1;
 }
 
 static bool drm_edid_is_zero(u8 *in_edid, int length)
@@ -331,8 +292,6 @@ drm_do_get_edid(struct drm_connector *connector, struct i2c_adapter *adapter)
 	if (i == 4)
 		goto carp;
 
-	print_hex_dump_bytes(KERN_DEBUG, DUMP_PREFIX_NONE, block, EDID_LENGTH);
-
 	/* if there's no extensions, we're done */
 	if (block[0x7e] == 0)
 		return block;
@@ -348,13 +307,7 @@ drm_do_get_edid(struct drm_connector *connector, struct i2c_adapter *adapter)
 				  block + (valid_extensions + 1) * EDID_LENGTH,
 				  j, EDID_LENGTH))
 				goto out;
-			print_hex_dump_bytes(KERN_DEBUG, DUMP_PREFIX_NONE, block+j*EDID_LENGTH, EDID_LENGTH);
-			if (j < 2) {
-				if (drm_edid_block_valid(block + (valid_extensions + 1) * EDID_LENGTH)) {
-					valid_extensions++;
-					break;
-				}
-			} else {
+			if (drm_edid_block_valid(block + (valid_extensions + 1) * EDID_LENGTH)) {
 				valid_extensions++;
 				break;
 			}
@@ -550,7 +503,6 @@ cea_for_each_detailed_block(u8 *ext, detailed_cb *cb, void *closure)
 		/* can't happen */
 		return;
 	case 1:
-	case 3:
 		/* have to infer how many blocks we have, check pixel clock */
 		for (i = 0; i < 6; i++)
 			if (det_base[18*i] || det_base[18*i+1])
@@ -877,7 +829,7 @@ static struct drm_display_mode *drm_mode_detailed(struct drm_device *dev,
 	unsigned vblank = (pt->vactive_vblank_hi & 0xf) << 8 | pt->vblank_lo;
 	unsigned hsync_offset = (pt->hsync_vsync_offset_pulse_width_hi & 0xc0) << 2 | pt->hsync_offset_lo;
 	unsigned hsync_pulse_width = (pt->hsync_vsync_offset_pulse_width_hi & 0x30) << 4 | pt->hsync_pulse_width_lo;
-	unsigned vsync_offset = (pt->hsync_vsync_offset_pulse_width_hi & 0xc) << 2 | pt->vsync_offset_pulse_width_lo >> 4;
+	unsigned vsync_offset = (pt->hsync_vsync_offset_pulse_width_hi & 0xc) >> 2 | pt->vsync_offset_pulse_width_lo >> 4;
 	unsigned vsync_pulse_width = (pt->hsync_vsync_offset_pulse_width_hi & 0x3) << 4 | (pt->vsync_offset_pulse_width_lo & 0xf);
 
 	/* ignore tiny modes */
@@ -950,12 +902,6 @@ static struct drm_display_mode *drm_mode_detailed(struct drm_device *dev,
 		mode->width_mm = edid->width_cm * 10;
 		mode->height_mm = edid->height_cm * 10;
 	}
-
-	/* Mark the aspect ratio based on max width, height info from EDID */
-	if (mode->width_mm/4 == mode->height_mm/3)
-		mode->flags |= DRM_MODE_FLAG_PAR4_3;
-	if (mode->width_mm/16 == mode->height_mm/9)
-		mode->flags |= DRM_MODE_FLAG_PAR16_9;
 
 	return mode;
 }

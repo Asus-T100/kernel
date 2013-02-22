@@ -740,10 +740,9 @@ static const struct v4l2_ioctl_ops m2mtest_ioctl_ops = {
  * Queue operations
  */
 
-static int m2mtest_queue_setup(struct vb2_queue *vq,
-				const struct v4l2_format *fmt,
-				unsigned int *nbuffers, unsigned int *nplanes,
-				unsigned int sizes[], void *alloc_ctxs[])
+static int m2mtest_queue_setup(struct vb2_queue *vq, unsigned int *nbuffers,
+				unsigned int *nplanes, unsigned long sizes[],
+				void *alloc_ctxs[])
 {
 	struct m2mtest_ctx *ctx = vb2_get_drv_priv(vq);
 	struct m2mtest_q_data *q_data;
@@ -946,10 +945,6 @@ static int m2mtest_probe(struct platform_device *pdev)
 	}
 
 	*vfd = m2mtest_videodev;
-	/* Locking in file operations other than ioctl should be done
-	   by the driver, not the V4L2 core.
-	   This driver needs auditing so that this flag can be removed. */
-	set_bit(V4L2_FL_LOCK_ALL_FOPS, &vfd->flags);
 	vfd->lock = &dev->dev_mutex;
 
 	ret = video_register_device(vfd, VFL_TYPE_GRABBER, 0);

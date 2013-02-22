@@ -28,9 +28,6 @@
 #include "power.h"
 
 const char *const pm_states[PM_SUSPEND_MAX] = {
-#ifdef CONFIG_EARLYSUSPEND
-	[PM_SUSPEND_ON]		= "on",
-#endif
 	[PM_SUSPEND_STANDBY]	= "standby",
 	[PM_SUSPEND_MEM]	= "mem",
 };
@@ -105,10 +102,7 @@ static int suspend_prepare(void)
 		goto Finish;
 
 	error = suspend_freeze_processes();
-	if (error) {
-		suspend_stats.failed_freeze++;
-		dpm_save_failed_step(SUSPEND_FREEZE);
-	} else
+	if (!error)
 		return 0;
 
 	suspend_thaw_processes();
@@ -313,16 +307,8 @@ int enter_state(suspend_state_t state)
  */
 int pm_suspend(suspend_state_t state)
 {
-	int ret;
-	if (state > PM_SUSPEND_ON && state <= PM_SUSPEND_MAX) {
-		ret = enter_state(state);
-		if (ret) {
-			suspend_stats.fail++;
-			dpm_save_failed_errno(ret);
-		} else
-			suspend_stats.success++;
-		return ret;
-	}
+	if (state > PM_SUSPEND_ON && state <= PM_SUSPEND_MAX)
+		return enter_state(state);
 	return -EINVAL;
 }
 EXPORT_SYMBOL(pm_suspend);

@@ -303,10 +303,5 @@ config REGULATOR_TPS65910
 	help
 	  This driver supports TPS65910 voltage regulator chips.
 
-config REGULATOR_PMIC_AVP
-        tristate "PMIC Avondale Cove voltage regulator"
-        help
-          This driver controls a intel pmic avatele voltage output regulator
-
 endif
 

@@ -14,7 +14,6 @@ enum {
 	_IRQ_NO_BALANCING	= IRQ_NO_BALANCING,
 	_IRQ_NESTED_THREAD	= IRQ_NESTED_THREAD,
 	_IRQF_MODIFY_MASK	= IRQF_MODIFY_MASK,
-	_IRQ_CHAINED		= IRQ_CHAINED,
 };
 
 #define IRQ_PER_CPU		GOT_YOU_MORON
@@ -27,7 +26,6 @@ enum {
 #define IRQ_NESTED_THREAD	GOT_YOU_MORON
 #undef IRQF_MODIFY_MASK
 #define IRQF_MODIFY_MASK	GOT_YOU_MORON
-#define IRQ_CHAINED		GOT_YOU_MORON
 
 static inline void
 irq_settings_clr_and_set(struct irq_desc *desc, u32 clr, u32 set)
@@ -141,9 +139,4 @@ static inline bool irq_settings_can_autoenable(struct irq_desc *desc)
 static inline bool irq_settings_is_nested_thread(struct irq_desc *desc)
 {
 	return desc->status_use_accessors & _IRQ_NESTED_THREAD;
-}
-
-static inline bool irq_settings_set_chained(struct irq_desc *desc)
-{
-	return desc->status_use_accessors |= _IRQ_CHAINED;
 }

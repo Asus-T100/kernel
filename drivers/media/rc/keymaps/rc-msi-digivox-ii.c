@@ -19,7 +19,6 @@
  */
 
 #include <media/rc-map.h>
-#include <linux/module.h>
 
 static struct rc_map_table msi_digivox_ii[] = {
 	{ 0x0002, KEY_2 },

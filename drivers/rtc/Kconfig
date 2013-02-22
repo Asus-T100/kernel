@@ -106,47 +106,6 @@ config RTC_INTF_DEV_UIE_EMUL
 	  clock several times per second, please enable this option
 	  only if you know that you really need it.
 
-config RTC_INTF_ALARM
-	bool "Android alarm driver"
-	depends on RTC_CLASS
-	default y
-	help
-	  Provides non-wakeup and rtc backed wakeup alarms based on rtc or
-	  elapsed realtime, and a non-wakeup alarm on the monotonic clock.
-	  Also provides an interface to set the wall time which must be used
-	  for elapsed realtime to work.
-
-config ALARM_PM_THRESHOLD
-	int "Wakeup Alarm Threshold for deep sleep (Experimental)"
-	range 0 3600
-	depends on RTC_INTF_ALARM_DEV && ANDROID && PM_SLEEP && PM_RUNTIME
-	default 0
-	help
-	  For Mobile Internet Devices, saving power is one of the main requirement.
-	  In general, such devices supports already some power management machanism
-	  that allows to to optimize the power consumption (such as suspend to
-	  ram and hibernation). But using such mechanisms could be very penalizing
-	  in term of power consumption in the case where the wakeup from deep sleep
-	  is triggered periodically.
-
-	  Actually the suspend process starts by waken up all the devices in order
-	  to well prepare them for a deep sleep. Experimental results shows that,
-	  depending on the devices presents on the system, the suspend increases
-	  significantly the power if the wakeup capable alarms are configured to be
-	  triggered before a certain threshold.
-
-	  Be careful while setting this parameter: a wrong value may increase the
-	  power consumption. So, if no full study was performed on the target
-	  platform, please leave it at its default value.
-
-config RTC_INTF_ALARM_DEV
-	bool "Android alarm device"
-	depends on RTC_INTF_ALARM
-	default y
-	help
-	  Exports the alarm interface to user-space.
-
-
 config RTC_DRV_TEST
 	tristate "Test driver/device"
 	help
@@ -540,8 +499,8 @@ config RTC_DRV_CMOS
 
 config RTC_DRV_VRTC
 	tristate "Virtual RTC for Moorestown platforms"
-	depends on X86_INTEL_MID
-	default y if X86_INTEL_MID
+	depends on X86_MRST
+	default y if X86_MRST
 
 	help
 	Say "yes" here to get direct support for the real time clock

@@ -75,10 +75,8 @@ DEFINE_PER_CPU(struct kprobe_ctlblk, kprobe_ctlblk);
 	/*
 	 * Undefined/reserved opcodes, conditional jump, Opcode Extension
 	 * Groups, and some special opcodes can not boost.
-	 * This is non-const to keep gcc from statically optimizing it out, as
-	 * variable_test_bit makes gcc think only *(unsigned long*) is used.
 	 */
-static u32 twobyte_is_boostable[256 / 32] = {
+static const u32 twobyte_is_boostable[256 / 32] = {
 	/*      0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f          */
 	/*      ----------------------------------------------          */
 	W(0x00, 0, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0) | /* 00 */
@@ -1091,9 +1089,9 @@ int __kprobes longjmp_break_handler(struct kprobe *p, struct pt_regs *regs)
 			       "current sp %p does not match saved sp %p\n",
 			       stack_addr(regs), kcb->jprobe_saved_sp);
 			printk(KERN_ERR "Saved registers for jprobe %p\n", jp);
-			show_regs(saved_regs);
+			show_registers(saved_regs);
 			printk(KERN_ERR "Current registers\n");
-			show_regs(regs);
+			show_registers(regs);
 			BUG();
 		}
 		*regs = kcb->jprobe_saved_regs;

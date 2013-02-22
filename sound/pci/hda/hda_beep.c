@@ -23,7 +23,6 @@
 #include <linux/pci.h>
 #include <linux/slab.h>
 #include <linux/workqueue.h>
-#include <linux/export.h>
 #include <sound/core.h>
 #include "hda_beep.h"
 #include "hda_local.h"

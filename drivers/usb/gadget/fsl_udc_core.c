@@ -717,8 +717,6 @@ static void fsl_queue_td(struct fsl_ep *ep, struct fsl_req *req)
 		lastreq = list_entry(ep->queue.prev, struct fsl_req, queue);
 		lastreq->tail->next_td_ptr =
 			cpu_to_hc32(req->head->td_dma & DTD_ADDR_MASK);
-		/* Ensure dTD's next dtd pointer to be updated */
-		wmb();
 		/* Read prime bit, if 1 goto done */
 		if (fsl_readl(&dr_regs->endpointprime) & bitmask)
 			goto out;
@@ -769,7 +767,7 @@ out:
  * @is_last: return flag if it is the last dTD of the request
  * return: pointer to the built dTD */
 static struct ep_td_struct *fsl_build_dtd(struct fsl_req *req, unsigned *length,
-		dma_addr_t *dma, int *is_last, gfp_t gfp_flags)
+		dma_addr_t *dma, int *is_last)
 {
 	u32 swap_temp;
 	struct ep_td_struct *dtd;
@@ -778,7 +776,7 @@ static struct ep_td_struct *fsl_build_dtd(struct fsl_req *req, unsigned *length,
 	*length = min(req->req.length - req->req.actual,
 			(unsigned)EP_MAX_LENGTH_TRANSFER);
 
-	dtd = dma_pool_alloc(udc_controller->td_pool, gfp_flags, dma);
+	dtd = dma_pool_alloc(udc_controller->td_pool, GFP_KERNEL, dma);
 	if (dtd == NULL)
 		return dtd;
 
@@ -828,7 +826,7 @@ static struct ep_td_struct *fsl_build_dtd(struct fsl_req *req, unsigned *length,
 }
 
 /* Generate dtd chain for a request */
-static int fsl_req_to_dtd(struct fsl_req *req, gfp_t gfp_flags)
+static int fsl_req_to_dtd(struct fsl_req *req)
 {
 	unsigned	count;
 	int		is_last;
@@ -837,7 +835,7 @@ static int fsl_req_to_dtd(struct fsl_req *req, gfp_t gfp_flags)
 	dma_addr_t dma;
 
 	do {
-		dtd = fsl_build_dtd(req, &count, &dma, &is_last, gfp_flags);
+		dtd = fsl_build_dtd(req, &count, &dma, &is_last);
 		if (dtd == NULL)
 			return -ENOMEM;
 
@@ -911,11 +909,13 @@ fsl_ep_queue(struct usb_ep *_ep, struct usb_request *_req, gfp_t gfp_flags)
 	req->req.actual = 0;
 	req->dtd_count = 0;
 
+	spin_lock_irqsave(&udc->lock, flags);
+
 	/* build dtds and push them to device queue */
-	if (!fsl_req_to_dtd(req, gfp_flags)) {
-		spin_lock_irqsave(&udc->lock, flags);
+	if (!fsl_req_to_dtd(req)) {
 		fsl_queue_td(ep, req);
 	} else {
+		spin_unlock_irqrestore(&udc->lock, flags);
 		return -ENOMEM;
 	}
 
@@ -1244,9 +1244,6 @@ static int fsl_pullup(struct usb_gadget *gadget, int is_on)
 	return 0;
 }
 
-static int fsl_start(struct usb_gadget_driver *driver,
-		int (*bind)(struct usb_gadget *));
-static int fsl_stop(struct usb_gadget_driver *driver);
 /* defined in gadget.h */
 static struct usb_gadget_ops fsl_gadget_ops = {
 	.get_frame = fsl_get_frame,
@@ -1255,8 +1252,6 @@ static struct usb_gadget_ops fsl_gadget_ops = {
 	.vbus_session = fsl_vbus_session,
 	.vbus_draw = fsl_vbus_draw,
 	.pullup = fsl_pullup,
-	.start = fsl_start,
-	.stop = fsl_stop,
 };
 
 /* Set protocol stall on ep0, protocol stall will automatically be cleared
@@ -1299,7 +1294,7 @@ static int ep0_prime_status(struct fsl_udc *udc, int direction)
 			ep_is_in(ep) ? DMA_TO_DEVICE : DMA_FROM_DEVICE);
 	req->mapped = 1;
 
-	if (fsl_req_to_dtd(req, GFP_ATOMIC) == 0)
+	if (fsl_req_to_dtd(req) == 0)
 		fsl_queue_td(ep, req);
 	else
 		return -ENOMEM;
@@ -1383,7 +1378,7 @@ static void ch9getstatus(struct fsl_udc *udc, u8 request_type, u16 value,
 	req->mapped = 1;
 
 	/* prime the data phase */
-	if ((fsl_req_to_dtd(req, GFP_ATOMIC) == 0))
+	if ((fsl_req_to_dtd(req) == 0))
 		fsl_queue_td(ep, req);
 	else			/* no mem */
 		goto stall;
@@ -1932,7 +1927,7 @@ static irqreturn_t fsl_udc_irq(int irq, void *_udc)
  * Hook to gadget drivers
  * Called by initialization code of gadget drivers
 *----------------------------------------------------------------*/
-static int fsl_start(struct usb_gadget_driver *driver,
+int usb_gadget_probe_driver(struct usb_gadget_driver *driver,
 		int (*bind)(struct usb_gadget *))
 {
 	int retval = -ENODEV;
@@ -2000,9 +1995,10 @@ out:
 		       retval);
 	return retval;
 }
+EXPORT_SYMBOL(usb_gadget_probe_driver);
 
 /* Disconnect from gadget driver */
-static int fsl_stop(struct usb_gadget_driver *driver)
+int usb_gadget_unregister_driver(struct usb_gadget_driver *driver)
 {
 	struct fsl_ep *loop_ep;
 	unsigned long flags;
@@ -2045,6 +2041,7 @@ static int fsl_stop(struct usb_gadget_driver *driver)
 	       driver->driver.name);
 	return 0;
 }
+EXPORT_SYMBOL(usb_gadget_unregister_driver);
 
 /*-------------------------------------------------------------------------
 		PROC File System Support
@@ -2593,16 +2590,9 @@ static int __init fsl_udc_probe(struct platform_device *pdev)
 		ret = -ENOMEM;
 		goto err_unregister;
 	}
-
-	ret = usb_add_gadget_udc(&pdev->dev, &udc_controller->gadget);
-	if (ret)
-		goto err_del_udc;
-
 	create_proc_file();
 	return 0;
 
-err_del_udc:
-	dma_pool_destroy(udc_controller->td_pool);
 err_unregister:
 	device_unregister(&udc_controller->gadget.dev);
 err_free_irq:
@@ -2634,8 +2624,6 @@ static int __exit fsl_udc_remove(struct platform_device *pdev)
 
 	if (!udc_controller)
 		return -ENODEV;
-
-	usb_del_gadget_udc(&udc_controller->gadget);
 	udc_controller->done = &done;
 
 	fsl_udc_clk_release();

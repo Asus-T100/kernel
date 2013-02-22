@@ -39,7 +39,6 @@
 #include <linux/videodev2.h>
 #include <linux/clk.h>
 #include <linux/err.h>
-#include <linux/module.h>
 
 #include <media/davinci/dm355_ccdc.h>
 #include <media/davinci/vpss.h>

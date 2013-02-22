@@ -405,10 +405,10 @@ static int acm_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
 			usb_ep_disable(acm->notify);
 		} else {
 			VDBG(cdev, "init acm ctrl interface %d\n", intf);
+			acm->notify_desc = ep_choose(cdev->gadget,
+					acm->hs.notify,
+					acm->fs.notify);
 		}
-		acm->notify_desc = ep_choose(cdev->gadget,
-				acm->hs.notify,
-				acm->fs.notify);
 		usb_ep_enable(acm->notify, acm->notify_desc);
 		acm->notify->driver_data = acm;
 
@@ -418,11 +418,11 @@ static int acm_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
 			gserial_disconnect(&acm->port);
 		} else {
 			DBG(cdev, "activate acm ttyGS%d\n", acm->port_num);
+			acm->port.in_desc = ep_choose(cdev->gadget,
+					acm->hs.in, acm->fs.in);
+			acm->port.out_desc = ep_choose(cdev->gadget,
+					acm->hs.out, acm->fs.out);
 		}
-		acm->port.in_desc = ep_choose(cdev->gadget,
-				acm->hs.in, acm->fs.in);
-		acm->port.out_desc = ep_choose(cdev->gadget,
-				acm->hs.out, acm->fs.out);
 		gserial_connect(&acm->port, acm->port_num);
 
 	} else
@@ -578,8 +578,6 @@ acm_bind(struct usb_configuration *c, struct usb_function *f)
 	struct f_acm		*acm = func_to_acm(f);
 	int			status;
 	struct usb_ep		*ep;
-	struct usb_descriptor_header **fs_function;
-	struct usb_descriptor_header **hs_function;
 
 	/* allocate instance-specific interface IDs, and patch descriptors */
 	status = usb_interface_id(c, f);
@@ -631,27 +629,16 @@ acm_bind(struct usb_configuration *c, struct usb_function *f)
 	acm->notify_req->complete = acm_cdc_notify_complete;
 	acm->notify_req->context = acm;
 
-	if (c->bConfigurationValue == 4) {
-		/* Descriptors with association descriptor */
-		fs_function = acm_fs_function;
-	} else if (c->bConfigurationValue == 1) {
-		/* If define ACM for Android,
-		 * descriptors with association descriptor */
-		fs_function = acm_fs_function;
-	} else {
-		/* Descriptors without association descriptor */
-		fs_function = &acm_fs_function[1];
-	}
 	/* copy descriptors, and track endpoint copies */
-	f->descriptors = usb_copy_descriptors(fs_function);
+	f->descriptors = usb_copy_descriptors(acm_fs_function);
 	if (!f->descriptors)
 		goto fail;
 
-	acm->fs.in = usb_find_endpoint(fs_function,
+	acm->fs.in = usb_find_endpoint(acm_fs_function,
 			f->descriptors, &acm_fs_in_desc);
-	acm->fs.out = usb_find_endpoint(fs_function,
+	acm->fs.out = usb_find_endpoint(acm_fs_function,
 			f->descriptors, &acm_fs_out_desc);
-	acm->fs.notify = usb_find_endpoint(fs_function,
+	acm->fs.notify = usb_find_endpoint(acm_fs_function,
 			f->descriptors, &acm_fs_notify_desc);
 
 	/* support all relevant hardware speeds... we expect that when
@@ -667,24 +654,13 @@ acm_bind(struct usb_configuration *c, struct usb_function *f)
 				acm_fs_notify_desc.bEndpointAddress;
 
 		/* copy descriptors, and track endpoint copies */
-		if (c->bConfigurationValue == 4) {
-			/* Descriptors with association descriptor */
-			hs_function = acm_hs_function;
-		} else if (c->bConfigurationValue == 1) {
-			/* If define ACM for Android,
-			 * descriptors with association descriptor */
-			hs_function = acm_hs_function;
-		} else {
-			/* Descriptors without association descriptor */
-			hs_function = &acm_hs_function[1];
-		}
-		f->hs_descriptors = usb_copy_descriptors(hs_function);
+		f->hs_descriptors = usb_copy_descriptors(acm_hs_function);
 
-		acm->hs.in = usb_find_endpoint(hs_function,
+		acm->hs.in = usb_find_endpoint(acm_hs_function,
 				f->hs_descriptors, &acm_hs_in_desc);
-		acm->hs.out = usb_find_endpoint(hs_function,
+		acm->hs.out = usb_find_endpoint(acm_hs_function,
 				f->hs_descriptors, &acm_hs_out_desc);
-		acm->hs.notify = usb_find_endpoint(hs_function,
+		acm->hs.notify = usb_find_endpoint(acm_hs_function,
 				f->hs_descriptors, &acm_hs_notify_desc);
 	}
 
@@ -717,12 +693,10 @@ acm_unbind(struct usb_configuration *c, struct usb_function *f)
 {
 	struct f_acm		*acm = func_to_acm(f);
 
-	acm_string_defs[ACM_CTRL_IDX].id = 0;
 	if (gadget_is_dualspeed(c->cdev->gadget))
 		usb_free_descriptors(f->hs_descriptors);
 	usb_free_descriptors(f->descriptors);
 	gs_free_req(acm->notify, acm->notify_req);
-	kfree(acm->port.func.name);
 	kfree(acm);
 }
 
@@ -794,11 +768,7 @@ int acm_bind_config(struct usb_configuration *c, u8 port_num)
 	acm->port.disconnect = acm_disconnect;
 	acm->port.send_break = acm_send_break;
 
-	acm->port.func.name = kasprintf(GFP_KERNEL, "acm%u", port_num);
-	if (!acm->port.func.name) {
-		kfree(acm);
-		return -ENOMEM;
-	}
+	acm->port.func.name = "acm";
 	acm->port.func.strings = acm_strings;
 	/* descriptors are per-instance copies */
 	acm->port.func.bind = acm_bind;

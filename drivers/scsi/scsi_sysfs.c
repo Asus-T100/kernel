@@ -309,6 +309,7 @@ static void scsi_device_dev_release_usercontext(struct work_struct *work)
 	starget->reap_ref++;
 	list_del(&sdev->siblings);
 	list_del(&sdev->same_target_siblings);
+	list_del(&sdev->starved_entry);
 	spin_unlock_irqrestore(sdev->host->host_lock, flags);
 
 	cancel_work_sync(&sdev->event_work);
@@ -916,8 +917,6 @@ int scsi_sysfs_add_sdev(struct scsi_device *sdev)
 void __scsi_remove_device(struct scsi_device *sdev)
 {
 	struct device *dev = &sdev->sdev_gendev;
-	struct Scsi_Host *shost = sdev->host;
-	unsigned long flags;
 
 	if (sdev->is_visible) {
 		if (scsi_device_set_state(sdev, SDEV_CANCEL) != 0)
@@ -934,17 +933,11 @@ void __scsi_remove_device(struct scsi_device *sdev)
 		sdev->host->hostt->slave_destroy(sdev);
 	transport_destroy_device(dev);
 
+	/* cause the request function to reject all I/O requests */
+	sdev->request_queue->queuedata = NULL;
+
 	/* Freeing the queue signals to block that we're done */
-	blk_cleanup_queue(sdev->request_queue);
-
-	/* Delete sdev from the starved list of shost before put_device
-	 * , so that if scsi_run_queue() find us in starved list, it still
-	 * has a chance to get_device.
-	 */
-	spin_lock_irqsave(shost->host_lock, flags);
-	list_del(&sdev->starved_entry);
-	spin_unlock_irqrestore(shost->host_lock, flags);
-
+	scsi_free_queue(sdev->request_queue);
 	put_device(dev);
 }
 

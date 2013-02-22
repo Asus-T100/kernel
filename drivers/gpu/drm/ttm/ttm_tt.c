@@ -41,7 +41,6 @@
 #include "ttm/ttm_bo_driver.h"
 #include "ttm/ttm_placement.h"
 #include "ttm/ttm_page_alloc.h"
-#include <linux/hugetlb.h>
 
 static int ttm_tt_swapin(struct ttm_tt *ttm);
 
@@ -68,7 +67,6 @@ static void ttm_tt_free_user_pages(struct ttm_tt *ttm)
 	int write;
 	int dirty;
 	struct page *page;
-	struct page **pages_to_wb;
 	int i;
 	struct ttm_backend *be = ttm->be;
 
@@ -78,27 +76,6 @@ static void ttm_tt_free_user_pages(struct ttm_tt *ttm)
 
 	if (be)
 		be->func->clear(be);
-
-	pages_to_wb = kmalloc(ttm->num_pages * sizeof(struct page *),
-			GFP_KERNEL);
-
-	if (pages_to_wb && ttm->caching_state != tt_cached) {
-		int num_pages_wb = 0;
-
-		for (i = 0; i < ttm->num_pages; ++i) {
-			page = ttm->pages[i];
-			if (page == NULL)
-				continue;
-			pages_to_wb[num_pages_wb++] = page;
-		}
-
-		if (set_pages_array_wb(pages_to_wb, num_pages_wb))
-			printk(KERN_ERR TTM_PFX "Failed to set pages to wb\n");
-
-	} else if (NULL == pages_to_wb) {
-		printk(KERN_ERR TTM_PFX
-		       "Failed to allocate memory for set wb operation.\n");
-	}
 
 	for (i = 0; i < ttm->num_pages; ++i) {
 		page = ttm->pages[i];
@@ -120,7 +97,6 @@ static void ttm_tt_free_user_pages(struct ttm_tt *ttm)
 	ttm->state = tt_unpopulated;
 	ttm->first_himem_page = ttm->num_pages;
 	ttm->last_lomem_page = -1;
-	kfree(pages_to_wb);
 }
 
 static struct page *__ttm_tt_get_page(struct ttm_tt *ttm, int index)
@@ -175,13 +151,6 @@ int ttm_tt_populate(struct ttm_tt *ttm)
 	unsigned long i;
 	struct ttm_backend *be;
 	int ret;
-	be = ttm->be;
-	if (ttm->state == tt_unbound) {
-		/*when bo type is ttm_bo_type_user, also need call populate*/
-		be->func->populate(be, ttm->num_pages, ttm->pages,
-				   ttm->dummy_read_page, ttm->dma_address);
-		return 0;
-	}
 
 	if (ttm->state != tt_unpopulated)
 		return 0;
@@ -191,6 +160,8 @@ int ttm_tt_populate(struct ttm_tt *ttm)
 		if (unlikely(ret != 0))
 			return ret;
 	}
+
+	be = ttm->be;
 
 	for (i = 0; i < ttm->num_pages; ++i) {
 		page = __ttm_tt_get_page(ttm, i);
@@ -369,162 +340,12 @@ void ttm_tt_destroy(struct ttm_tt *ttm)
 	kfree(ttm);
 }
 
-/*
- * Hacked from kernel function __get_user_pages in mm/memory.c
- *
- * Handle buffers allocated by other kernel space driver and mmaped into user
- * space, function Ignore the VM_PFNMAP and VM_IO flag in VMA structure
- *
- * Get physical pages from user space virtual address and update into page list
- */
-static int __get_pfnmap_pages(struct task_struct *tsk, struct mm_struct *mm,
-							unsigned long start, int nr_pages,
-							unsigned int gup_flags, struct page **pages,
-							struct vm_area_struct **vmas)
-{
-	int i, ret;
-	unsigned long vm_flags;
-
-	if (nr_pages <= 0)
-		return 0;
-
-	VM_BUG_ON(!!pages != !!(gup_flags & FOLL_GET));
-
-	/*
-	* Require read or write permissions.
-	* If FOLL_FORCE is set, we only require the "MAY" flags.
-	*/
-	vm_flags  = (gup_flags & FOLL_WRITE) ?
-			(VM_WRITE | VM_MAYWRITE) : (VM_READ | VM_MAYREAD);
-	vm_flags &= (gup_flags & FOLL_FORCE) ?
-			(VM_MAYREAD | VM_MAYWRITE) : (VM_READ | VM_WRITE);
-	i = 0;
-
-	do {
-		struct vm_area_struct *vma;
-
-		vma = find_vma(mm, start);
-		if (!vma)
-			return i ? : -EFAULT;
-
-		if (is_vm_hugetlb_page(vma)) {
-			i = follow_hugetlb_page(mm, vma, pages, vmas,
-					&start, &nr_pages, i, gup_flags);
-			continue;
-		}
-
-		do {
-			struct page *page;
-			unsigned long pfn;
-
-			/*
-			* If we have a pending SIGKILL, don't keep faulting
-			* pages and potentially allocating memory.
-			*/
-			if (unlikely(fatal_signal_pending(current)))
-				return i ? i : -ERESTARTSYS;
-
-			if ((ret = follow_pfn(vma, start, &pfn)))
-				return i ? : -EFAULT;
-
-			page = pfn_to_page(pfn);
-			if (IS_ERR(page))
-				return i ? i : PTR_ERR(page);
-			if (pages) {
-				pages[i] = page;
-				get_page(page);
-				flush_anon_page(vma, page, start);
-				flush_dcache_page(page);
-			}
-			if (vmas)
-			vmas[i] = vma;
-			i++;
-			start += PAGE_SIZE;
-			nr_pages--;
-		} while (nr_pages && start < vma->vm_end);
-	} while (nr_pages);
-	return i;
-}
-
-static int get_pfnmap_pages(struct task_struct *tsk, struct mm_struct *mm,
-				unsigned long start, int nr_pages, int write, int force,
-				struct page **pages, struct vm_area_struct **vmas)
-{
-	int flags = FOLL_TOUCH;
-
-	if (pages)
-		flags |= FOLL_GET;
-	if (write)
-		flags |= FOLL_WRITE;
-	if (force)
-		flags |= FOLL_FORCE;
-
-	return __get_pfnmap_pages(tsk, mm, start, nr_pages, flags, pages, vmas);
-}
-
-/*
- * Convert user space virtual address into pages list
- */
-static int alloc_user_pages_ttm(struct ttm_tt *ttm,
-				unsigned int userptr)
-{
-	unsigned int page_nr;
-	unsigned int i;
-	struct page_block *pgblk;
-	struct vm_area_struct *vma;
-	int ret;
-
-	down_read(&current->mm->mmap_sem);
-	vma = find_vma(current->mm, userptr);
-	up_read(&current->mm->mmap_sem);
-	if (vma == NULL) {
-		printk(KERN_ERR "find_vma failed\n");
-		return -EFAULT;
-	}
-
-	/*
-	 * Handle frame buffer allocated in other kerenl space driver
-	 * and map to user space
-	 */
-	if (vma->vm_flags & (VM_IO | VM_PFNMAP)) {
-		down_read(&current->mm->mmap_sem);
-		page_nr = get_pfnmap_pages(current, current->mm,
-					   (unsigned long)userptr,
-					   (int)(ttm->num_pages), 1, 0,
-					   ttm->pages, NULL);
-		up_read(&current->mm->mmap_sem);
-	} else {
-		/*Handle frame buffer allocated in user space*/
-		down_read(&current->mm->mmap_sem);
-		page_nr = get_user_pages(current, current->mm,
-					 (unsigned long)userptr,
-					 (int)(ttm->num_pages), 1, 0, ttm->pages,
-					 NULL);
-		up_read(&current->mm->mmap_sem);
-	}
-
-	/* can be written by caller, not forced */
-	if (page_nr != ttm->num_pages) {
-		printk(KERN_ERR "get_user_pages err: bo->pgnr = %lu, "
-				"pgnr actually pinned = %u.\n",
-				ttm->num_pages, page_nr);
-		return -ENOMEM;
-	}
-
-	return 0;
-
-out_of_mem:
-	ret = -ENOMEM;
-
-	return ret;
-}
-
 int ttm_tt_set_user(struct ttm_tt *ttm,
 		    struct task_struct *tsk,
 		    unsigned long start, unsigned long num_pages)
 {
 	struct mm_struct *mm = tsk->mm;
-	int ret, i;
+	int ret;
 	int write = (ttm->page_flags & TTM_PAGE_FLAG_WRITE) != 0;
 	struct ttm_mem_global *mem_glob = ttm->glob->mem_glob;
 
@@ -540,20 +361,10 @@ int ttm_tt_set_user(struct ttm_tt *ttm,
 	if (unlikely(ret != 0))
 		return ret;
 
-	/**
-	 * get_user_pages can only handle the buffer allocated from user space,
-	 * but we need handle the buffer allocated from other kernel driver
-	 */
-#if 0
 	down_read(&mm->mmap_sem);
-
 	ret = get_user_pages(tsk, mm, start, num_pages,
 			     write, 0, ttm->pages, NULL);
 	up_read(&mm->mmap_sem);
-#else
-	ret = alloc_user_pages_ttm(ttm, start);
-#endif
-
 
 	if (ret != num_pages && write) {
 		ttm_tt_free_user_pages(ttm);

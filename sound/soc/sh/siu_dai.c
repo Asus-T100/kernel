@@ -23,7 +23,6 @@
 #include <linux/firmware.h>
 #include <linux/pm_runtime.h>
 #include <linux/slab.h>
-#include <linux/module.h>
 
 #include <asm/clock.h>
 #include <asm/siu.h>
@@ -112,6 +111,9 @@ static void siu_dai_start(struct siu_port *port_info)
 
 	dev_dbg(port_info->pcm->card->dev, "%s\n", __func__);
 
+	/* Turn on SIU clock */
+	pm_runtime_get_sync(info->dev);
+
 	/* Issue software reset to siu */
 	siu_write32(base + SIU_SRCTL, 0);
 
@@ -155,6 +157,9 @@ static void siu_dai_stop(struct siu_port *port_info)
 
 	/* SIU software reset */
 	siu_write32(base + SIU_SRCTL, 0);
+
+	/* Turn off SIU clock */
+	pm_runtime_put_sync(info->dev);
 }
 
 static void siu_dai_spbAselect(struct siu_port *port_info)
@@ -701,7 +706,7 @@ epclkget:
 	return ret;
 }
 
-static const struct snd_soc_dai_ops siu_dai_ops = {
+static struct snd_soc_dai_ops siu_dai_ops = {
 	.startup	= siu_dai_startup,
 	.shutdown	= siu_dai_shutdown,
 	.prepare	= siu_dai_prepare,
@@ -846,7 +851,18 @@ static struct platform_driver siu_driver = {
 	.remove		= __devexit_p(siu_remove),
 };
 
-module_platform_driver(siu_driver);
+static int __init siu_init(void)
+{
+	return platform_driver_register(&siu_driver);
+}
+
+static void __exit siu_exit(void)
+{
+	platform_driver_unregister(&siu_driver);
+}
+
+module_init(siu_init)
+module_exit(siu_exit)
 
 MODULE_AUTHOR("Carlos Munoz <carlos@kenati.com>");
 MODULE_DESCRIPTION("ALSA SoC SH7722 SIU driver");

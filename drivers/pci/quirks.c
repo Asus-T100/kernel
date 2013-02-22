@@ -2745,28 +2745,6 @@ static void ricoh_mmc_fixup_r5c832(struct pci_dev *dev)
 	/* disable must be done via function #0 */
 	if (PCI_FUNC(dev->devfn))
 		return;
-	/*
-	 * RICOH 0xe823 SD/MMC card reader fails to recognize
-	 * certain types of SD/MMC cards. Lowering the SD base
-	 * clock frequency from 200Mhz to 50Mhz fixes this issue.
-	 *
-	 * 0x150 - SD2.0 mode enable for changing base clock
-	 *	   frequency to 50Mhz
-	 * 0xe1  - Base clock frequency
-	 * 0x32  - 50Mhz new clock frequency
-	 * 0xf9  - Key register for 0x150
-	 * 0xfc  - key register for 0xe1
-	 */
-	if (dev->device == PCI_DEVICE_ID_RICOH_R5CE823) {
-		pci_write_config_byte(dev, 0xf9, 0xfc);
-		pci_write_config_byte(dev, 0x150, 0x10);
-		pci_write_config_byte(dev, 0xf9, 0x00);
-		pci_write_config_byte(dev, 0xfc, 0x01);
-		pci_write_config_byte(dev, 0xe1, 0x32);
-		pci_write_config_byte(dev, 0xfc, 0x00);
-
-		dev_notice(&dev->dev, "MMC controller base frequency changed to 50Mhz.\n");
-	}
 
 	pci_read_config_byte(dev, 0xCB, &disable);
 
@@ -2780,7 +2758,6 @@ static void ricoh_mmc_fixup_r5c832(struct pci_dev *dev)
 
 	dev_notice(&dev->dev, "proprietary Ricoh MMC controller disabled (via firewire function)\n");
 	dev_notice(&dev->dev, "MMC cards are now supported by standard SDHCI controller\n");
-
 }
 DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_RICOH, PCI_DEVICE_ID_RICOH_R5C832, ricoh_mmc_fixup_r5c832);
 DECLARE_PCI_FIXUP_RESUME_EARLY(PCI_VENDOR_ID_RICOH, PCI_DEVICE_ID_RICOH_R5C832, ricoh_mmc_fixup_r5c832);
@@ -2821,124 +2798,6 @@ static void __devinit fixup_ti816x_class(struct pci_dev* dev)
 	}
 }
 DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_TI, 0xb800, fixup_ti816x_class);
-
-/*
- * Some BIOS implementations leave the Intel GPU interrupts enabled,
- * even though no one is handling them (f.e. i915 driver is never loaded).
- * Additionally the interrupt destination is not set up properly
- * and the interrupt ends up -somewhere-.
- *
- * These spurious interrupts are "sticky" and the kernel disables
- * the (shared) interrupt line after 100.000+ generated interrupts.
- *
- * Fix it by disabling the still enabled interrupts.
- * This resolves crashes often seen on monitor unplug.
- */
-#define I915_DEIER_REG 0x4400c
-static void __devinit disable_igfx_irq(struct pci_dev *dev)
-{
-	void __iomem *regs = pci_iomap(dev, 0, 0);
-	if (regs == NULL) {
-		dev_warn(&dev->dev, "igfx quirk: Can't iomap PCI device\n");
-		return;
-	}
-
-	/* Check if any interrupt line is still enabled */
-	if (readl(regs + I915_DEIER_REG) != 0) {
-		dev_warn(&dev->dev, "BIOS left Intel GPU interrupts enabled; "
-			"disabling\n");
-
-		writel(0, regs + I915_DEIER_REG);
-	}
-
-	pci_iounmap(dev, regs);
-}
-DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_INTEL, 0x0102, disable_igfx_irq);
-DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_INTEL, 0x010a, disable_igfx_irq);
-
-#ifdef CONFIG_X86_MDFLD
-static void quirk_mfld_d1_support(struct pci_dev *dev)
-{
-	int pm;
-	u16 pmc;
-	u8  cap;
-
-	/* find PCI PM capability in list */
-	pm = pci_find_capability(dev, PCI_CAP_ID_PM);
-	if (!pm)
-		return;
-
-	/* Check device's ability to generate PME# */
-	pci_read_config_word(dev, pm + PCI_PM_PMC, &pmc);
-
-	if ((pmc & PCI_PM_CAP_VER_MASK) > 3) {
-		dev_warn(&dev->dev,
-			"%s: unsupported PM cap regs version.\n", __func__);
-		return;
-	}
-
-	pmc |= PCI_PM_CAP_D1;
-
-	pci_write_config_word(dev, pm + PCI_PM_PMC, pmc);
-
-	/* Update the D0i1 as the deepest state supported */
-	pm = pci_find_capability(dev, PCI_CAP_ID_VNDR);
-	/* set wake capable and D0i1 */
-	cap = 0x41;
-	pci_write_config_byte(dev, pm + 5, cap);
-}
-
-#ifdef CONFIG_USB_PENWELL_OTG
-DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_INTEL, 0x0829, quirk_mfld_d1_support);
-DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_INTEL, 0xE006, quirk_mfld_d1_support);
-#endif /*CONFIG_USB_PENWELL_OTG*/
-
-#ifdef CONFIG_SERIAL_MFD_HSU
-DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_INTEL, 0x081B, quirk_mfld_d1_support);
-DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_INTEL, 0x08FC, quirk_mfld_d1_support);
-DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_INTEL, 0x081C, quirk_mfld_d1_support);
-DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_INTEL, 0x08FD, quirk_mfld_d1_support);
-DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_INTEL, 0x081D, quirk_mfld_d1_support);
-DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_INTEL, 0x08FE, quirk_mfld_d1_support);
-#endif /*CONFIG_SERIAL_MFD_HSU*/
-
-#ifdef CONFIG_DX_SEP
-static void quirk_mfld_d2_support(struct pci_dev *dev)
-{
-	int pm;
-	u16 pmc;
-	u8  cap;
-
-	/* find PCI PM capability in list */
-	pm = pci_find_capability(dev, PCI_CAP_ID_PM);
-	if (!pm)
-		return;
-
-	/* Check device's ability to generate PME# */
-	pci_read_config_word(dev, pm + PCI_PM_PMC, &pmc);
-
-	if ((pmc & PCI_PM_CAP_VER_MASK) > 3) {
-		dev_warn(&dev->dev,
-			"%s: unsupported PM cap regs version.\n", __func__);
-		return;
-	}
-
-	pmc |= PCI_PM_CAP_D2;
-
-	pci_write_config_word(dev, pm + PCI_PM_PMC, pmc);
-
-	/* Update the D0i2 as the deepest state supported */
-	pm = pci_find_capability(dev, PCI_CAP_ID_VNDR);
-	/* set wake capable and D0i2 */
-	cap = 0x42;
-	pci_write_config_byte(dev, pm + 5, cap);
-}
-
-DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_INTEL, 0x0826, quirk_mfld_d2_support);
-DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_INTEL, 0x08E9, quirk_mfld_d2_support);
-#endif /*CONFIG_DX_SEP*/
-
-#endif /*CONFIG_X86_MDFLD*/
 
 static void pci_do_fixups(struct pci_dev *dev, struct pci_fixup *f,
 			  struct pci_fixup *end)

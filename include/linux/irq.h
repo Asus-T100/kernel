@@ -87,7 +87,6 @@ enum {
 	IRQ_MOVE_PCNTXT		= (1 << 14),
 	IRQ_NESTED_THREAD	= (1 << 15),
 	IRQ_NOTHREAD		= (1 << 16),
-	IRQ_CHAINED		= (1 << 17),
 };
 
 #define IRQF_MODIFY_MASK	\

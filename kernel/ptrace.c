@@ -23,11 +23,7 @@
 #include <linux/uaccess.h>
 #include <linux/regset.h>
 #include <linux/hw_breakpoint.h>
-#include <linux/debugfs.h>
 
-static int ptrace_can_access;
-module_param_named(ptrace_can_access, ptrace_can_access,\
-	int, S_IRUGO | S_IWUSR | S_IWGRP);
 
 /*
  * ptrace a task: make the debugger its new parent and
@@ -180,9 +176,6 @@ ok:
 bool ptrace_may_access(struct task_struct *task, unsigned int mode)
 {
 	int err;
-
-	if (ptrace_can_access)
-		return true;
 	task_lock(task);
 	err = __ptrace_may_access(task, mode);
 	task_unlock(task);

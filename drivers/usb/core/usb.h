@@ -162,11 +162,3 @@ extern void usb_notify_remove_device(struct usb_device *udev);
 extern void usb_notify_add_bus(struct usb_bus *ubus);
 extern void usb_notify_remove_bus(struct usb_bus *ubus);
 
-/* uevent notify stuff */
-#define USB_WARNING_NOT_SUPPORT		1
-#define USB_WARNING_NO_RESPONSE		2
-#define USB_WARNING_VBUS_INVALID	3
-#define USB_WARNING_HUB_MAX_TIER	4
-#define USB_WARNING_INSUFF_POWER	5
-
-extern void usb_notify_warning(struct usb_device *udev, int error);

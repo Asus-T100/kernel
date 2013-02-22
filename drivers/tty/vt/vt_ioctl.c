@@ -110,34 +110,6 @@ void vt_event_post(unsigned int event, unsigned int old, unsigned int new)
 		wake_up_interruptible(&vt_event_waitqueue);
 }
 
-static void __vt_event_queue(struct vt_event_wait *vw)
-{
-	unsigned long flags;
-	/* Prepare the event */
-	INIT_LIST_HEAD(&vw->list);
-	vw->done = 0;
-	/* Queue our event */
-	spin_lock_irqsave(&vt_event_lock, flags);
-	list_add(&vw->list, &vt_events);
-	spin_unlock_irqrestore(&vt_event_lock, flags);
-}
-
-static void __vt_event_wait(struct vt_event_wait *vw)
-{
-	/* Wait for it to pass */
-	wait_event_interruptible_tty(vt_event_waitqueue, vw->done);
-}
-
-static void __vt_event_dequeue(struct vt_event_wait *vw)
-{
-	unsigned long flags;
-
-	/* Dequeue it */
-	spin_lock_irqsave(&vt_event_lock, flags);
-	list_del(&vw->list);
-	spin_unlock_irqrestore(&vt_event_lock, flags);
-}
-
 /**
  *	vt_event_wait		-	wait for an event
  *	@vw: our event
@@ -149,9 +121,20 @@ static void __vt_event_dequeue(struct vt_event_wait *vw)
 
 static void vt_event_wait(struct vt_event_wait *vw)
 {
-	__vt_event_queue(vw);
-	__vt_event_wait(vw);
-	__vt_event_dequeue(vw);
+	unsigned long flags;
+	/* Prepare the event */
+	INIT_LIST_HEAD(&vw->list);
+	vw->done = 0;
+	/* Queue our event */
+	spin_lock_irqsave(&vt_event_lock, flags);
+	list_add(&vw->list, &vt_events);
+	spin_unlock_irqrestore(&vt_event_lock, flags);
+	/* Wait for it to pass */
+	wait_event_interruptible_tty(vt_event_waitqueue, vw->done);
+	/* Dequeue it */
+	spin_lock_irqsave(&vt_event_lock, flags);
+	list_del(&vw->list);
+	spin_unlock_irqrestore(&vt_event_lock, flags);
 }
 
 /**
@@ -194,14 +177,10 @@ int vt_waitactive(int n)
 {
 	struct vt_event_wait vw;
 	do {
-		vw.event.event = VT_EVENT_SWITCH;
-		__vt_event_queue(&vw);
-		if (n == fg_console + 1) {
-			__vt_event_dequeue(&vw);
+		if (n == fg_console + 1)
 			break;
-		}
-		__vt_event_wait(&vw);
-		__vt_event_dequeue(&vw);
+		vw.event.event = VT_EVENT_SWITCH;
+		vt_event_wait(&vw);
 		if (vw.done == 0)
 			return -EINTR;
 	} while (vw.event.newev != n);
@@ -1484,6 +1463,7 @@ compat_kdfontop_ioctl(struct compat_console_font_op __user *fontop,
 	if (!perm && op->op != KD_FONT_OP_GET)
 		return -EPERM;
 	op->data = compat_ptr(((struct compat_console_font_op *)op)->data);
+	op->flags |= KD_FONT_FLAG_OLD;
 	i = con_font_op(vc, op);
 	if (i)
 		return i;

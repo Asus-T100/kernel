@@ -19,8 +19,7 @@
 #include <asm/uaccess.h>
 #include "internal.h"
 
-static int request_key_auth_instantiate(struct key *,
-					struct key_preparsed_payload *);
+static int request_key_auth_instantiate(struct key *, const void *, size_t);
 static void request_key_auth_describe(const struct key *, struct seq_file *);
 static void request_key_auth_revoke(struct key *);
 static void request_key_auth_destroy(struct key *);
@@ -43,9 +42,10 @@ struct key_type key_type_request_key_auth = {
  * Instantiate a request-key authorisation key.
  */
 static int request_key_auth_instantiate(struct key *key,
-					struct key_preparsed_payload *prep)
+					const void *data,
+					size_t datalen)
 {
-	key->payload.data = (struct request_key_auth *)prep->data;
+	key->payload.data = (struct request_key_auth *) data;
 	return 0;
 }
 

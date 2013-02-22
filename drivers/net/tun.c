@@ -528,7 +528,6 @@ static void tun_net_init(struct net_device *dev)
 		dev->netdev_ops = &tap_netdev_ops;
 		/* Ethernet TAP Device */
 		ether_setup(dev);
-		dev->priv_flags &= ~IFF_TX_SKB_SHARING;
 
 		random_ether_addr(dev->dev_addr);
 
@@ -1238,12 +1237,6 @@ static long __tun_chr_ioctl(struct file *file, unsigned int cmd,
 	int sndbuf;
 	int vnet_hdr_sz;
 	int ret;
-
-#ifdef CONFIG_ANDROID_PARANOID_NETWORK
-	if (cmd != TUNGETIFF && !capable(CAP_NET_ADMIN)) {
-		return -EPERM;
-	}
-#endif
 
 	if (cmd == TUNSETIFF || _IOC_TYPE(cmd) == 0x89)
 		if (copy_from_user(&ifr, argp, ifreq_len))

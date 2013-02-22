@@ -353,10 +353,8 @@ static int ttm_bo_add_ttm(struct ttm_buffer_object *bo, bool zero_alloc)
 
 		ret = ttm_tt_set_user(bo->ttm, current,
 				      bo->buffer_start, bo->num_pages);
-		if (unlikely(ret != 0)) {
+		if (unlikely(ret != 0))
 			ttm_tt_destroy(bo->ttm);
-			bo->ttm = NULL;
-		}
 		break;
 	default:
 		printk(KERN_ERR TTM_PFX "Illegal buffer object type\n");
@@ -378,7 +376,6 @@ static int ttm_bo_handle_move_mem(struct ttm_buffer_object *bo,
 	struct ttm_mem_type_manager *old_man = &bdev->man[bo->mem.mem_type];
 	struct ttm_mem_type_manager *new_man = &bdev->man[mem->mem_type];
 	int ret = 0;
-	int i;
 
 	if (old_is_pci || new_is_pci ||
 	    ((mem->placement & bo->mem.placement & TTM_PL_MASK_CACHING) == 0)) {
@@ -393,12 +390,10 @@ static int ttm_bo_handle_move_mem(struct ttm_buffer_object *bo,
 	 * Create and bind a ttm if required.
 	 */
 
-	if (!(new_man->flags & TTM_MEMTYPE_FLAG_FIXED)) {
-		if (bo->ttm == NULL) {
-			ret = ttm_bo_add_ttm(bo, false);
-			if (ret)
-				goto out_err;
-		}
+	if (!(new_man->flags & TTM_MEMTYPE_FLAG_FIXED) && (bo->ttm == NULL)) {
+		ret = ttm_bo_add_ttm(bo, false);
+		if (ret)
+			goto out_err;
 
 		ret = ttm_tt_set_placement_caching(bo->ttm, mem->placement);
 		if (ret)
@@ -1225,10 +1220,10 @@ int ttm_bo_init(struct ttm_bo_device *bdev,
 		goto out_err;
 
 	/*
-	 * For ttm_bo_type_device and ttm_bo_type_user buffers, allocate
+	 * For ttm_bo_type_device buffers, allocate
 	 * address space from the device.
 	 */
-	if (bo->type == ttm_bo_type_device || bo->type == ttm_bo_type_user) {
+	if (bo->type == ttm_bo_type_device) {
 		ret = ttm_bo_setup_vm(bo);
 		if (ret)
 			goto out_err;
@@ -1809,7 +1804,6 @@ static int ttm_bo_swapout(struct ttm_mem_shrink *shrink)
 			spin_unlock(&glob->lru_lock);
 			(void) ttm_bo_cleanup_refs(bo, false, false, false);
 			kref_put(&bo->list_kref, ttm_bo_release_list);
-			spin_lock(&glob->lru_lock);
 			continue;
 		}
 

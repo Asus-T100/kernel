@@ -654,10 +654,7 @@ static int packet_rcv(struct sk_buff *skb, struct net_device *dev,
 	return 0;
 
 drop_n_acct:
-	spin_lock(&sk->sk_receive_queue.lock);
-	po->stats.tp_drops++;
-	atomic_inc(&sk->sk_drops);
-	spin_unlock(&sk->sk_receive_queue.lock);
+	po->stats.tp_drops = atomic_inc_return(&sk->sk_drops);
 
 drop_n_restore:
 	if (skb_head != skb->data && skb_shared(skb)) {

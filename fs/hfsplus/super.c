@@ -122,7 +122,7 @@ static int hfsplus_system_write_inode(struct inode *inode)
 
 	if (fork->total_size != cpu_to_be64(inode->i_size)) {
 		set_bit(HFSPLUS_SB_WRITEBACKUP, &sbi->flags);
-		sb_mark_dirty(inode->i_sb);
+		inode->i_sb->s_dirt = 1;
 	}
 	hfsplus_inode_write_fork(inode, fork);
 	if (tree)
@@ -167,7 +167,7 @@ int hfsplus_sync_fs(struct super_block *sb, int wait)
 
 	dprint(DBG_SUPER, "hfsplus_write_super\n");
 
-	sb_mark_clean(sb);
+	sb->s_dirt = 0;
 
 	/*
 	 * Explicitly write out the special metadata inodes.
@@ -197,17 +197,17 @@ int hfsplus_sync_fs(struct super_block *sb, int wait)
 		write_backup = 1;
 	}
 
-	error2 = hfsplus_submit_bio(sb,
+	error2 = hfsplus_submit_bio(sb->s_bdev,
 				   sbi->part_start + HFSPLUS_VOLHEAD_SECTOR,
-				   sbi->s_vhdr_buf, NULL, WRITE_SYNC);
+				   sbi->s_vhdr, WRITE_SYNC);
 	if (!error)
 		error = error2;
 	if (!write_backup)
 		goto out;
 
-	error2 = hfsplus_submit_bio(sb,
+	error2 = hfsplus_submit_bio(sb->s_bdev,
 				  sbi->part_start + sbi->sect_count - 2,
-				  sbi->s_backup_vhdr_buf, NULL, WRITE_SYNC);
+				  sbi->s_backup_vhdr, WRITE_SYNC);
 	if (!error)
 		error2 = error;
 out:
@@ -225,7 +225,7 @@ static void hfsplus_write_super(struct super_block *sb)
 	if (!(sb->s_flags & MS_RDONLY))
 		hfsplus_sync_fs(sb, 1);
 	else
-		sb_mark_clean(sb);
+		sb->s_dirt = 0;
 }
 
 static void hfsplus_put_super(struct super_block *sb)
@@ -251,8 +251,8 @@ static void hfsplus_put_super(struct super_block *sb)
 	hfs_btree_close(sbi->ext_tree);
 	iput(sbi->alloc_file);
 	iput(sbi->hidden_dir);
-	kfree(sbi->s_vhdr_buf);
-	kfree(sbi->s_backup_vhdr_buf);
+	kfree(sbi->s_vhdr);
+	kfree(sbi->s_backup_vhdr);
 	unload_nls(sbi->nls);
 	kfree(sb->s_fs_info);
 	sb->s_fs_info = NULL;
@@ -508,8 +508,8 @@ out_close_cat_tree:
 out_close_ext_tree:
 	hfs_btree_close(sbi->ext_tree);
 out_free_vhdr:
-	kfree(sbi->s_vhdr_buf);
-	kfree(sbi->s_backup_vhdr_buf);
+	kfree(sbi->s_vhdr);
+	kfree(sbi->s_backup_vhdr);
 out_unload_nls:
 	unload_nls(sbi->nls);
 	unload_nls(nls);

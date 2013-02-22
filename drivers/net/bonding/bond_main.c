@@ -1500,8 +1500,6 @@ static rx_handler_result_t bond_handle_frame(struct sk_buff **pskb)
 	struct sk_buff *skb = *pskb;
 	struct slave *slave;
 	struct bonding *bond;
-	void (*recv_probe)(struct sk_buff *, struct bonding *,
-				struct slave *);
 
 	skb = skb_share_check(skb, GFP_ATOMIC);
 	if (unlikely(!skb))
@@ -1515,12 +1513,11 @@ static rx_handler_result_t bond_handle_frame(struct sk_buff **pskb)
 	if (bond->params.arp_interval)
 		slave->dev->last_rx = jiffies;
 
-	recv_probe = ACCESS_ONCE(bond->recv_probe);
-	if (recv_probe) {
+	if (bond->recv_probe) {
 		struct sk_buff *nskb = skb_clone(skb, GFP_ATOMIC);
 
 		if (likely(nskb)) {
-			recv_probe(nskb, bond, slave);
+			bond->recv_probe(nskb, bond, slave);
 			dev_kfree_skb(nskb);
 		}
 	}
@@ -1628,10 +1625,8 @@ int bond_enslave(struct net_device *bond_dev, struct net_device *slave_dev)
 
 			if (slave_dev->type != ARPHRD_ETHER)
 				bond_setup_by_slave(bond_dev, slave_dev);
-			else {
+			else
 				ether_setup(bond_dev);
-				bond_dev->priv_flags &= ~IFF_TX_SKB_SHARING;
-			}
 
 			netdev_bonding_change(bond_dev,
 					      NETDEV_POST_TYPE_CHANGE);
@@ -1905,7 +1900,7 @@ int bond_enslave(struct net_device *bond_dev, struct net_device *slave_dev)
 				 "but new slave device does not support netpoll.\n",
 				 bond_dev->name);
 			res = -EBUSY;
-			goto err_detach;
+			goto err_close;
 		}
 	}
 #endif
@@ -1914,7 +1909,7 @@ int bond_enslave(struct net_device *bond_dev, struct net_device *slave_dev)
 
 	res = bond_create_slave_symlinks(bond_dev, slave_dev);
 	if (res)
-		goto err_detach;
+		goto err_close;
 
 	res = netdev_rx_handler_register(slave_dev, bond_handle_frame,
 					 new_slave);
@@ -1934,11 +1929,6 @@ int bond_enslave(struct net_device *bond_dev, struct net_device *slave_dev)
 /* Undo stages on error */
 err_dest_symlinks:
 	bond_destroy_slave_symlinks(bond_dev, slave_dev);
-
-err_detach:
-	write_lock_bh(&bond->lock);
-	bond_detach_slave(bond, new_slave);
-	write_unlock_bh(&bond->lock);
 
 err_close:
 	dev_close(slave_dev);
@@ -3076,11 +3066,7 @@ static void bond_ab_arp_commit(struct bonding *bond, int delta_in_ticks)
 					   trans_start + delta_in_ticks)) ||
 			    bond->curr_active_slave != slave) {
 				slave->link = BOND_LINK_UP;
-				if (bond->current_arp_slave) {
-					bond_set_slave_inactive_flags(
-						bond->current_arp_slave);
-					bond->current_arp_slave = NULL;
-				}
+				bond->current_arp_slave = NULL;
 
 				pr_info("%s: link status definitely up for interface %s.\n",
 					bond->dev->name, slave->dev->name);
@@ -4412,7 +4398,7 @@ static void bond_setup(struct net_device *bond_dev)
 	bond_dev->tx_queue_len = 0;
 	bond_dev->flags |= IFF_MASTER|IFF_MULTICAST;
 	bond_dev->priv_flags |= IFF_BONDING;
-	bond_dev->priv_flags &= ~(IFF_XMIT_DST_RELEASE | IFF_TX_SKB_SHARING);
+	bond_dev->priv_flags &= ~IFF_XMIT_DST_RELEASE;
 
 	/* At first, we block adding VLANs. That's the only way to
 	 * prevent problems that occur when adding VLANs over an

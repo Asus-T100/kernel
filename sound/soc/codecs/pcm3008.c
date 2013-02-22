@@ -20,7 +20,6 @@
 #include <linux/device.h>
 #include <linux/gpio.h>
 #include <linux/slab.h>
-#include <linux/module.h>
 #include <sound/core.h>
 #include <sound/pcm.h>
 #include <sound/initval.h>
@@ -118,7 +117,7 @@ static int pcm3008_soc_remove(struct snd_soc_codec *codec)
 }
 
 #ifdef CONFIG_PM
-static int pcm3008_soc_suspend(struct snd_soc_codec *codec)
+static int pcm3008_soc_suspend(struct snd_soc_codec *codec, pm_message_t msg)
 {
 	struct pcm3008_setup_data *setup = codec->dev->platform_data;
 
@@ -172,7 +171,17 @@ static struct platform_driver pcm3008_codec_driver = {
 	},
 };
 
-module_platform_driver(pcm3008_codec_driver);
+static int __init pcm3008_modinit(void)
+{
+	return platform_driver_register(&pcm3008_codec_driver);
+}
+module_init(pcm3008_modinit);
+
+static void __exit pcm3008_exit(void)
+{
+	platform_driver_unregister(&pcm3008_codec_driver);
+}
+module_exit(pcm3008_exit);
 
 MODULE_DESCRIPTION("Soc PCM3008 driver");
 MODULE_AUTHOR("Hugo Villeneuve");

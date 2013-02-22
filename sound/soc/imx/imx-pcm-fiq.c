@@ -238,25 +238,26 @@ static struct snd_pcm_ops imx_pcm_ops = {
 
 static int ssi_irq = 0;
 
-static int imx_pcm_fiq_new(struct snd_soc_pcm_runtime *rtd)
+static int imx_pcm_fiq_new(struct snd_card *card, struct snd_soc_dai *dai,
+	struct snd_pcm *pcm)
 {
-	struct snd_pcm *pcm = rtd->pcm;
-	struct snd_pcm_substream *substream;
 	int ret;
 
-	ret = imx_pcm_new(rtd);
+	ret = imx_pcm_new(card, dai, pcm);
 	if (ret)
 		return ret;
 
-	substream = pcm->streams[SNDRV_PCM_STREAM_PLAYBACK].substream;
-	if (substream) {
+	if (dai->driver->playback.channels_min) {
+		struct snd_pcm_substream *substream =
+			pcm->streams[SNDRV_PCM_STREAM_PLAYBACK].substream;
 		struct snd_dma_buffer *buf = &substream->dma_buffer;
 
 		imx_ssi_fiq_tx_buffer = (unsigned long)buf->area;
 	}
 
-	substream = pcm->streams[SNDRV_PCM_STREAM_CAPTURE].substream;
-	if (substream) {
+	if (dai->driver->capture.channels_min) {
+		struct snd_pcm_substream *substream =
+			pcm->streams[SNDRV_PCM_STREAM_CAPTURE].substream;
 		struct snd_dma_buffer *buf = &substream->dma_buffer;
 
 		imx_ssi_fiq_rx_buffer = (unsigned long)buf->area;
@@ -331,6 +332,14 @@ static struct platform_driver imx_pcm_driver = {
 	.remove = __devexit_p(imx_soc_platform_remove),
 };
 
-module_platform_driver(imx_pcm_driver);
+static int __init snd_imx_pcm_init(void)
+{
+	return platform_driver_register(&imx_pcm_driver);
+}
+module_init(snd_imx_pcm_init);
 
-MODULE_LICENSE("GPL");
+static void __exit snd_imx_pcm_exit(void)
+{
+	platform_driver_unregister(&imx_pcm_driver);
+}
+module_exit(snd_imx_pcm_exit);

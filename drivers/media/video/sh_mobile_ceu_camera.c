@@ -216,7 +216,6 @@ static int sh_mobile_ceu_soft_reset(struct sh_mobile_ceu_dev *pcdev)
  *  Videobuf operations
  */
 static int sh_mobile_ceu_videobuf_setup(struct vb2_queue *vq,
-			const struct v4l2_format *fmt,
 			unsigned int *count, unsigned int *num_planes,
 			unsigned long sizes[], void *alloc_ctxs[])
 {
@@ -312,7 +311,7 @@ static int sh_mobile_ceu_capture(struct sh_mobile_ceu_dev *pcdev)
 		bottom2	= CDBCR;
 	}
 
-	phys_addr_top = vb2_dma_contig_plane_dma_addr(pcdev->active, 0);
+	phys_addr_top = vb2_dma_contig_plane_paddr(pcdev->active, 0);
 
 	ceu_write(pcdev, top1, phys_addr_top);
 	if (V4L2_FIELD_NONE != pcdev->field) {

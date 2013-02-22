@@ -70,8 +70,6 @@ source "drivers/staging/rts_pstor/Kconfig"
 
 source "drivers/staging/frontier/Kconfig"
 
-source "drivers/staging/android/Kconfig"
-
 source "drivers/staging/pohmelfs/Kconfig"
 
 source "drivers/staging/phison/Kconfig"
@@ -99,8 +97,6 @@ source "drivers/staging/hv/Kconfig"
 source "drivers/staging/vme/Kconfig"
 
 source "drivers/staging/sep/Kconfig"
-
-source "drivers/staging/sep54/Kconfig"
 
 source "drivers/staging/iio/Kconfig"
 
@@ -148,6 +144,8 @@ source "drivers/staging/bcm/Kconfig"
 
 source "drivers/staging/ft1000/Kconfig"
 
+source "drivers/staging/intel_sst/Kconfig"
+
 source "drivers/staging/speakup/Kconfig"
 
 source "drivers/staging/cptm1217/Kconfig"
@@ -162,9 +160,4 @@ source "drivers/staging/mei/Kconfig"
 
 source "drivers/staging/nvec/Kconfig"
 
-source "drivers/staging/intel_media/Kconfig"
-
-source "drivers/staging/matrix/Kconfig"
-
-source "drivers/staging/mrfl/Kconfig"
 endif # STAGING

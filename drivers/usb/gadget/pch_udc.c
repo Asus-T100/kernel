@@ -320,7 +320,6 @@ struct pch_udc_ep {
  * @registered:		driver regsitered with system
  * @suspended:		driver in suspended state
  * @connected:		gadget driver associated
- * @vbus_session:	required vbus_session state
  * @set_cfg_not_acked:	pending acknowledgement 4 setup
  * @waiting_zlp_ack:	pending acknowledgement 4 ZLP
  * @data_requests:	DMA pool for data requests
@@ -347,7 +346,6 @@ struct pch_udc_dev {
 			registered:1,
 			suspended:1,
 			connected:1,
-			vbus_session:1,
 			set_cfg_not_acked:1,
 			waiting_zlp_ack:1;
 	struct pci_pool		*data_requests;
@@ -365,7 +363,6 @@ struct pch_udc_dev {
 #define PCI_DEVICE_ID_INTEL_EG20T_UDC	0x8808
 #define PCI_VENDOR_ID_ROHM		0x10DB
 #define PCI_DEVICE_ID_ML7213_IOH_UDC	0x801D
-#define PCI_DEVICE_ID_ML7831_IOH_UDC	0x8808
 
 static const char	ep0_string[] = "ep0in";
 static DEFINE_SPINLOCK(udc_stall_spinlock);	/* stall spin lock */
@@ -565,29 +562,6 @@ static void pch_udc_clear_disconnect(struct pch_udc_dev *dev)
 }
 
 /**
- * pch_udc_reconnect() - This API initializes usb device controller,
- *						and clear the disconnect status.
- * @dev:		Reference to pch_udc_regs structure
- */
-static void pch_udc_init(struct pch_udc_dev *dev);
-static void pch_udc_reconnect(struct pch_udc_dev *dev)
-{
-	pch_udc_init(dev);
-
-	/* enable device interrupts */
-	/* pch_udc_enable_interrupts() */
-	pch_udc_bit_clr(dev, UDC_DEVIRQMSK_ADDR,
-			UDC_DEVINT_UR | UDC_DEVINT_ENUM);
-
-	/* Clear the disconnect */
-	pch_udc_bit_set(dev, UDC_DEVCTL_ADDR, UDC_DEVCTL_RES);
-	pch_udc_bit_clr(dev, UDC_DEVCTL_ADDR, UDC_DEVCTL_SD);
-	mdelay(1);
-	/* Resume USB signalling */
-	pch_udc_bit_clr(dev, UDC_DEVCTL_ADDR, UDC_DEVCTL_RES);
-}
-
-/**
  * pch_udc_vbus_session() - set or clearr the disconnect status.
  * @dev:	Reference to pch_udc_regs structure
  * @is_active:	Parameter specifying the action
@@ -597,18 +571,10 @@ static void pch_udc_reconnect(struct pch_udc_dev *dev)
 static inline void pch_udc_vbus_session(struct pch_udc_dev *dev,
 					  int is_active)
 {
-	if (is_active) {
-		pch_udc_reconnect(dev);
-		dev->vbus_session = 1;
-	} else {
-		if (dev->driver && dev->driver->disconnect) {
-			spin_unlock(&dev->lock);
-			dev->driver->disconnect(&dev->gadget);
-			spin_lock(&dev->lock);
-		}
+	if (is_active)
+		pch_udc_clear_disconnect(dev);
+	else
 		pch_udc_set_disconnect(dev);
-		dev->vbus_session = 0;
-	}
 }
 
 /**
@@ -1168,17 +1134,7 @@ static int pch_udc_pcd_pullup(struct usb_gadget *gadget, int is_on)
 	if (!gadget)
 		return -EINVAL;
 	dev = container_of(gadget, struct pch_udc_dev, gadget);
-	if (is_on) {
-		pch_udc_reconnect(dev);
-	} else {
-		if (dev->driver && dev->driver->disconnect) {
-			spin_unlock(&dev->lock);
-			dev->driver->disconnect(&dev->gadget);
-			spin_lock(&dev->lock);
-		}
-		pch_udc_set_disconnect(dev);
-	}
-
+	pch_udc_vbus_session(dev, is_on);
 	return 0;
 }
 
@@ -1220,9 +1176,6 @@ static int pch_udc_pcd_vbus_draw(struct usb_gadget *gadget, unsigned int mA)
 	return -EOPNOTSUPP;
 }
 
-static int pch_udc_start(struct usb_gadget_driver *driver,
-	int (*bind)(struct usb_gadget *));
-static int pch_udc_stop(struct usb_gadget_driver *driver);
 static const struct usb_gadget_ops pch_udc_ops = {
 	.get_frame = pch_udc_pcd_get_frame,
 	.wakeup = pch_udc_pcd_wakeup,
@@ -1230,8 +1183,6 @@ static const struct usb_gadget_ops pch_udc_ops = {
 	.pullup = pch_udc_pcd_pullup,
 	.vbus_session = pch_udc_pcd_vbus_session,
 	.vbus_draw = pch_udc_pcd_vbus_draw,
-	.start	= pch_udc_start,
-	.stop	= pch_udc_stop,
 };
 
 /**
@@ -2387,11 +2338,8 @@ static void pch_udc_svc_ur_interrupt(struct pch_udc_dev *dev)
 		/* Complete request queue */
 		empty_req_queue(ep);
 	}
-	if (dev->driver && dev->driver->disconnect) {
-		spin_unlock(&dev->lock);
+	if (dev->driver && dev->driver->disconnect)
 		dev->driver->disconnect(&dev->gadget);
-		spin_lock(&dev->lock);
-	}
 }
 
 /**
@@ -2426,11 +2374,6 @@ static void pch_udc_svc_enum_interrupt(struct pch_udc_dev *dev)
 	pch_udc_set_dma(dev, DMA_DIR_TX);
 	pch_udc_set_dma(dev, DMA_DIR_RX);
 	pch_udc_ep_set_rrdy(&(dev->ep[UDC_EP0OUT_IDX]));
-
-	/* enable device interrupts */
-	pch_udc_enable_interrupts(dev, UDC_DEVINT_UR | UDC_DEVINT_US |
-					UDC_DEVINT_ES | UDC_DEVINT_ENUM |
-					UDC_DEVINT_SI | UDC_DEVINT_SC);
 }
 
 /**
@@ -2532,24 +2475,8 @@ static void pch_udc_dev_isr(struct pch_udc_dev *dev, u32 dev_intr)
 	if (dev_intr & UDC_DEVINT_SC)
 		pch_udc_svc_cfg_interrupt(dev);
 	/* USB Suspend interrupt */
-	if (dev_intr & UDC_DEVINT_US) {
-		if (dev->driver
-			&& dev->driver->suspend) {
-			spin_unlock(&dev->lock);
-			dev->driver->suspend(&dev->gadget);
-			spin_lock(&dev->lock);
-		}
-
-		if (dev->vbus_session == 0) {
-			if (dev->driver && dev->driver->disconnect) {
-				spin_unlock(&dev->lock);
-				dev->driver->disconnect(&dev->gadget);
-				spin_lock(&dev->lock);
-			}
-			pch_udc_reconnect(dev);
-		}
+	if (dev_intr & UDC_DEVINT_US)
 		dev_dbg(&dev->pdev->dev, "USB_SUSPEND\n");
-	}
 	/* Clear the SOF interrupt, if enabled */
 	if (dev_intr & UDC_DEVINT_SOF)
 		dev_dbg(&dev->pdev->dev, "SOF\n");
@@ -2575,14 +2502,6 @@ static irqreturn_t pch_udc_isr(int irq, void *pdev)
 	dev_intr = pch_udc_read_device_interrupts(dev);
 	ep_intr = pch_udc_read_ep_interrupts(dev);
 
-	/* For a hot plug, this find that the controller is hung up. */
-	if (dev_intr == ep_intr)
-		if (dev_intr == pch_udc_readl(dev, UDC_DEVCFG_ADDR)) {
-			dev_dbg(&dev->pdev->dev, "UDC: Hung up\n");
-			/* The controller is reset */
-			pch_udc_writel(dev, UDC_SRST, UDC_SRST_ADDR);
-			return IRQ_HANDLED;
-		}
 	if (dev_intr)
 		/* Clear device interrupts */
 		pch_udc_write_device_interrupts(dev, dev_intr);
@@ -2771,7 +2690,7 @@ static int init_dma_pools(struct pch_udc_dev *dev)
 	return 0;
 }
 
-static int pch_udc_start(struct usb_gadget_driver *driver,
+int usb_gadget_probe_driver(struct usb_gadget_driver *driver,
 	int (*bind)(struct usb_gadget *))
 {
 	struct pch_udc_dev	*dev = pch_udc;
@@ -2814,8 +2733,9 @@ static int pch_udc_start(struct usb_gadget_driver *driver,
 	dev->connected = 1;
 	return 0;
 }
+EXPORT_SYMBOL(usb_gadget_probe_driver);
 
-static int pch_udc_stop(struct usb_gadget_driver *driver)
+int usb_gadget_unregister_driver(struct usb_gadget_driver *driver)
 {
 	struct pch_udc_dev	*dev = pch_udc;
 
@@ -2841,6 +2761,7 @@ static int pch_udc_stop(struct usb_gadget_driver *driver)
 	pch_udc_set_disconnect(dev);
 	return 0;
 }
+EXPORT_SYMBOL(usb_gadget_unregister_driver);
 
 static void pch_udc_shutdown(struct pci_dev *pdev)
 {
@@ -2856,8 +2777,6 @@ static void pch_udc_shutdown(struct pci_dev *pdev)
 static void pch_udc_remove(struct pci_dev *pdev)
 {
 	struct pch_udc_dev	*dev = pci_get_drvdata(pdev);
-
-	usb_del_gadget_udc(&dev->gadget);
 
 	/* gadget driver must not be registered */
 	if (dev->driver)
@@ -2996,10 +2915,8 @@ static int pch_udc_probe(struct pci_dev *pdev,
 	}
 	pch_udc = dev;
 	/* initialize the hardware */
-	if (pch_udc_pcd_init(dev)) {
-		retval = -ENODEV;
+	if (pch_udc_pcd_init(dev))
 		goto finished;
-	}
 	if (request_irq(pdev->irq, pch_udc_isr, IRQF_SHARED, KBUILD_MODNAME,
 			dev)) {
 		dev_err(&pdev->dev, "%s: request_irq(%d) fail\n", __func__,
@@ -3036,9 +2953,6 @@ static int pch_udc_probe(struct pci_dev *pdev,
 
 	/* Put the device in disconnected state till a driver is bound */
 	pch_udc_set_disconnect(dev);
-	retval = usb_add_gadget_udc(&pdev->dev, &dev->gadget);
-	if (retval)
-		goto finished;
 	return 0;
 
 finished:
@@ -3054,11 +2968,6 @@ static DEFINE_PCI_DEVICE_TABLE(pch_udc_pcidev_id) = {
 	},
 	{
 		PCI_DEVICE(PCI_VENDOR_ID_ROHM, PCI_DEVICE_ID_ML7213_IOH_UDC),
-		.class = (PCI_CLASS_SERIAL_USB << 8) | 0xfe,
-		.class_mask = 0xffffffff,
-	},
-	{
-		PCI_DEVICE(PCI_VENDOR_ID_ROHM, PCI_DEVICE_ID_ML7831_IOH_UDC),
 		.class = (PCI_CLASS_SERIAL_USB << 8) | 0xfe,
 		.class_mask = 0xffffffff,
 	},

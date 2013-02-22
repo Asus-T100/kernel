@@ -40,7 +40,7 @@ typedef unsigned short	sa_family_t;
 /*
  *	1003.1g requires sa_family_t and that sa_data is char.
  */
-
+ 
 struct sockaddr {
 	sa_family_t	sa_family;	/* address family, AF_xxx	*/
 	char		sa_data[14];	/* 14 bytes of protocol address	*/
@@ -58,13 +58,13 @@ struct linger {
  *	system, not 4.3. Thus msg_accrights(len) are now missing. They
  *	belong in an obscure libc emulation or the bin.
  */
-
+ 
 struct msghdr {
-	void		*msg_name;	/* Socket name			*/
+	void	*	msg_name;	/* Socket name			*/
 	int		msg_namelen;	/* Length of name		*/
-	struct iovec	*msg_iov;	/* Data blocks			*/
+	struct iovec *	msg_iov;	/* Data blocks			*/
 	__kernel_size_t	msg_iovlen;	/* Number of blocks		*/
-	void		*msg_control;	/* Per protocol magic (eg BSD file descriptor passing) */
+	void 	*	msg_control;	/* Per protocol magic (eg BSD file descriptor passing) */
 	__kernel_size_t	msg_controllen;	/* Length of cmsg list */
 	unsigned	msg_flags;
 };
@@ -83,8 +83,8 @@ struct mmsghdr {
 
 struct cmsghdr {
 	__kernel_size_t	cmsg_len;	/* data byte count, including hdr */
-	int		cmsg_level;	/* originating protocol */
-	int		cmsg_type;	/* protocol-specific type */
+        int		cmsg_level;	/* originating protocol */
+        int		cmsg_type;	/* protocol-specific type */
 };
 
 /*
@@ -92,16 +92,16 @@ struct cmsghdr {
  *	Table 5-14 of POSIX 1003.1g
  */
 
-#define __CMSG_NXTHDR(ctl, len, cmsg) __cmsg_nxthdr((ctl), (len), (cmsg))
+#define __CMSG_NXTHDR(ctl, len, cmsg) __cmsg_nxthdr((ctl),(len),(cmsg))
 #define CMSG_NXTHDR(mhdr, cmsg) cmsg_nxthdr((mhdr), (cmsg))
 
-#define CMSG_ALIGN(len) (((len)+sizeof(long)-1) & ~(sizeof(long)-1))
+#define CMSG_ALIGN(len) ( ((len)+sizeof(long)-1) & ~(sizeof(long)-1) )
 
 #define CMSG_DATA(cmsg)	((void *)((char *)(cmsg) + CMSG_ALIGN(sizeof(struct cmsghdr))))
 #define CMSG_SPACE(len) (CMSG_ALIGN(sizeof(struct cmsghdr)) + CMSG_ALIGN(len))
 #define CMSG_LEN(len) (CMSG_ALIGN(sizeof(struct cmsghdr)) + (len))
 
-#define __CMSG_FIRSTHDR(ctl, len) ((len) >= sizeof(struct cmsghdr) ? \
+#define __CMSG_FIRSTHDR(ctl,len) ((len) >= sizeof(struct cmsghdr) ? \
 				  (struct cmsghdr *)(ctl) : \
 				  (struct cmsghdr *)NULL)
 #define CMSG_FIRSTHDR(msg)	__CMSG_FIRSTHDR((msg)->msg_control, (msg)->msg_controllen)
@@ -122,20 +122,20 @@ struct cmsghdr {
  *	inside range, given by msg->msg_controllen before using
  *	ancillary object DATA.				--ANK (980731)
  */
-
-static inline struct cmsghdr *__cmsg_nxthdr(void *__ctl, __kernel_size_t __size,
+ 
+static inline struct cmsghdr * __cmsg_nxthdr(void *__ctl, __kernel_size_t __size,
 					       struct cmsghdr *__cmsg)
 {
-	struct cmsghdr *__ptr;
+	struct cmsghdr * __ptr;
 
-	__ptr = (struct cmsghdr *)(((unsigned char *) __cmsg) +  CMSG_ALIGN(__cmsg->cmsg_len));
-	if ((unsigned long)((char *)(__ptr+1) - (char *) __ctl) > __size)
+	__ptr = (struct cmsghdr*)(((unsigned char *) __cmsg) +  CMSG_ALIGN(__cmsg->cmsg_len));
+	if ((unsigned long)((char*)(__ptr+1) - (char *) __ctl) > __size)
 		return (struct cmsghdr *)0;
 
 	return __ptr;
 }
 
-static inline struct cmsghdr *cmsg_nxthdr (struct msghdr *__msg, struct cmsghdr *__cmsg)
+static inline struct cmsghdr * cmsg_nxthdr (struct msghdr *__msg, struct cmsghdr *__cmsg)
 {
 	return __cmsg_nxthdr(__msg->msg_control, __msg->msg_controllen, __cmsg);
 }
@@ -192,9 +192,7 @@ struct ucred {
 #define AF_IEEE802154	36	/* IEEE802154 sockets		*/
 #define AF_CAIF		37	/* CAIF sockets			*/
 #define AF_ALG		38	/* Algorithm sockets		*/
-#define AF_MHI		39	/* MHI sockets			*/
-#define AF_RAW		40	/* RAW sockets			*/
-#define AF_MAX		41	/* For now.. */
+#define AF_MAX		39	/* For now.. */
 
 /* Protocol families, same as address families. */
 #define PF_UNSPEC	AF_UNSPEC
@@ -236,18 +234,15 @@ struct ucred {
 #define PF_IEEE802154	AF_IEEE802154
 #define PF_CAIF		AF_CAIF
 #define PF_ALG		AF_ALG
-#define PF_MHI		AF_MHI
-#define PF_RAW		AF_RAW
 #define PF_MAX		AF_MAX
-
 
 /* Maximum queue length specifiable by listen.  */
 #define SOMAXCONN	128
 
-/* Flags we can use with send/ and recv.
+/* Flags we can use with send/ and recv. 
    Added those for 1003.1g not all are supported yet
  */
-
+ 
 #define MSG_OOB		1
 #define MSG_PEEK	2
 #define MSG_DONTROUTE	4
@@ -266,7 +261,7 @@ struct ucred {
 #define MSG_NOSIGNAL	0x4000	/* Do not generate SIGPIPE */
 #define MSG_MORE	0x8000	/* Sender will send more */
 #define MSG_WAITFORONE	0x10000	/* recvmmsg(): block until 1+ packets avail */
-#define MSG_SENDPAGE_NOTLAST 0x20000 /* sendpage() internal : not the last page */
+
 #define MSG_EOF         MSG_FIN
 
 #define MSG_CMSG_CLOEXEC 0x40000000	/* Set close_on_exit for file
@@ -322,9 +317,9 @@ extern void cred_to_ucred(struct pid *pid, const struct cred *cred, struct ucred
 extern int memcpy_fromiovec(unsigned char *kdata, struct iovec *iov, int len);
 extern int memcpy_fromiovecend(unsigned char *kdata, const struct iovec *iov,
 			       int offset, int len);
-extern int csum_partial_copy_fromiovecend(unsigned char *kdata,
-					  struct iovec *iov,
-					  int offset,
+extern int csum_partial_copy_fromiovecend(unsigned char *kdata, 
+					  struct iovec *iov, 
+					  int offset, 
 					  unsigned int len, __wsum *csump);
 
 extern int verify_iovec(struct msghdr *m, struct iovec *iov, struct sockaddr *address, int mode);

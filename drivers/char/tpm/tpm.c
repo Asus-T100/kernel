@@ -383,9 +383,6 @@ static ssize_t tpm_transmit(struct tpm_chip *chip, const char *buf,
 	u32 count, ordinal;
 	unsigned long stop;
 
-	if (bufsiz > TPM_BUFSIZE)
-		bufsiz = TPM_BUFSIZE;
-
 	count = be32_to_cpu(*((__be32 *) (buf + 2)));
 	ordinal = be32_to_cpu(*((__be32 *) (buf + 6)));
 	if (count == 0)
@@ -438,50 +435,6 @@ out:
 	mutex_unlock(&chip->tpm_mutex);
 	return rc;
 }
-
-/*
- * tpm_chip_lookup - return tpm_chip for given chip number
- */
-static struct tpm_chip *tpm_chip_lookup(int chip_num)
-{
-	struct tpm_chip *pos;
-
-	spin_lock(&driver_lock);
-	list_for_each_entry(pos, &tpm_chip_list, list) {
-		if (pos->dev_num == chip_num) {
-			spin_unlock(&driver_lock);
-			return pos;
-		}
-	}
-
-	spin_unlock(&driver_lock);
-	return NULL;
-}
-
-/*
- * tpm_chip_num_exists - return whether tpm chip num exist in system.
- */
-int tpm_chip_num_exists(int chip_num)
-{
-	return (tpm_chip_lookup(chip_num) != NULL) ? 1 : 0;
-}
-EXPORT_SYMBOL_GPL(tpm_chip_num_exists);
-
-/*
- * Internal kernel interface to transmit TPM commands
- */
-ssize_t tpm_transmit_by_num(int chip_num, const char *buf,
-			    size_t bufsiz)
-{
-	struct tpm_chip *chip;
-
-	chip = tpm_chip_lookup(chip_num);
-	if (chip == NULL)
-		return -ENODEV;
-
-	return tpm_transmit(chip, buf, bufsiz);
-}
-EXPORT_SYMBOL_GPL(tpm_transmit_by_num);
 
 #define TPM_DIGEST_SIZE 20
 #define TPM_ERROR_SIZE 10
@@ -573,22 +526,6 @@ void tpm_gen_interrupt(struct tpm_chip *chip)
 			"attempting to determine the timeouts");
 }
 EXPORT_SYMBOL_GPL(tpm_gen_interrupt);
-
-void tpm_startup_clear(struct tpm_chip *chip)
-{
-	ssize_t rc;
-	u8 data[14] = {
-		0, 193,				/* TPM_TAG_RQU_COMMAND */
-		0, 0, 0, 12,			/* length */
-		0, 0, 0, 153,			/* ORDINAL */
-		0, 1				/*Startup_Type ST_Clear*/
-	};
-
-	rc = tpm_transmit(chip, data, sizeof(data));
-	printk(KERN_INFO "tpm_transmit return : %i, tpm_startup_clear return code : %i",
-		rc,
-		be32_to_cpu(*(__be32 *)(data + 6)));
-}
 
 void tpm_get_timeouts(struct tpm_chip *chip)
 {
@@ -1115,7 +1052,6 @@ ssize_t tpm_read(struct file *file, char __user *buf,
 {
 	struct tpm_chip *chip = file->private_data;
 	ssize_t ret_size;
-	int rc;
 
 	del_singleshot_timer_sync(&chip->user_read_timer);
 	flush_work_sync(&chip->work);
@@ -1126,11 +1062,8 @@ ssize_t tpm_read(struct file *file, char __user *buf,
 			ret_size = size;
 
 		mutex_lock(&chip->buffer_mutex);
-		rc = copy_to_user(buf, chip->data_buffer, ret_size);
-		memset(chip->data_buffer, 0, ret_size);
-		if (rc)
+		if (copy_to_user(buf, chip->data_buffer, ret_size))
 			ret_size = -EFAULT;
-
 		mutex_unlock(&chip->buffer_mutex);
 	}
 

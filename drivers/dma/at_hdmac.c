@@ -237,6 +237,10 @@ static void atc_dostart(struct at_dma_chan *atchan, struct at_desc *first)
 
 	vdbg_dump_regs(atchan);
 
+	/* clear any pending interrupt */
+	while (dma_readl(atdma, EBCISR))
+		cpu_relax();
+
 	channel_writel(atchan, SADDR, 0);
 	channel_writel(atchan, DADDR, 0);
 	channel_writel(atchan, CTRLA, 0);
@@ -1275,7 +1279,7 @@ static int __init at_dma_probe(struct platform_device *pdev)
 
 		tasklet_init(&atchan->tasklet, atc_tasklet,
 				(unsigned long)atchan);
-		atc_enable_chan_irq(atdma, i);
+		atc_enable_irq(atchan);
 	}
 
 	/* set base routines */
@@ -1344,7 +1348,7 @@ static int __exit at_dma_remove(struct platform_device *pdev)
 		struct at_dma_chan	*atchan = to_at_dma_chan(chan);
 
 		/* Disable interrupts */
-		atc_disable_chan_irq(atdma, chan->chan_id);
+		atc_disable_irq(atchan);
 		tasklet_disable(&atchan->tasklet);
 
 		tasklet_kill(&atchan->tasklet);

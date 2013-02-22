@@ -13,7 +13,6 @@
  */
 
 #include <linux/bitrev.h>
-#include <linux/module.h>
 #include "rc-core-priv.h"
 
 #define NEC_NBITS		32

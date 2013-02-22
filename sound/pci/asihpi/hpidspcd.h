@@ -2,7 +2,7 @@
 /**
 
     AudioScience HPI driver
-    Copyright (C) 1997-2011  AudioScience Inc. <support@audioscience.com>
+    Copyright (C) 1997-2010  AudioScience Inc. <support@audioscience.com>
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of version 2 of the GNU General Public License as
@@ -20,6 +20,19 @@
 \file
 Functions for reading DSP code to load into DSP
 
+ hpi_dspcode_defines HPI DSP code loading method
+Define exactly one of these to select how the DSP code is supplied to
+the adapter.
+
+End users writing applications that use the HPI interface do not have to
+use any of the below defines; they are only necessary for building drivers
+
+HPI_DSPCODE_FILE:
+DSP code is supplied as a file that is opened and read from by the driver.
+
+HPI_DSPCODE_FIRMWARE:
+DSP code is read using the hotplug firmware loader module.
+     Only valid when compiling the HPI kernel driver under Linux.
 */
 /***********************************************************************/
 #ifndef _HPIDSPCD_H_
@@ -27,52 +40,37 @@ Functions for reading DSP code to load into DSP
 
 #include "hpi_internal.h"
 
-/** Header structure for dsp firmware file
- This structure must match that used in s2bin.c for generation of asidsp.bin
- */
-/*#ifndef DISABLE_PRAGMA_PACK1 */
-/*#pragma pack(push, 1) */
-/*#endif */
-struct code_header {
-	/** Size in bytes including header */
-	u32 size;
-	/** File type tag "CODE" == 0x45444F43 */
-	u32 type;
-	/** Adapter model number */
-	u32 adapter;
-	/** Firmware version*/
-	u32 version;
-	/** Data checksum */
-	u32 checksum;
-};
-/*#ifndef DISABLE_PRAGMA_PACK1 */
-/*#pragma pack(pop) */
-/*#endif */
-
-/*? Don't need the pragmas? */
-compile_time_assert((sizeof(struct code_header) == 20), code_header_size);
+#ifndef DISABLE_PRAGMA_PACK1
+#pragma pack(push, 1)
+#endif
 
 /** Descriptor for dspcode from firmware loader */
 struct dsp_code {
-	/** copy of  file header */
-	struct code_header header;
+	/**  Firmware descriptor */
+	const struct firmware *ps_firmware;
+	struct pci_dev *ps_dev;
 	/** Expected number of words in the whole dsp code,INCL header */
-	u32 block_length;
+	long int block_length;
 	/** Number of words read so far */
-	u32 word_count;
-
-	/** internal state of DSP code reader */
-	struct dsp_code_private *pvt;
+	long int word_count;
+	/** Version read from dsp code file */
+	u32 version;
+	/** CRC read from dsp code file */
+	u32 crc;
 };
 
-/** Prepare *psDspCode to refer to the requested adapter's firmware.
-Code file name is obtained from HpiOs_GetDspCodePath
+#ifndef DISABLE_PRAGMA_PACK1
+#pragma pack(pop)
+#endif
+
+/** Prepare *psDspCode to refer to the requuested adapter.
+ Searches the file, or selects the appropriate linked array
 
 \return 0 for success, or error code if requested code is not available
 */
 short hpi_dsp_code_open(
 	/** Code identifier, usually adapter family */
-	u32 adapter, void *pci_dev,
+	u32 adapter,
 	/** Pointer to DSP code control structure */
 	struct dsp_code *ps_dsp_code,
 	/** Pointer to dword to receive OS specific error code */

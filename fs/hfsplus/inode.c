@@ -417,7 +417,7 @@ struct inode *hfsplus_new_inode(struct super_block *sb, int mode)
 		sbi->file_count++;
 	insert_inode_hash(inode);
 	mark_inode_dirty(inode);
-	sb_mark_dirty(sb);
+	sb->s_dirt = 1;
 
 	return inode;
 }
@@ -428,7 +428,7 @@ void hfsplus_delete_inode(struct inode *inode)
 
 	if (S_ISDIR(inode->i_mode)) {
 		HFSPLUS_SB(sb)->folder_count--;
-		sb_mark_dirty(sb);
+		sb->s_dirt = 1;
 		return;
 	}
 	HFSPLUS_SB(sb)->file_count--;
@@ -441,7 +441,7 @@ void hfsplus_delete_inode(struct inode *inode)
 		inode->i_size = 0;
 		hfsplus_file_truncate(inode);
 	}
-	sb_mark_dirty(sb);
+	sb->s_dirt = 1;
 }
 
 void hfsplus_inode_read_fork(struct inode *inode, struct hfsplus_fork_raw *fork)

@@ -474,9 +474,8 @@ config SENSORS_JC42
 	  If you say yes here, you get support for JEDEC JC42.4 compliant
 	  temperature sensors, which are used on many DDR3 memory modules for
 	  mobile devices and servers.  Support will include, but not be limited
-	  to, ADT7408, AT30TS00, CAT34TS02, CAT6095, MAX6604, MCP9804, MCP9805,
-	  MCP98242, MCP98243, MCP9843, SE97, SE98, STTS424(E), STTS2002,
-	  STTS3000, TSE2002B3, TSE2002GB2, TS3000B3, and TS3000GB2.
+	  to, ADT7408, CAT34TS02, CAT6095, MAX6604, MCP9805, MCP98242, MCP98243,
+	  MCP9843, SE97, SE98, STTS424(E), TSE2002B3, and TS3000B3.
 
 	  This driver can also be built as a module.  If so, the module
 	  will be called jc42.
@@ -1358,143 +1357,6 @@ config SENSORS_MC13783_ADC
         help
           Support for the A/D converter on MC13783 PMIC.
 
-config SENSORS_L3G4200D_POLL
-	bool "Polling based STMicroeletronics L3G4200D three-axis angular rate sensor"
-	depends on I2C && INPUT
-	default y
-	help
-	   A polling based L3G4200D gyroscope sensor driver. Support retrieving
-	   gyro data with specified polling intervals in milliseconds. Suitable
-	   for low precision but easy use requirements such as for Android integration.
-           Say Yes here to enable it.
-
-config SENSORS_LIS3DH_ACC
-	bool "ST Accel Sensor Driver"
-	depends on I2C
-	select INPUT_POLLDEV
-	default y
-	help
-	  Say Yes here to enable the ST LIS3DH accelerometer support
-	  conected through I2C.
-
-	  ST LIS3DH is a 3-axis linear accelerometer with digital output.
-
-config SENSORS_LTR502ALS
-	bool "Liteon ALS Driver"
- 	depends on I2C
-	default y
-	help
-		Liteon ALS Driver implemented by FIH
-
-config SENSORS_HMC5883
-	bool "Honeywell HMC5883 Magnetometer Driver"
-	depends on I2C
-	select INPUT_POLLDEV
-	default y
-	help
-	  Say Yes here to enable the Honeywell HMC5883 Magnetometer Driver
-
-config SENSORS_LSM303_MAG
-	bool "ST LSM303DLHC Magnetometer Driver"
-	depends on I2C
-	select INPUT_POLLDEV
-	default y
-	help
-	  Say Yes here to enable the ST LSM303DLHC Magnetometer Driver
-
-	  This driver will enable ST LSM303DLHC Magnetometer device.
-	  LSM303DLHC Magnetometer device is ultra compact high performance
-	  e-compass.
-
-config SENSORS_MPU3050
-	bool "MPU3050 gyro sensor Driver"
-	depends on I2C && INPUT
-	default y
-	help
-	   Say Yes here to enable MPU3050 gyro sensor Driver
-
-	   Gyroscope sensor MPU3050 from Invensense
-	   please search on
-	   http://www.invensense.com/ for product details.
-
-config SENSORS_MS5607
-	tristate "Measurement MS5607 digital pressure sensor"
-	depends on I2C && SYSFS
-	help
-	  If you say yes here you get support for the Measurement MS5607 digital
-	  pressure sensor.
-
-config SENSORS_LPS331AP
-	bool "LPS331AP pressure sensor Driver"
-	depends on I2C && INPUT
-	default y
-	help
-	   Say yes here to enable LPS331AP pressure sensor driver
-
-	   Pressure sensor LPS331AP from STMicroelectronics
-	   please search on
-	   http://www.st.com/ for more details.
-
-config MSIC_GPADC
-	tristate "MSIC GPADC driver for Intel Medfield platform"
-        depends on INTEL_SCU_IPC
-        help
-	  Say Y here to enable MSIC GPADC driver on Intel Medfield Platform
-
-config SENSORS_PSH
-        tristate "Intel PSH"
-        depends on INTEL_PSH_IPC && INTEL_SCU_IPC_UTIL
-        help
-	  Say Y here to enable PSH driver on Intel Merrifield Platform, and
-	  this driver depends on PSH IPC and SCU IPC driver.
-
-          This driver can also be built as a module. If so, the module
-          will be called psh.
-
-config BASINCOVE_GPADC
-        tristate "BASINCOVE GPADC driver for Intel Merrifield platform"
-        depends on INTEL_SCU_IPC
-        help
-          Say Y here to enable Basin Cove GPADC driver on Intel Merrifield
-	  Platform, and this driver is dependent on intel_scu_ipc driver for
-	  pmic register access.
-	  For details, pls refer to the source code.
-
-config MID_PWM
-	tristate "MID PWM driver for Intel Medfield platform"
-        depends on INTEL_SCU_IPC
-        help
-	  Say Y here to enable MID PWM driver on Intel Medfield Platform.
-	  This driver provides an interface to control the duty cycle of
-	  an output signal. For more information, please refer to the driver
-	  source code.
-
-config SENSOR_MID_THERMAL_PROBE
-        tristate "Thermal probe driver for Intel mid platform"
-        depends on INTEL_SCU_IPC && MSIC_GPADC
-        help
-          Say Y here to enable thermal probe driver on Intel mid
-          platform.
-
-	  The mid thermal probe is an ambient temperature sensor which plug in
-	  audio jack and get temperature value by adc samples.
-
-          To load this driver as a module, select M here.
-
-config SENSORS_MID_CURRENT
-	tristate "Over Current Detection driver for Intel Medfield platform"
-        depends on INTEL_SCU_IPC
-        help
-	  Say Y here to enable Over Current Detection driver on Intel Medfield
-	  Platform.
-
-config SENSORS_MID_VDD
-	tristate "Voltage drop detection driver for Intel Clovertrail plus platform"
-        depends on INTEL_SCU_IPC
-        help
-	  Say Y here to enable Voltage drop detection driver on Intel Clovertrail plus
-	  Platform.
-
 if ACPI
 
 comment "ACPI drivers"
@@ -1523,10 +1385,4 @@ config SENSORS_ATK0110
 
 endif # ACPI
 
-config SENSORS_MRFLD_CURRENT
-        tristate "Over Current Detection driver for Intel Merrifield platform"
-        depends on INTEL_SCU_IPC
-        help
-          Say Y here to enable Over Current Detection driver on Intel Merrifield
-          Platform.
 endif # HWMON

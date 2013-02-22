@@ -1323,17 +1323,8 @@ int usb_resume(struct device *dev, pm_message_t msg)
 
 	/* For PM complete calls, all we do is rebind interfaces */
 	if (msg.event == PM_EVENT_ON) {
-		if (udev->state != USB_STATE_NOTATTACHED) {
+		if (udev->state != USB_STATE_NOTATTACHED)
 			do_unbind_rebind(udev, DO_REBIND);
-
-			/* Schedule a runtime suspend for devices enabled
-			 * runtime-pm expect Hubs
-			*/
-			if (udev->dev.power.runtime_auto &&
-				udev->descriptor.
-				bDeviceClass != USB_CLASS_HUB)
-					pm_schedule_suspend(dev, 0);
-		}
 		status = 0;
 
 	/* For all other calls, take the device back to full power and
@@ -1592,7 +1583,7 @@ int usb_autopm_get_interface_async(struct usb_interface *intf)
 	dev_vdbg(&intf->dev, "%s: cnt %d -> %d\n",
 			__func__, atomic_read(&intf->dev.power.usage_count),
 			status);
-	if (status > 0 || status == -EINPROGRESS)
+	if (status > 0)
 		status = 0;
 	return status;
 }
@@ -1677,11 +1668,6 @@ int usb_runtime_suspend(struct device *dev)
 		return -EAGAIN;
 
 	status = usb_suspend_both(udev, PMSG_AUTO_SUSPEND);
-
-	/* Allow a retry if autosuspend failed temporarily */
-	if (status == -EAGAIN || status == -EBUSY)
-		usb_mark_last_busy(udev);
-
 	/* The PM core reacts badly unless the return code is 0,
 	 * -EAGAIN, or -EBUSY, so always return -EBUSY on an error.
 	 */

@@ -147,6 +147,6 @@ int __ext4_handle_dirty_super(const char *where, unsigned int line,
 			ext4_journal_abort_handle(where, line, __func__,
 						  bh, handle, err);
 	} else
-		sb_mark_dirty(sb);
+		sb->s_dirt = 1;
 	return err;
 }

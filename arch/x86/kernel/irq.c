@@ -249,10 +249,8 @@ void fixup_irqs(void)
 
 		data = irq_desc_get_irq_data(desc);
 		affinity = data->affinity;
-		/* include IRQs who have no action, but are chained */
-		if ((!irq_has_action(irq) && !irq_is_chained(irq)) ||
-			irqd_is_per_cpu(data) ||
-			cpumask_subset(affinity, cpu_online_mask)) {
+		if (!irq_has_action(irq) || irqd_is_per_cpu(data) ||
+		    cpumask_subset(affinity, cpu_online_mask)) {
 			raw_spin_unlock(&desc->lock);
 			continue;
 		}
@@ -266,7 +264,7 @@ void fixup_irqs(void)
 
 		if (cpumask_any_and(affinity, cpu_online_mask) >= nr_cpu_ids) {
 			break_affinity = 1;
-			affinity = cpu_online_mask;
+			affinity = cpu_all_mask;
 		}
 
 		chip = irq_data_get_irq_chip(data);

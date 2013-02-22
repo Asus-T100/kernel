@@ -19,7 +19,6 @@
 
 #include <linux/usb.h>
 #include <linux/usb/hcd.h>
-#include <linux/usb/otg.h>
 #include "usb.h"
 
 static inline const char *plural(int n)
@@ -135,12 +134,10 @@ int usb_choose_configuration(struct usb_device *udev)
 			best = c;
 	}
 
-	if (insufficient_power > 0) {
+	if (insufficient_power > 0)
 		dev_info(&udev->dev, "rejected %d configuration%s "
 			"due to insufficient available bus power\n",
 			insufficient_power, plural(insufficient_power));
-		usb_notify_warning(udev, USB_WARNING_INSUFF_POWER);
-	}
 
 	if (best) {
 		i = best->desc.bConfigurationValue;
@@ -167,42 +164,6 @@ static int generic_probe(struct usb_device *udev)
 		;		/* Don't configure if the device is owned */
 	else if (udev->authorized == 0)
 		dev_err(&udev->dev, "Device is not authorized for usage\n");
-#ifdef CONFIG_USB_OTG
-	else if (is_otg_testdev(udev)) {
-		struct usb_hcd	*hcd = bus_to_hcd(udev->bus);
-
-		/* According to USB OTG2.0 Spec Test mode support 6.4.2,
-		 * for A-device enumeration, set_configuration(1), and
-		 * set_configuration(0) for B-device enumeration.
-		 */
-
-		if (udev->bus->is_b_host)
-			c = 0;
-		else
-			c = 1;
-
-		err = usb_set_configuration(udev, c);
-		if (err)
-			dev_err(&udev->dev,
-				"can't set config #%d for test_dev, error %d\n",
-				err, (udev->bus->is_b_host ? 0 : 1));
-
-		dev_dbg(&udev->dev,
-			"OTG Test device detected, set config #%d\n", c);
-
-		/* Check which test mode it is, normal or vbusoff mode.
-		 * Then notify OTG transceiver to move to different OTG
-		 * state per different mode.
-		 */
-
-		if (hcd && hcd->otg_notify) {
-			if (is_otg_vbusoff_testdev(udev))
-				hcd->otg_notify(udev, USB_OTG_TESTDEV_VBUSOFF);
-			else
-				hcd->otg_notify(udev, USB_OTG_TESTDEV);
-		}
-	}
-#endif
 	else {
 		c = usb_choose_configuration(udev);
 		if (c >= 0) {

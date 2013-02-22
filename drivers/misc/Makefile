@@ -2,12 +2,11 @@
 # Makefile for misc devices that really don't fit anywhere else.
 #
 
-intel_fabric_logging-objs  := intel_fw_logging.o intel_fabricerr_status.o
 obj-$(CONFIG_IBM_ASM)		+= ibmasm/
 obj-$(CONFIG_AD525X_DPOT)	+= ad525x_dpot.o
 obj-$(CONFIG_AD525X_DPOT_I2C)	+= ad525x_dpot-i2c.o
 obj-$(CONFIG_AD525X_DPOT_SPI)	+= ad525x_dpot-spi.o
-obj-$(CONFIG_INTEL_MID_PTI)	+= pti.o
+0bj-$(CONFIG_INTEL_MID_PTI)	+= pti.o
 obj-$(CONFIG_ATMEL_PWM)		+= atmel_pwm.o
 obj-$(CONFIG_ATMEL_SSC)		+= atmel-ssc.o
 obj-$(CONFIG_ATMEL_TCLIB)	+= atmel_tclib.o
@@ -20,7 +19,6 @@ obj-$(CONFIG_PHANTOM)		+= phantom.o
 obj-$(CONFIG_SENSORS_BH1780)	+= bh1780gli.o
 obj-$(CONFIG_SENSORS_BH1770)	+= bh1770glc.o
 obj-$(CONFIG_SENSORS_APDS990X)	+= apds990x.o
-obj-$(CONFIG_SENSORS_APDS9300)	+= apds9300.o
 obj-$(CONFIG_SGI_IOC4)		+= ioc4.o
 obj-$(CONFIG_ENCLOSURE_SERVICES) += enclosure.o
 obj-$(CONFIG_KGDB_TESTS)	+= kgdbts.o
@@ -35,7 +33,6 @@ obj-$(CONFIG_SENSORS_TSL2550)	+= tsl2550.o
 obj-$(CONFIG_EP93XX_PWM)	+= ep93xx_pwm.o
 obj-$(CONFIG_DS1682)		+= ds1682.o
 obj-$(CONFIG_TI_DAC7512)	+= ti_dac7512.o
-obj-$(CONFIG_UID_STAT)		+= uid_stat.o
 obj-$(CONFIG_C2PORT)		+= c2port/
 obj-$(CONFIG_IWMC3200TOP)      += iwmc3200top/
 obj-$(CONFIG_HMC6352)		+= hmc6352.o
@@ -46,16 +43,6 @@ obj-$(CONFIG_VMWARE_BALLOON)	+= vmw_balloon.o
 obj-$(CONFIG_ARM_CHARLCD)	+= arm-charlcd.o
 obj-$(CONFIG_PCH_PHUB)		+= pch_phub.o
 obj-y				+= ti-st/
-obj-$(CONFIG_BCM_BT_LPM)	+= bcm-lpm/
 obj-$(CONFIG_AB8500_PWM)	+= ab8500-pwm.o
 obj-y				+= lis3lv02d/
 obj-y				+= carma/
-obj-$(CONFIG_WL127X_RFKILL)	+= wl127x-rfkill.o
-obj-$(CONFIG_APANIC)		+= apanic.o
-obj-$(CONFIG_SENSORS_AK8975)	+= akm8975.o
-obj-$(CONFIG_USB_SWITCH_FSA9480) += fsa9480.o
-obj-$(CONFIG_A1026)		+= a1026.o
-obj-$(CONFIG_MID_I2S_DEV)	+= mid_i2s_dev/
-obj-$(CONFIG_EMMC_IPANIC)	+= emmc_ipanic.o
-obj-$(CONFIG_SCU_LOGGING)	+= intel_fabric_logging.o
-obj-$(CONFIG_UUID)	+= uuid.o

@@ -185,7 +185,7 @@ static struct resource lapic_resource = {
 	.flags = IORESOURCE_MEM | IORESOURCE_BUSY,
 };
 
-unsigned int lapic_timer_frequency = 0;
+static unsigned int calibration_result;
 
 static void apic_pm_activate(void);
 
@@ -453,7 +453,7 @@ static void lapic_timer_setup(enum clock_event_mode mode,
 	switch (mode) {
 	case CLOCK_EVT_MODE_PERIODIC:
 	case CLOCK_EVT_MODE_ONESHOT:
-		__setup_APIC_LVTT(lapic_timer_frequency,
+		__setup_APIC_LVTT(calibration_result,
 				  mode != CLOCK_EVT_MODE_PERIODIC, 1);
 		break;
 	case CLOCK_EVT_MODE_UNUSED:
@@ -637,25 +637,6 @@ static int __init calibrate_APIC_clock(void)
 	long delta, deltatsc;
 	int pm_referenced = 0;
 
-	/**
-	 * check if lapic timer has already been calibrated by platform
-	 * specific routine, such as tsc calibration code. if so, we just fill
-	 * in the clockevent structure and return.
-	 */
-
-	if (lapic_timer_frequency) {
-		apic_printk(APIC_VERBOSE, "lapic timer already calibrated %d\n",
-				lapic_timer_frequency);
-		lapic_clockevent.mult = div_sc(lapic_timer_frequency/APIC_DIVISOR,
-					TICK_NSEC, lapic_clockevent.shift);
-		lapic_clockevent.max_delta_ns =
-			clockevent_delta2ns(0x7FFFFF, &lapic_clockevent);
-		lapic_clockevent.min_delta_ns =
-			clockevent_delta2ns(0xF, &lapic_clockevent);
-		lapic_clockevent.features &= ~CLOCK_EVT_FEAT_DUMMY;
-		return 0;
-	}
-
 	local_irq_disable();
 
 	/* Replace the global interrupt handler */
@@ -697,12 +678,12 @@ static int __init calibrate_APIC_clock(void)
 	lapic_clockevent.min_delta_ns =
 		clockevent_delta2ns(0xF, &lapic_clockevent);
 
-	lapic_timer_frequency = (delta * APIC_DIVISOR) / LAPIC_CAL_LOOPS;
+	calibration_result = (delta * APIC_DIVISOR) / LAPIC_CAL_LOOPS;
 
 	apic_printk(APIC_VERBOSE, "..... delta %ld\n", delta);
 	apic_printk(APIC_VERBOSE, "..... mult: %u\n", lapic_clockevent.mult);
 	apic_printk(APIC_VERBOSE, "..... calibration result: %u\n",
-		    lapic_timer_frequency);
+		    calibration_result);
 
 	if (cpu_has_tsc) {
 		apic_printk(APIC_VERBOSE, "..... CPU clock speed is "
@@ -713,13 +694,13 @@ static int __init calibrate_APIC_clock(void)
 
 	apic_printk(APIC_VERBOSE, "..... host bus clock speed is "
 		    "%u.%04u MHz.\n",
-		    lapic_timer_frequency / (1000000 / HZ),
-		    lapic_timer_frequency % (1000000 / HZ));
+		    calibration_result / (1000000 / HZ),
+		    calibration_result % (1000000 / HZ));
 
 	/*
 	 * Do a sanity check on the APIC calibration result
 	 */
-	if (lapic_timer_frequency < (1000000 / HZ)) {
+	if (calibration_result < (1000000 / HZ)) {
 		local_irq_enable();
 		pr_warning("APIC frequency too slow, disabling apic timer\n");
 		return -1;
@@ -1577,11 +1558,9 @@ static int __init apic_verify(void)
 	mp_lapic_addr = APIC_DEFAULT_PHYS_BASE;
 
 	/* The BIOS may have set up the APIC at some other address */
-	if (boot_cpu_data.x86 >= 6) {
-		rdmsr(MSR_IA32_APICBASE, l, h);
-		if (l & MSR_IA32_APICBASE_ENABLE)
-			mp_lapic_addr = l & MSR_IA32_APICBASE_BASE;
-	}
+	rdmsr(MSR_IA32_APICBASE, l, h);
+	if (l & MSR_IA32_APICBASE_ENABLE)
+		mp_lapic_addr = l & MSR_IA32_APICBASE_BASE;
 
 	pr_info("Found and enabled local APIC!\n");
 	return 0;
@@ -1599,15 +1578,13 @@ int __init apic_force_enable(unsigned long addr)
 	 * MSR. This can only be done in software for Intel P6 or later
 	 * and AMD K7 (Model > 1) or later.
 	 */
-	if (boot_cpu_data.x86 >= 6) {
-		rdmsr(MSR_IA32_APICBASE, l, h);
-		if (!(l & MSR_IA32_APICBASE_ENABLE)) {
-			pr_info("Local APIC disabled by BIOS -- reenabling.\n");
-			l &= ~MSR_IA32_APICBASE_BASE;
-			l |= MSR_IA32_APICBASE_ENABLE | addr;
-			wrmsr(MSR_IA32_APICBASE, l, h);
-			enabled_via_apicbase = 1;
-		}
+	rdmsr(MSR_IA32_APICBASE, l, h);
+	if (!(l & MSR_IA32_APICBASE_ENABLE)) {
+		pr_info("Local APIC disabled by BIOS -- reenabling.\n");
+		l &= ~MSR_IA32_APICBASE_BASE;
+		l |= MSR_IA32_APICBASE_ENABLE | addr;
+		wrmsr(MSR_IA32_APICBASE, l, h);
+		enabled_via_apicbase = 1;
 	}
 	return apic_verify();
 }
@@ -2067,24 +2044,6 @@ static struct {
 	unsigned int apic_thmr;
 } apic_pm_state;
 
-#ifdef CONFIG_ATOM_SOC_POWER
-/* On intel_mid, the suspend flow is a bit different, and the lapic
-   hw implementation, and integration is not supporting standard suspension.
-   This implementation is only putting high value to the timer, so that
-   AONT global timer will be updated with this big value at s0i3 entry,
-   and wont produce timer based wake up event.
-*/
-static int lapic_suspend(struct sys_device *dev, pm_message_t state)
-{
-	apic_write(APIC_TMICT, ~0);
-	return 0;
-}
-static int lapic_resume(struct sys_device *dev)
-{
-	apic_write(APIC_TMICT, 10);
-	return 0;
-}
-#else
 static int lapic_suspend(void)
 {
 	unsigned long flags;
@@ -2153,12 +2112,10 @@ static void lapic_resume(void)
 		 * FIXME! This will be wrong if we ever support suspend on
 		 * SMP! We'll need to do this as part of the CPU restore!
 		 */
-		if (boot_cpu_data.x86 >= 6) {
-			rdmsr(MSR_IA32_APICBASE, l, h);
-			l &= ~MSR_IA32_APICBASE_BASE;
-			l |= MSR_IA32_APICBASE_ENABLE | mp_lapic_addr;
-			wrmsr(MSR_IA32_APICBASE, l, h);
-		}
+		rdmsr(MSR_IA32_APICBASE, l, h);
+		l &= ~MSR_IA32_APICBASE_BASE;
+		l |= MSR_IA32_APICBASE_ENABLE | mp_lapic_addr;
+		wrmsr(MSR_IA32_APICBASE, l, h);
 	}
 
 	maxlvt = lapic_get_maxlvt();
@@ -2190,7 +2147,6 @@ static void lapic_resume(void)
 
 	local_irq_restore(flags);
 }
-#endif
 
 /*
  * This device has no shutdown method - fully functioning local APICs

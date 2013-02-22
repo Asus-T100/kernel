@@ -319,7 +319,10 @@ static struct scsi_device *scsi_alloc_sdev(struct scsi_target *starget,
 	return sdev;
 
 out_device_destroy:
-	__scsi_remove_device(sdev);
+	scsi_device_set_state(sdev, SDEV_DEL);
+	transport_destroy_device(&sdev->sdev_gendev);
+	put_device(&sdev->sdev_dev);
+	put_device(&sdev->sdev_gendev);
 out:
 	if (display_failure_msg)
 		printk(ALLOC_FAILURE_MSG, __func__);
@@ -1815,7 +1818,6 @@ static void scsi_finish_async_scan(struct async_scan_data *data)
 	}
 	spin_unlock(&async_scan_lock);
 
-	scsi_autopm_put_host(shost);
 	scsi_host_put(shost);
 	kfree(data);
 }
@@ -1842,6 +1844,7 @@ static int do_scan_async(void *_data)
 
 	do_scsi_scan_host(shost);
 	scsi_finish_async_scan(data);
+	scsi_autopm_put_host(shost);
 	return 0;
 }
 
@@ -1869,7 +1872,7 @@ void scsi_scan_host(struct Scsi_Host *shost)
 	p = kthread_run(do_scan_async, data, "scsi_scan_%d", shost->host_no);
 	if (IS_ERR(p))
 		do_scan_async(data);
-	/* scsi_autopm_put_host(shost) is called in scsi_finish_async_scan() */
+	/* scsi_autopm_put_host(shost) is called in do_scan_async() */
 }
 EXPORT_SYMBOL(scsi_scan_host);
 

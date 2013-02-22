@@ -33,11 +33,6 @@
 
 #include "tpa6130a2.h"
 
-enum tpa_model {
-	TPA6130A2,
-	TPA6140A2,
-};
-
 static struct i2c_client *tpa6130a2_client;
 
 /* This struct is used to save the context */
@@ -351,10 +346,10 @@ int tpa6130a2_add_controls(struct snd_soc_codec *codec)
 	data = i2c_get_clientdata(tpa6130a2_client);
 
 	if (data->id == TPA6140A2)
-		return snd_soc_add_codec_controls(codec, tpa6140a2_controls,
+		return snd_soc_add_controls(codec, tpa6140a2_controls,
 						ARRAY_SIZE(tpa6140a2_controls));
 	else
-		return snd_soc_add_codec_controls(codec, tpa6130a2_controls,
+		return snd_soc_add_controls(codec, tpa6130a2_controls,
 						ARRAY_SIZE(tpa6130a2_controls));
 }
 EXPORT_SYMBOL_GPL(tpa6130a2_add_controls);
@@ -376,7 +371,7 @@ static int __devinit tpa6130a2_probe(struct i2c_client *client,
 		return -ENODEV;
 	}
 
-	data = devm_kzalloc(&client->dev, sizeof(*data), GFP_KERNEL);
+	data = kzalloc(sizeof(*data), GFP_KERNEL);
 	if (data == NULL) {
 		dev_err(dev, "Can not allocate memory\n");
 		return -ENOMEM;
@@ -388,7 +383,7 @@ static int __devinit tpa6130a2_probe(struct i2c_client *client,
 
 	pdata = client->dev.platform_data;
 	data->power_gpio = pdata->power_gpio;
-	data->id = id->driver_data;
+	data->id = pdata->id;
 
 	mutex_init(&data->mutex);
 
@@ -410,7 +405,7 @@ static int __devinit tpa6130a2_probe(struct i2c_client *client,
 	switch (data->id) {
 	default:
 		dev_warn(dev, "Unknown TPA model (%d). Assuming 6130A2\n",
-			 data->id);
+			 pdata->id);
 	case TPA6130A2:
 		regulator = "Vdd";
 		break;
@@ -450,6 +445,8 @@ err_regulator:
 	if (data->power_gpio >= 0)
 		gpio_free(data->power_gpio);
 err_gpio:
+	kfree(data);
+	i2c_set_clientdata(tpa6130a2_client, NULL);
 	tpa6130a2_client = NULL;
 
 	return ret;
@@ -465,14 +462,15 @@ static int __devexit tpa6130a2_remove(struct i2c_client *client)
 		gpio_free(data->power_gpio);
 
 	regulator_put(data->supply);
+
+	kfree(data);
 	tpa6130a2_client = NULL;
 
 	return 0;
 }
 
 static const struct i2c_device_id tpa6130a2_id[] = {
-	{ "tpa6130a2", TPA6130A2 },
-	{ "tpa6140a2", TPA6140A2 },
+	{ "tpa6130a2", 0 },
 	{ }
 };
 MODULE_DEVICE_TABLE(i2c, tpa6130a2_id);

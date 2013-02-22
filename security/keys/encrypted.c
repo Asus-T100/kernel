@@ -641,25 +641,24 @@ static int encrypted_init(struct encrypted_key_payload *epayload,
  *
  * On success, return 0. Otherwise return errno.
  */
-static int encrypted_instantiate(struct key *key,
-				 struct key_preparsed_payload *prep)
+static int encrypted_instantiate(struct key *key, const void *data,
+				 size_t datalen)
 {
 	struct encrypted_key_payload *epayload = NULL;
 	char *datablob = NULL;
 	char *master_desc = NULL;
 	char *decrypted_datalen = NULL;
 	char *hex_encoded_iv = NULL;
-	size_t datalen = prep->datalen;
 	int ret;
 
-	if (datalen <= 0 || datalen > 32767 || !prep->data)
+	if (datalen <= 0 || datalen > 32767 || !data)
 		return -EINVAL;
 
 	datablob = kmalloc(datalen + 1, GFP_KERNEL);
 	if (!datablob)
 		return -ENOMEM;
 	datablob[datalen] = 0;
-	memcpy(datablob, prep->data, datalen);
+	memcpy(datablob, data, datalen);
 	ret = datablob_parse(datablob, &master_desc, &decrypted_datalen,
 			     &hex_encoded_iv);
 	if (ret < 0)
@@ -701,16 +700,15 @@ static void encrypted_rcu_free(struct rcu_head *rcu)
  *
  * On success, return 0. Otherwise return errno.
  */
-static int encrypted_update(struct key *key, struct key_preparsed_payload *prep)
+static int encrypted_update(struct key *key, const void *data, size_t datalen)
 {
 	struct encrypted_key_payload *epayload = key->payload.data;
 	struct encrypted_key_payload *new_epayload;
 	char *buf;
 	char *new_master_desc = NULL;
-	size_t datalen = prep->datalen;
 	int ret = 0;
 
-	if (datalen <= 0 || datalen > 32767 || !prep->data)
+	if (datalen <= 0 || datalen > 32767 || !data)
 		return -EINVAL;
 
 	buf = kmalloc(datalen + 1, GFP_KERNEL);
@@ -718,7 +716,7 @@ static int encrypted_update(struct key *key, struct key_preparsed_payload *prep)
 		return -ENOMEM;
 
 	buf[datalen] = 0;
-	memcpy(buf, prep->data, datalen);
+	memcpy(buf, data, datalen);
 	ret = datablob_parse(buf, &new_master_desc, NULL, NULL);
 	if (ret < 0)
 		goto out;

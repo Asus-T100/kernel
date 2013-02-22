@@ -61,10 +61,6 @@ config AD525X_DPOT_SPI
 	  To compile this driver as a module, choose M here: the
 	  module will be called ad525x_dpot-spi.
 
-config ANDROID_PMEM
-	bool "Android pmem allocator"
-	default n
-
 config ATMEL_PWM
 	tristate "Atmel AT32/AT91 PWM support"
 	depends on AVR32 || ARCH_AT91SAM9263 || ARCH_AT91SAM9RL || ARCH_AT91CAP9
@@ -249,7 +245,8 @@ config SGI_XP
 
 config CS5535_MFGPT
 	tristate "CS5535/CS5536 Geode Multi-Function General Purpose Timer (MFGPT) support"
-	depends on PCI && X86 && MFD_CS5535
+	depends on PCI
+	depends on X86
 	default n
 	help
 	  This driver provides access to MFGPT functionality for other
@@ -388,31 +385,12 @@ config SENSORS_APDS990X
 	   To compile this driver as a module, choose M here: the
 	   module will be called apds990x. If unsure, say N here.
 
-config SENSORS_APDS9300
-	 tristate "APDS9300 als sensors"
-	 depends on I2C
-	 default n
-	 ---help---
-	   Say Y here if you want to build a driver for Avago apds9300
-	   ambient light sensor chip.
-
-	   To compile this driver as a module, choose M here: the
-	   module will be called apds9300. If unsure, say N here.
-
 config HMC6352
 	tristate "Honeywell HMC6352 compass"
 	depends on I2C
 	help
 	  This driver provides support for the Honeywell HMC6352 compass,
 	  providing configuration and heading data via sysfs.
-
-config SENSORS_AK8975
-	tristate "AK8975 compass support"
-	default n
-	depends on I2C
-	help
-	  If you say yes here you get support for Asahi Kasei's
-	  orientation sensor AK8975.
 
 config EP93XX_PWM
 	tristate "EP93xx PWM support"
@@ -457,10 +435,6 @@ config TI_DAC7512
 	  This driver can also be built as a module. If so, the module
 	  will be called ti_dac7512.
 
-config UID_STAT
-	bool "UID based statistics tracking exported to /proc/uid_stat"
-	default n
-
 config VMWARE_BALLOON
 	tristate "VMware Balloon Driver"
 	depends on X86
@@ -498,7 +472,7 @@ config BMP085
 	  module will be called bmp085.
 
 config PCH_PHUB
-	tristate "Intel EG20T PCH/LAPIS Semicon IOH(ML7213/ML7223/ML7831) PHUB"
+	tristate "Intel EG20T PCH / OKI SEMICONDUCTOR IOH(ML7213/ML7223) PHUB"
 	depends on PCI
 	help
 	  This driver is for PCH(Platform controller Hub) PHUB(Packet Hub) of
@@ -506,79 +480,15 @@ config PCH_PHUB
 	  processor. The Topcliff has MAC address and Option ROM data in SROM.
 	  This driver can access MAC address and Option ROM data in SROM.
 
-	  This driver also can be used for LAPIS Semiconductor's IOH,
-	  ML7213/ML7223/ML7831.
-	  ML7213 which is for IVI(In-Vehicle Infotainment) use.
-	  ML7223 IOH is for MP(Media Phone) use.
-	  ML7831 IOH is for general purpose use.
-	  ML7213/ML7223/ML7831 is companion chip for Intel Atom E6xx series.
-	  ML7213/ML7223/ML7831 is completely compatible for Intel EG20T PCH.
+	  This driver also can be used for OKI SEMICONDUCTOR IOH(Input/
+	  Output Hub), ML7213 and ML7223.
+	  ML7213 IOH is for IVI(In-Vehicle Infotainment) use and ML7223 IOH is
+	  for MP(Media Phone) use.
+	  ML7213/ML7223 is companion chip for Intel Atom E6xx series.
+	  ML7213/ML7223 is completely compatible for Intel EG20T PCH.
 
 	  To compile this driver as a module, choose M here: the module will
 	  be called pch_phub.
-
-config WL127X_RFKILL
-	tristate "Bluetooth power control driver for TI wl127x"
-	depends on RFKILL
-	default n
-	---help---
-	 Creates an rfkill entry in sysfs for power control of Bluetooth
-	 TI wl127x chips.
-
-config APANIC
-	bool "Android kernel panic diagnostics driver"
-	default n
-	---help---
-	 Driver which handles kernel panics and attempts to write
-	 critical debugging data to flash.
-
-config APANIC_PLABEL
-	string "Android panic dump flash partition label"
-	depends on APANIC
-	default "kpanic"
-	---help---
-	 If your platform uses a different flash partition label for storing
- 	 crashdumps, enter it here.
-
-config MID_I2S_DEV
-	tristate "Test device driver for Intel MID I2S protocol on SSP"
-        depends on SND_INTEL_MID_I2S
-	default m
-	help
-	  This driver provides support for sending/receiving I2S
-	  samples to Bluetooth device WL1271/3.
-
-	  It uses the Intel MID I2S driver ; it creates a device
-	  (/dev/mid_i2s_ssp) that receives ioctls.
-
-config A1026
-	tristate "Audience a1026/eS305 Voice Processor"
-	depends on I2C && INTEL_SCU_IPC
-	help
-	  Provides an interface to the Audience voice processing
-	  unit via an I2C bus interface.
-
-	  To compile this driver as a module, choose M here: the module will
-	  be called a1026.
-
-config EMMC_IPANIC
-	bool "Intel kernel panic diagnostics driver FOR EMMC"
-	default n
-	---help---
-	 Driver which handles kernel panics and attempts to write
-	 critical debugging data to EMMC.
-
-config SCU_LOGGING
-	tristate "Intel SCU fabric debug driver"
-	default n
-	---help---
-	 Driver that enable for debugging Intel SCU firmware fabric related error.
-
-config UUID
-	tristate "get uuid"
-	default n
-	---help---
-	 Driver for get UUID.
 
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
@@ -587,6 +497,5 @@ source "drivers/misc/iwmc3200top/Kconfig"
 source "drivers/misc/ti-st/Kconfig"
 source "drivers/misc/lis3lv02d/Kconfig"
 source "drivers/misc/carma/Kconfig"
-source "drivers/misc/bcm-lpm/Kconfig"
 
 endif # MISC_DEVICES

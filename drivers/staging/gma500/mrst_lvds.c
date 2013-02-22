@@ -22,7 +22,7 @@
 
 #include <linux/i2c.h>
 #include <drm/drmP.h>
-#include <asm/intel-mid.h>
+#include <asm/mrst.h>
 
 #include "psb_intel_bios.h"
 #include "psb_drv.h"
@@ -303,8 +303,8 @@ void mrst_lvds_init(struct drm_device *dev,
 	 */
 
 	 /* This ifdef can go once the cpu ident stuff is cleaned up in arch */
-#if defined(CONFIG_X86_INTEL_MID)
-	if (intel_mid_identify_cpu())
+#if defined(CONFIG_X86_MRST)
+	if (mrst_identify_cpu())
         	i2c_adap = i2c_get_adapter(2);
         else	/* Oaktrail uses I2C 1 */
 #endif        

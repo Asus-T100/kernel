@@ -866,7 +866,6 @@ static int ntrig_probe(struct hid_device *hdev, const struct hid_device_id *id)
 	struct input_dev *input;
 	struct hid_report *report;
 
-	pr_info("ntrig_probe() in hid_ntrig\n");
 	if (id->driver_data)
 		hdev->quirks |= HID_QUIRK_MULTI_INPUT
 				| HID_QUIRK_NO_INIT_REPORTS;

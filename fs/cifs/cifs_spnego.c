@@ -31,18 +31,18 @@
 
 /* create a new cifs key */
 static int
-cifs_spnego_key_instantiate(struct key *key, struct key_preparsed_payload *prep)
+cifs_spnego_key_instantiate(struct key *key, const void *data, size_t datalen)
 {
 	char *payload;
 	int ret;
 
 	ret = -ENOMEM;
-	payload = kmalloc(prep->datalen, GFP_KERNEL);
+	payload = kmalloc(datalen, GFP_KERNEL);
 	if (!payload)
 		goto error;
 
 	/* attach the data */
-	memcpy(payload, prep->data, prep->datalen);
+	memcpy(payload, data, datalen);
 	key->payload.data = payload;
 	ret = 0;
 

@@ -1476,12 +1476,6 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 			log everything. Information is printed at KERN_DEBUG
 			so loglevel=8 may also need to be specified.
 
-	module.sig_enforce
-			[KNL] When CONFIG_MODULE_SIG is set, this means that
-			modules without (valid) signatures will fail to load.
-			Note that if CONFIG_MODULE_SIG_ENFORCE is set, that
-			is always true, so this option does nothing.
-
 	mousedev.tap_time=
 			[MOUSE] Maximum time between finger touching and
 			leaving touchpad surface for touch to be considered
@@ -2711,11 +2705,11 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 			default x2apic cluster mode on platforms
 			supporting x2apic.
 
-	x86_intel_mid_timer= [X86-32,APBT]
-			Choose timer option for x86 Intel MID platform.
+	x86_mrst_timer= [X86-32,APBT]
+			Choose timer option for x86 Moorestown MID platform.
 			Two valid options are apbt timer only and lapic timer
 			plus one apbt timer for broadcast timer.
-			x86_intel_mid_timer=apbt_only | lapic_and_apbt
+			x86_mrst_timer=apbt_only | lapic_and_apbt
 
 	xd=		[HW,XT] Original XT pre-IDE (RLL encoded) disks.
 	xd_geo=		See header of drivers/block/xd.c.

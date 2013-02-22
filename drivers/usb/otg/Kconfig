@@ -12,14 +12,6 @@ config USB_OTG_UTILS
 	  Select this to make sure the build includes objects from
 	  the OTG infrastructure directory.
 
-config USB_OTG_WAKELOCK
-	bool "Hold a wakelock when USB connected"
-	depends on WAKELOCK
-	select USB_OTG_UTILS
-	help
-	  Select this to automatically hold a wakelock when USB is
-	  connected, preventing suspend.
-
 if USB || USB_GADGET
 
 #
@@ -137,50 +129,5 @@ config FSL_USB2_OTG
 	select USB_OTG_UTILS
 	help
 	  Enable this to support Freescale USB OTG transceiver.
-
-config USB_PENWELL_OTG
-	tristate "Intel Penwell USB OTG dual-role support"
-	depends on USB && PCI && INTEL_SCU_IPC
-	select USB_OTG
-	select USB_OTG_UTILS
-	help
-	  Say Y here if you want to build Intel Penwell USB OTG
-	  transciever driver in kernel. This driver implements role
-	  switch between EHCI host driver and Penwell USB OTG
-	  client driver.
-
-	  To compile this driver as a module, choose M here: the
-	  module will be called penwell_otg.
-
-config USB_PENWELL_OTG_TEST
-	tristate "Intel Penwell USB OTG Test Mode support"
-	depends on USB
-	help
-	  Say Y here if you want to build Intel Penwell USB OTG
-	  test mode driver in kernel. This driver implements test
-	  mode initiated by test device with VID 0x1A0A.
-
-	  To compile this driver as a module, choose M here: the
-	  module will be called pnwotg_test.
-
-config USB_DWC_OTG_XCEIV
-	tristate "Synopsys DWC OTG 3.0 for USB 3.0"
-	depends on USB && PCI
-	select USB_OTG
-	select USB_OTG_UTILS
-	select USB_OTG_DWC
-	help
-	  Enables support for the DWC USB 3.0 OTG controller which supports the
-	  new OTG 2.0 spec for USB 2.0 ports and OTG 3.0 spec for USB 3.0 ports.
-	  This controller contains both an xHCI and DWC UDC interface.  Enabling
-	  this option will create the DWC OTG transceiver module and registers
-	  the xHCI and DWC as platform device.
-
-config DWC_CHARGER_DETECTION
-	bool "Charger detection support for DWC USB driver"
-	depends on USB_DWC_OTG_XCEIV
-	help
-	  Enable charger detection feature for Tangier soc. This feature implement
-	  in DWC USB driver.
 
 endif # USB || OTG

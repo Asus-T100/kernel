@@ -3648,7 +3648,7 @@ int __net_init __ip_vs_control_init_sysctl(struct net *net)
 	ip_vs_start_estimator(net, &ipvs->tot_stats);
 	ipvs->sysctl_tbl = tbl;
 	/* Schedule defense work */
-	INIT_DELAYED_WORK_DEFERRABLE(&ipvs->defense_work, defense_work_handler);
+	INIT_DELAYED_WORK(&ipvs->defense_work, defense_work_handler);
 	schedule_delayed_work(&ipvs->defense_work, DEFENSE_TIMER_PERIOD);
 
 	return 0;
@@ -3771,7 +3771,6 @@ err_sock:
 void ip_vs_control_cleanup(void)
 {
 	EnterFunction(2);
-	unregister_netdevice_notifier(&ip_vs_dst_notifier);
 	ip_vs_genl_unregister();
 	nf_unregister_sockopt(&ip_vs_sockopts);
 	LeaveFunction(2);

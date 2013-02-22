@@ -863,7 +863,7 @@ int intel_init_ring_buffer(struct drm_device *dev,
 	 * of the buffer.
 	 */
 	ring->effective_size = ring->size;
-	if (IS_I830(ring->dev) || IS_845G(ring->dev))
+	if (IS_I830(ring->dev))
 		ring->effective_size -= 128;
 
 	return 0;
@@ -1318,9 +1318,6 @@ int intel_render_ring_init_dri(struct drm_device *dev, u64 start, u32 size)
 		ring->add_request = pc_render_add_request;
 		ring->get_seqno = pc_render_get_seqno;
 	}
-
-	if (!I915_NEED_GFX_HWS(dev))
-		ring->status_page.page_addr = dev_priv->status_page_dmah->vaddr;
 
 	ring->dev = dev;
 	INIT_LIST_HEAD(&ring->active_list);

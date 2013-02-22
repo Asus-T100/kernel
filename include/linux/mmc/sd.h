@@ -9,8 +9,8 @@
  * your option) any later version.
  */
 
-#ifndef LINUX_MMC_SD_H
-#define LINUX_MMC_SD_H
+#ifndef MMC_SD_H
+#define MMC_SD_H
 
 /* SD commands                           type  argument     response */
   /* class 0 */
@@ -91,4 +91,5 @@
 #define SD_SWITCH_ACCESS_DEF	0
 #define SD_SWITCH_ACCESS_HS	1
 
-#endif /* LINUX_MMC_SD_H */
+#endif
+

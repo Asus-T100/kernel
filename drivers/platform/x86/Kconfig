@@ -15,19 +15,6 @@ menuconfig X86_PLATFORM_DEVICES
 
 if X86_PLATFORM_DEVICES
 
-config ANDROID_BOOTMODE
-	tristate "Android platform booting mode"
-	depends on ANDROID
-	---help---
-	This will read the android boot mode from the command line parameter
-	parsing macro and expose as a generic function in the kernel. Any of
-	the drivers can call this generic function to get the boot mode.
-
-	Say Y here to enable support to read the android platform
-	boot mode generic function.
-
-	If you are not sure, say N here.
-
 config ACER_WMI
 	tristate "Acer WMI Laptop Extras"
 	depends on ACPI
@@ -650,7 +637,7 @@ config ACPI_CMPC
 
 config INTEL_SCU_IPC
 	bool "Intel SCU IPC Support"
-	depends on X86_INTEL_MID
+	depends on X86_MRST
 	default y
 	---help---
 	  IPC is used to bridge the communications between kernel and SCU on
@@ -665,45 +652,6 @@ config INTEL_SCU_IPC_UTIL
 	  The IPC Util driver provides an interface with the SCU enabling
 	  low level access for debug work and updating the firmware. Say
 	  N unless you will be doing this on an Intel MID platform.
-
-config INTEL_PSH_IPC
-	bool "Intel PSH IPC Support"
-	depends on X86_INTEL_MID && X86_MRFLD
-	---help---
-	  PSH(Platform Services Hub) is a low frequence IA core on Tangier Platform,
-	  whose power consumption is quite low. PSH runs RTOS software inside itself,
-	  which independently controls and collects sensor data, pre-processes the data,
-	  and communicates with Atom. Thus ATOM side could be put into low power mode
-	  with more time, while all the sensor data are collected without any lost.
-
-	  PSH IPC is used as a  bridge for OS sensor service to control and access PSH
-	  sensors communications between kernel and PSH. This is not needed for PC-type
-	  machines.
-
-	  Say Y here to get Intel PSH IPC support.
-
-config CTP_CRYSTAL_38M4
-	bool "38.4M Hz crystal for CLV A0 boards"
-	depends on INTEL_SCU_IPC
-	default n
-	---help---
-	  Display, audio and camers use osillator output clocks from the
-	  Soc. Currently SCU FW doesn't handle crystal frequency, thus
-	  Linux kernel has to explicitly calculate the divider based on
-	  the acutal crystal frequency, then SCU can correctly set up
-	  the oscillator output clocks based on the divider.
-	  Old CLV A0 boards use 38.4M crystal whereas CLV+ based boards
-	  will use 19.2M crystal. Say y for CLV boards (ctp_pr0 build)
-	  and n for CLV+ based boards (ctp_pr1 build)
-
-config GPIO_INTEL_MSIC
-	bool "Intel MSIC GPIO support"
-	depends on INTEL_SCU_IPC && GPIOLIB
-	---help---
-	  MSIC provides a GPIO subsystem containing several input
-	  output pins.
-	  Say Y here to support GPIO via the SCU IPC interface
-	  on Intel MID platforms.
 
 config GPIO_INTEL_PMIC
 	bool "Intel PMIC GPIO support"
@@ -720,39 +668,9 @@ config INTEL_MID_POWER_BUTTON
 
 	  If unsure, say N.
 
-config POWER_BUTTON_CLVP
-	bool "SRAM address for CLVP"
-	depends on INTEL_MID_POWER_BUTTON
-	default n
-	---help---
-	  CLVP SRAM address for powerbutton status. Say y for CLV+ and n for CLV
-
-config INTEL_MID_OSIP
-       tristate "osip driver for Intel MID platforms"
-       depends on INTEL_SCU_IPC
-       default y
-       help
-         This driver modifies the osip header when rebooting,
-	 so that one can type 'reboot bootloader' to fall back
-	 in kboot mode.
-
-         If unsure, say N.
-
-config INTEL_MID_OSIP_DEBUG_FS
-       tristate "osip driver debug fs"
-       depends on INTEL_MID_OSIP && DEBUG_FS
-       default y
-       help
-         This driver adds debugfs interface.
-	 The main feature of that interface is to be able to modify the kernel
-	 cmdline directly in the OSIP.
-	 This has to be disabled if we have secure boot enabled by default.
-
-         If unsure, say N.
-
 config INTEL_MFLD_THERMAL
        tristate "Thermal driver for Intel Medfield platform"
-       depends on INTEL_SCU_IPC && THERMAL && MSIC_GPADC
+       depends on INTEL_SCU_IPC && THERMAL
        help
          Say Y here to enable thermal driver support for the  Intel Medfield
          platform.
@@ -850,22 +768,5 @@ config INTEL_OAKTRAIL
 	  Intel Oaktrail platform need this driver to provide interfaces to
 	  enable/disable the Camera, WiFi, BT etc. devices. If in doubt, say Y
 	  here; it will only load on supported platforms.
-
-config INTEL_MID_UMIP
-        tristate "umip driver config"
-        depends on INTEL_SCU_IPC
-        default y
-        help
-          This driver builds the UMIP Sysfs Iterface. We could read write the USB HOst enable timeout
-          values using these interfaces.
-
-config INTEL_SCU_FLIS
-        tristate "scu flis driver config"
-        depends on INTEL_SCU_IPC
-        default y
-        help
-          This driver builds the SCU Flis Access Sysfs Interfaces.
-	  We could read write the flis address and configure the
-	  pin pull up/down using these interfaces.
 
 endif # X86_PLATFORM_DEVICES

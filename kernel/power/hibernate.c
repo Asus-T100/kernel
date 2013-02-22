@@ -623,7 +623,7 @@ int hibernate(void)
 	/* Allocate memory management structures */
 	error = create_basic_memory_bitmaps();
 	if (error)
-		goto Enable_umh;
+		goto Exit;
 
 	printk(KERN_INFO "PM: Syncing filesystems ... ");
 	sys_sync();
@@ -631,7 +631,7 @@ int hibernate(void)
 
 	error = prepare_processes();
 	if (error)
-		goto Free_bitmaps;
+		goto Finish;
 
 	if (hibernation_test(TEST_FREEZER))
 		goto Thaw;
@@ -663,9 +663,8 @@ int hibernate(void)
 
  Thaw:
 	thaw_processes();
- Free_bitmaps:
+ Finish:
 	free_basic_memory_bitmaps();
- Enable_umh:
 	usermodehelper_enable();
  Exit:
 	pm_notifier_call_chain(PM_POST_HIBERNATION);

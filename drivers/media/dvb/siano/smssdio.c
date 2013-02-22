@@ -39,7 +39,6 @@
 #include <linux/mmc/card.h>
 #include <linux/mmc/sdio_func.h>
 #include <linux/mmc/sdio_ids.h>
-#include <linux/module.h>
 
 #include "smscoreapi.h"
 #include "sms-cards.h"

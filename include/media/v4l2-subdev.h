@@ -158,7 +158,6 @@ struct v4l2_subdev_core_ops {
 	int (*s_ext_ctrls)(struct v4l2_subdev *sd, struct v4l2_ext_controls *ctrls);
 	int (*try_ext_ctrls)(struct v4l2_subdev *sd, struct v4l2_ext_controls *ctrls);
 	int (*querymenu)(struct v4l2_subdev *sd, struct v4l2_querymenu *qm);
-	int (*g_std)(struct v4l2_subdev *sd, v4l2_std_id *norm);
 	int (*s_std)(struct v4l2_subdev *sd, v4l2_std_id norm);
 	long (*ioctl)(struct v4l2_subdev *sd, unsigned int cmd, void *arg);
 #ifdef CONFIG_VIDEO_ADV_DEBUG
@@ -230,12 +229,6 @@ struct v4l2_subdev_audio_ops {
    s_std_output: set v4l2_std_id for video OUTPUT devices. This is ignored by
 	video input devices.
 
-   g_std_output: get current standard for video OUTPUT devices. This is ignored
-	by video input devices.
-
-   g_tvnorms_output: get v4l2_std_id with all standards supported by video
-	OUTPUT device. This is ignored by video input devices.
-
    s_crystal_freq: sets the frequency of the crystal used to generate the
 	clocks in Hz. An extra flags field allows device specific configuration
 	regarding clock frequency dividers, etc. If not used, then set flags
@@ -249,8 +242,6 @@ struct v4l2_subdev_audio_ops {
 
    s_dv_preset: set dv (Digital Video) preset in the sub device. Similar to
 	s_std()
-
-   g_dv_preset: get current dv (Digital Video) preset in the sub device.
 
    query_dv_preset: query dv preset in the sub device. This is similar to
 	querystd()
@@ -268,20 +259,12 @@ struct v4l2_subdev_audio_ops {
    try_mbus_fmt: try to set a pixel format on a video data source
 
    s_mbus_fmt: set a pixel format on a video data source
-
-   g_mbus_config: get supported mediabus configurations
-
-   s_mbus_config: set a certain mediabus configuration. This operation is added
-	for compatibility with soc-camera drivers and should not be used by new
-	software.
  */
 struct v4l2_subdev_video_ops {
 	int (*s_routing)(struct v4l2_subdev *sd, u32 input, u32 output, u32 config);
 	int (*s_crystal_freq)(struct v4l2_subdev *sd, u32 freq, u32 flags);
 	int (*s_std_output)(struct v4l2_subdev *sd, v4l2_std_id std);
-	int (*g_std_output)(struct v4l2_subdev *sd, v4l2_std_id *std);
 	int (*querystd)(struct v4l2_subdev *sd, v4l2_std_id *std);
-	int (*g_tvnorms_output)(struct v4l2_subdev *sd, v4l2_std_id *std);
 	int (*g_input_status)(struct v4l2_subdev *sd, u32 *status);
 	int (*s_stream)(struct v4l2_subdev *sd, int enable);
 	int (*cropcap)(struct v4l2_subdev *sd, struct v4l2_cropcap *cc);
@@ -299,20 +282,12 @@ struct v4l2_subdev_video_ops {
 			struct v4l2_dv_enum_preset *preset);
 	int (*s_dv_preset)(struct v4l2_subdev *sd,
 			struct v4l2_dv_preset *preset);
-	int (*g_dv_preset)(struct v4l2_subdev *sd,
-			struct v4l2_dv_preset *preset);
 	int (*query_dv_preset)(struct v4l2_subdev *sd,
 			struct v4l2_dv_preset *preset);
 	int (*s_dv_timings)(struct v4l2_subdev *sd,
 			struct v4l2_dv_timings *timings);
 	int (*g_dv_timings)(struct v4l2_subdev *sd,
 			struct v4l2_dv_timings *timings);
-	int (*enum_dv_timings)(struct v4l2_subdev *sd,
-			struct v4l2_enum_dv_timings *timings);
-	int (*query_dv_timings)(struct v4l2_subdev *sd,
-			struct v4l2_dv_timings *timings);
-	int (*dv_timings_cap)(struct v4l2_subdev *sd,
-			struct v4l2_dv_timings_cap *cap);
 	int (*enum_mbus_fmt)(struct v4l2_subdev *sd, unsigned int index,
 			     enum v4l2_mbus_pixelcode *code);
 	int (*enum_mbus_fsizes)(struct v4l2_subdev *sd,
@@ -323,10 +298,6 @@ struct v4l2_subdev_video_ops {
 			    struct v4l2_mbus_framefmt *fmt);
 	int (*s_mbus_fmt)(struct v4l2_subdev *sd,
 			  struct v4l2_mbus_framefmt *fmt);
-	int (*g_mbus_config)(struct v4l2_subdev *sd,
-			     struct v4l2_mbus_config *cfg);
-	int (*s_mbus_config)(struct v4l2_subdev *sd,
-			     const struct v4l2_mbus_config *cfg);
 };
 
 /*
@@ -472,15 +443,6 @@ struct v4l2_subdev_pad_ops {
 		       struct v4l2_subdev_crop *crop);
 	int (*get_crop)(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 		       struct v4l2_subdev_crop *crop);
-	int (*get_selection)(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
-			     struct v4l2_subdev_selection *sel);
-	int (*set_selection)(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
-			     struct v4l2_subdev_selection *sel);
-#ifdef CONFIG_MEDIA_CONTROLLER
-	int (*link_validate)(struct v4l2_subdev *sd, struct media_link *link,
-			     struct v4l2_subdev_format *source_fmt,
-			     struct v4l2_subdev_format *sink_fmt);
-#endif /* CONFIG_MEDIA_CONTROLLER */
 };
 
 struct v4l2_subdev_ops {
@@ -550,13 +512,15 @@ struct v4l2_subdev {
 	void *dev_priv;
 	void *host_priv;
 	/* subdev device node */
-	struct video_device *devnode;
+	struct video_device devnode;
+	/* number of events to be allocated on open */
+	unsigned int nevents;
 };
 
 #define media_entity_to_v4l2_subdev(ent) \
 	container_of(ent, struct v4l2_subdev, entity)
 #define vdev_to_v4l2_subdev(vdev) \
-	((struct v4l2_subdev *)video_get_drvdata(vdev))
+	container_of(vdev, struct v4l2_subdev, devnode)
 
 /*
  * Used for storing subdev information per file handle
@@ -564,11 +528,8 @@ struct v4l2_subdev {
 struct v4l2_subdev_fh {
 	struct v4l2_fh vfh;
 #if defined(CONFIG_VIDEO_V4L2_SUBDEV_API)
-	struct {
-		struct v4l2_mbus_framefmt try_fmt;
-		struct v4l2_rect try_crop;
-		struct v4l2_rect try_compose;
-	} *pad;
+	struct v4l2_mbus_framefmt *try_fmt;
+	struct v4l2_rect *try_crop;
 #endif
 };
 
@@ -576,19 +537,17 @@ struct v4l2_subdev_fh {
 	container_of(fh, struct v4l2_subdev_fh, vfh)
 
 #if defined(CONFIG_VIDEO_V4L2_SUBDEV_API)
-#define __V4L2_SUBDEV_MK_GET_TRY(rtype, fun_name, field_name)		\
-	static inline struct rtype *					\
-	v4l2_subdev_get_try_##fun_name(struct v4l2_subdev_fh *fh,	\
-				       unsigned int pad)		\
-	{								\
-		BUG_ON(unlikely(pad >= vdev_to_v4l2_subdev(		\
-					fh->vfh.vdev)->entity.num_pads)); \
-		return &fh->pad[pad].field_name;			\
-	}
+static inline struct v4l2_mbus_framefmt *
+v4l2_subdev_get_try_format(struct v4l2_subdev_fh *fh, unsigned int pad)
+{
+	return &fh->try_fmt[pad];
+}
 
-__V4L2_SUBDEV_MK_GET_TRY(v4l2_mbus_framefmt, format, try_fmt)
-__V4L2_SUBDEV_MK_GET_TRY(v4l2_rect, crop, try_compose)
-__V4L2_SUBDEV_MK_GET_TRY(v4l2_rect, compose, try_compose)
+static inline struct v4l2_rect *
+v4l2_subdev_get_try_crop(struct v4l2_subdev_fh *fh, unsigned int pad)
+{
+	return &fh->try_crop[pad];
+}
 #endif
 
 extern const struct v4l2_file_operations v4l2_subdev_fops;
@@ -613,13 +572,6 @@ static inline void *v4l2_get_subdev_hostdata(const struct v4l2_subdev *sd)
 	return sd->host_priv;
 }
 
-#ifdef CONFIG_MEDIA_CONTROLLER
-int v4l2_subdev_link_validate_default(struct v4l2_subdev *sd,
-				      struct media_link *link,
-				      struct v4l2_subdev_format *source_fmt,
-				      struct v4l2_subdev_format *sink_fmt);
-int v4l2_subdev_link_validate(struct media_link *link);
-#endif /* CONFIG_MEDIA_CONTROLLER */
 void v4l2_subdev_init(struct v4l2_subdev *sd,
 		      const struct v4l2_subdev_ops *ops);
 

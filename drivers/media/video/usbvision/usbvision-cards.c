@@ -24,7 +24,6 @@
 
 
 #include <linux/list.h>
-#include <linux/module.h>
 #include <media/v4l2-dev.h>
 #include <media/tuner.h>
 #include "usbvision.h"

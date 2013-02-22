@@ -27,7 +27,6 @@
 #include <linux/interrupt.h>
 #include <linux/delay.h>
 #include <linux/io.h>
-#include <linux/module.h>
 #include <sound/core.h>
 #include <sound/initval.h>
 #include <sound/pcm.h>
@@ -153,7 +152,7 @@ static int snd_aw2_control_switch_capture_put(struct snd_kcontrol *kcontrol,
  ********************************/
 static int index[SNDRV_CARDS] = SNDRV_DEFAULT_IDX;
 static char *id[SNDRV_CARDS] = SNDRV_DEFAULT_STR;
-static bool enable[SNDRV_CARDS] = SNDRV_DEFAULT_ENABLE_PNP;
+static int enable[SNDRV_CARDS] = SNDRV_DEFAULT_ENABLE_PNP;
 
 module_param_array(index, int, NULL, 0444);
 MODULE_PARM_DESC(index, "Index value for Audiowerk2 soundcard.");
@@ -172,7 +171,7 @@ MODULE_DEVICE_TABLE(pci, snd_aw2_ids);
 
 /* pci_driver definition */
 static struct pci_driver driver = {
-	.name = KBUILD_MODNAME,
+	.name = "Emagic Audiowerk 2",
 	.id_table = snd_aw2_ids,
 	.probe = snd_aw2_probe,
 	.remove = __devexit_p(snd_aw2_remove),
@@ -318,7 +317,7 @@ static int __devinit snd_aw2_create(struct snd_card *card,
 	snd_aw2_saa7146_setup(&chip->saa7146, chip->iobase_virt);
 
 	if (request_irq(pci->irq, snd_aw2_saa7146_interrupt,
-			IRQF_SHARED, KBUILD_MODNAME, chip)) {
+			IRQF_SHARED, "Audiowerk2", chip)) {
 		printk(KERN_ERR "aw2: Cannot grab irq %d\n", pci->irq);
 
 		iounmap(chip->iobase_virt);

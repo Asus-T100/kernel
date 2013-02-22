@@ -94,16 +94,15 @@ static const char	hcd_name [] = "ehci_hcd";
 #define EHCI_IAA_MSECS		10		/* arbitrary */
 #define EHCI_IO_JIFFIES		(HZ/10)		/* io watchdog > irq_thresh */
 #define EHCI_ASYNC_JIFFIES	(HZ/20)		/* async idle timeout */
-#define EHCI_SHRINK_JIFFIES	(DIV_ROUND_UP(HZ, 200) + 1)
-						/* 200-ms async qh unlink delay */
+#define EHCI_SHRINK_FRAMES	5		/* async qh unlink delay */
 
 /* Initial IRQ latency:  faster than hw default */
 static int log2_irq_thresh = 0;		// 0 to 6
 module_param (log2_irq_thresh, int, S_IRUGO);
 MODULE_PARM_DESC (log2_irq_thresh, "log2 IRQ latency, 1-64 microframes");
 
-/* initial park setting:  hw default */
-static unsigned park = 3;
+/* initial park setting:  slower than hw default */
+static unsigned park = 0;
 module_param (park, uint, S_IRUGO);
 MODULE_PARM_DESC (park, "park setting; 1-3 back-to-back async packets");
 
@@ -116,20 +115,6 @@ MODULE_PARM_DESC (ignore_oc, "ignore bogus hardware overcurrent indications");
 static unsigned int hird;
 module_param(hird, int, S_IRUGO);
 MODULE_PARM_DESC(hird, "host initiated resume duration, +1 for each 75us\n");
-
-/* CloverTrail USB SPH and Modem USB Switch Control Flag */
-static unsigned int use_sph = 1;
-module_param(use_sph, uint, S_IRUGO);
-MODULE_PARM_DESC(use_sph, "sph and modem usb switch control flag, default use sph\n");
-
-/*
- * for external read access to <usb_sph>
- */
-unsigned int sph_enabled(void)
-{
-	return use_sph;
-}
-EXPORT_SYMBOL_GPL(sph_enabled);
 
 #define	INTR_MASK (STS_IAA | STS_FATAL | STS_PCD | STS_ERR | STS_INT)
 
@@ -167,7 +152,10 @@ timer_action(struct ehci_hcd *ehci, enum ehci_timer_action action)
 			break;
 		/* case TIMER_ASYNC_SHRINK: */
 		default:
-			t = EHCI_SHRINK_JIFFIES;
+			/* add a jiffie since we synch against the
+			 * 8 KHz uframe counter.
+			 */
+			t = DIV_ROUND_UP(EHCI_SHRINK_FRAMES * HZ, 1000) + 1;
 			break;
 		}
 		mod_timer(&ehci->watchdog, t + jiffies);
@@ -217,12 +205,7 @@ static int tdi_in_host_mode (struct ehci_hcd *ehci)
 	u32 __iomem	*reg_ptr;
 	u32		tmp;
 
-	if (ehci->has_hostpc)
-		reg_ptr = (u32 __iomem *)(((u8 __iomem *)ehci->regs)
-			 + USBMODE_EX);
-	else
-		reg_ptr = (u32 __iomem *)(((u8 __iomem *)ehci->regs)
-			+ USBMODE);
+	reg_ptr = (u32 __iomem *)(((u8 __iomem *)ehci->regs) + USBMODE);
 	tmp = ehci_readl(ehci, reg_ptr);
 	return (tmp & 3) == USBMODE_CM_HC;
 }
@@ -271,12 +254,7 @@ static void tdi_reset (struct ehci_hcd *ehci)
 	u32 __iomem	*reg_ptr;
 	u32		tmp;
 
-	if (ehci->has_hostpc)
-		reg_ptr = (u32 __iomem *)(((u8 __iomem *)ehci->regs)
-				+ USBMODE_EX);
-	else
-		reg_ptr = (u32 __iomem *)(((u8 __iomem *)ehci->regs)
-				+ USBMODE);
+	reg_ptr = (u32 __iomem *)(((u8 __iomem *)ehci->regs) + USBMODE);
 	tmp = ehci_readl(ehci, reg_ptr);
 	tmp |= USBMODE_CM_HC;
 	/* The default byte access to MMR space is LE after
@@ -293,8 +271,6 @@ static int ehci_reset (struct ehci_hcd *ehci)
 {
 	int	retval;
 	u32	command = ehci_readl(ehci, &ehci->regs->command);
-	int	port;
-	u32	temp;
 
 	/* If the EHCI debug controller is active, special care must be
 	 * taken before and after a host controller reset */
@@ -314,19 +290,6 @@ static int ehci_reset (struct ehci_hcd *ehci)
 			(u32 __iomem *)(((u8 *)ehci->regs) + USBMODE_EX));
 		ehci_writel(ehci, TXFIFO_DEFAULT,
 			(u32 __iomem *)(((u8 *)ehci->regs) + TXFILLTUNING));
-
-		/* FIXME: clear ASUS auto PHY low power mode, as we set it
-		 * manually */
-		port = HCS_N_PORTS(ehci->hcs_params);
-		while (port--) {
-			u32 __iomem	*hostpc_reg;
-
-			hostpc_reg = (u32 __iomem *)((u8 *) ehci->regs
-					+ HOSTPC0 + 4 * port);
-			temp = ehci_readl(ehci, hostpc_reg);
-			ehci_writel(ehci, temp & ~HOSTPC_ASUS, hostpc_reg);
-		}
-
 	}
 	if (retval)
 		return retval;
@@ -571,9 +534,6 @@ static void ehci_stop (struct usb_hcd *hcd)
 	spin_unlock_irq (&ehci->lock);
 	ehci_mem_cleanup (ehci);
 
-	if (hcd->has_sram)
-		sram_deinit(hcd);
-
 	if (ehci->amd_pll_fix == 1)
 		usb_amd_dev_put();
 
@@ -712,15 +672,12 @@ static int ehci_init(struct usb_hcd *hcd)
 static int ehci_run (struct usb_hcd *hcd)
 {
 	struct ehci_hcd		*ehci = hcd_to_ehci (hcd);
-#ifndef CONFIG_USB_HCD_HSIC
 	int			retval;
-#endif
 	u32			temp;
 	u32			hcc_params;
 
 	hcd->uses_new_polling = 1;
 
-#ifndef CONFIG_USB_HCD_HSIC
 	/* EHCI spec section 4.1 */
 	/*
 	 * TDI driver does the ehci_reset in their reset callback.
@@ -731,7 +688,6 @@ static int ehci_run (struct usb_hcd *hcd)
 		ehci_mem_cleanup(ehci);
 		return retval;
 	}
-#endif
 	ehci_writel(ehci, ehci->periodic_dma, &ehci->regs->frame_list);
 	ehci_writel(ehci, (u32)ehci->async->qh_dma, &ehci->regs->async_next);
 
@@ -807,35 +763,6 @@ static int ehci_run (struct usb_hcd *hcd)
 	return 0;
 }
 
-static int __maybe_unused ehci_setup (struct usb_hcd *hcd)
-{
-	struct ehci_hcd *ehci = hcd_to_ehci(hcd);
-	int retval;
-
-	ehci->regs = (void __iomem *)ehci->caps +
-	    HC_LENGTH(ehci, ehci_readl(ehci, &ehci->caps->hc_capbase));
-	dbg_hcs_params(ehci, "reset");
-	dbg_hcc_params(ehci, "reset");
-
-	/* cache this readonly data; minimize chip reads */
-	ehci->hcs_params = ehci_readl(ehci, &ehci->caps->hcs_params);
-
-	ehci->sbrn = HCD_USB2;
-
-	retval = ehci_halt(ehci);
-	if (retval)
-		return retval;
-
-	/* data structure init */
-	retval = ehci_init(hcd);
-	if (retval)
-		return retval;
-
-	ehci_reset(ehci);
-
-	return 0;
-}
-
 /*-------------------------------------------------------------------------*/
 
 static irqreturn_t ehci_irq (struct usb_hcd *hcd)
@@ -854,13 +781,8 @@ static irqreturn_t ehci_irq (struct usb_hcd *hcd)
 		goto dead;
 	}
 
-	/*
-	 * We don't use STS_FLR, but some controllers don't like it to
-	 * remain on, so mask it out along with the other status bits.
-	 */
-	masked_status = status & (INTR_MASK | STS_FLR);
-
 	/* Shared IRQ? */
+	masked_status = status & INTR_MASK;
 	if (!masked_status || unlikely(hcd->state == HC_STATE_HALT)) {
 		spin_unlock(&ehci->lock);
 		return IRQ_NONE;
@@ -911,16 +833,8 @@ static irqreturn_t ehci_irq (struct usb_hcd *hcd)
 		pcd_status = status;
 
 		/* resume root hub? */
-		if (hcd->state == HC_STATE_SUSPENDED)
+		if (!(cmd & CMD_RUN))
 			usb_hcd_resume_root_hub(hcd);
-
-#ifdef CONFIG_USB_SUSPEND
-	/* add time-out wakelock */
-	if (hcd->wake_lock) {
-		wake_lock_timeout(hcd->wake_lock, 5 * HZ);
-		ehci_dbg(ehci, "add 5s wake_lock for connect change\n");
-	}
-#endif
 
 		/* get per-port change detect bits */
 		if (ehci->has_ppcd)
@@ -1247,7 +1161,8 @@ ehci_endpoint_reset(struct usb_hcd *hcd, struct usb_host_endpoint *ep)
 static int ehci_get_frame (struct usb_hcd *hcd)
 {
 	struct ehci_hcd		*ehci = hcd_to_ehci (hcd);
-	return (ehci_read_frame_index(ehci) >> 3) % ehci->periodic_size;
+	return (ehci_readl(ehci, &ehci->regs->frame_index) >> 3) %
+		ehci->periodic_size;
 }
 
 /*-------------------------------------------------------------------------*/
@@ -1259,18 +1174,6 @@ MODULE_LICENSE ("GPL");
 #ifdef CONFIG_PCI
 #include "ehci-pci.c"
 #define	PCI_DRIVER		ehci_pci_driver
-#if defined(CONFIG_USB_LANGWELL_OTG) || defined(CONFIG_USB_PENWELL_OTG)
-#include "ehci-langwell-pci.c"
-#define INTEL_MID_OTG_HOST_DRIVER	ehci_otg_driver
-#endif
-#ifdef CONFIG_USB_EHCI_HCD_SPH
-#include "ehci-sph-pci.c"
-#define INTEL_MID_SPH_HOST_DRIVER	ehci_sph_driver
-#endif
-#ifdef CONFIG_USB_HCD_HSIC
-#include "ehci-tangier-hsic-pci.c"
-#define INTEL_MID_HSIC_HOST_DRIVER	ehci_hsic_driver
-#endif
 #endif
 
 #ifdef CONFIG_USB_EHCI_FSL
@@ -1408,26 +1311,12 @@ static int __init ehci_hcd_init(void)
 		 sizeof(struct ehci_qh), sizeof(struct ehci_qtd),
 		 sizeof(struct ehci_itd), sizeof(struct ehci_sitd));
 
-#ifdef CONFIG_USB_EHCI_HCD_SPH
-	if (sph_enabled()) {
-		retval = pci_register_driver(&INTEL_MID_SPH_HOST_DRIVER);
-		if (retval < 0)
-			goto err_sph;
-	}
-#endif
-
 #ifdef DEBUG
 	ehci_debug_root = debugfs_create_dir("ehci", usb_debug_root);
 	if (!ehci_debug_root) {
 		retval = -ENOENT;
 		goto err_debug;
 	}
-#endif
-
-#ifdef CONFIG_USB_HCD_HSIC
-	retval = pci_register_driver(&INTEL_MID_HSIC_HOST_DRIVER);
-	if (retval < 0)
-		goto clean6;
 #endif
 
 #ifdef PLATFORM_DRIVER
@@ -1459,23 +1348,7 @@ static int __init ehci_hcd_init(void)
 	if (retval < 0)
 		goto clean4;
 #endif
-
-#ifdef INTEL_MID_OTG_HOST_DRIVER
-	retval = intel_mid_ehci_driver_register(&INTEL_MID_OTG_HOST_DRIVER);
-	if (retval < 0)
-		goto clean5;
-#endif
 	return retval;
-
-#ifdef CONFIG_USB_HCD_HSIC
-clean6:
-	pci_unregister_driver(&INTEL_MID_HSIC_HOST_DRIVER);
-#endif
-
-#ifdef INTEL_MID_OTG_HOST_DRIVER
-clean5:
-	intel_mid_ehci_driver_unregister(&INTEL_MID_OTG_HOST_DRIVER);
-#endif
 
 #ifdef XILINX_OF_PLATFORM_DRIVER
 	/* platform_driver_unregister(&XILINX_OF_PLATFORM_DRIVER); */
@@ -1502,11 +1375,6 @@ clean0:
 	ehci_debug_root = NULL;
 err_debug:
 #endif
-#ifdef CONFIG_USB_EHCI_HCD_SPH
-err_sph:
-	if (sph_enabled())
-		pci_unregister_driver(&INTEL_MID_SPH_HOST_DRIVER);
-#endif
 	clear_bit(USB_EHCI_LOADED, &usb_hcds_loaded);
 	return retval;
 }
@@ -1528,13 +1396,6 @@ static void __exit ehci_hcd_cleanup(void)
 #endif
 #ifdef PS3_SYSTEM_BUS_DRIVER
 	ps3_ehci_driver_unregister(&PS3_SYSTEM_BUS_DRIVER);
-#endif
-#ifdef INTEL_MID_OTG_HOST_DRIVER
-	intel_mid_ehci_driver_unregister(&INTEL_MID_OTG_HOST_DRIVER);
-#endif
-#ifdef CONFIG_USB_EHCI_HCD_SPH
-	if (sph_enabled())
-		pci_unregister_driver(&INTEL_MID_SPH_HOST_DRIVER);
 #endif
 #ifdef DEBUG
 	debugfs_remove(ehci_debug_root);

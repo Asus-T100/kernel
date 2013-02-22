@@ -24,7 +24,6 @@
 #include <linux/sched.h>
 #include <linux/slab.h>
 #include <linux/ioport.h>
-#include <linux/export.h>
 #include <linux/delay.h>
 #include <sound/core.h>
 #include <sound/emu8000.h>

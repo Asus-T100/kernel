@@ -15,7 +15,6 @@
 #include <linux/pm_runtime.h>
 #include <linux/slab.h>
 #include <linux/videodev2.h>
-#include <linux/module.h>
 
 #include <media/sh_mobile_csi2.h>
 #include <media/soc_camera.h>

@@ -1,5 +1,5 @@
 /*
- * Intel Langwell/Penwell USB Device Controller driver
+ * Intel Langwell USB Device Controller driver
  * Copyright (C) 2008-2009, Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
@@ -24,8 +24,6 @@
 /* MACRO defines */
 #define	CAP_REG_OFFSET		0x0
 #define	OP_REG_OFFSET		0x28
-
-#define SBUSCFG_REG_OFFSET	0x290
 
 #define	DMA_ADDR_INVALID	(~(dma_addr_t)0)
 
@@ -87,8 +85,6 @@ struct langwell_op_regs {
 	(((u)>>24)&0xf)		/* bits 27:24, host init resume duration */
 #define	CMD_ITC(u)	\
 	(((u)>>16)&0xff)	/* bits 23:16, interrupt threshold control */
-#define CMD_SET_ITC(u)  \
-	(((u)&0xff)<<16)	/* set value to ITC field */
 #define	CMD_PPE		BIT(15)	/* per-port change events enable */
 #define	CMD_ATDTW	BIT(14)	/* add dTD tripwire */
 #define	CMD_SUTW	BIT(13)	/* setup tripwire */
@@ -182,7 +178,6 @@ struct langwell_op_regs {
 #define	PORTS_WKDS	BIT(21)	/* wake on disconnect enable */
 #define	PORTS_WKCN	BIT(20)	/* wake on connect enable */
 #define	PORTS_PTC(p)	(((p)>>16)&0xf)	/* bits 19:16, port test control */
-#define	PORTS_PTC_MASK	(BIT(16) | BIT(17) | BIT(18) | BIT(19))
 #define	PORTS_PIC	(BIT(15) | BIT(14))	/* port indicator control */
 #define	PORTS_PO	BIT(13)	/* port owner */
 #define	PORTS_PP	BIT(12)	/* port power */
@@ -212,7 +207,6 @@ struct langwell_op_regs {
 #define	LPM_SRT		BIT(24)	/* shorten reset time */
 #define	LPM_PFSC	BIT(23)	/* port force full speed connect */
 #define	LPM_PHCD	BIT(22) /* PHY low power suspend clock disable */
-#define	LPM_ASUS	BIT(17)	/* auto Low Power */
 #define	LPM_STL		BIT(16)	/* STALL reply to LPM token */
 #define	LPM_BA(d)	\
 	(((d)>>1)&0x7ff)	/* bits 11:1, BmAttributes */

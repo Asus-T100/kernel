@@ -18,6 +18,7 @@
 #include <linux/mm.h>
 #include <linux/sched.h>
 #include <linux/file.h>
+#include <linux/slab.h>
 
 #include <media/videobuf2-core.h>
 #include <media/videobuf2-memops.h>
@@ -55,7 +56,6 @@ struct vm_area_struct *vb2_get_vma(struct vm_area_struct *vma)
 
 	return vma_copy;
 }
-EXPORT_SYMBOL_GPL(vb2_get_vma);
 
 /**
  * vb2_put_userptr() - release a userspace virtual memory area
@@ -69,11 +69,11 @@ void vb2_put_vma(struct vm_area_struct *vma)
 	if (!vma)
 		return;
 
-	if (vma->vm_ops && vma->vm_ops->close)
-		vma->vm_ops->close(vma);
-
 	if (vma->vm_file)
 		fput(vma->vm_file);
+
+	if (vma->vm_ops && vma->vm_ops->close)
+		vma->vm_ops->close(vma);
 
 	kfree(vma);
 }
@@ -101,26 +101,29 @@ int vb2_get_contig_userptr(unsigned long vaddr, unsigned long size,
 	unsigned long offset, start, end;
 	unsigned long this_pfn, prev_pfn;
 	dma_addr_t pa = 0;
+	int ret = -EFAULT;
 
 	start = vaddr;
 	offset = start & ~PAGE_MASK;
 	end = start + size;
 
+	down_read(&mm->mmap_sem);
 	vma = find_vma(mm, start);
 
 	if (vma == NULL || vma->vm_end < end)
-		return -EFAULT;
+		goto done;
 
 	for (prev_pfn = 0; start < end; start += PAGE_SIZE) {
-		int ret = follow_pfn(vma, start, &this_pfn);
+		ret = follow_pfn(vma, start, &this_pfn);
 		if (ret)
-			return ret;
+			goto done;
 
 		if (prev_pfn == 0)
 			pa = this_pfn << PAGE_SHIFT;
-		else if (this_pfn != prev_pfn + 1)
-			return -EFAULT;
-
+		else if (this_pfn != prev_pfn + 1) {
+			ret = -EFAULT;
+			goto done;
+		}
 		prev_pfn = this_pfn;
 	}
 
@@ -128,11 +131,16 @@ int vb2_get_contig_userptr(unsigned long vaddr, unsigned long size,
 	 * Memory is contigous, lock vma and return to the caller
 	 */
 	*res_vma = vb2_get_vma(vma);
-	if (*res_vma == NULL)
-		return -ENOMEM;
-
+	if (*res_vma == NULL) {
+		ret = -ENOMEM;
+		goto done;
+	}
 	*res_pa = pa + offset;
-	return 0;
+	ret = 0;
+
+done:
+	up_read(&mm->mmap_sem);
+	return ret;
 }
 EXPORT_SYMBOL_GPL(vb2_get_contig_userptr);
 
@@ -169,7 +177,7 @@ int vb2_mmap_pfn_range(struct vm_area_struct *vma, unsigned long paddr,
 
 	vma->vm_ops->open(vma);
 
-	pr_debug("%s: mapped paddr 0x%08lx at 0x%08lx, size %ld\n",
+	printk(KERN_DEBUG "%s: mapped paddr 0x%08lx at 0x%08lx, size %ld\n",
 			__func__, paddr, vma->vm_start, size);
 
 	return 0;
@@ -187,7 +195,7 @@ static void vb2_common_vm_open(struct vm_area_struct *vma)
 {
 	struct vb2_vmarea_handler *h = vma->vm_private_data;
 
-	pr_debug("%s: %p, refcount: %d, vma: %08lx-%08lx\n",
+	printk(KERN_DEBUG "%s: %p, refcount: %d, vma: %08lx-%08lx\n",
 	       __func__, h, atomic_read(h->refcount), vma->vm_start,
 	       vma->vm_end);
 
@@ -205,7 +213,7 @@ static void vb2_common_vm_close(struct vm_area_struct *vma)
 {
 	struct vb2_vmarea_handler *h = vma->vm_private_data;
 
-	pr_debug("%s: %p, refcount: %d, vma: %08lx-%08lx\n",
+	printk(KERN_DEBUG "%s: %p, refcount: %d, vma: %08lx-%08lx\n",
 	       __func__, h, atomic_read(h->refcount), vma->vm_start,
 	       vma->vm_end);
 

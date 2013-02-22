@@ -350,37 +350,16 @@ config I2C_DAVINCI
 	  devices such as DaVinci NIC.
 	  For details please see http://www.ti.com/davinci
 
-config I2C_DESIGNWARE_PLATFORM
-	tristate "Synopsys DesignWare Platform"
+config I2C_DESIGNWARE
+	tristate "Synopsys DesignWare"
 	depends on HAVE_CLK
 	help
 	  If you say yes to this option, support will be included for the
 	  Synopsys DesignWare I2C adapter. Only master mode is supported.
 
 	  This driver can also be built as a module.  If so, the module
-	  will be called i2c-designware-platform.
+	  will be called i2c-designware.
 
-config I2C_DESIGNWARE_PCI
-	tristate "Synopsys DesignWare PCI"
-	depends on PCI
-	help
-	  If you say yes to this option, support will be included for the
-	  Synopsys DesignWare I2C adapter. Only master mode is supported.
-
-	  This driver can also be built as a module.  If so, the module
-	  will be called i2c-designware-pci.
-
-config I2C_DESIGNWARE_PCI_SPLIT_XFER
-	bool "Split long I2C xfers into smaller chunks supported by I2C controller"
-	depends on I2C_DESIGNWARE_PCI
-	help
-	  Due to limitation of I2C silicon on Penwell I2C xfers longer than 31 bytes
-	  are not guaranteed to be atomic. If TX fifo underrun occurs during such
-	  a transfer I2C controller will automatically generate a STOP condition.
-
-	  Use this flag in all users of Penwell's I2C controller that are affected
-	  by this constraint.
-	  
 config I2C_GPIO
 	tristate "GPIO-based bitbanging I2C"
 	depends on GENERIC_GPIO
@@ -430,15 +409,6 @@ config I2C_INTEL_MID
 
 	  This support is also available as a module. If so, the module
 	  will be called i2c-intel-mid.
-
-config I2C_PMIC
-	bool "PMIC I2C Adapter"
-	depends on INTEL_SCU_IPC
-	help
-	  Say Y here if you have PMIC I2C adapter.
-
-	  PMIC-I2C adapter driver to handle I2C transactions
-	  in the PMIC's I2C bus.
 
 config I2C_IOP3XX
 	tristate "Intel IOPx3xx and IXP4xx on-chip I2C interface"

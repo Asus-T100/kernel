@@ -116,7 +116,7 @@ void ufs_free_fragments(struct inode *inode, u64 fragment, unsigned count)
 	ubh_mark_buffer_dirty (UCPI_UBH(ucpi));
 	if (sb->s_flags & MS_SYNCHRONOUS)
 		ubh_sync_block(UCPI_UBH(ucpi));
-	sb_mark_dirty(sb);
+	sb->s_dirt = 1;
 	
 	unlock_super (sb);
 	UFSD("EXIT\n");
@@ -214,7 +214,7 @@ do_more:
 		goto do_more;
 	}
 
-	sb_mark_dirty(sb);
+	sb->s_dirt = 1;
 	unlock_super (sb);
 	UFSD("EXIT\n");
 	return;
@@ -557,7 +557,7 @@ static u64 ufs_add_fragments(struct inode *inode, u64 fragment,
 	ubh_mark_buffer_dirty (UCPI_UBH(ucpi));
 	if (sb->s_flags & MS_SYNCHRONOUS)
 		ubh_sync_block(UCPI_UBH(ucpi));
-	sb_mark_dirty(sb);
+	sb->s_dirt = 1;
 
 	UFSD("EXIT, fragment %llu\n", (unsigned long long)fragment);
 	
@@ -677,7 +677,7 @@ succed:
 	ubh_mark_buffer_dirty (UCPI_UBH(ucpi));
 	if (sb->s_flags & MS_SYNCHRONOUS)
 		ubh_sync_block(UCPI_UBH(ucpi));
-	sb_mark_dirty(sb);
+	sb->s_dirt = 1;
 
 	result += cgno * uspi->s_fpg;
 	UFSD("EXIT3, result %llu\n", (unsigned long long)result);

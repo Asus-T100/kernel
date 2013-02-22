@@ -11,7 +11,6 @@
  */
 
 #include <media/rc-map.h>
-#include <linux/module.h>
 
 /* Michael Tokarev <mjt@tls.msk.ru>
    keytable is used by MANLI MTV00[0x0c] and BeholdTV 40[13] at

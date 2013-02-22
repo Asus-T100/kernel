@@ -21,7 +21,6 @@
  */
 
 #include <linux/init.h>
-#include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
 #include <sound/core.h>

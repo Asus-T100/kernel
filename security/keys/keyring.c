@@ -57,7 +57,7 @@ static inline unsigned keyring_hash(const char *desc)
  * operations.
  */
 static int keyring_instantiate(struct key *keyring,
-			       struct key_preparsed_payload *prep);
+			       const void *data, size_t datalen);
 static int keyring_match(const struct key *keyring, const void *criterion);
 static void keyring_revoke(struct key *keyring);
 static void keyring_destroy(struct key *keyring);
@@ -112,12 +112,12 @@ static void keyring_publish_name(struct key *keyring)
  * Returns 0 on success, -EINVAL if given any data.
  */
 static int keyring_instantiate(struct key *keyring,
-			       struct key_preparsed_payload *prep)
+			       const void *data, size_t datalen)
 {
 	int ret;
 
 	ret = -EINVAL;
-	if (prep->datalen == 0) {
+	if (datalen == 0) {
 		/* make the keyring available by name if it has one */
 		keyring_publish_name(keyring);
 		ret = 0;

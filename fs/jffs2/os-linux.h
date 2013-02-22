@@ -142,7 +142,7 @@ void jffs2_nor_wbuf_flash_cleanup(struct jffs2_sb_info *c);
 
 static inline void jffs2_dirty_trigger(struct jffs2_sb_info *c)
 {
-	sb_mark_dirty(OFNI_BS_2SFFJ(c));
+	OFNI_BS_2SFFJ(c)->s_dirt = 1;
 }
 
 /* background.c */

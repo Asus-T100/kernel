@@ -1387,10 +1387,11 @@ int usb_hcd_map_urb_for_dma(struct usb_hcd *hcd, struct urb *urb,
 					ret = -EAGAIN;
 				else
 					urb->transfer_flags |= URB_DMA_MAP_SG;
-				urb->num_mapped_sgs = n;
-				if (n != urb->num_sgs)
+				if (n != urb->num_sgs) {
+					urb->num_sgs = n;
 					urb->transfer_flags |=
 							URB_DMA_SG_COMBINED;
+				}
 			} else if (urb->sg) {
 				struct scatterlist *sg = urb->sg;
 				urb->transfer_dma = dma_map_page(
@@ -1763,8 +1764,6 @@ int usb_hcd_alloc_bandwidth(struct usb_device *udev,
 		struct usb_interface *iface = usb_ifnum_to_if(udev,
 				cur_alt->desc.bInterfaceNumber);
 
-		if (!iface)
-			return -EINVAL;
 		if (iface->resetting_device) {
 			/*
 			 * The USB core just reset the device, so the xHCI host
@@ -2121,26 +2120,6 @@ irqreturn_t usb_hcd_irq (int irq, void *__hcd)
 	 */
 	local_irq_save(flags);
 
-	/* Do Runtime-PM Operation if hcd->rpm_control == 1 */
-	if (hcd->rpm_control) {
-		struct device		*dev = hcd->self.controller;
-
-		if ((hcd->rpm_resume)
-			|| (dev->power.runtime_status == RPM_RESUMING)) {
-			rc = IRQ_HANDLED;
-			goto RET;
-		}
-
-		if (dev->power.runtime_status != RPM_ACTIVE) {
-			dev_dbg(hcd->self.controller,
-				"Wake up? Interrupt detected in suspended\n");
-			hcd->rpm_resume = 1;
-			pm_runtime_get(dev);
-			rc = IRQ_HANDLED;
-			goto RET;
-		}
-	}
-
 	if (unlikely(HCD_DEAD(hcd) || !HCD_HW_ACCESSIBLE(hcd))) {
 		rc = IRQ_NONE;
 	} else if (hcd->driver->irq(hcd) == IRQ_NONE) {
@@ -2152,7 +2131,6 @@ irqreturn_t usb_hcd_irq (int irq, void *__hcd)
 		rc = IRQ_HANDLED;
 	}
 
-RET:
 	local_irq_restore(flags);
 	return rc;
 }
@@ -2456,10 +2434,8 @@ int usb_add_hcd(struct usb_hcd *hcd,
 			&& device_can_wakeup(&hcd->self.root_hub->dev))
 		dev_dbg(hcd->self.controller, "supports USB remote wakeup\n");
 
-	/* enable irqs just before we start the controller,
-	 * if the BIOS provides legacy PCI irqs.
-	 */
-	if (usb_hcd_is_primary_hcd(hcd) && irqnum) {
+	/* enable irqs just before we start the controller */
+	if (usb_hcd_is_primary_hcd(hcd)) {
 		retval = usb_hcd_request_irqs(hcd, irqnum, irqflags);
 		if (retval)
 			goto err_request_irq;
@@ -2552,9 +2528,6 @@ void usb_remove_hcd(struct usb_hcd *hcd)
 
 #ifdef CONFIG_USB_SUSPEND
 	cancel_work_sync(&hcd->wakeup_work);
-	/* Resume root-hub and disable its runtime pm before removing it. */
-	usb_autoresume_device(rhdev);
-	usb_disable_autosuspend(rhdev);
 #endif
 
 	mutex_lock(&usb_bus_list_lock);

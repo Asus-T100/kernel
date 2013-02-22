@@ -113,18 +113,7 @@ void __init x86_64_start_reservations(char *real_mode_data)
 	}
 #endif
 
-	/* Call the subarch specific early setup function */
-	switch (boot_params.hdr.hardware_subarch) {
-	case X86_SUBARCH_INTEL_MID:
-		x86_intel_mid_early_setup();
-		break;
-	case X86_SUBARCH_CE4100:
-		x86_ce4100_early_setup();
-		break;
-	default:
-		reserve_ebda_region();
-		break;
-	}
+	reserve_ebda_region();
 
 	/*
 	 * At this point everything still needed from the boot loader

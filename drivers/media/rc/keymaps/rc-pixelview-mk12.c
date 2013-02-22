@@ -11,7 +11,6 @@
  */
 
 #include <media/rc-map.h>
-#include <linux/module.h>
 
 /*
  * Keytable for MK-F12 IR remote provided together with Pixelview

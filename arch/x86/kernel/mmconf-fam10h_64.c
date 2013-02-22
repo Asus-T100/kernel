@@ -184,11 +184,7 @@ void __cpuinit fam10h_check_enable_mmcfg(void)
 			FAM10H_MMIO_CONF_BUSRANGE_MASK;
 
 		/* only trust the one handle 256 buses, if acpi=off */
-		if (busnbits >= 8
-#ifdef CONFIG_ACPI
-		    || !acpi_pci_disabled
-#endif
-			) {
+		if (!acpi_pci_disabled || busnbits >= 8) {
 			u64 base = val & MMCONF_MASK;
 
 			if (!fam10h_pci_mmconf_base) {

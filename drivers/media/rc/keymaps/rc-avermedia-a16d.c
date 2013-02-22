@@ -11,7 +11,6 @@
  */
 
 #include <media/rc-map.h>
-#include <linux/module.h>
 
 static struct rc_map_table avermedia_a16d[] = {
 	{ 0x20, KEY_LIST},

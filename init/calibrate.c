@@ -253,11 +253,10 @@ void __cpuinit calibrate_delay(void)
 		if (!printed)
 			pr_info("Calibrating delay loop (skipped) "
 				"preset value.. ");
-	} else if (lpj_fine) {
+	} else if ((!printed) && lpj_fine) {
 		lpj = lpj_fine;
-		if (!printed)
-			pr_info("Calibrating delay loop (skipped), "
-				"value calculated using timer frequency.. ");
+		pr_info("Calibrating delay loop (skipped), "
+			"value calculated using timer frequency.. ");
 	} else if ((lpj = calibrate_delay_direct()) != 0) {
 		if (!printed)
 			pr_info("Calibrating delay using timer "

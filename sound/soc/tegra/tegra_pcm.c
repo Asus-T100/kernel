@@ -309,14 +309,9 @@ static int tegra_pcm_preallocate_dma_buffer(struct snd_pcm *pcm, int stream)
 
 static void tegra_pcm_deallocate_dma_buffer(struct snd_pcm *pcm, int stream)
 {
-	struct snd_pcm_substream *substream;
-	struct snd_dma_buffer *buf;
+	struct snd_pcm_substream *substream = pcm->streams[stream].substream;
+	struct snd_dma_buffer *buf = &substream->dma_buffer;
 
-	substream = pcm->streams[stream].substream;
-	if (!substream)
-		return;
-
-	buf = &substream->dma_buffer;
 	if (!buf->area)
 		return;
 
@@ -327,25 +322,24 @@ static void tegra_pcm_deallocate_dma_buffer(struct snd_pcm *pcm, int stream)
 
 static u64 tegra_dma_mask = DMA_BIT_MASK(32);
 
-static int tegra_pcm_new(struct snd_soc_pcm_runtime *rtd)
+static int tegra_pcm_new(struct snd_card *card,
+				struct snd_soc_dai *dai, struct snd_pcm *pcm)
 {
-	struct snd_card *card = rtd->card->snd_card;
-	struct snd_pcm *pcm = rtd->pcm;
 	int ret = 0;
 
 	if (!card->dev->dma_mask)
 		card->dev->dma_mask = &tegra_dma_mask;
 	if (!card->dev->coherent_dma_mask)
-		card->dev->coherent_dma_mask = DMA_BIT_MASK(32);
+		card->dev->coherent_dma_mask = 0xffffffff;
 
-	if (pcm->streams[SNDRV_PCM_STREAM_PLAYBACK].substream) {
+	if (dai->driver->playback.channels_min) {
 		ret = tegra_pcm_preallocate_dma_buffer(pcm,
 						SNDRV_PCM_STREAM_PLAYBACK);
 		if (ret)
 			goto err;
 	}
 
-	if (pcm->streams[SNDRV_PCM_STREAM_CAPTURE].substream) {
+	if (dai->driver->capture.channels_min) {
 		ret = tegra_pcm_preallocate_dma_buffer(pcm,
 						SNDRV_PCM_STREAM_CAPTURE);
 		if (ret)
@@ -366,7 +360,7 @@ static void tegra_pcm_free(struct snd_pcm *pcm)
 	tegra_pcm_deallocate_dma_buffer(pcm, SNDRV_PCM_STREAM_PLAYBACK);
 }
 
-static struct snd_soc_platform_driver tegra_pcm_platform = {
+struct snd_soc_platform_driver tegra_pcm_platform = {
 	.ops		= &tegra_pcm_ops,
 	.pcm_new	= tegra_pcm_new,
 	.pcm_free	= tegra_pcm_free,
@@ -391,7 +385,18 @@ static struct platform_driver tegra_pcm_driver = {
 	.probe = tegra_pcm_platform_probe,
 	.remove = __devexit_p(tegra_pcm_platform_remove),
 };
-module_platform_driver(tegra_pcm_driver);
+
+static int __init snd_tegra_pcm_init(void)
+{
+	return platform_driver_register(&tegra_pcm_driver);
+}
+module_init(snd_tegra_pcm_init);
+
+static void __exit snd_tegra_pcm_exit(void)
+{
+	platform_driver_unregister(&tegra_pcm_driver);
+}
+module_exit(snd_tegra_pcm_exit);
 
 MODULE_AUTHOR("Stephen Warren <swarren@nvidia.com>");
 MODULE_DESCRIPTION("Tegra PCM ASoC driver");

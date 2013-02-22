@@ -28,7 +28,7 @@
 #include <linux/firmware.h>
 #include <linux/pnp.h>
 #include <linux/spinlock.h>
-#include <linux/module.h>
+#include <linux/moduleparam.h>
 #include <asm/dma.h>
 #include <sound/core.h>
 #include <sound/wss.h>
@@ -825,7 +825,8 @@ static int __devinit create_mpu401(struct snd_card *card, int devnum,
 	int err;
 
 	err = snd_mpu401_uart_new(card, devnum, MPU401_HW_MPU401, port,
-				  MPU401_INFO_INTEGRATED, irq, &rawmidi);
+				  MPU401_INFO_INTEGRATED, irq, IRQF_DISABLED,
+				  &rawmidi);
 	if (err == 0) {
 		struct snd_mpu401 *mpu = rawmidi->private_data;
 		mpu->open_input = mpu401_open;
@@ -1019,15 +1020,13 @@ static int __devinit create_sscape(int dev, struct snd_card *card)
 	irq_cfg = get_irq_config(sscape->type, irq[dev]);
 	if (irq_cfg == INVALID_IRQ) {
 		snd_printk(KERN_ERR "sscape: Invalid IRQ %d\n", irq[dev]);
-		err = -ENXIO;
-		goto _release_dma;
+		return -ENXIO;
 	}
 
 	mpu_irq_cfg = get_irq_config(sscape->type, mpu_irq[dev]);
 	if (mpu_irq_cfg == INVALID_IRQ) {
 		snd_printk(KERN_ERR "sscape: Invalid IRQ %d\n", mpu_irq[dev]);
-		err = -ENXIO;
-		goto _release_dma;
+		return -ENXIO;
 	}
 
 	/*

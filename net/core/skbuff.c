@@ -310,14 +310,13 @@ static inline void skb_drop_fraglist(struct sk_buff *skb)
 	skb_drop_list(&skb_shinfo(skb)->frag_list);
 }
 
-void skb_clone_fraglist(struct sk_buff *skb)
+static void skb_clone_fraglist(struct sk_buff *skb)
 {
 	struct sk_buff *list;
 
 	skb_walk_frags(skb, list)
 		skb_get(list);
 }
-EXPORT_SYMBOL(skb_clone_fraglist);
 
 static void skb_release_data(struct sk_buff *skb)
 {
@@ -635,7 +634,7 @@ struct sk_buff *skb_clone(struct sk_buff *skb, gfp_t gfp_mask)
 }
 EXPORT_SYMBOL(skb_clone);
 
-void copy_skb_header(struct sk_buff *new, const struct sk_buff *old)
+static void copy_skb_header(struct sk_buff *new, const struct sk_buff *old)
 {
 #ifndef NET_SKBUFF_DATA_USES_OFFSET
 	/*
@@ -657,7 +656,6 @@ void copy_skb_header(struct sk_buff *new, const struct sk_buff *old)
 	skb_shinfo(new)->gso_segs = skb_shinfo(old)->gso_segs;
 	skb_shinfo(new)->gso_type = skb_shinfo(old)->gso_type;
 }
-EXPORT_SYMBOL(copy_skb_header);
 
 /**
  *	skb_copy	-	create private copy of an sk_buff
@@ -2987,8 +2985,6 @@ static void sock_rmem_free(struct sk_buff *skb)
  */
 int sock_queue_err_skb(struct sock *sk, struct sk_buff *skb)
 {
-	int len = skb->len;
-
 	if (atomic_read(&sk->sk_rmem_alloc) + skb->truesize >=
 	    (unsigned)sk->sk_rcvbuf)
 		return -ENOMEM;
@@ -3003,7 +2999,7 @@ int sock_queue_err_skb(struct sock *sk, struct sk_buff *skb)
 
 	skb_queue_tail(&sk->sk_error_queue, skb);
 	if (!sock_flag(sk, SOCK_DEAD))
-		sk->sk_data_ready(sk, len);
+		sk->sk_data_ready(sk, skb->len);
 	return 0;
 }
 EXPORT_SYMBOL(sock_queue_err_skb);

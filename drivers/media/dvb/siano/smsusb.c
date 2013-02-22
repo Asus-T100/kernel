@@ -24,7 +24,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #include <linux/usb.h>
 #include <linux/firmware.h>
 #include <linux/slab.h>
-#include <linux/module.h>
 
 #include "smscoreapi.h"
 #include "sms-cards.h"
@@ -541,8 +540,6 @@ static const struct usb_device_id smsusb_id_table[] __devinitconst = {
 	{ USB_DEVICE(0x2040, 0xc080),
 		.driver_info = SMS1XXX_BOARD_HAUPPAUGE_WINDHAM },
 	{ USB_DEVICE(0x2040, 0xc090),
-		.driver_info = SMS1XXX_BOARD_HAUPPAUGE_WINDHAM },
-	{ USB_DEVICE(0x2040, 0xc0a0),
 		.driver_info = SMS1XXX_BOARD_HAUPPAUGE_WINDHAM },
 	{ } /* Terminating entry */
 	};

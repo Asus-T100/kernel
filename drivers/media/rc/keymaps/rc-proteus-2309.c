@@ -11,7 +11,6 @@
  */
 
 #include <media/rc-map.h>
-#include <linux/module.h>
 
 /* Michal Majchrowicz <mmajchrowicz@gmail.com> */
 

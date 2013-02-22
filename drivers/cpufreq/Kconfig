@@ -99,26 +99,6 @@ config CPU_FREQ_DEFAULT_GOV_CONSERVATIVE
 	  Be aware that not all cpufreq drivers support the conservative
 	  governor. If unsure have a look at the help section of the
 	  driver. Fallback governor will be the performance governor.
-
-config CPU_FREQ_DEFAULT_GOV_INTERACTIVE
-	bool "interactive"
-	select CPU_FREQ_GOV_INTERACTIVE
-	help
-	  Use the CPUFreq governor 'interactive' as default. This allows
-	  you to get a full dynamic cpu frequency capable system by simply
-	  loading your cpufreq low-level hardware driver, using the
-	  'interactive' governor for latency-sensitive workloads.
-
-config CPU_FREQ_DEFAULT_GOV_INTEL
-	bool "intel"
-	select CPU_FREQ_GOV_INTEL
-	help
-	  Use the CPUFreq governor 'intel' as default. This allows
-	  you to get a full dynamic cpu frequency capable system by simply
-	  loading your cpufreq low-level hardware driver, using the
-	  'intel' governor for better perfromance and power with Intel
-	  mobile platforms.
-
 endchoice
 
 config CPU_FREQ_GOV_PERFORMANCE
@@ -171,41 +151,6 @@ config CPU_FREQ_GOV_ONDEMAND
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called cpufreq_ondemand.
-
-	  For details, take a look at linux/Documentation/cpu-freq.
-
-	  If in doubt, say N.
-
-config CPU_FREQ_GOV_INTERACTIVE
-	tristate "'interactive' cpufreq policy governor"
-	help
-	  'interactive' - This driver adds a dynamic cpufreq policy governor
-	  designed for latency-sensitive workloads.
-
-	  This governor attempts to reduce the latency of clock
-	  increases so that the system is more responsive to
-	  interactive workloads.
-
-	  To compile this driver as a module, choose M here: the
-	  module will be called cpufreq_interactive.
-
-	  For details, take a look at linux/Documentation/cpu-freq.
-
-	  If in doubt, say N.
-
-config CPU_FREQ_GOV_INTEL
-	tristate "'intel' cpufreq policy governor"
-	help
-	  'intel' - This driver adds a dynamic cpufreq policy governor
-	  designed for Intel mobile platform.
-
-	  This governor uses physical core load, dynamic timer switching,
-	  dynamic sampling window sizing, and tailored CPU frequency scaling,
-	  which brings good performance, power efficiency and responsiveness
-	  to common Android applications with Intel mobile platforms.
-
-	  To compile this driver as a module, choose M here: the
-	  module will be called cpufreq_intel.
 
 	  For details, take a look at linux/Documentation/cpu-freq.
 

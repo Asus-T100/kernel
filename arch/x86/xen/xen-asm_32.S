@@ -113,13 +113,11 @@ xen_iret_start_crit:
 
 	/*
 	 * If there's something pending, mask events again so we can
-	 * jump back into xen_hypervisor_callback. Otherwise do not
-	 * touch XEN_vcpu_info_mask.
+	 * jump back into xen_hypervisor_callback
 	 */
-	jne 1f
-	movb $1, XEN_vcpu_info_mask(%eax)
+	sete XEN_vcpu_info_mask(%eax)
 
-1:	popl %eax
+	popl %eax
 
 	/*
 	 * From this point on the registers are restored and the stack

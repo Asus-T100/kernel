@@ -23,8 +23,6 @@ source "drivers/gpu/drm/Kconfig"
 
 source "drivers/gpu/stub/Kconfig"
 
-source "drivers/gpu/ion/Kconfig"
-
 config VGASTATE
        tristate
        default n
@@ -2384,16 +2382,6 @@ config FB_PUV3_UNIGFX
 	help
 	  Choose this option if you want to use the Unigfx device as a
 	  framebuffer device. Without the support of PCI & AGP.
-
-config FB_MRFLD_VP
-	tristate "Intel Merrifield Virtual Platform Framebuffer Driver"
-	depends on PCI && X86_MRFLD && FB
-	default n
-	select FB_CFB_COPYAREA
-	select FB_CFB_FILLRECT
-	select FB_CFB_IMAGEBLIT
-	help
-	   Basic support for Generic Framebuffer Driver for Merrifield.
 
 source "drivers/video/omap/Kconfig"
 source "drivers/video/omap2/Kconfig"

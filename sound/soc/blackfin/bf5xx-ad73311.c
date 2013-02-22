@@ -128,7 +128,7 @@ static int snd_ad73311_configure(void)
 	return 0;
 }
 
-static int bf5xx_probe(struct snd_soc_card *card)
+static int bf5xx_probe(struct platform_device *pdev)
 {
 	int err;
 	if (gpio_request(GPIO_SE, "AD73311_SE")) {
@@ -145,8 +145,29 @@ static int bf5xx_probe(struct snd_soc_card *card)
 	return 0;
 }
 
-#define BF5XX_AD7311_DAI_FMT (SND_SOC_DAIFMT_DSP_A | SND_SOC_DAIFMT_NB_NF | \
-				SND_SOC_DAIFMT_CBM_CFM)
+static int bf5xx_ad73311_hw_params(struct snd_pcm_substream *substream,
+	struct snd_pcm_hw_params *params)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
+	int ret = 0;
+
+	pr_debug("%s rate %d format %x\n", __func__, params_rate(params),
+		params_format(params));
+
+	/* set cpu DAI configuration */
+	ret = snd_soc_dai_set_fmt(cpu_dai, SND_SOC_DAIFMT_DSP_A |
+		SND_SOC_DAIFMT_NB_NF | SND_SOC_DAIFMT_CBM_CFM);
+	if (ret < 0)
+		return ret;
+
+	return 0;
+}
+
+
+static struct snd_soc_ops bf5xx_ad73311_ops = {
+	.hw_params = bf5xx_ad73311_hw_params,
+};
 
 static struct snd_soc_dai_link bf5xx_ad73311_dai[] = {
 	{
@@ -156,7 +177,7 @@ static struct snd_soc_dai_link bf5xx_ad73311_dai[] = {
 		.codec_dai_name = "ad73311-hifi",
 		.platform_name = "bfin-i2s-pcm-audio",
 		.codec_name = "ad73311",
-		.dai_fmt = BF5XX_AD7311_DAI_FMT,
+		.ops = &bf5xx_ad73311_ops,
 	},
 	{
 		.name = "ad73311",
@@ -165,13 +186,12 @@ static struct snd_soc_dai_link bf5xx_ad73311_dai[] = {
 		.codec_dai_name = "ad73311-hifi",
 		.platform_name = "bfin-i2s-pcm-audio",
 		.codec_name = "ad73311",
-		.dai_fmt = BF5XX_AD7311_DAI_FMT,
+		.ops = &bf5xx_ad73311_ops,
 	},
 };
 
 static struct snd_soc_card bf5xx_ad73311 = {
 	.name = "bfin-ad73311",
-	.owner = THIS_MODULE,
 	.probe = bf5xx_probe,
 	.dai_link = &bf5xx_ad73311_dai[CONFIG_SND_BF5XX_SPORT_NUM],
 	.num_links = 1,

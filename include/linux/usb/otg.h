@@ -10,7 +10,6 @@
 #define __LINUX_USB_OTG_H
 
 #include <linux/notifier.h>
-#include <linux/usb.h>
 
 /* OTG defines lots of enumeration states before device reset */
 enum usb_otg_state {
@@ -42,13 +41,6 @@ enum usb_xceiv_events {
 	USB_EVENT_ID,           /* id was grounded */
 	USB_EVENT_CHARGER,      /* usb dedicated charger */
 	USB_EVENT_ENUMERATED,   /* gadget driver enumerated */
-	USB_EVENT_DRIVE_VBUS,   /* usb host ready to start enumeration */
-};
-
-enum vbus_state {
-	UNKNOW_STATE,
-	VBUS_ENABLED,			/* vbus at normal state */
-	VBUS_DISABLED,			/* vbus disabled by a_bus_drop */
 };
 
 struct otg_transceiver;
@@ -89,11 +81,6 @@ struct otg_transceiver {
 	u16			port_status;
 	u16			port_change;
 
-	/* Porivde sysfs interface to userspace for set a_bus_drop argument */
-	struct class *usb_otg_class;
-	struct device *class_dev;
-	int vbus_state;
-
 	/* initialize/shutdown the OTG controller */
 	int	(*init)(struct otg_transceiver *otg);
 	void	(*shutdown)(struct otg_transceiver *otg);
@@ -124,11 +111,6 @@ struct otg_transceiver {
 	/* start or continue HNP role switch */
 	int	(*start_hnp)(struct otg_transceiver *otg);
 
-	/* for A or B-peripheral: host has released the bus.  */
-	int     (*host_release)(struct otg_transceiver *otg);
-
-	/* for a_bus_drop handler fromed user space */
-	void (*a_bus_drop)(struct otg_transceiver *otg);
 };
 
 
@@ -214,8 +196,6 @@ otg_start_hnp(struct otg_transceiver *otg)
 static inline int
 otg_set_vbus(struct otg_transceiver *otg, bool enabled)
 {
-	atomic_notifier_call_chain(&otg->notifier, USB_EVENT_DRIVE_VBUS,
-			&enabled);
 	return otg->set_vbus(otg, enabled);
 }
 
@@ -273,20 +253,4 @@ otg_unregister_notifier(struct otg_transceiver *otg, struct notifier_block *nb)
 /* for OTG controller drivers (and maybe other stuff) */
 extern int usb_bus_start_enum(struct usb_bus *bus, unsigned port_num);
 
-#define OTG_TESTDEV_VID 0x1a0a
-#define OTG_TESTDEV_PID 0x0200
-
-/* for OTG Test per Spec */
-static inline int is_otg_testdev(struct usb_device *udev)
-{
-	return udev && le16_to_cpu(udev->descriptor.idVendor) == OTG_TESTDEV_VID
-		&& le16_to_cpu(udev->descriptor.idProduct) == OTG_TESTDEV_PID;
-}
-
-static inline int is_otg_vbusoff_testdev(struct usb_device *udev)
-{
-	return le16_to_cpu(udev->descriptor.bcdDevice) & USB_DT_BCD_VBUSOFF;
-}
-
-void otg_uevent_trigger(struct otg_transceiver *otg);
 #endif /* __LINUX_USB_OTG_H */

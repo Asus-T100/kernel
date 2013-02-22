@@ -1,5 +1,5 @@
 /*
- * Intel Langwell/Penwell USB Device Controller driver
+ * Intel Langwell USB Device Controller driver
  * Copyright (C) 2008-2009, Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
@@ -18,13 +18,7 @@
  */
 
 #include <linux/usb/langwell_udc.h>
-#include <linux/usb/intel_mid_otg.h>
-#include <linux/wakelock.h>
-
-#ifdef CONFIG_DEBUG_FS
-extern  unsigned int *pm_sss0_base;
-extern  int check_pm_otg(void);
-#endif
+#include <linux/usb/langwell_otg.h>
 
 /*-------------------------------------------------------------------------*/
 
@@ -150,7 +144,6 @@ struct langwell_request {
 	struct list_head	queue;
 	unsigned		dtd_count;
 	unsigned		mapped:1;
-	unsigned		test_mode;
 };
 
 
@@ -194,20 +187,23 @@ struct langwell_udc {
 				enabled:1,
 				region:1,
 				got_irq:1,
+				powered:1,
 				remote_wakeup:1,
+				rate:1,
+				is_reset:1,
 				softconnected:1,
 				vbus_active:1,
+				suspended:1,
 				stopped:1,
 				lpm:1,		/* LPM capability */
 				has_sram:1,	/* SRAM caching */
-				got_sram:1,
-				sdis:1;		/* Streaming mode */
+				got_sram:1;
 
 	/* pci state used to access those endpoints */
 	struct pci_dev		*pdev;
 
-	/* Intel mid otg transceiver */
-	struct intel_mid_otg_xceiv	*iotg;
+	/* Langwell otg transceiver */
+	struct langwell_otg	*lotg;
 
 	/* control registers */
 	struct langwell_cap_regs	__iomem	*cap_regs;
@@ -233,80 +229,5 @@ struct langwell_udc {
 
 	/* device status data for get_status request */
 	u16			dev_status;
-
-	struct	wake_lock	wake_lock;
-#ifdef OTG_TRANSCEIVER
-	unsigned int		is_peripheral_start;
-#endif
 };
 
-#define DQH_DW_SIZE 12
-#define DTD_DW_SIZE 7
-
-#define STRING_LNW_REGS(dev)			\
-	"caplength=0x%02x\n"                    \
-	"hciversion=0x%04x\n"                   \
-	"hcsparams=0x%08x\n"                    \
-	"hccparams=0x%08x\n"                    \
-	"dciversion=0x%04x\n"                   \
-	"dccparams=0x%08x\n"                    \
-	"extsts=0x%08x\n"                       \
-	"extintr=0x%08x\n"                      \
-	"usbcmd=0x%08x\n"                       \
-	"usbsts=0x%08x\n"                       \
-	"usbintr=0x%08x\n"                      \
-	"frindex=0x%08x\n"                      \
-	"ctrldssegment=0x%08x\n"                \
-	"deviceaddr=0x%08x\n"                   \
-	"endpointlistaddr=0x%08x\n"             \
-	"ttctrl=0x%08x\n"                       \
-	"burstsize=0x%08x\n"                    \
-	"txfilltuning=0x%08x\n"                 \
-	"txttfilltuning=0x%08x\n"               \
-	"ic_usb=0x%08x\n"                       \
-	"ulpi_viewport=0x%08x\n"                \
-	"configflag=0x%08x\n"                   \
-	"portsc1=0x%08x\n"                      \
-	"devlc=0x%08x\n"                        \
-	"otgsc=0x%08x\n"                        \
-	"usbmode=0x%08x\n"                      \
-	"endptnak=0x%08x\n"                     \
-	"endptnaken=0x%08x\n"                   \
-	"endptsetupstat=0x%08x\n"               \
-	"endptprime=0x%08x\n"                   \
-	"endptflush=0x%08x\n"                   \
-	"endptstat=0x%08x\n"                    \
-	"endptcomplete=0x%08x\n",               \
-	readb(&dev->cap_regs->caplength),       \
-	readw(&dev->cap_regs->hciversion),      \
-	readl(&dev->cap_regs->hcsparams),       \
-	readl(&dev->cap_regs->hccparams),       \
-	readw(&dev->cap_regs->dciversion),      \
-	readl(&dev->cap_regs->dccparams),       \
-	readl(&dev->op_regs->extsts),           \
-	readl(&dev->op_regs->extintr),          \
-	readl(&dev->op_regs->usbcmd),           \
-	readl(&dev->op_regs->usbsts),           \
-	readl(&dev->op_regs->usbintr),          \
-	readl(&dev->op_regs->frindex),          \
-	readl(&dev->op_regs->ctrldssegment),    \
-	readl(&dev->op_regs->deviceaddr),       \
-	readl(&dev->op_regs->endpointlistaddr), \
-	readl(&dev->op_regs->ttctrl),           \
-	readl(&dev->op_regs->burstsize),        \
-	readl(&dev->op_regs->txfilltuning),     \
-	readl(&dev->op_regs->txttfilltuning),   \
-	readl(&dev->op_regs->ic_usb),           \
-	readl(&dev->op_regs->ulpi_viewport),    \
-	readl(&dev->op_regs->configflag),       \
-	readl(&dev->op_regs->portsc1),          \
-	readl(&dev->op_regs->devlc),            \
-	readl(&dev->op_regs->otgsc),            \
-	readl(&dev->op_regs->usbmode),          \
-	readl(&dev->op_regs->endptnak),         \
-	readl(&dev->op_regs->endptnaken),       \
-	readl(&dev->op_regs->endptsetupstat),   \
-	readl(&dev->op_regs->endptprime),       \
-	readl(&dev->op_regs->endptflush),       \
-	readl(&dev->op_regs->endptstat),        \
-	readl(&dev->op_regs->endptcomplete)

@@ -153,7 +153,7 @@ done:
 	kunmap(page);
 	*max = offset + (curr - pptr) * 32 + i - start;
 	sbi->free_blocks -= *max;
-	sb_mark_dirty(sb);
+	sb->s_dirt = 1;
 	dprint(DBG_BITMAP, "-> %u,%u\n", start, *max);
 out:
 	mutex_unlock(&sbi->alloc_mutex);
@@ -228,7 +228,7 @@ out:
 	set_page_dirty(page);
 	kunmap(page);
 	sbi->free_blocks += len;
-	sb_mark_dirty(sb);
+	sb->s_dirt = 1;
 	mutex_unlock(&sbi->alloc_mutex);
 
 	return 0;

@@ -52,8 +52,6 @@ source "drivers/i2c/Kconfig"
 
 source "drivers/spi/Kconfig"
 
-source "drivers/hsi/Kconfig"
-
 source "drivers/pps/Kconfig"
 
 source "drivers/ptp/Kconfig"
@@ -98,8 +96,6 @@ source "drivers/leds/Kconfig"
 
 source "drivers/nfc/Kconfig"
 
-source "drivers/switch/Kconfig"
-
 source "drivers/accessibility/Kconfig"
 
 source "drivers/infiniband/Kconfig"
@@ -130,9 +126,4 @@ source "drivers/hwspinlock/Kconfig"
 
 source "drivers/clocksource/Kconfig"
 
-source "drivers/extcon/Kconfig"
-
-source "drivers/gps/Kconfig"
-
-source "drivers/modem_control/Kconfig"
 endmenu

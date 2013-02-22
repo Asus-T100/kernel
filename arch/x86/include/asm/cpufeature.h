@@ -97,7 +97,6 @@
 #define X86_FEATURE_EXTD_APICID	(3*32+26) /* has extended APICID (8 bits) */
 #define X86_FEATURE_AMD_DCM     (3*32+27) /* multi-node processor */
 #define X86_FEATURE_APERFMPERF	(3*32+28) /* APERFMPERF */
-#define X86_FEATURE_S3_NONSTOP_TSC	(3*32+29) /* TSC does not stop in S3 states */
 
 /* Intel-defined CPU features, CPUID level 0x00000001 (ecx), word 4 */
 #define X86_FEATURE_XMM3	(4*32+ 0) /* "pni" SSE-3 */
@@ -327,7 +326,7 @@ extern const char * const x86_power_flags[32];
  */
 static __always_inline __pure bool __static_cpu_has(u16 bit)
 {
-#if (__GNUC__ > 4 || __GNUC_MINOR__ >= 5) && !defined(__INTEL_COMPILER)
+#if __GNUC__ > 4 || __GNUC_MINOR__ >= 5
 		asm goto("1: jmp %l[t_no]\n"
 			 "2:\n"
 			 ".section .altinstructions,\"a\"\n"

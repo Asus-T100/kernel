@@ -11,7 +11,6 @@
  */
 
 #include <media/rc-map.h>
-#include <linux/module.h>
 
 /* DigitalNow DNTV Live DVB-T Remote */
 

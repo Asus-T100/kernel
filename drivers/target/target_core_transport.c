@@ -2777,15 +2777,10 @@ static inline u32 transport_get_sectors_6(
 
 	/*
 	 * Everything else assume TYPE_DISK Sector CDB location.
-	 * Use 8-bit sector value.  SBC-3 says:
-	 *
-	 *   A TRANSFER LENGTH field set to zero specifies that 256
-	 *   logical blocks shall be written.  Any other value
-	 *   specifies the number of logical blocks that shall be
-	 *   written.
+	 * Use 8-bit sector value.
 	 */
 type_disk:
-	return cdb[4] ? : 256;
+	return (u32)cdb[4];
 }
 
 static inline u32 transport_get_sectors_10(
@@ -5668,8 +5663,6 @@ int transport_send_check_condition_and_sense(
 	case TCM_SECTOR_COUNT_TOO_MANY:
 		/* CURRENT ERROR */
 		buffer[offset] = 0x70;
-		buffer[offset+SPC_ADD_SENSE_LEN_OFFSET] = 10;
-		buffer[offset+SPC_ADD_SENSE_LEN_OFFSET] = 10;
 		/* ILLEGAL REQUEST */
 		buffer[offset+SPC_SENSE_KEY_OFFSET] = ILLEGAL_REQUEST;
 		/* INVALID COMMAND OPERATION CODE */
@@ -5678,7 +5671,6 @@ int transport_send_check_condition_and_sense(
 	case TCM_UNKNOWN_MODE_PAGE:
 		/* CURRENT ERROR */
 		buffer[offset] = 0x70;
-		buffer[offset+SPC_ADD_SENSE_LEN_OFFSET] = 10;
 		/* ILLEGAL REQUEST */
 		buffer[offset+SPC_SENSE_KEY_OFFSET] = ILLEGAL_REQUEST;
 		/* INVALID FIELD IN CDB */
@@ -5687,7 +5679,6 @@ int transport_send_check_condition_and_sense(
 	case TCM_CHECK_CONDITION_ABORT_CMD:
 		/* CURRENT ERROR */
 		buffer[offset] = 0x70;
-		buffer[offset+SPC_ADD_SENSE_LEN_OFFSET] = 10;
 		/* ABORTED COMMAND */
 		buffer[offset+SPC_SENSE_KEY_OFFSET] = ABORTED_COMMAND;
 		/* BUS DEVICE RESET FUNCTION OCCURRED */
@@ -5697,7 +5688,6 @@ int transport_send_check_condition_and_sense(
 	case TCM_INCORRECT_AMOUNT_OF_DATA:
 		/* CURRENT ERROR */
 		buffer[offset] = 0x70;
-		buffer[offset+SPC_ADD_SENSE_LEN_OFFSET] = 10;
 		/* ABORTED COMMAND */
 		buffer[offset+SPC_SENSE_KEY_OFFSET] = ABORTED_COMMAND;
 		/* WRITE ERROR */
@@ -5708,25 +5698,22 @@ int transport_send_check_condition_and_sense(
 	case TCM_INVALID_CDB_FIELD:
 		/* CURRENT ERROR */
 		buffer[offset] = 0x70;
-		buffer[offset+SPC_ADD_SENSE_LEN_OFFSET] = 10;
-		/* ILLEGAL REQUEST */
-		buffer[offset+SPC_SENSE_KEY_OFFSET] = ILLEGAL_REQUEST;
+		/* ABORTED COMMAND */
+		buffer[offset+SPC_SENSE_KEY_OFFSET] = ABORTED_COMMAND;
 		/* INVALID FIELD IN CDB */
 		buffer[offset+SPC_ASC_KEY_OFFSET] = 0x24;
 		break;
 	case TCM_INVALID_PARAMETER_LIST:
 		/* CURRENT ERROR */
 		buffer[offset] = 0x70;
-		buffer[offset+SPC_ADD_SENSE_LEN_OFFSET] = 10;
-		/* ILLEGAL REQUEST */
-		buffer[offset+SPC_SENSE_KEY_OFFSET] = ILLEGAL_REQUEST;
+		/* ABORTED COMMAND */
+		buffer[offset+SPC_SENSE_KEY_OFFSET] = ABORTED_COMMAND;
 		/* INVALID FIELD IN PARAMETER LIST */
 		buffer[offset+SPC_ASC_KEY_OFFSET] = 0x26;
 		break;
 	case TCM_UNEXPECTED_UNSOLICITED_DATA:
 		/* CURRENT ERROR */
 		buffer[offset] = 0x70;
-		buffer[offset+SPC_ADD_SENSE_LEN_OFFSET] = 10;
 		/* ABORTED COMMAND */
 		buffer[offset+SPC_SENSE_KEY_OFFSET] = ABORTED_COMMAND;
 		/* WRITE ERROR */
@@ -5737,7 +5724,6 @@ int transport_send_check_condition_and_sense(
 	case TCM_SERVICE_CRC_ERROR:
 		/* CURRENT ERROR */
 		buffer[offset] = 0x70;
-		buffer[offset+SPC_ADD_SENSE_LEN_OFFSET] = 10;
 		/* ABORTED COMMAND */
 		buffer[offset+SPC_SENSE_KEY_OFFSET] = ABORTED_COMMAND;
 		/* PROTOCOL SERVICE CRC ERROR */
@@ -5748,7 +5734,6 @@ int transport_send_check_condition_and_sense(
 	case TCM_SNACK_REJECTED:
 		/* CURRENT ERROR */
 		buffer[offset] = 0x70;
-		buffer[offset+SPC_ADD_SENSE_LEN_OFFSET] = 10;
 		/* ABORTED COMMAND */
 		buffer[offset+SPC_SENSE_KEY_OFFSET] = ABORTED_COMMAND;
 		/* READ ERROR */
@@ -5759,7 +5744,6 @@ int transport_send_check_condition_and_sense(
 	case TCM_WRITE_PROTECTED:
 		/* CURRENT ERROR */
 		buffer[offset] = 0x70;
-		buffer[offset+SPC_ADD_SENSE_LEN_OFFSET] = 10;
 		/* DATA PROTECT */
 		buffer[offset+SPC_SENSE_KEY_OFFSET] = DATA_PROTECT;
 		/* WRITE PROTECTED */
@@ -5768,7 +5752,6 @@ int transport_send_check_condition_and_sense(
 	case TCM_CHECK_CONDITION_UNIT_ATTENTION:
 		/* CURRENT ERROR */
 		buffer[offset] = 0x70;
-		buffer[offset+SPC_ADD_SENSE_LEN_OFFSET] = 10;
 		/* UNIT ATTENTION */
 		buffer[offset+SPC_SENSE_KEY_OFFSET] = UNIT_ATTENTION;
 		core_scsi3_ua_for_check_condition(cmd, &asc, &ascq);
@@ -5778,7 +5761,6 @@ int transport_send_check_condition_and_sense(
 	case TCM_CHECK_CONDITION_NOT_READY:
 		/* CURRENT ERROR */
 		buffer[offset] = 0x70;
-		buffer[offset+SPC_ADD_SENSE_LEN_OFFSET] = 10;
 		/* Not Ready */
 		buffer[offset+SPC_SENSE_KEY_OFFSET] = NOT_READY;
 		transport_get_sense_codes(cmd, &asc, &ascq);
@@ -5789,7 +5771,6 @@ int transport_send_check_condition_and_sense(
 	default:
 		/* CURRENT ERROR */
 		buffer[offset] = 0x70;
-		buffer[offset+SPC_ADD_SENSE_LEN_OFFSET] = 10;
 		/* ILLEGAL REQUEST */
 		buffer[offset+SPC_SENSE_KEY_OFFSET] = ILLEGAL_REQUEST;
 		/* LOGICAL UNIT COMMUNICATION FAILURE */

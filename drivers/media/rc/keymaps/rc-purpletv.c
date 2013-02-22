@@ -11,7 +11,6 @@
  */
 
 #include <media/rc-map.h>
-#include <linux/module.h>
 
 static struct rc_map_table purpletv[] = {
 	{ 0x03, KEY_POWER },

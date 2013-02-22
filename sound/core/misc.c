@@ -20,8 +20,6 @@
  */
 
 #include <linux/init.h>
-#include <linux/module.h>
-#include <linux/moduleparam.h>
 #include <linux/time.h>
 #include <linux/slab.h>
 #include <linux/ioport.h>
@@ -72,7 +70,7 @@ void __snd_printk(unsigned int level, const char *path, int line,
 	char verbose_fmt[] = KERN_DEFAULT "ALSA %s:%d %pV";
 #endif
 
-#ifdef CONFIG_SND_DEBUG
+#ifdef CONFIG_SND_DEBUG	
 	if (debug < level)
 		return;
 #endif

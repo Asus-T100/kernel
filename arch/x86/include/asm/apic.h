@@ -49,7 +49,6 @@ extern unsigned int apic_verbosity;
 extern int local_apic_timer_c2_ok;
 
 extern int disable_apic;
-extern unsigned int lapic_timer_frequency;
 
 #ifdef CONFIG_SMP
 extern void __inquire_remote_apic(int apicid);
@@ -407,13 +406,6 @@ extern struct apic *__apicdrivers[], *__apicdrivers_end[];
 #ifdef CONFIG_SMP
 extern atomic_t init_deasserted;
 extern int wakeup_secondary_cpu_via_nmi(int apicid, unsigned long start_eip);
-struct init_wakeup_delays {
-	unsigned long assert_init;
-	unsigned long icr_accept;
-	unsigned long cpu_accept;
-};
-extern int wakeup_secondary_cpu_via_init_delays(int apicid,
-	unsigned long start_eip, const struct init_wakeup_delays *);
 #endif
 
 #ifdef CONFIG_X86_LOCAL_APIC
@@ -503,7 +495,7 @@ static inline void default_wait_for_init_deassert(atomic_t *deassert)
 	return;
 }
 
-extern void generic_bigsmp_probe(void);
+extern struct apic *generic_bigsmp_probe(void);
 
 
 #ifdef CONFIG_X86_LOCAL_APIC

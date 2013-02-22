@@ -8,36 +8,6 @@ menuconfig POWER_SUPPLY
 
 if POWER_SUPPLY
 
-config POWER_SUPPLY_CHARGER
-	bool "Power Supply Charger"
-	select EXTCON
-	select POWER_SUPPLY_BATTID
-	help
-	  Say Y here to enable the power supply charger framework. Charger
-	  framework supports charging in a generic way. This allows the charger
-	  drivers to keep the charging logic outside and the charger driver
-	  just need to abstract the charger hardware
-
-config POWER_SUPPLY_CHARGING_ALGO_PSE
-	bool "PSE compliant charging algorithm"
-	help
-	  Say Y here to select PSE compliant charging algorithm. As per PSE
-	  standard the battery characteristics and thereby the charging rates
-	  can vary on different temperature zones. This config will enable PSE
-	  compliant charging algorithm with maintenance charging support. The
-	  algorithm can be selected by the charging framework based on the type
-	  of the battery charging profile.
-
-	depends on POWER_SUPPLY_CHARGER
-
-config POWER_SUPPLY_BATTID
-	bool "Power Supply Battery Identification Framework"
-	help
-	 Say Y here to enable the power supply battery idnetification
-	 framework. The framework would allow different battery identification
-	 drivers to interface with power supply subsystem. Also it allows consumer
-	 drivers to register for notification from the power_supply subsystem.
-
 config POWER_SUPPLY_DEBUG
 	bool "Power supply debug"
 	help
@@ -197,13 +167,6 @@ config BATTERY_MAX17042
 	  multi-function devices that include fuel gauages that are compatible
 	  with MAX17042.
 
-config BATTERY_MAX17050
-	bool "MAX17050 Fuel Gauge support"
-	depends on BATTERY_MAX17042
-	help
-	  MAX17050 is fuel-gauge systems for lithium-ion (Li+) batteries
-	  in handheld and portable equipment.
-
 config BATTERY_Z2
 	tristate "Z2 battery driver"
 	depends on I2C && MACH_ZIPIT2
@@ -240,49 +203,6 @@ config BATTERY_INTEL_MID
 	  Say Y here to enable the battery driver on Intel MID
 	  platforms.
 
-config BATTERY_INTEL_MDF
-        tristate "Battery driver for Intel Medfield MID platforms"
-        depends on INTEL_SCU_IPC && USB_PENWELL_OTG && MSIC_GPADC
-        help
-          Say Y here to enable the battery driver on Intel Medfield based MID
-          platforms.
-
-config CHARGER_SMB347
-        tristate "Summit SMB347 Charger driver"
-        depends on I2C && USB_PENWELL_OTG
-        help
-          Say Y here to enable the charger driver on Intel Medfield based Tablet
-          platforms.
-
-config CHARGER_SMB349
-	bool "SMB349 Charger support"
-	depends on CHARGER_SMB347
-	help
-          Say Y here to enable the SMB349 chip support which
-	  which is improved version over smb347.
-
-config INTEL_MID_BASIN_COVE_CHARGER
-        tristate "Charger driver for Basin Cove PMIC on Intel MID"
-        depends on INTEL_SCU_IPC
-	select CHARGER_HELPER
-        help
-	  Say Y here to enable the Basin Cove charger driver on Intel MID
-	  platforms.
-
-	  To compile this driver as a module, choose M here: the
-	  module will be called basin_cove_charger.
-
-
-config BATTERY_INTEL_FG
-        tristate "Fuel gauge driver for Intel Medfield MID platforms"
-        depends on INTEL_SCU_IPC && MSIC_GPADC
-	help
-	  Say Y here to enable the fuel gauge driver on Intel Medfield based MID
-	  platforms.
-
-	  To compile this driver as a module, choose M here: the
-	  module will be called intel_mdf_fg.
-
 config CHARGER_ISP1704
 	tristate "ISP1704 USB Charger Detection"
 	depends on USB_OTG_UTILS
@@ -314,47 +234,5 @@ config CHARGER_GPIO
 
 	  This driver can be build as a module. If so, the module will be
 	  called gpio-charger.
-
-config CHARGER_BQ24192
-	tristate "TI BQ24192/BQ24191/BQ24190 Charger"
-	depends on I2C
-	help
-	  BQ24192 is charger chip for lithium-ion (Li+) batteries
-	  in handheld and portable equipment.
-
-config CHARGER_HELPER
-	bool "Charger Helper"
-	help
-	  Say Y to enable charger helper support
-	  Charger helper abstracts common charger operations and
-	  provides callback interfaces for hardware dependant functions.
-
-config MRFL_CHARGER_SIM_DRIVER
-	tristate "Sim Framework"
-	select USB_OTG
-	select USB_OTG_UTILS
-	help
-	  Simulation framework driver that allows simulation of
-	  charging/discharging scenarios and events and allows
-	  for testing of the charger operations
-
-config BQ24261_CHARGER
-	tristate "BQ24261 charger driver"
-	select POWER_SUPPLY_CHARGER
-	depends on I2C
-	help
-	  Say Y to include support for BQ24261 Charger driver. This driver
-	  makes use of power supply charging framework. So the driver gives
-	  the charger hardware abstraction only. Charging logic is abstracted
-	  in the charging framework.
-
-config PMIC_CCSM
-	tristate "PMIC CCSM driver"
-	depends on INTEL_SCU_IPC
-	help
-	  Say Y to include support for PMIC Charger Control State Machine driver
-	  Driver for initializing and monitoring the CCSM in PMIC
-	  This driver sets the CCSM registers and handles the PMIC
-	  charger interrupts.
 
 endif # POWER_SUPPLY

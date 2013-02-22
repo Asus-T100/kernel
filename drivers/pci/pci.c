@@ -58,8 +58,7 @@ static void pci_dev_d3_sleep(struct pci_dev *dev)
 	if (delay < pci_pm_d3_delay)
 		delay = pci_pm_d3_delay;
 
-	if (delay)
-		msleep(delay);
+	msleep(delay);
 }
 
 #ifdef CONFIG_PCI_DOMAINS
@@ -602,8 +601,7 @@ static int pci_raw_set_power_state(struct pci_dev *dev, pci_power_t state)
 	/* see PCI PM 1.1 5.6.1 table 18 */
 	if (state == PCI_D3hot || dev->current_state == PCI_D3hot)
 		pci_dev_d3_sleep(dev);
-	else if ((state == PCI_D2 || dev->current_state == PCI_D2)
-	 && (PCI_PM_D2_DELAY))
+	else if (state == PCI_D2 || dev->current_state == PCI_D2)
 		udelay(PCI_PM_D2_DELAY);
 
 	pci_read_config_word(dev, dev->pm_cap + PCI_PM_CTRL, &pmcsr);
@@ -964,11 +962,9 @@ void pci_restore_state(struct pci_dev *dev)
 	for (i = 15; i >= 0; i--) {
 		pci_read_config_dword(dev, i * 4, &val);
 		if (val != dev->saved_config_space[i]) {
-#ifdef CONFIG_PCI_DEBUG
 			dev_printk(KERN_DEBUG, &dev->dev, "restoring config "
 				"space at offset %#x (was %#x, writing %#x)\n",
 				i, val, (int)dev->saved_config_space[i]);
-#endif
 			pci_write_config_dword(dev,i * 4,
 				dev->saved_config_space[i]);
 		}
@@ -1293,6 +1289,7 @@ void __attribute__ ((weak)) pcibios_disable_device (struct pci_dev *dev) {}
 static void do_pci_disable_device(struct pci_dev *dev)
 {
 	u16 pci_command;
+
 	pci_read_config_word(dev, PCI_COMMAND, &pci_command);
 	if (pci_command & PCI_COMMAND_MASTER) {
 		pci_command &= ~PCI_COMMAND_MASTER;
@@ -1908,7 +1905,7 @@ void pci_enable_ari(struct pci_dev *dev)
 {
 	int pos;
 	u32 cap;
-	u16 flags, ctrl;
+	u16 ctrl;
 	struct pci_dev *bridge;
 
 	if (!pci_is_pcie(dev) || dev->devfn)
@@ -1924,11 +1921,6 @@ void pci_enable_ari(struct pci_dev *dev)
 
 	pos = pci_pcie_cap(bridge);
 	if (!pos)
-		return;
-
-	/* ARI is a PCIe v2 feature */
-	pci_read_config_word(bridge, pos + PCI_EXP_FLAGS, &flags);
-	if ((flags & PCI_EXP_FLAGS_VERS) < 2)
 		return;
 
 	pci_read_config_dword(bridge, pos + PCI_EXP_DEVCAP2, &cap);

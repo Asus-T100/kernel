@@ -297,9 +297,6 @@
 
 #include "gadget_chips.h"
 
-#ifdef CONFIG_USB_GADGET_DWC3
-const char lun_file_name[30] = "/storage/storage.img";
-#endif
 
 /*------------------------------------------------------------------------*/
 
@@ -643,8 +640,7 @@ static int fsg_setup(struct usb_function *f,
 		if (ctrl->bRequestType !=
 		    (USB_DIR_IN | USB_TYPE_CLASS | USB_RECIP_INTERFACE))
 			break;
-		if (w_index != fsg->interface_number
-				|| w_value != 0 || w_length != 1)
+		if (w_index != fsg->interface_number || w_value != 0)
 			return -EDOM;
 		VDBG(fsg, "get max LUN\n");
 		*(u8 *)req->buf = fsg->common->nluns - 1;
@@ -749,6 +745,7 @@ static int do_read(struct fsg_common *common)
 	u32			amount_left;
 	loff_t			file_offset, file_offset_tmp;
 	unsigned int		amount;
+	unsigned int		partial_page;
 	ssize_t			nread;
 
 	/*
@@ -778,23 +775,8 @@ static int do_read(struct fsg_common *common)
 
 	/* Carry out the file reads */
 	amount_left = common->data_size_from_cmnd;
-#ifdef CONFIG_USB_GADGET_DWC3
-	if (unlikely(amount_left == 0)) {
-		/* Wait for the next buffer to become available */
-		bh = common->next_buffhd_to_fill;
-		while (bh->state != BUF_STATE_EMPTY) {
-			rc = sleep_thread(common);
-			if (rc)
-				return rc;
-		}
-		bh->inreq->length = 0;
-
-		return -EIO;		/* No default reply */
-	}
-#else
 	if (unlikely(amount_left == 0))
 		return -EIO;		/* No default reply */
-#endif
 
 	for (;;) {
 		/*
@@ -810,6 +792,10 @@ static int do_read(struct fsg_common *common)
 		amount = min(amount_left, FSG_BUFLEN);
 		amount = min((loff_t)amount,
 			     curlun->file_length - file_offset);
+		partial_page = file_offset & (PAGE_CACHE_SIZE - 1);
+		if (partial_page > 0)
+			amount = min(amount, (unsigned int)PAGE_CACHE_SIZE -
+					     partial_page);
 
 		/* Wait for the next buffer to become available */
 		bh = common->next_buffhd_to_fill;
@@ -891,6 +877,7 @@ static int do_write(struct fsg_common *common)
 	u32			amount_left_to_req, amount_left_to_write;
 	loff_t			usb_offset, file_offset, file_offset_tmp;
 	unsigned int		amount;
+	unsigned int		partial_page;
 	ssize_t			nwritten;
 	int			rc;
 
@@ -914,10 +901,17 @@ static int do_write(struct fsg_common *common)
 		/*
 		 * We allow DPO (Disable Page Out = don't save data in the
 		 * cache) and FUA (Force Unit Access = write directly to the
-		 * medium).  We don't implement them. */
+		 * medium).  We don't implement DPO; we implement FUA by
+		 * performing synchronous output.
+		 */
 		if (common->cmnd[1] & ~0x18) {
 			curlun->sense_data = SS_INVALID_FIELD_IN_CDB;
 			return -EINVAL;
+		}
+		if (!curlun->nofua && (common->cmnd[1] & 0x08)) { /* FUA */
+			spin_lock(&curlun->filp->f_lock);
+			curlun->filp->f_flags |= O_SYNC;
+			spin_unlock(&curlun->filp->f_lock);
 		}
 	}
 	if (lba >= curlun->num_sectors) {
@@ -951,6 +945,10 @@ static int do_write(struct fsg_common *common)
 			amount = min(amount_left_to_req, FSG_BUFLEN);
 			amount = min((loff_t)amount,
 				     curlun->file_length - usb_offset);
+			partial_page = usb_offset & (PAGE_CACHE_SIZE - 1);
+			if (partial_page > 0)
+				amount = min(amount,
+	(unsigned int)PAGE_CACHE_SIZE - partial_page);
 
 			if (amount == 0) {
 				get_some_more = 0;
@@ -958,6 +956,16 @@ static int do_write(struct fsg_common *common)
 					SS_LOGICAL_BLOCK_ADDRESS_OUT_OF_RANGE;
 				curlun->sense_data_info = usb_offset >> 9;
 				curlun->info_valid = 1;
+				continue;
+			}
+			amount -= amount & 511;
+			if (amount == 0) {
+
+				/*
+				 * Why were we were asked to transfer a
+				 * partial block?
+				 */
+				get_some_more = 0;
 				continue;
 			}
 
@@ -969,11 +977,12 @@ static int do_write(struct fsg_common *common)
 				get_some_more = 0;
 
 			/*
-			 * Except at the end of the transfer, amount will be
-			 * equal to the buffer size, which is divisible by
-			 * the bulk-out maxpacket size.
+			 * amount is always divisible by 512, hence by
+			 * the bulk-out maxpacket size
 			 */
-			set_bulk_out_req_length(common, bh, amount);
+			bh->outreq->length = amount;
+			bh->bulk_out_intended_length = amount;
+			bh->outreq->short_not_ok = 1;
 			if (!start_out_transfer(common, bh))
 				/* Dunno what to do if common->fsg is NULL */
 				return -EIO;
@@ -2178,7 +2187,7 @@ unknown_cmnd:
 		common->data_size_from_cmnd = 0;
 		sprintf(unknown, "Unknown x%02x", common->cmnd[0]);
 		reply = check_command(common, common->cmnd_size,
-				      DATA_DIR_UNKNOWN, ~0, 0, unknown);
+				      DATA_DIR_UNKNOWN, 0xff, 0, unknown);
 		if (reply == 0) {
 			common->curlun->sense_data = SS_INVALID_COMMAND;
 			reply = -EINVAL;
@@ -2321,30 +2330,6 @@ static int enable_endpoint(struct fsg_common *common, struct usb_ep *ep,
 	int	rc;
 
 	ep->driver_data = common;
-#ifdef CONFIG_USB_GADGET_DWC3
-	if (common->fsg->gadget->speed == USB_SPEED_SUPER) {
-		if (ep == common->fsg->bulk_in) {
-			ep->maxburst = fsg_ss_bulk_in_comp_desc.bMaxBurst;
-			ep->max_streams =
-				fsg_ss_bulk_in_comp_desc.bmAttributes;
-		} else if (ep == common->fsg->bulk_out) {
-			ep->maxburst = fsg_ss_bulk_out_comp_desc.bMaxBurst;
-			ep->max_streams =
-				fsg_ss_bulk_out_comp_desc.bmAttributes;
-#if 0
-		} else if (ep == common->fsg->intr_in) {
-			ep->maxburst = fsg_ss_intr_ep_comp_desc.bMaxBurst;
-			ep->max_streams = 0;
-#endif
-		} else {
-			ep->maxburst = 0;
-			ep->max_streams = 0;
-		}
-	} else {
-		ep->maxburst = 0;
-		ep->max_streams = 0;
-	}
-#endif
 	rc = usb_ep_enable(ep, d);
 	if (rc)
 		ERROR(common, "can't enable %s, result %d\n", ep->name, rc);
@@ -2411,29 +2396,15 @@ reset:
 	fsg = common->fsg;
 
 	/* Enable the endpoints */
-#ifdef CONFIG_USB_GADGET_DWC3
-	d = fsg_ep_desc(common->gadget,
-			&fsg_fs_bulk_in_desc,
-			&fsg_hs_bulk_in_desc,
-			&fsg_ss_bulk_in_desc);
-#else
 	d = fsg_ep_desc(common->gadget,
 			&fsg_fs_bulk_in_desc, &fsg_hs_bulk_in_desc);
-#endif
 	rc = enable_endpoint(common, fsg->bulk_in, d);
 	if (rc)
 		goto reset;
 	fsg->bulk_in_enabled = 1;
 
-#ifdef CONFIG_USB_GADGET_DWC3
-	d = fsg_ep_desc(common->gadget,
-			&fsg_fs_bulk_out_desc,
-			&fsg_hs_bulk_out_desc,
-			&fsg_ss_bulk_out_desc);
-#else
 	d = fsg_ep_desc(common->gadget,
 			&fsg_fs_bulk_out_desc, &fsg_hs_bulk_out_desc);
-#endif
 	rc = enable_endpoint(common, fsg->bulk_out, d);
 	if (rc)
 		goto reset;
@@ -2477,18 +2448,6 @@ static int fsg_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
 static void fsg_disable(struct usb_function *f)
 {
 	struct fsg_dev *fsg = fsg_from_func(f);
-	int    i;
-	struct fsg_buffhd *bh;
-
-	/* free all of pending request */
-	for (i = 0; i < FSG_NUM_BUFFERS; ++i) {
-		bh = &fsg->common->buffhds[i];
-		if (bh->inreq_busy)
-			usb_ep_dequeue(fsg->bulk_in, bh->inreq);
-		if (bh->outreq_busy)
-			usb_ep_dequeue(fsg->bulk_out, bh->outreq);
-	}
-
 	fsg->common->new_fsg = NULL;
 	raise_exception(fsg->common, FSG_STATE_CONFIG_CHANGE);
 }
@@ -2801,9 +2760,6 @@ static struct fsg_common *fsg_common_init(struct fsg_common *common,
 		fsg_strings[FSG_STRING_INTERFACE].id = rc;
 		fsg_intf_desc.iInterface = rc;
 	}
-#ifdef CONFIG_USB_GADGET_DWC3
-		fsg_intf_desc.iInterface = 0;
-#endif
 
 	/*
 	 * Create the LUNs, open their backing files, and register the
@@ -2851,13 +2807,6 @@ static struct fsg_common *fsg_common_init(struct fsg_common *common,
 		if (rc)
 			goto error_luns;
 
-#ifdef CONFIG_USB_GADGET_DWC3
-		/* lcfg->filename = lun_file_name; */
-		lcfg->filename = NULL;
-		curlun->removable = 1;
-		curlun->ro = 0;
-		printk(KERN_ERR "lun open: %s", lcfg->filename);
-#endif
 		if (lcfg->filename) {
 			rc = fsg_lun_open(curlun, lcfg->filename);
 			if (rc)
@@ -3076,31 +3025,7 @@ static int fsg_bind(struct usb_configuration *c, struct usb_function *f)
 			return -ENOMEM;
 		}
 	}
-#ifdef CONFIG_USB_GADGET_DWC3
-	if (gadget_is_superspeed(gadget)) {
-		unsigned	max_burst;
 
-		/* Calculate bMaxBurst, we know packet size is 1024 */
-		max_burst = min_t(unsigned, FSG_BUFLEN / 1024, 15);
-
-		fsg_ss_bulk_in_desc.bEndpointAddress =
-			fsg_fs_bulk_in_desc.bEndpointAddress;
-		fsg_ss_bulk_in_comp_desc.bMaxBurst = max_burst;
-
-		fsg_ss_bulk_out_desc.bEndpointAddress =
-			fsg_fs_bulk_out_desc.bEndpointAddress;
-		fsg_ss_bulk_out_comp_desc.bMaxBurst = max_burst;
-
-		f->ss_descriptors = usb_copy_descriptors(fsg_ss_function);
-
-		if (unlikely(!f->ss_descriptors)) {
-			usb_free_descriptors(f->hs_descriptors);
-			usb_free_descriptors(f->descriptors);
-			return -ENOMEM;
-		}
-	}
-
-#endif
 	return 0;
 
 autoconf_fail:
@@ -3127,7 +3052,7 @@ static int fsg_bind_config(struct usb_composite_dev *cdev,
 	if (unlikely(!fsg))
 		return -ENOMEM;
 
-	fsg->function.name        = "mass_storage";
+	fsg->function.name        = FSG_DRIVER_DESC;
 	fsg->function.strings     = fsg_strings_array;
 	fsg->function.bind        = fsg_bind;
 	fsg->function.unbind      = fsg_unbind;

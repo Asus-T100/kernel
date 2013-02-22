@@ -341,8 +341,6 @@ static int ext4_valid_extent(struct inode *inode, struct ext4_extent *ext)
 	ext4_fsblk_t block = ext4_ext_pblock(ext);
 	int len = ext4_ext_get_actual_len(ext);
 
-	if (len == 0)
-		return 0;
 	return ext4_data_block_valid(EXT4_SB(inode->i_sb), block, len);
 }
 
@@ -2846,7 +2844,7 @@ static int ext4_split_extent_at(handle_t *handle,
 		if (err)
 			goto fix_extent_len;
 		/* update the extent length and mark as initialized */
-		ex->ee_len = cpu_to_le16(ee_len);
+		ex->ee_len = cpu_to_le32(ee_len);
 		ext4_ext_try_to_merge(inode, path, ex);
 		err = ext4_ext_dirty(handle, inode, path + depth);
 		goto out;
@@ -3598,18 +3596,17 @@ int ext4_ext_map_blocks(handle_t *handle, struct inode *inode,
 	}
 
 	err = check_eofblocks_fl(handle, inode, map->m_lblk, path, ar.len);
-	if (!err)
-		err = ext4_ext_insert_extent(handle, inode, path,
-					     &newex, flags);
+	if (err)
+		goto out2;
+
+	err = ext4_ext_insert_extent(handle, inode, path, &newex, flags);
 	if (err) {
-		int fb_flags = flags & EXT4_GET_BLOCKS_DELALLOC_RESERVE ?
-			EXT4_FREE_BLOCKS_NO_QUOT_UPDATE : 0;
 		/* free data blocks we just allocated */
 		/* not a good idea to call discard here directly,
 		 * but otherwise we'd need to call it every free() */
 		ext4_discard_preallocations(inode);
 		ext4_free_blocks(handle, inode, NULL, ext4_ext_pblock(&newex),
-				 ext4_ext_get_actual_len(&newex), fb_flags);
+				 ext4_ext_get_actual_len(&newex), 0);
 		goto out2;
 	}
 

@@ -757,8 +757,8 @@ static int saa711x_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
 	switch (ctrl->id) {
 	case V4L2_CID_CHROMA_AGC:
 		/* chroma gain cluster */
-		if (state->agc->val)
-			state->gain->val =
+		if (state->agc->cur.val)
+			state->gain->cur.val =
 				saa711x_read(sd, R_0F_CHROMA_GAIN_CNTL) & 0x7f;
 		break;
 	}
@@ -1601,7 +1601,7 @@ static int saa711x_probe(struct i2c_client *client,
 			V4L2_CID_CHROMA_AGC, 0, 1, 1, 1);
 	state->gain = v4l2_ctrl_new_std(hdl, &saa711x_ctrl_ops,
 			V4L2_CID_CHROMA_GAIN, 0, 127, 1, 40);
-	state->gain->flags |= V4L2_CTRL_FLAG_VOLATILE;
+	state->gain->is_volatile = 1;
 	sd->ctrl_handler = hdl;
 	if (hdl->error) {
 		int err = hdl->error;

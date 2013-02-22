@@ -114,8 +114,8 @@
 
 /* GFP bitmask for kmemleak internal allocations */
 #define gfp_kmemleak_mask(gfp)	(((gfp) & (GFP_KERNEL | GFP_ATOMIC)) | \
-				 __GFP_NORETRY | __GFP_NOMEMALLOC) /* |
-				 __GFP_NOWARN) */
+				 __GFP_NORETRY | __GFP_NOMEMALLOC | \
+				 __GFP_NOWARN)
 
 /* scanning area inside a memory block */
 struct kmemleak_scan_area {
@@ -254,7 +254,7 @@ static struct early_log
 	early_log[CONFIG_DEBUG_KMEMLEAK_EARLY_LOG_SIZE] __initdata;
 static int crt_early_log __initdata;
 
-static void kmemleak_disable(const char *reason);
+static void kmemleak_disable(void);
 
 /*
  * Print a warning and dump the stack trace.
@@ -271,7 +271,7 @@ static void kmemleak_disable(const char *reason);
  */
 #define kmemleak_stop(x...)	do {	\
 	kmemleak_warn(x);		\
-	kmemleak_disable("due to internal fatal error");		\
+	kmemleak_disable();		\
 } while (0)
 
 /*
@@ -516,7 +516,7 @@ static struct kmemleak_object *create_object(unsigned long ptr, size_t size,
 	object = kmem_cache_alloc(object_cache, gfp_kmemleak_mask(gfp));
 	if (!object) {
 		pr_warning("Cannot allocate a kmemleak_object structure\n");
-		kmemleak_disable("due to insufficient memory");
+		kmemleak_disable();
 		return NULL;
 	}
 
@@ -797,7 +797,7 @@ static void __init log_early(int op_type, const void *ptr, size_t size,
 	if (crt_early_log >= ARRAY_SIZE(early_log)) {
 		pr_warning("Early log buffer exceeded, "
 			   "please increase DEBUG_KMEMLEAK_EARLY_LOG_SIZE\n");
-		kmemleak_disable("due to insufficient log buffer size");
+		kmemleak_disable();
 		return;
 	}
 
@@ -1553,7 +1553,7 @@ static ssize_t kmemleak_write(struct file *file, const char __user *user_buf,
 		return ret;
 
 	if (strncmp(buf, "off", 3) == 0)
-		kmemleak_disable("by explicit command");
+		kmemleak_disable();
 	else if (strncmp(buf, "stack=on", 8) == 0)
 		kmemleak_stack_scan = 1;
 	else if (strncmp(buf, "stack=off", 9) == 0)
@@ -1625,7 +1625,7 @@ static DECLARE_WORK(cleanup_work, kmemleak_do_cleanup);
  * Disable kmemleak. No memory allocation/freeing will be traced once this
  * function is called. Disabling kmemleak is an irreversible operation.
  */
-static void kmemleak_disable(const char *reason)
+static void kmemleak_disable(void)
 {
 	/* atomically check whether it was already invoked */
 	if (atomic_cmpxchg(&kmemleak_error, 0, 1))
@@ -1639,7 +1639,7 @@ static void kmemleak_disable(const char *reason)
 	if (atomic_read(&kmemleak_initialized))
 		schedule_work(&cleanup_work);
 
-	pr_info("Kernel memory leak detector disabled %s\n", reason);
+	pr_info("Kernel memory leak detector disabled\n");
 }
 
 /*
@@ -1650,7 +1650,7 @@ static int kmemleak_boot_config(char *str)
 	if (!str)
 		return -EINVAL;
 	if (strcmp(str, "off") == 0)
-		kmemleak_disable("by boot-time option");
+		kmemleak_disable();
 	else if (strcmp(str, "on") == 0)
 		kmemleak_skip_disable = 1;
 	else
@@ -1669,7 +1669,7 @@ void __init kmemleak_init(void)
 
 #ifdef CONFIG_DEBUG_KMEMLEAK_DEFAULT_OFF
 	if (!kmemleak_skip_disable) {
-		kmemleak_disable("by default");
+		kmemleak_disable();
 		return;
 	}
 #endif

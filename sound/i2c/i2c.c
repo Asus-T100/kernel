@@ -22,7 +22,6 @@
 
 #include <linux/init.h>
 #include <linux/slab.h>
-#include <linux/module.h>
 #include <linux/string.h>
 #include <linux/errno.h>
 #include <sound/core.h>

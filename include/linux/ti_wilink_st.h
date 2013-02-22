@@ -25,23 +25,16 @@
 #ifndef TI_WILINK_ST_H
 #define TI_WILINK_ST_H
 
-#include <linux/wakelock.h>
-
 /**
  * enum proto-type - The protocol on WiLink chips which share a
  *	common physical interface like UART.
  */
 enum proto_type {
-	ST_BT = 4, /* HCI_EVENT_PKT */
-	ST_FM = 8,
-	ST_GPS = 9,
+	ST_BT,
+	ST_FM,
+	ST_GPS,
 	ST_MAX_CHANNELS = 16,
 };
-
-/* Those are also defined in include/net/bluetooth/hci.h */
-#define HCI_EVENT_HDR_SIZE	2
-#define HCI_MAX_ACL_SIZE	1024
-#define HCI_MAX_FRAME_SIZE	(HCI_MAX_ACL_SIZE + 4)
 
 /**
  * struct st_proto_s - Per Protocol structure from BT/FM/GPS to ST
@@ -137,8 +130,6 @@ extern long st_unregister(struct st_proto_s *);
  *	from waitq can be moved onto the txq.
  *	Needs locking too.
  * @lock: the lock to protect skbs, queues, and ST states.
- * @wake_lock: wake lock to implement an inactivity timeout to prevent
- * going into S3 when incoming data is to be handled.
  * @protos_registered: count of the protocols registered, also when 0 the
  *	chip enable gpio can be toggled, and when it changes to 1 the fw
  *	needs to be downloaded to initialize chip side ST.
@@ -161,13 +152,10 @@ struct st_data_s {
 	unsigned char rx_chnl;
 	struct sk_buff_head txq, tx_waitq;
 	spinlock_t lock;
-	struct wake_lock wake_lock;
 	unsigned char	protos_registered;
 	unsigned long ll_state;
 	void *kim_data;
 	struct tty_struct *tty;
-	struct device *tty_dev;
-	int is_awake;
 };
 
 /*
@@ -215,8 +203,8 @@ void gps_chrdrv_stub_init(void);
 /* time in msec to wait for
  * line discipline to be installed
  */
-#define LDISC_TIME	1150
-#define CMD_RESP_TIME	1000
+#define LDISC_TIME	1000
+#define CMD_RESP_TIME	800
 #define CMD_WR_TIME	5000
 #define MAKEWORD(a, b)  ((unsigned short)(((unsigned char)(a)) \
 	| ((unsigned short)((unsigned char)(b))) << 8))
@@ -289,7 +277,6 @@ struct kim_data_s {
  * ldisc installed, read chip_version, download relevant fw
  */
 long st_kim_start(void *);
-void __st_kim_stop(void *);
 long st_kim_stop(void *);
 
 void st_kim_recv(void *, const unsigned char *, long count);
@@ -423,28 +410,7 @@ struct gps_event_hdr {
 	u16 plen;
 } __attribute__ ((packed));
 
-/**
- * struct ti_st_plat_data - platform data shared between ST driver and
- *	platform specific board file which adds the ST device.
- * @nshutdown_gpio: Host's GPIO line to which chip's BT_EN is connected.
- * @dev_name: The UART/TTY name to which chip is interfaced. (eg: /dev/ttyS1)
- * @flow_cntrl: Should always be 1, since UART's CTS/RTS is used for PM
- *	purposes.
- * @baud_rate: The baud rate supported by the Host UART controller, this will
- *	be shared across with the chip via a HCI VS command from User-Space Init
- *	Mgr application.
- * @suspend:
- * @resume: legacy PM routines hooked to platform specific board file, so as
- *	to take chip-host interface specific action.
- * @chip_enable:
- * @chip_disable: Platform/Interface specific mux mode setting, GPIO
- *	configuring, Host side PM disabling etc.. can be done here.
- * @chip_asleep:
- * @chip_awake: Chip specific deep sleep states is communicated to Host
- *	specific board-xx.c to take actions such as cut UART clocks when chip
- *	asleep or run host faster when chip awake etc..
- *
- */
+/* platform data */
 struct ti_st_plat_data {
 	long nshutdown_gpio;
 	unsigned char dev_name[UART_DEV_NAME_LEN]; /* uart name */
@@ -452,10 +418,6 @@ struct ti_st_plat_data {
 	unsigned long baud_rate;
 	int (*suspend)(struct platform_device *, pm_message_t);
 	int (*resume)(struct platform_device *);
-	int (*chip_enable) (struct st_data_s *);
-	int (*chip_disable) (struct st_data_s *);
-	int (*chip_asleep) (struct st_data_s *);
-	int (*chip_awake) (struct st_data_s *);
 };
 
 #endif /* TI_WILINK_ST_H */

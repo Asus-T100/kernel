@@ -19,8 +19,6 @@
 
 #include <asm/ftrace.h>
 
-struct ftrace_hash;
-
 #ifdef CONFIG_FUNCTION_TRACER
 
 extern int ftrace_enabled;
@@ -30,6 +28,8 @@ ftrace_enable_sysctl(struct ctl_table *table, int write,
 		     loff_t *ppos);
 
 typedef void (*ftrace_func_t)(unsigned long ip, unsigned long parent_ip);
+
+struct ftrace_hash;
 
 enum {
 	FTRACE_OPS_FL_ENABLED		= 1 << 0,
@@ -123,8 +123,7 @@ stack_trace_sysctl(struct ctl_table *table, int write,
 struct ftrace_func_command {
 	struct list_head	list;
 	char			*name;
-	int			(*func)(struct ftrace_hash *hash,
-					char *func, char *cmd,
+	int			(*func)(char *func, char *cmd,
 					char *params, int enable);
 };
 
@@ -533,10 +532,6 @@ static inline int test_tsk_trace_graph(struct task_struct *tsk)
 enum ftrace_dump_mode;
 
 extern enum ftrace_dump_mode ftrace_dump_on_oops;
-
-#ifdef CONFIG_ANDROID_RAM_CONSOLE
-extern ssize_t ftrace_reserved_buffer_write(const char *buf, ssize_t len);
-#endif
 
 #ifdef CONFIG_PREEMPT
 #define INIT_TRACE_RECURSION		.trace_recursion = 0,

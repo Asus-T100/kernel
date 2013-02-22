@@ -37,8 +37,6 @@ static const char *_name = DM_NAME;
 static unsigned int major = 0;
 static unsigned int _major = 0;
 
-static DEFINE_IDR(_minor_idr);
-
 static DEFINE_SPINLOCK(_minor_lock);
 /*
  * For bio-based dm.
@@ -315,12 +313,6 @@ static void __exit dm_exit(void)
 
 	while (i--)
 		_exits[i]();
-
-	/*
-	 * Should be empty by this point.
-	 */
-	idr_remove_all(&_minor_idr);
-	idr_destroy(&_minor_idr);
 }
 
 /*
@@ -1713,6 +1705,8 @@ static int dm_any_congested(void *congested_data, int bdi_bits)
 /*-----------------------------------------------------------------
  * An IDR is used to keep track of allocated minor numbers.
  *---------------------------------------------------------------*/
+static DEFINE_IDR(_minor_idr);
+
 static void free_minor(int minor)
 {
 	spin_lock(&_minor_lock);

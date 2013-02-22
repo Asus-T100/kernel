@@ -25,12 +25,6 @@
 
 #include <linux/types.h>
 
-/* Phonet media types */
-#define PN_MEDIA_ROUTING	0x00
-#define PN_MEDIA_USB		0x1B
-#define PN_MEDIA_DEFAULT	0x25
-#define PN_MEDIA_MODEM_HOST_IF  0x26
-
 /* Automatic protocol selection */
 #define PN_PROTO_TRANSPORT	0
 /* Phonet datagram socket */
@@ -48,10 +42,6 @@
 #define PNADDR_BROADCAST	0xFC
 #define PNPORT_RESOURCE_ROUTING	0
 
-
-/* define object for multicast */
-#define PNOBJECT_MULTICAST 0x20
-
 /* Values for PNPIPE_ENCAP option */
 #define PNPIPE_ENCAP_NONE	0
 #define PNPIPE_ENCAP_IP		1
@@ -60,10 +50,6 @@
 #define SIOCPNGETOBJECT		(SIOCPROTOPRIVATE + 0)
 #define SIOCPNADDRESOURCE	(SIOCPROTOPRIVATE + 14)
 #define SIOCPNDELRESOURCE	(SIOCPROTOPRIVATE + 15)
-
-
-#define SIOCCONFIGTYPE		(SIOCPROTOPRIVATE + 1)
-#define SIOCCONFIGSUBTYPE	(SIOCPROTOPRIVATE + 2)
 
 /* Phonet protocol header */
 struct phonethdr {
@@ -97,7 +83,7 @@ struct phonetmsg {
 #define pn_submsg_id		pn_msg_u.base.pn_submsg_id
 #define pn_e_submsg_id		pn_msg_u.ext.pn_e_submsg_id
 #define pn_e_res_id		pn_msg_u.ext.pn_e_res_id
-#define pn_data		pn_msg_u.base.pn_data
+#define pn_data			pn_msg_u.base.pn_data
 #define pn_e_data		pn_msg_u.ext.pn_e_data
 
 /* data for unreachable errors */

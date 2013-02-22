@@ -2,8 +2,6 @@
 # Makefile for the PCI bus specific drivers.
 #
 
-CFLAGS_intel_soc_pci.o	:= -Werror
-
 obj-y		+= access.o bus.o probe.o remove.o pci.o \
 			pci-driver.o search.o pci-sysfs.o rom.o setup-res.o \
 			irq.o vpd.o
@@ -54,7 +52,6 @@ obj-$(CONFIG_MN10300) += setup-bus.o
 obj-$(CONFIG_MICROBLAZE) += setup-bus.o
 obj-$(CONFIG_TILE) += setup-bus.o setup-irq.o
 obj-$(CONFIG_SPARC_LEON) += setup-bus.o setup-irq.o
-obj-$(CONFIG_ATOM_SOC_POWER) += intel_soc_pci.o
 
 #
 # ACPI Related PCI FW Functions

@@ -1,1 +1,0 @@
-#File or folder to skip from checkpatch.pl

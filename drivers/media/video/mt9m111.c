@@ -13,7 +13,6 @@
 #include <linux/log2.h>
 #include <linux/gpio.h>
 #include <linux/delay.h>
-#include <linux/module.h>
 
 #include <media/v4l2-common.h>
 #include <media/v4l2-chip-ident.h>

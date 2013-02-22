@@ -665,7 +665,7 @@ static enum page_references page_check_references(struct page *page,
 		return PAGEREF_RECLAIM;
 
 	if (referenced_ptes) {
-		if (PageSwapBacked(page))
+		if (PageAnon(page))
 			return PAGEREF_ACTIVATE;
 		/*
 		 * All mapped pages start out with page table
@@ -683,14 +683,8 @@ static enum page_references page_check_references(struct page *page,
 		 */
 		SetPageReferenced(page);
 
-		if (referenced_page || referenced_ptes > 1)
+		if (referenced_page)
 			return PAGEREF_ACTIVATE;
-        /*
-        * Activate file-backed executable pages after first usage.
-        */
-        if (vm_flags & VM_EXEC)
-            return PAGEREF_ACTIVATE;
-
 
 		return PAGEREF_KEEP;
 	}
@@ -1754,7 +1748,6 @@ static void get_scan_count(struct zone *zone, struct scan_control *sc,
 	enum lru_list l;
 	int noswap = 0;
 	int force_scan = 0;
-	unsigned long nr_force_scan[2];
 
 
 	anon  = zone_nr_lru_pages(zone, sc, LRU_ACTIVE_ANON) +
@@ -1777,8 +1770,6 @@ static void get_scan_count(struct zone *zone, struct scan_control *sc,
 		fraction[0] = 0;
 		fraction[1] = 1;
 		denominator = 1;
-		nr_force_scan[0] = 0;
-		nr_force_scan[1] = SWAP_CLUSTER_MAX;
 		goto out;
 	}
 
@@ -1790,8 +1781,6 @@ static void get_scan_count(struct zone *zone, struct scan_control *sc,
 			fraction[0] = 1;
 			fraction[1] = 0;
 			denominator = 1;
-			nr_force_scan[0] = SWAP_CLUSTER_MAX;
-			nr_force_scan[1] = 0;
 			goto out;
 		}
 	}
@@ -1840,11 +1829,6 @@ static void get_scan_count(struct zone *zone, struct scan_control *sc,
 	fraction[0] = ap;
 	fraction[1] = fp;
 	denominator = ap + fp + 1;
-	if (force_scan) {
-		unsigned long scan = SWAP_CLUSTER_MAX;
-		nr_force_scan[0] = div64_u64(scan * ap, denominator);
-		nr_force_scan[1] = div64_u64(scan * fp, denominator);
-	}
 out:
 	for_each_evictable_lru(l) {
 		int file = is_file_lru(l);
@@ -1865,8 +1849,12 @@ out:
 		 * memcg, priority drop can cause big latency. So, it's better
 		 * to scan small amount. See may_noscan above.
 		 */
-		if (!scan && force_scan)
-			scan = nr_force_scan[file];
+		if (!scan && force_scan) {
+			if (file)
+				scan = SWAP_CLUSTER_MAX;
+			else if (!noswap)
+				scan = SWAP_CLUSTER_MAX;
+		}
 		nr[l] = scan;
 	}
 }

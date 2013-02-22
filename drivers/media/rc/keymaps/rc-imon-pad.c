@@ -10,7 +10,6 @@
  */
 
 #include <media/rc-map.h>
-#include <linux/module.h>
 
 /*
  * standard imon remote key table, which isn't really entirely

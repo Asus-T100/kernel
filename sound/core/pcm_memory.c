@@ -25,7 +25,6 @@
 #include <linux/slab.h>
 #include <linux/moduleparam.h>
 #include <linux/vmalloc.h>
-#include <linux/module.h>
 #include <sound/core.h>
 #include <sound/pcm.h>
 #include <sound/info.h>

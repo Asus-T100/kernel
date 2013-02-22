@@ -6,7 +6,6 @@
  */
 
 #include <linux/firewire.h>
-#include <linux/export.h>
 #include <linux/slab.h>
 #include "packets-buffer.h"
 

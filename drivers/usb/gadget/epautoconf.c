@@ -294,12 +294,6 @@ struct usb_ep *usb_ep_autoconfig (
 
 	/* Second, look at endpoints until an unclaimed one looks usable */
 	list_for_each_entry (ep, &gadget->ep_list, ep_list) {
-#ifdef CONFIG_USB_GADGET_DWC3
-		/* ep1in and ep8in are reserved for DWC3 device controller */
-		if (!strncmp(ep->name, "ep1in", 5) ||
-		    !strncmp(ep->name, "ep8in", 5))
-			continue;
-#endif
 		if (ep_matches (gadget, ep, desc))
 			return ep;
 	}

@@ -104,25 +104,25 @@ static void __spin_lock_debug(raw_spinlock_t *lock)
 	u64 loops = loops_per_jiffy * HZ;
 	int print_once = 1;
 
-	for (i = 0; i < loops; i++) {
-		if (arch_spin_trylock(&lock->raw_lock))
-			return;
-		__delay(1);
-	}
-	/* lockup suspected: */
-	if (print_once) {
-		print_once = 0;
-		printk(KERN_EMERG "BUG: spinlock lockup on CPU#%d, %s/%d, %p\n",
-			raw_smp_processor_id(), current->comm,
-			task_pid_nr(current), lock);
-		dump_stack();
+	for (;;) {
+		for (i = 0; i < loops; i++) {
+			if (arch_spin_trylock(&lock->raw_lock))
+				return;
+			__delay(1);
+		}
+		/* lockup suspected: */
+		if (print_once) {
+			print_once = 0;
+			printk(KERN_EMERG "BUG: spinlock lockup on CPU#%d, "
+					"%s/%d, %p\n",
+				raw_smp_processor_id(), current->comm,
+				task_pid_nr(current), lock);
+			dump_stack();
 #ifdef CONFIG_SMP
-		trigger_all_cpu_backtrace();
+			trigger_all_cpu_backtrace();
 #endif
+		}
 	}
-
-	arch_spin_lock(&lock->raw_lock);
-
 }
 
 void do_raw_spin_lock(raw_spinlock_t *lock)

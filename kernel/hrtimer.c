@@ -885,13 +885,10 @@ static void __remove_hrtimer(struct hrtimer *timer,
 			     struct hrtimer_clock_base *base,
 			     unsigned long newstate, int reprogram)
 {
-	struct timerqueue_node *next_timer;
 	if (!(timer->state & HRTIMER_STATE_ENQUEUED))
 		goto out;
 
-	next_timer = timerqueue_getnext(&base->active);
-	timerqueue_del(&base->active, &timer->node);
-	if (&timer->node == next_timer) {
+	if (&timer->node == timerqueue_getnext(&base->active)) {
 #ifdef CONFIG_HIGH_RES_TIMERS
 		/* Reprogram the clock event device. if enabled */
 		if (reprogram && hrtimer_hres_active()) {
@@ -904,6 +901,7 @@ static void __remove_hrtimer(struct hrtimer *timer,
 		}
 #endif
 	}
+	timerqueue_del(&base->active, &timer->node);
 	if (!timerqueue_getnext(&base->active))
 		base->cpu_base->active_bases &= ~(1 << base->index);
 out:
@@ -1194,22 +1192,6 @@ int hrtimer_get_res(const clockid_t which_clock, struct timespec *tp)
 }
 EXPORT_SYMBOL_GPL(hrtimer_get_res);
 
-/*
- * dump_hrtimer_callinfo - print hrtimer information including:
- * state, callback function, pid and start_site.
-*/
-static void dump_hrtimer_callinfo(struct hrtimer *timer)
-{
-
-	pr_err("timer info: state/%lx, func/%pf\n",
-		timer->state, timer->function);
-
-#ifdef CONFIG_TIMER_STATS
-	pr_err("timer stats: pid/%d(%s), site/%pf\n",
-		timer->start_pid, timer->start_comm, timer->start_site);
-#endif
-}
-
 static void __run_hrtimer(struct hrtimer *timer, ktime_t *now)
 {
 	struct hrtimer_clock_base *base = timer->base;
@@ -1241,10 +1223,7 @@ static void __run_hrtimer(struct hrtimer *timer, ktime_t *now)
 	 * hrtimer_start_range_ns() or in hrtimer_interrupt()
 	 */
 	if (restart != HRTIMER_NORESTART) {
-		if (timer->state != HRTIMER_STATE_CALLBACK) {
-			dump_hrtimer_callinfo(timer);
-			BUG();
-		}
+		BUG_ON(timer->state != HRTIMER_STATE_CALLBACK);
 		enqueue_hrtimer(timer, base);
 	}
 

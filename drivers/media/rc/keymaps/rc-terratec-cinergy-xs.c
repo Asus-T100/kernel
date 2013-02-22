@@ -11,7 +11,6 @@
  */
 
 #include <media/rc-map.h>
-#include <linux/module.h>
 
 /* Terratec Cinergy Hybrid T USB XS
    Devin Heitmueller <dheitmueller@linuxtv.org>

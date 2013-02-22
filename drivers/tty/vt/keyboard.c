@@ -410,12 +410,6 @@ void compute_shiftstate(void)
 			if (val == KVAL(K_CAPSSHIFT))
 				val = KVAL(K_SHIFT);
 
-			/* fix a KW error */
-			if (val >= (sizeof(shift_down) \
-						/ sizeof(shift_down[0]))) {
-				BUG();
-				continue;
-			}
 			shift_down[val]++;
 			shift_state |= (1 << val);
 		}
@@ -1047,7 +1041,6 @@ static int kbd_update_leds_helper(struct input_handle *handle, void *data)
  * registered yet but we already getting updates form VT to
  * update led state.
  */
-#ifndef CONFIG_ANDROID
 static void kbd_bh(unsigned long dummy)
 {
 	unsigned char leds = getleds();
@@ -1060,7 +1053,6 @@ static void kbd_bh(unsigned long dummy)
 }
 
 DECLARE_TASKLET_DISABLED(keyboard_tasklet, kbd_bh, 0);
-#endif
 
 #if defined(CONFIG_X86) || defined(CONFIG_IA64) || defined(CONFIG_ALPHA) ||\
     defined(CONFIG_MIPS) || defined(CONFIG_PPC) || defined(CONFIG_SPARC) ||\
@@ -1327,9 +1319,7 @@ static void kbd_event(struct input_handle *handle, unsigned int event_type,
 
 	spin_unlock(&kbd_event_lock);
 
-#ifndef CONFIG_ANDROID
 	tasklet_schedule(&keyboard_tasklet);
-#endif
 	do_poke_blanked_console = 1;
 	schedule_console_callback();
 }
@@ -1401,7 +1391,6 @@ static void kbd_disconnect(struct input_handle *handle)
  * Start keyboard handler on the new keyboard by refreshing LED state to
  * match the rest of the system.
  */
-#ifndef CONFIG_ANDROID
 static void kbd_start(struct input_handle *handle)
 {
 	tasklet_disable(&keyboard_tasklet);
@@ -1411,9 +1400,6 @@ static void kbd_start(struct input_handle *handle)
 
 	tasklet_enable(&keyboard_tasklet);
 }
-#else
-static void kbd_start(struct input_handle *handle) {}
-#endif
 
 static const struct input_device_id kbd_ids[] = {
 	{
@@ -1460,10 +1446,8 @@ int __init kbd_init(void)
 	if (error)
 		return error;
 
-#ifndef CONFIG_ANDROID
 	tasklet_enable(&keyboard_tasklet);
 	tasklet_schedule(&keyboard_tasklet);
-#endif
 
 	return 0;
 }

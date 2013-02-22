@@ -32,8 +32,7 @@ temperature) and throttle appropriate devices.
 
 1.1 thermal zone device interface
 1.1.1 struct thermal_zone_device *thermal_zone_device_register(char *name,
-		int trips, int flag, void *devdata,
-		struct thermal_zone_device_ops *ops)
+		int trips, void *devdata, struct thermal_zone_device_ops *ops)
 
     This interface function adds a new thermal zone device (sensor) to
     /sys/class/thermal folder as thermal_zone[0-*]. It tries to bind all the
@@ -41,7 +40,6 @@ temperature) and throttle appropriate devices.
 
     name: the thermal zone name.
     trips: the total number of trip points this thermal zone supports.
-    flag: Bit string: If 'n'th bit is set, then trip point 'n' is writeable.
     devdata: device private data
     ops: thermal zone device call-backs.
 	.bind: bind the thermal zone device with a thermal cooling device.
@@ -121,7 +119,6 @@ Thermal zone device sys I/F, created once it's registered:
     |---mode:			Working mode of the thermal zone
     |---trip_point_[0-*]_temp:	Trip point temperature
     |---trip_point_[0-*]_type:	Trip point type
-    |---trip_point_[0-*]_hyst:	Hysteresis value for this trip point
 
 Thermal cooling device sys I/F, created once it's registered:
 /sys/class/thermal/cooling_device[0-*]:
@@ -190,11 +187,6 @@ trip_point_[0-*]_type
 	E.g. it can be one of critical, hot, passive, active[0-*] for ACPI
 	thermal zone.
 	RO, Optional
-
-trip_point_[0-*]_hyst
-	The hysteresis value for a trip point, represented as an integer
-	Unit: Celsius
-	RW, Optional
 
 cdev[0-*]
 	Sysfs link to the thermal cooling device node where the sys I/F

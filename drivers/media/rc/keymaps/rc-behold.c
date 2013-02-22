@@ -11,7 +11,6 @@
  */
 
 #include <media/rc-map.h>
-#include <linux/module.h>
 
 /*
  * Igor Kuznetsov <igk72@ya.ru>

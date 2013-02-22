@@ -3262,7 +3262,7 @@ int journal_mark_dirty(struct reiserfs_transaction_handle *th,
 			       th->t_trans_id, journal->j_trans_id);
 	}
 
-	sb_mark_dirty(sb);
+	sb->s_dirt = 1;
 
 	prepared = test_clear_buffer_journal_prepared(bh);
 	clear_buffer_journal_restore_dirty(bh);
@@ -3987,7 +3987,7 @@ static int do_journal_end(struct reiserfs_transaction_handle *th,
 	 ** it tells us if we should continue with the journal_end, or just return
 	 */
 	if (!check_journal_end(th, sb, nblocks, flags)) {
-		sb_mark_dirty(sb);
+		sb->s_dirt = 1;
 		wake_queued_writers(sb);
 		reiserfs_async_progress_wait(sb);
 		goto out;

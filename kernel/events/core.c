@@ -2270,9 +2270,6 @@ static void perf_ctx_adjust_freq(struct perf_event_context *ctx, u64 period)
 	s64 delta;
 
 	raw_spin_lock(&ctx->lock);
-
-	rcu_read_lock();
-
 	list_for_each_entry_rcu(event, &ctx->event_list, event_entry) {
 		if (event->state != PERF_EVENT_STATE_ACTIVE)
 			continue;
@@ -2304,8 +2301,6 @@ static void perf_ctx_adjust_freq(struct perf_event_context *ctx, u64 period)
 		if (delta > 0)
 			perf_adjust_period(event, period, delta);
 	}
-	rcu_read_unlock();
-
 	raw_spin_unlock(&ctx->lock);
 }
 
@@ -5021,8 +5016,11 @@ static int __perf_event_overflow(struct perf_event *event, int nmi,
 	if (events && atomic_dec_and_test(&event->event_limit)) {
 		ret = 1;
 		event->pending_kill = POLL_HUP;
-		event->pending_disable = 1;
-		irq_work_queue(&event->pending);
+		if (nmi) {
+			event->pending_disable = 1;
+			irq_work_queue(&event->pending);
+		} else
+			perf_event_disable(event);
 	}
 
 	if (event->overflow_handler)

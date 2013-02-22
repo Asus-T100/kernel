@@ -17,7 +17,6 @@
 #include <linux/interrupt.h>
 #include <linux/workqueue.h>
 #include <linux/delay.h>
-#include <linux/module.h>
 #include <trace/events/asoc.h>
 
 /**
@@ -106,7 +105,7 @@ void snd_soc_jack_report(struct snd_soc_jack *jack, int status, int mask)
 
 	snd_soc_dapm_sync(dapm);
 
-	snd_jack_report(jack->jack, jack->status);
+	snd_jack_report(jack->jack, status);
 
 out:
 	mutex_unlock(&codec->mutex);
@@ -188,8 +187,6 @@ int snd_soc_jack_add_pins(struct snd_soc_jack *jack, int count,
 		INIT_LIST_HEAD(&pins[i].list);
 		list_add(&(pins[i].list), &jack->pins);
 	}
-
-	snd_soc_dapm_new_widgets(&jack->codec->card->dapm);
 
 	/* Update to reflect the last reported status; canned jack
 	 * implementations are likely to set their state before the
@@ -324,16 +321,13 @@ int snd_soc_jack_add_gpios(struct snd_soc_jack *jack, int count,
 		INIT_DELAYED_WORK(&gpios[i].work, gpio_work);
 		gpios[i].jack = jack;
 
-		if (!gpios[i].irq_flags)
-			gpios[i].irq_flags =
-				IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING;
-
 		ret = request_any_context_irq(gpio_to_irq(gpios[i].gpio),
 					      gpio_handler,
-					      gpios[i].irq_flags,
+					      IRQF_TRIGGER_RISING |
+					      IRQF_TRIGGER_FALLING,
 					      gpios[i].name,
 					      &gpios[i]);
-		if (ret < 0)
+		if (ret)
 			goto err;
 
 		if (gpios[i].wake) {
@@ -344,8 +338,10 @@ int snd_soc_jack_add_gpios(struct snd_soc_jack *jack, int count,
 					gpios[i].gpio, ret);
 		}
 
+#ifdef CONFIG_GPIO_SYSFS
 		/* Expose GPIO value over sysfs for diagnostic purposes */
 		gpio_export(gpios[i].gpio, false);
+#endif
 
 		/* Update initial jack status */
 		snd_soc_jack_gpio_detect(&gpios[i]);
@@ -377,7 +373,9 @@ void snd_soc_jack_free_gpios(struct snd_soc_jack *jack, int count,
 	int i;
 
 	for (i = 0; i < count; i++) {
+#ifdef CONFIG_GPIO_SYSFS
 		gpio_unexport(gpios[i].gpio);
+#endif
 		free_irq(gpio_to_irq(gpios[i].gpio), &gpios[i]);
 		cancel_delayed_work_sync(&gpios[i].work);
 		gpio_free(gpios[i].gpio);
