@@ -418,6 +418,7 @@ static ssize_t sst_debug_lpe_log_enable_write(struct file *file,
 	addr = &params.dbg_type;
 
 	size_t buf_size = min(count, sizeof(buf)-1);
+	memset(&params, 0, sizeof(params));
 
 	if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID) {
 		pr_err("Currently not supported for mrfld\n");
@@ -836,7 +837,7 @@ static const struct file_operations sst_debug_fw_reset_state = {
 static ssize_t sst_debug_dwnld_mode_read(struct file *file,
 		char __user *user_buf, size_t count, loff_t *ppos)
 {
-	char *state;
+	char *state = "error\n";
 
 	if (atomic_read(&sst_drv_ctx->use_dma) == 0) {
 		state = "memcpy\n";

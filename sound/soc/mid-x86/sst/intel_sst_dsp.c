@@ -1039,6 +1039,10 @@ static int sst_request_fw(struct intel_sst_drv *sst)
 	pr_debug("Requesting FW %s now...\n", name);
 	retval = request_firmware(&sst->fw, name,
 				 &sst->pci->dev);
+	if (sst->fw == NULL) {
+		pr_err("sst->fw is returning as null\n");
+		return -EINVAL;
+	}
 	if (retval) {
 		pr_err("request fw failed %d\n", retval);
 		return retval;
@@ -1414,6 +1418,10 @@ int sst_load_library(struct snd_sst_lib_download *lib, u8 ops)
 	pr_debug("Requesting %s\n", buf);
 
 	error = request_firmware(&fw_lib, buf, &sst_drv_ctx->pci->dev);
+	if (fw_lib == NULL) {
+		pr_err("fw_lib pointer is returning null\n");
+		return -EINVAL;
+	}
 	if (error) {
 		pr_err("library load failed %d\n", error);
 		goto wake;

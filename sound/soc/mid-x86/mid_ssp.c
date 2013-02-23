@@ -474,6 +474,12 @@ static int ssp_dai_startup(struct snd_pcm_substream *substream,
 	unsigned int device;
 	int ret = 0;
 
+	WARN(!cpu_dai->driver, "SSP DAI: "
+			"FCT %s ERROR NULL cpu_dai->driver\n",
+			__func__);
+	if (!cpu_dai->driver)
+		return -EINVAL;
+
 	pr_info("SSP DAI: FCT %s enters for DAI Id = %d\n",
 			__func__, cpu_dai->driver->id);
 
@@ -493,11 +499,6 @@ static int ssp_dai_startup(struct snd_pcm_substream *substream,
 	if (!ssp_config)
 		return -EINVAL;
 
-	WARN(!cpu_dai->driver, "SSP DAI: "
-			"FCT %s ERROR NULL cpu_dai->driver\n",
-			__func__);
-	if (!cpu_dai->driver)
-		return -EINVAL;
 
 	device = cpu_dai->driver->id;
 

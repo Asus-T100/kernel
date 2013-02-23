@@ -972,11 +972,11 @@ int sst_unregister_dsp(struct sst_device *dev)
 
 	mutex_lock(&sst_dsp_lock);
 	if (sst_dsp) {
+		pr_debug("unregister %s\n", sst_dsp->name);
 		mutex_unlock(&sst_dsp_lock);
 		return -EIO;
 	}
 
-	pr_debug("unregister %s\n", sst_dsp->name);
 	sst_dsp = NULL;
 	mutex_unlock(&sst_dsp_lock);
 	return 0;

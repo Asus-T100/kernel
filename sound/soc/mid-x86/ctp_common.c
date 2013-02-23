@@ -540,7 +540,7 @@ static int snd_ctp_complete(struct device *dev)
 			ctx->ops->mclk_switch(dev, true);
 		}
 	}
-	snd_soc_resume(dev);
+	return snd_soc_resume(dev);
 }
 
 static void snd_ctp_poweroff(struct device *dev)

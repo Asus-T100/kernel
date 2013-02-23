@@ -199,13 +199,18 @@ int sst_get_stream_allocated(struct snd_sst_params *str_param,
 		return -ENOMEM;
 
 	retval = sst_alloc_stream((char *) str_param, block);
+	str_id = retval;
 	if (retval < 0) {
 		pr_err("sst_alloc_stream failed %d\n", retval);
 		goto free_block;
 	}
 	pr_debug("Stream allocated %d\n", retval);
-	str_id = retval;
 	str_info = get_stream_info(str_id);
+	if (str_info == NULL) {
+		pr_err("get stream info returned null\n");
+		str_id = -EINVAL;
+		goto free_block;
+	}
 
 	/* Block the call for reply */
 	retval = sst_wait_timeout(sst_drv_ctx, block);
