@@ -2991,6 +2991,11 @@ PVRSRV_BRIDGE_SGX_ADDSHAREDPBDESC_RETURN_RESULT:
 	return ret;
 }
 
+#ifdef CONFIG_GPU_BURST
+extern int gburst_module_init(void);
+extern int gburst_init_state;
+#endif
+
 static IMG_INT
 SGXGetInfoForSrvinitBW(IMG_UINT32 ui32BridgeID,
 					   PVRSRV_BRIDGE_IN_SGXINFO_FOR_SRVINIT *psSGXInfoForSrvinitIN,
@@ -3003,6 +3008,20 @@ SGXGetInfoForSrvinitBW(IMG_UINT32 ui32BridgeID,
 	PVRSRV_HEAP_INFO_KM asHeapInfo[PVRSRV_MAX_CLIENT_HEAPS];
 #endif
 	PVRSRV_BRIDGE_ASSERT_CMD(ui32BridgeID, PVRSRV_BRIDGE_SGXINFO_FOR_SRVINIT);
+
+    printk(KERN_INFO "SGX Init!");
+#ifdef CONFIG_GPU_BURST
+    // Postpone the gburst module init just at the very beginning of SGX um initialization
+    if(gburst_init_state == 0){
+        int ret;
+        gburst_init_state = 1;
+        ret = gburst_module_init();
+        if (ret){
+            printk(KERN_ERR "gburst_module_init failure!");
+            gburst_init_state = 0;
+        }
+    }
+#endif
 
 	NEW_HANDLE_BATCH_OR_ERROR(psSGXInfoForSrvinitOUT->eError, psPerProc, PVRSRV_MAX_CLIENT_HEAPS);
 
