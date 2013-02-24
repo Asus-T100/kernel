@@ -103,6 +103,8 @@ struct sdhci_host {
 #define SDHCI_QUIRK2_DISABLE_MMC_CAP_NONREMOVABLE	(1<<5)
 /* avoid detect/rescan/poweoff operations on suspend/resume. */
 #define SDHCI_QUIRK2_ENABLE_MMC_PM_IGNORE_PM_NOTIFY	(1<<6)
+/* Disable eMMC/SD card High speed feature. */
+#define SDHCI_QUIRK2_DISABLE_HIGH_SPEED			(1<<7)
 
 	int irq;		/* Device IRQ */
 	void __iomem *ioaddr;	/* Mapped address */
