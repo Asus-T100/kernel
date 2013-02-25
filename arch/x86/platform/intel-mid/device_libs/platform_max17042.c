@@ -52,6 +52,8 @@ EXPORT_SYMBOL(max17042_i2c_reset_workaround);
 static bool msic_battery_check(char *battid)
 {
 	struct sfi_table_simple *sb;
+	char *mrfl_batt_str = "INTN0001";
+
 	sb = (struct sfi_table_simple *)get_oem0_table();
 	if (sb == NULL) {
 		pr_info("invalid battery detected\n");
@@ -62,14 +64,26 @@ static bool msic_battery_check(char *battid)
 		/* First entry in OEM0 table is the BATTID. Read battid
 		 * if pentry is not NULL and header length is greater
 		 * than BATTID length*/
-		if (sb->pentry && sb->header.len >= BATTID_LEN)
-			snprintf(battid, BATTID_LEN + 1, "%s",
+		if (sb->pentry && sb->header.len >= BATTID_LEN) {
+			if (!((INTEL_MID_BOARD(1, TABLET, MRFL)) ||
+				(INTEL_MID_BOARD(1, PHONE, MRFL)))) {
+				snprintf(battid, BATTID_LEN + 1, "%s",
 						(char *)sb->pentry);
+			} else {
+				if (strncmp((char *)sb->pentry,
+					"PG000001", (BATTID_LEN)) == 0) {
+					snprintf(battid, (BATTID_LEN + 1), "%s",
+						mrfl_batt_str);
+				} else {
+					snprintf(battid, (BATTID_LEN + 1), "%s",
+						(char *)sb->pentry);
+				}
+			}
+		}
 		return true;
 	}
 	return false;
 }
-
 
 #define UMIP_REF_FG_TBL			0x806	/* 2 bytes */
 #define BATT_FG_TBL_BODY		14	/* 144 bytes */
