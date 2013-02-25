@@ -1020,7 +1020,7 @@ out:
 	return ret;
 }
 
-static void __devexit fw_update_rpmsg_remove(struct rpmsg_channel *rpdev)
+static void fw_update_rpmsg_remove(struct rpmsg_channel *rpdev)
 {
 	free_rpmsg_instance(rpdev, &fw_update_instance);
 	intel_fw_update_sysfs_remove(scu_fw_update_kobj);
@@ -1053,7 +1053,7 @@ static struct rpmsg_driver fw_update_rpmsg = {
 	.id_table	= fw_update_rpmsg_id_table,
 	.probe		= fw_update_rpmsg_probe,
 	.callback	= fw_update_rpmsg_cb,
-	.remove		= __devexit_p(fw_update_rpmsg_remove),
+	.remove		= fw_update_rpmsg_remove,
 };
 
 static int __init fw_update_module_init(void)

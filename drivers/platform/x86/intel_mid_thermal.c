@@ -672,11 +672,11 @@ static struct platform_driver mid_therm_driver = {
 		.pm = &msic_thermal_pm_ops,
 	},
 	.probe = mid_thermal_probe,
-	.remove = __devexit_p(mid_thermal_remove),
+	.remove = mid_thermal_remove,
 	.id_table = mid_therm_table,
 };
 
-static int __init mid_therm_module_init(void)
+static int mid_therm_module_init(void)
 {
 	return platform_driver_register(&mid_therm_driver);
 }
@@ -705,7 +705,7 @@ out:
 	return ret;
 }
 
-static void __devexit mid_therm_rpmsg_remove(struct rpmsg_channel *rpdev)
+static void mid_therm_rpmsg_remove(struct rpmsg_channel *rpdev)
 {
 	mid_therm_module_exit();
 	dev_info(&rpdev->dev, "Removed mid_therm rpmsg device\n");
@@ -727,23 +727,23 @@ static struct rpmsg_device_id mid_therm_id_table[] = {
 
 MODULE_DEVICE_TABLE(rpmsg, mid_therm_id_table);
 
-static struct rpmsg_driver mid_therm_rpmsg = {
+static struct rpmsg_driver mid_therm_rpmsg_driver = {
 	.drv.name	= DRIVER_NAME,
 	.drv.owner	= THIS_MODULE,
 	.probe		= mid_therm_rpmsg_probe,
 	.callback	= mid_therm_rpmsg_cb,
-	.remove		= __devexit_p(mid_therm_rpmsg_remove),
+	.remove		= mid_therm_rpmsg_remove,
 	.id_table	= mid_therm_id_table,
 };
 
 static int __init mid_therm_rpmsg_init(void)
 {
-	return register_rpmsg_driver(&mid_therm_rpmsg);
+	return register_rpmsg_driver(&mid_therm_rpmsg_driver);
 }
 
 static void __exit mid_therm_rpmsg_exit(void)
 {
-	return unregister_rpmsg_driver(&mid_therm_rpmsg);
+	return unregister_rpmsg_driver(&mid_therm_rpmsg_driver);
 }
 
 

@@ -76,7 +76,7 @@ static irqreturn_t mid_pb_threaded_isr(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
-static int __devinit mid_pb_probe(struct platform_device *pdev)
+static int mid_pb_probe(struct platform_device *pdev)
 {
 	struct input_dev *input;
 	struct mid_pb_priv *priv;
@@ -170,7 +170,7 @@ fail:
 	return ret;
 }
 
-static int __devexit mid_pb_remove(struct platform_device *pdev)
+static int mid_pb_remove(struct platform_device *pdev)
 {
 	struct mid_pb_priv *priv = platform_get_drvdata(pdev);
 
@@ -193,7 +193,7 @@ static struct platform_driver mid_pb_driver = {
 		.owner = THIS_MODULE,
 	},
 	.probe	= mid_pb_probe,
-	.remove	= __devexit_p(mid_pb_remove),
+	.remove	= mid_pb_remove,
 	.id_table = mid_pb_table,
 };
 
@@ -226,7 +226,7 @@ out:
 }
 
 
-static void __devexit mid_pb_rpmsg_remove(struct rpmsg_channel *rpdev)
+static void mid_pb_rpmsg_remove(struct rpmsg_channel *rpdev)
 {
 	mid_pb_module_exit();
 	dev_info(&rpdev->dev, "Removed mid_pb rpmsg device\n");
@@ -248,23 +248,23 @@ static struct rpmsg_device_id mid_pb_id_table[] = {
 MODULE_DEVICE_TABLE(rpmsg, mid_pb_id_table);
 
 
-static struct rpmsg_driver mid_pb_rpmsg = {
+static struct rpmsg_driver mid_pb_rpmsg_driver = {
 	.drv.name	= DRIVER_NAME,
 	.drv.owner	= THIS_MODULE,
 	.probe		= mid_pb_rpmsg_probe,
 	.callback	= mid_pb_rpmsg_cb,
-	.remove		= __devexit_p(mid_pb_rpmsg_remove),
+	.remove		= mid_pb_rpmsg_remove,
 	.id_table	= mid_pb_id_table,
 };
 
 static int __init mid_pb_rpmsg_init(void)
 {
-	return register_rpmsg_driver(&mid_pb_rpmsg);
+	return register_rpmsg_driver(&mid_pb_rpmsg_driver);
 }
 
 static void __exit mid_pb_rpmsg_exit(void)
 {
-	return unregister_rpmsg_driver(&mid_pb_rpmsg);
+	return unregister_rpmsg_driver(&mid_pb_rpmsg_driver);
 }
 
 #ifdef MODULE
