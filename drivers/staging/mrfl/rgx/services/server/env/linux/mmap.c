@@ -286,6 +286,8 @@ int MMapPMR(struct file* pFile, struct vm_area_struct* ps_vma)
         IMG_INT32 iStatus;
         IMG_CPU_PHYADDR sCpuPAddr;
         IMG_BOOL bValid;
+	struct page *psPage = NULL;
+
 
         uiNumContiguousBytes = 1ULL<<PAGE_SHIFT;
         eError = PMR_CpuPhysAddr(psPMR,
@@ -304,14 +306,15 @@ int MMapPMR(struct file* pFile, struct vm_area_struct* ps_vma)
 		*/
 		if (bValid)
 		{
-	        uiPFN = sCpuPAddr.uiAddr >> PAGE_SHIFT;
-	        PVR_ASSERT(uiPFN << PAGE_SHIFT == sCpuPAddr.uiAddr);
-	
-	        iStatus = remap_pfn_range(ps_vma,
-	                                  ps_vma->vm_start + uiOffset,
-	                                  uiPFN,
-	                                  uiNumContiguousBytes,
-	                                  ps_vma->vm_page_prot);
+		uiPFN = sCpuPAddr.uiAddr >> PAGE_SHIFT;
+		PVR_ASSERT(uiPFN << PAGE_SHIFT == sCpuPAddr.uiAddr);
+
+		PVR_ASSERT(pfn_valid(uiPFN));
+		psPage = pfn_to_page(uiPFN);
+		iStatus = vm_insert_page(ps_vma,
+					ps_vma->vm_start + uiOffset,
+					psPage);
+
 	        PVR_ASSERT(iStatus == 0);
 	        if(iStatus)
 	        {
