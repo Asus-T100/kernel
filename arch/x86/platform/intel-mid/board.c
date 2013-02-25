@@ -232,10 +232,8 @@ struct devs_id __initconst device_ids[] = {
  *	#endif
  */
 
-struct devs_id *get_device_ptr(void)
+struct devs_id __init *get_device_ptr(void)
 {
-	struct devs_id *dev_ptr = device_ids;
-
-	return dev_ptr;
+	return device_ids;
 }
 
