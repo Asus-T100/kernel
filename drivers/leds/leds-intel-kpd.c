@@ -81,7 +81,7 @@ static int intel_kpd_led_rpmsg_probe(struct rpmsg_channel *rpdev)
 	return 0;
 }
 
-static void __devexit intel_kpd_led_rpmsg_remove(struct rpmsg_channel *rpdev)
+static void intel_kpd_led_rpmsg_remove(struct rpmsg_channel *rpdev)
 {
 	intel_keypad_led_set(&intel_kpd_led, LED_OFF);
 	unregister_early_suspend(&intel_kpd_led_suspend_desc);
@@ -107,7 +107,7 @@ static struct rpmsg_driver intel_kpd_led_rpmsg = {
 	.id_table	= intel_kpd_led_id_table,
 	.probe		= intel_kpd_led_rpmsg_probe,
 	.callback	= intel_kpd_led_rpmsg_cb,
-	.remove		= __devexit_p(intel_kpd_led_rpmsg_remove),
+	.remove		= intel_kpd_led_rpmsg_remove,
 };
 
 static int __init intel_kpd_led_rpmsg_init(void)
