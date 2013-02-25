@@ -108,7 +108,7 @@ static unsigned long __init mfld_calibrate_tsc(void)
 	return 0;
 }
 
-static void penwell_arch_setup()
+static void __init penwell_arch_setup()
 {
 	x86_platform.calibrate_tsc = mfld_calibrate_tsc;
 	pm_power_off = mfld_power_off;
