@@ -693,7 +693,7 @@ static int __init snd_ctp_driver_init(void)
 	return platform_driver_register(&snd_ctp_mc_driver);
 }
 
-static void __exit snd_ctp_driver_exit(void)
+static void snd_ctp_driver_exit(void)
 {
 	pr_debug("In %s\n", __func__);
 	platform_driver_unregister(&snd_ctp_mc_driver);
@@ -717,7 +717,7 @@ out:
 	return ret;
 }
 
-static void __devexit snd_clv_rpmsg_remove(struct rpmsg_channel *rpdev)
+static void snd_clv_rpmsg_remove(struct rpmsg_channel *rpdev)
 {
 	snd_ctp_driver_exit();
 	dev_info(&rpdev->dev, "Removed snd_clv rpmsg device\n");
@@ -744,7 +744,7 @@ static struct rpmsg_driver snd_clv_rpmsg = {
 	.id_table	= snd_clv_rpmsg_id_table,
 	.probe		= snd_clv_rpmsg_probe,
 	.callback	= snd_clv_rpmsg_cb,
-	.remove		= __devexit_p(snd_clv_rpmsg_remove),
+	.remove		= snd_clv_rpmsg_remove,
 };
 
 static int __init snd_clv_rpmsg_init(void)
