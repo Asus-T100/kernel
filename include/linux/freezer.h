@@ -11,6 +11,10 @@
 extern atomic_t system_freezing_cnt;	/* nr of freezing conds in effect */
 extern bool pm_freezing;		/* PM freezing in effect */
 extern bool pm_nosig_freezing;		/* PM nosig freezing in effect */
+/*
+ * Timeout for stopping processes
+ */
+extern unsigned int freeze_timeout_msecs;
 
 /*
  * Check if a process has been frozen
