@@ -75,13 +75,17 @@
 #define PMU_UART1_LSS_31		31
 #define PMU_UART2_LSS_31		31
 
+#define PMU_I2C8_LSS_33			33
+#define PMU_I2C9_LSS_34			34
+#define PMU_SSP4_LSS_35			35
+#define PMU_PMW_LSS_36			36
+
 #define EMMC0_LSS			PMU_EMMC0_LSS_02
 /*
  *FIXME: Enabling D0ix at boot has instabilities (BZ: 86393) hence
  *	 Ignoring all LSS's
  */
 #define IGNORE_SSS0 (				\
-	SSMSK(D0I3_MASK, PMU_PSH_LSS_00)	| \
 	SSMSK(D0I3_MASK, PMU_SDIO0_LSS_01)	| \
 	SSMSK(D0I3_MASK, PMU_EMMC0_LSS_02)	| \
 	SSMSK(D0I3_MASK, PMU_SDIO1_LSS_04)	| \

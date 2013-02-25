@@ -1184,6 +1184,12 @@ int __ref pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state)
 		}
 	}
 
+	/* Ignore d0ix on LSS 0 on MRFLD */
+	if (platform_is(INTEL_ATOM_MRFLD)) {
+		if ((sub_sys_pos == 0) && (sub_sys_index == 0))
+			goto unlock;
+	}
+
 	/* initialize the current pmssc states */
 	memset(&cur_pmssc, 0, sizeof(cur_pmssc));
 
