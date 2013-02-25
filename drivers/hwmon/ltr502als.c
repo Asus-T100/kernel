@@ -868,7 +868,7 @@ static struct attribute_group ltr502_attr_group[] = {
 	{.attrs = attrs },
 };
 
-static int __init ltr502als_probe(struct i2c_client *client,
+static int ltr502als_probe(struct i2c_client *client,
 		const struct i2c_device_id *id)
 {
 	int ret;
@@ -947,7 +947,7 @@ void ltr502als_shutdown(struct i2c_client *client)
 	alsps_write(alsps, CONFIGREG, POWER_DOWN);
 }
 
-static int __exit ltr502als_remove(struct i2c_client *client)
+static int ltr502als_remove(struct i2c_client *client)
 {
 	struct alsps_device *alsps = i2c_get_clientdata(client);
 
