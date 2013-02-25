@@ -1534,7 +1534,7 @@ out:
 	return ret;
 }
 
-static void __devexit watchdog_rpmsg_remove(struct rpmsg_channel *rpdev)
+static void watchdog_rpmsg_remove(struct rpmsg_channel *rpdev)
 {
 	intel_scu_watchdog_exit();
 	free_rpmsg_instance(rpdev, &watchdog_instance);
@@ -1562,7 +1562,7 @@ static struct rpmsg_driver watchdog_rpmsg = {
 	.id_table	= watchdog_rpmsg_id_table,
 	.probe		= watchdog_rpmsg_probe,
 	.callback	= watchdog_rpmsg_cb,
-	.remove		= __devexit_p(watchdog_rpmsg_remove),
+	.remove		= watchdog_rpmsg_remove,
 };
 
 static int __init watchdog_rpmsg_init(void)
