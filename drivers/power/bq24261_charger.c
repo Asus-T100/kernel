@@ -638,7 +638,7 @@ static inline int bq24261_set_inlmt(struct bq24261_charger *chip, int inlmt)
 	bq24261_inlmt_to_reg(inlmt, &reg_val);
 
 	return bq24261_read_modify_reg(chip->client, BQ24261_CTRL_ADDR,
-				       BQ24261_INLMT_MASK, reg_val);
+		       BQ24261_RESET_MASK|BQ24261_INLMT_MASK, reg_val);
 
 }
 
@@ -650,10 +650,10 @@ static inline void resume_charging(struct bq24261_charger *chip)
 		bq24261_set_cc(chip, chip->cc);
 	if (chip->cv)
 		bq24261_set_cv(chip, chip->cv);
-	if (chip->is_charger_enabled)
-		bq24261_enable_charger(chip, true);
 	if (chip->is_charging_enabled)
 		bq24261_enable_charging(chip, true);
+	if (chip->is_charger_enabled)
+		bq24261_enable_charger(chip, true);
 }
 
 static inline int bq24261_set_iterm(struct bq24261_charger *chip, int iterm)
@@ -675,10 +675,11 @@ static inline int bq24261_enable_hw_charge_term(
 	u8 data;
 	int ret;
 
-	data = val ? BQ24261_TE_ENABLE : ~BQ24261_TE_ENABLE;
+	data = val ? BQ24261_TE_ENABLE : (~BQ24261_TE_ENABLE & BQ24261_TE_MASK);
+
 
 	ret = bq24261_read_modify_reg(chip->client, BQ24261_CTRL_ADDR,
-				       BQ24261_TE_MASK, data);
+			       BQ24261_RESET_MASK|BQ24261_TE_MASK, data);
 
 	if (ret)
 		return ret;
@@ -774,30 +775,6 @@ static inline bool bq24261_is_vsys_on(struct bq24261_charger *chip)
 	return true;
 }
 
-int bq24261_get_bat_status(void)
-{
-
-	struct bq24261_charger *chip;
-
-	if (!bq24261_client)
-		return -ENODEV;
-
-	chip = i2c_get_clientdata(bq24261_client);
-
-	if (chip->cable_type == POWER_SUPPLY_CHARGER_TYPE_NONE)
-		return POWER_SUPPLY_STATUS_DISCHARGING;
-
-	if ((chip->chrgr_stat == BQ24261_CHRGR_STAT_BAT_FULL)
-		&& (chip->max_cc))
-		return POWER_SUPPLY_STATUS_FULL;
-
-	if ((chip->chrgr_stat != BQ24261_CHRGR_STAT_CHARGING) ||
-		 (!chip->is_charging_enabled) || (!chip->max_cc))
-		return POWER_SUPPLY_STATUS_NOT_CHARGING;
-
-	return POWER_SUPPLY_STATUS_CHARGING;
-}
-EXPORT_SYMBOL(bq24261_get_bat_status);
 
 static inline bool bq24261_is_online(struct bq24261_charger *chip)
 {
@@ -825,7 +802,9 @@ static int bq24261_usb_set_property(struct power_supply *psy,
 						    psy_usb);
 	int ret = 0;
 
+
 	mutex_lock(&chip->lock);
+
 
 	switch (psp) {
 
@@ -839,6 +818,14 @@ static int bq24261_usb_set_property(struct power_supply *psy,
 				(val->intval ? "enable" : "disable"));
 		else
 			chip->is_charging_enabled = val->intval;
+
+		if (val->intval)
+			bq24261_enable_hw_charge_term(chip, true);
+		else
+			cancel_delayed_work_sync(&chip->sw_term_work);
+
+		power_supply_changed(&chip->psy_usb);
+
 		break;
 	case POWER_SUPPLY_PROP_ENABLE_CHARGER:
 		ret = bq24261_enable_charger(chip, val->intval);
@@ -849,6 +836,8 @@ static int bq24261_usb_set_property(struct power_supply *psy,
 				(val->intval ? "enable" : "disable"));
 		else
 			chip->is_charger_enabled = val->intval;
+
+		power_supply_changed(&chip->psy_usb);
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_CURRENT:
 		ret = bq24261_set_cc(chip, val->intval);
@@ -875,6 +864,9 @@ static int bq24261_usb_set_property(struct power_supply *psy,
 		chip->cable_type = val->intval;
 		chip->psy_usb.type = get_power_supply_type(chip->cable_type);
 		if (chip->cable_type != POWER_SUPPLY_CHARGER_TYPE_NONE) {
+			chip->chrgr_health = POWER_SUPPLY_HEALTH_GOOD;
+			chip->chrgr_stat = BQ24261_CHRGR_STAT_UNKNOWN;
+
 			/* Adding this processing in order to check
 			for any faults during connect */
 
@@ -886,11 +878,14 @@ static int bq24261_usb_set_property(struct power_supply *psy,
 				ret);
 			else
 				bq24261_handle_irq(chip, ret);
+		} else {
+			chip->chrgr_stat = BQ24261_CHRGR_STAT_UNKNOWN;
+			chip->chrgr_health = POWER_SUPPLY_HEALTH_UNKNOWN;
 		}
 
-		chip->chrgr_stat = BQ24261_CHRGR_STAT_UNKNOWN;
-		chip->chrgr_health = POWER_SUPPLY_HEALTH_UNKNOWN;
+
 		cancel_delayed_work_sync(&chip->low_supply_fault_work);
+		power_supply_changed(&chip->psy_usb);
 
 		break;
 	case POWER_SUPPLY_PROP_INLMT:
@@ -906,7 +901,6 @@ static int bq24261_usb_set_property(struct power_supply *psy,
 	}
 
 	mutex_unlock(&chip->lock);
-	power_supply_changed(&chip->psy_usb);
 	return ret;
 }
 
@@ -919,6 +913,7 @@ static int bq24261_usb_get_property(struct power_supply *psy,
 						    psy_usb);
 
 	mutex_lock(&chip->lock);
+
 	switch (psp) {
 	case POWER_SUPPLY_PROP_PRESENT:
 		val->intval = (chip->cable_type
@@ -955,7 +950,9 @@ static int bq24261_usb_get_property(struct power_supply *psy,
 		if (chip->boost_mode)
 			val->intval = false;
 		else
-			val->intval = chip->is_charging_enabled;
+			val->intval = (chip->is_charging_enabled &&
+			(chip->chrgr_stat == BQ24261_CHRGR_STAT_CHARGING));
+
 		break;
 	case POWER_SUPPLY_PROP_ENABLE_CHARGER:
 		val->intval = chip->is_charger_enabled;
@@ -1028,61 +1025,6 @@ static inline int get_battery_current(int *cur)
 	return ret;
 }
 
-static inline bool _is_battery_full(int pbat_cur, int bat_cur,
-			int pbat_volt, int bat_volt)
-{
-	struct bq24261_charger *chip;
-
-	chip = i2c_get_clientdata(bq24261_client);
-	return ((pbat_cur <= chip->iterm) && (bat_cur <= chip->iterm) &&
-		(pbat_volt <= chip->cv) && (bat_volt <= chip->cv));
-}
-
-static inline bool is_battery_full(struct bq24261_charger *chip)
-{
-	static int pbat_volt, pbat_cur;
-	int bat_cur = 0, bat_volt = 0;
-	int ret;
-
-	/* Return true if any communication failure is encountered.
-	 * This is to ensure safety by avoiding charging the battery
-	 * incase it's FULL
-	 */
-
-	ret = get_battery_current(&bat_cur);
-	if (ret) {
-		dev_err(&chip->client->dev,
-			"%s: Error in getting battery current."
-			"Reporting battery status as FULL to avoid battery reaching over voltage\n",
-			__func__);
-		return true;
-	}
-	ret = get_battery_voltage(&bat_volt);
-	if (ret) {
-		dev_err(&chip->client->dev,
-			"%s: Error in getting battery voltage."
-			"Reporting battery status as FULL to avoid battery reaching over voltage\n",
-			__func__);
-		return true;
-	}
-
-	if (_is_battery_full(pbat_cur, bat_cur, pbat_volt, bat_volt)) {
-		pbat_volt = pbat_cur = 0;
-		dev_info(&chip->client->dev,
-			"%s:Battery is Full volt=%d current=%d:\n",
-				__func__, bat_volt, bat_cur);
-		return true;
-	}
-
-	dev_info(&chip->client->dev,
-		"%s:Battery is not Full volt=%d current=%d:\n",
-			__func__, bat_volt, bat_cur);
-	pbat_volt = bat_volt;
-	pbat_cur = bat_cur;
-
-	return false;
-}
-
 static void bq24261_sw_charge_term_worker(struct work_struct *work)
 {
 
@@ -1090,18 +1032,11 @@ static void bq24261_sw_charge_term_worker(struct work_struct *work)
 						    struct bq24261_charger,
 						    sw_term_work.work);
 
-	if (is_battery_full(chip)) {
-		chip->chrgr_stat = BQ24261_CHRGR_STAT_BAT_FULL;
-		/* Battery is full. When charging is resumed hw charge
-		 * termination should be used
-		 */
-		bq24261_enable_hw_charge_term(chip, true);
-		power_supply_changed(&chip->psy_usb);
+	power_supply_changed(NULL);
 
-	} else {
-		schedule_delayed_work(&chip->sw_term_work,
-				      CHRG_TERM_WORKER_DELAY);
-	}
+	schedule_delayed_work(&chip->sw_term_work,
+			      CHRG_TERM_WORKER_DELAY);
+
 }
 
 int bq24261_get_bat_health(void)
@@ -1217,21 +1152,11 @@ static int bq24261_handle_irq(struct bq24261_charger *chip, u8 stat_reg)
 		chip->chrgr_health = POWER_SUPPLY_HEALTH_GOOD;
 		dev_info(&client->dev, "Charger Status: Charge Done\n");
 
-		if (is_battery_full(chip))
-			chip->chrgr_stat = BQ24261_CHRGR_STAT_BAT_FULL;
-		else {
-			/* Battery is not full. Disable hardware charge
-			 * termination and send power_supply_changed
-			 * notification inorder to restart charging
-			 */
-			dev_info(&chip->client->dev, "Battery is Not Full. Starting SW charge term\n");
-			bq24261_enable_hw_charge_term(chip, false);
-			chip->is_charging_enabled = false;
-			schedule_delayed_work(&chip->sw_term_work, 0);
-			bq24261_dump_regs(false);
-		}
-
+		bq24261_enable_hw_charge_term(chip, false);
+		resume_charging(chip);
+		schedule_delayed_work(&chip->sw_term_work, 0);
 		break;
+
 	case BQ24261_STAT_FAULT:
 		break;
 	}

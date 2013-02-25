@@ -621,8 +621,9 @@ static void pmic_bat_zone_changed(void)
 		chc.health = POWER_SUPPLY_HEALTH_GOOD;
 
 	psy_bat = get_psy_battery();
-	if (psy_bat)
-		power_supply_changed(psy_bat);
+
+	if (psy_bat && psy_bat->external_power_changed)
+		psy_bat->external_power_changed(psy_bat);
 
 	return;
 }
