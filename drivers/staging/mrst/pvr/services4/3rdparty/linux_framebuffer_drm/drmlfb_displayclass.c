@@ -2121,6 +2121,12 @@ static int MRSTLFBHandleChangeFB(struct drm_device* dev, struct psb_framebuffer 
 
 		psDevInfo->sSystemBuffer.bIsContiguous = IMG_FALSE;
 		psDevInfo->sSystemBuffer.uSysAddr.psNonCont = MRSTLFBAllocKernelMem( sizeof( IMG_SYS_PHYADDR ) * psbfb->bo->ttm->num_pages);
+		if( psDevInfo->sSystemBuffer.uSysAddr.psNonCont == NULL )
+		{
+			printk(KERN_ERR "MRSTLFBAllocKernelMem fail\n");
+			return 0;
+		}
+
 		for(i = 0;i < psbfb->bo->ttm->num_pages;++i)
 		{
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(3,3,0))
@@ -2711,9 +2717,21 @@ static MRST_ERROR MRSTLFBAllocBuffer(struct MRSTLFB_DEVINFO_TAG *psDevInfo, IMG_
 	ulPagesNumber = (ui32Size + PAGE_SIZE -1) / PAGE_SIZE;
 
 	*ppBuffer = MRSTLFBAllocKernelMem( sizeof( MRSTLFB_BUFFER ) );
+	if( *ppBuffer == NULL )
+	{
+		printk(KERN_ERR "MRSTLFBAllocKernelMem fail\n");
+		return MRST_ERROR_GENERIC;
+	}
+
 	(*ppBuffer)->sCPUVAddr = pvBuf;
 	(*ppBuffer)->ui32BufferSize = ui32Size;
 	(*ppBuffer)->uSysAddr.psNonCont = MRSTLFBAllocKernelMem( sizeof( IMG_SYS_PHYADDR ) * ulPagesNumber);
+	if( (*ppBuffer)->uSysAddr.psNonCont == NULL )
+	{
+		printk(KERN_ERR "MRSTLFBAllocKernelMem fail\n");
+		return MRST_ERROR_GENERIC;
+	}
+
 	(*ppBuffer)->bIsAllocated = MRST_TRUE;
 	(*ppBuffer)->bIsContiguous = MRST_FALSE;
 	(*ppBuffer)->ui32OwnerTaskID = task_tgid_nr(current);

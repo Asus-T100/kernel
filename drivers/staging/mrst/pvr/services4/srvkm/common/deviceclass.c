@@ -1454,7 +1454,7 @@ ErrorExit:
 
 	for(i=0; i<ui32BufferCount; i++)
 	{
-		if(psSwapChain->asBuffer[i].sDeviceClassBuffer.psKernelSyncInfo)
+		if(psSwapChain && psSwapChain->asBuffer[i].sDeviceClassBuffer.psKernelSyncInfo)
 		{
 			PVRSRVKernelSyncInfoDecRef(psSwapChain->asBuffer[i].sDeviceClassBuffer.psKernelSyncInfo, IMG_NULL);
 		}
