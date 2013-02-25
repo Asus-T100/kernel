@@ -3742,7 +3742,7 @@ static void hsi_unmap_resources(struct intel_controller *intel_hsi,
  *
  * Returns success or an error code if the controller IRQ cannot be requested.
  */
-static int hsi_controller_init(struct intel_controller *intel_hsi)
+static int __devinit hsi_controller_init(struct intel_controller *intel_hsi)
 {
 	unsigned int ch;
 	int err;
@@ -3960,7 +3960,7 @@ static void hsi_rtpm_exit(struct intel_controller *intel_hsi)
  *
  * Returns success or an error code if any initialisation is failing.
  */
-static int __init hsi_add_controller(struct hsi_controller *hsi,
+static int __devinit hsi_add_controller(struct hsi_controller *hsi,
 				     struct pci_dev *pdev)
 {
 	struct intel_controller *intel_hsi;
@@ -4073,7 +4073,7 @@ static void hsi_remove_controller(struct hsi_controller *hsi,
  *
  * Returns success or an error code if any initialisation is failing.
  */
-static int intel_hsi_probe(struct pci_dev *pdev,
+static int __devinit intel_hsi_probe(struct pci_dev *pdev,
 			   const struct pci_device_id *ent)
 {
 	struct hsi_controller *hsi;

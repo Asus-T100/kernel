@@ -3277,7 +3277,7 @@ static const struct tty_port_operations ffl_port_tty_ops = {
  * FFL protocol driver, creates the related TTY port and TTY entry in the
  * filesystem.
  */
-static int __init ffl_driver_probe(struct device *dev)
+static int ffl_driver_probe(struct device *dev)
 {
 	struct hsi_client	*client = to_hsi_client(dev);
 	struct tty_port		*tty_prt;
@@ -3398,7 +3398,7 @@ no_tty_device_registration:
  * This function is freeing all resources hold by the context attached to the
  * requesting HSI device.
  */
-static int __exit ffl_driver_remove(struct device *dev)
+static int ffl_driver_remove(struct device *dev)
 {
 	struct hsi_client	*client = to_hsi_client(dev);
 	struct ffl_ctx		*ctx =
