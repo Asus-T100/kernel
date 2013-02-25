@@ -27,7 +27,7 @@ static struct mutex lock;
 static int enable_usb_phy(struct dwc_otg2 *otg, bool on_off);
 static void reset_phy(struct dwc_otg2 *otg);
 static const char driver_name[] = "dwc_otg3";
-static void __devexit dwc_otg_remove(struct pci_dev *pdev);
+static void dwc_otg_remove(struct pci_dev *pdev);
 static struct dwc_device_par *platform_par;
 static struct dwc_otg2 *the_transceiver;
 
@@ -1797,7 +1797,7 @@ exit:
 }
 
 
-static void __devexit dwc_otg_remove(struct pci_dev *pdev)
+static void dwc_otg_remove(struct pci_dev *pdev)
 {
 	struct dwc_otg2 *otg = the_transceiver;
 
