@@ -82,6 +82,8 @@ enum panel_type {
 	GI_RENESAS_CMD,
 	TC35876X_VID,
 	YB_CMI_VID,
+	VB_IGZO_CMD,
+	VB_CGS_CMD,
 	HDMI,
 	GCT_DETECT
 };

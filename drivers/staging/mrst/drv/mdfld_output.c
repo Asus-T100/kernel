@@ -43,6 +43,7 @@
 #include "displays/tc35876x_vid.h"
 #include "displays/gi_renesas_cmd.h"
 #include "displays/yb_cmi_vid.h"
+#include "displays/vb_cmd.h"
 #include "displays/hdmi.h"
 #include "psb_drv.h"
 
@@ -94,6 +95,18 @@ struct intel_mid_panel_list panel_list[] = {
 		MDFLD_DSI_ENCODER_DPI,
 		"CMI YB VID",
 		yb_cmi_vid_init
+	},
+	{
+		VB_IGZO_CMD,
+		MDFLD_DSI_ENCODER_DBI,
+		"SHARP IGZO VKB",
+		vb_igzo_cmd_init
+	},
+	{
+		VB_CGS_CMD,
+		MDFLD_DSI_ENCODER_DBI,
+		"SHARP CGS VKB",
+		vb_cgs_cmd_init
 	}
 };
 
