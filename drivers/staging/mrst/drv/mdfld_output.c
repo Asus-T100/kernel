@@ -32,154 +32,68 @@
 #include "mdfld_output.h"
 #include "mdfld_dsi_output.h"
 #include "android_hdmi.h"
-
-#include "displays/tmd_6x10_vid.h"
-#include "displays/h8c7_vid.h"
-#include "displays/auo_sc1_vid.h"
-#include "displays/auo_sc1_cmd.h"
-#include "displays/gi_sony_vid.h"
-#include "displays/gi_sony_cmd.h"
-#include "displays/h8c7_cmd.h"
-#include "displays/tc35876x_vid.h"
-#include "displays/gi_renesas_cmd.h"
-#include "displays/yb_cmi_vid.h"
-#include "displays/vb_cmd.h"
+#include "dispmgrnl.h"
+#include "psb_dpst_func.h"
+#include "mdfld_dsi_dbi_dsr.h"
 #include "displays/hdmi.h"
 #include "psb_drv.h"
 
-struct intel_mid_panel_list panel_list[] = {
-	{
-		TMD_6X10_VID,
-		MDFLD_DSI_ENCODER_DPI,
-		"TMD BB PRx",
-		tmd_6x10_vid_init
-	},
-	{
-		H8C7_VID,
-		MDFLD_DSI_ENCODER_DPI,
-		"H8C7 VID RHB",
-		h8c7_vid_init
-	},
-	{
-		H8C7_CMD,
-		MDFLD_DSI_ENCODER_DBI,
-		"H8C7 CMD RHB",
-		h8c7_cmd_init
-	},
-	{
-		GI_SONY_VID,
-		MDFLD_DSI_ENCODER_DPI,
-		"Sony LEX PRx",
-		gi_sony_vid_init
-	},
-	{
-		GI_SONY_CMD,
-		MDFLD_DSI_ENCODER_DBI,
-		"Sony LEX PRx",
-		gi_sony_cmd_init
-	},
-	{
-		GI_RENESAS_CMD,
-		MDFLD_DSI_ENCODER_DBI,
-		"Renesas LEX DV1",
-		gi_renesas_cmd_init
-	},
-	{
-		TC35876X_VID,
-		MDFLD_DSI_ENCODER_DPI,
-		"TMD RR",
-		tc35876x_vid_init
-	},
-	{
-		YB_CMI_VID,
-		MDFLD_DSI_ENCODER_DPI,
-		"CMI YB VID",
-		yb_cmi_vid_init
-	},
-	{
-		VB_IGZO_CMD,
-		MDFLD_DSI_ENCODER_DBI,
-		"SHARP IGZO VKB",
-		vb_igzo_cmd_init
-	},
-	{
-		VB_CGS_CMD,
-		MDFLD_DSI_ENCODER_DBI,
-		"SHARP CGS VKB",
-		vb_cgs_cmd_init
-	}
-};
+#ifdef CONFIG_GFX_RTPM
+#include <linux/pm_runtime.h>
+#endif
 
-int parse_panel_id_from_gct(char *panel_name, int mipi_mode)
+#define TMD_6X10_PANEL_NAME	"TMD BB PRx"
+bool is_tmd_6x10_panel(struct drm_device *dev, int pipe)
 {
-	int idx = 0;
-	for (idx = 0; idx < ARRAY_SIZE(panel_list); idx++) {
-		if (!strncmp(panel_name, panel_list[idx].panel_name,
-				strlen(panel_list[idx].panel_name)) &&
-				mipi_mode == panel_list[idx].encoder_type)
-			return panel_list[idx].p_type;
-	}
+	struct drm_psb_private *dev_priv = dev->dev_private;
+	int len = 0;
 
-	return -EINVAL;
-}
+	if (unlikely(!dev_priv))
+		return -EINVAL;
 
-enum panel_type get_panel_type(struct drm_device *dev, int pipe)
-{
-	struct drm_psb_private *dev_priv =
-		(struct drm_psb_private *) dev->dev_private;
-
-	return dev_priv->panel_id;
+	len = strnlen(TMD_6X10_PANEL_NAME, PANEL_NAME_MAX_LEN);
+	if (!strncmp(TMD_6X10_PANEL_NAME, dev_priv->panel_info.name, len))
+		return true;
+	else
+		return false;
 }
 
 int is_panel_vid_or_cmd(struct drm_device *dev)
 {
-	struct drm_psb_private *dev_priv =
-		(struct drm_psb_private *) dev->dev_private;
-	int i = 0;
+	struct drm_psb_private *dev_priv;
 
-	for (i = 0; i < ARRAY_SIZE(panel_list); i++) {
-		if (panel_list[i].p_type == dev_priv->panel_id)
-			return panel_list[i].encoder_type;
-	}
-	return -1;
+	if (unlikely(!dev))
+		return -EINVAL;
+
+	dev_priv = dev->dev_private;
+	if (unlikely(!dev))
+		return -EINVAL;
+
+	return dev_priv->panel_info.mode;
 }
 
-void init_panel(struct drm_device* dev, int mipi_pipe, enum panel_type p_type)
+static void init_panel(struct drm_device *dev, int pipe)
 {
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *) dev->dev_private;
-	struct panel_funcs *p_funcs = NULL;
-	int i = 0, ret = 0;
+	int ret = 0;
 
 #ifdef CONFIG_SUPPORT_HDMI
-	if (p_type == HDMI) {
+	if (pipe == 1) {
 		PSB_DEBUG_ENTRY( "GFX: Initializing HDMI");
 		android_hdmi_driver_init(dev, &dev_priv->mode_dev);
 		return;
 	}
 #endif
 
-	dev_priv->cur_pipe = mipi_pipe;
-	p_funcs = kzalloc(sizeof(struct panel_funcs), GFP_KERNEL);
-
-	for (i = 0; i < ARRAY_SIZE(panel_list); i++) {
-		if (panel_list[i].p_type == dev_priv->panel_id) {
-			panel_list[i].panel_init(
-					dev,
-					p_funcs);
-			ret = mdfld_dsi_output_init(dev,
-					mipi_pipe,
-					NULL,
-					p_funcs);
-			if (ret)
-				kfree(p_funcs);
-			break;
-		}
-	}
+	ret = mdfld_dsi_output_init(dev, pipe);
+	if (ret)
+		DRM_ERROR("%s, dsi_output_init error!\n", __func__);
 }
+
 /*
-* use to overwrite fw setting
-*/
+ * use to overwrite fw setting
+ */
 static void Overwrite_fw_setting(struct mdfld_dsi_config *dsi_config)
 {
 	return;
@@ -239,21 +153,148 @@ bool Check_fw_initilized_reusable(struct mdfld_dsi_config *dsi_config,
 
 void mdfld_output_init(struct drm_device *dev)
 {
-	enum panel_type p_type1, p_type2;
-
-	/* MIPI panel 1 */
-	p_type1 = get_panel_type(dev, 0);
-	init_panel(dev, 0, p_type1);
+	/* initialization PIPEA */
+	init_panel(dev, 0);
 
 #ifdef CONFIG_MDFD_DUAL_MIPI
-	/* MIPI panel 2 */
-	p_type2 = get_panel_type(dev, 2);
-	init_panel(dev, 2, p_type2);
+	/* initialization for PIPEC */
+	init_panel(dev, 2);
 #endif
 
 #ifdef CONFIG_SUPPORT_HDMI
-	/* HDMI panel */
-	init_panel(dev, 0, HDMI);
+	/* initialization for PIPEB */
+	init_panel(dev, 1);
 #endif
 }
 
+int intel_mid_mipi_client_detect(const char *name)
+{
+	struct drm_device *dev = g_drm_dev;
+	struct drm_psb_private *dev_priv;
+	int len = 0;
+
+	if (unlikely(!dev)) {
+		DRM_ERROR("%s: invalid drm device\n", __func__);
+		return -EINVAL;
+	}
+
+	dev_priv = dev->dev_private;
+	if (unlikely(!dev_priv)) {
+		DRM_ERROR("%s: invalid drm private data\n", __func__);
+		return -EINVAL;
+	}
+
+	len = strnlen(dev_priv->panel_info.name, PANEL_NAME_MAX_LEN);
+	if (len) {
+		if (!strncmp(name, dev_priv->panel_info.name, len))
+			return 0;
+		else
+			return -EPERM;
+	} else {
+		DRM_ERROR("%s: invalid length of panel name\n", __func__);
+		return -EINVAL;
+	}
+}
+
+void intel_mid_panel_register(
+		void (*panel_init)(struct drm_device *, struct panel_funcs *))
+{
+	struct drm_device *dev = g_drm_dev;
+	struct drm_psb_private *dev_priv = NULL;
+	struct mdfld_dsi_dbi_output *dbi_output = NULL;
+	struct mdfld_dsi_dpi_output *dpi_output = NULL;
+	struct mdfld_dsi_config *dsi_config = NULL;
+	struct panel_funcs *p_funcs = NULL;
+	struct panel_info dsi_panel_info;
+	struct drm_connector *connector = NULL;
+	struct mdfld_dsi_connector *dsi_connector = NULL;
+	int ret = 0;
+
+	PSB_DEBUG_ENTRY("\n");
+
+	if (likely(dev)) {
+		dev_priv = dev->dev_private;
+	} else {
+		pr_err("%s, drm dev is NULL!\n", __func__);
+		return;
+	}
+
+	if (likely(dev_priv)) {
+		dbi_output = dev_priv->dbi_output;
+		dpi_output = dev_priv->dpi_output;
+		dsi_config = dev_priv->dsi_configs[0];
+	} else {
+		pr_err("%s, dev private is NULL!\n", __func__);
+		return;
+	}
+
+	if (unlikely(!dsi_config)) {
+		pr_err("%s, dbi_output or dsi_config is NULL!\n", __func__);
+		return;
+	}
+
+	p_funcs = kzalloc(sizeof(struct panel_funcs), GFP_KERNEL);
+	if (unlikely(!p_funcs)) {
+		pr_err("%s, faild to allock panel_funcs\n", __func__);
+		return;
+	}
+	if (dsi_config->type == MDFLD_DSI_ENCODER_DBI)
+		dbi_output->p_funcs = p_funcs;
+	else
+		dpi_output->p_funcs = p_funcs;
+
+	connector = &dsi_config->connector->base.base;
+	dsi_connector = dsi_config->connector;
+
+	/*register panel callbacks*/
+	(*panel_init)(dev, p_funcs);
+
+	if (p_funcs->get_config_mode)
+		dsi_config->fixed_mode = p_funcs->get_config_mode();
+	if (p_funcs->get_panel_info)
+		p_funcs->get_panel_info(0, &dsi_panel_info);
+
+	connector->display_info.width_mm = dsi_panel_info.width_mm;
+	connector->display_info.height_mm = dsi_panel_info.height_mm;
+
+	if (p_funcs->detect) {
+		ret = p_funcs->detect(dsi_config);
+		if (ret) {
+			pr_warn("%s, fail to detect panel\n", __func__);
+			dsi_connector->status =
+				connector_status_disconnected;
+		} else {
+			dsi_connector->status = connector_status_connected;
+		}
+	} else {
+		dsi_connector->status = connector_status_disconnected;
+	}
+
+	if (dsi_connector->status == connector_status_connected)
+		dev_priv->panel_desc |= DISPLAY_A;
+
+	if (p_funcs->dsi_controller_init)
+		p_funcs->dsi_controller_init(dsi_config);
+
+	if (drm_psb_no_fb == 0) {
+		/*register fb device*/
+		psb_fbdev_init(dev);
+		drm_kms_helper_poll_init(dev);
+	}
+
+	/*must be after mrst_get_fuse_settings()*/
+	psb_backlight_init(dev);
+
+	/* Post OSPM init */
+	ospm_post_init(dev);
+
+	/* init display manager */
+	dpst_init(dev, AGGRESSIVE_LEVEL_DEFAULT);
+
+	mdfld_dsi_dsr_enable(dsi_config);
+
+#ifdef CONFIG_GFX_RTPM
+	/*enable runtime pm at last*/
+	pm_runtime_put_noidle(&dev->pdev->dev);
+#endif
+}

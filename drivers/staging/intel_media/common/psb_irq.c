@@ -457,7 +457,7 @@ static void get_use_cases_control_info()
 	static int last_use_cases_control = -1;
 	if (drm_psb_use_cases_control != last_use_cases_control) {
 		last_use_cases_control = drm_psb_use_cases_control;
-		DRM_INFO("\nnew update of use cases\n");
+		DRM_INFO("new update of use cases\n");
 		if (!(drm_psb_use_cases_control & PSB_SUSPEND_ENABLE))
 			DRM_INFO("BIT0 suspend/resume  disabled\n");
 		if (!(drm_psb_use_cases_control & PSB_BRIGHTNESS_ENABLE))

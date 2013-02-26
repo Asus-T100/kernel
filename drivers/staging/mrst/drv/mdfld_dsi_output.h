@@ -420,7 +420,6 @@ struct mdfld_dsi_hw_registers {
 struct mdfld_dsi_config {
 	struct drm_device *dev;
 	struct drm_display_mode *fixed_mode;
-	struct drm_display_mode *mode;
 
 	struct mdfld_dsi_connector *connector;
 	struct mdfld_dsi_encoder *encoders[DRM_CONNECTOR_MAX_ENCODER];
@@ -433,7 +432,6 @@ struct mdfld_dsi_config {
 	struct mdfld_dsi_hw_context dsi_hw_context;
 
 	int pipe;
-	int changed;
 
 	int drv_ic_inited;
 
@@ -536,22 +534,17 @@ static inline int mdfld_dsi_encoder_get_pipe(struct mdfld_dsi_encoder * encoder)
 }
 
 /*Export functions*/
-extern void mdfld_dsi_gen_fifo_ready(struct drm_device *dev,
-				u32 gen_fifo_stat_reg, u32 fifo_stat);
-extern void mdfld_dsi_brightness_init(struct mdfld_dsi_config *dsi_config,
-				int pipe);
-extern void mdfld_dsi_brightness_control(struct drm_device *dev, int pipe,
-				int level);
-extern int mdfld_dsi_output_init(struct drm_device *dev,
-		int pipe,
-		struct mdfld_dsi_config *config,
-		struct panel_funcs *p_funcs);
-extern int mdfld_dsi_get_panel_status(struct mdfld_dsi_config *dsi_config,
+void mdfld_dsi_gen_fifo_ready(struct drm_device *dev,
+		u32 gen_fifo_stat_reg, u32 fifo_stat);
+void mdfld_dsi_brightness_init(struct mdfld_dsi_config *dsi_config, int pipe);
+void mdfld_dsi_brightness_control(struct drm_device *dev, int pipe, int level);
+int mdfld_dsi_output_init(struct drm_device *dev, int pipe);
+int mdfld_dsi_get_panel_status(struct mdfld_dsi_config *dsi_config,
 		u8 dcs,
 		u8 *data,
 		u8 transmission,
 		u32 len);
-extern int mdfld_dsi_get_power_mode(struct mdfld_dsi_config *dsi_config,
+int mdfld_dsi_get_power_mode(struct mdfld_dsi_config *dsi_config,
 		u8 *mode,
 		u8 transmission);
 

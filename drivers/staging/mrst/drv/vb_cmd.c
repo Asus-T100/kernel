@@ -43,6 +43,8 @@
 
 #define I2C_ADAPTER 0x02
 #define I2C_ADDRESS 0x54
+#define IGZO_PANEL_NAME	"SHARP IGZO VKB"
+#define CGS_PANEL_NAME	"SHARP CGS VKB"
 
 /* #define USE_CABC */
 /*
@@ -1087,3 +1089,48 @@ void vb_cmd_init(struct drm_device *dev, struct panel_funcs *p_funcs)
 	ir2e69_register();
 	register_reboot_notifier(&vb_cmd_reboot_notifier_block);
 }
+
+static int vb_lcd_probe(struct platform_device *pdev)
+{
+	int ret = 0;
+
+	DRM_INFO("%s\n", __func__);
+
+	ret = intel_mid_mipi_client_detect(IGZO_PANEL_NAME);
+	if (!ret) {
+		DRM_INFO("%s: IGZO panel detected\n", __func__);
+		intel_mid_panel_register(vb_igzo_cmd_init);
+		return 0;
+	}
+
+	ret = intel_mid_mipi_client_detect(CGS_PANEL_NAME);
+	if (!ret) {
+		DRM_INFO("%s: CGS panel detected\n", __func__);
+		intel_mid_panel_register(vb_cgs_cmd_init);
+		return 0;
+	}
+
+	return 0;
+}
+
+static struct platform_device vb_lcd_device = {
+	.name	= "vb_lcd",
+	.id	= -1,
+};
+
+static struct platform_driver vb_lcd_driver = {
+	.probe	= vb_lcd_probe,
+	.driver	= {
+		.name	= "vb_lcd",
+		.owner	= THIS_MODULE,
+	},
+};
+
+static int __init vb_lcd_init(void)
+{
+	DRM_INFO("%s\n", __func__);
+
+	platform_device_register(&vb_lcd_device);
+	platform_driver_register(&vb_lcd_driver);
+}
+module_init(vb_lcd_init);

@@ -21,6 +21,12 @@
 
 #include <drm/drmP.h>
 #include <drm/drm.h>
+#include <linux/cpu.h>
+#include <linux/notifier.h>
+#include <linux/spinlock.h>
+#include <drm/drm_pciids.h>
+#include <asm/intel_scu_pmic.h>
+#include <asm/intel-mid.h>
 #include "psb_drm.h"
 #include "psb_drv.h"
 #include "psb_fb.h"
@@ -28,23 +34,19 @@
 #include "psb_intel_reg.h"
 #include "psb_msvdx.h"
 #include "pnw_topaz.h"
-#include <drm/drm_pciids.h>
+#include "mdfld_dsi_dbi_dsr.h"
+#include "mdfld_csc.h"
+#include "mdfld_dsi_pkg_sender.h"
+#include "mdfld_dsi_dbi.h"
 #include "pvr_drm_shared.h"
 #include "psb_powermgmt.h"
-#include "img_types.h"
-#include <linux/cpu.h>
-#include <linux/notifier.h>
-#include <linux/spinlock.h>
-#ifdef CONFIG_GFX_RTPM
-#include <linux/pm_runtime.h>
-#endif
 
-#include <asm/intel_scu_pmic.h>
-#include <asm/intel-mid.h>
-
-#include "mdfld_dsi_dbi.h"
 #ifdef CONFIG_MDFLD_DSI_DPU
 #include "mdfld_dsi_dbi_dpu.h"
+#endif
+
+#ifdef CONFIG_GFX_RTPM
+#include <linux/pm_runtime.h>
 #endif
 
 #ifdef CONFIG_MDFD_GL3
@@ -53,7 +55,6 @@
 
 #include "otm_hdmi.h"
 #include "android_hdmi.h"
-#include "dispmgrnl.h"
 
 /*IMG headers*/
 #include "pvr_drm_shared.h"
@@ -61,13 +62,8 @@
 #include "pvr_bridge.h"
 #include "linkage.h"
 
-#include "mdfld_csc.h"
-#include "mdfld_dsi_dbi_dsr.h"
-#include "mdfld_dsi_pkg_sender.h"
 struct workqueue_struct *te_wq;
 struct workqueue_struct *vsync_wq;
-
-#include "psb_dpst_func.h"
 
 #define HDMI_MONITOR_NAME_LENGTH 20
 
@@ -75,7 +71,6 @@ int drm_psb_debug = PSB_D_WARN;
 int drm_psb_enable_cabc = 1;
 int drm_psb_enable_gamma;
 int drm_psb_enable_color_conversion;
-/*EXPORT_SYMBOL(drm_psb_debug); */
 static int drm_psb_trap_pagefaults;
 
 bool gbdispstatus = true;
@@ -95,7 +90,6 @@ int gfxrtdelay = 2 * 1000;
 int drm_psb_3D_vblank = 1;
 int drm_psb_smart_vsync = 1;
 int drm_psb_te_timer_delay = (DRM_HZ / 40);
-static int PanelID = GCT_DETECT;
 char HDMI_EDID[HDMI_MONITOR_NAME_LENGTH];
 int hdmi_state;
 u32 DISP_PLANEB_STATUS = ~DISPLAY_PLANE_ENABLE;
@@ -125,7 +119,6 @@ MODULE_PARM_DESC(rtpm, "Specifies Runtime PM delay for GFX");
 MODULE_PARM_DESC(msvdx_pmpolicy, "msvdx power management policy btw frames");
 MODULE_PARM_DESC(topaz_pmpolicy, "topaz power managerment policy btw frames");
 MODULE_PARM_DESC(topaz_sbuswa, "WA for topaz sysbus write");
-MODULE_PARM_DESC(PanelID, "Panel info for querying");
 MODULE_PARM_DESC(hdmi_edid, "EDID info for HDMI monitor");
 MODULE_PARM_DESC(hdmi_state, "Whether HDMI Monitor is connected or not");
 MODULE_PARM_DESC(vblank_sync, "whether sync to vblank interrupt when do 3D flip");
@@ -157,7 +150,6 @@ module_param_named(ospm, drm_psb_ospm, int, 0600);
 module_param_named(gl3_enabled, drm_psb_gl3_enable, int, 0600);
 module_param_named(rtpm, gfxrtdelay, int, 0600);
 module_param_named(topaz_clockgating, drm_psb_topaz_clockgating, int, 0600);
-module_param_named(PanelID, PanelID, int, 0600);
 module_param_string(hdmi_edid, HDMI_EDID, 20, 0600);
 module_param_named(hdmi_state, hdmi_state, int, 0600);
 module_param_named(vblank_sync, drm_psb_3D_vblank, int, 0600);
@@ -999,12 +991,12 @@ bool intel_mid_get_vbt_data(struct drm_psb_private *dev_priv)
 	u8 *pVBT_virtual;
 	u8 primary_panel;
 	u8 number_desc = 0;
-	u8 panel_name[17] = {0};
+	u8 panel_name[PANEL_NAME_MAX_LEN+1] = {0};
 	struct intel_mid_vbt *pVBT = &dev_priv->vbt_data;
 	void *panel_desc;
 	struct pci_dev *pci_gfx_root = pci_get_bus_and_slot(0, PCI_DEVFN(2, 0));
 	mdfld_dsi_encoder_t mipi_mode;
-	int ret = 0;
+	int ret = 0, len = 0;
 
 	PSB_DEBUG_ENTRY("\n");
 
@@ -1043,21 +1035,12 @@ bool intel_mid_get_vbt_data(struct drm_psb_private *dev_priv)
 
 	PSB_DEBUG_ENTRY("GCT Revision is %#x\n", pVBT->revision);
 
-	/*FIXME:
-	 * This is a workaround for Yukka Beach power on. Usually panel ID
-	 * should be detected from IA FW dynamically, befor FW's ready,
-	 * workaround it first. This MUST be reverted if FW's ready.
-	 */
-#ifdef CONFIG_SUPPORT_YB_MIPI_DISPLAY
-	dev_priv->panel_id = YB_CMI_VID;
-	goto out;
-#endif
 	number_desc = pVBT->num_of_panel_desc;
 	primary_panel = pVBT->primary_panel_idx;
 	dev_priv->gct_data.bpi = primary_panel; /*save boot panel id*/
 
 	/**
-	 * current we just need parse revision 0x10 and 0x11
+	 * current we just need parse revision 0x11 and 0x20
 	 */
 	switch (pVBT->revision) {
 	case 0x11:
@@ -1073,7 +1056,7 @@ bool intel_mid_get_vbt_data(struct drm_psb_private *dev_priv)
 			return false;
 		}
 
-		strncpy(panel_name, panel_desc, 16);
+		strncpy(panel_name, panel_desc, PANEL_NAME_MAX_LEN);
 
 		mipi_mode =
 		((struct gct_r11_panel_desc *)panel_desc)->display.mode ? \
@@ -1092,7 +1075,7 @@ bool intel_mid_get_vbt_data(struct drm_psb_private *dev_priv)
 			return false;
 		}
 
-		strncpy(panel_name, panel_desc, 16);
+		strncpy(panel_name, panel_desc, PANEL_NAME_MAX_LEN);
 
 		mipi_mode =
 		((struct gct_r20_panel_desc *)panel_desc)->panel_mode.mode ?\
@@ -1104,20 +1087,18 @@ bool intel_mid_get_vbt_data(struct drm_psb_private *dev_priv)
 		return false;
 	}
 
-	DRM_INFO("%s: panel name: %s\n", __func__, panel_name);
-
-	ret = parse_panel_id_from_gct(panel_name, mipi_mode);
-	if (ret < 0) {
-		DRM_ERROR("unsupported panel id\n");
+	len = strnlen(panel_name, PANEL_NAME_MAX_LEN);
+	if (len) {
+		strncpy(dev_priv->panel_info.name, panel_name, len);
+		dev_priv->panel_info.mode = mipi_mode;
+	} else {
+		DRM_ERROR("%s: detect panel info from gct error\n",
+				__func__);
 		return false;
 	}
 
-	dev_priv->panel_id = ret;
-	goto out; /* fix warning */
-
-out:
-	PanelID = dev_priv->panel_id;
-	DRM_INFO("PanelID: %d\n", PanelID);
+	DRM_INFO("%s: panel name: %s, mipi_mode = %d\n", __func__,
+			panel_name, mipi_mode);
 
 	return true;
 }
@@ -1745,33 +1726,8 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 		}
 	}
 
-	if (drm_psb_no_fb == 0) {
+	if (drm_psb_no_fb == 0)
 		psb_modeset_init(dev);
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 35))
-		psb_fbdev_init(dev);
-		drm_kms_helper_poll_init(dev);
-#else
-		drm_helper_initial_config(dev);
-#endif
-	}
-
-	dev_priv->dsi_init_done = 1;
-
-	/*must be after mrst_get_fuse_settings()*/
-	ret = psb_backlight_init(dev);
-	if (ret) {
-		kfree(dev_priv->vblank_count);
-		return ret;
-	}
-
-	/* Post OSPM init */
-	if (IS_MDFLD(dev))
-		ospm_post_init(dev);
-
-#ifdef CONFIG_GFX_RTPM
-	/*enable runtime pm at last*/
-	pm_runtime_put_noidle(&dev->pdev->dev);
-#endif
 
 	/* GL3 */
 #ifdef CONFIG_MDFD_GL3
@@ -1785,13 +1741,6 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 
 	/*Intel drm driver load is done, continue doing pvr load*/
 	DRM_DEBUG("Pvr driver load\n");
-
-	/* init display manager */
-	dispmgr_start(dev);
-
-	dpst_init(dev, 5, 1);
-
-	mdfld_dsi_dsr_enable(dev_priv->dsi_configs[0]);
 
 	dev_priv->pvr_ops = NULL;
 	/* Delay PVRSRVDrmLoad to PVR module init */
@@ -4818,13 +4767,6 @@ static __init int parse_panelid(char *arg)
 	if (!arg)
 		return -EINVAL;
 
-	if (!strcasecmp(arg, "H8C7_VID"))
-		PanelID = H8C7_VID;
-	else if (!strcasecmp(arg, "H8C7_CMD"))
-		PanelID = H8C7_CMD;
-	else
-		PanelID = GCT_DETECT;
-
 	return 0;
 }
 early_param("panelid", parse_panelid);
@@ -4891,16 +4833,7 @@ static void __exit psb_exit(void)
 	drm_pci_exit(&driver, &psb_pci_driver);
 }
 
-#if defined(CONFIG_SUPPORT_TMD_MIPI_600X1024_DISPLAY) \
-	|| defined(CONFIG_SUPPORT_MIPI_H8C7_DISPLAY) \
-	|| defined(CONFIG_SUPPORT_MIPI_H8C7_CMD_DISPLAY) \
-	|| defined(CONFIG_SUPPORT_GI_MIPI_SONY_DISPLAY) \
-	|| defined(CONFIG_SUPPORT_AUO_MIPI_SC1_DISPLAY) \
-	|| defined(CONFIG_SUPPORT_AUO_MIPI_SC1_COMMAND_MODE_DISPLAY)
 module_init(psb_init);
-#else
-late_initcall(psb_init);
-#endif
 module_exit(psb_exit);
 
 MODULE_AUTHOR(DRIVER_AUTHOR);

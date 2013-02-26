@@ -41,7 +41,6 @@ struct h8c7_regulator_factory {
 static struct h8c7_regulator_factory h8c7_regulator_status;
 
 static u8 h8c7_exit_sleep_mode[]     = {0x11};
-static u8 h8c7_soft_reset[]          = {0x01};
 static u8 h8c7_set_tear_on[]         = {0x35, 0x00};
 static u8 h8c7_set_brightness[]      = {0x51, 0x00};
 static u8 h8c7_turn_on_backlight[]   = {0x53, 0x24};
@@ -146,11 +145,11 @@ static u8 h8c7_set_cabc_gain[] = {
 	0x25, 0x22};
 
 #define MIPI_RESET_GPIO_DEFAULT 128
+#define REDHOOKBAY_PANEL_NAME	"H8C7 CMD RHB"
 
 static
 int mdfld_h8c7_drv_ic_init(struct mdfld_dsi_config *dsi_config)
 {
-	struct drm_device *dev = dsi_config->dev;
 	struct mdfld_dsi_pkg_sender *sender
 			= mdfld_dsi_get_pkg_sender(dsi_config);
 
@@ -658,7 +657,7 @@ int mdfld_dsi_h8c7_cmd_detect(struct mdfld_dsi_config *dsi_config)
 
 		} else {
 			dsi_config->dsi_hw_context.panel_on = false;
-			DRM_INFO("%s: panel is not detected!\n", __func__);
+			DRM_INFO("%s: panel is not initialized!\n", __func__);
 		}
 
 		status = MDFLD_DSI_PANEL_CONNECTED;
@@ -787,3 +786,40 @@ void h8c7_cmd_init(struct drm_device *dev, struct panel_funcs *p_funcs)
 		DRM_ERROR("FATAL:enable h8c7 regulator error in WA\n");
 	}
 }
+
+static int h8c7_lcd_cmd_probe(struct platform_device *pdev)
+{
+	int ret = 0;
+
+	DRM_INFO("%s\n", __func__);
+
+	ret = intel_mid_mipi_client_detect(REDHOOKBAY_PANEL_NAME);
+	if (!ret) {
+		DRM_INFO("%s: H8C7 panel detected\n", __func__);
+		intel_mid_panel_register(h8c7_cmd_init);
+	}
+
+	return 0;
+}
+
+static struct platform_device h8c7_lcd_device = {
+	.name	= "h8c7_cmd_lcd",
+	.id	= -1,
+};
+
+static struct platform_driver h8c7_lcd_driver = {
+	.probe	= h8c7_lcd_cmd_probe,
+	.driver	= {
+		.name	= "h8c7_cmd_lcd",
+		.owner	= THIS_MODULE,
+	},
+};
+
+static int __init h8c7_lcd_init(void)
+{
+	DRM_INFO("%s\n", __func__);
+
+	platform_device_register(&h8c7_lcd_device);
+	platform_driver_register(&h8c7_lcd_driver);
+}
+module_init(h8c7_lcd_init);

@@ -142,16 +142,17 @@ gfx-y += $(DISPLAYDIR)/psb_bl.o \
 		$(DISPLAYDIR)/auo_sc1_cmd.o \
 		$(DISPLAYDIR)/gi_sony_vid.o \
 		$(DISPLAYDIR)/gi_sony_cmd.o \
-		$(DISPLAYDIR)/tmd_6x10_vid.o \
 		$(DISPLAYDIR)/h8c7_vid.o \
-		$(DISPLAYDIR)/h8c7_cmd.o \
 		$(DISPLAYDIR)/mdfld_dsi_pkg_sender.o \
 		$(DISPLAYDIR)/mdfld_dsi_esd.o \
 		$(DISPLAYDIR)/mdfld_dsi_dbi_dsr.o \
 		$(DISPLAYDIR)/tc35876x_vid.o \
 		$(DISPLAYDIR)/gi_renesas_cmd.o \
-		$(DISPLAYDIR)/yb_cmi_vid.o \
-		$(DISPLAYDIR)/vb_cmd.o
+		$(DISPLAYDIR)/yb_cmi_vid.o
+
+gfx-$(CONFIG_SUPPORT_TMD_MIPI_600X1024_DISPLAY) += $(DISPLAYDIR)/tmd_6x10_vid.o
+gfx-$(CONFIG_SUPPORT_MIPI_H8C7_CMD_DISPLAY) += $(DISPLAYDIR)/h8c7_cmd.o
+gfx-$(CONFIG_SUPPORT_VB_MIPI_DISPLAY) += $(DISPLAYDIR)/vb_cmd.o
 
 gfx-y += $(DISPLAYDIR)/mdfld_hdmi_audio.o
 

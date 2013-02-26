@@ -71,23 +71,6 @@ enum {
 	CHIP_MDFLD_0130 = 3
 };
 
-enum panel_type {
-	TMD_6X10_VID,
-	H8C7_VID,
-	H8C7_CMD,
-	AUO_SC1_VID,
-	AUO_SC1_CMD,
-	GI_SONY_VID,
-	GI_SONY_CMD,
-	GI_RENESAS_CMD,
-	TC35876X_VID,
-	YB_CMI_VID,
-	VB_IGZO_CMD,
-	VB_CGS_CMD,
-	HDMI,
-	GCT_DETECT
-};
-
 #define PNW_GCT_NDX_OEM		0
 #define PNW_GCT_NDX_STD		1
 #define PNW_GCT_NDX_TMD		2
@@ -102,7 +85,6 @@ enum panel_type {
 /*
  *Hardware bugfixes
  */
-
 #define FIX_TG_16
 #define FIX_TG_2D_CLOCKGATE
 #define OSPM_STAT
@@ -298,6 +280,7 @@ enum panel_type {
 
 #define MDFLD_PLANE_MAX_WIDTH		2048
 #define MDFLD_PLANE_MAX_HEIGHT		2048
+#define PANEL_NAME_MAX_LEN	        16
 
 #define MAX_NUM 0xffffffff
 
@@ -373,6 +356,11 @@ struct gpu_pvr_ops {
 	PVRSRV_ERROR (*OSScheduleMISR2)(void);
 };
 
+struct platform_panel_info {
+	char name[PANEL_NAME_MAX_LEN+1];
+	int  mode;
+};
+
 struct drm_psb_private {
 	/*
 	 * DSI info.
@@ -385,8 +373,6 @@ struct drm_psb_private {
 
 	struct work_struct te_work;
 	struct work_struct reset_panel_work;
-
-	int dsi_init_done;
 
 	struct work_struct vsync_event_work;
 	int vsync_pipe;
@@ -534,7 +520,6 @@ struct drm_psb_private {
 	struct intel_mid_vbt vbt_data;
 	/* info that is stored from the gct */
 	struct gct_ioctl_arg gct_data;
-	enum panel_type panel_id;
 
 	/* pci revision id for B0:D2:F0 */
 	uint8_t platform_rev_id;
@@ -673,6 +658,8 @@ struct drm_psb_private {
 	uint32_t Reserved2:27;
 	struct mdfld_dsi_dbi_output *dbi_output;
 	struct mdfld_dsi_dbi_output *dbi_output2;
+	struct mdfld_dsi_dpi_output *dpi_output;
+	struct mdfld_dsi_dpi_output *dpi_output2;
 	/* MDFLD_DSI private date end */
 
 	/*runtime PM state*/
@@ -962,8 +949,6 @@ struct drm_psb_private {
 	/*psb fb dev*/
 	void *fbdev;
 #endif
-	uint32_t cur_pipe;
-
 	/* read register value through sysfs. */
 	int count;
 	char *buf;
@@ -1017,6 +1002,8 @@ struct drm_psb_private {
 	bool  vsync_te_working[PSB_NUM_PIPE];
 	atomic_t mipi_flip_abnormal;
 	struct gpu_pvr_ops * pvr_ops;
+
+	struct platform_panel_info panel_info;
 };
 
 struct psb_mmu_driver;
@@ -1372,6 +1359,7 @@ extern int drm_psb_topaz_clockgating;
 extern char HDMI_EDID[20];
 extern int hdmi_state;
 extern void psb_flip_abnormal_debug_info(struct drm_device *dev);
+extern struct drm_device *g_drm_dev;
 /*
  * set cpu_relax = 1 in sysfs to use cpu_relax instead of udelay bysy loop
  * set udelay_divider to reduce the udelay values,e.g.= 10, reduce 10 times

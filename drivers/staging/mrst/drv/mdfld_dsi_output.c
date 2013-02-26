@@ -320,7 +320,7 @@ static void mdfld_dsi_connector_restore(struct drm_connector * connector)
 }
 
 static enum drm_connector_status mdfld_dsi_connector_detect
-		(struct drm_connector *connector)
+		(struct drm_connector *connector, bool force)
 {
 	struct psb_intel_output *psb_output
 		= to_psb_intel_output(connector);
@@ -833,30 +833,24 @@ mdfld_dsi_get_configuration_mode(struct mdfld_dsi_config * dsi_config, int pipe)
  * MIPI output init
  * @dev drm device
  * @pipe pipe number. 0 or 2
- * @config 
  * 
  * Do the initialization of a MIPI output, including create DRM mode objects
  * initialization of DSI output on @pipe 
  */
-int mdfld_dsi_output_init(struct drm_device *dev,
-		int pipe,
-		struct mdfld_dsi_config *config,
-		struct panel_funcs *p_funcs)
+int mdfld_dsi_output_init(struct drm_device *dev, int pipe)
 {
-	struct mdfld_dsi_config * dsi_config;
-	struct mdfld_dsi_connector * dsi_connector;
-	struct psb_intel_output * psb_output;
-	struct drm_connector * connector;
-	struct mdfld_dsi_encoder * encoder;
-	struct drm_psb_private * dev_priv;
-	struct panel_info dsi_panel_info;
-	u32 width_mm, height_mm;
+	struct mdfld_dsi_config *dsi_config;
+	struct mdfld_dsi_connector *dsi_connector;
+	struct psb_intel_output *psb_output;
+	struct drm_connector *connector;
+	struct mdfld_dsi_encoder *encoder;
+	struct drm_psb_private *dev_priv;
 
-	PSB_DEBUG_ENTRY("init DSI output on pipe %d\n", pipe);
+	PSB_DEBUG_ENTRY("\n");
 	
 	if (!dev || ((pipe != 0) && (pipe != 2))) {
-		DRM_ERROR("Invalid parameter\n");
-		return -EIO;
+		DRM_ERROR("%s: invalid parameter\n", __func__);
+		return -EINVAL;
 	}
 	dev_priv = dev->dev_private;
 	
@@ -867,20 +861,14 @@ int mdfld_dsi_output_init(struct drm_device *dev,
 		return -ENOMEM;
 	}
 	
-	dsi_connector->pipe =  pipe;
+	dsi_connector->pipe = pipe;
 	
-	/*set DSI config*/
-	if (config)
-		dsi_config = config;
-	else {
-		dsi_config = kzalloc(sizeof(struct mdfld_dsi_config), GFP_KERNEL);
-		if(!dsi_config) {
-			DRM_ERROR("cannot allocate memory for DSI config\n");
-			goto dsi_init_err0;
-		}
-		
-		mdfld_dsi_get_default_config(dev, dsi_config, pipe);
+	dsi_config = kzalloc(sizeof(struct mdfld_dsi_config), GFP_KERNEL);
+	if (!dsi_config) {
+		DRM_ERROR("%s: faild to alloc mem for dsi_config\n", __func__);
+		goto dsi_init_err0;
 	}
+	mdfld_dsi_get_default_config(dev, dsi_config, pipe);
 
 	/*init DSI regs*/
 	mdfld_dsi_regs_init(dsi_config, pipe);
@@ -891,37 +879,13 @@ int mdfld_dsi_output_init(struct drm_device *dev,
 	dsi_connector->private = dsi_config;
 	
 	dsi_config->pipe = pipe;
-	dsi_config->changed = 1;
 	dsi_config->dev = dev;
-	
-	/*init fixed mode basing on DSI config type*/
-	if (dsi_config->type == MDFLD_DSI_ENCODER_DBI) {
-		dsi_config->fixed_mode = p_funcs->get_config_mode();
-		p_funcs->get_panel_info(pipe, &dsi_panel_info);
-	} else if(dsi_config->type == MDFLD_DSI_ENCODER_DPI) {
-		dsi_config->fixed_mode = p_funcs->get_config_mode();
-		p_funcs->get_panel_info(pipe, &dsi_panel_info);
-	}
-
-	width_mm = dsi_panel_info.width_mm;
-	height_mm = dsi_panel_info.height_mm;
-
-	dsi_config->mode = dsi_config->fixed_mode;
 	dsi_config->connector = dsi_connector;
 	
-	if(!dsi_config->fixed_mode) {
-		DRM_ERROR("No pannel fixed mode was found\n");
-		goto dsi_init_err0;
-	}
-	
-	if(pipe && dev_priv->dsi_configs[0]) {
+	if (pipe)
 		dev_priv->dsi_configs[1] = dsi_config;
-	} else if(pipe == 0) {
+	else
 		dev_priv->dsi_configs[0] = dsi_config;
-	} else {
-		DRM_ERROR("Trying to init MIPI1 before MIPI0\n");
-		goto dsi_init_err0;
-	}
 
 	/*init drm connector object*/
 	psb_output = &dsi_connector->base;
@@ -936,8 +900,8 @@ int mdfld_dsi_output_init(struct drm_device *dev,
 	drm_connector_helper_add(connector, &mdfld_dsi_connector_helper_funcs);
 	
 	connector->display_info.subpixel_order = SubPixelHorizontalRGB;
-	connector->display_info.width_mm = width_mm;
-	connector->display_info.height_mm = height_mm;
+	connector->display_info.width_mm = 0;
+	connector->display_info.height_mm = 0;
 	connector->interlace_allowed = false;
 	connector->doublescan_allowed = false;
 	
@@ -952,20 +916,20 @@ int mdfld_dsi_output_init(struct drm_device *dev,
 
 	/*init DSI package sender on this output*/
 	if (mdfld_dsi_pkg_sender_init(dsi_connector, pipe)) {
-		DRM_ERROR("Package Sender initialization failed on pipe %d\n",
-			pipe);
+		DRM_ERROR("%s: package Sender init failed on pipe %d\n",
+				__func__, pipe);
 		goto dsi_init_err0;
 	}
 
 	/*init panel error detector*/
 	if (mdfld_dsi_error_detector_init(dev, dsi_connector)) {
-		DRM_ERROR("Failed to init dsi_error detector");
+		DRM_ERROR("%s: failed to init dsi_error detector", __func__);
 		goto dsi_init_err1;
 	}
 
 	/*create DBI & DPI encoders*/
 	if (dsi_config->type == MDFLD_DSI_ENCODER_DBI) {
-		encoder = mdfld_dsi_dbi_init(dev, dsi_connector, p_funcs);
+		encoder = mdfld_dsi_dbi_init(dev, dsi_connector);
 		if(!encoder) {
 			DRM_ERROR("Create DBI encoder failed\n");
 			goto dsi_init_err2;
@@ -979,7 +943,7 @@ int mdfld_dsi_output_init(struct drm_device *dev,
 		if (pipe == 0)
 			dev_priv->encoder0 = encoder;
 	} else if (dsi_config->type == MDFLD_DSI_ENCODER_DPI) {
-		encoder = mdfld_dsi_dpi_init(dev, dsi_connector, p_funcs);
+		encoder = mdfld_dsi_dpi_init(dev, dsi_connector);
 		if(!encoder) {
 			DRM_ERROR("Create DPI encoder failed\n");
 			goto dsi_init_err2;
@@ -1016,8 +980,6 @@ dsi_init_err1:
 
 	drm_connector_cleanup(connector);
 	
-	if(dsi_config->fixed_mode)
-		kfree(dsi_config->fixed_mode);
 	if (dsi_config) {
 		kfree(dsi_config);
 		if (pipe)
@@ -1026,9 +988,8 @@ dsi_init_err1:
 			dev_priv->dsi_configs[0] = NULL;
 	}
 dsi_init_err0:
-	if(dsi_connector) {
+	if (dsi_connector)
 		kfree(dsi_connector);
-	}
 
 	return -EIO;
 }

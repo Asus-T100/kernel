@@ -1021,9 +1021,9 @@ bool mdfld_generic_dsi_dbi_mode_fixup(struct drm_encoder *encoder,
 		struct drm_display_mode *adjusted_mode)
 {
 	struct mdfld_dsi_encoder *dsi_encoder = MDFLD_DSI_ENCODER(encoder);
-	struct mdfld_dsi_dbi_output *dbi_output =
-		MDFLD_DSI_DBI_OUTPUT(dsi_encoder);
-	struct drm_display_mode *fixed_mode = dbi_output->panel_fixed_mode;
+	struct mdfld_dsi_config *dsi_config =
+		mdfld_dsi_encoder_get_config(dsi_encoder);
+	struct drm_display_mode *fixed_mode = dsi_config->fixed_mode;
 
 	PSB_DEBUG_ENTRY("\n");
 
@@ -1065,8 +1065,7 @@ struct drm_encoder_helper_funcs dsi_dbi_generic_encoder_helper_funcs = {
  * return pointer of newly allocated DBI encoder, NULL on error
  */
 struct mdfld_dsi_encoder *mdfld_dsi_dbi_init(struct drm_device *dev,
-		struct mdfld_dsi_connector *dsi_connector,
-		struct panel_funcs *p_funcs)
+		struct mdfld_dsi_connector *dsi_connector)
 {
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *)dev->dev_private;
@@ -1089,50 +1088,18 @@ struct mdfld_dsi_encoder *mdfld_dsi_dbi_init(struct drm_device *dev,
 
 	PSB_DEBUG_ENTRY("\n");
 
-	if (!pg || !dsi_connector || !p_funcs) {
+	if (!pg || !dsi_connector) {
 		DRM_ERROR("Invalid parameters\n");
 		return NULL;
 	}
 
 	dsi_config = mdfld_dsi_get_config(dsi_connector);
 	pipe = dsi_connector->pipe;
-
-	/*detect panel connection stauts*/
-	if (p_funcs->detect) {
-		ret = p_funcs->detect(dsi_config);
-		if (ret) {
-			DRM_INFO("Fail to detect Panel on pipe %d\n", pipe);
-			dsi_connector->status =
-				connector_status_disconnected;
-		} else {
-			DRM_INFO("Panel on pipe %d is connected\n", pipe);
-			dsi_connector->status =
-				connector_status_connected;
-		}
-	} else {
-		/*use the default config*/
-		if (pipe == 0)
-			dsi_connector->status =
-				connector_status_connected;
-		else
-			dsi_connector->status =
-				connector_status_disconnected;
-	}
-
-	/*init DSI controller*/
-	if (p_funcs->dsi_controller_init)
-		p_funcs->dsi_controller_init(dsi_config);
-
-	if (dsi_connector->status == connector_status_connected) {
-		if (pipe == 0)
-			dev_priv->panel_desc |= DISPLAY_A;
-		if (pipe == 2)
-			dev_priv->panel_desc |= DISPLAY_C;
-	}
+	dsi_connector->status = connector_status_connected;
 
 	/* TODO: get panel info from DDB */
 	dbi_output = kzalloc(sizeof(struct mdfld_dsi_dbi_output), GFP_KERNEL);
-	if (!dbi_output) {
+	if (unlikely(!dbi_output)) {
 		DRM_ERROR("No memory\n");
 		return NULL;
 	}
@@ -1149,12 +1116,7 @@ struct mdfld_dsi_encoder *mdfld_dsi_dbi_init(struct drm_device *dev,
 	}
 
 	dbi_output->dev = dev;
-	dbi_output->p_funcs = p_funcs;
-
-	/*get fixed mode*/
-	fixed_mode = dsi_config->fixed_mode;
-
-	dbi_output->panel_fixed_mode = fixed_mode;
+	dbi_output->p_funcs = NULL;
 
 	/*create drm encoder object*/
 	connector = &dsi_connector->base.base;
@@ -1195,7 +1157,6 @@ struct mdfld_dsi_encoder *mdfld_dsi_dbi_init(struct drm_device *dev,
 
 #ifdef CONFIG_MDFLD_DSI_DPU
 	/*add this output to dpu_info*/
-
 	if (dsi_connector->status == connector_status_connected) {
 		if (dsi_connector->pipe == 0)
 			dpu_info->dbi_outputs[0] = dbi_output;
