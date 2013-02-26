@@ -1154,9 +1154,9 @@ static void write_custom_regs(struct max17042_chip *chip)
 						fg_conf_data->ichgt_term);
 	/* adjust Temperature gain and offset */
 	max17042_write_reg(chip->client,
-			MAX17042_TGAIN, NTC_47K_TGAIN);
+			MAX17042_TGAIN, chip->pdata->tgain);
 	max17042_write_reg(chip->client,
-			MAx17042_TOFF, NTC_47K_TOFF);
+			MAx17042_TOFF, chip->pdata->toff);
 
 	if (chip->chip_type == MAX17042) {
 		max17042_write_reg(chip->client, MAX17042_ETC,
@@ -1527,9 +1527,8 @@ static void set_chip_config(struct max17042_chip *chip)
 	dev_info(&chip->client->dev, "Status reg: %x\n", val);
 	if (!fg_conf_data->config_init || (val & STATUS_POR_BIT)) {
 		dev_info(&chip->client->dev, "Config data should be loaded\n");
-#if defined(CONFIG_BOARD_REDRIDGE) || defined(CONFIG_BOARD_CTP) || defined(CONFIG_X86_MRFLD)
-		reset_max17042(chip);
-#endif
+		if (chip->pdata->reset_chip)
+			reset_max17042(chip);
 		retval = init_max17042_chip(chip);
 		if (retval < 0) {
 			dev_err(&chip->client->dev, "maxim chip init failed\n");
