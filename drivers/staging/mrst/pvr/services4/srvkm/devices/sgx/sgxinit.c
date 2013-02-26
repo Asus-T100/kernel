@@ -261,10 +261,6 @@ static PVRSRV_ERROR InitDevInfo(PVRSRV_PER_PROCESS_DATA *psPerProc,
 #if defined(FIX_HW_BRN_29823)
 	psDevInfo->psKernelDummyTermStreamMemInfo = (PVRSRV_KERNEL_MEM_INFO *)psInitInfo->hKernelDummyTermStreamMemInfo;
 #endif
-#if defined(SGX_FEATURE_VDM_CONTEXT_SWITCH) && defined(FIX_HW_BRN_31559)
-	psDevInfo->psKernelVDMSnapShotBufferMemInfo = (PVRSRV_KERNEL_MEM_INFO *)psInitInfo->hKernelVDMSnapShotBufferMemInfo;
-	psDevInfo->psKernelVDMCtrlStreamBufferMemInfo = (PVRSRV_KERNEL_MEM_INFO *)psInitInfo->hKernelVDMCtrlStreamBufferMemInfo;
-#endif
 #if defined(SGX_FEATURE_VDM_CONTEXT_SWITCH) && \
 	defined(FIX_HW_BRN_33657) && defined(SUPPORT_SECURE_33657_FIX)
 	psDevInfo->psKernelVDMStateUpdateBufferMemInfo = (PVRSRV_KERNEL_MEM_INFO *)psInitInfo->hKernelVDMStateUpdateBufferMemInfo;
