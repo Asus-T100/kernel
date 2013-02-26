@@ -1070,7 +1070,7 @@ static PVRSRV_ERROR DC_MRFLD_exit(void)
 	return PVRSRV_OK;
 }
 
-IMG_VOID DCUnAttachPipe(IMG_UINT32 uiPipe)
+void DCUnAttachPipe(uint32_t uiPipe)
 {
 	DC_MRFLD_FLIP *psFlip, *psTmp;
 	IMG_UINT32 uiNumPipes;
