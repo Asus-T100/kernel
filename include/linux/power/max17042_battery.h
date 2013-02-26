@@ -133,6 +133,9 @@ struct max17042_platform_data {
 	int volt_min_lim;	/* milli volts */
 	int volt_max_lim;	/* milli volts */
 
+	u16 tgain;
+	u16 toff;
+
 	int (*current_sense_enabled)(void);
 	int (*battery_present)(void);
 	int (*battery_health)(void);

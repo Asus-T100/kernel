@@ -41,6 +41,7 @@ obj-$(subst m,y,$(CONFIG_TOUCHSCREEN_ATMEL_MXT224))			+= platform_mxt224.o
 obj-$(subst m,y,$(CONFIG_A1026))					+= platform_a1026.o
 obj-$(subst m,y,$(CONFIG_SENSORS_APDS990X))				+= platform_apds990x.o
 obj-$(subst m,y,$(CONFIG_CHARGER_BQ24192))				+= platform_bq24192.o
+obj-$(subst m,y,$(CONFIG_CHARGER_SMB347))				+= platform_smb347.o
 obj-$(subst m,y,$(CONFIG_SENSORS_L3G4200D_POLL))			+= platform_l3g4200d.o
 obj-$(subst m,y,$(CONFIG_SENSORS_LIS3DH_ACC))				+= platform_lis3dh.o
 obj-$(subst m,y,$(CONFIG_SENSORS_LSM303_MAG))				+= platform_lsm303.o
