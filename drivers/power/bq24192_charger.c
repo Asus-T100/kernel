@@ -1034,32 +1034,32 @@ EXPORT_SYMBOL(ctp_query_battery_status);
  */
 int ctp_get_charger_health(void)
 {
-	int ret;
+	int ret_status, ret_fault;
 	struct bq24192_chip *chip =
 		i2c_get_clientdata(bq24192_client);
 
 	dev_dbg(&chip->client->dev, "%s\n", __func__);
 
-	ret = bq24192_read_reg(chip->client, BQ24192_FAULT_STAT_REG);
-	if (ret < 0) {
+	ret_fault = bq24192_read_reg(chip->client, BQ24192_FAULT_STAT_REG);
+	if (ret_fault < 0) {
 		dev_warn(&chip->client->dev,
 			"read reg failed %s\n", __func__);
 		return POWER_SUPPLY_HEALTH_UNKNOWN;
 	}
 
-	if ((ret & FAULT_STAT_OTG_FLT) ||
-		((ret & FAULT_STAT_CHRG_IN_FLT) == FAULT_STAT_CHRG_IN_FLT))
+	if (ret_fault & FAULT_STAT_OTG_FLT)
 		return POWER_SUPPLY_HEALTH_OVERVOLTAGE;
 
 	/* Check if the WeakVIN condition occured */
-	ret = bq24192_read_reg(chip->client, BQ24192_SYSTEM_STAT_REG);
-	if (ret < 0) {
+	ret_status = bq24192_read_reg(chip->client, BQ24192_SYSTEM_STAT_REG);
+	if (ret_status < 0) {
 		dev_warn(&chip->client->dev,
 			"read reg failed %s\n", __func__);
 		return POWER_SUPPLY_HEALTH_UNKNOWN;
 	}
 
-	if (!(ret & SYSTEM_STAT_PWR_GOOD))
+	if (!(ret_status & SYSTEM_STAT_PWR_GOOD) ||
+	((ret_fault & FAULT_STAT_CHRG_IN_FLT) == FAULT_STAT_CHRG_IN_FLT))
 		return POWER_SUPPLY_HEALTH_DEAD;
 
 	return POWER_SUPPLY_HEALTH_GOOD;
