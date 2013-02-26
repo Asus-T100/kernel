@@ -185,7 +185,9 @@ static void MRSTLFBFlipOverlay(MRSTLFB_DEVINFO *psDevInfo,
 		* disabling sprite plane. As we find that it causes
 		* overlay update always to be failure when disable and
 		* re-enable overlay on CTP */
-		if (dev_priv->init_screen_start != PSB_RVDC32(DSPASURF))
+		uDspCntr = PSB_RVDC32(DSPACNTR);
+		if (dev_priv->init_screen_start != PSB_RVDC32(DSPASURF) ||
+			(uDspCntr & DISPPLANE_32BPP) != DISPPLANE_32BPP)
 			DRMLFBFlipBlackScreen(psDevInfo, IMG_TRUE);
 #if 0
 		uDspCntr = PSB_RVDC32(DSPACNTR);
