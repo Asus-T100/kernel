@@ -28,6 +28,7 @@
 #define RP_S0IX_COUNTER		0xE8
 #define RP_WRITE_OSNIB		0xE4
 #define RP_FW_UPDATE		0xFE
+#define RP_VRTC			0xFA
 
 /*
  * Assigning some temp ids for following devices

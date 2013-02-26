@@ -131,6 +131,29 @@ static int scu_ipc_util_command(void *tx_buf)
 	return ret;
 }
 
+static int scu_ipc_vrtc_command(void *tx_buf)
+{
+	struct tx_ipc_msg *tx_msg;
+	int ret = 0;
+
+	tx_msg = (struct tx_ipc_msg *)tx_buf;
+
+	switch (tx_msg->cmd) {
+	case IPCMSG_GET_HOBADDR:
+		ret = scu_ipc_command(tx_buf);
+		break;
+	case IPCMSG_VRTC:
+		ret = scu_ipc_simple_command(tx_buf);
+		break;
+	default:
+		pr_info("Command %x not supported\n", tx_msg->cmd);
+		break;
+	};
+
+	return ret;
+}
+
+
 /**
  * scu_ipc_rpmsg_handle() - scu rproc specified ipc rpmsg handle
  * @rx_buf: rx buffer to be add
@@ -169,6 +192,9 @@ int scu_ipc_rpmsg_handle(void *rx_buf, void *tx_buf, u32 *r_len, u32 *s_len)
 		break;
 	case RP_FW_ACCESS:
 		tmp_msg->status = scu_ipc_fw_command(tx_msg);
+		break;
+	case RP_VRTC:
+		tmp_msg->status = scu_ipc_vrtc_command(tx_msg);
 		break;
 	default:
 		tmp_msg->status = 0;

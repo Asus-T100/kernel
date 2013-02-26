@@ -41,6 +41,8 @@
 #include <asm/intel_scu_ipc.h>
 #include <asm/intel-mid.h>
 #include <asm/mrst-vrtc.h>
+#include <linux/rpmsg.h>
+#include <asm/intel_mid_rpmsg.h>
 
 struct mrst_rtc {
 	struct rtc_device	*rtc;
@@ -68,6 +70,8 @@ static const char driver_name[] = "rtc_mrst";
 
 static u32 oshob_base;
 static void __iomem *oshob_addr;
+
+static struct rpmsg_instance *vrtc_mrst_instance;
 
 static inline int is_intr(u8 rtc_intr)
 {
@@ -179,7 +183,8 @@ static int mrst_set_time(struct device *dev, struct rtc_time *time)
 
 	spin_unlock_irqrestore(&rtc_lock, flags);
 
-	ret = intel_scu_ipc_simple_command(IPCMSG_VRTC, IPC_CMD_VRTC_SETTIME);
+	ret = rpmsg_send_simple_command(vrtc_mrst_instance,
+				IPCMSG_VRTC, IPC_CMD_VRTC_SETTIME);
 	return ret;
 }
 
@@ -301,8 +306,8 @@ static int mrst_set_alarm(struct device *dev, struct rtc_wkalrm *t)
 	 * hence this ipc message need not be sent
 	 */
 	if (__intel_mid_cpu_chip == INTEL_MID_CPU_CHIP_LINCROFT) {
-		ret = intel_scu_ipc_simple_command(IPCMSG_VRTC,
-				IPC_CMD_VRTC_SETALARM);
+		ret = rpmsg_send_simple_command(vrtc_mrst_instance,
+					IPCMSG_VRTC, IPC_CMD_VRTC_SETALARM);
 		if (ret)
 			return ret;
 	}
@@ -492,8 +497,8 @@ vrtc_mrst_do_probe(struct device *dev, struct resource *iomem, int rtc_irq)
 
 	if ((__intel_mid_cpu_chip == INTEL_MID_CPU_CHIP_PENWELL) ||
 	    (__intel_mid_cpu_chip == INTEL_MID_CPU_CHIP_CLOVERVIEW)) {
-		retval = intel_scu_ipc_command(IPCMSG_GET_HOBBASE, 0,
-				NULL, 0, &oshob_base, 1);
+		retval = rpmsg_send_command(vrtc_mrst_instance,
+				IPCMSG_GET_HOBBASE, 0, NULL, &oshob_base, 0, 1);
 		if (retval < 0) {
 			dev_dbg(dev,
 				"Unable to get OSHOB base address, err %d\n",
@@ -509,7 +514,7 @@ vrtc_mrst_do_probe(struct device *dev, struct resource *iomem, int rtc_irq)
 		}
 	}
 
-	dev_dbg(dev, "vRTC driver initialised\n");
+	dev_info(dev, "vRTC driver initialised\n");
 	return 0;
 
 cleanup1:
@@ -690,8 +695,79 @@ static void __exit vrtc_mrst_exit(void)
 	platform_driver_unregister(&vrtc_mrst_platform_driver);
 }
 
-module_init(vrtc_mrst_init);
-module_exit(vrtc_mrst_exit);
+static int vrtc_mrst_rpmsg_probe(struct rpmsg_channel *rpdev)
+{
+	int ret;
+
+	if (rpdev == NULL) {
+		pr_err("vrtc_mrst rpmsg channel not created\n");
+		ret = -ENODEV;
+		goto out;
+	}
+
+	dev_info(&rpdev->dev, "Probed vrtc_mrst rpmsg device\n");
+
+	/* Allocate rpmsg instance for fw_update*/
+	ret = alloc_rpmsg_instance(rpdev, &vrtc_mrst_instance);
+	if (!vrtc_mrst_instance) {
+		dev_err(&rpdev->dev, "kzalloc vrtc_mrst instance failed\n");
+		goto out;
+	}
+
+	/* Initialize rpmsg instance */
+	init_rpmsg_instance(vrtc_mrst_instance);
+
+	ret = vrtc_mrst_init();
+	if (ret)
+		free_rpmsg_instance(rpdev, &vrtc_mrst_instance);
+
+out:
+	return ret;
+}
+
+static void __devexit vrtc_mrst_rpmsg_remove(struct rpmsg_channel *rpdev)
+{
+	vrtc_mrst_exit();
+	free_rpmsg_instance(rpdev, &vrtc_mrst_instance);
+	dev_info(&rpdev->dev, "Removed vrtc_mrst rpmsg device\n");
+}
+
+static void vrtc_mrst_rpmsg_cb(struct rpmsg_channel *rpdev, void *data,
+					int len, void *priv, u32 src)
+{
+	dev_warn(&rpdev->dev, "unexpected, message\n");
+
+	print_hex_dump(KERN_DEBUG, __func__, DUMP_PREFIX_NONE, 16, 1,
+		       data, len,  true);
+}
+
+static struct rpmsg_device_id vrtc_mrst_rpmsg_id_table[] = {
+	{ .name	= "rpmsg_vrtc" },
+	{ },
+};
+MODULE_DEVICE_TABLE(rpmsg, vrtc_mrst_rpmsg_id_table);
+
+static struct rpmsg_driver vrtc_mrst_rpmsg = {
+	.drv.name	= KBUILD_MODNAME,
+	.drv.owner	= THIS_MODULE,
+	.id_table	= vrtc_mrst_rpmsg_id_table,
+	.probe		= vrtc_mrst_rpmsg_probe,
+	.callback	= vrtc_mrst_rpmsg_cb,
+	.remove		= __devexit_p(vrtc_mrst_rpmsg_remove),
+};
+
+static int __init vrtc_mrst_rpmsg_init(void)
+{
+	return register_rpmsg_driver(&vrtc_mrst_rpmsg);
+}
+
+static void __exit vrtc_mrst_rpmsg_exit(void)
+{
+	return unregister_rpmsg_driver(&vrtc_mrst_rpmsg);
+}
+
+module_init(vrtc_mrst_rpmsg_init);
+module_exit(vrtc_mrst_rpmsg_exit);
 
 MODULE_AUTHOR("Jacob Pan; Feng Tang");
 MODULE_DESCRIPTION("Driver for Moorestown virtual RTC");
