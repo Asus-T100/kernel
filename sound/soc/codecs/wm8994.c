@@ -3654,10 +3654,8 @@ static void wm1811_mic_work(struct work_struct *work)
 
 	dev_dbg(codec->dev, "Starting mic detection\n");
 
-	/* Use a user-supplied callback if we have one */
-	if (wm8994->micd_cb) {
-		wm8994->micd_cb(wm8994->micd_cb_data);
-	} else {
+	/* If there's a callback it'll be called out of the lock */
+	if (!wm8994->micd_cb) {
 		/*
 		 * Start off measument of microphone impedence to find out
 		 * what's actually there.
@@ -3670,6 +3668,10 @@ static void wm1811_mic_work(struct work_struct *work)
 	}
 
 	mutex_unlock(&wm8994->accdet_lock);
+
+	/* Custom callbacks may reasonably wish to take the same locks */
+	if (wm8994->micd_cb)
+		wm8994->micd_cb(wm8994->micd_cb_data);
 
 	pm_runtime_put(codec->dev);
 }
