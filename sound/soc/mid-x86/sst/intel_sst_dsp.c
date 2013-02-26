@@ -502,6 +502,8 @@ static inline int sst_dma_wait_for_completion(struct intel_sst_drv *sst)
 
 	sst->desc->tx_submit(sst_drv_ctx->desc);
 	ret = sst_wait_timeout(sst, block);
+	if (ret)
+		dma_wait_for_async_tx(sst_drv_ctx->desc);
 	sst_free_block(sst, block);
 	return ret;
 }
