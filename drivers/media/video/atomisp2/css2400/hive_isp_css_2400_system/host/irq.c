@@ -315,7 +315,7 @@ enum hrt_isp_css_irq_status virq_get_channel_id(
 	unsigned int irq_status = irq_reg_load(IRQ0_ID,
 		_HRT_IRQ_CONTROLLER_STATUS_REG_IDX);
 	unsigned int idx;
-	enum hrt_isp_css_irq_status status = hrt_isp_css_irq_status_error;
+	enum hrt_isp_css_irq_status status = hrt_isp_css_irq_status_success;
 	irq_ID_t ID;
 
 
@@ -361,7 +361,8 @@ enum hrt_isp_css_irq_status virq_get_channel_id(
 		} else {
 /* If this device is empty, clear the state on device 0 */
 			irq_reg_store(IRQ0_ID,
-				_HRT_IRQ_CONTROLLER_CLEAR_REG_IDX, IRQ_NESTING_ID[ID]);
+				_HRT_IRQ_CONTROLLER_CLEAR_REG_IDX,
+				1U << IRQ_NESTING_ID[ID]);
 		}
 	} /* if (ID != IRQ0_ID) */
 
@@ -375,7 +376,7 @@ enum hrt_isp_css_irq_status virq_get_channel_id(
 	if (irq_id != NULL)
 		*irq_id = (virq_id_t)idx;
 
-return irq_status;
+return status;
 }
 
 STORAGE_CLASS_INLINE void irq_wait_for_write_complete(
