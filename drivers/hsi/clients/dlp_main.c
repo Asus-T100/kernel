@@ -1401,8 +1401,10 @@ int dlp_hsi_port_claim(void)
 	int ret = 0;
 
 	/* Claim the HSI port (if not already done) */
-	if (hsi_port_claimed(dlp_drv.client))
+	if (hsi_port_claimed(dlp_drv.client)) {
+		pr_err(DRVNAME ": port already claimed!");
 		goto out;
+	}
 
 	/* Claim the HSI port */
 	ret = hsi_claim_port(dlp_drv.client, 1);
@@ -1492,11 +1494,7 @@ void dlp_restore_rx_callbacks(hsi_client_cb *event_cb)
 */
 int dlp_set_flashing_mode(int flashing)
 {
-	/* Release the HSI controller */
-	dlp_hsi_port_unclaim();
-
-	/* Flush everything */
-	hsi_flush(dlp_drv.client);
+	pr_debug(DRVNAME ": Set_flashing_mode(%d)", flashing);
 
 	if (flashing) {
 		/* Set the Boot/Flashing configs */
@@ -1514,8 +1512,7 @@ int dlp_set_flashing_mode(int flashing)
 		dlp_restore_rx_callbacks(&dlp_drv.ehandler);
 	}
 
-	/* Claim the HSI port (to use for IPC) */
-	return dlp_hsi_port_claim();
+	return 0;
 }
 
 /**
