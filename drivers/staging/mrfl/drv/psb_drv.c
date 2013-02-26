@@ -1174,9 +1174,17 @@ bool mrst_get_vbt_data(struct drm_psb_private *dev_priv)
 				dev_priv->panel_id = TMD_VID;
 				PanelID = TMD_VID;
 			} else {
+#ifdef CONFIG_SUPPORT_MIPI_H8C7_VID_DISPLAY
+				/* CMI panel is default one for BODEGABAY */
+				PSB_DEBUG_ENTRY("Default Panel (CMI-H8C7)\n");
+				dev_priv->panel_id = H8C7_VID;
+				PanelID = H8C7_VID;
+#else
+				/* JDI panel is default one for MERRIFIELD */
 				PSB_DEBUG_ENTRY("Default Panel (JDI VID)\n");
 				dev_priv->panel_id = JDI_VID;
 				PanelID = JDI_VID;
+#endif
 			}
 		} else {
 			PSB_DEBUG_ENTRY
