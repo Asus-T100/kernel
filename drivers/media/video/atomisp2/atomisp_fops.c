@@ -484,7 +484,7 @@ static int atomisp_open(struct file *file)
 
 	/* runtime power management, turn on ISP */
 	ret = pm_runtime_get_sync(vdev->v4l2_dev->dev);
-	if (ret) {
+	if (ret < 0) {
 		v4l2_err(&atomisp_dev,
 				"Failed to power on device\n");
 		goto error;
@@ -545,8 +545,8 @@ done:
 
 css_init_failed:
 	dev_err(isp->dev, "css init failed --- bad firmware?\n");
-	pm_runtime_put(vdev->v4l2_dev->dev);
 error:
+	pm_runtime_put(vdev->v4l2_dev->dev);
 	mutex_unlock(&isp->mutex);
 	return ret;
 }
@@ -623,7 +623,7 @@ static int atomisp_release(struct file *file)
 	isp->mmu_l1_base =
 			(void *)sh_css_mmu_get_page_table_base_index();
 
-	if (pm_runtime_put_sync(vdev->v4l2_dev->dev))
+	if (pm_runtime_put_sync(vdev->v4l2_dev->dev) < 0)
 		v4l2_err(&atomisp_dev, "Failed to power off device\n");
 done:
 	mutex_unlock(&isp->mutex);
