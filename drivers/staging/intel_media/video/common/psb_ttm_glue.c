@@ -34,6 +34,11 @@
 #include "tng_topaz.h"
 #endif
 
+#ifdef SUPPORT_VSP
+#include "vsp.h"
+#endif
+
+
 /*IMG Headers*/
 #include "private_data.h"
 
@@ -289,6 +294,12 @@ void psb_remove_videoctx(struct drm_psb_private *dev_priv, struct file *filp)
 			}
 			if (dev_priv->last_topaz_ctx == found_ctx)
 				dev_priv->last_topaz_ctx = NULL;
+#ifdef SUPPORT_VSP
+		} else if (VAEntrypointVideoProc ==
+					(found_ctx->ctx_type & 0xff)) {
+			PSB_DEBUG_PM("Remove vsp context.\n");
+			vsp_rm_context(dev_priv->dev);
+#endif
 		} else {
 			mutex_lock(&msvdx_priv->msvdx_mutex);
 			if (msvdx_priv->msvdx_ctx == found_ctx)
@@ -403,6 +414,11 @@ int psb_video_getparam(struct drm_device *dev, void *data,
 				 (ctx_type & 0xff)))
 			pnw_reset_fw_status(dev_priv->dev,
 				PNW_TOPAZ_START_CTX);
+#endif
+
+#ifdef SUPPORT_VSP
+		if (VAEntrypointVideoProc == (ctx_type & 0xff))
+			vsp_new_context(dev);
 #endif
 		PSB_DEBUG_INIT("Video:add ctx profile %d, entry %d.\n",
 					((ctx_type >> 8) & 0xff),

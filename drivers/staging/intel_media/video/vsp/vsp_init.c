@@ -89,9 +89,11 @@ int vsp_init(struct drm_device *dev)
 		dev->pdev->dev.kobj.sd, NULL,
 		"vsp_pmstate");
 
+	vsp_priv->handling_cmd = 0;
 	vsp_priv->fw_loaded = 0;
 	vsp_priv->current_sequence = 0;
 	vsp_priv->vsp_state = VSP_STATE_DOWN;
+	vsp_priv->dev = dev;
 
 	dev_priv->vsp_private = vsp_priv;
 
@@ -190,6 +192,10 @@ int vsp_init(struct drm_device *dev)
 						 &is_iomem);
 
 	spin_lock_init(&vsp_priv->lock);
+	mutex_init(&vsp_priv->vsp_mutex);
+
+	INIT_DELAYED_WORK(&vsp_priv->vsp_suspend_wq,
+			&psb_powerdown_vsp);
 
 	return 0;
 out_clean:
@@ -335,8 +341,10 @@ int vsp_init_fw(struct drm_device *dev)
 		VSP_DEBUG("%x ", config->program_name_offset[i]);
 	VSP_DEBUG("\n");
 	VSP_DEBUG("programe name:\n");
+#if 0
 	for (i = 0; i < 256; ++i)
 		VSP_DEBUG("%c", config->string_table[i]);
+#endif
 	VSP_DEBUG("\n");
 	VSP_DEBUG("boot processor %x\n", config->boot_processor);
 	VSP_DEBUG("api processor %x\n", config->api_processor);
@@ -446,9 +454,7 @@ int vsp_setup_fw(struct drm_psb_private *dev_priv)
 	}
 
 	/* start the firmware */
-	vsp_priv->ctrl->entry_kind = vsp_entry_init;
-	vsp_start_function(dev_priv, vsp_priv->config.init_addr,
-			   vsp_priv->config.boot_processor);
+	vsp_init_function(dev_priv);
 
 	/* enable irq */
 	psb_irq_preinstall_islands(dev_priv->dev, OSPM_VIDEO_VPP_ISLAND);
@@ -526,19 +532,89 @@ unsigned int vsp_set_firmware(struct drm_psb_private *dev_priv,
 			      unsigned int processor)
 {
 	struct vsp_private *vsp_priv = dev_priv->vsp_private;
+	unsigned int reg = 0;
 
-	/* enable icache */
-	vsp_config_icache(dev_priv, processor);
+	/* config icache */
+	VSP_SET_FLAG(reg, SP_STAT_AND_CTRL_REG_ICACHE_INVALID_FLAG);
+	VSP_SET_FLAG(reg, SP_STAT_AND_CTRL_REG_ICACHE_PREFETCH_FLAG);
+	SP_REG_WRITE32(SP_STAT_AND_CTRL_REG, reg, processor);
 
-	/* set icache base address */
-	SP_REG_WRITE32(SP_CFG_PMEM_MASTER,
+	/* set icache base address: point to instructions in DDR */
+	SP_REG_WRITE32(VSP_ICACHE_BASE_REG_OFFSET,
 		       vsp_priv->firmware->offset +
 		       vsp_priv->config.program_offset[0] +
 		       vsp_priv->config.text_src,
 		       processor);
 
-	vsp_priv->setting->firmware_addr = vsp_priv->firmware->offset;
+	/* write firmware addr in config #2, to be read by boot processor */
 	vsp_priv->ctrl->firmware_addr = vsp_priv->firmware->offset;
+	vsp_priv->setting->firmware_addr = vsp_priv->firmware->offset;
 
 	return 0;
 }
+
+void vsp_start_function(struct drm_psb_private *dev_priv, unsigned int pc,
+		    unsigned int processor)
+{
+	unsigned int reg;
+
+	/* set the start addr */
+	SP_REG_WRITE32(SP_BASE_ADDR_REG, pc, processor);
+
+	/* set start command */
+	SP_REG_READ32(SP_STAT_AND_CTRL_REG, &reg, processor);
+	VSP_SET_FLAG(reg, SP_STAT_AND_CTRL_REG_RUN_FLAG);
+	VSP_SET_FLAG(reg, SP_STAT_AND_CTRL_REG_START_FLAG);
+	SP_REG_WRITE32(SP_STAT_AND_CTRL_REG, reg, processor);
+	return;
+}
+
+void vsp_init_function(struct drm_psb_private *dev_priv)
+{
+	struct vsp_private *vsp_priv = dev_priv->vsp_private;
+
+	vsp_priv->ctrl->entry_kind = vsp_entry_init;
+	vsp_start_function(dev_priv,
+			   vsp_priv->config.init_addr,
+			   vsp_priv->config.boot_processor);
+}
+
+
+void vsp_continue_function(struct drm_psb_private *dev_priv)
+{
+	struct vsp_private *vsp_priv = dev_priv->vsp_private;
+
+	vsp_priv->ctrl->entry_kind = vsp_entry_continue;
+	vsp_start_function(dev_priv,
+			   vsp_priv->config.main_addr,
+			   vsp_priv->config.api_processor);
+}
+
+void vsp_resume_function(struct drm_psb_private *dev_priv)
+{
+	struct vsp_private *vsp_priv = dev_priv->vsp_private;
+	int i;
+	unsigned int reg;
+	uint32_t pd_addr;
+
+	/* restore the config regs */
+	for (i = 2; i < VSP_CONFIG_SIZE; i++)
+		CONFIG_REG_WRITE32(i, vsp_priv->saved_config_regs[i]);
+
+	vsp_priv->ctrl = (struct vsp_ctrl_reg *) (dev_priv->vsp_reg +
+						  VSP_CONFIG_REG_SDRAM_BASE +
+						  VSP_CONFIG_REG_START);
+	/* Set MMU */
+	pd_addr = psb_get_default_pd_addr(dev_priv->vsp_mmu);
+	SET_MMU_PTD(pd_addr >> PAGE_TABLE_SHIFT);
+	SET_MMU_PTD(pd_addr >> PAGE_SHIFT);
+
+	/* load SP firmware */
+	vsp_set_firmware(dev_priv, vsp_priv->config.boot_processor);
+
+	vsp_priv->ctrl->entry_kind = vsp_entry_resume;
+	vsp_start_function(dev_priv,
+			   vsp_priv->config.init_addr,
+			   vsp_priv->config.boot_processor);
+}
+

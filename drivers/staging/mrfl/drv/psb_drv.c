@@ -599,7 +599,9 @@ static struct drm_ioctl_desc psb_ioctls[] = {
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_GET_PIPE_FROM_CRTC_ID,
 		      psb_intel_get_pipe_from_crtc_id, 0),
 #endif
-	PSB_IOCTL_DEF(DRM_IOCTL_PSB_CMDBUF, psb_cmdbuf_ioctl, DRM_AUTH),
+	PSB_IOCTL_DEF(DRM_IOCTL_PSB_CMDBUF,
+		      psb_cmdbuf_ioctl,
+		      DRM_AUTH | DRM_UNLOCKED),
 	/*to be removed later */
 	/*PSB_IOCTL_DEF(DRM_IOCTL_PSB_SCENE_UNREF, drm_psb_scene_unref_ioctl,
 	   DRM_AUTH), */
@@ -753,18 +755,42 @@ static void psb_lastclose(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv =
 	    (struct drm_psb_private *)dev->dev_private;
+	struct msvdx_private *msvdx_priv;
+#ifdef SUPPORT_VSP
+	struct vsp_private *vsp_priv;
+#endif
 
-	return;
-
-	if (!dev->dev_private)
+	if (!dev_priv)
 		return;
 
+	msvdx_priv = dev_priv->msvdx_private;
+#ifdef SUPPORT_VSP
+	vsp_priv = dev_priv->vsp_private;
+#endif
 	mutex_lock(&dev_priv->cmdbuf_mutex);
 	if (dev_priv->encode_context.buffers) {
 		vfree(dev_priv->encode_context.buffers);
 		dev_priv->encode_context.buffers = NULL;
 	}
 	mutex_unlock(&dev_priv->cmdbuf_mutex);
+
+	if (msvdx_priv) {
+		mutex_lock(&msvdx_priv->msvdx_mutex);
+		if (dev_priv->decode_context.buffers) {
+			vfree(dev_priv->decode_context.buffers);
+			dev_priv->decode_context.buffers = NULL;
+		}
+		mutex_unlock(&msvdx_priv->msvdx_mutex);
+	}
+
+#ifdef SUPPORT_VSP
+	mutex_lock(&vsp_priv->vsp_mutex);
+	if (dev_priv->vsp_context.buffers) {
+		vfree(dev_priv->vsp_context.buffers);
+		dev_priv->vsp_context.buffers = NULL;
+	}
+	mutex_unlock(&vsp_priv->vsp_mutex);
+#endif
 }
 
 static void psb_do_takedown(struct drm_device *dev)
@@ -795,8 +821,7 @@ static void psb_do_takedown(struct drm_device *dev)
 	psb_msvdx_uninit(dev);
 
 #ifdef SUPPORT_VSP
-	if (IS_MRFLD(dev))
-		vsp_deinit(dev);
+	vsp_deinit(dev);
 #endif
 #ifdef MEDFIELD
 	if (IS_MDFLD(dev))
@@ -1600,6 +1625,9 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	mutex_init(&dev_priv->reset_mutex);
 	INIT_LIST_HEAD(&dev_priv->decode_context.validate_list);
 	INIT_LIST_HEAD(&dev_priv->encode_context.validate_list);
+#ifdef SUPPORT_VSP
+	INIT_LIST_HEAD(&dev_priv->vsp_context.validate_list);
+#endif
 
 	mutex_init(&dev_priv->dpms_mutex);
 	mutex_init(&dev_priv->dsr_mutex);
@@ -1626,14 +1654,12 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	if (!dev_priv->msvdx_reg)
 		goto out_err;
 
-	if (IS_MRFLD(dev)) {
-		dev_priv->vsp_reg =
-			ioremap(resource_start + TNG_VSP_OFFSET,
-				TNG_VSP_SIZE);
-		if (!dev_priv->vsp_reg)
-			goto out_err;
-	}
-
+#ifdef SUPPORT_VSP
+	dev_priv->vsp_reg =
+		ioremap(resource_start + TNG_VSP_OFFSET, TNG_VSP_SIZE);
+	if (!dev_priv->vsp_reg)
+		goto out_err;
+#endif
 	if (IS_TOPAZ(dev)) {
 		if (IS_MRFLD(dev))
 			dev_priv->topaz_reg =
@@ -1747,11 +1773,13 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	if (!dev_priv->mmu)
 		goto out_err;
 
+#ifdef SUPPORT_VSP
 	dev_priv->vsp_mmu = psb_mmu_driver_init((void *)0,
 					    drm_psb_trap_pagefaults, 0,
 					    dev_priv, VSP_MMU);
 	if (!dev_priv->vsp_mmu)
 		goto out_err;
+#endif
 
 	pg = dev_priv->pg;
 

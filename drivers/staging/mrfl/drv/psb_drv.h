@@ -871,7 +871,9 @@ struct drm_psb_private {
 
 	struct psb_context decode_context;
 	struct psb_context encode_context;
-
+#ifdef SUPPORT_VSP
+	struct psb_context vsp_context;
+#endif
 	/*
 	 * LID-Switch
 	 */

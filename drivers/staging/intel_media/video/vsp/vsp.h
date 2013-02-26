@@ -43,7 +43,9 @@
 #define SP_STAT_AND_CTRL_REG 0x0
 #define SP_STAT_AND_CTRL_REG_RESET_FLAG           0
 #define SP_STAT_AND_CTRL_REG_START_FLAG           1
+#define SP_STAT_AND_CTRL_REG_BREAK_FLAG           2
 #define SP_STAT_AND_CTRL_REG_RUN_FLAG             3
+#define SP_STAT_AND_CTRL_REG_BROKEN_FLAG          4
 #define SP_STAT_AND_CTRL_REG_READY_FLAG           5
 #define SP_STAT_AND_CTRL_REG_SLEEP_FLAG           6
 #define SP_STAT_AND_CTRL_REG_ICACHE_INVALID_FLAG  0xC
@@ -142,9 +144,9 @@ static const unsigned int vsp_processor_base[] = {
 	} while (0)
 
 #define VSP_SET_FLAG(val, offset) \
-	(val) = ((val) | (0x1 << (offset)))
+	((val) = ((val) | (0x1 << (offset))))
 #define VSP_CLEAR_FLAG(val, offset) \
-	(val) = ((val) & (~(0x1 << (offset))))
+	((val) = ((val) & (~(0x1 << (offset)))))
 #define VSP_READ_FLAG(val, offset) \
 	(((val) & (0x1 << (offset))) >> (offset))
 #define VSP_REVERT_FLAG(val, offset) \
@@ -168,11 +170,25 @@ do {									\
 /* The status of vsp hardware */
 enum vsp_power_state {
 	VSP_STATE_DOWN,
+	VSP_STATE_SUSPEND,
 	VSP_STATE_IDLE,
 	VSP_STATE_ACTIVE
 };
 
+#define VSP_CONFIG_SIZE 16
+
+enum vsp_irq_reg {
+	VSP_IRQ_REG_EDGE   = 0,
+	VSP_IRQ_REG_MASK   = 1,
+	VSP_IRQ_REG_STATUS = 2,
+	VSP_IRQ_REG_CLR    = 3,
+	VSP_IRQ_REG_ENB    = 4,
+	VSP_IRQ_REG_PULSE  = 5,
+	VSP_IRQ_REG_SIZE
+};
+
 struct vsp_private {
+	struct drm_device *dev;
 	uint32_t current_sequence;
 
 	int fw_loaded;
@@ -208,6 +224,16 @@ struct vsp_private {
 	struct sysfs_dirent *sysfs_pmstate;
 
 	uint64_t vss_cc_acc;
+
+	unsigned int saved_config_regs[VSP_CONFIG_SIZE];
+
+	/* lock for vsp command */
+	struct mutex vsp_mutex;
+
+	/* pm suspend wq */
+	struct delayed_work vsp_suspend_wq;
+
+	int handling_cmd;
 };
 
 extern int vsp_init(struct drm_device *dev);
@@ -240,6 +266,14 @@ extern int psb_vsp_save_context(struct drm_device *dev);
 extern int psb_vsp_restore_context(struct drm_device *dev);
 extern int psb_check_vsp_idle(struct drm_device *dev);
 
+extern void vsp_init_function(struct drm_psb_private *dev_priv);
+extern void vsp_continue_function(struct drm_psb_private *dev_priv);
+extern void vsp_resume_function(struct drm_psb_private *dev_priv);
+
+extern int psb_vsp_dump_info(struct drm_psb_private *dev_priv);
+
+extern void psb_powerdown_vsp(struct work_struct *work);
+
 static inline
 unsigned int vsp_is_idle(struct drm_psb_private *dev_priv,
 			 unsigned int processor)
@@ -262,36 +296,4 @@ unsigned int vsp_is_sleeping(struct drm_psb_private *dev_priv,
 	SP_REG_READ32(SP_STAT_AND_CTRL_REG, &reg, processor);
 	return VSP_READ_FLAG(reg, SP_STAT_AND_CTRL_REG_SLEEP_FLAG);
 }
-
-static inline
-void vsp_config_icache(struct drm_psb_private *dev_priv,
-		       unsigned int processor)
-{
-	unsigned int reg;
-
-	reg = 0;
-	VSP_SET_FLAG(reg, SP_STAT_AND_CTRL_REG_ICACHE_INVALID_FLAG);
-	VSP_SET_FLAG(reg, SP_STAT_AND_CTRL_REG_ICACHE_PREFETCH_FLAG);
-	SP_REG_WRITE32(SP_STAT_AND_CTRL_REG, reg, processor);
-
-	return;
-}
-
-static inline
-void vsp_start_function(struct drm_psb_private *dev_priv, unsigned int pc,
-		    unsigned int processor)
-{
-	unsigned int reg;
-
-	/* set the start addr */
-	SP_REG_WRITE32(SP_BASE_ADDR_REG, pc, processor);
-
-	/* set start command */
-	SP_REG_READ32(SP_STAT_AND_CTRL_REG, &reg, processor);
-	VSP_SET_FLAG(reg, SP_STAT_AND_CTRL_REG_RUN_FLAG);
-	VSP_SET_FLAG(reg, SP_STAT_AND_CTRL_REG_START_FLAG);
-	SP_REG_WRITE32(SP_STAT_AND_CTRL_REG, reg, processor);
-	return;
-}
-
 #endif	/* _VSP_H_ */

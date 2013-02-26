@@ -191,7 +191,11 @@ static int drm_psb_tbe_unbind(struct ttm_tt *ttm)
 			     psb_be->hw_tile_stride);
 #ifdef SUPPORT_VSP
 	psb_mmu_remove_pages(vsp_pd, psb_be->offset,
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 3, 0))
 			     psb_be->num_pages,
+#else
+			     ttm->num_pages,
+#endif
 			     psb_be->desired_tile_stride,
 			     psb_be->hw_tile_stride);
 #endif
@@ -294,8 +298,16 @@ static int drm_psb_tbe_bind(struct ttm_tt *ttm,
 		goto out_err;
 
 #ifdef SUPPORT_VSP
-	ret = psb_mmu_insert_pages(vsp_pd, psb_be->pages,
-				   psb_be->offset, psb_be->num_pages,
+	ret = psb_mmu_insert_pages(vsp_pd,
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 3, 0))
+				   psb_be->pages,
+				   psb_be->offset,
+				   psb_be->num_pages,
+#else
+				   ttm->pages,
+				   psb_be->offset,
+				   ttm->num_pages,
+#endif
 				   psb_be->desired_tile_stride,
 				   psb_be->hw_tile_stride, type);
 	if (ret)

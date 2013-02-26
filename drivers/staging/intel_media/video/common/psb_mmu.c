@@ -181,6 +181,7 @@ static void psb_mmu_flush_pd_locked(struct psb_mmu_driver *driver,
 				1);
 		} else if (driver->mmu_type == VSP_MMU) {
 #ifdef SUPPORT_VSP
+			struct drm_psb_private *dev_priv = driver->dev_priv;
 			INVALID_MMU;
 #endif
 		} else {
@@ -214,6 +215,7 @@ void psb_mmu_flush(struct psb_mmu_driver *driver, int rc_prot)
 		atomic_set(&driver->dev_priv->topaz_mmu_invaldc, 1);
 	} else if (driver->mmu_type == VSP_MMU) {
 #ifdef SUPPORT_VSP
+		struct drm_psb_private *dev_priv = driver->dev_priv;
 		INVALID_MMU;
 #endif
 	} else {

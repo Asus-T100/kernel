@@ -15,13 +15,15 @@ ccflags-y += \
 	-Iinclude/drm \
 	-I$(INCDIR)/../intel_media/video/common \
 	-I$(INCDIR)/../intel_media/video/decode \
-	-I$(INCDIR)/../intel_media/video/encode
+	-I$(INCDIR)/../intel_media/video/encode \
+	-I$(INCDIR)/../intel_media/video/vsp
 
 ccflags-y += -DANDROID -DLINUX -D_linux_ -D__KERNEL__
 
 ccflags-$(CONFIG_DRM_MDFLD) += -DMEDFIELD
 ccflags-$(CONFIG_DRM_MRFLD) += -DMERRIFIELD
 ccflags-$(CONFIG_PCI_MSI) += -DCONFIG_PCI_MSI
+ccflags-$(CONFIG_SUPPORT_VSP) += -DSUPPORT_VSP
 
 obj-y += psb_bl.o \
 	psb_dpst.o \

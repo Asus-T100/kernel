@@ -90,3 +90,11 @@ config GFX_RTPM
 	default n
 	help
           xxxxxx
+
+config SUPPORT_VSP
+        bool "SUPPORT_VIDEO_VSP"
+        depends on DRM_MRFLD
+        default n
+        help
+          xxxxxx
+

@@ -13,11 +13,13 @@ ccflags-y += \
 	-I$(INCDIR)/../intel_media/video/common \
 	-I$(INCDIR)/../intel_media/video/decode \
 	-I$(INCDIR)/../intel_media/video/encode \
+	-I$(INCDIR)/../intel_media/video/vsp \
 	-I$(INCDIR)/../../../include/linux \
 	-I$(INCDIR)/../../../include/drm \
 	-I$(INCDIR)/../../../include/drm/ttm
 
 ccflags-y += -DANDROID -D_linux_ -DLINUX -D__KERNEL__  -DMERRIFIELD
+ccflags-$(CONFIG_SUPPORT_VSP) += -DSUPPORT_VSP
 
 #VIDEO_COMMON_DIR = $(TOP_DIR)/driver/staging/intel_media/video/common
 #DECODE_DIR = $(TOP_DIR)/driver/staging/intel_media/video/decode
