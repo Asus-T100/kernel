@@ -83,6 +83,7 @@ obj-$(CONFIG_VIDEO_M5MOLS)	+= m5mols/
 obj-$(CONFIG_VIDEO_LM3554) += lm3554.o
 obj-$(CONFIG_VIDEO_LM3559) += lm3559.o
 obj-$(CONFIG_VIDEO_OV9724) += ov9724.o
+obj-$(CONFIG_VIDEO_OV2722) += ov2722.o
 
 obj-$(CONFIG_VIDEO_S5K6AA)	+= s5k6aa.o
 obj-$(CONFIG_VIDEO_SMIAPP)	+= smiapp/
