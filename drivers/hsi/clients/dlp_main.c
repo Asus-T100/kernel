@@ -1801,7 +1801,8 @@ static int dlp_driver_remove(struct device *dev)
 	dlp_tty_set_link_valid(1, 0);
 
 	/* Unregister the HSI client */
-	hsi_unregister_port_event(client);
+	if (hsi_port_claimed(client))
+		hsi_unregister_port_event(client);
 	hsi_client_set_drvdata(client, NULL);
 
 	/* Cleanup all channels */
