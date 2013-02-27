@@ -52,6 +52,7 @@ ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_RMI4_I2C
 obj-$(subst m,y,$(CONFIG_TOUCHSCREEN_SYNAPTICS_RMI4_I2C))		+= platform_s3202.o
 else
 obj-$(subst m,y,$(CONFIG_TOUCHSCREEN_SYNAPTICS_I2C_RMI4))		+= platform_s3202.o
+obj-$(subst m,y,$(CONFIG_TOUCHSCREEN_SYNAPTICS_I2C_RMI4))		+= platform_s3400.o
 endif
 obj-$(subst m,y,$(CONFIG_BQ24261_CHARGER))                            += platform_bq24261.o
 # Camera

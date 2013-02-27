@@ -28,9 +28,14 @@
 #ifndef _SYNAPTICS_RMI4_H_INCLUDED_
 #define _SYNAPTICS_RMI4_H_INCLUDED_
 
+#include <linux/sfi.h>
+
 #define TOUCH_TYPE_S3202_OGS	0
 #define TOUCH_TYPE_S3202_GFF	1
 #define TOUCH_TYPE_S3408	2
+
+#define SFI_S3400_CGS "syn_3400_cgs"
+#define SFI_S3400_IGZO "syn_3400_igzo"
 
 struct rmi4_touch_calib {
 	bool x_flip;
@@ -39,6 +44,7 @@ struct rmi4_touch_calib {
 	u32 customer_id;
 	char *fw_name;
 	char *key_dev_name;
+	char type[SFI_NAME_LEN];
 };
 
 /**
@@ -59,7 +65,7 @@ struct rmi4_platform_data {
 	int irq_type;
 	bool regulator_en;
 	char *regulator_name;
-	const struct rmi4_touch_calib *calibs;
+	struct rmi4_touch_calib *calib;
 };
 
 #endif
