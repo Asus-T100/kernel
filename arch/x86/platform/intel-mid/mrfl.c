@@ -269,3 +269,9 @@ void *get_tangier_ops()
 {
 	return &tangier_ops;
 }
+
+/* piggy back on anniedale ops right now */
+void *get_anniedale_ops()
+{
+	return &tangier_ops;
+}
