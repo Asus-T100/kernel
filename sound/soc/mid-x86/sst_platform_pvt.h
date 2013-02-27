@@ -54,6 +54,7 @@ extern struct sst_device *sst_dsp;
 #define SST_VIBRA2_DAI "Vibra2-cpu-dai"
 #define SST_VOICE_DAI "Voice-cpu-dai"
 #define SST_PROBE_DAI "Probe-cpu-dai"
+#define SST_VOIP_DAI "Voip-cpu-dai"
 
 struct sst_device;
 
