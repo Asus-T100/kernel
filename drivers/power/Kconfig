@@ -378,7 +378,7 @@ config BQ24261_CHARGER
 config PMIC_CCSM
 	tristate "PMIC CCSM driver"
 	select POWER_SUPPLY_BATTID
-	depends on INTEL_SCU_IPC
+	depends on INTEL_SCU_IPC && IIO
 	help
 	  Say Y to include support for PMIC Charger Control State Machine driver
 	  Driver for initializing and monitoring the CCSM in PMIC
