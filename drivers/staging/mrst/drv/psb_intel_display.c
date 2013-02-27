@@ -1783,19 +1783,20 @@ static int mdfld_crtc_dsi_mode_set(struct drm_crtc *crtc,
 		init_flag = 0;
 	}
 
+	ctx->dspcntr &= ~DISPPLANE_PIXFORMAT_MASK;
 	switch (fb_bpp) {
 	case 8:
-		ctx->dspcntr = DISPPLANE_8BPP;
+		ctx->dspcntr |= DISPPLANE_8BPP;
 		break;
 	case 16:
 		if (fb_depth == 15)
-			ctx->dspcntr = DISPPLANE_15_16BPP;
+			ctx->dspcntr |= DISPPLANE_15_16BPP;
 		else
-			ctx->dspcntr = DISPPLANE_16BPP;
+			ctx->dspcntr |= DISPPLANE_16BPP;
 		break;
 	case 24:
 	case 32:
-		ctx->dspcntr = DISPPLANE_32BPP_NO_ALPHA;
+		ctx->dspcntr |= DISPPLANE_32BPP_NO_ALPHA;
 		break;
 	default:
 		DRM_ERROR("Unknown color depth\n");
