@@ -84,7 +84,7 @@ int mdm_ctrl_cold_boot_7x6x(struct mdm_ctrl *drv)
 	gpio_set_value(drv->gpio_rst_bbn, 0);
 
 	/* Wait before doing the pulse on ON1 */
-	udelay(pdata->pre_pwr_down_delay);
+	usleep_range(pdata->pre_pwr_down_delay, pdata->pre_pwr_down_delay);
 
 	/* Write the new register value (CHIPCNTRL_ON) */
 	/* Will hard reset the modem */
@@ -96,17 +96,17 @@ int mdm_ctrl_cold_boot_7x6x(struct mdm_ctrl *drv)
 	}
 
 	/* Wait before RESET_PWRDN_N to be 1 */
-	udelay(pdata->pwr_down_duration);
+	usleep_range(pdata->pwr_down_duration, pdata->pwr_down_duration);
 
 	/* Toggle the RESET_BB_N */
 	gpio_set_value(drv->gpio_rst_bbn, 1);
 
 	/* Wait before doing the pulse on ON1 */
-	udelay(mid_info->pre_on_delay);
+	usleep_range(mid_info->pre_on_delay, mid_info->pre_on_delay);
 
 	/* Do a pulse on ON1 */
 	gpio_set_value(drv->gpio_pwr_on, 1);
-	udelay(mid_info->on_duration);
+	usleep_range(mid_info->on_duration, mid_info->on_duration);
 	gpio_set_value(drv->gpio_pwr_on, 0);
 
 	mdm_ctrl_launch_timer(&drv->flashing_timer,
@@ -141,7 +141,7 @@ int mdm_ctrl_silent_warm_reset_7x6x(struct mdm_ctrl *drv)
 	struct mdm_ctrl_device_info *mid_info = drv->pdata->device_data;
 
 	gpio_set_value(drv->gpio_rst_bbn, 0);
-	udelay(mid_info->warm_rst_duration);
+	usleep_range(mid_info->warm_rst_duration, mid_info->warm_rst_duration);
 	gpio_set_value(drv->gpio_rst_bbn, 1);
 
 	return 0;
@@ -252,6 +252,9 @@ int mdm_ctrl_power_off_7x6x(struct mdm_ctrl *drv)
 	/* Set the RESET_BB_N to 0 */
 	gpio_set_value(drv->gpio_rst_bbn, 0);
 
+	/* Wait before doing the pulse on ON1 */
+	usleep_range(pdata->pre_pwr_down_delay, pdata->pre_pwr_down_delay);
+
 	/* Write the new register value (CHIPCNTRL_OFF) */
 	data = (def_value & pdata->chipctrl_mask) | pdata->chipctrloff;
 	ret =  intel_scu_ipc_writev(&addr, &data, 1);
@@ -261,7 +264,7 @@ int mdm_ctrl_power_off_7x6x(struct mdm_ctrl *drv)
 	}
 
 	/* Safety sleep. Avoid to directly call power on. */
-	udelay(pdata->pwr_down_duration);
+	usleep_range(pdata->pwr_down_duration, pdata->pwr_down_duration);
 
  out:
 	return ret;
