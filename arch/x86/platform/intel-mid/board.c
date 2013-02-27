@@ -42,6 +42,7 @@
 #include <asm/platform_ctp_audio.h>
 #include "device_libs/platform_bcove_adc.h"
 #include "device_libs/platform_mrfl_pmic.h"
+#include "device_libs/platform_mrfl_thermal.h"
 #include "device_libs/platform_mrfl_pmic_i2c.h"
 #include <asm/platform_mrfld_audio.h>
 
@@ -135,6 +136,8 @@ struct devs_id __initconst device_ids[] = {
 	{"bcove_power_btn", SFI_DEV_TYPE_IPC, 1, &msic_power_btn_platform_data,
 					&ipc_device_handler},
 	{"bcove_adc", SFI_DEV_TYPE_IPC, 1, &bcove_adc_platform_data,
+					&ipc_device_handler},
+	{"bcove_thrm", SFI_DEV_TYPE_IPC, 1, &mrfl_thermal_platform_data,
 					&ipc_device_handler},
 
 	/* IPC devices */

@@ -39,7 +39,7 @@ config DEBUG_THERMAL
 
 config SENSORS_THERMAL_MRFLD
         tristate "Thermal driver for Intel Merrifield platform"
-        depends on THERMAL && INTEL_SCU_IPC && BASINCOVE_GPADC
+        depends on THERMAL && IIO
         help
           Say Y here to enable thermal driver on Intel Merrifield
           platform.
