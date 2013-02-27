@@ -331,6 +331,9 @@ enum dwc_otg_state {
 
 struct intel_dwc_otg_pdata {
 	int is_hvp;
+	int is_byt;
+	int no_host_mode;
+	int no_device_mode;
 };
 
 /** The main structure to keep track of OTG driver state. */
@@ -550,5 +553,6 @@ struct dwc_otg2 {
 
 #define VBUS_TIMEOUT	300
 #define PCI_DEVICE_ID_DWC 0x119E
+#define PCI_DEVICE_ID_DWC_VLV 0x0F37
 
 #endif /* __DWC_OTG_H__ */
