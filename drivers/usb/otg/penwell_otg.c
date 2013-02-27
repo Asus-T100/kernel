@@ -4869,6 +4869,20 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 		goto err;
 	}
 
+	/* FIXME: Reads Charging compliance bit from scu mip.
+	 * This snippet needs to be cleaned up after EM inteface is ready
+	 */
+	if (is_clovertrail(pdev)) {
+		u8	smip_data = 0;
+		if (!intel_scu_ipc_read_mip(&smip_data, 1, 0x2e7, 1)) {
+			pnw->otg_pdata->charging_compliance =
+							!(smip_data & 0x40);
+			dev_info(pnw->dev, "charging_compliance = %d\n",
+					pnw->otg_pdata->charging_compliance);
+		} else
+			dev_err(pnw->dev, "scu mip read error\n");
+	}
+
 	if (!is_clovertrail(pdev)) {
 		if (pnw->otg_pdata->gpio_vbus) {
 			retval = gpio_request(pnw->otg_pdata->gpio_vbus,
