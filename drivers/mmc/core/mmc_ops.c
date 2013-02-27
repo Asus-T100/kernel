@@ -712,9 +712,11 @@ void mmc_rpmb_post_frame(struct mmc_core_rpmb_req *rpmb_req)
 		/*
 		 * MAC stored in the last package
 		 */
-		if (p_req->mac)
+		if (p_req->mac) {
+			i--;
 			memcpy(p_req->mac, buf_frame + i * 512 + RPMB_MAC_BEG,
 					32);
+		}
 	} else if (p_req->mac)
 		memcpy(p_req->mac, buf_frame + RPMB_MAC_BEG, 32);
 out:
