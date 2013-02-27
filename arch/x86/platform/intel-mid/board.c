@@ -37,6 +37,7 @@
 #include "device_libs/platform_msic_ocd.h"
 #include "device_libs/platform_msic_vdd.h"
 #include "device_libs/platform_msic_thermal.h"
+#include "device_libs/platform_soc_thermal.h"
 #include "device_libs/platform_msic_adc.h"
 #include <asm/platform_ctp_audio.h>
 #include "device_libs/platform_bcove_adc.h"
@@ -153,6 +154,8 @@ struct devs_id __initconst device_ids[] = {
 						&ipc_device_handler},
 	{"mrfld_lm49453", SFI_DEV_TYPE_IPC, 1, &merfld_audio_platform_data,
 						&ipc_device_handler},
+	{"soc_thrm", SFI_DEV_TYPE_IPC, 1, &no_platform_data,
+					&soc_thrm_device_handler},
 
 	/* I2C devices for camera image subsystem */
 	{"lm3554", SFI_DEV_TYPE_I2C, 0, &lm3554_platform_data_func,
