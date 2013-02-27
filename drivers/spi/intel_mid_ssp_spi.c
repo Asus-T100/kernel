@@ -937,7 +937,8 @@ static int handle_message(struct ssp_driver_context *drv_context)
 	drv_context->rx_end = drv_context->rx + transfer->len;
 
 	/* [REVERT ME] Bug in status register clear for Tangier simulation */
-	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER) {
+	if ((intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER) ||
+		(intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_ANNIEDALE)) {
 		if (intel_mrfl_identify_sim() != INTEL_MRFL_CPU_SIMULATION_VP)
 			write_SSSR(drv_context->clear_sr, reg);
 	} else /* Clear status  */
