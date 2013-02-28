@@ -1198,6 +1198,9 @@ static const struct file_operations pmu_stats_log_operations = {
 	.llseek		= seq_lseek,
 	.release	= single_release,
 };
+#else
+void pmu_s0ix_demotion_stat(int req_state, int grant_state) {}
+EXPORT_SYMBOL(pmu_s0ix_demotion_stat);
 #endif
 
 void pmu_stats_init(void)
