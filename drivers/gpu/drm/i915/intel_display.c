@@ -3451,6 +3451,54 @@ static void intel_crtc_dpms_overlay(struct intel_crtc *intel_crtc, bool enable)
 	 */
 }
 
+static void vlv_pll_enable_reset(struct drm_crtc *crtc)
+{
+	struct drm_device *dev = crtc->dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
+	int pipe = intel_crtc->pipe;
+
+	if (intel_pipe_has_type(crtc, INTEL_OUTPUT_HDMI)) {
+		u32 val;
+		val = intel_dpio_read(dev_priv, _DPIO_DATA_LANE0);
+		if (pipe)
+			val |= (1<<21);
+		val |= (1<<20);
+		intel_dpio_write(dev_priv, DPIO_DATA_CHANNEL1, val);
+
+		intel_dpio_write(dev_priv, 0x8238, 0x00760018);
+		intel_dpio_write(dev_priv, 0x825c, 0x00400888);
+
+		intel_dpio_write(dev_priv, 0x8200, 0x10080);
+		intel_dpio_write(dev_priv, 0x8204, 0x00600060);
+
+		intel_dpio_write(dev_priv, 0x8294, 0x00000000);
+		intel_dpio_write(dev_priv, 0x8290, 0x2b245f5f);
+		intel_dpio_write(dev_priv, 0x8288, 0x5578b83a);
+		intel_dpio_write(dev_priv, 0x828c, 0x0c782040);
+		intel_dpio_write(dev_priv, 0x690, 0x2b247878);
+		intel_dpio_write(dev_priv, 0x822c, 0x00030000);
+		intel_dpio_write(dev_priv, 0x8224, 0x00002000);
+		intel_dpio_write(dev_priv, 0x8294, 0x80000000);
+
+	}
+	if (intel_pipe_has_type(crtc, INTEL_OUTPUT_DISPLAYPORT) ||
+	    intel_pipe_has_type(crtc, INTEL_OUTPUT_EDP)) {
+		u32 val;
+		val = intel_dpio_read(dev_priv, _DPIO_DATA_LANE2);
+		if (pipe)
+			val |= (1<<21);
+		val |= (1<<20);
+		intel_dpio_write(dev_priv, DPIO_DATA_CHANNEL2, val);
+
+		intel_dpio_write(dev_priv, 0x8438, 0x00760018);
+		intel_dpio_write(dev_priv, 0x845c, 0x00400888);
+
+		intel_dpio_write(dev_priv, 0x8400, 0x10080);
+		intel_dpio_write(dev_priv, 0x8404, 0x00600060);
+	}
+}
+
 static void i9xx_crtc_enable(struct drm_crtc *crtc)
 {
 	struct drm_device *dev = crtc->dev;
@@ -3466,6 +3514,7 @@ static void i9xx_crtc_enable(struct drm_crtc *crtc)
 	intel_update_watermarks(dev);
 
 	intel_enable_pll(dev_priv, pipe);
+	vlv_pll_enable_reset(crtc);
 	intel_enable_pipe(dev_priv, pipe, false);
 	intel_enable_plane(dev_priv, plane, pipe);
 
@@ -4192,45 +4241,8 @@ static void vlv_update_pll(struct drm_crtc *crtc,
 		POSTING_READ(DPLL_MD(pipe));
 	}
 
-	if (intel_pipe_has_type(crtc, INTEL_OUTPUT_HDMI)) {
-		u32 val;
-		val = intel_dpio_read(dev_priv, _DPIO_DATA_LANE0);
-		if (pipe)
-			val |= (1<<21);
-		val |= (1<<20);
-		intel_dpio_write(dev_priv, DPIO_DATA_CHANNEL1, val);
+	vlv_pll_enable_reset(crtc);
 
-		intel_dpio_write(dev_priv, 0x8238, 0x00760018);
-		intel_dpio_write(dev_priv, 0x825c, 0x00400888);
-
-		intel_dpio_write(dev_priv, 0x8200, 0x10080);
-		intel_dpio_write(dev_priv, 0x8204, 0x00600060);
-
-		intel_dpio_write(dev_priv, 0x8294, 0x00000000);
-		intel_dpio_write(dev_priv, 0x8290, 0x2b245f5f);
-		intel_dpio_write(dev_priv, 0x8288, 0x5578b83a);
-		intel_dpio_write(dev_priv, 0x828c, 0x0c782040);
-		intel_dpio_write(dev_priv, 0x690, 0x2b247878);
-		intel_dpio_write(dev_priv, 0x822c, 0x00030000);
-		intel_dpio_write(dev_priv, 0x8224, 0x00002000);
-		intel_dpio_write(dev_priv, 0x8294, 0x80000000);
-
-	}
-	if (intel_pipe_has_type(crtc, INTEL_OUTPUT_DISPLAYPORT)
-			|| intel_pipe_has_type(crtc, INTEL_OUTPUT_EDP)) {
-		u32 val;
-		val = intel_dpio_read(dev_priv, _DPIO_DATA_LANE2);
-		if (pipe)
-			val |= (1<<21);
-		val |= (1<<20);
-		intel_dpio_write(dev_priv, DPIO_DATA_CHANNEL2, val);
-
-		intel_dpio_write(dev_priv, 0x8438, 0x00760018);
-		intel_dpio_write(dev_priv, 0x845c, 0x00400888);
-
-		intel_dpio_write(dev_priv, 0x8400, 0x10080);
-		intel_dpio_write(dev_priv, 0x8404, 0x00600060);
-	}
 	if (intel_pipe_has_type(crtc, INTEL_OUTPUT_DISPLAYPORT) ||
 	    intel_pipe_has_type(crtc, INTEL_OUTPUT_EDP))
 		intel_dp_set_m_n(crtc, mode, adjusted_mode);
