@@ -1868,6 +1868,8 @@ static int atomisp_camera_s_ext_ctrls(struct file *file, void *fh,
 	int ret = 0;
 
 	for (i = 0; i < c->count; i++) {
+		struct v4l2_ctrl *ctr;
+
 		ctrl.id = c->controls[i].id;
 		ctrl.value = c->controls[i].value;
 		switch (ctrl.id) {
@@ -1920,7 +1922,12 @@ static int atomisp_camera_s_ext_ctrls(struct file *file, void *fh,
 			mutex_unlock(&isp->mutex);
 			break;
 		default:
-			ret = -EINVAL;
+			ctr = v4l2_ctrl_find(&isp->isp_subdev.ctrl_handler,
+					     ctrl.id);
+			if (ctr)
+				ret = v4l2_ctrl_s_ctrl(ctr, ctrl.value);
+			else
+				ret = -EINVAL;
 		}
 
 		if (ret) {
