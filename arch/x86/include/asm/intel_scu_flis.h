@@ -3,11 +3,14 @@
 
 enum flis_param_t {
 	PULL,
-	PIN_DIRECTION,
+	MUX,
 	OPEN_DRAIN,
 };
 
-#define NONE		0
+/*
+ * Config value for PULL
+ */
+#define NONE		(0 << 0)
 #define DOWN_20K	(1 << 0)
 #define DOWN_2K		(1 << 1)
 /* DOWN_75K is reserved */
@@ -15,21 +18,26 @@ enum flis_param_t {
 #define UP_2K		(1 << 4)
 #define UP_910K		(1 << 5)
 
-#define INPUT_EN	(1 << 0)
-#define INPUT_DIS	(0 << 0)
-#define OUTPUT_EN	(1 << 2)
-#define OUTPUT_DIS	(0 << 2)
-
-#define INPUT_LOW	(INPUT_EN | (0 << 1) | OUTPUT_DIS)
-#define INPUT_HIGH	(INPUT_EN | (1 << 1) | OUTPUT_DIS)
-#define OUTPUT_LOW	(OUTPUT_EN | (0 << 3) | INPUT_DIS)
-#define OUTPUT_HIGH	(OUTPUT_EN | (1 << 3) | INPUT_DIS)
-
+/*
+ * Config value for OPEN_DRAIN
+ */
 #define OD_ENABLE	(1 << 0)
 #define OD_DISABLE	(0 << 0)
 
+/*
+ * Config value for MUX
+ */
+/*Bit0: Mux Enable for Input Enable*/
+#define MUX_EN_INPUT_EN		(1<<0)
+/*Bit1: Input Enable for*/
+#define INPUT_EN		(1<<1)
+/*Bit2: Mux Enable for Output Enable*/
+#define MUX_EN_OUTPUT_EN	(1<<2)
+/*Bit3: Output Enable*/
+#define OUTPUT_EN		(1<<3)
+
 #define PULL_MASK		0x3F
-#define PIN_DIRECTION_MASK	0xF
+#define MUX_MASK		0xF
 #define OPEN_DRAIN_MASK		0x1
 
 enum pinname_t {
@@ -286,4 +294,5 @@ int intel_scu_ipc_update_shim(u32 data, u32 mask, u32 flis_addr, u32 offset);
 int config_pin_flis(enum pinname_t name, enum flis_param_t param, u8 val);
 int get_pin_flis(enum pinname_t name, enum flis_param_t param, u8 *val);
 
+extern struct pinstruct_t ctp_pin_table[];
 #endif

@@ -20,7 +20,7 @@
 #include "platform_scu_flis.h"
 
 /* Cloverview Pin Table */
-static struct pinstruct_t ctp_pin_table[CTP_PIN_NUM] = {
+struct pinstruct_t ctp_pin_table[CTP_PIN_NUM] = {
 	[i2s_2_clk]			 = { true,	0x01,	0x30,	0,	0x10,	2,	0x51,    0 },
 	[i2s_2_fs]			 = { true,	0x01,	0x30,	6,	0x10,	6,	0x51,    1 },
 	[i2s_2_rxd]			 = { true,	0x01,	0x30,	12,	0x10,	10,	0x51,    2 },

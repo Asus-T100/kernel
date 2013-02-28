@@ -129,10 +129,10 @@ EXPORT_SYMBOL(intel_scu_ipc_update_shim);
  *	config_pin_flis(i2s_2_clk, PULL, DOWN_20K);
  *
  * config pin direction:
- *	config_pin_flis(i2s_2_clk, PIN_DIRECTION, INPUT_LOW);
- *	config_pin_flis(i2s_2_clk, PIN_DIRECTION, INPUT_HIGH);
- *	config_pin_flis(i2s_2_clk, PIN_DIRECTION, OUTPUT_LOW);
- *	config_pin_flis(i2s_2_clk, PIN_DIRECTION, OUTPUT_HIGH);
+ *	config_pin_flis(i2s_2_clk, PIN_DIRECTION, MUX_EN_INPUT_EN);
+ *	config_pin_flis(i2s_2_clk, PIN_DIRECTION, INPUT_EN);
+ *	config_pin_flis(i2s_2_clk, PIN_DIRECTION, MUX_EN_OUTPUT_EN);
+ *	config_pin_flis(i2s_2_clk, PIN_DIRECTION, OUTPUT_EN);
  *
  * config pin open-drain:
  *	config_pin_flis(i2s_2_clk, OPEN_DRAIN, OD_ENABLE);
@@ -164,10 +164,10 @@ int config_pin_flis(enum pinname_t name, enum flis_param_t param, u8 val)
 		pos = isfi->pin_t[name].pullup_lsb_pos;
 		mask = (PULL_MASK << pos);
 		break;
-	case PIN_DIRECTION:
+	case MUX:
 		off = isfi->pin_t[name].direction_offset;
 		pos = isfi->pin_t[name].direction_lsb_pos;
-		mask = (PIN_DIRECTION_MASK << pos);
+		mask = (MUX_MASK << pos);
 		break;
 	case OPEN_DRAIN:
 		off = isfi->pin_t[name].open_drain_offset;
@@ -218,10 +218,10 @@ int get_pin_flis(enum pinname_t name, enum flis_param_t param, u8 *val)
 		pos = isfi->pin_t[name].pullup_lsb_pos;
 		mask = PULL_MASK;
 		break;
-	case PIN_DIRECTION:
+	case MUX:
 		off = isfi->pin_t[name].direction_offset;
 		pos = isfi->pin_t[name].direction_lsb_pos;
-		mask = PIN_DIRECTION_MASK;
+		mask = MUX_MASK;
 		break;
 	case OPEN_DRAIN:
 		off = isfi->pin_t[name].open_drain_offset;
