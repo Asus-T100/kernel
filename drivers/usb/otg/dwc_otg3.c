@@ -948,6 +948,10 @@ static enum dwc_otg_state do_charger_detection(struct dwc_otg2 *otg)
 			POWER_SUPPLY_CHARGER_TYPE_NONE;
 	unsigned long flags, mA = 0;
 
+	/* FIXME: Skip charger detection flow for baytrail */
+	if (otg->otg_data->is_byt)
+		return DWC_STATE_B_PERIPHERAL;
+
 	charger = get_charger_type(otg);
 	switch (charger) {
 	case POWER_SUPPLY_CHARGER_TYPE_ACA_C:
@@ -1094,11 +1098,17 @@ static enum dwc_otg_state do_connector_id_status(struct dwc_otg2 *otg)
 		printk(KERN_ERR "Product ID high = 0x%x\n", val);
 	}
 
-	ret = sleep_until_event(otg, otg_mask, \
-			0, user_mask, &events,\
-			NULL, &user_events, 0);
-	if (ret < 0)
-		return DWC_STATE_EXIT;
+	/* FIXME: assume VBUS is always on.
+	 * Need to remove this when PMIC event
+	 * notification is working */
+	if (!otg->otg_data->is_byt) {
+		ret = sleep_until_event(otg, otg_mask, \
+				0, user_mask, &events,\
+				NULL, &user_events, 0);
+		if (ret < 0)
+			return DWC_STATE_EXIT;
+	} else
+		events |= OEVT_B_DEV_SES_VLD_DET_EVNT;
 
 	if (events & OEVT_B_DEV_SES_VLD_DET_EVNT) {
 		otg_dbg(otg, "OEVT_B_DEV_SES_VLD_DET_EVNT\n");
@@ -1457,7 +1467,7 @@ int otg_main_thread(void *data)
 static void start_main_thread(struct dwc_otg2 *otg)
 {
 	mutex_lock(&lock);
-	if (!otg->main_thread && otg->otg.gadget && otg->otg.host) {
+	if (!otg->main_thread && (otg->otg.gadget || otg->otg.host)) {
 		otg_dbg(otg, "Starting OTG main thread\n");
 		otg->main_thread = kthread_create(otg_main_thread, otg, "otg");
 		wake_up_process(otg->main_thread);
@@ -1618,6 +1628,44 @@ show_otg_id(struct device *_dev, struct device_attribute *attr, char *buf)
 static DEVICE_ATTR(otg_id, S_IRUGO|S_IWUSR|S_IWGRP,\
 			show_otg_id, store_otg_id);
 
+static ssize_t store_vbus_evt(struct device *_dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct dwc_otg2		*otg = the_transceiver;
+	unsigned long flags;
+
+	if (count != 2) {
+		otg_err(otg, "return EINVAL\n");
+		return -EINVAL;
+	}
+
+	if (count > 0 && buf[count-1] == '\n')
+		((char *) buf)[count-1] = 0;
+
+	switch (buf[0]) {
+	case '1':
+		otg_dbg(otg, "Change the VBUS to High\n");
+		otg->otg_events |= OEVT_B_DEV_SES_VLD_DET_EVNT;
+		spin_lock_irqsave(&otg->lock, flags);
+		wakeup_main_thread(otg);
+		spin_unlock_irqrestore(&otg->lock, flags);
+		return count;
+	case '0':
+		otg_dbg(otg, "Change the VBUS to Low\n");
+		otg->otg_events |= OEVT_A_DEV_SESS_END_DET_EVNT;
+		spin_lock_irqsave(&otg->lock, flags);
+		wakeup_main_thread(otg);
+		spin_unlock_irqrestore(&otg->lock, flags);
+		return count;
+	default:
+		return -EINVAL;
+	}
+
+	return count;
+}
+static DEVICE_ATTR(vbus_evt, S_IRUGO|S_IWUSR|S_IWGRP,\
+			NULL, store_vbus_evt);
+
 static int dwc_otg_probe(struct pci_dev *pdev,
 			const struct pci_device_id *id)
 {
@@ -1654,7 +1702,7 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 		goto exit;
 	}
 
-	otg_dbg(otg, "dwc otg pci resouce: 0x%lu, len: 0x%lu\n", \
+	otg_dbg(otg, "dwc otg pci resouce: 0x%lx, len: 0x%lx\n", \
 			resource, len);
 	otg_dbg(otg, "vendor: 0x%x, device: 0x%x\n", \
 			pdev->vendor, pdev->device);
@@ -1699,14 +1747,22 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 		goto exit;
 	}
 
-	dwc_gadget = platform_device_alloc(DWC3_DEVICE_NAME, GADGET_DEVID);
-	dwc_host = platform_device_alloc(DWC3_HOST_NAME, HOST_DEVID);
-
-	if (!dwc_gadget || !dwc_host) {
-		otg_err(otg, "couldn't allocate dwc3 device\n");
-		goto exit;
+	if (!otg->otg_data->no_device_mode) {
+		dwc_gadget = platform_device_alloc(DWC3_DEVICE_NAME,
+							GADGET_DEVID);
+		if (!dwc_gadget) {
+			otg_err(otg, "couldn't allocate dwc3 gadget device\n");
+			goto exit;
+		}
 	}
-
+	if (!otg->otg_data->no_host_mode) {
+		dwc_host = platform_device_alloc(DWC3_HOST_NAME,
+							HOST_DEVID);
+		if (!dwc_host) {
+			otg_err(otg, "couldn't allocate dwc3 host device\n");
+			goto exit;
+		}
+	}
 	memset(res, 0x00, sizeof(struct resource) * ARRAY_SIZE(res));
 
 	res[0].start	= pci_resource_start(pdev, 0);
@@ -1718,25 +1774,29 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 	res[1].name	= "dwc_usb3_irq";
 	res[1].flags	= IORESOURCE_IRQ;
 
-	retval = platform_device_add_resources(dwc_host, res, ARRAY_SIZE(res));
-	if (retval) {
-		otg_err(otg, "couldn't add resources to dwc3 device\n");
-		goto exit;
+	if (!otg->otg_data->no_host_mode) {
+		retval = platform_device_add_resources(dwc_host, res,
+							ARRAY_SIZE(res));
+		if (retval) {
+			otg_err(otg, "couldn't add resources to dwc3 device\n");
+			goto exit;
+		}
+		dwc_host->dev.dma_mask = pdev->dev.dma_mask;
+		dwc_host->dev.dma_parms = pdev->dev.dma_parms;
+		dwc_host->dev.parent = &pdev->dev;
 	}
 
-	retval = platform_device_add_resources(dwc_gadget,
+	if (!otg->otg_data->no_device_mode) {
+		retval = platform_device_add_resources(dwc_gadget,
 				res, ARRAY_SIZE(res));
-	if (retval) {
-		otg_err(otg, "couldn't add resources to dwc3 device\n");
-		goto exit;
+		if (retval) {
+			otg_err(otg, "couldn't add resources to dwc3 device\n");
+			goto exit;
+		}
+		dwc_gadget->dev.dma_mask = pdev->dev.dma_mask;
+		dwc_gadget->dev.dma_parms = pdev->dev.dma_parms;
+		dwc_gadget->dev.parent = &pdev->dev;
 	}
-
-	dwc_host->dev.dma_mask = dwc_gadget->dev.dma_mask =
-		pdev->dev.dma_mask;
-	dwc_gadget->dev.dma_parms = dwc_host->dev.dma_parms =
-		pdev->dev.dma_parms;
-	dwc_host->dev.parent = dwc_gadget->dev.parent =
-		&pdev->dev;
 
 	platform_par = kzalloc(sizeof *platform_par, GFP_KERNEL);
 	if (!platform_par) {
@@ -1745,17 +1805,26 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 	}
 	platform_par->io_addr = otg->phy.io_priv;
 	platform_par->len = len;
-	platform_device_add_data(dwc_gadget, platform_par, \
-			sizeof(struct dwc_device_par));
-	platform_device_add_data(dwc_host, platform_par, \
-			sizeof(struct dwc_device_par));
 
-	if (platform_device_add(dwc_gadget) || platform_device_add(dwc_host)) {
-		otg_err(otg, "failed to register dwc3 device\n");
-		goto exit;
+	if (!otg->otg_data->no_device_mode) {
+		platform_device_add_data(dwc_gadget, platform_par, \
+				sizeof(struct dwc_device_par));
+		otg->gadget = dwc_gadget;
+		if (platform_device_add(dwc_gadget)) {
+			otg_err(otg, "failed to register dwc3 gadget device\n");
+			goto exit;
+		}
 	}
-	otg->host = dwc_host;
-	otg->gadget = dwc_gadget;
+	if (!otg->otg_data->no_host_mode) {
+		platform_device_add_data(dwc_host, platform_par, \
+				sizeof(struct dwc_device_par));
+
+		otg->host = dwc_host;
+		if (platform_device_add(dwc_host)) {
+			otg_err(otg, "failed to register dwc3 host device\n");
+			goto exit;
+		}
+	}
 	otg->irqnum = pdev->irq;
 	/* Register otg notifier to monitor ID and VBus change events */
 	otg->nb.notifier_call = dwc_otg_handle_notification;
@@ -1769,6 +1838,13 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 		goto exit;
 	}
 
+	retval = device_create_file(&pdev->dev, &dev_attr_vbus_evt);
+	if (retval < 0) {
+		otg_dbg(otg,
+			"Can't register sysfs attribute: %d\n", retval);
+		goto exit;
+	}
+
 	/* Don't let phy go to suspend mode, which
 	 * will cause FS/LS devices enum failed in host mode.
 	 */
@@ -1776,7 +1852,10 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 
 	pm_runtime_set_autosuspend_delay(&pdev->dev, 100);
 	pm_runtime_allow(&pdev->dev);
-	pm_runtime_put_autosuspend(&pdev->dev);
+
+	/* FIXME: avoid runtime pm for byt in PO */
+	if (!otg->otg_data->is_byt)
+		pm_runtime_put_autosuspend(&pdev->dev);
 
 	return 0;
 exit:
@@ -1816,6 +1895,10 @@ static DEFINE_PCI_DEVICE_TABLE(pci_ids) = {
 	{ PCI_DEVICE_CLASS(((PCI_CLASS_SERIAL_USB << 8) | 0x20), ~0),
 		.vendor = PCI_VENDOR_ID_INTEL,
 		.device = PCI_DEVICE_ID_DWC,
+	},
+	{ PCI_DEVICE_CLASS(((PCI_CLASS_SERIAL_USB << 8) | 0x80), ~0),
+		.vendor = PCI_VENDOR_ID_INTEL,
+		.device = PCI_DEVICE_ID_DWC_VLV,
 	},
 	{ /* end: all zeroes */ }
 };
