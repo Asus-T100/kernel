@@ -701,7 +701,9 @@ static struct atomisp_video_pipe *__atomisp_get_pipe(struct atomisp_device *isp,
 		enum sh_css_buffer_type buf_type)
 {
 	/* video is same in online as in continuouscapture mode */
-	if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO) {
+	if (!isp->isp_subdev.enable_vfpp->val) {
+		return &isp->isp_subdev.video_out_capture;
+	} else if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO) {
 		if (buf_type == SH_CSS_BUFFER_TYPE_OUTPUT_FRAME)
 			return &isp->isp_subdev.video_out_capture;
 		return &isp->isp_subdev.video_out_preview;
@@ -3422,6 +3424,8 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 			__enable_continuous_vf(isp, false);
 		}
 	}
+
+	sh_css_disable_vf_pp(!isp->isp_subdev.enable_vfpp->val);
 
 	/* video same in continuouscapture and online modes */
 	if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO) {

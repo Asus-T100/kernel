@@ -787,6 +787,15 @@ static const struct v4l2_ctrl_config ctrl_run_mode = {
 	.qmenu = ctrl_run_mode_menu,
 };
 
+static const struct v4l2_ctrl_config ctrl_enable_vfpp = {
+	.id = V4L2_CID_ENABLE_VFPP,
+	.name = "Atomisp vf postprocess",
+	.type = V4L2_CTRL_TYPE_BOOLEAN,
+	.min = 0,
+	.def = 1,
+	.max = 1,
+};
+
 /*
  * isp_subdev_init_entities - Initialize V4L2 subdev and media entity
  * @isp_subdev: ISP CCDC module
@@ -894,6 +903,9 @@ static int isp_subdev_init_entities(struct atomisp_sub_device *isp_subdev)
 						    &ctrl_fmt_auto, NULL);
 	isp_subdev->run_mode = v4l2_ctrl_new_custom(&isp_subdev->ctrl_handler,
 						    &ctrl_run_mode, NULL);
+	isp_subdev->enable_vfpp =
+				v4l2_ctrl_new_custom(&isp_subdev->ctrl_handler,
+						     &ctrl_enable_vfpp, NULL);
 
 	/* Make controls visible on subdev as well. */
 	isp_subdev->subdev.ctrl_handler = &isp_subdev->ctrl_handler;

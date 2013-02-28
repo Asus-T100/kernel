@@ -1205,6 +1205,9 @@ enum sh_css_pipe_id atomisp_get_css_pipe_id(struct atomisp_device *isp)
 	    isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO)
 		return SH_CSS_PREVIEW_PIPELINE;
 
+	if (!isp->isp_subdev.enable_vfpp->val)
+		return SH_CSS_CAPTURE_PIPELINE;
+
 	switch (isp->isp_subdev.run_mode->val) {
 	case ATOMISP_RUN_MODE_PREVIEW:
 		return SH_CSS_PREVIEW_PIPELINE;
@@ -1230,6 +1233,9 @@ int atomisp_get_css_buf_type(struct atomisp_device *isp,
 
 static unsigned int atomisp_sensor_start_stream(struct atomisp_device *isp)
 {
+	if (!isp->isp_subdev.enable_vfpp->val)
+		return 1;
+
 	if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO ||
 	    (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_STILL_CAPTURE &&
 	     !atomisp_is_mbuscode_raw(
