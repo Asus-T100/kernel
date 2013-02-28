@@ -135,16 +135,18 @@ void free_stream_context(unsigned int str_id)
 	}
 }
 
-void sst_send_lpe_mixer_algo_params(void)
+static int sst_send_lpe_mixer_algo_params(void)
 {
 	struct snd_ppp_params algo_param;
 	struct snd_ppp_mixer_params mixer_param;
 	unsigned int input_mixer, stream_device_id;
-	int retval;
+	int retval = 0;
 
 	retval = intel_sst_check_device();
-	if (retval)
-		return;
+	if (retval) {
+		pr_err("sst_check_device failed %d\n", retval);
+		return retval;
+	}
 
 	mutex_lock(&sst_drv_ctx->mixer_ctrl_lock);
 	input_mixer = (sst_drv_ctx->device_input_mixer)
@@ -167,6 +169,7 @@ void sst_send_lpe_mixer_algo_params(void)
 			algo_param.enable, algo_param.size);
 	sst_send_algo_param(&algo_param);
 	pm_runtime_put(&sst_drv_ctx->pci->dev);
+	return retval;
 }
 
 
@@ -963,7 +966,7 @@ static int sst_set_generic_params(enum sst_controls cmd, void *arg)
 		mutex_lock(&sst_drv_ctx->mixer_ctrl_lock);
 		sst_drv_ctx->device_input_mixer = device_input_mixer;
 		mutex_unlock(&sst_drv_ctx->mixer_ctrl_lock);
-		sst_send_lpe_mixer_algo_params();
+		ret_val = sst_send_lpe_mixer_algo_params();
 		break;
 	}
 	case SST_SET_SSP_CONFIG: {

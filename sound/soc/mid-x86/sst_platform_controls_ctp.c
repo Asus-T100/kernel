@@ -69,8 +69,7 @@ static int lpe_mixer_ihf_set(struct snd_kcontrol *kcontrol,
 		return -EINVAL;
 	}
 	sst->lpe_mixer_input_ihf  = ucontrol->value.integer.value[0];
-	sst_set_mixer_param(device_input_mixer);
-	return 0;
+	return sst_set_mixer_param(device_input_mixer);
 }
 
 static int lpe_mixer_headset_get(struct snd_kcontrol *kcontrol,
@@ -116,8 +115,7 @@ static int lpe_mixer_headset_set(struct snd_kcontrol *kcontrol,
 		return -EINVAL;
 	}
 	sst->lpe_mixer_input_hs  = ucontrol->value.integer.value[0];
-	sst_set_mixer_param(mixer_input_stream);
-	return 0;
+	return sst_set_mixer_param(mixer_input_stream);
 }
 
 static int sst_probe_byte_control_get(struct snd_kcontrol *kcontrol,
