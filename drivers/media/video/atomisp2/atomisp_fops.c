@@ -204,22 +204,17 @@ int atomisp_qbuffers_to_css(struct atomisp_device *isp)
 
 		css_preview_pipe_id = SH_CSS_PREVIEW_PIPELINE;
 		css_capture_pipe_id = SH_CSS_CAPTURE_PIPELINE;
+	} else if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_PREVIEW) {
+		preview_pipe = &isp->isp_subdev.video_out_preview;
+		css_preview_pipe_id = SH_CSS_PREVIEW_PIPELINE;
 	} else {
-		switch (isp->isp_subdev.run_mode->val) {
-		case ATOMISP_RUN_MODE_PREVIEW:
-			preview_pipe = &isp->isp_subdev.video_out_preview;
-			css_preview_pipe_id = SH_CSS_PREVIEW_PIPELINE;
-			break;
-		case ATOMISP_RUN_MODE_STILL_CAPTURE:
-			/* fall through */
-		default:
-			capture_pipe = &isp->isp_subdev.video_out_capture;
-			if (!atomisp_is_mbuscode_raw(
-				    isp->isp_subdev.
-				    fmt[isp->isp_subdev.capture_pad].fmt.code))
-				vf_pipe = &isp->isp_subdev.video_out_vf;
-			css_capture_pipe_id = SH_CSS_CAPTURE_PIPELINE;
-		}
+		/* ATOMISP_RUN_MODE_STILL_CAPTURE */
+		capture_pipe = &isp->isp_subdev.video_out_capture;
+		if (!atomisp_is_mbuscode_raw(
+			    isp->isp_subdev.
+			    fmt[isp->isp_subdev.capture_pad].fmt.code))
+			vf_pipe = &isp->isp_subdev.video_out_vf;
+		css_capture_pipe_id = SH_CSS_CAPTURE_PIPELINE;
 	}
 
 	if (capture_pipe) {
