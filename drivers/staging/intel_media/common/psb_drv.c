@@ -1422,6 +1422,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	dev_priv->ied_context = NULL;
 	dev_priv->bhdmiconnected = false;
 	dev_priv->dpms_on_off = false;
+	atomic_set(&dev_priv->mipi_flip_abnormal, 0);
 	dev_priv->brightness_adjusted = 0;
 	dev_priv->buf = kzalloc(PSB_REG_PRINT_SIZE * sizeof(char),
 				 GFP_KERNEL);
@@ -3137,6 +3138,7 @@ static int psb_display_reg_dump(struct drm_device *dev)
 	mdfld_dsi_dsr_allow(dsi_config);
 	return 0;
 }
+
 void psb_flip_abnormal_debug_info(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv = NULL;
@@ -3145,6 +3147,7 @@ void psb_flip_abnormal_debug_info(struct drm_device *dev)
 	unsigned long long interval = 0;
 	unsigned long long second = 0;
 	unsigned long nanosec_rem;
+
 	if (!dev) {
 		DRM_INFO("%s dev is NUL\n", __func__);
 		return;
@@ -3221,8 +3224,9 @@ void psb_flip_abnormal_debug_info(struct drm_device *dev)
 			DRM_INFO("pipe %d vsync te missing %dms !\n\n",
 				 pipe, nanosec_rem/1000000);
 			dev_priv->vsync_te_working[pipe] = false;
+			if (pipe == 0)
+				atomic_set(&dev_priv->mipi_flip_abnormal, 1);
 		}
-
 	}
 }
 
