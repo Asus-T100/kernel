@@ -1187,7 +1187,9 @@ static void valleyview_write_entry(dma_addr_t addr, unsigned int entry,
 	unsigned int gfdt = flags & AGP_USER_CACHED_MEMORY_GFDT;
 	u32 pte_flags;
 
-	if (type_mask == AGP_USER_MEMORY)
+	if (flags & AGP_USER_ENCODED)
+		pte_flags = flags &= ~AGP_USER_ENCODED;
+	else if (type_mask == AGP_USER_MEMORY)
 		pte_flags = GEN6_PTE_UNCACHED | I810_PTE_VALID;
 	else {
 		pte_flags = GEN6_PTE_LLC | I810_PTE_VALID;

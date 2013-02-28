@@ -120,6 +120,7 @@
 #define GEN6_PTE_CACHE_BITS		(3 << 1)
 #define GEN6_PTE_GFDT			(1 << 3)
 #define GEN6_PTE_ADDR_ENCODE(addr)	GEN6_GTT_ADDR_ENCODE(addr)
+#define VLV_PTE_WRITE_ENABLE    GEN6_PTE_UNCACHED
 
 #define RING_PP_DIR_BASE(ring)		((ring)->mmio_base+0x228)
 #define RING_PP_DIR_BASE_READ(ring)	((ring)->mmio_base+0x518)

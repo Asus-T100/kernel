@@ -985,6 +985,9 @@ i915_gem_do_execbuffer(struct drm_device *dev, void *data,
 			       struct drm_i915_gem_object,
 			       exec_list);
 
+	/* Mark exec buffers as read-only from GPU side by default */
+	batch_obj->gt_ro = 1;
+
 	/* Move the objects en-masse into the GTT, evicting if necessary. */
 	ret = i915_gem_execbuffer_reserve(ring, file, &objects);
 	if (ret)

@@ -340,6 +340,7 @@ struct intel_device_info {
 #define I915_PPGTT_PD_ENTRIES 512
 #define I915_PPGTT_PT_ENTRIES 1024
 struct i915_hw_ppgtt {
+	struct drm_device *dev;
 	unsigned num_pd_entries;
 	struct page **pt_pages;
 	uint32_t pd_offset;
@@ -897,6 +898,8 @@ enum i915_cache_level {
 	I915_CACHE_NONE = 0,
 	I915_CACHE_LLC,
 	I915_CACHE_LLC_MLC, /* gen6+, in docs at least! */
+	I915_CACHE_LLC_ELLC, /* some HSW skus */
+	I915_CACHE_ELLC,    /* some HSW skus */
 };
 
 struct drm_i915_gem_object {
@@ -986,6 +989,12 @@ struct drm_i915_gem_object {
 
 	unsigned int has_aliasing_ppgtt_mapping:1;
 	unsigned int has_global_gtt_mapping:1;
+
+	/*
+	 * Is the object to be mapped as read-only to the GPU
+	 * Only honoured if hardware has relevant pte bit
+	 */
+	unsigned long gt_ro;
 
 	struct page **pages;
 

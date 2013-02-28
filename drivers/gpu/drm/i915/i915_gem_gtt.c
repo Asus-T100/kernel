@@ -29,6 +29,31 @@
 #include "i915_trace.h"
 #include "intel_drv.h"
 
+static inline uint32_t pte_encode(struct drm_device *dev,
+				dma_addr_t addr,
+				enum i915_cache_level level)
+{
+	uint32_t pte = GEN6_PTE_VALID;
+
+	pte |= GEN6_PTE_ADDR_ENCODE(addr);
+	switch (level) {
+	case I915_CACHE_LLC_MLC:
+		pte |= GEN6_PTE_CACHE_LLC_MLC;
+		break;
+	case I915_CACHE_LLC_ELLC:
+	case I915_CACHE_LLC:
+		pte |= GEN6_PTE_CACHE_LLC;
+		break;
+	default:
+	case I915_CACHE_ELLC:
+	case I915_CACHE_NONE:
+		pte |= GEN6_PTE_UNCACHED;
+		break;
+	}
+
+	return pte;
+}
+
 /* PPGTT support for Sandybdrige/Gen6 and later */
 static void i915_ppgtt_clear_range(struct i915_hw_ppgtt *ppgtt,
 				   unsigned first_entry,
@@ -40,8 +65,8 @@ static void i915_ppgtt_clear_range(struct i915_hw_ppgtt *ppgtt,
 	unsigned first_pte = first_entry % I915_PPGTT_PT_ENTRIES;
 	unsigned last_pte, i;
 
-	scratch_pte = GEN6_PTE_ADDR_ENCODE(ppgtt->scratch_page_dma_addr);
-	scratch_pte |= GEN6_PTE_VALID | GEN6_PTE_CACHE_LLC;
+	scratch_pte = pte_encode(ppgtt->dev, ppgtt->scratch_page_dma_addr,
+			I915_CACHE_LLC);
 
 	while (num_entries) {
 		last_pte = first_pte + num_entries;
@@ -78,6 +103,7 @@ int i915_gem_init_aliasing_ppgtt(struct drm_device *dev)
 	if (!ppgtt)
 		return ret;
 
+	ppgtt->dev = dev;
 	ppgtt->num_pd_entries = I915_PPGTT_PD_ENTRIES;
 	ppgtt->pt_pages = kzalloc(sizeof(struct page *)*ppgtt->num_pd_entries,
 				  GFP_KERNEL);
@@ -170,7 +196,8 @@ static void i915_ppgtt_insert_sg_entries(struct i915_hw_ppgtt *ppgtt,
 					 struct scatterlist *sg_list,
 					 unsigned sg_len,
 					 unsigned first_entry,
-					 uint32_t pte_flags)
+					 enum i915_cache_level cache_level,
+					 int gt_ro)
 {
 	uint32_t *pt_vaddr, pte;
 	unsigned act_pd = first_entry / I915_PPGTT_PT_ENTRIES;
@@ -190,8 +217,15 @@ static void i915_ppgtt_insert_sg_entries(struct i915_hw_ppgtt *ppgtt,
 
 		for (j = first_pte; j < I915_PPGTT_PT_ENTRIES; j++) {
 			page_addr = sg_dma_address(sg) + (m << PAGE_SHIFT);
-			pte = GEN6_PTE_ADDR_ENCODE(page_addr);
-			pt_vaddr[j] = pte | pte_flags;
+			pte = pte_encode(ppgtt->dev, page_addr, cache_level);
+			if (IS_VALLEYVIEW(ppgtt->dev)) {
+				/* Handle read-only request */
+				if (gt_ro)
+					pte &= ~VLV_PTE_WRITE_ENABLE;
+				else
+					pte |= VLV_PTE_WRITE_ENABLE;
+			}
+			pt_vaddr[j] = pte;
 
 			/* grab the next page */
 			m++;
@@ -215,7 +249,9 @@ static void i915_ppgtt_insert_sg_entries(struct i915_hw_ppgtt *ppgtt,
 
 static void i915_ppgtt_insert_pages(struct i915_hw_ppgtt *ppgtt,
 				    unsigned first_entry, unsigned num_entries,
-				    struct page **pages, uint32_t pte_flags)
+				    struct page **pages,
+				    enum i915_cache_level cache_level,
+				    int gt_ro)
 {
 	uint32_t *pt_vaddr, pte;
 	unsigned act_pd = first_entry / I915_PPGTT_PT_ENTRIES;
@@ -231,8 +267,15 @@ static void i915_ppgtt_insert_pages(struct i915_hw_ppgtt *ppgtt,
 
 		for (i = first_pte; i < last_pte; i++) {
 			page_addr = page_to_phys(*pages);
-			pte = GEN6_PTE_ADDR_ENCODE(page_addr);
-			pt_vaddr[i] = pte | pte_flags;
+			pte = pte_encode(ppgtt->dev, page_addr, cache_level);
+			if (IS_VALLEYVIEW(ppgtt->dev)) {
+				/* Handle read-only request */
+				if (gt_ro)
+					pte &= ~VLV_PTE_WRITE_ENABLE;
+				else
+					pte |= VLV_PTE_WRITE_ENABLE;
+			}
+			pt_vaddr[i] = pte;
 
 			pages++;
 		}
@@ -251,28 +294,13 @@ void i915_ppgtt_bind_object(struct i915_hw_ppgtt *ppgtt,
 {
 	struct drm_device *dev = obj->base.dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	uint32_t pte_flags = GEN6_PTE_VALID;
-
-	switch (cache_level) {
-	case I915_CACHE_LLC_MLC:
-		pte_flags |= GEN6_PTE_CACHE_LLC_MLC;
-		break;
-	case I915_CACHE_LLC:
-		pte_flags |= GEN6_PTE_CACHE_LLC;
-		break;
-	case I915_CACHE_NONE:
-		pte_flags |= GEN6_PTE_UNCACHED;
-		break;
-	default:
-		BUG();
-	}
 
 	if (obj->sg_table) {
 		i915_ppgtt_insert_sg_entries(ppgtt,
 					     obj->sg_table->sgl,
 					     obj->sg_table->nents,
 					     obj->gtt_space->start >> PAGE_SHIFT,
-					     pte_flags);
+					     cache_level, obj->gt_ro);
 	} else if (dev_priv->mm.gtt->needs_dmar) {
 		BUG_ON(!obj->sg_list);
 
@@ -280,13 +308,13 @@ void i915_ppgtt_bind_object(struct i915_hw_ppgtt *ppgtt,
 					     obj->sg_list,
 					     obj->num_sg,
 					     obj->gtt_space->start >> PAGE_SHIFT,
-					     pte_flags);
+					     cache_level, obj->gt_ro);
 	} else
 		i915_ppgtt_insert_pages(ppgtt,
 					obj->gtt_space->start >> PAGE_SHIFT,
 					obj->base.size >> PAGE_SHIFT,
 					obj->pages,
-					pte_flags);
+					cache_level, obj->gt_ro);
 }
 
 void i915_ppgtt_unbind_object(struct i915_hw_ppgtt *ppgtt,
@@ -301,6 +329,14 @@ void i915_ppgtt_unbind_object(struct i915_hw_ppgtt *ppgtt,
 static unsigned int cache_level_to_agp_type(struct drm_device *dev,
 					    enum i915_cache_level cache_level)
 {
+	/* get encoding which can be later updated to indicate GPU read-only */
+	if (IS_VALLEYVIEW(dev)) {
+		unsigned int ret;
+		ret = pte_encode(dev, 0, cache_level);
+		ret |= AGP_USER_ENCODED;
+		return ret;
+	}
+
 	switch (cache_level) {
 	case I915_CACHE_LLC_MLC:
 		if (INTEL_INFO(dev)->gen >= 6)
@@ -377,6 +413,14 @@ void i915_gem_gtt_bind_object(struct drm_i915_gem_object *obj,
 	struct drm_device *dev = obj->base.dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	unsigned int agp_type = cache_level_to_agp_type(dev, cache_level);
+
+	if (IS_VALLEYVIEW(dev)) {
+		/* set buffer as read-only for GPU if required */
+		if (obj->gt_ro)
+			agp_type &= ~VLV_PTE_WRITE_ENABLE;
+		else
+			agp_type |= VLV_PTE_WRITE_ENABLE;
+	}
 
 	if (obj->sg_table) {
 		intel_gtt_insert_sg_entries(obj->sg_table->sgl,
