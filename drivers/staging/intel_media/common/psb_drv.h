@@ -1015,6 +1015,7 @@ struct drm_psb_private {
 	unsigned long long vsync_te_worker_ts[PSB_NUM_PIPE];
 	unsigned long long vsync_te_trouble_ts;
 	bool  vsync_te_working[PSB_NUM_PIPE];
+	atomic_t mipi_flip_abnormal;
 	struct gpu_pvr_ops * pvr_ops;
 };
 
