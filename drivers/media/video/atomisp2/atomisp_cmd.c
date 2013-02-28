@@ -747,7 +747,7 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error,
 	err = sh_css_dequeue_buffer(css_pipe_id,
 			buf_type,
 			(void **)&buffer);
-	if (err){
+	if (err) {
 		v4l2_err(&atomisp_dev,
 			"sh_css_dequeue_buffer failed: 0x%x\n",
 			err);
@@ -1563,6 +1563,7 @@ int atomisp_histogram(struct atomisp_device *isp, int flag, void *config)
 		if (ret != sh_css_success) {
 			v4l2_err(&atomisp_dev,
 					"sh_css_histogram_allocate failed\n");
+			ret = -ENOMEM;
 			goto buffer_free;
 		}
 
@@ -1577,6 +1578,7 @@ int atomisp_histogram(struct atomisp_device *isp, int flag, void *config)
 		if (ret != sh_css_success) {
 			v4l2_err(&atomisp_dev,
 					"sh_css_get_y_histogram failed\n");
+			ret = -EIO;
 			goto histogram_free;
 		}
 		sh_css_wait_for_completion();

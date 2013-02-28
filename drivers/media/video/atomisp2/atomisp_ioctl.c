@@ -453,29 +453,38 @@ static int __get_css_frame_info(struct atomisp_device *isp,
 				enum atomisp_pipe_type pipe_type,
 				struct sh_css_frame_info *frame_info)
 {
+	int ret = -1;
+
 	switch (pipe_type) {
 	case ATOMISP_PIPE_CAPTURE:
 		if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO)
-			return sh_css_video_get_output_frame_info(frame_info);
-		return sh_css_capture_get_output_frame_info(frame_info);
+			ret = sh_css_video_get_output_frame_info(frame_info);
+		else
+			ret = sh_css_capture_get_output_frame_info(frame_info);
+		break;
 	case ATOMISP_PIPE_VIEWFINDER:
 		if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO)
-			return sh_css_video_get_viewfinder_frame_info(
+			ret = sh_css_video_get_viewfinder_frame_info(
 					frame_info);
 		else if (!atomisp_is_mbuscode_raw(
 				 isp->isp_subdev.
 				 fmt[isp->isp_subdev.capture_pad].fmt.code))
-			return sh_css_capture_get_viewfinder_frame_info(
+			ret = sh_css_capture_get_viewfinder_frame_info(
 					frame_info);
-		return -EINVAL;
+		break;
 	case ATOMISP_PIPE_PREVIEW:
 		if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO)
-			return sh_css_video_get_viewfinder_frame_info(
+			ret = sh_css_video_get_viewfinder_frame_info(
 					frame_info);
-		return sh_css_preview_get_output_frame_info(frame_info);
+		else
+			ret = sh_css_preview_get_output_frame_info(frame_info);
+		break;
 	default:
-		return -EINVAL;
+		/* Return with error */
+		break;
 	}
+
+	return ret != sh_css_success ? -EINVAL : 0;
 }
 
 /*
@@ -1308,7 +1317,7 @@ static int atomisp_streamon(struct file *file, void *fh,
 					isp->params.offline_parm.skip_frames,
 					isp->params.offline_parm.offset);
 			if (ret)
-				return ret;
+				return -EINVAL;
 		}
 		atomisp_qbuffers_to_css(isp);
 		goto out;
@@ -1340,8 +1349,9 @@ static int atomisp_streamon(struct file *file, void *fh,
 		goto out;
 	}
 	ret = sh_css_start(css_pipe_id);
-	if (ret) {
+	if (ret != sh_css_success) {
 		dev_err(isp->dev, "sh_css_start fails: %d\n", ret);
+		ret = -EINVAL;
 		goto out;
 	}
 	if (isp->params.continuous_vf &&
