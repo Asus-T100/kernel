@@ -827,6 +827,42 @@ struct devs_id __init *get_device_id(u8 type, char *name)
 	return NULL;
 }
 
+static struct sfi_device_table_entry imx135_entry = {
+	.type = SFI_DEV_TYPE_I2C,
+	.host_num = 4,
+	.addr = 0x10,
+	.irq = 0xFF,
+	.max_freq = 400000,
+	.name = "imx135",
+};
+
+static struct sfi_device_table_entry s5k8aay_entry = {
+	.type = SFI_DEV_TYPE_I2C,
+	.host_num = 4,
+	.addr = 0x3c,
+	.irq = 0xFF,
+	.max_freq = 400000,
+	.name = "s5k8aay",
+};
+
+static struct sfi_device_table_entry dw9719_entry = {
+	.type = SFI_DEV_TYPE_I2C,
+	.host_num = 4,
+	.addr = 0x0c,
+	.irq = 0xFF,
+	.max_freq = 400000,
+	.name = "dw9719",
+};
+
+static struct sfi_device_table_entry lm3559_entry = {
+	.type = SFI_DEV_TYPE_I2C,
+	.host_num = 4,
+	.addr = 0x53,
+	.irq = 0xFF,
+	.max_freq = 400000,
+	.name = "lm3559",
+};
+
 static int __init sfi_parse_devs(struct sfi_table_header *table)
 {
 	struct sfi_table_simple *sb;
@@ -906,6 +942,27 @@ static int __init sfi_parse_devs(struct sfi_table_header *table)
 				break;
 			}
 		}
+	}
+
+	if ((INTEL_MID_BOARD(2, PHONE, CLVTP, RHB, PRO) ||
+	     INTEL_MID_BOARD(2, PHONE, CLVTP, RHB, ENG) ||
+	     INTEL_MID_BOARD(2, PHONE, CLVTP, VB, PRO) ||
+	     INTEL_MID_BOARD(2, PHONE, CLVTP, VB, ENG)) &&
+	     (SPID_HARDWARE_ID(CLVTP, PHONE, VB, PR1A) ||
+	      SPID_HARDWARE_ID(CLVTP, PHONE, VB, PR1B))) {
+		pr_info("Simulating VB SFI table\n");
+		dev = get_device_id(SFI_DEV_TYPE_I2C, "imx135");
+		if (dev && dev->device_handler)
+			dev->device_handler(&imx135_entry, dev);
+		dev = get_device_id(SFI_DEV_TYPE_I2C, "s5k8aay");
+		if (dev && dev->device_handler)
+			dev->device_handler(&s5k8aay_entry, dev);
+		dev = get_device_id(SFI_DEV_TYPE_I2C, "dw9719");
+		if (dev && dev->device_handler)
+			dev->device_handler(&dw9719_entry, dev);
+		dev = get_device_id(SFI_DEV_TYPE_I2C, "lm3559");
+		if (dev && dev->device_handler)
+			dev->device_handler(&lm3559_entry, dev);
 	}
 
 	return 0;
