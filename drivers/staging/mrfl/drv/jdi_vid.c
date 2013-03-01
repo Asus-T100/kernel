@@ -127,7 +127,7 @@ void mdfld_dsi_jdi_dsi_controller_init(struct mdfld_dsi_config *dsi_config)
 	hw_ctx->eot_disable = 0x0;
 	hw_ctx->init_count = 0x7D0;
 	hw_ctx->lp_byteclk = 0x4;
-	hw_ctx->dphy_param = 0x1B104315;
+	hw_ctx->dphy_param = 0x1B0F4115;
 
 	/*setup video mode format*/
 	hw_ctx->video_mode_format = mipi_mode | ip_tg_config;
