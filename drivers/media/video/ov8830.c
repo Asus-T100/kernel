@@ -1322,15 +1322,12 @@ static struct ov8830_control *ov8830_find_control(u32 id)
 
 static int ov8830_queryctrl(struct v4l2_subdev *sd, struct v4l2_queryctrl *qc)
 {
-	struct ov8830_device *dev = to_ov8830_sensor(sd);
 	struct ov8830_control *ctrl = ov8830_find_control(qc->id);
 
 	if (ctrl == NULL)
 		return -EINVAL;
 
-	mutex_lock(&dev->input_lock);
 	*qc = ctrl->qc;
-	mutex_unlock(&dev->input_lock);
 
 	return 0;
 }
@@ -1446,8 +1443,8 @@ static int get_resolution_index(struct v4l2_subdev *sd, int w, int h)
 	return -1;
 }
 
-static int ov8830_try_mbus_fmt(struct v4l2_subdev *sd,
-				struct v4l2_mbus_framefmt *fmt)
+static int __ov8830_try_mbus_fmt(struct v4l2_subdev *sd,
+				 struct v4l2_mbus_framefmt *fmt)
 {
 	int idx;
 	struct ov8830_device *dev = to_ov8830_sensor(sd);
@@ -1475,9 +1472,20 @@ static int ov8830_try_mbus_fmt(struct v4l2_subdev *sd,
 	}
 
 	fmt->code = V4L2_MBUS_FMT_SBGGR10_1X10;
-
-
 	return 0;
+}
+
+static int ov8830_try_mbus_fmt(struct v4l2_subdev *sd,
+			       struct v4l2_mbus_framefmt *fmt)
+{
+	struct ov8830_device *dev = to_ov8830_sensor(sd);
+	int r;
+
+	mutex_lock(&dev->input_lock);
+	r = __ov8830_try_mbus_fmt(sd, fmt);
+	mutex_unlock(&dev->input_lock);
+
+	return r;
 }
 
 static int ov8830_s_mbus_fmt(struct v4l2_subdev *sd,
@@ -1496,7 +1504,7 @@ static int ov8830_s_mbus_fmt(struct v4l2_subdev *sd,
 
 	mutex_lock(&dev->input_lock);
 
-	ret = ov8830_try_mbus_fmt(sd, fmt);
+	ret = __ov8830_try_mbus_fmt(sd, fmt);
 	if (ret)
 		goto out;
 
@@ -1548,9 +1556,11 @@ static int ov8830_g_mbus_fmt(struct v4l2_subdev *sd,
 	if (!fmt)
 		return -EINVAL;
 
+	mutex_lock(&dev->input_lock);
 	fmt->width = dev->curr_res_table[dev->fmt_idx].width;
 	fmt->height = dev->curr_res_table[dev->fmt_idx].height;
 	fmt->code = V4L2_MBUS_FMT_SBGGR10_1X10;
+	mutex_unlock(&dev->input_lock);
 
 	return 0;
 }
@@ -1645,13 +1655,17 @@ static int ov8830_enum_framesizes(struct v4l2_subdev *sd,
 	unsigned int index = fsize->index;
 	struct ov8830_device *dev = to_ov8830_sensor(sd);
 
-	if (index >= dev->entries_curr_table)
+	mutex_lock(&dev->input_lock);
+	if (index >= dev->entries_curr_table) {
+		mutex_unlock(&dev->input_lock);
 		return -EINVAL;
+	}
 
 	fsize->type = V4L2_FRMSIZE_TYPE_DISCRETE;
 	fsize->discrete.width = dev->curr_res_table[index].width;
 	fsize->discrete.height = dev->curr_res_table[index].height;
 	fsize->reserved[0] = dev->curr_res_table[index].used;
+	mutex_unlock(&dev->input_lock);
 
 	return 0;
 }
@@ -1677,7 +1691,6 @@ static int ov8830_enum_frameintervals(struct v4l2_subdev *sd,
 		fmt_index = dev->entries_curr_table - 1;
 
 	res = &dev->curr_res_table[fmt_index];
-	mutex_unlock(&dev->input_lock);
 
 	/* Check if this index is supported */
 	if (index > __ov8830_get_max_fps_index(res->fps_options))
@@ -1686,6 +1699,8 @@ static int ov8830_enum_frameintervals(struct v4l2_subdev *sd,
 	fival->type = V4L2_FRMIVAL_TYPE_DISCRETE;
 	fival->discrete.numerator = 1;
 	fival->discrete.denominator = res->fps_options[index].fps;
+
+	mutex_unlock(&dev->input_lock);
 
 	return 0;
 }
@@ -1780,13 +1795,17 @@ ov8830_enum_frame_size(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 	int index = fse->index;
 	struct ov8830_device *dev = to_ov8830_sensor(sd);
 
-	if (index >= dev->entries_curr_table)
+	mutex_lock(&dev->input_lock);
+	if (index >= dev->entries_curr_table) {
+		mutex_unlock(&dev->input_lock);
 		return -EINVAL;
+	}
 
 	fse->min_width = dev->curr_res_table[index].width;
 	fse->min_height = dev->curr_res_table[index].height;
 	fse->max_width = dev->curr_res_table[index].width;
 	fse->max_height = dev->curr_res_table[index].height;
+	mutex_unlock(&dev->input_lock);
 
 	return 0;
 }
@@ -1850,6 +1869,10 @@ ov8830_s_ctrl(struct v4l2_ctrl *ctrl)
 	struct ov8830_device *dev = container_of(
 		ctrl->handler, struct ov8830_device, ctrl_handler);
 
+	/* input_lock is taken by the control framework, so it
+	 * doesn't need to be taken here.
+	 */
+
 	/* We only handle V4L2_CID_RUN_MODE for now. */
 	switch (ctrl->val) {
 	case ATOMISP_RUN_MODE_VIDEO:
@@ -1896,6 +1919,7 @@ ov8830_g_frame_interval(struct v4l2_subdev *sd,
 	interval->interval.denominator = res->fps_options[dev->fps_index].fps;
 
 	mutex_unlock(&dev->input_lock);
+
 	return 0;
 }
 
@@ -1916,7 +1940,9 @@ static int ov8830_g_skip_frames(struct v4l2_subdev *sd, u32 *frames)
 {
 	struct ov8830_device *dev = to_ov8830_sensor(sd);
 
+	mutex_lock(&dev->input_lock);
 	*frames = dev->curr_res_table[dev->fmt_idx].skip_frames;
+	mutex_unlock(&dev->input_lock);
 
 	return 0;
 }
