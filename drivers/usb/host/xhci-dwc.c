@@ -93,7 +93,7 @@ static int xhci_dwc_bus_resume(struct usb_hcd *hcd)
 	return ret;
 }
 
-static const struct hc_driver xhci_dwc_hc_driver = {
+static struct hc_driver xhci_dwc_hc_driver = {
 	.description =		"dwc-xhci",
 	.product_desc =		"xHCI Host Controller",
 	.hcd_priv_size =	sizeof(struct xhci_hcd *),
@@ -264,6 +264,48 @@ static ssize_t store_pm_get(struct device *_dev,
 }
 static DEVICE_ATTR(pm_get, S_IRUGO|S_IWUSR|S_IWGRP,\
 			show_pm_get, store_pm_get);
+
+int disable_pm;
+static ssize_t store_disable_pm(struct device *_dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+
+	if (!disable_pm && buf[0] == '1') {
+		disable_pm = 1;
+		xhci_dwc_hc_driver.bus_suspend = NULL;
+		xhci_dwc_hc_driver.bus_resume = NULL;
+		printk(KERN_ERR "Disable power management of xHCI!\n");
+	} else if (disable_pm && buf[0] == '0') {
+		xhci_dwc_hc_driver.bus_suspend = xhci_dwc_bus_suspend;
+		xhci_dwc_hc_driver.bus_resume = xhci_dwc_bus_resume;
+		disable_pm = 0;
+		printk(KERN_ERR "Enable power management of xHCI!\n");
+	}
+
+	return count;
+}
+
+static ssize_t
+show_disable_pm(struct device *_dev, struct device_attribute *attr, char *buf)
+{
+	char				*next;
+	unsigned			size, t;
+
+	next = buf;
+	size = PAGE_SIZE;
+
+	t = scnprintf(next, size,
+		"%s\n",
+		(disable_pm ? "1" : "0")
+		);
+	size -= t;
+	next += t;
+
+	return PAGE_SIZE - size;
+}
+
+static DEVICE_ATTR(disable_pm, S_IRUGO|S_IWUSR|S_IWGRP,\
+			show_disable_pm, store_disable_pm);
 
 static int xhci_start_host(struct usb_hcd *hcd)
 {
@@ -606,6 +648,11 @@ static int xhci_dwc_drv_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, hcd);
 	pm_runtime_enable(hcd->self.controller);
+
+	retval = device_create_file(hcd->self.controller, &dev_attr_disable_pm);
+	if (retval < 0)
+		printk(KERN_ERR
+			"Can't register sysfs attribute: %d\n", retval);
 
 	return retval;
 }
