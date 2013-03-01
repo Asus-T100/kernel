@@ -505,4 +505,161 @@ static int __init vlv_gpio_init(void)
 	return platform_driver_register(&vlv_gpio_driver);
 }
 
+static int vlv_gpio_plt_probe(struct platform_device *pdev)
+{
+	struct vlv_gpio *vg;
+	struct gpio_chip *gc;
+	struct resource *mem_rc, *irq_rc;
+	struct device *dev = &pdev->dev;
+	struct gpio_bank *bank;
+	unsigned hwirq;
+	int ret;
+	static int bank_id;
+
+	bank = vlv_banks + bank_id;
+	bank_id++;
+
+	vg = devm_kzalloc(dev, sizeof(struct vlv_gpio), GFP_KERNEL);
+	if (!vg) {
+		dev_err(&pdev->dev, "can't allocate vlv_gpio chip data\n");
+		ret = -ENOMEM;
+	}
+
+	vg->chip.ngpio = bank->ngpio;
+	vg->gpio_to_pad = bank->to_pad;
+	vg->pdev = pdev;
+	platform_set_drvdata(pdev, vg);
+
+	mem_rc = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	irq_rc = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
+
+	if (!mem_rc) {
+		dev_err(&pdev->dev, "missing MEM resource\n");
+		return -EINVAL;
+	}
+
+	vg->reg_base = devm_request_and_ioremap(dev, mem_rc);
+
+	if (vg->reg_base == NULL) {
+		dev_err(&pdev->dev, "error mapping resource\n");
+		return -EFAULT;
+	}
+
+	spin_lock_init(&vg->lock);
+
+	gc = &vg->chip;
+	gc->label = dev_name(&pdev->dev);
+	gc->owner = THIS_MODULE;
+	gc->request = vlv_gpio_request;
+	gc->free = vlv_gpio_free;
+	gc->direction_input = vlv_gpio_direction_input;
+	gc->direction_output = vlv_gpio_direction_output;
+	gc->get = vlv_gpio_get;
+	gc->set = vlv_gpio_set;
+	gc->dbg_show = vlv_gpio_dbg_show;
+	gc->base = -1;
+	gc->can_sleep = 0;
+	gc->dev = dev;
+
+	ret = gpiochip_add(gc);
+	if (ret) {
+		dev_err(&pdev->dev, "failed adding vlv-gpio chip\n");
+		return ret;
+	}
+
+	/* set up interrupts  */
+	if (irq_rc && irq_rc->start) {
+		hwirq = irq_rc->start;
+		gc->to_irq = vlv_gpio_to_irq;
+
+		vg->domain = irq_domain_add_linear(NULL, gc->ngpio,
+						   &vlv_gpio_irq_ops, vg);
+		if (!vg->domain)
+			return -ENXIO;
+
+		vlv_gpio_irq_init_hw(vg);
+
+		irq_set_handler_data(hwirq, vg);
+		irq_set_chained_handler(hwirq, vlv_gpio_irq_handler);
+	}
+
+	return 0;
+}
+
+static struct platform_driver vlv_gpio_plt_driver = {
+	.probe          = vlv_gpio_plt_probe,
+	.driver         = {
+		.name   = "vlv_plt_gpio",
+		.owner  = THIS_MODULE,
+	},
+};
+
+static struct resource score_resources[] = {
+	[0] = {
+		.start	= 0xfed0c000,
+		.end	= 0xfed0c000 + 0xfff,
+		.flags	= IORESOURCE_MEM,
+	},
+	[1] = {
+		.start	= 49,
+		.end	= 49,
+		.flags	= IORESOURCE_IRQ,
+	}
+};
+static struct resource ncore_resources[] = {
+	[0] = {
+		.start	= 0xfed0d000,
+		.end	= 0xfed0d000 + 0xfff,
+		.flags	= IORESOURCE_MEM,
+	},
+	[1] = {
+		.start	= 48,
+		.end	= 48,
+		.flags	= IORESOURCE_IRQ,
+	}
+};
+static struct resource sus_resources[] = {
+	[0] = {
+		.start	= 0xfed0e000,
+		.end	= 0xfed0e000 + 0xfff,
+		.flags	= IORESOURCE_MEM,
+	},
+	[1] = {
+		.start	= 50,
+		.end	= 50,
+		.flags	= IORESOURCE_IRQ,
+	}
+};
+static struct platform_device vlv_plt_gpio_device[3] = {
+	[0] = {
+		.name           = "vlv_plt_gpio",
+		.id		= 0,
+		.num_resources  = ARRAY_SIZE(score_resources),
+		.resource       = score_resources,
+	},
+	[1] = {
+		.name           = "vlv_plt_gpio",
+		.id		= 1,
+		.num_resources  = ARRAY_SIZE(ncore_resources),
+		.resource       = ncore_resources,
+	},
+	[2] = {
+		.name           = "vlv_plt_gpio",
+		.id		= 2,
+		.num_resources  = ARRAY_SIZE(sus_resources),
+		.resource       = sus_resources,
+	},
+};
+
+
+static int __init vlv_gpio_plt_init(void)
+{
+	platform_device_register(&vlv_plt_gpio_device[0]);
+	platform_device_register(&vlv_plt_gpio_device[1]);
+	platform_device_register(&vlv_plt_gpio_device[2]);
+	platform_driver_register(&vlv_gpio_plt_driver);
+	return 0;
+}
+
+subsys_initcall(vlv_gpio_plt_init);
 subsys_initcall(vlv_gpio_init);
