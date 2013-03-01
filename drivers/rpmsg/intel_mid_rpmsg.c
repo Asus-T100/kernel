@@ -292,6 +292,7 @@ void free_rpmsg_instance(struct rpmsg_channel *rpdev,
 	instance->tx_msg = NULL;
 	kfree(instance->rx_msg);
 	instance->rx_msg = NULL;
+	wake_lock_destroy(&instance->wake_lock);
 	kfree(instance);
 	*pInstance = NULL;
 	dev_info(&rpdev->dev, "Freeing rpmsg device\n");
