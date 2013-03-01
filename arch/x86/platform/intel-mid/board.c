@@ -97,6 +97,9 @@
 #include "device_libs/platform_edlp_fast.h"
 #include "device_libs/platform_logical_modem.h"
 
+/* Modem devices */
+#include "device_libs/platform_modem_ctrl.h"
+
 /* WIFI devices */
 #include "device_libs/platform_wl12xx.h"
 #include "device_libs/platform_bcm43xx.h"
@@ -248,7 +251,26 @@ struct devs_id __initconst device_ids[] = {
 						NULL},
 	{"hsi_edlp_fast", SFI_DEV_TYPE_HSI, 0, &edlp_fast_platform_data, NULL},
 #endif
-
+	{"XMM_6260", SFI_DEV_TYPE_MDM, 0, &modem_platform_data,
+		&sfi_handle_mdm},
+	{"XMM_6268", SFI_DEV_TYPE_MDM, 0, &modem_platform_data,
+		&sfi_handle_mdm},
+	{"XMM_6360", SFI_DEV_TYPE_MDM, 0, &modem_platform_data,
+		&sfi_handle_mdm},
+	{"XMM_7160_REV1", SFI_DEV_TYPE_MDM, 0, &modem_platform_data,
+		&sfi_handle_mdm},
+	{"XMM_7160_REV2", SFI_DEV_TYPE_MDM, 0, &modem_platform_data,
+		&sfi_handle_mdm},
+	{"XMM_7160_REV3", SFI_DEV_TYPE_MDM, 0, &modem_platform_data,
+		&sfi_handle_mdm},
+	{"RMC_CYGNUS", SFI_DEV_TYPE_MDM, 0, &modem_platform_data,
+		&sfi_handle_mdm},
+	{"RMC_CYGNUS_FFRD", SFI_DEV_TYPE_MDM, 0, &modem_platform_data,
+		&sfi_handle_mdm},
+	{"RMC_CYGNUS_PCI", SFI_DEV_TYPE_MDM, 0, &modem_platform_data,
+		&sfi_handle_mdm},
+	{"RMC_PEGASUS", SFI_DEV_TYPE_MDM, 0, &modem_platform_data,
+		&sfi_handle_mdm},
 	{},
 };
 

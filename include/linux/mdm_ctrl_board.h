@@ -27,10 +27,21 @@
 #define __MDM_CTRL_BOARD_H__
 
 /* Supported Modem IDs*/
-#define MODEM_6260 6260
-#define MODEM_6268 6268
-#define MODEM_6360 6360
-#define MODEM_7160 7160
+#define MODEM_UNSUP	0
+#define MODEM_6260	6260
+#define MODEM_6268	6268
+#define MODEM_6360	6360
+#define MODEM_7160	7160
+#define MODEM_7260	7260
+
+/* Supported PMIC IDs*/
+enum {
+	UNKNOWN_PMIC,
+	MFLD_PMIC,
+	CLVT_PMIC,
+	MRFL_PMIC,
+	BYT_PMIC
+};
 
 /* GPIO names */
 #define GPIO_RST_OUT	"ifx_mdm_rst_out"
@@ -40,6 +51,15 @@
 #define GPIO_CDUMP_MRFL	"MODEM_CORE_DUMP"
 
 extern void *modem_ctrl_platform_data(void *data) __attribute__((weak));
+
+/* Modem basical info */
+struct modem_base_info {
+	char	modem_name[SFI_NAME_LEN + 1];
+	int	id;
+	int	pmic;
+	int	cpu;
+	char	cpu_name[SFI_NAME_LEN + 1];
+};
 
 /* struct mdm_ctrl_pdata
  * @modem_name: Modem name, used to select correct sequences
