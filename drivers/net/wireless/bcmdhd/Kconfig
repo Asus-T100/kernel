@@ -45,9 +45,3 @@ config DHD_USE_SCHED_SCAN
 	default n
 	---help---
 	  Use CFG80211 sched scan
-
-config BCM43XX_PLATFORM_DATA
-	bool
-	default y
-	---help---
-	 Enables platform_bcm43xx

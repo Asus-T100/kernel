@@ -90,8 +90,6 @@
 
 /* WIFI devices */
 #include "device_libs/platform_wl12xx.h"
-#include "device_libs/platform_bcm43xx.h"
-
 
 static void __init *no_platform_data(void *info)
 {
@@ -102,8 +100,6 @@ struct devs_id __initconst device_ids[] = {
 
 	/* SD devices */
 	{"wl12xx_clk_vmmc", SFI_DEV_TYPE_SD, 0, &wl12xx_platform_data, NULL},
-	{"bcm43xx_clk_vmmc", SFI_DEV_TYPE_SD, 0, &bcm43xx_platform_data, NULL},
-	{"bcm43xx_vmmc", SFI_DEV_TYPE_SD, 0, &bcm43xx_platform_data, NULL},
 
 	/* SPI devices */
 	{"pmic_gpio", SFI_DEV_TYPE_SPI, 1, &pmic_gpio_platform_data, NULL},
@@ -175,7 +171,6 @@ struct devs_id __initconst device_ids[] = {
 	{"mxt224", SFI_DEV_TYPE_I2C, 0, &mxt224_platform_data, NULL},
 	{"synaptics_3202", SFI_DEV_TYPE_I2C, 0, &s3202_platform_data},
 	{"synaptics_3400", SFI_DEV_TYPE_I2C, 0, &s3202_platform_data},
-	{"r69001-ts-i2c", SFI_DEV_TYPE_I2C, 0, &no_platform_data, NULL},
 	{"pn544", SFI_DEV_TYPE_I2C, 0, &pn544_platform_data, NULL},
 	{"bq24192", SFI_DEV_TYPE_I2C, 1, &bq24192_platform_data},
 	{"max17042", SFI_DEV_TYPE_I2C, 1, &max17042_platform_data, NULL},

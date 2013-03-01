@@ -34,8 +34,7 @@
 #include <linux/delay.h>
 #include <linux/capability.h>
 #include <linux/compat.h>
-#include <linux/pci.h>
-#include <asm/intel-mid.h>
+
 #include <linux/mmc/ioctl.h>
 #include <linux/mmc/card.h>
 #include <linux/mmc/host.h>
@@ -1886,24 +1885,16 @@ static int mmc_blk_alloc_part(struct mmc_card *card,
 static int mmc_blk_alloc_parts(struct mmc_card *card, struct mmc_blk_data *md)
 {
 	int idx, ret = 0;
-	bool readonly;
-	struct pci_dev *pdev = to_pci_dev(card->host->parent);
 
 	if (!mmc_card_mmc(card))
 		return 0;
 
 	for (idx = 0; idx < card->nr_parts; idx++) {
 		if (card->part[idx].size) {
-			if ((pdev->revision == 0x0) &&
-		(INTEL_MID_CPU_CHIP_TANGIER == intel_mid_identify_cpu()))
-				readonly = false;
-			else
-				readonly = card->part[idx].force_ro;
-
 			ret = mmc_blk_alloc_part(card, md,
 				card->part[idx].part_cfg,
 				card->part[idx].size >> 9,
-				readonly,
+				card->part[idx].force_ro,
 				card->part[idx].name,
 				card->part[idx].area_type);
 			if (ret)

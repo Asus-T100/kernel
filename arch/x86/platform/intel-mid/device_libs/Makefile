@@ -1,3 +1,4 @@
+
 CFLAGS_platform_clv_regulator.o			:= -Werror
 
 # IPC Devices
@@ -78,7 +79,5 @@ obj-$(subst m,y,$(CONFIG_ANDROID_SWITCH_MID_USER_NOTIFY))		+= platform_switch_mi
 obj-$(subst m,y,$(CONFIG_I2C_GPIO))					+= platform_i2c_gpio.o
 # WIFI
 obj-$(subst m,y,$(CONFIG_WL12XX_PLATFORM_DATA))				+= platform_wl12xx.o
-obj-$(subst m,y,$(CONFIG_BCM43XX_PLATFORM_DATA))			+= platform_bcm43xx.o
 # Bluetooth
 obj-$(subst m,y,$(CONFIG_TI_ST))					+= platform_btwilink.o
-obj-$(subst m,y,$(CONFIG_BCM_BT_LPM))					+= platform_btlpm.o

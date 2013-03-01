@@ -25,6 +25,7 @@
  * ----------------------------------------------------------------------------
  *
  */
+#include <linux/export.h>
 #include <linux/clk.h>
 #include <linux/errno.h>
 #include <linux/err.h>
@@ -208,7 +209,7 @@ int i2c_dw_init(struct dw_i2c_dev *dev)
 	/* Disable the adapter */
 	dw_writel(dev, 0, DW_IC_ENABLE);
 
-	if (dev->get_scl_cfg && !dev->use_dyn_clk)
+	if (dev->get_scl_cfg)
 		dev->get_scl_cfg(dev);
 	else {
 		/* set standard and fast speed deviders for high/low periods */
@@ -248,13 +249,10 @@ int i2c_dw_init(struct dw_i2c_dev *dev)
 	dw_writel(dev, 0, DW_IC_RX_TL);
 
 	/* configure the i2c master */
-	if (!dev->use_dyn_clk)
-		dw_writel(dev, dev->master_cfg , DW_IC_CON);
-	else
-		dw_writel(dev, INTEL_MID_STD_CFG | dev->speed_cfg, DW_IC_CON);
-
+	dw_writel(dev, dev->master_cfg , DW_IC_CON);
 	return 0;
 }
+EXPORT_SYMBOL_GPL(i2c_dw_init);
 
 /*
  * Waiting for bus not busy
@@ -324,9 +322,9 @@ i2c_dw_xfer_msg(struct dw_i2c_dev *dev)
 
 	raw_local_irq_save(flags);
 	/* if fifo only has one byte, it is not safe */
-	if (!dev->enable_stop && (dev->status & STATUS_WRITE_IN_PROGRESS) &&
+	if ((dev->status & STATUS_WRITE_IN_PROGRESS) &&
 		(dw_readl(dev, DW_IC_TXFLR) < 1)) {
-		dev_err(dev->dev, "TX FIFO underrun, addr: 0x%x.\n", addr);
+		dev_err(dev->dev, "TX FIFO overrun, addr: 0x%x.\n", addr);
 		dev->msg_err = -EAGAIN;
 	}
 
@@ -474,7 +472,6 @@ i2c_dw_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 {
 	struct dw_i2c_dev *dev = i2c_get_adapdata(adap);
 	int ret;
-	unsigned long timeout;
 
 	dev_dbg(dev->dev, "%s: msgs: %d\n", __func__, num);
 
@@ -499,14 +496,15 @@ i2c_dw_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 	i2c_dw_xfer_init(dev);
 
 	/* wait for tx to complete */
-	timeout = wait_for_completion_timeout(&dev->cmd_complete, HZ);
-	if (timeout == 0) {
+	ret = wait_for_completion_timeout(&dev->cmd_complete, HZ);
+	if (ret == 0) {
 		dev_WARN(dev->dev, "controller timed out\n");
 		i2c_dw_dump(dev);
 		i2c_dw_init(dev);
 		ret = -ETIMEDOUT;
 		goto done;
-	}
+	} else if (ret < 0)
+		goto done;
 
 	if (dev->msg_err) {
 		ret = dev->msg_err;
@@ -535,12 +533,14 @@ done:
 
 	return ret;
 }
+EXPORT_SYMBOL_GPL(i2c_dw_xfer);
 
 u32 i2c_dw_func(struct i2c_adapter *adap)
 {
 	struct dw_i2c_dev *dev = i2c_get_adapdata(adap);
 	return dev->functionality;
 }
+EXPORT_SYMBOL_GPL(i2c_dw_func);
 
 static u32 i2c_dw_read_clear_intrbits(struct dw_i2c_dev *dev)
 {
@@ -606,23 +606,12 @@ irqreturn_t i2c_dw_isr(int this_irq, void *dev_id)
 	struct dw_i2c_dev *dev = dev_id;
 	u32 stat, enabled;
 
-	pm_runtime_get(dev->dev);
-#ifdef CONFIG_PM_RUNTIME
-	if (dev->dev->power.runtime_status != RPM_ACTIVE) {
-		dev_err(dev->dev, "i2c get interrupt when it's off\n");
-		WARN_ON(1);
-		pm_runtime_put_autosuspend(dev->dev);
-		return IRQ_NONE;
-	}
-#endif
 	enabled = dw_readl(dev, DW_IC_ENABLE);
 	stat = dw_readl(dev, DW_IC_RAW_INTR_STAT);
 	dev_dbg(dev->dev, "%s:  %s enabled= 0x%x stat=0x%x\n", __func__,
 		dev->adapter.name, enabled, stat);
-	if (!enabled || !(stat & ~DW_IC_INTR_ACTIVITY)) {
-		pm_runtime_put_autosuspend(dev->dev);
+	if (!enabled || !(stat & ~DW_IC_INTR_ACTIVITY))
 		return IRQ_NONE;
-	}
 
 	stat = i2c_dw_read_clear_intrbits(dev);
 
@@ -664,20 +653,22 @@ tx_aborted:
 		complete(&dev->cmd_complete);
 	}
 
-	pm_runtime_put_autosuspend(dev->dev);
 	return IRQ_HANDLED;
 }
+EXPORT_SYMBOL_GPL(i2c_dw_isr);
 
 void i2c_dw_enable(struct dw_i2c_dev *dev)
 {
        /* Enable the adapter */
 	dw_writel(dev, 1, DW_IC_ENABLE);
 }
+EXPORT_SYMBOL_GPL(i2c_dw_enable);
 
 u32 i2c_dw_is_enabled(struct dw_i2c_dev *dev)
 {
 	return dw_readl(dev, DW_IC_ENABLE);
 }
+EXPORT_SYMBOL_GPL(i2c_dw_is_enabled);
 
 void i2c_dw_disable(struct dw_i2c_dev *dev)
 {
@@ -688,18 +679,22 @@ void i2c_dw_disable(struct dw_i2c_dev *dev)
 	dw_writel(dev, 0, DW_IC_INTR_MASK);
 	dw_readl(dev, DW_IC_CLR_INTR);
 }
+EXPORT_SYMBOL_GPL(i2c_dw_disable);
 
 void i2c_dw_clear_int(struct dw_i2c_dev *dev)
 {
 	dw_readl(dev, DW_IC_CLR_INTR);
 }
+EXPORT_SYMBOL_GPL(i2c_dw_clear_int);
 
 void i2c_dw_disable_int(struct dw_i2c_dev *dev)
 {
 	dw_writel(dev, 0, DW_IC_INTR_MASK);
 }
+EXPORT_SYMBOL_GPL(i2c_dw_disable_int);
 
 u32 i2c_dw_read_comp_param(struct dw_i2c_dev *dev)
 {
 	return dw_readl(dev, DW_IC_COMP_PARAM_1);
 }
+EXPORT_SYMBOL_GPL(i2c_dw_read_comp_param);

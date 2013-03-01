@@ -1,6 +1,5 @@
 #include <linux/init.h>
 #include <linux/kernel.h>
-#include <linux/export.h>
 #include <linux/interrupt.h>
 #include <linux/delay.h>
 #include <linux/pm_runtime.h>

@@ -97,12 +97,6 @@ struct sdhci_host {
 #define SDHCI_QUIRK2_BROKEN_AUTO_CMD23			(1<<2)
 /* HC Reg High Speed must be set later than HC2 Reg 1.8v Signaling Enable */
 #define SDHCI_QUIRK2_HIGH_SPEED_SET_LATE		(1<<3)
-/* BRCM voltage support: advertise 2.0v support and force using 1.8v instead */
-#define SDHCI_QUIRK2_ADVERTISE_2V0_FORCE_1V8		(1<<4)
-/* to allow mmc_detect to detach the bus */
-#define SDHCI_QUIRK2_DISABLE_MMC_CAP_NONREMOVABLE	(1<<5)
-/* avoid detect/rescan/poweoff operations on suspend/resume. */
-#define SDHCI_QUIRK2_ENABLE_MMC_PM_IGNORE_PM_NOTIFY	(1<<6)
 
 	int irq;		/* Device IRQ */
 	void __iomem *ioaddr;	/* Mapped address */

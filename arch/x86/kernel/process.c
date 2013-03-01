@@ -27,7 +27,9 @@
 #include <asm/debugreg.h>
 #include <asm/nmi.h>
 
+#ifdef CONFIG_X86_64
 static DEFINE_PER_CPU(unsigned char, is_idle);
+#endif
 
 struct kmem_cache *task_xstate_cachep;
 EXPORT_SYMBOL_GPL(task_xstate_cachep);
@@ -359,6 +361,7 @@ static inline void play_dead(void)
 }
 #endif
 
+#ifdef CONFIG_X86_64
 void enter_idle(void)
 {
 	percpu_write(is_idle, 1);
@@ -380,6 +383,7 @@ void exit_idle(void)
 		return;
 	__exit_idle();
 }
+#endif
 
 /*
  * The idle thread. There's no useful work to be
