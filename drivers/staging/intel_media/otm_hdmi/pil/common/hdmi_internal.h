@@ -263,6 +263,8 @@ typedef struct {
 
 	otm_hdmi_phy_info_t phy_info;	/* Current PHY electrical properties */
 	int scaling_type; /* scaling type for HDMI display */
+	int gpio_hpd_pin; /* GPIO pin number of HDMI hotplug detection (in) */
+	int gpio_ls_en_pin; /* GPIO pin number for EDID level shifter (out) */
 } hdmi_context_t;
 
 /* mapping structures between pil and ipil */
