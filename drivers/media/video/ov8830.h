@@ -393,18 +393,13 @@ struct ov8830_device {
 
 	struct camera_sensor_platform_data *platform_data;
 	int fmt_idx;
-	int status;
 	int streaming;
 	int power;
-	u8 res;
-	u8 type;
 	u16 sensor_id;
 	u8 sensor_revision;
 	int exposure;
 	int gain;
 	u16 digital_gain;
-	u16 pixels_per_line;
-	u16 lines_per_frame;
 	struct drv201_device drv201;
 	struct mutex input_lock; /* serialize sensor's ioctl */
 

@@ -49,21 +49,6 @@
 
 #define to_ov8830_sensor(sd) container_of(sd, struct ov8830_device, sd)
 
-#define HOME_POS 255
-
-/* divides a by b using half up rounding and div/0 prevention
- * (result is 0 if b == 0) */
-#define divsave_rounded(a, b)	(((b) != 0) ? (((a)+((b)>>1))/(b)) : (-1))
-
-/*
- * TODO: use debug parameter to actually define when debug messages should
- * be printed.
- */
-static int debug;
-
-module_param(debug, int, 0644);
-MODULE_PARM_DESC(debug, "Enable debug messages");
-
 static int
 ov8830_read_reg(struct i2c_client *client, u16 len, u16 reg, u16 *val)
 {
@@ -662,7 +647,7 @@ static int ov8830_g_priv_int_data(struct v4l2_subdev *sd,
 	if (!b)
 		return -EIO;
 
-	if (copy_to_user(priv->data, b, min(priv->size, size)))
+	if (copy_to_user(priv->data, b, min_t(__u32, priv->size, size)))
 		r = -EFAULT;
 
 	priv->size = size;
@@ -789,8 +774,6 @@ static int ov8830_set_exposure(struct v4l2_subdev *sd, int exposure, int gain,
 	dev->gain = gain;
 	dev->exposure = exposure;
 	dev->digital_gain = dig_gain;
-	dev->lines_per_frame = vts;
-	dev->pixels_per_line = hts;
 
 out:
 	/* Group hold launch - delayed launch */
@@ -945,6 +928,7 @@ static int ov8830_s_power(struct v4l2_subdev *sd, int on)
 {
 	int ret;
 	struct ov8830_device *dev = to_ov8830_sensor(sd);
+
 	mutex_lock(&dev->input_lock);
 	ret = __ov8830_s_power(sd, on);
 	mutex_unlock(&dev->input_lock);
@@ -1168,10 +1152,6 @@ static int __ov8830_s_frame_interval(struct v4l2_subdev *sd,
 					dev->digital_gain, &hts, &vts);
 	if (ret)
 		return ret;
-
-	/* Update the global values */
-	dev->pixels_per_line = hts;
-	dev->lines_per_frame = vts;
 
 	/* Update the new values so that user side knows the current settings */
 	ret = ov8830_get_intg_factor(sd, info, dev->basic_settings_list);
@@ -1621,9 +1601,6 @@ static int ov8830_s_mbus_fmt(struct v4l2_subdev *sd,
 					dev->digital_gain, &hts, &vts);
 	if (ret)
 		goto out;
-
-	dev->pixels_per_line = hts;
-	dev->lines_per_frame = vts;
 
 	ret = ov8830_get_intg_factor(sd, ov8830_info, dev->basic_settings_list);
 
