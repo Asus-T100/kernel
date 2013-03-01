@@ -39,6 +39,24 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */ /**************************************************************************/
 
+#ifdef CONFIG_COUNT_GPU_BLOCKING_TIME
+/* per physical core struct to record physical core info */
+struct per_physical_core_t {
+	/*
+	 * Variable to record all cpu status (idle or busy) together.
+	 * Aligned 64-bit access in 64-bit processor is atomic, hence SMP
+	 * safe without needing a lock. One byte for one core, so it can
+	 * support up to eight cores. It is enough up to near future.
+	 */
+	u64 busy_mask;		/*show the status of siblings in physical core*/
+	u64 active_start_tsc;	/*the active start time of the physical core*/
+	u64 accum_flag;		/*indicate the active period has been counted*/
+	u64 gpu_block_time;
+	u64 gpu_block_start_tsc;
+	atomic_t wait_for_gpu_count;
+};
+extern struct per_physical_core_t pphycore_counts;
+#endif
 
 PVRSRV_ERROR LinuxEventObjectListCreate(IMG_HANDLE *phEventObjectList);
 PVRSRV_ERROR LinuxEventObjectListDestroy(IMG_HANDLE hEventObjectList);
