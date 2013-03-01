@@ -301,8 +301,6 @@ struct mt9e013_device {
 	int status;
 	int streaming;
 	int power;
-	u8 res;
-	u8 type;
 	u16 sensor_id;
 	u8 sensor_revision;
 	u16 coarse_itg;
