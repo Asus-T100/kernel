@@ -115,6 +115,7 @@ DEFINE_SSP_REG(SSITR, 0x0c)
 DEFINE_SSP_REG(SSDR, 0x10)
 DEFINE_SSP_REG(SSTO, 0x28)
 DEFINE_SSP_REG(SSPSP, 0x2c)
+DEFINE_SSP_REG(SSFS, 0x44)
 
 DEFINE_SSP_REG(I2CCTRL, 0x00);
 DEFINE_SSP_REG(I2CDATA, 0x04);
@@ -302,6 +303,7 @@ struct chip_data {
 	u32 cr0;
 	u32 cr1;
 	u32 timeout;
+	u8 chip_select;
 	u8 n_bytes;
 	u8 dma_enabled;
 	u8 bits_per_word;
