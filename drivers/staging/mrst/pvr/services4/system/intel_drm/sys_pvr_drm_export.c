@@ -207,6 +207,7 @@ PVRSRV_ERROR OSScheduleMISR2(void)
 	SYS_DATA *psSysData;
 	SysAcquireData(&psSysData);
 	OSScheduleMISR(psSysData);
+	return PVRSRV_OK;
 }
 
 void SYSPVRFillCallback(struct drm_device *ddev)

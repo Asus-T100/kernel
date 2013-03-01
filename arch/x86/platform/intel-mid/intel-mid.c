@@ -631,6 +631,27 @@ void intel_scu_devices_destroy(void)
 }
 EXPORT_SYMBOL_GPL(intel_scu_devices_destroy);
 
+
+static struct platform_device *psh_ipc;
+void intel_psh_devices_create(void)
+{
+	psh_ipc = platform_device_alloc("intel_psh_ipc", 0);
+	if (psh_ipc == NULL) {
+		pr_err("out of memory for platform device psh_ipc.\n");
+		return;
+	}
+
+	platform_device_add(psh_ipc);
+}
+EXPORT_SYMBOL_GPL(intel_psh_devices_create);
+
+void intel_psh_devices_destroy(void)
+{
+	if (psh_ipc)
+		platform_device_del(psh_ipc);
+}
+EXPORT_SYMBOL_GPL(intel_psh_devices_destroy);
+
 void __init install_irq_resource(struct platform_device *pdev, int irq)
 {
 	/* Single threaded */
@@ -661,6 +682,23 @@ static void __init sfi_handle_ipc_dev(struct sfi_device_table_entry *pentry,
 	pdev->dev.platform_data = pdata;
 	intel_scu_device_register(pdev);
 }
+
+#ifdef CONFIG_INTEL_PSH_IPC
+static int __init intel_psh_ipc_subdev_init(void)
+{
+	struct platform_device *psh;
+	psh = platform_device_alloc("psh", 0);
+	if (psh == NULL) {
+		pr_err("out of memory for platform device psh.\n");
+		return -1;
+	}
+
+	platform_device_add(psh);
+
+	return 0;
+}
+device_initcall(intel_psh_ipc_subdev_init);
+#endif
 
 static void __init sfi_handle_spi_dev(struct sfi_device_table_entry *pentry,
 					struct devs_id *dev)
@@ -760,7 +798,7 @@ static void __init sfi_handle_sd_dev(struct sfi_device_table_entry *pentry,
 	sd_info.platform_data = pdata;
 }
 
-struct devs_id *get_device_id(u8 type, char *name)
+struct devs_id __init *get_device_id(u8 type, char *name)
 {
 	const struct devs_id *dev =
 			(get_device_ptr ? get_device_ptr() : NULL);
@@ -805,7 +843,19 @@ static int __init sfi_parse_devs(struct sfi_table_header *table)
 				irq_attr.ioapic = ioapic;
 				irq_attr.ioapic_pin = irq;
 				irq_attr.trigger = 1;
-				irq_attr.polarity = 1;
+				if (intel_mid_identify_cpu() ==
+						INTEL_MID_CPU_CHIP_TANGIER) {
+					if (!strncmp(pentry->name,
+						"r69001-ts-i2c", 13))
+						/* active low */
+						irq_attr.polarity = 1;
+					else
+						/* active high */
+						irq_attr.polarity = 0;
+				} else {
+					/* PNW and CLV go with active low */
+					irq_attr.polarity = 1;
+				}
 				io_apic_set_pci_routing(NULL, irq, &irq_attr);
 			} else
 				printk(KERN_INFO, "APIC entry not found for: name=%s, irq=%d, ioapic=%d",

@@ -481,7 +481,7 @@ static void bq24261_debugfs_init(void)
 		goto debugfs_root_exit;
 
 	for (i = 0; i < count; i++) {
-		sprintf(name, "%02x", bq24261_register_set[i]);
+		snprintf(name, 6, "%02x", bq24261_register_set[i]);
 		fentry = debugfs_create_file(name, S_IRUGO,
 						bq24261_dbgfs_dir,
 						&bq24261_register_set[i],

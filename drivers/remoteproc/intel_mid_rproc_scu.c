@@ -73,6 +73,14 @@ static int scu_ipc_simple_command(void *tx_buf)
 	return ret;
 }
 
+static void scu_ipc_send_command(void *tx_buf)
+{
+	struct tx_ipc_msg *tx_msg;
+
+	tx_msg = (struct tx_ipc_msg *)tx_buf;
+	intel_scu_ipc_send_command(tx_msg->sub << 12 | tx_msg->cmd);
+}
+
 static int scu_ipc_fw_command(void *tx_buf)
 {
 	struct tx_ipc_msg *tx_msg;
@@ -83,6 +91,10 @@ static int scu_ipc_fw_command(void *tx_buf)
 	switch (tx_msg->cmd) {
 	case RP_GET_FW_REVISION:
 		ret = scu_ipc_command(tx_buf);
+		break;
+	case RP_FW_UPDATE:
+		/* Only scu_ipc_send_command works for fw update */
+		scu_ipc_send_command(tx_buf);
 		break;
 	default:
 		pr_info("Command %x not supported\n", tx_msg->cmd);
@@ -146,6 +158,7 @@ int scu_ipc_rpmsg_handle(void *rx_buf, void *tx_buf, u32 *r_len, u32 *s_len)
 	switch (tx_hdr->dst) {
 	case RP_PMIC_ACCESS:
 	case RP_SET_WATCHDOG:
+	case RP_FLIS_ACCESS:
 		tmp_msg->status = scu_ipc_command(tx_msg);
 		break;
 	case RP_MIP_ACCESS:
@@ -154,7 +167,7 @@ int scu_ipc_rpmsg_handle(void *rx_buf, void *tx_buf, u32 *r_len, u32 *s_len)
 	case RP_IPC_UTIL:
 		tmp_msg->status = scu_ipc_util_command(tx_msg);
 		break;
-	case RP_FW_UPDATE:
+	case RP_FW_ACCESS:
 		tmp_msg->status = scu_ipc_fw_command(tx_msg);
 		break;
 	default:

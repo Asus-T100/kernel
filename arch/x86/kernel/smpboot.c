@@ -854,7 +854,14 @@ int __cpuinit native_cpu_up(unsigned int cpu)
 	err = do_boot_cpu(apicid, cpu);
 	if (err) {
 		pr_debug("do_boot_cpu failed %d\n", err);
-		return -EIO;
+		/* On Medfield, when CPU 1 fails to boot when being woken up
+		 * from S3, kernel removes it from cpu bitmap. But if CPU 1
+		 * is in non-sleeping mode at that time, all later C6 and
+		 * deep sleeping mode transition started by CPU 0 would fail.
+		 * It causes power loss. We trigger a BUG here to reboot
+		 * board by WDT.
+		 */
+		BUG();
 	}
 
 	/*

@@ -16,7 +16,8 @@ static int get_tempzone(struct ps_pse_mod_prof *pse_mod_bprof,
 {
 
 	int i = 0;
-	int temp_range_cnt = pse_mod_bprof->temp_mon_ranges;
+	int temp_range_cnt = min_t(u16, pse_mod_bprof->temp_mon_ranges,
+					BATT_TEMP_NR_RNG);
 
 	if (temp < pse_mod_bprof->temp_low_lim
 	    || temp >

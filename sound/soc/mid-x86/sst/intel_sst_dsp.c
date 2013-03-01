@@ -57,10 +57,12 @@ int intel_sst_reset_dsp_mfld(void)
 	union config_status_reg csr;
 
 	pr_debug("Resetting the DSP in medfield\n");
+	mutex_lock(&sst_drv_ctx->csr_lock);
 	csr.full = sst_shim_read(sst_drv_ctx->shim, SST_CSR);
 	csr.full |= 0x382;
 	csr.part.run_stall = 0x1;
 	sst_shim_write(sst_drv_ctx->shim, SST_CSR, csr.full);
+	mutex_unlock(&sst_drv_ctx->csr_lock);
 
 	return 0;
 }
@@ -74,6 +76,7 @@ int sst_start_mfld(void)
 {
 	union config_status_reg csr;
 
+	mutex_lock(&sst_drv_ctx->csr_lock);
 	csr.full = sst_shim_read(sst_drv_ctx->shim, SST_CSR);
 	csr.part.bypass = 0;
 	sst_shim_write(sst_drv_ctx->shim, SST_CSR, csr.full);
@@ -86,6 +89,7 @@ int sst_start_mfld(void)
 	pr_debug("Starting the DSP_medfld %x\n", csr.full);
 	sst_shim_write(sst_drv_ctx->shim, SST_CSR, csr.full);
 	pr_debug("Starting the DSP_medfld\n");
+	mutex_unlock(&sst_drv_ctx->csr_lock);
 
 	return 0;
 }
@@ -99,7 +103,7 @@ int intel_sst_reset_dsp_mrfld(void)
 	union config_status_reg_mrfld csr;
 
 	pr_debug("sst: Resetting the DSP in mrfld\n");
-
+	mutex_lock(&sst_drv_ctx->csr_lock);
 	csr.full = sst_shim_read64(sst_drv_ctx->shim, SST_CSR);
 
 	pr_debug("value:0x%llx\n", csr.full);
@@ -113,7 +117,7 @@ int intel_sst_reset_dsp_mrfld(void)
 	csr.full &= ~(0x1);
 	sst_shim_write64(sst_drv_ctx->shim, SST_CSR, csr.full);
 	pr_debug("value:0x%llx\n", csr.full);
-
+	mutex_unlock(&sst_drv_ctx->csr_lock);
 	return 0;
 }
 
@@ -127,7 +131,7 @@ int sst_start_mrfld(void)
 	union config_status_reg_mrfld csr;
 
 	pr_debug("sst: Starting the DSP in mrfld LALALALA\n");
-
+	mutex_lock(&sst_drv_ctx->csr_lock);
 	csr.full = sst_shim_read64(sst_drv_ctx->shim, SST_CSR);
 	pr_debug("value:0x%llx\n", csr.full);
 
@@ -143,8 +147,29 @@ int sst_start_mrfld(void)
 
 	csr.full = sst_shim_read64(sst_drv_ctx->shim, SST_CSR);
 	pr_debug("sst: Starting the DSP_merrifield:%llx\n", csr.full);
-
+	mutex_unlock(&sst_drv_ctx->csr_lock);
 	return 0;
+}
+
+/**
+ * intel_sst_set_bypass - Sets/clears the bypass bits
+ *
+ * This sets/clears the bypass bits
+ */
+void intel_sst_set_bypass_mfld(bool set)
+{
+	union config_status_reg csr;
+
+	mutex_lock(&sst_drv_ctx->csr_lock);
+	csr.full = sst_shim_read(sst_drv_ctx->shim, SST_CSR);
+	if (set == true)
+		csr.full |= 0x380;
+	else
+		csr.part.bypass = 0;
+	pr_debug("SetupByPass set %d Val 0x%lx\n", set, csr.full);
+	sst_shim_write(sst_drv_ctx->shim, SST_CSR, csr.full);
+	mutex_unlock(&sst_drv_ctx->csr_lock);
+
 }
 
 static int sst_fill_dstn(struct intel_sst_drv *sst, struct sst_probe_info info,
@@ -439,25 +464,25 @@ static void sst_dma_transfer_complete(void *arg)
 {
 	sst_drv_ctx  = (struct intel_sst_drv *)arg;
 	pr_debug(" sst_dma_transfer_complete\n");
-	if (sst_drv_ctx->dma_info_blk.on == true) {
-		sst_drv_ctx->dma_info_blk.on = false;
-		sst_drv_ctx->dma_info_blk.condition = true;
-		wake_up(&sst_drv_ctx->wait_queue);
-	}
+	sst_wake_up_block(sst_drv_ctx, 0, FW_DWNL_ID, FW_DWNL_ID, NULL, 0);
 }
 
 static inline int sst_dma_wait_for_completion(struct intel_sst_drv *sst)
 {
+	int ret = 0;
+	struct sst_block *block;
 	/* call prep and wait */
 	sst->desc->callback = sst_dma_transfer_complete;
 	sst->desc->callback_param = sst;
 
-	sst->dma_info_blk.condition = false;
-	sst->dma_info_blk.ret_code = 0;
-	sst->dma_info_blk.on = true;
+	block = sst_create_block(sst, FW_DWNL_ID, FW_DWNL_ID);
+	if (block == NULL)
+		return -ENOMEM;
 
 	sst->desc->tx_submit(sst_drv_ctx->desc);
-	return sst_wait_timeout(sst, &sst->dma_info_blk);
+	ret = sst_wait_timeout(sst, block);
+	sst_free_block(sst, block);
+	return ret;
 }
 
 static int sst_dma_firmware(struct sst_dma *dma, struct sst_sg_list *sg_list)
@@ -1065,6 +1090,15 @@ end_release:
 	return retval;
 }
 
+static inline void print_lib_info(struct snd_sst_lib_download_info *resp)
+{
+	pr_debug("codec Type %d Ver %d Built %s: %s\n",
+		resp->dload_lib.lib_info.lib_type,
+		resp->dload_lib.lib_info.lib_version,
+		resp->dload_lib.lib_info.b_date,
+		resp->dload_lib.lib_info.b_time);
+}
+
 /* sst_download_library - This function is called when any
  codec/post processing library needs to be downloaded */
 static int sst_download_library(const struct firmware *fw_lib,
@@ -1074,25 +1108,22 @@ static int sst_download_library(const struct firmware *fw_lib,
 	int ret_val = 0;
 
 	/* send IPC message and wait */
-	int i;
 	u8 pvt_id;
 	struct ipc_post *msg = NULL;
 	union config_status_reg csr;
 	struct snd_sst_str_type str_type = {0};
 	int retval = 0;
 	void *codec_fw;
-
-	if (sst_create_large_msg(&msg))
-		return -ENOMEM;
+	struct sst_block *block;
 
 	pvt_id = sst_assign_pvt_id(sst_drv_ctx);
-	i = sst_get_block_stream(sst_drv_ctx);
-	pr_debug("alloc block allocated = %d, pvt_id %d\n", i, pvt_id);
-	if (i < 0) {
-		kfree(msg);
-		return -ENOMEM;
+	ret_val = sst_create_block_and_ipc_msg(&msg, true, sst_drv_ctx, &block,
+				IPC_IA_PREP_LIB_DNLD, pvt_id);
+	if (ret_val) {
+		pr_err("library download failed\n");
+		return ret_val;
 	}
-	sst_drv_ctx->alloc_block[i].sst_id = pvt_id;
+
 	sst_fill_header(&msg->header, IPC_IA_PREP_LIB_DNLD, 1, pvt_id);
 	msg->header.part.data = sizeof(u32) + sizeof(str_type);
 	str_type.codec_type = lib->dload_lib.lib_info.lib_type;
@@ -1103,17 +1134,24 @@ static int sst_download_library(const struct firmware *fw_lib,
 	list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
 	spin_unlock_irqrestore(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 	sst_drv_ctx->ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
-	retval = sst_wait_timeout(sst_drv_ctx,
-				&sst_drv_ctx->alloc_block[i].ops_block);
-	if (retval) {
-		/* error */
-		sst_drv_ctx->alloc_block[i].sst_id = BLOCK_UNINIT;
-		pr_err("Prep codec downloaded failed %d\n",
-				retval);
-		return -EIO;
+	retval = sst_wait_timeout(sst_drv_ctx, block);
+	if (block->data) {
+		struct snd_sst_str_type *str_type =
+			(struct snd_sst_str_type *)block->data;
+		if (str_type->result) {
+			/* error */
+			pr_err("Prep codec downloaded failed %d\n",
+					str_type->result);
+			retval = -EIO;
+			goto free_block;
+		}
+	} else if (retval != 0) {
+		retval = -EIO;
+		goto free_block;
 	}
 	pr_debug("FW responded, ready for download now...\n");
 	/* downloading on success */
+	mutex_lock(&sst_drv_ctx->csr_lock);
 	sst_set_fw_state_locked(sst_drv_ctx, SST_FW_LOADED);
 	csr.full = readl(sst_drv_ctx->shim + SST_CSR);
 	csr.part.run_stall = 1;
@@ -1122,10 +1160,13 @@ static int sst_download_library(const struct firmware *fw_lib,
 	csr.full = sst_shim_read(sst_drv_ctx->shim, SST_CSR);
 	csr.part.bypass = 0x7;
 	sst_shim_write(sst_drv_ctx->shim, SST_CSR, csr.full);
+	mutex_unlock(&sst_drv_ctx->csr_lock);
 
 	codec_fw = kzalloc(fw_lib->size, GFP_KERNEL);
-	if (!codec_fw)
-		return -ENOMEM;
+	if (!codec_fw) {
+		retval = -ENOMEM;
+		goto free_block;
+	}
 	memcpy(codec_fw, fw_lib->data, fw_lib->size);
 
 	if (sst_drv_ctx->use_dma)
@@ -1137,7 +1178,7 @@ static int sst_download_library(const struct firmware *fw_lib,
 
 	if (retval) {
 		kfree(codec_fw);
-		return retval;
+		goto free_block;
 	}
 
 	if (sst_drv_ctx->use_dma) {
@@ -1151,6 +1192,7 @@ static int sst_download_library(const struct firmware *fw_lib,
 		sst_do_memcpy(&sst_drv_ctx->libmemcpy_list);
 	}
 	/* set the FW to running again */
+	mutex_lock(&sst_drv_ctx->csr_lock);
 	csr.full = sst_shim_read(sst_drv_ctx->shim, SST_CSR);
 	csr.part.bypass = 0x0;
 	sst_shim_write(sst_drv_ctx->shim, SST_CSR, csr.full);
@@ -1158,16 +1200,17 @@ static int sst_download_library(const struct firmware *fw_lib,
 	csr.full = sst_shim_read(sst_drv_ctx->shim, SST_CSR);
 	csr.part.run_stall = 0;
 	sst_shim_write(sst_drv_ctx->shim, SST_CSR, csr.full);
+	mutex_unlock(&sst_drv_ctx->csr_lock);
 
 	/* send download complete and wait */
-	if (sst_create_large_msg(&msg)) {
-		sst_drv_ctx->alloc_block[i].sst_id = BLOCK_UNINIT;
+	if (sst_create_ipc_msg(&msg, true)) {
 		retval = -ENOMEM;
 		goto free_resources;
 	}
 
+	block->condition = false;
+	block->msg_id = IPC_IA_LIB_DNLD_CMPLT;
 	sst_fill_header(&msg->header, IPC_IA_LIB_DNLD_CMPLT, 1, pvt_id);
-	sst_drv_ctx->alloc_block[i].sst_id = pvt_id;
 	msg->header.part.data = sizeof(u32) + sizeof(*lib);
 	lib->pvt_id = pvt_id;
 	memcpy(msg->mailbox_data, &msg->header, sizeof(u32));
@@ -1175,21 +1218,29 @@ static int sst_download_library(const struct firmware *fw_lib,
 	spin_lock_irqsave(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 	list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
 	spin_unlock_irqrestore(&sst_drv_ctx->ipc_spin_lock, irq_flags);
-	sst_drv_ctx->alloc_block[i].ops_block.condition = false;
 	sst_drv_ctx->ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
 	pr_debug("Waiting for FW response Download complete\n");
-	retval = sst_wait_timeout(sst_drv_ctx,
-				&sst_drv_ctx->alloc_block[i].ops_block);
-	if (retval) {
+	retval = sst_wait_timeout(sst_drv_ctx, block);
+
+	if (block->data) {
+		struct snd_sst_lib_download_info *resp = block->data;
+		retval = resp->result;
+		if (retval) {
+			pr_err("err in lib dload %x\n", resp->result);
+			sst_set_fw_state_locked(sst_drv_ctx, SST_UN_INIT);
+			goto free_resources;
+		} else {
+			pr_debug("Codec download complete...\n");
+			print_lib_info(resp);
+		}
+	} else if (retval) {
 		/* error */
 		sst_set_fw_state_locked(sst_drv_ctx, SST_UN_INIT);
-		sst_drv_ctx->alloc_block[i].sst_id = BLOCK_UNINIT;
 		retval = -EIO;
 		goto free_resources;
 	}
 
 	pr_debug("FW success on Download complete\n");
-	sst_drv_ctx->alloc_block[i].sst_id = BLOCK_UNINIT;
 	sst_set_fw_state_locked(sst_drv_ctx, SST_FW_RUNNING);
 
 free_resources:
@@ -1200,6 +1251,8 @@ free_resources:
 	}
 
 	kfree(codec_fw);
+free_block:
+	sst_free_block(sst_drv_ctx, block);
 	return retval;
 }
 
@@ -1229,6 +1282,7 @@ static void mrfld_dccm_config_write(u32 dram_base, u32 ddr_base)
 int sst_load_fw(void)
 {
 	int ret_val = 0;
+	struct sst_block *block;
 
 	pr_debug("sst_load_fw\n");
 
@@ -1242,9 +1296,10 @@ int sst_load_fw(void)
 	}
 
 	BUG_ON(!sst_drv_ctx->fw_in_mem);
+	block = sst_create_block(sst_drv_ctx, 0, FW_DWNL_ID);
+	if (block == NULL)
+		return -ENOMEM;
 
-	sst_drv_ctx->alloc_block[0].sst_id = FW_DWNL_ID;
-	sst_drv_ctx->alloc_block[0].ops_block.condition = false;
 	/* Prevent C-states beyond C6 */
 	pm_qos_update_request(sst_drv_ctx->qos, CSTATE_EXIT_LATENCY_S0i1 - 1);
 
@@ -1277,8 +1332,7 @@ int sst_load_fw(void)
 	if (ret_val)
 		goto restore;
 
-	ret_val = sst_wait_timeout(sst_drv_ctx,
-				&sst_drv_ctx->alloc_block[0].ops_block);
+	ret_val = sst_wait_timeout(sst_drv_ctx, block);
 	if (ret_val) {
 		pr_err("fw download failed %d\n" , ret_val);
 		/* assume FW d/l failed due to timeout*/
@@ -1289,7 +1343,7 @@ int sst_load_fw(void)
 restore:
 	/* Re-enable Deeper C-states beyond C6 */
 	pm_qos_update_request(sst_drv_ctx->qos, PM_QOS_DEFAULT_VALUE);
-	sst_drv_ctx->alloc_block[0].sst_id = BLOCK_UNINIT;
+	sst_free_block(sst_drv_ctx, block);
 
 	return ret_val;
 }

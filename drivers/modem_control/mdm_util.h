@@ -44,6 +44,7 @@
 #include <linux/mdm_ctrl.h>
 #include <asm/intel-mid.h>
 #include <asm/intel_scu_pmic.h>
+#include <linux/mdm_ctrl_board.h>
 
 #ifndef _MDM_UTIL_H
 #define _MDM_UTIL_H
@@ -78,6 +79,17 @@ struct mdm_ctrl {
 	struct device *dev;
 	struct cdev cdev;
 	struct class *class;
+
+	/* Device infos*/
+	struct mdm_ctrl_pdata *pdata;
+
+	/* Sequence execution callbacks */
+	int (*mdm_ctrl_cold_boot) (struct mdm_ctrl *);
+	int (*mdm_ctrl_cold_reset) (struct mdm_ctrl *);
+	int (*mdm_ctrl_silent_warm_reset) (struct mdm_ctrl *);
+	int (*mdm_ctrl_normal_warm_reset) (struct mdm_ctrl *);
+	int (*mdm_ctrl_flashing_warm_reset) (struct mdm_ctrl *);
+	int (*mdm_ctrl_power_off) (struct mdm_ctrl *);
 
 	/* Used to prevent multiple access to device */
 	unsigned int opened;
@@ -142,4 +154,6 @@ void mdm_ctrl_launch_timer(struct timer_list *timer, int delay,
 inline void mdm_ctrl_set_reset_ongoing(struct mdm_ctrl *drv, int ongoing);
 inline int mdm_ctrl_get_reset_ongoing(struct mdm_ctrl *drv);
 
+void mdm_ctrl_get_gpio(struct mdm_ctrl *drv);
+void mdm_ctrl_get_device_info(struct mdm_ctrl *drv);
 #endif /* _MDM_UTIL_H */

@@ -1211,12 +1211,10 @@ PVRSRV_ERROR PVRSRVProcessCommand(SYS_DATA			*psSysData,
 			clean-up:
 			free cmd complete structure
 		*/
-		PVR_DPF((PVR_DBG_ERROR,
-					"PVRSRVProcessCommand: Process command fail 0x%x",
-					psCommand->ui32DevIndex));
-		psCmdCompleteData->bInUse = IMG_FALSE;
 		g_ui32InStamp++;
+		psCmdCompleteData->bInUse = IMG_FALSE;
 		eError = PVRSRV_ERROR_CMD_NOT_PROCESSED;
+		PVR_LOG(("Failed to submit command(0x%x) from queue processor, this could cause sync wedge!", psCommand->ui32DevIndex));
 	} else {
 		/* Increment the CCB offset */
 		psDeviceCommandData[psCommand->CommandType].ui32CCBOffset = (ui32CCBOffset + 1) % DC_NUM_COMMANDS_PER_TYPE;

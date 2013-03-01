@@ -28,15 +28,17 @@
 #ifdef SUPPORT_MRST
 #include "lnc_topaz.h"
 #endif
-#include "pnw_topaz.h"
 
 #ifdef MERRIFIELD
 #include "tng_topaz.h"
+#else
+#include "pnw_topaz.h"
 #endif
 
 #ifdef SUPPORT_VSP
 #include "vsp.h"
 #endif
+
 #include "ttm/ttm_bo_api.h"
 #include "ttm/ttm_execbuf_util.h"
 #include "psb_ttm_userobj_api.h"
@@ -962,18 +964,20 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 		break;
 
 	case LNC_ENGINE_ENCODE:
-		if (IS_MDFLD(dev))
-			ret = pnw_cmdbuf_video(
-				file_priv, &context->validate_list,
-				context->fence_types, arg,
-				cmd_buffer, &fence_arg);
 #ifdef MERRIFIELD
 		if (IS_MRFLD(dev))
 			ret = tng_cmdbuf_video(
 				file_priv, &context->validate_list,
 				context->fence_types, arg,
 				cmd_buffer, &fence_arg);
+#else
+		if (IS_MDFLD(dev))
+			ret = pnw_cmdbuf_video(
+				file_priv, &context->validate_list,
+				context->fence_types, arg,
+				cmd_buffer, &fence_arg);
 #endif
+
 		if (unlikely(ret != 0))
 			goto out_err4;
 		break;

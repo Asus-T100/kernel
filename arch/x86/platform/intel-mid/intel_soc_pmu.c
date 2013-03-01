@@ -680,6 +680,8 @@ int pmu_pci_to_indexes(struct pci_dev *pdev, int *index,
 static bool update_nc_device_states(int i, pci_power_t state)
 {
 	int status = 0;
+	int islands = 0;
+	int reg;
 
 	/* store the display status */
 	if (i == GFX_LSS_INDEX) {
@@ -691,11 +693,20 @@ static bool update_nc_device_states(int i, pci_power_t state)
 	* ISP power islands are also updated accordingly, otherwise Dx state
 	* in PMCSR refuses to change.
 	*/
-	if (i == ISP_POS) {
-		status = pmu_nc_set_power_state(APM_ISP_ISLAND | APM_IPH_ISLAND,
+	else if (i == ISP_POS) {
+		if (platform_is(INTEL_ATOM_MFLD) ||
+				 platform_is(INTEL_ATOM_CLV)) {
+			islands = APM_ISP_ISLAND | APM_IPH_ISLAND;
+			reg = APM_REG_TYPE;
+		} else if (platform_is(INTEL_ATOM_MRFLD)) {
+			islands = TNG_ISP_ISLAND;
+			reg = ISP_SS_PM0;
+		} else
+			return false;
+		status = pmu_nc_set_power_state(islands,
 			(state != PCI_D0) ?
 			OSPM_ISLAND_DOWN : OSPM_ISLAND_UP,
-			APM_REG_TYPE);
+			reg);
 		if (status)
 			return false;
 		mid_pmu_cxt->camera_off = (state != PCI_D0);
@@ -731,44 +742,6 @@ void init_nc_device_states(void)
 unsigned int enable_standby __read_mostly;
 module_param(enable_standby, uint, 0000);
 #endif
-
-static int wait_for_nc_pmcmd_complete(int verify_mask, int state_type
-					, int reg_type)
-{
-	int pwr_sts;
-	int count = 0;
-	u32 addr;
-
-	switch (reg_type) {
-	case APM_REG_TYPE:
-		addr = mid_pmu_cxt->apm_base + APM_STS;
-		break;
-	case OSPM_REG_TYPE:
-		addr = mid_pmu_cxt->ospm_base + OSPM_PM_SSS;
-		break;
-	default:
-		return -EINVAL;
-	}
-
-	while (true) {
-		pwr_sts = inl(addr);
-		if (state_type == OSPM_ISLAND_DOWN) {
-			if ((pwr_sts & verify_mask) == verify_mask)
-				break;
-			else
-				udelay(10);
-		} else if (state_type == OSPM_ISLAND_UP) {
-			if (pwr_sts  == verify_mask)
-				break;
-			else
-				udelay(10);
-		}
-		count++;
-		if (WARN_ONCE(count > 500000, "Timed out waiting for P-Unit"))
-			return -EBUSY;
-	}
-	return 0;
-}
 
 int pmu_set_emmc_to_d0i0_atomic(void)
 {
@@ -854,8 +827,8 @@ struct saved_nc_power_history {
 	unsigned short pci;
 	unsigned short cpu:4;
 	unsigned short state_type:8;
-	unsigned short reg_type:2;
 	unsigned short real_change:2;
+	int reg_type;
 	int islands;
 	void *address[SAVED_HISTORY_ADDRESS_NUM];
 };
@@ -976,6 +949,10 @@ static int debug_write_read_history_entry(struct file *file,
 	u32 on;
 	int ret;
 
+	/*do nothing if platform is nether medfield or clv*/
+	if (!platform_is(INTEL_ATOM_MFLD) && !platform_is(INTEL_ATOM_CLV))
+		return count;
+
 	if (copy_from_user(buf, buffer, len))
 		return -1;
 
@@ -1014,18 +991,12 @@ device_initcall(debug_read_history_entry);
  * and avoid concurrent access from 2d/3d, VED, VEC, ISP & IPH.
  *
  */
-int pmu_nc_set_power_state(int islands, int state_type, int reg_type)
+int pmu_nc_set_power_state(int islands, int state_type, int reg)
 {
-	u32 pwr_cnt = 0;
-	u32 pwr_mask = 0;
 	unsigned long flags;
-	int i, lss, mask;
-	int ret = 0;
 	struct saved_nc_power_history *record = NULL;
-
-	/*do nothing if platform is nether medfield or clv*/
-	if (!platform_is(INTEL_ATOM_MFLD) && !platform_is(INTEL_ATOM_CLV))
-		return 0;
+	int ret = 0;
+	int change;
 
 	spin_lock_irqsave(&mid_pmu_cxt->nc_ready_lock, flags);
 
@@ -1037,49 +1008,17 @@ int pmu_nc_set_power_state(int islands, int state_type, int reg_type)
 	record->state_type = state_type;
 	backtrace_safe(record->address, SAVED_HISTORY_ADDRESS_NUM);
 	record->real_change = 0;
-	record->reg_type = reg_type;
+	record->reg_type = reg;
 
-	switch (reg_type) {
-	case APM_REG_TYPE:
-		pwr_cnt = inl(mid_pmu_cxt->apm_base + APM_STS);
-		break;
-	case OSPM_REG_TYPE:
-		pwr_cnt = inl(mid_pmu_cxt->ospm_base + OSPM_PM_SSS);
-		break;
-	default:
-		ret = -EINVAL;
-		goto unlock;
-	}
-
-	pwr_mask = pwr_cnt;
-	for (i = 0; i < OSPM_MAX_POWER_ISLANDS; i++) {
-		lss = islands & (0x1 << i);
-		if (lss) {
-			mask = 0x3 << (2 * i);
-			if (state_type == OSPM_ISLAND_DOWN)
-				pwr_mask |= mask;
-			else if (state_type == OSPM_ISLAND_UP)
-				pwr_mask &= ~mask;
+	if (pmu_ops->nc_set_power_state)	{
+		ret = pmu_ops->nc_set_power_state(islands, state_type,
+								reg, &change);
+		if (change) {
+			record->real_change = 1;
+			record->ts = cpu_clock(record->cpu);
 		}
 	}
 
-	if (pwr_mask != pwr_cnt) {
-		switch (reg_type) {
-		case APM_REG_TYPE:
-			outl(pwr_mask, mid_pmu_cxt->apm_base + APM_CMD);
-			break;
-		case OSPM_REG_TYPE:
-			outl(pwr_mask, (mid_pmu_cxt->ospm_base + OSPM_PM_SSC));
-			break;
-		}
-
-		ret =
-		wait_for_nc_pmcmd_complete(pwr_mask, state_type, reg_type);
-		record->real_change = 1;
-		record->ts = cpu_clock(record->cpu);
-	}
-
-unlock:
 	spin_unlock_irqrestore(&mid_pmu_cxt->nc_ready_lock, flags);
 	return ret;
 }
@@ -1105,6 +1044,10 @@ int pmu_nc_get_power_state(int island, int reg_type)
 	unsigned long flags;
 	int i, lss;
 	int ret = -EINVAL;
+
+	/*do nothing if platform is nether medfield or clv*/
+	if (!platform_is(INTEL_ATOM_MFLD) && !platform_is(INTEL_ATOM_CLV))
+		return 0;
 
 	spin_lock_irqsave(&mid_pmu_cxt->nc_ready_lock, flags);
 
@@ -1567,48 +1510,51 @@ static int pmu_init(void)
 
 	pmu_initialized = true;
 
-	/* get the current status of each of the driver
-	 * and update it in SCU
-	 */
-	update_all_lss_states(&pmu_config);
+	if (platform_is(INTEL_ATOM_MFLD) || platform_is(INTEL_ATOM_CLV)) {
 
-	/* send a interactive command to fw */
-	mid_pmu_cxt->interactive_cmd_sent = true;
-	status = pmu_issue_interactive_command(&pmu_config, true);
-	if (status != PMU_SUCCESS) {
-		mid_pmu_cxt->interactive_cmd_sent = false;
-		dev_dbg(&mid_pmu_cxt->pmu_dev->dev,\
-		 "Failure from pmu mode change to interactive."
-		" = %d\n", status);
-		status = PMU_FAILED;
-		up(&mid_pmu_cxt->scu_ready_sem);
-		goto out_err2;
-	}
+		/* get the current status of each of the driver
+		 * and update it in SCU
+		 */
+		update_all_lss_states(&pmu_config);
 
-	/*
-	 * Wait for interactive command to complete.
-	 * If we dont wait, there is a possibility that
-	 * the driver may access the device before its
-	 * powered on in SCU.
-	 *
-	 */
-retry:
-	ret = _pmu2_wait_not_busy_yield();
-	if (unlikely(ret)) {
-		retry_times++;
-		if (retry_times < 60)
-			goto retry;
-		else {
-			pmu_dump_logs();
-			BUG();
+		/* send a interactive command to fw */
+		mid_pmu_cxt->interactive_cmd_sent = true;
+		status = pmu_issue_interactive_command(&pmu_config, true);
+		if (status != PMU_SUCCESS) {
+			mid_pmu_cxt->interactive_cmd_sent = false;
+			dev_dbg(&mid_pmu_cxt->pmu_dev->dev,\
+			 "Failure from pmu mode change to interactive."
+			" = %d\n", status);
+			status = PMU_FAILED;
+			up(&mid_pmu_cxt->scu_ready_sem);
+			goto out_err2;
 		}
-	}
 
-	/* In cases were gfx is not enabled
-	 * this will enable s0ix immediately
-	 */
-	if (pmu_ops->set_power_state_ops)
-		pmu_ops->set_power_state_ops(PCI_D3hot);
+		/*
+		 * Wait for interactive command to complete.
+		 * If we dont wait, there is a possibility that
+		 * the driver may access the device before its
+		 * powered on in SCU.
+		 *
+		 */
+retry:
+		ret = _pmu2_wait_not_busy_yield();
+		if (unlikely(ret)) {
+			retry_times++;
+			if (retry_times < 60)
+				goto retry;
+			else {
+				pmu_dump_logs();
+				BUG();
+			}
+		}
+
+		/* In cases were gfx is not enabled
+		 * this will enable s0ix immediately
+		 */
+		if (pmu_ops->set_power_state_ops)
+			pmu_ops->set_power_state_ops(PCI_D3hot);
+	}
 
 	up(&mid_pmu_cxt->scu_ready_sem);
 
@@ -1707,6 +1653,16 @@ static int __devinit mid_pmu_probe(struct pci_dev *dev,
 	mid_pmu_cxt->pmu_init_time =
 		cpu_clock(raw_smp_processor_id());
 
+	/*
+	 * FIXME: Since S3 is not enabled yet we need to take
+	 * a wake lock here. Else S3 will be triggered on display
+	 * time out and platform will hang
+	 */
+	if (!platform_is(INTEL_ATOM_MFLD) && !platform_is(INTEL_ATOM_CLV)) {
+#ifdef CONFIG_HAS_WAKELOCK
+		wake_lock(&mid_pmu_cxt->pmu_wake_lock);
+#endif
+	}
 	return 0;
 
 out_err5:

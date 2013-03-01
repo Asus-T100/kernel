@@ -390,13 +390,13 @@ long mdm_ctrl_dev_ioctl(struct file *filp,
 
 	switch (cmd) {
 	case MDM_CTRL_POWER_OFF:
-		mdm_ctrl_power_off(drv);
+		drv->mdm_ctrl_power_off(drv);
 		break;
 
 	case MDM_CTRL_POWER_ON:
 		if ((mdm_state == MDM_CTRL_STATE_OFF) ||
 			(mdm_state == MDM_CTRL_STATE_UNKNOWN))
-				mdm_ctrl_cold_boot(drv);
+				drv->mdm_ctrl_cold_boot(drv);
 		 else
 			if (mdm_state == MDM_CTRL_STATE_COREDUMP)
 				pr_err(DRVNAME": Power ON not allowed (coredump)");
@@ -406,21 +406,21 @@ long mdm_ctrl_dev_ioctl(struct file *filp,
 
 	case MDM_CTRL_WARM_RESET:
 		if (mdm_state != MDM_CTRL_STATE_OFF)
-			mdm_ctrl_normal_warm_reset(drv);
+			drv->mdm_ctrl_normal_warm_reset(drv);
 		else
 			pr_err(DRVNAME": Warm reset not allowed (Modem OFF)");
 		break;
 
 	case MDM_CTRL_FLASHING_WARM_RESET:
 		if (mdm_state != MDM_CTRL_STATE_OFF)
-			mdm_ctrl_flashing_warm_reset(drv);
+			drv->mdm_ctrl_flashing_warm_reset(drv);
 		else
 			pr_err(DRVNAME": Warm reset not allowed (Modem OFF)");
 		break;
 
 	case MDM_CTRL_COLD_RESET:
 		if (mdm_state != MDM_CTRL_STATE_OFF)
-			mdm_ctrl_cold_reset(drv);
+			drv->mdm_ctrl_cold_reset(drv);
 		else
 			pr_err(DRVNAME": Cold reset not allowed (Modem OFF)");
 		break;
@@ -630,6 +630,15 @@ static int __init mdm_ctrl_module_init(void)
 		goto out;
 	}
 
+	pr_info(DRVNAME ": Getting device infos");
+	/* Pre-initialisation: Retrieve platform device data*/
+	mdm_ctrl_get_device_info(new_drv);
+
+	if (new_drv->pdata->is_mdm_ctrl_disabled) {
+		ret = -ENODEV;
+		goto out;
+	}
+
 	/* Initialization */
 	spin_lock_init(&new_drv->state_lck);
 	mutex_init(&new_drv->lock);
@@ -698,30 +707,26 @@ static int __init mdm_ctrl_module_init(void)
 	mdm_ctrl_launch_work(new_drv, MDM_CTRL_STATE_OFF);
 	flush_workqueue(new_drv->change_state_wq);
 
-	/* FIXME: What if gpio doesn't exists ? */
-	/* Configure GPIOs/IRQs */
-	new_drv->gpio_rst_out = get_gpio_by_name(GPIO_RST_OUT);
-	new_drv->gpio_pwr_on  = get_gpio_by_name(GPIO_PWR_ON);
-	new_drv->gpio_rst_bbn = get_gpio_by_name(GPIO_RST_BBN);
-	new_drv->gpio_cdump   = get_gpio_by_name(GPIO_CDUMP);
+	mdm_ctrl_get_gpio(new_drv);
 
 	if (mdm_ctrl_setup_irq_gpio(new_drv))
-		goto del_class;
+		goto del_dev;
 
 	/* Everything is OK */
 	mdm_drv = new_drv;
 
-#ifdef MDM_IMC_EARLY_POWER_OFF
 	/* Modem power off sequence */
-	mdm_ctrl_power_off(new_drv);
-#endif
+	if (new_drv->pdata->early_pwr_off)
+		mdm_drv->mdm_ctrl_power_off(new_drv);
 
-#ifdef MDM_IMC_EARLY_BOOT
 	/* Modem cold boot sequence */
-	mdm_ctrl_cold_boot(new_drv);
-#endif
+	if (new_drv->pdata->early_pwr_on)
+		mdm_drv->mdm_ctrl_cold_boot(new_drv);
 
 	return 0;
+
+del_dev:
+	device_destroy(new_drv->class, new_drv->tdev);
 
 del_class:
 	class_destroy(new_drv->class);
@@ -753,6 +758,9 @@ static void __exit mdm_ctrl_module_exit(void)
 	if (!mdm_drv)
 		return;
 
+	if (mdm_drv->pdata->is_mdm_ctrl_disabled)
+		goto out;
+
 	/* Delete the modem state worqueue */
 	destroy_workqueue(mdm_drv->change_state_wq);
 
@@ -777,6 +785,8 @@ static void __exit mdm_ctrl_module_exit(void)
 	del_timer(&mdm_drv->flashing_timer);
 	*/
 	mutex_destroy(&mdm_drv->lock);
+
+out:
 	/* Free the boot driver context */
 	kfree(mdm_drv);
 	mdm_drv = NULL;
@@ -790,7 +800,8 @@ module_exit(mdm_ctrl_module_exit);
  */
 static int mdm_ctrl_modem_reset(const char *val, struct kernel_param *kp)
 {
-	mdm_ctrl_silent_warm_reset(mdm_drv);
+	if (mdm_drv)
+		mdm_drv->mdm_ctrl_silent_warm_reset(mdm_drv);
 	return 0;
 }
 

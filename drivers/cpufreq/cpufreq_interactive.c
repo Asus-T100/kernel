@@ -52,6 +52,7 @@ struct cpufreq_interactive_cpuinfo {
 	u64 floor_validate_time;
 	u64 hispeed_validate_time;
 	int governor_enabled;
+	cputime64_t prev_cpu_iowait;
 };
 
 static DEFINE_PER_CPU(struct cpufreq_interactive_cpuinfo, cpuinfo);
@@ -107,12 +108,21 @@ static int touch_event_val;
 
 static int vsync_count_val;
 
-struct cpufreq_interactive_inputopen {
-	struct input_handle *handle;
-	struct work_struct inputopen_work;
-};
+/*
+ * io_is_busy flag is exposed so that it can be controlled
+ * from sysfs
+ */
 
-static struct cpufreq_interactive_inputopen inputopen;
+static unsigned int ig_io_is_busy;
+
+static inline cputime64_t get_cpu_iowait_time(unsigned int cpu,
+	cputime64_t *wall)
+{
+	u64 iowait_time = get_cpu_iowait_time_us(cpu, wall);
+	if (iowait_time == -1ULL)
+		return 0;
+	return iowait_time;
+}
 
 /*
  * Non-zero means longer-term speed boost active.
@@ -147,6 +157,9 @@ static void cpufreq_interactive_timer(unsigned long data)
 	unsigned int new_freq;
 	unsigned int index;
 	unsigned long flags;
+	cputime64_t cur_wall_time;
+	cputime64_t cur_iowait_time;
+	cputime64_t iowait_time;
 
 	smp_rmb();
 
@@ -174,6 +187,10 @@ static void cpufreq_interactive_timer(unsigned long data)
 	delta_idle = (unsigned int)(now_idle - time_in_idle);
 	delta_time = (unsigned int)(pcpu->timer_run_time - idle_exit_time);
 
+	cur_iowait_time = get_cpu_iowait_time(data, &cur_wall_time);
+	iowait_time = (unsigned int)(cur_iowait_time - pcpu->prev_cpu_iowait);
+	pcpu->prev_cpu_iowait = cur_iowait_time;
+
 	/*
 	 * If timer ran less than 1ms after short-term sample started, retry.
 	 */
@@ -188,6 +205,9 @@ static void cpufreq_interactive_timer(unsigned long data)
 	delta_idle = (unsigned int)(now_idle - pcpu->target_set_time_in_idle);
 	delta_time = (unsigned int)(pcpu->timer_run_time -
 				    pcpu->target_set_time);
+
+	if (ig_io_is_busy && delta_idle >= iowait_time)
+		delta_idle -= iowait_time;
 
 	if ((delta_time == 0) || (delta_idle > delta_time))
 		load_since_change = 0;
@@ -724,6 +744,27 @@ static ssize_t store_boostpulse(struct kobject *kobj, struct attribute *attr,
 static struct global_attr boostpulse =
 	__ATTR(boostpulse, 0200, NULL, store_boostpulse);
 
+static ssize_t show_io_is_busy(struct kobject *kobj, struct attribute *attr,
+				char *buf)
+{
+	return sprintf(buf, "%u\n", ig_io_is_busy);
+}
+
+static ssize_t store_io_is_busy(struct kobject *kobj, struct attribute *attr,
+				 const char *buf, size_t count)
+{
+	int ret;
+	unsigned long val;
+
+	ret = kstrtoul(buf, 0, &val);
+	if (ret < 0)
+		return ret;
+	ig_io_is_busy = !!val;
+	return count;
+}
+
+define_one_global_rw(io_is_busy);
+
 static struct attribute *interactive_attributes[] = {
 	&hispeed_freq_attr.attr,
 	&go_hispeed_load_attr.attr,
@@ -735,6 +776,7 @@ static struct attribute *interactive_attributes[] = {
 	&vsync_count.attr,
 	&boost.attr,
 	&boostpulse.attr,
+	&io_is_busy.attr,
 	&vsync_dec.attr,
 	NULL,
 };
@@ -763,6 +805,29 @@ static int cpufreq_interactive_idle_notifier(struct notifier_block *nb,
 static struct notifier_block cpufreq_interactive_idle_nb = {
 	.notifier_call = cpufreq_interactive_idle_notifier,
 };
+
+/*
+ * Not all CPUs want IO time to be accounted as busy; this dependson how
+ * efficient idling at a higher frequency/voltage is.
+ * Pavel Machek says this is not so for various generations of AMD and old
+ * Intel systems.
+ * Mike Chan (androidlcom) calis this is also not true for ARM.
+ * Because of this, whitelist specific known (series) of CPUs by default, and
+ * leave all others up to the user.
+ */
+static int should_io_be_busy(void)
+{
+#if defined(CONFIG_X86)
+	/*
+	 * For Intel, Core 2 (model 15) andl later have an efficient idle.
+	 */
+	if (boot_cpu_data.x86_vendor == X86_VENDOR_INTEL &&
+	    boot_cpu_data.x86 == 6 &&
+	    boot_cpu_data.x86_model >= 15)
+		return 1;
+#endif
+	return 0;
+}
 
 static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 		unsigned int event)
@@ -862,11 +927,12 @@ static int __init cpufreq_interactive_init(void)
 	min_sample_time = DEFAULT_MIN_SAMPLE_TIME;
 	above_hispeed_delay_val = DEFAULT_ABOVE_HISPEED_DELAY;
 	timer_rate = DEFAULT_TIMER_RATE;
+	ig_io_is_busy = should_io_be_busy();
 
 	/* Initalize per-cpu timers */
 	for_each_possible_cpu(i) {
 		pcpu = &per_cpu(cpuinfo, i);
-		init_timer(&pcpu->cpu_timer);
+		init_timer_deferrable(&pcpu->cpu_timer);
 		pcpu->cpu_timer.function = cpufreq_interactive_timer;
 		pcpu->cpu_timer.data = i;
 	}

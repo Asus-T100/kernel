@@ -30,6 +30,10 @@
 
 #include "sdhci.h"
 
+/* Settle down values copied from broadcom reference design. */
+#define DELAY_CARD_INSERTED	200
+#define DELAY_CARD_REMOVED	50
+
 /*
  * PCI device IDs
  */
@@ -411,7 +415,7 @@ static int intel_mrfl_mmc_probe_slot(struct sdhci_pci_slot *slot)
 
 	/* Enable eMMC v4.5 Power Off Notification feature */
 	slot->host->mmc->caps2 |= MMC_CAP2_POWEROFF_NOTIFY |
-					MMC_CAP2_POLL_R1B_BUSY;
+			MMC_CAP2_POLL_R1B_BUSY | MMC_CAP2_INIT_CARD_SYNC;
 
 	if (slot->data->platform_quirks & PLFM_QUIRK_NO_EMMC_BOOT_PART)
 		slot->host->mmc->caps2 |= MMC_CAP2_BOOTPART_NOACC;
@@ -433,6 +437,7 @@ static const struct sdhci_pci_fixes sdhci_intel_mrfl_mmc = {
 	.quirks		= SDHCI_QUIRK_NO_ENDATTR_IN_NOPDESC,
 	.quirks2	= SDHCI_QUIRK2_BROKEN_AUTO_CMD23 |
 				SDHCI_QUIRK2_HIGH_SPEED_SET_LATE,
+	.allow_runtime_pm = true,
 	.probe_slot	= intel_mrfl_mmc_probe_slot,
 	.remove_slot	= intel_mrfl_mmc_remove_slot,
 };
@@ -1448,6 +1453,19 @@ static const struct dev_pm_ops sdhci_pci_pm_ops = {
 	.runtime_idle = sdhci_pci_runtime_idle,
 };
 
+static void sdhci_hsmmc_virtual_detect(void *dev_id, int carddetect)
+{
+	struct sdhci_host *host = dev_id;
+
+	if (carddetect)
+		mmc_detect_change(host->mmc,
+			msecs_to_jiffies(DELAY_CARD_INSERTED));
+	else
+		mmc_detect_change(host->mmc,
+			msecs_to_jiffies(DELAY_CARD_REMOVED));
+}
+
+
 /*****************************************************************************\
  *                                                                           *
  * Device probing/removal                                                    *
@@ -1497,6 +1515,11 @@ static struct sdhci_pci_slot * __devinit sdhci_pci_probe_slot(
 	slot->rst_n_gpio = -EINVAL;
 	slot->cd_gpio = -EINVAL;
 
+	host->hw_name = "PCI";
+	host->ops = &sdhci_pci_ops;
+	host->quirks = chip->quirks;
+	host->quirks2 = chip->quirks2;
+
 	/* Retrieve platform data if there is any */
 	if (pdata && (pdata->slotno == slotno))
 		slot->data = pdata;
@@ -1511,12 +1534,14 @@ static struct sdhci_pci_slot * __devinit sdhci_pci_probe_slot(
 		}
 		slot->rst_n_gpio = slot->data->rst_n_gpio;
 		slot->cd_gpio = slot->data->cd_gpio;
+		if (slot->data->quirks)
+			host->quirks2 |= slot->data->quirks;
+
+		if (slot->data->register_embedded_control)
+			slot->data->register_embedded_control(host,
+					sdhci_hsmmc_virtual_detect);
 	}
 
-	host->hw_name = "PCI";
-	host->ops = &sdhci_pci_ops;
-	host->quirks = chip->quirks;
-	host->quirks2 = chip->quirks2;
 
 	host->irq = pdev->irq;
 
@@ -1549,11 +1574,19 @@ static struct sdhci_pci_slot * __devinit sdhci_pci_probe_slot(
 		}
 	}
 
-	host->mmc->pm_caps = MMC_PM_KEEP_POWER | MMC_PM_WAKE_SDIO_IRQ;
+	host->mmc->pm_caps = MMC_PM_KEEP_POWER | MMC_PM_WAKE_SDIO_IRQ
+			| MMC_PM_WAKE_SDIO_IRQ;
+
+	if (host->quirks2 & SDHCI_QUIRK2_ENABLE_MMC_PM_IGNORE_PM_NOTIFY)
+		host->mmc->pm_flags |= MMC_PM_IGNORE_PM_NOTIFY;
+
+	if (host->quirks2 & SDHCI_QUIRK2_DISABLE_MMC_CAP_NONREMOVABLE)
+		host->mmc->caps &= ~MMC_CAP_NONREMOVABLE;
 
 	ret = sdhci_add_host(host);
 	if (ret)
 		goto remove;
+
 
 	sdhci_pci_add_own_cd(slot);
 

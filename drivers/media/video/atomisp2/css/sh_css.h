@@ -1737,6 +1737,10 @@ sh_css_enable_raw_binning(bool enable);
  * @param	disable	Disabling value.
  *
  * Disable vf_pp: used to replace by dynamic binary for testing purposes.
+ *		  OR
+ *		  to disable vf_pp. E.g. in case vf_pp processing does not
+ *		  fit in the vblank interval and capture frame will be used
+ *		  as vf frame (with some optional external post processing)
  */
 void
 sh_css_disable_vf_pp(bool disable);
@@ -2522,7 +2526,7 @@ void
 sh_css_init_host_sp_control_vars(void);
 
 /** @brief allocate continuous raw frames for continuous capture
- * 
+ *
  *  because this allocation takes a long time (around 120ms per frame),
  *  we separate the allocation part and update part to let driver call
  *  this function without locking. This function is the allocation part
@@ -2533,7 +2537,7 @@ sh_css_allocate_continuous_frames(
 	bool init_time);
 
 /** @brief allocate continuous raw frames for continuous capture
- * 
+ *
  *  because this allocation takes a long time (around 120ms per frame),
  *  we separate the allocation part and update part to let driver call
  *  this function without locking. This function is the update part

@@ -29,6 +29,8 @@
 #include <linux/pm_qos.h>
 #include <linux/spi/spi.h>
 #include <linux/interrupt.h>
+#include <linux/wakelock.h>
+#include <linux/completion.h>
 
 #define PCI_MRST_DMAC1_ID	0x0814
 #define PCI_MDFL_DMAC1_ID	0x0827
@@ -253,6 +255,11 @@ struct ssp_driver_context {
 	struct tasklet_struct poll_transfer;
 
 	spinlock_t lock;
+	struct wake_lock	 stay_awake;
+	struct workqueue_struct *workqueue;
+	struct work_struct pump_messages;
+	struct list_head queue;
+	struct completion msg_done;
 
 	/* Current message transfer state info */
 	struct spi_message *cur_msg;

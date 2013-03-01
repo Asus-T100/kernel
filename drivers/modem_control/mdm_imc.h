@@ -56,11 +56,18 @@
 
 #define MDM_WARM_RST_FLASHING_OVER	90 /* Flashing window closed (msec) */
 
-int mdm_ctrl_cold_boot(struct mdm_ctrl *drv);
-int mdm_ctrl_cold_reset(struct mdm_ctrl *drv);
-int mdm_ctrl_silent_warm_reset(struct mdm_ctrl *drv);
-int mdm_ctrl_normal_warm_reset(struct mdm_ctrl *drv);
-int mdm_ctrl_flashing_warm_reset(struct mdm_ctrl *drv);
-int mdm_ctrl_power_off(struct mdm_ctrl *drv);
+int mdm_ctrl_cold_boot_6x6x(struct mdm_ctrl *drv);
+int mdm_ctrl_cold_reset_6x6x(struct mdm_ctrl *drv);
+int mdm_ctrl_silent_warm_reset_6x6x(struct mdm_ctrl *drv);
+int mdm_ctrl_normal_warm_reset_6x6x(struct mdm_ctrl *drv);
+int mdm_ctrl_flashing_warm_reset_6x6x(struct mdm_ctrl *drv);
+int mdm_ctrl_power_off_6x6x(struct mdm_ctrl *drv);
+
+int mdm_ctrl_cold_boot_7x6x(struct mdm_ctrl *drv);
+int mdm_ctrl_cold_reset_7x6x(struct mdm_ctrl *drv);
+int mdm_ctrl_silent_warm_reset_7x6x(struct mdm_ctrl *drv);
+int mdm_ctrl_normal_warm_reset_7x6x(struct mdm_ctrl *drv);
+int mdm_ctrl_flashing_warm_reset_7x6x(struct mdm_ctrl *drv);
+int mdm_ctrl_power_off_7x6x(struct mdm_ctrl *drv);
 
 #endif /* _MDM_IMC_H */

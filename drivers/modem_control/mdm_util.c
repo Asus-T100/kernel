@@ -209,3 +209,86 @@ inline int mdm_ctrl_get_reset_ongoing(struct mdm_ctrl *drv)
 	return drv->rst_ongoing;
 }
 
+/*
+ * @brief: Move the gpio value to simplify access
+ *
+ */
+void mdm_ctrl_get_gpio(struct mdm_ctrl *drv)
+{
+	struct mdm_ctrl_pdata *pdata = drv->pdata;
+
+	drv->gpio_rst_out = pdata->gpio_rst_out;
+	drv->gpio_pwr_on  = pdata->gpio_pwr_on;
+	drv->gpio_rst_bbn = pdata->gpio_rst_bbn;
+	drv->gpio_cdump   = pdata->gpio_cdump;
+}
+
+void mdm_ctrl_set_func(struct mdm_ctrl *drv, int modem_type)
+{
+	pr_info(DRVNAME": Taking %d modem sequences", modem_type);
+
+	switch (modem_type) {
+	case MODEM_6260:
+	case MODEM_6268:
+		drv->mdm_ctrl_cold_boot = mdm_ctrl_cold_boot_6x6x;
+		drv->mdm_ctrl_cold_reset = mdm_ctrl_cold_reset_6x6x;
+		drv->mdm_ctrl_normal_warm_reset =
+				mdm_ctrl_normal_warm_reset_6x6x;
+		drv->mdm_ctrl_silent_warm_reset =
+				mdm_ctrl_silent_warm_reset_6x6x;
+		drv->mdm_ctrl_flashing_warm_reset =
+				mdm_ctrl_flashing_warm_reset_6x6x;
+		drv->mdm_ctrl_power_off = mdm_ctrl_power_off_6x6x;
+		break;
+	case MODEM_6360:
+	case MODEM_7160:
+		drv->mdm_ctrl_cold_boot = mdm_ctrl_cold_boot_7x6x;
+		drv->mdm_ctrl_cold_reset = mdm_ctrl_cold_reset_7x6x;
+		drv->mdm_ctrl_normal_warm_reset =
+				mdm_ctrl_normal_warm_reset_7x6x;
+		drv->mdm_ctrl_silent_warm_reset =
+				mdm_ctrl_silent_warm_reset_7x6x;
+		drv->mdm_ctrl_flashing_warm_reset =
+				mdm_ctrl_flashing_warm_reset_7x6x;
+		drv->mdm_ctrl_power_off = mdm_ctrl_power_off_7x6x;
+		break;
+	default:
+		drv->mdm_ctrl_cold_boot = mdm_ctrl_cold_boot_6x6x;
+		drv->mdm_ctrl_cold_reset = mdm_ctrl_cold_reset_6x6x;
+		drv->mdm_ctrl_normal_warm_reset =
+				mdm_ctrl_normal_warm_reset_6x6x;
+		drv->mdm_ctrl_silent_warm_reset =
+				mdm_ctrl_silent_warm_reset_6x6x;
+		drv->mdm_ctrl_flashing_warm_reset =
+				mdm_ctrl_flashing_warm_reset_6x6x;
+		drv->mdm_ctrl_power_off = mdm_ctrl_power_off_6x6x;
+		break;
+	}
+}
+
+/*
+ * @brief: Get platform and modem data
+ *
+ */
+void mdm_ctrl_get_device_info(struct mdm_ctrl *drv)
+{
+	struct mdm_ctrl_pdata *pdata;
+	int is_ctplt = 0;
+
+#ifdef MDM_CTRL_CTPLT
+	is_ctplt = 1;
+#endif
+
+	/* FIXME: Revisit on IAFW update*/
+	pdata = (struct mdm_ctrl_pdata *)modem_ctrl_platform_data(&is_ctplt);
+
+	drv->pdata = pdata;
+
+	if (pdata->is_mdm_ctrl_disabled)
+		goto out;
+
+	mdm_ctrl_set_func(drv, pdata->modem);
+
+out:
+	return;
+}

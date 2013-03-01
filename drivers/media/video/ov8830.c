@@ -827,15 +827,10 @@ static int ov8830_init_registers(struct v4l2_subdev *sd)
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	struct ov8830_device *dev = to_ov8830_sensor(sd);
 
-	if (dev->sensor_id == OV8835_CHIP_ID) {
-		dev->curr_res_table = ov8835_res_preview;
-		dev->entries_curr_table = ARRAY_SIZE(ov8835_res_preview);
+	if (dev->sensor_id == OV8835_CHIP_ID)
 		dev->basic_settings_list = ov8835_basic_settings;
-	} else {
-		dev->curr_res_table = ov8830_res_preview;
-		dev->entries_curr_table = ARRAY_SIZE(ov8830_res_preview);
+	else
 		dev->basic_settings_list = ov8830_BasicSettings;
-	}
 
 	return ov8830_write_reg_array(client, dev->basic_settings_list);
 }
@@ -953,6 +948,14 @@ static int ov8830_s_power(struct v4l2_subdev *sd, int on)
 	mutex_lock(&dev->input_lock);
 	ret = __ov8830_s_power(sd, on);
 	mutex_unlock(&dev->input_lock);
+
+	/*
+	 * FIXME: Compatibility with old behaviour: return to preview
+	 * when the device is power cycled.
+	 */
+	if (!ret && on)
+		v4l2_ctrl_s_ctrl(dev->run_mode, ATOMISP_RUN_MODE_PREVIEW);
+
 	return ret;
 }
 
@@ -1171,7 +1174,14 @@ static int __ov8830_s_frame_interval(struct v4l2_subdev *sd,
 	dev->lines_per_frame = vts;
 
 	/* Update the new values so that user side knows the current settings */
-	return ov8830_get_intg_factor(sd, info, dev->basic_settings_list);
+	ret = ov8830_get_intg_factor(sd, info, dev->basic_settings_list);
+	if (ret)
+		return ret;
+
+	interval->interval.denominator = res->fps_options[dev->fps_index].fps;
+	interval->interval.numerator = 1;
+
+	return 0;
 }
 
 /* This returns the exposure time being used. This should only be used
@@ -1436,7 +1446,7 @@ static int ov8830_g_ctrl(struct v4l2_subdev *sd, struct v4l2_control *ctrl)
 	return ret;
 }
 
-static int ov8830_s_ctrl(struct v4l2_subdev *sd, struct v4l2_control *ctrl)
+static int ov8830_s_ctrl_old(struct v4l2_subdev *sd, struct v4l2_control *ctrl)
 {
 	struct ov8830_device *dev = to_ov8830_sensor(sd);
 	struct ov8830_control *octrl = ov8830_find_control(ctrl->id);
@@ -1928,23 +1938,21 @@ ov8830_set_pad_format(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 }
 
 static int
-ov8830_s_parm(struct v4l2_subdev *sd, struct v4l2_streamparm *param)
+ov8830_s_ctrl(struct v4l2_ctrl *ctrl)
 {
-	struct ov8830_device *dev = to_ov8830_sensor(sd);
+	struct ov8830_device *dev = container_of(
+		ctrl->handler, struct ov8830_device, ctrl_handler);
 
-	dev->run_mode = param->parm.capture.capturemode;
-
-	mutex_lock(&dev->input_lock);
-
-	switch (dev->run_mode) {
-	case CI_MODE_VIDEO:
+	/* We only handle V4L2_CID_RUN_MODE for now. */
+	switch (ctrl->val) {
+	case ATOMISP_RUN_MODE_VIDEO:
 		dev->curr_res_table = dev->sensor_id == OV8835_CHIP_ID ?
 				ov8835_res_video : ov8830_res_video;
 		dev->entries_curr_table = dev->sensor_id == OV8835_CHIP_ID ?
 				ARRAY_SIZE(ov8835_res_video) :
 				ARRAY_SIZE(ov8830_res_video);
 		break;
-	case CI_MODE_STILL_CAPTURE:
+	case ATOMISP_RUN_MODE_STILL_CAPTURE:
 		dev->curr_res_table = dev->sensor_id == OV8835_CHIP_ID ?
 				ov8835_res_still : ov8830_res_still;
 		dev->entries_curr_table = dev->sensor_id == OV8835_CHIP_ID ?
@@ -1959,7 +1967,8 @@ ov8830_s_parm(struct v4l2_subdev *sd, struct v4l2_streamparm *param)
 				ARRAY_SIZE(ov8830_res_preview);
 	}
 
-	mutex_unlock(&dev->input_lock);
+	dev->fmt_idx = 0;
+	dev->fps_index = 0;
 
 	return 0;
 }
@@ -2013,7 +2022,6 @@ static const struct v4l2_subdev_video_ops ov8830_video_ops = {
 	.try_mbus_fmt = ov8830_try_mbus_fmt,
 	.g_mbus_fmt = ov8830_g_mbus_fmt,
 	.s_mbus_fmt = ov8830_s_mbus_fmt,
-	.s_parm = ov8830_s_parm,
 	.g_frame_interval = ov8830_g_frame_interval,
 	.s_frame_interval = ov8830_s_frame_interval,
 };
@@ -2026,7 +2034,7 @@ static const struct v4l2_subdev_core_ops ov8830_core_ops = {
 	.g_chip_ident = ov8830_g_chip_ident,
 	.queryctrl = ov8830_queryctrl,
 	.g_ctrl = ov8830_g_ctrl,
-	.s_ctrl = ov8830_s_ctrl,
+	.s_ctrl = ov8830_s_ctrl_old,
 	.s_power = ov8830_s_power,
 	.ioctl = ov8830_ioctl,
 	.init = ov8830_init,
@@ -2057,12 +2065,36 @@ static int ov8830_remove(struct i2c_client *client)
 	struct ov8830_device *dev = to_ov8830_sensor(sd);
 	if (dev->platform_data->platform_deinit)
 		dev->platform_data->platform_deinit();
+	v4l2_ctrl_handler_free(&dev->ctrl_handler);
 	dev->platform_data->csi_cfg(sd, 0);
 	v4l2_device_unregister_subdev(sd);
 	kfree(dev);
 
 	return 0;
 }
+
+static const struct v4l2_ctrl_ops ctrl_ops = {
+	.s_ctrl = ov8830_s_ctrl,
+};
+
+static const char * const ctrl_run_mode_menu[] = {
+	NULL,
+	"Video",
+	"Still capture",
+	"Continuous capture",
+	"Preview",
+};
+
+static const struct v4l2_ctrl_config ctrl_run_mode = {
+	.ops = &ctrl_ops,
+	.id = V4L2_CID_RUN_MODE,
+	.name = "run mode",
+	.type = V4L2_CTRL_TYPE_MENU,
+	.min = 1,
+	.def = 4,
+	.max = 4,
+	.qmenu = ctrl_run_mode_menu,
+};
 
 static int ov8830_probe(struct i2c_client *client,
 			 const struct i2c_device_id *id)
@@ -2098,6 +2130,25 @@ static int ov8830_probe(struct i2c_client *client,
 	dev->sd.entity.ops = &ov8830_entity_ops;
 	dev->sd.entity.type = MEDIA_ENT_T_V4L2_SUBDEV_SENSOR;
 	dev->format.code = V4L2_MBUS_FMT_SBGGR10_1X10;
+
+	ret = v4l2_ctrl_handler_init(&dev->ctrl_handler, 1);
+	if (ret) {
+		ov8830_remove(client);
+		return ret;
+	}
+
+	dev->run_mode = v4l2_ctrl_new_custom(&dev->ctrl_handler,
+					     &ctrl_run_mode, NULL);
+
+	if (dev->ctrl_handler.error) {
+		ov8830_remove(client);
+		return dev->ctrl_handler.error;
+	}
+
+	/* Use same lock for controls as for everything else. */
+	dev->ctrl_handler.lock = &dev->input_lock;
+	dev->sd.ctrl_handler = &dev->ctrl_handler;
+	v4l2_ctrl_handler_setup(&dev->ctrl_handler);
 
 	ret = media_entity_init(&dev->sd.entity, 1, &dev->pad, 0);
 	if (ret) {

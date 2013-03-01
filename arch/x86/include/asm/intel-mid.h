@@ -575,6 +575,9 @@ extern struct console early_pti_console;
 
 extern void intel_scu_devices_create(void);
 extern void intel_scu_devices_destroy(void);
+extern void intel_psh_devices_create(void);
+extern void intel_psh_devices_destroy(void);
+extern void *cloverview_usb_otg_get_pdata(void);
 
 /* VRTC timer */
 #define MRST_VRTC_MAP_SZ	(1024)

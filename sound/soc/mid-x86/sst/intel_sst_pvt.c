@@ -48,34 +48,6 @@
 #define SST_EXCE_DUMP_SIZE ((SST_EXCE_DUMP_LEN)*(SST_EXCE_DUMP_WORD))
 
 /*
- * sst_get_block_stream - get a new block stream
- *
- * @sst_drv_ctx: Driver context structure
- *
- * This function assigns a block for the calls that dont have stream context yet
- * the blocks are used for waiting on Firmware's response for any operation
- * Should be called with stream lock held
- */
-int sst_get_block_stream(struct intel_sst_drv *sst_drv_ctx)
-{
-	int i;
-
-	for (i = 0; i < MAX_ACTIVE_STREAM; i++) {
-		if (sst_drv_ctx->alloc_block[i].sst_id == BLOCK_UNINIT) {
-			sst_drv_ctx->alloc_block[i].ops_block.condition = false;
-			sst_drv_ctx->alloc_block[i].ops_block.ret_code = 0;
-			sst_drv_ctx->alloc_block[i].sst_id = 0;
-			break;
-		}
-	}
-	if (i == MAX_ACTIVE_STREAM) {
-		pr_err("max alloc_stream reached\n");
-		i = -EBUSY; /* active stream limit reached */
-	}
-	return i;
-}
-
-/*
  * sst_wait_interruptible - wait on event
  *
  * @sst_drv_ctx: Driver context
@@ -188,6 +160,30 @@ static void dump_sst_crash_area(void)
 	pr_err("Firmware exception dump ends\n");
 }
 
+/**
+ * dump_ram_area - dumps the iram/dram into a local buff
+ *
+ * @sst			: pointer to driver context
+ * @recovery		: pointer to the struct containing buffers
+ * @iram		: true if iram dump else false
+ * This function dumps the iram dram data into the respective buffers
+ */
+#ifdef CONFIG_DEBUG_FS
+static void dump_ram_area(struct intel_sst_drv *sst,
+			struct sst_dump_buf *dump_buf, enum sst_ram_type type)
+{
+	if (type == SST_IRAM) {
+		pr_err("Iram dumped in buffer\n");
+		memcpy_fromio(dump_buf->iram_buf.buf, sst->iram,
+				dump_buf->iram_buf.size);
+	} else {
+		pr_err("Dram dumped in buffer\n");
+		memcpy_fromio(dump_buf->dram_buf.buf, sst->dram,
+				dump_buf->dram_buf.size);
+	}
+}
+#endif
+
 static void sst_stream_recovery(struct intel_sst_drv *sst)
 {
 	struct stream_info *str_info;
@@ -206,19 +202,30 @@ static void sst_do_recovery(struct intel_sst_drv *sst)
 {
 	struct ipc_post *m, *_m;
 	unsigned long irq_flags;
+	char iram_event[30], dram_event[30];
+	char *envp[3];
+	int env_offset = 0;
+
+	if (sst->pci_id == SST_MRFLD_PCI_ID) {
+		pr_err("Not supported for mrfld\n");
+		return;
+	}
+
 	/*
 	 * setting firmware state as uninit so that the firmware will get
 	 * redownloaded on next request.This is because firmare not responding
 	 * for 1 sec is equalant to some unrecoverable error of FW.
 	 */
+#if 0
 	pr_err("Audio: Intel SST engine encountered an unrecoverable error\n");
 	pr_err("Audio: trying to reset the dsp now\n");
 	mutex_lock(&sst->sst_lock);
 	sst->sst_state = SST_UN_INIT;
-#if 0
+
 	sst_stream_recovery(sst);
-#endif
+
 	mutex_unlock(&sst->sst_lock);
+#endif
 	dump_stack();
 	dump_sst_shim(sst);
 #if 0
@@ -226,6 +233,24 @@ static void sst_do_recovery(struct intel_sst_drv *sst)
 #endif
 	dump_sst_crash_area();
 
+#ifdef CONFIG_DEBUG_FS
+	if (sst_drv_ctx->ops->set_bypass) {
+
+		sst_drv_ctx->ops->set_bypass(true);
+		dump_ram_area(sst, &(sst->dump_buf), SST_IRAM);
+		dump_ram_area(sst, &(sst->dump_buf), SST_DRAM);
+		sst_drv_ctx->ops->set_bypass(false);
+
+	}
+
+	sprintf(iram_event, "IRAM_DUMP_SIZE=%d", sst->dump_buf.iram_buf.size);
+	envp[env_offset++] = iram_event;
+	sprintf(dram_event, "DRAM_DUMP_SIZE=%d", sst->dump_buf.dram_buf.size);
+	envp[env_offset++] = dram_event;
+	envp[env_offset] = NULL;
+	kobject_uevent_env(&sst->pci->dev.kobj, KOBJ_CHANGE, envp);
+	pr_err("Recovery Uevent Sent!!\n");
+#endif
 	spin_lock_irqsave(&sst->ipc_spin_lock, irq_flags);
 	if (list_empty(&sst->ipc_dispatch_list))
 		pr_err("List is Empty\n");
@@ -268,9 +293,8 @@ int sst_wait_timeout(struct intel_sst_drv *sst_drv_ctx, struct sst_block *block)
 	} else {
 		block->on = false;
 		pr_err("sst: Wait timed-out %x\n", block->condition);
-#if 0
+
 		sst_do_recovery(sst_drv_ctx);
-#endif
 		/* settign firmware state as uninit so that the
 		firmware will get redownloaded on next request
 		this is because firmare not responding for 5 sec
@@ -281,51 +305,60 @@ int sst_wait_timeout(struct intel_sst_drv *sst_drv_ctx, struct sst_block *block)
 }
 
 /*
- * sst_create_large_msg - create a large IPC message
+ * sst_create_ipc_msg - create a IPC message
  *
  * @arg: ipc message
+ * @large: large or short message
  *
- * this function allocates structures to send a large message to the firmware
+ * this function allocates structures to send a large or short
+ * message to the firmware
  */
-int sst_create_large_msg(struct ipc_post **arg)
+int sst_create_ipc_msg(struct ipc_post **arg, bool large)
 {
 	struct ipc_post *msg;
 
 	msg = kzalloc(sizeof(struct ipc_post), GFP_ATOMIC);
 	if (!msg) {
-		pr_err("kzalloc msg failed\n");
+		pr_err("kzalloc ipc msg failed\n");
 		return -ENOMEM;
 	}
-
-	msg->mailbox_data = kzalloc(SST_MAILBOX_SIZE, GFP_ATOMIC);
-	if (!msg->mailbox_data) {
-		kfree(msg);
-		pr_err("kzalloc mailbox_data failed");
-		return -ENOMEM;
+	if (large) {
+		msg->mailbox_data = kzalloc(SST_MAILBOX_SIZE, GFP_ATOMIC);
+		if (!msg->mailbox_data) {
+			kfree(msg);
+			pr_err("kzalloc mailbox_data failed");
+			return -ENOMEM;
+		}
+	} else {
+		msg->mailbox_data = NULL;
 	}
 	*arg = msg;
 	return 0;
 }
 
 /*
- * sst_create_short_msg - create a short IPC message
- *
- * @arg: ipc message
- *
- * this function allocates structures to send a short message to the firmware
+ * sst_create_block_and_ipc_msg - Creates IPC message and sst block
+ * @arg: passed to sst_create_ipc_message API
+ * @large: large or short message
+ * @sst_drv_ctx: sst driver context
+ * @block: return block allocated
+ * @msg_id: IPC
+ * @drv_id: stream id or private id
  */
-int sst_create_short_msg(struct ipc_post **arg)
+int sst_create_block_and_ipc_msg(struct ipc_post **arg, bool large,
+		struct intel_sst_drv *sst_drv_ctx, struct sst_block **block,
+		u32 msg_id, u32 drv_id)
 {
-	struct ipc_post *msg;
-
-	msg = kzalloc(sizeof(*msg), GFP_ATOMIC);
-	if (!msg) {
-		pr_err("kzalloc msg failed\n");
+	int retval = 0;
+	retval = sst_create_ipc_msg(arg, large);
+	if (retval)
+		return retval;
+	*block = sst_create_block(sst_drv_ctx, msg_id, drv_id);
+	if (*block == NULL) {
+		kfree(*arg);
 		return -ENOMEM;
 	}
-	msg->mailbox_data = NULL;
-	*arg = msg;
-	return 0;
+	return retval;
 }
 
 /*
@@ -343,33 +376,5 @@ void sst_clean_stream(struct stream_info *stream)
 	mutex_lock(&stream->lock);
 	stream->cumm_bytes = 0;
 	mutex_unlock(&stream->lock);
-
-}
-
-/*
- * sst_wake_up_alloc_block - wake up waiting block
- *
- * @sst_drv_ctx: Driver context
- * @sst_id: stream id
- * @status: status of wakeup
- * @data: data pointer of wakeup
- *
- * This function wakes up a sleeping block event based on the response
- */
-void sst_wake_up_alloc_block(struct intel_sst_drv *sst_drv_ctx,
-		u8 sst_id, int status, void *data)
-{
-	int i;
-
-	/* Unblock with retval code */
-	for (i = 0; i < MAX_ACTIVE_STREAM; i++) {
-		if (sst_id == sst_drv_ctx->alloc_block[i].sst_id) {
-			sst_drv_ctx->alloc_block[i].ops_block.condition = true;
-			sst_drv_ctx->alloc_block[i].ops_block.ret_code = status;
-			sst_drv_ctx->alloc_block[i].ops_block.data = data;
-			wake_up(&sst_drv_ctx->wait_queue);
-			break;
-		}
-	}
 }
 

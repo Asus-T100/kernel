@@ -27,56 +27,69 @@
 #include <linux/io.h>
 #include <linux/rpmsg.h>
 #include <linux/async.h>
+#include <asm/intel_mid_powerbtn.h>
 #include <asm/intel_scu_pmic.h>
 #include <asm/intel_mid_rpmsg.h>
 
 #define DRIVER_NAME "msic_power_btn"
 
-#define MSIC_PB_LEVEL (1 << 3) /* 1 - release, 0 - press */
-
-/*
- * MSIC document ti_datasheet defines the 1st bit reg 0x21 is used to mask
- * power button interrupt
- */
-#define MSIC_IRQLVL1MSK	0x21
-#define MSIC_PWRBTNM    (1 << 0)
-
-struct mid_pb_prov {
+struct mid_pb_priv {
 	struct input_dev *input;
 	int irq;
 	void __iomem *pb_stat;
+	u16 pb_level;
+	u16 irq_lvl1_mask;
+	bool irq_ack;
 };
+
+static inline int pb_clear_bits(u16 addr, u8 mask)
+{
+	return intel_scu_ipc_update_register(addr, 0, mask);
+}
 
 static irqreturn_t mid_pb_isr(int irq, void *dev_id)
 {
-	struct mid_pb_prov *priv = dev_id;
+	struct mid_pb_priv *priv = dev_id;
 	u8 pbstat;
 
 	pbstat = readb(priv->pb_stat);
 	dev_dbg(&priv->input->dev, "pbstat: 0x%x\n", pbstat);
 
-	input_event(priv->input, EV_KEY, KEY_POWER, !(pbstat & MSIC_PB_LEVEL));
+	input_event(priv->input, EV_KEY, KEY_POWER, !(pbstat & priv->pb_level));
 	input_sync(priv->input);
+
+	if (pbstat & priv->pb_level)
+		pr_info("[%s] power button released\n", priv->input->name);
+	else
+		pr_info("[%s] power button pressed\n", priv->input->name);
+
+	return IRQ_WAKE_THREAD;
+}
+
+static irqreturn_t mid_pb_threaded_isr(int irq, void *dev_id)
+{
+	struct mid_pb_priv *priv = dev_id;
+
+	if (priv->irq_ack)
+		pb_clear_bits(priv->irq_lvl1_mask, MSIC_PWRBTNM);
 
 	return IRQ_HANDLED;
 }
 
-
 static int __devinit mid_pb_probe(struct platform_device *pdev)
 {
 	struct input_dev *input;
-	struct mid_pb_prov *priv;
-	struct resource *rc;
+	struct mid_pb_priv *priv;
 	int irq;
 	int ret;
-	u8 value;
+	struct intel_msic_power_btn_platform_data *pdata;
 
 	if (pdev == NULL)
 		return -ENODEV;
 
-	rc = platform_get_resource_byname(pdev, IORESOURCE_MEM, "MSIC_PB_STAT");
-	if (!rc) {
-		dev_err(&pdev->dev, "failed to get resource");
+	pdata = pdev->dev.platform_data;
+	if (pdata == NULL) {
+		dev_err(&pdev->dev, "No power button platform data\n");
 		return -EINVAL;
 	}
 
@@ -86,7 +99,7 @@ static int __devinit mid_pb_probe(struct platform_device *pdev)
 	if (irq < 0)
 		return -EINVAL;
 
-	priv = kzalloc(sizeof(struct mid_pb_prov), GFP_KERNEL);
+	priv = kzalloc(sizeof(struct mid_pb_priv), GFP_KERNEL);
 	input = input_allocate_device();
 	if (!priv || !input)
 		return -ENOMEM;
@@ -102,48 +115,52 @@ static int __devinit mid_pb_probe(struct platform_device *pdev)
 
 	input_set_capability(input, EV_KEY, KEY_POWER);
 
-	priv->pb_stat = ioremap_nocache(rc->start, resource_size(rc));
+	priv->pb_stat = ioremap(pdata->pbstat, MSIC_PB_LEN);
 	if (!priv->pb_stat) {
 		ret = -ENOMEM;
 		goto fail;
-	}
-
-	ret = request_irq(priv->irq, mid_pb_isr,
-			  IRQF_NO_SUSPEND, DRIVER_NAME, priv);
-
-	if (ret) {
-		dev_err(&pdev->dev,
-			"unable to request irq %d for power button\n", irq);
-		goto out_iounmap;
 	}
 
 	ret = input_register_device(input);
 	if (ret) {
 		dev_err(&pdev->dev,
 			"unable to register input dev, error %d\n", ret);
-		goto out_free_irq;
+		goto out_iounmap;
 	}
 
-	platform_set_drvdata(pdev, input);
+	priv->pb_level = pdata->pb_level;
+	priv->irq_lvl1_mask = pdata->irq_lvl1_mask;
 
-	/*
-	 * SCU firmware might send power button interrupts to IA core before
+	/* Unmask the PBIRQ and MPBIRQ on Tangier */
+	if (pdata->irq_ack) {
+		pdata->irq_ack(pdata);
+		priv->irq_ack = true;
+	} else {
+		priv->irq_ack = false;
+	}
+
+	ret = request_threaded_irq(priv->irq, mid_pb_isr, mid_pb_threaded_isr,
+		IRQF_NO_SUSPEND, DRIVER_NAME, priv);
+
+	if (ret) {
+		dev_err(&pdev->dev,
+			"unable to request irq %d for power button\n", irq);
+		goto out_unregister_input;
+	}
+
+	/* SCU firmware might send power button interrupts to IA core before
 	 * kernel boots and doesn't get EOI from IA core. The first bit of
-	 * MSIC reg 0x21 is kept masked, and SCU firmware doesn't send new
+	 * MSIC lvl1 mask reg is kept masked, and SCU firmware doesn't send new
 	 * power interrupt to Android kernel. Unmask the bit when probing
 	 * power button in kernel.
-	 * There is a very narrow race between irq handler and power button
-	 * initialization. The race happens rarely. So we needn't worry
-	 * about it.
 	 */
-	ret = intel_scu_ipc_ioread8(MSIC_IRQLVL1MSK, &value);
-	value &= ~MSIC_PWRBTNM;
-	ret = intel_scu_ipc_iowrite8(MSIC_IRQLVL1MSK, value);
+	pb_clear_bits(priv->irq_lvl1_mask, MSIC_PWRBTNM);
 
 	return 0;
 
-out_free_irq:
-	free_irq(irq, input);
+out_unregister_input:
+	input_unregister_device(input);
+	input = NULL;
 out_iounmap:
 	iounmap(priv->pb_stat);
 fail:
@@ -155,7 +172,7 @@ fail:
 
 static int __devexit mid_pb_remove(struct platform_device *pdev)
 {
-	struct mid_pb_prov *priv = platform_get_drvdata(pdev);
+	struct mid_pb_priv *priv = platform_get_drvdata(pdev);
 
 	iounmap(priv->pb_stat);
 	free_irq(priv->irq, priv);

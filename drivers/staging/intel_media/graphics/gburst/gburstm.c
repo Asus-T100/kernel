@@ -2889,12 +2889,21 @@ static int gburst_resume(struct gburst_pvt_s *gbprv)
 	/* Assume thermal state is current or will be updated soon. */
 
 	/* PWRGT_CNT to 0 except toggle and interrupt enable. */
-	set_state_pwrgt_cnt(gbprv, PWRGT_CNT_BURST_REQUEST_M_400);
+        if ((gbprv->gbp_burst_th_low == 0) &&
+             (gbprv->gbp_burst_th_high == 0)) {
+	        set_state_pwrgt_cnt(gbprv, PWRGT_CNT_BURST_REQUEST_M_533);
+	} else {
+		set_state_pwrgt_cnt(gbprv, PWRGT_CNT_BURST_REQUEST_M_400);
+	}
 
 	gbprv->gbp_suspended = 0;
 	smp_wmb();
 
-	hrt_start(gbprv);
+	mutex_lock(&gbprv->gbp_mutex_pwrgt_sts);
+	if (!(read_PWRGT_STS_simple() & PWRGT_STS_FREQ_THROTTLE_M)) {
+		hrt_start(gbprv);
+	}
+	mutex_unlock(&gbprv->gbp_mutex_pwrgt_sts);
 
 	return 0;
 }
@@ -3051,7 +3060,7 @@ static void __exit gburst_cleanup(struct gburst_pvt_s *gbprv)
  *
  * Function return value: negative to abort module installation.
  */
-static int __init gburst_init(struct gburst_pvt_s *gbprv)
+static int gburst_init(struct gburst_pvt_s *gbprv)
 {
 	u32 gt_sts;
 	int sts;
@@ -3217,7 +3226,7 @@ err_interrupt:
  *
  * Function return value: negative to abort module installation.
  */
-int __init gburst_module_init(void)
+int gburst_module_init(void)
 {
 	struct gburst_pvt_s *gbprv;
 	int rva;

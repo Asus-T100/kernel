@@ -468,14 +468,11 @@ static ssize_t mtp_read(struct file *fp, char __user *buf,
 	if (count > MTP_BULK_RX_BUFFER_SIZE)
 		return -EINVAL;
 
-	/* we will block until we're online */
-	DBG(cdev, "mtp_read: waiting for online state\n");
-	ret = wait_event_interruptible(dev->read_wq,
-		dev->state != STATE_OFFLINE);
-	if (ret < 0) {
-		r = ret;
-		goto done;
+	if (dev->state == STATE_OFFLINE) {
+		DBG(cdev, "mtp_read: state offline, return\n");
+		return -EIO;
 	}
+
 	spin_lock_irq(&dev->lock);
 	if (dev->state == STATE_CANCELED) {
 		/* report cancelation to userspace */

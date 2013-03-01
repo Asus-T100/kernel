@@ -370,6 +370,7 @@ struct platform_pmu_ops {
 	pci_power_t (*pci_choose_state) (int);
 	void (*set_power_state_ops) (int);
 	void (*set_s0ix_complete) (void);
+	int (*nc_set_power_state) (int, int, int, int *);
 };
 
 extern char s0ix[5];

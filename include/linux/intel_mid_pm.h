@@ -38,6 +38,8 @@
 #define OSPM_MAX_POWER_ISLANDS 16
 #define OSPM_ISLAND_UP         0x0
 #define OSPM_ISLAND_DOWN       0x1
+/*Soft reset*/
+#define OSPM_ISLAND_SR         0x2
 
 /* North complex power islands definitions for APM block*/
 #define APM_GRAPHICS_ISLAND    0x1
@@ -52,6 +54,11 @@
 #define OSPM_DISPLAY_B_ISLAND  0x80
 #define OSPM_DISPLAY_C_ISLAND  0x100
 #define OSPM_MIPI_ISLAND       0x200
+
+/* North Complex power islands definitions for Tangier */
+#define TNG_ISP_ISLAND		0x1
+/* North Complex Register definitions for Tangier */
+#define	ISP_SS_PM0		0x39
 
 #define C4_STATE_IDX	3
 #define C6_STATE_IDX	4

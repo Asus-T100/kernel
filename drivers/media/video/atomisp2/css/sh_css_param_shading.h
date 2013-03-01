@@ -30,6 +30,7 @@
 void
 prepare_shading_table(const struct sh_css_shading_table *in_table,
 		      unsigned int sensor_binning,
+			  bool raw_binning,
 		      struct sh_css_shading_table **target_table,
 		      const struct sh_css_binary *binary);
 

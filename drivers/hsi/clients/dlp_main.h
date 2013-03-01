@@ -274,16 +274,6 @@ struct dlp_xfer_ctx {
 };
 
 /**
- * struct dlp_hangup_ctx - Hangup management context
- * @tx_timeout: TX timeout error or not
- * @timer: TX timeout timner
- */
-struct dlp_hangup_ctx {
-	unsigned int tx_timeout;
-	struct timer_list timer;
-};
-
-/**
  * struct dlp_hsi_channel - HSI channel context
  * @open_conn: Store any OPEN_CONN request params
  * @state: the current channel stated (Opened, Close, ...)
@@ -324,15 +314,18 @@ struct dlp_channel {
 	struct dlp_xfer_ctx tx;
 	struct dlp_xfer_ctx rx;
 
-	/* TX Timeout flag & callback */
-	struct dlp_hangup_ctx hangup;
+	/* TX Timeout/TTY close */
 	void (*modem_tx_timeout_cb) (struct dlp_channel *ch_ctx);
+	void (*tty_close_cb) (struct dlp_channel *ch_ctx);
 
 	/* Credits callback */
 	void (*credits_available_cb)(struct dlp_channel *ch_ctx);
 
 	/* Called to push any needed RX pdu */
 	int (*push_rx_pdus) (struct dlp_channel *ch_ctx);
+
+	/* Called to cleanup ressources */
+	int (*cleanup) (struct dlp_channel *ch_ctx);
 
 	/* Debug */
 	void (*dump_state)(struct dlp_channel *ch_ctx, struct seq_file *m);
@@ -347,9 +340,11 @@ struct dlp_channel {
  * @channels_hsi: The HSI channels context references
  * @is_dma_capable: a flag to check if the ctrl supports the DMA
  * @controller: a reference to the HSI controller
+ * @tx_timeout: TX timeout error or not
+ * @timer: TX timeout timer (one per channel)
  * @recycle_wq: Workqueue for submitting pdu-recycling background tasks
  * @tx_hangup_wq: Workqueue for submitting tx timeout hangup background tasks
- * @modem_ready: The modem is up & running
+ * @tty_closed: The TTY was closed
  * @lock: Used for modem ready flag lock
  * @ipc_tx_cfg: HSI client configuration (Used for IPC TX)
  * @ipc_xx_cfg: HSI client configuration (Used for IPC RX)
@@ -367,14 +362,16 @@ struct dlp_driver {
 	struct hsi_client *client;
 	struct device *controller;
 
+	/* Hangup (TX timemout/ TTY close) */
+	spinlock_t lock;
+	unsigned int tty_closed;
+	unsigned int tx_timeout;
+	struct timer_list timer[DLP_CHANNEL_COUNT];
+
 	/* Workqueue for tty buffer forwarding */
 	struct workqueue_struct *rx_wq;
 	struct workqueue_struct *tx_wq;
 	struct workqueue_struct *hangup_wq;
-
-	/* Modem readiness */
-	int modem_ready;
-	spinlock_t lock;
 
 	/* HSI client events callback */
 	hsi_client_cb ehandler;
@@ -433,7 +430,8 @@ struct hsi_msg *dlp_pdu_alloc(unsigned int hsi_channel,
 
 void dlp_pdu_free(struct hsi_msg *pdu, int hsi_channel);
 
-void dlp_pdu_delete(struct dlp_xfer_ctx *xfer_ctx, struct hsi_msg *pdu);
+void dlp_pdu_delete(struct dlp_xfer_ctx *xfer_ctx, struct hsi_msg *pdu,
+					unsigned long flags);
 
 void dlp_pdu_recycle(struct dlp_xfer_ctx *xfer_ctx, struct hsi_msg *pdu);
 
@@ -610,6 +608,11 @@ struct dlp_channel *dlp_tty_ctx_create(unsigned int ch_id,
 		struct device *dev);
 
 int dlp_tty_ctx_delete(struct dlp_channel *ch_ctx);
+
+int dlp_tty_is_link_valid(void);
+
+void dlp_tty_set_link_valid(int tty_closed, int tx_timeout);
+
 
 /****************************************************************************
  *

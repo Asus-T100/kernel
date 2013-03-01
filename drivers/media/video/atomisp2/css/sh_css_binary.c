@@ -626,35 +626,60 @@ sh_css_binary_find(struct sh_css_binary_descr *descr,
 		if (!supports_output_format(candidate, req_out_info->format))
 			continue;
 
+#define __NEW__
+#ifndef __NEW__
 		if (descr->binning && !candidate->enable.raw_binning)
 			continue;
+#else  /* __NEW__ */
+/*
+ * Select either a binary with conditional decimation or one with fixed decimation
+ */
+		if (descr->binning && !(candidate->enable.raw_binning || candidate->enable.fixed_bayer_ds))
+			continue;
 
-		/* If we are in continuous preview mode, it is possible to have
-		 * an output decimation. If output decimation is needed, the
-		 * decimation factor is calculated output->vf. So, we switch
-		 * the ports to share the same calculation module */
-		if (candidate->enable.raw_binning
+		if (descr->binning) {
+//			if (candidate->enable.raw_binning  && (req_in_info->width >= 2048)) {
+///* */
+//				continue;
+//			}
+			if (candidate->enable.fixed_bayer_ds  && (req_in_info->width < 2048)) {
+/* */
+				continue;
+			}
+		}
+#endif /* __NEW__ */
+
+/* 
+ * If we are in continuous preview mode, it is possible to have
+ * an output decimation. If output decimation is needed, the
+ * decimation factor is calculated output->vf. So, we switch
+ * the ports to share the same calculation module
+ *
+ * There are 2 flavours, an optimised binary for very large resolutions
+ * that always decimates, or a binary that conditionally decimates
+ */
+		if ((candidate->enable.raw_binning || candidate->enable.fixed_bayer_ds)
 				&& continuous && need_outputdeci) {
 			*cc_in_info = *req_in_info;
 			*cc_out_info = *req_out_info;
 			*cc_vf_info = *req_out_info;
 
-		if (descr->binning) {
+			if (descr->binning) {
 			/* Take into account that we have (currently implicit)
 			 * a decimation on preview-ISP which halves the
 			 * resolution. Therefore, here we specify this. */
-			cc_out_info->width        = req_in_info->width/2;
-			cc_out_info->padded_width = req_in_info->padded_width/2;
-			cc_out_info->height       = req_in_info->height/2;
+				cc_out_info->width        = req_in_info->width/2;
+				cc_out_info->padded_width = req_in_info->padded_width/2;
+				cc_out_info->height       = req_in_info->height/2;
 
-			cc_in_info->width        = req_in_info->width/2;
-			cc_in_info->padded_width = req_in_info->padded_width/2;
-			cc_in_info->height       = req_in_info->height/2;
-		} else {
-			cc_out_info->width        = req_in_info->width;
-			cc_out_info->padded_width = req_in_info->padded_width;
-			cc_out_info->height       = req_in_info->height;
-		}
+				cc_in_info->width        = req_in_info->width/2;
+				cc_in_info->padded_width = req_in_info->padded_width/2;
+				cc_in_info->height       = req_in_info->height/2;
+			} else {
+				cc_out_info->width        = req_in_info->width;
+				cc_out_info->padded_width = req_in_info->padded_width;
+				cc_out_info->height       = req_in_info->height;
+			}
 		} else {
 			*cc_in_info  = *req_in_info;
 			*cc_out_info = *req_out_info;

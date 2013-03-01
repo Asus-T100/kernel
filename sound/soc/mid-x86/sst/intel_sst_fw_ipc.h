@@ -64,6 +64,7 @@
 #define IPC_IA_SET_FW_CTXT 0x08
 
 /* I2L Codec Config/control msgs */
+#define IPC_PREP_D3 0x10
 #define IPC_IA_SET_CODEC_PARAMS 0x10
 #define IPC_IA_GET_CODEC_PARAMS 0x11
 #define IPC_IA_SET_PPP_PARAMS 0x12
@@ -328,7 +329,7 @@ union ipc_header_high {
 	struct {
 		u32  msg_id:8;	    /* Message ID - Max 256 Message Types */
 		u32  task_id:4;	    /* Task ID associated with this comand */
-		u32  str_id:4;    /* Identifier for the driver to track*/
+		u32  drv_id:4;    /* Identifier for the driver to track*/
 		u32  rsvd1:8;	    /* Reserved */
 		u32  result:4;	    /* Reserved */
 		u32  res_rqd:1;	    /* Response rqd */

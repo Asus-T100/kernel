@@ -25,8 +25,12 @@
 #include "psb_reg.h"
 #include "psb_msvdx.h"
 #include "lnc_topaz.h"
+#ifdef MEDFIELD
 #include "pnw_topaz.h"
+#endif
+#ifdef MERRIFIELD
 #include "tng_topaz.h"
+#endif
 #include "vsp.h"
 #include "ttm/ttm_bo_api.h"
 #include "ttm/ttm_execbuf_util.h"
@@ -905,18 +909,20 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 			goto out_err4;
 		break;
 	case LNC_ENGINE_ENCODE:
+#ifdef MEDFIELD
 		if (IS_MDFLD(dev))
 			ret = pnw_cmdbuf_video(
 				file_priv, &context->validate_list,
 				context->fence_types, arg,
 				cmd_buffer, &fence_arg);
-
+#endif
+#ifdef MERRIFIELD
 		if (IS_MRFLD(dev))
 			ret = tng_cmdbuf_video(
 				file_priv, &context->validate_list,
 				context->fence_types, arg,
 				cmd_buffer, &fence_arg);
-
+#endif
 		if (unlikely(ret != 0))
 			goto out_err4;
 		break;

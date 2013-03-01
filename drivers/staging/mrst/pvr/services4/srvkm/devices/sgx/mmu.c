@@ -3522,7 +3522,10 @@ MMU_MapScatter (MMU_HEAP *pMMUHeap,
 	IMG_UINT32 uCount, i;
 	IMG_DEV_PHYADDR DevPAddr;
 
-	PVR_ASSERT (pMMUHeap != IMG_NULL);
+	if (pMMUHeap == IMG_NULL) {
+		PVR_DPF((PVR_DBG_ERROR, "Null pMMUHeap value"));
+		BUG();
+	}
 
 #if defined(PDUMP)
 	MapBaseDevVAddr = DevVAddr;

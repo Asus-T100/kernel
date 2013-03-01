@@ -103,4 +103,5 @@ struct platform_pmu_ops clv_pmu_ops = {
 	.pci_choose_state = clv_pmu_choose_state,
 	.set_power_state_ops = pmu_set_s0ix_possible,
 	.set_s0ix_complete = s0ix_complete,
+	.nc_set_power_state = mdfld_clv_nc_set_power_state,
 };

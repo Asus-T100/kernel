@@ -37,6 +37,15 @@ static struct gpio_keys_button gpio_button[] = {
 	{SW_KEYPAD_SLIDE,	-1, 1, "MagSw2",	EV_SW,  0, 20},
 	{KEY_CAMERA,		-1, 1, "cam_capture",	EV_KEY, 0, 20},
 	{KEY_CAMERA_FOCUS,	-1, 1, "cam_focus",	EV_KEY, 0, 20},
+	{KEY_MENU,              -1, 1, "fp_menu_key",   EV_KEY, 0, 20},
+	{KEY_HOME,              -1, 1, "fp_home_key",   EV_KEY, 0, 20},
+	{KEY_SEARCH,            -1, 1, "fp_search_key", EV_KEY, 0, 20},
+	{KEY_BACK,              -1, 1, "fp_back_key",   EV_KEY, 0, 20},
+	{KEY_VOLUMEUP,          -1, 1, "volume_up",     EV_KEY, 0, 20},
+	{KEY_VOLUMEDOWN,        -1, 1, "volume_down",   EV_KEY, 0, 20},
+	{KEY_MUTE,              -1, 1, "mute_enable",   EV_KEY, 0, 20},
+	{KEY_CAMERA,            -1, 1, "camera0_sb1",   EV_KEY, 0, 20},
+	{KEY_CAMERA_FOCUS,      -1, 1, "camera0_sb2",   EV_KEY, 0, 20},
 };
 
 static struct gpio_keys_platform_data gpio_keys = {

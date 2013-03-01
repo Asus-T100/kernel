@@ -18,6 +18,7 @@
 #define	RP_PMIC_ACCESS		0xFF
 #define	RP_DFU_REQUEST		0xFE
 #define	RP_SET_WATCHDOG		0xF8
+#define	RP_FLIS_ACCESS		0xF5
 #define	RP_GET_FW_REVISION	0xF4
 #define	RP_COLD_BOOT		0xF3
 #define	RP_COLD_RESET		0xF1
@@ -26,6 +27,7 @@
 #define RP_OSC_CLK_CTRL		0xE6
 #define RP_S0IX_COUNTER		0xE8
 #define RP_WRITE_OSNIB		0xE4
+#define RP_FW_UPDATE		0xFE
 
 /*
  * Assigning some temp ids for following devices
@@ -42,7 +44,7 @@
 #define RP_MSIC_POWER_BTN	0x10
 #define RP_IPC			0X11
 #define RP_IPC_UTIL		0X12
-#define RP_FW_UPDATE		0X13
+#define RP_FW_ACCESS		0X13
 #define RP_UMIP_ACCESS		0x14
 #define RP_OSIP_ACCESS		0x15
 #define RP_MSIC_ADC		0x16
@@ -51,6 +53,8 @@
 #define RP_PMIC_CCSM		0x19
 #define RP_PMIC_I2C		0x20
 #define RP_MSIC_MRFLD_AUDIO	0x21
+#define RP_MSIC_PWM		0x22
+#define RP_MSIC_KPD_LED		0x23
 
 enum rproc_type {
 	RPROC_SCU = 0,

@@ -88,8 +88,10 @@ otm_hdmi_ret_t ps_hdmi_pci_dev_deinit(void *context);
  */
 bool ps_hdmi_get_cable_status(void *context);
 
+/* turn on HDMI power rails not used for HPD */
 bool ps_hdmi_power_rails_on(void);
 
+/* turn off HDMI power rails not used for HPD */
 bool ps_hdmi_power_rails_off(void);
 
 

@@ -193,7 +193,7 @@ void psb_dpst_dev_change_wq(struct work_struct *work)
 	if (wq_data->dev_name_write_wrap == 1) {
 		wq_data->dev_name_read_write_wrap_ack = 1;
 		wq_data->dev_name_write_wrap = 0;
-		while (wq_data->dev_name_read != DRM_DPST_RING_DEPTH_MAX) {
+		while (wq_data->dev_name_read != DRM_DPST_RING_DEPTH) {
 			if (wq_data->dev_name_arry_rw_status
 			   [wq_data->dev_name_read] ==
 			   DRM_DPST_READY_TO_READ) {

@@ -3,17 +3,7 @@
 #
 
 obj-$(CONFIG_MDM_CTRL) += modem_control.o
-modem_control-objs := mdm_util.o mdm_ctrl.o
+modem_control-objs := mdm_util.o mdm_ctrl.o imc_6x6x.o imc_7x6x.o
 
-ccflags-$(CONFIG_MDM_IMC_EARLY_BOOT) += -DMDM_IMC_EARLY_BOOT
-
-ifeq ($(CONFIG_MDM_IMC_6260), y)
-  CFLAGS_mdm_ctrl.o += -DMDM_IMC_EARLY_BOOT
-  modem_control-objs += imc_6x6x.o
-endif
-
-ifeq ($(CONFIG_MDM_IMC_7160), y)
-  CFLAGS_mdm_ctrl.o += -DMDM_IMC_EARLY_POWER_OFF
-  modem_control-objs += imc_7x6x.o
-endif
-
+# Workaround for CTPSCALELT as no board information is available yet
+ccflags-$(CONFIG_MDM_CTRL_CTPLT) + = -DMDM_CTRL_CTPLT

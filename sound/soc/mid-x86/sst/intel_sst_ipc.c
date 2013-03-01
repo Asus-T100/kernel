@@ -37,6 +37,69 @@
 #include "intel_sst_fw_ipc.h"
 #include "intel_sst_common.h"
 
+struct sst_block *sst_create_block(struct intel_sst_drv *ctx,
+					u32 msg_id, u32 drv_id)
+{
+	struct sst_block *msg = NULL;
+
+	pr_debug("in %s\n", __func__);
+	msg = kzalloc(sizeof(*msg), GFP_KERNEL);
+	if (!msg) {
+		pr_err("kzalloc block failed\n");
+		return NULL;
+	}
+	msg->condition = false;
+	msg->on = true;
+	msg->msg_id = msg_id;
+	msg->drv_id = drv_id;
+	spin_lock(&ctx->block_lock);
+	list_add_tail(&msg->node, &ctx->block_list);
+	spin_unlock(&ctx->block_lock);
+
+	return msg;
+}
+
+int sst_wake_up_block(struct intel_sst_drv *ctx, int result,
+		u32 drv_id, u32 ipc, void *data, u32 size)
+{
+	struct sst_block *block = NULL;
+
+	pr_debug("in %s\n", __func__);
+	list_for_each_entry(block, &ctx->block_list, node) {
+		pr_debug("Block ipc %d, drv_id %d\n", block->msg_id, block->drv_id);
+		if (block->msg_id == ipc && block->drv_id == drv_id) {
+			pr_debug("free up the block\n");
+			block->ret_code = result;
+			block->data = data;
+			block->size = size;
+			block->condition = true;
+			wake_up(&ctx->wait_queue);
+			return 0;
+		}
+	}
+
+	pr_err("Block not found or a response is received for a short message for ipc %d, drv_id %d\n",
+			ipc, drv_id);
+	return -EINVAL;
+}
+
+int sst_free_block(struct intel_sst_drv *ctx, struct sst_block *freed)
+{
+	struct sst_block *block = NULL, *__block;
+
+	pr_debug("in %s\n", __func__);
+	list_for_each_entry_safe(block, __block, &ctx->block_list, node) {
+		if (block == freed) {
+			list_del(&freed->node);
+			kfree(freed->data);
+			freed->data = NULL;
+			kfree(freed);
+			return 0;
+		}
+	}
+	return -EINVAL;
+}
+
 static void dump_bytes(unsigned const char *data,
 		       size_t sz, unsigned int width)
 {
@@ -79,7 +142,7 @@ static int sst_send_runtime_param(struct snd_sst_runtime_params *params)
 	int ret_val;
 
 	pr_debug("Enter:%s\n", __func__);
-	ret_val = sst_create_large_msg(&msg);
+	ret_val = sst_create_ipc_msg(&msg, true);
 	if (ret_val)
 		return ret_val;
 	sst_fill_header(&msg->header, IPC_IA_SET_RUNTIME_PARAMS, 1,
@@ -109,7 +172,7 @@ int sst_send_algo_param(struct snd_ppp_params *algo_params)
 
 	if (ipc_msg_size > SST_MAILBOX_SIZE)
 		return -ENOMEM;
-	if (sst_create_large_msg(&msg))
+	if (sst_create_ipc_msg(&msg, true))
 		return -ENOMEM;
 	sst_fill_header(&msg->header,
 			IPC_IA_ALG_PARAMS, 1, algo_params->str_id);
@@ -465,9 +528,7 @@ static int process_fw_init(struct sst_ipc_msg_wq *msg)
 			pr_debug("FW Init failed, Error %x\n", init->result);
 			pr_err("FW Init failed, Error %x\n", init->result);
 			retval = -init->result;
-			sst_wake_up_alloc_block(sst_drv_ctx, FW_DWNL_ID,
-						retval, NULL);
-			return retval;
+			goto ret;
 		}
 		pr_debug("FW Version %02x.%02x.%02x\n", init->fw_version.major,
 				init->fw_version.minor, init->fw_version.build);
@@ -479,7 +540,8 @@ static int process_fw_init(struct sst_ipc_msg_wq *msg)
 	if (sst_drv_ctx->runtime_param.param.addr)
 		sst_send_runtime_param(&(sst_drv_ctx->runtime_param.param));
 
-	sst_wake_up_alloc_block(sst_drv_ctx, FW_DWNL_ID, retval, NULL);
+ret:
+	sst_wake_up_block(sst_drv_ctx, retval, FW_DWNL_ID, 0 , NULL, 0);
 	return retval;
 }
 /**
@@ -577,7 +639,7 @@ void sst_process_message_mrfld(struct work_struct *work)
 		return;
 	}
 	memcpy(msg, tmp, sizeof(*msg));
-	str_id = msg->mrfld_header.p.header_high.part.str_id;
+	str_id = msg->mrfld_header.p.header_high.part.drv_id;
 	sst_drv_ctx->ops->clear_interrupt();
 
 	pr_debug("ProcesMsg:%d\n", msg->mrfld_header.p.header_high.part.msg_id);
@@ -586,27 +648,11 @@ void sst_process_message_mrfld(struct work_struct *work)
 	return;
 }
 
-static int sst_get_stream_mrfld(struct intel_sst_drv *ctx, u32 drv_id)
-{
-	int i;
-
-	if (ctx->sst_byte_blk.drv_id == drv_id)
-		return 0;
-
-	for (i = 1; i <= ctx->info.max_streams; i++) {
-		if (ctx->streams[i].ctrl_blk.drv_id == drv_id)
-			return i;
-	}
-	pr_err("no match for drv_id - FW gave %d\n", drv_id);
-	return -EINVAL;
-}
-
 /* FIXME get FW change for reply message payload */
 void sst_process_reply_mrfld(struct work_struct *work)
 {
 	struct sst_ipc_msg_wq *msg, *tmp;
 	unsigned int msg_id, drv_id, err_id;
-	int str_id;
 	void *data = NULL;
 	union ipc_header_high msg_high;
 	u32 msg_low;
@@ -624,11 +670,14 @@ void sst_process_reply_mrfld(struct work_struct *work)
 	msg_high = msg->mrfld_header.p.header_high;
 	msg_low = msg->mrfld_header.p.header_low_payload;
 
-	drv_id = msg_high.part.str_id;
+	drv_id = msg_high.part.drv_id;
 	msg_id = msg_low & SST_UNSOLICITED_MSG_ID;
 	err_id = (msg_low & SST_UNSOLICITED_ERROR_MSG) >> 16;
 	if (err_id && !msg_high.part.large) {
 		pr_err("FW sent error 0x%x in msg 0x%x", err_id, msg_id);
+		sst_wake_up_block(sst_drv_ctx, msg_high.part.result,
+			msg_high.part.drv_id,
+			msg_high.part.msg_id, NULL, 0);
 		goto end;
 	}
 	if (drv_id == SST_UNSOLICIT_MSG && !msg_high.part.large) {
@@ -642,10 +691,6 @@ void sst_process_reply_mrfld(struct work_struct *work)
 			break;
 		}
 	} else {
-		str_id = sst_get_stream_mrfld(sst_drv_ctx, drv_id);
-		pr_debug("after get_stream_mrfld str_id = %d\n", str_id);
-		if (str_id < 0)
-			goto end;
 		/* if it is a large message, the payload contains the size to
 		 * copy from mailbox */
 		if (msg_high.part.large) {
@@ -653,26 +698,13 @@ void sst_process_reply_mrfld(struct work_struct *work)
 			if (!data)
 				goto end;
 			memcpy(data, (void *) msg->mailbox, msg_low);
-		}
-
-		if (!str_id) {
-			if (sst_drv_ctx->sst_byte_blk.on == true) {
-				sst_drv_ctx->sst_byte_blk.data = data;
-				sst_drv_ctx->sst_byte_blk.on = false;
-				sst_drv_ctx->sst_byte_blk.condition = true;
-				sst_drv_ctx->sst_byte_blk.ret_code =
-					msg_high.part.result;
-				wake_up(&sst_drv_ctx->wait_queue);
-			}
+			sst_wake_up_block(sst_drv_ctx, msg_high.part.result,
+					msg_high.part.drv_id,
+					msg_high.part.msg_id, data, msg_low);
 		} else {
-			if (sst_drv_ctx->streams[str_id].ctrl_blk.on == true) {
-				sst_drv_ctx->streams[str_id].ctrl_blk.data = data;
-				sst_drv_ctx->streams[str_id].ctrl_blk.on = false;
-				sst_drv_ctx->streams[str_id].ctrl_blk.condition = true;
-				sst_drv_ctx->streams[str_id].ctrl_blk.ret_code =
-					msg_high.part.result;
-				wake_up(&sst_drv_ctx->wait_queue);
-			}
+			sst_wake_up_block(sst_drv_ctx, msg_high.part.result,
+					msg_high.part.drv_id,
+					msg_high.part.msg_id, NULL, 0);
 		}
 	}
 end:
@@ -692,325 +724,39 @@ end:
 void sst_process_reply_mfld(struct work_struct *work)
 {
 	struct sst_ipc_msg_wq *msg, *tmp;
-	struct stream_info *str_info;
+	void *data;
 	int str_id;
 
 	/* copy the message before enabling interrupts */
 	tmp = container_of(work, struct sst_ipc_msg_wq, wq);
 	msg = kzalloc(sizeof(*msg), GFP_KERNEL);
 	if (NULL == msg) {
-		pr_err("%s:memory alloc failed. reply didn't processed\n", __func__);
+		pr_err("%s:memory alloc failed\n", __func__);
 		return;
 	}
 	memcpy(msg, tmp, sizeof(*msg));
 	str_id = msg->header.part.str_id;
 
 	intel_sst_clear_intr_mfld();
-
 	pr_debug("sst: IPC process reply for %x\n", msg->header.full);
 
-	switch (msg->header.part.msg_id) {
-	case IPC_IA_ALG_PARAMS: {
-		pr_debug("IPC_ALG_PARAMS response %x\n", msg->header.full);
-		pr_debug("data value %x\n", msg->header.part.data);
-		pr_debug("large value %x\n", msg->header.part.large);
-
-		if (!msg->header.part.large) {
-			if (!msg->header.part.data) {
-				pr_debug("alg set success\n");
-				sst_drv_ctx->ppp_params_blk.ret_code = 0;
-			} else {
-				pr_debug("alg set failed\n");
-				sst_drv_ctx->ppp_params_blk.ret_code =
-							-msg->header.part.data;
-			}
-
-		} else if (msg->header.part.data) {
-			struct snd_ppp_params *mailbox_params, *get_params;
-			char *params;
-
-			pr_debug("alg get success\n");
-			mailbox_params = (struct snd_ppp_params *)msg->mailbox;
-			get_params = kzalloc(sizeof(*get_params), GFP_KERNEL);
-			if (!get_params) {
-				pr_err("sst: mem alloc failed\n");
-				break;
-			}
-			memcpy_fromio(get_params, mailbox_params,
-							sizeof(*get_params));
-			get_params->params = kzalloc(mailbox_params->size,
-							GFP_KERNEL);
-			if (!get_params->params) {
-				pr_err("sst: mem alloc failed\n");
-				kfree(get_params);
-				break;
-			}
-			params = msg->mailbox;
-			params = params + sizeof(*mailbox_params) - sizeof(u32);
-			memcpy_fromio(get_params->params, params,
-							get_params->size);
-			sst_drv_ctx->ppp_params_blk.ret_code = 0;
-			sst_drv_ctx->ppp_params_blk.data = get_params;
-		}
-
-		if (sst_drv_ctx->ppp_params_blk.on == true) {
-			sst_drv_ctx->ppp_params_blk.condition = true;
-			wake_up(&sst_drv_ctx->wait_queue);
-		}
-		break;
-	}
-
-	case IPC_IA_TUNING_PARAMS:
-	case IPC_IA_SET_RUNTIME_PARAMS: {
-		pr_debug("IPC_TUNING_PARAMS resp: %x\n", msg->header.full);
-		pr_debug("data value %x\n", msg->header.part.data);
-		if (msg->header.part.large) {
-			pr_debug("alg set failed\n");
-			sst_drv_ctx->ppp_params_blk.ret_code =
-							-msg->header.part.data;
-		} else {
-			pr_debug("alg set success\n");
-			sst_drv_ctx->ppp_params_blk.ret_code = 0;
-		}
-		if (sst_drv_ctx->ppp_params_blk.on == true) {
-			sst_drv_ctx->ppp_params_blk.condition = true;
-			wake_up(&sst_drv_ctx->wait_queue);
-		}
-		break;
-	}
-
-	case IPC_IA_GET_FW_INFO: {
-		struct snd_sst_fw_info *fw_info =
-			(struct snd_sst_fw_info *)msg->mailbox;
-		if (msg->header.part.large) {
-			int major = fw_info->fw_version.major;
-			int minor = fw_info->fw_version.minor;
-			int build = fw_info->fw_version.build;
-			pr_debug("Msg succeeded %x\n",
-				       msg->header.part.msg_id);
-			pr_debug("INFO: ***FW*** = %02d.%02d.%02d\n",
-					major, minor, build);
-			memcpy_fromio(sst_drv_ctx->fw_info_blk.data,
-				((struct snd_sst_fw_info *)(msg->mailbox)),
-				sizeof(struct snd_sst_fw_info));
-			sst_drv_ctx->fw_info_blk.ret_code = 0;
-		} else {
-			pr_err(" Msg %x reply error %x\n",
-			msg->header.part.msg_id, msg->header.part.data);
-			sst_drv_ctx->fw_info_blk.ret_code =
-					-msg->header.part.data;
-		}
-		if (sst_drv_ctx->fw_info_blk.on == true) {
-			pr_debug("Memcopy succeeded\n");
-			sst_drv_ctx->fw_info_blk.on = false;
-			sst_drv_ctx->fw_info_blk.condition = true;
-			wake_up(&sst_drv_ctx->wait_queue);
-		}
-		break;
-	}
-
-	case IPC_IA_GET_STREAM_PARAMS:
-		str_info = get_stream_info(str_id);
-		if (!str_info) {
-			pr_err("stream id %d invalid\n", str_id);
-			break;
-		}
-		if (msg->header.part.large) {
-			pr_debug("Get stream large success\n");
-			memcpy_fromio(str_info->ctrl_blk.data,
-				((void *)(msg->mailbox)),
-				sizeof(struct snd_sst_fw_get_stream_params));
-			str_info->ctrl_blk.ret_code = 0;
-		} else {
-			pr_err("Msg %x reply error %x\n",
-				msg->header.part.msg_id, msg->header.part.data);
-			str_info->ctrl_blk.ret_code = -msg->header.part.data;
-		}
-		if (str_info->ctrl_blk.on == true) {
-			str_info->ctrl_blk.on = false;
-			str_info->ctrl_blk.condition = true;
-			wake_up(&sst_drv_ctx->wait_queue);
-		}
-		break;
-	case IPC_IA_DRAIN_STREAM:
-		str_info = get_stream_info(str_id);
-		if (!str_info) {
-			pr_err("stream id %d invalid\n", str_id);
-			break;
-		}
-		if (!msg->header.part.data) {
-			pr_debug("Msg succeeded %x\n",
-					msg->header.part.msg_id);
-			str_info->ctrl_blk.ret_code = 0;
-
-		} else {
-			pr_err(" Msg %x reply error %x\n",
-				msg->header.part.msg_id, msg->header.part.data);
-			str_info->ctrl_blk.ret_code = -msg->header.part.data;
-
-		}
-		str_info = &sst_drv_ctx->streams[str_id];
-		if (str_info->data_blk.on == true) {
-			str_info->data_blk.on = false;
-			str_info->data_blk.condition = true;
-			wake_up(&sst_drv_ctx->wait_queue);
-		}
-		break;
-
-	case IPC_IA_DROP_STREAM:
-		str_info = get_stream_info(str_id);
-		if (!str_info) {
-			pr_err("str id %d invalid\n", str_id);
-			break;
-		}
-		if (msg->header.part.large) {
-			struct snd_sst_drop_response *drop_resp =
-				(struct snd_sst_drop_response *)msg->mailbox;
-
-			pr_debug("Drop ret bytes %x\n", drop_resp->bytes);
-			if (!drop_resp->result)
-				pr_debug("drop success for %d\n", str_id);
-			else
-				pr_err("drop for %d failed with err %d\n",
-						str_id, drop_resp->result);
-		} else {
-			pr_err("fw sent small IPC for drop response!!\n");
-		}
-
-		break;
-	case IPC_IA_PAUSE_STREAM:
-	case IPC_IA_RESUME_STREAM:
-	case IPC_IA_SET_STREAM_PARAMS:
-		str_info = get_stream_info(str_id);
-		if (!str_info) {
-			pr_err(" stream id %d invalid\n", str_id);
-			break;
-		}
-		if (!msg->header.part.data) {
-			pr_debug("Msg succeeded %x\n",
-					msg->header.part.msg_id);
-			str_info->ctrl_blk.ret_code = 0;
-		} else {
-			pr_err(" Msg %x reply error %x\n",
-					msg->header.part.msg_id,
-					msg->header.part.data);
-			str_info->ctrl_blk.ret_code = -msg->header.part.data;
-		}
-
-		if (str_info->ctrl_blk.on == true) {
-			str_info->ctrl_blk.on = false;
-			str_info->ctrl_blk.condition = true;
-			wake_up(&sst_drv_ctx->wait_queue);
-		}
-		break;
-
-	case IPC_IA_FREE_STREAM:
-		str_info = &sst_drv_ctx->streams[str_id];
-		if (!msg->header.part.data) {
-			pr_debug("Stream %d freed\n", str_id);
-		} else {
-			pr_err("Free for %d ret error %x\n",
-				       str_id, msg->header.part.data);
-		}
-		if (str_info->ctrl_blk.on == true) {
-			str_info->ctrl_blk.on = false;
-			str_info->ctrl_blk.condition = true;
-			wake_up(&sst_drv_ctx->wait_queue);
-		}
-		break;
-	case IPC_IA_ALLOC_STREAM: {
-		/* map to stream, call play */
-		struct snd_sst_alloc_response *resp =
-				(struct snd_sst_alloc_response *)msg->mailbox;
-		if (resp->str_type.result)
-			pr_err("error alloc stream = %x\n",
-				       resp->str_type.result);
-		sst_alloc_stream_response(str_id, resp);
-		break;
-	}
-
-	case IPC_IA_PREP_LIB_DNLD: {
-		struct snd_sst_str_type *str_type =
-			(struct snd_sst_str_type *)msg->mailbox;
-		pr_debug("Prep Lib download %x\n",
-				msg->header.part.msg_id);
-		if (str_type->result)
-			pr_err("Prep lib download %x\n", str_type->result);
+	if (!msg->header.part.large) {
+		if (!msg->header.part.data)
+			pr_debug("Success\n");
 		else
-			pr_debug("Can download codec now...\n");
-		sst_wake_up_alloc_block(sst_drv_ctx, str_id,
-				str_type->result, NULL);
-		break;
-	}
+			pr_err("Error from firmware: %d\n", msg->header.part.data);
+		sst_wake_up_block(sst_drv_ctx, msg->header.part.data,
+				str_id, msg->header.part.msg_id, NULL, 0);
+	} else {
+		pr_debug("Allocating %d\n", msg->header.part.data);
+		data = kzalloc(msg->header.part.data, GFP_KERNEL);
+		if (!data)
+			pr_err("sst: mem alloc failed\n");
 
-	case IPC_IA_LIB_DNLD_CMPLT: {
-		struct snd_sst_lib_download_info *resp =
-			(struct snd_sst_lib_download_info *)msg->mailbox;
-		int retval = resp->result;
-
-		pr_debug("Lib downloaded %x\n", msg->header.part.msg_id);
-		if (resp->result) {
-			pr_err("err in lib dload %x\n", resp->result);
-		} else {
-			pr_debug("Codec download complete...\n");
-			pr_debug("codec Type %d Ver %d Built %s: %s\n",
-				resp->dload_lib.lib_info.lib_type,
-				resp->dload_lib.lib_info.lib_version,
-				resp->dload_lib.lib_info.b_date,
-				resp->dload_lib.lib_info.b_time);
-		}
-		sst_wake_up_alloc_block(sst_drv_ctx, str_id,
-						retval, NULL);
-		break;
-	}
-	case IPC_IA_SET_FW_CTXT: {
-		int retval = msg->header.part.data;
-
-		if (!msg->header.part.data) {
-			pr_debug("Msg IPC_IA_SET_FW_CTXT succedded %x\n",
-				       msg->header.part.msg_id);
-		} else {
-			pr_err("Msg %x reply error %x\n",
-			msg->header.part.msg_id, msg->header.part.data);
-			break;
-		}
-		sst_wake_up_alloc_block(sst_drv_ctx, FW_DWNL_ID, retval, NULL);
-		break;
-	}
-	case IPC_IA_GET_FW_VERSION: {
-		struct ipc_header_fw_init *version =
-				(struct ipc_header_fw_init *)msg->mailbox;
-		int major = version->fw_version.major;
-		int minor = version->fw_version.minor;
-		int build = version->fw_version.build;
-		dev_info(&sst_drv_ctx->pci->dev,
-			"INFO: ***LOADED SST FW VERSION*** = %02d.%02d.%02d\n",
-		major, minor, build);
-		break;
-	}
-	case IPC_IA_GET_FW_BUILD_INF: {
-		struct sst_fw_build_info *build =
-			(struct sst_fw_build_info *)msg->mailbox;
-		pr_debug("Build date:%sTime:%s", build->date, build->time);
-		break;
-	}
-	case IPC_IA_START_STREAM:
-		pr_debug("reply for START STREAM %x\n", msg->header.full);
-		break;
-
-	case IPC_IA_GET_FW_CTXT:
-		pr_debug("reply for get fw ctxt  %x\n", msg->header.full);
-		if (msg->header.part.data)
-			sst_drv_ctx->fw_cntx_size = 0;
-		else
-			sst_drv_ctx->fw_cntx_size = *sst_drv_ctx->fw_cntx;
-		pr_debug("fw copied data %x\n", sst_drv_ctx->fw_cntx_size);
-		sst_wake_up_alloc_block(
-			sst_drv_ctx, str_id, msg->header.part.data, NULL);
-		break;
-	default:
-		/* Illegal case */
-		pr_err("process reply:default = %x\n", msg->header.full);
+		memcpy(data, (void *)msg->mailbox, msg->header.part.data);
+		sst_wake_up_block(sst_drv_ctx, 0, str_id,
+				msg->header.part.msg_id, data,
+				msg->header.part.data);
 	}
 	kfree(msg);
 	return;

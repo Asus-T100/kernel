@@ -50,6 +50,8 @@
 /*registers associated with channel programming*/
 #define DMA_REG_SIZE		0x400
 #define DMA_CH_SIZE		0x58
+#define DMA_FIFO_SIZE 0x100080
+
 
 /*CH X REG = (DMA_CH_SIZE)*CH_NO + REG*/
 #define SAR			0x00 /* Source Address Register*/
@@ -83,6 +85,11 @@
 #define INTR_STATUS		0x360
 #define DMA_CFG			0x398
 #define DMA_CHAN_EN		0x3A0
+#define FIFO_PARTITION0_LO	0x400
+#define FIFO_PARTITION0_HI	0x404
+#define FIFO_PARTITION1_LO	0x408
+#define FIFO_PARTITION1_HI	0x40C
+#define CH_SAI_ERR		0x410
 
 /*DMA channel control registers*/
 union intel_mid_dma_ctl_lo {
@@ -175,6 +182,7 @@ union intel_mid_dma_cfg_hi {
  * @in_use: bool representing if ch is in use or not
  * @raw_tfr: raw trf interrupt received
  * @raw_block: raw block interrupt received
+ * @block_intr_status: bool representing if block intr is enabled or not
  */
 struct intel_mid_dma_chan {
 	struct dma_chan		chan;
@@ -193,6 +201,7 @@ struct intel_mid_dma_chan {
 	u32			raw_block;
 	struct intel_mid_dma_slave *mid_slave;
 	struct dma_pool		*lli_pool;
+	bool block_intr_status;
 };
 
 static inline struct intel_mid_dma_chan *to_intel_mid_dma_chan(
@@ -221,6 +230,8 @@ enum intel_mid_dma_state {
  * @block_size: Block size of DMA transfer supported (from drv_data)
  * @pimr_mask: MMIO register addr for periphral interrupt (from drv_data)
  * @state: dma PM device state
+ * @tfr_intr_mask: hold the status of tfr intr mask register
+ * @block_intr_mask: hold the status of block intr mask register
  */
 struct middma_device {
 	struct pci_dev		*pdev;
@@ -239,6 +250,8 @@ struct middma_device {
 	unsigned int		pimr_base;
 	unsigned int		dword_trf;
 	unsigned int		pimr_offset;
+	unsigned long		tfr_intr_mask;
+	unsigned long		block_intr_mask;
 	enum intel_mid_dma_state state;
 };
 

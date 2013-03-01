@@ -61,6 +61,7 @@ struct dlp_trace_ctx {
 
 	/* Used to prevent multiple access to device */
 	unsigned int opened;
+	unsigned int hangup;
 
 	/* A waitqueue for poll/read operations */
 	wait_queue_head_t read_wq;
@@ -187,6 +188,14 @@ static void dlp_trace_complete_rx(struct hsi_msg *msg)
 	unsigned long flags;
 	int ret;
 
+	/* Check the link readiness (TTY still opened) */
+	if (!dlp_tty_is_link_valid()) {
+		pr_debug(DRVNAME ": TRACE: CH%d PDU ignored (close:%d, Time out: %d)\n",
+				ch_ctx->ch_id,
+				dlp_drv.tty_closed, dlp_drv.tx_timeout);
+		return;
+	}
+
 	/* Check the PDU status & signature */
 	if (msg->status != HSI_STATUS_COMPLETED) {
 		pr_err(DRVNAME": Invalid PDU status: %d (ignored)\n",
@@ -258,7 +267,8 @@ static int dlp_trace_dev_open(struct inode *inode, struct file *filp)
 	/* Check if the the channel is not already opened by the NET IF */
 	state = dlp_ctrl_get_channel_state(ch_ctx->hsi_channel);
 	if (state != DLP_CH_STATE_CLOSED) {
-		pr_err(DRVNAME": Invalid channel state (%d)\n", state);
+		pr_err(DRVNAME ": Can't open CH%d (HSI CH%d) => invalid state: %d\n",
+				ch_ctx->ch_id, ch_ctx->hsi_channel, state);
 		ret = -EBUSY;
 		goto out;
 	}
@@ -268,20 +278,21 @@ static int dlp_trace_dev_open(struct inode *inode, struct file *filp)
 
 	/* Only ONE instance of this device can be opened */
 	spin_lock_irqsave(&ch_ctx->lock, flags);
-	opened = trace_ctx->opened;
-	spin_unlock_irqrestore(&ch_ctx->lock, flags);
-	if (opened) {
+	if (trace_ctx->opened) {
+		spin_unlock_irqrestore(&ch_ctx->lock, flags);
+		pr_err(DRVNAME": Trace channel ALREADY opened");
 		ret = -EBUSY;
 		goto out;
 	}
+	/* Set the open flag */
+	trace_ctx->opened = 1;
+	/* reset hangup flag */
+	trace_ctx->hangup = 0 ;
+	spin_unlock_irqrestore(&ch_ctx->lock, flags);
 
 	/* Save private data for futur use */
 	filp->private_data = ch_ctx;
 
-	/* Set the open flag */
-	spin_lock_irqsave(&ch_ctx->lock, flags);
-	trace_ctx->opened = 1;
-	spin_unlock_irqrestore(&ch_ctx->lock, flags);
 
 	/* Disable the flow control */
 	ch_ctx->use_flow_ctrl = 1;
@@ -294,10 +305,16 @@ static int dlp_trace_dev_open(struct inode *inode, struct file *filp)
 		goto out;
 	}
 
+	/* device opened => Set the channel state flag */
+	dlp_ctrl_set_channel_state(ch_ctx->hsi_channel,
+				DLP_CH_STATE_OPENED);
+
 	/* Push RX PDUs */
 	count = DLP_HSI_RX_WAIT_FIFO + HSI_TRACE_TEMP_BUFFERS;
 	for (ret = count; ret; ret--)
 		dlp_trace_push_rx_pdu(ch_ctx);
+
+	pr_debug(DRVNAME": Trace Channel opened");
 
 out:
 	return ret;
@@ -310,9 +327,26 @@ static int dlp_trace_dev_close(struct inode *inode, struct file *filp)
 {
 	struct dlp_channel *ch_ctx = filp->private_data;
 	struct dlp_trace_ctx *trace_ctx = ch_ctx->ch_data;
+	unsigned long flags;
 
+	pr_debug(DRVNAME": Close Trace channel");
+
+	spin_lock_irqsave(&ch_ctx->lock, flags);
+	/* set the hangup flag to make the poll function return an error*/
+	trace_ctx->hangup = 1;
 	/* Set the open flag */
 	trace_ctx->opened = 0;
+	spin_unlock_irqrestore(&ch_ctx->lock, flags);
+
+	/* device closed => Set the channel state flag */
+	dlp_ctrl_set_channel_state(ch_ctx->hsi_channel,
+				DLP_CH_STATE_CLOSED);
+
+	/*
+	 * Wake up the read waitqueue to unblock the poll_wait
+	 */
+	wake_up_interruptible(&trace_ctx->read_wq);
+
 	return 0;
 }
 
@@ -446,14 +480,46 @@ static unsigned int dlp_trace_dev_poll(struct file *filp,
 	unsigned long flags;
 	unsigned int ret = 0;
 
+	/* if the channel is hang-up/closed no reason to wait*/
+	spin_lock_irqsave(&ch_ctx->lock, flags);
+	if (trace_ctx->hangup) {
+		spin_unlock_irqrestore(&ch_ctx->lock, flags);
+		ret = POLLHUP;
+		goto out;
+	}
+	spin_unlock_irqrestore(&ch_ctx->lock, flags);
+
 	poll_wait(filp, &trace_ctx->read_wq, pt);
 
 	/* Have some data to read ? */
 	spin_lock_irqsave(&ch_ctx->lock, flags);
-	if (!list_empty(&trace_ctx->rx_msgs))
+	if (trace_ctx->hangup) {
+		/* The close function has been executed <=> hangup */
+		ret = POLLHUP;
+	} else if (!list_empty(&trace_ctx->rx_msgs)) {
 		ret = POLLIN | POLLRDNORM;
+	}
 	spin_unlock_irqrestore(&ch_ctx->lock, flags);
+
+out:
 	return ret;
+}
+
+/**
+ * dlp_net_hsi_tx_timeout_cb - Called when we have an HSI TX timeout
+ * @ch_ctx : Channel context ref
+ */
+static void dlp_trace_dev_tx_timeout_cb(struct dlp_channel *ch_ctx)
+{
+	struct dlp_trace_ctx *trace_ctx = ch_ctx->ch_data;
+	unsigned long flags;
+
+	spin_lock_irqsave(&ch_ctx->lock, flags);
+	/* Set hangup flag */
+	trace_ctx->hangup = 1 ;
+	spin_unlock_irqrestore(&ch_ctx->lock, flags);
+	wake_up_interruptible(&trace_ctx->read_wq);
+
 }
 
 
@@ -467,6 +533,8 @@ static const struct file_operations dlp_trace_ops = {
 	.poll	= dlp_trace_dev_poll,
 	.release = dlp_trace_dev_close
 };
+
+static int dlp_trace_ctx_cleanup(struct dlp_channel *ch_ctx);
 
 /*
 * @brief
@@ -511,8 +579,12 @@ struct dlp_channel *dlp_trace_ctx_create(unsigned int ch_id,
 	init_waitqueue_head(&trace_ctx->read_wq);
 	INIT_LIST_HEAD(&trace_ctx->rx_msgs);
 
-	/* */
+	/* Register debug, cleanup CBs */
 	ch_ctx->dump_state = dlp_dump_channel_state;
+	ch_ctx->cleanup = dlp_trace_ctx_cleanup;
+
+	/* Hangup context */
+	dlp_ctrl_hangup_ctx_init(ch_ctx, dlp_trace_dev_tx_timeout_cb);
 
 	/* Init the RX/TX contexts */
 	dlp_xfer_ctx_init(ch_ctx,
@@ -574,27 +646,40 @@ free_ch:
 }
 
 /*
-* @brief
+* @brief This function will delete/unregister
+*	the char device and class
 *
-* @param ch_ctx
+* @param ch_ctx: Trace channel context
 *
-* @return
+* @return 0 when sucess, error code otherwise
 */
-int dlp_trace_ctx_delete(struct dlp_channel *ch_ctx)
+static int dlp_trace_ctx_cleanup(struct dlp_channel *ch_ctx)
 {
 	struct dlp_trace_ctx *trace_ctx = ch_ctx->ch_data;
 	int ret = 0;
 
-	/* Unregister the device */
+	/* Unregister/Delete char device & class */
+	device_destroy(trace_ctx->class, trace_ctx->tdev);
 	cdev_del(&trace_ctx->cdev);
 	unregister_chrdev_region(trace_ctx->tdev, 1);
 	class_destroy(trace_ctx->class);
+
+	return ret;
+}
+
+/*
+ * This function will release the allocated memory
+ * done in the _ctx_create function
+ */
+int dlp_trace_ctx_delete(struct dlp_channel *ch_ctx)
+{
+	struct dlp_trace_ctx *trace_ctx = ch_ctx->ch_data;
 
 	/* Free the Trace context */
 	kfree(trace_ctx);
 
 	/* Free the ch_ctx */
 	kfree(ch_ctx);
-	return ret;
+	return 0;
 }
 

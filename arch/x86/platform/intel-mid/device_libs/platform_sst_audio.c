@@ -31,9 +31,10 @@ static struct sst_dev_stream_map mfld_strm_map[MAX_DEVICES_MFLD] = {
 
 static struct sst_dev_stream_map ctp_strm_map[MAX_DEVICES_CTP] = {
 	{0xFF, 0xFF, 0xFF, 0xFF, 0xFF}, /* Reserved, not in use */
-	{0, 0, SNDRV_PCM_STREAM_PLAYBACK, SST_PCM_OUT, SST_DEV_MAP_IN_USE},
-	{0, 0, SNDRV_PCM_STREAM_CAPTURE, SST_CAPTURE_IN, SST_DEV_MAP_IN_USE},
+	{0, 0, SNDRV_PCM_STREAM_PLAYBACK, SST_PCM_OUT0, SST_DEV_MAP_IN_USE},
+	{0, 1, SNDRV_PCM_STREAM_PLAYBACK, SST_PCM_OUT1, SST_DEV_MAP_IN_USE},
 	{2, 0, SNDRV_PCM_STREAM_PLAYBACK, SST_COMPRESSED_OUT, SST_DEV_MAP_IN_USE},
+	{0, 0, SNDRV_PCM_STREAM_CAPTURE, SST_CAPTURE_IN, SST_DEV_MAP_IN_USE},
 };
 
 static struct sst_dev_stream_map mrfld_strm_map[MAX_DEVICES_MRFLD] = {
@@ -119,7 +120,7 @@ static void set_ctp_platform_config(void)
 	sst_platform_pdata.bdata = &sst_bdata[BDATA_CTP];
 	memcpy(sst_platform_pdata.bdata->ssp_platform_data,
 					&ssp_ctp_data, sizeof(ssp_ctp_data));
-	sst_platform_pdata.use_strm_map = false;
+	sst_platform_pdata.use_strm_map = true;
 	sst_platform_pdata.pdev_strm_map = &ctp_strm_map;
 	sst_platform_pdata.strm_map_size = MAX_DEVICES_CTP;
 }

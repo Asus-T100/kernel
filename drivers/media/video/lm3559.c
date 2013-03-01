@@ -40,6 +40,7 @@ struct lm3559_ctrl_id {
 /* Registers */
 
 #define LM3559_MODE_SHIFT		0
+#define LM3559_MODE_MASK		0x3
 
 #define LM3559_TORCH_BRIGHTNESS_REG	0xa0
 #define LM3559_TORCH_LED1_CURRENT_SHIFT	0
@@ -150,7 +151,8 @@ static int lm3559_set_mode(struct lm3559 *flash, unsigned int mode)
 	int ret;
 
 	val = lm3559_read(flash, LM3559_ENABLE_REG);
-	val |= mode << LM3559_MODE_SHIFT;
+	val &= ~LM3559_MODE_MASK;
+	val |= (mode & LM3559_MODE_MASK) << LM3559_MODE_SHIFT;
 
 	ret = lm3559_write(flash, LM3559_ENABLE_REG, val);
 	if (ret == 0)

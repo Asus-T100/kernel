@@ -23,10 +23,12 @@
 #include "psb_drv.h"
 #include "psb_msvdx.h"
 
-#include "pnw_topaz.h"
 #ifdef MERRIFIELD
 #include "tng_topaz.h"
+#else
+#include "pnw_topaz.h"
 #endif
+
 #ifdef SUPPORT_VSP
 #include "vsp.h"
 #endif
@@ -102,14 +104,16 @@ static void psb_fence_poll(struct ttm_fence_device *fdev,
 		break;
 
 	case LNC_ENGINE_ENCODE:
-		if (IS_MDFLD(dev))
-			sequence = *((uint32_t *)
-				     ((struct pnw_topaz_private *)dev_priv->topaz_private)->topaz_sync_addr + 1);
 #ifdef MERRIFIELD
 		if (IS_MRFLD(dev))
 			sequence = *((uint32_t *)
 				((struct tng_topaz_private *)dev_priv->
 				topaz_private)->topaz_sync_addr);
+#else
+		if (IS_MDFLD(dev))
+			sequence = *((uint32_t *)
+				((struct pnw_topaz_private *)dev_priv->
+				topaz_private)->topaz_sync_addr + 1);
 #endif
 		break;
 	case VSP_ENGINE_VPP:
@@ -139,11 +143,12 @@ static void psb_fence_lockup(struct ttm_fence_object *fence,
 		DRM_ERROR("TOPAZ timeout (probable lockup) detected,  flush queued cmdbuf");
 
 		write_lock(&fc->lock);
-		if (IS_MDFLD(dev))
-			pnw_topaz_handle_timeout(fence->fdev);
 #ifdef MERRIFIELD
 		if (IS_MRFLD(dev))
 			tng_topaz_handle_timeout(fence->fdev);
+#else
+		if (IS_MDFLD(dev))
+			pnw_topaz_handle_timeout(fence->fdev);
 #endif
 		ttm_fence_handler(fence->fdev, fence->fence_class,
 				  fence->sequence, fence_types, -EBUSY);

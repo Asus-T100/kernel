@@ -204,6 +204,7 @@ static bool isp_params_changed,
 
 
 static unsigned int sensor_binning;
+static bool raw_binning;
 
 /* local buffers, used to re-order the 3a statistics in vmem-format */
 static unsigned short s3a_tbl_hi_buf[ISP_S3ATBL_HI_LO_STRIDE *
@@ -2461,6 +2462,12 @@ sh_css_params_set_binning_factor(unsigned int binning_fact)
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_params_set_binning_factor() leave:\n");
 
 	return sc_table_changed;
+}
+
+void
+sh_css_params_set_raw_binning(bool needs_raw_binning)
+{
+	raw_binning = needs_raw_binning;
 }
 
 bool
@@ -5548,6 +5555,7 @@ assert(ddr_map_size != NULL);
 			prepare_shading_table(
 				(const struct sh_css_shading_table *)sc_table,
 				sensor_binning,
+				raw_binning,
 				&tmp_sc_table,
 				binary);
 
@@ -5877,6 +5885,7 @@ assert(pipeline != NULL);
 		prepare_shading_table(
 			(const struct sh_css_shading_table *)sc_table,
 			sensor_binning,
+			raw_binning,
 			&tmp_sc_table,
 			binary);
 

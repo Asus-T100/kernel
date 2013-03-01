@@ -1184,7 +1184,7 @@ static struct ov8830_resolution ov8835_res_video[] = {
 		 .regs = ov8835_video_qcif_dvs,
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
-		 .skip_frames = 0,
+		 .skip_frames = 1,
 		 .fps_options = {
 			{
 				 .fps = 30,
@@ -1203,7 +1203,7 @@ static struct ov8830_resolution ov8835_res_video[] = {
 		 .regs = ov8835_video_cif_dvs,
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
-		 .skip_frames = 0,
+		 .skip_frames = 1,
 		 .fps_options = {
 			{
 				 .fps = 30,
@@ -1222,7 +1222,7 @@ static struct ov8830_resolution ov8835_res_video[] = {
 		 .regs = ov8835_video_qvga_dvs,
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
-		 .skip_frames = 0,
+		 .skip_frames = 1,
 		 .fps_options = {
 			{
 				 .fps = 30,
@@ -1241,7 +1241,7 @@ static struct ov8830_resolution ov8835_res_video[] = {
 		 .regs = ov8835_video_vga_dvs,
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
-		 .skip_frames = 0,
+		 .skip_frames = 1,
 		 .fps_options = {
 			{
 				 .fps = 30,
@@ -1260,7 +1260,7 @@ static struct ov8830_resolution ov8835_res_video[] = {
 		.regs = ov8835_video_480p_dvs,
 		.bin_factor_x = 1,
 		.bin_factor_y = 1,
-		.skip_frames = 0,
+		.skip_frames = 1,
 		.fps_options = {
 			{
 				 .fps = 30,
@@ -1279,7 +1279,7 @@ static struct ov8830_resolution ov8835_res_video[] = {
 		 .regs = ov8835_video_720p_dvs_off,
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
-		 .skip_frames = 0,
+		 .skip_frames = 1,
 		 .fps_options = {
 			{
 				 .fps = 30,
@@ -1303,7 +1303,7 @@ static struct ov8830_resolution ov8835_res_video[] = {
 		 .regs = ov8835_video_720p_dvs,
 		 .bin_factor_x = 1,
 		 .bin_factor_y = 1,
-		 .skip_frames = 0,
+		 .skip_frames = 1,
 		 .fps_options = {
 			{
 				 .fps = 30,
@@ -1322,7 +1322,7 @@ static struct ov8830_resolution ov8835_res_video[] = {
 		 .regs = ov8835_video_1080p_dvs,
 		 .bin_factor_x = 0,
 		 .bin_factor_y = 0,
-		 .skip_frames = 0,
+		 .skip_frames = 1,
 		 .fps_options = {
 			{
 				 .fps = 30,

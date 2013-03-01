@@ -210,8 +210,7 @@ static struct cpuidle_state atom_cstates[MWAIT_MAX_NUM_CSTATES] = {
 
 #ifdef CONFIG_ATOM_SOC_POWER
 
-#if defined(CONFIG_INTEL_ATOM_MDFLD_POWER) || \
-	defined(CONFIG_INTEL_ATOM_CLV_POWER)
+#ifdef CONFIG_X86_MDFLD
 static struct cpuidle_state mfld_cstates[MWAIT_MAX_NUM_CSTATES] = {
 	{ /* MWAIT C0 */
 		.power_usage = C0_POWER_USAGE },
@@ -268,17 +267,23 @@ static struct cpuidle_state mfld_cstates[MWAIT_MAX_NUM_CSTATES] = {
 		.power_usage  = S0I3_POWER_USAGE,
 		.enter = &soc_s0ix_idle }
 };
-#else
-#define mfld_cstates atom_cstates
 #endif
+
+/*Enable C1 - C6 for Merrifield*/
+#ifdef CONFIG_X86_MRFLD
 #define mrfld_cstates atom_cstates
+#endif
 
 #else /*if !CONFIG_ATOM_SOC_POWER*/
 
+#ifdef CONFIG_X86_MDFLD
 #define mfld_cstates atom_cstates
-#define mrfld_cstates atom_cstates
 
+#elif defined(CONFIG_X86_MRFLD)
+#define mrfld_cstates atom_cstates
 #endif
+
+#endif /*#ifdef CONFIG_ATOM_SOC_POWER*/
 
 static long get_driver_data(int cstate)
 {
@@ -589,15 +594,18 @@ static int intel_idle_probe(void)
 		cpuidle_state_table = atom_cstates;
 		auto_demotion_disable_flags = ATM_LNC_C6_AUTO_DEMOTE;
 		break;
-
+#ifdef CONFIG_X86_MDFLD
 	case 0x27:	/* 39 - Penwell Atom Processor */
 	case 0x35:	/* 53 - Cloverview Atom Processor */
 		cpuidle_state_table = mfld_cstates;
 		auto_demotion_disable_flags = ATM_LNC_C6_AUTO_DEMOTE;
 		break;
+#endif
+#ifdef CONFIG_X86_MRFLD
 	case 0x4a:	/*74 - Tangier Atom Processor */
 		cpuidle_state_table = mrfld_cstates;
 		break;
+#endif
 	case 0x2A:	/* SNB */
 	case 0x2D:	/* SNB Xeon */
 		cpuidle_state_table = snb_cstates;

@@ -3100,22 +3100,28 @@ static u32 hsi_pio_tx_complete(struct intel_controller *intel_hsi,
 /**
  * hsi_dma_forward - forwarding some message to the DMA queue
  * @hsi: Intel HSI controller reference
- * @msg: a reference to the message to forward
+ * @tx_not_rx: the direction of the DMA channel (TX=1, RX=0)
+ * @hsi_ch: HSI channel
  * @dma_ch: DMA channel.
+ * @dma_ctx: DMA context reference
  */
 static void hsi_dma_forward(struct intel_controller *intel_hsi,
-			    struct hsi_msg *msg, unsigned int dma_ch)
+				int tx_not_rx,
+				unsigned int hsi_ch,
+				unsigned int dma_ch,
+				struct intel_dma_ctx *dma_ctx)
 {
-	int tx_not_rx;
-	unsigned int hsi_ch;
 	unsigned long flags;
-
-	tx_not_rx = (msg->ttype == HSI_MSG_WRITE);
-	hsi_ch = msg->channel;
+	struct hsi_msg *msg;
 
 	spin_lock_irqsave(&intel_hsi->sw_lock, flags);
-	list_del(&msg->link);
-	list_add_tail(&msg->link, &intel_hsi->fwd_queue);
+	msg = dma_ctx->ongoing->msg;
+	/* Check if the msg was not clearead */
+	if (msg) {
+		dma_ctx->ongoing->msg = NULL;
+		list_del(&msg->link);
+		list_add_tail(&msg->link, &intel_hsi->fwd_queue);
+	}
 	spin_unlock_irqrestore(&intel_hsi->sw_lock, flags);
 
 	/* Kick another transfer if necessary */
@@ -3155,7 +3161,6 @@ static int hsi_dma_complete_v1(struct intel_controller *intel_hsi,
 	}
 
 	ongoing_xfer = dma_ctx->ongoing;
-
 	msg = ongoing_xfer->msg;
 	lli_xfer = &ongoing_xfer->v1.with_link_list;
 	if ((is_using_link_list(dma_ctx)) && (msg) &&
@@ -3164,8 +3169,6 @@ static int hsi_dma_complete_v1(struct intel_controller *intel_hsi,
 		blk_len = HSI_BYTES_TO_FRAMES(lli_xfer->blk->length);
 		blk_len_overwrite = ARASAN_DMA_XFER_FRAMES(blk_len);
 		msg = NULL;
-	} else {
-		ongoing_xfer->msg = NULL;
 	}
 
 	if ((msg) && (msg->status != HSI_STATUS_ERROR))
@@ -3190,7 +3193,10 @@ static int hsi_dma_complete_v1(struct intel_controller *intel_hsi,
 	intel_hsi->dma_running &= ~DMA_BUSY(dma_ch);
 	spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
 
-	hsi_dma_forward(intel_hsi, msg, dma_ch);
+	hsi_dma_forward(intel_hsi,
+				(msg->ttype == HSI_MSG_WRITE),
+				msg->channel,
+				dma_ch, dma_ctx);
 	return 1;
 }
 
@@ -3227,7 +3233,6 @@ static void hsi_dma_complete_v2(struct intel_controller *intel_hsi,
 
 	ongoing_xfer = dma_ctx->ongoing;
 	msg = ongoing_xfer->msg;
-	ongoing_xfer->msg = NULL;
 	if ((msg) && (!msg->status != HSI_STATUS_ERROR))
 		msg->status = HSI_STATUS_COMPLETED;
 	spin_unlock_irqrestore(&intel_hsi->sw_lock, flags);
@@ -3236,7 +3241,10 @@ static void hsi_dma_complete_v2(struct intel_controller *intel_hsi,
 	intel_hsi->dma_running &= ~dma_mask;
 	spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
 
-	hsi_dma_forward(intel_hsi, msg, dma_ch);
+	hsi_dma_forward(intel_hsi,
+				(msg->ttype == HSI_MSG_WRITE),
+				msg->channel,
+				dma_ch, dma_ctx);
 }
 
 /**

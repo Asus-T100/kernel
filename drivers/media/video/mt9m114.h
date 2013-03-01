@@ -85,7 +85,6 @@
 
 #define I2C_RETRY_COUNT		5
 #define MSG_LEN_OFFSET		2
-#define MAX_FMTS		1
 
 #ifndef MIPI_CONTROL
 #define MIPI_CONTROL		0x3400	/* MIPI_Control */

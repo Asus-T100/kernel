@@ -157,11 +157,10 @@ struct dlp_ctrl_context {
  */
 static void dlp_ctrl_hsi_tx_timout_cb(unsigned long int param)
 {
-	struct dlp_channel *ch_ctx = (struct dlp_channel *)param;
 	struct dlp_ctrl_context *ctrl_ctx = DLP_CTRL_CTX;
 
 	/* Set the reason & launch the work to handle the hangup */
-	ch_ctx->hangup.tx_timeout = 1;
+	dlp_drv.tx_timeout = 1;
 	queue_work(ctrl_ctx->wq, &ctrl_ctx->tx_timeout_work);
 }
 
@@ -181,16 +180,9 @@ static void dlp_ctrl_handle_tx_timeout(struct work_struct *work)
 	/* Call any register TX timeout CB */
 	for (i = 0; i < DLP_CHANNEL_COUNT; i++) {
 		ch_ctx = DLP_CHANNEL_CTX(i);
-		if ((ch_ctx) && (ch_ctx->modem_tx_timeout_cb)) {
-			/* Set the TX timeout flag */
-			ch_ctx->hangup.tx_timeout = 1;
-
-			/* Call the channel callback function */
+		/* Call the channel callback function */
+		if ((ch_ctx) && (ch_ctx->modem_tx_timeout_cb))
 			ch_ctx->modem_tx_timeout_cb(ch_ctx);
-
-			/* TX timeout mangement (tty hangup) done */
-			ch_ctx->hangup.tx_timeout = 0;
-		}
 	}
 }
 
@@ -437,6 +429,15 @@ static void dlp_ctrl_complete_rx(struct hsi_msg *msg)
 	memcpy(&params,
 	       sg_virt(msg->sgt.sgl), sizeof(struct dlp_command_params));
 
+	/* Check the link readiness (TTY still opened) */
+	if (!dlp_tty_is_link_valid()) {
+		if (EDLP_CTRL_RX_DATA_REPORT)
+			pr_debug(DRVNAME ": CTRL: CH%d RX PDU ignored (close:%d, Time out: %d)\n",
+				params.channel,
+				dlp_drv.tty_closed, dlp_drv.tx_timeout);
+		return;
+	}
+
 	response = -1;
 	memcpy(&tx_params, &params, sizeof(struct dlp_command_params));
 	msg_complete = (msg->status == HSI_STATUS_COMPLETED);
@@ -447,7 +448,7 @@ static void dlp_ctrl_complete_rx(struct hsi_msg *msg)
 
 	hsi_channel = params.channel;
 	if ((hsi_channel < 0) || (hsi_channel >= DLP_CHANNEL_COUNT)) {
-		pr_err(DRVNAME ": Invalid channel id (%d)\n", hsi_channel);
+		pr_err(DRVNAME ": Invalid HSI channel id (%d)\n", hsi_channel);
 		goto push_rx;
 	}
 
@@ -493,12 +494,12 @@ static void dlp_ctrl_complete_rx(struct hsi_msg *msg)
 			memcpy(&hsi_ch->open_conn, &params, sizeof(params));
 			response = -1;
 
-			pr_debug(DRVNAME ": ch%d open_conn received (postponed)\n",
+			pr_debug(DRVNAME ": HSI CH%d OPEN_CONN received (postponed)\n",
 					params.channel);
 			goto push_rx;
 		}
 
-		pr_debug(DRVNAME ": ch%d open_conn received (size: %d)\n",
+		pr_debug(DRVNAME ": HSI CH%d OPEN_CONN received (size: %d)\n",
 					params.channel,
 					(params.data2 << 8) | params.data1);
 
@@ -580,6 +581,17 @@ static int dlp_ctrl_cmd_send(struct dlp_channel *ch_ctx,
 	struct dlp_command_params expected_resp;
 	struct hsi_msg *tx_msg = NULL;
 
+	/* Check the link readiness (TTY still opened) */
+	if (!dlp_tty_is_link_valid()) {
+		if (EDLP_CTRL_TX_DATA_REPORT)
+			pr_debug(DRVNAME ": CH%d (HSI CH%d) cmd 0x%X ignored (close:%d, Time out: %d)\n",
+					ch_ctx->ch_id, ch_ctx->hsi_channel,
+					id, dlp_drv.tty_closed,
+					dlp_drv.tx_timeout);
+
+		return ret;
+	}
+
 	/* Backup RX callback */
 	dlp_save_rx_callbacks(&ctrl_ctx->ehandler);
 
@@ -615,7 +627,10 @@ static int dlp_ctrl_cmd_send(struct dlp_channel *ch_ctx,
 		pr_err(DRVNAME ": Unable to send 0x%X cmd (ret:%d)\n",
 			dlp_cmd->params.id, ret);
 
-		goto free_tx;
+		/* Free the TX msg */
+		dlp_pdu_free(tx_msg, tx_msg->channel);
+
+		goto free_cmd;
 	}
 
 	/* Dump the TX command */
@@ -631,7 +646,12 @@ static int dlp_ctrl_cmd_send(struct dlp_channel *ch_ctx,
 			dlp_cmd->params.channel, dlp_cmd->params.id);
 
 		ret = -EIO;
-		goto out;
+		/* free only the cmd, because
+		 * the message is already in the controller fifo.
+		 * It will be freed when the controller fifo will be
+		 * flushed/freed
+		 */
+		goto free_cmd;
 	}
 
 	/* TX msg sent, check the status */
@@ -640,6 +660,10 @@ static int dlp_ctrl_cmd_send(struct dlp_channel *ch_ctx,
 				dlp_cmd->params.id);
 
 		ret = -EIO;
+		/* free only the command because
+		 * the message has been already freed by the complete_tx
+		 * callback
+		 */
 		goto free_cmd;
 	}
 
@@ -700,19 +724,6 @@ no_resp:
 	/* Response received & OK => set the new channel state */
 	if (final_state != DLP_CH_STATE_NONE)
 		dlp_ctrl_set_channel_state(ch_ctx->hsi_channel, final_state);
-
-	/* Free the DLP command */
-	dlp_ctrl_cmd_free(dlp_cmd);
-
-	/* Restore RX callback */
-	dlp_restore_rx_callbacks(&ctrl_ctx->ehandler);
-
-	/* Everything is OK */
-	return ret;
-
-free_tx:
-	/* Free the TX msg */
-	dlp_pdu_free(tx_msg, tx_msg->channel);
 
 free_cmd:
 	/* Free the DLP command */
@@ -812,6 +823,8 @@ static int dlp_ctrl_push_rx_pdus(struct dlp_channel *ch_ctx)
 *
 * @return
 */
+static int dlp_ctrl_ctx_cleanup(struct dlp_channel *ch_ctx);
+
 struct dlp_channel *dlp_ctrl_ctx_create(unsigned int ch_id,
 		unsigned int hsi_channel,
 		struct device *dev)
@@ -853,8 +866,9 @@ struct dlp_channel *dlp_ctrl_ctx_create(unsigned int ch_id,
 	spin_lock_init(&ch_ctx->lock);
 	INIT_WORK(&ctrl_ctx->tx_timeout_work, dlp_ctrl_handle_tx_timeout);
 
-	/* Register PDUs push CB */
+	/* Register PDUs push, cleanup CBs */
 	ch_ctx->push_rx_pdus = dlp_ctrl_push_rx_pdus;
+	ch_ctx->cleanup = dlp_ctrl_ctx_cleanup;
 
 	dlp_xfer_ctx_init(ch_ctx,
 			  DLP_CTRL_TX_PDU_SIZE, 0, 0, 0, NULL, HSI_MSG_WRITE);
@@ -864,8 +878,6 @@ struct dlp_channel *dlp_ctrl_ctx_create(unsigned int ch_id,
 
 	/* Set ch_ctx, not yet done in the probe */
 	DLP_CHANNEL_CTX(DLP_CHANNEL_CTRL) = ch_ctx;
-
-	dlp_ctrl_push_rx_pdus(ch_ctx);
 
 	return ch_ctx;
 
@@ -884,7 +896,7 @@ free_ch:
 *
 * @return 0 when OK, error value otherwise
 */
-int dlp_ctrl_ctx_delete(struct dlp_channel *ch_ctx)
+static int dlp_ctrl_ctx_cleanup(struct dlp_channel *ch_ctx)
 {
 	struct dlp_ctrl_context *ctrl_ctx = ch_ctx->ch_data;
 	int ret = 0;
@@ -892,12 +904,19 @@ int dlp_ctrl_ctx_delete(struct dlp_channel *ch_ctx)
 	/* Delete the modem readiness/tx timeout worqueue */
 	destroy_workqueue(ctrl_ctx->wq);
 
+	return ret;
+}
+
+int dlp_ctrl_ctx_delete(struct dlp_channel *ch_ctx)
+{
+	struct dlp_ctrl_context *ctrl_ctx = ch_ctx->ch_data;
+
 	/* Free the CTRL context */
 	kfree(ctrl_ctx);
 
 	/* Free the ch_ctx */
 	kfree(ch_ctx);
-	return ret;
+	return 0;
 }
 
 /*
@@ -952,13 +971,7 @@ out:
 int dlp_ctrl_close_channel(struct dlp_channel *ch_ctx)
 {
 	int state, ret = 0;
-	unsigned long flags;
 	unsigned char param3 = PARAM1(DLP_DIR_TRANSMIT_AND_RECEIVE);
-
-	/* Reset the credits value */
-	spin_lock_irqsave(&ch_ctx->lock, flags);
-	ch_ctx->credits = 0;
-	spin_unlock_irqrestore(&ch_ctx->lock, flags);
 
 	/* Check if the channel was correctly opened */
 	state = dlp_ctrl_get_channel_state(ch_ctx->hsi_channel);
@@ -969,8 +982,8 @@ int dlp_ctrl_close_channel(struct dlp_channel *ch_ctx)
 				DLP_CH_STATE_CLOSING, DLP_CH_STATE_CLOSED,
 				0, 0, param3);
 	} else {
-		pr_err(DRVNAME ": Invalid channel%d state (%d)\n",
-				ch_ctx->hsi_channel, state);
+		pr_warn(DRVNAME ": Can't close CH%d (HSI CH%d) => invalid state: %d\n",
+				ch_ctx->ch_id, ch_ctx->hsi_channel, state);
 	}
 
 	return ret;
@@ -1035,10 +1048,9 @@ int dlp_ctrl_send_ack_nack(struct dlp_channel *ch_ctx)
 			pr_debug(DRVNAME ": ch%d open_conn response (0x%X) sent\n",
 						params->channel, response);
 
-			/* Respnse set => clear the saved command */
+			/* Respnse sent => clear the saved command */
 			hsi_ch->open_conn = 0 ;
 		}
-
 	}
 
 	return ret;
@@ -1094,13 +1106,12 @@ void dlp_ctrl_hangup_ctx_init(struct dlp_channel *ch_ctx,
 		void (*timeout_func)(struct dlp_channel *ch_ctx))
 {
 	/* Init values */
-	ch_ctx->hangup.tx_timeout = 0;
 	ch_ctx->modem_tx_timeout_cb = timeout_func;
 
 	/* Register the timer CB (Use always the CTRL context) */
-	init_timer(&ch_ctx->hangup.timer);
-	ch_ctx->hangup.timer.function = dlp_ctrl_hsi_tx_timout_cb;
-	ch_ctx->hangup.timer.data = (unsigned long int)ch_ctx;
+	init_timer(&dlp_drv.timer[ch_ctx->ch_id]);
+	dlp_drv.timer[ch_ctx->ch_id].function = dlp_ctrl_hsi_tx_timout_cb;
+	dlp_drv.timer[ch_ctx->ch_id].data = (unsigned long int)ch_ctx;
 }
 
 /**
@@ -1109,19 +1120,18 @@ void dlp_ctrl_hangup_ctx_init(struct dlp_channel *ch_ctx,
  */
 void dlp_ctrl_hangup_ctx_deinit(struct dlp_channel *ch_ctx)
 {
-	struct dlp_xfer_ctx *xfer_ctx = &ch_ctx->tx;
 	unsigned long flags;
 	int is_hunging_up;
 
-	write_lock_irqsave(&xfer_ctx->lock, flags);
-	is_hunging_up = ch_ctx->hangup.tx_timeout;
-	write_unlock_irqrestore(&xfer_ctx->lock, flags);
+	spin_lock_irqsave(&dlp_drv.lock, flags);
+	is_hunging_up = dlp_drv.tx_timeout;
+	spin_unlock_irqrestore(&dlp_drv.lock, flags);
 
 	/* No need to wait for the end of the calling work! */
 	if (!is_hunging_up) {
 		struct dlp_ctrl_context *ctrl_ctx = DLP_CTRL_CTX;
 
-	if (del_timer_sync(&ch_ctx->hangup.timer))
+		if (del_timer_sync(&dlp_drv.timer[ch_ctx->ch_id]))
 			cancel_work_sync(&ctrl_ctx->tx_timeout_work);
 		else
 			flush_work(&ctrl_ctx->tx_timeout_work);

@@ -127,95 +127,6 @@ void android_hdmi_driver_init(struct drm_device *dev,
  */
 void android_hdmi_driver_setup(struct drm_device *dev);
 
-/**
- * DRM connector helper routine.
- * @connector	: drm_connector handle
- * @mode		: drm_display_mode handle
- *
- * Returns integer values which tell whether the hdmi mode
- * is valid or not
- * MODE_CLOCK_LOW - mode clock less than min pixel clock value
- * MODE_CLOCK_HIGH - mode clock greater than min pixel clock value
- * MODE_BAD - mode values are incorrect
- * MODE_OK - mode values are correct
- * MODE_NO_DBLESCAN - double scan mode not supported
- * MODE_NO_INTERLACE - interlace mode not supported
- * This is the DRM connector helper routine
- */
-int android_hdmi_mode_valid(struct drm_connector *connector,
-			    struct drm_display_mode *mode);
-
-/**
- * DRM get modes helper routine
- * @connector	: handle to drm_connector
- *
- * Returns the number of modes added
- * This is a helper routines for DRM get modes.
- * This function gets the edid information from the external sink
- * device using i2c when connected and parses the edid information
- * obtained and adds the modes to connector list
- * If sink device is not connected, then static edid timings are
- * used and those modes are added to the connector list
- */
-int android_hdmi_get_modes(struct drm_connector *connector);
-
-/**
- * DRM encoder save helper routine
- * @encoder      : handle to drm_encoder
- *
- * Returns nothing
- * This helper routine is used by DRM during early suspend
- * operation to simply disable active plane.
- */
-void android_hdmi_encoder_save(struct drm_encoder *encoder);
-
-/**
- * DRM encoder restore helper routine
- * @encoder      : handle to drm_encoder
- *
- * Returns nothing
- * This helper routine is used by DRM during late resume
- * operation for restoring the pipe and enabling it. The
- * operation itself is completed in a delayed workqueue
- * item which ensures restore can be done once the system
- * is resumed.
- */
-void android_hdmi_encoder_restore(struct drm_encoder *encoder);
-
-/**
- * DRM encoder mode fixup helper routine
- * @encoder      : handle to drm_encoder
- * @mode         : proposed display mode
- * @adjusted_mode: actual mode to be displayed by HW
- *
- * Returns boolean to indicate success/failure
- * This routine can be used to make adjustments to actual
- * mode parameters as required by underlying HW.
- * This is currently not required.
- */
-bool android_hdmi_mode_fixup(struct drm_encoder *encoder,
-			     struct drm_display_mode *mode,
-			     struct drm_display_mode *adjusted_mode);
-
-
-/**
- * DRM connector save helper routine
- * @connector       : handle to drm_connector
- *
- * Returns nothing.
- * This routine is used to save connector state.
- */
-void android_hdmi_connector_save(struct drm_connector *connector);
-
-/**
- * DRM connector restore helper routine
- * @connector       : handle to drm_connector
- *
- * Returns nothing.
- * This routine is used to restore connector state.
- */
-void android_hdmi_connector_restore(struct drm_connector *connector);
-
  /**
  * Description: programming display registers as per the scaling property.
  *
@@ -243,18 +154,6 @@ int android_hdmi_crtc_mode_set(struct drm_crtc *crtc,
 				int x, int y,
 				struct drm_framebuffer *old_fb);
 
-/**
- * Description: encoder mode set for hdmi pipe.
- *
- * @encoder:		hdmi encoder
- * @mode:		mode requested
- * @adjusted_mode:	adjusted mode
- *
- * Returns:	none.
- */
-void android_hdmi_enc_mode_set(struct drm_encoder *encoder,
-			       struct drm_display_mode *mode,
-			       struct drm_display_mode *adjusted_mode);
 
 /**
  * Store the HDMI registers and enable the display
@@ -262,15 +161,15 @@ void android_hdmi_enc_mode_set(struct drm_encoder *encoder,
  *	psDrmDev: Drm Device.
  * Returns: none
  */
-void android_hdmi_restore_and_enable_display(struct drm_device *dev);
+void android_hdmi_resume_display(struct drm_device *dev);
 
 /**
- * Save the HDMI display registers
+ * Save the HDMI display registers and disable the display
  * Input parameters:
  *	psDrmDev: Drm Device.
  * Returns: none
  */
-void android_hdmi_save_display_registers(struct drm_device *dev);
+void android_hdmi_suspend_display(struct drm_device *dev);
 
 /**
  * Prepare HDMI EDID-like data and copy it to the given buffer
@@ -282,15 +181,6 @@ void android_hdmi_save_display_registers(struct drm_device *dev);
  *		-EINVAL on NULL input arguments
  */
 int android_hdmi_get_eld(struct drm_device *dev, void *eld);
-
-
-/**
- * disable HDMI display
- * Input parameters:
- *	psDrmDev: Drm Device.
- * Returns: none
- */
-void android_disable_hdmi(struct drm_device *dev);
 
 /**
  * Enable HDCP on HDMI display
@@ -333,18 +223,6 @@ bool android_check_hdmi_hdcp_link_status(struct drm_device *dev);
  */
 bool android_query_hdmi_hdcp_sink(struct drm_device *dev, uint8_t *bksv);
 
-/**
- * Description: hdmi helper function to detect whether hdmi/dvi
- *		is connected or not.
- *
- * @connector:	hdmi connector
- *
- * Returns:	connector_status_connected if hdmi/dvi is connected.
- *		connector_status_disconnected if hdmi/dvi is not connected.
- */
-enum drm_connector_status android_hdmi_detect(struct drm_connector
-					      *connector, bool force);
-
 
 /**
  * Description: check whether hdmi/dvi is connected or not.
@@ -356,35 +234,6 @@ enum drm_connector_status android_hdmi_detect(struct drm_connector
  */
 bool android_hdmi_is_connected(struct drm_device *dev);
 
-/**
- * Description: Turn on or off HDMI power rails.
- *
- * @on:	true or false
- *
- * Returns: none
- */
-void android_hdmi_set_power_rails(bool on);
-
-
-/**
- * Description: hdmi helper function to manage power to the display (dpms)
- *
- * @encoder:	hdmi encoder
- * @mode:	dpms on or off
- *
- * Returns:	none
- */
-void android_hdmi_dpms(struct drm_encoder *encoder, int mode);
-
-/**
- * Description: hdmi helper function to manage power to the connector (dpms)
- *
- * @connector: drm_connector
- * @mode:	  dpms on or off
- *
- * Returns:	none
- */
-void android_hdmi_connector_dpms(struct drm_connector *connector, int mode);
 
 #else /* CONFIG_SUPPORT_HDMI */
 
@@ -392,27 +241,6 @@ static inline void android_hdmi_driver_init(struct drm_device *dev,
 						void *mode_dev) {}
 
 static inline void android_hdmi_driver_setup(struct drm_device *dev) {}
-
-static inline int android_hdmi_mode_valid(struct drm_connector *connector,
-				struct drm_display_mode *mode) { return 0; }
-
-static inline int android_hdmi_get_modes(struct drm_connector *connector)
-				{ return 0; }
-
-static inline void android_hdmi_encoder_save(struct drm_encoder *encoder) {}
-
-static inline void android_hdmi_encoder_restore(struct drm_encoder *encoder) {}
-
-static inline bool android_hdmi_mode_fixup(struct drm_encoder *encoder,
-			     struct drm_display_mode *mode,
-			     struct drm_display_mode *adjusted_mode)
-{ return false; }
-
-static inline void android_hdmi_connector_save(struct drm_connector
-					       *connector) {}
-
-static inline void android_hdmi_connector_restore(struct drm_connector
-						  *connector) {}
 
 static inline int android_hdmi_set_scaling_property(struct drm_crtc *crtc)
 { return 0; }
@@ -423,16 +251,11 @@ static inline int android_hdmi_crtc_mode_set(struct drm_crtc *crtc,
 				int x, int y,
 				struct drm_framebuffer *old_fb) { return 0; }
 
-static inline void android_hdmi_enc_mode_set(struct drm_encoder *encoder,
-				struct drm_display_mode *mode,
-				struct drm_display_mode *adjusted_mode) {}
-
-static inline void android_hdmi_restore_and_enable_display(
+static inline void android_hdmi_resume_display(
 				struct drm_device *dev) {}
 
-static inline void android_hdmi_save_display_registers(
+static inline void android_hdmi_suspend_display(
 				struct drm_device *dev) {}
-
 static inline void android_disable_hdmi(struct drm_device *dev) {}
 
 static inline int android_hdmi_get_eld(struct drm_device *dev, void *eld)
@@ -450,18 +273,8 @@ static inline bool android_query_hdmi_hdcp_sink(struct drm_device *dev,
 						uint8_t *bksv)
 { return false; }
 
-static inline enum drm_connector_status android_hdmi_detect(struct drm_connector
-							 *connector, bool force)
-{ return connector_status_disconnected; }
-
 static inline bool android_hdmi_is_connected(struct drm_device *dev)
 { return false; }
-
-static inline void android_hdmi_set_power_rails(bool on)
-{}
-
-static inline void android_hdmi_dpms(struct drm_encoder *encoder,
-				int mode) {}
 
 #endif /* CONFIG_SUPPORT_HDMI */
 

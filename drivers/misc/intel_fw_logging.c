@@ -34,12 +34,12 @@
 
 #include <linux/io.h>
 #include <asm/intel_scu_ipc.h>
+#include <asm/intel_scu_ipcutil.h>
 
 #include "intel_fabricid_def.h"
 
 #define IPCMSG_GET_HOBADDR		0xE5
 #define IPCMSG_CLEAR_FABERROR		0xE3
-#define OSHOB_SIZE			120
 
 /*
    OSHOB - OS Handoff Buffer
@@ -53,11 +53,24 @@
 */
 
 #define OSFAB_ERR_OFFSET		0x38
+#define OSFAB_ERR_EXTENDED_OFFSET       0x84
 #define MAX_BUFFER_SIZE			1024
 #define FID_MSB_MAPPING			32
 #define MAX_FID_REG_LEN			32
 #define MAX_NUM_LOGDWORDS		12
+#define MAX_NUM_LOGDWORDS_EXTENDED      9
+#define MAX_NUM_ALL_LOGDWORDS           (2 + (MAX_NUM_LOGDWORDS + \
+						MAX_NUM_LOGDWORDS_EXTENDED))
+#define MAX_RAW_DWORDS_SIZE             (16  * MAX_NUM_ALL_LOGDWORDS)
+#define MAX_FULL_SIZE                   (MAX_BUFFER_SIZE + MAX_RAW_DWORDS_SIZE)
 #define FABERR_INDICATOR		0x15
+#define FWERR_INDICATOR			0x7
+#define UNDEFLVL1ERR_IND		0x11
+#define UNDEFLVL2ERR_IND		0x22
+#define SWDTERR_IND			0xdd
+#define MEMERR_IND			0xf501
+#define INSTERR_IND			0xf502
+#define ECCERR_IND			0xf504
 #define FLAG_HILOW_MASK			8
 #define FAB_ID_MASK			7
 #define MAX_AGENT_IDX			15
@@ -100,7 +113,7 @@ union flag_status_hilo {
 };
 
 static void __iomem *oshob_base;
-static char log_buffer[MAX_BUFFER_SIZE] = {0};
+static char log_buffer[MAX_FULL_SIZE] = {0};
 
 static char *Fabric_Names[] = {
 	"\nFull Chip Fabric [error]\n\n",
@@ -141,8 +154,8 @@ static int intel_fw_logging_proc_read(char *buffer, char **start, off_t offset,
 		return 0;
 	} else {
 		/* Fill the buffer, return the buffer size */
-		memcpy(buffer, log_buffer, MAX_BUFFER_SIZE);
-		return MAX_BUFFER_SIZE;
+		memcpy(buffer, log_buffer, MAX_FULL_SIZE);
+		return MAX_FULL_SIZE;
 	}
 }
 #endif /* CONFIG_PROC_FS */
@@ -151,6 +164,7 @@ static void __iomem *get_oshob_addr(void)
 {
 	int ret;
 	u32 oshob_base;
+	u16 oshob_size;
 	void __iomem *oshob_addr;
 
 	ret = intel_scu_ipc_command(IPCMSG_GET_HOBADDR, 0, NULL,
@@ -161,8 +175,16 @@ static void __iomem *get_oshob_addr(void)
 		return NULL;
 	}
 
-	pr_debug("OSHOB addr is 0x%x\n", oshob_base);
-	oshob_addr = ioremap_nocache(oshob_base, OSHOB_SIZE);
+	oshob_size = intel_scu_ipc_get_oshob_size();
+
+	pr_debug("OSHOB addr is 0x%x size is %d\n", oshob_base, oshob_size);
+
+	if (oshob_size == 0) {
+		pr_err("size of oshob is null!!\n");
+		return NULL;
+	}
+
+	oshob_addr = ioremap_nocache(oshob_base, oshob_size);
 
 	if (!oshob_addr) {
 		pr_err("ioremap of oshob address failed!!\n");
@@ -185,8 +207,8 @@ static void get_fabric_error_cause_detail(char *buf, u32 FabId,
 			ptr = fabric_error_lookup(FabId, index, IsHiDword);
 
 			if (ptr != NULL && strlen(ptr)) {
-				strcat(buf, ptr);
-				strcat(buf, "\n");
+				strlcat(buf, ptr, MAX_BUFFER_SIZE);
+				strlcat(buf, "\n", MAX_BUFFER_SIZE);
 			}
 		}
 
@@ -194,7 +216,7 @@ static void get_fabric_error_cause_detail(char *buf, u32 FabId,
 		fid_mask <<= 1;
 	}
 
-	strcat(buf, "\n");
+	strlcat(buf, "\n", MAX_BUFFER_SIZE);
 }
 
 static void get_additional_error(char *buf, int num_err_log,
@@ -204,7 +226,8 @@ static void get_additional_error(char *buf, int num_err_log,
 	char temp[100], str[50];
 	union error_log_dw10 log;
 
-	strcat(buf, "\nAdditional logs associated with error(s): ");
+	strlcat(buf, "\nAdditional logs associated with error(s): ",
+							MAX_BUFFER_SIZE);
 
 	if (num_err_log) {
 
@@ -213,43 +236,46 @@ static void get_additional_error(char *buf, int num_err_log,
 			sprintf(temp, "\nerror_log: 0x%X\n",
 					*(faberr_dwords + i));
 
-			strcat(buf, temp);
+			strlcat(buf, temp, MAX_BUFFER_SIZE);
 			sprintf(temp, "error_addr: 0x%X\n",
 				*(faberr_dwords + i + 1));
 
-			strcat(buf, temp);
+			strlcat(buf, temp, MAX_BUFFER_SIZE);
 			log.data = *(faberr_dwords + i);
 
-			strcat(buf, "\nDecoded error log detail\n");
-			strcat(buf, "---------------------------\n\n");
+			strlcat(buf, "\nDecoded error log detail\n",
+							MAX_BUFFER_SIZE);
+			strlcat(buf, "---------------------------\n\n",
+							MAX_BUFFER_SIZE);
 
 			if (log.fields.agent_idx > MAX_AGENT_IDX)
 				sprintf(str, "Unknown agent index (%d)\n",
 					log.fields.agent_idx);
 			else
-				sprintf(str, "%s\n",
+				snprintf(str, sizeof(str)-1, "%s\n",
 					Agent_Names[log.fields.agent_idx]);
 
-			sprintf(temp, "Agent Index: %s\n", str);
-			strcat(buf, temp);
+			snprintf(temp, sizeof(temp)-1, "Agent Index:%s\n", str);
+			strlcat(buf, temp, MAX_BUFFER_SIZE);
 
 			sprintf(temp, "Cmd initiator ID: %d\n",
 						log.fields.initid);
-			strcat(buf, temp);
+			strlcat(buf, temp, MAX_BUFFER_SIZE);
 
 			sprintf(temp, "Command: %d\n", log.fields.cmd);
-			strcat(buf, temp);
+			strlcat(buf, temp, MAX_BUFFER_SIZE);
 
 			sprintf(temp, "Code: %d\n", log.fields.err_code);
-			strcat(buf, temp);
+			strlcat(buf, temp, MAX_BUFFER_SIZE);
 
 			if (log.fields.multi_err)
-				strcat(buf, "\n* Multiple errors detected!\n");
+				strlcat(buf, "\n Multiple errors detected!\n",
+							MAX_BUFFER_SIZE);
 
 			i += 2; /* Skip one error_log/addr pair */
 		}
 	} else {
-		strcat(buf, "Not present\n");
+		strlcat(buf, "Not present\n", MAX_BUFFER_SIZE);
 	}
 }
 
@@ -277,9 +303,11 @@ static int create_fwerr_log(char *output_buf, void __iomem *oshob_ptr)
 	union error_log_dw10 err_log_dw10;
 	union flag_status_hilo flag_status;
 	union fabric_status_dw0 err_status_dw0;
-	u32 id, faberr_dwords[MAX_NUM_LOGDWORDS] = {0};
+	u32 id = FAB_ID_UNKNOWN;
+	u32 faberr_dwords[MAX_NUM_LOGDWORDS + MAX_NUM_LOGDWORDS_EXTENDED] = {0};
 	int count, num_flag_status, num_err_logs;
 	int prev_id = FAB_ID_UNKNOWN, offset = 0;
+	char temp[100];
 
 	void __iomem *fabric_err_dump_offset = oshob_ptr + OSFAB_ERR_OFFSET;
 
@@ -288,18 +316,73 @@ static int create_fwerr_log(char *output_buf, void __iomem *oshob_ptr)
 						count * sizeof(u32));
 	}
 
+	/* Get 9 additional DWORDS */
+	fabric_err_dump_offset = oshob_ptr + OSFAB_ERR_EXTENDED_OFFSET;
+
+	for (count = 0; count < MAX_NUM_LOGDWORDS_EXTENDED; count++) {
+		faberr_dwords[count + MAX_NUM_LOGDWORDS] =
+			readl(fabric_err_dump_offset + sizeof(u32) * count);
+	}
+
 	err_status_dw0.data = faberr_dwords[0];
 	err_log_dw10.data = faberr_dwords[10];
 
-	/* No fabric error if tenth DW signature field is not 10101 */
+	/* No SCU/fabric error if tenth DW signature field is not 10101 */
 	if (err_log_dw10.fields.signature != FABERR_INDICATOR)
 		return 0;
+
+	/* FW error if tenth DW reserved field is 111 */
+	if ((((err_status_dw0.data & 0xFFFF) == SWDTERR_IND) ||
+		((err_status_dw0.data & 0xFFFF) == UNDEFLVL1ERR_IND) ||
+		((err_status_dw0.data & 0xFFFF) == UNDEFLVL2ERR_IND) ||
+		((err_status_dw0.data & 0xFFFF) == MEMERR_IND) ||
+		((err_status_dw0.data & 0xFFFF) == INSTERR_IND) ||
+		((err_status_dw0.data & 0xFFFF) == ECCERR_IND)) &&
+		(err_log_dw10.fields.reserved1 == FWERR_INDICATOR)) {
+
+		sprintf(output_buf, "HW WDT expired");
+
+		switch (err_status_dw0.data & 0xFFFF) {
+		case SWDTERR_IND:
+			strcat(output_buf,
+			" without facing any exception.\n\n");
+			break;
+		case MEMERR_IND:
+			strcat(output_buf,
+			" following a Memory Error exception.\n\n");
+			break;
+		case INSTERR_IND:
+			strcat(output_buf,
+			" following an Instruction Error exception.\n\n");
+			break;
+		case ECCERR_IND:
+			strcat(output_buf,
+			" following a SRAM ECC Error exception.\n\n");
+			break;
+		default:
+			strcat(output_buf,
+			".\n\n");
+			break;
+		}
+		strcat(output_buf, "HW WDT debug data:\n");
+		strcat(output_buf, "===================\n");
+		for (count = 0;
+			count < MAX_NUM_LOGDWORDS + MAX_NUM_LOGDWORDS_EXTENDED;
+			count++) {
+			sprintf(temp, "DW%d:0x%08x\n",
+					count, faberr_dwords[count]);
+			strcat(output_buf, temp);
+		}
+		return strlen(output_buf);
+	}
 
 	num_flag_status = err_status_dw0.fields.flag_status_cnt;
 	/* num_err_logs indicates num of error_log/addr pairs */
 	num_err_logs = err_log_dw10.fields.num_err_logs * 2;
 
-	sprintf(output_buf, "SCU Fabric summary:\n");
+	sprintf(output_buf,
+		"HW WDT fired following a Fabric Error exception.\n\n");
+	strcat(output_buf, "Fabric Error debug data:\n");
 	strcat(output_buf, "===================\n");
 
 	for (count = 0; count < num_flag_status; count++) {
@@ -314,7 +397,7 @@ static int create_fwerr_log(char *output_buf, void __iomem *oshob_ptr)
 		 */
 
 		if (prev_id != id || id == FAB_ID_UNKNOWN) {
-			strcat(output_buf, ptr);
+			strlcat(output_buf, ptr, MAX_BUFFER_SIZE);
 			prev_id = id;
 		}
 
@@ -347,6 +430,15 @@ static int create_fwerr_log(char *output_buf, void __iomem *oshob_ptr)
 
 	get_additional_error(output_buf, num_err_logs, &faberr_dwords[offset],
 						MAX_NUM_LOGDWORDS - offset);
+
+	strlcat(output_buf, "\n\n\nAdditional debug data:\n\n", MAX_FULL_SIZE);
+	for (count = 0;
+		count < MAX_NUM_LOGDWORDS + MAX_NUM_LOGDWORDS_EXTENDED;
+		count++) {
+		sprintf(temp, "DW%d:0x%08x\n",
+			count, faberr_dwords[count]);
+		strlcat(output_buf, temp, MAX_FULL_SIZE);
+	}
 	return strlen(output_buf);
 }
 

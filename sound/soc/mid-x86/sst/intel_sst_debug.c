@@ -53,6 +53,18 @@
 	    + (num_lines) \
 	    + (2 * sizeof(void *) + 4) * (num_lines))
 
+#define DMA_NUM_CH	8
+
+/* Register Offsets of SSP3 and LPE DMA */
+u32 ssp_reg_off[] = {0x0, 0x4, 0x8, 0xC, 0x10, 0x28, 0x2C, 0x30, 0x34, 0x38,
+			0x3C, 0x40};
+/* Excludes the channel registers */
+u32 dma_reg_off[] = {0x2C0, 0x2C8, 0x2D0, 0x2D8, 0x2E0, 0x2E8,
+		0x2F0, 0x2F8, 0x300, 0x308, 0x310, 0x318, 0x320, 0x328, 0x330,
+		0x338, 0x340, 0x348, 0x350, 0x358, 0x360, 0x368, 0x370, 0x378,
+		0x380, 0x388, 0x390, 0x398, 0x3A0, 0x3A8, 0x3B0, 0x3C8, 0x3D0,
+		0x3D8, 0x3E0, 0x3E8, 0x3F0, 0x3F8};
+
 static void dump_bytes(const void *data, size_t sz, char *dest,
 		       unsigned char word_sz, unsigned char words_in_line)
 {
@@ -447,7 +459,7 @@ static ssize_t sst_debug_lpe_log_enable_write(struct file *file,
 		goto put_pm_runtime;
 	}
 
-	ret_val = sst_create_large_msg(&msg);
+	ret_val = sst_create_ipc_msg(&msg, true);
 	if (ret_val != 0)
 		goto put_pm_runtime;
 
@@ -646,7 +658,13 @@ static ssize_t sst_debug_readme_read(struct file *file, char __user *user_buf,
 		"9. echo lli > fw_dwnld_mode, This will set the firmware download mode to\n"
 					"dma lli mode\n"
 		"10. echo dma > fw_dwnld_mode, This will set the firmware download mode to\n"
-					"dma single block mode\n";
+					"dma single block mode\n"
+		"11. cat fw_ssp_reg,This will dump the ssp register contents\n"
+		"12. cat fw_dma_reg,This will dump the dma register contents\n"
+		"13. iram_dump & dram_dump, interfaces provide mmap support to\n"
+		"get the iram and dram dump these, buffers will have data only\n"
+		"after the recovery is triggered\n";
+
 
 	return simple_read_from_buffer(user_buf, count, ppos,
 			buf, strlen(buf));
@@ -871,6 +889,178 @@ static const struct file_operations sst_debug_dwnld_mode = {
 	.write = sst_debug_dwnld_mode_write,
 };
 
+static ssize_t sst_debug_ssp_reg_read(struct file *file,
+			char __user *user_buf, size_t count, loff_t *ppos)
+{
+	char buf[300]; /* 22 chars * 12 reg = 264 ~ 300 */
+	int index = 0, pos = 0;
+	struct intel_sst_drv *drv = file->private_data;
+
+	/* FIXME: support for other platforms as well */
+	if (sst_drv_ctx->pci_id != SST_CLV_PCI_ID) {
+		pr_err("Currently only supported for ctp\n");
+		return -EPERM;
+	}
+
+	pm_runtime_get_sync(&drv->pci->dev);
+	buf[0] = 0;
+
+	while (index < ARRAY_SIZE(ssp_reg_off)) {
+		pos += sprintf(buf + pos, "Reg: 0x%x: 0x%x\n", ssp_reg_off[index],
+			sst_reg_read(sst_drv_ctx->debugfs.ssp, ssp_reg_off[index]));
+		index++;
+	}
+	pm_runtime_put(&drv->pci->dev);
+
+	return simple_read_from_buffer(user_buf, count, ppos,
+					buf, pos);
+}
+
+static const struct file_operations sst_debug_ssp_reg = {
+		.open = sst_debug_open,
+		.read = sst_debug_ssp_reg_read,
+};
+
+static ssize_t sst_debug_dma_reg_read(struct file *file,
+		char __user *user_buf, size_t count, loff_t *ppos)
+{
+	char *buf;
+	int index = 0, pos = 0, i;
+	int off = 0, ret;
+	struct intel_sst_drv *drv = file->private_data;
+
+	/* FIXME: support for other platforms as well */
+	if (sst_drv_ctx->pci_id != SST_CLV_PCI_ID) {
+		pr_err("Currently only supported for ctp\n");
+		return -EPERM;
+	}
+
+	buf = vmalloc(2500); /* 32 chars * 78 regs = 2496 ~ 2500 */
+	if (!buf) {
+		pr_err("%s: no memory\n", __func__);
+		return -ENOMEM;
+	}
+
+	pm_runtime_get_sync(&drv->pci->dev);
+	buf[0] = 0;
+
+	/* Dump the DMA channel registers */
+	for (i = 0; i < DMA_NUM_CH; i++) {
+		pos += sprintf(buf + pos, "SAR%d: 0x%x: 0x%llx\n", i, off,
+			sst_reg_read64(sst_drv_ctx->debugfs.dma_reg, off));
+		off += 8;
+
+		pos += sprintf(buf + pos, "DAR%d: 0x%x: 0x%llx\n", i, off,
+			sst_reg_read64(sst_drv_ctx->debugfs.dma_reg, off));
+		off += 8;
+
+		pos += sprintf(buf + pos, "LLP%d: 0x%x: 0x%llx\n", i, off,
+			sst_reg_read64(sst_drv_ctx->debugfs.dma_reg, off));
+		off += 8;
+
+		pos += sprintf(buf + pos, "CTL%d: 0x%x: 0x%llx\n", i, off,
+			sst_reg_read64(sst_drv_ctx->debugfs.dma_reg, off));
+		off += 0x28;
+
+		pos += sprintf(buf + pos, "CFG%d: 0x%x: 0x%llx\n", i, off,
+			sst_reg_read64(sst_drv_ctx->debugfs.dma_reg, off));
+		off += 0x18;
+	}
+
+	/* Dump the remaining DMA registers */
+	while (index < ARRAY_SIZE(dma_reg_off)) {
+		pos += sprintf(buf + pos, "Reg: 0x%x: 0x%llx\n", dma_reg_off[index],
+			sst_reg_read64(sst_drv_ctx->debugfs.dma_reg, dma_reg_off[index]));
+		index++;
+	}
+	pm_runtime_put(&drv->pci->dev);
+
+	ret = simple_read_from_buffer(user_buf, count, ppos,
+					buf, pos);
+	vfree(buf);
+	return ret;
+}
+
+static const struct file_operations sst_debug_dma_reg = {
+		.open = sst_debug_open,
+		.read = sst_debug_dma_reg_read,
+};
+
+/**
+ * sst_debug_remap - function remaps the iram/dram buff to userspace
+ *
+ * @vma: vm_area_struct passed from userspace
+ * @buf: Physical addr of the pointer to be remapped
+ * @type: type of the buffer
+ *
+ * Remaps the kernel buffer to the userspace
+ */
+static int sst_debug_remap(struct vm_area_struct *vma, char *buf,
+					enum sst_ram_type type)
+{
+	int retval, length;
+	void *mem_area;
+
+	if (!buf)
+		return -EIO;
+
+	length = vma->vm_end - vma->vm_start;
+	pr_debug("iram length 0x%x\n", length);
+
+	/* round it up to the page bondary  */
+	mem_area = (void *)PAGE_ALIGN((unsigned int)buf);
+
+	/* map the whole physically contiguous area in one piece  */
+	retval = remap_pfn_range(vma,
+			vma->vm_start,
+			virt_to_phys((void *)mem_area) >> PAGE_SHIFT,
+			length,
+			vma->vm_page_prot);
+	if (retval)
+		pr_err("mapping failed %d ", retval);
+	return retval;
+}
+
+int sst_debug_iram_dump_mmap(struct file *file, struct vm_area_struct *vma)
+{
+	int retval;
+	struct intel_sst_drv *sst = sst_drv_ctx;
+
+	if (sst->pci_id == SST_MRFLD_PCI_ID) {
+		pr_err("Currently not supported for mrfld\n");
+		return -EPERM;
+	}
+
+	retval = sst_debug_remap(vma, sst->dump_buf.iram_buf.buf, SST_IRAM);
+
+	return retval;
+}
+
+static const struct file_operations sst_debug_iram_dump = {
+	.open = sst_debug_open,
+	.mmap = sst_debug_iram_dump_mmap,
+};
+
+int sst_debug_dram_dump_mmap(struct file *file, struct vm_area_struct *vma)
+{
+	int retval;
+	struct intel_sst_drv *sst = sst_drv_ctx;
+
+	if (sst->pci_id == SST_MRFLD_PCI_ID) {
+		pr_err("Currently not supported for mrfld\n");
+		return -EPERM;
+	}
+
+	retval = sst_debug_remap(vma, sst->dump_buf.dram_buf.buf, SST_DRAM);
+
+	return retval;
+}
+
+static const struct file_operations sst_debug_dram_dump = {
+	.open = sst_debug_open,
+	.mmap = sst_debug_dram_dump_mmap,
+};
+
 void sst_debugfs_init(struct intel_sst_drv *sst)
 {
 	sst->debugfs.root = debugfs_create_dir("sst", NULL);
@@ -963,6 +1153,34 @@ void sst_debugfs_init(struct intel_sst_drv *sst)
 	if (!debugfs_create_file("fw_dwnld_mode", 0600, sst->debugfs.root,
 				sst, &sst_debug_dwnld_mode)) {
 		pr_err("Failed to create fw_dwnld_mode file\n");
+		return;
+	}
+
+	/* ssp_reg interface */
+	if (!debugfs_create_file("fw_ssp_reg", 0400, sst->debugfs.root,
+				sst, &sst_debug_ssp_reg)) {
+		pr_err("Failed to create fw_ssp_reg file\n");
+		return;
+	}
+
+	/* dma_reg interface */
+	if (!debugfs_create_file("fw_dma_reg", 0400, sst->debugfs.root,
+				sst, &sst_debug_dma_reg)) {
+		pr_err("Failed to create fw_dma_reg file\n");
+		return;
+	}
+
+	/* Dump Iram */
+	if (!debugfs_create_file("iram_dump", 0400, sst->debugfs.root,
+				sst, &sst_debug_iram_dump)) {
+		pr_err("Failed to create iram_dump file\n");
+		return;
+	}
+
+	/* dump Dram */
+	if (!debugfs_create_file("dram_dump", 0400, sst->debugfs.root,
+				sst, &sst_debug_dram_dump)) {
+		pr_err("Failed to create dram_dump file\n");
 		return;
 	}
 

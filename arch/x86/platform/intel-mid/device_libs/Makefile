@@ -1,9 +1,9 @@
-
 CFLAGS_platform_clv_regulator.o			:= -Werror
 
 # IPC Devices
 obj-y									+= platform_mrfld_audio.o
 obj-y									+= platform_ipc.o
+obj-y									+= platform_scu_mip.o
 obj-y									+= platform_msic.o
 obj-y									+= platform_msic_audio.o
 obj-y									+= platform_msic_gpio.o
@@ -17,10 +17,12 @@ obj-$(subst m,y,$(CONFIG_MSIC_GPADC))					+= platform_msic_adc.o
 obj-$(subst m,y,$(CONFIG_BATTERY_INTEL_MDF))				+= platform_msic_battery.o
 obj-$(subst m,y,$(CONFIG_INTEL_MID_POWER_BUTTON))			+= platform_msic_power_btn.o
 obj-$(subst m,y,$(CONFIG_GPIO_INTEL_PMIC))				+= platform_pmic_gpio.o
+obj-$(subst m,y,$(CONFIG_MID_PWM))                                      += platform_mid_pwm.o
 obj-$(subst m,y,$(CONFIG_INTEL_MFLD_THERMAL))				+= platform_msic_thermal.o
 obj-$(subst m,y,$(CONFIG_SENSORS_MID_VDD))				+= platform_msic_vdd.o
 obj-$(subst m,y,$(CONFIG_PMIC_CCSM))                                    += platform_mrfl_pmic.o
 obj-$(subst m,y,$(CONFIG_I2C_PMIC))                                    += platform_mrfl_pmic_i2c.o
+obj-$(subst m,y,$(CONFIG_INTEL_SCU_FLIS))				+= platform_scu_flis.o
 # I2C Devices
 obj-$(subst m,y,$(CONFIG_SENSORS_EMC1403))				+= platform_emc1403.o
 obj-$(subst m,y,$(CONFIG_SENSORS_HMC5883))				+= platform_hmc5883.o
@@ -70,6 +72,8 @@ obj-$(subst m,y,$(CONFIG_HSI_ARASAN))					+= platform_hsi_modem.o
 obj-$(subst m,y,$(CONFIG_HSI_ARASAN))					+= platform_ffl_modem.o
 obj-$(subst m,y,$(CONFIG_HSI_ARASAN))					+= platform_edlp_modem.o
 obj-$(subst m,y,$(CONFIG_HSI_ARASAN))					+= platform_logical_modem.o
+# Modem control Device
+obj-$(subst m,y,$(CONFIG_MDM_CTRL))					+= platform_modem_ctrl.o
 # UART Devices
 obj-$(subst m,y,$(CONFIG_SERIAL_MFD_HSU))				+= platform_hsu.o
 # MISC Devices
@@ -79,5 +83,7 @@ obj-$(subst m,y,$(CONFIG_ANDROID_SWITCH_MID_USER_NOTIFY))		+= platform_switch_mi
 obj-$(subst m,y,$(CONFIG_I2C_GPIO))					+= platform_i2c_gpio.o
 # WIFI
 obj-$(subst m,y,$(CONFIG_WL12XX_PLATFORM_DATA))				+= platform_wl12xx.o
+obj-$(subst m,y,$(CONFIG_BCM43XX_PLATFORM_DATA))			+= platform_bcm43xx.o
 # Bluetooth
 obj-$(subst m,y,$(CONFIG_TI_ST))					+= platform_btwilink.o
+obj-$(subst m,y,$(CONFIG_BCM_BT_LPM))					+= platform_btlpm.o

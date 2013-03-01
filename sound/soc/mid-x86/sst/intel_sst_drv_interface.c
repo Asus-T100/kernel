@@ -55,6 +55,7 @@ static void sst_restore_fw_context(void)
 	struct ipc_post *msg = NULL;
 	int retval = 0;
 	unsigned long irq_flags;
+	struct sst_block *block;
 
 	/* Skip the context restore, when fw_clear_context is set */
 	/* fw_clear_context set through debugfs support */
@@ -70,14 +71,15 @@ static void sst_restore_fw_context(void)
 		return;
 	pr_debug("restoring context......\n");
 	/*send msg to fw*/
-	if (sst_create_large_msg(&msg))
-		return;
+	retval = sst_create_block_and_ipc_msg(&msg, true, sst_drv_ctx, &block,
+			IPC_IA_SET_FW_CTXT, 0);
+	if (retval) {
+		pr_err("Can't allocate block/msg. No restore fw_context\n");
+		return retval;
+	}
+
 	sst_set_fw_state_locked(sst_drv_ctx, SST_FW_CTXT_RESTORE);
 	sst_fill_header(&msg->header, IPC_IA_SET_FW_CTXT, 1, 0);
-	sst_drv_ctx->alloc_block[0].sst_id = FW_DWNL_ID;
-	sst_drv_ctx->alloc_block[0].ops_block.condition = false;
-	sst_drv_ctx->alloc_block[0].ops_block.ret_code = 0;
-	sst_drv_ctx->alloc_block[0].ops_block.on = true;
 
 	msg->header.part.data = sizeof(fw_context) + sizeof(u32);
 	fw_context.address = virt_to_phys((void *)sst_drv_ctx->fw_cntx);
@@ -89,9 +91,8 @@ static void sst_restore_fw_context(void)
 	list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
 	spin_unlock_irqrestore(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 	sst_drv_ctx->ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
-	retval = sst_wait_timeout(sst_drv_ctx,
-				&sst_drv_ctx->alloc_block[0].ops_block);
-	sst_drv_ctx->alloc_block[0].sst_id = BLOCK_UNINIT;
+	retval = sst_wait_timeout(sst_drv_ctx, block);
+	sst_free_block(sst_drv_ctx, block);
 	if (retval)
 		pr_err("sst_restore_fw_context..timeout!\n");
 	return;
@@ -184,6 +185,8 @@ int sst_get_stream_allocated(struct snd_sst_params *str_param,
 		struct snd_sst_lib_download **lib_dnld)
 {
 	int retval, str_id;
+	struct sst_block *block;
+	struct snd_sst_alloc_response *response;
 	struct stream_info *str_info;
 
 	pr_debug("In %s\n", __func__);
@@ -191,33 +194,52 @@ int sst_get_stream_allocated(struct snd_sst_params *str_param,
 		pr_debug("Sending LPE mixer algo Params\n");
 		sst_send_lpe_mixer_algo_params();
 	}
-	retval = sst_alloc_stream((char *) str_param);
+	block = sst_create_block(sst_drv_ctx, 0, 0);
+	if (block == NULL)
+		return -ENOMEM;
 
+	retval = sst_alloc_stream((char *) str_param, block);
 	if (retval < 0) {
 		pr_err("sst_alloc_stream failed %d\n", retval);
-		return retval;
+		goto free_block;
 	}
 	pr_debug("Stream allocated %d\n", retval);
 	str_id = retval;
 	str_info = get_stream_info(str_id);
 
 	/* Block the call for reply */
-	retval = sst_wait_timeout(sst_drv_ctx, &str_info->ctrl_blk);
-	if ((retval != 0) || (str_info->ctrl_blk.ret_code != 0)) {
-		pr_err("sst: FW alloc failed retval %d, ret_code %d\n",\
-				retval, str_info->ctrl_blk.ret_code);
+	retval = sst_wait_timeout(sst_drv_ctx, block);
+	if (block->data) {
+		response = (struct snd_sst_alloc_response *)block->data;
+		retval = response->str_type.result;
+		if (!retval)
+			goto free_block;
+
+		pr_err("sst: FW alloc failed retval %d\n", retval);
 		if (retval == SST_ERR_STREAM_IN_USE) {
 			pr_err("sst:FW not in clean state, send free for:%d\n",
 					str_id);
 			sst_free_stream(str_id);
+			*lib_dnld = NULL;
 		}
-		str_id = -str_info->ctrl_blk.ret_code; /*return error*/
-		if (str_id == 0)
-			str_id = retval; /*FW timed out*/
-		*lib_dnld = str_info->ctrl_blk.data;
-		sst_clean_stream(str_info);
-	} else
-		pr_debug("FW Stream allocated success\n");
+		if (retval == SST_LIB_ERR_LIB_DNLD_REQUIRED) {
+			*lib_dnld = kzalloc(sizeof(**lib_dnld), GFP_KERNEL);
+			if (*lib_dnld == NULL) {
+				str_id = -ENOMEM;
+				goto free_block;
+			}
+			memcpy(*lib_dnld, &response->lib_dnld, sizeof(**lib_dnld));
+			sst_clean_stream(str_info);
+		} else {
+			*lib_dnld = NULL;
+		}
+		str_id = -retval;
+	} else if (retval != 0) {
+		pr_err("sst: FW alloc failed retval %d\n", retval);
+		str_id = retval;
+	}
+free_block:
+	sst_free_block(sst_drv_ctx, block);
 	return str_id; /*will ret either error (in above if) or correct str id*/
 }
 
@@ -282,7 +304,7 @@ int sst_get_wdsize(struct snd_sst_params *str_param)
  */
 int sst_get_stream(struct snd_sst_params *str_param)
 {
-	int i, retval;
+	int retval;
 	struct stream_info *str_info;
 	struct snd_sst_lib_download *lib_dnld;
 
@@ -292,26 +314,16 @@ int sst_get_stream(struct snd_sst_params *str_param)
 
 	if (retval == -(SST_LIB_ERR_LIB_DNLD_REQUIRED)) {
 		/* codec download is required */
-		struct snd_sst_alloc_response *response;
 
 		pr_debug("Codec is required.... trying that\n");
 		if (lib_dnld == NULL) {
 			pr_err("lib download null!!! abort\n");
 			return -EIO;
 		}
-		i = sst_get_block_stream(sst_drv_ctx);
-		if (i < 0) {
-			pr_err("invalid value for number of stream\n ");
-			kfree(lib_dnld);
-			return i;
-		}
-		response = sst_drv_ctx->alloc_block[i].ops_block.data;
-		pr_debug("alloc block allocated = %d\n", i);
 
 		retval = sst_load_library(lib_dnld, str_param->ops);
 		kfree(lib_dnld);
 
-		sst_drv_ctx->alloc_block[i].sst_id = BLOCK_UNINIT;
 		if (!retval) {
 			pr_debug("codec was downloaded successfully\n");
 
@@ -471,6 +483,7 @@ static int sst_cdev_open(struct snd_sst_params *str_params,
 	} else {
 		pr_err("stream encountered error during alloc %d\n", str_id);
 		str_id = -EINVAL;
+		pm_runtime_put(&sst_drv_ctx->pci->dev);
 	}
 	return str_id;
 }
@@ -478,7 +491,13 @@ static int sst_cdev_open(struct snd_sst_params *str_params,
 static int sst_cdev_close(unsigned int str_id)
 {
 	int retval;
+	struct stream_info *stream;
+	stream = get_stream_info(str_id);
+	if (!stream)
+		return -EINVAL;
 	retval = sst_free_stream(str_id);
+	stream->compr_cb_param = NULL;
+	stream->compr_cb = NULL;
 	pm_runtime_put(&sst_drv_ctx->pci->dev);
 	return retval;
 
@@ -534,7 +553,7 @@ static int sst_cdev_set_metadata(unsigned int str_id,
 	if (!str_info)
 		return -EINVAL;
 
-	if (sst_create_large_msg(&msg))
+	if (sst_create_ipc_msg(&msg, 1))
 		return -ENOMEM;
 
 	sst_fill_header(&msg->header, IPC_IA_SET_STREAM_PARAMS, 1, str_id);
@@ -683,7 +702,7 @@ int sst_send_sync_msg(int ipc, int str_id)
 {
 	struct ipc_post *msg = NULL;
 
-	if (sst_create_short_msg(&msg))
+	if (sst_create_ipc_msg(&msg, false))
 		return -ENOMEM;
 	sst_fill_header(&msg->header, ipc, 0, str_id);
 	return sst_drv_ctx->ops->sync_post_message(msg);

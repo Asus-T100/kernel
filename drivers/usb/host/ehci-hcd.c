@@ -1316,6 +1316,10 @@ MODULE_LICENSE ("GPL");
 #include "ehci-sph-pci.c"
 #define INTEL_MID_SPH_HOST_DRIVER	ehci_sph_driver
 #endif
+#ifdef CONFIG_USB_HCD_HSIC
+#include "ehci-tangier-hsic-pci.c"
+#define INTEL_MID_HSIC_HOST_DRIVER	ehci_hsic_driver
+#endif
 #endif
 
 #ifdef CONFIG_USB_EHCI_FSL
@@ -1484,6 +1488,12 @@ static int __init ehci_hcd_init(void)
 	}
 #endif
 
+#ifdef CONFIG_USB_HCD_HSIC
+	retval = pci_register_driver(&INTEL_MID_HSIC_HOST_DRIVER);
+	if (retval < 0)
+		goto clean6;
+#endif
+
 #ifdef PLATFORM_DRIVER
 	retval = platform_driver_register(&PLATFORM_DRIVER);
 	if (retval < 0)
@@ -1520,6 +1530,11 @@ static int __init ehci_hcd_init(void)
 		goto clean5;
 #endif
 	return retval;
+
+#ifdef CONFIG_USB_HCD_HSIC
+clean6:
+	pci_unregister_driver(&INTEL_MID_HSIC_HOST_DRIVER);
+#endif
 
 #ifdef INTEL_MID_OTG_HOST_DRIVER
 clean5:

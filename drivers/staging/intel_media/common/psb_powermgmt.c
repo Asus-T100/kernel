@@ -906,8 +906,7 @@ void ospm_suspend_display(struct drm_device *dev)
 		mdfld_disable_crtc(dev, 0);
 	}
 	if (dev_priv->panel_desc & DISPLAY_B) {
-		android_hdmi_save_display_registers(dev);
-		android_disable_hdmi(dev);
+		android_hdmi_suspend_display(dev);
 	}
 	if (dev_priv->panel_desc & DISPLAY_C) {
 		mdfld_save_display_registers(dev, 2);
@@ -974,7 +973,7 @@ void ospm_resume_display(struct pci_dev *pdev)
 	 * isn't turned on before suspending.
 	 */
 	if (dev_priv->panel_desc & DISPLAY_B) {
-		android_hdmi_restore_and_enable_display(dev);
+		android_hdmi_resume_display(dev);
 		/*devices connect status will be changed
 		  when system suspend,re-detect once here*/
 		if (android_hdmi_is_connected(dev))

@@ -61,12 +61,14 @@ int intel_mid_rproc_init(void)
 	register_rpmsg_service("rpmsg_pmic", RPROC_SCU, RP_PMIC_ACCESS);
 	register_rpmsg_service("rpmsg_mip", RPROC_SCU, RP_MIP_ACCESS);
 	register_rpmsg_service("rpmsg_fw_update",
-					RPROC_SCU, RP_FW_UPDATE);
+					RPROC_SCU, RP_FW_ACCESS);
 	register_rpmsg_service("rpmsg_ipc_util",
 					RPROC_SCU, RP_IPC_UTIL);
 	register_rpmsg_service("rpmsg_watchdog", RPROC_SCU, RP_SET_WATCHDOG);
 	register_rpmsg_service("rpmsg_umip", RPROC_SCU, RP_UMIP_ACCESS);
 	register_rpmsg_service("rpmsg_osip", RPROC_SCU, RP_OSIP_ACCESS);
+	register_rpmsg_service("rpmsg_kpd_led", RPROC_SCU,
+				RP_MSIC_KPD_LED);
 
 	err = platform_device_register(&intel_scu_device);
 	if (err < 0)

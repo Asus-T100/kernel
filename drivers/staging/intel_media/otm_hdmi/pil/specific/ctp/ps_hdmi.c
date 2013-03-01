@@ -270,9 +270,10 @@ bool ps_hdmi_get_cable_status(void *context)
 	__ps_gpio_configure_edid_read();
 
 	if (gpio_get_value(PS_MSIC_HPD_GPIO_PIN) == 0)
-		return false;
+		ctx->is_connected = false;
 	else
-		return true;
+		ctx->is_connected = true;
+	return ctx->is_connected;
 }
 
 /**
@@ -305,7 +306,9 @@ static int ps_hdmi_hpd_suspend(struct device *dev)
 static int ps_hdmi_hpd_resume(struct device *dev)
 {
 	pr_debug("Entered %s\n", __func__);
-	ps_hdmi_power_rails_on();
+
+	if (g_context && g_context->is_connected)
+		ps_hdmi_power_rails_on();
 	return 0;
 }
 

@@ -244,6 +244,17 @@ static int ehci_pci_setup(struct usb_hcd *hcd)
 			hcd->rpm_resume = 0;
 			pm_runtime_set_active(&pdev->dev);
 #endif
+		} else if (pdev->device == 0x119C) {
+			ehci_info(ehci, "Detected Merr USB2 HC\n");
+			hcd->has_tt = 1;
+			ehci->has_hostpc = 1;
+		} else if (pdev->device == 0x119D) {
+			ehci_info(ehci, "Detected HSIC HC\n");
+			hcd->has_tt = 1;
+			ehci->has_hostpc = 1;
+			hcd->has_sram = 1;
+			hcd->sram_no_payload = 1;
+			sram_init(hcd);
 		}
 	}
 

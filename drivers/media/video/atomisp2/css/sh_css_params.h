@@ -345,6 +345,9 @@ sh_css_get_rgb2yuv_cc_config(const struct sh_css_rgb2yuv_cc_config **config);
 bool
 sh_css_params_set_binning_factor(unsigned int sensor_binning);
 
+void
+sh_css_params_set_raw_binning(bool needs_raw_binning);
+
 bool
 sh_css_params_set_shading_table(
 	const struct sh_css_shading_table *table);

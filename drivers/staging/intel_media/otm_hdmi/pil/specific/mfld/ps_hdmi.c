@@ -191,6 +191,13 @@ bool ps_hdmi_power_rails_on(void)
 	int ret = 0;
 	pr_debug("Entered %s\n", __func__);
 
+	if (vrint_data == 0) {
+		/* If it is not invoked in response to hot plug event,
+		 * then simply a NOP as power rails are never turned off.
+		 */
+		pr_debug("%s: NOP as there is no HPD.\n", __func__);
+		return true;
+	}
 	/* Turn on HDMI power rails. These will be on in all non-S0iX
 	 * states so that HPD and connection status will work. VCC330
 	 * will have ~1.7mW usage during idle states when the display
@@ -212,7 +219,9 @@ bool ps_hdmi_power_rails_on(void)
 			pr_debug("%s: Failed to power off VHDMI.\n", __func__);
 			goto err;
 		}
+		vrint_data = 0;
 	}
+
 
 	/* MSIC documentation requires that there be a 500us
 	 * delay after enabling VCC330 before you can enable
@@ -247,21 +256,7 @@ err:
 
 bool ps_hdmi_power_rails_off(void)
 {
-	int ret = 0;
-	pr_debug("Entered %s\n", __func__);
-
-	ret = intel_scu_ipc_iowrite8(PS_MSIC_VHDMICNT, PS_VHDMI_OFF);
-	if (ret) {
-		pr_debug("%s: Failed to power off VHDMI.\n", __func__);
-		return false;
-	}
-
-	ret = intel_scu_ipc_iowrite8(PS_MSIC_VCC330CNT, PS_VCC330_OFF);
-	if (ret) {
-		pr_debug("%s: Failed to power off VCC330.\n", __func__);
-		return false;
-	}
-
+	/* VCC330 must stay on always for HPD. */
 	return true;
 }
 
@@ -284,9 +279,10 @@ bool ps_hdmi_get_cable_status(void *context)
 	/* Read HDMI cable status from MSIC chip */
 	intel_scu_ipc_ioread8(PS_MSIC_HDMI_STATUS_CMD, &data);
 	if (data & PS_MSIC_HDMI_STATUS)
-		return true;
+		ctx->is_connected = true;
 	else
-		return false;
+		ctx->is_connected = false;
+	return ctx->is_connected;
 }
 
 /**
@@ -357,43 +353,31 @@ exit:
 
 static int ps_hdmi_hpd_suspend(struct device *dev)
 {
-	int ret = 0, err = 0;
+	int ret = 0;
 
 	pr_debug("Entered %s\n", __func__);
 
+	/* suspend process is irreversible */
 	ret = intel_scu_ipc_update_register(PS_MSIC_IRQLVL1_MASK, 0xff,
 					    PS_VREG_MASK);
 	if (ret) {
 		pr_debug("%s: Failed to mask VREG IRQ.\n",
 			  __func__);
-		goto err1;
 	}
 
 	ret = intel_scu_ipc_iowrite8(PS_MSIC_VHDMICNT, PS_VHDMI_OFF);
 	if (ret) {
 		pr_debug("%s: Failed to power off VHDMI.\n",
 			  __func__);
-		goto err2;
 	}
 
 	ret = intel_scu_ipc_iowrite8(PS_MSIC_VCC330CNT, PS_VCC330_OFF);
 	if (ret) {
 		pr_debug("%s: Failed to power off VCC330.\n",
 			  __func__);
-		goto err3;
 	}
 
 	pr_debug("Exiting %s\n", __func__);
-	return ret;
-
-err3:
-	err |= intel_scu_ipc_iowrite8(PS_MSIC_VHDMICNT,
-				      PS_VHDMI_ON | PS_VHDMI_DB_30MS);
-err2:
-	err |= intel_scu_ipc_update_register(PS_MSIC_IRQLVL1_MASK, 0x0,
-					     PS_VREG_MASK);
-err1:
-	pr_debug("Exiting %s and err = %d\n", __func__, err);
 	return ret;
 }
 

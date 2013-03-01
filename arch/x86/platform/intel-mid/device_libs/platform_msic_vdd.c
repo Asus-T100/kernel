@@ -51,6 +51,6 @@ void __init *msic_vdd_platform_data(void *info)
 	}
 
 	install_irq_resource(pdev, entry->irq);
-
+out:
 	return &msic_vdd_pdata;
 }

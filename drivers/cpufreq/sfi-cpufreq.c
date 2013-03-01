@@ -409,6 +409,7 @@ static int sfi_cpufreq_cpu_exit(struct cpufreq_policy *policy)
 		per_cpu(drv_data, policy->cpu) = NULL;
 		sfi_processor_unregister_performance(data->sfi_data,
 							policy->cpu);
+		kfree(data->freq_table);
 		kfree(data);
 	}
 
@@ -483,7 +484,7 @@ static int __init init_sfi_processor_list(void)
 
 	for (i = 0; i < sfi_cpu_num; i++) {
 		pr->id = sfi_cpu_array[i].apic_id;
-		per_cpu(sfi_processors, pr->id) = pr;
+		per_cpu(sfi_processors, i) = pr;
 		pr++;
 	}
 

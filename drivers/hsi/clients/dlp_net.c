@@ -174,10 +174,10 @@ static void dlp_net_complete_tx(struct hsi_msg *pdu)
 
 	/* Still have queued TX pdu ? */
 	if (xfer_ctx->ctrl_len) {
-		mod_timer(&ch_ctx->hangup.timer,
+		mod_timer(&dlp_drv.timer[ch_ctx->ch_id],
 			  jiffies + usecs_to_jiffies(DLP_HANGUP_DELAY));
 	} else {
-		del_timer(&ch_ctx->hangup.timer);
+		del_timer(&dlp_drv.timer[ch_ctx->ch_id]);
 	}
 
 	write_unlock_irqrestore(&xfer_ctx->lock, flags);
@@ -196,6 +196,16 @@ static void dlp_net_complete_rx(struct hsi_msg *pdu)
 	unsigned char *skb_data, *data_addr, *start_addr;
 	unsigned int *ptr;
 	unsigned long flags;
+
+	/* Check the link readiness (TTY still opened) */
+	if (!dlp_tty_is_link_valid()) {
+		if ((EDLP_NET_RX_DATA_REPORT) ||
+			(EDLP_NET_RX_DATA_LEN_REPORT))
+				pr_debug(DRVNAME ": NET: CH%d RX PDU ignored (close:%d, Time out: %d)\n",
+					ch_ctx->ch_id,
+					dlp_drv.tty_closed, dlp_drv.tx_timeout);
+		return;
+	}
 
 	/* Pop the CTRL queue */
 	write_lock_irqsave(&xfer_ctx->lock, flags);
@@ -340,7 +350,8 @@ int dlp_net_open(struct net_device *dev)
 	/* Check if the the channel is not already opened for Trace */
 	state = dlp_ctrl_get_channel_state(ch_ctx->hsi_channel);
 	if (state != DLP_CH_STATE_CLOSED) {
-		pr_err(DRVNAME": Invalid channel state (%d)\n", state);
+		pr_err(DRVNAME ": Can't open CH%d (HSI CH%d) => invalid state: %d\n",
+				ch_ctx->ch_id, ch_ctx->hsi_channel, state);
 		ret = -EBUSY;
 		goto out;
 	}
@@ -392,7 +403,7 @@ int dlp_net_stop(struct net_device *dev)
 	tx_ctx = &ch_ctx->tx;
 	rx_ctx = &ch_ctx->rx;
 
-	del_timer_sync(&ch_ctx->hangup.timer);
+	del_timer_sync(&dlp_drv.timer[ch_ctx->ch_id]);
 
 	/* Stop the NET IF */
 	if (!netif_queue_stopped(dev))
@@ -400,8 +411,8 @@ int dlp_net_stop(struct net_device *dev)
 
 	ret = dlp_ctrl_close_channel(ch_ctx);
 	if (ret)
-		pr_err(DRVNAME ": %s (ch%d close failed (%d))\n",
-				__func__, ch_ctx->ch_id, ret);
+		pr_err(DRVNAME ": Can't close CH%d (HSI CH%d) => err: %d\n",
+				ch_ctx->ch_id, ch_ctx->hsi_channel, ret);
 
 	/* RX */
 	del_timer_sync(&rx_ctx->timer);
@@ -414,8 +425,12 @@ int dlp_net_stop(struct net_device *dev)
 	dlp_ctx_set_state(tx_ctx, IDLE);
 
 	/* Flush the ACWAKE works */
-	flush_work_sync(&ch_ctx->start_tx_w);
-	flush_work_sync(&ch_ctx->stop_tx_w);
+	cancel_work_sync(&ch_ctx->start_tx_w);
+	cancel_work_sync(&ch_ctx->stop_tx_w);
+
+	/* device closed => Set the channel state flag */
+	dlp_ctrl_set_channel_state(ch_ctx->hsi_channel,
+				DLP_CH_STATE_CLOSED);
 
 	return 0;
 }
@@ -448,8 +463,12 @@ static int dlp_net_start_xmit(struct sk_buff *skb, struct net_device *dev)
 		/* Stop the NET if */
 		netif_stop_queue(net_ctx->ndev);
 
-		pr_warn(DRVNAME ": ch%d out of credits (%d)",
-				ch_ctx->ch_id, ch_ctx->tx.seq_num);
+		if ((EDLP_NET_TX_DATA_REPORT) ||
+			(EDLP_NET_TX_DATA_LEN_REPORT))
+				pr_warn(DRVNAME ": CH%d (HSI CH%d) out of credits (%d)",
+					ch_ctx->ch_id,
+					ch_ctx->hsi_channel,
+					ch_ctx->tx.seq_num);
 		ret = NETDEV_TX_BUSY;
 		goto out;
 	}
@@ -596,6 +615,8 @@ static int dlp_net_start_xmit(struct sk_buff *skb, struct net_device *dev)
 				skb_len = align_size - skb_len;
 
 				sg = sg_next(sg);
+				if (!sg)
+					break;
 				sg_set_buf(sg, skb_data, skb_len);
 
 				sg->dma_address =
@@ -615,10 +636,12 @@ static int dlp_net_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	/*---------------------------------------------------*/
 	padding_len = ch_ctx->tx.pdu_size - offset;
 	padding_len = (padding_len / 4) * 4;
-	if (padding_len) {
+	if (sg && padding_len) {
 		sg = sg_next(sg);
-		sg_set_buf(sg, net_ctx->net_padd, padding_len);
-		sg->dma_address = net_ctx->net_padd_dma;
+		if (sg) {
+			sg_set_buf(sg, net_ctx->net_padd, padding_len);
+			sg->dma_address = net_ctx->net_padd_dma;
+		}
 	}
 
 	ret = dlp_hsi_controller_push(&ch_ctx->tx, new);
@@ -695,6 +718,8 @@ void dlp_net_dev_setup(struct net_device *dev)
  *
  ***************************************************************************/
 
+static int dlp_net_ctx_cleanup(struct dlp_channel *ch_ctx);
+
 struct dlp_channel *dlp_net_ctx_create(unsigned int ch_id,
 		unsigned int hsi_channel,
 		struct device *dev)
@@ -755,10 +780,11 @@ struct dlp_channel *dlp_net_ctx_create(unsigned int ch_id,
 	/* Hangup context */
 	dlp_ctrl_hangup_ctx_init(ch_ctx, dlp_net_hsi_tx_timeout_cb);
 
-	/* Register the Credits, Reset & Coredump CB */
+	/* Register the Credits, Reset/Coredump, cleanup CBs */
 	ch_ctx->credits_available_cb = dlp_net_credits_available_cb;
 	ch_ctx->push_rx_pdus = dlp_net_push_rx_pdus;
 	ch_ctx->dump_state = dlp_dump_channel_state;
+	ch_ctx->cleanup = dlp_net_ctx_cleanup;
 
 	dlp_xfer_ctx_init(ch_ctx,
 			  DLP_NET_TX_PDU_SIZE, DLP_HSI_TX_DELAY,
@@ -809,13 +835,24 @@ free_dev:
 	return NULL;
 
 cleanup:
+	dlp_net_ctx_cleanup(ch_ctx);
 	dlp_net_ctx_delete(ch_ctx);
 
 	pr_err(DRVNAME": Failed to create context for ch%d\n", ch_id);
 	return NULL;
 }
 
-int dlp_net_ctx_delete(struct dlp_channel *ch_ctx)
+/*
+* @brief This function will:
+*	- Delete TX/RX timer
+*	- Flush RX/TX queues
+*	- Free the allocated padding buffer
+*
+* @param ch_ctx: NET channel context
+*
+* @return 0 when sucess, error code otherwise
+*/
+static int dlp_net_ctx_cleanup(struct dlp_channel *ch_ctx)
 {
 	int ret = 0;
 	struct dlp_net_context *net_ctx = ch_ctx->ch_data;
@@ -833,8 +870,18 @@ int dlp_net_ctx_delete(struct dlp_channel *ch_ctx)
 	/* Free the padding buffer */
 	dlp_buffer_free(net_ctx->net_padd,
 			net_ctx->net_padd_dma, DLP_NET_TX_PDU_SIZE);
+	return ret;
+}
+
+/*
+ * This function will release the allocated memory
+ * done in the _ctx_create function
+ */
+int dlp_net_ctx_delete(struct dlp_channel *ch_ctx)
+{
+	struct dlp_net_context *net_ctx = ch_ctx->ch_data;
 
 	/* Free the ch_ctx */
 	free_netdev(net_ctx->ndev);
-	return ret;
+	return 0;
 }

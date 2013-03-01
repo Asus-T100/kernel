@@ -1,5 +1,6 @@
 #include <linux/init.h>
 #include <linux/kernel.h>
+#include <linux/export.h>
 #include <linux/interrupt.h>
 #include <linux/delay.h>
 #include <linux/pm_runtime.h>
@@ -42,6 +43,10 @@ static struct mfld_hsu_info default_hsu_info[] = {
 		.id = 0,
 		.name = "hsu0",
 		.wake_gpio = 13,
+		.rx_gpio = 96+26,
+		.rx_alt = 1,
+		.tx_gpio = 96+27,
+		.tx_alt = 1,
 		.cts_gpio = 96+28,
 		.cts_alt = 1,
 		.rts_gpio = 96+29,
@@ -243,13 +248,14 @@ EXPORT_SYMBOL(intel_mid_hsu_set_wake_peer);
 
 int intel_mid_hsu_init(int port, struct device *dev, irq_handler_t wake_isr)
 {
-	struct mfld_hsu_info *info;
+	int i;
+	struct mfld_hsu_info *tmp;
+	struct mfld_hsu_info *info = platform_hsu_info + port;
 
 	if (platform_hsu_info == NULL)
 		return -ENODEV;
 	if (port >= platform_hsu_num)
 		return -ENODEV;
-	info = platform_hsu_info + port;
 	info->dev = dev;
 	info->wake_isr = wake_isr;
 	if (info->wake_gpio)
@@ -262,5 +268,14 @@ int intel_mid_hsu_init(int port, struct device *dev, irq_handler_t wake_isr)
 		gpio_request(info->cts_gpio, "hsu");
 	if (info->rts_gpio)
 		gpio_request(info->rts_gpio, "hsu");
+
+	/* for share port, it will be enabled in startup function*/
+	for (i = 0; i < platform_hsu_num; i++) {
+		tmp = platform_hsu_info + i;
+		if (tmp != info && tmp->id == info->id)
+			return 0;
+	}
+	hsu_port_enable(port);
+	return 0;
 }
 

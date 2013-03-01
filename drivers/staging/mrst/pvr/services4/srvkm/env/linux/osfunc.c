@@ -4011,7 +4011,7 @@ IMG_BOOL CheckExecuteCacheOp(IMG_HANDLE hOSMemHandle,
 
 	PVR_ASSERT(psLinuxMemArea != IMG_NULL);
 
-	LinuxLockMutex(&g_sMMapMutex);
+	LinuxLockMutexNested(&g_sMMapMutex, PVRSRV_LOCK_CLASS_MMAP);
 
 	psMMapOffsetStructList = &psLinuxMemArea->sMMapOffsetStructList;
 	ui32AreaLength = psLinuxMemArea->ui32ByteSize;
@@ -4541,7 +4541,7 @@ IMG_VOID OSReleaseBridgeLock(IMG_VOID)
 
 IMG_VOID OSReacquireBridgeLock(IMG_VOID)
 {
-       LinuxLockMutex(&gPVRSRVLock);
+       LinuxLockMutexNested(&gPVRSRVLock, PVRSRV_LOCK_CLASS_BRIDGE);
 }
 
 typedef struct _OSTime

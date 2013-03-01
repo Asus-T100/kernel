@@ -37,6 +37,9 @@
 #include <linux/pm_runtime.h>
 #include <asm/intel-mid.h>
 
+#define IRQ_TYPE_EDGE	(1 << 0)
+#define IRQ_TYPE_LEVEL	(1 << 1)
+
 /*
  * Langwell chip has 64 pins and thus there are 2 32bit registers to control
  * each feature, while Penwell chip has 96 pins for each block, and need 3 32bit
@@ -61,7 +64,9 @@ enum GPIO_REG {
 	GEDR,		/* edge detect result */
 	GAFR,		/* alt function */
 	GFBR = 9,       /* glitch filter bypas */
-	GPIT,
+	GPIT,		/* interrupt type */
+	GPIP = GFER,	/* level interrupt polarity */
+	GPIM = GRER,	/* level interrupt mask */
 
 	/* the following registers only exist on MRFLD */
 	GFBR_TNG = 6,
@@ -87,7 +92,7 @@ struct lnw_gpio_ddata_t {
 	u32 flis_base;		/* base address of FLIS registers */
 	u32 flis_len;		/* length of FLIS registers */
 	u32 (*get_flis_offset)(int gpio);
-	bool support_level_trigger;
+	u32 chip_irq_type;	/* chip interrupt type */
 };
 
 struct gpio_flis_pair {
@@ -158,19 +163,19 @@ static struct lnw_gpio_ddata_t lnw_gpio_ddata[] = {
 	},
 	[PENWELL_GPIO_AON] = {
 		.ngpio = 96,
-		.support_level_trigger = false,
+		.chip_irq_type = IRQ_TYPE_EDGE,
 	},
 	[PENWELL_GPIO_CORE] = {
 		.ngpio = 96,
-		.support_level_trigger = false,
+		.chip_irq_type = IRQ_TYPE_EDGE,
 	},
 	[CLOVERVIEW_GPIO_AON] = {
 		.ngpio = 96,
-		.support_level_trigger = true,
+		.chip_irq_type = IRQ_TYPE_EDGE | IRQ_TYPE_LEVEL,
 	},
 	[CLOVERVIEW_GPIO_CORE] = {
 		.ngpio = 96,
-		.support_level_trigger = false,
+		.chip_irq_type = IRQ_TYPE_EDGE,
 	},
 	[TANGIER_GPIO] = {
 		.ngpio = 192,
@@ -178,7 +183,7 @@ static struct lnw_gpio_ddata_t lnw_gpio_ddata[] = {
 		.flis_base = 0xFF0C0000,
 		.flis_len = 0x8000,
 		.get_flis_offset = get_flis_offset_by_gpio,
-		.support_level_trigger = false,
+		.chip_irq_type = IRQ_TYPE_EDGE,
 	},
 };
 
@@ -194,7 +199,7 @@ struct lnw_gpio {
 	int				wakeup;
 	struct pci_dev			*pdev;
 	u32				(*get_flis_offset)(int gpio);
-	bool				support_level_trigger;
+	u32				chip_irq_type;
 };
 
 static void __iomem *gpio_reg(struct gpio_chip *chip, unsigned offset,
@@ -408,7 +413,7 @@ static int lnw_irq_type(struct irq_data *d, unsigned type)
 	int ret = 0;
 	void __iomem *grer = gpio_reg(&lnw->chip, gpio, GRER);
 	void __iomem *gfer = gpio_reg(&lnw->chip, gpio, GFER);
-	void __iomem *gpit;
+	void __iomem *gpit, *gpip;
 
 	if (gpio >= lnw->chip.ngpio)
 		return -EINVAL;
@@ -416,41 +421,63 @@ static int lnw_irq_type(struct irq_data *d, unsigned type)
 	if (lnw->pdev)
 		pm_runtime_get(&lnw->pdev->dev);
 
-	spin_lock_irqsave(&lnw->lock, flags);
-
-	/* GPIT only exists in GPIO AON */
-	if (lnw->support_level_trigger) {
+	/* chip supports level interrupt has extra GPIT registers */
+	if (lnw->chip_irq_type & IRQ_TYPE_LEVEL) {
 		gpit = gpio_reg(&lnw->chip, gpio, GPIT);
+		gpip = gpio_reg(&lnw->chip, gpio, GPIP);
 
-		/* Enable level interrupt if it's requested,
-		 * otherwise enable edge interrupt by default
-		 */
-		if (type & IRQ_TYPE_LEVEL_MASK)
+		spin_lock_irqsave(&lnw->lock, flags);
+		if (type & IRQ_TYPE_LEVEL_MASK) {
 			value = readl(gpit) | BIT(gpio % 32);
-		else
-			value = readl(gpit) & (~BIT(gpio % 32));
+			writel(value, gpit);
 
-		writel(value, gpit);
+			if (type & IRQ_TYPE_LEVEL_LOW)
+				value = readl(gpip) | BIT(gpio % 32);
+			else
+				value = readl(gpip) & (~BIT(gpio % 32));
+			writel(value, gpip);
+
+			__irq_set_handler_locked(d->irq, handle_level_irq);
+		} else if (type & IRQ_TYPE_EDGE_BOTH) {
+			value = readl(gpit) & (~BIT(gpio % 32));
+			writel(value, gpit);
+
+			if (type & IRQ_TYPE_EDGE_RISING)
+				value = readl(grer) | BIT(gpio % 32);
+			else
+				value = readl(grer) & (~BIT(gpio % 32));
+			writel(value, grer);
+
+			if (type & IRQ_TYPE_EDGE_FALLING)
+				value = readl(gfer) | BIT(gpio % 32);
+			else
+				value = readl(gfer) & (~BIT(gpio % 32));
+			writel(value, gfer);
+
+			__irq_set_handler_locked(d->irq, handle_edge_irq);
+		}
+		spin_unlock_irqrestore(&lnw->lock, flags);
 	} else {
 		if (type & IRQ_TYPE_LEVEL_MASK) {
 			ret = -EINVAL;
-			goto unlock;
+		} else if (type & IRQ_TYPE_EDGE_BOTH) {
+			spin_lock_irqsave(&lnw->lock, flags);
+
+			if (type & IRQ_TYPE_EDGE_RISING)
+				value = readl(grer) | BIT(gpio % 32);
+			else
+				value = readl(grer) & (~BIT(gpio % 32));
+			writel(value, grer);
+
+			if (type & IRQ_TYPE_EDGE_FALLING)
+				value = readl(gfer) | BIT(gpio % 32);
+			else
+				value = readl(gfer) & (~BIT(gpio % 32));
+			writel(value, gfer);
+
+			spin_unlock_irqrestore(&lnw->lock, flags);
 		}
 	}
-
-	if (type & (IRQ_TYPE_EDGE_RISING | IRQ_TYPE_LEVEL_HIGH))
-		value = readl(grer) | BIT(gpio % 32);
-	else
-		value = readl(grer) & (~BIT(gpio % 32));
-	writel(value, grer);
-
-	if (type & (IRQ_TYPE_EDGE_FALLING | IRQ_TYPE_LEVEL_LOW))
-		value = readl(gfer) | BIT(gpio % 32);
-	else
-		value = readl(gfer) & (~BIT(gpio % 32));
-	writel(value, gfer);
-unlock:
-	spin_unlock_irqrestore(&lnw->lock, flags);
 
 	if (lnw->pdev)
 		pm_runtime_put(&lnw->pdev->dev);
@@ -466,13 +493,6 @@ static int lnw_set_maskunmask(struct irq_data *d, enum GPIO_REG reg_type,
 	unsigned long flags;
 	u32 value;
 	void __iomem *gp_reg;
-
-	/* interrupt mask is only valid on MRFL */
-	if (platform != INTEL_MID_CPU_CHIP_TANGIER)
-		return 0;
-
-	if (gpio >= lnw->chip.ngpio)
-		return -EINVAL;
 
 	gp_reg = gpio_reg(&lnw->chip, gpio, reg_type);
 
@@ -495,12 +515,46 @@ static int lnw_set_maskunmask(struct irq_data *d, enum GPIO_REG reg_type,
 
 static void lnw_irq_unmask(struct irq_data *d)
 {
-	lnw_set_maskunmask(d, GIMR, 1);
+	struct lnw_gpio *lnw = irq_data_get_irq_chip_data(d);
+	u32 gpio = d->irq - lnw->irq_base;
+	void __iomem *gpit;
+
+	if (gpio >= lnw->chip.ngpio)
+		return;
+
+	if (platform == INTEL_MID_CPU_CHIP_CLOVERVIEW &&
+		(lnw->chip_irq_type & IRQ_TYPE_LEVEL)) {
+			gpit = gpio_reg(&lnw->chip, gpio, GPIT);
+
+			/* if it's level trigger, unmask GPIM */
+			if (readl(gpit) & BIT(gpio % 32))
+				lnw_set_maskunmask(d, GPIM, 1);
+
+	} else if (platform == INTEL_MID_CPU_CHIP_TANGIER) {
+		lnw_set_maskunmask(d, GIMR, 1);
+	}
 }
 
 static void lnw_irq_mask(struct irq_data *d)
 {
-	lnw_set_maskunmask(d, GIMR, 0);
+	struct lnw_gpio *lnw = irq_data_get_irq_chip_data(d);
+	u32 gpio = d->irq - lnw->irq_base;
+	void __iomem *gpit;
+
+	if (gpio >= lnw->chip.ngpio)
+		return;
+
+	if (platform == INTEL_MID_CPU_CHIP_CLOVERVIEW &&
+		(lnw->chip_irq_type & IRQ_TYPE_LEVEL)) {
+			gpit = gpio_reg(&lnw->chip, gpio, GPIT);
+
+			/* if it's level trigger, mask GPIM */
+			if (readl(gpit) & BIT(gpio % 32))
+				lnw_set_maskunmask(d, GPIM, 0);
+
+	} else if (platform == INTEL_MID_CPU_CHIP_TANGIER) {
+		lnw_set_maskunmask(d, GIMR, 0);
+	}
 }
 
 static int lnw_irq_wake(struct irq_data *d, unsigned on)
@@ -705,7 +759,7 @@ static int __devinit lnw_gpio_probe(struct pci_dev *pdev,
 	lnw->irq_base = irq_base;
 	lnw->wakeup = 1;
 	lnw->get_flis_offset = ddata->get_flis_offset;
-	lnw->support_level_trigger = ddata->support_level_trigger;
+	lnw->chip_irq_type = ddata->chip_irq_type;
 	lnw->chip.label = dev_name(&pdev->dev);
 	lnw->chip.request = lnw_gpio_request;
 	lnw->chip.direction_input = lnw_gpio_direction_input;

@@ -274,6 +274,14 @@ static void dlp_flash_complete_rx(struct hsi_msg *msg)
 	struct dlp_flash_ctx *flash_ctx = ch_ctx->ch_data;
 	int ret;
 
+	/* Check the link readiness (TTY still opened) */
+	if (!dlp_tty_is_link_valid()) {
+		pr_debug(DRVNAME ": FLASH: CH%d PDU ignored (close:%d, Time out: %d)\n",
+				ch_ctx->ch_id,
+				dlp_drv.tty_closed, dlp_drv.tx_timeout);
+		return;
+	}
+
 	if (msg->status != HSI_STATUS_COMPLETED) {
 		pr_err(DRVNAME ": Invalid msg status: %d (ignored)\n",
 				msg->status);
@@ -514,6 +522,8 @@ static const struct file_operations dlp_flash_ops = {
 	.release = dlp_flash_dev_close
 };
 
+static int dlp_flash_ctx_cleanup(struct dlp_channel *ch_ctx);
+
 /*
 * @brief
 *
@@ -596,6 +606,9 @@ struct dlp_channel *dlp_flash_ctx_create(unsigned int ch_id,
 		goto del_class;
 	}
 
+	/* Register cleanup CB */
+	ch_ctx->cleanup = dlp_flash_ctx_cleanup;
+
 	return ch_ctx;
 
 del_class:
@@ -618,28 +631,40 @@ out:
 }
 
 /*
-* @brief
+* @brief This function will delete/unregister
+*	the char device and class
 *
-* @param ch_ctx
+* @param ch_ctx: Flash channel context
 *
-* @return
+* @return 0 when sucess, error code otherwise
 */
-int dlp_flash_ctx_delete(struct dlp_channel *ch_ctx)
+static int dlp_flash_ctx_cleanup(struct dlp_channel *ch_ctx)
 {
 	struct dlp_flash_ctx *flash_ctx = ch_ctx->ch_data;
 	int ret = 0;
 
-	/* Unregister the device */
+	/* Unregister/Delete char device & class */
+	device_destroy(flash_ctx->class, flash_ctx->tdev);
 	cdev_del(&flash_ctx->cdev);
 	unregister_chrdev_region(flash_ctx->tdev, 1);
 	class_destroy(flash_ctx->class);
 
+	return ret;
+}
+
+/*
+ * This function will release the allocated memory
+ * done in the _ctx_create function
+ */
+int dlp_flash_ctx_delete(struct dlp_channel *ch_ctx)
+{
+	struct dlp_flash_ctx *flash_ctx = ch_ctx->ch_data;
 	/* Free the BOOT/FLASHING context */
 	kfree(flash_ctx);
 
 	/* Free the ch_ctx */
 	kfree(ch_ctx);
-	return ret;
+	return 0;
 }
 
 static int dlp_flash_set_flashing_mode(const char *val, struct kernel_param *kp)

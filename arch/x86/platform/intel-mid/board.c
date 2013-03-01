@@ -35,6 +35,7 @@
 #include "device_libs/platform_msic_audio.h"
 #include "device_libs/platform_msic_power_btn.h"
 #include "device_libs/platform_msic_ocd.h"
+#include "device_libs/platform_msic_vdd.h"
 #include "device_libs/platform_msic_thermal.h"
 #include "device_libs/platform_msic_adc.h"
 #include <asm/platform_ctp_audio.h>
@@ -90,6 +91,8 @@
 
 /* WIFI devices */
 #include "device_libs/platform_wl12xx.h"
+#include "device_libs/platform_bcm43xx.h"
+
 
 static void __init *no_platform_data(void *info)
 {
@@ -100,6 +103,8 @@ struct devs_id __initconst device_ids[] = {
 
 	/* SD devices */
 	{"wl12xx_clk_vmmc", SFI_DEV_TYPE_SD, 0, &wl12xx_platform_data, NULL},
+	{"bcm43xx_clk_vmmc", SFI_DEV_TYPE_SD, 0, &bcm43xx_platform_data, NULL},
+	{"bcm43xx_vmmc", SFI_DEV_TYPE_SD, 0, &bcm43xx_platform_data, NULL},
 
 	/* SPI devices */
 	{"pmic_gpio", SFI_DEV_TYPE_SPI, 1, &pmic_gpio_platform_data, NULL},
@@ -119,9 +124,13 @@ struct devs_id __initconst device_ids[] = {
 					&ipc_device_handler},
 	{"msic_power_btn", SFI_DEV_TYPE_IPC, 1, &msic_power_btn_platform_data,
 					&ipc_device_handler},
+	{"msic_vdd", SFI_DEV_TYPE_IPC, 1, &msic_vdd_platform_data,
+					&ipc_device_handler},
 	{"msic_ocd", SFI_DEV_TYPE_IPC, 1, &msic_ocd_platform_data,
 					&ipc_device_handler},
 	{"msic_thermal", SFI_DEV_TYPE_IPC, 1, &msic_thermal_platform_data,
+					&ipc_device_handler},
+	{"bcove_power_btn", SFI_DEV_TYPE_IPC, 1, &msic_power_btn_platform_data,
 					&ipc_device_handler},
 
 	/* IPC devices */
@@ -171,10 +180,12 @@ struct devs_id __initconst device_ids[] = {
 	{"mxt224", SFI_DEV_TYPE_I2C, 0, &mxt224_platform_data, NULL},
 	{"synaptics_3202", SFI_DEV_TYPE_I2C, 0, &s3202_platform_data},
 	{"synaptics_3400", SFI_DEV_TYPE_I2C, 0, &s3202_platform_data},
+	{"r69001-ts-i2c", SFI_DEV_TYPE_I2C, 0, &no_platform_data, NULL},
 	{"pn544", SFI_DEV_TYPE_I2C, 0, &pn544_platform_data, NULL},
 	{"bq24192", SFI_DEV_TYPE_I2C, 1, &bq24192_platform_data},
 	{"max17042", SFI_DEV_TYPE_I2C, 1, &max17042_platform_data, NULL},
 	{"max17047", SFI_DEV_TYPE_I2C, 1, &max17042_platform_data, NULL},
+	{"max17050", SFI_DEV_TYPE_I2C, 1, &max17042_platform_data, NULL},
 	{"bma023", SFI_DEV_TYPE_I2C, 1, &no_platform_data, NULL},
 	{"i2c_max7315", SFI_DEV_TYPE_I2C, 1, &max7315_platform_data, NULL},
 	{"i2c_max7315_2", SFI_DEV_TYPE_I2C, 1, &max7315_platform_data, NULL},
@@ -190,6 +201,7 @@ struct devs_id __initconst device_ids[] = {
 	{"lsm303dl", SFI_DEV_TYPE_I2C, 0, &lsm303dlhc_accel_platform_data},
 	{"lsm303cmp", SFI_DEV_TYPE_I2C, 0, &no_platform_data, NULL},
 	{"apds990x", SFI_DEV_TYPE_I2C, 0, &apds990x_platform_data},
+	{"l3gd20", SFI_DEV_TYPE_I2C, 0, &l3g4200d_platform_data, NULL},
 	{"l3g4200d", SFI_DEV_TYPE_I2C, 0, &l3g4200d_platform_data},
 	{"gyro", SFI_DEV_TYPE_I2C, 0, &gyro_platform_data, NULL},
 	{"als", SFI_DEV_TYPE_I2C, 0, &ltr502als_platform_data, NULL},
@@ -223,10 +235,8 @@ struct devs_id __initconst device_ids[] = {
  *	#endif
  */
 
-struct devs_id *get_device_ptr(void)
+struct devs_id __init *get_device_ptr(void)
 {
-	struct devs_id *dev_ptr = device_ids;
-
-	return dev_ptr;
+	return device_ids;
 }
 

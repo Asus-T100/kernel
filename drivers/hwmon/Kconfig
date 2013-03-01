@@ -1458,7 +1458,33 @@ config SENSORS_MPU3050
 	   Gyroscope sensor MPU3050 from Invensense
 	   please search on
 	   http://www.invensense.com/ for product details.
+	   http://www.st.com/ for more details.
 
+config SENSORS_PSH
+        tristate "Intel PSH"
+        depends on INTEL_PSH_IPC && INTEL_SCU_IPC_UTIL
+        help
+	  Say Y here to enable PSH driver on Intel Merrifield Platform, and
+	  this driver depends on PSH IPC and SCU IPC driver.
+
+          This driver can also be built as a module. If so, the module
+          will be called psh.
+
+config MID_PWM
+	tristate "MID PWM driver for Intel Medfield platform"
+        depends on INTEL_SCU_IPC
+        help
+	  Say Y here to enable MID PWM driver on Intel Medfield Platform.
+	  This driver provides an interface to control the duty cycle of
+	  an output signal. For more information, please refer to the driver
+	  source code.
+
+config SENSORS_MID_VDD
+	tristate "Voltage drop detection driver for Intel Clovertrail plus platform"
+        depends on INTEL_SCU_IPC
+        help
+	  Say Y here to enable Voltage drop detection driver on Intel
+	  Clovertrail plus Platform.
 
 if ACPI
 

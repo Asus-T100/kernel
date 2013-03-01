@@ -339,7 +339,7 @@ static void dlp_tty_complete_tx(struct hsi_msg *pdu)
 
 	/* Recycle or Free the pdu */
 	write_lock_irqsave(&xfer_ctx->lock, flags);
-	dlp_pdu_delete(xfer_ctx, pdu);
+	dlp_pdu_delete(xfer_ctx, pdu, flags);
 
 	/* Decrease the CTRL fifo size */
 	dlp_hsi_controller_pop(xfer_ctx);
@@ -374,6 +374,16 @@ static void dlp_tty_complete_rx(struct hsi_msg *pdu)
 	struct dlp_tty_context *tty_ctx = xfer_ctx->channel->ch_data;
 	unsigned long flags;
 	int ret;
+
+	/* Check the link readiness (TTY still opened) */
+	if (!dlp_tty_is_link_valid()) {
+		if ((EDLP_TTY_RX_DATA_REPORT) ||
+			(EDLP_TTY_RX_DATA_LEN_REPORT))
+				pr_debug(DRVNAME ": TTY: CH%d RX PDU ignored (close:%d, Time out: %d)\n",
+					xfer_ctx->channel->ch_id,
+					dlp_drv.tty_closed, dlp_drv.tx_timeout);
+		return;
+	}
 
 	/* Check the received PDU header & seq_num */
 	ret = dlp_pdu_header_check(xfer_ctx, pdu);
@@ -443,7 +453,7 @@ static void dlp_tty_tx_fifo_wait_recycle(struct dlp_xfer_ctx *xfer_ctx)
 
 		/* check if pdu is active in dlp_tty_do_write */
 		if (pdu->status != HSI_STATUS_PENDING)
-			dlp_pdu_delete(xfer_ctx, pdu);
+			dlp_pdu_delete(xfer_ctx, pdu, flags);
 		else
 			pdu->break_frame = 0;
 	}
@@ -474,7 +484,7 @@ static void dlp_tty_rx_fifo_wait_recycle(struct dlp_xfer_ctx *xfer_ctx)
 		dlp_pdu_reset(xfer_ctx, pdu, length);
 
 		/* Recycle or Free the pdu */
-		dlp_pdu_delete(xfer_ctx, pdu);
+		dlp_pdu_delete(xfer_ctx, pdu, flags);
 	}
 
 	write_unlock_irqrestore(&xfer_ctx->lock, flags);
@@ -512,7 +522,7 @@ static void dlp_tty_cleanup(struct dlp_channel *ch_ctx)
 	tx_ctx = &ch_ctx->tx;
 	rx_ctx = &ch_ctx->rx;
 
-	del_timer_sync(&ch_ctx->hangup.timer);
+	del_timer_sync(&dlp_drv.timer[ch_ctx->ch_id]);
 
 	/* Flush any pending fw work */
 	flush_work_sync(&tty_ctx->do_tty_forward);
@@ -532,12 +542,11 @@ static void dlp_tty_cleanup(struct dlp_channel *ch_ctx)
 	/* Close the HSI channel */
 	ret = dlp_ctrl_close_channel(ch_ctx);
 	if (ret)
-		pr_err(DRVNAME ": %s (close_channel failed :%d)\n",
-				__func__, ret);
+		pr_err(DRVNAME ": TT close channel failed :%d\n", ret);
 
 	/* Flush the ACWAKE works */
-	flush_work_sync(&ch_ctx->start_tx_w);
-	flush_work_sync(&ch_ctx->stop_tx_w);
+	cancel_work_sync(&ch_ctx->start_tx_w);
+	cancel_work_sync(&ch_ctx->stop_tx_w);
 }
 
 /**
@@ -570,8 +579,7 @@ static int dlp_tty_port_activate(struct tty_port *port, struct tty_struct *tty)
 	/* Configure the DLP channel */
 	ret = dlp_ctrl_open_channel(ch_ctx);
 	if (ret)
-		pr_err(DRVNAME ": %s (open_channel failed :%d)\n",
-				__func__, ret);
+		pr_err(DRVNAME ": TTY open channel failed :%d)\n", ret);
 
 	pr_debug(DRVNAME ": port activate done (ret: %d)\n", ret);
 	return ret;
@@ -597,11 +605,15 @@ static void dlp_tty_port_shutdown(struct tty_port *port)
 	tx_ctx = &ch_ctx->tx;
 	rx_ctx = &ch_ctx->rx;
 
-	/* we need hang_up timer alive to avoid long wait here */
-	if (!ch_ctx->hangup.tx_timeout) {
+	/* Don't wait if already in TX timeout state */
+	if (!dlp_drv.tx_timeout) {
 		dlp_tty_wait_until_ctx_sent(ch_ctx, 0);
 		dlp_tty_cleanup(ch_ctx);
 	}
+
+	/* device closed => Set the channel state flag */
+	dlp_ctrl_set_channel_state(ch_ctx->hsi_channel,
+				DLP_CH_STATE_CLOSED);
 
 	pr_debug(DRVNAME ": port shutdown done\n");
 }
@@ -622,7 +634,7 @@ static int dlp_tty_open(struct tty_struct *tty, struct file *filp)
 	int ret;
 
 	pr_debug(DRVNAME": TTY device open request (%s, %d)\n",
-			current->comm, current->pid);
+			current->comm, current->tgid);
 
 	/* Get the context reference from the driver data if already opened */
 	ch_ctx = (struct dlp_channel *)tty->driver_data;
@@ -641,6 +653,9 @@ static int dlp_tty_open(struct tty_struct *tty, struct file *filp)
 
 	/* Needed only once */
 	if (tty->count == 1) {
+		/* Reset the Tx timeout/TTY close flag */
+		dlp_tty_set_link_valid(0, 0);
+
 		/* Claim & Setup the HSI port */
 		dlp_hsi_port_claim();
 
@@ -757,7 +772,11 @@ static void dlp_tty_close(struct tty_struct *tty, struct file *filp)
 	int need_cleanup = (tty->count == 1);
 
 	pr_debug(DRVNAME ": TTY device close request (%s, %d)\n",
-			current->comm, current->pid);
+			current->comm, current->tgid);
+
+	/* Set TTY as closed to prevent RX/TX transactions */
+	if (need_cleanup)
+		dlp_tty_set_link_valid(1, 0);
 
 	if (filp && ch_ctx) {
 		struct dlp_tty_context *tty_ctx = ch_ctx->ch_data;
@@ -797,9 +816,12 @@ int dlp_tty_do_write(struct dlp_xfer_ctx *xfer_ctx, unsigned char *buf,
 	copied = 0;
 
 	if (!dlp_ctx_have_credits(xfer_ctx, xfer_ctx->channel)) {
-		pr_warn(DRVNAME": ch%d out of credits (%d)\n",
-				xfer_ctx->channel->hsi_channel,
-				xfer_ctx->seq_num);
+		if ((EDLP_TTY_TX_DATA_REPORT) ||
+			(EDLP_TTY_TX_DATA_LEN_REPORT))
+				pr_warn(DRVNAME ": CH%d (HSI CH%d) out of credits (%d)",
+					xfer_ctx->channel->ch_id,
+					xfer_ctx->channel->hsi_channel,
+					xfer_ctx->seq_num);
 		goto out;
 	}
 
@@ -863,7 +885,7 @@ int dlp_tty_do_write(struct dlp_xfer_ctx *xfer_ctx, unsigned char *buf,
 	} else {
 		/* ERROR frames have already been popped from the wait FIFO */
 		write_lock_irqsave(&xfer_ctx->lock, flags);
-		dlp_pdu_delete(xfer_ctx, pdu);
+		dlp_pdu_delete(xfer_ctx, pdu, flags);
 		write_unlock_irqrestore(&xfer_ctx->lock, flags);
 		copied = 0;
 	}
@@ -1073,6 +1095,8 @@ static const struct tty_port_operations dlp_port_tty_ops = {
  *
  ***************************************************************************/
 
+static int dlp_tty_ctx_cleanup(struct dlp_channel *ch_ctx);
+
 struct dlp_channel *dlp_tty_ctx_create(unsigned int ch_id,
 		unsigned int hsi_channel,
 		struct device *dev)
@@ -1138,9 +1162,10 @@ struct dlp_channel *dlp_tty_ctx_create(unsigned int ch_id,
 	/* Hangup context */
 	dlp_ctrl_hangup_ctx_init(ch_ctx, dlp_tty_hsi_tx_timeout_cb);
 
-	/* Register the PDUs push, Reset & Coredump CB */
+	/* Register the PDUs push, Reset/Coredump, cleanup CBs */
 	ch_ctx->push_rx_pdus = dlp_tty_push_rx_pdus;
 	ch_ctx->dump_state = dlp_dump_channel_state;
+	ch_ctx->cleanup = dlp_tty_ctx_cleanup;
 
 	/* TX & RX contexts */
 	dlp_xfer_ctx_init(ch_ctx,
@@ -1213,10 +1238,22 @@ cleanup:
 	return NULL;
 }
 
-int dlp_tty_ctx_delete(struct dlp_channel *ch_ctx)
+/*
+* @brief This function will:
+*	- Delete TX/RX timer
+*	- Flush RX/TX queues
+*	- Unregister the TTY device
+*
+* @param ch_ctx: TTY channel context
+*
+* @return 0 when sucess, error code otherwise
+*/
+static int dlp_tty_ctx_cleanup(struct dlp_channel *ch_ctx)
 {
 	int ret = 0;
 	struct dlp_tty_context *tty_ctx = ch_ctx->ch_data;
+
+	dlp_tty_cleanup(ch_ctx);
 
 	/* Clear the hangup context */
 	dlp_ctrl_hangup_ctx_deinit(ch_ctx);
@@ -1235,10 +1272,56 @@ int dlp_tty_ctx_delete(struct dlp_channel *ch_ctx)
 	dlp_xfer_ctx_clear(&ch_ctx->tx);
 	dlp_xfer_ctx_clear(&ch_ctx->rx);
 
+	return ret;
+}
+
+/*
+ * This function will release the allocated memory
+ * done in the _ctx_create function
+ */
+int dlp_tty_ctx_delete(struct dlp_channel *ch_ctx)
+{
+	struct dlp_tty_context *tty_ctx = ch_ctx->ch_data;
+
 	/* Free the tty_ctx */
 	kfree(tty_ctx);
 
 	/* Free the ch_ctx */
 	kfree(ch_ctx);
-	return ret;
+	return 0;
+}
+
+
+
+/*
+ * Set the TTY close/TX timeout state
+ */
+void dlp_tty_set_link_valid(int tty_closed, int tx_timeout)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&dlp_drv.lock, flags);
+	dlp_drv.tty_closed = tty_closed;
+	dlp_drv.tx_timeout = tx_timeout;
+	spin_unlock_irqrestore(&dlp_drv.lock, flags);
+}
+
+/*
+ * Check the TTY link readiness state
+ *
+ * @return:
+ *   - 0 (invalid) : in case of TTY close or TX timeout
+ *   - 1 (valid)    : Otherwise
+ */
+int dlp_tty_is_link_valid(void)
+{
+	int valid = 1;
+	unsigned long flags;
+
+	spin_lock_irqsave(&dlp_drv.lock, flags);
+	if ((dlp_drv.tty_closed) || (dlp_drv.tx_timeout))
+		valid = 0;
+	spin_unlock_irqrestore(&dlp_drv.lock, flags);
+
+	return valid;
 }

@@ -787,6 +787,8 @@ struct sh_css_binary_info {
 		unsigned char     dvs_6axis;
 		unsigned char     block_output;
 		unsigned char     ds;
+		unsigned char     fixed_bayer_ds;
+		unsigned char     bayer_fir_6db;
 		unsigned char     raw_binning;
 		unsigned char     continuous;
 		unsigned char     s3a;
@@ -871,7 +873,8 @@ struct sh_css_sp_info {
 	unsigned int	sleep_mode;  /**< different mode to halt SP */
 	unsigned int	invalidate_tlb;		/**< inform SP to invalidate mmu TLB */
 	unsigned int	request_flash;	/**< inform SP to switch on flash for next frame */
-	unsigned int	stop_copy_preview;
+	unsigned int	stop_copy_preview;	/**< suspend copy and preview pipe when capture */
+	unsigned int	copy_pack;	/**< use packed memory layout for raw data */
 	unsigned int	debug_buffer_ddr_address;	/**< inform SP the address
 	of DDR debug queue */
 	unsigned int	ddr_parameter_address; /**< acc param ddrptr, sp dmem */

@@ -24,15 +24,26 @@
 #define ISP_POS			7
 #define ISP_SUB_CLASS		0x80
 
+#define PUNIT_PORT		0x04
+#define SSS_SHIFT		24
+
+/* Soft reset mask */
+#define SR_MASK			0x2
+
 #define PMU1_MAX_DEVS			8
 #define PMU2_MAX_DEVS			32
 
 #define MRFLD_S3_HINT			0x64
 
+#define PUNIT_PORT			0x04
+#define NC_PM_SSS			0x3F
+
 #define GFX_LSS_INDEX			1
+
+#define PMU_PSH_LSS_00			0
 #define PMU_SDIO0_LSS_01		1
 #define PMU_EMMC0_LSS_02		2
-#define PMU_EMMC1_LSS_03		3
+#define PMU_RESERVED_LSS_03		3
 #define PMU_SDIO1_LSS_04		4
 #define PMU_HSI_LSS_05			5
 #define PMU_SECURITY_LSS_06		6
@@ -41,10 +52,8 @@
 #define PMU_USB3_LSS_09			9
 #define PMU_AUDIO_LSS_10		10
 #define PMU_AUDIO_DMA0_11		11
-#define PMU_SSP2_LSS_11			11
-#define PMU_AUDIO_DMA1_12		12
-#define PMU_SSP0_LSS_12			12
-#define PMU_SSP1_LSS_13			13
+#define PMU_RESERVED_LSS_12		12
+#define PMU_RESERVED_LSS_13		13
 #define PMU_RESERVED_LSS_14		14
 #define PMU_RESERVED_LSS_15		15
 #define PMU_RESERVED_LSS_16		16

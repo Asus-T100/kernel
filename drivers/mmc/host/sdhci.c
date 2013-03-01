@@ -1623,6 +1623,9 @@ static void sdhci_do_set_ios(struct sdhci_host *host, struct mmc_ios *ios)
 	 * Reset the chip on each power off.
 	 * Should clear out any weird states.
 	 */
+	if (host->quirks2 & SDHCI_QUIRK2_ADVERTISE_2V0_FORCE_1V8)
+		host->mmc->ios.vdd = 7;
+
 	if (ios->power_mode == MMC_POWER_OFF) {
 		sdhci_writel(host, 0, SDHCI_SIGNAL_ENABLE);
 		sdhci_reinit(host);
@@ -4000,6 +4003,9 @@ int sdhci_add_host(struct sdhci_host *host)
 		else
 			mmc->caps |= MMC_CAP_MAX_CURRENT_200;
 	}
+
+	if (host->quirks2 & SDHCI_QUIRK2_ADVERTISE_2V0_FORCE_1V8)
+		ocr_avail |= MMC_VDD_20_21;
 
 	mmc->ocr_avail = ocr_avail;
 	mmc->ocr_avail_sdio = ocr_avail;
