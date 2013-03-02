@@ -3512,10 +3512,8 @@ static void i9xx_crtc_disable(struct drm_crtc *crtc)
 			intel_dpio_write(dev_priv, 0x8204, 0x00e00060);
 		}
 
-		if (pipe) {
-			I915_WRITE(0x2110, 0x00000000);
-			I915_WRITE(0x2110, 0x00000001);
-		}
+		if (pipe)
+			vlv_init_dpio(dev);
 	}
 }
 
@@ -7416,12 +7414,6 @@ void intel_modeset_cleanup(struct drm_device *dev)
 	intel_disable_gt_powersave(dev);
 
 	ironlake_teardown_rc6(dev);
-#if 0
-	// Has to be done only once after h/w is poweron.
-	// Currently GOP driver is doing it
-	if (IS_VALLEYVIEW(dev))
-		vlv_init_dpio(dev);
-#endif
 
 	mutex_unlock(&dev->struct_mutex);
 
