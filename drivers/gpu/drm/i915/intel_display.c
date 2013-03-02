@@ -4231,7 +4231,8 @@ static void vlv_update_pll(struct drm_crtc *crtc,
 		intel_dpio_write(dev_priv, 0x8400, 0x10080);
 		intel_dpio_write(dev_priv, 0x8404, 0x00600060);
 	}
-	if (intel_pipe_has_type(crtc, INTEL_OUTPUT_DISPLAYPORT))
+	if (intel_pipe_has_type(crtc, INTEL_OUTPUT_DISPLAYPORT) ||
+	    intel_pipe_has_type(crtc, INTEL_OUTPUT_EDP))
 		intel_dp_set_m_n(crtc, mode, adjusted_mode);
 }
 
