@@ -144,6 +144,20 @@ static struct atomisp_freq_scaling_rule dfs_rules[] = {
 		.run_mode = ATOMISP_RUN_MODE_STILL_CAPTURE,
 	},
 	{
+		.width = 4096,
+		.height = 3072,
+		.fps = ISP_FREQ_RULE_ANY,
+		.isp_freq = ISP_FREQ_400MHZ,
+		.run_mode = ATOMISP_RUN_MODE_STILL_CAPTURE,
+	},
+	{
+		.width = 3648,
+		.height = 2736,
+		.fps = ISP_FREQ_RULE_ANY,
+		.isp_freq = ISP_FREQ_400MHZ,
+		.run_mode = ATOMISP_RUN_MODE_STILL_CAPTURE,
+	},
+	{
 		.width = ISP_FREQ_RULE_ANY,
 		.height = ISP_FREQ_RULE_ANY,
 		.fps = ISP_FREQ_RULE_ANY,
