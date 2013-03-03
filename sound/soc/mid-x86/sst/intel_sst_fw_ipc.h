@@ -99,7 +99,8 @@
 #define IPC_IA_DBG_MEM_READ 0x40
 #define IPC_IA_DBG_MEM_WRITE 0x41
 #define IPC_IA_DBG_LOOP_BACK 0x42
-#define IPC_IA_DBG_LOG_ENABLE 0x47
+#define IPC_IA_DBG_LOG_ENABLE 0x45
+#define IPC_IA_DBG_SET_PROBE_PARAMS 0x47
 
 /* L2I Firmware/Codec Download msgs */
 #define IPC_IA_FW_INIT_CMPLT 0x81

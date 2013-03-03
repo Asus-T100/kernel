@@ -73,8 +73,9 @@ enum stream_type {
 	SST_STREAM_TYPE_NONE = 0,
 	SST_STREAM_TYPE_MUSIC = 1,
 	SST_STREAM_TYPE_NORMAL = 2,
-	SST_STREAM_TYPE_LONG_PB = 3,
-	SST_STREAM_TYPE_LOW_LATENCY = 4,
+	SST_STREAM_TYPE_PROBE = 3,
+	SST_STREAM_TYPE_LONG_PB = 4,
+	SST_STREAM_TYPE_LOW_LATENCY = 5,
 };
 
 /* Firmware Version info */
@@ -419,12 +420,7 @@ struct snd_sst_target_device  {
 } __packed;
 
 struct snd_sst_driver_info {
-	__u32 version;	/* Version of the driver */
-	__u32 active_pcm_streams;
-	__u32 active_enc_streams;
-	__u32 max_pcm_streams;
-	__u32 max_enc_streams;
-	__u32 buf_per_stream;
+	__u32 max_streams;
 };
 
 enum snd_sst_buff_type {

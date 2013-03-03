@@ -992,11 +992,54 @@ static int sst_set_generic_params(enum sst_controls cmd, void *arg)
 		pm_runtime_put(&sst_drv_ctx->pci->dev);
 		break;
 	}
+	case SST_GET_PROBE_BYTE_STREAM: {
+		struct snd_sst_probe_bytes *prb_bytes = (struct snd_sst_probe_bytes *)arg;
+
+		if (sst_drv_ctx->probe_bytes) {
+			prb_bytes->len = sst_drv_ctx->probe_bytes->len;
+			memcpy(prb_bytes->bytes, &sst_drv_ctx->probe_bytes->bytes, prb_bytes->len);
+		}
+		break;
+	}
+	case SST_SET_PROBE_BYTE_STREAM: {
+		struct ipc_post *msg = NULL;
+		struct sst_iblock *block;
+		unsigned long irq_flags;
+		struct snd_sst_probe_bytes *prb_bytes = (struct snd_sst_probe_bytes *)arg;
+
+		if (sst_drv_ctx->probe_bytes) {
+			sst_drv_ctx->probe_bytes->len = prb_bytes->len;
+			memcpy(&sst_drv_ctx->probe_bytes->bytes, prb_bytes->bytes, prb_bytes->len);
+		}
+
+		ret_val = intel_sst_check_device();
+		if (ret_val)
+			return ret_val;
+
+		ret_val = sst_send_probe_bytes(sst_drv_ctx);
+		break;
+	}
 	default:
 		pr_err("Invalid cmd request:%d\n", cmd);
 		ret_val = -EINVAL;
 	}
 	return ret_val;
+}
+
+/**
+ * sst_get_max_streams - Function to populate the drv info structure
+ *				with the max streams
+ * @info: the out params that holds the drv info
+ *
+ * This function is called when max streams count is required
+**/
+void sst_get_max_streams(struct snd_sst_driver_info *info)
+{
+	/* FIXME: Remove the check, MRFLD probe dai changes will update this*/
+	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID)
+		info->max_streams = sst_drv_ctx->info.max_streams - 1;
+	else
+		info->max_streams = sst_drv_ctx->info.max_streams;
 }
 
 static struct sst_ops pcm_ops = {

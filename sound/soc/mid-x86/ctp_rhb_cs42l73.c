@@ -34,6 +34,7 @@
 #include <linux/async.h>
 #include <linux/delay.h>
 #include <linux/gpio.h>
+#include <asm/intel_sst_ctp.h>
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
@@ -87,15 +88,15 @@ static int ctp_comms_dai_link_startup(struct snd_pcm_substream *substream)
 
 	/* set the runtime hw parameter with local snd_pcm_hardware struct */
 	switch (substream->pcm->device) {
-	case CTP_COMMS_BT_SCO_DEV:
+	case CTP_RHB_COMMS_BT_SCO_DEV:
 		str_runtime->hw = BT_sco_hw_param;
 		break;
 
-	case CTP_COMMS_MSIC_VOIP_DEV:
+	case CTP_RHB_COMMS_MSIC_VOIP_DEV:
 		str_runtime->hw = VOIP_alsa_hw_param;
 		break;
 
-	case CTP_COMMS_IFX_MODEM_DEV:
+	case CTP_RHB_COMMS_IFX_MODEM_DEV:
 		str_runtime->hw = IFX_modem_alsa_hw_param;
 		break;
 	default:
@@ -209,7 +210,7 @@ static int ctp_comms_dai_link_hw_params(struct snd_pcm_substream *substream,
 	pr_debug("ssp_modem_master_mode %d\n", ctl->ssp_modem_master_mode);
 
 	switch (device) {
-	case CTP_COMMS_BT_SCO_DEV:
+	case CTP_RHB_COMMS_BT_SCO_DEV:
 		/*
 		 * set cpu DAI configuration
 		 * frame_format = PSP_FORMAT
@@ -253,7 +254,7 @@ static int ctp_comms_dai_link_hw_params(struct snd_pcm_substream *substream,
 		else
 			tristate_offset = BIT(FRAME_SYNC_RELATIVE_TIMING_BIT);
 		break;
-	case CTP_COMMS_MSIC_VOIP_DEV:
+	case CTP_RHB_COMMS_MSIC_VOIP_DEV:
 		/*
 		 * set cpu DAI configuration
 		 * frame_format = PSP_FORMAT
@@ -295,7 +296,7 @@ static int ctp_comms_dai_link_hw_params(struct snd_pcm_substream *substream,
 		tristate_offset = BIT(TRISTATE_BIT);
 		break;
 
-	case CTP_COMMS_IFX_MODEM_DEV:
+	case CTP_RHB_COMMS_IFX_MODEM_DEV:
 		/*
 		 * set cpu DAI configuration
 		 * frame_format = PSP_FORMAT
@@ -360,7 +361,7 @@ static int ctp_comms_dai_link_hw_params(struct snd_pcm_substream *substream,
 		return -EINVAL;
 	}
 
-	if (device == CTP_COMMS_MSIC_VOIP_DEV) {
+	if (device == CTP_RHB_COMMS_MSIC_VOIP_DEV) {
 		pr_debug("Call ctp_vsp_hw_params to enable the PLL Codec\n");
 		ctp_vsp_hw_params(substream, params);
 	}
@@ -395,11 +396,11 @@ static int ctp_comms_dai_link_prepare(struct snd_pcm_substream *substream)
 	/* BT SCO: CPU DAI is master */
 	/* FM: CPU DAI is master */
 	/* BT_VOIP: CPU DAI is master */
-	if (((device == CTP_COMMS_BT_SCO_DEV &&\
+	if (((device == CTP_RHB_COMMS_BT_SCO_DEV &&\
 		ctl->ssp_bt_sco_master_mode) ||
-		((device == CTP_COMMS_MSIC_VOIP_DEV) &&\
+		((device == CTP_RHB_COMMS_MSIC_VOIP_DEV) &&\
 		ctl->ssp_voip_master_mode)) ||
-		(device == CTP_COMMS_IFX_MODEM_DEV &&\
+		(device == CTP_RHB_COMMS_IFX_MODEM_DEV &&\
 		ctl->ssp_modem_master_mode)) {
 
 		snd_soc_dai_set_sysclk(cpu_dai, SSP_CLK_ONCHIP,
@@ -510,8 +511,13 @@ static struct snd_soc_ops ctp_comms_voip_dai_link_ops = {
 	.hw_params = ctp_comms_dai_link_hw_params,
 	.prepare = ctp_comms_dai_link_prepare,
 };
+
+static struct snd_soc_ops ctp_probe_ops = {
+	.startup = ctp_startup_probe,
+};
+
 static struct snd_soc_dai_link ctp_rhb_dailink[] = {
-	[CTP_AUD_ASP_DEV] = {
+	[CTP_RHB_AUD_ASP_DEV] = {
 		.name = "Cloverview ASP",
 		.stream_name = "Audio",
 		.cpu_dai_name = "Headset-cpu-dai",
@@ -523,7 +529,7 @@ static struct snd_soc_dai_link ctp_rhb_dailink[] = {
 		.ops = &ctp_asp_ops,
 		.playback_count = 2,
 	},
-	[CTP_AUD_VSP_DEV] = {
+	[CTP_RHB_AUD_VSP_DEV] = {
 		.name = "Cloverview VSP",
 		.stream_name = "Voice",
 		.cpu_dai_name = "Voice-cpu-dai",
@@ -535,7 +541,7 @@ static struct snd_soc_dai_link ctp_rhb_dailink[] = {
 		.ops = &ctp_vsp_ops,
 	},
 
-	[CTP_AUD_COMP_ASP_DEV] = {
+	[CTP_RHB_AUD_COMP_ASP_DEV] = {
 		.name = "Cloverview Comp ASP",
 		.stream_name = "Compress-Audio",
 		.cpu_dai_name = "Compress-cpu-dai",
@@ -546,7 +552,7 @@ static struct snd_soc_dai_link ctp_rhb_dailink[] = {
 		.ignore_suspend = 1,
 		.ops = &ctp_asp_compr_ops,
 	},
-	[CTP_COMMS_BT_SCO_DEV] = {
+	[CTP_RHB_COMMS_BT_SCO_DEV] = {
 		.name = "Cloverview Comms BT SCO",
 		.stream_name = "BTSCO",
 		.cpu_dai_name = SSP_BT_DAI_NAME,
@@ -556,7 +562,7 @@ static struct snd_soc_dai_link ctp_rhb_dailink[] = {
 		.init = NULL,
 		.ops = &ctp_comms_dai_link_ops,
 	},
-	[CTP_COMMS_MSIC_VOIP_DEV] = {
+	[CTP_RHB_COMMS_MSIC_VOIP_DEV] = {
 		.name = "Cloverview Comms MSIC VOIP",
 		.stream_name = "VOIP",
 		.cpu_dai_name = SSP_BT_DAI_NAME,
@@ -566,7 +572,7 @@ static struct snd_soc_dai_link ctp_rhb_dailink[] = {
 		.init = NULL,
 		.ops = &ctp_comms_voip_dai_link_ops,
 	},
-	[CTP_COMMS_IFX_MODEM_DEV] = {
+	[CTP_RHB_COMMS_IFX_MODEM_DEV] = {
 		.name = "Cloverview Comms IFX MODEM",
 		.stream_name = "IFX_MODEM_MIXING",
 		.cpu_dai_name = SSP_MODEM_DAI_NAME,
@@ -576,7 +582,7 @@ static struct snd_soc_dai_link ctp_rhb_dailink[] = {
 		.init = NULL,
 		.ops = &ctp_comms_dai_link_ops,
 	},
-	[CTP_AUD_VIRTUAL_ASP_DEV] = {
+	[CTP_RHB_AUD_VIRTUAL_ASP_DEV] = {
 		.name = "Cloverview virtual-ASP",
 		.stream_name = "virtual-stream",
 		.cpu_dai_name = "Virtual-cpu-dai",
@@ -587,7 +593,18 @@ static struct snd_soc_dai_link ctp_rhb_dailink[] = {
 		.ignore_suspend = 1,
 		.ops = &ctp_asp_ops,
 	},
+	[CTP_RHB_AUD_PROBE_DEV] = {
+		.name = "Cloverview Probe",
+		.stream_name = "CTP Probe",
+		.cpu_dai_name = "Probe-cpu-dai",
+		.codec_dai_name = "snd-soc-dummy-dai",
+		.codec_name = "snd-soc-dummy",
+		.platform_name = "sst-platform",
+		.init = NULL,
+		.ops = &ctp_probe_ops,
+	},
 };
+
 int ctp_hp_detection(struct snd_soc_codec *codec,
 			struct snd_soc_jack *jack, int enable)
 {

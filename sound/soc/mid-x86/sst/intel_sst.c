@@ -580,13 +580,22 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 			sst_drv_ctx->dump_buf.iram_buf.size,
 			sst_drv_ctx->dump_buf.dram_buf.size);
 #endif
+	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID) {
+		sst_drv_ctx->probe_bytes = kzalloc(SST_MAX_BIN_BYTES, GFP_KERNEL);
+		if (!sst_drv_ctx->probe_bytes) {
+			pr_err("%s: no memory\n", __func__);
+			ret = -ENOMEM;
+			goto do_free_dram_buf;
+		}
+	}
+
 	sst_set_fw_state_locked(sst_drv_ctx, SST_UN_INIT);
 	/* Register the ISR */
 	ret = request_threaded_irq(pci->irq, sst_drv_ctx->ops->interrupt,
 		sst_drv_ctx->ops->irq_thread, NULL, SST_DRV_NAME,
 		sst_drv_ctx);
 	if (ret)
-		goto do_free_dram_buf;
+		goto do_free_probe_bytes;
 	pr_debug("Registered IRQ 0x%x\n", pci->irq);
 
 	/*Register LPE Control as misc driver*/
@@ -680,6 +689,9 @@ do_free_misc:
 	misc_deregister(&lpe_ctrl);
 do_free_irq:
 	free_irq(pci->irq, sst_drv_ctx);
+do_free_probe_bytes:
+	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID)
+		kfree(sst_drv_ctx->probe_bytes);
 do_free_dram_buf:
 #ifdef CONFIG_DEBUG_FS
 	kfree(sst_drv_ctx->dump_buf.dram_buf.buf);
@@ -758,6 +770,9 @@ static void __devexit intel_sst_remove(struct pci_dev *pci)
 	kfree(sst_drv_ctx->dump_buf.iram_buf.buf);
 	kfree(sst_drv_ctx->dump_buf.dram_buf.buf);
 #endif
+	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID)
+		kfree(sst_drv_ctx->probe_bytes);
+
 	kfree(sst_drv_ctx->fw_cntx);
 	kfree(sst_drv_ctx->runtime_param.param.addr);
 	flush_scheduled_work();
@@ -1080,7 +1095,7 @@ static DEFINE_PCI_DEVICE_TABLE(intel_sst_ids) = {
 		INFO(0, 0, false,
 			0, 0, false,
 			0, 0, false,
-			false, 4)},
+			false, 5)},
 	{ PCI_VDEVICE(INTEL, SST_MRFLD_PCI_ID),
 		INFO(0, 0, false,
 			0, 0, false,

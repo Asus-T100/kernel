@@ -79,8 +79,6 @@ enum sst_states {
 	SST_FW_CTXT_RESTORE
 };
 
-#define MAX_ACTIVE_STREAM	4
-#define MAX_ENC_STREAM		1
 #define SST_BLOCK_TIMEOUT	1000
 #define BLOCK_UNINIT		-1
 #define RX_TIMESLOT_UNINIT	-1
@@ -111,6 +109,8 @@ enum sst_states {
 
 #define SPI_MODE_ENABLE_BASE_ADDR 0xffae4000
 #define FW_SIGNATURE_SIZE	4
+
+#define SST_MAX_BIN_BYTES	1024
 
 /* stream states */
 enum sst_stream_states {
@@ -379,6 +379,11 @@ struct snd_sst_bytes {
 	char bytes[0];
 } __packed;
 
+struct snd_sst_probe_bytes {
+	u16 len;
+	char bytes[0];
+};
+
 #define PCI_DMAC_MFLD_ID 0x0830
 #define PCI_DMAC_CLV_ID 0x08F0
 #define PCI_DMAC_MRFLD_ID 0x119B
@@ -530,6 +535,8 @@ struct intel_sst_drv {
 	struct sst_dump_buf dump_buf;
 	/* Lock for CSR register change */
 	struct mutex	csr_lock;
+	/* byte control to set the probe stream */
+	struct snd_sst_probe_bytes *probe_bytes;
 };
 
 extern struct intel_sst_drv *sst_drv_ctx;
@@ -546,9 +553,11 @@ int sst_free_stream(int id);
 int sst_start_stream(int str_id);
 int sst_send_byte_stream(void *sbytes);
 int sst_send_byte_stream_mrfld(void *sbytes);
+int sst_send_probe_bytes(struct intel_sst_drv *sst);
 int sst_set_stream_param(int str_id, struct snd_sst_params *str_param);
 int sst_set_metadata(int str_id, char *params);
 int sst_get_fw_info(struct snd_sst_fw_info *info);
+void sst_get_max_streams(struct snd_sst_driver_info *info);
 int sst_get_stream_params(int str_id,
 		struct snd_sst_get_stream_params *get_params);
 int sst_get_stream(struct snd_sst_params *str_param);

@@ -14,7 +14,6 @@
 
 #include <linux/sfi.h>
 #define MAX_DEVICES_MFLD 6
-#define MAX_DEVICES_CTP 5
 #define MAX_DEVICES_MRFLD 24
 #define LPE_MAX_SSP_PORTS 4
 #define LPE_MAX_DMA 2
@@ -89,6 +88,7 @@ enum sst_audio_device_id_ctp {
 	SST_PCM_OUT1 = 2,
 	SST_COMPRESSED_OUT = 3,
 	SST_CAPTURE_IN = 4,
+	SST_PROBE_IN = 5,
 };
 
 /* Device IDs for Merrifield are Pipe IDs,

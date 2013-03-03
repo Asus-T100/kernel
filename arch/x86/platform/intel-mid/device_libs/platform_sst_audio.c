@@ -16,6 +16,7 @@
 #include <asm/platform_sst_audio.h>
 #include <linux/platform_device.h>
 #include <asm/intel-mid.h>
+#include <asm/intel_sst_ctp.h>
 #include <sound/asound.h>
 
 static struct sst_platform_data sst_platform_pdata;
@@ -29,12 +30,22 @@ static struct sst_dev_stream_map mfld_strm_map[MAX_DEVICES_MFLD] = {
 	{0, 0, SNDRV_PCM_STREAM_CAPTURE, SST_CAPTURE_MAX_SLOTS, SST_DEV_MAP_IN_USE},
 };
 
-static struct sst_dev_stream_map ctp_strm_map[MAX_DEVICES_CTP] = {
+static struct sst_dev_stream_map ctp_rhb_strm_map[] = {
 	{0xFF, 0xFF, 0xFF, 0xFF, 0xFF}, /* Reserved, not in use */
-	{0, 0, SNDRV_PCM_STREAM_PLAYBACK, SST_PCM_OUT0, SST_DEV_MAP_IN_USE},
-	{0, 1, SNDRV_PCM_STREAM_PLAYBACK, SST_PCM_OUT1, SST_DEV_MAP_IN_USE},
-	{2, 0, SNDRV_PCM_STREAM_PLAYBACK, SST_COMPRESSED_OUT, SST_DEV_MAP_IN_USE},
-	{0, 0, SNDRV_PCM_STREAM_CAPTURE, SST_CAPTURE_IN, SST_DEV_MAP_IN_USE},
+	{CTP_RHB_AUD_ASP_DEV, 0, SNDRV_PCM_STREAM_PLAYBACK, SST_PCM_OUT0, SST_DEV_MAP_IN_USE},
+	{CTP_RHB_AUD_ASP_DEV, 1, SNDRV_PCM_STREAM_PLAYBACK, SST_PCM_OUT1, SST_DEV_MAP_IN_USE},
+	{CTP_RHB_AUD_COMP_ASP_DEV, 0, SNDRV_PCM_STREAM_PLAYBACK, SST_COMPRESSED_OUT, SST_DEV_MAP_IN_USE},
+	{CTP_RHB_AUD_ASP_DEV, 0, SNDRV_PCM_STREAM_CAPTURE, SST_CAPTURE_IN, SST_DEV_MAP_IN_USE},
+	{CTP_RHB_AUD_PROBE_DEV, 0, SNDRV_PCM_STREAM_CAPTURE, SST_PROBE_IN, SST_DEV_MAP_IN_USE},
+};
+
+static struct sst_dev_stream_map ctp_vb_strm_map[] = {
+	{0xFF, 0xFF, 0xFF, 0xFF, 0xFF}, /* Reserved, not in use */
+	{CTP_VB_AUD_ASP_DEV, 0, SNDRV_PCM_STREAM_PLAYBACK, SST_PCM_OUT0, SST_DEV_MAP_IN_USE},
+	{CTP_VB_AUD_ASP_DEV, 1, SNDRV_PCM_STREAM_PLAYBACK, SST_PCM_OUT1, SST_DEV_MAP_IN_USE},
+	{CTP_VB_AUD_COMP_ASP_DEV, 0, SNDRV_PCM_STREAM_PLAYBACK, SST_COMPRESSED_OUT, SST_DEV_MAP_IN_USE},
+	{CTP_VB_AUD_ASP_DEV, 0, SNDRV_PCM_STREAM_CAPTURE, SST_CAPTURE_IN, SST_DEV_MAP_IN_USE},
+	{CTP_VB_AUD_PROBE_DEV, 0, SNDRV_PCM_STREAM_CAPTURE, SST_PROBE_IN, SST_DEV_MAP_IN_USE},
 };
 
 static struct sst_dev_stream_map mrfld_strm_map[MAX_DEVICES_MRFLD] = {
@@ -121,8 +132,22 @@ static void set_ctp_platform_config(void)
 	memcpy(sst_platform_pdata.bdata->ssp_platform_data,
 					&ssp_ctp_data, sizeof(ssp_ctp_data));
 	sst_platform_pdata.use_strm_map = true;
-	sst_platform_pdata.pdev_strm_map = &ctp_strm_map;
-	sst_platform_pdata.strm_map_size = MAX_DEVICES_CTP;
+
+	if ((INTEL_MID_BOARD(2, PHONE, CLVTP, VB, PRO)) ||
+	   (INTEL_MID_BOARD(2, PHONE, CLVTP, VB, ENG))) {
+
+		sst_platform_pdata.pdev_strm_map = &ctp_vb_strm_map;
+		sst_platform_pdata.strm_map_size = ARRAY_SIZE(ctp_vb_strm_map);
+
+	} else if ((INTEL_MID_BOARD(2, PHONE, CLVTP, RHB, PRO)) ||
+		   (INTEL_MID_BOARD(2, PHONE, CLVTP, RHB, ENG)) ||
+		   (INTEL_MID_BOARD(2, TABLET, CLVT, TBD, PRO)) ||
+		   (INTEL_MID_BOARD(2, TABLET, CLVT, TBD, ENG))) {
+
+		sst_platform_pdata.pdev_strm_map = &ctp_rhb_strm_map;
+		sst_platform_pdata.strm_map_size = ARRAY_SIZE(ctp_rhb_strm_map);
+	}
+	pr_debug("audio:ctp:strm_map_size %d\n", sst_platform_pdata.strm_map_size);
 }
 
 static void set_mrfld_platform_config(void)

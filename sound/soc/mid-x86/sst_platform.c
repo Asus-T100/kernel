@@ -217,6 +217,10 @@ static int sst_fill_stream_params(void *substream,
 					&str_id);
 			if (str_params->device_type <= 0)
 				return -EINVAL;
+
+			if (str_params->device_type == SST_PROBE_IN)
+				str_params->stream_type = SST_STREAM_TYPE_PROBE;
+
 			pr_debug(" str_id = %d, device_type = %d", str_id, str_params->device_type);
 			str_params->stream_id = str_id;
 		} else {
@@ -528,6 +532,24 @@ static struct snd_soc_dai_driver sst_platform_dai[] = {
 		.channels_max = SST_STEREO,
 		.rates = SNDRV_PCM_RATE_8000_48000,
 		.formats = SNDRV_PCM_FMTBIT_CONTINUOUS,
+	},
+},
+{
+	.name = SST_PROBE_DAI,
+	.ops = &sst_media_dai_ops,
+	.playback = {
+		.channels_min = SST_MONO,
+		.channels_max = SST_STEREO,
+		.rates = SNDRV_PCM_RATE_8000 |
+				SNDRV_PCM_RATE_16000 | SNDRV_PCM_RATE_48000,
+		.formats = SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S24_LE,
+	},
+	.capture = {
+		.channels_min = SST_MONO,
+		.channels_max = SST_STEREO,
+		.rates = SNDRV_PCM_RATE_8000 |
+				SNDRV_PCM_RATE_16000 | SNDRV_PCM_RATE_48000,
+		.formats = SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S24_LE,
 	},
 },
 };

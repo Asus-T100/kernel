@@ -99,6 +99,15 @@ static struct snd_soc_jack_gpio hs_gpio[] = {
 	},
 };
 
+int ctp_startup_probe(struct snd_pcm_substream *substream)
+{
+	pr_debug("%s - applying rate constraint\n", __func__);
+	snd_pcm_hw_constraint_list(substream->runtime, 0,
+					SNDRV_PCM_HW_PARAM_RATE,
+					&constraints_48000);
+	return 0;
+}
+
 int ctp_startup_asp(struct snd_pcm_substream *substream)
 {
 	pr_debug("%s - applying rate constraint\n", __func__);

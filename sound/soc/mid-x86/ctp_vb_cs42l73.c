@@ -34,6 +34,7 @@
 #include <linux/async.h>
 #include <linux/delay.h>
 #include <linux/gpio.h>
+#include <asm/intel_sst_ctp.h>
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
@@ -56,14 +57,6 @@ inline void *ctp_get_vb_ops(void)
 	return &ctp_vb_ops;
 }
 EXPORT_SYMBOL(ctp_get_vb_ops);
-
-enum {
-	CTP_AUD_ASP_DEV = 0,
-	CTP_AUD_VSP_DEV,
-	CTP_AUD_COMP_ASP_DEV,
-	CTP_COMMS_BT_SCO_DEV,
-	CTP_COMMS_FM_DEV,
-};
 
 /* CDB42L73 widgets */
 static const struct snd_soc_dapm_widget ctp_vb_dapm_widgets[] = {
@@ -292,8 +285,12 @@ static struct snd_soc_ops ctp_vb_fm_xsp_ops = {
 	.hw_params = ctp_vb_fm_xsp_hw_params,
 };
 
+static struct snd_soc_ops ctp_probe_ops = {
+	.startup = ctp_startup_probe,
+};
+
 static struct snd_soc_dai_link ctp_vb_dailink[] = {
-	[CTP_AUD_ASP_DEV] = {
+	[CTP_VB_AUD_ASP_DEV] = {
 		.name = "Cloverview ASP",
 		.stream_name = "Audio",
 		.cpu_dai_name = "Headset-cpu-dai",
@@ -305,7 +302,7 @@ static struct snd_soc_dai_link ctp_vb_dailink[] = {
 		.ops = &ctp_vb_asp_ops,
 		.playback_count = 2,
 	},
-	[CTP_AUD_VSP_DEV] = {
+	[CTP_VB_AUD_VSP_DEV] = {
 		.name = "Cloverview VSP",
 		.stream_name = "Voice",
 		.cpu_dai_name = "Voice-cpu-dai",
@@ -317,7 +314,7 @@ static struct snd_soc_dai_link ctp_vb_dailink[] = {
 		.ops = &ctp_vb_vsp_ops,
 	},
 
-	[CTP_AUD_COMP_ASP_DEV] = {
+	[CTP_VB_AUD_COMP_ASP_DEV] = {
 		.name = "Cloverview Comp ASP",
 		.stream_name = "Compress-Audio",
 		.cpu_dai_name = "Compress-cpu-dai",
@@ -328,7 +325,7 @@ static struct snd_soc_dai_link ctp_vb_dailink[] = {
 		.ignore_suspend = 1,
 		.ops = &ctp_vb_asp_compr_ops,
 	},
-	[CTP_COMMS_BT_SCO_DEV] = {
+	[CTP_VB_COMMS_BT_SCO_DEV] = {
 		.name = "Cloverview BT XSP",
 		.stream_name = "BT-Audio",
 		.cpu_dai_name = "Voice-cpu-dai",
@@ -339,7 +336,7 @@ static struct snd_soc_dai_link ctp_vb_dailink[] = {
 		.ignore_suspend = 1,
 		.ops = &ctp_vb_bt_xsp_ops,
 	},
-	[CTP_COMMS_FM_DEV] = {
+	[CTP_VB_COMMS_FM_DEV] = {
 		.name = "Cloverview FM XSP",
 		.stream_name = "FM-Audio",
 		.cpu_dai_name = "Voice-cpu-dai",
@@ -349,6 +346,16 @@ static struct snd_soc_dai_link ctp_vb_dailink[] = {
 		.init = NULL,
 		.ignore_suspend = 1,
 		.ops = &ctp_vb_fm_xsp_ops,
+	},
+	[CTP_VB_AUD_PROBE_DEV] = {
+		.name = "Cloverview Probe",
+		.stream_name = "CTP Probe",
+		.cpu_dai_name = "Probe-cpu-dai",
+		.codec_dai_name = "snd-soc-dummy-dai",
+		.codec_name = "snd-soc-dummy",
+		.platform_name = "sst-platform",
+		.init = NULL,
+		.ops = &ctp_probe_ops,
 	},
 };
 int vb_hp_detection(struct snd_soc_codec *codec,

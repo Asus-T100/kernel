@@ -148,7 +148,7 @@ int sst_alloc_stream_ctp(char *params, struct sst_block *block)
 		return -ENOMEM;
 
 	alloc_param.str_type.codec_type = codec;
-	alloc_param.str_type.str_type = SST_STREAM_TYPE_MUSIC;
+	alloc_param.str_type.str_type = str_params->stream_type;
 	alloc_param.str_type.operation = stream_ops;
 	alloc_param.str_type.protected_str = 0; /* non drm */
 	alloc_param.str_type.time_slots = pcm_slot;
@@ -615,6 +615,39 @@ int sst_send_byte_stream(void *sbytes)
 	return 0;
 }
 
+int sst_send_probe_bytes(struct intel_sst_drv *sst)
+{
+	struct ipc_post *msg = NULL;
+	struct sst_block *block;
+	unsigned long irq_flags;
+	int ret_val = 0;
+
+	ret_val = sst_create_block_and_ipc_msg(&msg, true, sst,
+			&block, IPC_IA_DBG_SET_PROBE_PARAMS, 0);
+	if (ret_val) {
+		pr_err("Can't allocate block/msg: Probe Byte Stream\n");
+		return ret_val;
+	}
+
+	sst_fill_header(&msg->header, IPC_IA_DBG_SET_PROBE_PARAMS, 1, 0);
+
+	msg->header.part.data = sizeof(u32) + sst->probe_bytes->len;
+	memcpy(msg->mailbox_data, &msg->header.full, sizeof(u32));
+	memcpy(msg->mailbox_data + sizeof(u32), sst->probe_bytes->bytes,
+				sst->probe_bytes->len);
+
+	spin_lock_irqsave(&sst->ipc_spin_lock, irq_flags);
+	list_add_tail(&msg->node, &sst->ipc_dispatch_list);
+	spin_unlock_irqrestore(&sst->ipc_spin_lock, irq_flags);
+
+	sst->ops->post_message(msg);
+
+	ret_val = sst_wait_timeout(sst, block);
+	sst_free_block(sst, block);
+	if (ret_val)
+		pr_err("set probe stream param..timeout!\n");
+	return ret_val;
+}
 
 /*
  * sst_pause_stream - Send msg for a pausing stream

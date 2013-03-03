@@ -98,6 +98,7 @@ int vb_dai_link(struct snd_soc_card *card);
 int ctp_startup_asp(struct snd_pcm_substream *substream);
 int ctp_startup_bt_xsp(struct snd_pcm_substream *substream);
 int ctp_startup_fm_xsp(struct snd_pcm_substream *substream);
+int ctp_startup_probe(struct snd_pcm_substream *substream);
 int snd_ctp_init(struct snd_soc_pcm_runtime *runtime);
 int ctp_init(struct snd_soc_pcm_runtime *runtime);
 int ctp_vb_init(struct snd_soc_pcm_runtime *runtime);
