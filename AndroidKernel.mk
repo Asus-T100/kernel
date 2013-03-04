@@ -11,7 +11,7 @@ ifeq ($(BOARD_USE_64BIT_KERNEL),true)
 KERNEL_BUILD_FLAGS := -B
 endif
 
-menuconfig get_kernel_from_source: $(MINIGZIP)
+menuconfig get_kernel_from_source: openssl $(MINIGZIP)
 	+TARGET_TOOLS_PREFIX="$(ANDROID_BUILD_TOP)/$(TARGET_TOOLS_PREFIX)" TARGET_DEVICE="$(TARGET_DEVICE)" TARGET_BOARD_PLATFORM="$(TARGET_BOARD_PLATFORM)" KERNEL_SRC_DIR="$(KERNEL_SRC_DIR)" DIFFCONFIGS="$(DIFFCONFIGS)" KERNEL_DIFFCONFIG_DIR="$(KERNEL_DIFFCONFIG_DIR)" vendor/intel/support/kernel-build.sh $(KERNEL_BUILD_FLAGS) -o $@
 
 # This rule is useful for creating a kernel that will be
