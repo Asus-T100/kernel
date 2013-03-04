@@ -140,7 +140,7 @@ int usb_set_transceiver(struct usb_phy *x)
 	int err;
 
 	if (!x)
-		goto err1;
+		return -EINVAL;
 
 	if (phy && x)
 		return -EBUSY;
