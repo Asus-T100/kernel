@@ -1166,6 +1166,11 @@ static enum dwc_otg_state do_a_host(struct dwc_otg2 *otg)
 	int id = RID_UNKNOWN;
 	unsigned long flags;
 
+	if (otg->phy.vbus_state == VBUS_DISABLED) {
+		otg_uevent_trigger(&otg->phy);
+		return DWC_STATE_INIT;
+	}
+
 	if (!is_hybridvp(otg) &&
 		otg->charging_cap.chrg_type !=
 			POWER_SUPPLY_CHARGER_TYPE_ACA_DOCK) {
@@ -1195,8 +1200,9 @@ static enum dwc_otg_state do_a_host(struct dwc_otg2 *otg)
 
 	otg_mask = OEVT_CONN_ID_STS_CHNG_EVNT | \
 			OEVT_A_DEV_SESS_END_DET_EVNT;
+	user_mask |= USER_A_BUS_DROP;
 #ifdef SUPPORT_USER_ID_CHANGE_EVENTS
-	user_mask =	USER_ID_B_CHANGE_EVENT;
+	user_mask |= USER_ID_B_CHANGE_EVENT;
 #endif
 
 	rc = sleep_until_event(otg,
@@ -1208,7 +1214,8 @@ static enum dwc_otg_state do_a_host(struct dwc_otg2 *otg)
 	}
 
 	/* Higher priority first */
-	if (otg_events & OEVT_A_DEV_SESS_END_DET_EVNT) {
+	if (otg_events & OEVT_A_DEV_SESS_END_DET_EVNT ||
+			user_events & USER_A_BUS_DROP) {
 		otg_dbg(otg, "OEVT_A_DEV_SESS_END_DET_EVNT\n");
 
 		/* ACA-Dock plug out */
@@ -1634,6 +1641,19 @@ show_otg_id(struct device *_dev, struct device_attribute *attr, char *buf)
 static DEVICE_ATTR(otg_id, S_IRUGO|S_IWUSR|S_IWGRP,\
 			show_otg_id, store_otg_id);
 
+static void dwc_a_bus_drop(struct usb_phy *x)
+{
+	struct dwc_otg2 *otg = the_transceiver;
+	unsigned long flags;
+
+	if (otg->phy.vbus_state == VBUS_DISABLED) {
+		spin_lock_irqsave(&otg->lock, flags);
+		otg->user_events |= USER_A_BUS_DROP;
+		wakeup_main_thread(otg);
+		spin_unlock_irqrestore(&otg->lock, flags);
+	}
+}
+
 static ssize_t store_vbus_evt(struct device *_dev,
 		struct device_attribute *attr, const char *buf, size_t count)
 {
@@ -1744,6 +1764,8 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 	otg->state = DWC_STATE_INIT;
 	spin_lock_init(&otg->lock);
 	init_waitqueue_head(&otg->main_wq);
+	otg->phy.a_bus_drop = dwc_a_bus_drop;
+	otg->phy.vbus_state = VBUS_ENABLED;
 
 	otg_dbg(otg, "Version: %s\n", VERSION);
 	retval = usb_set_transceiver(&otg->phy);
