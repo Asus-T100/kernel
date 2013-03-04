@@ -698,9 +698,10 @@ void sst_process_reply_mrfld(struct work_struct *work)
 			if (!data)
 				goto end;
 			memcpy(data, (void *) msg->mailbox, msg_low);
-			sst_wake_up_block(sst_drv_ctx, msg_high.part.result,
+			if (sst_wake_up_block(sst_drv_ctx, msg_high.part.result,
 					msg_high.part.drv_id,
-					msg_high.part.msg_id, data, msg_low);
+					msg_high.part.msg_id, data, msg_low))
+				kfree(data);
 		} else {
 			sst_wake_up_block(sst_drv_ctx, msg_high.part.result,
 					msg_high.part.drv_id,
@@ -754,9 +755,10 @@ void sst_process_reply_mfld(struct work_struct *work)
 			pr_err("sst: mem alloc failed\n");
 
 		memcpy(data, (void *)msg->mailbox, msg->header.part.data);
-		sst_wake_up_block(sst_drv_ctx, 0, str_id,
+		if (sst_wake_up_block(sst_drv_ctx, 0, str_id,
 				msg->header.part.msg_id, data,
-				msg->header.part.data);
+				msg->header.part.data))
+			kfree(data);
 	}
 	kfree(msg);
 	return;
