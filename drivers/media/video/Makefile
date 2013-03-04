@@ -85,6 +85,7 @@ obj-$(CONFIG_VIDEO_LM3559) += lm3559.o
 obj-$(CONFIG_VIDEO_OV9724) += ov9724.o
 
 obj-$(CONFIG_VIDEO_S5K6AA)	+= s5k6aa.o
+obj-$(CONFIG_VIDEO_SMIAPP)	+= smiapp/
 obj-$(CONFIG_VIDEO_ADP1653)	+= adp1653.o
 obj-$(CONFIG_VIDEO_AS3645A)	+= as3645a.o
 obj-$(CONFIG_VIDEO_MT9M114)	+= mt9m114.o
@@ -96,6 +97,8 @@ obj-$(CONFIG_VIDEO_MT9V113)  += mt9v113.o
 CFFLAGS_mt9v113.o = -Werror
 obj-$(CONFIG_VIDEO_OV5640)  += ov5640.o
 CFFLAGS_ov5640.o = -Werror
+
+obj-$(CONFIG_VIDEO_SMIAPP_PLL)	+= smiapp-pll.o
 
 obj-$(CONFIG_SOC_CAMERA_IMX074)		+= imx074.o
 obj-$(CONFIG_SOC_CAMERA_MT9M001)	+= mt9m001.o

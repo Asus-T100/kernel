@@ -573,6 +573,9 @@ comment "Camera sensor devices"
 config VIDEO_APTINA_PLL
 	tristate
 
+config VIDEO_SMIAPP_PLL
+	tristate
+
 config VIDEO_OV7670
 	tristate "OmniVision OV7670 sensor support"
 	depends on I2C && VIDEO_V4L2
@@ -656,6 +659,8 @@ config VIDEO_S5K6AA
 	---help---
 	  This is a V4L2 sensor-level driver for Samsung S5K6AA(FX) 1.3M
 	  camera sensor with an embedded SoC image signal processor.
+
+source "drivers/media/video/smiapp/Kconfig"
 
 comment "Flash devices"
 
