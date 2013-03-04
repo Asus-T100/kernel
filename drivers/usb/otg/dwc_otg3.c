@@ -10,6 +10,8 @@
 #include <linux/delay.h>
 #include <linux/kthread.h>
 #include <linux/version.h>
+#include <linux/pm_qos.h>
+#include <linux/intel_mid_pm.h>
 
 #include <linux/usb.h>
 #include <linux/usb/hcd.h>
@@ -293,6 +295,7 @@ static int start_host(struct dwc_otg2 *otg)
 		return -ENODEV;
 	}
 
+	pm_qos_update_request(otg->qos, CSTATE_EXIT_LATENCY_C1 - 1);
 	/* Start host driver */
 	hcd = container_of(otg->otg.host, struct usb_hcd, self);
 	ret = hcd->driver->start_host(hcd);
@@ -312,6 +315,7 @@ static int stop_host(struct dwc_otg2 *otg)
 		ret = hcd->driver->stop_host(hcd);
 	}
 
+	pm_qos_update_request(otg->qos, PM_QOS_DEFAULT_VALUE);
 	return ret;
 }
 
@@ -328,6 +332,7 @@ static void start_peripheral(struct dwc_otg2 *otg)
 		return;
 	}
 
+	pm_qos_update_request(otg->qos, CSTATE_EXIT_LATENCY_C1 - 1);
 	gadget->ops->start_device(gadget);
 }
 
@@ -340,6 +345,7 @@ static void stop_peripheral(struct dwc_otg2 *otg)
 
 	cancel_delayed_work_sync(&otg->sdp_check_work);
 	gadget->ops->stop_device(gadget);
+	pm_qos_update_request(otg->qos, PM_QOS_DEFAULT_VALUE);
 }
 
 static int get_id(struct dwc_otg2 *otg)
@@ -1845,6 +1851,12 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 		goto exit;
 	}
 
+	otg->qos = kzalloc(sizeof(struct pm_qos_request), GFP_KERNEL);
+	if (!otg->qos)
+		goto exit;
+	pm_qos_add_request(otg->qos, PM_QOS_CPU_DMA_LATENCY,\
+			PM_QOS_DEFAULT_VALUE);
+
 	/* Don't let phy go to suspend mode, which
 	 * will cause FS/LS devices enum failed in host mode.
 	 */
@@ -1859,6 +1871,10 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 
 	return 0;
 exit:
+	if (otg->qos) {
+		pm_qos_remove_request(otg->qos);
+		kfree(otg->qos);
+	}
 	if (the_transceiver)
 		dwc_otg_remove(pdev);
 	free_irq(otg->irqnum, NULL);
@@ -1887,6 +1903,12 @@ static void dwc_otg_remove(struct pci_dev *pdev)
 	pci_disable_device(pdev);
 	usb_set_transceiver(NULL);
 	otg_dbg(otg, "\n");
+
+	if (otg->qos) {
+		pm_qos_remove_request(otg->qos);
+		kfree(otg->qos);
+	}
+
 	kfree(otg);
 }
 
