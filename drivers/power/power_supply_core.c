@@ -473,7 +473,6 @@ kobject_set_name_failed:
 device_add_failed:
 	put_device(dev);
 success:
-	psy_unregister_cooler(psy);
 	return rc;
 }
 EXPORT_SYMBOL_GPL(power_supply_register);
