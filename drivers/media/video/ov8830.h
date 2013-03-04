@@ -285,7 +285,6 @@ struct s_ctrl_id {
 enum ov8830_tok_type {
 	OV8830_8BIT  = 0x0001,
 	OV8830_16BIT = 0x0002,
-	OV8830_RMW   = 0x0010,
 	OV8830_TOK_TERM   = 0xf000,	/* terminating token for reg list */
 	OV8830_TOK_DELAY  = 0xfe00	/* delay token for reg list */
 };

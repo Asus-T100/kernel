@@ -179,63 +179,6 @@ ov8830_write_reg(struct i2c_client *client, u16 data_length, u16 reg, u16 val)
 }
 
 
-/**
- * ov8830_rmw_reg - Read/Modify/Write a value to a register in the sensor
- * device
- * @client: i2c driver client structure
- * @data_length: 8/16-bits length
- * @reg: register address
- * @mask: masked out bits
- * @set: bits set
- *
- * Read/modify/write a value to a register in the  sensor device.
- * Returns zero if successful, or non-zero otherwise.
- */
-static int ov8830_rmw_reg(struct i2c_client *client, u16 data_length, u16 reg,
-			   u16 mask, u16 set)
-{
-	int err;
-	u16 val;
-
-	/* Exit when no mask */
-	if (mask == 0)
-		return 0;
-
-	/* @mask must not exceed data length */
-	if (data_length == OV8830_8BIT && mask & ~0xff)
-		return -EINVAL;
-
-	err = ov8830_read_reg(client, data_length, reg, &val);
-	if (err) {
-		v4l2_err(client, "ov8830_rmw_reg error exit, read failed\n");
-		return -EINVAL;
-	}
-
-	val &= ~mask;
-
-	/*
-	 * Perform the OR function if the @set exists.
-	 * Shift @set value to target bit location. @set should set only
-	 * bits included in @mask.
-	 *
-	 * REVISIT: This function expects @set to be non-shifted. Its shift
-	 * value is then defined to be equal to mask's LSB position.
-	 * How about to inform values in their right offset position and avoid
-	 * this unneeded shift operation?
-	 */
-	set <<= ffs(mask) - 1;
-	val |= set & mask;
-
-	err = ov8830_write_reg(client, data_length, reg, val);
-	if (err) {
-		v4l2_err(client, "ov8830_rmw_reg error exit, write failed\n");
-		return -EINVAL;
-	}
-
-	return 0;
-}
-
-
 /*
  * ov8830_write_reg_array - Initializes a list of MT9M114 registers
  * @client: i2c driver client structure
@@ -329,19 +272,6 @@ static int ov8830_write_reg_array(struct i2c_client *client,
 			if (err)
 				return err;
 			msleep(next->val);
-			break;
-
-		case OV8830_RMW:
-			err = __ov8830_flush_reg_array(client, &ctrl);
-			err |= ov8830_rmw_reg(client,
-					       next->type & ~OV8830_RMW,
-					       next->reg.sreg, next->val,
-					       next->val2);
-			if (err) {
-				v4l2_err(client, "%s: rwm error, "
-						"aborted\n", __func__);
-				return err;
-			}
 			break;
 
 		default:
