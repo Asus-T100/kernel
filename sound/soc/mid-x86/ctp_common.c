@@ -395,10 +395,11 @@ int ctp_soc_jack_gpio_detect(void)
 	pr_debug("Current jack status = 0x%x\n", jack->status);
 
 	set_mic_bias(jack, "MIC2 Bias", true);
+	msleep(ctx->ops->micsdet_debounce);
 	status = ctx->ops->hp_detection(codec, jack, enable);
-	set_mic_bias(jack, "MIC2 Bias", false);
 	if (!status) {
 		ctx->headset_plug_flag = false;
+		set_mic_bias(jack, "MIC2 Bias", false);
 		/* Jack removed, Disable BP interrupts if not done already */
 		set_bp_interrupt(ctx, false);
 	} else { /* If jack inserted, schedule delayed_wq */
@@ -434,7 +435,6 @@ void headset_status_verify(struct work_struct *work)
 	pr_debug("%s:gpio->%d=0x%d\n", __func__, gpio->gpio, enable);
 	pr_debug("Current jack status = 0x%x\n", jack->status);
 
-	set_mic_bias(jack, "MIC2 Bias", true);
 	status = ctx->ops->hp_detection(codec, jack, enable);
 
 	/* Enable Button_press interrupt if HS is inserted

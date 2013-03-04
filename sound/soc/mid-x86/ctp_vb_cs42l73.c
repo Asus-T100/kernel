@@ -44,8 +44,12 @@
 
 /* Headset jack detection gpios func(s) */
 #define HPDETECT_POLL_INTERVAL	msecs_to_jiffies(1000)	/* 1sec */
+/* As per the codec spec the mic2_sdet debounce delay is 20ms.
+ * But having 20ms delay doesn't work */
+#define MIC2SDET_DEBOUNCE_DELAY	50 /* 50 ms */
 
 struct snd_soc_machine_ops ctp_vb_ops = {
+	.micsdet_debounce = MIC2SDET_DEBOUNCE_DELAY,
 	.ctp_init = ctp_vb_init,
 	.dai_link = vb_dai_link,
 	.bp_detection = vb_bp_detection,
