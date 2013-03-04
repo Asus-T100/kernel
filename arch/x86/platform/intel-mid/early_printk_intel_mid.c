@@ -310,7 +310,7 @@ void mrfld_early_console_init(void)
 	pssp = (void *)(__fix_to_virt(FIX_EARLYCON_MEM_BASE) +
 			(MRFLD_REGBASE_SSP5 & (PAGE_SIZE - 1)));
 
-	if (intel_mrfl_identify_sim() == INTEL_MRFL_CPU_SIMULATION_NONE)
+	if (intel_mid_identify_sim() == INTEL_MID_CPU_SIMULATION_NONE)
 		ssp_timing_wr = 1;
 
 	/* mask interrupts, clear enable and set DSS config */

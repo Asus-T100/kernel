@@ -765,8 +765,8 @@ static void poll_transfer(unsigned long data)
 	if (drv_context->tx)
 		while (drv_context->tx != drv_context->tx_end) {
 			/* [REVERT ME] Tangier simulator requires a delay */
-			if (intel_mrfl_identify_sim() ==
-			    INTEL_MRFL_CPU_SIMULATION_VP)
+			if (intel_mid_identify_sim() ==
+			    INTEL_MID_CPU_SIMULATION_VP)
 				udelay(10);
 			if (ssp_timing_wr) {
 				while ((read_SSSR(drv_context->ioaddr)) &
@@ -939,7 +939,7 @@ static int handle_message(struct ssp_driver_context *drv_context)
 	/* [REVERT ME] Bug in status register clear for Tangier simulation */
 	if ((intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER) ||
 		(intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_ANNIEDALE)) {
-		if (intel_mrfl_identify_sim() != INTEL_MRFL_CPU_SIMULATION_VP)
+		if (intel_mid_identify_sim() != INTEL_MID_CPU_SIMULATION_VP)
 			write_SSSR(drv_context->clear_sr, reg);
 	} else /* Clear status  */
 		write_SSSR(drv_context->clear_sr, reg);
@@ -1325,16 +1325,16 @@ static int intel_mid_ssp_spi_probe(struct pci_dev *pdev,
 		"intel_mid_ssp_spi", drv_context);
 
 	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER) {
-		if ((intel_mrfl_identify_sim() ==
-				INTEL_MRFL_CPU_SIMULATION_SLE) ||
-		    (intel_mrfl_identify_sim() ==
-				INTEL_MRFL_CPU_SIMULATION_NONE)) {
+		if ((intel_mid_identify_sim() ==
+				INTEL_MID_CPU_SIMULATION_SLE) ||
+		    (intel_mid_identify_sim() ==
+				INTEL_MID_CPU_SIMULATION_NONE)) {
 			/* [REVERT ME] Tangier SLE not supported.
 			 * Requires debug before removal.  Assume
 			 * also required in Si. */
 			disable_irq_nosync(drv_context->irq);
 		}
-		if (intel_mrfl_identify_sim() == INTEL_MRFL_CPU_SIMULATION_NONE)
+		if (intel_mid_identify_sim() == INTEL_MID_CPU_SIMULATION_NONE)
 			ssp_timing_wr = 1;
 	}
 

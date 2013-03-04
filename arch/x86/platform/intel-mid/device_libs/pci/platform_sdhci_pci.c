@@ -341,19 +341,19 @@ static struct sdhci_pci_data *get_sdhci_platform_data(struct pci_dev *pdev)
 			 * during kernel boot. So, we just disable boot
 			 * partition support for Merrifield VP platform.
 			 */
-			if (intel_mrfl_identify_sim() ==
-					INTEL_MRFL_CPU_SIMULATION_VP)
+			if (intel_mid_identify_sim() ==
+					INTEL_MID_CPU_SIMULATION_VP)
 				pdata->platform_quirks |=
 					PLFM_QUIRK_NO_EMMC_BOOT_PART;
-			if (intel_mrfl_identify_sim() ==
-					INTEL_MRFL_CPU_SIMULATION_HVP)
+			if (intel_mid_identify_sim() ==
+					INTEL_MID_CPU_SIMULATION_HVP)
 				pdata->platform_quirks |=
 					PLFM_QUIRK_NO_HIGH_SPEED;
 			break;
 		case 1:
 			pdata = &mrfl_sdhci_pci_data[EMMC1_INDEX];
-			if (intel_mrfl_identify_sim() ==
-					INTEL_MRFL_CPU_SIMULATION_VP)
+			if (intel_mid_identify_sim() ==
+					INTEL_MID_CPU_SIMULATION_VP)
 				pdata->platform_quirks |=
 					PLFM_QUIRK_NO_EMMC_BOOT_PART;
 			/*
@@ -362,22 +362,22 @@ static struct sdhci_pci_data *get_sdhci_platform_data(struct pci_dev *pdev)
 			 * does not implements other 3 Merrifield
 			 * SDHCI host controllers.
 			 */
-			if (intel_mrfl_identify_sim() ==
-					INTEL_MRFL_CPU_SIMULATION_HVP)
+			if (intel_mid_identify_sim() ==
+					INTEL_MID_CPU_SIMULATION_HVP)
 				pdata->platform_quirks |=
 					PLFM_QUIRK_NO_HOST_CTRL_HW;
 			break;
 		case 2:
 			pdata = &mrfl_sdhci_pci_data[SD_INDEX];
-			if (intel_mrfl_identify_sim() ==
-					INTEL_MRFL_CPU_SIMULATION_HVP)
+			if (intel_mid_identify_sim() ==
+					INTEL_MID_CPU_SIMULATION_HVP)
 				pdata->platform_quirks |=
 					PLFM_QUIRK_NO_HOST_CTRL_HW;
 			break;
 		case 3:
 			pdata = &mrfl_sdhci_pci_data[SDIO_INDEX];
-			if (intel_mrfl_identify_sim() ==
-					INTEL_MRFL_CPU_SIMULATION_HVP)
+			if (intel_mid_identify_sim() ==
+					INTEL_MID_CPU_SIMULATION_HVP)
 				pdata->platform_quirks |=
 					PLFM_QUIRK_NO_HOST_CTRL_HW;
 				pdata->quirks = sdhci_pdata_quirks;
