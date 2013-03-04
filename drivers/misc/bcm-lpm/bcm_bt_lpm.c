@@ -69,6 +69,13 @@ static int bcm43xx_bt_rfkill_set_power(void *data, bool blocked)
 	/* rfkill_ops callback. Turn transmitter on when blocked is false */
 
 	if (!blocked) {
+		gpio_set_value(bt_lpm.gpio_wake, 1);
+		/*
+		* Delay advice by BRCM is min 2.5ns,
+		* setting it between 10 and 50us for more confort
+		*/
+		usleep_range(10, 50);
+
 		gpio_set_value(bt_lpm.gpio_enable_bt, 1);
 		pr_debug("%s: turn BT on\n", __func__);
 	} else {
