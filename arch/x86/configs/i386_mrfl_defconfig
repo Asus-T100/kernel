@@ -553,7 +553,8 @@ CONFIG_CPU_IDLE_GOV_MENU=y
 # CONFIG_ARCH_NEEDS_CPU_IDLE_COUPLED is not set
 CONFIG_INTEL_IDLE=y
 
-# CONFIG_INTEL_ATOM_MRFLD_POWER is not set
+# Enable Power Management for Merrifield
+CONFIG_INTEL_ATOM_MRFLD_POWER=y
 
 #
 # Bus options (PCI etc.)
