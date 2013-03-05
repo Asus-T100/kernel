@@ -457,7 +457,8 @@ static int __get_css_frame_info(struct atomisp_device *isp,
 
 	switch (pipe_type) {
 	case ATOMISP_PIPE_CAPTURE:
-		if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO)
+		if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO
+		    || !isp->isp_subdev.enable_vfpp->val)
 			ret = sh_css_video_get_output_frame_info(frame_info);
 		else
 			ret = sh_css_capture_get_output_frame_info(frame_info);
@@ -1215,7 +1216,7 @@ enum sh_css_pipe_id atomisp_get_css_pipe_id(struct atomisp_device *isp)
 		return SH_CSS_PREVIEW_PIPELINE;
 
 	if (!isp->isp_subdev.enable_vfpp->val)
-		return SH_CSS_CAPTURE_PIPELINE;
+		return SH_CSS_VIDEO_PIPELINE;
 
 	switch (isp->isp_subdev.run_mode->val) {
 	case ATOMISP_RUN_MODE_PREVIEW:

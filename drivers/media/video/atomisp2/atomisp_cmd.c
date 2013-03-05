@@ -3380,7 +3380,8 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 			return -EINVAL;
 	}
 
-	if (isp->isp_subdev.fmt_auto->val) {
+	if (isp->isp_subdev.fmt_auto->val
+	    || !isp->isp_subdev.enable_vfpp->val) {
 		struct v4l2_rect vf_size;
 		struct v4l2_mbus_framefmt vf_ffmt;
 
@@ -3408,7 +3409,8 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 
 		isp->isp_subdev.video_out_vf.sh_fmt = SH_CSS_FRAME_FORMAT_YUV420;
 
-		if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO)
+		if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO
+		    || !isp->isp_subdev.enable_vfpp->val)
 			sh_css_video_configure_viewfinder(
 				vf_size.width, vf_size.height,
 				isp->isp_subdev.video_out_vf.sh_fmt);
@@ -3434,7 +3436,8 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 	sh_css_disable_vf_pp(!isp->isp_subdev.enable_vfpp->val);
 
 	/* video same in continuouscapture and online modes */
-	if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO) {
+	if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO
+	    || !isp->isp_subdev.enable_vfpp->val) {
 		configure_output = sh_css_video_configure_output;
 		get_frame_info = sh_css_video_get_output_frame_info;
 	} else if (source_pad == ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW) {
@@ -3768,7 +3771,8 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	    || isp_sink_crop.height * 9 / 10 < f->fmt.pix.height
 	    || isp->sw_contex.file_input
 	    || (isp->sw_contex.bypass
-		&& isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO)
+		&& isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO
+		&& isp->isp_subdev.enable_vfpp->val)
 	    || (!isp->sw_contex.bypass
 		&& isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO)) {
 		isp_sink_crop.width = f->fmt.pix.width;

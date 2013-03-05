@@ -194,7 +194,7 @@ int atomisp_qbuffers_to_css(struct atomisp_device *isp)
 
 	if (!isp->isp_subdev.enable_vfpp->val) {
 		preview_pipe = &isp->isp_subdev.video_out_capture;
-		css_preview_pipe_id = SH_CSS_CAPTURE_PIPELINE;
+		css_preview_pipe_id = SH_CSS_VIDEO_PIPELINE;
 	} else if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO) {
 		capture_pipe = &isp->isp_subdev.video_out_capture;
 		preview_pipe = &isp->isp_subdev.video_out_preview;
