@@ -1263,7 +1263,8 @@ static int psb_driver_unload(struct drm_device *dev)
 		(struct drm_psb_private *) dev->dev_private;
 
 	/*Fristly, unload pvr driver*/
-	BUG_ON(!dev_priv || !dev_priv->pvr_ops);
+	if (!dev_priv || !dev_priv->pvr_ops)
+		return -EINVAL;
 	dev_priv->pvr_ops->PVRSRVDrmUnload(dev);
 
 	/*TODO: destroy DSR/DPU infos here*/
