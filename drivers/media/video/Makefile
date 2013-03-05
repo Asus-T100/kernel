@@ -90,6 +90,7 @@ obj-$(CONFIG_VIDEO_AS3645A)	+= as3645a.o
 obj-$(CONFIG_VIDEO_MT9M114)	+= mt9m114.o
 obj-$(CONFIG_VIDEO_OV8830)	+= ov8830.o
 obj-$(CONFIG_VIDEO_IMX)		+= imx/
+obj-$(CONFIG_VIDEO_IMXVB)	+= imx135VB/
 obj-$(CONFIG_VIDEO_MT9D113)  += mt9d113.o
 CFFLAGS_mt9d113.o = -Werror
 obj-$(CONFIG_VIDEO_MT9V113)  += mt9v113.o
