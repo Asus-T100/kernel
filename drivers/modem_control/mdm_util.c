@@ -75,7 +75,13 @@ inline void mdm_ctrl_launch_work(struct mdm_ctrl *drv, int state)
 	queue_work(drv->change_state_wq, &drv->change_state_work);
 	spin_unlock_irqrestore(&drv->state_lck, flags);
 
-
+	/* We should unlock on RESET_OUT 0xXX or
+	* on set_state(MDM_CTRL_STATE_OFF). The second one can happen on
+	* mdm_ctrl_power_off request or when the modem is declared as DEAD by
+	* user and willingly set to OFF.
+	*/
+	if (state == MDM_CTRL_STATE_IPC_READY || state == MDM_CTRL_STATE_OFF)
+		wake_unlock(&drv->stay_awake);
 }
 
 /**
