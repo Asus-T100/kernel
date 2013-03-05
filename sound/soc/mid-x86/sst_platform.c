@@ -333,6 +333,16 @@ static int sst_platform_init_stream(struct snd_pcm_substream *substream)
 	return ret_val;
 
 }
+
+static inline int power_up_sst(struct sst_runtime_stream *sst)
+{
+	return sst->ops->power(true);
+}
+
+static inline int power_down_sst(struct sst_runtime_stream *sst)
+{
+	return sst->ops->power(false);
+}
 /* end -- helper functions */
 
 static int sst_media_open(struct snd_pcm_substream *substream,
@@ -364,6 +374,9 @@ static int sst_media_open(struct snd_pcm_substream *substream,
 	stream->stream_info.mad_substream = substream;
 	runtime->private_data = stream;
 
+	if (strstr(dai->name, "Power-cpu-dai"))
+		return power_up_sst(stream);
+
 	/* Make sure, that the period size is always even */
 	snd_pcm_hw_constraint_step(substream->runtime, 0,
 			   SNDRV_PCM_HW_PARAM_PERIODS, 2);
@@ -384,6 +397,9 @@ static void sst_media_close(struct snd_pcm_substream *substream,
 	int ret_val = 0, str_id;
 
 	stream = substream->runtime->private_data;
+	if (strstr(dai->name, "Power-cpu-dai"))
+		ret_val = power_down_sst(stream);
+
 	str_id = stream->stream_info.str_id;
 	if (str_id)
 		ret_val = stream->ops->close(str_id);
@@ -418,26 +434,13 @@ static int sst_media_prepare(struct snd_pcm_substream *substream,
 	return ret_val;
 }
 
-static inline int power_up_sst(struct sst_runtime_stream *sst)
-{
-	return sst->ops->power(true);
-}
-
-static inline int power_down_sst(struct sst_runtime_stream *sst)
-{
-	return sst->ops->power(false);
-}
 
 static int sst_media_hw_params(struct snd_pcm_substream *substream,
 				struct snd_pcm_hw_params *params,
 				struct snd_soc_dai *dai)
 {
-	struct sst_runtime_stream *sst =
-			substream->runtime->private_data;
 	pr_debug("%s\n", __func__);
 
-	if (strstr(dai->name, "Power-cpu-dai"))
-		return power_up_sst(sst);
 	snd_pcm_lib_malloc_pages(substream, params_buffer_bytes(params));
 	memset(substream->runtime->dma_area, 0, params_buffer_bytes(params));
 	return 0;
@@ -446,11 +449,6 @@ static int sst_media_hw_params(struct snd_pcm_substream *substream,
 static int sst_media_hw_free(struct snd_pcm_substream *substream,
 		struct snd_soc_dai *dai)
 {
-	struct sst_runtime_stream *sst =
-			substream->runtime->private_data;
-
-	if (strstr(dai->name, "Power-cpu-dai"))
-		return power_down_sst(sst);
 	return snd_pcm_lib_free_pages(substream);
 }
 
