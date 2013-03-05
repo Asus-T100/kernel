@@ -126,6 +126,7 @@ void kim_int_recv(struct kim_data_s *kim_gdata,
 	const unsigned char *ptr;
 	int len = 0, type = 0;
 	unsigned char *plen;
+	unsigned int skb_end = 0, skb_tail = 0;
 
 	pr_debug("%s", __func__);
 	/* Decode received bytes here */
@@ -138,6 +139,10 @@ void kim_int_recv(struct kim_data_s *kim_gdata,
 	while (count) {
 		if (kim_gdata->rx_count) {
 			len = min_t(unsigned int, kim_gdata->rx_count, count);
+			skb_end = kim_gdata->rx_skb->end;
+			skb_tail = kim_gdata->rx_skb->tail;
+			if (unlikely((skb_end - skb_tail) < len))
+				len = skb_end - skb_tail;
 			memcpy(skb_put(kim_gdata->rx_skb, len), ptr, len);
 			kim_gdata->rx_count -= len;
 			count -= len;
