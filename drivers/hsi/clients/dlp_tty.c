@@ -228,7 +228,7 @@ static void _dlp_forward_tty(struct tty_struct *tty,
 				 * time something has been written
 				 * to them to allow low latency */
 				do_push |= (copied > 0);
-			} while ((data_size) || (!copied));
+			} while ((data_size) && (copied));
 
 			/* Still have not copied data ? */
 			if (data_size) {
