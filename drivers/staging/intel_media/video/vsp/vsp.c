@@ -37,6 +37,7 @@
 
 #define ERR_ID_MASK 0xFFFF
 #define ERR_INFO_SHIFT 16
+#define PARTITIONS_MAX 9
 
 static int vsp_submit_cmdbuf(struct drm_device *dev,
 			     unsigned char *cmd_start,
@@ -59,6 +60,18 @@ static int vsp_fence_surfaces(struct drm_file *priv,
 			      struct psb_ttm_fence_rep *fence_arg,
 			      struct ttm_buffer_object *pic_param_bo);
 static void handle_error_response(unsigned int error);
+static int vsp_fence_vp8enc_surfaces(struct drm_file *priv,
+				struct list_head *validate_list,
+				uint32_t fence_type,
+				struct drm_psb_cmdbuf_arg *arg,
+				struct psb_ttm_fence_rep *fence_arg,
+				struct ttm_buffer_object *pic_param_bo,
+				struct ttm_buffer_object *coded_buf_bo);
+
+static inline void psb_clflush(void *addr)
+{
+	__asm__ __volatile__("wbinvd ");
+}
 
 int vsp_handle_response(struct drm_psb_private *dev_priv)
 {
@@ -86,6 +99,7 @@ int vsp_handle_response(struct drm_psb_private *dev_priv)
 
 		switch (msg->type) {
 		case VssErrorResponse:
+		case VssErrorResponse_VP8:
 			DRM_ERROR("error response:%.8x %.8x %.8x %.8x %.8x\n",
 				  msg->context, msg->type, msg->buffer,
 				  msg->size, msg->vss_cc);
@@ -94,6 +108,7 @@ int vsp_handle_response(struct drm_psb_private *dev_priv)
 			break;
 
 		case VssEndOfSequenceResponse:
+		case VssEndOfSequenceResponse_VP8:
 			VSP_DEBUG("end of the sequence received\n");
 			VSP_DEBUG("VSP clock cycles from pre response %x\n",
 				  msg->vss_cc);
@@ -139,6 +154,7 @@ int vsp_handle_response(struct drm_psb_private *dev_priv)
 			break;
 
 		case VssIdleResponse:
+		case VssIdleResponse_VP8:
 		{
 			unsigned int cmd_rd, cmd_wr;
 
@@ -172,6 +188,69 @@ int vsp_handle_response(struct drm_psb_private *dev_priv)
 				VSP_DEBUG("cmd_queue has data,continue...\n");
 				vsp_continue_function(dev_priv);
 			}
+			break;
+		}
+		case VssVp8encSetSequenceParametersResponse:
+			VSP_DEBUG("receive vp8 sequence response\n");
+			break;
+		case VssVp8encEncodeFrameResponse:
+		{
+			struct VssVp8encPictureParameterBuffer *t =
+				vsp_priv->vp8_encode_frame_cmd[vsp_priv->rd];
+			struct VssVp8encEncodedFrame *encoded_frame =
+				(struct VssVp8encEncodedFrame *)
+					(vsp_priv->coded_buf);
+			int i = 0;
+			int j = 0;
+			VSP_DEBUG("receive vp8 encoded frame buffer %x",
+					msg->buffer);
+			VSP_DEBUG("size %x cur command id is %d\n",
+					msg->size, vsp_priv->rd);
+			VSP_DEBUG("read vp8 pic param address %x at %d\n",
+				vsp_priv->vp8_encode_frame_cmd[vsp_priv->rd],
+				vsp_priv->rd);
+
+			psb_clflush(vsp_priv->coded_buf);
+
+			sequence = t->input_frame.surface_id;
+			VSP_DEBUG("sequence %x\n", sequence);
+			VSP_DEBUG("size %d\n", t->encoded_frame_size);
+
+			VSP_DEBUG("status[0=success] %x\n",
+					encoded_frame->status);
+			VSP_DEBUG("frame flags[1=Key, 0=Non-key] %d\n",
+					encoded_frame->frame_flags);
+			VSP_DEBUG("segments = %d\n", encoded_frame->segments);
+			VSP_DEBUG("frame size %d[bytes]\n",
+					encoded_frame->frame_size);
+			VSP_DEBUG("partitions num %d\n",
+					encoded_frame->partitions);
+			VSP_DEBUG("coded data start %p\n",
+					encoded_frame->coded_data);
+
+			if (encoded_frame->partitions > PARTITIONS_MAX) {
+				VSP_DEBUG("partitions num error\n");
+				encoded_frame->partitions = PARTITIONS_MAX;
+			}
+
+			for (; i < encoded_frame->partitions; i++) {
+				VSP_DEBUG("%d partitions size %d start %x\n", i,
+					encoded_frame->partition_size[i],
+					encoded_frame->partition_start[i]);
+			}
+
+			/* dump coded buf for debug */
+			int size = sizeof(struct VssVp8encEncodedFrame);
+			char *tmp = (char *) (vsp_priv->coded_buf);
+			for (j = 0; j < 32; j++) {
+				VSP_DEBUG("coded buf is: %d, %x\n", j,
+					*(tmp + size - 4 + j));
+			}
+
+			vsp_priv->rd++;
+			if (vsp_priv->rd >= VSP_CMD_QUEUE_SIZE)
+				vsp_priv->rd = 0;
+
 			break;
 		}
 		default:
@@ -411,7 +490,8 @@ int vsp_send_command(struct drm_device *dev,
 					goto out;
 				else
 					continue;
-			} else if (cur_cmd->type == VspSetContextCommand) {
+			} else if (cur_cmd->type == VspSetContextCommand ||
+				cur_cmd->type == Vss_Sys_STATE_BUF_COMMAND) {
 				VSP_DEBUG("skip VspSetContextCommand");
 				cur_cmd++;
 				cmd_size -= sizeof(*cur_cmd);
@@ -468,6 +548,9 @@ static int vsp_prehandle_command(struct drm_file *priv,
 	struct drm_device *dev = priv->minor->dev;
 	struct drm_psb_private *dev_priv = dev->dev_private;
 	struct vsp_private *vsp_priv = dev_priv->vsp_private;
+	struct ttm_buffer_object *pic_bo_vp8;
+	struct ttm_buffer_object *coded_buf_bo;
+	int vp8_pic_num = 0;
 
 	cur_cmd = (struct vss_command_t *)cmd_start;
 
@@ -498,7 +581,8 @@ static int vsp_prehandle_command(struct drm_file *priv,
 				ret = -1;
 				goto out;
 			}
-		} else if (cur_cmd->type == VspSetContextCommand) {
+		} else if (cur_cmd->type == VspSetContextCommand ||
+				cur_cmd->type == Vss_Sys_STATE_BUF_COMMAND) {
 
 			VSP_DEBUG("set context and new vsp context\n");
 			VSP_DEBUG("set context base %x, size %x\n",
@@ -506,11 +590,47 @@ static int vsp_prehandle_command(struct drm_file *priv,
 
 			vsp_priv->setting->state_buffer_size = cur_cmd->size;
 			vsp_priv->setting->state_buffer_addr = cur_cmd->buffer;
+			vsp_priv->fw_type = cur_cmd->type;
 
 			vsp_new_context(dev_priv->dev);
 		} else
 			/* calculate the numbers of cmd send to VSP */
 			vsp_priv->num_cmd = vsp_priv->num_cmd + 1;
+
+		if (cur_cmd->type == VssVp8encEncodeFrameCommand) {
+			pic_bo_vp8 =
+				ttm_buffer_object_lookup(tfile,
+						cur_cmd->reserved7);
+
+			if (pic_bo_vp8 == NULL) {
+				DRM_ERROR("VSP: failed to find %x bo\n",
+					cur_cmd->reserved7);
+				ret = -1;
+				goto out;
+			}
+
+			coded_buf_bo =
+				ttm_buffer_object_lookup(tfile,
+						cur_cmd->reserved6);
+			if (coded_buf_bo == NULL) {
+				DRM_ERROR("VSP: failed to find %x bo\n",
+					cur_cmd->reserved6);
+				ret = -1;
+				goto out;
+			}
+
+			vp8_pic_num++;
+			VSP_DEBUG("find pic param buffer: id %x, offset %lx\n",
+				cur_cmd->reserved7, pic_bo_vp8->offset);
+			VSP_DEBUG("pic param placement %x bus.add %p\n",
+				pic_bo_vp8->mem.placement,
+				pic_bo_vp8->mem.bus.addr);
+			if (pic_param_num > 1) {
+				DRM_ERROR("should be only 1 pic param cmd\n");
+				ret = -1;
+				goto out;
+			}
+		}
 
 		cmd_size -= sizeof(*cur_cmd);
 		cur_cmd++;
@@ -519,6 +639,10 @@ static int vsp_prehandle_command(struct drm_file *priv,
 	if (pic_param_num > 0) {
 		ret = vsp_fence_surfaces(priv, validate_list, fence_type, arg,
 					 fence_arg, pic_param_bo);
+	} else if (vp8_pic_num > 0) {
+		ret = vsp_fence_vp8enc_surfaces(priv, validate_list,
+					fence_type, arg,
+					fence_arg, pic_bo_vp8, coded_buf_bo);
 	} else {
 		/* unreserve these buffer */
 		list_for_each_entry_safe(pos, next, validate_list, head) {
@@ -528,6 +652,7 @@ static int vsp_prehandle_command(struct drm_file *priv,
 		VSP_DEBUG("no fence for this command\n");
 		goto out;
 	}
+
 
 	VSP_DEBUG("finished fencing\n");
 out:
@@ -652,6 +777,92 @@ int vsp_fence_surfaces(struct drm_file *priv,
 out:
 	ttm_bo_kunmap(&pic_param_kmap);
 
+	return ret;
+}
+
+static int vsp_fence_vp8enc_surfaces(struct drm_file *priv,
+				struct list_head *validate_list,
+				uint32_t fence_type,
+				struct drm_psb_cmdbuf_arg *arg,
+				struct psb_ttm_fence_rep *fence_arg,
+				struct ttm_buffer_object *pic_param_bo,
+				struct ttm_buffer_object *coded_buf_bo)
+{
+	struct psb_ttm_fence_rep local_fence_arg;
+	bool is_iomem;
+	int ret = 0;
+	struct VssVp8encPictureParameterBuffer *pic_param;
+	uint32_t surf_handler;
+	struct ttm_buffer_object *surf_bo;
+	struct ttm_fence_object *fence = NULL;
+	struct list_head surf_list;
+	struct ttm_validate_buffer *pos, *next, *cur_valid_buf;
+	struct ttm_object_file *tfile = BCVideoGetPriv(priv)->tfile;
+	struct drm_device *dev = priv->minor->dev;
+	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct vsp_private *vsp_priv = dev_priv->vsp_private;
+
+	INIT_LIST_HEAD(&surf_list);
+
+	/* map pic param */
+	ret = ttm_bo_kmap(pic_param_bo, 0, pic_param_bo->num_pages,
+			  &vsp_priv->vp8_encode_frame__kmap[vsp_priv->wr]);
+	if (ret) {
+		DRM_ERROR("VSP: ttm_bo_kmap failed: %d\n", ret);
+		goto out;
+	}
+
+	pic_param = (struct VssVp8encPictureParameterBuffer *)
+		ttm_kmap_obj_virtual(
+				&vsp_priv->vp8_encode_frame__kmap[vsp_priv->wr],
+				&is_iomem);
+
+	VSP_DEBUG("save vp8 pic param address %x at %d\n",
+			pic_param, vsp_priv->wr);
+
+	vsp_priv->vp8_encode_frame_cmd[vsp_priv->wr] = pic_param;
+	vsp_priv->wr++;
+
+	VSP_DEBUG("id %d bo addr %x  kernel addr %x surfaceid %x base %x\n",
+			vsp_priv->wr-1,
+			pic_param_bo,
+			pic_param,
+			pic_param->input_frame.surface_id,
+			pic_param->input_frame.base);
+	VSP_DEBUG("pic_param->encoded_frame_base = %p\n",
+			pic_param->encoded_frame_base);
+
+	/* map coded buffer */
+	ret = ttm_bo_kmap(coded_buf_bo, 0, coded_buf_bo->num_pages,
+			  &vsp_priv->coded_buf_kmap);
+	if (ret) {
+		DRM_ERROR("VSP: ttm_bo_kmap failed: %d\n", ret);
+		goto out;
+	}
+
+	vsp_priv->coded_buf = (void *)
+		ttm_kmap_obj_virtual(
+				&vsp_priv->coded_buf_kmap,
+				&is_iomem);
+
+	if (vsp_priv->wr >= VSP_CMD_QUEUE_SIZE)
+		vsp_priv->wr = 0;
+
+	/* just fence pic param if this is not end command */
+	/* only send last output fence_arg back */
+	psb_fence_or_sync(priv, VSP_ENGINE_VPP, fence_type,
+			  arg->fence_flags, validate_list,
+			  fence_arg, &fence);
+	if (fence) {
+		VSP_DEBUG("vp8 fence sequence %x at output pic %x\n",
+			  fence->sequence);
+		pic_param->input_frame.surface_id = fence->sequence;
+		ttm_fence_object_unref(&fence);
+	} else {
+		VSP_DEBUG("NO fence?????\n");
+	}
+
+out:
 	return ret;
 }
 

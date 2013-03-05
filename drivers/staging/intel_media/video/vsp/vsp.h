@@ -233,6 +233,19 @@ struct vsp_private {
 
 	/* the number of cmd will send to VSP */
 	int num_cmd;
+
+	unsigned int fw_type;
+
+	/* save the address of vp8 cmd_buffer for now */
+	struct VssVp8encPictureParameterBuffer
+		*vp8_encode_frame_cmd[VSP_CMD_QUEUE_SIZE];
+	struct ttm_bo_kmap_obj vp8_encode_frame__kmap[VSP_CMD_QUEUE_SIZE];
+	unsigned int rd;
+	unsigned int wr;
+
+	void *coded_buf;
+	struct ttm_bo_kmap_obj coded_buf_kmap;
+	uint32_t sequence;
 };
 
 extern int vsp_init(struct drm_device *dev);
