@@ -78,7 +78,7 @@ int sst_wake_up_block(struct intel_sst_drv *ctx, int result,
 		}
 	}
 
-	pr_err("Block not found or a response is received for a short message for ipc %d, drv_id %d\n",
+	pr_debug("Block not found or a response is received for a short message for ipc %d, drv_id %d\n",
 			ipc, drv_id);
 	return -EINVAL;
 }

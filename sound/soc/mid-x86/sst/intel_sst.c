@@ -837,6 +837,7 @@ static int sst_load_fw_rams(struct intel_sst_drv *sst)
 		pr_err("fw download failed\n");
 		/* assume FW d/l failed due to timeout*/
 		sst_set_fw_state_locked(sst, SST_UN_INIT);
+		sst_free_block(sst, block);
 		return -EBUSY;
 	}
 	pr_debug("Fw loaded!");
@@ -881,10 +882,12 @@ static int sst_save_dsp_context2(struct intel_sst_drv *sst)
 	if (sst_wait_timeout(sst, block)) {
 		pr_err("sst: err fw context save timeout  ...\n");
 		pr_err("not suspending FW!!!");
+		sst_free_block(sst, block);
 		return -EIO;
 	}
 	if (block->ret_code) {
 		pr_err("fw responded w/ error %d", block->ret_code);
+		sst_free_block(sst, block);
 		return -EIO;
 	}
 

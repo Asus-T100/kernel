@@ -611,7 +611,8 @@ int sst_send_byte_stream(void *sbytes)
 			memcpy(bytes->bytes, r->bytes, bytes->len);
 		}
 	}
-	sst_free_block(sst_drv_ctx, block);
+	if (bytes->block)
+		sst_free_block(sst_drv_ctx, block);
 	return 0;
 }
 
