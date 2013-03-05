@@ -2028,6 +2028,7 @@ static int tng_setup_new_context(
 	}
 
 	video_ctx->codec = codec;
+	video_ctx->status = 0;
 
 	PSB_DEBUG_GENERAL("TOPAZ: new context %08x(%s)\n",
 		(unsigned int)video_ctx, codec_to_string(codec));
@@ -2359,15 +2360,14 @@ tng_topaz_send(
 				goto out;
 			}
 
-#ifndef TOPAZHP_IRQ_ENABLED
 			tng_wait_on_sync(dev, sync_seq, cur_cmd_id);
-#endif
+
 			/*
 			for (m = 0; m < 1000; m++) {
 				PSB_UDELAY(100);
 			}
-			*/
 			PSB_UDELAY(6);
+			*/
 
 			/* Calculate command size */
 			switch (cur_cmd_id) {
