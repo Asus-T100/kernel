@@ -3380,6 +3380,10 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 			return -EINVAL;
 	}
 
+	/*
+	 * Configure viewfinder also if enable_vfpp is disabled: the
+	 * CSS still requires viewfinder configuration.
+	 */
 	if (isp->isp_subdev.fmt_auto->val
 	    || !isp->isp_subdev.enable_vfpp->val) {
 		struct v4l2_rect vf_size;
