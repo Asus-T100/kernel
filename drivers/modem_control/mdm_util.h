@@ -41,6 +41,7 @@
 #include <linux/mutex.h>
 #include <linux/wait.h>
 #include <linux/delay.h>
+#include <linux/wakelock.h>
 #include <linux/mdm_ctrl.h>
 #include <asm/intel-mid.h>
 #include <asm/intel_scu_pmic.h>
@@ -126,6 +127,9 @@ struct mdm_ctrl {
 
 	/* Wait queue for WAIT_FOR_STATE ioctl*/
 	wait_queue_head_t event;
+
+	/* Should be removed */
+	struct wake_lock stay_awake;
 };
 
 /* List of states */
