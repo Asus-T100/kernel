@@ -650,6 +650,7 @@ struct dwc3 {
 
 	struct usb_gadget	gadget;
 	struct usb_gadget_driver *gadget_driver;
+	int			soft_connected;
 
 	void __iomem		*regs;
 	size_t			regs_size;
