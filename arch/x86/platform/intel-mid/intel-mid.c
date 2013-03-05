@@ -77,6 +77,7 @@ __cpuinitdata enum intel_mid_timer_options intel_mid_timer_options;
 
 struct kobject *spid_kobj;
 struct soft_platform_id spid;
+char sfi_ssn[SFI_SSN_SIZE + 1];
 /* intel_mid_ops to store sub arch ops */
 struct intel_mid_ops *intel_mid_ops;
 /* getter function for sub arch ops*/
@@ -987,6 +988,15 @@ static int __init sfi_parse_oemb(struct sfi_table_header *table)
 
 	memcpy(&spid, &oemb->spid, sizeof(struct soft_platform_id));
 
+	if (oemb->header.len <
+			(char *)oemb->ssn + SFI_SSN_SIZE - (char *)oemb) {
+		pr_err("SFI OEMB does not contains SSN\n");
+		sfi_ssn[0] = '\0';
+	} else {
+		memcpy(sfi_ssn, oemb->ssn, SFI_SSN_SIZE);
+		sfi_ssn[SFI_SSN_SIZE] = '\0';
+	}
+
 	snprintf(sig, (SFI_SIGNATURE_SIZE + 1), "%s",
 		oemb->header.sig);
 	snprintf(oem_id, (SFI_OEM_ID_SIZE + 1), "%s",
@@ -1013,7 +1023,8 @@ static int __init sfi_parse_oemb(struct sfi_table_header *table)
 		"\tOEMB spid product line id    : %04x\n"
 		"\tOEMB spid hardware id        : %04x\n"
 		"\tOEMB spid fru[4..0]          : %02x %02x %02x %02x %02x\n"
-		"\tOEMB spid fru[9..5]          : %02x %02x %02x %02x %02x\n",
+		"\tOEMB spid fru[9..5]          : %02x %02x %02x %02x %02x\n"
+		"\tOEMB ssn                     : %s\n",
 		sig,
 		oemb->header.len,
 		oemb->header.rev,
@@ -1039,7 +1050,8 @@ static int __init sfi_parse_oemb(struct sfi_table_header *table)
 		spid.hardware_id,
 		spid.fru[4], spid.fru[3], spid.fru[2], spid.fru[1],
 		spid.fru[0], spid.fru[9], spid.fru[8], spid.fru[7],
-		spid.fru[6], spid.fru[5]);
+		spid.fru[6], spid.fru[5],
+		sfi_ssn);
 	return 0;
 }
 
