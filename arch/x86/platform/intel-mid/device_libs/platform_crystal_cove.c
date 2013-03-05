@@ -1,6 +1,7 @@
 #include <linux/i2c.h>
 #include <linux/mfd/core.h>
 #include <linux/mfd/intel_mid_pmic.h>
+#include <asm/intel_vlv2.h>
 
 enum {
 	PWRSRC_IRQ = 0,
@@ -33,6 +34,7 @@ static struct mfd_cell crystal_cove_data[] = {
 
 static struct i2c_board_info __initdata crystal_cove_device = {
 	I2C_BOARD_INFO("crystal_cove", 0x6e),
+	.irq = VV_GPIO_IRQBASE + VV_NGPIO_SCORE + VV_NGPIO_NCORE + 0, /* sus0 */
 	.platform_data = &crystal_cove_data,
 };
 

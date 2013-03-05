@@ -13,14 +13,15 @@
 
 #include <linux/kernel.h>
 #include <linux/module.h>
-#include <linux/kthread.h>
 #include <linux/delay.h>
 #include <linux/mfd/core.h>
 #include <linux/err.h>
 #include <linux/i2c.h>
 #include <linux/irq.h>
 #include <linux/interrupt.h>
+#include <linux/workqueue.h>
 #include <linux/mfd/intel_mid_pmic.h>
+#include <asm/intel_vlv2.h>
 
 #define PMIC_IRQ_NUM	7
 
@@ -36,7 +37,9 @@ struct intel_mid_pmic {
 	int irq;
 	struct mutex irq_lock;
 	int irq_base;
-	int irq_mask;
+	unsigned long irq_mask;
+	struct workqueue_struct *workqueue;
+	struct work_struct      work;
 };
 
 static struct intel_mid_pmic intel_mid_pmic;
@@ -90,12 +93,14 @@ int intel_mid_pmic_clearb(int reg, u8 mask)
 
 static void pmic_irq_enable(struct irq_data *data)
 {
-	pmic->irq_mask &= ~(1 << (data->irq - pmic->irq_base));
+	clear_bit(data->irq - pmic->irq_base, &pmic->irq_mask);
+	queue_work(pmic->workqueue, &pmic->work);
 }
 
 static void pmic_irq_disable(struct irq_data *data)
 {
-	pmic->irq_mask |= 1 << (data->irq - pmic->irq_base);
+	set_bit(data->irq - pmic->irq_base, &pmic->irq_mask);
+	queue_work(pmic->workqueue, &pmic->work);
 }
 
 static void pmic_irq_sync_unlock(struct irq_data *data)
@@ -108,16 +113,30 @@ static void pmic_irq_lock(struct irq_data *data)
 	mutex_lock(&pmic->irq_lock);
 }
 
+static void pmic_work(struct work_struct *work)
+{
+	mutex_lock(&pmic->irq_lock);
+	intel_mid_pmic_writeb(MIRQLVL1, (u8)pmic->irq_mask);
+	mutex_unlock(&pmic->irq_lock);
+}
+
+static irqreturn_t pmic_irq_isr(int irq, void *data)
+{
+	return IRQ_WAKE_THREAD;
+}
+
 static irqreturn_t pmic_irq_thread(int irq, void *data)
 {
 	int i;
 	int pending;
 
-	intel_mid_pmic_writeb(MIRQLVL1, pmic->irq_mask);
+	mutex_lock(&pmic->irq_lock);
+	intel_mid_pmic_writeb(MIRQLVL1, (u8)pmic->irq_mask);
 	pending = intel_mid_pmic_readb(IRQLVL1) & (~pmic->irq_mask);
 	for (i = 0; i < PMIC_IRQ_NUM; i++)
 		if (pending & (1 << i))
 			handle_nested_irq(pmic->irq_base + i);
+	mutex_unlock(&pmic->irq_lock);
 	return IRQ_HANDLED;
 }
 
@@ -129,21 +148,15 @@ static struct irq_chip pmic_irq_chip = {
 	.irq_enable		= pmic_irq_enable,
 };
 
-static int pmic_polling_thread(void *data)
-{
-	while (1) {
-		pmic_irq_thread(0, NULL);
-		msleep(500);
-	}
-}
-
 static int pmic_irq_init(void)
 {
 	int cur_irq;
 	int ret;
 
-	intel_mid_pmic_writeb(MIRQLVL1, 0x7f);
-	pmic->irq_base = irq_alloc_descs(256, 0, PMIC_IRQ_NUM, 0);
+	pmic->irq_mask = 0xff;
+	intel_mid_pmic_writeb(MIRQLVL1, pmic->irq_mask);
+	pmic->irq_mask = intel_mid_pmic_readb(MIRQLVL1);
+	pmic->irq_base = irq_alloc_descs(VV_PMIC_IRQBASE, 0, PMIC_IRQ_NUM, 0);
 	if (pmic->irq_base < 0) {
 		dev_warn(pmic->dev, "Failed to allocate IRQs: %d\n",
 			 pmic->irq_base);
@@ -162,22 +175,18 @@ static int pmic_irq_init(void)
 		irq_set_noprobe(cur_irq);
 	}
 
-	if (pmic->irq == 0)
-		kthread_run(pmic_polling_thread, NULL, "pmic polling irq");
-	else {
-		ret = request_threaded_irq(pmic->irq, NULL, pmic_irq_thread,
-				IRQF_TRIGGER_LOW | IRQF_ONESHOT,
-				"intel_mid_pmic", pmic);
-		if (ret != 0) {
-			dev_err(pmic->dev, "Failed to request IRQ %d: %d\n",
-					pmic->irq, ret);
-			return ret;
-		}
-		ret = enable_irq_wake(pmic->irq);
-		if (ret != 0) {
-			dev_warn(pmic->dev, "Can't enable PMIC IRQ as wake source: %d\n",
-				 ret);
-		}
+	ret = request_threaded_irq(pmic->irq, pmic_irq_isr, pmic_irq_thread,
+			IRQF_TRIGGER_RISING | IRQF_ONESHOT,
+			"intel_mid_pmic", pmic);
+	if (ret != 0) {
+		dev_err(pmic->dev, "Failed to request IRQ %d: %d\n",
+				pmic->irq, ret);
+		return ret;
+	}
+	ret = enable_irq_wake(pmic->irq);
+	if (ret != 0) {
+		dev_warn(pmic->dev, "Can't enable PMIC IRQ as wake source: %d\n",
+			 ret);
 	}
 
 	return 0;
@@ -191,6 +200,9 @@ static int pmic_i2c_probe(struct i2c_client *i2c,
 
 	mutex_init(&pmic->io_lock);
 	mutex_init(&pmic->irq_lock);
+	pmic->workqueue =
+		create_singlethread_workqueue("crystal cove");
+	INIT_WORK(&pmic->work, pmic_work);
 	pmic->i2c = i2c;
 	pmic->dev = &i2c->dev;
 	pmic->irq = i2c->irq;

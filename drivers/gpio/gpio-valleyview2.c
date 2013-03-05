@@ -28,12 +28,14 @@
 #include <linux/interrupt.h>
 #include <linux/irq.h>
 #include <linux/gpio.h>
-#include <linux/irqdomain.h>
 #include <linux/acpi.h>
 #include <linux/acpi_gpio.h>
 #include <linux/platform_device.h>
 #include <linux/seq_file.h>
 #include <linux/io.h>
+#include <linux/kthread.h>
+#include <linux/delay.h>
+#include <asm/intel_vlv2.h>
 
 /* memory mapped register offsets */
 #define VV_CONF0_REG		0x000
@@ -55,10 +57,6 @@
 
 #define VV_DIR_MASK		(BIT(1) | BIT(2))
 #define VV_TRIG_MASK		(BIT(26) | BIT(25) | BIT(24))
-
-#define VV_NGPIO_SCORE		102
-#define VV_NGPIO_NCORE		28
-#define VV_NGPIO_SUS		43
 
 /*
  * Valleyview gpio controller consist of three separate sub-controllers called
@@ -100,6 +98,8 @@ static unsigned sus_gpio_to_pad[VV_NGPIO_SUS] = {
 
 struct gpio_bank {
 	char		*uid; /* acpi _UID */
+	int		gpio_base;
+	int		irq_base;
 	int		ngpio;
 	unsigned	*to_pad;
 };
@@ -107,16 +107,22 @@ struct gpio_bank {
 static struct gpio_bank vlv_banks[] = {
 	{
 		.uid = "1",
+		.gpio_base = VV_GPIO_BASE,
+		.irq_base = VV_GPIO_IRQBASE,
 		.ngpio = VV_NGPIO_SCORE,
 		.to_pad = score_gpio_to_pad,
 	},
 	{
 		.uid = "2",
+		.gpio_base = VV_GPIO_BASE + VV_NGPIO_SCORE,
+		.irq_base = VV_GPIO_IRQBASE + VV_NGPIO_SCORE,
 		.ngpio = VV_NGPIO_NCORE,
 		.to_pad = ncore_gpio_to_pad,
 	},
 	{
 		.uid = "3",
+		.gpio_base = VV_GPIO_BASE + VV_NGPIO_SCORE + VV_NGPIO_NCORE,
+		.irq_base = VV_GPIO_IRQBASE + VV_NGPIO_SCORE + VV_NGPIO_NCORE,
 		.ngpio = VV_NGPIO_SUS,
 		.to_pad = sus_gpio_to_pad,
 	},
@@ -126,11 +132,11 @@ static struct gpio_bank vlv_banks[] = {
 
 struct vlv_gpio {
 	struct gpio_chip	chip;
-	struct irq_domain	*domain;
 	struct platform_device	*pdev;
 	spinlock_t		lock;
 	void __iomem		*reg_base;
 	unsigned		*gpio_to_pad;
+	int			irq_base;
 };
 
 static void __iomem *vlv_gpio_reg(struct gpio_chip *chip, unsigned offset,
@@ -183,7 +189,7 @@ static void vlv_gpio_free(struct gpio_chip *chip, unsigned offset)
 static int vlv_irq_type(struct irq_data *d, unsigned type)
 {
 	struct vlv_gpio *vg = irq_data_get_irq_chip_data(d);
-	u32 offset = irqd_to_hwirq(d);
+	u32 offset = d->irq - vg->irq_base;
 	u32 value;
 	unsigned long flags;
 	void __iomem *reg = vlv_gpio_reg(&vg->chip, offset, VV_CONF0_REG);
@@ -279,8 +285,17 @@ static void vlv_gpio_dbg_show(struct seq_file *s, struct gpio_chip *chip)
 	int i;
 	unsigned long flags;
 	u32 conf0,  val, offs;
+	void __iomem *reg;
+	u32 base;
+	u32 pending;
 
 	spin_lock_irqsave(&vg->lock, flags);
+	for (base = 0; base < vg->chip.ngpio; base += 32) {
+		reg = vlv_gpio_reg(&vg->chip, base, VV_INT_STAT_REG);
+		pending = readl(reg);
+		seq_printf(s, "VV_INT_STAT_REG[%d-%d]: 0x%x\n",
+				base, base+32, pending);
+	}
 	for (i = 0; i < vg->chip.ngpio; i++) {
 
 		offs = vg->gpio_to_pad[i] * 16;
@@ -306,7 +321,26 @@ static void vlv_gpio_dbg_show(struct seq_file *s, struct gpio_chip *chip)
 static int vlv_gpio_to_irq(struct gpio_chip *chip, unsigned offset)
 {
 	struct vlv_gpio *vg = container_of(chip, struct vlv_gpio, chip);
-	return irq_create_mapping(vg->domain, offset);
+	return vg->irq_base + offset;
+}
+
+static void vlv_gpio_irq_dispatch(struct vlv_gpio *vg)
+{
+	u32 base, pin, mask;
+	void __iomem *reg;
+	u32 pending;
+
+	for (base = 0; base < vg->chip.ngpio; base += 32) {
+		reg = vlv_gpio_reg(&vg->chip, base, VV_INT_STAT_REG);
+		pending = readl(reg);
+		while (pending) {
+			pin = __ffs(pending);
+			mask = BIT(pin);
+			writel(mask, reg);
+			generic_handle_irq(vg->irq_base + base + pin);
+			pending = readl(reg);
+		}
+	}
 }
 
 static void vlv_gpio_irq_handler(unsigned irq, struct irq_desc *desc)
@@ -314,26 +348,8 @@ static void vlv_gpio_irq_handler(unsigned irq, struct irq_desc *desc)
 	struct irq_data *data = irq_desc_get_irq_data(desc);
 	struct vlv_gpio *vg = irq_data_get_irq_handler_data(data);
 	struct irq_chip *chip = irq_data_get_irq_chip(data);
-	u32 base, pin, mask;
-	void __iomem *reg;
-	u32 pending;
-	unsigned virq;
 
-	/* check from GPIO controller which pin triggered the interrupt */
-	for (base = 0; base < vg->chip.ngpio; base += 32) {
-
-		reg = vlv_gpio_reg(&vg->chip, base, VV_INT_STAT_REG);
-
-		while ((pending = readl(reg))) {
-			pin = __ffs(pending);
-			mask = BIT(pin);
-			/* Clear before handling so we can't lose an edge */
-			writel(mask, reg);
-
-			virq = irq_find_mapping(vg->domain, base + pin);
-			generic_handle_irq(virq);
-		}
-	}
+	vlv_gpio_irq_dispatch(vg);
 	chip->irq_eoi(data);
 }
 
@@ -345,41 +361,48 @@ static void vlv_irq_mask(struct irq_data *d)
 {
 }
 
+static int vlv_irq_wake(struct irq_data *d, unsigned on)
+{
+	return 0;
+}
+
+static void vlv_irq_ack(struct irq_data *d)
+{
+}
+
+static void vlv_irq_shutdown(struct irq_data *d)
+{
+}
+
 static struct irq_chip vlv_irqchip = {
 	.name = "VLV-GPIO",
 	.irq_mask = vlv_irq_mask,
 	.irq_unmask = vlv_irq_unmask,
 	.irq_set_type = vlv_irq_type,
+	.irq_set_wake = vlv_irq_wake,
+	.irq_ack = vlv_irq_ack,
+	.irq_shutdown = vlv_irq_shutdown,
 };
 
 static void vlv_gpio_irq_init_hw(struct vlv_gpio *vg)
 {
 	void __iomem *reg;
 	u32 base;
+	unsigned offset;
+	u32 value;
 
-	/* clear interrupt status trigger registers */
+	for (offset = 0; offset < vg->chip.ngpio; offset++) {
+		reg = vlv_gpio_reg(&vg->chip, offset, VV_CONF0_REG);
+		value = readl(reg);
+		value &= ~(VV_TRIG_POS | VV_TRIG_NEG | VV_TRIG_LVL);
+		writel(value, reg);
+	}
+
 	for (base = 0; base < vg->chip.ngpio; base += 32) {
 		reg = vlv_gpio_reg(&vg->chip, base, VV_INT_STAT_REG);
 		writel(0xffffffff, reg);
 	}
 }
-
-static int vlv_gpio_irq_map(struct irq_domain *d, unsigned int virq,
-			    irq_hw_number_t hw)
-{
-	struct vlv_gpio *vg = d->host_data;
-
-	irq_set_chip_and_handler_name(virq, &vlv_irqchip, handle_simple_irq,
-				      "demux");
-	irq_set_chip_data(virq, vg);
-	irq_set_irq_type(virq, IRQ_TYPE_NONE);
-
-	return 0;
-}
-
-static const struct irq_domain_ops vlv_gpio_irq_ops = {
-	.map = vlv_gpio_irq_map,
-};
 
 static int vlv_gpio_probe(struct platform_device *pdev)
 {
@@ -443,7 +466,7 @@ static int vlv_gpio_probe(struct platform_device *pdev)
 	gc->get = vlv_gpio_get;
 	gc->set = vlv_gpio_set;
 	gc->dbg_show = vlv_gpio_dbg_show;
-	gc->base = -1;
+	gc->base = bank->gpio_base;
 	gc->can_sleep = 0;
 	gc->dev = dev;
 
@@ -457,14 +480,7 @@ static int vlv_gpio_probe(struct platform_device *pdev)
 	if (irq_rc && irq_rc->start) {
 		hwirq = irq_rc->start;
 		gc->to_irq = vlv_gpio_to_irq;
-
-		vg->domain = irq_domain_add_linear(NULL, gc->ngpio,
-						   &vlv_gpio_irq_ops, vg);
-		if (!vg->domain)
-			return -ENXIO;
-
 		vlv_gpio_irq_init_hw(vg);
-
 		irq_set_handler_data(hwirq, vg);
 		irq_set_chained_handler(hwirq, vlv_gpio_irq_handler);
 	}
@@ -505,6 +521,19 @@ static int __init vlv_gpio_init(void)
 	return platform_driver_register(&vlv_gpio_driver);
 }
 
+static int polling_thread(void *p)
+{
+	unsigned long flags;
+	struct vlv_gpio *vg = p;
+
+	while (1) {
+		spin_lock_irqsave(&vg->lock, flags);
+		vlv_gpio_irq_dispatch(p);
+		spin_unlock_irqrestore(&vg->lock, flags);
+		msleep(80);
+	}
+}
+
 static int vlv_gpio_plt_probe(struct platform_device *pdev)
 {
 	struct vlv_gpio *vg;
@@ -515,6 +544,8 @@ static int vlv_gpio_plt_probe(struct platform_device *pdev)
 	unsigned hwirq;
 	int ret;
 	static int bank_id;
+	int i;
+	int base_irq;
 
 	bank = vlv_banks + bank_id;
 	bank_id++;
@@ -524,7 +555,6 @@ static int vlv_gpio_plt_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "can't allocate vlv_gpio chip data\n");
 		ret = -ENOMEM;
 	}
-
 	vg->chip.ngpio = bank->ngpio;
 	vg->gpio_to_pad = bank->to_pad;
 	vg->pdev = pdev;
@@ -557,7 +587,7 @@ static int vlv_gpio_plt_probe(struct platform_device *pdev)
 	gc->get = vlv_gpio_get;
 	gc->set = vlv_gpio_set;
 	gc->dbg_show = vlv_gpio_dbg_show;
-	gc->base = -1;
+	gc->base = bank->gpio_base;
 	gc->can_sleep = 0;
 	gc->dev = dev;
 
@@ -568,19 +598,23 @@ static int vlv_gpio_plt_probe(struct platform_device *pdev)
 	}
 
 	/* set up interrupts  */
+	vlv_gpio_irq_init_hw(vg);
+	vg->irq_base = bank->irq_base;
 	if (irq_rc && irq_rc->start) {
 		hwirq = irq_rc->start;
 		gc->to_irq = vlv_gpio_to_irq;
-
-		vg->domain = irq_domain_add_linear(NULL, gc->ngpio,
-						   &vlv_gpio_irq_ops, vg);
-		if (!vg->domain)
-			return -ENXIO;
-
-		vlv_gpio_irq_init_hw(vg);
-
+		base_irq = irq_alloc_descs(vg->irq_base, 0, gc->ngpio, 0);
+		if (vg->irq_base != base_irq)
+			panic("gpio base irq fail, needs %d, return %d\n",
+				vg->irq_base, base_irq);
+		for (i = 0; i < gc->ngpio; i++) {
+			irq_set_chip_and_handler_name(i + vg->irq_base,
+					&vlv_irqchip, handle_edge_irq, "gpio");
+			ret = irq_set_chip_data(i + vg->irq_base, vg);
+		}
 		irq_set_handler_data(hwirq, vg);
 		irq_set_chained_handler(hwirq, vlv_gpio_irq_handler);
+		kthread_run(polling_thread, vg, "gpio_poll_irq");
 	}
 
 	return 0;
@@ -663,3 +697,4 @@ static int __init vlv_gpio_plt_init(void)
 
 subsys_initcall(vlv_gpio_plt_init);
 subsys_initcall(vlv_gpio_init);
+
