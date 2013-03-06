@@ -81,6 +81,16 @@
 #define CSTATE_EXIT_LATENCY_S0i1 1040
 #define CSTATE_EXIT_LATENCY_S0i3 2800
 
+enum s3_parts {
+	PROC_FRZ,
+	DEV_SUS,
+	NB_CPU_OFF,
+	NB_CPU_ON,
+	DEV_RES,
+	PROC_UNFRZ,
+	MAX_S3_PARTS
+};
+
 #ifdef CONFIG_ATOM_SOC_POWER
 #define LOG_PMU_EVENTS
 
@@ -125,6 +135,10 @@ extern int pmu_set_devices_in_d0i0(void);
 extern int pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state);
 extern pci_power_t pmu_pci_choose_state(struct pci_dev *pdev);
 
+extern void time_stamp_in_suspend_flow(int mark, bool start);
+extern void time_stamp_for_sleep_state_latency(int sleep_state,
+						bool start, bool entry);
+extern int mid_state_to_sys_state(int mid_state);
 extern void pmu_power_off(void);
 extern void pmu_set_s0ix_complete(void);
 extern bool pmu_is_s0ix_in_progress(void);
@@ -152,6 +166,7 @@ extern bool mid_pmu_is_wake_source(u32 lss_number);
 #define MID_S0I1_STATE         C6_HINT
 #define MID_LPMP3_STATE        C6_HINT
 #define MID_S0I3_STATE         C6_HINT
+#define MID_S3_STATE           C6_HINT
 
 /* Power usage unknown if MID_POWER not defined */
 #define C0_POWER_USAGE         0
@@ -169,6 +184,11 @@ static inline void pmu_set_s0ix_complete(void) { return; }
 static inline bool pmu_is_s0ix_in_progress(void) { return false; };
 
 /*returns function not implemented*/
+static inline void time_stamp_in_suspend_flow(int mark, bool start) {}
+static inline void time_stamp_for_sleep_state_latency(int sleep_state,
+					bool start, bool entry) {}
+static inline int mid_state_to_sys_state(int mid_state) { return 0; }
+
 static inline int pmu_set_devices_in_d0i0(void) { return 0; }
 static inline void pmu_log_ipc(u32 command) { return; };
 static inline void pmu_log_ipc_irq(void) { return; };

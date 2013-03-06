@@ -77,6 +77,31 @@ static int pci_to_platform_state(pci_power_t pci_state)
 	return state;
 }
 
+/* Maps power states to pmu driver's internal indexes */
+int mid_state_to_sys_state(int mid_state)
+{
+	int sys_state = 0;
+	switch (mid_state) {
+	case MID_S0I1_STATE:
+		sys_state = SYS_STATE_S0I1;
+		break;
+	case MID_LPMP3_STATE:
+		sys_state = SYS_STATE_S0I2;
+		break;
+	case MID_S0I3_STATE:
+		sys_state = SYS_STATE_S0I3;
+		break;
+	case MID_S3_STATE:
+		sys_state = SYS_STATE_S3;
+		break;
+
+	case C6_HINT:
+		sys_state = SYS_STATE_S0I0;
+	}
+
+	return sys_state;
+}
+
 /* PCI Device Id structure */
 static DEFINE_PCI_DEVICE_TABLE(mid_pm_ids) = {
 	{PCI_VDEVICE(INTEL, MID_PMU_MFLD_DRV_DEV_ID), 0},
@@ -1736,15 +1761,23 @@ static struct pci_driver driver = {
 static int standby_enter(void)
 {
 	u32 temp = 0;
+	int s3_state = mid_state_to_sys_state(MID_S3_STATE);
 
 	if (mid_s0ix_enter(MID_S3_STATE) != MID_S3_STATE) {
 		pmu_set_s0ix_complete();
 		return -EINVAL;
 	}
 
+	/* time stamp for end of s3 entry */
+	time_stamp_for_sleep_state_latency(s3_state, false, true);
+
 	__monitor((void *) &temp, 0, 0);
 	smp_mb();
 	__mwait(mid_pmu_cxt->s3_hint, 1);
+
+	/* time stamp for start of s3 exit */
+	time_stamp_for_sleep_state_latency(s3_state, true, false);
+
 	pmu_set_s0ix_complete();
 
 	/*set wkc to appropriate value suitable for s0ix*/

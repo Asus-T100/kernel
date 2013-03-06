@@ -45,73 +45,102 @@ static void latency_measure_enable_disable(bool enable_measure)
 	}
 
 	if (enable_measure) {
-		memset(lat_stat->latency, 0, sizeof(lat_stat->latency));
+		memset(lat_stat->scu_latency, 0, sizeof(lat_stat->scu_latency));
+		memset(lat_stat->os_latency, 0, sizeof(lat_stat->os_latency));
+		memset(lat_stat->s3_parts_lat, 0,
+				sizeof(lat_stat->s3_parts_lat));
 		memset(lat_stat->count, 0, sizeof(lat_stat->count));
 	}
 
 	lat_stat->latency_measure = enable_measure;
 }
 
-static int show_pmu_s0ix_lat(struct seq_file *s, void *unused)
+static void print_simple_stat(struct seq_file *s, int divisor, int rem_div,
+					int count, struct simple_stat stat)
 {
 	unsigned long long min, avg, max;
-	unsigned long long min_rem, avg_rem, max_rem;
+	unsigned long min_rem = 0, avg_rem = 0, max_rem = 0;
+
+	min = stat.min;
+	max = stat.max;
+	avg = stat.total;
+
+	if (count)
+		do_div(avg, count);
+
+	if (divisor > 1) {
+		min_rem = do_div(min, divisor);
+		max_rem = do_div(max, divisor);
+		avg_rem = do_div(avg, divisor);
+	}
+
+	if (rem_div > 1) {
+		min_rem /= rem_div;
+		max_rem /= rem_div;
+		avg_rem /= rem_div;
+	}
+
+	seq_printf(s, " %5llu.%03lu/%5llu.%03lu/%5llu.%03lu",
+			min, min_rem, avg, avg_rem, max, max_rem);
+}
+
+static int show_pmu_s0ix_lat(struct seq_file *s, void *unused)
+{
 	int i = 0;
 
 	char *states[] = {
 		"S0I1",
 		"LPMP3",
-		"S0I3"
+		"S0I3",
+		"S3"
 	};
 
-	for (i = SYS_STATE_S0I1; i <= SYS_STATE_S0I3; i++) {
-		seq_printf(s, "\n%s(%llu)\n================\n",
-			states[i - SYS_STATE_S0I1], lat_stat->count[i]);
+	char *s3_parts_names[] = {
+		"PROC_FRZ",
+		"DEV_SUS",
+		"NB_CPU_OFF",
+		"NB_CPU_ON",
+		"DEV_RES",
+		"PROC_UNFRZ"
+	};
 
-		seq_printf(s, "%25s\n", "Latency");
-		seq_printf(s, "%32s\n", "min/avg/max(msec)");
+	seq_printf(s, "%29s %35s\n", "SCU Latency", "OS Latency");
+	seq_printf(s, "%33s %35s\n", "min/avg/max(msec)", "min/avg/max(msec)");
 
-		/* Calculating stats for entry latency */
-		min = lat_stat->latency[i].min_entry;
-		max = lat_stat->latency[i].max_entry;
-		avg = lat_stat->latency[i].total_entry;
+	for (i = SYS_STATE_S0I1; i <= SYS_STATE_S3; i++) {
+		seq_printf(s, "\n%s(%llu)", states[i - SYS_STATE_S0I1],
+							lat_stat->count[i]);
 
-		if (lat_stat->count[i])
-			do_div(avg, lat_stat->count[i]);
+		seq_printf(s, "\n%5s", "entry");
+		print_simple_stat(s, USEC_PER_MSEC, 1, lat_stat->count[i],
+						lat_stat->scu_latency[i].entry);
+		seq_printf(s, "      ");
+		print_simple_stat(s, NSEC_PER_MSEC, NSEC_PER_USEC,
+			lat_stat->count[i], lat_stat->os_latency[i].entry);
 
-		min_rem = avg_rem = max_rem = 0;
-		if (min)
-			min_rem = do_div(min, USEC_PER_MSEC);
-		if (max)
-			max_rem = do_div(max, USEC_PER_MSEC);
-		if (avg)
-			avg_rem = do_div(avg, USEC_PER_MSEC);
+		seq_printf(s, "\n%5s", "exit");
+		print_simple_stat(s, USEC_PER_MSEC, 1, lat_stat->count[i],
+						lat_stat->scu_latency[i].exit);
+		seq_printf(s, "      ");
+		print_simple_stat(s, NSEC_PER_MSEC, NSEC_PER_USEC,
+			lat_stat->count[i], lat_stat->os_latency[i].exit);
 
-		/* Printing stats for entry latency */
-		seq_printf(s, "%5s %5llu.%03llu/%5llu.%03llu/%5llu.%03llu\n",
-			"entry", min, min_rem, avg, avg_rem, max, max_rem);
+	}
 
+	seq_printf(s, "\n\n");
 
-		/* Calculating stats for exit latency */
-		min = lat_stat->latency[i].min_exit;
-		max = lat_stat->latency[i].max_exit;
-		avg = lat_stat->latency[i].total_exit;
+	if (!lat_stat->count[SYS_STATE_S3])
+		return 0;
 
-		if (lat_stat->count[i])
-			do_div(avg, lat_stat->count[i]);
+	seq_printf(s, "S3 Latency dissection:\n");
+	seq_printf(s, "%38s\n", "min/avg/max(msec)");
 
-		min_rem = avg_rem = max_rem = 0;
-		if (min)
-			min_rem = do_div(min, USEC_PER_MSEC);
-		if (max)
-			max_rem = do_div(max, USEC_PER_MSEC);
-		if (avg)
-			avg_rem = do_div(avg, USEC_PER_MSEC);
-
-		/* Printing stats for exit latency */
-		seq_printf(s, "%5s %5llu.%03llu/%5llu.%03llu/%5llu.%03llu\n",
-			"exit", min, min_rem, avg, avg_rem, max, max_rem);
-
+	for (i = 0; i < MAX_S3_PARTS; i++) {
+		seq_printf(s, "%10s\t", s3_parts_names[i]);
+		print_simple_stat(s, NSEC_PER_MSEC, NSEC_PER_USEC,
+					lat_stat->count[SYS_STATE_S3],
+					lat_stat->s3_parts_lat[i]);
+		seq_printf(s, "\n");
 	}
 
 	return 0;
@@ -153,43 +182,40 @@ static const struct file_operations s0ix_latency_ops = {
 	.release	= single_release,
 };
 
-void s0ix_latency_stat(int type)
+static void update_simple_stat(struct simple_stat *simple_stat, int count)
 {
-	u64 scu_entry_lat, scu_exit_lat;
+	u64 duration = simple_stat->curr;
 
+	if (!count) {
+		simple_stat->min =
+		simple_stat->max =
+		simple_stat->total = duration;
+	} else {
+		if (duration < simple_stat->min)
+			simple_stat->min = duration;
+		else if (duration > simple_stat->max)
+			simple_stat->max = duration;
+		simple_stat->total += duration;
+	}
+}
+
+void s0ix_scu_latency_stat(int type)
+{
 	if (!lat_stat || !lat_stat->latency_measure)
 		return;
 
-	if (type < SYS_STATE_S0I1 || type > SYS_STATE_S0I3)
+	if (type < SYS_STATE_S0I1 || type > SYS_STATE_S3)
 		return;
 
-	scu_entry_lat = readl(lat_stat->scu_s0ix_lat_addr);
-	scu_exit_lat = readl(lat_stat->scu_s0ix_lat_addr + 1);
+	lat_stat->scu_latency[type].entry.curr =
+			readl(lat_stat->scu_s0ix_lat_addr);
+	lat_stat->scu_latency[type].exit.curr =
+			readl(lat_stat->scu_s0ix_lat_addr + 1);
 
-	if (!lat_stat->count[type]) { /* Collecting stats for first time */
-		lat_stat->latency[type].min_entry =
-		lat_stat->latency[type].max_entry =
-		lat_stat->latency[type].total_entry = scu_entry_lat;
-
-		lat_stat->latency[type].min_exit =
-		lat_stat->latency[type].max_exit =
-		lat_stat->latency[type].total_exit = scu_exit_lat;
-	} else {		/* Collecting stats for second time onwards */
-		if (scu_entry_lat > lat_stat->latency[type].max_entry)
-			lat_stat->latency[type].max_entry = scu_entry_lat;
-		else if (scu_entry_lat < lat_stat->latency[type].min_entry)
-			lat_stat->latency[type].min_entry = scu_entry_lat;
-
-		if (scu_exit_lat > lat_stat->latency[type].max_exit)
-			lat_stat->latency[type].max_exit = scu_exit_lat;
-		else if (scu_exit_lat < lat_stat->latency[type].min_exit)
-			lat_stat->latency[type].min_exit = scu_exit_lat;
-
-		lat_stat->latency[type].total_entry += scu_entry_lat;
-		lat_stat->latency[type].total_exit += scu_exit_lat;
-	}
-
-	lat_stat->count[type]++;
+	update_simple_stat(&lat_stat->scu_latency[type].entry,
+					lat_stat->count[type]);
+	update_simple_stat(&lat_stat->scu_latency[type].exit,
+					lat_stat->count[type]);
 }
 
 void s0ix_lat_stat_init(void)
@@ -246,10 +272,67 @@ void s0ix_lat_stat_finish(void)
 	kfree(lat_stat);
 	lat_stat = NULL;
 }
+
+void time_stamp_in_suspend_flow(int mark, bool start)
+{
+	if (!lat_stat || !lat_stat->latency_measure)
+		return;
+
+	if (start) {
+		lat_stat->s3_parts_lat[mark].curr = cpu_clock(0);
+		return;
+	}
+
+	lat_stat->s3_parts_lat[mark].curr = cpu_clock(0) -
+				lat_stat->s3_parts_lat[mark].curr;
+}
+
+static void collect_sleep_state_latency_stat(int sleep_state)
+{
+	int i;
+	if (sleep_state == SYS_STATE_S3)
+		for (i = 0; i < MAX_S3_PARTS; i++)
+			update_simple_stat(&lat_stat->s3_parts_lat[i],
+						lat_stat->count[sleep_state]);
+
+	update_simple_stat(&lat_stat->os_latency[sleep_state].entry,
+						lat_stat->count[sleep_state]);
+	update_simple_stat(&lat_stat->os_latency[sleep_state].exit,
+						lat_stat->count[sleep_state]);
+	lat_stat->count[sleep_state]++;
+}
+
+void time_stamp_for_sleep_state_latency(int sleep_state, bool start, bool entry)
+{
+	if (!lat_stat || !lat_stat->latency_measure)
+		return;
+
+	if (start) {
+		if (entry)
+			lat_stat->os_latency[sleep_state].entry.curr =
+								cpu_clock(0);
+		else
+			lat_stat->os_latency[sleep_state].exit.curr =
+								cpu_clock(0);
+		return;
+	}
+
+	if (entry)
+		lat_stat->os_latency[sleep_state].entry.curr = cpu_clock(0) -
+				lat_stat->os_latency[sleep_state].entry.curr;
+	else {
+		lat_stat->os_latency[sleep_state].exit.curr = cpu_clock(0) -
+				lat_stat->os_latency[sleep_state].exit.curr;
+		collect_sleep_state_latency_stat(sleep_state);
+	}
+}
 #else /* CONFIG_PM_DEBUG */
-void s0ix_latency_stat(int type) {}
+void s0ix_scu_latency_stat(int type) {}
 void s0ix_lat_stat_init(void) {}
 void s0ix_lat_stat_finish(void) {}
+void time_stamp_for_sleep_state_latency(int sleep_state, bool start,
+							bool entry) {}
+void time_stamp_in_suspend_flow(int mark, bool start) {}
 #endif /* CONFIG_PM_DEBUG */
 
 static char *dstates[] = {"D0", "D0i1", "D0i2", "D0i3"};
@@ -486,7 +569,10 @@ void pmu_stat_end(void)
 
 		mid_pmu_cxt->pmu_stats[type].count++;
 
-		s0ix_latency_stat(type);
+		s0ix_scu_latency_stat(type);
+		if (type >= SYS_STATE_S0I1 && type <= SYS_STATE_S0I3)
+			/* time stamp for end of s0ix exit */
+			time_stamp_for_sleep_state_latency(type, false, false);
 	}
 
 	mid_pmu_cxt->pmu_current_state = SYS_STATE_S0I0;
@@ -950,30 +1036,6 @@ static const struct file_operations pmu_dev_stat_operations = {
 static int pmu_stats_interval = PMU_LOG_INTERVAL_SECS;
 module_param_named(pmu_stats_interval, pmu_stats_interval,
 				int, S_IRUGO | S_IWUSR | S_IWGRP);
-
-static int mid_state_to_sys_state(int mid_state)
-{
-	int sys_state = 0;
-	switch (mid_state) {
-	case MID_S0I1_STATE:
-		sys_state = SYS_STATE_S0I1;
-		break;
-	case MID_LPMP3_STATE:
-		sys_state = SYS_STATE_S0I2;
-		break;
-	case MID_S0I3_STATE:
-		sys_state = SYS_STATE_S0I3;
-		break;
-	case MID_S3_STATE:
-		sys_state = SYS_STATE_S3;
-		break;
-
-	case C6_HINT:
-		sys_state = SYS_STATE_S0I0;
-	}
-
-	return sys_state;
-}
 
 void pmu_s0ix_demotion_stat(int req_state, int grant_state)
 {

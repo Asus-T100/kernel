@@ -332,6 +332,7 @@ static int enter_s0ix_state(u32 eax, int gov_req_state, int s0ix_state,
 {
 	int s0ix_entered = 0;
 	int selected_state = C6_STATE_IDX;
+	int sleep_state;
 
 	if (atomic_add_return(1, &nr_cpus_in_c6) == num_online_cpus() &&
 		 s0ix_state) {
@@ -344,6 +345,9 @@ static int enter_s0ix_state(u32 eax, int gov_req_state, int s0ix_state,
 			pmu_set_s0ix_complete();
 		}
 	}
+
+	sleep_state = mid_state_to_sys_state(s0ix_entered);
+
 	switch (s0ix_state) {
 	case MID_S0I1_STATE:
 		trace_cpu_idle(S0I1_STATE_IDX, dev->cpu);
@@ -360,10 +364,19 @@ static int enter_s0ix_state(u32 eax, int gov_req_state, int s0ix_state,
 	default:
 		trace_cpu_idle((eax >> 4) + 1, dev->cpu);
 	}
+
+	if (sleep_state)
+		/* time stamp for end of s0ix entry */
+		time_stamp_for_sleep_state_latency(sleep_state, false, true);
+
 	__monitor((void *)&current_thread_info()->flags, 0, 0);
 	smp_mb();
 	if (!need_resched())
 		__mwait(eax, 1);
+
+	if (sleep_state)
+		/* time stamp for start of s0ix exit */
+		time_stamp_for_sleep_state_latency(sleep_state, true, false);
 
 	if (likely(eax == C6_HINT))
 		atomic_dec(&nr_cpus_in_c6);
@@ -409,6 +422,7 @@ static int soc_s0ix_idle(struct cpuidle_device *dev,
 	int s0ix_state   = 0;
 	unsigned int cstate;
 	int gov_req_state = (int) eax;
+	int sleep_state;
 
 	/* Check if s0ix is already in progress,
 	 * This is required to demote C6 while S0ix
@@ -421,6 +435,10 @@ static int soc_s0ix_idle(struct cpuidle_device *dev,
 	if (eax != C6_HINT)
 		s0ix_state = get_target_platform_state(&eax);
 
+	sleep_state = mid_state_to_sys_state(s0ix_state);
+
+	/* time stamp for start of s0ix entry */
+	time_stamp_for_sleep_state_latency(sleep_state, true, true);
 	/*
 	 * leave_mm() to avoid costly and often unnecessary wakeups
 	 * for flushing the user TLB's associated with the active mm.
