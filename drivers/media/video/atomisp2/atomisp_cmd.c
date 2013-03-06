@@ -280,6 +280,13 @@ int atomisp_freq_scaling(struct atomisp_device *isp, enum atomisp_dfs_mode mode)
 	curr_rules.height = asd->fmt[asd->capture_pad].fmt.height;
 	curr_rules.fps = fps;
 	curr_rules.run_mode = isp->isp_subdev.run_mode->val;
+	/*
+	 * For continuous vf mode, we need to make the capture setting applied
+	 * since preview mode, because there is no chance to do this when
+	 * starting image capture.
+	 */
+	if (isp->params.continuous_vf)
+		curr_rules.run_mode = ATOMISP_RUN_MODE_STILL_CAPTURE;
 
 	/* search for the target frequency by looping freq rules*/
 	for (i = 0; i < ISP_FREQ_RULE_MAX; i++) {
