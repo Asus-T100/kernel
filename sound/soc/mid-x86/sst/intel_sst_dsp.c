@@ -1155,8 +1155,9 @@ static int sst_download_library(const struct firmware *fw_lib,
 	}
 	pr_debug("FW responded, ready for download now...\n");
 	/* downloading on success */
+	mutex_lock(&sst_drv_ctx->sst_lock);
+	sst_drv_ctx->sst_state = SST_FW_LOADED;
 	mutex_lock(&sst_drv_ctx->csr_lock);
-	sst_set_fw_state_locked(sst_drv_ctx, SST_FW_LOADED);
 	csr.full = readl(sst_drv_ctx->shim + SST_CSR);
 	csr.part.run_stall = 1;
 	sst_shim_write(sst_drv_ctx->shim, SST_CSR, csr.full);
@@ -1169,7 +1170,7 @@ static int sst_download_library(const struct firmware *fw_lib,
 	codec_fw = kzalloc(fw_lib->size, GFP_KERNEL);
 	if (!codec_fw) {
 		retval = -ENOMEM;
-		goto free_block;
+		goto free_block_unlock;
 	}
 	memcpy(codec_fw, fw_lib->data, fw_lib->size);
 
@@ -1182,7 +1183,7 @@ static int sst_download_library(const struct firmware *fw_lib,
 
 	if (retval) {
 		kfree(codec_fw);
-		goto free_block;
+		goto free_block_unlock;
 	}
 
 	if (sst_drv_ctx->use_dma) {
@@ -1231,7 +1232,7 @@ static int sst_download_library(const struct firmware *fw_lib,
 		retval = resp->result;
 		if (retval) {
 			pr_err("err in lib dload %x\n", resp->result);
-			sst_set_fw_state_locked(sst_drv_ctx, SST_UN_INIT);
+			sst_drv_ctx->sst_state = SST_UN_INIT;
 			goto free_resources;
 		} else {
 			pr_debug("Codec download complete...\n");
@@ -1239,13 +1240,13 @@ static int sst_download_library(const struct firmware *fw_lib,
 		}
 	} else if (retval) {
 		/* error */
-		sst_set_fw_state_locked(sst_drv_ctx, SST_UN_INIT);
+		sst_drv_ctx->sst_state = SST_UN_INIT;
 		retval = -EIO;
 		goto free_resources;
 	}
 
 	pr_debug("FW success on Download complete\n");
-	sst_set_fw_state_locked(sst_drv_ctx, SST_FW_RUNNING);
+	sst_drv_ctx->sst_state = SST_FW_RUNNING;
 
 free_resources:
 	if (sst_drv_ctx->use_dma) {
@@ -1255,6 +1256,8 @@ free_resources:
 	}
 
 	kfree(codec_fw);
+free_block_unlock:
+	mutex_unlock(&sst_drv_ctx->sst_lock);
 free_block:
 	sst_free_block(sst_drv_ctx, block);
 	return retval;
@@ -1327,7 +1330,7 @@ int sst_load_fw(void)
 		mrfld_dccm_config_write(sst_drv_ctx->dram,
 						sst_drv_ctx->ddr_base);
 
-	sst_set_fw_state_locked(sst_drv_ctx, SST_FW_LOADED);
+	sst_drv_ctx->sst_state = SST_FW_LOADED;
 	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID)
 		sst_fill_config(sst_drv_ctx);
 

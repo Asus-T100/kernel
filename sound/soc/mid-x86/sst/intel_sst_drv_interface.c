@@ -78,7 +78,7 @@ static void sst_restore_fw_context(void)
 		return retval;
 	}
 
-	sst_set_fw_state_locked(sst_drv_ctx, SST_FW_CTXT_RESTORE);
+	sst_drv_ctx->sst_state = SST_FW_CTXT_RESTORE;
 	sst_fill_header(&msg->header, IPC_IA_SET_FW_CTXT, 1, 0);
 
 	msg->header.part.data = sizeof(fw_context) + sizeof(u32);
@@ -109,15 +109,14 @@ int sst_download_fw(void)
 
 	retval = sst_load_fw();
 	if (retval)
-		goto end_restore;
+		return retval;
 	pr_debug("fw loaded successful!!!\n");
 
-end_restore:
 #ifndef MRFLD_TEST_ON_MFLD
 	if (sst_drv_ctx->pci_id != SST_MRFLD_PCI_ID)
 		sst_restore_fw_context();
 #endif
-	sst_set_fw_state_locked(sst_drv_ctx, SST_FW_RUNNING);
+	sst_drv_ctx->sst_state = SST_FW_RUNNING;
 	return retval;
 }
 
@@ -382,24 +381,16 @@ int intel_sst_check_device(void)
 	mutex_lock(&sst_drv_ctx->sst_lock);
 	if (sst_drv_ctx->sst_state == SST_UN_INIT) {
 		sst_drv_ctx->sst_state = SST_START_INIT;
-		mutex_unlock(&sst_drv_ctx->sst_lock);
 		/* FW is not downloaded */
 		pr_debug("DSP Downloading FW now...\n");
 		retval = sst_download_fw();
 		if (retval) {
 			pr_err("FW download fail %x\n", retval);
-			sst_set_fw_state_locked(sst_drv_ctx, SST_UN_INIT);
+			sst_drv_ctx->sst_state = SST_UN_INIT;
+			mutex_unlock(&sst_drv_ctx->sst_lock);
 			pm_runtime_put(&sst_drv_ctx->pci->dev);
 			return retval;
 		}
-	} else
-		mutex_unlock(&sst_drv_ctx->sst_lock);
-
-	mutex_lock(&sst_drv_ctx->sst_lock);
-	if (sst_drv_ctx->sst_state != SST_FW_RUNNING) {
-		mutex_unlock(&sst_drv_ctx->sst_lock);
-		pm_runtime_put(&sst_drv_ctx->pci->dev);
-		return -EAGAIN;
 	}
 	mutex_unlock(&sst_drv_ctx->sst_lock);
 	return retval;
