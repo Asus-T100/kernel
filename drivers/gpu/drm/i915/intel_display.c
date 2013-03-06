@@ -4547,9 +4547,11 @@ static int i9xx_crtc_mode_set(struct drm_crtc *crtc,
 	}
 
 	if (IS_VALLEYVIEW(dev) && intel_pipe_has_type(crtc, INTEL_OUTPUT_EDP)) {
-		pipeconf |= PIPECONF_BPP_6 |
-			PIPECONF_ENABLE |
-			I965_PIPECONF_ACTIVE;
+		if (adjusted_mode->private_flags & INTEL_MODE_DP_FORCE_6BPC) {
+			pipeconf |= PIPECONF_BPP_6 |
+				PIPECONF_ENABLE |
+				I965_PIPECONF_ACTIVE;
+		}
 	}
 
 	DRM_DEBUG_KMS("Mode for pipe %c:\n", pipe == 0 ? 'A' : 'B');
