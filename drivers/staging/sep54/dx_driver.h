@@ -74,9 +74,7 @@
 #define VER_PATCH(ver)  (((ver) >> 8) & 0xFF)
 #define VER_INTERNAL(ver) ((ver) & 0xFF)
 
-/* TODO: Enable when PM is working in the kernel
 #define SEP_RUNTIME_PM
-*/
 
 /* GPR that holds SeP state */
 #define SEP_STATE_GPR_OFFSET SEP_HOST_GPR_REG_OFFSET(DX_SEP_STATE_GPR_IDX)
