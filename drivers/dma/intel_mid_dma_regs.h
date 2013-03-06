@@ -91,6 +91,11 @@
 #define FIFO_PARTITION1_HI	0x40C
 #define CH_SAI_ERR		0x410
 
+#define CTL_LO_BIT_LLP_DST_EN	27
+#define CTL_LO_BIT_LLP_SRC_EN	28
+
+#define CFG_LO_BIT_CH_SUSP	8
+
 /*DMA channel control registers*/
 union intel_mid_dma_ctl_lo {
 	struct {
@@ -118,6 +123,34 @@ union intel_mid_dma_ctl_lo {
 		u32	llp_src_en:1;	/*enable/disable source LLP = 0*/
 		u32	reser2:3;
 	} ctlx;
+	struct {
+		u32	int_en:1;	/*enable or disable interrupts*/
+					/*should be 0*/
+		u32	dst_tr_width:3;	/*destination transfer width*/
+					/*usually 32 bits = 010*/
+		u32	src_tr_width:3; /*source transfer width*/
+					/*usually 32 bits = 010*/
+		u32	rsvd4:1;
+		u32	dinc:1;		/*destination address inc/dec*/
+		u32	rsvd3:1;
+					/*For mem:INC=00, Periphral NoINC=11*/
+		u32	sinc:1;		/*source address inc or dec, as above*/
+		u32	dst_msize:3;	/*destination burst transaction length*/
+					/*always = 16 ie 011*/
+		u32	src_msize:3;	/*source burst transaction length*/
+					/*always = 16 ie 011*/
+		u32	src_gather_en:1;
+		u32	dst_scatter_en:1;
+		u32	rsvd2:1;
+		u32	tt_fc:2;	/*transfer type and flow controller*/
+					/*M-M = 000
+					  P-M = 010
+					  M-P = 001*/
+		u32	rsvd1:5;
+		u32	llp_dst_en:1;	/*enable/disable destination LLP = 0*/
+		u32	llp_src_en:1;	/*enable/disable source LLP = 0*/
+		u32	reser:3;
+	} ctlx_v2;
 	u32	ctl_lo;
 };
 
@@ -127,8 +160,13 @@ union intel_mid_dma_ctl_hi {
 		u32	done:1;		/*Done - updated by DMAC*/
 		u32	reser:19;	/*configured by DMAC*/
 	} ctlx;
+	struct {
+		u32	block_ts:12;	/*block transfer size*/
+		u32	done:1;		/*Done - updated by DMAC*/
+		u32	ch_weight:11;
+		u32	ch_class:2;
+	} ctlx_v2;
 	u32	ctl_hi;
-
 };
 
 /*DMA channel configuration registers*/
@@ -148,6 +186,33 @@ union intel_mid_dma_cfg_lo {
 		u32	reload_src:1;	/*auto reload src addr =1 if src is P*/
 		u32	reload_dst:1;	/*AR destn addr =1 if dstn is P*/
 	} cfgx;
+	struct {
+		u32	dst_burst_align:1;
+		u32	src_burst_align:1;
+		u32	all_np_wr:1;
+		u32	hshake_np_wr:1;
+		u32	rsvd4:1;
+		u32	ctl_hi_upd_en:1;
+		u32	ds_upd_en:1;
+		u32	ss_upd_en:1;
+		u32	ch_susp:1;
+		u32	fifo_empty:1;
+		u32	ch_drain:1;
+		u32	rsvd11:1;
+		u32	rd_snp:1;
+		u32	wr_snp:1;
+		u32	rd_llp_snp:1;
+		u32	rd_stat_snp:1;
+		u32	wr_stat_snp:1;
+		u32	wr_ctlhi_snp:1;
+		u32	dst_hs_pol:1;
+		u32	src_hs_pol:1;
+		u32	dst_opt_bl:1;
+		u32	src_opt_bl:1;
+		u32	rsvd_22_29:8;
+		u32	reload_src:1;
+		u32	reload_dst:1;
+	} cfgx_v2;
 	u32	cfg_lo;
 };
 
@@ -161,9 +226,42 @@ union intel_mid_dma_cfg_hi {
 		u32	dst_per:4;	/*dstn hw HS interface*/
 		u32	reser2:17;
 	} cfgx;
+	struct {
+		u32	src_per:4;	/*src hw HS interface*/
+		u32	dst_per:4;	/*dstn hw HS interface*/
+		u32	rd_issue_thd:10;
+		u32	wr_issue_thd:10;
+		u32	src_per_ext:2;
+		u32	dst_per_ext:2;
+	} cfgx_v2;
 	u32	cfg_hi;
 };
 
+struct intel_mid_dma_ops {
+	int (*device_alloc_chan_resources)(struct dma_chan *chan);
+	void (*device_free_chan_resources)(struct dma_chan *chan);
+
+	struct dma_async_tx_descriptor *(*device_prep_dma_memcpy)(
+		struct dma_chan *chan, dma_addr_t dest, dma_addr_t src,
+		size_t len, unsigned long flags);
+	struct dma_async_tx_descriptor *(*device_prep_dma_sg)(
+		struct dma_chan *chan,
+		struct scatterlist *dst_sg, unsigned int dst_nents,
+		struct scatterlist *src_sg, unsigned int src_nents,
+		unsigned long flags);
+
+	struct dma_async_tx_descriptor *(*device_prep_slave_sg)(
+		struct dma_chan *chan, struct scatterlist *sgl,
+		unsigned int sg_len, enum dma_data_direction direction,
+		unsigned long flags);
+	int (*device_control)(struct dma_chan *chan, enum dma_ctrl_cmd cmd,
+		unsigned long arg);
+
+	enum dma_status (*device_tx_status)(struct dma_chan *chan,
+					    dma_cookie_t cookie,
+					    struct dma_tx_state *txstate);
+	void (*device_issue_pending)(struct dma_chan *chan);
+};
 
 /**
  * struct intel_mid_dma_chan - internal mid representation of a DMA channel
@@ -253,6 +351,7 @@ struct middma_device {
 	unsigned long		tfr_intr_mask;
 	unsigned long		block_intr_mask;
 	enum intel_mid_dma_state state;
+	struct intel_mid_dma_ops	dma_ops;
 };
 
 static inline struct middma_device *to_middma_device(struct dma_device *common)
