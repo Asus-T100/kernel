@@ -3653,6 +3653,8 @@ static int langwell_udc_probe(struct pci_dev *pdev,
 	dev->pdev = pdev;
 	dev_dbg(&dev->pdev->dev, "---> %s()\n", __func__);
 
+	pci_set_drvdata(pdev, dev);
+
 #ifdef	OTG_TRANSCEIVER
 	/* PCI device is already enabled by usb_phy driver */
 	dev->enabled = 1;
@@ -3672,8 +3674,6 @@ static int langwell_udc_probe(struct pci_dev *pdev,
 	 */
 	pm_runtime_get_sync(&dev->pdev->dev);
 #else
-	pci_set_drvdata(pdev, dev);
-
 	/* now all the pci goodies ... */
 	if (pci_enable_device(pdev) < 0) {
 		retval = -ENODEV;
