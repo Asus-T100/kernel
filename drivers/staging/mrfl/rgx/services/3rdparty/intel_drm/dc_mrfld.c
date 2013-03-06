@@ -609,13 +609,12 @@ static IMG_VOID DC_MRFLD_ContextConfigure(IMG_HANDLE hDisplayContext,
 				IMG_UINT32 ui32DisplayPeriod,
 				IMG_HANDLE hConfigData)
 {
-	if (!pasSurfAttrib || !ahBuffers)
-		return;
-
 	DRM_DEBUG("%s\n", __func__);
 
 	if (!ui32PipeCount) {
-		/*TODO: do something here*/
+		/* Called from DCDisplayContextDestroy()
+		 * Retire the current config  */
+		DCDisplayConfigurationRetired(hConfigData);
 		return;
 	}
 
