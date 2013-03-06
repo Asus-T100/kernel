@@ -53,6 +53,7 @@ extern u32 intel_mid_msgbus_read32(u8 port, u32 addr);
 extern void intel_mid_msgbus_write32(u8 port, u32 addr, u32 data);
 extern void register_rpmsg_service(char *name, int id, u32 addr);
 extern int sdhci_pci_request_regulators(void);
+extern u32 intel_mid_soc_stepping(void);
 
 /*
  * Here defines the array of devices platform data that IAFW would export
@@ -101,6 +102,7 @@ enum intel_mid_cpu_type {
 	INTEL_MID_CPU_CHIP_PENWELL,
 	INTEL_MID_CPU_CHIP_CLOVERVIEW,
 	INTEL_MID_CPU_CHIP_TANGIER,
+	INTEL_MID_CPU_CHIP_VALLEYVIEW2,
 };
 
 extern enum intel_mid_cpu_type __intel_mid_cpu_chip;
@@ -133,6 +135,8 @@ struct intel_mid_ops {
 	DECLARE_INTEL_MID_OPS_INIT(penwell, INTEL_MID_CPU_CHIP_PENWELL) \
 	DECLARE_INTEL_MID_OPS_INIT(cloverview, INTEL_MID_CPU_CHIP_CLOVERVIEW) \
 	DECLARE_INTEL_MID_OPS_INIT(tangier, INTEL_MID_CPU_CHIP_TANGIER) \
+	DECLARE_INTEL_MID_OPS_INIT(valleyview2, \
+		INTEL_MID_CPU_CHIP_VALLEYVIEW2) \
 };
 
 #ifdef CONFIG_X86_INTEL_MID
