@@ -862,6 +862,9 @@ static int __init sfi_parse_devs(struct sfi_table_header *table)
 						"synaptics_3202", 14))
 						/* active low */
 						irq_attr.polarity = 1;
+					else if (irq == 41)
+						/* fast_int_1 */
+						irq_attr.polarity = 1;
 					else
 						/* active high */
 						irq_attr.polarity = 0;
