@@ -884,6 +884,8 @@ int rmi4_touchpad_f12_detect(struct rmi4_data *pdata, struct rmi4_fn *rfi,
 	unsigned char fingers_to_support = MAX_FINGERS;
 	unsigned char enable_mask;
 	unsigned char size_of_2d_data;
+	const struct rmi4_touch_calib *calib =
+				&pdata->board->calib[pdata->touch_type];
 
 
 	/*
@@ -985,7 +987,9 @@ int rmi4_touchpad_f12_detect(struct rmi4_data *pdata, struct rmi4_fn *rfi,
 	pdata->sensor_max_y =
 			((unsigned short)ctrl_8.max_y_coord_lsb << 0) |
 			((unsigned short)ctrl_8.max_y_coord_msb << 8);
-	dev_dbg(&pdata->i2c_client->dev,
+	if (calib->swap_axes)
+		swap(pdata->sensor_max_x, pdata->sensor_max_y);
+	dev_info(&pdata->i2c_client->dev,
 			"%s: Function %02x max x = %d max y = %d\n",
 			__func__, rfi->fn_number,
 			pdata->sensor_max_x,
@@ -1255,7 +1259,7 @@ int rmi4_touchpad_f12_config(struct rmi4_data *pdata, struct rmi4_fn *rfi)
 			rfi->ctrl_base_addr + ctrl_20_offset,
 			ctrl_20.data,
 			sizeof(ctrl_20.data));
-	if (retval != sizeof(ctrl_20.data)) {
+	if (retval < 0) {
 		dev_err(&client->dev, "%s:write control 20 failed 3\n",
 							__func__);
 	}
@@ -2133,6 +2137,8 @@ void rmi4_late_resume(struct early_suspend *h)
 static const struct i2c_device_id rmi4_id_table[] = {
 	{ "synaptics_3202", 0 },
 	{ "synaptics_3400", 0 },
+	{ SFI_S3400_CGS, 0 },
+	{ SFI_S3400_IGZO, 0 },
 	{ },
 };
 MODULE_DEVICE_TABLE(i2c, rmi4_id_table);

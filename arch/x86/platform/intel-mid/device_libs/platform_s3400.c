@@ -28,14 +28,14 @@ void *s3400_platform_data(void *info)
 	strncpy(calib.type, i2c_info->type, SFI_NAME_LEN);
 	if (!strncmp(i2c_info->type, SFI_S3400_CGS, SFI_NAME_LEN)) {
 		/* S3400_CGS */
-		calib.swap_axes = false;
-		calib.customer_id = 0;
+		calib.swap_axes = true;
+		calib.customer_id = 1342177280;
 		calib.fw_name = "s3400_cgs.img";
 		calib.key_dev_name = "rmi4_key";
 	} else {
 		/* S3400_IGZO */
-		calib.swap_axes = false;
-		calib.customer_id = 0;
+		calib.swap_axes = true;
+		calib.customer_id = 1342177280;
 		calib.fw_name = "s3400_igzo.img";
 		calib.key_dev_name = "rmi4_key";
 	}
