@@ -994,6 +994,8 @@ static irqreturn_t pmic_thread_handler(int id, void *data)
 	pmic_intr = ioread16(chc.pmic_intr_iomap);
 	evt->chgrirq0_int = (u8)pmic_intr;
 	evt->chgrirq1_int = (u8)(pmic_intr >> 8);
+	dev_dbg(chc.dev, "irq0=%x irq1=%x\n",
+		evt->chgrirq0_int, evt->chgrirq1_int);
 
 	/*
 	In case this is an external charger interrupt, we are
@@ -1006,6 +1008,12 @@ static irqreturn_t pmic_thread_handler(int id, void *data)
 		intel_scu_ipc_update_register(IRQLVL1_MASK_ADDR, 0x00,
 				IRQLVL1_CHRGR_MASK);
 		kfree(evt);
+		if ((chc.invalid_batt) &&
+			(evt->chgrirq0_int & PMIC_CHRGR_EXT_CHRGR_INT_MASK)) {
+			dev_dbg(chc.dev, "Handling external charger interrupt!!\n");
+			return IRQ_HANDLED;
+		}
+		dev_dbg(chc.dev, "Unhandled interrupt!!\n");
 		return IRQ_NONE;
 	}
 
