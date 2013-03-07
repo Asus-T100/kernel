@@ -428,6 +428,8 @@ static void dlp_ctrl_complete_rx(struct hsi_msg *msg)
 	unsigned long flags;
 	int hsi_channel, elp_channel, ret, response, msg_complete, state;
 
+	params.channel = 0; /* To please KlocWork */
+
 	/* Copy the reponse */
 	memcpy(&params,
 	       sg_virt(msg->sgt.sgl), sizeof(struct dlp_command_params));

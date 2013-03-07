@@ -1037,6 +1037,11 @@ static int _dlp_from_wait_to_ctrl(struct dlp_xfer_ctx *xfer_ctx)
 	pdu = dlp_fifo_wait_pop(xfer_ctx);
 	write_unlock_irqrestore(&xfer_ctx->lock, flags);
 
+	if (!pdu) {
+		ret = -ENOENT;
+		goto out;
+	}
+
 	actual_len = pdu->actual_len;
 
 	/* Push the PDU to the controller */

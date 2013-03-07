@@ -3409,7 +3409,8 @@ static int hsi_dma_complete_v2(struct intel_controller *intel_hsi,
 	intel_hsi->dma_running &= ~DMA_BUSY(dma_ch);
 	spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
 
-	hsi_dma_forward(intel_hsi,
+	if (msg)
+		hsi_dma_forward(intel_hsi,
 				(msg->ttype == HSI_MSG_WRITE),
 				msg->channel,
 				dma_ch, dma_ctx);
