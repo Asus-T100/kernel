@@ -1308,6 +1308,10 @@ static int stop_charging(struct bq24192_chip *chip)
 	if (ret < 0)
 		dev_warn(&chip->client->dev, "I2C write failed:%s\n", __func__);
 
+	/*Enable  the WDT and Disable Safety timer */
+	ret = program_timers(chip, true, false);
+	if (ret < 0)
+		dev_warn(&chip->client->dev, "TIMER enable failed\n");
 	/*
 	 * While disabling the charging, program the input source control
 	 * register with minimum current ~100mA, so that in case Hi-Z clears
@@ -1369,8 +1373,8 @@ static void set_up_charging(struct bq24192_chip *chip,
 	reg->chr_volt = chrg_volt_to_reg(chr_volt);
 
 	chip->input_curr = reg->in_src;
-	/* Enable the WDT and Disable Safety timer */
-	ret = program_timers(chip, true, false);
+	/* Enable the WDT and Safety timer */
+	ret = program_timers(chip, true, true);
 	if (ret < 0) {
 		dev_warn(&chip->client->dev, "TIMER enable failed\n");
 		goto i2c_error;
