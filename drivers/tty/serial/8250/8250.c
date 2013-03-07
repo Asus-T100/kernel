@@ -41,6 +41,9 @@
 #ifdef CONFIG_SPARC
 #include <linux/sunserialcore.h>
 #endif
+#ifdef CONFIG_X86_INTEL_MID
+#include <asm/intel-mid.h>
+#endif
 
 #include <asm/io.h>
 #include <asm/irq.h>
@@ -2760,6 +2763,9 @@ static void __init
 serial8250_register_ports(struct uart_driver *drv, struct device *dev)
 {
 	int i;
+#ifdef CONFIG_X86_INTEL_MID
+	u32 stepping;
+#endif
 
 	for (i = 0; i < nr_uarts; i++) {
 		struct uart_8250_port *up = &serial8250_ports[i];
@@ -2770,6 +2776,22 @@ serial8250_register_ports(struct uart_driver *drv, struct device *dev)
 
 	for (i = 0; i < nr_uarts; i++) {
 		struct uart_8250_port *up = &serial8250_ports[i];
+#ifdef CONFIG_X86_INTEL_MID
+		/*
+		 * VLV2 UART is supposed to use irq 4 but A0 silicon mistakenly
+		 * routes UART interrupt to irq 3.
+		 * This issue will be fixed in B0 silicon.
+		 * We need this workaround for A0.
+		 */
+		if (i == 0 && (intel_mid_identify_cpu() ==
+			INTEL_MID_CPU_CHIP_VALLEYVIEW2)) {
+			stepping = intel_mid_soc_stepping();
+			if (stepping == 0x1 || stepping == 0x2) { /* VLV2 A0 */
+				dev_info(dev, "force irq 3 on VLV2 A0\n");
+				up->port.irq = 3;
+			}
+		}
+#endif
 
 		up->port.dev = dev;
 
