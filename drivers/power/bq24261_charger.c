@@ -88,8 +88,6 @@
 #define BQ24261_HZ_MASK			(0x01)
 #define BQ24261_HZ_ENABLE		(0x01)
 
-#define BQ24261_CD_STATUS_MASK		(0x01 << 3)
-
 #define BQ24261_ICHRG_MASK		(0x1F << 3)
 #define BQ24261_ICHRG_100mA		(0x01 << 3)
 #define BQ24261_ICHRG_200mA		(0x01 << 4)
@@ -138,6 +136,22 @@
 
 #define BQ24261_OVP_MULTIPLIER		1050
 #define BQ24261_MIN_BAT_CV		4200
+
+/* Settings for Voltage / DPPM Register (05) */
+#define BQ24261_VINDPM_MASK		(0x07)
+#define BQ24261_VINDPM_320MV		(0x01 << 2)
+#define BQ24261_VINDPM_160MV		(0x01 << 1)
+#define BQ24261_VINDPM_80MV		(0x01 << 0)
+#define BQ24261_CD_STATUS_MASK		(0x01 << 3)
+#define BQ24261_DPM_EN_MASK		(0x01 << 4)
+#define BQ24261_DPM_EN_FORCE		(0x01 << 4)
+#define BQ24261_LOW_CHG_MASK		(0x01 << 5)
+#define BQ24261_LOW_CHG_EN		(0x01 << 5)
+#define BQ24261_LOW_CHG_DIS		(~BQ24261_LOW_CHG_EN)
+#define BQ24261_DPM_STAT_MASK		(0x01 << 6)
+#define BQ24261_MINSYS_STAT_MASK	(0x01 << 7)
+
+#define BQ24261_MIN_CC			500
 
 u16 bq24261_sfty_tmr[][2] = {
 	{0, BQ24261_SAFETY_TIMER_DISABLED}
@@ -630,14 +644,38 @@ static inline int bq24261_enable_charger(
 static inline int bq24261_set_cc(struct bq24261_charger *chip, int cc)
 {
 	u8 reg_val;
+	int ret;
 
+	dev_dbg(&chip->client->dev, "cc=%d\n", cc);
+	if (chip->pdata->set_cc) {
+		ret = chip->pdata->set_cc(cc);
+		if (unlikely(ret))
+			return ret;
+	}
+
+	if (cc && (cc < BQ24261_MIN_CC)) {
+		dev_dbg(&chip->client->dev, "Set LOW_CHG bit\n");
+		reg_val = BQ24261_LOW_CHG_EN;
+		ret = bq24261_read_modify_reg(chip->client,
+				BQ24261_VINDPM_STAT_ADDR,
+				BQ24261_LOW_CHG_MASK, reg_val);
+	} else {
+		dev_dbg(&chip->client->dev, "Clear LOW_CHG bit\n");
+		reg_val = BQ24261_LOW_CHG_DIS;
+		ret = bq24261_read_modify_reg(chip->client,
+				BQ24261_VINDPM_STAT_ADDR,
+				BQ24261_LOW_CHG_MASK, reg_val);
+	}
+
+	/* Return from here since the cc setting will be done
+	   by platform specific hardware */
 	if (chip->pdata->set_cc)
-		return chip->pdata->set_cc(cc);
+		return ret;
 
 	bq24261_cc_to_reg(cc, &reg_val);
 
 	return bq24261_read_modify_reg(chip->client, BQ24261_TERM_FCC_ADDR,
-				       BQ24261_ICHRG_MASK, reg_val);
+			BQ24261_ICHRG_MASK, reg_val);
 }
 
 static inline int bq24261_set_cv(struct bq24261_charger *chip, int cv)
