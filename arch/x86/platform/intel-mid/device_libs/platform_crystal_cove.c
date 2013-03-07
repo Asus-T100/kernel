@@ -13,6 +13,15 @@ enum {
 	VHDMIOCP_IRQ
 };
 
+static struct resource pwrsrc_resources[] = {
+	{
+		.name  = "PWRSRC",
+		.start = PWRSRC_IRQ,
+		.end   = PWRSRC_IRQ,
+		.flags = IORESOURCE_IRQ,
+	},
+};
+
 static struct resource adc_resources[] = {
 	{
 		.name  = "ADC",
@@ -23,6 +32,12 @@ static struct resource adc_resources[] = {
 };
 
 static struct mfd_cell crystal_cove_data[] = {
+	{
+		.name = "crystal_cove_pwrsrc",
+		.id = 0,
+		.num_resources = ARRAY_SIZE(pwrsrc_resources),
+		.resources = pwrsrc_resources,
+	},
 	{
 		.name = "crystal_cove_adc",
 		.id = 0,
