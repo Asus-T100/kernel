@@ -57,6 +57,7 @@ int camera_sensor_gpio(int gpio, char *name, int dir, int value)
 						__func__, name);
 			return -EINVAL;
 		}
+		pr_info("camera pdata: gpio: %s: %d\n", name, pin);
 	} else {
 		pin = gpio;
 	}
@@ -106,6 +107,9 @@ int camera_sensor_csi(struct v4l2_subdev *sd, u32 port,
 		csi->input_format = format;
 		csi->raw_bayer_order = bayer_order;
 		v4l2_set_subdev_hostdata(sd, (void *)csi);
+		dev_info(&client->dev,
+			 "camera pdata: port: %d lanes: %d order: %8.8x\n",
+			 port, lanes, bayer_order);
 	} else {
 		csi = v4l2_get_subdev_hostdata(sd);
 		kfree(csi);
@@ -158,12 +162,8 @@ void intel_register_i2c_camera_device(struct sfi_device_table_entry *pentry,
 	strncpy(i2c_info.type, pentry->name, SFI_NAME_LEN);
 	i2c_info.irq = ((pentry->irq == (u8)0xff) ? 0 : pentry->irq);
 	i2c_info.addr = pentry->addr;
-	pr_info("I2C bus = %d, name = %16.16s, "
-		"irq = 0x%2x, addr = 0x%x\n",
-		pentry->host_num,
-		i2c_info.type,
-		i2c_info.irq,
-		i2c_info.addr);
+	pr_info("camera pdata: I2C bus = %d, name = %16.16s, irq = 0x%2x, addr = 0x%x\n",
+		pentry->host_num, i2c_info.type, i2c_info.irq, i2c_info.addr);
 	pdata = dev->get_platform_data(&i2c_info);
 	i2c_info.platform_data = pdata;
 
@@ -260,13 +260,13 @@ const struct camera_af_platform_data *camera_get_af_platform_data(void)
 				__func__, gpio_name);
 			gpio = GPIO_DEFAULT;
 		}
+		pr_info("camera pdata: af gpio: %d\n", gpio);
 		r = gpio_request(gpio, gpio_name);
 		if (r)
 			return NULL;
 		r = gpio_direction_output(gpio, 0);
 		if (r)
 			return NULL;
-		pr_info("%s: using gpio %i\n", __func__, gpio);
 		camera_af_power_gpio = gpio;
 	}
 
