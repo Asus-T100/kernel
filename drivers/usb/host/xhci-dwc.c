@@ -161,6 +161,25 @@ static void dwc_set_host_mode(struct usb_hcd *hcd)
 	msleep(20);
 }
 
+static void dwc_xhci_enable_phy_suspend(struct usb_hcd *hcd, int enable)
+{
+	u32 val;
+
+	val = readl(hcd->regs + GUSB3PIPECTL0);
+	if (enable)
+		val |= GUSB3PIPECTL_SUS_EN;
+	else
+		val &= ~GUSB3PIPECTL_SUS_EN;
+	writel(val, hcd->regs + GUSB3PIPECTL0);
+
+	val = readl(hcd->regs + GUSB2PHYCFG0);
+	if (enable)
+		val |= GUSB2PHYCFG_SUS_PHY;
+	else
+		val &= ~GUSB2PHYCFG_SUS_PHY;
+	writel(val, hcd->regs + GUSB2PHYCFG0);
+}
+
 static void dwc_core_reset(struct usb_hcd *hcd)
 {
 	u32 val;
@@ -201,7 +220,10 @@ static void dwc_core_reset(struct usb_hcd *hcd)
 	val = readl(hcd->regs + GUCTL);
 	val &= ~GUCTL_CMDEVADDR;
 	writel(val, hcd->regs + GUCTL);
+
+	dwc_xhci_enable_phy_suspend(hcd, 1);
 }
+
 
 /* This is a hardware workaround.
  * xHCI RxDetect state is not work well when USB3
@@ -363,6 +385,8 @@ static int xhci_stop_host(struct usb_hcd *hcd)
 
 	kfree(xhci);
 	*((struct xhci_hcd **) hcd->hcd_priv) = NULL;
+
+	dwc_xhci_enable_phy_suspend(hcd, 0);
 
 	pm_runtime_put(hcd->self.controller);
 	device_remove_file(hcd->self.controller, &dev_attr_pm_get);
@@ -670,6 +694,24 @@ static int dwc_hcd_suspend_common(struct device *dev)
 			retval = -EINVAL;
 
 		if (!retval) {
+			/* Ensure that GUSB3PIPECTL[17] (Suspend SS PHY)
+			 * is set to '1'
+			 **/
+			data = readl(hcd->regs + GUSB3PIPECTL0);
+			if (!(data & GUSB3PIPECTL_SUS_EN)) {
+				data |= GUSB3PIPECTL_SUS_EN;
+				writel(data, hcd->regs + GUSB3PIPECTL0);
+			}
+
+			/* Ensure that GUSB2PHYCFG[6] (Suspend 2.0 PHY)
+			 * is set to '1'
+			 **/
+			data = readl(hcd->regs + GUSB2PHYCFG0);
+			if (!(data & GUSB2PHYCFG_SUS_PHY)) {
+				data |= GUSB2PHYCFG_SUS_PHY;
+				writel(data, hcd->regs + GUSB2PHYCFG0);
+			}
+
 			data = readl(hcd->regs + GCTL);
 			data |= GCTL_GBL_HIBERNATION_EN;
 			writel(data, hcd->regs + GCTL);
