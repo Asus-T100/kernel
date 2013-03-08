@@ -278,6 +278,12 @@ static int ehci_pci_setup(struct usb_hcd *hcd)
 			hcd->has_sram = 1;
 			hcd->sram_no_payload = 1;
 			sram_init(hcd);
+
+			device_set_wakeup_enable(&pdev->dev, true);
+			/* Set Runtime-PM flags for SPH */
+			hcd->rpm_control = 1;
+			hcd->rpm_resume = 0;
+			pm_runtime_set_active(&pdev->dev);
 		}
 	}
 
@@ -579,18 +585,22 @@ static int ehci_pci_suspend(struct usb_hcd *hcd, bool do_wakeup)
 		while (port--) {
 			u32 __iomem	*hostpc_reg;
 			u32		temp;
+			struct pci_dev  *pdev =
+				to_pci_dev(hcd->self.controller);
 
-			hostpc_reg = (u32 __iomem *)((u8 *) ehci->regs
-					 + HOSTPC0 + 4 * port);
-			temp = ehci_readl(ehci, hostpc_reg);
+			if (pdev->device != 0x119D) {
+				hostpc_reg = (u32 __iomem *)((u8 *) ehci->regs
+						 + HOSTPC0 + 4 * port);
+				temp = ehci_readl(ehci, hostpc_reg);
 
-			if (!(temp & HOSTPC_PHCD))
-				ehci_writel(ehci, temp | HOSTPC_PHCD,
-						hostpc_reg);
-			temp = ehci_readl(ehci, hostpc_reg);
-			ehci_dbg(ehci, "Port %d PHY low-power mode %s\n",
-					port, (temp & HOSTPC_PHCD) ?
-					"succeeded" : "failed");
+				if (!(temp & HOSTPC_PHCD))
+					ehci_writel(ehci, temp | HOSTPC_PHCD,
+							hostpc_reg);
+				temp = ehci_readl(ehci, hostpc_reg);
+				ehci_dbg(ehci, "Port %d PHY low-power mode %s\n",
+						port, (temp & HOSTPC_PHCD) ?
+						"succeeded" : "failed");
+			}
 		}
 	}
 
