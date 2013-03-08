@@ -1851,14 +1851,6 @@ static int mid_suspend_enter(suspend_state_t state)
 
 static void mid_suspend_end(void)
 {
-#ifdef CONFIG_HAS_WAKELOCK
-	/* Prime the wakelock system to re-suspend after giving other
-	 * threads a chance to wake up and acquire wake lock
-	 * this avoids to put wake lock in other things like pwrbutton
-	 */
-	long timeout = HZ;
-	wake_lock_timeout(&mid_pmu_cxt->pmu_wake_lock, timeout);
-#endif
 	mid_pmu_cxt->suspend_started = false;
 }
 
