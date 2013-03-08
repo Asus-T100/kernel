@@ -725,21 +725,18 @@ static void dwc3_prepare_one_trb(struct dwc3_ep *dep,
 	struct dwc3		*dwc = dep->dwc;
 	struct dwc3_trb		*trb;
 
-	unsigned int		cur_slot;
-
 	dev_vdbg(dwc->dev, "%s: req %p dma %08llx length %d%s%s\n",
 			dep->name, req, (unsigned long long) dma,
 			length, last ? " last" : "",
 			chain ? " chain" : "");
 
-	trb = &dep->trb_pool[dep->free_slot & DWC3_TRB_MASK];
-	cur_slot = dep->free_slot;
-	dep->free_slot++;
-
 	/* Skip the LINK-TRB on ISOC */
-	if (((cur_slot & DWC3_TRB_MASK) == DWC3_TRB_NUM - 1) &&
+	if (((dep->free_slot & DWC3_TRB_MASK) == DWC3_TRB_NUM - 1) &&
 			usb_endpoint_xfer_isoc(dep->desc))
-		return;
+		dep->free_slot++;
+
+	trb = &dep->trb_pool[dep->free_slot & DWC3_TRB_MASK];
+	dep->free_slot++;
 
 	if (!req->trb) {
 		dwc3_gadget_move_request_queued(req);
@@ -759,8 +756,7 @@ static void dwc3_prepare_one_trb(struct dwc3_ep *dep,
 	case USB_ENDPOINT_XFER_ISOC:
 		trb->ctrl = DWC3_TRBCTL_ISOCHRONOUS_FIRST;
 
-		/* IOC every DWC3_TRB_NUM / 4 so we can refill */
-		if (!(cur_slot % (DWC3_TRB_NUM / 4)))
+		if (!req->request.no_interrupt)
 			trb->ctrl |= DWC3_TRB_CTRL_IOC;
 		break;
 
@@ -806,6 +802,7 @@ static void dwc3_prepare_trbs(struct dwc3_ep *dep, bool starting)
 {
 	struct dwc3_request	*req, *n;
 	u32			trbs_left;
+	u32			trbs_used;
 	u32			max;
 	unsigned int		last_one = 0;
 
@@ -813,6 +810,7 @@ static void dwc3_prepare_trbs(struct dwc3_ep *dep, bool starting)
 
 	/* the first request must not be queued */
 	trbs_left = (dep->busy_slot - dep->free_slot) & DWC3_TRB_MASK;
+	trbs_used = dep->free_slot - dep->busy_slot;
 
 	/* Can't wrap around on a non-isoc EP since there's no link TRB */
 	if (!usb_endpoint_xfer_isoc(dep->desc)) {
@@ -826,7 +824,7 @@ static void dwc3_prepare_trbs(struct dwc3_ep *dep, bool starting)
 	 * starting to process requests then we are empty. Otherwise we are
 	 * full and don't do anything
 	 */
-	if (!trbs_left) {
+	if ((!trbs_left) && (!usb_endpoint_xfer_isoc(dep->desc))) {
 		if (!starting)
 			return;
 		trbs_left = DWC3_TRB_NUM;
@@ -851,7 +849,7 @@ static void dwc3_prepare_trbs(struct dwc3_ep *dep, bool starting)
 	}
 
 	/* The last TRB is a link TRB, not used for xfer */
-	if ((trbs_left <= 1) && usb_endpoint_xfer_isoc(dep->desc))
+	if ((trbs_used >= 31) && usb_endpoint_xfer_isoc(dep->desc))
 		return;
 
 	list_for_each_entry_safe(req, n, &dep->request_list, list) {
@@ -978,12 +976,42 @@ static int __dwc3_gadget_kick_transfer(struct dwc3_ep *dep, u16 cmd_param,
 	}
 
 	dep->flags |= DWC3_EP_BUSY;
-	dep->res_trans_idx = dwc3_gadget_ep_get_transfer_index(dwc,
-			dep->number);
-
-	WARN_ON_ONCE(!dep->res_trans_idx);
+	if (start_new) {
+		dep->res_trans_idx = dwc3_gadget_ep_get_transfer_index(dwc,
+				dep->number);
+		WARN_ON_ONCE(!dep->res_trans_idx);
+	}
 
 	return 0;
+}
+
+static void __dwc3_gadget_start_isoc(struct dwc3 *dwc,
+		struct dwc3_ep *dep, u32 cur_uf)
+{
+	u32 uf;
+
+	if (list_empty(&dep->request_list)) {
+		dev_vdbg(dwc->dev, "ISOC ep %s run out for requests.\n",
+			dep->name);
+		dep->flags |= DWC3_EP_PENDING_REQUEST;
+		return;
+	}
+
+	/* 4 micro frames in the future */
+	uf = cur_uf + dep->interval * 4;
+
+	__dwc3_gadget_kick_transfer(dep, uf, 1);
+}
+
+static void dwc3_gadget_start_isoc(struct dwc3 *dwc,
+		struct dwc3_ep *dep, const struct dwc3_event_depevt *event)
+{
+	u32 cur_uf, mask;
+
+	mask = ~(dep->interval - 1);
+	cur_uf = event->parameters & mask;
+
+	__dwc3_gadget_start_isoc(dwc, dep, cur_uf);
 }
 
 static int __dwc3_gadget_ep_queue(struct dwc3_ep *dep, struct dwc3_request *req)
@@ -997,16 +1025,15 @@ static int __dwc3_gadget_ep_queue(struct dwc3_ep *dep, struct dwc3_request *req)
 	req->epnum		= dep->number;
 
 	/*
-	 * We only add to our list of requests now and
-	 * start consuming the list once we get XferNotReady
-	 * IRQ.
+	 * There are a few special cases:
 	 *
-	 * That way, we avoid doing anything that we don't need
-	 * to do now and defer it until the point we receive a
-	 * particular token from the Host side.
+	 * 1. XferNotReady with empty list of requests. We need to kick the
+	 *    transfer here in that situation, otherwise we will be NAKing
+	 *    forever. If we get XferNotReady before gadget driver has a
+	 *    chance to queue a request, we will ACK the IRQ but won't be
+	 *    able to receive the data until the next request is queued.
+	 *    The following code is handling exactly that.
 	 *
-	 * This will also avoid Host cancelling URBs due to too
-	 * many NAKs.
 	 */
 	ret = usb_gadget_map_request(&dwc->gadget, &req->request,
 			dep->direction);
@@ -1028,22 +1055,43 @@ static int __dwc3_gadget_ep_queue(struct dwc3_ep *dep, struct dwc3_request *req)
 	 * code is handling exactly that.
 	 */
 	if (dep->flags & DWC3_EP_PENDING_REQUEST) {
-		int ret;
-		int start_trans;
+		/*
+		 * If xfernotready is already elapsed and it is a case
+		 * of isoc transfer, then issue END TRANSFER, so that
+		 * you can receive xfernotready again and can have
+		 * notion of current microframe.
+		 */
+		if (usb_endpoint_xfer_isoc(dep->desc)) {
+			if (list_empty(&dep->req_queued)) {
+				dwc3_stop_active_transfer(dwc, dep->number, 1);
+				dep->flags = DWC3_EP_ENABLED;
+			}
+			return 0;
+		}
 
-		start_trans = 1;
-		if (usb_endpoint_xfer_isoc(dep->desc) &&
-				(dep->flags & DWC3_EP_BUSY))
-			start_trans = 0;
+		ret = __dwc3_gadget_kick_transfer(dep, 0, true);
+		if (ret && ret != -EBUSY)
+			dev_dbg(dwc->dev, "%s: failed to kick transfers\n",
+					dep->name);
+		return ret;
+	}
 
-		ret = __dwc3_gadget_kick_transfer(dep, 0, start_trans);
-		if (ret && ret != -EBUSY) {
-			struct dwc3	*dwc = dep->dwc;
+	/*
+	 * 2. XferInProgress on Isoc EP with an active transfer. We need to
+	 *    kick the transfer here after queuing a request, otherwise the
+	 *    core may not see the modified TRB(s).
+	 */
+	if (usb_endpoint_xfer_isoc(dep->desc) &&
+			(dep->flags & DWC3_EP_BUSY) &&
+			!(dep->flags & DWC3_EP_MISSED_ISOC)) {
+		WARN_ON_ONCE(!dep->res_trans_idx);
+		ret = __dwc3_gadget_kick_transfer(dep, dep->res_trans_idx,
+				false);
+		if (ret && ret != -EBUSY)
 
 			dev_dbg(dwc->dev, "%s: failed to kick transfers\n",
 					dep->name);
-		}
-	};
+	}
 
 	return 0;
 }
@@ -1855,6 +1903,7 @@ static int dwc3_cleanup_done_reqs(struct dwc3 *dwc, struct dwc3_ep *dep,
 	struct dwc3_trb		*trb;
 	unsigned int		count;
 	unsigned int		s_pkt = 0;
+	unsigned int		trb_status;
 
 	do {
 		req = next_request(&dep->req_queued);
@@ -1880,9 +1929,35 @@ static int dwc3_cleanup_done_reqs(struct dwc3 *dwc, struct dwc3_ep *dep,
 
 		if (dep->direction) {
 			if (count) {
-				dev_err(dwc->dev, "incomplete IN transfer %s\n",
+				trb_status = DWC3_TRB_SIZE_TRBSTS(trb->size);
+				if (trb_status | DWC3_TRBSTS_MISSED_ISOC) {
+					dev_dbg(dwc->dev,
+						"missed ISOC IN transfer %s\n",
 						dep->name);
-				status = -ECONNRESET;
+					/*
+					 * If missed isoc occurred and there is
+					 * no request queued then issue END
+					 * TRANSFER, so that core generates
+					 * next xfernotready and we will issue
+					 * a fresh START TRANSFER.
+					 * If there are still queued request
+					 * then wait, do not issue either END
+					 * or UPDATE TRANSFER, just attach next
+					 * request in request_list during
+					 * giveback.If any future queued
+					 * request is successfully transferred
+					 * then we will issue UPDATE TRANSFER
+					 * for all request in the request_list.
+					 */
+					dep->flags |= DWC3_EP_MISSED_ISOC;
+				} else {
+					dev_err(dwc->dev,
+						"incomplete IN transfer %s\n",
+						dep->name);
+					status = -ECONNRESET;
+				}
+			} else {
+				dep->flags &= ~DWC3_EP_MISSED_ISOC;
 			}
 		} else {
 			if (count && (event->status & DEPEVT_STATUS_SHORT))
@@ -1907,6 +1982,23 @@ static int dwc3_cleanup_done_reqs(struct dwc3 *dwc, struct dwc3_ep *dep,
 				(trb->ctrl & DWC3_TRB_CTRL_IOC))
 			break;
 	} while (1);
+
+	if (usb_endpoint_xfer_isoc(dep->desc) &&
+			list_empty(&dep->req_queued)) {
+		if (list_empty(&dep->request_list)) {
+			/*
+			 * If there is no entry in request list then do
+			 * not issue END TRANSFER now. Just set PENDING
+			 * flag, so that END TRANSFER is issued when an
+			 * entry is added into request list.
+			 */
+			dep->flags = DWC3_EP_PENDING_REQUEST;
+		} else {
+			dwc3_stop_active_transfer(dwc, dep->number, 1);
+			dep->flags = DWC3_EP_ENABLED;
+		}
+		return 1;
+	}
 
 	if ((event->status & DEPEVT_STATUS_IOC) &&
 			(trb->ctrl & DWC3_TRB_CTRL_IOC))
@@ -1952,25 +2044,6 @@ static void dwc3_endpoint_transfer_complete(struct dwc3 *dwc,
 
 		dwc->u1u2 = 0;
 	}
-}
-
-static void dwc3_gadget_start_isoc(struct dwc3 *dwc,
-		struct dwc3_ep *dep, const struct dwc3_event_depevt *event)
-{
-	u32 uf, mask;
-
-	if (list_empty(&dep->request_list)) {
-		dev_vdbg(dwc->dev, "ISOC ep %s run out for requests.\n",
-			dep->name);
-		return;
-	}
-
-	mask = ~(dep->interval - 1);
-	uf = event->parameters & mask;
-	/* 4 micro frames in the future */
-	uf += dep->interval * 4;
-
-	__dwc3_gadget_kick_transfer(dep, uf, 1);
 }
 
 static void dwc3_process_ep_cmd_complete(struct dwc3_ep *dep,
@@ -2095,7 +2168,7 @@ static void dwc3_endpoint_interrupt(struct dwc3 *dwc,
 		dev_dbg(dwc->dev, "%s FIFO Overrun\n", dep->name);
 		break;
 	case DWC3_DEPEVT_EPCMDCMPLT:
-		dwc3_ep_cmd_compl(dep, event);
+		dev_vdbg(dwc->dev, "Endpoint Command Complete\n");
 		break;
 	}
 }
@@ -2118,6 +2191,10 @@ static void dwc3_stop_active_transfer(struct dwc3 *dwc, u32 epnum, int forceRM)
 
 	dep = dwc->eps[epnum];
 
+	if (usb_endpoint_xfer_isoc(dep->desc))
+		dep->res_trans_idx = dwc3_gadget_ep_get_transfer_index(dwc,
+				dep->number);
+
 	if (dep->res_trans_idx) {
 		cmd = DWC3_DEPCMD_ENDTRANSFER;
 		if (forceRM)
@@ -2129,6 +2206,8 @@ static void dwc3_stop_active_transfer(struct dwc3 *dwc, u32 epnum, int forceRM)
 		ret = dwc3_send_gadget_ep_cmd(dwc, dep->number, cmd, &params);
 		WARN_ON_ONCE(ret);
 		dep->res_trans_idx = 0;
+		dep->flags &= ~DWC3_EP_BUSY;
+		udelay(100);
 	}
 }
 
