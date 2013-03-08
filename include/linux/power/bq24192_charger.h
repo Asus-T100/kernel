@@ -121,42 +121,11 @@ struct bq24192_platform_data {
 	bool sfi_tabl_present;
 };
 
-#ifdef CONFIG_CHARGER_BQ24192
-extern int bq24192_slave_mode_enable_charging(int volt, int cur, int ilim);
-extern int bq24192_slave_mode_disable_charging(void);
+int bq24192_slave_mode_enable_charging(int volt, int cur, int ilim);
+int bq24192_slave_mode_disable_charging(void);
 extern int ctp_query_battery_status(void);
 extern int ctp_get_battery_pack_temp(int *temp);
 extern int ctp_get_battery_health(void);
 extern bool ctp_is_volt_shutdown_enabled(void);
 extern int ctp_get_vsys_min(void);
-#else
-static int bq24192_slave_mode_enable_charging(int volt, int cur, int ilim)
-{
-	return 0;
-}
-static int bq24192_slave_mode_disable_charging(void)
-{
-	return 0;
-}
-static int ctp_query_battery_status(void)
-{
-	return 0;
-}
-static int ctp_get_battery_pack_temp(int *temp)
-{
-	return 0;
-}
-static int ctp_get_battery_health(void)
-{
-	return 0;
-}
-static bool ctp_is_volt_shutdown_enabled(void)
-{
-	return false;
-}
-static int ctp_get_vsys_min(void)
-{
-	return 0;
-}
-#endif
 #endif /* __BQ24192_CHARGER_H_ */

@@ -1123,9 +1123,9 @@ static void write_custom_regs(struct max17042_chip *chip)
 						fg_conf_data->ichgt_term);
 	/* adjust Temperature gain and offset */
 	max17042_write_reg(chip->client,
-			MAX17042_TGAIN, chip->pdata->tgain);
+			MAX17042_TGAIN, NTC_47K_TGAIN);
 	max17042_write_reg(chip->client,
-			MAx17042_TOFF, chip->pdata->toff);
+			MAx17042_TOFF, NTC_47K_TOFF);
 
 	if (chip->chip_type == MAX17042) {
 		max17042_write_reg(chip->client, MAX17042_ETC,

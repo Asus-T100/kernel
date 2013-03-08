@@ -12,10 +12,5 @@
 #ifndef _PLATFORM_MAX17042_H_
 #define _PLATFORM_MAX17042_H_
 
-#define	NTC_47K_TGAIN			0xE4E4
-#define	NTC_47K_TOFF			0x2F1D
-#define	NTC_10K_B3435K_TDK_TGAIN	0xE4E4
-#define	NTC_10K_B3435K_TDK_TOFF		0x2218
-
 extern void *max17042_platform_data(void *info) __attribute__((weak));
 #endif
