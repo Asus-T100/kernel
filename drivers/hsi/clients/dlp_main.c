@@ -848,7 +848,7 @@ static inline void dlp_ctx_update_state_rx(struct dlp_xfer_ctx *xfer_ctx)
 static inline void dlp_ctx_update_state_tx(struct dlp_xfer_ctx *xfer_ctx)
 {
 	if (xfer_ctx->ctrl_len <= 0) {
-		del_timer(&dlp_drv.timer[xfer_ctx->channel->ch_id]);
+		del_timer_sync(&dlp_drv.timer[xfer_ctx->channel->ch_id]);
 
 		if (xfer_ctx->wait_len == 0) {
 			mod_timer(&xfer_ctx->timer, jiffies + xfer_ctx->delay);
@@ -1279,7 +1279,7 @@ int dlp_hsi_controller_push(struct dlp_xfer_ctx *xfer_ctx, struct hsi_msg *pdu)
 		write_unlock_irqrestore(&xfer_ctx->lock, flags);
 
 		if (!ctrl_len)
-			del_timer(&dlp_drv.timer[ch_ctx->ch_id]);
+			del_timer_sync(&dlp_drv.timer[ch_ctx->ch_id]);
 	}
 
 out:
@@ -1360,7 +1360,7 @@ void dlp_start_tx(struct dlp_xfer_ctx *xfer_ctx)
 		queue_work(dlp_drv.tx_wq, &xfer_ctx->channel->start_tx_w);
 	} else {
 		dlp_ctx_set_state(xfer_ctx, READY);
-		del_timer(&xfer_ctx->timer);
+		del_timer_sync(&xfer_ctx->timer);
 	}
 }
 
@@ -1639,10 +1639,11 @@ void dlp_xfer_ctx_clear(struct dlp_xfer_ctx *xfer_ctx)
 
 	write_lock_irqsave(&xfer_ctx->lock, flags);
 
+	xfer_ctx->ctrl_len = 0;
 	xfer_ctx->wait_max = 0;
 	xfer_ctx->ctrl_max = 0;
 	xfer_ctx->state = IDLE;
-	del_timer(&xfer_ctx->timer);
+	del_timer_sync(&xfer_ctx->timer);
 
 	write_unlock_irqrestore(&xfer_ctx->lock, flags);
 
