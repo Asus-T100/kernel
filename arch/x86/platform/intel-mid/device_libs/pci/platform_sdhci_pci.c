@@ -25,7 +25,7 @@
 
 #include "platform_sdhci_pci.h"
 
-static int mfld_clv_emmc0_power_up(void *data);
+static int panic_mode_emmc0_power_up(void *data);
 static int mrfl_sd_setup(struct sdhci_pci_data *data);
 static void mrfl_sd_cleanup(struct sdhci_pci_data *data);
 static int mrfl_sdio_setup(struct sdhci_pci_data *data);
@@ -47,7 +47,7 @@ static struct sdhci_pci_data mfld_sdhci_pci_data[] = {
 			.platform_quirks = 0,
 			.setup = 0,
 			.cleanup = 0,
-			.power_up = mfld_clv_emmc0_power_up,
+			.power_up = panic_mode_emmc0_power_up,
 	},
 	[EMMC1_INDEX] = {
 			.pdev = NULL,
@@ -95,7 +95,7 @@ static struct sdhci_pci_data clv_sdhci_pci_data[] = {
 			.platform_quirks = 0,
 			.setup = 0,
 			.cleanup = 0,
-			.power_up = mfld_clv_emmc0_power_up,
+			.power_up = panic_mode_emmc0_power_up,
 	},
 	[EMMC1_INDEX] = {
 			.pdev = NULL,
@@ -132,7 +132,7 @@ static struct sdhci_pci_data clv_sdhci_pci_data[] = {
 	},
 };
 
-static int mfld_clv_emmc0_power_up(void *data)
+static int panic_mode_emmc0_power_up(void *data)
 {
 	int ret;
 	bool atomic_context;
@@ -169,7 +169,7 @@ static struct sdhci_pci_data mrfl_sdhci_pci_data[] = {
 			.platform_quirks = 0,
 			.setup = 0,
 			.cleanup = 0,
-			.power_up = 0,
+			.power_up = panic_mode_emmc0_power_up,
 	},
 	[EMMC1_INDEX] = {
 			.pdev = NULL,

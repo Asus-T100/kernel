@@ -432,7 +432,9 @@ static int intel_mrfl_mmc_probe_slot(struct sdhci_pci_slot *slot)
 					MMC_CAP_NONREMOVABLE |
 					MMC_CAP_1_8V_DDR;
 
-	/* Enable eMMC v4.5 Power Off Notification feature */
+	if (PCI_FUNC(slot->chip->pdev->devfn) == INTEL_MRFL_EMMC_0)
+		sdhci_alloc_panic_host(slot->host);
+
 	slot->host->mmc->caps2 |= MMC_CAP2_POWEROFF_NOTIFY |
 			MMC_CAP2_POLL_R1B_BUSY | MMC_CAP2_INIT_CARD_SYNC;
 
