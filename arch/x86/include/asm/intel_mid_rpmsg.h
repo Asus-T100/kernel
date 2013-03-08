@@ -14,7 +14,6 @@ struct rpmsg_instance {
 	struct mutex rx_lock;
 	struct completion reply_arrived;
 	struct rpmsg_endpoint *endpoint;
-	struct wake_lock wake_lock;
 };
 
 extern int rpmsg_send_command(struct rpmsg_instance *instance, u32 cmd,
