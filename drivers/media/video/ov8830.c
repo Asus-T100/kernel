@@ -411,6 +411,11 @@ static int drv201_power_up(struct v4l2_subdev *sd)
 	if (r < 0)
 		goto fail_powerdown;
 
+	/* VCM RESONANCE FREQUENCY REGISTER (VCM_FREQ) */
+	r = drv201_write8(sd, DRV201_VCM_FREQ, DRV201_DEFAULT_VCM_FREQ);
+	if (r < 0)
+		goto fail_powerdown;
+
 	dev->focus = DRV201_MAX_FOCUS_POS;
 	dev->initialized = true;
 
