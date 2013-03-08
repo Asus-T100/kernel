@@ -168,7 +168,7 @@ static void _dlp_forward_tty(struct tty_struct *tty,
 	copied = 1;
 	do_push = 0;
 
-	del_timer(&xfer_ctx->timer);
+	del_timer_sync(&xfer_ctx->timer);
 
 	read_lock_irqsave(&xfer_ctx->lock, flags);
 	while (xfer_ctx->wait_len > 0) {

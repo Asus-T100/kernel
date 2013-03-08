@@ -177,7 +177,7 @@ static void dlp_net_complete_tx(struct hsi_msg *pdu)
 		mod_timer(&dlp_drv.timer[ch_ctx->ch_id],
 			  jiffies + usecs_to_jiffies(DLP_HANGUP_DELAY));
 	} else {
-		del_timer(&dlp_drv.timer[ch_ctx->ch_id]);
+		del_timer_sync(&dlp_drv.timer[ch_ctx->ch_id]);
 	}
 
 	write_unlock_irqrestore(&xfer_ctx->lock, flags);
@@ -347,6 +347,9 @@ int dlp_net_open(struct net_device *dev)
 	int ret, state;
 	struct dlp_channel *ch_ctx = netdev_priv(dev);
 
+	pr_debug(DRVNAME ": %s open (CH%d, HSI CH%d)\n",
+			dev->name, ch_ctx->ch_id, ch_ctx->hsi_channel);
+
 	/* Check if the the channel is not already opened for Trace */
 	state = dlp_ctrl_get_channel_state(ch_ctx->hsi_channel);
 	if (state != DLP_CH_STATE_CLOSED) {
@@ -359,20 +362,22 @@ int dlp_net_open(struct net_device *dev)
 	/* Update/Set the eDLP channel id */
 	dlp_drv.channels_hsi[ch_ctx->hsi_channel].edlp_channel = ch_ctx->ch_id;
 
-	/* Allocate TX FIFO */
-	ret = dlp_allocate_pdus_pool(ch_ctx, &ch_ctx->tx);
-	if (ret) {
-		pr_err(DRVNAME ": Cant allocate RX FIFO pdus for ch%d\n",
-				ch_ctx->ch_id);
-		goto out;
-	}
+	if (dlp_net_is_trace_channel(ch_ctx)) {
+		/* Allocate TX FIFO */
+		ret = dlp_allocate_pdus_pool(ch_ctx, &ch_ctx->tx);
+		if (ret) {
+			pr_err(DRVNAME ": Cant allocate RX FIFO pdus for ch%d\n",
+					ch_ctx->ch_id);
+			goto out;
+		}
 
-	/* Allocate RX FIFO */
-	ret = dlp_allocate_pdus_pool(ch_ctx, &ch_ctx->rx);
-	if (ret) {
-		pr_err(DRVNAME ": Cant allocate RX FIFO pdus for ch%d\n",
-				ch_ctx->ch_id);
-		goto out;
+		/* Allocate RX FIFO */
+		ret = dlp_allocate_pdus_pool(ch_ctx, &ch_ctx->rx);
+		if (ret) {
+			pr_err(DRVNAME ": Cant allocate RX FIFO pdus for ch%d\n",
+					ch_ctx->ch_id);
+			goto out;
+		}
 	}
 
 	/* Open the channel */
@@ -400,6 +405,9 @@ int dlp_net_stop(struct net_device *dev)
 	struct dlp_xfer_ctx *rx_ctx;
 	int ret;
 
+	pr_debug(DRVNAME ": %s close (CH%d, HSI CH%d)\n",
+			dev->name, ch_ctx->ch_id, ch_ctx->hsi_channel);
+
 	tx_ctx = &ch_ctx->tx;
 	rx_ctx = &ch_ctx->rx;
 
@@ -408,11 +416,6 @@ int dlp_net_stop(struct net_device *dev)
 	/* Stop the NET IF */
 	if (!netif_queue_stopped(dev))
 		netif_stop_queue(dev);
-
-	ret = dlp_ctrl_close_channel(ch_ctx);
-	if (ret)
-		pr_err(DRVNAME ": Can't close CH%d (HSI CH%d) => err: %d\n",
-				ch_ctx->ch_id, ch_ctx->hsi_channel, ret);
 
 	/* RX */
 	del_timer_sync(&rx_ctx->timer);
@@ -442,6 +445,15 @@ int dlp_net_stop(struct net_device *dev)
 
 static void dlp_net_pdu_destructor(struct hsi_msg *pdu)
 {
+	struct dlp_net_tx_params *msg_param = pdu->context;
+	struct dlp_channel *ch_ctx = msg_param->ch_ctx;
+	struct dlp_xfer_ctx *xfer_ctx = &ch_ctx->tx;
+
+	dlp_hsi_controller_pop(xfer_ctx);
+
+	if (timer_pending(&dlp_drv.timer[ch_ctx->ch_id]))
+		del_timer_sync(&dlp_drv.timer[ch_ctx->ch_id]);
+
 	if (pdu->ttype == HSI_MSG_WRITE)
 		dlp_pdu_free(pdu, -1);
 	else

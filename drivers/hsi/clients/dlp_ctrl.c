@@ -157,7 +157,11 @@ struct dlp_ctrl_context {
  */
 static void dlp_ctrl_hsi_tx_timout_cb(unsigned long int param)
 {
+	struct dlp_channel *ch_ctx = (struct dlp_channel *)param;
 	struct dlp_ctrl_context *ctrl_ctx = DLP_CTRL_CTX;
+
+	pr_debug(DRVNAME ": HSI TX Timeout (CH%d, HSI CH%d)\n",
+			ch_ctx->ch_id, ch_ctx->hsi_channel);
 
 	/* Set the reason & launch the work to handle the hangup */
 	dlp_drv.tx_timeout = 1;
@@ -175,7 +179,7 @@ static void dlp_ctrl_handle_tx_timeout(struct work_struct *work)
 	struct dlp_channel *ch_ctx;
 	int i;
 
-	pr_err(DRVNAME ": HSI TX Timeout\n");
+	pr_err(DRVNAME ": Processing HSI TX Timeout\n");
 
 	/* Call any register TX timeout CB */
 	for (i = 0; i < DLP_CHANNEL_COUNT; i++) {
@@ -949,10 +953,6 @@ int dlp_ctrl_open_channel(struct dlp_channel *ch_ctx)
 
 	/* Channel correctly openned ? */
 	if (ret == 0) {
-		/* Reset the seq_num */
-		ch_ctx->rx.seq_num = 0 ;
-		ch_ctx->tx.seq_num = 0 ;
-
 		/* Reset old OPEN_CONN params */
 		dlp_drv.channels_hsi[ch_ctx->hsi_channel].open_conn = 0;
 	}
@@ -974,6 +974,13 @@ int dlp_ctrl_close_channel(struct dlp_channel *ch_ctx)
 {
 	int state, ret = 0;
 	unsigned char param3 = PARAM1(DLP_DIR_TRANSMIT_AND_RECEIVE);
+
+	/* Reset the credits counter */
+	ch_ctx->credits = 0;
+
+	/* Reset the RX/TX seq_num */
+	ch_ctx->rx.seq_num = 0 ;
+	ch_ctx->tx.seq_num = 0 ;
 
 	/* Check if the channel was correctly opened */
 	state = dlp_ctrl_get_channel_state(ch_ctx->hsi_channel);
