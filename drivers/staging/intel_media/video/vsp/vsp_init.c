@@ -35,14 +35,8 @@
 
 #define FW_NAME "vsp_VPP_sle.bin"
 
-static inline void vsp_enter_start_mode(struct drm_psb_private *dev_priv,
-					unsigned int processor);
-static inline void vsp_leave_start_mode(struct drm_psb_private *dev_priv,
-					unsigned int processor);
 static inline unsigned int vsp_set_firmware(struct drm_psb_private *dev_priv,
 					    unsigned int processor);
-static inline unsigned int vsp_set_firmware_vp(struct drm_psb_private *dev_priv,
-					       unsigned int processor);
 
 static ssize_t psb_vsp_pmstate_show(struct device *dev,
 				      struct device_attribute *attr, char *buf)
@@ -89,7 +83,7 @@ int vsp_init(struct drm_device *dev)
 		dev->pdev->dev.kobj.sd, NULL,
 		"vsp_pmstate");
 
-	vsp_priv->handling_cmd = 0;
+	vsp_priv->num_cmd = 0;
 	vsp_priv->fw_loaded = 0;
 	vsp_priv->current_sequence = 0;
 	vsp_priv->vsp_state = VSP_STATE_DOWN;
@@ -226,7 +220,6 @@ int vsp_deinit(struct drm_device *dev)
 		vsp_priv->setting = NULL;
 	}
 
-
 	if (vsp_priv->ack_queue_bo)
 		ttm_bo_unref(&vsp_priv->ack_queue_bo);
 	if (vsp_priv->cmd_queue_bo)
@@ -294,6 +287,7 @@ int vsp_init_fw(struct drm_device *dev)
 	const struct firmware *raw;
 	unsigned char *ptr, *bo_ptr;
 	struct vsp_config *config;
+	struct vsp_secure_boot_header *boot_header;
 	struct ttm_bo_kmap_obj tmp_kmap;
 	bool is_iomem;
 	int i;
@@ -308,7 +302,7 @@ int vsp_init_fw(struct drm_device *dev)
 		return -1;
 	}
 
-	if (raw->size < sizeof(struct vsp_config)) {
+	if (raw->size < sizeof(struct vsp_secure_boot_header)) {
 		DRM_ERROR("VSP: %s is not a correct firmware (size %d)\n",
 			  FW_NAME, raw->size);
 		ret = -1;
@@ -316,42 +310,31 @@ int vsp_init_fw(struct drm_device *dev)
 	}
 
 	ptr = (void *)raw->data;
-	config = (struct vsp_config *)ptr;
-	/* get firmware configuration */
-	memcpy(&vsp_priv->config, ptr, sizeof(vsp_priv->config));
+	boot_header = (struct vsp_secure_boot_header *)ptr;
+	/* get firmware header */
+	memcpy(&vsp_priv->boot_header, ptr, sizeof(vsp_priv->boot_header));
 
-	if (vsp_priv->config.magic_number != VSP_FIRMWARE_MAGIC_NUMBER) {
+	if (vsp_priv->boot_header.magic_number != VSP_SECURE_BOOT_MAGIC_NR) {
 		DRM_ERROR("VSP: failed to load correct vsp firmware\n"
 			  "FW magic number is wrong %x (should be %x)\n",
-			  vsp_priv->config.magic_number,
-			  VSP_FIRMWARE_MAGIC_NUMBER);
+			  vsp_priv->boot_header.magic_number,
+			  VSP_SECURE_BOOT_MAGIC_NR);
 		ret = -1;
 		goto out;
 	}
 
-	VSP_DEBUG("firmware configuration:\n");
-	VSP_DEBUG("magic number %x\n", config->magic_number);
-	VSP_DEBUG("num_programs %d\n", config->num_programs);
-	VSP_DEBUG("program offset:\n");
-	for (i = 0; i < VSP_MAX_PROGRAMS; ++i)
-		VSP_DEBUG("%x ", config->program_offset[i]);
-	VSP_DEBUG("\n");
-	VSP_DEBUG("program name offset:\n");
-	for (i = 0; i < VSP_MAX_PROGRAMS; ++i)
-		VSP_DEBUG("%x ", config->program_name_offset[i]);
-	VSP_DEBUG("\n");
-	VSP_DEBUG("programe name:\n");
-#if 0
-	for (i = 0; i < 256; ++i)
-		VSP_DEBUG("%c", config->string_table[i]);
-#endif
-	VSP_DEBUG("\n");
-	VSP_DEBUG("boot processor %x\n", config->boot_processor);
-	VSP_DEBUG("api processor %x\n", config->api_processor);
-	VSP_DEBUG("boot program info:\n");
-	VSP_DEBUG("text_src %x\n", config->text_src);
-	VSP_DEBUG("init_addr %x\n", config->init_addr);
-	VSP_DEBUG("main_addr %x\n", config->main_addr);
+	VSP_DEBUG("firmware secure header:\n");
+	VSP_DEBUG("magic number %x\n", boot_header->magic_number);
+	VSP_DEBUG("boot_text_offset %x\n", boot_header->boot_text_offset);
+	VSP_DEBUG("boot_text_reg %x\n", boot_header->boot_text_reg);
+	VSP_DEBUG("boot_icache_value %x\n", boot_header->boot_icache_value);
+	VSP_DEBUG("boot_icache_reg %x\n", boot_header->boot_icache_reg);
+	VSP_DEBUG("boot_pc_value %x\n", boot_header->boot_pc_value);
+	VSP_DEBUG("boot_pc_reg %x\n", boot_header->boot_pc_reg);
+	VSP_DEBUG("ma_header_offset %x\n", boot_header->ma_header_offset);
+	VSP_DEBUG("ma_header_reg %x\n", boot_header->ma_header_reg);
+	VSP_DEBUG("boot_start_value %x\n", boot_header->boot_start_value);
+	VSP_DEBUG("boot_start_reg %x\n", boot_header->boot_start_reg);
 
 	/* load firmware to dmem */
 	if (raw->size > vsp_priv->firmware_sz) {
@@ -386,9 +369,6 @@ int vsp_init_fw(struct drm_device *dev)
 	}
 
 	bo_ptr = ttm_kmap_obj_virtual(&tmp_kmap, &is_iomem);
-	VSP_DEBUG("vsp_config size %d, program_offset %d\n",
-		  sizeof(struct vsp_config),
-		  vsp_priv->config.program_offset[0]);
 	memcpy(bo_ptr, ptr, raw->size);
 
 	ttm_bo_kunmap(&tmp_kmap);
@@ -412,8 +392,6 @@ int vsp_reset(struct drm_psb_private *dev_priv)
 
 	ret = vsp_setup_fw(dev_priv);
 
-	vsp_priv->vsp_state = VSP_STATE_ACTIVE;
-
 	return ret;
 }
 
@@ -421,12 +399,12 @@ int vsp_setup_fw(struct drm_psb_private *dev_priv)
 {
 	struct vsp_private *vsp_priv = dev_priv->vsp_private;
 	int ret;
+	uint32_t pd_addr;
 
-	VSP_DEBUG("clean HW before firmware uploaded\n");
-
-	SET_MMU_PTD(
-		psb_get_default_pd_addr(dev_priv->vsp_mmu) >> PAGE_TABLE_SHIFT);
-	SET_MMU_PTD(psb_get_default_pd_addr(dev_priv->vsp_mmu) >> PAGE_SHIFT);
+	/* set MMU */
+	pd_addr = psb_get_default_pd_addr(dev_priv->vsp_mmu);
+	SET_MMU_PTD(pd_addr >> PAGE_TABLE_SHIFT);
+	SET_MMU_PTD(pd_addr >> PAGE_SHIFT);
 
 	/* vsp setting */
 	vsp_priv->setting->command_queue_size = VSP_CMD_QUEUE_SIZE;
@@ -435,120 +413,28 @@ int vsp_setup_fw(struct drm_psb_private *dev_priv)
 	vsp_priv->setting->response_queue_addr = vsp_priv->ack_queue_bo->offset;
 
 	vsp_priv->ctrl->setting_addr = vsp_priv->setting_bo->offset;
-
-	/* init queue */
 	vsp_priv->ctrl->cmd_rd = 0;
 	vsp_priv->ctrl->cmd_wr = 0;
 	vsp_priv->ctrl->ack_rd = 0;
 	vsp_priv->ctrl->ack_wr = 0;
 
 	VSP_DEBUG("setup firmware\n");
-#ifdef VSP_RUNNING_ON_VP
-	ret = vsp_set_firmware_vp(dev_priv, vsp_priv->config.boot_processor);
-#else
-	ret = vsp_set_firmware(dev_priv, vsp_priv->config.boot_processor);
-#endif
-	if (ret != 0) {
-		DRM_ERROR("VSP: failed to set firmware register\n");
-		return -1;
-	}
+	vsp_set_firmware(dev_priv, vsp_vp0);
 
-	/* start the firmware */
-	vsp_init_function(dev_priv);
+	/* Set power-saving mode */
+	vsp_priv->ctrl->power_saving_mode = vsp_always_on;
+
+	/* communicate the type of init
+	 * this is the last value to write
+	 * it will cause the VSP to read all other settings as wll
+	 */
+	vsp_priv->ctrl->entry_kind = vsp_entry_init;
+
+	vsp_priv->vsp_state = VSP_STATE_ACTIVE;
 
 	/* enable irq */
 	psb_irq_preinstall_islands(dev_priv->dev, OSPM_VIDEO_VPP_ISLAND);
 	psb_irq_postinstall_islands(dev_priv->dev, OSPM_VIDEO_VPP_ISLAND);
-
-	return 0;
-}
-
-void vsp_enter_start_mode(struct drm_psb_private *dev_priv,
-			  unsigned int processor)
-{
-	unsigned int val;
-
-	VSP_DEBUG("enter start mode\n");
-	val = 0;
-	SP_REG_READ32(SP_STAT_AND_CTRL_REG, &val, processor);
-	VSP_SET_FLAG(val, SP_STAT_AND_CTRL_REG_START_FLAG);
-	VSP_CLEAR_FLAG(val, SP_STAT_AND_CTRL_REG_RUN_FLAG);
-	/* FIXME: program filename register for csim */
-	SP_REG_WRITE32(SP_STAT_AND_CTRL_REG, val, processor);
-
-	return;
-}
-
-void vsp_leave_start_mode(struct drm_psb_private *dev_priv,
-			  unsigned int processor)
-{
-	unsigned int val;
-
-	VSP_DEBUG("leave start mode\n");
-	val = 0;
-	SP_REG_READ32(SP_STAT_AND_CTRL_REG, &val, processor);
-	VSP_CLEAR_FLAG(val, SP_STAT_AND_CTRL_REG_START_FLAG);
-	VSP_CLEAR_FLAG(val, SP_STAT_AND_CTRL_REG_RUN_FLAG);
-
-	SP_REG_WRITE32(SP_STAT_AND_CTRL_REG, val, processor);
-
-	return;
-}
-
-unsigned int vsp_set_firmware_vp(struct drm_psb_private *dev_priv,
-				 unsigned int processor)
-{
-	struct vsp_private *vsp_priv = dev_priv->vsp_private;
-	char *exe_prefix = "csim_executable=";
-	char *input;
-
-	VSP_DEBUG("set firmware address in config reg 2\n");
-	vsp_priv->setting->firmware_addr = vsp_priv->firmware->offset;
-
-	VSP_DEBUG("enter special mode\n");
-	/* CSIM section on VP */
-	VSP_DEBUG("enter sp1 control mode\n");
-
-	vsp_enter_start_mode(dev_priv, processor);
-
-	input = exe_prefix;
-	while (*input != '\0') {
-		SP_REG_WRITE32(SP_STAT_AND_CTRL_REG, *input, processor);
-		input++;
-	}
-	input = vsp_priv->config.string_table;
-	while (*input != '\0') {
-		SP_REG_WRITE32(SP_STAT_AND_CTRL_REG, *input, processor);
-		input++;
-	}
-	SP_REG_WRITE32(SP_STAT_AND_CTRL_REG, '\0', processor);
-
-	vsp_leave_start_mode(dev_priv, processor);
-
-	return 0;
-}
-
-unsigned int vsp_set_firmware(struct drm_psb_private *dev_priv,
-			      unsigned int processor)
-{
-	struct vsp_private *vsp_priv = dev_priv->vsp_private;
-	unsigned int reg = 0;
-
-	/* config icache */
-	VSP_SET_FLAG(reg, SP_STAT_AND_CTRL_REG_ICACHE_INVALID_FLAG);
-	VSP_SET_FLAG(reg, SP_STAT_AND_CTRL_REG_ICACHE_PREFETCH_FLAG);
-	SP_REG_WRITE32(SP_STAT_AND_CTRL_REG, reg, processor);
-
-	/* set icache base address: point to instructions in DDR */
-	SP_REG_WRITE32(VSP_ICACHE_BASE_REG_OFFSET,
-		       vsp_priv->firmware->offset +
-		       vsp_priv->config.program_offset[0] +
-		       vsp_priv->config.text_src,
-		       processor);
-
-	/* write firmware addr in config #2, to be read by boot processor */
-	vsp_priv->ctrl->firmware_addr = vsp_priv->firmware->offset;
-	vsp_priv->setting->firmware_addr = vsp_priv->firmware->offset;
 
 	return 0;
 }
@@ -559,7 +445,7 @@ void vsp_start_function(struct drm_psb_private *dev_priv, unsigned int pc,
 	unsigned int reg;
 
 	/* set the start addr */
-	SP_REG_WRITE32(SP_BASE_ADDR_REG, pc, processor);
+	SP_REG_WRITE32(VSP_START_PC_REG_OFFSET, pc, processor);
 
 	/* set start command */
 	SP_REG_READ32(SP_STAT_AND_CTRL_REG, &reg, processor);
@@ -569,52 +455,92 @@ void vsp_start_function(struct drm_psb_private *dev_priv, unsigned int pc,
 	return;
 }
 
+unsigned int vsp_set_firmware(struct drm_psb_private *dev_priv,
+			      unsigned int processor)
+{
+	struct vsp_private *vsp_priv = dev_priv->vsp_private;
+	unsigned int reg = 0;
+
+	/* set app-id to start to 0, can be overwritten later */
+	vsp_priv->ctrl->firmware_addr = 0x0;
+
+	/* config icache */
+	VSP_SET_FLAG(reg, SP_STAT_AND_CTRL_REG_ICACHE_INVALID_FLAG);
+	VSP_SET_FLAG(reg, SP_STAT_AND_CTRL_REG_ICACHE_PREFETCH_FLAG);
+	SP_REG_WRITE32(SP_STAT_AND_CTRL_REG, reg, processor);
+
+	/* set icache base address: point to instructions in DDR */
+	SP_REG_WRITE32(VSP_ICACHE_BASE_REG_OFFSET,
+		       vsp_priv->firmware->offset +
+		       vsp_priv->boot_header.boot_text_offset,
+		       processor);
+
+	/* write ma_header_address to the variable allocated for it*/
+	MM_WRITE32(vsp_priv->boot_header.ma_header_reg,
+		   0,
+		   vsp_priv->firmware->offset +
+		   vsp_priv->boot_header.ma_header_offset);
+
+	/* start the secure boot program */
+	vsp_start_function(dev_priv,
+			   vsp_priv->boot_header.boot_pc_value,
+			   processor);
+
+	return 0;
+}
+
 void vsp_init_function(struct drm_psb_private *dev_priv)
 {
 	struct vsp_private *vsp_priv = dev_priv->vsp_private;
 
 	vsp_priv->ctrl->entry_kind = vsp_entry_init;
-	vsp_start_function(dev_priv,
-			   vsp_priv->config.init_addr,
-			   vsp_priv->config.boot_processor);
 }
-
 
 void vsp_continue_function(struct drm_psb_private *dev_priv)
 {
 	struct vsp_private *vsp_priv = dev_priv->vsp_private;
+	int i;
 
-	vsp_priv->ctrl->entry_kind = vsp_entry_continue;
-	vsp_start_function(dev_priv,
-			   vsp_priv->config.main_addr,
-			   vsp_priv->config.api_processor);
+	vsp_set_firmware(dev_priv, vsp_vp0);
+
+	vsp_priv->ctrl->entry_kind = vsp_entry_resume;
+
+	vsp_priv->vsp_state = VSP_STATE_ACTIVE;
 }
 
 void vsp_resume_function(struct drm_psb_private *dev_priv)
 {
 	struct vsp_private *vsp_priv = dev_priv->vsp_private;
-	int i;
-	unsigned int reg;
 	uint32_t pd_addr;
-
-	/* restore the config regs */
-	for (i = 2; i < VSP_CONFIG_SIZE; i++)
-		CONFIG_REG_WRITE32(i, vsp_priv->saved_config_regs[i]);
 
 	vsp_priv->ctrl = (struct vsp_ctrl_reg *) (dev_priv->vsp_reg +
 						  VSP_CONFIG_REG_SDRAM_BASE +
 						  VSP_CONFIG_REG_START);
+
 	/* Set MMU */
 	pd_addr = psb_get_default_pd_addr(dev_priv->vsp_mmu);
 	SET_MMU_PTD(pd_addr >> PAGE_TABLE_SHIFT);
 	SET_MMU_PTD(pd_addr >> PAGE_SHIFT);
 
-	/* load SP firmware */
-	vsp_set_firmware(dev_priv, vsp_priv->config.boot_processor);
+	/* restore the config regs */
+	CONFIG_REG_WRITE32(VSP_SETTING_ADDR_REG,
+			vsp_priv->saved_config_regs[VSP_SETTING_ADDR_REG]);
+	CONFIG_REG_WRITE32(VSP_POWER_SAVING_MODE_REG,
+			vsp_priv->saved_config_regs[VSP_POWER_SAVING_MODE_REG]);
+	CONFIG_REG_WRITE32(VSP_CMD_QUEUE_RD_REG,
+			vsp_priv->saved_config_regs[VSP_CMD_QUEUE_RD_REG]);
+	CONFIG_REG_WRITE32(VSP_CMD_QUEUE_WR_REG,
+			vsp_priv->saved_config_regs[VSP_CMD_QUEUE_WR_REG]);
+	CONFIG_REG_WRITE32(VSP_ACK_QUEUE_RD_REG,
+			vsp_priv->saved_config_regs[VSP_ACK_QUEUE_RD_REG]);
+	CONFIG_REG_WRITE32(VSP_ACK_QUEUE_WR_REG,
+			vsp_priv->saved_config_regs[VSP_ACK_QUEUE_WR_REG]);
+
+	/* setup firmware */
+	vsp_set_firmware(dev_priv, vsp_vp0);
 
 	vsp_priv->ctrl->entry_kind = vsp_entry_resume;
-	vsp_start_function(dev_priv,
-			   vsp_priv->config.init_addr,
-			   vsp_priv->config.boot_processor);
+
+	vsp_priv->vsp_state = VSP_STATE_ACTIVE;
 }
 

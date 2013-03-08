@@ -60,83 +60,53 @@ static int vsp_fence_surfaces(struct drm_file *priv,
 			      struct ttm_buffer_object *pic_param_bo);
 static void handle_error_response(unsigned int error);
 
-bool vsp_interrupt(void *pvData)
+int vsp_handle_response(struct drm_psb_private *dev_priv)
 {
-	struct drm_device *dev;
-	struct drm_psb_private *dev_priv;
-	struct vsp_private *vsp_priv;
+	struct vsp_private *vsp_priv = dev_priv->vsp_private;
+
+	int ret = 0;
 	unsigned int rd, wr;
 	unsigned int idx;
 	unsigned int msg_num;
 	struct vss_response_t *msg;
-	unsigned long status;
-	bool ret;
 	uint32_t sequence;
-
-	VSP_DEBUG("got vsp interrupt\n");
-
-	if (pvData == NULL) {
-		DRM_ERROR("VSP: vsp %s, Invalid params\n", __func__);
-		return false;
-	}
-
-	dev = (struct drm_device *)pvData;
-	dev_priv = (struct drm_psb_private *) dev->dev_private;
-	vsp_priv = dev_priv->vsp_private;
-
-	/* read interrupt status */
-	IRQ_REG_READ32(VSP_IRQ_CTRL_IRQ_STATUS, &status);
-	VSP_DEBUG("irq status %lx\n", status);
-	/* clear interrupt status */
-	if (!(status & (1 << VSP_SP0_IRQ_SHIFT))) {
-		DRM_ERROR("VSP: invalid irq\n");
-		return false;
-	} else {
-		IRQ_REG_WRITE32(VSP_IRQ_CTRL_IRQ_CLR, (1 << VSP_SP0_IRQ_SHIFT));
-	}
-
-	sequence = vsp_priv->current_sequence;
-	spin_lock(&vsp_priv->lock);
 
 	rd = vsp_priv->ctrl->ack_rd;
 	wr = vsp_priv->ctrl->ack_wr;
 	msg_num = wr > rd ? wr - rd : wr == rd ? 0 :
 		VSP_ACK_QUEUE_SIZE - (rd - wr);
+	VSP_DEBUG("ack rd %d wr %d, msg_num %d, size %d\n",
+		  rd, wr, msg_num, VSP_ACK_QUEUE_SIZE);
 
-	VSP_DEBUG("ack rd %d wr %d, msg_num %d, size %d\n", rd, wr,
-		  msg_num, VSP_ACK_QUEUE_SIZE);
-
-	ret = true;
+	sequence = vsp_priv->current_sequence;
 	for (idx = 0; idx < msg_num; ++idx) {
-		/* FIXME: could remove idx here, but pls consider race
-		 * condition
-		 */
+
 		msg = vsp_priv->ack_queue + (idx + rd) % VSP_ACK_QUEUE_SIZE;
+		VSP_DEBUG("ack[%d]->type = %x\n", idx, msg->type);
 
 		switch (msg->type) {
 		case VssErrorResponse:
+			DRM_ERROR("error response:%.8x %.8x %.8x %.8x %.8x\n",
+				  msg->context, msg->type, msg->buffer,
+				  msg->size, msg->vss_cc);
 			handle_error_response(msg->buffer);
-			DRM_ERROR("VSP: there're %d response remaining\n",
-				  msg_num - idx - 1);
 			ret = false;
 			break;
 
 		case VssEndOfSequenceResponse:
+			VSP_DEBUG("end of the sequence received\n");
 			VSP_DEBUG("VSP clock cycles from pre response %x\n",
 				  msg->vss_cc);
-			VSP_DEBUG("end of the sequence received\n");
 			vsp_priv->vss_cc_acc += msg->vss_cc;
 
 			break;
 
 		case VssOutputSurfaceReadyResponse:
-			VSP_DEBUG("sequence %x is done\n", msg->buffer);
+			VSP_DEBUG("sequence %x is done!!\n", msg->buffer);
 			VSP_DEBUG("VSP clock cycles from pre response %x\n",
 				  msg->vss_cc);
 			vsp_priv->vss_cc_acc += msg->vss_cc;
 			sequence = msg->buffer;
-
-			/* FIXME: need to check current handler */
 
 			break;
 
@@ -177,15 +147,18 @@ bool vsp_interrupt(void *pvData)
 				  msg->vss_cc);
 			vsp_priv->vss_cc_acc += msg->vss_cc;
 
+			cmd_rd = vsp_priv->ctrl->cmd_rd;
+			cmd_wr = vsp_priv->ctrl->cmd_wr;
+
+			VSP_DEBUG("cmd_rd=%d, cmd_wr=%d\n", cmd_rd, cmd_wr);
+			vsp_priv->vsp_state = VSP_STATE_IDLE;
+
+
 			/* If there is still commands in the cmd buffer,
 			 * set CONTINUE command and start API main directly not
 			 * via the boot program. The boot program might damage
 			 * the application state.
 			 */
-			cmd_rd = vsp_priv->ctrl->cmd_rd;
-			cmd_wr = vsp_priv->ctrl->cmd_wr;
-
-			VSP_DEBUG("cmd_rd=%d, cmd_wr=%d\n", cmd_rd, cmd_wr);
 			if (cmd_rd == cmd_wr) {
 				vsp_priv->vsp_state = VSP_STATE_IDLE;
 #if 0
@@ -196,7 +169,7 @@ bool vsp_interrupt(void *pvData)
 				}
 #endif
 			} else {
-				VSP_DEBUG("cmd_queue has data,continue\n");
+				VSP_DEBUG("cmd_queue has data,continue...\n");
 				vsp_continue_function(dev_priv);
 			}
 			break;
@@ -209,13 +182,52 @@ bool vsp_interrupt(void *pvData)
 			ret = false;
 			break;
 		}
+
 		vsp_priv->ctrl->ack_rd = (vsp_priv->ctrl->ack_rd + 1) %
 			VSP_ACK_QUEUE_SIZE;
-		VSP_DEBUG("idx %d\n", idx);
 	}
+
+	return sequence;
+}
+
+bool vsp_interrupt(void *pvData)
+{
+	struct drm_device *dev;
+	struct drm_psb_private *dev_priv;
+	struct vsp_private *vsp_priv;
+	unsigned long status;
+	bool ret;
+	uint32_t sequence;
+
+	VSP_DEBUG("got vsp interrupt\n");
+
+	if (pvData == NULL) {
+		DRM_ERROR("VSP: vsp %s, Invalid params\n", __func__);
+		return false;
+	}
+
+	dev = (struct drm_device *)pvData;
+	dev_priv = (struct drm_psb_private *) dev->dev_private;
+	vsp_priv = dev_priv->vsp_private;
+
+	/* read interrupt status */
+	IRQ_REG_READ32(VSP_IRQ_CTRL_IRQ_STATUS, &status);
+	VSP_DEBUG("irq status %lx\n", status);
+
+	/* clear interrupt status */
+	if (!(status & (1 << VSP_SP0_IRQ_SHIFT))) {
+		DRM_ERROR("VSP: invalid irq\n");
+		return false;
+	} else {
+		IRQ_REG_WRITE32(VSP_IRQ_CTRL_IRQ_CLR, (1 << VSP_SP0_IRQ_SHIFT));
+	}
+
+	/* handle the response message */
+	spin_lock(&vsp_priv->lock);
+	sequence = vsp_handle_response(dev_priv);
 	spin_unlock(&vsp_priv->lock);
 
-	/* for compile with VP */
+	/* handle fence info */
 	if (sequence != vsp_priv->current_sequence) {
 		vsp_priv->current_sequence = sequence;
 		psb_fence_handler(dev, VSP_ENGINE_VPP);
@@ -293,7 +305,7 @@ int vsp_submit_cmdbuf(struct drm_device *dev,
 	struct vsp_private *vsp_priv = dev_priv->vsp_private;
 	int ret;
 
-	vsp_priv->handling_cmd = 1;
+	vsp_priv->num_cmd = 1;
 
 	if (vsp_priv->fw_loaded == 0) {
 		ret = vsp_init_fw(dev);
@@ -324,17 +336,16 @@ int vsp_submit_cmdbuf(struct drm_device *dev,
 	/* If the VSP is ind idle, need to send "Continue" */
 	if (vsp_priv->vsp_state == VSP_STATE_IDLE) {
 		vsp_continue_function(dev_priv);
-		vsp_priv->vsp_state = VSP_STATE_ACTIVE;
 		VSP_DEBUG("The VSP is on idle, send continue!\n");
 	}
 
 	/* If the VSP is in Suspend, need to send "Resume" */
 	if (vsp_priv->vsp_state == VSP_STATE_SUSPEND) {
 		vsp_resume_function(dev_priv);
-		vsp_priv->vsp_state = VSP_STATE_ACTIVE;
 		VSP_DEBUG("The VSP is on suspend, send resume!\n");
 	}
-	vsp_priv->handling_cmd = 0;
+
+	vsp_priv->num_cmd = 0;
 
 	return ret;
 }
@@ -347,7 +358,7 @@ int vsp_send_command(struct drm_device *dev,
 	struct vsp_private *vsp_priv = dev_priv->vsp_private;
 	unsigned int rd, wr;
 	unsigned int remaining_space;
-	unsigned int cmd_idx;
+	unsigned int cmd_idx, num_cmd = 0;
 	struct vss_command_t *cur_cmd, *cur_cell_cmd;
 
 	VSP_DEBUG("will send command here: cmd_start %p, cmd_size %ld\n",
@@ -374,7 +385,7 @@ int vsp_send_command(struct drm_device *dev,
 		VSP_DEBUG("cmd_size %ld sizeof(*cur_cmd) %d\n",
 			  cmd_size, sizeof(*cur_cmd));
 
-		if (remaining_space < 1) {
+		if (remaining_space < vsp_priv->num_cmd) {
 			DRM_ERROR("no enough space for cmd queue\n");
 			DRM_ERROR("VSP: rd %d, wr %d, remaining_space %d\n",
 				  rd, wr, remaining_space);
@@ -389,7 +400,6 @@ int vsp_send_command(struct drm_device *dev,
 			continue;
 		}
 
-		VSP_DEBUG("VSP: cmd_queue_size %d\n", VSP_CMD_QUEUE_SIZE);
 		for (cmd_idx = 0; cmd_idx < remaining_space;) {
 			VSP_DEBUG("current cmd type %x\n", cur_cmd->type);
 			if (cur_cmd->type == VspFencePictureParamCommand) {
@@ -411,23 +421,18 @@ int vsp_send_command(struct drm_device *dev,
 					continue;
 			}
 
-			VSP_DEBUG("command buffer %x\n", cur_cmd->buffer);
-
 			/* FIXME: could remove cmd_idx here */
 			cur_cell_cmd = vsp_priv->cmd_queue +
 				(wr + cmd_idx) % VSP_CMD_QUEUE_SIZE;
 			++cmd_idx;
 			memcpy(cur_cell_cmd, cur_cmd, sizeof(*cur_cmd));
-			/* cur_cell_cmd->sequence_number = sequence; */
-
-			/* update write index */
-			vsp_priv->ctrl->cmd_wr =
-				(vsp_priv->ctrl->cmd_wr + 1) %
-				VSP_CMD_QUEUE_SIZE;
-
+			VSP_DEBUG("cmd: %.8x %.8x %.8x %.8x %.8x %.8x\n",
+				cur_cell_cmd->context, cur_cell_cmd->type,
+				cur_cell_cmd->buffer, cur_cell_cmd->size,
+				cur_cell_cmd->buffer_id, cur_cell_cmd->irq);
+			num_cmd++;
 			cur_cmd++;
 			cmd_size -= sizeof(*cur_cmd);
-			VSP_DEBUG("cmd_size %ld\n", cmd_size);
 			if (cmd_size == 0)
 				goto out;
 			else if (cmd_size < sizeof(*cur_cmd)) {
@@ -438,6 +443,11 @@ int vsp_send_command(struct drm_device *dev,
 		}
 	}
 out:
+	/* update write index */
+	VSP_DEBUG("%d cmd will send to VSP!\n", num_cmd);
+	vsp_priv->ctrl->cmd_wr =
+		(vsp_priv->ctrl->cmd_wr + num_cmd) % VSP_CMD_QUEUE_SIZE;
+
 	return 0;
 }
 
@@ -455,13 +465,16 @@ static int vsp_prehandle_command(struct drm_file *priv,
 	struct ttm_buffer_object *pic_param_bo;
 	int pic_param_num;
 	struct ttm_validate_buffer *pos, *next;
+	struct drm_device *dev = priv->minor->dev;
+	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct vsp_private *vsp_priv = dev_priv->vsp_private;
 
 	cur_cmd = (struct vss_command_t *)cmd_start;
 
 	pic_param_num = 0;
 	VSP_DEBUG("cmd size %d\n", cmd_size);
 	while (cmd_size) {
-		VSP_DEBUG("cmd type %d, buffer offset %x\n", cur_cmd->type,
+		VSP_DEBUG("cmd type %x, buffer offset %x\n", cur_cmd->type,
 			  cur_cmd->buffer);
 		if (cur_cmd->type == VspFencePictureParamCommand) {
 			pic_param_bo =
@@ -485,13 +498,7 @@ static int vsp_prehandle_command(struct drm_file *priv,
 				ret = -1;
 				goto out;
 			}
-		}
-
-		if (cur_cmd->type == VspSetContextCommand) {
-
-			struct drm_device *dev = priv->minor->dev;
-			struct drm_psb_private *dev_priv = dev->dev_private;
-			struct vsp_private *vsp_priv = dev_priv->vsp_private;
+		} else if (cur_cmd->type == VspSetContextCommand) {
 
 			VSP_DEBUG("set context and new vsp context\n");
 			VSP_DEBUG("set context base %x, size %x\n",
@@ -501,7 +508,9 @@ static int vsp_prehandle_command(struct drm_file *priv,
 			vsp_priv->setting->state_buffer_addr = cur_cmd->buffer;
 
 			vsp_new_context(dev_priv->dev);
-		}
+		} else
+			/* calculate the numbers of cmd send to VSP */
+			vsp_priv->num_cmd = vsp_priv->num_cmd + 1;
 
 		cmd_size -= sizeof(*cur_cmd);
 		cur_cmd++;
@@ -659,127 +668,14 @@ uint32_t vsp_fence_poll(struct drm_psb_private *dev_priv)
 	VSP_DEBUG("polling vsp msg\n");
 
 	vsp_priv = dev_priv->vsp_private;
-	sequence = vsp_priv->current_sequence;
 
+	/* handle the response message */
 	spin_lock_irqsave(&vsp_priv->lock, irq_flags);
-
-	msg_num = 0;
-	rd = vsp_priv->ctrl->ack_rd;
-	wr = vsp_priv->ctrl->ack_wr;
-
-	msg_num = wr > rd ? wr - rd : wr == rd ? 0 :
-		VSP_ACK_QUEUE_SIZE - (rd - wr);
-
-	VSP_DEBUG("ack rd %d wr %d, msg_num %d, size %d\n", rd, wr,
-		  msg_num, VSP_ACK_QUEUE_SIZE);
-	VSP_DEBUG("polling fence, and there're %d msgs\n", msg_num);
-
-	for (idx = 0; idx < msg_num; ++idx) {
-		msg = vsp_priv->ack_queue + (idx + rd) % VSP_ACK_QUEUE_SIZE;
-
-		switch (msg->type) {
-		case VssErrorResponse:
-			/* FIXME: should handling error? */
-			handle_error_response(msg->buffer);
-			DRM_ERROR("VSP: vss error response, skip for polling");
-			DRM_ERROR(" errono %d type %x\n", msg->buffer,
-				  msg->type);
-			break;
-
-		case VssOutputSurfaceReadyResponse:
-			VSP_DEBUG("sequence %x is done\n", msg->buffer);
-			VSP_DEBUG("VSP clock cycles from pre response %x\n",
-				  msg->vss_cc);
-
-			vsp_priv->vss_cc_acc += msg->vss_cc;
-			VSP_PERF("VSP output ready, clock count is %x\n",
-				vsp_priv->vss_cc_acc);
-
-			vsp_priv->current_sequence = msg->buffer;
-			sequence = msg->buffer;
-			break;
-
-		case VssOutputSurfaceFreeResponse:
-			VSP_DEBUG("sequence surface %x should be freed\n",
-				  msg->buffer);
-			VSP_DEBUG("VSP clock cycles from pre response %x\n",
-				  msg->vss_cc);
-			vsp_priv->vss_cc_acc += msg->vss_cc;
-			break;
-
-		case VssOutputSurfaceCrcResponse:
-			VSP_DEBUG("Crc of sequence %x is %x\n", msg->buffer,
-				  msg->vss_cc);
-			VSP_DEBUG("VSP clock cycles from pre response %x\n",
-				  msg->vss_cc);
-			vsp_priv->vss_cc_acc += msg->vss_cc;
-			break;
-
-		case VssInputSurfaceReadyResponse:
-			VSP_DEBUG("got input surface ready response\n");
-			VSP_DEBUG("VSP clock cycles from pre response %x\n",
-				  msg->vss_cc);
-			vsp_priv->vss_cc_acc += msg->vss_cc;
-			break;
-
-		case VssCommandBufferReadyResponse:
-			VSP_DEBUG("got command buffer ready response\n");
-			VSP_DEBUG("VSP clock cycles from pre response %x\n",
-				  msg->vss_cc);
-			vsp_priv->vss_cc_acc += msg->vss_cc;
-			break;
-
-		case VssEndOfSequenceResponse:
-			VSP_DEBUG("end of the sequence received\n");
-			VSP_DEBUG("VSP clock cycles from pre response %x\n",
-				  msg->vss_cc);
-			vsp_priv->vss_cc_acc += msg->vss_cc;
-			break;
-
-		case VssIdleResponse:
-		{
-			unsigned int cmd_rd, cmd_wr;
-
-			VSP_DEBUG("VSP is idle\n");
-			VSP_DEBUG("VSP clock cycles from pre response %x\n",
-				  msg->vss_cc);
-			vsp_priv->vss_cc_acc += msg->vss_cc;
-
-			/* If there is still commands in the cmd buffer,
-			 * set CONTINUE command and start API main directly not
-			 * via the boot program. The boot program might damage
-			 * the application state.
-			 */
-			cmd_rd = vsp_priv->ctrl->cmd_rd;
-			cmd_wr = vsp_priv->ctrl->cmd_wr;
-
-			VSP_DEBUG("cmd_rd=%d, cmd_wr=%d\n", cmd_rd, cmd_wr);
-			if (rd == wr) {
-				vsp_priv->vsp_state = VSP_STATE_IDLE;
-#if 0
-				if (!vsp_priv->handling_cmd) {
-					VSP_DEBUG("Trying to shut down ...\n");
-					schedule_delayed_work(
-						&vsp_priv->vsp_suspend_wq, 0);
-				}
-#endif
-			} else {
-				VSP_DEBUG("cmd_queue has data,send continue\n");
-				vsp_continue_function(dev_priv);
-			}
-			break;
-		}
-		default:
-			VSP_DEBUG("other response, skip for polling\n");
-			VSP_DEBUG("should correctly handle this response\n");
-			break;
-		}
-
-		vsp_priv->ctrl->ack_rd =
-			(vsp_priv->ctrl->ack_rd + 1) % VSP_ACK_QUEUE_SIZE;
-	}
-
+	sequence = vsp_handle_response(dev_priv);
 	spin_unlock_irqrestore(&vsp_priv->lock, irq_flags);
+
+	if (sequence != vsp_priv->current_sequence)
+		vsp_priv->current_sequence = sequence;
 
 	return sequence;
 }
@@ -832,6 +728,7 @@ void vsp_rm_context(struct drm_device *dev)
 	vsp_priv->vsp_state = VSP_STATE_DOWN;
 	vsp_priv->fw_loaded = 0;
 	vsp_priv->current_sequence = 0;
+	vsp_priv->num_cmd = 0;
 	VSP_DEBUG("VSP: OK. Power down the HW!\n");
 
 	/* FIXME: frequency should change */
@@ -868,10 +765,22 @@ int psb_check_vsp_idle(struct drm_device *dev)
 	if (vsp_priv->fw_loaded == 0 || vsp_priv->vsp_state == VSP_STATE_DOWN)
 		return 0;
 
-	if (!vsp_is_idle(dev_priv, vsp_priv->config.api_processor)) {
-		PSB_DEBUG_PM("VSP: %s return busy", __func__);
+	/* make sure VSP system has really been idle
+	 * vsp-api runs on sp0 or sp1, but we don't know which one when booting
+	 * securely. So wait for both.
+	 */
+	if (!vsp_is_idle(dev_priv, vsp_sp0)) {
+		PSB_DEBUG_PM("VSP: sp0 return busy!\n");
 		return -EBUSY;
 	}
+	if (!vsp_is_idle(dev_priv, vsp_sp1)) {
+		PSB_DEBUG_PM("VSP: sp1 return busy!\n");
+		return -EBUSY;
+	}
+
+	/* set VSP entry status */
+	vsp_priv->ctrl->entry_kind = vsp_entry_booted;
+
 	return 0;
 }
 
@@ -886,10 +795,17 @@ int psb_vsp_dump_info(struct drm_psb_private *dev_priv)
 		VSP_DEBUG("partition1_config_reg_d%d=%x\n", i, reg);
 	}
 
+	/* firmware*/
+	VSP_DEBUG("firmware addr:%x\n", vsp_priv->firmware->offset);
+
+	/* ma_header_reg */
+	MM_READ32(vsp_priv->boot_header.ma_header_reg, 0, &reg);
+	VSP_DEBUG("ma_header_reg:%x\n", reg);
+
 	/* The setting-struct */
-	VSP_DEBUG("setting addr:%x\n", &(vsp_priv->setting));
-	VSP_DEBUG("setting->firmware_addr:%x\n",
-			vsp_priv->setting->firmware_addr);
+	VSP_DEBUG("setting addr:%x\n", vsp_priv->setting_bo->offset);
+	VSP_DEBUG("setting->reserved0:%x\n",
+			vsp_priv->setting->reserved0);
 	VSP_DEBUG("setting->command_queue_size:0x%x\n",
 			vsp_priv->setting->command_queue_size);
 	VSP_DEBUG("setting->command_queue_addr:%x\n",
@@ -926,29 +842,29 @@ int psb_vsp_dump_info(struct drm_psb_private *dev_priv)
 	VSP_DEBUG("mmu_page_table_address:%x\n", reg);
 
 	/* SP0 info */
-	VSP_DEBUG("api_processor:%d\n", vsp_priv->config.api_processor);
-	SP_REG_READ32(0x0, &reg, vsp_priv->config.api_processor);
+	VSP_DEBUG("sp0_processor:%d\n", vsp_sp0);
+	SP_REG_READ32(0x0, &reg, vsp_sp0);
 	VSP_DEBUG("sp0_stat_and_ctrl:%x\n", reg);
-	SP_REG_READ32(0x4, &reg, vsp_priv->config.api_processor);
+	SP_REG_READ32(0x4, &reg, vsp_sp0);
 	VSP_DEBUG("sp0_base_address:%x\n", reg);
-	SP_REG_READ32(0x24, &reg, vsp_priv->config.api_processor);
+	SP_REG_READ32(0x24, &reg, vsp_sp0);
 	VSP_DEBUG("sp0_debug_pc:%x\n", reg);
-	SP_REG_READ32(0x28, &reg, vsp_priv->config.api_processor);
+	SP_REG_READ32(0x28, &reg, vsp_sp0);
 	VSP_DEBUG("sp0_cfg_pmem_iam_op0:%x\n", reg);
-	SP_REG_READ32(0x10, &reg, vsp_priv->config.api_processor);
+	SP_REG_READ32(0x10, &reg, vsp_sp0);
 	VSP_DEBUG("sp0_cfg_pmem_master:%x\n", reg);
 
 	/* SP1 info */
-	VSP_DEBUG("boot_processor:%d\n", vsp_priv->config.boot_processor);
-	SP_REG_READ32(0x0, &reg, vsp_priv->config.boot_processor);
+	VSP_DEBUG("sp1_processor:%d\n", vsp_sp1);
+	SP_REG_READ32(0x0, &reg, vsp_sp1);
 	VSP_DEBUG("sp1_stat_and_ctrl:%x\n", reg);
-	SP_REG_READ32(0x4, &reg, vsp_priv->config.boot_processor);
+	SP_REG_READ32(0x4, &reg, vsp_sp1);
 	VSP_DEBUG("sp1_base_address:%x\n", reg);
-	SP_REG_READ32(0x24, &reg, vsp_priv->config.boot_processor);
+	SP_REG_READ32(0x24, &reg, vsp_sp1);
 	VSP_DEBUG("sp1_debug_pc:%x\n", reg);
-	SP_REG_READ32(0x28, &reg, vsp_priv->config.boot_processor);
+	SP_REG_READ32(0x28, &reg, vsp_sp1);
 	VSP_DEBUG("sp1_cfg_pmem_iam_op0:%x\n", reg);
-	SP_REG_READ32(0x10, &reg, vsp_priv->config.boot_processor);
+	SP_REG_READ32(0x10, &reg, vsp_sp1);
 	VSP_DEBUG("sp1_cfg_pmem_master:%x\n", reg);
 
 	/* WDT info */
@@ -961,8 +877,7 @@ int psb_vsp_dump_info(struct drm_psb_private *dev_priv)
 	VSP_DEBUG("command queue:\n");
 	for (i = 0; i < VSP_CMD_QUEUE_SIZE; i++) {
 		cmd_p = &(vsp_priv->cmd_queue[i]);
-		VSP_DEBUG("cmd_queue[%d](%x):", i , cmd_p);
-		VSP_DEBUG("%.8x %.8x %.8x %.8x %.8x %.8x %.8x %.8x",
+		VSP_DEBUG("cmd[%d]:%.8x %.8x %.8x %.8x %.8x %.8x %.8x %.8x", i,
 			vsp_priv->cmd_queue[i].context,
 			vsp_priv->cmd_queue[i].type,
 			vsp_priv->cmd_queue[i].buffer,
@@ -977,8 +892,7 @@ int psb_vsp_dump_info(struct drm_psb_private *dev_priv)
 	VSP_DEBUG("ack queue:\n");
 	for (i = 0; i < VSP_ACK_QUEUE_SIZE; i++) {
 		cmd_p = &(vsp_priv->ack_queue[i]);
-		VSP_DEBUG("ack_queue[%d](%x):", i, cmd_p);
-		VSP_DEBUG("%.8x %.8x %.8x %.8x %.8x %.8x %.8x %.8x",
+		VSP_DEBUG("ack[%d]:%.8x %.8x %.8x %.8x %.8x %.8x %.8x %.8x", i,
 			vsp_priv->ack_queue[i].context,
 			vsp_priv->ack_queue[i].type,
 			vsp_priv->ack_queue[i].buffer,
@@ -1078,9 +992,11 @@ void handle_error_response(unsigned int error)
 	case VssInvalidProcPictureCommand:
 		DRM_ERROR("VSP: wrong num of input/output\n");
 		break;
-
+	case VssInvalidDdrAddress:
+		DRM_ERROR("VSP: DDR address isn't in allowed 1GB range\n");
+		break;
 	default:
-		DRM_ERROR("VSP: Unknown error, code %d\n", error);
+		DRM_ERROR("VSP: Unknown error, code %x\n", error);
 		break;
 	}
 
