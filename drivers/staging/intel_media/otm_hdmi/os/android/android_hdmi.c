@@ -630,15 +630,24 @@ int android_hdmi_mode_valid(struct drm_connector *connector,
 				struct drm_display_mode *mode)
 {
 	unsigned int pc_min, pc_max;
+	struct drm_display_mode *mode_entry, *t;
+	struct drm_display_mode *saved_mode = NULL;
+	int active_region = 0, vrefresh = 0;
+	int saved_active_region = 0, saved_vrefresh = 0;
+	int ret = MODE_OK;
 
 	pr_debug("display info. hdisplay = %d, vdisplay = %d, clock = %d.\n",
 			mode->hdisplay, mode->vdisplay, mode->clock);
 
-	if (mode->hdisplay > OTM_HDMI_MAX_HDISPLAY)
-		return MODE_BAD_HVALUE;
+	if (mode->hdisplay > OTM_HDMI_MAX_HDISPLAY) {
+		ret = MODE_BAD_HVALUE;
+		goto err;
+	}
 
-	if (mode->vdisplay > OTM_HDMI_MAX_VDISPLAY)
-		return MODE_BAD_VVALUE;
+	if (mode->vdisplay > OTM_HDMI_MAX_VDISPLAY) {
+		ret = MODE_BAD_VVALUE;
+		goto err;
+	}
 
 	/* Restricting modes within the supported pixel clock */
 	if (OTM_HDMI_SUCCESS == otm_hdmi_get_pixel_clock_range(
@@ -648,14 +657,16 @@ int android_hdmi_mode_valid(struct drm_connector *connector,
 				mode->hdisplay,
 				mode->vdisplay,
 				mode->clock);
-			return MODE_CLOCK_LOW;
+			ret = MODE_CLOCK_LOW;
+			goto err;
 		}
 		if (mode->clock > pc_max) {
 			pr_debug("pruned mode %dx%d@%d.\n",
 				mode->hdisplay,
 				mode->vdisplay,
 				mode->clock);
-			return MODE_CLOCK_HIGH;
+			ret = MODE_CLOCK_HIGH;
+			goto err;
 		}
 	}
 
@@ -680,16 +691,53 @@ int android_hdmi_mode_valid(struct drm_connector *connector,
 			mode->hdisplay,
 			mode->vdisplay,
 			calculate_refresh_rate(mode));
-		return MODE_NO_DBLESCAN;
+		ret = MODE_NO_DBLESCAN;
+		goto err;
 	}
 	if (mode->flags & DRM_MODE_FLAG_INTERLACE) {
 		pr_debug("pruned mode %dx%d@%dHz. Interlace not supported.\n",
 			mode->hdisplay,
 			mode->vdisplay,
 			calculate_refresh_rate(mode));
-		return MODE_NO_INTERLACE;
+		ret = MODE_NO_INTERLACE;
+		goto err;
 	}
 	return MODE_OK;
+
+err:
+	mode->status = ret;
+
+	if (mode->type & DRM_MODE_TYPE_PREFERRED) {
+		mode->type &= ~DRM_MODE_TYPE_PREFERRED;
+
+		/*
+		 * Find the mode with maximum active region and refresh rate in
+		 * the supported mode list, and set it as preferred one.
+		 */
+		list_for_each_entry_safe(mode_entry, t,
+				&connector->modes, head) {
+			if (mode_entry->status != MODE_OK)
+				continue;
+
+			active_region =
+				mode_entry->hdisplay * mode_entry->vdisplay;
+
+			if (active_region >= saved_active_region) {
+				saved_active_region = active_region;
+				vrefresh = drm_mode_vrefresh(mode_entry);
+
+				if ((vrefresh >= saved_vrefresh)) {
+					saved_vrefresh = vrefresh;
+					saved_mode = mode_entry;
+				}
+			}
+		}
+
+		if (saved_mode)
+			saved_mode->type |= DRM_MODE_TYPE_PREFERRED;
+	}
+
+	return ret;
 }
 
 
