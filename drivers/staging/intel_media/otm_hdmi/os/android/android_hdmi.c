@@ -2135,6 +2135,23 @@ android_hdmi_detect(struct drm_connector *connector,
 	}
 }
 
+int android_hdmi_probe_single_connector_modes(struct drm_connector *connector,
+		uint32_t maxX, uint32_t maxY)
+{
+	struct drm_device *dev;
+	int count = 0;
+
+	if (!connector)
+		return count;
+
+	dev = connector->dev;
+
+	count = drm_helper_probe_single_connector_modes(connector,
+			dev->mode_config.max_width,
+			dev->mode_config.max_height);
+	return count;
+}
+
 /**
  * Description: check whether hdmi/dvi is connected or not.
  *
@@ -2461,7 +2478,7 @@ const struct drm_connector_funcs android_hdmi_connector_funcs = {
 	.save = android_hdmi_connector_save,
 	.restore = android_hdmi_connector_restore,
 	.detect = android_hdmi_detect,
-	.fill_modes = drm_helper_probe_single_connector_modes,
+	.fill_modes = android_hdmi_probe_single_connector_modes,
 	.set_property = android_hdmi_set_property,
 	.destroy = android_hdmi_connector_destroy,
 };
