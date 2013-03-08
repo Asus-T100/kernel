@@ -227,7 +227,7 @@ struct devs_id __initconst device_ids[] = {
 	{"als", SFI_DEV_TYPE_I2C, 0, &ltr502als_platform_data, NULL},
 	{"bq24261_charger", SFI_DEV_TYPE_I2C, 1, &bq24261_platform_data, NULL},
 	{"lm49453_codec", SFI_DEV_TYPE_I2C, 1, &no_platform_data, NULL},
-
+	{"dw9719", SFI_DEV_TYPE_I2C, 1, &no_platform_data, NULL},
 	/* Modem */
 #ifndef CONFIG_HSI_NO_MODEM
 	{"hsi_ifx_modem", SFI_DEV_TYPE_HSI, 0, &hsi_modem_platform_data, NULL},
