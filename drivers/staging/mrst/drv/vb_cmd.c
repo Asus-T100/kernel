@@ -452,7 +452,7 @@ static int ls04x_igzo_drv_ic_init(struct mdfld_dsi_config *dsi_config)
 {
 	int r = 0;
 
-	PSB_DEBUG_ENTRY("\n");
+	DRM_INFO("IGZO panel detected!\n");
 
 #ifndef NO_DRIVER_IC_INIT
 	struct mdfld_dsi_pkg_sender *sender
@@ -520,10 +520,15 @@ static int ls04x_igzo_drv_ic_init(struct mdfld_dsi_config *dsi_config)
 				   ls04x_power_setting_int_pwr2_igzo,
 				   sizeof(ls04x_power_setting_int_pwr2_igzo),
 				   MDFLD_DSI_SEND_PACKAGE);
+	/* comment vcom setting for igzo and use default setting
+	* it is used to avoiding 1-hz panel flicker issue.
+	*/
+	/*
 	mdfld_dsi_send_gen_long_lp(sender,
 				   ls04x_vcom_setting,
 				   sizeof(ls04x_vcom_setting),
 				   MDFLD_DSI_SEND_PACKAGE);
+	*/
 	mdfld_dsi_send_gen_short_lp(sender,
 				    ls04x_sleep_out_nvm_load_setting[0],
 				    ls04x_sleep_out_nvm_load_setting[1], 2,
@@ -556,6 +561,18 @@ static int ls04x_igzo_drv_ic_init(struct mdfld_dsi_config *dsi_config)
 				    MDFLD_DSI_SEND_PACKAGE);
 	mdfld_dsi_send_mcs_short_lp(sender, write_ctrl_cabc, 0x1, 1,
 				    MDFLD_DSI_SEND_PACKAGE);
+
+	/* Send column and page addr before write mem start,
+	* as the default setting causes partial screen messy.
+	*/
+	mdfld_dsi_send_mcs_long_lp(sender,
+				   ls04x_set_column_addr,
+				   sizeof(ls04x_set_column_addr),
+				   MDFLD_DSI_SEND_PACKAGE);
+	mdfld_dsi_send_mcs_long_lp(sender,
+				   ls04x_set_page_addr,
+				   sizeof(ls04x_set_page_addr),
+				   MDFLD_DSI_SEND_PACKAGE);
 #endif
 	return 0;
 }
@@ -565,7 +582,7 @@ static int ls04x_cgs_drv_ic_init(struct mdfld_dsi_config *dsi_config)
 	int r = 0;
 	u8 data[16];
 
-	PSB_DEBUG_ENTRY("\n");
+	DRM_INFO("CGS panel detected!\n");
 
 #ifndef NO_DRIVER_IC_INIT
 	memset(data, 0, sizeof(data));
@@ -649,6 +666,17 @@ static int ls04x_cgs_drv_ic_init(struct mdfld_dsi_config *dsi_config)
 	mdfld_dsi_send_mcs_short_lp(sender, write_ctrl_cabc, 0x1, 1,
 				    MDFLD_DSI_SEND_PACKAGE);
 
+	/* Send column and page addr before write mem start,
+	* as the default setting causes partial screen messy.
+	*/
+	mdfld_dsi_send_mcs_long_lp(sender,
+				   ls04x_set_column_addr,
+				   sizeof(ls04x_set_column_addr),
+				   MDFLD_DSI_SEND_PACKAGE);
+	mdfld_dsi_send_mcs_long_lp(sender,
+				   ls04x_set_page_addr,
+				   sizeof(ls04x_set_page_addr),
+				   MDFLD_DSI_SEND_PACKAGE);
 #endif
 	return 0;
 }
@@ -701,15 +729,15 @@ static void ls04x_dsi_controller_init(struct mdfld_dsi_config *dsi_config)
 	hw_ctx->intr_en = 0xffffffff;
 	hw_ctx->hs_tx_timeout = 0xffffff;
 	hw_ctx->lp_rx_timeout = 0xffffff;
-	hw_ctx->turn_around_timeout = 0x14;
+	hw_ctx->turn_around_timeout = 0x18;
 	hw_ctx->device_reset_timer = 0xffff;
 	hw_ctx->high_low_switch_count = 0x28;
 	hw_ctx->init_count = 0xf0;
 	hw_ctx->eot_disable = 0x3;
 	hw_ctx->lp_byteclk = 0x4;
-	hw_ctx->clk_lane_switch_time_cnt = 0xa0014;
-	hw_ctx->dbi_bw_ctrl = 0x820;
-	hw_ctx->dphy_param = 0x150c3408;
+	hw_ctx->clk_lane_switch_time_cnt = 0x18000b;
+	hw_ctx->dbi_bw_ctrl = 820;
+	hw_ctx->dphy_param = 0x160d3610;
 	hw_ctx->dsi_func_prg = (0xa000 | dsi_config->lane_count);
 	hw_ctx->mipi = TE_TRIGGER_GPIO_PIN | PASS_FROM_SPHY_TO_AFE;
 	hw_ctx->mipi |= dsi_config->lane_config;
@@ -827,14 +855,6 @@ static int vb_cmd_power_on(struct mdfld_dsi_config *dsi_config)
 	ir2e69_power_on();
 	struct mdfld_dsi_pkg_sender *sender
 				= mdfld_dsi_get_pkg_sender(dsi_config);
-	mdfld_dsi_send_mcs_long_lp(sender,
-				   ls04x_set_column_addr,
-				   sizeof(ls04x_set_column_addr),
-				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_mcs_long_lp(sender,
-				   ls04x_set_page_addr,
-				   sizeof(ls04x_set_page_addr),
-				   MDFLD_DSI_SEND_PACKAGE);
 	mdfld_dsi_send_mcs_short_lp(sender, set_tear_on, 0x00, 1,
 				    MDFLD_DSI_SEND_PACKAGE);
 	mdfld_dsi_send_mcs_short_lp(sender, set_display_on, 0, 0,
