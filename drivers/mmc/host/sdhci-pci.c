@@ -406,7 +406,8 @@ static const struct sdhci_pci_fixes sdhci_intel_byt_sd = {
 };
 
 static const struct sdhci_pci_fixes sdhci_intel_byt_sdio = {
-	.quirks2	= SDHCI_QUIRK2_HOST_OFF_CARD_ON,
+	.quirks2	= SDHCI_QUIRK2_HOST_OFF_CARD_ON |
+		SDHCI_QUIRK2_CAN_VDD_300 | SDHCI_QUIRK2_CAN_VDD_330,
 	.probe_slot	= mfd_sdio_probe_slot,
 };
 

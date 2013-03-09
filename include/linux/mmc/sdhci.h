@@ -105,6 +105,8 @@ struct sdhci_host {
 #define SDHCI_QUIRK2_ENABLE_MMC_PM_IGNORE_PM_NOTIFY	(1<<6)
 /* Disable eMMC/SD card High speed feature. */
 #define SDHCI_QUIRK2_DISABLE_HIGH_SPEED			(1<<7)
+#define SDHCI_QUIRK2_CAN_VDD_300			(1<<8)
+#define SDHCI_QUIRK2_CAN_VDD_330			(1<<9)
 
 	int irq;		/* Device IRQ */
 	void __iomem *ioaddr;	/* Mapped address */
