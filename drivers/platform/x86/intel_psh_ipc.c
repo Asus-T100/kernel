@@ -228,9 +228,9 @@ static void psh_recv_handle(int i)
 		goto end;
 	}
 
-	PSH_CH_HANDLE(i)(msg, param, PSH_CH_DATA(i));
 	/* write back to clear the busy bit */
 	writel(msg, &PSH_REG(psh2ia)[i].msg);
+	PSH_CH_HANDLE(i)(msg, param, PSH_CH_DATA(i));
 end:
 	up(&ipc_ctrl.ch_lock[i+PSH_RECV_CH0]);
 
