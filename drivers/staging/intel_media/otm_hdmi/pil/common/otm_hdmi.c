@@ -394,6 +394,58 @@ exit:
 }
 
 /**
+ * Parse EDID extension blocks
+ * @context:	hdmi context
+ * @raw_edid:	raw edid of first 2 blocks, read by DRM
+ *
+ * Returns:	check otm_hdmi_ret_t
+ *
+ * This routine fills capability table.
+ */
+otm_hdmi_ret_t otm_hdmi_edid_extension_parse(void *context,
+			struct edid *raw_edid,
+			struct i2c_adapter *adapter)
+{
+	otm_hdmi_ret_t rc = OTM_HDMI_SUCCESS;
+	unsigned char *edid = (u8 *) raw_edid;
+	edid_info_t   *edid_info;
+	hdmi_context_t *ctx = (hdmi_context_t *)context;
+
+	pr_debug("enter %s\n", __func__);
+
+	/* Verify pointers */
+	if (!ctx || !edid || !adapter) {
+		rc = OTM_HDMI_ERR_INTERNAL;
+		goto exit;
+	}
+
+	/* Init locals */
+	edid_info = &ctx->edid_int;
+
+	/* Begin EDID update protection */
+	mutex_lock(&ctx->modes_sema);
+
+	/* Clear EDID */
+	memset(edid_info, 0, sizeof(edid_info_t));
+
+	/* Setup reference table for parsing */
+	edid_info->num_ref_timings = ctx->n_modes_ref;
+	edid_info->ref_timings = g_video_modes_ref;
+
+	rc = edid_extension_parse(adapter, edid_info, edid);
+	if (rc != OTM_HDMI_SUCCESS)
+		pr_debug("Failed to read EDID info\n");
+
+	/* End EDID update protection */
+	mutex_unlock(&ctx->modes_sema);
+
+exit:
+	pr_debug("exit %s (ret = %d)\n", __func__, rc);
+	return rc;
+}
+
+
+/**
 * prepare hdmi eld packet and copy it to the given buffer
 * @ctx: hdmi context
 * @eld: pointer to otm_hdmi_eld_t structure

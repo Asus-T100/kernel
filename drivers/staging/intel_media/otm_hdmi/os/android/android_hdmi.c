@@ -69,7 +69,6 @@
 #include <drm/drmP.h>
 #include <drm/drm.h>
 #include <drm/drm_crtc.h>
-#include <drm/drm_edid.h>
 #include "psb_intel_display.h"
 #include "psb_intel_reg.h"
 #include "psb_drv.h"
@@ -819,39 +818,30 @@ static struct drm_display_mode
 }
 
 /**
- * This function adds the cea modes in block 1 of EDID
+ * This function adds the cea modes in extension blocks of EDID
+ * @context	: hdmi context
  * @connector	: handle to drm_connector
- * @edid	: holds edid information
  *
  * Returns the number of modes added
  */
-static int android_hdmi_add_cea_edid_modes(struct drm_connector *connector,
-					   struct edid *edid)
+static int android_hdmi_add_cea_edid_modes(void *context,
+					   struct drm_connector *connector)
 {
+	hdmi_context_t *ctx = (hdmi_context_t *)context;
+	edid_info_t *edid_info;
 	struct drm_display_mode *newmode = NULL;
-	int count = 0, i = 0, ret_count = 0;
-	u8 *default_edid = (u8 *)edid;
-	static otm_hdmi_timing_t pdt[30];
+	int i = 0, ret_count = 0;
 
-	if (connector == NULL || edid == NULL)
+	if (connector == NULL || ctx == NULL)
 		return 0;
 
-	for (i = 1; i <= default_edid[0x7e]; i++) {
-		u8 *ext = default_edid + (i * EDID_LENGTH);
-		switch (*ext) {
-		case CEA_EXT:
-			count += otm_hdmi_timing_from_cea_modes(ext,
-								&pdt[count]);
-			break;
-		default:
-			break;
-		}
-	}
+	/* Init locals */
+	edid_info = &ctx->edid_int;
 
 	/* Do Mapping from PDT to drm_display_mode */
-	for (i = 0; i < count; i++) {
-		newmode = android_hdmi_get_drm_mode_from_pdt(&pdt[i],
-				connector->dev);
+	for (i = 0; i < edid_info->num_timings; i++) {
+		newmode = android_hdmi_get_drm_mode_from_pdt(
+				&edid_info->timings[i], connector->dev);
 		if (!newmode)
 			continue;
 		drm_mode_probed_add(connector, newmode);
@@ -972,14 +962,14 @@ int android_hdmi_get_modes(struct drm_connector *connector)
 	debug_modes_count = 0;
 	pr_debug("Enter %s\n", __func__);
 
+	adapter = i2c_get_adapter(OTM_HDMI_I2C_ADAPTER_NUM);
+
 	/* Lazy edid read feature, which can save I2C transactions largely.
 	 * Basically, HPD will do edid read and store to HDMI context.
 	 * Therefore, get modes should read edid with the condition
 	 * whether the edid is ready in HDP or not in a lazy way. */
 	if (edid_ready_in_hpd)
 		goto edid_is_ready;
-
-	adapter = i2c_get_adapter(OTM_HDMI_I2C_ADAPTER_NUM);
 
 	/* Read edid blocks from i2c device if cable is connected */
 	if (NULL != adapter && otm_hdmi_get_cable_status(hdmi_priv->context))
@@ -1013,13 +1003,18 @@ edid_is_ready:
 	/* Get the edid stored in HDMI context */
 	otm_hdmi_get_raw_edid(hdmi_priv->context, (char **)&ctx_edid);
 
-	/* Parse the edid */
-	otm_hdmi_edid_parse(hdmi_priv->context, OTM_HDMI_USE_EDID_REAL);
-
 	/* Add modes into DRM mode list */
 	drm_mode_connector_update_edid_property(connector, ctx_edid);
 	ret = drm_add_edid_modes(connector, ctx_edid);
-	ret += android_hdmi_add_cea_edid_modes(connector, ctx_edid);
+
+	/* Parse the edid extensions.
+	 * If successful, add modes in extension blocks to DRM
+	 */
+	if (otm_hdmi_edid_extension_parse(hdmi_priv->context, ctx_edid,
+			adapter) == OTM_HDMI_SUCCESS) {
+		ret += android_hdmi_add_cea_edid_modes(hdmi_priv->context,
+						connector);
+	}
 
 #ifdef OTM_HDMI_UNIT_TEST
 	if (1 == cmdline_mode.specified) {
