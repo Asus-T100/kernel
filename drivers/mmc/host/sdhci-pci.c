@@ -402,6 +402,7 @@ static const struct sdhci_pci_fixes sdhci_intel_byt_emmc = {
 };
 
 static const struct sdhci_pci_fixes sdhci_intel_byt_sd = {
+	.quirks		= SDHCI_QUIRK_INVERTED_WRITE_PROTECT,
 };
 
 static const struct sdhci_pci_fixes sdhci_intel_byt_sdio = {
