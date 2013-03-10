@@ -278,6 +278,7 @@ void st_int_recv(void *disc_data,
 		   "rx_count %ld", count, st_gdata->rx_state,
 		   st_gdata->rx_count);
 
+	pm_runtime_get(st_gdata->tty_dev);
 	spin_lock_irqsave(&st_gdata->lock, flags);
 	/* Decode received bytes here */
 	while (count) {
@@ -404,6 +405,7 @@ void st_int_recv(void *disc_data,
 	}
 done:
 	spin_unlock_irqrestore(&st_gdata->lock, flags);
+	pm_runtime_put(st_gdata->tty_dev);
 	pr_debug("done %s", __func__);
 	return;
 }
@@ -493,6 +495,8 @@ void st_tx_wakeup(struct st_data_s *st_data)
 		 * context
 		 */
 	}
+
+	pm_runtime_get_sync(st_data->tty_dev);
 	do {			/* come back if st_tx_wakeup is set */
 		/* woke-up to write */
 		clear_bit(ST_TX_WAKEUP, &st_data->tx_state);
@@ -515,6 +519,7 @@ void st_tx_wakeup(struct st_data_s *st_data)
 		}
 		/* if wake-up is set in another context- restart sending */
 	} while (test_bit(ST_TX_WAKEUP, &st_data->tx_state));
+	pm_runtime_put(st_data->tty_dev);
 
 	/* clear flag sending */
 	clear_bit(ST_TX_SENDING, &st_data->tx_state);
