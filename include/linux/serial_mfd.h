@@ -45,12 +45,4 @@
 #define HSU_CH_D3SAR		0x38
 #define HSU_CH_D3TSR		0x3C
 
-#if defined(CONFIG_X86_MRST) || defined(CONFIG_X86_MDFLD) \
-	|| defined(CONFIG_X86_MRFLD)
-void mfld_hsu_port1_switch(int on);
-#else
-inline void mfld_hsu_port1_switch(int on)
-{
-}
-#endif
 #endif

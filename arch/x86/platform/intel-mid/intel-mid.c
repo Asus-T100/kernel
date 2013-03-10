@@ -47,7 +47,6 @@
 #include <asm/intel_mid_rpmsg.h>
 #include <asm/apb_timer.h>
 #include <asm/reboot.h>
-#include <asm/intel_mid_hsu.h>
 #include "intel_mid_weak_decls.h"
 
 #include "intel_mid_scu.h"

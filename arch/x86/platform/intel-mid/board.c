@@ -94,9 +94,6 @@
 #include "device_libs/platform_edlp_modem.h"
 #include "device_libs/platform_logical_modem.h"
 
-/* HSU devices */
-#include "device_libs/platform_hsu.h"
-
 /* WIFI devices */
 #include "device_libs/platform_wl12xx.h"
 #include "device_libs/platform_bcm43xx.h"
