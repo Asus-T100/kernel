@@ -1201,12 +1201,13 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 	/*
 	 * Activate high speed (if supported)
 	 */
-	if (card->ext_csd.hs_max_dtr != 0) {
+	if ((card->ext_csd.hs_max_dtr != 0) &&
+		(host->caps & MMC_CAP_MMC_HIGHSPEED)) {
 		err = 0;
 		if (card->ext_csd.hs_max_dtr > 52000000 &&
 		    host->caps2 & MMC_CAP2_HS200)
 			err = mmc_select_hs200(card);
-		else if	(host->caps & MMC_CAP_MMC_HIGHSPEED)
+		else
 			err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
 					 EXT_CSD_HS_TIMING, 1,
 					 card->ext_csd.generic_cmd6_time, true);
