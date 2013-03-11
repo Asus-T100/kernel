@@ -337,6 +337,11 @@ static int mfd_emmc_probe_slot(struct sdhci_pci_slot *slot)
 		slot->host->mmc->caps |= MMC_CAP_HW_RESET;
 		slot->rst_n_gpio = -EINVAL;
 		break;
+	case PCI_DEVICE_ID_INTEL_BYT_MMC:
+		slot->rst_n_gpio = -EINVAL;
+		slot->host->mmc->caps |= MMC_CAP_1_8V_DDR;
+		slot->host->mmc->caps2 |= MMC_CAP2_INIT_CARD_SYNC;
+		break;
 	}
 
 	slot->host->mmc->caps |= MMC_CAP_8_BIT_DATA | MMC_CAP_NONREMOVABLE;
@@ -390,6 +395,18 @@ static const struct sdhci_pci_fixes sdhci_intel_mfd_emmc = {
 	.allow_runtime_pm = true,
 	.probe_slot	= mfd_emmc_probe_slot,
 	.remove_slot	= mfd_emmc_remove_slot,
+};
+
+static const struct sdhci_pci_fixes sdhci_intel_byt_emmc = {
+	.probe_slot	= mfd_emmc_probe_slot,
+};
+
+static const struct sdhci_pci_fixes sdhci_intel_byt_sd = {
+};
+
+static const struct sdhci_pci_fixes sdhci_intel_byt_sdio = {
+	.quirks2	= SDHCI_QUIRK2_HOST_OFF_CARD_ON,
+	.probe_slot	= mfd_sdio_probe_slot,
 };
 
 static const struct sdhci_pci_fixes sdhci_intel_pch_sdio = {
@@ -1044,6 +1061,30 @@ static const struct pci_device_id pci_ids[] __devinitdata = {
 		.subvendor	= PCI_ANY_ID,
 		.subdevice	= PCI_ANY_ID,
 		.driver_data	= (kernel_ulong_t)&sdhci_intel_mrfl_mmc,
+	},
+
+	{
+		.vendor		= PCI_VENDOR_ID_INTEL,
+		.device		= PCI_DEVICE_ID_INTEL_BYT_MMC,
+		.subvendor	= PCI_ANY_ID,
+		.subdevice	= PCI_ANY_ID,
+		.driver_data	= (kernel_ulong_t)&sdhci_intel_byt_emmc,
+	},
+
+	{
+		.vendor		= PCI_VENDOR_ID_INTEL,
+		.device		= PCI_DEVICE_ID_INTEL_BYT_SDIO,
+		.subvendor	= PCI_ANY_ID,
+		.subdevice	= PCI_ANY_ID,
+		.driver_data	= (kernel_ulong_t)&sdhci_intel_byt_sdio,
+	},
+
+	{
+		.vendor		= PCI_VENDOR_ID_INTEL,
+		.device		= PCI_DEVICE_ID_INTEL_BYT_SD,
+		.subvendor	= PCI_ANY_ID,
+		.subdevice	= PCI_ANY_ID,
+		.driver_data	= (kernel_ulong_t)&sdhci_intel_byt_sd,
 	},
 
 	{
