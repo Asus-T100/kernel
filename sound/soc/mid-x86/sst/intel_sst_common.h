@@ -411,6 +411,32 @@ struct sst_ram_buf {
 	char *buf;
 };
 
+/* Firmware Module Information*/
+
+enum sst_lib_dwnld_status {
+	SST_LIB_NOT_FOUND = 0,
+	SST_LIB_FOUND,
+	SST_LIB_DOWNLOADED,
+};
+
+struct sst_module_info {
+	const char *name; /* Library name */
+	u32	id; /* Module ID */
+	u32	entry_pt; /* Module entry point */
+	u8	status; /* module status*/
+	u8	rsvd1;
+	u16	rsvd2;
+};
+
+/* Structure for managing the Library Region(1.5MB)
+ * in DDR in Merrifield
+ */
+struct sst_mem_mgr {
+	unsigned int current_base;
+	int avail;
+	unsigned int count;
+};
+
 struct sst_dump_buf {
 	/* buffers for iram-dram dump crash */
 	struct sst_ram_buf iram_buf;
@@ -614,6 +640,7 @@ int intel_sst_release_cntrl(struct inode *i_node, struct file *file_ptr);
 
 int sst_load_fw(void);
 int sst_load_library(struct snd_sst_lib_download *lib, u8 ops);
+int sst_load_all_modules_elf(struct intel_sst_drv *ctx);
 int sst_get_block_stream(struct intel_sst_drv *sst_drv_ctx);
 void sst_memcpy_free_resources(void);
 
