@@ -782,6 +782,9 @@ void sst_fill_config(struct intel_sst_drv *sst_ctx)
 	int len;
 
 	sign = SST_CONFIG_SSP_SIGN;
+
+	if (!sst_ctx->ssp_config)
+		return;
 	len = sst_ctx->ssp_config->size;
 
 	memcpy_toio(sst_ctx->dram, &sign, sizeof(u32));

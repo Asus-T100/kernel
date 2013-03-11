@@ -159,10 +159,9 @@ static void set_mrfld_platform_config(void)
 	sst_platform_pdata.strm_map_size = MAX_DEVICES_MRFLD;
 }
 
-static void populate_platform_data(void)
+static void  populate_platform_data(void)
 {
 	sst_platform_pdata.spid = &spid;
-
 	if ((INTEL_MID_BOARD(1, PHONE, MFLD)) ||
 			(INTEL_MID_BOARD(1, TABLET, MFLD))) {
 		set_mfld_platform_config();
@@ -172,7 +171,8 @@ static void populate_platform_data(void)
 	} else if ((INTEL_MID_BOARD(1, PHONE, MRFL)) ||
 			(INTEL_MID_BOARD(1, TABLET, MRFL))) {
 		set_mrfld_platform_config();
-	}
+	} else
+		pr_warn("Board not Supported\n");
 }
 
 int add_sst_platform_device()
@@ -180,13 +180,13 @@ int add_sst_platform_device()
 	struct platform_device *pdev = NULL;
 	int ret;
 
+	populate_platform_data();
+
 	pdev = platform_device_alloc("sst-platform", -1);
 	if (!pdev) {
 		pr_err("failed to allocate audio platform device\n");
 		return -EINVAL;
 	}
-
-	populate_platform_data();
 
 	ret = platform_device_add_data(pdev, &sst_platform_pdata,
 					sizeof(sst_platform_pdata));
