@@ -28,6 +28,7 @@
 #define RP_S0IX_COUNTER		0xE8
 #define RP_WRITE_OSNIB		0xE4
 #define RP_FW_UPDATE		0xFE
+#define RP_VRTC			0xFA
 
 /*
  * Assigning some temp ids for following devices
@@ -55,6 +56,8 @@
 #define RP_MSIC_MRFLD_AUDIO	0x21
 #define RP_MSIC_PWM		0x22
 #define RP_MSIC_KPD_LED		0x23
+#define RP_BCOVE_ADC		0x24
+#define RP_BCOVE_THERMAL	0x25
 
 enum rproc_type {
 	RPROC_SCU = 0,

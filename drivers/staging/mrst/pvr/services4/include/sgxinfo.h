@@ -172,10 +172,6 @@ typedef struct _SGX_BRIDGE_INIT_INFO_
 #endif
 #endif
 
-#if defined(SGX_FEATURE_VDM_CONTEXT_SWITCH) && defined(FIX_HW_BRN_31559)
-	IMG_HANDLE	hKernelVDMSnapShotBufferMemInfo;
-	IMG_HANDLE	hKernelVDMCtrlStreamBufferMemInfo;
-#endif
 #if defined(SGX_FEATURE_VDM_CONTEXT_SWITCH) && \
 	defined(FIX_HW_BRN_33657) && defined(SUPPORT_SECURE_33657_FIX)
 	IMG_HANDLE	hKernelVDMStateUpdateBufferMemInfo;

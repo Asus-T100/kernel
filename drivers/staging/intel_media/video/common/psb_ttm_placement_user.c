@@ -389,17 +389,10 @@ int ttm_pl_create_ioctl(struct ttm_object_file *tfile,
 	if ((flags & TTM_PL_MASK_CACHING) == 0)
 		flags |=  TTM_PL_FLAG_WC | TTM_PL_FLAG_UNCACHED;
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 3, 0))
-	ret = ttm_bo_init(bdev, bo, req->size,
-			  ttm_bo_type_device, &placement,
-			  req->page_alignment, 0, true,
-			  NULL, acc_size, &ttm_bo_user_destroy);
-#else
 	ret = ttm_bo_init(bdev, bo, req->size,
 			  ttm_bo_type_device, &placement,
 			  req->page_alignment, 0, true,
 			  NULL, acc_size, NULL, &ttm_bo_user_destroy);
-#endif
 	ttm_read_unlock(lock);
 	/*
 	 * Note that the ttm_buffer_object_init function
@@ -487,7 +480,7 @@ int ttm_pl_ub_create_ioctl(struct ttm_object_file *tfile,
     This will not result in working code.
     FIXME - to be removed. */
 
-#warning error: ttm_bo_type_user no longer supported
+#warning warning: ttm_bo_type_user no longer supported
 
 /*  For kernel 3.3+, use the wrong type, which will compile but not work. */
 #define TTM_HACK_WORKAROUND_ttm_bo_type_user ttm_bo_type_kernel
@@ -555,6 +548,7 @@ int ttm_pl_ub_create_ioctl(struct ttm_object_file *tfile,
 			  true,
 			  NULL,
 			  acc_size,
+			  NULL,
 			  &ttm_bo_user_destroy);
 #else
 	ret = ttm_bo_init(bdev,

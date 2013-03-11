@@ -292,6 +292,7 @@ void free_rpmsg_instance(struct rpmsg_channel *rpdev,
 	instance->tx_msg = NULL;
 	kfree(instance->rx_msg);
 	instance->rx_msg = NULL;
+	wake_lock_destroy(&instance->wake_lock);
 	kfree(instance);
 	*pInstance = NULL;
 	dev_info(&rpdev->dev, "Freeing rpmsg device\n");
@@ -329,7 +330,7 @@ out:
 	return ret;
 }
 
-static void __devexit rpmsg_ipc_remove(struct rpmsg_channel *rpdev)
+static void rpmsg_ipc_remove(struct rpmsg_channel *rpdev)
 {
 	free_rpmsg_instance(rpdev, &rpmsg_ipc_instance);
 	dev_info(&rpdev->dev, "Removed rpmsg_ipc device\n");
@@ -356,7 +357,7 @@ static struct rpmsg_driver rpmsg_ipc = {
 	.id_table	= rpmsg_ipc_id_table,
 	.probe		= rpmsg_ipc_probe,
 	.callback	= rpmsg_ipc_cb,
-	.remove		= __devexit_p(rpmsg_ipc_remove),
+	.remove		= rpmsg_ipc_remove,
 };
 
 static int __init rpmsg_ipc_init(void)

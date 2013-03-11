@@ -72,7 +72,7 @@ static const hrt_address SP_DMEM_BASE[N_SP_ID] = {
 	0x0000000000300000ULL};
 
 /* MMU */
-#if defined (IS_ISP_2400_MAMOIADA_SYSTEM)
+#if defined (IS_ISP_2400_MAMOIADA_SYSTEM) || defined (IS_ISP_2401_MAMOIADA_SYSTEM)
 /*
  * MMU0_ID: The data MMU
  * MMU1_ID: The icache MMU
@@ -84,7 +84,7 @@ static const hrt_address MMU_BASE[N_MMU_ID] = {
 static const hrt_address MMU_BASE[N_MMU_ID] = {
 	0x0000000000070000ULL};
 #else
-#error "system_local.h: SYSTEM must be one of {., A0}"
+#error "system_local.h: SYSTEM must be one of {2400, 2400A0, 2401 }"
 #endif
 
 /* DMA */
@@ -93,11 +93,12 @@ static const hrt_address DMA_BASE[N_DMA_ID] = {
 
 /* IRQ */
 static const hrt_address IRQ_BASE[N_IRQ_ID] = {
-	0x0000000000000500ULL};
-/*
+	0x0000000000000500ULL,
 	0x0000000000030A00ULL,
 	0x000000000008C000ULL,
 	0x0000000000090200ULL};
+/*
+	0x0000000000000500ULL};
  */
 
 /* GDC */
@@ -188,7 +189,7 @@ static const hrt_address SP_DMEM_BASE[N_SP_ID] = {
 	0x00300000UL};
 
 /* MMU */
-#if defined (IS_ISP_2400_MAMOIADA_SYSTEM)
+#if defined (IS_ISP_2400_MAMOIADA_SYSTEM) || defined (IS_ISP_2401_MAMOIADA_SYSTEM)
 /*
  * MMU0_ID: The data MMU
  * MMU1_ID: The icache MMU
@@ -200,7 +201,7 @@ static const hrt_address MMU_BASE[N_MMU_ID] = {
 static const hrt_address MMU_BASE[N_MMU_ID] = {
 	0x00070000UL};
 #else
-#error "system_local.h: SYSTEM must be one of {., A0}"
+#error "system_local.h: SYSTEM must be one of {2400, 2400A0, 2401 }"
 #endif
 
 /* DMA */
@@ -209,11 +210,12 @@ static const hrt_address DMA_BASE[N_DMA_ID] = {
 
 /* IRQ */
 static const hrt_address IRQ_BASE[N_IRQ_ID] = {
-	0x00000500UL};
-/*
+	0x00000500UL,
 	0x00030A00UL,
 	0x0008C000UL,
 	0x00090200UL};
+/*
+	0x00000500UL};
  */
 
 /* GDC */

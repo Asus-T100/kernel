@@ -1713,7 +1713,7 @@ static void dlp_driver_delete(void)
  * DLP protocol driver, creates the related TTY port and TTY entry in the
  * filesystem.
  */
-static int __devinit dlp_driver_probe(struct device *dev)
+static int dlp_driver_probe(struct device *dev)
 {
 	/* The parent of our device is the HSI port,
 	 * the parent of the HSI port is the HSI controller device */
@@ -1792,7 +1792,7 @@ cleanup:
  * This function is freeing all resources hold by the context attached to the
  * requesting HSI device.
  */
-static int __devexit dlp_driver_remove(struct device *dev)
+static int dlp_driver_remove(struct device *dev)
 {
 	struct hsi_client *client = to_hsi_client(dev);
 
@@ -1800,7 +1800,8 @@ static int __devexit dlp_driver_remove(struct device *dev)
 	dlp_tty_set_link_valid(1, 0);
 
 	/* Unregister the HSI client */
-	hsi_unregister_port_event(client);
+	if (hsi_port_claimed(client))
+		hsi_unregister_port_event(client);
 	hsi_client_set_drvdata(client, NULL);
 
 	/* Cleanup all channels */
@@ -1828,7 +1829,7 @@ static struct hsi_client_driver dlp_driver_setup = {
 		   .name = DRVNAME,
 		   .owner = THIS_MODULE,
 		   .probe = dlp_driver_probe,
-		   .remove = __devexit_p(dlp_driver_remove),
+		   .remove = dlp_driver_remove,
 		   .shutdown = dlp_driver_shutdown,
 		   },
 };

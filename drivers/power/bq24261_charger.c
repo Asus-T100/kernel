@@ -268,7 +268,7 @@ enum bq24261_chrgr_stat {
 
 struct bq24261_otg_event {
 	struct list_head node;
-	struct otg_bc_cap *cap;
+	bool is_enable;
 };
 
 struct bq24261_charger {
@@ -1382,12 +1382,13 @@ static void bq24261_boostmode_worker(struct work_struct *work)
 
 		dev_info(&chip->client->dev,
 			"%s:%d state=%d\n", __FILE__, __LINE__,
-				evt->cap->chrg_state);
+				evt->is_enable);
 		mutex_lock(&chip->lock);
-		if (evt->cap->chrg_state == OTG_CHR_STATE_HOST)
+		if (evt->is_enable)
 			bq24261_enable_boost_mode(chip, 1);
-		else if (evt->cap->chrg_state == OTG_CHR_STATE_DISCONNECTED)
+		else
 			bq24261_enable_boost_mode(chip, 0);
+
 		mutex_unlock(&chip->lock);
 		spin_lock_irqsave(&chip->otg_queue_lock, flags);
 		kfree(evt);
@@ -1415,7 +1416,7 @@ static int otg_handle_notification(struct notifier_block *nb,
 		return NOTIFY_DONE;
 	}
 
-	evt->cap = (struct otg_bc_cap *)param;
+	evt->is_enable = *(int *)param;
 	INIT_LIST_HEAD(&evt->node);
 
 	spin_lock(&chip->otg_queue_lock);

@@ -491,7 +491,7 @@ out:
 	return ret;
 }
 
-static void __devexit mip_rpmsg_remove(struct rpmsg_channel *rpdev)
+static void mip_rpmsg_remove(struct rpmsg_channel *rpdev)
 {
 	scu_mip_exit();
 	iounmap(intel_mip_base);
@@ -522,7 +522,7 @@ static struct rpmsg_driver mip_rpmsg = {
 	.id_table	= mip_rpmsg_id_table,
 	.probe		= mip_rpmsg_probe,
 	.callback	= mip_rpmsg_cb,
-	.remove		= __devexit_p(mip_rpmsg_remove),
+	.remove		= mip_rpmsg_remove,
 };
 
 static int __init mip_rpmsg_init(void)

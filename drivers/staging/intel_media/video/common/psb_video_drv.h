@@ -180,7 +180,8 @@ enum VAProfile {
 	VAProfileVC1Advanced		= 10,
 	VAProfileH263Baseline		= 11,
 	VAProfileJPEGBaseline           = 12,
-	VAProfileH264ConstrainedBaseline = 13
+	VAProfileH264ConstrainedBaseline = 13,
+	VAProfileMax
 };
 
 /* Currently defined entrypoints */
@@ -191,7 +192,9 @@ enum VAEntrypoint {
 	VAEntrypointMoComp	= 4,
 	VAEntrypointDeblocking	= 5,
 	VAEntrypointEncSlice	= 6,	/* slice level encode */
-	VAEntrypointEncPicture 	= 7	/* pictuer encode, JPEG, etc */
+	VAEntrypointEncPicture  = 7,    /* pictuer encode, JPEG, etc */
+	VAEntrypointVideoProc   = 10,   /* video pre/post processing */
+	VAEntrypointMax
 };
 
 #define VA_RT_FORMAT_PROTECTED	0x80000000

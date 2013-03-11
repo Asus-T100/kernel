@@ -96,6 +96,14 @@ static unsigned long __init mfld_calibrate_tsc(void)
 		break;
 	}
 
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_CLOVERVIEW
+		&& fsb == FSB_FREQ_133SKU
+		&& ratio == 15) {
+		pr_warn("See a Clovertrail+ B0/B1/B2 processor and will correct its tsc info!\n");
+		/* The 133MHz FSB for CLVP+ is actuall 133.120 MHz */
+		fsb = 133120;
+	}
+
 	fast_calibrate = ratio * fsb;
 	pr_debug("read penwell tsc %lu khz\n", fast_calibrate);
 	lapic_timer_frequency = fsb * 1000 / HZ;
@@ -108,7 +116,7 @@ static unsigned long __init mfld_calibrate_tsc(void)
 	return 0;
 }
 
-static void penwell_arch_setup()
+static void __init penwell_arch_setup()
 {
 	x86_platform.calibrate_tsc = mfld_calibrate_tsc;
 	pm_power_off = mfld_power_off;

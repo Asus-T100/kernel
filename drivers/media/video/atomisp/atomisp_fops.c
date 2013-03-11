@@ -455,7 +455,7 @@ static int atomisp_open(struct file *file)
 		if (pm_runtime_get_sync(vdev->v4l2_dev->dev) < 0) {
 			v4l2_err(&atomisp_dev,
 				 "Failed to power on device\n");
-			goto runtime_get_failed;
+			goto css_init_failed;
 		}
 	}
 #endif
@@ -510,7 +510,6 @@ css_init_failed:
 	if (!IS_MRFLD)
 		pm_runtime_put(vdev->v4l2_dev->dev);
 #endif
-runtime_get_failed:
 	atomisp_uninit_pipe(pipe);
 error:
 	mutex_unlock(&isp->input_lock);
@@ -613,7 +612,7 @@ static int atomisp_release(struct file *file)
 	atomisp_acc_unload_all(isp);
 
 #ifdef CONFIG_PM
-	if (pm_runtime_put_sync(vdev->v4l2_dev->dev))
+	if (pm_runtime_put_sync(vdev->v4l2_dev->dev) < 0)
 		v4l2_err(&atomisp_dev,
 			 "Failed to power off device\n");
 #endif

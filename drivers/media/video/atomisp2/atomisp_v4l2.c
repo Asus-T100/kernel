@@ -37,10 +37,22 @@
 #include "atomisp_internal.h"
 #include "atomisp_acc.h"
 #include "atomisp-regs.h"
+#include "hmm/hmm.h"
 
 #include "device_access.h"
 #include <linux/intel_mid_pm.h>
 #include <asm/intel-mid.h>
+
+/* set reserved memory pool size in page */
+unsigned int repool_pgnr;
+module_param(repool_pgnr, uint, 0644);
+MODULE_PARM_DESC(repool_pgnr,
+		"Set the reserved memory pool size in page (default:0)");
+
+bool dypool_enable;
+module_param(dypool_enable, bool, 0644);
+MODULE_PARM_DESC(dypool_enable,
+		"dynamic memory pool enable/disable (default:disable)");
 
 /* cross componnet debug message flag */
 int dbg_level = 0;
@@ -74,188 +86,6 @@ void __iomem *atomisp_io_base;
 
 int atomisp_pci_vendor; /* pci vendor id */
 int atomisp_pci_device; /* pci device id */
-
-/*
- * supported V4L2 fmts and resolutions
- */
-const struct atomisp_format_bridge atomisp_output_fmts[] = {
-	{
-		.pixelformat = V4L2_PIX_FMT_YUV420,
-		.depth = 12,
-		.mbus_code = V4L2_MBUS_FMT_FIXED,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_YUV420,
-		.description = "YUV420, planner"},
-	{
-		.pixelformat = V4L2_PIX_FMT_YVU420,
-		.depth = 12,
-		.mbus_code = V4L2_MBUS_FMT_FIXED,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_YV12,
-		.description = "YVU420, planner"},
-	{
-		.pixelformat = V4L2_PIX_FMT_YUV422P,
-		.depth = 16,
-		.mbus_code = V4L2_MBUS_FMT_FIXED,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_YUV422,
-		.description = "YUV422, planner"},
-	{
-		.pixelformat = V4L2_PIX_FMT_YUV444,
-		.depth = 24,
-		.mbus_code = V4L2_MBUS_FMT_FIXED,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_YUV444,
-		.description = "YUV444"},
-	{
-		.pixelformat = V4L2_PIX_FMT_NV12,
-		.depth = 12,
-		.mbus_code = V4L2_MBUS_FMT_FIXED,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_NV12,
-		.description = "NV12, interleaved"},
-	{
-		.pixelformat = V4L2_PIX_FMT_NV21,
-		.depth = 12,
-		.mbus_code = V4L2_MBUS_FMT_FIXED,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_NV21,
-		.description = "NV21, interleaved"},
-	{
-		.pixelformat = V4L2_PIX_FMT_NV16,
-		.depth = 16,
-		.mbus_code = V4L2_MBUS_FMT_FIXED,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_NV16,
-		.description = "NV16, interleaved"},
-	{
-		.pixelformat = V4L2_PIX_FMT_YUYV,
-		.depth = 16,
-		.mbus_code = V4L2_MBUS_FMT_FIXED,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_YUYV,
-		.description = "YUYV, interleaved"},
-	{
-		.pixelformat = V4L2_PIX_FMT_UYVY,
-		.depth = 16,
-		.mbus_code = V4L2_MBUS_FMT_UYVY8_2X8,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_UYVY,
-		.description = "UYVY, interleaved"},
-	{
-		.pixelformat = V4L2_PIX_FMT_SBGGR16,
-		.depth = 16,
-		.mbus_code = V4L2_MBUS_FMT_FIXED,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
-		.description = "Bayer 16"},
-	{
-		.pixelformat = V4L2_PIX_FMT_SBGGR8,
-		.depth = 8,
-		.mbus_code = V4L2_MBUS_FMT_SGRBG8_1X8,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
-		.description = "Bayer 8"},
-	{
-		.pixelformat = V4L2_PIX_FMT_SGBRG8,
-		.depth = 8,
-		.mbus_code = V4L2_MBUS_FMT_SGRBG8_1X8,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
-		.description = "Bayer 8"},
-	{
-		.pixelformat = V4L2_PIX_FMT_SGRBG8,
-		.depth = 8,
-		.mbus_code = V4L2_MBUS_FMT_SGRBG8_1X8,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
-		.description = "Bayer 8"},
-	{
-		.pixelformat = V4L2_PIX_FMT_SRGGB8,
-		.depth = 8,
-		.mbus_code = V4L2_MBUS_FMT_SGRBG8_1X8,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
-		.description = "Bayer 8"},
-	{
-		.pixelformat = V4L2_PIX_FMT_SBGGR10,
-		.depth = 16,
-		.mbus_code = V4L2_MBUS_FMT_SBGGR10_1X10,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
-		.description = "Bayer 10"},
-	{
-		.pixelformat = V4L2_PIX_FMT_SGBRG10,
-		.depth = 16,
-		.mbus_code = V4L2_MBUS_FMT_SBGGR10_1X10,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
-		.description = "Bayer 10"},
-	{
-		.pixelformat = V4L2_PIX_FMT_SGRBG10,
-		.depth = 16,
-		.mbus_code = V4L2_MBUS_FMT_SBGGR10_1X10,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
-		.description = "Bayer 10"},
-	{
-		.pixelformat = V4L2_PIX_FMT_SRGGB10,
-		.depth = 16,
-		.mbus_code = V4L2_MBUS_FMT_SBGGR10_1X10,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
-		.description = "Bayer 10"},
-	{
-		.pixelformat = V4L2_PIX_FMT_SBGGR10,
-		.depth = 16,
-		.mbus_code = V4L2_MBUS_FMT_SGRBG10_1X10,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
-		.description = "Bayer 10"},
-	{
-		.pixelformat = V4L2_PIX_FMT_SGBRG10,
-		.depth = 16,
-		.mbus_code = V4L2_MBUS_FMT_SGRBG10_1X10,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
-		.description = "Bayer 10"},
-	{
-		.pixelformat = V4L2_PIX_FMT_SGRBG10,
-		.depth = 16,
-		.mbus_code = V4L2_MBUS_FMT_SGRBG10_1X10,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
-		.description = "Bayer 10"},
-	{
-		.pixelformat = V4L2_PIX_FMT_SRGGB10,
-		.depth = 16,
-		.mbus_code = V4L2_MBUS_FMT_SGRBG10_1X10,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
-		.description = "Bayer 10"},
-	{
-		.pixelformat = V4L2_PIX_FMT_SRGGB10,
-		.depth = 16,
-		.mbus_code = V4L2_MBUS_FMT_SRGGB10_1X10,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
-		.description = "Bayer 10"},
-	{
-		.pixelformat = V4L2_PIX_FMT_SBGGR12,
-		.depth = 16,
-		.mbus_code = V4L2_MBUS_FMT_SBGGR12_1X12,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
-		.description = "Bayer 12"},
-	{
-		.pixelformat = V4L2_PIX_FMT_SGBRG12,
-		.depth = 16,
-		.mbus_code = V4L2_MBUS_FMT_SBGGR12_1X12,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
-		.description = "Bayer 12"},
-	{
-		.pixelformat = V4L2_PIX_FMT_SGRBG12,
-		.depth = 16,
-		.mbus_code = V4L2_MBUS_FMT_SBGGR12_1X12,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
-		.description = "Bayer 12"},
-	{
-		.pixelformat = V4L2_PIX_FMT_SRGGB12,
-		.depth = 16,
-		.mbus_code = V4L2_MBUS_FMT_SBGGR12_1X12,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
-		.description = "Bayer 12"},
-	{
-		.pixelformat = V4L2_PIX_FMT_RGB32,
-		.depth = 32,
-		.mbus_code = V4L2_MBUS_FMT_FIXED,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_RGBA888,
-		.description = "32 RGB 8-8-8-8"},
-	{
-		.pixelformat = V4L2_PIX_FMT_RGB565,
-		.depth = 16,
-		.mbus_code = V4L2_MBUS_FMT_BGR565_2X8_LE,
-		.sh_fmt = SH_CSS_FRAME_FORMAT_RGB565,
-		.description = "16 RGB 5-6-5"}
-};
-
-const u32 atomisp_output_fmts_num = ARRAY_SIZE(atomisp_output_fmts);
 
 int atomisp_video_init(struct atomisp_video_pipe *video, const char *name)
 {
@@ -494,80 +324,6 @@ static int atomisp_mrfld_pre_power_down(struct atomisp_device *isp)
 	return 0;
 }
 
-/* Workaround for pmu_nc_set_power_state not ready in MRFLD */
-static int atomisp_mrfld_power_down(struct atomisp_device *isp)
-{
-	unsigned long timeout;
-	u32 reg_value;
-
-	/* writing 0x3 to ISPSSPM0 bit[1:0] to power off the IUNIT */
-	reg_value = intel_mid_msgbus_read32(PUNIT_PORT, MRFLD_ISPSSPM0);
-	reg_value &= ~MRFLD_ISPSSPM0_ISPSSC_MASK;
-	reg_value |= MRFLD_ISPSSPM0_IUNIT_POWER_OFF;
-	intel_mid_msgbus_write32(PUNIT_PORT, MRFLD_ISPSSPM0, reg_value);
-
-	/*
-	 * There should be no iunit access while power-down is
-	 * in progress HW sighting: 4567865
-	 * FIXME: msecs_to_jiffies(50)- experienced value
-	 */
-	timeout = jiffies + msecs_to_jiffies(50);
-	while (1) {
-		reg_value = intel_mid_msgbus_read32(PUNIT_PORT,
-							MRFLD_ISPSSPM0);
-		v4l2_dbg(1, dbg_level, &atomisp_dev,
-				"power-off in progress, ISPSSPM0: 0x%x\n",
-				reg_value);
-		/* wait until ISPSSPM0 bit[25:24] shows 0x3 */
-		if ((reg_value >> MRFLD_ISPSSPM0_ISPSSS_OFFSET) ==
-			MRFLD_ISPSSPM0_IUNIT_POWER_OFF)
-			return 0;
-
-		if (time_after(jiffies, timeout)) {
-			v4l2_err(&atomisp_dev,
-				"power-off iunit timeout.\n");
-			return -EBUSY;
-		}
-		/* FIXME: experienced value for delay */
-		usleep_range(100, 150);
-	};
-}
-
-
-/* Workaround for pmu_nc_set_power_state not ready in MRFLD */
-static int atomisp_mrfld_power_up(struct atomisp_device *isp)
-{
-	unsigned long timeout;
-	u32 reg_value;
-
-	/* writing 0x0 to ISPSSPM0 bit[1:0] to power off the IUNIT */
-	reg_value = intel_mid_msgbus_read32(PUNIT_PORT, MRFLD_ISPSSPM0);
-	reg_value &= ~MRFLD_ISPSSPM0_ISPSSC_MASK;
-	intel_mid_msgbus_write32(PUNIT_PORT, MRFLD_ISPSSPM0, reg_value);
-	reg_value = intel_mid_msgbus_read32(PUNIT_PORT, MRFLD_ISPSSPM0);
-
-	/* FIXME: experienced value for delay */
-	timeout = jiffies + msecs_to_jiffies(50);
-	while (1) {
-		reg_value = intel_mid_msgbus_read32(PUNIT_PORT, MRFLD_ISPSSPM0);
-		v4l2_dbg(1, dbg_level, &atomisp_dev,
-				"power-on in progress, ISPSSPM0: 0x%x\n",
-				reg_value);
-		/* wait until ISPSSPM0 bit[25:24] shows 0x0 */
-		if ((reg_value >> MRFLD_ISPSSPM0_ISPSSS_OFFSET) ==
-			MRFLD_ISPSSPM0_IUNIT_POWER_ON)
-			return 0;
-
-		if (time_after(jiffies, timeout)) {
-			v4l2_err(&atomisp_dev,
-				"power-on iunit timeout.\n");
-			return -EBUSY;
-		}
-		/* FIXME: experienced value for delay */
-		usleep_range(100, 150);
-	};
-}
-
 static int atomisp_runtime_suspend(struct device *dev)
 {
 	struct atomisp_device *isp = (struct atomisp_device *)
@@ -582,11 +338,8 @@ static int atomisp_runtime_suspend(struct device *dev)
 
 	/*Turn off the ISP d-phy*/
 	ret = atomisp_ospm_dphy_down(isp);
-	if (!ret) {
+	if (!ret)
 		pm_qos_update_request(&isp->pm_qos, PM_QOS_DEFAULT_VALUE);
-		if (IS_MRFLD)
-			ret = atomisp_mrfld_power_down(isp);
-	}
 
 	return ret;
 }
@@ -596,12 +349,6 @@ static int atomisp_runtime_resume(struct device *dev)
 	struct atomisp_device *isp = (struct atomisp_device *)
 		dev_get_drvdata(dev);
 	int ret;
-
-	if (IS_MRFLD) {
-		ret = atomisp_mrfld_power_up(isp);
-		if (ret)
-			return ret;
-	}
 
 	pm_qos_update_request(&isp->pm_qos, isp->max_isr_latency);
 	if (isp->sw_contex.power_state == ATOM_ISP_POWER_DOWN) {
@@ -656,14 +403,11 @@ static int atomisp_suspend(struct device *dev)
 
 	/*Turn off the ISP d-phy */
 	ret = atomisp_ospm_dphy_down(isp);
-	if (ret) {
+	if (ret)
 		v4l2_err(&atomisp_dev,
 			    "fail to power off ISP\n");
-	} else {
+	else
 		pm_qos_update_request(&isp->pm_qos, PM_QOS_DEFAULT_VALUE);
-		if (IS_MRFLD)
-			ret = atomisp_mrfld_power_down(isp);
-	}
 
 	return ret;
 }
@@ -673,12 +417,6 @@ static int atomisp_resume(struct device *dev)
 	struct atomisp_device *isp = (struct atomisp_device *)
 		dev_get_drvdata(dev);
 	int ret;
-
-	if (IS_MRFLD) {
-		ret = atomisp_mrfld_power_up(isp);
-		if (ret)
-			return ret;
-	}
 
 	pm_qos_update_request(&isp->pm_qos, isp->max_isr_latency);
 
@@ -1281,6 +1019,10 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	pm_runtime_put_noidle(&dev->dev);
 	pm_runtime_allow(&dev->dev);
 
+	err = hmm_pool_register(repool_pgnr, HMM_POOL_TYPE_RESERVED);
+	if (err)
+		dev_err(&dev->dev, "Failed to register reserved memory pool.\n");
+
 	return 0;
 
 enable_msi_fail:
@@ -1313,6 +1055,8 @@ static void __devexit atomisp_pci_remove(struct pci_dev *dev)
 	destroy_workqueue(isp->wdt_work_queue);
 
 	release_firmware(isp->firmware);
+
+	hmm_pool_unregister(HMM_POOL_TYPE_RESERVED);
 }
 
 static DEFINE_PCI_DEVICE_TABLE(atomisp_pci_tbl) = {

@@ -1,26 +1,29 @@
- # Makefile for the drm device driver. This driver provides support for the
+# Makefile for the drm device driver. This driver provides support for the
 # Direct Rendering Infrastructure (DRI) in XFree86 4.1.0 and higher.
 
 INCDIR=drivers/staging/mrfl
+HDMI_DIR=drivers/staging/intel_media/otm_hdmi
 
 ccflags-y += \
 	-I$(INCDIR)/ \
 	-I$(INCDIR)/interface \
 	-I$(INCDIR)/rgx/include \
 	-I$(INCDIR)/drv \
-	-I$(INCDIR)/drv/otm_hdmi/os/android/include \
-	-I$(INCDIR)/drv/otm_hdmi/pil/include \
+	-I$(HDMI_DIR)/os/android/include \
+	-I$(HDMI_DIR)/pil/include \
 	-Iinclude/linux \
 	-Iinclude/drm \
 	-I$(INCDIR)/../intel_media/video/common \
 	-I$(INCDIR)/../intel_media/video/decode \
-	-I$(INCDIR)/../intel_media/video/encode
+	-I$(INCDIR)/../intel_media/video/encode \
+	-I$(INCDIR)/../intel_media/video/vsp
 
 ccflags-y += -DANDROID -DLINUX -D_linux_ -D__KERNEL__
 
 ccflags-$(CONFIG_DRM_MDFLD) += -DMEDFIELD
 ccflags-$(CONFIG_DRM_MRFLD) += -DMERRIFIELD
 ccflags-$(CONFIG_PCI_MSI) += -DCONFIG_PCI_MSI
+ccflags-$(CONFIG_SUPPORT_VSP) += -DSUPPORT_VSP
 
 obj-y += psb_bl.o \
 	psb_dpst.o \
@@ -51,6 +54,7 @@ obj-y += psb_bl.o \
 	psb_irq.o \
 	tng_wa.o \
 	jdi_vid.o \
+	h8c7_vid.o \
 	dc_callbacks.o
 
 obj-$(CONFIG_MID_DSI_DPU) += mdfld_dsi_dbi_dpu.o

@@ -127,18 +127,6 @@ struct snd_pcm_hardware VOIP_alsa_hw_param = {
 		.fifo_size = 0,
 };
 
-
-enum {
-	CTP_AUD_ASP_DEV = 0,
-	CTP_AUD_VSP_DEV,
-	CTP_AUD_COMP_ASP_DEV,
-	CTP_COMMS_BT_SCO_DEV,
-	CTP_COMMS_MSIC_VOIP_DEV,
-	CTP_COMMS_IFX_MODEM_DEV,
-	CTP_AUD_VIRTUAL_ASP_DEV,
-	CTP_COMMS_FM_DEV,
-};
-
 /*
  * For FM 1 slot of 32 bits is used
  * to transfer stereo 16 bits PCM samples

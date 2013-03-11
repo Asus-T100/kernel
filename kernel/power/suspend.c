@@ -26,6 +26,7 @@
 #include <linux/syscore_ops.h>
 #include <linux/rtc.h>
 #include <linux/ftrace.h>
+#include <linux/workqueue.h>
 #include <trace/events/power.h>
 
 #include "power.h"
@@ -39,6 +40,46 @@ const char *const pm_states[PM_SUSPEND_MAX] = {
 };
 
 static const struct platform_suspend_ops *suspend_ops;
+
+static void do_suspend_sync(struct work_struct *work);
+static DECLARE_WORK(suspend_sync_work, do_suspend_sync);
+static DECLARE_COMPLETION(suspend_sync_complete);
+
+static void do_suspend_sync(struct work_struct *work)
+{
+	sys_sync();
+	complete(&suspend_sync_complete);
+}
+
+static bool check_sys_sync(void)
+{
+	while (!wait_for_completion_timeout(&suspend_sync_complete,
+		HZ / 5)) {
+		if (pm_wakeup_pending())
+			return false;
+		/* If sys_sync is doing, and no wakeup pending,
+		 * we can try in loop to wait sys_sync() finish.
+		 */
+	}
+
+	return true;
+}
+
+static bool suspend_sync(void)
+{
+	if (work_busy(&suspend_sync_work)) {
+		/* When last sys_sync() work is still running,
+		 * we need wait for it to be finished.
+		 */
+		if (!check_sys_sync())
+			return false;
+	}
+
+	INIT_COMPLETION(suspend_sync_complete);
+	schedule_work(&suspend_sync_work);
+
+	return check_sys_sync();
+}
 
 /**
  * suspend_set_ops - Set the global suspend method table.
@@ -283,7 +324,11 @@ static int enter_state(suspend_state_t state)
 		return -EBUSY;
 
 	printk(KERN_INFO "PM: Syncing filesystems ... ");
-	sys_sync();
+	if (!suspend_sync()) {
+		printk(KERN_INFO "PM: Suspend aborted for filesystem syncing\n");
+		error = -EBUSY;
+		goto Unlock;
+	}
 	printk("done.\n");
 
 	pr_debug("PM: Preparing system for %s sleep\n", pm_states[state]);

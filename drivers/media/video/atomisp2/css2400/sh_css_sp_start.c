@@ -48,10 +48,7 @@ void sh_css_sp_start(
 assert(sizeof(unsigned int) <= sizeof(hrt_data));
 
 	if (invalidate_mmu) {
-		mmu_ID_t	mmu_id;
-		for (mmu_id = (mmu_ID_t)0;mmu_id < N_MMU_ID; mmu_id++) {
-			mmu_invalidate_cache(mmu_id);
-		}
+		mmu_invalidate_cache(MMU0_ID);
 		invalidate_mmu = false;
 	}
 	/* set the start address */

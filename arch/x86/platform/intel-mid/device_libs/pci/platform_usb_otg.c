@@ -24,6 +24,12 @@ static struct intel_dwc_otg_pdata *get_otg_platform_data(struct pci_dev *pdev)
 		if (intel_mrfl_identify_sim() == INTEL_MRFL_CPU_SIMULATION_HVP)
 			dwc_otg_pdata.is_hvp = 1;
 		return &dwc_otg_pdata;
+	case PCI_DEVICE_ID_INTEL_BYT_OTG:
+		dwc_otg_pdata.is_hvp = 1;
+		dwc_otg_pdata.no_device_mode = 0;
+		dwc_otg_pdata.no_host_mode = 1;
+		dwc_otg_pdata.is_byt = 1;
+		return &dwc_otg_pdata;
 	default:
 		break;
 	}
@@ -46,7 +52,6 @@ static struct intel_mid_otg_pdata otg_pdata = {
 static struct intel_mid_otg_pdata *get_otg_platform_data(struct pci_dev *pdev)
 {
 	struct intel_mid_otg_pdata *pdata = &otg_pdata;
-	u8	smip_data = 0;
 
 	switch (pdev->device) {
 	case PCI_DEVICE_ID_INTEL_MFD_OTG:
@@ -70,15 +75,6 @@ static struct intel_mid_otg_pdata *get_otg_platform_data(struct pci_dev *pdev)
 			pr_err("%s: No gpio pin usb_otg_phy_rst\n", __func__);
 			return NULL;
 		}
-
-		/* Get charging requirement for USB compliance from SMIP */
-		/* FIXME: read it directly from SMIP, need to switch to EM
-		 * interface instead once it is ready */
-		if (!intel_scu_ipc_read_mip(&smip_data, 1, 0x2e7, 1)) {
-			pdata->charging_compliance = !(smip_data & 0x40);
-			pr_debug("%s: smip value= 0x%x\n", __func__, smip_data);
-		} else
-			pr_err("%s: smip read error\n", __func__);
 		break;
 
 	default:
@@ -99,4 +95,6 @@ DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_MFD_OTG,
 DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_CLV_OTG,
 			otg_pci_early_quirks);
 DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_MRFLD_OTG,
+			otg_pci_early_quirks);
+DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_BYT_OTG,
 			otg_pci_early_quirks);

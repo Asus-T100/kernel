@@ -196,9 +196,9 @@ void drm_ht_remove(struct drm_open_hash *ht)
 }
 EXPORT_SYMBOL(drm_ht_remove);
 
+
 static struct hlist_node *drm_ht_find_anyused(struct drm_open_hash *ht)
 {
-	struct drm_hash_item *entry;
 	struct hlist_head *h_list;
 	struct hlist_node *list;
 	int i;

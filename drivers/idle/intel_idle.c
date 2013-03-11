@@ -56,7 +56,6 @@
 #include <linux/kernel.h>
 #include <linux/cpuidle.h>
 #include <linux/clockchips.h>
-#include <linux/hrtimer.h>	/* ktime_get_real() */
 #include <trace/events/power.h>
 #include <linux/sched.h>
 #include <linux/notifier.h>
@@ -74,6 +73,7 @@
 static struct cpuidle_driver intel_idle_driver = {
 	.name = "intel_idle",
 	.owner = THIS_MODULE,
+	.en_core_tk_irqen = 1,
 };
 /* intel_idle.max_cstate=0 disables driver */
 static int max_cstate = MWAIT_MAX_NUM_CSTATES - 1;
@@ -327,10 +327,12 @@ static long get_driver_data(int cstate)
 
 #if defined(CONFIG_INTEL_ATOM_MDFLD_POWER) || \
 	defined(CONFIG_INTEL_ATOM_CLV_POWER)
-static int enter_s0ix_state(u32 eax, int s0ix_state,
-		  struct cpuidle_device *dev, int index)
+static int enter_s0ix_state(u32 eax, int gov_req_state, int s0ix_state,
+					struct cpuidle_device *dev, int index)
 {
 	int s0ix_entered = 0;
+	int selected_state = C6_STATE_IDX;
+
 	if (atomic_add_return(1, &nr_cpus_in_c6) == num_online_cpus() &&
 		 s0ix_state) {
 		s0ix_entered = mid_s0ix_enter(s0ix_state);
@@ -375,15 +377,22 @@ static int enter_s0ix_state(u32 eax, int s0ix_state,
 
 	/* In case of demotion to S0i1/lpmp3 update last_state */
 	if (s0ix_entered) {
-		if (s0ix_state == MID_S0I1_STATE)
+		selected_state = S0I3_STATE_IDX;
+
+		if (s0ix_state == MID_S0I1_STATE) {
 			index = S0I1_STATE_IDX;
-		else if (s0ix_state == MID_LPMP3_STATE)
+			selected_state = S0I1_STATE_IDX;
+		} else if (s0ix_state == MID_LPMP3_STATE) {
 			index = LPMP3_STATE_IDX;
+			selected_state = LPMP3_STATE_IDX;
 		}
-	else if (eax == C4_HINT)
+	} else if (eax == C4_HINT) {
 		index = C4_STATE_IDX;
-	else
+		selected_state = C4_STATE_IDX;
+	} else
 		index = C6_STATE_IDX;
+
+	pmu_s0ix_demotion_stat(gov_req_state, selected_state);
 
 	return index;
 }
@@ -394,10 +403,10 @@ static int soc_s0ix_idle(struct cpuidle_device *dev,
 	struct cpuidle_state *state = &drv->states[index];
 	struct cpuidle_state_usage *state_usage = &dev->states_usage[index];
 	unsigned long eax = (unsigned long)cpuidle_get_statedata(state_usage);
-	ktime_t kt_before, kt_after;
-	s64 usec_delta;
 	int cpu = smp_processor_id();
 	int s0ix_state   = 0;
+	unsigned int cstate;
+	int gov_req_state = (int) eax;
 
 	/* Check if s0ix is already in progress,
 	 * This is required to demote C6 while S0ix
@@ -417,26 +426,21 @@ static int soc_s0ix_idle(struct cpuidle_device *dev,
 	if (state->flags & CPUIDLE_FLAG_TLB_FLUSHED)
 		leave_mm(cpu);
 
-	clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_ENTER, &cpu);
+	cstate = (((eax) >> MWAIT_SUBSTATE_SIZE) & MWAIT_CSTATE_MASK) + 1;
 
-	kt_before = ktime_get_real();
+	if (!(lapic_timer_reliable_states & (1 << (cstate))))
+		clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_ENTER, &cpu);
 
 	stop_critical_timings();
 
 	if (!need_resched())
-		index = enter_s0ix_state(eax, s0ix_state, dev, index);
+		index = enter_s0ix_state(eax, gov_req_state,
+					s0ix_state, dev, index);
 
 	start_critical_timings();
 
-	kt_after = ktime_get_real();
-	usec_delta = ktime_to_us(ktime_sub(kt_after, kt_before));
-
-	local_irq_enable();
-
-	clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_EXIT, &cpu);
-
-	/* Update cpuidle counters */
-	dev->last_residency = (int)usec_delta;
+	if (!(lapic_timer_reliable_states & (1 << (cstate))))
+		clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_EXIT, &cpu);
 
 	return index;
 }
@@ -458,8 +462,6 @@ static int intel_idle(struct cpuidle_device *dev,
 	struct cpuidle_state_usage *state_usage = &dev->states_usage[index];
 	unsigned long eax = (unsigned long)cpuidle_get_statedata(state_usage);
 	unsigned int cstate;
-	ktime_t kt_before, kt_after;
-	s64 usec_delta;
 	int cpu = smp_processor_id();
 
 	cstate = (((eax) >> MWAIT_SUBSTATE_SIZE) & MWAIT_CSTATE_MASK) + 1;
@@ -474,8 +476,6 @@ static int intel_idle(struct cpuidle_device *dev,
 	if (!(lapic_timer_reliable_states & (1 << (cstate))))
 		clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_ENTER, &cpu);
 
-	kt_before = ktime_get_real();
-
 	stop_critical_timings();
 	if (!need_resched()) {
 		__monitor((void *)&current_thread_info()->flags, 0, 0);
@@ -486,16 +486,8 @@ static int intel_idle(struct cpuidle_device *dev,
 
 	start_critical_timings();
 
-	kt_after = ktime_get_real();
-	usec_delta = ktime_to_us(ktime_sub(kt_after, kt_before));
-
-	local_irq_enable();
-
 	if (!(lapic_timer_reliable_states & (1 << (cstate))))
 		clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_EXIT, &cpu);
-
-	/* Update cpuidle counters */
-	dev->last_residency = (int)usec_delta;
 
 	return index;
 }

@@ -49,21 +49,6 @@
 
 #define to_ov8830_sensor(sd) container_of(sd, struct ov8830_device, sd)
 
-#define HOME_POS 255
-
-/* divides a by b using half up rounding and div/0 prevention
- * (result is 0 if b == 0) */
-#define divsave_rounded(a, b)	(((b) != 0) ? (((a)+((b)>>1))/(b)) : (-1))
-
-/*
- * TODO: use debug parameter to actually define when debug messages should
- * be printed.
- */
-static int debug;
-
-module_param(debug, int, 0644);
-MODULE_PARM_DESC(debug, "Enable debug messages");
-
 static int
 ov8830_read_reg(struct i2c_client *client, u16 len, u16 reg, u16 *val)
 {
@@ -194,63 +179,6 @@ ov8830_write_reg(struct i2c_client *client, u16 data_length, u16 reg, u16 val)
 }
 
 
-/**
- * ov8830_rmw_reg - Read/Modify/Write a value to a register in the sensor
- * device
- * @client: i2c driver client structure
- * @data_length: 8/16-bits length
- * @reg: register address
- * @mask: masked out bits
- * @set: bits set
- *
- * Read/modify/write a value to a register in the  sensor device.
- * Returns zero if successful, or non-zero otherwise.
- */
-static int ov8830_rmw_reg(struct i2c_client *client, u16 data_length, u16 reg,
-			   u16 mask, u16 set)
-{
-	int err;
-	u16 val;
-
-	/* Exit when no mask */
-	if (mask == 0)
-		return 0;
-
-	/* @mask must not exceed data length */
-	if (data_length == OV8830_8BIT && mask & ~0xff)
-		return -EINVAL;
-
-	err = ov8830_read_reg(client, data_length, reg, &val);
-	if (err) {
-		v4l2_err(client, "ov8830_rmw_reg error exit, read failed\n");
-		return -EINVAL;
-	}
-
-	val &= ~mask;
-
-	/*
-	 * Perform the OR function if the @set exists.
-	 * Shift @set value to target bit location. @set should set only
-	 * bits included in @mask.
-	 *
-	 * REVISIT: This function expects @set to be non-shifted. Its shift
-	 * value is then defined to be equal to mask's LSB position.
-	 * How about to inform values in their right offset position and avoid
-	 * this unneeded shift operation?
-	 */
-	set <<= ffs(mask) - 1;
-	val |= set & mask;
-
-	err = ov8830_write_reg(client, data_length, reg, val);
-	if (err) {
-		v4l2_err(client, "ov8830_rmw_reg error exit, write failed\n");
-		return -EINVAL;
-	}
-
-	return 0;
-}
-
-
 /*
  * ov8830_write_reg_array - Initializes a list of MT9M114 registers
  * @client: i2c driver client structure
@@ -344,19 +272,6 @@ static int ov8830_write_reg_array(struct i2c_client *client,
 			if (err)
 				return err;
 			msleep(next->val);
-			break;
-
-		case OV8830_RMW:
-			err = __ov8830_flush_reg_array(client, &ctrl);
-			err |= ov8830_rmw_reg(client,
-					       next->type & ~OV8830_RMW,
-					       next->reg.sreg, next->val,
-					       next->val2);
-			if (err) {
-				v4l2_err(client, "%s: rwm error, "
-						"aborted\n", __func__);
-				return err;
-			}
 			break;
 
 		default:
@@ -662,7 +577,7 @@ static int ov8830_g_priv_int_data(struct v4l2_subdev *sd,
 	if (!b)
 		return -EIO;
 
-	if (copy_to_user(priv->data, b, min(priv->size, size)))
+	if (copy_to_user(priv->data, b, min_t(__u32, priv->size, size)))
 		r = -EFAULT;
 
 	priv->size = size;
@@ -789,8 +704,6 @@ static int ov8830_set_exposure(struct v4l2_subdev *sd, int exposure, int gain,
 	dev->gain = gain;
 	dev->exposure = exposure;
 	dev->digital_gain = dig_gain;
-	dev->lines_per_frame = vts;
-	dev->pixels_per_line = hts;
 
 out:
 	/* Group hold launch - delayed launch */
@@ -945,6 +858,7 @@ static int ov8830_s_power(struct v4l2_subdev *sd, int on)
 {
 	int ret;
 	struct ov8830_device *dev = to_ov8830_sensor(sd);
+
 	mutex_lock(&dev->input_lock);
 	ret = __ov8830_s_power(sd, on);
 	mutex_unlock(&dev->input_lock);
@@ -1168,10 +1082,6 @@ static int __ov8830_s_frame_interval(struct v4l2_subdev *sd,
 					dev->digital_gain, &hts, &vts);
 	if (ret)
 		return ret;
-
-	/* Update the global values */
-	dev->pixels_per_line = hts;
-	dev->lines_per_frame = vts;
 
 	/* Update the new values so that user side knows the current settings */
 	ret = ov8830_get_intg_factor(sd, info, dev->basic_settings_list);
@@ -1412,15 +1322,12 @@ static struct ov8830_control *ov8830_find_control(u32 id)
 
 static int ov8830_queryctrl(struct v4l2_subdev *sd, struct v4l2_queryctrl *qc)
 {
-	struct ov8830_device *dev = to_ov8830_sensor(sd);
 	struct ov8830_control *ctrl = ov8830_find_control(qc->id);
 
 	if (ctrl == NULL)
 		return -EINVAL;
 
-	mutex_lock(&dev->input_lock);
 	*qc = ctrl->qc;
-	mutex_unlock(&dev->input_lock);
 
 	return 0;
 }
@@ -1536,8 +1443,8 @@ static int get_resolution_index(struct v4l2_subdev *sd, int w, int h)
 	return -1;
 }
 
-static int ov8830_try_mbus_fmt(struct v4l2_subdev *sd,
-				struct v4l2_mbus_framefmt *fmt)
+static int __ov8830_try_mbus_fmt(struct v4l2_subdev *sd,
+				 struct v4l2_mbus_framefmt *fmt)
 {
 	int idx;
 	struct ov8830_device *dev = to_ov8830_sensor(sd);
@@ -1565,9 +1472,20 @@ static int ov8830_try_mbus_fmt(struct v4l2_subdev *sd,
 	}
 
 	fmt->code = V4L2_MBUS_FMT_SBGGR10_1X10;
-
-
 	return 0;
+}
+
+static int ov8830_try_mbus_fmt(struct v4l2_subdev *sd,
+			       struct v4l2_mbus_framefmt *fmt)
+{
+	struct ov8830_device *dev = to_ov8830_sensor(sd);
+	int r;
+
+	mutex_lock(&dev->input_lock);
+	r = __ov8830_try_mbus_fmt(sd, fmt);
+	mutex_unlock(&dev->input_lock);
+
+	return r;
 }
 
 static int ov8830_s_mbus_fmt(struct v4l2_subdev *sd,
@@ -1586,7 +1504,7 @@ static int ov8830_s_mbus_fmt(struct v4l2_subdev *sd,
 
 	mutex_lock(&dev->input_lock);
 
-	ret = ov8830_try_mbus_fmt(sd, fmt);
+	ret = __ov8830_try_mbus_fmt(sd, fmt);
 	if (ret)
 		goto out;
 
@@ -1622,9 +1540,6 @@ static int ov8830_s_mbus_fmt(struct v4l2_subdev *sd,
 	if (ret)
 		goto out;
 
-	dev->pixels_per_line = hts;
-	dev->lines_per_frame = vts;
-
 	ret = ov8830_get_intg_factor(sd, ov8830_info, dev->basic_settings_list);
 
 out:
@@ -1641,9 +1556,11 @@ static int ov8830_g_mbus_fmt(struct v4l2_subdev *sd,
 	if (!fmt)
 		return -EINVAL;
 
+	mutex_lock(&dev->input_lock);
 	fmt->width = dev->curr_res_table[dev->fmt_idx].width;
 	fmt->height = dev->curr_res_table[dev->fmt_idx].height;
 	fmt->code = V4L2_MBUS_FMT_SBGGR10_1X10;
+	mutex_unlock(&dev->input_lock);
 
 	return 0;
 }
@@ -1738,13 +1655,17 @@ static int ov8830_enum_framesizes(struct v4l2_subdev *sd,
 	unsigned int index = fsize->index;
 	struct ov8830_device *dev = to_ov8830_sensor(sd);
 
-	if (index >= dev->entries_curr_table)
+	mutex_lock(&dev->input_lock);
+	if (index >= dev->entries_curr_table) {
+		mutex_unlock(&dev->input_lock);
 		return -EINVAL;
+	}
 
 	fsize->type = V4L2_FRMSIZE_TYPE_DISCRETE;
 	fsize->discrete.width = dev->curr_res_table[index].width;
 	fsize->discrete.height = dev->curr_res_table[index].height;
 	fsize->reserved[0] = dev->curr_res_table[index].used;
+	mutex_unlock(&dev->input_lock);
 
 	return 0;
 }
@@ -1770,7 +1691,6 @@ static int ov8830_enum_frameintervals(struct v4l2_subdev *sd,
 		fmt_index = dev->entries_curr_table - 1;
 
 	res = &dev->curr_res_table[fmt_index];
-	mutex_unlock(&dev->input_lock);
 
 	/* Check if this index is supported */
 	if (index > __ov8830_get_max_fps_index(res->fps_options))
@@ -1779,6 +1699,8 @@ static int ov8830_enum_frameintervals(struct v4l2_subdev *sd,
 	fival->type = V4L2_FRMIVAL_TYPE_DISCRETE;
 	fival->discrete.numerator = 1;
 	fival->discrete.denominator = res->fps_options[index].fps;
+
+	mutex_unlock(&dev->input_lock);
 
 	return 0;
 }
@@ -1873,13 +1795,17 @@ ov8830_enum_frame_size(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 	int index = fse->index;
 	struct ov8830_device *dev = to_ov8830_sensor(sd);
 
-	if (index >= dev->entries_curr_table)
+	mutex_lock(&dev->input_lock);
+	if (index >= dev->entries_curr_table) {
+		mutex_unlock(&dev->input_lock);
 		return -EINVAL;
+	}
 
 	fse->min_width = dev->curr_res_table[index].width;
 	fse->min_height = dev->curr_res_table[index].height;
 	fse->max_width = dev->curr_res_table[index].width;
 	fse->max_height = dev->curr_res_table[index].height;
+	mutex_unlock(&dev->input_lock);
 
 	return 0;
 }
@@ -1943,6 +1869,10 @@ ov8830_s_ctrl(struct v4l2_ctrl *ctrl)
 	struct ov8830_device *dev = container_of(
 		ctrl->handler, struct ov8830_device, ctrl_handler);
 
+	/* input_lock is taken by the control framework, so it
+	 * doesn't need to be taken here.
+	 */
+
 	/* We only handle V4L2_CID_RUN_MODE for now. */
 	switch (ctrl->val) {
 	case ATOMISP_RUN_MODE_VIDEO:
@@ -1989,6 +1919,7 @@ ov8830_g_frame_interval(struct v4l2_subdev *sd,
 	interval->interval.denominator = res->fps_options[dev->fps_index].fps;
 
 	mutex_unlock(&dev->input_lock);
+
 	return 0;
 }
 
@@ -2009,7 +1940,9 @@ static int ov8830_g_skip_frames(struct v4l2_subdev *sd, u32 *frames)
 {
 	struct ov8830_device *dev = to_ov8830_sensor(sd);
 
+	mutex_lock(&dev->input_lock);
 	*frames = dev->curr_res_table[dev->fmt_idx].skip_frames;
+	mutex_unlock(&dev->input_lock);
 
 	return 0;
 }

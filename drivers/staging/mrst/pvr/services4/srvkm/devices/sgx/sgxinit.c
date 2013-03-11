@@ -261,10 +261,6 @@ static PVRSRV_ERROR InitDevInfo(PVRSRV_PER_PROCESS_DATA *psPerProc,
 #if defined(FIX_HW_BRN_29823)
 	psDevInfo->psKernelDummyTermStreamMemInfo = (PVRSRV_KERNEL_MEM_INFO *)psInitInfo->hKernelDummyTermStreamMemInfo;
 #endif
-#if defined(SGX_FEATURE_VDM_CONTEXT_SWITCH) && defined(FIX_HW_BRN_31559)
-	psDevInfo->psKernelVDMSnapShotBufferMemInfo = (PVRSRV_KERNEL_MEM_INFO *)psInitInfo->hKernelVDMSnapShotBufferMemInfo;
-	psDevInfo->psKernelVDMCtrlStreamBufferMemInfo = (PVRSRV_KERNEL_MEM_INFO *)psInitInfo->hKernelVDMCtrlStreamBufferMemInfo;
-#endif
 #if defined(SGX_FEATURE_VDM_CONTEXT_SWITCH) && \
 	defined(FIX_HW_BRN_33657) && defined(SUPPORT_SECURE_33657_FIX)
 	psDevInfo->psKernelVDMStateUpdateBufferMemInfo = (PVRSRV_KERNEL_MEM_INFO *)psInitInfo->hKernelVDMStateUpdateBufferMemInfo;
@@ -3394,6 +3390,13 @@ PVRSRV_ERROR SGXGetMiscInfoKM(PVRSRV_SGXDEV_INFO	*psDevInfo,
 					 MAKEUNIQUETAG(psDevInfo->psKernelSGXHostCtlMemInfo));
 			#endif /* PDUMP */
 			#endif /* SGX_FEATURE_EXTENDED_PERF_COUNTERS */
+
+
+#if (defined CONFIG_GPU_BURST) || (defined CONFIG_GPU_BURST_MODULE)
+#if (defined(GBURST_HW_PVRSCOPESERVICE_SUPPORT))
+			gburst_hw_reconfigure_groups();
+#endif /* if (defined(GBURST_HW_PVRSCOPESERVICE_SUPPORT)) */
+#endif /* if (defined CONFIG_GPU_BURST) || (defined CONFIG_GPU_BURST_MODULE) */
 
 			/* Kick the ukernel to update the hardware state */
 			sCommandData.ui32Data[0] = psSetHWPerfStatus->ui32NewHWPerfStatus;

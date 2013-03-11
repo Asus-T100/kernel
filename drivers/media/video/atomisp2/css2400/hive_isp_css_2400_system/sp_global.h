@@ -1,17 +1,20 @@
 #ifndef __SP_GLOBAL_H_INCLUDED__
 #define __SP_GLOBAL_H_INCLUDED__
 
-#if defined(HAS_SP_2400)
+#if defined(HAS_SP_2401)
+#define IS_SP_2401
+/* 2401 uses 2400 */
+#include <scalar_processor_2400_params.h>
+#elif defined(HAS_SP_2400)
 #define IS_SP_2400
 
 #include <scalar_processor_2400_params.h>
 #elif defined(HAS_SP_2400A0)
 #define IS_SP_2400A0
 
-/* #include <scalar_processor_2400A0_params.h> */
 #include <scalar_processor_2400_params.h>
 #else
-#error "sp_global.h: SP_2400 must be one of { . , A0}"
+#error "sp_global.h: SP_2400 must be one of {2400, 2400A0, 2401 }"
 #endif
 
 #define SP_PMEM_WIDTH_LOG2		SP_PMEM_LOG_WIDTH_BITS

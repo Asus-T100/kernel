@@ -3,7 +3,11 @@
 
 #include <stdint.h>
 
-#if defined (HAS_ISP_2400_MAMOIADA)
+#if defined (HAS_ISP_2401_MAMOIADA)
+#define IS_ISP_2401_MAMOIADA
+
+#include "isp2401_mamoiada_params.h"
+#elif defined (HAS_ISP_2400_MAMOIADA)
 #define IS_ISP_2400_MAMOIADA
 
 #include "isp2400_mamoiada_params.h"
@@ -12,7 +16,7 @@
 
 #include "isp2400A0_mamoiada_params.h"
 #else
-#error "isp_global_h: ISP_2400_MAMOIDA must be one of { . , A0}"
+#error "isp_global_h: ISP_2400_MAMOIDA must be one of {2400, 2400A0, 2401 }"
 #endif
 
 #define ISP_PMEM_WIDTH_LOG2		ISP_LOG2_PMEM_WIDTH

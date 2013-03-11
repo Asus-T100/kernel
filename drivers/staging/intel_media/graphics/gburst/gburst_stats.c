@@ -62,11 +62,6 @@
  * Data for each counter.
  */
 struct pcel_s {
-	/**
-	 * counter specific value:
-	 *     cycles_per_timestamp (16) * cycles_per_counter_update
-	 */
-	uint32_t pce_coeff;
 	/* for calculating delta */
 	uint32_t last_value;
 	/* pce_value_index - index into pce_values for next time. */
@@ -81,7 +76,8 @@ struct pcel_s {
 
 struct gburst_stats_data_s {
 	/**
-	 * gsd_stats_initialized - Set to !0 when initialization has been completed.
+	 * gsd_stats_initialized - Set to !0 when initialization has been
+	 * completed.
 	 */
 	int           gsd_stats_initialized;
 
@@ -126,21 +122,10 @@ static inline int gburst_stats_initialization_complete(void)
  */
 static void gpu_init_perf_counters(void)
 {
-	int ix_core;
-	int ndx;
-	int val;
 
 	/* All zero, except for counter limit max. */
 	memset(&gsdat.gsd_pcd, 0, sizeof(gsdat.gsd_pcd));
 
-	for (ndx = 0; ndx < gsdat.gsd_num_counters; ndx++) {
-		for (ix_core = 0; ix_core < gsdat.gsd_num_cores; ix_core++) {
-			val = gburst_hw_inq_counter_coeff(ndx);
-			if (val < 0)
-				val = 0;
-			gsdat.gsd_pcd[ix_core][ndx].pce_coeff = val;
-		}
-	}
 }
 
 
@@ -181,13 +166,21 @@ static uint32_t compute_utilization(void)
 	sgx_util = 0;
 
 	for (ix_core = 0; ix_core < gsdat.gsd_num_cores; ix_core++) {
-		for (i = gsdat.gsd_first_active_counter; i <= gsdat.gsd_last_active_counter; i++) {
-			for (ndx = 0; ndx < HSTLEN; ndx++) {
-				if (gsdat.gsd_pcd[ix_core][i].pce_values[ndx] >
-					sgx_util)
-					sgx_util = gsdat.gsd_pcd[ix_core][i]
-						.pce_values[ndx];
-			}
+		for (ndx = 0; ndx < HSTLEN; ndx++) {
+			if (gsdat.gsd_pcd[ix_core]
+			    [gsdat.gsd_first_active_counter].
+				pce_values[ndx]	> sgx_util)
+				sgx_util =
+				gsdat.gsd_pcd[ix_core]
+				[gsdat.gsd_first_active_counter].
+				pce_values[ndx];
+			if (gsdat.gsd_pcd[ix_core]
+				[gsdat.gsd_last_active_counter].
+				pce_values[ndx] > sgx_util)
+				sgx_util =
+				gsdat.gsd_pcd[ix_core]
+				[gsdat.gsd_last_active_counter].
+				pce_values[ndx];
 		}
 	}
 	return sgx_util;
@@ -209,8 +202,8 @@ static uint32_t update_perf_counter_value(int ix_core, int ndx,
 {
 	struct pcel_s *pce;
 	int value_index;
-	int numerator;
-	int denominator;
+	uint32_t numerator;
+	uint32_t denominator;
 	uint32_t utilization;
 	uint32_t counter_coeff;
 
@@ -221,7 +214,7 @@ static uint32_t update_perf_counter_value(int ix_core, int ndx,
 
 	if (counters_storable) {
 		/* Upd counter data history only when periodic event arrives */
-		counter_coeff = pce->pce_coeff;
+		counter_coeff = gburst_hw_inq_counter_coeff(ndx);
 		value_index = pce->pce_value_index;
 		pce->pce_values[value_index] = 0;
 
@@ -233,7 +226,7 @@ static uint32_t update_perf_counter_value(int ix_core, int ndx,
 			numerator = 100*(value - pce->last_value);
 			denominator = counter_coeff * (time_stamp -
 				pce->pce_time_stamp);
-			utilization = numerator / denominator;
+			utilization = (uint32_t) (numerator / denominator);
 			pce->pce_values[value_index] = utilization;
 		}
 		pce->pce_time_stamp = time_stamp;
@@ -250,7 +243,7 @@ static uint32_t update_perf_counter_value(int ix_core, int ndx,
 	}
 
 	if (gburst_debug_msg_on)
-		printk(KERN_ALERT "GBUTIL: %d, %d, %d\n",
+		printk(KERN_ALERT "GBUTIL: %d %d %d\n",
 			ix_core, ndx, utilization);
 
 	return utilization;
@@ -271,22 +264,21 @@ static uint32_t update_perf_counter_value(int ix_core, int ndx,
  * termination added by this function's caller.
  *
  * The input string specifies which counters are to be visible as
- * whitespace-separated (e.g., space, tab, newline) groups of: %u:%u:%u:%u:%u:%u
+ * whitespace-separated (e.g. space,tab,newline) groups of: %u:%u:%u:%u:%u:%u
  * which correspond to counter:group:bit:coeff:cntrbit:summux.
  * then assigns the values into data structures for all cores.
  * These per-counter values are:
- * 1.  counter - An index into this module's counter data arrays.
- * 2.  group -- The hardware "group" from which this counter is taken.
- * 3.  bit   -- The hardware bit (for this group) that selects this counter.
- * 4.  coeff -- A counter specific increment value.
- * 5.  cntrbit -- Counter bits, MSB of 16-bits group to be output to counter mux
- * 6.  summux -- SumMux register value, 1=Sum, 0=Mux. Selected counter bits are
+ * 1. counter - An index into this module's counter data arrays.
+ * 2. group -- The hardware "group" from which this counter is taken.
+ * 3. bit   -- The hardware bit (for this group) that selects this counter.
+ * 4. coeff -- A counter specific increment value.
+ * 5. cntrbit -- Counter bits, MSB of 16-bits group to be output to counter mux
+ * 6. summux -- SumMux register value, 1=Sum, 0=Mux. Selected counter bits are
  *                either summed or the MSB is counted to counter
  * Example input string: "1:1:0:16:3:1   6:0:24:32:0:0"
  */
 int gburst_stats_gfx_hw_perf_counters_set(const char *buf)
 {
-	struct pcel_s *pce;
 	int i;
 	int sts;
 	uint32_t counter;
@@ -346,8 +338,7 @@ int gburst_stats_gfx_hw_perf_counters_set(const char *buf)
 			return sts;
 
 		for (ix_core = 0; ix_core < gsdat.gsd_num_cores; ix_core++) {
-			pce = &gsdat.gsd_pcd[ix_core][counter];
-			pce->pce_coeff = coeff;
+			gburst_hw_set_counter_coeff(counter, coeff);
 		}
 
 		/*
@@ -385,6 +376,9 @@ int gburst_stats_gfx_hw_perf_record(int gpu_state)
 	if (!gburst_stats_initialization_complete())
 		return -EINVAL;
 
+	if (gburst_hw_is_access_denied())
+		return -EINVAL;
+
 	curr_util = 0;
 	sgx_util = 0;
 
@@ -398,24 +392,44 @@ int gburst_stats_gfx_hw_perf_record(int gpu_state)
 	 * index and thereby possibly continue processing around the buffer
 	 * without end.  The buffer is empty when ix_roff == ix_woff.
 	 */
-	sts = gburst_hw_perf_data_get_indices(&ix_roff, &ix_woff);
+	sts = gburst_hw_mutex_lock();
 	if (sts < 0)
 		return sts;
+
+	sts = gburst_hw_perf_data_get_indices(&ix_roff, &ix_woff);
+
+	if (sts < 0) {
+		gburst_hw_mutex_unlock();
+		return sts;
+	}
+
+	sts = gburst_hw_inq_num_counters(&gsdat.gsd_first_active_counter,
+		&gsdat.gsd_last_active_counter);
+	if (sts < 0) {
+		gburst_hw_mutex_unlock();
+		return sts;
+	}
 
 	if (ix_woff == ix_roff) {
 		/* Buffer is empty, so clear utilization calculation table */
 		for (ix_core = 0; ix_core < gsdat.gsd_num_cores; ix_core++) {
-			for (ndx = gsdat.gsd_first_active_counter;
-				ndx <= gsdat.gsd_last_active_counter; ndx++) {
-				pce = &gsdat.gsd_pcd[ix_core][ndx];
-
-				pce->max_pce_value = 0;
-				for (i = 0; i < HSTLEN; i++)
-					pce->pce_values[i] = 0;
-			}
+			pce = &gsdat.gsd_pcd[ix_core]
+			[gsdat.gsd_first_active_counter];
+			pce->max_pce_value = 0;
+			for (i = 0; i < HSTLEN; i++)
+				pce->pce_values[i] = 0;
+			pce = &gsdat.gsd_pcd[ix_core]
+			[gsdat.gsd_last_active_counter];
+			pce->max_pce_value = 0;
+			for (i = 0; i < HSTLEN; i++)
+				pce->pce_values[i] = 0;
 		}
+		gburst_hw_mutex_unlock();
 		return 0; /* return with zero utilization */
 	}
+
+	if (gburst_debug_msg_on)
+		printk(KERN_INFO "START_UTIL_CALC %d %d\n", ix_roff, ix_woff);
 
 	while (ix_woff != ix_roff) {
 		/* Time stamp is gpu clock divided by 16. */
@@ -431,8 +445,10 @@ int gburst_stats_gfx_hw_perf_record(int gpu_state)
 		 */
 		sts = gburst_hw_perf_data_get_data(&time_stamp,
 			&counters_storable, &pdat_base);
-		if (sts < 0)
+		if (sts < 0) {
+			gburst_hw_mutex_unlock();
 			return sts;
+		}
 
 		/**
 		 * For each active counter, store its value in the database
@@ -443,18 +459,26 @@ int gburst_stats_gfx_hw_perf_record(int gpu_state)
 		for (ix_core = 0; ix_core < gsdat.gsd_num_cores;
 			ix_core++, pdat += gsdat.gsd_num_counters_hw) {
 			/* For each counter */
-			for (icx = gsdat.gsd_first_active_counter;
-				icx <= gsdat.gsd_last_active_counter; icx++) {
-				curr_util = update_perf_counter_value(
-					ix_core, icx, pdat[icx],
-					time_stamp, counters_storable);
-				if (sgx_util < curr_util)
-					sgx_util = curr_util;
-			}
+			curr_util = update_perf_counter_value(
+				ix_core, gsdat.gsd_first_active_counter,
+				pdat[gsdat.gsd_first_active_counter],
+				time_stamp, counters_storable);
+			if (sgx_util < curr_util)
+				sgx_util = curr_util;
+
+			curr_util = update_perf_counter_value(
+				ix_core, gsdat.gsd_last_active_counter,
+				pdat[gsdat.gsd_last_active_counter],
+				time_stamp, counters_storable);
+			if (sgx_util < curr_util)
+				sgx_util = curr_util;
+
 		}
 		sts = gburst_hw_perf_data_read_index_incr(&ix_roff);
-		if (sts < 0)
+		if (sts < 0) {
+			gburst_hw_mutex_unlock();
 			return sts;
+		}
 	}
 
 	/**
@@ -464,6 +488,8 @@ int gburst_stats_gfx_hw_perf_record(int gpu_state)
 	 */
 	if (gpu_state)
 		sgx_util = compute_utilization();
+
+	gburst_hw_mutex_unlock();
 
 	return sgx_util;
 }
@@ -504,15 +530,25 @@ int gburst_stats_gfx_hw_perf_counters_to_string(int ix_in, char *buf,
 	for (ix_core = 0; ix_core < gsdat.gsd_num_cores; ix_core++) {
 		ix = ut_isnprintf(ix, buf, buflen, "Core %d:\n", ix_core);
 		for (ndx = 0; ndx < gsdat.gsd_num_counters; ndx++) {
-			sts = gburst_hw_inq_counter_id(ndx, &ctr_grp, &ctr_bit, &cntrbits, &summux);
+			sts = gburst_hw_inq_counter_id(ndx, &ctr_grp, &ctr_bit,
+				&cntrbits, &summux);
 			if (sts < 0)
 				return sts;
 
-			ix = ut_isnprintf(ix, buf, buflen,
+			if (ndx == gsdat.gsd_first_active_counter ||
+				ndx == gsdat.gsd_last_active_counter)
+				ix = ut_isnprintf(ix, buf, buflen,
+				"%u:  %3u     %2u     %5u   %3u  %2u  *\n", ndx,
+				ctr_grp, ctr_bit,
+				gburst_hw_inq_counter_coeff(ndx),
+				cntrbits, summux);
+			else
+				ix = ut_isnprintf(ix, buf, buflen,
 				"%u:  %3u     %2u     %5u   %3u  %2u\n", ndx,
 				ctr_grp, ctr_bit,
-				gsdat.gsd_pcd[ix_core][ndx].pce_coeff,
+				gburst_hw_inq_counter_coeff(ndx),
 				cntrbits, summux);
+
 		}
 	}
 
@@ -560,8 +596,9 @@ static int gburst_stats_init(void)
 		gsdat.gsd_num_cores = ncores;
 	}
 
-	gsdat.gsd_num_counters_hw = gburst_hw_inq_num_counters(&gsdat.gsd_first_active_counter,
-                                                            &gsdat.gsd_last_active_counter);
+	gsdat.gsd_num_counters_hw =
+	gburst_hw_inq_num_counters(&gsdat.gsd_first_active_counter,
+		&gsdat.gsd_last_active_counter);
 
 	if (gsdat.gsd_num_counters_hw > MAX_NUM_COUNTERS) {
 		printk(KERN_ALERT

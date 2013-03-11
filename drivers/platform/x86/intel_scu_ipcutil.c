@@ -497,7 +497,6 @@ static long scu_ipc_ioctl(struct file *fp, unsigned int cmd,
 	int ret = -EINVAL;
 	struct scu_ipc_data  data;
 	void __user *argp = (void __user *)arg;
-	int platform;
 
 	/* Only IOCTL cmd allowed to pass through without capability check */
 	/* is getting fw version info, all others need to check to prevent */
@@ -508,7 +507,6 @@ static long scu_ipc_ioctl(struct file *fp, unsigned int cmd,
 		!capable(CAP_SYS_RAWIO))
 		return -EPERM;
 
-	platform = intel_mid_identify_cpu();
 	switch (cmd) {
 	case INTEL_SCU_IPC_S0IX_RESIDENCY:
 	{
@@ -2099,7 +2097,7 @@ out:
 	return ret;
 }
 
-static void __devexit ipcutil_rpmsg_remove(struct rpmsg_channel *rpdev)
+static void ipcutil_rpmsg_remove(struct rpmsg_channel *rpdev)
 {
 #ifdef CONFIG_DEBUG_FS
 	if (oshob_info->oshob_majrev != OSHOB_REV_MAJ_DEFAULT) {
@@ -2137,7 +2135,7 @@ static struct rpmsg_driver ipcutil_rpmsg = {
 	.id_table	= ipcutil_rpmsg_id_table,
 	.probe		= ipcutil_rpmsg_probe,
 	.callback	= ipcutil_rpmsg_cb,
-	.remove		= __devexit_p(ipcutil_rpmsg_remove),
+	.remove		= ipcutil_rpmsg_remove,
 };
 
 static int __init ipcutil_rpmsg_init(void)

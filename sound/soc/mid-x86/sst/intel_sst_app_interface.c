@@ -334,11 +334,8 @@ long intel_sst_ioctl(struct file *file_ptr, unsigned int cmd, unsigned long arg)
 		struct snd_sst_driver_info info;
 
 		pr_debug("SNDRV_SST_DRIVER_INFO received\n");
-		info.version = SST_VERSION_NUM;
-		/* hard coding, shud get sumhow later */
-		info.active_pcm_streams = sst_drv_ctx->stream_cnt;
-		info.max_pcm_streams = MAX_ACTIVE_STREAM;
-		info.max_enc_streams = MAX_ENC_STREAM;
+		sst_get_max_streams(&info);
+
 		if (copy_to_user((void __user *)arg, &info,
 				sizeof(info)))
 			retval = -EFAULT;

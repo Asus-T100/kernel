@@ -99,6 +99,15 @@ static struct snd_soc_jack_gpio hs_gpio[] = {
 	},
 };
 
+int ctp_startup_probe(struct snd_pcm_substream *substream)
+{
+	pr_debug("%s - applying rate constraint\n", __func__);
+	snd_pcm_hw_constraint_list(substream->runtime, 0,
+					SNDRV_PCM_HW_PARAM_RATE,
+					&constraints_48000);
+	return 0;
+}
+
 int ctp_startup_asp(struct snd_pcm_substream *substream)
 {
 	pr_debug("%s - applying rate constraint\n", __func__);
@@ -107,14 +116,7 @@ int ctp_startup_asp(struct snd_pcm_substream *substream)
 				&constraints_48000);
 	return 0;
 }
-int ctp_startup_vsp(struct snd_pcm_substream *substream)
-{
-	pr_debug("%s - applying rate constraint\n", __func__);
-	snd_pcm_hw_constraint_list(substream->runtime, 0,
-				SNDRV_PCM_HW_PARAM_RATE,
-				&constraints_16000);
-	return 0;
-}
+
 int ctp_startup_bt_xsp(struct snd_pcm_substream *substream)
 {
 	pr_debug("%s - applying rate constraint\n", __func__);
@@ -213,13 +215,12 @@ static int mc_driver_ops(struct ctp_mc_private *ctx,
 	switch (pdata->spid->product_line_id) {
 	case INTEL_CLVTP_PHONE_RHB_ENG:
 	case INTEL_CLVTP_PHONE_RHB_PRO:
-		if (pdata->spid->hardware_id == CLVTP_PHONE_RHB_VBDV1) {
-			ctx->ops = ctp_get_vb_ops();
-			return 0;
-		} else {
-			ctx->ops = ctp_get_rhb_ops();
-			return 0;
-		}
+		ctx->ops = ctp_get_rhb_ops();
+		return 0;
+	case INTEL_CLVTP_PHONE_VB_ENG:
+	case INTEL_CLVTP_PHONE_VB_PRO:
+		ctx->ops = ctp_get_vb_ops();
+		return 0;
 	default:
 		pr_err("No data for prod line id: %x",
 				pdata->spid->product_line_id);
@@ -397,6 +398,7 @@ int ctp_soc_jack_gpio_detect(void)
 	status = ctx->ops->hp_detection(codec, jack, enable);
 	set_mic_bias(jack, "MIC2 Bias", false);
 	if (!status) {
+		ctx->headset_plug_flag = false;
 		/* Jack removed, Disable BP interrupts if not done already */
 		set_bp_interrupt(ctx, false);
 	} else { /* If jack inserted, schedule delayed_wq */
@@ -442,6 +444,7 @@ void headset_status_verify(struct work_struct *work)
 		set_bp_interrupt(ctx, true);
 		/* Decrease the debounce time for HS removal detection */
 		gpio->debounce_time = JACK_DEBOUNCE_REMOVE;
+		ctx->headset_plug_flag = true;
 	} else {
 		set_mic_bias(jack, "MIC2 Bias", false);
 		/* Disable Button_press interrupt if no Headset */
@@ -510,14 +513,36 @@ int ctp_soc_jack_gpio_detect_bp(void)
 
 static int snd_ctp_prepare(struct device *dev)
 {
+	struct snd_soc_card *card = dev_get_drvdata(dev);
+	struct ctp_mc_private *ctx = snd_soc_card_get_drvdata(card);
 	pr_debug("In %s device name\n", __func__);
+
+	/* switch the mclk to the lowpower mode */
+	if (ctx->headset_plug_flag && !ctx->voice_call_flag) {
+		if (ctx->ops->mclk_switch) {
+			ctx->ops->mclk_switch(dev, false);
+			/* Decrease the OSC clk to 4.8Mhz when suspend */
+			intel_scu_ipc_osc_clk(OSC_CLK_AUDIO, 4800);
+		}
+	}
 	return snd_soc_suspend(dev);
 }
 static int snd_ctp_complete(struct device *dev)
 {
+	struct snd_soc_card *card = dev_get_drvdata(dev);
+	struct ctp_mc_private *ctx = snd_soc_card_get_drvdata(card);
 	pr_debug("In %s\n", __func__);
+	/* switch the mclk to the normal mode */
+	if (ctx->headset_plug_flag && !ctx->voice_call_flag) {
+		if (ctx->ops->mclk_switch) {
+			/* recovery the OSC clk to 19.2Mhz when resume */
+			intel_scu_ipc_osc_clk(OSC_CLK_AUDIO, 19200);
+			ctx->ops->mclk_switch(dev, true);
+		}
+	}
 	snd_soc_resume(dev);
 }
+
 static void snd_ctp_poweroff(struct device *dev)
 {
 	pr_debug("In %s\n", __func__);
@@ -632,6 +657,7 @@ static int snd_ctp_mc_probe(struct platform_device *pdev)
 		}
 		ctx->bpirq = ret_val;
 	}
+	ctx->voice_call_flag = false;
 	ctx->hs_gpio_ops = hs_gpio;
 	snd_soc_card_set_drvdata(&snd_soc_card_ctp, ctx);
 	ret_val = snd_soc_register_card(&snd_soc_card_ctp);
@@ -675,7 +701,7 @@ static int __init snd_ctp_driver_init(void)
 	return platform_driver_register(&snd_ctp_mc_driver);
 }
 
-static void __exit snd_ctp_driver_exit(void)
+static void snd_ctp_driver_exit(void)
 {
 	pr_debug("In %s\n", __func__);
 	platform_driver_unregister(&snd_ctp_mc_driver);
@@ -699,7 +725,7 @@ out:
 	return ret;
 }
 
-static void __devexit snd_clv_rpmsg_remove(struct rpmsg_channel *rpdev)
+static void snd_clv_rpmsg_remove(struct rpmsg_channel *rpdev)
 {
 	snd_ctp_driver_exit();
 	dev_info(&rpdev->dev, "Removed snd_clv rpmsg device\n");
@@ -726,7 +752,7 @@ static struct rpmsg_driver snd_clv_rpmsg = {
 	.id_table	= snd_clv_rpmsg_id_table,
 	.probe		= snd_clv_rpmsg_probe,
 	.callback	= snd_clv_rpmsg_cb,
-	.remove		= __devexit_p(snd_clv_rpmsg_remove),
+	.remove		= snd_clv_rpmsg_remove,
 };
 
 static int __init snd_clv_rpmsg_init(void)

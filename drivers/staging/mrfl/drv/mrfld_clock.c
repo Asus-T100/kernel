@@ -328,9 +328,9 @@ void mrfld_setup_pll(struct drm_device *dev, int pipe, int clk)
 	 * calculate them according to the DSI PLL HAS spec.
 	 */
 	if (pipe != 1) {
-		clock.p1 = 4;
-		clk_n = 1;
-		clock.m = 120;
+			clock.p1 = 4;
+			clk_n = 1;
+			clock.m = 120;
 	}
 
 	if (!ok) {

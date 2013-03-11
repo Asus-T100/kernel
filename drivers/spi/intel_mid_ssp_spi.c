@@ -977,6 +977,9 @@ static int handle_message(struct ssp_driver_context *drv_context,
 	/* first set CR1 */
 	write_SSCR1(cr1, reg);
 
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER)
+		write_SSFS((1 << chip->chip_select), reg);
+
 	/* Do bitbanging only if SSP not-enabled or not-synchronized */
 	if (unlikely(((read_SSSR(reg) & SSP_NOT_SYNC) ||
 		(!(read_SSCR0(reg) & SSCR0_SSE))) &&
@@ -1154,6 +1157,7 @@ static int setup(struct spi_device *spi)
 			chip->cr0 |= clk_div << 8;
 	}
 	chip->bits_per_word = spi->bits_per_word;
+	chip->chip_select = spi->chip_select;
 
 	spi_set_ctldata(spi, chip);
 
@@ -1273,7 +1277,7 @@ static int intel_mid_ssp_spi_probe(struct pci_dev *pdev,
 
 	master->mode_bits = SPI_CPOL | SPI_CPHA;
 	master->bus_num = SSP_CFG_GET_SPI_BUS_NB(ssp_cfg);
-	master->num_chipselect = 1;
+	master->num_chipselect = 4;
 	master->cleanup = cleanup;
 	master->setup = setup;
 	master->transfer = transfer;
@@ -1473,10 +1477,7 @@ static int intel_mid_ssp_spi_runtime_idle(struct device *dev)
 	else
 		err = pm_schedule_suspend(dev, 500);
 
-	if (err != 0)
-		return 0;
-
-	return -EBUSY;
+	return err;
 }
 #else
 #define intel_mid_ssp_spi_suspend NULL

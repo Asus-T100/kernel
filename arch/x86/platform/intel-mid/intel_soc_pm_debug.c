@@ -1198,6 +1198,9 @@ static const struct file_operations pmu_stats_log_operations = {
 	.llseek		= seq_lseek,
 	.release	= single_release,
 };
+#else
+void pmu_s0ix_demotion_stat(int req_state, int grant_state) {}
+EXPORT_SYMBOL(pmu_s0ix_demotion_stat);
 #endif
 
 void pmu_stats_init(void)
@@ -1508,6 +1511,7 @@ static int pmu_sync_d0ix_show(struct seq_file *s, void *unused)
 
 	return 0;
 }
+
 static int pmu_sync_d0ix_open(struct inode *inode, struct file *file)
 {
 	return single_open(file, pmu_sync_d0ix_show, NULL);
@@ -1623,6 +1627,140 @@ static const struct file_operations pmu_sync_d0ix_ops = {
 	.llseek		= seq_lseek,
 	.release	= single_release,
 };
+
+static int pmu_force_d0ix_show(struct seq_file *s, void *unused)
+{
+	int i;
+	u32 local_os_sss[4];
+
+	/* Acquire the scu_ready_sem */
+	down(&mid_pmu_cxt->scu_ready_sem);
+	/* Read OS SSS */
+	memcpy(local_os_sss, mid_pmu_cxt->os_sss, (sizeof(u32)*4));
+	up(&mid_pmu_cxt->scu_ready_sem);
+
+	for (i = 0; i < 4; i++)
+		seq_printf(s, "OS_SSS[%d]: %08X\n", i, local_os_sss[i]);
+
+	return 0;
+}
+
+static int pmu_force_d0ix_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, pmu_force_d0ix_show, NULL);
+}
+
+static ssize_t pmu_force_d0i3_write(struct file *file,
+		     const char __user *userbuf, size_t count, loff_t *ppos)
+{
+	char buf[32];
+	int res;
+	int buf_size = min(count, sizeof(buf)-1);
+	u32 lss, local_os_sss[4];
+	int sub_sys_pos, sub_sys_index;
+	u32 pm_cmd_val;
+
+	if (copy_from_user(buf, userbuf, buf_size))
+		return -EFAULT;
+
+	buf[buf_size] = 0;
+
+	res = kstrtou32(buf, 10, &lss);
+
+	if (res)
+		return -EINVAL;
+
+	if (lss > MAX_LSS_POSSIBLE)
+		return -EINVAL;
+
+	/* Acquire the scu_ready_sem */
+	down(&mid_pmu_cxt->scu_ready_sem);
+
+	if (lss == MAX_LSS_POSSIBLE) {
+		local_os_sss[0] =
+		local_os_sss[1] =
+		local_os_sss[2] =
+		local_os_sss[3] = 0xFFFFFFFF;
+	} else {
+		memcpy(local_os_sss, mid_pmu_cxt->os_sss, (sizeof(u32)*4));
+		sub_sys_index	= lss / mid_pmu_cxt->ss_per_reg;
+		sub_sys_pos	= lss % mid_pmu_cxt->ss_per_reg;
+		pm_cmd_val =
+			(D0I3_MASK << (sub_sys_pos * BITS_PER_LSS));
+
+		local_os_sss[sub_sys_index] |= pm_cmd_val;
+	}
+
+	memcpy(mid_pmu_cxt->os_sss, local_os_sss, (sizeof(u32)*4));
+
+	up(&mid_pmu_cxt->scu_ready_sem);
+
+	return buf_size;
+}
+
+static const struct file_operations pmu_force_d0i3_ops = {
+	.open		= pmu_force_d0ix_open,
+	.read		= seq_read,
+	.write		= pmu_force_d0i3_write,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
+static ssize_t pmu_force_d0i0_write(struct file *file,
+		     const char __user *userbuf, size_t count, loff_t *ppos)
+{
+	char buf[32];
+	int res;
+	int buf_size = min(count, sizeof(buf)-1);
+	u32 lss, local_os_sss[4];
+	int sub_sys_pos, sub_sys_index;
+	u32 pm_cmd_val;
+
+	if (copy_from_user(buf, userbuf, buf_size))
+		return -EFAULT;
+
+	buf[buf_size] = 0;
+
+	res = kstrtou32(buf, 10, &lss);
+
+	if (res)
+		return -EINVAL;
+
+	if (lss > MAX_LSS_POSSIBLE)
+		return -EINVAL;
+
+	/* Acquire the scu_ready_sem */
+	down(&mid_pmu_cxt->scu_ready_sem);
+
+	if (lss == MAX_LSS_POSSIBLE) {
+		local_os_sss[0] =
+		local_os_sss[1] =
+		local_os_sss[2] =
+		local_os_sss[3] = 0;
+	} else {
+		memcpy(local_os_sss, mid_pmu_cxt->os_sss, (sizeof(u32)*4));
+		sub_sys_index	= lss / mid_pmu_cxt->ss_per_reg;
+		sub_sys_pos	= lss % mid_pmu_cxt->ss_per_reg;
+		pm_cmd_val =
+			(D0I3_MASK << (sub_sys_pos * BITS_PER_LSS));
+
+		local_os_sss[sub_sys_index] &= ~pm_cmd_val;
+	}
+
+	memcpy(mid_pmu_cxt->os_sss, local_os_sss, (sizeof(u32)*4));
+
+	up(&mid_pmu_cxt->scu_ready_sem);
+
+	return buf_size;
+}
+
+static const struct file_operations pmu_force_d0i0_ops = {
+	.open		= pmu_force_d0ix_open,
+	.read		= seq_read,
+	.write		= pmu_force_d0i0_write,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
 #endif
 
 DEFINE_PER_CPU(u64[NUM_CSTATES_RES_MEASURE], c_states_res);
@@ -1722,6 +1860,12 @@ void pmu_stats_init(void)
 		/* /sys/kernel/debug/pmu_sync_d0ix */
 		(void) debugfs_create_file("pmu_sync_d0ix", S_IFREG | S_IRUGO,
 					NULL, NULL, &pmu_sync_d0ix_ops);
+		/* /sys/kernel/debug/pmu_force_d0i0 */
+		(void) debugfs_create_file("pmu_force_d0i0", S_IFREG | S_IRUGO,
+					NULL, NULL, &pmu_force_d0i0_ops);
+		/* /sys/kernel/debug/pmu_force_d0i3 */
+		(void) debugfs_create_file("pmu_force_d0i3", S_IFREG | S_IRUGO,
+					NULL, NULL, &pmu_force_d0i3_ops);
 	}
 #endif
 }

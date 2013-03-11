@@ -894,7 +894,7 @@ static int power_down(struct v4l2_subdev *sd)
 	return ret;
 }
 
-static int mt9e013_s_power(struct v4l2_subdev *sd, int on)
+static int __mt9e013_s_power(struct v4l2_subdev *sd, int on)
 {
 	struct mt9e013_device *dev = to_mt9e013_sensor(sd);
 	int ret;
@@ -911,6 +911,18 @@ static int mt9e013_s_power(struct v4l2_subdev *sd, int on)
 			return __mt9e013_init(sd, 0);
 		}
 	}
+
+	return ret;
+}
+
+static int mt9e013_s_power(struct v4l2_subdev *sd, int on)
+{
+	struct mt9e013_device *dev = to_mt9e013_sensor(sd);
+	int ret;
+
+	mutex_lock(&dev->input_lock);
+	ret = __mt9e013_s_power(sd, on);
+	mutex_unlock(&dev->input_lock);
 
 	return ret;
 }
@@ -1500,7 +1512,7 @@ static int get_resolution_index(int w, int h)
 	return -1;
 }
 
-static int mt9e013_try_mbus_fmt(struct v4l2_subdev *sd,
+static int __mt9e013_try_mbus_fmt(struct v4l2_subdev *sd,
 				struct v4l2_mbus_framefmt *fmt)
 {
 	int idx;
@@ -1530,13 +1542,31 @@ static int mt9e013_try_mbus_fmt(struct v4l2_subdev *sd,
 
 	fmt->code = V4L2_MBUS_FMT_SGRBG10_1X10;
 
-
 	return 0;
 }
 
-static int mt9e013_get_mbus_format_code(struct i2c_client *client)
+static int mt9e013_try_mbus_fmt(struct v4l2_subdev *sd,
+				struct v4l2_mbus_framefmt *fmt)
 {
+	struct mt9e013_device *dev = to_mt9e013_sensor(sd);
+	int ret;
+
+	mutex_lock(&dev->input_lock);
+	ret = __mt9e013_try_mbus_fmt(sd, fmt);
+	mutex_unlock(&dev->input_lock);
+
+	return ret;
+}
+
+static int mt9e013_get_mbus_format_code(struct v4l2_subdev *sd)
+{
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	struct mt9e013_device *dev = to_mt9e013_sensor(sd);
 	u16 reg;
+
+	if (!dev->power)
+		return -EIO;
+
 	/*
 	 * Get the order of color pixel readout.
 	 * Change with mirror and flip.
@@ -1572,13 +1602,15 @@ static int mt9e013_s_mbus_fmt(struct v4l2_subdev *sd,
 	if (mt9e013_info == NULL)
 		return -EINVAL;
 
-	ret = mt9e013_try_mbus_fmt(sd, fmt);
+	mutex_lock(&dev->input_lock);
+
+	ret = __mt9e013_try_mbus_fmt(sd, fmt);
 	if (ret) {
+		mutex_unlock(&dev->input_lock);
 		v4l2_err(sd, "try fmt fail\n");
 		return ret;
 	}
 
-	mutex_lock(&dev->input_lock);
 	dev->fmt_idx = get_resolution_index(fmt->width, fmt->height);
 
 	/* Sanity check */
@@ -1596,10 +1628,10 @@ static int mt9e013_s_mbus_fmt(struct v4l2_subdev *sd,
 		return -EINVAL;
 	}
 
-	fmt->code = mt9e013_get_mbus_format_code(client);
+	fmt->code = mt9e013_get_mbus_format_code(sd);
 	if (fmt->code < 0) {
 		mutex_unlock(&dev->input_lock);
-		return -EIO;
+		return fmt->code;
 	}
 	dev->fps = mt9e013_res[dev->fmt_idx].fps;
 	dev->pixels_per_line = mt9e013_res[dev->fmt_idx].pixels_per_line;
@@ -1622,14 +1654,15 @@ static int mt9e013_g_mbus_fmt(struct v4l2_subdev *sd,
 			      struct v4l2_mbus_framefmt *fmt)
 {
 	struct mt9e013_device *dev = to_mt9e013_sensor(sd);
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
 
 	if (!fmt)
 		return -EINVAL;
 
+	mutex_lock(&dev->input_lock);
 	fmt->width = mt9e013_res[dev->fmt_idx].width;
 	fmt->height = mt9e013_res[dev->fmt_idx].height;
-	fmt->code = mt9e013_get_mbus_format_code(client);
+	fmt->code = mt9e013_get_mbus_format_code(sd);
+	mutex_unlock(&dev->input_lock);
 
 	return fmt->code < 0 ? fmt->code : 0;
 }
@@ -1726,15 +1759,18 @@ static int mt9e013_s_stream(struct v4l2_subdev *sd, int enable)
 static int mt9e013_enum_framesizes(struct v4l2_subdev *sd,
 				   struct v4l2_frmsizeenum *fsize)
 {
+	struct mt9e013_device *dev = to_mt9e013_sensor(sd);
 	unsigned int index = fsize->index;
 
 	if (index >= N_RES)
 		return -EINVAL;
 
+	mutex_lock(&dev->input_lock);
 	fsize->type = V4L2_FRMSIZE_TYPE_DISCRETE;
 	fsize->discrete.width = mt9e013_res[index].width;
 	fsize->discrete.height = mt9e013_res[index].height;
 	fsize->reserved[0] = mt9e013_res[index].used;
+	mutex_unlock(&dev->input_lock);
 
 	return 0;
 }
@@ -1742,10 +1778,13 @@ static int mt9e013_enum_framesizes(struct v4l2_subdev *sd,
 static int mt9e013_enum_frameintervals(struct v4l2_subdev *sd,
 				       struct v4l2_frmivalenum *fival)
 {
+	struct mt9e013_device *dev = to_mt9e013_sensor(sd);
 	unsigned int index = fival->index;
 
 	if (index >= N_RES)
 		return -EINVAL;
+
+	mutex_lock(&dev->input_lock);
 
 	/*
 	 * Since the isp will donwscale the resolution to the right size,
@@ -1755,8 +1794,10 @@ static int mt9e013_enum_frameintervals(struct v4l2_subdev *sd,
 	 */
 	index = nearest_resolution_index(fival->width, fival->height);
 
-	if (-1 == index)
+	if (-1 == index) {
+		mutex_unlock(&dev->input_lock);
 		return -EINVAL;
+	}
 
 	fival->type = V4L2_FRMIVAL_TYPE_DISCRETE;
 /*	fival->width = mt9e013_res[index].width;
@@ -1764,15 +1805,20 @@ static int mt9e013_enum_frameintervals(struct v4l2_subdev *sd,
 	fival->discrete.numerator = 1;
 	fival->discrete.denominator = mt9e013_res[index].fps;
 
+	mutex_unlock(&dev->input_lock);
+
 	return 0;
 }
 
 static int mt9e013_enum_mbus_fmt(struct v4l2_subdev *sd, unsigned int index,
 				 enum v4l2_mbus_pixelcode *code)
 {
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	struct mt9e013_device *dev = to_mt9e013_sensor(sd);
 
-	*code = mt9e013_get_mbus_format_code(client);
+	mutex_lock(&dev->input_lock);
+	*code = mt9e013_get_mbus_format_code(sd);
+	mutex_unlock(&dev->input_lock);
+
 	return *code < 0 ? *code : 0;
 }
 
@@ -1802,7 +1848,7 @@ static int mt9e013_s_config(struct v4l2_subdev *sd,
 	power_down(sd);
 	msleep(20);
 
-	ret = mt9e013_s_power(sd, 1);
+	ret = __mt9e013_s_power(sd, 1);
 	if (ret) {
 		v4l2_err(client, "mt9e013 power-up err.\n");
 		mutex_unlock(&dev->input_lock);
@@ -1833,7 +1879,7 @@ static int mt9e013_s_config(struct v4l2_subdev *sd,
 		dev->fuseid = fuseid;
 
 	/* power off sensor */
-	ret = mt9e013_s_power(sd, 0);
+	ret = __mt9e013_s_power(sd, 0);
 	mutex_unlock(&dev->input_lock);
 	if (ret) {
 		v4l2_err(client, "mt9e013 power-down err.\n");
@@ -1845,7 +1891,7 @@ static int mt9e013_s_config(struct v4l2_subdev *sd,
 fail_detect:
 	dev->platform_data->csi_cfg(sd, 0);
 fail_csi_cfg:
-	mt9e013_s_power(sd, 0);
+	__mt9e013_s_power(sd, 0);
 	mutex_unlock(&dev->input_lock);
 	dev_err(&client->dev, "sensor power-gating failed\n");
 	return ret;
@@ -1855,11 +1901,14 @@ static int
 mt9e013_enum_mbus_code(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 		       struct v4l2_subdev_mbus_code_enum *code)
 {
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	struct mt9e013_device *dev = to_mt9e013_sensor(sd);
 
 	if (code->index >= MAX_FMTS)
 		return -EINVAL;
-	code->code = mt9e013_get_mbus_format_code(client);
+
+	mutex_lock(&dev->input_lock);
+	code->code = mt9e013_get_mbus_format_code(sd);
+	mutex_unlock(&dev->input_lock);
 
 	return code->code < 0 ? code->code : 0;
 }
@@ -1868,15 +1917,18 @@ static int
 mt9e013_enum_frame_size(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 			struct v4l2_subdev_frame_size_enum *fse)
 {
+	struct mt9e013_device *dev = to_mt9e013_sensor(sd);
 	int index = fse->index;
 
 	if (index >= N_RES)
 		return -EINVAL;
 
+	mutex_lock(&dev->input_lock);
 	fse->min_width = mt9e013_res[index].width;
 	fse->min_height = mt9e013_res[index].height;
 	fse->max_width = mt9e013_res[index].width;
 	fse->max_height = mt9e013_res[index].height;
+	mutex_unlock(&dev->input_lock);
 
 	return 0;
 }
@@ -1939,9 +1991,15 @@ mt9e013_s_parm(struct v4l2_subdev *sd, struct v4l2_streamparm *param)
 {
 	struct mt9e013_device *dev = to_mt9e013_sensor(sd);
 
+	mutex_lock(&dev->input_lock);
+
+	if (dev->streaming) {
+		mutex_unlock(&dev->input_lock);
+		return -EBUSY;
+	}
+
 	dev->run_mode = param->parm.capture.capturemode;
 
-	mutex_lock(&dev->input_lock);
 	switch (dev->run_mode) {
 	case CI_MODE_VIDEO:
 		mt9e013_res = mt9e013_res_video;
@@ -1955,6 +2013,16 @@ mt9e013_s_parm(struct v4l2_subdev *sd, struct v4l2_streamparm *param)
 		mt9e013_res = mt9e013_res_preview;
 		N_RES = N_RES_PREVIEW;
 	}
+
+	/* Reset sensor mode */
+	dev->fmt_idx = 0;
+	dev->fps = mt9e013_res[dev->fmt_idx].fps;
+	dev->pixels_per_line = mt9e013_res[dev->fmt_idx].pixels_per_line;
+	dev->lines_per_frame = mt9e013_res[dev->fmt_idx].lines_per_frame;
+	dev->coarse_itg = 0;
+	dev->fine_itg = 0;
+	dev->gain = 0;
+
 	mutex_unlock(&dev->input_lock);
 	return 0;
 }
@@ -1966,6 +2034,9 @@ mt9e013_g_frame_interval(struct v4l2_subdev *sd,
 	struct mt9e013_device *dev = to_mt9e013_sensor(sd);
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	u16 lines_per_frame;
+
+	mutex_lock(&dev->input_lock);
+
 	/*
 	 * if no specific information to calculate the fps,
 	 * just used the value in sensor settings
@@ -1973,6 +2044,7 @@ mt9e013_g_frame_interval(struct v4l2_subdev *sd,
 	if (!dev->pixels_per_line || !dev->lines_per_frame) {
 		interval->interval.numerator = 1;
 		interval->interval.denominator = dev->fps;
+		mutex_unlock(&dev->input_lock);
 		return 0;
 	}
 
@@ -1999,6 +2071,8 @@ mt9e013_g_frame_interval(struct v4l2_subdev *sd,
 					lines_per_frame;
 	interval->interval.denominator = MT9E013_MCLK * 1000000;
 
+	mutex_unlock(&dev->input_lock);
+
 	return 0;
 }
 
@@ -2009,7 +2083,9 @@ static int mt9e013_g_skip_frames(struct v4l2_subdev *sd, u32 *frames)
 	if (frames == NULL)
 		return -EINVAL;
 
+	mutex_lock(&dev->input_lock);
 	*frames = mt9e013_res[dev->fmt_idx].skip_frames;
+	mutex_unlock(&dev->input_lock);
 
 	return 0;
 }

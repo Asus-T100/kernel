@@ -27,16 +27,20 @@
 
 #define pr_fmt(fmt)  "intel_mrfl_thermal: " fmt
 
-#include <linux/module.h>
-#include <linux/init.h>
-#include <linux/ipc_device.h>
 #include <linux/pm.h>
+#include <linux/init.h>
 #include <linux/slab.h>
-#include <linux/interrupt.h>
+#include <linux/rpmsg.h>
+#include <linux/module.h>
 #include <linux/thermal.h>
+#include <linux/interrupt.h>
+#include <linux/platform_device.h>
 
-#include <asm/intel_scu_ipc.h>
+#include <asm/intel_scu_pmic.h>
+#include <asm/intel_mid_rpmsg.h>
 #include <asm/intel_basincove_gpadc.h>
+
+#include "../staging/iio/consumer.h"
 
 #define DRIVER_NAME "bcove_thrm"
 #define DEVICE_NAME "mrfl_pmic_thermal"
@@ -74,7 +78,7 @@
 #define DEFAULT_MAX_TEMP	85
 
 /* Constants defined in BasinCove PMIC spec */
-#define PMIC_DIE_SENSOR		3
+#define PMIC_DIE_SENSOR		0
 #define PMIC_DIE_ADC_MIN	395
 #define PMIC_DIE_ADC_MAX	661
 #define PMIC_DIE_TEMP_MIN	-40
@@ -126,11 +130,17 @@ struct thermal_device_info {
 };
 
 struct thermal_data {
-	struct ipc_device *ipcdev;
+	struct platform_device *pdev;
+	struct iio_channel *iio_chan;
 	struct thermal_zone_device *tzd[PMIC_THERMAL_SENSORS];
 	void *thrm_addr;
 	unsigned int irq;
+	/* Caching information */
+	bool is_initialized;
+	unsigned long last_updated;
+	int cached_vals[PMIC_THERMAL_SENSORS];
 };
+static struct thermal_data *tdata;
 
 static inline int adc_to_pmic_die_temp(unsigned int val)
 {
@@ -458,32 +468,28 @@ static ssize_t show_trip_type(struct thermal_zone_device *tzd,
 
 static ssize_t show_temp(struct thermal_zone_device *tzd, unsigned long *temp)
 {
-	int ret, ch, adc_val;
-	struct gpadc_result *adc_res;
+	int ret;
 	struct thermal_device_info *td_info = tzd->devdata;
+	int indx = td_info->sensor_index;
+
+	if (!tdata->iio_chan)
+		return -EINVAL;
 
 	mutex_lock(&thrm_update_lock);
 
-	ch = adc_channels[td_info->sensor_index];
-
-	adc_res = kzalloc(sizeof(struct gpadc_result), GFP_KERNEL);
-	if (!adc_res) {
-		ret = -ENOMEM;
-		goto exit;
+	if (!tdata->is_initialized ||
+			time_after(jiffies, tdata->last_updated + HZ)) {
+		ret = iio_st_read_channel_all_raw(tdata->iio_chan,
+						tdata->cached_vals);
+		if (ret) {
+			dev_err(&tzd->device, "ADC sampling failed:%d\n", ret);
+			goto exit;
+		}
+		tdata->last_updated = jiffies;
+		tdata->is_initialized = true;
 	}
 
-	ret = intel_basincove_gpadc_sample(ch, adc_res);
-	if (ret) {
-		dev_err(&tzd->device, "gpadc_sample failed:%d\n", ret);
-		goto exit_free;
-	}
-
-	adc_val = GPADC_RSL(ch, adc_res);
-
-	ret = adc_to_temp(td_info->is_direct, adc_val, temp);
-
-exit_free:
-	kfree(adc_res);
+	ret = adc_to_temp(td_info->is_direct, tdata->cached_vals[indx], temp);
 exit:
 	mutex_unlock(&thrm_update_lock);
 	return ret;
@@ -541,7 +547,7 @@ static irqreturn_t thermal_intrpt(int irq, void *dev_data)
 	if (ret)
 		goto ipc_fail;
 
-	dev_dbg(&tdata->ipcdev->dev, "STHRMIRQ: %.2x\n", irq_status);
+	dev_dbg(&tdata->pdev->dev, "STHRMIRQ: %.2x\n", irq_status);
 
 	/*
 	 * -1 for invalid interrupt
@@ -564,19 +570,19 @@ static irqreturn_t thermal_intrpt(int irq, void *dev_data)
 		event_type = !!(irq_status & SYS0ALRT);
 		sensor = SYS0;
 	} else {
-		dev_err(&tdata->ipcdev->dev, "Invalid Interrupt\n");
+		dev_err(&tdata->pdev->dev, "Invalid Interrupt\n");
 		ret = IRQ_HANDLED;
 		goto ipc_fail;
 	}
 
 	if (event_type != -1) {
-		dev_info(&tdata->ipcdev->dev,
+		dev_info(&tdata->pdev->dev,
 				"%s interrupt for thermal sensor %d\n",
 				event_type ? "HIGH" : "LOW", sensor);
 	}
 
 	/* Notify using UEvent */
-	kobject_uevent(&tdata->ipcdev->dev.kobj, KOBJ_CHANGE);
+	kobject_uevent(&tdata->pdev->dev.kobj, KOBJ_CHANGE);
 
 	/* Unmask Thermal Interrupt in the mask register */
 	ret = intel_scu_ipc_update_register(MIRQLVL1, 0xFF, THERM_ALRT);
@@ -599,28 +605,43 @@ static struct thermal_zone_device_ops tzd_ops = {
 	.set_trip_hyst = store_trip_hyst,
 };
 
-static int mrfl_thermal_probe(struct ipc_device *ipcdev)
+static int mrfl_thermal_probe(struct platform_device *pdev)
 {
 	int ret, i;
-	struct thermal_data *tdata;
 	static char *name[PMIC_THERMAL_SENSORS] = {
-			"SYSTHERM0", "SYSTHERM1", "SYSTHERM2", "PMICDIE" };
+			"PMICDIE", "SYSTHERM0", "SYSTHERM1", "SYSTHERM2" };
 
 	tdata = kzalloc(sizeof(struct thermal_data), GFP_KERNEL);
 	if (!tdata) {
-		dev_err(&ipcdev->dev, "kzalloc failed\n");
+		dev_err(&pdev->dev, "kzalloc failed\n");
 		return -ENOMEM;
 	}
 
-	tdata->ipcdev = ipcdev;
-	tdata->irq = ipc_get_irq(ipcdev, 0);
-	ipc_set_drvdata(ipcdev, tdata);
+	tdata->pdev = pdev;
+	tdata->irq = platform_get_irq(pdev, 0);
+	platform_set_drvdata(pdev, tdata);
 
 	/* Program a default _max value for each sensor */
-	ret = program_tmax(&ipcdev->dev);
+	ret = program_tmax(&pdev->dev);
 	if (ret) {
-		dev_err(&ipcdev->dev, "Programming _max failed:%d\n", ret);
+		dev_err(&pdev->dev, "Programming _max failed:%d\n", ret);
 		goto exit_free;
+	}
+
+	/* Register with IIO to sample temperature values */
+	tdata->iio_chan = iio_st_channel_get_all("THERMAL");
+	if (tdata->iio_chan == NULL) {
+		dev_err(&pdev->dev, "tdata->iio_chan is null\n");
+		ret = -EINVAL;
+		goto exit_free;
+	}
+
+	/* Check whether we got all the four channels */
+	ret = iio_st_channel_get_num(tdata->iio_chan);
+	if (ret != PMIC_THERMAL_SENSORS) {
+		dev_err(&pdev->dev, "incorrect number of channels:%d\n", ret);
+		ret = -EFAULT;
+		goto exit_iio;
 	}
 
 	/* Register each sensor with the generic thermal framework */
@@ -630,7 +651,7 @@ static int mrfl_thermal_probe(struct ipc_device *ipcdev)
 					0, 0, 0, 0);
 		if (IS_ERR(tdata->tzd[i])) {
 			ret = PTR_ERR(tdata->tzd[i]);
-			dev_err(&ipcdev->dev,
+			dev_err(&pdev->dev,
 				"registering thermal sensor %s failed: %d\n",
 				name[i], ret);
 			goto exit_reg;
@@ -640,7 +661,7 @@ static int mrfl_thermal_probe(struct ipc_device *ipcdev)
 	tdata->thrm_addr = ioremap_nocache(PMIC_SRAM_BASE_ADDR, IOMAP_SIZE);
 	if (!tdata->thrm_addr) {
 		ret = -ENOMEM;
-		dev_err(&ipcdev->dev, "ioremap_nocache failed\n");
+		dev_err(&pdev->dev, "ioremap_nocache failed\n");
 		goto exit_reg;
 	}
 
@@ -649,14 +670,14 @@ static int mrfl_thermal_probe(struct ipc_device *ipcdev)
 						IRQF_TRIGGER_RISING,
 						DRIVER_NAME, tdata);
 	if (ret) {
-		dev_err(&ipcdev->dev, "request_threaded_irq failed:%d\n", ret);
+		dev_err(&pdev->dev, "request_threaded_irq failed:%d\n", ret);
 		goto exit_ioremap;
 	}
 
 	/* Enable Thermal Monitoring */
 	ret = enable_tm();
 	if (ret) {
-		dev_err(&ipcdev->dev, "Enabling TM failed:%d\n", ret);
+		dev_err(&pdev->dev, "Enabling TM failed:%d\n", ret);
 		goto exit_irq;
 	}
 
@@ -669,6 +690,8 @@ exit_ioremap:
 exit_reg:
 	while (--i >= 0)
 		thermal_zone_device_unregister(tdata->tzd[i]);
+exit_iio:
+	iio_st_channel_release_all(tdata->iio_chan);
 exit_free:
 	kfree(tdata);
 	return ret;
@@ -686,10 +709,10 @@ static int mrfl_thermal_suspend(struct device *dev)
 	return 0;
 }
 
-static int mrfl_thermal_remove(struct ipc_device *ipcdev)
+static int mrfl_thermal_remove(struct platform_device *pdev)
 {
 	int i;
-	struct thermal_data *tdata = ipc_get_drvdata(ipcdev);
+	struct thermal_data *tdata = platform_get_drvdata(pdev);
 
 	if (!tdata)
 		return 0;
@@ -699,6 +722,7 @@ static int mrfl_thermal_remove(struct ipc_device *ipcdev)
 
 	free_irq(tdata->irq, tdata);
 	iounmap(tdata->thrm_addr);
+	iio_st_channel_release_all(tdata->iio_chan);
 	kfree(tdata);
 	return 0;
 }
@@ -712,7 +736,7 @@ static const struct dev_pm_ops thermal_pm_ops = {
 	.resume = mrfl_thermal_resume,
 };
 
-static struct ipc_driver mrfl_thermal_driver = {
+static struct platform_driver mrfl_thermal_driver = {
 	.driver = {
 		.name = DRIVER_NAME,
 		.owner = THIS_MODULE,
@@ -724,16 +748,70 @@ static struct ipc_driver mrfl_thermal_driver = {
 
 static int __init mrfl_thermal_module_init(void)
 {
-	return ipc_driver_register(&mrfl_thermal_driver);
+	return platform_driver_register(&mrfl_thermal_driver);
 }
 
 static void __exit mrfl_thermal_module_exit(void)
 {
-	ipc_driver_unregister(&mrfl_thermal_driver);
+	platform_driver_unregister(&mrfl_thermal_driver);
 }
 
-module_init(mrfl_thermal_module_init);
-module_exit(mrfl_thermal_module_exit);
+/* RPMSG related functionality */
+static int mrfl_thermal_rpmsg_probe(struct rpmsg_channel *rpdev)
+{
+	if (!rpdev) {
+		pr_err("rpmsg channel not created\n");
+		return -ENODEV;
+	}
+
+	dev_info(&rpdev->dev, "Probed mrfl_thermal rpmsg device\n");
+
+	return mrfl_thermal_module_init();
+}
+
+static void mrfl_thermal_rpmsg_remove(struct rpmsg_channel *rpdev)
+{
+	mrfl_thermal_module_exit();
+	dev_info(&rpdev->dev, "Removed mrfl_thermal rpmsg device\n");
+}
+
+static void mrfl_thermal_rpmsg_cb(struct rpmsg_channel *rpdev, void *data,
+			int len, void *priv, u32 src)
+{
+	dev_warn(&rpdev->dev, "unexpected, message\n");
+
+	print_hex_dump(KERN_DEBUG, __func__, DUMP_PREFIX_NONE, 16, 1,
+				data, len, true);
+}
+
+static struct rpmsg_device_id mrfl_thermal_id_table[] = {
+	{ .name = "rpmsg_mrfl_thermal" },
+	{ },
+};
+
+MODULE_DEVICE_TABLE(rpmsg, mrfl_thermal_id_table);
+
+static struct rpmsg_driver mrfl_thermal_rpmsg = {
+	.drv.name	= DRIVER_NAME,
+	.drv.owner	= THIS_MODULE,
+	.probe		= mrfl_thermal_rpmsg_probe,
+	.callback	= mrfl_thermal_rpmsg_cb,
+	.remove		= __devexit_p(mrfl_thermal_rpmsg_remove),
+	.id_table	= mrfl_thermal_id_table,
+};
+
+static int __init mrfl_thermal_rpmsg_init(void)
+{
+	return register_rpmsg_driver(&mrfl_thermal_rpmsg);
+}
+
+static void __exit mrfl_thermal_rpmsg_exit(void)
+{
+	return unregister_rpmsg_driver(&mrfl_thermal_rpmsg);
+}
+
+module_init(mrfl_thermal_rpmsg_init);
+module_exit(mrfl_thermal_rpmsg_exit);
 
 MODULE_AUTHOR("Durgadoss R <durgadoss.r@intel.com>");
 MODULE_DESCRIPTION("Intel Merrifield Platform Thermal Driver");

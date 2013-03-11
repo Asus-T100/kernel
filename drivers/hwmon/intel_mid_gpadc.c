@@ -950,7 +950,7 @@ static struct attribute_group intel_mid_gpadc_attr_group = {
 	.attrs = intel_mid_gpadc_attrs,
 };
 
-static int __devinit msic_gpadc_probe(struct platform_device *pdev)
+static int msic_gpadc_probe(struct platform_device *pdev)
 {
 	struct gpadc_info *mgi = &gpadc_info;
 	struct intel_mid_gpadc_platform_data *pdata = pdev->dev.platform_data;
@@ -1002,7 +1002,7 @@ err_exit:
 	return err;
 }
 
-static int __devexit msic_gpadc_remove(struct platform_device *pdev)
+static int msic_gpadc_remove(struct platform_device *pdev)
 {
 	struct gpadc_info *mgi = &gpadc_info;
 
@@ -1050,7 +1050,7 @@ static struct platform_driver msic_gpadc_driver = {
 		   .pm = &msic_gpadc_driver_pm_ops,
 		   },
 	.probe = msic_gpadc_probe,
-	.remove = __devexit_p(msic_gpadc_remove),
+	.remove = msic_gpadc_remove,
 };
 
 static int msic_gpadc_module_init(void)
@@ -1081,7 +1081,7 @@ out:
 	return ret;
 }
 
-static void __devexit msic_adc_rpmsg_remove(struct rpmsg_channel *rpdev)
+static void msic_adc_rpmsg_remove(struct rpmsg_channel *rpdev)
 {
 	msic_gpadc_module_exit();
 	dev_info(&rpdev->dev, "Removed msic_gpadc rpmsg device\n");
@@ -1108,7 +1108,7 @@ static struct rpmsg_driver msic_adc_rpmsg = {
 	.id_table	= msic_adc_rpmsg_id_table,
 	.probe		= msic_adc_rpmsg_probe,
 	.callback	= msic_adc_rpmsg_cb,
-	.remove		= __devexit_p(msic_adc_rpmsg_remove),
+	.remove		= msic_adc_rpmsg_remove,
 };
 
 static int __init msic_adc_rpmsg_init(void)

@@ -10,6 +10,8 @@
 #include <linux/delay.h>
 #include <linux/kthread.h>
 #include <linux/version.h>
+#include <linux/pm_qos.h>
+#include <linux/intel_mid_pm.h>
 
 #include <linux/usb.h>
 #include <linux/usb/hcd.h>
@@ -27,7 +29,7 @@ static struct mutex lock;
 static int enable_usb_phy(struct dwc_otg2 *otg, bool on_off);
 static void reset_phy(struct dwc_otg2 *otg);
 static const char driver_name[] = "dwc_otg3";
-static void __devexit dwc_otg_remove(struct pci_dev *pdev);
+static void dwc_otg_remove(struct pci_dev *pdev);
 static struct dwc_device_par *platform_par;
 static struct dwc_otg2 *the_transceiver;
 
@@ -293,6 +295,7 @@ static int start_host(struct dwc_otg2 *otg)
 		return -ENODEV;
 	}
 
+	pm_qos_update_request(otg->qos, CSTATE_EXIT_LATENCY_C1 - 1);
 	/* Start host driver */
 	hcd = container_of(otg->otg.host, struct usb_hcd, self);
 	ret = hcd->driver->start_host(hcd);
@@ -312,6 +315,7 @@ static int stop_host(struct dwc_otg2 *otg)
 		ret = hcd->driver->stop_host(hcd);
 	}
 
+	pm_qos_update_request(otg->qos, PM_QOS_DEFAULT_VALUE);
 	return ret;
 }
 
@@ -328,6 +332,7 @@ static void start_peripheral(struct dwc_otg2 *otg)
 		return;
 	}
 
+	pm_qos_update_request(otg->qos, CSTATE_EXIT_LATENCY_C1 - 1);
 	gadget->ops->start_device(gadget);
 }
 
@@ -340,6 +345,7 @@ static void stop_peripheral(struct dwc_otg2 *otg)
 
 	cancel_delayed_work_sync(&otg->sdp_check_work);
 	gadget->ops->stop_device(gadget);
+	pm_qos_update_request(otg->qos, PM_QOS_DEFAULT_VALUE);
 }
 
 static int get_id(struct dwc_otg2 *otg)
@@ -376,18 +382,20 @@ static int get_id(struct dwc_otg2 *otg)
 }
 
 static int dwc_otg_notify_charger_type(struct dwc_otg2 *otg,
-		enum usb_charger_state state)
+		enum power_supply_charger_event event)
 {
-	struct otg_bc_cap cap;
+	struct power_supply_cable_props cap;
 	int ret = 0;
 	unsigned long flags;
 
-	if (state > OTG_CHR_STATE_HOST) {
-		otg_err(otg, "%s: Invalid usb_charger_state!\n", __func__);
+	if (event > POWER_SUPPLY_CHARGER_EVENT_DISCONNECT) {
+		otg_err(otg,
+		"%s: Invalid power_supply_charger_event!\n", __func__);
 		return -EINVAL;
 	}
 
-	if ((otg->charging_cap.chrg_type ==  CHRG_SDP) &&
+	if ((otg->charging_cap.chrg_type ==
+			POWER_SUPPLY_CHARGER_TYPE_USB_SDP) &&
 			((otg->charging_cap.mA != 100) &&
 			 (otg->charging_cap.mA != 150) &&
 			 (otg->charging_cap.mA != 500) &&
@@ -399,7 +407,7 @@ static int dwc_otg_notify_charger_type(struct dwc_otg2 *otg,
 	spin_lock_irqsave(&otg->lock, flags);
 	cap.chrg_type = otg->charging_cap.chrg_type;
 	cap.mA = otg->charging_cap.mA;
-	cap.chrg_state = state;
+	cap.chrg_evt = event;
 	spin_unlock_irqrestore(&otg->lock, flags);
 
 	atomic_notifier_call_chain(&otg->phy.notifier, USB_EVENT_CHARGER,
@@ -411,7 +419,8 @@ static int dwc_otg_notify_charger_type(struct dwc_otg2 *otg,
 int otg_get_chr_status(struct usb_phy *phy, void *data)
 {
 	unsigned long flags;
-	struct otg_bc_cap *cap = (struct otg_bc_cap *)data;
+	struct power_supply_cable_props *cap =
+		(struct power_supply_cable_props *)data;
 	struct dwc_otg2 *otg = the_transceiver;
 
 	if (phy == NULL)
@@ -422,7 +431,7 @@ int otg_get_chr_status(struct usb_phy *phy, void *data)
 
 	spin_lock_irqsave(&otg->lock, flags);
 	cap->chrg_type = otg->charging_cap.chrg_type;
-	cap->chrg_state = otg->charging_cap.chrg_state;
+	cap->chrg_evt = otg->charging_cap.chrg_evt;
 	cap->mA = otg->charging_cap.mA;
 	spin_unlock_irqrestore(&otg->lock, flags);
 
@@ -433,7 +442,7 @@ EXPORT_SYMBOL_GPL(otg_get_chr_status);
 static void dwc_otg_sdp_check_work(struct work_struct *work)
 {
 	struct dwc_otg2 *otg = the_transceiver;
-	struct otg_bc_cap	cap;
+	struct power_supply_cable_props	cap;
 	unsigned long flags;
 
 	if (otg_get_chr_status(&otg->phy, (void *)&cap)) {
@@ -441,7 +450,7 @@ static void dwc_otg_sdp_check_work(struct work_struct *work)
 		return;
 	}
 
-	if (cap.mA != 100 || cap.chrg_type != CHRG_SDP)
+	if (cap.mA != 100 || cap.chrg_type != POWER_SUPPLY_CHARGER_TYPE_USB_SDP)
 		return;
 
 	otg_dbg(otg, "Current charger is Non-compliant charger!\n");
@@ -449,7 +458,7 @@ static void dwc_otg_sdp_check_work(struct work_struct *work)
 	otg->charging_cap.mA = 500;
 	spin_unlock_irqrestore(&otg->lock, flags);
 
-	dwc_otg_notify_charger_type(otg, OTG_CHR_STATE_CONNECTED);
+	dwc_otg_notify_charger_type(otg, POWER_SUPPLY_CHARGER_EVENT_CONNECT);
 }
 
 static int ulpi_read(struct dwc_otg2 *otg, const u8 reg, u8 *val)
@@ -504,35 +513,10 @@ static int ulpi_read(struct dwc_otg2 *otg, const u8 reg, u8 *val)
 
 static int dwc_otg_enable_vbus(struct dwc_otg2 *otg, int enable)
 {
-	struct otg_bc_cap cap;
 	int ret = 0;
 
-	if (enable)
-		cap.chrg_state = OTG_CHR_STATE_HOST;
-	else
-		cap.chrg_state = OTG_CHR_STATE_DISCONNECTED;
-
 	atomic_notifier_call_chain(&otg->phy.notifier, USB_EVENT_DRIVE_VBUS,
-			&cap);
-
-	/** Hard code to drive VBus for workaround of EM driver
-	 ** Below code should be removed after EM driver port done.
-	 **/
-	ret = intel_scu_ipc_iowrite8(PMIC_I2COVRDADDR, PMIC_TLP1ESBS0I1VNNBASE);
-	if (ret)
-		otg_err(otg, "Fail to Write the I2C address for Charger IC\n");
-
-	ret = intel_scu_ipc_iowrite8(PMIC_I2COVROFFSET, 0x0);
-	if (ret)
-		otg_err(otg, "Fail to Load offset\n");
-	ret = intel_scu_ipc_iowrite8(PMIC_I2COVRWRDATA, 0x40);
-	if (ret)
-		otg_err(otg, "Fail to Load the data to be writen\n");
-
-	ret = intel_scu_ipc_iowrite8(PMIC_I2COVRCTRL, PMIC_I2COVRCTL_I2CWR);
-	if (ret)
-		otg_err(otg, "Fail to Set I2CWR bit\n");
-
+			&enable);
 
 	return ret;
 }
@@ -588,10 +572,11 @@ static int ulpi_write(struct dwc_otg2 *otg, const u8 reg, const u8 val)
 	return -ETIMEDOUT;
 }
 
-static enum usb_charger_type aca_check(struct dwc_otg2 *otg)
+static enum power_supply_charger_cable_type aca_check(struct dwc_otg2 *otg)
 {
 	u8 rarbrc;
-	enum usb_charger_type type = CHRG_UNKNOWN;
+	enum power_supply_charger_cable_type type =
+		POWER_SUPPLY_CHARGER_TYPE_NONE;
 	int ret;
 
 	/* Wait >66.1ms (for TCHGD_SERX_DEB) */
@@ -608,21 +593,23 @@ static enum usb_charger_type aca_check(struct dwc_otg2 *otg)
 	 */
 	if (rarbrc == 1) {
 		/* ACA-Dock */
-		type = CHRG_ACA_DOCK;
+		type = POWER_SUPPLY_CHARGER_TYPE_ACA_DOCK;
 	} else if (!rarbrc) {
 		/* MHL */
-		type = CHRG_MHL;
+		type = POWER_SUPPLY_CHARGER_TYPE_MHL;
 	}
 
 	return type;
 }
 
-static enum usb_charger_type get_charger_type(struct dwc_otg2 *otg)
+static enum power_supply_charger_cable_type
+		get_charger_type(struct dwc_otg2 *otg)
 {
 	u8 val, vdat_det, chgd_serx_dm;
 	unsigned long timeout, interval;
 	int ret;
-	enum usb_charger_type type = CHRG_UNKNOWN;
+	enum power_supply_charger_cable_type type =
+		POWER_SUPPLY_CHARGER_TYPE_NONE;
 
 	/* PHY Enable:
 	 * De-assert USBRST
@@ -718,7 +705,7 @@ static enum usb_charger_type get_charger_type(struct dwc_otg2 *otg)
 	 * Else: goto 'Pri Det Enable'.
 	 */
 	if (val == 3) {
-		type = CHRG_SE1;
+		type = POWER_SUPPLY_CHARGER_TYPE_SE1;
 		goto cleanup;
 	}
 
@@ -752,7 +739,7 @@ static enum usb_charger_type get_charger_type(struct dwc_otg2 *otg)
 	 * If VDAT_DET==1 && CHGD_SERX_DM==0: CDP/DCP
 	 */
 	if (vdat_det == 0 || chgd_serx_dm == 1)
-		type = CHRG_SDP;
+		type = POWER_SUPPLY_CHARGER_TYPE_USB_SDP;
 
 	/* Disable VDPSRC. */
 	ulpi_write(otg, TUSB1211_POWER_CONTROL_CLR, PWCTRL_DP_VSRC_EN);
@@ -760,7 +747,7 @@ static enum usb_charger_type get_charger_type(struct dwc_otg2 *otg)
 	/* If SDP, goto “Cleanup”.
 	 * Else, goto “Sec Det Enable”
 	 */
-	if (type == CHRG_SDP)
+	if (type == POWER_SUPPLY_CHARGER_TYPE_USB_SDP)
 		goto cleanup;
 
 	/* Sec Det Enable:
@@ -790,9 +777,9 @@ static enum usb_charger_type get_charger_type(struct dwc_otg2 *otg)
 	 * If VDAT_DET==1: DCP detected.
 	 */
 	if (!val)
-		type = CHRG_CDP;
+		type = POWER_SUPPLY_CHARGER_TYPE_USB_CDP;
 	else
-		type = CHRG_DCP;
+		type = POWER_SUPPLY_CHARGER_TYPE_USB_DCP;
 
 	/* Disable VDMSRC. */
 	ulpi_write(otg, TUSB1211_POWER_CONTROL_CLR, PWCTRL_DP_VSRC_EN);
@@ -803,7 +790,7 @@ static enum usb_charger_type get_charger_type(struct dwc_otg2 *otg)
 cleanup:
 
 	/* If DCP detected, assert VDPSRC. */
-	if (type == CHRG_DCP)
+	if (type == POWER_SUPPLY_CHARGER_TYPE_USB_DCP)
 		ulpi_write(otg, TUSB1211_POWER_CONTROL_SET, \
 				PWCTRL_SW_CONTROL | PWCTRL_DP_VSRC_EN);
 
@@ -836,9 +823,11 @@ static int dwc_otg_set_power(struct usb_phy *_otg,
 		return -EINVAL;
 	}
 
-	if (otg->charging_cap.chrg_type == CHRG_CDP)
+	if (otg->charging_cap.chrg_type ==
+			POWER_SUPPLY_CHARGER_TYPE_USB_CDP)
 		return 0;
-	else if (otg->charging_cap.chrg_type != CHRG_SDP) {
+	else if (otg->charging_cap.chrg_type !=
+			POWER_SUPPLY_CHARGER_TYPE_USB_SDP) {
 		otg_err(otg, "%s: currently, chrg type is not SDP!\n",
 				__func__);
 		return -EINVAL;
@@ -849,7 +838,7 @@ static int dwc_otg_set_power(struct usb_phy *_otg,
 	spin_unlock_irqrestore(&otg->lock, flags);
 
 	dwc_otg_notify_charger_type(otg,
-			OTG_CHR_STATE_CONNECTED);
+			POWER_SUPPLY_CHARGER_EVENT_CONNECT);
 
 	return 0;
 }
@@ -886,7 +875,8 @@ static enum dwc_otg_state do_wait_vbus_raise(struct dwc_otg2 *otg)
 	if (!ret) {
 		if (is_self_powered_b_device(otg)) {
 			spin_lock_irqsave(&otg->lock, flags);
-			otg->charging_cap.chrg_type = B_DEVICE;
+			otg->charging_cap.chrg_type =
+				POWER_SUPPLY_CHARGER_TYPE_B_DEVICE;
 			spin_unlock_irqrestore(&otg->lock, flags);
 
 			return DWC_STATE_A_HOST;
@@ -915,9 +905,10 @@ static enum dwc_otg_state do_wait_vbus_fall(struct dwc_otg2 *otg)
 
 	if (otg_events & OEVT_A_DEV_SESS_END_DET_EVNT) {
 		otg_dbg(otg, "OEVT_A_DEV_SESS_END_DET_EVNT\n");
-		if (otg->charging_cap.chrg_type == CHRG_ACA_DOCK)
+		if (otg->charging_cap.chrg_type ==
+				POWER_SUPPLY_CHARGER_TYPE_ACA_DOCK)
 			dwc_otg_notify_charger_type(otg,
-				OTG_CHR_STATE_DISCONNECTED);
+				POWER_SUPPLY_CHARGER_EVENT_DISCONNECT);
 		return DWC_STATE_INIT;
 	}
 
@@ -949,7 +940,7 @@ static enum dwc_otg_state do_charging(struct dwc_otg2 *otg)
 	if (otg_events & OEVT_A_DEV_SESS_END_DET_EVNT) {
 		otg_dbg(otg, "OEVT_A_DEV_SESS_END_DET_EVNT\n");
 		dwc_otg_notify_charger_type(otg,
-				OTG_CHR_STATE_DISCONNECTED);
+				POWER_SUPPLY_CHARGER_EVENT_DISCONNECT);
 		return DWC_STATE_INIT;
 	}
 
@@ -959,48 +950,53 @@ static enum dwc_otg_state do_charging(struct dwc_otg2 *otg)
 static enum dwc_otg_state do_charger_detection(struct dwc_otg2 *otg)
 {
 	enum dwc_otg_state state = DWC_STATE_INVALID;
-	enum usb_charger_type charger = CHRG_UNKNOWN;
+	enum power_supply_charger_cable_type charger =
+			POWER_SUPPLY_CHARGER_TYPE_NONE;
 	unsigned long flags, mA = 0;
+
+	/* FIXME: Skip charger detection flow for baytrail */
+	if (otg->otg_data->is_byt)
+		return DWC_STATE_B_PERIPHERAL;
 
 	charger = get_charger_type(otg);
 	switch (charger) {
-	case CHRG_ACA_C:
-	case CHRG_ACA_A:
-	case CHRG_ACA_B:
+	case POWER_SUPPLY_CHARGER_TYPE_ACA_C:
+	case POWER_SUPPLY_CHARGER_TYPE_ACA_A:
+	case POWER_SUPPLY_CHARGER_TYPE_ACA_B:
 		otg_err(otg, "Ignore micro ACA charger.\n");
-		charger = CHRG_UNKNOWN;
+		charger = POWER_SUPPLY_CHARGER_TYPE_NONE;
 		break;
-	case CHRG_SDP:
-	case CHRG_CDP:
+	case POWER_SUPPLY_CHARGER_TYPE_USB_SDP:
+	case POWER_SUPPLY_CHARGER_TYPE_USB_CDP:
 		state = DWC_STATE_B_PERIPHERAL;
 		break;
-	case CHRG_ACA_DOCK:
+	case POWER_SUPPLY_CHARGER_TYPE_ACA_DOCK:
 		state = DWC_STATE_A_HOST;
 		break;
-	case CHRG_DCP:
-	case CHRG_SE1:
+	case POWER_SUPPLY_CHARGER_TYPE_USB_DCP:
+	case POWER_SUPPLY_CHARGER_TYPE_SE1:
 		state = DWC_STATE_CHARGING;
 		break;
-	case CHRG_UNKNOWN:
+	case POWER_SUPPLY_CHARGER_TYPE_NONE:
 	default:
 		if (is_self_powered_b_device(otg)) {
 			state = DWC_STATE_A_HOST;
-			charger = B_DEVICE;
+			charger = POWER_SUPPLY_CHARGER_TYPE_B_DEVICE;
 			break;
 		}
 	};
 
 	switch (charger) {
-	case CHRG_ACA_DOCK:
-	case CHRG_ACA_A:
-	case CHRG_ACA_B:
-	case CHRG_ACA_C:
-	case CHRG_DCP:
-	case CHRG_CDP:
-	case CHRG_SE1:
+	case POWER_SUPPLY_CHARGER_TYPE_ACA_DOCK:
+	case POWER_SUPPLY_CHARGER_TYPE_ACA_A:
+	case POWER_SUPPLY_CHARGER_TYPE_ACA_B:
+	case POWER_SUPPLY_CHARGER_TYPE_ACA_C:
+	case POWER_SUPPLY_CHARGER_TYPE_USB_DCP:
+	case POWER_SUPPLY_CHARGER_TYPE_USB_CDP:
+	case POWER_SUPPLY_CHARGER_TYPE_SE1:
 		mA = 1500;
 		break;
-	case CHRG_SDP:
+	case POWER_SUPPLY_CHARGER_TYPE_USB_SDP:
 		/* Notify SDP current is 100ma before enumeration. */
 		mA = 100;
 		schedule_delayed_work(&otg->sdp_check_work,
@@ -1017,13 +1013,13 @@ static enum dwc_otg_state do_charger_detection(struct dwc_otg2 *otg)
 	spin_unlock_irqrestore(&otg->lock, flags);
 
 	switch (charger) {
-	case CHRG_ACA_DOCK:
-	case CHRG_DCP:
-	case CHRG_CDP:
-	case CHRG_SDP:
-	case CHRG_SE1:
+	case POWER_SUPPLY_CHARGER_TYPE_ACA_DOCK:
+	case POWER_SUPPLY_CHARGER_TYPE_USB_DCP:
+	case POWER_SUPPLY_CHARGER_TYPE_USB_CDP:
+	case POWER_SUPPLY_CHARGER_TYPE_USB_SDP:
+	case POWER_SUPPLY_CHARGER_TYPE_SE1:
 		if (dwc_otg_notify_charger_type(otg, \
-					OTG_CHR_STATE_CONNECTED) < 0)
+					POWER_SUPPLY_CHARGER_EVENT_CONNECT) < 0)
 			otg_err(otg, "Notify battery type failed!\n");
 		break;
 	default:
@@ -1045,9 +1041,9 @@ static enum dwc_otg_state do_connector_id_status(struct dwc_otg2 *otg)
 
 	otg_dbg(otg, "\n");
 	spin_lock_irqsave(&otg->lock, flags);
-	otg->charging_cap.chrg_type = CHRG_UNKNOWN;
+	otg->charging_cap.chrg_type = POWER_SUPPLY_CHARGER_TYPE_NONE;
 	otg->charging_cap.mA = 0;
-	otg->charging_cap.chrg_state = OTG_CHR_STATE_DISCONNECTED;
+	otg->charging_cap.chrg_evt = POWER_SUPPLY_CHARGER_EVENT_DISCONNECT;
 	spin_unlock_irqrestore(&otg->lock, flags);
 
 	/* change mode to DRD mode to void ulpi access fail */
@@ -1108,11 +1104,17 @@ static enum dwc_otg_state do_connector_id_status(struct dwc_otg2 *otg)
 		printk(KERN_ERR "Product ID high = 0x%x\n", val);
 	}
 
-	ret = sleep_until_event(otg, otg_mask, \
-			0, user_mask, &events,\
-			NULL, &user_events, 0);
-	if (ret < 0)
-		return DWC_STATE_EXIT;
+	/* FIXME: assume VBUS is always on.
+	 * Need to remove this when PMIC event
+	 * notification is working */
+	if (!otg->otg_data->is_byt) {
+		ret = sleep_until_event(otg, otg_mask, \
+				0, user_mask, &events,\
+				NULL, &user_events, 0);
+		if (ret < 0)
+			return DWC_STATE_EXIT;
+	} else
+		events |= OEVT_B_DEV_SES_VLD_DET_EVNT;
 
 	if (events & OEVT_B_DEV_SES_VLD_DET_EVNT) {
 		otg_dbg(otg, "OEVT_B_DEV_SES_VLD_DET_EVNT\n");
@@ -1164,8 +1166,14 @@ static enum dwc_otg_state do_a_host(struct dwc_otg2 *otg)
 	int id = RID_UNKNOWN;
 	unsigned long flags;
 
+	if (otg->phy.vbus_state == VBUS_DISABLED) {
+		otg_uevent_trigger(&otg->phy);
+		return DWC_STATE_INIT;
+	}
+
 	if (!is_hybridvp(otg) &&
-		otg->charging_cap.chrg_type != CHRG_ACA_DOCK) {
+		otg->charging_cap.chrg_type !=
+			POWER_SUPPLY_CHARGER_TYPE_ACA_DOCK) {
 		dwc_otg_enable_vbus(otg, 1);
 
 		/* meant receive vbus valid event*/
@@ -1192,8 +1200,9 @@ static enum dwc_otg_state do_a_host(struct dwc_otg2 *otg)
 
 	otg_mask = OEVT_CONN_ID_STS_CHNG_EVNT | \
 			OEVT_A_DEV_SESS_END_DET_EVNT;
+	user_mask |= USER_A_BUS_DROP;
 #ifdef SUPPORT_USER_ID_CHANGE_EVENTS
-	user_mask =	USER_ID_B_CHANGE_EVENT;
+	user_mask |= USER_ID_B_CHANGE_EVENT;
 #endif
 
 	rc = sleep_until_event(otg,
@@ -1205,13 +1214,15 @@ static enum dwc_otg_state do_a_host(struct dwc_otg2 *otg)
 	}
 
 	/* Higher priority first */
-	if (otg_events & OEVT_A_DEV_SESS_END_DET_EVNT) {
+	if (otg_events & OEVT_A_DEV_SESS_END_DET_EVNT ||
+			user_events & USER_A_BUS_DROP) {
 		otg_dbg(otg, "OEVT_A_DEV_SESS_END_DET_EVNT\n");
 
 		/* ACA-Dock plug out */
-		if (otg->charging_cap.chrg_type == CHRG_ACA_DOCK)
+		if (otg->charging_cap.chrg_type ==
+				POWER_SUPPLY_CHARGER_TYPE_ACA_DOCK)
 			dwc_otg_notify_charger_type(otg,\
-					OTG_CHR_STATE_DISCONNECTED);
+					POWER_SUPPLY_CHARGER_EVENT_DISCONNECT);
 		else
 			dwc_otg_enable_vbus(otg, 0);
 
@@ -1225,7 +1236,8 @@ static enum dwc_otg_state do_a_host(struct dwc_otg2 *otg)
 
 		/* Plug out ACA_DOCK/USB device */
 		if (id == RID_FLOAT) {
-			if (otg->charging_cap.chrg_type == CHRG_ACA_DOCK) {
+			if (otg->charging_cap.chrg_type ==
+					POWER_SUPPLY_CHARGER_TYPE_ACA_DOCK) {
 				/* ACA_DOCK plug out, receive
 				 * id change prior to vBus change
 				 */
@@ -1233,7 +1245,8 @@ static enum dwc_otg_state do_a_host(struct dwc_otg2 *otg)
 			} else {
 				/* Normal USB device plug out */
 				spin_lock_irqsave(&otg->lock, flags);
-				otg->charging_cap.chrg_type = CHRG_UNKNOWN;
+				otg->charging_cap.chrg_type =
+					POWER_SUPPLY_CHARGER_TYPE_NONE;
 				spin_unlock_irqrestore(&otg->lock, flags);
 
 				stop_host(otg);
@@ -1242,7 +1255,8 @@ static enum dwc_otg_state do_a_host(struct dwc_otg2 *otg)
 		} else {
 			otg_err(otg, "Meet invalid charger cases!");
 			spin_lock_irqsave(&otg->lock, flags);
-			otg->charging_cap.chrg_type = CHRG_UNKNOWN;
+			otg->charging_cap.chrg_type =
+				POWER_SUPPLY_CHARGER_TYPE_NONE;
 			spin_unlock_irqrestore(&otg->lock, flags);
 
 			stop_host(otg);
@@ -1288,7 +1302,7 @@ static int do_b_peripheral(struct dwc_otg2 *otg)
 	if (otg_events & OEVT_A_DEV_SESS_END_DET_EVNT) {
 		otg_dbg(otg, "OEVT_A_DEV_SESS_END_DET_EVNT\n");
 		dwc_otg_notify_charger_type(otg, \
-				OTG_CHR_STATE_DISCONNECTED);
+				POWER_SUPPLY_CHARGER_EVENT_DISCONNECT);
 		return DWC_STATE_INIT;
 	}
 #ifdef SUPPORT_USER_ID_CHANGE_EVENTS
@@ -1466,7 +1480,7 @@ int otg_main_thread(void *data)
 static void start_main_thread(struct dwc_otg2 *otg)
 {
 	mutex_lock(&lock);
-	if (!otg->main_thread && otg->otg.gadget && otg->otg.host) {
+	if (!otg->main_thread && (otg->otg.gadget || otg->otg.host)) {
 		otg_dbg(otg, "Starting OTG main thread\n");
 		otg->main_thread = kthread_create(otg_main_thread, otg, "otg");
 		wake_up_process(otg->main_thread);
@@ -1627,6 +1641,57 @@ show_otg_id(struct device *_dev, struct device_attribute *attr, char *buf)
 static DEVICE_ATTR(otg_id, S_IRUGO|S_IWUSR|S_IWGRP,\
 			show_otg_id, store_otg_id);
 
+static void dwc_a_bus_drop(struct usb_phy *x)
+{
+	struct dwc_otg2 *otg = the_transceiver;
+	unsigned long flags;
+
+	if (otg->phy.vbus_state == VBUS_DISABLED) {
+		spin_lock_irqsave(&otg->lock, flags);
+		otg->user_events |= USER_A_BUS_DROP;
+		wakeup_main_thread(otg);
+		spin_unlock_irqrestore(&otg->lock, flags);
+	}
+}
+
+static ssize_t store_vbus_evt(struct device *_dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct dwc_otg2		*otg = the_transceiver;
+	unsigned long flags;
+
+	if (count != 2) {
+		otg_err(otg, "return EINVAL\n");
+		return -EINVAL;
+	}
+
+	if (count > 0 && buf[count-1] == '\n')
+		((char *) buf)[count-1] = 0;
+
+	switch (buf[0]) {
+	case '1':
+		otg_dbg(otg, "Change the VBUS to High\n");
+		otg->otg_events |= OEVT_B_DEV_SES_VLD_DET_EVNT;
+		spin_lock_irqsave(&otg->lock, flags);
+		wakeup_main_thread(otg);
+		spin_unlock_irqrestore(&otg->lock, flags);
+		return count;
+	case '0':
+		otg_dbg(otg, "Change the VBUS to Low\n");
+		otg->otg_events |= OEVT_A_DEV_SESS_END_DET_EVNT;
+		spin_lock_irqsave(&otg->lock, flags);
+		wakeup_main_thread(otg);
+		spin_unlock_irqrestore(&otg->lock, flags);
+		return count;
+	default:
+		return -EINVAL;
+	}
+
+	return count;
+}
+static DEVICE_ATTR(vbus_evt, S_IRUGO|S_IWUSR|S_IWGRP,\
+			NULL, store_vbus_evt);
+
 static int dwc_otg_probe(struct pci_dev *pdev,
 			const struct pci_device_id *id)
 {
@@ -1663,7 +1728,7 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 		goto exit;
 	}
 
-	otg_dbg(otg, "dwc otg pci resouce: 0x%lu, len: 0x%lu\n", \
+	otg_dbg(otg, "dwc otg pci resouce: 0x%lx, len: 0x%lx\n", \
 			resource, len);
 	otg_dbg(otg, "vendor: 0x%x, device: 0x%x\n", \
 			pdev->vendor, pdev->device);
@@ -1699,6 +1764,8 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 	otg->state = DWC_STATE_INIT;
 	spin_lock_init(&otg->lock);
 	init_waitqueue_head(&otg->main_wq);
+	otg->phy.a_bus_drop = dwc_a_bus_drop;
+	otg->phy.vbus_state = VBUS_ENABLED;
 
 	otg_dbg(otg, "Version: %s\n", VERSION);
 	retval = usb_set_transceiver(&otg->phy);
@@ -1708,14 +1775,22 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 		goto exit;
 	}
 
-	dwc_gadget = platform_device_alloc(DWC3_DEVICE_NAME, GADGET_DEVID);
-	dwc_host = platform_device_alloc(DWC3_HOST_NAME, HOST_DEVID);
-
-	if (!dwc_gadget || !dwc_host) {
-		otg_err(otg, "couldn't allocate dwc3 device\n");
-		goto exit;
+	if (!otg->otg_data->no_device_mode) {
+		dwc_gadget = platform_device_alloc(DWC3_DEVICE_NAME,
+							GADGET_DEVID);
+		if (!dwc_gadget) {
+			otg_err(otg, "couldn't allocate dwc3 gadget device\n");
+			goto exit;
+		}
 	}
-
+	if (!otg->otg_data->no_host_mode) {
+		dwc_host = platform_device_alloc(DWC3_HOST_NAME,
+							HOST_DEVID);
+		if (!dwc_host) {
+			otg_err(otg, "couldn't allocate dwc3 host device\n");
+			goto exit;
+		}
+	}
 	memset(res, 0x00, sizeof(struct resource) * ARRAY_SIZE(res));
 
 	res[0].start	= pci_resource_start(pdev, 0);
@@ -1727,25 +1802,29 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 	res[1].name	= "dwc_usb3_irq";
 	res[1].flags	= IORESOURCE_IRQ;
 
-	retval = platform_device_add_resources(dwc_host, res, ARRAY_SIZE(res));
-	if (retval) {
-		otg_err(otg, "couldn't add resources to dwc3 device\n");
-		goto exit;
+	if (!otg->otg_data->no_host_mode) {
+		retval = platform_device_add_resources(dwc_host, res,
+							ARRAY_SIZE(res));
+		if (retval) {
+			otg_err(otg, "couldn't add resources to dwc3 device\n");
+			goto exit;
+		}
+		dwc_host->dev.dma_mask = pdev->dev.dma_mask;
+		dwc_host->dev.dma_parms = pdev->dev.dma_parms;
+		dwc_host->dev.parent = &pdev->dev;
 	}
 
-	retval = platform_device_add_resources(dwc_gadget,
+	if (!otg->otg_data->no_device_mode) {
+		retval = platform_device_add_resources(dwc_gadget,
 				res, ARRAY_SIZE(res));
-	if (retval) {
-		otg_err(otg, "couldn't add resources to dwc3 device\n");
-		goto exit;
+		if (retval) {
+			otg_err(otg, "couldn't add resources to dwc3 device\n");
+			goto exit;
+		}
+		dwc_gadget->dev.dma_mask = pdev->dev.dma_mask;
+		dwc_gadget->dev.dma_parms = pdev->dev.dma_parms;
+		dwc_gadget->dev.parent = &pdev->dev;
 	}
-
-	dwc_host->dev.dma_mask = dwc_gadget->dev.dma_mask =
-		pdev->dev.dma_mask;
-	dwc_gadget->dev.dma_parms = dwc_host->dev.dma_parms =
-		pdev->dev.dma_parms;
-	dwc_host->dev.parent = dwc_gadget->dev.parent =
-		&pdev->dev;
 
 	platform_par = kzalloc(sizeof *platform_par, GFP_KERNEL);
 	if (!platform_par) {
@@ -1754,17 +1833,26 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 	}
 	platform_par->io_addr = otg->phy.io_priv;
 	platform_par->len = len;
-	platform_device_add_data(dwc_gadget, platform_par, \
-			sizeof(struct dwc_device_par));
-	platform_device_add_data(dwc_host, platform_par, \
-			sizeof(struct dwc_device_par));
 
-	if (platform_device_add(dwc_gadget) || platform_device_add(dwc_host)) {
-		otg_err(otg, "failed to register dwc3 device\n");
-		goto exit;
+	if (!otg->otg_data->no_device_mode) {
+		platform_device_add_data(dwc_gadget, platform_par, \
+				sizeof(struct dwc_device_par));
+		otg->gadget = dwc_gadget;
+		if (platform_device_add(dwc_gadget)) {
+			otg_err(otg, "failed to register dwc3 gadget device\n");
+			goto exit;
+		}
 	}
-	otg->host = dwc_host;
-	otg->gadget = dwc_gadget;
+	if (!otg->otg_data->no_host_mode) {
+		platform_device_add_data(dwc_host, platform_par, \
+				sizeof(struct dwc_device_par));
+
+		otg->host = dwc_host;
+		if (platform_device_add(dwc_host)) {
+			otg_err(otg, "failed to register dwc3 host device\n");
+			goto exit;
+		}
+	}
 	otg->irqnum = pdev->irq;
 	/* Register otg notifier to monitor ID and VBus change events */
 	otg->nb.notifier_call = dwc_otg_handle_notification;
@@ -1778,6 +1866,19 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 		goto exit;
 	}
 
+	retval = device_create_file(&pdev->dev, &dev_attr_vbus_evt);
+	if (retval < 0) {
+		otg_dbg(otg,
+			"Can't register sysfs attribute: %d\n", retval);
+		goto exit;
+	}
+
+	otg->qos = kzalloc(sizeof(struct pm_qos_request), GFP_KERNEL);
+	if (!otg->qos)
+		goto exit;
+	pm_qos_add_request(otg->qos, PM_QOS_CPU_DMA_LATENCY,\
+			PM_QOS_DEFAULT_VALUE);
+
 	/* Don't let phy go to suspend mode, which
 	 * will cause FS/LS devices enum failed in host mode.
 	 */
@@ -1785,10 +1886,17 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 
 	pm_runtime_set_autosuspend_delay(&pdev->dev, 100);
 	pm_runtime_allow(&pdev->dev);
-	pm_runtime_put_autosuspend(&pdev->dev);
+
+	/* FIXME: avoid runtime pm for byt in PO */
+	if (!otg->otg_data->is_byt)
+		pm_runtime_put_autosuspend(&pdev->dev);
 
 	return 0;
 exit:
+	if (otg->qos) {
+		pm_qos_remove_request(otg->qos);
+		kfree(otg->qos);
+	}
 	if (the_transceiver)
 		dwc_otg_remove(pdev);
 	free_irq(otg->irqnum, NULL);
@@ -1797,7 +1905,7 @@ exit:
 }
 
 
-static void __devexit dwc_otg_remove(struct pci_dev *pdev)
+static void dwc_otg_remove(struct pci_dev *pdev)
 {
 	struct dwc_otg2 *otg = the_transceiver;
 
@@ -1817,6 +1925,12 @@ static void __devexit dwc_otg_remove(struct pci_dev *pdev)
 	pci_disable_device(pdev);
 	usb_set_transceiver(NULL);
 	otg_dbg(otg, "\n");
+
+	if (otg->qos) {
+		pm_qos_remove_request(otg->qos);
+		kfree(otg->qos);
+	}
+
 	kfree(otg);
 }
 
@@ -1825,6 +1939,10 @@ static DEFINE_PCI_DEVICE_TABLE(pci_ids) = {
 	{ PCI_DEVICE_CLASS(((PCI_CLASS_SERIAL_USB << 8) | 0x20), ~0),
 		.vendor = PCI_VENDOR_ID_INTEL,
 		.device = PCI_DEVICE_ID_DWC,
+	},
+	{ PCI_DEVICE_CLASS(((PCI_CLASS_SERIAL_USB << 8) | 0x80), ~0),
+		.vendor = PCI_VENDOR_ID_INTEL,
+		.device = PCI_DEVICE_ID_DWC_VLV,
 	},
 	{ /* end: all zeroes */ }
 };
@@ -1845,7 +1963,7 @@ static int dwc_otg_runtime_suspend(struct device *dev)
 
 	if (otg->state == DWC_STATE_A_HOST) {
 		dwc_otg_notify_charger_type(otg, \
-				OTG_CHR_STATE_SUSPENDED);
+				POWER_SUPPLY_CHARGER_EVENT_SUSPEND);
 		return 0;
 	}
 

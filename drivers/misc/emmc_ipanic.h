@@ -42,7 +42,7 @@ extern void log_buf_clear(void);
 #define IPANIC_LOG_LOGCAT_RADIO  4
 #define IPANIC_LOG_LOGCAT_SYSTEM 5
 #define LOGCAT_BUFF_COUNT        4
-#define IPANIC_LOG_MAX           6
+#define IPANIC_LOG_MAX           2
 #else
 #define IPANIC_LOG_MAX           2
 #endif

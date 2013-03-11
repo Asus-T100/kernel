@@ -55,6 +55,7 @@ struct snd_soc_machine_ops {
 			struct snd_soc_jack *jack, int plug_status);
 	int (*bp_detection) (struct snd_soc_codec *codec,
 			struct snd_soc_jack *jack, int plug_status);
+	void (*mclk_switch) (struct device *dev, bool mode);
 };
 
 struct ctp_mc_private {
@@ -72,14 +73,32 @@ struct ctp_mc_private {
 #ifdef CONFIG_HAS_WAKELOCK
 	struct wake_lock *jack_wake_lock;
 #endif
+	bool voice_call_flag;
+	bool headset_plug_flag;
 };
+
+static inline struct ctp_mc_private
+*substream_to_drv_ctx(struct snd_pcm_substream *substream)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_card *soc_card = rtd->card;
+	return snd_soc_card_get_drvdata(soc_card);
+}
+
+static inline void ctp_config_voicecall_flag(
+		struct snd_pcm_substream *substream, bool state)
+{
+	pr_debug("%s voice call flag: %d\n", __func__, state);
+	struct ctp_mc_private *ctx = substream_to_drv_ctx(substream);
+	ctx->voice_call_flag = state;
+}
 
 int ctp_dai_link(struct snd_soc_card *card);
 int vb_dai_link(struct snd_soc_card *card);
 int ctp_startup_asp(struct snd_pcm_substream *substream);
-int ctp_startup_vsp(struct snd_pcm_substream *substream);
 int ctp_startup_bt_xsp(struct snd_pcm_substream *substream);
 int ctp_startup_fm_xsp(struct snd_pcm_substream *substream);
+int ctp_startup_probe(struct snd_pcm_substream *substream);
 int snd_ctp_init(struct snd_soc_pcm_runtime *runtime);
 int ctp_init(struct snd_soc_pcm_runtime *runtime);
 int ctp_vb_init(struct snd_soc_pcm_runtime *runtime);
@@ -99,6 +118,9 @@ int ctp_bp_detection(struct snd_soc_codec *codec,
 		struct snd_soc_jack *jack, int plug_status);
 int vb_hp_detection(struct snd_soc_codec *codec,
 		struct snd_soc_jack *jack, int plug_status);
+
+void ctp_mclk_switch(struct device *dev, bool mode);
+void vb_mclk_switch(struct device *dev, bool mode);
 
 int get_ssp_bt_sco_master_mode(struct snd_kcontrol *kcontrol,
 		struct snd_ctl_elem_value *ucontrol);

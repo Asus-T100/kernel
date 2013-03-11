@@ -34,7 +34,7 @@
 
 #define MDFLD_DSI_DBI_FIFO_TIMEOUT		1000
 #define MDFLD_DSI_MAX_RETURN_PACKET_SIZE	512
-#define MDFLD_DSI_READ_MAX_COUNT		10000
+#define MDFLD_DSI_READ_MAX_COUNT		100
 
 const char * dsi_errors[] = {
 	"[ 0:RX SOT Error]",

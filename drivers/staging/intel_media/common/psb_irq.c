@@ -249,7 +249,7 @@ static int mipi_te_hdmi_vsync_check(struct drm_device *dev, uint32_t pipe)
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *) dev->dev_private;
 	struct mdfld_dsi_config *dsi_config = dev_priv->dsi_configs[0];
-	int pipea_stat, pipeb_stat, pipeb_ctl, pipeb_cntr;
+	int pipea_stat, pipeb_stat, pipeb_ctl, pipeb_cntr, pipeb_config;
 	unsigned long irqflags;
 
 	/*check whether need to sync*/
@@ -269,6 +269,7 @@ static int mipi_te_hdmi_vsync_check(struct drm_device *dev, uint32_t pipe)
 			pipeb_stat = REG_READ(psb_pipestat(1));
 			pipeb_ctl = REG_READ(HDMIB_CONTROL);
 			pipeb_cntr = REG_READ(DSPBCNTR);
+			pipeb_config = REG_READ(PIPEBCONF);
 			/* We read for pipe 0 here,
 			 * read for pipe 1 happens
 			 * in pipe 1 vblank handler
@@ -282,9 +283,10 @@ static int mipi_te_hdmi_vsync_check(struct drm_device *dev, uint32_t pipe)
 		}
 
 		if ((pipea_stat & PIPE_TE_ENABLE)
-		    && (pipeb_ctl & HDMIB_PORT_EN)
-		    && (pipeb_cntr & DISPLAY_PLANE_ENABLE)
-		    && (pipeb_stat & PIPE_VBLANK_INTERRUPT_ENABLE)) {
+			&& (pipeb_config & PIPEBCONF_ENABLE)
+			&& (pipeb_ctl & HDMIB_PORT_EN)
+			&& (pipeb_cntr & DISPLAY_PLANE_ENABLE)
+			&& (pipeb_stat & PIPE_VBLANK_INTERRUPT_ENABLE)) {
 			if (pipe_surface[0] == pipe_surface[1]) {
 				pipe_surface[0] = MAX_NUM;
 				pipe_surface[1] = MAX_NUM;

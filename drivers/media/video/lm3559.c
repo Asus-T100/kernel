@@ -645,6 +645,20 @@ static int lm3559_setup(struct lm3559 *flash)
 
 static int __lm3559_s_power(struct lm3559 *flash, int power)
 {
+	struct lm3559_platform_data *pdata = flash->pdata;
+	int ret;
+
+	ret = gpio_request(pdata->gpio_reset, "flash reset");
+	if (ret < 0)
+		return ret;
+
+	if (power)
+		gpio_set_value(pdata->gpio_reset, 1);
+	else
+		gpio_set_value(pdata->gpio_reset, 0);
+
+	usleep_range(100, 100);
+	gpio_free(pdata->gpio_reset);
 	return 0;
 }
 

@@ -126,6 +126,11 @@ struct dpst_state *psb_dpst_init(struct kobject *parent_kobj)
 	struct umevent_obj *working_umevent;
 
 	state = kzalloc(sizeof(struct dpst_state), GFP_KERNEL);
+	if (unlikely(!state)) {
+		pr_err("%s: alloc memory faild\n", __func__);
+		return NULL;
+	}
+
 	state->list = NULL;
 	state->list = psb_dpst_device_pool_create_and_init(
 						  parent_kobj,

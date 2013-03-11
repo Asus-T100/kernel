@@ -13,7 +13,7 @@
 #define _PLATFORM_MSIC_VDD_H_
 
 /* BZ 37319- Change the driver name from msic_ocd to msic_vdd */
-#define MSIC_VDD_DEV_NAME	"msic_ocd"
+#define MSIC_VDD_DEV_NAME	"msic_vdd"
 
 extern void __init *msic_vdd_platform_data(void *info) __attribute__((weak));
 #endif

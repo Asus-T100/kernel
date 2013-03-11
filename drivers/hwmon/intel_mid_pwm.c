@@ -94,7 +94,7 @@ out:
 }
 EXPORT_SYMBOL(intel_mid_pwm);
 
-static int __devinit intel_mid_pwm_probe(struct platform_device *pdev)
+static int intel_mid_pwm_probe(struct platform_device *pdev)
 {
 	struct pwm_info *pi = &pwm_info;
 	struct intel_mid_pwm_platform_data *pdata = pdev->dev.platform_data;
@@ -116,7 +116,7 @@ static int __devinit intel_mid_pwm_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int __devexit intel_mid_pwm_remove(struct platform_device *pdev)
+static int intel_mid_pwm_remove(struct platform_device *pdev)
 {
 	return 0;
 }
@@ -127,7 +127,7 @@ static struct platform_driver mid_pwm_driver = {
 		   .owner = THIS_MODULE,
 	},
 	.probe = intel_mid_pwm_probe,
-	.remove = __devexit_p(intel_mid_pwm_remove),
+	.remove = intel_mid_pwm_remove,
 };
 
 static int intel_mid_pwm_module_init(void)
@@ -158,7 +158,7 @@ out:
 	return ret;
 }
 
-static void __devexit intel_mid_pwm_rpmsg_remove(struct rpmsg_channel *rpdev)
+static void intel_mid_pwm_rpmsg_remove(struct rpmsg_channel *rpdev)
 {
 	intel_mid_pwm_module_exit();
 	dev_info(&rpdev->dev, "Removed intel_mid_pwm rpmsg device\n");
@@ -183,7 +183,7 @@ static struct rpmsg_driver intel_mid_pwm_rpmsg = {
 	.id_table	= intel_mid_pwm_id_table,
 	.probe		= intel_mid_pwm_rpmsg_probe,
 	.callback	= intel_mid_pwm_rpmsg_cb,
-	.remove		= __devexit_p(intel_mid_pwm_rpmsg_remove),
+	.remove		= intel_mid_pwm_rpmsg_remove,
 };
 
 static int __init intel_mid_pwm_rpmsg_init(void)

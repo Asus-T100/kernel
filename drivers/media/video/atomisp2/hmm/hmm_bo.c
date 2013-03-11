@@ -42,6 +42,7 @@
 #include <linux/sched.h>
 #include "hmm/hmm_vm.h"
 #include "hmm/hmm_bo.h"
+#include "hmm/hmm_pool.h"
 #include "hmm/hmm_bo_dev.h"
 #include "hmm/hmm_common.h"
 #include "atomisp_internal.h"
@@ -308,9 +309,60 @@ int hmm_bo_vm_allocated(struct hmm_buffer_object *bo)
 	return ret;
 }
 
+static void free_private_bo_pages(struct hmm_buffer_object *bo,
+				  struct hmm_pool *dypool,
+				  struct hmm_pool *repool, int free_pgnr)
+{
+	int i, ret;
+
+	for (i = 0; i < free_pgnr; i++) {
+		switch (bo->page_obj[i].type) {
+		case HMM_PAGE_TYPE_RESERVED:
+			if (repool->pops->pool_free_pages)
+				repool->pops->pool_free_pages(repool->pool_info,
+							&bo->page_obj[i]);
+			break;
+		case HMM_PAGE_TYPE_DYNAMIC:
+			if (dypool->pops->pool_free_pages)
+				dypool->pops->pool_free_pages(dypool->pool_info,
+							&bo->page_obj[i]);
+			break;
+		/*
+		 * HMM_PAGE_TYPE_GENERAL indicates that pages are from system
+		 * memory, so when free them, they should be put into dynamic
+		 * pool.
+		 */
+		case HMM_PAGE_TYPE_GENERAL:
+			if (dypool->pops->pool_inited
+			    && dypool->pops->pool_inited(dypool->pool_info)) {
+				if (dypool->pops->pool_free_pages)
+					dypool->pops->pool_free_pages(
+							      dypool->pool_info,
+							      &bo->page_obj[i]);
+				break;
+			}
+
+			/*
+			 * if dynamic memory pool doesn't exist, need to free
+			 * pages to system directly.
+			 */
+		default:
+			ret = set_pages_wb(bo->page_obj[i].page, 1);
+			if (ret)
+				v4l2_err(&atomisp_dev,
+						"set page to WB err ...\n");
+			__free_pages(bo->page_obj[i].page, 0);
+			break;
+		}
+	}
+
+	return;
+}
+
 /*Allocate pages which will be used only by ISP*/
 static int alloc_private_pages(struct hmm_buffer_object *bo, int from_highmem,
-				bool cached)
+				bool cached, struct hmm_pool *dypool,
+				struct hmm_pool *repool)
 {
 	int ret;
 	unsigned int pgnr, order, blk_pgnr, alloc_pgnr;
@@ -326,13 +378,44 @@ static int alloc_private_pages(struct hmm_buffer_object *bo, int from_highmem,
 
 	pgnr = bo->pgnr;
 
-	bo->pages = atomisp_kernel_malloc(sizeof(struct page *) * pgnr);
-	if (unlikely(!bo->pages)) {
-		v4l2_err(&atomisp_dev, "out of memory for bo->pages\n");
+	bo->page_obj = atomisp_kernel_malloc(
+				sizeof(struct hmm_page_object) * pgnr);
+	if (unlikely(!bo->page_obj)) {
+		v4l2_err(&atomisp_dev, "out of memory for bo->page_obj\n");
 		return -ENOMEM;
 	}
 
 	i = 0;
+	alloc_pgnr = 0;
+
+	/*
+	 * get physical pages from dynamic pages pool.
+	 */
+	if (dypool->pops->pool_alloc_pages) {
+		alloc_pgnr = dypool->pops->pool_alloc_pages(dypool->pool_info,
+							bo->page_obj, pgnr,
+							cached);
+		if (alloc_pgnr == pgnr)
+			return 0;
+	}
+
+	pgnr -= alloc_pgnr;
+	i += alloc_pgnr;
+
+	/*
+	 * get physical pages from reserved pages pool for atomisp.
+	 */
+	if (repool->pops->pool_alloc_pages) {
+		alloc_pgnr = repool->pops->pool_alloc_pages(repool->pool_info,
+							&bo->page_obj[i], pgnr,
+							cached);
+		if (alloc_pgnr == pgnr)
+			return 0;
+	}
+
+	pgnr -= alloc_pgnr;
+	i += alloc_pgnr;
+
 	while (pgnr) {
 		order = nr_to_order_bottom(pgnr);
 		/*
@@ -387,11 +470,6 @@ retry:
 		} else {
 			blk_pgnr = order_to_nr(order);
 
-			for (j = 0; j < blk_pgnr; j++)
-				bo->pages[i++] = pages + j;
-
-			pgnr -= blk_pgnr;
-
 			if (!cached) {
 				/*
 				 * set memory to uncacheable -- UC_MINUS
@@ -401,9 +479,20 @@ retry:
 					v4l2_err(&atomisp_dev,
 						     "set page uncacheable"
 							"failed.\n");
+
+					__free_pages(pages, order);
+
 					goto cleanup;
 				}
 			}
+
+			for (j = 0; j < blk_pgnr; j++) {
+				bo->page_obj[i].page = pages + j;
+				bo->page_obj[i++].type = HMM_PAGE_TYPE_GENERAL;
+			}
+
+			pgnr -= blk_pgnr;
+
 			/*
 			 * if order is not reduced this time, clear
 			 * failure_number.
@@ -417,33 +506,21 @@ retry:
 
 	return 0;
 cleanup:
-	alloc_pgnr = bo->pgnr - pgnr;
-	for (i = 0; i < alloc_pgnr; i++) {
-		ret = set_pages_wb(bo->pages[i], 1);
-		if (ret)
-			v4l2_err(&atomisp_dev,
-					"set page to WB err...\n");
-		__free_pages(bo->pages[i], 0);
-	}
+	alloc_pgnr = i;
+	free_private_bo_pages(bo, dypool, repool, alloc_pgnr);
 
-	atomisp_kernel_free(bo->pages);
+	atomisp_kernel_free(bo->page_obj);
 
 	return -ENOMEM;
 }
 
-static void free_private_pages(struct hmm_buffer_object *bo)
+static void free_private_pages(struct hmm_buffer_object *bo,
+				struct hmm_pool *dypool,
+				struct hmm_pool *repool)
 {
-	int ret, i;
+	free_private_bo_pages(bo, dypool, repool, bo->pgnr);
 
-	for (i = 0; i < bo->pgnr; i++) {
-		ret = set_pages_wb(bo->pages[i], 1);
-		if (ret)
-			v4l2_err(&atomisp_dev,
-					"set page to WB err...\n");
-		__free_pages(bo->pages[i], 0);
-	}
-
-	atomisp_kernel_free(bo->pages);
+	atomisp_kernel_free(bo->page_obj);
 }
 
 /*
@@ -557,9 +634,10 @@ static int alloc_ion_pages(struct hmm_buffer_object *bo,
 	struct scatterlist *tmp;
 	int ret, page_nr = 0;
 
-	bo->pages = atomisp_kernel_malloc(sizeof(struct page *) * bo->pgnr);
-	if (unlikely(!bo->pages)) {
-		v4l2_err(&atomisp_dev, "out of memory for bo->pages...\n");
+	bo->page_obj = atomisp_kernel_malloc(
+			sizeof(struct hmm_page_object) * bo->pgnr);
+	if (unlikely(!bo->page_obj)) {
+		v4l2_err(&atomisp_dev, "out of memory for bo->page_obj...\n");
 		return -ENOMEM;
 	}
 
@@ -582,7 +660,7 @@ static int alloc_ion_pages(struct hmm_buffer_object *bo,
 	}
 
 	do {
-		bo->pages[page_nr++] = sg_page(tmp);
+		bo->page_obj[page_nr++].page = sg_page(tmp);
 		tmp = sg_next(tmp);
 	} while (tmp && (page_nr < bo->pgnr));
 
@@ -599,7 +677,7 @@ static int alloc_ion_pages(struct hmm_buffer_object *bo,
 error_unmap:
 	ion_unmap_dma(bo->bdev->iclient, bo->ihandle);
 error:
-	atomisp_kernel_free(bo->pages);
+	atomisp_kernel_free(bo->page_obj);
 	return ret;
 
 
@@ -614,10 +692,19 @@ static int alloc_user_pages(struct hmm_buffer_object *bo,
 	int page_nr;
 	int i;
 	struct vm_area_struct *vma;
+	struct page **pages;
 
-	bo->pages = atomisp_kernel_malloc(sizeof(struct page *) * bo->pgnr);
-	if (unlikely(!bo->pages)) {
-		v4l2_err(&atomisp_dev, "out of memory for bo->pages...\n");
+	pages = atomisp_kernel_malloc(sizeof(struct page *) * bo->pgnr);
+	if (unlikely(!pages)) {
+		v4l2_err(&atomisp_dev, "out of memory for pages...\n");
+		return -ENOMEM;
+	}
+
+	bo->page_obj = atomisp_kernel_malloc(
+				sizeof(struct hmm_page_object) * bo->pgnr);
+	if (unlikely(!bo->page_obj)) {
+		v4l2_err(&atomisp_dev, "out of memory for bo->page_obj...\n");
+		atomisp_kernel_free(pages);
 		return -ENOMEM;
 	}
 
@@ -627,7 +714,8 @@ static int alloc_user_pages(struct hmm_buffer_object *bo,
 	up_read(&current->mm->mmap_sem);
 	if (vma == NULL) {
 		v4l2_err(&atomisp_dev, "find_vma failed\n");
-		atomisp_kernel_free(bo->pages);
+		atomisp_kernel_free(bo->page_obj);
+		atomisp_kernel_free(pages);
 		return -EFAULT;
 	}
 	mutex_lock(&bo->mutex);
@@ -639,7 +727,7 @@ static int alloc_user_pages(struct hmm_buffer_object *bo,
 		page_nr = get_pfnmap_pages(current, current->mm,
 					   (unsigned long)userptr,
 					   (int)(bo->pgnr), 1, 0,
-					   bo->pages, NULL);
+					   pages, NULL);
 		bo->mem_type = HMM_BO_MEM_TYPE_PFN;
 	} else {
 		/*Handle frame buffer allocated in user space*/
@@ -647,7 +735,7 @@ static int alloc_user_pages(struct hmm_buffer_object *bo,
 		down_read(&current->mm->mmap_sem);
 		page_nr = get_user_pages(current, current->mm,
 					 (unsigned long)userptr,
-					 (int)(bo->pgnr), 1, 0, bo->pages,
+					 (int)(bo->pgnr), 1, 0, pages,
 					 NULL);
 		up_read(&current->mm->mmap_sem);
 		mutex_lock(&bo->mutex);
@@ -663,20 +751,28 @@ static int alloc_user_pages(struct hmm_buffer_object *bo,
 		goto out_of_mem;
 	}
 
+	for (i = 0; i < bo->pgnr; i++) {
+		bo->page_obj[i].page = pages[i];
+		bo->page_obj[i].type = HMM_PAGE_TYPE_GENERAL;
+	}
+
+	atomisp_kernel_free(pages);
+
 	return 0;
 
 out_of_mem:
 	if (bo->mem_type == HMM_BO_MEM_TYPE_USER)
 		for (i = 0; i < page_nr; i++)
-			put_page(bo->pages[i]);
-	atomisp_kernel_free(bo->pages);
+			put_page(pages[i]);
+	atomisp_kernel_free(pages);
+	atomisp_kernel_free(bo->page_obj);
 
 	return -ENOMEM;
 }
 #ifdef CONFIG_ION
 static void free_ion_pages(struct hmm_buffer_object *bo)
 {
-	atomisp_kernel_free(bo->pages);
+	atomisp_kernel_free(bo->page_obj);
 	ion_unmap_dma(bo->bdev->iclient, bo->ihandle);
 }
 #endif
@@ -687,9 +783,9 @@ static void free_user_pages(struct hmm_buffer_object *bo)
 
 	if (bo->mem_type == HMM_BO_MEM_TYPE_USER)
 		for (i = 0; i < bo->pgnr; i++)
-			put_page(bo->pages[i]);
+			put_page(bo->page_obj[i].page);
 
-	atomisp_kernel_free(bo->pages);
+	atomisp_kernel_free(bo->page_obj);
 }
 
 /*
@@ -724,7 +820,8 @@ int hmm_bo_alloc_pages(struct hmm_buffer_object *bo,
 	 * add HMM_BO_USER type
 	 */
 	if (type == HMM_BO_PRIVATE)
-		ret = alloc_private_pages(bo, from_highmem, cached);
+		ret = alloc_private_pages(bo, from_highmem,
+				cached, &dynamic_pool, &reserved_pool);
 	else if (type == HMM_BO_USER)
 		ret = alloc_user_pages(bo, userptr, cached);
 #ifdef CONFIG_ION
@@ -777,7 +874,7 @@ void hmm_bo_free_pages(struct hmm_buffer_object *bo)
 	bo->status &= (~HMM_BO_PAGE_ALLOCED);
 
 	if (bo->type == HMM_BO_PRIVATE)
-		free_private_pages(bo);
+		free_private_pages(bo, &dynamic_pool, &reserved_pool);
 	else if (bo->type == HMM_BO_USER)
 		free_user_pages(bo);
 #ifdef CONFIG_ION
@@ -811,7 +908,7 @@ int hmm_bo_page_allocated(struct hmm_buffer_object *bo)
  * get physical page info of the bo.
  */
 int hmm_bo_get_page_info(struct hmm_buffer_object *bo,
-			 struct page ***pages, int *pgnr)
+			 struct hmm_page_object **page_obj, int *pgnr)
 {
 	check_bo_null_return(bo, -EINVAL);
 
@@ -819,7 +916,7 @@ int hmm_bo_get_page_info(struct hmm_buffer_object *bo,
 
 	check_bo_status_yes_goto(bo, HMM_BO_PAGE_ALLOCED, status_err);
 
-	*pages = bo->pages;
+	*page_obj = bo->page_obj;
 	*pgnr = bo->pgnr;
 
 	mutex_unlock(&bo->mutex);
@@ -859,8 +956,8 @@ int hmm_bo_bind(struct hmm_buffer_object *bo)
 
 	for (i = 0; i < bo->pgnr; i++) {
 		ret =
-		    isp_mmu_map(&bdev->mmu, virt, page_to_phys(bo->pages[i]),
-				1);
+		    isp_mmu_map(&bdev->mmu, virt,
+				page_to_phys(bo->page_obj[i].page), 1);
 		if (ret)
 			goto map_err;
 		virt += (1 << PAGE_SHIFT);
@@ -973,9 +1070,26 @@ int hmm_bo_binded(struct hmm_buffer_object *bo)
 
 void *hmm_bo_vmap(struct hmm_buffer_object *bo)
 {
+	struct page **pages;
+	void *vmap_addr;
+	int i;
+
 	check_bo_null_return(bo, NULL);
 
-	return vmap(bo->pages, bo->pgnr, VM_MAP, PAGE_KERNEL_NOCACHE);
+	pages = atomisp_kernel_malloc(sizeof(*pages) * bo->pgnr);
+	if (unlikely(!pages)) {
+		v4l2_err(&atomisp_dev, "out of memory for pages...\n");
+		return NULL;
+	}
+
+	for (i = 0; i < bo->pgnr; i++)
+		pages[i] = bo->page_obj[i].page;
+
+	vmap_addr = vmap(pages, bo->pgnr, VM_MAP, PAGE_KERNEL_NOCACHE);
+
+	atomisp_kernel_free(pages);
+
+	return vmap_addr;
 }
 
 void hmm_bo_ref(struct hmm_buffer_object *bo)
@@ -1075,7 +1189,7 @@ int hmm_bo_mmap(struct vm_area_struct *vma, struct hmm_buffer_object *bo)
 
 	virt = vma->vm_start;
 	for (i = 0; i < pgnr; i++) {
-		pfn = page_to_pfn(bo->pages[i]);
+		pfn = page_to_pfn(bo->page_obj[i].page);
 		if (remap_pfn_range(vma, virt, pfn, PAGE_SIZE, PAGE_SHARED)) {
 			v4l2_warn(&atomisp_dev,
 					"remap_pfn_range failed:"

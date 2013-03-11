@@ -810,6 +810,9 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *)file_priv->minor->dev->dev_private;
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
+#ifdef SUPPORT_VSP
+	struct vsp_private *vsp_priv = dev_priv->vsp_private;
+#endif
 	struct psb_video_ctx *pos, *n;
 	int engine, po_correct;
 	int found = 0;
@@ -850,9 +853,15 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 		context = &dev_priv->encode_context;
 	} else if (arg->engine == VSP_ENGINE_VPP) {
 #ifdef SUPPORT_VSP
-		if (!ospm_power_using_hw_begin(OSPM_VIDEO_VPP_ISLAND,
-					       OSPM_UHB_FORCE_POWER_ON))
-			return -EBUSY;
+		if (!ospm_power_using_video_begin(OSPM_VIDEO_VPP_ISLAND)) {
+			ret = -EBUSY;
+			goto out_err0;
+		}
+
+		ret = mutex_lock_interruptible(&vsp_priv->vsp_mutex);
+		if (unlikely(ret != 0))
+			goto out_err0;
+		context = &dev_priv->vsp_context;
 #endif
 	} else {
 		ret = -EINVAL;
@@ -942,7 +951,7 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 			if (entrypoint == VAEntrypointEncSlice ||
 			    entrypoint == VAEntrypointEncPicture)
 				dev_priv->topaz_ctx = pos;
-			else
+			else if (entrypoint != VAEntrypointVideoProc)
 				msvdx_priv->msvdx_ctx = pos;
 			found = 1;
 			break;
@@ -1017,6 +1026,10 @@ out_err1:
 		mutex_unlock(&msvdx_priv->msvdx_mutex);
 	if (arg->engine == LNC_ENGINE_ENCODE)
 		mutex_unlock(&dev_priv->cmdbuf_mutex);
+	if (arg->engine == VSP_ENGINE_VPP)
+#ifdef SUPPORT_VSP
+		mutex_unlock(&vsp_priv->vsp_mutex);
+#endif
 out_err0:
 	ttm_read_unlock(&dev_priv->ttm_lock);
 
@@ -1027,7 +1040,7 @@ out_err0:
 		ospm_power_using_video_end(OSPM_VIDEO_ENC_ISLAND);
 #ifdef SUPPORT_VSP
 	if (arg->engine == VSP_ENGINE_VPP)
-		ospm_power_using_hw_end(OSPM_VIDEO_VPP_ISLAND);
+		ospm_power_using_video_end(OSPM_VIDEO_VPP_ISLAND);
 #endif
 	return ret;
 }

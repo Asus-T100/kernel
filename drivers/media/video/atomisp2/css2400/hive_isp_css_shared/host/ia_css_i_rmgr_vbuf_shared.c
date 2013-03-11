@@ -55,6 +55,9 @@ void ia_css_i_host_refcount_retain_vbuf(
 			}
 		}
 		assert(*handle != NULL);
+		/* Klockwork pacifier */
+		if(*handle == NULL)
+			return;
 		(*handle)->vptr = h->vptr;
 		(*handle)->size = h->size;
 	}
@@ -88,7 +91,7 @@ void ia_css_i_host_rmgr_init_vbuf(struct ia_css_i_host_rmgr_vbuf_pool *pool)
 	/* initialize the recycle pool if used */
 	if (pool->recycle && pool->size) {
 		/* allocate memory for storing the handles */
-		bytes_needed = 
+		bytes_needed =
 			sizeof(struct ia_css_i_host_rmgr_vbuf_handle *) *
 			pool->size;
 		pool->handles = sh_css_malloc(bytes_needed);
@@ -112,8 +115,12 @@ void ia_css_i_host_rmgr_uninit_vbuf(struct ia_css_i_host_rmgr_vbuf_pool *pool)
 		for (i = 0; i < pool->size; i++) {
 			if (pool->handles[i] != NULL) {
 				sh_css_dtrace(SH_DBG_TRACE,
-					"     releasing %x\n",
-					pool->handles[i]->vptr);
+					"   freeing/releasing %x (count=%d)\n",
+					pool->handles[i]->vptr,
+					pool->handles[i]->count);
+				/* free memory */
+				mmgr_free(pool->handles[i]->vptr);
+				/* remove from refcount admin*/
 				ia_css_i_host_refcount_release_vbuf(
 						&pool->handles[i]);
 			}

@@ -191,7 +191,7 @@ int psb_gtt_init(struct psb_gtt *pg, int resume)
 	 */
 	pfn_base = page_to_pfn(dev_priv->scratch_page);
 	pte = psb_gtt_mask_pte(pfn_base, 0);
-	for (; i < tt_pages / 2 - 1; ++i)
+	for (; i < tt_pages / 2; ++i)
 		iowrite32(pte, pg->gtt_map + i);
 
 	/*

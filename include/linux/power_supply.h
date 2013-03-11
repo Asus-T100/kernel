@@ -192,6 +192,19 @@ enum power_supply_charger_cable_type {
 	POWER_SUPPLY_CHARGER_TYPE_USB_CDP = 1 << 2,
 	POWER_SUPPLY_CHARGER_TYPE_USB_ACA = 1 << 3,
 	POWER_SUPPLY_CHARGER_TYPE_AC = 1 << 4,
+	POWER_SUPPLY_CHARGER_TYPE_ACA_DOCK = 1 << 5,
+	POWER_SUPPLY_CHARGER_TYPE_ACA_A = 1 << 6,
+	POWER_SUPPLY_CHARGER_TYPE_ACA_B = 1 << 7,
+	POWER_SUPPLY_CHARGER_TYPE_ACA_C = 1 << 8,
+	POWER_SUPPLY_CHARGER_TYPE_SE1 = 1 << 9,
+	POWER_SUPPLY_CHARGER_TYPE_MHL = 1 << 10,
+	POWER_SUPPLY_CHARGER_TYPE_B_DEVICE = 1 << 11,
+};
+
+struct power_supply_cable_props {
+	enum power_supply_charger_event	chrg_evt;
+	enum power_supply_charger_cable_type chrg_type;
+	unsigned int			mA;	/* input current limit */
 };
 
 #define POWER_SUPPLY_CHARGER_TYPE_USB \

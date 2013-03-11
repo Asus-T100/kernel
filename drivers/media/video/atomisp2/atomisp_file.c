@@ -28,18 +28,22 @@
 
 #include <sh_css.h>
 
-#include "atomisp_internal.h"
+#include "atomisp_cmd.h"
 #include "atomisp_common.h"
 #include "atomisp_file.h"
+#include "atomisp_internal.h"
+#include "atomisp_ioctl.h"
 
 static int file_input_s_stream(struct v4l2_subdev *sd, int enable)
 {
 	struct atomisp_file_device *file_dev = v4l2_get_subdevdata(sd);
 	struct atomisp_device *isp = file_dev->isp;
+	struct atomisp_sub_device *asd = &isp->isp_subdev;
 	struct atomisp_video_pipe *out_pipe = &isp->isp_subdev.video_in;
 	unsigned char *buf =
 		   videobuf_to_vmalloc(out_pipe->outq.bufs[0]);
 	struct v4l2_mbus_framefmt isp_sink_fmt;
+	const struct atomisp_format_bridge *bridge;
 	unsigned int height;
 	unsigned short *data = (unsigned short *)buf;
 	int i, j;
@@ -48,9 +52,12 @@ static int file_input_s_stream(struct v4l2_subdev *sd, int enable)
 						V4L2_SUBDEV_FORMAT_ACTIVE,
 						ATOMISP_SUBDEV_PAD_SINK);
 	height = isp_sink_fmt.height;
+	bridge = atomisp_get_format_bridge_from_mbus(isp_sink_fmt.code);
+	if (!bridge)
+		return -ENOENT;
 
 	/* extend RAW8 pixel type to unsigned short */
-	if (out_pipe->out_fmt.depth == 8) {
+	if (bridge->depth == 8) {
 		data = vmalloc(isp_sink_fmt.width * height * 2);
 		if (!data) {
 			v4l2_err(&atomisp_dev,
@@ -78,32 +85,34 @@ static int file_input_s_stream(struct v4l2_subdev *sd, int enable)
 		case ATOMISP_RUN_MODE_STILL_CAPTURE:
 			if (isp->sw_contex.bypass)
 				/* copy mode */
-				height = isp->capture_format->out.height +
-				    ((isp_sink_fmt.height -
-				     isp->capture_format->out.height) >> 1) + 1;
+				height = asd->fmt[asd->capture_pad].fmt.height +
+					((isp_sink_fmt.height -
+					  asd->fmt[asd->capture_pad].fmt.
+					  height) >> 1) + 1;
 			else
 				/* primary mode */
-				height = isp->capture_format->out.height +
+				height = asd->fmt[asd->capture_pad].fmt.height +
 				    ((isp_sink_fmt.height -
-				     isp->capture_format->out.height) >> 1) + 5;
+				      asd->fmt[asd->capture_pad].fmt.
+				      height) >> 1) + 5;
 			break;
 		case ATOMISP_RUN_MODE_PREVIEW:
 			/* preview mode */
-			height = isp->capture_format->out.height +
+			height = asd->fmt[asd->capture_pad].fmt.height +
 			    ((isp_sink_fmt.height -
-			      isp->capture_format->out.height) >> 1) + 5;
+			      asd->fmt[asd->capture_pad].fmt.height) >> 1) + 5;
 			break;
 		default:
 			/* video mode */
-			height = isp->capture_format->out.height +
+			height = asd->fmt[asd->capture_pad].fmt.height +
 			    ((isp_sink_fmt.height -
-			      isp->capture_format->out.height) >> 1) + 5;
+			      asd->fmt[asd->capture_pad].fmt.height) >> 1) + 5;
 			break;
 		}
 	}
 	sh_css_send_input_frame(data, isp_sink_fmt.width, height);
 
-	if (out_pipe->out_fmt.depth == 8)
+	if (bridge->depth == 8)
 		vfree(data);
 	return 0;
 }
@@ -143,39 +152,19 @@ static int file_input_enum_mbus_fmt(struct v4l2_subdev *sd, unsigned int index,
 	return 0;
 }
 
-static int file_input_try_mbus_fmt(struct v4l2_subdev *sd,
-			       struct v4l2_mbus_framefmt *fmt)
-{
-	struct atomisp_file_device *file_dev = v4l2_get_subdevdata(sd);
-	struct atomisp_device *isp = file_dev->isp;
-	struct atomisp_video_pipe *out_pipe = &isp->isp_subdev.video_in;
-
-	if (fmt == NULL)
-		return -EINVAL;
-
-	if ((fmt->width > out_pipe->out_fmt.width) ||
-	    (fmt->height > out_pipe->out_fmt.height))
-		return -EINVAL;
-
-	fmt->width = out_pipe->out_fmt.width;
-	fmt->height = out_pipe->out_fmt.height;
-	fmt->code = V4L2_MBUS_FMT_SGRBG10_1X10;
-
-	return 0;
-}
-
 static int file_input_g_mbus_fmt(struct v4l2_subdev *sd,
 			     struct v4l2_mbus_framefmt *fmt)
 {
 	struct atomisp_file_device *file_dev = v4l2_get_subdevdata(sd);
 	struct atomisp_device *isp = file_dev->isp;
-	struct atomisp_video_pipe *out_pipe = &isp->isp_subdev.video_in;
+	struct v4l2_mbus_framefmt *isp_sink_fmt;
 
-	if (fmt == NULL)
-		return -EINVAL;
+	isp_sink_fmt = atomisp_subdev_get_ffmt(&isp->isp_subdev.subdev, NULL,
+					       V4L2_SUBDEV_FORMAT_ACTIVE,
+					       ATOMISP_SUBDEV_PAD_SINK);
 
-	fmt->width = out_pipe->out_fmt.width;
-	fmt->height = out_pipe->out_fmt.height;
+	fmt->width = isp_sink_fmt->width;
+	fmt->height = isp_sink_fmt->height;
 	fmt->code = V4L2_MBUS_FMT_SGRBG10_1X10;
 
 	return 0;
@@ -184,26 +173,10 @@ static int file_input_g_mbus_fmt(struct v4l2_subdev *sd,
 static int file_input_s_mbus_fmt(struct v4l2_subdev *sd,
 			     struct v4l2_mbus_framefmt *fmt)
 {
-	/*to fake*/
-	struct atomisp_file_device *file_dev = v4l2_get_subdevdata(sd);
-	struct atomisp_device *isp = file_dev->isp;
-	struct atomisp_video_pipe *out_pipe = &isp->isp_subdev.video_in;
-	int ret;
-
-	if (fmt == NULL)
-		return -EINVAL;
-
-	ret = file_input_try_mbus_fmt(sd, fmt);
-	if (ret) {
-		v4l2_err(sd, "file input try fmt failed\n");
-		return ret;
-	}
-
-	fmt->width = out_pipe->out_fmt.width;
-	fmt->height = out_pipe->out_fmt.height;
-	fmt->code = V4L2_MBUS_FMT_SGRBG10_1X10;
+	file_input_g_mbus_fmt(sd, fmt);
 
 	sh_css_input_set_mode(SH_CSS_INPUT_MODE_FIFO);
+
 	return 0;
 }
 
@@ -278,7 +251,7 @@ static const struct v4l2_subdev_video_ops file_input_video_ops = {
 	.enum_framesizes = file_input_enum_framesizes,
 	.enum_frameintervals = file_input_enum_frameintervals,
 	.enum_mbus_fmt = file_input_enum_mbus_fmt,
-	.try_mbus_fmt = file_input_try_mbus_fmt,
+	.try_mbus_fmt = file_input_g_mbus_fmt,
 	.g_mbus_fmt = file_input_g_mbus_fmt,
 	.s_mbus_fmt = file_input_s_mbus_fmt,
 };

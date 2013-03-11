@@ -358,22 +358,14 @@ return;
 #endif /* defined(HAS_RX_VERSION_1) */
 
 void sh_css_rx_configure(
-	const rx_cfg_t		*config,
-	const enum sh_css_input_mode input_mode)
+	const rx_cfg_t		*config)
 {
+	mipi_port_ID_t	port = config->port;
+
+/* turn off all ports just in case */
+	sh_css_rx_disable();
+
 #if defined(HAS_RX_VERSION_2)
-	bool	port_enabled[N_MIPI_PORT_ID];
-	mipi_port_ID_t	port;
-
-/* Must turn off all ports because of the 2ppc setting */
-	for (port = (mipi_port_ID_t)0; port < N_MIPI_PORT_ID; port++) {
-		port_enabled[port] = is_receiver_port_enabled(RX0_ID, port);
-		receiver_port_enable(RX0_ID, port, false);
-	}
-
-	port = config->port;
-	
-	/* AM: check whether this should be moved. */
 	if (MIPI_PORT_LANES[config->mode][port] != MIPI_0LANE_CFG) {
 		receiver_port_reg_store(RX0_ID, port,
 			_HRT_CSS_RECEIVER_FUNC_PROG_REG_IDX,
@@ -387,50 +379,35 @@ void sh_css_rx_configure(
 		receiver_port_reg_store(RX0_ID, port,
 			_HRT_CSS_RECEIVER_2400_RX_COUNT_REG_IDX,
 			config->rxcount);
-
-		if (input_mode != SH_CSS_INPUT_MODE_MULTI_SENSOR) {
-	
-			port_enabled[port] = true;
-	
-			/* MW: A bit of a hack, straight wiring of the capture units,assuming they are linearly enumerated. */
-			input_system_sub_system_reg_store(INPUT_SYSTEM0_ID,
-				GPREGS_UNIT0_ID, HIVE_ISYS_GPREG_MULTICAST_A_IDX +
-				(unsigned int)port, INPUT_SYSTEM_CSI_BACKEND);
-			/* MW: Like the integration test example we overwite, the GPREG_MUX register */	
-			input_system_sub_system_reg_store(INPUT_SYSTEM0_ID,
-				GPREGS_UNIT0_ID, HIVE_ISYS_GPREG_MUX_IDX,
-				(input_system_multiplex_t)port);
-		} else {
-		/*
-		 * AM: A bit of a hack, wiring the input system.
-	 	*/
-			input_system_sub_system_reg_store(INPUT_SYSTEM0_ID,
-				GPREGS_UNIT0_ID, HIVE_ISYS_GPREG_MULTICAST_A_IDX +
-				(unsigned int)port, INPUT_SYSTEM_INPUT_BUFFER);
-			input_system_sub_system_reg_store(INPUT_SYSTEM0_ID,
-				GPREGS_UNIT0_ID, HIVE_ISYS_GPREG_MUX_IDX,
-				INPUT_SYSTEM_ACQUISITION_UNIT);
-		}
+/*
+ * MW: A bit of a hack, straight wiring of the capture units,
+ * assuming they are linearly enumerated
+ */
+		input_system_sub_system_reg_store(INPUT_SYSTEM0_ID,
+			GPREGS_UNIT0_ID, HIVE_ISYS_GPREG_MULTICAST_A_IDX +
+			(unsigned int)port, INPUT_SYSTEM_CSI_BACKEND);
+		input_system_sub_system_reg_store(INPUT_SYSTEM0_ID,
+			GPREGS_UNIT0_ID, HIVE_ISYS_GPREG_MUX_IDX,
+			(input_system_multiplex_t)port);
 	}
 /*
- * The 2ppc is shared for all ports, so we cannot disable->configure->enable individual ports
+ * signal input
+ *
+	receiver_reg_store(RX0_ID,
+		_HRT_CSS_RECEIVER_TWO_PIXEL_EN_REG_IDX, config->mode);
  */
 	receiver_reg_store(RX0_ID,
 		_HRT_CSS_RECEIVER_TWO_PIXEL_EN_REG_IDX, config->is_two_ppc);
 
 /* enable the selected port(s) */
 	for (port = (mipi_port_ID_t)0; port < N_MIPI_PORT_ID; port++) {
-		receiver_port_enable(RX0_ID, port, port_enabled[port]);
+		if (MIPI_PORT_LANES[config->mode][port] != MIPI_0LANE_CFG)
+			receiver_port_reg_store(RX0_ID, port,
+				_HRT_CSS_RECEIVER_DEVICE_READY_REG_IDX, true);
 	}
 
 #elif defined(HAS_RX_VERSION_1)
-	mipi_port_ID_t	port = config->port;
-    
-	(void) input_mode;  //AM: just to satisfy the compiler.
 
-/* turn off all ports just in case */
-	sh_css_rx_disable();
-	
 /* All settings are per port */
 	sh_css_rx_set_timeout(port, config->timeout);
 /* configure the selected port */

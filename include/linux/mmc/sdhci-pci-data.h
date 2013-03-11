@@ -21,6 +21,8 @@ struct sdhci_pci_data {
 #define PLFM_QUIRK_NO_HOST_CTRL_HW		(1<<0)
 /* Some Pre-Silicon platform do not support eMMC boot partition access */
 #define PLFM_QUIRK_NO_EMMC_BOOT_PART		(1<<1)
+/* Some Pre-Silicon platform do not support eMMC or SD High Speed */
+#define PLFM_QUIRK_NO_HIGH_SPEED		(1<<2)
 
 extern struct sdhci_pci_data *(*sdhci_pci_get_data)(struct pci_dev *pdev,
 				int slotno);

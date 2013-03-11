@@ -3873,8 +3873,9 @@ int sdhci_add_host(struct sdhci_host *host)
 
 	/* Auto-CMD23 stuff only works in ADMA or PIO. */
 	if ((host->version >= SDHCI_SPEC_300) &&
-	    ((host->flags & SDHCI_USE_ADMA) ||
-	     !(host->flags & SDHCI_USE_SDMA))) {
+		!(host->quirks2 & SDHCI_QUIRK2_BROKEN_AUTO_CMD23) &&
+		((host->flags & SDHCI_USE_ADMA) ||
+		!(host->flags & SDHCI_USE_SDMA))) {
 		host->flags |= SDHCI_AUTO_CMD23;
 		DBG("%s: Auto-CMD23 available\n", mmc_hostname(mmc));
 	} else {
@@ -3891,7 +3892,8 @@ int sdhci_add_host(struct sdhci_host *host)
 	if (!(host->quirks & SDHCI_QUIRK_FORCE_1_BIT_DATA))
 		mmc->caps |= MMC_CAP_4_BIT_DATA;
 
-	if (caps[0] & SDHCI_CAN_DO_HISPD)
+	if (!(host->quirks2 & SDHCI_QUIRK2_DISABLE_HIGH_SPEED) &&
+		(caps[0] & SDHCI_CAN_DO_HISPD))
 		mmc->caps |= MMC_CAP_SD_HIGHSPEED | MMC_CAP_MMC_HIGHSPEED;
 
 	if ((host->quirks & SDHCI_QUIRK_BROKEN_CARD_DETECTION) &&

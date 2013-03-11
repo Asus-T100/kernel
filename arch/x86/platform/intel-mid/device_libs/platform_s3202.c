@@ -78,14 +78,14 @@ void *s3202_platform_data(void *info)
 		/* TOUCH_TYPE_S3202_OGS */
 		{
 			.swap_axes = true,
-			.customer_id = 20130101,
+			.customer_id = 20130123,
 			.fw_name = "s3202_ogs.img",
 			.key_dev_name = "rmi4_key",
 		},
 		/* TOUCH_TYPE_S3202_GFF */
 		{
 			.swap_axes = false,
-			.customer_id = 20130101,
+			.customer_id = 20130123,
 			.fw_name = "s3202_gff.img",
 			.key_dev_name = "rmi4_key_gff",
 		},
@@ -105,9 +105,22 @@ void *s3202_platform_data(void *info)
 		.calibs = calibs,
 	};
 
-	s3202_platform_data.int_gpio_number = get_gpio_by_name("ts_int");
-	s3202_platform_data.rst_gpio_number = get_gpio_by_name("ts_rst");
+	if (intel_mid_identify_cpu() ==
+		INTEL_MID_CPU_CHIP_TANGIER) {
+		/* on Merrifield based platform, vprog2 is being used for
+		supplying power to the touch panel. Currently regulator
+		functions are not supported so we don't enable it now
+		(it is turned on by display driver.) */
+		s3202_platform_data.regulator_en = false;
+		s3202_platform_data.regulator_name = "vprog2";
+		/* on Merrifield based device, FAST-IRQ, not GPIO based,
+		is dedicated for touch interrupt put invalid GPIO number */
+		s3202_platform_data.int_gpio_number = -1;
+	} else
+		s3202_platform_data.int_gpio_number =
+				get_gpio_by_name("ts_int");
 
+	s3202_platform_data.rst_gpio_number = get_gpio_by_name("ts_rst");
 #endif
 	return &s3202_platform_data;
 }

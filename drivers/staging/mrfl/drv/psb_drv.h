@@ -80,6 +80,7 @@ enum panel_type {
 	PYR,
 	HDMI,
 	JDI_VID,
+	H8C7_VID,
 	GCT_DETECT
 };
 
@@ -339,6 +340,7 @@ struct drm_psb_uopt {
 struct psb_context;
 struct psb_validate_buffer;
 struct psb_video_ctx;
+
 struct drm_psb_private {
 	/*
 	 * DSI info.
@@ -869,7 +871,9 @@ struct drm_psb_private {
 
 	struct psb_context decode_context;
 	struct psb_context encode_context;
-
+#ifdef SUPPORT_VSP
+	struct psb_context vsp_context;
+#endif
 	/*
 	 * LID-Switch
 	 */

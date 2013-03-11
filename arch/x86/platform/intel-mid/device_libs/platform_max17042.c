@@ -52,6 +52,8 @@ EXPORT_SYMBOL(max17042_i2c_reset_workaround);
 static bool msic_battery_check(char *battid)
 {
 	struct sfi_table_simple *sb;
+	char *mrfl_batt_str = "INTN0001";
+
 	sb = (struct sfi_table_simple *)get_oem0_table();
 	if (sb == NULL) {
 		pr_info("invalid battery detected\n");
@@ -62,14 +64,26 @@ static bool msic_battery_check(char *battid)
 		/* First entry in OEM0 table is the BATTID. Read battid
 		 * if pentry is not NULL and header length is greater
 		 * than BATTID length*/
-		if (sb->pentry && sb->header.len >= BATTID_LEN)
-			snprintf(battid, BATTID_LEN + 1, "%s",
+		if (sb->pentry && sb->header.len >= BATTID_LEN) {
+			if (!((INTEL_MID_BOARD(1, TABLET, MRFL)) ||
+				(INTEL_MID_BOARD(1, PHONE, MRFL)))) {
+				snprintf(battid, BATTID_LEN + 1, "%s",
 						(char *)sb->pentry);
+			} else {
+				if (strncmp((char *)sb->pentry,
+					"PG000001", (BATTID_LEN)) == 0) {
+					snprintf(battid, (BATTID_LEN + 1), "%s",
+						mrfl_batt_str);
+				} else {
+					snprintf(battid, (BATTID_LEN + 1), "%s",
+						(char *)sb->pentry);
+				}
+			}
+		}
 		return true;
 	}
 	return false;
 }
-
 
 #define UMIP_REF_FG_TBL			0x806	/* 2 bytes */
 #define BATT_FG_TBL_BODY		14	/* 144 bytes */
@@ -185,6 +199,115 @@ int mrfl_get_bat_health(void)
 		return bqbat_health;
 }
 
+static void init_tgain_toff(struct max17042_platform_data *pdata)
+{
+	if (INTEL_MID_BOARD(2, TABLET, MFLD, SLP, ENG) ||
+		INTEL_MID_BOARD(2, TABLET, MFLD, SLP, PRO)) {
+		pdata->tgain = NTC_10K_B3435K_TDK_TGAIN;
+		pdata->toff = NTC_10K_B3435K_TDK_TOFF;
+	} else {
+		pdata->tgain = NTC_47K_TGAIN;
+		pdata->toff = NTC_47K_TOFF;
+	}
+}
+
+static void init_callbacks(struct max17042_platform_data *pdata)
+{
+	if (INTEL_MID_BOARD(1, PHONE, MFLD) ||
+		INTEL_MID_BOARD(2, TABLET, MFLD, YKB, ENG) ||
+		INTEL_MID_BOARD(2, TABLET, MFLD, YKB, PRO)) {
+		/* MFLD Phones and Yukka beach Tablet */
+		pdata->current_sense_enabled =
+					intel_msic_is_current_sense_enabled;
+		pdata->battery_present =
+					intel_msic_check_battery_present;
+		pdata->battery_health = intel_msic_check_battery_health;
+		pdata->battery_status = intel_msic_check_battery_status;
+		pdata->battery_pack_temp =
+					intel_msic_get_battery_pack_temp;
+		pdata->save_config_data = intel_msic_save_config_data;
+		pdata->restore_config_data =
+					intel_msic_restore_config_data;
+		pdata->is_cap_shutdown_enabled =
+					intel_msic_is_capacity_shutdown_en;
+		pdata->is_volt_shutdown_enabled =
+					intel_msic_is_volt_shutdown_en;
+		pdata->is_lowbatt_shutdown_enabled =
+					intel_msic_is_lowbatt_shutdown_en;
+		pdata->get_vmin_threshold = intel_msic_get_vsys_min;
+	} else if (INTEL_MID_BOARD(2, TABLET, MFLD, RR, ENG) ||
+			INTEL_MID_BOARD(2, TABLET, MFLD, RR, PRO) ||
+			INTEL_MID_BOARD(2, TABLET, MFLD, SLP, ENG) ||
+			INTEL_MID_BOARD(2, TABLET, MFLD, SLP, PRO)) {
+		/* MFLD  Redridge and Salitpa Tablets */
+		pdata->restore_config_data = mfld_fg_restore_config_data;
+		pdata->save_config_data = mfld_fg_save_config_data;
+		pdata->battery_status = smb347_get_charging_status;
+	} else if (INTEL_MID_BOARD(1, PHONE, CLVTP)) {
+		/* CLTP Phones */
+		pdata->battery_status = ctp_query_battery_status;
+		pdata->battery_pack_temp = ctp_get_battery_pack_temp;
+		pdata->battery_health = ctp_get_battery_health;
+		pdata->is_volt_shutdown_enabled =
+					ctp_is_volt_shutdown_enabled;
+		pdata->get_vmin_threshold = ctp_get_vsys_min;
+	} else if (INTEL_MID_BOARD(1, PHONE, MRFL)) {
+		/* MRFL Phones */
+		pdata->battery_health = mrfl_get_bat_health;
+		pdata->battery_pack_temp = pmic_get_battery_pack_temp;
+		pdata->battery_status = bq24261_get_bat_status;
+	}
+	pdata->reset_i2c_lines = max17042_i2c_reset_workaround;
+}
+
+static void init_platform_params(struct max17042_platform_data *pdata)
+{
+	if (INTEL_MID_BOARD(1, PHONE, MFLD) ||
+		INTEL_MID_BOARD(2, TABLET, MFLD, YKB, ENG) ||
+		INTEL_MID_BOARD(2, TABLET, MFLD, YKB, PRO)) {
+		/* MFLD Phones and Yukka beach Tablet */
+		if (msic_battery_check(pdata->battid)) {
+			pdata->enable_current_sense = true;
+			pdata->technology = POWER_SUPPLY_TECHNOLOGY_LION;
+		} else {
+			pdata->enable_current_sense = false;
+			pdata->technology = POWER_SUPPLY_TECHNOLOGY_UNKNOWN;
+		}
+	} else if (INTEL_MID_BOARD(2, TABLET, MFLD, RR, ENG) ||
+			INTEL_MID_BOARD(2, TABLET, MFLD, RR, PRO) ||
+			INTEL_MID_BOARD(2, TABLET, MFLD, SLP, ENG) ||
+			INTEL_MID_BOARD(2, TABLET, MFLD, SLP, PRO)) {
+		/* MFLD  Redridge and Salitpa Tablets */
+		pdata->enable_current_sense = true;
+		pdata->technology = POWER_SUPPLY_TECHNOLOGY_LION;
+	} else if (INTEL_MID_BOARD(1, PHONE, CLVTP)) {
+		pdata->technology = POWER_SUPPLY_TECHNOLOGY_LION;
+		pdata->file_sys_storage_enabled = 1;
+		pdata->soc_intr_mode_enabled = true;
+	} else if (INTEL_MID_BOARD(1, PHONE, MRFL)) {
+		pdata->enable_current_sense = true;
+		pdata->technology = POWER_SUPPLY_TECHNOLOGY_LION;
+	}
+	pdata->is_init_done = 0;
+}
+
+static void init_platform_thresholds(struct max17042_platform_data *pdata)
+{
+	if (INTEL_MID_BOARD(2, TABLET, MFLD, RR, ENG) ||
+		INTEL_MID_BOARD(2, TABLET, MFLD, RR, PRO)) {
+		pdata->temp_min_lim = 0;
+		pdata->temp_max_lim = 60;
+		pdata->volt_min_lim = 3200;
+		pdata->volt_max_lim = 4300;
+	} else if (INTEL_MID_BOARD(2, TABLET, MFLD, SLP, ENG) ||
+		INTEL_MID_BOARD(2, TABLET, MFLD, SLP, PRO)) {
+		pdata->temp_min_lim = 0;
+		pdata->temp_max_lim = 45;
+		pdata->volt_min_lim = 3200;
+		pdata->volt_max_lim = 4350;
+	}
+}
+
 void *max17042_platform_data(void *info)
 {
 	static struct max17042_platform_data platform_data;
@@ -193,72 +316,10 @@ void *max17042_platform_data(void *info)
 
 	i2c_info->irq = intr + INTEL_MID_IRQ_OFFSET;
 
-	if (msic_battery_check(platform_data.battid)) {
-		platform_data.enable_current_sense = true;
-		platform_data.technology = POWER_SUPPLY_TECHNOLOGY_LION;
+	init_tgain_toff(&platform_data);
+	init_callbacks(&platform_data);
+	init_platform_params(&platform_data);
+	init_platform_thresholds(&platform_data);
 
-	} else {
-		platform_data.enable_current_sense = false;
-		platform_data.technology = POWER_SUPPLY_TECHNOLOGY_UNKNOWN;
-	}
-
-	platform_data.is_init_done = 0;
-	platform_data.reset_i2c_lines = max17042_i2c_reset_workaround;
-#ifdef CONFIG_BATTERY_INTEL_MDF /* blackbay, not redridge, not ctp */
-	platform_data.current_sense_enabled =
-		intel_msic_is_current_sense_enabled;
-	platform_data.battery_present = intel_msic_check_battery_present;
-	platform_data.battery_health = intel_msic_check_battery_health;
-	platform_data.battery_status = intel_msic_check_battery_status;
-	platform_data.battery_pack_temp = intel_msic_get_battery_pack_temp;
-	platform_data.save_config_data = intel_msic_save_config_data;
-	platform_data.restore_config_data = intel_msic_restore_config_data;
-
-	platform_data.is_cap_shutdown_enabled =
-					intel_msic_is_capacity_shutdown_en;
-	platform_data.is_volt_shutdown_enabled = intel_msic_is_volt_shutdown_en;
-	platform_data.is_lowbatt_shutdown_enabled =
-					intel_msic_is_lowbatt_shutdown_en;
-	platform_data.get_vmin_threshold = intel_msic_get_vsys_min;
-#endif
-#ifdef CONFIG_BOARD_REDRIDGE /* TODO: get rid of this */
-	platform_data.enable_current_sense = true;
-	platform_data.technology = POWER_SUPPLY_TECHNOLOGY_LION;
-	platform_data.temp_min_lim = 0;
-	platform_data.temp_max_lim = 60;
-	platform_data.volt_min_lim = 3200;
-	platform_data.volt_max_lim = 4300;
-	platform_data.restore_config_data = mfld_fg_restore_config_data;
-	platform_data.save_config_data = mfld_fg_save_config_data;
-#endif
-#ifdef CONFIG_BOARD_CTP
-	platform_data.technology = POWER_SUPPLY_TECHNOLOGY_LION;
-	platform_data.file_sys_storage_enabled = 1;
-	platform_data.battery_health = ctp_get_battery_health;
-	platform_data.is_volt_shutdown_enabled = ctp_is_volt_shutdown_enabled;
-	platform_data.get_vmin_threshold = ctp_get_vsys_min;
-	platform_data.soc_intr_mode_enabled = true;
-#endif
-#ifdef CONFIG_CHARGER_SMB347 /* redridge dv10 */
-	/* smb347 charger driver needs to be ported to k3.4 by FT
-	 * comment out this line to get salitpa compiled for now
-	platform_data.battery_status = smb347_get_charging_status; */
-#endif
-#ifdef CONFIG_CHARGER_BQ24192 /* clovertrail */
-	platform_data.battery_status = ctp_query_battery_status;
-	platform_data.battery_pack_temp = ctp_get_battery_pack_temp;
-#endif
-
-#ifdef CONFIG_X86_MRFLD
-	platform_data.technology = POWER_SUPPLY_TECHNOLOGY_LION;
-	platform_data.file_sys_storage_enabled = 1;
-	platform_data.battery_health = mrfl_get_bat_health;
-#endif
-#ifdef CONFIG_PMIC_CCSM
-	platform_data.battery_pack_temp = pmic_get_battery_pack_temp;
-#endif
-#ifdef CONFIG_BQ24261_CHARGER
-	platform_data.battery_status = bq24261_get_bat_status;
-#endif
 	return &platform_data;
 }

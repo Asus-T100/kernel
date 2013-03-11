@@ -57,10 +57,12 @@ int intel_sst_reset_dsp_mfld(void)
 	union config_status_reg csr;
 
 	pr_debug("Resetting the DSP in medfield\n");
+	mutex_lock(&sst_drv_ctx->csr_lock);
 	csr.full = sst_shim_read(sst_drv_ctx->shim, SST_CSR);
 	csr.full |= 0x382;
 	csr.part.run_stall = 0x1;
 	sst_shim_write(sst_drv_ctx->shim, SST_CSR, csr.full);
+	mutex_unlock(&sst_drv_ctx->csr_lock);
 
 	return 0;
 }
@@ -74,6 +76,7 @@ int sst_start_mfld(void)
 {
 	union config_status_reg csr;
 
+	mutex_lock(&sst_drv_ctx->csr_lock);
 	csr.full = sst_shim_read(sst_drv_ctx->shim, SST_CSR);
 	csr.part.bypass = 0;
 	sst_shim_write(sst_drv_ctx->shim, SST_CSR, csr.full);
@@ -86,6 +89,7 @@ int sst_start_mfld(void)
 	pr_debug("Starting the DSP_medfld %x\n", csr.full);
 	sst_shim_write(sst_drv_ctx->shim, SST_CSR, csr.full);
 	pr_debug("Starting the DSP_medfld\n");
+	mutex_unlock(&sst_drv_ctx->csr_lock);
 
 	return 0;
 }
@@ -99,7 +103,7 @@ int intel_sst_reset_dsp_mrfld(void)
 	union config_status_reg_mrfld csr;
 
 	pr_debug("sst: Resetting the DSP in mrfld\n");
-
+	mutex_lock(&sst_drv_ctx->csr_lock);
 	csr.full = sst_shim_read64(sst_drv_ctx->shim, SST_CSR);
 
 	pr_debug("value:0x%llx\n", csr.full);
@@ -113,7 +117,7 @@ int intel_sst_reset_dsp_mrfld(void)
 	csr.full &= ~(0x1);
 	sst_shim_write64(sst_drv_ctx->shim, SST_CSR, csr.full);
 	pr_debug("value:0x%llx\n", csr.full);
-
+	mutex_unlock(&sst_drv_ctx->csr_lock);
 	return 0;
 }
 
@@ -127,7 +131,7 @@ int sst_start_mrfld(void)
 	union config_status_reg_mrfld csr;
 
 	pr_debug("sst: Starting the DSP in mrfld LALALALA\n");
-
+	mutex_lock(&sst_drv_ctx->csr_lock);
 	csr.full = sst_shim_read64(sst_drv_ctx->shim, SST_CSR);
 	pr_debug("value:0x%llx\n", csr.full);
 
@@ -143,8 +147,29 @@ int sst_start_mrfld(void)
 
 	csr.full = sst_shim_read64(sst_drv_ctx->shim, SST_CSR);
 	pr_debug("sst: Starting the DSP_merrifield:%llx\n", csr.full);
-
+	mutex_unlock(&sst_drv_ctx->csr_lock);
 	return 0;
+}
+
+/**
+ * intel_sst_set_bypass - Sets/clears the bypass bits
+ *
+ * This sets/clears the bypass bits
+ */
+void intel_sst_set_bypass_mfld(bool set)
+{
+	union config_status_reg csr;
+
+	mutex_lock(&sst_drv_ctx->csr_lock);
+	csr.full = sst_shim_read(sst_drv_ctx->shim, SST_CSR);
+	if (set == true)
+		csr.full |= 0x380;
+	else
+		csr.part.bypass = 0;
+	pr_debug("SetupByPass set %d Val 0x%lx\n", set, csr.full);
+	sst_shim_write(sst_drv_ctx->shim, SST_CSR, csr.full);
+	mutex_unlock(&sst_drv_ctx->csr_lock);
+
 }
 
 static int sst_fill_dstn(struct intel_sst_drv *sst, struct sst_probe_info info,
@@ -1126,6 +1151,7 @@ static int sst_download_library(const struct firmware *fw_lib,
 	}
 	pr_debug("FW responded, ready for download now...\n");
 	/* downloading on success */
+	mutex_lock(&sst_drv_ctx->csr_lock);
 	sst_set_fw_state_locked(sst_drv_ctx, SST_FW_LOADED);
 	csr.full = readl(sst_drv_ctx->shim + SST_CSR);
 	csr.part.run_stall = 1;
@@ -1134,6 +1160,7 @@ static int sst_download_library(const struct firmware *fw_lib,
 	csr.full = sst_shim_read(sst_drv_ctx->shim, SST_CSR);
 	csr.part.bypass = 0x7;
 	sst_shim_write(sst_drv_ctx->shim, SST_CSR, csr.full);
+	mutex_unlock(&sst_drv_ctx->csr_lock);
 
 	codec_fw = kzalloc(fw_lib->size, GFP_KERNEL);
 	if (!codec_fw) {
@@ -1165,6 +1192,7 @@ static int sst_download_library(const struct firmware *fw_lib,
 		sst_do_memcpy(&sst_drv_ctx->libmemcpy_list);
 	}
 	/* set the FW to running again */
+	mutex_lock(&sst_drv_ctx->csr_lock);
 	csr.full = sst_shim_read(sst_drv_ctx->shim, SST_CSR);
 	csr.part.bypass = 0x0;
 	sst_shim_write(sst_drv_ctx->shim, SST_CSR, csr.full);
@@ -1172,6 +1200,7 @@ static int sst_download_library(const struct firmware *fw_lib,
 	csr.full = sst_shim_read(sst_drv_ctx->shim, SST_CSR);
 	csr.part.run_stall = 0;
 	sst_shim_write(sst_drv_ctx->shim, SST_CSR, csr.full);
+	mutex_unlock(&sst_drv_ctx->csr_lock);
 
 	/* send download complete and wait */
 	if (sst_create_ipc_msg(&msg, true)) {

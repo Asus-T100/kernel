@@ -35,11 +35,6 @@
 #include "sh_css.h"
 #include "sh_css_accelerate.h"
 
-#ifdef CONFIG_X86_MRFLD
-#define sh_css_load_extension(fw, pipe_id, acc_type) sh_css_load_extension(fw)
-#define sh_css_unload_extension(fw, pipe_id) sh_css_unload_extension(fw)
-#endif
-
 static const struct {
 	unsigned int flag;
 	enum sh_css_pipe_id pipe_id;

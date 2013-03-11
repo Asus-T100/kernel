@@ -449,7 +449,7 @@ out:
 	return ret;
 }
 
-static void __devexit pmic_rpmsg_remove(struct rpmsg_channel *rpdev)
+static void pmic_rpmsg_remove(struct rpmsg_channel *rpdev)
 {
 	free_rpmsg_instance(rpdev, &pmic_instance);
 	sysfs_remove_group(scu_pmic_kobj, &pmic_attr_group);
@@ -478,7 +478,7 @@ static struct rpmsg_driver pmic_rpmsg = {
 	.id_table	= pmic_rpmsg_id_table,
 	.probe		= pmic_rpmsg_probe,
 	.callback	= pmic_rpmsg_cb,
-	.remove		= __devexit_p(pmic_rpmsg_remove),
+	.remove		= pmic_rpmsg_remove,
 };
 
 static int __init pmic_rpmsg_init(void)

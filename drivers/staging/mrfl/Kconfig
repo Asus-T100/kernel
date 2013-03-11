@@ -77,9 +77,24 @@ config SUPPORT_HDMI
         help
           xxxxxx
 
+config SUPPORT_MIPI_H8C7_VID_DISPLAY
+	bool "Support CMI panel on Merrifield"
+	depends on DRM_MRFLD
+	default n
+	help
+	  xxxxxx
+
 config GFX_RTPM
 	bool "Enable GFX runtime_pm"
 	depends on DRM_INTEL_HANDSET
 	default n
 	help
           xxxxxx
+
+config SUPPORT_VSP
+        bool "SUPPORT_VIDEO_VSP"
+        depends on DRM_MRFLD
+        default n
+        help
+          xxxxxx
+

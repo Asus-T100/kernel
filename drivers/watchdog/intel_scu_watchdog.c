@@ -107,6 +107,14 @@ static unsigned char osnib_reset = OSNIB_WRITE_VALUE;
 static int warning_flag;
 
 /* Module params */
+static bool kicking_active = true;
+#ifdef CONFIG_DEBUG_WATCHDOG
+module_param(kicking_active, bool, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(kicking_active,
+		"Deactivate the kicking will result in a cold reset"
+		"after a while");
+#endif
+
 static bool disable_kernel_watchdog;
 #ifdef CONFIG_DISABLE_SCU_WATCHDOG
 /*
@@ -262,6 +270,12 @@ static int watchdog_keepalive(void)
 
 	pr_err(PFX "%s\n", __func__);
 
+	if (unlikely(!kicking_active)) {
+			/* Close our eyes */
+			pr_err(PFX "Transparent kicking\n");
+			return 0;
+	}
+	/* Really kick it */
 	ret = rpmsg_send_command(watchdog_instance,
 					IPC_SET_WATCHDOG_TIMER,
 					IPC_SET_SUB_KEEPALIVE,
@@ -1520,7 +1534,7 @@ out:
 	return ret;
 }
 
-static void __devexit watchdog_rpmsg_remove(struct rpmsg_channel *rpdev)
+static void watchdog_rpmsg_remove(struct rpmsg_channel *rpdev)
 {
 	intel_scu_watchdog_exit();
 	free_rpmsg_instance(rpdev, &watchdog_instance);
@@ -1548,7 +1562,7 @@ static struct rpmsg_driver watchdog_rpmsg = {
 	.id_table	= watchdog_rpmsg_id_table,
 	.probe		= watchdog_rpmsg_probe,
 	.callback	= watchdog_rpmsg_cb,
-	.remove		= __devexit_p(watchdog_rpmsg_remove),
+	.remove		= watchdog_rpmsg_remove,
 };
 
 static int __init watchdog_rpmsg_init(void)

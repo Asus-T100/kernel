@@ -160,6 +160,30 @@ static void dump_sst_crash_area(void)
 	pr_err("Firmware exception dump ends\n");
 }
 
+/**
+ * dump_ram_area - dumps the iram/dram into a local buff
+ *
+ * @sst			: pointer to driver context
+ * @recovery		: pointer to the struct containing buffers
+ * @iram		: true if iram dump else false
+ * This function dumps the iram dram data into the respective buffers
+ */
+#ifdef CONFIG_DEBUG_FS
+static void dump_ram_area(struct intel_sst_drv *sst,
+			struct sst_dump_buf *dump_buf, enum sst_ram_type type)
+{
+	if (type == SST_IRAM) {
+		pr_err("Iram dumped in buffer\n");
+		memcpy_fromio(dump_buf->iram_buf.buf, sst->iram,
+				dump_buf->iram_buf.size);
+	} else {
+		pr_err("Dram dumped in buffer\n");
+		memcpy_fromio(dump_buf->dram_buf.buf, sst->dram,
+				dump_buf->dram_buf.size);
+	}
+}
+#endif
+
 static void sst_stream_recovery(struct intel_sst_drv *sst)
 {
 	struct stream_info *str_info;
@@ -178,19 +202,30 @@ static void sst_do_recovery(struct intel_sst_drv *sst)
 {
 	struct ipc_post *m, *_m;
 	unsigned long irq_flags;
+	char iram_event[30], dram_event[30];
+	char *envp[3];
+	int env_offset = 0;
+
+	if (sst->pci_id == SST_MRFLD_PCI_ID) {
+		pr_err("Not supported for mrfld\n");
+		return;
+	}
+
 	/*
 	 * setting firmware state as uninit so that the firmware will get
 	 * redownloaded on next request.This is because firmare not responding
 	 * for 1 sec is equalant to some unrecoverable error of FW.
 	 */
+#if 0
 	pr_err("Audio: Intel SST engine encountered an unrecoverable error\n");
 	pr_err("Audio: trying to reset the dsp now\n");
 	mutex_lock(&sst->sst_lock);
 	sst->sst_state = SST_UN_INIT;
-#if 0
+
 	sst_stream_recovery(sst);
-#endif
+
 	mutex_unlock(&sst->sst_lock);
+#endif
 	dump_stack();
 	dump_sst_shim(sst);
 #if 0
@@ -198,6 +233,24 @@ static void sst_do_recovery(struct intel_sst_drv *sst)
 #endif
 	dump_sst_crash_area();
 
+#ifdef CONFIG_DEBUG_FS
+	if (sst_drv_ctx->ops->set_bypass) {
+
+		sst_drv_ctx->ops->set_bypass(true);
+		dump_ram_area(sst, &(sst->dump_buf), SST_IRAM);
+		dump_ram_area(sst, &(sst->dump_buf), SST_DRAM);
+		sst_drv_ctx->ops->set_bypass(false);
+
+	}
+
+	sprintf(iram_event, "IRAM_DUMP_SIZE=%d", sst->dump_buf.iram_buf.size);
+	envp[env_offset++] = iram_event;
+	sprintf(dram_event, "DRAM_DUMP_SIZE=%d", sst->dump_buf.dram_buf.size);
+	envp[env_offset++] = dram_event;
+	envp[env_offset] = NULL;
+	kobject_uevent_env(&sst->pci->dev.kobj, KOBJ_CHANGE, envp);
+	pr_err("Recovery Uevent Sent!!\n");
+#endif
 	spin_lock_irqsave(&sst->ipc_spin_lock, irq_flags);
 	if (list_empty(&sst->ipc_dispatch_list))
 		pr_err("List is Empty\n");
@@ -240,9 +293,8 @@ int sst_wait_timeout(struct intel_sst_drv *sst_drv_ctx, struct sst_block *block)
 	} else {
 		block->on = false;
 		pr_err("sst: Wait timed-out %x\n", block->condition);
-#if 0
+
 		sst_do_recovery(sst_drv_ctx);
-#endif
 		/* settign firmware state as uninit so that the
 		firmware will get redownloaded on next request
 		this is because firmare not responding for 5 sec

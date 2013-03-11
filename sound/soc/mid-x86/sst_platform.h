@@ -43,9 +43,9 @@ enum sst_audio_device_type {
 };
 
 enum snd_sst_input_stream {
-	SST_INPUT_STREAM_PCM = 0x2,
+	SST_INPUT_STREAM_PCM = 0x6,
 	SST_INPUT_STREAM_COMPRESS = 0x8,
-	SST_INPUT_STREAM_MIXED = 0xA,
+	SST_INPUT_STREAM_MIXED = 0xE,
 };
 
 enum sst_stream_ops {
@@ -76,6 +76,8 @@ enum sst_controls {
 	SST_SET_BYTE_STREAM =		0x1011,
 	SST_GET_BYTE_STREAM =		0x1012,
 	SST_SET_SSP_CONFIG =		0x1013,
+	SST_SET_PROBE_BYTE_STREAM =     0x1014,
+	SST_GET_PROBE_BYTE_STREAM =	0x1015,
 };
 
 struct pcm_stream_info {

@@ -30,11 +30,14 @@
 #include <linux/mm.h>
 
 #include "hmm/hmm_bo.h"
+#include "hmm/hmm_pool.h"
 
 #define HMM_CACHED true
 #define HMM_UNCACHED false
 
 typedef void * hmm_ptr;
+int hmm_pool_register(unsigned int pool_size, enum hmm_pool_type pool_type);
+void hmm_pool_unregister(enum hmm_pool_type pool_type);
 
 int hmm_init(void);
 void hmm_cleanup(void);
@@ -73,5 +76,7 @@ void *hmm_vmap(void *virt);
  * do not pass any other address.
  */
 int hmm_mmap(struct vm_area_struct *vma, void *virt);
+
+extern bool dypool_enable;
 
 #endif

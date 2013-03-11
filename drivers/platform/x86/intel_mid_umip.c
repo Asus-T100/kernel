@@ -280,7 +280,7 @@ static void umip_rpmsg_cb(struct rpmsg_channel *rpdev, void *data,
 			data, len,  true);
 }
 
-static void __devexit umip_rpmsg_remove(struct rpmsg_channel *rpdev)
+static void umip_rpmsg_remove(struct rpmsg_channel *rpdev)
 {
 	intel_mid_umip_exit();
 	dev_info(&rpdev->dev, "Removed UMIP rpmsg device\n");
@@ -292,24 +292,24 @@ static struct rpmsg_device_id umip_rpmsg_id_table[] = {
 };
 MODULE_DEVICE_TABLE(rpmsg, umip_rpmsg_id_table);
 
-static struct rpmsg_driver umip_rpmsg = {
+static struct rpmsg_driver umip_rpmsg_driver = {
 	.drv.name	= KBUILD_MODNAME,
 	.drv.owner	= THIS_MODULE,
 	.id_table	= umip_rpmsg_id_table,
 	.probe		= umip_rpmsg_probe,
 	.callback	= umip_rpmsg_cb,
-	.remove		= __devexit_p(umip_rpmsg_remove),
+	.remove		= umip_rpmsg_remove,
 };
 
 static int __init umip_rpmsg_init(void)
 {
-	return register_rpmsg_driver(&umip_rpmsg);
+	return register_rpmsg_driver(&umip_rpmsg_driver);
 }
 module_init(umip_rpmsg_init);
 
 static void __exit umip_rpmsg_exit(void)
 {
-	return unregister_rpmsg_driver(&umip_rpmsg);
+	return unregister_rpmsg_driver(&umip_rpmsg_driver);
 }
 module_exit(umip_rpmsg_exit);
 

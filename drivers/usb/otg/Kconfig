@@ -175,6 +175,17 @@ config USB_PENWELL_OTG_TEST
 	  To compile this driver as a module, choose M here: the
 	  module will be called pnwotg_test.
 
+config USB_PENWELL_OTG_PHY_OFF
+	bool "Intel Penwell USB OTG PHY OFF IN D3"
+	depends on USB_PENWELL_OTG
+	default n
+	help
+	  Say Y here if you want to power off PENWELL OTG PHY in D3
+	  if nothing attached, this will save power but will lose
+	  the Host Mode Wakeup Capability.
+
+	  If unsure, say N
+
 config USB_DWC_OTG_XCEIV
 	tristate "Synopsys DWC OTG 3.0 for USB 3.0"
 	depends on USB && PCI

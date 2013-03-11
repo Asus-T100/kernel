@@ -59,9 +59,6 @@
 #include "pmu_tng.h"
 #include "tng_wa.h"
 
-
-#define INCLUDE_UNUSED_CODE 0
-
 struct drm_device *gpDrmDevice;
 bool gbgfxsuspended;
 
@@ -213,7 +210,6 @@ static int ospm_runtime_pm_topaz_resume(struct drm_device *dev)
 	return 0;
 }
 
-#if INCLUDE_UNUSED_CODE
 #ifdef SUPPORT_VSP
 static int ospm_runtime_pm_vsp_suspend(struct drm_device *dev)
 {
@@ -246,10 +242,7 @@ static int ospm_runtime_pm_vsp_suspend(struct drm_device *dev)
 out:
 	return ret;
 }
-#endif /*SUPPORT_VSP*/
-#endif /* if INCLUDE_UNUSED_CODE */
 
-#ifdef SUPPORT_VSP
 static int ospm_runtime_pm_vsp_resume(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
@@ -264,7 +257,7 @@ static int ospm_runtime_pm_vsp_resume(struct drm_device *dev)
 }
 #endif /*SUPPORT_VSP*/
 
-#ifdef FIX_OSPM_POWER_DOWN
+#if 0
 void ospm_apm_power_down_msvdx(struct drm_device *dev)
 {
 	return;
@@ -305,8 +298,8 @@ void ospm_apm_power_down_topaz(struct drm_device *dev)
 	mutex_unlock(&g_ospm_mutex);
 	return;
 }
+#endif
 
-#else
 void ospm_apm_power_down_msvdx(struct drm_device *dev, int force_off)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
@@ -393,11 +386,12 @@ void ospm_apm_power_down_topaz(struct drm_device *dev)
 }
 
 #ifdef SUPPORT_VSP
-void ospm_apm_power_down_vsp(struct drm_device *dev)
+int ospm_apm_power_down_vsp(struct drm_device *dev)
 {
 
 	struct drm_psb_private *dev_priv = dev->dev_private;
 	struct vsp_private *vsp_priv = dev_priv->vsp_private;
+	int ret = 0;
 
 	mutex_lock(&g_ospm_mutex);
 
@@ -406,12 +400,16 @@ void ospm_apm_power_down_vsp(struct drm_device *dev)
 		goto out;
 
 	/* whether the HW is used */
-	if (atomic_read(&g_videovsp_access_count))
+	if (atomic_read(&g_videovsp_access_count)) {
+		ret = -EBUSY;
 		goto out;
+	}
 
 	/* whether the HW is idle */
-	if (psb_check_vsp_idle(dev))
+	if (psb_check_vsp_idle(dev)) {
+		ret = -EBUSY;
 		goto out;
+	}
 
 	gbSuspendInProgress = true;
 
@@ -427,8 +425,9 @@ void ospm_apm_power_down_vsp(struct drm_device *dev)
 
 out:
 	mutex_unlock(&g_ospm_mutex);
+
+	return ret;
 }
-#endif /*SUPPORT_VSP*/
 #endif
 
 
@@ -529,6 +528,7 @@ static int mdfld_save_display_registers(struct drm_device *dev, int pipe)
 #ifndef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
 	if (pipe != 1 && ((get_panel_type(dev, pipe) == TMD_VID) ||
 				(get_panel_type(dev, pipe) == TMD_6X10_VID) ||
+				(get_panel_type(dev, pipe) == H8C7_VID) ||
 				(get_panel_type(dev, pipe) == JDI_VID)))
 		return 0;
 #endif
@@ -802,6 +802,7 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 #ifndef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
 	if (pipe != 1 && ((get_panel_type(dev, pipe) == TMD_VID) ||
 				(get_panel_type(dev, pipe) == TMD_6X10_VID) ||
+				(get_panel_type(dev, pipe) == H8C7_VID) ||
 				(get_panel_type(dev, pipe) == JDI_VID)))
 		return 0;
 #endif
@@ -1340,6 +1341,7 @@ static void gfx_early_suspend(struct early_suspend *h)
 	if (IS_FLDS(gpDrmDevice)) {
 		if ((dev_priv->panel_id == TMD_VID) ||
 				(dev_priv->panel_id == TMD_6X10_VID) ||
+				(dev_priv->panel_id == H8C7_VID) ||
 				(dev_priv->panel_id == JDI_VID)) {
 #ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
 			if (dev_priv->encoder0 &&
@@ -1413,6 +1415,7 @@ static void gfx_late_resume(struct early_suspend *h)
 #endif
 		if ((dev_priv->panel_id == TMD_VID) ||
 				(dev_priv->panel_id == TMD_6X10_VID) ||
+				(dev_priv->panel_id == H8C7_VID) ||
 				(dev_priv->panel_id == JDI_VID)) {
 #ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
 			if (dev_priv->encoder0 &&
@@ -2057,9 +2060,12 @@ bool ospm_power_using_video_begin(int video_island)
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *)gpDrmDevice->dev_private;
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
-	PSB_DEBUG_PM("MSVDX: need power on island 0x%x.\n", video_island);
+	PSB_DEBUG_PM("video_begin: need power on island 0x%x.\n", video_island);
 
-	if (!(video_island & (OSPM_VIDEO_DEC_ISLAND | OSPM_VIDEO_ENC_ISLAND)))
+	if (!(video_island &
+		(OSPM_VIDEO_DEC_ISLAND |
+		 OSPM_VIDEO_VPP_ISLAND |
+		 OSPM_VIDEO_ENC_ISLAND)))
 		return false;
 #ifdef CONFIG_GFX_RTPM
 	/* if system suspend is in progress, do NOT allow system resume. if
@@ -2186,6 +2192,26 @@ bool ospm_power_using_video_begin(int video_island)
 #endif
 		}
 		break;
+	case OSPM_VIDEO_VPP_ISLAND:
+#ifdef SUPPORT_VSP
+		if (!ospm_power_is_hw_on(OSPM_DISPLAY_ISLAND)) {
+			ospm_resume_display(pdev);
+			psb_irq_preinstall_islands(gpDrmDevice,
+					OSPM_DISPLAY_ISLAND);
+			psb_irq_postinstall_islands(gpDrmDevice,
+					OSPM_DISPLAY_ISLAND);
+		}
+
+		if (!ospm_power_is_hw_on(OSPM_VIDEO_VPP_ISLAND)) {
+			ospm_power_island_up(OSPM_VIDEO_VPP_ISLAND);
+			ospm_runtime_pm_vsp_resume(gpDrmDevice);
+			psb_irq_preinstall_islands(gpDrmDevice,
+					OSPM_VIDEO_VPP_ISLAND);
+			psb_irq_postinstall_islands(gpDrmDevice,
+					OSPM_VIDEO_VPP_ISLAND);
+		}
+#endif
+		break;
 	default:
 		printk(KERN_ALERT "%s unknown island !!!!\n",
 				__func__);
@@ -2206,6 +2232,9 @@ out:
 			break;
 		case OSPM_VIDEO_DEC_ISLAND:
 			atomic_inc(&g_videodec_access_count);
+			break;
+		case OSPM_VIDEO_VPP_ISLAND:
+			atomic_inc(&g_videovsp_access_count);
 			break;
 		}
 	}
@@ -2309,27 +2338,6 @@ bool ospm_power_using_hw_begin(int hw_island, UHBUsage usage)
 			psb_irq_postinstall_islands(gpDrmDevice,
 						OSPM_GRAPHICS_ISLAND);
 			break;
-#ifdef SUPPORT_VSP
-		case OSPM_VIDEO_VPP_ISLAND:
-			if (!ospm_power_is_hw_on(OSPM_DISPLAY_ISLAND)) {
-				ospm_resume_display(pdev);
-				psb_irq_preinstall_islands(gpDrmDevice,
-						OSPM_DISPLAY_ISLAND);
-				psb_irq_postinstall_islands(gpDrmDevice,
-						OSPM_DISPLAY_ISLAND);
-			}
-
-			if (!ospm_power_is_hw_on(OSPM_VIDEO_VPP_ISLAND)) {
-				ospm_power_island_up(OSPM_VIDEO_VPP_ISLAND);
-				ospm_runtime_pm_vsp_resume(gpDrmDevice);
-				psb_irq_preinstall_islands(gpDrmDevice,
-						OSPM_VIDEO_VPP_ISLAND);
-				psb_irq_postinstall_islands(gpDrmDevice,
-						OSPM_VIDEO_VPP_ISLAND);
-			}
-
-			break;
-#endif
 		default:
 			printk(KERN_ALERT "%s unknown island !!!!\n",
 			       __func__);
@@ -2347,11 +2355,6 @@ bool ospm_power_using_hw_begin(int hw_island, UHBUsage usage)
 		case OSPM_DISPLAY_ISLAND:
 			atomic_inc(&g_display_access_count);
 			break;
-#ifdef SUPPORT_VSP
-		case OSPM_VIDEO_VPP_ISLAND:
-			atomic_inc(&g_videovsp_access_count);
-			break;
-#endif
 		}
 
 	}
@@ -2374,9 +2377,12 @@ bool ospm_power_using_hw_begin(int hw_island, UHBUsage usage)
  */
 void ospm_power_using_video_end(int video_island)
 {
-	PSB_DEBUG_PM("MSVDX: using video 0x%x end.\n", video_island);
+	PSB_DEBUG_PM("Video_end: using video 0x%x end.\n", video_island);
 
-	if (!(video_island & (OSPM_VIDEO_ENC_ISLAND | OSPM_VIDEO_DEC_ISLAND)))
+	if (!(video_island &
+		(OSPM_VIDEO_ENC_ISLAND |
+		 OSPM_VIDEO_VPP_ISLAND |
+		 OSPM_VIDEO_DEC_ISLAND)))
 		return;
 
 	switch (video_island) {
@@ -2385,6 +2391,9 @@ void ospm_power_using_video_end(int video_island)
 		break;
 	case OSPM_VIDEO_DEC_ISLAND:
 		atomic_dec(&g_videodec_access_count);
+		break;
+	case OSPM_VIDEO_VPP_ISLAND:
+		atomic_dec(&g_videovsp_access_count);
 		break;
 	}
 
@@ -2395,6 +2404,7 @@ void ospm_power_using_video_end(int video_island)
 
 	WARN_ON(atomic_read(&g_videoenc_access_count) < 0);
 	WARN_ON(atomic_read(&g_videodec_access_count) < 0);
+	WARN_ON(atomic_read(&g_videovsp_access_count) < 0);
 }
 
 /*
@@ -2413,11 +2423,6 @@ void ospm_power_using_hw_end(int hw_island)
 	case OSPM_DISPLAY_ISLAND:
 		atomic_dec(&g_display_access_count);
 		break;
-#ifdef SUPPORT_VSP
-	case OSPM_VIDEO_VPP_ISLAND:
-		atomic_dec(&g_videovsp_access_count);
-		break;
-#endif
 	}
 
 #ifdef CONFIG_GFX_RTPM
@@ -2427,10 +2432,6 @@ void ospm_power_using_hw_end(int hw_island)
 
 	WARN_ON(atomic_read(&g_graphics_access_count) < 0);
 	WARN_ON(atomic_read(&g_display_access_count) < 0);
-
-#ifdef SUPPORT_VSP
-	WARN_ON(atomic_read(&g_videovsp_access_count) < 0);
-#endif
 }
 
 int ospm_runtime_pm_allow(struct drm_device *dev)

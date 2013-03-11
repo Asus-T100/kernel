@@ -93,37 +93,6 @@ static int sst_check_device_type(u32 device, u32 num_chan, u32 *pcm_slot)
 	return 0;
 }
 
-
-/**
- * get_clv_stream_id   -       gets a new stream id for use
- *
- * This functions searches the current streams and allocated an empty stream
- * lock stream_lock required to be held before calling this
- */
-static unsigned int get_clv_stream_id(u32 device)
-{
-	int str_id;
-	/*device id range starts from 1 */
-	pr_debug("device_id %d\n", device);
-	if (device == SND_SST_DEVICE_HEADSET)
-		str_id = 1;
-	else if (device == SND_SST_DEVICE_CAPTURE)
-		str_id = 2;
-	else if (device == SND_SST_DEVICE_COMPRESS)
-		str_id = 3;
-	else
-		return -EINVAL;
-
-	if (sst_drv_ctx->streams[str_id].status != STREAM_UN_INIT) {
-		pr_debug("this stream state is not uni-init, is %d\n",
-					sst_drv_ctx->streams[str_id].status);
-		return -EBADRQC;
-	}
-	pr_debug("str_id %d\n", str_id);
-	return str_id;
-}
-
-
 /**
  * sst_alloc_stream - Send msg for a new stream ID
  *
@@ -136,7 +105,7 @@ static unsigned int get_clv_stream_id(u32 device)
  * a new stream. This also check if a stream exists which is idle
  * it initializes idle stream id to this request
  */
-int sst_alloc_stream_clv(char *params, struct sst_block *block)
+int sst_alloc_stream_ctp(char *params, struct sst_block *block)
 {
 	struct ipc_post *msg = NULL;
 	struct snd_sst_alloc_params alloc_param;
@@ -167,9 +136,7 @@ int sst_alloc_stream_clv(char *params, struct sst_block *block)
 	pr_debug("In alloc device_type=%d\n", str_params->device_type);
 	pr_debug("In alloc sg_count =%d\n", aparams->sg_count);
 
-	mutex_lock(&sst_drv_ctx->stream_lock);
-	str_id = get_clv_stream_id(device);
-	mutex_unlock(&sst_drv_ctx->stream_lock);
+	str_id = str_params->stream_id;
 	if (str_id <= 0)
 		return -EBUSY;
 
@@ -181,7 +148,7 @@ int sst_alloc_stream_clv(char *params, struct sst_block *block)
 		return -ENOMEM;
 
 	alloc_param.str_type.codec_type = codec;
-	alloc_param.str_type.str_type = SST_STREAM_TYPE_MUSIC;
+	alloc_param.str_type.str_type = str_params->stream_type;
 	alloc_param.str_type.operation = stream_ops;
 	alloc_param.str_type.protected_str = 0; /* non drm */
 	alloc_param.str_type.time_slots = pcm_slot;
@@ -412,7 +379,7 @@ int sst_alloc_stream(char *params, struct sst_block *block)
 	else if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID)
 		return sst_alloc_stream_mrfld(params, block);
 	else
-		return sst_alloc_stream_clv(params, block);
+		return sst_alloc_stream_ctp(params, block);
 }
 
 /**
@@ -648,6 +615,39 @@ int sst_send_byte_stream(void *sbytes)
 	return 0;
 }
 
+int sst_send_probe_bytes(struct intel_sst_drv *sst)
+{
+	struct ipc_post *msg = NULL;
+	struct sst_block *block;
+	unsigned long irq_flags;
+	int ret_val = 0;
+
+	ret_val = sst_create_block_and_ipc_msg(&msg, true, sst,
+			&block, IPC_IA_DBG_SET_PROBE_PARAMS, 0);
+	if (ret_val) {
+		pr_err("Can't allocate block/msg: Probe Byte Stream\n");
+		return ret_val;
+	}
+
+	sst_fill_header(&msg->header, IPC_IA_DBG_SET_PROBE_PARAMS, 1, 0);
+
+	msg->header.part.data = sizeof(u32) + sst->probe_bytes->len;
+	memcpy(msg->mailbox_data, &msg->header.full, sizeof(u32));
+	memcpy(msg->mailbox_data + sizeof(u32), sst->probe_bytes->bytes,
+				sst->probe_bytes->len);
+
+	spin_lock_irqsave(&sst->ipc_spin_lock, irq_flags);
+	list_add_tail(&msg->node, &sst->ipc_dispatch_list);
+	spin_unlock_irqrestore(&sst->ipc_spin_lock, irq_flags);
+
+	sst->ops->post_message(msg);
+
+	ret_val = sst_wait_timeout(sst, block);
+	sst_free_block(sst, block);
+	if (ret_val)
+		pr_err("set probe stream param..timeout!\n");
+	return ret_val;
+}
 
 /*
  * sst_pause_stream - Send msg for a pausing stream

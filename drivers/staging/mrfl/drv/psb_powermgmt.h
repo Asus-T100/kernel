@@ -99,7 +99,9 @@ void mdfld_dsi_dbi_set_power(struct drm_encoder *encoder, bool on);
 /* Use these functions to power down video HW for D0i3 purpose  */
 void ospm_apm_power_down_msvdx(struct drm_device *dev, int force_off);
 void ospm_apm_power_down_topaz(struct drm_device *dev);
-void ospm_apm_power_down_vsp(struct drm_device *dev);
+#ifdef SUPPORT_VSP
+int ospm_apm_power_down_vsp(struct drm_device *dev);
+#endif
 
 void ospm_power_init(struct drm_device *dev);
 void ospm_post_init(struct drm_device *dev);

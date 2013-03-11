@@ -492,6 +492,8 @@ struct penwell_otg {
 
 	struct wake_lock		wake_lock;
 	spinlock_t			lock;
+
+	int				phy_power_state;
 };
 
 static inline

@@ -33,7 +33,7 @@ static struct sfi_table_oemb byt_oemb_table = {
 		.vendor_id = VENDOR_INTEL,
 		.platform_family_id = INTEL_BYT_TABLET,
 		.product_line_id = INTEL_BYT_TABLET_TBD_ENG,
-		.hardware_id = BYT_TABLET_TBD_TBD,
+		.hardware_id = BYT_TABLET_TBD_TBD0,
 	},
 };
 

@@ -466,7 +466,7 @@ static struct attribute_group pin_config_attr_group = {
 	.attrs = pin_config_attrs,
 };
 
-static int __devinit scu_flis_probe(struct platform_device *pdev)
+static int scu_flis_probe(struct platform_device *pdev)
 {
 	int ret;
 	struct intel_scu_flis_info *isfi = &flis_info;
@@ -507,7 +507,7 @@ out:
 	return ret;
 }
 
-static int __devexit scu_flis_remove(struct platform_device *pdev)
+static int scu_flis_remove(struct platform_device *pdev)
 {
 	sysfs_remove_group(&pdev->dev.kobj, &pin_config_attr_group);
 	sysfs_remove_group(&pdev->dev.kobj, &flis_attr_group);
@@ -521,7 +521,7 @@ static struct platform_driver scu_flis_driver = {
 		   .owner = THIS_MODULE,
 		   },
 	.probe = scu_flis_probe,
-	.remove = __devexit_p(scu_flis_remove),
+	.remove = scu_flis_remove,
 };
 
 static int scu_flis_module_init(void)
@@ -564,7 +564,7 @@ out:
 	return ret;
 }
 
-static void __devexit flis_rpmsg_remove(struct rpmsg_channel *rpdev)
+static void flis_rpmsg_remove(struct rpmsg_channel *rpdev)
 {
 	scu_flis_module_exit();
 	free_rpmsg_instance(rpdev, &flis_instance);
@@ -592,7 +592,7 @@ static struct rpmsg_driver flis_rpmsg = {
 	.id_table	= flis_rpmsg_id_table,
 	.probe		= flis_rpmsg_probe,
 	.callback	= flis_rpmsg_cb,
-	.remove		= __devexit_p(flis_rpmsg_remove),
+	.remove		= flis_rpmsg_remove,
 };
 
 static int __init flis_rpmsg_init(void)

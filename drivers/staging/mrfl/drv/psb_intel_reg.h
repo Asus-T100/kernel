@@ -1241,6 +1241,9 @@ When in Sleep Mode, the value returned by get_scanline is undefined.
 #define write_kbbc_profile		0x60
 /**** TMD MCS ****/
 #define tmd_write_display_brightness	0x8c
+#define set_video_mode 0xc2
+#define set_panel 0xcc
+#define set_eq_func_ltps 0xd4
 /* ************************************************************************* *\
 This command is used to control ambient light, panel backlight brightness and
 gamma settings.

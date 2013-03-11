@@ -42,6 +42,9 @@ struct gburst_hw_if_info_s {
 
 int gburst_hw_if_get_info(struct gburst_hw_if_info_s *psh);
 
+#if (defined(GBURST_HW_PVRSCOPESERVICE_SUPPORT))
+void gburst_hw_reconfigure_groups(void);
+#endif
 
 #endif /* if (defined CONFIG_GPU_BURST) || (defined CONFIG_GPU_BURST_MODULE) */
 
