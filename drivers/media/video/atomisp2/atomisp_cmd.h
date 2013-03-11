@@ -75,8 +75,6 @@ void atomisp_wdt(unsigned long isp_addr);
 void atomisp_setup_flash(struct atomisp_device *isp);
 irqreturn_t atomisp_isr(int irq, void *dev);
 irqreturn_t atomisp_isr_thread(int irq, void *isp_ptr);
-const struct atomisp_format_bridge *get_atomisp_format_bridge_from_mbus(
-	enum v4l2_mbus_pixelcode mbus_code);
 int atomisp_is_mbuscode_raw(uint32_t code);
 int atomisp_get_frame_pgnr(const struct sh_css_frame *frame, u32 * p_pgnr);
 void atomisp_delayed_init_work(struct work_struct *work);
@@ -90,6 +88,7 @@ void atomisp_set_term_en_count(struct atomisp_device *isp);
  * Get internal fmt according to V4L2 fmt
  */
 
+int atomisp_is_pixelformat_supported(u32 pixelformat);
 bool atomisp_is_viewfinder_support(struct atomisp_device *isp);
 
 /*

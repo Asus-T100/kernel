@@ -65,6 +65,12 @@ struct atomisp_fmt {
 	u32 bayer_order;
 };
 
+struct atomisp_video_pipe_format {
+	struct v4l2_pix_format out;
+	struct v4l2_pix_format in;
+	unsigned int out_sh_fmt;
+};
+
 struct atomisp_buffer {
 	struct videobuf_buffer	vb;
 };
@@ -72,5 +78,7 @@ struct atomisp_buffer {
 /*
  * supported V4L2 fmts and resolutions
  */
+extern const struct atomisp_format_bridge atomisp_output_fmts[];
+extern const u32 atomisp_output_fmts_num;
 extern struct v4l2_device atomisp_dev;
 #endif

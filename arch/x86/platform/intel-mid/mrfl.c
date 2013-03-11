@@ -172,7 +172,7 @@ static void __init tangier_time_init(void)
 		intel_mid_timer_init();
 }
 
-static void __init tangier_arch_setup(void)
+static void tangier_arch_setup(void)
 {
 	x86_platform.calibrate_tsc = tangier_calibrate_tsc;
 	intel_mid_timer_init = x86_init.timers.timer_init;

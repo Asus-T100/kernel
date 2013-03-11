@@ -43,6 +43,8 @@
 #define PCI_ID_LENGTH 4
 #define SST_SUSPEND_DELAY 2000
 #define FW_CONTEXT_MEM (64*1024)
+#define MAX_TIMEDIVSOR  0xFF
+#define MAX_BASEUNIT 0x80
 #define SST_ICCM_BOUNDARY 4
 #define SST_UNSOLICIT_MSG 0x00
 #define SST_CONFIG_SSP_SIGN 0x7ffe8001
@@ -67,7 +69,6 @@ struct intel_sst_ops {
 	void (*post_message) (struct work_struct *work);
 	int (*sync_post_message) (struct ipc_post *msg);
 	void (*process_message) (struct work_struct *work);
-	void (*set_bypass)(bool set);
 };
 enum sst_states {
 	SST_FW_LOADED = 1,
@@ -79,7 +80,7 @@ enum sst_states {
 	SST_FW_CTXT_RESTORE
 };
 
-#define MAX_ACTIVE_STREAM	4
+#define MAX_ACTIVE_STREAM	3
 #define MAX_ENC_STREAM		1
 #define SST_BLOCK_TIMEOUT	1000
 #define BLOCK_UNINIT		-1
@@ -342,13 +343,10 @@ struct sst_memcpy_list {
 	bool is_io;
 };
 
-struct sst_debugfs {
 #ifdef CONFIG_DEBUG_FS
-	struct dentry		*root;
-#endif
-	int			runtime_pm_status;
-	void __iomem            *ssp;
-	void __iomem            *dma_reg;
+struct sst_debugfs {
+	struct dentry *root;
+	int runtime_pm_status;
 };
 
 struct lpe_log_buf_hdr {
@@ -357,6 +355,7 @@ struct lpe_log_buf_hdr {
 	u32 rd_addr;
 	u32 wr_addr;
 };
+#endif
 
 enum snd_sst_bytes_type {
 	SND_SST_BYTES_SET = 0x1,
@@ -403,17 +402,6 @@ struct sst_fw_context {
 	void *iram;
 	void *dram;
 	unsigned int saved;
-};
-
-struct sst_ram_buf {
-	u32 size;
-	char *buf;
-};
-
-struct sst_dump_buf {
-	/* buffers for iram-dram dump crash */
-	struct sst_ram_buf iram_buf;
-	struct sst_ram_buf dram_buf;
 };
 
 /***
@@ -513,7 +501,9 @@ struct intel_sst_drv {
 	struct dma_async_tx_descriptor *desc;
 	struct sst_sg_list fw_sg_list, library_list;
 	struct intel_sst_ops	*ops;
+#ifdef CONFIG_DEBUG_FS
 	struct sst_debugfs debugfs;
+#endif
 	struct pm_qos_request *qos;
 	struct sst_probe_info info;
 	unsigned int use_dma;
@@ -526,10 +516,6 @@ struct intel_sst_drv {
 	/* list used during LIB download in memcpy mode */
 	struct list_head libmemcpy_list;
 	struct sst_fw_context context;
-	/* holds the stucts of iram/dram local buffers for dump*/
-	struct sst_dump_buf dump_buf;
-	/* Lock for CSR register change */
-	struct mutex	csr_lock;
 };
 
 extern struct intel_sst_drv *sst_drv_ctx;
@@ -565,7 +551,6 @@ int sst_start_mfld(void);
 int intel_sst_reset_dsp_mfld(void);
 void intel_sst_clear_intr_mfld(void);
 void intel_sst_clear_intr_mrfld32(void);
-void intel_sst_set_bypass_mfld(bool set);
 
 int sst_sync_post_message_mrfld(struct ipc_post *msg);
 void sst_post_message_mrfld(struct work_struct *work);
@@ -748,20 +733,6 @@ static inline u32 sst_shim_read(void __iomem *addr, int offset)
 	return readl(addr + offset);
 }
 
-static inline u32 sst_reg_read(void __iomem *addr, int offset)
-{
-
-	return readl(addr + offset);
-}
-
-static inline u64 sst_reg_read64(void __iomem *addr, int offset)
-{
-	u64 val;
-
-	memcpy_fromio(&val, addr + offset, sizeof(val));
-
-	return val;
-}
 
 static inline int sst_shim_write64(void __iomem *addr, int offset, u64 value)
 {

@@ -471,12 +471,10 @@ static void __exit PVRSRVDrmExit(void)
 #endif
 }
 #else
-#ifdef CONFIG_GPU_BURST
-extern int gburst_module_init(void);
-extern int gburst_module_exit(void);
-int gburst_init_state;
+#ifdef CONFIG_DRM_CTP
+extern int __init gburst_module_init(void);
+extern int __init gburst_module_exit(void);
 #endif
-
 extern void SYSPVRFillCallback(struct drm_device *ddev);
 extern void SYSPVRClearCallback(struct drm_device *ddev);
 extern struct drm_device *g_drm_dev;
@@ -489,8 +487,8 @@ static int __init PVRSRVDrmInit(void)
 	/* Do not care chipset, right? PVRSRVDrmLoad(dev, chipset) */
 	PVRSRVDrmLoad(g_drm_dev, 0);
 	printk(KERN_INFO "__SGX_pvr init ok\n");
-#ifdef CONFIG_GPU_BURST
-    gburst_init_state = 0;
+#ifdef CONFIG_DRM_CTP
+	return gburst_module_init();
 #endif
 	return 0;
 }
@@ -499,15 +497,10 @@ static void __exit PVRSRVDrmExit(void)
 {
 	int ret = 0;
 	printk(KERN_INFO "__SGX_pvr exit..\n");
-#ifdef CONFIG_GPU_BURST
-    if(gburst_init_state == 1){
-        ret = gburst_module_exit();
-        gburst_init_state = 0;
-        if (ret){
-            printk(KERN_ERR "gburst_module_exit failure!");
-            return ret;
-        }
-    }
+#ifdef CONFIG_DRM_CTP
+	ret = gburst_module_exit();
+	if (ret)
+		return ret;
 #endif
 	PVRSRVDrmUnload(g_drm_dev);
 	SYSPVRClearCallback(g_drm_dev);
@@ -519,4 +512,5 @@ static void __exit PVRSRVDrmExit(void)
 module_init(PVRSRVDrmInit);
 module_exit(PVRSRVDrmExit);
 #endif
+
 

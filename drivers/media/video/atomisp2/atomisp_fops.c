@@ -69,7 +69,7 @@ int atomisp_buf_setup(struct videobuf_queue *vq,
 {
 	struct atomisp_video_pipe *pipe = vq->priv_data;
 
-	*size = pipe->pix.sizeimage;
+	*size = pipe->format.out.sizeimage;
 
 	return 0;
 }
@@ -80,9 +80,9 @@ int atomisp_buf_prepare(struct videobuf_queue *vq,
 {
 	struct atomisp_video_pipe *pipe = vq->priv_data;
 
-	vb->size = pipe->pix.sizeimage;
-	vb->width = pipe->pix.width;
-	vb->height = pipe->pix.height;
+	vb->size = pipe->format.out.sizeimage;
+	vb->width = pipe->format.out.width;
+	vb->height = pipe->format.out.height;
 	vb->field = field;
 	vb->state = VIDEOBUF_PREPARED;
 
@@ -214,9 +214,8 @@ int atomisp_qbuffers_to_css(struct atomisp_device *isp)
 			/* fall through */
 		default:
 			capture_pipe = &isp->isp_subdev.video_out_capture;
-			if (!atomisp_is_mbuscode_raw(
-				    isp->isp_subdev.
-				    fmt[isp->isp_subdev.capture_pad].fmt.code))
+			if (isp->capture_format->out_sh_fmt !=
+						SH_CSS_FRAME_FORMAT_RAW)
 				vf_pipe = &isp->isp_subdev.video_out_vf;
 			css_capture_pipe_id = SH_CSS_CAPTURE_PIPELINE;
 		}
@@ -275,7 +274,7 @@ static int atomisp_buf_setup_output(struct videobuf_queue *vq,
 {
 	struct atomisp_video_pipe *pipe = vq->priv_data;
 
-	*size = pipe->pix.sizeimage;
+	*size = pipe->out_fmt.imagesize;
 
 	return 0;
 }
@@ -286,9 +285,9 @@ static int atomisp_buf_prepare_output(struct videobuf_queue *vq,
 {
 	struct atomisp_video_pipe *pipe = vq->priv_data;
 
-	vb->size = pipe->pix.sizeimage;
-	vb->width = pipe->pix.width;
-	vb->height = pipe->pix.height;
+	vb->size = pipe->out_fmt.imagesize;
+	vb->width = pipe->out_fmt.width;
+	vb->height = pipe->out_fmt.height;
 	vb->field = field;
 	vb->state = VIDEOBUF_PREPARED;
 
@@ -358,6 +357,8 @@ int atomisp_init_struct(struct atomisp_device *isp)
 	if (isp == NULL)
 		return -EINVAL;
 
+	isp->capture_format = NULL;
+	isp->vf_format = NULL;
 	v4l2_ctrl_s_ctrl(isp->isp_subdev.run_mode,
 			 ATOMISP_RUN_MODE_STILL_CAPTURE);
 	isp->params.color_effect = V4L2_COLORFX_NONE;
@@ -594,6 +595,11 @@ static int atomisp_release(struct file *file)
 		mutex_unlock(&pipe->outq.vb_lock);
 	}
 
+	isp->capture_format = NULL;
+
+	kfree(isp->vf_format);
+	isp->vf_format = NULL;
+
 	memset(&isp_sink_fmt, 0, sizeof(isp_sink_fmt));
 	atomisp_subdev_set_ffmt(&isp->isp_subdev.subdev, NULL,
 				V4L2_SUBDEV_FORMAT_ACTIVE,
@@ -783,7 +789,7 @@ static int atomisp_mmap(struct file *file, struct vm_area_struct *vma)
 		return -EINVAL;
 
 	mutex_lock(&isp->mutex);
-	new_size = pipe->pix.width * pipe->pix.height * 2;
+	new_size = pipe->format.out.width * pipe->format.out.height * 2;
 
 	/* mmap for ISP offline raw data */
 	if ((pipe->pipe_type == ATOMISP_PIPE_CAPTURE) &&
@@ -801,8 +807,8 @@ static int atomisp_mmap(struct file *file, struct vm_area_struct *vma)
 		}
 
 		ret = remove_pad_from_frame(raw_virt_addr,
-				      pipe->pix.width,
-				      pipe->pix.height);
+				      pipe->format.out.width,
+				      pipe->format.out.height);
 		if (ret < 0) {
 			v4l2_err(&atomisp_dev, "remove pad failed.\n");
 			goto error;
@@ -834,7 +840,7 @@ static int atomisp_mmap(struct file *file, struct vm_area_struct *vma)
 	/*
 	 * mmap for normal frames
 	 */
-	if (size != pipe->pix.sizeimage) {
+	if (size != pipe->format.out.sizeimage) {
 		v4l2_err(&atomisp_dev,
 			    "incorrect size for mmap ISP frames\n");
 		ret = -EINVAL;

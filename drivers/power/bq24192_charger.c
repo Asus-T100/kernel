@@ -401,7 +401,7 @@ static void ctp_sfi_table_invalid_batt(struct ctp_batt_sfi_prop *sfi_table)
  * SFI table has entries for the temperature limits
  * which is populated in a local structure
  */
-static int ctp_sfi_table_populate(struct sfi_table_header *table)
+static int __init ctp_sfi_table_populate(struct sfi_table_header *table)
 {
 	struct sfi_table_simple *sb;
 	struct ctp_batt_sfi_prop *pentry;
@@ -1034,32 +1034,32 @@ EXPORT_SYMBOL(ctp_query_battery_status);
  */
 int ctp_get_charger_health(void)
 {
-	int ret_status, ret_fault;
+	int ret;
 	struct bq24192_chip *chip =
 		i2c_get_clientdata(bq24192_client);
 
 	dev_dbg(&chip->client->dev, "%s\n", __func__);
 
-	ret_fault = bq24192_read_reg(chip->client, BQ24192_FAULT_STAT_REG);
-	if (ret_fault < 0) {
+	ret = bq24192_read_reg(chip->client, BQ24192_FAULT_STAT_REG);
+	if (ret < 0) {
 		dev_warn(&chip->client->dev,
 			"read reg failed %s\n", __func__);
 		return POWER_SUPPLY_HEALTH_UNKNOWN;
 	}
 
-	if (ret_fault & FAULT_STAT_OTG_FLT)
+	if ((ret & FAULT_STAT_OTG_FLT) ||
+		((ret & FAULT_STAT_CHRG_IN_FLT) == FAULT_STAT_CHRG_IN_FLT))
 		return POWER_SUPPLY_HEALTH_OVERVOLTAGE;
 
 	/* Check if the WeakVIN condition occured */
-	ret_status = bq24192_read_reg(chip->client, BQ24192_SYSTEM_STAT_REG);
-	if (ret_status < 0) {
+	ret = bq24192_read_reg(chip->client, BQ24192_SYSTEM_STAT_REG);
+	if (ret < 0) {
 		dev_warn(&chip->client->dev,
 			"read reg failed %s\n", __func__);
 		return POWER_SUPPLY_HEALTH_UNKNOWN;
 	}
 
-	if (!(ret_status & SYSTEM_STAT_PWR_GOOD) ||
-	((ret_fault & FAULT_STAT_CHRG_IN_FLT) == FAULT_STAT_CHRG_IN_FLT))
+	if (!(ret & SYSTEM_STAT_PWR_GOOD))
 		return POWER_SUPPLY_HEALTH_DEAD;
 
 	return POWER_SUPPLY_HEALTH_GOOD;
@@ -2658,7 +2658,7 @@ int ctp_get_vsys_min(void)
 }
 EXPORT_SYMBOL(ctp_get_vsys_min);
 
-static int bq24192_probe(struct i2c_client *client,
+static int __devinit bq24192_probe(struct i2c_client *client,
 			const struct i2c_device_id *id)
 {
 	struct i2c_adapter *adapter = to_i2c_adapter(client->dev.parent);
@@ -2849,7 +2849,7 @@ static int bq24192_probe(struct i2c_client *client,
 	return 0;
 }
 
-static int bq24192_remove(struct i2c_client *client)
+static int __devexit bq24192_remove(struct i2c_client *client)
 {
 	struct bq24192_chip *chip = i2c_get_clientdata(client);
 
@@ -2932,7 +2932,7 @@ static struct i2c_driver bq24192_i2c_driver = {
 		.pm	= &bq24192_pm_ops,
 	},
 	.probe		= bq24192_probe,
-	.remove		= bq24192_remove,
+	.remove		= __devexit_p(bq24192_remove),
 	.id_table	= bq24192_id,
 };
 
@@ -2964,7 +2964,7 @@ out:
 	return ret;
 }
 
-static void bq24192_rpmsg_remove(struct rpmsg_channel *rpdev)
+static void __devexit bq24192_rpmsg_remove(struct rpmsg_channel *rpdev)
 {
 	bq24192_exit();
 	dev_info(&rpdev->dev, "Removed bq24192 rpmsg device\n");
@@ -2991,7 +2991,7 @@ static struct rpmsg_driver bq24192_rpmsg = {
 	.id_table	= bq24192_rpmsg_id_table,
 	.probe		= bq24192_rpmsg_probe,
 	.callback	= bq24192_rpmsg_cb,
-	.remove		= bq24192_rpmsg_remove,
+	.remove		= __devexit_p(bq24192_rpmsg_remove),
 };
 
 static int __init bq24192_rpmsg_init(void)

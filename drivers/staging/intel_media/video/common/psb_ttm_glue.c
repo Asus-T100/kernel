@@ -30,8 +30,6 @@
 
 #ifndef MERRIFIELD
 #include "pnw_topaz.h"
-#else
-#include "tng_topaz.h"
 #endif
 
 /*IMG Headers*/
@@ -274,19 +272,16 @@ void psb_remove_videoctx(struct drm_psb_private *dev_priv, struct file *filp)
 				(found_ctx->ctx_type & 0xff)
 			|| VAEntrypointEncPicture ==
 				(found_ctx->ctx_type & 0xff)) {
+#ifndef MERRIFIELD
 			if (dev_priv->topaz_ctx == found_ctx) {
-#ifdef MERRIFIELD
-				tng_topaz_remove_ctx(dev_priv,
-					found_ctx);
-#else
 				pnw_reset_fw_status(dev_priv->dev,
 					PNW_TOPAZ_END_CTX);
-#endif
 				dev_priv->topaz_ctx = NULL;
 			} else {
 				PSB_DEBUG_PM("Remove a inactive "\
 						"encoding context.\n");
 			}
+#endif
 			if (dev_priv->last_topaz_ctx == found_ctx)
 				dev_priv->last_topaz_ctx = NULL;
 		} else {
@@ -297,7 +292,6 @@ void psb_remove_videoctx(struct drm_psb_private *dev_priv, struct file *filp)
 				msvdx_priv->last_msvdx_ctx = NULL;
 			mutex_unlock(&msvdx_priv->msvdx_mutex);
 		}
-
 		kfree(found_ctx);
 		#ifdef CONFIG_GFX_RTPM
 		psb_ospm_post_power_down();

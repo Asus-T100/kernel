@@ -167,7 +167,7 @@ static struct hsi_mid_platform_data mid_info = {
 	.rx_fifo_sizes[7] = -1,
 };
 
-void __init *logical_platform_data(void *data)
+void *logical_platform_data(void *data)
 {
 	int rst_out = get_gpio_by_name("mdm_rst_out");
 	int pwr_on = get_gpio_by_name("mdm_pwr_on");

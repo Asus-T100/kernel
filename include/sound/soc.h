@@ -801,10 +801,6 @@ struct snd_soc_dai_link {
 	/* machine stream operations */
 	struct snd_soc_ops *ops;
 	struct snd_soc_compr_ops *compr_ops;
-
-	/*no of substreams */
-	unsigned int playback_count;
-	unsigned int capture_count;
 };
 
 struct snd_soc_codec_conf {

@@ -659,22 +659,10 @@ int soc_new_pcm(struct snd_soc_pcm_runtime *rtd, int num)
 	snprintf(new_name, sizeof(new_name), "%s %s-%d",
 			rtd->dai_link->stream_name, codec_dai->name, num);
 
-	/* playback_cnt provides the no of substream to be supported for the dai.
-	check if the playback_cnt is set for the dai, then playback will be set
-	to playback_cnt else default to 1 */
-	if (codec_dai->driver->playback.channels_min) {
-		if (rtd->dai_link->playback_count)
-			playback = rtd->dai_link->playback_count;
-		else
-			playback = 1;
-	}
-
-	if (codec_dai->driver->capture.channels_min) {
-		if (rtd->dai_link->capture_count)
-			capture = rtd->dai_link->capture_count;
-		else
-			capture = 1;
-	}
+	if (codec_dai->driver->playback.channels_min)
+		playback = 1;
+	if (codec_dai->driver->capture.channels_min)
+		capture = 1;
 
 	dev_dbg(rtd->card->dev, "registered pcm #%d %s\n",num,new_name);
 	ret = snd_pcm_new(rtd->card->snd_card, new_name,

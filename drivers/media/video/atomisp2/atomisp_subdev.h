@@ -59,12 +59,6 @@ enum atomisp_pipe_type {
 	ATOMISP_PIPE_FILEINPUT
 };
 
-struct atomisp_in_fmt_conv {
-	enum v4l2_mbus_pixelcode code;
-	enum sh_css_input_format in_sh_fmt;
-	enum sh_css_bayer_order bayer_order;
-};
-
 struct atomisp_3a_dis_stat_buf {
 	union sh_css_s3a_data s3a_data;
 	struct sh_css_dis_data dis_data;
@@ -99,8 +93,8 @@ struct atomisp_video_pipe {
 	enum atomisp_pipe_type pipe_type;
 
 	struct atomisp_device *isp;
-	struct v4l2_pix_format pix;
-	uint32_t sh_fmt;
+	struct atomisp_fmt out_fmt;
+	struct atomisp_video_pipe_format format;
 };
 
 struct atomisp_pad_format {
@@ -113,7 +107,6 @@ struct atomisp_sub_device {
 	struct v4l2_subdev subdev;
 	struct media_pad pads[ATOMISP_SUBDEV_PADS_NUM];
 	struct atomisp_pad_format fmt[ATOMISP_SUBDEV_PADS_NUM];
-	uint16_t capture_pad; /* main capture pad; defines much of isp config */
 
 	enum atomisp_subdev_input_entity input;
 	unsigned int output;
@@ -128,11 +121,6 @@ struct atomisp_sub_device {
 	struct v4l2_ctrl *fmt_auto;
 	struct v4l2_ctrl *run_mode;
 };
-
-extern const struct atomisp_in_fmt_conv atomisp_in_fmt_conv[];
-
-const struct atomisp_in_fmt_conv *atomisp_find_in_fmt_conv(
-	enum v4l2_mbus_pixelcode code);
 
 /* Get pointer to appropriate format */
 struct v4l2_mbus_framefmt

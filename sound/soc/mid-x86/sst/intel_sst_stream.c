@@ -93,6 +93,37 @@ static int sst_check_device_type(u32 device, u32 num_chan, u32 *pcm_slot)
 	return 0;
 }
 
+
+/**
+ * get_clv_stream_id   -       gets a new stream id for use
+ *
+ * This functions searches the current streams and allocated an empty stream
+ * lock stream_lock required to be held before calling this
+ */
+static unsigned int get_clv_stream_id(u32 device)
+{
+	int str_id;
+	/*device id range starts from 1 */
+	pr_debug("device_id %d\n", device);
+	if (device == SND_SST_DEVICE_HEADSET)
+		str_id = 1;
+	else if (device == SND_SST_DEVICE_CAPTURE)
+		str_id = 2;
+	else if (device == SND_SST_DEVICE_COMPRESS)
+		str_id = 3;
+	else
+		return -EINVAL;
+
+	if (sst_drv_ctx->streams[str_id].status != STREAM_UN_INIT) {
+		pr_debug("this stream state is not uni-init, is %d\n",
+					sst_drv_ctx->streams[str_id].status);
+		return -EBADRQC;
+	}
+	pr_debug("str_id %d\n", str_id);
+	return str_id;
+}
+
+
 /**
  * sst_alloc_stream - Send msg for a new stream ID
  *
@@ -105,7 +136,7 @@ static int sst_check_device_type(u32 device, u32 num_chan, u32 *pcm_slot)
  * a new stream. This also check if a stream exists which is idle
  * it initializes idle stream id to this request
  */
-int sst_alloc_stream_ctp(char *params, struct sst_block *block)
+int sst_alloc_stream_clv(char *params, struct sst_block *block)
 {
 	struct ipc_post *msg = NULL;
 	struct snd_sst_alloc_params alloc_param;
@@ -136,7 +167,9 @@ int sst_alloc_stream_ctp(char *params, struct sst_block *block)
 	pr_debug("In alloc device_type=%d\n", str_params->device_type);
 	pr_debug("In alloc sg_count =%d\n", aparams->sg_count);
 
-	str_id = str_params->stream_id;
+	mutex_lock(&sst_drv_ctx->stream_lock);
+	str_id = get_clv_stream_id(device);
+	mutex_unlock(&sst_drv_ctx->stream_lock);
 	if (str_id <= 0)
 		return -EBUSY;
 
@@ -379,7 +412,7 @@ int sst_alloc_stream(char *params, struct sst_block *block)
 	else if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID)
 		return sst_alloc_stream_mrfld(params, block);
 	else
-		return sst_alloc_stream_ctp(params, block);
+		return sst_alloc_stream_clv(params, block);
 }
 
 /**

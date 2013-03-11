@@ -28,7 +28,6 @@
 
 #include <media/v4l2-event.h>
 #include <media/v4l2-mediabus.h>
-#include "atomisp_cmd.h"
 #include "atomisp_common.h"
 #include "atomisp_internal.h"
 
@@ -79,34 +78,6 @@ static const unsigned int isp_subdev_capture_output_fmts[] = {
 	V4L2_PIX_FMT_RGB565,
 	V4L2_PIX_FMT_RGB32
 };
-
-const struct atomisp_in_fmt_conv atomisp_in_fmt_conv[] = {
-	{ V4L2_MBUS_FMT_SBGGR8_1X8, SH_CSS_INPUT_FORMAT_RAW_8, sh_css_bayer_order_bggr },
-	{ V4L2_MBUS_FMT_SGBRG8_1X8, SH_CSS_INPUT_FORMAT_RAW_8, sh_css_bayer_order_gbrg },
-	{ V4L2_MBUS_FMT_SGRBG8_1X8, SH_CSS_INPUT_FORMAT_RAW_8, sh_css_bayer_order_grbg },
-	{ V4L2_MBUS_FMT_SRGGB8_1X8, SH_CSS_INPUT_FORMAT_RAW_8, sh_css_bayer_order_rggb },
-	{ V4L2_MBUS_FMT_SBGGR10_1X10, SH_CSS_INPUT_FORMAT_RAW_10, sh_css_bayer_order_bggr },
-	{ V4L2_MBUS_FMT_SGBRG10_1X10, SH_CSS_INPUT_FORMAT_RAW_10, sh_css_bayer_order_gbrg },
-	{ V4L2_MBUS_FMT_SGRBG10_1X10, SH_CSS_INPUT_FORMAT_RAW_10, sh_css_bayer_order_grbg },
-	{ V4L2_MBUS_FMT_SRGGB10_1X10, SH_CSS_INPUT_FORMAT_RAW_10, sh_css_bayer_order_rggb },
-	{ V4L2_MBUS_FMT_SBGGR12_1X12, SH_CSS_INPUT_FORMAT_RAW_12, sh_css_bayer_order_bggr },
-	{ V4L2_MBUS_FMT_SGBRG12_1X12, SH_CSS_INPUT_FORMAT_RAW_12, sh_css_bayer_order_gbrg },
-	{ V4L2_MBUS_FMT_SGRBG12_1X12, SH_CSS_INPUT_FORMAT_RAW_12, sh_css_bayer_order_grbg },
-	{ V4L2_MBUS_FMT_SRGGB12_1X12, SH_CSS_INPUT_FORMAT_RAW_12, sh_css_bayer_order_rggb },
-	{ V4L2_MBUS_FMT_UYVY8_1X16, ATOMISP_INPUT_FORMAT_YUV422_8, 0 },
-};
-
-const struct atomisp_in_fmt_conv *atomisp_find_in_fmt_conv(
-	enum v4l2_mbus_pixelcode code)
-{
-	unsigned int i;
-
-	for (i = 0; i < ARRAY_SIZE(atomisp_in_fmt_conv); i++)
-		if (code == atomisp_in_fmt_conv[i].code)
-			return &atomisp_in_fmt_conv[i];
-
-	return NULL;
-}
 
 /*
  * V4L2 subdev operations
@@ -429,17 +400,6 @@ int atomisp_subdev_set_selection(struct v4l2_subdev *sd,
 
 		break;
 	}
-	case ATOMISP_SUBDEV_PAD_SOURCE_VF:
-	case ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW:
-		comp[pad]->width = r->width;
-		comp[pad]->height = r->height;
-		break;
-	}
-
-	/* Set format dimensions on non-sink pads as well. */
-	if (pad != ATOMISP_SUBDEV_PAD_SINK) {
-		ffmt[pad]->width = comp[pad]->width;
-		ffmt[pad]->height = comp[pad]->height;
 	}
 
 	*r = *atomisp_subdev_get_rect(sd, fh, which, pad, target);
@@ -500,36 +460,13 @@ int atomisp_subdev_set_ffmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 	struct v4l2_mbus_framefmt *__ffmt =
 		atomisp_subdev_get_ffmt(sd, fh, which, pad);
 
-	dev_dbg(isp->dev, "ffmt: pad %s w %d h %d code 0x%8.8x which %s\n",
-		atomisp_pad_str[pad], ffmt->width, ffmt->height, ffmt->code,
+	dev_dbg(isp->dev, "ffmt: pad %s w %d h %d which %s\n",
+		atomisp_pad_str[pad], ffmt->width, ffmt->height,
 		which == V4L2_SUBDEV_FORMAT_TRY ? "V4L2_SUBDEV_FORMAT_TRY"
 		: "V4L2_SUBDEV_FORMAT_ACTIVE");
 
-	/* Set bypass mode. One must only set raw or non-raw formats
-	 * on the source pads. */
-	if (pad != ATOMISP_SUBDEV_PAD_SINK
-	    && which == V4L2_SUBDEV_FORMAT_ACTIVE) {
-		struct v4l2_mbus_framefmt *f =
-			atomisp_subdev_get_ffmt(sd, fh, which,
-						ATOMISP_SUBDEV_PAD_SINK);
-
-		isp->sw_contex.bypass = !atomisp_is_mbuscode_raw(f->code)
-			|| atomisp_is_mbuscode_raw(ffmt->code);
-	}
-
 	switch (pad) {
-	case ATOMISP_SUBDEV_PAD_SINK: {
-		const struct atomisp_in_fmt_conv *fc =
-			atomisp_find_in_fmt_conv(ffmt->code);
-
-		if (!fc) {
-			ffmt->code = atomisp_in_fmt_conv[0].code;
-			dev_dbg(isp->dev, "using 0x%8.8x instead\n",
-				ffmt->code);
-			fc = atomisp_find_in_fmt_conv(ffmt->code);
-			BUG_ON(!fc);
-		}
-
+	case ATOMISP_SUBDEV_PAD_SINK:
 		*__ffmt = *ffmt;
 
 		isp_subdev_propagate(sd, fh, which, pad,
@@ -539,12 +476,9 @@ int atomisp_subdev_set_ffmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 			sh_css_input_set_resolution(ffmt->width, ffmt->height);
 			sh_css_input_set_binning_factor(
 				atomisp_get_sensor_bin_factor(isp));
-			sh_css_input_set_bayer_order(fc->bayer_order);
-			sh_css_input_set_format(fc->in_sh_fmt);
 		}
 
 		break;
-	}
 	case ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE:
 	case ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW:
 	case ATOMISP_SUBDEV_PAD_SOURCE_VF:

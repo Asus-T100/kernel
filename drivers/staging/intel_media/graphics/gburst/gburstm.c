@@ -3060,7 +3060,7 @@ static void __exit gburst_cleanup(struct gburst_pvt_s *gbprv)
  *
  * Function return value: negative to abort module installation.
  */
-static int gburst_init(struct gburst_pvt_s *gbprv)
+static int __init gburst_init(struct gburst_pvt_s *gbprv)
 {
 	u32 gt_sts;
 	int sts;
@@ -3226,7 +3226,7 @@ err_interrupt:
  *
  * Function return value: negative to abort module installation.
  */
-int gburst_module_init(void)
+int __init gburst_module_init(void)
 {
 	struct gburst_pvt_s *gbprv;
 	int rva;

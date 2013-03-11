@@ -177,9 +177,6 @@ struct tng_topaz_private {
 	uint32_t producer;
 	uint32_t consumer;
 
-	/* JPEG ISSUEBUF cmd count */
-	uint32_t issuebuf_cmd_count;
-
 #if 0
 	/* Firmware data section offset and size */
 	uint32_t mtx_debug_val;
@@ -298,7 +295,7 @@ int mtx_write_FIFO(struct drm_device *dev,
 	uint32_t param, uint32_t param_addr, uint32_t sync_seq);
 
 int tng_topaz_remove_ctx(struct drm_psb_private *dev,
-	struct psb_video_ctx *video_ctx);
+	struct file *filp);
 
 extern int tng_topaz_save_mtx_state(struct drm_device *dev);
 
