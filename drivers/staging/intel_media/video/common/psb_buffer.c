@@ -484,13 +484,11 @@ static void drm_psb_ttm_tt_unpopulate(struct ttm_tt *ttm)
 }
 #endif
 
-#ifdef PSB_INVALIDATE_CACHES
 static int psb_invalidate_caches(struct ttm_bo_device *bdev,
 				 uint32_t placement)
 {
 	return 0;
 }
-#endif
 
 /*
  * MSVDX/TOPAZ GPU virtual space looks like this
@@ -700,9 +698,7 @@ struct ttm_bo_driver psb_ttm_bo_driver = {
 	.ttm_tt_populate = &drm_psb_ttm_tt_populate,
 	.ttm_tt_unpopulate = &drm_psb_ttm_tt_unpopulate,
 #endif
-#ifdef PSB_INVALIDATE_CACHES
 	.invalidate_caches = &psb_invalidate_caches,
-#endif
 	.init_mem_type = &psb_init_mem_type,
 	.evict_flags = &psb_evict_mask,
 	/* psb_move is used for IMR case */
