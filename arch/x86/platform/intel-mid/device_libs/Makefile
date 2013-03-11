@@ -40,6 +40,7 @@ obj-$(subst m,y,$(CONFIG_BATTERY_MAX17042))				+= platform_max17042.o
 else
 obj-$(subst m,y,$(CONFIG_BATTERY_MAX17050))				+= platform_max17042.o
 endif
+obj-$(subst m,y,$(CONFIG_BYT_ULPMC_BATTERY))				+= platform_ulpmc_battery.o
 obj-$(subst m,y,$(CONFIG_TOUCHSCREEN_ATMEL_MXT224))			+= platform_mxt224.o
 obj-$(subst m,y,$(CONFIG_A1026))					+= platform_a1026.o
 obj-$(subst m,y,$(CONFIG_SENSORS_APDS990X))				+= platform_apds990x.o
