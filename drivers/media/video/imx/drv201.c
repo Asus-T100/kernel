@@ -17,6 +17,7 @@
 #include <linux/types.h>
 #include <media/v4l2-chip-ident.h>
 #include <media/v4l2-device.h>
+#include <asm/intel-mid.h>
 
 #include "drv201.h"
 
@@ -80,6 +81,11 @@ int drv201_vcm_power_up(struct v4l2_subdev *sd)
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	int ret;
 	u8 value;
+	/*
+	 * FIXME: no vcm support for BYT yet
+	 */
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2)
+		return 0;
 
 	/* Enable power */
 	ret = drv201_dev.platform_data->power_ctrl(sd, 1);
@@ -123,6 +129,12 @@ fail_powerdown:
 
 int drv201_vcm_power_down(struct v4l2_subdev *sd)
 {
+	/*
+	 * FIXME: no vcm support for BYT yet
+	 */
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2)
+		return 0;
+
 	return drv201_dev.platform_data->power_ctrl(sd, 0);
 }
 
@@ -131,6 +143,11 @@ int drv201_t_focus_vcm(struct v4l2_subdev *sd, u16 val)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	u16 data = val & VCM_CODE_MASK;
+	/*
+	 * FIXME: no vcm support for BYT yet
+	 */
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2)
+		return 0;
 
 	if (!drv201_dev.initialized)
 		return -ENODEV;
@@ -140,6 +157,11 @@ int drv201_t_focus_vcm(struct v4l2_subdev *sd, u16 val)
 int drv201_t_focus_abs(struct v4l2_subdev *sd, s32 value)
 {
 	int ret;
+	/*
+	 * FIXME: no vcm support for BYT yet
+	 */
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2)
+		return 0;
 
 	value = min(value, DRV201_MAX_FOCUS_POS);
 	ret = drv201_t_focus_vcm(sd, DRV201_MAX_FOCUS_POS - value);
@@ -154,6 +176,11 @@ int drv201_t_focus_abs(struct v4l2_subdev *sd, s32 value)
 
 int drv201_t_focus_rel(struct v4l2_subdev *sd, s32 value)
 {
+	/*
+	 * FIXME: no vcm support for BYT yet
+	 */
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2)
+		return 0;
 
 	return drv201_t_focus_abs(sd, drv201_dev.focus + value);
 }

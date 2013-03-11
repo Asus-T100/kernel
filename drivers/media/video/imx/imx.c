@@ -37,6 +37,7 @@
 #include <linux/types.h>
 #include <media/v4l2-chip-ident.h>
 #include <media/v4l2-device.h>
+#include <asm/intel-mid.h>
 #include "imx.h"
 
 struct imx_resolution *imx_res;
@@ -420,8 +421,9 @@ static int __imx_init(struct v4l2_subdev *sd, u32 val)
 
 	if (dev->sensor_id == IMX_ID_DEFAULT)
 		return 0;
-	imx_res = imx_sets[dev->sensor_id].res_preview;
-	N_RES = imx_sets[dev->sensor_id].n_res_preview;
+
+	imx_res = imx_sets[dev->sensor_id].res_still;
+	N_RES = imx_sets[dev->sensor_id].n_res_still;
 
 	return imx_write_reg_array(client,
 			imx_sets[dev->sensor_id].init_settings);
