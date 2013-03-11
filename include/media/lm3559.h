@@ -76,7 +76,8 @@
 	}
 
 /* Value settings for Flash Time-out Duration*/
-#define LM3559_DEFAULT_TIMEOUT          512U
+#define LM3559_DEFAULT_TIMEOUT          480U
+#define LM3559_DEFAULT_TIMEOUT_SETTING 0x07  /* 480ms */
 #define LM3559_MIN_TIMEOUT              32U
 #define LM3559_MAX_TIMEOUT              1024U
 #define LM3559_TIMEOUT_STEPSIZE         32U
@@ -104,18 +105,21 @@
 
 /* Flash brightness, input is percentage, output is [0..15] */
 #define LM3559_FLASH_STEP                    625
+#define LM3559_FLASH_DEFAULT              15
 #define LM3559_FLASH_DEFAULT_BRIGHTNESS \
-	LM3559_VALUE_TO_PERCENT(13, LM3559_FLASH_STEP)
+	LM3559_VALUE_TO_PERCENT(LM3559_FLASH_DEFAULT, LM3559_FLASH_STEP)
 
 /* Torch brightness, input is percentage, output is [0..7] */
 #define LM3559_TORCH_STEP                    1250
+#define LM3559_TORCH_DEFAULT              2
 #define LM3559_TORCH_DEFAULT_BRIGHTNESS \
-	LM3559_VALUE_TO_PERCENT(2, LM3559_TORCH_STEP)
+	LM3559_VALUE_TO_PERCENT(LM3559_TORCH_DEFAULT, LM3559_TORCH_STEP)
 
 /* Indicator brightness, input is percentage, output is [0..3] */
 #define LM3559_INDICATOR_STEP                1250
+#define LM3559_INDICATOR_DEFAULT          1
 #define LM3559_INDICATOR_DEFAULT_BRIGHTNESS \
-	LM3559_VALUE_TO_PERCENT(1, LM3559_INDICATOR_STEP)
+	LM3559_VALUE_TO_PERCENT(LM3559_INDICATOR_DEFAULT, LM3559_INDICATOR_STEP)
 
 /*
  * lm3559_platform_data - Flash controller platform data
