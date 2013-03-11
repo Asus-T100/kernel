@@ -408,7 +408,12 @@ static int __devexit avp_pmic_remove(struct platform_device *pdev)
 	return 0;
 }
 
-MODULE_DEVICE_TABLE(platform, avp_id);
+static const struct platform_device_id avp_id_table[] = {
+	{ "intel_regulator", 0 },
+	{ },
+};
+
+MODULE_DEVICE_TABLE(platform, avp_id_table);
 
 static struct platform_driver avp_pmic_driver = {
 	.driver		= {
@@ -417,6 +422,7 @@ static struct platform_driver avp_pmic_driver = {
 	},
 	.probe = avp_pmic_probe,
 	.remove = __devexit_p(avp_pmic_remove),
+	.id_table = avp_id_table,
 };
 static int __init avp_pmic_init(void)
 {
