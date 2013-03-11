@@ -422,6 +422,11 @@ int dlp_net_stop(struct net_device *dev)
 	del_timer_sync(&tx_ctx->timer);
 	dlp_stop_tx(tx_ctx);
 
+	ret = dlp_ctrl_close_channel(ch_ctx);
+	if (ret)
+		pr_err(DRVNAME ": Can't close CH%d (HSI CH%d) => err: %d\n",
+				ch_ctx->ch_id, ch_ctx->hsi_channel, ret);
+
 	dlp_ctx_set_state(tx_ctx, IDLE);
 
 	/* Flush the ACWAKE works */
