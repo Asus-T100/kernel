@@ -265,9 +265,10 @@ int hci_tty_release(struct inode *inod, struct file *file)
 ssize_t hci_tty_read(struct file *file, char __user *data, size_t size,
 		loff_t *offset)
 {
-	int len = 0, tout;
-	struct sk_buff *skb = NULL, *rskb = NULL;
+	int len = 0, tout, ret;
+	struct sk_buff *skb = NULL;
 	struct ti_st	*hst;
+	char __user *d = data;
 
 	pr_debug("inside %s (%p, %p, %u, %p)\n",
 			__func__, file, data, size, offset);
@@ -309,29 +310,19 @@ ssize_t hci_tty_read(struct file *file, char __user *data, size_t size,
 		pr_err("FIONREAD not done before read\n");
 		return -ENOMEM;
 	} else {
-		/* returning skb */
-		rskb = alloc_skb(size, GFP_KERNEL);
-		if (!rskb) {
-			pr_err("alloc_skb error\n");
-			return -ENOMEM;
-		}
-
 		/* cb[0] has the pkt_type 0x04 or 0x02 or 0x03 */
-		memcpy(skb_put(rskb, 1), &skb->cb[0], 1);
-		memcpy(skb_put(rskb, skb->len), skb->data, skb->len);
-
-		if (copy_to_user(data, rskb->data, rskb->len)) {
+		ret = copy_to_user(d++, &skb->cb[0], 1);
+		ret |= copy_to_user(d, skb->data, skb->len);
+		if (ret) {
 			pr_err("unable to copy to user space\n");
 			/* Queue the skb back to head */
 			skb_queue_head(&hst->rx_list, skb);
-			kfree_skb(rskb);
 			return -EIO;
 		}
 	}
 
-	len = rskb->len;	/* len of returning skb */
+	len = skb->len + 1;	/* len of returning skb */
 	kfree_skb(skb);
-	kfree_skb(rskb);
 	pr_debug("total size read= %d\n", len);
 	return len;
 }
