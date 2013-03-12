@@ -1534,7 +1534,7 @@ static struct platform_driver pmic_chrgr_driver = {
 		   .pm = &pmic_chrgr_pm_ops,
 		   },
 	.probe = pmic_chrgr_probe,
-	.remove = __devexit_p(pmic_chrgr_remove),
+	.remove = pmic_chrgr_remove,
 };
 
 static int pmic_chrgr_init(void)
@@ -1565,7 +1565,7 @@ out:
 	return ret;
 }
 
-static void __devexit pmic_ccsm_rpmsg_remove(struct rpmsg_channel *rpdev)
+static void pmic_ccsm_rpmsg_remove(struct rpmsg_channel *rpdev)
 {
 	pmic_chrgr_exit();
 	dev_info(&rpdev->dev, "Removed pmic_ccsm rpmsg device\n");
@@ -1592,7 +1592,7 @@ static struct rpmsg_driver pmic_ccsm_rpmsg = {
 	.id_table	= pmic_ccsm_rpmsg_id_table,
 	.probe		= pmic_ccsm_rpmsg_probe,
 	.callback	= pmic_ccsm_rpmsg_cb,
-	.remove		= __devexit_p(pmic_ccsm_rpmsg_remove),
+	.remove		= pmic_ccsm_rpmsg_remove,
 };
 
 static int __init pmic_ccsm_rpmsg_init(void)
