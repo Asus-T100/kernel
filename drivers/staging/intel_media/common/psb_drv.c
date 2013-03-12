@@ -4747,8 +4747,13 @@ static struct drm_driver driver = {
 	.lastclose = psb_lastclose,
 	.open = psb_driver_open,
 	.postclose = PVRSRVDrmPostClose2,
+#ifdef DISPLAY_DRIVER_DEBUG_INTERFACE
 	.debugfs_init = psb_proc_init,
 	.debugfs_cleanup = psb_proc_cleanup,
+#else
+	.debugfs_init = NULL,
+	.debugfs_cleanup = NULL,
+#endif
 	.preclose = psb_driver_preclose,
 	.fops = &driver_psb_fops,
 	.name = DRIVER_NAME,
