@@ -261,7 +261,6 @@ static struct i2c_device_id ir2e69_idtable[] = {
 
 MODULE_DEVICE_TABLE(i2c, ir2e69_idtable);
 
-static int mipi_reset_gpio = -1;
 static struct i2c_client *i2c_client;
 
 static struct attribute *ir2e69_attributes[] = {
@@ -345,30 +344,33 @@ static struct i2c_driver ir2e69_driver = {
 	.remove		= __devexit_p(ir2e69_remove),
 };
 
+static void ir2e69_set_gpio(int value)
+{
+	static unsigned int mipi_reset_gpio = 0;
+	PSB_DEBUG_ENTRY(": %d\n", value);
+
+	if (mipi_reset_gpio == 0) {
+		mipi_reset_gpio = get_gpio_by_name("mipi-reset");
+		gpio_request(mipi_reset_gpio, "mipi_display");
+		gpio_direction_output(mipi_reset_gpio, value);
+	} else
+		gpio_set_value(mipi_reset_gpio, value);
+}
+
 static void ir2e69_register(void)
 {
 	struct i2c_adapter *adapter;
 
 	adapter = i2c_get_adapter(I2C_ADAPTER);
 	i2c_client = i2c_new_device(adapter, &dcdc_board_info);
+	/* get reset gpio and set direction in register */
+	ir2e69_set_gpio(0);
 }
 
 static void ir2e69_unregister(void)
 {
 	if (i2c_client != NULL)
 		i2c_unregister_device(i2c_client);
-}
-
-static void ir2e69_set_gpio(int value)
-{
-	PSB_DEBUG_ENTRY(": %d\n", value);
-
-	if (mipi_reset_gpio == -1) {
-		mipi_reset_gpio = get_gpio_by_name("mipi-reset");
-		gpio_request(mipi_reset_gpio, "mipi_display");
-		gpio_direction_output(mipi_reset_gpio, value);
-	} else
-		gpio_set_value(mipi_reset_gpio, value);
 }
 
 static int ir2e69_send_sequence(u8 data[][2], int count)
@@ -457,6 +459,9 @@ static int ls04x_igzo_drv_ic_init(struct mdfld_dsi_config *dsi_config)
 #ifndef NO_DRIVER_IC_INIT
 	struct mdfld_dsi_pkg_sender *sender
 				= mdfld_dsi_get_pkg_sender(dsi_config);
+
+	if (!sender)
+		return -EINVAL;
 	sender->status = MDFLD_DSI_PKG_SENDER_FREE;
 
 	r = mdfld_dsi_send_gen_short_lp(sender,
@@ -588,6 +593,9 @@ static int ls04x_cgs_drv_ic_init(struct mdfld_dsi_config *dsi_config)
 	memset(data, 0, sizeof(data));
 	struct mdfld_dsi_pkg_sender *sender
 				= mdfld_dsi_get_pkg_sender(dsi_config);
+
+	if (!sender)
+		return -EINVAL;
 	sender->status = MDFLD_DSI_PKG_SENDER_FREE;
 
 	r = mdfld_dsi_send_gen_short_lp(sender,
@@ -691,6 +699,9 @@ static int ls04x_drv_ic_init(struct mdfld_dsi_config *dsi_config)
 	memset(data, 0, sizeof(data));
 	struct mdfld_dsi_pkg_sender *sender
 				= mdfld_dsi_get_pkg_sender(dsi_config);
+
+	if (!sender)
+		return -EINVAL;
 	sender->status = MDFLD_DSI_PKG_SENDER_FREE;
 
 	r = mdfld_dsi_send_gen_short_lp(sender,
@@ -706,11 +717,13 @@ static int ls04x_drv_ic_init(struct mdfld_dsi_config *dsi_config)
 #endif
 
 	if ((data[2] == 0x14) && (data[3] == 0x13))
-		ls04x_igzo_drv_ic_init(dsi_config);
+		r = ls04x_igzo_drv_ic_init(dsi_config);
 	else if ((data[2] == 0x34) && (data[3] == 0x15))
-		ls04x_cgs_drv_ic_init(dsi_config);
+		r = ls04x_cgs_drv_ic_init(dsi_config);
 	else
-		DRM_ERROR("unknown device code: %02x %02x\n", data[2], data[3]);
+		DRM_INFO("unknown device code: %02x %02x\n", data[2], data[3]);
+
+	return r;
 }
 
 static void ls04x_dsi_controller_init(struct mdfld_dsi_config *dsi_config)
