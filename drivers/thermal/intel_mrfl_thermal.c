@@ -743,15 +743,15 @@ static struct platform_driver mrfl_thermal_driver = {
 		.pm = &thermal_pm_ops,
 		},
 	.probe = mrfl_thermal_probe,
-	.remove = __devexit_p(mrfl_thermal_remove),
+	.remove = mrfl_thermal_remove,
 };
 
-static int __init mrfl_thermal_module_init(void)
+static int mrfl_thermal_module_init(void)
 {
 	return platform_driver_register(&mrfl_thermal_driver);
 }
 
-static void __exit mrfl_thermal_module_exit(void)
+static void mrfl_thermal_module_exit(void)
 {
 	platform_driver_unregister(&mrfl_thermal_driver);
 }
@@ -796,7 +796,7 @@ static struct rpmsg_driver mrfl_thermal_rpmsg = {
 	.drv.owner	= THIS_MODULE,
 	.probe		= mrfl_thermal_rpmsg_probe,
 	.callback	= mrfl_thermal_rpmsg_cb,
-	.remove		= __devexit_p(mrfl_thermal_rpmsg_remove),
+	.remove		= mrfl_thermal_rpmsg_remove,
 	.id_table	= mrfl_thermal_id_table,
 };
 
