@@ -300,28 +300,30 @@ void gburst_hw_reconfigure_groups(void)
 
 		if (gburst_hw_first_counter < 0) {
 			gburst_hw_first_counter = free1;
-			perfCBits = &hostCtl->ui32PerfCounterBitSelect;
-			perfSum = &hostCtl->ui32PerfSumMux;
+			if (gburst_hw_first_counter >= 0) {
+				perfCBits = &hostCtl->ui32PerfCounterBitSelect;
+				perfSum = &hostCtl->ui32PerfSumMux;
 
-			perfGroups[gburst_hw_first_counter] =
-			pidat_initial[GBURST_MONITORED_COUNTER_FIRST].pi_group;
+				perfGroups[gburst_hw_first_counter] =
+				pidat_initial[GBURST_MONITORED_COUNTER_FIRST].pi_group;
 
-			perfBit[gburst_hw_first_counter] =
-			pidat_initial[GBURST_MONITORED_COUNTER_FIRST].pi_bit;
+				perfBit[gburst_hw_first_counter] =
+				pidat_initial[GBURST_MONITORED_COUNTER_FIRST].pi_bit;
 
-			*perfCBits &= ~(0xF << (gburst_hw_first_counter << 2));
+				*perfCBits &= ~(0xF << (gburst_hw_first_counter << 2));
 
-			*perfCBits |=
-			((pidat_initial[GBURST_MONITORED_COUNTER_FIRST].
-			pi_cntr_bits << (gburst_hw_first_counter << 2)) &
-			(0xF << (gburst_hw_first_counter << 2)));
+				*perfCBits |=
+				((pidat_initial[GBURST_MONITORED_COUNTER_FIRST].
+				pi_cntr_bits << (gburst_hw_first_counter << 2)) &
+				(0xF << (gburst_hw_first_counter << 2)));
 
-			*perfSum |=
-			(pidat_initial[GBURST_MONITORED_COUNTER_FIRST].
-			pi_summux << (8+gburst_hw_first_counter));
+				*perfSum |=
+				(pidat_initial[GBURST_MONITORED_COUNTER_FIRST].
+				pi_summux << (8+gburst_hw_first_counter));
 
-			pidat[gburst_hw_first_counter].pi_coeff =
-			pidat_initial[GBURST_MONITORED_COUNTER_FIRST].pi_coeff;
+				pidat[gburst_hw_first_counter].pi_coeff =
+				pidat_initial[GBURST_MONITORED_COUNTER_FIRST].pi_coeff;
+			}
 		}
 
 		if (gburst_hw_last_counter < 0) {
@@ -329,28 +331,30 @@ void gburst_hw_reconfigure_groups(void)
 				gburst_hw_last_counter = free1;
 			else
 				gburst_hw_last_counter = free2;
-			perfCBits = &hostCtl->ui32PerfCounterBitSelect;
-			perfSum = &hostCtl->ui32PerfSumMux;
+			if (gburst_hw_last_counter >= 0) {
+				perfCBits = &hostCtl->ui32PerfCounterBitSelect;
+				perfSum = &hostCtl->ui32PerfSumMux;
 
-			perfGroups[gburst_hw_last_counter] =
-			pidat_initial[GBURST_MONITORED_COUNTER_LAST].pi_group;
+				perfGroups[gburst_hw_last_counter] =
+				pidat_initial[GBURST_MONITORED_COUNTER_LAST].pi_group;
 
-			perfBit[gburst_hw_last_counter] =
-			pidat_initial[GBURST_MONITORED_COUNTER_LAST].pi_bit;
+				perfBit[gburst_hw_last_counter] =
+				pidat_initial[GBURST_MONITORED_COUNTER_LAST].pi_bit;
 
-			*perfCBits &= ~(0xF << (gburst_hw_last_counter << 2));
+				*perfCBits &= ~(0xF << (gburst_hw_last_counter << 2));
 
-			*perfCBits |=
-			((pidat_initial[GBURST_MONITORED_COUNTER_LAST].
-			pi_cntr_bits << (gburst_hw_last_counter << 2)) &
-			(0xF << (gburst_hw_last_counter << 2)));
+				*perfCBits |=
+				((pidat_initial[GBURST_MONITORED_COUNTER_LAST].
+				pi_cntr_bits << (gburst_hw_last_counter << 2)) &
+				(0xF << (gburst_hw_last_counter << 2)));
 
-			*perfSum |=
-			(pidat_initial[GBURST_MONITORED_COUNTER_LAST].
-			pi_summux << (8+gburst_hw_last_counter));
+				*perfSum |=
+				(pidat_initial[GBURST_MONITORED_COUNTER_LAST].
+				pi_summux << (8+gburst_hw_last_counter));
 
-			pidat[gburst_hw_last_counter].pi_coeff =
-			pidat_initial[GBURST_MONITORED_COUNTER_LAST].pi_coeff;
+				pidat[gburst_hw_last_counter].pi_coeff =
+				pidat_initial[GBURST_MONITORED_COUNTER_LAST].pi_coeff;
+			}
 		}
 
 		if (gburst_hw_local_read_ptr < 0) {
