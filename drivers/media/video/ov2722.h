@@ -69,7 +69,7 @@
  */
 #define OV2722_F_NUMBER_RANGE 0x1a0a1a0a
 
-#define OV2722_ID	0x2722
+#define OV2722_ID	0x2720
 
 /*
  * OV2722 System control registers
@@ -1543,8 +1543,8 @@ static const struct ov2722_reg ov2722_CIF_120fps_SKIP[] = {
 struct ov2722_resolution ov2722_res[] = {
 	{
 		.desc = "1080P_ex",
-		.width = 1928,
-		.height = 1090,
+		.width = 1920,
+		.height = 1080,
 		.fps = 30,
 		.used = 0,
 		.regs = ov2722_1080p_30fps_ex,

@@ -411,7 +411,7 @@ static int ov2722_try_mbus_fmt(struct v4l2_subdev *sd,
 		fmt->width = ov2722_res[idx].width;
 		fmt->height = ov2722_res[idx].height;
 	}
-	fmt->code = V4L2_MBUS_FMT_SGRBG10_1X10;
+	fmt->code = V4L2_MBUS_FMT_SBGGR10_1X10;
 
 	return 0;
 }
@@ -464,6 +464,11 @@ static int ov2722_s_mbus_fmt(struct v4l2_subdev *sd,
 		dev_err(&client->dev, "ov2722 startup err\n");
 		return -EINVAL;
 	}
+	/* workround to enlarge hblanking and vblanking */
+	ov2722_write_reg(client, OV2722_8BIT,	 0x380c, 0xf);
+	ov2722_write_reg(client, OV2722_8BIT,	 0x380d, 0x5e);
+	ov2722_write_reg(client, OV2722_8BIT,	 0x380e, 0x5);
+	ov2722_write_reg(client, OV2722_8BIT,	 0x380f, 0x60);
 
 	return ret;
 }
@@ -478,7 +483,7 @@ static int ov2722_g_mbus_fmt(struct v4l2_subdev *sd,
 
 	fmt->width = ov2722_res[dev->fmt_idx].width;
 	fmt->height = ov2722_res[dev->fmt_idx].height;
-	fmt->code = V4L2_MBUS_FMT_SGRBG10_1X10;
+	fmt->code = V4L2_MBUS_FMT_SBGGR10_1X10;
 
 	return 0;
 }
@@ -572,7 +577,7 @@ static int ov2722_enum_mbus_fmt(struct v4l2_subdev *sd,
 				unsigned int index,
 				enum v4l2_mbus_pixelcode *code)
 {
-	*code = V4L2_MBUS_FMT_SGRBG10_1X10;
+	*code = V4L2_MBUS_FMT_SBGGR10_1X10;
 
 	return 0;
 }
@@ -669,17 +674,20 @@ static int ov2722_s_parm(struct v4l2_subdev *sd,
 			struct v4l2_streamparm *param)
 {
 	struct ov2722_device *dev = to_ov2722_sensor(sd);
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
-
-	if (!param)
-		return -EINVAL;
-
-	if (param->type != V4L2_BUF_TYPE_VIDEO_CAPTURE) {
-		dev_err(&client->dev,  "unsupported buffer type.\n");
-		return -EINVAL;
-	}
 
 	dev->run_mode = param->parm.capture.capturemode;
+
+	return 0;
+}
+
+
+static int ov2722_g_frame_interval(struct v4l2_subdev *sd,
+				   struct v4l2_subdev_frame_interval *interval)
+{
+	struct ov2722_device *dev = to_ov2722_sensor(sd);
+
+	interval->interval.numerator = 1;
+	interval->interval.denominator = ov2722_res[dev->fmt_idx].fps;
 
 	return 0;
 }
@@ -691,7 +699,7 @@ static int ov2722_enum_mbus_code(struct v4l2_subdev *sd,
 	if (code->index >= MAX_FMTS)
 		return -EINVAL;
 
-	code->code = V4L2_MBUS_FMT_SGRBG10_1X10;
+	code->code = V4L2_MBUS_FMT_SBGGR10_1X10;
 	return 0;
 }
 
@@ -771,6 +779,7 @@ static const struct v4l2_subdev_video_ops ov2722_video_ops = {
 	.try_mbus_fmt = ov2722_try_mbus_fmt,
 	.g_mbus_fmt = ov2722_g_mbus_fmt,
 	.s_mbus_fmt = ov2722_s_mbus_fmt,
+	.g_frame_interval = ov2722_g_frame_interval,
 };
 
 static const struct v4l2_subdev_core_ops ov2722_core_ops = {
@@ -831,7 +840,7 @@ static int ov2722_probe(struct i2c_client *client,
 
 	dev->sd.flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
 	dev->pad.flags = MEDIA_PAD_FL_SOURCE;
-	dev->format.code = V4L2_MBUS_FMT_SGRBG10_1X10;
+	dev->format.code = V4L2_MBUS_FMT_SBGGR10_1X10;
 	dev->sd.entity.type = MEDIA_ENT_T_V4L2_SUBDEV_SENSOR;
 
 	ret = media_entity_init(&dev->sd.entity, 1, &dev->pad, 0);
