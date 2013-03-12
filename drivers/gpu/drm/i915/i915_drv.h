@@ -530,6 +530,10 @@ typedef struct drm_i915_private {
 		int bpp;
 		struct edp_power_seq pps;
 	} edp;
+
+	/* MIPI panel info */
+	struct mipi_info mipi;
+
 	bool no_aux_handshake;
 
 	struct notifier_block lid_notifier;
