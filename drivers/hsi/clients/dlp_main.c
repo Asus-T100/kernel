@@ -1232,7 +1232,8 @@ int dlp_hsi_controller_push(struct dlp_xfer_ctx *xfer_ctx, struct hsi_msg *pdu)
 
 	/* Check credits */
 	if (!dlp_ctx_have_credits(xfer_ctx, ch_ctx)) {
-		pr_warn(DRVNAME ": ch%d out of credits (%d)",
+		pr_warn(DRVNAME ": CH%d (HSI CH%d) out of credits (%d)",
+				ch_ctx->ch_id,
 				ch_ctx->hsi_channel, ch_ctx->tx.seq_num);
 
 		goto out;

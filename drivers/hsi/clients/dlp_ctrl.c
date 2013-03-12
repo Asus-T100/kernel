@@ -184,9 +184,6 @@ static void dlp_ctrl_handle_tx_timeout(struct work_struct *work)
 		if ((ch_ctx) && (ch_ctx->modem_tx_timeout_cb))
 			ch_ctx->modem_tx_timeout_cb(ch_ctx);
 	}
-
-	/* TX timeout mangement done => Clear the flag */
-	dlp_drv.tx_timeout = 0;
 }
 
 /*
@@ -453,7 +450,7 @@ static void dlp_ctrl_complete_rx(struct hsi_msg *msg)
 
 	hsi_channel = params.channel;
 	if ((hsi_channel < 0) || (hsi_channel >= DLP_CHANNEL_COUNT)) {
-		pr_err(DRVNAME ": Invalid channel id (%d)\n", hsi_channel);
+		pr_err(DRVNAME ": Invalid HSI channel id (%d)\n", hsi_channel);
 		goto push_rx;
 	}
 
@@ -499,12 +496,12 @@ static void dlp_ctrl_complete_rx(struct hsi_msg *msg)
 			memcpy(&hsi_ch->open_conn, &params, sizeof(params));
 			response = -1;
 
-			pr_debug(DRVNAME ": ch%d open_conn received (postponed)\n",
+			pr_debug(DRVNAME ": HSI CH%d OPEN_CONN received (postponed)\n",
 					params.channel);
 			goto push_rx;
 		}
 
-		pr_debug(DRVNAME ": ch%d open_conn received (size: %d)\n",
+		pr_debug(DRVNAME ": HSI CH%d OPEN_CONN received (size: %d)\n",
 					params.channel,
 					(params.data2 << 8) | params.data1);
 
@@ -585,6 +582,17 @@ static int dlp_ctrl_cmd_send(struct dlp_channel *ch_ctx,
 	struct dlp_command *dlp_cmd;
 	struct dlp_command_params expected_resp;
 	struct hsi_msg *tx_msg = NULL;
+
+	/* Check the link readiness (TTY still opened) */
+	if (!dlp_tty_is_link_valid()) {
+		if (EDLP_CTRL_TX_DATA_REPORT)
+			pr_debug(DRVNAME ": CH%d (HSI CH%d) cmd 0x%X ignored (close:%d, Time out: %d)\n",
+					ch_ctx->ch_id, ch_ctx->hsi_channel,
+					id, dlp_drv.tty_closed,
+					dlp_drv.tx_timeout);
+
+		return ret;
+	}
 
 	/* Backup RX callback */
 	dlp_save_rx_callbacks(&ctrl_ctx->ehandler);
@@ -967,14 +975,6 @@ int dlp_ctrl_close_channel(struct dlp_channel *ch_ctx)
 	int state, ret = 0;
 	unsigned char param3 = PARAM1(DLP_DIR_TRANSMIT_AND_RECEIVE);
 
-	/* Check the link readiness (TTY still opened) */
-	if (!dlp_tty_is_link_valid()) {
-		pr_debug(DRVNAME ": CTRL: CH%d CLOSE_CONN ignored (close:%d, Time out: %d)\n",
-				ch_ctx->ch_id,
-				dlp_drv.tty_closed, dlp_drv.tx_timeout);
-		return ret;
-	}
-
 	/* Check if the channel was correctly opened */
 	state = dlp_ctrl_get_channel_state(ch_ctx->hsi_channel);
 	if (state == DLP_CH_STATE_OPENED) {
@@ -984,8 +984,8 @@ int dlp_ctrl_close_channel(struct dlp_channel *ch_ctx)
 				DLP_CH_STATE_CLOSING, DLP_CH_STATE_CLOSED,
 				0, 0, param3);
 	} else {
-		pr_warn(DRVNAME ": CH%d invalid state (%d)\n",
-				ch_ctx->hsi_channel, state);
+		pr_warn(DRVNAME ": Can't close CH%d (HSI CH%d) => invalid state: %d\n",
+				ch_ctx->ch_id, ch_ctx->hsi_channel, state);
 	}
 
 	return ret;
@@ -1053,7 +1053,6 @@ int dlp_ctrl_send_ack_nack(struct dlp_channel *ch_ctx)
 			/* Respnse sent => clear the saved command */
 			hsi_ch->open_conn = 0 ;
 		}
-
 	}
 
 	return ret;
