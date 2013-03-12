@@ -37,11 +37,13 @@ struct ad5816g_device {
 /* ARC RES2 MODE */
 #define AD5816G_ARC_RES2			0x01
 /* ARC VCM FREQ - 78.1Hz */
-#define AD5816G_DEF_FREQ			0x80
+#define AD5816G_DEF_FREQ			0x7a
 /* ARC VCM THRESHOLD - 0x08 << 1 */
-#define AD5816G_DEF_THRESHOLD			0x08
+#define AD5816G_DEF_THRESHOLD		0x64
 #define AD5816G_ID			0x24
 #define VCM_CODE_MASK	0x03ff
+
+#define AD5816G_MODE_1M_SWITCH_CLOCK	0x30
 
 #endif
 
