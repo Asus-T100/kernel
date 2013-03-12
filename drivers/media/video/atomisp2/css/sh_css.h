@@ -379,6 +379,11 @@ enum sh_css_interrupt_info {
 	SH_CSS_IRQ_INFO_STATISTICS_READY = 1 << 0,
 	/**< 3A + DIS statistics are ready. */
 
+	SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF = 1 << 9,
+	/**< the css receiver received the start of frame */
+	SH_CSS_IRQ_INFO_CSS_RECEIVER_EOF = 1 << 10,
+
+	/**< the css receiver received the end of frame */
 	/* the input system in in error */
 	SH_CSS_IRQ_INFO_INPUT_SYSTEM_ERROR = 1 << 3,
 	/* the input formatter in in error */

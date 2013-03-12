@@ -906,6 +906,11 @@ void sh_css_print_sp_debug_state(
 
 #endif
 
+#if SP_DEBUG == SP_DEBUG_STALL
+	DTRACE_SP_STATE("current SP software counter: %d\n",
+				state->debug[0]);
+#endif
+
 #if SP_DEBUG == SP_DEBUG_DUMP
 
 	DTRACE_SP_STATE("current SP software counter: %d\n",

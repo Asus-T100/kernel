@@ -25,13 +25,36 @@
 #define _SH_CSS_PARAMS_SHADING_H_
 
 #include "sh_css.h"
+#include "sh_css_internal.h"
 #include "sh_css_binary.h"
 
 void
-prepare_shading_table(const struct sh_css_shading_table *in_table,
-		      unsigned int sensor_binning,
-			  bool raw_binning,
-		      struct sh_css_shading_table **target_table,
-		      const struct sh_css_binary *binary);
+sh_css_param_shading_table_init(void);
+
+void
+sh_css_param_shading_table_changed_set(bool changed);
+
+bool
+sh_css_param_shading_table_changed_get(void);
+
+unsigned int
+sh_css_param_shading_table_fraction_bits_get(void);
+
+bool
+sh_css_param_shading_table_store(
+	hrt_vaddress isp_sc_tbl,
+	unsigned int sensor_binning,
+	bool raw_binning,
+	const struct sh_css_binary *binary);
+
+struct sh_css_shading_table *
+sh_css_param_shading_table_get(
+	unsigned int sensor_binning,
+	bool raw_binning);
+
+bool
+sh_css_param_shading_table_set(
+	const struct sh_css_shading_table *table);
+
 
 #endif

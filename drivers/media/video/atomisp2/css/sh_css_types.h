@@ -799,6 +799,7 @@ struct sh_css_binary_info {
 		unsigned char     macc;
 		unsigned char     ss;
 		unsigned char     output;
+		unsigned char     output_table;
 		unsigned char     ref_frame;
 		unsigned char     tnr;
 		unsigned char     xnr;

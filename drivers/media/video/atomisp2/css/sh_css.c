@@ -52,7 +52,7 @@
 #include "input_system.h"
 #include "mmu_device.h"		/* mmu_set_page_table_base_index(), ... */
 #include "gdc_device.h"		/* HRT_GDC_N */
-#include "irq.h"
+#include "irq.h"			/* virq */
 #include "sp.h"				/* cnd_sp_irq_enable() */
 #include "isp.h"			/* cnd_isp_irq_enable, ISP_VEC_NELEMS */
 #define __INLINE_GPIO__
@@ -1973,28 +1973,33 @@ assert(pipe != NULL);
 static void
 enable_interrupts(void)
 {
+/* Select whether the top IRQ delivers a level signal or not. In CSS 2.0 this choice is on the interface */
+	bool enable_pulse = true;
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "enable_interrupts() enter:\n");
-	/* Enable IRQ which signals that SP goes to idle (aka ready state) */
+/* Enable IRQ on the SP which signals that SP goes to idle (aka ready state) */
 	cnd_sp_irq_enable(SP0_ID, true);
-
-	irq_enable_channel(IRQ0_ID, hrt_isp_css_irq_sp);
+/* Set the IRQ device 0 to either level or pulse */
+	irq_enable_pulse(IRQ0_ID, enable_pulse);
+	virq_enable_channel(virq_sp, true);
 	/* Triggered by SP to signal Host that there are new statistics */
-	irq_enable_channel(IRQ0_ID, (enum hrt_isp_css_irq)(IRQ_SW_CHANNEL1_ID + IRQ_SW_CHANNEL_OFFSET));
+	virq_enable_channel((virq_id_t)(IRQ_SW_CHANNEL1_ID + IRQ_SW_CHANNEL_OFFSET), true);
 	/* Triggered by SP to signal Host that there is data in one of the
 	 * SP->Host queues.*/
 #if !defined(HAS_IRQ_MAP_VERSION_2)
-/* IRQ_SW_CHANNEL2_ID is deprecated */
-	irq_enable_channel(IRQ0_ID, (enum hrt_isp_css_irq)(IRQ_SW_CHANNEL2_ID + IRQ_SW_CHANNEL_OFFSET));
-	irq_clear_all(IRQ0_ID);
+/* IRQ_SW_CHANNEL2_ID does not exist on 240x systems */
+	virq_enable_channel((virq_id_t)(IRQ_SW_CHANNEL2_ID + IRQ_SW_CHANNEL_OFFSET), true);
+	virq_clear_all();
 #endif
 
 	sh_css_rx_enable_all_interrupts();
 
 #if defined(HRT_CSIM)
-	/* Enable IRQ which signals that ISP goes to idle
-	 * to get statistics for each binary */
+/*
+ * Enable IRQ on the SP which signals that SP goes to idle
+ * to get statistics for each binary
+ */
 	cnd_isp_irq_enable(ISP0_ID, true);
-	irq_enable_channel(IRQ0_ID, hrt_isp_css_irq_isp);
+	virq_enable_channel(virq_isp, true);
 #endif
 }
 
@@ -2030,8 +2035,6 @@ enum sh_css_err sh_css_init(
 	hrt_data enable = gpio_reg_load(GPIO0_ID, _gpio_block_reg_do_e)
 							| GPIO_FLASH_PIN_MASK;
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_init() enter: void\n");
-
 	default_css.preview_pipe.pipe.preview = preview;
 	default_css.capture_pipe.pipe.capture = capture;
 	default_css.video_pipe.pipe.video     = video;
@@ -2044,12 +2047,15 @@ enum sh_css_err sh_css_init(
 	my_css.malloc = malloc_func;
 	my_css.free = free_func;
 	my_css.flush = flush_func;
+	/* Only after next line we can do dtrace */
 	sh_css_printf = env->print_env.debug_print;
 
-	ia_css_i_host_rmgr_init();
+	sh_css_set_dtrace_level(SH_DBG_INFO);
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_init() enter: env=%p, fw_data=%p, fw_size=%d\n",
+		env, fw_data, fw_size);
 
-	sh_css_set_dtrace_level(9);
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_init()\n");
+	ia_css_i_host_rmgr_init();
 
 	/* In case this has been programmed already, update internal
 	   data structure ... DEPRECATED */
@@ -2158,33 +2164,44 @@ sh_css_resume(void)
 				   SP_PROG_NAME);
 
 	enable_interrupts();
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_resume() leave: return_void\n");
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_resume() leave: return=void\n");
 }
 
 void *
 sh_css_malloc(size_t size)
 {
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_malloc() enter:\n");
-	if (size > 0 && my_css.malloc)
-		return my_css.malloc(size, false);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"sh_css_malloc() enter: size=%d\n", size);
+	if (size > 0 && my_css.malloc) {
+		void *p = my_css.malloc(size, false);
+		sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_malloc() leave: "
+			"return=%p\n", p);
+		return p;
+	}
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_malloc() leave: return=NULL\n");
 	return NULL;
 }
 
 void
 sh_css_free(void *ptr)
 {
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_free() enter:\n");
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"sh_css_free() enter: ptr=%p\n", ptr);
 	if (ptr && my_css.free)
 		my_css.free(ptr);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"sh_css_free() leve: return=void\n");
 }
 
 /* For Acceleration API: Flush FW (shared buffer pointer) arguments */
 void
 sh_css_flush(struct sh_css_acc_fw *fw)
 {
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_flush() enter:\n");
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_flush() enter: fw=%p\n", fw);
 	if ((fw != NULL) && (my_css.flush != NULL))
 		my_css.flush(fw);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"sh_css_flush() leave: return=void\n");
 }
 
 void
@@ -2261,7 +2278,7 @@ sh_css_uninit(void)
 
 	sh_css_sp_set_sp_running(false);
 	sh_css_sp_reset_global_vars();
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_uninit() leave: return_void\n");
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_uninit() leave: return=void\n");
 }
 
 static bool sh_css_frame_ready(void)
@@ -2270,8 +2287,12 @@ static bool sh_css_frame_ready(void)
 	if (my_css.curr_state == sh_css_state_executing_sp_bin_copy) {
 		my_css.capture_pipe.pipe.capture.output_frame->planes.binary.size =
 			sh_css_sp_get_binary_copy_size();
+		sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+			"sh_css_frame_ready() leave: return=true\n");
 		return true;
 	}
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"sh_css_frame_ready() leave: return=false\n");
 	return false;
 }
 
@@ -2313,10 +2334,13 @@ static unsigned int translate_sw_interrupt2(void)
 void
 sh_css_mmu_set_page_table_base_index(hrt_data base_index)
 {
+	mmu_ID_t mmu_id;
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_mmu_set_page_table_base_index() enter: base_index=0x%08x\n",base_index);
 	my_css.page_table_base_index = base_index;
-	mmu_set_page_table_base_index(MMU0_ID, base_index);
-	mmu_invalidate_cache(MMU0_ID);
+	for (mmu_id = (mmu_ID_t)0; mmu_id < (int)N_MMU_ID; mmu_id++) {
+		mmu_set_page_table_base_index(mmu_id, base_index);
+		mmu_invalidate_cache(mmu_id);
+	}
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_mmu_set_page_table_base_index() leave: return_void\n");
 }
 
@@ -2340,7 +2364,7 @@ sh_css_mmu_invalidate_cache(void)
 enum sh_css_err sh_css_translate_interrupt(
 	unsigned int *irq_infos)
 {
-	enum hrt_isp_css_irq irq;
+	virq_id_t	irq;
 	enum hrt_isp_css_irq_status status = hrt_isp_css_irq_status_more_irqs;
 	unsigned int infos = 0;
 
@@ -2349,7 +2373,7 @@ enum sh_css_err sh_css_translate_interrupt(
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_translate_interrupt() enter: irq_infos=%d\n", *irq_infos);
 
 	while (status == hrt_isp_css_irq_status_more_irqs) {
-		status = irq_get_channel_id(IRQ0_ID, &irq);
+		status = virq_get_channel_id(&irq);
 		if (status == hrt_isp_css_irq_status_error)
 			return sh_css_err_interrupt_error;
 
@@ -2360,7 +2384,7 @@ enum sh_css_err sh_css_translate_interrupt(
 #endif
 
 		switch (irq) {
-		case hrt_isp_css_irq_sp:
+		case virq_sp:
 			if (sh_css_frame_ready()) {
 				infos |= SH_CSS_IRQ_INFO_BUFFER_DONE;
 				if (my_css.curr_pipe &&
@@ -2371,35 +2395,35 @@ enum sh_css_err sh_css_translate_interrupt(
 				}
 			}
 			break;
-		case hrt_isp_css_irq_isp:
+		case virq_isp:
 #ifdef HRT_CSIM
 			/* Enable IRQ which signals that ISP goes to idle
 			 * to get statistics for each binary */
 			infos |= SH_CSS_IRQ_INFO_ISP_BINARY_STATISTICS_READY;
 #endif
 			break;
-		case hrt_isp_css_irq_mipi:
+		case virq_isys:
 			/* css rx interrupt, read error bits from css rx */
 			infos |= SH_CSS_IRQ_INFO_CSS_RECEIVER_ERROR;
 			break;
-		case hrt_isp_css_irq_mipi_fifo_full:
+		case virq_isys_fifo_full:
 			infos |=
 			    SH_CSS_IRQ_INFO_CSS_RECEIVER_FIFO_OVERFLOW;
 			break;
-		case hrt_isp_css_irq_mipi_sof:
+		case virq_isys_sof:
 			infos |= SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF;
 			break;
-		case hrt_isp_css_irq_mipi_eof:
+		case virq_isys_eof:
 			infos |= SH_CSS_IRQ_INFO_CSS_RECEIVER_EOF;
 			break;
 /* Temporarily removed, until we have a seperate flag for FRAME_READY irq */
 #if 0
 /* hmm, an interrupt mask, why would we have that ? */
-		case hrt_isp_css_irq_mipi_sol:
+		case virq_isys_sol:
 			infos |= SH_CSS_IRQ_INFO_CSS_RECEIVER_SOL;
 			break;
 #endif
-		case hrt_isp_css_irq_mipi_eol:
+		case virq_isys_eol:
 			infos |= SH_CSS_IRQ_INFO_CSS_RECEIVER_EOL;
 			break;
 /*
@@ -2407,33 +2431,33 @@ enum sh_css_err sh_css_translate_interrupt(
  * does not have the following three IRQ channels defined
  */
 #if defined(HAS_IRQ_MAP_VERSION_1)
-		case hrt_isp_css_irq_sideband_changed:
+		case virq_ifmt_sideband_changed:
 			infos |=
 			    SH_CSS_IRQ_INFO_CSS_RECEIVER_SIDEBAND_CHANGED;
 			break;
-		case hrt_isp_css_irq_css_gen_short_0:
+		case virq_gen_short_0:
 			infos |= SH_CSS_IRQ_INFO_CSS_RECEIVER_GEN_SHORT_0;
 			break;
-		case hrt_isp_css_irq_css_gen_short_1:
+		case virq_gen_short_1:
 			infos |= SH_CSS_IRQ_INFO_CSS_RECEIVER_GEN_SHORT_1;
 			break;
 #endif
-		case hrt_isp_css_irq_ift_prim:
+		case virq_ifmt0_id:
 			infos |= SH_CSS_IRQ_INFO_IF_PRIM_ERROR;
 			break;
-		case hrt_isp_css_irq_ift_prim_b:
+		case virq_ifmt1_id:
 			infos |= SH_CSS_IRQ_INFO_IF_PRIM_B_ERROR;
 			break;
-		case hrt_isp_css_irq_ift_sec:
+		case virq_ifmt2_id:
 			infos |= SH_CSS_IRQ_INFO_IF_SEC_ERROR;
 			break;
-		case hrt_isp_css_irq_ift_mem_cpy:
+		case virq_ifmt3_id:
 			infos |= SH_CSS_IRQ_INFO_STREAM_TO_MEM_ERROR;
 			break;
-		case hrt_isp_css_irq_sw_0:
+		case virq_sw_pin_0:
 			infos |= SH_CSS_IRQ_INFO_SW_0;
 			break;
-		case hrt_isp_css_irq_sw_1:
+		case virq_sw_pin_1:
 			infos |= translate_sw_interrupt1();
 
 			if (my_css.curr_state == sh_css_state_executing_sp_bin_copy) {
@@ -2465,73 +2489,70 @@ enum sh_css_err sh_css_enable_interrupt(
 	enum sh_css_interrupt_info info,
 	bool enable)
 {
-	enum hrt_isp_css_irq irq = -1;
+	virq_id_t	irq = N_virq_id;
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_enable_interrupt() enter: info=%d, enable=%d\n",info,enable);
 
 	switch (info) {
 	case SH_CSS_IRQ_INFO_CSS_RECEIVER_ERROR:
-		irq = hrt_isp_css_irq_mipi;
+		irq = virq_isys;
 		break;
 	case SH_CSS_IRQ_INFO_CSS_RECEIVER_FIFO_OVERFLOW:
-		irq = hrt_isp_css_irq_mipi_fifo_full;
+		irq = virq_isys_fifo_full;
 		break;
 	case SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF:
-		irq = hrt_isp_css_irq_mipi_sof;
+		irq = virq_isys_sof;
 		break;
 	case SH_CSS_IRQ_INFO_CSS_RECEIVER_EOF:
-		irq = hrt_isp_css_irq_mipi_eof;
+		irq = virq_isys_eof;
 		break;
 /* Temporarily removed, until we have a seperate flag for FRAME_READY irq */
 #if 0
 /* hmm, an interrupt mask, why would we have that ? */
 	case SH_CSS_IRQ_INFO_CSS_RECEIVER_SOL:
-		irq = hrt_isp_css_irq_mipi_sol;
+		irq = virq_isys_sol;
 		break;
 #endif
 	case SH_CSS_IRQ_INFO_CSS_RECEIVER_EOL:
-		irq = hrt_isp_css_irq_mipi_eol;
+		irq = virq_isys_eol;
 		break;
 #if defined(HAS_IRQ_MAP_VERSION_1)
 	case SH_CSS_IRQ_INFO_CSS_RECEIVER_SIDEBAND_CHANGED:
-		irq = hrt_isp_css_irq_sideband_changed;
+		irq = virq_ifmt_sideband_changed;
 		break;
 	case SH_CSS_IRQ_INFO_CSS_RECEIVER_GEN_SHORT_0:
-		irq = hrt_isp_css_irq_css_gen_short_0;
+		irq = virq_gen_short_0;
 		break;
 	case SH_CSS_IRQ_INFO_CSS_RECEIVER_GEN_SHORT_1:
-		irq = hrt_isp_css_irq_css_gen_short_1;
+		irq = virq_gen_short_1;
 		break;
 #endif
 	case SH_CSS_IRQ_INFO_IF_PRIM_ERROR:
-		irq = hrt_isp_css_irq_ift_prim;
+		irq = virq_ifmt0_id;
 		break;
 	case SH_CSS_IRQ_INFO_IF_PRIM_B_ERROR:
-		irq = hrt_isp_css_irq_ift_prim_b;
+		irq = virq_ifmt1_id;
 		break;
 	case SH_CSS_IRQ_INFO_IF_SEC_ERROR:
-		irq = hrt_isp_css_irq_ift_sec;
+		irq = virq_ifmt2_id;
 		break;
 	case SH_CSS_IRQ_INFO_STREAM_TO_MEM_ERROR:
-		irq = hrt_isp_css_irq_ift_mem_cpy;
+		irq = virq_ifmt3_id;
 		break;
 	case SH_CSS_IRQ_INFO_SW_0:
-		irq = hrt_isp_css_irq_sw_0;
+		irq = virq_sw_pin_0;
 		break;
 	case SH_CSS_IRQ_INFO_SW_1:
-		irq = hrt_isp_css_irq_sw_1;
+		irq = virq_sw_pin_1;
 		break;
 	case SH_CSS_IRQ_INFO_SW_2:
-		irq = hrt_isp_css_irq_sw_2;
+		irq = virq_sw_pin_2;
 		break;
 	default:
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_enable_interrupt() leave: return_err=%d\n",sh_css_err_invalid_arguments);
 		return sh_css_err_invalid_arguments;
 	}
 
-	if (enable)
-		irq_enable_channel(IRQ0_ID, irq);
-	else
-		irq_disable_channel(IRQ0_ID, irq);
+	virq_enable_channel(irq, enable);
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_enable_interrupt() leave: return_err=%d\n",sh_css_success);
 	return sh_css_success;
@@ -2542,7 +2563,7 @@ enum sh_css_err sh_css_enable_interrupt(
 enum sh_css_err sh_css_translate_interrupt(
 	unsigned int *irq_infos)
 {
-	enum hrt_isp_css_irq irq;
+	virq_id_t	irq;
 	enum hrt_isp_css_irq_status status = hrt_isp_css_irq_status_more_irqs;
 	unsigned int infos = 0;
 
@@ -2551,7 +2572,7 @@ enum sh_css_err sh_css_translate_interrupt(
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_translate_interrupt() enter: irq_infos=%d\n",irq_infos);
 
 	while (status == hrt_isp_css_irq_status_more_irqs) {
-		status = irq_get_channel_id(IRQ0_ID, &irq);
+		status = virq_get_channel_id(&irq);
 		if (status == hrt_isp_css_irq_status_error)
 			return sh_css_err_interrupt_error;
 
@@ -2562,7 +2583,7 @@ enum sh_css_err sh_css_translate_interrupt(
 #endif
 
 		switch (irq) {
-		case hrt_isp_css_irq_sp:
+		case virq_sp:
 			if (sh_css_frame_ready()) {
 				infos |= SH_CSS_IRQ_INFO_BUFFER_DONE;
 				if (my_css.curr_pipe &&
@@ -2573,26 +2594,32 @@ enum sh_css_err sh_css_translate_interrupt(
 				}
 			}
 			break;
-		case hrt_isp_css_irq_isp:
+		case virq_isp:
 #ifdef HRT_CSIM
 			/* Enable IRQ which signals that ISP goes to idle
 			 * to get statistics for each binary */
 			infos |= SH_CSS_IRQ_INFO_ISP_BINARY_STATISTICS_READY;
 #endif
 			break;
-		case hrt_isp_css_irq_isys:
+		case virq_isys_sof:
+			infos |= SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF;
+			break;
+		case virq_isys_eof:
+			infos |= SH_CSS_IRQ_INFO_CSS_RECEIVER_EOF;
+			break;
+		case virq_isys_csi:
 			infos |= SH_CSS_IRQ_INFO_INPUT_SYSTEM_ERROR;
 			break;
-		case hrt_isp_css_irq_ifmt:
+		case virq_ifmt0_id:
 			infos |= SH_CSS_IRQ_INFO_IF_ERROR;
 			break;
-		case hrt_isp_css_irq_dma:
+		case virq_dma:
 			infos |= SH_CSS_IRQ_INFO_DMA_ERROR;
 			break;
-		case hrt_isp_css_irq_sw_pin_0:
+		case virq_sw_pin_0:
 			infos |= SH_CSS_IRQ_INFO_SW_0;
 			break;
-		case hrt_isp_css_irq_sw_pin_1:
+		case virq_sw_pin_1:
 			infos |= translate_sw_interrupt1();
 
 			if (my_css.curr_state == sh_css_state_executing_sp_bin_copy) {
@@ -2624,34 +2651,37 @@ enum sh_css_err sh_css_enable_interrupt(
 	enum sh_css_interrupt_info info,
 	bool enable)
 {
-	enum hrt_isp_css_irq irq = -1;
+	virq_id_t	irq = N_virq_id;
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_enable_interrupt() enter: info=%d, enable=%d\n",info,enable);
 
 	switch (info) {
+	case SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF:
+		irq = virq_isys_sof;
+		break;
+	case SH_CSS_IRQ_INFO_CSS_RECEIVER_EOF:
+		irq = virq_isys_eof;
+		break;
 	case SH_CSS_IRQ_INFO_INPUT_SYSTEM_ERROR:
-		irq = hrt_isp_css_irq_isys;
+		irq = virq_isys_csi;
 		break;
 	case SH_CSS_IRQ_INFO_IF_ERROR:
-		irq = hrt_isp_css_irq_ifmt;
+		irq = virq_ifmt0_id;
 		break;
 	case SH_CSS_IRQ_INFO_DMA_ERROR:
-		irq = hrt_isp_css_irq_dma;
+		irq = virq_dma;
 		break;
 	case SH_CSS_IRQ_INFO_SW_0:
-		irq = hrt_isp_css_irq_sw_pin_0;
+		irq = virq_sw_pin_0;
 		break;
 	case SH_CSS_IRQ_INFO_SW_1:
-		irq = hrt_isp_css_irq_sw_pin_1;
+		irq = virq_sw_pin_1;
 		break;
 	default:
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_enable_interrupt() leave: return_err=%d\n",sh_css_err_invalid_arguments);
 		return sh_css_err_invalid_arguments;
 	}
 
-	if (enable)
-		irq_enable_channel(IRQ0_ID, irq);
-	else
-		irq_disable_channel(IRQ0_ID, irq);
+	virq_enable_channel(irq, enable);
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_enable_interrupt() leave: return_err=%d\n",sh_css_success);
 	return sh_css_success;
@@ -4664,50 +4694,46 @@ assert(pipe != NULL);
 
 	sh_css_metrics_start_frame();
 
-	if (me->reload) {
-		sh_css_pipeline_clean(me);
-		if (pipe->pipe.video.copy_binary.info) {
-			err = sh_css_pipeline_add_stage(me, copy_binary,
-				/* TODO: check next params */
-				/* const struct sh_css_acc_fw *firmware, */
-				NULL,
-				/* unsigned int mode, */
-				copy_binary->info->mode, /* unsigned int mode,*/
-				/* struct sh_css_frame *cc_frame, */
-				NULL,
-				/* struct sh_css_frame *in_frame, */
-				NULL,
-				/* struct sh_css_frame *out_frame, */
-				NULL,
-				/* struct sh_css_frame *vf_frame, */
-				NULL,
-				/* struct sh_css_pipeline_stage **stage) */
-				&copy_stage);
-			if (err != sh_css_success)
-				return err;
-			in_frame = me->stages->args.out_frame;
-			in_stage = copy_stage;
-		}
-		err = sh_css_pipeline_add_stage(me, video_binary, NULL,
-						video_binary->info->mode, NULL,
-						in_frame, out_frame, NULL,
-						&video_stage);
+	sh_css_pipeline_clean(me);
+	if (pipe->pipe.video.copy_binary.info) {
+		err = sh_css_pipeline_add_stage(me, copy_binary,
+			/* TODO: check next params */
+			/* const struct sh_css_acc_fw *firmware, */
+			NULL,
+			/* unsigned int mode, */
+			copy_binary->info->mode, /* unsigned int mode,*/
+			/* struct sh_css_frame *cc_frame, */
+			NULL,
+			/* struct sh_css_frame *in_frame, */
+			NULL,
+			/* struct sh_css_frame *out_frame, */
+			NULL,
+			/* struct sh_css_frame *vf_frame, */
+			NULL,
+			/* struct sh_css_pipeline_stage **stage) */
+			&copy_stage);
 		if (err != sh_css_success)
 			return err;
-		/* If we use copy iso video, the input must be yuv iso raw */
-		video_stage->args.copy_vf =
-			video_binary->info->mode == SH_CSS_BINARY_MODE_COPY;
-		video_stage->args.copy_output = video_stage->args.copy_vf;
-		if (!in_frame && my_css.video_pipe.enable_viewfinder) {
-			err = add_vf_pp_stage(pipe, vf_frame, vf_pp_binary,
-					      video_stage, &vf_pp_stage);
-			if (err != sh_css_success)
-				return err;
-		}
-		number_stages(pipe);
-	} else {
-		sh_css_pipeline_restart(me);
+		in_frame = me->stages->args.out_frame;
+		in_stage = copy_stage;
 	}
+	err = sh_css_pipeline_add_stage(me, video_binary, NULL,
+					video_binary->info->mode, NULL,
+					in_frame, out_frame, NULL,
+					&video_stage);
+	if (err != sh_css_success)
+		return err;
+	/* If we use copy iso video, the input must be yuv iso raw */
+	video_stage->args.copy_vf =
+		video_binary->info->mode == SH_CSS_BINARY_MODE_COPY;
+	video_stage->args.copy_output = video_stage->args.copy_vf;
+	if (!in_frame && my_css.video_pipe.enable_viewfinder) {
+		err = add_vf_pp_stage(pipe, vf_frame, vf_pp_binary,
+				      video_stage, &vf_pp_stage);
+		if (err != sh_css_success)
+			return err;
+	}
+	number_stages(pipe);
 
 	err = sh_css_config_input_network(pipe, copy_binary);
 	if (err != sh_css_success)
@@ -4715,25 +4741,6 @@ assert(pipe != NULL);
 
 	sh_css_pipeline_stream_clear_pipelines();
 	sh_css_pipeline_stream_add_pipeline(&pipe->pipeline);
-
-/* TODO: remove
-printf("wouldhave prepare (%p, %d, ..., %p)\n", NULL,
-				my_css.sensor_binning,
-				video_binary);
-	if (!pipe->shading_table) {
-		prepare_shading_table(
-			(const struct sh_css_shading_table *)
-				my_css.shading_table,
-			my_css.sensor_binning,
-			&pipe->shading_table,
-			video_binary);
-	}
-	sh_css_params_set_shading_table(pipe->shading_table);
-*/
-	err = sh_css_pipeline_get_stage(me, video_binary->info->mode,
-					&video_stage);
-	if (err != sh_css_success)
-		return err;
 
 	if (!in_stage)
 		in_stage = video_stage;
@@ -4749,15 +4756,7 @@ printf("wouldhave prepare (%p, %d, ..., %p)\n", NULL,
 	if (vf_pp_stage)
 		vf_pp_stage->args.out_frame = vf_frame;
 
-	if (pipe->online)
-		sh_css_set_irq_buffer(in_stage, sh_css_frame_in, in_frame);
-	sh_css_set_irq_buffer(video_stage, sh_css_frame_out,    out_frame);
-	if (vf_pp_stage)
-		sh_css_set_irq_buffer(vf_pp_stage, sh_css_frame_out_vf,
-					vf_frame);
-
 	start_pipe(pipe, SH_CSS_PIPE_CONFIG_OVRD_NO_OVRD);
-	me->reload = false;
 
 	return sh_css_success;
 }
@@ -4769,11 +4768,13 @@ enum sh_css_err sh_css_video_get_output_raw_frame_info(
 	struct sh_css_pipe *pipe = &my_css.video_pipe;
 
 assert(info != NULL);
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_video_get_output_raw_frame_info() enter:\n");
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_video_get_output_raw_frame_info() enter:\n");
 
 	if (pipe->online) {
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_video_get_viewfinder_frame_info() leave: return_err=%d\n",
+		"sh_css_video_get_viewfinder_frame_info() leave: "
+		"return_err=%d\n",
 			sh_css_err_mode_does_not_have_raw_output);
 		return sh_css_err_mode_does_not_have_raw_output;
 	}
@@ -4781,16 +4782,17 @@ assert(info != NULL);
 	if (err == sh_css_success) {
 		*info = pipe->pipe.video.copy_binary.out_frame_info;
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_video_get_output_raw_frame_info() leave: \
-		info.width=%d, info.height=%d, \
-		info.padded_width=%d, info.format=%d, \
-		info.raw_bit_depth=%d, info.raw_bayer_order=%d\n",
+		"sh_css_video_get_output_raw_frame_info() leave: "
+		"info.width=%d, info.height=%d, info.padded_width=%d, "
+		"info.format=%d, info.raw_bit_depth=%d, "
+		"info.raw_bayer_order=%d\n",
 		info->width,info->height,
 		info->padded_width,info->format,
 		info->raw_bit_depth,info->raw_bayer_order);
 	} else {
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_video_get_viewfinder_frame_info() leave: return_err=%d\n",
+		"sh_css_video_get_viewfinder_frame_info() leave: "
+		"return_err=%d\n",
 			err);
 	}
 		/* info->height += -4; */
@@ -4806,19 +4808,22 @@ enum sh_css_err sh_css_video_get_viewfinder_frame_info(
 
 assert(info != NULL);
 /* We could print the pointer as input arg, and the values as output */
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_video_get_viewfinder_frame_info() enter: void\n");
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_video_get_viewfinder_frame_info() enter: void\n");
 
 	err = sh_css_pipe_load_binaries(pipe);
 	if (err != sh_css_success) {
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_video_get_viewfinder_frame_info() leave: return_err=%d\n",
+		"sh_css_video_get_viewfinder_frame_info() leave: "
+		"return_err=%d\n",
 			err);
 		return err;
 	}
 	/* offline video does not generate viewfinder output */
 	if (!pipe->online) {
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_video_get_viewfinder_frame_info() leave: return_err=%d\n",
+		"sh_css_video_get_viewfinder_frame_info() leave: "
+		"return_err=%d\n",
 			sh_css_err_mode_does_not_have_viewfinder);
 		return sh_css_err_mode_does_not_have_viewfinder;
 	} else {
@@ -4826,10 +4831,10 @@ assert(info != NULL);
 	}
 
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_video_get_viewfinder_frame_info() leave: \
-		info.width=%d, info.height=%d, \
-		info.padded_width=%d, info.format=%d, \
-		info.raw_bit_depth=%d, info.raw_bayer_order=%d\n",
+		"sh_css_video_get_viewfinder_frame_info() leave: "
+		"info.width=%d, info.height=%d, info.padded_width=%d, "
+		"info.format=%d, info.raw_bit_depth=%d, "
+		"info.raw_bayer_order=%d\n",
 		info->width,info->height,
 		info->padded_width,info->format,
 		info->raw_bit_depth,info->raw_bayer_order);
@@ -4846,7 +4851,8 @@ enum sh_css_err sh_css_video_get_input_resolution(
 
 assert(width != NULL);
 assert(height != NULL);
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_video_get_input_resolution() enter: void\n");
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_video_get_input_resolution() enter: void\n");
 
 	err = sh_css_pipe_load_binaries(pipe);
 	if (err == sh_css_success) {
@@ -4862,7 +4868,8 @@ assert(height != NULL);
 	}
 
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_video_get_input_resolution() leave: width=%d, height=%d\n", *width, *height);
+		"sh_css_video_get_input_resolution() leave: "
+		"width=%d, height=%d\n", *width, *height);
 	return err;
 }
 
@@ -4875,13 +4882,15 @@ enum sh_css_err sh_css_video_configure_viewfinder(
 	struct sh_css_pipe *pipe = &my_css.video_pipe;
 
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_video_configure_viewfinder() enter: \
-		width=%d, height=%d format=%d\n",
+		"sh_css_video_configure_viewfinder() enter: "
+		"width=%d, height=%d format=%d\n",
 		width, height, format);
 
 	err = check_res(width, height);
 	if (err != sh_css_success) {
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_video_configure_viewfinder() leave: return_err=%d\n",err);
+		sh_css_dtrace(SH_DBG_TRACE,
+			"sh_css_video_configure_viewfinder() leave: "
+			"return_err=%d\n", err);
 		return err;
 	}
 	if (pipe->vf_output_info.width != width ||
@@ -4891,7 +4900,9 @@ enum sh_css_err sh_css_video_configure_viewfinder(
 				       width, height, format);
 		sh_css_pipe_invalidate_binaries(pipe);
 	}
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_video_configure_viewfinder() leave: return_err=%d\n",sh_css_success);
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_video_configure_viewfinder() leave: return_err=%d\n",
+		sh_css_success);
 	return sh_css_success;
 }
 
@@ -5869,7 +5880,8 @@ enum sh_css_err sh_css_capture_get_viewfinder_frame_info(
 	struct sh_css_pipe *pipe = &my_css.capture_pipe;
 
 assert(info != NULL);
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_capture_get_viewfinder_frame_info()\n");
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_capture_get_viewfinder_frame_info()\n");
 
 	if (pipe->capture_mode == SH_CSS_CAPTURE_MODE_RAW ||
 	    pipe->capture_mode == SH_CSS_CAPTURE_MODE_BAYER)
@@ -5878,10 +5890,10 @@ assert(info != NULL);
 	if (err == sh_css_success)
 		*info = pipe->vf_output_info;
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_capture_get_viewfinder_frame_info() leave: \
-		info.width=%d, info.height=%d, \
-		info.padded_width=%d, info.format=%d, \
-		info.raw_bit_depth=%d, info.raw_bayer_order=%d\n",
+		"sh_css_capture_get_viewfinder_frame_info() leave: "
+		"info.width=%d, info.height=%d, info.padded_width=%d, "
+		"info.format=%d, info.raw_bit_depth=%d, "
+		"info.raw_bayer_order=%d\n",
 		info->width,info->height,
 		info->padded_width,info->format,
 		info->raw_bit_depth,info->raw_bayer_order);
@@ -5895,7 +5907,8 @@ enum sh_css_err sh_css_capture_get_output_raw_frame_info(
 	struct sh_css_pipe *pipe = &my_css.capture_pipe;
 
 assert(info != NULL);
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_capture_get_output_raw_frame_info() enter: void\n");
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_capture_get_output_raw_frame_info() enter: void\n");
 
 	if (pipe->online || copy_on_sp(pipe)) {
 		return sh_css_err_mode_does_not_have_raw_output;
@@ -5905,10 +5918,10 @@ assert(info != NULL);
 		*info = pipe->pipe.capture.copy_binary.out_frame_info;
 
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_capture_get_output_raw_frame_info() leave: \
-		info.width=%d, info.height=%d, \
-		info.padded_width=%d, info.format=%d, \
-		info.raw_bit_depth=%d, info.raw_bayer_order=%d\n",
+		"sh_css_capture_get_output_raw_frame_info() leave: "
+		"info.width=%d, info.height=%d, info.padded_width=%d, "
+		"info.format=%d, info.raw_bit_depth=%d, "
+		"info.raw_bayer_order=%d\n",
 		info->width,info->height,
 		info->padded_width,info->format,
 		info->raw_bit_depth,info->raw_bayer_order);
@@ -5924,7 +5937,8 @@ enum sh_css_err sh_css_capture_get_input_resolution(
 
 assert(width != NULL);
 assert(height != NULL);
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_capture_get_input_resolution() enter: void\n");
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_capture_get_input_resolution() enter: void\n");
 
 	if (copy_on_sp(pipe) &&
 	    pipe->input_format == SH_CSS_INPUT_FORMAT_BINARY_8) {
@@ -6018,12 +6032,14 @@ enum sh_css_err sh_css_capture_configure_pp_input(
 	struct sh_css_pipe *pipe = &my_css.capture_pipe;
 	enum sh_css_err err = sh_css_success;
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_capture_configure_pp_input() enter: \
-		width=%d, height=%d\n",width, height);
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_capture_configure_pp_input() enter: "
+		"width=%d, height=%d\n",width, height);
 	err = check_null_res(width, height);
 	if (err != sh_css_success) {
 		sh_css_dtrace(SH_DBG_TRACE,
-			"sh_css_capture_configure_pp_input() leave: return_err=%d\n",
+			"sh_css_capture_configure_pp_input() leave: "
+			"return_err=%d\n",
 			err);
 		return err;
 	}

@@ -7,9 +7,6 @@
 
 #include "system_types.h"
 
-typedef struct isp_state_s		isp_state_t;
-typedef struct isp_stall_s		isp_stall_t;
-
 /*! Enable or disable the program complete irq signal of ISP[ID]
 
  \param	ID[in]				SP identifier
@@ -155,5 +152,16 @@ STORAGE_CLASS_ISP_H void isp_dmem_store_uint32(
 STORAGE_CLASS_ISP_H uint32_t isp_dmem_load_uint32(
 	const isp_ID_t		ID,
 	const unsigned int	addr);
+
+/*! Concatenate the LSW and MSW into a double precision word
+
+ \param	x0[in]				Integer containing the LSW
+ \param	x1[in]				Integer containing the MSW
+
+ \return x0 | (x1 << bits_per_vector_element)
+ */
+STORAGE_CLASS_ISP_H uint32_t isp_2w_cat_1w(
+	const uint16_t		x0,
+	const uint16_t		x1);
 
 #endif /* __ISP_PUBLIC_H_INCLUDED__ */

@@ -48,6 +48,7 @@
 #define SP_DEBUG_DUMP	(1)
 #define SP_DEBUG_COPY	(2)
 #define SP_DEBUG_TRACE	(3) /* not yet functional */
+#define SP_DEBUG_STALL  (4)
 
 #define SP_DEBUG SP_DEBUG_NONE
 
@@ -327,6 +328,8 @@ struct sh_css_isp_params {
 	int rgb_to_yuv_20;
 	int rgb_to_yuv_21;
 	int rgb_to_yuv_22;
+#else
+	int aa_scale;
 #endif /* SH_CSS_ISP_PARAMS_VERSION == 2 */
 };
 
@@ -443,7 +446,7 @@ struct sh_css_pipeline {
 };
 
 
-#if SP_DEBUG == SP_DEBUG_DUMP
+#if (SP_DEBUG == SP_DEBUG_DUMP) || (SP_DEBUG == SP_DEBUG_STALL)
 
 #define SH_CSS_NUM_SP_DEBUG 48
 
