@@ -87,6 +87,10 @@
 #define OSNIB_OEM_RSVD_SIZE	10	/* Size (bytes) of OEM RESERVED      */
 					/* in OSNIB.                         */
 
+#define OSHOB_FABRIC_ERROR1_SIZE  12    /* 1st part of Fabric error dump     */
+#define OSHOB_FABRIC_ERROR2_SIZE  9     /* 2nd part of Fabric error dump     */
+#define OSHOB_RESERVED_DEBUG_SIZE 5     /* Reserved for debug                */
+
 /* OSNIB allocation. */
 struct scu_ipc_osnib {
 	u8 target_mode;        /* Target mode.                      */
@@ -141,7 +145,19 @@ struct scu_ipc_oshob_extend {
 
 	u32 pmit;               /* PMIT.                       */
 	u32 pemmcmhki;          /* PeMMCMHKI.                  */
-	u8  oshob_reserved;     /* First byte of RESERVED zone.*/
+
+	/* OSHOB as defined for CLOVERVIEW */
+	u32 reserved1;          /* Reserved field              */
+	u32 fabricerrlog1[OSHOB_FABRIC_ERROR1_SIZE]; /* fabric error data */
+	u8  vrtc_alarm_dow;     /* Alarm sync                  */
+	u8  vrtc_alarm_dom;     /* Alarm sync                  */
+	u8  vrtc_alarm_month;   /* Alarm sync                  */
+	u8  vrtc_alarm_year;    /* Alarm sync                  */
+	u32 reserved_debug[OSHOB_RESERVED_DEBUG_SIZE];/* Reserved Debug data */
+	u32 reserved2;          /* Reserved                    */
+	u32 fabricerrlog2[OSHOB_FABRIC_ERROR2_SIZE]; /* fabric error data2 */
+	u32 sculogbufferaddr;   /* phys addr of scu log buffer   */
+	u32 sculogbuffersize;   /* size of scu log buffer      */
 };
 
 struct scu_ipc_oshob_extend scu_ipc_oshob_extend_struct;
@@ -163,6 +179,8 @@ struct scu_ipc_oshob_info {
 	__u32	osnibw_ptr;     /* Pointer to Intel write zone.              */
 	__u32	oemnibr_ptr;    /* Pointer to OEM read zone.                 */
 	__u32	oemnibw_ptr;    /* Pointer to OEM write zone.                */
+	__u32   scu_trace_buf;  /* SCU extended trace buffer                 */
+	__u32   scu_trace_size; /* SCU extended trace buffer size            */
 
 	int (*scu_ipc_write_osnib)(u8 *data, int len, int offset);
 	int (*scu_ipc_read_osnib)(u8 *data, int len, int offset);
@@ -1177,6 +1195,20 @@ int intel_scu_ipc_read_oshob_extend_param(void __iomem *poshob_addr)
 		"OSNIB size = %d bytes OEMNIB size = %d bytes\n",
 		oshob_info->osnib_size, oshob_info->oemnib_size);
 
+	if (oshob_info->platform_type == INTEL_MID_CPU_CHIP_CLOVERVIEW) {
+		if ((oshob_info->oshob_majrev >= 1) &&
+		    (oshob_info->oshob_minrev >= 1)) {
+			/* CLVP and correct version of the oshob. */
+			oshob_info->scu_trace_buf =
+				readl(poshob_addr +
+				      offsetof(struct scu_ipc_oshob_extend,
+					       sculogbufferaddr));
+			oshob_info->scu_trace_size =
+				readl(poshob_addr +
+				      offsetof(struct scu_ipc_oshob_extend,
+					       sculogbuffersize));
+		}
+	}
 	return 0;
 }
 
@@ -1265,6 +1297,13 @@ int intel_scu_ipc_read_oshob_info(void)
 	oshob_info->oshob_base = oshob_base;
 
 	oshob_info->platform_type = intel_mid_identify_cpu();
+
+	/*
+	 * Buffer is allocated using kmalloc. Memory is not initialized and
+	 * these fields are not updated in all the branches.
+	 */
+	oshob_info->scu_trace_buf = 0;
+	oshob_info->scu_trace_size = 0;
 
 	if (oshob_info->platform_type == INTEL_MID_CPU_CHIP_TANGIER) {
 		pr_info("(oshob) identified platform = INTEL_MID_CPU_CHIP_TANGIER\n");
@@ -1556,6 +1595,47 @@ int intel_scu_ipc_write_osnib_wd(u8 *wd)
 			offsetof(struct scu_ipc_osnib, wd_count));
 }
 EXPORT_SYMBOL_GPL(intel_scu_ipc_write_osnib_wd);
+
+/*
+ * Get SCU trace buffer physical address if available
+ */
+u32 intel_scu_ipc_get_scu_trace_buffer(void)
+{
+	if (oshob_info == NULL)
+		return 0;
+	return oshob_info->scu_trace_buf;
+}
+EXPORT_SYMBOL_GPL(intel_scu_ipc_get_scu_trace_buffer);
+
+/*
+ * Get SCU trace buffer size
+ */
+u32 intel_scu_ipc_get_scu_trace_buffer_size(void)
+{
+	if (oshob_info == NULL)
+		return 0;
+	return oshob_info->scu_trace_size;
+}
+EXPORT_SYMBOL_GPL(intel_scu_ipc_get_scu_trace_buffer_size);
+
+/*
+ * Get SCU fabric error buffer1 offset
+ */
+u32 intel_scu_ipc_get_fabricerror_buf1_offset(void)
+{
+	return offsetof(struct scu_ipc_oshob_extend,
+			fabricerrlog1);
+}
+
+/*
+ * Get SCU fabric error buffer2 offset
+ */
+u32 intel_scu_ipc_get_fabricerror_buf2_offset(void)
+{
+	return offsetof(struct scu_ipc_oshob_extend,
+			fabricerrlog2);
+}
+
 
 /*
  * This reads the ALARM from the OSNIB
