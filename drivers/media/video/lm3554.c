@@ -186,6 +186,10 @@ static int lm3554_hw_reset(struct i2c_client *client)
 	if (ret < 0)
 		return ret;
 
+	ret = gpio_direction_output(pdata->gpio_reset, 1);
+	if (ret < 0)
+		return ret;
+
 	gpio_set_value(pdata->gpio_reset, 0);
 	msleep(50);
 
