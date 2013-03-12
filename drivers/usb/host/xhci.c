@@ -194,7 +194,7 @@ int xhci_reset(struct xhci_hcd *xhci)
 	return ret;
 }
 
-#if !defined(XHCI_PLATFORM_DRIVER) && defined(CONFIG_PCI)
+#ifdef CONFIG_PCI
 static int xhci_free_msi(struct xhci_hcd *xhci)
 {
 	int i;
@@ -4227,7 +4227,6 @@ static int __init xhci_hcd_init(void)
 		printk(KERN_DEBUG "Problem registering Platform driver.");
 		return retval;
 	}
-	goto done;
 #endif
 
 #ifdef CONFIG_PCI
@@ -4244,7 +4243,6 @@ static int __init xhci_hcd_init(void)
 		goto unreg_pci;
 	}
 #endif
-done:
 	/*
 	 * Check the compiler generated sizes of structures that must be laid
 	 * out in specific ways for hardware access.
@@ -4276,7 +4274,6 @@ static void __exit xhci_hcd_cleanup(void)
 {
 #ifdef XHCI_PLATFORM_DRIVER
 	platform_driver_unregister(&XHCI_PLATFORM_DRIVER);
-	return;
 #endif
 #ifdef CONFIG_PCI
 	xhci_unregister_pci();
