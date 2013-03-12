@@ -2916,10 +2916,12 @@ static int gburst_resume(struct gburst_pvt_s *gbprv)
  */
 static void gburst_power_state_set(struct gburst_pvt_s *gbprv, int st_on)
 {
-	if (st_on)
-		gburst_resume(gbprv);
-	else
-		gburst_suspend(gbprv);
+	if (gbprv->gbp_enable) {
+		if (st_on)
+			gburst_resume(gbprv);
+		else
+			gburst_suspend(gbprv);
+	}
 }
 
 
