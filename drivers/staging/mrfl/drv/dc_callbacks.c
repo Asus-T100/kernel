@@ -318,7 +318,7 @@ void DCCBUnblankDisplay(struct drm_device *dev)
 	if (!psb_fb)
 		return;
 
-	console_trylock();
+	console_lock();
 	res = fb_blank(psb_fb->fbdev, 0);
 	console_unlock();
 	if (res != 0) {
