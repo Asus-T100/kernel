@@ -507,6 +507,12 @@ static int dwc_host_setup(struct usb_hcd *hcd)
 	xhci->hcc_params = xhci_readl(xhci, &xhci->cap_regs->hcc_params);
 	xhci_print_registers(xhci);
 
+	/*
+	 * As of now platform drivers don't provide MSI support, so ensure
+	 * here that the generic code does not try to get MSI support
+	 * */
+	xhci->quirks |= XHCI_BROKEN_MSI;
+
 	/* Make sure the HC is halted. */
 	retval = xhci_halt(xhci);
 	if (retval)
