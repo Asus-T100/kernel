@@ -180,6 +180,9 @@ extern int mmc_rpmb_partition_ops(struct mmc_core_rpmb_req *,
 extern int mmc_rpmb_pre_frame(struct mmc_core_rpmb_req *, struct mmc_card *);
 extern void mmc_rpmb_post_frame(struct mmc_core_rpmb_req *);
 
+extern int mmc_set_user_wp(struct mmc_card *, unsigned int, unsigned int);
+extern int mmc_wp_status(struct mmc_card *, unsigned int, unsigned int, u8 *);
+
 #define MMC_ERASE_ARG		0x00000000
 #define MMC_SECURE_ERASE_ARG	0x80000000
 #define MMC_TRIM_ARG		0x00000001
