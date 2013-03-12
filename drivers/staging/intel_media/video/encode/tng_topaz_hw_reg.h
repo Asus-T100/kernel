@@ -2085,6 +2085,8 @@ static inline char *cmd_to_string(int cmd_id)
 		return "MTX_CMDID_PROVIDE_REF_BUFFER";
 	case MTX_CMDID_PROVIDE_CODED_BUFFER:
 		return "MTX_CMDID_PROVIDE_CODED_BUFFER";
+	case MTX_CMDID_NULL:
+		return "MTX_CMDID_NULL";
 	default:
 		DRM_ERROR("Command ID: %08x\n", cmd_id);
 		return "Undefined command";

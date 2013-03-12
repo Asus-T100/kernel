@@ -40,6 +40,8 @@
 
 #define TOPAZ_MAX_COMMAND_IN_QUEUE 0x1000
 #define MASK_MTX_INT_ENAB 0x4000ff00
+
+#define LOOP_COUNT 10000
 /*static uint32_t setv_cnt = 0;*/
 
 enum MTX_MESSAGE_ID {
@@ -63,9 +65,6 @@ static int tng_topaz_send(
 	void *cmd,
 	uint32_t cmd_size,
 	uint32_t sync_seq);
-
-static int tng_topaz_dequeue_send(
-	struct drm_device *dev);
 
 static int tng_topaz_save_command(
 	struct drm_device *dev,
@@ -422,11 +421,12 @@ int32_t tng_wait_on_sync(
 #ifdef TOPAZHP_IRQ_ENABLED
 	do {
 		topaz_priv->producer = tng_get_producer(dev);
+		PSB_UDELAY(1000);
 		count++;
 	} while (topaz_priv->producer == topaz_priv->consumer &&
-		 count < 300000);
+		 count < LOOP_COUNT);
 
-	if (count == 300000) {
+	if (count == LOOP_COUNT) {
 		DRM_ERROR("Waiting for IRQ timeout\n");
 		return -1;
 	}
@@ -553,28 +553,43 @@ bool tng_topaz_interrupt(void *pvData)
 	topaz_priv->consumer = tng_get_consumer(dev);
 	topaz_priv->producer = tng_get_producer(dev);
 
+	video_ctx = topaz_priv->irq_context;
+
+	wb_msg = (struct IMG_WRITEBACK_MSG *)
+		video_ctx->wb_addr[(topaz_priv->producer == 0) \
+			? 31 \
+			: topaz_priv->producer - 1];
+
 	PSB_DEBUG_GENERAL("TOPAZ: Dispatch write back message, " \
 		"producer = %d, consumer = %d\n",
 		topaz_priv->producer, topaz_priv->consumer);
 
-	tng_set_consumer(dev, topaz_priv->producer);
+	if (video_ctx->codec != IMG_CODEC_JPEG) {
+		while (topaz_priv->consumer != topaz_priv->producer) {
+			topaz_priv->consumer++;
+			if (topaz_priv->consumer == WB_FIFO_SIZE)
+				topaz_priv->consumer = 0;
+			tng_set_consumer(dev, topaz_priv->producer);
+		};
+	}
 
-	video_ctx = topaz_priv->irq_context;
-
-	wb_msg = (struct IMG_WRITEBACK_MSG *)
-		video_ctx->wb_addr[topaz_priv->producer - 1];
 	PSB_DEBUG_GENERAL("TOPAZ: Context %08x(%s), command %s IRQ\n",
 		(unsigned int)video_ctx, codec_to_string(video_ctx->codec),
 		cmd_to_string(wb_msg->ui32CmdWord));
 
-	if (video_ctx->codec == IMG_CODEC_JPEG)
-		/* The LAST ISSUEBUF cmd means encoding complete */
-		if (--topaz_priv->issuebuf_cmd_count) {
-			PSB_DEBUG_GENERAL("TOPAZ: JPEG ISSUEBUF cmd " \
+	if (video_ctx->codec == IMG_CODEC_JPEG) {
+		if (wb_msg->ui32CmdWord != MTX_CMDID_NULL) {
+			/* The LAST ISSUEBUF cmd means encoding complete */
+			if (--topaz_priv->issuebuf_cmd_count) {
+				PSB_DEBUG_GENERAL("TOPAZ: JPEG ISSUEBUF cmd " \
 					  "count left %d, return\n", \
 					  topaz_priv->issuebuf_cmd_count);
 			return true;
+			}
+		} else {
+			return true;
 		}
+	}
 
 	*topaz_priv->topaz_sync_addr = wb_msg->ui32WritebackVal;
 
@@ -583,15 +598,8 @@ bool tng_topaz_interrupt(void *pvData)
 		wb_msg->ui32WritebackVal);
 	psb_fence_handler(dev, LNC_ENGINE_ENCODE);
 
-	topaz_priv->topaz_busy = 1;
-	tng_topaz_dequeue_send(dev);
-
-	if (drm_topaz_pmpolicy != PSB_PMPOLICY_NOPM &&
-	    topaz_priv->topaz_busy == 0) {
-		PSB_DEBUG_GENERAL("TOPAZ:Schedule a work to " \
-			"power down Topaz\n");
-		schedule_delayed_work(&topaz_priv->topaz_suspend_wq, 0);
-	}
+	/* Launch the task anyway */
+	schedule_work(&topaz_priv->topaz_suspend_work);
 
 	return true;
 }
@@ -710,7 +718,6 @@ static int tng_topaz_save_command(
 	topaz_cmd = kzalloc(sizeof(struct tng_topaz_cmd_queue),
 			    GFP_KERNEL);
 	if (!topaz_cmd) {
-		mutex_unlock(&topaz_priv->topaz_mutex);
 		DRM_ERROR("TOPAZ: out of memory....\n");
 		return -ENOMEM;
 	}
@@ -720,16 +727,19 @@ static int tng_topaz_save_command(
 	topaz_cmd->cmd_size = cmd_size;
 	topaz_cmd->sequence = sequence;
 
-	spin_lock_irqsave(&topaz_priv->topaz_lock, irq_flags);
+	/* spin_lock_irqsave(&topaz_priv->topaz_lock, irq_flags); */
+	/* Avoid race condition with dequeue buffer in kernel task */
+	mutex_lock(&topaz_priv->topaz_mutex);
 	list_add_tail(&topaz_cmd->head, &topaz_priv->topaz_queue);
+	mutex_unlock(&topaz_priv->topaz_mutex);
+
 	if (!topaz_priv->topaz_busy) {
 		/* topaz_priv->topaz_busy = 1; */
 		PSB_DEBUG_GENERAL("TOPAZ: need immediate dequeue...\n");
 		tng_topaz_dequeue_send(dev);
 		PSB_DEBUG_GENERAL("TOPAZ: after dequeue command\n");
 	}
-
-	spin_unlock_irqrestore(&topaz_priv->topaz_lock, irq_flags);
+	/* spin_unlock_irqrestore(&topaz_priv->topaz_lock, irq_flags); */
 
 	return 0;
 }
@@ -1788,6 +1798,71 @@ static int32_t tng_release_context(
 	return 0;
 }
 
+int tng_topaz_kick_null_cmd(struct drm_device *dev,
+			    uint32_t sync_seq)
+{
+	uint32_t cur_free_space;
+	uint32_t wb_val;
+	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct tng_topaz_private *topaz_priv = dev_priv->topaz_private;
+	int32_t ret = 0;
+
+#ifdef TOPAZHP_SERIALIZED
+	uint32_t serializeToken;
+	serializeToken = tng_serialize_enter(dev);
+#endif
+
+	MULTICORE_READ32(TOPAZHP_TOP_CR_MULTICORE_CMD_FIFO_WRITE_SPACE,
+			 &cur_free_space);
+
+	cur_free_space = F_DECODE(cur_free_space,
+			TOPAZHP_TOP_CR_CMD_FIFO_SPACE);
+
+	while (cur_free_space < 4) {
+		POLL_TOPAZ_FREE_FIFO_SPACE(4, 100, 10000, &cur_free_space);
+		if (ret) {
+			DRM_ERROR("TOPAZ : error ret %d\n", ret);
+			return ret;
+		}
+
+		MULTICORE_READ32(
+			TOPAZHP_TOP_CR_MULTICORE_CMD_FIFO_WRITE_SPACE,
+			&cur_free_space);
+
+		cur_free_space = F_DECODE(cur_free_space,
+				TOPAZHP_TOP_CR_CMD_FIFO_SPACE);
+	}
+
+	MULTICORE_WRITE32(TOPAZHP_TOP_CR_MULTICORE_CMD_FIFO_WRITE,
+			  MTX_CMDID_NULL | MTX_CMDID_WB_INTERRUPT);
+
+	MULTICORE_WRITE32(TOPAZHP_TOP_CR_MULTICORE_CMD_FIFO_WRITE,
+			  0);
+
+	/* Write back address is always 0 */
+	MULTICORE_WRITE32(TOPAZHP_TOP_CR_MULTICORE_CMD_FIFO_WRITE,
+			  0);
+
+	MULTICORE_WRITE32(TOPAZHP_TOP_CR_MULTICORE_CMD_FIFO_WRITE,
+			 sync_seq);
+
+	PSB_DEBUG_GENERAL("TOPAZ: Write to command FIFO: " \
+		"%08x, %08x, %08x, %08x\n",
+		MTX_CMDID_NULL, 0, 0, 0);
+
+	/* Notify ISR which context trigger interrupt */
+#ifdef TOPAZHP_IRQ_ENABLED
+	topaz_priv->irq_context = topaz_priv->cur_context;
+#endif
+	mtx_kick(dev);
+
+#ifdef TOPAZHP_SERIALIZED
+	tng_serialize_exit(dev, serializeToken);
+#endif
+
+	return ret;
+}
+
 int mtx_write_FIFO(
 	struct drm_device *dev,
 	struct tng_topaz_cmd_header *cmd_header,
@@ -1827,12 +1902,7 @@ int mtx_write_FIFO(
 	}
 
 	/* Trigger interrupt on MTX_CMDID_ENCODE_FRAME cmd */
-	if (cmd_header->id == MTX_CMDID_ENCODE_FRAME ||
-	    cmd_header->id == MTX_CMDID_ISSUEBUFF)
-		MULTICORE_WRITE32(TOPAZHP_TOP_CR_MULTICORE_CMD_FIFO_WRITE,
-				  cmd_header->val | MTX_CMDID_WB_INTERRUPT);
-	else
-		MULTICORE_WRITE32(TOPAZHP_TOP_CR_MULTICORE_CMD_FIFO_WRITE,
+	MULTICORE_WRITE32(TOPAZHP_TOP_CR_MULTICORE_CMD_FIFO_WRITE,
 				  cmd_header->val);
 
 	MULTICORE_WRITE32(TOPAZHP_TOP_CR_MULTICORE_CMD_FIFO_WRITE,
@@ -1850,22 +1920,11 @@ int mtx_write_FIFO(
 	topaz_priv->low_cmd_count = cmd_header->low_cmd_count;
 	topaz_priv->core_id = cmd_header->core;
 
-	if (cmd_header->id == MTX_CMDID_ENCODE_FRAME ||
-	    cmd_header->id == MTX_CMDID_ISSUEBUFF) {
-		MULTICORE_WRITE32(TOPAZHP_TOP_CR_MULTICORE_CMD_FIFO_WRITE,
-				  sync_seq);
-		PSB_DEBUG_GENERAL("TOPAZ : Write to command FIFO : " \
-			"%08x, %08x, %08x, %08x\n",
-			(cmd_header->val | MTX_CMDID_WB_INTERRUPT),
-			param, param_addr, sync_seq);
-
-	} else {
-		MULTICORE_WRITE32(TOPAZHP_TOP_CR_MULTICORE_CMD_FIFO_WRITE,
-				  wb_val);
-		PSB_DEBUG_GENERAL("TOPAZ: Write to command FIFO: " \
-			"%08x, %08x, %08x, %08x\n",
-			cmd_header->val, param, param_addr, wb_val);
-	}
+	MULTICORE_WRITE32(TOPAZHP_TOP_CR_MULTICORE_CMD_FIFO_WRITE,
+			  wb_val);
+	PSB_DEBUG_GENERAL("TOPAZ: Write to command FIFO: " \
+		"%08x, %08x, %08x, %08x\n",
+		cmd_header->val, param, param_addr, wb_val);
 
 	/* Notify ISR which context trigger interrupt */
 #ifdef TOPAZHP_IRQ_ENABLED
@@ -2230,6 +2289,7 @@ tng_topaz_send(
 	uint32_t codec = 0;
 	int32_t cur_cmd_size = 4;
 	int32_t cmd_size = (int32_t)cmd_size_in;
+	unsigned long irq_flags;
 
 	/* uint32_t m; */
 	struct tng_topaz_private *topaz_priv = dev_priv->topaz_private;
@@ -2408,6 +2468,8 @@ tng_topaz_send(
 
 	}
 
+	tng_topaz_kick_null_cmd(dev, sync_seq);
+
 #ifdef MULTI_STREAM_TEST
 	if (cur_cmd_id != MTX_CMDID_SHUTDOWN) {
 		ret = tng_topaz_save_mtx_state(dev);
@@ -2524,7 +2586,6 @@ int tng_topaz_dequeue_send(struct drm_device *dev)
 	if (list_empty(&topaz_priv->topaz_queue)) {
 		PSB_DEBUG_GENERAL("TOPAZ: empty command queue, " \
 			"directly return\n");
-		topaz_priv->topaz_busy = 0;
 		return ret;
 	}
 
@@ -2532,19 +2593,33 @@ int tng_topaz_dequeue_send(struct drm_device *dev)
 	topaz_cmd = list_first_entry(&topaz_priv->topaz_queue,
 			struct tng_topaz_cmd_queue, head);
 
-	PSB_DEBUG_GENERAL("TOPAZ: dequeue command of sequence %08x " \
-			"and send it to topaz\n", topaz_cmd->sequence);
+	topaz_priv->saved_queue->file_priv = topaz_cmd->file_priv;
+	topaz_priv->saved_queue->cmd_size = topaz_cmd->cmd_size;
+	topaz_priv->saved_queue->sequence = topaz_cmd->sequence;
+	topaz_priv->saved_queue->head = topaz_cmd->head;
 
-	ret = tng_topaz_send(dev, topaz_cmd->file_priv, topaz_cmd->cmd,
-		topaz_cmd->cmd_size, topaz_cmd->sequence);
+	memcpy(topaz_priv->saved_cmd, topaz_cmd->cmd, topaz_cmd->cmd_size);
+
+	list_del(&topaz_cmd->head);
+	kfree(topaz_cmd->cmd);
+	kfree(topaz_cmd);
+
+	PSB_DEBUG_GENERAL("TOPAZ: dequeue command of sequence %08x " \
+			"and send it to topaz\n", \
+			topaz_priv->saved_queue->sequence);
+
+	ret = tng_topaz_send(dev,
+		topaz_priv->saved_queue->file_priv,
+		topaz_priv->saved_cmd,
+		topaz_priv->saved_queue->cmd_size,
+		topaz_priv->saved_queue->sequence);
 	if (ret) {
 		DRM_ERROR("TOPAZ: tng_topaz_send failed.\n");
 		ret = -EINVAL;
 	}
 
-	list_del(&topaz_cmd->head);
-	kfree(topaz_cmd->cmd);
-	kfree(topaz_cmd);
+	PSB_DEBUG_GENERAL("TOPAZ: dequeue command of sequence %08x " \
+			"finished\n", topaz_priv->saved_queue->sequence);
 
 	return ret;
 }
