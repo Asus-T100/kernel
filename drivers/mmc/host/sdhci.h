@@ -280,6 +280,7 @@ struct sdhci_ops {
 	void	(*platform_resume)(struct sdhci_host *host);
 	int	(*power_up_host)(struct sdhci_host *host);
 	int    (*get_cd)(struct sdhci_host *host);
+	int    (*get_tuning_count)(struct sdhci_host *host);
 };
 
 #ifdef CONFIG_MMC_SDHCI_IO_ACCESSORS

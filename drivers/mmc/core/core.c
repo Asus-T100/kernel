@@ -134,14 +134,17 @@ static inline void mmc_should_fail_request(struct mmc_host *host,
 void mmc_request_done(struct mmc_host *host, struct mmc_request *mrq)
 {
 	struct mmc_command *cmd = mrq->cmd;
+	struct mmc_data *data = mrq->data;
 	int err = cmd->error;
+	int data_err = data ? data->error : 0;
 
 	if (err && cmd->retries && mmc_host_is_spi(host)) {
 		if (cmd->resp[0] & R1_SPI_ILLEGAL_COMMAND)
 			cmd->retries = 0;
 	}
 
-	if (err && cmd->retries && !mmc_card_removed(host->card)) {
+	if ((err || data_err) && cmd->retries &&
+			!mmc_card_removed(host->card)) {
 		/*
 		 * Request starter must handle retries - see
 		 * mmc_wait_for_req_done().
@@ -278,12 +281,16 @@ static void mmc_wait_for_req_done(struct mmc_host *host,
 				  struct mmc_request *mrq)
 {
 	struct mmc_command *cmd;
+	struct mmc_data *data;
+	int data_err;
 
 	while (1) {
 		wait_for_completion(&mrq->completion);
 
 		cmd = mrq->cmd;
-		if (!cmd->error || !cmd->retries ||
+		data = mrq->data;
+		data_err = data ? data->error : 0;
+		if ((!cmd->error && !data_err) || !cmd->retries ||
 		    mmc_card_removed(host->card))
 			break;
 
@@ -291,6 +298,8 @@ static void mmc_wait_for_req_done(struct mmc_host *host,
 			 mmc_hostname(host), cmd->opcode, cmd->error);
 		cmd->retries--;
 		cmd->error = 0;
+		if (data)
+			data->error = 0;
 		host->ops->request(host, mrq);
 	}
 }

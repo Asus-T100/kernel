@@ -337,6 +337,7 @@ static int mfd_emmc_probe_slot(struct sdhci_pci_slot *slot)
 		slot->host->mmc->caps |= MMC_CAP_HW_RESET;
 		slot->rst_n_gpio = -EINVAL;
 		break;
+	case PCI_DEVICE_ID_INTEL_BYT_MMC45:
 	case PCI_DEVICE_ID_INTEL_BYT_MMC:
 		slot->rst_n_gpio = -EINVAL;
 		slot->host->mmc->caps |= MMC_CAP_1_8V_DDR;
@@ -1077,6 +1078,14 @@ static const struct pci_device_id pci_ids[] __devinitdata = {
 
 	{
 		.vendor		= PCI_VENDOR_ID_INTEL,
+		.device		= PCI_DEVICE_ID_INTEL_BYT_MMC45,
+		.subvendor	= PCI_ANY_ID,
+		.subdevice	= PCI_ANY_ID,
+		.driver_data	= (kernel_ulong_t)&sdhci_intel_byt_emmc,
+	},
+
+	{
+		.vendor		= PCI_VENDOR_ID_INTEL,
 		.device		= PCI_DEVICE_ID_INTEL_BYT_SDIO,
 		.subvendor	= PCI_ANY_ID,
 		.subdevice	= PCI_ANY_ID,
@@ -1317,12 +1326,28 @@ static int sdhci_pci_get_cd(struct sdhci_host *host)
 	return present;
 }
 
+static int sdhci_pci_get_tuning_count(struct sdhci_host *host)
+{
+	struct sdhci_pci_slot *slot = sdhci_priv(host);
+	int tuning_count = 0;
+
+	switch (slot->chip->pdev->device) {
+	case PCI_DEVICE_ID_INTEL_BYT_MMC45:
+		tuning_count = 4; /* using 8 seconds, this can be tuning */
+	default:
+		break;
+	}
+
+	return tuning_count;
+}
+
 static struct sdhci_ops sdhci_pci_ops = {
 	.enable_dma	= sdhci_pci_enable_dma,
 	.platform_8bit_width	= sdhci_pci_8bit_width,
 	.hw_reset		= sdhci_pci_hw_reset,
 	.power_up_host	= sdhci_pci_power_up_host,
 	.get_cd		= sdhci_pci_get_cd,
+	.get_tuning_count = sdhci_pci_get_tuning_count,
 };
 
 /*****************************************************************************\
