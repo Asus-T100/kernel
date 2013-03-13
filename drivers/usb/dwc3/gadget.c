@@ -2564,6 +2564,11 @@ static irqreturn_t dwc3_process_event_buf(struct dwc3 *dwc, u32 buf)
 	evt = dwc->ev_buffs[buf];
 	left = count;
 
+	/* WORKAROUND: Add 4 us delay workaround to A-unit issue in A0 stepping.
+	 * Can be removed after B0.
+	 */
+	udelay(4);
+
 	while (left > 0) {
 		union dwc3_event event;
 
