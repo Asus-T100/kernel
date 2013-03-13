@@ -785,6 +785,7 @@ static void dlp_tty_close(struct tty_struct *tty, struct file *filp)
 
 	/* Flush everything & Release the HSI port */
 	if (need_cleanup) {
+		dlp_ctrl_clean_stored_cmd();
 		pr_debug(DRVNAME": Flushing the HSI controller\n");
 		hsi_flush(dlp_drv.client);
 		dlp_hsi_port_unclaim();
