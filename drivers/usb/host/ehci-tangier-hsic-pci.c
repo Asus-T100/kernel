@@ -179,6 +179,8 @@ static void hsic_notify(struct usb_device *udev, unsigned action)
 
 	/* Ignore root hub add/remove event */
 	if (!udev->parent) {
+		pr_debug("%s Disable autosuspend\n", __func__);
+		usb_disable_autosuspend(udev);
 		pr_debug("%s Ignore root hub otg_notify\n", __func__);
 		return;
 	}
@@ -195,6 +197,8 @@ static void hsic_notify(struct usb_device *udev, unsigned action)
 
 	switch (action) {
 	case USB_DEVICE_ADD:
+		pr_debug("%s----> enable autosuspend\n", __func__);
+		usb_enable_autosuspend(udev->parent);
 		pr_debug("Notify HSIC add device\n");
 		retval = hsic_aux_irq_init();
 		if (retval)
