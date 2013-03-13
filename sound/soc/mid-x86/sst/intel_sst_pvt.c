@@ -207,7 +207,7 @@ static void sst_do_recovery(struct intel_sst_drv *sst)
 	int env_offset = 0;
 
 	if (sst->pci_id == SST_MRFLD_PCI_ID) {
-		pr_err("Not supported for mrfld\n");
+		dump_stack();
 		return;
 	}
 

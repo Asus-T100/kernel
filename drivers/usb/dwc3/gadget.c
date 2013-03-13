@@ -290,6 +290,33 @@ static const char *dwc3_gadget_ep_cmd_string(u8 cmd)
 	}
 }
 
+int dwc3_send_gadget_generic_command(struct dwc3 *dwc, int cmd, u32 param)
+{
+	u32		timeout = 500;
+	u32		reg;
+
+	dwc3_writel(dwc->regs, DWC3_DGCMDPAR, param);
+	dwc3_writel(dwc->regs, DWC3_DGCMD, cmd | DWC3_DGCMD_CMDACT);
+
+	do {
+		reg = dwc3_readl(dwc->regs, DWC3_DGCMD);
+		if (!(reg & DWC3_DGCMD_CMDACT)) {
+			dev_vdbg(dwc->dev, "Command Complete --> %d\n",
+					DWC3_DGCMD_STATUS(reg));
+			return 0;
+		}
+
+		/*
+		 * We can't sleep here, because it's also called from
+		 * interrupt context.
+		 */
+		timeout--;
+		if (!timeout)
+			return -ETIMEDOUT;
+		udelay(1);
+	} while (1);
+}
+
 int dwc3_send_gadget_ep_cmd(struct dwc3 *dwc, unsigned ep,
 		unsigned cmd, struct dwc3_gadget_ep_cmd_params *params)
 {
@@ -1309,19 +1336,25 @@ static int dwc3_gadget_set_selfpowered(struct usb_gadget *g,
 	return 0;
 }
 
-void dwc3_gadget_run_stop(struct dwc3 *dwc, int is_on)
+static bool can_pullup(struct dwc3 *dwc)
+{
+	return dwc->gadget_driver && dwc->soft_connected && dwc->got_irq;
+}
+
+static void __dwc3_gadget_run_stop(struct dwc3 *dwc, int is_on)
 {
 	u32			reg;
 	u32			timeout = 500;
 
 	reg = dwc3_readl(dwc->regs, DWC3_DCTL);
-	if (is_on) {
+	if (!(reg & DWC3_DCTL_RUN_STOP) && is_on && can_pullup(dwc)) {
 		reg &= ~DWC3_DCTL_TRGTULST_MASK;
 		reg |= (DWC3_DCTL_RUN_STOP
 				| DWC3_DCTL_TRGTULST_RX_DET);
-	} else {
+	} else if ((reg & DWC3_DCTL_RUN_STOP) && !is_on) {
 		reg &= ~DWC3_DCTL_RUN_STOP;
-	}
+	} else
+		return;
 
 	dwc3_writel(dwc->regs, DWC3_DCTL, reg);
 
@@ -1346,22 +1379,23 @@ void dwc3_gadget_run_stop(struct dwc3 *dwc, int is_on)
 			is_on ? "connect" : "disconnect");
 }
 
+void dwc3_gadget_run_stop(struct dwc3 *dwc, int is_on)
+{
+	if (dwc->got_irq)
+		__dwc3_gadget_run_stop(dwc, is_on);
+}
+
 static int dwc3_gadget_pullup(struct usb_gadget *g, int is_on)
 {
 	struct dwc3		*dwc = gadget_to_dwc(g);
 	unsigned long		flags;
 
-#ifdef CONFIG_USB_DWC_OTG_XCEIV
-	if (!dwc->got_irq) {
-		dev_info(dwc->dev,
-				"exit from pullup as irq not enabled yet\n");
-		return 0;
-	}
-#endif
-	is_on = !!is_on;
-
 	spin_lock_irqsave(&dwc->lock, flags);
+	if (dwc->soft_connected == is_on)
+		goto done;
+	dwc->soft_connected = is_on;
 	dwc3_gadget_run_stop(dwc, is_on);
+done:
 	spin_unlock_irqrestore(&dwc->lock, flags);
 
 	return 0;

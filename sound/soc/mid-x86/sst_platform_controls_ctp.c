@@ -20,6 +20,8 @@
  *
  * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  */
+#include <linux/slab.h>
+
 #include <sound/soc.h>
 #include "sst_platform.h"
 #include "sst_platform_pvt.h"
@@ -108,6 +110,24 @@ static int lpe_mixer_headset_set(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
+static int sst_probe_byte_control_get(struct snd_kcontrol *kcontrol,
+	struct snd_ctl_elem_value *ucontrol)
+{
+	int ret = 0;
+
+	return sst_dsp->ops->set_generic_params(SST_GET_PROBE_BYTE_STREAM,
+				ucontrol->value.bytes.data);
+}
+
+static int sst_probe_byte_control_set(struct snd_kcontrol *kcontrol,
+	struct snd_ctl_elem_value *ucontrol)
+{
+	int ret = 0;
+
+	return sst_dsp->ops->set_generic_params(SST_SET_PROBE_BYTE_STREAM,
+				ucontrol->value.bytes.data);
+}
+
 static const char *lpe_mixer_text[] = {
 	"PCM", "Compressed", "PCM and Compressed",
 };
@@ -120,6 +140,9 @@ static const struct snd_kcontrol_new sst_controls_clv[] = {
 		lpe_mixer_ihf_get, lpe_mixer_ihf_set),
 	SOC_ENUM_EXT("LPE headset mixer", lpe_mixer_enum,
 		lpe_mixer_headset_get, lpe_mixer_headset_set),
+	SND_SOC_BYTES_EXT("SST Probe Byte Control", SST_MAX_BIN_BYTES,
+		sst_probe_byte_control_get,
+		sst_probe_byte_control_set),
 };
 
 int sst_platform_clv_init(struct snd_soc_platform *platform)

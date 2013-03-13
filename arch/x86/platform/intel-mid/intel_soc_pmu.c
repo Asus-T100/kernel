@@ -77,6 +77,31 @@ static int pci_to_platform_state(pci_power_t pci_state)
 	return state;
 }
 
+/* Maps power states to pmu driver's internal indexes */
+int mid_state_to_sys_state(int mid_state)
+{
+	int sys_state = 0;
+	switch (mid_state) {
+	case MID_S0I1_STATE:
+		sys_state = SYS_STATE_S0I1;
+		break;
+	case MID_LPMP3_STATE:
+		sys_state = SYS_STATE_S0I2;
+		break;
+	case MID_S0I3_STATE:
+		sys_state = SYS_STATE_S0I3;
+		break;
+	case MID_S3_STATE:
+		sys_state = SYS_STATE_S3;
+		break;
+
+	case C6_HINT:
+		sys_state = SYS_STATE_S0I0;
+	}
+
+	return sys_state;
+}
+
 /* PCI Device Id structure */
 static DEFINE_PCI_DEVICE_TABLE(mid_pm_ids) = {
 	{PCI_VDEVICE(INTEL, MID_PMU_MFLD_DRV_DEV_ID), 0},
@@ -126,7 +151,7 @@ int pmu_set_devices_in_d0i0(void)
 	 * flag is needed to distinguish between
 	 * S0ix vs interactive command in pmu_sc_irq()
 	 */
-	status = pmu_issue_interactive_command(&cur_pmssc, false);
+	status = pmu_issue_interactive_command(&cur_pmssc, false, false);
 
 	if (unlikely(status != PMU_SUCCESS)) {	/* pmu command failed */
 		printk(KERN_CRIT "Failed to Issue a PM command to PMU2\n");
@@ -791,7 +816,7 @@ int pmu_set_emmc_to_d0i0_atomic(void)
 	/* Request SCU for PM interrupt enabling */
 	writel(PMU_PANIC_EMMC_UP_REQ_CMD, mid_pmu_cxt->emergeny_emmc_up_addr);
 
-	status = pmu_issue_interactive_command(&cur_pmssc, false);
+	status = pmu_issue_interactive_command(&cur_pmssc, false, false);
 
 	if (unlikely(status != PMU_SUCCESS)) {
 		dev_dbg(&mid_pmu_cxt->pmu_dev->dev,
@@ -1136,6 +1161,7 @@ int __ref pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state)
 	int retry_times = 0;
 	ktime_t calltime, delta, rettime;
 	struct saved_nc_power_history *record = NULL;
+	bool d3_cold = false;
 
 	/* Ignore callback from devices until we have initialized */
 	if (unlikely((!pmu_initialized)))
@@ -1184,6 +1210,12 @@ int __ref pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state)
 		}
 	}
 
+	/* Ignore d0ix on LSS 0 on MRFLD */
+	if (platform_is(INTEL_ATOM_MRFLD)) {
+		if ((sub_sys_pos == 0) && (sub_sys_index == 0))
+			goto unlock;
+	}
+
 	/* initialize the current pmssc states */
 	memset(&cur_pmssc, 0, sizeof(cur_pmssc));
 
@@ -1221,11 +1253,15 @@ int __ref pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state)
 
 	cur_pmssc.pmu2_states[sub_sys_index] = new_value;
 
+	/* Check if the state is D3_cold or D3_Hot in TNG platform*/
+	if (platform_is(INTEL_ATOM_MRFLD) && (state == PCI_D3cold))
+		d3_cold = true;
+
 	/* Issue the pmu command to PMU 2
 	 * flag is needed to distinguish between
 	 * S0ix vs interactive command in pmu_sc_irq()
 	 */
-	status = pmu_issue_interactive_command(&cur_pmssc, false);
+	status = pmu_issue_interactive_command(&cur_pmssc, false, d3_cold);
 
 	if (unlikely(status != PMU_SUCCESS)) {
 		dev_dbg(&mid_pmu_cxt->pmu_dev->dev,
@@ -1366,7 +1402,8 @@ pci_power_t pmu_pci_choose_state(struct pci_dev *pdev)
 	return state;
 }
 
-int pmu_issue_interactive_command(struct pmu_ss_states *pm_ssc, bool ioc)
+int pmu_issue_interactive_command(struct pmu_ss_states *pm_ssc, bool ioc,
+					bool d3_cold)
 {
 	u32 tmp;
 	u32 command;
@@ -1390,6 +1427,10 @@ int pmu_issue_interactive_command(struct pmu_ss_states *pm_ssc, bool ioc)
 	pmu_write_subsys_config(pm_ssc);
 
 	command = (ioc) ? INTERACTIVE_IOC_VALUE : INTERACTIVE_VALUE;
+
+	 /* Special handling for PCI_D3cold in Tangier */
+	if (d3_cold)
+		command |= PM_CMD_D3_COLD;
 
 	/* send interactive command to SCU */
 	writel(command, &mid_pmu_cxt->pmu_reg->pm_cmd);
@@ -1519,7 +1560,8 @@ static int pmu_init(void)
 
 		/* send a interactive command to fw */
 		mid_pmu_cxt->interactive_cmd_sent = true;
-		status = pmu_issue_interactive_command(&pmu_config, true);
+		status = pmu_issue_interactive_command(&pmu_config, true,
+							false);
 		if (status != PMU_SUCCESS) {
 			mid_pmu_cxt->interactive_cmd_sent = false;
 			dev_dbg(&mid_pmu_cxt->pmu_dev->dev,\
@@ -1730,15 +1772,23 @@ static struct pci_driver driver = {
 static int standby_enter(void)
 {
 	u32 temp = 0;
+	int s3_state = mid_state_to_sys_state(MID_S3_STATE);
 
 	if (mid_s0ix_enter(MID_S3_STATE) != MID_S3_STATE) {
 		pmu_set_s0ix_complete();
 		return -EINVAL;
 	}
 
+	/* time stamp for end of s3 entry */
+	time_stamp_for_sleep_state_latency(s3_state, false, true);
+
 	__monitor((void *) &temp, 0, 0);
 	smp_mb();
 	__mwait(mid_pmu_cxt->s3_hint, 1);
+
+	/* time stamp for start of s3 exit */
+	time_stamp_for_sleep_state_latency(s3_state, true, false);
+
 	pmu_set_s0ix_complete();
 
 	/*set wkc to appropriate value suitable for s0ix*/

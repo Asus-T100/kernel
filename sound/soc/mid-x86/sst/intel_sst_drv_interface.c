@@ -78,7 +78,7 @@ static void sst_restore_fw_context(void)
 		return retval;
 	}
 
-	sst_set_fw_state_locked(sst_drv_ctx, SST_FW_CTXT_RESTORE);
+	sst_drv_ctx->sst_state = SST_FW_CTXT_RESTORE;
 	sst_fill_header(&msg->header, IPC_IA_SET_FW_CTXT, 1, 0);
 
 	msg->header.part.data = sizeof(fw_context) + sizeof(u32);
@@ -109,15 +109,14 @@ int sst_download_fw(void)
 
 	retval = sst_load_fw();
 	if (retval)
-		goto end_restore;
+		return retval;
 	pr_debug("fw loaded successful!!!\n");
 
-end_restore:
 #ifndef MRFLD_TEST_ON_MFLD
 	if (sst_drv_ctx->pci_id != SST_MRFLD_PCI_ID)
 		sst_restore_fw_context();
 #endif
-	sst_set_fw_state_locked(sst_drv_ctx, SST_FW_RUNNING);
+	sst_drv_ctx->sst_state = SST_FW_RUNNING;
 	return retval;
 }
 
@@ -199,13 +198,18 @@ int sst_get_stream_allocated(struct snd_sst_params *str_param,
 		return -ENOMEM;
 
 	retval = sst_alloc_stream((char *) str_param, block);
+	str_id = retval;
 	if (retval < 0) {
 		pr_err("sst_alloc_stream failed %d\n", retval);
 		goto free_block;
 	}
 	pr_debug("Stream allocated %d\n", retval);
-	str_id = retval;
 	str_info = get_stream_info(str_id);
+	if (str_info == NULL) {
+		pr_err("get stream info returned null\n");
+		str_id = -EINVAL;
+		goto free_block;
+	}
 
 	/* Block the call for reply */
 	retval = sst_wait_timeout(sst_drv_ctx, block);
@@ -377,24 +381,16 @@ int intel_sst_check_device(void)
 	mutex_lock(&sst_drv_ctx->sst_lock);
 	if (sst_drv_ctx->sst_state == SST_UN_INIT) {
 		sst_drv_ctx->sst_state = SST_START_INIT;
-		mutex_unlock(&sst_drv_ctx->sst_lock);
 		/* FW is not downloaded */
 		pr_debug("DSP Downloading FW now...\n");
 		retval = sst_download_fw();
 		if (retval) {
 			pr_err("FW download fail %x\n", retval);
-			sst_set_fw_state_locked(sst_drv_ctx, SST_UN_INIT);
+			sst_drv_ctx->sst_state = SST_UN_INIT;
+			mutex_unlock(&sst_drv_ctx->sst_lock);
 			pm_runtime_put(&sst_drv_ctx->pci->dev);
 			return retval;
 		}
-	} else
-		mutex_unlock(&sst_drv_ctx->sst_lock);
-
-	mutex_lock(&sst_drv_ctx->sst_lock);
-	if (sst_drv_ctx->sst_state != SST_FW_RUNNING) {
-		mutex_unlock(&sst_drv_ctx->sst_lock);
-		pm_runtime_put(&sst_drv_ctx->pci->dev);
-		return -EAGAIN;
 	}
 	mutex_unlock(&sst_drv_ctx->sst_lock);
 	return retval;
@@ -992,11 +988,54 @@ static int sst_set_generic_params(enum sst_controls cmd, void *arg)
 		pm_runtime_put(&sst_drv_ctx->pci->dev);
 		break;
 	}
+	case SST_GET_PROBE_BYTE_STREAM: {
+		struct snd_sst_probe_bytes *prb_bytes = (struct snd_sst_probe_bytes *)arg;
+
+		if (sst_drv_ctx->probe_bytes) {
+			prb_bytes->len = sst_drv_ctx->probe_bytes->len;
+			memcpy(prb_bytes->bytes, &sst_drv_ctx->probe_bytes->bytes, prb_bytes->len);
+		}
+		break;
+	}
+	case SST_SET_PROBE_BYTE_STREAM: {
+		struct ipc_post *msg = NULL;
+		struct sst_iblock *block;
+		unsigned long irq_flags;
+		struct snd_sst_probe_bytes *prb_bytes = (struct snd_sst_probe_bytes *)arg;
+
+		if (sst_drv_ctx->probe_bytes) {
+			sst_drv_ctx->probe_bytes->len = prb_bytes->len;
+			memcpy(&sst_drv_ctx->probe_bytes->bytes, prb_bytes->bytes, prb_bytes->len);
+		}
+
+		ret_val = intel_sst_check_device();
+		if (ret_val)
+			return ret_val;
+
+		ret_val = sst_send_probe_bytes(sst_drv_ctx);
+		break;
+	}
 	default:
 		pr_err("Invalid cmd request:%d\n", cmd);
 		ret_val = -EINVAL;
 	}
 	return ret_val;
+}
+
+/**
+ * sst_get_max_streams - Function to populate the drv info structure
+ *				with the max streams
+ * @info: the out params that holds the drv info
+ *
+ * This function is called when max streams count is required
+**/
+void sst_get_max_streams(struct snd_sst_driver_info *info)
+{
+	/* FIXME: Remove the check, MRFLD probe dai changes will update this*/
+	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID)
+		info->max_streams = sst_drv_ctx->info.max_streams - 1;
+	else
+		info->max_streams = sst_drv_ctx->info.max_streams;
 }
 
 static struct sst_ops pcm_ops = {

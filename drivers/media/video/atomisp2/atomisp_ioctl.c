@@ -453,29 +453,39 @@ static int __get_css_frame_info(struct atomisp_device *isp,
 				enum atomisp_pipe_type pipe_type,
 				struct sh_css_frame_info *frame_info)
 {
+	int ret = -1;
+
 	switch (pipe_type) {
 	case ATOMISP_PIPE_CAPTURE:
-		if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO)
-			return sh_css_video_get_output_frame_info(frame_info);
-		return sh_css_capture_get_output_frame_info(frame_info);
+		if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO
+		    || !isp->isp_subdev.enable_vfpp->val)
+			ret = sh_css_video_get_output_frame_info(frame_info);
+		else
+			ret = sh_css_capture_get_output_frame_info(frame_info);
+		break;
 	case ATOMISP_PIPE_VIEWFINDER:
 		if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO)
-			return sh_css_video_get_viewfinder_frame_info(
+			ret = sh_css_video_get_viewfinder_frame_info(
 					frame_info);
 		else if (!atomisp_is_mbuscode_raw(
 				 isp->isp_subdev.
 				 fmt[isp->isp_subdev.capture_pad].fmt.code))
-			return sh_css_capture_get_viewfinder_frame_info(
+			ret = sh_css_capture_get_viewfinder_frame_info(
 					frame_info);
-		return -EINVAL;
+		break;
 	case ATOMISP_PIPE_PREVIEW:
 		if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO)
-			return sh_css_video_get_viewfinder_frame_info(
+			ret = sh_css_video_get_viewfinder_frame_info(
 					frame_info);
-		return sh_css_preview_get_output_frame_info(frame_info);
+		else
+			ret = sh_css_preview_get_output_frame_info(frame_info);
+		break;
 	default:
-		return -EINVAL;
+		/* Return with error */
+		break;
 	}
+
+	return ret != sh_css_success ? -EINVAL : 0;
 }
 
 /*
@@ -1205,6 +1215,9 @@ enum sh_css_pipe_id atomisp_get_css_pipe_id(struct atomisp_device *isp)
 	    isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO)
 		return SH_CSS_PREVIEW_PIPELINE;
 
+	if (!isp->isp_subdev.enable_vfpp->val)
+		return SH_CSS_VIDEO_PIPELINE;
+
 	switch (isp->isp_subdev.run_mode->val) {
 	case ATOMISP_RUN_MODE_PREVIEW:
 		return SH_CSS_PREVIEW_PIPELINE;
@@ -1230,6 +1243,9 @@ int atomisp_get_css_buf_type(struct atomisp_device *isp,
 
 static unsigned int atomisp_sensor_start_stream(struct atomisp_device *isp)
 {
+	if (!isp->isp_subdev.enable_vfpp->val)
+		return 1;
+
 	if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO ||
 	    (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_STILL_CAPTURE &&
 	     !atomisp_is_mbuscode_raw(
@@ -1302,7 +1318,7 @@ static int atomisp_streamon(struct file *file, void *fh,
 					isp->params.offline_parm.skip_frames,
 					isp->params.offline_parm.offset);
 			if (ret)
-				return ret;
+				return -EINVAL;
 		}
 		atomisp_qbuffers_to_css(isp);
 		goto out;
@@ -1334,8 +1350,9 @@ static int atomisp_streamon(struct file *file, void *fh,
 		goto out;
 	}
 	ret = sh_css_start(css_pipe_id);
-	if (ret) {
+	if (ret != sh_css_success) {
 		dev_err(isp->dev, "sh_css_start fails: %d\n", ret);
+		ret = -EINVAL;
 		goto out;
 	}
 	if (isp->params.continuous_vf &&
@@ -1372,10 +1389,8 @@ start_sensor:
 	}
 
 	if (!isp->sw_contex.file_input) {
-#ifndef CONFIG_X86_MRFLD
 		sh_css_enable_interrupt(SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF,
 					true);
-#endif /* CONFIG_X86_MRFLD */
 
 		atomisp_set_term_en_count(isp);
 
@@ -1482,11 +1497,10 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 
 	atomisp_clear_css_buffer_counters(isp);
 
-#ifndef CONFIG_X86_MRFLD
 	if (!isp->sw_contex.file_input)
 		sh_css_enable_interrupt(SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF,
 					false);
-#endif /* CONFIG_X86_MRFLD */
+
 	if (isp->delayed_init == ATOMISP_DELAYED_INIT_QUEUED) {
 		cancel_work_sync(&isp->delayed_init_work);
 		isp->delayed_init = ATOMISP_DELAYED_INIT_NOT_QUEUED;
@@ -1868,6 +1882,8 @@ static int atomisp_camera_s_ext_ctrls(struct file *file, void *fh,
 	int ret = 0;
 
 	for (i = 0; i < c->count; i++) {
+		struct v4l2_ctrl *ctr;
+
 		ctrl.id = c->controls[i].id;
 		ctrl.value = c->controls[i].value;
 		switch (ctrl.id) {
@@ -1920,7 +1936,12 @@ static int atomisp_camera_s_ext_ctrls(struct file *file, void *fh,
 			mutex_unlock(&isp->mutex);
 			break;
 		default:
-			ret = -EINVAL;
+			ctr = v4l2_ctrl_find(&isp->isp_subdev.ctrl_handler,
+					     ctrl.id);
+			if (ctr)
+				ret = v4l2_ctrl_s_ctrl(ctr, ctrl.value);
+			else
+				ret = -EINVAL;
 		}
 
 		if (ret) {

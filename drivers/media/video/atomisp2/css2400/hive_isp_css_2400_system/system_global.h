@@ -37,19 +37,28 @@
  *
  * Since this file is visible everywhere and the system definition
  * macros are not, detect the separate definitions for {host, SP, ISP}
+ *
+ * The 2401 system has the nice property that it uses a vanilla 2400 SP
+ * so the SP will believe it is a 2400 system rather than 2401...
  */
-#if defined(SYSTEM_hive_isp_css_2400_system) || defined(__isp2400_mamoiada) || defined(__scalar_processor_2400)
+//#if defined(SYSTEM_hive_isp_css_2401_system) || defined(__isp2401_mamoiada) || defined(__scalar_processor_2401)
+#if defined(SYSTEM_hive_isp_css_2401_system) || defined(__isp2401_mamoiada)
+#define IS_ISP_2401_MAMOIADA_SYSTEM
+#define HAS_ISP_2401_MAMOIADA
+#define HAS_SP_2400
+//#elif defined(SYSTEM_hive_isp_css_2400_system) || defined(__isp2400_mamoiada) || defined(__scalar_processor_2400)
+#elif defined(SYSTEM_hive_isp_css_2400_system) || defined(__isp2400_mamoiada)
 #define IS_ISP_2400_MAMOIADA_SYSTEM
 #define HAS_ISP_2400_MAMOIADA
 #define HAS_SP_2400
-#elif defined(SYSTEM_hive_isp_css_2400A0_system) || defined(__isp2400A0_mamoiada) || defined(__scalar_processor_2400A0)
+//#elif defined(SYSTEM_hive_isp_css_2400A0_system) || defined(__isp2400A0_mamoiada) || defined(__scalar_processor_2400A0)
+#elif defined(SYSTEM_hive_isp_css_2400A0_system) || defined(__isp2400A0_mamoiada)
 #define IS_ISP_2400A0_MAMOIADA_SYSTEM
 #define HAS_ISP_2400A0_MAMOIADA
 #define HAS_SP_2400A0
 #else
-#error "system_global.h: 2400_SYSTEM must be one of { . , A0 }"
+#error "system_global.h: 2400_SYSTEM must be one of {2400, 2400A0, 2401 }"
 #endif
-
 
 #define HAS_MMU_VERSION_2
 #define HAS_DMA_VERSION_2
@@ -60,6 +69,7 @@
 #define HAS_IRQ_VERSION_2
 #define HAS_IRQ_MAP_VERSION_2
 #define HAS_INPUT_FORMATTER_VERSION_2
+/* 2401: HAS_INPUT_SYSTEM_VERSION_3 */
 #define HAS_INPUT_SYSTEM_VERSION_2
 #define HAS_FIFO_MONITORS_VERSION_2
 /* #define HAS_GP_REGS_VERSION_2 */
@@ -103,7 +113,13 @@ typedef enum {
 	N_SP_ID
 } sp_ID_t;
 
-#if defined (IS_ISP_2400_MAMOIADA_SYSTEM)
+#if defined (IS_ISP_2401_MAMOIADA_SYSTEM)
+typedef enum {
+	MMU0_ID = 0,
+	MMU1_ID,
+	N_MMU_ID
+} mmu_ID_t;
+#elif defined (IS_ISP_2400_MAMOIADA_SYSTEM)
 typedef enum {
 	MMU0_ID = 0,
 	MMU1_ID,
@@ -115,7 +131,7 @@ typedef enum {
 	N_MMU_ID
 } mmu_ID_t;
 #else
-#error "system_global.h: SYSTEM must be one of {., A0}"
+#error "system_global.h: SYSTEM must be one of {2400, 2400A0, 2401}"
 #endif
 
 typedef enum {
@@ -146,12 +162,13 @@ typedef enum {
 	N_HMEM_ID
 } hmem_ID_t;
 
+/*
 typedef enum {
 	IRQ0_ID = 0,
 	N_IRQ_ID
 } irq_ID_t;
+*/
 
-/*
 typedef enum {
 	IRQ0_ID = 0,	// GP IRQ block
 	IRQ1_ID,		// Input formatter
@@ -159,7 +176,6 @@ typedef enum {
 	IRQ3_ID,		// input selector
 	N_IRQ_ID
 } irq_ID_t;
- */
 
 typedef enum {
 	FIFO_MONITOR0_ID = 0,

@@ -53,6 +53,7 @@ extern u32 intel_mid_msgbus_read32(u8 port, u32 addr);
 extern void intel_mid_msgbus_write32(u8 port, u32 addr, u32 data);
 extern void register_rpmsg_service(char *name, int id, u32 addr);
 extern int sdhci_pci_request_regulators(void);
+extern u32 intel_mid_soc_stepping(void);
 
 /*
  * Here defines the array of devices platform data that IAFW would export
@@ -101,6 +102,7 @@ enum intel_mid_cpu_type {
 	INTEL_MID_CPU_CHIP_PENWELL,
 	INTEL_MID_CPU_CHIP_CLOVERVIEW,
 	INTEL_MID_CPU_CHIP_TANGIER,
+	INTEL_MID_CPU_CHIP_VALLEYVIEW2,
 };
 
 extern enum intel_mid_cpu_type __intel_mid_cpu_chip;
@@ -133,6 +135,8 @@ struct intel_mid_ops {
 	DECLARE_INTEL_MID_OPS_INIT(penwell, INTEL_MID_CPU_CHIP_PENWELL) \
 	DECLARE_INTEL_MID_OPS_INIT(cloverview, INTEL_MID_CPU_CHIP_CLOVERVIEW) \
 	DECLARE_INTEL_MID_OPS_INIT(tangier, INTEL_MID_CPU_CHIP_TANGIER) \
+	DECLARE_INTEL_MID_OPS_INIT(valleyview2, \
+		INTEL_MID_CPU_CHIP_VALLEYVIEW2) \
 };
 
 #ifdef CONFIG_X86_INTEL_MID
@@ -183,6 +187,10 @@ enum {
 	VENDOR_INTEL,
 	VENDOR_INTEL_RSVD1,
 	VENDOR_INTEL_RSVD2,
+	VENDOR_INTEL_RSVD3,
+	VENDOR_INTEL_RSVD4,
+	VENDOR_INTEL_RSVD5,
+	VENDOR_INTEL_RSVD6,
 	VENDOR_RSVD,
 	VENDOR_UNKNOWN = 0xFFFF
 };
@@ -196,6 +204,8 @@ enum {
 	MANUFACTURER_FAB5,
 	MANUFACTURER_FAB6,
 	MANUFACTURER_FAB7,
+	MANUFACTURER_FAB8,
+	MANUFACTURER_FAB9,
 	MANUFACTURER_RSVD,
 	MANUFACTURER_UNKNOWN = 0xFFFF
 };
@@ -208,6 +218,7 @@ enum {
 	INTEL_CLVT_TABLET = 0x0003,
 	INTEL_MRFL_PHONE  = 0x0004,
 	INTEL_MRFL_TABLET = 0x0005,
+	INTEL_BYT_PHONE   = 0x0006,
 	INTEL_BYT_TABLET  = 0x0007,
 	INTEL_PLATFORM_UNKNOWN = 0xFFFF
 };
@@ -246,6 +257,8 @@ enum {
 enum {
 	INTEL_CLVTP_PHONE_RHB_PRO = 0x0000,
 	INTEL_CLVTP_PHONE_RHB_ENG = 0x8000,
+	INTEL_CLVTP_PHONE_VB_PRO  = 0x0001,
+	INTEL_CLVTP_PHONE_VB_ENG  = 0x8001,
 	INTEL_CLVTP_PHONE_UNKNOWN = 0xFFFF
 };
 
@@ -270,6 +283,13 @@ enum {
 	INTEL_MRFL_TABLET_TBD_PRO = 0x0000,
 	INTEL_MRFL_TABLET_TBD_ENG = 0x8000,
 	INTEL_MRFL_TABLET_UNKNOWN = 0xFFFF
+};
+
+/* Product_Line_ID table for Platform_Family_ID == INTEL_BYT_PHONE */
+enum {
+	INTEL_BYT_PHONE_TBD_PRO = 0x0000,
+	INTEL_BYT_PHONE_TBD_ENG = 0x8000,
+	INTEL_BYT_PHONE_UNKNOWN = 0xFFFF
 };
 
 /* Product_Line_ID table for Platform_Family_ID == INTEL_BYT_TABLET */
@@ -378,6 +398,8 @@ enum {
 	MFLD_TABLET_SLP_EV20,  /* CRAK Dx */
 	MFLD_TABLET_SLP_DV10,  /* CRAK Dx */
 	MFLD_TABLET_SLP_EVL10, /* CRAK Dx */
+	MFLD_TABLET_SLP_EVL20, /* CRAK Dx */
+	MFLD_TABLET_SLP_DVL10, /* CRAK Dx */
 	MFLD_TABLET_SLP_RSVD,
 	MFLD_TABLET_SLP_UNKNOWN = 0xFFFF
 };
@@ -389,7 +411,8 @@ enum {
 	MFLD_TABLET_YKB_UNKNOWN = 0xFFFF
 };
 
-/* Hardware_ID table for Product_Line_ID == INTEL_CLVTP_PHONE_RHB */
+/* Combined Hardware_ID table for Product_Line_ID == INTEL_CLVTP_PHONE_RHB
+ * and Product_Line_ID == INTEL_CLVTP_PHONE_VB */
 enum {
 	CLVTP_PHONE_RHB_CCVV0,  /* Clover City VV0 FAB A CLV/CLV+ A0*/
 	CLVTP_PHONE_RHB_CCVV1,  /* Clover City VV1 FAB B CLV+ A0*/
@@ -414,8 +437,7 @@ enum {
 	CLVTP_PHONE_RHB_CCVV2VB, /* Clover City VV2-Victoria Bay FAB B CLV B0 */
 	CLVTP_PHONE_RHB_PR19M,  /* Macro PR1.9 CLV+ B0 */
 	CLVTP_PHONE_RHB_PR199M, /* Macro PR1.99 CLV+ B0 */
-	CLVTP_PHONE_RHB_VBDV1,  /* VictoriaBay DV1 CLV+ B0
-					Renasas Modem BRCM CWS */
+	CLVTP_PHONE_VB_PR1A,    /* Victoria Bay PR1 CLV+ B1 */
 	CLVTP_PHONE_RHB_PR20B,  /* CLV+ B0 C-Class-touch panel sensor
 					GFF-LPDDR2 */
 	CLVTP_PHONE_RHB_PR30A,  /* CLV+ B1 C-Class */
@@ -425,11 +447,10 @@ enum {
 	CLVTP_PHONE_RHB_CCVV3A, /* Clover City VV3 FAB B CLV+ B0 */
 	CLVTP_PHONE_RHB_CCVV3B, /* Clover City VV3 FAB B CLV+ B1 */
 	CLVTP_PHONE_RHB_CCVV3C, /* Clover City VV3 FAB B CLV+ B2 */
-	CLVTP_PHONE_RHB_VV3AVB, /* Clover City VictoriaBay FAB B CLV+ B0 */
-	CLVTP_PHONE_RHB_VV3BVB, /* Clover City VictoriaBay FAB B CLV+ B1 */
-	CLVTP_PHONE_RHB_VV3CVB, /* Clover City VictoriaBay FAB B CLV+ B2 */
-	CLVTP_PHONE_RHB_VBDV1A, /* Victoria Bay DV1 CLV+ B1, Renasas Modem */
-	CLVTP_PHONE_RHB_VBDV1B, /* Victoria Bay DV1 CLV+ B2, Renasas Modem */
+	CLVTP_PHONE_RSVD1,
+	CLVTP_PHONE_RSVD2,
+	CLVTP_PHONE_RSVD3,
+	CLVTP_PHONE_VB_PR1B,    /* Victoria Bay PR1 CLV+ B2 */
 	CLVTP_PHONE_RHB_RSVD,
 	CLVTP_PHONE_RHB_UNKNOWN = 0xFFFF
 };
@@ -481,9 +502,19 @@ enum {
 	MRFL_TABLET_TBD_UNKNOWN = 0xFFFF
 };
 
+/* Hardware_ID table for Product_Line_ID == INTEL_BYT_PHONE_TBD */
+enum {
+	BYT_PHONE_TBD_TBD,
+	BYT_PHONE_TBD_RSVD,
+	BYT_PHONE_TBD_UNKNOWN = 0xFFFF
+};
+
 /* Hardware_ID table for Product_Line_ID == INTEL_BYT_TABLET_TBD */
 enum {
-	BYT_TABLET_TBD_TBD,
+	BYT_TABLET_TBD_TBD0,
+	BYT_TABLET_TBD_TBD1,
+	BYT_TABLET_TBD_TBD2,
+	BYT_TABLET_TBD_TBD3,
 	BYT_TABLET_TBD_RSVD,
 	BYT_TABLET_TBD_UNKNOWN = 0xFFFF
 };

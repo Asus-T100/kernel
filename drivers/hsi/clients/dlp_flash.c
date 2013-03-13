@@ -274,14 +274,6 @@ static void dlp_flash_complete_rx(struct hsi_msg *msg)
 	struct dlp_flash_ctx *flash_ctx = ch_ctx->ch_data;
 	int ret;
 
-	/* Check the link readiness (TTY still opened) */
-	if (!dlp_tty_is_link_valid()) {
-		pr_debug(DRVNAME ": FLASH: CH%d PDU ignored (close:%d, Time out: %d)\n",
-				ch_ctx->ch_id,
-				dlp_drv.tty_closed, dlp_drv.tx_timeout);
-		return;
-	}
-
 	if (msg->status != HSI_STATUS_COMPLETED) {
 		pr_err(DRVNAME ": Invalid msg status: %d (ignored)\n",
 				msg->status);
@@ -315,7 +307,6 @@ static int dlp_flash_dev_open(struct inode *inode, struct file *filp)
 
 	/* Only ONE instance of this device can be opened */
 	if (dlp_flash_get_opened(ch_ctx)) {
-		pr_err(DRVNAME ": flash port already opened!");
 		ret = -EBUSY;
 		goto out;
 	}
@@ -329,14 +320,13 @@ static int dlp_flash_dev_open(struct inode *inode, struct file *filp)
 	/* Set the open flag */
 	dlp_flash_set_opened(ch_ctx, 1);
 
-	/* Claim the HSI port (to use for IPC) */
-	 dlp_hsi_port_claim();
+	/* device opened => Set the channel state flag */
+	dlp_ctrl_set_channel_state(ch_ctx->hsi_channel,
+				DLP_CH_STATE_OPENED);
 
 	/* Push RX PDUs */
 	for (ret = DLP_FLASH_NB_RX_MSG; ret; ret--)
 		dlp_flash_push_rx_pdu(ch_ctx);
-
-	pr_debug(DRVNAME": flash port opened");
 
 out:
 	return ret;
@@ -352,13 +342,9 @@ static int dlp_flash_dev_close(struct inode *inode, struct file *filp)
 	/* Set the open flag */
 	dlp_flash_set_opened(ch_ctx, 0);
 
-	/* Release the HSI controller */
-	dlp_hsi_port_unclaim();
-
-	/* Flush everything */
-	hsi_flush(dlp_drv.client);
-
-	pr_debug(DRVNAME ": Flash port closed");
+	/* device closed => Set the channel state flag */
+	dlp_ctrl_set_channel_state(ch_ctx->hsi_channel,
+				DLP_CH_STATE_CLOSED);
 
 	return 0;
 }

@@ -4738,15 +4738,6 @@ printf("wouldhave prepare (%p, %d, ..., %p)\n", NULL,
 	if (!in_stage)
 		in_stage = video_stage;
 
-
-	if (!in_frame && my_css.video_pipe.enable_viewfinder) {
-		err = sh_css_pipeline_get_output_stage(me,
-						       vf_pp_binary->info->mode,
-						       &vf_pp_stage);
-		if (err != sh_css_success)
-			return err;
-	}
-
 	video_stage->args.in_ref_frame = pipe->pipe.video.ref_frames[0];
 	video_stage->args.out_ref_frame = pipe->pipe.video.ref_frames[1];
 	video_stage->args.in_tnr_frame = pipe->pipe.video.tnr_frames[0];

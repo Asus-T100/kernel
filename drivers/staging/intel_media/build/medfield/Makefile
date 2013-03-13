@@ -146,7 +146,8 @@ gfx-y += $(DISPLAYDIR)/psb_bl.o \
 		$(DISPLAYDIR)/mdfld_dsi_dbi_dsr.o \
 		$(DISPLAYDIR)/tc35876x_vid.o \
 		$(DISPLAYDIR)/gi_renesas_cmd.o \
-		$(DISPLAYDIR)/yb_cmi_vid.o
+		$(DISPLAYDIR)/yb_cmi_vid.o \
+		$(DISPLAYDIR)/vb_cmd.o
 
 gfx-y += $(DISPLAYDIR)/mdfld_hdmi_audio.o
 

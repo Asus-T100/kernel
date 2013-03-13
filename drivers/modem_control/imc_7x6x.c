@@ -55,12 +55,57 @@ int mdm_ctrl_cold_boot_7x6x(struct mdm_ctrl *drv)
 			(struct mdm_ctrl_device_info *)pdata->device_data;
 
 	int ret = 0;
+	unsigned long flags;
+
+	pr_warn(DRVNAME": Cold boot requested");
+
+	/* Set the current modem state */
+	mdm_ctrl_launch_work(drv, MDM_CTRL_STATE_COLD_BOOT);
+	flush_workqueue(drv->change_state_wq);
+
+	/* AP request => just ignore the modem reset */
+	spin_lock_irqsave(&drv->state_lck, flags);
+	mdm_ctrl_set_reset_ongoing(drv, 1);
+	spin_unlock_irqrestore(&drv->state_lck, flags);
+
+	/* Toggle the RESET_BB_N */
+	gpio_set_value(drv->gpio_rst_bbn, 1);
+
+	/* Wait before doing the pulse on ON1 */
+	usleep_range(mid_info->pre_on_delay, mid_info->pre_on_delay);
+
+	/* Do a pulse on ON1 */
+	gpio_set_value(drv->gpio_pwr_on, 1);
+	usleep_range(mid_info->on_duration, mid_info->on_duration);
+	gpio_set_value(drv->gpio_pwr_on, 0);
+
+	mdm_ctrl_launch_timer(&drv->flashing_timer,
+				mid_info->pre_cflash_delay,
+				MDM_TIMER_FLASH_ENABLE);
+out:
+	return ret;
+}
+
+/**
+ * Perform a modem cold reset:
+ *
+ * - Set the RESET_BB_N to low (better SIM protection)
+ * - Set the EXT1P35VREN field to low  during 20ms (CHIPCNTRL PMIC register)
+ * - set the EXT1P35VREN field to high during 10ms (CHIPCNTRL PMIC register)
+ */
+int mdm_ctrl_cold_reset_7x6x(struct mdm_ctrl *drv)
+{
+	struct mdm_ctrl_pdata *pdata = drv->pdata;
+	struct mdm_ctrl_device_info *mid_info =
+			(struct mdm_ctrl_device_info *)pdata->device_data;
+
+	int ret = 0;
 	u16 addr = pdata->chipctrl;
 	u8 data;
 	u8 def_value = 0x00;
 	unsigned long flags;
 
-	pr_warn(DRVNAME": Cold boot requested");
+	pr_warn(DRVNAME": Cold reset requested");
 
 	/* Set the current modem state */
 	mdm_ctrl_launch_work(drv, MDM_CTRL_STATE_COLD_BOOT);
@@ -84,7 +129,7 @@ int mdm_ctrl_cold_boot_7x6x(struct mdm_ctrl *drv)
 	gpio_set_value(drv->gpio_rst_bbn, 0);
 
 	/* Wait before doing the pulse on ON1 */
-	udelay(pdata->pre_pwr_down_delay);
+	usleep_range(pdata->pre_pwr_down_delay, pdata->pre_pwr_down_delay);
 
 	/* Write the new register value (CHIPCNTRL_ON) */
 	/* Will hard reset the modem */
@@ -96,17 +141,17 @@ int mdm_ctrl_cold_boot_7x6x(struct mdm_ctrl *drv)
 	}
 
 	/* Wait before RESET_PWRDN_N to be 1 */
-	udelay(pdata->pwr_down_duration);
+	usleep_range(pdata->pwr_down_duration, pdata->pwr_down_duration);
 
 	/* Toggle the RESET_BB_N */
 	gpio_set_value(drv->gpio_rst_bbn, 1);
 
 	/* Wait before doing the pulse on ON1 */
-	udelay(mid_info->pre_on_delay);
+	usleep_range(mid_info->pre_on_delay, mid_info->pre_on_delay);
 
 	/* Do a pulse on ON1 */
 	gpio_set_value(drv->gpio_pwr_on, 1);
-	udelay(mid_info->on_duration);
+	usleep_range(mid_info->on_duration, mid_info->on_duration);
 	gpio_set_value(drv->gpio_pwr_on, 0);
 
 	mdm_ctrl_launch_timer(&drv->flashing_timer,
@@ -114,18 +159,6 @@ int mdm_ctrl_cold_boot_7x6x(struct mdm_ctrl *drv)
 				MDM_TIMER_FLASH_ENABLE);
 out:
 	return ret;
-}
-
-/**
- * Perform a modem cold reset:
- *
- * - Set the RESET_BB_N to low (better SIM protection)
- * - Set the EXT1P35VREN field to low  during 20ms (CHIPCNTRL PMIC register)
- * - set the EXT1P35VREN field to high during 10ms (CHIPCNTRL PMIC register)
- */
-int mdm_ctrl_cold_reset_7x6x(struct mdm_ctrl *drv)
-{
-	return mdm_ctrl_cold_boot_7x6x(drv);
 }
 
 /**
@@ -141,7 +174,7 @@ int mdm_ctrl_silent_warm_reset_7x6x(struct mdm_ctrl *drv)
 	struct mdm_ctrl_device_info *mid_info = drv->pdata->device_data;
 
 	gpio_set_value(drv->gpio_rst_bbn, 0);
-	udelay(mid_info->warm_rst_duration);
+	usleep_range(mid_info->warm_rst_duration, mid_info->warm_rst_duration);
 	gpio_set_value(drv->gpio_rst_bbn, 1);
 
 	return 0;
@@ -252,6 +285,9 @@ int mdm_ctrl_power_off_7x6x(struct mdm_ctrl *drv)
 	/* Set the RESET_BB_N to 0 */
 	gpio_set_value(drv->gpio_rst_bbn, 0);
 
+	/* Wait before doing the pulse on ON1 */
+	usleep_range(pdata->pre_pwr_down_delay, pdata->pre_pwr_down_delay);
+
 	/* Write the new register value (CHIPCNTRL_OFF) */
 	data = (def_value & pdata->chipctrl_mask) | pdata->chipctrloff;
 	ret =  intel_scu_ipc_writev(&addr, &data, 1);
@@ -261,7 +297,7 @@ int mdm_ctrl_power_off_7x6x(struct mdm_ctrl *drv)
 	}
 
 	/* Safety sleep. Avoid to directly call power on. */
-	udelay(pdata->pwr_down_duration);
+	usleep_range(pdata->pwr_down_duration, pdata->pwr_down_duration);
 
  out:
 	return ret;

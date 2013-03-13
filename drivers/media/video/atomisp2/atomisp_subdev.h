@@ -127,6 +127,7 @@ struct atomisp_sub_device {
 	struct v4l2_ctrl_handler ctrl_handler;
 	struct v4l2_ctrl *fmt_auto;
 	struct v4l2_ctrl *run_mode;
+	struct v4l2_ctrl *enable_vfpp;
 };
 
 extern const struct atomisp_in_fmt_conv atomisp_in_fmt_conv[];

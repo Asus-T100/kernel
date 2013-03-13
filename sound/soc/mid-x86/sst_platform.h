@@ -76,6 +76,8 @@ enum sst_controls {
 	SST_SET_BYTE_STREAM =		0x1011,
 	SST_GET_BYTE_STREAM =		0x1012,
 	SST_SET_SSP_CONFIG =		0x1013,
+	SST_SET_PROBE_BYTE_STREAM =     0x1014,
+	SST_GET_PROBE_BYTE_STREAM =	0x1015,
 };
 
 struct pcm_stream_info {

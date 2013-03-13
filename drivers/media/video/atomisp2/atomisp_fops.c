@@ -192,7 +192,10 @@ int atomisp_qbuffers_to_css(struct atomisp_device *isp)
 	struct atomisp_video_pipe *vf_pipe = NULL;
 	struct atomisp_video_pipe *preview_pipe = NULL;
 
-	if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO) {
+	if (!isp->isp_subdev.enable_vfpp->val) {
+		preview_pipe = &isp->isp_subdev.video_out_capture;
+		css_preview_pipe_id = SH_CSS_VIDEO_PIPELINE;
+	} else if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO) {
 		capture_pipe = &isp->isp_subdev.video_out_capture;
 		preview_pipe = &isp->isp_subdev.video_out_preview;
 		css_capture_pipe_id = SH_CSS_VIDEO_PIPELINE;
@@ -204,22 +207,17 @@ int atomisp_qbuffers_to_css(struct atomisp_device *isp)
 
 		css_preview_pipe_id = SH_CSS_PREVIEW_PIPELINE;
 		css_capture_pipe_id = SH_CSS_CAPTURE_PIPELINE;
+	} else if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_PREVIEW) {
+		preview_pipe = &isp->isp_subdev.video_out_preview;
+		css_preview_pipe_id = SH_CSS_PREVIEW_PIPELINE;
 	} else {
-		switch (isp->isp_subdev.run_mode->val) {
-		case ATOMISP_RUN_MODE_PREVIEW:
-			preview_pipe = &isp->isp_subdev.video_out_preview;
-			css_preview_pipe_id = SH_CSS_PREVIEW_PIPELINE;
-			break;
-		case ATOMISP_RUN_MODE_STILL_CAPTURE:
-			/* fall through */
-		default:
-			capture_pipe = &isp->isp_subdev.video_out_capture;
-			if (!atomisp_is_mbuscode_raw(
-				    isp->isp_subdev.
-				    fmt[isp->isp_subdev.capture_pad].fmt.code))
-				vf_pipe = &isp->isp_subdev.video_out_vf;
-			css_capture_pipe_id = SH_CSS_CAPTURE_PIPELINE;
-		}
+		/* ATOMISP_RUN_MODE_STILL_CAPTURE */
+		capture_pipe = &isp->isp_subdev.video_out_capture;
+		if (!atomisp_is_mbuscode_raw(
+			    isp->isp_subdev.
+			    fmt[isp->isp_subdev.capture_pad].fmt.code))
+			vf_pipe = &isp->isp_subdev.video_out_vf;
+		css_capture_pipe_id = SH_CSS_CAPTURE_PIPELINE;
 	}
 
 	if (capture_pipe) {
@@ -484,7 +482,7 @@ static int atomisp_open(struct file *file)
 
 	/* runtime power management, turn on ISP */
 	ret = pm_runtime_get_sync(vdev->v4l2_dev->dev);
-	if (ret) {
+	if (ret < 0) {
 		v4l2_err(&atomisp_dev,
 				"Failed to power on device\n");
 		goto error;
@@ -545,8 +543,8 @@ done:
 
 css_init_failed:
 	dev_err(isp->dev, "css init failed --- bad firmware?\n");
-	pm_runtime_put(vdev->v4l2_dev->dev);
 error:
+	pm_runtime_put(vdev->v4l2_dev->dev);
 	mutex_unlock(&isp->mutex);
 	return ret;
 }
@@ -623,7 +621,7 @@ static int atomisp_release(struct file *file)
 	isp->mmu_l1_base =
 			(void *)sh_css_mmu_get_page_table_base_index();
 
-	if (pm_runtime_put_sync(vdev->v4l2_dev->dev))
+	if (pm_runtime_put_sync(vdev->v4l2_dev->dev) < 0)
 		v4l2_err(&atomisp_dev, "Failed to power off device\n");
 done:
 	mutex_unlock(&isp->mutex);

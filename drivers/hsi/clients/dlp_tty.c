@@ -228,7 +228,7 @@ static void _dlp_forward_tty(struct tty_struct *tty,
 				 * time something has been written
 				 * to them to allow low latency */
 				do_push |= (copied > 0);
-			} while ((data_size) || (!copied));
+			} while ((data_size) && (copied));
 
 			/* Still have not copied data ? */
 			if (data_size) {
@@ -542,11 +542,12 @@ static void dlp_tty_cleanup(struct dlp_channel *ch_ctx)
 	/* Close the HSI channel */
 	ret = dlp_ctrl_close_channel(ch_ctx);
 	if (ret)
-		pr_err(DRVNAME ": TT close channel failed :%d\n", ret);
+		pr_err(DRVNAME ": %s (close_channel failed :%d)\n",
+				__func__, ret);
 
 	/* Flush the ACWAKE works */
-	cancel_work_sync(&ch_ctx->start_tx_w);
-	cancel_work_sync(&ch_ctx->stop_tx_w);
+	flush_work_sync(&ch_ctx->start_tx_w);
+	flush_work_sync(&ch_ctx->stop_tx_w);
 }
 
 /**
@@ -579,7 +580,8 @@ static int dlp_tty_port_activate(struct tty_port *port, struct tty_struct *tty)
 	/* Configure the DLP channel */
 	ret = dlp_ctrl_open_channel(ch_ctx);
 	if (ret)
-		pr_err(DRVNAME ": TTY open channel failed :%d)\n", ret);
+		pr_err(DRVNAME ": %s (open_channel failed :%d)\n",
+				__func__, ret);
 
 	pr_debug(DRVNAME ": port activate done (ret: %d)\n", ret);
 	return ret;
@@ -610,10 +612,6 @@ static void dlp_tty_port_shutdown(struct tty_port *port)
 		dlp_tty_wait_until_ctx_sent(ch_ctx, 0);
 		dlp_tty_cleanup(ch_ctx);
 	}
-
-	/* device closed => Set the channel state flag */
-	dlp_ctrl_set_channel_state(ch_ctx->hsi_channel,
-				DLP_CH_STATE_CLOSED);
 
 	pr_debug(DRVNAME ": port shutdown done\n");
 }
@@ -816,12 +814,9 @@ int dlp_tty_do_write(struct dlp_xfer_ctx *xfer_ctx, unsigned char *buf,
 	copied = 0;
 
 	if (!dlp_ctx_have_credits(xfer_ctx, xfer_ctx->channel)) {
-		if ((EDLP_TTY_TX_DATA_REPORT) ||
-			(EDLP_TTY_TX_DATA_LEN_REPORT))
-				pr_warn(DRVNAME ": CH%d (HSI CH%d) out of credits (%d)",
-					xfer_ctx->channel->ch_id,
-					xfer_ctx->channel->hsi_channel,
-					xfer_ctx->seq_num);
+		pr_warn(DRVNAME": ch%d out of credits (%d)\n",
+				xfer_ctx->channel->hsi_channel,
+				xfer_ctx->seq_num);
 		goto out;
 	}
 

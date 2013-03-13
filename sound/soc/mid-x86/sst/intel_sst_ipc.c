@@ -78,7 +78,7 @@ int sst_wake_up_block(struct intel_sst_drv *ctx, int result,
 		}
 	}
 
-	pr_err("Block not found or a response is received for a short message for ipc %d, drv_id %d\n",
+	pr_debug("Block not found or a response is received for a short message for ipc %d, drv_id %d\n",
 			ipc, drv_id);
 	return -EINVAL;
 }
@@ -524,7 +524,7 @@ static int process_fw_init(struct sst_ipc_msg_wq *msg)
 	if (sst_drv_ctx->pci_id == SST_MFLD_PCI_ID ||
 	    sst_drv_ctx->pci_id == SST_CLV_PCI_ID) {
 		if (init->result) {
-			sst_set_fw_state_locked(sst_drv_ctx, SST_ERROR);
+			sst_drv_ctx->sst_state =  SST_ERROR;
 			pr_debug("FW Init failed, Error %x\n", init->result);
 			pr_err("FW Init failed, Error %x\n", init->result);
 			retval = -init->result;
@@ -698,9 +698,10 @@ void sst_process_reply_mrfld(struct work_struct *work)
 			if (!data)
 				goto end;
 			memcpy(data, (void *) msg->mailbox, msg_low);
-			sst_wake_up_block(sst_drv_ctx, msg_high.part.result,
+			if (sst_wake_up_block(sst_drv_ctx, msg_high.part.result,
 					msg_high.part.drv_id,
-					msg_high.part.msg_id, data, msg_low);
+					msg_high.part.msg_id, data, msg_low))
+				kfree(data);
 		} else {
 			sst_wake_up_block(sst_drv_ctx, msg_high.part.result,
 					msg_high.part.drv_id,
@@ -754,9 +755,10 @@ void sst_process_reply_mfld(struct work_struct *work)
 			pr_err("sst: mem alloc failed\n");
 
 		memcpy(data, (void *)msg->mailbox, msg->header.part.data);
-		sst_wake_up_block(sst_drv_ctx, 0, str_id,
+		if (sst_wake_up_block(sst_drv_ctx, 0, str_id,
 				msg->header.part.msg_id, data,
-				msg->header.part.data);
+				msg->header.part.data))
+			kfree(data);
 	}
 	kfree(msg);
 	return;

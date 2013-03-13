@@ -57,6 +57,8 @@
 #define RP_MSIC_PWM		0x22
 #define RP_MSIC_KPD_LED		0x23
 #define RP_BCOVE_ADC		0x24
+#define RP_BCOVE_THERMAL	0x25
+#define RP_MRFL_OCD		0x26
 
 enum rproc_type {
 	RPROC_SCU = 0,

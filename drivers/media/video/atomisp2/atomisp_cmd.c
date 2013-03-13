@@ -144,6 +144,20 @@ static struct atomisp_freq_scaling_rule dfs_rules[] = {
 		.run_mode = ATOMISP_RUN_MODE_STILL_CAPTURE,
 	},
 	{
+		.width = 4096,
+		.height = 3072,
+		.fps = ISP_FREQ_RULE_ANY,
+		.isp_freq = ISP_FREQ_400MHZ,
+		.run_mode = ATOMISP_RUN_MODE_STILL_CAPTURE,
+	},
+	{
+		.width = 3648,
+		.height = 2736,
+		.fps = ISP_FREQ_RULE_ANY,
+		.isp_freq = ISP_FREQ_400MHZ,
+		.run_mode = ATOMISP_RUN_MODE_STILL_CAPTURE,
+	},
+	{
 		.width = ISP_FREQ_RULE_ANY,
 		.height = ISP_FREQ_RULE_ANY,
 		.fps = ISP_FREQ_RULE_ANY,
@@ -312,11 +326,11 @@ int atomisp_reset(struct atomisp_device *isp)
 	v4l2_dbg(2, dbg_level, &atomisp_dev, "%s\n",__func__);
 	sh_css_suspend();
 	ret = pm_runtime_put_sync(isp->dev);
-	if (ret) {
+	if (ret < 0) {
 		v4l2_err(&atomisp_dev, "can not disable ISP power\n");
 	} else {
 		ret = pm_runtime_get_sync(isp->dev);
-		if (ret)
+		if (ret < 0)
 			v4l2_err(&atomisp_dev, "can not enable ISP power\n");
 	}
 	sh_css_resume();
@@ -399,7 +413,6 @@ void atomisp_msi_irq_uninit(struct atomisp_device *isp, struct pci_dev *dev)
 	pci_write_config_word(dev, PCI_COMMAND, msg16);
 }
 
-#ifndef CONFIG_X86_MRFLD
 static void atomisp_sof_event(struct atomisp_device *isp)
 {
 	struct v4l2_event event;
@@ -410,7 +423,6 @@ static void atomisp_sof_event(struct atomisp_device *isp)
 
 	v4l2_event_queue(isp->isp_subdev.subdev.devnode, &event);
 }
-#endif /* CONFIG_X86_MRFLD */
 
 static void print_csi_rx_errors(void)
 {
@@ -474,15 +486,10 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 	if (isp->streaming != ATOMISP_DEVICE_STREAMING_ENABLED)
 		goto out_nowake;
 
-#ifndef CONFIG_X86_MRFLD
 	if (irq_infos & SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF) {
 		atomic_inc(&isp->sof_count);
 		atomisp_sof_event(isp);
 		irq_infos &= ~SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF;
-#else /* CONFIG_X86_MRFLD */
-	if (irq_infos & SH_CSS_IRQ_INFO_PIPELINE_DONE) {
-		atomic_inc(&isp->sequence);
-#endif /* CONFIG_X86_MRFLD */
 
 		/* If sequence_temp and sequence are the same
 		 * there where no frames lost so we can increase sequence_temp.
@@ -701,7 +708,9 @@ static struct atomisp_video_pipe *__atomisp_get_pipe(struct atomisp_device *isp,
 		enum sh_css_buffer_type buf_type)
 {
 	/* video is same in online as in continuouscapture mode */
-	if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO) {
+	if (!isp->isp_subdev.enable_vfpp->val) {
+		return &isp->isp_subdev.video_out_capture;
+	} else if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO) {
 		if (buf_type == SH_CSS_BUFFER_TYPE_OUTPUT_FRAME)
 			return &isp->isp_subdev.video_out_capture;
 		return &isp->isp_subdev.video_out_preview;
@@ -745,7 +754,7 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error,
 	err = sh_css_dequeue_buffer(css_pipe_id,
 			buf_type,
 			(void **)&buffer);
-	if (err){
+	if (err) {
 		v4l2_err(&atomisp_dev,
 			"sh_css_dequeue_buffer failed: 0x%x\n",
 			err);
@@ -976,11 +985,9 @@ void atomisp_wdt_work(struct work_struct *work)
 		/*sh_css_dump_sp_state();*/
 		/*sh_css_dump_isp_state();*/
 
-#ifndef CONFIG_X86_MRFLD
 		if (!isp->sw_contex.file_input)
 			sh_css_enable_interrupt(
 				SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF, false);
-#endif /* CONFIG_X86_MRFLD */
 
 		if (isp->delayed_init == ATOMISP_DELAYED_INIT_QUEUED) {
 			cancel_work_sync(&isp->delayed_init_work);
@@ -1031,10 +1038,9 @@ void atomisp_wdt_work(struct work_struct *work)
 
 		sh_css_start(css_pipe_id);
 		if (!isp->sw_contex.file_input) {
-#ifndef CONFIG_X86_MRFLD
 			sh_css_enable_interrupt(
 				SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF, true);
-#endif /* CONFIG_X86_MRFLD */
+
 			atomisp_set_term_en_count(isp);
 			ret = v4l2_subdev_call(
 				isp->inputs[isp->input_curr].camera, video,
@@ -1561,6 +1567,7 @@ int atomisp_histogram(struct atomisp_device *isp, int flag, void *config)
 		if (ret != sh_css_success) {
 			v4l2_err(&atomisp_dev,
 					"sh_css_histogram_allocate failed\n");
+			ret = -ENOMEM;
 			goto buffer_free;
 		}
 
@@ -1575,6 +1582,7 @@ int atomisp_histogram(struct atomisp_device *isp, int flag, void *config)
 		if (ret != sh_css_success) {
 			v4l2_err(&atomisp_dev,
 					"sh_css_get_y_histogram failed\n");
+			ret = -EIO;
 			goto histogram_free;
 		}
 		sh_css_wait_for_completion();
@@ -3372,7 +3380,8 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 			return -EINVAL;
 	}
 
-	if (isp->isp_subdev.fmt_auto->val) {
+	if (isp->isp_subdev.fmt_auto->val
+	    || !isp->isp_subdev.enable_vfpp->val) {
 		struct v4l2_rect vf_size;
 		struct v4l2_mbus_framefmt vf_ffmt;
 
@@ -3400,7 +3409,8 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 
 		isp->isp_subdev.video_out_vf.sh_fmt = SH_CSS_FRAME_FORMAT_YUV420;
 
-		if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO)
+		if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO
+		    || !isp->isp_subdev.enable_vfpp->val)
 			sh_css_video_configure_viewfinder(
 				vf_size.width, vf_size.height,
 				isp->isp_subdev.video_out_vf.sh_fmt);
@@ -3423,8 +3433,11 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 		}
 	}
 
+	sh_css_disable_vf_pp(!isp->isp_subdev.enable_vfpp->val);
+
 	/* video same in continuouscapture and online modes */
-	if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO) {
+	if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO
+	    || !isp->isp_subdev.enable_vfpp->val) {
 		configure_output = sh_css_video_configure_output;
 		get_frame_info = sh_css_video_get_output_frame_info;
 	} else if (source_pad == ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW) {
@@ -3758,7 +3771,8 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	    || isp_sink_crop.height * 9 / 10 < f->fmt.pix.height
 	    || isp->sw_contex.file_input
 	    || (isp->sw_contex.bypass
-		&& isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO)
+		&& isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO
+		&& isp->isp_subdev.enable_vfpp->val)
 	    || (!isp->sw_contex.bypass
 		&& isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO)) {
 		isp_sink_crop.width = f->fmt.pix.width;

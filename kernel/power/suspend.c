@@ -26,7 +26,9 @@
 #include <linux/syscore_ops.h>
 #include <linux/rtc.h>
 #include <linux/ftrace.h>
+#include <linux/workqueue.h>
 #include <trace/events/power.h>
+#include <linux/intel_mid_pm.h>
 
 #include "power.h"
 
@@ -39,6 +41,46 @@ const char *const pm_states[PM_SUSPEND_MAX] = {
 };
 
 static const struct platform_suspend_ops *suspend_ops;
+
+static void do_suspend_sync(struct work_struct *work);
+static DECLARE_WORK(suspend_sync_work, do_suspend_sync);
+static DECLARE_COMPLETION(suspend_sync_complete);
+
+static void do_suspend_sync(struct work_struct *work)
+{
+	sys_sync();
+	complete(&suspend_sync_complete);
+}
+
+static bool check_sys_sync(void)
+{
+	while (!wait_for_completion_timeout(&suspend_sync_complete,
+		HZ / 5)) {
+		if (pm_wakeup_pending())
+			return false;
+		/* If sys_sync is doing, and no wakeup pending,
+		 * we can try in loop to wait sys_sync() finish.
+		 */
+	}
+
+	return true;
+}
+
+static bool suspend_sync(void)
+{
+	if (work_busy(&suspend_sync_work)) {
+		/* When last sys_sync() work is still running,
+		 * we need wait for it to be finished.
+		 */
+		if (!check_sys_sync())
+			return false;
+	}
+
+	INIT_COMPLETION(suspend_sync_complete);
+	schedule_work(&suspend_sync_work);
+
+	return check_sys_sync();
+}
 
 /**
  * suspend_set_ops - Set the global suspend method table.
@@ -106,7 +148,14 @@ static int suspend_prepare(void)
 	if (error)
 		goto Finish;
 
+	/* time stamp for start of process freezing */
+	time_stamp_in_suspend_flow(PROC_FRZ, true);
+
 	error = suspend_freeze_processes();
+
+	/* time stamp for end of process freezing */
+	time_stamp_in_suspend_flow(PROC_FRZ, false);
+
 	if (!error)
 		return 0;
 
@@ -153,6 +202,9 @@ static int suspend_enter(suspend_state_t state, bool *wakeup)
 		goto Platform_finish;
 	}
 
+	/* time stamp for end of device suspend */
+	time_stamp_in_suspend_flow(DEV_SUS, false);
+
 	if (suspend_ops->prepare_late) {
 		error = suspend_ops->prepare_late();
 		if (error)
@@ -162,7 +214,14 @@ static int suspend_enter(suspend_state_t state, bool *wakeup)
 	if (suspend_test(TEST_PLATFORM))
 		goto Platform_wake;
 
+	/* time stamp for start of disabling non-boot cpus */
+	time_stamp_in_suspend_flow(NB_CPU_OFF, true);
+
 	error = disable_nonboot_cpus();
+
+	/* time stamp for end of disabling non-boot cpus */
+	time_stamp_in_suspend_flow(NB_CPU_OFF, false);
+
 	if (error || suspend_test(TEST_CPUS))
 		goto Enable_cpus;
 
@@ -183,11 +242,20 @@ static int suspend_enter(suspend_state_t state, bool *wakeup)
 	BUG_ON(irqs_disabled());
 
  Enable_cpus:
+	/* time stamp for start of enabling non-boot cpus */
+	time_stamp_in_suspend_flow(NB_CPU_ON, true);
+
 	enable_nonboot_cpus();
+
+	/* time stamp for end of enabling non-boot cpus */
+	time_stamp_in_suspend_flow(NB_CPU_ON, false);
 
  Platform_wake:
 	if (suspend_ops->wake)
 		suspend_ops->wake();
+
+	/* time stamp for start of device resume */
+	time_stamp_in_suspend_flow(DEV_RES, true);
 
 	dpm_resume_start(PMSG_RESUME);
 
@@ -219,6 +287,10 @@ int suspend_devices_and_enter(suspend_state_t state)
 	suspend_console();
 	ftrace_stop();
 	suspend_test_start();
+
+	/* time stamp for start of device suspend */
+	time_stamp_in_suspend_flow(DEV_SUS, true);
+
 	error = dpm_suspend_start(PMSG_SUSPEND);
 	if (error) {
 		printk(KERN_ERR "PM: Some devices failed to suspend\n");
@@ -233,9 +305,16 @@ int suspend_devices_and_enter(suspend_state_t state)
 	} while (!error && !wakeup
 		&& suspend_ops->suspend_again && suspend_ops->suspend_again());
 
+	if (wakeup)
+		error = -EBUSY;
+
  Resume_devices:
 	suspend_test_start();
 	dpm_resume_end(PMSG_RESUME);
+
+	/* time stamp for end of device resume */
+	time_stamp_in_suspend_flow(DEV_RES, false);
+
 	suspend_test_finish("resume devices");
 	ftrace_start();
 	resume_console();
@@ -259,7 +338,14 @@ int suspend_devices_and_enter(suspend_state_t state)
  */
 static void suspend_finish(void)
 {
+	/* time stamp for start of process unfreezing */
+	time_stamp_in_suspend_flow(PROC_UNFRZ, true);
+
 	suspend_thaw_processes();
+
+	/* time stamp for end of process unfreezing */
+	time_stamp_in_suspend_flow(PROC_UNFRZ, false);
+
 	pm_notifier_call_chain(PM_POST_SUSPEND);
 	pm_restore_console();
 }
@@ -283,7 +369,11 @@ static int enter_state(suspend_state_t state)
 		return -EBUSY;
 
 	printk(KERN_INFO "PM: Syncing filesystems ... ");
-	sys_sync();
+	if (!suspend_sync()) {
+		printk(KERN_INFO "PM: Suspend aborted for filesystem syncing\n");
+		error = -EBUSY;
+		goto Unlock;
+	}
 	printk("done.\n");
 
 	pr_debug("PM: Preparing system for %s sleep\n", pm_states[state]);
@@ -329,9 +419,14 @@ static void pm_suspend_marker(char *annotation)
 int pm_suspend(suspend_state_t state)
 {
 	int error;
+	int s3_state = mid_state_to_sys_state(MID_S3_STATE);
 
 	if (state <= PM_SUSPEND_ON || state >= PM_SUSPEND_MAX)
 		return -EINVAL;
+
+	/* time stamp for start of s3 entry */
+	if (state == PM_SUSPEND_MEM)
+		time_stamp_for_sleep_state_latency(s3_state, true, true);
 
 	pm_suspend_marker("entry");
 	error = enter_state(state);
@@ -340,6 +435,10 @@ int pm_suspend(suspend_state_t state)
 		dpm_save_failed_errno(error);
 	} else {
 		suspend_stats.success++;
+		/* time stamp for end of s3 exit */
+		if (state == PM_SUSPEND_MEM)
+			time_stamp_for_sleep_state_latency(s3_state,
+							false, false);
 	}
 	pm_suspend_marker("exit");
 	return error;

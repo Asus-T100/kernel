@@ -50,31 +50,19 @@ static unsigned int get_pages_from_reserved_pool(void *pool,
 		return 0;
 
 	spin_lock_irqsave(&repool_info->list_lock, flags);
-	if (!repool_info->initialized) {
-		spin_unlock_irqrestore(&repool_info->list_lock, flags);
-		return 0;
-	}
+	if (repool_info->initialized) {
+		repool_pgnr = repool_info->index;
 
-	repool_pgnr = repool_info->index;
-	spin_unlock_irqrestore(&repool_info->list_lock, flags);
-
-	for (j = repool_pgnr-1; j >= 0; j--) {
-		spin_lock_irqsave(&repool_info->list_lock, flags);
-		page_obj[i].page = repool_info->pages[j];
-		page_obj[i].type = HMM_PAGE_TYPE_RESERVED;
-		repool_info->index--;
-		spin_unlock_irqrestore(&repool_info->list_lock, flags);
-
-		if (!cached) {
-			if (set_pages_uc(page_obj[i].page, 1))
-				v4l2_err(&atomisp_dev,
-						"set page uncached failed\n");
+		for (j = repool_pgnr-1; j >= 0; j--) {
+			page_obj[i].page = repool_info->pages[j];
+			page_obj[i].type = HMM_PAGE_TYPE_RESERVED;
+			i++;
+			repool_info->index--;
+			if (i == size)
+				break;
 		}
-		i++;
-		if (i == size)
-			return i;
 	}
-
+	spin_unlock_irqrestore(&repool_info->list_lock, flags);
 	return i;
 }
 
@@ -93,10 +81,6 @@ static void free_pages_to_reserved_pool(void *pool,
 	    repool_info->index < repool_info->pgnr &&
 	    page_obj->type == HMM_PAGE_TYPE_RESERVED) {
 		repool_info->pages[repool_info->index++] = page_obj->page;
-		spin_unlock_irqrestore(&repool_info->list_lock, flags);
-		if (set_pages_wb(page_obj->page, 1))
-			v4l2_err(&atomisp_dev, "set page to wb failed\n");
-		return;
 	}
 
 	spin_unlock_irqrestore(&repool_info->list_lock, flags);
@@ -165,9 +149,8 @@ static int hmm_reserved_pool_init(void **pool, unsigned int pool_size)
 		pages = alloc_pages(GFP_KERNEL | __GFP_NOWARN, order);
 		if (unlikely(!pages)) {
 			fail_number++;
-			v4l2_err(&atomisp_dev,
-				 "%s: cannot allocate pages, fail number is %d times.\n",
-				 __func__, fail_number);
+			v4l2_err(&atomisp_dev, "%s: alloc_pages failed: %d\n",
+					__func__, fail_number);
 			/* if fail five times, will goto end */
 
 			/* FIXME: whether is the mechanism is ok? */
@@ -175,6 +158,14 @@ static int hmm_reserved_pool_init(void **pool, unsigned int pool_size)
 				goto end;
 		} else {
 			blk_pgnr = 1U << order;
+
+			ret = set_pages_uc(pages, blk_pgnr);
+			if (ret) {
+				v4l2_err(&atomisp_dev,
+						"set pages uncached failed\n");
+				__free_pages(pages, order);
+				goto end;
+			}
 
 			for (j = 0; j < blk_pgnr; j++)
 				repool_info->pages[i++] = pages + j;

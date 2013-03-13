@@ -1268,6 +1268,7 @@ source "drivers/media/video/s5p-tv/Kconfig"
 source "drivers/media/video/atomisp/Kconfig"
 source "drivers/media/video/atomisp2/Kconfig"
 source "drivers/media/video/imx/Kconfig"
+source "drivers/media/video/imx135VB/Kconfig"
 
 endif # V4L_PLATFORM_DRIVERS
 endif # VIDEO_CAPTURE_DRIVERS

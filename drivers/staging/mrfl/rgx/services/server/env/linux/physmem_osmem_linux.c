@@ -379,10 +379,18 @@ _AllocOSPages(struct _PMR_OSPAGEARRAY_DATA_ **ppsPageArrayDataPtr)
 				sCPUPhysAddrStart.uiAddr = page_to_phys(ppsPageArray[uiPageIndex]);
 				sCPUPhysAddrEnd.uiAddr = sCPUPhysAddrStart.uiAddr + PAGE_SIZE;
 
-				OSInvalidateCPUCacheRangeKM(pvPageVAddr,
-											pvPageVAddr + PAGE_SIZE,
-											sCPUPhysAddrStart,
-											sCPUPhysAddrEnd);
+				/* If we're zeroing, we need to make sure the cleared memory is pushed out
+					of the cache before the cache lines are invalidated */
+				if(psPageArrayData->bZero)
+					OSFlushCPUCacheRangeKM(pvPageVAddr,
+												pvPageVAddr + PAGE_SIZE,
+												sCPUPhysAddrStart,
+												sCPUPhysAddrEnd);
+				else
+					OSInvalidateCPUCacheRangeKM(pvPageVAddr,
+												pvPageVAddr + PAGE_SIZE,
+												sCPUPhysAddrStart,
+												sCPUPhysAddrEnd);
 			}
 			kunmap(ppsPageArray[uiPageIndex]);
 		}

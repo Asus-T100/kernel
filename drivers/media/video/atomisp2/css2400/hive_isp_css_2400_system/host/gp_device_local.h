@@ -28,6 +28,7 @@
 #define _REG_GP_SLV_REG_RST_ADDR					0x50
 
 /* @ INPUT_FORMATTER_BASE -> GP_DEVICE_BASE */
+/*
 #define _REG_GP_IFMT_input_switch_lut_reg0			0x00030800
 #define _REG_GP_IFMT_input_switch_lut_reg1			0x00030804
 #define _REG_GP_IFMT_input_switch_lut_reg2			0x00030808
@@ -40,8 +41,9 @@
 #define _REG_GP_IFMT_srst							0x00030824
 #define _REG_GP_IFMT_slv_reg_srst					0x00030828
 #define _REG_GP_IFMT_input_switch_ch_id_fmt_type	0x0003082C
-
+*/
 /* @ GP_DEVICE_BASE */
+/*
 #define _REG_GP_SYNCGEN_ENABLE_ADDR					0x00090000
 #define _REG_GP_SYNCGEN_FREE_RUNNING_ADDR			0x00090004
 #define _REG_GP_SYNCGEN_PAUSE_ADDR					0x00090008
@@ -80,6 +82,7 @@
 #define _REG_GP_SYNCGEN_VER_CNT_ADDR				0x0009008C
 #define _REG_GP_SYNCGEN_FRAME_CNT_ADDR				0x00090090
 #define _REG_GP_SOFT_RESET_ADDR						0x00090094
+*/
 
 struct gp_device_state_s {
 	int syncgen_enable;

@@ -45,6 +45,12 @@ enum usb_phy_events {
 	USB_EVENT_DRIVE_VBUS,
 };
 
+enum vbus_state {
+	UNKNOW_STATE,
+	VBUS_ENABLED,			/* vbus at normal state */
+	VBUS_DISABLED,			/* vbus disabled by a_bus_drop */
+};
+
 struct usb_phy;
 
 /* for transceivers connected thru an ULPI interface, the user must
@@ -107,6 +113,11 @@ struct usb_phy {
 	u16			port_status;
 	u16			port_change;
 
+	/* Porivde sysfs interface to userspace for set a_bus_drop argument */
+	struct class *usb_otg_class;
+	struct device *class_dev;
+	int vbus_state;
+
 	/* initialize/shutdown the OTG controller */
 	int	(*init)(struct usb_phy *x);
 	void	(*shutdown)(struct usb_phy *x);
@@ -121,6 +132,9 @@ struct usb_phy {
 
 	/* for A or B-peripheral: host has released the bus.  */
 	int     (*host_release)(struct usb_phy *otg);
+
+	/* for a_bus_drop handler fromed user space */
+	void (*a_bus_drop)(struct usb_phy *phy);
 };
 
 
@@ -295,4 +309,5 @@ static inline int is_otg_vbusoff_testdev(struct usb_device *udev)
 	return le16_to_cpu(udev->descriptor.bcdDevice) & USB_DT_BCD_VBUSOFF;
 }
 
+void otg_uevent_trigger(struct usb_phy *phy);
 #endif /* __LINUX_USB_OTG_H */

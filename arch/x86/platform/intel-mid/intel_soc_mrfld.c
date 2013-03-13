@@ -23,6 +23,30 @@
 static int mrfld_pmu_init(void)
 {
 	mid_pmu_cxt->s3_hint = MRFLD_S3_HINT;
+
+	/* Put all unused LSS in D0i3 */
+	mid_pmu_cxt->os_sss[0] = (SSMSK(D0I3_MASK, PMU_PSH_LSS_00)	|
+				SSMSK(D0I3_MASK, PMU_RESERVED_LSS_03)	|
+				SSMSK(D0I3_MASK, PMU_HSI_LSS_05)	|
+				SSMSK(D0I3_MASK, PMU_RESERVED_LSS_07)	|
+				SSMSK(D0I3_MASK, PMU_RESERVED_LSS_12)	|
+				SSMSK(D0I3_MASK, PMU_RESERVED_LSS_13)	|
+				SSMSK(D0I3_MASK, PMU_RESERVED_LSS_14)	|
+				SSMSK(D0I3_MASK, PMU_RESERVED_LSS_15));
+
+	mid_pmu_cxt->os_sss[1] = (SSMSK(D0I3_MASK, PMU_RESERVED_LSS_16-16)|
+				SSMSK(D0I3_MASK, PMU_SSP3_LSS_17-16)|
+				SSMSK(D0I3_MASK, PMU_SSP6_LSS_19-16)|
+				SSMSK(D0I3_MASK, PMU_USB_OTG_LSS_28-16)|
+				SSMSK(D0I3_MASK, PMU_RESERVED_LSS_29-16)|
+				SSMSK(D0I3_MASK, PMU_RESERVED_LSS_30-16));
+
+	/* Excpet for LSS 35 keep all in D0i3 */
+	mid_pmu_cxt->os_sss[2] = 0xFFFFFFFF;
+	mid_pmu_cxt->os_sss[3] = 0xFFFFFFFF;
+
+	mid_pmu_cxt->os_sss[2] &= ~SSMSK(D0I3_MASK, PMU_SSP4_LSS_35-32);
+
 	return PMU_SUCCESS;
 }
 

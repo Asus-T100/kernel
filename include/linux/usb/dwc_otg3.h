@@ -384,6 +384,8 @@ struct dwc_otg2 {
 #define USER_ID_A_CHANGE_EVENT 0x40
 #define USER_ID_B_CHANGE_EVENT 0x80
 #endif
+	/** a_bus_drop event from userspace */
+#define USER_A_BUS_DROP 0x100
 
 	/* States */
 	enum dwc_otg_state prev;
@@ -396,6 +398,11 @@ struct dwc_otg2 {
 	struct notifier_block nb;
 	struct delayed_work sdp_check_work;
 	struct intel_dwc_otg_pdata *otg_data;
+
+	/* pm request to prevent enter Cx state
+	 * Because it have big impact to USB performance
+	 * */
+	struct pm_qos_request *qos;
 };
 
 /* Invalid SDP checking timeout */

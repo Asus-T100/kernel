@@ -1,7 +1,7 @@
 /*
  * sfi_cpufreq.c - sfi Processor P-States Driver
  *
- * (C) 2010-2011 Intel Corporation
+ *
  *
  * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  *
@@ -59,8 +59,10 @@ static u32 sfi_cpu_num;
 
 #define		SFI_FREQ_MAX            32
 #define		INTEL_MSR_RANGE		(0xffff)
-#define		SFI_CPU_MAX		8
+#define		INTEL_MSR_BUSRATIO_MASK	(0xff00)
+#define		SFI_CPU_MAX        8
 
+#define X86_ATOM_ARCH_SLM	(0x4A)
 
 struct sfi_cpufreq_data {
 	struct sfi_processor_performance *sfi_data;
@@ -188,9 +190,42 @@ void sfi_processor_unregister_performance(struct sfi_processor_performance
 	return;
 }
 
+static unsigned extract_freq(u32 msr, struct sfi_cpufreq_data *data)
+{
+	int i;
+	struct sfi_processor_performance *perf;
+	unsigned freq;
+	u32 sfi_ctrl;
+
+	msr &= INTEL_MSR_BUSRATIO_MASK;
+	perf = data->sfi_data;
+
+	for (i = 0; data->freq_table[i].frequency != CPUFREQ_TABLE_END; i++) {
+		sfi_ctrl = perf->states[data->freq_table[i].index].control
+			& INTEL_MSR_BUSRATIO_MASK;
+		if (sfi_ctrl == msr)
+			return data->freq_table[i].frequency;
+	}
+	return data->freq_table[0].frequency;
+}
+
+
+static u32 get_cur_val(const struct cpumask *mask)
+{
+	u32 val, dummy;
+
+	if (unlikely(cpumask_empty(mask)))
+		return 0;
+
+	rdmsr_on_cpu(cpumask_any(mask), MSR_IA32_PERF_STATUS, &val, &dummy);
+
+	return val;
+}
+
 static unsigned int get_cur_freq_on_cpu(unsigned int cpu)
 {
 	struct sfi_cpufreq_data *data = per_cpu(drv_data, cpu);
+	unsigned int freq;
 	unsigned int cached_freq;
 
 	pr_debug("get_cur_freq_on_cpu (%d)\n", cpu);
@@ -201,8 +236,18 @@ static unsigned int get_cur_freq_on_cpu(unsigned int cpu)
 	}
 
 	cached_freq = data->freq_table[data->sfi_data->state].frequency;
+	freq = extract_freq(get_cur_val(cpumask_of(cpu)), data);
+	if (freq != cached_freq) {
+		/*
+		 * The dreaded BIOS frequency change behind our back.
+		 * Force set the frequency on next target call.
+		 */
+		data->resume = 1;
+	}
 
-	return cached_freq;
+	pr_debug("cur freq = %u\n", freq);
+
+	return freq;
 }
 
 static int sfi_cpufreq_target(struct cpufreq_policy *policy,
@@ -245,7 +290,6 @@ static int sfi_cpufreq_target(struct cpufreq_policy *policy,
 	}
 
 	freqs.old = perf->states[perf->state].core_frequency * 1000;
-	freqs.new = data->freq_table[next_state].frequency;
 	freqs.cpu = policy->cpu;
 
 	cpufreq_notify_transition(&freqs, CPUFREQ_PRECHANGE);
@@ -255,6 +299,11 @@ static int sfi_cpufreq_target(struct cpufreq_policy *policy,
 		((u32) perf->states[next_perf_state].control & INTEL_MSR_RANGE);
 	wrmsr_on_cpu(policy->cpu, MSR_IA32_PERF_CTL, lo, hi);
 
+	/*
+	 * As hardware constraints can override the targetted frequency, read
+	 * back the actual value from hardware to report the frequency change.
+	 */
+	freqs.new = get_cur_freq_on_cpu(policy->cpu);
 
 	cpufreq_notify_transition(&freqs, CPUFREQ_POSTCHANGE);
 	perf->state = next_perf_state;
@@ -298,6 +347,7 @@ static int sfi_cpufreq_cpu_init(struct cpufreq_policy *policy)
 	unsigned int result = 0;
 	struct cpuinfo_x86 *c = &cpu_data(policy->cpu);
 	struct sfi_processor_performance *perf;
+	u32 lo, hi;
 
 	pr_debug("sfi_cpufreq_cpu_init CPU:%d\n", policy->cpu);
 
@@ -369,6 +419,13 @@ static int sfi_cpufreq_cpu_init(struct cpufreq_policy *policy)
 	/* Check for APERF/MPERF support in hardware */
 	if (cpu_has(c, X86_FEATURE_APERFMPERF))
 		sfi_cpufreq_driver.getavg = cpufreq_get_measured_perf;
+
+	/* enable eHALT for SLM */
+	if (boot_cpu_data.x86_model == X86_ATOM_ARCH_SLM) {
+		rdmsr_on_cpu(policy->cpu, MSR_IA32_POWER_MISC, &lo, &hi);
+		lo = lo | ENABLE_ULFM_AUTOCM | ENABLE_INDP_AUTOCM;
+		wrmsr_on_cpu(policy->cpu, MSR_IA32_POWER_MISC, lo, hi);
+	}
 
 	pr_debug("CPU%u - SFI performance management activated.\n", cpu);
 	for (i = 0; i < perf->state_count; i++)

@@ -218,8 +218,36 @@ static int ehci_pci_setup(struct usb_hcd *hcd)
 			ehci->has_hostpc = 1;
 		} else if (pdev->device == 0x08F2) {
 #ifdef CONFIG_USB_EHCI_HCD_SPH
+			/* All need to bypass tll mode  */
+			temp = ehci_readl(ehci, hcd->regs + CLV_SPHCFG);
+			temp &= ~CLV_SPHCFG_ULPI1TYPE;
+			ehci_writel(ehci, temp, hcd->regs + CLV_SPHCFG);
+
 			/* Check SPH enabled or not */
 			if (!sph_enabled()) {
+				struct ehci_sph_pdata   *sph_pdata;
+				sph_pdata = pdev->dev.platform_data;
+
+				if (!sph_pdata) {
+					ehci_err(ehci, "get SPH platform data failed\n");
+					retval = -ENODEV;
+					return retval;
+				}
+
+				sph_pdata->enabled = 0;
+
+				/* ULPI 1 ref-clock switch off */
+				temp = ehci_readl(ehci, hcd->regs + CLV_SPHCFG);
+				temp |= CLV_SPHCFG_REFCKDIS;
+				ehci_writel(ehci, temp, hcd->regs + CLV_SPHCFG);
+
+				/* Set Power state */
+				retval = pci_set_power_state(pdev, PCI_D1);
+				if (retval < 0)
+					ehci_err(ehci,
+						"Set SPH to D1 failed, retval = %d\n",
+						retval);
+
 				ehci_info(ehci, "USB SPH is disabled\n");
 				return -ENODEV;
 			}
@@ -227,11 +255,6 @@ static int ehci_pci_setup(struct usb_hcd *hcd)
 			ehci_info(ehci, "Detected SPH HC\n");
 			hcd->has_tt = 1;
 			ehci->has_hostpc = 1;
-
-			/* All need to bypass tll mode  */
-			temp = ehci_readl(ehci, hcd->regs + CLV_SPHCFG);
-			temp &= ~CLV_SPHCFG_ULPI1TYPE;
-			ehci_writel(ehci, temp, hcd->regs + CLV_SPHCFG);
 
 			temp = ehci_readl(ehci, hcd->regs + CLV_SPH_HOSTPC);
 			temp |= CLV_SPH_HOSTPC_PTS;

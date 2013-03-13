@@ -19,7 +19,9 @@ obj-$(subst m,y,$(CONFIG_INTEL_MID_POWER_BUTTON))			+= platform_msic_power_btn.o
 obj-$(subst m,y,$(CONFIG_GPIO_INTEL_PMIC))				+= platform_pmic_gpio.o
 obj-$(subst m,y,$(CONFIG_MID_PWM))                                      += platform_mid_pwm.o
 obj-$(subst m,y,$(CONFIG_INTEL_MFLD_THERMAL))				+= platform_msic_thermal.o
+obj-$(subst m,y,$(CONFIG_SENSORS_THERMAL_MRFLD))			+= platform_mrfl_thermal.o
 obj-$(subst m,y,$(CONFIG_SENSORS_MID_VDD))				+= platform_msic_vdd.o
+obj-$(subst m,y,$(CONFIG_SENSORS_MRFL_OCD))				+= platform_mrfl_ocd.o
 obj-$(subst m,y,$(CONFIG_PMIC_CCSM))                                    += platform_mrfl_pmic.o
 obj-$(subst m,y,$(CONFIG_I2C_PMIC))                                    += platform_mrfl_pmic_i2c.o
 obj-$(subst m,y,$(CONFIG_INTEL_SCU_FLIS))				+= platform_scu_flis.o
@@ -50,6 +52,7 @@ ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_RMI4_I2C
 obj-$(subst m,y,$(CONFIG_TOUCHSCREEN_SYNAPTICS_RMI4_I2C))		+= platform_s3202.o
 else
 obj-$(subst m,y,$(CONFIG_TOUCHSCREEN_SYNAPTICS_I2C_RMI4))		+= platform_s3202.o
+obj-$(subst m,y,$(CONFIG_TOUCHSCREEN_SYNAPTICS_I2C_RMI4))		+= platform_s3400.o
 endif
 obj-$(subst m,y,$(CONFIG_BQ24261_CHARGER))                            += platform_bq24261.o
 # Camera
@@ -61,7 +64,7 @@ obj-$(subst m,y,$(CONFIG_VIDEO_MT9M114))				+= platform_mt9m114.o
 obj-$(subst m,y,$(CONFIG_VIDEO_MT9V113))				+= platform_mt9v113.o
 obj-$(subst m,y,$(CONFIG_VIDEO_OV8830))					+= platform_ov8830.o
 obj-$(subst m,y,$(CONFIG_VIDEO_IMX175))					+= platform_imx175.o
-obj-$(subst m,y,$(CONFIG_VIDEO_IMX135))					+= platform_imx135.o
+obj-$(subst m,y,$(CONFIG_VIDEO_IMXVB))					+= platform_imx135.o
 obj-$(subst m,y,$(CONFIG_VIDEO_OV9724))					+= platform_ov9724.o
 obj-$(subst m,y,$(CONFIG_VIDEO_LM3554))					+= platform_lm3554.o
 obj-$(subst m,y,$(CONFIG_VIDEO_LM3559))					+= platform_lm3559.o
@@ -88,3 +91,5 @@ obj-$(subst m,y,$(CONFIG_BCM43XX_PLATFORM_DATA))			+= platform_bcm43xx.o
 # Bluetooth
 obj-$(subst m,y,$(CONFIG_TI_ST))					+= platform_btwilink.o
 obj-$(subst m,y,$(CONFIG_BCM_BT_LPM))					+= platform_btlpm.o
+# Pin Control
+obj-$(subst m,y,$(CONFIG_PINCTRL_INTEL_MID))				+= platform_mid_pinctrl.o

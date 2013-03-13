@@ -43,6 +43,12 @@
 #define MAX_I2C_XFER_SIZE	31
 #endif
 
+enum polarity {
+	UNKNOWN = -1,
+	ACTIVE_LOW = 0,
+	ACTIVE_HIGH = 1,
+};
+
 struct pn544_dev	{
 	wait_queue_head_t	read_wq;
 	struct i2c_client	*client;
@@ -51,11 +57,11 @@ struct pn544_dev	{
 	unsigned int		ven_gpio;
 	unsigned int		firm_gpio;
 	unsigned int		irq_gpio;
-	unsigned int		nfc_enable;
+	enum polarity		nfc_en_polarity;
 	int			busy;
 };
 
-static int pn544_platform_init(struct pn544_dev *pn544_dev)
+static void pn544_platform_init(struct pn544_dev *pn544_dev)
 {
 	int polarity, retry, ret;
 	char rset_cmd[] = {0x05, 0xF9, 0x04, 0x00, 0xC3, 0xE5};
@@ -66,17 +72,17 @@ static int pn544_platform_init(struct pn544_dev *pn544_dev)
 	/* disable fw download */
 	gpio_set_value(pn544_dev->firm_gpio, 0);
 
-	for (polarity = 0; polarity < 2; polarity++) {
-		pn544_dev->nfc_enable = polarity;
+	for (polarity = ACTIVE_LOW; polarity <= ACTIVE_HIGH; polarity++) {
+
 		retry = 3;
 		while (retry--) {
 			/* power off */
 			gpio_set_value(pn544_dev->ven_gpio,
-					!pn544_dev->nfc_enable);
+					!polarity);
 			msleep(10);
 			/* power on */
 			gpio_set_value(pn544_dev->ven_gpio,
-					pn544_dev->nfc_enable);
+					polarity);
 			msleep(10);
 			/* send reset */
 			pr_debug("%s : sending reset cmd\n", __func__);
@@ -93,15 +99,15 @@ static int pn544_platform_init(struct pn544_dev *pn544_dev)
 
 	pr_err("%s : could not detect nfc_en polarity, fallback to active high\n",
 			__func__);
+
 out:
+	/* store the detected polarity */
+	pn544_dev->nfc_en_polarity = polarity;
+
 	/* power off */
 	gpio_set_value(pn544_dev->ven_gpio,
-			!pn544_dev->nfc_enable);
-#ifndef HAVE_UNLOCKED_IOCTL
-	pr_err("%s: must have IOCTL", __func__);
-	return -ENODEV;
-#endif
-	return 0;
+			!pn544_dev->nfc_en_polarity);
+	return;
 }
 
 static irqreturn_t pn544_dev_irq_handler(int irq, void *dev_id)
@@ -321,39 +327,44 @@ static int pn544_dev_ioctl(struct file *filp,
 
 	switch (cmd) {
 	case PN544_SET_PWR:
+
+		if (pn544_dev->nfc_en_polarity == UNKNOWN) {
+			pn544_platform_init(pn544_dev);
+		}
+
 		if (arg == 2) {
 			/* power on with firmware download (requires hw reset)
 			 */
 			pr_info("%s power on with firmware\n", __func__);
 			gpio_set_value(pn544_dev->ven_gpio,
-					pn544_dev->nfc_enable);
+					pn544_dev->nfc_en_polarity);
 			gpio_set_value(pn544_dev->firm_gpio, 1);
 			msleep(10);
 			gpio_set_value(pn544_dev->ven_gpio,
-					!pn544_dev->nfc_enable);
+					!pn544_dev->nfc_en_polarity);
 			msleep(10);
 			gpio_set_value(pn544_dev->ven_gpio,
-					pn544_dev->nfc_enable);
+					pn544_dev->nfc_en_polarity);
 			msleep(10);
 		} else if (arg == 1) {
 			/* power on */
 			pr_info("%s power on\n", __func__);
 			gpio_set_value(pn544_dev->firm_gpio, 0);
 			gpio_set_value(pn544_dev->ven_gpio,
-					pn544_dev->nfc_enable);
+					pn544_dev->nfc_en_polarity);
 			msleep(10);
 		} else  if (arg == 0) {
 			/* power off */
 			pr_info("%s power off\n", __func__);
 			gpio_set_value(pn544_dev->firm_gpio, 0);
 			gpio_set_value(pn544_dev->ven_gpio,
-					!pn544_dev->nfc_enable);
+					!pn544_dev->nfc_en_polarity);
 			msleep(10);
 			gpio_set_value(pn544_dev->ven_gpio,
-					pn544_dev->nfc_enable);
+					pn544_dev->nfc_en_polarity);
 			msleep(10);
 			gpio_set_value(pn544_dev->ven_gpio,
-					!pn544_dev->nfc_enable);
+					!pn544_dev->nfc_en_polarity);
 			msleep(10);
 		} else {
 			pr_err("%s bad arg %u\n", __func__, arg);
@@ -389,6 +400,11 @@ static int pn544_probe(struct i2c_client *client,
 
 	pr_debug("%s : entering probe\n", __func__);
 
+#ifndef HAVE_UNLOCKED_IOCTL
+	pr_err("%s: must have IOCTL", __func__);
+	return -ENODEV;
+#endif
+
 	platform_data = client->dev.platform_data;
 	if (platform_data == NULL) {
 		pr_err("%s : nfc probe fail\n", __func__);
@@ -417,10 +433,7 @@ static int pn544_probe(struct i2c_client *client,
 	pn544_dev->firm_gpio  = platform_data->firm_gpio;
 	pn544_dev->client   = client;
 	pn544_dev->busy = 0;
-
-	ret = pn544_platform_init(pn544_dev);
-	if (ret)
-		goto err_exit;
+	pn544_dev->nfc_en_polarity = UNKNOWN;
 
 	/* init wakelock and queues */
 	init_waitqueue_head(&pn544_dev->read_wq);

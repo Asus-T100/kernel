@@ -296,17 +296,18 @@ The CSS API and its implementation do not depend on any particular environment
 #include "input_system.h"	/* mipi_compressor_t */
 #endif
 
+struct sh_css_pipe;
+
 /** Input modes, these enumerate all supported input modes.
  *  Note that not all ISP modes support all input modes.
  */
 /* deprecated */
 enum sh_css_input_mode {
-	SH_CSS_INPUT_MODE_SENSOR,       /**< data from sensor */
-	SH_CSS_INPUT_MODE_MULTI_SENSOR, /**< data from multi sensor */
-	SH_CSS_INPUT_MODE_FIFO,         /**< data from input-fifo */
-	SH_CSS_INPUT_MODE_TPG,          /**< data from test-pattern generator */
-	SH_CSS_INPUT_MODE_PRBS,         /**< data from pseudo-random bit stream */
-	SH_CSS_INPUT_MODE_MEMORY        /**< data from a frame in memory */
+	SH_CSS_INPUT_MODE_SENSOR, /**< data from sensor */
+	SH_CSS_INPUT_MODE_FIFO,   /**< data from input-fifo */
+	SH_CSS_INPUT_MODE_TPG,    /**< data from test-pattern generator */
+	SH_CSS_INPUT_MODE_PRBS,   /**< data from pseudo-random bit stream */
+	SH_CSS_INPUT_MODE_MEMORY  /**< data from a frame in memory */
 };
 
 /** The ISP streaming input interface supports the following formats.
@@ -378,6 +379,11 @@ enum sh_css_interrupt_info {
 	SH_CSS_IRQ_INFO_STATISTICS_READY = 1 << 0,
 	/**< 3A + DIS statistics are ready. */
 
+	SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF = 1 << 9,
+	/**< the css receiver received the start of frame */
+	SH_CSS_IRQ_INFO_CSS_RECEIVER_EOF = 1 << 10,
+
+	/**< the css receiver received the end of frame */
 	/* the input system in in error */
 	SH_CSS_IRQ_INFO_INPUT_SYSTEM_ERROR = 1 << 3,
 	/* the input formatter in in error */
@@ -531,7 +537,7 @@ enum sh_css_err {
 	sh_css_err_unsupported_input_mode,
 	sh_css_err_cannot_allocate_memory,
 	sh_css_err_invalid_arguments,
-	sh_css_err_too_many_colors,
+	sh_css_err_too_may_colors,
 	sh_css_err_unsupported_frame_format,
 	sh_css_err_frames_mismatch,
 	sh_css_err_not_implemented,
@@ -1194,6 +1200,9 @@ sh_css_event_get_irq_mask(
 	unsigned int *or_mask,
 	unsigned int *and_mask);
 
+void
+sh_css_event_init_irq_mask(void);
+
 
 /** @brief Return whether UV range starts at 0.
  *
@@ -1488,51 +1497,6 @@ enum sh_css_err
 sh_css_frame_allocate_from_info(struct sh_css_frame **frame,
 				const struct sh_css_frame_info *info);
 
-/** @brief Allocate a CSS MIPI frame structure of given size in bytes..
- *
- * @param	frame	The allocated frame.
- * @param[in]	size_bytes	The frame size in bytes.
- * @param[in]	contiguous	Allocate memory physically contiguously or not.
- * @return		The error code.
- *
- * Allocate a frame using the given size in bytes.
- * The frame structure is partially null initialized.
- */
-enum sh_css_err
-sh_css_mipi_frame_allocate(struct	sh_css_frame **frame,
-				const unsigned int	size_bytes,
-				const bool			contiguous);
-
-/** @brief Specify a CSS MIPI frame buffer.
- *
- * @param[in]	size_bytes	The frame size in memory words (32B).
- * @param[in]	contiguous	Allocate memory physically contiguously or not.
- * @return		The error code.
- *
- * Specifies a CSS MIPI frame buffer: size in memory words (32B).
- */
-enum sh_css_err
-sh_css_mipi_frame_specify(const unsigned int	size_mem_words,
-				const bool contiguous);
-
-/** @brief Calculate the size of a mipi frame.
- *
- * @param[in]	width		The width (in pixels) of the frame.
- * @param[in]	height		The height (in lines) of the frame.
- * @param[in]	format		The frame (MIPI) format.
- * @param[in]	embedded_data_size_words		Embedded data size in memory words.
- * @param		size_mem_words					The mipi frame size in memory words (32B).
- * @return			The error code.
- *
- * Calculate the size of a mipi frame, based on the resolution and format. 
- */
-enum sh_css_err
-sh_css_mipi_frame_calculate_size(const unsigned int width,
-				const unsigned int height,
-				const enum sh_css_input_format format,
-				const unsigned int embedded_data_size_words,
-				unsigned int *size_mem_words);
-
 /** @brief Free a CSS frame structure.
  *
  * @param[in]	frame	Pointer to the frame.
@@ -1764,20 +1728,24 @@ sh_css_continuous_set_num_raw_frames(int num_frames);
 int
 sh_css_continuous_get_num_raw_frames(void);
 
-/** @brief Enable reordered raw format mode.
+/** @brief Enable raw binning mode.
  *
  * @param	enable	Enabling value.
  *
- * Enable or disable reordered raw format if available. Default is disabled.
+ * Enable or disable raw binning if available. Default is disabled.
  */
 void
-sh_css_enable_raw_reordered(bool enable);
+sh_css_enable_raw_binning(bool enable);
 
 /** @brief Disable vf_pp.
  *
  * @param	disable	Disabling value.
  *
  * Disable vf_pp: used to replace by dynamic binary for testing purposes.
+ *		  OR
+ *		  to disable vf_pp. E.g. in case vf_pp processing does not
+ *		  fit in the vblank interval and capture frame will be used
+ *		  as vf frame (with some optional external post processing)
  */
 void
 sh_css_disable_vf_pp(bool disable);
@@ -2314,7 +2282,7 @@ sh_css_isp_has_started(void);
  * Temporary function to poll whether the SP has been initilized. Once it has,
  * we can enqueue buffers. */
 bool
-sh_css_sp_has_initialized(void);
+sh_css_sp_has_booted(void);
 
 /** @brief Test whether the SP has terminated.
  *
@@ -2347,21 +2315,28 @@ sh_css_unload_acceleration(struct sh_css_acc_fw *firmware);
 /** @brief Load firmware for extension.
  *
  * @param	firmware	Firmware to be loaded.
+ * @param	pipe_id		Pipeline type to be loaded on.
+ * @param	acc_type	Output to be conneted to.
  * @return			IA_CSS_SUCCESS or error code upon error.
  *
- * Load firmware for extension.
+ * Load firmware for extension to a designated pipeline
  */
-enum sh_css_err
-sh_css_load_extension(struct sh_css_fw_info *firmware);
+extern enum sh_css_err sh_css_load_extension(
+	struct sh_css_fw_info	*fw,
+	enum sh_css_pipe_id		pipe_id,
+	enum sh_css_acc_type	acc_type);
+
 
 /** @brief Unload firmware for extension.
  *
  * @param	firmware	Firmware to be unloaded.
+ * @param	pipe_id		Pipeline type to be unloaded from.
  *
- * Unload firmware for extension.
+ * Unload firmware for extension from a designated pipeline.
  */
-void
-sh_css_unload_extension(struct sh_css_fw_info *firmware);
+extern enum sh_css_err sh_css_unload_extension(
+	struct sh_css_fw_info *fw,
+	enum sh_css_pipe_id		pipe_id);
 
 /** @brief Set parameter for acceleration.
  *
@@ -2555,6 +2530,25 @@ sh_css_video_set_isp_pipe_version(unsigned int version);
 void
 sh_css_init_host_sp_control_vars(void);
 
+/** @brief allocate continuous raw frames for continuous capture
+ *
+ *  because this allocation takes a long time (around 120ms per frame),
+ *  we separate the allocation part and update part to let driver call
+ *  this function without locking. This function is the allocation part
+ *  and next one is update part
+ */
+enum sh_css_err
+sh_css_allocate_continuous_frames(
+	bool init_time);
+
+/** @brief allocate continuous raw frames for continuous capture
+ *
+ *  because this allocation takes a long time (around 120ms per frame),
+ *  we separate the allocation part and update part to let driver call
+ *  this function without locking. This function is the update part
+ */
+void
+sh_css_update_continuous_frames(void);
 
 /* For convenience, so users only need to include sh_css.h
  * To be removed: the remaining sh_css_params functions should move to here.

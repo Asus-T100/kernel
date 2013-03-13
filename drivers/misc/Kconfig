@@ -148,6 +148,18 @@ config INTEL_MID_PTI
 	  an Intel Atom (non-netbook) mobile device containing a MIPI
 	  P1149.7 standard implementation.
 
+config INTEL_PTI_UNSECURED
+	tristate "Parallel Trace Interface unsecured"
+	default n
+	depends on INTEL_MID_PTI
+	help
+	  The PTI (Parallel Trace Interface) feature can be disabled
+	  in SCU.
+
+	  This option allow user to disable SCU check until SCU feature is
+	  available on MRFLD.
+
+
 config SGI_IOC4
 	tristate "SGI IOC4 Base IO support"
 	depends on PCI

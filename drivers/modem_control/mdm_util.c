@@ -64,6 +64,10 @@ inline void mdm_ctrl_launch_work(struct mdm_ctrl *drv, int state)
 	unsigned long flags;
 
 	new_state = kzalloc(sizeof(struct next_state), GFP_ATOMIC);
+	if (!new_state) {
+		pr_err(DRVNAME": Can't allocate new_state memory");
+		return;
+	}
 	new_state->state = state;
 
 	spin_lock_irqsave(&drv->state_lck, flags);

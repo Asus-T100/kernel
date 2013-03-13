@@ -589,6 +589,14 @@ static dma_cookie_t intel_mid_dma_tx_submit(struct dma_async_tx_descriptor *tx)
 	dma_cookie_t		cookie;
 
 	spin_lock_bh(&midc->lock);
+
+	if (unlikely(!midc->in_use)) {
+		spin_unlock_bh(&midc->lock);
+		WARN(1, "chan[%d] gets new request after close",
+			tx->chan->chan_id);
+		return -EIO;
+	}
+
 	cookie = dma_cookie_assign(tx);
 
 	if (list_empty(&midc->active_list))
@@ -754,6 +762,9 @@ static struct dma_async_tx_descriptor *intel_mid_dma_prep_memcpy(
 
 	mids = midc->mid_slave;
 	BUG_ON(!mids);
+
+	if (unlikely(!midc->in_use))
+		return NULL;
 
 	pr_debug("MDMA:called for DMA %x CH %d Length %zu\n",
 				midc->dma->pci_id, midc->ch_id, len);
@@ -1050,6 +1061,10 @@ static void intel_mid_dma_free_chan_resources(struct dma_chan *chan)
 	clear_dma_channel_interrupt(midc);
 
 	midc->block_intr_status = false;
+	midc->in_use = false;
+	midc->busy = false;
+
+	tasklet_unlock_wait(&mid->tasklet);
 
 	spin_lock_bh(&midc->lock);
 	midc->descs_allocated = 0;
@@ -1072,9 +1087,6 @@ static void intel_mid_dma_free_chan_resources(struct dma_chan *chan)
 		pci_pool_destroy(midc->lli_pool);
 		midc->lli_pool = NULL;
 	}
-
-	midc->in_use = false;
-	midc->busy = false;
 
 	/* Disable the channel */
 	iowrite32(DISABLE_CHANNEL(midc->ch_id), mid->dma_base + DMA_CHAN_EN);
@@ -1194,7 +1206,8 @@ static void dma_tasklet(unsigned long data)
 		midc->raw_tfr = raw_tfr;
 		/*clearing this interrupts first*/
 		iowrite32((1 << midc->ch_id), mid->dma_base + CLEAR_TFR);
-		midc_scan_descriptors(mid, midc);
+		if (likely(midc->in_use))
+			midc_scan_descriptors(mid, midc);
 		pr_debug("MDMA:Scan of desc... complete, unmasking\n");
 		iowrite32(UNMASK_INTR_REG(midc->ch_id),
 					mid->dma_base + MASK_TFR);

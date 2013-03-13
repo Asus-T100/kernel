@@ -193,6 +193,13 @@ void intel_mid_msgbus_write32(u8 port, u32 addr, u32 data)
 }
 EXPORT_SYMBOL(intel_mid_msgbus_write32);
 
+/* called only from where is later then fs_initcall */
+u32 intel_mid_soc_stepping(void)
+{
+	return pci_root->revision;
+}
+EXPORT_SYMBOL(intel_mid_soc_stepping);
+
 /* parse all the mtimer info to a static mtimer array */
 static int __init sfi_parse_mtmr(struct sfi_table_header *table)
 {
@@ -339,6 +346,8 @@ static void __cpuinit intel_mid_arch_setup(void)
 	else if (boot_cpu_data.x86 == 6 && (boot_cpu_data.x86_model == 0x3C ||
 					    boot_cpu_data.x86_model == 0x4A))
 		__intel_mid_cpu_chip = INTEL_MID_CPU_CHIP_TANGIER;
+	else if (boot_cpu_data.x86 == 6 && boot_cpu_data.x86_model == 0x37)
+		__intel_mid_cpu_chip = INTEL_MID_CPU_CHIP_VALLEYVIEW2;
 	else {
 		pr_err("Unknown Moorestown CPU (%d:%d), default to Lincroft\n",
 			boot_cpu_data.x86, boot_cpu_data.x86_model);

@@ -24,26 +24,19 @@
 #ifndef _SH_CSS_SP_START_H_
 #define _SH_CSS_SP_START_H_
 
-#define SH_CSS_PREVENT_UNINIT_READS 0
+#include <stdint.h>
 
 #define __INLINE_SP__
-#include "sp.h"		/* hrt_vaddress */
+#include "sp.h"
+
+#include "mmu_device.h"
 
 #include "sh_css_firmware.h"
 
-#if defined(FIST_CTRL)
-#define sh_css_sp_start_function(func) \
-	do { \
-		sh_css_sp_start(HIVE_ADDR_ ## func ## _entry)
-		/* wait for input network to be ready */ \
-		while (!sh_css_isp_has_started()) { \
-			hrt_sleep(); \
-		} \
-	} while (0)
-#else
 #define sh_css_sp_start_function(func) \
 	sh_css_sp_start(HIVE_ADDR_ ## func ## _entry)
-#endif
+
+#define SH_CSS_PREVENT_UNINIT_READS 0
 
 void
 sh_css_sp_start(unsigned int start_address);

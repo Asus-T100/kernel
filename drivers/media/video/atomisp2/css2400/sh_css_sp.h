@@ -63,7 +63,7 @@ void
 sh_css_sp_start_raw_copy(struct sh_css_binary *binary,
 			 struct sh_css_frame *out_frame,
 			 unsigned two_ppc,
-			 bool input_is_raw_reordered,
+			 bool input_needs_raw_binning,
 			 enum sh_css_pipe_config_override pco);
 
 unsigned int
@@ -82,8 +82,7 @@ sh_css_sp_init_pipeline(struct sh_css_pipeline *me,
 			bool two_ppc,
 			bool continuous,
 			bool offline,
-			bool input_is_raw_reordered,
-			bool isys_tokenhandler,
+			bool input_needs_raw_binning,
 			enum sh_css_pipe_config_override copy_ovrd);
 
 void
@@ -128,10 +127,7 @@ sh_css_update_host2sp_offline_frame(
  * @param[in] num_frames The number of raw frames to use.
  */
 void
-sh_css_update_host2sp_cont_num_raw_frames(unsigned num_frames);
-
-void
-sh_css_event_init_irq_mask(void);
+sh_css_update_host2sp_cont_num_raw_frames(unsigned num_frames, bool set_avail);
 
 void
 sh_css_sp_start_isp(void);
@@ -170,6 +166,9 @@ sh_css_sp_configure_tpg(int x_mask,
 
 void
 sh_css_sp_configure_prbs(int seed);
+
+void
+sh_css_sp_reset_global_vars(void);
 
 enum sh_css_err
 sh_css_sp_write_frame_pointers(const struct sh_css_binary_args *args,

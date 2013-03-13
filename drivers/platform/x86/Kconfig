@@ -694,6 +694,16 @@ config INTEL_MID_POWER_BUTTON
 
 	  If unsure, say N.
 
+config INTEL_PMIC_CHARGER
+	tristate "pmic charger driver config"
+	default y
+	---help---
+	  This driver handles the USBDET interrupt on CLVP for USB connect/disconnect.
+	  With the powering off the USB PHY for D3 if nothing attached, there is no interrupt
+	  from USB PHY for USB connect, we should use the UDBDET interrupt for USB connect.
+
+	  If unsure, say N.
+
 config POWER_BUTTON_CLVP
 	bool "SRAM address for CLVP"
 	depends on INTEL_MID_POWER_BUTTON

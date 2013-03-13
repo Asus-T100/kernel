@@ -782,6 +782,9 @@ void sst_fill_config(struct intel_sst_drv *sst_ctx)
 	int len;
 
 	sign = SST_CONFIG_SSP_SIGN;
+
+	if (!sst_ctx->ssp_config)
+		return;
 	len = sst_ctx->ssp_config->size;
 
 	memcpy_toio(sst_ctx->dram, &sign, sizeof(u32));
@@ -1039,6 +1042,10 @@ static int sst_request_fw(struct intel_sst_drv *sst)
 	pr_debug("Requesting FW %s now...\n", name);
 	retval = request_firmware(&sst->fw, name,
 				 &sst->pci->dev);
+	if (sst->fw == NULL) {
+		pr_err("sst->fw is returning as null\n");
+		return -EINVAL;
+	}
 	if (retval) {
 		pr_err("request fw failed %d\n", retval);
 		return retval;
@@ -1151,8 +1158,9 @@ static int sst_download_library(const struct firmware *fw_lib,
 	}
 	pr_debug("FW responded, ready for download now...\n");
 	/* downloading on success */
+	mutex_lock(&sst_drv_ctx->sst_lock);
+	sst_drv_ctx->sst_state = SST_FW_LOADED;
 	mutex_lock(&sst_drv_ctx->csr_lock);
-	sst_set_fw_state_locked(sst_drv_ctx, SST_FW_LOADED);
 	csr.full = readl(sst_drv_ctx->shim + SST_CSR);
 	csr.part.run_stall = 1;
 	sst_shim_write(sst_drv_ctx->shim, SST_CSR, csr.full);
@@ -1165,7 +1173,7 @@ static int sst_download_library(const struct firmware *fw_lib,
 	codec_fw = kzalloc(fw_lib->size, GFP_KERNEL);
 	if (!codec_fw) {
 		retval = -ENOMEM;
-		goto free_block;
+		goto free_block_unlock;
 	}
 	memcpy(codec_fw, fw_lib->data, fw_lib->size);
 
@@ -1178,7 +1186,7 @@ static int sst_download_library(const struct firmware *fw_lib,
 
 	if (retval) {
 		kfree(codec_fw);
-		goto free_block;
+		goto free_block_unlock;
 	}
 
 	if (sst_drv_ctx->use_dma) {
@@ -1227,7 +1235,7 @@ static int sst_download_library(const struct firmware *fw_lib,
 		retval = resp->result;
 		if (retval) {
 			pr_err("err in lib dload %x\n", resp->result);
-			sst_set_fw_state_locked(sst_drv_ctx, SST_UN_INIT);
+			sst_drv_ctx->sst_state = SST_UN_INIT;
 			goto free_resources;
 		} else {
 			pr_debug("Codec download complete...\n");
@@ -1235,13 +1243,13 @@ static int sst_download_library(const struct firmware *fw_lib,
 		}
 	} else if (retval) {
 		/* error */
-		sst_set_fw_state_locked(sst_drv_ctx, SST_UN_INIT);
+		sst_drv_ctx->sst_state = SST_UN_INIT;
 		retval = -EIO;
 		goto free_resources;
 	}
 
 	pr_debug("FW success on Download complete\n");
-	sst_set_fw_state_locked(sst_drv_ctx, SST_FW_RUNNING);
+	sst_drv_ctx->sst_state = SST_FW_RUNNING;
 
 free_resources:
 	if (sst_drv_ctx->use_dma) {
@@ -1251,6 +1259,8 @@ free_resources:
 	}
 
 	kfree(codec_fw);
+free_block_unlock:
+	mutex_unlock(&sst_drv_ctx->sst_lock);
 free_block:
 	sst_free_block(sst_drv_ctx, block);
 	return retval;
@@ -1323,7 +1333,7 @@ int sst_load_fw(void)
 		mrfld_dccm_config_write(sst_drv_ctx->dram,
 						sst_drv_ctx->ddr_base);
 
-	sst_set_fw_state_locked(sst_drv_ctx, SST_FW_LOADED);
+	sst_drv_ctx->sst_state = SST_FW_LOADED;
 	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID)
 		sst_fill_config(sst_drv_ctx);
 
@@ -1414,6 +1424,10 @@ int sst_load_library(struct snd_sst_lib_download *lib, u8 ops)
 	pr_debug("Requesting %s\n", buf);
 
 	error = request_firmware(&fw_lib, buf, &sst_drv_ctx->pci->dev);
+	if (fw_lib == NULL) {
+		pr_err("fw_lib pointer is returning null\n");
+		return -EINVAL;
+	}
 	if (error) {
 		pr_err("library load failed %d\n", error);
 		goto wake;

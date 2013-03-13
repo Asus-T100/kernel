@@ -99,6 +99,15 @@ static struct snd_soc_jack_gpio hs_gpio[] = {
 	},
 };
 
+int ctp_startup_probe(struct snd_pcm_substream *substream)
+{
+	pr_debug("%s - applying rate constraint\n", __func__);
+	snd_pcm_hw_constraint_list(substream->runtime, 0,
+					SNDRV_PCM_HW_PARAM_RATE,
+					&constraints_48000);
+	return 0;
+}
+
 int ctp_startup_asp(struct snd_pcm_substream *substream)
 {
 	pr_debug("%s - applying rate constraint\n", __func__);
@@ -206,13 +215,12 @@ static int mc_driver_ops(struct ctp_mc_private *ctx,
 	switch (pdata->spid->product_line_id) {
 	case INTEL_CLVTP_PHONE_RHB_ENG:
 	case INTEL_CLVTP_PHONE_RHB_PRO:
-		if (pdata->spid->hardware_id == CLVTP_PHONE_RHB_VBDV1) {
-			ctx->ops = ctp_get_vb_ops();
-			return 0;
-		} else {
-			ctx->ops = ctp_get_rhb_ops();
-			return 0;
-		}
+		ctx->ops = ctp_get_rhb_ops();
+		return 0;
+	case INTEL_CLVTP_PHONE_VB_ENG:
+	case INTEL_CLVTP_PHONE_VB_PRO:
+		ctx->ops = ctp_get_vb_ops();
+		return 0;
 	default:
 		pr_err("No data for prod line id: %x",
 				pdata->spid->product_line_id);
@@ -387,10 +395,11 @@ int ctp_soc_jack_gpio_detect(void)
 	pr_debug("Current jack status = 0x%x\n", jack->status);
 
 	set_mic_bias(jack, "MIC2 Bias", true);
+	msleep(ctx->ops->micsdet_debounce);
 	status = ctx->ops->hp_detection(codec, jack, enable);
-	set_mic_bias(jack, "MIC2 Bias", false);
 	if (!status) {
 		ctx->headset_plug_flag = false;
+		set_mic_bias(jack, "MIC2 Bias", false);
 		/* Jack removed, Disable BP interrupts if not done already */
 		set_bp_interrupt(ctx, false);
 	} else { /* If jack inserted, schedule delayed_wq */
@@ -426,7 +435,6 @@ void headset_status_verify(struct work_struct *work)
 	pr_debug("%s:gpio->%d=0x%d\n", __func__, gpio->gpio, enable);
 	pr_debug("Current jack status = 0x%x\n", jack->status);
 
-	set_mic_bias(jack, "MIC2 Bias", true);
 	status = ctx->ops->hp_detection(codec, jack, enable);
 
 	/* Enable Button_press interrupt if HS is inserted
@@ -532,7 +540,7 @@ static int snd_ctp_complete(struct device *dev)
 			ctx->ops->mclk_switch(dev, true);
 		}
 	}
-	snd_soc_resume(dev);
+	return snd_soc_resume(dev);
 }
 
 static void snd_ctp_poweroff(struct device *dev)

@@ -2024,7 +2024,38 @@ void penwell_otg_phy_intr(bool on)
 	penwell_otg_msic_spi_access(false);
 }
 
-static penwell_otg_notify_warning(int warning_code)
+void penwell_otg_phy_power(int on)
+{
+	struct penwell_otg	*pnw = the_transceiver;
+
+	dev_dbg(pnw->dev, "%s --->\n", __func__);
+
+	if (is_clovertrail(to_pci_dev(pnw->dev))) {
+		dev_dbg(pnw->dev, "turn %s USB PHY by gpio_cs(%d)\n",
+					on ? "on" : "off",
+					pnw->otg_pdata->gpio_cs);
+		gpio_direction_output(pnw->otg_pdata->gpio_cs, on);
+	}
+
+	dev_dbg(pnw->dev, "%s <---\n", __func__);
+}
+
+void penwell_otg_phy_reset(void)
+{
+	struct penwell_otg	*pnw = the_transceiver;
+
+	dev_dbg(pnw->dev, "%s --->\n", __func__);
+
+	if (is_clovertrail(to_pci_dev(pnw->dev))) {
+		gpio_direction_output(pnw->otg_pdata->gpio_reset, 0);
+		usleep_range(200, 500);
+		gpio_set_value(pnw->otg_pdata->gpio_reset, 1);
+	}
+
+	dev_dbg(pnw->dev, "%s <---\n", __func__);
+}
+
+static void penwell_otg_notify_warning(int warning_code)
 {
 	struct penwell_otg	*pnw = the_transceiver;
 	struct usb_hcd		*hcd;
@@ -2230,9 +2261,7 @@ static void pnw_phy_ctrl_rst(void)
 	penwell_otg_intr(0);
 	synchronize_irq(pdev->irq);
 
-	gpio_direction_output(pnw->otg_pdata->gpio_reset, 0);
-	udelay(500);
-	gpio_set_value(pnw->otg_pdata->gpio_reset, 1);
+	penwell_otg_phy_reset();
 
 	reset_otg();
 
@@ -4786,6 +4815,7 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 	pnw->rt_resuming = 0;
 	pnw->rt_quiesce = 0;
 	pnw->queue_stop = 0;
+	pnw->phy_power_state = 1;
 	if (usb_set_transceiver(&pnw->iotg.otg)) {
 		dev_dbg(pnw->dev, "can't set transceiver\n");
 		retval = -EBUSY;
@@ -4839,6 +4869,20 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 		goto err;
 	}
 
+	/* FIXME: Reads Charging compliance bit from scu mip.
+	 * This snippet needs to be cleaned up after EM inteface is ready
+	 */
+	if (is_clovertrail(pdev)) {
+		u8	smip_data = 0;
+		if (!intel_scu_ipc_read_mip(&smip_data, 1, 0x2e7, 1)) {
+			pnw->otg_pdata->charging_compliance =
+							!(smip_data & 0x40);
+			dev_info(pnw->dev, "charging_compliance = %d\n",
+					pnw->otg_pdata->charging_compliance);
+		} else
+			dev_err(pnw->dev, "scu mip read error\n");
+	}
+
 	if (!is_clovertrail(pdev)) {
 		if (pnw->otg_pdata->gpio_vbus) {
 			retval = gpio_request(pnw->otg_pdata->gpio_vbus,
@@ -4855,7 +4899,7 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 	if (is_clovertrail(pdev)) {
 		/* Set up gpio for Clovertrail */
 		retval = gpio_request(pnw->otg_pdata->gpio_reset,
-				"usb_otg_phy_reset");
+					"usb_otg_phy_reset");
 		if (retval < 0) {
 			dev_err(pnw->dev, "request phy reset gpio(%d) failed\n",
 						pnw->otg_pdata->gpio_reset);
@@ -4863,7 +4907,7 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 			goto err;
 		}
 		retval = gpio_request(pnw->otg_pdata->gpio_cs,
-				"usb_otg_phy_cs");
+					"usb_otg_phy_cs");
 		if (retval < 0) {
 			dev_err(pnw->dev, "request phy cs gpio(%d) failed\n",
 						pnw->otg_pdata->gpio_cs);
@@ -4871,14 +4915,10 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 			retval = -ENODEV;
 			goto err;
 		}
-		/* Drive CS pin to high */
-		gpio_direction_output(pnw->otg_pdata->gpio_cs, 1);
-
-		/* Reset the PHY (minimal reset width: 100us) */
-		gpio_direction_output(pnw->otg_pdata->gpio_reset, 0);
-		usleep_range(200, 500);
-		gpio_set_value(pnw->otg_pdata->gpio_reset, 1);
 	}
+
+	penwell_otg_phy_power(1);
+	penwell_otg_phy_reset();
 
 	mutex_init(&pnw->msic_mutex);
 	pnw->msic = penwell_otg_check_msic();
@@ -5143,6 +5183,12 @@ static int penwell_otg_suspend_noirq(struct device *dev)
 	} else {
 		penwell_otg_phy_low_power(1);
 		penwell_otg_vusb330_low_power(1);
+#ifdef CONFIG_USB_PENWELL_OTG_PHY_OFF
+		if (iotg->otg.state == OTG_STATE_B_IDLE) {
+			penwell_otg_phy_power(0);
+			pnw->phy_power_state = 0;
+		}
+#endif
 	}
 
 done:
@@ -5256,6 +5302,19 @@ static int penwell_otg_resume_noirq(struct device *dev)
 	dev_dbg(pnw->dev, "%s --->\n", __func__);
 
 	pdev = to_pci_dev(pnw->dev);
+
+	/* If USB PHY is in OFF state, power on it and do basic init work */
+	if (!pnw->phy_power_state) {
+		penwell_otg_phy_power(1);
+		penwell_otg_phy_reset();
+
+		/* Reset controller and clear PHY low power mode setting */
+		reset_otg();
+		penwell_otg_phy_low_power(0);
+
+		/* Wait ID value to be synced */
+		msleep(60);
+	}
 
 	/* add delay in case controller is back to D0, controller
 	 * needs time to sync/latch value for OTGSC register */

@@ -1037,6 +1037,11 @@ static int _dlp_from_wait_to_ctrl(struct dlp_xfer_ctx *xfer_ctx)
 	pdu = dlp_fifo_wait_pop(xfer_ctx);
 	write_unlock_irqrestore(&xfer_ctx->lock, flags);
 
+	if (!pdu) {
+		ret = -ENOENT;
+		goto out;
+	}
+
 	actual_len = pdu->actual_len;
 
 	/* Push the PDU to the controller */
@@ -1227,8 +1232,7 @@ int dlp_hsi_controller_push(struct dlp_xfer_ctx *xfer_ctx, struct hsi_msg *pdu)
 
 	/* Check credits */
 	if (!dlp_ctx_have_credits(xfer_ctx, ch_ctx)) {
-		pr_warn(DRVNAME ": CH%d (HSI CH%d) out of credits (%d)",
-				ch_ctx->ch_id,
+		pr_warn(DRVNAME ": ch%d out of credits (%d)",
 				ch_ctx->hsi_channel, ch_ctx->tx.seq_num);
 
 		goto out;
@@ -1401,10 +1405,8 @@ int dlp_hsi_port_claim(void)
 	int ret = 0;
 
 	/* Claim the HSI port (if not already done) */
-	if (hsi_port_claimed(dlp_drv.client)) {
-		pr_err(DRVNAME ": port already claimed!");
+	if (hsi_port_claimed(dlp_drv.client))
 		goto out;
-	}
 
 	/* Claim the HSI port */
 	ret = hsi_claim_port(dlp_drv.client, 1);
@@ -1494,7 +1496,11 @@ void dlp_restore_rx_callbacks(hsi_client_cb *event_cb)
 */
 int dlp_set_flashing_mode(int flashing)
 {
-	pr_debug(DRVNAME ": Set_flashing_mode(%d)", flashing);
+	/* Release the HSI controller */
+	dlp_hsi_port_unclaim();
+
+	/* Flush everything */
+	hsi_flush(dlp_drv.client);
 
 	if (flashing) {
 		/* Set the Boot/Flashing configs */
@@ -1512,7 +1518,8 @@ int dlp_set_flashing_mode(int flashing)
 		dlp_restore_rx_callbacks(&dlp_drv.ehandler);
 	}
 
-	return 0;
+	/* Claim the HSI port (to use for IPC) */
+	return dlp_hsi_port_claim();
 }
 
 /**
@@ -1798,7 +1805,8 @@ static int dlp_driver_remove(struct device *dev)
 	dlp_tty_set_link_valid(1, 0);
 
 	/* Unregister the HSI client */
-	hsi_unregister_port_event(client);
+	if (hsi_port_claimed(client))
+		hsi_unregister_port_event(client);
 	hsi_client_set_drvdata(client, NULL);
 
 	/* Cleanup all channels */

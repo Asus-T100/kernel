@@ -350,8 +350,7 @@ int dlp_net_open(struct net_device *dev)
 	/* Check if the the channel is not already opened for Trace */
 	state = dlp_ctrl_get_channel_state(ch_ctx->hsi_channel);
 	if (state != DLP_CH_STATE_CLOSED) {
-		pr_err(DRVNAME ": Can't open CH%d (HSI CH%d) => invalid state: %d\n",
-				ch_ctx->ch_id, ch_ctx->hsi_channel, state);
+		pr_err(DRVNAME": Invalid channel state (%d)\n", state);
 		ret = -EBUSY;
 		goto out;
 	}
@@ -411,8 +410,8 @@ int dlp_net_stop(struct net_device *dev)
 
 	ret = dlp_ctrl_close_channel(ch_ctx);
 	if (ret)
-		pr_err(DRVNAME ": Can't close CH%d (HSI CH%d) => err: %d\n",
-				ch_ctx->ch_id, ch_ctx->hsi_channel, ret);
+		pr_err(DRVNAME ": %s (ch%d close failed (%d))\n",
+				__func__, ch_ctx->ch_id, ret);
 
 	/* RX */
 	del_timer_sync(&rx_ctx->timer);
@@ -425,12 +424,8 @@ int dlp_net_stop(struct net_device *dev)
 	dlp_ctx_set_state(tx_ctx, IDLE);
 
 	/* Flush the ACWAKE works */
-	cancel_work_sync(&ch_ctx->start_tx_w);
-	cancel_work_sync(&ch_ctx->stop_tx_w);
-
-	/* device closed => Set the channel state flag */
-	dlp_ctrl_set_channel_state(ch_ctx->hsi_channel,
-				DLP_CH_STATE_CLOSED);
+	flush_work_sync(&ch_ctx->start_tx_w);
+	flush_work_sync(&ch_ctx->stop_tx_w);
 
 	return 0;
 }
@@ -463,12 +458,8 @@ static int dlp_net_start_xmit(struct sk_buff *skb, struct net_device *dev)
 		/* Stop the NET if */
 		netif_stop_queue(net_ctx->ndev);
 
-		if ((EDLP_NET_TX_DATA_REPORT) ||
-			(EDLP_NET_TX_DATA_LEN_REPORT))
-				pr_warn(DRVNAME ": CH%d (HSI CH%d) out of credits (%d)",
-					ch_ctx->ch_id,
-					ch_ctx->hsi_channel,
-					ch_ctx->tx.seq_num);
+		pr_warn(DRVNAME ": ch%d out of credits (%d)",
+				ch_ctx->ch_id, ch_ctx->tx.seq_num);
 		ret = NETDEV_TX_BUSY;
 		goto out;
 	}

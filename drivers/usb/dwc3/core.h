@@ -294,6 +294,9 @@
 #define DWC3_DGCMD_SET_ENDPOINT_NRDY	0x0c
 #define DWC3_DGCMD_RUN_SOC_BUS_LOOPBACK	0x10
 
+#define DWC3_DGCMD_STATUS(n)		(((n) >> 15) & 1)
+#define DWC3_DGCMD_CMDACT		(1 << 10)
+
 /* Device Endpoint Command Register */
 #define DWC3_DEPCMD_PARAM_SHIFT		16
 #define DWC3_DEPCMD_PARAM(x)		((x) << DWC3_DEPCMD_PARAM_SHIFT)
@@ -614,6 +617,10 @@ enum dwc3_pm_state {
  * @setup_packet_pending: true when there's a Setup Packet in FIFO. Workaround
  * @needs_fifo_resize: not all users might want fifo resizing, flag it
  * @resize_fifos: tells us it's ok to reconfigure our TxFIFO sizes.
+ * @u2sel: parameter from Set SEL request.
+ * @u2pel: parameter from Set SEL request.
+ * @u1sel: parameter from Set SEL request.
+ * @u1pel: parameter from Set SEL request.
  * @ep0_next_event: hold the next expected event
  * @ep0state: state of endpoint zero
  * @link_state: link state
@@ -643,6 +650,7 @@ struct dwc3 {
 
 	struct usb_gadget	gadget;
 	struct usb_gadget_driver *gadget_driver;
+	int			soft_connected;
 
 	void __iomem		*regs;
 	size_t			regs_size;
@@ -679,7 +687,13 @@ struct dwc3 {
 	enum dwc3_link_state	link_state;
 	enum dwc3_device_state	dev_state;
 
+	u16			u2sel;
+	u16			u2pel;
+	u8			u1sel;
+	u8			u1pel;
+
 	u8			speed;
+
 	void			*mem;
 
 	struct dwc3_hwparams	hwparams;

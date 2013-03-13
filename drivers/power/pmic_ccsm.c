@@ -43,9 +43,8 @@
 #include <linux/wakelock.h>
 #include <linux/power_supply.h>
 #include <linux/rpmsg.h>
-#ifdef CONFIG_BASINCOVE_GPADC
 #include <asm/intel_basincove_gpadc.h>
-#endif
+#include "../staging/iio/consumer.h"
 #include <asm/intel_scu_pmic.h>
 #include <asm/intel_mid_rpmsg.h>
 #include <asm/intel_mid_remoteproc.h>
@@ -807,47 +806,46 @@ EXPORT_SYMBOL(pmic_set_ilimmA);
  *
  * Returns 0 if success
  */
-#ifdef CONFIG_BASINCOVE_GPADC
 static int pmic_read_adc_val(int channel, int *sensor_val,
 			      struct pmic_chrgr_drv_context *chc)
 {
+	int val;
+	int ret;
+	struct iio_channel *indio_chan;
 
-	int ret, adc_val;
-	struct gpadc_result *adc_res;
-	adc_res = kzalloc(sizeof(struct gpadc_result), GFP_KERNEL);
-	if (!adc_res)
-		return -ENOMEM;
-	ret = intel_basincove_gpadc_sample(channel, adc_res);
-	if (ret) {
-		dev_err(chc->dev, "gpadc_sample failed:%d\n", ret);
+	indio_chan = iio_st_channel_get("BATTEMP", "BATTEMP0");
+	if (IS_ERR_OR_NULL(indio_chan)) {
+		ret = PTR_ERR(indio_chan);
 		goto exit;
 	}
+	ret = iio_st_read_channel_raw(indio_chan, &val);
+	if (ret) {
+		dev_err(chc->dev, "IIO channel read error\n");
+		goto err_exit;
+	}
 
-	adc_val = GPADC_RSL(channel, adc_res);
 	switch (channel) {
 	case GPADC_BATTEMP0:
-		ret = CONVERT_ADC_TO_TEMP(adc_val, sensor_val);
+		ret = CONVERT_ADC_TO_TEMP(val, sensor_val);
 		break;
 	default:
 		dev_err(chc->dev, "invalid sensor%d", channel);
 		ret = -EINVAL;
 	}
+	dev_dbg(chc->dev, "pmic_ccsm pmic_ccsm.0: %s adc val=%x, %d temp=%d\n",
+		__func__, val, val, *sensor_val);
+
+err_exit:
+	iio_st_channel_release(indio_chan);
 exit:
-	kfree(adc_res);
 	return ret;
 }
-#endif
 
 int pmic_get_battery_pack_temp(int *temp)
 {
-#ifdef CONFIG_BASINCOVE_GPADC
 	if (chc.invalid_batt)
 		return -ENODEV;
 	return pmic_read_adc_val(GPADC_BATTEMP0, temp, &chc);
-#else
-	*temp = 30;
-#endif
-	return 0;
 }
 EXPORT_SYMBOL(pmic_get_battery_pack_temp);
 

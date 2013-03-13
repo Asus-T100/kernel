@@ -10,5 +10,6 @@
  *	- Works for arrays, structs, arrays of structs, arrays in structs etc.
  */
 #define offsetof(T, x) ((unsigned)&(((T *)0)->x))
+#define OFFSET_OF(T, x) offsetof(T, x)
 
 #endif /* __ADDR_SUPPORT_H_INCLUDED__ */

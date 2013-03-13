@@ -49,6 +49,5 @@ void __init *mrfl_platform_data(void *info)
 	spi_info->mode = SPI_MODE_0;
 	spi_info->controller_data = &chip;
 	spi_info->bus_num = FORCE_SPI_BUS_NUM;
-	spi_info->chip_select = FORCE_CHIP_SELECT;
 	return NULL;
 }

@@ -1039,11 +1039,12 @@ void sh_css_print_sp_debug_state(
 		if (state->trace[i].frame != 0) {
 			DTRACE_SP_STATE(
 			  "copy-trace: frame=%d, line=%d, "
-			  "pixel_distance=%d, mipi_used_dword=%d\n",
+			  "pixel_distance=%d, mipi_used_dword=%d, sp_index=%d\n",
 			  state->trace[i].frame,
 			  state->trace[i].line,
 			  state->trace[i].pixel_distance,
-			  state->trace[i].mipi_used_dword
+			  state->trace[i].mipi_used_dword,
+			  state->trace[i].sp_index
 			  );
 		}
 	}

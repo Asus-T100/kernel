@@ -3,16 +3,12 @@
 
 #define IS_INPUT_SYSTEM_VERSION_2
 
-//CSI reveiver has 3 ports.
-#define		N_CSI_PORTS (3) 
-//AM: Use previous define for this.
- 
-//MIPI allows upto 4 channels.
-#define		N_CHANNELS  (4) 
-// 12KB = 256bit x 384 words
-#define		IB_CAPACITY_IN_WORDS (384)  
-
 #include <stdint.h>
+
+#include "css_receiver_2400_defs.h"	/* _HRT_CSS_RECEIVER_2400_TWO_PIXEL_EN_REG_IDX, _HRT_CSS_RECEIVER_2400_CSI2_FUNC_PROG_REG_IDX,... */
+
+#define _HRT_CSS_RECEIVER_IRQ_STATUS_REG_IDX			_HRT_CSS_RECEIVER_2400_IRQ_STATUS_REG_IDX
+#define _HRT_CSS_RECEIVER_IRQ_OVERRUN_BIT				_HRT_CSS_RECEIVER_2400_IRQ_OVERRUN_BIT
 
 typedef enum {
 	MIPI_0LANE_CFG = 0,
@@ -55,16 +51,6 @@ typedef enum {
 	N_INPUT_SYSTEM_SINK
 } input_system_sink_t;
 
-typedef enum {
-	INPUT_SYSTEM_FIFO_CAPTURE = 0,
-	INPUT_SYSTEM_FIFO_CAPTURE_WITH_COUNTING,
-	INPUT_SYSTEM_SRAM_BUFFERING,
-	INPUT_SYSTEM_XMEM_BUFFERING,
-	INPUT_SYSTEM_XMEM_CAPTURE,
-	INPUT_SYSTEM_XMEM_ACQUIRE,
-	N_INPUT_SYSTEM_BUFFERING_MODE
-} buffering_mode_t;
-
 typedef struct input_system_cfg_s	input_system_cfg_t;
 typedef struct sync_generator_cfg_s	sync_generator_cfg_t;
 typedef struct tpg_cfg_s			tpg_cfg_t;
@@ -92,50 +78,16 @@ struct tpg_cfg_s {
 	uint32_t	x_delta;
 	uint32_t	y_delta;
 	uint32_t	xy_mask;
-	sync_generator_cfg_t sync_gen_cfg;
 };
 
 struct prbs_cfg_s {
 	uint32_t	seed;
-	sync_generator_cfg_t sync_gen_cfg;
 };
 
-struct gpfifo_cfg_s {
-// TBD.
-	sync_generator_cfg_t sync_gen_cfg;
-};
-
-typedef struct gpfifo_cfg_s		gpfifo_cfg_t;
-
-//ALX:Commented out to pass the compilation.
-//typedef struct input_system_cfg_s input_system_cfg_t;
-
-struct ib_buffer_s {
-	uint32_t	mem_reg_size;
-	uint32_t	nof_mem_regs;
-	uint32_t	mem_reg_addr;
-};
-
-typedef struct ib_buffer_s	ib_buffer_t;
-
-struct csi_cfg_s {
-	uint32_t			csi_port;
-    buffering_mode_t	buffering_mode;
-	ib_buffer_t			csi_buffer;
-	ib_buffer_t			acquisition_buffer;
-	uint32_t			nof_xmem_buffers;
-};
-
-typedef struct csi_cfg_s	 csi_cfg_t;
-
-typedef enum {
-	INPUT_SYSTEM_CFG_FLAG_RESET	= 0,
-	INPUT_SYSTEM_CFG_FLAG_SET		= 1U << 0,
-	INPUT_SYSTEM_CFG_FLAG_BLOCKED	= 1U << 1,
-	INPUT_SYSTEM_CFG_FLAG_REQUIRED	= 1U << 2,
-	INPUT_SYSTEM_CFG_FLAG_CONFLICT	= 1U << 3	// To mark a conflicting configuration.
-} input_system_cfg_flag_t;
-
-typedef uint32_t input_system_config_flags_t; 
+/* NOTE: The base has already an offset of 0x0100 */
+static const hrt_address MIPI_PORT_OFFSET[N_MIPI_PORT_ID] = {
+	0x00000000UL,
+	0x00000100UL,
+	0x00000200UL};
 
 #endif /* __INPUT_SYSTEM_GLOBAL_H_INCLUDED__ */

@@ -3728,6 +3728,11 @@ int sdhci_add_host(struct sdhci_host *host)
 	caps[0] = (host->quirks & SDHCI_QUIRK_MISSING_CAPS) ? host->caps :
 		sdhci_readl(host, SDHCI_CAPABILITIES);
 
+	if (host->quirks2 & SDHCI_QUIRK2_CAN_VDD_300)
+		caps[0] |= SDHCI_CAN_VDD_300;
+	if (host->quirks2 & SDHCI_QUIRK2_CAN_VDD_330)
+		caps[0] |= SDHCI_CAN_VDD_330;
+
 	caps[1] = (host->version >= SDHCI_SPEC_300) ?
 		sdhci_readl(host, SDHCI_CAPABILITIES_1) : 0;
 

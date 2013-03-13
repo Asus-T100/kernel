@@ -123,8 +123,10 @@ int do_setup_ddr(struct device *dev)
 			cmd.tran_id = 0x1;
 			if (ia_send_cmd(PSH2IA_CHANNEL3, &cmd, 7))
 				return -1;
+			ia_data->load_in_progress = 1;
+			wait_for_completion_timeout(&ia_data->cmd_load_comp,
+					3 * HZ);
 		}
-		msleep(3000); /* let fw go */
 		release_firmware(fw_entry);
 	}
 	*(unsigned long *)(&cmd_user.param) = ddr_phy;
@@ -136,6 +138,10 @@ static void psh2ia_channel_handle(u32 msg, u32 param, void *data)
 	struct pci_dev *pdev = (struct pci_dev *)data;
 
 	ia_process_lbuf(&pdev->dev);
+	if (unlikely(ia_data->load_in_progress)) {
+		ia_data->load_in_progress = 0;
+		complete(&ia_data->cmd_load_comp);
+	}
 }
 
 static int psh_probe(struct pci_dev *pdev, const struct pci_device_id *id)

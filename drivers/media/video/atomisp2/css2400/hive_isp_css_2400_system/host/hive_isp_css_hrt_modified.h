@@ -3,7 +3,7 @@
 
 #include "system_types.h"
 
-#include <hrt/api.h>
+//#include <hrt/api.h>
 #include "hive_isp_css_host_ids_hrt.h"
 #include "hive_isp_css_defs.h"
 
@@ -46,8 +46,10 @@
     #include "hive_isp_css_2400_system.h"
 #elif defined(IS_ISP_2400A0_MAMOIADA_SYSTEM)
     #include "hive_isp_css_2400A0_system.h"
+#elif defined(IS_ISP_2401_MAMOIADA_SYSTEM)
+    #include "hive_isp_css_2401_system.h"
 #else
-#error "hive_isp_css_hrt_modified.h: SYSTEM must be one of {2400_MAMOIADA_SYSTEM, 2400A0_MAMOIADA_SYSTEM}"
+#error "hive_isp_css_hrt_modified.h: SYSTEM must be one of {2400_MAMOIADA_SYSTEM, 2400A0_MAMOIADA_SYSTEM, 2401_MAMOIADA_SYSTEM}"
 #endif
   #endif
 #endif /* _HIVE_ISP_CSS_FPGA_SYSTEM */
@@ -64,7 +66,14 @@
 #include "hive_isp_css_testbench_hrt.h"
 #include "hive_isp_css_streaming_monitors_hrt.h"
 #include "hive_isp_css_gp_regs_hrt.h"
+#if defined(IS_ISP_2400_MAMOIADA_SYSTEM) || defined(IS_ISP_2400A0_MAMOIADA_SYSTEM)
 #include "hive_isp_css_irq_hrt.h"
+#elif defined(IS_ISP_2401_MAMOIADA_SYSTEM)
+#include "hive_isp_css_2401_irq_hrt.h"
+#else
+#error "hive_isp_css_hrt_modified.h: SYSTEM must be one of {2400_MAMOIADA_SYSTEM, 2400A0_MAMOIADA_SYSTEM, 2401_MAMOIADA_SYSTEM}"
+#endif
+
 #include "hive_isp_css_stream_switch_hrt.h"
 
 #include "hive_isp_css_ddr_hrt_modified.h"

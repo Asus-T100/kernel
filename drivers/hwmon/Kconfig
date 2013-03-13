@@ -999,6 +999,16 @@ config SENSORS_EMC6W201
 	  This driver can also be built as a module.  If so, the module
 	  will be called emc6w201.
 
+config SENSORS_MRFL_OCD
+	tristate "Basincove BCU driver for Merrifield"
+	depends on INTEL_SCU_IPC
+	help
+	  Say yes here to enable current monitoring driver for
+	  merrifield platform.
+
+	  This driver is specific to basin cove PMIC used in the
+          Merrifield platform.
+
 config SENSORS_SMSC47M1
 	tristate "SMSC LPC47M10x and compatibles"
 	depends on !PPC
