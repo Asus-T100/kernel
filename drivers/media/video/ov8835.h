@@ -1322,7 +1322,7 @@ static struct ov8830_resolution ov8835_res_video[] = {
 		 .regs = ov8835_video_1080p_dvs,
 		 .bin_factor_x = 0,
 		 .bin_factor_y = 0,
-		 .skip_frames = 1,
+		 .skip_frames = 2,
 		 .fps_options = {
 			{
 				 .fps = 30,
