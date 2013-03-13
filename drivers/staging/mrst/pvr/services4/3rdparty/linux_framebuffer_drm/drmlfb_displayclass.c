@@ -2302,7 +2302,6 @@ MRST_ERROR MRSTLFBChangeSwapChainProperty(unsigned long *psSwapChainGTTOffset,
 
 	if (psDevInfo == IMG_NULL) {
 		DRM_ERROR("MRSTLFB hasn't been initialized, SGX unloaded?\n");
-		BUG();
 		/* Won't attach/de-attach the plane in case of no swap chain
 		 * created. */
 		eError = MRST_ERROR_INIT_FAILURE;

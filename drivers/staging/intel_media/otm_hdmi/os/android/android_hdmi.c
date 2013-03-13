@@ -2132,18 +2132,6 @@ android_hdmi_detect(struct drm_connector *connector,
 			first_boot = false;
 		}
 
-/* pvr_ops is not supported in merrifield gfx driver yet.
- * So skip the check temporarily.
- *
- * TODO: wait for solution about pvr_ops. Then change this workaround
- *       accordingly.
- */
-#ifndef CONFIG_DRM_MRFLD
-		if (!dev_priv->pvr_ops) {
-			pr_debug("Delay handling HDMI till SGX is ready\n");
-			return connector_status_disconnected;
-		}
-#endif
 		if (connector->status == connector_status_connected)
 			return connector_status_connected;
 		/*
