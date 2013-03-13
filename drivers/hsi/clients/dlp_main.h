@@ -587,6 +587,8 @@ int dlp_ctrl_send_nop(struct dlp_channel *ch_ctx);
 
 int dlp_ctrl_send_ack_nack(struct dlp_channel *ch_ctx);
 
+void dlp_ctrl_clean_stored_cmd(void);
+
 inline void
 dlp_ctrl_set_channel_state(unsigned int hsi_channel, unsigned char);
 
