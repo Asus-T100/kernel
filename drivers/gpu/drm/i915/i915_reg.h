@@ -3007,14 +3007,18 @@
 /* New style CUR*CNTR flags */
 #define   CURSOR_MODE		0x27
 #define   CURSOR_MODE_DISABLE   0x00
+#define   CURSOR_MODE_128_32B_AX      0x02
+#define   CURSOR_MODE_256_32B_AX      0x03
 #define   CURSOR_MODE_64_32B_AX 0x07
+#define   CURSOR_MODE_128_ARGB_AX     ((1 << 5) | CURSOR_MODE_128_32B_AX)
+#define   CURSOR_MODE_256_ARGB_AX     ((1 << 5) | CURSOR_MODE_256_32B_AX)
 #define   CURSOR_MODE_64_ARGB_AX ((1 << 5) | CURSOR_MODE_64_32B_AX)
 #define   MCURSOR_PIPE_SELECT	(1 << 28)
 #define   MCURSOR_PIPE_A	0x00
 #define   MCURSOR_PIPE_B	(1 << 28)
 #define   MCURSOR_GAMMA_ENABLE  (1 << 26)
-#define _CURABASE		0x70084
-#define _CURAPOS			0x70088
+#define   _CURABASE		0x70084
+#define   _CURAPOS		0x70088
 #define   CURSOR_POS_MASK       0x007FF
 #define   CURSOR_POS_SIGN       0x8000
 #define   CURSOR_X_SHIFT        0
@@ -3022,8 +3026,7 @@
 #define CURSIZE			0x700a0
 #define _CURBCNTR		0x700c0
 #define _CURBBASE		0x700c4
-#define _CURBPOS			0x700c8
-
+#define _CURBPOS		0x700c8
 #define _CURBCNTR_IVB		0x71080
 #define _CURBBASE_IVB		0x71084
 #define _CURBPOS_IVB		0x71088

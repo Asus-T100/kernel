@@ -5427,19 +5427,28 @@ static void i9xx_update_cursor(struct drm_crtc *crtc, u32 base)
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 	int pipe = intel_crtc->pipe;
 	bool visible = base != 0;
-
 	if (intel_crtc->cursor_visible != visible) {
+		int x = intel_crtc->cursor_width;
 		uint32_t cntl = I915_READ(CURCNTR(pipe));
+
 		if (base) {
 			cntl &= ~(CURSOR_MODE | MCURSOR_PIPE_SELECT);
-			cntl |= CURSOR_MODE_64_ARGB_AX | MCURSOR_GAMMA_ENABLE;
+			if (x == 128)
+				cntl |= CURSOR_MODE_128_ARGB_AX |
+					CURSOR_GAMMA_ENABLE;
+			else if (x == 256)
+				cntl |= CURSOR_MODE_256_ARGB_AX |
+					MCURSOR_GAMMA_ENABLE;
+			else
+				cntl |= CURSOR_MODE_64_ARGB_AX |
+					MCURSOR_GAMMA_ENABLE;
+
 			cntl |= pipe << 28; /* Connect to correct pipe */
 		} else {
 			cntl &= ~(CURSOR_MODE | MCURSOR_GAMMA_ENABLE);
 			cntl |= CURSOR_MODE_DISABLE;
 		}
 		I915_WRITE(CURCNTR(pipe), cntl);
-
 		intel_crtc->cursor_visible = visible;
 	}
 	/* and commit changes on next vblank */
@@ -5552,23 +5561,20 @@ static int intel_crtc_cursor_set(struct drm_crtc *crtc,
 		mutex_lock(&dev->struct_mutex);
 		goto finish;
 	}
-
-	/* Currently we only support 64x64 cursors */
-	if (width != 64 || height != 64) {
-		DRM_ERROR("we currently only support 64x64 cursors\n");
+	/* Check for which cursor types we support */
+	if (width > 256 && height > 256) {
+		DRM_ERROR("only supports 64, 128, 256 cursor mode\n");
 		return -EINVAL;
 	}
-
 	obj = to_intel_bo(drm_gem_object_lookup(dev, file, handle));
 	if (&obj->base == NULL)
 		return -ENOENT;
-
 	if (obj->base.size < width * height * 4) {
-		DRM_ERROR("buffer is to small\n");
+		DRM_ERROR("buffer is to small %d needs to be bigger than %d\n",\
+				obj->base.size, width * height * 4);
 		ret = -ENOMEM;
 		goto fail;
 	}
-
 	/* we only need to pin inside GTT if cursor is non-phy */
 	mutex_lock(&dev->struct_mutex);
 	if (!dev_priv->info->cursor_needs_physical) {
