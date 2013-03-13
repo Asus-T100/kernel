@@ -48,7 +48,6 @@
 #include "io.h"
 
 struct dwc3;
-int dwc3_core_init(struct dwc3 *dwc);
 #define to_dwc3_ep(ep)		(container_of(ep, struct dwc3_ep, endpoint))
 #define gadget_to_dwc(g)	(container_of(g, struct dwc3, gadget))
 
@@ -120,7 +119,7 @@ int dwc3_send_gadget_generic_command(struct dwc3 *dwc, int cmd, u32 param);
 int dwc3_send_gadget_cmd(struct dwc3 *dwc, unsigned cmd, unsigned param);
 void dwc3_gadget_run_stop(struct dwc3 *dwc, int is_on);
 void dwc3_gadget_keep_conn(struct dwc3 *dwc, int is_on);
-int __devinit dwc3_core_init(struct dwc3 *dwc);
+int dwc3_core_init(struct dwc3 *dwc);
 
 #ifdef CONFIG_PM_RUNTIME
 int dwc3_runtime_suspend(struct device *device);
