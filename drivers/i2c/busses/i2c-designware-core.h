@@ -176,6 +176,13 @@
 #define MERR_HS_SCLK_HCNT 0x8
 #define MERR_HS_SCLK_LCNT 0x20
 
+#define VLV2_SS_SCLK_HCNT 0x214
+#define VLV2_SS_SCLK_LCNT 0x272
+#define VLV2_FS_SCLK_HCNT 0x50
+#define VLV2_FS_SCLK_LCNT 0xad
+#define VLV2_HS_SCLK_HCNT 0x6
+#define VLV2_HS_SCLK_LCNT 0x16
+
 /**
  * struct dw_i2c_dev - private i2c-designware data
  * @dev: driver model device node
