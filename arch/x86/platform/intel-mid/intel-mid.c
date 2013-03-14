@@ -435,9 +435,10 @@ void __init x86_intel_mid_early_setup(void)
 	legacy_pic = &null_legacy_pic;
 
 	pm_power_off = intel_mid_power_off;
+#ifndef CONFIG_INTEL_MID_OSNIB_ILB
 	machine_ops.restart = intel_mid_reboot;
 	machine_ops.emergency_restart  = intel_mid_emergency_reboot;
-
+#endif
 	/* Avoid searching for BIOS MP tables */
 	x86_init.mpparse.find_smp_config = x86_init_noop;
 	x86_init.mpparse.get_smp_config = x86_init_uint_noop;
