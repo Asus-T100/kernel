@@ -99,6 +99,7 @@ obj-$(CONFIG_VIDEO_MT9V113)  += mt9v113.o
 CFFLAGS_mt9v113.o = -Werror
 obj-$(CONFIG_VIDEO_OV5640)  += ov5640.o
 CFFLAGS_ov5640.o = -Werror
+obj-$(CONFIG_VIDEO_S5K8AAY)	+= s5k8aay.o
 
 obj-$(CONFIG_VIDEO_SMIAPP_PLL)	+= smiapp-pll.o
 
