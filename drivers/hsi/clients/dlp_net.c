@@ -158,12 +158,12 @@ static void dlp_net_complete_tx(struct hsi_msg *pdu)
 	struct dlp_net_context *net_ctx = ch_ctx->ch_data;
 	struct dlp_xfer_ctx *xfer_ctx = &ch_ctx->tx;
 
+	/* Update statistics */
+	net_ctx->ndev->stats.tx_bytes += msg_param->skb->len;
+	net_ctx->ndev->stats.tx_packets++;
+
 	/* TX done, free the skb */
 	dev_kfree_skb(msg_param->skb);
-
-	/* Update statistics */
-	net_ctx->ndev->stats.tx_bytes += pdu->actual_len;
-	net_ctx->ndev->stats.tx_packets++;
 
 	/* Free the pdu */
 	dlp_pdu_free(pdu, -1);
@@ -274,11 +274,8 @@ static void dlp_net_complete_rx(struct hsi_msg *pdu)
 
 		/* Update statistics */
 		if (ret) {
-			pr_warn(DRVNAME ": packet dropped\n");
+			pr_warn(DRVNAME ": IP Packet dropped\n");
 			net_ctx->ndev->stats.rx_dropped++;
-
-			/* Free the allocated skb */
-			/* FIXME : to be freed ???? */
 		} else {
 			net_ctx->ndev->stats.rx_bytes += data_size;
 			net_ctx->ndev->stats.rx_packets++;
@@ -698,8 +695,14 @@ void dlp_net_tx_timeout(struct net_device *dev)
  */
 int dlp_net_change_mtu(struct net_device *dev, int new_mtu)
 {
-	int ret = -EPERM;
-	return ret;
+	/* Should not exceed the PDU size */
+	if (new_mtu > DLP_NET_TX_PDU_SIZE) {
+		pr_err(DRVNAME ": Invalid MTU size (%d)\n", new_mtu);
+		return -EINVAL;
+	}
+
+	dev->mtu = new_mtu;
+	return 0;
 }
 
 static const struct net_device_ops dlp_net_netdev_ops = {
@@ -719,12 +722,8 @@ void dlp_net_dev_setup(struct net_device *dev)
 {
 	dev->netdev_ops = &dlp_net_netdev_ops;
 	dev->watchdog_timeo = DLP_NET_TX_DELAY;
-
-	/* fill in the other fields */
-	/*  dev->features = NETIF_F_SG | NETIF_F_NO_CSUM; FIXME: wget is KO */
-
 	dev->type = ARPHRD_NONE;
-	dev->mtu = DLP_NET_TX_PDU_SIZE;	/* FIXME: check wget crash */
+	dev->mtu = ETH_DATA_LEN;
 	dev->tx_queue_len = 10;
 	dev->flags = IFF_POINTOPOINT | IFF_NOARP | IFF_MULTICAST;
 }
