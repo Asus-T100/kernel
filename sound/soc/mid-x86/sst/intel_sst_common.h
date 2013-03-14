@@ -734,7 +734,7 @@ static inline void sst_init_stream(struct stream_info *stream,
  */
 static inline int sst_validate_strid(int str_id)
 {
-	if (str_id <= 0 || str_id > sst_drv_ctx->info.max_streams) {
+	if (str_id <= 0 || str_id >= sst_drv_ctx->info.max_streams) {
 		pr_err("SST ERR: invalid stream id : %d, max %d\n",
 					str_id, sst_drv_ctx->info.max_streams);
 		return -EINVAL;
@@ -765,7 +765,7 @@ static inline u32 sst_reg_read(void __iomem *addr, int offset)
 
 static inline u64 sst_reg_read64(void __iomem *addr, int offset)
 {
-	u64 val;
+	u64 val = 0;
 
 	memcpy_fromio(&val, addr + offset, sizeof(val));
 
