@@ -1520,7 +1520,7 @@ static void set_chip_config(struct max17042_chip *chip)
 	dev_info(&chip->client->dev, "Status reg: %x\n", val);
 	if (!fg_conf_data->config_init || (val & STATUS_POR_BIT)) {
 		dev_info(&chip->client->dev, "Config data should be loaded\n");
-#ifdef CONFIG_BOARD_REDRIDGE
+#if defined(CONFIG_BOARD_REDRIDGE) || defined(CONFIG_BOARD_CTP)
 		reset_max17042(chip);
 #endif
 		retval = init_max17042_chip(chip);
