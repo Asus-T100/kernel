@@ -153,7 +153,6 @@
 
 #define I2C_RETRY_COUNT		5
 #define MSG_LEN_OFFSET		2
-#define MAX_FMTS		1
 
 /* Supported resolutions */
 enum {
