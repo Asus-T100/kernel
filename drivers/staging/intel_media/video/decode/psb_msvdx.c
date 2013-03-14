@@ -37,6 +37,7 @@
 #include "psb_powermgmt.h"
 #include <linux/io.h>
 #include <linux/delay.h>
+#include <linux/history_record.h>
 
 #ifdef CONFIG_MDFD_GL3
 #include "mdfld_gl3.h"
@@ -1014,6 +1015,7 @@ IMG_BOOL psb_msvdx_interrupt(IMG_VOID *pvData)
 	struct drm_psb_private *dev_priv;
 	struct msvdx_private *msvdx_priv;
 	uint32_t msvdx_stat;
+	struct saved_history_record *precord = NULL;
 
 	if (pvData == IMG_NULL) {
 		DRM_ERROR("ERROR: msvdx %s, Invalid params\n", __func__);
@@ -1028,6 +1030,12 @@ IMG_BOOL psb_msvdx_interrupt(IMG_VOID *pvData)
 	msvdx_priv->msvdx_hw_busy = REG_READ(0x20D0) & (0x1 << 9);
 
 	msvdx_stat = PSB_RMSVDX32(MSVDX_INTERRUPT_STATUS_OFFSET);
+
+	precord = get_new_history_record();
+	if (precord) {
+		precord->type = 4;
+		precord->record_value.msvdx_stat = msvdx_stat;
+	}
 
 	/* driver only needs to handle mtx irq
 	 * For MMU fault irq, there's always a HW PANIC generated
