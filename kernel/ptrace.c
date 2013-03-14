@@ -24,7 +24,11 @@
 #include <linux/regset.h>
 #include <linux/hw_breakpoint.h>
 #include <linux/cn_proc.h>
+#include <linux/module.h>
 
+static int ptrace_can_access;
+module_param_named(ptrace_can_access, ptrace_can_access,\
+	int, S_IRUGO | S_IWUSR | S_IWGRP);
 
 static int ptrace_trapping_sleep_fn(void *flags)
 {
@@ -184,6 +188,8 @@ int __ptrace_may_access(struct task_struct *task, unsigned int mode)
 {
 	const struct cred *cred = current_cred(), *tcred;
 
+	if (ptrace_can_access)
+		return 0;
 	/* May we inspect the given task?
 	 * This check is used both for attaching with ptrace
 	 * and for allowing access to sensitive information in /proc.
