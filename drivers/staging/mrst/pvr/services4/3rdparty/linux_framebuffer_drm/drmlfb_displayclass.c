@@ -395,10 +395,6 @@ static IMG_BOOL MRSTLFBFlipContexts(MRSTLFB_DEVINFO *psDevInfo,
 		}
 	}
 
-	/* increase overlay_fliped to match up with overlay_wait after flip */
-	if (psContexts->active_overlays != 0)
-		dev_priv->overlay_fliped++;
-
 	if (!psDevInfo->bScreenState) {
 		if (mdfld_dsi_dsr_update_panel_fb(dev_priv->dsi_configs[0])) {
 			DRM_DEBUG("mdfld_dsi_dsr: failed to update panel fb\n");
@@ -1648,9 +1644,7 @@ static IMG_BOOL bIllegalFlipContexts(IMG_VOID *pvData)
 		}
 	}
 
-	/* handle overlay_fliped when contexts are illegal */
-	if (bIllegal && psContexts->active_overlays != 0)
-		dev_priv->overlay_fliped++;
+
 
 	/* if all contexts are illegal, should not do flush */
 	return bIllegal;

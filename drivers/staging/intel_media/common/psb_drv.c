@@ -1459,8 +1459,6 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	mutex_init(&dev_priv->overlay_lock);
 	mutex_init(&dev_priv->vsync_lock);
 
-	dev_priv->overlay_wait = 0;
-	dev_priv->overlay_fliped = 0;
 
 	spin_lock_init(&dev_priv->reloc_lock);
 
@@ -2900,27 +2898,8 @@ static void wait_for_pipeb_finish(struct drm_device *dev,
 /*wait for ovadd flip complete*/
 static void overlay_wait_flip(struct drm_device *dev)
 {
-	int retry;
+	int retry = 60;
 	struct drm_psb_private *dev_priv = psb_priv(dev);
-	/*
-	 * make sure OVADD write complete in ProcessFlip
-	 */
-	dev_priv->overlay_wait++;
-
-	retry = 300;
-	while (--retry) {
-		if (dev_priv->overlay_wait == dev_priv->overlay_fliped)
-			break;
-		usleep_range(50, 100);
-	}
-
-	if (!retry) {
-		/* reset to 0 when timeout happens */
-		dev_priv->overlay_wait = 0;
-		dev_priv->overlay_fliped = 0;
-		DRM_DEBUG("wait OVADD flip timeout!\n");
-	}
-
 	/**
 	 * make sure overlay command buffer
 	 * was copied before updating the system
@@ -2931,7 +2910,6 @@ static void overlay_wait_flip(struct drm_device *dev)
 		goto fliped;
 	usleep_range(6000, 12000);
 
-	retry = 60;
 	while (--retry) {
 		if (BIT31 & PSB_RVDC32(OV_DOVASTA))
 			break;
@@ -2940,7 +2918,7 @@ static void overlay_wait_flip(struct drm_device *dev)
 
 fliped:
 	if (!retry)
-		DRM_DEBUG("OVADD flip timeout!\n");
+		DRM_ERROR("OVADD flip timeout!\n");
 }
 
 /*wait for vblank*/
