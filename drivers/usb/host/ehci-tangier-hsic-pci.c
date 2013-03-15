@@ -64,7 +64,32 @@ static void ehci_hsic_port_power(struct ehci_hcd *ehci, int is_on)
 				port--, NULL, 0);
 	/* Flush those writes */
 	ehci_readl(ehci, &ehci->regs->command);
-	usleep_range(1000, 1200);
+}
+
+static void ehci_hsic_phy_power(struct ehci_hcd *ehci, int is_low_power)
+{
+	unsigned port;
+
+	port = HCS_N_PORTS(ehci->hcs_params);
+	while (port--) {
+		u32 __iomem	*hostpc_reg;
+		u32		t3;
+
+		hostpc_reg = (u32 __iomem *)((u8 *) ehci->regs
+				+ HOSTPC0 + 4 * port);
+		t3 = ehci_readl(ehci, hostpc_reg);
+		ehci_dbg(ehci, "Port %d phy low-power mode org %08x\n",
+				port, t3);
+
+		if (is_low_power)
+			ehci_writel(ehci, t3 | HOSTPC_PHCD, hostpc_reg);
+		else
+			ehci_writel(ehci, t3 & ~HOSTPC_PHCD, hostpc_reg);
+
+		t3 = ehci_readl(ehci, hostpc_reg);
+		ehci_dbg(ehci, "Port %d phy low-power mode chg %08x\n",
+				port, t3);
+	}
 }
 
 /* Init HSIC AUX GPIO */
@@ -903,6 +928,8 @@ static int ehci_hsic_probe(struct pci_dev *pdev,
 	if (retval != 0)
 		goto unmap_registers;
 	dev_set_drvdata(&pdev->dev, hcd);
+	/* Clear phy low power mode, enable phy clock */
+	ehci_hsic_phy_power(ehci, 0);
 
 	if (pci_dev_run_wake(pdev))
 		pm_runtime_put_noidle(&pdev->dev);
@@ -968,6 +995,8 @@ static void ehci_hsic_remove(struct pci_dev *pdev)
 
 	usb_remove_hcd(hcd);
 	ehci_hsic_port_power(ehci, 0);
+	/* Set phy low power mode, disable phy clock */
+	ehci_hsic_phy_power(ehci, 1);
 
 	if (hcd->driver->flags & HCD_MEMORY) {
 		iounmap(hcd->regs);
