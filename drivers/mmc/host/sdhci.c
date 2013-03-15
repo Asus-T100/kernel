@@ -2014,7 +2014,7 @@ static int sdhci_do_start_signal_voltage_switch(struct sdhci_host *host,
 }
 
 static int sdhci_start_signal_voltage_switch(struct mmc_host *mmc,
-	struct mmc_ios *ios)
+	struct mmc_ios *ios, bool cmd11)
 {
 	struct sdhci_host *host = mmc_priv(mmc);
 	int err;
@@ -2022,7 +2022,7 @@ static int sdhci_start_signal_voltage_switch(struct mmc_host *mmc,
 	if (host->version < SDHCI_SPEC_300)
 		return 0;
 	sdhci_runtime_pm_get(host);
-	err = sdhci_do_start_signal_voltage_switch(host, ios, true);
+	err = sdhci_do_start_signal_voltage_switch(host, ios, cmd11);
 	sdhci_runtime_pm_put(host);
 	return err;
 }

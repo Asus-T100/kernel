@@ -1297,7 +1297,8 @@ int mmc_set_signal_voltage(struct mmc_host *host, int signal_voltage, bool cmd11
 
 	if (host->ops->start_signal_voltage_switch) {
 		mmc_host_clk_hold(host);
-		err = host->ops->start_signal_voltage_switch(host, &host->ios);
+		err = host->ops->start_signal_voltage_switch(host, &host->ios,
+				cmd11);
 		mmc_host_clk_release(host);
 	}
 
