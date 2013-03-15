@@ -16,5 +16,13 @@ config ISP2400
 	depends on VIDEO_ATOMISP
 
 	 ---help---
-	  Say Y here if your platform support camera imaging subsystem 2400b0 on
+	  Say Y here if your platform support camera imaging subsystem 2400a0 on
 	  the Intel Atom SoC platform.
+config ISP2400B0
+	tristate "Intel Atom Image Signal Processor ISP2400B0 driver"
+	depends on VIDEO_V4L2
+	depends on VIDEO_ATOMISP
+
+	---help---
+	 Say Y here if your platform support camera imaging subsystem 2400b0 on
+	 the Intel Atom SoC platform.

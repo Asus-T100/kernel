@@ -923,6 +923,12 @@ load_firmware(struct device *dev)
 	int rc;
 	char *fw_path = IS_ISP2400 ? ISP2400_FW_PATH : MFLD_FW_PATH;
 
+	/*
+	 * FIXME: BYT uses css2400B0 firmware
+	 */
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2)
+		fw_path = ISP2400B0_FW_PATH;
+
 	rc = request_firmware(&fw, fw_path, dev);
 	if (rc) {
 		if (rc == -ENOENT)

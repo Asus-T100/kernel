@@ -541,7 +541,7 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 	if (irq_infos & SH_CSS_IRQ_INFO_BUFFER_DONE)
 		atomic_set(&isp->sequence, atomic_read(&isp->sequence_temp));
 
-#ifdef CONFIG_ISP2400
+#if defined(CONFIG_ISP2400) || defined(CONFIG_ISP2400B0)
 	if ((irq_infos & SH_CSS_IRQ_INFO_INPUT_SYSTEM_ERROR) ||
 		(irq_infos & SH_CSS_IRQ_INFO_IF_ERROR)) {
 #else
