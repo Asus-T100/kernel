@@ -1321,8 +1321,11 @@ static int imx_detect(struct i2c_client *client, u16 *id, u8 *revision)
 		v4l2_err(client, "sensor_id = 0x%x\n", *id);
 		return -ENODEV;
 	}
-	if (*id == IMX175_ID)
+	if (*id == IMX175_ID) {
+		if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2)
+			*id = IMX175_ID0;
 		goto found;
+	}
 
 	/* check sensor chip ID	 */
 	if (imx_read_reg(client, IMX_16BIT, IMX135_CHIP_ID, id)) {

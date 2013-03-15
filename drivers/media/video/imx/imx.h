@@ -92,6 +92,8 @@
 
 #define IMX_NAME	"imx175"
 #define IMX175_ID	0x0175
+/* imx175 - use dw9714 vcm */
+#define IMX175_ID0	0x0176
 #define IMX135_ID	0x0135
 #define IMX_ID_DEFAULT	0x0000
 #define IMX175_CHIP_ID	0x0000
@@ -157,6 +159,10 @@ struct max_res imx_max_res[] = {
 		.res_max_width = IMX175_RES_WIDTH_MAX,
 		.res_max_height = IMX175_RES_HEIGHT_MAX,
 	},
+	[IMX175_ID0] = {
+		.res_max_width = IMX175_RES_WIDTH_MAX,
+		.res_max_height = IMX175_RES_HEIGHT_MAX,
+	},
 	[IMX135_ID] = {
 		.res_max_width = IMX135_RES_WIDTH_MAX,
 		.res_max_height = IMX135_RES_HEIGHT_MAX,
@@ -175,6 +181,15 @@ struct imx_settings {
 
 struct imx_settings imx_sets[] = {
 	[IMX175_ID] = {
+		.init_settings = imx175_init_settings,
+		.res_preview = imx175_res_preview,
+		.res_still = imx175_res_still,
+		.res_video = imx175_res_video,
+		.n_res_preview = ARRAY_SIZE(imx175_res_preview),
+		.n_res_still = ARRAY_SIZE(imx175_res_still),
+		.n_res_video = ARRAY_SIZE(imx175_res_video),
+	},
+	[IMX175_ID0] = {
 		.init_settings = imx175_init_settings,
 		.res_preview = imx175_res_preview,
 		.res_still = imx175_res_still,
@@ -407,6 +422,18 @@ extern int drv201_q_focus_abs(struct v4l2_subdev *sd, s32 *value);
 extern int drv201_t_vcm_slew(struct v4l2_subdev *sd, s32 value);
 extern int drv201_t_vcm_timing(struct v4l2_subdev *sd, s32 value);
 
+extern int dw9714_vcm_power_up(struct v4l2_subdev *sd);
+extern int dw9714_vcm_power_down(struct v4l2_subdev *sd);
+extern int dw9714_vcm_init(struct v4l2_subdev *sd);
+
+extern int dw9714_t_focus_vcm(struct v4l2_subdev *sd, u16 val);
+extern int dw9714_t_focus_abs(struct v4l2_subdev *sd, s32 value);
+extern int dw9714_t_focus_rel(struct v4l2_subdev *sd, s32 value);
+extern int dw9714_q_focus_status(struct v4l2_subdev *sd, s32 *value);
+extern int dw9714_q_focus_abs(struct v4l2_subdev *sd, s32 *value);
+extern int dw9714_t_vcm_slew(struct v4l2_subdev *sd, s32 value);
+extern int dw9714_t_vcm_timing(struct v4l2_subdev *sd, s32 value);
+
 extern int vcm_power_up(struct v4l2_subdev *sd);
 extern int vcm_power_down(struct v4l2_subdev *sd);
 
@@ -422,6 +449,18 @@ struct imx_vcm imx_vcms[] = {
 		.q_focus_abs = drv201_q_focus_abs,
 		.t_vcm_slew = drv201_t_vcm_slew,
 		.t_vcm_timing = drv201_t_vcm_timing,
+	},
+	[IMX175_ID0] = {
+		.power_up = dw9714_vcm_power_up,
+		.power_down = dw9714_vcm_power_down,
+		.init = dw9714_vcm_init,
+		.t_focus_vcm = dw9714_t_focus_vcm,
+		.t_focus_abs = dw9714_t_focus_abs,
+		.t_focus_rel = dw9714_t_focus_rel,
+		.q_focus_status = dw9714_q_focus_status,
+		.q_focus_abs = dw9714_q_focus_abs,
+		.t_vcm_slew = dw9714_t_vcm_slew,
+		.t_vcm_timing = dw9714_t_vcm_timing,
 	},
 	[IMX135_ID] = {
 		.power_up = ad5816g_vcm_power_up,
