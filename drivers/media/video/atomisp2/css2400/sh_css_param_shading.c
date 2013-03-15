@@ -111,10 +111,9 @@ crop_and_interpolate(unsigned int cropped_width,
 		     unsigned int left_padding,
 		     unsigned int right_padding,
 		     const struct sh_css_shading_table *in_table,
-		     struct sh_css_shading_table_isp *out_table,
-		     enum sh_css_sc_color color)
+		     struct sh_css_shading_table_isp *out_table)
 {
-	unsigned int l, x,
+	unsigned int c, l, x,
 		     sensor_width  = in_table->sensor_width,
 		     sensor_height = in_table->sensor_height,
 		     table_width   = in_table->width,
@@ -126,7 +125,6 @@ crop_and_interpolate(unsigned int cropped_width,
 		     padded_width;
 	int out_start_col, /* can be negative to indicate padded space */
 	    table_cell_w;
-	unsigned short *in_ptr = in_table->data[color];
 
 	padded_width = cropped_width + left_padding + right_padding;
 	out_cell_size = CEIL_DIV(padded_width, out_table->width - 1);
@@ -205,22 +203,23 @@ crop_and_interpolate(unsigned int cropped_width,
 				divx = 1;
 			}
 
-			/* get source pixel values */
-			s_ul = in_ptr[(table_width*src_y0)+src_x0];
-			s_ur = in_ptr[(table_width*src_y0)+src_x1];
-			s_ll = in_ptr[(table_width*src_y1)+src_x0];
-			s_lr = in_ptr[(table_width*src_y1)+src_x1];
+			for (c = 0; c < SH_CSS_SC_NUM_COLORS; c++) {
+				/* get source pixel values */
+				s_ul = in_table->data[c]
+						[(table_width*src_y0)+src_x0];
+				s_ur = in_table->data[c]
+						[(table_width*src_y0)+src_x1];
+				s_ll = in_table->data[c]
+						[(table_width*src_y1)+src_x0];
+				s_lr = in_table->data[c]
+					[(table_width*src_y1)+src_x1];
 
-			*sh_table_entry(out_table, color, l, x) =
-					(dx0*dy0*s_lr +
-					dx0*dy1*s_ur +
-					dx1*dy0*s_ll +
-					dx1*dy1*s_ul) / (divx*divy);
-		}
-
-		/* Force padding data to zeros */
-		for ( ; x < out_table->stride; x++) {
-			*sh_table_entry(out_table, color, l, x) = 0;
+				*sh_table_entry(out_table, c, l, x) =
+						(dx0*dy0*s_lr +
+						dx0*dy1*s_ur +
+						dx1*dy0*s_ll +
+						dx1*dy1*s_ul) / (divx*divy);
+			}
 		}
 	}
 }
@@ -283,8 +282,8 @@ sh_css_param_shading_table_prepare(const struct sh_css_shading_table *in_table,
 		     table_stride,
 		     table_height,
 		     left_padding,
-		     right_padding,
-		     c;
+		     right_padding;
+
 	struct sh_css_shading_table_isp *result;
 
 	if (!in_table) {
@@ -349,15 +348,13 @@ sh_css_param_shading_table_prepare(const struct sh_css_shading_table *in_table,
 		return;
 	}
 
-	/* now we crop the original shading table and then interpolate to the
-	   requested resolution and decimation factor. */
-	for (c = 0; c < SH_CSS_SC_NUM_COLORS; c++) {
-		crop_and_interpolate(input_width, input_height,
-				     left_padding, right_padding,
-				     in_table,
-				     result, c);
-	}
+	crop_and_interpolate(input_width, input_height,
+			     left_padding, right_padding,
+			     in_table,
+			     result);
+
 	*target_table = result;
+
 }
 
 void
