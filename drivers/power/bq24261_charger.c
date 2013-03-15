@@ -42,7 +42,12 @@
 
 #include <asm/intel_scu_ipc.h>
 #include <linux/usb/dwc_otg3.h>
+
 #define DEV_NAME "bq24261_charger"
+#define DEV_MANUFACTURER "TI"
+#define MODEL_NAME_SIZE 8
+#define DEV_MANUFACTURER_NAME_SIZE 4
+
 #define CHRG_TERM_WORKER_DELAY (30 * HZ)
 
 /* BQ24261 registers */
@@ -120,6 +125,7 @@
 #define BQ24261_VENDOR			(0x02 << 5)
 #define BQ24261_REV_MASK		(0x07)
 #define BQ24261_REV			(0x02)
+#define BQ24260_REV			(0x01)
 
 #define BQ24261_TS_MASK			(0x01 << 3)
 #define BQ24261_TS_ENABLED		(0x01 << 3)
@@ -255,6 +261,8 @@ static enum power_supply_property bq24261_usb_props[] = {
 	POWER_SUPPLY_PROP_CABLE_TYPE,
 	POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT,
 	POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT_MAX,
+	POWER_SUPPLY_PROP_MODEL_NAME,
+	POWER_SUPPLY_PROP_MANUFACTURER
 };
 
 enum bq24261_chrgr_stat {
@@ -304,6 +312,23 @@ struct bq24261_charger {
 	bool is_vsys_on;
 	bool boost_mode;
 	bool is_hw_chrg_term;
+	char model_name[MODEL_NAME_SIZE];
+	char manufacturer[DEV_MANUFACTURER_NAME_SIZE];
+};
+
+enum bq2426x_model_num {
+	BQ24260 = 0,
+	BQ24261,
+};
+
+struct bq2426x_model {
+	char model_name[MODEL_NAME_SIZE];
+	enum bq2426x_model_num model;
+};
+
+static struct bq2426x_model bq24261_model_name[] = {
+	{ "bq24260", BQ24260 },
+	{ "bq24261", BQ24261 },
 };
 
 struct i2c_client *bq24261_client;
@@ -963,6 +988,12 @@ static int bq24261_usb_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT_MAX:
 		val->intval = chip->pdata->num_throttle_states;
 		break;
+	case POWER_SUPPLY_PROP_MODEL_NAME:
+		val->strval = chip->model_name;
+		break;
+	case POWER_SUPPLY_PROP_MANUFACTURER:
+		val->strval = chip->manufacturer;
+		break;
 	default:
 		mutex_unlock(&chip->lock);
 		return -EINVAL;
@@ -1378,12 +1409,25 @@ static inline int register_otg_notifications(struct bq24261_charger *chip)
 	return 0;
 }
 
+static enum bq2426x_model_num bq24261_get_model(int bq24261_rev_reg)
+{
+	switch (bq24261_rev_reg & BQ24261_REV_MASK) {
+	case BQ24260_REV:
+		return BQ24260;
+	case BQ24261_REV:
+		return BQ24261;
+	default:
+		return -EINVAL;
+	}
+}
+
 static int bq24261_probe(struct i2c_client *client,
 			 const struct i2c_device_id *id)
 {
 	struct i2c_adapter *adapter;
 	struct bq24261_charger *chip;
 	int ret;
+	enum bq2426x_model_num bq24261_rev;
 
 	adapter = to_i2c_adapter(client->dev.parent);
 
@@ -1406,8 +1450,9 @@ static int bq24261_probe(struct i2c_client *client,
 		return ret;
 	}
 
+	bq24261_rev = bq24261_get_model(ret);
 	if (((ret & BQ24261_VENDOR_MASK) != BQ24261_VENDOR) ||
-	    ((ret & BQ24261_REV_MASK) != BQ24261_REV)) {
+		(bq24261_rev < 0)) {
 		dev_err(&client->dev,
 			"Invalid Vendor/Revision number in BQ24261_VENDOR_REV_ADDR: %d",
 			ret);
@@ -1450,6 +1495,12 @@ static int bq24261_probe(struct i2c_client *client,
 	chip->chrgr_stat = BQ24261_CHRGR_STAT_UNKNOWN;
 	chip->chrgr_health = POWER_SUPPLY_HEALTH_UNKNOWN;
 	chip->bat_health = POWER_SUPPLY_HEALTH_GOOD;
+
+	strncpy(chip->model_name,
+		bq24261_model_name[bq24261_rev].model_name,
+		MODEL_NAME_SIZE);
+	strncpy(chip->manufacturer, DEV_MANUFACTURER,
+		DEV_MANUFACTURER_NAME_SIZE);
 
 	mutex_init(&chip->lock);
 	ret = power_supply_register(&client->dev, &chip->psy_usb);
