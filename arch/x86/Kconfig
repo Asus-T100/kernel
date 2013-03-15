@@ -392,6 +392,12 @@ config X86_UV
 # Following is an alphabetically sorted list of 32 bit extended platforms
 # Please maintain the alphabetic order if and when there are additions
 
+config INTEL_ATOM_SOC_DUMP
+	tristate "Intel Atom SoC register dump debugfs interface"
+	default n
+	---help---
+	   Select for the Intel Atom SoC register dump debugfs interface.
+
 config X86_INTEL_CE
 	bool "CE4100 TV platform"
 	depends on PCI
@@ -418,6 +424,10 @@ config X86_WANT_INTEL_MID
 
 if X86_WANT_INTEL_MID
 
+config HARDIRQS_SW_RESEND
+	bool
+	default y
+
 config X86_INTEL_MID
 	bool
 
@@ -435,12 +445,63 @@ config X86_MDFLD
 	select INTEL_SCU_IPC
 	select X86_PLATFORM_DEVICES
 	select MFD_INTEL_MSIC
+	select PINCTRL
+	select PINCTRL_INTEL_MID
 	---help---
-	  Medfield is Intel's Low Power Intel Architecture (LPIA) based Moblin
+	  Medfield is Intel's Low Power Intel Architecture (LPIA) based Mobile
 	  Internet Device(MID) platform. 
 	  Unlike standard x86 PCs, Medfield does not have many legacy devices
 	  nor standard legacy replacement devices/features. e.g. Medfield does
 	  not contain i8259, i8254, HPET, legacy BIOS, most of the io ports.
+
+config X86_MRFLD
+	bool "Merrifield MID platform"
+	depends on PCI
+	depends on PCI_GOANY
+	depends on X86_IO_APIC
+	select X86_INTEL_MID
+	select SFI
+	select INTEL_SCU_IPC
+	select X86_PLATFORM_DEVICES
+	---help---
+	  Merrifield is Intel's Low Power Intel Architecture (LPIA) based Mobile
+	  Internet Device(MID) platform.
+	  Unlike Medfield or Clovertrail, Merrifield does have many legacy devices supported
+	  by the iLB unit. That includes i8259, i8254, HPET, ACPI, and RTC.
+
+choice
+	prompt "Intel MID board type"
+	depends on X86_INTEL_MID
+	---help---
+	  This option is used for selecting the board configuration of
+	  Intel mobile devices.
+	  You should select the board name that matches your hardware
+          configuration.
+#
+# Board-Blackbay
+#
+
+config BOARD_MFLD_BLACKBAY
+	bool "Medfield board type"
+	depends on X86_MDFLD
+	---help---
+	  Medfield based board configuration.Say yes here
+	  if your device falls under blackbay board
+	  type.Devices like PR2/PR3 falls under this
+	  category.
+
+config BOARD_CTP
+	bool "Clovertrail board type"
+	depends on X86_MDFLD
+	default n
+	---help---
+	  Clovertrail board type is special.
+	  We use Medfield Soc file for Clovertrail but define a new
+	  board file for Clovertrail. That's because Clovertrail Soc
+	  shares all the codes with Medfield except the board file(i.e.
+	  only platform devices and platform device data are different)
+
+endchoice
 
 endif
 
@@ -788,6 +849,28 @@ config SCHED_MC
 	  Multi-core scheduler support improves the CPU scheduler's decision
 	  making when dealing with multi-core CPU chips at a cost of slightly
 	  increased overhead in some places. If unsure say N here.
+
+config COMPUTE_PHYSICAL_CORE_LOAD
+	bool "Compute and use the physical core load in CPUFreq governor"
+	depends on X86_HT
+	---help---
+	  Enable to compute the physical core load if HyperThreading is supported.
+	  The load value will be used in CPUFreq governor for correct frequency
+	  adjustment.
+
+	  If in doubt, say N here
+
+config COUNT_GPU_BLOCKING_TIME
+	bool "Count CPU idle time blocked by GPU as CPU active time"
+	depends on COMPUTE_PHYSICAL_CORE_LOAD
+	---help---
+	  Enable to count CPU idle time blocked by GPU as CPU active time.
+	  In some graphic workloads, CPU is blocked by GPU. When GPU is in critical
+	  path, CPUFreq governor should account the time blocked by GPU into CPU
+	  active time to predict accurate CPU frequency.
+	  If the COUNT_GPU_BLOCKING_TIME is N, it will be disabled.
+
+	  If in doubt, say N here
 
 config IRQ_TIME_ACCOUNTING
 	bool "Fine granularity task level IRQ time accounting"
@@ -1886,6 +1969,33 @@ source "drivers/cpuidle/Kconfig"
 
 source "drivers/idle/Kconfig"
 
+config ATOM_SOC_POWER
+	def_bool y
+	depends on INTEL_ATOM_MDFLD_POWER || INTEL_ATOM_CLV_POWER || INTEL_ATOM_MRFLD_POWER
+
+config INTEL_ATOM_MDFLD_POWER
+	bool "Power Management driver for Intel medfield platform"
+	depends on PCI && CPU_IDLE && PM_RUNTIME && PM_SLEEP && X86_MDFLD
+	select ATOM_SOC_POWER
+	---help---
+	  Power management driver for medfield Platform.
+	  If you don't know what to do here, say N.
+
+config INTEL_ATOM_CLV_POWER
+	bool "Power Management driver for Intel cloverview platform"
+	depends on PCI && CPU_IDLE && PM_RUNTIME && PM_SLEEP && X86_MDFLD
+	select ATOM_SOC_POWER
+	---help---
+	  Power management driver for cloverview Platform.
+	  If you don't know what to do here, say N.
+
+config INTEL_ATOM_MRFLD_POWER
+	bool "Power Management driver for Intel merrifield platform"
+	depends on PCI && CPU_IDLE && PM_RUNTIME && PM_SLEEP && X86_MRFLD
+	select ATOM_SOC_POWER
+	---help---
+	  Power management driver for merrifield Platform.
+	  If you don't know what to do here, say N.
 endmenu
 
 

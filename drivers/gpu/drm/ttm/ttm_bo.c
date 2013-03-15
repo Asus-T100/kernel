@@ -343,6 +343,16 @@ static int ttm_bo_add_ttm(struct ttm_buffer_object *bo, bool zero_alloc)
 		if (unlikely(bo->ttm == NULL))
 			ret = -ENOMEM;
 		break;
+	case ttm_bo_type_sg:
+		bo->ttm = bdev->driver->ttm_tt_create(bdev, bo->num_pages << PAGE_SHIFT,
+						      page_flags | TTM_PAGE_FLAG_SG,
+						      glob->dummy_read_page);
+		if (unlikely(bo->ttm == NULL)) {
+			ret = -ENOMEM;
+			break;
+		}
+		bo->ttm->sg = bo->sg;
+		break;
 	default:
 		pr_err("Illegal buffer object type\n");
 		ret = -EINVAL;
@@ -379,8 +389,7 @@ static int ttm_bo_handle_move_mem(struct ttm_buffer_object *bo,
 
 	if (!(new_man->flags & TTM_MEMTYPE_FLAG_FIXED)) {
 		if (bo->ttm == NULL) {
-			bool zero = !(old_man->flags & TTM_MEMTYPE_FLAG_FIXED);
-			ret = ttm_bo_add_ttm(bo, zero);
+			ret = ttm_bo_add_ttm(bo, false);
 			if (ret)
 				goto out_err;
 		}
@@ -1169,6 +1178,7 @@ int ttm_bo_init(struct ttm_bo_device *bdev,
 		bool interruptible,
 		struct file *persistent_swap_storage,
 		size_t acc_size,
+		struct sg_table *sg,
 		void (*destroy) (struct ttm_buffer_object *))
 {
 	int ret = 0;
@@ -1224,6 +1234,7 @@ int ttm_bo_init(struct ttm_bo_device *bdev,
 	bo->seq_valid = false;
 	bo->persistent_swap_storage = persistent_swap_storage;
 	bo->acc_size = acc_size;
+	bo->sg = sg;
 	atomic_inc(&bo->glob->bo_count);
 
 	ret = ttm_bo_check_placement(bo, placement);
@@ -1234,7 +1245,8 @@ int ttm_bo_init(struct ttm_bo_device *bdev,
 	 * For ttm_bo_type_device buffers, allocate
 	 * address space from the device.
 	 */
-	if (bo->type == ttm_bo_type_device) {
+	if (bo->type == ttm_bo_type_device ||
+	    bo->type == ttm_bo_type_sg) {
 		ret = ttm_bo_setup_vm(bo);
 		if (ret)
 			goto out_err;
@@ -1305,7 +1317,7 @@ int ttm_bo_create(struct ttm_bo_device *bdev,
 	acc_size = ttm_bo_acc_size(bdev, size, sizeof(struct ttm_buffer_object));
 	ret = ttm_bo_init(bdev, bo, size, type, placement, page_alignment,
 				buffer_start, interruptible,
-				persistent_swap_storage, acc_size, NULL);
+			  persistent_swap_storage, acc_size, NULL, NULL);
 	if (likely(ret == 0))
 		*p_bo = bo;
 

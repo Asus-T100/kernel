@@ -31,6 +31,10 @@
 
 #include "usb.h"
 
+#ifdef CONFIG_USB_HCD_HSIC
+#include <linux/usb/ehci-tangier-hsic-pci.h>
+#endif
+
 /* if we are in debug mode, always announce new devices */
 #ifdef DEBUG
 #ifndef CONFIG_USB_ANNOUNCE_NEW_DEVICES
@@ -1333,6 +1337,7 @@ static int hub_probe(struct usb_interface *intf, const struct usb_device_id *id)
 	if (hdev->level == MAX_TOPO_LEVEL) {
 		dev_err(&intf->dev,
 			"Unsupported bus topology: hub nested too deep\n");
+		usb_notify_warning(hdev, USB_WARNING_HUB_MAX_TIER);
 		return -E2BIG;
 	}
 
@@ -1651,6 +1656,42 @@ static void hub_free_dev(struct usb_device *udev)
 		hcd->driver->free_dev(hcd, udev);
 }
 
+#ifdef CONFIG_USB_OTG
+
+static void otg_notify(struct usb_device *udev, unsigned action)
+{
+	struct usb_hcd *hcd = bus_to_hcd(udev->bus);
+
+	if (hcd->otg_notify)
+		hcd->otg_notify(udev, action);
+}
+
+#else
+
+static inline void otg_notify(struct usb_device *udev, unsigned action)
+{
+}
+
+#endif
+
+#ifdef CONFIG_USB_HCD_HSIC
+
+static void hsic_notify(struct usb_device *udev, unsigned action)
+{
+	struct usb_hcd *hcd = bus_to_hcd(udev->bus);
+
+	if (hcd->hsic_notify)
+		hcd->hsic_notify(udev, action);
+}
+
+#else
+
+static inline void hsic_notify(struct usb_device *udev, unsigned action)
+{
+}
+
+#endif
+
 /**
  * usb_disconnect - disconnect a device (usbcore-internal)
  * @pdev: pointer to device being disconnected
@@ -1704,7 +1745,7 @@ void usb_disconnect(struct usb_device **pdev)
 	 * notifier chain (used by usbfs and possibly others).
 	 */
 	device_del(&udev->dev);
-
+	otg_notify(udev, USB_DEVICE_REMOVE);
 	/* Free the device number and delete the parent's children[]
 	 * (or root_hub) pointer.
 	 */
@@ -1978,6 +2019,8 @@ int usb_new_device(struct usb_device *udev)
 	 * notifier chain (used by usbfs and possibly others).
 	 */
 	err = device_add(&udev->dev);
+	otg_notify(udev, USB_DEVICE_ADD);
+	hsic_notify(udev, USB_DEVICE_ADD);
 	if (err) {
 		dev_err(&udev->dev, "can't device_add, error %d\n", err);
 		goto fail;
@@ -2322,6 +2365,7 @@ done:
 
 	return status;
 }
+
 
 /* Check if a port is power on */
 static int port_is_power_on(struct usb_hub *hub, unsigned portstatus)

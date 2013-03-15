@@ -12,6 +12,8 @@
 #ifndef __LINUX_MFD_INTEL_MSIC_H__
 #define __LINUX_MFD_INTEL_MSIC_H__
 
+#include <asm/intel_mid_gpadc.h>
+
 /* ID */
 #define INTEL_MSIC_ID0			0x000	/* RO */
 #define INTEL_MSIC_ID1			0x001	/* RO */
@@ -51,6 +53,15 @@
 #define INTEL_MSIC_IRQLVL1MSK		0x021
 #define INTEL_MSIC_PBCONFIG		0x03e
 #define INTEL_MSIC_PBSTATUS		0x03f	/* RO */
+
+/*
+ * MSIC interrupt tree is readable from SRAM at INTEL_MSIC_IRQ_PHYS_BASE.
+ * Since IRQ block starts from address 0x002 we need to substract that from
+ * the actual IRQ status register address.
+ */
+#define MSIC_IRQ_STATUS(x)      (INTEL_MSIC_IRQ_PHYS_BASE + ((x) - 2))
+#define MSIC_IRQ_STATUS_ACCDET  MSIC_IRQ_STATUS(INTEL_MSIC_ACCDET)
+#define MSIC_IRQ_STATUS_OCAUDIO MSIC_IRQ_STATUS(INTEL_MSIC_OCAUDIO)
 
 /* GPIO */
 #define INTEL_MSIC_GPIO0LV7CTLO		0x040
@@ -383,6 +394,17 @@ struct intel_msic_gpio_pdata {
 };
 
 /**
+ * struct intel_msic_vdd_pdata - platform data for the MSIC VDD driver
+ * @msi: MSI number used for VDD interrupts
+ *
+ * The MSIC CTP driver converts @msi into an IRQ number and passes it to
+ * the VDD driver as %IORESOURCE_IRQ.
+ */
+struct intel_msic_vdd_pdata {
+	unsigned	msi;
+};
+
+/**
  * struct intel_msic_ocd_pdata - platform data for the MSIC OCD driver
  * @gpio: GPIO number used for OCD interrupts
  *
@@ -429,6 +451,7 @@ struct intel_msic_platform_data {
 	int				irq[INTEL_MSIC_BLOCK_LAST];
 	struct intel_msic_gpio_pdata	*gpio;
 	struct intel_msic_ocd_pdata	*ocd;
+	struct intel_mid_gpadc_platform_data	*gpadc;
 };
 
 struct intel_msic;

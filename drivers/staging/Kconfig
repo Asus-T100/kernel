@@ -78,6 +78,8 @@ source "drivers/staging/vme/Kconfig"
 
 source "drivers/staging/sep/Kconfig"
 
+source "drivers/staging/sep54/Kconfig"
+
 source "drivers/staging/iio/Kconfig"
 
 source "drivers/staging/zram/Kconfig"
@@ -132,4 +134,9 @@ source "drivers/staging/ramster/Kconfig"
 
 source "drivers/staging/ozwpan/Kconfig"
 
+source "drivers/staging/intel_media/Kconfig"
+
+source "drivers/staging/mrfl/Kconfig"
+
+source "drivers/staging/matrix/Kconfig"
 endif # STAGING

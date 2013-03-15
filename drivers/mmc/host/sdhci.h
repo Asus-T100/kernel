@@ -89,6 +89,7 @@
 #define  SDHCI_POWER_180	0x0A
 #define  SDHCI_POWER_300	0x0C
 #define  SDHCI_POWER_330	0x0E
+#define  SDHCI_HW_RESET		0x10
 
 #define SDHCI_BLOCK_GAP_CONTROL	0x2A
 
@@ -277,6 +278,9 @@ struct sdhci_ops {
 	void	(*hw_reset)(struct sdhci_host *host);
 	void	(*platform_suspend)(struct sdhci_host *host);
 	void	(*platform_resume)(struct sdhci_host *host);
+	int	(*power_up_host)(struct sdhci_host *host);
+	int    (*get_cd)(struct sdhci_host *host);
+	int    (*get_tuning_count)(struct sdhci_host *host);
 };
 
 #ifdef CONFIG_MMC_SDHCI_IO_ACCESSORS
@@ -375,6 +379,7 @@ static inline void *sdhci_priv(struct sdhci_host *host)
 extern void sdhci_card_detect(struct sdhci_host *host);
 extern int sdhci_add_host(struct sdhci_host *host);
 extern void sdhci_remove_host(struct sdhci_host *host, int dead);
+extern int sdhci_try_get_regulator(struct sdhci_host *host);
 
 #ifdef CONFIG_PM
 extern int sdhci_suspend_host(struct sdhci_host *host);
@@ -387,4 +392,5 @@ extern int sdhci_runtime_suspend_host(struct sdhci_host *host);
 extern int sdhci_runtime_resume_host(struct sdhci_host *host);
 #endif
 
+extern void sdhci_alloc_panic_host(struct sdhci_host *host);
 #endif /* __SDHCI_HW_H */

@@ -21,6 +21,7 @@
 #include <linux/mm_types.h>
 #include <linux/mutex.h>
 #include <linux/rbtree.h>
+#include <linux/sched.h>
 #include <linux/ion.h>
 
 struct ion_buffer *ion_handle_buffer(struct ion_handle *handle);
@@ -42,6 +43,15 @@ struct ion_buffer *ion_handle_buffer(struct ion_handle *handle);
  * @vaddr:		the kenrel mapping if kmap_cnt is not zero
  * @dmap_cnt:		number of times the buffer is mapped for dma
  * @sg_table:		the sg table for the buffer if dmap_cnt is not zero
+ * @dirty:		bitmask representing which pages of this buffer have
+ *			been dirtied by the cpu and need cache maintenance
+ *			before dma
+ * @vmas:		list of vma's mapping this buffer
+ * @handle_count:	count of handles referencing this buffer
+ * @task_comm:		taskcomm of last client to reference this buffer in a
+ *			handle, used for debugging
+ * @pid:		pid of last client to reference this buffer in a
+ *			handle, used for debugging
 */
 struct ion_buffer {
 	struct kref ref;
@@ -61,6 +71,10 @@ struct ion_buffer {
 	struct sg_table *sg_table;
 	unsigned long *dirty;
 	struct list_head vmas;
+	/* used to track orphaned buffers */
+	int handle_count;
+	char task_comm[TASK_COMM_LEN];
+	pid_t pid;
 };
 
 /**
@@ -115,6 +129,15 @@ struct ion_heap {
 	int id;
 	const char *name;
 };
+
+/**
+ * ion_buffer_fault_user_mappings - fault in user mappings of this buffer
+ * @buffer:		buffer
+ *
+ * indicates whether userspace mappings of this buffer will be faulted
+ * in, this can affect how buffers are allocated from the heap.
+ */
+bool ion_buffer_fault_user_mappings(struct ion_buffer *buffer);
 
 /**
  * ion_device_create - allocates and returns an ion device

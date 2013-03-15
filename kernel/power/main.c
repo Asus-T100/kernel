@@ -272,7 +272,11 @@ static ssize_t state_show(struct kobject *kobj, struct kobj_attribute *attr,
 static suspend_state_t decode_state(const char *buf, size_t n)
 {
 #ifdef CONFIG_SUSPEND
+#ifdef CONFIG_EARLYSUSPEND
+	suspend_state_t state = PM_SUSPEND_ON;
+#else
 	suspend_state_t state = PM_SUSPEND_STANDBY;
+#endif
 	const char * const *s;
 #endif
 	char *p;
@@ -310,8 +314,17 @@ static ssize_t state_store(struct kobject *kobj, struct kobj_attribute *attr,
 	}
 
 	state = decode_state(buf, n);
-	if (state < PM_SUSPEND_MAX)
+	if (state < PM_SUSPEND_MAX) {
+#ifdef CONFIG_EARLYSUSPEND
+		if (state == PM_SUSPEND_ON || valid_state(state)) {
+			error = 0;
+			request_suspend_state(state);
+		}
+#else
 		error = pm_suspend(state);
+#endif
+
+}
 	else if (state == PM_SUSPEND_MAX)
 		error = hibernate();
 	else
@@ -561,6 +574,7 @@ static int __init pm_init(void)
 	hibernate_image_size_init();
 	hibernate_reserved_size_init();
 	power_kobj = kobject_create_and_add("power", NULL);
+	early_suspend_init();
 	if (!power_kobj)
 		return -ENOMEM;
 	error = sysfs_create_group(power_kobj, &attr_group);

@@ -1770,9 +1770,22 @@ free_interfaces:
 		goto free_interfaces;
 	}
 
+#ifdef CONFIG_USB_PENWELL_OTG_TEST
+	if (le16_to_cpu(dev->descriptor.idVendor) == 0x1a0a &&
+		le16_to_cpu(dev->descriptor.idProduct) != 0x0200) {
+		dev_dbg(&dev->dev, "Don't send set configuration msg to test device 0x0101 - 0x0108\n");
+		ret = 0;
+	} else {
+		ret = usb_control_msg(dev, usb_sndctrlpipe(dev, 0),
+			      USB_REQ_SET_CONFIGURATION, 0, configuration, 0,
+			      NULL, 0, USB_CTRL_SET_TIMEOUT);
+	}
+#else
 	ret = usb_control_msg(dev, usb_sndctrlpipe(dev, 0),
 			      USB_REQ_SET_CONFIGURATION, 0, configuration, 0,
 			      NULL, 0, USB_CTRL_SET_TIMEOUT);
+#endif
+
 	if (ret < 0) {
 		/* All the old state is gone, so what else can we do?
 		 * The device is probably useless now anyway.

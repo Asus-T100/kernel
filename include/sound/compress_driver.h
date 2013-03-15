@@ -61,6 +61,7 @@ struct snd_compr_runtime {
 	u64 total_bytes_available;
 	u64 total_bytes_transferred;
 	wait_queue_head_t sleep;
+	void *private_data;
 };
 
 /**
@@ -109,6 +110,8 @@ struct snd_compr_ops {
 			struct snd_compr_params *params);
 	int (*get_params)(struct snd_compr_stream *stream,
 			struct snd_codec *params);
+	int (*set_metadata)(struct snd_compr_stream *stream,
+			struct snd_compr_metadata *metadata);
 	int (*trigger)(struct snd_compr_stream *stream, int cmd);
 	int (*pointer)(struct snd_compr_stream *stream,
 			struct snd_compr_tstamp *tstamp);

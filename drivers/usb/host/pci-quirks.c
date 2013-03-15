@@ -640,6 +640,8 @@ static void __devinit quirk_usb_disable_ehci(struct pci_dev *pdev)
 	if (base == NULL)
 		return;
 
+	pci_set_power_state(pdev, PCI_D0);
+
 	cap_length = readb(base);
 	op_reg_base = base + cap_length;
 
@@ -691,6 +693,9 @@ static void __devinit quirk_usb_disable_ehci(struct pci_dev *pdev)
 	writel(0x3f, op_reg_base + EHCI_USBSTS);
 
 	iounmap(base);
+
+	/* after disable ehci, put it back to correct power state */
+	pci_set_power_state(pdev, pci_choose_state(pdev, PMSG_SUSPEND));
 }
 
 /*
@@ -948,6 +953,11 @@ static void __devinit quirk_usb_early_handoff(struct pci_dev *pdev)
 	 */
 	if (pdev->vendor == 0x184e)	/* vendor Netlogic */
 		return;
+
+	/* Skip Intel Medfield SOC */
+	if (pdev->vendor == 0x8086 && pdev->device == 0x0829)
+		return;
+
 	if (pdev->class != PCI_CLASS_SERIAL_USB_UHCI &&
 			pdev->class != PCI_CLASS_SERIAL_USB_OHCI &&
 			pdev->class != PCI_CLASS_SERIAL_USB_EHCI &&
@@ -971,3 +981,24 @@ static void __devinit quirk_usb_early_handoff(struct pci_dev *pdev)
 }
 DECLARE_PCI_FIXUP_CLASS_FINAL(PCI_ANY_ID, PCI_ANY_ID,
 			PCI_CLASS_SERIAL_USB, 8, quirk_usb_early_handoff);
+
+/**
+ * This quirk is a hardware workaround. On Intel Medfield platform,
+ * EHCI hardware update FRINDEX register before update completed
+ * QH's active flag. This behavior cause EHCI driver can't find the
+ * completed QH which need to handle.
+ *
+ * Let EHCI driver to roll back 160 uframes to check the completed QH.
+ */
+void quirk_usb_periodic_hw_bug_workaround(int *next_uframe, int periodic_size)
+{
+#ifdef CONFIG_USB_PENWELL_OTG
+#define ROLLBACK_UFRAME 160
+	if (*next_uframe < ROLLBACK_UFRAME)
+		*next_uframe = (periodic_size << 3)
+			- (ROLLBACK_UFRAME - *next_uframe);
+	else
+		*next_uframe -= ROLLBACK_UFRAME;
+#endif
+}
+EXPORT_SYMBOL_GPL(quirk_usb_periodic_hw_bug_workaround);

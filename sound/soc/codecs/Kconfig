@@ -30,6 +30,7 @@ config SND_SOC_ALL_CODECS
 	select SND_SOC_CQ0093VC if MFD_DAVINCI_VOICECODEC
 	select SND_SOC_CS42L51 if I2C
 	select SND_SOC_CS42L73 if I2C
+	select SND_SOC_LM49453 if I2C
 	select SND_SOC_CS4270 if I2C
 	select SND_SOC_CS4271 if SND_SOC_I2C_AND_SPI
 	select SND_SOC_CX20442
@@ -180,6 +181,8 @@ config SND_SOC_CQ0093VC
 
 config SND_SOC_CS42L51
 	tristate
+config SND_SOC_LM49453
+	tristate
 
 config SND_SOC_CS42L73
 	tristate
@@ -288,6 +291,15 @@ config SND_SOC_WL1273
 	tristate
 
 config SND_SOC_WM1250_EV1
+	tristate
+
+config SND_SOC_WL1273_UART
+	tristate
+
+config SND_SOC_IFX1130_MODEM_CODEC
+	tristate
+
+config SND_SOC_ES305
 	tristate
 
 config SND_SOC_WM2000

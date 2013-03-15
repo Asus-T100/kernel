@@ -35,6 +35,7 @@
 #include <linux/power_supply.h>
 
 #include <asm/intel_scu_ipc.h>
+#include <asm/intel_scu_pmic.h>
 
 #define DRIVER_NAME "pmic_battery"
 
@@ -149,8 +150,6 @@ struct battery_property {
 	u8  prot2;	/* CHRGPROT1 register value */
 	u8  timer;	/* Charging timer */
 };
-
-#define IPCMSG_BATTERY		0xEF
 
 /* Battery coulomb counter accumulator commands */
 #define IPC_CMD_CC_WR		  0 /* Update coulomb counter value */

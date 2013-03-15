@@ -79,10 +79,25 @@ obj-$(CONFIG_VIDEO_MT9V032) += mt9v032.o
 obj-$(CONFIG_VIDEO_SR030PC30)	+= sr030pc30.o
 obj-$(CONFIG_VIDEO_NOON010PC30)	+= noon010pc30.o
 obj-$(CONFIG_VIDEO_M5MOLS)	+= m5mols/
+
+obj-$(CONFIG_VIDEO_LM3554) += lm3554.o
+obj-$(CONFIG_VIDEO_LM3559) += lm3559.o
+obj-$(CONFIG_VIDEO_OV9724) += ov9724.o
+
 obj-$(CONFIG_VIDEO_S5K6AA)	+= s5k6aa.o
 obj-$(CONFIG_VIDEO_SMIAPP)	+= smiapp/
 obj-$(CONFIG_VIDEO_ADP1653)	+= adp1653.o
 obj-$(CONFIG_VIDEO_AS3645A)	+= as3645a.o
+obj-$(CONFIG_VIDEO_MT9M114)	+= mt9m114.o
+obj-$(CONFIG_VIDEO_OV8830)	+= ov8830.o
+obj-$(CONFIG_VIDEO_IMX)		+= imx/
+obj-$(CONFIG_VIDEO_IMXVB)	+= imx135VB/
+obj-$(CONFIG_VIDEO_MT9D113)  += mt9d113.o
+CFFLAGS_mt9d113.o = -Werror
+obj-$(CONFIG_VIDEO_MT9V113)  += mt9v113.o
+CFFLAGS_mt9v113.o = -Werror
+obj-$(CONFIG_VIDEO_OV5640)  += ov5640.o
+CFFLAGS_ov5640.o = -Werror
 
 obj-$(CONFIG_VIDEO_SMIAPP_PLL)	+= smiapp-pll.o
 
@@ -216,3 +231,6 @@ obj-$(CONFIG_ARCH_OMAP)	+= omap/
 ccflags-y += -I$(srctree)/drivers/media/dvb/dvb-core
 ccflags-y += -I$(srctree)/drivers/media/dvb/frontends
 ccflags-y += -I$(srctree)/drivers/media/common/tuners
+obj-$(CONFIG_VIDEO_ATOMISP_CSS10) += atomisp/
+obj-$(CONFIG_VIDEO_ATOMISP_CSS15) += atomisp2/
+obj-$(CONFIG_VIDEO_MT9E013) += mt9e013/

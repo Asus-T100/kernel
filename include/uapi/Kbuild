@@ -1,0 +1,7 @@
+# UAPI Header export list
+# Top-level Makefile calls into asm-$(ARCH)
+# List only non-arch directories below
+
+# Backporting just drm from 3.6 to 3.4
+
+header-y += drm/

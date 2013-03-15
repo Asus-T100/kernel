@@ -26,3 +26,33 @@ config SPEAR_THERMAL
 	help
 	  Enable this to plug the SPEAr thermal sensor driver into the Linux
 	  thermal framework
+
+config DEBUG_THERMAL
+	bool "Thermal debug information support"
+	depends on THERMAL
+	help
+	  This enables debug sysfs interfaces/information for Thermal
+	  subsystem.
+
+	  Saying Y here will expose extra sysfs nodes under
+	  /sys/class/thermal/thermal_zoneX/
+
+config SENSORS_THERMAL_MRFLD
+        tristate "Thermal driver for Intel Merrifield platform"
+        depends on THERMAL && IIO
+        help
+          Say Y here to enable thermal driver on Intel Merrifield
+          platform.
+
+          To load this driver as a module, select M here. The module
+          will be called "mrfl_thermal"
+
+config SOC_THERMAL
+	tristate "SoC Thermal driver"
+	depends on THERMAL
+	help
+	  SoC Thermal driver registers to Generic Thermal Framework.
+	  Exposes SoC DTS and aux trip point values through the framework.
+
+          Say Y here to enable thermal driver on Intel Merrifield
+          platform. To load this driver as a module, select M here.

@@ -649,6 +649,36 @@ config INTEL_SCU_IPC_UTIL
 	  low level access for debug work and updating the firmware. Say
 	  N unless you will be doing this on an Intel MID platform.
 
+config INTEL_PSH_IPC
+	bool "Intel PSH IPC Support"
+	depends on X86_INTEL_MID && X86_MRFLD
+	---help---
+	  PSH(Platform Services Hub) is a low frequence IA core on Tangier Platform,
+	  whose power consumption is quite low. PSH runs RTOS software inside itself,
+	  which independently controls and collects sensor data, pre-processes the data,
+	  and communicates with Atom. Thus ATOM side could be put into low power mode
+	  with more time, while all the sensor data are collected without any lost.
+
+	  PSH IPC is used as a  bridge for OS sensor service to control and access PSH
+	  sensors communications between kernel and PSH. This is not needed for PC-type
+	  machines.
+
+	  Say Y here to get Intel PSH IPC support.
+
+config CTP_CRYSTAL_38M4
+	bool "38.4M Hz crystal for CLV A0 boards"
+	depends on INTEL_SCU_IPC
+	default n
+	---help---
+	  Display, audio and camers use osillator output clocks from the
+	  Soc. Currently SCU FW doesn't handle crystal frequency, thus
+	  Linux kernel has to explicitly calculate the divider based on
+	  the acutal crystal frequency, then SCU can correctly set up
+	  the oscillator output clocks based on the divider.
+	  Old CLV A0 boards use 38.4M crystal whereas CLV+ based boards
+	  will use 19.2M crystal. Say y for CLV boards (ctp_pr0 build)
+	  and n for CLV+ based boards (ctp_pr1 build)
+
 config GPIO_INTEL_PMIC
 	bool "Intel PMIC GPIO support"
 	depends on INTEL_SCU_IPC && GPIOLIB
@@ -661,6 +691,46 @@ config INTEL_MID_POWER_BUTTON
 	depends on INTEL_SCU_IPC && INPUT
 	help
 	  This driver handles the power button on the Intel MID platforms.
+
+	  If unsure, say N.
+
+config INTEL_PMIC_CHARGER
+	tristate "pmic charger driver config"
+	default y
+	---help---
+	  This driver handles the USBDET interrupt on CLVP for USB connect/disconnect.
+	  With the powering off the USB PHY for D3 if nothing attached, there is no interrupt
+	  from USB PHY for USB connect, we should use the UDBDET interrupt for USB connect.
+
+	  If unsure, say N.
+
+config POWER_BUTTON_CLVP
+	bool "SRAM address for CLVP"
+	depends on INTEL_MID_POWER_BUTTON
+	default n
+	---help---
+		CLVP SRAM address for powerbutton status. Say y for CLV+ and n for CLV
+
+config INTEL_MID_OSIP
+	tristate "osip driver for Intel MID platforms"
+	depends on INTEL_SCU_IPC
+	default y
+	help
+	  This driver modifies the osip header when rebooting,
+	  so that one can type 'reboot bootloader' to fall back
+	  in kboot mode.
+
+	  If unsure, say N.
+
+config INTEL_MID_OSIP_DEBUG_FS
+	tristate "osip driver debug fs"
+	depends on INTEL_MID_OSIP && DEBUG_FS
+	default y
+	help
+	  This driver adds debugfs interface.
+	  The main feature of that interface is to be able to modify the kernel
+	  cmdline directly in the OSIP.
+	  This has to be disabled if we have secure boot enabled by default.
 
 	  If unsure, say N.
 
@@ -765,5 +835,30 @@ config APPLE_GMUX
 	  Apple laptops, which controls the display mux for the hybrid
 	  graphics as well as the backlight. Currently only backlight
 	  control is supported by the driver.
+
+config INTEL_MID_UMIP
+	tristate "umip driver config"
+	depends on INTEL_SCU_IPC
+	default y
+	help
+	  This driver builds the UMIP Sysfs Iterface. We could read write
+	  the USB HOst enable timeout values using these interfaces.
+
+config INTEL_SCU_FLIS
+	tristate "scu flis driver config"
+	depends on INTEL_SCU_IPC
+	default y
+	help
+	  This driver builds the SCU Flis Access Sysfs Interfaces.
+	  We could read write the flis address and configure the
+	  pin pull up/down using these interfaces.
+
+config INTEL_CRYSTALCOVE_PWRSRC
+	tristate "Crystal Cove PMIC Power Source detection driver"
+	depends on CRYSTAL_COVE
+	help
+	  This driver does the Crystal Cove PMIC Power source detection.
+
+	  If unsure, say N.
 
 endif # X86_PLATFORM_DEVICES

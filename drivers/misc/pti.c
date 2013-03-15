@@ -36,6 +36,8 @@
 #include <linux/slab.h>
 #include <linux/uaccess.h>
 
+#include <asm/intel_scu_ipc.h>
+
 #define DRIVERNAME		"pti"
 #define PCINAME			"pciPTI"
 #define TTYNAME			"ttyPTI"
@@ -54,6 +56,19 @@
 #define USER_COPY_SIZE		8192 /* 8Kb buffer for user space copy */
 #define APERTURE_14		0x3800000 /* offset to first OS write addr */
 #define APERTURE_LEN		0x400000  /* address length */
+
+#define SMIP_PTI_OFFSET		0x30C /*
+				       * offset to PTI configuration
+				       * in MIP header
+				       */
+#define SMIP_PTI_EN		(1<<7) /*
+					* PTI enable bit in PTI
+					* configuration
+					*/
+
+#define PTI_PNW_PCI_ID			0x082B
+#define PTI_CLV_PCI_ID			0x0900
+#define PTI_TNG_PCI_ID			0x119F
 
 struct pti_tty {
 	struct pti_masterchannel *mc;
@@ -77,8 +92,10 @@ struct pti_dev {
 static DEFINE_MUTEX(alloclock);
 
 static struct pci_device_id pci_ids[] __devinitconst = {
-		{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x82B)},
-		{0}
+	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, PTI_PNW_PCI_ID)},
+	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, PTI_CLV_PCI_ID)},
+	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, PTI_TNG_PCI_ID)},
+	{0}
 };
 
 static struct tty_driver *pti_tty_driver;
@@ -169,31 +186,35 @@ static void pti_control_frame_built_and_sent(struct pti_masterchannel *mc,
 	 * Since we access the comm member in current's task_struct, we only
 	 * need to be as large as what 'comm' in that structure is.
 	 */
-	char comm[TASK_COMM_LEN];
+	char comm[TASK_COMM_LEN+1];
 	struct pti_masterchannel mccontrol = {.master = CONTROL_ID,
 					      .channel = 0};
-	const char *thread_name_p;
 	const char *control_format = "%3d %3d %s";
 	u8 control_frame[CONTROL_FRAME_LEN];
 
-	if (!thread_name) {
-		if (!in_interrupt())
-			get_task_comm(comm, current);
-		else
-			strncpy(comm, "Interrupt", TASK_COMM_LEN);
+	/*
+	 * Since we access the comm member in current's task_struct,
+	 * we only need to be as large as what 'comm' in that
+	 * structure is.
+	 */
+	/* task information */
+	if (thread_name)
+		strncpy(comm, thread_name, sizeof(comm)-1);
+	else if (in_irq())
+		strncpy(comm, "hardirq", sizeof(comm)-1);
+	else if (in_softirq())
+		strncpy(comm, "softirq", sizeof(comm)-1);
+	else
+		strncpy(comm, current->comm, sizeof(comm)-1);
 
-		/* Absolutely ensure our buffer is zero terminated. */
-		comm[TASK_COMM_LEN-1] = 0;
-		thread_name_p = comm;
-	} else {
-		thread_name_p = thread_name;
-	}
+	/* Absolutely ensure our buffer is zero terminated. */
+	comm[TASK_COMM_LEN] = 0;
 
 	mccontrol.channel = pti_control_channel;
 	pti_control_channel = (pti_control_channel + 1) & 0x7f;
 
 	snprintf(control_frame, CONTROL_FRAME_LEN, control_format, mc->master,
-		mc->channel, thread_name_p);
+		mc->channel, comm);
 	pti_write_to_aperture(&mccontrol, control_frame, strlen(control_frame));
 }
 
@@ -275,6 +296,30 @@ static struct pti_masterchannel *get_id(u8 *id_array,
 	return mc;
 }
 
+/**
+ * pti_get_pci_ressource_index()- Get pci_dev struct ressource index to use
+ *                                with current HW.
+ *
+ * @device: current PCI device ID
+ *
+ * Returns:
+ *	ressource index
+ *
+ * pci_resource_start shall be called with the right index to retrieve
+ * correct address.
+ * This index is chip dependent.
+ */
+
+static int pti_get_pci_ressource_index(unsigned short device)
+{
+	int pci_bar = 1;
+
+	if (device == PTI_TNG_PCI_ID)
+		pci_bar = 2;
+
+	return pci_bar;
+}
+
 /*
  * The following three functions:
  * pti_request_mastercahannel(), mipi_release_masterchannel()
@@ -305,6 +350,9 @@ struct pti_masterchannel *pti_request_masterchannel(u8 type,
 						    const char *thread_name)
 {
 	struct pti_masterchannel *mc;
+
+	if (drv_data == NULL)
+		return NULL;
 
 	mutex_lock(&alloclock);
 
@@ -819,7 +867,7 @@ static int __devinit pti_pci_probe(struct pci_dev *pdev,
 		const struct pci_device_id *ent)
 {
 	int retval = -EINVAL;
-	int pci_bar = 1;
+	int pci_bar = pti_get_pci_ressource_index(pdev->device);
 
 	dev_dbg(&pdev->dev, "%s %s(%d): PTI PCI ID %04x:%04x\n", __FILE__,
 			__func__, __LINE__, pdev->vendor, pdev->device);
@@ -896,6 +944,9 @@ static struct pci_driver pti_pci_driver = {
  * pti_init()- Overall entry/init call to the pti driver.
  *             It starts the registration process with the kernel.
  *
+ *             MIP header is checked if PTI is enabled and error is
+ *             returned if not
+ *
  * Returns:
  *	int __init, 0 for success
  *	otherwise value is an error
@@ -904,6 +955,24 @@ static struct pci_driver pti_pci_driver = {
 static int __init pti_init(void)
 {
 	int retval = -EINVAL;
+
+#ifdef CONFIG_INTEL_SCU_IPC
+#ifndef CONFIG_INTEL_PTI_UNSECURED
+	u8 smip_pti;
+
+	retval = intel_scu_ipc_read_mip(&smip_pti, 1, SMIP_PTI_OFFSET, 1);
+	if (retval) {
+		pr_err("%s(%d): Mip read failed (retval = %d)\n",
+		       __func__, __LINE__, retval);
+		return retval;
+	}
+	if (!(smip_pti & SMIP_PTI_EN)) {
+		pr_info("%s(%d): PTI disabled in MIP header\n",
+			__func__, __LINE__);
+		return -EPERM;
+	}
+#endif /* CONFIG_INTEL_PTI_UNSECURED */
+#endif /* CONFIG_INTEL_SCU_IPC */
 
 	/* First register module as tty device */
 

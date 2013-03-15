@@ -351,7 +351,7 @@ static int soc_pcm_close(struct snd_pcm_substream *substream)
 	/* Muting the DAC suppresses artifacts caused during digital
 	 * shutdown, for example from stopping clocks.
 	 */
-	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
+	if (!codec_dai->playback_active)
 		snd_soc_dai_digital_mute(codec_dai, 1);
 
 	if (cpu_dai->driver->ops->shutdown)
@@ -367,7 +367,8 @@ static int soc_pcm_close(struct snd_pcm_substream *substream)
 		platform->driver->ops->close(substream);
 	cpu_dai->runtime = NULL;
 
-	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK
+			&& !codec_dai->playback_active) {
 		if (!rtd->pmdown_time || codec->ignore_pmdown_time ||
 		    rtd->dai_link->ignore_pmdown_time) {
 			/* powered down playback stream now */
@@ -381,14 +382,14 @@ static int soc_pcm_close(struct snd_pcm_substream *substream)
 			schedule_delayed_work(&rtd->delayed_work,
 				msecs_to_jiffies(rtd->pmdown_time));
 		}
-	} else {
+	} else if (substream->stream == SNDRV_PCM_STREAM_CAPTURE
+			&& !codec_dai->capture_active) {
 		/* capture streams can be powered down now */
 		snd_soc_dapm_stream_event(rtd, SNDRV_PCM_STREAM_CAPTURE,
 					  codec_dai, SND_SOC_DAPM_STREAM_STOP);
 	}
 
 	mutex_unlock(&rtd->pcm_mutex);
-
 	pm_runtime_put(platform->dev);
 	pm_runtime_put(codec_dai->dev);
 	pm_runtime_put(cpu_dai->dev);
@@ -658,10 +659,22 @@ int soc_new_pcm(struct snd_soc_pcm_runtime *rtd, int num)
 	snprintf(new_name, sizeof(new_name), "%s %s-%d",
 			rtd->dai_link->stream_name, codec_dai->name, num);
 
-	if (codec_dai->driver->playback.channels_min)
-		playback = 1;
-	if (codec_dai->driver->capture.channels_min)
-		capture = 1;
+	/* playback_cnt provides the no of substream to be supported for the dai.
+	check if the playback_cnt is set for the dai, then playback will be set
+	to playback_cnt else default to 1 */
+	if (codec_dai->driver->playback.channels_min) {
+		if (rtd->dai_link->playback_count)
+			playback = rtd->dai_link->playback_count;
+		else
+			playback = 1;
+	}
+
+	if (codec_dai->driver->capture.channels_min) {
+		if (rtd->dai_link->capture_count)
+			capture = rtd->dai_link->capture_count;
+		else
+			capture = 1;
+	}
 
 	dev_dbg(rtd->card->dev, "registered pcm #%d %s\n",num,new_name);
 	ret = snd_pcm_new(rtd->card->snd_card, new_name,

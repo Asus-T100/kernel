@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: dhd_cdc.c 347640 2012-07-27 11:53:21Z $
+ * $Id: dhd_cdc.c 355825 2012-09-10 03:22:40Z $
  *
  * BDC is like CDC, except it includes a header for data packets to convey
  * packet priority over the bus, and flags (e.g. to indicate checksum status
@@ -854,6 +854,12 @@ _dhd_wlfc_pullheader(athost_wl_status_info_t* ctx, void* pktbuf)
 
 	/* pull BDC header */
 	PKTPULL(ctx->osh, pktbuf, BDC_HEADER_LEN);
+
+	if (PKTLEN(ctx->osh, pktbuf) < (h->dataOffset << 2)) {
+		WLFC_DBGMESG(("%s: rx data too short (%d < %d)\n", __FUNCTION__,
+		           PKTLEN(ctx->osh, pktbuf), (h->dataOffset << 2)));
+		return BCME_ERROR;
+	}
 	/* pull wl-header */
 	PKTPULL(ctx->osh, pktbuf, (h->dataOffset << 2));
 	return BCME_OK;
@@ -916,7 +922,15 @@ _dhd_wlfc_rollback_packet_toq(athost_wl_status_info_t* ctx,
 		}
 		else {
 			/* remove header first */
-			_dhd_wlfc_pullheader(ctx, p);
+			rc = _dhd_wlfc_pullheader(ctx, p);
+			if (rc != BCME_OK)          {
+				WLFC_DBGMESG(("Error: %s():%d\n", __FUNCTION__, __LINE__));
+				/* free the hanger slot */
+				dhd_wlfc_hanger_poppkt(ctx->hanger, hslot, &pktout, 1);
+				PKTFREE(ctx->osh, p, TRUE);
+				rc = BCME_ERROR;
+				return rc;
+			}
 
 			if (pkt_type == eWLFC_PKTTYPE_DELAYED) {
 				/* delay-q packets are going to delay-q */
@@ -1166,16 +1180,17 @@ _dhd_wlfc_pretx_pktprocess(athost_wl_status_info_t* ctx,
 		int gen;
 
 		/* remove old header */
-		_dhd_wlfc_pullheader(ctx, p);
+		rc = _dhd_wlfc_pullheader(ctx, p);
+		if (rc == BCME_OK) {
+			hslot = WLFC_PKTID_HSLOT_GET(DHD_PKTTAG_H2DTAG(PKTTAG(p)));
+			dhd_wlfc_hanger_get_genbit(ctx->hanger, p, hslot, &gen);
 
-		hslot = WLFC_PKTID_HSLOT_GET(DHD_PKTTAG_H2DTAG(PKTTAG(p)));
-		dhd_wlfc_hanger_get_genbit(ctx->hanger, p, hslot, &gen);
-
-		WLFC_PKTFLAG_SET_GENERATION(htod, gen);
-		free_ctr = WLFC_PKTID_FREERUNCTR_GET(DHD_PKTTAG_H2DTAG(PKTTAG(p)));
-		/* push new header */
-		_dhd_wlfc_pushheader(ctx, p, send_tim_update,
-			entry->traffic_lastreported_bmp, entry->mac_handle, htod);
+			WLFC_PKTFLAG_SET_GENERATION(htod, gen);
+			free_ctr = WLFC_PKTID_FREERUNCTR_GET(DHD_PKTTAG_H2DTAG(PKTTAG(p)));
+			/* push new header */
+			_dhd_wlfc_pushheader(ctx, p, send_tim_update,
+				entry->traffic_lastreported_bmp, entry->mac_handle, htod);
+		}
 	}
 	*slot = hslot;
 	return rc;
@@ -1748,8 +1763,9 @@ dhd_wlfc_txcomplete(dhd_pub_t *dhd, void *txp, bool success)
 #ifdef PROP_TXSTATUS_DEBUG
 		wlfc->stats.signal_only_pkts_freed++;
 #endif
-		/* is this a signal-only packet? */
-		PKTFREE(wlfc->osh, txp, TRUE);
+		if (success)
+			/* is this a signal-only packet? */
+			PKTFREE(wlfc->osh, txp, TRUE);
 		return;
 	}
 	if (!success) {
@@ -2377,10 +2393,15 @@ dhd_wlfc_cleanup(dhd_pub_t *dhd)
 		dhd->wlfc_state;
 	wlfc_mac_descriptor_t* table;
 	wlfc_hanger_t* h;
-
+	int prec;
+	void *pkt = NULL;
+	struct pktq *txq = NULL;
 	if (dhd->wlfc_state == NULL)
 		return;
-
+	/* flush bus->txq */
+	txq = dhd_bus_txq(dhd->bus);
+	/* any in the hanger? */
+	h = (wlfc_hanger_t*)wlfc->hanger;
 	total_entries = sizeof(wlfc->destination_entries)/sizeof(wlfc_mac_descriptor_t);
 	/* search all entries, include nodes as well as interfaces */
 	table = (wlfc_mac_descriptor_t*)&wlfc->destination_entries;
@@ -2399,8 +2420,26 @@ dhd_wlfc_cleanup(dhd_pub_t *dhd)
 	/* release packets held in SENDQ */
 	if (wlfc->SENDQ.len)
 		pktq_flush(wlfc->osh, &wlfc->SENDQ, TRUE, NULL, 0);
-	/* any in the hanger? */
-	h = (wlfc_hanger_t*)wlfc->hanger;
+	for (prec = 0; prec < txq->num_prec; prec++) {
+		pkt = pktq_pdeq(txq, prec);
+		while (pkt) {
+			for (i = 0; i < h->max_items; i++) {
+				if (pkt == h->items[i].pkt) {
+					if (h->items[i].state == WLFC_HANGER_ITEM_STATE_INUSE) {
+						PKTFREE(wlfc->osh, h->items[i].pkt, TRUE);
+						h->items[i].state = WLFC_HANGER_ITEM_STATE_FREE;
+					} else if (h->items[i].state ==
+						WLFC_HANGER_ITEM_STATE_INUSE_SUPPRESSED) {
+						/* These are already freed from the psq */
+						h->items[i].state = WLFC_HANGER_ITEM_STATE_FREE;
+					}
+					break;
+				}
+			}
+			pkt = pktq_pdeq(txq, prec);
+		}
+	}
+	/* flush remained pkt in hanger queue, not in bus->txq */
 	for (i = 0; i < h->max_items; i++) {
 		if (h->items[i].state == WLFC_HANGER_ITEM_STATE_INUSE) {
 			PKTFREE(wlfc->osh, h->items[i].pkt, TRUE);

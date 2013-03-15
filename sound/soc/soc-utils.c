@@ -92,6 +92,20 @@ static struct snd_soc_platform_driver dummy_platform = {
 static struct snd_soc_codec_driver dummy_codec;
 static struct snd_soc_dai_driver dummy_dai = {
 	.name = "snd-soc-dummy-dai",
+	.playback = {
+			.channels_min = 1,
+			.channels_max = UINT_MAX,
+			.rates = SNDRV_PCM_RATE_CONTINUOUS,
+			.formats = SNDRV_PCM_FMTBIT_CONTINUOUS,
+	},
+	.capture = {
+			.channels_min = 1,
+			.channels_max = UINT_MAX,
+			.rates = SNDRV_PCM_RATE_CONTINUOUS,
+			.formats = SNDRV_PCM_FMTBIT_CONTINUOUS,
+	},
+	.ops = NULL,
+
 };
 
 static __devinit int snd_soc_dummy_probe(struct platform_device *pdev)

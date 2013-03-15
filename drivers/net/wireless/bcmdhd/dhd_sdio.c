@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: dhd_sdio.c 347641 2012-07-27 11:55:19Z $
+ * $Id: dhd_sdio.c 357859 2012-09-20 06:34:26Z $
  */
 
 #include <typedefs.h>
@@ -403,9 +403,6 @@ static const uint retry_limit = 2;
 /* Force even SD lengths (some host controllers mess up on odd bytes) */
 static bool forcealign;
 
-/* Flag to indicate if we should download firmware on driver load */
-uint dhd_download_fw_on_driverload = TRUE;
-
 #define ALIGNMENT  4
 
 #if defined(OOB_INTR_ONLY) && defined(HW_OOB)
@@ -743,18 +740,55 @@ dhdsdio_clk_kso_init(dhd_bus_t *bus)
 	return 0;
 }
 
+#define KSO_DBG(x)
+#define MAX_KSO_ATTEMPTS 64
 static int
 dhdsdio_clk_kso_enab(dhd_bus_t *bus, bool on)
 {
-	uint8 val = 0;
+	uint8 wr_val = 0, rd_val, cmp_val, bmask;
 	int err = 0;
+	int try_cnt = 0;
 
-	/* Don't read here since sdio could be off so just write only */
-	val |= (on << SBSDIO_FUNC1_SLEEPCSR_KSO_SHIFT);
-	bcmsdh_cfg_write(bus->sdh, SDIO_FUNC_1, SBSDIO_FUNC1_SLEEPCSR, val, &err);
+	KSO_DBG(("%s> op:%s\n", __FUNCTION__, (on ? "KSO_SET" : "KSO_CLR")));
 
-	if (err)
-		DHD_TRACE(("%s: KSO toggle %d failed: %d\n", __FUNCTION__, on, err));
+	wr_val |= (on << SBSDIO_FUNC1_SLEEPCSR_KSO_SHIFT);
+
+	bcmsdh_cfg_write(bus->sdh, SDIO_FUNC_1, SBSDIO_FUNC1_SLEEPCSR, wr_val, &err);
+
+	if (on) {
+		cmp_val = SBSDIO_FUNC1_SLEEPCSR_KSO_MASK |  SBSDIO_FUNC1_SLEEPCSR_DEVON_MASK;
+		bmask = cmp_val;
+
+		msleep(3);
+
+	} else {
+		/*  Put device to sleep, turn off  KSO  */
+		cmp_val = 0;
+		bmask = SBSDIO_FUNC1_SLEEPCSR_KSO_MASK;
+	}
+
+	do {
+		rd_val = bcmsdh_cfg_read(bus->sdh, SDIO_FUNC_1, SBSDIO_FUNC1_SLEEPCSR, &err);
+		if (((rd_val & bmask) == cmp_val) && !err)
+			break;
+
+		KSO_DBG(("%s> KSO wr/rd retry:%d, ERR:%x \n", __FUNCTION__, try_cnt, err));
+		OSL_DELAY(50);
+
+		bcmsdh_cfg_write(bus->sdh, SDIO_FUNC_1, SBSDIO_FUNC1_SLEEPCSR, wr_val, &err);
+
+	} while (try_cnt++ < MAX_KSO_ATTEMPTS);
+
+
+	if (try_cnt > 1) {
+		KSO_DBG(("%s> op:%s, try_cnt:%d, rd_val:%x, ERR:%x \n",
+			__FUNCTION__, (on ? "KSO_SET" : "KSO_CLR"), try_cnt, rd_val, err));
+	}
+
+	if (try_cnt > MAX_KSO_ATTEMPTS)  {
+		DHD_ERROR(("%s> op:%s, ERROR: try_cnt:%d, rd_val:%x, ERR:%x \n",
+			__FUNCTION__, (on ? "KSO_SET" : "KSO_CLR"), try_cnt, rd_val, err));
+	}
 	return err;
 }
 
@@ -970,7 +1004,7 @@ dhdsdio_clk_devsleep_iovar(dhd_bus_t *bus, bool on)
 static int
 dhdsdio_htclk(dhd_bus_t *bus, bool on, bool pendok)
 {
-#define HT_AVAIL_ERROR_MAX	10
+#define HT_AVAIL_ERROR_MAX 10
 	static int ht_avail_error = 0;
 	int err;
 	uint8 clkctl, clkreq, devctl;
@@ -1004,10 +1038,13 @@ dhdsdio_htclk(dhd_bus_t *bus, bool on, bool pendok)
 			ht_avail_error++;
 			if (ht_avail_error < HT_AVAIL_ERROR_MAX) {
 				DHD_ERROR(("%s: HT Avail request error: %d\n", __FUNCTION__, err));
-			} else {
-				if (ht_avail_error == HT_AVAIL_ERROR_MAX)
-					dhd_os_send_hang_message(bus->dhd);
 			}
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27)
+			else if (ht_avail_error == HT_AVAIL_ERROR_MAX) {
+				dhd_os_send_hang_message(bus->dhd);
+			}
+#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27) */
 			return BCME_ERROR;
 		} else {
 			ht_avail_error = 0;
@@ -2939,7 +2976,8 @@ dhd_serialconsole(dhd_bus_t *bus, bool set, bool enable, int *bcmerror)
 	if (bus->sih->chip == BCM4330_CHIP_ID) {
 		uart_enab = CC_PLL_CHIPCTRL_SERIAL_ENAB;
 	}
-	else if (bus->sih->chip == BCM4334_CHIP_ID) {
+	else if (bus->sih->chip == BCM4334_CHIP_ID ||
+		bus->sih->chip == BCM43341_CHIP_ID) {
 		if (enable) {
 			/* Moved to PMU chipcontrol 1 from 4330 */
 			int_val &= ~gpio_sel;
@@ -4031,6 +4069,7 @@ dhd_bus_init(dhd_pub_t *dhdp, bool enforce_mutex)
 	dhdsdio_clkctl(bus, CLK_AVAIL, FALSE);
 	if (bus->clkstate != CLK_AVAIL) {
 		DHD_ERROR(("%s: clock state is wrong. state = %d\n", __FUNCTION__, bus->clkstate));
+		ret = -1;
 		goto exit;
 	}
 
@@ -4043,6 +4082,7 @@ dhd_bus_init(dhd_pub_t *dhdp, bool enforce_mutex)
 	}
 	if (err) {
 		DHD_ERROR(("%s: Failed to force clock for F2: err %d\n", __FUNCTION__, err));
+		ret = -1;
 		goto exit;
 	}
 
@@ -4627,18 +4667,12 @@ dhdsdio_rxglom(dhd_bus_t *bus, uint8 rxseq)
 
 			if (PKTLEN(osh, pfirst) == 0) {
 				PKTFREE(bus->dhd->osh, pfirst, FALSE);
-				if (plast) {
-					PKTSETNEXT(osh, plast, pnext);
-				}
 				continue;
 			} else if (dhd_prot_hdrpull(bus->dhd, &ifidx, pfirst, reorder_info_buf,
 				&reorder_info_len) != 0) {
 				DHD_ERROR(("%s: rx protocol error\n", __FUNCTION__));
 				bus->dhd->rx_errors++;
 				PKTFREE(osh, pfirst, FALSE);
-				if (plast) {
-					PKTSETNEXT(osh, plast, pnext);
-				}
 				continue;
 			}
 			if (reorder_info_len) {
@@ -4651,9 +4685,6 @@ dhdsdio_rxglom(dhd_bus_t *bus, uint8 rxseq)
 					reorder_info_len, &ppfirst, &free_buf_count);
 
 				if (free_buf_count == 0) {
-					if (plast) {
-						PKTSETNEXT(osh, plast, pnext);
-					}
 					continue;
 				}
 				else {
@@ -4673,14 +4704,12 @@ dhdsdio_rxglom(dhd_bus_t *bus, uint8 rxseq)
 						PKTSETNEXT(osh, list_tail[ifidx], ppfirst);
 						list_tail[ifidx] = pfirst;
 					}
-					plast = pfirst;
 				}
 
 				num += (uint8)free_buf_count;
 			}
 			else {
 				/* this packet will go up, link back into chain and count it */
-				plast = pfirst;
 
 				if (list_tail[ifidx] == NULL) {
 					list_head[ifidx] = list_tail[ifidx] = pfirst;
@@ -5626,6 +5655,22 @@ clkwait:
 		bcmsdh_intr_enable(sdh);
 	}
 
+#if defined(OOB_INTR_ONLY) && !defined(HW_OOB)
+	/* In case of SW-OOB(using edge trigger),
+	 * Check interrupt status in the dongle again after enable irq on the host.
+	 * and rechedule dpc if interrupt is pended in the dongle.
+	 * There is a chance to miss OOB interrupt while irq is disabled on the host.
+	 * No need to do this with HW-OOB(level trigger)
+	 */
+	R_SDREG(newstatus, &regs->intstatus, retries);
+	if (bcmsdh_regfail(bus->sdh))
+		newstatus = 0;
+	if (newstatus & bus->hostintmask) {
+		bus->ipend = TRUE;
+		resched = TRUE;
+	}
+#endif /* defined(OOB_INTR_ONLY) && !defined(HW_OOB) */
+
 	if (TXCTLOK(bus) && bus->ctrl_frame_stat && (bus->clkstate == CLK_AVAIL))  {
 		int ret, i;
 
@@ -5688,8 +5733,8 @@ clkwait:
 	/* Resched if events or tx frames are pending, else await next interrupt */
 	/* On failed register access, all bets are off: no resched or interrupts */
 	if ((bus->dhd->busstate == DHD_BUS_DOWN) || bcmsdh_regfail(sdh)) {
-		if ((bus->sih && (bus->sih->buscorerev >= 12)) &&
-		    !(dhdsdio_sleepcsr_get(bus) & SBSDIO_FUNC1_SLEEPCSR_KSO_MASK)) {
+		if ((bus->sih && bus->sih->buscorerev >= 12) && !(dhdsdio_sleepcsr_get(bus) &
+			SBSDIO_FUNC1_SLEEPCSR_KSO_MASK)) {
 			/* Bus failed because of KSO */
 			DHD_ERROR(("%s: Bus failed due to KSO\n", __FUNCTION__));
 			bus->kso = FALSE;
@@ -6297,6 +6342,8 @@ dhdsdio_chipmatch(uint16 chipid)
 		return TRUE;
 	if (chipid == BCM4334_CHIP_ID)
 		return TRUE;
+	if (chipid == BCM43341_CHIP_ID)
+		return TRUE;
 	if (chipid == BCM43239_CHIP_ID)
 		return TRUE;
 	if (chipid == BCM4324_CHIP_ID)
@@ -6473,11 +6520,13 @@ dhdsdio_probe(uint16 venid, uint16 devid, uint16 bus_no, uint16 slot,
 #endif /* GET_CUSTOM_MAC_ENABLE */
 
 	/* if firmware path present try to download and bring up bus */
-	if (dhd_download_fw_on_driverload && (ret = dhd_bus_start(bus->dhd)) != 0) {
-		DHD_ERROR(("%s: dhd_bus_start failed\n", __FUNCTION__));
-		if (ret == BCME_NOTUP)
-			goto fail;
+	if (dhd_download_fw_on_driverload) {
+		if ((ret = dhd_bus_start(bus->dhd)) != 0) {
+			DHD_ERROR(("%s: dhd_bus_start failed\n", __FUNCTION__));
+			if (ret == BCME_NOTUP)
+				goto fail;
 		}
+	}
 	/* Ok, have the per-port tell the stack we're open for business */
 	if (dhd_net_attach(bus->dhd, 0) != 0) {
 		DHD_ERROR(("%s: Net attach failed!!\n", __FUNCTION__));
@@ -7093,7 +7142,7 @@ dhdsdio_download_code_file(struct dhd_bus *bus, char *pfw_path)
 {
 	int bcmerror = -1;
 	int offset = 0;
-	uint len;
+	int len;
 	void *image = NULL;
 	uint8 *memblock = NULL, *memptr;
 
@@ -7113,6 +7162,11 @@ dhdsdio_download_code_file(struct dhd_bus *bus, char *pfw_path)
 
 	/* Download image */
 	while ((len = dhd_os_get_image_block((char*)memptr, MEMBLOCK, image))) {
+		if (len < 0) {
+			DHD_ERROR(("%s: dhd_os_get_image_block failed (%d)\n", __FUNCTION__, len));
+			bcmerror = BCME_ERROR;
+			goto err;
+		}
 		bcmerror = dhdsdio_membytes(bus, TRUE, offset, memptr, len);
 		if (bcmerror) {
 			DHD_ERROR(("%s: error %d on writing %d membytes at 0x%08x\n",

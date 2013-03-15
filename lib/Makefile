@@ -123,6 +123,26 @@ obj-$(CONFIG_SIGNATURE) += digsig.o
 
 obj-$(CONFIG_CLZ_TAB) += clz_tab.o
 
+obj-$(CONFIG_CORDIC) += cordic.o
+
+obj-$(CONFIG_MPILIB) += mpi/
+
+obj-$(CONFIG_CLZ_TAB) += clz_tab.o
+
+obj-$(CONFIG_DDR) += jedec_ddr_data.o
+
+obj-$(CONFIG_GENERIC_STRNCPY_FROM_USER) += strncpy_from_user.o
+obj-$(CONFIG_GENERIC_STRNLEN_USER) += strnlen_user.o
+
+obj-$(CONFIG_STMP_DEVICE) += stmp_device.o
+
+libfdt_files = fdt.o fdt_ro.o fdt_wip.o fdt_rw.o fdt_sw.o fdt_strerror.o
+$(foreach file, $(libfdt_files), \
+	$(eval CFLAGS_$(file) = -I$(src)/../scripts/dtc/libfdt))
+lib-$(CONFIG_LIBFDT) += $(libfdt_files)
+
+obj-$(CONFIG_ASN1) += asn1_decoder.o
+
 hostprogs-y	:= gen_crc32table
 clean-files	:= crc32table.h
 
@@ -133,3 +153,19 @@ quiet_cmd_crc32 = GEN     $@
 
 $(obj)/crc32table.h: $(obj)/gen_crc32table
 	$(call cmd,crc32)
+
+#
+# Build a fast OID lookip registry from include/linux/oid_registry.h
+#
+obj-$(CONFIG_OID_REGISTRY) += oid_registry.o
+
+$(obj)/oid_registry.c: $(obj)/oid_registry_data.c
+
+$(obj)/oid_registry_data.c: $(srctree)/include/linux/oid_registry.h \
+			    $(src)/build_OID_registry
+	$(call cmd,build_OID_registry)
+
+quiet_cmd_build_OID_registry = GEN     $@
+      cmd_build_OID_registry = perl $(srctree)/$(src)/build_OID_registry $< $@
+
+clean-files	+= oid_registry_data.c

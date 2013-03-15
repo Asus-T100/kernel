@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: dhd_common.c 347624 2012-07-27 10:49:56Z $
+ * $Id: dhd_common.c 356374 2012-09-12 10:37:44Z $
  */
 #include <typedefs.h>
 #include <osl.h>
@@ -94,7 +94,7 @@ void dhd_iscan_lock(void);
 void dhd_iscan_unlock(void);
 extern int dhd_change_mtu(dhd_pub_t *dhd, int new_mtu, int ifidx);
 #if !defined(AP) && defined(WLP2P)
-extern bool dhd_concurrent_fw(dhd_pub_t *dhd);
+extern int dhd_get_concurrent_capabilites(dhd_pub_t *dhd);
 #endif
 bool ap_cfg_running = FALSE;
 bool ap_fw_loaded = FALSE;
@@ -277,11 +277,12 @@ dhd_wl_ioctl(dhd_pub_t *dhd_pub, int ifindex, wl_ioctl_t *ioc, void *buf, int le
 	dhd_os_proto_block(dhd_pub);
 
 	ret = dhd_prot_ioctl(dhd_pub, ifindex, ioc, buf, len);
+	if ((ret) && (dhd_pub->up))
 		/* Send hang event only if dhd_open() was success */
-		if (ret && dhd_pub->up)
-			dhd_os_check_hang(dhd_pub, ifindex, ret);
+		dhd_os_check_hang(dhd_pub, ifindex, ret);
 
 	dhd_os_proto_unblock(dhd_pub);
+
 	return ret;
 }
 
@@ -313,12 +314,15 @@ dhd_doiovar(dhd_pub_t *dhd_pub, const bcm_iovar_t *vi, uint32 actionid, const ch
 		break;
 
 	case IOV_SVAL(IOV_MSGLEVEL):
-		dhd_msg_level = int_val;
 #ifdef WL_CFG80211
 		/* Enable DHD and WL logs in oneshot */
-		if (dhd_msg_level & DHD_WL_VAL)
-			wl_cfg80211_enable_trace(dhd_msg_level);
-#endif
+		if (int_val & DHD_WL_VAL2)
+			wl_cfg80211_enable_trace(TRUE, int_val & (~DHD_WL_VAL2));
+		else if (int_val & DHD_WL_VAL)
+			wl_cfg80211_enable_trace(FALSE, WL_DBG_DBG);
+		if (!(int_val & DHD_WL_VAL2))
+#endif /* WL_CFG80211 */
+		dhd_msg_level = int_val;
 		break;
 	case IOV_GVAL(IOV_BCMERRORSTR):
 		bcm_strncpy_s((char *)arg, len, bcmerrorstr(dhd_pub->bcmerror), BCME_STRLEN);
@@ -1649,34 +1653,16 @@ exit:
 	return bcn_li_dtim;
 }
 
-/* Check if HostAPD or WFD mode setup */
-bool dhd_check_ap_wfd_mode_set(dhd_pub_t *dhd)
+/* Check if the mode supports STA MODE */
+bool dhd_support_sta_mode(dhd_pub_t *dhd)
 {
-#if !defined(AP) && defined(WLP2P)
-	if ((dhd->op_mode & CONCURRENT_FW_MASK) == CONCURRENT_FW_MASK)
-		return FALSE;
-#endif
+
 #ifdef  WL_CFG80211
-#ifndef WL_ENABLE_P2P_IF
-	/* To be back compatble with ICS MR1 release where p2p interface
-	 * disable but wlan0 used for p2p
-	 */
-	if (((dhd->op_mode & HOSTAPD_MASK) == HOSTAPD_MASK) ||
-		((dhd->op_mode & WFD_MASK) == WFD_MASK)) {
-		return TRUE;
-	}
-	else
-#else
-	/* concurent mode with p2p interface for wfd and wlan0 for sta */
-	if (((dhd->op_mode & P2P_GO_ENABLED) == P2P_GO_ENABLED) ||
-		((dhd->op_mode & P2P_GC_ENABLED) == P2P_GC_ENABLED)) {
-		DHD_ERROR(("%s P2P enabled for  mode=%d\n", __FUNCTION__, dhd->op_mode));
-		return TRUE;
-	}
-	else
-#endif /* WL_ENABLE_P2P_IF */
-#endif /* WL_CFG80211 */
+	if (!(dhd->op_mode & DHD_FLAG_STA_MODE))
 		return FALSE;
+	else
+#endif /* WL_CFG80211 */
+		return TRUE;
 }
 
 #if defined(PNO_SUPPORT)
@@ -1721,7 +1707,8 @@ dhd_pno_enable(dhd_pub_t *dhd, int pfn_enabled)
 		return ret;
 	}
 
-	if (dhd_check_ap_wfd_mode_set(dhd) == TRUE)
+#ifndef WL_SCHED_SCAN
+	if (!dhd_support_sta_mode(dhd))
 		return (ret);
 
 	memset(iovbuf, 0, sizeof(iovbuf));
@@ -1730,6 +1717,7 @@ dhd_pno_enable(dhd_pub_t *dhd, int pfn_enabled)
 		DHD_ERROR(("%s pno is NOT enable : called in assoc mode , ignore\n", __FUNCTION__));
 		return ret;
 	}
+#endif /* !WL_SCHED_SCAN */
 
 	/* Enable/disable PNO */
 	if ((ret = bcm_mkiovar("pfn", (char *)&pfn_enabled, 4, iovbuf, sizeof(iovbuf))) > 0) {
@@ -1769,9 +1757,10 @@ dhd_pno_set(dhd_pub_t *dhd, wlc_ssid_t* ssids_local, int nssid, ushort scan_fr,
 		err = -1;
 		return err;
 	}
-
-	if (dhd_check_ap_wfd_mode_set(dhd) == TRUE)
-		return (err);
+#ifndef WL_SCHED_SCAN
+	if (!dhd_support_sta_mode(dhd))
+		return err;
+#endif /* !WL_SCHED_SCAN */
 
 	/* Check for broadcast ssid */
 	for (k = 0; k < nssid; k++) {
@@ -1888,8 +1877,8 @@ int dhd_keep_alive_onoff(dhd_pub_t *dhd)
 	int					str_len;
 	int res 				= -1;
 
-	if (dhd_check_ap_wfd_mode_set(dhd) == TRUE)
-		return (res);
+	if (!dhd_support_sta_mode(dhd))
+		return res;
 
 	DHD_TRACE(("%s execution\n", __FUNCTION__));
 

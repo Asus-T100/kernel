@@ -128,3 +128,7 @@ struct acm {
 #define NO_CAP_LINE			4
 #define NOT_A_MODEM			8
 #define NO_DATA_INTERFACE		16
+
+/* CloverView Comneon Modem Device Info */
+#define	CTP_MODEM_VID			0x1519
+#define	CTP_MODEM_PID			0x0020

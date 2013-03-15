@@ -88,6 +88,7 @@ static struct usb_endpoint_descriptor adb_fullspeed_in_desc = {
 	.bDescriptorType        = USB_DT_ENDPOINT,
 	.bEndpointAddress       = USB_DIR_IN,
 	.bmAttributes           = USB_ENDPOINT_XFER_BULK,
+	.wMaxPacketSize         = __constant_cpu_to_le16(64),
 };
 
 static struct usb_endpoint_descriptor adb_fullspeed_out_desc = {
@@ -113,6 +114,54 @@ static struct usb_descriptor_header *hs_adb_descs[] = {
 
 static void adb_ready_callback(void);
 static void adb_closed_callback(void);
+#ifdef CONFIG_USB_GADGET_DWC3
+static struct usb_endpoint_descriptor adb_superspeed_in_desc = {
+	.bLength                = USB_DT_ENDPOINT_SIZE,
+	.bDescriptorType        = USB_DT_ENDPOINT,
+	.bEndpointAddress       = USB_DIR_IN,
+	.bmAttributes           = USB_ENDPOINT_XFER_BULK,
+	.wMaxPacketSize         = __constant_cpu_to_le16(1024),
+};
+
+static struct usb_ss_ep_comp_descriptor adb_superspeed_in_comp_desc = {
+	.bLength =		sizeof(fsg_ss_bulk_in_comp_desc),
+	.bDescriptorType =	USB_DT_SS_ENDPOINT_COMP,
+
+	.bMaxBurst =		0,
+	.bmAttributes =		0,
+	/* .wBytesPerInterval =	cpu_to_le16(2), */
+};
+
+static struct usb_endpoint_descriptor adb_superspeed_out_desc = {
+	.bLength                = USB_DT_ENDPOINT_SIZE,
+	.bDescriptorType        = USB_DT_ENDPOINT,
+	.bEndpointAddress       = USB_DIR_OUT,
+	.bmAttributes           = USB_ENDPOINT_XFER_BULK,
+	.wMaxPacketSize         = __constant_cpu_to_le16(1024),
+};
+
+static struct usb_ss_ep_comp_descriptor adb_superspeed_out_comp_desc = {
+	.bLength =		sizeof(fsg_ss_bulk_in_comp_desc),
+	.bDescriptorType =	USB_DT_SS_ENDPOINT_COMP,
+
+	.bMaxBurst =		0,
+	.bmAttributes =		0,
+};
+
+static struct usb_descriptor_header *ss_adb_descs[] = {
+	(struct usb_descriptor_header *) &adb_interface_desc,
+	(struct usb_descriptor_header *) &adb_superspeed_in_desc,
+	(struct usb_descriptor_header *) &adb_superspeed_in_comp_desc,
+	(struct usb_descriptor_header *) &adb_superspeed_out_desc,
+	(struct usb_descriptor_header *) &adb_superspeed_out_comp_desc,
+	NULL,
+};
+#endif
+
+
+int fastboot;
+module_param(fastboot, int, S_IRUGO);
+MODULE_PARM_DESC(fastboot, "nonzero to use fastboot instead of abd protocol");
 
 /* temporary variable used between adb_open() and adb_gadget_bind() */
 static struct adb_dev *_adb_dev;
@@ -362,10 +411,17 @@ static ssize_t adb_write(struct file *fp, const char __user *buf,
 			break;
 		}
 
+		if (!dev->online) {
+			pr_debug("adb_write !dev->online\n");
+			r = -EIO;
+			break;
+		}
+
 		/* get an idle tx request to use */
 		req = 0;
 		ret = wait_event_interruptible(dev->write_wq,
-			(req = adb_req_get(dev, &dev->tx_idle)) || dev->error);
+				dev->error || !dev->online ||
+				(req = adb_req_get(dev, &dev->tx_idle)));
 
 		if (ret < 0) {
 			r = ret;
@@ -421,7 +477,9 @@ static int adb_open(struct inode *ip, struct file *fp)
 	/* clear the error latch */
 	_adb_dev->error = 0;
 
+#if 0
 	adb_ready_callback();
+#endif
 
 	return 0;
 }
@@ -430,7 +488,9 @@ static int adb_release(struct inode *ip, struct file *fp)
 {
 	pr_info("adb_release\n");
 
+#if 0
 	adb_closed_callback();
+#endif
 
 	adb_unlock(&_adb_dev->open_excl);
 	return 0;
@@ -470,6 +530,11 @@ adb_function_bind(struct usb_configuration *c, struct usb_function *f)
 	if (id < 0)
 		return id;
 	adb_interface_desc.bInterfaceNumber = id;
+	if (fastboot) {
+		printk(KERN_INFO "fastboot mode\n");
+		adb_interface_desc.bInterfaceProtocol = 3;
+	} else
+		printk(KERN_INFO "adb mode\n");
 
 	/* allocate endpoints */
 	ret = adb_create_bulk_endpoints(dev, &adb_fullspeed_in_desc,
@@ -485,6 +550,22 @@ adb_function_bind(struct usb_configuration *c, struct usb_function *f)
 			adb_fullspeed_out_desc.bEndpointAddress;
 	}
 
+#ifdef CONFIG_USB_GADGET_DWC3
+	if (gadget_is_superspeed(c->cdev->gadget)) {
+		unsigned	max_burst;
+
+		/* Calculate bMaxBurst, we know packet size is 1024 */
+		max_burst = min_t(unsigned, ADB_BULK_BUFFER_SIZE / 1024, 15);
+
+		adb_superspeed_in_desc.bEndpointAddress =
+			adb_fullspeed_in_desc.bEndpointAddress;
+		/* fsg_ss_bulk_in_comp_desc.bMaxBurst = max_burst; */
+
+		adb_superspeed_out_desc.bEndpointAddress =
+			adb_fullspeed_out_desc.bEndpointAddress;
+		/* fsg_ss_bulk_out_comp_desc.bMaxBurst = max_burst; */
+	}
+#endif
 	DBG(cdev, "%s speed %s: IN/%s, OUT/%s\n",
 			gadget_is_dualspeed(c->cdev->gadget) ? "dual" : "full",
 			f->name, dev->ep_in->name, dev->ep_out->name);
@@ -568,6 +649,9 @@ static int adb_bind_config(struct usb_configuration *c)
 	dev->function.name = "adb";
 	dev->function.descriptors = fs_adb_descs;
 	dev->function.hs_descriptors = hs_adb_descs;
+#ifdef CONFIG_USB_GADGET_DWC3
+	dev->function.ss_descriptors = ss_adb_descs;
+#endif
 	dev->function.bind = adb_function_bind;
 	dev->function.unbind = adb_function_unbind;
 	dev->function.set_alt = adb_function_set_alt;

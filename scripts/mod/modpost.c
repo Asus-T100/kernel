@@ -2200,11 +2200,14 @@ int main(int argc, char **argv)
 
 	if (dump_write)
 		write_dump(dump_write);
-	if (sec_mismatch_count && !sec_mismatch_verbose)
-		warn("modpost: Found %d section mismatch(es).\n"
-		     "To see full details build your kernel with:\n"
-		     "'make CONFIG_DEBUG_SECTION_MISMATCH=y'\n",
-		     sec_mismatch_count);
+	if (sec_mismatch_count) {
+		if (!sec_mismatch_verbose)
+			warn("modpost: Found %d section mismatch(es).\n"
+			     "To see full details build your kernel with:\n"
+			     "'make CONFIG_DEBUG_SECTION_MISMATCH=y'\n",
+			     sec_mismatch_count);
+		fatal("modpost: section mismatch(es) treated as error.\n");
+	}
 
 	return err;
 }

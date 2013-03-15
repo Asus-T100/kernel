@@ -25,41 +25,55 @@
 #ifndef __INTEL_SCU_WATCHDOG_H
 #define __INTEL_SCU_WATCHDOG_H
 
+#ifdef CONFIG_COMPAT
+#include <linux/compat.h>
+#endif
+
+#ifdef CONFIG_DEBUG_FS
+#include <linux/debugfs.h>
+#endif
+
+#define PFX "intel_scu_watchdog: "
 #define WDT_VER "0.3"
+
+#define DEFAULT_PRETIMEOUT 15
+#define DEFAULT_TIMEOUT 75
+#define DEFAULT_SCHEDULE_MARGIN 10
+#define DEFAULT_TIMER_DURATION (DEFAULT_TIMEOUT - \
+				DEFAULT_PRETIMEOUT - DEFAULT_SCHEDULE_MARGIN)
 
 /* minimum time between interrupts */
 #define MIN_TIME_CYCLE 1
-
-/* Time from warning to reboot is 2 seconds */
-#define DEFAULT_SOFT_TO_HARD_MARGIN 2
-
 #define MAX_TIME 170
-
-#define DEFAULT_TIME 5
-
 #define MAX_SOFT_TO_HARD_MARGIN (MAX_TIME-MIN_TIME_CYCLE)
 
-/* Ajustment to clock tick frequency to make timing come out right */
-#define FREQ_ADJUSTMENT 8
+/* Value 0 to reset the reset counter */
+#define OSNIB_WRITE_VALUE 0
 
 struct intel_scu_watchdog_dev {
 	ulong driver_open;
 	ulong driver_closed;
-	u32 timer_started;
-	u32 timer_set;
-	u32 threshold;
-	u32 soft_threshold;
-	u32 __iomem *timer_load_count_addr;
-	u32 __iomem *timer_current_value_addr;
-	u32 __iomem *timer_control_addr;
-	u32 __iomem *timer_clear_interrupt_addr;
-	u32 __iomem *timer_interrupt_status_addr;
-	struct sfi_timer_table_entry *timer_tbl_ptr;
-	struct notifier_block intel_scu_notifier;
+	bool started;
+	struct sfi_timer_table_entry *timer7_tbl_ptr;
+	struct sfi_timer_table_entry *timer6_tbl_ptr;
+	struct notifier_block reboot_notifier;
 	struct miscdevice miscdev;
+	bool shutdown_flag;
+	struct tasklet_struct interrupt_tasklet;
+	int reset_type;
+	int normal_wd_action;
+	int reboot_wd_action;
+	int shutdown_wd_action;
+#ifdef CONFIG_DEBUG_FS
+	bool panic_reboot_notifier;
+	struct dentry *dfs_wd;
+	struct dentry *dfs_secwd;
+	struct dentry *dfs_secwd_trigger;
+	struct dentry *dfs_kwd;
+	struct dentry *dfs_kwd_trigger;
+	struct dentry *dfs_kwd_reset_type;
+	struct dentry *dfs_kwd_panic_reboot;
+#endif /* CONFIG_DEBUG_FS */
 };
 
-extern int sfi_mtimer_num;
-
-/* extern struct sfi_timer_table_entry *sfi_get_mtmr(int hint); */
 #endif /* __INTEL_SCU_WATCHDOG_H */

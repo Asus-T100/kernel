@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: wl_cfg80211.h 347625 2012-07-27 10:52:40Z $
+ * $Id: wl_cfg80211.h 358186 2012-09-21 14:36:14Z $
  */
 
 #ifndef _wl_cfg80211_h_
@@ -52,6 +52,7 @@ struct wl_ibss;
 #define dtohchanspec(i) i
 
 #define WL_DBG_NONE	0
+#define WL_DBG_P2P_ACTION (1 << 5)
 #define WL_DBG_TRACE	(1 << 4)
 #define WL_DBG_SCAN 	(1 << 3)
 #define WL_DBG_DBG 	(1 << 2)
@@ -109,6 +110,10 @@ do {									\
 		printk args;							\
 	}									\
 } while (0)
+#ifdef WL_TRACE_HW4
+#undef WL_TRACE_HW4
+#endif
+#define	WL_TRACE_HW4			WL_TRACE
 #if (WL_DBG_LEVEL > 0)
 #define	WL_DBG(args)								\
 do {									\
@@ -120,6 +125,7 @@ do {									\
 #else				/* !(WL_DBG_LEVEL > 0) */
 #define	WL_DBG(args)
 #endif				/* (WL_DBG_LEVEL > 0) */
+#define WL_PNO(x)
 
 
 #define WL_SCAN_RETRY_MAX	3
@@ -141,7 +147,11 @@ do {									\
 #define WL_MIN_DWELL_TIME	100
 #define WL_LONG_DWELL_TIME 	1000
 #define IFACE_MAX_CNT 		2
-#define WL_SCAN_CONNECT_DWELL_TIME_MS 100
+#define WL_SCAN_CONNECT_DWELL_TIME_MS 		200
+#define WL_SCAN_JOIN_PROBE_INTERVAL_MS 		20
+#define WL_SCAN_JOIN_ACTIVE_DWELL_TIME_MS 	320
+#define WL_SCAN_JOIN_PASSIVE_DWELL_TIME_MS 	400
+#define WL_AF_TX_MAX_RETRY 	5
 
 #define WL_SCAN_TIMER_INTERVAL_MS	8000 /* Scan timeout */
 #define WL_CHANNEL_SYNC_RETRY 	5
@@ -290,6 +300,7 @@ struct wl_security {
 	u32 cipher_pairwise;
 	u32 cipher_group;
 	u32 wpa_auth;
+	u32 auth_assoc_res_status;
 };
 
 /* ibss information for currently joined ibss network */
@@ -384,7 +395,7 @@ struct escan_info {
 	u8 *escan_buf;
 #else
 	u8 escan_buf[ESCAN_BUF_SIZE];
-#endif 
+#endif /* STATIC_WL_PRIV_STRUCT */
 	struct wiphy *wiphy;
 	struct net_device *ndev;
 };
@@ -534,6 +545,13 @@ struct wl_priv {
 		struct net_info *_net_info, enum wl_status state, bool set);
 	unsigned long interrested_state;
 	wlc_ssid_t hostapd_ssid;
+	bool sched_scan_running;	/* scheduled scan req status */
+#ifdef WL_SCHED_SCAN
+	struct cfg80211_sched_scan_request *sched_scan_req;	/* scheduled scan req */
+#endif /* WL_SCHED_SCAN */
+#ifdef WL_HOST_BAND_MGMT
+	u8 curr_band;
+#endif /* WL_HOST_BAND_MGMT */
 };
 
 
@@ -790,9 +808,12 @@ extern s32 wl_cfg80211_set_p2p_ps(struct net_device *net, char* buf, int len);
 extern int wl_cfg80211_hang(struct net_device *dev, u16 reason);
 extern s32 wl_mode_to_nl80211_iftype(s32 mode);
 int wl_cfg80211_do_driver_init(struct net_device *net);
-void wl_cfg80211_enable_trace(int level);
+void wl_cfg80211_enable_trace(bool set, u32 level);
 extern s32 wl_update_wiphybands(struct wl_priv *wl);
 extern s32 wl_cfg80211_if_is_group_owner(void);
 extern chanspec_t wl_ch_host_to_driver(u16 channel);
 extern s32 wl_add_remove_eventmsg(struct net_device *ndev, u16 event, bool add);
+extern void wl_stop_wait_next_action_frame(struct wl_priv *wl, struct net_device *ndev);
+extern s32 wl_cfg80211_set_band(struct net_device *ndev, int band);
+extern int wl_cfg80211_update_power_mode(struct net_device *dev);
 #endif				/* _wl_cfg80211_h_ */

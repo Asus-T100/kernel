@@ -23,6 +23,7 @@ lib-y += memcpy_$(BITS).o
 lib-$(CONFIG_SMP) += rwlock.o
 lib-$(CONFIG_RWSEM_XCHGADD_ALGORITHM) += rwsem.o
 lib-$(CONFIG_INSTRUCTION_DECODER) += insn.o inat.o
+obj-$(CONFIG_X86_ENABLE_SSSE3) += ssse3_memcpy_32.o ssse3_memcpy_wrapper_32.o
 
 obj-y += msr.o msr-reg.o msr-reg-export.o
 

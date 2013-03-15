@@ -741,6 +741,10 @@ static u8 smp_cmd_security_req(struct l2cap_conn *conn, struct sk_buff *skb)
 		return 0;
 
 	smp = smp_chan_create(conn);
+	if (!smp) {
+		BT_ERR("kmalloc(struct smp_chan) failed");
+		return -ENOMEM;
+	}
 
 	skb_pull(skb, sizeof(*rp));
 

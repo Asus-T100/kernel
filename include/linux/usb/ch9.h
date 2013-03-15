@@ -36,6 +36,7 @@
 #include <linux/types.h>	/* __u8 etc */
 #include <asm/byteorder.h>	/* le16_to_cpu */
 
+
 /*-------------------------------------------------------------------------*/
 
 /* CONTROL REQUEST SUPPORT */
@@ -88,6 +89,7 @@
 #define USB_REQ_GET_INTERFACE		0x0A
 #define USB_REQ_SET_INTERFACE		0x0B
 #define USB_REQ_SYNCH_FRAME		0x0C
+#define USB_REQ_SET_SEL			0x30
 
 #define USB_REQ_SET_ENCRYPTION		0x0D	/* Wireless USB */
 #define USB_REQ_GET_ENCRYPTION		0x0E
@@ -123,6 +125,8 @@
 #define USB_DEVICE_A_HNP_SUPPORT	4	/* (otg) RH port supports HNP */
 #define USB_DEVICE_A_ALT_HNP_SUPPORT	5	/* (otg) other RH port does */
 #define USB_DEVICE_DEBUG_MODE		6	/* (special devices only) */
+#define USB_NTF_HOST_REL                51
+#define USB_B3_RSP_ENABLE               52
 
 /*
  * Test Mode Selectors
@@ -133,6 +137,19 @@
 #define	TEST_SE0_NAK	3
 #define	TEST_PACKET	4
 #define	TEST_FORCE_EN	5
+
+/*
+ * USB OTG 2.0 Test Mode
+ * See OTG 2.0 spec Table 6-8
+ */
+#define	TEST_SRP_REQD	6
+#define	TEST_HNP_REQD	7
+
+/*
+ * OTG 2.0
+ * Section 6.2 & 6.3
+ */
+#define	 OTG_STATUS_SELECTOR	0xF000
 
 /*
  * New Feature Selectors as added by USB 3.0
@@ -267,6 +284,8 @@ struct usb_device_descriptor {
 
 #define USB_DT_DEVICE_SIZE		18
 
+/* bcdDevice defined in OTG2.0 section 6.4.3.2 */
+#define USB_DT_BCD_VBUSOFF		BIT(0)
 
 /*
  * Device and/or Interface Class codes
@@ -647,17 +666,19 @@ struct usb_qualifier_descriptor {
 
 /*-------------------------------------------------------------------------*/
 
-/* USB_DT_OTG (from OTG 1.0a supplement) */
+/* USB_DT_OTG (from OTG 2.0) */
 struct usb_otg_descriptor {
 	__u8  bLength;
 	__u8  bDescriptorType;
 
 	__u8  bmAttributes;	/* support for HNP, SRP, etc */
+	__le16 bcdOTG;		/* release number, i.e, 2.0 is 0x0200 */
 } __attribute__ ((packed));
 
 /* from usb_otg_descriptor.bmAttributes */
 #define USB_OTG_SRP		(1 << 0)
 #define USB_OTG_HNP		(1 << 1)	/* swap host/device roles */
+#define USB_OTG_ADP		(1 << 2)	/* attachment detection */
 
 /*-------------------------------------------------------------------------*/
 

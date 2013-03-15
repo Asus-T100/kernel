@@ -52,6 +52,7 @@ struct cpufreq_interactive_cpuinfo {
 	u64 floor_validate_time;
 	u64 hispeed_validate_time;
 	int governor_enabled;
+	cputime64_t prev_cpu_iowait;
 };
 
 static DEFINE_PER_CPU(struct cpufreq_interactive_cpuinfo, cpuinfo);
@@ -88,6 +89,47 @@ static unsigned long timer_rate;
 static unsigned long above_hispeed_delay_val;
 
 /*
+ * Boost pulse to hispeed on touchscreen input.
+ */
+
+static int input_boost_val;
+
+/*
+ * The variable indicating the touch events for
+ * Power HAL.This variable is set from powerHAL
+ */
+
+/*
+ * Frequency to which a touch boost takes the cpus to
+ */
+static unsigned long touchboost_freq;
+
+static int touch_event_val;
+
+/*
+ * The variable indicating the vsync count for
+ * Power HAL.This variable is set from powerHAL
+ */
+
+static int vsync_count_val;
+
+/*
+ * io_is_busy flag is exposed so that it can be controlled
+ * from sysfs
+ */
+
+static unsigned int ig_io_is_busy;
+
+static inline cputime64_t get_cpu_iowait_time(unsigned int cpu,
+	cputime64_t *wall)
+{
+	u64 iowait_time = get_cpu_iowait_time_us(cpu, wall);
+	if (iowait_time == -1ULL)
+		return 0;
+	return iowait_time;
+}
+
+/*
  * Non-zero means longer-term speed boost active.
  */
 
@@ -120,6 +162,9 @@ static void cpufreq_interactive_timer(unsigned long data)
 	unsigned int new_freq;
 	unsigned int index;
 	unsigned long flags;
+	cputime64_t cur_wall_time;
+	cputime64_t cur_iowait_time;
+	cputime64_t iowait_time;
 
 	smp_rmb();
 
@@ -147,6 +192,10 @@ static void cpufreq_interactive_timer(unsigned long data)
 	delta_idle = (unsigned int)(now_idle - time_in_idle);
 	delta_time = (unsigned int)(pcpu->timer_run_time - idle_exit_time);
 
+	cur_iowait_time = get_cpu_iowait_time(data, &cur_wall_time);
+	iowait_time = (unsigned int)(cur_iowait_time - pcpu->prev_cpu_iowait);
+	pcpu->prev_cpu_iowait = cur_iowait_time;
+
 	/*
 	 * If timer ran less than 1ms after short-term sample started, retry.
 	 */
@@ -161,6 +210,9 @@ static void cpufreq_interactive_timer(unsigned long data)
 	delta_idle = (unsigned int)(now_idle - pcpu->target_set_time_in_idle);
 	delta_time = (unsigned int)(pcpu->timer_run_time -
 				    pcpu->target_set_time);
+
+	if (ig_io_is_busy && delta_idle >= iowait_time)
+		delta_idle -= iowait_time;
 
 	if ((delta_time == 0) || (delta_idle > delta_time))
 		load_since_change = 0;
@@ -177,7 +229,8 @@ static void cpufreq_interactive_timer(unsigned long data)
 		cpu_load = load_since_change;
 
 	if (cpu_load >= go_hispeed_load || boost_val) {
-		if (pcpu->target_freq <= pcpu->policy->min) {
+		if (pcpu->target_freq < hispeed_freq &&
+		    hispeed_freq < pcpu->policy->max) {
 			new_freq = hispeed_freq;
 		} else {
 			new_freq = pcpu->policy->max * cpu_load / 100;
@@ -436,8 +489,8 @@ static void cpufreq_interactive_boost(void)
 	for_each_online_cpu(i) {
 		pcpu = &per_cpu(cpuinfo, i);
 
-		if (pcpu->target_freq < hispeed_freq) {
-			pcpu->target_freq = hispeed_freq;
+		if (pcpu->target_freq < touchboost_freq) {
+			pcpu->target_freq = touchboost_freq;
 			cpumask_set_cpu(i, &speedchange_cpumask);
 			pcpu->target_set_time_in_idle =
 				get_cpu_idle_time_us(i, &pcpu->target_set_time);
@@ -450,7 +503,7 @@ static void cpufreq_interactive_boost(void)
 		 * validated.
 		 */
 
-		pcpu->floor_freq = hispeed_freq;
+		pcpu->floor_freq = touchboost_freq;
 		pcpu->floor_validate_time = ktime_to_us(ktime_get());
 	}
 
@@ -505,6 +558,28 @@ static ssize_t store_go_hispeed_load(struct kobject *kobj,
 
 static struct global_attr go_hispeed_load_attr = __ATTR(go_hispeed_load, 0644,
 		show_go_hispeed_load, store_go_hispeed_load);
+static ssize_t show_touchboost_freq(struct kobject *kobj,
+				 struct attribute *attr, char *buf)
+{
+	return sprintf(buf, "%lu\n", touchboost_freq);
+}
+
+static ssize_t store_touchboost_freq(struct kobject *kobj,
+				  struct attribute *attr,
+				  const char *buf,
+				  size_t count)
+{
+	int ret;
+	unsigned long val;
+
+	ret = kstrtoul(buf, 0, &val);
+	if (ret < 0)
+		return ret;
+	touchboost_freq = val;
+	return count;
+}
+static struct global_attr touchboost_freq_attr = __ATTR(touchboost_freq, 0644,
+		show_touchboost_freq, store_touchboost_freq);
 
 static ssize_t show_min_sample_time(struct kobject *kobj,
 				struct attribute *attr, char *buf)
@@ -572,6 +647,82 @@ static ssize_t store_timer_rate(struct kobject *kobj,
 static struct global_attr timer_rate_attr = __ATTR(timer_rate, 0644,
 		show_timer_rate, store_timer_rate);
 
+static ssize_t show_input_boost(struct kobject *kobj, struct attribute *attr,
+				char *buf)
+{
+	return sprintf(buf, "%u\n", input_boost_val);
+}
+
+static ssize_t store_input_boost(struct kobject *kobj, struct attribute *attr,
+				 const char *buf, size_t count)
+{
+	int ret;
+	unsigned long val;
+
+	ret = kstrtoul(buf, 0, &val);
+	if (ret < 0)
+		return ret;
+	input_boost_val = val;
+	return count;
+}
+
+define_one_global_rw(input_boost);
+
+static ssize_t show_touch_event(struct kobject *kobj, struct attribute *attr,
+				char *buf)
+{
+	return sprintf(buf, "%u\n", touch_event_val);
+}
+
+static ssize_t store_touch_event(struct kobject *kobj, struct attribute *attr,
+				 const char *buf, size_t count)
+{
+	int ret;
+	unsigned long val;
+	ret = kstrtoul(buf, 0, &val);
+	if (ret < 0)
+		return ret;
+	touch_event_val = val;
+	return count;
+}
+define_one_global_rw(touch_event);
+
+static ssize_t show_vsync_count(struct kobject *kobj, struct attribute *attr,
+				char *buf)
+{
+	return sprintf(buf, "%u\n", vsync_count_val);
+}
+
+static ssize_t store_vsync_count(struct kobject *kobj, struct attribute *attr,
+				 const char *buf, size_t count)
+{
+	int ret;
+	unsigned long val;
+	ret = kstrtoul(buf, 0, &val);
+	if (ret < 0)
+		return ret;
+	vsync_count_val = val;
+	return count;
+}
+
+define_one_global_rw(vsync_count);
+
+static ssize_t store_vsync_dec(struct kobject *kobj, struct attribute *attr,
+				const char *buf, size_t count)
+{
+	int ret;
+	unsigned long val;
+
+	ret = kstrtoul(buf, 0, &val);
+	if (ret < 0)
+		return ret;
+	vsync_count_val--;
+	return count;
+}
+
+static struct global_attr vsync_dec =
+	__ATTR(vsync_dec, 0200, NULL, store_vsync_dec);
+
 static ssize_t show_boost(struct kobject *kobj, struct attribute *attr,
 			  char *buf)
 {
@@ -620,14 +771,41 @@ static ssize_t store_boostpulse(struct kobject *kobj, struct attribute *attr,
 static struct global_attr boostpulse =
 	__ATTR(boostpulse, 0200, NULL, store_boostpulse);
 
+static ssize_t show_io_is_busy(struct kobject *kobj, struct attribute *attr,
+				char *buf)
+{
+	return sprintf(buf, "%u\n", ig_io_is_busy);
+}
+
+static ssize_t store_io_is_busy(struct kobject *kobj, struct attribute *attr,
+				 const char *buf, size_t count)
+{
+	int ret;
+	unsigned long val;
+
+	ret = kstrtoul(buf, 0, &val);
+	if (ret < 0)
+		return ret;
+	ig_io_is_busy = !!val;
+	return count;
+}
+
+define_one_global_rw(io_is_busy);
+
 static struct attribute *interactive_attributes[] = {
 	&hispeed_freq_attr.attr,
 	&go_hispeed_load_attr.attr,
 	&above_hispeed_delay.attr,
 	&min_sample_time_attr.attr,
 	&timer_rate_attr.attr,
+	&input_boost.attr,
+	&touch_event.attr,
+	&vsync_count.attr,
 	&boost.attr,
 	&boostpulse.attr,
+	&io_is_busy.attr,
+	&touchboost_freq_attr.attr,
+	&vsync_dec.attr,
 	NULL,
 };
 
@@ -655,6 +833,29 @@ static int cpufreq_interactive_idle_notifier(struct notifier_block *nb,
 static struct notifier_block cpufreq_interactive_idle_nb = {
 	.notifier_call = cpufreq_interactive_idle_notifier,
 };
+
+/*
+ * Not all CPUs want IO time to be accounted as busy; this dependson how
+ * efficient idling at a higher frequency/voltage is.
+ * Pavel Machek says this is not so for various generations of AMD and old
+ * Intel systems.
+ * Mike Chan (androidlcom) calis this is also not true for ARM.
+ * Because of this, whitelist specific known (series) of CPUs by default, and
+ * leave all others up to the user.
+ */
+static int should_io_be_busy(void)
+{
+#if defined(CONFIG_X86)
+	/*
+	 * For Intel, Core 2 (model 15) andl later have an efficient idle.
+	 */
+	if (boot_cpu_data.x86_vendor == X86_VENDOR_INTEL &&
+	    boot_cpu_data.x86 == 6 &&
+	    boot_cpu_data.x86_model >= 15)
+		return 1;
+#endif
+	return 0;
+}
 
 static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 		unsigned int event)
@@ -692,6 +893,8 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 		if (!hispeed_freq)
 			hispeed_freq = policy->max;
 
+		if (!touchboost_freq)
+			touchboost_freq = policy->max;
 		/*
 		 * Do not register the idle hook and create sysfs
 		 * entries if we have already done so.
@@ -754,11 +957,12 @@ static int __init cpufreq_interactive_init(void)
 	min_sample_time = DEFAULT_MIN_SAMPLE_TIME;
 	above_hispeed_delay_val = DEFAULT_ABOVE_HISPEED_DELAY;
 	timer_rate = DEFAULT_TIMER_RATE;
+	ig_io_is_busy = should_io_be_busy();
 
 	/* Initalize per-cpu timers */
 	for_each_possible_cpu(i) {
 		pcpu = &per_cpu(cpuinfo, i);
-		init_timer(&pcpu->cpu_timer);
+		init_timer_deferrable(&pcpu->cpu_timer);
 		pcpu->cpu_timer.function = cpufreq_interactive_timer;
 		pcpu->cpu_timer.data = i;
 	}

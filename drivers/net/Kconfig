@@ -344,4 +344,10 @@ config VMXNET3
 
 source "drivers/net/hyperv/Kconfig"
 
+config HSI_MHI
+	   bool "HSI net device"
+	   default n
+	   help
+	    This is the hsi net device manadatory used to access HSI network
+
 endif # NETDEVICES

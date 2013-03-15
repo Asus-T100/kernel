@@ -31,10 +31,10 @@
 #include <linux/init.h>
 #include <linux/io.h>
 #include <linux/gpio.h>
-#include <asm/intel_scu_ipc.h>
 #include <linux/device.h>
 #include <linux/intel_pmic_gpio.h>
 #include <linux/platform_device.h>
+#include <asm/intel_scu_pmic.h>
 
 #define DRIVER_NAME "pmic_gpio"
 

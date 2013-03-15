@@ -22,6 +22,7 @@
 #include <linux/regmap.h>
 #include <sound/core.h>
 #include <sound/pcm.h>
+#include <sound/compress_driver.h>
 #include <sound/control.h>
 #include <sound/ac97_codec.h>
 
@@ -55,6 +56,24 @@
 	.info = snd_soc_info_volsw, .get = snd_soc_get_volsw,\
 	.put = snd_soc_put_volsw, \
 	.private_value =  SOC_SINGLE_VALUE(reg, shift, max, invert) }
+#define SOC_SINGLE_SX_TLV(xname, xreg, xshift, xmin, xmax, tlv_array) \
+{       .iface = SNDRV_CTL_ELEM_IFACE_MIXER, .name = xname, \
+	.access = SNDRV_CTL_ELEM_ACCESS_TLV_READ | \
+	SNDRV_CTL_ELEM_ACCESS_READWRITE, \
+	.tlv.p  = (tlv_array),\
+	.info = snd_soc_info_volsw, \
+	.get = snd_soc_get_volsw_sx,\
+	.put = snd_soc_put_volsw_sx, \
+	.private_value = (unsigned long)&(struct soc_mixer_control) \
+		{.reg = xreg, .rreg = xreg, \
+		.shift = xshift, .rshift = xshift, \
+		.max = xmax, .min = xmin} }
+#define SND_SOC_BYTES_EXT(xname, xcount, xhandler_get, xhandler_put) \
+{	.iface = SNDRV_CTL_ELEM_IFACE_MIXER, .name = xname, \
+	.info = snd_soc_info_bytes_ext, \
+	.get = xhandler_get, .put = xhandler_put, \
+	.private_value = (unsigned long)&(struct soc_bytes_ext) \
+		{.max = xcount} }
 #define SOC_DOUBLE(xname, reg, shift_left, shift_right, max, invert) \
 {	.iface = SNDRV_CTL_ELEM_IFACE_MIXER, .name = (xname),\
 	.info = snd_soc_info_volsw, .get = snd_soc_get_volsw, \
@@ -85,6 +104,18 @@
 	.get = snd_soc_get_volsw, .put = snd_soc_put_volsw, \
 	.private_value = SOC_DOUBLE_R_VALUE(reg_left, reg_right, xshift, \
 					    xmax, xinvert) }
+#define SOC_DOUBLE_R_SX_TLV(xname, xreg, xrreg, xshift, xmin, xmax, tlv_array) \
+{       .iface = SNDRV_CTL_ELEM_IFACE_MIXER, .name = (xname), \
+	.access = SNDRV_CTL_ELEM_ACCESS_TLV_READ | \
+	SNDRV_CTL_ELEM_ACCESS_READWRITE, \
+	.tlv.p  = (tlv_array), \
+	.info = snd_soc_info_volsw, \
+	.get = snd_soc_get_volsw_sx, \
+	.put = snd_soc_put_volsw_sx, \
+	.private_value = (unsigned long)&(struct soc_mixer_control) \
+		{.reg = xreg, .rreg = xrreg, \
+		.shift = xshift, .rshift = xshift, \
+		.max = xmax, .min = xmin} }
 #define SOC_DOUBLE_S8_TLV(xname, xreg, xmin, xmax, tlv_array) \
 {	.iface  = SNDRV_CTL_ELEM_IFACE_MIXER, .name = (xname), \
 	.access = SNDRV_CTL_ELEM_ACCESS_TLV_READ | \
@@ -170,20 +201,6 @@
 	.info = snd_soc_info_enum_ext, \
 	.get = xhandler_get, .put = xhandler_put, \
 	.private_value = (unsigned long)&xenum }
-
-#define SOC_DOUBLE_R_SX_TLV(xname, xreg_left, xreg_right, xshift,\
-		xmin, xmax, tlv_array) \
-{	.iface = SNDRV_CTL_ELEM_IFACE_MIXER, .name = (xname), \
-	.access = SNDRV_CTL_ELEM_ACCESS_TLV_READ | \
-		  SNDRV_CTL_ELEM_ACCESS_READWRITE, \
-	.tlv.p = (tlv_array), \
-	.info = snd_soc_info_volsw_2r_sx, \
-	.get = snd_soc_get_volsw_2r_sx, \
-	.put = snd_soc_put_volsw_2r_sx, \
-	.private_value = (unsigned long)&(struct soc_mixer_control) \
-		{.reg = xreg_left, \
-		 .rreg = xreg_right, .shift = xshift, \
-		 .min = xmin, .max = xmax} }
 
 #define SND_SOC_BYTES(xname, xbase, xregs)		      \
 {	.iface = SNDRV_CTL_ELEM_IFACE_MIXER, .name = xname,   \
@@ -288,6 +305,11 @@ enum snd_soc_pcm_subclass {
 	SND_SOC_PCM_CLASS_BE	= 1,
 };
 
+enum snd_soc_card_subclass {
+	SND_SOC_CARD_CLASS_INIT	= 0,
+	SND_SOC_CARD_CLASS_PCM	= 1,
+};
+
 int snd_soc_codec_set_sysclk(struct snd_soc_codec *codec, int clk_id,
 			     int source, unsigned int freq, int dir);
 int snd_soc_codec_set_pll(struct snd_soc_codec *codec, int pll_id, int source,
@@ -304,6 +326,7 @@ void snd_soc_unregister_platform(struct device *dev);
 int snd_soc_register_codec(struct device *dev,
 		const struct snd_soc_codec_driver *codec_drv,
 		struct snd_soc_dai_driver *dai_drv, int num_dai);
+int snd_soc_codec_set_params(struct snd_soc_codec *codec, unsigned int param);
 void snd_soc_unregister_codec(struct device *dev);
 int snd_soc_codec_volatile_register(struct snd_soc_codec *codec,
 				    unsigned int reg);
@@ -332,6 +355,7 @@ int snd_soc_platform_read(struct snd_soc_platform *platform,
 int snd_soc_platform_write(struct snd_soc_platform *platform,
 					unsigned int reg, unsigned int val);
 int soc_new_pcm(struct snd_soc_pcm_runtime *rtd, int num);
+int soc_new_compress(struct snd_soc_pcm_runtime *rtd, int num);
 
 /* Utility functions to get clock rates from various things */
 int snd_soc_calc_frame_size(int sample_size, int channels, int tdm_slots);
@@ -413,6 +437,10 @@ int snd_soc_put_volsw(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_value *ucontrol);
 #define snd_soc_get_volsw_2r snd_soc_get_volsw
 #define snd_soc_put_volsw_2r snd_soc_put_volsw
+int snd_soc_get_volsw_sx(struct snd_kcontrol *kcontrol,
+	struct snd_ctl_elem_value *ucontrol);
+int snd_soc_put_volsw_sx(struct snd_kcontrol *kcontrol,
+	struct snd_ctl_elem_value *ucontrol);
 int snd_soc_info_volsw_s8(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_info *uinfo);
 int snd_soc_get_volsw_s8(struct snd_kcontrol *kcontrol,
@@ -421,18 +449,14 @@ int snd_soc_put_volsw_s8(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_value *ucontrol);
 int snd_soc_limit_volume(struct snd_soc_codec *codec,
 	const char *name, int max);
-int snd_soc_info_volsw_2r_sx(struct snd_kcontrol *kcontrol,
-	struct snd_ctl_elem_info *uinfo);
-int snd_soc_get_volsw_2r_sx(struct snd_kcontrol *kcontrol,
-	struct snd_ctl_elem_value *ucontrol);
-int snd_soc_put_volsw_2r_sx(struct snd_kcontrol *kcontrol,
-	struct snd_ctl_elem_value *ucontrol);
 int snd_soc_bytes_info(struct snd_kcontrol *kcontrol,
 		       struct snd_ctl_elem_info *uinfo);
 int snd_soc_bytes_get(struct snd_kcontrol *kcontrol,
 		      struct snd_ctl_elem_value *ucontrol);
 int snd_soc_bytes_put(struct snd_kcontrol *kcontrol,
 		      struct snd_ctl_elem_value *ucontrol);
+int snd_soc_info_bytes_ext(struct snd_kcontrol *kcontrol,
+	struct snd_ctl_elem_info *ucontrol);
 
 
 /**
@@ -490,6 +514,7 @@ struct snd_soc_jack_zone {
  * @name:         gpio name
  * @report:       value to report when jack detected
  * @invert:       report presence in low state
+ * @irq_flag:	  Interrupt flags for GPIO-Irq line
  * @debouce_time: debouce time in ms
  * @wake:	  enable as wake source
  * @jack_status_check: callback function which overrides the detection
@@ -504,6 +529,7 @@ struct snd_soc_jack_gpio {
 	int invert;
 	int debounce_time;
 	bool wake;
+	unsigned long irq_flags;
 
 	struct snd_soc_jack *jack;
 	struct delayed_work work;
@@ -541,6 +567,13 @@ struct snd_soc_ops {
 	int (*hw_free)(struct snd_pcm_substream *);
 	int (*prepare)(struct snd_pcm_substream *);
 	int (*trigger)(struct snd_pcm_substream *, int);
+};
+
+struct snd_soc_compr_ops {
+	int (*startup)(struct snd_compr_stream *);
+	void (*shutdown)(struct snd_compr_stream *);
+	int (*set_params)(struct snd_compr_stream *);
+	int (*trigger)(struct snd_compr_stream *);
 };
 
 /* SoC cache ops */
@@ -636,6 +669,7 @@ struct snd_soc_codec_driver {
 			  int clk_id, int source, unsigned int freq, int dir);
 	int (*set_pll)(struct snd_soc_codec *codec, int pll_id, int source,
 		unsigned int freq_in, unsigned int freq_out);
+	int (*set_params)(struct snd_soc_codec *codec, unsigned int param);
 
 	/* codec IO */
 	unsigned int (*read)(struct snd_soc_codec *, unsigned int);
@@ -698,8 +732,11 @@ struct snd_soc_platform_driver {
 	snd_pcm_sframes_t (*delay)(struct snd_pcm_substream *,
 		struct snd_soc_dai *);
 
-	/* platform stream ops */
+	/* platform stream pcm ops */
 	struct snd_pcm_ops *ops;
+
+	/* platform stream compress ops */
+	struct snd_compr_ops *compr_ops;
 
 	/* platform stream completion event */
 	int (*stream_event)(struct snd_soc_dapm_context *dapm, int event);
@@ -763,6 +800,11 @@ struct snd_soc_dai_link {
 
 	/* machine stream operations */
 	struct snd_soc_ops *ops;
+	struct snd_soc_compr_ops *compr_ops;
+
+	/*no of substreams */
+	unsigned int playback_count;
+	unsigned int capture_count;
 };
 
 struct snd_soc_codec_conf {
@@ -800,6 +842,7 @@ struct snd_soc_card {
 
 	struct list_head list;
 	struct mutex mutex;
+	struct mutex dapm_mutex;
 
 	bool instantiated;
 
@@ -896,6 +939,7 @@ struct snd_soc_pcm_runtime {
 
 	/* runtime devices */
 	struct snd_pcm *pcm;
+	struct snd_compr *compr;
 	struct snd_soc_codec *codec;
 	struct snd_soc_platform *platform;
 	struct snd_soc_dai *codec_dai;
@@ -914,6 +958,10 @@ struct soc_bytes {
 	int base;
 	int num_regs;
 	u32 mask;
+};
+
+struct soc_bytes_ext {
+	int max;
 };
 
 /* enumerated kcontrol */

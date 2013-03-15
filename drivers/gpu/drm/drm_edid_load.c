@@ -119,7 +119,7 @@ static int edid_load(struct drm_connector *connector, char *name,
 {
 	const struct firmware *fw;
 	struct platform_device *pdev;
-	u8 *fwdata = NULL, *edid;
+	u8 *fwdata = NULL, *edid, *new_edid;
 	int fwsize, expected;
 	int builtin = 0, err = 0;
 	int i, valid_extensions = 0;
@@ -173,7 +173,7 @@ static int edid_load(struct drm_connector *connector, char *name,
 	}
 	memcpy(edid, fwdata, fwsize);
 
-	if (!drm_edid_block_valid(edid)) {
+	if (!drm_edid_block_valid(edid, 0)) {
 		DRM_ERROR("Base block of EDID firmware \"%s\" is invalid ",
 		    name);
 		kfree(edid);
@@ -185,7 +185,7 @@ static int edid_load(struct drm_connector *connector, char *name,
 		if (i != valid_extensions + 1)
 			memcpy(edid + (valid_extensions + 1) * EDID_LENGTH,
 			    edid + i * EDID_LENGTH, EDID_LENGTH);
-		if (drm_edid_block_valid(edid + i * EDID_LENGTH))
+		if (drm_edid_block_valid(edid + i * EDID_LENGTH, i))
 			valid_extensions++;
 	}
 
@@ -195,12 +195,14 @@ static int edid_load(struct drm_connector *connector, char *name,
 		    "\"%s\" for connector \"%s\"\n", valid_extensions,
 		    edid[0x7e], name, connector_name);
 		edid[0x7e] = valid_extensions;
-		edid = krealloc(edid, (valid_extensions + 1) * EDID_LENGTH,
+		new_edid = krealloc(edid, (valid_extensions + 1) * EDID_LENGTH,
 		    GFP_KERNEL);
-		if (edid == NULL) {
+		if (new_edid == NULL) {
 			err = -ENOMEM;
+			kfree(edid);
 			goto relfw_out;
 		}
+		edid = new_edid;
 	}
 
 	connector->display_info.raw_edid = edid;
@@ -220,18 +222,18 @@ int drm_load_edid_firmware(struct drm_connector *connector)
 {
 	char *connector_name = drm_get_connector_name(connector);
 	char *edidname = edid_firmware, *last, *colon;
-	int ret = 0;
+	int ret;
 
 	if (*edidname == '\0')
-		return ret;
+		return 0;
 
 	colon = strchr(edidname, ':');
 	if (colon != NULL) {
 		if (strncmp(connector_name, edidname, colon - edidname))
-			return ret;
+			return 0;
 		edidname = colon + 1;
 		if (*edidname == '\0')
-			return ret;
+			return 0;
 	}
 
 	last = edidname + strlen(edidname) - 1;

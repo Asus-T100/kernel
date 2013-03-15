@@ -922,6 +922,13 @@ static int acm_write_buffers_alloc(struct acm *acm)
 	return 0;
 }
 
+static inline int is_comneon_modem(struct usb_device *dev)
+{
+	return (le16_to_cpu(dev->descriptor.idVendor) == CTP_MODEM_VID &&
+			le16_to_cpu(dev->descriptor.idProduct) ==
+			CTP_MODEM_PID);
+}
+
 static int acm_probe(struct usb_interface *intf,
 		     const struct usb_device_id *id)
 {
@@ -1310,6 +1317,11 @@ skip_countries:
 
 	usb_get_intf(control_interface);
 	tty_register_device(acm_tty_driver, minor, &control_interface->dev);
+
+
+	/* Enable Runtime-PM for CTP Modem */
+	if (is_comneon_modem(usb_dev))
+		usb_enable_autosuspend(usb_dev);
 
 	return 0;
 alloc_fail7:

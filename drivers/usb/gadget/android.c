@@ -19,10 +19,13 @@
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/fs.h>
+
 #include <linux/delay.h>
 #include <linux/kernel.h>
 #include <linux/utsname.h>
 #include <linux/platform_device.h>
+#include <linux/mmc/card.h>
+#include <linux/jhashv2.h>
 
 #include <linux/usb/ch9.h>
 #include <linux/usb/composite.h>
@@ -43,6 +46,7 @@
 #include "composite.c"
 
 #include "f_fs.c"
+#include "f_audio_source.c"
 #include "f_mass_storage.c"
 #include "u_serial.c"
 #include "f_acm.c"
@@ -62,8 +66,13 @@ MODULE_VERSION("1.0");
 static const char longname[] = "Gadget Android";
 
 /* Default vendor and product IDs, overridden by userspace */
+#ifdef CONFIG_USB_GADGET_DWC3
+#define VENDOR_ID		0x8087
+#define PRODUCT_ID		0x09EF
+#else
 #define VENDOR_ID		0x18D1
 #define PRODUCT_ID		0x0001
+#endif
 
 struct android_usb_function {
 	char *name;
@@ -156,12 +165,28 @@ static struct usb_device_descriptor device_desc = {
 	.bNumConfigurations   = 1,
 };
 
+static struct usb_otg_descriptor otg_descriptor = {
+	.bLength		= sizeof otg_descriptor,
+	.bDescriptorType	= USB_DT_OTG,
+	.bcdOTG			= 0x0200, /* version 2.0 */
+};
+
+const struct usb_descriptor_header *otg_desc[] = {
+	(struct usb_descriptor_header *) &otg_descriptor,
+	NULL,
+};
+
 static struct usb_configuration android_config_driver = {
 	.label		= "android",
 	.unbind		= android_unbind_config,
 	.bConfigurationValue = 1,
+#ifdef CONFIG_USB_GADGET_DWC3
 	.bmAttributes	= USB_CONFIG_ATT_ONE | USB_CONFIG_ATT_SELFPOWER,
+	.bMaxPower	= 0x1, /* 8ma */
+#else
+	.bmAttributes	= USB_CONFIG_ATT_ONE,
 	.bMaxPower	= 0xFA, /* 500ma */
+#endif
 };
 
 static void android_work(struct work_struct *data)
@@ -179,6 +204,8 @@ static void android_work(struct work_struct *data)
 		uevent_envp = configured;
 	else if (dev->connected != dev->sw_connected)
 		uevent_envp = dev->connected ? connected : disconnected;
+	else if (!cdev->config && dev->connected)
+		uevent_envp = connected;
 	dev->sw_connected = dev->connected;
 	spin_unlock_irqrestore(&cdev->lock, flags);
 
@@ -211,6 +238,13 @@ static void android_disable(struct android_dev *dev)
 
 	if (dev->disable_depth++ == 0) {
 		usb_gadget_disconnect(cdev->gadget);
+
+		/* As connection is disconnected here,
+		* any flying request should be completed or potential
+		* request should be added within 50ms.
+		*/
+		msleep(50);
+
 		/* Cancel pending control requests */
 		usb_ep_dequeue(cdev->gadget->ep0, cdev->req);
 		usb_remove_config(cdev, &android_config_driver);
@@ -427,8 +461,10 @@ static void adb_android_function_disable(struct android_usb_function *f)
 
 static struct android_usb_function adb_function = {
 	.name		= "adb",
+#if 0
 	.enable		= adb_android_function_enable,
 	.disable	= adb_android_function_disable,
+#endif
 	.init		= adb_function_init,
 	.cleanup	= adb_function_cleanup,
 	.bind_config	= adb_function_bind_config,
@@ -605,6 +641,7 @@ static struct android_usb_function ptp_function = {
 	.init		= ptp_function_init,
 	.cleanup	= ptp_function_cleanup,
 	.bind_config	= ptp_function_bind_config,
+	.ctrlrequest	= mtp_function_ctrlrequest,
 };
 
 
@@ -917,6 +954,67 @@ static struct android_usb_function accessory_function = {
 	.ctrlrequest	= accessory_function_ctrlrequest,
 };
 
+static int audio_source_function_init(struct android_usb_function *f,
+			struct usb_composite_dev *cdev)
+{
+	struct audio_source_config *config;
+
+	config = kzalloc(sizeof(struct audio_source_config), GFP_KERNEL);
+	if (!config)
+		return -ENOMEM;
+	config->card = -1;
+	config->device = -1;
+	f->config = config;
+	return 0;
+}
+
+static void audio_source_function_cleanup(struct android_usb_function *f)
+{
+	kfree(f->config);
+}
+
+static int audio_source_function_bind_config(struct android_usb_function *f,
+						struct usb_configuration *c)
+{
+	struct audio_source_config *config = f->config;
+
+	return audio_source_bind_config(c, config);
+}
+
+static void audio_source_function_unbind_config(struct android_usb_function *f,
+						struct usb_configuration *c)
+{
+	struct audio_source_config *config = f->config;
+
+	config->card = -1;
+	config->device = -1;
+}
+
+static ssize_t audio_source_pcm_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct android_usb_function *f = dev_get_drvdata(dev);
+	struct audio_source_config *config = f->config;
+
+	/* print PCM card and device numbers */
+	return sprintf(buf, "%d %d\n", config->card, config->device);
+}
+
+static DEVICE_ATTR(pcm, S_IRUGO | S_IWUSR, audio_source_pcm_show, NULL);
+
+static struct device_attribute *audio_source_function_attributes[] = {
+	&dev_attr_pcm,
+	NULL
+};
+
+static struct android_usb_function audio_source_function = {
+	.name		= "audio_source",
+	.init		= audio_source_function_init,
+	.cleanup	= audio_source_function_cleanup,
+	.bind_config	= audio_source_function_bind_config,
+	.unbind_config	= audio_source_function_unbind_config,
+	.attributes	= audio_source_function_attributes,
+};
 
 static struct android_usb_function *supported_functions[] = {
 	&ffs_function,
@@ -927,6 +1025,7 @@ static struct android_usb_function *supported_functions[] = {
 	&rndis_function,
 	&mass_storage_function,
 	&accessory_function,
+	&audio_source_function,
 	NULL
 };
 
@@ -1173,6 +1272,11 @@ static ssize_t enable_store(struct device *pdev, struct device_attribute *attr,
 				f->disable(f);
 		}
 		dev->enabled = false;
+		/* notify uplevel to correct status */
+		schedule_work(&dev->work);
+	} else if (!enabled && !dev->enabled) {
+		usb_gadget_disconnect(cdev->gadget);
+		dev->enabled = false;
 	} else {
 		pr_err("android_usb: already %s\n",
 				dev->enabled ? "enabled" : "disabled");
@@ -1280,6 +1384,9 @@ static int android_bind_config(struct usb_configuration *c)
 	struct android_dev *dev = _android_dev;
 	int ret = 0;
 
+	if (gadget_is_otg(c->cdev->gadget))
+		c->descriptors = otg_desc;
+
 	ret = android_bind_enabled_functions(dev, c);
 	if (ret)
 		return ret;
@@ -1292,6 +1399,33 @@ static void android_unbind_config(struct usb_configuration *c)
 	struct android_dev *dev = _android_dev;
 
 	android_unbind_enabled_functions(dev, c);
+}
+
+static int mmcblk0_match(struct device *dev, void *data)
+{
+	if (strcmp(dev_name(dev), "mmcblk0") == 0)
+		return 1;
+	return 0;
+}
+
+static int get_serial_string_from_emmc(void)
+{
+	struct device *emmc_disk;
+	/*
+	 * Automation people are needing proper serial number for ADB
+	 * lets derivate from the serial number of the emmc card.
+	 */
+	emmc_disk = class_find_device(&block_class, NULL, NULL, mmcblk0_match);
+	if (emmc_disk) {
+		struct gendisk *disk = dev_to_disk(emmc_disk);
+		struct mmc_card *card = mmc_dev_to_card(disk->driverfs_dev);
+		if (card) {
+			snprintf(serial_string, 17, "Medfield%08X",
+				 jhash(&card->cid, sizeof(card->cid), 0));
+			return 0;
+		}
+	}
+	return -1;
 }
 
 static int android_bind(struct usb_composite_dev *cdev)
@@ -1328,13 +1462,22 @@ static int android_bind(struct usb_composite_dev *cdev)
 	/* Default strings - should be updated by userspace */
 	strncpy(manufacturer_string, "Android", sizeof(manufacturer_string)-1);
 	strncpy(product_string, "Android", sizeof(product_string) - 1);
-	strncpy(serial_string, "0123456789ABCDEF", sizeof(serial_string) - 1);
+
+	if (get_serial_string_from_emmc()) {
+		pr_err("%s: geting serial number from emmc card cid failed\n",
+				__func__);
+		/* Set default serial strings */
+		strncpy(serial_string, "0123456789ABCDEF",
+				sizeof(serial_string) - 1);
+	}
 
 	id = usb_string_id(cdev);
 	if (id < 0)
 		return id;
 	strings_dev[STRING_SERIAL_IDX].id = id;
 	device_desc.iSerialNumber = id;
+
+	cdev->reset_string_id = id;
 
 	gcnum = usb_gadget_controller_number(gadget);
 	if (gcnum >= 0)
@@ -1344,6 +1487,9 @@ static int android_bind(struct usb_composite_dev *cdev)
 			longname, gadget->name);
 		device_desc.bcdDevice = __constant_cpu_to_le16(0x9999);
 	}
+
+	if (gadget_is_otg(gadget))
+		cdev->otg_desc = &otg_descriptor;
 
 	usb_gadget_set_selfpowered(gadget);
 	dev->cdev = cdev;
@@ -1420,6 +1566,11 @@ static void android_disconnect(struct usb_gadget *gadget)
 	unsigned long flags;
 
 	composite_disconnect(gadget);
+	/* accessory HID support can be active while the
+	   accessory function is not actually enabled,
+	   so we need to inform it when we are disconnected.
+	 */
+	acc_disconnect();
 
 	spin_lock_irqsave(&cdev->lock, flags);
 	dev->connected = 0;
@@ -1485,7 +1636,7 @@ static int __init init(void)
 
 	return usb_composite_probe(&android_usb_driver, android_bind);
 }
-module_init(init);
+late_initcall(init);
 
 static void __exit cleanup(void)
 {

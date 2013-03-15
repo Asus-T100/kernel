@@ -441,6 +441,15 @@ config I2C_INTEL_MID
 	  This support is also available as a module. If so, the module
 	  will be called i2c-intel-mid.
 
+config I2C_PMIC
+	bool "PMIC I2C Adapter"
+	depends on INTEL_SCU_IPC
+	help
+	  Say Y here if you have PMIC I2C adapter.
+
+	  PMIC-I2C adapter driver to handle I2C transactions
+	  in the PMIC's I2C bus.
+
 config I2C_IOP3XX
 	tristate "Intel IOPx3xx and IXP4xx on-chip I2C interface"
 	depends on ARCH_IOP32X || ARCH_IOP33X || ARCH_IXP4XX || ARCH_IOP13XX

@@ -80,6 +80,19 @@ struct mmc_ios {
 #define MMC_SET_DRIVER_TYPE_D	3
 };
 
+struct mmc_panic_host;
+
+struct mmc_host_panic_ops {
+	void	(*request)(struct mmc_panic_host *, struct mmc_request *);
+	void	(*prepare)(struct mmc_panic_host *);
+	int	(*setup)(struct mmc_panic_host *);
+	void	(*set_ios)(struct mmc_panic_host *);
+	void	(*dumpregs)(struct mmc_panic_host *);
+	int	(*power_on)(struct mmc_panic_host *);
+	int	(*hold_mutex)(struct mmc_panic_host *);
+	void	(*release_mutex)(struct mmc_panic_host *);
+};
+
 struct mmc_host_ops {
 	/*
 	 * 'enable' is called when the host is claimed and 'disable' is called
@@ -154,6 +167,28 @@ struct mmc_async_req {
 struct mmc_hotplug {
 	unsigned int irq;
 	void *handler_priv;
+};
+
+struct mmc_panic_host {
+	/*
+	 * DMA buffer for the log
+	 */
+	dma_addr_t	dmabuf;
+	void		*logbuf;
+	const struct mmc_host_panic_ops *panic_ops;
+	unsigned int		panic_ready;
+	unsigned int		totalsecs;
+	unsigned int		max_blk_size;
+	unsigned int		max_blk_count;
+	unsigned int		max_req_size;
+	unsigned int		blkaddr;
+	unsigned int		caps;
+	unsigned int		caps2;
+	u32			ocr;		/* the current OCR setting */
+	struct mmc_ios		ios;		/* current io bus settings */
+	struct mmc_card		*card;
+	struct mmc_host		*mmc;
+	void			*priv;
 };
 
 struct mmc_host {
@@ -239,12 +274,12 @@ struct mmc_host {
 #define MMC_CAP2_BROKEN_VOLTAGE	(1 << 7)	/* Use the broken voltage */
 #define MMC_CAP2_DETECT_ON_ERR	(1 << 8)	/* On I/O err check card removal */
 #define MMC_CAP2_HC_ERASE_SZ	(1 << 9)	/* High-capacity erase size */
+#define MMC_CAP2_INIT_CARD_SYNC	(1 << 10)	/* init card in sync mode */
+#define MMC_CAP2_RPMBPART_NOACC	(1 << 11)	/* RPMB partition no access */
+#define MMC_CAP2_POLL_R1B_BUSY	(1 << 12)	/* host poll R1B busy*/
+#define MMC_CAP2_LED_SUPPORT	(1 << 13)	/* led support */
 
 	mmc_pm_flag_t		pm_caps;	/* supported pm features */
-	unsigned int        power_notify_type;
-#define MMC_HOST_PW_NOTIFY_NONE		0
-#define MMC_HOST_PW_NOTIFY_SHORT	1
-#define MMC_HOST_PW_NOTIFY_LONG		2
 
 #ifdef CONFIG_MMC_CLKGATE
 	int			clk_requests;	/* internal reference counter */
@@ -335,8 +370,15 @@ struct mmc_host {
 	} embedded_sdio_data;
 #endif
 
+	struct mmc_panic_host *phost;
 	unsigned long		private[0] ____cacheline_aligned;
 };
+
+#define SECTOR_SIZE	512
+int mmc_emergency_init(void);
+int mmc_emergency_write(char *, unsigned int);
+void mmc_alloc_panic_host(struct mmc_host *, const struct mmc_host_panic_ops *);
+void mmc_emergency_setup(struct mmc_host *host);
 
 extern struct mmc_host *mmc_alloc_host(int extra, struct device *);
 extern int mmc_add_host(struct mmc_host *);
@@ -445,6 +487,11 @@ static inline int mmc_host_cmd23(struct mmc_host *host)
 static inline int mmc_boot_partition_access(struct mmc_host *host)
 {
 	return !(host->caps2 & MMC_CAP2_BOOTPART_NOACC);
+}
+
+static inline int mmc_rpmb_partition_access(struct mmc_host *host)
+{
+	return !(host->caps2 & MMC_CAP2_RPMBPART_NOACC);
 }
 
 #ifdef CONFIG_MMC_CLKGATE

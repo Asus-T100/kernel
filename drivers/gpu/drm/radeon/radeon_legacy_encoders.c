@@ -244,7 +244,7 @@ static void radeon_legacy_lvds_mode_set(struct drm_encoder *encoder,
 }
 
 static bool radeon_legacy_mode_fixup(struct drm_encoder *encoder,
-				     struct drm_display_mode *mode,
+				     const struct drm_display_mode *mode,
 				     struct drm_display_mode *adjusted_mode)
 {
 	struct radeon_encoder *radeon_encoder = to_radeon_encoder(encoder);
@@ -369,6 +369,7 @@ void radeon_legacy_backlight_init(struct radeon_encoder *radeon_encoder,
 		goto error;
 	}
 
+	memset(&props, 0, sizeof(props));
 	props.max_brightness = MAX_RADEON_LEVEL;
 	props.type = BACKLIGHT_RAW;
 	bd = backlight_device_register("radeon_bl", &drm_connector->kdev,
@@ -650,7 +651,6 @@ static enum drm_connector_status radeon_legacy_primary_dac_detect(struct drm_enc
 	tmp |= RADEON_DAC_RANGE_CNTL_PS2 | RADEON_DAC_CMP_EN;
 	WREG32(RADEON_DAC_CNTL, tmp);
 
-	tmp = dac_macro_cntl;
 	tmp &= ~(RADEON_DAC_PDWN_R |
 		 RADEON_DAC_PDWN_G |
 		 RADEON_DAC_PDWN_B);
@@ -974,7 +974,11 @@ static void radeon_legacy_tmds_ext_mode_set(struct drm_encoder *encoder,
 static void radeon_ext_tmds_enc_destroy(struct drm_encoder *encoder)
 {
 	struct radeon_encoder *radeon_encoder = to_radeon_encoder(encoder);
-	/* don't destroy the i2c bus record here, this will be done in radeon_i2c_fini */
+	struct radeon_encoder_ext_tmds *tmds = radeon_encoder->enc_priv;
+	if (tmds) {
+		if (tmds->i2c_bus)
+			radeon_i2c_destroy(tmds->i2c_bus);
+	}
 	kfree(radeon_encoder->enc_priv);
 	drm_encoder_cleanup(encoder);
 	kfree(radeon_encoder);
