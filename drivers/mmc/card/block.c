@@ -1719,7 +1719,7 @@ static struct mmc_blk_data *mmc_blk_alloc_req(struct mmc_card *card,
 					      int area_type)
 {
 	struct mmc_blk_data *md;
-	int devidx, ret;
+	int devidx, ret, name_idx;
 
 	devidx = find_first_zero_bit(dev_use, max_devices);
 	if (devidx >= max_devices)
@@ -1739,7 +1739,13 @@ static struct mmc_blk_data *mmc_blk_alloc_req(struct mmc_card *card,
 	 * index anymore so we keep track of a name index.
 	 */
 	if (!subname) {
-		md->name_idx = find_first_zero_bit(name_use, max_devices);
+		name_idx = find_first_zero_bit(name_use, max_devices);
+		if (name_idx == 0 && !mmc_card_mmc(card)) {
+			__set_bit(0, name_use);
+			name_idx = find_first_zero_bit(name_use, max_devices);
+			__clear_bit(0, name_use);
+		}
+		md->name_idx = name_idx;
 		__set_bit(md->name_idx, name_use);
 	} else
 		md->name_idx = ((struct mmc_blk_data *)
