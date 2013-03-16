@@ -1155,7 +1155,7 @@ static u8 chrg_cur_to_reg(int cur)
 		reg = 0x0;
 	else
 		reg = ((cur - BQ24192_CHRG_CUR_OFFSET) /
-				BQ24192_CHRG_CUR_LSB_TO_CUR);
+				BQ24192_CHRG_CUR_LSB_TO_CUR) + 1;
 
 	/* D0, D1 bits of Charge Current
 	 * register are not used */
@@ -1371,12 +1371,12 @@ static void set_up_charging(struct bq24192_chip *chip,
 {
 	int ret;
 
-	dev_dbg(&chip->client->dev, "%s\n", __func__);
-
 	reg->in_src = chrg_ilim_to_reg(chip->cap.mA);
 	reg->chr_cur = chrg_cur_to_reg(chr_curr);
 	reg->chr_volt = chrg_volt_to_reg(chr_volt);
 
+	dev_info(&chip->client->dev, "%s: in_src=0x%x, chr_cur=0x%x, chr_volt=0x%x\n",
+		__func__, reg->in_src, reg->chr_cur, reg->chr_volt);
 	chip->input_curr = reg->in_src;
 	/* Enable the WDT and Safety timer */
 	ret = program_timers(chip, true, true);
