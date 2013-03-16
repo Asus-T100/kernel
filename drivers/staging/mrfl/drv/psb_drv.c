@@ -340,6 +340,9 @@ MODULE_DEVICE_TABLE(pci, pciidlist);
 		DRM_IO(DRM_PSB_ENABLE_HDCP + DRM_COMMAND_BASE)
 #define DRM_IOCTL_PSB_DISABLE_HDCP \
 		DRM_IO(DRM_PSB_DISABLE_HDCP + DRM_COMMAND_BASE)
+#define DRM_IOCTL_PSB_GET_HDCP_LINK_STATUS \
+		DRM_IOR(DRM_PSB_GET_HDCP_LINK_STATUS + \
+		DRM_COMMAND_BASE, uint32_t)
 
 /* S3D IOCTLs */
 #define DRM_IOCTL_PSB_S3D_QUERY \
@@ -516,10 +519,8 @@ static int psb_enable_hdcp_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv);
 static int psb_disable_hdcp_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv);
-#if KEEP_UNUSED_CODE
 static int psb_get_hdcp_link_status_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv);
-#endif /* if KEEP_UNUSED_CODE */
 
 #if KEEP_UNUSED_CODE_S3D
 static int psb_s3d_query_ioctl(struct drm_device *dev, void *data,
@@ -647,6 +648,8 @@ static struct drm_ioctl_desc psb_ioctls[] = {
 		      DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_DISABLE_HDCP, psb_disable_hdcp_ioctl,
 		      DRM_AUTH),
+	PSB_IOCTL_DEF(DRM_IOCTL_PSB_GET_HDCP_LINK_STATUS,
+			psb_get_hdcp_link_status_ioctl, DRM_AUTH),
 #endif
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_SET_CSC, psb_set_csc_ioctl, DRM_AUTH),
 /*
@@ -2264,7 +2267,6 @@ static int psb_disable_hdcp_ioctl(struct drm_device *dev, void *data,
 	return -1;
 }
 
-#if KEEP_UNUSED_CODE
 static int psb_get_hdcp_link_status_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv)
 {
@@ -2276,7 +2278,6 @@ static int psb_get_hdcp_link_status_ioctl(struct drm_device *dev, void *data,
 	}
 	return 0;
 }
-#endif /* if KEEP_UNUSED_CODE */
 
 #endif /* ifdef CONFIG_SUPPORT_HDMI */
 
