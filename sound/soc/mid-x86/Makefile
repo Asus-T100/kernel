@@ -15,7 +15,7 @@ snd-soc-yukkabeach-machine-objs := mfld_common.o yukkabeach_machine.o
 obj-$(CONFIG_SND_YUKKABEACH_MACHINE) += snd-soc-yukkabeach-machine.o
 
 # Cloverview/Clovertrail+ board
-snd-soc-ctp-machine-objs := ctp_common.o ctp_rhb_cs42l73.o ctp_vb_cs42l73.o
+snd-soc-ctp-machine-objs := ctp_common.o ctp_rhb_cs42l73.o ctp_vb_cs42l73.o ctp_comms_common.o
 obj-$(CONFIG_SND_CTP_MACHINE) += snd-soc-ctp-machine.o
 
 # Merrifield board

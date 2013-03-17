@@ -40,28 +40,14 @@
 #include <sound/soc.h>
 #include <sound/jack.h>
 #include "../codecs/cs42l73.h"
+#include "mid_ssp.h"
 #include "ctp_common.h"
-#include "ctp_rhb_cs42l73.h"
+#include "ctp_comms_common.h"
 
-/* Headset jack detection gpios func(s) */
-#define HPDETECT_POLL_INTERVAL	msecs_to_jiffies(1000)	/* 1sec */
 /* As per the codec spec the mic2_sdet debounce delay is 20ms.
  * But having 20ms delay doesn't work */
 #define MIC2SDET_DEBOUNCE_DELAY	50 /* 50 ms */
 
-struct snd_soc_machine_ops ctp_rhb_ops = {
-	.micsdet_debounce = MIC2SDET_DEBOUNCE_DELAY,
-	.ctp_init = ctp_init,
-	.dai_link = ctp_dai_link,
-	.bp_detection = ctp_bp_detection,
-	.hp_detection = ctp_hp_detection,
-	.mclk_switch = ctp_mclk_switch,
-};
-inline void *ctp_get_rhb_ops(void)
-{
-	return &ctp_rhb_ops;
-}
-EXPORT_SYMBOL(ctp_get_rhb_ops);
 /* CDB42L73 widgets */
 static const struct snd_soc_dapm_widget ctp_dapm_widgets[] = {
 	SND_SOC_DAPM_HP("Headphone", NULL),
@@ -78,6 +64,90 @@ static const struct snd_soc_dapm_route ctp_audio_map[] = {
 	{"Ext Spk", NULL, "SPKLINEOUT"},
 	{"Ext Spk", NULL, "SPKOUT"},
 };
+
+static int ctp_cs42l73_startup(struct snd_pcm_substream *substream)
+{
+	unsigned int device = substream->pcm->device;
+	pr_debug("%s - applying rate constraint\n", __func__);
+	switch (device) {
+	case CTP_RHB_AUD_ASP_DEV:
+	case CTP_RHB_AUD_PROBE_DEV:
+	case CTP_RHB_AUD_VIRTUAL_ASP_DEV:
+		snd_pcm_hw_constraint_list(substream->runtime, 0,
+			SNDRV_PCM_HW_PARAM_RATE, &constraints_48000);
+		break;
+	case CTP_RHB_AUD_VSP_DEV:
+		ctp_config_voicecall_flag(substream, true);
+		break;
+	default:
+		pr_err("Invalid device\n");
+		return -EINVAL;
+	}
+	return 0;
+}
+
+static int ctp_cs42l73_shutdown(struct snd_pcm_substream *substream)
+{
+	unsigned int device = substream->pcm->device;
+	switch (device) {
+	case CTP_RHB_AUD_VSP_DEV:
+		ctp_config_voicecall_flag(substream, false);
+		break;
+	default:
+		pr_err("Invalid device\n");
+		return -EINVAL;
+	}
+	return 0;
+}
+
+static int ctp_cs42l73_hw_params(struct snd_pcm_substream *substream,
+		struct snd_pcm_hw_params *params)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_dai *codec_dai = rtd->codec_dai;
+	unsigned int device = substream->pcm->device;
+	struct ctp_clk_fmt clk_fmt;
+
+	switch (device) {
+	case CTP_RHB_AUD_ASP_DEV:
+	case CTP_RHB_AUD_VSP_DEV:
+	case CTP_RHB_AUD_VIRTUAL_ASP_DEV:
+		clk_fmt.clk_id = CS42L73_CLKID_MCLK1;
+		clk_fmt.freq = DEFAULT_MCLK;
+		clk_fmt.dir = SND_SOC_CLOCK_IN;
+		/* Slave mode */
+		clk_fmt.fmt = SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF |
+					SND_SOC_DAIFMT_CBS_CFS;
+		return ctp_set_clk_fmt(codec_dai, &clk_fmt);
+	default:
+		pr_err("Invalid device\n");
+		return -EINVAL;
+	}
+}
+
+
+int ctp_cs42l73_set_params(struct snd_compr_stream *cstream)
+{
+	struct snd_soc_pcm_runtime *rtd = cstream->private_data;
+	struct snd_soc_dai *codec_dai = rtd->codec_dai;
+	unsigned int device = cstream->device->device;
+	struct ctp_clk_fmt clk_fmt;
+
+	switch (device) {
+	case CTP_RHB_AUD_COMP_ASP_DEV:
+		clk_fmt.clk_id = CS42L73_CLKID_MCLK1;
+		clk_fmt.freq = DEFAULT_MCLK;
+		clk_fmt.dir = SND_SOC_CLOCK_IN;
+		/* Slave mode */
+		clk_fmt.fmt = SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF |
+					SND_SOC_DAIFMT_CBS_CFS;
+		return ctp_set_clk_fmt(codec_dai, &clk_fmt);
+	default:
+		pr_err("Invalid device\n");
+		return -EINVAL;
+	}
+}
+
 
 static int ctp_comms_dai_link_startup(struct snd_pcm_substream *substream)
 {
@@ -111,87 +181,6 @@ static int ctp_comms_dai_link_startup(struct snd_pcm_substream *substream)
 						SNDRV_PCM_HW_PARAM_PERIODS);
 }
 
-int ctp_startup_fm_xsp(struct snd_pcm_substream *substream)
-{
-	pr_debug("%s - applying rate constraint\n", __func__);
-	snd_pcm_hw_constraint_list(substream->runtime, 0,
-				SNDRV_PCM_HW_PARAM_RATE,
-				&constraints_48000);
-	return 0;
-}
-
-int ctp_set_asp_clk_fmt(struct snd_soc_dai *codec_dai)
-{
-	unsigned int fmt;
-	int ret;
-
-	/* CS42L73  Slave Mode`*/
-	fmt =   SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF
-		| SND_SOC_DAIFMT_CBS_CFS;
-	/* Set codec DAI configuration */
-	ret = snd_soc_dai_set_fmt(codec_dai, fmt);
-
-	if (ret < 0) {
-		pr_err("can't set codec DAI configuration %d\n", ret);
-		return ret;
-	}
-
-	ret = snd_soc_dai_set_sysclk(codec_dai, CS42L73_CLKID_MCLK1,
-					DEFAULT_MCLK, SND_SOC_CLOCK_IN);
-	if (ret < 0) {
-		pr_err("can't set codec clock %d\n", ret);
-		return ret;
-	}
-
-	return 0;
-}
-
-static int ctp_asp_hw_params(struct snd_pcm_substream *substream,
-		struct snd_pcm_hw_params *params)
-{
-	struct snd_soc_pcm_runtime *rtd = substream->private_data;
-	struct snd_soc_dai *codec_dai = rtd->codec_dai;
-
-	return ctp_set_asp_clk_fmt(codec_dai);
-}
-
-static int clv_asp_set_params(struct snd_compr_stream *cstream)
-{
-	struct snd_soc_pcm_runtime *rtd = cstream->private_data;
-	struct snd_soc_dai *codec_dai = rtd->codec_dai;
-
-	return ctp_set_asp_clk_fmt(codec_dai);
-}
-
-static int ctp_vsp_hw_params(struct snd_pcm_substream *substream,
-	struct snd_pcm_hw_params *params)
-{
-	struct snd_soc_pcm_runtime *rtd = substream->private_data;
-	struct snd_soc_dai *codec_dai = rtd->codec_dai;
-	unsigned int fmt;
-	int ret , clk_source;
-
-	pr_debug("Slave Mode selected\n");
-	/* CS42L73  Master Mode`*/
-	fmt =   SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF
-		| SND_SOC_DAIFMT_CBS_CFS;
-	clk_source = SND_SOC_CLOCK_IN;
-
-	/* Set codec DAI configuration */
-	ret = snd_soc_dai_set_fmt(codec_dai, fmt);
-	if (ret < 0) {
-		pr_err("can't set codec DAI configuration %d\n", ret);
-		return ret;
-	}
-
-	ret = snd_soc_dai_set_sysclk(codec_dai, CS42L73_CLKID_MCLK1,
-		DEFAULT_MCLK, clk_source);
-	if (ret < 0) {
-		pr_err("can't set codec clock %d\n", ret);
-		return ret;
-	}
-	return 0;
-}
 static int ctp_comms_dai_link_hw_params(struct snd_pcm_substream *substream,
 				      struct snd_pcm_hw_params *params)
 {
@@ -366,8 +355,8 @@ static int ctp_comms_dai_link_hw_params(struct snd_pcm_substream *substream,
 	}
 
 	if (device == CTP_RHB_COMMS_MSIC_VOIP_DEV) {
-		pr_debug("Call ctp_vsp_hw_params to enable the PLL Codec\n");
-		ctp_vsp_hw_params(substream, params);
+		pr_debug("Call ctp_cs42l73_hw_params to enable the PLL Codec\n");
+		ctp_cs42l73_hw_params(substream, params);
 	}
 
 	pr_debug("CTP Comms Machine: slot_width = %d\n",
@@ -414,22 +403,6 @@ static int ctp_comms_dai_link_prepare(struct snd_pcm_substream *substream)
 
 	return 0;
 } /* ctp_comms_dai_link_prepare */
-
-static const struct snd_kcontrol_new ssp_comms_controls[] = {
-		SOC_ENUM_EXT("SSP BT Master Mode",
-				ssp_bt_sco_master_mode_enum,
-				get_ssp_bt_sco_master_mode,
-				set_ssp_bt_sco_master_mode),
-		SOC_ENUM_EXT("SSP VOIP Master Mode",
-				ssp_voip_master_mode_enum,
-				get_ssp_voip_master_mode,
-				set_ssp_voip_master_mode),
-		SOC_ENUM_EXT("SSP Modem Master Mode",
-				ssp_modem_master_mode_enum,
-				get_ssp_modem_master_mode,
-				set_ssp_modem_master_mode),
-};
-
 
 int ctp_init(struct snd_soc_pcm_runtime *runtime)
 {
@@ -480,30 +453,19 @@ int ctp_init(struct snd_soc_pcm_runtime *runtime)
 	return ret;
 }
 
-static int ctp_startup_vsp(struct snd_pcm_substream *substream)
-{
-	ctp_config_voicecall_flag(substream, true);
-	return 0;
-}
-
-static void ctp_shutdown_vsp(struct snd_pcm_substream *substream)
-{
-	ctp_config_voicecall_flag(substream, false);
-}
-
 static struct snd_soc_ops ctp_asp_ops = {
-	.startup = ctp_startup_asp,
-	.hw_params = ctp_asp_hw_params,
+	.startup = ctp_cs42l73_startup,
+	.hw_params = ctp_cs42l73_hw_params,
 };
 
 static struct snd_soc_compr_ops ctp_asp_compr_ops = {
-	.set_params = clv_asp_set_params,
+	.set_params = ctp_cs42l73_set_params,
 };
 
 static struct snd_soc_ops ctp_vsp_ops = {
-	.startup = ctp_startup_vsp,
-	.hw_params = ctp_vsp_hw_params,
-	.shutdown = ctp_shutdown_vsp,
+	.startup = ctp_cs42l73_startup,
+	.hw_params = ctp_cs42l73_hw_params,
+	.shutdown = ctp_cs42l73_shutdown,
 };
 static struct snd_soc_ops ctp_comms_dai_link_ops = {
 	.startup = ctp_comms_dai_link_startup,
@@ -517,7 +479,7 @@ static struct snd_soc_ops ctp_comms_voip_dai_link_ops = {
 };
 
 static struct snd_soc_ops ctp_probe_ops = {
-	.startup = ctp_startup_probe,
+	.startup = ctp_cs42l73_startup,
 };
 
 static struct snd_soc_dai_link ctp_rhb_dailink[] = {
@@ -609,28 +571,38 @@ static struct snd_soc_dai_link ctp_rhb_dailink[] = {
 	},
 };
 
-int ctp_hp_detection(struct snd_soc_codec *codec,
+static int ctp_hp_detection(struct snd_soc_codec *codec,
 			struct snd_soc_jack *jack, int enable)
 {
 	return cs42l73_hp_detection(codec, jack, enable);
 }
-int ctp_bp_detection(struct snd_soc_codec *codec,
+static int ctp_bp_detection(struct snd_soc_codec *codec,
 			struct snd_soc_jack *jack, int enable)
 {
 	return cs42l73_bp_detection(codec, jack, enable);
 }
 
-void ctp_mclk_switch(struct device *dev, bool mode)
+static void ctp_mclk_switch(struct device *dev, bool mode)
 {
 	cs42l73_mclk_switch(dev, mode);
 }
 
-int ctp_dai_link(struct snd_soc_card *card)
+static int ctp_dai_link(struct snd_soc_card *card)
 {
 	card->dai_link = ctp_rhb_dailink;
 	card->num_links = ARRAY_SIZE(ctp_rhb_dailink);
 	return 0;
 }
+
+struct snd_soc_machine_ops ctp_rhb_cs42l73_ops = {
+	.ctp_init = ctp_init,
+	.dai_link = ctp_dai_link,
+	.bp_detection = ctp_bp_detection,
+	.hp_detection = ctp_hp_detection,
+	.mclk_switch = ctp_mclk_switch,
+	.jack_support = true,
+	.micsdet_debounce = MIC2SDET_DEBOUNCE_DELAY,
+};
 
 MODULE_DESCRIPTION("ASoC Intel(R) Cloverview MID Machine driver");
 MODULE_AUTHOR("Jeeja KP<jeeja.kp@intel.com>");

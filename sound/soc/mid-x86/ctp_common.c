@@ -43,10 +43,10 @@
 #include <sound/soc.h>
 #include "ctp_common.h"
 
-#define HPDETECT_POLL_INTERVAL	msecs_to_jiffies(1000)	/* 1sec */
+/* Headset jack detection gpios func(s) */
+#define HPDETECT_POLL_INTERVAL  msecs_to_jiffies(1000)  /* 1sec */
 #define JACK_DEBOUNCE_REMOVE	50
 #define JACK_DEBOUNCE_INSERT	100
-
 
 struct snd_soc_card snd_soc_card_ctp = {
 	.name = "cloverview_audio",
@@ -99,133 +99,26 @@ static struct snd_soc_jack_gpio hs_gpio[] = {
 	},
 };
 
-int ctp_startup_probe(struct snd_pcm_substream *substream)
+int ctp_set_clk_fmt(struct snd_soc_dai *codec_dai, struct ctp_clk_fmt *clk_fmt)
 {
-	pr_debug("%s - applying rate constraint\n", __func__);
-	snd_pcm_hw_constraint_list(substream->runtime, 0,
-					SNDRV_PCM_HW_PARAM_RATE,
-					&constraints_48000);
-	return 0;
-}
+	int ret;
 
-int ctp_startup_asp(struct snd_pcm_substream *substream)
-{
-	pr_debug("%s - applying rate constraint\n", __func__);
-	snd_pcm_hw_constraint_list(substream->runtime, 0,
-				SNDRV_PCM_HW_PARAM_RATE,
-				&constraints_48000);
-	return 0;
-}
+	/* Set codec DAI configuration */
+	ret = snd_soc_dai_set_fmt(codec_dai, clk_fmt->fmt);
 
-int ctp_startup_bt_xsp(struct snd_pcm_substream *substream)
-{
-	pr_debug("%s - applying rate constraint\n", __func__);
-	snd_pcm_hw_constraint_list(substream->runtime, 0,
-				SNDRV_PCM_HW_PARAM_RATE,
-				&constraints_8000_16000);
-	return 0;
-}
-int get_ssp_bt_sco_master_mode(struct snd_kcontrol *kcontrol,
-	struct snd_ctl_elem_value *ucontrol)
-{
-	struct snd_soc_card *card =  snd_kcontrol_chip(kcontrol);
-	struct ctp_mc_private *ctx = snd_soc_card_get_drvdata(card);
-	struct comms_mc_private *ctl = &(ctx->comms_ctl);
+	if (ret < 0) {
+		pr_err("can't set codec DAI configuration %d\n", ret);
+		return ret;
+	}
 
-	ucontrol->value.integer.value[0] = ctl->ssp_bt_sco_master_mode;
-	return 0;
-}
-EXPORT_SYMBOL_GPL(get_ssp_bt_sco_master_mode);
-
-int set_ssp_bt_sco_master_mode(struct snd_kcontrol *kcontrol,
-	struct snd_ctl_elem_value *ucontrol)
-{
-	struct snd_soc_card *card =  snd_kcontrol_chip(kcontrol);
-	struct ctp_mc_private *ctx = snd_soc_card_get_drvdata(card);
-	struct comms_mc_private *ctl = &(ctx->comms_ctl);
-
-	if (ucontrol->value.integer.value[0] == ctl->ssp_bt_sco_master_mode)
-		return 0;
-
-	ctl->ssp_bt_sco_master_mode = ucontrol->value.integer.value[0];
+	ret = snd_soc_dai_set_sysclk(codec_dai, clk_fmt->clk_id,
+					clk_fmt->freq, clk_fmt->dir);
+	if (ret < 0) {
+		pr_err("can't set codec clock %d\n", ret);
+		return ret;
+	}
 
 	return 0;
-}
-EXPORT_SYMBOL_GPL(set_ssp_bt_sco_master_mode);
-
-int get_ssp_voip_master_mode(struct snd_kcontrol *kcontrol,
-	struct snd_ctl_elem_value *ucontrol)
-{
-	struct snd_soc_card *card =  snd_kcontrol_chip(kcontrol);
-	struct ctp_mc_private *ctx = snd_soc_card_get_drvdata(card);
-	struct comms_mc_private *ctl = &(ctx->comms_ctl);
-
-	ucontrol->value.integer.value[0] = ctl->ssp_voip_master_mode;
-	return 0;
-}
-EXPORT_SYMBOL_GPL(get_ssp_voip_master_mode);
-
-int set_ssp_voip_master_mode(struct snd_kcontrol *kcontrol,
-	struct snd_ctl_elem_value *ucontrol)
-{
-	struct snd_soc_card *card =  snd_kcontrol_chip(kcontrol);
-	struct ctp_mc_private *ctx = snd_soc_card_get_drvdata(card);
-	struct comms_mc_private *ctl = &(ctx->comms_ctl);
-
-	if (ucontrol->value.integer.value[0] == ctl->ssp_voip_master_mode)
-		return 0;
-
-	ctl->ssp_voip_master_mode = ucontrol->value.integer.value[0];
-
-	return 0;
-}
-EXPORT_SYMBOL_GPL(set_ssp_voip_master_mode);
-
-int get_ssp_modem_master_mode(struct snd_kcontrol *kcontrol,
-	struct snd_ctl_elem_value *ucontrol)
-{
-	struct snd_soc_card *card =  snd_kcontrol_chip(kcontrol);
-	struct ctp_mc_private *ctx = snd_soc_card_get_drvdata(card);
-	struct comms_mc_private *ctl = &(ctx->comms_ctl);
-
-	ucontrol->value.integer.value[0] = ctl->ssp_modem_master_mode;
-	return 0;
-}
-EXPORT_SYMBOL_GPL(get_ssp_modem_master_mode);
-
-int set_ssp_modem_master_mode(struct snd_kcontrol *kcontrol,
-	struct snd_ctl_elem_value *ucontrol)
-{
-	struct snd_soc_card *card =  snd_kcontrol_chip(kcontrol);
-	struct ctp_mc_private *ctx = snd_soc_card_get_drvdata(card);
-	struct comms_mc_private *ctl = &(ctx->comms_ctl);
-
-	if (ucontrol->value.integer.value[0] == ctl->ssp_modem_master_mode)
-		return 0;
-
-	ctl->ssp_modem_master_mode = ucontrol->value.integer.value[0];
-
-	return 0;
-}
-EXPORT_SYMBOL_GPL(set_ssp_modem_master_mode);
-
-static int mc_driver_ops(struct ctp_mc_private *ctx,
-			 struct ctp_audio_platform_data *pdata)
-{
-	switch (pdata->spid->product_line_id) {
-	case INTEL_CLVTP_PHONE_RHB_ENG:
-	case INTEL_CLVTP_PHONE_RHB_PRO:
-		ctx->ops = ctp_get_rhb_ops();
-		return 0;
-	case INTEL_CLVTP_PHONE_VB_ENG:
-	case INTEL_CLVTP_PHONE_VB_PRO:
-		ctx->ops = ctp_get_vb_ops();
-		return 0;
-	default:
-		pr_err("No data for prod line id: %x",
-				pdata->spid->product_line_id);
-		return -EINVAL;
-	};
 }
 
 /* Board specific codec bias level control */
@@ -556,6 +449,26 @@ static void snd_ctp_poweroff(struct device *dev)
 #define snd_ctp_poweroff NULL
 #endif
 
+static void free_jack_wake_lock(struct ctp_mc_private *ctx)
+{
+	if (!ctx->ops->jack_support)
+		return 0;
+#ifdef CONFIG_HAS_WAKELOCK
+	if (wake_lock_active(ctx->jack_wake_lock))
+		wake_unlock(ctx->jack_wake_lock);
+	wake_lock_destroy(ctx->jack_wake_lock);
+#endif
+}
+
+static void snd_ctp_unregister_jack(struct ctp_mc_private *ctx,
+				struct platform_device *pdev)
+{
+	if (!ctx->ops->jack_support)
+		return;
+	cancel_delayed_work_sync(&ctx->jack_work);
+	free_jack_wake_lock(ctx);
+	snd_soc_jack_free_gpios(&ctx->ctp_jack, 2, ctx->hs_gpio_ops);
+}
 
 static int __devexit snd_ctp_mc_remove(struct platform_device *pdev)
 {
@@ -563,31 +476,24 @@ static int __devexit snd_ctp_mc_remove(struct platform_device *pdev)
 	struct ctp_mc_private *ctx = snd_soc_card_get_drvdata(soc_card);
 
 	pr_debug("In %s\n", __func__);
-	cancel_delayed_work_sync(&ctx->jack_work);
-#ifdef CONFIG_HAS_WAKELOCK
-	if (wake_lock_active(ctx->jack_wake_lock))
-		wake_unlock(ctx->jack_wake_lock);
-	wake_lock_destroy(ctx->jack_wake_lock);
-#endif
-	snd_soc_jack_free_gpios(&ctx->ctp_jack, 2, ctx->hs_gpio_ops);
+	snd_ctp_unregister_jack(ctx, pdev);
 	snd_soc_card_set_drvdata(soc_card, NULL);
 	snd_soc_unregister_card(soc_card);
 	platform_set_drvdata(pdev, NULL);
 	return 0;
 }
 
-int snd_ctp_init(struct snd_soc_pcm_runtime *runtime)
+static int snd_ctp_jack_init(struct snd_soc_pcm_runtime *runtime,
+						bool jack_supported)
 {
 	int ret, irq;
 	struct ctp_mc_private *ctx = snd_soc_card_get_drvdata(runtime->card);
 	struct snd_soc_jack_gpio *gpio = &hs_gpio[CTP_BTN_GPIO];
 	struct snd_soc_codec *codec = runtime->codec;
 
-	ret = ctx->ops->ctp_init(runtime);
-	if (ret) {
-		pr_err("CTP init returned failure\n");
-		return ret;
-	}
+	if (!jack_supported)
+		return 0;
+
 	/* Setup the HPDET timer */
 	INIT_DELAYED_WORK(&ctx->jack_work, headset_status_verify);
 
@@ -613,9 +519,53 @@ int snd_ctp_init(struct snd_soc_pcm_runtime *runtime)
 	pr_err("Disable %d interrupt line\n", irq);
 	disable_irq_nosync(irq);
 	atomic_set(&ctx->bpirq_flag, 0);
-	return ret;
+	return 0;
 }
 
+
+int snd_ctp_init(struct snd_soc_pcm_runtime *runtime)
+{
+	int ret;
+	struct ctp_mc_private *ctx = snd_soc_card_get_drvdata(runtime->card);
+
+	ret = ctx->ops->ctp_init(runtime);
+	if (ret) {
+		pr_err("CTP init returned failure\n");
+		return ret;
+	}
+	return snd_ctp_jack_init(runtime, ctx->ops->jack_support);
+}
+
+int snd_ctp_register_jack_data(struct platform_device *pdev,
+					struct ctp_mc_private *ctx)
+{
+	struct ctp_audio_platform_data *pdata = pdev->dev.platform_data;
+	int ret_val = 0;
+	if (!ctx->ops->jack_support)
+		return 0;
+#ifdef CONFIG_HAS_WAKELOCK
+	ctx->jack_wake_lock =
+		devm_kzalloc(&pdev->dev, sizeof(*(ctx->jack_wake_lock)), GFP_ATOMIC);
+	if (!ctx->jack_wake_lock) {
+		pr_err("allocation failed for wake_lock\n");
+		return -ENOMEM;
+	}
+	wake_lock_init(ctx->jack_wake_lock, WAKE_LOCK_SUSPEND,
+			"jack_detect");
+#endif
+	if (pdata->codec_gpio_hsdet >= 0 && pdata->codec_gpio_button >= 0) {
+		hs_gpio[CTP_HSDET_GPIO].gpio = pdata->codec_gpio_hsdet;
+		hs_gpio[CTP_BTN_GPIO].gpio = pdata->codec_gpio_button;
+		ret_val = gpio_to_irq(hs_gpio[CTP_BTN_GPIO].gpio);
+		if (ret_val < 0) {
+			pr_err("%d:Failed to map button irq\n", ret_val);
+			return ret_val;
+		}
+		ctx->bpirq = ret_val;
+	}
+	ctx->hs_gpio_ops = hs_gpio;
+	return 0;
+}
 /* SoC card */
 static int snd_ctp_mc_probe(struct platform_device *pdev)
 {
@@ -629,53 +579,31 @@ static int snd_ctp_mc_probe(struct platform_device *pdev)
 		pr_err("allocation failed\n");
 		return -ENOMEM;
 	}
-#ifdef CONFIG_HAS_WAKELOCK
-	ctx->jack_wake_lock =
-		devm_kzalloc(&pdev->dev, sizeof(*(ctx->jack_wake_lock)), GFP_ATOMIC);
-	if (!ctx->jack_wake_lock) {
-		pr_err("allocation failed for wake_lock\n");
-		return -ENOMEM;
-	}
-	wake_lock_init(ctx->jack_wake_lock, WAKE_LOCK_SUSPEND,
-			"jack_detect");
-#endif
 	/* register the soc card */
 	snd_soc_card_ctp.dev = &pdev->dev;
 
-	if (0 != mc_driver_ops(ctx, pdata)) {
-		ret_val = -EINVAL;
-		goto unalloc;
-	}
+	ctx->ops = platform_get_device_id(pdev)->driver_data;
+	if (ctx->ops == NULL)
+		return -EINVAL;
+
 	ctx->ops->dai_link(&snd_soc_card_ctp);
-	if (pdata->codec_gpio_hsdet >= 0 && pdata->codec_gpio_button >= 0) {
-		hs_gpio[CTP_HSDET_GPIO].gpio = pdata->codec_gpio_hsdet;
-		hs_gpio[CTP_BTN_GPIO].gpio = pdata->codec_gpio_button;
-		ret_val = gpio_to_irq(hs_gpio[CTP_BTN_GPIO].gpio);
-		if (ret_val < 0) {
-			pr_err("%d:Failed to map button irq\n", ret_val);
-			goto unalloc;
-		}
-		ctx->bpirq = ret_val;
-	}
-	ctx->voice_call_flag = false;
-	ctx->hs_gpio_ops = hs_gpio;
+
+	ret_val = snd_ctp_register_jack_data(pdev, ctx);
+	if (ret_val)
+		goto free_jack;
+
 	snd_soc_card_set_drvdata(&snd_soc_card_ctp, ctx);
 	ret_val = snd_soc_register_card(&snd_soc_card_ctp);
 	if (ret_val) {
 		pr_err("snd_soc_register_card failed %d\n", ret_val);
-		goto unalloc;
+		goto free_jack;
 	}
 
 	platform_set_drvdata(pdev, &snd_soc_card_ctp);
 	pr_debug("successfully exited probe\n");
 	return ret_val;
-
-unalloc:
-#ifdef CONFIG_HAS_WAKELOCK
-	if (wake_lock_active(ctx->jack_wake_lock))
-		wake_unlock(ctx->jack_wake_lock);
-	wake_lock_destroy(ctx->jack_wake_lock);
-#endif
+free_jack:
+	free_jack_wake_lock(ctx);
 	return ret_val;
 }
 
@@ -685,6 +613,19 @@ const struct dev_pm_ops snd_ctp_mc_pm_ops = {
 	.poweroff = snd_ctp_poweroff,
 };
 
+static struct platform_device_id ctp_audio_ids[] = {
+	{
+		.name		= "ctp_rhb_cs42l73",
+		.driver_data	= &ctp_rhb_cs42l73_ops,
+	},
+	{
+		.name		= "ctp_vb_cs42l73",
+		.driver_data	= &ctp_vb_cs42l73_ops,
+	},
+	{ },
+};
+MODULE_DEVICE_TABLE(platform, ctp_audio_ids);
+
 static struct platform_driver snd_ctp_mc_driver = {
 	.driver = {
 		.owner = THIS_MODULE,
@@ -693,6 +634,7 @@ static struct platform_driver snd_ctp_mc_driver = {
 	},
 	.probe = snd_ctp_mc_probe,
 	.remove = __devexit_p(snd_ctp_mc_remove),
+	.id_table = ctp_audio_ids,
 };
 
 static int __init snd_ctp_driver_init(void)

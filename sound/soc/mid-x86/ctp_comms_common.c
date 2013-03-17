@@ -1,9 +1,10 @@
 /*
- *  ctp_rhb_machine.h - ASoc Machine driver for Intel Cloverview MID platform
+ *  ctp_comms_common.c - comms driver for Clovertrail MID platform
  *
  *  Copyright (C) 2011-13 Intel Corp
- *  Author: Selma Bensaid <selma.bensaid@intel.com>
- *  Author: Dharageswari.R <dharageswari.r@intel.com>
+ *  Author: KP Jeeja<jeeja.kp@intel.com>
+ *  Author: Vaibhav Agarwal <vaibhav.agarwal@intel.com>
+ *  Author: Dharageswari.R<dharageswari.r@intel.com>
  *  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -22,14 +23,18 @@
  * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  */
 
-#ifndef MFLD_SSP_WL1273_MACHINE_H_
-#define MFLD_SSP_WL1273_MACHINE_H_
+
+#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
+
 #include <linux/init.h>
 #include <linux/device.h>
 #include <linux/slab.h>
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
+#include <asm/intel_sst_ctp.h>
+#include "ctp_comms_common.h"
+#include "ctp_common.h"
 #include "mid_ssp.h"
 
 /* Data path functionalities */
@@ -128,41 +133,6 @@ struct snd_pcm_hardware VOIP_alsa_hw_param = {
 };
 
 /*
- * For FM 1 slot of 32 bits is used
- * to transfer stereo 16 bits PCM samples
- */
-#define SSP_FM_SLOT_NB_SLOT		1
-#define SSP_FM_SLOT_WIDTH		32
-#define SSP_FM_SLOT_RX_MASK		0x1
-#define SSP_FM_SLOT_TX_MASK		0x0
-/*
- * For BT SCO 1 slot of 16 bits is used
- * to transfer mono 16 bits PCM samples
- */
-#define SSP_BT_SLOT_NB_SLOT		1
-#define SSP_BT_SLOT_WIDTH		16
-#define SSP_BT_SLOT_RX_MASK		0x1
-#define SSP_BT_SLOT_TX_MASK		0x1
-
-/*
- * For VoIP 1 slot of 32 bits is used
- * to transfer stereo 16 bits PCM samples
- */
-#define SSP_VOIP_SLOT_NB_SLOT	1
-#define SSP_VOIP_SLOT_WIDTH		32
-#define SSP_VOIP_SLOT_RX_MASK	0x1
-#define SSP_VOIP_SLOT_TX_MASK	0x1
-
-/*
- * For Modem IFX 1 slot of 32 bits is used
- * to transfer stereo 16 bits PCM samples
- */
-#define SSP_IFX_SLOT_NB_SLOT	1
-#define SSP_IFX_SLOT_WIDTH		32
-#define SSP_IFX_SLOT_RX_MASK	0x1
-#define SSP_IFX_SLOT_TX_MASK	0x1
-
-/*
  * MIXER CONTROLS for SSP BT
  */
 static const char * const ssp_master_mode_text[] = {"disabled", "enabled"};
@@ -176,4 +146,97 @@ static const struct soc_enum ssp_voip_master_mode_enum =
 static const struct soc_enum ssp_modem_master_mode_enum =
 	SOC_ENUM_SINGLE_EXT(2, ssp_master_mode_text);
 
-#endif /* MFLD_SSP_WL1273_MACHINE_H_ */
+int get_ssp_bt_sco_master_mode(struct snd_kcontrol *kcontrol,
+	struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_card *card =  snd_kcontrol_chip(kcontrol);
+	struct ctp_mc_private *ctx = snd_soc_card_get_drvdata(card);
+	struct comms_mc_private *ctl = &(ctx->comms_ctl);
+
+	ucontrol->value.integer.value[0] = ctl->ssp_bt_sco_master_mode;
+	return 0;
+}
+
+int set_ssp_bt_sco_master_mode(struct snd_kcontrol *kcontrol,
+	struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_card *card =  snd_kcontrol_chip(kcontrol);
+	struct ctp_mc_private *ctx = snd_soc_card_get_drvdata(card);
+	struct comms_mc_private *ctl = &(ctx->comms_ctl);
+
+	if (ucontrol->value.integer.value[0] == ctl->ssp_bt_sco_master_mode)
+		return 0;
+
+	ctl->ssp_bt_sco_master_mode = ucontrol->value.integer.value[0];
+
+	return 0;
+}
+
+int get_ssp_voip_master_mode(struct snd_kcontrol *kcontrol,
+	struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_card *card =  snd_kcontrol_chip(kcontrol);
+	struct ctp_mc_private *ctx = snd_soc_card_get_drvdata(card);
+	struct comms_mc_private *ctl = &(ctx->comms_ctl);
+
+	ucontrol->value.integer.value[0] = ctl->ssp_voip_master_mode;
+	return 0;
+}
+
+int set_ssp_voip_master_mode(struct snd_kcontrol *kcontrol,
+	struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_card *card =  snd_kcontrol_chip(kcontrol);
+	struct ctp_mc_private *ctx = snd_soc_card_get_drvdata(card);
+	struct comms_mc_private *ctl = &(ctx->comms_ctl);
+
+	if (ucontrol->value.integer.value[0] == ctl->ssp_voip_master_mode)
+		return 0;
+
+	ctl->ssp_voip_master_mode = ucontrol->value.integer.value[0];
+
+	return 0;
+}
+
+int get_ssp_modem_master_mode(struct snd_kcontrol *kcontrol,
+	struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_card *card =  snd_kcontrol_chip(kcontrol);
+	struct ctp_mc_private *ctx = snd_soc_card_get_drvdata(card);
+	struct comms_mc_private *ctl = &(ctx->comms_ctl);
+
+	ucontrol->value.integer.value[0] = ctl->ssp_modem_master_mode;
+	return 0;
+}
+
+int set_ssp_modem_master_mode(struct snd_kcontrol *kcontrol,
+	struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_card *card =  snd_kcontrol_chip(kcontrol);
+	struct ctp_mc_private *ctx = snd_soc_card_get_drvdata(card);
+	struct comms_mc_private *ctl = &(ctx->comms_ctl);
+
+	if (ucontrol->value.integer.value[0] == ctl->ssp_modem_master_mode)
+		return 0;
+
+	ctl->ssp_modem_master_mode = ucontrol->value.integer.value[0];
+
+	return 0;
+}
+
+const struct snd_kcontrol_new ssp_comms_controls[MAX_CONTROLS] = {
+		SOC_ENUM_EXT("SSP BT Master Mode",
+				ssp_bt_sco_master_mode_enum,
+				get_ssp_bt_sco_master_mode,
+				set_ssp_bt_sco_master_mode),
+		SOC_ENUM_EXT("SSP VOIP Master Mode",
+				ssp_voip_master_mode_enum,
+				get_ssp_voip_master_mode,
+				set_ssp_voip_master_mode),
+		SOC_ENUM_EXT("SSP Modem Master Mode",
+				ssp_modem_master_mode_enum,
+				get_ssp_modem_master_mode,
+				set_ssp_modem_master_mode),
+};
+
+
