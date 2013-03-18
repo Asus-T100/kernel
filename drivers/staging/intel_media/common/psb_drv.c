@@ -1019,6 +1019,11 @@ bool intel_mid_get_vbt_data(struct drm_psb_private *dev_priv)
 
 	/*copy vbt data to local memory*/
 	pVBT_virtual = ioremap(platform_config_address, sizeof(*pVBT));
+	if (!pVBT_virtual) {
+		DRM_ERROR("fail to ioremap platform_config_address:0x%x\n",
+			  platform_config_address);
+		return false;
+	}
 	memcpy(pVBT, pVBT_virtual, sizeof(*pVBT));
 	iounmap(pVBT_virtual); /* Free virtual address space */
 

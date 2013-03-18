@@ -199,7 +199,8 @@ int mdfld_h8c7_drv_ic_init(struct mdfld_dsi_config *dsi_config)
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
 
-	mdfld_dsi_send_mcs_long_lp(sender, h8c7_set_blanking_opt_2, 4, 0);
+	mdfld_dsi_send_mcs_long_lp(sender, h8c7_set_blanking_opt_2,
+				   sizeof(h8c7_set_blanking_opt_2), 0);
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
 
@@ -487,7 +488,8 @@ int mdfld_dsi_h8c7_cmd_power_on(struct mdfld_dsi_config *dsi_config)
 	if (drm_psb_enable_cabc) {
 		/* turn on cabc */
 		h8c7_disable_cabc[1] = 0x2;
-		mdfld_dsi_send_mcs_long_hs(sender, h8c7_disable_cabc, 4, 0);
+		mdfld_dsi_send_mcs_long_hs(sender, h8c7_disable_cabc,
+					   sizeof(h8c7_disable_cabc), 0);
 		mdelay(5);
 		mdfld_dsi_send_gen_long_hs(sender, h8c7_mcs_protect_off, 4, 0);
 		mdfld_dsi_send_mcs_long_hs(sender, h8c7_set_cabc_gain, 10, 0);
@@ -513,10 +515,12 @@ static int mdfld_dsi_h8c7_cmd_power_off(struct mdfld_dsi_config *dsi_config)
 
 	/* turn off cabc */
 	h8c7_disable_cabc[1] = 0x0;
-	mdfld_dsi_send_mcs_long_lp(sender, h8c7_disable_cabc, 4, 0);
+	mdfld_dsi_send_mcs_long_lp(sender, h8c7_disable_cabc,
+				   sizeof(h8c7_disable_cabc), 0);
 
 	/*turn off backlight*/
-	err = mdfld_dsi_send_mcs_long_lp(sender, h8c7_turn_off_backlight, 4, 0);
+	err = mdfld_dsi_send_mcs_long_lp(sender, h8c7_turn_off_backlight,
+					 sizeof(h8c7_turn_off_backlight), 0);
 	if (err) {
 		DRM_ERROR("%s: failed to turn off backlight\n", __func__);
 		goto out;
@@ -671,7 +675,8 @@ int mdfld_dsi_h8c7_cmd_set_brightness(struct mdfld_dsi_config *dsi_config,
 
 	if (drm_psb_enable_cabc && !b_cabc_initialized) {
 		h8c7_disable_cabc[1] = 0x2;
-		mdfld_dsi_send_mcs_long_hs(sender, h8c7_disable_cabc, 4, 0);
+		mdfld_dsi_send_mcs_long_hs(sender, h8c7_disable_cabc,
+					   sizeof(h8c7_disable_cabc), 0);
 		mdelay(5);
 		mdfld_dsi_send_gen_long_hs(sender, h8c7_mcs_protect_off, 4, 0);
 		mdfld_dsi_send_mcs_long_hs(sender, h8c7_set_cabc_gain, 10, 0);
