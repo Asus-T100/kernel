@@ -193,7 +193,7 @@ static enum DC_MRFLD_FLIP_STATUS _Do_Flip(DC_MRFLD_FLIP *psFlip)
 			/*Flip sprite context*/
 			_Flip_Sprite(gpsDevice,
 				&psSurfCustom->ctx.sp_ctx);
-			uiPipe = psSurfCustom->ctx.sp_ctx.pipe;
+			uiPipe = psSurfCustom->ctx.sp_ctx.index;
 			break;
 		case DC_PRIMARY_PLANE:
 			/*need fix up the surface address*/
@@ -203,17 +203,26 @@ static enum DC_MRFLD_FLIP_STATUS _Do_Flip(DC_MRFLD_FLIP *psFlip)
 			/*Flip primary context*/
 			_Flip_Primary(gpsDevice,
 				&psSurfCustom->ctx.prim_ctx);
-			uiPipe = psSurfCustom->ctx.prim_ctx.pipe;
+			uiPipe = psSurfCustom->ctx.prim_ctx.index;
 			break;
 		case DC_OVERLAY_PLANE:
 			/*Flip overlay context*/
 			_Flip_Overlay(gpsDevice,
 				&psSurfCustom->ctx.ov_ctx);
-			uiPipe = psSurfCustom->ctx.ov_ctx.pipe;
+			uiPipe = psSurfCustom->ctx.ov_ctx.index;
 			break;
 		default:
 			DRM_ERROR("Unknown plane type %d\n",
 				psSurfCustom->type);
+		}
+
+		if (uiPipe >= MAX_PIPE_NUM) {
+			DRM_ERROR("%s: Invalid pipe %u\n", __func__, uiPipe);
+			DCDisplayConfigurationRetired(psFlip->hConfigData);
+
+			/*change the flip state to DC_FLIPPED*/
+			psFlip->eFlipState = DC_MRFLD_FLIP_FLIPPED;
+			return psFlip->eFlipState;
 		}
 
 		psFlip->asPipeInfo[uiPipe].uiSwapInterval =
