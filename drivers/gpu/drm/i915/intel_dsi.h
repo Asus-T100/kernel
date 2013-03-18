@@ -90,4 +90,7 @@ static inline struct intel_dsi *enc_to_intel_dsi(struct drm_encoder *encoder)
 	return container_of(encoder, struct intel_dsi, base.base);
 }
 
+/* the panel drivers */
+extern struct intel_dsi_dev_ops cmi_dsi_display_ops;
+
 #endif /* _INTEL_DSI_H */

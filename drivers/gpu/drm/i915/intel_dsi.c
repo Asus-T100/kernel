@@ -89,7 +89,20 @@
 #include "intel_dsi.h"
 
 /* the panel drivers are here */
-static const struct intel_dsi_device intel_dsi_devices[] = { };
+static const struct intel_dsi_device intel_dsi_devices[] = {
+	{
+		.type = INTEL_DSI_COMMAND_MODE,
+		.name = "cmi-dsi-cmd-mode-display",
+		.dev_ops = &cmi_dsi_display_ops,
+		.lane_count = 3, /* XXX: this really doesn't belong here */
+	},
+	{
+		.type = INTEL_DSI_VIDEO_MODE,
+		.name = "cmi-dsi-vid-mode-display",
+		.dev_ops = &cmi_dsi_display_ops,
+		.lane_count = 3, /* XXX: this really doesn't belong here */
+	},
+};
 
 static struct intel_dsi *intel_attached_dsi(struct drm_connector *connector)
 {
@@ -190,9 +203,7 @@ static void intel_dsi_post_disable(struct intel_encoder *encoder)
 }
 
 /* this is basically intel_connector_dpms and intel_encoder_dpms
-combined, with
- * the mipi dev specific call as well
- *
+ * combined, with the mipi dev specific call as well
  *
  */
 static void intel_dsi_dpms(struct drm_connector *connector, int mode)
@@ -277,7 +288,8 @@ static int intel_dsi_mode_valid(struct drm_connector *connector,
 			return MODE_PANEL;
 	}
 
-	return intel_dsi->dev.dev_ops->mode_valid(&intel_dsi->dev, mode); }
+	return intel_dsi->dev.dev_ops->mode_valid(&intel_dsi->dev, mode);\
+}
 
 static bool intel_dsi_mode_fixup(struct drm_encoder *encoder,
 				  const struct drm_display_mode *mode,
@@ -409,6 +421,7 @@ static void intel_dsi_mode_set(struct drm_encoder *encoder,
 		val |= VID_MODE_FORMAT_RGB888;
 		break;
 	}
+
 	/* XXX: cmd mode vs. video mode */
 	I915_WRITE(MIPI_DSI_FUNC_PRG(pipe), val);
 
@@ -438,7 +451,6 @@ static void intel_dsi_mode_set(struct drm_encoder *encoder,
 	 */
 	I915_WRITE(MIPI_LP_BYTECLK(pipe), 4);
 
-
 	/* the bw essential for transmitting 16 long packets containing 252
 	 * bytes meant for dcs write memory command is programmed in this
 	 * register in terms of byte clocks. based on dsi transfer rate and the
@@ -450,23 +462,20 @@ static void intel_dsi_mode_set(struct drm_encoder *encoder,
 		   0xa << LP_HS_SSW_CNT_SHIFT |
 		   0x14 << HS_LP_PWR_SW_CNT_SHIFT);
 
-
 	/* XXX: video mode vs. command mode */
 	I915_WRITE(MIPI_VIDEO_MODE_FORMAT(pipe), VIDEO_MODE_BURST);
 
-
 	/* XXX: MIPI_DEVICE_READY here? where? */
-
 
 	/* set up pipe... is done in mode set func *before* this one is
 	 * called */
 
 	/* this should be done someplace else. it's odd all in all. is this dpi
-	 * or video mode? seems dpi but (why) do we need it?! */ #if 0 /* rule
-of thumb, no intel_dsi_dsi.c functions called in this file? */
+	 * or video mode? seems dpi but (why) do we need it?! */
+
+#if 0	/* rule of thumb, no intel_dsi_dsi.c functions called in this file? */
 	dpi_send_cmd(intel_dsi, TURN_ON);
 #endif
-
 }
 
 static enum drm_connector_status
@@ -538,7 +547,6 @@ static const struct drm_connector_funcs intel_dsi_connector_funcs = {
 };
 
 /* XXX: I don't know where all this should be set... */
-
 static void dsi_config(struct drm_encoder *encoder)
 {
 	struct drm_device *dev = encoder->dev;
@@ -583,14 +591,11 @@ static void dsi_config(struct drm_encoder *encoder)
 		   0x60 << CLK_ZERO_COUNT_SHIFT |
 		   0x0f << PREPARE_COUNT_SHIFT);
 
-
-
-
 #if 0	/* XXX: do we need to set/check these: */
 	I915_WRITE(MIPI_TEARING_CTRL(pipe), 0);
 	I915_WRITE(_MIPIA_AUTOPWG, 0);
 
-/*
+	/*
 	MIPI_INTR_STAT - irq handling, or just checking them?
 	MIPI_INTR_EN off
 	MIPI_DBI_FIFO_THROTTLE
@@ -608,7 +613,7 @@ static void dsi_config(struct drm_encoder *encoder)
 	MIPI_INTR_EN_REG_1
 
 	MIPIA_DBI_TYPEC_CTRL - type C? only pipe a?
-*/
+	*/
 #endif
 
 }
