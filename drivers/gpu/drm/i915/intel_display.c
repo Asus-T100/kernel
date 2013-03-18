@@ -3846,6 +3846,10 @@ void intel_encoder_commit(struct drm_encoder *encoder)
 		intel_cpt_verify_modeset(dev, intel_crtc->pipe);
 }
 
+void intel_encoder_noop(struct drm_encoder *encoder)
+{
+}
+
 void intel_encoder_destroy(struct drm_encoder *encoder)
 {
 	struct intel_encoder *intel_encoder = to_intel_encoder(encoder);
