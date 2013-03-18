@@ -720,6 +720,9 @@ static int __init mdm_ctrl_module_init(void)
 	/* Everything is OK */
 	mdm_drv = new_drv;
 
+	/* Init driver */
+	init_timer(&mdm_drv->flashing_timer);
+
 	/* Modem power off sequence */
 	if (new_drv->pdata->early_pwr_off)
 		mdm_drv->mdm_ctrl_power_off(new_drv);
@@ -786,9 +789,8 @@ static void __exit mdm_ctrl_module_exit(void)
 	gpio_free(mdm_drv->gpio_pwr_on);
 	gpio_free(mdm_drv->gpio_rst_bbn);
 
-	/* FIXME: Review timer use
 	del_timer(&mdm_drv->flashing_timer);
-	*/
+
 	mutex_destroy(&mdm_drv->lock);
 
 out:
