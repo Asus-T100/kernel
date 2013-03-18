@@ -446,6 +446,10 @@ static int __cpuinit get_tjmax(struct cpuinfo_x86 *c, u32 id,
 		 * If the TjMax is not plausible, an assumption
 		 * will be used
 		 */
+		/* TODO: Remove the below workaround in Tangier B0 stepping */
+		if (c->x86_model == 0x4a) {
+			return 90000;
+		}
 		if (val) {
 			dev_dbg(dev, "TjMax is %d degrees C\n", val);
 			return val * 1000;
