@@ -32,6 +32,7 @@
 static struct regulator_consumer_supply vprog1_consumer[] = {
 	REGULATOR_SUPPLY("vprog1", "4-0048"),
 	REGULATOR_SUPPLY("vprog1", "4-0036"),
+	REGULATOR_SUPPLY("vprog1", "4-0010"),
 };
 
 static struct regulator_init_data vprog1_data = {

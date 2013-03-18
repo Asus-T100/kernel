@@ -22,16 +22,18 @@
 
 
 static int camera_reset;
-static int camera_power_down;
+static int camera_power;
 
-#ifdef CONFIG_BOARD_CTP
-static int camera_vemmc1_on;
-static struct regulator *vemmc1_reg;
-#define VEMMC1_VAL 2850000
-#else
-static int camera_vprog1_on;
-#endif
-
+#ifdef CONFIG_BOARD_CTP  
+static int camera_vemmc1_on;  
+static struct regulator *vemmc1_reg;  
+#define VEMMC1_VAL 2850000  
+static int camera_vprog1_on;  
+static struct regulator *vprog1_reg;  
+#define VPROG1_VAL 2800000  
+#else  
+static int camera_vprog1_on;  
+#endif  
 
 /*
  * MRFLD VV primary camera sensor - IMX135 platform data
@@ -74,7 +76,7 @@ static int imx135_power_ctrl(struct v4l2_subdev *sd, int flag)
 	int reg_err;
 #endif
 	if (flag) {
-#ifdef CONFIG_BOARD_CTP
+#ifdef CONFIG_BOARD_CTP 
 		if (!camera_vemmc1_on) {
 
 			camera_vemmc1_on = 1;
@@ -83,22 +85,50 @@ static int imx135_power_ctrl(struct v4l2_subdev *sd, int flag)
 				printk(KERN_ALERT "Failed to enable regulator vemmc1\n");
 				return reg_err;
 			}
-		}
-#else
 
+		}
 		if (!camera_vprog1_on) {
+			camera_vprog1_on = 1;
+			reg_err = regulator_enable(vprog1_reg);
+			if (reg_err) {
+				printk(KERN_ALERT "Failed to enable regulator vprog1\n");
+				return reg_err;
+			}
+
+		}
+		if (camera_power < 0) {
+			reg_err = camera_sensor_gpio(-1, GP_CAMERA_1_POWER_DOWN,
+						GPIOF_DIR_OUT, 1);
+			if (reg_err < 0)
+				return reg_err;
+			camera_power = reg_err;
+		}
+		gpio_set_value(camera_power, 1);
+		/* min 250us -Initializing time of silicon */
+		usleep_range(250, 300);
+#else
+		if(!camera_vprog1_on) {
 			camera_vprog1_on = 1;
 			intel_scu_ipc_msic_vprog1(0);
 		}
 #endif
 	} else {
-#ifdef CONFIG_BOARD_CTP
+#ifdef CONFIG_BOARD_CTP		
 		if (camera_vemmc1_on) {
 			camera_vemmc1_on = 0;
 
 			reg_err = regulator_disable(vemmc1_reg);
 			if (reg_err) {
 				printk(KERN_ALERT "Failed to disable regulator vemmc1\n");
+				return reg_err;
+			}
+		}
+		if (camera_vprog1_on) {
+			camera_vprog1_on = 0;
+
+			reg_err = regulator_disable(vprog1_reg);
+			if (reg_err) {
+				printk(KERN_ALERT "Failed to disable regulator vprog1\n");
 				return reg_err;
 			}
 		}
@@ -111,20 +141,32 @@ static int imx135_power_ctrl(struct v4l2_subdev *sd, int flag)
 	}
 	return 0;
 }
-
-#ifdef CONFIG_BOARD_CTP
+#ifdef CONFIG_BOARD_CTP 
 static int imx135_platform_init(struct i2c_client *client)
 {
+	int ret;
 	vemmc1_reg = regulator_get(&client->dev, "vemmc1");
 	if (IS_ERR(vemmc1_reg)) {
 		dev_err(&client->dev, "regulator_get failed\n");
 		return PTR_ERR(vemmc1_reg);
+	}
+	vprog1_reg = regulator_get(&client->dev, "vprog1");
+	if (IS_ERR(vprog1_reg)) {
+		dev_err(&client->dev, "regulator_get failed\n");
+		return PTR_ERR(vprog1_reg);
+	}
+	
+	ret = regulator_set_voltage(vprog1_reg, VPROG1_VAL, VPROG1_VAL);
+	if (ret) {
+		dev_err(&client->dev, "regulator voltage set failed\n");
+		regulator_put(vprog1_reg);
 	}
 	return 0;
 }
 
 static int imx135_platform_deinit(void)
 {
+	regulator_put(vprog1_reg);
 	regulator_put(vemmc1_reg);
 	return 0;
 }
@@ -151,7 +193,7 @@ static struct camera_sensor_platform_data imx135_sensor_platform_data = {
 void *imx135_platform_data(void *info)
 {
 	camera_reset = -1;
-	camera_power_down = -1;
+	camera_power = -1;
 
 	return &imx135_sensor_platform_data;
 }
