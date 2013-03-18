@@ -165,14 +165,24 @@ RGB[0,8191],coef[-8192,8191] -> RGB[0,8191]
 #define SH_CSS_MAX_CONTINUOUS_SENSOR_HEIGHT 2448
 #endif
 /* When using bayer decimation */
+/*
 #define SH_CSS_MAX_CONTINUOUS_SENSOR_WIDTH_DEC  4224
 #define SH_CSS_MAX_CONTINUOUS_SENSOR_HEIGHT_DEC 3168
+*/
+#define SH_CSS_MAX_CONTINUOUS_SENSOR_WIDTH_DEC  SH_CSS_MAX_SENSOR_WIDTH
+#define SH_CSS_MAX_CONTINUOUS_SENSOR_HEIGHT_DEC SH_CSS_MAX_SENSOR_HEIGHT
 
 #define SH_CSS_MIN_SENSOR_WIDTH           2
 #define SH_CSS_MIN_SENSOR_HEIGHT          2
 
 #define SH_CSS_MAX_VF_WIDTH               1280
 #define SH_CSS_MAX_VF_HEIGHT              960
+/*
+#define SH_CSS_MAX_VF_WIDTH_DEC               1920
+#define SH_CSS_MAX_VF_HEIGHT_DEC              1080
+*/
+#define SH_CSS_MAX_VF_WIDTH_DEC               SH_CSS_MAX_VF_WIDTH
+#define SH_CSS_MAX_VF_HEIGHT_DEC              SH_CSS_MAX_VF_HEIGHT
 
 /* We use 16 bits per coordinate component, including integer
    and fractional bits */
@@ -361,15 +371,18 @@ RGB[0,8191],coef[-8192,8191] -> RGB[0,8191]
  *	or raw binning is enabled.
  *	Also, during continuous mode, we need to align to 4*NWAY since input
  *	should support binning */
-#define _ISP_MAX_INPUT_WIDTH(max_internal_width, enable_ds, enable_raw_bin, \
+#define _ISP_MAX_INPUT_WIDTH(max_internal_width, enable_ds, enable_fixed_bayer_ds, enable_raw_bin, \
 				enable_continuous) \
 	((enable_ds) ? \
 	   SH_CSS_MAX_SENSOR_WIDTH :\
+	 (enable_fixed_bayer_ds) ? \
+	   CEIL_MUL(SH_CSS_MAX_CONTINUOUS_SENSOR_WIDTH_DEC,4*ISP_VEC_NELEMS) : \
 	 (enable_raw_bin) ? \
 	   CEIL_MUL(SH_CSS_MAX_CONTINUOUS_SENSOR_WIDTH,4*ISP_VEC_NELEMS) : \
 	 (enable_continuous) ? \
 	   SH_CSS_MAX_CONTINUOUS_SENSOR_WIDTH \
 	   : max_internal_width)
+
 #define _ISP_INPUT_WIDTH(internal_width, ds_input_width, enable_ds) \
 	((enable_ds) ? (ds_input_width) : (internal_width))
 

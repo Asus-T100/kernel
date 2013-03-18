@@ -477,14 +477,19 @@ extern int gburst_module_exit(void);
 int gburst_init_state;
 #endif
 
-extern void SYSPVRFillCallback(struct drm_device *ddev);
+extern int SYSPVRFillCallback(struct drm_device *ddev);
 extern void SYSPVRClearCallback(struct drm_device *ddev);
 extern struct drm_device *g_drm_dev;
 
 static int __init PVRSRVDrmInit(void)
 {
+	int ret = 0;
 	printk(KERN_INFO "__SGX_pvr init..\n");
-	SYSPVRFillCallback(g_drm_dev);
+	ret = SYSPVRFillCallback(g_drm_dev);
+	if (ret) {
+		printk(KERN_ERR "SYSPVRFillCallback failure!");
+		return ret;
+	}
 	PVRDPFInit();
 	/* Do not care chipset, right? PVRSRVDrmLoad(dev, chipset) */
 	PVRSRVDrmLoad(g_drm_dev, 0);

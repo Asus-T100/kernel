@@ -161,11 +161,9 @@ void intel_mid_hsu_suspend(int port)
 		lnw_gpio_set_alt(info->rts_gpio, LNW_GPIO);
 	}
 	if (info->wake_gpio) {
-#ifndef CONFIG_X86_MRFLD
 		lnw_gpio_set_alt(info->wake_gpio, LNW_GPIO);
 		gpio_direction_input(info->wake_gpio);
 		udelay(100);
-#endif
 		ret = request_irq(gpio_to_irq(info->wake_gpio), info->wake_isr,
 				IRQ_TYPE_EDGE_FALLING | IRQ_TYPE_EDGE_RISING,
 				info->name, info->dev);

@@ -322,6 +322,9 @@ static irqreturn_t __hdmi_irq_handler_bottomhalf(void *data)
 exit:
 		/* Notify user space */
 		pr_debug("%s: HDMI hot plug state  = %d\n", __func__, hdmi_status);
+
+		drm_helper_hpd_irq_event(hdmi_priv->dev);
+
 		if (hdmi_status) {
 			/* hdmi_state indicates that hotplug event happens */
 			hdmi_state = 1;

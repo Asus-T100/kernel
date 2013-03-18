@@ -290,6 +290,7 @@ static int sfi_cpufreq_target(struct cpufreq_policy *policy,
 	}
 
 	freqs.old = perf->states[perf->state].core_frequency * 1000;
+	freqs.new = data->freq_table[next_state].frequency;
 	freqs.cpu = policy->cpu;
 
 	cpufreq_notify_transition(&freqs, CPUFREQ_PRECHANGE);
@@ -299,11 +300,6 @@ static int sfi_cpufreq_target(struct cpufreq_policy *policy,
 		((u32) perf->states[next_perf_state].control & INTEL_MSR_RANGE);
 	wrmsr_on_cpu(policy->cpu, MSR_IA32_PERF_CTL, lo, hi);
 
-	/*
-	 * As hardware constraints can override the targetted frequency, read
-	 * back the actual value from hardware to report the frequency change.
-	 */
-	freqs.new = get_cur_freq_on_cpu(policy->cpu);
 
 	cpufreq_notify_transition(&freqs, CPUFREQ_POSTCHANGE);
 	perf->state = next_perf_state;

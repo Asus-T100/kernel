@@ -178,7 +178,9 @@ struct psh_ia_priv {
 	struct completion cmpl;
 	struct completion get_status_comp;
 	struct completion cmd_reset_comp;
+	struct completion cmd_load_comp;
 	u32 reset_in_progress;
+	u32 load_in_progress;
 	u32 status_bitmask;
 };
 

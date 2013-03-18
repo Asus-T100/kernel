@@ -198,7 +198,7 @@ static void l3g4200d_queue_delayed_work(struct l3g4200d_data *gyro)
 
 static void l3g4200d_report_data(struct l3g4200d_data *gyro)
 {
-	u8 buf[6];
+	u8 buf[6] = { 0 };
 	s16 hw_d[3];
 	s16 x, y, z;
 	int ret;
@@ -541,7 +541,7 @@ static ssize_t attr_reg_get(struct device *dev, struct device_attribute *attr,
 	struct l3g4200d_data *gyro = dev_get_drvdata(dev);
 	int rc;
 	int i;
-	u8 ctl_regs[5];
+	u8 ctl_regs[5] = { 0 };
 
 	/* read and display the 5 control registers */
 	mutex_lock(&gyro->lock);

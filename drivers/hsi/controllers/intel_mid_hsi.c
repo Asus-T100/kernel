@@ -571,6 +571,7 @@ static void assert_acwake(struct intel_controller *intel_hsi)
 {
 	unsigned long flags;
 	int do_wakeup = 0;
+	int do_wait = 0;
 
 	spin_lock_irqsave(&intel_hsi->hw_lock, flags);
 	if (hsi_pm) {
@@ -580,17 +581,18 @@ static void assert_acwake(struct intel_controller *intel_hsi)
 		do_wakeup = (intel_hsi->tx_state == TX_SLEEPING);
 		if (do_wakeup) {
 			intel_hsi->prg_cfg |= ARASAN_TX_ENABLE;
-			if (intel_hsi->suspend_state == DEVICE_READY)
+			if (intel_hsi->suspend_state == DEVICE_READY) {
+				do_wait = intel_hsi->acwake_delay ? 1 : 0;
 				iowrite32(intel_hsi->prg_cfg,
 						ARASAN_REG(PROGRAM));
+			}
 		}
 	}
 	intel_hsi->tx_state++;
 	spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
 
 	/* Wait only if needed */
-	if ((intel_hsi->acwake_delay) &&
-		(intel_hsi->suspend_state == DEVICE_READY))
+	if (do_wait)
 		udelay(intel_hsi->acwake_delay);
 
 	if (do_wakeup)
@@ -1927,7 +1929,7 @@ static const struct file_operations hsi_debug_fops = {
 	.release	= single_release,
 };
 
-static int __init hsi_debug_add_ctrl(struct hsi_controller *hsi)
+static int hsi_debug_add_ctrl(struct hsi_controller *hsi)
 {
 	struct intel_controller *intel_hsi = hsi_controller_drvdata(hsi);
 	struct dentry *dir;
@@ -3407,7 +3409,8 @@ static int hsi_dma_complete_v2(struct intel_controller *intel_hsi,
 	intel_hsi->dma_running &= ~DMA_BUSY(dma_ch);
 	spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
 
-	hsi_dma_forward(intel_hsi,
+	if (msg)
+		hsi_dma_forward(intel_hsi,
 				(msg->ttype == HSI_MSG_WRITE),
 				msg->channel,
 				dma_ch, dma_ctx);
@@ -3818,7 +3821,7 @@ static void hsi_unmap_resources(struct intel_controller *intel_hsi,
  *
  * Returns success or an error code if the controller IRQ cannot be requested.
  */
-static int __devinit hsi_controller_init(struct intel_controller *intel_hsi)
+static int hsi_controller_init(struct intel_controller *intel_hsi)
 {
 	unsigned int ch;
 	int err;
@@ -4036,7 +4039,7 @@ static void hsi_rtpm_exit(struct intel_controller *intel_hsi)
  *
  * Returns success or an error code if any initialisation is failing.
  */
-static int __devinit hsi_add_controller(struct hsi_controller *hsi,
+static int hsi_add_controller(struct hsi_controller *hsi,
 				     struct pci_dev *pdev)
 {
 	struct intel_controller *intel_hsi;
@@ -4149,7 +4152,7 @@ static void hsi_remove_controller(struct hsi_controller *hsi,
  *
  * Returns success or an error code if any initialisation is failing.
  */
-static int __devinit intel_hsi_probe(struct pci_dev *pdev,
+static int intel_hsi_probe(struct pci_dev *pdev,
 			   const struct pci_device_id *ent)
 {
 	struct hsi_controller *hsi;
@@ -4179,7 +4182,7 @@ fail_add_controller:
  *
  * Remove the HSI controller from the HSI framework and free its memory.
  */
-static void __devexit intel_hsi_remove(struct pci_dev *pdev)
+static void intel_hsi_remove(struct pci_dev *pdev)
 {
 	struct hsi_controller *hsi =
 		(struct hsi_controller *) pci_get_drvdata(pdev);
@@ -4259,7 +4262,7 @@ static struct pci_driver intel_hsi_driver = {
 	.name =		"intel_hsi",
 	.id_table =	pci_ids,
 	.probe =	intel_hsi_probe,
-	.remove =	__devexit_p(intel_hsi_remove),
+	.remove =	intel_hsi_remove,
 	.shutdown = intel_hsi_shutdown
 };
 

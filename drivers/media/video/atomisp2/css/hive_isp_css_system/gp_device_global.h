@@ -49,4 +49,15 @@
 
 #define _REG_GP_MIPI_USED_DWORD_ADDR		0xA0
 
+#define _REG_GP_IFMT_input_switch_lut_reg0			_REG_GP_INP_SWI_LUT_REG_0_ADDR
+#define _REG_GP_IFMT_input_switch_lut_reg1			_REG_GP_INP_SWI_LUT_REG_1_ADDR
+#define _REG_GP_IFMT_input_switch_lut_reg2			_REG_GP_INP_SWI_LUT_REG_2_ADDR
+#define _REG_GP_IFMT_input_switch_lut_reg3			_REG_GP_INP_SWI_LUT_REG_3_ADDR
+#define _REG_GP_IFMT_input_switch_lut_reg4			_REG_GP_INP_SWI_LUT_REG_4_ADDR
+#define _REG_GP_IFMT_input_switch_lut_reg5			_REG_GP_INP_SWI_LUT_REG_5_ADDR
+#define _REG_GP_IFMT_input_switch_lut_reg6			_REG_GP_INP_SWI_LUT_REG_6_ADDR
+#define _REG_GP_IFMT_input_switch_lut_reg7			_REG_GP_INP_SWI_LUT_REG_7_ADDR
+#define _REG_GP_IFMT_input_switch_fsync_lut			_REG_GP_INP_SWI_FSYNC_LUT_REG_ADDR
+#define _REG_GP_IFMT_input_switch_ch_id_fmt_type	0xffffffff
+
 #endif /* __GP_DEVICE_GLOBAL_H_INCLUDED__ */

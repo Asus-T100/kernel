@@ -132,6 +132,7 @@
 #define OSPM_APMBA              0x7a
 #define APM_CMD                 0x0
 #define APM_STS                 0x04
+#define PM_CMD_D3_COLD		(0x1 << 21)
 
 /* Size of command logging array */
 #define LOG_SIZE	5
@@ -391,7 +392,7 @@ extern struct mid_pmu_dev *mid_pmu_cxt;
 extern void platform_set_pmu_ops(void);
 extern void pmu_read_sss(struct pmu_ss_states *pm_ssc);
 extern int pmu_issue_interactive_command(struct pmu_ss_states *pm_ssc,
-				bool ioc);
+				bool ioc, bool d3_cold);
 extern int _pmu2_wait_not_busy(void);
 extern u32 get_s0ix_val_set_pm_ssc(int);
 extern int pmu_get_wake_source(void);

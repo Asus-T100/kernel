@@ -336,29 +336,6 @@ void mmc_cleanup_queue(struct mmc_queue *mq)
 EXPORT_SYMBOL(mmc_cleanup_queue);
 
 /**
-* mmc_queue_suspend_on_shutdown - suspend a MMC request queue on shutdown
-* @mq: MMC queue to suspend
-*
-* Stop the block request queue, and wait for our thread to
-* complete any outstanding requests.  This ensures that we
-* won't suspend while a request is being processed.
-* on shutdown thread we cannot rely on spin_lock_irqsave since irq
-* has been stopped.
-*/
-void mmc_queue_suspend_on_shutdown(struct mmc_queue *mq)
-{
-	struct request_queue *q = mq->queue;
-	unsigned long flags;
-
-	if (!(mq->flags & MMC_QUEUE_SUSPENDED)) {
-		mq->flags |= MMC_QUEUE_SUSPENDED;
-
-		blk_stop_queue(q);
-		down(&mq->thread_sem);
-	}
-}
-
-/**
  * mmc_queue_suspend - suspend a MMC request queue
  * @mq: MMC queue to suspend
  *

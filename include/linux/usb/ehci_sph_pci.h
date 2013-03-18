@@ -14,6 +14,7 @@ struct ehci_sph_pdata {
 	unsigned		has_gpio:1;	/* has sph gpio or not */
 	int			gpio_cs_n;	/* CS_N gpio  */
 	int			gpio_reset_n;	/* RESET_N gpio */
+	unsigned		enabled:1;	/* enable flag */
 };
 
 #endif

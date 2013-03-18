@@ -1583,11 +1583,9 @@ void ospm_power_island_up(int hw_islands)
 	}
 
 	if (hw_islands & OSPM_VIDEO_VPP_ISLAND) {
-		if (mrfld_set_power_state(
-			    OSPM_DISPLAY_ISLAND,
-			    MRFLD_GFX_SLC | MRFLD_GFX_SLC_LDO |
-				MRFLD_GFX_RSCD | MRFLD_GFX_SDKCK,
-			    POWER_ISLAND_UP))
+		if (mrfld_set_power_state(OSPM_GRAPHICS_ISLAND,
+				MRFLD_GFX_ALL_GFX_ONLY,
+				POWER_ISLAND_UP))
 			BUG();
 
 		if (mrfld_set_power_state(
@@ -1601,11 +1599,9 @@ void ospm_power_island_up(int hw_islands)
 	}
 
 	if (hw_islands & OSPM_VIDEO_DEC_ISLAND) {
-		if (mrfld_set_power_state(
-			    OSPM_DISPLAY_ISLAND,
-			    MRFLD_GFX_SLC | MRFLD_GFX_SLC_LDO |
-				MRFLD_GFX_RSCD | MRFLD_GFX_SDKCK,
-			    POWER_ISLAND_UP))
+		if (mrfld_set_power_state(OSPM_GRAPHICS_ISLAND,
+				MRFLD_GFX_ALL_GFX_ONLY,
+				POWER_ISLAND_UP))
 			BUG();
 
 		if (mrfld_set_power_state(
@@ -1619,10 +1615,8 @@ void ospm_power_island_up(int hw_islands)
 	}
 
 	if (hw_islands & OSPM_VIDEO_ENC_ISLAND) {
-		if (mrfld_set_power_state(
-			    OSPM_DISPLAY_ISLAND,
-			    MRFLD_GFX_SLC | MRFLD_GFX_SLC_LDO |
-				MRFLD_GFX_RSCD | MRFLD_GFX_SDKCK,
+		if (mrfld_set_power_state(OSPM_GRAPHICS_ISLAND,
+				MRFLD_GFX_ALL_GFX_ONLY,
 			    POWER_ISLAND_UP))
 			BUG();
 
@@ -1769,7 +1763,7 @@ static int mrfl_pwr_cmd_gfx(u32 gfx_mask, int new_state)
 		if (new_state)
 			j = i;
 		else
-			j = pwrtablen - i;
+			j = pwrtablen - i - 1;
 
 		done_mask |= TNG_SSC_MASK << pwrtab[j];
 		this_mask = gfx_mask & done_mask;
@@ -1782,6 +1776,18 @@ static int mrfl_pwr_cmd_gfx(u32 gfx_mask, int new_state)
 			if (ret)
 				return ret;
 		}
+
+#if A0_WORKAROUNDS
+		/**
+		  * If turning some power on, and the power to be on includes SLC,
+		  * and SLC was not previously on, then setup some registers.
+		  */
+		if (new_state && (pwrtab[j] == GFX_SLC_SHIFT)
+			&& ((pwr_state_prev >> GFX_SLC_SHIFT) != TNG_SSC_I0))
+			apply_A0_workarounds(OSPM_GRAPHICS_ISLAND,
+					1, new_state);
+#endif
+
 		if ((gfx_mask & ~done_mask) == 0)
 			break;
 	}
@@ -1796,19 +1802,6 @@ static int mrfl_pwr_cmd_gfx(u32 gfx_mask, int new_state)
 			__func__, pm_cmd_reg_name(GFX_SS_PM1), freq_state);
 	}
 #endif
-
-	/**
-	  * If turning some power on, and the power to be on includes SLC,
-	  * and SLC was not previously on, then setup some registers.
-	  */
-	if (new_state && ((gfx_mask & GFX_SLC_SSC) == GFX_SLC_SSC)
-		&& ((pwr_state_prev >> GFX_SLC_SHIFT) != TNG_SSC_I0)) {
-		/*  Perform GFX register setup. */
-		struct drm_psb_private *dev_priv =
-			(struct drm_psb_private *)gpDrmDevice->dev_private;
-
-		tng_gfx_init(dev_priv->dev);
-	}
 
 	return 0;
 }
@@ -1865,6 +1858,11 @@ int mrfld_set_power_state(int islands, int sub_islands, int new_state)
 		ns_mask = TNG_COMPOSITE_I0;
 	else
 		ns_mask = TNG_COMPOSITE_D3;
+
+#if A0_WORKAROUNDS
+	if (islands != OSPM_GRAPHICS_ISLAND)
+		apply_A0_workarounds(islands, 1, new_state);
+#endif
 
 	switch (islands) {
 	case OSPM_DISPLAY_ISLAND:
@@ -1943,13 +1941,7 @@ int mrfld_set_power_state(int islands, int sub_islands, int new_state)
 	}
 
 #if A0_WORKAROUNDS
-	{
-		/* Apply A0 Workarounds */
-		struct drm_psb_private *dev_priv =
-			(struct drm_psb_private *)gpDrmDevice->dev_private;
-
-		apply_A0_workarounds(dev_priv->dev, islands, new_state);
-	}
+	apply_A0_workarounds(islands, 0, new_state);
 #endif
 
 	return 0;

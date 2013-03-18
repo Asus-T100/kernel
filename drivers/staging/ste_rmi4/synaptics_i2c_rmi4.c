@@ -456,7 +456,7 @@ int rmi4_touchpad_irq_handler(struct rmi4_data *pdata, struct rmi4_fn *rfi)
 	struct rmi4_touchpad_data *touch_data;
 	struct i2c_client *client = pdata->i2c_client;
 	const struct rmi4_touch_calib *calib =
-				&pdata->board->calibs[pdata->touch_type];
+				&pdata->board->calib[pdata->touch_type];
 
 	/* get 2D sensor finger data */
 	/*
@@ -562,7 +562,7 @@ int rmi4_touchpad_f12_irq_handler(struct rmi4_data *pdata, struct rmi4_fn *rfi)
 	struct synaptics_rmi4_f12_finger_data *data;
 	struct synaptics_rmi4_f12_finger_data *finger_data;
 	const struct rmi4_touch_calib *calib =
-				&pdata->board->calibs[pdata->touch_type];
+				&pdata->board->calib[pdata->touch_type];
 
 	/* get 2D sensor finger data */
 	/*
@@ -884,6 +884,8 @@ int rmi4_touchpad_f12_detect(struct rmi4_data *pdata, struct rmi4_fn *rfi,
 	unsigned char fingers_to_support = MAX_FINGERS;
 	unsigned char enable_mask;
 	unsigned char size_of_2d_data;
+	const struct rmi4_touch_calib *calib =
+				&pdata->board->calib[pdata->touch_type];
 
 
 	/*
@@ -985,7 +987,9 @@ int rmi4_touchpad_f12_detect(struct rmi4_data *pdata, struct rmi4_fn *rfi,
 	pdata->sensor_max_y =
 			((unsigned short)ctrl_8.max_y_coord_lsb << 0) |
 			((unsigned short)ctrl_8.max_y_coord_msb << 8);
-	dev_dbg(&pdata->i2c_client->dev,
+	if (calib->swap_axes)
+		swap(pdata->sensor_max_x, pdata->sensor_max_y);
+	dev_info(&pdata->i2c_client->dev,
 			"%s: Function %02x max x = %d max y = %d\n",
 			__func__, rfi->fn_number,
 			pdata->sensor_max_x,
@@ -1139,7 +1143,7 @@ int rmi4_touchpad_config(struct rmi4_data *pdata, struct rmi4_fn *rfi)
 	u8 pos_delta[] = { DELTA_XPOS_THRESH, DELTA_YPOS_THRESH };
 	struct	i2c_client *client = pdata->i2c_client;
 	const struct rmi4_touch_calib *calib =
-				&pdata->board->calibs[pdata->touch_type];
+				&pdata->board->calib[pdata->touch_type];
 
 	/* Get and print some info about the data source... */
 	/* To Query 2D devices we need to read from the address obtained
@@ -1255,7 +1259,7 @@ int rmi4_touchpad_f12_config(struct rmi4_data *pdata, struct rmi4_fn *rfi)
 			rfi->ctrl_base_addr + ctrl_20_offset,
 			ctrl_20.data,
 			sizeof(ctrl_20.data));
-	if (retval != sizeof(ctrl_20.data)) {
+	if (retval < 0) {
 		dev_err(&client->dev, "%s:write control 20 failed 3\n",
 							__func__);
 	}
@@ -1929,7 +1933,7 @@ static int __devinit rmi4_probe(struct i2c_client *client,
 	retval = do_init_reset(rmi4_data);
 	if (retval)
 		dev_warn(&client->dev, "Init reset failed! Soldiering on!\n");
-	calib = &rmi4_data->board->calibs[rmi4_data->touch_type];
+	calib = &rmi4_data->board->calib[rmi4_data->touch_type];
 	/*
 	 * Register physical driver - this will call the detect function that
 	 * will then scan the device and determine the supported
@@ -2133,6 +2137,8 @@ void rmi4_late_resume(struct early_suspend *h)
 static const struct i2c_device_id rmi4_id_table[] = {
 	{ "synaptics_3202", 0 },
 	{ "synaptics_3400", 0 },
+	{ SFI_S3400_CGS, 0 },
+	{ SFI_S3400_IGZO, 0 },
 	{ },
 };
 MODULE_DEVICE_TABLE(i2c, rmi4_id_table);

@@ -75,11 +75,26 @@ void init_panel(struct drm_device *dev, int mipi_pipe, enum panel_type p_type)
 		(struct drm_psb_private *) dev->dev_private;
 	struct panel_funcs *p_funcs = NULL;
 	int i = 0, ret = 0;
+	struct drm_connector *connector;
 
 #ifdef CONFIG_SUPPORT_HDMI
 	if (p_type == HDMI) {
 		PSB_DEBUG_ENTRY("GFX: Initializing HDMI");
 		android_hdmi_driver_init(dev, &dev_priv->mode_dev);
+		if (!IS_MRFLD(dev))
+			return;
+
+		mutex_lock(&dev->mode_config.mutex);
+		list_for_each_entry(connector,
+				&dev->mode_config.connector_list, head) {
+			if ((connector->connector_type !=
+						DRM_MODE_CONNECTOR_MIPI) &&
+					(connector->connector_type !=
+					 DRM_MODE_CONNECTOR_LVDS))
+				connector->polled = DRM_CONNECTOR_POLL_HPD;
+		}
+		mutex_unlock(&dev->mode_config.mutex);
+
 		return;
 	}
 #endif

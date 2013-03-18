@@ -1376,6 +1376,7 @@ void mdfld_disable_te(struct drm_device *dev, int pipe)
 		atomic64_set(&sender->last_screen_update, 0);
 		atomic64_set(&sender->te_seq, 0);
 		dev_priv->vsync_te_working[pipe] = false;
+		atomic_set(&dev_priv->mipi_flip_abnormal, 0);
 	}
 	spin_unlock_irqrestore(&dev_priv->irqmask_lock, irqflags);
 }

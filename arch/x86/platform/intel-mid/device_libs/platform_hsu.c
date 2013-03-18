@@ -42,11 +42,13 @@ static struct mfld_hsu_info tng_hsu_info[] = {
 	[2] = {
 		.id = 2,
 		.name = DEVICE_NAME_2,
+		.wake_gpio = 134,
+		.rx_gpio = 134,
+		.rx_alt = 1,
 		.cts_gpio = 132,
 		.cts_alt = 1,
 		.rts_gpio = 133,
 		.rts_alt = 1,
-		.wake_gpio = 134,
 	},
 };
 

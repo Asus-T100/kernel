@@ -3524,7 +3524,7 @@ MMU_MapScatter (MMU_HEAP *pMMUHeap,
 
 	if (pMMUHeap == IMG_NULL) {
 		PVR_DPF((PVR_DBG_ERROR, "Null pMMUHeap value"));
-		BUG();
+		return ;
 	}
 
 #if defined(PDUMP)

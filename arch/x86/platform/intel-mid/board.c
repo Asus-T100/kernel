@@ -36,6 +36,7 @@
 #include "device_libs/platform_msic_power_btn.h"
 #include "device_libs/platform_msic_ocd.h"
 #include "device_libs/platform_msic_vdd.h"
+#include "device_libs/platform_mrfl_ocd.h"
 #include "device_libs/platform_msic_thermal.h"
 #include "device_libs/platform_soc_thermal.h"
 #include "device_libs/platform_msic_adc.h"
@@ -73,6 +74,7 @@
 #include "device_libs/platform_lm3559.h"
 #include "device_libs/platform_a1026.h"
 #include "device_libs/platform_s3202.h"
+#include "device_libs/platform_s3400.h"
 #include "device_libs/platform_bq24192.h"
 #include "device_libs/platform_ov8830.h"
 #include "device_libs/platform_hmc5883.h"
@@ -130,6 +132,8 @@ struct devs_id __initconst device_ids[] = {
 	{"msic_vdd", SFI_DEV_TYPE_IPC, 1, &msic_vdd_platform_data,
 					&ipc_device_handler},
 	{"msic_ocd", SFI_DEV_TYPE_IPC, 1, &msic_ocd_platform_data,
+					&ipc_device_handler},
+	{"bcove_bcu", SFI_DEV_TYPE_IPC, 1, &mrfl_ocd_platform_data,
 					&ipc_device_handler},
 	{"msic_thermal", SFI_DEV_TYPE_IPC, 1, &msic_thermal_platform_data,
 					&ipc_device_handler},
@@ -189,7 +193,10 @@ struct devs_id __initconst device_ids[] = {
 	{"cs42l73", SFI_DEV_TYPE_I2C, 1, &no_platform_data, NULL},
 	{"mxt224", SFI_DEV_TYPE_I2C, 0, &mxt224_platform_data, NULL},
 	{"synaptics_3202", SFI_DEV_TYPE_I2C, 0, &s3202_platform_data},
-	{"synaptics_3400", SFI_DEV_TYPE_I2C, 0, &s3202_platform_data},
+	{"syn_3202_ogs", SFI_DEV_TYPE_I2C, 0, &s3202_platform_data},
+	{"syn_3202_gff", SFI_DEV_TYPE_I2C, 0, &s3202_platform_data},
+	{"syn_3400_cgs", SFI_DEV_TYPE_I2C, 0, &s3400_platform_data},
+	{"syn_3400_igzo", SFI_DEV_TYPE_I2C, 0, &s3400_platform_data},
 	{"r69001-ts-i2c", SFI_DEV_TYPE_I2C, 0, &no_platform_data, NULL},
 	{"pn544", SFI_DEV_TYPE_I2C, 0, &pn544_platform_data, NULL},
 	{"bq24192", SFI_DEV_TYPE_I2C, 1, &bq24192_platform_data},

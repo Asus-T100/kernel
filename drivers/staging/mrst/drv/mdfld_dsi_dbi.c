@@ -585,9 +585,9 @@ reset_recovery:
 	if (p_funcs && p_funcs->reset)
 		p_funcs->reset(dsi_config);
 
-	/*after reset keep in LP11 120ms*/
+	/* after reset keep in LP11 8ms */
 	mdfld_get_data_line_LP11_status(dsi_config);
-	mdelay(120);
+	mdelay(8);
 
 	/**
 	 * Different panel may have different ways to have
@@ -604,6 +604,11 @@ reset_recovery:
 	*re-initia panel insider fb before turn on
 	*/
 	mdfld_initia_panel_inside_fb(dsi_config);
+
+	/* keep in LP11 for 8 ms before power on */
+	mdfld_get_data_line_LP11_status(dsi_config);
+	mdelay(8);
+
 	/**
 	 * Different panel may have different ways to have
 	 * panel turned on. Support it!

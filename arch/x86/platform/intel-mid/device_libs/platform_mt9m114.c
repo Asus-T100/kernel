@@ -20,6 +20,7 @@
 #include <asm/intel_scu_ipcutil.h>
 #include <media/v4l2-subdev.h>
 #include <linux/regulator/consumer.h>
+#include <linux/sfi.h>
 #include "platform_camera.h"
 #include "platform_mt9m114.h"
 #include "platform_mt9e013.h"
@@ -75,6 +76,20 @@ static int mt9m114_power_ctrl(struct v4l2_subdev *sd, int flag)
 #endif
 #ifndef CONFIG_BOARD_CTP
 	int ret;
+
+	/* The camera powering is different on RedHookBay and VictoriaBay
+	 * On RHB, vprog1 is at 2.8V and supplies both cameras
+	 * On VB, vprog1 supplies the 2nd camera and must not rise over 1.2V
+	 * Check if the RHB SW has accidentally been flashed to VB
+	 * If yes, don't turn on the regulator. The VB secondary camera will
+	 * be permanently damaged by the too high voltage
+	 */
+	if (INTEL_MID_BOARD(2, PHONE, CLVTP, VB, PRO) ||
+	    INTEL_MID_BOARD(2, PHONE, CLVTP, VB, ENG)) {
+		printk(KERN_ALERT \
+		"Aborted vprog1 enable to protect VictoriaBay 2nd camera HW\n");
+		return -ENODEV;
+	}
 
 	/* Note here, there maybe a workaround to avoid I2C SDA issue */
 	if (camera_power_down < 0) {

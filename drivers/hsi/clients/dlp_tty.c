@@ -168,7 +168,7 @@ static void _dlp_forward_tty(struct tty_struct *tty,
 	copied = 1;
 	do_push = 0;
 
-	del_timer(&xfer_ctx->timer);
+	del_timer_sync(&xfer_ctx->timer);
 
 	read_lock_irqsave(&xfer_ctx->lock, flags);
 	while (xfer_ctx->wait_len > 0) {
@@ -228,7 +228,7 @@ static void _dlp_forward_tty(struct tty_struct *tty,
 				 * time something has been written
 				 * to them to allow low latency */
 				do_push |= (copied > 0);
-			} while ((data_size) || (!copied));
+			} while ((data_size) && (copied));
 
 			/* Still have not copied data ? */
 			if (data_size) {
@@ -785,6 +785,7 @@ static void dlp_tty_close(struct tty_struct *tty, struct file *filp)
 
 	/* Flush everything & Release the HSI port */
 	if (need_cleanup) {
+		dlp_ctrl_clean_stored_cmd();
 		pr_debug(DRVNAME": Flushing the HSI controller\n");
 		hsi_flush(dlp_drv.client);
 		dlp_hsi_port_unclaim();

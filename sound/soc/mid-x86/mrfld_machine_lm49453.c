@@ -208,14 +208,38 @@ static int mrfld_set_bias_level(struct snd_soc_card *card,
 	return 0;
 }
 
+static inline struct snd_soc_codec *mrfld_get_codec(struct snd_soc_card *card)
+{
+	bool found = false;
+	struct snd_soc_codec *codec;
+
+	list_for_each_entry(codec, &card->codec_dev_list, card_list) {
+		if (!strstr(codec->name, "lm49453.1-001a")) {
+			pr_debug("codec was %s", codec->name);
+			continue;
+		} else {
+			found = true;
+			break;
+		}
+	}
+	if (found == false) {
+		pr_err("%s: cant find codec", __func__);
+		return NULL;
+	}
+	return codec;
+}
+
 static int mrfld_set_bias_level_post(struct snd_soc_card *card,
 				     struct snd_soc_dapm_context *dapm,
 				     enum snd_soc_bias_level level)
 {
 	struct snd_soc_codec *codec;
 	struct mrfld_mc_private *ctx = snd_soc_card_get_drvdata(card);
-	codec = list_entry(card->codec_dev_list.next,
-			struct snd_soc_codec, card_list);
+
+	codec = mrfld_get_codec(card);
+	if (!codec)
+		return -EIO;
+
 	switch (level) {
 	case SND_SOC_BIAS_ON:
 	case SND_SOC_BIAS_PREPARE:

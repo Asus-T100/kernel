@@ -99,6 +99,11 @@ static int input_boost_val;
  * Power HAL.This variable is set from powerHAL
  */
 
+/*
+ * Frequency to which a touch boost takes the cpus to
+ */
+static unsigned long touchboost_freq;
+
 static int touch_event_val;
 
 /*
@@ -484,8 +489,8 @@ static void cpufreq_interactive_boost(void)
 	for_each_online_cpu(i) {
 		pcpu = &per_cpu(cpuinfo, i);
 
-		if (pcpu->target_freq < hispeed_freq) {
-			pcpu->target_freq = hispeed_freq;
+		if (pcpu->target_freq < touchboost_freq) {
+			pcpu->target_freq = touchboost_freq;
 			cpumask_set_cpu(i, &speedchange_cpumask);
 			pcpu->target_set_time_in_idle =
 				get_cpu_idle_time_us(i, &pcpu->target_set_time);
@@ -498,7 +503,7 @@ static void cpufreq_interactive_boost(void)
 		 * validated.
 		 */
 
-		pcpu->floor_freq = hispeed_freq;
+		pcpu->floor_freq = touchboost_freq;
 		pcpu->floor_validate_time = ktime_to_us(ktime_get());
 	}
 
@@ -553,6 +558,28 @@ static ssize_t store_go_hispeed_load(struct kobject *kobj,
 
 static struct global_attr go_hispeed_load_attr = __ATTR(go_hispeed_load, 0644,
 		show_go_hispeed_load, store_go_hispeed_load);
+static ssize_t show_touchboost_freq(struct kobject *kobj,
+				 struct attribute *attr, char *buf)
+{
+	return sprintf(buf, "%lu\n", touchboost_freq);
+}
+
+static ssize_t store_touchboost_freq(struct kobject *kobj,
+				  struct attribute *attr,
+				  const char *buf,
+				  size_t count)
+{
+	int ret;
+	unsigned long val;
+
+	ret = kstrtoul(buf, 0, &val);
+	if (ret < 0)
+		return ret;
+	touchboost_freq = val;
+	return count;
+}
+static struct global_attr touchboost_freq_attr = __ATTR(touchboost_freq, 0644,
+		show_touchboost_freq, store_touchboost_freq);
 
 static ssize_t show_min_sample_time(struct kobject *kobj,
 				struct attribute *attr, char *buf)
@@ -777,6 +804,7 @@ static struct attribute *interactive_attributes[] = {
 	&boost.attr,
 	&boostpulse.attr,
 	&io_is_busy.attr,
+	&touchboost_freq_attr.attr,
 	&vsync_dec.attr,
 	NULL,
 };
@@ -865,6 +893,8 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 		if (!hispeed_freq)
 			hispeed_freq = policy->max;
 
+		if (!touchboost_freq)
+			touchboost_freq = policy->max;
 		/*
 		 * Do not register the idle hook and create sysfs
 		 * entries if we have already done so.

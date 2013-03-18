@@ -411,6 +411,11 @@ static int drv201_power_up(struct v4l2_subdev *sd)
 	if (r < 0)
 		goto fail_powerdown;
 
+	/* VCM RESONANCE FREQUENCY REGISTER (VCM_FREQ) */
+	r = drv201_write8(sd, DRV201_VCM_FREQ, DRV201_DEFAULT_VCM_FREQ);
+	if (r < 0)
+		goto fail_powerdown;
+
 	dev->focus = DRV201_MAX_FOCUS_POS;
 	dev->initialized = true;
 
@@ -1998,6 +2003,8 @@ static int ov8830_remove(struct i2c_client *client)
 	struct ov8830_device *dev = to_ov8830_sensor(sd);
 	if (dev->platform_data->platform_deinit)
 		dev->platform_data->platform_deinit();
+
+	media_entity_cleanup(&dev->sd.entity);
 	v4l2_ctrl_handler_free(&dev->ctrl_handler);
 	dev->platform_data->csi_cfg(sd, 0);
 	v4l2_device_unregister_subdev(sd);

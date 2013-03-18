@@ -390,6 +390,11 @@ void had_build_channel_allocation_map(struct snd_intelhad *intelhaddata)
 	int spk_mask = 0;
 	struct snd_pcm_chmap_elem *chmap;
 	chmap = kzalloc(sizeof(*chmap), GFP_KERNEL);
+	if (chmap == NULL) {
+		pr_err("kzalloc returned null in %s\n", __func__);
+		intelhaddata->chmap->chmap = NULL;
+		return;
+	}
 
 	had_get_caps(HAD_GET_ELD, &intelhaddata->eeld);
 

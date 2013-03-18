@@ -210,14 +210,17 @@ PVRSRV_ERROR OSScheduleMISR2(void)
 	return PVRSRV_OK;
 }
 
-void SYSPVRFillCallback(struct drm_device *ddev)
+int
+SYSPVRFillCallback(struct drm_device *ddev)
 {
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *)ddev->dev_private;
 	struct gpu_pvr_ops *pvr_ops =
 		kmalloc(sizeof(struct gpu_pvr_ops), GFP_KERNEL);
 
-	BUG_ON(!pvr_ops);
+	if (unlikely(!pvr_ops))
+		return -ENOMEM;
+
 	/* init wraper table */
 	pvr_ops->PVRGetDisplayClassJTable = PVRGetDisplayClassJTable;
 #if defined(SUPPORT_DRI_DRM_EXT)
@@ -240,6 +243,7 @@ void SYSPVRFillCallback(struct drm_device *ddev)
 	pvr_ops->OSScheduleMISR2 = OSScheduleMISR2;
 
 	dev_priv->pvr_ops = pvr_ops;
+	return 0;
 }
 
 void SYSPVRClearCallback(struct drm_device *ddev)

@@ -16,7 +16,8 @@
 static struct ehci_sph_pdata sph_pdata = {
 	.has_gpio = 0,
 	.gpio_cs_n = 0,
-	.gpio_reset_n = 0
+	.gpio_reset_n = 0,
+	.enabled = 1
 };
 
 static int is_board_ctp_prx(void)
@@ -75,3 +76,33 @@ static void __devinit sph_pci_early_quirks(struct pci_dev *pci_dev)
 
 DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_CLV_SPH,
 			sph_pci_early_quirks);
+
+
+static void sph_resume_quirks(struct pci_dev *dev)
+{
+	struct ehci_sph_pdata	*pdata = NULL;
+	int			err;
+
+	pdata = dev->dev.platform_data;
+
+	if (pdata == NULL) {
+		dev_err(&dev->dev, "SPH platform data is NULL\n");
+		return;
+	}
+
+	if (pdata->enabled) {
+		dev_info(&dev->dev, "Bypass SPH resume quirk for sph enabled\n");
+		return;
+	}
+
+	/* Set SPH power state to D1 after resume */
+	err = pci_set_power_state(dev, PCI_D1);
+
+	if (err < 0) {
+		dev_err(&dev->dev, "set SPH to D1 failed, err = %d\n", err);
+		return;
+	}
+}
+
+DECLARE_PCI_FIXUP_RESUME(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_CLV_SPH,
+			sph_resume_quirks);

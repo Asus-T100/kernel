@@ -198,7 +198,7 @@ static void dw_writer(struct dw_spi *dws)
 	u16 txw = 0;
 
 	while (max--) {
-		/* Set the tx word if the transfer's original "tx" is not null */
+		/* Set the txw if the transfer's original "tx" is not null */
 		if (dws->tx_end - dws->len) {
 			if (dws->n_bytes == 1)
 				txw = *(u8 *)(dws->tx);
@@ -275,6 +275,7 @@ static void giveback(struct dw_spi *dws)
 
 	spin_lock_irqsave(&dws->lock, flags);
 	msg = dws->cur_msg;
+	list_del_init(&dws->cur_msg->queue);
 	dws->cur_msg = NULL;
 	dws->cur_transfer = NULL;
 	dws->prev_chip = dws->cur_chip;
@@ -331,7 +332,7 @@ static irqreturn_t interrupt_transfer(struct dw_spi *dws)
 		dw_readw(dws, DW_SPI_TXOICR);
 		dw_readw(dws, DW_SPI_RXOICR);
 		dw_readw(dws, DW_SPI_RXUICR);
-		int_error_stop(dws, "interrupt_transfer: fifo overrun/underrun");
+		int_error_stop(dws, "interrupt_transfer: fifo over/underrun");
 		return IRQ_HANDLED;
 	}
 
@@ -577,7 +578,6 @@ static void pump_messages(struct work_struct *work)
 
 	/* Extract head of queue */
 	dws->cur_msg = list_entry(dws->queue.next, struct spi_message, queue);
-	list_del_init(&dws->cur_msg->queue);
 
 	/* Initial message state*/
 	dws->cur_msg->state = START_STATE;
@@ -735,9 +735,10 @@ int dw_spi_stop_queue(struct dw_spi *dws)
 	int status = 0;
 
 	spin_lock_irqsave(&dws->lock, flags);
-	dws->run = QUEUE_STOPPED;
 	if (!list_empty(&dws->queue))
 		status = -EBUSY;
+	else
+		dws->run = QUEUE_STOPPED;
 	spin_unlock_irqrestore(&dws->lock, flags);
 
 	return status;
@@ -760,7 +761,6 @@ static void dw_spi_hw_init(struct dw_spi *dws)
 {
 	spi_enable_chip(dws, 0);
 	spi_mask_intr(dws, 0xff);
-	spi_enable_chip(dws, 1);
 
 	/*
 	 * Try to detect the FIFO depth if not set by interface driver,
@@ -777,6 +777,8 @@ static void dw_spi_hw_init(struct dw_spi *dws)
 		dws->fifo_len = (fifo == 257) ? 0 : fifo;
 		dw_writew(dws, DW_SPI_TXFLTR, 0);
 	}
+
+	spi_enable_chip(dws, 1);
 }
 
 int __devinit dw_spi_add_host(struct dw_spi *dws)

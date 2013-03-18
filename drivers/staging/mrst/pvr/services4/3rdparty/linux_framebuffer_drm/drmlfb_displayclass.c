@@ -53,7 +53,7 @@
 struct flip_command {
 	IMG_HANDLE  hCmdCookie;
 	IMG_UINT32  ui32DataSize;
-	IMG_VOID   *pvData;
+	DISPLAYCLASS_FLIP_COMMAND vData;
 	IMG_BOOL bFlush;
 };
 
@@ -2043,8 +2043,8 @@ static void DisplayFlipWork(struct work_struct *work)
 	u32 read_index;
 	IMG_HANDLE  hCmdCookie;
 	IMG_UINT32  ui32DataSize;
-	IMG_VOID   *pvData;
 	IMG_BOOL bFlush;
+	DISPLAYCLASS_FLIP_COMMAND vData;
 
 	spin_lock(&display_flip_work_t.flip_commands_lock);
 
@@ -2061,12 +2061,13 @@ static void DisplayFlipWork(struct work_struct *work)
 		ui32DataSize =
 			display_flip_work_t.
 			p_flip_command[read_index].ui32DataSize;
-		pvData =
-			display_flip_work_t.p_flip_command[read_index].pvData;
+		memcpy(&vData,
+			&display_flip_work_t.p_flip_command[read_index].vData,
+			sizeof(DISPLAYCLASS_FLIP_COMMAND));
 		bFlush =
 			display_flip_work_t.p_flip_command[read_index].bFlush;
 		spin_unlock(&display_flip_work_t.flip_commands_lock);
-		ProcessFlip(hCmdCookie, ui32DataSize, pvData, bFlush);
+		ProcessFlip(hCmdCookie, ui32DataSize, &vData, bFlush);
 		spin_lock(&display_flip_work_t.flip_commands_lock);
 	}
 
@@ -2086,7 +2087,8 @@ static IMG_BOOL DisplayFlip(IMG_HANDLE  hCmdCookie,
 	display_flip_work_t.p_flip_command[write_index].hCmdCookie = hCmdCookie;
 	display_flip_work_t.p_flip_command[write_index].ui32DataSize =
 		ui32DataSize;
-	display_flip_work_t.p_flip_command[write_index].pvData = pvData;
+	memcpy(&display_flip_work_t.p_flip_command[write_index].vData, pvData,
+		sizeof(DISPLAYCLASS_FLIP_COMMAND));
 	display_flip_work_t.p_flip_command[write_index].bFlush = bFlush;
 	display_flip_work_t.write_index =
 		(display_flip_work_t.write_index + 1) % MAXFLIPCOMMANDS;

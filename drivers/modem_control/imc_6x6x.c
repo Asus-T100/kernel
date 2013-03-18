@@ -101,11 +101,11 @@ int mdm_ctrl_cold_boot_6x6x(struct mdm_ctrl *drv)
 	gpio_set_value(drv->gpio_rst_bbn, 1);
 
 	/* Wait before doing the pulse on ON1 */
-	udelay(mid_info->pre_on_delay);
+	usleep_range(mid_info->pre_on_delay, mid_info->pre_on_delay);
 
 	/* Do a pulse on ON1 */
 	gpio_set_value(drv->gpio_pwr_on, 1);
-	udelay(mid_info->on_duration);
+	usleep_range(mid_info->on_duration, mid_info->on_duration);
 	gpio_set_value(drv->gpio_pwr_on, 0);
 
 	mdm_ctrl_launch_timer(&drv->flashing_timer,
@@ -156,7 +156,7 @@ int mdm_ctrl_cold_reset_6x6x(struct mdm_ctrl *drv)
 
 	/* Set the reset_bb to low */
 	gpio_set_value(drv->gpio_rst_bbn, 0);
-	udelay(pdata->pre_pwr_down_delay);
+	usleep_range(pdata->pre_pwr_down_delay, pdata->pre_pwr_down_delay);
 
 	/* Write the new register value (CHIPCNTRL_OFF) */
 	data = (def_value & pdata->chipctrl_mask) | pdata->chipctrloff;
@@ -165,9 +165,8 @@ int mdm_ctrl_cold_reset_6x6x(struct mdm_ctrl *drv)
 		pr_err(DRVNAME ": ipc_writev(OFF) failed (ret: %d)", ret);
 		goto out;
 	}
-	udelay(pdata->pwr_down_duration);
+	usleep_range(pdata->pwr_down_duration, pdata->pwr_down_duration);
 
-	/* FIXME: Not to be done on some platforms ?*/
 	/* Write the new register value (CHIPCNTRL_ON) */
 	data = (def_value & pdata->chipctrl_mask) | pdata->chipctrlon;
 	ret =  intel_scu_ipc_writev(&addr, &data, 1);
@@ -189,11 +188,11 @@ int mdm_ctrl_cold_reset_6x6x(struct mdm_ctrl *drv)
 	/* Set the RESET_BB_N to high */
 	gpio_set_value(drv->gpio_rst_bbn, 1);
 
-	udelay(mid_info->pre_on_delay);
+	usleep_range(mid_info->pre_on_delay, mid_info->pre_on_delay);
 
 	/* Assert, wait & de-assert the ON1 */
 	gpio_set_value(drv->gpio_pwr_on, 1);
-	udelay(mid_info->on_duration);
+	usleep_range(mid_info->on_duration, mid_info->on_duration);
 	gpio_set_value(drv->gpio_pwr_on, 0);
 
 	mdm_ctrl_launch_timer(&drv->flashing_timer,
@@ -216,7 +215,7 @@ int mdm_ctrl_silent_warm_reset_6x6x(struct mdm_ctrl *drv)
 	struct mdm_ctrl_device_info *mid_info = drv->pdata->device_data;
 
 	gpio_set_value(drv->gpio_rst_bbn, 0);
-	udelay(mid_info->warm_rst_duration);
+	usleep_range(mid_info->warm_rst_duration, mid_info->warm_rst_duration);
 	gpio_set_value(drv->gpio_rst_bbn, 1);
 
 	return 0;

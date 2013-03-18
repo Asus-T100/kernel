@@ -39,6 +39,10 @@ void *lm3559_platform_data_func(void *info)
 		return NULL;
 	}
 
+	pr_info("camera pdata: lm3559: reset: %d strobe %d torch %d\n",
+		platform_data.gpio_reset, platform_data.gpio_strobe,
+		platform_data.gpio_torch);
+
 	/* Set to TX2 mode, then ENVM/TX2 pin is a power amplifier sync input:
 	 * ENVM/TX pin asserted, flash forced into torch;
 	 * ENVM/TX pin desserted, flash set back;

@@ -33,8 +33,6 @@
 #define A0_WORKAROUNDS			1	/* 1 to enable */
 
 /* Apply the A0 Workaround */
-void apply_A0_workarounds(struct drm_device *dev, int islands, int new_state);
-
-void tng_gfx_init(struct drm_device *dev);
+void apply_A0_workarounds(int islands, int pre_po, int new_state);
 
 #endif	/* _TNG_WORKAROUNDS_H_ */

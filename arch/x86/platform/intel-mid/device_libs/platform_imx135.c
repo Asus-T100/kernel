@@ -16,12 +16,23 @@
 #include <asm/intel_scu_ipcutil.h>
 #include <asm/intel-mid.h>
 #include <media/v4l2-subdev.h>
+#include <linux/regulator/consumer.h>
 #include "platform_camera.h"
 #include "platform_imx135.h"
 
 
 static int camera_reset;
+static int camera_power_down;
+
+#ifdef CONFIG_BOARD_CTP
+static int camera_vemmc1_on;
+static struct regulator *vemmc1_reg;
+#define VEMMC1_VAL 2850000
+#else
 static int camera_vprog1_on;
+#endif
+
+
 /*
  * MRFLD VV primary camera sensor - IMX135 platform data
  */
@@ -58,27 +69,66 @@ static int imx135_flisclk_ctrl(struct v4l2_subdev *sd, int flag)
 
 static int imx135_power_ctrl(struct v4l2_subdev *sd, int flag)
 {
-	int ret;
-	if (flag) {
-		if (!camera_vprog1_on) {
-			ret = intel_scu_ipc_msic_vprog1(1);
-			if (!ret) {
-				/* VDIG/VANA/VIF rise to XCLR release */
-				usleep_range(500, 500);
-				camera_vprog1_on = 1;
-			}
-			return ret;
 
+#ifdef CONFIG_BOARD_CTP
+	int reg_err;
+#endif
+	if (flag) {
+#ifdef CONFIG_BOARD_CTP
+		if (!camera_vemmc1_on) {
+
+			camera_vemmc1_on = 1;
+			reg_err = regulator_enable(vemmc1_reg);
+			if (reg_err) {
+				printk(KERN_ALERT "Failed to enable regulator vemmc1\n");
+				return reg_err;
+			}
 		}
+#else
+
+		if (!camera_vprog1_on) {
+			camera_vprog1_on = 1;
+			intel_scu_ipc_msic_vprog1(0);
+		}
+#endif
 	} else {
-		if (camera_vprog1_on) {
-			ret = intel_scu_ipc_msic_vprog1(0);
-			if (!ret)
-				camera_vprog1_on = 0;
-			return ret;
+#ifdef CONFIG_BOARD_CTP
+		if (camera_vemmc1_on) {
+			camera_vemmc1_on = 0;
+
+			reg_err = regulator_disable(vemmc1_reg);
+			if (reg_err) {
+				printk(KERN_ALERT "Failed to disable regulator vemmc1\n");
+				return reg_err;
+			}
 		}
+#else
+		if (camera_vprog1_on) {
+			camera_vprog1_on = 0;
+			intel_scu_ipc_msic_vprog1(1);
+		}
+#endif
 	}
+	return 0;
 }
+
+#ifdef CONFIG_BOARD_CTP
+static int imx135_platform_init(struct i2c_client *client)
+{
+	vemmc1_reg = regulator_get(&client->dev, "vemmc1");
+	if (IS_ERR(vemmc1_reg)) {
+		dev_err(&client->dev, "regulator_get failed\n");
+		return PTR_ERR(vemmc1_reg);
+	}
+	return 0;
+}
+
+static int imx135_platform_deinit(void)
+{
+	regulator_put(vemmc1_reg);
+	return 0;
+}
+#endif
 
 static int imx135_csi_configure(struct v4l2_subdev *sd, int flag)
 {
@@ -92,11 +142,16 @@ static struct camera_sensor_platform_data imx135_sensor_platform_data = {
 	.flisclk_ctrl   = imx135_flisclk_ctrl,
 	.power_ctrl     = imx135_power_ctrl,
 	.csi_cfg        = imx135_csi_configure,
+#ifdef CONFIG_BOARD_CTP
+	.platform_init = imx135_platform_init,
+	.platform_deinit = imx135_platform_deinit,
+#endif
 };
 
 void *imx135_platform_data(void *info)
 {
 	camera_reset = -1;
+	camera_power_down = -1;
 
 	return &imx135_sensor_platform_data;
 }

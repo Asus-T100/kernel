@@ -244,7 +244,9 @@ mdm_ctrl_setup_irq_gpio(struct mdm_ctrl *drv)
 
 	ret = request_irq(drv->irq_reset,
 			mdm_ctrl_reset_it,
-			IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
+			IRQF_TRIGGER_RISING |
+			IRQF_TRIGGER_FALLING |
+			IRQF_NO_SUSPEND,
 			DRVNAME,
 			drv);
 	if (ret) {
@@ -268,7 +270,7 @@ mdm_ctrl_setup_irq_gpio(struct mdm_ctrl *drv)
 
 	ret = request_irq(drv->irq_cdump,
 			mdm_ctrl_coredump_it,
-			IRQF_TRIGGER_RISING, DRVNAME,
+			IRQF_TRIGGER_RISING | IRQF_NO_SUSPEND, DRVNAME,
 			drv);
 	if (ret) {
 		pr_err(DRVNAME": IRQ request failed for GPIO%d (CORE DUMP)",
@@ -711,6 +713,9 @@ static int __init mdm_ctrl_module_init(void)
 
 	if (mdm_ctrl_setup_irq_gpio(new_drv))
 		goto del_dev;
+
+	wake_lock_init(&new_drv->stay_awake, WAKE_LOCK_SUSPEND,
+				"mcd_wakelock");
 
 	/* Everything is OK */
 	mdm_drv = new_drv;

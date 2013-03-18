@@ -3,6 +3,8 @@
 
 #include "storage_class.h"
 
+#include "vector_func_local.h"
+
 #ifndef __INLINE_VECTOR_FUNC__
 #define STORAGE_CLASS_VECTOR_FUNC_H STORAGE_CLASS_EXTERN
 #define STORAGE_CLASS_VECTOR_FUNC_C 

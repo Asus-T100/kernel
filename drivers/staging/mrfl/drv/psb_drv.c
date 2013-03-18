@@ -1935,7 +1935,11 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 		psb_modeset_init(dev);
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 35))
 		psb_fbdev_init(dev);
-		drm_kms_helper_poll_init(dev);
+
+		if (IS_MRFLD(dev))
+			intel_drm_kms_helper_poll_init(dev);
+		else
+			drm_kms_helper_poll_init(dev);
 #else
 		drm_helper_initial_config(dev);
 #endif

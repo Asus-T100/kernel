@@ -616,6 +616,10 @@ static int mt9m114_res2size(unsigned int res, int *h_size, int *v_size)
 		hsize = MT9M114_RES_480P_SIZE_H;
 		vsize = MT9M114_RES_480P_SIZE_V;
 		break;
+	case MT9M114_RES_576P:
+		hsize = MT9M114_RES_576P_SIZE_H;
+		vsize = MT9M114_RES_576P_SIZE_V;
+		break;
 	case MT9M114_RES_720P:
 		hsize = MT9M114_RES_720P_SIZE_H;
 		vsize = MT9M114_RES_720P_SIZE_V;
@@ -690,6 +694,12 @@ static int mt9m114_set_mbus_fmt(struct v4l2_subdev *sd,
 		break;
 	case MT9M114_RES_480P:
 		ret = mt9m114_write_reg_array(c, mt9m114_480p_init, NO_POLLING);
+		break;
+	case MT9M114_RES_576P:
+		ret = mt9m114_write_reg_array(c, mt9m114_576p_init, NO_POLLING);
+		/* set sensor read_mode to Normal */
+		ret += misensor_rmw_reg(c, MISENSOR_16BIT, MISENSOR_READ_MODE,
+				MISENSOR_R_MODE_MASK, MISENSOR_NORMAL_SET);
 		break;
 	case MT9M114_RES_720P:
 		ret = mt9m114_write_reg_array(c, mt9m114_720p_init, NO_POLLING);

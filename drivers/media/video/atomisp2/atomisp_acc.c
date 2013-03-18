@@ -331,6 +331,14 @@ int atomisp_acc_map(struct atomisp_device *isp, struct atomisp_acc_map *map)
 	if (isp->acc.pipeline)
 		return -EBUSY;
 
+	/* Buffer to map must be page-aligned */
+	if ((unsigned long)map->user_ptr & ~PAGE_MASK) {
+		dev_err(isp->dev,
+			"%s: mapped buffer address %p is not page aligned\n",
+			__func__, map->user_ptr);
+		return -EINVAL;
+	}
+
 	pgnr = DIV_ROUND_UP(map->length, PAGE_SIZE);
 	cssptr = (hrt_vaddress)hrt_isp_css_mm_alloc_user_ptr(
 			map->length, (unsigned int)map->user_ptr,

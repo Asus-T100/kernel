@@ -33,17 +33,22 @@
 #define IPC_SUB_MEASURE_START_CLVP	0x00
 #define IPC_SUB_MEASURE_STOP_CLVP	0x01
 
-struct s0ix_latency_stat {
-	u64 min_entry;
-	u64 max_entry;
-	u64 total_entry;
-	u64 min_exit;
-	u64 max_exit;
-	u64 total_exit;
+struct simple_stat {
+	u64 min;
+	u64 max;
+	u64 total;
+	u64 curr;
+};
+
+struct entry_exit_stat {
+	struct simple_stat entry;
+	struct simple_stat exit;
 };
 
 struct latency_stat {
-	struct s0ix_latency_stat latency[SYS_STATE_MAX];
+	struct entry_exit_stat scu_latency[SYS_STATE_MAX];
+	struct entry_exit_stat os_latency[SYS_STATE_MAX];
+	struct simple_stat s3_parts_lat[MAX_S3_PARTS];
 	u64 count[SYS_STATE_MAX];
 	u32 __iomem *scu_s0ix_lat_addr;
 	struct dentry *dentry;

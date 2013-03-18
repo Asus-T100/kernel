@@ -30,8 +30,6 @@
 #include <linux/slab.h>
 #include <linux/cdev.h>
 #include <linux/uaccess.h>
-#include <linux/notifier.h>
-#include <linux/suspend.h>
 
 #include <asm/intel_mid_rpmsg.h>
 #include <asm/intel_mid_remoteproc.h>
@@ -39,51 +37,6 @@
 
 /* Instance for generic kernel IPC calls */
 static struct rpmsg_instance *rpmsg_ipc_instance;
-
-static bool rpmsg_notifier_init;
-static int  rpmsg_pm_callback(struct notifier_block *nb,
-					unsigned long action,
-					void *ignored);
-
-static struct notifier_block rpmsg_pm_notifier = {
-	.notifier_call = rpmsg_pm_callback,
-	.priority = 2,
-};
-
-/* Suspend status*/
-static bool rpmsg_suspend_status;
-static DEFINE_MUTEX(rpmsg_suspend_lock);
-
-/* Suspend status get */
-static bool suspend_in_progress(void)
-{
-	return rpmsg_suspend_status;
-}
-
-/* Suspend status set */
-static void set_suspend_status(bool status)
-{
-	mutex_lock(&rpmsg_suspend_lock);
-	rpmsg_suspend_status = status;
-	mutex_unlock(&rpmsg_suspend_lock);
-}
-
-/* RPMSG PM notifier callback */
-static int rpmsg_pm_callback(struct notifier_block *nb,
-					unsigned long action,
-					void *ignored)
-{
-	switch (action) {
-	case PM_SUSPEND_PREPARE:
-		set_suspend_status(true);
-		return NOTIFY_OK;
-	case PM_POST_SUSPEND:
-		set_suspend_status(false);
-		return NOTIFY_OK;
-	}
-
-	return NOTIFY_DONE;
-}
 
 int rpmsg_send_command(struct rpmsg_instance *instance, u32 cmd,
 						u32 sub, u8 *in,
@@ -96,11 +49,6 @@ int rpmsg_send_command(struct rpmsg_instance *instance, u32 cmd,
 		pr_err("%s: Instance is NULL\n", __func__);
 		return -EFAULT;
 	}
-
-	mutex_lock(&rpmsg_suspend_lock);
-
-	if (!suspend_in_progress())
-		wake_lock(&instance->wake_lock);
 
 	mutex_lock(&instance->instance_lock);
 
@@ -146,10 +94,6 @@ int rpmsg_send_command(struct rpmsg_instance *instance, u32 cmd,
 end:
 	mutex_unlock(&instance->instance_lock);
 
-	if (!suspend_in_progress())
-		wake_unlock(&instance->wake_lock);
-
-	mutex_unlock(&rpmsg_suspend_lock);
 	return ret;
 }
 EXPORT_SYMBOL(rpmsg_send_command);
@@ -257,14 +201,6 @@ int alloc_rpmsg_instance(struct rpmsg_channel *rpdev,
 		goto error_endpoint_create;
 	}
 
-	wake_lock_init(&instance->wake_lock, WAKE_LOCK_SUSPEND,
-			dev_name(&rpdev->dev));
-
-	if (!rpmsg_notifier_init) {
-		rpmsg_notifier_init = true;
-		register_pm_notifier(&rpmsg_pm_notifier);
-	}
-
 	goto alloc_out;
 
 error_endpoint_create:
@@ -292,7 +228,6 @@ void free_rpmsg_instance(struct rpmsg_channel *rpdev,
 	instance->tx_msg = NULL;
 	kfree(instance->rx_msg);
 	instance->rx_msg = NULL;
-	wake_lock_destroy(&instance->wake_lock);
 	kfree(instance);
 	*pInstance = NULL;
 	dev_info(&rpdev->dev, "Freeing rpmsg device\n");

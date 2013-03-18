@@ -24,6 +24,7 @@
 #include <linux/time.h>
 #include <linux/i2c.h>
 #include <linux/stat.h>
+#include <linux/sfi.h>
 #include <linux/earlysuspend.h>
 #include <linux/synaptics_i2c_rmi4.h>
 #include <linux/interrupt.h>
@@ -131,7 +132,7 @@ extract_header(const u8 *data, int pos, struct image_header *header)
 static int rescan_pdt(struct reflash_data *data)
 {
 	int i, retval;
-	bool f01_found, f34_found;
+	bool f01_found = false, f34_found = false;
 	struct rmi4_fn_desc rmi4_fn_desc;
 	struct rmi4_data *rmi4_dev = data->rmi4_dev;
 	struct rmi4_fn_desc *f34_pdt = data->f34_pdt;
@@ -179,9 +180,8 @@ static int rescan_pdt(struct reflash_data *data)
 
 static int read_f34_controls(struct reflash_data *data)
 {
-	struct rmi4_data *rmi4_dev = data->rmi4_dev;
-	struct i2c_client *client = rmi4_dev->i2c_client;
 	int retval;
+	struct rmi4_data *rmi4_dev = data->rmi4_dev;
 	union f34_control_status_v1 f34ctrlsts1;
 	if (data->bootloader_id[1] > '5') {
 		retval = rmi4_i2c_block_read(data->rmi4_dev,
@@ -734,18 +734,18 @@ int rmi4_fw_update(struct rmi4_data *pdata,
 	struct timespec end;
 	s64 duration_ns;
 #endif
-	int retval, touch_type;
+	int retval, touch_type = 0;
 	char *firmware_name;
 	const struct firmware *fw_entry = NULL;
 	struct i2c_client *client = pdata->i2c_client;
 	union pdt_properties pdt_props;
-	struct image_header header;
+	struct image_header header = { 0 };
 	struct reflash_data data = {
 		.rmi4_dev = pdata,
 		.f01_pdt = f01_pdt,
 		.f34_pdt = f34_pdt,
 	};
-	const struct rmi4_touch_calib *calibs = pdata->board->calibs;
+	const struct rmi4_touch_calib *calib = pdata->board->calib;
 	const struct rmi4_platform_data *platformdata =
 		client->dev.platform_data;
 
@@ -774,7 +774,11 @@ int rmi4_fw_update(struct rmi4_data *pdata,
 		return -1;
 	}
 
-	if (data.product_id[0] == PID_S3202_GFF)
+	if (strncmp(calib->type, SFI_S3400_CGS, SFI_NAME_LEN) == 0 ||
+		strncmp(calib->type, SFI_S3400_IGZO, SFI_NAME_LEN) == 0) {
+		touch_type = 0;
+		dev_info(&client->dev, "touch type: %s", calib->type);
+	} else if (data.product_id[0] == PID_S3202_GFF)
 		touch_type = TOUCH_TYPE_S3202_GFF;
 	else if (strcmp(data.product_id, PID_S3202_OGS) == 0)
 		touch_type = TOUCH_TYPE_S3202_OGS;
@@ -792,7 +796,7 @@ int rmi4_fw_update(struct rmi4_data *pdata,
 	if (force)
 		firmware_name = FIRMWARE_NAME_FORCE;
 	else
-		firmware_name = calibs[touch_type].fw_name;
+		firmware_name = calib[touch_type].fw_name;
 	dev_info(&client->dev, "Firmware name:%s, hardware type:%d\n",
 					firmware_name, touch_type);
 
@@ -802,13 +806,13 @@ int rmi4_fw_update(struct rmi4_data *pdata,
 			retval);
 		return touch_type;
 	}
-	if (!go_nogo(&data, &calibs[touch_type])) {
+	if (!go_nogo(&data, &calib[touch_type])) {
 		dev_info(&client->dev, "Don't need to reflash firmware.\n");
 		return touch_type;
 	}
 	dev_info(&client->dev, "Requesting %s.\n", firmware_name);
 	retval = request_firmware(&fw_entry, firmware_name, &client->dev);
-	if (retval != 0) {
+	if (retval != 0 || !fw_entry) {
 		dev_err(&client->dev,
 				"Firmware %s not available, code = %d\n",
 				firmware_name, retval);

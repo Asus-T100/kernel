@@ -157,15 +157,9 @@ static int spi_dw_pci_runtime_suspend(struct device *dev)
 {
 	struct pci_dev *pdev = to_pci_dev(dev);
 	struct dw_spi_pci *dwpci = pci_get_drvdata(pdev);
-	int ret;
 
 	dev_dbg(dev, "PCI runtime suspend called\n");
-
-	ret = dw_spi_stop_queue(&dwpci->dws);
-	if (ret == 0)
-		spi_enable_chip(&dwpci->dws, 1);
-
-	return ret;
+	return dw_spi_suspend_host(&dwpci->dws);
 }
 
 static int spi_dw_pci_runtime_resume(struct device *dev)
@@ -205,13 +199,13 @@ static int spi_dw_pci_runtime_idle(struct device *dev)
 #endif
 
 static const struct pci_device_id pci_ids[] __devinitdata = {
-	/* Intel Medfield platform SPI controller 0 */
+	/* Intel Medfield platform SPI controller 1 */
 	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x0800), .driver_data = 0 },
-	/* Intel Cloverview SPI controller 0(logic), physical controller 1 */
+	/* Intel Cloverview platform SPI controller 1 */
 	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x08E1), .driver_data = 0 },
-	/* Intel EVx platform SPI controller 1(logic), physical controller 1*/
+	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x08EE), .driver_data = 1 },
+	/* Intel EVx platform SPI controller 1 */
 	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x0812), .driver_data = 2 },
-
 	{},
 };
 

@@ -120,4 +120,13 @@ assert(ISP_DMEM_BASE[ID] != (hrt_address)-1);
 #endif
 }
 
+STORAGE_CLASS_ISP_C uint32_t isp_2w_cat_1w(
+	const uint16_t		x0,
+	const uint16_t		x1)
+{
+	uint32_t out = ((uint32_t)(x1 & HIVE_ISP_VMEM_MASK) << ISP_VMEM_ELEMBITS)
+		| (x0 & HIVE_ISP_VMEM_MASK);
+return out;
+}
+
 #endif /* __ISP_PRIVATE_H_INCLUDED__ */

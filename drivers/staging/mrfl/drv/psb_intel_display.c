@@ -34,6 +34,8 @@
 /* FIXME may delete after MRFLD PO */
 #include "mrfld_display.h"
 
+#define DRM_OUTPUT_POLL_PERIOD (10 * HZ)
+
 /*MRFLD defines */
 static int mrfld_crtc_mode_set(struct drm_crtc *crtc,
 			       struct drm_display_mode *mode,
@@ -777,6 +779,70 @@ static const struct drm_crtc_helper_funcs mrfld_helper_funcs = {
 	.prepare = psb_intel_crtc_prepare,
 	.commit = psb_intel_crtc_commit,
 };
+
+static void intel_output_poll_execute(struct work_struct *work)
+{
+	struct delayed_work *delayed_work = to_delayed_work(work);
+	struct drm_device *dev = container_of(delayed_work, struct drm_device,
+			mode_config.output_poll_work);
+	struct drm_connector *connector;
+	enum drm_connector_status old_status;
+	bool repoll = false, changed = false;
+
+	mutex_lock(&dev->mode_config.mutex);
+	list_for_each_entry(connector, &dev->mode_config.connector_list, head) {
+
+		/* if this is HPD or polled don't check it -
+		   TV out for instance */
+		if (!connector->polled)
+			continue;
+
+		else if (connector->polled & (DRM_CONNECTOR_POLL_CONNECT |
+					DRM_CONNECTOR_POLL_DISCONNECT))
+			repoll = true;
+
+		old_status = connector->status;
+		/* if we are connected and don't want to poll for disconnect
+		   skip it */
+		if (old_status == connector_status_connected &&
+				!(connector->polled &
+					DRM_CONNECTOR_POLL_DISCONNECT) &&
+				!(connector->polled & DRM_CONNECTOR_POLL_HPD))
+			continue;
+
+		connector->status = connector->funcs->detect(connector, false);
+		DRM_DEBUG_KMS("[CONNECTOR:%d:%s] status updated from" \
+				"%d to %d\n",
+				connector->base.id,
+				drm_get_connector_name(connector),
+				old_status, connector->status);
+		if (old_status != connector->status)
+			changed = true;
+	}
+
+	mutex_unlock(&dev->mode_config.mutex);
+
+	if (changed) {
+		/* call fbdev then send a uevent */
+		if (dev->mode_config.funcs->output_poll_changed)
+			dev->mode_config.funcs->output_poll_changed(dev);
+
+		drm_sysfs_hotplug_event(dev);
+	}
+
+	if (repoll)
+		queue_delayed_work(system_nrt_wq, delayed_work,
+				DRM_OUTPUT_POLL_PERIOD);
+}
+
+void intel_drm_kms_helper_poll_init(struct drm_device *dev)
+{
+	INIT_DELAYED_WORK(&dev->mode_config.output_poll_work,
+			intel_output_poll_execute);
+	dev->mode_config.poll_enabled = true;
+
+	drm_kms_helper_poll_enable(dev);
+}
 
 /* MRST_PLATFORM end */
 

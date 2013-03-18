@@ -121,9 +121,9 @@ module_param(hird, int, S_IRUGO);
 MODULE_PARM_DESC(hird, "host initiated resume duration, +1 for each 75us");
 
 /* CloverTrail USB SPH and Modem USB Switch Control Flag */
-static unsigned int use_sph = 1;
+static unsigned int use_sph;
 module_param(use_sph, uint, S_IRUGO);
-MODULE_PARM_DESC(use_sph, "sph and modem usb switch control flag, default use sph\n");
+MODULE_PARM_DESC(use_sph, "sph and modem usb switch control flag, default disable sph\n");
 
 /*
  * for external read access to <usb_sph>

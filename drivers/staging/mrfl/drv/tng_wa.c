@@ -32,55 +32,48 @@
 
 /* A0 Workarounds */
 
-static void apply_HSD_4568161(struct drm_device *dev)
+static void apply_HSD_4568161_4582997(struct drm_device *dev)
 {
 	/* HSD - 4568161: Local idle gating on SLC core clock
 	   causes SLC to drop video mem request if clock is
 	   heavily Throttling
 	   Workaround: SW should set GFX_CG_DIS_0[8] at offset
 	   0x160000 whenever powering up GFX */
+	/* HSD 4582997: Trunk and idle clock gating must be disabled
+	   Workaround: The driver should set GFX_CG_DIS_0[1:0] = 2'b11
+	   at MMADR offset 0x160000 */
 
 	uint32_t GFX_CG_DIS_0_OFFSET = 0x160000 - GFX_WRAPPER_OFFSET;
 	uint32_t GFX_CG_DIS_0_DATA = WRAPPER_REG_READ(GFX_CG_DIS_0_OFFSET);
 
-	GFX_CG_DIS_0_DATA |= BIT8;	/* Disable SLC Clock Gating */
+	GFX_CG_DIS_0_DATA |= (BIT0 | BIT1 | BIT8);
 
 	WRAPPER_REG_WRITE(GFX_CG_DIS_0_OFFSET, GFX_CG_DIS_0_DATA);
 }
 
-static void apply_HSD_3940227(struct drm_device *dev)
+static void apply_HSD_3940227_4568479(struct drm_device *dev)
 {
 	/* HSD - 3940227: SLC wrapper must support breaking 4K
 	   crossing VSP brusts on SLC path for IMG sepc compliancy
 	   Workaround: Read-Modify-Write to set GBYPASSENABLE[2]
 	   and GBYPASSENABLE[8] on same write at MMADR offset
 	   0x2850 before powering up VSP */
-	uint32_t GBYPASSENABLE_OFFSET = 0x2850 - PSB_VDC_OFFSET;
-	uint32_t GBYPASSENABLE_DATA = REG_READ(GBYPASSENABLE_OFFSET);
-
-	GBYPASSENABLE_DATA |= (BIT2 | BIT8);	/* Disable SLC Clock Gating */
-
-	REG_WRITE(GBYPASSENABLE_OFFSET, GBYPASSENABLE_DATA);
-}
-
-static void apply_HSD_4568479(struct drm_device *dev)
-{
 	/**
 	 * HSD - 4568479: VED issues write fence cache hint incorrectly
 	 * Workaround: Read-Modify-Write to set GBYPASSENABLE[0] and
 	 * GBYPASSENABLE[8] on same write at MMADR offset 0x2850
 	 * before powering up VSP
 	 */
-
-	/* Workaround is same as HSD 3940227 */
 	uint32_t GBYPASSENABLE_OFFSET = 0x2850 - PSB_VDC_OFFSET;
 	uint32_t GBYPASSENABLE_DATA = REG_READ(GBYPASSENABLE_OFFSET);
 
-	GBYPASSENABLE_DATA |= (BIT0 | BIT8);
-	REG_WRITE(GBYPASSENABLE_OFFSET, GBYPASSENABLE_DATA);
+	GBYPASSENABLE_DATA |= (BIT0 | BIT2 | BIT8);
 
+	REG_WRITE(GBYPASSENABLE_OFFSET, GBYPASSENABLE_DATA);
 }
 
+#if HSD_4568152
+/* Not needed if apply 3940227 and 4568479 */
 static void apply_HSD_4568152(struct drm_device *dev)
 {
 	/* HSD - 4568152: VP8 test fail with SLC due to bad cache policy
@@ -95,20 +88,7 @@ static void apply_HSD_4568152(struct drm_device *dev)
 	RGX_REG_WRITE(RGX_CR_SLC_CTRL_BYPASS_OFFSET,
 			RGX_CR_SLC_CTRL_BYPASS_DATA);
 }
-
-#define WA_HSD_4569545 0
-#if WA_HSD_4569545
-static void apply_HSD_4569545(struct drm_device *dev)
-{
-	/* HSD 4569545: GFX idle gating adds latency on slc_core_clk
-	   between each video request (brust/non-burst) through SLC
-	   Workaround: SW should set GFX_CG_DIS_0[8] at offset
-	   0x160000 whenever powering up GFX */
-
-	/* Workaround is same as HSD 4568161 */
-	apply_HSD_4568161(dev);
-}
-#endif /* if WA_HSD_4569545 */
+#endif
 
 static void apply_HSD_4568473(struct drm_device *dev)
 {
@@ -120,6 +100,7 @@ static void apply_HSD_4568473(struct drm_device *dev)
 	int GCLIP_CONTROL_OFFSET = 0x160020 - GFX_WRAPPER_OFFSET;
 	int GCLIP_CONTROL_DATA = WRAPPER_REG_READ(GCLIP_CONTROL_OFFSET);
 
+	GCLIP_CONTROL_DATA &= ~(BIT16);
 	GCLIP_CONTROL_DATA |= (BIT17 | BIT18 | BIT19 | BIT23);
 
 	WRAPPER_REG_WRITE(GCLIP_CONTROL_OFFSET, GCLIP_CONTROL_DATA);
@@ -140,6 +121,8 @@ static void apply_HSD_4582616(struct drm_device *dev)
 	REG_WRITE(DISPLAY_OFFSET, DISPLAY_DATA);
 }
 
+#if NO_HSD_WORKAROUND
+/* No need as this is default setting of HW */
 static void apply_NO_HSD_Workaround(struct drm_device *dev)
 {
 	/* HSD (Not specified): SLC brust disable
@@ -154,94 +137,44 @@ static void apply_NO_HSD_Workaround(struct drm_device *dev)
 	RGX_REG_WRITE(RGX_CR_SLC_CTRL_MISC_OFFSET,
 			RGX_CR_SLC_CTRL_MISC_DATA);
 }
-
-static void apply_HSD_4582997(struct drm_device *dev)
-{
-	/* HSD 4582997: Trunk and idle clock gating must be disabled
-	   Workaround: The driver should set GFX_CG_DIS_0[1:0] = 2'b11
-	   at MMADR offset 0x160000 */
-	uint32_t GFX_CG_DIS_0_OFFSET = 0x160000 - GFX_WRAPPER_OFFSET;
-	uint32_t GFX_CG_DIS_0_DATA = WRAPPER_REG_READ(GFX_CG_DIS_0_OFFSET);
-
-	GFX_CG_DIS_0_DATA |= (BIT0 | BIT1); /* Disable GG Clock Gating */
-
-	WRAPPER_REG_WRITE(GFX_CG_DIS_0_OFFSET, GFX_CG_DIS_0_DATA);
-}
-
-static void apply_HSD_4582618(struct drm_device *dev)
-{
-	/* HSD - 4582618: In order for video cores to access IMR
-	   Workaround: Read-Modify-Write to set GBYPASSENABLE[2:0]
-	   and GBYPASSENABLE[8] on same write at MMADR offset 0x2850 */
-	/*  Writes via mapping VDC. */
-	uint32_t GBYPASSENABLE_OFFSET = 0x2850 - PSB_VDC_OFFSET;
-	uint32_t GBYPASSENABLE_DATA = REG_READ(GBYPASSENABLE_OFFSET);
-
-	GBYPASSENABLE_DATA |= (BIT0 | BIT1 | BIT2 | BIT8);
-
-	REG_WRITE(GBYPASSENABLE_OFFSET, GBYPASSENABLE_DATA);
-}
-
+#endif
 
 /* Apply the A0 Workaround */
-void apply_A0_workarounds(struct drm_device *dev, int islands, int new_state)
+void apply_A0_workarounds(int islands, int pre_po, int new_state)
 {
+	struct drm_device *dev = gpDrmDevice;
+
+	if (!dev)
+		return;
+
 	/* Only apply workaround on power up. */
 	if (new_state == POWER_ISLAND_DOWN)
 		return;
 
 	switch (islands) {
-	case OSPM_GRAPHICS_ISLAND:
 	case OSPM_DISPLAY_ISLAND:
-	{
-		/* NO HSD, 4568473, 4582616 */
-
-		/*  After powering up VSP */
-		apply_HSD_3940227(dev);
 		/*  When display is powered-on. */
-		apply_HSD_4582616(dev);
-	}
-	break;
-	case OSPM_VIDEO_DEC_ISLAND:
+		if (!pre_po)
+			apply_HSD_4582616(dev);
+		break;
+
+	case OSPM_GRAPHICS_ISLAND:
+		/* Before GFX is powered-on. */
+		if (pre_po) {
+			apply_HSD_4568161_4582997(dev);
+			apply_HSD_4568473(dev);
+		}
+		break;
+
 	case OSPM_VIDEO_ENC_ISLAND:
 	case OSPM_VIDEO_VPP_ISLAND:
-	{
-		/*  Before powering-up VSP */
-		/*  FIXME - but this is after? */
-		apply_HSD_4568479(dev);
-
+	case OSPM_VIDEO_DEC_ISLAND:
 		/*  Before powering up VED for VP8 decode */
-		/*  FIXME - but this is after? */
-		apply_HSD_4568152(dev);
+		if (pre_po)
+			apply_HSD_3940227_4568479(dev);
+		break;
 
-#if 0		/*  Was not being called */
-		/*  Writes via mapping VDC. */
-		apply_HSD_4582618(dev);
-#endif
+	default:
+		break;
 	}
-	break;
-	}
-}
-
-
-/*  tng_gfx_init -- Called when gfx is powered on.
-    */
-void tng_gfx_init(struct drm_device *dev)
-{
-	apply_HSD_4568161(dev);
-
-#if WA_HSD_4569545
-	apply_HSD_4569545(dev);
-#endif /* if WA_HSD_4569545 */
-
-	apply_HSD_4568473(dev);
-
-	/* Writes RGX_CR_SLC_CTRL_MISC */
-	/*  FIXME - what island must be powered up to do this? */
-	apply_NO_HSD_Workaround(dev);
-
-#if 0	/*  Was not being called */
-	/*  Why was this one not referenced? */
-	apply_HSD_4582997(dev);
-#endif
 }

@@ -177,7 +177,7 @@ int ia_lbuf_read_next(struct loop_buffer *lbuf,
 	}
 
 f_out:
-	if (!lbuf->in_reading) {
+	if (!lbuf->in_reading && lbuf->off_head) {
 		/* no more data frame, inform FW to update its HEAD */
 		lbuf->update_finished(lbuf->off_head);
 	}
@@ -242,22 +242,31 @@ int ia_send_cmd(int ch, struct ia_cmd *cmd, int len)
 	int ret;
 
 	mutex_lock(&psh_ia_data->cmd_mutex);
+	if (ch == 0 && cmd->cmd_id == CMD_RESET) {
+		cmd->tran_id = 0;
+		psh_ia_data->reset_in_progress = 1;
+		ia_lbuf_read_reset(&psh_ia_data->lbuf);
+		ia_circ_reset_off(&psh_ia_data->circ);
+	}
 	ret = process_send_cmd(ch, cmd, len);
 	mutex_unlock(&psh_ia_data->cmd_mutex);
 	if (ret)
 		return ret;
 
-	if (cmd->cmd_id == CMD_RESET) {
-		if (psh_ia_data->reset_in_progress) {
-			wait_for_completion(&psh_ia_data->cmd_reset_comp);
+	if (ch == 0 && cmd->cmd_id == CMD_RESET) {
+		if (!wait_for_completion_timeout(&psh_ia_data->cmd_reset_comp,
+					6 * HZ)) {
+			pr_warn("no status back when resetting pshfw!\n");
 			psh_ia_data->reset_in_progress = 0;
+			return -1;
 		}
-
-		ia_lbuf_read_reset(&psh_ia_data->lbuf);
-		ia_circ_reset_off(&psh_ia_data->circ);
-	} else if (cmd->cmd_id == CMD_GET_STATUS)
-		wait_for_completion(&psh_ia_data->get_status_comp);
-
+	} else if (ch == 0 && cmd->cmd_id == CMD_GET_STATUS) {
+		if (!wait_for_completion_timeout(&psh_ia_data->get_status_comp,
+					HZ)) {
+			pr_warn("no status back when query pshfw!\n");
+			return -1;
+		}
+	}
 	return 0;
 }
 
@@ -269,7 +278,7 @@ int ia_update_finished(u16 offset)
 	};
 
 	*(u16 *)cmd_buf.param = offset;
-	return ia_send_cmd(PSH2IA_CHANNEL0, &cmd_buf, 7);
+	return process_send_cmd(PSH2IA_CHANNEL0, &cmd_buf, 7);
 }
 
 ssize_t ia_start_control(struct device *dev,
@@ -307,7 +316,8 @@ ssize_t ia_start_control(struct device *dev,
 
 	ret = ia_send_cmd(PSH2IA_CHANNEL0, &cmd_user, token);
 	if (ret) {
-		pr_err("send cmd failed\n");
+		pr_err("send cmd (cmd_user.cmd_id = %d) failed\n",
+				cmd_user.cmd_id);
 		return ret;
 	} else
 		return count;
@@ -526,10 +536,12 @@ void ia_process_lbuf(struct device *dev)
 	u8 *dbuf = NULL;
 	u16 size = 0;
 
+	mutex_lock(&psh_ia_data->cmd_mutex);
 	while (!ia_lbuf_read_next(&psh_ia_data->lbuf, &dbuf, &size)) {
 		struct cmd_resp *resp = (struct cmd_resp *)dbuf;
 		if (resp->type == RESP_BIST_RESULT) {
 			if (psh_ia_data->reset_in_progress) {
+				psh_ia_data->reset_in_progress = 0;
 				complete(&psh_ia_data->cmd_reset_comp);
 				continue;
 			}
@@ -560,7 +572,7 @@ void ia_process_lbuf(struct device *dev)
 				resp->sensor_id, size);
 		ia_circ_put_data(&psh_ia_data->circ, dbuf, size);
 	}
-
+	mutex_unlock(&psh_ia_data->cmd_mutex);
 	sysfs_notify(&dev->kobj, NULL, "data_size");
 }
 
@@ -586,6 +598,7 @@ int psh_ia_common_init(struct device *dev, struct psh_ia_priv **data)
 	init_completion(&psh_ia_data->cmpl);
 	init_completion(&psh_ia_data->get_status_comp);
 	init_completion(&psh_ia_data->cmd_reset_comp);
+	init_completion(&psh_ia_data->cmd_load_comp);
 
 	psh_ia_data->reset_in_progress = 0;
 

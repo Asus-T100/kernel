@@ -637,6 +637,9 @@ sh_css_binary_find(struct sh_css_binary_descr *descr,
 		if (descr->binning && !(candidate->enable.raw_binning || candidate->enable.fixed_bayer_ds))
 			continue;
 
+		if (!descr->binning && candidate->enable.fixed_bayer_ds)
+			continue;
+
 		if (descr->binning) {
 //			if (candidate->enable.raw_binning  && (req_in_info->width >= 2048)) {
 ///* */

@@ -17,6 +17,7 @@
 #include <asm/intel-mid.h>
 #include <media/v4l2-subdev.h>
 #include <linux/regulator/consumer.h>
+#include <linux/sfi.h>
 #include "platform_camera.h"
 #include "platform_ov8830.h"
 
@@ -70,6 +71,20 @@ static int ov8830_flisclk_ctrl(struct v4l2_subdev *sd, int flag)
 static int ov8830_power_ctrl(struct v4l2_subdev *sd, int flag)
 {
 	int ret = 0;
+
+	/* The camera powering is different on RedHookBay and VictoriaBay
+	 * On RHB, vprog1 is at 2.8V and supplies both cameras
+	 * On VB, vprog1 supplies the 2nd camera and must not rise over 1.2V
+	 * Check if the RHB SW has accidentally been flashed to VB
+	 * If yes, don't turn on the regulator. The VB secondary camera will
+	 * be permanently damaged by the too high voltage
+	 */
+	if (INTEL_MID_BOARD(2, PHONE, CLVTP, VB, PRO) ||
+	    INTEL_MID_BOARD(2, PHONE, CLVTP, VB, ENG)) {
+		printk(KERN_ALERT \
+		"Aborted vprog1 enable to protect VictoriaBay 2nd camera HW\n");
+		return -ENODEV;
+	}
 
 	if (flag) {
 		if (!camera_vprog1_on) {

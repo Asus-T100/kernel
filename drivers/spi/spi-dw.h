@@ -238,5 +238,6 @@ extern void dw_spi_xfer_done(struct dw_spi *dws);
 extern int dw_spi_stop_queue(struct dw_spi *dws);
 
 /* platform related setup */
+/* Intel MID platforms */
 extern int dw_spi_mid_init(struct dw_spi *dws, int bus_num);
 #endif /* DW_SPI_HEADER_H */

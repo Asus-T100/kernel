@@ -74,7 +74,7 @@ void *s3202_platform_data(void *info)
 	s3202_sensordata.attn_gpio_number = get_gpio_by_name("ts_int");
 	s3202_sensordata.rst_gpio_number  = get_gpio_by_name("ts_rst");
 #else
-	static const struct rmi4_touch_calib calibs[] = {
+	static struct rmi4_touch_calib calib[] = {
 		/* TOUCH_TYPE_S3202_OGS */
 		{
 			.swap_axes = true,
@@ -102,7 +102,7 @@ void *s3202_platform_data(void *info)
 		.irq_type = IRQ_TYPE_EDGE_FALLING | IRQF_ONESHOT,
 		.regulator_en = true,
 		.regulator_name = "vemmc2",
-		.calibs = calibs,
+		.calib = calib,
 	};
 
 	if (intel_mid_identify_cpu() ==
