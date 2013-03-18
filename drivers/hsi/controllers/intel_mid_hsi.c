@@ -1987,6 +1987,8 @@ static void do_hsi_prepare_dma_v1(struct hsi_msg *msg,
 		lli_xfer->blk = sgl;
 
 		for_each_sg(sgl, sg, sgt->nents, i) {
+			if (!sg)	/* To please Klocwork */
+				break;
 			next_llp += sizeof(struct intel_dma_lli);
 			len		  = HSI_BYTES_TO_FRAMES(sg->length);
 			size	 += len;
@@ -2043,6 +2045,8 @@ static void do_hsi_prepare_dma_v2(struct hsi_msg *msg,
 	next_llp = (u32) ready_xfer->v2.llp_addr;
 
 	for_each_sg(sgl, sg, msg->sgt.nents, i) {
+		if (!sg)	/* To please Klocwork */
+			break;
 		next_llp += sizeof(struct intel_dma_lld);
 		len		  = sg->length;
 		size	 += len;
