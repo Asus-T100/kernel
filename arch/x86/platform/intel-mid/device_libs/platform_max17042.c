@@ -49,7 +49,7 @@ void max17042_i2c_reset_workaround(void)
 EXPORT_SYMBOL(max17042_i2c_reset_workaround);
 
 
-static bool msic_battery_check(char *battid)
+static bool msic_battery_check(struct max17042_platform_data *pdata)
 {
 	struct sfi_table_simple *sb;
 	char *mrfl_batt_str = "INTN0001";
@@ -57,7 +57,8 @@ static bool msic_battery_check(char *battid)
 	sb = (struct sfi_table_simple *)get_oem0_table();
 	if (sb == NULL) {
 		pr_info("invalid battery detected\n");
-		snprintf(battid, BATTID_LEN + 1 , "UNKNOWNB");
+		snprintf(pdata->battid, BATTID_LEN + 1, "UNKNOWNB");
+		snprintf(pdata->serial_num, SERIAL_NUM_LEN + 1, "000000");
 		return false;
 	} else {
 		pr_info("valid battery detected\n");
@@ -67,17 +68,47 @@ static bool msic_battery_check(char *battid)
 		if (sb->pentry && sb->header.len >= BATTID_LEN) {
 			if (!((INTEL_MID_BOARD(1, TABLET, MRFL)) ||
 				(INTEL_MID_BOARD(1, PHONE, MRFL)))) {
-				snprintf(battid, BATTID_LEN + 1, "%s",
+				snprintf(pdata->battid, BATTID_LEN + 1, "%s",
 						(char *)sb->pentry);
 			} else {
 				if (strncmp((char *)sb->pentry,
 					"PG000001", (BATTID_LEN)) == 0) {
-					snprintf(battid, (BATTID_LEN + 1), "%s",
-						mrfl_batt_str);
+					snprintf(pdata->battid,
+						(BATTID_LEN + 1),
+							"%s", mrfl_batt_str);
 				} else {
-					snprintf(battid, (BATTID_LEN + 1), "%s",
-						(char *)sb->pentry);
+					snprintf(pdata->battid,
+						(BATTID_LEN + 1),
+						"%s", (char *)sb->pentry);
 				}
+			}
+
+			/* First 2 bytes represent the model name
+			 * and the remaining 6 bytes represent the
+			 * serial number. */
+			if (pdata->battid[0] == 'I' &&
+				pdata->battid[1] >= '0'
+					&& pdata->battid[1] <= '9') {
+				unsigned char tmp[SERIAL_NUM_LEN + 2];
+				int i, offset;
+				snprintf(pdata->model_name,
+					(MODEL_NAME_LEN) + 1,
+						"%s", pdata->battid);
+				memcpy(tmp, sb->pentry, BATTID_LEN);
+				for (i = 0; i < SERIAL_NUM_LEN; i++) {
+					sprintf(pdata->serial_num + i*2,
+					"%02x", tmp[i + MODEL_NAME_LEN]);
+				}
+				pdata->serial_num[2 * SERIAL_NUM_LEN + 1]
+									= '\0';
+
+			} else {
+				snprintf(pdata->model_name,
+					(MODEL_NAME_LEN + 1),
+						"%s", pdata->battid);
+				snprintf(pdata->serial_num,
+					(SERIAL_NUM_LEN + 1), "%s",
+				pdata->battid + MODEL_NAME_LEN);
 			}
 		}
 		return true;
@@ -207,7 +238,7 @@ void *max17042_platform_data(void *info)
 
 	i2c_info->irq = intr + INTEL_MID_IRQ_OFFSET;
 
-	if (msic_battery_check(platform_data.battid)) {
+	if (msic_battery_check(&platform_data)) {
 		platform_data.enable_current_sense = true;
 		platform_data.technology = POWER_SUPPLY_TECHNOLOGY_LION;
 
