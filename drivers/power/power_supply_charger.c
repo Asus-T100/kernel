@@ -508,8 +508,7 @@ static int get_supplied_by_list(struct power_supply *psy,
 		if (!IS_CHARGER(pst))
 			continue;
 		for (i = 0; i < pst->num_supplicants; i++) {
-			if ((!strcmp(pst->supplied_to[i], psy->name)) &&
-			    IS_PRESENT(pst))
+			if (!strcmp(pst->supplied_to[i], psy->name))
 				psy_lst[cnt++] = pst;
 		}
 	}
@@ -651,6 +650,9 @@ static int trigger_algo(struct power_supply *psy)
 	cnt = get_supplied_by_list(psy, chrgr_lst);
 
 	while (cnt--) {
+		if (!IS_PRESENT(chrgr_lst[cnt]))
+			continue;
+
 		cc_min = min_t(unsigned long, MAX_CC(chrgr_lst[cnt]), cc);
 		if (cc_min < 0)
 			cc_min = 0;
@@ -677,6 +679,8 @@ static inline void enable_supplied_by_charging
 	if (cnt == 0)
 		return;
 	while (cnt--) {
+		if (!IS_PRESENT(chrgr_lst[cnt]))
+			continue;
 		if (is_enable && IS_CHARGING_CAN_BE_ENABLED(chrgr_lst[cnt]))
 			enable_charging(chrgr_lst[cnt]);
 		else
