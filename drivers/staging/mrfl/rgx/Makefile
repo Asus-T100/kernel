@@ -93,7 +93,7 @@ ccflags-y += \
 endif
 
 # for PDUMP
-ccflags-$(PDUMP) += -DPDUMP -DSUPPORT_DBGDRV_EVENT_OBJECTS
+ccflags-$(CONFIG_PDUMP) += -DPDUMP -DSUPPORT_DBGDRV_EVENT_OBJECTS
 
 # for no-hardware
 #ccflags-y += -DNO_HARDWARE
@@ -161,7 +161,7 @@ merrifield_gfx-y += \
 #	services/server/env/linux/physmem_ion.o
 
 # for PDUMP
-merrifield_gfx-$(PDUMP) += \
+merrifield_gfx-$(CONFIG_PDUMP) += \
 	services/server/common/pdump_common.o \
 	services/server/common/pdump_mmu.o \
 	services/server/common/pdump_physmem.o \
