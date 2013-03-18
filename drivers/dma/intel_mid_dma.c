@@ -1791,6 +1791,12 @@ static int __devinit intel_mid_dma_probe(struct pci_dev *pdev,
 	device->pimr_offset = info->pimr_offset;
 	memcpy(&device->dma_ops, info->pdma_ops, sizeof(struct intel_mid_dma_ops));
 
+#ifdef CONFIG_PRH_TEMP_WA_FOR_SPID
+	/* PRH uses, ch 4,5,6,7 override the info table data */
+	pr_info("Device is Bodegabay\n");
+	device->max_chan = 4;
+	device->chan_base = 4;
+#endif
 	err = mid_setup_dma(pdev);
 	if (err)
 		goto err_dma;
