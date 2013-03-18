@@ -385,13 +385,12 @@ static void pmu_log_timestamp(struct timespec *ts)
 	}
 }
 
-void pmu_log_pmu_irq(int status, bool interactive_cmd_sent)
+void pmu_log_pmu_irq(int status)
 {
 	struct mid_pmu_pmu_irq_log *log =
 		&mid_pmu_cxt->pmu_irq_log[mid_pmu_cxt->pmu_irq_log_idx];
 
 	log->status = status;
-	log->interactive_cmd_sent = interactive_cmd_sent;
 	pmu_log_timestamp(&log->ts);
 	mid_pmu_cxt->pmu_irq_log_idx =
 		(mid_pmu_cxt->pmu_irq_log_idx + 1) % LOG_SIZE;
@@ -410,8 +409,6 @@ static void pmu_dump_pmu_irq_log(void)
 		printk(KERN_ERR"Timestamp: %lu.%09lu\n",
 			log->ts.tv_sec, log->ts.tv_nsec);
 		printk(KERN_ERR"Status = 0x%02x", log->status);
-		printk(KERN_ERR"interactive_cmd_sent = %s\n",
-			log->interactive_cmd_sent ? "true" : "false");
 		printk(KERN_ERR"\n");
 	}
 }
@@ -540,7 +537,7 @@ void pmu_dump_logs(void)
 	pmu_dump_ipc_irq_log();
 }
 #else
-void pmu_log_pmu_irq(int status, bool interactive_cmd_sent) {}
+void pmu_log_pmu_irq(int status) {}
 void pmu_log_command(u32 command, struct pmu_ss_states *pm_ssc) {}
 void pmu_dump_logs(void) {}
 #endif /* LOG_PMU_EVENTS */
@@ -1891,7 +1888,7 @@ static const struct file_operations c_states_stat_ops = {
 
 /*These are place holders and will be enabled in next patch*/
 
-void pmu_log_pmu_irq(int status, bool interactive_cmd_sent) { return; };
+void pmu_log_pmu_irq(int status) { return; };
 void pmu_log_ipc_irq(void) { return; };
 void pmu_log_ipc(u32 command) { return; };
 void pmu_log_command(u32 command, struct pmu_ss_states *pm_ssc) { return; };

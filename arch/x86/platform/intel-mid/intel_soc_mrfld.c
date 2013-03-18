@@ -53,10 +53,32 @@ static int mrfld_pmu_init(void)
 void platform_update_all_lss_states(struct pmu_ss_states *pmu_config,
 					int *PCIALLDEV_CFG)
 {
+	/* Overwrite the pmu_config values that we get */
+	pmu_config->pmu2_states[0] =
+				(SSMSK(D0I3_MASK, PMU_PSH_LSS_00)	|
+				SSMSK(D0I3_MASK, PMU_RESERVED_LSS_03)	|
+				SSMSK(D0I3_MASK, PMU_HSI_LSS_05)	|
+				SSMSK(D0I3_MASK, PMU_RESERVED_LSS_07)	|
+				SSMSK(D0I3_MASK, PMU_RESERVED_LSS_12)	|
+				SSMSK(D0I3_MASK, PMU_RESERVED_LSS_13)	|
+				SSMSK(D0I3_MASK, PMU_RESERVED_LSS_14)	|
+				SSMSK(D0I3_MASK, PMU_RESERVED_LSS_15));
+
+	pmu_config->pmu2_states[1] =
+				(SSMSK(D0I3_MASK, PMU_RESERVED_LSS_16-16)|
+				SSMSK(D0I3_MASK, PMU_SSP3_LSS_17-16)|
+				SSMSK(D0I3_MASK, PMU_SSP6_LSS_19-16)|
+				SSMSK(D0I3_MASK, PMU_USB_OTG_LSS_28-16)	|
+				SSMSK(D0I3_MASK, PMU_RESERVED_LSS_29-16)|
+				SSMSK(D0I3_MASK, PMU_RESERVED_LSS_30-16));
+
 	pmu_config->pmu2_states[0] &= ~IGNORE_SSS0;
 	pmu_config->pmu2_states[1] &= ~IGNORE_SSS1;
-	pmu_config->pmu2_states[2] &= ~IGNORE_SSS2;
-	pmu_config->pmu2_states[3] &= ~IGNORE_SSS3;
+	pmu_config->pmu2_states[2] = ~IGNORE_SSS2;
+	pmu_config->pmu2_states[3] = ~IGNORE_SSS3;
+
+	/* Excpet for LSS 35 keep all in D0i3 */
+	pmu_config->pmu2_states[2] &= ~SSMSK(D0I3_MASK, PMU_SSP4_LSS_35-32);
 }
 
 /*

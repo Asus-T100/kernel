@@ -240,7 +240,6 @@ struct mid_pmu_ipc_log {
 struct mid_pmu_pmu_irq_log {
 	struct timespec ts;
 	u8 status;
-	bool interactive_cmd_sent;
 };
 
 struct mid_pmu_ipc_irq_log {
@@ -303,7 +302,6 @@ struct device_residency {
 struct mid_pmu_dev {
 	bool suspend_started;
 	bool shutdown_started;
-	bool interactive_cmd_sent;
 	bool camera_off;
 	bool display_off;
 
@@ -403,7 +401,7 @@ extern int set_extended_cstate_mode(const char *val, struct kernel_param *kp);
 extern int get_extended_cstate_mode(char *buffer, struct kernel_param *kp);
 
 #ifdef LOG_PMU_EVENTS
-extern void pmu_log_pmu_irq(int status, bool interactive_cmd_sent);
+extern void pmu_log_pmu_irq(int status);
 extern void pmu_log_command(u32 command, struct pmu_ss_states *pm_ssc);
 extern void pmu_dump_logs(void);
 #endif
