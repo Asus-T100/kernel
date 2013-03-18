@@ -174,6 +174,57 @@ static struct cpuidle_state snb_cstates[MWAIT_MAX_NUM_CSTATES] = {
 		.enter = &intel_idle },
 };
 
+#ifdef CONFIG_X86_MRFLD
+static struct cpuidle_state mrfld_cstates[MWAIT_MAX_NUM_CSTATES] = {
+	{ /* MWAIT C0 */ },
+	{ /* MWAIT C1 */
+		.name = "C1-ATM",
+		.desc = "MWAIT 0x00",
+		.flags = CPUIDLE_FLAG_TIME_VALID,
+		.exit_latency = 1,
+		.target_residency = 4,
+		.enter = &intel_idle },
+	{ /* MWAIT C2 */},
+	{ /* MWAIT C3 */ },
+	{ /* MWAIT C4 */
+		.name = "C4-ATM",
+		.desc = "MWAIT 0x30",
+		.flags = CPUIDLE_FLAG_TIME_VALID | CPUIDLE_FLAG_TLB_FLUSHED,
+		.exit_latency = 100,
+		.target_residency = 400,
+		.enter = &intel_idle },
+	{ /* MWAIT C5 */ },
+	{ /* MWAIT C6 */
+		.name = "C6-ATM",
+		.desc = "MWAIT 0x52",
+		.flags = CPUIDLE_FLAG_TIME_VALID | CPUIDLE_FLAG_TLB_FLUSHED,
+		.exit_latency = 140,
+		.target_residency = 560,
+		.enter = &intel_idle },
+	{ /* MWAIT C7-S0i1 */
+		.name = "S0i1-ATM",
+		.desc = "MWAIT 0x60",
+		.flags = CPUIDLE_FLAG_TIME_VALID | CPUIDLE_FLAG_TLB_FLUSHED,
+		.exit_latency = 1200,
+		.target_residency = 4000,
+		.enter = &intel_idle },
+	{ /* MWAIT C8-S0i2 */
+		.name = "S0i2-ATM",
+		.desc = "MWAIT 0x62",
+		.flags = CPUIDLE_FLAG_TIME_VALID | CPUIDLE_FLAG_TLB_FLUSHED,
+		.exit_latency = 2000,
+		.target_residency = 8000,
+		.enter = &intel_idle },
+	{ /* MWAIT C9-S0i3 */
+		.name = "S0i3-ATM",
+		.desc = "MWAIT 0x64",
+		.flags = CPUIDLE_FLAG_TIME_VALID | CPUIDLE_FLAG_TLB_FLUSHED,
+		.exit_latency = 10000,
+		.target_residency = 20000,
+		.enter = &intel_idle },
+};
+#endif
+
 static struct cpuidle_state atom_cstates[MWAIT_MAX_NUM_CSTATES] = {
 	{ /* MWAIT C0 */ },
 	{ /* MWAIT C1 */
@@ -269,16 +320,10 @@ static struct cpuidle_state mfld_cstates[MWAIT_MAX_NUM_CSTATES] = {
 };
 #endif
 
-/*Enable C1 - C6 for Merrifield*/
-#ifdef CONFIG_X86_MRFLD
-#define mrfld_cstates atom_cstates
-#endif
-
 #else /*if !CONFIG_ATOM_SOC_POWER*/
 
 #ifdef CONFIG_X86_MDFLD
 #define mfld_cstates atom_cstates
-
 #elif defined(CONFIG_X86_MRFLD)
 #define mrfld_cstates atom_cstates
 #endif

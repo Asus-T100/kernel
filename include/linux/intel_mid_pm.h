@@ -111,11 +111,17 @@ enum s3_parts {
 #define	SET_LPAUDIO			4
 #define	SET_AOAC_S0i2			7
 
+#ifdef CONFIG_X86_MRFLD
+#define MID_S0I1_STATE         0x60
+#define MID_S0I2_STATE         0x62
+#define MID_LPMP3_STATE        0x62
+#define MID_S0I3_STATE         0x64
+#else
 #define MID_S0I1_STATE         0x1
 #define MID_LPMP3_STATE        0x3
-
-#define MID_S0I3_STATE         0x7
 #define MID_S0I2_STATE         0x7
+#define MID_S0I3_STATE         0x7
+#endif
 
 #define MID_S0IX_STATE         0xf
 #define MID_S3_STATE           0x1f
