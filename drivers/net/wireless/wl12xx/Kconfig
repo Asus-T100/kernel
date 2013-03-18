@@ -44,6 +44,7 @@ config WL12XX_SDIO
 
 config WL12XX_PLATFORM_DATA
 	bool
+	depends on MMC_SDHCI_PCI = y
 	default y
 	---help---
 	  Export platform data for out-of-tree build
