@@ -48,12 +48,12 @@
 #error "SUPPORT_DRI_DRM must be set"
 #endif
 
-#define MAXFLIPCOMMANDS 3
+#define MAXFLIPCOMMANDS 4
 
 struct flip_command {
 	IMG_HANDLE  hCmdCookie;
 	IMG_UINT32  ui32DataSize;
-	DISPLAYCLASS_FLIP_COMMAND vData;
+	DISPLAYCLASS_FLIP_COMMAND2 vData;
 	IMG_BOOL bFlush;
 };
 
@@ -2040,7 +2040,7 @@ static void DisplayFlipWork(struct work_struct *work)
 	IMG_HANDLE  hCmdCookie;
 	IMG_UINT32  ui32DataSize;
 	IMG_BOOL bFlush;
-	DISPLAYCLASS_FLIP_COMMAND vData;
+	DISPLAYCLASS_FLIP_COMMAND2 vData;
 
 	spin_lock(&display_flip_work_t.flip_commands_lock);
 
@@ -2059,7 +2059,7 @@ static void DisplayFlipWork(struct work_struct *work)
 			p_flip_command[read_index].ui32DataSize;
 		memcpy(&vData,
 			&display_flip_work_t.p_flip_command[read_index].vData,
-			sizeof(DISPLAYCLASS_FLIP_COMMAND));
+			sizeof(DISPLAYCLASS_FLIP_COMMAND2));
 		bFlush =
 			display_flip_work_t.p_flip_command[read_index].bFlush;
 		spin_unlock(&display_flip_work_t.flip_commands_lock);
@@ -2084,7 +2084,7 @@ static IMG_BOOL DisplayFlip(IMG_HANDLE  hCmdCookie,
 	display_flip_work_t.p_flip_command[write_index].ui32DataSize =
 		ui32DataSize;
 	memcpy(&display_flip_work_t.p_flip_command[write_index].vData, pvData,
-		sizeof(DISPLAYCLASS_FLIP_COMMAND));
+		sizeof(DISPLAYCLASS_FLIP_COMMAND2));
 	display_flip_work_t.p_flip_command[write_index].bFlush = bFlush;
 	display_flip_work_t.write_index =
 		(display_flip_work_t.write_index + 1) % MAXFLIPCOMMANDS;
