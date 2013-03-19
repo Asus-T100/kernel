@@ -1021,7 +1021,6 @@ static int atomisp_qbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 	struct video_device *vdev = video_devdata(file);
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
-	unsigned long userptr = buf->m.userptr;
 	struct videobuf_buffer *vb;
 	struct videobuf_vmalloc_memory *vm_mem;
 	struct sh_css_frame_info frame_info;
@@ -1066,7 +1065,7 @@ static int atomisp_qbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 		length = vb->bsize;
 		pgnr = (length + (PAGE_SIZE - 1)) >> PAGE_SHIFT;
 
-		if ((vb->baddr == userptr) && (vm_mem->vaddr))
+		if (vb->baddr == buf->m.userptr && vm_mem->vaddr)
 			goto done;
 
 		if (__get_css_frame_info(isp, pipe->pipe_type,
@@ -1082,7 +1081,8 @@ static int atomisp_qbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 #else
 		attributes.type = HRT_USR_PTR;
 #endif
-		ret = sh_css_frame_map(&handle, &frame_info, (void *)userptr,
+		ret = sh_css_frame_map(&handle, &frame_info,
+				       (void *)buf->m.userptr,
 				       0, &attributes);
 		if (ret != sh_css_success) {
 			dev_err(isp->dev, "Failed to map user buffer\n");
