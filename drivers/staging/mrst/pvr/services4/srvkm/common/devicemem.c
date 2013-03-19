@@ -1738,22 +1738,16 @@ PVRSRV_ERROR IMG_CALLCONV PVRSRVWrapExtMemoryKM(IMG_HANDLE				hDevCookie,
 	/* error handling: */
 
 ErrorExitPhase4:
-	if(psMemInfo)
-	{
-		FreeDeviceMem(psMemInfo);
-		/*
-			FreeDeviceMem will free the meminfo so set
-			it to NULL to avoid double free below
-		*/
-		psMemInfo = IMG_NULL;
-	}
+	FreeDeviceMem(psMemInfo);
+	/*
+		FreeDeviceMem will free the meminfo so set
+		it to NULL to avoid double free below
+	*/
+	psMemInfo = IMG_NULL;
 
 ErrorExitPhase3:
-	if(psMemInfo)
-	{
-		OSFreeMem(PVRSRV_OS_PAGEABLE_HEAP, sizeof(PVRSRV_KERNEL_MEM_INFO), psMemInfo, IMG_NULL);
-		/*not nulling pointer, out of scope*/
-	}
+	OSFreeMem(PVRSRV_OS_PAGEABLE_HEAP, sizeof(PVRSRV_KERNEL_MEM_INFO), psMemInfo, IMG_NULL);
+	/*not nulling pointer, out of scope*/
 
 ErrorExitPhase2:
 	if(psIntSysPAddr)
@@ -2402,10 +2396,7 @@ ErrorExitPhase2:
 	}
 
 ErrorExitPhase1:
-	if(psDCMapInfo)
-	{
-		OSFreeMem(PVRSRV_OS_PAGEABLE_HEAP, sizeof(PVRSRV_KERNEL_MEM_INFO), psDCMapInfo, IMG_NULL);
-	}
+	OSFreeMem(PVRSRV_OS_PAGEABLE_HEAP, sizeof(PVRSRV_KERNEL_MEM_INFO), psDCMapInfo, IMG_NULL);
 
 	return eError;
 }
