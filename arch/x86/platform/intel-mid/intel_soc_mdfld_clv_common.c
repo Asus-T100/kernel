@@ -228,6 +228,14 @@ u32 get_s0ix_val_set_pm_ssc(int s0ix_state)
 		pmu_stat_start(SYS_STATE_S3);
 		s0ix_value = S0I3_VALUE;
 		break;
+	case MID_FAST_ON_OFF_STATE:
+		writel(S0I3_SSS0, &mid_pmu_cxt->pmu_reg->pm_ssc[0]);
+		writel(S0I3_SSS1, &mid_pmu_cxt->pmu_reg->pm_ssc[1]);
+		writel(S0I3_SSS2, &mid_pmu_cxt->pmu_reg->pm_ssc[2]);
+		writel(S0I3_SSS3, &mid_pmu_cxt->pmu_reg->pm_ssc[3]);
+		pmu_stat_start(SYS_STATE_S3);
+		s0ix_value = FAST_ON_OFF_VALUE;
+		break;
 	default:
 		pmu_dump_logs();
 		BUG_ON(1);

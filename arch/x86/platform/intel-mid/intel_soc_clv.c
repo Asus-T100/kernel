@@ -20,9 +20,44 @@
 
 #include "intel_soc_pmu.h"
 
+
+static unsigned short fastonoff_flag;
+
+static ssize_t fastonoff_show(struct kobject *kobj,
+					struct kobj_attribute *attr, char *buf)
+{
+		return sprintf(buf, "%hu\n", fastonoff_flag);
+}
+
+static ssize_t fastonoff_store(struct kobject *kobj,
+			struct kobj_attribute *attr, const char *buf, size_t n)
+{
+	unsigned short value;
+	if (sscanf(buf, "%hu", &value) != 1 ||
+	    (value != 0 && value != 1)) {
+		printk(KERN_ERR "fastonoff_store: Invalid value\n");
+		return -EINVAL;
+	}
+	fastonoff_flag = value;
+	return n;
+}
+
+static struct kobj_attribute fast_onoff_attr =
+	__ATTR(fastonoff, 0644, fastonoff_show, fastonoff_store);
+
+
+static void clv_init_sysfsfs(void)
+{
+	int error;
+	error = sysfs_create_file(power_kobj, &fast_onoff_attr.attr);
+	if (error)
+		printk(KERN_ERR "sysfs_create_file failed: %d\n", error);
+}
+
 static int clv_pmu_init(void)
 {
 	mid_pmu_cxt->s3_hint = C6_HINT;
+	clv_init_sysfsfs();
 	return 0;
 }
 
@@ -31,7 +66,10 @@ static bool clv_pmu_enter(int s0ix_state)
 	u32 s0ix_value;
 	int num_retry = PMU_MISC_SET_TIMEOUT;
 
-	s0ix_value = get_s0ix_val_set_pm_ssc(s0ix_state);
+	if (fastonoff_flag && (s0ix_state == MID_S3_STATE))
+		s0ix_value = get_s0ix_val_set_pm_ssc(MID_FAST_ON_OFF_STATE);
+	else
+		s0ix_value = get_s0ix_val_set_pm_ssc(s0ix_state);
 
 	/* issue a command to SCU */
 	writel(s0ix_value, &mid_pmu_cxt->pmu_reg->pm_cmd);
