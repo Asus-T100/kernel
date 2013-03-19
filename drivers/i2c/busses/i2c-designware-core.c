@@ -609,8 +609,6 @@ irqreturn_t i2c_dw_isr(int this_irq, void *dev_id)
 	pm_runtime_get(dev->dev);
 #ifdef CONFIG_PM_RUNTIME
 	if (dev->dev->power.runtime_status != RPM_ACTIVE) {
-		dev_err(dev->dev, "i2c get interrupt when it's off\n");
-		WARN_ON(1);
 		pm_runtime_put_autosuspend(dev->dev);
 		return IRQ_NONE;
 	}
