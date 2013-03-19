@@ -85,9 +85,7 @@
  *FIXME: Enabling D0ix at boot has instabilities (BZ: 86393) hence
  *	 Ignoring all LSS's
  */
-#define IGNORE_SSS0 (				\
-	SSMSK(D0I3_MASK, PMU_EMMC0_LSS_02)	| \
-	SSMSK(D0I3_MASK, PMU_USB_MPH_LSS_08))
+#define IGNORE_SSS0	(SSMSK(D0I3_MASK, PMU_EMMC0_LSS_02))
 
 #define IGNORE_SSS1 (				\
 	SSMSK(D0I3_MASK, PMU_I2C1_LSS_20-16)	| \
