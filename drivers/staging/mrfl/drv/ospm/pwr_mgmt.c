@@ -276,8 +276,18 @@ static bool power_up_island(struct ospm_power_island *p_island)
 			ret = p_island->p_funcs->power_up(
 						g_ospm_data->dev,
 						p_island);
-			if (ret)
+			if (ret) {
 				p_island->island_state = OSPM_POWER_ON;
+				/* Video irq need to be set */
+				if (p_island->island & OSPM_VIDEO_ISLAND) {
+					psb_irq_preinstall_islands(
+							g_ospm_data->dev,
+							p_island->island);
+					psb_irq_postinstall_islands(
+							g_ospm_data->dev,
+							p_island->island);
+				}
+			}
 		}
 
 		/* increment the ref count */
