@@ -2734,6 +2734,10 @@ static void hsi_flush_queue(struct list_head *queue, struct hsi_client *cl,
 				&intel_hsi->tx_ctx[msg->channel].dma :
 				&intel_hsi->rx_ctx[msg->channel].dma;
 
+		/* Already cleaned by shutdown callback? */
+		if (dma_ctx == NULL)
+			continue;
+
 		if (dma_ctx->ongoing->msg == msg) {
 			msg->break_frame = 1;
 			continue;
