@@ -1942,6 +1942,10 @@ static DEFINE_PCI_DEVICE_TABLE(pci_ids) = {
 	},
 	{ PCI_DEVICE_CLASS(((PCI_CLASS_SERIAL_USB << 8) | 0x80), ~0),
 		.vendor = PCI_VENDOR_ID_INTEL,
+		.device = PCI_DEVICE_ID_DWC,
+	},
+	{ PCI_DEVICE_CLASS(((PCI_CLASS_SERIAL_USB << 8) | 0x80), ~0),
+		.vendor = PCI_VENDOR_ID_INTEL,
 		.device = PCI_DEVICE_ID_DWC_VLV,
 	},
 	{ /* end: all zeroes */ }
