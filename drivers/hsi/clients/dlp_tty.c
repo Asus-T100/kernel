@@ -606,7 +606,7 @@ static void dlp_tty_port_shutdown(struct tty_port *port)
 	rx_ctx = &ch_ctx->rx;
 
 	/* Don't wait if already in TX timeout state */
-	if (!dlp_drv.tx_timeout) {
+	if (dlp_tty_is_link_valid()) {
 		dlp_tty_wait_until_ctx_sent(ch_ctx, 0);
 		dlp_tty_cleanup(ch_ctx);
 	}
@@ -776,7 +776,7 @@ static void dlp_tty_close(struct tty_struct *tty, struct file *filp)
 
 	/* Set TTY as closed to prevent RX/TX transactions */
 	if (need_cleanup)
-		dlp_tty_set_link_valid(1, 0);
+		dlp_tty_set_link_valid(1, dlp_drv.tx_timeout);
 
 	if (filp && ch_ctx) {
 		struct dlp_tty_context *tty_ctx = ch_ctx->ch_data;
@@ -1262,8 +1262,19 @@ static int dlp_tty_ctx_cleanup(struct dlp_channel *ch_ctx)
 {
 	int ret = 0;
 	struct dlp_tty_context *tty_ctx = ch_ctx->ch_data;
+	struct tty_struct *tty;
 
 	dlp_tty_cleanup(ch_ctx);
+
+	tty = tty_port_tty_get(&tty_ctx->tty_prt);
+	if (tty) {
+		/* Clean any waiting data to release potential
+		   dlp_tty_wait_until_sent lock */
+		hsi_flush(dlp_drv.client);
+
+		tty_vhangup(tty);
+		tty_kref_put(tty);
+	}
 
 	/* Clear the hangup context */
 	dlp_ctrl_hangup_ctx_deinit(ch_ctx);
