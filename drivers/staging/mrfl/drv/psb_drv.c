@@ -1227,6 +1227,10 @@ bool mrst_get_vbt_data(struct drm_psb_private *dev_priv)
 	PanelID = TMD_6X10_VID;
 	printk(KERN_ALERT "%s: TMD_6X10_VID Panel\n", __func__);
 #endif
+#ifdef CONFIG_SUPPORT_JDI_CMD_DISPLAY
+	dev_priv->panel_id = JDI_CMD;
+	PanelID = JDI_CMD;
+#endif
 	return true;
 }
 void hdmi_do_hotplug_wq(struct work_struct *work)

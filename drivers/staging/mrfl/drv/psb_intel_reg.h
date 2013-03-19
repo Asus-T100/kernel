@@ -1244,6 +1244,9 @@ When in Sleep Mode, the value returned by get_scanline is undefined.
 #define set_video_mode 0xc2
 #define set_panel 0xcc
 #define set_eq_func_ltps 0xd4
+
+#define access_protect 0xb0
+#define low_power_mode 0xb1
 /* ************************************************************************* *\
 This command is used to control ambient light, panel backlight brightness and
 gamma settings.

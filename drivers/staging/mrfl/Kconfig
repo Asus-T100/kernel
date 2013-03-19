@@ -84,6 +84,16 @@ config SUPPORT_MIPI_H8C7_VID_DISPLAY
 	help
 	  xxxxxx
 
+config SUPPORT_JDI_CMD_DISPLAY
+	bool "Support JDI CMD panel on Merrifield"
+	depends on DRM_MRFLD
+	default n
+	help
+		support for JDI command panel
+		xxxxxx
+		xxxxxx
+		xxxxxx
+
 config GFX_RTPM
 	bool "Enable GFX runtime_pm"
 	depends on DRM_INTEL_HANDSET
