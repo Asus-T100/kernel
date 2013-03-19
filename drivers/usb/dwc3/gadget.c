@@ -550,6 +550,12 @@ static void dwc3_remove_requests(struct dwc3 *dwc, struct dwc3_ep *dep)
 	if (!list_empty(&dep->req_queued))
 		dwc3_stop_active_transfer(dwc, dep->number, 1);
 
+	while (!list_empty(&dep->req_queued)) {
+		req = next_request(&dep->req_queued);
+
+		dwc3_gadget_giveback(dep, req, -ESHUTDOWN);
+	}
+
 	while (!list_empty(&dep->request_list)) {
 		req = next_request(&dep->request_list);
 
