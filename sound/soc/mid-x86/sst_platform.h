@@ -43,6 +43,7 @@ enum sst_audio_device_type {
 };
 
 enum snd_sst_input_stream {
+	SST_INPUT_STREAM_NONE = 0x0,
 	SST_INPUT_STREAM_PCM = 0x6,
 	SST_INPUT_STREAM_COMPRESS = 0x8,
 	SST_INPUT_STREAM_MIXED = 0xE,
