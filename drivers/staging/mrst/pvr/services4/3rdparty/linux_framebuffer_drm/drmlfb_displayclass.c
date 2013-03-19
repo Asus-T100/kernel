@@ -206,10 +206,8 @@ static void MRSTLFBFlipOverlay(MRSTLFB_DEVINFO *psDevInfo,
 		if (uDspCntr & DISPLAY_PLANE_ENABLE) {
 			uDspCntr &= ~DISPLAY_PLANE_ENABLE;
 			PSB_WVDC32(uDspCntr, DSPACNTR + 0x1000);
-			/* trigger cntr register take effect */
-			// FIXME: comment it firstly as it may cause
-			// display freeze due to some limitation unknown
-			//PSB_WVDC32(0, DSPBSURF);
+			/* Set displayB constant alpha to 0 when disable it */
+			PSB_WVDC32(1 << 31, DSPBSURF + 0xC);
 		}
 	} else if (((psContext->pipe >> 6) & 0x3) == 0x1 &&
 		!(pipe_mask & (1 << 2))) {
@@ -254,6 +252,9 @@ static void MRSTLFBFlipSprite(MRSTLFB_DEVINFO *psDevInfo,
 		return;
 
 	(*pipe_mask) |= (1 << pipe);
+
+	if (pipe == 1)
+		PSB_WVDC32(0, DSPBSURF + 0xC);
 
 	if ((psContext->update_mask & SPRITE_UPDATE_POSITION))
 		PSB_WVDC32(psContext->pos, DSPAPOS + reg_offset);
@@ -343,6 +344,7 @@ static void MRSTLFBFlipPrimary(MRSTLFB_DEVINFO *psDevInfo,
 		ctx->dsplinoff = psContext->linoff;
 		ctx->dspsurf = psContext->surf;
 	}
+
 }
 
 static IMG_BOOL MRSTLFBFlipContexts(MRSTLFB_DEVINFO *psDevInfo,
