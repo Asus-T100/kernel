@@ -29,6 +29,15 @@
 #include <drm/drm_crtc.h>
 #include "intel_drv.h"
 
+#define dsi_18Bpp_loosely_packed		0
+#define dsi_18Bpp_packed				1
+#define dsi_16Bpp_packed				2
+#define dsi_24Bpp_packed				3
+
+#define ColorConversionInBridge			0
+
+#define ColorConversionInHostController	1
+
 struct intel_dsi_device {
 	unsigned short panel_id;
 	const char *name;
@@ -86,6 +95,11 @@ struct intel_dsi {
 	 */
 	bool hs; /* if true, use HS mode, otherwise LP */
 	int channel;
+	uint32_t reg_base;
+	enum pipe pipe;
+	u16 panel_type;
+	u8 lane_count;
+	u8 dsi_packet_format;
 };
 
 struct panel_info {
