@@ -29,6 +29,7 @@
 
 #include <linux/ctype.h>
 #include "psh_ia_common.h"
+#include <asm/intel-mid.h>
 
 #define TOLOWER(x) ((x) | 0x20)
 /* translate string to unsigned long value */
@@ -410,8 +411,7 @@ ssize_t ia_get_dbg_mask(struct device *dev,
 		return ret;
 	}
 
-	if (!wait_for_completion_timeout(&psh_ia_data->cmpl,
-						msecs_to_jiffies(100)))
+	if (!wait_for_completion_timeout(&psh_ia_data->cmpl, HZ))
 		return snprintf(buf, PAGE_SIZE, "no response\n");
 
 	return snprintf(buf, PAGE_SIZE, "mask_out:%d mask_level:%d\n",
@@ -531,6 +531,54 @@ static struct bin_attribute dbg_attr = {
 	.read = ia_read_debug_data
 };
 
+/*
+ * return value = 0	no valid data frame
+ * return value > 0	data frame
+ * return value < 0	error data frame
+ */
+int ia_handle_frame(void *dbuf, int size)
+{
+	struct cmd_resp *resp = dbuf;
+	const struct snr_info *sinfo = (struct snr_info *)resp->buf;
+
+	switch (resp->type) {
+	case RESP_BIST_RESULT:
+		if (psh_ia_data->reset_in_progress) {
+			psh_ia_data->reset_in_progress = 0;
+			complete(&psh_ia_data->cmd_reset_comp);
+			return 0;
+		}
+		break;
+	case RESP_DEBUG_MSG:
+		ia_circ_put_data(&psh_ia_data->circ_dbg,
+				resp->buf, resp->data_len);
+		return size;
+	case RESP_GET_STATUS:
+		if (!resp->data_len)
+			complete(&psh_ia_data->get_status_comp);
+		else if (SNR_INFO_SIZE(sinfo) == resp->data_len)
+			ia_handle_snr_info(&psh_ia_data->circ_dbg, sinfo);
+		else {
+			pr_err("Wrong RESP_GET_STATUS!\n");
+			return 0;
+		}
+		break;
+	case RESP_DEBUG_GET_MASK:
+		memcpy(&psh_ia_data->dbg_mask, resp->buf,
+				sizeof(psh_ia_data->dbg_mask));
+		complete(&psh_ia_data->cmpl);
+		return 0;
+	default:
+		break;
+	}
+
+	pr_debug("one DDR frame, data of sensor %d, size %d\n",
+			resp->sensor_id, size);
+	ia_circ_put_data(&psh_ia_data->circ, dbuf, size);
+	return size;
+}
+
+
 void ia_process_lbuf(struct device *dev)
 {
 	u8 *dbuf = NULL;
@@ -602,8 +650,16 @@ int psh_ia_common_init(struct device *dev, struct psh_ia_priv **data)
 
 	psh_ia_data->reset_in_progress = 0;
 
-	ia_lbuf_read_init(&psh_ia_data->lbuf, page_address(psh_ia_data->pg),
-				BUF_IA_DDR_SIZE, ia_update_finished);
+	switch (intel_mid_identify_cpu()) {
+	case INTEL_MID_CPU_CHIP_VALLEYVIEW2:
+		break;
+	default:
+		ia_lbuf_read_init(&psh_ia_data->lbuf,
+					page_address(psh_ia_data->pg),
+					BUF_IA_DDR_SIZE,
+					ia_update_finished);
+		break;
+	}
 
 	psh_ia_data->circ.buf = kmalloc(CIRC_SIZE, GFP_KERNEL);
 	if (!psh_ia_data->circ.buf) {

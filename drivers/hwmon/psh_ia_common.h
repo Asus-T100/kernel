@@ -15,6 +15,7 @@
 #include <linux/hwmon.h>
 #include <linux/hwmon-sysfs.h>
 
+#define CONFIG_SENSORS_PSH_BYT	1
 
 #ifndef _CMD_ENGINE_H_
 enum cmd_id {
@@ -195,4 +196,5 @@ void psh_ia_common_deinit(struct device *dev);
 /* need implemented by user */
 int do_setup_ddr(struct device *dev);
 int process_send_cmd(int ch, struct ia_cmd *cmd, int len);
+int ia_handle_frame(void *dbuf, int size);
 #endif
