@@ -358,6 +358,11 @@ MODULE_DEVICE_TABLE(pci, pciidlist);
 	DRM_IOWR(DRM_PSB_VSYNC_SET + DRM_COMMAND_BASE,		\
 			struct drm_psb_vsync_set_arg)
 
+/* GET DC INFO IOCTL */
+#define DRM_IOCTL_PSB_GET_DC_INFO \
+	DRM_IOR(DRM_PSB_GET_DC_INFO + DRM_COMMAND_BASE,		\
+			struct drm_psb_dc_info)
+
 /*CSC GAMMA Setting*/
 #define DRM_IOCTL_PSB_CSC_GAMMA_SETTING \
 		DRM_IOWR(DRM_PSB_CSC_GAMMA_SETTING + DRM_COMMAND_BASE, struct drm_psb_csc_gamma_setting)
@@ -464,6 +469,8 @@ static int psb_mode_operation_ioctl(struct drm_device *dev, void *data,
 static int psb_stolen_memory_ioctl(struct drm_device *dev, void *data,
 				   struct drm_file *file_priv);
 static int psb_vsync_set_ioctl(struct drm_device *dev, void *data,
+				 struct drm_file *file_priv);
+static int psb_get_dc_info_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv);
 static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv);
@@ -693,6 +700,8 @@ static struct drm_ioctl_desc psb_ioctls[] = {
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_CSC_GAMMA_SETTING, psb_csc_gamma_setting_ioctl, DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_SET_CSC, psb_set_csc_ioctl, DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_VSYNC_SET, psb_vsync_set_ioctl,
+	DRM_AUTH | DRM_UNLOCKED),
+	PSB_IOCTL_DEF(DRM_IOCTL_PSB_GET_DC_INFO, psb_get_dc_info_ioctl,
 	DRM_AUTH | DRM_UNLOCKED),
 
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_ENABLE_IED_SESSION,
@@ -3211,6 +3220,34 @@ void psb_flip_abnormal_debug_info(struct drm_device *dev)
 				atomic_set(&dev_priv->mipi_flip_abnormal, 1);
 		}
 	}
+}
+
+static int psb_get_dc_info_ioctl(struct drm_device *dev, void *data,
+				 struct drm_file *file_priv)
+{
+	struct drm_psb_private *dev_priv = psb_priv(dev);
+	struct drm_psb_dc_info *dc = data;
+
+	if (IS_MDFLD_OLD(dev)) {
+		dc->pipe_count = INTEL_MDFLD_DISPLAY_PIPE_NUM;
+
+		dc->primary_plane_count = INTEL_MDFLD_SPRITE_PLANE_NUM;
+		dc->sprite_plane_count = 0;
+		dc->overlay_plane_count = INTEL_MDFLD_OVERLAY_PLANE_NUM;
+		dc->cursor_plane_count = INTEL_MDFLD_CURSOR_PLANE_NUM;
+	} else if (IS_CTP(dev)) {
+		dc->pipe_count = INTEL_CTP_DISPLAY_PIPE_NUM;
+
+		dc->primary_plane_count = INTEL_CTP_SPRITE_PLANE_NUM;
+		dc->sprite_plane_count = 0;
+		dc->overlay_plane_count = INTEL_CTP_OVERLAY_PLANE_NUM;
+		dc->cursor_plane_count = INTEL_CTP_CURSOR_PLANE_NUM;
+	} else {
+		DRM_INFO("unsupported platform in mrst driver now!");
+		return -1;
+	}
+
+	return 0;
 }
 
 static int psb_vsync_set_ioctl(struct drm_device *dev, void *data,

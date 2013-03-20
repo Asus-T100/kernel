@@ -702,10 +702,23 @@ struct intel_sprite_context {
 	uint32_t contalpa;
 };
 
-/*platform dependent macros*/
-#define INTEL_SPRITE_PLANE_NUM		3
-#define INTEL_OVERLAY_PLANE_NUM		2
-#define INTEL_DISPLAY_PLANE_NUM		5
+/* dependent macros*/
+#define INTEL_SPRITE_PLANE_NUM         3
+#define INTEL_OVERLAY_PLANE_NUM                2
+#define INTEL_DISPLAY_PLANE_NUM                5
+/* Medfield */
+#define INTEL_MDFLD_SPRITE_PLANE_NUM		3
+#define INTEL_MDFLD_OVERLAY_PLANE_NUM		2
+#define INTEL_MDFLD_CURSOR_PLANE_NUM		3
+#define INTEL_MDFLD_DISPLAY_PLANE_NUM		8
+#define INTEL_MDFLD_DISPLAY_PIPE_NUM		3
+/* Clovertrail+ */
+#define INTEL_CTP_SPRITE_PLANE_NUM		2
+#define INTEL_CTP_OVERLAY_PLANE_NUM		1
+#define INTEL_CTP_CURSOR_PLANE_NUM		2
+#define INTEL_CTP_DISPLAY_PLANE_NUM		5
+#define INTEL_CTP_DISPLAY_PIPE_NUM		2
+
 #define INVALID_INDEX			0xffffffff
 
 struct mdfld_plane_contexts {
@@ -726,6 +739,15 @@ struct drm_psb_vsync_set_arg {
 		int vsync_count;
 		uint64_t timestamp;
 	} vsync;
+};
+
+struct drm_psb_dc_info {
+	uint32_t pipe_count;
+
+	uint32_t primary_plane_count;
+	uint32_t sprite_plane_count;
+	uint32_t overlay_plane_count;
+	uint32_t cursor_plane_count;
 };
 
 struct drm_psb_register_rw_arg {
@@ -916,6 +938,10 @@ typedef struct drm_psb_msvdx_decode_status {
 
 /* DPST LEVEL */
 #define DRM_PSB_DPST_LEVEL	0x36
+
+/* GET DC INFO IOCTLS */
+#define DRM_PSB_GET_DC_INFO         0x37
+
 /* Do not use IOCTL between 0x40 and 0x4F */
 /* These will be reserved for OEM to use */
 /* OEM IOCTLs */
