@@ -1077,6 +1077,11 @@ int ctp_get_battery_health(void)
 		i2c_get_clientdata(bq24192_client);
 
 	dev_dbg(&chip->client->dev, "+%s\n", __func__);
+
+	/* If power supply is emulating as battery, return health as good */
+	if (!chip->pdata->sfi_tabl_present)
+		return POWER_SUPPLY_HEALTH_GOOD;
+
 	/* Get the battery pack temperature */
 	ret = ctp_get_battery_pack_temp(&batt_temp);
 	if (ret < 0) {
@@ -1671,6 +1676,12 @@ static void bq24192_maintenance_worker(struct work_struct *work)
 		dev_warn(&chip->client->dev, "WDT reset failed\n");
 	mutex_unlock(&chip->event_lock);
 
+	/*
+	 * Jump to the label in case of battery emulator
+	 * Do not do additional unneccessary work
+	 */
+	if (!chip->pdata->sfi_tabl_present)
+		goto sched_maint_work;
 	/*
 	 * We update the battery charging status as per the type of
 	 * charger connected. If it is host mode cable connected then
@@ -2333,6 +2344,7 @@ EXPORT_SYMBOL(bq24192_slave_mode_disable_charging);
 static void bq24192_charging_port_changed(struct power_supply *psy,
 				struct power_supply_charger_cap *cap)
 {
+	int ret;
 	struct bq24192_chip *chip = container_of(psy,
 				struct bq24192_chip, usb);
 
@@ -2344,7 +2356,32 @@ static void bq24192_charging_port_changed(struct power_supply *psy,
 
 	dev_info(&chip->client->dev, "[chrg] evt:%d type:%d cur:%d\n",
 				cap->chrg_evt, cap->chrg_type, cap->mA);
-	schedule_delayed_work(&chip->chrg_evt_wrkr, 0);
+	/*
+	 * If we have a battery emulator connected, disable the charging
+	 */
+	if (!chip->pdata->sfi_tabl_present) {
+		ret = stop_charging(chip);
+		if (ret < 0) {
+			dev_err(&chip->client->dev,
+				"%s charge disabling failed\n", __func__);
+		}
+
+		/*
+		 * If the evt type is connect, schedule the maintenance which
+		 * maintains the battery state machine, WDT reset etc
+		 * else if the evt type is disconnect, cancel the maintenance
+		 */
+		if (cap->chrg_evt == POWER_SUPPLY_CHARGER_EVENT_CONNECT)
+			schedule_delayed_work(&chip->maint_chrg_wrkr, 0);
+		else
+		if (cap->chrg_evt == POWER_SUPPLY_CHARGER_EVENT_DISCONNECT) {
+			chip->batt_status = POWER_SUPPLY_STATUS_DISCHARGING;
+			power_supply_changed(&chip->usb);
+			cancel_delayed_work_sync(&chip->maint_chrg_wrkr);
+		}
+	} else
+		schedule_delayed_work(&chip->chrg_evt_wrkr, 0);
+
 }
 
 #ifdef CONFIG_DEBUG_FS
