@@ -892,9 +892,6 @@ static int __devinit sst_soc_probe(struct snd_soc_platform *platform)
 		return sst_dsp_init(platform);
 	if (INTEL_MID_BOARD(1, PHONE, MFLD) ||
 			INTEL_MID_BOARD(1, TABLET, MFLD)) {
-#ifdef MRFLD_TEST_ON_MFLD
-		sst_dsp_init(platform);
-#endif
 	}
 	return 0;
 }

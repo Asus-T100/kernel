@@ -301,14 +301,6 @@ static const struct snd_soc_dapm_route mfld_map[] = {
 	{"AMIC1", NULL, "Mic"},
 	{"VIB1SPI", NULL, "Vibra1Clock"},
 	{"VIB2SPI", NULL, "Vibra2Clock"},
-#if 0
-FIXME Turn this on after fixing ALSA controls issue
-#ifdef MRFLD_TEST_ON_MFLD
-	/* SWM map link the SWM outs to codec AIF */
-	{ "PCM2_IN", "NULL", "Codec OUT0"  },
-	{ "PCM1_IN", "NULL", "Codec OUT1"  },
-#endif
-#endif
 };
 
 static int mfld_init(struct snd_soc_pcm_runtime *runtime)
@@ -464,7 +456,6 @@ static int mfld_voice_hw_params(struct snd_pcm_substream *substream,
 	return 0;
 }
 
-#ifndef MRFLD_TEST_ON_MFLD
 static unsigned int rates_44100[] = {
 	44100,
 };
@@ -473,16 +464,14 @@ static struct snd_pcm_hw_constraint_list constraints_44100 = {
 	.count	= ARRAY_SIZE(rates_44100),
 	.list	= rates_44100,
 };
-#endif
+
 
 static int mfld_media_startup(struct snd_pcm_substream *substream)
 {
 	pr_debug("%s - applying rate constraint\n", __func__);
-#ifndef MRFLD_TEST_ON_MFLD
 	snd_pcm_hw_constraint_list(substream->runtime, 0,
 				   SNDRV_PCM_HW_PARAM_RATE,
 				   &constraints_44100);
-#endif
 	intel_scu_ipc_set_osc_clk0(true, CLK0_MSIC);
 	return 0;
 }

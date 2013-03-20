@@ -112,10 +112,8 @@ int sst_download_fw(void)
 		return retval;
 	pr_debug("fw loaded successful!!!\n");
 
-#ifndef MRFLD_TEST_ON_MFLD
 	if (sst_drv_ctx->pci_id != SST_MRFLD_PCI_ID)
 		sst_restore_fw_context();
-#endif
 	sst_drv_ctx->sst_state = SST_FW_RUNNING;
 	return retval;
 }
@@ -767,7 +765,6 @@ static int sst_read_timestamp(struct pcm_stream_info *info)
 	substream = stream->pcm_substream;
 
 	if (sst_drv_ctx->pci_id == SST_MFLD_PCI_ID) {
-#ifndef MRFLD_TEST_ON_MFLD
 		struct snd_sst_tstamp_mfld fw_tstamp_mfld;
 
 		memcpy_fromio(&fw_tstamp_mfld,
@@ -775,16 +772,6 @@ static int sst_read_timestamp(struct pcm_stream_info *info)
 				+ (str_id * sizeof(fw_tstamp_mfld))),
 			sizeof(fw_tstamp_mfld));
 		return sst_calc_mfld_tstamp(info, stream->ops, &fw_tstamp_mfld);
-#else
-		struct snd_sst_tstamp fw_tstamp;
-
-		memcpy_fromio(&fw_tstamp,
-			((void *)(sst_drv_ctx->mailbox + sst_drv_ctx->tstamp)
-				+ (str_id * sizeof(fw_tstamp))),
-			sizeof(fw_tstamp));
-		return sst_calc_tstamp(info, substream, &fw_tstamp);
-#endif
-
 	} else {
 		struct snd_sst_tstamp fw_tstamp;
 
@@ -838,11 +825,7 @@ static int sst_device_control(int cmd, void *arg)
 		if (sst_drv_ctx->pci_id != SST_MFLD_PCI_ID)
 			sst_start_stream(str_id);
 		else
-#ifndef MRFLD_TEST_ON_MFLD
 			retval = sst_send_sync_msg(ipc, str_id);
-#else
-			retval = sst_start_stream(str_id);
-#endif
 
 		break;
 	}
@@ -859,11 +842,7 @@ static int sst_device_control(int cmd, void *arg)
 		if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID)
 			retval = sst_drop_stream(str_id);
 		else
-#ifndef MRFLD_TEST_ON_MFLD
 			retval = sst_send_sync_msg(ipc, str_id);
-#else
-			retval = sst_drop_stream(str_id);
-#endif
 		break;
 	}
 	case SST_SND_STREAM_INIT: {
@@ -979,11 +958,7 @@ static int sst_set_generic_params(enum sst_controls cmd, void *arg)
 		if (ret_val)
 			return ret_val;
 
-#ifndef MRFLD_TEST_ON_MFLD
 		ret_val = sst_send_byte_stream_mrfld(sst_bytes);
-#else
-		ret_val = sst_send_byte_stream(sst_bytes);
-#endif
 		pm_runtime_put(&sst_drv_ctx->pci->dev);
 		break;
 	}
