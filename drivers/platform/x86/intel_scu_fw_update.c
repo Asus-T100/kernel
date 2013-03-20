@@ -828,7 +828,7 @@ EXPORT_SYMBOL(intel_scu_ipc_fw_update);
 static ssize_t fw_version_show(struct kobject *kobj,
 		struct kobj_attribute *attr, char *buf)
 {
-	u8 data[16];
+	u8 data[16] = { 0 };
 	int ret;
 	int i;
 	int used = 0;
