@@ -1301,13 +1301,14 @@ void ospm_power_graphics_island_up(int hw_islands)
  *
  * Description: Restore power to the specified island(s) (powergating)
  */
-void ospm_power_island_up(int hw_islands)
+int ospm_power_island_up(int hw_islands)
 {
 	u32 dc_islands  = 0;
 	u32 gfx_islands = hw_islands;
 	unsigned long flags;
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *) gpDrmDevice->dev_private;
+	int ret = 0;
 
 	if (hw_islands & OSPM_DISPLAY_ISLAND) {
 		/*Power-up required islands only*/
@@ -1347,14 +1348,20 @@ void ospm_power_island_up(int hw_islands)
 		*/
 		spin_lock_irqsave(&dev_priv->ospm_lock, flags);
 		PSB_DEBUG_PM("power on gfx_islands: 0x%x\n", gfx_islands);
-		if (pmu_nc_set_power_state(gfx_islands,
-					   OSPM_ISLAND_UP, APM_REG_TYPE))
-			BUG();
+		ret = pmu_nc_set_power_state(gfx_islands,
+					   OSPM_ISLAND_UP, APM_REG_TYPE);
+		if (ret) {
+			PSB_DEBUG_PM("pmu_nc_set_power_state fails, ret is %d\n", ret);
+			spin_unlock_irqrestore(&dev_priv->ospm_lock, flags);
+			return ret;
+		}
 		if (gfx_islands & OSPM_GRAPHICS_ISLAND)
 			atomic_inc(&g_graphics_access_count);
 		g_hw_power_status_mask |= gfx_islands;
 		spin_unlock_irqrestore(&dev_priv->ospm_lock, flags);
 	}
+
+	return 0;
 }
 
 /*
@@ -1744,10 +1751,13 @@ recheck:
 			 * uploading mechanism(by PUNIT) for Penwell D0.
 			 */
 #ifdef CONFIG_MDFD_GL3
-			ospm_power_island_up(OSPM_GL3_CACHE_ISLAND | OSPM_VIDEO_DEC_ISLAND);
+			if (ospm_power_island_up(OSPM_GL3_CACHE_ISLAND | OSPM_VIDEO_DEC_ISLAND)) {
 #else
-			ospm_power_island_up(OSPM_VIDEO_DEC_ISLAND);
+			if (ospm_power_island_up(OSPM_VIDEO_DEC_ISLAND)) {
 #endif
+				ret = false;
+				goto out;
+			}
 			if (msvdx_priv->fw_loaded_by_punit) {
 				int reg_ret;
 				reg_ret = psb_wait_for_register(dev_priv,
@@ -1770,7 +1780,10 @@ recheck:
 				OSPM_VIDEO_DEC_ISLAND);
 		} else {
 #ifdef CONFIG_MDFD_GL3
-			ospm_power_island_up(OSPM_GL3_CACHE_ISLAND);
+			if (ospm_power_island_up(OSPM_GL3_CACHE_ISLAND)) {
+				ret = false;
+				goto out;
+			}
 #endif
 		}
 
@@ -1791,10 +1804,13 @@ recheck:
 			** encode\n", __func__);
 			*/
 #ifdef CONFIG_MDFD_GL3
-			ospm_power_island_up(OSPM_VIDEO_ENC_ISLAND | OSPM_GL3_CACHE_ISLAND);
+			if (ospm_power_island_up(OSPM_VIDEO_ENC_ISLAND | OSPM_GL3_CACHE_ISLAND)) {
 #else
-			ospm_power_island_up(OSPM_VIDEO_ENC_ISLAND);
+			if (ospm_power_island_up(OSPM_VIDEO_ENC_ISLAND)) {
 #endif
+				ret = false;
+				goto out;
+			}
 			ospm_runtime_pm_topaz_resume(gpDrmDevice);
 			psb_irq_preinstall_islands(gpDrmDevice,
 				OSPM_VIDEO_ENC_ISLAND);
@@ -1802,7 +1818,10 @@ recheck:
 				OSPM_VIDEO_ENC_ISLAND);
 		} else {
 #ifdef CONFIG_MDFD_GL3
-			ospm_power_island_up(OSPM_GL3_CACHE_ISLAND);
+			if (ospm_power_island_up(OSPM_GL3_CACHE_ISLAND)) {
+				ret = false;
+				goto out;
+			}
 #endif
 		}
 		break;

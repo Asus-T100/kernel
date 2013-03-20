@@ -1249,7 +1249,11 @@ static int psb_do_init(struct drm_device *dev)
 	 * MOS kernel boot.
 	 * We need to power on it first, else will cause the fabric error.
 	 */
-	ospm_power_island_up(OSPM_VIDEO_DEC_ISLAND);
+	if (ospm_power_island_up(OSPM_VIDEO_DEC_ISLAND)) {
+		DRM_ERROR("ospm_video_dec_island_up failed.\n");
+		ret = -EINVAL;
+		goto out_err;
+	}
 	psb_msvdx_init(dev);
 
 	PSB_DEBUG_INIT("Init Topaz\n");
@@ -1260,7 +1264,11 @@ static int psb_do_init(struct drm_device *dev)
 	 * MOS kernel boot while the panel is not connected.
 	 * We need to power on it first, else will cause fabric error.
 	 */
-	ospm_power_island_up(OSPM_VIDEO_ENC_ISLAND);
+	if (ospm_power_island_up(OSPM_VIDEO_ENC_ISLAND)) {
+		DRM_ERROR("ospm_video_enc_island_up failed.\n");
+		ret = -EINVAL;
+		goto out_err;
+	}
 
 	if (IS_MDFLD(dev))
 		pnw_topaz_init(dev);
