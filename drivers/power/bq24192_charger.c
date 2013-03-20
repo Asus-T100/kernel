@@ -2133,6 +2133,9 @@ static void bq24192_event_worker(struct work_struct *work)
 
 		if (chip->cap.chrg_type != POWER_SUPPLY_TYPE_USB_HOST) {
 			dev_info(&chip->client->dev, "Enable charging\n");
+			mutex_lock(&chip->event_lock);
+			chip->batt_mode = BATT_CHRG_NORMAL;
+			mutex_unlock(&chip->event_lock);
 			/* This is the condition where event has occured
 			 * because of SYSFS change or USB driver */
 			if ((chip->curr_volt == BQ24192_INVALID_VOLT) ||
@@ -2204,7 +2207,6 @@ static void bq24192_event_worker(struct work_struct *work)
 			chip->batt_status = POWER_SUPPLY_STATUS_CHARGING;
 		}
 
-		chip->batt_mode = BATT_CHRG_NORMAL;
 		mutex_unlock(&chip->event_lock);
 
 		/* Schedule the maintenance now */
