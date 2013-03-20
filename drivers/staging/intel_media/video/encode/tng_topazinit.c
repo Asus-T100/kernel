@@ -626,16 +626,11 @@ void tng_powerdown_topaz(struct work_struct *work)
 
 	tng_topaz_dequeue_send(dev);
 
-	/* Avoid race condition with queue buffer when topaz_busy = 1 */
-	mutex_lock(&topaz_priv->topaz_mutex);
-	if (list_empty(&topaz_priv->topaz_queue))
-		topaz_priv->topaz_busy = 0;
-	mutex_unlock(&topaz_priv->topaz_mutex);
-
 	/* If topaz_busy is not 0, then this task should return */
 	if (drm_topaz_pmpolicy != PSB_PMPOLICY_NOPM) {
 		if (topaz_priv->topaz_busy == 0) {
-			PSB_DEBUG_GENERAL("TOPAZ: try to power down topaz\n");
+			PSB_DEBUG_GENERAL("TOPAZ: topaz_busy = 0, " \
+				"try to power down topaz\n");
 			ospm_apm_power_down_topaz(topaz_priv->dev);
 		} else {
 			PSB_DEBUG_GENERAL("TOPAZ: topaz_busy = 1," \
@@ -688,7 +683,7 @@ int tng_topaz_init(struct drm_device *dev)
 
 	topaz_priv = dev_priv->topaz_private;
 	topaz_priv->dev = dev;
-	INIT_WORK(&topaz_priv->topaz_suspend_work,
+	INIT_DELAYED_WORK(&topaz_priv->topaz_suspend_work,
 		&tng_powerdown_topaz);
 
 	INIT_LIST_HEAD(&topaz_priv->topaz_queue);

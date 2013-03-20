@@ -599,7 +599,7 @@ bool tng_topaz_interrupt(void *pvData)
 	psb_fence_handler(dev, LNC_ENGINE_ENCODE);
 
 	/* Launch the task anyway */
-	schedule_work(&topaz_priv->topaz_suspend_work);
+	schedule_delayed_work(&topaz_priv->topaz_suspend_work, 0);
 
 	return true;
 }
@@ -1979,14 +1979,18 @@ static int tng_context_switch(
 	if ((topaz_priv->cur_context == video_ctx) &&
 		!(video_ctx->status & MASK_TOPAZ_CONTEXT_SAVED)) {
 		PSB_DEBUG_GENERAL("TOPAZ: Current context equals " \
-			"incoming context %08x(%s), " \
+			"incoming context %08x(%s) status %08x, " \
 			"continue doing other commands\n",
-			(unsigned int)video_ctx, codec_to_string(codec));
+			(unsigned int)video_ctx, codec_to_string(codec),\
+			video_ctx->status);
 		topaz_priv->cur_context = video_ctx;
 		topaz_priv->cur_codec = codec;
 		return ret;
 	} else {
-		PSB_DEBUG_GENERAL("TOPAZ: Restore context\n");
+		PSB_DEBUG_GENERAL("TOPAZ: Restore context %08x(%s)" \
+			" status %08x\n", video_ctx, \
+			codec_to_string(video_ctx->codec), \
+			video_ctx->status);
 		/* Context switch */
 		topaz_priv->cur_context = video_ctx;
 		topaz_priv->cur_codec = codec;
@@ -2583,11 +2587,16 @@ int tng_topaz_dequeue_send(struct drm_device *dev)
 	struct tng_topaz_private *topaz_priv = dev_priv->topaz_private;
 	int32_t ret = 0;
 
+	/* Avoid race condition with queue buffer when topaz_busy = 1 */
+	mutex_lock(&topaz_priv->topaz_mutex);
 	if (list_empty(&topaz_priv->topaz_queue)) {
+		topaz_priv->topaz_busy = 0;
 		PSB_DEBUG_GENERAL("TOPAZ: empty command queue, " \
-			"directly return\n");
+			"set topaz_busy = 0, directly return\n");
+		mutex_unlock(&topaz_priv->topaz_mutex);
 		return ret;
 	}
+	mutex_unlock(&topaz_priv->topaz_mutex);
 
 	topaz_priv->topaz_busy = 1;
 	topaz_cmd = list_first_entry(&topaz_priv->topaz_queue,
