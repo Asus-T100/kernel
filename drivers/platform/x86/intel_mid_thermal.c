@@ -65,9 +65,6 @@ enum {
 #define MSIC_DIE_ADC_MIN	488
 #define MSIC_DIE_ADC_MAX	1004
 
-/* Convert adc_val to die temperature (in milli degree celsius) */
-#define TO_MSIC_DIE_TEMP(adc_val)	(368 * adc_val - 219560)
-
 #define TABLE_LENGTH 24
 /*
  * ADC code vs Temperature table
@@ -275,14 +272,15 @@ static int linear_interpolate(int indx, uint16_t adc_val)
  *
  * Can sleep
  */
-static int adc_to_temp(bool direct, uint16_t adc_val, unsigned long *tp)
+static int adc_to_temp(struct intel_mid_thermal_sensor *sensor,
+		uint16_t adc_val, unsigned long *tp)
 {
 	int indx;
 
 	/* Direct conversion for msic die temperature */
-	if (direct) {
+	if (sensor->direct) {
 		if (is_valid_adc(adc_val, MSIC_DIE_ADC_MIN, MSIC_DIE_ADC_MAX)) {
-			*tp = TO_MSIC_DIE_TEMP(adc_val);
+			*tp = sensor->slope * adc_val - sensor->intercept;
 			return 0;
 		}
 		return -ERANGE;
@@ -346,7 +344,7 @@ int skin1_temp_correlation(void *info, unsigned long temp, unsigned long *res)
 
 		dsensor = skin_info->sensors[index];
 
-		ret = adc_to_temp(dsensor->direct,
+		ret = adc_to_temp(dsensor,
 			platforminfo->cacheinfo.cached_values[dsensor->index],
 			&curr_temp);
 		if (ret)
@@ -392,7 +390,7 @@ static int mid_read_temp(struct thermal_zone_device *tzd, unsigned long *temp)
 	}
 
 	/* Convert ADC value to temperature */
-	ret = adc_to_temp(td_info->sensor->direct,
+	ret = adc_to_temp(td_info->sensor,
 			platforminfo->cacheinfo.cached_values[indx], &curr_temp);
 	if (ret)
 		goto exit;
