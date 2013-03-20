@@ -641,11 +641,11 @@ bool intel_dsi_init(struct drm_device *dev)
 
 	DRM_DEBUG_KMS("\n");
 
-	intel_dsi = kzalloc(sizeof(*intel_dsi), GFP_KERNEL);
+	intel_dsi = kzalloc(sizeof(struct intel_dsi), GFP_KERNEL);
 	if (!intel_dsi)
 		return false;
 
-	intel_connector = kzalloc(sizeof(*intel_connector), GFP_KERNEL);
+	intel_connector = kzalloc(sizeof(struct intel_connector), GFP_KERNEL);
 	if (!intel_connector) {
 		kfree(intel_dsi);
 		return false;
@@ -670,12 +670,15 @@ bool intel_dsi_init(struct drm_device *dev)
 #endif
 	for (i = 0; i < ARRAY_SIZE(intel_dsi_devices); i++) {
 		dsi = &intel_dsi_devices[i];
-		/* XXX: find the panel based on name?! lane setup, etc. */
+		/* find the panel based on panel_id */
+		if (dsi->panel_id == dev_priv->mipi.panel_id) {
+			intel_dsi->dev = *dsi;
+			memcpy(&intel_dsi->dev, dsi,
+				sizeof(struct intel_dsi_device));
 
-		intel_dsi->dev = *dsi;
-
-		if (dsi->dev_ops->init(&intel_dsi->dev))
-			break;
+			if (dsi->dev_ops->init(&intel_dsi->dev))
+				break;
+		}
 	}
 
 	if (i == ARRAY_SIZE(intel_dsi_devices))
