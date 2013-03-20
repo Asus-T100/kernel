@@ -1796,4 +1796,62 @@ bool i915_is_device_resuming(struct drm_device *dev);
 bool i915_is_device_suspended(struct drm_device *dev);
 bool i915_is_device_suspending(struct drm_device *dev);
 
+u32 intel_dpio_read32_tmp(struct drm_i915_private *dev_priv, u32 reg);
+int intel_dpio_read32(struct drm_i915_private *dev_priv, u32 reg,  u32 *val);
+int intel_dpio_write32(struct drm_i915_private *dev_priv, u32 reg, u32 val);
+int intel_dpio_write32_bits(struct drm_i915_private *dev_priv, \
+					u32 reg, u32 val, u32 mask);
+int intel_punit_read32(struct drm_i915_private *dev_priv, u32 reg,  u32 *val);
+int intel_punit_write32(struct drm_i915_private *dev_priv, u32 reg, u32 val);
+int intel_punit_write32_bits(struct drm_i915_private *dev_priv, \
+					u32 reg, u32 val, u32 mask);
+int intel_gpio_nc_read32(struct drm_i915_private *dev_priv, u32 reg,  u32 *val);
+int intel_gpio_nc_write32(struct drm_i915_private *dev_priv, u32 reg, u32 val);
+int intel_gpio_nc_write32_bits(struct drm_i915_private *dev_priv, \
+					u32 reg, u32 val, u32 mask);
+int intel_cck_read32(struct drm_i915_private *dev_priv, u32 reg,  u32 *val);
+int intel_cck_write32(struct drm_i915_private *dev_priv, u32 reg, u32 val);
+int intel_cck_write32_bits(struct drm_i915_private *dev_priv, \
+					u32 reg, u32 val, u32 mask);
+int intel_ccu_read32(struct drm_i915_private *dev_priv, u32 reg,  u32 *val);
+int intel_ccu_write32(struct drm_i915_private *dev_priv, u32 reg, u32 val);
+int intel_ccu_write32_bits(struct drm_i915_private *dev_priv, \
+					u32 reg, u32 val, u32 mask);
+int intel_gps_core_read32(struct drm_i915_private *dev_priv,
+					u32 reg,  u32 *val);
+int intel_gps_core_write32(struct drm_i915_private *dev_priv,
+					u32 reg, u32 val);
+int intel_gps_core_write32_bits(struct drm_i915_private *dev_priv,
+					u32 reg, u32 val, u32 mask);
+
+#define intel_dpio_read(dev_priv, reg)	intel_dpio_read32_tmp(dev_priv, reg)
+#define intel_dpio_write(dev_priv, reg, val) \
+			intel_dpio_write32(dev_priv, reg, val)
+#define intel_dpio_write_bits(dev_priv, reg, val, mask) \
+			intel_dpio_write32_bits(dev_priv, reg, val, mask)
+#define intel_punit_read(dev_priv, reg, val) \
+			intel_punit_read32(dev_priv, reg, val)
+#define intel_punit_write(dev_priv, reg, val) \
+			intel_punit_write32(dev_priv, reg, val)
+#define intel_punit_write_bits(dev_priv, reg, val, mask) \
+			intel_punit_write32_bits(dev_priv, reg, val, mask)
+#define intel_gpio_nc_read(dev_priv, reg, val) \
+			intel_gpio_nc_read32(dev_priv, reg, val)
+#define intel_gpio_nc_write(dev_priv, reg, val) \
+			intel_gpio_nc_write32(dev_priv, reg, val)
+#define intel_gpio_nc_write_bits(dev_priv, reg, val, mask) \
+			intel_punit_write32_bits(dev_priv, reg, val, mask)
+#define intel_cck_read(dev_priv, reg, val) \
+			intel_cck_read32(dev_priv, reg, val)
+#define intel_cck_write(dev_priv, reg, val) \
+			intel_cck_write32(dev_priv, reg, val)
+#define intel_cck_write_bits(dev_priv, reg, val, mask) \
+			intel_cck_write32_bits(dev_priv, reg, val, mask)
+#define intel_ccu_read(dev_priv, reg, val) \
+			intel_ccu_read32(dev_priv, reg, val)
+#define intel_ccu_write(dev_priv, reg, val) \
+			intel_ccu_write32(dev_priv, reg, val)
+#define intel_ccu_write_bits(dev_priv, reg, val, mask) \
+			intel_ccu_write32_bits(dev_priv, reg, val, mask)
+
 #endif

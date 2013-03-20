@@ -330,6 +330,27 @@
 #define  DEBUG_RESET_RENDER		(1<<8)
 #define  DEBUG_RESET_DISPLAY		(1<<9)
 
+#define IOSF_DOORBELL_REQ			0x2100
+#define   IOSF_DEVFN_SHIFT			24
+#define   IOSF_OPCODE_SHIFT			16
+#define   IOSF_PORT_SHIFT			8
+#define   IOSF_BYTE_ENABLES_SHIFT	4
+#define   IOSF_BAR_SHIFT			1
+#define   IOSF_SB_BUSY				(1<<0)
+#define IOSF_DATA					0x2104
+#define IOSF_ADDR					0x2108
+
+#define IOSF_OPCODE_REG_READ		6
+#define IOSF_OPCODE_REG_WRITE		7
+
+#define IOSF_PORT_PUNIT			0x4
+#define IOSF_PORT_DPIO			0x12
+#define IOSF_PORT_GPIO_NC		0x13
+#define IOSF_PORT_CCK			0x14
+#define IOSF_PORT_CCU			0xA9
+#define IOSF_PORT_GPS_CORE		0x48
+
+
 /*
  * DPIO - a special bus for various display related registers to hide behind:
  *  0x800c: m1, m2, n, p1, p2, k dividers
