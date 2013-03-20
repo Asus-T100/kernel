@@ -166,7 +166,7 @@ void intel_sst_set_bypass_mfld(bool set)
 		csr.full |= 0x380;
 	else
 		csr.part.bypass = 0;
-	pr_debug("SetupByPass set %d Val 0x%lx\n", set, csr.full);
+	pr_debug("SetupByPass set %d Val 0x%x\n", set, csr.full);
 	sst_shim_write(sst_drv_ctx->shim, SST_CSR, csr.full);
 	mutex_unlock(&sst_drv_ctx->csr_lock);
 
@@ -236,6 +236,9 @@ static void sst_fill_info(struct intel_sst_drv *sst,
 		info->imr_start = relocate_imr_addr_mrfld(sst->ddr_base);
 		info->imr_end = relocate_imr_addr_mrfld(sst->ddr_end);
 	}
+
+	info->dma_max_len = sst->info.dma_max_len;
+	pr_debug("%s: dma_max_len 0x%x", __func__, info->dma_max_len);
 }
 
 static inline int sst_validate_fw_elf(const struct firmware *sst_fw)
@@ -372,21 +375,39 @@ sst_get_elf_sg_len(struct intel_sst_drv *sst, Elf32_Ehdr *elf, Elf32_Phdr *pr,
 {
 	unsigned int i = 0, count = 0;
 
-	pr_debug("in %s\n", __func__);
+	pr_debug("in %s: dma_max_len 0x%x\n", __func__, info.dma_max_len);
+
 	while (i < elf->e_phnum) {
 		if (pr[i].p_type == PT_LOAD) {
+
 			if ((pr[i].p_paddr >= info.iram_start) &&
-				(pr[i].p_paddr < info.iram_end && pr[i].p_filesz))
-				count++;
-			if ((pr[i].p_paddr >= info.dram_start) &&
-				(pr[i].p_paddr < info.dram_end && pr[i].p_filesz))
-				count++;
-			else if ((pr[i].p_paddr >= info.imr_start) &&
-				(pr[i].p_paddr < info.imr_end && pr[i].p_filesz))
-				count++;
+					(pr[i].p_paddr < info.iram_end &&
+						pr[i].p_filesz)) {
+				count += (pr[i].p_filesz) / info.dma_max_len;
+
+				if ((pr[i].p_filesz) % info.dma_max_len)
+					count++;
+
+			} else if ((pr[i].p_paddr >= info.dram_start) &&
+					(pr[i].p_paddr < info.dram_end &&
+						pr[i].p_filesz)) {
+				count += (pr[i].p_filesz) / info.dma_max_len;
+
+				if ((pr[i].p_filesz) % info.dma_max_len)
+					count++;
+
+			} else if ((pr[i].p_paddr >= info.imr_start) &&
+					(pr[i].p_paddr < info.imr_end &&
+						pr[i].p_filesz)) {
+				count += (pr[i].p_filesz) / info.dma_max_len;
+
+				if ((pr[i].p_filesz) % info.dma_max_len)
+					count++;
+			}
 		}
 		i++;
 	}
+
 	pr_debug("gotcha count %d\n", count);
 	return count;
 }
@@ -491,7 +512,7 @@ static int sst_dma_firmware(struct sst_dma *dma, struct sst_sg_list *sg_list)
 	enum dma_ctrl_flags flag = DMA_CTRL_ACK;
 	struct scatterlist *sg_src_list, *sg_dst_list;
 	int length;
-	pr_debug("sst_dma_firmware\n");
+	pr_debug("%s: use_lli %d\n", __func__, sst_drv_ctx->use_lli);
 
 	sg_src_list = sg_list->src;
 	sg_dst_list = sg_list->dst;
@@ -541,49 +562,59 @@ static int sst_dma_firmware(struct sst_dma *dma, struct sst_sg_list *sg_list)
 /*
  * sst_fill_sglist - Fill the sg list
  *
- * @ram: virtual address of IRAM/DRAM.
- * @block: Dma block infromation
+ * @from: src address of the fw
+ * @to: virtual address of IRAM/DRAM
+ * @block_size: size of the block
  * @sg_src: source scatterlist pointer
  * @sg_dst: Destination scatterlist pointer
+ * @fw_sg_list: Pointer to the sg_list
+ * @dma_max_len: maximum len of the DMA block
  *
  * Parses modules that need to be placed in SST IRAM and DRAM
  * and stores them in a sg list for transfer
  * returns error or 0 if list creation fails or pass.
   */
-
-static int sst_fill_sglist(unsigned long ram, struct fw_block_info *block,
-		struct scatterlist **sg_src, struct scatterlist **sg_dst)
+static int sst_fill_sglist(unsigned long from, unsigned long to,
+		u32 block_size, struct scatterlist **sg_src, struct scatterlist **sg_dstn,
+		struct sst_sg_list *fw_sg_list, u32 dma_max_len)
 {
-	u32 offset;
-	unsigned long dstn, src;
+	u32 offset = 0;
 	int len = 0;
+	unsigned long dstn, src;
 
 	pr_debug("%s entry", __func__);
 
-	offset = 0;
 	do {
-		dstn = (unsigned long)(ram + block->ram_offset + offset);
-		src = (unsigned long)((void *)block + sizeof(*block) + offset);
-		len = block->size - offset;
-		pr_debug("DMA blk src%lx,dstn %lx,size %d,offset %d\n",
-				src, dstn, len, offset);
-		if (len > SST_MAX_DMA_LEN) {
-			pr_debug("block size exceeds %d\n", SST_MAX_DMA_LEN);
-			len = SST_MAX_DMA_LEN;
+		dstn = (unsigned long) (to + offset);
+		src = (unsigned long) (from + offset);
+
+		/* split blocks to dma_max_len */
+
+		len = block_size - offset;
+		pr_debug("DMA blk src %lx,dstn %lx,len %d,offset %d, size %d\n",
+			src, dstn, len, offset, block_size);
+		if (len > dma_max_len) {
+			pr_debug("block size exceeds %d\n", dma_max_len);
+			len = dma_max_len;
 			offset += len;
 		} else {
+			pr_debug("Node length less that %d\n", dma_max_len);
 			offset = 0;
-			pr_debug("Node length less that %d\n",
-							SST_MAX_DMA_LEN);
 		}
 
-		if (!sg_src || !sg_dst)
+		if (!sg_src || !sg_dstn)
 			return -ENOMEM;
-		sg_set_buf(*sg_src, (void *)src, len);
-		sg_set_buf(*sg_dst, (void *)dstn, len);
+
+		sg_set_buf(*sg_src, (void *) src, len);
+		sg_set_buf(*sg_dstn, (void *) dstn, len);
 		*sg_src = sg_next(*sg_src);
-		*sg_dst = sg_next(*sg_dst);
+		*sg_dstn = sg_next(*sg_dstn);
+
+		/* TODO: is sg_idx required? */
+		if (sst_drv_ctx->info.use_elf == true)
+			fw_sg_list->sg_idx++;
 	} while (offset > 0);
+
 	return 0;
 }
 
@@ -592,30 +623,22 @@ static int sst_parse_elf_module_dma(struct intel_sst_drv *sst, const void *fw,
 		 struct scatterlist **sg_src, struct scatterlist **sg_dstn,
 		 struct sst_sg_list *fw_sg_list)
 {
-	void *dstn;
+	unsigned long dstn, src;
 	unsigned int dstn_phys;
 	int ret_val = 0;
 	int mem_type;
 
-	ret_val = sst_fill_dstn(sst, info, pr, &dstn, &dstn_phys, &mem_type);
+	ret_val = sst_fill_dstn(sst, info, pr, (void *)&dstn, &dstn_phys, &mem_type);
 	if (ret_val)
 		return ret_val;
 
-	if (pr->p_filesz) {
-		/* populate sg entry; used no logic for block parsing assuming
-		 * mrfld dma length of 128KB, so no need to split blocks
-		 * would need to fix this if to be used for mfld/ctp
-		 */
-		dstn = phys_to_virt(dstn_phys);
-		sg_set_buf(*sg_src, fw + pr->p_offset, pr->p_filesz);
-		sg_set_buf(*sg_dstn, dstn, pr->p_filesz);
-		*sg_src = sg_next(*sg_src);
-		*sg_dstn = sg_next(*sg_dstn);
+	dstn = (unsigned long) phys_to_virt(dstn_phys);
+	src = (unsigned long) (fw + pr->p_offset);
 
-		fw_sg_list->sg_idx++;
-	}
+	ret_val = sst_fill_sglist(src, dstn, pr->p_filesz,
+				sg_src, sg_dstn, fw_sg_list, sst->info.dma_max_len);
 
-	return 0;
+	return ret_val;
 }
 
 static int
@@ -628,6 +651,7 @@ sst_parse_elf_fw_dma(struct intel_sst_drv *sst, const void *fw_in_mem,
 	Elf32_Phdr *pr;
 	struct sst_probe_info info;
 	struct scatterlist *sg_src = NULL, *sg_dst = NULL;
+	unsigned int sg_len;
 
 	BUG_ON(!fw_in_mem);
 
@@ -637,25 +661,21 @@ sst_parse_elf_fw_dma(struct intel_sst_drv *sst, const void *fw_in_mem,
 
 	sst_fill_info(sst, &info);
 
-	if (sst->use_dma) {
-		unsigned int sg_len;
-
-		pr_err("dma mode set for elf\n");
-		sg_len = sst_get_elf_sg_len(sst, elf, pr, info);
-		if (sg_len == 0) {
-			pr_err("we got NULL sz ELF, abort\n");
-			return -EIO;
-		}
-		if (sst_init_dma_sg_list(sst, sg_len, &sg_src, &sg_dst))
-			return -ENOMEM;
-		fw_sg_list->src = sg_src;
-		fw_sg_list->dst = sg_dst;
-		fw_sg_list->list_len = sg_len;
-		fw_sg_list->sg_idx = 0;
+	sg_len = sst_get_elf_sg_len(sst, elf, pr, info);
+	if (sg_len == 0) {
+		pr_err("we got NULL sz ELF, abort\n");
+		return -EIO;
 	}
 
+	if (sst_init_dma_sg_list(sst, sg_len, &sg_src, &sg_dst))
+		return -ENOMEM;
+	fw_sg_list->src = sg_src;
+	fw_sg_list->dst = sg_dst;
+	fw_sg_list->list_len = sg_len;
+	fw_sg_list->sg_idx = 0;
+
 	while (i < elf->e_phnum) {
-		if (pr[i].p_type == PT_LOAD)
+		if ((pr[i].p_type == PT_LOAD) && (pr[i].p_filesz))
 			sst_parse_elf_module_dma(sst, fw_in_mem, info, &pr[i],
 					&sg_src, &sg_dst, fw_sg_list);
 		i++;
@@ -677,7 +697,7 @@ static int sst_parse_module_dma(struct fw_module_header *module,
 {
 	struct fw_block_info *block;
 	u32 count;
-	unsigned long ram;
+	unsigned long ram, src;
 	int retval, sg_len = 0;
 	struct scatterlist *sg_src, *sg_dst;
 
@@ -724,7 +744,12 @@ static int sst_parse_module_dma(struct fw_module_header *module,
 		/*converting from physical to virtual because
 		scattergather list works on virtual pointers*/
 		ram = (int) phys_to_virt(ram);
-		retval = sst_fill_sglist(ram, block, &sg_src, &sg_dst);
+		ram = (unsigned long)(ram + block->ram_offset);
+		src = (unsigned long) (void *)block + sizeof(*block);
+
+		retval = sst_fill_sglist(src, ram,
+				block->size, &sg_src, &sg_dst,
+				sg_list, sst_drv_ctx->info.dma_max_len);
 		if (retval) {
 			kfree(sg_src);
 			kfree(sg_dst);
@@ -828,7 +853,7 @@ static int sst_do_dma(struct sst_sg_list *sg_list)
  */
 
 static int sst_fill_memcpy_list(struct list_head *memcpy_list,
-			void *destn, void *src, u32 size, bool is_io)
+			void *destn, const void *src, u32 size, bool is_io)
 {
 	struct sst_memcpy_list *listnode;
 
@@ -1064,7 +1089,7 @@ static int sst_request_fw(struct intel_sst_drv *sst)
 		retval = -ENOMEM;
 		goto end_release;
 	}
-	pr_debug("copied fw to %x", sst->fw_in_mem);
+	pr_debug("copied fw to %p", sst->fw_in_mem);
 	pr_debug("phys: %x", virt_to_phys(sst->fw_in_mem));
 	memcpy(sst->fw_in_mem, sst->fw->data,
 			sst->fw->size);
@@ -1270,7 +1295,7 @@ free_block:
  * Writing the DDR physical base to DCCM offset
  * so that FW can use it to setup TLB
  */
-static void mrfld_dccm_config_write(u32 dram_base, u32 ddr_base)
+static void mrfld_dccm_config_write(void __iomem *dram_base, u32 ddr_base)
 {
 	void __iomem *addr;
 	u32 bss_reset = 0;

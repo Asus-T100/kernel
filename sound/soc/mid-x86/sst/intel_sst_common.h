@@ -337,7 +337,7 @@ struct sst_sg_list {
 struct sst_memcpy_list {
 	struct list_head memcpylist;
 	void *dstn;
-	void *src;
+	const void *src;
 	u32 size;
 	bool is_io;
 };
@@ -402,6 +402,7 @@ struct sst_probe_info {
 	bool imr_use;
 	bool use_elf;
 	unsigned int max_streams;
+	u32 dma_max_len;
 };
 
 struct sst_fw_context {
