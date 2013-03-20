@@ -40,6 +40,7 @@ static struct sfi_table_oemb byt_oemb_table = {
 /* Baytrail devs table */
 static struct sfi_device_table_entry byt_devs_table[] = {
 	/*{bus_type, host_num, addr, irq, max_freq, name}*/
+	{SFI_DEV_TYPE_IPC, 0, 0, 0, 0, "vlv2_plat_clk"},
 };
 
 /* Baytrail gpio table */

@@ -26,6 +26,7 @@ obj-$(subst m,y,$(CONFIG_PMIC_CCSM))                                    += platf
 obj-$(subst m,y,$(CONFIG_I2C_PMIC))                                    += platform_mrfl_pmic_i2c.o
 obj-$(subst m,y,$(CONFIG_INTEL_SCU_FLIS))				+= platform_scu_flis.o
 obj-$(subst m,y,$(CONFIG_IIO_BASINCOVE_GPADC))				+= platform_bcove_adc.o
+obj-$(subst m,y,$(CONFIG_VLV2_PLAT_CLK))				+= platform_vlv2_plat_clk.o
 # I2C Devices
 obj-$(subst m,y,$(CONFIG_CRYSTAL_COVE))					+= platform_crystal_cove.o
 obj-$(subst m,y,$(CONFIG_SENSORS_EMC1403))				+= platform_emc1403.o
