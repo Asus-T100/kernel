@@ -1266,7 +1266,7 @@ int intel_scu_ipc_read_oshob_def_param(void __iomem *poshob_addr)
 int intel_scu_ipc_read_oshob_info(void)
 {
 	int i, ret = 0;
-	u32 oshob_base;
+	u32 oshob_base = 0;
 	void __iomem *oshob_addr;
 	unsigned char oshob_magic[4];
 
