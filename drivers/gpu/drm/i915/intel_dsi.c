@@ -91,15 +91,24 @@
 /* the panel drivers are here */
 static const struct intel_dsi_device intel_dsi_devices[] = {
 	{
+		.panel_id = MIPI_DSI_CMI_PANEL_ID,
 		.type = INTEL_DSI_COMMAND_MODE,
 		.name = "cmi-dsi-cmd-mode-display",
 		.dev_ops = &cmi_dsi_display_ops,
 		.lane_count = 3, /* XXX: this really doesn't belong here */
 	},
 	{
+		.panel_id = MIPI_DSI_CMI_PANEL_ID,
 		.type = INTEL_DSI_VIDEO_MODE,
 		.name = "cmi-dsi-vid-mode-display",
 		.dev_ops = &cmi_dsi_display_ops,
+		.lane_count = 3, /* XXX: this really doesn't belong here */
+	},
+	{
+		.panel_id = MIPI_DSI_AUO_PANEL_ID,
+		.type = INTEL_DSI_VIDEO_MODE,
+		.name = "auo-dsi-vid-mode-display",
+		.dev_ops = &auo_dsi_display_ops,
 		.lane_count = 3, /* XXX: this really doesn't belong here */
 	},
 };

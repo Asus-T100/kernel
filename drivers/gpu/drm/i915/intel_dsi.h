@@ -30,6 +30,7 @@
 #include "intel_drv.h"
 
 struct intel_dsi_device {
+	unsigned short panel_id;
 	const char *name;
 	int type;
 	unsigned int lane_count;
@@ -40,6 +41,8 @@ struct intel_dsi_device {
 /* XXX: this is just copy-paste from dvo for now */
 struct intel_dsi_dev_ops {
 	bool (*init)(struct intel_dsi_device *dsi);
+
+	void (*get_info)(int pipe, struct drm_connector *connector);
 
 	void (*create_resources)(struct intel_dsi_device *dsi);
 
@@ -85,6 +88,13 @@ struct intel_dsi {
 	int channel;
 };
 
+struct panel_info {
+	u32 width_mm;
+	u32 height_mm;
+
+	/*other infos*/
+};
+
 static inline struct intel_dsi *enc_to_intel_dsi(struct drm_encoder *encoder)
 {
 	return container_of(encoder, struct intel_dsi, base.base);
@@ -92,5 +102,10 @@ static inline struct intel_dsi *enc_to_intel_dsi(struct drm_encoder *encoder)
 
 /* the panel drivers */
 extern struct intel_dsi_dev_ops cmi_dsi_display_ops;
+extern struct intel_dsi_dev_ops auo_dsi_display_ops;
+
+/* FIXME */
+#define	MIPI_DSI_CMI_PANEL_ID	0x00
+#define	MIPI_DSI_AUO_PANEL_ID	0x01
 
 #endif /* _INTEL_DSI_H */

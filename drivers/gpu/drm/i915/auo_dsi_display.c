@@ -1,0 +1,142 @@
+/*
+ * Copyright © 2013 Intel Corporation
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a
+ * copy of this software and associated documentation files (the "Software"),
+ * to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
+ * and/or sell copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice (including the next
+ * paragraph) shall be included in all copies or substantial portions of the
+ * Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ * DEALINGS IN THE SOFTWARE.
+ *
+ * Author: Jani Nikula <jani.nikula@intel.com>
+ *	   Shobhit Kumar <shobhit.kumar@intel.com>
+ *
+ *
+ */
+
+#include <drm/drmP.h>
+#include <drm/drm_crtc.h>
+#include <drm/drm_edid.h>
+#include <drm/i915_drm.h>
+#include <linux/slab.h>
+#include <video/mipi_display.h>
+#include "i915_drv.h"
+#include "intel_drv.h"
+#include "intel_dsi.h"
+#include "intel_dsi_cmd.h"
+
+#include "auo_dsi_display.h"
+
+void  auo_vid_get_panel_info(int pipe, struct drm_connector *connector)
+{
+	return;
+}
+
+bool auo_init(struct intel_dsi_device *dsi)
+{
+	/* create private data, slam to dsi->dev_priv. could support many panels
+	 * based on dsi->name. This panal supports both command and video mode,
+	 * so check the type. */
+
+	/* where to get all the board info style stuff:
+	 *
+	 * - gpio numbers, if any (external te, reset)
+	 * - pin config, mipi lanes
+	 * - dsi backlight? (->create another bl device if needed)
+	 * - esd interval, ulps timeout
+	 *
+	 */
+	DRM_DEBUG_KMS("\n");
+
+	return true;
+}
+
+void auo_create_resources(struct intel_dsi_device *dsi) { }
+
+void auo_dpms(struct intel_dsi_device *dsi, bool enable)
+{
+	struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
+
+	if (enable) {
+		int i;
+
+		dsi_vc_dcs_write_0(intel_dsi, 0, MIPI_DCS_EXIT_SLEEP_MODE);
+
+		dsi_vc_dcs_write_1(intel_dsi, 0, MIPI_DCS_SET_TEAR_ON, 0x00);
+
+		dsi_vc_dcs_write_0(intel_dsi, 0, MIPI_DCS_SET_DISPLAY_ON);
+	} else {
+		dsi_vc_dcs_write_0(intel_dsi, 0, MIPI_DCS_SET_DISPLAY_OFF);
+		dsi_vc_dcs_write_0(intel_dsi, 0, MIPI_DCS_ENTER_SLEEP_MODE);
+	}
+}
+
+int auo_mode_valid(struct intel_dsi_device *dsi,
+		   struct drm_display_mode *mode)
+{
+	return MODE_OK;
+}
+
+bool auo_mode_fixup(struct intel_dsi_device *dsi,
+		    const struct drm_display_mode *mode,
+		    struct drm_display_mode *adjusted_mode)
+{
+	return true;
+}
+
+void auo_prepare(struct intel_dsi_device *dsi) { }
+
+void auo_commit(struct intel_dsi_device *dsi) { }
+
+void auo_mode_set(struct intel_dsi_device *dsi,
+		  struct drm_display_mode *mode,
+		  struct drm_display_mode *adjusted_mode) { }
+
+enum drm_connector_status auo_detect(struct intel_dsi_device *dsi)
+{
+	return connector_status_connected;
+}
+
+bool auo_get_hw_state(struct intel_dsi_device *dev)
+{
+	return true;
+}
+
+struct drm_display_mode *auo_get_modes(struct intel_dsi_device *dsi)
+{
+	return NULL;
+}
+
+void auo_dump_regs(struct intel_dsi_device *dsi) { }
+
+void auo_destroy(struct intel_dsi_device *dsi) { }
+
+/* Callbacks. We might not need them all. */
+struct intel_dsi_dev_ops auo_dsi_display_ops = {
+	.init = auo_init,
+	.get_info = auo_vid_get_panel_info,
+	.create_resources = auo_create_resources,
+	.dpms = auo_dpms,
+	.mode_valid = auo_mode_valid,
+	.mode_fixup = auo_mode_fixup,
+	.prepare = auo_prepare,
+	.commit = auo_commit,
+	.mode_set = auo_mode_set,
+	.detect = auo_detect,
+	.get_hw_state = auo_get_hw_state,
+	.get_modes = auo_get_modes,
+	.destroy = auo_destroy,
+	.dump_regs = auo_dump_regs,
+};
