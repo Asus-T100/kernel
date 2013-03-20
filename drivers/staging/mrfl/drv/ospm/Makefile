@@ -17,6 +17,7 @@ ccflags-y += \
 	-Iinclude/drm \
 	-I$(INCDIR)/../intel_media/video/common \
 	-I$(INCDIR)/../intel_media/video/vsp \
+	-I$(INCDIR)/../intel_media/video/encode \
 	-I$(INCDIR)/../intel_media/video/decode
 
 ccflags-y += -DANDROID -DLINUX -D_linux_ -D__KERNEL__

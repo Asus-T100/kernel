@@ -102,7 +102,7 @@ int drm_psb_disable_vsync = 1;
 int drm_psb_no_fb;
 int drm_psb_force_pipeb;
 int drm_idle_check_interval = 5;
-int drm_msvdx_pmpolicy = PSB_PMPOLICY_NOPM;
+int drm_msvdx_pmpolicy = PSB_PMPOLICY_POWERDOWN;
 int drm_psb_cpurelax;
 int drm_psb_udelaydivider = 1;
 int drm_topaz_pmpolicy = PSB_PMPOLICY_NOPM;
@@ -4177,6 +4177,8 @@ int psb_release(struct inode *inode, struct file *filp)
 	psb_fp = BCVideoGetPriv(file_priv);
 	dev_priv = psb_priv(file_priv->minor->dev);
 	msvdx_priv = (struct msvdx_private *)dev_priv->msvdx_private;
+	struct tng_topaz_private *topaz_priv =
+		(struct tng_topaz_private *)dev_priv->topaz_private;
 
 #if 0
 	/*cleanup for msvdx */
@@ -4188,6 +4190,7 @@ int psb_release(struct inode *inode, struct file *filp)
 		       MAX_DECODE_BUFFERS);
 	}
 #endif
+
 	BCVideoDestroyBuffers(psb_fp->bcd_index);
 
 	ttm_object_file_release(&psb_fp->tfile);

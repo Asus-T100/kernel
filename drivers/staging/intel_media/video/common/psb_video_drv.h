@@ -258,6 +258,7 @@ struct psb_video_ctx {
 
 	uint32_t status;
 	uint32_t codec;
+	uint32_t frame_count;
 	/* Firmware data section offset and size */
 	uint32_t mtx_debug_val;
 	uint32_t mtx_bank_size;

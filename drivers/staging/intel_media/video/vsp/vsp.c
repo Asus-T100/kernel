@@ -165,20 +165,17 @@ int vsp_handle_response(struct drm_psb_private *dev_priv)
 
 			cmd_rd = vsp_priv->ctrl->cmd_rd;
 			cmd_wr = vsp_priv->ctrl->cmd_wr;
-
 			VSP_DEBUG("cmd_rd=%d, cmd_wr=%d\n", cmd_rd, cmd_wr);
+
 			vsp_priv->vsp_state = VSP_STATE_IDLE;
-
-
 			/* If there is still commands in the cmd buffer,
 			 * set CONTINUE command and start API main directly not
 			 * via the boot program. The boot program might damage
 			 * the application state.
 			 */
 			if (cmd_rd == cmd_wr) {
-				vsp_priv->vsp_state = VSP_STATE_IDLE;
-#if 0
-				if (!vsp_priv->handling_cmd) {
+#if 1
+				if (!vsp_priv->vsp_cmd_num) {
 					VSP_DEBUG("Trying to shut down ...\n");
 					schedule_delayed_work(
 						&vsp_priv->vsp_suspend_wq, 0);
@@ -324,12 +321,15 @@ int vsp_cmdbuf_vpp(struct drm_file *priv,
 		    struct psb_ttm_fence_rep *fence_arg)
 {
 	struct drm_device *dev = priv->minor->dev;
+	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct vsp_private *vsp_priv = dev_priv->vsp_private;
 	int ret = 0;
 	unsigned char *cmd_start;
 	unsigned long cmd_page_offset = arg->cmdbuf_offset & ~PAGE_MASK;
 	struct ttm_bo_kmap_obj cmd_kmap;
 	bool is_iomem;
 
+	vsp_priv->vsp_cmd_num = 1;
 	/* check command buffer parameter */
 	if ((arg->cmdbuf_offset > cmd_buffer->acc_size) ||
 	    (arg->cmdbuf_size > cmd_buffer->acc_size) ||
@@ -347,6 +347,7 @@ int vsp_cmdbuf_vpp(struct drm_file *priv,
 			  &cmd_kmap);
 	if (ret) {
 		DRM_ERROR("VSP: ttm_bo_kmap failed: %d\n", ret);
+		vsp_priv->vsp_cmd_num = 0;
 		return ret;
 	}
 
@@ -373,6 +374,7 @@ out:
 		ttm_fence_sync_obj_unref(&cmd_buffer->sync_obj);
 	spin_unlock(&cmd_buffer->bdev->fence_lock);
 
+	vsp_priv->vsp_cmd_num = 0;
 	return ret;
 }
 
@@ -383,8 +385,6 @@ int vsp_submit_cmdbuf(struct drm_device *dev,
 	struct drm_psb_private *dev_priv = dev->dev_private;
 	struct vsp_private *vsp_priv = dev_priv->vsp_private;
 	int ret;
-
-	vsp_priv->num_cmd = 1;
 
 	if (vsp_priv->fw_loaded == 0) {
 		ret = vsp_init_fw(dev);
@@ -424,8 +424,6 @@ int vsp_submit_cmdbuf(struct drm_device *dev,
 		VSP_DEBUG("The VSP is on suspend, send resume!\n");
 	}
 
-	vsp_priv->num_cmd = 0;
-
 	return ret;
 }
 
@@ -464,7 +462,7 @@ int vsp_send_command(struct drm_device *dev,
 		VSP_DEBUG("cmd_size %ld sizeof(*cur_cmd) %d\n",
 			  cmd_size, sizeof(*cur_cmd));
 
-		if (remaining_space < vsp_priv->num_cmd) {
+		if (remaining_space < vsp_priv->vsp_cmd_num) {
 			DRM_ERROR("no enough space for cmd queue\n");
 			DRM_ERROR("VSP: rd %d, wr %d, remaining_space %d\n",
 				  rd, wr, remaining_space);
@@ -543,7 +541,7 @@ static int vsp_prehandle_command(struct drm_file *priv,
 	unsigned int cmd_size = arg->cmdbuf_size;
 	int ret = 0;
 	struct ttm_buffer_object *pic_param_bo;
-	int pic_param_num;
+	int pic_param_num, vsp_cmd_num = 0;
 	struct ttm_validate_buffer *pos, *next;
 	struct drm_device *dev = priv->minor->dev;
 	struct drm_psb_private *dev_priv = dev->dev_private;
@@ -595,7 +593,7 @@ static int vsp_prehandle_command(struct drm_file *priv,
 			vsp_new_context(dev_priv->dev);
 		} else
 			/* calculate the numbers of cmd send to VSP */
-			vsp_priv->num_cmd = vsp_priv->num_cmd + 1;
+			vsp_cmd_num++;
 
 		if (cur_cmd->type == VssVp8encEncodeFrameCommand) {
 			pic_bo_vp8 =
@@ -635,6 +633,9 @@ static int vsp_prehandle_command(struct drm_file *priv,
 		cmd_size -= sizeof(*cur_cmd);
 		cur_cmd++;
 	}
+
+	if (vsp_cmd_num)
+		vsp_priv->vsp_cmd_num = vsp_cmd_num;
 
 	if (pic_param_num > 0) {
 		ret = vsp_fence_surfaces(priv, validate_list, fence_type, arg,
@@ -868,7 +869,7 @@ out:
 
 uint32_t vsp_fence_poll(struct drm_psb_private *dev_priv)
 {
-	struct vsp_private *vsp_priv;
+	struct vsp_private *vsp_priv = dev_priv->vsp_private;
 	unsigned int rd, wr;
 	unsigned int idx;
 	unsigned int msg_num;
@@ -878,16 +879,24 @@ uint32_t vsp_fence_poll(struct drm_psb_private *dev_priv)
 
 	VSP_DEBUG("polling vsp msg\n");
 
-	vsp_priv = dev_priv->vsp_private;
+	sequence = vsp_priv->current_sequence;
 
-	/* handle the response message */
 	spin_lock_irqsave(&vsp_priv->lock, irq_flags);
+
+	if (vsp_priv->vsp_state == VSP_STATE_DOWN ||
+	    vsp_priv->vsp_state == VSP_STATE_SUSPEND) {
+		VSP_DEBUG("VSP is in OFF state.Don't poll anything!\n");
+		spin_unlock_irqrestore(&vsp_priv->lock, irq_flags);
+		goto out;
+	}
+	/* handle the response message */
 	sequence = vsp_handle_response(dev_priv);
+
 	spin_unlock_irqrestore(&vsp_priv->lock, irq_flags);
 
 	if (sequence != vsp_priv->current_sequence)
 		vsp_priv->current_sequence = sequence;
-
+out:
 	return sequence;
 }
 
@@ -933,13 +942,11 @@ void vsp_rm_context(struct drm_device *dev)
 		return;
 
 	vsp_priv->ctrl->entry_kind = vsp_exit;
-
-	schedule_delayed_work(&vsp_priv->vsp_suspend_wq, 0);
-
 	vsp_priv->vsp_state = VSP_STATE_DOWN;
 	vsp_priv->fw_loaded = 0;
 	vsp_priv->current_sequence = 0;
-	vsp_priv->num_cmd = 0;
+
+	schedule_delayed_work(&vsp_priv->vsp_suspend_wq, 0);
 	VSP_DEBUG("VSP: OK. Power down the HW!\n");
 
 	/* FIXME: frequency should change */
@@ -959,6 +966,10 @@ int psb_vsp_save_context(struct drm_device *dev)
 	for (i = 2; i < VSP_CONFIG_SIZE; i++)
 		CONFIG_REG_READ32(i, &(vsp_priv->saved_config_regs[i]));
 
+	/* set VSP PM/entry status */
+	vsp_priv->ctrl->entry_kind = vsp_entry_booted;
+	vsp_priv->vsp_state = VSP_STATE_SUSPEND;
+
 	return 0;
 }
 
@@ -972,9 +983,15 @@ int psb_check_vsp_idle(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
 	struct vsp_private *vsp_priv = dev_priv->vsp_private;
+	int i;
 
 	if (vsp_priv->fw_loaded == 0 || vsp_priv->vsp_state == VSP_STATE_DOWN)
 		return 0;
+
+	if (vsp_priv->vsp_cmd_num ||  vsp_priv->vsp_state == VSP_STATE_ACTIVE) {
+		PSB_DEBUG_PM("VSP: there is command need to handle!\n");
+		return -EBUSY;
+	}
 
 	/* make sure VSP system has really been idle
 	 * vsp-api runs on sp0 or sp1, but we don't know which one when booting
@@ -988,9 +1005,6 @@ int psb_check_vsp_idle(struct drm_device *dev)
 		PSB_DEBUG_PM("VSP: sp1 return busy!\n");
 		return -EBUSY;
 	}
-
-	/* set VSP entry status */
-	vsp_priv->ctrl->entry_kind = vsp_entry_booted;
 
 	return 0;
 }
@@ -1120,7 +1134,7 @@ void psb_powerdown_vsp(struct work_struct *work)
 {
 	struct vsp_private *vsp_priv =
 		container_of(work, struct vsp_private, vsp_suspend_wq.work);
-	int ret = 0;
+	bool ret;
 
 	if (!vsp_priv)
 		return;
@@ -1129,10 +1143,8 @@ void psb_powerdown_vsp(struct work_struct *work)
 
 	if (ret)
 		VSP_DEBUG("The VSP could NOT be powered off!\n");
-	else {
+	else
 		VSP_DEBUG("The VSP has been powered off!\n");
-		vsp_priv->vsp_state = VSP_STATE_SUSPEND;
-	}
 
 	return;
 }

@@ -167,7 +167,7 @@ do {									\
 
 /* The status of vsp hardware */
 enum vsp_power_state {
-	VSP_STATE_DOWN,
+	VSP_STATE_DOWN = 0,
 	VSP_STATE_SUSPEND,
 	VSP_STATE_IDLE,
 	VSP_STATE_ACTIVE
@@ -232,7 +232,7 @@ struct vsp_private {
 	struct delayed_work vsp_suspend_wq;
 
 	/* the number of cmd will send to VSP */
-	int num_cmd;
+	int vsp_cmd_num;
 
 	unsigned int fw_type;
 

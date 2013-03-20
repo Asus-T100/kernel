@@ -584,6 +584,7 @@ int psb_setup_fw(struct drm_device *dev)
 			ret = 1;
 			goto out;
 		}
+		msvdx_priv->is_load = 1;
 	}
 
 	fw = (struct msvdx_fw *) fw_ptr;

@@ -84,7 +84,7 @@ int vsp_init(struct drm_device *dev)
 		dev->pdev->dev.kobj.sd, NULL,
 		"vsp_pmstate");
 
-	vsp_priv->num_cmd = 0;
+	vsp_priv->vsp_cmd_num = 0;
 	vsp_priv->fw_loaded = 0;
 	vsp_priv->current_sequence = 0;
 	vsp_priv->vsp_state = VSP_STATE_DOWN;
@@ -433,7 +433,8 @@ int vsp_setup_fw(struct drm_psb_private *dev_priv)
 	vsp_set_firmware(dev_priv, vsp_vp0);
 
 	/* Set power-saving mode */
-	vsp_priv->ctrl->power_saving_mode = vsp_always_on;
+	/* vsp_priv->ctrl->power_saving_mode = vsp_always_on;*/
+	vsp_priv->ctrl->power_saving_mode = vsp_suspend_on_empty_queue;
 
 	/* communicate the type of init
 	 * this is the last value to write

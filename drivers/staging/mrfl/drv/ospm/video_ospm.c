@@ -28,6 +28,8 @@
 #include "pmu_tng.h"
 #include "video_ospm.h"
 #include "vsp.h"
+#include "psb_msvdx.h"
+#include "tng_topaz.h"
 
 /***********************************************************
  * vsp islands
@@ -45,20 +47,17 @@ static bool vsp_power_up(struct drm_device *dev,
 	struct vsp_private *vsp_priv = dev_priv->vsp_private;
 	int pm_ret = 0;
 
+	if (p_island->island_state == OSPM_POWER_ON)
+		return true;
+
 #if A0_WORKAROUNDS
 	apply_A0_workarounds(OSPM_VIDEO_VPP_ISLAND, 1);
 #endif
-
-	pm_ret = pmu_set_power_state_tng(VSP_SS_PM0, VSP_SSC,
-					 TNG_COMPOSITE_I0);
+	pm_ret = pmu_nc_set_power_state(PMU_VPP, OSPM_ISLAND_UP, VSP_SS_PM0);
 	if (pm_ret) {
 		PSB_DEBUG_PM("VSP: pmu_set_power_state_tng ON failed!\n");
 		return false;
 	}
-	/* Add the count to make sure the VSP don't be shut down
-	 * when the count be decrease to 0.
-	 */
-	atomic_inc(&p_island->ref_count);
 
 	PSB_DEBUG_PM("Power ON VSP!\n");
 	return ret;
@@ -83,8 +82,10 @@ static bool vsp_power_down(struct drm_device *dev,
 		return false;
 	}
 
-	pm_ret = pmu_set_power_state_tng(VSP_SS_PM0, VSP_SSC,
-					 TNG_COMPOSITE_D3);
+	/* save VSP registers */
+	psb_vsp_save_context(dev);
+
+	pm_ret = pmu_nc_set_power_state(PMU_VPP, OSPM_ISLAND_DOWN, VSP_SS_PM0);
 	if (pm_ret) {
 		PSB_DEBUG_PM("VSP: pmu_set_power_state_tng OFF failed!\n");
 		return false;
@@ -124,16 +125,11 @@ static bool ved_power_up(struct drm_device *dev,
 	int pm_ret = 0;
 
 	PSB_DEBUG_PM("powering up ved\n");
-	pm_ret = pmu_set_power_state_tng(VED_SS_PM0, VED_SSC,
-					 TNG_COMPOSITE_I0);
+	pm_ret = pmu_nc_set_power_state(PMU_DEC, OSPM_ISLAND_UP, VED_SS_PM0);
 	if (pm_ret) {
 		PSB_DEBUG_PM("power up ved failed\n");
 		return false;
 	}
-	/* Add the count to make sure the VED don't be shut down
-	 * when the count be decrease to 0.
-	*/
-	atomic_inc(&p_island->ref_count);
 
 	return ret;
 }
@@ -149,10 +145,15 @@ static bool ved_power_down(struct drm_device *dev,
 	bool ret = true;
 	int pm_ret = 0;
 
+	/* Need to implement force_off */
 	PSB_DEBUG_PM("powering down ved\n");
 
-	pm_ret = pmu_set_power_state_tng(VED_SS_PM0, VED_SSC,
-					 TNG_COMPOSITE_D3);
+	if (psb_check_msvdx_idle(dev))
+		return false;
+
+	psb_msvdx_save_context(dev);
+
+	pm_ret = pmu_nc_set_power_state(PMU_DEC, OSPM_ISLAND_DOWN, VED_SS_PM0);
 	if (pm_ret) {
 		PSB_DEBUG_PM("power down ved failed\n");
 		return false;
@@ -191,16 +192,17 @@ static bool vec_power_up(struct drm_device *dev,
 	int pm_ret = 0;
 
 	PSB_DEBUG_PM("powering up vec\n");
-	pm_ret = pmu_set_power_state_tng(VEC_SS_PM0, VEC_SSC,
-					 TNG_COMPOSITE_I0);
+	pm_ret = pmu_nc_set_power_state(PMU_ENC, OSPM_ISLAND_UP, VEC_SS_PM0);
 	if (pm_ret) {
 		PSB_DEBUG_PM("power up vec failed\n");
 		return false;
 	}
+
 	/* Add the count to make sure the VEC don't be shut down
-	 * when the count be decrease to 0.
-	 */
-	atomic_inc(&p_island->ref_count);
+	* when the count be decrease to 0.
+	*/
+	if (drm_topaz_pmpolicy == PSB_PMPOLICY_NOPM)
+		atomic_inc(&p_island->ref_count);
 
 	return ret;
 }
@@ -218,8 +220,18 @@ static bool vec_power_down(struct drm_device *dev,
 
 	PSB_DEBUG_PM("powering down vec\n");
 
-	pm_ret = pmu_set_power_state_tng(VEC_SS_PM0, VEC_SSC,
-					 TNG_COMPOSITE_D3);
+	if (atomic_read(&p_island->ref_count)) {
+		PSB_DEBUG_PM("TOPAZ: VEC ref count is not 0");
+		return false;
+	}
+
+	if (tng_check_topaz_idle(dev))
+		return false;
+
+	psb_irq_uninstall_islands(dev, OSPM_VIDEO_ENC_ISLAND);
+	tng_topaz_save_mtx_state(dev);
+
+	pm_ret = pmu_nc_set_power_state(PMU_ENC, OSPM_ISLAND_DOWN, VEC_SS_PM0);
 	if (pm_ret) {
 		PSB_DEBUG_PM("power down ved failed\n");
 		return false;
