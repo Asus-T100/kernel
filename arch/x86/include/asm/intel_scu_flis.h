@@ -16,7 +16,8 @@ enum flis_param_t {
 /* DOWN_75K is reserved */
 #define UP_20K		(1 << 3)
 #define UP_2K		(1 << 4)
-#define UP_910K		(1 << 5)
+/*910 Weak Pull-Up*/
+#define UP_910		(1 << 5)
 
 /*
  * Config value for OPEN_DRAIN
