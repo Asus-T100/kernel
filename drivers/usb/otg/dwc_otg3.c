@@ -413,14 +413,14 @@ static int dwc_otg_notify_charger_type(struct dwc_otg2 *otg,
 	return ret;
 }
 
-int otg_get_chr_status(struct usb_phy *phy, void *data)
+static int dwc_otg_get_chr_status(struct usb_phy *x, void *data)
 {
 	unsigned long flags;
 	struct power_supply_cable_props *cap =
 		(struct power_supply_cable_props *)data;
 	struct dwc_otg2 *otg = the_transceiver;
 
-	if (phy == NULL)
+	if (x == NULL)
 		return -ENODEV;
 
 	if (data == NULL)
@@ -434,7 +434,6 @@ int otg_get_chr_status(struct usb_phy *phy, void *data)
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(otg_get_chr_status);
 
 static void dwc_otg_sdp_check_work(struct work_struct *work)
 {
@@ -1821,6 +1820,7 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 	otg->phy.set_suspend	= dwc_otg2_set_suspend;
 	otg->phy.host_release   = dwc_otg2_received_host_release;
 	otg->phy.set_power	= dwc_otg_set_power;
+	otg->phy.get_chr_status	= dwc_otg_get_chr_status;
 	otg->otg.set_host	= dwc_otg2_set_host;
 	otg->otg.set_peripheral	= dwc_otg2_set_peripheral;
 	ATOMIC_INIT_NOTIFIER_HEAD(&otg->phy.notifier);
