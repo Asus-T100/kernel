@@ -41,6 +41,8 @@
 #define PN_DEV_HOST     0x00
 #endif
 
+#define SIOMODEMONOFF (SIOCDEVPRIVATE + 1)
+
 struct hsi_protocol *hsi_protocol_context;
 
 static int hsi_net_device_xmit(struct sk_buff *skb,
@@ -114,11 +116,6 @@ static int configure_gpios(struct hsi_protocol_client *hsi)
 	ret = gpio_export(hsi->gpio_rst_out, 0);
 	if (ret < 0) {
 		printk(KERN_ERR "gpio_export failed for rst_out");
-		goto err_pwr_on;
-	}
-	ret = gpio_export(hsi->gpio_pwr_on, 0);
-	if (ret < 0) {
-		printk(KERN_ERR "gpio_export failed for pwr_on");
 		goto err_pwr_on;
 	}
 	pr_info("GPIOs configuration - pwr_on:%d, rst_out: %d\n",
@@ -278,6 +275,7 @@ static int hsi_net_device_ioctl(struct net_device *dev,
 				struct ifreq *ifr, int cmd)
 {
 	struct if_phonet_req *req = (struct if_phonet_req *)ifr;
+	int value;
 
 	switch (cmd) {
 	case SIOCPNGAUTOCONF:
@@ -289,7 +287,24 @@ static int hsi_net_device_ioctl(struct net_device *dev,
 		phonet_route_add(dev, 0x64);
 
 		break;
+
+	case SIOMODEMONOFF:
+
+		if (copy_from_user(&value, (int *)ifr->ifr_data,
+			sizeof(unsigned int)))
+			return -EFAULT;
+
+		if (value > 0) {
+			gpio_set_value(hsi_protocol_context->cl[0]->gpio_pwr_on,
+					1);
+		} else {
+			gpio_set_value(hsi_protocol_context->cl[0]->gpio_pwr_on,
+					0);
 	}
+
+		break;
+	}
+
 	return 0;
 }
 
