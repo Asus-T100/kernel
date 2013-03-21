@@ -96,7 +96,7 @@
 
 /* Retrieve from modem: */
 
-#define MAXIMUM_MSG_LENGTH_ALLOWED 0x4000
+#define MAXIMUM_MSG_LENGTH_ALLOWED 0x8000
 
 /** @def HSI_DEFAULT_BOOT_CONFIG
 *   @brief Default boot configuration:
