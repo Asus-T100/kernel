@@ -3657,7 +3657,7 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 
 	/* Pipeline configuration done through subdevs. Bail out now. */
 	if (!isp->isp_subdev.fmt_auto->val)
-		goto done;
+		goto set_fmt_to_isp;
 
 	/* get sensor resolution and format */
 	ret = atomisp_try_fmt(vdev, &snr_fmt, &res_overflow);
@@ -3777,7 +3777,7 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 					     &main_compose);
 	}
 
-	/* set format to isp */
+set_fmt_to_isp:
 	ret = atomisp_set_fmt_to_isp(vdev, &output_info, &raw_output_info,
 				     f->fmt.pix.width, f->fmt.pix.height,
 				     f->fmt.pix.pixelformat, source_pad);
