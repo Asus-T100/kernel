@@ -156,6 +156,10 @@ show_hsi_logical_traces_state(
 		return sprintf(temp_buf, "all\n");
 	case HSI_HIGH:
 		return sprintf(temp_buf, "high\n");
+	case HSI_HIGH_RX:
+		return sprintf(temp_buf, "high_rx\n");
+	case HSI_HIGH_TX:
+		return sprintf(temp_buf, "high_tx\n");
 	case HSI_OFF:
 		return sprintf(temp_buf, "off\n");
 	default:
@@ -183,11 +187,14 @@ store_hsi_logical_traces_state(struct device *dev,
 		hsi_logical_trace_state = HSI_ALL;
 	else if (sysfs_streq(buf, "high"))
 		hsi_logical_trace_state = HSI_HIGH;
+	else if (sysfs_streq(buf, "high_rx"))
+		hsi_logical_trace_state = HSI_HIGH_RX;
+	else if (sysfs_streq(buf, "high_tx"))
+		hsi_logical_trace_state = HSI_HIGH_TX;
 	else if (sysfs_streq(buf, "off"))
 		hsi_logical_trace_state = HSI_OFF;
 	else
 		retval = -EINVAL;
-
 	return retval;
 }
 
@@ -467,7 +474,14 @@ static int hsi_client_probe(struct device *dev)
 
 	hsi_protocol_context->cl[hsi_protocol_context->nb_client] = hsi;
 #ifdef HSI_USE_SEND_SCHEDULED
-	INIT_WORK(&hsi->send, hsi_logical_send_work);
+	INIT_WORK(&hsi->send_work, hsi_logical_send_work);
+
+	hsi->send_wq = create_singlethread_workqueue("hsi-send_wq");
+	if (!hsi->send_wq) {
+		EPRINTK("%s, Unable to create send workqueue\n", __func__);
+		return -ENOMEM;
+	}
+
 #endif /*#ifdef HSI_USE_SEND_SCHEDULED*/
 
 #ifdef HSI_USE_RCV_SCHEDULED
@@ -476,9 +490,10 @@ static int hsi_client_probe(struct device *dev)
 	spin_lock_init(&hsi->rcv_msgs_lock);
 
 	hsi->rcv_wq = create_singlethread_workqueue("hsi-rcv_wq");
-	if (!hsi->rcv_wq)
-		EPRINTK("Unable to create receive workqueue\n");
-
+	if (!hsi->rcv_wq) {
+		EPRINTK("%s, Unable to create receive workqueue\n", __func__);
+		return -ENOMEM;
+	}
 #endif /*#ifdef HSI_USE_RCV_SCHEDULED*/
 
 	hsi->hsi_cl = cl;
@@ -553,7 +568,6 @@ static int hsi_net_device_probe(struct platform_device *dev)
 	struct hsi_protocol *context;
 
 	struct net_device *ndev;
-
 	int err;
 
 	DPRINTK(" hsi_net_device_probe\n");
