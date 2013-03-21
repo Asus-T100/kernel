@@ -259,6 +259,29 @@ static void mrfl_sdio_cleanup(struct sdhci_pci_data *data)
 {
 }
 
+static int byt_sd_setup(struct sdhci_pci_data *data)
+{
+	u32 stepping;
+	stepping = intel_mid_soc_stepping();
+	if (stepping == 0x1 || stepping == 0x2)/* VLV2 A0 */
+		data->quirks |= SDHCI_QUIRK2_NO_1_8_V;
+	return 0;
+}
+
+/* BYT platform data */
+static struct sdhci_pci_data byt_sdhci_pci_data[] = {
+	[SD_INDEX] = {
+			.pdev = NULL,
+			.slotno = 0,
+			.rst_n_gpio = -EINVAL,
+			.cd_gpio = -EINVAL,
+			.quirks = 0,
+			.platform_quirks = 0,
+			.setup = byt_sd_setup,
+			.cleanup = NULL,
+			.power_up = 0,
+	},
+};
 
 static struct sdhci_pci_data *get_sdhci_platform_data(struct pci_dev *pdev)
 {
@@ -356,6 +379,9 @@ static struct sdhci_pci_data *get_sdhci_platform_data(struct pci_dev *pdev)
 			break;
 		}
 		break;
+	case PCI_DEVICE_ID_INTEL_BYT_SD:
+		pdata = &byt_sdhci_pci_data[SD_INDEX];
+		break;
 	default:
 		break;
 	}
@@ -420,3 +446,6 @@ DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_CLV_EMMC1,
 DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_MRFL_MMC,
 			mmc_sdhci_pci_early_quirks);
 
+/* BYT MMC/SD/SDIO PCI IDs */
+DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_BYT_SD,
+			mmc_sdhci_pci_early_quirks);
