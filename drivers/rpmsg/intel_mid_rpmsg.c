@@ -30,6 +30,7 @@
 #include <linux/slab.h>
 #include <linux/cdev.h>
 #include <linux/uaccess.h>
+#include <linux/sched.h>
 
 #include <asm/intel_mid_rpmsg.h>
 #include <asm/intel_mid_remoteproc.h>
@@ -94,6 +95,50 @@ int rpmsg_send_generic_raw_command(u32 cmd, u32 sub,
 }
 EXPORT_SYMBOL(rpmsg_send_generic_raw_command);
 
+/* Global lock for rpmsg framework */
+static struct rpmsg_lock global_lock = {
+	.lock = __MUTEX_INITIALIZER(global_lock.lock),
+	.locked_prev = 0,
+	.pending = ATOMIC_INIT(0),
+};
+
+#define is_global_locked_prev		(global_lock.locked_prev)
+#define set_global_locked_prev(lock)	(global_lock.locked_prev = lock)
+#define global_locked_by_current	(global_lock.lock.owner == current)
+
+void rpmsg_global_lock(void)
+{
+	atomic_inc(&global_lock.pending);
+	mutex_lock(&global_lock.lock);
+}
+EXPORT_SYMBOL(rpmsg_global_lock);
+
+void rpmsg_global_unlock(void)
+{
+	mutex_unlock(&global_lock.lock);
+	if (!atomic_dec_and_test(&global_lock.pending))
+		schedule();
+}
+EXPORT_SYMBOL(rpmsg_global_unlock);
+
+static void rpmsg_lock()
+{
+	if (!mutex_trylock(&global_lock.lock)) {
+		if (global_locked_by_current)
+			set_global_locked_prev(1);
+		else
+			rpmsg_global_lock();
+	}
+}
+
+static void rpmsg_unlock()
+{
+	if (!is_global_locked_prev)
+		rpmsg_global_unlock();
+	else
+		set_global_locked_prev(0);
+}
+
 int rpmsg_send_command(struct rpmsg_instance *instance, u32 cmd,
 						u32 sub, u8 *in,
 						u32 *out, u32 inlen,
@@ -105,6 +150,9 @@ int rpmsg_send_command(struct rpmsg_instance *instance, u32 cmd,
 		pr_err("%s: Instance is NULL\n", __func__);
 		return -EFAULT;
 	}
+
+	/* Hold global rpmsg lock */
+	rpmsg_lock();
 
 	mutex_lock(&instance->instance_lock);
 
@@ -149,6 +197,7 @@ int rpmsg_send_command(struct rpmsg_instance *instance, u32 cmd,
 	mutex_unlock(&instance->rx_lock);
 end:
 	mutex_unlock(&instance->instance_lock);
+	rpmsg_unlock();
 
 	return ret;
 }
@@ -279,11 +328,14 @@ void free_rpmsg_instance(struct rpmsg_channel *rpdev,
 				struct rpmsg_instance **pInstance)
 {
 	struct rpmsg_instance *instance = *pInstance;
+
+	mutex_lock(&instance->instance_lock);
 	rpmsg_destroy_ept(instance->endpoint);
 	kfree(instance->tx_msg);
 	instance->tx_msg = NULL;
 	kfree(instance->rx_msg);
 	instance->rx_msg = NULL;
+	mutex_unlock(&instance->instance_lock);
 	kfree(instance);
 	*pInstance = NULL;
 	dev_info(&rpdev->dev, "Freeing rpmsg device\n");

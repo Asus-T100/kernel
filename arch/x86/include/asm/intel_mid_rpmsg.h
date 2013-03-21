@@ -17,6 +17,12 @@ struct rpmsg_instance {
 	struct rpmsg_endpoint *endpoint;
 };
 
+struct rpmsg_lock {
+	struct mutex lock;
+	int locked_prev; /* locked prev flag */
+	atomic_t pending;
+};
+
 extern int rpmsg_send_command(struct rpmsg_instance *instance, u32 cmd,
 						u32 sub, u8 *in,
 						u32 *out, u32 inlen,
@@ -61,5 +67,8 @@ enum rpmsg_ipc_command_type {
 	RPMSG_IPC_RAW_COMMAND,
 	RPMSG_IPC_COMMAND_TYPE_NUM,
 };
+
+extern void rpmsg_global_lock(void);
+extern void rpmsg_global_unlock(void);
 
 #endif
