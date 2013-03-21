@@ -259,7 +259,7 @@ push_again:
  */
 static int dlp_trace_dev_open(struct inode *inode, struct file *filp)
 {
-	int ret = 0, state, opened, count;
+	int ret = 0, state, count;
 	unsigned long flags;
 	struct dlp_channel *ch_ctx = DLP_CHANNEL_CTX(DLP_CHANNEL_TRACE);
 	struct dlp_trace_ctx *trace_ctx = ch_ctx->ch_data;
@@ -415,7 +415,8 @@ static ssize_t dlp_trace_dev_read(struct file *filp,
 			/* Get the size & address */
 			ptr++;
 			more_packets = (*ptr) & DLP_HDR_MORE_DESC;
-			data_size = DLP_HDR_DATA_SIZE((*ptr)) - DLP_HDR_SPACE_AP;
+			data_size  = DLP_HDR_DATA_SIZE((*ptr));
+			data_size -= DLP_HDR_SPACE_AP;
 			data_addr = start_addr + offset + DLP_HDR_SPACE_AP;
 
 			/* Calculate the data size */

@@ -1074,25 +1074,6 @@ int dlp_ctrl_send_ack_nack(struct dlp_channel *ch_ctx)
 }
 
 /*
- * @brief Clean the stored open_conn command from channel context
- *
- * @param none
- *
- * @return none
- */
-void dlp_ctrl_clean_stored_cmd(void)
-{
-	int i;
-	struct dlp_hsi_channel *hsi_ch;
-
-	/* Get any saved OPEN_CONN params */
-	for (i = 0; i < DLP_CHANNEL_COUNT; i++) {
-		hsi_ch = &dlp_drv.channels_hsi[i];
-		hsi_ch->open_conn = 0 ;
-	}
-}
-
-/*
 * @brief Get the current channel state
 *
 * @param hsi_channel : The HSI channel ID to consider

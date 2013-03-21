@@ -365,11 +365,16 @@ void dlp_pdu_delete(struct dlp_xfer_ctx *xfer_ctx, struct hsi_msg *pdu,
 
 		xfer_ctx->all_len--;
 	} else {
+		u32 *ptr = sg_virt(pdu->sgt.sgl);
+
 		pdu->status = HSI_STATUS_COMPLETED;
 		pdu->actual_len = 0;
 		pdu->break_frame = 0;
 
 		xfer_ctx->room += dlp_pdu_room_in(pdu);
+
+		/* Reset the PDU header */
+		memset(ptr, 0, DLP_DEFAULT_DESC_OFFSET);
 
 		/* Recycle the pdu */
 		dlp_fifo_recycled_push(xfer_ctx, pdu);
@@ -1230,9 +1235,12 @@ int dlp_hsi_controller_push(struct dlp_xfer_ctx *xfer_ctx, struct hsi_msg *pdu)
 
 	/* Check credits */
 	if (!dlp_ctx_have_credits(xfer_ctx, ch_ctx)) {
-		pr_warn(DRVNAME ": CH%d (HSI CH%d) out of credits (%d)",
-				ch_ctx->ch_id,
-				ch_ctx->hsi_channel, ch_ctx->tx.seq_num);
+		pr_warn(DRVNAME ": CH%d %s ignored (credits:%d, seq_num:%d, closed:%d, timeout:%d)",
+			ch_ctx->ch_id,
+			xfer_ctx->ttype ? "TX" : "RX",
+			ch_ctx->credits,
+			xfer_ctx->seq_num,
+			dlp_drv.tty_closed, dlp_drv.tx_timeout);
 
 		goto out;
 	}
@@ -1716,6 +1724,26 @@ static void dlp_driver_delete(void)
 		}
 	}
 }
+
+/*
+ * @brief Clean the stored open_conn command from channel context
+ *
+ * @param none
+ *
+ * @return none
+ */
+void dlp_reset_channels_params(void)
+{
+	int i;
+	struct dlp_hsi_channel *hsi_ch;
+
+	/* Clear any postponed OPEN_CONN command */
+	for (i = 0; i < DLP_CHANNEL_COUNT; i++) {
+		hsi_ch = &dlp_drv.channels_hsi[i];
+		hsi_ch->open_conn = 0;
+	}
+}
+
 
 /**
  * dlp_driver_probe - creates a new context in the DLP driver

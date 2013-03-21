@@ -82,6 +82,16 @@
 #define DLP_TRACE_TX_PDU_SIZE	8192	/* 8 KBytes */
 #define DLP_TRACE_RX_PDU_SIZE	8192	/* 8 KBytes */
 
+/* Packet desc : Start Address + Size */
+#define DLP_PACKET_DESC_SIZE		8
+#define DLP_PACKET_SIGNATURE_SIZE	4
+#define DLP_PACKET_IN_PDU_COUNT		32  /* TX PDU desc items number */
+
+#define DLP_DEFAULT_DESC_OFFSET                           \
+	ALIGN(DLP_PACKET_SIGNATURE_SIZE +                     \
+		(DLP_PACKET_DESC_SIZE * DLP_PACKET_IN_PDU_COUNT), \
+		DLP_PACKET_ALIGN_CP)
+
 /* Alignment params */
 #define DLP_PACKET_ALIGN_AP		16
 #define DLP_PACKET_ALIGN_CP		16
@@ -547,6 +557,8 @@ void dlp_save_rx_callbacks(hsi_client_cb *event_cb);
 
 void dlp_restore_rx_callbacks(hsi_client_cb *event_cb);
 
+void dlp_reset_channels_params(void);
+
 /****************************************************************************
  *
  * RX/TX xfer contexts
@@ -586,8 +598,6 @@ int dlp_ctrl_close_channel(struct dlp_channel *ch_ctx);
 int dlp_ctrl_send_nop(struct dlp_channel *ch_ctx);
 
 int dlp_ctrl_send_ack_nack(struct dlp_channel *ch_ctx);
-
-void dlp_ctrl_clean_stored_cmd(void);
 
 inline void
 dlp_ctrl_set_channel_state(unsigned int hsi_channel, unsigned char);
