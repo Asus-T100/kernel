@@ -67,8 +67,8 @@ static const struct file_operations binder_##name##_fops = { \
 	.release = single_release, \
 }
 
-static int binder_proc_show(struct seq_file *m, void *unused);
-BINDER_DEBUG_ENTRY(proc);
+static const struct file_operations binder_proc_fops;
+static int proc_show(struct seq_file *m, void *unused);
 
 /* This is only defined in include/asm-arm/sizes.h */
 #ifndef SZ_1K
@@ -3543,7 +3543,6 @@ static void print_binder_proc_stats(struct seq_file *m,
 
 static int binder_state_show(struct seq_file *m, void *unused)
 {
-	struct binder_proc *proc;
 	struct hlist_node *pos;
 	struct binder_node *node;
 	int do_lock = !binder_debug_no_lock;
@@ -3557,31 +3556,10 @@ static int binder_state_show(struct seq_file *m, void *unused)
 		seq_puts(m, "dead nodes:\n");
 	hlist_for_each_entry(node, pos, &binder_dead_nodes, dead_node)
 		print_binder_node(m, node);
-
-	hlist_for_each_entry(proc, pos, &binder_procs, proc_node)
-		print_binder_proc(m, proc, 1);
 	if (do_lock)
 		binder_unlock(__func__);
-	return 0;
-}
 
-static int binder_stats_show(struct seq_file *m, void *unused)
-{
-	struct binder_proc *proc;
-	struct hlist_node *pos;
-	int do_lock = !binder_debug_no_lock;
-
-	if (do_lock)
-		binder_lock(__func__);
-
-	seq_puts(m, "binder stats:\n");
-
-	print_binder_stats(m, "", &binder_stats);
-
-	hlist_for_each_entry(proc, pos, &binder_procs, proc_node)
-		print_binder_proc_stats(m, proc);
-	if (do_lock)
-		binder_unlock(__func__);
+	seq_puts(m, "Please find per proc binder info in binder/proc\n");
 	return 0;
 }
 
@@ -3597,20 +3575,6 @@ static int binder_transactions_show(struct seq_file *m, void *unused)
 	seq_puts(m, "binder transactions:\n");
 	hlist_for_each_entry(proc, pos, &binder_procs, proc_node)
 		print_binder_proc(m, proc, 0);
-	if (do_lock)
-		binder_unlock(__func__);
-	return 0;
-}
-
-static int binder_proc_show(struct seq_file *m, void *unused)
-{
-	struct binder_proc *proc = m->private;
-	int do_lock = !binder_debug_no_lock;
-
-	if (do_lock)
-		binder_lock(__func__);
-	seq_puts(m, "binder proc state:\n");
-	print_binder_proc(m, proc, 1);
 	if (do_lock)
 		binder_unlock(__func__);
 	return 0;
@@ -3657,8 +3621,317 @@ static struct miscdevice binder_miscdev = {
 	.fops = &binder_fops
 };
 
+#define STATS_STAGE_OVERALL 0
+#define STATS_STAGE_PERPROC 1
+
+struct stats_private {
+	unsigned int where;   /*0 --overall stats, 1--per proc*/
+	struct binder_proc *proc;
+};
+
+static void *stats_start(struct seq_file *m, loff_t *pos)
+{
+	struct binder_proc *proc;
+	loff_t node = *pos;
+	struct hlist_node *proc_pos;
+	struct stats_private *priv = m->private;
+	binder_lock(__func__);
+	if (priv->where == STATS_STAGE_OVERALL) {
+		priv->proc = NULL+1;
+	} else if  (priv->where == STATS_STAGE_PERPROC) {
+		hlist_for_each_entry(proc, proc_pos, &binder_procs, proc_node) {
+			if (!node)
+				break;
+			node--;
+		}
+		if (proc_pos)
+			priv->proc = hlist_entry(proc_pos, typeof(*priv->proc),
+						proc_node);
+		else
+			priv->proc = NULL;
+	}
+	return priv->proc;
+}
+
+static void *stats_next(struct seq_file *m, void *arg, loff_t *pos)
+{
+	struct stats_private *priv = m->private;
+	struct hlist_node *next_proc_pos;
+	if (priv->where == STATS_STAGE_OVERALL) {
+		priv->where = STATS_STAGE_PERPROC;
+		priv->proc = hlist_entry(binder_procs.first,
+						typeof(*priv->proc),
+						proc_node);
+		(*pos) = 0;
+	} else if (priv->where == STATS_STAGE_PERPROC) {
+		next_proc_pos = priv->proc->proc_node.next;
+		(*pos)++;
+		if (next_proc_pos)
+			priv->proc = hlist_entry(next_proc_pos,
+						typeof(*priv->proc),
+						proc_node);
+		else
+			priv->proc = NULL;
+	}
+	return priv->proc;
+}
+
+static void stats_stop(struct seq_file *m, void *arg)
+{
+	binder_unlock(__func__);
+}
+
+static int stats_show(struct seq_file *m, void *arg)
+{
+	struct stats_private *priv = m->private;
+	if (priv->where == STATS_STAGE_OVERALL)
+		print_binder_stats(m, "", &binder_stats);
+	else if (priv->where == STATS_STAGE_PERPROC) {
+		struct binder_proc *proc = priv->proc;
+		print_binder_proc_stats(m, proc);
+	}
+	return 0;
+}
+
+
+static const struct seq_operations stats_op = {
+	.start = stats_start,
+	.next = stats_next,
+	.stop = stats_stop,
+	.show = stats_show,
+};
+
+
+static int stats_open(struct inode *inode, struct file *file)
+{
+	struct stats_private *priv;
+	int ret = -ENOMEM;
+	priv = kzalloc(sizeof(*priv), GFP_KERNEL);
+	if (priv) {
+		ret = seq_open(file, &stats_op);
+		if (!ret) {
+			struct seq_file *m = file->private_data;
+			m->private = priv;
+		} else {
+			kfree(priv);
+		}
+	}
+	return ret;
+}
+
+static const struct file_operations binder_stats_fops = {
+	.open = stats_open,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.release = seq_release_private,
+};
+
+#define PROC_STAGE_THREAD   0
+#define PROC_STAGE_NODE     1
+#define PROC_STAGE_REF      2
+#define PROC_STAGE_BUFWK    3
+#define PROC_STAGE_INVALID  4
+
+struct proc_private {
+	unsigned int where;   /*0 --thread, 1--node,
+					2--ref, 3--buffer,work*/
+	struct binder_proc *proc;
+	void *param;
+};
+
+static void *proc_start(struct seq_file *m, loff_t *pos)
+{
+	loff_t node = *pos;
+	struct proc_private *priv = m->private;
+	struct binder_proc *proc = priv->proc;
+	struct rb_node *n ;
+	binder_lock(__func__);
+	if  (priv->where == PROC_STAGE_THREAD) {
+		for (n = rb_first(&proc->threads); n != NULL; n = rb_next(n)) {
+			if (!node)
+				break;
+			node--;
+		}
+		if (n)
+			priv->param = rb_entry(n, struct binder_thread,
+							rb_node);
+		else {
+			priv->where = PROC_STAGE_NODE;
+			n = rb_first(&proc->nodes);
+			priv->param = rb_entry(n, struct binder_node,
+							rb_node);
+			(*pos) = 0;
+		}
+	} else if  (priv->where == PROC_STAGE_NODE) {
+		for (n = rb_first(&proc->nodes); n != NULL; n = rb_next(n)) {
+			if (!node)
+				break;
+			node--;
+		}
+		if (n)
+			priv->param = rb_entry(n, struct binder_node,
+							rb_node);
+		else {
+			priv->where = PROC_STAGE_REF;
+			n = rb_first(&proc->refs_by_desc);
+			priv->param = rb_entry(n, struct binder_ref,
+							rb_node_desc);
+			(*pos) = 0;
+		}
+	} else if  (priv->where == PROC_STAGE_REF) {
+		for (n = rb_first(&proc->refs_by_desc);
+			n != NULL;
+			n = rb_next(n)) {
+			if (!node)
+				break;
+			node--;
+		}
+		if (n)
+			priv->param = rb_entry(n, struct binder_ref,
+							rb_node_desc);
+		else {
+			priv->where = PROC_STAGE_BUFWK;
+			return NULL + 1;
+		}
+	} else if  (priv->where == PROC_STAGE_BUFWK) {
+		priv->where = PROC_STAGE_INVALID;
+		return NULL;
+	} else
+		return NULL;
+	return priv->param;
+}
+
+static void *proc_next(struct seq_file *m, void *arg, loff_t *pos)
+{
+	struct proc_private *priv = m->private;
+	struct binder_proc *proc = priv->proc;
+	struct rb_node *n ;
+
+	if (priv->where == PROC_STAGE_THREAD) {
+		struct binder_thread *thread;
+		thread = (struct binder_thread *)priv->param;
+		n = rb_next(&thread->rb_node);
+		(*pos)++;
+		if (n) {
+			priv->param = rb_entry(n, struct binder_thread,
+							rb_node);
+		} else {
+			priv->where = PROC_STAGE_NODE;
+			n = rb_first(&proc->nodes);
+			priv->param = rb_entry(n, struct binder_node,
+							rb_node);
+			(*pos) = 0;
+		}
+	} else if (priv->where == PROC_STAGE_NODE) {
+		struct binder_node *node;
+		node = (struct binder_node *)priv->param;
+		n = rb_next(&node->rb_node);
+		(*pos)++;
+		if (n)
+			priv->param = rb_entry(n, struct binder_node,
+							rb_node);
+		else {
+			priv->where = PROC_STAGE_REF;
+			n = rb_first(&proc->refs_by_desc);
+			priv->param = rb_entry(n, struct binder_ref,
+							rb_node_desc);
+			(*pos) = 0;
+		}
+	} else if (priv->where == PROC_STAGE_REF) {
+		struct binder_ref *ref = (struct binder_ref *)priv->param;
+		n = rb_next(&ref->rb_node_desc);
+		(*pos)++;
+		if (n)
+			priv->param = rb_entry(n, struct binder_ref,
+							rb_node_desc);
+		else {
+			priv->where = PROC_STAGE_BUFWK;
+			(*pos) = 0;
+		}
+	} else if (priv->where == PROC_STAGE_BUFWK) {
+		(*pos) = 0;
+		priv->where = PROC_STAGE_INVALID;
+		priv->param = NULL + 1;
+	} else
+		priv->param = NULL;
+	return priv->param;
+}
+
+static void proc_stop(struct seq_file *m, void *arg)
+{
+	binder_unlock(__func__);
+}
+
+static int proc_show(struct seq_file *m, void *arg)
+{
+	int print_all = 1;
+	struct proc_private *priv = m->private;
+	struct rb_node *n;
+	struct binder_work *w;
+	if (priv->where == PROC_STAGE_THREAD) {
+		struct binder_thread *thread;
+		thread = (struct binder_thread *)priv->param;
+		print_binder_thread(m, thread, print_all);
+	} else if (priv->where == PROC_STAGE_NODE) {
+		struct binder_node *node = (struct binder_node *)priv->param;
+		if (print_all || node->has_async_transaction)
+			print_binder_node(m, node);
+	} else if (priv->where == PROC_STAGE_REF) {
+		struct binder_ref *ref = (struct binder_ref *)priv->param;
+		if (print_all)
+			print_binder_ref(m, ref);
+	} else if (priv->where == PROC_STAGE_BUFWK) {
+		struct binder_proc *proc = priv->proc;
+		for (n = rb_first(&proc->allocated_buffers);
+			n != NULL;
+			n = rb_next(n))
+			print_binder_buffer(m, "  buffer",
+					rb_entry(n, struct binder_buffer,
+						rb_node));
+		list_for_each_entry(w, &proc->todo, entry)
+			print_binder_work(m, "	", "  pending transaction", w);
+		list_for_each_entry(w, &proc->delivered_death, entry) {
+			seq_puts(m, "  has delivered dead binder\n");
+			break;
+		}
+	}
+	return 0;
+}
+
+static const struct seq_operations proc_op = {
+	.start = proc_start,
+	.next	 = proc_next,
+	.stop = proc_stop,
+	.show = proc_show,
+};
+
+static int proc_open(struct inode *inode, struct file *file)
+{
+	struct proc_private *priv;
+	int ret = -ENOMEM;
+	priv = kzalloc(sizeof(*priv), GFP_KERNEL);
+	if (priv) {
+		ret = seq_open(file, &proc_op);
+		if (!ret) {
+			struct seq_file *m = file->private_data;
+			m->private = priv;
+			priv->proc = inode->i_private;
+		} else {
+			kfree(priv);
+		}
+	}
+	return ret;
+}
+
+static const struct file_operations binder_proc_fops = {
+	.open		= proc_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release		= seq_release_private,
+};
+
+
 BINDER_DEBUG_ENTRY(state);
-BINDER_DEBUG_ENTRY(stats);
 BINDER_DEBUG_ENTRY(transactions);
 BINDER_DEBUG_ENTRY(transaction_log);
 
