@@ -1443,6 +1443,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	dev_priv->ied_enabled = false;
 	dev_priv->ied_context = NULL;
 	dev_priv->bhdmiconnected = false;
+	dev_priv->bhdmi_enable = true;
 	dev_priv->dpms_on_off = false;
 	atomic_set(&dev_priv->mipi_flip_abnormal, 0);
 	dev_priv->brightness_adjusted = 0;
@@ -2122,6 +2123,7 @@ static int psb_disp_ioctl(struct drm_device *dev, void *data,
 			dev_priv->flip_tail = i;
 		dp_ctrl->u.buf_data.h_buffer = (void *)dev_priv->flip_tail;
 	} else if (dp_ctrl->cmd == DRM_PSB_DISP_PLANEB_DISABLE) {
+		dev_priv->bhdmi_enable = false;
 		if (DISP_PLANEB_STATUS == DISPLAY_PLANE_DISABLE)
 			ret = -1;
 		else {
@@ -2173,6 +2175,7 @@ static int psb_disp_ioctl(struct drm_device *dev, void *data,
 
 			ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 		}
+		dev_priv->bhdmi_enable = true;
 	} else if (dp_ctrl->cmd == DRM_PSB_HDMI_OSPM_ISLAND_DOWN) {
 		/* before turning off HDMI power island, re-check the
 		*HDMI hotplus status in case that there are plug-in

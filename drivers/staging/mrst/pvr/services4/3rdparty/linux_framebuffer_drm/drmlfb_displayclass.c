@@ -1594,7 +1594,8 @@ static IMG_BOOL bIllegalFlipContexts(IMG_VOID *pvData)
 				psPrimaryContext->index = INVALID_INDEX;
 			} else if (psPrimaryContext->index == 1 &&
 					hdmi_state &&
-					dev_priv->early_suspended) {
+					(dev_priv->early_suspended ||
+					!dev_priv->bhdmi_enable)) {
 				/* HDMI off, should not flush PIPEB */
 				psPrimaryContext->index = INVALID_INDEX;
 			} else if (psPrimaryContext->index == 2) {
@@ -1616,7 +1617,8 @@ static IMG_BOOL bIllegalFlipContexts(IMG_VOID *pvData)
 				psSpriteContext->index = INVALID_INDEX;
 			} else if (psSpriteContext->index == 1 &&
 					hdmi_state &&
-					dev_priv->early_suspended) {
+					(dev_priv->early_suspended ||
+					!dev_priv->bhdmi_enable)) {
 				/* HDMI off, should not flush PIPEB */
 				psSpriteContext->index = INVALID_INDEX;
 			} else if (psSpriteContext->index == 2) {

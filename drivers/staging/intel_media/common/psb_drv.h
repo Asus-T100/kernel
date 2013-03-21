@@ -982,6 +982,7 @@ struct drm_psb_private {
 	/*hdmi connected status */
 	bool bhdmiconnected;
 	bool dpms_on_off;
+	bool bhdmi_enable;
 	struct workqueue_struct *hpd_detect;
 	pfn_screen_event_handler pvr_screen_event_handler;
 	struct mutex dpms_mutex;
