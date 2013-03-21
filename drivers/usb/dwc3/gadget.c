@@ -1773,7 +1773,8 @@ static int dwc3_stop_peripheral(struct usb_gadget *g)
 		dwc3_writel(dwc->regs, DWC3_GEVNTADRLO(n), 0);
 		dwc3_writel(dwc->regs, DWC3_GEVNTADRHI(n), 0);
 		dwc3_writel(dwc->regs, DWC3_GEVNTSIZ(n), 0);
-		dwc3_writel(dwc->regs, DWC3_GEVNTCOUNT(n), 0);
+		dwc3_writel(dwc->regs, DWC3_GEVNTCOUNT(n),
+			dwc3_readl(dwc->regs, DWC3_GEVNTCOUNT(n)));
 	}
 
 #if 0
