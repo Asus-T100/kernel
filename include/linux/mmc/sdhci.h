@@ -91,22 +91,27 @@ struct sdhci_host {
 	unsigned int quirks2;	/* More deviations from spec. */
 
 #define SDHCI_QUIRK2_HOST_OFF_CARD_ON			(1<<0)
+/* The system physically doesn't support 1.8v, even if the host does */
+#define SDHCI_QUIRK2_NO_1_8_V				(1<<2)
+
+/* Intel private quirk2 starts on 15 */
+
 /* V2.0 host controller support DDR50 */
-#define SDHCI_QUIRK2_V2_0_SUPPORT_DDR50			(1<<1)
+#define SDHCI_QUIRK2_V2_0_SUPPORT_DDR50			(1<<15)
 /* Controller has bug when enabling Auto CMD23 */
-#define SDHCI_QUIRK2_BROKEN_AUTO_CMD23			(1<<2)
+#define SDHCI_QUIRK2_BROKEN_AUTO_CMD23			(1<<16)
 /* HC Reg High Speed must be set later than HC2 Reg 1.8v Signaling Enable */
-#define SDHCI_QUIRK2_HIGH_SPEED_SET_LATE		(1<<3)
+#define SDHCI_QUIRK2_HIGH_SPEED_SET_LATE		(1<<17)
 /* BRCM voltage support: advertise 2.0v support and force using 1.8v instead */
-#define SDHCI_QUIRK2_ADVERTISE_2V0_FORCE_1V8		(1<<4)
+#define SDHCI_QUIRK2_ADVERTISE_2V0_FORCE_1V8		(1<<18)
 /* to allow mmc_detect to detach the bus */
-#define SDHCI_QUIRK2_DISABLE_MMC_CAP_NONREMOVABLE	(1<<5)
+#define SDHCI_QUIRK2_DISABLE_MMC_CAP_NONREMOVABLE	(1<<19)
 /* avoid detect/rescan/poweoff operations on suspend/resume. */
-#define SDHCI_QUIRK2_ENABLE_MMC_PM_IGNORE_PM_NOTIFY	(1<<6)
+#define SDHCI_QUIRK2_ENABLE_MMC_PM_IGNORE_PM_NOTIFY	(1<<20)
 /* Disable eMMC/SD card High speed feature. */
-#define SDHCI_QUIRK2_DISABLE_HIGH_SPEED			(1<<7)
-#define SDHCI_QUIRK2_CAN_VDD_300			(1<<8)
-#define SDHCI_QUIRK2_CAN_VDD_330			(1<<9)
+#define SDHCI_QUIRK2_DISABLE_HIGH_SPEED			(1<<21)
+#define SDHCI_QUIRK2_CAN_VDD_300			(1<<22)
+#define SDHCI_QUIRK2_CAN_VDD_330			(1<<23)
 
 	int irq;		/* Device IRQ */
 	void __iomem *ioaddr;	/* Mapped address */
