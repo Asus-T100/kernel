@@ -1373,8 +1373,15 @@ skip_countries:
 
 
 	/* Enable Runtime-PM for CTP Modem */
-	if (is_comneon_modem(usb_dev) || is_hsic_host(usb_dev))
+	if (is_comneon_modem(usb_dev))
 		usb_enable_autosuspend(usb_dev);
+
+	/* Enable Runtime-PM for HSIC */
+	if (is_hsic_host(usb_dev)) {
+		dev_dbg(&intf->dev,
+			"Enable autosuspend\n");
+		usb_enable_autosuspend(usb_dev);
+	}
 
 	return 0;
 alloc_fail7:
