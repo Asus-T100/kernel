@@ -17,7 +17,7 @@
 #include <linux/sfi.h>
 struct msic_audio_platform_data {
 	/* Intel software platform id*/
-	const struct sfi_soft_platform_id *spid;
+	const struct soft_platform_id *spid;
 	int jack_gpio;
 };
 

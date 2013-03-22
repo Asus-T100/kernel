@@ -11,7 +11,7 @@
 #ifndef _ASM_X86_SPID_H
 #define _ASM_X86_SPID_H
 
-struct sfi_soft_platform_id {
+struct soft_platform_id {
 	u16 customer_id; /*Defines the final customer for the product */
 	u16 vendor_id; /* Defines who owns the final product delivery */
 	u16 manufacturer_id; /* Defines who build the hardware. This can be

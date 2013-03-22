@@ -83,7 +83,7 @@ struct intel_v4l2_subdev_table {
 
 struct atomisp_platform_data {
 	struct intel_v4l2_subdev_table *subdevs;
-	const struct sfi_soft_platform_id *spid;
+	const struct soft_platform_id *spid;
 };
 
 struct camera_sensor_platform_data {
