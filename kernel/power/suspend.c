@@ -24,9 +24,9 @@
 #include <linux/export.h>
 #include <linux/suspend.h>
 #include <linux/syscore_ops.h>
-#include <linux/rtc.h>
 #include <linux/ftrace.h>
 #include <linux/workqueue.h>
+#include <linux/rtc.h>
 #include <trace/events/power.h>
 #include <linux/intel_mid_pm.h>
 
