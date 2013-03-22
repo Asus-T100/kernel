@@ -220,8 +220,6 @@ static void dwc_core_reset(struct usb_hcd *hcd)
 	val = readl(hcd->regs + GUCTL);
 	val &= ~GUCTL_CMDEVADDR;
 	writel(val, hcd->regs + GUCTL);
-
-	dwc_xhci_enable_phy_suspend(hcd, 1);
 }
 
 
