@@ -55,6 +55,24 @@ extern void register_rpmsg_service(char *name, int id, u32 addr);
 extern int sdhci_pci_request_regulators(void);
 extern u32 intel_mid_soc_stepping(void);
 
+/* OEMB table */
+struct sfi_table_oemb {
+	struct sfi_table_header header;
+	u32 board_id;
+	u32 board_fab;
+	u8 iafw_major_version;
+	u8 iafw_main_version;
+	u8 val_hooks_major_version;
+	u8 val_hooks_minor_version;
+	u8 ia_suppfw_major_version;
+	u8 ia_suppfw_minor_version;
+	u8 scu_runtime_major_version;
+	u8 scu_runtime_minor_version;
+	u8 ifwi_major_version;
+	u8 ifwi_minor_version;
+	struct sfi_soft_platform_id spid;
+} __packed;
+
 /*
  * Here defines the array of devices platform data that IAFW would export
  * through SFI "DEVS" table, we use name and type to match the device and

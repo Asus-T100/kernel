@@ -124,24 +124,6 @@ struct sfi_soft_platform_id {
 	u8  fru[SPID_FRU_SIZE]; /* Field Replaceabl Unit */
 } __packed;
 
-/* OEMB table */
-struct sfi_table_oemb {
-	struct sfi_table_header header;
-	u32 board_id;
-	u32 board_fab;
-	u8 iafw_major_version;
-	u8 iafw_main_version;
-	u8 val_hooks_major_version;
-	u8 val_hooks_minor_version;
-	u8 ia_suppfw_major_version;
-	u8 ia_suppfw_minor_version;
-	u8 scu_runtime_major_version;
-	u8 scu_runtime_minor_version;
-	u8 ifwi_major_version;
-	u8 ifwi_minor_version;
-	struct sfi_soft_platform_id spid;
-} __packed;
-
 /* Comply with UEFI spec 2.1 */
 struct sfi_mem_entry {
 	u32	type;
