@@ -285,8 +285,11 @@ static void intel_rproc_scu_kick(struct rproc *rproc, int vqid)
 		 * operation.
 		 */
 		rvdev = find_rvdev(rproc, VIRTIO_ID_RPMSG);
-		intel_mid_rproc_vq_interrupt(rproc,
-			rvdev->vring[RX_VRING].notifyid);
+		if (rvdev)
+			intel_mid_rproc_vq_interrupt(rproc,
+				rvdev->vring[RX_VRING].notifyid);
+		else
+			WARN(1, "%s: can't find given rproc state\n", __func__);
 		break;
 
 	default:
