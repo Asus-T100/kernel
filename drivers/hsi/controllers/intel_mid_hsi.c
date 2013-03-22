@@ -1536,6 +1536,7 @@ static void hsi_ctrl_clean_reset(struct intel_controller *intel_hsi)
 	void __iomem *dma	= intel_hsi->dma_io;
 	int i, version = intel_hsi->version;
 	unsigned long flags;
+	u32 program_reg = 0;
 
 	/* Disable the interrupt line */
 	disable_irq(intel_hsi->irq);
@@ -1578,6 +1579,12 @@ static void hsi_ctrl_clean_reset(struct intel_controller *intel_hsi)
 	/* Disable IRQ */
 	hsi_enable_interrupt(ctrl, version, 0);
 	hsi_enable_error_interrupt(ctrl, version, 0);
+
+	/* Reset the controller to for the lines to low*/
+	iowrite32(1, ARASAN_REG(PROGRAM));
+	do{
+		program_reg = ioread32(ARASAN_REG(PROGRAM));
+	} while ((program_reg & ARASAN_RESET));
 
 	/* Kill RX and TX wake sources and disable all channels */
 	iowrite32(0, ARASAN_REG(PROGRAM));

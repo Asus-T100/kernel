@@ -23,8 +23,8 @@
 struct intel_mid_thermal_sensor {
 	char name[THERMAL_NAME_LENGTH];
 	unsigned int index;
-	unsigned long slope;
-	unsigned long intercept;
+	long slope;
+	long intercept;
 	int adc_channel;
 	bool direct;
 	void *priv;

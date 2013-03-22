@@ -109,6 +109,7 @@ struct platform_info {
 };
 
 static struct platform_info *platforminfo;
+static struct rpmsg_instance *thermal_rpmsg_instance;
 
 struct thermal_device_info {
 	struct intel_mid_thermal_sensor *sensor;
@@ -163,8 +164,8 @@ static int soc_set_cur_state(struct thermal_cooling_device *cdev,
 	}
 	/* Send IPC command to throttle SoC */
 	mutex_lock(&soc_cdev_info.lock_cool_state);
-	ret = intel_scu_ipc_command(SOC_IPC_COMMAND, 0,
-			(u8 *) &state, 4, NULL, 0);
+	ret = rpmsg_send_command(thermal_rpmsg_instance, SOC_IPC_COMMAND,
+				0, (u8 *) &state, NULL, 4, 0);
 	if (ret)
 		pr_err("IPC_COMMAND failed: %d\n", ret);
 	else
@@ -447,7 +448,7 @@ static int mid_thermal_suspend(struct device *dev)
 }
 
 #ifdef CONFIG_DEBUG_THERMAL
-static int read_slope(struct thermal_zone_device *tzd, unsigned long *slope)
+static int read_slope(struct thermal_zone_device *tzd, long *slope)
 {
 	struct thermal_device_info *td_info = tzd->devdata;
 
@@ -456,7 +457,7 @@ static int read_slope(struct thermal_zone_device *tzd, unsigned long *slope)
 	return 0;
 }
 
-static int update_slope(struct thermal_zone_device *tzd, unsigned long slope)
+static int update_slope(struct thermal_zone_device *tzd, long slope)
 {
 	struct thermal_device_info *td_info = tzd->devdata;
 
@@ -465,8 +466,7 @@ static int update_slope(struct thermal_zone_device *tzd, unsigned long slope)
 	return 0;
 }
 
-static int read_intercept(struct thermal_zone_device *tzd,
-			unsigned long *intercept)
+static int read_intercept(struct thermal_zone_device *tzd, long *intercept)
 {
 	struct thermal_device_info *td_info = tzd->devdata;
 
@@ -475,8 +475,7 @@ static int read_intercept(struct thermal_zone_device *tzd,
 	return 0;
 }
 
-static int update_intercept(struct thermal_zone_device *tzd,
-			unsigned long intercept)
+static int update_intercept(struct thermal_zone_device *tzd, long intercept)
 {
 	struct thermal_device_info *td_info = tzd->devdata;
 
@@ -691,16 +690,30 @@ static void mid_therm_module_exit(void)
 
 static int mid_therm_rpmsg_probe(struct rpmsg_channel *rpdev)
 {
-	int ret = 0;
+	int ret;
+
+	dev_info(&rpdev->dev, "Probed mid_therm rpmsg device\n");
+
 	if (rpdev == NULL) {
 		pr_err("rpmsg channel not created\n");
 		ret = -ENODEV;
 		goto out;
 	}
 
-	dev_info(&rpdev->dev, "Probed mid_therm rpmsg device\n");
+	/* Allocate rpmsg instance for watchdog*/
+	ret = alloc_rpmsg_instance(rpdev, &thermal_rpmsg_instance);
+	if (!thermal_rpmsg_instance) {
+		dev_err(&rpdev->dev, "kzalloc watchdog instance failed\n");
+		goto out;
+	}
 
+	/* Initialize rpmsg instance */
+	init_rpmsg_instance(thermal_rpmsg_instance);
+
+	/* Init mid_thermal module */
 	ret = mid_therm_module_init();
+	if (ret)
+		free_rpmsg_instance(rpdev, &thermal_rpmsg_instance);
 out:
 	return ret;
 }
@@ -708,6 +721,7 @@ out:
 static void mid_therm_rpmsg_remove(struct rpmsg_channel *rpdev)
 {
 	mid_therm_module_exit();
+	free_rpmsg_instance(rpdev, &thermal_rpmsg_instance);
 	dev_info(&rpdev->dev, "Removed mid_therm rpmsg device\n");
 }
 

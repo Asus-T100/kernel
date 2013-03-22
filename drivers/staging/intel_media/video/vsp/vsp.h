@@ -63,8 +63,6 @@
 /* MMU */
 #define MMU_INVALID         0x1B0000
 #define MMU_TABLE_ADDR      0x1B0004
-#define VSP_MMU_PAGE_SHIFT  12
-#define VSP_MMU_PAGE_BYTES  4096
 
 /* IRQ controller */
 #define VSP_IRQ_REG_BASE 0x190000
@@ -216,7 +214,7 @@ struct vsp_private {
 	struct ttm_bo_kmap_obj setting_kmap;
 	struct vsp_settings_t *setting;
 
-	struct vsp_config config;
+	struct vsp_secure_boot_header boot_header;
 
 	struct vsp_ctrl_reg *ctrl;
 
@@ -233,7 +231,8 @@ struct vsp_private {
 	/* pm suspend wq */
 	struct delayed_work vsp_suspend_wq;
 
-	int handling_cmd;
+	/* the number of cmd will send to VSP */
+	int num_cmd;
 };
 
 extern int vsp_init(struct drm_device *dev);
@@ -266,9 +265,9 @@ extern int psb_vsp_save_context(struct drm_device *dev);
 extern int psb_vsp_restore_context(struct drm_device *dev);
 extern int psb_check_vsp_idle(struct drm_device *dev);
 
-extern void vsp_init_function(struct drm_psb_private *dev_priv);
-extern void vsp_continue_function(struct drm_psb_private *dev_priv);
-extern void vsp_resume_function(struct drm_psb_private *dev_priv);
+void vsp_init_function(struct drm_psb_private *dev_priv);
+void vsp_continue_function(struct drm_psb_private *dev_priv);
+void vsp_resume_function(struct drm_psb_private *dev_priv);
 
 extern int psb_vsp_dump_info(struct drm_psb_private *dev_priv);
 

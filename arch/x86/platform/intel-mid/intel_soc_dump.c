@@ -31,11 +31,17 @@
  * $ echo "dump command" > dump_cmd
  * $ cat dump_output
  *
- * mmio read: echo "r[1|2|4] mmio <addr> [<len>]" > dump_cmd
+ * I/O memory read: echo "r[1|2|4] mmio <addr> [<len>]" > dump_cmd
  *     e.g.  echo "r mmio 0xff180000" > dump_cmd
  *
- * mmio write: echo "w[1|2|4] <addr> <val>" > dump_cmd
+ * I/O memory write: echo "w[1|2|4] <addr> <val>" > dump_cmd
  *     e.g.  echo "w mmio 0xff190000 0xf0107a08" > dump_cmd
+ *
+ * I/O port read: echo "r[1|2|4] port <port>" > dump_cmd
+ *     e.g.  echo "r port 0xcf8" > dump_cmd
+ *
+ * I/O port write: echo "w[1|2|4] <port> <val>" > dump_cmd
+ *     e.g.  echo "w4 port 0xcfc 0x80002188" > dump_cmd
  *
  * message bus read: echo "r msg_bus <port> <addr> [<len>]" > dump_cmd
  *     e.g.  echo "r msg_bus 0x02 0x30" > dump_cmd
@@ -100,11 +106,12 @@
 #define ACCESS_WIDTH_32BIT	4
 #define ACCESS_WIDTH_64BIT	8
 
-#define ACCESS_BUS_MMIO		1
-#define ACCESS_BUS_MSG_BUS	2
-#define ACCESS_BUS_PCI		3
-#define ACCESS_BUS_MSR		4
-#define ACCESS_BUS_I2C		5
+#define ACCESS_BUS_MMIO		1 /* I/O memory */
+#define ACCESS_BUS_PORT		2 /* I/O port */
+#define ACCESS_BUS_MSG_BUS	3 /* message bus */
+#define ACCESS_BUS_PCI		4 /* PCI bus */
+#define ACCESS_BUS_MSR		5 /* MSR registers */
+#define ACCESS_BUS_I2C		6 /* I2C bus */
 
 #define ACCESS_DIR_READ		1
 #define ACCESS_DIR_WRITE	2
@@ -133,8 +140,11 @@ static int access_dir, access_width, access_bus, access_len;
 static u32 access_value;
 static u64 access_value_64;
 
-/* mmio */
+/* I/O memory */
 static u32 mmio_addr;
+
+/* I/O port */
+static unsigned port_addr;
 
 /* msg_bus */
 static u8 msg_bus_port;
@@ -476,6 +486,69 @@ static int parse_mmio_args(char **arg_list, int arg_num)
 			snprintf(err_buf, MAX_ERRLEN,
 				"invalid mmio address %s\n",
 						arg_list[3]);
+			goto failed;
+		}
+	}
+
+	return 0;
+
+failed:
+	return -EINVAL;
+}
+
+static int parse_port_args(char **arg_list, int arg_num)
+{
+	int ret;
+
+	if (arg_num < 2) {
+		snprintf(err_buf, MAX_ERRLEN, "too few arguments\n"
+			"usage: r[1|2|4] port <port>\n"
+			"       w[1|2|4] port <port> <val>\n");
+		goto failed;
+	}
+
+	if (access_width == ACCESS_WIDTH_DEFAULT)
+		access_width = ACCESS_WIDTH_8BIT;
+
+	ret = kstrtou16(arg_list[2], 0, &port_addr);
+	if (ret) {
+		snprintf(err_buf, MAX_ERRLEN, "invalid port address %s\n",
+							 arg_list[2]);
+		goto failed;
+	}
+
+	if ((access_width == ACCESS_WIDTH_32BIT) &&
+		(port_addr % ACCESS_WIDTH_32BIT)) {
+		snprintf(err_buf, MAX_ERRLEN,
+			"port %x is not 4 bytes aligned!\n", port_addr);
+		goto failed;
+	}
+
+	if ((access_width == ACCESS_WIDTH_16BIT) &&
+		(port_addr % ACCESS_WIDTH_16BIT)) {
+		snprintf(err_buf, MAX_ERRLEN,
+			"port %x is not 2 bytes aligned!\n", port_addr);
+		goto failed;
+	}
+
+	if (access_dir == ACCESS_DIR_READ) {
+		if (arg_num != 3) {
+			snprintf(err_buf, MAX_ERRLEN,
+				"usage: r[1|2|4] port <port>\n");
+			goto failed;
+		}
+	}
+
+	if (access_dir == ACCESS_DIR_WRITE) {
+		if (arg_num != 4) {
+			snprintf(err_buf, MAX_ERRLEN,
+				"need exact 4 arguments for port write.\n");
+			goto failed;
+		}
+		ret = kstrtou32(arg_list[3], 0, &access_value);
+		if (ret) {
+			snprintf(err_buf, MAX_ERRLEN,
+				"invalid value %s\n", arg_list[3]);
 			goto failed;
 		}
 	}
@@ -855,6 +928,9 @@ static ssize_t dump_cmd_write(struct file *file, const char __user *buf,
 	if (!strncmp(arg_list[1], "mmio", 4)) {
 		access_bus = ACCESS_BUS_MMIO;
 		ret = parse_mmio_args(arg_list, arg_num);
+	} else if (!strncmp(arg_list[1], "port", 4)) {
+		access_bus = ACCESS_BUS_PORT;
+		ret = parse_port_args(arg_list, arg_num);
 	} else if (!strncmp(arg_list[1], "msg_bus", 7)) {
 		access_bus = ACCESS_BUS_MSG_BUS;
 		ret = parse_msg_bus_args(arg_list, arg_num);
@@ -1012,6 +1088,43 @@ static int dump_output_show_mmio(struct seq_file *s)
 	return 0;
 }
 
+static int dump_output_show_port(struct seq_file *s)
+{
+	if (access_dir == ACCESS_DIR_WRITE) {
+		switch (access_width) {
+		case ACCESS_WIDTH_8BIT:
+		case ACCESS_WIDTH_DEFAULT:
+			outb((u8) access_value, port_addr);
+			break;
+		case ACCESS_WIDTH_16BIT:
+			outw((u16) access_value, port_addr);
+			break;
+		case ACCESS_WIDTH_32BIT:
+			outl(access_value, port_addr);
+			break;
+		default:
+			break; /* never happen */
+		}
+		seq_printf(s, "write succeeded\n");
+	} else {
+		switch (access_width) {
+		case ACCESS_WIDTH_32BIT:
+			seq_printf(s, " %08x\n", inl(port_addr));
+			break;
+		case ACCESS_WIDTH_16BIT:
+			seq_printf(s, " %04x\n", (u16) inw(port_addr));
+			break;
+		case ACCESS_WIDTH_8BIT:
+			seq_printf(s, " %02x\n", (u8) inb(port_addr));
+			break;
+		default:
+			break;
+		}
+	}
+
+	return 0;
+}
+
 static int dump_output_show_msg_bus(struct seq_file *s)
 {
 	int i, comp1, comp2;
@@ -1060,6 +1173,7 @@ static int dump_output_show_pci(struct seq_file *s)
 			pci_bus, pci_dev, pci_func);
 		return 0;
 	}
+
 	if (pm_runtime_get_sync(&pdev->dev) < 0) {
 		seq_printf(s, "can't put pci device %d:%d:%d into D0i0 state\n",
 			pci_bus, pci_dev, pci_func);
@@ -1262,6 +1376,9 @@ static int dump_output_show(struct seq_file *s, void *unused)
 	switch (access_bus) {
 	case ACCESS_BUS_MMIO:
 		ret = dump_output_show_mmio(s);
+		break;
+	case ACCESS_BUS_PORT:
+		ret = dump_output_show_port(s);
 		break;
 	case ACCESS_BUS_MSG_BUS:
 		ret = dump_output_show_msg_bus(s);

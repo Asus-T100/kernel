@@ -51,7 +51,8 @@ enum VssFrcQuality {
 enum VssFrcConversionRate {
 	VssFrc2xConversionRate,
 	VssFrc2_5xConversionRate,
-	VssFrc4xConversionRate
+	VssFrc4xConversionRate,
+	VssFrc1_25xConversionRate
 };
 
 struct VssProcPipelineParameterBuffer {
@@ -115,7 +116,12 @@ struct VssProcPicture {
 	unsigned int width;
 	unsigned int rot_angle;
 	unsigned int stride;
+	/* frame raw format */
 	unsigned int format;
+	/* flag indicating if frame is stored in tiled format */
+	unsigned int tiled;
+	/* to make multiple of 32 bytes*/
+	int _pad[7];
 };
 
 struct VssProcPictureParameterBuffer {
@@ -189,21 +195,25 @@ struct vss_response_t {
  * Response types
  */
 enum VssResponseType {
-	VssCommandBufferReadyResponse,
-	VssInputSurfaceReadyResponse,
-	VssOutputSurfaceReadyResponse,
-	VssOutputSurfaceFreeResponse,
-	VssOutputSurfaceCrcResponse,
-	VssEndOfSequenceResponse,
-	VssErrorResponse,
-	VssIdleResponse
+	VssIdleResponse               = 0x80010000,
+	VssErrorResponse              = 0x80020000,
+	VssEndOfSequenceResponse      = 0x80030000,
+	VssCommandBufferReadyResponse = 0x80040000,
+	VssInputSurfaceReadyResponse  = 0x80050000,
+	VssOutputSurfaceReadyResponse = 0x80060000
 };
 
 enum VssStatus {
-	VssOK,
-	VssInvalidCommandType,
-	VssInvalidCommandArgument,
-	VssInvalidProcPictureCommand
+	VssOK                         = 0x80010000,
+	VssInvalidCommandType         = 0x80020000,
+	VssInvalidCommandArgument     = 0x80030000,
+	VssInvalidProcPictureCommand  = 0x80040000,
+	VssInvalidDdrAddress          = 0x80050000
+};
+
+enum FrcResponseType {
+	VssOutputSurfaceFreeResponse = 0x0000F001,
+	VssOutputSurfaceCrcResponse  = 0x0000F002
 };
 
 enum vsp_format {
@@ -222,12 +232,7 @@ struct vsp_data {
 	unsigned int uninit_req;
 };
 
-/**
- * Magic number to verify if firmware blob header matches the expected
- * firmware format. This number is both put in the firmware-blob-header
- * as well as shipped with the VSP-API-code.
- */
-#define VSP_FIRMWARE_MAGIC_NUMBER 0x45BF1838
+#define VSP_SECURE_BOOT_MAGIC_NR 0xb0070001
 
 /**
  * Maximum number of programs supported by firmware blob header.
@@ -253,73 +258,93 @@ enum vsp_processor {
 };
 
 /**
-* Struct containing information from the host for the firmware boot.
-* The firmware will receive the information in this struct through
-* the firmware header of the blob.
+* Header-data/struct by PUnit to start VSP boot-processor
+* This struct is mapped directly into the header of the multi-application-blob
+*
+* For each value that is to be written to the VSP, the register-address to
+* write to is listed directly after the value to be written.
+*
+* Entries that contain values can be written directly into the VSP-system.
+* Offsets need to have the secure-boot-header-address added and then be written
+* into the VSP
+*
+* boot_start_value should always be the last value written. (Since it starts
+* the VSP)
 */
-struct vsp_config {
-	/* Magic number to verify if firmware blob header matches
-	   the expected firmware format
-	 */
+struct vsp_secure_boot_header {
+	/* Magic number to identify header version */
 	unsigned int magic_number;
-	unsigned int num_programs;
-	/* array of program offsets */
-	unsigned int program_offset[VSP_MAX_PROGRAMS];
-	/* offsets in string table */
-	unsigned int program_name_offset[VSP_MAX_PROGRAMS];
-	char string_table[VSP_STRING_TABLE_SIZE];
 
-	/* boot program info */
-	unsigned int boot_processor;
-	unsigned int api_processor;
+	/* Offset to text section of boot-program in blob */
+	unsigned int boot_text_offset;
+	/* iCache base-address of boot-processor */
+	unsigned int boot_text_reg;
 
-	/* start of the boot-program code
-	 * add the firmware addr to this offset to get the iCache
-	 * base address for boot-processor
-	 */
-	unsigned int text_src;
+	/* Value of icache-control-bits to write to boot-processor */
+	unsigned int boot_icache_value;
+	/* status&control register of boot-processor */
+	unsigned int boot_icache_reg;
 
-	/* PC of init entry function */
-	unsigned int init_addr;
-	/* PC of main entry function */
-	unsigned int main_addr;
+	/* Value of program counter to write to boot-processor */
+	/* address of main-function in boot-program */
+	unsigned int boot_pc_value;
+	/* pc-start-register of boot-processor */
+	unsigned int boot_pc_reg;
+
+	/* Offset of multi-application-header in blob */
+	unsigned int ma_header_offset;
+	unsigned int ma_header_reg;
+
+	/* Value to write to start the boot-processor */
+	unsigned int boot_start_value;
+	/* status&control register of boot-processor */
+	unsigned int boot_start_reg;
+};
+
+enum vsp_ctrl_reg_addr {
+	VSP_FIRMWARE_ADDR_REG     = 2,
+	VSP_SETTING_ADDR_REG      = 3,
+	VSP_SECBOOT_DEBUG_REG     = 4,
+	VSP_ENTRY_KIND_REG        = 5,
+	VSP_POWER_SAVING_MODE_REG = 6,
+	VSP_CMD_QUEUE_RD_REG      = 12,
+	VSP_CMD_QUEUE_WR_REG      = 13,
+	VSP_ACK_QUEUE_RD_REG      = 14,
+	VSP_ACK_QUEUE_WR_REG      = 15
 };
 
 struct vsp_ctrl_reg {
-	/* VSP_FIRMWARE_ADDR_REG */
+	/* firmware address from host to firmware
+	 * For TNG-A0, this is the actual address in the virtual address space
+	 * For TNG-B0, this is the program-index-number in the
+	 *		multi-application firmware blob
+	 */
 	unsigned int firmware_addr;
 
-	/* VSP_SETTINGS_ADDR_REG */
+	/* setting address from host to firmware */
 	unsigned int setting_addr;
 
-	unsigned int reserved4;
+	/* used for sending debug-status from firmware to host */
+	unsigned int secboot_debug;
 
-	union {
-		/* VSP_ENTRY_KIND_REG */
-		unsigned int entry_kind;
+	/* entry type from host to firmware
+	 * If it contains vsp_exit, uninitialize the firmware
+	 */
+	unsigned int entry_kind;
 
-		/* VSP_UNINIT_REQ_REG */
-		unsigned int uninit_req;
-	};
+	/* set the power-saving-mode setting */
+	unsigned int power_saving_mode;
 
-	/* The following context not been used */
-	unsigned int context_init_req;
-	unsigned int context_init_ack;
-	unsigned int context_uninit_req;
-	unsigned int context_uninit_ack;
-	unsigned int context_buf_addr;
-	unsigned int context_buf_sz;
+	unsigned int reserved_7;
+	unsigned int reserved_8;
+	unsigned int reserved_9;
+	unsigned int reserved_10;
+	unsigned int reserved_11;
 
-	/* VSP_CMD_QUEUE_RD_REG */
+	/* used for the command and response queues */
 	unsigned int cmd_rd;
-
-	/* VSP_CMD_QUEUE_WR_REG */
 	unsigned int cmd_wr;
-
-	/* VSP_ACK_QUEUE_RD_REG */
 	unsigned int ack_rd;
-
-	/* VSP_ACK_QUEUE_WR_REG */
 	unsigned int ack_wr;
 };
 
@@ -328,7 +353,7 @@ struct vsp_ctrl_reg {
  * struct is written to ddr in vsp_init call, destroyed upon uninit
  */
 struct vsp_settings_t {
-	unsigned int firmware_addr;
+	unsigned int reserved0;
 	unsigned int command_queue_size;
 	unsigned int command_queue_addr;
 	unsigned int response_queue_size;
@@ -344,12 +369,22 @@ struct vsp_settings_t {
  */
 #define VSP_SETTINGS_INITIALIZER {0, 0, 0, 0, 0, 0, 0, 0}
 
-/* values passed via VSP_ENTRY_TYPE_REG */
+/* values passed via VSP_ENTRY_TYPE_REG
+ * vsp_entry_booted is the default value, it means no init or resume has been
+ * communicated by the host yet.
+ * vsp_entry_init and vsp_entry_resume are used for initial starting of the
+ * system and for resuming after a suspend/power-down.
+*/
 enum vsp_entry_kind {
-	vsp_entry_init     = 0,
-	vsp_entry_continue = 1,
+	vsp_entry_booted   = 0,
+	vsp_entry_init     = 1,
 	vsp_entry_resume   = 2,
 	vsp_exit           = 3
 };
 
+/* values passed via VSP_POWER_SAVING_MODE_REG */
+enum vsp_power_saving_mode {
+	vsp_always_on              = 0,
+	vsp_suspend_on_empty_queue = 1
+};
 #endif

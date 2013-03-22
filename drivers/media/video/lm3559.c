@@ -83,8 +83,13 @@ struct lm3559_ctrl_id {
 #define LM3559_CONFIG_REG_1		0xe0
 #define LM3559_CONFIG_REG_2		0xf0
 
+#define LM3559_CONFIG_REG_1_INIT_SETTING	0xec
+#define LM3559_CONFIG_REG_2_INIT_SETTING	0x01
+
 #define LM3559_ENVM_TX2_SHIFT		0
+#define LM3559_ENVM_TX2_MASK		0x01
 #define LM3559_TX2_POLARITY_SHIFT	6
+#define LM3559_TX2_POLARITY_MASK	0x40
 
 struct privacy_indicator {
 	u8 indicator_current;
@@ -215,11 +220,14 @@ static int lm3559_set_config(struct lm3559 *flash)
 	int ret;
 	u8 val;
 
-	val = flash->pdata->tx2_polarity << LM3559_TX2_POLARITY_SHIFT;
+	val = LM3559_CONFIG_REG_1_INIT_SETTING & ~LM3559_TX2_POLARITY_MASK;
+	val |= flash->pdata->tx2_polarity << LM3559_TX2_POLARITY_SHIFT;
 	ret = lm3559_write(flash, LM3559_CONFIG_REG_1, val);
 	if (ret)
 		return ret;
-	val = flash->pdata->envm_tx2 << LM3559_ENVM_TX2_SHIFT;
+
+	val = LM3559_CONFIG_REG_2_INIT_SETTING & ~LM3559_ENVM_TX2_MASK;
+	val |= flash->pdata->envm_tx2 << LM3559_ENVM_TX2_SHIFT;
 	return lm3559_write(flash, LM3559_CONFIG_REG_2, val);
 }
 
@@ -623,14 +631,17 @@ static int lm3559_setup(struct lm3559 *flash)
 	if (ret < 0)
 		return ret;
 
+	flash->timeout = LM3559_DEFAULT_TIMEOUT_SETTING;
 	ret = lm3559_set_duration(flash);
 	if (ret < 0)
 		return ret;
 
+	flash->torch_current = LM3559_TORCH_DEFAULT;
 	ret = lm3559_set_torch(flash);
 	if (ret < 0)
 		return ret;
 
+	flash->flash_current = LM3559_FLASH_DEFAULT;
 	ret = lm3559_set_flash(flash);
 	if (ret < 0)
 		return ret;

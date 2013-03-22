@@ -621,8 +621,9 @@ static void pmic_bat_zone_changed(void)
 		chc.health = POWER_SUPPLY_HEALTH_GOOD;
 
 	psy_bat = get_psy_battery();
-	if (psy_bat)
-		power_supply_changed(psy_bat);
+
+	if (psy_bat && psy_bat->external_power_changed)
+		psy_bat->external_power_changed(psy_bat);
 
 	return;
 }
@@ -994,6 +995,8 @@ static irqreturn_t pmic_thread_handler(int id, void *data)
 	pmic_intr = ioread16(chc.pmic_intr_iomap);
 	evt->chgrirq0_int = (u8)pmic_intr;
 	evt->chgrirq1_int = (u8)(pmic_intr >> 8);
+	dev_dbg(chc.dev, "irq0=%x irq1=%x\n",
+		evt->chgrirq0_int, evt->chgrirq1_int);
 
 	/*
 	In case this is an external charger interrupt, we are
@@ -1006,6 +1009,12 @@ static irqreturn_t pmic_thread_handler(int id, void *data)
 		intel_scu_ipc_update_register(IRQLVL1_MASK_ADDR, 0x00,
 				IRQLVL1_CHRGR_MASK);
 		kfree(evt);
+		if ((chc.invalid_batt) &&
+			(evt->chgrirq0_int & PMIC_CHRGR_EXT_CHRGR_INT_MASK)) {
+			dev_dbg(chc.dev, "Handling external charger interrupt!!\n");
+			return IRQ_HANDLED;
+		}
+		dev_dbg(chc.dev, "Unhandled interrupt!!\n");
 		return IRQ_NONE;
 	}
 
@@ -1525,7 +1534,7 @@ static struct platform_driver pmic_chrgr_driver = {
 		   .pm = &pmic_chrgr_pm_ops,
 		   },
 	.probe = pmic_chrgr_probe,
-	.remove = __devexit_p(pmic_chrgr_remove),
+	.remove = pmic_chrgr_remove,
 };
 
 static int pmic_chrgr_init(void)
@@ -1556,7 +1565,7 @@ out:
 	return ret;
 }
 
-static void __devexit pmic_ccsm_rpmsg_remove(struct rpmsg_channel *rpdev)
+static void pmic_ccsm_rpmsg_remove(struct rpmsg_channel *rpdev)
 {
 	pmic_chrgr_exit();
 	dev_info(&rpdev->dev, "Removed pmic_ccsm rpmsg device\n");
@@ -1583,7 +1592,7 @@ static struct rpmsg_driver pmic_ccsm_rpmsg = {
 	.id_table	= pmic_ccsm_rpmsg_id_table,
 	.probe		= pmic_ccsm_rpmsg_probe,
 	.callback	= pmic_ccsm_rpmsg_cb,
-	.remove		= __devexit_p(pmic_ccsm_rpmsg_remove),
+	.remove		= pmic_ccsm_rpmsg_remove,
 };
 
 static int __init pmic_ccsm_rpmsg_init(void)

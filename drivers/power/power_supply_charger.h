@@ -5,33 +5,57 @@
 #include <linux/power/battery_id.h>
 #include <linux/power_supply.h>
 
+#define MAX_CUR_VOLT_SAMPLES 3
+#define DEF_CUR_VOLT_SAMPLE_JIFF (30*HZ)
+
+enum psy_algo_stat {
+	PSY_ALGO_STAT_UNKNOWN,
+	PSY_ALGO_STAT_NOT_CHARGE,
+	PSY_ALGO_STAT_CHARGE,
+	PSY_ALGO_STAT_FULL,
+	PSY_ALGO_STAT_MAINT,
+};
+
 struct batt_props {
 	struct list_head node;
 	const char *name;
-	unsigned long voltage_now;
+	long voltage_now;
+	long voltage_now_cache[MAX_CUR_VOLT_SAMPLES];
 	long current_now;
+	long current_now_cache[MAX_CUR_VOLT_SAMPLES];
 	int temperature;
 	long status;
 	unsigned long tstamp;
+	enum psy_algo_stat algo_stat;
+	int health;
 };
 
 struct charger_props {
 	struct list_head node;
 	const char *name;
 	bool present;
-	bool status;
+	bool is_charging;
+	int health;
 	bool online;
 	unsigned long cable;
 	unsigned long tstamp;
+};
+
+struct psy_batt_thresholds {
+	int temp_min;
+	int temp_max;
+	int iterm;
 };
 
 struct charging_algo {
 	struct list_head node;
 	unsigned int chrg_prof_type;
 	char *name;
-	int (*get_next_cc_cv)(struct batt_props, struct ps_batt_chg_prof,
-				unsigned long *cc, unsigned long *cv);
+	enum psy_algo_stat (*get_next_cc_cv)(struct batt_props,
+			struct ps_batt_chg_prof, unsigned long *cc,
+			unsigned long *cv);
 };
+
 
 extern int power_supply_register_charging_algo(struct charging_algo *);
 extern int power_supply_unregister_charging_algo(struct charging_algo *);
@@ -69,9 +93,8 @@ static inline int get_ps_int_property(struct power_supply *psy,
 		set_ps_int_property(psy, POWER_SUPPLY_PROP_ENABLE_CHARGING,\
 					true); } })
 #define disable_charging(psy) \
-		({if (IS_CHARGING_ENABLED(psy)) \
 		set_ps_int_property(psy,\
-				POWER_SUPPLY_PROP_ENABLE_CHARGING, false); })
+				POWER_SUPPLY_PROP_ENABLE_CHARGING, false);
 
 #define enable_charger(psy) \
 		set_ps_int_property(psy, POWER_SUPPLY_PROP_ENABLE_CHARGER, true)
@@ -95,6 +118,8 @@ static inline int get_ps_int_property(struct power_supply *psy,
 		set_ps_int_property(psy,\
 				POWER_SUPPLY_PROP_CABLE_TYPE, new_cable)
 
+#define HEALTH(psy) \
+		get_ps_int_property(psy, POWER_SUPPLY_PROP_HEALTH)
 #define CV(psy) \
 		get_ps_int_property(psy, POWER_SUPPLY_PROP_CHARGE_VOLTAGE)
 #define CC(psy) \
@@ -107,6 +132,8 @@ static inline int get_ps_int_property(struct power_supply *psy,
 		get_ps_int_property(psy, POWER_SUPPLY_PROP_MAX_CHARGE_VOLTAGE)
 #define VOLTAGE_NOW(psy) \
 		get_ps_int_property(psy, POWER_SUPPLY_PROP_VOLTAGE_NOW)
+#define VOLTAGE_OCV(psy) \
+		get_ps_int_property(psy, POWER_SUPPLY_PROP_VOLTAGE_OCV)
 #define CURRENT_NOW(psy) \
 		get_ps_int_property(psy, POWER_SUPPLY_PROP_CURRENT_NOW)
 #define STATUS(psy) \
@@ -141,13 +168,16 @@ static inline int get_ps_int_property(struct power_supply *psy,
 
 #define IS_CHARGER_PROP_CHANGED(prop, cache_prop)\
 	((cache_prop.online != prop.online) || \
-	(cache_prop.present != prop.present))
+	(cache_prop.present != prop.present) || \
+	(cache_prop.is_charging != prop.is_charging) || \
+	(cache_prop.health != prop.health))
 
 #define IS_BAT_PROP_CHANGED(bat_prop, bat_cache)\
 	((bat_cache.voltage_now != bat_prop.voltage_now) || \
 	(time_after64(bat_prop.tstamp, (bat_cache.tstamp + PROP_TTL)) &&\
 	 bat_cache.current_now != bat_prop.current_now) || \
-	(bat_cache.temperature != bat_prop.temperature))
+	(bat_cache.temperature != bat_prop.temperature) || \
+	(bat_cache.health != bat_prop.health))
 
 #define THROTTLE_ACTION(psy, state)\
 		(((psy->throttle_states)+state)->throttle_action)
@@ -170,5 +200,17 @@ static inline int get_ps_int_property(struct power_supply *psy,
 	(CURRENT_THROTTLE_ACTION(psy) != PSY_THROTTLE_DISABLE_CHARGING))
 #define IS_CHARGER_CAN_BE_ENABLED(psy) \
 	(CURRENT_THROTTLE_ACTION(psy) != PSY_THROTTLE_DISABLE_CHARGER)
+
+#define IS_HEALTH_GOOD(psy)\
+	(HEALTH(psy) == POWER_SUPPLY_HEALTH_GOOD)
+
+static inline void set_status(struct power_supply *psy, int status)
+{
+
+	if (STATUS(psy) != status)
+		set_ps_int_property(psy, POWER_SUPPLY_PROP_STATUS, status);
+
+
+}
 
 #endif

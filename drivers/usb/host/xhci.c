@@ -194,7 +194,7 @@ int xhci_reset(struct xhci_hcd *xhci)
 	return ret;
 }
 
-#if !defined(XHCI_PLATFORM_DRIVER) && defined(CONFIG_PCI)
+#ifdef CONFIG_PCI
 static int xhci_free_msi(struct xhci_hcd *xhci)
 {
 	int i;
@@ -319,6 +319,10 @@ static void xhci_cleanup_msix(struct xhci_hcd *xhci)
 {
 	struct usb_hcd *hcd = xhci_to_hcd(xhci);
 	struct pci_dev *pdev = to_pci_dev(hcd->self.controller);
+
+	/* No need to cleanup msi if we have XHCI_BROKEN_MSI flag */
+	if (xhci->quirks & XHCI_BROKEN_MSI)
+		return 0;
 
 	xhci_free_irq(xhci);
 
@@ -4223,7 +4227,6 @@ static int __init xhci_hcd_init(void)
 		printk(KERN_DEBUG "Problem registering Platform driver.");
 		return retval;
 	}
-	goto done;
 #endif
 
 #ifdef CONFIG_PCI
@@ -4240,7 +4243,6 @@ static int __init xhci_hcd_init(void)
 		goto unreg_pci;
 	}
 #endif
-done:
 	/*
 	 * Check the compiler generated sizes of structures that must be laid
 	 * out in specific ways for hardware access.
@@ -4272,7 +4274,6 @@ static void __exit xhci_hcd_cleanup(void)
 {
 #ifdef XHCI_PLATFORM_DRIVER
 	platform_driver_unregister(&XHCI_PLATFORM_DRIVER);
-	return;
 #endif
 #ifdef CONFIG_PCI
 	xhci_unregister_pci();

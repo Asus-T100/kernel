@@ -435,9 +435,10 @@ void __init x86_intel_mid_early_setup(void)
 	legacy_pic = &null_legacy_pic;
 
 	pm_power_off = intel_mid_power_off;
+#ifndef CONFIG_INTEL_MID_OSNIB_ILB
 	machine_ops.restart = intel_mid_reboot;
 	machine_ops.emergency_restart  = intel_mid_emergency_reboot;
-
+#endif
 	/* Avoid searching for BIOS MP tables */
 	x86_init.mpparse.find_smp_config = x86_init_noop;
 	x86_init.mpparse.get_smp_config = x86_init_uint_noop;
@@ -826,6 +827,42 @@ struct devs_id __init *get_device_id(u8 type, char *name)
 	return NULL;
 }
 
+static struct sfi_device_table_entry imx135_entry = {
+	.type = SFI_DEV_TYPE_I2C,
+	.host_num = 4,
+	.addr = 0x10,
+	.irq = 0xFF,
+	.max_freq = 400000,
+	.name = "imx135",
+};
+
+static struct sfi_device_table_entry s5k8aay_entry = {
+	.type = SFI_DEV_TYPE_I2C,
+	.host_num = 4,
+	.addr = 0x3c,
+	.irq = 0xFF,
+	.max_freq = 400000,
+	.name = "s5k8aay",
+};
+
+static struct sfi_device_table_entry dw9719_entry = {
+	.type = SFI_DEV_TYPE_I2C,
+	.host_num = 4,
+	.addr = 0x0c,
+	.irq = 0xFF,
+	.max_freq = 400000,
+	.name = "dw9719",
+};
+
+static struct sfi_device_table_entry lm3559_entry = {
+	.type = SFI_DEV_TYPE_I2C,
+	.host_num = 4,
+	.addr = 0x53,
+	.irq = 0xFF,
+	.max_freq = 400000,
+	.name = "lm3559",
+};
+
 static int __init sfi_parse_devs(struct sfi_table_header *table)
 {
 	struct sfi_table_simple *sb;
@@ -861,6 +898,9 @@ static int __init sfi_parse_devs(struct sfi_table_header *table)
 					else if (!strncmp(pentry->name,
 						"synaptics_3202", 14))
 						/* active low */
+						irq_attr.polarity = 1;
+					else if (irq == 41)
+						/* fast_int_1 */
 						irq_attr.polarity = 1;
 					else
 						/* active high */
@@ -902,6 +942,27 @@ static int __init sfi_parse_devs(struct sfi_table_header *table)
 				break;
 			}
 		}
+	}
+
+	if ((INTEL_MID_BOARD(2, PHONE, CLVTP, RHB, PRO) ||
+	     INTEL_MID_BOARD(2, PHONE, CLVTP, RHB, ENG) ||
+	     INTEL_MID_BOARD(2, PHONE, CLVTP, VB, PRO) ||
+	     INTEL_MID_BOARD(2, PHONE, CLVTP, VB, ENG)) &&
+	     (SPID_HARDWARE_ID(CLVTP, PHONE, VB, PR1A) ||
+	      SPID_HARDWARE_ID(CLVTP, PHONE, VB, PR1B))) {
+		pr_info("Simulating VB SFI table\n");
+		dev = get_device_id(SFI_DEV_TYPE_I2C, "imx135");
+		if (dev && dev->device_handler)
+			dev->device_handler(&imx135_entry, dev);
+		dev = get_device_id(SFI_DEV_TYPE_I2C, "s5k8aay");
+		if (dev && dev->device_handler)
+			dev->device_handler(&s5k8aay_entry, dev);
+		dev = get_device_id(SFI_DEV_TYPE_I2C, "dw9719");
+		if (dev && dev->device_handler)
+			dev->device_handler(&dw9719_entry, dev);
+		dev = get_device_id(SFI_DEV_TYPE_I2C, "lm3559");
+		if (dev && dev->device_handler)
+			dev->device_handler(&lm3559_entry, dev);
 	}
 
 	return 0;
@@ -1090,6 +1151,34 @@ void populate_spid_cmdline()
 		pr_err("SPID not found in kernel command line.\n");
 }
 
+struct sfi_device_table_entry sfi_tab[] = {
+		{SFI_DEV_TYPE_I2C, 4, 0x10, 0x0, 0x0, "imx175"},
+		{SFI_DEV_TYPE_I2C, 4, 0x36, 0x0, 0x0, "ov2722"},
+		{SFI_DEV_TYPE_I2C, 4, 0x53, 0x0, 0x0, "lm3554"},
+};
+static int fake_sfi(void)
+{
+	struct sfi_table_simple *sb;
+	struct sfi_device_table_entry *pentry;
+	struct devs_id *dev = NULL;
+	int  i;
+	pentry = sfi_tab;
+
+	for (i = 0; i < ARRAY_SIZE(sfi_tab); i++, pentry++) {
+		int irq = pentry->irq;
+
+		dev = get_device_id(pentry->type, pentry->name);
+		if ((dev == NULL) || (dev->get_platform_data == NULL))
+			continue;
+
+		if (dev->device_handler)
+			dev->device_handler(pentry, dev);
+	}
+
+	return 0;
+}
+
+
 static int __init intel_mid_platform_init(void)
 {
 	/* create sysfs entries for soft platform id */
@@ -1109,6 +1198,9 @@ static int __init intel_mid_platform_init(void)
 
 	/* Populate command line with SPID values */
 	populate_spid_cmdline();
+	/* workround for byt */
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2)
+		fake_sfi();
 
 	return 0;
 }

@@ -62,4 +62,8 @@ DECLARE_PER_CPU(struct sfi_processor *, sfi_processors);
 int sfi_processor_power_init(struct sfi_processor *pr);
 int sfi_processor_power_exit(struct sfi_processor *pr);
 
+#ifdef CONFIG_COMPUTE_PHYSICAL_CORE_LOAD
+void update_cpu_active_tsc(int cpu, int enter_idle);
+#endif
+
 #endif /*__SFI_PROCESSOR_H__*/

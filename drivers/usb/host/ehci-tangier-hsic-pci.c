@@ -179,6 +179,8 @@ static void hsic_notify(struct usb_device *udev, unsigned action)
 
 	/* Ignore root hub add/remove event */
 	if (!udev->parent) {
+		pr_debug("%s Disable autosuspend\n", __func__);
+		usb_disable_autosuspend(udev);
 		pr_debug("%s Ignore root hub otg_notify\n", __func__);
 		return;
 	}
@@ -195,6 +197,8 @@ static void hsic_notify(struct usb_device *udev, unsigned action)
 
 	switch (action) {
 	case USB_DEVICE_ADD:
+		pr_debug("%s----> enable autosuspend\n", __func__);
+		usb_enable_autosuspend(udev->parent);
 		pr_debug("Notify HSIC add device\n");
 		retval = hsic_aux_irq_init();
 		if (retval)
@@ -496,85 +500,78 @@ static void ehci_hsic_shutdown(struct pci_dev *pdev)
 	dev_dbg(&pdev->dev, "%s <---\n", __func__);
 }
 
+#ifdef CONFIG_PM_SLEEP
 static int tangier_hsic_suspend_noirq(struct device *dev)
 {
-	int			ret = 0;
+	int	retval;
 
 	dev_dbg(dev, "%s --->\n", __func__);
-
-	dev_dbg(dev, "%s <---\n", __func__);
-	return ret;
+	retval = usb_hcd_pci_pm_ops.suspend_noirq(dev);
+	dev_dbg(dev, "%s <--- retval = %d\n", __func__, retval);
+	return retval;
 }
 
 static int tangier_hsic_suspend(struct device *dev)
 {
-	int			ret = 0;
+	int	retval;
 
 	dev_dbg(dev, "%s --->\n", __func__);
-
-	dev_dbg(dev, "%s <---\n", __func__);
-	return ret;
+	retval = usb_hcd_pci_pm_ops.suspend(dev);
+	dev_dbg(dev, "%s <--- retval = %d\n", __func__, retval);
+	return retval;
 }
 
 static int tangier_hsic_resume_noirq(struct device *dev)
 {
-	int			ret = 0;
+	int	retval;
 
 	dev_dbg(dev, "%s --->\n", __func__);
-
-
-	dev_dbg(dev, "%s <---\n", __func__);
-	return ret;
+	retval = usb_hcd_pci_pm_ops.resume_noirq(dev);
+	dev_dbg(dev, "%s <--- retval = %d\n", __func__, retval);
+	return retval;
 }
 
 static int tangier_hsic_resume(struct device *dev)
 {
-	int			ret = 0;
+	int	retval;
 
 	dev_dbg(dev, "%s --->\n", __func__);
-
-	dev_dbg(dev, "%s <---\n", __func__);
-	return ret;
+	retval = usb_hcd_pci_pm_ops.resume(dev);
+	dev_dbg(dev, "%s <--- retval = %d\n", __func__, retval);
+	return retval;
 }
+#else
+#define tangier_hsic_suspend_noirq	NULL
+#define tangier_hsic_suspend		NULL
+#define tangier_hsic_resume_noirq	NULL
+#define tangier_hsic_resume		NULL
+#endif
 
 #ifdef CONFIG_PM_RUNTIME
 /* Runtime PM */
 static int tangier_hsic_runtime_suspend(struct device *dev)
 {
-	int			ret = 0;
+	int	retval;
 
 	dev_dbg(dev, "%s --->\n", __func__);
-
-	dev_dbg(dev, "%s <---: ret = %d\n", __func__, ret);
-	return ret;
+	retval = usb_hcd_pci_pm_ops.runtime_suspend(dev);
+	dev_dbg(dev, "%s <--- retval = %d\n", __func__, retval);
+	return retval;
 }
 
 static int tangier_hsic_runtime_resume(struct device *dev)
 {
-	int			ret = 0;
+	int	retval;
 
 	dev_dbg(dev, "%s --->\n", __func__);
+	retval = usb_hcd_pci_pm_ops.runtime_resume(dev);
+	dev_dbg(dev, "%s <--- retval = %d\n", __func__, retval);
 
-	dev_dbg(dev, "%s <---\n", __func__);
-
-	return ret;
+	return retval;
 }
-
-static int tangier_hsic_runtime_idle(struct device *dev)
-{
-	dev_dbg(dev, "%s --->\n", __func__);
-
-	dev_dbg(dev, "%s <---\n", __func__);
-
-	return -EBUSY;
-}
-
 #else
-
 #define tangier_hsic_runtime_suspend NULL
 #define tangier_hsic_runtime_resume NULL
-#define tangier_hsic_runtime_idle NULL
-
 #endif
 
 static DEFINE_PCI_DEVICE_TABLE(pci_hsic_ids) = {
@@ -591,7 +588,6 @@ static DEFINE_PCI_DEVICE_TABLE(pci_hsic_ids) = {
 static const struct dev_pm_ops tangier_hsic_pm_ops = {
 	.runtime_suspend = tangier_hsic_runtime_suspend,
 	.runtime_resume = tangier_hsic_runtime_resume,
-	.runtime_idle = tangier_hsic_runtime_idle,
 	.suspend = tangier_hsic_suspend,
 	.suspend_noirq = tangier_hsic_suspend_noirq,
 	.resume = tangier_hsic_resume,

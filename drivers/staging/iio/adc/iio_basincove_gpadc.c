@@ -417,7 +417,7 @@ struct iio_map iio_maps[] = {
 	MSIC_ADC_MAP("CH3", "THERMAL", "PMICTEMP"),
 };
 
-static int __devinit bcove_gpadc_probe(struct platform_device *pdev)
+static int bcove_gpadc_probe(struct platform_device *pdev)
 {
 	int err;
 	struct gpadc_info *info;
@@ -505,7 +505,7 @@ out:
 	return err;
 }
 
-static int __devexit bcove_gpadc_remove(struct platform_device *pdev)
+static int bcove_gpadc_remove(struct platform_device *pdev)
 {
 	struct iio_dev *indio_dev = platform_get_drvdata(pdev);
 	struct gpadc_info *info = iio_priv(indio_dev);
@@ -559,15 +559,15 @@ static struct platform_driver bcove_gpadc_driver = {
 		   .pm = &bcove_gpadc_driver_pm_ops,
 		   },
 	.probe = bcove_gpadc_probe,
-	.remove = __devexit_p(bcove_gpadc_remove),
+	.remove = bcove_gpadc_remove,
 };
 
-static int __init bcove_gpadc_module_init(void)
+static int bcove_gpadc_module_init(void)
 {
 	return platform_driver_register(&bcove_gpadc_driver);
 }
 
-static void __exit bcove_gpadc_module_exit(void)
+static void bcove_gpadc_module_exit(void)
 {
 	platform_driver_unregister(&bcove_gpadc_driver);
 }
@@ -590,7 +590,7 @@ out:
 	return ret;
 }
 
-static void __devexit bcove_adc_rpmsg_remove(struct rpmsg_channel *rpdev)
+static void bcove_adc_rpmsg_remove(struct rpmsg_channel *rpdev)
 {
 	bcove_gpadc_module_exit();
 	dev_info(&rpdev->dev, "Removed bcove_gpadc rpmsg device\n");
@@ -617,7 +617,7 @@ static struct rpmsg_driver bcove_adc_rpmsg = {
 	.id_table	= bcove_adc_rpmsg_id_table,
 	.probe		= bcove_adc_rpmsg_probe,
 	.callback	= bcove_adc_rpmsg_cb,
-	.remove		= __devexit_p(bcove_adc_rpmsg_remove),
+	.remove		= bcove_adc_rpmsg_remove,
 };
 
 static int __init bcove_adc_rpmsg_init(void)

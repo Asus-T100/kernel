@@ -438,7 +438,7 @@ static irqreturn_t mrst_rtc_irq(int irq, void *p)
 	}
 }
 
-static int __devinit
+static int
 vrtc_mrst_do_probe(struct device *dev, struct resource *iomem, int rtc_irq)
 {
 	int retval = 0;
@@ -534,7 +534,7 @@ static void rtc_mrst_do_shutdown(void)
 	spin_unlock_irq(&rtc_lock);
 }
 
-static void __devexit rtc_mrst_do_remove(struct device *dev)
+static void rtc_mrst_do_remove(struct device *dev)
 {
 	struct mrst_rtc	*mrst = dev_get_drvdata(dev);
 	struct resource *iomem;
@@ -649,14 +649,14 @@ static inline int mrst_poweroff(struct device *dev)
 
 #endif
 
-static int __devinit vrtc_mrst_platform_probe(struct platform_device *pdev)
+static int vrtc_mrst_platform_probe(struct platform_device *pdev)
 {
 	return vrtc_mrst_do_probe(&pdev->dev,
 			platform_get_resource(pdev, IORESOURCE_MEM, 0),
 			platform_get_irq(pdev, 0));
 }
 
-static int __devexit vrtc_mrst_platform_remove(struct platform_device *pdev)
+static int vrtc_mrst_platform_remove(struct platform_device *pdev)
 {
 	rtc_mrst_do_remove(&pdev->dev);
 	return 0;
@@ -679,18 +679,18 @@ static const struct dev_pm_ops vrtc_mrst_platform_driver_pm_ops = {
 
 static struct platform_driver vrtc_mrst_platform_driver = {
 	.probe		= vrtc_mrst_platform_probe,
-	.remove		= __devexit_p(vrtc_mrst_platform_remove),
+	.remove		= vrtc_mrst_platform_remove,
 	.shutdown	= vrtc_mrst_platform_shutdown,
 	.driver.name	= (char *) driver_name,
 	.driver.pm	= &vrtc_mrst_platform_driver_pm_ops,
 };
 
-static int __init vrtc_mrst_init(void)
+static int vrtc_mrst_init(void)
 {
 	return platform_driver_register(&vrtc_mrst_platform_driver);
 }
 
-static void __exit vrtc_mrst_exit(void)
+static void vrtc_mrst_exit(void)
 {
 	platform_driver_unregister(&vrtc_mrst_platform_driver);
 }
@@ -725,7 +725,7 @@ out:
 	return ret;
 }
 
-static void __devexit vrtc_mrst_rpmsg_remove(struct rpmsg_channel *rpdev)
+static void vrtc_mrst_rpmsg_remove(struct rpmsg_channel *rpdev)
 {
 	vrtc_mrst_exit();
 	free_rpmsg_instance(rpdev, &vrtc_mrst_instance);
@@ -753,7 +753,7 @@ static struct rpmsg_driver vrtc_mrst_rpmsg = {
 	.id_table	= vrtc_mrst_rpmsg_id_table,
 	.probe		= vrtc_mrst_rpmsg_probe,
 	.callback	= vrtc_mrst_rpmsg_cb,
-	.remove		= __devexit_p(vrtc_mrst_rpmsg_remove),
+	.remove		= vrtc_mrst_rpmsg_remove,
 };
 
 static int __init vrtc_mrst_rpmsg_init(void)

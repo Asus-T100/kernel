@@ -522,7 +522,7 @@ unalloc:
 	return ret_val;
 }
 
-static int __devexit snd_mrfld_mc_remove(struct platform_device *pdev)
+static int snd_mrfld_mc_remove(struct platform_device *pdev)
 {
 	struct snd_soc_card *soc_card = platform_get_drvdata(pdev);
 	struct mrfld_mc_private *drv = snd_soc_card_get_drvdata(soc_card);
@@ -549,16 +549,16 @@ static struct platform_driver snd_mrfld_mc_driver = {
 		.pm = &snd_mrfld_mc_pm_ops,
 	},
 	.probe = snd_mrfld_mc_probe,
-	.remove = __devexit_p(snd_mrfld_mc_remove),
+	.remove = snd_mrfld_mc_remove,
 };
 
-static int __init snd_mrfld_driver_init(void)
+static int snd_mrfld_driver_init(void)
 {
 	pr_info("Merrifield Machine Driver mrfld_lm49453 registerd\n");
 	return platform_driver_register(&snd_mrfld_mc_driver);
 }
 
-static void __exit snd_mrfld_driver_exit(void)
+static void snd_mrfld_driver_exit(void)
 {
 	pr_debug("In %s\n", __func__);
 	platform_driver_unregister(&snd_mrfld_mc_driver);
@@ -582,7 +582,7 @@ out:
 	return ret;
 }
 
-static void __devexit snd_mrfld_rpmsg_remove(struct rpmsg_channel *rpdev)
+static void snd_mrfld_rpmsg_remove(struct rpmsg_channel *rpdev)
 {
 	snd_mrfld_driver_exit();
 	dev_info(&rpdev->dev, "Removed snd_mrfld rpmsg device\n");
@@ -609,7 +609,7 @@ static struct rpmsg_driver snd_mrfld_rpmsg = {
 	.id_table	= snd_mrfld_rpmsg_id_table,
 	.probe		= snd_mrfld_rpmsg_probe,
 	.callback	= snd_mrfld_rpmsg_cb,
-	.remove		= __devexit_p(snd_mrfld_rpmsg_remove),
+	.remove		= snd_mrfld_rpmsg_remove,
 };
 
 static int __init snd_mrfld_rpmsg_init(void)

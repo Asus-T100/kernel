@@ -40,6 +40,7 @@
 #include <linux/tty_flip.h>
 #include <linux/serial_core.h>
 #include <linux/serial_reg.h>
+#include <linux/serial_max3110.h>
 
 #include <linux/kthread.h>
 #include <linux/spi/spi.h>
@@ -69,6 +70,7 @@ struct uart_max3110 {
 	u8 clock;
 	u8 parity, word_7bits;
 	u16 irq;
+	u16 irq_edge_triggered;
 
 	unsigned long uart_flags;
 
@@ -423,8 +425,8 @@ static int max3110_main_thread(void *_max)
 				max->uart_flags || kthread_should_stop());
 
 		mutex_lock(&max->thread_mutex);
-
-		if (test_and_clear_bit(BIT_IRQ_PENDING, &max->uart_flags))
+		if (max->irq_edge_triggered &&
+			test_and_clear_bit(BIT_IRQ_PENDING, &max->uart_flags))
 			max3110_con_receive(max);
 
 		/* first handle console output */
@@ -446,11 +448,15 @@ static irqreturn_t serial_m3110_irq(int irq, void *dev_id)
 {
 	struct uart_max3110 *max = dev_id;
 
-	/* max3110's irq is a falling edge, not level triggered,
-	 * so no need to disable the irq */
+	if (max->irq_edge_triggered) {
+		/* max3110's irq is a falling edge, not level triggered,
+		 * so no need to disable the irq */
 
-	if (!test_and_set_bit(BIT_IRQ_PENDING, &max->uart_flags))
-		wake_up(&max->wq);
+		if (!test_and_set_bit(BIT_IRQ_PENDING, &max->uart_flags))
+			wake_up(&max->wq);
+	} else {
+		max3110_con_receive(max);
+	}
 
 	return IRQ_HANDLED;
 }
@@ -770,6 +776,10 @@ static int __devinit serial_m3110_probe(struct spi_device *spi)
 	void *buffer;
 	u16 res;
 	int ret = 0;
+	struct plat_max3110 *pdata = spi->dev.platform_data;
+
+	if (!pdata)
+		return -EINVAL;
 
 	max = kzalloc(sizeof(*max), GFP_KERNEL);
 	if (!max)
@@ -831,9 +841,18 @@ static int __devinit serial_m3110_probe(struct spi_device *spi)
 		goto err_kthread;
 	}
 
+	max->irq_edge_triggered = pdata->irq_edge_triggered;
+
 	if (max->irq) {
-		ret = request_irq(max->irq, serial_m3110_irq,
-				IRQ_TYPE_EDGE_FALLING, "max3110", max);
+		if (max->irq_edge_triggered) {
+			ret = request_irq(max->irq, serial_m3110_irq,
+					IRQ_TYPE_EDGE_FALLING, "max3110", max);
+		} else {
+			ret = request_threaded_irq(max->irq, NULL,
+					serial_m3110_irq,
+					IRQF_ONESHOT, "max3110", max);
+		}
+
 		if (ret) {
 			max->irq = 0;
 			dev_warn(&spi->dev,
@@ -914,3 +933,4 @@ module_exit(serial_m3110_exit);
 
 MODULE_LICENSE("GPL v2");
 MODULE_ALIAS("spi:max3110-uart");
+

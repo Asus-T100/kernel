@@ -92,10 +92,11 @@ static hdmi_context_t *g_context;
 #define PS_VDC_OFFSET 0x00000000
 #define PS_VDC_SIZE 0x000080000
 #define PS_MSIC_PCI_DEVICE_ID 0x11A6
-#define PS_MSIC_HPD_GPIO_PIN 16
-/* HDMI_LS_EN GPIO pin is connected to Levelshifter's LS_OE pin */
-#define PS_MSIC_LS_EN_GPIO_PIN 177
 
+#define PS_MSIC_HPD_GPIO_PIN 16
+#define PS_MSIC_LS_EN_GPIO_PIN 177
+#define PS_MSIC_HPD_GPIO_PIN_NAME "HDMI_HPD"
+#define PS_MSIC_LS_EN_GPIO_PIN_NAME "HDMI_LS_EN"
 
 /* For Merrifield, it is required that SW pull up or pull down the
  * LS_OE GPIO pin based on cable status. This is needed before
@@ -104,20 +105,27 @@ static hdmi_context_t *g_context;
 static void __ps_gpio_configure_edid_read(void)
 {
 	static int old_pin_value  = -1;
-	int new_pin_value = gpio_get_value(PS_MSIC_HPD_GPIO_PIN);
+	int new_pin_value;
+	hdmi_context_t *ctx = g_context;
 
+	if (ctx == NULL) {
+		pr_err("%s failed due to internal error\n", __func__);
+		return;
+	}
+
+	new_pin_value = gpio_get_value(ctx->gpio_hpd_pin);
 	if (new_pin_value == old_pin_value)
 		return;
 
 	old_pin_value = new_pin_value;
 
 	if (new_pin_value == 0)
-		gpio_set_value(PS_MSIC_LS_EN_GPIO_PIN, 0);
+		gpio_set_value(ctx->gpio_ls_en_pin, 0);
 	else
-		gpio_set_value(PS_MSIC_LS_EN_GPIO_PIN, 1);
+		gpio_set_value(ctx->gpio_ls_en_pin, 1);
 
-	pr_debug("%s: CTP_HDMI_LS_OE pin = %d (%d)\n", __func__,
-		 gpio_get_value(PS_MSIC_LS_EN_GPIO_PIN), new_pin_value);
+	pr_debug("%s: MSIC_LS_OE pin = %d (%d)\n", __func__,
+		 gpio_get_value(ctx->gpio_ls_en_pin), new_pin_value);
 }
 
 otm_hdmi_ret_t ps_hdmi_pci_dev_init(void *context, struct pci_dev *pdev)
@@ -165,16 +173,30 @@ otm_hdmi_ret_t ps_hdmi_pci_dev_init(void *context, struct pci_dev *pdev)
 	/* Handle Merrifield specific GPIO configuration
 	 * to enable EDID reads
 	 */
-	if (gpio_request(PS_MSIC_LS_EN_GPIO_PIN, "HDMI_LS_EN")) {
+	ctx->gpio_hpd_pin = get_gpio_by_name(PS_MSIC_HPD_GPIO_PIN_NAME);
+	if (-1 == ctx->gpio_hpd_pin) {
+		ctx->gpio_hpd_pin = PS_MSIC_HPD_GPIO_PIN;
+		pr_debug("get_gpio_by_name failed! Use default pin %d\n",
+				PS_MSIC_HPD_GPIO_PIN);
+	}
+
+	ctx->gpio_ls_en_pin = get_gpio_by_name(PS_MSIC_LS_EN_GPIO_PIN_NAME);
+	if (-1 == ctx->gpio_ls_en_pin) {
+		ctx->gpio_ls_en_pin = PS_MSIC_LS_EN_GPIO_PIN;
+		pr_debug("get_gpio_by_name failed! Use default pin %d\n",
+				PS_MSIC_LS_EN_GPIO_PIN);
+	}
+
+	if (gpio_request(ctx->gpio_ls_en_pin, "HDMI_LS_EN")) {
 		pr_err("%s: Unable to request gpio %d\n", __func__,
-		       PS_MSIC_LS_EN_GPIO_PIN);
+		       ctx->gpio_ls_en_pin);
 		rc = OTM_HDMI_ERR_FAILED;
 		goto exit;
 	}
 
-	if (!gpio_is_valid(PS_MSIC_LS_EN_GPIO_PIN)) {
+	if (!gpio_is_valid(ctx->gpio_ls_en_pin)) {
 		pr_err("%s: Unable to validate gpio %d\n", __func__,
-		       PS_MSIC_LS_EN_GPIO_PIN);
+		       ctx->gpio_ls_en_pin);
 		rc = OTM_HDMI_ERR_FAILED;
 		goto exit;
 	}
@@ -201,7 +223,7 @@ otm_hdmi_ret_t ps_hdmi_pci_dev_deinit(void *context)
 	iounmap(ctx->io_address);
 
 	/* Free GPIO resources */
-	gpio_free(PS_MSIC_LS_EN_GPIO_PIN);
+	gpio_free(ctx->gpio_ls_en_pin);
 exit:
 	return rc;
 }
@@ -290,7 +312,7 @@ bool ps_hdmi_get_cable_status(void *context)
 	 */
 	__ps_gpio_configure_edid_read();
 
-	if (gpio_get_value(PS_MSIC_HPD_GPIO_PIN) == 0)
+	if (gpio_get_value(ctx->gpio_hpd_pin) == 0)
 		return false;
 	else
 		return true;
@@ -361,21 +383,21 @@ static int __devinit ps_hdmi_hpd_probe(struct pci_dev *pdev,
 	}
 
 	/* Perform the GPIO configuration */
-	result = gpio_request(PS_MSIC_HPD_GPIO_PIN, "hdmi_hpd");
+	result = gpio_request(ctx->gpio_hpd_pin, "hdmi_hpd");
 	if (result) {
 		pr_debug("%s: Failed to request GPIO %d for kbd IRQ\n",
-			 __func__, PS_MSIC_HPD_GPIO_PIN);
+			 __func__, ctx->gpio_hpd_pin);
 		goto exit2;
 	}
 
-	result = gpio_direction_input(PS_MSIC_HPD_GPIO_PIN);
+	result = gpio_direction_input(ctx->gpio_hpd_pin);
 	if (result) {
 		pr_debug("%s: Failed to set GPIO %d as input\n",
-			 __func__, PS_MSIC_HPD_GPIO_PIN);
+			 __func__, ctx->gpio_hpd_pin);
 		goto exit3;
 	}
 
-	ctx->irq_number = gpio_to_irq(PS_MSIC_HPD_GPIO_PIN);
+	ctx->irq_number = gpio_to_irq(ctx->gpio_hpd_pin);
 	pr_debug("%s: IRQ number assigned = %d\n", __func__, ctx->irq_number);
 
 	result = irq_set_irq_type(ctx->irq_number, IRQ_TYPE_EDGE_BOTH);
@@ -400,7 +422,7 @@ static int __devinit ps_hdmi_hpd_probe(struct pci_dev *pdev,
 	return result;
 
 exit3:
-	gpio_free(PS_MSIC_HPD_GPIO_PIN);
+	gpio_free(ctx->gpio_hpd_pin);
 exit2:
 	pci_disable_device(pdev);
 exit:

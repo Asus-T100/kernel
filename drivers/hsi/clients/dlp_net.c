@@ -158,12 +158,12 @@ static void dlp_net_complete_tx(struct hsi_msg *pdu)
 	struct dlp_net_context *net_ctx = ch_ctx->ch_data;
 	struct dlp_xfer_ctx *xfer_ctx = &ch_ctx->tx;
 
+	/* Update statistics */
+	net_ctx->ndev->stats.tx_bytes += msg_param->skb->len;
+	net_ctx->ndev->stats.tx_packets++;
+
 	/* TX done, free the skb */
 	dev_kfree_skb(msg_param->skb);
-
-	/* Update statistics */
-	net_ctx->ndev->stats.tx_bytes += pdu->actual_len;
-	net_ctx->ndev->stats.tx_packets++;
 
 	/* Free the pdu */
 	dlp_pdu_free(pdu, -1);
@@ -177,7 +177,7 @@ static void dlp_net_complete_tx(struct hsi_msg *pdu)
 		mod_timer(&dlp_drv.timer[ch_ctx->ch_id],
 			  jiffies + usecs_to_jiffies(DLP_HANGUP_DELAY));
 	} else {
-		del_timer(&dlp_drv.timer[ch_ctx->ch_id]);
+		del_timer_sync(&dlp_drv.timer[ch_ctx->ch_id]);
 	}
 
 	write_unlock_irqrestore(&xfer_ctx->lock, flags);
@@ -274,11 +274,8 @@ static void dlp_net_complete_rx(struct hsi_msg *pdu)
 
 		/* Update statistics */
 		if (ret) {
-			pr_warn(DRVNAME ": packet dropped\n");
+			pr_warn(DRVNAME ": IP Packet dropped\n");
 			net_ctx->ndev->stats.rx_dropped++;
-
-			/* Free the allocated skb */
-			/* FIXME : to be freed ???? */
 		} else {
 			net_ctx->ndev->stats.rx_bytes += data_size;
 			net_ctx->ndev->stats.rx_packets++;
@@ -347,10 +344,14 @@ int dlp_net_open(struct net_device *dev)
 	int ret, state;
 	struct dlp_channel *ch_ctx = netdev_priv(dev);
 
+	pr_debug(DRVNAME ": %s open (CH%d, HSI CH%d)\n",
+			dev->name, ch_ctx->ch_id, ch_ctx->hsi_channel);
+
 	/* Check if the the channel is not already opened for Trace */
 	state = dlp_ctrl_get_channel_state(ch_ctx->hsi_channel);
 	if (state != DLP_CH_STATE_CLOSED) {
-		pr_err(DRVNAME": Invalid channel state (%d)\n", state);
+		pr_err(DRVNAME ": Can't open CH%d (HSI CH%d) => invalid state: %d\n",
+				ch_ctx->ch_id, ch_ctx->hsi_channel, state);
 		ret = -EBUSY;
 		goto out;
 	}
@@ -358,20 +359,22 @@ int dlp_net_open(struct net_device *dev)
 	/* Update/Set the eDLP channel id */
 	dlp_drv.channels_hsi[ch_ctx->hsi_channel].edlp_channel = ch_ctx->ch_id;
 
-	/* Allocate TX FIFO */
-	ret = dlp_allocate_pdus_pool(ch_ctx, &ch_ctx->tx);
-	if (ret) {
-		pr_err(DRVNAME ": Cant allocate RX FIFO pdus for ch%d\n",
-				ch_ctx->ch_id);
-		goto out;
-	}
+	if (dlp_net_is_trace_channel(ch_ctx)) {
+		/* Allocate TX FIFO */
+		ret = dlp_allocate_pdus_pool(ch_ctx, &ch_ctx->tx);
+		if (ret) {
+			pr_err(DRVNAME ": Cant allocate RX FIFO pdus for ch%d\n",
+					ch_ctx->ch_id);
+			goto out;
+		}
 
-	/* Allocate RX FIFO */
-	ret = dlp_allocate_pdus_pool(ch_ctx, &ch_ctx->rx);
-	if (ret) {
-		pr_err(DRVNAME ": Cant allocate RX FIFO pdus for ch%d\n",
-				ch_ctx->ch_id);
-		goto out;
+		/* Allocate RX FIFO */
+		ret = dlp_allocate_pdus_pool(ch_ctx, &ch_ctx->rx);
+		if (ret) {
+			pr_err(DRVNAME ": Cant allocate RX FIFO pdus for ch%d\n",
+					ch_ctx->ch_id);
+			goto out;
+		}
 	}
 
 	/* Open the channel */
@@ -399,6 +402,9 @@ int dlp_net_stop(struct net_device *dev)
 	struct dlp_xfer_ctx *rx_ctx;
 	int ret;
 
+	pr_debug(DRVNAME ": %s close (CH%d, HSI CH%d)\n",
+			dev->name, ch_ctx->ch_id, ch_ctx->hsi_channel);
+
 	tx_ctx = &ch_ctx->tx;
 	rx_ctx = &ch_ctx->rx;
 
@@ -408,11 +414,6 @@ int dlp_net_stop(struct net_device *dev)
 	if (!netif_queue_stopped(dev))
 		netif_stop_queue(dev);
 
-	ret = dlp_ctrl_close_channel(ch_ctx);
-	if (ret)
-		pr_err(DRVNAME ": %s (ch%d close failed (%d))\n",
-				__func__, ch_ctx->ch_id, ret);
-
 	/* RX */
 	del_timer_sync(&rx_ctx->timer);
 	dlp_stop_rx(rx_ctx, ch_ctx);
@@ -421,17 +422,35 @@ int dlp_net_stop(struct net_device *dev)
 	del_timer_sync(&tx_ctx->timer);
 	dlp_stop_tx(tx_ctx);
 
+	ret = dlp_ctrl_close_channel(ch_ctx);
+	if (ret)
+		pr_err(DRVNAME ": Can't close CH%d (HSI CH%d) => err: %d\n",
+				ch_ctx->ch_id, ch_ctx->hsi_channel, ret);
+
 	dlp_ctx_set_state(tx_ctx, IDLE);
 
 	/* Flush the ACWAKE works */
-	flush_work_sync(&ch_ctx->start_tx_w);
-	flush_work_sync(&ch_ctx->stop_tx_w);
+	cancel_work_sync(&ch_ctx->start_tx_w);
+	cancel_work_sync(&ch_ctx->stop_tx_w);
+
+	/* device closed => Set the channel state flag */
+	dlp_ctrl_set_channel_state(ch_ctx->hsi_channel,
+				DLP_CH_STATE_CLOSED);
 
 	return 0;
 }
 
 static void dlp_net_pdu_destructor(struct hsi_msg *pdu)
 {
+	struct dlp_net_tx_params *msg_param = pdu->context;
+	struct dlp_channel *ch_ctx = msg_param->ch_ctx;
+	struct dlp_xfer_ctx *xfer_ctx = &ch_ctx->tx;
+
+	dlp_hsi_controller_pop(xfer_ctx);
+
+	if (timer_pending(&dlp_drv.timer[ch_ctx->ch_id]))
+		del_timer_sync(&dlp_drv.timer[ch_ctx->ch_id]);
+
 	if (pdu->ttype == HSI_MSG_WRITE)
 		dlp_pdu_free(pdu, -1);
 	else
@@ -458,8 +477,12 @@ static int dlp_net_start_xmit(struct sk_buff *skb, struct net_device *dev)
 		/* Stop the NET if */
 		netif_stop_queue(net_ctx->ndev);
 
-		pr_warn(DRVNAME ": ch%d out of credits (%d)",
-				ch_ctx->ch_id, ch_ctx->tx.seq_num);
+		if ((EDLP_NET_TX_DATA_REPORT) ||
+			(EDLP_NET_TX_DATA_LEN_REPORT))
+				pr_warn(DRVNAME ": CH%d (HSI CH%d) out of credits (%d)",
+					ch_ctx->ch_id,
+					ch_ctx->hsi_channel,
+					ch_ctx->tx.seq_num);
 		ret = NETDEV_TX_BUSY;
 		goto out;
 	}
@@ -672,8 +695,14 @@ void dlp_net_tx_timeout(struct net_device *dev)
  */
 int dlp_net_change_mtu(struct net_device *dev, int new_mtu)
 {
-	int ret = -EPERM;
-	return ret;
+	/* Should not exceed the PDU size */
+	if (new_mtu > DLP_NET_TX_PDU_SIZE) {
+		pr_err(DRVNAME ": Invalid MTU size (%d)\n", new_mtu);
+		return -EINVAL;
+	}
+
+	dev->mtu = new_mtu;
+	return 0;
 }
 
 static const struct net_device_ops dlp_net_netdev_ops = {
@@ -693,12 +722,8 @@ void dlp_net_dev_setup(struct net_device *dev)
 {
 	dev->netdev_ops = &dlp_net_netdev_ops;
 	dev->watchdog_timeo = DLP_NET_TX_DELAY;
-
-	/* fill in the other fields */
-	/*  dev->features = NETIF_F_SG | NETIF_F_NO_CSUM; FIXME: wget is KO */
-
 	dev->type = ARPHRD_NONE;
-	dev->mtu = DLP_NET_TX_PDU_SIZE;	/* FIXME: check wget crash */
+	dev->mtu = ETH_DATA_LEN;
 	dev->tx_queue_len = 10;
 	dev->flags = IFF_POINTOPOINT | IFF_NOARP | IFF_MULTICAST;
 }

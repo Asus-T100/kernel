@@ -1396,6 +1396,10 @@ int cs42l73_hp_detection(struct snd_soc_codec *codec,
 
 	if (plug_status) {
 		pr_debug("%s: Jack removed\n", __func__);
+		/* Disable the short detect mute feature when the jack
+		* is removed
+		*/
+		snd_soc_update_bits(codec, CS42L73_OLMBMSDC, 1 << 3, 0);
 	} else {
 		snd_soc_update_bits(codec, CS42L73_IM1, MIC2_SDET, MIC2_SDET);
 		reg = snd_soc_read(codec, CS42L73_IS1);
@@ -1406,6 +1410,9 @@ int cs42l73_hp_detection(struct snd_soc_codec *codec,
 		} else {
 			status = SND_JACK_HEADSET;
 			pr_debug("Headset detected\n");
+			/* Enable short detect mute feature. */
+			snd_soc_update_bits(codec, CS42L73_OLMBMSDC, 1 << 3,
+								 1 << 3);
 		}
 	}
 

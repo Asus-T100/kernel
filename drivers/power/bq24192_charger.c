@@ -1308,6 +1308,10 @@ static int stop_charging(struct bq24192_chip *chip)
 	if (ret < 0)
 		dev_warn(&chip->client->dev, "I2C write failed:%s\n", __func__);
 
+	/*Enable  the WDT and Disable Safety timer */
+	ret = program_timers(chip, true, false);
+	if (ret < 0)
+		dev_warn(&chip->client->dev, "TIMER enable failed\n");
 	/*
 	 * While disabling the charging, program the input source control
 	 * register with minimum current ~100mA, so that in case Hi-Z clears
@@ -1369,8 +1373,8 @@ static void set_up_charging(struct bq24192_chip *chip,
 	reg->chr_volt = chrg_volt_to_reg(chr_volt);
 
 	chip->input_curr = reg->in_src;
-	/* Enable the WDT and Disable Safety timer */
-	ret = program_timers(chip, true, false);
+	/* Enable the WDT and Safety timer */
+	ret = program_timers(chip, true, true);
 	if (ret < 0) {
 		dev_warn(&chip->client->dev, "TIMER enable failed\n");
 		goto i2c_error;
@@ -2129,6 +2133,9 @@ static void bq24192_event_worker(struct work_struct *work)
 
 		if (chip->cap.chrg_type != POWER_SUPPLY_TYPE_USB_HOST) {
 			dev_info(&chip->client->dev, "Enable charging\n");
+			mutex_lock(&chip->event_lock);
+			chip->batt_mode = BATT_CHRG_NORMAL;
+			mutex_unlock(&chip->event_lock);
 			/* This is the condition where event has occured
 			 * because of SYSFS change or USB driver */
 			if ((chip->curr_volt == BQ24192_INVALID_VOLT) ||
@@ -2200,7 +2207,6 @@ static void bq24192_event_worker(struct work_struct *work)
 			chip->batt_status = POWER_SUPPLY_STATUS_CHARGING;
 		}
 
-		chip->batt_mode = BATT_CHRG_NORMAL;
 		mutex_unlock(&chip->event_lock);
 
 		/* Schedule the maintenance now */

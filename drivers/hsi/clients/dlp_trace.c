@@ -267,7 +267,8 @@ static int dlp_trace_dev_open(struct inode *inode, struct file *filp)
 	/* Check if the the channel is not already opened by the NET IF */
 	state = dlp_ctrl_get_channel_state(ch_ctx->hsi_channel);
 	if (state != DLP_CH_STATE_CLOSED) {
-		pr_err(DRVNAME": Invalid channel state (%d)\n", state);
+		pr_err(DRVNAME ": Can't open CH%d (HSI CH%d) => invalid state: %d\n",
+				ch_ctx->ch_id, ch_ctx->hsi_channel, state);
 		ret = -EBUSY;
 		goto out;
 	}
@@ -304,6 +305,10 @@ static int dlp_trace_dev_open(struct inode *inode, struct file *filp)
 		goto out;
 	}
 
+	/* device opened => Set the channel state flag */
+	dlp_ctrl_set_channel_state(ch_ctx->hsi_channel,
+				DLP_CH_STATE_OPENED);
+
 	/* Push RX PDUs */
 	count = DLP_HSI_RX_WAIT_FIFO + HSI_TRACE_TEMP_BUFFERS;
 	for (ret = count; ret; ret--)
@@ -332,6 +337,11 @@ static int dlp_trace_dev_close(struct inode *inode, struct file *filp)
 	/* Set the open flag */
 	trace_ctx->opened = 0;
 	spin_unlock_irqrestore(&ch_ctx->lock, flags);
+
+	/* device closed => Set the channel state flag */
+	dlp_ctrl_set_channel_state(ch_ctx->hsi_channel,
+				DLP_CH_STATE_CLOSED);
+
 	/*
 	 * Wake up the read waitqueue to unblock the poll_wait
 	 */

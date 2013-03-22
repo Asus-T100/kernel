@@ -67,7 +67,8 @@ int psb_cmdbuf_video(struct drm_file *priv,
 		     uint32_t fence_type,
 		     struct drm_psb_cmdbuf_arg *arg,
 		     struct ttm_buffer_object *cmd_buffer,
-		     struct psb_ttm_fence_rep *fence_arg);
+		     struct psb_ttm_fence_rep *fence_arg,
+		     struct psb_video_ctx *msvdx_ctx);
 int psb_msvdx_save_context(struct drm_device *dev);
 int psb_msvdx_restore_context(struct drm_device *dev);
 void psb_msvdx_check_reset_fw(struct drm_device *dev);
@@ -403,6 +404,7 @@ extern int psb_submit_video_cmdbuf(struct drm_device *dev,
 				   struct ttm_buffer_object *cmd_buffer,
 				   unsigned long cmd_offset,
 				   unsigned long cmd_size,
-				   struct ttm_fence_object *fence);
+				   struct ttm_fence_object *fence,
+				   struct psb_video_ctx *msvdx_ctx);
 
 #endif

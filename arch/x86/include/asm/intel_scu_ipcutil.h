@@ -83,6 +83,12 @@ int intel_scu_ipc_msic_vprog2(int on);
 /* OSHOB-OS Handoff Buffer read */
 int intel_scu_ipc_get_oshob_size(void);
 
+/* SCU trace buffer interface */
+u32 intel_scu_ipc_get_scu_trace_buffer(void);
+u32 intel_scu_ipc_get_scu_trace_buffer_size(void);
+u32 intel_scu_ipc_get_fabricerror_buf1_offset(void);
+u32 intel_scu_ipc_get_fabricerror_buf2_offset(void);
+
 /* OSNIB interface. */
 int intel_scu_ipc_write_osnib(u8 *data, int len, int offset);
 int intel_scu_ipc_read_osnib(u8 *data, int len, int offset);

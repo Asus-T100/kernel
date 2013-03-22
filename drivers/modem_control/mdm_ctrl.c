@@ -714,6 +714,9 @@ static int __init mdm_ctrl_module_init(void)
 	if (mdm_ctrl_setup_irq_gpio(new_drv))
 		goto del_dev;
 
+	wake_lock_init(&new_drv->stay_awake, WAKE_LOCK_SUSPEND,
+				"mcd_wakelock");
+
 	/* Everything is OK */
 	mdm_drv = new_drv;
 

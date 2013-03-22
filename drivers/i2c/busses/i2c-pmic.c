@@ -243,7 +243,7 @@ static const struct i2c_algorithm pmic_i2c_algo = {
 	.smbus_xfer = pmic_smbus_xfer,
 };
 
-static int __devinit pmic_i2c_probe(struct platform_device *pdev)
+static int pmic_i2c_probe(struct platform_device *pdev)
 {
 	struct i2c_adapter *adap;
 	int ret;
@@ -395,7 +395,7 @@ out:
 	return ret;
 }
 
-static void __devexit pmic_i2c_rpmsg_remove(struct rpmsg_channel *rpdev)
+static void pmic_i2c_rpmsg_remove(struct rpmsg_channel *rpdev)
 {
 	pmic_i2c_exit();
 	dev_info(&rpdev->dev, "Removed pmic_i2c rpmsg device\n");
@@ -422,7 +422,7 @@ static struct rpmsg_driver pmic_i2c_rpmsg = {
 	.id_table	= pmic_i2c_rpmsg_id_table,
 	.probe		= pmic_i2c_rpmsg_probe,
 	.callback	= pmic_i2c_rpmsg_cb,
-	.remove		= __devexit_p(pmic_i2c_rpmsg_remove),
+	.remove		= pmic_i2c_rpmsg_remove,
 };
 
 static int __init pmic_i2c_rpmsg_init(void)

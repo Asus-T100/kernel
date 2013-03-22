@@ -129,6 +129,8 @@ struct tng_topaz_private {
 	/*
 	 *topaz command queue
 	 */
+	struct tng_topaz_cmd_queue *saved_queue;
+	char *saved_cmd;
 	spinlock_t topaz_lock;
 	struct mutex topaz_mutex;
 	struct list_head topaz_queue;
@@ -208,7 +210,7 @@ struct tng_topaz_private {
 #endif
 	/* topaz suspend work queue */
 	struct drm_device *dev;
-	struct delayed_work topaz_suspend_wq;
+	struct work_struct topaz_suspend_work;
 	uint32_t isr_enabled;
 
 	struct ttm_object_file *tfile;
@@ -258,8 +260,7 @@ extern int32_t mtx_read_core_reg(struct drm_psb_private *dev_priv,
 				uint32_t reg,
 				uint32_t *ret_val);
 
-extern int tng_topaz_kick_null_cmd(struct drm_psb_private *dev_priv,
-			    uint32_t core_id,
+int tng_topaz_kick_null_cmd(struct drm_device *dev,
 			    uint32_t sync_seq);
 
 void tng_set_producer(struct drm_device *dev,
@@ -303,6 +304,10 @@ int tng_topaz_remove_ctx(struct drm_psb_private *dev,
 extern int tng_topaz_save_mtx_state(struct drm_device *dev);
 
 extern int tng_topaz_restore_mtx_state(struct drm_device *dev);
+
+int tng_topaz_dequeue_send(struct drm_device *dev);
+
+uint32_t get_ctx_cnt(struct drm_device *dev);
 
 
 #define TNG_TOPAZ_NEW_PMSTATE(drm_dev, topaz_priv, new_state)		\

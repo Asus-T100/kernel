@@ -617,12 +617,41 @@ void tng_powerdown_topaz(struct work_struct *work)
 {
 	struct tng_topaz_private *topaz_priv =
 		container_of(work, struct tng_topaz_private,
-					topaz_suspend_wq.work);
+					topaz_suspend_work);
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *)topaz_priv->dev->dev_private;
+	struct drm_device *dev = (struct drm_device *)topaz_priv->dev;
 
-	if (!dev_priv->topaz_disabled)
-		ospm_apm_power_down_topaz(topaz_priv->dev);
+	PSB_DEBUG_GENERAL("TOPAZ: Task start\n");
+
+	tng_topaz_dequeue_send(dev);
+
+	/* Avoid race condition with queue buffer when topaz_busy = 1 */
+	mutex_lock(&topaz_priv->topaz_mutex);
+	if (list_empty(&topaz_priv->topaz_queue))
+		topaz_priv->topaz_busy = 0;
+	mutex_unlock(&topaz_priv->topaz_mutex);
+
+	/* If topaz_busy is not 0, then this task should return */
+	if (drm_topaz_pmpolicy != PSB_PMPOLICY_NOPM) {
+		if (topaz_priv->topaz_busy == 0) {
+			PSB_DEBUG_GENERAL("TOPAZ: try to power down topaz\n");
+			ospm_apm_power_down_topaz(topaz_priv->dev);
+		} else {
+			PSB_DEBUG_GENERAL("TOPAZ: topaz_busy = 1," \
+				 " bypass power down and saving context\n");
+		}
+	} else {
+		if (get_ctx_cnt(dev) > 1 &&
+		    topaz_priv->topaz_busy == 0) {
+			PSB_DEBUG_GENERAL("TOPAZ: more than 1 context," \
+			" save current context status\n");
+			tng_topaz_save_mtx_state(dev);
+		}
+	}
+out:
+	PSB_DEBUG_GENERAL("TOPAZ: Task finish\n");
+	return;
 }
 
 /* this function finish the first part of initialization, the rest
@@ -659,7 +688,7 @@ int tng_topaz_init(struct drm_device *dev)
 
 	topaz_priv = dev_priv->topaz_private;
 	topaz_priv->dev = dev;
-	INIT_DELAYED_WORK(&topaz_priv->topaz_suspend_wq,
+	INIT_WORK(&topaz_priv->topaz_suspend_work,
 		&tng_powerdown_topaz);
 
 	INIT_LIST_HEAD(&topaz_priv->topaz_queue);
@@ -670,6 +699,20 @@ int tng_topaz_init(struct drm_device *dev)
 	topaz_priv->topaz_fw_loaded = 0;
 	topaz_priv->cur_codec = 0;
 	topaz_priv->topaz_hw_busy = 1;
+
+	topaz_priv->saved_queue = kzalloc(\
+			sizeof(struct tng_topaz_cmd_queue), \
+			GFP_KERNEL);
+	if (!topaz_priv->saved_queue) {
+		DRM_ERROR("TOPAZ: Failed to alloc memory for saved queue\n");
+		return -1;
+	}
+
+	topaz_priv->saved_cmd = kzalloc(2048, GFP_KERNEL);
+	if (!topaz_priv->saved_cmd) {
+		DRM_ERROR("TOPAZ: Failed to alloc memory for saved cmd\n");
+		return -1;
+	}
 
 	/* tng_topaz_mmu_configure(dev); */
 

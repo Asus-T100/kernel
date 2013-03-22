@@ -27,6 +27,7 @@ obj-$(subst m,y,$(CONFIG_I2C_PMIC))                                    += platfo
 obj-$(subst m,y,$(CONFIG_INTEL_SCU_FLIS))				+= platform_scu_flis.o
 obj-$(subst m,y,$(CONFIG_IIO_BASINCOVE_GPADC))				+= platform_bcove_adc.o
 # I2C Devices
+obj-$(subst m,y,$(CONFIG_CRYSTAL_COVE))					+= platform_crystal_cove.o
 obj-$(subst m,y,$(CONFIG_SENSORS_EMC1403))				+= platform_emc1403.o
 obj-$(subst m,y,$(CONFIG_SENSORS_HMC5883))				+= platform_hmc5883.o
 obj-$(subst m,y,$(CONFIG_SENSORS_LIS3LV02D))				+= platform_lis331.o
@@ -39,6 +40,7 @@ obj-$(subst m,y,$(CONFIG_BATTERY_MAX17042))				+= platform_max17042.o
 else
 obj-$(subst m,y,$(CONFIG_BATTERY_MAX17050))				+= platform_max17042.o
 endif
+obj-$(subst m,y,$(CONFIG_BYT_ULPMC_BATTERY))				+= platform_ulpmc_battery.o
 obj-$(subst m,y,$(CONFIG_TOUCHSCREEN_ATMEL_MXT224))			+= platform_mxt224.o
 obj-$(subst m,y,$(CONFIG_A1026))					+= platform_a1026.o
 obj-$(subst m,y,$(CONFIG_SENSORS_APDS990X))				+= platform_apds990x.o
@@ -93,3 +95,4 @@ obj-$(subst m,y,$(CONFIG_TI_ST))					+= platform_btwilink.o
 obj-$(subst m,y,$(CONFIG_BCM_BT_LPM))					+= platform_btlpm.o
 # Pin Control
 obj-$(subst m,y,$(CONFIG_PINCTRL_INTEL_MID))				+= platform_mid_pinctrl.o
+obj-$(subst m,y,$(CONFIG_INTEL_MID_OSNIB_ILB))				+= platform_osnib_ilb.o

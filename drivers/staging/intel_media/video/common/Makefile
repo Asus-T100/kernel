@@ -18,7 +18,7 @@ ccflags-y += \
 	-I$(INCDIR)/../../../include/drm \
 	-I$(INCDIR)/../../../include/drm/ttm
 
-ccflags-y += -DANDROID -D_linux_ -DLINUX -D__KERNEL__  -DMERRIFIELD
+ccflags-y += -DANDROID -D_linux_ -DLINUX -D__KERNEL__  -DMERRIFIELD -DPSB_MSVDX_FW_LOADED_BY_HOST
 ccflags-$(CONFIG_SUPPORT_VSP) += -DSUPPORT_VSP
 
 #VIDEO_COMMON_DIR = $(TOP_DIR)/driver/staging/intel_media/video/common

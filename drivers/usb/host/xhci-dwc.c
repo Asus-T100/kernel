@@ -93,7 +93,7 @@ static int xhci_dwc_bus_resume(struct usb_hcd *hcd)
 	return ret;
 }
 
-static const struct hc_driver xhci_dwc_hc_driver = {
+static struct hc_driver xhci_dwc_hc_driver = {
 	.description =		"dwc-xhci",
 	.product_desc =		"xHCI Host Controller",
 	.hcd_priv_size =	sizeof(struct xhci_hcd *),
@@ -161,6 +161,25 @@ static void dwc_set_host_mode(struct usb_hcd *hcd)
 	msleep(20);
 }
 
+static void dwc_xhci_enable_phy_suspend(struct usb_hcd *hcd, int enable)
+{
+	u32 val;
+
+	val = readl(hcd->regs + GUSB3PIPECTL0);
+	if (enable)
+		val |= GUSB3PIPECTL_SUS_EN;
+	else
+		val &= ~GUSB3PIPECTL_SUS_EN;
+	writel(val, hcd->regs + GUSB3PIPECTL0);
+
+	val = readl(hcd->regs + GUSB2PHYCFG0);
+	if (enable)
+		val |= GUSB2PHYCFG_SUS_PHY;
+	else
+		val &= ~GUSB2PHYCFG_SUS_PHY;
+	writel(val, hcd->regs + GUSB2PHYCFG0);
+}
+
 static void dwc_core_reset(struct usb_hcd *hcd)
 {
 	u32 val;
@@ -201,7 +220,10 @@ static void dwc_core_reset(struct usb_hcd *hcd)
 	val = readl(hcd->regs + GUCTL);
 	val &= ~GUCTL_CMDEVADDR;
 	writel(val, hcd->regs + GUCTL);
+
+	dwc_xhci_enable_phy_suspend(hcd, 1);
 }
+
 
 /* This is a hardware workaround.
  * xHCI RxDetect state is not work well when USB3
@@ -242,6 +264,48 @@ static ssize_t store_pm_get(struct device *_dev,
 }
 static DEVICE_ATTR(pm_get, S_IRUGO|S_IWUSR|S_IWGRP,\
 			show_pm_get, store_pm_get);
+
+int disable_pm;
+static ssize_t store_disable_pm(struct device *_dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+
+	if (!disable_pm && buf[0] == '1') {
+		disable_pm = 1;
+		xhci_dwc_hc_driver.bus_suspend = NULL;
+		xhci_dwc_hc_driver.bus_resume = NULL;
+		printk(KERN_ERR "Disable power management of xHCI!\n");
+	} else if (disable_pm && buf[0] == '0') {
+		xhci_dwc_hc_driver.bus_suspend = xhci_dwc_bus_suspend;
+		xhci_dwc_hc_driver.bus_resume = xhci_dwc_bus_resume;
+		disable_pm = 0;
+		printk(KERN_ERR "Enable power management of xHCI!\n");
+	}
+
+	return count;
+}
+
+static ssize_t
+show_disable_pm(struct device *_dev, struct device_attribute *attr, char *buf)
+{
+	char				*next;
+	unsigned			size, t;
+
+	next = buf;
+	size = PAGE_SIZE;
+
+	t = scnprintf(next, size,
+		"%s\n",
+		(disable_pm ? "1" : "0")
+		);
+	size -= t;
+	next += t;
+
+	return PAGE_SIZE - size;
+}
+
+static DEVICE_ATTR(disable_pm, S_IRUGO|S_IWUSR|S_IWGRP,\
+			show_disable_pm, store_disable_pm);
 
 static int xhci_start_host(struct usb_hcd *hcd)
 {
@@ -364,6 +428,8 @@ static int xhci_stop_host(struct usb_hcd *hcd)
 	kfree(xhci);
 	*((struct xhci_hcd **) hcd->hcd_priv) = NULL;
 
+	dwc_xhci_enable_phy_suspend(hcd, 0);
+
 	pm_runtime_put(hcd->self.controller);
 	device_remove_file(hcd->self.controller, &dev_attr_pm_get);
 	return 0;
@@ -440,6 +506,12 @@ static int dwc_host_setup(struct usb_hcd *hcd)
 	xhci->hci_version = HC_VERSION(xhci->hcc_params);
 	xhci->hcc_params = xhci_readl(xhci, &xhci->cap_regs->hcc_params);
 	xhci_print_registers(xhci);
+
+	/*
+	 * As of now platform drivers don't provide MSI support, so ensure
+	 * here that the generic code does not try to get MSI support
+	 * */
+	xhci->quirks |= XHCI_BROKEN_MSI;
 
 	/* Make sure the HC is halted. */
 	retval = xhci_halt(xhci);
@@ -583,6 +655,11 @@ static int xhci_dwc_drv_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, hcd);
 	pm_runtime_enable(hcd->self.controller);
 
+	retval = device_create_file(hcd->self.controller, &dev_attr_disable_pm);
+	if (retval < 0)
+		printk(KERN_ERR
+			"Can't register sysfs attribute: %d\n", retval);
+
 	return retval;
 }
 
@@ -670,6 +747,24 @@ static int dwc_hcd_suspend_common(struct device *dev)
 			retval = -EINVAL;
 
 		if (!retval) {
+			/* Ensure that GUSB3PIPECTL[17] (Suspend SS PHY)
+			 * is set to '1'
+			 **/
+			data = readl(hcd->regs + GUSB3PIPECTL0);
+			if (!(data & GUSB3PIPECTL_SUS_EN)) {
+				data |= GUSB3PIPECTL_SUS_EN;
+				writel(data, hcd->regs + GUSB3PIPECTL0);
+			}
+
+			/* Ensure that GUSB2PHYCFG[6] (Suspend 2.0 PHY)
+			 * is set to '1'
+			 **/
+			data = readl(hcd->regs + GUSB2PHYCFG0);
+			if (!(data & GUSB2PHYCFG_SUS_PHY)) {
+				data |= GUSB2PHYCFG_SUS_PHY;
+				writel(data, hcd->regs + GUSB2PHYCFG0);
+			}
+
 			data = readl(hcd->regs + GCTL);
 			data |= GCTL_GBL_HIBERNATION_EN;
 			writel(data, hcd->regs + GCTL);

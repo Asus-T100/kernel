@@ -48,10 +48,10 @@ void *lm3559_platform_data_func(void *info)
 	 * ENVM/TX pin desserted, flash set back;
 	 */
 	platform_data.envm_tx2 = 1;
-	platform_data.tx2_polarity = 0;
+	platform_data.tx2_polarity = 1;
 
-	/* set peak current limit to be 1000mA */
-	platform_data.current_limit = 0;
+	/* set peak current limit to be 3.2A */
+	platform_data.current_limit = 0x3;
 
 	return &platform_data;
 }

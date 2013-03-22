@@ -83,7 +83,8 @@ static int ad5816g_set_arc_mode(struct i2c_client *client)
 	if (ret)
 		return ret;
 
-	ret = ad5816g_i2c_wr8(client, AD5816G_MODE, AD5816G_ARC_RES2);
+	ret = ad5816g_i2c_wr8(client, AD5816G_MODE,
+				AD5816G_MODE_1M_SWITCH_CLOCK);
 	if (ret)
 		return ret;
 

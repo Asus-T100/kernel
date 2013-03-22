@@ -644,12 +644,12 @@ static struct platform_driver mrfl_over_curr_detect_driver = {
 	.id_table = mrfl_ocd_table,
 };
 
-static int __init mrfl_ocd_module_init(void)
+static int mrfl_ocd_module_init(void)
 {
 	return platform_driver_register(&mrfl_over_curr_detect_driver);
 }
 
-static void __exit mrfl_ocd_module_exit(void)
+static void mrfl_ocd_module_exit(void)
 {
 	platform_driver_unregister(&mrfl_over_curr_detect_driver);
 }
@@ -672,7 +672,7 @@ out:
 	return ret;
 }
 
-static void __devexit mrfl_ocd_rpmsg_remove(struct rpmsg_channel *rpdev)
+static void mrfl_ocd_rpmsg_remove(struct rpmsg_channel *rpdev)
 {
 	mrfl_ocd_module_exit();
 	dev_info(&rpdev->dev, "Removed mrfl_ocd rpmsg device\n");
@@ -699,7 +699,7 @@ static struct rpmsg_driver mrfl_ocd_rpmsg = {
 	.drv.owner	= THIS_MODULE,
 	.probe		= mrfl_ocd_rpmsg_probe,
 	.callback	= mrfl_ocd_rpmsg_cb,
-	.remove		= __devexit_p(mrfl_ocd_rpmsg_remove),
+	.remove		= mrfl_ocd_rpmsg_remove,
 	.id_table	= mrfl_ocd_id_table,
 };
 

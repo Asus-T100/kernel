@@ -1086,7 +1086,10 @@ static int mdfld__intel_pipe_set_base(struct drm_crtc *crtc, int x, int y,
 		mdfld_intel_set_scaling_property(crtc, x, y, pipe);
 
 	Start = mode_dev->bo_offset(dev, psbfb);
-	Size = mode_dev->bo_size(dev, psbfb);
+	if (psbfb->pvrBO == NULL)
+		Size = psbfb->size;
+	else
+		Size = mode_dev->bo_size(dev, psbfb->pvrBO);
 	Offset = y * crtc->fb->pitches[0] + x * (crtc->fb->bits_per_pixel / 8);
 
 	/* Try to attach/de-attach Plane B to an existing swap chain,

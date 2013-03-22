@@ -21,7 +21,7 @@
 
 void *edlp_modem_platform_data(void *data)
 {
-
+	int is_v2;
 	static const char hsi_char_name[]	= "hsi_char";
 	static const char hsi_dlp_name[]	= "hsi-dlp";
 
@@ -54,61 +54,54 @@ void *edlp_modem_platform_data(void *data)
 		}
 	};
 
-	static struct hsi_mid_platform_data mid_info = {
-		.tx_dma_channels[0] = -1,
-		.tx_dma_channels[1] = 0,
-		.tx_dma_channels[2] = 1,
-		.tx_dma_channels[3] = 2,
-		.tx_dma_channels[4] = 3,
-		.tx_dma_channels[5] = -1,
-		.tx_dma_channels[6] = -1,
-		.tx_dma_channels[7] = -1,
-		.tx_sg_entries[0] = 1,
-		.tx_sg_entries[1] = 1,
-		.tx_sg_entries[2] = 64,
-		.tx_sg_entries[3] = 64,
-		.tx_sg_entries[4] = 64,
-		.tx_sg_entries[5] = 1,
-		.tx_sg_entries[6] = 1,
-		.tx_sg_entries[7] = 1,
-		.tx_fifo_sizes[0] = 128,
-		.tx_fifo_sizes[1] = 128,
-		.tx_fifo_sizes[2] = 256,
-		.tx_fifo_sizes[3] = 256,
-		.tx_fifo_sizes[4] = 256,
-		.tx_fifo_sizes[5] = -1,
-		.tx_fifo_sizes[6] = -1,
-		.tx_fifo_sizes[7] = -1,
-		.rx_dma_channels[0] = -1,
-		.rx_dma_channels[1] = 4,
-		.rx_dma_channels[2] = 5,
-		.rx_dma_channels[3] = 6,
-		.rx_dma_channels[4] = 7,
-		.rx_dma_channels[5] = -1,
-		.rx_dma_channels[6] = -1,
-		.rx_dma_channels[7] = -1,
-		.rx_sg_entries[0] = 1,
-		.rx_sg_entries[1] = 1,
-		.rx_sg_entries[2] = 1,
-		.rx_sg_entries[3] = 1,
-		.rx_sg_entries[4] = 1,
-		.rx_sg_entries[5] = 1,
-		.rx_sg_entries[6] = 1,
-		.rx_sg_entries[7] = 1,
-		.rx_fifo_sizes[0] = 128,
-		.rx_fifo_sizes[1] = 128,
-		.rx_fifo_sizes[2] = 256,
-		.rx_fifo_sizes[3] = 256,
-		.rx_fifo_sizes[4] = 256,
-		.rx_fifo_sizes[5] = -1,
-		.rx_fifo_sizes[6] = -1,
-		.rx_fifo_sizes[7] = -1,
-	};
+	/* HSI IP v2 ? */
+	is_v2 = (SPID_PLATFORM_ID(INTEL, MRFL, PHONE) ||
+			 SPID_PLATFORM_ID(INTEL, MRFL, TABLET));
+
+	if (is_v2) {
+		static struct hsi_mid_platform_data mid_info_v2 = {
+		  /* TX/RX DMA channels mapping */
+		  .tx_dma_channels = {  0,  1,  2,  3,  4,  -1, -1,  -1},
+		  .rx_dma_channels = {  5,  6,  7,  8,  9,  -1, -1,  -1},
+
+		  /* TX/RX FIFOs sizes */
+		  .tx_fifo_sizes = { 256, 256, 256, 256, 256,  -1,  -1,  -1},
+		  .rx_fifo_sizes = { 256, 256, 256, 256, 256,  -1,  -1,  -1},
+
+		  /* RX/TX Threshold */
+		  .tx_fifo_thres = { 32, 32, 32, 32, 32, 32, 32, 32},
+		  .rx_fifo_thres = { 32, 32, 32, 32, 32, 32, 32, 32},
+
+		  /* TX/RX SG entries count */
+		  .tx_sg_entries = {  1,  1,  64,  64,  64,  1,  1,  1},
+		  .rx_sg_entries = {  1,  1,   1,   1,   1,  1,  1,  1}
+		};
+
+		hsi_info[0].platform_data = (void *)&mid_info_v2;
+		hsi_info[1].platform_data = (void *)&mid_info_v2;
+	} else {
+		static struct hsi_mid_platform_data mid_info_v1 = {
+		  /* TX/RX DMA channels mapping */
+		  .tx_dma_channels = {  -1,  0,  1,  2,  3,  -1, -1,  -1},
+		  .rx_dma_channels = {  -1,  4,  5,  6,  7,  -1, -1,  -1},
+
+		  /* TX/RX FIFOs sizes */
+		  .tx_fifo_sizes = { 128, 128, 256, 256, 256,  -1,  -1,  -1},
+		  .rx_fifo_sizes = { 128, 128, 256, 256, 256,  -1,  -1,  -1},
+
+		  /* RX/TX Threshold */
+		  .tx_fifo_thres = { 32, 32, 32, 32, 32, 32, 32, 32},
+		  .rx_fifo_thres = { 32, 32, 32, 32, 32, 32, 32, 32},
+
+		  /* TX/RX SG entries count */
+		  .tx_sg_entries = {  1,  1,  64,  64,  64,  1,  1,  1},
+		  .rx_sg_entries = {  1,  1,   1,   1,   1,  1,  1,  1}
+		};
+
+		hsi_info[0].platform_data = (void *)&mid_info_v1;
+		hsi_info[1].platform_data = (void *)&mid_info_v1;
+	}
 
 	pr_info("HSI EDLP platform data setup\n");
-
-	hsi_info[0].platform_data = (void *)&mid_info;
-	hsi_info[1].platform_data = (void *)&mid_info;
-
 	return &hsi_info[0];
 }

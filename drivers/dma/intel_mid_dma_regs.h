@@ -283,11 +283,14 @@ struct intel_mid_dma_desc {
 	enum intel_mid_dma_mode		cfg_mode; /*mode configuration*/
 
 };
-
+/* struct intel_mid_dma_lli is used to provide the DMA IP with SAR,DAR,LLP etc.
+   Use u32 for the elements of this structure irrespective
+   of whether dma_addr_t is u32 or u64.This is necessary because
+   the DMA IP expects these elements to be 32 bit wide */
 struct intel_mid_dma_lli {
-	dma_addr_t			sar;
-	dma_addr_t			dar;
-	dma_addr_t			llp;
+	u32				sar;
+	u32				dar;
+	u32				llp;
 	u32				ctl_lo;
 	u32				ctl_hi;
 } __attribute__ ((packed));

@@ -38,6 +38,11 @@
 #include <asm/intel_scu_ipc.h>
 #include <linux/power_supply.h>
 
+#ifdef CONFIG_INTEL_MID_OSNIB_ILB
+#include <linux/reboot.h>
+#include <linux/intel_mid_osnib_ilb.h>
+#endif
+
 /* OSIP backup will be stored with this offset in the first sector */
 #define OSIP_BACKUP_OFFSET 0xE0
 #define MAX_OSII (7)
@@ -204,6 +209,7 @@ static int osip_reboot_notifier_call(struct notifier_block *notifier,
 {
 	int ret = NOTIFY_DONE;
 	int ret_ipc;
+	int ret_cmos;
 	char *cmd = (char *)data;
 #ifdef DEBUG
 	u8 rbt_reason;
@@ -256,6 +262,35 @@ static int osip_reboot_notifier_call(struct notifier_block *notifier,
 		return NOTIFY_DONE;
 	}
 
+#ifdef CONFIG_INTEL_MID_OSNIB_ILB
+	if (data && 0 == strncmp(cmd, "recovery", 9)) {
+		pr_warn("[SHTDWN] %s, rebooting into Recovery\n", __func__);
+#ifdef DEBUG
+		intel_mid_ilb_read_osnib_rr(&rbt_reason);
+#endif
+		ret_cmos = intel_mid_ilb_write_osnib_rr(SIGNED_RECOVERY_ATTR);
+		if (ret_cmos < 0)
+			pr_err("%s cannot write reboot reason in OSNIB\n",
+				__func__);
+		ret = NOTIFY_OK;
+	} else if (data && 0 == strncmp(cmd, "bootloader", 11)) {
+		pr_warn("[SHTDWN] %s, rebooting into Fastboot\n", __func__);
+		ret_cmos = intel_mid_ilb_write_osnib_rr(SIGNED_POS_ATTR);
+		if (ret_cmos < 0)
+			pr_err("%s cannot write reboot reason in OSNIB\n",
+				__func__);
+		ret = NOTIFY_OK;
+	} else {
+		pr_warn("[SHTDWN] %s, rebooting into Android\n", __func__);
+		ret_cmos = intel_mid_ilb_write_osnib_rr(SIGNED_MOS_ATTR);
+		if (ret_cmos < 0)
+			pr_err("%s cannot write reboot reason in OSNIB\n",
+				 __func__);
+		ret = NOTIFY_OK;
+	}
+	emergency_restart();
+	return ret;
+#else
 	if (data && 0 == strncmp(cmd, "recovery", 9)) {
 		pr_warn("[SHTDWN] %s, rebooting into Recovery\n", __func__);
 #ifdef DEBUG
@@ -282,6 +317,8 @@ static int osip_reboot_notifier_call(struct notifier_block *notifier,
 		ret = NOTIFY_OK;
 	}
 	return ret;
+
+#endif
 }
 
 #ifdef DEBUG

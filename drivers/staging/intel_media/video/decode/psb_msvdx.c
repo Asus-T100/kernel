@@ -354,7 +354,8 @@ out:
 int psb_submit_video_cmdbuf(struct drm_device *dev,
 			    struct ttm_buffer_object *cmd_buffer,
 			    unsigned long cmd_offset, unsigned long cmd_size,
-			    struct ttm_fence_object *fence)
+			    struct ttm_fence_object *fence,
+			    struct psb_video_ctx *msvdx_ctx)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
 	uint32_t sequence =  (dev_priv->sequence[PSB_ENGINE_DECODE] << 4);
@@ -365,11 +366,9 @@ int psb_submit_video_cmdbuf(struct drm_device *dev,
 
 	spin_lock_irqsave(&msvdx_priv->msvdx_lock, irq_flags);
 
+	msvdx_priv->msvdx_ctx = msvdx_ctx;
 	msvdx_priv->last_msvdx_ctx = msvdx_priv->msvdx_ctx;
-#ifdef MERRIFIELD
-	if (!msvdx_priv->msvdx_fw_loaded)
-		msvdx_priv->msvdx_needs_reset = 1;
-#endif
+
 	PSB_DEBUG_PM("sequence is 0x%x, needs_reset is 0x%x.\n",
 			sequence, msvdx_priv->msvdx_needs_reset);
 	if (msvdx_priv->msvdx_needs_reset) {
@@ -485,8 +484,7 @@ int psb_submit_video_cmdbuf(struct drm_device *dev,
 		msvdx_cmd->cmd_size = cmd_size;
 		msvdx_cmd->sequence = sequence;
 
-		if (msvdx_priv->msvdx_ctx)
-			msvdx_cmd->msvdx_tile =
+		msvdx_cmd->msvdx_tile =
 			((msvdx_priv->msvdx_ctx->ctx_type >> 16) & 0xff);
 		msvdx_cmd->deblock_cmd_offset =
 			msvdx_priv->deblock_cmd_offset;
@@ -512,7 +510,8 @@ int psb_cmdbuf_video(struct drm_file *priv,
 		     uint32_t fence_type,
 		     struct drm_psb_cmdbuf_arg *arg,
 		     struct ttm_buffer_object *cmd_buffer,
-		     struct psb_ttm_fence_rep *fence_arg)
+		     struct psb_ttm_fence_rep *fence_arg,
+		     struct psb_video_ctx *msvdx_ctx)
 {
 	struct drm_device *dev = priv->minor->dev;
 	struct ttm_fence_object *fence;
@@ -523,7 +522,7 @@ int psb_cmdbuf_video(struct drm_file *priv,
 	 * submission and make sure drm_psb_idle idles the MSVDX completely.
 	 */
 	ret = psb_submit_video_cmdbuf(dev, cmd_buffer, arg->cmdbuf_offset,
-						arg->cmdbuf_size, NULL);
+					arg->cmdbuf_size, NULL, msvdx_ctx);
 	if (ret)
 		return ret;
 

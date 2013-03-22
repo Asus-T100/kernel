@@ -71,6 +71,14 @@ enum dw_pci_ctl_id_t {
 	merrifield_4,
 	merrifield_5,
 	merrifield_6,
+
+	valleyview_0,
+	valleyview_1,
+	valleyview_2,
+	valleyview_3,
+	valleyview_4,
+	valleyview_5,
+	valleyview_6,
 };
 
 struct dw_pci_controller {
@@ -81,7 +89,20 @@ struct dw_pci_controller {
 	u32 clk_khz;
 	int enable_stop;
 	int (*scl_cfg) (struct dw_i2c_dev *dev);
+	void (*reset)(struct dw_i2c_dev *dev);
 };
+
+/* VLV2 PCI config space memio access to the controller is
+* enabled by
+* 1. Reset 0x804 and 0x808 offset from base address.
+* 2. Set 0x804 offset from base address to 0x3.
+*/
+static void vlv2_reset(struct dw_i2c_dev *dev)
+{
+	writel(0, (dev->base + 0x804));
+	writel(0, (dev->base + 0x808));
+	writel(3, (dev->base + 0x804));
+}
 
 static int mfld_i2c_scl_cfg(struct dw_i2c_dev *dev)
 {
@@ -119,6 +140,19 @@ static int merr_i2c_scl_cfg(struct dw_i2c_dev *dev)
 	return 0;
 }
 
+static int vlv2_i2c_scl_cfg(struct dw_i2c_dev *dev)
+{
+	dw_writel(dev, VLV2_SS_SCLK_HCNT, DW_IC_SS_SCL_HCNT);
+	dw_writel(dev, VLV2_SS_SCLK_LCNT, DW_IC_SS_SCL_LCNT);
+
+	dw_writel(dev, VLV2_FS_SCLK_HCNT, DW_IC_FS_SCL_HCNT);
+	dw_writel(dev, VLV2_FS_SCLK_LCNT, DW_IC_FS_SCL_LCNT);
+
+	dw_writel(dev, VLV2_HS_SCLK_HCNT, DW_IC_HS_SCL_HCNT);
+	dw_writel(dev, VLV2_HS_SCLK_LCNT, DW_IC_HS_SCL_LCNT);
+
+	return 0;
+}
 static struct  dw_pci_controller  dw_pci_controllers[] = {
 	[moorestown_0] = {
 		.bus_num     = 0,
@@ -295,6 +329,69 @@ static struct  dw_pci_controller  dw_pci_controllers[] = {
 		.enable_stop = 1,
 		.scl_cfg = merr_i2c_scl_cfg,
 	},
+	[valleyview_0] = {
+		.bus_num     = 1,
+		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_FAST,
+		.tx_fifo_depth = 64,
+		.rx_fifo_depth = 64,
+		.enable_stop = 1,
+		.scl_cfg = vlv2_i2c_scl_cfg,
+		.reset = vlv2_reset,
+	},
+	[valleyview_1] = {
+		.bus_num     = 2,
+		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_FAST,
+		.tx_fifo_depth = 64,
+		.rx_fifo_depth = 64,
+		.enable_stop = 1,
+		.scl_cfg = vlv2_i2c_scl_cfg,
+		.reset = vlv2_reset,
+	},
+	[valleyview_2] = {
+		.bus_num     = 3,
+		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_FAST,
+		.tx_fifo_depth = 64,
+		.rx_fifo_depth = 64,
+		.enable_stop = 1,
+		.scl_cfg = vlv2_i2c_scl_cfg,
+		.reset = vlv2_reset,
+	},
+	[valleyview_3] = {
+		.bus_num     = 4,
+		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_FAST,
+		.tx_fifo_depth = 64,
+		.rx_fifo_depth = 64,
+		.enable_stop = 1,
+		.scl_cfg = vlv2_i2c_scl_cfg,
+		.reset = vlv2_reset,
+	},
+	[valleyview_4] = {
+		.bus_num     = 5,
+		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_FAST,
+		.tx_fifo_depth = 64,
+		.rx_fifo_depth = 64,
+		.enable_stop = 1,
+		.scl_cfg = vlv2_i2c_scl_cfg,
+		.reset = vlv2_reset,
+	},
+	[valleyview_5] = {
+		.bus_num     = 6,
+		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_FAST,
+		.tx_fifo_depth = 64,
+		.rx_fifo_depth = 64,
+		.enable_stop = 1,
+		.scl_cfg = vlv2_i2c_scl_cfg,
+		.reset = vlv2_reset,
+	},
+	[valleyview_6] = {
+		.bus_num     = 7,
+		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_FAST,
+		.tx_fifo_depth = 64,
+		.rx_fifo_depth = 64,
+		.enable_stop = 1,
+		.scl_cfg = vlv2_i2c_scl_cfg,
+		.reset = vlv2_reset,
+	}
 };
 
 static struct i2c_algorithm i2c_dw_algo = {
@@ -597,6 +694,8 @@ const struct pci_device_id *id)
 	dev->speed_cfg = dev->master_cfg & DW_IC_SPEED_MASK;
 	dev->use_dyn_clk = 0;
 
+	if (controller->reset)
+		controller->reset(dev);
 	pci_set_drvdata(pdev, dev);
 
 	dev->tx_fifo_depth = controller->tx_fifo_depth;
@@ -701,6 +800,14 @@ DEFINE_PCI_DEVICE_TABLE(i2c_designware_pci_ids) = {
 	/* Merrifield */
 	{ PCI_VDEVICE(INTEL, 0x1195), merrifield_0 },
 	{ PCI_VDEVICE(INTEL, 0x1196), merrifield_0 },
+	/* Valleyview 2 */
+	{ PCI_VDEVICE(INTEL, 0x0F41), valleyview_0 },
+	{ PCI_VDEVICE(INTEL, 0x0F42), valleyview_0 },
+	{ PCI_VDEVICE(INTEL, 0x0F43), valleyview_0 },
+	{ PCI_VDEVICE(INTEL, 0x0F44), valleyview_0 },
+	{ PCI_VDEVICE(INTEL, 0x0F45), valleyview_0 },
+	{ PCI_VDEVICE(INTEL, 0x0F46), valleyview_0 },
+	{ PCI_VDEVICE(INTEL, 0x0F47), valleyview_0 },
 	{ 0,}
 };
 MODULE_DEVICE_TABLE(pci, i2c_designware_pci_ids);

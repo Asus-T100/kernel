@@ -52,8 +52,6 @@
    The attribute of OS image is selected for Reboot/boot reason.
 */
 
-#define OSFAB_ERR_OFFSET		0x38
-#define OSFAB_ERR_EXTENDED_OFFSET       0x84
 #define MAX_BUFFER_SIZE			1024
 #define FID_MSB_MAPPING			32
 #define MAX_FID_REG_LEN			32
@@ -74,6 +72,11 @@
 #define FLAG_HILOW_MASK			8
 #define FAB_ID_MASK			7
 #define MAX_AGENT_IDX			15
+
+/* Safety limits for SCU extra trace dump */
+#define LOWEST_PHYS_SRAM_ADDRESS        0xFFFC0000
+#define MAX_SCU_EXTRA_DUMP_SIZE         1024
+#define CHAR_PER_LINE_EXTRA_TRACE       20
 
 union error_log_dw10 {
 	struct {
@@ -113,7 +116,7 @@ union flag_status_hilo {
 };
 
 static void __iomem *oshob_base;
-static char log_buffer[MAX_FULL_SIZE] = {0};
+static char *log_buffer;
 
 static char *Fabric_Names[] = {
 	"\nFull Chip Fabric [error]\n\n",
@@ -309,7 +312,8 @@ static int create_fwerr_log(char *output_buf, void __iomem *oshob_ptr)
 	int prev_id = FAB_ID_UNKNOWN, offset = 0;
 	char temp[100];
 
-	void __iomem *fabric_err_dump_offset = oshob_ptr + OSFAB_ERR_OFFSET;
+	void __iomem *fabric_err_dump_offset = oshob_ptr +
+		intel_scu_ipc_get_fabricerror_buf1_offset();
 
 	for (count = 0; count < MAX_NUM_LOGDWORDS; count++) {
 		faberr_dwords[count] = readl(fabric_err_dump_offset +
@@ -317,7 +321,8 @@ static int create_fwerr_log(char *output_buf, void __iomem *oshob_ptr)
 	}
 
 	/* Get 9 additional DWORDS */
-	fabric_err_dump_offset = oshob_ptr + OSFAB_ERR_EXTENDED_OFFSET;
+	fabric_err_dump_offset = oshob_ptr +
+		intel_scu_ipc_get_fabricerror_buf2_offset();
 
 	for (count = 0; count < MAX_NUM_LOGDWORDS_EXTENDED; count++) {
 		faberr_dwords[count + MAX_NUM_LOGDWORDS] =
@@ -442,41 +447,125 @@ static int create_fwerr_log(char *output_buf, void __iomem *oshob_ptr)
 	return strlen(output_buf);
 }
 
+static int dump_scu_extented_trace(char *outbuf, int start_offset, u32 size)
+{
+	u32 buffer;
+	int offset;
+	int i;
+	unsigned int lines;
+	void __iomem *scubuffer;
+
+	offset = start_offset;
+
+	if ((size == 0) || (size > MAX_SCU_EXTRA_DUMP_SIZE))
+		goto leave;
+
+	/*
+	 * SCU gives pointer via oshob. Address is a physical
+	 * address somewhere in shared sram
+	 */
+	buffer = intel_scu_ipc_get_scu_trace_buffer();
+	if (!buffer || buffer < LOWEST_PHYS_SRAM_ADDRESS)
+		goto leave;
+
+	/* Looks that we have valid buffer and size. */
+	scubuffer = ioremap_nocache(buffer, size);
+	if (!scubuffer)
+		goto leave;
+
+	lines = size / sizeof(u32);
+
+	/* Title for error dump */
+	offset += snprintf(outbuf + offset, CHAR_PER_LINE_EXTRA_TRACE,
+			   "SCU Extra trace\n");
+
+	for (i = 0; i < lines; i++) {
+		/*
+		 * "EW:" to separate lines from "DW:" lines
+		 * elsewhere in this file.
+		 */
+		offset += snprintf(outbuf + offset,
+				   CHAR_PER_LINE_EXTRA_TRACE, "EW%d:0x%08x\n",
+				   i,
+				   readl(scubuffer + i * sizeof(u32)));
+	}
+	iounmap(scubuffer);
+leave:
+	return offset;
+}
+
 static int __init intel_fw_logging_init(void)
 {
 	int length = 0;
+	int err = 0;
+	u32 scu_trace_size;
+	u32 trace_size;
 
 	oshob_base = get_oshob_addr();
 
 	if (oshob_base == NULL)
 		return -EINVAL;
 
+	/*
+	 * Calculate size of SCU extra trace buffer. Size of the buffer
+	 * is given by SCU. Make sanity check in case of incorrect data.
+	 * We don't want to allocate all of the memory for trace dump.
+	 */
+	trace_size = intel_scu_ipc_get_scu_trace_buffer_size();
+	if (trace_size > MAX_SCU_EXTRA_DUMP_SIZE)
+		trace_size = 0;
+
+	/*
+	 * Buffer size is in bytes. We will dump 32-bit hex values + header.
+	 * Calculate number of lines and assume constant number of
+	 * characters per line.
+	 */
+	scu_trace_size = ((trace_size / sizeof(u32)) + 2) *
+		CHAR_PER_LINE_EXTRA_TRACE;
+
+	/* Allocate buffer for traditional trace and extra trace */
+	log_buffer = vzalloc(MAX_FULL_SIZE + scu_trace_size);
+	if (!log_buffer) {
+		err = -ENOMEM;
+		goto err_nomem;
+	}
+
 	length = create_fwerr_log(log_buffer, oshob_base);
-	if (length != 0) {
+	if (!length)
+		goto err_nolog;
+
+	length = dump_scu_extented_trace(log_buffer, length,
+					 trace_size);
 
 #ifdef CONFIG_PROC_FS
-		ipanic_faberr = create_proc_entry("ipanic_fabric_err",
-						S_IFREG | S_IRUGO, NULL);
-		if (ipanic_faberr == 0) {
-			pr_err("Fail creating procfile ipanic_fabric_err\n");
-			return -ENOMEM;
-		}
+	ipanic_faberr = create_proc_entry("ipanic_fabric_err",
+					  S_IFREG | S_IRUGO, NULL);
+	if (ipanic_faberr == 0) {
+		pr_err("Fail creating procfile ipanic_fabric_err\n");
+		err = -ENOMEM;
+		goto err_procfail;
+	}
 
-		ipanic_faberr->read_proc = intel_fw_logging_proc_read;
-		ipanic_faberr->write_proc = NULL;
-		ipanic_faberr->size = length;
+	ipanic_faberr->read_proc = intel_fw_logging_proc_read;
+	ipanic_faberr->write_proc = NULL;
+	ipanic_faberr->size = length;
 
 #endif /* CONFIG_PROC_FS */
 
-		/* Dump log as error to console */
-		pr_err("%s", log_buffer);
+	/* Dump log as error to console */
+	pr_err("%s", log_buffer);
 
-		/* Clear fabric error region inside OSHOB if neccessary */
-		intel_scu_ipc_simple_command(IPCMSG_CLEAR_FABERROR, 0);
-	}
+	/* Clear fabric error region inside OSHOB if neccessary */
+	intel_scu_ipc_simple_command(IPCMSG_CLEAR_FABERROR, 0);
+	goto leave;
 
+err_procfail:
+err_nolog:
+	vfree(log_buffer);
+err_nomem:
+leave:
 	iounmap(oshob_base);
-	return 0;
+	return err;
 }
 
 static void __exit intel_fw_logging_exit(void)
@@ -485,6 +574,7 @@ static void __exit intel_fw_logging_exit(void)
 	if (ipanic_faberr)
 		remove_proc_entry("ipanic_fabric_err", NULL);
 #endif /* CONFIG_PROC_FS */
+	vfree(log_buffer);
 }
 
 module_init(intel_fw_logging_init);

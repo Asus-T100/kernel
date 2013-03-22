@@ -385,4 +385,10 @@ config PMIC_CCSM
 	  This driver sets the CCSM registers and handles the PMIC
 	  charger interrupts.
 
+config BYT_ULPMC_BATTERY
+	bool "Baytrail ULPMC battery driver"
+	depends on I2C
+	help
+	  Say Y here to enable support for Baytrail ULPMC battery driver.
+
 endif # POWER_SUPPLY

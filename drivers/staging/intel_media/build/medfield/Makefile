@@ -48,6 +48,10 @@ sgx-objs += $(GPU_BURST_DIR)/gburstm.o \
 		$(GPU_BURST_DIR)/utilf.o
 endif
 
+ifeq ($(DISPLAY_DRIVER_DEBUG_INTERFACE), true)
+ccflags-y += -DDISPLAY_DRIVER_DEBUG_INTERFACE
+endif
+
 ccflags-y += $(include_dirs)
 
 ccflags-y += $(PVRDEFS-y)
