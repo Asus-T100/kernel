@@ -467,8 +467,13 @@ otm_hdmi_ret_t otm_hdmi_get_eld(void *ctx, otm_hdmi_eld_t *eld)
 
 	/* 64-byte of baseline data, including monitor names and and list of 3-byte SAD */
 	/* monitor name is not populated here */
-	if (edid_int->short_audio_descriptor_count)
-		memcpy(eld->mn_sand_sads, edid_int->short_audio_descriptor_data, 3 * edid_int->short_audio_descriptor_count);
+	if (edid_int->short_audio_descriptor_count) {
+		WARN_ON(edid_int->short_audio_descriptor_count >
+						sizeof(eld->mn_sand_sads));
+		memcpy(eld->mn_sand_sads, edid_int->short_audio_descriptor_data,
+		       min_t(int, sizeof(eld->mn_sand_sads),
+			     3 * edid_int->short_audio_descriptor_count));
+	}
 
 	return OTM_HDMI_SUCCESS;
 }
