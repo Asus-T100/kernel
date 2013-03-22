@@ -44,10 +44,6 @@
 #include <sound/jack.h>
 #include "../codecs/lm49453.h"
 
-#ifdef CONFIG_ANDROID_SWITCH_MID
-extern void mid_headset_report(int state);
-#endif
-
 static int mrfld_hw_params(struct snd_pcm_substream *substream,
 			   struct snd_pcm_hw_params *params)
 {

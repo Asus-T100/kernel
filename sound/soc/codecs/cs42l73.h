@@ -242,8 +242,6 @@ extern int cs42l73_hp_detection(struct snd_soc_codec *codec,
 				  struct snd_soc_jack *jack, int plug_status);
 
 extern void cs42l73_mclk_switch(struct device *dev, bool mode);
-#ifdef CONFIG_ANDROID_SWITCH_MID
 extern void mid_headset_report(int state);
-#endif
 
 #endif	/* __CS42L73_H__ */
