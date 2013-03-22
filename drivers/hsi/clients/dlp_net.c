@@ -177,7 +177,7 @@ static void dlp_net_complete_tx(struct hsi_msg *pdu)
 		mod_timer(&dlp_drv.timer[ch_ctx->ch_id],
 			  jiffies + usecs_to_jiffies(DLP_HANGUP_DELAY));
 	} else {
-		del_timer_sync(&dlp_drv.timer[ch_ctx->ch_id]);
+		del_timer(&dlp_drv.timer[ch_ctx->ch_id]);
 	}
 
 	write_unlock_irqrestore(&xfer_ctx->lock, flags);
@@ -347,14 +347,10 @@ int dlp_net_open(struct net_device *dev)
 	int ret, state;
 	struct dlp_channel *ch_ctx = netdev_priv(dev);
 
-	pr_debug(DRVNAME ": %s open (CH%d, HSI CH%d)\n",
-			dev->name, ch_ctx->ch_id, ch_ctx->hsi_channel);
-
 	/* Check if the the channel is not already opened for Trace */
 	state = dlp_ctrl_get_channel_state(ch_ctx->hsi_channel);
 	if (state != DLP_CH_STATE_CLOSED) {
-		pr_err(DRVNAME ": Can't open CH%d (HSI CH%d) => invalid state: %d\n",
-				ch_ctx->ch_id, ch_ctx->hsi_channel, state);
+		pr_err(DRVNAME": Invalid channel state (%d)\n", state);
 		ret = -EBUSY;
 		goto out;
 	}
@@ -362,22 +358,20 @@ int dlp_net_open(struct net_device *dev)
 	/* Update/Set the eDLP channel id */
 	dlp_drv.channels_hsi[ch_ctx->hsi_channel].edlp_channel = ch_ctx->ch_id;
 
-	if (dlp_net_is_trace_channel(ch_ctx)) {
-		/* Allocate TX FIFO */
-		ret = dlp_allocate_pdus_pool(ch_ctx, &ch_ctx->tx);
-		if (ret) {
-			pr_err(DRVNAME ": Cant allocate RX FIFO pdus for ch%d\n",
-					ch_ctx->ch_id);
-			goto out;
-		}
+	/* Allocate TX FIFO */
+	ret = dlp_allocate_pdus_pool(ch_ctx, &ch_ctx->tx);
+	if (ret) {
+		pr_err(DRVNAME ": Cant allocate RX FIFO pdus for ch%d\n",
+				ch_ctx->ch_id);
+		goto out;
+	}
 
-		/* Allocate RX FIFO */
-		ret = dlp_allocate_pdus_pool(ch_ctx, &ch_ctx->rx);
-		if (ret) {
-			pr_err(DRVNAME ": Cant allocate RX FIFO pdus for ch%d\n",
-					ch_ctx->ch_id);
-			goto out;
-		}
+	/* Allocate RX FIFO */
+	ret = dlp_allocate_pdus_pool(ch_ctx, &ch_ctx->rx);
+	if (ret) {
+		pr_err(DRVNAME ": Cant allocate RX FIFO pdus for ch%d\n",
+				ch_ctx->ch_id);
+		goto out;
 	}
 
 	/* Open the channel */
@@ -405,9 +399,6 @@ int dlp_net_stop(struct net_device *dev)
 	struct dlp_xfer_ctx *rx_ctx;
 	int ret;
 
-	pr_debug(DRVNAME ": %s close (CH%d, HSI CH%d)\n",
-			dev->name, ch_ctx->ch_id, ch_ctx->hsi_channel);
-
 	tx_ctx = &ch_ctx->tx;
 	rx_ctx = &ch_ctx->rx;
 
@@ -417,6 +408,11 @@ int dlp_net_stop(struct net_device *dev)
 	if (!netif_queue_stopped(dev))
 		netif_stop_queue(dev);
 
+	ret = dlp_ctrl_close_channel(ch_ctx);
+	if (ret)
+		pr_err(DRVNAME ": %s (ch%d close failed (%d))\n",
+				__func__, ch_ctx->ch_id, ret);
+
 	/* RX */
 	del_timer_sync(&rx_ctx->timer);
 	dlp_stop_rx(rx_ctx, ch_ctx);
@@ -425,35 +421,17 @@ int dlp_net_stop(struct net_device *dev)
 	del_timer_sync(&tx_ctx->timer);
 	dlp_stop_tx(tx_ctx);
 
-	ret = dlp_ctrl_close_channel(ch_ctx);
-	if (ret)
-		pr_err(DRVNAME ": Can't close CH%d (HSI CH%d) => err: %d\n",
-				ch_ctx->ch_id, ch_ctx->hsi_channel, ret);
-
 	dlp_ctx_set_state(tx_ctx, IDLE);
 
 	/* Flush the ACWAKE works */
-	cancel_work_sync(&ch_ctx->start_tx_w);
-	cancel_work_sync(&ch_ctx->stop_tx_w);
-
-	/* device closed => Set the channel state flag */
-	dlp_ctrl_set_channel_state(ch_ctx->hsi_channel,
-				DLP_CH_STATE_CLOSED);
+	flush_work_sync(&ch_ctx->start_tx_w);
+	flush_work_sync(&ch_ctx->stop_tx_w);
 
 	return 0;
 }
 
 static void dlp_net_pdu_destructor(struct hsi_msg *pdu)
 {
-	struct dlp_net_tx_params *msg_param = pdu->context;
-	struct dlp_channel *ch_ctx = msg_param->ch_ctx;
-	struct dlp_xfer_ctx *xfer_ctx = &ch_ctx->tx;
-
-	dlp_hsi_controller_pop(xfer_ctx);
-
-	if (timer_pending(&dlp_drv.timer[ch_ctx->ch_id]))
-		del_timer_sync(&dlp_drv.timer[ch_ctx->ch_id]);
-
 	if (pdu->ttype == HSI_MSG_WRITE)
 		dlp_pdu_free(pdu, -1);
 	else
@@ -480,12 +458,8 @@ static int dlp_net_start_xmit(struct sk_buff *skb, struct net_device *dev)
 		/* Stop the NET if */
 		netif_stop_queue(net_ctx->ndev);
 
-		if ((EDLP_NET_TX_DATA_REPORT) ||
-			(EDLP_NET_TX_DATA_LEN_REPORT))
-				pr_warn(DRVNAME ": CH%d (HSI CH%d) out of credits (%d)",
-					ch_ctx->ch_id,
-					ch_ctx->hsi_channel,
-					ch_ctx->tx.seq_num);
+		pr_warn(DRVNAME ": ch%d out of credits (%d)",
+				ch_ctx->ch_id, ch_ctx->tx.seq_num);
 		ret = NETDEV_TX_BUSY;
 		goto out;
 	}

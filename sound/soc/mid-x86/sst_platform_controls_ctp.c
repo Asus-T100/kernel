@@ -45,21 +45,16 @@ static int lpe_mixer_ihf_set(struct snd_kcontrol *kcontrol,
 
 	switch (ucontrol->value.integer.value[0]) {
 	case 0:
-		pr_debug("input is None\n");
-		device_input_mixer = SST_STREAM_DEVICE_IHF
-					| SST_INPUT_STREAM_NONE;
-		break;
-	case 1:
 		pr_debug("input is PCM stream\n");
 		device_input_mixer = SST_STREAM_DEVICE_IHF
 					| SST_INPUT_STREAM_PCM;
-		break;
-	case 2:
+	break;
+	case 1:
 		pr_debug("input is Compress  stream\n");
 		device_input_mixer = SST_STREAM_DEVICE_IHF
 					| SST_INPUT_STREAM_COMPRESS;
 		break;
-	case 3:
+	case 2:
 		pr_debug("input is Mixed stream\n");
 		device_input_mixer = SST_STREAM_DEVICE_IHF
 					| SST_INPUT_STREAM_MIXED;
@@ -69,7 +64,8 @@ static int lpe_mixer_ihf_set(struct snd_kcontrol *kcontrol,
 		return -EINVAL;
 	}
 	sst->lpe_mixer_input_ihf  = ucontrol->value.integer.value[0];
-	return sst_set_mixer_param(device_input_mixer);
+	sst_set_mixer_param(device_input_mixer);
+	return 0;
 }
 
 static int lpe_mixer_headset_get(struct snd_kcontrol *kcontrol,
@@ -91,21 +87,16 @@ static int lpe_mixer_headset_set(struct snd_kcontrol *kcontrol,
 
 	switch (ucontrol->value.integer.value[0]) {
 	case 0:
-		pr_debug("input is None\n");
-		mixer_input_stream = SST_STREAM_DEVICE_HS
-					| SST_INPUT_STREAM_NONE;
-		break;
-	case 1:
 		pr_debug("input is PCM stream\n");
 		mixer_input_stream = SST_STREAM_DEVICE_HS
 					 | SST_INPUT_STREAM_PCM;
 		break;
-	case 2:
+	case 1:
 		pr_debug("input is Compress  stream\n");
 		mixer_input_stream = SST_STREAM_DEVICE_HS
 					 | SST_INPUT_STREAM_COMPRESS;
 		break;
-	case 3:
+	case 2:
 		pr_debug("input is Mixed stream\n");
 		mixer_input_stream = SST_STREAM_DEVICE_HS
 					 | SST_INPUT_STREAM_MIXED;
@@ -115,7 +106,8 @@ static int lpe_mixer_headset_set(struct snd_kcontrol *kcontrol,
 		return -EINVAL;
 	}
 	sst->lpe_mixer_input_hs  = ucontrol->value.integer.value[0];
-	return sst_set_mixer_param(mixer_input_stream);
+	sst_set_mixer_param(mixer_input_stream);
+	return 0;
 }
 
 static int sst_probe_byte_control_get(struct snd_kcontrol *kcontrol,
@@ -137,11 +129,11 @@ static int sst_probe_byte_control_set(struct snd_kcontrol *kcontrol,
 }
 
 static const char *lpe_mixer_text[] = {
-	"None", "PCM", "Compressed", "Mixed",
+	"PCM", "Compressed", "PCM and Compressed",
 };
 
 static const struct soc_enum lpe_mixer_enum =
-	SOC_ENUM_SINGLE_EXT(ARRAY_SIZE(lpe_mixer_text), lpe_mixer_text);
+	SOC_ENUM_SINGLE_EXT(3, lpe_mixer_text);
 
 static const struct snd_kcontrol_new sst_controls_clv[] = {
 	SOC_ENUM_EXT("LPE IHF mixer", lpe_mixer_enum,

@@ -705,30 +705,6 @@ temp_read_err:
 	return ret;
 }
 
-static int max17042_set_property(struct power_supply *psy,
-				    enum power_supply_property psp,
-				    const union power_supply_propval *val)
-{
-	struct max17042_chip *chip = container_of(psy,
-				struct max17042_chip, battery);
-	int ret = 0;
-
-	mutex_lock(&chip->batt_lock);
-	switch (psp) {
-	case POWER_SUPPLY_PROP_STATUS:
-		chip->status = val->intval;
-		break;
-	default:
-		ret = -EINVAL;
-		break;
-	}
-
-	mutex_unlock(&chip->batt_lock);
-	power_supply_changed(&chip->battery);
-
-	return ret;
-}
-
 static int max17042_get_property(struct power_supply *psy,
 			    enum power_supply_property psp,
 			    union power_supply_propval *val)
@@ -1520,7 +1496,7 @@ static void set_chip_config(struct max17042_chip *chip)
 	dev_info(&chip->client->dev, "Status reg: %x\n", val);
 	if (!fg_conf_data->config_init || (val & STATUS_POR_BIT)) {
 		dev_info(&chip->client->dev, "Config data should be loaded\n");
-#if defined(CONFIG_BOARD_REDRIDGE) || defined(CONFIG_BOARD_CTP)
+#ifdef CONFIG_BOARD_REDRIDGE
 		reset_max17042(chip);
 #endif
 		retval = init_max17042_chip(chip);
@@ -2071,7 +2047,6 @@ static int __devinit max17042_probe(struct i2c_client *client,
 		chip->battery.name = "max17047_battery";
 	chip->battery.type		= POWER_SUPPLY_TYPE_BATTERY;
 	chip->battery.get_property	= max17042_get_property;
-	chip->battery.set_property	= max17042_set_property;
 	chip->battery.external_power_changed = max17042_external_power_changed;
 	chip->battery.properties	= max17042_battery_props;
 	chip->battery.num_properties	= ARRAY_SIZE(max17042_battery_props);

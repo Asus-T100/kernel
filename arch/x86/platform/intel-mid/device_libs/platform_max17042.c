@@ -267,10 +267,12 @@ void *max17042_platform_data(void *info)
 	platform_data.technology = POWER_SUPPLY_TECHNOLOGY_LION;
 	platform_data.file_sys_storage_enabled = 1;
 	platform_data.battery_health = mrfl_get_bat_health;
-	platform_data.soc_intr_mode_enabled = true;
 #endif
 #ifdef CONFIG_PMIC_CCSM
 	platform_data.battery_pack_temp = pmic_get_battery_pack_temp;
+#endif
+#ifdef CONFIG_BQ24261_CHARGER
+	platform_data.battery_status = bq24261_get_bat_status;
 #endif
 	return &platform_data;
 }
