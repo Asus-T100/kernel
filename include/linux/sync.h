@@ -19,6 +19,7 @@
 #include <linux/kref.h>
 #include <linux/ktime.h>
 #include <linux/list.h>
+#include <linux/seq_file.h>
 #include <linux/spinlock.h>
 #include <linux/wait.h>
 
@@ -40,14 +41,14 @@ struct sync_fence;
  *			 -1 if a will signabl before b
  * @free_pt:		called before sync_pt is freed
  * @release_obj:	called before sync_timeline is freed
- * @print_obj:		print aditional debug information about sync_timeline.
- *			  should not print a newline
- * @print_pt:		print aditional debug information about sync_pt.
- *			  should not print a newline
+ * @print_obj:		deprecated
+ * @print_pt:		deprecated
  * @fill_driver_data:	write implmentation specific driver data to data.
  *			  should return an error if there is not enough room
  *			  as specified by size.  This information is returned
  *			  to userspace by SYNC_IOC_FENCE_INFO.
+ * @timeline_value_str: fill str with the value of the sync_timeline's counter
+ * @pt_value_str:	fill str with the value of the sync_pt
  */
 struct sync_timeline_ops {
 	const char *driver_name;
@@ -67,15 +68,22 @@ struct sync_timeline_ops {
 	/* optional */
 	void (*release_obj)(struct sync_timeline *sync_timeline);
 
-	/* optional */
+	/* deprecated */
 	void (*print_obj)(struct seq_file *s,
 			  struct sync_timeline *sync_timeline);
 
-	/* optional */
+	/* deprecated */
 	void (*print_pt)(struct seq_file *s, struct sync_pt *sync_pt);
 
 	/* optional */
 	int (*fill_driver_data)(struct sync_pt *syncpt, void *data, int size);
+
+	/* optional */
+	void (*timeline_value_str)(struct sync_timeline *timeline, char *str,
+				   int size);
+
+	/* optional */
+	void (*pt_value_str)(struct sync_pt *pt, char *str, int size);
 };
 
 /**
@@ -329,8 +337,8 @@ int sync_fence_cancel_async(struct sync_fence *fence,
  * @fence:	fence to wait on
  * @tiemout:	timeout in ms
  *
- * Wait for @fence to be signaled or have an error.  Waits indefintly
- * if @timeout = 0
+ * Wait for @fence to be signaled or have an error.  Waits indefinitely
+ * if @timeout < 0
  */
 int sync_fence_wait(struct sync_fence *fence, long timeout);
 
@@ -389,9 +397,9 @@ struct sync_fence_info_data {
 /**
  * DOC: SYNC_IOC_WAIT - wait for a fence to signal
  *
- * pass timeout in milliseconds.
+ * pass timeout in milliseconds.  Waits indefinitely timeout < 0.
  */
-#define SYNC_IOC_WAIT		_IOW(SYNC_IOC_MAGIC, 0, __u32)
+#define SYNC_IOC_WAIT		_IOW(SYNC_IOC_MAGIC, 0, __s32)
 
 /**
  * DOC: SYNC_IOC_MERGE - merge two fences
