@@ -380,7 +380,7 @@ RGB[0,8191],coef[-8192,8191] -> RGB[0,8191]
 	 (enable_raw_bin) ? \
 	   CEIL_MUL(SH_CSS_MAX_CONTINUOUS_SENSOR_WIDTH,4*ISP_VEC_NELEMS) : \
 	 (enable_continuous) ? \
-	   SH_CSS_MAX_CONTINUOUS_SENSOR_WIDTH \
+	   SH_CSS_MAX_CONTINUOUS_SENSOR_WIDTH_DEC \
 	   : max_internal_width)
 
 #define _ISP_INPUT_WIDTH(internal_width, ds_input_width, enable_ds) \

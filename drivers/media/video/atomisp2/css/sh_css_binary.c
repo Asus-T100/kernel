@@ -24,6 +24,9 @@
 #include <gdc_device.h>	/* HR_GDC_N */
 
 #include "sh_css_binary.h"
+
+#include "sh_css_debug.h"
+
 #include "sh_css.h"
 #include "sh_css_internal.h"
 #include "sh_css_sp.h"
@@ -35,7 +38,7 @@
 #include "assert_support.h"
 
 static struct sh_css_binary_info *all_binaries; /* ISP binaries only (no SP) */
-static struct sh_css_binary_info *binary_infos[SH_CSS_BINARY_NUM_MODES];
+static struct sh_css_binary_info *binary_infos[SH_CSS_BINARY_NUM_MODES] = {NULL, };
 
 enum sh_css_err
 sh_css_binary_grid_info(struct sh_css_binary *binary,
@@ -242,6 +245,7 @@ sh_css_fill_binary_info(const struct sh_css_binary_info *info,
 	bool input_is_yuv_8 = input_format_is_yuv_8(stream_format);
 
 assert(info != NULL);
+assert(binary != NULL);
 
 	if (in_info != NULL) {
 		bits_per_pixel = in_info->raw_bit_depth;
@@ -256,6 +260,7 @@ assert(info != NULL);
 		is_out_format_rgba888 =
 			out_info->format == SH_CSS_FRAME_FORMAT_RGBA888;
 	}
+	(void)is_out_format_rgba888; /* Klocwork pacifier: VA_UNUSED.GEN */
 	if (info->enable.dvs_envelope) {
 		sh_css_video_get_dis_envelope(&dvs_env_width, &dvs_env_height);
 		dvs_env_width  = MAX(dvs_env_width, SH_CSS_MIN_DVS_ENVELOPE);
@@ -539,6 +544,18 @@ sh_css_binary_find(struct sh_css_binary_descr *descr,
 	bool continuous = sh_css_continuous_is_enabled();
 	unsigned int isp_pipe_version = descr->isp_pipe_version;
 
+assert(descr != NULL);
+/* MW: used after an error check, may accept NULL, but doubtfull */
+assert(binary != NULL);
+
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_binary_find() enter: "
+		"descr=%p, (mode=%d), "
+		"binary=%p, "
+		"is_video_usecase=%d\n",
+		descr, descr->mode,
+		binary, (int)is_video_usecase);
+
 	if (cc_in_info == NULL || cc_out_info == NULL || cc_vf_info == NULL) {
 		sh_css_free(cc_in_info);
 		sh_css_free(cc_out_info);
@@ -576,81 +593,164 @@ sh_css_binary_find(struct sh_css_binary_descr *descr,
 		 * sequence of two copy binaries in FW is known to us.
 		 * TODO: Extend all binary defs with supported input format
 		 * field (see CR 1955) */
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_binary_find() candidate = %p, mode = %d ID = %d\n",candidate, candidate->mode, candidate->id);
+
 		if (mode == SH_CSS_BINARY_MODE_COPY && candidate->enable.ds &&
-		    (!input_is_yuv_8 || !is_video_usecase)/*TODO: change this*/)
+		    (!input_is_yuv_8 || !is_video_usecase)/*TODO: change this*/) {
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_binary_find() [%d] continue: (%d == %d) && %d && (!%d || !%d)\n", __LINE__,
+			mode, SH_CSS_BINARY_MODE_COPY, candidate->enable.ds,
+			input_is_yuv_8, is_video_usecase);
 			continue;
+		}
+/* 
+ * MW: Only a limited set of jointly configured binaries can be used in a continuous preview/video mode
+ * unless it is the copy mode and copy runs on SP
+ */
+		if (!candidate->enable.continuous && continuous && (mode != SH_CSS_BINARY_MODE_COPY)) {
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_binary_find() [%d] continue: !%d && %d && (%d != %d)\n", __LINE__, candidate->enable.continuous, continuous, mode, SH_CSS_BINARY_MODE_COPY);
+			continue;
+		}
+
 		if (mode == SH_CSS_BINARY_MODE_VIDEO &&
-		    candidate->isp_pipe_version != isp_pipe_version)
+		    candidate->isp_pipe_version != isp_pipe_version) {
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_binary_find() [%d] continue: (%d == %d) && (%d != %d)\n", __LINE__,
+			mode, SH_CSS_BINARY_MODE_VIDEO, candidate->isp_pipe_version, isp_pipe_version);
 			continue;
-		if (!candidate->enable.reduced_pipe && enable_reduced_pipe)
+		}
+		if (!candidate->enable.reduced_pipe && enable_reduced_pipe) {
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_binary_find() [%d] continue: !%d && %d\n", __LINE__, candidate->enable.reduced_pipe, enable_reduced_pipe);
 			continue;
-		if (!candidate->enable.dvs_6axis && enable_dvs_6axis)
+		}
+		if (!candidate->enable.dvs_6axis && enable_dvs_6axis) {
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_binary_find() [%d] continue: !%d && %d\n", __LINE__, candidate->enable.dvs_6axis, enable_dvs_6axis);
 			continue;
-		if (candidate->enable.high_speed && !enable_high_speed)
+		}
+		if (candidate->enable.high_speed && !enable_high_speed) {
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_binary_find() [%d] continue: %d && !%d\n", __LINE__, candidate->enable.high_speed, enable_high_speed);
 			continue;
-		if (!(candidate->enable.ds & 2) && enable_yuv_ds)
+		}
+		if (!(candidate->enable.ds & 2) && enable_yuv_ds) {
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_binary_find() [%d] continue: !%d && %d\n", __LINE__, ((candidate->enable.ds & 2) != 0), enable_yuv_ds);
 			continue;
-		if ((candidate->enable.ds & 2) && !enable_yuv_ds)
+		}
+		if ((candidate->enable.ds & 2) && !enable_yuv_ds) {
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_binary_find() [%d] continue: %d && !%d\n", __LINE__, ((candidate->enable.ds & 2) != 0), enable_yuv_ds);
 			continue;
+		}
+
 		if (mode == SH_CSS_BINARY_MODE_VIDEO &&
 		    candidate->enable.ds && need_ds)
 			need_dz = false;
+
 		if (mode != SH_CSS_BINARY_MODE_PREVIEW &&
 		    mode != SH_CSS_BINARY_MODE_COPY &&
-		    candidate->enable.vf_veceven && !req_vf_info)
+		    candidate->enable.vf_veceven && (req_vf_info == NULL)) {
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_binary_find() [%d] continue: (%d != %d) && (%d != %d) && %d && (%p == NULL)\n", __LINE__,
+			mode, SH_CSS_BINARY_MODE_PREVIEW, mode, SH_CSS_BINARY_MODE_COPY,
+			candidate->enable.vf_veceven, req_vf_info);
 			continue;
-		if (req_vf_info && !(candidate->enable.vf_veceven ||
-				     candidate->variable_vf_veceven))
+		}
+		if ((req_vf_info != NULL) && !(candidate->enable.vf_veceven ||
+				     candidate->variable_vf_veceven)) {
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_binary_find() [%d] continue: (%p != NULL) && !(%d || %d)\n", __LINE__, req_vf_info, candidate->enable.vf_veceven, candidate->variable_vf_veceven);
 			continue;
-		if (!candidate->enable.dvs_envelope && need_dvs)
+		}
+		if (!candidate->enable.dvs_envelope && need_dvs) {
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_binary_find() [%d] continue: !%d && %d\n", __LINE__, candidate->enable.dvs_envelope, (int)need_dvs);
 			continue;
-		if (dvs_envelope_width > candidate->max_dvs_envelope_width)
+		}
+		if (dvs_envelope_width > candidate->max_dvs_envelope_width) {
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_binary_find() [%d] continue: (%d > %d)\n", __LINE__, dvs_envelope_width, candidate->max_dvs_envelope_width);
 			continue;
-		if (dvs_envelope_height > candidate->max_dvs_envelope_height)
+		}
+		if (dvs_envelope_height > candidate->max_dvs_envelope_height) {
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_binary_find() [%d] continue: (%d > %d)\n", __LINE__, dvs_envelope_height, candidate->max_dvs_envelope_height);
 			continue;
-		if (!candidate->enable.ds && need_ds)
+		}
+		if (!candidate->enable.ds && need_ds) {
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_binary_find() [%d] continue: !%d && %d\n", __LINE__, candidate->enable.ds, (int)need_ds);
 			continue;
-		if (!candidate->enable.uds && need_dz)
+		}
+		if (!candidate->enable.uds && need_dz) {
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_binary_find() [%d] continue: !%d && %d\n", __LINE__, candidate->enable.uds, (int)need_dz);
 			continue;
-		if (online && candidate->input == SH_CSS_BINARY_INPUT_MEMORY)
+		}
+		if (online && candidate->input == SH_CSS_BINARY_INPUT_MEMORY) {
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_binary_find() [%d] continue: %d && (%d == %d)\n", __LINE__, online, candidate->input, SH_CSS_BINARY_INPUT_MEMORY);
 			continue;
-		if (!online && candidate->input == SH_CSS_BINARY_INPUT_SENSOR)
+		}
+		if (!online && candidate->input == SH_CSS_BINARY_INPUT_SENSOR) {
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_binary_find() [%d] continue: !%d && (%d == %d)\n", __LINE__, online, candidate->input, SH_CSS_BINARY_INPUT_SENSOR);
 			continue;
+		}
 		if (req_out_info->padded_width < candidate->min_output_width ||
-		    req_out_info->padded_width > candidate->max_output_width)
+		    req_out_info->padded_width > candidate->max_output_width) {
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_binary_find() [%d] continue: (%d > %d) || (%d < %d)\n", __LINE__,
+			req_out_info->padded_width, candidate->min_output_width,
+			req_out_info->padded_width, candidate->max_output_width);
 			continue;
+		}
 
-		if (req_in_info->padded_width > candidate->max_input_width)
+		if (req_in_info->padded_width > candidate->max_input_width) {
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_binary_find() [%d] continue: (%d > %d)\n", __LINE__, req_in_info->padded_width, candidate->max_input_width);
 			continue;
+		}
+		if (!supports_output_format(candidate, req_out_info->format)) {
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_binary_find() [%d] continue: !%d\n", __LINE__, supports_output_format(candidate, req_out_info->format));
+			continue;
+		}
 
-		if (!supports_output_format(candidate, req_out_info->format))
-			continue;
-
-#define __NEW__
-#ifndef __NEW__
-		if (descr->binning && !candidate->enable.raw_binning)
-			continue;
-#else  /* __NEW__ */
 /*
  * Select either a binary with conditional decimation or one with fixed decimation
  */
-		if (descr->binning && !(candidate->enable.raw_binning || candidate->enable.fixed_bayer_ds))
+		if (descr->binning && !(candidate->enable.raw_binning || candidate->enable.fixed_bayer_ds)) {
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_binary_find() [%d] continue: %d && !(%d || %d)\n", __LINE__, descr->binning, candidate->enable.raw_binning, candidate->enable.fixed_bayer_ds);
 			continue;
-
-		if (!descr->binning && candidate->enable.fixed_bayer_ds)
+		}
+/*
+ * "candidate->enable.fixed_bayer_ds" is also used to get the correct buffer size reservation in the still capture and capture_pp binaries
+ */
+		if (!descr->binning && candidate->enable.fixed_bayer_ds && ((mode == SH_CSS_BINARY_MODE_PREVIEW) || (mode == SH_CSS_BINARY_MODE_VIDEO))) {
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_binary_find() [%d] continue: !%d && %d && ((%d == %d) || (%d == %d))\n", __LINE__,
+		descr->binning, candidate->enable.fixed_bayer_ds, mode, SH_CSS_BINARY_MODE_PREVIEW, mode, SH_CSS_BINARY_MODE_VIDEO);
 			continue;
+		}
 
 		if (descr->binning) {
-//			if (candidate->enable.raw_binning  && (req_in_info->width >= 2048)) {
-///* */
-//				continue;
-//			}
-			if (candidate->enable.fixed_bayer_ds  && (req_in_info->width < 2048)) {
-/* */
+			if (!candidate->enable.fixed_bayer_ds && (req_in_info->width > 3264)) {
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_binary_find() [%d] continue: !%d && (%d > %d)\n", __LINE__, candidate->enable.fixed_bayer_ds,req_in_info->width, 3264);
 				continue;
 			}
+			if (candidate->enable.fixed_bayer_ds  && (req_in_info->width <= 3264)) {
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_binary_find() [%d] continue: %d && (%d <= %d)\n", __LINE__, candidate->enable.fixed_bayer_ds,req_in_info->width, 3264);
+				continue;
 		}
-#endif /* __NEW__ */
+		}
 
 /* 
  * If we are in continuous preview mode, it is possible to have
@@ -704,9 +804,20 @@ sh_css_binary_find(struct sh_css_binary_descr *descr,
 		init_metrics(&binary->metrics, binary->info);
 		break;
 	}
+
+/* MW: In case we haven't found a binary and hence the binary_info is uninitialised */
+assert(candidate != NULL);
+
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_binary_find() selected = %p, mode = %d ID = %d\n",candidate, candidate->mode, candidate->id);
+
 	sh_css_free(cc_in_info);
 	sh_css_free(cc_out_info);
 	sh_css_free(cc_vf_info);
+
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_binary_find() leave: return_err=%d\n", err);
+
 	return err;
 }
 
