@@ -781,7 +781,7 @@ static inline int sst_shim_write64(void __iomem *addr, int offset, u64 value)
 
 static inline u64 sst_shim_read64(void __iomem *addr, int offset)
 {
-	u64 val;
+	u64 val = 0;
 
 	memcpy_fromio(&val, addr + offset, sizeof(val));
 	return val;
