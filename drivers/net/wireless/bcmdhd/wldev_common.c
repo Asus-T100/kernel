@@ -327,7 +327,7 @@ int wldev_set_band(
 	int error = -1;
 
 	if ((band == WLC_BAND_AUTO) || (band == WLC_BAND_5G) || (band == WLC_BAND_2G)) {
-		error = wldev_ioctl(dev, WLC_SET_BAND, &band, sizeof(band), 1);
+		error = wldev_ioctl(dev, WLC_SET_BAND, &band, sizeof(band), true);
 		if (!error)
 			dhd_bus_band_set(dev, band);
 	}
@@ -335,7 +335,7 @@ int wldev_set_band(
 }
 
 int wldev_set_country(
-	struct net_device *dev, char *country_code)
+	struct net_device *dev, char *country_code, bool notify, bool user_enforced)
 {
 	int error = -1;
 	wl_country_t cspec = {{0}, 0, {0}};
@@ -345,19 +345,24 @@ int wldev_set_country(
 	if (!country_code)
 		return error;
 
-	error = wldev_iovar_getbuf(dev, "country", &cspec, sizeof(cspec),
-		smbuf, sizeof(smbuf), NULL);
-	if (error < 0)
+	bzero(&scbval, sizeof(scb_val_t));
+	error = wldev_iovar_getbuf(dev, "country", NULL, 0, &cspec, sizeof(cspec), NULL);
+	if (error < 0) {
 		WLDEV_ERROR(("%s: get country failed = %d\n", __FUNCTION__, error));
+		return error;
+	}
 
 	if ((error < 0) ||
-	    (strncmp(country_code, smbuf, WLC_CNTRY_BUF_SZ) != 0)) {
-		bzero(&scbval, sizeof(scb_val_t));
-		error = wldev_ioctl(dev, WLC_DISASSOC, &scbval, sizeof(scb_val_t), 1);
-		if (error < 0) {
-			WLDEV_ERROR(("%s: set country failed due to Disassoc error %d\n",
-				__FUNCTION__, error));
-			return error;
+	    (strncmp(country_code, cspec.ccode, WLC_CNTRY_BUF_SZ) != 0)) {
+
+		if (user_enforced) {
+			bzero(&scbval, sizeof(scb_val_t));
+			error = wldev_ioctl(dev, WLC_DISASSOC, &scbval, sizeof(scb_val_t), true);
+			if (error < 0) {
+				WLDEV_ERROR(("%s: set country failed due to Disassoc error %d\n",
+					__FUNCTION__, error));
+				return error;
+			}
 		}
 
 		cspec.rev = -1;
@@ -371,7 +376,7 @@ int wldev_set_country(
 				__FUNCTION__, country_code, cspec.ccode, cspec.rev));
 			return error;
 		}
-		dhd_bus_country_set(dev, &cspec);
+		dhd_bus_country_set(dev, &cspec, notify);
 		WLDEV_ERROR(("%s: set country for %s as %s rev %d\n",
 			__FUNCTION__, country_code, cspec.ccode, cspec.rev));
 	}
