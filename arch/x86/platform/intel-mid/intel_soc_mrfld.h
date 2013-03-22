@@ -81,14 +81,9 @@
 #define PMU_PMW_LSS_36			36
 
 #define EMMC0_LSS			PMU_EMMC0_LSS_02
-/*
- *FIXME: Enabling D0ix at boot has instabilities (BZ: 86393) hence
- *	 Ignoring all LSS's
- */
-#define IGNORE_SSS0	(SSMSK(D0I3_MASK, PMU_EMMC0_LSS_02))
 
+#define IGNORE_SSS0			0
 #define IGNORE_SSS1			0
-
 #define IGNORE_SSS2			0
 #define IGNORE_SSS3			0
 
