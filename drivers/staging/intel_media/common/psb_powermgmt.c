@@ -1891,17 +1891,10 @@ bool ospm_power_using_hw_begin(int hw_island, UHBUsage usage)
 		return false;
 
 #ifdef CONFIG_GFX_RTPM
-	/* if system suspend is in progress, do NOT allow system resume. if
-	 * runtime_status is RPM_SUSPENDING, and here call pm_runtime_get will
-	 * call rpm_resume indirectly, it causes defferred_resume be set to
-	 * ture, so at the end of rpm_suspend(), rpm_resume() will be called.
-	 * it will block system from entering s0ix */
-	if (gbSuspendInProgress ||
-			pdev->dev.power.runtime_status == RPM_SUSPENDING) {
+	if (force_on)
+		pm_runtime_get_sync(&pdev->dev);
+	else
 		pm_runtime_get_noresume(&pdev->dev);
-	} else {
-		pm_runtime_get(&pdev->dev);
-	}
 #endif
 
 
