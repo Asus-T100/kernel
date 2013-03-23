@@ -7,10 +7,11 @@
 /* FIXME: should be put into SFI table */
 static int __init register_psh_i2c_dev(void)
 {
-	struct i2c_adapter *adap;
+	static int psh_gpios[2] = { 59, 95 };
 	struct i2c_board_info info = {
 		I2C_BOARD_INFO("psh_byt_i2c", 0x19),
 		.irq = VV_GPIO_IRQBASE + VV_NGPIO_SCORE + VV_NGPIO_NCORE + 3,
+		.platform_data = (void *)psh_gpios,
 	};
 
 	i2c_register_board_info(5, &info, 1);

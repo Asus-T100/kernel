@@ -1,5 +1,5 @@
 /*
- *  psh.c - Merrifield PSH IA side driver
+ *  psh.c - Baytrail PSH IA side driver
  *
  *  (C) Copyright 2012 Intel Corporation
  *  Author: Alek Du <alek.du@intel.com>
@@ -19,7 +19,7 @@
  */
 
 /*
- * PSH IA side driver for Merrifield Platform
+ * PSH IA side driver for Baytrail Platform
  */
 
 #include <linux/device.h>
@@ -78,9 +78,6 @@ int read_psh_data(void)
 
 	/* Loop read till error or no more valid data */
 	while (1) {
-
-		usleep_range(2000, 2000);
-
 		ret = i2c_transfer(psh_if_info.pshc->adapter, msg, 1);
 		if (ret != 1) {
 			dev_err(&psh_if_info.pshc->dev, "Read frame header error!\n");
@@ -151,6 +148,7 @@ static int psh_probe(struct i2c_client *client,
 				const struct i2c_device_id *id)
 {
 	int ret = -EPERM;
+	int *gpio_pins;
 
 	ret = psh_ia_common_init(&client->dev, &ia_data);
 	if (ret) {
@@ -172,14 +170,30 @@ static int psh_probe(struct i2c_client *client,
 		dev_err(&client->dev, "fail to request irq\n");
 		goto irq_err;
 	}
-	gpio_export(95, 1);
-	gpio_export(96, 1);
-	gpio_direction_output(95, 0);
-	usleep_range(100000, 100000);
-	gpio_set_value(95, 1);
+	gpio_pins = (int *)client->dev.platform_data;
+	if (gpio_pins) {
+		int rc;
 
+		rc = gpio_request(gpio_pins[0], "psh_ctl");
+		if (rc) {
+			dev_warn(&client->dev, "fail to request psh_ctl pin\n");
+		} else {
+			gpio_export(gpio_pins[0], 1);
+			gpio_direction_output(gpio_pins[0], 1);
+		}
+		rc = gpio_request(gpio_pins[1], "psh_rst");
+		if (rc) {
+			dev_warn(&client->dev, "fail to request psh_rst pin\n");
+		} else {
+			gpio_export(gpio_pins[1], 1);
+			gpio_direction_output(gpio_pins[1], 0);
+			usleep_range(10000, 10000);
+			gpio_set_value(gpio_pins[1], 1);
+		}
+	} else {
+		dev_warn(&client->dev, "no gpio pins info\n");
+	}
 	return 0;
-
 irq_err:
 	hwmon_device_unregister(psh_if_info.hwmon_dev);
 hwmon_err:
@@ -213,6 +227,5 @@ static struct i2c_driver psh_byt_driver = {
 };
 
 module_i2c_driver(psh_byt_driver);
-
 
 MODULE_LICENSE("GPL v2");
