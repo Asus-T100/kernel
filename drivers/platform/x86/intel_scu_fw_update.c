@@ -468,7 +468,7 @@ static int intel_scu_ipc_medfw_upgrade(void)
 		BUG();
 	}
 
-	intel_scu_ipc_lock();
+	rpmsg_global_lock();
 	mfld_fw_upd.wscu = 0;
 	mfld_fw_upd.wia = 0;
 	memset(mfld_fw_upd.mb_status, 0, sizeof(char) * 8);
@@ -625,7 +625,7 @@ unmap_mb:
 unmap_sram:
 	iounmap(mfld_fw_upd.sram);
 out_unlock:
-	intel_scu_ipc_unlock();
+	rpmsg_global_unlock();
 	return ret_val;
 }
 

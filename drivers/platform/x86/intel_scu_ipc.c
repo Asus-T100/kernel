@@ -122,7 +122,6 @@ struct intel_ipc_controller {
 	int ioc;
 	int cmd;
 	struct completion cmd_complete;
-	atomic_t pending;
 };
 
 static struct intel_ipc_controller  ipcdev; /* Only one for now */
@@ -149,7 +148,6 @@ static char *ipc_err_sources[] = {
 #define IPC_I2C_CNTRL_ADDR	0
 #define I2C_DATA_ADDR		0x04
 
-static DEFINE_MUTEX(ipclock); /* lock used to prevent multiple call to SCU */
 static struct wake_lock ipc_wake_lock;
 
 /* PM Qos struct */
@@ -313,10 +311,6 @@ EXPORT_SYMBOL(intel_scu_ipc_simple_command);
 
 void intel_scu_ipc_lock(void)
 {
-	atomic_inc(&ipcdev.pending);
-
-	mutex_lock(&ipclock);
-
 	/* Prevent C-states beyond C6 */
 	pm_qos_update_request(qos, CSTATE_EXIT_LATENCY_S0i1 - 1);
 
@@ -338,11 +332,6 @@ void intel_scu_ipc_unlock(void)
 
 	/* Re-enable Deeper C-states beyond C6 */
 	pm_qos_update_request(qos, PM_QOS_DEFAULT_VALUE);
-
-	mutex_unlock(&ipclock);
-
-	if (!atomic_dec_and_test(&ipcdev.pending))
-		schedule();
 }
 EXPORT_SYMBOL_GPL(intel_scu_ipc_unlock);
 
@@ -464,8 +453,6 @@ static int ipc_probe(struct pci_dev *dev, const struct pci_device_id *id)
 		return -ENOMEM;
 
 	init_completion(&ipcdev.cmd_complete);
-
-	atomic_set(&ipcdev.pending, 0);
 
 	if (request_irq(dev->irq, ioc, IRQF_NO_SUSPEND, "intel_scu_ipc",
 		&ipcdev))
