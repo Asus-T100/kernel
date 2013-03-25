@@ -393,19 +393,19 @@ const struct atomisp_format_bridge atomisp_output_fmts[] = {
 	}, {
 		.pixelformat = V4L2_PIX_FMT_SGBRG12,
 		.depth = 16,
-		.mbus_code = V4L2_MBUS_FMT_SBGGR12_1X12,
+		.mbus_code = V4L2_MBUS_FMT_SGBRG12_1X12,
 		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
 		.description = "Bayer 12"
 	}, {
 		.pixelformat = V4L2_PIX_FMT_SGRBG12,
 		.depth = 16,
-		.mbus_code = V4L2_MBUS_FMT_SBGGR12_1X12,
+		.mbus_code = V4L2_MBUS_FMT_SGRBG12_1X12,
 		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
 		.description = "Bayer 12"
 	}, {
 		.pixelformat = V4L2_PIX_FMT_SRGGB12,
 		.depth = 16,
-		.mbus_code = V4L2_MBUS_FMT_SBGGR12_1X12,
+		.mbus_code = V4L2_MBUS_FMT_SRGGB12_1X12,
 		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
 		.description = "Bayer 12"
 	}, {
