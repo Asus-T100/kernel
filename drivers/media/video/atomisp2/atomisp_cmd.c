@@ -1029,14 +1029,12 @@ void atomisp_wdt_work(struct work_struct *work)
 		 * i.e hrt_isp_css_irq_sw_1 or hrt_isp_css_irq_sw_2?
 		 */
 		/* stream off sensor */
-		if (!isp->sw_contex.file_input) {
-			ret = v4l2_subdev_call(
-				isp->inputs[isp->input_curr].camera, video,
-				s_stream, 0);
-			if (ret)
-				dev_warn(isp->dev,
-					 "can't stop streaming on sensor!\n");
-		}
+		ret = v4l2_subdev_call(
+			isp->inputs[isp->input_curr].camera, video,
+			s_stream, 0);
+		if (ret)
+			dev_warn(isp->dev,
+				 "can't stop streaming on sensor!\n");
 
 		/* reset ISP and restore its state */
 		isp->isp_timeout = true;
@@ -1054,13 +1052,14 @@ void atomisp_wdt_work(struct work_struct *work)
 				SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF, true);
 
 			atomisp_set_term_en_count(isp);
-			ret = v4l2_subdev_call(
-				isp->inputs[isp->input_curr].camera, video,
-				s_stream, 1);
-			if (ret)
-				dev_warn(isp->dev,
-					 "can't start streaming on sensor!\n");
 		}
+
+		ret = v4l2_subdev_call(
+			isp->inputs[isp->input_curr].camera, video,
+			s_stream, 1);
+		if (ret)
+			dev_warn(isp->dev,
+				 "can't start streaming on sensor!\n");
 
 		if (isp->params.continuous_vf &&
 		    isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO &&
@@ -1198,6 +1197,12 @@ irqreturn_t atomisp_isr_thread(int irq, void *isp_ptr)
 
 out:
 	mutex_unlock(&isp->mutex);
+
+	if (isp->streaming == ATOMISP_DEVICE_STREAMING_ENABLED
+		&& css_pipe_done
+		&& isp->sw_contex.file_input)
+		v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
+				video, s_stream, 1);
 
 	v4l2_dbg(5, dbg_level, &atomisp_dev, "<%s\n", __func__);
 

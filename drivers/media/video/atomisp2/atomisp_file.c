@@ -34,86 +34,45 @@
 #include "atomisp_internal.h"
 #include "atomisp_ioctl.h"
 
+static void file_work(struct work_struct *work)
+{
+	struct atomisp_file_device *file_dev =
+			container_of(work, struct atomisp_file_device, work);
+
+	struct atomisp_device *isp = file_dev->isp;
+	struct atomisp_video_pipe *out_pipe = &isp->isp_subdev.video_in;
+	unsigned short *buf = videobuf_to_vmalloc(out_pipe->outq.bufs[0]);
+	struct v4l2_mbus_framefmt isp_sink_fmt;
+
+	if (isp->streaming != ATOMISP_DEVICE_STREAMING_ENABLED)
+		return;
+
+	dev_dbg(isp->dev, ">%s: ready to start streaming\n", __func__);
+	isp_sink_fmt = *atomisp_subdev_get_ffmt(&isp->isp_subdev.subdev, NULL,
+						V4L2_SUBDEV_FORMAT_ACTIVE,
+						ATOMISP_SUBDEV_PAD_SINK);
+
+	while (!sh_css_isp_has_started())
+		usleep_range(1000, 1500);
+
+	sh_css_send_input_frame(buf, isp_sink_fmt.width, isp_sink_fmt.height);
+	dev_dbg(isp->dev, "<%s: streaming done\n", __func__);
+}
+
 static int file_input_s_stream(struct v4l2_subdev *sd, int enable)
 {
 	struct atomisp_file_device *file_dev = v4l2_get_subdevdata(sd);
 	struct atomisp_device *isp = file_dev->isp;
-	struct atomisp_sub_device *asd = &isp->isp_subdev;
-	struct atomisp_video_pipe *out_pipe = &isp->isp_subdev.video_in;
-	unsigned char *buf =
-		   videobuf_to_vmalloc(out_pipe->outq.bufs[0]);
-	struct v4l2_mbus_framefmt isp_sink_fmt;
-	const struct atomisp_format_bridge *bridge;
-	unsigned int height;
-	unsigned short *data = (unsigned short *)buf;
-	int i, j;
 
-	isp_sink_fmt = *atomisp_subdev_get_ffmt(&isp->isp_subdev.subdev, NULL,
-						V4L2_SUBDEV_FORMAT_ACTIVE,
-						ATOMISP_SUBDEV_PAD_SINK);
-	height = isp_sink_fmt.height;
-	bridge = atomisp_get_format_bridge_from_mbus(isp_sink_fmt.code);
-	if (!bridge)
-		return -ENOENT;
+	dev_dbg(isp->dev, "%s: enable %d\n", __func__, enable);
+	if (enable) {
+		if (isp->streaming != ATOMISP_DEVICE_STREAMING_ENABLED)
+			return 0;
 
-	/* extend RAW8 pixel type to unsigned short */
-	if (bridge->depth == 8) {
-		data = vmalloc(isp_sink_fmt.width * height * 2);
-		if (!data) {
-			v4l2_err(&atomisp_dev,
-				"Failed to allocate memory for file input\n");
-			return -ENOMEM;
-		}
-
-		for (i = 0; i < height; i++)
-			for (j = 0; j < isp_sink_fmt.width; j++)
-				*data++ = (unsigned short)*buf++;
-		data -= isp_sink_fmt.width * height;
+		queue_work(file_dev->work_queue, &file_dev->work);
+		return 0;
 	}
-
-	while (!sh_css_isp_has_started())
-		/* we are facing ISP timeout, if removed this delay */
-		mdelay(1);
-
-	/*
-	 * ISP will stall in copy binary when sending lines more than
-	 * output lines work around here to send lines that fulfills
-	 * the requirement for enough lines do cropping
-	 */
-	if (IS_MRFLD) {
-		switch (isp->isp_subdev.run_mode->val) {
-		case ATOMISP_RUN_MODE_STILL_CAPTURE:
-			if (isp->sw_contex.bypass)
-				/* copy mode */
-				height = asd->fmt[asd->capture_pad].fmt.height +
-					((isp_sink_fmt.height -
-					  asd->fmt[asd->capture_pad].fmt.
-					  height) >> 1) + 1;
-			else
-				/* primary mode */
-				height = asd->fmt[asd->capture_pad].fmt.height +
-				    ((isp_sink_fmt.height -
-				      asd->fmt[asd->capture_pad].fmt.
-				      height) >> 1) + 5;
-			break;
-		case ATOMISP_RUN_MODE_PREVIEW:
-			/* preview mode */
-			height = asd->fmt[asd->capture_pad].fmt.height +
-			    ((isp_sink_fmt.height -
-			      asd->fmt[asd->capture_pad].fmt.height) >> 1) + 5;
-			break;
-		default:
-			/* video mode */
-			height = asd->fmt[asd->capture_pad].fmt.height +
-			    ((isp_sink_fmt.height -
-			      asd->fmt[asd->capture_pad].fmt.height) >> 1) + 5;
-			break;
-		}
-	}
-	sh_css_send_input_frame(data, isp_sink_fmt.width, height);
-
-	if (bridge->depth == 8)
-		vfree(data);
+	cancel_work_sync(&file_dev->work);
 	return 0;
 }
 
@@ -290,7 +249,12 @@ int atomisp_file_input_register_entities(struct atomisp_file_device *file_dev,
 
 void atomisp_file_input_cleanup(struct atomisp_device *isp)
 {
-	return;
+	struct atomisp_file_device *file_dev = &isp->file_dev;
+
+	if (file_dev->work_queue) {
+		destroy_workqueue(file_dev->work_queue);
+		file_dev->work_queue = NULL;
+	}
 }
 
 int atomisp_file_input_init(struct atomisp_device *isp)
@@ -299,36 +263,23 @@ int atomisp_file_input_init(struct atomisp_device *isp)
 	struct v4l2_subdev *sd = &file_dev->sd;
 	struct media_pad *pads = file_dev->pads;
 	struct media_entity *me = &sd->entity;
-	struct camera_mipi_info *file_input_info = NULL;
-	int ret;
 
 	file_dev->isp = isp;
+	file_dev->work_queue = alloc_workqueue(isp->v4l2_dev.name, 0, 1);
+	if (file_dev->work_queue == NULL) {
+		dev_err(isp->dev, "Failed to initialize file inject workq\n");
+		return -ENOMEM;
+	}
+
+	INIT_WORK(&file_dev->work, file_work);
+
 	v4l2_subdev_init(sd, &file_input_ops);
 	sd->flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
 	strcpy(sd->name, "file_input_subdev");
 	v4l2_set_subdevdata(sd, file_dev);
 
-	file_input_info = kzalloc(sizeof(*file_input_info), GFP_KERNEL);
-	if (!file_input_info) {
-		v4l2_err(&atomisp_dev,
-			    "Failed to allocate memory for file input\n");
-		return -ENOMEM;
-	}
-
-	file_input_info->port = ATOMISP_CAMERA_PORT_PRIMARY;
-	file_input_info->input_format = SH_CSS_INPUT_FORMAT_RAW_10;
-	file_input_info->raw_bayer_order = sh_css_bayer_order_bggr;
-	v4l2_set_subdev_hostdata(sd, (void *)file_input_info);
-
 	pads[0].flags = MEDIA_PAD_FL_SINK;
 	me->type = MEDIA_ENT_T_V4L2_SUBDEV;
 
-	ret = media_entity_init(me, 1, pads, 0);
-	if (ret < 0)
-		goto fail;
-	return 0;
-fail:
-	kfree(file_input_info);
-	atomisp_file_input_cleanup(isp);
-	return ret;
+	return media_entity_init(me, 1, pads, 0);
 }

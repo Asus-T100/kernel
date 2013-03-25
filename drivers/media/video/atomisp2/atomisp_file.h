@@ -33,6 +33,9 @@ struct atomisp_file_device {
 	struct v4l2_subdev sd;
 	struct atomisp_device *isp;
 	struct media_pad pads[1];
+
+	struct workqueue_struct *work_queue;
+	struct work_struct work;
 };
 
 void atomisp_file_input_cleanup(struct atomisp_device *isp);

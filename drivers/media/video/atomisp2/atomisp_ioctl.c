@@ -646,19 +646,16 @@ static int atomisp_s_input(struct file *file, void *fh, unsigned int input)
 	}
 
 	/* powe on the new sensor */
-	if (!isp->sw_contex.file_input) {
-		ret = v4l2_subdev_call(isp->inputs[input].camera,
-				       core, s_power, 1);
-		if (ret) {
-			v4l2_err(&atomisp_dev,
-				    "Failed to power-on sensor\n");
-			ret = -EINVAL;
-			goto error;
-		}
-		if (isp->inputs[input].motor)
-			ret = v4l2_subdev_call(isp->inputs[input].motor, core,
-					       init, 1);
+	ret = v4l2_subdev_call(isp->inputs[input].camera,
+			       core, s_power, 1);
+	if (ret) {
+		v4l2_err(&atomisp_dev, "Failed to power-on sensor\n");
+		goto error;
 	}
+
+	if (!isp->sw_contex.file_input && isp->inputs[input].motor)
+		ret = v4l2_subdev_call(isp->inputs[input].motor, core,
+				       init, 1);
 
 	isp->input_curr = input;
 	mutex_unlock(&isp->mutex);
@@ -1400,17 +1397,19 @@ start_sensor:
 
 		if (IS_MRFLD &&
 			atomisp_freq_scaling(isp, ATOMISP_DFS_MODE_AUTO) < 0)
-				v4l2_warn(&atomisp_dev, "dfs failed! image capture might fail due to low freq.");
-		/*
-		 * stream on the sensor, power on is called before
-		 * work queue start
-		 */
-		ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
-				       video, s_stream, 1);
-		if (ret) {
-			atomisp_reset(isp);
-			ret = -EINVAL;
-		}
+			dev_dbg(isp->dev, "dfs failed!\n");
+	} else {
+		if (IS_MRFLD &&
+			atomisp_freq_scaling(isp, ATOMISP_DFS_MODE_MAX) < 0)
+			dev_dbg(isp->dev, "dfs failed!\n");
+	}
+
+	/* stream on the sensor */
+	ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
+			       video, s_stream, 1);
+	if (ret) {
+		atomisp_reset(isp);
+		ret = -EINVAL;
 	}
 
 out:
@@ -1483,6 +1482,15 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 		mutex_unlock(&isp->mutex);
 		del_timer_sync(&isp->wdt);
 		cancel_work_sync(&isp->wdt_work);
+
+		/*
+		 * must stop sending pixels into GP_FIFO before stop
+		 * the pipeline.
+		 */
+		if (isp->sw_contex.file_input)
+			v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
+					video, s_stream, 0);
+
 		mutex_lock(&isp->mutex);
 		atomisp_acc_unload_extensions(isp);
 	}
