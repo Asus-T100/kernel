@@ -3792,7 +3792,6 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	 * width or height) bigger than the desired result. */
 	if (isp_sink_crop.width * 9 / 10 < f->fmt.pix.width
 	    || isp_sink_crop.height * 9 / 10 < f->fmt.pix.height
-	    || isp->sw_contex.file_input
 	    || (isp->sw_contex.bypass
 		&& isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO
 		&& isp->isp_subdev.enable_vfpp->val)
