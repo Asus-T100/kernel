@@ -25,6 +25,7 @@
 #include <linux/poll.h>
 #include <linux/slab.h>
 #include <linux/time.h>
+#include <linux/hardirq.h>
 #include <asm/ioctls.h>
 
 #include "logger.h"
@@ -935,7 +936,7 @@ logger_console_write(struct console *console, const char *s, unsigned int count)
 
 	if (unlikely(!keventd_up()))
 		return;
-	if (!oops_in_progress)
+	if (!oops_in_progress && !in_nmi())
 		schedule_work(&write_console_wq);
 }
 
