@@ -756,8 +756,11 @@ void sst_process_reply_mfld(struct work_struct *work)
 	} else {
 		pr_debug("Allocating %d\n", msg->header.part.data);
 		data = kzalloc(msg->header.part.data, GFP_KERNEL);
-		if (!data)
+		if (!data) {
 			pr_err("sst: mem alloc failed\n");
+			kfree(msg);
+			return;
+		}
 
 		memcpy(data, (void *)msg->mailbox, msg->header.part.data);
 		if (sst_wake_up_block(sst_drv_ctx, 0, str_id,
