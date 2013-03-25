@@ -3337,7 +3337,11 @@ static void __enable_continuous_vf(struct atomisp_device *isp, bool enable)
 		sh_css_enable_raw_binning(false);
 		sh_css_input_set_two_pixels_per_clock(false);
 	}
-	sh_css_input_set_mode(SH_CSS_INPUT_MODE_SENSOR);
+
+	if (isp->inputs[isp->input_curr].type != TEST_PATTERN &&
+		isp->inputs[isp->input_curr].type != FILE_INPUT)
+		sh_css_input_set_mode(SH_CSS_INPUT_MODE_SENSOR);
+
 	atomisp_update_run_mode(isp);
 }
 
