@@ -468,6 +468,10 @@ static int atomisp_get_sensor_bin_factor(struct atomisp_device *isp)
 	int hbin, vbin;
 	int ret;
 
+	if (isp->inputs[isp->input_curr].type == FILE_INPUT ||
+		isp->inputs[isp->input_curr].type == TEST_PATTERN)
+		return 0;
+
 	memset(&ctrl, 0, sizeof(ctrl));
 
 	ctrl.id = V4L2_CID_BIN_FACTOR_HORZ;
