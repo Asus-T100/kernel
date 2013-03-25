@@ -1151,34 +1151,6 @@ void populate_spid_cmdline()
 		pr_err("SPID not found in kernel command line.\n");
 }
 
-struct sfi_device_table_entry sfi_tab[] = {
-		{SFI_DEV_TYPE_I2C, 4, 0x10, 0x0, 0x0, "imx175"},
-		{SFI_DEV_TYPE_I2C, 4, 0x36, 0x0, 0x0, "ov2722"},
-		{SFI_DEV_TYPE_I2C, 4, 0x53, 0x0, 0x0, "lm3554"},
-};
-static int fake_sfi(void)
-{
-	struct sfi_table_simple *sb;
-	struct sfi_device_table_entry *pentry;
-	struct devs_id *dev = NULL;
-	int  i;
-	pentry = sfi_tab;
-
-	for (i = 0; i < ARRAY_SIZE(sfi_tab); i++, pentry++) {
-		int irq = pentry->irq;
-
-		dev = get_device_id(pentry->type, pentry->name);
-		if ((dev == NULL) || (dev->get_platform_data == NULL))
-			continue;
-
-		if (dev->device_handler)
-			dev->device_handler(pentry, dev);
-	}
-
-	return 0;
-}
-
-
 static int __init intel_mid_platform_init(void)
 {
 	/* create sysfs entries for soft platform id */
@@ -1198,9 +1170,6 @@ static int __init intel_mid_platform_init(void)
 
 	/* Populate command line with SPID values */
 	populate_spid_cmdline();
-	/* workround for byt */
-	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2)
-		fake_sfi();
 
 	return 0;
 }
