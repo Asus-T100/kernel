@@ -1369,7 +1369,11 @@ static int atomisp_streamon(struct file *file, void *fh,
 	atomic_set(&isp->sequence, -1);
 	atomic_set(&isp->sequence_temp, -1);
 	atomic_set(&isp->wdt_count, 0);
-	mod_timer(&isp->wdt, jiffies + ATOMISP_ISP_TIMEOUT_DURATION);
+	if (isp->sw_contex.file_input)
+		isp->wdt_duration = ATOMISP_ISP_FILE_TIMEOUT_DURATION;
+	else
+		isp->wdt_duration = ATOMISP_ISP_TIMEOUT_DURATION;
+	mod_timer(&isp->wdt, jiffies + isp->wdt_duration);
 	isp->fr_status = ATOMISP_FRAME_STATUS_OK;
 	isp->sw_contex.invalid_frame = false;
 	isp->params.dis_proj_data_valid = false;

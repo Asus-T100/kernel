@@ -544,7 +544,7 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 	}
 
 	atomic_set(&isp->wdt_count, 0);
-	mod_timer(&isp->wdt, jiffies + ATOMISP_ISP_TIMEOUT_DURATION);
+	mod_timer(&isp->wdt, jiffies + isp->wdt_duration);
 
 	spin_unlock_irqrestore(&isp->lock, flags);
 
@@ -1076,7 +1076,7 @@ void atomisp_wdt_work(struct work_struct *work)
 		atomisp_flush_bufs_and_wakeup(isp);
 		dev_err(isp->dev, "timeout recovery handling done\n");
 
-		mod_timer(&isp->wdt, jiffies + ATOMISP_ISP_TIMEOUT_DURATION);
+		mod_timer(&isp->wdt, jiffies + isp->wdt_duration);
 	}
 
 	mutex_unlock(&isp->mutex);
