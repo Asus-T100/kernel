@@ -1376,44 +1376,6 @@ int atomisp_is_mbuscode_raw(uint32_t code)
 	return is_pixelformat_raw(b->pixelformat);
 }
 
-static int get_sh_input_format(u32 pixelformat)
-{
-	switch (pixelformat) {
-	case V4L2_PIX_FMT_YUV420:
-		return SH_CSS_INPUT_FORMAT_YUV420_8;
-
-	case V4L2_PIX_FMT_YUV422P:
-		return SH_CSS_INPUT_FORMAT_YUV422_8;
-
-	case V4L2_PIX_FMT_RGB565:
-		return SH_CSS_INPUT_FORMAT_RGB_565;
-
-	case V4L2_PIX_FMT_SBGGR8:
-	case V4L2_PIX_FMT_SGBRG8:
-	case V4L2_PIX_FMT_SGRBG8:
-	case V4L2_PIX_FMT_SRGGB8:
-		return SH_CSS_INPUT_FORMAT_RAW_8;
-
-	case V4L2_PIX_FMT_SBGGR10:
-	case V4L2_PIX_FMT_SGBRG10:
-	case V4L2_PIX_FMT_SGRBG10:
-	case V4L2_PIX_FMT_SRGGB10:
-		return SH_CSS_INPUT_FORMAT_RAW_10;
-
-	case V4L2_PIX_FMT_SBGGR12:
-	case V4L2_PIX_FMT_SGBRG12:
-	case V4L2_PIX_FMT_SGRBG12:
-	case V4L2_PIX_FMT_SRGGB12:
-		return SH_CSS_INPUT_FORMAT_RAW_12;
-
-	case V4L2_PIX_FMT_SBGGR16:
-		return SH_CSS_INPUT_FORMAT_RAW_16;
-
-	default:
-		return -EINVAL;
-	}
-}
-
 /*
  * ISP features control function
  */
@@ -3876,26 +3838,37 @@ int atomisp_set_fmt_file(struct video_device *vdev, struct v4l2_format *f)
 {
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
-	enum sh_css_input_format sh_input_format;
+	struct v4l2_mbus_framefmt ffmt = {0};
+	const struct atomisp_format_bridge *format_bridge;
 	int ret;
 
+	dev_dbg(isp->dev, "setting fmt %ux%u 0x%x for file inject\n",
+		f->fmt.pix.width, f->fmt.pix.height, f->fmt.pix.pixelformat);
 	ret = atomisp_try_fmt_file(isp, f);
-	if (ret)
+	if (ret) {
+		dev_err(isp->dev, "atomisp_try_fmt_file err: %d\n", ret);
 		return ret;
+	}
 
-	sh_input_format = get_sh_input_format(f->fmt.pix.pixelformat);
-	if (sh_input_format == -EINVAL) {
-		dev_info(isp->dev, "Wrong v4l2 format for output\n");
+	format_bridge = atomisp_get_format_bridge(f->fmt.pix.pixelformat);
+	if (format_bridge == NULL) {
+		dev_dbg(isp->dev, "atomisp_get_format_bridge err! fmt:0x%x\n",
+				f->fmt.pix.pixelformat);
 		return -EINVAL;
 	}
 
 	pipe->pix = f->fmt.pix;
-
-	sh_css_input_set_format(sh_input_format);
 	sh_css_input_set_mode(SH_CSS_INPUT_MODE_FIFO);
-	sh_css_input_set_bayer_order(f->fmt.pix.priv);
 	sh_css_input_configure_port(
 		__get_mipi_port(ATOMISP_CAMERA_PORT_PRIMARY), 2, 0xffff4);
+
+	ffmt.width = f->fmt.pix.width;
+	ffmt.height = f->fmt.pix.height;
+	ffmt.code = format_bridge->mbus_code;
+
+	atomisp_subdev_set_ffmt(&isp->isp_subdev.subdev, NULL,
+				V4L2_SUBDEV_FORMAT_ACTIVE,
+				ATOMISP_SUBDEV_PAD_SINK, &ffmt);
 
 	return 0;
 }

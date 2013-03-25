@@ -165,7 +165,7 @@ static int file_input_g_mbus_fmt(struct v4l2_subdev *sd,
 
 	fmt->width = isp_sink_fmt->width;
 	fmt->height = isp_sink_fmt->height;
-	fmt->code = V4L2_MBUS_FMT_SGRBG10_1X10;
+	fmt->code = isp_sink_fmt->code;
 
 	return 0;
 }
@@ -174,9 +174,6 @@ static int file_input_s_mbus_fmt(struct v4l2_subdev *sd,
 			     struct v4l2_mbus_framefmt *fmt)
 {
 	file_input_g_mbus_fmt(sd, fmt);
-
-	sh_css_input_set_mode(SH_CSS_INPUT_MODE_FIFO);
-
 	return 0;
 }
 

@@ -593,13 +593,30 @@ static int atomisp_release(struct file *file)
 		mutex_unlock(&pipe->outq.vb_lock);
 	}
 
-	memset(&isp_sink_fmt, 0, sizeof(isp_sink_fmt));
-	atomisp_subdev_set_ffmt(&isp->isp_subdev.subdev, NULL,
+	/*
+	 * A little trick here:
+	 * file injection input resolution is recorded in the sink pad,
+	 * therefore can not be cleared when releaseing one device node.
+	 * The sink pad setting can only be cleared when all device nodes
+	 * get released.
+	 */
+	if (!isp->sw_contex.file_input) {
+		memset(&isp_sink_fmt, 0, sizeof(isp_sink_fmt));
+		atomisp_subdev_set_ffmt(&isp->isp_subdev.subdev, NULL,
 				V4L2_SUBDEV_FORMAT_ACTIVE,
 				ATOMISP_SUBDEV_PAD_SINK, &isp_sink_fmt);
+	}
 
 	if (atomisp_users(isp))
 		goto done;
+
+	/* clear the sink pad for file input */
+	if (isp->sw_contex.file_input) {
+		memset(&isp_sink_fmt, 0, sizeof(isp_sink_fmt));
+		atomisp_subdev_set_ffmt(&isp->isp_subdev.subdev, NULL,
+				V4L2_SUBDEV_FORMAT_ACTIVE,
+				ATOMISP_SUBDEV_PAD_SINK, &isp_sink_fmt);
+	}
 
 	del_timer_sync(&isp->wdt);
 	atomisp_acc_release(isp);
