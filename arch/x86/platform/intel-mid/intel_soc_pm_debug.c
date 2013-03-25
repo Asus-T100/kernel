@@ -1392,7 +1392,6 @@ static int pmu_devices_state_show(struct seq_file *s, void *unused)
 	return 0;
 }
 
-
 static int devices_state_open(struct inode *inode, struct file *file)
 {
 	return single_open(file, pmu_devices_state_show, NULL);
@@ -2058,6 +2057,56 @@ static const struct file_operations cstate_ignore_remove_ops = {
 	.release	= single_release,
 };
 
+static int s3_ctrl = 1;
+
+static int s3_ctrl_show(struct seq_file *s, void *unused)
+{
+	seq_printf(s, "%d\n", s3_ctrl);
+	return 0;
+}
+
+static int s3_ctrl_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, s3_ctrl_show, NULL);
+}
+
+static ssize_t s3_ctrl_write(struct file *file,
+		     const char __user *userbuf, size_t count, loff_t *ppos)
+{
+	char buf[32];
+	int res;
+	int local_s3_ctrl;
+	int buf_size = min(count, sizeof(buf)-1);
+
+	if (copy_from_user(buf, userbuf, buf_size))
+		return -EFAULT;
+
+	buf[buf_size] = 0;
+
+	res = kstrtou32(buf, 10, &local_s3_ctrl);
+
+	if (res)
+		return -EINVAL;
+
+	s3_ctrl = local_s3_ctrl ? 1 : 0;
+
+	if (s3_ctrl)
+		__pm_stay_awake(mid_pmu_cxt->pmu_wake_lock);
+	else
+		__pm_relax(mid_pmu_cxt->pmu_wake_lock);
+
+	return buf_size;
+}
+
+static const struct file_operations s3_ctrl_ops = {
+	.open		= s3_ctrl_open,
+	.read		= seq_read,
+	.write		= s3_ctrl_write,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
+
 unsigned int pmu_get_new_cstate(unsigned int cstate, int *index)
 {
 	static int cstate_index_table[MWAIT_MAX_NUM_CSTATES] = {
@@ -2236,6 +2285,9 @@ void pmu_stats_init(void)
 		/* /sys/kernel/debug/cstate_ignore_remove */
 		(void) debugfs_create_file("cstate_ignore_remove",
 		S_IFREG | S_IRUGO, NULL, NULL, &cstate_ignore_remove_ops);
+		/* /sys/kernel/debug/cstate_ignore_remove */
+		(void) debugfs_create_file("s3_ctrl",
+		S_IFREG | S_IRUGO, NULL, NULL, &s3_ctrl_ops);
 	}
 #endif
 }

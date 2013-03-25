@@ -19,7 +19,7 @@
 
 #ifdef CONFIG_INTEL_ATOM_MRFLD_POWER
 
-#define   PM_SUPPORT		0x21
+#define PM_SUPPORT		0x21
 
 #define ISP_POS			7
 #define ISP_SUB_CLASS		0x80
@@ -87,7 +87,8 @@
 #define IGNORE_SSS2			0
 #define IGNORE_SSS3			0
 
-#define IGNORE_S3_WKC0			0
-#define IGNORE_S3_WKC1			0
+/* Ignore all from WKC1 */
+#define IGNORE_S3_WKC0 (0)
+#define IGNORE_S3_WKC1 (~0)
 
 #endif
