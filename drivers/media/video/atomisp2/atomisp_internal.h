@@ -123,6 +123,7 @@ struct atomisp_freq_scaling_rule {
 enum atomisp_dfs_mode {
 	ATOMISP_DFS_MODE_AUTO = 0,
 	ATOMISP_DFS_MODE_LOW,
+	ATOMISP_DFS_MODE_MAX,
 };
 
 struct atomisp_regs {

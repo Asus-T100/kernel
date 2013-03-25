@@ -272,6 +272,11 @@ int atomisp_freq_scaling(struct atomisp_device *isp, enum atomisp_dfs_mode mode)
 		goto done;
 	}
 
+	if (mode == ATOMISP_DFS_MODE_MAX) {
+		new_freq = ISP_FREQ_400MHZ;
+		goto done;
+	}
+
 	fps = atomisp_get_sensor_fps(isp);
 	if (fps == 0)
 		return -EINVAL;
