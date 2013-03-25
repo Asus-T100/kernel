@@ -842,6 +842,7 @@ static int isp_subdev_init_entities(struct atomisp_sub_device *isp_subdev)
 
 	isp_subdev->video_in.type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
 	isp_subdev->video_in.isp = isp_subdev->isp;
+	isp_subdev->video_in.pipe_type = ATOMISP_PIPE_FILEINPUT;
 	spin_lock_init(&isp_subdev->video_in.irq_lock);
 
 	isp_subdev->video_out_preview.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;

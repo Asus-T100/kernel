@@ -442,7 +442,8 @@ unsigned int atomisp_users(struct atomisp_device *isp)
 {
 	return isp->isp_subdev.video_out_preview.users +
 	       isp->isp_subdev.video_out_vf.users +
-	       isp->isp_subdev.video_out_capture.users;
+	       isp->isp_subdev.video_out_capture.users +
+	       isp->isp_subdev.video_in.users;
 }
 
 static int atomisp_open(struct file *file)
