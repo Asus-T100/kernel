@@ -42,6 +42,7 @@
 #endif
 
 #define SIOMODEMONOFF (SIOCDEVPRIVATE + 1)
+#define SIOMODEMRSTOUTID (SIOCDEVPRIVATE + 2)
 
 struct hsi_protocol *hsi_protocol_context;
 
@@ -77,6 +78,7 @@ static struct device_attribute hsi_logical_dev_attrs[] = {
 
 enum hsi_logical_trace_states hsi_logical_trace_state;
 static int traces_activation_done;
+static int hsi_gpio_configured;
 
 #ifdef HSI_LOGICAL_USE_DEBUG
 #define DPRINTK(...)		{if (hsi_logical_trace_state == HSI_ALL) \
@@ -92,6 +94,9 @@ static int traces_activation_done;
 static int configure_gpios(struct hsi_protocol_client *hsi)
 {
 	int ret;
+
+	if (1 == hsi_gpio_configured)
+		return 0;
 
 	ret = gpio_request(hsi->gpio_rst_out, "resetOUT");
 	if (ret < 0) {
@@ -121,6 +126,7 @@ static int configure_gpios(struct hsi_protocol_client *hsi)
 	pr_info("GPIOs configuration - pwr_on:%d, rst_out: %d\n",
 		hsi->gpio_pwr_on,
 		hsi->gpio_rst_out);
+	hsi_gpio_configured = 1;
 
 	return 0;
 
@@ -301,6 +307,17 @@ static int hsi_net_device_ioctl(struct net_device *dev,
 			gpio_set_value(hsi_protocol_context->cl[0]->gpio_pwr_on,
 					0);
 	}
+
+		break;
+
+	case SIOMODEMRSTOUTID:
+		value = hsi_protocol_context->cl[0]->gpio_rst_out;
+		if (copy_to_user((int *)ifr->ifr_data,
+				&value,
+				sizeof(int))) {
+			return -EINVAL;
+
+		}
 
 		break;
 	}
@@ -667,6 +684,7 @@ static int __init hsi_net_device_init(void)
 
 	hsi_protocol_context = NULL;
 	traces_activation_done = 0;
+	hsi_gpio_configured = 0;
 	hsi_logical_trace_state = HSI_OFF;
 	platform_driver_register(&hsi_net_device_driver);
 
