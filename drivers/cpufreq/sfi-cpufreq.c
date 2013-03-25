@@ -115,7 +115,9 @@ struct per_physical_core_t {
 };
 
 DEFINE_PER_CPU(struct per_physical_core_t, pphycore_counts);
+#ifdef CONFIG_COUNT_GPU_BLOCKING_TIME
 EXPORT_SYMBOL(pphycore_counts);
+#endif
 
 #pragma pack()
 
