@@ -2978,22 +2978,13 @@ static int psb_vsync_set_ioctl(struct drm_device *dev, void *data,
 			case 2:
 				if (is_panel_vid_or_cmd(dev) ==
 						MDFLD_DSI_ENCODER_DPI) {
-					spin_lock_irqsave(&dev->vbl_lock,
-							irq_flags);
-					if (dev->vblank_enabled[pipe])
-						drm_vblank_put(dev, pipe);
-					spin_unlock_irqrestore(&dev->vbl_lock,
-							irq_flags);
+					drm_vblank_put(dev, pipe);
 				}
 
 				/*mdfld_dsi_dsr_allow(dsi_config);*/
 				break;
 			case 1:
-				spin_lock_irqsave(&dev->vbl_lock, irq_flags);
-				if (dev->vblank_enabled[pipe])
-					drm_vblank_put(dev, pipe);
-				spin_unlock_irqrestore(&dev->vbl_lock,
-						irq_flags);
+				drm_vblank_put(dev, pipe);
 				break;
 			}
 		}

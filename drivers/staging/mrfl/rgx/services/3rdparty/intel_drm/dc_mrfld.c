@@ -1095,6 +1095,7 @@ void DCUnAttachPipe(uint32_t uiPipe)
 	DC_MRFLD_FLIP *psFlip, *psTmp;
 	IMG_UINT32 uiNumPipes;
 	IMG_UINT32 i;
+	IMG_BOOL bRetireFlip;
 
 	if (gpsDevice == IMG_NULL) {
 		DRM_DEBUG("Display Class hasn't been initialized\n");
@@ -1106,23 +1107,35 @@ void DCUnAttachPipe(uint32_t uiPipe)
 	mutex_lock(&gpsDevice->sFlipQueueLock);
 
 	list_for_each_entry_safe(psFlip, psTmp, &gpsDevice->sFlipQueue, sFlip) {
+		if ((psFlip->eFlipState == DC_MRFLD_FLIP_DC_UPDATED) &&
+				(psFlip->asPipeInfo[uiPipe].uiSwapInterval > 0))
+			DCCBDisableVSyncInterrupt(gpsDevice->psDrmDevice,
+					uiPipe);
+
 		psFlip->asPipeInfo[uiPipe].uiSwapInterval = 0;
+		bRetireFlip = IMG_TRUE;
 
 		for (i = 0; i < uiNumPipes; i++) {
 			if (i == uiPipe)
 				continue;
 
+			/*
+			 * Don't retire the flip request if there is any pipe
+			 * whose swap interval hasn't been 0 yet.
+			 */
 			if (psFlip->asPipeInfo[i].uiSwapInterval > 0) {
-				mutex_unlock(&gpsDevice->sFlipQueueLock);
-				return;
+				bRetireFlip = IMG_FALSE;
+				break;
 			}
 		}
 
-		DCDisplayConfigurationRetired(psFlip->hConfigData);
+		if (bRetireFlip) {
+			DCDisplayConfigurationRetired(psFlip->hConfigData);
 
-		/*remove this entry from flip queue & free it*/
-		list_del(&psFlip->sFlip);
-		kfree(psFlip);
+			/*remove this entry from flip queue & free it*/
+			list_del(&psFlip->sFlip);
+			kfree(psFlip);
+		}
 	}
 
 	mutex_unlock(&gpsDevice->sFlipQueueLock);
