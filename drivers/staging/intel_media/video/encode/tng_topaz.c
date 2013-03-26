@@ -227,11 +227,16 @@ static struct psb_video_ctx *get_ctx_from_fp(
 uint32_t get_ctx_cnt(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
-	struct psb_video_ctx *pos;
+	struct psb_video_ctx *pos, *n;
 	int count = 0;
+	int entrypoint;
 
-	list_for_each_entry(pos, &dev_priv->video_ctx, head)
-		count++;
+	list_for_each_entry_safe(pos, n, &dev_priv->video_ctx, head) {
+		entrypoint = pos->ctx_type & 0xff;
+		if (entrypoint == VAEntrypointEncSlice ||
+		    entrypoint == VAEntrypointEncPicture)
+			count++;
+	}
 
 	return count;
 }

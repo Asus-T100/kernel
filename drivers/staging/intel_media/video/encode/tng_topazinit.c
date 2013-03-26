@@ -639,8 +639,9 @@ void tng_powerdown_topaz(struct work_struct *work)
 	} else {
 		if (get_ctx_cnt(dev) > 1 &&
 		    topaz_priv->topaz_busy == 0) {
-			PSB_DEBUG_GENERAL("TOPAZ: more than 1 context," \
-			" save current context status\n");
+			PSB_DEBUG_GENERAL("TOPAZ: more than 1(%d) context," \
+			" save current context status\n", \
+			get_ctx_cnt(dev));
 			tng_topaz_save_mtx_state(dev);
 		}
 	}
