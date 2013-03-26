@@ -13,6 +13,12 @@
 /* 98% of CV is considered as voltage to detect Full */
 #define FULL_CV_MIN 98
 
+/* Offset to exit from maintenance charging. In maintenance charging
+*  if the volatge is less than the (maintenance_lower_threshold -
+*  MAINT_EXIT_OFFSET) then system can switch to normal charging
+*/
+#define MAINT_EXIT_OFFSET 50  /* mV */
+
 static int get_tempzone(struct ps_pse_mod_prof *pse_mod_bprof,
 		int temp)
 {
@@ -89,6 +95,7 @@ static enum psy_algo_stat pse_get_next_cc_cv(struct batt_props bat_prop,
 	struct ps_pse_mod_prof *pse_mod_bprof =
 			(struct ps_pse_mod_prof *) bprof.batt_prof;
 	enum psy_algo_stat algo_stat = bat_prop.algo_stat;
+	int maint_exit_volt;
 
 	*cc = *cv = 0;
 
@@ -110,12 +117,17 @@ static enum psy_algo_stat pse_get_next_cc_cv(struct batt_props bat_prop,
 		return PSY_ALGO_STAT_NOT_CHARGE;
 
 	/* Change the algo status to not charging, if battery is
-	*  not really charging. This way algorithm can switch to normal
+	*  not really charging or less than maintenance exit threshold.
+	*  This way algorithm can switch to normal
 	*  charging if current status is full/maintenace
 	*/
+	maint_exit_volt = pse_mod_bprof->
+			temp_mon_range[tzone].maint_chrg_vol_ll -
+				MAINT_EXIT_OFFSET;
 
 	if ((bat_prop.status == POWER_SUPPLY_STATUS_DISCHARGING) ||
-		(bat_prop.status == POWER_SUPPLY_STATUS_NOT_CHARGING)) {
+		(bat_prop.status == POWER_SUPPLY_STATUS_NOT_CHARGING) ||
+			bat_prop.voltage_now < maint_exit_volt) {
 
 		algo_stat = PSY_ALGO_STAT_NOT_CHARGE;
 
