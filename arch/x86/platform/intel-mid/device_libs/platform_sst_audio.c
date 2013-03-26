@@ -48,6 +48,14 @@ static struct sst_dev_stream_map ctp_vb_strm_map[] = {
 	{CTP_VB_AUD_PROBE_DEV, 0, SNDRV_PCM_STREAM_CAPTURE, SST_PROBE_IN, SST_DEV_MAP_IN_USE},
 };
 
+static struct sst_dev_stream_map merr_bb_strm_map[] = {
+	{0xFF, 0xFF, 0xFF, 0xFF, 0xFF}, /* Reserved, not in use */
+	{MERR_BB_AUD_ASP_DEV, 0, SNDRV_PCM_STREAM_PLAYBACK, SST_PCM_OUT0, SST_DEV_MAP_IN_USE},
+	{MERR_BB_AUD_ASP_DEV, 1, SNDRV_PCM_STREAM_PLAYBACK, SST_PCM_OUT1, SST_DEV_MAP_IN_USE},
+	{MERR_BB_AUD_ASP_DEV, 0, SNDRV_PCM_STREAM_CAPTURE, SST_CAPTURE_IN, SST_DEV_MAP_IN_USE},
+	{MERR_BB_AUD_PROBE_DEV, 0, SNDRV_PCM_STREAM_CAPTURE, SST_PROBE_IN, SST_DEV_MAP_IN_USE},
+};
+
 static struct sst_dev_stream_map mrfld_strm_map[MAX_DEVICES_MRFLD] = {
 	{0xFF, 0xFF, 0xFF, 0xFF, 0xFF}, /* Reserved, not in use */
 	{0, 0, SNDRV_PCM_STREAM_PLAYBACK, PIPE_MEDIA1_IN, SST_DEV_MAP_IN_USE},
@@ -133,6 +141,11 @@ static void set_ctp_platform_config(void)
 					&ssp_ctp_data, sizeof(ssp_ctp_data));
 	sst_platform_pdata.use_strm_map = true;
 
+	/* FIX ME: SPID for PRh is not yet available */
+#ifdef CONFIG_PRH_TEMP_WA_FOR_SPID
+	sst_platform_pdata.pdev_strm_map = &merr_bb_strm_map;
+	sst_platform_pdata.strm_map_size = ARRAY_SIZE(merr_bb_strm_map);
+#else
 	if ((INTEL_MID_BOARD(2, PHONE, CLVTP, VB, PRO)) ||
 	   (INTEL_MID_BOARD(2, PHONE, CLVTP, VB, ENG))) {
 
@@ -147,6 +160,7 @@ static void set_ctp_platform_config(void)
 		sst_platform_pdata.pdev_strm_map = &ctp_rhb_strm_map;
 		sst_platform_pdata.strm_map_size = ARRAY_SIZE(ctp_rhb_strm_map);
 	}
+#endif
 	pr_debug("audio:ctp:strm_map_size %d\n", sst_platform_pdata.strm_map_size);
 }
 
@@ -162,6 +176,10 @@ static void set_mrfld_platform_config(void)
 static void  populate_platform_data(void)
 {
 	sst_platform_pdata.spid = &spid;
+	/* FIX ME: SPID for PRh is not yet available */
+#ifdef CONFIG_PRH_TEMP_WA_FOR_SPID
+	set_ctp_platform_config();
+#else
 	if ((INTEL_MID_BOARD(1, PHONE, MFLD)) ||
 			(INTEL_MID_BOARD(1, TABLET, MFLD))) {
 		set_mfld_platform_config();
@@ -173,9 +191,10 @@ static void  populate_platform_data(void)
 		set_mrfld_platform_config();
 	} else
 		pr_warn("Board not Supported\n");
+#endif
 }
 
-int add_sst_platform_device()
+int add_sst_platform_device(void)
 {
 	struct platform_device *pdev = NULL;
 	int ret;

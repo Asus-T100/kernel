@@ -1,5 +1,5 @@
 /*
- *  mrfld_machine_lm49453.c - ASoc Machine driver for Intel Merrifield MID platform
+ *  merr_saltbay_lm49453.c - ASoc Machine driver for Intel Merrifield MID platform
  *  for the lm49453 codec
  *
  *  Copyright (C) 2012 Intel Corp

@@ -883,7 +883,10 @@ static struct snd_compr_ops sst_platform_compr_ops = {
 
 static int __devinit sst_soc_probe(struct snd_soc_platform *platform)
 {
-	pr_debug("%s called\n", __func__);
+	pr_debug("Enter:%s\n", __func__);
+#ifdef CONFIG_PRH_TEMP_WA_FOR_SPID
+	return sst_platform_clv_init(platform);
+#else
 	if (INTEL_MID_BOARD(1, PHONE, CLVTP) ||
 			INTEL_MID_BOARD(1, TABLET, CLVT))
 		return sst_platform_clv_init(platform);
@@ -894,6 +897,7 @@ static int __devinit sst_soc_probe(struct snd_soc_platform *platform)
 			INTEL_MID_BOARD(1, TABLET, MFLD)) {
 	}
 	return 0;
+#endif
 }
 
 static int sst_soc_remove(struct snd_soc_platform *platform)
