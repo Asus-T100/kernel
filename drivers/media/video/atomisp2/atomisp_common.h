@@ -45,6 +45,8 @@ extern int atomisp_pci_device;
 #define MRFLD_MAX_ZOOM_FACTOR	1024
 
 #define IS_MRFLD ((atomisp_pci_device & 0xfff8) == 0x1178)
+#define IS_BYT ((atomisp_pci_device & 0xfff8) == 0x0f38)
+#define IS_ISP2400 (IS_MRFLD || IS_BYT)
 
 struct atomisp_format_bridge {
 	unsigned int pixelformat;

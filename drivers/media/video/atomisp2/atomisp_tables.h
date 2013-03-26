@@ -151,7 +151,7 @@ static struct sh_css_macc_table green_macc_table = {
 	}
 };
 
-#ifdef CONFIG_X86_MRFLD
+#ifdef CONFIG_ISP2400
 /* this table is from CSS1.5 default_ctc_table(20121003) */
 static struct sh_css_ctc_table vivid_ctc_table = {
 	.data = {

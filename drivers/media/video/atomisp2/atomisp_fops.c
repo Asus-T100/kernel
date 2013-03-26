@@ -383,7 +383,7 @@ int atomisp_init_struct(struct atomisp_device *isp)
 	 * After boot-up, the default frequency is 200MHz.
 	 * For Medfield/Clovertrail, all running at 320MHz
 	 */
-	if (IS_MRFLD)
+	if (IS_ISP2400)
 		isp->sw_contex.running_freq = ISP_FREQ_200MHZ;
 	else
 		isp->sw_contex.running_freq = ISP_FREQ_320MHZ;
@@ -522,7 +522,7 @@ static int atomisp_open(struct file *file)
 	/* CSS has default zoom factor of 61x61, we want no zoom
 	   because the zoom binary for capture is broken (XNR). */
 	v4l2_dbg(2, dbg_level, &atomisp_dev, "sh_css_init success\n");
-	if (IS_MRFLD)
+	if (IS_ISP2400)
 		sh_css_set_zoom_factor(MRFLD_MAX_ZOOM_FACTOR,
 					MRFLD_MAX_ZOOM_FACTOR);
 	else

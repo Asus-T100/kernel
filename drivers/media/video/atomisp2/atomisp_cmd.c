@@ -315,6 +315,10 @@ int atomisp_freq_scaling(struct atomisp_device *isp, enum atomisp_dfs_mode mode)
 		new_freq = dfs_rules[i].isp_freq;
 
 done:
+	/* workround to get isp works at 400Mhz for byt due to perf issue */
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2)
+		new_freq = ISP_FREQ_320MHZ;
+
 	v4l2_dbg(3, dbg_level, &atomisp_dev,
 		 "DFS target frequency=%d.\n", new_freq);
 	if (new_freq == isp->sw_contex.running_freq) {
@@ -522,7 +526,7 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 		atomic_set(&isp->sequence,
 				atomic_read(&isp->sequence_temp));
 
-#ifdef CONFIG_X86_MRFLD
+#ifdef CONFIG_ISP2400
 	if ((irq_infos & SH_CSS_IRQ_INFO_INPUT_SYSTEM_ERROR) ||
 		(irq_infos & SH_CSS_IRQ_INFO_IF_ERROR)) {
 #else
@@ -592,7 +596,7 @@ void atomisp_set_term_en_count(struct atomisp_device *isp)
 	int pwn_b0 = 0;
 
 	/* For MRFLD, there is no Tescape-clock cycles control. */
-	if (IS_MRFLD)
+	if (IS_ISP2400)
 		return;
 
 	if (isp->pdev->device == 0x0148 && isp->pdev->revision < 0x6 &&
@@ -3070,7 +3074,7 @@ int atomisp_digital_zoom(struct atomisp_device *isp, int flag, __s32 *value)
 {
 	u32 zoom;
 	unsigned int max_zoom =
-		IS_MRFLD ? MRFLD_MAX_ZOOM_FACTOR : MFLD_MAX_ZOOM_FACTOR;
+		IS_ISP2400 ? MRFLD_MAX_ZOOM_FACTOR : MFLD_MAX_ZOOM_FACTOR;
 
 	if (flag == 0) {
 		sh_css_get_zoom_factor(&zoom, &zoom);
@@ -3988,7 +3992,7 @@ int atomisp_ospm_dphy_down(struct atomisp_device *isp)
 	}
 
 done:
-	if (IS_MRFLD) {
+	if (IS_ISP2400) {
 		/*
 		 * MRFLD IUNIT DPHY is located in an always-power-on island
 		 * MRFLD HW design need all CSI ports are disabled before
@@ -4017,7 +4021,7 @@ int atomisp_ospm_dphy_up(struct atomisp_device *isp)
 	v4l2_dbg(3, dbg_level, &atomisp_dev, "%s\n", __func__);
 
 	/* MRFLD IUNIT DPHY is located in an always-power-on island */
-	if (!IS_MRFLD) {
+	if (!IS_ISP2400) {
 		/* power on DPHY */
 		pwr_cnt = intel_mid_msgbus_read32(MFLD_IUNITPHY_PORT,
 							MFLD_CSI_CONTROL);
