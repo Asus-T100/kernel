@@ -429,7 +429,8 @@ static int acm_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
 		if (acm->notify->driver_data) {
 			VDBG(cdev, "reset acm control interface %d\n", intf);
 			usb_ep_disable(acm->notify);
-		} else {
+		}
+		if (!acm->notify->desc) {
 			VDBG(cdev, "init acm ctrl interface %d\n", intf);
 			if (config_ep_by_speed(cdev->gadget, f, acm->notify))
 				return -EINVAL;
