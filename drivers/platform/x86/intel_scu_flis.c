@@ -54,6 +54,10 @@ int intel_scu_ipc_write_shim(u32 data, u32 flis_addr, u32 offset)
 	int ret;
 	u32 ipc_wbuf[3];
 
+	/* offset 0xff means the flis is reserved, just return 0*/
+	if (offset == 0xFF)
+		return 0;
+
 	ipc_wbuf[0] = flis_addr; /* wbuf[0]: flis address */
 	ipc_wbuf[1] = offset;	/* wbuf[1]: register offset */
 	ipc_wbuf[2] = data;	/* wbuf[2]: data */
@@ -73,6 +77,10 @@ int intel_scu_ipc_read_shim(u32 *data, u32 flis_addr, u32 offset)
 {
 	int ret;
 	u32 ipc_wbuf[2];
+
+	/* offset 0xff means the flis is reserved, just return 0 */
+	if (offset == 0xFF)
+		return 0;
 
 	ipc_wbuf[0] = flis_addr;
 	ipc_wbuf[1] = offset;
