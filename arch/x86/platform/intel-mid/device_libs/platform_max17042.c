@@ -99,9 +99,10 @@ static bool msic_battery_check(struct max17042_platform_data *pdata)
 					sprintf(pdata->serial_num + i*2,
 					"%02x", tmp[i + MODEL_NAME_LEN]);
 				}
-				pdata->serial_num[2 * SERIAL_NUM_LEN + 1]
-									= '\0';
-
+				if ((2 * SERIAL_NUM_LEN) <
+					ARRAY_SIZE(pdata->serial_num))
+					pdata->serial_num[2 * SERIAL_NUM_LEN]
+								 = '\0';
 			} else {
 				snprintf(pdata->model_name,
 					(MODEL_NAME_LEN + 1),
