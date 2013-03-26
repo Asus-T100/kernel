@@ -248,7 +248,7 @@ static int osip_reboot_notifier_call(struct notifier_block *notifier,
 				 */
 				if (intel_mid_identify_cpu() ==
 					INTEL_MID_CPU_CHIP_TANGIER) {
-					ret = intel_scu_ipc_simple_command(
+					ret = rpmsg_send_generic_simple_command(
 						IPCMSG_COLD_OFF, 0);
 					if (ret)
 						pr_err("%s(): COLD_OFF ipc failed\n",

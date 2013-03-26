@@ -18,6 +18,7 @@
  *
  */
 #include <linux/time.h>
+#include <asm/intel_mid_rpmsg.h>
 #include "intel_soc_pm_debug.h"
 
 #ifdef CONFIG_PM_DEBUG
@@ -36,7 +37,7 @@ static void latency_measure_enable_disable(bool enable_measure)
 	else
 		sub = IPC_SUB_MEASURE_STOP_CLVP;
 
-	err = intel_scu_ipc_command(IPC_CMD_S0IX_LATENCY_CLVP,
+	err = rpmsg_send_generic_command(IPC_CMD_S0IX_LATENCY_CLVP,
 						sub, NULL, 0, NULL, 0);
 	if (unlikely(err)) {
 		pr_err("IPC to %s S0IX Latency Measurement failed!\n",

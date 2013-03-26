@@ -44,6 +44,7 @@
 #include <asm/io.h>
 #include <asm/i8259.h>
 #include <asm/intel_scu_ipc.h>
+#include <asm/intel_mid_rpmsg.h>
 #include <asm/apb_timer.h>
 #include <asm/reboot.h>
 #include <asm/intel_mid_hsu.h>
@@ -385,10 +386,10 @@ static void intel_mid_reboot(void)
 	}
 	if (force_cold_boot) {
 		pr_info("Immediate COLD BOOT\n");
-		intel_scu_ipc_simple_command(IPCMSG_COLD_BOOT, 0);
+		rpmsg_send_generic_simple_command(IPCMSG_COLD_BOOT, 0);
 	} else {
 		pr_info("Immediate COLD RESET\n");
-		intel_scu_ipc_simple_command(IPCMSG_COLD_RESET, 0);
+		rpmsg_send_generic_simple_command(IPCMSG_COLD_RESET, 0);
 	}
 }
 
@@ -401,10 +402,10 @@ static void intel_mid_emergency_reboot(char *cmd)
 		udelay(10);
 
 	if (force_cold_boot)
-		intel_scu_ipc_raw_cmd(IPCMSG_COLD_BOOT,
+		rpmsg_send_generic_raw_command(IPCMSG_COLD_BOOT,
 			0, NULL, 0, NULL, 0, 0, 0);
 	else
-		intel_scu_ipc_raw_cmd(IPCMSG_COLD_RESET,
+		rpmsg_send_generic_raw_command(IPCMSG_COLD_RESET,
 			0, NULL, 0, NULL, 0, 0, 0);
 }
 

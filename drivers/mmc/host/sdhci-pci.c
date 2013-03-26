@@ -29,6 +29,7 @@
 #include <asm/intel_scu_ipc.h>
 #include <asm/intel_scu_flis.h>
 #include <asm/intel_scu_pmic.h>
+#include <asm/intel_mid_rpmsg.h>
 
 #include "sdhci.h"
 
@@ -273,7 +274,7 @@ static void mfd_emmc_mutex_register(struct sdhci_pci_slot *slot)
 	u32 mutex_var_addr;
 	int err;
 
-	err = intel_scu_ipc_command(IPC_EMMC_MUTEX_CMD, 0,
+	err = rpmsg_send_generic_command(IPC_EMMC_MUTEX_CMD, 0,
 			NULL, 0, &mutex_var_addr, 1);
 	if (err) {
 		dev_err(&slot->chip->pdev->dev, "IPC error: %d\n", err);

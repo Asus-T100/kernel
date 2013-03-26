@@ -160,7 +160,7 @@ static int soc_set_cur_state(struct thermal_cooling_device *cdev,
 	}
 	/* Send IPC command to throttle SoC */
 	mutex_lock(&soc_cdev_info.lock_cool_state);
-	ret = intel_scu_ipc_command(SOC_IPC_COMMAND, 0,
+	ret = rpmsg_send_generic_command(SOC_IPC_COMMAND, 0,
 			(u8 *) &state, 4, NULL, 0);
 	if (ret)
 		pr_err("IPC_COMMAND failed: %d\n", ret);
