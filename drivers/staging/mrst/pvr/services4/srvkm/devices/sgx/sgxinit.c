@@ -3423,6 +3423,14 @@ PVRSRV_ERROR SGXGetMiscInfoKM(PVRSRV_SGXDEV_INFO	*psDevInfo,
 
 		case SGX_MISC_INFO_DUMP_DEBUG_INFO_FORCE_REGS:
 		{
+			if(!OSProcHasPrivSrvInit())
+			{
+				PVR_DPF((PVR_DBG_ERROR, "Insufficient privileges to dump SGX "
+										"debug info with registers"));
+
+				return PVRSRV_ERROR_INVALID_MISCINFO;
+			}
+
 			PVR_LOG(("User requested SGX debug info"));
 
 			/* Dump SGX debug data to the kernel log. */
