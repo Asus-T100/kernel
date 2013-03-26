@@ -14,13 +14,13 @@ obj-$(CONFIG_SND_MFLD_MACHINE_GI) += snd-soc-mfld-machine-gi.o
 snd-soc-yukkabeach-machine-objs := mfld_common.o yukkabeach_machine.o
 obj-$(CONFIG_SND_YUKKABEACH_MACHINE) += snd-soc-yukkabeach-machine.o
 
-# Cloverview/Clovertrail+ board
-snd-soc-ctp-machine-objs := ctp_common.o ctp_rhb_cs42l73.o ctp_vb_cs42l73.o ctp_comms_common.o
+# Cloverview/Clovertrail+/Bodegabay board
+snd-soc-ctp-machine-objs := ctp_common.o ctp_rhb_cs42l73.o ctp_vb_cs42l73.o ctp_comms_common.o merr_bb_cs42l73.o
 obj-$(CONFIG_SND_CTP_MACHINE) += snd-soc-ctp-machine.o
 
 # Merrifield board
-snd-mrfld-machine-lm49453-objs := mrfld_machine_lm49453.o
-obj-$(CONFIG_SND_MRFLD_MACHINE) += snd-mrfld-machine-lm49453.o
+snd-merr-saltbay-lm49453-objs := merr_saltbay_lm49453.o
+obj-$(CONFIG_SND_MRFLD_MACHINE) += snd-merr-saltbay-lm49453.o
 
 # DSP driver
 obj-$(CONFIG_SND_INTEL_SST) += sst/
