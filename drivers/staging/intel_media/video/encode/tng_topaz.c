@@ -581,7 +581,7 @@ bool tng_topaz_interrupt(void *pvData)
 	PSB_DEBUG_GENERAL("TOPAZ: Context %08x(%s), command %s IRQ\n",
 		(unsigned int)video_ctx, codec_to_string(video_ctx->codec),
 		cmd_to_string(wb_msg->ui32CmdWord));
-
+#if 0
 	if (video_ctx->codec == IMG_CODEC_JPEG) {
 		if (wb_msg->ui32CmdWord != MTX_CMDID_NULL) {
 			/* The LAST ISSUEBUF cmd means encoding complete */
@@ -595,7 +595,7 @@ bool tng_topaz_interrupt(void *pvData)
 			return true;
 		}
 	}
-
+#endif
 	*topaz_priv->topaz_sync_addr = wb_msg->ui32WritebackVal;
 
 	PSB_DEBUG_GENERAL("TOPAZ: Set seq %08x, " \
