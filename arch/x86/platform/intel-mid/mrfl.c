@@ -16,6 +16,9 @@
 #include <linux/sfi.h>
 #include <linux/irq.h>
 #include <linux/module.h>
+#include <linux/delay.h>
+#include <linux/intel_mid_pm.h>
+#include <linux/power_supply.h>
 #include <linux/power/intel_mid_powersupply.h>
 #include <linux/power/battery_id.h>
 #include <asm/setup.h>
@@ -24,6 +27,8 @@
 #include <asm/intel_scu_ipc.h>
 
 #define APIC_DIVISOR 16
+#define RSTC_IO_PORT_ADDR 0xcf9
+#define RSTC_COLD_BOOT 0x4
 
 enum intel_mid_sim_type __intel_mid_sim_platform;
 EXPORT_SYMBOL_GPL(__intel_mid_sim_platform);
@@ -41,6 +46,15 @@ static void tangier_arch_setup(void);
 static struct intel_mid_ops tangier_ops = {
 	.arch_setup = tangier_arch_setup,
 };
+
+static void tangier_power_off(void)
+{
+	if (power_supply_is_system_supplied()) {
+		outb(RSTC_COLD_BOOT, RSTC_IO_PORT_ADDR); /* Request cold boot */
+		udelay(50);
+	} else
+		pmu_power_off();
+}
 
 static unsigned long __init tangier_calibrate_tsc(void)
 {
@@ -180,6 +194,7 @@ static void __init tangier_arch_setup(void)
 	x86_platform.calibrate_tsc = tangier_calibrate_tsc;
 	intel_mid_timer_init = x86_init.timers.timer_init;
 	x86_init.timers.timer_init = tangier_time_init;
+	pm_power_off = tangier_power_off;
 }
 
 static void set_batt_chrg_prof(struct ps_pse_mod_prof *batt_prof,
