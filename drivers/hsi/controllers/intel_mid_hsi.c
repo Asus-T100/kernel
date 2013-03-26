@@ -2372,10 +2372,14 @@ static void hsi_resume_dma_transfers(struct intel_controller *intel_hsi)
 	struct intel_dma_ctx *dma_ctx;
 	int i, dma_ch;
 
+	if (!intel_hsi)
+		return;
+
 	if (is_arasan_v1(intel_hsi->version)) {
 		for (dma_ch = 0; dma_ch < DWAHB_CHAN_CNT; dma_ch++) {
 			dma_ctx = intel_hsi->dma_ctx[dma_ch];
-			msg = (dma_ctx) ? dma_ctx->ongoing->msg : NULL;
+			msg = (dma_ctx && dma_ctx->ongoing) ?
+				dma_ctx->ongoing->msg : NULL;
 			if (msg)
 				hsi_restart_dma(msg, dma_ch, dma_ctx, intel_hsi);
 		}
@@ -2384,7 +2388,8 @@ static void hsi_resume_dma_transfers(struct intel_controller *intel_hsi)
 			dma_ch = intel_hsi->tx_dma_ch[i];
 			dma_ctx = (dma_ch >= 0) ?
 					&intel_hsi->tx_ctx[i].dma : NULL;
-			msg = (dma_ctx) ? dma_ctx->ongoing->msg : NULL;
+			msg = (dma_ctx && dma_ctx->ongoing) ?
+				dma_ctx->ongoing->msg : NULL;
 			if (msg)
 				hsi_restart_dma(msg,
 						dma_ch, dma_ctx, intel_hsi);
@@ -2392,7 +2397,8 @@ static void hsi_resume_dma_transfers(struct intel_controller *intel_hsi)
 			dma_ch = intel_hsi->rx_dma_ch[i];
 			dma_ctx = (dma_ch >= 0) ?
 					&intel_hsi->rx_ctx[i].dma : NULL;
-			msg = (dma_ctx) ? dma_ctx->ongoing->msg : NULL;
+			msg = (dma_ctx && dma_ctx->ongoing) ?
+				dma_ctx->ongoing->msg : NULL;
 			if (msg)
 				hsi_restart_dma(msg,
 						dma_ch, dma_ctx, intel_hsi);
