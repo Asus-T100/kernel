@@ -80,6 +80,7 @@ obj-$(subst m,y,$(CONFIG_SERIAL_MRST_MAX3110))				+= platform_max3111.o
 obj-$(subst m,y,$(CONFIG_HSI_ARASAN))					+= platform_hsi_modem.o
 obj-$(subst m,y,$(CONFIG_HSI_ARASAN))					+= platform_ffl_modem.o
 obj-$(subst m,y,$(CONFIG_HSI_ARASAN))					+= platform_edlp_modem.o
+obj-$(subst m,y,$(CONFIG_HSI_ARASAN))					+= platform_edlp_fast.o
 obj-$(subst m,y,$(CONFIG_HSI_ARASAN))					+= platform_logical_modem.o
 # Modem control Device
 obj-$(subst m,y,$(CONFIG_MDM_CTRL))					+= platform_modem_ctrl.o
