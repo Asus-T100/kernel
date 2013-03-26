@@ -56,6 +56,9 @@
 #include <linux/pagemap.h>
 #include <linux/pci.h>
 #include <linux/pm_runtime.h>
+#include <linux/kthread.h>
+#include <linux/genhd.h>
+#include <linux/mmc/card.h>
 
 #include <generated/autoconf.h>
 #if defined(DEBUG) && defined(CONFIG_KGDB)
@@ -78,6 +81,7 @@
 #endif
 #include "sep_power.h"
 #include "sep_request_mgr.h"
+#include "sep_applets.h"
 
 /* Registers definitions from shared/hw/include */
 #include "dx_reg_base_host.h"
@@ -4054,6 +4058,167 @@ static void free_host_mem_for_sep(struct sep_drvdata *drvdata)
 #endif
 }
 
+static int emmc_match(struct device *dev, void *data)
+{
+	if (strcmp(dev_name(dev), data) == 0)
+		return 1;
+	return 0;
+}
+
+static int mmc_blk_rpmb_req_handle(struct mmc_ioc_rpmb_req *req)
+{
+#define EMMC_BLK_NAME   "mmcblk0rpmb"
+
+	struct device *emmc = NULL;
+
+	if (!req)
+		return -EINVAL;
+
+	emmc = class_find_device(&block_class, NULL, EMMC_BLK_NAME, emmc_match);
+	if (!emmc) {
+		SEP_LOG_ERR("eMMC reg failed\n");
+		return -ENODEV;
+	}
+
+	return mmc_rpmb_req_handle(emmc, req);
+}
+
+static int rpmb_agent(void *unused)
+{
+#define AGENT_TIMEOUT_MS (1000 * 60 * 5) /* 5 minutes */
+
+#define AUTH_DAT_WR_REQ 0x0003
+#define AUTH_DAT_RD_REQ 0x0004
+
+#define RPMB_FRAME_LENGTH      512
+#define RPMB_MAC_KEY_LENGTH     32
+#define RPMB_NONCE_LENGTH       16
+#define RPMB_DATA_LENGTH       256
+#define RPMB_STUFFBYTES_LENGTH 196
+#define RPMB_COUNTER_LENGTH      4
+#define RPMB_ADDR_LENGTH         2
+#define RPMB_BLKCNT_LENGTH       2
+#define RPMB_RESULT_LENGTH       2
+#define RPMB_RSPREQ_LENGTH       2
+
+#define RPMB_STUFFBYTES_OFFSET 0
+#define RPMB_MAC_KEY_OFFSET   (RPMB_STUFFBYTES_OFFSET + RPMB_STUFFBYTES_LENGTH)
+#define RPMB_DATA_OFFSET      (RPMB_MAC_KEY_OFFSET + RPMB_MAC_KEY_LENGTH)
+#define RPMB_NONCE_OFFSET     (RPMB_DATA_OFFSET + RPMB_DATA_LENGTH)
+#define RPMB_COUNTER_OFFSET   (RPMB_NONCE_OFFSET + RPMB_NONCE_LENGTH)
+#define RPMB_ADDR_OFFSET      (RPMB_COUNTER_OFFSET + RPMB_COUNTER_LENGTH)
+#define RPMB_BLKCNT_OFFSET    (RPMB_ADDR_OFFSET + RPMB_ADDR_LENGTH)
+#define RPMB_RESULT_OFFSET    (RPMB_BLKCNT_OFFSET + RPMB_BLKCNT_LENGTH)
+#define RPMB_RSPREQ_OFFSET    (RPMB_RESULT_OFFSET + RPMB_RESULT_LENGTH)
+
+	int ret = 0;
+	u32 tmp = 0;
+	u32 max_buf_size = 0;
+	u8 in_buf[RPMB_FRAME_LENGTH];
+	u8 *out_buf = NULL;
+	u32 in_buf_size = RPMB_FRAME_LENGTH;
+	u32 timeout = msecs_to_jiffies(AGENT_TIMEOUT_MS);
+	/* structure to pass to the eMMC driver's RPMB API */
+	struct mmc_ioc_rpmb_req req2emmc;
+
+	ret = dx_sep_req_register_agent(RPMB_AGENT_ID, &max_buf_size);
+	if (ret) {
+		SEP_LOG_ERR("REG FAIL %d\n", ret);
+		return -EINVAL;
+	}
+
+	out_buf = kmalloc(RPMB_FRAME_LENGTH, GFP_KERNEL);
+	if (!out_buf) {
+		SEP_LOG_ERR("MALLOC FAIL\n");
+		return -ENOMEM;
+	}
+
+	while (1) {
+		/* Block until called by SEP */
+		do {
+			SEP_LOG_INFO("RPMB AGENT BLOCKED\n");
+			ret = dx_sep_req_wait_for_request(RPMB_AGENT_ID,
+					in_buf, &in_buf_size, timeout);
+		} while (ret == -EAGAIN);
+
+		if (ret) {
+			SEP_LOG_ERR("WAIT FAILED %d\n", ret);
+			break;
+		}
+
+		SEP_LOG_INFO("RPMB AGENT UNBLOCKED\n");
+
+		/* Process request */
+		memset(&req2emmc, 0x00, sizeof(struct mmc_ioc_rpmb_req));
+
+		/* Copy from incoming buffer into variables and swap
+		 * endianess if needed */
+		req2emmc.addr = *((u16 *)(in_buf+RPMB_ADDR_OFFSET));
+		req2emmc.addr = be16_to_cpu(req2emmc.addr);
+		/* As we are supporting only one block transfers */
+		req2emmc.blk_cnt = 1;
+		req2emmc.data = in_buf+RPMB_DATA_OFFSET;
+		req2emmc.mac = in_buf+RPMB_MAC_KEY_OFFSET;
+		req2emmc.nonce = in_buf+RPMB_NONCE_OFFSET;
+		req2emmc.result = (u16 *)(in_buf+RPMB_RESULT_OFFSET);
+		req2emmc.type = *((u16 *)(in_buf+RPMB_RSPREQ_OFFSET));
+		req2emmc.type = be16_to_cpu(req2emmc.type);
+		req2emmc.wc = (u32 *)(in_buf+RPMB_COUNTER_OFFSET);
+		*req2emmc.wc = be32_to_cpu(*req2emmc.wc);
+
+		/* Send request to eMMC driver */
+		ret = mmc_blk_rpmb_req_handle(&req2emmc);
+		if (ret) {
+			SEP_LOG_ERR("mmc_blk_rpmb_req_handle fail %d", ret);
+			/* If access to eMMC driver failed send back
+			 * artificial error */
+			req2emmc.type = 0x0008;
+		}
+
+		/* Rebuild RPMB from response */
+		memset(out_buf, 0, RPMB_FRAME_LENGTH);
+
+		if (req2emmc.type == AUTH_DAT_RD_REQ) {
+			SEP_LOG_INFO("READ OPERATION RETURN\n");
+			memcpy(out_buf+RPMB_DATA_OFFSET,
+					req2emmc.data,  RPMB_DATA_LENGTH);
+			memcpy(out_buf+RPMB_NONCE_OFFSET,
+					req2emmc.nonce, RPMB_NONCE_LENGTH);
+
+			out_buf[RPMB_BLKCNT_OFFSET]   = req2emmc.blk_cnt >> 8;
+			out_buf[RPMB_BLKCNT_OFFSET+1] = req2emmc.blk_cnt;
+		} else {
+			SEP_LOG_INFO("WRITE OPERATION RETURN\n");
+			memcpy(&tmp, req2emmc.wc, RPMB_COUNTER_LENGTH);
+			tmp = cpu_to_be32(tmp);
+			memcpy(out_buf+RPMB_COUNTER_OFFSET,
+					&tmp, RPMB_COUNTER_LENGTH);
+		}
+
+		memcpy(out_buf+RPMB_MAC_KEY_OFFSET,
+				req2emmc.mac,    RPMB_MAC_KEY_LENGTH);
+		memcpy(out_buf+RPMB_RESULT_OFFSET,
+				req2emmc.result, RPMB_RESULT_LENGTH);
+
+		memcpy(out_buf+RPMB_RSPREQ_OFFSET,
+				&req2emmc.type, RPMB_RSPREQ_LENGTH);
+		out_buf[RPMB_ADDR_OFFSET]   = req2emmc.addr >> 8;
+		out_buf[RPMB_ADDR_OFFSET+1] = req2emmc.addr;
+
+		/* Send response */
+		ret = dx_sep_req_send_response(RPMB_AGENT_ID,
+				out_buf, RPMB_FRAME_LENGTH);
+		if (ret) {
+			SEP_LOG_ERR("dx_sep_req_send_response fail %d", ret);
+			break;
+		}
+	}
+
+	kfree(out_buf);
+
+	return ret;
+}
+
 static int __devinit sep_setup(struct device *dev,
 			       const struct resource *regs_res,
 			       struct resource *r_irq)
@@ -4063,6 +4228,13 @@ static int __devinit sep_setup(struct device *dev,
 	enum dx_sep_state sep_state;
 	int rc = 0;
 	int i;
+	/* Create kernel thread for RPMB agent */
+	static struct task_struct *rpmb_thread;
+	char thread_name[] = "rpmb_agent";
+	int sess_id = 0;
+	enum dxdi_sep_module ret_origin;
+	struct sep_client_ctx *sctx = NULL;
+	u8 uuid[16] = DEFAULT_APP_UUID;
 
 	SEP_LOG_INFO("Discretix %s Driver initializing...\n", DRIVER_NAME);
 
@@ -4319,9 +4491,39 @@ static int __devinit sep_setup(struct device *dev,
 	dx_sepapp_init(drvdata);
 #endif
 
+	rpmb_thread = kthread_create(rpmb_agent, NULL, thread_name);
+	if (!rpmb_thread) {
+		SEP_LOG_ERR("RPMB agent thread create fail");
+		goto failed10;
+	} else {
+		wake_up_process(rpmb_thread);
+	}
+
+	/* Inform SEP RPMB driver that it can enable RPMB access again */
+	sctx = dx_sepapp_context_alloc();
+	if (unlikely(!sctx))
+		goto failed10;
+
+	rc = dx_sepapp_session_open(sctx, uuid, 0, NULL, NULL, &sess_id,
+			&ret_origin);
+	if (unlikely(rc != 0))
+		goto failed11;
+	rc = dx_sepapp_command_invoke(sctx, sess_id, CMD_RPMB_ENABLE, NULL,
+			&ret_origin);
+	if (unlikely(rc != 0))
+		goto failed11;
+
+	rc = dx_sepapp_session_close(sctx, sess_id);
+	if (unlikely(rc != 0))
+		goto failed11;
+
+	dx_sepapp_context_free(sctx);
+
 	return 0;
 
 /* Error cases cleanup */
+ failed11:
+	dx_sepapp_context_free(sctx);
  failed10:
 	/* Disable interrupts */
 	WRITE_REGISTER(drvdata->cc_base + DX_CC_REG_OFFSET(HOST, IMR), ~0);
