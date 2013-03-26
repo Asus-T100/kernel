@@ -201,7 +201,7 @@ void sst_post_message_mrfld(struct work_struct *work)
 	union ipc_header_mrfld header;
 	unsigned long irq_flags;
 
-	pr_debug("sst: post message called\n");
+	pr_debug("Enter:%s\n", __func__);
 	spin_lock_irqsave(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 	/* check list */
 	if (list_empty(&sst_drv_ctx->ipc_dispatch_list)) {
@@ -250,7 +250,7 @@ void sst_post_message_mfld(struct work_struct *work)
 	union ipc_header header;
 	unsigned long irq_flags;
 
-	pr_debug("post message called\n");
+	pr_debug("Enter:%s\n", __func__);
 
 	spin_lock_irqsave(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 	/* check list */
@@ -262,7 +262,7 @@ void sst_post_message_mfld(struct work_struct *work)
 	}
 
 	/* check busy bit */
-	header.full = sst_shim_read(sst_drv_ctx->shim, SST_IPCX);
+	header.full = sst_shim_read(sst_drv_ctx->shim, sst_drv_ctx->ipc_reg.ipcx);
 	if (header.part.busy) {
 		spin_unlock_irqrestore(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 		pr_debug("Busy not free... Post later\n");
@@ -277,7 +277,7 @@ void sst_post_message_mfld(struct work_struct *work)
 		memcpy_toio(sst_drv_ctx->mailbox + SST_MAILBOX_SEND,
 			msg->mailbox_data, msg->header.part.data);
 
-	sst_shim_write(sst_drv_ctx->shim, SST_IPCX, msg->header.full);
+	sst_shim_write(sst_drv_ctx->shim, sst_drv_ctx->ipc_reg.ipcx, msg->header.full);
 	spin_unlock_irqrestore(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 	pr_debug("Posted message: header = %x\n", msg->header.full);
 
@@ -293,7 +293,7 @@ void sst_post_message_mrfld32(struct work_struct *work)
 	unsigned long irq_flags;
 	u32 *size;
 
-	pr_debug("post message called\n");
+	pr_debug("Enter:%s\n", __func__);
 
 	spin_lock_irqsave(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 	/* check list */
@@ -343,7 +343,7 @@ int sst_sync_post_message_mrfld(struct ipc_post *msg)
 	int retval = 0;
 	unsigned long irq_flags;
 
-	pr_debug("in %s\n", __func__);
+	pr_debug("Enter:%s\n", __func__);
 	spin_lock_irqsave(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 
 	/* check busy bit */
@@ -381,7 +381,7 @@ int sst_sync_post_message_mrfld32(struct ipc_post *msg)
 	unsigned long irq_flags;
 	u32 size;
 
-	pr_debug("in %s\n", __func__);
+	pr_debug("Enter:%s\n", __func__);
 	spin_lock_irqsave(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 
 	/* check busy bit */
@@ -420,11 +420,11 @@ int sst_sync_post_message_mfld(struct ipc_post *msg)
 	int retval = 0;
 	unsigned long irq_flags;
 
-	pr_debug("in %s\n", __func__);
+	pr_debug("Enter:%s\n", __func__);
 	spin_lock_irqsave(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 
 	/* check busy bit */
-	header.full = sst_shim_read(sst_drv_ctx->shim, SST_IPCX);
+	header.full = sst_shim_read(sst_drv_ctx->shim, sst_drv_ctx->ipc_reg.ipcx);
 	while (header.part.busy) {
 		if (loop_count > 10) {
 			pr_err("busy wait failed, cant send this msg\n");
@@ -433,14 +433,13 @@ int sst_sync_post_message_mfld(struct ipc_post *msg)
 		}
 		udelay(500);
 		loop_count++;
-		header.full = sst_shim_read(sst_drv_ctx->shim, SST_IPCX);
+		header.full = sst_shim_read(sst_drv_ctx->shim, sst_drv_ctx->ipc_reg.ipcx);
 	}
 	pr_debug("sst: Post message: header = %x\n", msg->header.full);
 	if (msg->header.part.large)
 		memcpy_toio(sst_drv_ctx->mailbox + SST_MAILBOX_SEND,
 			msg->mailbox_data, msg->header.part.data);
-
-	sst_shim_write(sst_drv_ctx->shim, SST_IPCX, msg->header.full);
+	sst_shim_write(sst_drv_ctx->shim, sst_drv_ctx->ipc_reg.ipcx, msg->header.full);
 
 out:
 	spin_unlock_irqrestore(&sst_drv_ctx->ipc_spin_lock, irq_flags);
@@ -469,11 +468,11 @@ void intel_sst_clear_intr_mfld(void)
 	isr.part.busy_interrupt = 1;
 	sst_shim_write(sst_drv_ctx->shim, SST_ISRX, isr.full);
 	/* Set IA done bit */
-	clear_ipc.full = sst_shim_read(sst_drv_ctx->shim, SST_IPCD);
+	clear_ipc.full = sst_shim_read(sst_drv_ctx->shim, sst_drv_ctx->ipc_reg.ipcd);
 	clear_ipc.part.busy = 0;
 	clear_ipc.part.done = 1;
 	clear_ipc.part.data = IPC_ACK_SUCCESS;
-	sst_shim_write(sst_drv_ctx->shim, SST_IPCD, clear_ipc.full);
+	sst_shim_write(sst_drv_ctx->shim, sst_drv_ctx->ipc_reg.ipcd, clear_ipc.full);
 	/* un mask busy interrupt */
 	imr.part.busy_interrupt = 0;
 	sst_shim_write(sst_drv_ctx->shim, SST_IMRX, imr.full);

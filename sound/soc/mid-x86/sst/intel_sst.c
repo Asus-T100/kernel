@@ -192,7 +192,7 @@ static irqreturn_t intel_sst_irq_thread_mfld(int irq, void *context)
 	struct stream_info *stream;
 	unsigned int size = 0, str_id;
 
-	header.full = sst_shim_read(drv->shim, SST_IPCD);
+	header.full = sst_shim_read(drv->shim, drv->ipc_reg.ipcd);
 	if (header.part.msg_id == IPC_SST_PERIOD_ELAPSED) {
 		sst_drv_ctx->ops->clear_interrupt();
 		str_id = header.part.str_id;
@@ -241,9 +241,9 @@ static irqreturn_t intel_sst_intr_mfld(int irq, void *context)
 	if (isr.part.done_interrupt) {
 		/* Clear done bit */
 		spin_lock(&sst_drv_ctx->ipc_spin_lock);
-		header.full = sst_shim_read(drv->shim, SST_IPCX);
+		header.full = sst_shim_read(drv->shim, drv->ipc_reg.ipcx);
 		header.part.done = 0;
-		sst_shim_write(sst_drv_ctx->shim, SST_IPCX, header.full);
+		sst_shim_write(sst_drv_ctx->shim, drv->ipc_reg.ipcx, header.full);
 		/* write 1 to clear status register */;
 		isr.part.done_interrupt = 1;
 		sst_shim_write(sst_drv_ctx->shim, SST_ISRX, isr.full);
@@ -264,6 +264,143 @@ static irqreturn_t intel_sst_intr_mfld(int irq, void *context)
 	return retval;
 }
 
+
+static int sst_save_fw_rams(struct intel_sst_drv *sst)
+{
+	/* first reset, stall and bypass the core */
+	sst->ops->reset();
+
+	/* FIXME now we copy, should use DMA here but for now we cant
+	 * so use mempcy instead
+	 */
+	memcpy_fromio(sst->context.iram, sst->iram,
+			sst->iram_end - sst->iram_base);
+	memcpy_fromio(sst->context.dram, sst->dram,
+			sst->dram_end - sst->dram_base);
+	return 0;
+}
+
+static int sst_load_fw_rams(struct intel_sst_drv *sst)
+{
+	struct sst_block *block;
+
+	/* first reset, stall and bypass the core */
+	sst->ops->reset();
+
+	/* FIXME now we copy, should use DMA here but for now we cant
+	 * so use mempcy instead
+	 */
+	block = sst_create_block(sst, 0, FW_DWNL_ID);
+	if (block == NULL)
+		return -ENOMEM;
+
+	memcpy_toio(sst->iram, sst->context.iram,
+			sst->iram_end - sst->iram_base);
+	memcpy_toio(sst->dram, sst->context.dram,
+			sst->dram_end - sst->dram_base);
+	sst_set_fw_state_locked(sst, SST_FW_LOADED);
+
+	sst->ops->start();
+	if (sst_wait_timeout(sst, block)) {
+		pr_err("fw download failed\n");
+		/* assume FW d/l failed due to timeout*/
+		sst_set_fw_state_locked(sst, SST_UN_INIT);
+		sst_free_block(sst, block);
+		return -EBUSY;
+	}
+	pr_debug("Fw loaded!");
+	sst_free_block(sst, block);
+	return 0;
+}
+
+static int sst_save_dsp_context_v2(struct intel_sst_drv *sst)
+{
+	unsigned int pvt_id;
+	struct ipc_post *msg = NULL;
+	unsigned long irq_flags;
+	struct ipc_dsp_hdr dsp_hdr;
+	struct sst_block *block;
+
+	/*send msg to fw*/
+	pvt_id = sst_assign_pvt_id(sst);
+	if (sst_create_block_and_ipc_msg(&msg, true, sst, &block,
+				IPC_CMD, pvt_id)) {
+		pr_err("msg/block alloc failed. Not proceeding with context save\n");
+		return 0;
+	}
+
+	sst_fill_header_mrfld(&msg->mrfld_header, IPC_CMD,
+				IPC_QUE_ID_MED, 1, pvt_id);
+	msg->mrfld_header.p.header_low_payload = sizeof(dsp_hdr);
+	msg->mrfld_header.p.header_high.part.res_rqd = 1;
+	sst_fill_header_dsp(&dsp_hdr, IPC_PREP_D3, PIPE_RSVD, pvt_id);
+	memcpy(msg->mailbox_data, &dsp_hdr, sizeof(dsp_hdr));
+
+	spin_lock_irqsave(&sst->ipc_spin_lock, irq_flags);
+	list_add_tail(&msg->node, &sst->ipc_dispatch_list);
+	spin_unlock_irqrestore(&sst->ipc_spin_lock, irq_flags);
+	sst->ops->post_message(&sst->ipc_post_msg_wq);
+	/*wait for reply*/
+	if (sst_wait_timeout(sst, block)) {
+		pr_err("sst: err fw context save timeout  ...\n");
+		pr_err("not suspending FW!!!");
+		sst_free_block(sst, block);
+		return -EIO;
+	}
+	if (block->ret_code) {
+		pr_err("fw responded w/ error %d", block->ret_code);
+		sst_free_block(sst, block);
+		return -EIO;
+	}
+
+	/* all good, so lets copy the fw */
+	sst_save_fw_rams(sst);
+	sst->context.saved = 0;
+	pr_debug("fw context saved  ...\n");
+	sst_free_block(sst, block);
+	return 0;
+}
+
+static int sst_save_dsp_context(struct intel_sst_drv *sst)
+{
+	struct snd_sst_ctxt_params fw_context;
+	unsigned int pvt_id;
+	struct ipc_post *msg = NULL;
+	unsigned long irq_flags;
+	struct sst_block *block;
+	pr_debug("%s: Enter\n", __func__);
+
+	/*send msg to fw*/
+	pvt_id = sst_assign_pvt_id(sst_drv_ctx);
+	if (sst_create_block_and_ipc_msg(&msg, true, sst_drv_ctx, &block,
+				IPC_IA_GET_FW_CTXT, pvt_id)) {
+		pr_err("msg/block alloc failed. Not proceeding with context save\n");
+		return -ENOMEM;
+	}
+	sst_fill_header(&msg->header, IPC_IA_GET_FW_CTXT, 1, pvt_id);
+	msg->header.part.data = sizeof(fw_context) + sizeof(u32);
+	fw_context.address = virt_to_phys((void *)sst_drv_ctx->fw_cntx);
+	fw_context.size = FW_CONTEXT_MEM;
+	memcpy(msg->mailbox_data, &msg->header, sizeof(u32));
+	memcpy(msg->mailbox_data + sizeof(u32),
+				&fw_context, sizeof(fw_context));
+	spin_lock_irqsave(&sst_drv_ctx->ipc_spin_lock, irq_flags);
+	list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
+	spin_unlock_irqrestore(&sst_drv_ctx->ipc_spin_lock, irq_flags);
+	sst_drv_ctx->ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
+	/*wait for reply*/
+	if (sst_wait_timeout(sst_drv_ctx, block))
+		pr_err("sst: err fw context save timeout  ...\n");
+	pr_debug("fw context saved  ...\n");
+	if (block->ret_code)
+		sst_drv_ctx->fw_cntx_size = 0;
+	else
+		sst_drv_ctx->fw_cntx_size = *sst_drv_ctx->fw_cntx;
+	pr_debug("fw copied data %x\n", sst_drv_ctx->fw_cntx_size);
+	sst_free_block(sst_drv_ctx, block);
+	return 0;
+}
+
 static struct intel_sst_ops mrfld_ops = {
 	.interrupt = intel_sst_interrupt_mrfld,
 	.irq_thread = intel_sst_irq_thread_mrfld,
@@ -274,7 +411,23 @@ static struct intel_sst_ops mrfld_ops = {
 	.sync_post_message = sst_sync_post_message_mrfld,
 	.process_message = sst_process_message_mrfld,
 	.process_reply = sst_process_reply_mrfld,
-	.set_bypass = NULL,
+	.save_dsp_context =  sst_save_dsp_context_v2,
+	.alloc_stream = sst_alloc_stream_mrfld,
+};
+
+static struct intel_sst_ops mrfld_32_ops = {
+	.interrupt = intel_sst_intr_mfld,
+	.irq_thread = intel_sst_irq_thread_mfld,
+	.clear_interrupt = intel_sst_clear_intr_mfld,
+	.start = sst_start_mrfld,
+	.reset = intel_sst_reset_dsp_mrfld,
+	.post_message = sst_post_message_mfld,
+	.sync_post_message = sst_sync_post_message_mfld,
+	.process_message = sst_process_message_mfld,
+	.process_reply = sst_process_reply_mfld,
+	.save_dsp_context =  sst_save_dsp_context,
+	.restore_dsp_context = sst_restore_fw_context,
+	.alloc_stream = sst_alloc_stream_ctp,
 };
 
 static struct intel_sst_ops mfld_ops = {
@@ -288,23 +441,48 @@ static struct intel_sst_ops mfld_ops = {
 	.process_message = sst_process_message_mfld,
 	.process_reply = sst_process_reply_mfld,
 	.set_bypass = intel_sst_set_bypass_mfld,
+	.save_dsp_context =  sst_save_dsp_context,
+	.restore_dsp_context = sst_restore_fw_context,
+	.alloc_stream = sst_alloc_stream_mfld,
 };
 
-static int sst_driver_ops(unsigned int pci_id)
+static struct intel_sst_ops ctp_ops = {
+	.interrupt = intel_sst_intr_mfld,
+	.irq_thread = intel_sst_irq_thread_mfld,
+	.clear_interrupt = intel_sst_clear_intr_mfld,
+	.start = sst_start_mfld,
+	.reset = intel_sst_reset_dsp_mfld,
+	.post_message = sst_post_message_mfld,
+	.sync_post_message = sst_sync_post_message_mfld,
+	.process_message = sst_process_message_mfld,
+	.process_reply = sst_process_reply_mfld,
+	.set_bypass = intel_sst_set_bypass_mfld,
+	.save_dsp_context =  sst_save_dsp_context,
+	.restore_dsp_context = sst_restore_fw_context,
+	.alloc_stream = sst_alloc_stream_ctp,
+};
+
+static int sst_driver_ops(struct intel_sst_drv *sst)
 {
 
-	switch (pci_id) {
+	switch (sst->pci_id) {
 	case SST_MRFLD_PCI_ID:
-		sst_drv_ctx->tstamp = SST_TIME_STAMP_MRFLD;
-		sst_drv_ctx->ops = &mrfld_ops;
+		sst->tstamp = SST_TIME_STAMP_MRFLD;
+		if (sst->use_32bit_ops == true)
+			sst->ops = &mrfld_32_ops;
+		else
+			sst->ops = &mrfld_ops;
 		return 0;
 	case SST_CLV_PCI_ID:
+		sst->tstamp =  SST_TIME_STAMP;
+		sst->ops = &ctp_ops;
+		return 0;
 	case SST_MFLD_PCI_ID:
-		sst_drv_ctx->tstamp =  SST_TIME_STAMP;
-		sst_drv_ctx->ops = &mfld_ops;
+		sst->tstamp =  SST_TIME_STAMP;
+		sst->ops = &mfld_ops;
 		return 0;
 	default:
-		pr_err("SST Driver capablities missing for pci_id: %x", pci_id);
+		pr_err("SST Driver capablities missing for pci_id: %x", sst->pci_id);
 	return -EINVAL;
 	};
 }
@@ -344,8 +522,17 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 
 	sst_drv_ctx->pci_id = pci->device;
 
-	if (0 != sst_driver_ops(sst_drv_ctx->pci_id))
+	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID)
+		sst_drv_ctx->use_32bit_ops = true;
+	/* This is work around and needs to be removed once we
+		have SPID for PRh - Appplies to all occurances */
+#ifdef CONFIG_PRH_TEMP_WA_FOR_SPID
+	sst_drv_ctx->use_32bit_ops = true;
+#endif
+
+	if (0 != sst_driver_ops(sst_drv_ctx))
 		return -EINVAL;
+	ops = sst_drv_ctx->ops;
 	mutex_init(&sst_drv_ctx->stream_lock);
 	mutex_init(&sst_drv_ctx->sst_lock);
 	mutex_init(&sst_drv_ctx->mixer_ctrl_lock);
@@ -360,7 +547,6 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 	/* we use dma, so set to 1*/
 	sst_drv_ctx->use_dma = 1;
 	sst_drv_ctx->use_lli = 1;
-	ops = sst_drv_ctx->ops;
 
 	INIT_LIST_HEAD(&sst_drv_ctx->memcpy_list);
 	INIT_LIST_HEAD(&sst_drv_ctx->libmemcpy_list);
@@ -394,6 +580,17 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 
 	info = (void *)pci_id->driver_data;
 	memcpy(&sst_drv_ctx->info, info, sizeof(sst_drv_ctx->info));
+
+#ifdef CONFIG_PRH_TEMP_WA_FOR_SPID
+		sst_drv_ctx->ipc_reg.ipcx = SST_PRH_IPCX;
+		sst_drv_ctx->ipc_reg.ipcd = SST_PRH_IPCD;
+		/* overwrite max_streams for Merr PRh */
+		sst_drv_ctx->info.max_streams = 5;
+#else
+		sst_drv_ctx->ipc_reg.ipcx = SST_IPCX;
+		sst_drv_ctx->ipc_reg.ipcd = SST_IPCD;
+#endif
+
 	pr_info("Got drv data max stream %d\n",
 				sst_drv_ctx->info.max_streams);
 	for (i = 1; i <= sst_drv_ctx->info.max_streams; i++) {
@@ -538,12 +735,8 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 	if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID)
 		sst_shim_write64(sst_drv_ctx->shim, SST_IMRX, 0xFFFF0034);
 
-	if ((sst_drv_ctx->pci_id == SST_MFLD_PCI_ID) ||
-			(sst_drv_ctx->pci_id == SST_CLV_PCI_ID)) {
-		u32 csr;
-		u32 csr2;
-		u32 clkctl;
-
+	if (sst_drv_ctx->use_32bit_ops) {
+		pr_debug("allocate mem for context save/restore\n ");
 		/*allocate mem for fw context save during suspend*/
 		sst_drv_ctx->fw_cntx = kzalloc(FW_CONTEXT_MEM, GFP_KERNEL);
 		if (!sst_drv_ctx->fw_cntx) {
@@ -552,6 +745,12 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 		}
 		/*setting zero as that is valid mem to restore*/
 		sst_drv_ctx->fw_cntx_size = 0;
+	}
+	if ((sst_drv_ctx->pci_id == SST_MFLD_PCI_ID) ||
+			(sst_drv_ctx->pci_id == SST_CLV_PCI_ID)) {
+		u32 csr;
+		u32 csr2;
+		u32 clkctl;
 
 		/*set lpe start clock and ram size*/
 		csr = sst_shim_read(sst_drv_ctx->shim, SST_CSR);
@@ -573,7 +772,8 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 		/*set SSP3 disable DMA finsh for SSSP3 */
 		csr2 |= BIT(1)|BIT(2);
 		sst_shim_write(sst_drv_ctx->shim, SST_CSR2, csr2);
-	} else {
+	} else if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID &&
+			sst_drv_ctx->use_32bit_ops == false) {
 		/*allocate mem for fw context save during suspend*/
 		sst_drv_ctx->context.iram =
 			kzalloc(sst_drv_ctx->iram_end - sst_drv_ctx->iram_base, GFP_KERNEL);
@@ -727,158 +927,6 @@ static void __devexit intel_sst_remove(struct pci_dev *pci)
 	pci_set_drvdata(pci, NULL);
 }
 
-static int sst_save_fw_rams(struct intel_sst_drv *sst)
-{
-	/* first reset, stall and bypass the core */
-	sst->ops->reset();
-
-	/* FIXME now we copy, should use DMA here but for now we cant
-	 * so use mempcy instead
-	 */
-	memcpy_fromio(sst->context.iram, sst->iram,
-			sst->iram_end - sst->iram_base);
-	memcpy_fromio(sst->context.dram, sst->dram,
-			sst->dram_end - sst->dram_base);
-	return 0;
-}
-
-static int sst_load_fw_rams(struct intel_sst_drv *sst)
-{
-	struct sst_block *block;
-
-	/* first reset, stall and bypass the core */
-	sst->ops->reset();
-
-	/* FIXME now we copy, should use DMA here but for now we cant
-	 * so use mempcy instead
-	 */
-	block = sst_create_block(sst, 0, FW_DWNL_ID);
-	if (block == NULL)
-		return -ENOMEM;
-
-	memcpy_toio(sst->iram, sst->context.iram,
-			sst->iram_end - sst->iram_base);
-	memcpy_toio(sst->dram, sst->context.dram,
-			sst->dram_end - sst->dram_base);
-	sst_set_fw_state_locked(sst, SST_FW_LOADED);
-
-	sst->ops->start();
-	if (sst_wait_timeout(sst, block)) {
-		pr_err("fw download failed\n");
-		/* assume FW d/l failed due to timeout*/
-		sst_set_fw_state_locked(sst, SST_UN_INIT);
-		sst_free_block(sst, block);
-		return -EBUSY;
-	}
-	pr_debug("Fw loaded!");
-	sst_free_block(sst, block);
-	return 0;
-}
-
-static int sst_save_dsp_context2(struct intel_sst_drv *sst)
-{
-	unsigned int pvt_id;
-	struct ipc_post *msg = NULL;
-	unsigned long irq_flags;
-	struct ipc_dsp_hdr dsp_hdr;
-	struct sst_block *block;
-
-	/*not supported for rest*/
-	if (sst->sst_state != SST_FW_RUNNING) {
-		pr_debug("fw not running no context save ...\n");
-		return 0;
-	}
-
-	/*send msg to fw*/
-	pvt_id = sst_assign_pvt_id(sst);
-	if (sst_create_block_and_ipc_msg(&msg, true, sst, &block,
-				IPC_CMD, pvt_id)) {
-		pr_err("msg/block alloc failed. Not proceeding with context save\n");
-		return;
-	}
-
-	sst_fill_header_mrfld(&msg->mrfld_header, IPC_CMD,
-				IPC_QUE_ID_MED, 1, pvt_id);
-	msg->mrfld_header.p.header_low_payload = sizeof(dsp_hdr);
-	msg->mrfld_header.p.header_high.part.res_rqd = 1;
-	sst_fill_header_dsp(&dsp_hdr, IPC_PREP_D3, PIPE_RSVD, pvt_id);
-	memcpy(msg->mailbox_data, &dsp_hdr, sizeof(dsp_hdr));
-
-	spin_lock_irqsave(&sst->ipc_spin_lock, irq_flags);
-	list_add_tail(&msg->node, &sst->ipc_dispatch_list);
-	spin_unlock_irqrestore(&sst->ipc_spin_lock, irq_flags);
-	sst->ops->post_message(&sst->ipc_post_msg_wq);
-	/*wait for reply*/
-	if (sst_wait_timeout(sst, block)) {
-		pr_err("sst: err fw context save timeout  ...\n");
-		pr_err("not suspending FW!!!");
-		sst_free_block(sst, block);
-		return -EIO;
-	}
-	if (block->ret_code) {
-		pr_err("fw responded w/ error %d", block->ret_code);
-		sst_free_block(sst, block);
-		return -EIO;
-	}
-
-	/* all good, so lets copy the fw */
-	sst_save_fw_rams(sst);
-	sst->context.saved = 0;
-	pr_debug("fw context saved  ...\n");
-	sst_free_block(sst, block);
-	return 0;
-}
-
-static void sst_save_dsp_context(void)
-{
-	struct snd_sst_ctxt_params fw_context;
-	unsigned int pvt_id;
-	struct ipc_post *msg = NULL;
-	unsigned long irq_flags;
-	struct sst_block *block;
-	pr_debug("%s: Enter\n", __func__);
-
-	/*check cpu type*/
-	if (sst_drv_ctx->pci_id == SST_MRST_PCI_ID)
-		return;
-	/*not supported for rest*/
-	if (sst_drv_ctx->sst_state != SST_FW_RUNNING) {
-		pr_debug("fw not running no context save ...\n");
-		return;
-	}
-
-	/*send msg to fw*/
-	pvt_id = sst_assign_pvt_id(sst_drv_ctx);
-	if (sst_create_block_and_ipc_msg(&msg, true, sst_drv_ctx, &block,
-				IPC_IA_GET_FW_CTXT, pvt_id)) {
-		pr_err("msg/block alloc failed. Not proceeding with context save\n");
-		return;
-	}
-	sst_fill_header(&msg->header, IPC_IA_GET_FW_CTXT, 1, pvt_id);
-	msg->header.part.data = sizeof(fw_context) + sizeof(u32);
-	fw_context.address = virt_to_phys((void *)sst_drv_ctx->fw_cntx);
-	fw_context.size = FW_CONTEXT_MEM;
-	memcpy(msg->mailbox_data, &msg->header, sizeof(u32));
-	memcpy(msg->mailbox_data + sizeof(u32),
-				&fw_context, sizeof(fw_context));
-	spin_lock_irqsave(&sst_drv_ctx->ipc_spin_lock, irq_flags);
-	list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
-	spin_unlock_irqrestore(&sst_drv_ctx->ipc_spin_lock, irq_flags);
-	sst_drv_ctx->ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
-	/*wait for reply*/
-	if (sst_wait_timeout(sst_drv_ctx, block))
-		pr_err("sst: err fw context save timeout  ...\n");
-	pr_debug("fw context saved  ...\n");
-	if (block->ret_code)
-		sst_drv_ctx->fw_cntx_size = 0;
-	else
-		sst_drv_ctx->fw_cntx_size = *sst_drv_ctx->fw_cntx;
-	pr_debug("fw copied data %x\n", sst_drv_ctx->fw_cntx_size);
-	sst_free_block(sst_drv_ctx, block);
-	return;
-}
-
-
 /*
  * The runtime_suspend/resume is pretty much similar to the legacy
  * suspend/resume with the noted exception below: The PCI core takes care of
@@ -888,20 +936,15 @@ static void sst_save_dsp_context(void)
 static int intel_sst_runtime_suspend(struct device *dev)
 {
 	union config_status_reg csr;
-
 	pr_debug("runtime_suspend called\n");
-	if (sst_drv_ctx->sst_state == SST_SUSPENDED) {
-		pr_err("System already in Suspended state");
+	if (sst_drv_ctx->sst_state == SST_UN_INIT) {
+		pr_debug("LPE is already in UNINIT state, No action");
 		return 0;
 	}
 	/*save fw context*/
+	if (sst_drv_ctx->ops->save_dsp_context(sst_drv_ctx))
+		return -EBUSY;
 
-	if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID) {
-		if (sst_save_dsp_context2(sst_drv_ctx))
-			return -EBUSY;
-	} else {
-		sst_save_dsp_context();
-	}
 	if (sst_drv_ctx->pci_id != SST_MRFLD_PCI_ID) {
 		/*Assert RESET on LPE Processor*/
 		csr.full = sst_shim_read(sst_drv_ctx->shim, SST_CSR);
@@ -925,10 +968,6 @@ static int intel_sst_runtime_resume(struct device *dev)
 	u32 csr;
 
 	pr_debug("runtime_resume called\n");
-	if (sst_drv_ctx->sst_state != SST_SUSPENDED) {
-		pr_err("SST is not in suspended state\n");
-		return 0;
-	}
 
 	if (sst_drv_ctx->pci_id != SST_MRFLD_PCI_ID) {
 		csr = sst_shim_read(sst_drv_ctx->shim, SST_CSR);
@@ -969,7 +1008,8 @@ static int intel_sst_runtime_resume(struct device *dev)
 	}
 
 	sst_set_fw_state_locked(sst_drv_ctx, SST_UN_INIT);
-	if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID && sst_drv_ctx->context.saved) {
+	if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID && sst_drv_ctx->context.saved &&
+			(!sst_drv_ctx->use_32bit_ops)) {
 		/* in mrfld we have saved ram snapshot
 		 * so check if snapshot is present if so download that
 		 */
@@ -1037,10 +1077,13 @@ static struct pci_driver driver = {
 	.id_table = intel_sst_ids,
 	.probe = intel_sst_probe,
 	.remove = __devexit_p(intel_sst_remove),
+/* Temporarily disable PM for Bodegabay */
+#ifndef CONFIG_PRH_TEMP_WA_FOR_SPID
 #ifdef CONFIG_PM
 	.driver = {
 		.pm = &intel_sst_pm,
 	},
+#endif
 #endif
 };
 
