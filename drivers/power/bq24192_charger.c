@@ -302,6 +302,7 @@ struct bq24192_chip {
 	int curr_chrg;
 	int input_curr;
 	int cached_chrg_cur_cntl;
+	int batt_health;
 	bool is_pwr_good;
 	struct power_supply_charger_cap cached_cap;
 	/* Wake lock to prevent platform from going to S3 when charging */
@@ -925,6 +926,18 @@ static ssize_t set_charge_current_limit(struct device *dev,
 			value);
 		return -EINVAL;
 	}
+
+	/*
+	 * Check for the battery health and if the battery health is good
+	 * throttle/continue the charging else don't throttle coz the charging
+	 * will be stopped if the battery health is not good.
+	 */
+	if (chip->batt_health == POWER_SUPPLY_HEALTH_COLD ||
+		chip->batt_health == POWER_SUPPLY_HEALTH_OVERHEAT) {
+		dev_info(&chip->client->dev, "Battery in extreme temp zone\n");
+		return -EINVAL;
+	}
+
 	chr_mode = chip->batt_mode;
 
 	switch (value) {
@@ -1667,6 +1680,7 @@ static void bq24192_maintenance_worker(struct work_struct *work)
 	static int chrg_cur_cntl = USER_SET_CHRG_NOLMT;
 	bool sysfs_stat = false;
 	u8 vindpm = INPUT_SRC_VOLT_LMT_DEF;
+	int batt_health = POWER_SUPPLY_HEALTH_GOOD;
 
 	dev_dbg(&chip->client->dev, "+ %s\n", __func__);
 
@@ -1723,6 +1737,7 @@ static void bq24192_maintenance_worker(struct work_struct *work)
 				"batt temp:POWER_SUPPLY_HEALTH_OVERHEAT\n");
 		}
 
+		batt_health = POWER_SUPPLY_HEALTH_OVERHEAT;
 		/*
 		 * Read the Power-ON Cfg register to ensure charging disabled
 		 * If already disabled. No need to disable again
@@ -1749,23 +1764,20 @@ static void bq24192_maintenance_worker(struct work_struct *work)
 		}
 		goto sched_maint_work;
 	} else {
-		/*
-		 * PMIC does not stop the charging automatically in case the
-		 * phone is applied to -ve temperature condition. Since the
-		 * driver explicitly disables the charging on coming back to
-		 * the normal temperature charger should enable the charging
-		 */
-		mutex_lock(&chip->event_lock);
-		ret = bq24192_reg_multi_bitset(chip->client,
+		if (chip->batt_mode != BATT_CHRG_FULL) {
+			mutex_lock(&chip->event_lock);
+			ret = bq24192_reg_multi_bitset(chip->client,
 						BQ24192_POWER_ON_CFG_REG,
 						POWER_ON_CFG_CHRG_CFG_EN,
 						CHR_CFG_BIT_POS,
 						CHR_CFG_BIT_LEN);
-		if (ret < 0) {
-			dev_warn(&chip->client->dev,
-				"I2C write failed:%s\n", __func__);
+			if (ret < 0) {
+				dev_warn(&chip->client->dev,
+					"I2C write failed:%s\n", __func__);
+			}
+			mutex_unlock(&chip->event_lock);
 		}
-		mutex_unlock(&chip->event_lock);
+		batt_health = POWER_SUPPLY_HEALTH_GOOD;
 	}
 
 	dev_info(&chip->client->dev, "temperature zone idx = %d\n", idx);
@@ -1999,9 +2011,11 @@ sched_maint_work:
 	dev_info(&chip->client->dev, "battery_status %dchip->batt_status %d\n",
 			battery_status, chip->batt_status);
 
-	if (chip->batt_status != battery_status) {
+	if ((chip->batt_status != battery_status) ||
+		(chip->batt_health != batt_health)) {
 		mutex_lock(&chip->event_lock);
 		chip->batt_status = battery_status;
+		chip->batt_health = batt_health;
 		mutex_unlock(&chip->event_lock);
 		power_supply_changed(&chip->usb);
 	}
@@ -2804,6 +2818,7 @@ static int bq24192_probe(struct i2c_client *client,
 	chip->chrg_cur_cntl = POWER_SUPPLY_CHARGE_CURRENT_LIMIT_NONE;
 	chip->batt_status = POWER_SUPPLY_STATUS_DISCHARGING;
 	chip->batt_mode = BATT_CHRG_NONE;
+	chip->batt_health = POWER_SUPPLY_HEALTH_GOOD;
 	chip->curr_volt = BQ24192_INVALID_VOLT;
 	chip->curr_chrg = BQ24192_INVALID_CURR;
 	chip->cached_chrg_cur_cntl = POWER_SUPPLY_CHARGE_CURRENT_LIMIT_NONE;
