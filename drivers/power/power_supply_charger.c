@@ -761,13 +761,42 @@ void power_supply_trigger_charging_handler(struct power_supply *psy)
 }
 EXPORT_SYMBOL(power_supply_trigger_charging_handler);
 
+static inline int get_battery_thresholds(struct power_supply *psy,
+	struct psy_batt_thresholds *bat_thresh)
+{
+	struct charging_algo *algo;
+	struct ps_batt_chg_prof chrg_profile;
+
+
+	/* FIXME: Get iterm only for supplied_to arguments*/
+	if (get_batt_prop(&chrg_profile)) {
+		pr_err("Error in getting charge profile:%s:%d\n", __FILE__,
+		       __LINE__);
+		return -EINVAL;
+	}
+
+	algo = power_supply_get_charging_algo(psy, &chrg_profile);
+	if (!algo) {
+		pr_err("Error in getting charging algo!!\n");
+		return -EINVAL;
+	}
+
+	if (algo->get_batt_thresholds) {
+		algo->get_batt_thresholds(chrg_profile, bat_thresh);
+	} else {
+		pr_err("Error in getting battery thresholds from %s:%s\n",
+			algo->name, __func__);
+		return -EINVAL;
+	}
+	return 0;
+}
 
 static int select_chrgr_cable(struct device *dev, void *data)
 {
 	struct power_supply *psy = dev_get_drvdata(dev);
 	struct charger_cable *cable, *max_mA_cable = NULL;
 	struct charger_cable *cable_lst = (struct charger_cable *)data;
-	unsigned int max_mA = 0;
+	unsigned int max_mA = 0, iterm;
 	int i;
 
 	if (!IS_CHARGER(psy))
@@ -815,8 +844,17 @@ static int select_chrgr_cable(struct device *dev, void *data)
 		set_inlmt(psy, max_mA_cable->cable_props.mA);
 	}
 
-	if (IS_CHARGER_CAN_BE_ENABLED(psy))
+	if (IS_CHARGER_CAN_BE_ENABLED(psy)) {
+		struct psy_batt_thresholds bat_thresh;
+		memset(&bat_thresh, 0, sizeof(bat_thresh));
+
+		if (!get_battery_thresholds(psy, &bat_thresh)) {
+			SET_ITERM(psy, bat_thresh.iterm);
+			SET_MIN_TEMP(psy, bat_thresh.temp_min);
+			SET_MAX_TEMP(psy, bat_thresh.temp_max);
+		}
 		enable_charger(psy);
+	}
 
 	mutex_unlock(&psy_chrgr.evt_lock);
 	power_supply_trigger_charging_handler(NULL);
@@ -940,9 +978,7 @@ int power_supply_register_charging_algo(struct charging_algo *algo)
 		pr_err("%s: Error allocating memory for algo!!", __func__);
 		return -1;
 	}
-	algo_new->get_next_cc_cv = algo->get_next_cc_cv;
-	algo_new->name = algo->name;
-	algo_new->chrg_prof_type = algo->chrg_prof_type;
+	memcpy(algo_new, algo, sizeof(*algo_new));
 
 	list_add_tail(&algo_new->node, &algo_list);
 	return 0;

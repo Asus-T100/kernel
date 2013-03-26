@@ -44,7 +44,7 @@ struct charger_props {
 struct psy_batt_thresholds {
 	int temp_min;
 	int temp_max;
-	int iterm;
+	unsigned int iterm;
 };
 
 struct charging_algo {
@@ -54,6 +54,8 @@ struct charging_algo {
 	enum psy_algo_stat (*get_next_cc_cv)(struct batt_props,
 			struct ps_batt_chg_prof, unsigned long *cc,
 			unsigned long *cv);
+	int (*get_batt_thresholds)(struct ps_batt_chg_prof,
+			struct psy_batt_thresholds *bat_thr);
 };
 
 
@@ -114,6 +116,15 @@ static inline int get_ps_int_property(struct power_supply *psy,
 #define SET_MAX_CC(psy, max_cc) \
 		set_ps_int_property(psy,\
 				POWER_SUPPLY_PROP_MAX_CHARGE_CURRENT, max_cc)
+#define SET_ITERM(psy, iterm) \
+		set_ps_int_property(psy,\
+				POWER_SUPPLY_PROP_CHARGE_TERM_CUR, iterm)
+#define SET_MAX_TEMP(psy, temp) \
+		set_ps_int_property(psy,\
+				POWER_SUPPLY_PROP_MAX_TEMP, temp)
+#define SET_MIN_TEMP(psy, temp) \
+		set_ps_int_property(psy,\
+				POWER_SUPPLY_PROP_MIN_TEMP, temp)
 #define switch_cable(psy, new_cable) \
 		set_ps_int_property(psy,\
 				POWER_SUPPLY_PROP_CABLE_TYPE, new_cable)

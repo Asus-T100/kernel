@@ -66,6 +66,22 @@ static inline bool is_battery_full(struct batt_props bat_prop,
 	return true;
 }
 
+static int  pse_get_bat_thresholds(struct ps_batt_chg_prof  bprof,
+			struct psy_batt_thresholds *bat_thresh)
+{
+	struct ps_pse_mod_prof *pse_mod_bprof =
+			(struct ps_pse_mod_prof *) bprof.batt_prof;
+
+	if ((bprof.chrg_prof_type != PSE_MOD_CHRG_PROF) || (!pse_mod_bprof))
+		return -EINVAL;
+
+	bat_thresh->iterm = pse_mod_bprof->chrg_term_mA;
+	bat_thresh->temp_min = pse_mod_bprof->temp_low_lim;
+	bat_thresh->temp_max = pse_mod_bprof->temp_mon_range[0].temp_up_lim;
+
+	return 0;
+}
+
 static enum psy_algo_stat pse_get_next_cc_cv(struct batt_props bat_prop,
 	struct ps_batt_chg_prof  bprof, unsigned long *cc, unsigned long *cv)
 {
@@ -144,6 +160,7 @@ static int __init pse_algo_init(void)
 	pse_algo.chrg_prof_type = PSE_MOD_CHRG_PROF;
 	pse_algo.name = "pse_algo";
 	pse_algo.get_next_cc_cv = pse_get_next_cc_cv;
+	pse_algo.get_batt_thresholds = pse_get_bat_thresholds;
 	power_supply_register_charging_algo(&pse_algo);
 	return 0;
 }
