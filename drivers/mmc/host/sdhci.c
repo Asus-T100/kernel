@@ -3461,6 +3461,9 @@ int sdhci_suspend_host(struct sdhci_host *host)
 
 	sdhci_acquire_ownership(host->mmc);
 
+	if (host->quirks2 & SDHCI_QUIRK2_EN_IRQ_BEFORE_S3)
+		enable_irq(host->irq);
+
 	sdhci_disable_card_detection(host);
 
 	/* Disable tuning since we are suspending */
@@ -3481,8 +3484,14 @@ int sdhci_suspend_host(struct sdhci_host *host)
 
 		sdhci_enable_card_detection(host);
 
+		if (host->quirks2 & SDHCI_QUIRK2_EN_IRQ_BEFORE_S3)
+			disable_irq(host->irq);
+
 		goto out;
 	}
+
+	if (host->quirks2 & SDHCI_QUIRK2_EN_IRQ_BEFORE_S3)
+		disable_irq(host->irq);
 
 	free_irq(host->irq, host);
 

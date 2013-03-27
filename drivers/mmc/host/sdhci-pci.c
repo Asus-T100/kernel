@@ -619,6 +619,9 @@ static int intel_mrfl_mmc_probe_slot(struct sdhci_pci_slot *slot)
 		slot->host->mmc->caps &= ~MMC_CAP_1_8V_DDR;
 	}
 
+	if (slot->data->platform_quirks & PLFM_QUIRK_IRQ_DISABLE_BEFORE_S3)
+		slot->host->quirks2 |= SDHCI_QUIRK2_EN_IRQ_BEFORE_S3;
+
 	if (slot->data->platform_quirks & PLFM_QUIRK_NO_EMMC_BOOT_PART)
 		slot->host->mmc->caps2 |= MMC_CAP2_BOOTPART_NOACC;
 
