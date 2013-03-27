@@ -325,6 +325,9 @@
 #define DWC3_DEPCMD_TYPE_BULK		2
 #define DWC3_DEPCMD_TYPE_INTR		3
 
+/* FLIS register */
+#define APBFC_EXIOTG3_MISC0_REG		0xF90FF85C
+
 /* Structures */
 
 struct dwc3_trb;
