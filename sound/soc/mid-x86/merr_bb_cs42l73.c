@@ -50,6 +50,7 @@
 /* As per the codec spec the mic2_sdet debounce delay is 20ms.
  * But having 20ms delay doesn't work */
 #define MIC2SDET_DEBOUNCE_DELAY 50 /* 50 ms */
+#define MICBIAS_NAME	"MIC2 Bias"
 
 int merr_bb_amp_event(struct snd_soc_dapm_widget *w,
 			struct snd_kcontrol *k, int event)
@@ -318,6 +319,7 @@ struct snd_soc_machine_ops merr_bb_cs42l73_ops = {
 	.hp_detection = merr_bb_hp_detection,
 	.micsdet_debounce = MIC2SDET_DEBOUNCE_DELAY,
 	.mclk_switch = merr_bb_mclk_switch,
+	.mic_bias = MICBIAS_NAME,
 };
 
 MODULE_DESCRIPTION("ASoC Intel(R) Merrifield BB MID Machine driver");

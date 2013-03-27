@@ -45,6 +45,7 @@
 /* As per the codec spec the mic2_sdet debounce delay is 20ms.
  * But having 20ms delay doesn't work */
 #define MIC2SDET_DEBOUNCE_DELAY 50 /* 50 ms */
+#define MICBIAS_NAME	"MIC2 Bias"
 
 /* CS42L73 widgets */
 static const struct snd_soc_dapm_widget ctp_vb_dapm_widgets[] = {
@@ -343,6 +344,7 @@ struct snd_soc_machine_ops ctp_vb_cs42l73_ops = {
 	.mclk_switch = vb_mclk_switch,
 	.jack_support = true,
 	.micsdet_debounce = MIC2SDET_DEBOUNCE_DELAY,
+	.mic_bias = MICBIAS_NAME,
 };
 
 MODULE_DESCRIPTION("ASoC Intel(R) Cloverview MID Machine driver");

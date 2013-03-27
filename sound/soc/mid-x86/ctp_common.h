@@ -52,9 +52,11 @@ int ctp_soc_jack_gpio_detect_bp(void);
 extern struct snd_soc_machine_ops ctp_rhb_cs42l73_ops;
 extern struct snd_soc_machine_ops ctp_vb_cs42l73_ops;
 extern struct snd_soc_machine_ops merr_bb_cs42l73_ops;
+extern struct snd_soc_machine_ops ctp_ht_wm5102_ops;
 
 struct snd_soc_machine_ops {
 	int micsdet_debounce;
+	char *mic_bias;
 	bool jack_support;
 	void (*card_name)(struct snd_soc_card *card);
 	int (*ctp_init)(struct snd_soc_pcm_runtime *runtime);
@@ -64,6 +66,12 @@ struct snd_soc_machine_ops {
 	int (*bp_detection) (struct snd_soc_codec *codec,
 			struct snd_soc_jack *jack, int plug_status);
 	void (*mclk_switch) (struct device *dev, bool mode);
+	int (*set_bias_level) (struct snd_soc_card *card,
+			struct snd_soc_codec *codec,
+			enum snd_soc_bias_level level);
+	int (*set_bias_level_post) (struct snd_soc_card *card,
+			struct snd_soc_codec *codec,
+			enum snd_soc_bias_level level);
 };
 
 struct ctp_mc_private {
@@ -99,6 +107,28 @@ static inline void ctp_config_voicecall_flag(
 	struct ctp_mc_private *ctx = substream_to_drv_ctx(substream);
 	pr_debug("%s voice call flag: %d\n", __func__, state);
 	ctx->voice_call_flag = state;
+}
+
+static inline struct snd_soc_codec *ctp_get_codec(struct snd_soc_card *card,
+			const char *codec_name)
+{
+	bool found = false;
+	struct snd_soc_codec *codec;
+
+	list_for_each_entry(codec, &card->codec_dev_list, card_list) {
+		if (!strstr(codec->name, codec_name)) {
+			pr_debug("codec was %s", codec->name);
+			continue;
+		} else {
+			found = true;
+			break;
+		}
+	}
+	if (found == false) {
+		pr_err("%s: cant find codec", __func__);
+		return NULL;
+	}
+	return codec;
 }
 
 struct ctp_clk_fmt {
