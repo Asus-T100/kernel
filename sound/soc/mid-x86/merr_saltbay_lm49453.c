@@ -316,6 +316,7 @@ static int mrfld_init(struct snd_soc_pcm_runtime *runtime)
 	/* using the 32.7khz RTC for HSD */
 	snd_soc_write(codec, LM49453_P0_HSDET_CLK_DIV_REG, 0x00);
 
+	snd_soc_write(codec, LM49453_P0_AUDIO_PORT1_CLK_GEN2_REG, 0x60);
 	/* set some magic reg in page 2 for jack detection to work well */
 	lm49453_set_reg_on_page(codec, LM49453_PAGE2_SELECT, 0xFC, 0xE);
 	/* set HSD mic thresholds to proper values */

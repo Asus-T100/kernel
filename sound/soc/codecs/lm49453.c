@@ -1506,23 +1506,26 @@ static int lm49453_probe(struct snd_soc_codec *codec)
 	snd_soc_write(codec, LM49453_P0_PMC_SETUP_REG, 0x14);
 
 	/* PLL CLK SELECTION-1 */
-	snd_soc_write(codec, LM49453_P0_PLL_CLK_SEL1_REG, 0x04);
+	snd_soc_write(codec, LM49453_P0_PLL_CLK_SEL1_REG, 0x00);
 
 	/* PLL CLK SELECTION-2 */
 	snd_soc_write(codec, LM49453_P0_PLL_CLK_SEL2_REG, 0x09);
 	/* PMC CLK DEV */
 	snd_soc_write(codec, LM49453_P0_PMC_CLK_DIV_REG, 0x00);
 
+	/* DMIC CLK DIV */
+	snd_soc_write(codec, LM49453_P0_DMIC_CLK_DIV_REG, 0x00);
+
 	/* PLL setting  - use the MCLK 19.2MHz as input
 	   and generates 12.288Mhz for codec */
-	snd_soc_write(codec, LM49453_P0_PLL_HF_M_REG, 0x03);
-	snd_soc_write(codec, LM49453_P0_PLL_NL_REG, 0x3d);
-	snd_soc_write(codec, LM49453_P0_PLL_N_MODL_REG, 0xa4);
-	snd_soc_write(codec, LM49453_P0_PLL_N_MODH_REG, 0x70);
-	snd_soc_write(codec, LM49453_P0_PLL_P1_REG, 0x17);
+	snd_soc_write(codec, LM49453_P0_PLL_HF_M_REG, 0x18);
+	snd_soc_write(codec, LM49453_P0_PLL_NL_REG, 0x5c);
+	snd_soc_write(codec, LM49453_P0_PLL_N_MODL_REG, 0x0);
+	snd_soc_write(codec, LM49453_P0_PLL_N_MODH_REG, 0x0);
+	snd_soc_write(codec, LM49453_P0_PLL_P1_REG, 0x16);
 
 	/* DAC CLK SEL */
-	snd_soc_write(codec, LM49453_P0_DAC_CLK_SEL_REG, 0x01);
+	snd_soc_write(codec, LM49453_P0_DAC_CLK_SEL_REG, 0x09);
 
 	/* DMIC CLK SEL */
 	snd_soc_write(codec, LM49453_P0_DMIX_CLK_SEL_REG, 0x00);
