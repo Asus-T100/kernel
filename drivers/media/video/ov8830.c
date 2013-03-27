@@ -41,6 +41,7 @@
 #include <linux/bitops.h>
 #include <media/v4l2-device.h>
 #include <media/v4l2-chip-ident.h>
+#include <asm/intel-mid.h>
 
 #include "ov8830.h"
 #include "ov8835.h"
@@ -1525,6 +1526,18 @@ static int ov8830_s_mbus_fmt(struct v4l2_subdev *sd,
 
 	/* Get the current resolution setting */
 	res = &dev->curr_res_table[dev->fmt_idx];
+
+	/*
+	 * FIXME: workaround for Merrifield:
+	 * enlarge horizontal/vertical blanking due to ISP FW performance
+	 */
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER) {
+		/* Work around for OV8835 used in Merrifield PRH */
+		if (res->fps_options[1].fps) {
+			dev_warn(&client->dev, "use work-around setting\n");
+			dev->fps_index = 1;
+		}
+	}
 
 	/* Write the selected resolution table values to the registers */
 	ret = ov8830_write_reg_array(client, res->regs);

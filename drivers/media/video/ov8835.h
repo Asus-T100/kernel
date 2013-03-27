@@ -1015,6 +1015,11 @@ static struct ov8830_resolution ov8835_res_preview[] = {
 				 .lines_per_frame = 2064,
 			},
 			{
+				 .fps = 24,
+				 .pixels_per_line = 5496,
+				 .lines_per_frame = 2064,
+			},
+			{
 			}
 		},
 	},
@@ -1031,6 +1036,11 @@ static struct ov8830_resolution ov8835_res_preview[] = {
 			{
 				.fps = 25,
 				.pixels_per_line = 4450,
+				.lines_per_frame = 2500,
+			},
+			{
+				.fps = 20,
+				.pixels_per_line = 5450,
 				.lines_per_frame = 2500,
 			},
 			{
@@ -1329,6 +1339,12 @@ static struct ov8830_resolution ov8835_res_video[] = {
 				 .pixels_per_line = 4300,
 				 .lines_per_frame = 2158,
 			},
+			{
+				 .fps = 24,
+				 .pixels_per_line = 5300,
+				 .lines_per_frame = 2158,
+			},
+
 			{
 			}
 		},
