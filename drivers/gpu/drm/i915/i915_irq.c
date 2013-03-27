@@ -36,6 +36,9 @@
 #include "i915_drv.h"
 #include "i915_trace.h"
 #include "intel_drv.h"
+#ifdef CONFIG_DRM_VXD_BYT
+#include "psb_msvdx.h"
+#endif
 
 /* For display hotplug interrupt */
 static void
@@ -532,7 +535,6 @@ static irqreturn_t valleyview_irq_handler(DRM_IRQ_ARGS)
 		iir = I915_READ(VLV_IIR);
 		gt_iir = I915_READ(GTIIR);
 		pm_iir = I915_READ(GEN6_PMIIR);
-
 		if (gt_iir == 0 && pm_iir == 0 && iir == 0)
 			goto out;
 
@@ -580,7 +582,11 @@ static irqreturn_t valleyview_irq_handler(DRM_IRQ_ARGS)
 			I915_WRITE(PORT_HOTPLUG_STAT, hotplug_status);
 			I915_READ(PORT_HOTPLUG_STAT);
 		}
-
+#ifdef CONFIG_DRM_VXD_BYT
+		if (iir & VED_BLOCK_INTERRUPT) {
+			psb_msvdx_interrupt(dev);
+		}
+#endif
 		if (pipe_stats[pipe] & PIPE_LEGACY_BLC_EVENT_STATUS)
 			blc_event = true;
 
@@ -1932,7 +1938,9 @@ static int valleyview_irq_postinstall(struct drm_device *dev)
 		I915_DISPLAY_PIPE_A_VBLANK_INTERRUPT |
 		I915_DISPLAY_PIPE_B_EVENT_INTERRUPT |
 		I915_DISPLAY_PIPE_B_VBLANK_INTERRUPT;
-
+#ifdef CONFIG_DRM_VXD_BYT
+	enable_mask |= VED_BLOCK_INTERRUPT;
+#endif
 	/*
 	 *Leave vblank interrupts masked initially.  enable/disable will
 	 * toggle them based on usage.

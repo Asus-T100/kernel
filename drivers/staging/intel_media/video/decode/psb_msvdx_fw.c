@@ -26,10 +26,19 @@
 
 #include <drm/drmP.h>
 #include <drm/drm.h>
+#ifdef CONFIG_DRM_VXD_BYT
+#include "vxd_drv.h"
+#else
 #include "psb_drv.h"
+#endif
+
 #include "psb_msvdx.h"
 #include <linux/firmware.h>
 #include "psb_msvdx_reg.h"
+
+#ifdef VXD_FW_BUILT_IN_KERNEL
+#include <linux/module.h>
+#endif
 
 #ifdef PSB_MSVDX_FW_LOADED_BY_HOST
 
@@ -37,6 +46,11 @@
 #define STACKGUARDWORD          0x10101010
 #define MSVDX_MTX_DATA_LOCATION 0x82880000
 #define UNINITILISE_MEM 	0xcdcdcdcd
+
+#ifdef VXD_FW_BUILT_IN_KERNEL
+#define FIRMWARE_NAME "msvdx_fw_mfld_DE2.0.bin"
+MODULE_FIRMWARE(FIRMWARE_NAME);
+#endif
 
 /*MSVDX FW header*/
 struct msvdx_fw {
@@ -333,7 +347,7 @@ static int msvdx_verify_fw(struct drm_psb_private *dev_priv,
 static int msvdx_get_fw_bo(struct drm_device *dev,
 			   const struct firmware **raw, uint8_t *name)
 {
-	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct drm_psb_private *dev_priv = psb_priv(dev);
 	int rc, fw_size;
 	void *ptr = NULL;
 	struct ttm_bo_kmap_obj tmp_kmap;
@@ -406,7 +420,7 @@ static int msvdx_get_fw_bo(struct drm_device *dev,
 static uint32_t *msvdx_get_fw(struct drm_device *dev,
 			      const struct firmware **raw, uint8_t *name)
 {
-	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct drm_psb_private *dev_priv = psb_priv(dev);
 	int rc, fw_size;
 	void *ptr = NULL;
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
@@ -490,7 +504,7 @@ void msvdx_write_mtx_core_reg(struct drm_psb_private *dev_priv,
 
 int psb_setup_fw(struct drm_device *dev)
 {
-	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct drm_psb_private *dev_priv = psb_priv(dev);
 	uint32_t ram_bank_size;
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
 	int ret = 0;
@@ -545,7 +559,11 @@ int psb_setup_fw(struct drm_device *dev)
 	if (msvdx_priv->msvdx_fw) {
 		fw_ptr = msvdx_priv->msvdx_fw;
 	} else {
+#ifdef VXD_FW_BUILT_IN_KERNEL
+		fw_ptr = msvdx_get_fw(dev, &raw, FIRMWARE_NAME);
+#else
 		fw_ptr = msvdx_get_fw(dev, &raw, "msvdx_fw_mfld_DE2.0.bin");
+#endif
 		PSB_DEBUG_GENERAL("MSVDX:load msvdx_fw_mfld_DE2.0.bin by udevd\n");
 	}
 	if (!fw_ptr) {
@@ -556,7 +574,11 @@ int psb_setup_fw(struct drm_device *dev)
 
 	if (!msvdx_priv->is_load) { /* Load firmware into BO */
 		PSB_DEBUG_GENERAL("MSVDX:load msvdx_fw.bin by udevd into BO\n");
+#ifdef VXD_FW_BUILT_IN_KERNEL
+		ret = msvdx_get_fw_bo(dev, &raw, FIRMWARE_NAME);
+#else
 		ret = msvdx_get_fw_bo(dev, &raw, "msvdx_fw_mfld_DE2.0.bin");
+#endif
 		if (ret) {
 			DRM_ERROR("MSVDX: failed to call msvdx_get_fw_bo.\n");
 			ret = 1;

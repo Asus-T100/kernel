@@ -21,26 +21,27 @@
 
 
 #include <drm/drmP.h>
+#ifdef CONFIG_DRM_VXD_BYT
+#include "vxd_drv.h"
+#else
 #include "psb_drv.h"
+#ifndef MERRIFIELD
+#include "pnw_topaz.h"
+#else
+#include "tng_topaz.h"
+#endif
+/*IMG Headers*/
+#include "private_data.h"
+#endif
 #include "psb_video_drv.h"
 #include "psb_ttm_userobj_api.h"
 #include <linux/io.h>
 #include <asm/intel-mid.h>
 #include "psb_msvdx.h"
 
-#ifndef MERRIFIELD
-#include "pnw_topaz.h"
-#else
-#include "tng_topaz.h"
-#endif
-
 #ifdef SUPPORT_VSP
 #include "vsp.h"
 #endif
-
-
-/*IMG Headers*/
-#include "private_data.h"
 
 static int ied_enabled;
 
@@ -106,7 +107,6 @@ int psb_pl_create_ioctl(struct drm_device *dev, void *data,
 			struct drm_file *file_priv)
 {
 	struct drm_psb_private *dev_priv = psb_priv(dev);
-
 	return ttm_pl_create_ioctl(psb_fpriv(file_priv)->tfile,
 				   &dev_priv->bdev, &dev_priv->ttm_lock, data);
 }
@@ -274,6 +274,7 @@ void psb_remove_videoctx(struct drm_psb_private *dev_priv, struct file *filp)
 				  " entrypoint %d\n",
 				  (found_ctx->ctx_type >> 8) & 0xff,
 				  (found_ctx->ctx_type & 0xff));
+#ifndef CONFIG_DRM_VXD_BYT
 		/* if current ctx points to it, set to NULL */
 		if (VAEntrypointEncSlice ==
 				(found_ctx->ctx_type & 0xff)
@@ -300,7 +301,9 @@ void psb_remove_videoctx(struct drm_psb_private *dev_priv, struct file *filp)
 			PSB_DEBUG_PM("Remove vsp context.\n");
 			vsp_rm_context(dev_priv->dev);
 #endif
-		} else {
+		} else
+#endif
+		{
 			mutex_lock(&msvdx_priv->msvdx_mutex);
 			if (msvdx_priv->msvdx_ctx == found_ctx)
 				msvdx_priv->msvdx_ctx = NULL;
@@ -363,8 +366,7 @@ int psb_video_getparam(struct drm_device *dev, void *data,
 {
 	struct drm_lnc_video_getparam_arg *arg = data;
 	int ret = 0;
-	struct drm_psb_private *dev_priv =
-		(struct drm_psb_private *)file_priv->minor->dev->dev_private;
+	struct drm_psb_private *dev_priv = psb_priv(dev);
 	drm_psb_msvdx_frame_info_t *current_frame = NULL;
 	uint32_t handle, i;
 	uint32_t device_info = 0;
@@ -374,7 +376,7 @@ int psb_video_getparam(struct drm_device *dev, void *data,
 	uint32_t imr_info[2], ci_info[2];
 
 	switch (arg->key) {
-#if !defined(MERRIFIELD)
+#if (!defined(MERRIFIELD) && !defined(CONFIG_DRM_VXD_BYT))
 	case LNC_VIDEO_GETPARAM_IMR_INFO:
 		imr_info[0] = dev_priv->imr_region_start;
 		imr_info[1] = dev_priv->imr_region_size;
@@ -383,13 +385,18 @@ int psb_video_getparam(struct drm_device *dev, void *data,
 				   sizeof(imr_info));
 		break;
 #endif
+
 	case LNC_VIDEO_DEVICE_INFO:
+#ifdef CONFIG_DRM_VXD_BYT
+		device_info = (0xffff & dev->pci_device) << 16;
+#else
 		device_info = 0xffff & dev_priv->video_device_fuse;
 		device_info |= (0xffff & dev->pci_device) << 16;
-
+#endif
 		ret = copy_to_user((void __user *)((unsigned long)arg->value),
 				   &device_info, sizeof(device_info));
 		break;
+
 	case IMG_VIDEO_NEW_CONTEXT:
 		/* add video decode/encode context */
 		ret = copy_from_user(&ctx_type, (void __user *)((unsigned long)arg->value),
@@ -408,6 +415,7 @@ int psb_video_getparam(struct drm_device *dev, void *data,
 		mutex_lock(&dev_priv->video_ctx_mutex);
 		list_add(&video_ctx->head, &dev_priv->video_ctx);
 		mutex_unlock(&dev_priv->video_ctx_mutex);
+#ifndef CONFIG_DRM_VXD_BYT
 #ifndef MERRIFIELD
 		if (IS_MDFLD(dev_priv->dev) &&
 				(VAEntrypointEncSlice ==
@@ -419,6 +427,7 @@ int psb_video_getparam(struct drm_device *dev, void *data,
 #ifdef SUPPORT_VSP
 		if (VAEntrypointVideoProc == (ctx_type & 0xff))
 			vsp_new_context(dev);
+#endif
 #endif
 		PSB_DEBUG_INIT("Video:add ctx profile %d, entry %d.\n",
 					((ctx_type >> 8) & 0xff),
@@ -503,6 +512,7 @@ int psb_video_getparam(struct drm_device *dev, void *data,
 				   &(current_frame->decode_status), sizeof(drm_psb_msvdx_decode_status_t));
 		break;
 #endif
+
 	case IMG_VIDEO_SET_DISPLAYING_FRAME:
 		ret = copy_from_user(&msvdx_priv->displaying_frame,
 				(void __user *)((unsigned long)arg->value),
@@ -513,6 +523,8 @@ int psb_video_getparam(struct drm_device *dev, void *data,
 				&msvdx_priv->displaying_frame,
 				sizeof(msvdx_priv->displaying_frame));
 		break;
+
+#ifndef CONFIG_DRM_VXD_BYT
 	case IMG_VIDEO_GET_HDMI_STATE:
 		ret = copy_to_user((void __user *)((unsigned long)arg->value),
 				&hdmi_state,
@@ -533,6 +545,7 @@ int psb_video_getparam(struct drm_device *dev, void *data,
 		PSB_DEBUG_ENTRY("%s, set hdmi_state = %d\n",
 				 __func__, hdmi_state);
 		break;
+#endif
 	case PNW_VIDEO_QUERY_ENTRY:
 		ret = copy_from_user(&handle,
 				(void __user *)((unsigned long)arg->arg),
@@ -545,7 +558,7 @@ int psb_video_getparam(struct drm_device *dev, void *data,
 				((unsigned long)arg->value),
 				&i, sizeof(i));
 		break;
-#if !defined(MERRIFIELD)
+#if (!defined(MERRIFIELD) && !defined(CONFIG_DRM_VXD_BYT))
 	case IMG_VIDEO_IED_STATE:
 		if (IS_MDFLD(dev)) {
 			int enabled = dev_priv->ied_enabled ? 1 : 0;

@@ -3,7 +3,7 @@
 
 INCDIR=drivers/staging/mrfl
 MEDIA_INCDIR=drivers/staging/intel_media
-ccflags-y += \
+ccflags-$(CONFIG_DRM_MRFLD) += \
 	-I$(INCDIR)/ \
 	-I$(INCDIR)/rgx/include \
 	-I$(INCDIR)/interface \
@@ -14,8 +14,8 @@ ccflags-y += \
 	-I$(INCDIR)/../../../include/drm \
 	-I$(INCDIR)/../../../include/drm/ttm
 
-ccflags-y += -DANDROID -D_linux_ -DLINUX -D__KERNEL__ -DPSB_MSVDX_FW_LOADED_BY_HOST -DMERRIFIELD -DCONFIG_VIDEO_MRFLD
-
+ccflags-$(CONFIG_DRM_MRFLD) += -DANDROID -D_linux_ -DLINUX -D__KERNEL__ -DPSB_MSVDX_FW_LOADED_BY_HOST -DMERRIFIELD -DCONFIG_VIDEO_MRFLD
+ccflags-$(CONFIG_DRM_VXD_BYT) := -Iinclude/drm -Iinclude/drm/ttm -Idrivers/gpu/drm/i915 -Idrivers/staging/intel_media/common/baytrail -Idrivers/staging/intel_media/video/common -Idrivers/staging/intel_media/video/decode -DPSB_MSVDX_FW_LOADED_BY_HOST
 #VIDEO_COMMON_DIR = $(TOP_DIR)/driver/staging/intel_media/video/common
 #DECODE_DIR = $(TOP_DIR)/driver/staging/intel_media/video/decode
 

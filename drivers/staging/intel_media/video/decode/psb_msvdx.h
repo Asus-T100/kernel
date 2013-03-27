@@ -25,8 +25,13 @@
 #ifndef _PSB_MSVDX_H_
 #define _PSB_MSVDX_H_
 
+#ifdef CONFIG_DRM_VXD_BYT
+#include "vxd_drv.h"
+#else
 #include "psb_drv.h"
 #include "img_types.h"
+#endif
+
 #include "psb_msvdx_reg.h"
 
 extern int drm_msvdx_pmpolicy;
@@ -54,7 +59,7 @@ int psb_msvdx_reset(struct drm_psb_private *dev_priv);
 int psb_msvdx_post_boot_init(struct drm_device *dev);
 
 /* psb_msvdx.c */
-IMG_BOOL psb_msvdx_interrupt(IMG_VOID *pvData);
+int psb_msvdx_interrupt(void *pvData);
 int psb_mtx_send(struct drm_psb_private *dev_priv, const void *pvMsg);
 #if 0
 void psb_msvdx_lockup(struct drm_psb_private *dev_priv,
@@ -270,116 +275,11 @@ struct psb_msvdx_ec_ctx *psb_msvdx_find_ec_ctx(
 			void *cmd);
 #endif
 
-static inline void psb_msvdx_clearirq(struct drm_device *dev)
-{
-	struct drm_psb_private *dev_priv = dev->dev_private;
-	unsigned long mtx_int = 0;
+void psb_msvdx_clearirq(struct drm_device *dev);
 
-	PSB_DEBUG_IRQ("MSVDX: clear IRQ\n");
+void psb_msvdx_disableirq(struct drm_device *dev);
 
-	/* Clear MTX interrupt */
-	REGIO_WRITE_FIELD_LITE(mtx_int, MSVDX_INTERRUPT_STATUS, MTX_IRQ,
-			       1);
-	PSB_WMSVDX32(mtx_int, MSVDX_INTERRUPT_CLEAR_OFFSET);
-}
-
-/* following two functions also works for CLV and MFLD */
-/* PSB_INT_ENABLE_R is set in psb_irq_(un)install_islands */
-static inline void psb_msvdx_disableirq(struct drm_device *dev)
-{
-	struct drm_psb_private *dev_priv = dev->dev_private;
-	/*uint32_t ier = dev_priv->vdc_irq_mask & (~_PSB_IRQ_MSVDX_FLAG); */
-
-	unsigned long enables = 0;
-
-	PSB_DEBUG_IRQ("MSVDX: enable MSVDX MTX IRQ\n");
-	REGIO_WRITE_FIELD_LITE(enables, MSVDX_INTERRUPT_STATUS, MTX_IRQ,
-			       0);
-	PSB_WMSVDX32(enables, MSVDX_HOST_INTERRUPT_ENABLE_OFFSET);
-
-	/* write in sysirq.c */
-	/* PSB_WVDC32(ier, PSB_INT_ENABLE_R); /\* essential *\/ */
-}
-
-static inline void psb_msvdx_enableirq(struct drm_device *dev)
-{
-	struct drm_psb_private *dev_priv = dev->dev_private;
-	/* uint32_t ier = dev_priv->vdc_irq_mask | _PSB_IRQ_MSVDX_FLAG; */
-	unsigned long enables = 0;
-
-	PSB_DEBUG_IRQ("MSVDX: enable MSVDX MTX IRQ\n");
-	/* Only enable the master core IRQ*/
-	REGIO_WRITE_FIELD_LITE(enables, MSVDX_INTERRUPT_STATUS, MTX_IRQ,
-			       1);
-	PSB_WMSVDX32(enables, MSVDX_HOST_INTERRUPT_ENABLE_OFFSET);
-
-	/* write in sysirq.c */
-	/* PSB_WVDC32(ier, PSB_INT_ENABLE_R); /\* essential *\/ */
-}
-
-static inline void psb_msvdx_mtx_set_clocks(struct drm_device *dev, uint32_t clock_state)
-{
-	struct drm_psb_private *dev_priv =
-		(struct drm_psb_private *)dev->dev_private;
-	uint32_t old_clock_state = 0;
-	/* PSB_DEBUG_MSVDX("SetClocks to %x.\n", clock_state); */
-	old_clock_state = PSB_RMSVDX32(MSVDX_MAN_CLK_ENABLE_OFFSET);
-	if (old_clock_state == clock_state)
-		return;
-
-	if (clock_state == 0) {
-		/* Turn off clocks procedure */
-		if (old_clock_state) {
-			/* Turn off all the clocks except core */
-			PSB_WMSVDX32(
-				MSVDX_MAN_CLK_ENABLE__CORE_MAN_CLK_ENABLE_MASK,
-				MSVDX_MAN_CLK_ENABLE_OFFSET);
-
-			/* Make sure all the clocks are off except core */
-			psb_wait_for_register(dev_priv,
-				MSVDX_MAN_CLK_ENABLE_OFFSET,
-				MSVDX_MAN_CLK_ENABLE__CORE_MAN_CLK_ENABLE_MASK,
-				0xffffffff, 2000000, 5);
-
-			/* Turn off core clock */
-			PSB_WMSVDX32(0, MSVDX_MAN_CLK_ENABLE_OFFSET);
-		}
-	} else {
-		uint32_t clocks_en = clock_state;
-
-		/*Make sure that core clock is not accidentally turned off */
-		clocks_en |= MSVDX_MAN_CLK_ENABLE__CORE_MAN_CLK_ENABLE_MASK;
-
-		/* If all clocks were disable do the bring up procedure */
-		if (old_clock_state == 0) {
-			/* turn on core clock */
-			PSB_WMSVDX32(
-				MSVDX_MAN_CLK_ENABLE__CORE_MAN_CLK_ENABLE_MASK,
-				MSVDX_MAN_CLK_ENABLE_OFFSET);
-
-			/* Make sure core clock is on */
-			psb_wait_for_register(dev_priv,
-				MSVDX_MAN_CLK_ENABLE_OFFSET,
-				MSVDX_MAN_CLK_ENABLE__CORE_MAN_CLK_ENABLE_MASK,
-				0xffffffff, 2000000, 5);
-
-			/* turn on the other clocks as well */
-			PSB_WMSVDX32(clocks_en, MSVDX_MAN_CLK_ENABLE_OFFSET);
-
-			/* Make sure that all they are on */
-			psb_wait_for_register(dev_priv,
-					MSVDX_MAN_CLK_ENABLE_OFFSET,
-					clocks_en, 0xffffffff, 2000000, 5);
-		} else {
-			PSB_WMSVDX32(clocks_en, MSVDX_MAN_CLK_ENABLE_OFFSET);
-
-			/* Make sure that they are on */
-			psb_wait_for_register(dev_priv,
-					MSVDX_MAN_CLK_ENABLE_OFFSET,
-					clocks_en, 0xffffffff, 2000000, 5);
-		}
-	}
-}
+void psb_msvdx_enableirq(struct drm_device *dev);
 
 #define MSVDX_NEW_PMSTATE(drm_dev, msvdx_priv, new_state)		\
 do {									\
@@ -399,6 +299,8 @@ extern void psb_schedule_watchdog(struct drm_psb_private *dev_priv);
 extern void psb_watchdog_init(struct drm_psb_private *dev_priv);
 extern void psb_watchdog_takedown(struct drm_psb_private *dev_priv);
 #endif
+
+void psb_msvdx_mtx_set_clocks(struct drm_device *dev, uint32_t clock_state);
 
 extern int psb_submit_video_cmdbuf(struct drm_device *dev,
 				   struct ttm_buffer_object *cmd_buffer,

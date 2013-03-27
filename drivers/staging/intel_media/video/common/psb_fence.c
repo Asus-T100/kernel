@@ -20,14 +20,19 @@
  */
 
 #include <drm/drmP.h>
+#ifdef CONFIG_DRM_VXD_BYT
+#include "vxd_drv.h"
+#else
 #include "psb_drv.h"
-#include "psb_msvdx.h"
 
 #ifdef MERRIFIELD
 #include "tng_topaz.h"
 #else
 #include "pnw_topaz.h"
 #endif
+
+#endif
+#include "psb_msvdx.h"
 
 #ifdef SUPPORT_VSP
 #include "vsp.h"
@@ -60,6 +65,7 @@ int psb_fence_emit_sequence(struct ttm_fence_device *fdev,
 		seq += msvdx_priv->num_cmd;
 		spin_unlock(&dev_priv->sequence_lock);
 		break;
+#ifndef CONFIG_DRM_VXD_BYT
 	case LNC_ENGINE_ENCODE:
 		spin_lock(&dev_priv->sequence_lock);
 		seq = dev_priv->sequence[fence_class]++;
@@ -71,6 +77,7 @@ int psb_fence_emit_sequence(struct ttm_fence_device *fdev,
 		seq = dev_priv->sequence[fence_class]++;
 		spin_unlock(&dev_priv->sequence_lock);
 		break;
+#endif
 #endif
 	default:
 		DRM_ERROR("Unexpected fence class\n");
@@ -102,7 +109,7 @@ static void psb_fence_poll(struct ttm_fence_device *fdev,
 	case PSB_ENGINE_DECODE:
 		sequence = msvdx_priv->msvdx_current_sequence;
 		break;
-
+#ifndef CONFIG_DRM_VXD_BYT
 	case LNC_ENGINE_ENCODE:
 #ifdef MERRIFIELD
 		if (IS_MRFLD(dev))
@@ -120,6 +127,7 @@ static void psb_fence_poll(struct ttm_fence_device *fdev,
 #ifdef SUPPORT_VSP
 		sequence = vsp_fence_poll(dev_priv);
 		break;
+#endif
 #endif
 	default:
 		break;
@@ -140,6 +148,7 @@ static void psb_fence_lockup(struct ttm_fence_object *fence,
 	struct drm_device *dev = (struct drm_device *)dev_priv->dev;
 
 	if (fence->fence_class == LNC_ENGINE_ENCODE) {
+#ifndef CONFIG_DRM_VXD_BYT
 		DRM_ERROR("TOPAZ timeout (probable lockup) detected,  flush queued cmdbuf");
 
 		write_lock(&fc->lock);
@@ -153,11 +162,12 @@ static void psb_fence_lockup(struct ttm_fence_object *fence,
 		ttm_fence_handler(fence->fdev, fence->fence_class,
 				  fence->sequence, fence_types, -EBUSY);
 		write_unlock(&fc->lock);
+#endif
 	} else if (fence->fence_class == PSB_ENGINE_DECODE) {
 		struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
 
 		PSB_DEBUG_WARN("MSVDX timeout (probable lockup) detected, flush queued cmdbuf");
-#if !defined(MERRIFIELD)
+#if (!defined(MERRIFIELD) && !defined(CONFIG_DRM_VXD_BYT))
 		if (psb_get_power_state(OSPM_VIDEO_DEC_ISLAND) == 0)
 			PSB_DEBUG_WARN("WARN: msvdx is power off in accident.\n");
 #endif

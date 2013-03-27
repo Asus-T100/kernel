@@ -16,8 +16,12 @@
  *
  **************************************************************************/
 #include <drm/drmP.h>
+#ifdef CONFIG_DRM_VXD_BYT
+#include "vxd_drv.h"
+#else
 #include "psb_drv.h"
 #include "psb_reg.h"
+#endif
 #ifdef SUPPORT_VSP
 #include "vsp.h"
 #endif
@@ -176,9 +180,11 @@ static void psb_mmu_flush_pd_locked(struct psb_mmu_driver *driver,
 			atomic_set(
 				&driver->dev_priv->msvdx_mmu_invaldc,
 				1);
+#ifndef CONFIG_DRM_VXD_BYT
 			atomic_set(
 				&driver->dev_priv->topaz_mmu_invaldc,
 				1);
+#endif
 		} else if (driver->mmu_type == VSP_MMU) {
 #ifdef SUPPORT_VSP
 			struct drm_psb_private *dev_priv = driver->dev_priv;
@@ -212,7 +218,9 @@ void psb_mmu_flush(struct psb_mmu_driver *driver, int rc_prot)
 
 	if (driver->mmu_type == IMG_MMU) {
 		atomic_set(&driver->dev_priv->msvdx_mmu_invaldc, 1);
+#ifndef CONFIG_DRM_VXD_BYT
 		atomic_set(&driver->dev_priv->topaz_mmu_invaldc, 1);
+#endif
 	} else if (driver->mmu_type == VSP_MMU) {
 #ifdef SUPPORT_VSP
 		struct drm_psb_private *dev_priv = driver->dev_priv;

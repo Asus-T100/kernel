@@ -24,11 +24,14 @@
 #ifndef _PSB_MSVDX_REG_H_
 #define _PSB_MSVDX_REG_H_
 
+#ifdef CONFIG_DRM_VXD_BYT
+#include "vxd_drv.h"
+#else
 #include "psb_drv.h"
 #include "img_types.h"
+#endif
 
 #if MFLD_MSVDX_FABRIC_DEBUG
-
 #define PSB_WMSVDX32(_val, _offs)					\
 do {									\
 	if (psb_get_power_state(OSPM_VIDEO_DEC_ISLAND) == 0)		\

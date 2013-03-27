@@ -864,6 +864,37 @@ i915_pci_remove(struct pci_dev *pdev)
 	drm_put_dev(dev);
 }
 
+#ifdef CONFIG_DRM_VXD_BYT
+static int i915_mmap(struct file *filp, struct vm_area_struct *vma)
+{
+	if (vma->vm_pgoff < VXD_TTM_MMAP_OFFSET_START ||
+	    vma->vm_pgoff > VXD_TTM_MMAP_OFFSET_END)
+		return drm_gem_mmap(filp, vma);
+	else
+		return psb_mmap(filp, vma);
+}
+
+static int i915_release(struct inode *inode, struct file *filp)
+{
+	int ret;
+	vxd_release(inode, filp);
+	ret = drm_release(inode, filp);
+
+	return ret;
+}
+
+static long i915_ioctl(struct file *filp,
+	      unsigned int cmd, unsigned long arg)
+{
+	unsigned int nr = DRM_IOCTL_NR(cmd);
+	if ((nr >= DRM_COMMAND_VXD_BASE) &&
+		(nr < DRM_COMMAND_VXD_BASE + 0x20))
+		return vxd_ioctl(filp, cmd, arg);
+	else
+		return drm_ioctl(filp, cmd, arg);
+}
+#endif
+
 static int i915_pm_suspend(struct device *dev)
 {
 	struct pci_dev *pdev = to_pci_dev(dev);
@@ -943,9 +974,19 @@ static const struct vm_operations_struct i915_gem_vm_ops = {
 static const struct file_operations i915_driver_fops = {
 	.owner = THIS_MODULE,
 	.open = drm_open,
+#ifdef CONFIG_DRM_VXD_BYT
+	.release = i915_release,
+#else
 	.release = drm_release,
+#endif
+
+#ifdef CONFIG_DRM_VXD_BYT
+	.unlocked_ioctl = i915_ioctl,
+	.mmap = i915_mmap,
+#else
 	.unlocked_ioctl = drm_ioctl,
 	.mmap = drm_gem_mmap,
+#endif
 	.poll = drm_poll,
 	.fasync = drm_fasync,
 	.read = drm_read,

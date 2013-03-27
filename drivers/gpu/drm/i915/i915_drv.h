@@ -41,6 +41,10 @@
 #include <linux/intel-iommu.h>
 #include <linux/kref.h>
 
+#ifdef CONFIG_DRM_VXD_BYT
+#include "vxd_drv.h"
+#endif
+
 /* General customization:
  */
 
@@ -872,6 +876,9 @@ typedef struct drm_i915_private {
 	struct work_struct parity_error_work;
 	bool hw_contexts_disabled;
 	uint32_t hw_context_size;
+#ifdef CONFIG_DRM_VXD_BYT
+	struct drm_psb_private *vxd_priv;
+#endif
 } drm_i915_private_t;
 
 /* Iterate over initialised rings */
@@ -1075,6 +1082,9 @@ struct drm_i915_file_private {
 		struct list_head request_list;
 	} mm;
 	struct idr context_idr;
+#ifdef CONFIG_DRM_VXD_BYT
+	struct psb_fpriv *pPriv;
+#endif
 };
 
 #define INTEL_INFO(dev)	(((struct drm_i915_private *) (dev)->dev_private)->info)
