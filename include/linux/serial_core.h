@@ -403,6 +403,7 @@ struct uart_state {
 	int			pm_state;
 	struct circ_buf		xmit;
 
+	struct tasklet_struct	tlet;
 	struct uart_port	*uart_port;
 };
 
