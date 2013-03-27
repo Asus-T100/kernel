@@ -31,6 +31,7 @@ config SND_SOC_ALL_CODECS
 	select SND_SOC_CS42L51 if I2C
 	select SND_SOC_CS42L73 if I2C
 	select SND_SOC_LM49453 if I2C
+	select SND_SOC_RT5640 if I2C
 	select SND_SOC_CS4270 if I2C
 	select SND_SOC_CS4271 if SND_SOC_I2C_AND_SPI
 	select SND_SOC_CX20442
@@ -197,7 +198,10 @@ config SND_SOC_CS42L51
 	tristate
 config SND_SOC_LM49453
 	tristate
-
+config SND_SOC_RT5640
+	tristate
+config SND_SOC_RT5642
+	tristate
 config SND_SOC_CS42L73
 	tristate
 
