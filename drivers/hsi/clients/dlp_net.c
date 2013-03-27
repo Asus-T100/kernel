@@ -328,10 +328,8 @@ static void dlp_net_hsi_tx_timeout_cb(struct dlp_channel *ch_ctx)
 	struct dlp_net_context *net_ctx = ch_ctx->ch_data;
 
 	/* Stop the NET IF */
-	if (!netif_queue_stopped(net_ctx->ndev))
-		netif_stop_queue(net_ctx->ndev);
-
-	/* Need to reset the net link or not ? */
+	net_ctx->ndev->trans_start = jiffies;
+	netif_tx_disable(net_ctx->ndev);
 }
 
 /*
@@ -344,8 +342,9 @@ int dlp_net_open(struct net_device *dev)
 	int ret, state;
 	struct dlp_channel *ch_ctx = netdev_priv(dev);
 
-	pr_debug(DRVNAME ": %s open (CH%d, HSI CH%d)\n",
-			dev->name, ch_ctx->ch_id, ch_ctx->hsi_channel);
+	pr_debug(DRVNAME ": %s (CH%d) open requested (%s, %d)\n",
+			dev->name, ch_ctx->ch_id,
+			current->comm, current->tgid);
 
 	/* Check if the the channel is not already opened for Trace */
 	state = dlp_ctrl_get_channel_state(ch_ctx->hsi_channel);
@@ -402,8 +401,9 @@ int dlp_net_stop(struct net_device *dev)
 	struct dlp_xfer_ctx *rx_ctx;
 	int ret;
 
-	pr_debug(DRVNAME ": %s close (CH%d, HSI CH%d)\n",
-			dev->name, ch_ctx->ch_id, ch_ctx->hsi_channel);
+	pr_debug(DRVNAME ": %s (CH%d) close requested (%s, %d)\n",
+			dev->name, ch_ctx->ch_id,
+			current->comm, current->tgid);
 
 	tx_ctx = &ch_ctx->tx;
 	rx_ctx = &ch_ctx->rx;
@@ -411,8 +411,8 @@ int dlp_net_stop(struct net_device *dev)
 	del_timer_sync(&dlp_drv.timer[ch_ctx->ch_id]);
 
 	/* Stop the NET IF */
-	if (!netif_queue_stopped(dev))
-		netif_stop_queue(dev);
+	dev->trans_start = jiffies;
+	netif_tx_disable(dev);
 
 	/* RX */
 	del_timer_sync(&rx_ctx->timer);
