@@ -520,7 +520,8 @@ static long scu_ipc_ioctl(struct file *fp, unsigned int cmd,
 	/* is getting fw version info, all others need to check to prevent */
 	/* arbitrary access to all sort of bit of the hardware exposed here*/
 
-	if ((cmd != INTEL_SCU_IPC_FW_REVISION_GET ||
+	if ((cmd != INTEL_SCU_IPC_FW_REVISION_GET &&
+		cmd != INTEL_SCU_IPC_FW_REVISION_EXT_GET &&
 		cmd != INTEL_SCU_IPC_S0IX_RESIDENCY) &&
 		!capable(CAP_SYS_RAWIO))
 		return -EPERM;
@@ -637,6 +638,7 @@ static long scu_ipc_ioctl(struct file *fp, unsigned int cmd,
 		break;
 	}
 	case INTEL_SCU_IPC_FW_REVISION_GET:
+	case INTEL_SCU_IPC_FW_REVISION_EXT_GET:
 	{
 		struct scu_ipc_version version;
 
@@ -646,8 +648,8 @@ static long scu_ipc_ioctl(struct file *fp, unsigned int cmd,
 		if (version.count > 16)
 			return -EINVAL;
 
-		ret = rpmsg_send_command(ipcutil_instance,
-			IPCMSG_FW_REVISION, 0, NULL, (u32 *)version.data, 0, 4);
+		ret = rpmsg_send_command(ipcutil_instance, IPCMSG_FW_REVISION,
+			cmd & 0x1, NULL, (u32 *)version.data, 0, 4);
 		if (ret < 0)
 			return ret;
 
