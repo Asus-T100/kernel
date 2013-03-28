@@ -193,7 +193,7 @@ EXPORT_SYMBOL(get_target_platform_state);
 
 u32 get_s0ix_val_set_pm_ssc(int s0ix_state)
 {
-	u32 s0ix_value;
+	u32 s0ix_value = 0;
 
 	switch (s0ix_state) {
 	case MID_S0I1_STATE:
