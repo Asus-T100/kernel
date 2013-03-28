@@ -1167,12 +1167,20 @@ void populate_spid_cmdline()
 
 static int __init intel_mid_platform_init(void)
 {
+	int ret = 0;
+
 	/* create sysfs entries for soft platform id */
 	spid_kobj = kobject_create_and_add("spid", NULL);
-	if (!spid_kobj)
+	if (!spid_kobj) {
 		pr_err("SPID: ENOMEM for spid_kobj\n");
-	if (sysfs_create_group(spid_kobj, &spid_attr_group))
+		return -ENOMEM;
+	}
+
+	ret = sysfs_create_group(spid_kobj, &spid_attr_group);
+	if (ret) {
 		pr_err("SPID: failed to create /sys/spid\n");
+		return ret;
+	}
 
 	/* Get MFD Validation SFI OEMB Layout */
 	handle_sfi_table(SFI_SIG_OEMB, NULL, NULL, sfi_parse_oemb);
@@ -1185,6 +1193,6 @@ static int __init intel_mid_platform_init(void)
 	/* Populate command line with SPID values */
 	populate_spid_cmdline();
 
-	return 0;
+	return ret;
 }
 arch_initcall(intel_mid_platform_init);
