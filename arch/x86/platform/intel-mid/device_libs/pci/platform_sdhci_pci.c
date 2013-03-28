@@ -268,6 +268,17 @@ static int byt_sd_setup(struct sdhci_pci_data *data)
 	return 0;
 }
 
+
+static int byt_sdio_setup(struct sdhci_pci_data *data)
+{
+	u32 stepping;
+	stepping = intel_mid_soc_stepping();
+	if (stepping == 0x1 || stepping == 0x2)/* VLV2 A0 */
+		data->quirks |= SDHCI_QUIRK2_NO_1_8_V;
+	return 0;
+}
+
+
 /* BYT platform data */
 static struct sdhci_pci_data byt_sdhci_pci_data[] = {
 	[EMMC0_INDEX] = {
@@ -289,6 +300,17 @@ static struct sdhci_pci_data byt_sdhci_pci_data[] = {
 			.quirks = 0,
 			.platform_quirks = 0,
 			.setup = byt_sd_setup,
+			.cleanup = NULL,
+			.power_up = 0,
+	},
+	[SDIO_INDEX] = {
+			.pdev = NULL,
+			.slotno = 0,
+			.rst_n_gpio = -EINVAL,
+			.cd_gpio = -EINVAL,
+			.quirks = 0,
+			.platform_quirks = 0,
+			.setup = byt_sdio_setup,
 			.cleanup = NULL,
 			.power_up = 0,
 	},
@@ -397,6 +419,12 @@ static struct sdhci_pci_data *get_sdhci_platform_data(struct pci_dev *pdev)
 	case PCI_DEVICE_ID_INTEL_BYT_SD:
 		pdata = &byt_sdhci_pci_data[SD_INDEX];
 		break;
+	case PCI_DEVICE_ID_INTEL_BYT_SDIO:
+		pr_err("setting quirks/embedded controls on SDIO");
+		pdata = &byt_sdhci_pci_data[SDIO_INDEX];
+		pdata->quirks = sdhci_pdata_quirks;
+		pdata->register_embedded_control = sdhci_embedded_control;
+		break;
 	default:
 		break;
 	}
@@ -467,4 +495,7 @@ DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_BYT_SD,
 DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_BYT_MMC,
 			mmc_sdhci_pci_early_quirks);
 DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_BYT_MMC45,
+mmc_sdhci_pci_early_quirks);
+
+DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_BYT_SDIO,
 			mmc_sdhci_pci_early_quirks);
