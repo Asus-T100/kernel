@@ -83,11 +83,11 @@ held by the proccess (struct file) */
 	SHARED AREA  memory total size is 36K
 	it is divided is following:
 
-	SHARED_MESSAGE_AREA                     8K         }
+	SHARED_MESSAGE_AREA                     28K         }
 									}
-	STATIC_POOL_AREA                        4K         } MAPPED AREA ( 24 K)
+	STATIC_POOL_AREA                        0K         } MAPPED AREA ( 24 K)
 									}
-	DATA_POOL_AREA                          12K        }
+	DATA_POOL_AREA                          0K        }
 
 	SYNCHRONIC_DMA_TABLES_AREA              29K
 
@@ -117,16 +117,16 @@ held by the proccess (struct file) */
 	the maximum length of the message - the rest of the message shared
 	area will be dedicated to the dma lli tables
 */
-#define SEP_DRIVER_MAX_MESSAGE_SIZE_IN_BYTES			(8 * 1024)
+#define SEP_DRIVER_MAX_MESSAGE_SIZE_IN_BYTES			(28 * 1024)
 
 /* the size of the message shared area in pages */
-#define SEP_DRIVER_MESSAGE_SHARED_AREA_SIZE_IN_BYTES		(8 * 1024)
+#define SEP_DRIVER_MESSAGE_SHARED_AREA_SIZE_IN_BYTES		(28 * 1024)
 
 /* the size of the data pool static area in pages */
-#define SEP_DRIVER_STATIC_AREA_SIZE_IN_BYTES			(4 * 1024)
+#define SEP_DRIVER_STATIC_AREA_SIZE_IN_BYTES			(0)
 
 /* the size of the data pool shared area size in pages */
-#define SEP_DRIVER_DATA_POOL_SHARED_AREA_SIZE_IN_BYTES		(16 * 1024)
+#define SEP_DRIVER_DATA_POOL_SHARED_AREA_SIZE_IN_BYTES		(0)
 
 /* the size of the message shared area in pages */
 #define SYNCHRONIC_DMA_TABLES_AREA_SIZE_BYTES	(1024 * 29)
