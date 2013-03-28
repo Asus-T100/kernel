@@ -1667,14 +1667,6 @@ struct ov2722_resolution ov2722_res[] = {
 		.used = 0,
 		.regs = ov2722_1M3_30fps_ex,
 	},
-	{
-		.desc = "720p_30fps",
-		.width = 1296,
-		.height = 736,
-		.fps = 30,
-		.used = 0,
-		.regs = ov2722_720p_30fps,
-	},
 };
 
 #define N_RES (ARRAY_SIZE(ov2722_res))

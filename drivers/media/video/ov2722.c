@@ -464,10 +464,17 @@ static int ov2722_s_mbus_fmt(struct v4l2_subdev *sd,
 		dev_err(&client->dev, "ov2722 startup err\n");
 		return -EINVAL;
 	}
+	/* workround to enlarge hblanking and vblanking and adjust AWB*/
+	ov2722_write_reg(client, OV2722_8BIT, 0x380c, 0x0f);
+	ov2722_write_reg(client, OV2722_8BIT, 0x380d, 0x5e);
+	ov2722_write_reg(client, OV2722_8BIT, 0x380e, 0x05);
+	ov2722_write_reg(client, OV2722_8BIT, 0x380f, 0x60);
+	ov2722_write_reg(client, OV2722_8BIT, 0x5186, 0x04);
+	ov2722_write_reg(client, OV2722_8BIT, 0x5188, 0x06);
+	ov2722_write_reg(client, OV2722_8BIT, 0x518a, 0x05);
 
 	return ret;
 }
-
 static int ov2722_g_mbus_fmt(struct v4l2_subdev *sd,
 			     struct v4l2_mbus_framefmt *fmt)
 {
