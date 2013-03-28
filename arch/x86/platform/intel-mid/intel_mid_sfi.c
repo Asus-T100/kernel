@@ -44,6 +44,8 @@ static struct sfi_device_table_entry byt_devs_table[] = {
 	{SFI_DEV_TYPE_I2C, 4, 0x10, 0x0, 0x0, "imx175"},
 	{SFI_DEV_TYPE_I2C, 4, 0x36, 0x0, 0x0, "ov2722"},
 	{SFI_DEV_TYPE_I2C, 4, 0x53, 0x0, 0x0, "lm3554"},
+	/* SD devices */
+	{SFI_DEV_TYPE_SD, 0, 0, 0, 0, "bcm43xx_vmmc"},
 };
 
 /* Baytrail gpio table */
