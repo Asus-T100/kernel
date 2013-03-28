@@ -22,7 +22,6 @@
 
 static int hdmi_i2c_workaround(void)
 {
-	int ret;
 	struct platform_device *pdev;
 	struct i2c_gpio_platform_data *pdata;
 
@@ -41,16 +40,14 @@ static int hdmi_i2c_workaround(void)
 
 	if (!pdev) {
 		pr_err("i2c-gpio: failed to alloc platform device\n");
-		ret = -ENOMEM;
-		goto out;
+		return -ENOMEM;
 	}
 
 	pdata = kzalloc(sizeof(struct i2c_gpio_platform_data), GFP_KERNEL);
 	if (!pdata) {
 		pr_err("i2c-gpio: failed to alloc platform data\n");
 		kfree(pdev);
-		ret = -ENOMEM;
-		goto out;
+		return -ENOMEM;
 	}
 	if (INTEL_MID_BOARD(1, PHONE, MRFL) ||
 	    INTEL_MID_BOARD(1, TABLET, MRFL)) {
@@ -70,8 +67,7 @@ static int hdmi_i2c_workaround(void)
 	lnw_gpio_set_alt(pdata->sda_pin, LNW_GPIO);
 	lnw_gpio_set_alt(pdata->scl_pin, LNW_GPIO);
 
-out:
-	return ret;
+	return 0;
 }
 rootfs_initcall(hdmi_i2c_workaround);
 
