@@ -39,6 +39,7 @@
 #include <media/v4l2-device.h>
 #include <asm/intel-mid.h>
 #include "imx.h"
+#include <asm/intel-mid.h>
 
 struct imx_resolution *imx_res;
 static int N_RES;
@@ -1226,44 +1227,47 @@ static int imx_s_mbus_fmt(struct v4l2_subdev *sd,
 		mutex_unlock(&dev->input_lock);
 		return -EINVAL;
 	}
-	/* FIXME: workround for MERR Pre-alpha due to ISP perf - start */
-	if (imx_res[dev->fmt_idx].height >= 3120) {
-		vb = 3400;
-		hb = 16000;
-	} else if (imx_res[dev->fmt_idx].height >= 1936) {
-		vb = 3400;
-		hb = 15000;
-	} else if (imx_res[dev->fmt_idx].height >= 1320) {
-		vb = 3300;
-		hb = 8000;
-	} else if (imx_res[dev->fmt_idx].height >= 720) {
-		vb = 3300;
-		hb = 6000;
-	} else {
-		vb = 3142;
-		hb = 4572;
+
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2) {
+		/* FIXME: workround for VLV2 due to ISP perf - start */
+		if (imx_res[dev->fmt_idx].height >= 3120) {
+			vb = 3400;
+			hb = 16000;
+		} else if (imx_res[dev->fmt_idx].height >= 1936) {
+			vb = 3400;
+			hb = 15000;
+		} else if (imx_res[dev->fmt_idx].height >= 1320) {
+			vb = 3300;
+			hb = 8000;
+		} else if (imx_res[dev->fmt_idx].height >= 720) {
+			vb = 3300;
+			hb = 6000;
+		} else {
+			vb = 3142;
+			hb = 4572;
+		}
+		ret = imx_write_reg(client, IMX_8BIT, 0x0340, (vb>>8)&0xFF);
+		if (ret) {
+			mutex_unlock(&dev->input_lock);
+			return -EINVAL;
+		}
+		ret = imx_write_reg(client, IMX_8BIT, 0x0341, vb&0xFF);
+		if (ret) {
+			mutex_unlock(&dev->input_lock);
+			return -EINVAL;
+		}
+		ret = imx_write_reg(client, IMX_8BIT, 0x0342, (hb>>8)&0xFF);
+		if (ret) {
+			mutex_unlock(&dev->input_lock);
+			return -EINVAL;
+		}
+		ret = imx_write_reg(client, IMX_8BIT, 0x0343, hb&0xFF);
+		if (ret) {
+			mutex_unlock(&dev->input_lock);
+			return -EINVAL;
+		}
+		/* FIXME: workround for VLV2 due to ISP perf - end */
 	}
-	ret = imx_write_reg(client, IMX_8BIT, 0x0340, (vb>>8)&0xFF);
-	if (ret) {
-		mutex_unlock(&dev->input_lock);
-		return -EINVAL;
-	}
-	ret = imx_write_reg(client, IMX_8BIT, 0x0341, vb&0xFF);
-	if (ret) {
-		mutex_unlock(&dev->input_lock);
-		return -EINVAL;
-	}
-	ret = imx_write_reg(client, IMX_8BIT, 0x0342, (hb>>8)&0xFF);
-	if (ret) {
-		mutex_unlock(&dev->input_lock);
-		return -EINVAL;
-	}
-	ret = imx_write_reg(client, IMX_8BIT, 0x0343, hb&0xFF);
-	if (ret) {
-		mutex_unlock(&dev->input_lock);
-		return -EINVAL;
-	}
-	/* FIXME: workround for MERR Pre-alpha due to ISP perf - end */
 
 	ret = imx_write_reg_array(client, imx_param_update);
 	if (ret) {
