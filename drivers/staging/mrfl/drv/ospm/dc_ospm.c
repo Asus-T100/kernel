@@ -29,6 +29,40 @@
 #include "dc_ospm.h"
 #include "pmu_tng.h"
 
+#define BZ96571
+
+#ifdef BZ96571
+/***********************************************************
++ * Sideband implementation
++ ***********************************************************/
+#define	SB_PCKT		0x2100
+#define	SB_DATA		0x2104
+#define	SB_ADDR		0x2108
+#define	SB_STATUS	0x210C
+
+#define MIO_SB_ADDR	0x3b
+#define	MIO_ON		0x00
+#define	MIO_OFF		0x03
+
+extern struct drm_device *gpDrmDevice;
+
+void sb_write_packet(bool pwr_on)
+{
+	struct drm_device *dev = gpDrmDevice;
+	struct drm_psb_private *dev_priv = psb_priv(dev);
+	u32 ulData = MIO_ON;
+
+	if (!pwr_on)
+		ulData = MIO_OFF;
+
+	REG_WRITE(SB_ADDR, MIO_SB_ADDR);
+	REG_WRITE(SB_DATA, ulData);
+	REG_WRITE(SB_PCKT, 0x00070410);
+
+}
+#endif
+/***********************************************************
+
 /***********************************************************
  * display A Island implementation
  ***********************************************************/
@@ -198,8 +232,17 @@ static bool mio_power_up(struct drm_device *dev,
 {
 	bool ret;
 
+#ifdef BZ96571
+	sb_write_packet(true);
+	udelay(50);
+	sb_write_packet(false);
+	udelay(50);
+	sb_write_packet(true);
+	udelay(50);
+	printk(KERN_WARNING "%s:using sideband to powerup MIO\n", __func__);
+#else
 	ret = pmu_nc_set_power_state(PMU_MIO, OSPM_ISLAND_UP, MIO_SS_PM);
-
+#endif
 	OSPM_DPF("Power on island %x, returned %d\n", p_island->island, ret);
 
 	return !ret;

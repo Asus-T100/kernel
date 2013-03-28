@@ -741,6 +741,7 @@ struct drm_psb_private {
 	uint32_t savePP_OFF_DELAYS;
 	uint32_t savePP_DIVISOR;
 	uint32_t saveBSM;
+	uint32_t saveBGSM;
 	uint32_t saveVBT;
 	uint32_t saveBCLRPAT_A;
 	uint32_t saveBCLRPAT_B;
