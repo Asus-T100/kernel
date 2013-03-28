@@ -79,6 +79,10 @@ static struct sfi_table_header *get_devs_table(void)
 		tot_len = sizeof(byt_devs_table) +
 				sizeof(struct sfi_table_header);
 		devs_table = kzalloc(tot_len, GFP_KERNEL);
+		if (!devs_table) {
+			pr_err("%s(): Error in kzalloc\n", __func__);
+			return NULL;
+		}
 		devs_table->header.len = tot_len;
 		memcpy(devs_table->pentry, byt_devs_table,
 			sizeof(byt_devs_table));
@@ -99,6 +103,10 @@ static struct sfi_table_header *get_gpio_table(void)
 		tot_len = sizeof(byt_gpio_table) +
 				sizeof(struct sfi_table_header);
 		gpio_table = kzalloc(tot_len, GFP_KERNEL);
+		if (!gpio_table) {
+			pr_err("%s(): Error in kzalloc\n", __func__);
+			return NULL;
+		}
 		gpio_table->header.len = tot_len;
 		memcpy(gpio_table->pentry, byt_gpio_table,
 			sizeof(byt_gpio_table));
