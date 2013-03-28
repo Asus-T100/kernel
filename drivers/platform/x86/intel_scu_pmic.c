@@ -51,7 +51,7 @@ static struct rpmsg_instance *pmic_instance;
 
 static int pwr_reg_rdwr(u16 *addr, u8 *data, u32 count, u32 cmd, u32 sub)
 {
-	int i, j, err, inlen = 0, outlen;
+	int i, j, err, inlen = 0, outlen = 0;
 
 	u8 wbuf[IPC_WWBUF_SIZE] = {};
 	u8 rbuf[IPC_RWBUF_SIZE] = {};
