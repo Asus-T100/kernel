@@ -196,6 +196,8 @@ static int mt9m114_platform_init(struct i2c_client *client)
 static int mt9m114_platform_deinit(void)
 {
 	regulator_put(vprog1_reg);
+
+	return 0;
 }
 
 static struct camera_sensor_platform_data mt9m114_sensor_platform_data = {
