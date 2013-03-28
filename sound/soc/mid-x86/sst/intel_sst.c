@@ -111,9 +111,7 @@ static inline int get_stream_id_mrfld(u32 pipe_id)
 		if (pipe_id == sst_drv_ctx->streams[i].pipe_id)
 			return i;
 
-	pr_err("%s: no such pipe_id(%u), FW what are you doing?",
-			__func__, pipe_id);
-	BUG();
+	pr_err("%s: no such pipe_id(%u)", __func__, pipe_id);
 	return -1;
 }
 
@@ -122,22 +120,23 @@ static irqreturn_t intel_sst_irq_thread_mrfld(int irq, void *context)
 	struct intel_sst_drv *drv = (struct intel_sst_drv *) context;
 	union ipc_header_mrfld header;
 	struct stream_info *stream;
-	unsigned int size = 0, str_id;
-	int msg_id;
-	u32 pipe_id;
+	unsigned int size = 0, msg_id, pipe_id;
+	int str_id;
 
 	header.full = sst_shim_read64(drv->shim, SST_IPCD);
-	msg_id = header.p.header_low_payload & SST_UNSOLICITED_MSG_ID;
-	pipe_id = header.p.header_low_payload >> 16;
+	msg_id = header.p.header_low_payload & SST_ASYNC_MSG_MASK;
 	pr_debug("interrupt\n");
-	if ((msg_id & IPC_SST_PERIOD_ELAPSED_MRFLD) &&
+	if ((msg_id == IPC_SST_PERIOD_ELAPSED_MRFLD) &&
 			(header.p.header_high.part.msg_id == IPC_CMD)) {
 		sst_drv_ctx->ops->clear_interrupt();
+		pipe_id = header.p.header_low_payload >> 16;
 		str_id = get_stream_id_mrfld(pipe_id);
-		stream = &sst_drv_ctx->streams[str_id];
-		pr_debug("Period elapsed rcvd!!!\n");
-		if (stream->period_elapsed)
-			stream->period_elapsed(stream->pcm_substream);
+		if (str_id > 0) {
+			pr_debug("Period elapsed rcvd!!!\n");
+			stream = &sst_drv_ctx->streams[str_id];
+			if (stream->period_elapsed)
+				stream->period_elapsed(stream->pcm_substream);
+		}
 		return IRQ_HANDLED;
 	}
 	if (header.p.header_high.part.large)

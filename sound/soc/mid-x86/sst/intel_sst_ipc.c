@@ -675,20 +675,24 @@ void sst_process_reply_mrfld(struct work_struct *work)
 	msg_low = msg->mrfld_header.p.header_low_payload;
 
 	drv_id = msg_high.part.drv_id;
-	msg_id = msg_low & SST_UNSOLICITED_MSG_ID;
-	err_id = (msg_low & SST_UNSOLICITED_ERROR_MSG) >> 16;
-	if (err_id && !msg_high.part.large) {
-		pr_err("FW sent error 0x%x in msg 0x%x", err_id, msg_id);
+	if (msg_high.part.result && drv_id && !msg_high.part.large) {
+		/* 32-bit FW error code in msg_low */
+		pr_err("FW sent error response 0x%x", msg_low);
 		sst_wake_up_block(sst_drv_ctx, msg_high.part.result,
 			msg_high.part.drv_id,
 			msg_high.part.msg_id, NULL, 0);
 		goto end;
 	}
-	if (drv_id == SST_UNSOLICIT_MSG && !msg_high.part.large) {
+	if (drv_id == SST_ASYNC_DRV_ID && !msg_high.part.large) {
+		msg_id = msg_low & SST_ASYNC_MSG_MASK;
 		switch (msg_id) {
 		case IPC_IA_FW_INIT_CMPLT_MRFLD:
 			intel_sst_clear_intr_mrfld();
 			process_fw_init(msg);
+			break;
+		case IPC_IA_FW_ASYNC_ERR_MRFLD:
+			err_id = (msg_low & SST_ASYNC_ERROR_MASK) >> 16;
+			pr_err("FW sent async error 0x%x ", err_id);
 			break;
 		default:
 			pr_debug("Not cleared:\n");
