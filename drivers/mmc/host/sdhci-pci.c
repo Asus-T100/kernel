@@ -344,6 +344,7 @@ static int mfd_emmc_probe_slot(struct sdhci_pci_slot *slot)
 		break;
 	case PCI_DEVICE_ID_INTEL_BYT_MMC45:
 	case PCI_DEVICE_ID_INTEL_BYT_MMC:
+		sdhci_alloc_panic_host(slot->host);
 		slot->rst_n_gpio = -EINVAL;
 		slot->host->mmc->caps |= MMC_CAP_1_8V_DDR;
 		slot->host->mmc->caps2 |= MMC_CAP2_INIT_CARD_SYNC;
