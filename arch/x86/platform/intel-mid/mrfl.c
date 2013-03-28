@@ -251,7 +251,7 @@ static int __init mrfl_platform_init(void)
 		battery_chrg_profile = kzalloc(
 				sizeof(*battery_chrg_profile), GFP_KERNEL);
 		if (!battery_chrg_profile) {
-			pr_info("%s(): Error in kzalloc\n", __func__);
+			pr_err("%s(): Error in kzalloc\n", __func__);
 			return -ENOMEM;
 		}
 		pentry = (struct ps_pse_mod_prof *)sb->pentry;
@@ -261,6 +261,11 @@ static int __init mrfl_platform_init(void)
 			ps_batt_chrg_profile = kzalloc(
 					sizeof(*ps_batt_chrg_profile),
 					GFP_KERNEL);
+			if (!ps_batt_chrg_profile) {
+				pr_err("%s(): Error in kzalloc\n", __func__);
+				kfree(battery_chrg_profile);
+				return -ENOMEM;
+			}
 			ps_batt_chrg_profile->chrg_prof_type =
 				PSE_MOD_CHRG_PROF;
 			ps_batt_chrg_profile->batt_prof = battery_chrg_profile;
