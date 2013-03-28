@@ -416,8 +416,10 @@ void hsu_early_console_init(const char *s)
 		paddr = MERR_HSU_PORT_BASE;
 		clkctl = (int *)set_fixmap_offset_nocache(FIX_CLOCK_CTL,
 							  MERR_HSU_CLK_CTL);
-	} else
+	} else {
 		paddr = MFLD_HSU_PORT_BASE;
+		*clkctl = 0;
+	}
 
 	/*
 	 * Select the early HSU console port if specified by user in the
