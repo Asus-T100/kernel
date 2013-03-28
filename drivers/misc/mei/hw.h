@@ -1,6 +1,6 @@
 /*
  *
- * Intel Management Engine Interface (Intel TXEI) Linux driver
+ * Intel Management Engine Interface (Intel MEI) Linux driver
  * Copyright (c) 2003-2012, Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
@@ -14,36 +14,38 @@
  *
  */
 
-#ifndef _TXEI_HW_TYPES_H_
-#define _TXEI_HW_TYPES_H_
+#ifndef _MEI_HW_TYPES_H_
+#define _MEI_HW_TYPES_H_
 
 #include <linux/uuid.h>
 
 /*
  * Timeouts in Seconds
  */
-#define TXEI_INTEROP_TIMEOUT         7  /* Timeout on ready message */
-#define TXEI_CONNECT_TIMEOUT         3  /* HPS: at least 2 seconds */
+#define MEI_INTEROP_TIMEOUT         7  /* Timeout on ready message */
+#define MEI_CONNECT_TIMEOUT         3  /* HPS: at least 2 seconds */
 
-#define TXEI_CL_CONNECT_TIMEOUT     15  /* HPS: Client Connect Timeout */
-#define TXEI_CLIENTS_INIT_TIMEOUT   15  /* HPS: Clients Enumeration Timeout */
+#define MEI_CL_CONNECT_TIMEOUT     15  /* HPS: Client Connect Timeout */
+#define MEI_CLIENTS_INIT_TIMEOUT   15  /* HPS: Clients Enumeration Timeout */
 
+#define MEI_IAMTHIF_STALL_TIMER    12  /* HPS */
+#define MEI_IAMTHIF_READ_TIMER     10  /* HPS */
 
 
 /*
- * TXEI Version
+ * MEI Version
  */
 #define HBM_MINOR_VERSION                   0
 #define HBM_MAJOR_VERSION                   1
 #define HBM_TIMEOUT                         1	/* 1 second */
 
 /* Host bus message command opcode */
-#define TXEI_HBM_CMD_OP_MSK                  0x7f
+#define MEI_HBM_CMD_OP_MSK                  0x7f
 /* Host bus message command RESPONSE */
-#define TXEI_HBM_CMD_RES_MSK                 0x80
+#define MEI_HBM_CMD_RES_MSK                 0x80
 
 /*
- * TXEI Bus Message Command IDs
+ * MEI Bus Message Command IDs
  */
 #define HOST_START_REQ_CMD                  0x01
 #define HOST_START_RES_CMD                  0x81
@@ -65,13 +67,13 @@
 #define CLIENT_DISCONNECT_REQ_CMD           0x07
 #define CLIENT_DISCONNECT_RES_CMD           0x87
 
-#define TXEI_FLOW_CONTROL_CMD                0x08
+#define MEI_FLOW_CONTROL_CMD                0x08
 
 /*
- * TXEI Stop Reason
+ * MEI Stop Reason
  * used by hbm_host_stop_request.reason
  */
-enum txei_stop_reason_types {
+enum mei_stop_reason_types {
 	DRIVER_STOP_REQUEST = 0x00,
 	DEVICE_D1_ENTRY = 0x01,
 	DEVICE_D2_ENTRY = 0x02,
@@ -103,9 +105,9 @@ enum client_disconnect_status_types {
 };
 
 /*
- *  TXEI BUS Interface Section
+ *  MEI BUS Interface Section
  */
-struct txei_msg_hdr {
+struct mei_msg_hdr {
 	u32 me_addr:8;
 	u32 host_addr:8;
 	u32 length:9;
@@ -114,7 +116,7 @@ struct txei_msg_hdr {
 } __packed;
 
 
-struct txei_bus_message {
+struct mei_bus_message {
 	u8 hbm_cmd;
 	u8 data[0];
 } __packed;
@@ -128,7 +130,7 @@ struct txei_bus_message {
  * @host_addr - address of the client in the driver
  * @data
  */
-struct txei_hbm_cl_cmd {
+struct mei_hbm_cl_cmd {
 	u8 hbm_cmd;
 	u8 me_addr;
 	u8 host_addr;
@@ -180,7 +182,7 @@ struct hbm_host_enum_response {
 	u8 valid_addresses[32];
 } __packed;
 
-struct txei_client_properties {
+struct mei_client_properties {
 	uuid_le protocol_name;
 	u8 protocol_version;
 	u8 max_number_of_connections;
@@ -201,7 +203,7 @@ struct hbm_props_response {
 	u8 address;
 	u8 status;
 	u8 reserved[1];
-	struct txei_client_properties client_properties;
+	struct mei_client_properties client_properties;
 } __packed;
 
 /**
@@ -235,13 +237,13 @@ struct hbm_client_connect_response {
 } __packed;
 
 
-#define TXEI_FC_MESSAGE_RESERVED_LENGTH           5
+#define MEI_FC_MESSAGE_RESERVED_LENGTH           5
 
 struct hbm_flow_control {
 	u8 hbm_cmd;
 	u8 me_addr;
 	u8 host_addr;
-	u8 reserved[TXEI_FC_MESSAGE_RESERVED_LENGTH];
+	u8 reserved[MEI_FC_MESSAGE_RESERVED_LENGTH];
 } __packed;
 
 
