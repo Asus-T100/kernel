@@ -24,7 +24,6 @@
 #include <linux/time.h>
 #include <linux/i2c.h>
 #include <linux/stat.h>
-#include <linux/sfi.h>
 #include <linux/earlysuspend.h>
 #include <linux/synaptics_i2c_rmi4.h>
 #include <linux/interrupt.h>
@@ -68,6 +67,7 @@
 #define PID_S3202_GFF 0
 #define PID_S3202_OGS "TM2178"
 #define PID_S3408 "s3408_ver5"
+#define PID_S3402 "s3402"
 
 /** Image file V5, Option 0
  */
@@ -181,7 +181,6 @@ static int rescan_pdt(struct reflash_data *data)
 static int read_f34_controls(struct reflash_data *data)
 {
 	int retval;
-	struct rmi4_data *rmi4_dev = data->rmi4_dev;
 	union f34_control_status_v1 f34ctrlsts1;
 	if (data->bootloader_id[1] > '5') {
 		retval = rmi4_i2c_block_read(data->rmi4_dev,
@@ -774,22 +773,21 @@ int rmi4_fw_update(struct rmi4_data *pdata,
 		return -1;
 	}
 
-	if (strncmp(calib->type, SFI_S3400_CGS, SFI_NAME_LEN) == 0 ||
-		strncmp(calib->type, SFI_S3400_IGZO, SFI_NAME_LEN) == 0) {
-		touch_type = 0;
-		dev_info(&client->dev, "touch type: %s", calib->type);
-	} else if (data.product_id[0] == PID_S3202_GFF)
-		touch_type = TOUCH_TYPE_S3202_GFF;
+	if (data.product_id[0] == PID_S3202_GFF)
+		touch_type = RMI4_S3202_GFF;
 	else if (strcmp(data.product_id, PID_S3202_OGS) == 0)
-		touch_type = TOUCH_TYPE_S3202_OGS;
-	else if (strcmp(data.product_id, PID_S3408) == 0)
-		touch_type = TOUCH_TYPE_S3408;
-	else {
+		touch_type = RMI4_S3202_OGS;
+	else if (strcmp(data.product_id, PID_S3402) == 0) {
+		if (!strncmp(client->name, S3400_CGS_DEV_ID, I2C_NAME_SIZE))
+			touch_type = RMI4_S3400_CGS;
+		else
+			touch_type = RMI4_S3400_IGZO;
+	} else {
 		dev_err(&client->dev, "Unsupported touch screen type, product ID: %s\n",
 				data.product_id);
 		if (!force) {
 			dev_err(&client->dev, "Use S3202 OGS as default type\n");
-			return TOUCH_TYPE_S3202_OGS;
+			return RMI4_S3202_OGS;
 		}
 	}
 
@@ -797,8 +795,9 @@ int rmi4_fw_update(struct rmi4_data *pdata,
 		firmware_name = FIRMWARE_NAME_FORCE;
 	else
 		firmware_name = calib[touch_type].fw_name;
-	dev_info(&client->dev, "Firmware name:%s, hardware type:%d\n",
-					firmware_name, touch_type);
+	dev_info(&client->dev,
+			"Firmware name:%s, hardware type:%d, client name:%s\n",
+			firmware_name, touch_type, client->name);
 
 	retval = read_f34_queries(&data);
 	if (retval) {

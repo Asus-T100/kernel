@@ -30,12 +30,14 @@
 
 #include <linux/sfi.h>
 
-#define TOUCH_TYPE_S3202_OGS	0
-#define TOUCH_TYPE_S3202_GFF	1
-#define TOUCH_TYPE_S3408	2
+#define RMI4_S3202_OGS	0
+#define RMI4_S3202_GFF	1
+#define RMI4_S3400_CGS	2
+#define RMI4_S3400_IGZO 3
 
-#define SFI_S3400_CGS "syn_3400_cgs"
-#define SFI_S3400_IGZO "syn_3400_igzo"
+#define S3202_DEV_ID		"synaptics_3202"
+#define S3400_CGS_DEV_ID	"syn_3400_cgs"
+#define S3400_IGZO_DEV_ID	"syn_3400_igzo"
 
 struct rmi4_touch_calib {
 	bool x_flip;
@@ -44,7 +46,6 @@ struct rmi4_touch_calib {
 	u32 customer_id;
 	char *fw_name;
 	char *key_dev_name;
-	char type[SFI_NAME_LEN];
 };
 
 /**
