@@ -106,7 +106,7 @@ static int enter_dsr_locked(struct mdfld_dsi_config *dsi_config, int level)
 		** if failed at this try, revive te for another chance
 		*/
 		state.event = 0;
-		if (ospm_power_suspend(gpDrmDevice->pdev, state)) {
+		if (ospm_power_suspend()) {
 			/* Only display island is powered off then
 			 ** need revive the whole TE
 			 */

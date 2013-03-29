@@ -358,6 +358,11 @@ MODULE_DEVICE_TABLE(pci, pciidlist);
 	DRM_IOWR(DRM_PSB_VSYNC_SET + DRM_COMMAND_BASE,		\
 			struct drm_psb_vsync_set_arg)
 
+/* GET DC INFO IOCTL */
+#define DRM_IOCTL_PSB_GET_DC_INFO \
+	DRM_IOR(DRM_PSB_GET_DC_INFO + DRM_COMMAND_BASE,		\
+			struct drm_psb_dc_info)
+
 /*CSC GAMMA Setting*/
 #define DRM_IOCTL_PSB_CSC_GAMMA_SETTING \
 		DRM_IOWR(DRM_PSB_CSC_GAMMA_SETTING + DRM_COMMAND_BASE, struct drm_psb_csc_gamma_setting)
@@ -464,6 +469,8 @@ static int psb_mode_operation_ioctl(struct drm_device *dev, void *data,
 static int psb_stolen_memory_ioctl(struct drm_device *dev, void *data,
 				   struct drm_file *file_priv);
 static int psb_vsync_set_ioctl(struct drm_device *dev, void *data,
+				 struct drm_file *file_priv);
+static int psb_get_dc_info_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv);
 static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv);
@@ -693,6 +700,8 @@ static struct drm_ioctl_desc psb_ioctls[] = {
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_CSC_GAMMA_SETTING, psb_csc_gamma_setting_ioctl, DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_SET_CSC, psb_set_csc_ioctl, DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_VSYNC_SET, psb_vsync_set_ioctl,
+	DRM_AUTH | DRM_UNLOCKED),
+	PSB_IOCTL_DEF(DRM_IOCTL_PSB_GET_DC_INFO, psb_get_dc_info_ioctl,
 	DRM_AUTH | DRM_UNLOCKED),
 
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_ENABLE_IED_SESSION,
@@ -1019,6 +1028,11 @@ bool intel_mid_get_vbt_data(struct drm_psb_private *dev_priv)
 
 	/*copy vbt data to local memory*/
 	pVBT_virtual = ioremap(platform_config_address, sizeof(*pVBT));
+	if (!pVBT_virtual) {
+		DRM_ERROR("fail to ioremap platform_config_address:0x%x\n",
+			  platform_config_address);
+		return false;
+	}
 	memcpy(pVBT, pVBT_virtual, sizeof(*pVBT));
 	iounmap(pVBT_virtual); /* Free virtual address space */
 
@@ -1235,7 +1249,11 @@ static int psb_do_init(struct drm_device *dev)
 	 * MOS kernel boot.
 	 * We need to power on it first, else will cause the fabric error.
 	 */
-	ospm_power_island_up(OSPM_VIDEO_DEC_ISLAND);
+	if (ospm_power_island_up(OSPM_VIDEO_DEC_ISLAND)) {
+		DRM_ERROR("ospm_video_dec_island_up failed.\n");
+		ret = -EINVAL;
+		goto out_err;
+	}
 	psb_msvdx_init(dev);
 
 	PSB_DEBUG_INIT("Init Topaz\n");
@@ -1246,7 +1264,11 @@ static int psb_do_init(struct drm_device *dev)
 	 * MOS kernel boot while the panel is not connected.
 	 * We need to power on it first, else will cause fabric error.
 	 */
-	ospm_power_island_up(OSPM_VIDEO_ENC_ISLAND);
+	if (ospm_power_island_up(OSPM_VIDEO_ENC_ISLAND)) {
+		DRM_ERROR("ospm_video_enc_island_up failed.\n");
+		ret = -EINVAL;
+		goto out_err;
+	}
 
 	if (IS_MDFLD(dev))
 		pnw_topaz_init(dev);
@@ -1421,6 +1443,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	dev_priv->ied_enabled = false;
 	dev_priv->ied_context = NULL;
 	dev_priv->bhdmiconnected = false;
+	dev_priv->bhdmi_enable = true;
 	dev_priv->dpms_on_off = false;
 	atomic_set(&dev_priv->mipi_flip_abnormal, 0);
 	dev_priv->brightness_adjusted = 0;
@@ -1454,8 +1477,6 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	mutex_init(&dev_priv->overlay_lock);
 	mutex_init(&dev_priv->vsync_lock);
 
-	dev_priv->overlay_wait = 0;
-	dev_priv->overlay_fliped = 0;
 
 	spin_lock_init(&dev_priv->reloc_lock);
 
@@ -2102,6 +2123,7 @@ static int psb_disp_ioctl(struct drm_device *dev, void *data,
 			dev_priv->flip_tail = i;
 		dp_ctrl->u.buf_data.h_buffer = (void *)dev_priv->flip_tail;
 	} else if (dp_ctrl->cmd == DRM_PSB_DISP_PLANEB_DISABLE) {
+		dev_priv->bhdmi_enable = false;
 		if (DISP_PLANEB_STATUS == DISPLAY_PLANE_DISABLE)
 			ret = -1;
 		else {
@@ -2153,6 +2175,7 @@ static int psb_disp_ioctl(struct drm_device *dev, void *data,
 
 			ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 		}
+		dev_priv->bhdmi_enable = true;
 	} else if (dp_ctrl->cmd == DRM_PSB_HDMI_OSPM_ISLAND_DOWN) {
 		/* before turning off HDMI power island, re-check the
 		*HDMI hotplus status in case that there are plug-in
@@ -2895,27 +2918,8 @@ static void wait_for_pipeb_finish(struct drm_device *dev,
 /*wait for ovadd flip complete*/
 static void overlay_wait_flip(struct drm_device *dev)
 {
-	int retry;
+	int retry = 60;
 	struct drm_psb_private *dev_priv = psb_priv(dev);
-	/*
-	 * make sure OVADD write complete in ProcessFlip
-	 */
-	dev_priv->overlay_wait++;
-
-	retry = 300;
-	while (--retry) {
-		if (dev_priv->overlay_wait == dev_priv->overlay_fliped)
-			break;
-		usleep_range(50, 100);
-	}
-
-	if (!retry) {
-		/* reset to 0 when timeout happens */
-		dev_priv->overlay_wait = 0;
-		dev_priv->overlay_fliped = 0;
-		DRM_DEBUG("wait OVADD flip timeout!\n");
-	}
-
 	/**
 	 * make sure overlay command buffer
 	 * was copied before updating the system
@@ -2926,7 +2930,6 @@ static void overlay_wait_flip(struct drm_device *dev)
 		goto fliped;
 	usleep_range(6000, 12000);
 
-	retry = 60;
 	while (--retry) {
 		if (BIT31 & PSB_RVDC32(OV_DOVASTA))
 			break;
@@ -2935,7 +2938,7 @@ static void overlay_wait_flip(struct drm_device *dev)
 
 fliped:
 	if (!retry)
-		DRM_DEBUG("OVADD flip timeout!\n");
+		DRM_ERROR("OVADD flip timeout!\n");
 }
 
 /*wait for vblank*/
@@ -3228,6 +3231,34 @@ void psb_flip_abnormal_debug_info(struct drm_device *dev)
 				atomic_set(&dev_priv->mipi_flip_abnormal, 1);
 		}
 	}
+}
+
+static int psb_get_dc_info_ioctl(struct drm_device *dev, void *data,
+				 struct drm_file *file_priv)
+{
+	struct drm_psb_private *dev_priv = psb_priv(dev);
+	struct drm_psb_dc_info *dc = data;
+
+	if (IS_MDFLD_OLD(dev)) {
+		dc->pipe_count = INTEL_MDFLD_DISPLAY_PIPE_NUM;
+
+		dc->primary_plane_count = INTEL_MDFLD_SPRITE_PLANE_NUM;
+		dc->sprite_plane_count = 0;
+		dc->overlay_plane_count = INTEL_MDFLD_OVERLAY_PLANE_NUM;
+		dc->cursor_plane_count = INTEL_MDFLD_CURSOR_PLANE_NUM;
+	} else if (IS_CTP(dev)) {
+		dc->pipe_count = INTEL_CTP_DISPLAY_PIPE_NUM;
+
+		dc->primary_plane_count = INTEL_CTP_SPRITE_PLANE_NUM;
+		dc->sprite_plane_count = 0;
+		dc->overlay_plane_count = INTEL_CTP_OVERLAY_PLANE_NUM;
+		dc->cursor_plane_count = INTEL_CTP_CURSOR_PLANE_NUM;
+	} else {
+		DRM_INFO("unsupported platform in mrst driver now!");
+		return -1;
+	}
+
+	return 0;
 }
 
 static int psb_vsync_set_ioctl(struct drm_device *dev, void *data,

@@ -2,6 +2,7 @@ HDMI_DIR = ../intel_media/otm_hdmi
 
 
 obj-$(CONFIG_DRM_MRFLD) += drv/
+obj-$(CONFIG_DRM_MRFLD) += drv/ospm/
 obj-$(CONFIG_DRM_MRFLD) += ../intel_media/video/common/
 obj-$(CONFIG_DRM_MRFLD) += ../intel_media/video/decode/
 obj-$(CONFIG_DRM_MRFLD) += ../intel_media/video/encode/

@@ -15,7 +15,7 @@
 #include <linux/sfi.h>
 
 struct mrfld_audio_platform_data {
-	const struct sfi_soft_platform_id *spid;
+	const struct soft_platform_id *spid;
 	int codec_gpio;
 	int codec_rst;
 };

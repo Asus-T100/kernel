@@ -22,6 +22,7 @@
 #define IPCMSG_PCNTRL           0xFF /* Power controller unit read/write */
 #define IPCMSG_OSC_CLK		0xE6 /* Turn on/off osc clock */
 #define IPCMSG_S0IX_COUNTER	0xEB /* Get S0ix residency */
+#define IPCMSG_CLEAR_FABERROR	0xE3 /* Clear fabric error log */
 
 #define IPC_CMD_UMIP_RD     0
 #define IPC_CMD_UMIP_WR     1

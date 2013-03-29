@@ -76,7 +76,8 @@
 
 #define ATOMISP_SC_TYPE_SIZE	2
 
-#define ATOMISP_ISP_TIMEOUT_DURATION		(2 * HZ) /* second */
+#define ATOMISP_ISP_TIMEOUT_DURATION		(2 * HZ)
+#define ATOMISP_ISP_FILE_TIMEOUT_DURATION	(60 * HZ)
 #define ATOMISP_ISP_MAX_TIMEOUT_COUNT	2
 
 #define ATOMISP_CSS_Q_DEPTH	3
@@ -123,6 +124,7 @@ struct atomisp_freq_scaling_rule {
 enum atomisp_dfs_mode {
 	ATOMISP_DFS_MODE_AUTO = 0,
 	ATOMISP_DFS_MODE_LOW,
+	ATOMISP_DFS_MODE_MAX,
 };
 
 struct atomisp_regs {
@@ -347,6 +349,7 @@ struct atomisp_device {
 	struct work_struct wdt_work;
 	struct timer_list wdt;
 	atomic_t wdt_count;
+	unsigned int wdt_duration;	/* in jiffies */
 	enum atomisp_frame_status fr_status;
 
 	atomic_t sof_count;

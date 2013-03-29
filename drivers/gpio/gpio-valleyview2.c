@@ -45,6 +45,7 @@
 #define VV_INT_STAT_REG		0x800
 
 /* VV_CONF0_REG register bits */
+#define VV_DIRECT_IRQ		BIT(27)
 #define VV_TRIG_NEG		BIT(26)
 #define VV_TRIG_POS		BIT(25)
 #define VV_TRIG_LVL		BIT(24)
@@ -394,7 +395,8 @@ static void vlv_gpio_irq_init_hw(struct vlv_gpio *vg)
 	for (offset = 0; offset < vg->chip.ngpio; offset++) {
 		reg = vlv_gpio_reg(&vg->chip, offset, VV_CONF0_REG);
 		value = readl(reg);
-		value &= ~(VV_TRIG_POS | VV_TRIG_NEG | VV_TRIG_LVL);
+		value &= ~(VV_DIRECT_IRQ | VV_TRIG_POS |
+				VV_TRIG_NEG | VV_TRIG_LVL);
 		writel(value, reg);
 	}
 

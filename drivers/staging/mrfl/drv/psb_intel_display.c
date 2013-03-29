@@ -27,7 +27,7 @@
 #include "psb_intel_drv.h"
 #include "psb_intel_reg.h"
 #include "psb_intel_display.h"
-#include "psb_powermgmt.h"
+#include "pwr_mgmt.h"
 #include "mrfld_clock.h"
 #include "mrfld_s3d.h"
 

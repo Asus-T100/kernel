@@ -1247,6 +1247,42 @@ struct ov9724_resolution ov9724_res_preview[] = {
 		.bin_factor_y = 0,
 		.used = 0	,
 	},
+	{
+		.desc = "VGA_strong_dvs_30fps",
+		.regs = ov9724_336_256_30fps,
+		.width = 336,
+		.height = 256,
+		.fps = 30,
+		.pixels_per_line = 0x0560, /* consistent with regs arrays */
+		.lines_per_frame = 0x0368, /* consistent with regs arrays */
+		.bin_factor_x = 0,
+		.bin_factor_y = 0,
+		.used = 0	,
+	},
+	{
+		.desc = "VGA_strong_dvs_30fps",
+		.regs = ov9724_736_496_30fps,
+		.width = 736,
+		.height = 496,
+		.fps = 30,
+		.pixels_per_line = 0x0560, /* consistent with regs arrays */
+		.lines_per_frame = 0x0368, /* consistent with regs arrays */
+		.bin_factor_x = 0,
+		.bin_factor_y = 0,
+		.used = 0	,
+	},
+	{
+		.desc = "ov9724_720p_15fps",
+		.regs = ov9724_720p_30fps,
+		.width = 1296,
+		.height = 736,
+		.fps = 30,
+		.pixels_per_line = 0x0560, /* consistent with regs arrays */
+		.lines_per_frame = 0x0368, /* consistent with regs arrays */
+		.bin_factor_x = 0,
+		.bin_factor_y = 0,
+		.used = 0,
+	},
 
 };
 #define N_RES_PREVIEW (ARRAY_SIZE(ov9724_res_preview))

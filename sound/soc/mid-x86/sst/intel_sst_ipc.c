@@ -65,6 +65,7 @@ int sst_wake_up_block(struct intel_sst_drv *ctx, int result,
 	struct sst_block *block = NULL;
 
 	pr_debug("in %s\n", __func__);
+	spin_lock(&ctx->block_lock);
 	list_for_each_entry(block, &ctx->block_list, node) {
 		pr_debug("Block ipc %d, drv_id %d\n", block->msg_id, block->drv_id);
 		if (block->msg_id == ipc && block->drv_id == drv_id) {
@@ -73,11 +74,12 @@ int sst_wake_up_block(struct intel_sst_drv *ctx, int result,
 			block->data = data;
 			block->size = size;
 			block->condition = true;
+			spin_unlock(&ctx->block_lock);
 			wake_up(&ctx->wait_queue);
 			return 0;
 		}
 	}
-
+	spin_unlock(&ctx->block_lock);
 	pr_debug("Block not found or a response is received for a short message for ipc %d, drv_id %d\n",
 			ipc, drv_id);
 	return -EINVAL;
@@ -88,15 +90,18 @@ int sst_free_block(struct intel_sst_drv *ctx, struct sst_block *freed)
 	struct sst_block *block = NULL, *__block;
 
 	pr_debug("in %s\n", __func__);
+	spin_lock(&ctx->block_lock);
 	list_for_each_entry_safe(block, __block, &ctx->block_list, node) {
 		if (block == freed) {
 			list_del(&freed->node);
 			kfree(freed->data);
 			freed->data = NULL;
 			kfree(freed);
+			spin_unlock(&ctx->block_lock);
 			return 0;
 		}
 	}
+	spin_unlock(&ctx->block_lock);
 	return -EINVAL;
 }
 
@@ -751,8 +756,11 @@ void sst_process_reply_mfld(struct work_struct *work)
 	} else {
 		pr_debug("Allocating %d\n", msg->header.part.data);
 		data = kzalloc(msg->header.part.data, GFP_KERNEL);
-		if (!data)
+		if (!data) {
 			pr_err("sst: mem alloc failed\n");
+			kfree(msg);
+			return;
+		}
 
 		memcpy(data, (void *)msg->mailbox, msg->header.part.data);
 		if (sst_wake_up_block(sst_drv_ctx, 0, str_id,

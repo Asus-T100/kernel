@@ -30,7 +30,7 @@
 #include "psb_hotplug.h"
 #include "psb_dpst.h"
 #include "psb_gtt.h"
-#include "psb_powermgmt.h"
+#include "ospm/pwr_mgmt.h"
 #include "ttm/ttm_object.h"
 #include "psb_ttm_fence_driver.h"
 #include "psb_ttm_userobj_api.h"

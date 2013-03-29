@@ -1078,8 +1078,13 @@ program_input_formatter(struct sh_css_pipe *pipe,
 	if (!line_width)
 		line_width = vectors_per_line *
 		input_formatter_get_alignment(INPUT_FORMATTER0_ID);
+#if 0
+	/* Klocwork pacifier: VA_UNUSED.GEN */
+	/* buffers_per_line is never used, this is SUSPICIOUS */
+	/* NEEDS FURTHER INVESTIGATION */
 	if (!buffers_per_line)
 		buffers_per_line = deinterleaving;
+#endif
 	line_width = CEIL_MUL(line_width,
 		input_formatter_get_alignment(INPUT_FORMATTER0_ID)
 		* vmem_increment);
@@ -2711,7 +2716,7 @@ enum sh_css_err sh_css_wait_for_completion(
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_wait_for_completion() enter: pipe_id=%d\n",pipe_id);
 
-	while (true) {
+	do {
 		bool rc;
 
 		rc = sp2host_dequeue_irq_event(&sp_event);
@@ -2730,7 +2735,7 @@ enum sh_css_err sh_css_wait_for_completion(
 			}
 		}
 		hrt_sleep();
-	}
+	} while (true);
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_wait_for_completion() leave: return_err=%d\n",sh_css_err_internal_error);
 
@@ -3178,8 +3183,10 @@ assert(pipe != NULL);
 			return err;
 	}
 #endif
-	if (SH_CSS_PREVENT_UNINIT_READS)
-		sh_css_frame_zero(pipe->pipe.preview.continuous_frames[0]);
+
+#if SH_CSS_PREVENT_UNINIT_READS /* Klocwork pacifier: CWARN.CONSTCOND.IF */
+	sh_css_frame_zero(pipe->pipe.preview.continuous_frames[0]);
+#endif
 
 	if (pipe->shading_table) {
 		sh_css_shading_table_free(pipe->shading_table);
@@ -4591,11 +4598,11 @@ assert(pipe != NULL);
 		if (err != sh_css_success)
 			return err;
 	}
-	if (SH_CSS_PREVENT_UNINIT_READS) {
-		sh_css_frame_zero(pipe->pipe.video.ref_frames[0]);
-		sh_css_frame_zero(pipe->pipe.video.ref_frames[1]);
-	}
 
+#if SH_CSS_PREVENT_UNINIT_READS /* Klocwork pacifier: CWARN.CONSTCOND.IF */
+	sh_css_frame_zero(pipe->pipe.video.ref_frames[0]);
+	sh_css_frame_zero(pipe->pipe.video.ref_frames[1]);
+#endif
 
 #if DVS_REF_TESTING
 	/* @GC: TEMPORARY CODE TO TEST DVS AGAINST THE REFERENCE
@@ -4625,10 +4632,11 @@ assert(pipe != NULL);
 		if (err != sh_css_success)
 			return err;
 	}
-	if (SH_CSS_PREVENT_UNINIT_READS) {
-		sh_css_frame_zero(pipe->pipe.video.tnr_frames[0]);
-		sh_css_frame_zero(pipe->pipe.video.tnr_frames[1]);
-	}
+
+#if SH_CSS_PREVENT_UNINIT_READS /* Klocwork pacifier: CWARN.CONSTCOND.IF */
+	sh_css_frame_zero(pipe->pipe.video.tnr_frames[0]);
+	sh_css_frame_zero(pipe->pipe.video.tnr_frames[1]);
+#endif
 	return sh_css_success;
 }
 

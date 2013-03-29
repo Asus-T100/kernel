@@ -981,6 +981,7 @@ static int mt9v113_get_mbus_fmt(struct v4l2_subdev *sd,
 		return ret;
 	fmt->width = width;
 	fmt->height = height;
+	fmt->code = V4L2_MBUS_FMT_UYVY8_1X16;
 
 	return 0;
 }
@@ -1073,6 +1074,7 @@ static int mt9v113_set_mbus_fmt(struct v4l2_subdev *sd,
 
 	fmt->width = width;
 	fmt->height = height;
+	fmt->code = V4L2_MBUS_FMT_UYVY8_1X16;
 
 	return 0;
 }
@@ -1521,9 +1523,9 @@ static int mt9v113_enum_mbus_code(struct v4l2_subdev *sd,
 				  struct v4l2_subdev_fh *fh,
 				  struct v4l2_subdev_mbus_code_enum *code)
 {
-	if (code->index >= MAX_FMTS)
+	if (code->index)
 		return -EINVAL;
-	code->code = V4L2_MBUS_FMT_SGRBG10_1X10;
+	code->code = V4L2_MBUS_FMT_UYVY8_1X16;
 
 	return 0;
 }

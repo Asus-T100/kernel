@@ -337,7 +337,7 @@ struct sst_sg_list {
 struct sst_memcpy_list {
 	struct list_head memcpylist;
 	void *dstn;
-	void *src;
+	const void *src;
 	u32 size;
 	bool is_io;
 };
@@ -402,6 +402,7 @@ struct sst_probe_info {
 	bool imr_use;
 	bool use_elf;
 	unsigned int max_streams;
+	u32 dma_max_len;
 };
 
 struct sst_fw_context {
@@ -780,7 +781,7 @@ static inline int sst_shim_write64(void __iomem *addr, int offset, u64 value)
 
 static inline u64 sst_shim_read64(void __iomem *addr, int offset)
 {
-	u64 val;
+	u64 val = 0;
 
 	memcpy_fromio(&val, addr + offset, sizeof(val));
 	return val;

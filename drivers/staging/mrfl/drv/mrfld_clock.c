@@ -328,9 +328,15 @@ void mrfld_setup_pll(struct drm_device *dev, int pipe, int clk)
 	 * calculate them according to the DSI PLL HAS spec.
 	 */
 	if (pipe != 1) {
+		if (get_panel_type(dev, pipe) == JDI_VID) {
+			clock.p1 = 5;
+			clk_n = 1;
+			clock.m = 130;
+		} else {
 			clock.p1 = 4;
 			clk_n = 1;
 			clock.m = 120;
+		}
 	}
 
 	if (!ok) {

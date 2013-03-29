@@ -3,5 +3,11 @@ EXTRA_CFLAGS += -Idrivers/staging/intel_media/common \
 			-Idrivers/staging/intel_media/otm_hdmi/os/android/include \
 			-Idrivers/staging/intel_media/otm_hdmi/pil/include
 
+ifdef CONFIG_DRM_MRFLD
+ccflags-y += -Idrivers/staging/mrfl/drv
+else
+ccflags-y += -Idrivers/staging/mrst/drv
+endif
+
 obj-$(CONFIG_SUPPORT_HDMI)	+= intel_mid_had.o
 intel_mid_had-objs := intel_mid_hdmi_audio.o intel_mid_hdmi_audio_if.o

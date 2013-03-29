@@ -48,12 +48,12 @@
 #error "SUPPORT_DRI_DRM must be set"
 #endif
 
-#define MAXFLIPCOMMANDS 3
+#define MAXFLIPCOMMANDS 4
 
 struct flip_command {
 	IMG_HANDLE  hCmdCookie;
 	IMG_UINT32  ui32DataSize;
-	DISPLAYCLASS_FLIP_COMMAND vData;
+	DISPLAYCLASS_FLIP_COMMAND2 vData;
 	IMG_BOOL bFlush;
 };
 
@@ -206,10 +206,8 @@ static void MRSTLFBFlipOverlay(MRSTLFB_DEVINFO *psDevInfo,
 		if (uDspCntr & DISPLAY_PLANE_ENABLE) {
 			uDspCntr &= ~DISPLAY_PLANE_ENABLE;
 			PSB_WVDC32(uDspCntr, DSPACNTR + 0x1000);
-			/* trigger cntr register take effect */
-			// FIXME: comment it firstly as it may cause
-			// display freeze due to some limitation unknown
-			//PSB_WVDC32(0, DSPBSURF);
+			/* Set displayB constant alpha to 0 when disable it */
+			PSB_WVDC32(1 << 31, DSPBSURF + 0xC);
 		}
 	} else if (((psContext->pipe >> 6) & 0x3) == 0x1 &&
 		!(pipe_mask & (1 << 2))) {
@@ -254,6 +252,9 @@ static void MRSTLFBFlipSprite(MRSTLFB_DEVINFO *psDevInfo,
 		return;
 
 	(*pipe_mask) |= (1 << pipe);
+
+	if (pipe == 1)
+		PSB_WVDC32(0, DSPBSURF + 0xC);
 
 	if ((psContext->update_mask & SPRITE_UPDATE_POSITION))
 		PSB_WVDC32(psContext->pos, DSPAPOS + reg_offset);
@@ -343,6 +344,7 @@ static void MRSTLFBFlipPrimary(MRSTLFB_DEVINFO *psDevInfo,
 		ctx->dsplinoff = psContext->linoff;
 		ctx->dspsurf = psContext->surf;
 	}
+
 }
 
 static IMG_BOOL MRSTLFBFlipContexts(MRSTLFB_DEVINFO *psDevInfo,
@@ -392,10 +394,6 @@ static IMG_BOOL MRSTLFBFlipContexts(MRSTLFB_DEVINFO *psDevInfo,
 				pipe_mask);
 		}
 	}
-
-	/* increase overlay_fliped to match up with overlay_wait after flip */
-	if (psContexts->active_overlays != 0)
-		dev_priv->overlay_fliped++;
 
 	if (!psDevInfo->bScreenState) {
 		if (mdfld_dsi_dsr_update_panel_fb(dev_priv->dsi_configs[0])) {
@@ -1596,7 +1594,8 @@ static IMG_BOOL bIllegalFlipContexts(IMG_VOID *pvData)
 				psPrimaryContext->index = INVALID_INDEX;
 			} else if (psPrimaryContext->index == 1 &&
 					hdmi_state &&
-					dev_priv->early_suspended) {
+					(dev_priv->early_suspended ||
+					!dev_priv->bhdmi_enable)) {
 				/* HDMI off, should not flush PIPEB */
 				psPrimaryContext->index = INVALID_INDEX;
 			} else if (psPrimaryContext->index == 2) {
@@ -1618,7 +1617,8 @@ static IMG_BOOL bIllegalFlipContexts(IMG_VOID *pvData)
 				psSpriteContext->index = INVALID_INDEX;
 			} else if (psSpriteContext->index == 1 &&
 					hdmi_state &&
-					dev_priv->early_suspended) {
+					(dev_priv->early_suspended ||
+					!dev_priv->bhdmi_enable)) {
 				/* HDMI off, should not flush PIPEB */
 				psSpriteContext->index = INVALID_INDEX;
 			} else if (psSpriteContext->index == 2) {
@@ -1635,7 +1635,7 @@ static IMG_BOOL bIllegalFlipContexts(IMG_VOID *pvData)
 
 			/* OVERLAY A/C have same policy */
 			if (psOverlayContext->pipe == 0x00 &&
-				(psDevInfo->bScreenState || hdmi_state)) {
+				psDevInfo->bScreenState) {
 				psOverlayContext->index = INVALID_INDEX;
 			} else if (psOverlayContext->pipe == 0x80 &&
 					hdmi_state &&
@@ -1646,9 +1646,7 @@ static IMG_BOOL bIllegalFlipContexts(IMG_VOID *pvData)
 		}
 	}
 
-	/* handle overlay_fliped when contexts are illegal */
-	if (bIllegal && psContexts->active_overlays != 0)
-		dev_priv->overlay_fliped++;
+
 
 	/* if all contexts are illegal, should not do flush */
 	return bIllegal;
@@ -2044,7 +2042,7 @@ static void DisplayFlipWork(struct work_struct *work)
 	IMG_HANDLE  hCmdCookie;
 	IMG_UINT32  ui32DataSize;
 	IMG_BOOL bFlush;
-	DISPLAYCLASS_FLIP_COMMAND vData;
+	DISPLAYCLASS_FLIP_COMMAND2 vData;
 
 	spin_lock(&display_flip_work_t.flip_commands_lock);
 
@@ -2063,7 +2061,7 @@ static void DisplayFlipWork(struct work_struct *work)
 			p_flip_command[read_index].ui32DataSize;
 		memcpy(&vData,
 			&display_flip_work_t.p_flip_command[read_index].vData,
-			sizeof(DISPLAYCLASS_FLIP_COMMAND));
+			sizeof(DISPLAYCLASS_FLIP_COMMAND2));
 		bFlush =
 			display_flip_work_t.p_flip_command[read_index].bFlush;
 		spin_unlock(&display_flip_work_t.flip_commands_lock);
@@ -2088,7 +2086,7 @@ static IMG_BOOL DisplayFlip(IMG_HANDLE  hCmdCookie,
 	display_flip_work_t.p_flip_command[write_index].ui32DataSize =
 		ui32DataSize;
 	memcpy(&display_flip_work_t.p_flip_command[write_index].vData, pvData,
-		sizeof(DISPLAYCLASS_FLIP_COMMAND));
+		sizeof(DISPLAYCLASS_FLIP_COMMAND2));
 	display_flip_work_t.p_flip_command[write_index].bFlush = bFlush;
 	display_flip_work_t.write_index =
 		(display_flip_work_t.write_index + 1) % MAXFLIPCOMMANDS;

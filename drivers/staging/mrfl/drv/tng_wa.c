@@ -140,7 +140,7 @@ static void apply_NO_HSD_Workaround(struct drm_device *dev)
 #endif
 
 /* Apply the A0 Workaround */
-void apply_A0_workarounds(int islands, int pre_po, int new_state)
+void apply_A0_workarounds(int islands, int pre_po)
 {
 	struct drm_device *dev = gpDrmDevice;
 
@@ -148,8 +148,6 @@ void apply_A0_workarounds(int islands, int pre_po, int new_state)
 		return;
 
 	/* Only apply workaround on power up. */
-	if (new_state == POWER_ISLAND_DOWN)
-		return;
 
 	switch (islands) {
 	case OSPM_DISPLAY_ISLAND:

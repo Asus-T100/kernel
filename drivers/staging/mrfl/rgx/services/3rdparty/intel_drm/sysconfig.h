@@ -55,6 +55,17 @@ static IMG_VOID SysDevPAddrToCpuPAddr(IMG_HANDLE hPrivData,
 										IMG_CPU_PHYADDR *psCpuPAddr,
 										IMG_DEV_PHYADDR *psDevPAddr);
 
+static PVRSRV_ERROR SysDevicePostPowerState(
+		PVRSRV_DEV_POWER_STATE eNewPowerState,
+		PVRSRV_DEV_POWER_STATE eCurrentPowerState,
+		IMG_BOOL bForced);
+
+static PVRSRV_ERROR SysDevicePrePowerState(
+		PVRSRV_DEV_POWER_STATE eNewPowerState,
+		PVRSRV_DEV_POWER_STATE eCurrentPowerState,
+		IMG_BOOL bForced);
+
+
 static RGX_TIMING_INFORMATION sRGXTimingInfo =
 {
 	.ui32CoreClockSpeed        = 400000000, /* changed from 100000000, */
@@ -81,8 +92,8 @@ static PVRSRV_DEVICE_CONFIG sDevices[] =
 		.bIRQIsShared           = IMG_TRUE,
 
 		/* No power management on no HW system */
-		.pfnPrePowerState       = IMG_NULL,
-		.pfnPostPowerState      = IMG_NULL,
+		.pfnPrePowerState       = SysDevicePrePowerState,
+		.pfnPostPowerState      = SysDevicePostPowerState,
 
 		.hDevData               = &sRGXData,
 		.hSysData               = IMG_NULL,
@@ -104,7 +115,7 @@ static PHYS_HEAP_CONFIG	gsPhysHeapConfig = {
 
 
 static PVRSRV_SYSTEM_CONFIG sSysConfig = {
-	.pszSystemName = "Merrifield VP with Rogue",
+	.pszSystemName = "Merrifield with Rogue",
 	.uiDeviceCount = sizeof(sDevices)/sizeof(PVRSRV_DEVICE_CONFIG),
 	.pasDevices = &sDevices[0],
 
@@ -113,8 +124,8 @@ static PVRSRV_SYSTEM_CONFIG sSysConfig = {
 	.pasPhysHeaps = &gsPhysHeapConfig,
 
 	/* No power management on no HW system */
-	.pfnSysPrePowerState = IMG_NULL,
-	.pfnSysPostPowerState = IMG_NULL,
+	.pfnSysPrePowerState = NULL,
+	.pfnSysPostPowerState = NULL,
 
 	/* no cache snooping */
 	.bHasCacheSnooping = IMG_FALSE,

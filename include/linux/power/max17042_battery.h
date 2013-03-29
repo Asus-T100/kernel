@@ -28,7 +28,8 @@
 
 #define BATTID_LEN		8
 #define MAX_TABLE_NAME_LEN	8
-
+#define MODEL_NAME_LEN		2
+#define SERIAL_NUM_LEN		6
 
 /* fuel gauge table type for DV10 platfrom */
 #define MAX17042_TBL_TYPE_DV10	0xff
@@ -126,6 +127,8 @@ struct max17042_platform_data {
 	bool soc_intr_mode_enabled;
 	int technology;
 	char battid[BATTID_LEN + 1];
+	char model_name[MODEL_NAME_LEN + 1];
+	char serial_num[2*SERIAL_NUM_LEN + 1];
 
 	/* battery safety thresholds */
 	int temp_min_lim;	/* in degrees centigrade */

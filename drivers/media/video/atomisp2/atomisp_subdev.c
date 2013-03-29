@@ -468,6 +468,10 @@ static int atomisp_get_sensor_bin_factor(struct atomisp_device *isp)
 	int hbin, vbin;
 	int ret;
 
+	if (isp->inputs[isp->input_curr].type == FILE_INPUT ||
+		isp->inputs[isp->input_curr].type == TEST_PATTERN)
+		return 0;
+
 	memset(&ctrl, 0, sizeof(ctrl));
 
 	ctrl.id = V4L2_CID_BIN_FACTOR_HORZ;
@@ -838,6 +842,7 @@ static int isp_subdev_init_entities(struct atomisp_sub_device *isp_subdev)
 
 	isp_subdev->video_in.type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
 	isp_subdev->video_in.isp = isp_subdev->isp;
+	isp_subdev->video_in.pipe_type = ATOMISP_PIPE_FILEINPUT;
 	spin_lock_init(&isp_subdev->video_in.irq_lock);
 
 	isp_subdev->video_out_preview.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;

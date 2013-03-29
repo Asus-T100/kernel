@@ -2786,7 +2786,9 @@ serial8250_register_ports(struct uart_driver *drv, struct device *dev)
 		if (i == 0 && (intel_mid_identify_cpu() ==
 			INTEL_MID_CPU_CHIP_VALLEYVIEW2)) {
 			stepping = intel_mid_soc_stepping();
-			if (stepping == 0x1 || stepping == 0x2) { /* VLV2 A0 */
+			/* VLV2 A0 or A1 */
+			if (stepping == 0x1 || stepping == 0x2 ||
+							stepping == 0x3) {
 				dev_info(dev, "force irq 3 on VLV2 A0\n");
 				up->port.irq = 3;
 			}

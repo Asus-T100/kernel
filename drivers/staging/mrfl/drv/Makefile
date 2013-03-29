@@ -11,6 +11,7 @@ ccflags-y += \
 	-I$(INCDIR)/drv \
 	-I$(HDMI_DIR)/os/android/include \
 	-I$(HDMI_DIR)/pil/include \
+	-I$(INCDIR)/drv/ospm \
 	-Iinclude/linux \
 	-Iinclude/drm \
 	-I$(INCDIR)/../intel_media/video/common \
@@ -50,7 +51,6 @@ obj-y += psb_bl.o \
 	mdfld_dsi_pkg_sender.o \
 	mrfld_clock.o \
 	pmu_tng.o \
-	psb_powermgmt.o \
 	psb_irq.o \
 	tng_wa.o \
 	jdi_vid.o \

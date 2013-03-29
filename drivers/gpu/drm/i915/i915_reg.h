@@ -392,6 +392,8 @@
 #define _DPIO_DATA_LANE3		0x2820
 #define DPIO_DATA_LANE_A(pipe) _PIPE(pipe, _DPIO_DATA_LANE0, _DPIO_DATA_LANE2)
 #define DPIO_DATA_LANE_B(pipe) _PIPE(pipe, _DPIO_DATA_LANE1, _DPIO_DATA_LANE3)
+#define DPIO_DATA_CHANNEL1              0x8220
+#define DPIO_DATA_CHANNEL2              0x8420
 
 /*
  * Fence registers
@@ -931,6 +933,7 @@
 #define   DPLL_FPA01_P1_POST_DIV_MASK_PINEVIEW	0x00ff8000 /* Pineview */
 #define   DPLL_LOCK_VLV			(1<<15)
 #define   DPLL_INTEGRATED_CLOCK_VLV	(1<<13)
+#define	  DPLL_INTEGRATED_CRI_CLK_VLV	(1<<14)
 
 #define SRX_INDEX		0x3c4
 #define SRX_DATA		0x3c5

@@ -70,7 +70,9 @@
 #include "device_libs/platform_ov5640.h"
 #include "device_libs/platform_imx175.h"
 #include "device_libs/platform_imx135.h"
+#include "device_libs/platform_s5k8aay.h"
 #include "device_libs/platform_ov9724.h"
+#include "device_libs/platform_ov2722.h"
 #include "device_libs/platform_lm3559.h"
 #include "device_libs/platform_a1026.h"
 #include "device_libs/platform_s3202.h"
@@ -184,7 +186,11 @@ struct devs_id __initconst device_ids[] = {
 					&intel_register_i2c_camera_device},
 	{"imx135", SFI_DEV_TYPE_I2C, 0, &imx135_platform_data,
 					&intel_register_i2c_camera_device},
+	{"s5k8aay", SFI_DEV_TYPE_I2C, 0, &s5k8aay_platform_data,
+					&intel_register_i2c_camera_device},
 	{"ov9724", SFI_DEV_TYPE_I2C, 0, &ov9724_platform_data,
+					&intel_register_i2c_camera_device},
+	{"ov2722", SFI_DEV_TYPE_I2C, 0, &ov2722_platform_data,
 					&intel_register_i2c_camera_device},
 	{"lm3559", SFI_DEV_TYPE_I2C, 0, &lm3559_platform_data_func,
 					&intel_register_i2c_camera_device},
@@ -224,7 +230,7 @@ struct devs_id __initconst device_ids[] = {
 	{"als", SFI_DEV_TYPE_I2C, 0, &ltr502als_platform_data, NULL},
 	{"bq24261_charger", SFI_DEV_TYPE_I2C, 1, &bq24261_platform_data, NULL},
 	{"lm49453_codec", SFI_DEV_TYPE_I2C, 1, &no_platform_data, NULL},
-
+	{"dw9719", SFI_DEV_TYPE_I2C, 1, &no_platform_data, NULL},
 	/* Modem */
 #ifndef CONFIG_HSI_NO_MODEM
 	{"hsi_ifx_modem", SFI_DEV_TYPE_HSI, 0, &hsi_modem_platform_data, NULL},

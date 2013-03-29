@@ -31,9 +31,10 @@
 
 #include "vsp.h"
 
-#define FW_SZ (800 * 1024)
+#define FW_SZ (2 * 800 * 1024)
 
 #define FW_NAME "vsp_VPP_sle.bin"
+#define FW_VP8_NAME "vsp_VP8_sle.bin"
 
 static inline unsigned int vsp_set_firmware(struct drm_psb_private *dev_priv,
 					    unsigned int processor);
@@ -88,6 +89,10 @@ int vsp_init(struct drm_device *dev)
 	vsp_priv->current_sequence = 0;
 	vsp_priv->vsp_state = VSP_STATE_DOWN;
 	vsp_priv->dev = dev;
+
+	/* for vp8 */
+	vsp_priv->wr = 0;
+	vsp_priv->rd = 0;
 
 	dev_priv->vsp_private = vsp_priv;
 
@@ -295,16 +300,22 @@ int vsp_init_fw(struct drm_device *dev)
 	VSP_DEBUG("read firmware into buffer\n");
 
 	/* read firmware img */
-	ret = request_firmware(&raw, FW_NAME, &dev->pdev->dev);
+	if (vsp_priv->fw_type == Vss_Sys_STATE_BUF_COMMAND) {
+		VSP_DEBUG("load vp8 fw\n");
+		ret = request_firmware(&raw, FW_VP8_NAME, &dev->pdev->dev);
+	} else {
+		VSP_DEBUG("load vpp fw\n");
+		ret = request_firmware(&raw, FW_NAME, &dev->pdev->dev);
+	}
+
 	if (ret < 0) {
-		DRM_ERROR("VSP: %s request_firmware failed: reason %d\n",
-			  FW_NAME, ret);
+		DRM_ERROR("VSP: request_firmware failed: reason %d\n", ret);
 		return -1;
 	}
 
 	if (raw->size < sizeof(struct vsp_secure_boot_header)) {
 		DRM_ERROR("VSP: %s is not a correct firmware (size %d)\n",
-			  FW_NAME, raw->size);
+				FW_NAME, raw->size);
 		ret = -1;
 		goto out;
 	}

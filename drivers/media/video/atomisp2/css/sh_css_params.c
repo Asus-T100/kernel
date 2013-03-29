@@ -5158,7 +5158,8 @@ void sh_css_update_isp_params_to_ddr(
 {
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_update_isp_params_to_ddr() enter:\n");
 
-	if (SH_CSS_PREVENT_UNINIT_READS) {
+#if SH_CSS_PREVENT_UNINIT_READS
+	{
 		/* ispparm struct is read with DMA which reads
 		 * multiples of the DDR word with (32 bytes):
 		 * So we pad with zeroes to prevent warnings in csim.
@@ -5175,6 +5176,7 @@ void sh_css_update_isp_params_to_ddr(
 				sizeof(struct sh_css_isp_params);
 		mmgr_clear(pad_ptr, padding_bytes);
 	}
+#endif
 	mmgr_store(ddr_ptr,
 	     &isp_parameters,
 	     sizeof(struct sh_css_isp_params));
@@ -5292,7 +5294,6 @@ sh_css_param_update_isp_params(bool commit)
 		struct sh_css_ddr_address_map *cur_map;
 		struct sh_css_ddr_address_map_size *cur_map_size;
 		struct sh_css_ddr_address_map tmp_map;
-		struct sh_css_ddr_address_map_size tmp_map_size;
 		struct sh_css_pipeline *pipeline;
 		struct sh_css_pipeline_stage *stage;
 		unsigned int thread_id;
@@ -5343,7 +5344,6 @@ sh_css_param_update_isp_params(bool commit)
 		err = ref_sh_css_ddr_address_map(
 					cur_map,
 					&tmp_map);
-		tmp_map_size = *cur_map_size;
 		/* now write the copy to ddr */
 		write_sh_css_address_map_to_ddr(&tmp_map, &cpy);
 
@@ -5448,7 +5448,9 @@ assert(ddr_map_size != NULL);
 		if (fpn_table_changed || buff_realloced) {
 			if (isp_parameters.fpn_enabled) {
 				store_fpntbl(ddr_map->fpn_tbl);
-			} else if (SH_CSS_PREVENT_UNINIT_READS) {
+			}
+#if SH_CSS_PREVENT_UNINIT_READS
+			else {
 				hrt_vaddress ptr =
 					(hrt_vaddress)ddr_map->fpn_tbl;
 				/* prevent warnings when reading fpn table
@@ -5458,6 +5460,7 @@ assert(ddr_map_size != NULL);
 				/* MW: fpn_tbl_size*sizeof(whatever)? */
 				mmgr_clear(ptr, ddr_map_size->fpn_tbl);
 			}
+#endif
 		}
 	}
 	if (binary->info->enable.sc) {

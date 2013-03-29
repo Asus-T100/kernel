@@ -507,11 +507,13 @@ PVR_MOD_STATIC int PVRSRVDriverSuspend(LDM_DEV *pDevice, pm_message_t state)
 
 		if (PVRSRVSetPowerStateKM(PVRSRV_SYS_POWER_STATE_OFF, IMG_TRUE) == PVRSRV_OK)
 		{
+			PVR_DPF((PVR_DBG_ERROR, "RGX is now OFF.\n"));
 			/* The bridge mutex will be held until we resume */
 			bDriverIsSuspended = IMG_TRUE;
 		}
 		else
 		{
+			PVR_DPF((PVR_DBG_ERROR, "failed to turn off RGX.\n"));
 			LinuxUnLockMutex(&gPVRSRVLock);
 			res = -EINVAL;
 		}
@@ -557,11 +559,13 @@ PVR_MOD_STATIC int PVRSRVDriverResume(LDM_DEV *pDevice)
 	{
 		if (PVRSRVSetPowerStateKM(PVRSRV_SYS_POWER_STATE_ON, IMG_TRUE) == PVRSRV_OK)
 		{
+			PVR_DPF((PVR_DBG_ERROR, "RGX is now ON.\n"));
 			bDriverIsSuspended = IMG_FALSE;
 			LinuxUnLockMutex(&gPVRSRVLock);
 		}
 		else
 		{
+			PVR_DPF((PVR_DBG_ERROR, "failed to turn On RGX.\n"));
 			/* The bridge mutex is not released on failure */
 			res = -EINVAL;
 		}
@@ -1131,3 +1135,25 @@ static void __exit PVRCore_Cleanup(void)
 module_init(PVRCore_Init);
 module_exit(PVRCore_Cleanup);
 #endif
+
+/*!
+******************************************************************************
+
+ @Function		PVRSRVRGXSetPowerState
+
+ @ input ePVRState = 1 to turn on, 0 to turn off,
+
+ @Description
+
+*****************************************************************************/
+int PVRSRVRGXSetPowerState(struct drm_device *dev, int ePVRState)
+{
+	PVRSRV_ERROR eError = PVRSRV_OK;
+
+	eError = PVRSRVSetPowerStateKM(ePVRState, IMG_FALSE);
+
+	if (eError != PVRSRV_OK)
+		return 0;
+
+	return 1;
+}

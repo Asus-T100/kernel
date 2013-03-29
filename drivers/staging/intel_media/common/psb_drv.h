@@ -982,6 +982,7 @@ struct drm_psb_private {
 	/*hdmi connected status */
 	bool bhdmiconnected;
 	bool dpms_on_off;
+	bool bhdmi_enable;
 	struct workqueue_struct *hpd_detect;
 	pfn_screen_event_handler pvr_screen_event_handler;
 	struct mutex dpms_mutex;
@@ -997,8 +998,7 @@ struct drm_psb_private {
 	/* overlay setting lock*/
 	struct mutex overlay_lock;
 	struct mutex vsync_lock;
-	uint32_t overlay_wait;
-	uint32_t overlay_fliped;
+
 	int brightness_adjusted;
 
 	/*

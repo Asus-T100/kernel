@@ -35,6 +35,16 @@ static struct regulator *vprog1_reg;
 static int camera_vprog1_on;  
 #endif  
 
+static int is_victoriabay(void)
+{
+	return (INTEL_MID_BOARD(2, PHONE, CLVTP, RHB, PRO) ||
+		INTEL_MID_BOARD(2, PHONE, CLVTP, RHB, ENG) ||
+		INTEL_MID_BOARD(2, PHONE, CLVTP, VB, PRO) ||
+		INTEL_MID_BOARD(2, PHONE, CLVTP, VB, ENG)) &&
+		(SPID_HARDWARE_ID(CLVTP, PHONE, VB, PR1A) ||
+		 SPID_HARDWARE_ID(CLVTP, PHONE, VB, PR1B));
+}
+
 /*
  * MRFLD VV primary camera sensor - IMX135 platform data
  */
@@ -87,7 +97,7 @@ static int imx135_power_ctrl(struct v4l2_subdev *sd, int flag)
 			}
 
 		}
-		if (!camera_vprog1_on) {
+		if (vprog1_reg && !camera_vprog1_on) {
 			camera_vprog1_on = 1;
 			reg_err = regulator_enable(vprog1_reg);
 			if (reg_err) {
@@ -96,14 +106,17 @@ static int imx135_power_ctrl(struct v4l2_subdev *sd, int flag)
 			}
 
 		}
-		if (camera_power < 0) {
-			reg_err = camera_sensor_gpio(-1, GP_CAMERA_1_POWER_DOWN,
-						GPIOF_DIR_OUT, 1);
-			if (reg_err < 0)
-				return reg_err;
-			camera_power = reg_err;
+		if (!is_victoriabay()) {
+			if (camera_power < 0) {
+				reg_err = camera_sensor_gpio(-1,
+					GP_CAMERA_1_POWER_DOWN,
+					GPIOF_DIR_OUT, 1);
+				if (reg_err < 0)
+					return reg_err;
+				camera_power = reg_err;
+			}
+			gpio_set_value(camera_power, 1);
 		}
-		gpio_set_value(camera_power, 1);
 		/* min 250us -Initializing time of silicon */
 		usleep_range(250, 300);
 #else
@@ -123,7 +136,7 @@ static int imx135_power_ctrl(struct v4l2_subdev *sd, int flag)
 				return reg_err;
 			}
 		}
-		if (camera_vprog1_on) {
+		if (vprog1_reg && camera_vprog1_on) {
 			camera_vprog1_on = 0;
 
 			reg_err = regulator_disable(vprog1_reg);
@@ -150,17 +163,19 @@ static int imx135_platform_init(struct i2c_client *client)
 		dev_err(&client->dev, "regulator_get failed\n");
 		return PTR_ERR(vemmc1_reg);
 	}
-	vprog1_reg = regulator_get(&client->dev, "vprog1");
-	if (IS_ERR(vprog1_reg)) {
-		dev_err(&client->dev, "regulator_get failed\n");
-		return PTR_ERR(vprog1_reg);
+	if (!is_victoriabay()) {
+		vprog1_reg = regulator_get(&client->dev, "vprog1");
+		if (IS_ERR(vprog1_reg)) {
+			dev_err(&client->dev, "regulator_get failed\n");
+			return PTR_ERR(vprog1_reg);
+		}
+		ret = regulator_set_voltage(vprog1_reg, VPROG1_VAL, VPROG1_VAL);
+		if (ret) {
+			dev_err(&client->dev, "regulator voltage set failed\n");
+			regulator_put(vprog1_reg);
+		}
 	}
-	
-	ret = regulator_set_voltage(vprog1_reg, VPROG1_VAL, VPROG1_VAL);
-	if (ret) {
-		dev_err(&client->dev, "regulator voltage set failed\n");
-		regulator_put(vprog1_reg);
-	}
+
 	return 0;
 }
 

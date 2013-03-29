@@ -120,10 +120,12 @@ sh_css_load_blob(const unsigned char *blob, unsigned size)
 	/* this will allocate memory aligned to a DDR word boundary which
 	   is required for the CSS DMA to read the instructions. */
 	mmgr_store(target_addr, blob, size);
-	if (SH_CSS_PREVENT_UNINIT_READS) {
+#if SH_CSS_PREVENT_UNINIT_READS
+	{
 		unsigned padded_size = CEIL_MUL(size, HIVE_ISP_DDR_WORD_BYTES);
 		mmgr_clear(target_addr + size, padded_size - size);
 	}
+#endif
 	return target_addr;
 }
 

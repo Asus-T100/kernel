@@ -21,6 +21,13 @@
 #ifndef __CMOS_OSNIB_ILB_H
 #define __CMOS_OSNIB_ILB_H
 
+#include <linux/kobject.h>
+#include <linux/sysfs.h>
+#include <linux/err.h>
+#include <linux/platform_device.h>
+#include <linux/module.h>
+#include <linux/mc146818rtc.h>
+#
 /* Size (bytes) of Intel Debug */
 #define OSNIB_DEBUG_SIZE	16
 
@@ -29,12 +36,16 @@
 
 #define CMOS_OSNIB_BASE_ADDR	0x10
 
-/* OSNIB allocation. */
+/* fw_update is one of the os_flags attribute */
+#define OSNIB_FW_UPDATE_BIT 1
+
+/*
+ * OSNIB allocation.
+ *
+*/
+
 struct cmos_osnib {
-	u8 magic_1;
-	u8 magic_2;
-	u8 magic_3;
-	u8 magic_4;
+	u8 magic[4];
 	u8 version_major;
 	u8 version_minor;
 	u8 header_reserved1;
@@ -42,20 +53,16 @@ struct cmos_osnib {
 	u8 intel_area_size;
 	u8 oem_area_size;
 	u8 boot_flow_type;
-	unsigned wdt_counter:4;
-	unsigned reserved2:1;
-	unsigned pmc_wdt:1;
-	unsigned security_wdt:1;
-	unsigned kernel_wdt:1;
+	u8 watchdog_flags;
 	u8 wake_source;
 	u8 debug[OSNIB_DEBUG_SIZE];
 	u8 target_mode_attr;
-	unsigned reserved3:6;
-	unsigned fw_update:1;
-	unsigned rtc_alarm_charger:1;
+	u8 os_flags;
 	u8 checksum;
-	u8 oem_reserved[OSNIB_OEM_RSVD_SIZE];     /* OEM RESERVED   */
+	u8 oem_reserved[OSNIB_OEM_RSVD_SIZE];
 };
+
+
 
 int intel_mid_ilb_read_osnib_rr(u8 *rr);
 int intel_mid_ilb_write_osnib_rr(u8 rr);

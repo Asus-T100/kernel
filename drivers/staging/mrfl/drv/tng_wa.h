@@ -32,7 +32,9 @@
 
 #define A0_WORKAROUNDS			1	/* 1 to enable */
 
+extern struct drm_device *gpDrmDevice;
+
 /* Apply the A0 Workaround */
-void apply_A0_workarounds(int islands, int pre_po, int new_state);
+void apply_A0_workarounds(int islands, int pre_po);
 
 #endif	/* _TNG_WORKAROUNDS_H_ */

@@ -393,8 +393,7 @@ static const struct sdhci_pci_fixes sdhci_intel_mrst_hc1_hc2 = {
 #define ENCTRL0_OFF		0x10
 #define ENCTRL1_OFF		0x11
 
-static int intel_mfld_clv_sd_suspend(struct sdhci_pci_chip *chip,
-		pm_message_t state)
+static int intel_mfld_clv_sd_suspend(struct sdhci_pci_chip *chip)
 {
 	int err, i;
 	u16 addr;
@@ -419,42 +418,73 @@ static int intel_mfld_clv_sd_suspend(struct sdhci_pci_chip *chip,
 	err = intel_scu_ipc_read_shim(&chip->enctrl0_orig,
 			STORAGESTIO_FLISNUM, ENCTRL0_OFF);
 	if (err) {
-		pr_err("SDHCI device 0x%4X: ENCTRL0 read failed\n",
-				chip->pdev->device);
-		return err;
+		pr_err("SDHCI device %04X: ENCTRL0 read failed, err %d\n",
+				chip->pdev->device, err);
+		chip->enctrl0_orig = ENCTRL0_ISOLATE;
+		chip->enctrl1_orig = ENCTRL1_ISOLATE;
+		/*
+		 * stop to shut down VCCSDIO, since we cannot recover
+		 * it.
+		 * this should not block system entering S3
+		 */
+		return 0;
 	}
 	err = intel_scu_ipc_read_shim(&chip->enctrl1_orig,
 			STORAGESTIO_FLISNUM, ENCTRL1_OFF);
 	if (err) {
-		pr_err("SDHCI device 0x%4X: ENCTRL1 read failed\n",
-				chip->pdev->device);
-		return err;
+		pr_err("SDHCI device %04X: ENCTRL1 read failed, err %d\n",
+				chip->pdev->device, err);
+		chip->enctrl0_orig = ENCTRL0_ISOLATE;
+		chip->enctrl1_orig = ENCTRL1_ISOLATE;
+		/*
+		 * stop to shut down VCCSDIO, since we cannot recover
+		 * it.
+		 * this should not block system entering S3
+		 */
+		return 0;
 	}
 
 	/* isolate shim */
 	err = intel_scu_ipc_write_shim(ENCTRL0_ISOLATE,
 			STORAGESTIO_FLISNUM, ENCTRL0_OFF);
 	if (err) {
-		pr_err("SDHCI device 0x%4X: ENCTRL0 ISOLATE failed\n",
-				chip->pdev->device);
-		return err;
+		pr_err("SDHCI device %04X: ENCTRL0 ISOLATE failed, err %d\n",
+				chip->pdev->device, err);
+		/*
+		 * stop to shut down VCCSDIO. Without isolate shim, the power
+		 * may have leak if turn off VCCSDIO.
+		 * during S3 resuming, shim and VCCSDIO will be recofigured
+		 * this should not block system entering S3
+		 */
+		return 0;
 	}
 
 	err = intel_scu_ipc_write_shim(ENCTRL1_ISOLATE,
 			STORAGESTIO_FLISNUM, ENCTRL1_OFF);
 	if (err) {
-		pr_err("SDHCI device 0x%4X: ENCTRL1 ISOLATE failed\n",
-				chip->pdev->device);
-		return err;
+		pr_err("SDHCI device %04X: ENCTRL1 ISOLATE failed, err %d\n",
+				chip->pdev->device, err);
+		/*
+		 * stop to shut down VCCSDIO. Without isolate shim, the power
+		 * may have leak if turn off VCCSDIO.
+		 * during S3 resuming, shim and VCCSDIO will be recofigured
+		 * this should not block system entering S3
+		 */
+		return 0;
 	}
 
 	addr = VCCSDIO_ADDR;
 	data = VCCSDIO_OFF;
 	err = intel_scu_ipc_writev(&addr, &data, 1);
-	if (err)
-		pr_err("SDHCI device 0x%4X: VCCSDIO turn off failed\n",
-				chip->pdev->device);
-	return err;
+	if (err) {
+		pr_err("SDHCI device %04X: VCCSDIO turn off failed, err %d\n",
+				chip->pdev->device, err);
+		/*
+		 * during S3 resuming, VCCSDIO will be recofigured
+		 * this should not block system entering S3.
+		 */
+	}
+	return 0;
 }
 
 static int intel_mfld_clv_sd_resume(struct sdhci_pci_chip *chip)
@@ -483,27 +513,42 @@ static int intel_mfld_clv_sd_resume(struct sdhci_pci_chip *chip)
 	data = VCCSDIO_NORMAL;
 	err = intel_scu_ipc_writev(&addr, &data, 1);
 	if (err) {
-		pr_err("SDHCI device 0x%4X: VCCSDIO turn on failed\n",
-				chip->pdev->device);
-		return err;
+		pr_err("SDHCI device %04X: VCCSDIO turn on failed, err %d\n",
+				chip->pdev->device, err);
+		/*
+		 * VCCSDIO trun on failed. This may impact the SD card
+		 * init and the read/write functions. We just report a
+		 * warning, and go on to have a try. Anyway, SD driver
+		 * can encounter error if powering up is failed
+		 */
+		WARN_ON(err);
 	}
+
+	if (chip->enctrl0_orig == ENCTRL0_ISOLATE &&
+			chip->enctrl1_orig == ENCTRL1_ISOLATE)
+		/* means we needn't to reconfigure the shim */
+		return 0;
 
 	/* reconnect shim */
 	err = intel_scu_ipc_write_shim(chip->enctrl0_orig,
 			STORAGESTIO_FLISNUM, ENCTRL0_OFF);
 	if (err) {
-		pr_err("SDHCI device 0x%4X: ENCTRL0 CONNECT shim failed\n",
-				chip->pdev->device);
-		return err;
+		pr_err("SDHCI device %04X: ENCTRL0 CONNECT shim failed, err %d\n",
+				chip->pdev->device, err);
+		/* keep on setting enctrl1, but report a waring */
+		WARN_ON(err);
 	}
 
 	err = intel_scu_ipc_write_shim(chip->enctrl1_orig,
 			STORAGESTIO_FLISNUM, ENCTRL1_OFF);
-	if (err)
-		pr_err("SDHCI device 0x%4X: ENCTRL1 CONNECT shim failed\n",
-				chip->pdev->device);
+	if (err) {
+		pr_err("SDHCI device %04X: ENCTRL1 CONNECT shim failed, err %d\n",
+				chip->pdev->device, err);
+		/* leave this error to driver, but report a warning */
+		WARN_ON(err);
+	}
 
-	return err;
+	return 0;
 }
 
 static const struct sdhci_pci_fixes sdhci_intel_mfd_sd = {
@@ -1962,6 +2007,22 @@ err:
 	return ret;
 }
 
+static void __devexit sdhci_pci_shutdown(struct pci_dev *pdev)
+{
+	int i;
+	struct sdhci_pci_chip *chip;
+
+	chip = pci_get_drvdata(pdev);
+
+	if (chip) {
+		if (chip->allow_runtime_pm) {
+			pm_runtime_get_sync(&pdev->dev);
+			pm_runtime_disable(&pdev->dev);
+			pm_runtime_put_noidle(&pdev->dev);
+		}
+	}
+}
+
 static void __devexit sdhci_pci_remove(struct pci_dev *pdev)
 {
 	int i;
@@ -1988,6 +2049,7 @@ static struct pci_driver sdhci_driver = {
 	.id_table =	pci_ids,
 	.probe =	sdhci_pci_probe,
 	.remove =	__devexit_p(sdhci_pci_remove),
+	.shutdown =	__devexit_p(sdhci_pci_shutdown),
 	.driver =	{
 		.pm =   &sdhci_pci_pm_ops
 	},

@@ -393,19 +393,19 @@ const struct atomisp_format_bridge atomisp_output_fmts[] = {
 	}, {
 		.pixelformat = V4L2_PIX_FMT_SGBRG12,
 		.depth = 16,
-		.mbus_code = V4L2_MBUS_FMT_SBGGR12_1X12,
+		.mbus_code = V4L2_MBUS_FMT_SGBRG12_1X12,
 		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
 		.description = "Bayer 12"
 	}, {
 		.pixelformat = V4L2_PIX_FMT_SGRBG12,
 		.depth = 16,
-		.mbus_code = V4L2_MBUS_FMT_SBGGR12_1X12,
+		.mbus_code = V4L2_MBUS_FMT_SGRBG12_1X12,
 		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
 		.description = "Bayer 12"
 	}, {
 		.pixelformat = V4L2_PIX_FMT_SRGGB12,
 		.depth = 16,
-		.mbus_code = V4L2_MBUS_FMT_SBGGR12_1X12,
+		.mbus_code = V4L2_MBUS_FMT_SRGGB12_1X12,
 		.sh_fmt = SH_CSS_FRAME_FORMAT_RAW,
 		.description = "Bayer 12"
 	}, {
@@ -646,19 +646,16 @@ static int atomisp_s_input(struct file *file, void *fh, unsigned int input)
 	}
 
 	/* powe on the new sensor */
-	if (!isp->sw_contex.file_input) {
-		ret = v4l2_subdev_call(isp->inputs[input].camera,
-				       core, s_power, 1);
-		if (ret) {
-			v4l2_err(&atomisp_dev,
-				    "Failed to power-on sensor\n");
-			ret = -EINVAL;
-			goto error;
-		}
-		if (isp->inputs[input].motor)
-			ret = v4l2_subdev_call(isp->inputs[input].motor, core,
-					       init, 1);
+	ret = v4l2_subdev_call(isp->inputs[input].camera,
+			       core, s_power, 1);
+	if (ret) {
+		v4l2_err(&atomisp_dev, "Failed to power-on sensor\n");
+		goto error;
 	}
+
+	if (!isp->sw_contex.file_input && isp->inputs[input].motor)
+		ret = v4l2_subdev_call(isp->inputs[input].motor, core,
+				       init, 1);
 
 	isp->input_curr = input;
 	mutex_unlock(&isp->mutex);
@@ -1021,7 +1018,6 @@ static int atomisp_qbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 	struct video_device *vdev = video_devdata(file);
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
-	unsigned long userptr = buf->m.userptr;
 	struct videobuf_buffer *vb;
 	struct videobuf_vmalloc_memory *vm_mem;
 	struct sh_css_frame_info frame_info;
@@ -1066,7 +1062,7 @@ static int atomisp_qbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 		length = vb->bsize;
 		pgnr = (length + (PAGE_SIZE - 1)) >> PAGE_SHIFT;
 
-		if ((vb->baddr == userptr) && (vm_mem->vaddr))
+		if (vb->baddr == buf->m.userptr && vm_mem->vaddr)
 			goto done;
 
 		if (__get_css_frame_info(isp, pipe->pipe_type,
@@ -1082,7 +1078,8 @@ static int atomisp_qbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 #else
 		attributes.type = HRT_USR_PTR;
 #endif
-		ret = sh_css_frame_map(&handle, &frame_info, (void *)userptr,
+		ret = sh_css_frame_map(&handle, &frame_info,
+				       (void *)buf->m.userptr,
 				       0, &attributes);
 		if (ret != sh_css_success) {
 			dev_err(isp->dev, "Failed to map user buffer\n");
@@ -1369,7 +1366,11 @@ static int atomisp_streamon(struct file *file, void *fh,
 	atomic_set(&isp->sequence, -1);
 	atomic_set(&isp->sequence_temp, -1);
 	atomic_set(&isp->wdt_count, 0);
-	mod_timer(&isp->wdt, jiffies + ATOMISP_ISP_TIMEOUT_DURATION);
+	if (isp->sw_contex.file_input)
+		isp->wdt_duration = ATOMISP_ISP_FILE_TIMEOUT_DURATION;
+	else
+		isp->wdt_duration = ATOMISP_ISP_TIMEOUT_DURATION;
+	mod_timer(&isp->wdt, jiffies + isp->wdt_duration);
 	isp->fr_status = ATOMISP_FRAME_STATUS_OK;
 	isp->sw_contex.invalid_frame = false;
 	isp->params.dis_proj_data_valid = false;
@@ -1396,17 +1397,19 @@ start_sensor:
 
 		if (IS_MRFLD &&
 			atomisp_freq_scaling(isp, ATOMISP_DFS_MODE_AUTO) < 0)
-				v4l2_warn(&atomisp_dev, "dfs failed! image capture might fail due to low freq.");
-		/*
-		 * stream on the sensor, power on is called before
-		 * work queue start
-		 */
-		ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
-				       video, s_stream, 1);
-		if (ret) {
-			atomisp_reset(isp);
-			ret = -EINVAL;
-		}
+			dev_dbg(isp->dev, "dfs failed!\n");
+	} else {
+		if (IS_MRFLD &&
+			atomisp_freq_scaling(isp, ATOMISP_DFS_MODE_MAX) < 0)
+			dev_dbg(isp->dev, "dfs failed!\n");
+	}
+
+	/* stream on the sensor */
+	ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
+			       video, s_stream, 1);
+	if (ret) {
+		atomisp_reset(isp);
+		ret = -EINVAL;
 	}
 
 out:
@@ -1479,6 +1482,15 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 		mutex_unlock(&isp->mutex);
 		del_timer_sync(&isp->wdt);
 		cancel_work_sync(&isp->wdt_work);
+
+		/*
+		 * must stop sending pixels into GP_FIFO before stop
+		 * the pipeline.
+		 */
+		if (isp->sw_contex.file_input)
+			v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
+					video, s_stream, 0);
+
 		mutex_lock(&isp->mutex);
 		atomisp_acc_unload_extensions(isp);
 	}

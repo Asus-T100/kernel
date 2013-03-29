@@ -161,7 +161,7 @@ static struct atomisp_freq_scaling_rule dfs_rules[] = {
 		.width = ISP_FREQ_RULE_ANY,
 		.height = ISP_FREQ_RULE_ANY,
 		.fps = ISP_FREQ_RULE_ANY,
-		.isp_freq = ISP_FREQ_320MHZ,
+		.isp_freq = ISP_FREQ_400MHZ,
 		.run_mode = ATOMISP_RUN_MODE_STILL_CAPTURE,
 	},
 	{
@@ -272,6 +272,11 @@ int atomisp_freq_scaling(struct atomisp_device *isp, enum atomisp_dfs_mode mode)
 		goto done;
 	}
 
+	if (mode == ATOMISP_DFS_MODE_MAX) {
+		new_freq = ISP_FREQ_400MHZ;
+		goto done;
+	}
+
 	fps = atomisp_get_sensor_fps(isp);
 	if (fps == 0)
 		return -EINVAL;
@@ -280,6 +285,13 @@ int atomisp_freq_scaling(struct atomisp_device *isp, enum atomisp_dfs_mode mode)
 	curr_rules.height = asd->fmt[asd->capture_pad].fmt.height;
 	curr_rules.fps = fps;
 	curr_rules.run_mode = isp->isp_subdev.run_mode->val;
+	/*
+	 * For continuous vf mode, we need to make the capture setting applied
+	 * since preview mode, because there is no chance to do this when
+	 * starting image capture.
+	 */
+	if (isp->params.continuous_vf)
+		curr_rules.run_mode = ATOMISP_RUN_MODE_STILL_CAPTURE;
 
 	/* search for the target frequency by looping freq rules*/
 	for (i = 0; i < ISP_FREQ_RULE_MAX; i++) {
@@ -532,7 +544,7 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 	}
 
 	atomic_set(&isp->wdt_count, 0);
-	mod_timer(&isp->wdt, jiffies + ATOMISP_ISP_TIMEOUT_DURATION);
+	mod_timer(&isp->wdt, jiffies + isp->wdt_duration);
 
 	spin_unlock_irqrestore(&isp->lock, flags);
 
@@ -1017,14 +1029,12 @@ void atomisp_wdt_work(struct work_struct *work)
 		 * i.e hrt_isp_css_irq_sw_1 or hrt_isp_css_irq_sw_2?
 		 */
 		/* stream off sensor */
-		if (!isp->sw_contex.file_input) {
-			ret = v4l2_subdev_call(
-				isp->inputs[isp->input_curr].camera, video,
-				s_stream, 0);
-			if (ret)
-				dev_warn(isp->dev,
-					 "can't stop streaming on sensor!\n");
-		}
+		ret = v4l2_subdev_call(
+			isp->inputs[isp->input_curr].camera, video,
+			s_stream, 0);
+		if (ret)
+			dev_warn(isp->dev,
+				 "can't stop streaming on sensor!\n");
 
 		/* reset ISP and restore its state */
 		isp->isp_timeout = true;
@@ -1042,13 +1052,14 @@ void atomisp_wdt_work(struct work_struct *work)
 				SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF, true);
 
 			atomisp_set_term_en_count(isp);
-			ret = v4l2_subdev_call(
-				isp->inputs[isp->input_curr].camera, video,
-				s_stream, 1);
-			if (ret)
-				dev_warn(isp->dev,
-					 "can't start streaming on sensor!\n");
 		}
+
+		ret = v4l2_subdev_call(
+			isp->inputs[isp->input_curr].camera, video,
+			s_stream, 1);
+		if (ret)
+			dev_warn(isp->dev,
+				 "can't start streaming on sensor!\n");
 
 		if (isp->params.continuous_vf &&
 		    isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO &&
@@ -1064,7 +1075,7 @@ void atomisp_wdt_work(struct work_struct *work)
 		atomisp_flush_bufs_and_wakeup(isp);
 		dev_err(isp->dev, "timeout recovery handling done\n");
 
-		mod_timer(&isp->wdt, jiffies + ATOMISP_ISP_TIMEOUT_DURATION);
+		mod_timer(&isp->wdt, jiffies + isp->wdt_duration);
 	}
 
 	mutex_unlock(&isp->mutex);
@@ -1186,6 +1197,12 @@ irqreturn_t atomisp_isr_thread(int irq, void *isp_ptr)
 
 out:
 	mutex_unlock(&isp->mutex);
+
+	if (isp->streaming == ATOMISP_DEVICE_STREAMING_ENABLED
+		&& css_pipe_done
+		&& isp->sw_contex.file_input)
+		v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
+				video, s_stream, 1);
 
 	v4l2_dbg(5, dbg_level, &atomisp_dev, "<%s\n", __func__);
 
@@ -1362,44 +1379,6 @@ int atomisp_is_mbuscode_raw(uint32_t code)
 	BUG_ON(!b);
 
 	return is_pixelformat_raw(b->pixelformat);
-}
-
-static int get_sh_input_format(u32 pixelformat)
-{
-	switch (pixelformat) {
-	case V4L2_PIX_FMT_YUV420:
-		return SH_CSS_INPUT_FORMAT_YUV420_8;
-
-	case V4L2_PIX_FMT_YUV422P:
-		return SH_CSS_INPUT_FORMAT_YUV422_8;
-
-	case V4L2_PIX_FMT_RGB565:
-		return SH_CSS_INPUT_FORMAT_RGB_565;
-
-	case V4L2_PIX_FMT_SBGGR8:
-	case V4L2_PIX_FMT_SGBRG8:
-	case V4L2_PIX_FMT_SGRBG8:
-	case V4L2_PIX_FMT_SRGGB8:
-		return SH_CSS_INPUT_FORMAT_RAW_8;
-
-	case V4L2_PIX_FMT_SBGGR10:
-	case V4L2_PIX_FMT_SGBRG10:
-	case V4L2_PIX_FMT_SGRBG10:
-	case V4L2_PIX_FMT_SRGGB10:
-		return SH_CSS_INPUT_FORMAT_RAW_10;
-
-	case V4L2_PIX_FMT_SBGGR12:
-	case V4L2_PIX_FMT_SGBRG12:
-	case V4L2_PIX_FMT_SGRBG12:
-	case V4L2_PIX_FMT_SRGGB12:
-		return SH_CSS_INPUT_FORMAT_RAW_12;
-
-	case V4L2_PIX_FMT_SBGGR16:
-		return SH_CSS_INPUT_FORMAT_RAW_16;
-
-	default:
-		return -EINVAL;
-	}
 }
 
 /*
@@ -3325,7 +3304,11 @@ static void __enable_continuous_vf(struct atomisp_device *isp, bool enable)
 		sh_css_enable_raw_binning(false);
 		sh_css_input_set_two_pixels_per_clock(false);
 	}
-	sh_css_input_set_mode(SH_CSS_INPUT_MODE_SENSOR);
+
+	if (isp->inputs[isp->input_curr].type != TEST_PATTERN &&
+		isp->inputs[isp->input_curr].type != FILE_INPUT)
+		sh_css_input_set_mode(SH_CSS_INPUT_MODE_SENSOR);
+
 	atomisp_update_run_mode(isp);
 }
 
@@ -3427,8 +3410,11 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 	if (isp->params.continuous_vf) {
 		if (isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO) {
 			__enable_continuous_vf(isp, true);
-			/* enable only if resolution is equal or above 5M */
-			if (width >= 2576 || height >= 1936) {
+			/*
+			 * Enable only if resolution is equal or above 5M,
+			 * Always enable raw_binning on MRFLD.
+			 */
+			if (IS_MRFLD || width >= 2576 || height >= 1936) {
 				sh_css_enable_raw_binning(true);
 				sh_css_input_set_two_pixels_per_clock(false);
 			}
@@ -3773,7 +3759,6 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	 * width or height) bigger than the desired result. */
 	if (isp_sink_crop.width * 9 / 10 < f->fmt.pix.width
 	    || isp_sink_crop.height * 9 / 10 < f->fmt.pix.height
-	    || isp->sw_contex.file_input
 	    || (isp->sw_contex.bypass
 		&& isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO
 		&& isp->isp_subdev.enable_vfpp->val)
@@ -3858,26 +3843,37 @@ int atomisp_set_fmt_file(struct video_device *vdev, struct v4l2_format *f)
 {
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
-	enum sh_css_input_format sh_input_format;
+	struct v4l2_mbus_framefmt ffmt = {0};
+	const struct atomisp_format_bridge *format_bridge;
 	int ret;
 
+	dev_dbg(isp->dev, "setting fmt %ux%u 0x%x for file inject\n",
+		f->fmt.pix.width, f->fmt.pix.height, f->fmt.pix.pixelformat);
 	ret = atomisp_try_fmt_file(isp, f);
-	if (ret)
+	if (ret) {
+		dev_err(isp->dev, "atomisp_try_fmt_file err: %d\n", ret);
 		return ret;
+	}
 
-	sh_input_format = get_sh_input_format(f->fmt.pix.pixelformat);
-	if (sh_input_format == -EINVAL) {
-		dev_info(isp->dev, "Wrong v4l2 format for output\n");
+	format_bridge = atomisp_get_format_bridge(f->fmt.pix.pixelformat);
+	if (format_bridge == NULL) {
+		dev_dbg(isp->dev, "atomisp_get_format_bridge err! fmt:0x%x\n",
+				f->fmt.pix.pixelformat);
 		return -EINVAL;
 	}
 
 	pipe->pix = f->fmt.pix;
-
-	sh_css_input_set_format(sh_input_format);
 	sh_css_input_set_mode(SH_CSS_INPUT_MODE_FIFO);
-	sh_css_input_set_bayer_order(f->fmt.pix.priv);
 	sh_css_input_configure_port(
 		__get_mipi_port(ATOMISP_CAMERA_PORT_PRIMARY), 2, 0xffff4);
+
+	ffmt.width = f->fmt.pix.width;
+	ffmt.height = f->fmt.pix.height;
+	ffmt.code = format_bridge->mbus_code;
+
+	atomisp_subdev_set_ffmt(&isp->isp_subdev.subdev, NULL,
+				V4L2_SUBDEV_FORMAT_ACTIVE,
+				ATOMISP_SUBDEV_PAD_SINK, &ffmt);
 
 	return 0;
 }

@@ -39,7 +39,7 @@
 #endif
 
 #include "psb_intel_reg.h"
-#include "psb_powermgmt.h"
+#include "pwr_mgmt.h"
 
 #include "mdfld_dsi_dbi_dpu.h"
 

@@ -42,7 +42,12 @@
 
 #include <asm/intel_scu_ipc.h>
 #include <linux/usb/dwc_otg3.h>
+
 #define DEV_NAME "bq24261_charger"
+#define DEV_MANUFACTURER "TI"
+#define MODEL_NAME_SIZE 8
+#define DEV_MANUFACTURER_NAME_SIZE 4
+
 #define CHRG_TERM_WORKER_DELAY (30 * HZ)
 
 /* BQ24261 registers */
@@ -83,8 +88,6 @@
 #define BQ24261_HZ_MASK			(0x01)
 #define BQ24261_HZ_ENABLE		(0x01)
 
-#define BQ24261_CD_STATUS_MASK		(0x01 << 3)
-
 #define BQ24261_ICHRG_MASK		(0x1F << 3)
 #define BQ24261_ICHRG_100mA		(0x01 << 3)
 #define BQ24261_ICHRG_200mA		(0x01 << 4)
@@ -98,12 +101,6 @@
 #define BQ24261_ITERM_200mA		(0x01 << 3)
 
 #define BQ24261_VBREG_MASK		(0x3F << 2)
-#define BQ24261_VBREG_20mV		(0x01 << 2)
-#define BQ24261_VBREG_40mV		(0x01 << 3)
-#define BQ24261_VBREG_80mV		(0x01 << 4)
-#define BQ24261_VBREG_160mV		(0x01 << 5)
-#define BQ24261_VBREG_320mV		(0x01 << 6)
-#define BQ24261_VBREG_640mV		(0x01 << 7)
 
 #define BQ24261_INLMT_MASK		(0x03 << 4)
 #define BQ24261_INLMT_100		0x00
@@ -120,6 +117,7 @@
 #define BQ24261_VENDOR			(0x02 << 5)
 #define BQ24261_REV_MASK		(0x07)
 #define BQ24261_REV			(0x02)
+#define BQ24260_REV			(0x01)
 
 #define BQ24261_TS_MASK			(0x01 << 3)
 #define BQ24261_TS_ENABLED		(0x01 << 3)
@@ -132,6 +130,22 @@
 
 #define BQ24261_OVP_MULTIPLIER		1050
 #define BQ24261_MIN_BAT_CV		4200
+
+/* Settings for Voltage / DPPM Register (05) */
+#define BQ24261_VINDPM_MASK		(0x07)
+#define BQ24261_VINDPM_320MV		(0x01 << 2)
+#define BQ24261_VINDPM_160MV		(0x01 << 1)
+#define BQ24261_VINDPM_80MV		(0x01 << 0)
+#define BQ24261_CD_STATUS_MASK		(0x01 << 3)
+#define BQ24261_DPM_EN_MASK		(0x01 << 4)
+#define BQ24261_DPM_EN_FORCE		(0x01 << 4)
+#define BQ24261_LOW_CHG_MASK		(0x01 << 5)
+#define BQ24261_LOW_CHG_EN		(0x01 << 5)
+#define BQ24261_LOW_CHG_DIS		(~BQ24261_LOW_CHG_EN)
+#define BQ24261_DPM_STAT_MASK		(0x01 << 6)
+#define BQ24261_MINSYS_STAT_MASK	(0x01 << 7)
+
+#define BQ24261_MIN_CC			500
 
 u16 bq24261_sfty_tmr[][2] = {
 	{0, BQ24261_SAFETY_TIMER_DISABLED}
@@ -205,39 +219,10 @@ u16 bq24261_cc[][2] = {
 	,
 };
 
-u16 bq24261_cv[][2] = {
-
-	{3500, 0x00}
-	,
-	{3600, BQ24261_VBREG_20mV | BQ24261_VBREG_80mV}
-	,
-	{3700, BQ24261_VBREG_160mV | BQ24261_VBREG_40mV}
-	,
-	{3800,
-	 BQ24261_VBREG_160mV | BQ24261_VBREG_80mV | BQ24261_VBREG_40mV |
-	 BQ24261_VBREG_20mV}
-	,
-	{3900, BQ24261_VBREG_320mV | BQ24261_VBREG_80mV}
-	,
-	{4000, BQ24261_VBREG_320mV | BQ24261_VBREG_160mV | BQ24261_VBREG_20mV}
-	,
-	{4040,
-	 BQ24261_VBREG_320mV | BQ24261_VBREG_160mV | BQ24261_VBREG_40mV |
-	 BQ24261_VBREG_20mV}
-	,
-	{4060, BQ24261_VBREG_320mV | BQ24261_VBREG_160mV | BQ24261_VBREG_80mV}
-	,
-	{4100,
-	 BQ24261_VBREG_320mV | BQ24261_VBREG_160mV | BQ24261_VBREG_80mV |
-	 BQ24261_VBREG_40mV}
-	,
-	{4140, BQ24261_VBREG_640mV}
-	,
-	{4160, BQ24261_VBREG_640mV | BQ24261_VBREG_20mV}
-	,
-	{4200, BQ24261_VBREG_640mV | BQ24261_VBREG_40mV | BQ24261_VBREG_20mV}
-	,
-};
+#define BQ24261_MIN_CV 3500
+#define BQ24261_MAX_CV 4440
+#define BQ24261_CV_DIV 20
+#define BQ24261_CV_BIT_POS 2
 
 static enum power_supply_property bq24261_usb_props[] = {
 	POWER_SUPPLY_PROP_PRESENT,
@@ -255,6 +240,8 @@ static enum power_supply_property bq24261_usb_props[] = {
 	POWER_SUPPLY_PROP_CABLE_TYPE,
 	POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT,
 	POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT_MAX,
+	POWER_SUPPLY_PROP_MODEL_NAME,
+	POWER_SUPPLY_PROP_MANUFACTURER
 };
 
 enum bq24261_chrgr_stat {
@@ -304,6 +291,23 @@ struct bq24261_charger {
 	bool is_vsys_on;
 	bool boost_mode;
 	bool is_hw_chrg_term;
+	char model_name[MODEL_NAME_SIZE];
+	char manufacturer[DEV_MANUFACTURER_NAME_SIZE];
+};
+
+enum bq2426x_model_num {
+	BQ24260 = 0,
+	BQ24261,
+};
+
+struct bq2426x_model {
+	char model_name[MODEL_NAME_SIZE];
+	enum bq2426x_model_num model;
+};
+
+static struct bq2426x_model bq24261_model_name[] = {
+	{ "bq24260", BQ24260 },
+	{ "bq24261", BQ24261 },
 };
 
 struct i2c_client *bq24261_client;
@@ -353,7 +357,12 @@ EXPORT_SYMBOL_GPL(bq24261_cc_to_reg);
 
 void bq24261_cv_to_reg(int cv, u8 *reg_val)
 {
-	return lookup_regval(bq24261_cv, ARRAY_SIZE(bq24261_cv), cv, reg_val);
+	int val;
+
+	val = clamp_t(int, cv, BQ24261_MIN_CV, BQ24261_MAX_CV);
+	*reg_val =
+		(((val - BQ24261_MIN_CV) / BQ24261_CV_DIV)
+			<< BQ24261_CV_BIT_POS);
 }
 EXPORT_SYMBOL_GPL(bq24261_cv_to_reg);
 
@@ -605,14 +614,38 @@ static inline int bq24261_enable_charger(
 static inline int bq24261_set_cc(struct bq24261_charger *chip, int cc)
 {
 	u8 reg_val;
+	int ret;
 
+	dev_dbg(&chip->client->dev, "cc=%d\n", cc);
+	if (chip->pdata->set_cc) {
+		ret = chip->pdata->set_cc(cc);
+		if (unlikely(ret))
+			return ret;
+	}
+
+	if (cc && (cc < BQ24261_MIN_CC)) {
+		dev_dbg(&chip->client->dev, "Set LOW_CHG bit\n");
+		reg_val = BQ24261_LOW_CHG_EN;
+		ret = bq24261_read_modify_reg(chip->client,
+				BQ24261_VINDPM_STAT_ADDR,
+				BQ24261_LOW_CHG_MASK, reg_val);
+	} else {
+		dev_dbg(&chip->client->dev, "Clear LOW_CHG bit\n");
+		reg_val = BQ24261_LOW_CHG_DIS;
+		ret = bq24261_read_modify_reg(chip->client,
+				BQ24261_VINDPM_STAT_ADDR,
+				BQ24261_LOW_CHG_MASK, reg_val);
+	}
+
+	/* Return from here since the cc setting will be done
+	   by platform specific hardware */
 	if (chip->pdata->set_cc)
-		return chip->pdata->set_cc(cc);
+		return ret;
 
 	bq24261_cc_to_reg(cc, &reg_val);
 
 	return bq24261_read_modify_reg(chip->client, BQ24261_TERM_FCC_ADDR,
-				       BQ24261_ICHRG_MASK, reg_val);
+			BQ24261_ICHRG_MASK, reg_val);
 }
 
 static inline int bq24261_set_cv(struct bq24261_charger *chip, int cv)
@@ -962,6 +995,12 @@ static int bq24261_usb_get_property(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT_MAX:
 		val->intval = chip->pdata->num_throttle_states;
+		break;
+	case POWER_SUPPLY_PROP_MODEL_NAME:
+		val->strval = chip->model_name;
+		break;
+	case POWER_SUPPLY_PROP_MANUFACTURER:
+		val->strval = chip->manufacturer;
 		break;
 	default:
 		mutex_unlock(&chip->lock);
@@ -1378,12 +1417,25 @@ static inline int register_otg_notifications(struct bq24261_charger *chip)
 	return 0;
 }
 
+static enum bq2426x_model_num bq24261_get_model(int bq24261_rev_reg)
+{
+	switch (bq24261_rev_reg & BQ24261_REV_MASK) {
+	case BQ24260_REV:
+		return BQ24260;
+	case BQ24261_REV:
+		return BQ24261;
+	default:
+		return -EINVAL;
+	}
+}
+
 static int bq24261_probe(struct i2c_client *client,
 			 const struct i2c_device_id *id)
 {
 	struct i2c_adapter *adapter;
 	struct bq24261_charger *chip;
 	int ret;
+	enum bq2426x_model_num bq24261_rev;
 
 	adapter = to_i2c_adapter(client->dev.parent);
 
@@ -1406,8 +1458,9 @@ static int bq24261_probe(struct i2c_client *client,
 		return ret;
 	}
 
+	bq24261_rev = bq24261_get_model(ret);
 	if (((ret & BQ24261_VENDOR_MASK) != BQ24261_VENDOR) ||
-	    ((ret & BQ24261_REV_MASK) != BQ24261_REV)) {
+		(bq24261_rev < 0)) {
 		dev_err(&client->dev,
 			"Invalid Vendor/Revision number in BQ24261_VENDOR_REV_ADDR: %d",
 			ret);
@@ -1450,6 +1503,12 @@ static int bq24261_probe(struct i2c_client *client,
 	chip->chrgr_stat = BQ24261_CHRGR_STAT_UNKNOWN;
 	chip->chrgr_health = POWER_SUPPLY_HEALTH_UNKNOWN;
 	chip->bat_health = POWER_SUPPLY_HEALTH_GOOD;
+
+	strncpy(chip->model_name,
+		bq24261_model_name[bq24261_rev].model_name,
+		MODEL_NAME_SIZE);
+	strncpy(chip->manufacturer, DEV_MANUFACTURER,
+		DEV_MANUFACTURER_NAME_SIZE);
 
 	mutex_init(&chip->lock);
 	ret = power_supply_register(&client->dev, &chip->psy_usb);

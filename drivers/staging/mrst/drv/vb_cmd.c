@@ -351,6 +351,10 @@ static void ir2e69_set_gpio(int value)
 
 	if (mipi_reset_gpio == 0) {
 		mipi_reset_gpio = get_gpio_by_name("mipi-reset");
+		if (mipi_reset_gpio < 0) {
+			DRM_ERROR("can't get mipi-reset gpio pin\n");
+			return;
+		}
 		gpio_request(mipi_reset_gpio, "mipi_display");
 		gpio_direction_output(mipi_reset_gpio, value);
 	} else

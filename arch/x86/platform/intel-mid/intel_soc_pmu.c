@@ -388,7 +388,6 @@ static irqreturn_t pmu_sc_irq(int irq, void *ignored)
 
 	/* check if interrup pending bit is set, if not ignore interrupt */
 	if (unlikely(!pmu_interrupt_pending())) {
-		pmu_log_pmu_irq(PMU_FAILED, mid_pmu_cxt->interactive_cmd_sent);
 		goto ret_no_clear;
 	}
 
@@ -399,7 +398,6 @@ static irqreturn_t pmu_sc_irq(int irq, void *ignored)
 
 	switch (status) {
 	case INVALID_INT:
-		pmu_log_pmu_irq(status, mid_pmu_cxt->interactive_cmd_sent);
 		goto ret_no_clear;
 
 	case CMD_COMPLETE_INT:
@@ -426,31 +424,20 @@ static irqreturn_t pmu_sc_irq(int irq, void *ignored)
 		BUG();
 		break;
 	}
-	pmu_log_pmu_irq(status, mid_pmu_cxt->interactive_cmd_sent);
 
 	pmu_stat_clear();
 
 	/* clear the interrupt pending bit */
 	pmu_clear_pending_interrupt();
 
-	/*
-	 * In case of interactive command
-	 * let the waiting set_power_state()
-	 * release scu_ready_sem
-	 */
-	if (unlikely(mid_pmu_cxt->interactive_cmd_sent))
-		mid_pmu_cxt->interactive_cmd_sent = false;
+	if (pmu_ops->wakeup)
+		pmu_ops->wakeup();
 
-	else {
-		if (pmu_ops->wakeup)
-			pmu_ops->wakeup();
-
-		if (platform_is(INTEL_ATOM_MFLD) ||
-					platform_is(INTEL_ATOM_CLV)) {
-			mid_pmu_cxt->s0ix_entered = 0;
-			/* S0ix case release it */
-			up(&mid_pmu_cxt->scu_ready_sem);
-		}
+	if (platform_is(INTEL_ATOM_MFLD) ||
+				platform_is(INTEL_ATOM_CLV)) {
+		mid_pmu_cxt->s0ix_entered = 0;
+		/* S0ix case release it */
+		up(&mid_pmu_cxt->scu_ready_sem);
 	}
 
 	ret = IRQ_HANDLED;
@@ -763,10 +750,8 @@ void init_nc_device_states(void)
 * if HSI is enabled.
 * We can choose between Standby/HSI based on enable_stadby 1/0.
 */
-#ifdef CONFIG_BOARD_CTP
 unsigned int enable_standby __read_mostly;
 module_param(enable_standby, uint, 0000);
-#endif
 
 int pmu_set_emmc_to_d0i0_atomic(void)
 {
@@ -1297,8 +1282,6 @@ retry:
 				mid_pmu_cxt->suspend_started);
 		printk(KERN_CRIT "shutdown_started = %d\n",
 				mid_pmu_cxt->shutdown_started);
-		printk(KERN_CRIT "interactive_cmd_sent = %d\n",
-				(int)mid_pmu_cxt->interactive_cmd_sent);
 		printk(KERN_CRIT "camera_off = %d display_off = %d\n",
 				mid_pmu_cxt->camera_off,
 				mid_pmu_cxt->display_off);
@@ -1449,33 +1432,36 @@ static void update_all_lss_states(struct pmu_ss_states *pmu_config)
 	int i;
 	u32 PCIALLDEV_CFG[4] = {0, 0, 0, 0};
 
-	for (i = 0; i < MAX_DEVICES; i++) {
-		int pmu_num = get_mid_pci_pmu_num(i);
-		struct pci_dev *pdev = get_mid_pci_drv(i, 0);
+	if (platform_is(INTEL_ATOM_MFLD) || platform_is(INTEL_ATOM_CLV)) {
+		for (i = 0; i < MAX_DEVICES; i++) {
+			int pmu_num = get_mid_pci_pmu_num(i);
+			struct pci_dev *pdev = get_mid_pci_drv(i, 0);
 
-		if ((pmu_num == PMU_NUM_2) && pdev) {
-			int ss_idx, ss_pos;
-			pci_power_t state;
+			if ((pmu_num == PMU_NUM_2) && pdev) {
+				int ss_idx, ss_pos;
+				pci_power_t state;
 
-			ss_idx = get_mid_pci_ss_idx(i);
-			ss_pos = get_mid_pci_ss_pos(i);
-			state = pdev->current_state;
-			/* the case of device not probed yet: Force D0i3 */
-			if (state == PCI_UNKNOWN)
-				state = pmu_pci_choose_state(pdev);
+				ss_idx = get_mid_pci_ss_idx(i);
+				ss_pos = get_mid_pci_ss_pos(i);
+				state = pdev->current_state;
+				/* The case of device not probed yet:
+				 * Force D0i3 */
+				if (state == PCI_UNKNOWN)
+					state = pmu_pci_choose_state(pdev);
 
-			/* By default its set to '0' hence
-			 * no need to update PCI_D0 state
-			 */
-			state = pmu_pci_get_weakest_state_for_lss(i, pdev,
-								  state);
+				/* By default its set to '0' hence
+				 * no need to update PCI_D0 state
+				 */
+				state = pmu_pci_get_weakest_state_for_lss
+							(i, pdev, state);
 
-			pmu_config->pmu2_states[ss_idx] |=
-			 (pci_to_platform_state(state) <<
-				(ss_pos * BITS_PER_LSS));
+				pmu_config->pmu2_states[ss_idx] |=
+				 (pci_to_platform_state(state) <<
+					(ss_pos * BITS_PER_LSS));
 
-			PCIALLDEV_CFG[ss_idx] |=
-				(D0I3_MASK << (ss_pos * BITS_PER_LSS));
+				PCIALLDEV_CFG[ss_idx] |=
+					(D0I3_MASK << (ss_pos * BITS_PER_LSS));
+			}
 		}
 	}
 
@@ -1551,52 +1537,47 @@ static int pmu_init(void)
 
 	pmu_initialized = true;
 
-	if (platform_is(INTEL_ATOM_MFLD) || platform_is(INTEL_ATOM_CLV)) {
+	/* get the current status of each of the driver
+	 * and update it in SCU
+	 */
+	update_all_lss_states(&pmu_config);
 
-		/* get the current status of each of the driver
-		 * and update it in SCU
-		 */
-		update_all_lss_states(&pmu_config);
-
-		/* send a interactive command to fw */
-		mid_pmu_cxt->interactive_cmd_sent = true;
-		status = pmu_issue_interactive_command(&pmu_config, true,
-							false);
-		if (status != PMU_SUCCESS) {
-			mid_pmu_cxt->interactive_cmd_sent = false;
-			dev_dbg(&mid_pmu_cxt->pmu_dev->dev,\
-			 "Failure from pmu mode change to interactive."
-			" = %d\n", status);
-			status = PMU_FAILED;
-			up(&mid_pmu_cxt->scu_ready_sem);
-			goto out_err2;
-		}
-
-		/*
-		 * Wait for interactive command to complete.
-		 * If we dont wait, there is a possibility that
-		 * the driver may access the device before its
-		 * powered on in SCU.
-		 *
-		 */
-retry:
-		ret = _pmu2_wait_not_busy_yield();
-		if (unlikely(ret)) {
-			retry_times++;
-			if (retry_times < 60)
-				goto retry;
-			else {
-				pmu_dump_logs();
-				BUG();
-			}
-		}
-
-		/* In cases were gfx is not enabled
-		 * this will enable s0ix immediately
-		 */
-		if (pmu_ops->set_power_state_ops)
-			pmu_ops->set_power_state_ops(PCI_D3hot);
+	status = pmu_issue_interactive_command(&pmu_config, false,
+						false);
+	if (status != PMU_SUCCESS) {
+		dev_dbg(&mid_pmu_cxt->pmu_dev->dev,\
+		 "Failure from pmu mode change to interactive."
+		" = %d\n", status);
+		status = PMU_FAILED;
+		up(&mid_pmu_cxt->scu_ready_sem);
+		goto out_err2;
 	}
+
+	/*
+	 * Wait for interactive command to complete.
+	 * If we dont wait, there is a possibility that
+	 * the driver may access the device before its
+	 * powered on in SCU.
+	 *
+	 */
+retry:
+	ret = _pmu2_wait_not_busy();
+	if (unlikely(ret)) {
+		retry_times++;
+		if (retry_times < 60) {
+			usleep_range(10, 500);
+			goto retry;
+		} else {
+			pmu_dump_logs();
+			BUG();
+		}
+	}
+
+	/* In cases were gfx is not enabled
+	 * this will enable s0ix immediately
+	 */
+	if (pmu_ops->set_power_state_ops)
+		pmu_ops->set_power_state_ops(PCI_D3hot);
 
 	up(&mid_pmu_cxt->scu_ready_sem);
 

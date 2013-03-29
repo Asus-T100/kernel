@@ -912,6 +912,11 @@ _AllocPageTableMemory (MMU_HEAP *pMMUHeap,
 	}
 #else
 	/* Zero the page table. */
+	if(!psPTInfoList->PTPageCpuVAddr)
+	{
+		PVR_DPF((PVR_DBG_ERROR, "_AllocPageTableMemory: ERROR invalid parameter"));
+		return IMG_FALSE;
+	}
 	OSMemSet(psPTInfoList->PTPageCpuVAddr, 0, pMMUHeap->ui32PTSize);
 #endif
 	MakeKernelPageReadOnly(psPTInfoList->PTPageCpuVAddr);
@@ -4308,6 +4313,12 @@ PVRSRV_ERROR MMU_BIFResetPDAlloc(PVRSRV_SGXDEV_INFO *psDevInfo)
 	psDevInfo->sBIFResetPDDevPAddr = SysCpuPAddrToDevPAddr(PVRSRV_DEVICE_TYPE_SGX, sMemBlockCpuPAddr);
 	psDevInfo->sBIFResetPTDevPAddr.uiAddr = psDevInfo->sBIFResetPDDevPAddr.uiAddr + SGX_MMU_PAGE_SIZE;
 	psDevInfo->sBIFResetPageDevPAddr.uiAddr = psDevInfo->sBIFResetPTDevPAddr.uiAddr + SGX_MMU_PAGE_SIZE;
+
+	if(!pui8MemBlock)
+	{
+		PVR_DPF((PVR_DBG_ERROR, "MMU_BIFResetPDAlloc: ERROR parameter"));
+		return PVRSRV_ERROR_INVALID_PARAMS;
+	}
 	/* override pointer cast warnings */
 	/* PRQA S 3305,509 2 */
 	psDevInfo->pui32BIFResetPD = (IMG_UINT32 *)pui8MemBlock;

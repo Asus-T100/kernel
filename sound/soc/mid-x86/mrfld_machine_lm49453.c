@@ -44,7 +44,7 @@
 #include <sound/jack.h>
 #include "../codecs/lm49453.h"
 
-#ifdef CONFIG_ANDROID_SWITCH_MID
+#ifdef CONFIG_SWITCH_MID
 extern void mid_headset_report(int state);
 #endif
 
@@ -78,7 +78,7 @@ struct mrfld_mc_private {
 
 inline void mrfld_jack_report(int status)
 {
-#ifdef CONFIG_ANDROID_SWITCH_MID
+#ifdef CONFIG_SWITCH_MID
 	if (status) {
 		if (status == SND_JACK_HEADPHONE)
 			mid_headset_report((1<<1));

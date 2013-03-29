@@ -43,6 +43,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include <drm/drmP.h>
 #include "img_types.h"
+#include "pwr_mgmt.h"
 #include "pvrsrv_device.h"
 #include "syscommon.h"
 #include "sysconfig.h"
@@ -213,6 +214,36 @@ static IMG_VOID SysDevPAddrToCpuPAddr(IMG_HANDLE hPrivData,
 										IMG_DEV_PHYADDR *psDevPAddr)
 {
 	psCpuPAddr->uiAddr = psDevPAddr->uiAddr;
+}
+
+static PVRSRV_ERROR SysDevicePrePowerState(
+		PVRSRV_DEV_POWER_STATE eNewPowerState,
+		PVRSRV_DEV_POWER_STATE eCurrentPowerState,
+		IMG_BOOL bForced)
+{
+	if ((eNewPowerState != eCurrentPowerState) &&
+		(eNewPowerState == PVRSRV_DEV_POWER_STATE_OFF)) {
+		PVR_DPF((PVR_DBG_MESSAGE, "Remove SGX power"));
+		if (!power_island_put(OSPM_GRAPHICS_ISLAND))
+			return PVRSRV_ERROR_DEVICE_POWER_CHANGE_FAILURE;
+	}
+
+	return PVRSRV_OK;
+}
+
+static PVRSRV_ERROR SysDevicePostPowerState(
+		PVRSRV_DEV_POWER_STATE eNewPowerState,
+		PVRSRV_DEV_POWER_STATE eCurrentPowerState,
+		IMG_BOOL bForced)
+{
+	if ((eNewPowerState != eCurrentPowerState) &&
+		(eCurrentPowerState == PVRSRV_DEV_POWER_STATE_OFF)) {
+		PVR_DPF((PVR_DBG_MESSAGE, "Restore SGX power"));
+		if (!power_island_get(OSPM_GRAPHICS_ISLAND))
+			return PVRSRV_ERROR_DEVICE_POWER_CHANGE_FAILURE;
+	}
+
+	return PVRSRV_OK;
 }
 
 /******************************************************************************

@@ -465,12 +465,14 @@ static int __devinit dwc3_probe(struct platform_device *pdev)
 	pm_runtime_set_active(&pdev->dev);
 	pm_runtime_enable(dev);
 	pm_runtime_set_suspended(&pdev->dev);
+	pm_runtime_get_sync(dev);
 
 	dwc3_cache_hwparams(dwc);
 	ret = dwc3_alloc_event_buffers(dwc, DWC3_EVENT_BUFFERS_SIZE);
 	if (ret) {
 		dev_err(dwc->dev, "failed to allocate event buffers\n");
 		ret = -ENOMEM;
+		pm_runtime_put(dev);
 		return ret;
 	}
 
@@ -522,6 +524,7 @@ static int __devinit dwc3_probe(struct platform_device *pdev)
 		dev_err(dev, "failed to initialize debugfs\n");
 		goto err2;
 	}
+	pm_runtime_put(dev);
 
 	return 0;
 
@@ -544,6 +547,7 @@ err2:
 
 err1:
 	dwc3_free_event_buffers(dwc);
+	pm_runtime_put(dev);
 
 	return ret;
 }

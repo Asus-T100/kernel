@@ -94,8 +94,17 @@ static const struct sdhci_acpi_slot sdhci_acpi_slot_int_sdio = {
 	.pm_caps = MMC_PM_KEEP_POWER,
 };
 
+static const struct sdhci_acpi_slot sdhci_acpi_byt_int_sdio = {
+	.quirks2 = SDHCI_QUIRK2_HOST_OFF_CARD_ON | SDHCI_QUIRK2_CAN_VDD_300 |
+		SDHCI_QUIRK2_CAN_VDD_330,
+	.caps    = MMC_CAP_NONREMOVABLE | MMC_CAP_POWER_OFF_CARD,
+	.flags   = SDHCI_ACPI_RUNTIME_PM,
+	.pm_caps = MMC_PM_KEEP_POWER,
+};
+
 static const struct acpi_device_id sdhci_acpi_ids[] = {
 	{ "INT33C6", (kernel_ulong_t)&sdhci_acpi_slot_int_sdio },
+	{ "INT33BB", (kernel_ulong_t)&sdhci_acpi_byt_int_sdio },
 	{ "PNP0D40" },
 	{ },
 };

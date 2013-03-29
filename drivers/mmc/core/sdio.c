@@ -896,6 +896,7 @@ static void mmc_sdio_detect(struct mmc_host *host)
 
 	mmc_release_host(host);
 
+out:
 	/*
 	 * Tell PM core it's OK to power off the card now.
 	 *
@@ -909,8 +910,6 @@ static void mmc_sdio_detect(struct mmc_host *host)
 	 */
 	if (host->caps & MMC_CAP_POWER_OFF_CARD)
 		pm_runtime_put_sync(&host->card->dev);
-
-out:
 	if (err) {
 		mmc_sdio_remove(host);
 

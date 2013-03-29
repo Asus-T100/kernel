@@ -76,7 +76,7 @@
 __cpuinitdata enum intel_mid_timer_options intel_mid_timer_options;
 
 struct kobject *spid_kobj;
-struct sfi_soft_platform_id spid;
+struct soft_platform_id spid;
 /* intel_mid_ops to store sub arch ops */
 struct intel_mid_ops *intel_mid_ops;
 /* getter function for sub arch ops*/
@@ -985,7 +985,7 @@ static int __init sfi_parse_oemb(struct sfi_table_header *table)
 
 	board_id = oemb->board_id | (oemb->board_fab << 4);
 
-	memcpy(&spid, &oemb->spid, sizeof(struct sfi_soft_platform_id));
+	memcpy(&spid, &oemb->spid, sizeof(struct soft_platform_id));
 
 	snprintf(sig, (SFI_SIGNATURE_SIZE + 1), "%s",
 		oemb->header.sig);

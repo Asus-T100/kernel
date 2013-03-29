@@ -598,7 +598,7 @@ fail_cleanup:
 		OSReleaseSubMemHandle(pBuf->hOSMemHandle, uFlags);
 	}
 
-	if(pMapping && (pMapping->CpuVAddr || pMapping->hOSMemHandle))
+	if(pMapping->CpuVAddr || pMapping->hOSMemHandle)
 	{
 		switch(pMapping->eCpuMemoryOrigin)
 		{

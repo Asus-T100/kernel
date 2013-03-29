@@ -38,5 +38,6 @@ int PVRSRVGetMeminfoPages(void *hMemHandle, int npages, struct page ***pages);
 int PVRSRVGetMeminfoPfn(void *hMemHandle, int npages, unsigned long **pfns);
 int PVRSRVMMap(struct file *pFile, struct vm_area_struct *ps_vma);
 int PVRSRVInterrupt(struct drm_device *dev);
+int PVRSRVRGXSetPowerState(struct drm_device *dev, int ePVRState);
 
 #endif

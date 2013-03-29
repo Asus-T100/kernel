@@ -160,6 +160,7 @@ int mdfld_h8c7_drv_ic_init(struct mdfld_dsi_config *dsi_config)
 	PSB_DEBUG_ENTRY("\n");
 	sender->status = MDFLD_DSI_PKG_SENDER_FREE;
 
+	/* set password*/
 	mdfld_dsi_send_mcs_short_lp(sender, h8c7_exit_sleep_mode[0], 0, 0, 0);
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
@@ -199,7 +200,8 @@ int mdfld_h8c7_drv_ic_init(struct mdfld_dsi_config *dsi_config)
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
 
-	mdfld_dsi_send_mcs_long_lp(sender, h8c7_set_blanking_opt_2, 4, 0);
+	mdfld_dsi_send_mcs_long_lp(sender, h8c7_set_blanking_opt_2,
+				   sizeof(h8c7_set_blanking_opt_2), 0);
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
 
@@ -219,7 +221,6 @@ int mdfld_h8c7_drv_ic_init(struct mdfld_dsi_config *dsi_config)
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
 
-#if 0
 	mdfld_dsi_send_mcs_long_lp(sender, h8c7_gamma_r, 35, 0);
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
@@ -231,7 +232,6 @@ int mdfld_h8c7_drv_ic_init(struct mdfld_dsi_config *dsi_config)
 	mdfld_dsi_send_mcs_long_lp(sender, h8c7_gamma_b, 35, 0);
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
-#endif
 
 	mdfld_dsi_send_mcs_short_lp(sender, h8c7_set_pixel_format[0], h8c7_set_pixel_format[1], 1, 0);
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
@@ -461,6 +461,20 @@ int mdfld_dsi_h8c7_cmd_power_on(struct mdfld_dsi_config *dsi_config)
 			regulator_is_enabled(h8c7_regulator_status.regulator));
 	}
 
+	/*exit sleep */
+	err = mdfld_dsi_send_dcs(sender,
+		 exit_sleep_mode,
+		 NULL,
+		 0,
+		 CMD_DATA_SRC_SYSTEM_MEM,
+		 MDFLD_DSI_SEND_PACKAGE);
+	if (err) {
+		DRM_ERROR("faild to exit_sleep mode\n");
+		goto power_err;
+	}
+
+	msleep(120);
+
 	/*set tear on*/
 	err = mdfld_dsi_send_dcs(sender,
 		 set_tear_on,
@@ -487,7 +501,8 @@ int mdfld_dsi_h8c7_cmd_power_on(struct mdfld_dsi_config *dsi_config)
 	if (drm_psb_enable_cabc) {
 		/* turn on cabc */
 		h8c7_disable_cabc[1] = 0x2;
-		mdfld_dsi_send_mcs_long_hs(sender, h8c7_disable_cabc, 4, 0);
+		mdfld_dsi_send_mcs_long_hs(sender, h8c7_disable_cabc,
+					   sizeof(h8c7_disable_cabc), 0);
 		mdelay(5);
 		mdfld_dsi_send_gen_long_hs(sender, h8c7_mcs_protect_off, 4, 0);
 		mdfld_dsi_send_mcs_long_hs(sender, h8c7_set_cabc_gain, 10, 0);
@@ -513,10 +528,12 @@ static int mdfld_dsi_h8c7_cmd_power_off(struct mdfld_dsi_config *dsi_config)
 
 	/* turn off cabc */
 	h8c7_disable_cabc[1] = 0x0;
-	mdfld_dsi_send_mcs_long_lp(sender, h8c7_disable_cabc, 4, 0);
+	mdfld_dsi_send_mcs_long_lp(sender, h8c7_disable_cabc,
+				   sizeof(h8c7_disable_cabc), 0);
 
 	/*turn off backlight*/
-	err = mdfld_dsi_send_mcs_long_lp(sender, h8c7_turn_off_backlight, 4, 0);
+	err = mdfld_dsi_send_mcs_long_lp(sender, h8c7_turn_off_backlight,
+					 sizeof(h8c7_turn_off_backlight), 0);
 	if (err) {
 		DRM_ERROR("%s: failed to turn off backlight\n", __func__);
 		goto out;
@@ -671,7 +688,8 @@ int mdfld_dsi_h8c7_cmd_set_brightness(struct mdfld_dsi_config *dsi_config,
 
 	if (drm_psb_enable_cabc && !b_cabc_initialized) {
 		h8c7_disable_cabc[1] = 0x2;
-		mdfld_dsi_send_mcs_long_hs(sender, h8c7_disable_cabc, 4, 0);
+		mdfld_dsi_send_mcs_long_hs(sender, h8c7_disable_cabc,
+					   sizeof(h8c7_disable_cabc), 0);
 		mdelay(5);
 		mdfld_dsi_send_gen_long_hs(sender, h8c7_mcs_protect_off, 4, 0);
 		mdfld_dsi_send_mcs_long_hs(sender, h8c7_set_cabc_gain, 10, 0);

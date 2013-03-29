@@ -852,6 +852,55 @@ struct imx_resolution imx175_res_preview[] = {
 		.bin_factor_y = 2,
 		.used = 0	,
 	},
+	{
+		.desc = "720p_strong_dvs_30fps",
+		.regs = imx_720p_strong_dvs_30fps,
+		.width = 1568,
+		.height =	876,
+		.fps = 30,
+		.pixels_per_line = 0x1FF0, /* consistent with regs arrays */
+		.lines_per_frame = 0x0548, /* consistent with regs arrays */
+		.bin_factor_x = 2,
+		.bin_factor_y = 2,
+		.used = 0,
+	},
+	{
+		.desc = "STILL_2M_15fps",
+		.regs = imx_STILL_2M_15fps,
+		.width = 1640,
+		.height = 1232,
+		.fps = 15,
+		.pixels_per_line = 0x1448, /* consistent with regs arrays */
+		.lines_per_frame = 0x0548, /* consistent with regs arrays */
+		.bin_factor_x = 2,
+		.bin_factor_y = 2,
+		.used = 0,
+	},
+	{
+		.desc = "STILL_6M_15fps",
+		.regs = imx_STILL_6M_15fps,
+		.width = 3280,
+		.height =	1852,
+		.fps = 15,
+		.pixels_per_line = 0x1448, /* consistent with regs arrays */
+		.lines_per_frame = 0x0A42, /* consistent with regs arrays */
+		.bin_factor_x = 0,
+		.bin_factor_y = 0,
+		.used = 0,
+	},
+	{
+		.desc = "STILL_8M_15fps",
+		.regs = imx_STILL_8M_15fps,
+		.width = 3280,
+		.height = 2464,
+		.fps = 15,
+		.pixels_per_line = 0x1448, /* consistent with regs arrays */
+		.lines_per_frame = 0x0A90, /* consistent with regs arrays */
+		.bin_factor_x = 0,
+		.bin_factor_y = 0,
+		.used = 0,
+	},
+
 };
 
 struct imx_resolution imx175_res_still[] = {

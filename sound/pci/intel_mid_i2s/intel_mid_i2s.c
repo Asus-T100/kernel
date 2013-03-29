@@ -470,6 +470,12 @@ int intel_mid_i2s_lli_rd_req(struct intel_mid_i2s_hdl *drv_data,
 	 */
 	dev_dbg(&(drv_data->pdev->dev), "kzalloc of scatterlist rd\n");
 	temp_sg = kzalloc(sizeof(struct scatterlist)*lli_length, GFP_KERNEL);
+	if (!temp_sg) {
+		dev_WARN(&(drv_data->pdev->dev),
+				 "temp_sg alloc of size %d bytes failed",
+				 sizeof(struct scatterlist)*lli_length);
+		return -ENOMEM;
+	}
 	dev_dbg(&(drv_data->pdev->dev), "kzalloc rd done\n");
 
 	/*
@@ -556,6 +562,12 @@ int intel_mid_i2s_lli_wr_req(struct intel_mid_i2s_hdl *drv_data,
 	 */
 	dev_dbg(&(drv_data->pdev->dev), "kzalloc of scatterlist wr\n");
 	temp_sg = kzalloc(sizeof(struct scatterlist)*lli_length, GFP_KERNEL);
+	if (!temp_sg) {
+		dev_WARN(&(drv_data->pdev->dev),
+				 "temp_sg alloc of size %d bytes failed",
+				 sizeof(struct scatterlist)*lli_length);
+		return -ENOMEM;
+	}
 	dev_dbg(&(drv_data->pdev->dev), "kzalloc wr done\n");
 
 	/*

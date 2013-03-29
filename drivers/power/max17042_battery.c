@@ -477,6 +477,7 @@ static enum power_supply_property max17042_battery_props[] = {
 	POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN,
 	POWER_SUPPLY_PROP_CHARGE_COUNTER,
 	POWER_SUPPLY_PROP_MODEL_NAME,
+	POWER_SUPPLY_PROP_SERIAL_NUMBER,
 };
 
 static int max17042_write_reg(struct i2c_client *client, u8 reg, u16 value)
@@ -940,7 +941,13 @@ static int max17042_get_property(struct power_supply *psy,
 			val->intval = 1;
 		break;
 	case POWER_SUPPLY_PROP_MODEL_NAME:
-		val->strval = chip->pdata->battid;
+		if (!strncmp(chip->pdata->battid, "UNKNOWNB", 8))
+			val->strval = chip->pdata->battid;
+		else
+			val->strval = chip->pdata->model_name;
+		break;
+	case POWER_SUPPLY_PROP_SERIAL_NUMBER:
+		val->strval = chip->pdata->serial_num;
 		break;
 	default:
 		mutex_unlock(&chip->batt_lock);
@@ -1520,7 +1527,7 @@ static void set_chip_config(struct max17042_chip *chip)
 	dev_info(&chip->client->dev, "Status reg: %x\n", val);
 	if (!fg_conf_data->config_init || (val & STATUS_POR_BIT)) {
 		dev_info(&chip->client->dev, "Config data should be loaded\n");
-#if defined(CONFIG_BOARD_REDRIDGE) || defined(CONFIG_BOARD_CTP)
+#if defined(CONFIG_BOARD_REDRIDGE) || defined(CONFIG_BOARD_CTP) || defined(CONFIG_X86_MRFLD)
 		reset_max17042(chip);
 #endif
 		retval = init_max17042_chip(chip);

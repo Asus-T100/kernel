@@ -25,7 +25,7 @@
 #include "psb_drv.h"
 #include "psb_intel_reg.h"
 #include "psb_intel_drv.h"
-#include "psb_powermgmt.h"
+#include "pwr_mgmt.h"
 #include "mdfld_dsi_dbi.h"
 
 #define MRST_BLC_MAX_PWM_REG_FREQ	    0xFFFF

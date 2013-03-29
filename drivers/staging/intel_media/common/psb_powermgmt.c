@@ -452,18 +452,36 @@ void ospm_power_uninit(void)
 }
 
 /*
-*  gfx_register_program
-*
-* Update some register value to avoid hdmi flicker
-*/
-static void gfx_register_program(struct drm_device *dev)
+ *  mdfld_adjust_display_fifo
+ *
+ * Update display fifo setting to avoid hdmi flicker
+ */
+static void mdfld_adjust_display_fifo(struct drm_device *dev)
 {
 	u32 temp;
+	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct mdfld_dsi_config *dsi_config = dev_priv->dsi_configs[0];
+	struct drm_display_mode *mode = dsi_config->fixed_mode;
 
-	REG_WRITE(DSPARB, 0x0005E480);
-	REG_WRITE(DSPFW1, 0x0F0F103F);
-	REG_WRITE(DSPFW4, 0x0707101F);
-	REG_WRITE(MI_ARB, 0x0);
+	if (IS_CTP(dev)) {
+		if (mode &&
+		    ((mode->hdisplay >= 1920 && mode->vdisplay >= 1280) ||
+		     (mode->hdisplay >= 1280 && mode->vdisplay >= 1920))) {
+			/* for 19x12 mipi panel,
+			 * need to increase display A fifo size
+			 */
+			REG_WRITE(DSPARB, 0x0005F8D4);
+			REG_WRITE(DSPFW1, 0x0F0F1010);
+			REG_WRITE(DSPFW2, 0x5F2F0F0F);
+			REG_WRITE(DSPFW4, 0x07071010);
+		} else {
+			REG_WRITE(DSPARB, 0x0005E480);
+			REG_WRITE(DSPFW1, 0x0F0F103F);
+			REG_WRITE(DSPFW4, 0x0707101F);
+		}
+
+		REG_WRITE(MI_ARB, 0x0);
+	}
 
 	temp = REG_READ(DSPARB);
 	PSB_DEBUG_ENTRY("gfx_hdmi_setting: DSPARB = 0x%x", temp);
@@ -547,8 +565,7 @@ disable these MSIC power rails permanently.  */
 		intel_scu_ipc_iowrite8(MSIC_VCC330CNT, VCC330_OFF);
 	}
 #endif
-	if (IS_CTP(dev))
-		gfx_register_program(dev);
+	mdfld_adjust_display_fifo(dev);
 
 	mutex_unlock(&g_ospm_mutex);
 
@@ -981,8 +998,7 @@ void ospm_resume_display(struct pci_dev *pdev)
 	}
 	mdfld_restore_cursor_overlay_registers(dev);
 
-	if (IS_CTP(dev))
-		gfx_register_program(dev);
+	mdfld_adjust_display_fifo(dev);
 }
 
 /*
@@ -1285,13 +1301,14 @@ void ospm_power_graphics_island_up(int hw_islands)
  *
  * Description: Restore power to the specified island(s) (powergating)
  */
-void ospm_power_island_up(int hw_islands)
+int ospm_power_island_up(int hw_islands)
 {
 	u32 dc_islands  = 0;
 	u32 gfx_islands = hw_islands;
 	unsigned long flags;
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *) gpDrmDevice->dev_private;
+	int ret = 0;
 
 	if (hw_islands & OSPM_DISPLAY_ISLAND) {
 		/*Power-up required islands only*/
@@ -1331,14 +1348,20 @@ void ospm_power_island_up(int hw_islands)
 		*/
 		spin_lock_irqsave(&dev_priv->ospm_lock, flags);
 		PSB_DEBUG_PM("power on gfx_islands: 0x%x\n", gfx_islands);
-		if (pmu_nc_set_power_state(gfx_islands,
-					   OSPM_ISLAND_UP, APM_REG_TYPE))
-			BUG();
+		ret = pmu_nc_set_power_state(gfx_islands,
+					   OSPM_ISLAND_UP, APM_REG_TYPE);
+		if (ret) {
+			PSB_DEBUG_PM("pmu_nc_set_power_state fails, ret is %d\n", ret);
+			spin_unlock_irqrestore(&dev_priv->ospm_lock, flags);
+			return ret;
+		}
 		if (gfx_islands & OSPM_GRAPHICS_ISLAND)
 			atomic_inc(&g_graphics_access_count);
 		g_hw_power_status_mask |= gfx_islands;
 		spin_unlock_irqrestore(&dev_priv->ospm_lock, flags);
 	}
+
+	return 0;
 }
 
 /*
@@ -1728,10 +1751,13 @@ recheck:
 			 * uploading mechanism(by PUNIT) for Penwell D0.
 			 */
 #ifdef CONFIG_MDFD_GL3
-			ospm_power_island_up(OSPM_GL3_CACHE_ISLAND | OSPM_VIDEO_DEC_ISLAND);
+			if (ospm_power_island_up(OSPM_GL3_CACHE_ISLAND | OSPM_VIDEO_DEC_ISLAND)) {
 #else
-			ospm_power_island_up(OSPM_VIDEO_DEC_ISLAND);
+			if (ospm_power_island_up(OSPM_VIDEO_DEC_ISLAND)) {
 #endif
+				ret = false;
+				goto out;
+			}
 			if (msvdx_priv->fw_loaded_by_punit) {
 				int reg_ret;
 				reg_ret = psb_wait_for_register(dev_priv,
@@ -1754,7 +1780,10 @@ recheck:
 				OSPM_VIDEO_DEC_ISLAND);
 		} else {
 #ifdef CONFIG_MDFD_GL3
-			ospm_power_island_up(OSPM_GL3_CACHE_ISLAND);
+			if (ospm_power_island_up(OSPM_GL3_CACHE_ISLAND)) {
+				ret = false;
+				goto out;
+			}
 #endif
 		}
 
@@ -1775,10 +1804,13 @@ recheck:
 			** encode\n", __func__);
 			*/
 #ifdef CONFIG_MDFD_GL3
-			ospm_power_island_up(OSPM_VIDEO_ENC_ISLAND | OSPM_GL3_CACHE_ISLAND);
+			if (ospm_power_island_up(OSPM_VIDEO_ENC_ISLAND | OSPM_GL3_CACHE_ISLAND)) {
 #else
-			ospm_power_island_up(OSPM_VIDEO_ENC_ISLAND);
+			if (ospm_power_island_up(OSPM_VIDEO_ENC_ISLAND)) {
 #endif
+				ret = false;
+				goto out;
+			}
 			ospm_runtime_pm_topaz_resume(gpDrmDevice);
 			psb_irq_preinstall_islands(gpDrmDevice,
 				OSPM_VIDEO_ENC_ISLAND);
@@ -1786,7 +1818,10 @@ recheck:
 				OSPM_VIDEO_ENC_ISLAND);
 		} else {
 #ifdef CONFIG_MDFD_GL3
-			ospm_power_island_up(OSPM_GL3_CACHE_ISLAND);
+			if (ospm_power_island_up(OSPM_GL3_CACHE_ISLAND)) {
+				ret = false;
+				goto out;
+			}
 #endif
 		}
 		break;
@@ -1856,17 +1891,10 @@ bool ospm_power_using_hw_begin(int hw_island, UHBUsage usage)
 		return false;
 
 #ifdef CONFIG_GFX_RTPM
-	/* if system suspend is in progress, do NOT allow system resume. if
-	 * runtime_status is RPM_SUSPENDING, and here call pm_runtime_get will
-	 * call rpm_resume indirectly, it causes defferred_resume be set to
-	 * ture, so at the end of rpm_suspend(), rpm_resume() will be called.
-	 * it will block system from entering s0ix */
-	if (gbSuspendInProgress ||
-			pdev->dev.power.runtime_status == RPM_SUSPENDING) {
+	if (force_on)
+		pm_runtime_get_sync(&pdev->dev);
+	else
 		pm_runtime_get_noresume(&pdev->dev);
-	} else {
-		pm_runtime_get(&pdev->dev);
-	}
 #endif
 
 

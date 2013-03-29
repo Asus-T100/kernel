@@ -372,7 +372,7 @@ static const intel_limit_t intel_limits_vlv_dac = {
 	.m1 = { .min = 2, .max = 3 },
 	.m2 = { .min = 11, .max = 156 },
 	.p = { .min = 10, .max = 30 },
-	.p1 = { .min = 2, .max = 3 },
+	.p1 = { .min = 1, .max = 3 },
 	.p2 = { .dot_limit = 270000,
 		.p2_slow = 2, .p2_fast = 20 },
 	.find_pll = intel_vlv_find_best_pll,
@@ -386,7 +386,7 @@ static const intel_limit_t intel_limits_vlv_hdmi = {
 	.m1 = { .min = 2, .max = 3 },
 	.m2 = { .min = 15, .max = 149 },
 	.p = { .min = 10, .max = 30 },
-	.p1 = { .min = 2, .max = 3 },
+	.p1 = { .min = 1, .max = 3 },
 	.p2 = { .dot_limit = 270000,
 		.p2_slow = 2, .p2_fast = 20 },
 	.find_pll = intel_vlv_find_best_pll,
@@ -400,7 +400,7 @@ static const intel_limit_t intel_limits_vlv_dp = {
 	.m1 = { .min = 2, .max = 3 },
 	.m2 = { .min = 11, .max = 156 },
 	.p = { .min = 10, .max = 30 },
-	.p1 = { .min = 2, .max = 3 },
+	.p1 = { .min = 1, .max = 3 },
 	.p2 = { .dot_limit = 270000,
 		.p2_slow = 2, .p2_fast = 20 },
 	.find_pll = intel_vlv_find_best_pll,
@@ -431,7 +431,7 @@ out_unlock:
 	return val;
 }
 
-static void intel_dpio_write(struct drm_i915_private *dev_priv, int reg,
+void intel_dpio_write(struct drm_i915_private *dev_priv, int reg,
 			     u32 val)
 {
 	unsigned long flags;
@@ -858,15 +858,20 @@ intel_find_pll_g4x_dp(const intel_limit_t *limit, struct drm_crtc *crtc,
 	memcpy(best_clock, &clock, sizeof(intel_clock_t));
 	return true;
 }
+
 static bool
 intel_vlv_find_best_pll(const intel_limit_t *limit, struct drm_crtc *crtc,
 			int target, int refclk, intel_clock_t *match_clock,
 			intel_clock_t *best_clock)
 {
+#define LONG_OVERFLOW 0x7FFFFFFF
+#define DIFF_OVERFLOW (LONG_OVERFLOW/10000)
+
 	u32 p1, p2, m1, m2, vco, bestn, bestm1, bestm2, bestp1, bestp2;
 	u32 m, n, fastclk;
 	u32 updrate, minupdate, fracbits, p;
-	unsigned long bestppm, ppm, absppm;
+	long bestppm, ppm, absppm, ppmdiff, absppmdiff;
+	unsigned long ulMult = 1;
 	int dotclk, flag;
 
 	flag = 0;
@@ -888,19 +893,35 @@ intel_vlv_find_best_pll(const intel_limit_t *limit, struct drm_crtc *crtc,
 				if (p2 > 10)
 					p2 = p2 - 1;
 				p = p1 * p2;
-				/* based on hardware requirement, prefer bigger m1,m2 values */
-				for (m1 = limit->m1.min; m1 <= limit->m1.max; m1++) {
+				/* based on hardware requirement, prefer bigger
+				 * m1,m2 values
+				 */
+				for (m1 = limit->m1.min;
+					 m1 <= limit->m1.max; m1++) {
 					m2 = (((2*(fastclk * p * n / m1 )) +
-					       refclk) / (2*refclk));
+							refclk) / (2*refclk));
 					m = m1 * m2;
 					vco = updrate * m;
-					if (vco >= limit->vco.min && vco < limit->vco.max) {
-						ppm = 1000000 * ((vco / p) - fastclk) / fastclk;
-						absppm = (ppm > 0) ? ppm : (-ppm);
-						if (absppm < 100 && ((p1 * p2) > (bestp1 * bestp2))) {
-							bestppm = 0;
-							flag = 1;
-						}
+					if (vco >= limit->vco.min &&
+							vco < limit->vco.max) {
+						ppmdiff =
+						((100*vco)/p) - (100*fastclk);
+						absppmdiff = (ppmdiff > 0) ?
+							ppmdiff : (-ppmdiff);
+						ulMult = 1;
+					while (absppmdiff >
+						DIFF_OVERFLOW) {
+						absppmdiff /= 10;
+						ulMult *= 10;
+					}
+						absppm = ((absppmdiff*10000) /
+								fastclk)*ulMult;
+
+					if (absppm < 100 && ((p1 * p2) >
+						(bestp1 * bestp2))) {
+						bestppm = 0;
+						flag = 1;
+					}
 						if (absppm < bestppm - 10) {
 							bestppm = absppm;
 							flag = 1;
@@ -1492,10 +1513,6 @@ static void intel_disable_pll(struct drm_i915_private *dev_priv, enum pipe pipe)
 {
 	int reg;
 	u32 val;
-
-	// Flicker WA for HDMI
-	intel_dpio_write(dev_priv, 0x8200, 0x00000000);
-	intel_dpio_write(dev_priv, 0x8204, 0x00e00060);
 
 	/* Don't disable pipe A or pipe A PLLs if needed */
 	if (pipe == PIPE_A && (dev_priv->quirks & QUIRK_PIPEA_FORCE))
@@ -3458,6 +3475,19 @@ static void i9xx_crtc_disable(struct drm_crtc *crtc)
 	intel_crtc->active = false;
 	intel_update_fbc(dev);
 	intel_update_watermarks(dev);
+
+	/*Reset lane for VLV platform*/
+	if (IS_VALLEYVIEW(dev)) {
+		if (intel_pipe_has_type(crtc, INTEL_OUTPUT_HDMI)) {
+			intel_dpio_write(dev_priv, 0x8200, 0x00000000);
+			intel_dpio_write(dev_priv, 0x8204, 0x00e00060);
+		}
+
+		if (pipe) {
+			I915_WRITE(0x2110, 0x00000000);
+			I915_WRITE(0x2110, 0x00000001);
+		}
+	}
 }
 
 static void i9xx_crtc_dpms(struct drm_crtc *crtc, int mode)
@@ -4013,8 +4043,9 @@ static void vlv_update_pll(struct drm_crtc *crtc,
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 	int pipe = intel_crtc->pipe;
-	u32 dpll, mdiv, pdiv;
+	u32 dpll, mdiv;
 	u32 bestn, bestm1, bestm2, bestp1, bestp2;
+	u32 coreclk;
 	bool is_hdmi;
 
 	is_hdmi = intel_pipe_has_type(crtc, INTEL_OUTPUT_HDMI);
@@ -4025,49 +4056,100 @@ static void vlv_update_pll(struct drm_crtc *crtc,
 	bestp1 = clock->p1;
 	bestp2 = clock->p2;
 
-	// program DD1 Tx lane resets sets to default
-	// WA for HDMI flicker issue
-	intel_dpio_write(dev_priv, 0x8200, 0x10080);
-	intel_dpio_write(dev_priv, 0x8204, 0x00600060);
+	if (pipe) {
+		u32 reg_val;
 
-	/* Enable DPIO clock input */
-	dpll = DPLL_EXT_BUFFER_ENABLE_VLV | DPLL_REFA_CLK_ENABLE_VLV |
-		DPLL_VGA_MODE_DIS | DPLL_INTEGRATED_CLOCK_VLV;
-	I915_WRITE(DPLL(pipe), dpll);
-	POSTING_READ(DPLL(pipe));
+		reg_val = intel_dpio_read(dev_priv, 0x8064);
+		reg_val &= 0xffffff30;
+		intel_dpio_write(dev_priv, 0x8064, reg_val);
+
+		reg_val = intel_dpio_read(dev_priv, 0x80ac);
+		reg_val &= 0x8cffffff;
+		intel_dpio_write(dev_priv, 0x80ac, reg_val);
+
+		reg_val = intel_dpio_read(dev_priv, 0x8064);
+		reg_val &= 0xffffff00;
+		intel_dpio_write(dev_priv, 0x8064, reg_val);
+
+		reg_val = intel_dpio_read(dev_priv, 0x80ac);
+		reg_val &= 0xb0ffffff;
+		intel_dpio_write(dev_priv, 0x80ac, reg_val);
+	}
+	intel_dpio_write(dev_priv, 0xc044, 0x0100000f);
+	if (pipe) {
+		u32 reg_val;
+		reg_val = intel_dpio_read(dev_priv, 0x8060);
+		reg_val &= 0x00ffffff;
+		intel_dpio_write(dev_priv, 0x8060, reg_val);
+	} else {
+		u32 reg_val;
+		reg_val = intel_dpio_read(dev_priv, 0x8040);
+		reg_val &= 0x00ffffff;
+		intel_dpio_write(dev_priv, 0x8040, reg_val);
+	}
+
+	intel_dpio_write(dev_priv, DPIO_FASTCLK_DISABLE, 0x610);
+
+	if (intel_pipe_has_type(crtc, INTEL_OUTPUT_DISPLAYPORT)
+			|| intel_pipe_has_type(crtc, INTEL_OUTPUT_EDP)) {
+		if (adjusted_mode->clock == 162000)
+			intel_dpio_write(dev_priv,
+					DPIO_LFP_COEFF(pipe), 0x009f0003);
+		else
+			intel_dpio_write(dev_priv,
+					DPIO_LFP_COEFF(pipe), 0x00d0000f);
+
+	} else
+		intel_dpio_write(dev_priv, DPIO_LFP_COEFF(pipe), 0x009f0003);
+
+	if (intel_pipe_has_type(crtc, INTEL_OUTPUT_DISPLAYPORT)
+			|| intel_pipe_has_type(crtc, INTEL_OUTPUT_EDP)) {
+		if (!pipe)
+			intel_dpio_write(dev_priv,
+					DPIO_REFSFR(pipe), 0x0df40000);
+		else
+			intel_dpio_write(dev_priv,
+					DPIO_REFSFR(pipe), 0x0df70000);
+	} else if (intel_pipe_has_type(crtc, INTEL_OUTPUT_HDMI)) {
+		if (!pipe)
+			intel_dpio_write(dev_priv,
+					DPIO_REFSFR(pipe), 0x0df70000);
+		else
+			intel_dpio_write(dev_priv,
+					DPIO_REFSFR(pipe), 0x0df40000);
+	}
 
 	mdiv = ((bestm1 << DPIO_M1DIV_SHIFT) | (bestm2 & DPIO_M2DIV_MASK));
 	mdiv |= ((bestp1 << DPIO_P1_SHIFT) | (bestp2 << DPIO_P2_SHIFT));
 	mdiv |= ((bestn << DPIO_N_SHIFT));
 	mdiv |= (1 << DPIO_POST_DIV_SHIFT);
 	mdiv |= (1 << DPIO_K_SHIFT);
+	intel_dpio_write(dev_priv, DPIO_DIV(pipe), mdiv);
+
 	mdiv |= DPIO_ENABLE_CALIBRATION;
 	intel_dpio_write(dev_priv, DPIO_DIV(pipe), mdiv);
 
-	//intel_dpio_write(dev_priv, DPIO_CORE_CLK(pipe), 0x01000000);
+	coreclk = intel_dpio_read(dev_priv, DPIO_CORE_CLK(pipe));
+	coreclk = (coreclk & 0x0000FF00) | 0x01C00000;
+	intel_dpio_write(dev_priv, DPIO_CORE_CLK(pipe), coreclk);
 
-	pdiv = (1 << DPIO_REFSEL_OVERRIDE) | (5 << DPIO_PLL_MODESEL_SHIFT) |
-		(3 << DPIO_BIAS_CURRENT_CTL_SHIFT) | (1<<20) |
-		(7 << DPIO_PLL_REFCLK_SEL_SHIFT) | (8 << DPIO_DRIVER_CTL_SHIFT) |
-		(5 << DPIO_CLK_BIAS_CTL_SHIFT);
-
-	//intel_dpio_write(dev_priv, DPIO_REFSFR(pipe), pdiv);
-	if (intel_pipe_has_type(crtc, INTEL_OUTPUT_HDMI))
-		intel_dpio_write(dev_priv, DPIO_REFSFR(pipe), 0x0d770000);
+	if (!pipe)
+		intel_dpio_write(dev_priv, 0x804C, 0x87871000);
 	else
-		// for DP/eDP. We'll not worry about VGA
-		intel_dpio_write(dev_priv, DPIO_REFSFR(pipe), 0x0d740000);
+		intel_dpio_write(dev_priv, 0x806C, 0x87871000);
 
-	intel_dpio_write(dev_priv, DPIO_CORE_CLK(pipe), 0x01C00000);
+	/* Enable DPIO clock input */
+	dpll = DPLL_EXT_BUFFER_ENABLE_VLV | DPLL_REFA_CLK_ENABLE_VLV |
+		DPLL_VGA_MODE_DIS | DPLL_INTEGRATED_CLOCK_VLV;
 
-	//intel_dpio_write(dev_priv, DPIO_LFP_COEFF(pipe), 0x005f003b);
-	intel_dpio_write(dev_priv, DPIO_LFP_COEFF(pipe), 0x005f0051);
-
-	intel_dpio_write(dev_priv, 0x804C, 0x87871000);
+	if (pipe)
+		dpll |= DPLL_INTEGRATED_CRI_CLK_VLV;
 
 	dpll |= DPLL_VCO_ENABLE;
 	I915_WRITE(DPLL(pipe), dpll);
 	POSTING_READ(DPLL(pipe));
+	udelay(150);
+
 	if (wait_for(((I915_READ(DPLL(pipe)) & DPLL_LOCK_VLV) == DPLL_LOCK_VLV), 1))
 		DRM_ERROR("DPLL %d failed to lock\n", pipe);
 
@@ -4083,7 +4165,47 @@ static void vlv_update_pll(struct drm_crtc *crtc,
 		POSTING_READ(DPLL_MD(pipe));
 	}
 
-	intel_dpio_write(dev_priv, DPIO_FASTCLK_DISABLE, 0x620);
+	if (intel_pipe_has_type(crtc, INTEL_OUTPUT_HDMI)) {
+		u32 val;
+		val = intel_dpio_read(dev_priv, _DPIO_DATA_LANE0);
+		if (pipe)
+			val |= (1<<21);
+		val |= (1<<20);
+		intel_dpio_write(dev_priv, DPIO_DATA_CHANNEL1, val);
+
+		intel_dpio_write(dev_priv, 0x8238, 0x00760018);
+		intel_dpio_write(dev_priv, 0x825c, 0x00400888);
+
+		intel_dpio_write(dev_priv, 0x8200, 0x10080);
+		intel_dpio_write(dev_priv, 0x8204, 0x00600060);
+
+		intel_dpio_write(dev_priv, 0x8294, 0x00000000);
+		intel_dpio_write(dev_priv, 0x8290, 0x2b245f5f);
+		intel_dpio_write(dev_priv, 0x8288, 0x5578b83a);
+		intel_dpio_write(dev_priv, 0x828c, 0x0c782040);
+		intel_dpio_write(dev_priv, 0x690, 0x2b247878);
+		intel_dpio_write(dev_priv, 0x822c, 0x00030000);
+		intel_dpio_write(dev_priv, 0x8224, 0x00002000);
+		intel_dpio_write(dev_priv, 0x8294, 0x80000000);
+
+	}
+	if (intel_pipe_has_type(crtc, INTEL_OUTPUT_DISPLAYPORT)
+			|| intel_pipe_has_type(crtc, INTEL_OUTPUT_EDP)) {
+		u32 val;
+		val = intel_dpio_read(dev_priv, _DPIO_DATA_LANE2);
+		if (pipe)
+			val |= (1<<21);
+		val |= (1<<20);
+		intel_dpio_write(dev_priv, DPIO_DATA_CHANNEL2, val);
+
+		intel_dpio_write(dev_priv, 0x8438, 0x00760018);
+		intel_dpio_write(dev_priv, 0x845c, 0x00400888);
+
+		intel_dpio_write(dev_priv, 0x8400, 0x10080);
+		intel_dpio_write(dev_priv, 0x8404, 0x00600060);
+	}
+	if (intel_pipe_has_type(crtc, INTEL_OUTPUT_DISPLAYPORT))
+		intel_dp_set_m_n(crtc, mode, adjusted_mode);
 }
 
 static void i9xx_update_pll(struct drm_crtc *crtc,
@@ -4118,12 +4240,6 @@ static void i9xx_update_pll(struct drm_crtc *crtc,
 	}
 	if (intel_pipe_has_type(crtc, INTEL_OUTPUT_DISPLAYPORT))
 		dpll |= DPLL_DVO_HIGH_SPEED;
-
-	if (IS_VALLEYVIEW(dev)) {
-		dpll |= DPLL_EXT_BUFFER_ENABLE_VLV;
-		dpll |= DPLL_REFA_CLK_ENABLE_VLV;
-		dpll |= DPLL_INTEGRATED_CLOCK_VLV;
-	}
 
 	/* compute bitmask from p1 value */
 	if (IS_PINEVIEW(dev))
@@ -4165,17 +4281,6 @@ static void i9xx_update_pll(struct drm_crtc *crtc,
 	dpll |= DPLL_VCO_ENABLE;
 	I915_WRITE(DPLL(pipe), dpll & ~DPLL_VCO_ENABLE);
 	POSTING_READ(DPLL(pipe));
-
-	/*
-	 * In Valleyview PLL and program lane counter registes are exposed
-	 * through DPIO interface
-	 */
-	if (IS_VALLEYVIEW(dev)) {
-		int refclk;
-		refclk = i9xx_get_refclk(crtc, num_connectors);
-		vlv_update_pll(crtc, mode, adjusted_mode, clock, NULL, refclk,
-			num_connectors);
-	}
 	udelay(150);
 
 	/* The LVDS pin pair needs to be on before the DPLLs are enabled.
@@ -4193,17 +4298,6 @@ static void i9xx_update_pll(struct drm_crtc *crtc,
 	/* Wait for the clocks to stabilize. */
 	POSTING_READ(DPLL(pipe));
 	udelay(150);
-
-	/* Now program lane control registers for Valleyview */
-	if (IS_VALLEYVIEW(dev)) {
-		u32 temp = 0;
-		temp = intel_dpio_read(dev_priv, DPIO_DATA_LANE_A(pipe));
-		temp |= (1 << 20);
-		intel_dpio_write(dev_priv, DPIO_DATA_LANE_A(pipe), temp);
-		temp = intel_dpio_read(dev_priv, DPIO_DATA_LANE_B(pipe));
-		temp |= (1 << 20);
-		intel_dpio_write(dev_priv, DPIO_DATA_LANE_B(pipe), temp);
-	}
 
 	if (INTEL_INFO(dev)->gen >= 4) {
 		u32 temp = 0;
@@ -4367,6 +4461,11 @@ static int i9xx_crtc_mode_set(struct drm_crtc *crtc,
 
 	if (IS_GEN2(dev))
 		i8xx_update_pll(crtc, adjusted_mode, &clock, num_connectors);
+	else if (IS_VALLEYVIEW(dev)) {
+		refclk = i9xx_get_refclk(crtc, num_connectors);
+		vlv_update_pll(crtc, mode, adjusted_mode, &clock, NULL, refclk,
+				num_connectors);
+	}
 	else
 		i9xx_update_pll(crtc, mode, adjusted_mode, &clock,
 				has_reduced_clock ? &reduced_clock : NULL,
@@ -4486,6 +4585,18 @@ static int i9xx_crtc_mode_set(struct drm_crtc *crtc,
 
 	intel_update_watermarks(dev);
 
+	/* Wait for Phy status bits to go low */
+	for_each_encoder_on_crtc(dev, crtc, encoder) {
+		if (encoder->type == INTEL_OUTPUT_DISPLAYPORT) {
+			if (wait_for(((I915_READ(DPLL(0)) & 0xF0) == 0), 2000))
+				DRM_ERROR("DPLL %x failed to lock\n",
+						I915_READ(DPLL(0)));
+		} else if (encoder->type == INTEL_OUTPUT_HDMI) {
+			if (wait_for(((I915_READ(DPLL(0)) & 0x0F) == 0), 2000))
+				DRM_ERROR("DPLL %x failed to lock\n",
+						I915_READ(DPLL(0)));
+		}
+	}
 	return ret;
 }
 
@@ -6791,33 +6902,19 @@ static void intel_setup_outputs(struct drm_device *dev)
 		if (!dpd_is_edp && (I915_READ(PCH_DP_D) & DP_DETECTED))
 			intel_dp_init(dev, PCH_DP_D, PORT_D);
 	} else if (IS_VALLEYVIEW(dev)) {
-		/*
-		 * In VLV X0, the port detection bits are not programmed
-		 * correctly by the hardware. So we cannot rely on detection
-		 * bits in SDVOB, DP_B, DP_C. Till this is fixed in VLV A0
-		 * FPGA, try calling  intel_dp_init on PORT_B for displayport
-		 * and on PORT_C for eDP
+		/* In VLV A0 board after rework there is HDMI on PORT B and
+		 * either of DP or eDP on Port C
 		 *
-		 * IMP : To route DP in PORT_B in VLV X0 board, make sure to remove the
-		 * jumper from J3K1
-		 */
-		// Only for testing - Vijay
-		//intel_dp_init(dev, DP_B, PORT_B);
-
-		/*
-		 * To get HDMI output on VLV X0, comment the above line (intel_dp_init)
-		 * and uncomment the following line.
+		 * Enable both for now as we know that VLV Baylake supports
+		 * both.
 		 *
-		 * IMP : To route HDMI in PORT_B in VLV X0 board, make sure to connect
-		 * the jumper in J3K1
-		 */
-		intel_hdmi_init(dev, SDVOB, PORT_B);
-
-		/*
-		 * For VLV X0, the eDP is supported on PORT_C after rework.
-		 * Uncomment the following line if the board is reworked for eDP
+		 * FIXME:
+		 * Support dynamic detection based on VBT and AUX transaction
+		 * later. Also for now eDP is trated as DP and PPS is done by
+		 * GOP.
 		 */
 		intel_dp_init(dev, DP_C, PORT_C);
+		intel_hdmi_init(dev, SDVOB, PORT_B);
 	} else if (SUPPORTS_DIGITAL_OUTPUTS(dev)) {
 		bool found = false;
 

@@ -2,6 +2,7 @@
 # Direct Rendering Infrastructure (DRI) in XFree86 4.1.0 and higher.
 
 RGXDIR=drivers/staging/mrfl/rgx
+DISPINC=drivers/staging/mrfl/drv
 
 ccflags-y += \
 	-I$(RGXDIR)/include \
@@ -48,6 +49,8 @@ ccflags-y += \
 	-I$(RGXDIR)/services/server/include \
 	-I$(RGXDIR)/services/system/rgx_nohw \
 	-I$(RGXDIR)/../interface \
+	-I$(DISPINC)/ospm \
+	-I$(DISPINC)/ \
 	-Iinclude/linux \
 	-Iinclude/drm \
 	-Iarch/arm/include

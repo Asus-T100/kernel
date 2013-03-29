@@ -302,6 +302,7 @@ struct bq24192_chip {
 	int curr_chrg;
 	int input_curr;
 	int cached_chrg_cur_cntl;
+	int batt_health;
 	bool is_pwr_good;
 	struct power_supply_charger_cap cached_cap;
 	/* Wake lock to prevent platform from going to S3 when charging */
@@ -925,6 +926,18 @@ static ssize_t set_charge_current_limit(struct device *dev,
 			value);
 		return -EINVAL;
 	}
+
+	/*
+	 * Check for the battery health and if the battery health is good
+	 * throttle/continue the charging else don't throttle coz the charging
+	 * will be stopped if the battery health is not good.
+	 */
+	if (chip->batt_health == POWER_SUPPLY_HEALTH_COLD ||
+		chip->batt_health == POWER_SUPPLY_HEALTH_OVERHEAT) {
+		dev_info(&chip->client->dev, "Battery in extreme temp zone\n");
+		return -EINVAL;
+	}
+
 	chr_mode = chip->batt_mode;
 
 	switch (value) {
@@ -1077,6 +1090,11 @@ int ctp_get_battery_health(void)
 		i2c_get_clientdata(bq24192_client);
 
 	dev_dbg(&chip->client->dev, "+%s\n", __func__);
+
+	/* If power supply is emulating as battery, return health as good */
+	if (!chip->pdata->sfi_tabl_present)
+		return POWER_SUPPLY_HEALTH_GOOD;
+
 	/* Get the battery pack temperature */
 	ret = ctp_get_battery_pack_temp(&batt_temp);
 	if (ret < 0) {
@@ -1672,6 +1690,12 @@ static void bq24192_maintenance_worker(struct work_struct *work)
 	mutex_unlock(&chip->event_lock);
 
 	/*
+	 * Jump to the label in case of battery emulator
+	 * Do not do additional unneccessary work
+	 */
+	if (!chip->pdata->sfi_tabl_present)
+		goto sched_maint_work;
+	/*
 	 * We update the battery charging status as per the type of
 	 * charger connected. If it is host mode cable connected then
 	 * battery status should be discharging
@@ -1705,9 +1729,11 @@ static void bq24192_maintenance_worker(struct work_struct *work)
 			"battery temperature is outside the designated zones\n");
 
 		if (batt_temp < chip->batt_thrshlds.temp_low) {
+			chip->batt_health = POWER_SUPPLY_HEALTH_COLD;
 			dev_info(&chip->client->dev,
 				"batt temp:POWER_SUPPLY_HEALTH_COLD\n");
 		} else {
+			chip->batt_health = POWER_SUPPLY_HEALTH_OVERHEAT;
 			dev_info(&chip->client->dev,
 				"batt temp:POWER_SUPPLY_HEALTH_OVERHEAT\n");
 		}
@@ -1738,23 +1764,19 @@ static void bq24192_maintenance_worker(struct work_struct *work)
 		}
 		goto sched_maint_work;
 	} else {
-		/*
-		 * PMIC does not stop the charging automatically in case the
-		 * phone is applied to -ve temperature condition. Since the
-		 * driver explicitly disables the charging on coming back to
-		 * the normal temperature charger should enable the charging
-		 */
-		mutex_lock(&chip->event_lock);
-		ret = bq24192_reg_multi_bitset(chip->client,
+		if (chip->batt_mode != BATT_CHRG_FULL) {
+			mutex_lock(&chip->event_lock);
+			ret = bq24192_reg_multi_bitset(chip->client,
 						BQ24192_POWER_ON_CFG_REG,
 						POWER_ON_CFG_CHRG_CFG_EN,
 						CHR_CFG_BIT_POS,
 						CHR_CFG_BIT_LEN);
-		if (ret < 0) {
-			dev_warn(&chip->client->dev,
-				"I2C write failed:%s\n", __func__);
+			if (ret < 0) {
+				dev_warn(&chip->client->dev,
+					"I2C write failed:%s\n", __func__);
+			}
+			mutex_unlock(&chip->event_lock);
 		}
-		mutex_unlock(&chip->event_lock);
 	}
 
 	dev_info(&chip->client->dev, "temperature zone idx = %d\n", idx);
@@ -2133,6 +2155,9 @@ static void bq24192_event_worker(struct work_struct *work)
 
 		if (chip->cap.chrg_type != POWER_SUPPLY_TYPE_USB_HOST) {
 			dev_info(&chip->client->dev, "Enable charging\n");
+			mutex_lock(&chip->event_lock);
+			chip->batt_mode = BATT_CHRG_NORMAL;
+			mutex_unlock(&chip->event_lock);
 			/* This is the condition where event has occured
 			 * because of SYSFS change or USB driver */
 			if ((chip->curr_volt == BQ24192_INVALID_VOLT) ||
@@ -2204,7 +2229,6 @@ static void bq24192_event_worker(struct work_struct *work)
 			chip->batt_status = POWER_SUPPLY_STATUS_CHARGING;
 		}
 
-		chip->batt_mode = BATT_CHRG_NORMAL;
 		mutex_unlock(&chip->event_lock);
 
 		/* Schedule the maintenance now */
@@ -2331,6 +2355,7 @@ EXPORT_SYMBOL(bq24192_slave_mode_disable_charging);
 static void bq24192_charging_port_changed(struct power_supply *psy,
 				struct power_supply_charger_cap *cap)
 {
+	int ret;
 	struct bq24192_chip *chip = container_of(psy,
 				struct bq24192_chip, usb);
 
@@ -2342,7 +2367,32 @@ static void bq24192_charging_port_changed(struct power_supply *psy,
 
 	dev_info(&chip->client->dev, "[chrg] evt:%d type:%d cur:%d\n",
 				cap->chrg_evt, cap->chrg_type, cap->mA);
-	schedule_delayed_work(&chip->chrg_evt_wrkr, 0);
+	/*
+	 * If we have a battery emulator connected, disable the charging
+	 */
+	if (!chip->pdata->sfi_tabl_present) {
+		ret = stop_charging(chip);
+		if (ret < 0) {
+			dev_err(&chip->client->dev,
+				"%s charge disabling failed\n", __func__);
+		}
+
+		/*
+		 * If the evt type is connect, schedule the maintenance which
+		 * maintains the battery state machine, WDT reset etc
+		 * else if the evt type is disconnect, cancel the maintenance
+		 */
+		if (cap->chrg_evt == POWER_SUPPLY_CHARGER_EVENT_CONNECT)
+			schedule_delayed_work(&chip->maint_chrg_wrkr, 0);
+		else
+		if (cap->chrg_evt == POWER_SUPPLY_CHARGER_EVENT_DISCONNECT) {
+			chip->batt_status = POWER_SUPPLY_STATUS_DISCHARGING;
+			power_supply_changed(&chip->usb);
+			cancel_delayed_work_sync(&chip->maint_chrg_wrkr);
+		}
+	} else
+		schedule_delayed_work(&chip->chrg_evt_wrkr, 0);
+
 }
 
 #ifdef CONFIG_DEBUG_FS

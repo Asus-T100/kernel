@@ -210,7 +210,7 @@ struct tng_topaz_private {
 #endif
 	/* topaz suspend work queue */
 	struct drm_device *dev;
-	struct work_struct topaz_suspend_work;
+	struct delayed_work topaz_suspend_work;
 	uint32_t isr_enabled;
 
 	struct ttm_object_file *tfile;

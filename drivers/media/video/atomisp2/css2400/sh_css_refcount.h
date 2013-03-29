@@ -28,12 +28,16 @@
 #include "sh_css_binary.h"
 #include "sh_css_internal.h"
 
-#define PARAM_SET_POOL  0xCAFE0001
-#define PARAM_BUFFER    0xCAFE0002
+#define PARAM_SET_POOL  ((int32_t)0xCAFE0001)
+#define PARAM_BUFFER    ((int32_t)0xCAFE0002)
+#define FREE_BUF_CACHE  ((int32_t)0xCAFE0003)
 
 enum sh_css_err sh_css_refcount_init(void);
 
 void sh_css_refcount_uninit(void);
+
+hrt_vaddress sh_css_refcount_alloc(
+	int32_t id, const size_t size, const uint16_t attribute);
 
 hrt_vaddress sh_css_refcount_retain(int32_t id, hrt_vaddress ptr);
 
@@ -43,7 +47,8 @@ bool sh_css_refcount_is_single(hrt_vaddress ptr);
 
 int32_t sh_css_refcount_get_id(hrt_vaddress ptr);
 
-void sh_css_refcount_clear(int32_t id, void (*clear_func)(hrt_vaddress ptr));
+void sh_css_refcount_clear(
+	int32_t id, void (*clear_func)(hrt_vaddress ptr));
 
 int sh_css_refcount_used(void);
 

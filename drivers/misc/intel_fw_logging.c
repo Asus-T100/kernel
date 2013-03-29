@@ -31,15 +31,14 @@
 #include <linux/fs.h>
 #include <linux/proc_fs.h>
 #include <linux/pti.h>
+#include <linux/rpmsg.h>
+#include <asm/intel_mid_rpmsg.h>
 
 #include <linux/io.h>
 #include <asm/intel_scu_ipc.h>
 #include <asm/intel_scu_ipcutil.h>
 
 #include "intel_fabricid_def.h"
-
-#define IPCMSG_GET_HOBADDR		0xE5
-#define IPCMSG_CLEAR_FABERROR		0xE3
 
 /*
    OSHOB - OS Handoff Buffer
@@ -118,6 +117,8 @@ union flag_status_hilo {
 static void __iomem *oshob_base;
 static char *log_buffer;
 
+static struct rpmsg_instance *fw_logging_instance;
+
 static char *Fabric_Names[] = {
 	"\nFull Chip Fabric [error]\n\n",
 	"\nAudio Fabric [error]\n\n",
@@ -170,8 +171,8 @@ static void __iomem *get_oshob_addr(void)
 	u16 oshob_size;
 	void __iomem *oshob_addr;
 
-	ret = intel_scu_ipc_command(IPCMSG_GET_HOBADDR, 0, NULL,
-					0, &oshob_base, 1);
+	ret = rpmsg_send_command(fw_logging_instance,
+			IPCMSG_GET_HOBADDR, 0, NULL, &oshob_base, 0, 1);
 
 	if (ret < 0) {
 		pr_err("ipc_read_oshob address failed!!\n");
@@ -494,7 +495,7 @@ leave:
 	return offset;
 }
 
-static int __init intel_fw_logging_init(void)
+static int intel_fw_logging_init(void)
 {
 	int length = 0;
 	int err = 0;
@@ -556,7 +557,8 @@ static int __init intel_fw_logging_init(void)
 	pr_err("%s", log_buffer);
 
 	/* Clear fabric error region inside OSHOB if neccessary */
-	intel_scu_ipc_simple_command(IPCMSG_CLEAR_FABERROR, 0);
+	rpmsg_send_simple_command(fw_logging_instance,
+				IPCMSG_CLEAR_FABERROR, 0);
 	goto leave;
 
 err_procfail:
@@ -568,7 +570,7 @@ leave:
 	return err;
 }
 
-static void __exit intel_fw_logging_exit(void)
+static void intel_fw_logging_exit(void)
 {
 #ifdef CONFIG_PROC_FS
 	if (ipanic_faberr)
@@ -577,8 +579,77 @@ static void __exit intel_fw_logging_exit(void)
 	vfree(log_buffer);
 }
 
-module_init(intel_fw_logging_init);
-module_exit(intel_fw_logging_exit);
+static int fw_logging_rpmsg_probe(struct rpmsg_channel *rpdev)
+{
+	int ret = 0;
+
+	if (rpdev == NULL) {
+		pr_err("fw_logging rpmsg channel not created\n");
+		ret = -ENODEV;
+		goto out;
+	}
+
+	dev_info(&rpdev->dev, "Probed fw_logging rpmsg device\n");
+
+	/* Allocate rpmsg instance for fw_logging*/
+	ret = alloc_rpmsg_instance(rpdev, &fw_logging_instance);
+	if (!fw_logging_instance) {
+		dev_err(&rpdev->dev, "kzalloc fw_logging instance failed\n");
+		goto out;
+	}
+	/* Initialize rpmsg instance */
+	init_rpmsg_instance(fw_logging_instance);
+	/* Init scu fw_logging */
+	ret = intel_fw_logging_init();
+
+	if (ret)
+		free_rpmsg_instance(rpdev, &fw_logging_instance);
+out:
+	return ret;
+}
+
+static void fw_logging_rpmsg_remove(struct rpmsg_channel *rpdev)
+{
+	intel_fw_logging_exit();
+	free_rpmsg_instance(rpdev, &fw_logging_instance);
+	dev_info(&rpdev->dev, "Removed fw_logging rpmsg device\n");
+}
+
+static void fw_logging_rpmsg_cb(struct rpmsg_channel *rpdev, void *data,
+					int len, void *priv, u32 src)
+{
+	dev_warn(&rpdev->dev, "unexpected, message\n");
+
+	print_hex_dump(KERN_DEBUG, __func__, DUMP_PREFIX_NONE, 16, 1,
+		       data, len,  true);
+}
+
+static struct rpmsg_device_id fw_logging_rpmsg_id_table[] = {
+	{ .name	= "rpmsg_fw_logging" },
+	{ },
+};
+MODULE_DEVICE_TABLE(rpmsg, fw_logging_rpmsg_id_table);
+
+static struct rpmsg_driver fw_logging_rpmsg = {
+	.drv.name	= KBUILD_MODNAME,
+	.drv.owner	= THIS_MODULE,
+	.id_table	= fw_logging_rpmsg_id_table,
+	.probe		= fw_logging_rpmsg_probe,
+	.callback	= fw_logging_rpmsg_cb,
+	.remove		= fw_logging_rpmsg_remove,
+};
+
+static int __init fw_logging_rpmsg_init(void)
+{
+	return register_rpmsg_driver(&fw_logging_rpmsg);
+}
+module_init(fw_logging_rpmsg_init);
+
+static void __exit fw_logging_rpmsg_exit(void)
+{
+	return unregister_rpmsg_driver(&fw_logging_rpmsg);
+}
+module_exit(fw_logging_rpmsg_exit);
 
 MODULE_LICENSE("GPL v2");
 MODULE_DESCRIPTION("Utility driver for getting intel scu fw debug info");

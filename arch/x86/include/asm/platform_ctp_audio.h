@@ -16,7 +16,7 @@
 #include <linux/sfi.h>
 struct ctp_audio_platform_data {
 	/* Intel software platform id*/
-	const struct sfi_soft_platform_id *spid;
+	const struct soft_platform_id *spid;
 	int codec_gpio_hsdet;
 	int codec_gpio_button;
 };

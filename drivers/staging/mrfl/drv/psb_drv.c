@@ -45,7 +45,7 @@
 #endif
 
 #include <drm/drm_pciids.h>
-#include "psb_powermgmt.h"
+#include "pwr_mgmt.h"
 #include "dispmgrnl.h"
 #include <linux/cpu.h>
 #include <linux/notifier.h>
@@ -1298,10 +1298,13 @@ void hdmi_do_audio_wq(struct work_struct *work)
 #define HDMI_HOTPLUG_DELAY (2*HZ)
 static void hdmi_hotplug_timer_func(unsigned long data)
 {
+/* FIXME: TODO: hkpatel - Enable once runtime pm is enabled */
+#if 0
 	struct drm_device *dev = (struct drm_device *)data;
 
 	PSB_DEBUG_ENTRY("\n");
 	ospm_runtime_pm_allow(dev);
+#endif
 }
 
 static int hdmi_hotplug_timer_init(struct drm_device *dev)
@@ -3005,7 +3008,7 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 	struct drm_psb_register_rw_arg *arg = data;
 	unsigned int iep_ble_status;
 	unsigned long iep_timeout;
-	UHBUsage usage =
+	u32 usage =
 	    arg->b_force_hw_on ? OSPM_UHB_FORCE_POWER_ON : OSPM_UHB_ONLY_IF_ON;
 
 	if (arg->display_write_mask != 0) {
@@ -4097,9 +4100,11 @@ static void psb_proc_cleanup(struct drm_minor *minor)
 #endif /* if KEEP_UNUSED_CODE_DRIVER_DISPATCH */
 
 static const struct dev_pm_ops psb_pm_ops = {
+/*
 	.runtime_suspend = psb_runtime_suspend,
 	.runtime_resume = psb_runtime_resume,
 	.runtime_idle = psb_runtime_idle,
+*/
 };
 
 static struct vm_operations_struct psb_ttm_vm_ops;
@@ -4344,9 +4349,7 @@ early_param("hdmi_edid", parse_hdmi_edid);
 static int __init psb_init(void)
 {
 	int ret;
-#ifdef CONFIG_SUPPORT_HDMI
-	struct drm_psb_private *dev_priv = NULL;
-#endif
+
 #if defined(MODULE) && defined(CONFIG_NET)
 	psb_kobject_uevent_init();
 #endif
@@ -4368,15 +4371,10 @@ static int __init psb_init(void)
 #endif
 
 #ifdef CONFIG_SUPPORT_HDMI
-	if (gpDrmDevice) {
-		dev_priv = (struct drm_psb_private *)gpDrmDevice->dev_private;
-		if (dev_priv) {
-			if (otm_hdmi_hpd_init() == OTM_HDMI_SUCCESS)
-				DRM_INFO("OTM_HDMI_INIT_SUCCESS\n");
-			else
-				DRM_INFO("OTM_HDMI_INIT_FAILE\n");
-		}
-	}
+	if (otm_hdmi_hpd_init() == OTM_HDMI_SUCCESS)
+		DRM_INFO("OTM_HDMI_INIT_SUCCESS\n");
+	else
+		DRM_INFO("OTM_HDMI_INIT_FAILE\n");
 #endif
 
 	return ret;

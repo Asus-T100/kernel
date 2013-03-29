@@ -72,7 +72,7 @@ MODULE_VERSION(SST_DRIVER_VERSION);
 #define INFO(_iram_start, _iram_end, _iram_use,		\
 		_dram_start, _dram_end, _dram_use,	\
 		_imr_start, _imr_end, _imr_use,		\
-		_use_elf, _max_streams) \
+		_use_elf, _max_streams, _dma_max_len) \
 	((kernel_ulong_t)&(struct sst_probe_info) {\
 		.iram_start = (_iram_start),		\
 		.iram_end = (_iram_end),		\
@@ -85,6 +85,7 @@ MODULE_VERSION(SST_DRIVER_VERSION);
 		.imr_use = (_imr_use),			\
 		.use_elf = (_use_elf),			\
 		.max_streams = (_max_streams),		\
+		.dma_max_len = (_dma_max_len),		\
 	 })
 
 struct intel_sst_drv *sst_drv_ctx;
@@ -417,14 +418,8 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 	sst_drv_ctx->fw = NULL;
 	sst_drv_ctx->fw_in_mem = NULL;
 	/* we use dma, so set to 1*/
-	if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID) {
-		sst_drv_ctx->use_dma = 0;
-		sst_drv_ctx->use_lli = 0;
-	} else {
-		sst_drv_ctx->use_dma = 1;
-		sst_drv_ctx->use_lli = 1;
-	}
-
+	sst_drv_ctx->use_dma = 1;
+	sst_drv_ctx->use_lli = 1;
 	ops = sst_drv_ctx->ops;
 
 	INIT_LIST_HEAD(&sst_drv_ctx->memcpy_list);
@@ -1079,26 +1074,26 @@ static DEFINE_PCI_DEVICE_TABLE(intel_sst_ids) = {
 		INFO(0, 0, false,
 			0, 0, false,
 			0, 0, false,
-			false, 3)},
+			false, 3, SST_MAX_DMA_LEN)},
 	{ PCI_VDEVICE(INTEL, SST_MFLD_PCI_ID),
 		INFO(SST_MFLD_IRAM_START, SST_MFLD_IRAM_END, true,
 			SST_MFLD_DRAM_START, SST_MFLD_DRAM_END, true,
 			0, 0, false,
 #ifdef MRFLD_TEST_ON_MFLD
-			true, 24)},
+			true, 24, SST_MAX_DMA_LEN)},
 #else
-			false, 5)},
+			false, 5, SST_MAX_DMA_LEN)},
 #endif
 	{ PCI_VDEVICE(INTEL, SST_CLV_PCI_ID),
 		INFO(0, 0, false,
 			0, 0, false,
 			0, 0, false,
-			false, 5)},
+			false, 5, SST_MAX_DMA_LEN)},
 	{ PCI_VDEVICE(INTEL, SST_MRFLD_PCI_ID),
 		INFO(0, 0, false,
 			0, 0, false,
 			0, 0, false,
-			true, 23)},
+			true, 23, SST_MAX_DMA_LEN_MRFLD)},
 	{ 0, }
 };
 MODULE_DEVICE_TABLE(pci, intel_sst_ids);
