@@ -343,16 +343,38 @@ static int ov2722_s_power(struct v4l2_subdev *sd, int on)
 		return power_up(sd);
 }
 
+/*
+ * distance - calculate the distance
+ * @res: resolution
+ * @w: width
+ * @h: height
+ *
+ * Get the gap between resolution and w/h.
+ * res->width/height smaller than w/h wouldn't be considered.
+ * Returns the value of gap or -1 if fail.
+ */
+#define LARGEST_ALLOWED_RATIO_MISMATCH 800
 static int distance(struct ov2722_resolution *res, u32 w, u32 h)
 {
-	int ret;
-	if (res->width < w || res->height < h)
+	unsigned int w_ratio = ((res->width << 13)/w);
+	unsigned int h_ratio;
+	int match;
+
+	if (h == 0)
+		return -1;
+	h_ratio = ((res->height << 13) / h);
+	if (h_ratio == 0)
+		return -1;
+	match   = abs(((w_ratio << 13) / h_ratio) - ((int)8192));
+
+	if ((w_ratio < (int)8192) || (h_ratio < (int)8192)  ||
+		(match > LARGEST_ALLOWED_RATIO_MISMATCH))
 		return -1;
 
-	ret = ((res->width - w) + (res->height - h));
-	return ret;
+	return w_ratio + h_ratio;
 }
 
+/* Return the nearest higher resolution index */
 static int nearest_resolution_index(int w, int h)
 {
 	int i;
@@ -362,7 +384,7 @@ static int nearest_resolution_index(int w, int h)
 	struct ov2722_resolution *tmp_res = NULL;
 
 	for (i = 0; i < N_RES; i++) {
-		tmp_res = &(ov2722_res[i]);
+		tmp_res = &ov2722_res[i];
 		dist = distance(tmp_res, w, h);
 		if (dist == -1)
 			continue;
@@ -371,9 +393,6 @@ static int nearest_resolution_index(int w, int h)
 			idx = i;
 		}
 	}
-
-	if (idx == -1)
-		return -1;
 
 	return idx;
 }
@@ -411,7 +430,7 @@ static int ov2722_try_mbus_fmt(struct v4l2_subdev *sd,
 		fmt->width = ov2722_res[idx].width;
 		fmt->height = ov2722_res[idx].height;
 	}
-	fmt->code = V4L2_MBUS_FMT_SBGGR10_1X10;
+	fmt->code = V4L2_MBUS_FMT_SGRBG10_1X10;
 
 	return 0;
 }

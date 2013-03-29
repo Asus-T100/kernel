@@ -187,7 +187,7 @@ static int ov2722_power_ctrl(struct v4l2_subdev *sd, int flag)
 static int ov2722_csi_configure(struct v4l2_subdev *sd, int flag)
 {
 	return camera_sensor_csi(sd, ATOMISP_CAMERA_PORT_SECONDARY, 1,
-		ATOMISP_INPUT_FORMAT_RAW_10, atomisp_bayer_order_bggr, flag);
+		ATOMISP_INPUT_FORMAT_RAW_10, atomisp_bayer_order_grbg, flag);
 }
 
 static struct camera_sensor_platform_data ov2722_sensor_platform_data = {
