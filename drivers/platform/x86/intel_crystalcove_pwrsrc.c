@@ -156,6 +156,9 @@ static int crystalcove_pwrsrc_probe(struct platform_device *pdev)
 		goto extcon_reg_failed;
 	}
 
+	/* Workaround: Set VBUS supply mode to HW control mode */
+	intel_mid_pmic_writeb(CRYSTALCOVE_VBUSCNTL_REG, 0x00);
+
 	/* OTG notification */
 	info->otg = usb_get_transceiver();
 	if (!info->otg)
