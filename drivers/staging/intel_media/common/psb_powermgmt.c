@@ -452,36 +452,18 @@ void ospm_power_uninit(void)
 }
 
 /*
- *  mdfld_adjust_display_fifo
- *
- * Update display fifo setting to avoid hdmi flicker
- */
-static void mdfld_adjust_display_fifo(struct drm_device *dev)
+*  gfx_register_program
+*
+* Update some register value to avoid hdmi flicker
+*/
+static void gfx_register_program(struct drm_device *dev)
 {
 	u32 temp;
-	struct drm_psb_private *dev_priv = dev->dev_private;
-	struct mdfld_dsi_config *dsi_config = dev_priv->dsi_configs[0];
-	struct drm_display_mode *mode = dsi_config->fixed_mode;
 
-	if (IS_CTP(dev)) {
-		if (mode &&
-		    ((mode->hdisplay >= 1920 && mode->vdisplay >= 1280) ||
-		     (mode->hdisplay >= 1280 && mode->vdisplay >= 1920))) {
-			/* for 19x12 mipi panel,
-			 * need to increase display A fifo size
-			 */
-			REG_WRITE(DSPARB, 0x0005F8D4);
-			REG_WRITE(DSPFW1, 0x0F0F1010);
-			REG_WRITE(DSPFW2, 0x5F2F0F0F);
-			REG_WRITE(DSPFW4, 0x07071010);
-		} else {
-			REG_WRITE(DSPARB, 0x0005E480);
-			REG_WRITE(DSPFW1, 0x0F0F103F);
-			REG_WRITE(DSPFW4, 0x0707101F);
-		}
-
-		REG_WRITE(MI_ARB, 0x0);
-	}
+	REG_WRITE(DSPARB, 0x0005E480);
+	REG_WRITE(DSPFW1, 0x0F0F103F);
+	REG_WRITE(DSPFW4, 0x0707101F);
+	REG_WRITE(MI_ARB, 0x0);
 
 	temp = REG_READ(DSPARB);
 	PSB_DEBUG_ENTRY("gfx_hdmi_setting: DSPARB = 0x%x", temp);
@@ -565,7 +547,8 @@ disable these MSIC power rails permanently.  */
 		intel_scu_ipc_iowrite8(MSIC_VCC330CNT, VCC330_OFF);
 	}
 #endif
-	mdfld_adjust_display_fifo(dev);
+	if (IS_CTP(dev))
+		gfx_register_program(dev);
 
 	mutex_unlock(&g_ospm_mutex);
 
@@ -998,7 +981,8 @@ void ospm_resume_display(struct pci_dev *pdev)
 	}
 	mdfld_restore_cursor_overlay_registers(dev);
 
-	mdfld_adjust_display_fifo(dev);
+	if (IS_CTP(dev))
+		gfx_register_program(dev);
 }
 
 /*
