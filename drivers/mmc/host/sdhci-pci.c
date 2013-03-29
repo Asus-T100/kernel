@@ -644,6 +644,9 @@ static int intel_mrfl_mmc_probe_slot(struct sdhci_pci_slot *slot)
 					MMC_CAP_NONREMOVABLE |
 					MMC_CAP_1_8V_DDR;
 
+	if (PCI_FUNC(slot->chip->pdev->devfn) == INTEL_MRFL_SDIO)
+		slot->host->mmc->caps |= MMC_CAP_NONREMOVABLE;
+
 	if (PCI_FUNC(slot->chip->pdev->devfn) == INTEL_MRFL_EMMC_0)
 		sdhci_alloc_panic_host(slot->host);
 
