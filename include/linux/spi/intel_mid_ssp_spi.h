@@ -262,6 +262,8 @@ struct ssp_driver_context {
 	struct list_head queue;
 	struct completion msg_done;
 
+	int suspended;
+
 	/* Current message transfer state info */
 	struct spi_message *cur_msg;
 	size_t len;

@@ -41,7 +41,6 @@
 #include <linux/intel_mid_dma.h>
 #include <linux/pm_qos.h>
 #include <linux/pm_runtime.h>
-#include <linux/wakelock.h>
 #include <linux/completion.h>
 #include <asm/intel-mid.h>
 
@@ -871,31 +870,28 @@ static int transfer(struct spi_device *spi, struct spi_message *msg)
 	struct ssp_driver_context *drv_context = \
 	spi_master_get_devdata(spi->master);
 	unsigned long flags;
-	struct device *dev = &drv_context->pdev->dev;
 
-	pm_runtime_get(dev);
 	msg->actual_length = 0;
 	msg->status = -EINPROGRESS;
 	spin_lock_irqsave(&drv_context->lock, flags);
 	list_add_tail(&msg->queue, &drv_context->queue);
+	if (!drv_context->suspended)
+		queue_work(drv_context->workqueue, &drv_context->pump_messages);
 	spin_unlock_irqrestore(&drv_context->lock, flags);
-	queue_work(drv_context->workqueue, &drv_context->pump_messages);
-	pm_runtime_put(dev);
 
 	return 0;
 }
 
-static int handle_message(struct ssp_driver_context *drv_context,
-				struct spi_message *msg)
+static int handle_message(struct ssp_driver_context *drv_context)
 {
 	struct chip_data *chip = NULL;
 	struct spi_transfer *transfer = NULL;
 	void *reg = drv_context->ioaddr;
 	u32 cr1;
 	struct device *dev = &drv_context->pdev->dev;
-	chip = spi_get_ctldata(msg->spi);
+	struct spi_message *msg = drv_context->cur_msg;
 
-	drv_context->cur_msg = msg;
+	chip = spi_get_ctldata(msg->spi);
 
 	/* We handle only one transfer message since the protocol module has to
 	   control the out of band signaling. */
@@ -1019,22 +1015,24 @@ static void pump_messages(struct work_struct *work)
 	unsigned long flags;
 	struct spi_message *msg;
 
-	wake_lock(&drv_context->stay_awake);
 	pm_runtime_get_sync(dev);
 	spin_lock_irqsave(&drv_context->lock, flags);
 	while (!list_empty(&drv_context->queue)) {
+		if (drv_context->suspended)
+			break;
 		msg = list_entry(drv_context->queue.next,
 				struct spi_message, queue);
 		list_del_init(&msg->queue);
+		drv_context->cur_msg = msg;
 		spin_unlock_irqrestore(&drv_context->lock, flags);
 		INIT_COMPLETION(drv_context->msg_done);
-		handle_message(drv_context, msg);
+		handle_message(drv_context);
 		wait_for_completion(&drv_context->msg_done);
 		spin_lock_irqsave(&drv_context->lock, flags);
+		drv_context->cur_msg = NULL;
 	}
 	spin_unlock_irqrestore(&drv_context->lock, flags);
 	pm_runtime_put(dev);
-	wake_unlock(&drv_context->stay_awake);
 }
 
 /**
@@ -1285,6 +1283,8 @@ static int intel_mid_ssp_spi_probe(struct pci_dev *pdev,
 	INIT_WORK(&drv_context->complete_work, int_transfer_complete_work);
 
 	drv_context->dma_initialized = 0;
+	drv_context->suspended = 0;
+	drv_context->cur_msg = NULL;
 
 	/* get basic io resource and map it */
 	drv_context->paddr = pci_resource_start(pdev, 0);
@@ -1353,8 +1353,6 @@ static int intel_mid_ssp_spi_probe(struct pci_dev *pdev,
 		iowrite32(ioread32(syscfg_ioaddr) | 2, syscfg_ioaddr);
 	}
 
-	wake_lock_init(&drv_context->stay_awake, WAKE_LOCK_SUSPEND,
-			dev_name(&pdev->dev));
 	INIT_LIST_HEAD(&drv_context->queue);
 	init_completion(&drv_context->msg_done);
 	spin_lock_init(&drv_context->lock);
@@ -1421,7 +1419,6 @@ static void __devexit intel_mid_ssp_spi_remove(struct pci_dev *pdev)
 
 	pm_runtime_forbid(&pdev->dev);
 	pm_runtime_get_noresume(&pdev->dev);
-	wake_lock_destroy(&drv_context->stay_awake);
 	/* Release IRQ */
 	free_irq(drv_context->irq, drv_context);
 
@@ -1442,12 +1439,45 @@ static void __devexit intel_mid_ssp_spi_remove(struct pci_dev *pdev)
 #ifdef CONFIG_PM
 static int intel_mid_ssp_spi_suspend(struct device *dev)
 {
+	struct pci_dev *pdev = to_pci_dev(dev);
+	struct ssp_driver_context *drv_context = pci_get_drvdata(pdev);
+	unsigned long flags;
+	int loop = 26;
+
 	dev_dbg(dev, "suspend\n");
-	return 0;
+
+	spin_lock_irqsave(&drv_context->lock, flags);
+	drv_context->suspended = 1;
+	/*
+	 * If there is one msg being handled, wait 500ms at most,
+	 * if still not done, return busy
+	 */
+	while (drv_context->cur_msg && --loop) {
+		spin_unlock_irqrestore(&drv_context->lock, flags);
+		msleep(20);
+		spin_lock_irqsave(&drv_context->lock, flags);
+		if (!loop)
+			drv_context->suspended = 0;
+	}
+	spin_unlock_irqrestore(&drv_context->lock, flags);
+
+	if (loop)
+		return 0;
+	else
+		return -EBUSY;
 }
 
 static int intel_mid_ssp_spi_resume(struct device *dev)
 {
+	struct pci_dev *pdev = to_pci_dev(dev);
+	struct ssp_driver_context *drv_context = pci_get_drvdata(pdev);
+
+	spin_lock(&drv_context->lock);
+	drv_context->suspended = 0;
+	if (!list_empty(&drv_context->queue))
+		queue_work(drv_context->workqueue, &drv_context->pump_messages);
+
+	spin_unlock(&drv_context->lock);
 	dev_dbg(dev, "resume\n");
 	return 0;
 }
