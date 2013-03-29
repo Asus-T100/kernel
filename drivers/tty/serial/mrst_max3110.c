@@ -505,7 +505,7 @@ static int serial_m3110_startup(struct uart_port *port)
 	/* as we use thread to handle tx/rx, need set low latency */
 	port->state->port.tty->low_latency = 1;
 
-	if (max->irq) {
+	if (max->irq > 0) {
 		/* Enable RX IRQ only */
 		config |= WC_RXA_IRQ_ENABLE;
 	} else {
@@ -749,7 +749,8 @@ static int serial_m3110_suspend(struct device *dev)
 	struct spi_device *spi = to_spi_device(dev);
 	struct uart_max3110 *max = spi_get_drvdata(spi);
 
-	disable_irq(max->irq);
+	if (max->irq > 0)
+		disable_irq(max->irq);
 	uart_suspend_port(&serial_m3110_reg, &max->port);
 	max3110_out(max, max->cur_conf | WC_SW_SHDI);
 	return 0;
@@ -762,7 +763,8 @@ static int serial_m3110_resume(struct device *dev)
 
 	max3110_out(max, max->cur_conf);
 	uart_resume_port(&serial_m3110_reg, &max->port);
-	enable_irq(max->irq);
+	if (max->irq > 0)
+		enable_irq(max->irq);
 	return 0;
 }
 #endif
@@ -843,7 +845,7 @@ static int __devinit serial_m3110_probe(struct spi_device *spi)
 
 	max->irq_edge_triggered = pdata->irq_edge_triggered;
 
-	if (max->irq) {
+	if (max->irq > 0) {
 		if (max->irq_edge_triggered) {
 			ret = request_irq(max->irq, serial_m3110_irq,
 					IRQ_TYPE_EDGE_FALLING, "max3110", max);
