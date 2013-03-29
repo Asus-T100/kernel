@@ -106,7 +106,7 @@ ccflags-y += \
 ccflags-y += -Werror
 
 #uncomment for debug prints
-ccflags-y += -DDEBUG
+#ccflags-y += -DDEBUG
 
 #only for internal testing
 ccflags-y += -DOTM_HDMI_UNIT_TEST
