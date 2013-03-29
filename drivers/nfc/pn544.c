@@ -36,6 +36,7 @@
 #include <linux/nfc/pn544.h>
 #include <linux/suspend.h>
 #include <linux/wakelock.h>
+#include <linux/poll.h>
 
 #define MAX_BUFFER_SIZE		512
 
@@ -240,6 +241,23 @@ fail:
 	return ret;
 }
 
+static unsigned int pn544_dev_poll(struct file *file, poll_table *wait)
+{
+	struct pn544_dev *pn544_dev = file->private_data;
+
+	if (!gpio_get_value(pn544_dev->irq_gpio)) {
+		pr_debug("%s : Waiting on available input data.\n", __func__);
+		poll_wait(file, &pn544_dev->read_wq, wait);
+
+		if (gpio_get_value(pn544_dev->irq_gpio))
+			return POLLIN | POLLRDNORM;
+	} else
+		return POLLIN | POLLRDNORM;
+
+	pr_debug("%s : No data on input stream.\n", __func__);
+	return 0;
+}
+
 static ssize_t pn544_dev_write(struct file *filp, const char __user *buf,
 		size_t count, loff_t *offset)
 {
@@ -320,7 +338,7 @@ static int pn544_dev_release(struct inode *inode, struct file *filp)
 	return 0;
 }
 
-static int pn544_dev_ioctl(struct file *filp,
+static long pn544_dev_ioctl(struct file *filp,
 		unsigned int cmd, unsigned long arg)
 {
 	struct pn544_dev *pn544_dev = filp->private_data;
@@ -367,7 +385,7 @@ static int pn544_dev_ioctl(struct file *filp,
 					!pn544_dev->nfc_en_polarity);
 			msleep(10);
 		} else {
-			pr_err("%s bad arg %u\n", __func__, arg);
+			pr_err("%s bad arg %lu\n", __func__, arg);
 			return -EINVAL;
 		}
 		break;
@@ -384,6 +402,7 @@ static const struct file_operations pn544_dev_fops = {
 	.llseek		= no_llseek,
 	.read		= pn544_dev_read,
 	.write		= pn544_dev_write,
+	.poll		= pn544_dev_poll,
 	.open		= pn544_dev_open,
 	.release	= pn544_dev_release,
 #ifdef HAVE_UNLOCKED_IOCTL
