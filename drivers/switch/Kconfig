@@ -25,4 +25,10 @@ config SWITCH_MID_USER_NOTIFY
 	  userspace requires notification of specific device events reported by drivers to
 	  the USER_NOTIFY switch driver.
 
+config SWITCH_ARIZONA
+	tristate "Arizona Switch support"
+	depends on MFD_ARIZONA
+	help
+	  Say Y here to enable Arizona switch support.
+
 endif # SWITCH

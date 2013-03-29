@@ -147,4 +147,5 @@ source "drivers/devfreq/Kconfig"
 source "drivers/gps/Kconfig"
 
 source "drivers/modem_control/Kconfig"
+
 endmenu
