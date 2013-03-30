@@ -77,9 +77,15 @@
 /* Since entry latency is substantial
  * put exit_latency = entry+exit latency
  */
+#ifdef CONFIG_X86_MRFLD
+#define CSTATE_EXIT_LATENCY_S0i1 1200
+#define CSTATE_EXIT_LATENCY_S0i2 2000
+#define CSTATE_EXIT_LATENCY_S0i3 10000
+#else
 #define CSTATE_EXIT_LATENCY_LPMP3 1040
 #define CSTATE_EXIT_LATENCY_S0i1 1040
 #define CSTATE_EXIT_LATENCY_S0i3 2800
+#endif
 
 enum s3_parts {
 	PROC_FRZ,
@@ -129,6 +135,7 @@ enum s3_parts {
 #define S0I3_POWER_USAGE       31
 
 extern void pmu_s0ix_demotion_stat(int req_state, int grant_state);
+extern unsigned int pmu_get_new_cstate(unsigned int cstate, int *index);
 extern int get_target_platform_state(unsigned long *eax);
 extern int mid_s0ix_enter(int);
 extern int pmu_set_devices_in_d0i0(void);
@@ -182,6 +189,8 @@ static inline int pmu_nc_set_power_state
 
 static inline void pmu_set_s0ix_complete(void) { return; }
 static inline bool pmu_is_s0ix_in_progress(void) { return false; };
+static inline unsigned int pmu_get_new_cstate
+			(unsigned int cstate, int *index) { return cstate; };
 
 /*returns function not implemented*/
 static inline void time_stamp_in_suspend_flow(int mark, bool start) {}
