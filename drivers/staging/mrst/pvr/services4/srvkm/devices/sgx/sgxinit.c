@@ -957,6 +957,12 @@ PVRSRV_ERROR DevInitSGXPart2KM (PVRSRV_PER_PROCESS_DATA *psPerProc,
 	PDUMPCOMMENT("SGX Initialisation Part 2");
 
 	psDeviceNode = (PVRSRV_DEVICE_NODE *)hDevHandle;
+	if (!psDeviceNode)
+	{
+		PVR_DPF((PVR_DBG_ERROR,"DevInitSGXPart2KM: Invalid parameter!"));
+		return PVRSRV_ERROR_INVALID_PARAMS;
+        }
+
 	psDevInfo = (PVRSRV_SGXDEV_INFO *)psDeviceNode->pvDevice;
 
 	/*
