@@ -110,8 +110,6 @@ struct r69001_ts_data {
 	u8 t_num;
 };
 
-/* I2C Client */
-static struct i2c_client *client_r69001;
 static void r69001_set_mode(struct r69001_ts_data *ts, u8 mode, u16 poll_time);
 
 static int r69001_ts_read_data(struct r69001_ts_data *ts,
@@ -343,7 +341,11 @@ r69001_ts_probe(struct i2c_client *client, const struct i2c_device_id *id)
 		dev_err(&client->dev, "Out of memory\n");
 		return -ENOMEM;
 	}
-	client_r69001 = client;
+	if (!pdata) {
+		dev_err(&client->dev, "No touch platform data\n");
+		error = -EINVAL;
+		goto err1;
+	}
 	ts->client = client;
 	ts->pdata = pdata;
 
@@ -351,6 +353,8 @@ r69001_ts_probe(struct i2c_client *client, const struct i2c_device_id *id)
 		dev_err(&client->dev, "Error, there is no IRQ number\n");
 		error = -EINVAL;
 		goto err1;
+	} else if (client->irq == 0xff) {
+		client->irq = gpio_to_irq(pdata->gpio);
 	}
 
 	input_dev = input_allocate_device();
@@ -387,7 +391,7 @@ r69001_ts_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	ts->mode = INTERRUPT_MODE;
 
 	error = request_threaded_irq(client->irq, NULL, r69001_ts_irq_handler,
-			IRQF_ONESHOT, client->name, ts);
+			pdata->irq_type, client->name, ts);
 	if (error) {
 		dev_err(&client->dev, "Failed to register interrupt\n");
 		goto err4;

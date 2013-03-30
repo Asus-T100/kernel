@@ -102,6 +102,11 @@ struct r69001_io_data {
 	struct io_resolution resolution;
 };
 
+struct r69001_platform_data {
+	int irq_type;
+	int gpio;
+};
+
 #define R69001_IO   'R'
 
 /* R69001 ioctl commands */
