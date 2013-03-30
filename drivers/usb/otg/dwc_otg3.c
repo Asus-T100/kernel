@@ -1999,6 +1999,14 @@ static int dwc_otg_suspend(struct device *dev)
 
 static int dwc_otg_resume(struct device *dev)
 {
+	struct dwc_otg2 *otg = the_transceiver;
+	unsigned long flags;
+
+	spin_lock_irqsave(&otg->lock, flags);
+	otg->otg_events |= OEVT_B_DEV_SES_VLD_DET_EVNT;
+	wakeup_main_thread(otg);
+	spin_unlock_irqrestore(&otg->lock, flags);
+
 	return 0;
 }
 
