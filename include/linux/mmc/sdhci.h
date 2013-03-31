@@ -112,8 +112,6 @@ struct sdhci_host {
 #define SDHCI_QUIRK2_DISABLE_HIGH_SPEED			(1<<21)
 #define SDHCI_QUIRK2_CAN_VDD_300			(1<<22)
 #define SDHCI_QUIRK2_CAN_VDD_330			(1<<23)
-/* Just a workaround for currently unknown issue */
-#define SDHCI_QUIRK2_EN_IRQ_BEFORE_S3			(1<<24)
 
 	int irq;		/* Device IRQ */
 	void __iomem *ioaddr;	/* Mapped address */
