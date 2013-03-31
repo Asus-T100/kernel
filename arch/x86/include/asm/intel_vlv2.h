@@ -8,7 +8,7 @@
 
 #define VV_NGPIO_SCORE		102
 #define VV_NGPIO_NCORE		28
-#define VV_NGPIO_SUS		43
+#define VV_NGPIO_SUS		44
 
 #endif
 
