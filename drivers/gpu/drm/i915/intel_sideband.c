@@ -39,7 +39,7 @@ int intel_sideband_read32(struct drm_i915_private *dev_priv, u8 port_id,
 
 	bar = 0;
 	be = 0xf;
-	port = IOSF_PORT_PUNIT;
+	port = port_id;
 	opcode = IOSF_OPCODE_REG_READ;
 	devfn = 0x00;
 
@@ -51,6 +51,7 @@ int intel_sideband_read32(struct drm_i915_private *dev_priv, u8 port_id,
 	if (wait_for_atomic_us((I915_READ(IOSF_DOORBELL_REQ) & IOSF_SB_BUSY)
 							== 0, 100)) {
 		DRM_ERROR("IOSF sideband idle wait timed out\n");
+		spin_unlock_irqrestore(&dev_priv->dpio_lock, flags);
 		return -EAGAIN;
 	}
 
@@ -60,12 +61,14 @@ int intel_sideband_read32(struct drm_i915_private *dev_priv, u8 port_id,
 	if (wait_for_atomic_us((I915_READ(IOSF_DOORBELL_REQ) &
 					IOSF_SB_BUSY) == 0, 100)) {
 		DRM_ERROR("IOSF sideband read wait timed out\n");
+		spin_unlock_irqrestore(&dev_priv->dpio_lock, flags);
 		return -ETIMEDOUT;
 	}
 
 	*val = I915_READ(IOSF_DATA);
 	I915_WRITE(IOSF_DATA, 0);
 
+	spin_unlock_irqrestore(&dev_priv->dpio_lock, flags);
 	return 0;
 }
 
@@ -77,7 +80,7 @@ int intel_sideband_write32(struct drm_i915_private *dev_priv, u8 port_id,
 
 	bar = 0;
 	be = 0xf;
-	port = IOSF_PORT_PUNIT;
+	port = port_id;
 	opcode = IOSF_OPCODE_REG_WRITE;
 	devfn = 0x00;
 
@@ -90,6 +93,7 @@ int intel_sideband_write32(struct drm_i915_private *dev_priv, u8 port_id,
 	if (wait_for_atomic_us((I915_READ(IOSF_DOORBELL_REQ) &
 						IOSF_SB_BUSY) == 0, 100)) {
 		DRM_ERROR("IOSF Sideband idle wait timed out\n");
+		spin_unlock_irqrestore(&dev_priv->dpio_lock, flags);
 		return -EAGAIN;
 	}
 
@@ -100,10 +104,13 @@ int intel_sideband_write32(struct drm_i915_private *dev_priv, u8 port_id,
 	if (wait_for_atomic_us((I915_READ(IOSF_DOORBELL_REQ) &
 						IOSF_SB_BUSY) == 0, 100)) {
 		DRM_ERROR("IOSF Sideband write wait timed out\n");
+		spin_unlock_irqrestore(&dev_priv->dpio_lock, flags);
 		return -ETIMEDOUT;
 	}
 
 	I915_WRITE(IOSF_DATA, 0);
+
+	spin_unlock_irqrestore(&dev_priv->dpio_lock, flags);
 	return 0;
 }
 
@@ -153,66 +160,66 @@ int intel_dpio_write32_bits(struct drm_i915_private *dev_priv, u32 reg,
 int intel_punit_read32(struct drm_i915_private *dev_priv, u32 reg, u32 *val)
 {
 
-	return intel_sideband_read32(dev_priv, IOSF_PORT_DPIO, reg, val);
+	return intel_sideband_read32(dev_priv, IOSF_PORT_PUNIT, reg, val);
 }
 
 int intel_punit_write32(struct drm_i915_private *dev_priv, u32 reg, u32 val)
 {
-	return intel_sideband_write32(dev_priv, IOSF_PORT_DPIO, reg, val);
+	return intel_sideband_write32(dev_priv, IOSF_PORT_PUNIT, reg, val);
 }
 
 int intel_punit_write32_bits(struct drm_i915_private *dev_priv, u32 reg,
 				u32 val, u32 mask)
 {
 	return intel_sideband_write32_bits(dev_priv,
-				DPIO_PORTID, reg, val, mask);
+				IOSF_PORT_PUNIT, reg, val, mask);
 }
 
 int intel_gpio_nc_read32(struct drm_i915_private *dev_priv, u32 reg, u32 *val)
 {
 
-	return intel_sideband_read32(dev_priv, IOSF_PORT_DPIO, reg, val);
+	return intel_sideband_read32(dev_priv, IOSF_PORT_GPIO_NC, reg, val);
 }
 
 int intel_gpio_nc_write32(struct drm_i915_private *dev_priv, u32 reg, u32 val)
 {
-	return intel_sideband_write32(dev_priv, IOSF_PORT_DPIO, reg, val);
+	return intel_sideband_write32(dev_priv, IOSF_PORT_GPIO_NC, reg, val);
 }
 
 int intel_gpio_nc_write32_bits(struct drm_i915_private *dev_priv, u32 reg,
 				u32 val, u32 mask)
 {
 	return intel_sideband_write32_bits(dev_priv,
-				DPIO_PORTID, reg, val, mask);
+				IOSF_PORT_GPIO_NC, reg, val, mask);
 }
 
 int intel_cck_read32(struct drm_i915_private *dev_priv, u32 reg, u32 *val)
 {
 
-	return intel_sideband_read32(dev_priv, IOSF_PORT_DPIO, reg, val);
+	return intel_sideband_read32(dev_priv, IOSF_PORT_CCK, reg, val);
 }
 
 int intel_cck_write32(struct drm_i915_private *dev_priv, u32 reg, u32 val)
 {
-	return intel_sideband_write32(dev_priv, IOSF_PORT_DPIO, reg, val);
+	return intel_sideband_write32(dev_priv, IOSF_PORT_CCK, reg, val);
 }
 
 int intel_cck_write32_bits(struct drm_i915_private *dev_priv, u32 reg,
 				u32 val, u32 mask)
 {
 	return intel_sideband_write32_bits(dev_priv,
-				DPIO_PORTID, reg, val, mask);
+				IOSF_PORT_CCK, reg, val, mask);
 }
 
 int intel_ccu_read32(struct drm_i915_private *dev_priv, u32 reg, u32 *val)
 {
 
-	return intel_sideband_read32(dev_priv, IOSF_PORT_DPIO, reg, val);
+	return intel_sideband_read32(dev_priv, IOSF_PORT_CCU, reg, val);
 }
 
 int intel_ccu_write32(struct drm_i915_private *dev_priv, u32 reg, u32 val)
 {
-	return intel_sideband_write32(dev_priv, IOSF_PORT_DPIO, reg, val);
+	return intel_sideband_write32(dev_priv, IOSF_PORT_CCU, reg, val);
 }
 
 int intel_ccu_write32_bits(struct drm_i915_private *dev_priv, u32 reg,
@@ -224,7 +231,6 @@ int intel_ccu_write32_bits(struct drm_i915_private *dev_priv, u32 reg,
 
 int intel_gps_core_read32(struct drm_i915_private *dev_priv, u32 reg, u32 *val)
 {
-
 	return intel_sideband_read32(dev_priv, IOSF_PORT_GPS_CORE, reg, val);
 }
 
