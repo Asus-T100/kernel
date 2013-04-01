@@ -45,7 +45,7 @@ struct imx_resolution *imx_res;
 static int N_RES;
 
 /* FIXME: workround for MERR Pre-alpha due to ISP performance */
-static int vb = 3142, hb = 4572;
+static int vb = 1616, hb = 6500;
 module_param(vb, int, 0644);
 module_param(hb, int, 0644);
 static int
@@ -1228,34 +1228,12 @@ static int imx_s_mbus_fmt(struct v4l2_subdev *sd,
 		return -EINVAL;
 	}
 
-	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2) {
+	if ((intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2)
+		&& ((imx_res[dev->fmt_idx].width == 1640)
+		|| (imx_res[dev->fmt_idx].width == 2336)
+		|| (imx_res[dev->fmt_idx].height == 1852)
+		|| (imx_res[dev->fmt_idx].width == 2576))) {
 		/* FIXME: workround for VLV2 due to ISP perf - start */
-		if (imx_res[dev->fmt_idx].height >= 3120) {
-			vb = 3400;
-			hb = 16000;
-		} else if (imx_res[dev->fmt_idx].height >= 1936) {
-			vb = 3400;
-			hb = 15000;
-		} else if (imx_res[dev->fmt_idx].height >= 1320) {
-			vb = 3300;
-			hb = 8000;
-		} else if (imx_res[dev->fmt_idx].height >= 720) {
-			vb = 3300;
-			hb = 6000;
-		} else {
-			vb = 3142;
-			hb = 4572;
-		}
-		ret = imx_write_reg(client, IMX_8BIT, 0x0340, (vb>>8)&0xFF);
-		if (ret) {
-			mutex_unlock(&dev->input_lock);
-			return -EINVAL;
-		}
-		ret = imx_write_reg(client, IMX_8BIT, 0x0341, vb&0xFF);
-		if (ret) {
-			mutex_unlock(&dev->input_lock);
-			return -EINVAL;
-		}
 		ret = imx_write_reg(client, IMX_8BIT, 0x0342, (hb>>8)&0xFF);
 		if (ret) {
 			mutex_unlock(&dev->input_lock);
