@@ -3718,6 +3718,11 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	if (isp->sw_contex.bypass)
 		padding_w = 0, padding_h = 0;
 
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2) {
+		padding_w = 12;
+		padding_h = 12;
+	}
+
 	/* construct resolution supported by isp */
 	if (res_overflow && !isp->params.continuous_vf) {
 		f->fmt.pix.width = rounddown(
