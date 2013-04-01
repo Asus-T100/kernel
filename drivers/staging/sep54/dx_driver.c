@@ -94,8 +94,8 @@
 #error Size mismatch of SEPAPP_UUID_SIZE and DXDI_SEPAPP_UUID_SIZE
 #endif
 
-#define DEVICE_NAME_PREFIX		"dx_sep_q"
-#define SEP_DEVICES			SEP_MAX_NUM_OF_DESC_Q
+#define DEVICE_NAME_PREFIX  "dx_sep_q"
+#define SEP_DEVICES         SEP_MAX_NUM_OF_DESC_Q
 
 #define DRIVER_NAME     MODULE_NAME
 #define SEP_DEVICES     SEP_MAX_NUM_OF_DESC_Q
@@ -112,6 +112,10 @@
 #endif
 
 static struct class *sep_class;
+
+#ifdef S3_POWER_HACK
+int is_s3_state;
+#endif
 
 int q_num;			/* Initialized to 0 */
 module_param(q_num, int, 0444);
@@ -3705,8 +3709,8 @@ sep_write(struct file *filp, const char __user *buf, size_t count, loff_t *ppos)
 #else /* DEBUG */
 	SEP_LOG_DEBUG("Invoked for %u bytes", count);
 	return -ENOSYS;		/* nothing to write... IOCTL only */
-}
 #endif /* DEBUG */
+}
 
 /*!
  * IOCTL entry point
@@ -4466,10 +4470,6 @@ static int __devinit sep_pci_probe(struct pci_dev *pdev,
 	/* Fill irq resource variable */
 	r_irq.start = pdev->irq;
 
-#ifdef SEP_RUNTIME_PM
-	pm_runtime_set_active(&pdev->dev);
-#endif
-
 	/* Use resource variables */
 	error = sep_setup(&pdev->dev, &res, &r_irq);
 	if (error)
@@ -4495,9 +4495,18 @@ static int __devinit sep_pci_probe(struct pci_dev *pdev,
 static int sep_runtime_suspend(struct device *dev)
 {
 	int ret;
+
+    /* If we are in S3 state don't suspend
+     * TODO: FIX WITH DX
+     */
+#ifdef S3_POWER_HACK
+	if (is_s3_state)
+		return 0;
+#endif
+
 	ret = dx_sep_power_state_set(DX_SEP_POWER_HIBERNATED);
 	if (ret)
-		SEP_LOG_ERR("%s failed!\n", __func__);
+		SEP_LOG_ERR("%s failed! ret = %d\n", __func__, ret);
 
 	return ret;
 }
@@ -4505,37 +4514,55 @@ static int sep_runtime_suspend(struct device *dev)
 static int sep_runtime_resume(struct device *dev)
 {
 	int ret;
+
+    /* If we are in S3 state no need to resume
+     * TODO: FIX WITH DX
+     */
+#ifdef S3_POWER_HACK
+	if (is_s3_state)
+		return 0;
+#endif
+
 	ret = dx_sep_power_state_set(DX_SEP_POWER_ACTIVE);
 	if (ret)
-		SEP_LOG_ERR("%s failed!\n", __func__);
+		SEP_LOG_ERR("%s failed! ret = %d\n", __func__, ret);
 
 	return ret;
 }
 
+#ifndef S3_POWER_HACK
 static int sep_suspend(struct device *dev)
 {
-	return sep_runtime_suspend(dev);
-}
+	int ret = 0;
 
+	ret = dx_sep_power_state_set(DX_SEP_POWER_HIBERNATED);
+	if (ret)
+		SEP_LOG_ERR("%s failed! ret = %d\n", __func__, ret);
+
+	return ret;
+}
+#endif
+
+#ifndef S3_POWER_HACK
 static int sep_resume(struct device *dev)
 {
-	int ret;
-	ret = sep_runtime_resume(dev);
+	int ret = 0;
+
+	ret = dx_sep_power_state_set(DX_SEP_POWER_ACTIVE);
 	if (ret)
-		return ret;
+		SEP_LOG_ERR("%s failed! ret = %d\n", __func__, ret);
 
-	pm_runtime_disable(dev);
-	pm_runtime_set_active(dev);
-	pm_runtime_enable(dev);
-
-	return 0;
+	return ret;
 }
+#endif
 
 static const struct dev_pm_ops sep_pm_ops = {
 	.runtime_suspend = sep_runtime_suspend,
 	.runtime_resume = sep_runtime_resume,
+#ifndef S3_POWER_HACK
 	.suspend = sep_suspend,
 	.resume = sep_resume,
+#endif
 };
 #endif /* CONFIG_PM_RUNTIME && SEP_RUNTIME_PM */
 
@@ -4552,6 +4579,32 @@ static struct pci_driver sep_pci_driver = {
 	.remove = sep_pci_remove
 };
 
+#ifdef S3_POWER_HACK
+static int s3_suspend_notifier(struct notifier_block *nb,
+				unsigned long event,
+				void *dummy)
+{
+	switch (event) {
+	case PM_SUSPEND_PREPARE:
+		is_s3_state = 1;
+		break;
+
+	case PM_POST_SUSPEND:
+		is_s3_state = 0;
+		break;
+
+	default:
+		return NOTIFY_DONE;
+	}
+
+	return 0;
+}
+
+static struct notifier_block s3_notif_block = {
+	.notifier_call = s3_suspend_notifier,
+};
+#endif
+
 static int __init sep_module_init(void)
 {
 	int rc;
@@ -4564,6 +4617,15 @@ static int __init sep_module_init(void)
 		class_destroy(sep_class);
 		return rc;
 	}
+
+#ifdef S3_POWER_HACK
+	rc = register_pm_notifier(&s3_notif_block);
+	if (rc) {
+		pci_unregister_driver(&sep_pci_driver);
+		class_destroy(sep_class);
+		return rc;
+	}
+#endif
 
 	return 0;		/*success */
 }
