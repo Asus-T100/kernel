@@ -29,14 +29,20 @@
 #include <drm/drm_crtc.h>
 #include "intel_drv.h"
 
-#define dsi_18Bpp_loosely_packed		0
-#define dsi_18Bpp_packed				1
-#define dsi_16Bpp_packed				2
-#define dsi_24Bpp_packed				3
+#define dsi_18Bpp_loosely_packed	0
+#define dsi_18Bpp_packed		1
+#define dsi_16Bpp_packed		2
+#define dsi_24Bpp_packed		3
 
-#define ColorConversionInBridge			0
-
+#define ColorConversionInBridge		0
 #define ColorConversionInHostController	1
+
+#define DSI_HSS_PACKET_SIZE 4
+#define DSI_HSE_PACKET_SIZE 4
+#define DSI_HSA_LPACKET_EXTRA_SIZE 6
+#define DSI_HBP_LPACKET_EXTRA_SIZE 6
+#define DSI_HACTIVE_LPACKET_EXTRA_SIZE 6
+#define DSI_HFP_LPACKET_EXTRA_SIZE 6
 
 struct intel_dsi_device {
 	unsigned short panel_id;

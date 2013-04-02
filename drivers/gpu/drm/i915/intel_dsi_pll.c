@@ -37,6 +37,11 @@ struct dsi_clock_table {
 	u8 p;
 };
 
+struct dsi_mnp {
+	u32 dsi_pll_ctrl;
+	u32 dsi_pll_div;
+};
+
 u32 lfsr_converts[] = {
 		426, 469, 234, 373, 442, 221, 110, 311, 411,	/* 62 - 70 */
 	461, 486, 243, 377, 188, 350, 175, 343, 427, 213,	/* 71 - 80 */
@@ -45,94 +50,208 @@ u32 lfsr_converts[] = {
 };
 
 struct dsi_clock_table dsi_clk_tbl[] = {
-		{33300, 80, 6}, {32300, 78, 6}, {31300, 75, 6}, {30000, 72, 6},
-		{37300, 90, 6}, {36300, 87, 6}, {35300, 85, 6}, {34300, 82, 6},
-		{40000, 80, 5}, {39300, 79, 5}, {39000, 78, 5}, {38300, 92, 6},
-		{40400, 81, 5}, {40300, 81, 5}, {40200, 80, 5}, {40100, 80, 5},
-		{40800, 82, 5}, {40700, 81, 5}, {40600, 81, 5}, {40500, 81, 5},
-		{41200, 82, 5}, {41100, 82, 5}, {41000, 82, 5}, {40900, 82, 5},
-		{42000, 84, 5}, {41900, 84, 5}, {41800, 84, 5}, {41700, 83, 5},
-		{41600, 83, 5}, {41500, 83, 5}, {41400, 83, 5}, {41300, 83, 5},
-		{46000, 92, 5}, {45000, 90, 5}, {44000, 88, 5}, {43000, 86, 5},
-		{50000, 80, 4}, {49000, 78, 4}, {48000, 77, 4}, {47000, 75, 4},
-		{54000, 86, 4}, {53000, 85, 4}, {52000, 83, 4}, {51000, 82, 4},
-		{58000, 70, 3}, {57000, 91, 4}, {56000, 90, 4}, {55000, 88, 4},
-		{62000, 74, 3}, {61000, 73, 3}, {60000, 72, 3}, {59000, 71, 3},
-		{66000, 79, 3}, {65000, 78, 3}, {64000, 77, 3}, {63000, 76, 3},
-		{70000, 84, 3}, {69000, 83, 3}, {68000, 82, 3}, {67000, 80, 3},
-		{74000, 89, 3}, {73000, 88, 3}, {72000, 86, 3}, {71000, 85, 3},
-		{78000, 62, 2}, {77000, 92, 3}, {76000, 91, 3}, {75000, 90, 3},
-		{90000, 72, 2}, {88000, 70, 2}, {80000, 64, 2}, {79000, 63, 2},
-		{100000, 80, 2},	/* dsi clock frequency in 10Khz*/
+		{300, 72, 6}, {313, 75, 6}, {323, 78, 6}, {333, 80, 6},
+		{343, 82, 6}, {353, 85, 6}, {363, 87, 6}, {373, 90, 6},
+		{383, 92, 6}, {390, 78, 5}, {393, 79, 5}, {400, 80, 5},
+		{401, 80, 5}, {402, 80, 5}, {403, 81, 5}, {404, 81, 5},
+		{405, 81, 5}, {406, 81, 5}, {407, 81, 5}, {408, 82, 5},
+		{409, 82, 5}, {410, 82, 5}, {411, 82, 5}, {412, 82, 5},
+		{413, 83, 5}, {414, 83, 5}, {415, 83, 5}, {416, 83, 5},
+		{417, 83, 5}, {418, 84, 5}, {419, 84, 5}, {420, 84, 5},
+		{430, 86, 5}, {440, 88, 5}, {450, 90, 5}, {460, 92, 5},
+		{470, 75, 4}, {480, 77, 4}, {490, 78, 4}, {500, 80, 4},
+		{510, 82, 4}, {520, 83, 4}, {530, 85, 4}, {540, 86, 4},
+		{550, 88, 4}, {560, 90, 4}, {570, 91, 4}, {580, 70, 3},
+		{590, 71, 3}, {600, 72, 3}, {610, 73, 3}, {620, 74, 3},
+		{630, 76, 3}, {640, 77, 3}, {650, 78, 3}, {660, 79, 3},
+		{670, 80, 3}, {680, 82, 3}, {690, 83, 3}, {700, 84, 3},
+		{710, 85, 3}, {720, 86, 3}, {730, 88, 3}, {740, 89, 3},
+		{750, 90, 3}, {760, 91, 3}, {770, 92, 3}, {780, 62, 2},
+		{790, 63, 2}, {800, 64, 2}, {880, 70, 2}, {900, 72, 2},
+		{1000, 80, 2},		/* dsi clock frequency in Mhz*/
 };
 
-
-
-int intel_configure_dsi_pll(struct intel_dsi *intel_dsi, u32 pixel_clock)
+int dsi_60hz_formula(struct intel_dsi *intel_dsi,
+		struct drm_display_mode *mode, u32 *dsi_clk)
 {
-	struct drm_i915_private *dev_priv =
-			intel_dsi->base.base.dev->dev_private;
-	u32 target_dsi_clk = 0;
-	u32 ddr_clk_pixel;
-	u32 ddr_clk;
-	u8 lane_count;
+	u32 bpp;
+	u32 bytes_per_line;
+	u32 bytes_per_frame;
+	u32 bytes_per_60_frame;
+	u32 bytes_per_60_frame_n_lanes;
+	u32 hactive, vactive, hfp, hsync, hbp, vfp, vsync, vbp;
+	u32 hsync_bytes;
+	u32 hbp_bytes;
+	u32 hactive_bytes;
+	u32 hfp_bytes;
+	u32 dsi_byte_clock_hz;
+	u32 dsi_bit_clock_hz;
+
+	if (intel_dsi->dsi_packet_format == dsi_24Bpp_packed)
+		bpp = 24;
+	else if (intel_dsi->dsi_packet_format == dsi_18Bpp_loosely_packed)
+		bpp = 24;
+	else
+		bpp = 18;
+
+	hactive = mode->hdisplay;
+	vactive = mode->vdisplay;
+	hfp = mode->hsync_start - mode->hdisplay;
+	hsync = mode->hsync_end - mode->hsync_start;
+	hbp = mode->htotal - mode->hsync_end;
+
+	vfp = mode->vsync_start - mode->vdisplay;
+	vsync = mode->vsync_end - mode->vsync_start;
+	vbp = mode->vtotal - mode->vsync_end;
+
+	hsync_bytes = ((hsync * bpp) / 8) + (((hsync * bpp) % 8) && 1);
+	hbp_bytes = ((hbp * bpp) / 8) + (((hbp * bpp) % 8) && 1);
+	hactive_bytes = ((hactive * bpp) / 8) + (((hactive * bpp) % 8) && 1);
+	hfp_bytes = ((hfp * bpp) / 8) + (((hfp * bpp) % 8) && 1);
+
+	bytes_per_line = DSI_HSS_PACKET_SIZE + hsync_bytes + \
+		DSI_HSA_LPACKET_EXTRA_SIZE + DSI_HSE_PACKET_SIZE + \
+		hbp_bytes + DSI_HBP_LPACKET_EXTRA_SIZE + \
+		hactive_bytes + DSI_HACTIVE_LPACKET_EXTRA_SIZE + \
+		hfp_bytes + DSI_HFP_LPACKET_EXTRA_SIZE;
+
+	bytes_per_frame = (vsync * bytes_per_line) + (vbp * bytes_per_line) + \
+			(vactive * bytes_per_line) + (vfp * bytes_per_line);
+
+	bytes_per_60_frame = 60 * bytes_per_frame;
+
+	bytes_per_60_frame_n_lanes = bytes_per_60_frame / intel_dsi->lane_count;
+
+	/* the dsi clock is divided by 2 in the hardware to get dsi ddr clock */
+	dsi_byte_clock_hz = bytes_per_60_frame_n_lanes;
+	dsi_bit_clock_hz = dsi_byte_clock_hz * 8;
+
+	*dsi_clk = dsi_bit_clock_hz / (1000 * 1000);
+
+	return 0;
+}
+
+int dsi_15percent_formula(struct intel_dsi *intel_dsi,
+		struct drm_display_mode *mode, u32 *dsi_clk)
+{
+	u32 bpp;
+	u32 dsi_pixel_clk;
+
+	if (intel_dsi->dsi_packet_format == dsi_24Bpp_packed)
+		bpp = 24;
+	else if (intel_dsi->dsi_packet_format == dsi_18Bpp_loosely_packed)
+		bpp = 24;
+	else
+		bpp = 18;
+
+	dsi_pixel_clk = (mode->clock * bpp) / (intel_dsi->lane_count * 100);
+	*dsi_clk = ((dsi_pixel_clk * 15) / 100) + dsi_pixel_clk;
+
+	return 0;
+}
+
+int get_dsi_clk(struct intel_dsi *intel_dsi, struct drm_display_mode *mode, \
+		u32 *dsi_clk)
+{
+
+	/*return dsi_60hz_formula(intel_dsi, mode, dsi_clk);*/
+	return dsi_15percent_formula(intel_dsi, mode, dsi_clk);
+}
+
+int mnp_from_clk_table(u32 dsi_clk, struct dsi_mnp *dsi_mnp)
+{
 	unsigned int i;
 	u8 m;
 	u8 n;
 	u8 p;
 	u32 m_seed;
-	u32 dsi_pll_ctrl;
-	u32 dsi_pll_div;
 
-
-	lane_count = intel_dsi->lane_count;
-
-	/* DDR Clock For Pixels In Mbps
-	 * clk = (PixelClock In Khz * ColorDepth in Bpp)
-	 *		/ ( 2 * NumberOfLanes * 1000)
-	 * DDR Clock = 15% of DdrClockPixelBit + DdrClockPixelBit */
-	if (intel_dsi->dsi_packet_format == dsi_24Bpp_packed) {
-		ddr_clk_pixel = (pixel_clock * 24) / (lane_count * 1000);
-		ddr_clk = ((ddr_clk_pixel * 15) / 100) + ddr_clk_pixel;
-		target_dsi_clk  = ddr_clk * 100;
-	} else if (intel_dsi->dsi_packet_format == dsi_18Bpp_loosely_packed) {
-		ddr_clk_pixel = (pixel_clock * 24) / (lane_count * 1000);
-		ddr_clk = ((ddr_clk_pixel * 15) / 100) + ddr_clk_pixel;
-		target_dsi_clk  = ddr_clk * 100;
-	} else {
-		ddr_clk_pixel = (pixel_clock * 18) / (lane_count * 1000);
-		ddr_clk = ((ddr_clk_pixel * 15) / 100) + ddr_clk_pixel;
-		target_dsi_clk  = ddr_clk * 100;
-	}
-
-	if (target_dsi_clk < 30000 || target_dsi_clk > 100000)
+	if (dsi_clk < 300 || dsi_clk > 1000)
 		return -ECHRNG;
 
 	for (i = 0; i <= sizeof(dsi_clk_tbl)/sizeof(struct dsi_clock_table);
 			i++) {
-		if (dsi_clk_tbl[i].freq > target_dsi_clk) {
-			if (i == 0)
-				break;
-			if ((dsi_clk_tbl[i].freq - target_dsi_clk) <
-				(target_dsi_clk - dsi_clk_tbl[i - 1].freq)) {
-				break;
-			} else {
-				i = i - 1;
-				break;
-			}
-		}
+		if (dsi_clk_tbl[i].freq > dsi_clk)
+			break;
 	}
 
 	m = dsi_clk_tbl[i].m;
 	p = dsi_clk_tbl[i].p;
 	m_seed = lfsr_converts[m - 62];
 	n = 1;
-	dsi_pll_ctrl = (1 << (17 + p - 2)) | (1 << 8);
-	dsi_pll_div = ((n - 1) << 16) | m_seed;
+	dsi_mnp->dsi_pll_ctrl = (1 << (17 + p - 2)) | (1 << 8);
+	dsi_mnp->dsi_pll_div = ((n - 1) << 16) | m_seed;
+
+	return 0;
+}
+
+int dsi_calc_mnp(u32 dsi_clk, struct dsi_mnp *dsi_mnp)
+{
+	u32 m, n, p;
+	u32 ref_clk;
+	u32 error;
+	u32 tmp_error;
+	u32 target_dsi_clk;
+	u32 calc_dsi_clk;
+	u32 calc_m;
+	u32 calc_p;
+	u32 m_seed;
+
+	if (dsi_clk < 300 || dsi_clk > 1150) {
+		DRM_ERROR("DSI CLK Out of Range\n");
+		return -ECHRNG;
+	}
+
+	ref_clk = 25000;
+	target_dsi_clk = dsi_clk * 1000;
+	error = 0xFFFFFFFF;
+	tmp_error = 0xFFFFFFFF;
+	calc_m = 0;
+	calc_p = 0;
+
+	for (m = 62; m <= 92; m++) {
+		for (p = 2; p <= 6; p++) {
+
+			calc_dsi_clk = (m * ref_clk) / p;
+			if (calc_dsi_clk >= target_dsi_clk) {
+				tmp_error = calc_dsi_clk - target_dsi_clk;
+				if (tmp_error < error) {
+					error = tmp_error;
+					calc_m = m;
+					calc_p = p;
+				}
+			}
+		}
+	}
+
+	m_seed = lfsr_converts[calc_m - 62];
+	n = 1;
+	dsi_mnp->dsi_pll_ctrl = (1 << (17 + calc_p - 2)) | (1 << 8);
+	dsi_mnp->dsi_pll_div = ((n - 1) << 16) | m_seed;
+
+	return 0;
+}
+
+int intel_configure_dsi_pll(struct intel_dsi *intel_dsi,
+		struct drm_display_mode *mode)
+{
+	struct drm_i915_private *dev_priv =
+			intel_dsi->base.base.dev->dev_private;
+	int ret;
+	struct dsi_mnp dsi_mnp;
+	u32 dsi_clk;
+
+
+	get_dsi_clk(intel_dsi, mode, &dsi_clk);
+	ret = dsi_calc_mnp(dsi_clk, &dsi_mnp);
+	/*ret = mnp_from_clk_table(dsi_clk, &dsi_mnp);*/
+
+	if (ret != 0)
+		return ret;
 
 	intel_cck_write32(dev_priv, 0x48, 0x00000000);
-	intel_cck_write32(dev_priv, 0x4C, dsi_pll_div);
-	intel_cck_write32(dev_priv, 0x48, dsi_pll_ctrl);
+	intel_cck_write32(dev_priv, 0x4C, dsi_mnp.dsi_pll_div);
+	intel_cck_write32(dev_priv, 0x48, dsi_mnp.dsi_pll_ctrl);
 
 	return 0;
 }
@@ -143,24 +262,8 @@ int intel_enable_dsi_pll(struct intel_dsi *intel_dsi)
 			intel_dsi->base.base.dev->dev_private;
 	u32 tmp;
 
-	udelay(1000);
+	udelay(1000);	/*wait 0.5us after ungating before enabling again */
 	intel_cck_write32_bits(dev_priv, 0x48, 1 << 31,  1 << 31);
-	intel_punit_write32_bits(dev_priv, 0x39, 0x00000003, 0x00000003);
-	udelay(1000);
-
-	intel_punit_read32(dev_priv, 0x39, &tmp);
-
-	if ((tmp & 0x03) == 0) {
-		intel_punit_write32_bits(dev_priv, 0x39,
-				0x00000003, 0x00000003);
-		udelay(1000);
-	}
-
-	if ((tmp & 0x03) == 3) {
-		intel_punit_write32_bits(dev_priv, 0x39,
-				0x00000000, 0x00000003);
-		udelay(1000);
-	}
 
 	if (wait_for(((I915_READ(PIPECONF(intel_dsi->pipe)) & (1 << 29)) ==
 			(1 << 29)), 20)) {
@@ -168,5 +271,6 @@ int intel_enable_dsi_pll(struct intel_dsi *intel_dsi)
 		return -EIO;
 	}
 
+	DRM_DEBUG_KMS("DSI PLL locked\n");
 	return 0;
 }
