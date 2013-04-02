@@ -491,6 +491,9 @@ static int intel_mfld_clv_sd_suspend(struct sdhci_pci_chip *chip)
 	for (i = 0; i < chip->num_slots; i++) {
 		if (chip->slots[i]->host->runtime_suspended == true)
 			return 0;
+		if (chip->slots[i]->data->platform_quirks
+			& PLFM_QUIRK_NO_SDCARD_SLOT)
+			return 0;
 	}
 	err = intel_scu_ipc_suspend(chip);
 	if (err)
@@ -526,6 +529,9 @@ static int intel_mfld_clv_sd_resume(struct sdhci_pci_chip *chip)
 	 */
 	for (i = 0; i < chip->num_slots; i++) {
 		if (chip->slots[i]->host->runtime_suspended == true)
+			return 0;
+		if (chip->slots[i]->data->platform_quirks
+			& PLFM_QUIRK_NO_SDCARD_SLOT)
 			return 0;
 	}
 

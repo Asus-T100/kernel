@@ -23,6 +23,8 @@ struct sdhci_pci_data {
 #define PLFM_QUIRK_NO_EMMC_BOOT_PART		(1<<1)
 /* Some Pre-Silicon platform do not support eMMC or SD High Speed */
 #define PLFM_QUIRK_NO_HIGH_SPEED		(1<<2)
+/* For the platform which don't have the SD card slot */
+#define PLFM_QUIRK_NO_SDCARD_SLOT		(1<<3)
 
 extern struct sdhci_pci_data *(*sdhci_pci_get_data)(struct pci_dev *pdev,
 				int slotno);
