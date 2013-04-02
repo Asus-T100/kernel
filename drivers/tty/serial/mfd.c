@@ -86,6 +86,11 @@ enum {
 	qcmd_max,
 };
 
+enum {
+	context_save,
+	context_load,
+};
+
 struct hsu_dma_buffer {
 	u8		*buf;
 	dma_addr_t	dma_addr;
@@ -98,6 +103,10 @@ struct hsu_dma_chan {
 	enum dma_data_direction	dirt;
 	struct uart_hsu_port	*uport;
 	void __iomem		*reg;
+	u32	cr;
+	u32	dcr;
+	u32	sar;
+	u32	tsr;
 };
 
 struct uart_hsu_port {
@@ -116,6 +125,12 @@ struct uart_hsu_port {
 	unsigned char           ier;
 	unsigned char           lcr;
 	unsigned char           mcr;
+	unsigned char           lsr;
+	unsigned char           dll;
+	unsigned char           dlm;
+	unsigned char		fcr;
+	unsigned int		mul;
+	unsigned int		ps;
 
 	unsigned int            lsr_break_flag;
 	char			name[24];
@@ -1496,6 +1511,12 @@ serial_hsu_set_termios(struct uart_port *port, struct ktermios *termios,
 	else
 		up->mcr &= ~UART_MCR_AFE;
 
+	up->dll	= quot & 0xff;
+	up->dlm	= quot >> 8;
+	up->mul	= mul;
+	up->fcr	= fcr;
+	up->ps	= ps;
+
 	serial_out(up, UART_LCR, cval | UART_LCR_DLAB);	/* set DLAB */
 	serial_out(up, UART_DLL, quot & 0xff);		/* LS of divisor */
 	serial_out(up, UART_DLM, quot >> 8);		/* MS of divisor */
@@ -1750,6 +1771,50 @@ static irqreturn_t wakeup_irq(int irq, void *dev)
 }
 
 #if defined(CONFIG_PM) || defined(CONFIG_PM_RUNTIME)
+static void hsu_regs_context(struct uart_hsu_port *up, int op)
+{
+	if (op == context_save) {
+		if (up->use_dma) {
+			up->txc->cr  = chan_readl(up->txc, HSU_CH_CR);
+			up->txc->dcr = chan_readl(up->txc, HSU_CH_DCR);
+			up->txc->sar = chan_readl(up->txc, HSU_CH_D0SAR);
+			up->txc->tsr = chan_readl(up->txc, HSU_CH_D0TSR);
+
+			up->rxc->cr  = chan_readl(up->rxc, HSU_CH_CR);
+			up->rxc->dcr = chan_readl(up->rxc, HSU_CH_DCR);
+			up->rxc->sar = chan_readl(up->rxc, HSU_CH_D0SAR);
+			up->rxc->tsr = chan_readl(up->rxc, HSU_CH_D0TSR);
+		}
+	} else {
+
+		serial_out(up, UART_LCR, up->lcr);
+		serial_out(up, UART_LCR, up->lcr | UART_LCR_DLAB);
+		serial_out(up, UART_DLL, up->dll);
+		serial_out(up, UART_DLM, up->dlm);
+		serial_out(up, UART_LCR, up->lcr);
+		serial_out(up, UART_MUL, up->mul);
+		serial_out(up, UART_PS, up->ps);
+
+		serial_out(up, UART_MCR, up->mcr);
+		serial_out(up, UART_FCR, up->fcr);
+		serial_out(up, UART_IER, up->ier);
+
+		if (up->use_dma) {
+			chan_writel(up->txc, HSU_CH_DCR, up->txc->dcr);
+			chan_writel(up->txc, HSU_CH_D0SAR, up->txc->sar);
+			chan_writel(up->txc, HSU_CH_D0TSR, up->txc->tsr);
+			chan_writel(up->txc, HSU_CH_BSR, 32);
+			chan_writel(up->txc, HSU_CH_MOTSR, 4);
+
+			chan_writel(up->rxc, HSU_CH_DCR, up->rxc->dcr);
+			chan_writel(up->rxc, HSU_CH_D0SAR, up->rxc->sar);
+			chan_writel(up->rxc, HSU_CH_D0TSR, up->rxc->tsr);
+			chan_writel(up->rxc, HSU_CH_BSR, 32);
+			chan_writel(up->rxc, HSU_CH_MOTSR, 4);
+		}
+	}
+}
+
 static int serial_hsu_do_suspend(struct pci_dev *pdev)
 {
 	struct uart_hsu_port *up = pci_get_drvdata(pdev);
@@ -1823,6 +1888,8 @@ static int serial_hsu_do_suspend(struct pci_dev *pdev)
 
 	if (cfg->preamble && cfg->hw_suspend_post)
 		cfg->hw_suspend_post(up->index);
+	if (cfg->hw_context_save)
+		hsu_regs_context(up, context_save);
 	enable_irq(phsu->dma_irq);
 	return 0;
 err:
@@ -1854,6 +1921,8 @@ static int serial_hsu_do_resume(struct pci_dev *pdev)
 		return 0;
 	if (cfg->hw_resume)
 		cfg->hw_resume(up->index, &pdev->dev);
+	if (cfg->hw_context_save)
+		hsu_regs_context(up, context_load);
 	enable_irq(up->port.irq);
 	if (up->use_dma)
 		chan_writel(up->rxc, HSU_CH_CR, up->rxc_chcr_save);

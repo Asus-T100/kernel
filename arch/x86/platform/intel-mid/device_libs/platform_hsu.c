@@ -281,6 +281,7 @@ static struct hsu_port_cfg hsu_port_cfgs[][hsu_port_max] = {
 			.hw_suspend = intel_mid_hsu_suspend,
 			.hw_resume = intel_mid_hsu_resume,
 			.hw_get_clk = intel_mid_hsu_get_clk,
+			.hw_context_save = 1,
 		},
 		[hsu_port1] = {
 			.type = gps_port,
@@ -295,6 +296,7 @@ static struct hsu_port_cfg hsu_port_cfgs[][hsu_port_max] = {
 			.hw_suspend_post = intel_mid_hsu_suspend_post,
 			.hw_resume = intel_mid_hsu_resume,
 			.hw_get_clk = intel_mid_hsu_get_clk,
+			.hw_context_save = 1,
 		},
 		[hsu_port2] = {
 			.type = debug_port,
@@ -307,6 +309,7 @@ static struct hsu_port_cfg hsu_port_cfgs[][hsu_port_max] = {
 			.hw_suspend = intel_mid_hsu_suspend,
 			.hw_resume = intel_mid_hsu_resume,
 			.hw_get_clk = intel_mid_hsu_get_clk,
+			.hw_context_save = 1,
 		},
 	},
 };
