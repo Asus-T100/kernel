@@ -87,6 +87,12 @@ static irqreturn_t mdm_ctrl_coredump_it(int irq, void *data)
 		goto out;
 	}
 
+	/* Ignoring if Modem reset is ongoing. */
+	if (mdm_ctrl_get_reset_ongoing(drv) == 1) {
+		pr_err(DRVNAME": CORE_DUMP while Modem Reset is ongoing\r\n");
+		goto out;
+	}
+
 	/* Set the reason & launch the work to handle the hangup */
 	drv->hangup_causes |= MDM_CTRL_HU_COREDUMP;
 	queue_work(drv->hu_wq, &drv->hangup_work);
