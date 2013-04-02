@@ -131,6 +131,12 @@
 #define OV2722_AEC_MANUAL_CTRL			0x3503
 #define OV2722_AGC_ADJ_H			0x3508
 #define OV2722_AGC_ADJ_L			0x3509
+#define OV2722_MWB_GAIN_R			0x5183
+#define OV2722_MWB_GAIN_G			0x5184
+#define OV2722_MWB_GAIN_B			0x5185
+#define OV2722_VTS_DIFF_H			0x350c
+#define OV2722_VTS_DIFF_L			0x350d
+#define OV2722_GROUP_ACCESS			0x3208
 
 #define OV2722_START_STREAMING			0x01
 #define OV2722_STOP_STREAMING			0x00
@@ -156,6 +162,12 @@ struct ov2722_format {
 	struct ov2722_reg *regs;
 };
 
+struct ov2722_control {
+	struct v4l2_queryctrl qc;
+	int (*query)(struct v4l2_subdev *sd, s32 *value);
+	int (*tweak)(struct v4l2_subdev *sd, s32 value);
+};
+
 /*
  * ov2722 device structure.
  */
@@ -164,6 +176,7 @@ struct ov2722_device {
 	struct media_pad pad;
 	struct v4l2_mbus_framefmt format;
 	struct mutex power_lock;
+	struct mutex input_lock;
 
 	struct camera_sensor_platform_data *platform_data;
 	int fmt_idx;
@@ -218,7 +231,7 @@ static const struct i2c_device_id ov2722_id[] = {
  * Register settings for various resolution
  */
 
-static const struct ov2722_reg ov2722_VGA_30fps[] = {
+static struct ov2722_reg const ov2722_VGA_30fps[] = {
 	{OV2722_8BIT, 0x3718, 0x10},
 	{OV2722_8BIT, 0x3702, 0x24},
 	{OV2722_8BIT, 0x373a, 0x60},
@@ -259,7 +272,7 @@ static const struct ov2722_reg ov2722_VGA_30fps[] = {
 	{OV2722_8BIT, 0x3813, 0x02},		/*V window offset: 2 */
 
 	{OV2722_8BIT, 0x3820, 0xc0},
-	{OV2722_8BIT, 0x3821, 0x04},         /*r flip isp*/
+	{OV2722_8BIT, 0x3821, 0x06},         /*r flip isp*/
 	{OV2722_8BIT, 0x3814, 0x31},
 	{OV2722_8BIT, 0x3815, 0x31},
 
@@ -336,7 +349,7 @@ static const struct ov2722_reg ov2722_VGA_30fps[] = {
 	{OV2722_TOK_TERM, 0, 0},
 };
 
-static const struct ov2722_reg ov2722_VGA_90fps[] = {
+static struct ov2722_reg const ov2722_VGA_90fps[] = {
 	{OV2722_8BIT, 0x3718, 0x10},
 	{OV2722_8BIT, 0x3702, 0x18},
 	{OV2722_8BIT, 0x373a, 0x3c},
@@ -454,7 +467,7 @@ static const struct ov2722_reg ov2722_VGA_90fps[] = {
 	{OV2722_TOK_TERM, 0, 0},
 };
 
-static const struct ov2722_reg ov2722_VGA_120fps[] = {
+static struct ov2722_reg const ov2722_VGA_120fps[] = {
 	{OV2722_8BIT, 0x3718, 0x10},
 	{OV2722_8BIT, 0x3702, 0x18},
 	{OV2722_8BIT, 0x373a, 0x3c},
@@ -572,7 +585,7 @@ static const struct ov2722_reg ov2722_VGA_120fps[] = {
 	{OV2722_TOK_TERM, 0, 0},
 };
 
-static const struct ov2722_reg ov2722_1080p_30fps_ex[] = {
+static struct ov2722_reg const ov2722_1080p_30fps_ex[] = {
 #if 0
 	/* ov2720 reg settings */
 	{OV2722_8BIT, 0x3718, 0x10},
@@ -791,7 +804,7 @@ static const struct ov2722_reg ov2722_1080p_30fps_ex[] = {
 	{OV2722_TOK_TERM, 0, 0},
 };
 
-static const struct ov2722_reg ov2722_1M3_30fps_ex[] = {
+static struct ov2722_reg const ov2722_1M3_30fps_ex[] = {
 	{OV2722_8BIT, 0x3718, 0x10},
 	{OV2722_8BIT, 0x3702, 0x24},
 	{OV2722_8BIT, 0x373a, 0x60},
@@ -811,7 +824,7 @@ static const struct ov2722_reg ov2722_1M3_30fps_ex[] = {
 	{OV2722_8BIT, 0x3800, 0x01},
 	{OV2722_8BIT, 0x3801, 0x4a},		/*H crop start: 330 */
 	{OV2722_8BIT, 0x3802, 0x00},
-	{OV2722_8BIT, 0x3803, 0x02},		/*V crop start: 2 */
+	{OV2722_8BIT, 0x3803, 0x03},		/*V crop start: 3 */
 	{OV2722_8BIT, 0x3804, 0x06},
 	{OV2722_8BIT, 0x3805, 0xe1},		/*H crop end:  1761 */
 	{OV2722_8BIT, 0x3806, 0x04},
@@ -832,7 +845,7 @@ static const struct ov2722_reg ov2722_1M3_30fps_ex[] = {
 	{OV2722_8BIT, 0x3813, 0x02},		/*V window offset: 2 */
 
 	{OV2722_8BIT, 0x3820, 0x80},
-	{OV2722_8BIT, 0x3821, 0x04},         /*r flip isp*/
+	{OV2722_8BIT, 0x3821, 0x06},         /*r flip isp*/
 	{OV2722_8BIT, 0x3814, 0x11},
 	{OV2722_8BIT, 0x3815, 0x11},
 	{OV2722_8BIT, 0x3612, 0x0b},
@@ -907,7 +920,7 @@ static const struct ov2722_reg ov2722_1M3_30fps_ex[] = {
 	{OV2722_TOK_TERM, 0, 0},
 };
 
-static const struct ov2722_reg ov2722_1080p_25fps[] = {
+static struct ov2722_reg const ov2722_1080p_25fps[] = {
 	{OV2722_8BIT, 0x3021, 0x03}, /* For stand wait for
 				a whole frame complete.(vblank) */
 	{OV2722_8BIT, 0x3718, 0x10},
@@ -937,8 +950,8 @@ static const struct ov2722_reg ov2722_1080p_25fps[] = {
 	{OV2722_8BIT, 0x3809, 0x8c}, /* H output size: 1932 */
 	{OV2722_8BIT, 0x380a, 0x04},
 	{OV2722_8BIT, 0x380b, 0x44}, /* V output size: 1092 */
-	{OV2722_8BIT, 0x380c, 0x08},
-	{OV2722_8BIT, 0x380d, 0x80}, /* {0x380d, 0x5c},H timing: 2238 */
+	{OV2722_8BIT, 0x380c, 0x0f},
+	{OV2722_8BIT, 0x380d, 0x5e}, /* {0x380d, 0x5c},H timing: 2238 */
 	{OV2722_8BIT, 0x380e, 0x05},
 	{OV2722_8BIT, 0x380f, 0x60}, /* V timing: 1241 v-blank=4ms */
 	{OV2722_8BIT, 0x3810, 0x00},
@@ -946,7 +959,7 @@ static const struct ov2722_reg ov2722_1080p_25fps[] = {
 	{OV2722_8BIT, 0x3812, 0x00},
 	{OV2722_8BIT, 0x3813, 0x02}, /* V window offset: 2 */
 	{OV2722_8BIT, 0x3820, 0x80},
-	{OV2722_8BIT, 0x3821, 0x04}, /*  mirror */
+	{OV2722_8BIT, 0x3821, 0x06}, /*  mirror */
 	{OV2722_8BIT, 0x3814, 0x11},
 	{OV2722_8BIT, 0x3815, 0x11},
 	{OV2722_8BIT, 0x3612, 0x0b},
@@ -1009,7 +1022,7 @@ static const struct ov2722_reg ov2722_1080p_25fps[] = {
 	{OV2722_TOK_TERM, 0, 0}
 };
 
-static const struct ov2722_reg ov2722_720p_30fps[] = {
+static struct ov2722_reg const ov2722_720p_30fps[] = {
 	{OV2722_8BIT, 0x3021, 0x03},
 	{OV2722_8BIT, 0x3718, 0x10},
 	{OV2722_8BIT, 0x3702, 0x24},
@@ -1029,7 +1042,7 @@ static const struct ov2722_reg ov2722_720p_30fps[] = {
 	{OV2722_8BIT, 0x3800, 0x01},
 	{OV2722_8BIT, 0x3801, 0x40}, /* H crop start: 320 */
 	{OV2722_8BIT, 0x3802, 0x00},
-	{OV2722_8BIT, 0x3803, 0xb2}, /* V crop start: 177 */
+	{OV2722_8BIT, 0x3803, 0xb1}, /* V crop start: 177 */
 	{OV2722_8BIT, 0x3804, 0x06},
 	{OV2722_8BIT, 0x3805, 0x55}, /* H crop end: 1621 */
 	{OV2722_8BIT, 0x3806, 0x03},
@@ -1038,9 +1051,9 @@ static const struct ov2722_reg ov2722_720p_30fps[] = {
 	{OV2722_8BIT, 0x3809, 0x10}, /* H output size: 0x0788==1928 */
 	{OV2722_8BIT, 0x380a, 0x02},
 	{OV2722_8BIT, 0x380b, 0xe0}, /* output size: 0x02DE==734 */
-	{OV2722_8BIT, 0x380c, 0x08},
-	{OV2722_8BIT, 0x380d, 0x7b}, /* {0x380d, 0x5c},H timing: 2238 */
-	{OV2722_8BIT, 0x380e, 0x04},
+	{OV2722_8BIT, 0x380c, 0x0f},
+	{OV2722_8BIT, 0x380d, 0x5e}, /* {0x380d, 0x5c},H timing: 2238 */
+	{OV2722_8BIT, 0x380e, 0x05},
 	{OV2722_8BIT, 0x380f, 0x60}, /* V timing: 1241 v-blank=4ms */
 	{OV2722_8BIT, 0x3810, 0x00},
 	{OV2722_8BIT, 0x3811, 0x03}, /* H window offset: 3 */
@@ -1107,10 +1120,10 @@ static const struct ov2722_reg ov2722_720p_30fps[] = {
 	{OV2722_8BIT, 0x3502, 0x00},
 	{OV2722_8BIT, 0x3508, 0x00},
 	{OV2722_8BIT, 0x3509, 0x00},
-	{OV2722_TOK_TERM, {0}, 0},
+	{OV2722_TOK_TERM, 0, 0},
 };
 
-static const struct ov2722_reg ov2722_720p_30fps_ex[] = {
+static struct ov2722_reg const ov2722_720p_30fps_ex[] = {
 #if 0
 	/* ov2720 reg settings */
 	{OV2722_8BIT, 0x3718, 0x10},
@@ -1327,7 +1340,7 @@ static const struct ov2722_reg ov2722_720p_30fps_ex[] = {
 	{OV2722_TOK_TERM, 0, 0},
 };
 
-static const struct ov2722_reg ov2722_QVGA_180fps[] = {
+static struct ov2722_reg const ov2722_QVGA_180fps[] = {
 	{OV2722_8BIT, 0x3718, 0x10},
 	{OV2722_8BIT, 0x3702, 0x0c},
 	{OV2722_8BIT, 0x373a, 0x1c},
@@ -1429,7 +1442,7 @@ static const struct ov2722_reg ov2722_QVGA_180fps[] = {
 	{OV2722_TOK_TERM, 0, 0},
 };
 
-static const struct ov2722_reg ov2722_QVGA_240fps[] = {
+static struct ov2722_reg const ov2722_QVGA_240fps[] = {
 	{OV2722_8BIT, 0x3718, 0x10},
 	{OV2722_8BIT, 0x3702, 0x0c},
 	{OV2722_8BIT, 0x373a, 0x1c},
@@ -1537,7 +1550,7 @@ static const struct ov2722_reg ov2722_QVGA_240fps[] = {
 	{OV2722_TOK_TERM, 0, 0},
 };
 
-static const struct ov2722_reg ov2722_CIF_120fps_BINNING[] = {
+static struct ov2722_reg const ov2722_CIF_120fps_BINNING[] = {
 	{OV2722_8BIT, 0x3718, 0x10},
 	{OV2722_8BIT, 0x3702, 0x0c},
 	{OV2722_8BIT, 0x373a, 0x1c},
@@ -1640,7 +1653,7 @@ static const struct ov2722_reg ov2722_CIF_120fps_BINNING[] = {
 	{OV2722_TOK_TERM, 0, 0},
 };
 
-static const struct ov2722_reg ov2722_CIF_120fps_SKIP[] = {
+static struct ov2722_reg const ov2722_CIF_120fps_SKIP[] = {
 	{OV2722_8BIT, 0x3718, 0x10},
 	{OV2722_8BIT, 0x3702, 0x0c},
 	{OV2722_8BIT, 0x373a, 0x1c},

@@ -262,6 +262,341 @@ static int ov2722_write_reg_array(struct i2c_client *client,
 
 	return __ov2722_flush_reg_array(client, &ctrl);
 }
+static int ov2722_g_focal(struct v4l2_subdev *sd, s32 *val)
+{
+	*val = (OV2722_FOCAL_LENGTH_NUM << 16) | OV2722_FOCAL_LENGTH_DEM;
+	return 0;
+}
+
+static int ov2722_g_fnumber(struct v4l2_subdev *sd, s32 *val)
+{
+	/*const f number for imx*/
+	*val = (OV2722_F_NUMBER_DEFAULT_NUM << 16) | OV2722_F_NUMBER_DEM;
+	return 0;
+}
+
+static int ov2722_g_fnumber_range(struct v4l2_subdev *sd, s32 *val)
+{
+	*val = (OV2722_F_NUMBER_DEFAULT_NUM << 24) |
+		(OV2722_F_NUMBER_DEM << 16) |
+		(OV2722_F_NUMBER_DEFAULT_NUM << 8) | OV2722_F_NUMBER_DEM;
+	return 0;
+}
+static long __ov2722_set_exposure(struct v4l2_subdev *sd, int coarse_itg,
+				 int gain, int digitgain)
+
+{
+	struct ov2722_device *dev = to_ov2722_sensor(sd);
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	u16 reg_v;
+	u16 reg_v2;
+	u16 vts;
+	int frame_length;
+	int ret;
+
+	mutex_lock(&dev->power_lock);
+	/* group hold start */
+	ret = ov2722_write_reg(client, OV2722_8BIT,
+					OV2722_GROUP_ACCESS, 0);
+	if (ret < 0)
+		goto err;
+
+	ret = ov2722_read_reg(client, OV2722_8BIT,
+					OV2722_VTS_DIFF_H, &reg_v);
+	if (ret < 0)
+		goto err;
+
+	ret = ov2722_read_reg(client, OV2722_8BIT,
+					OV2722_VTS_DIFF_L, &reg_v2);
+	if (ret < 0)
+		goto err;
+
+	vts = (reg_v << 8) + reg_v2;
+
+	if ((coarse_itg + 6) >= vts)
+		frame_length = (coarse_itg + 6) - vts;
+	else
+		frame_length = 0;
+	coarse_itg = coarse_itg << 4;
+
+	ret = ov2722_write_reg(client, OV2722_8BIT,
+				OV2722_VTS_DIFF_H, frame_length >> 8);
+	if (ret < 0)
+		goto err;
+
+	ret = ov2722_write_reg(client, OV2722_8BIT,
+				OV2722_VTS_DIFF_L, frame_length & 0xff);
+	if (ret < 0)
+		goto err;
+
+	/* enable manual gain/exp */
+	ret = ov2722_read_reg(client, OV2722_8BIT,
+					OV2722_AEC_MANUAL_CTRL, &reg_v);
+	if (ret < 0)
+		goto err;
+
+	reg_v |= 0x07;
+	ret = ov2722_write_reg(client, OV2722_8BIT,
+					OV2722_AEC_MANUAL_CTRL, reg_v);
+	if (ret < 0)
+		goto err;
+
+	/* set exposure */
+	ret = ov2722_write_reg(client, OV2722_8BIT,
+					OV2722_AEC_PK_EXPO_L,
+					coarse_itg & 0xff);
+	if (ret < 0)
+		goto err;
+
+	ret = ov2722_write_reg(client, OV2722_8BIT,
+					OV2722_AEC_PK_EXPO_M,
+					(coarse_itg >> 8) & 0xff);
+	if (ret < 0)
+		goto err;
+
+	ret = ov2722_write_reg(client, OV2722_8BIT,
+					OV2722_AEC_PK_EXPO_H,
+					(coarse_itg >> 8) & 0x0f);
+	if (ret < 0)
+		goto err;
+
+	/* set analog gain */
+	ret = ov2722_write_reg(client, OV2722_8BIT,
+					OV2722_AGC_ADJ_L, gain & 0xff);
+	if (ret < 0)
+		goto err;
+
+	ret = ov2722_write_reg(client, OV2722_8BIT,
+					OV2722_AGC_ADJ_H, (gain >> 8) & 0x03);
+	if (ret < 0)
+		goto err;
+
+	/* set digital gain */
+	ret = ov2722_write_reg(client, OV2722_8BIT,
+				OV2722_MWB_GAIN_R, (digitgain >> 8) & 0x03);
+	if (ret < 0)
+		goto err;
+
+
+	ret = ov2722_write_reg(client, OV2722_8BIT,
+				OV2722_MWB_GAIN_G, (digitgain >> 8) & 0x03);
+	if (ret < 0)
+		goto err;
+
+	ret = ov2722_write_reg(client, OV2722_8BIT,
+				OV2722_MWB_GAIN_B, (digitgain >> 8) & 0x03);
+	if (ret < 0)
+		goto err;
+
+	/* group hold end */
+	ret = ov2722_write_reg(client, OV2722_8BIT,
+					OV2722_GROUP_ACCESS, 0x10);
+	if (ret < 0)
+		goto err;
+	/* group hold launch */
+	ret = ov2722_write_reg(client, OV2722_8BIT,
+					OV2722_GROUP_ACCESS, 0xA0);
+	if (ret < 0)
+		goto err;
+
+err:
+	mutex_unlock(&dev->power_lock);
+	return ret;
+}
+
+static int ov2722_set_exposure(struct v4l2_subdev *sd, int exposure,
+	int gain, int digitgain)
+{
+	struct ov2722_device *dev = to_ov2722_sensor(sd);
+	int ret;
+
+	mutex_lock(&dev->input_lock);
+	ret = __ov2722_set_exposure(sd, exposure, gain, digitgain);
+	mutex_unlock(&dev->input_lock);
+
+	return ret;
+}
+
+static long ov2722_s_exposure(struct v4l2_subdev *sd,
+			       struct atomisp_exposure *exposure)
+{
+	int exp = exposure->integration_time[0];
+	int gain = exposure->gain[0];
+	int digitgain = exposure->gain[1];
+
+	/* we should not accept the invalid value below. */
+	if (gain == 0) {
+		struct i2c_client *client = v4l2_get_subdevdata(sd);
+		v4l2_err(client, "%s: invalid value\n", __func__);
+		return -EINVAL;
+	}
+
+	return ov2722_set_exposure(sd, exp, gain, digitgain);
+}
+
+static long ov2722_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
+{
+
+	switch (cmd) {
+	case ATOMISP_IOC_S_EXPOSURE:
+		return ov2722_s_exposure(sd, arg);
+	default:
+		return -EINVAL;
+	}
+	return 0;
+}
+
+/* This returns the exposure time being used. This should only be used
+   for filling in EXIF data, not for actual image processing. */
+static int ov2722_q_exposure(struct v4l2_subdev *sd, s32 *value)
+{
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	u16 reg_v, reg_v2;
+	int ret;
+
+	/* get exposure */
+	ret = ov2722_read_reg(client, OV2722_8BIT,
+					OV2722_AEC_PK_EXPO_L,
+					&reg_v);
+	if (ret < 0)
+		goto err;
+
+	ret = ov2722_read_reg(client, OV2722_8BIT,
+					OV2722_AEC_PK_EXPO_M,
+					&reg_v2);
+	if (ret < 0)
+		goto err;
+
+	reg_v += reg_v2 << 8;
+	ret = ov2722_read_reg(client, OV2722_8BIT,
+					OV2722_AEC_PK_EXPO_H,
+					&reg_v2);
+	if (ret < 0)
+		goto err;
+
+	*value = reg_v + (((u32)reg_v2 << 16));
+err:
+	return ret;
+}
+struct ov2722_control ov2722_controls[] = {
+	{
+		.qc = {
+			.id = V4L2_CID_EXPOSURE_ABSOLUTE,
+			.type = V4L2_CTRL_TYPE_INTEGER,
+			.name = "exposure",
+			.minimum = 0x0,
+			.maximum = 0xffff,
+			.step = 0x01,
+			.default_value = 0x00,
+			.flags = 0,
+		},
+		.query = ov2722_q_exposure,
+	},
+	{
+		.qc = {
+			.id = V4L2_CID_FOCAL_ABSOLUTE,
+			.type = V4L2_CTRL_TYPE_INTEGER,
+			.name = "focal length",
+			.minimum = OV2722_FOCAL_LENGTH_DEFAULT,
+			.maximum = OV2722_FOCAL_LENGTH_DEFAULT,
+			.step = 0x01,
+			.default_value = OV2722_FOCAL_LENGTH_DEFAULT,
+			.flags = 0,
+		},
+		.query = ov2722_g_focal,
+	},
+	{
+		.qc = {
+			.id = V4L2_CID_FNUMBER_ABSOLUTE,
+			.type = V4L2_CTRL_TYPE_INTEGER,
+			.name = "f-number",
+			.minimum = OV2722_F_NUMBER_DEFAULT,
+			.maximum = OV2722_F_NUMBER_DEFAULT,
+			.step = 0x01,
+			.default_value = OV2722_F_NUMBER_DEFAULT,
+			.flags = 0,
+		},
+		.query = ov2722_g_fnumber,
+	},
+	{
+		.qc = {
+			.id = V4L2_CID_FNUMBER_RANGE,
+			.type = V4L2_CTRL_TYPE_INTEGER,
+			.name = "f-number range",
+			.minimum = OV2722_F_NUMBER_RANGE,
+			.maximum =  OV2722_F_NUMBER_RANGE,
+			.step = 0x01,
+			.default_value = OV2722_F_NUMBER_RANGE,
+			.flags = 0,
+		},
+		.query = ov2722_g_fnumber_range,
+	},
+};
+#define N_CONTROLS (ARRAY_SIZE(ov2722_controls))
+
+static struct ov2722_control *ov2722_find_control(u32 id)
+{
+	int i;
+
+	for (i = 0; i < N_CONTROLS; i++)
+		if (ov2722_controls[i].qc.id == id)
+			return &ov2722_controls[i];
+	return NULL;
+}
+
+static int ov2722_queryctrl(struct v4l2_subdev *sd, struct v4l2_queryctrl *qc)
+{
+	struct ov2722_control *ctrl = ov2722_find_control(qc->id);
+	struct ov2722_device *dev = to_ov2722_sensor(sd);
+
+	if (ctrl == NULL)
+		return -EINVAL;
+
+	mutex_lock(&dev->input_lock);
+	*qc = ctrl->qc;
+	mutex_unlock(&dev->input_lock);
+
+	return 0;
+}
+
+/* imx control set/get */
+static int ov2722_g_ctrl(struct v4l2_subdev *sd, struct v4l2_control *ctrl)
+{
+	struct ov2722_control *s_ctrl;
+	struct ov2722_device *dev = to_ov2722_sensor(sd);
+	int ret;
+
+	if (!ctrl)
+		return -EINVAL;
+
+	s_ctrl = ov2722_find_control(ctrl->id);
+	if ((s_ctrl == NULL) || (s_ctrl->query == NULL))
+		return -EINVAL;
+
+	mutex_lock(&dev->input_lock);
+	ret = s_ctrl->query(sd, &ctrl->value);
+	mutex_unlock(&dev->input_lock);
+
+	return ret;
+}
+
+static int ov2722_s_ctrl(struct v4l2_subdev *sd, struct v4l2_control *ctrl)
+{
+	struct ov2722_control *octrl = ov2722_find_control(ctrl->id);
+	struct ov2722_device *dev = to_ov2722_sensor(sd);
+	int ret;
+
+	if ((octrl == NULL) || (octrl->tweak == NULL))
+		return -EINVAL;
+
+	mutex_lock(&dev->input_lock);
+	ret = octrl->tweak(sd, ctrl->value);
+	mutex_unlock(&dev->input_lock);
+
+	return ret;
+}
+
+
 static int power_up(struct v4l2_subdev *sd)
 {
 	struct ov2722_device *dev = to_ov2722_sensor(sd);
@@ -489,9 +824,8 @@ static int ov2722_s_mbus_fmt(struct v4l2_subdev *sd,
 	ov2722_write_reg(client, OV2722_8BIT, 0x380e, 0x05);
 	ov2722_write_reg(client, OV2722_8BIT, 0x380f, 0x60);
 	ov2722_write_reg(client, OV2722_8BIT, 0x5186, 0x04);
-	ov2722_write_reg(client, OV2722_8BIT, 0x5188, 0x06);
+	ov2722_write_reg(client, OV2722_8BIT, 0x5188, 0x04);
 	ov2722_write_reg(client, OV2722_8BIT, 0x518a, 0x05);
-
 	return ret;
 }
 static int ov2722_g_mbus_fmt(struct v4l2_subdev *sd,
@@ -805,6 +1139,10 @@ static const struct v4l2_subdev_video_ops ov2722_video_ops = {
 
 static const struct v4l2_subdev_core_ops ov2722_core_ops = {
 	.s_power = ov2722_s_power,
+	.queryctrl = ov2722_queryctrl,
+	.g_ctrl = ov2722_g_ctrl,
+	.s_ctrl = ov2722_s_ctrl,
+	.ioctl = ov2722_ioctl,
 };
 
 static const struct v4l2_subdev_pad_ops ov2722_pad_ops = {
@@ -848,6 +1186,7 @@ static int ov2722_probe(struct i2c_client *client,
 	}
 
 	mutex_init(&dev->power_lock);
+	mutex_init(&dev->input_lock);
 
 	dev->fmt_idx = 0;
 	v4l2_i2c_subdev_init(&(dev->sd), client, &ov2722_ops);
