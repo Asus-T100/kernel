@@ -1025,6 +1025,7 @@ struct drm_psb_private {
 	bool bDVIport;
 
 	struct pci_dev *pci_root;
+	uint32_t initial_power_status;
 };
 
 struct psb_mmu_driver;
