@@ -3297,7 +3297,6 @@
 #define _SPAKEYMAXVAL		0x721a0
 #define _SPATILEOFF		0x721a4
 #define _SPACONSTALPHA		0x721a8
-#define   SP_ALPHA_EN		(1<<31)
 #define _SPAGAMC		0x721f4
 
 #define _SPBCNTR		0x72280
