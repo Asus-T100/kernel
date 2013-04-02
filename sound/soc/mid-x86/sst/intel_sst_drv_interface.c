@@ -1003,11 +1003,9 @@ static int sst_set_generic_params(enum sst_controls cmd, void *arg)
 **/
 void sst_get_max_streams(struct snd_sst_driver_info *info)
 {
-	/* FIXME: Remove the check, MRFLD probe dai changes will update this*/
-	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID)
-		info->max_streams = sst_drv_ctx->info.max_streams - 1;
-	else
-		info->max_streams = sst_drv_ctx->info.max_streams;
+	pr_debug("info.max_streams %d num_probes %d\n", sst_drv_ctx->info.max_streams,
+					sst_drv_ctx->info.num_probes);
+	info->max_streams = sst_drv_ctx->info.max_streams - sst_drv_ctx->info.num_probes;
 }
 
 static struct sst_ops pcm_ops = {

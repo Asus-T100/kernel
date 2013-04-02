@@ -149,6 +149,7 @@ int sst_soc_write(struct snd_soc_platform *platform,
 #define SST_IP_MEDIA2		SST_MIX_IP(17)
 #define SST_IP_FM		SST_MIX_IP(18)
 
+#define SST_PIPE_CONTROL	0x00
 struct sst_data {
 	struct platform_device *pdev;
 	struct sst_platform_data *pdata;
@@ -157,5 +158,7 @@ struct sst_data {
 	u16 widget[SST_NUM_WIDGETS];
 	char *byte_stream;
 	struct mutex lock;
+	/* Pipe_id for probe_stream to be saved in stream map */
+	u8 pipe_id;
 };
 #endif

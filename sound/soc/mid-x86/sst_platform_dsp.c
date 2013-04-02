@@ -1533,9 +1533,36 @@ static int sst_byte_control_set(struct snd_kcontrol *kcontrol,
 	return ret;
 }
 
+static int sst_pipe_id_control_get(struct snd_kcontrol *kcontrol,
+	struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_platform *platform = snd_kcontrol_chip(kcontrol);
+	struct sst_data *sst = snd_soc_platform_get_drvdata(platform);
+	int ret = 0;
+
+	ucontrol->value.integer.value[0] = sst->pipe_id;
+
+	return ret;
+}
+
+static int sst_pipe_id_control_set(struct snd_kcontrol *kcontrol,
+	struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_platform *platform = snd_kcontrol_chip(kcontrol);
+	struct sst_data *sst = snd_soc_platform_get_drvdata(platform);
+	int ret = 0;
+
+	sst->pipe_id = ucontrol->value.integer.value[0];
+	pr_debug("%s: pipe_id %d", __func__, sst->pipe_id);
+
+	return ret;
+}
+
 static const struct snd_kcontrol_new sst_byte_controls[] = {
 	SND_SOC_BYTES_EXT("SST Byte control", SST_MAX_BIN_BYTES,
 		       sst_byte_control_get, sst_byte_control_set),
+	SOC_SINGLE_EXT("SST Pipe_id control", SST_PIPE_CONTROL, 0, 0x9A, 0,
+		sst_pipe_id_control_get, sst_pipe_id_control_set),
 };
 
 int __devinit sst_dsp_init(struct snd_soc_platform *platform)

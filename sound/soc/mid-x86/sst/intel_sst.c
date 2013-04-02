@@ -72,7 +72,8 @@ MODULE_VERSION(SST_DRIVER_VERSION);
 #define INFO(_iram_start, _iram_end, _iram_use,		\
 		_dram_start, _dram_end, _dram_use,	\
 		_imr_start, _imr_end, _imr_use,		\
-		_use_elf, _max_streams, _dma_max_len) \
+		_use_elf, _max_streams, _dma_max_len,	\
+		_num_probes)				\
 	((kernel_ulong_t)&(struct sst_probe_info) {\
 		.iram_start = (_iram_start),		\
 		.iram_end = (_iram_end),		\
@@ -86,6 +87,7 @@ MODULE_VERSION(SST_DRIVER_VERSION);
 		.use_elf = (_use_elf),			\
 		.max_streams = (_max_streams),		\
 		.dma_max_len = (_dma_max_len),		\
+		.num_probes = (_num_probes),		\
 	 })
 
 struct intel_sst_drv *sst_drv_ctx;
@@ -1051,22 +1053,22 @@ static DEFINE_PCI_DEVICE_TABLE(intel_sst_ids) = {
 		INFO(0, 0, false,
 			0, 0, false,
 			0, 0, false,
-			false, 3, SST_MAX_DMA_LEN)},
+			false, 3, SST_MAX_DMA_LEN, 0)},
 	{ PCI_VDEVICE(INTEL, SST_MFLD_PCI_ID),
 		INFO(SST_MFLD_IRAM_START, SST_MFLD_IRAM_END, true,
 			SST_MFLD_DRAM_START, SST_MFLD_DRAM_END, true,
 			0, 0, false,
-			false, 5, SST_MAX_DMA_LEN)},
+			false, 5, SST_MAX_DMA_LEN, 0)},
 	{ PCI_VDEVICE(INTEL, SST_CLV_PCI_ID),
 		INFO(0, 0, false,
 			0, 0, false,
 			0, 0, false,
-			false, 5, SST_MAX_DMA_LEN)},
+			false, 5, SST_MAX_DMA_LEN, 1)},
 	{ PCI_VDEVICE(INTEL, SST_MRFLD_PCI_ID),
 		INFO(0, 0, false,
 			0, 0, false,
 			0, 0, false,
-			true, 23, SST_MAX_DMA_LEN_MRFLD)},
+			true, 23, SST_MAX_DMA_LEN_MRFLD, 16)},
 	{ 0, }
 };
 MODULE_DEVICE_TABLE(pci, intel_sst_ids);

@@ -162,7 +162,8 @@ static void sst_fill_pcm_params(struct snd_pcm_substream *substream,
 }
 
 static int sst_get_device_id(int dev, int sdev, int dir,
-	const struct sst_dev_stream_map *map, int size, int *str_id)
+	struct sst_dev_stream_map *map, int size,
+	u8 pipe_id, int *str_id)
 {
 	int index;
 
@@ -173,9 +174,18 @@ static int sst_get_device_id(int dev, int sdev, int dir,
 	for (index = 1; index < size; index++) {
 		if ((map[index].dev_num == dev) &&
 			(map[index].subdev_num == sdev) &&
-			(map[index].direction == dir) &&
-			(map[index].status == SST_DEV_MAP_IN_USE))
+			(map[index].direction == dir)) {
+			/* device id for the probe is assigned dynamically */
+			if (map[index].status == SST_DEV_MAP_IN_USE) {
 				break;
+			} else if (map[index].status == SST_DEV_MAP_FREE) {
+				map[index].status = SST_DEV_MAP_IN_USE;
+				map[index].device_id = pipe_id;
+				pr_debug("%s: pipe_id %d index %d", __func__, pipe_id, index);
+
+				break;
+			}
+		}
 	}
 
 	if (index == size) {
@@ -193,7 +203,7 @@ static int sst_fill_stream_params(void *substream,
 	int str_id = 0;
 	bool use_strm_map;
 	int map_size;
-	const struct sst_dev_stream_map *map;
+	struct sst_dev_stream_map *map;
 	struct snd_pcm_substream *pstream = NULL;
 	struct snd_compr_stream *cstream = NULL;
 
@@ -213,7 +223,7 @@ static int sst_fill_stream_params(void *substream,
 		if (use_strm_map) {
 			str_params->device_type = (u8)sst_get_device_id(pstream->pcm->device,
 					pstream->number, pstream->stream,
-					map, map_size,
+					map, map_size, ctx->pipe_id,
 					&str_id);
 			if (str_params->device_type <= 0)
 				return -EINVAL;
@@ -243,7 +253,7 @@ static int sst_fill_stream_params(void *substream,
 			 * snd_compr_stream */
 			str_params->device_type = (u8)sst_get_device_id(cstream->device->device,
 					0, cstream->direction,
-					map, map_size,
+					map, map_size, ctx->pipe_id,
 					&str_id);
 			if (str_params->device_type <= 0)
 				return -EINVAL;

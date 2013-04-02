@@ -394,6 +394,7 @@ struct sst_probe_info {
 	bool use_elf;
 	unsigned int max_streams;
 	u32 dma_max_len;
+	u8 num_probes;
 };
 
 struct sst_fw_context {

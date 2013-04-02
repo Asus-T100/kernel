@@ -417,10 +417,12 @@ struct snd_soc_dai_link mrfld_msic_dailink[] = {
 	[MRFLD_PROBE] = {
 		.name = "Merrifield Probe Port",
 		.stream_name = "Probe",
-		.cpu_dai_name = "Virtual-cpu-dai",
+		.cpu_dai_name = "Probe-cpu-dai",
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.codec_name = "snd-soc-dummy",
 		.platform_name = "sst-platform",
+		.playback_count = 8,
+		.capture_count = 8,
 	},
 	[MRFLD_AWARE] = {
 		.name = "Merrifield Aware Port",
