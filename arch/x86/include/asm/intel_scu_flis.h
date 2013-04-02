@@ -22,8 +22,8 @@ enum flis_param_t {
 /*
  * Config value for OPEN_DRAIN
  */
-#define OD_ENABLE	(1 << 0)
-#define OD_DISABLE	(0 << 0)
+#define OD_DISABLE	(1 << 0)
+#define OD_ENABLE	(0 << 0)
 
 /*
  * Config value for MUX
