@@ -929,6 +929,7 @@ struct drm_intel_overlay_attrs {
 #define I915_SET_COLORKEY_NONE		(1<<0) /* disable color key matching */
 #define I915_SET_COLORKEY_DESTINATION	(1<<1)
 #define I915_SET_COLORKEY_SOURCE	(1<<2)
+#define I915_SET_COLORKEY_ALPHA		(1<<3)
 struct drm_intel_sprite_colorkey {
 	__u32 plane_id;
 	__u32 min_value;

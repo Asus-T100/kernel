@@ -164,7 +164,8 @@ vlv_update_colorkey(struct drm_plane *dplane,
 	int plane = intel_plane->plane;
 	u32 sprctl;
 
-	if (key->flags & I915_SET_COLORKEY_DESTINATION)
+	if (!(key->flags &
+	      (I915_SET_COLORKEY_SOURCE | I915_SET_COLORKEY_ALPHA)))
 		return -EINVAL;
 
 	I915_WRITE(SPKEYMINVAL(pipe, plane), key->min_value);
@@ -173,8 +174,16 @@ vlv_update_colorkey(struct drm_plane *dplane,
 
 	sprctl = I915_READ(SPCNTR(pipe, plane));
 	sprctl &= ~SP_SOURCE_KEY;
+
+	if (!(key->flags & I915_SET_COLORKEY_ALPHA))
+		I915_WRITE(SPCONSTALPHA(pipe, plane), 0);
+
 	if (key->flags & I915_SET_COLORKEY_SOURCE)
 		sprctl |= SP_SOURCE_KEY;
+	else if (key->flags & I915_SET_COLORKEY_ALPHA) {
+		I915_WRITE(SPCONSTALPHA(pipe, plane),
+			   SP_ALPHA_EN | key->channel_mask);
+	}
 	I915_WRITE(SPCNTR(pipe, plane), sprctl);
 
 	POSTING_READ(SPKEYMSK(pipe, plane));
