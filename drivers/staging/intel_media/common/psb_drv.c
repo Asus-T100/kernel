@@ -984,8 +984,7 @@ bool mid_get_pci_revID(struct drm_psb_private *dev_priv)
 	return true;
 }
 
-static
-bool intel_mid_get_vbt_data(struct drm_psb_private *dev_priv)
+static bool intel_mid_get_vbt_data(struct drm_psb_private *dev_priv)
 {
 	u32 platform_config_address;
 	u8 *pVBT_virtual;
@@ -997,6 +996,7 @@ bool intel_mid_get_vbt_data(struct drm_psb_private *dev_priv)
 	struct pci_dev *pci_gfx_root = pci_get_bus_and_slot(0, PCI_DEVFN(2, 0));
 	mdfld_dsi_encoder_t mipi_mode;
 	int ret = 0, len = 0;
+	struct platform_device *pdev;
 
 	PSB_DEBUG_ENTRY("\n");
 
@@ -1094,6 +1094,17 @@ bool intel_mid_get_vbt_data(struct drm_psb_private *dev_priv)
 	} else {
 		DRM_ERROR("%s: detect panel info from gct error\n",
 				__func__);
+		return false;
+	}
+
+	pdev = platform_device_alloc(panel_name, -1);
+	if (!pdev) {
+		DRM_ERROR("%s: fail to alloc platform device\n", __func__);
+		return false;
+	}
+	ret = platform_device_add(pdev);
+	if (ret) {
+		DRM_ERROR("%s: fail to add platform device\n", __func__);
 		return false;
 	}
 

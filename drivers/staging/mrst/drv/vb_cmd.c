@@ -43,8 +43,11 @@
 
 #define I2C_ADAPTER 0x02
 #define I2C_ADDRESS 0x54
-#define IGZO_PANEL_NAME	"SHARP IGZO VKB"
-#define CGS_PANEL_NAME	"SHARP CGS VKB"
+
+enum vb_panel_type {
+	PANEL_IGZO = 0,
+	PANEL_CGS
+};
 
 /*
 #define NO_POWER_OFF
@@ -1075,29 +1078,28 @@ void vb_cmd_init(struct drm_device *dev, struct panel_funcs *p_funcs)
 static int vb_lcd_probe(struct platform_device *pdev)
 {
 	int ret = 0;
+	enum vb_panel_type panel_type;
 
 	DRM_INFO("%s\n", __func__);
-
-	ret = intel_mid_mipi_client_detect(IGZO_PANEL_NAME);
-	if (!ret) {
+	panel_type = platform_get_device_id(pdev)->driver_data;
+	if (panel_type == PANEL_IGZO) {
 		DRM_INFO("%s: IGZO panel detected\n", __func__);
 		intel_mid_panel_register(vb_igzo_cmd_init);
-		return 0;
-	}
-
-	ret = intel_mid_mipi_client_detect(CGS_PANEL_NAME);
-	if (!ret) {
+	} else if (panel_type == PANEL_CGS) {
 		DRM_INFO("%s: CGS panel detected\n", __func__);
 		intel_mid_panel_register(vb_cgs_cmd_init);
-		return 0;
+	} else {
+		DRM_ERROR("bad vb panel type %d\n", panel_type);
+		return -EINVAL;
 	}
 
 	return 0;
 }
 
-static struct platform_device vb_lcd_device = {
-	.name	= "vb_lcd",
-	.id	= -1,
+static struct platform_device_id vb_panel_tbl[] = {
+	{ "SHARP IGZO VKB", PANEL_IGZO },
+	{ "SHARP CGS VKB",  PANEL_CGS },
+	{ }
 };
 
 static struct platform_driver vb_lcd_driver = {
@@ -1106,13 +1108,13 @@ static struct platform_driver vb_lcd_driver = {
 		.name	= "vb_lcd",
 		.owner	= THIS_MODULE,
 	},
+	.id_table = vb_panel_tbl
 };
 
 static int __init vb_lcd_init(void)
 {
 	DRM_INFO("%s\n", __func__);
-
-	platform_device_register(&vb_lcd_device);
-	platform_driver_register(&vb_lcd_driver);
+	return platform_driver_register(&vb_lcd_driver);
 }
+
 module_init(vb_lcd_init);

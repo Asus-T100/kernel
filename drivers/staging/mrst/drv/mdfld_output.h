@@ -106,6 +106,5 @@ bool Check_fw_initilized_reusable(struct mdfld_dsi_config *dsi_config,
 				struct panel_funcs *p_funcs);
 void intel_mid_panel_register(
 		void (*panel_init)(struct drm_device *, struct panel_funcs *));
-int intel_mid_mipi_client_detect(const char *name);
 
 #endif
