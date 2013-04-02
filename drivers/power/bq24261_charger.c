@@ -744,7 +744,7 @@ static inline int bq24261_enable_boost_mode(
 					    BQ24261_STAT_CTRL0_ADDR,
 					    BQ24261_BOOST_MASK,
 					    BQ24261_ENABLE_BOOST);
-		if (unlikely(!ret))
+		if (unlikely(ret))
 			return ret;
 
 		ret = bq24261_tmr_ntc_init(chip);
