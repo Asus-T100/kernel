@@ -21,6 +21,8 @@ struct intel_mid_pwm_device_data {
 struct intel_mid_pwm_platform_data {
 	int pwm_num;
 	struct intel_mid_pwm_device_data *ddata;
+	u16 reg_clksel;
+	u8 val_clksel;
 };
 
 int intel_mid_pwm(int id, int value);
