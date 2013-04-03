@@ -1314,7 +1314,7 @@ PVRSRV_ERROR RGXSendCommandWithPowLock(PVRSRV_RGXDEV_INFO 	*psDevInfo,
 		PVR_DPF((PVR_DBG_WARNING, "RGXSendCommandWithPowLock: failed to acquire powerlock (%s)",
 					PVRSRVGetErrorStringKM(eError)));
 
-		goto _RGXSendCommandWithPowLock_Exit;
+		return eError;
 	}
 	
 	PDUMPPOWCMDSTART();

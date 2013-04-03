@@ -612,11 +612,11 @@ PVRSRV_ERROR PVRSRVSystemPostPowerStateKM(PVRSRV_SYS_POWER_STATE eNewSysPowerSta
 	PVRSRV_DATA				*psPVRSRVData = PVRSRVGetPVRSRVData();
 	PVRSRV_DEV_POWER_STATE	eNewDevicePowerState;
 
-	PVR_LOG(("DEBUG: PVRSRVSysPostPowerState: %d", eNewSysPowerState));
+	PVR_DPF((PVR_DBG_WARNING, "PVRSRVSysPostPowerState: %d -> %d",
+			psPVRSRVData->eCurrentPowerState, eNewSysPowerState));
 	if (eNewSysPowerState != psPVRSRVData->eCurrentPowerState)
 	{
 		/* Perform system-specific power transitions. */
-		PVR_LOG(("PVRSRVSysPostPowerState: %d", eNewSysPowerState));
 		eError = PVRSRVSysPostPowerState(eNewSysPowerState, bForced);
 		if (eError != PVRSRV_OK)
 		{
