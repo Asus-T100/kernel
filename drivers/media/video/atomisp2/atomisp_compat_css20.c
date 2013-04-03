@@ -193,3 +193,13 @@ void atomisp_set_css_env(const struct firmware *firmware,
 		.print_env.error_print = atomisp_css2_err_print,
 	};
 }
+
+void atomisp_css_init_struct(struct atomisp_device *isp)
+{
+	isp->css_env.stream = NULL;
+	isp->css_env.pipes[0] = NULL;
+	ia_css_pipe_config_defaults(&isp->css_env.pipe_configs[0]);
+	ia_css_pipe_extra_config_defaults(
+				&isp->css_env.pipe_extra_configs[0]);
+	ia_css_stream_config_defaults(&isp->css_env.stream_config);
+}

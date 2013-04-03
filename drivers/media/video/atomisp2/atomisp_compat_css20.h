@@ -25,9 +25,17 @@
 #include "ia_css.h"
 #include "ia_css_types.h"
 
+#define ATOMISP_CSS2_PIPE_MAX	2
+
 struct atomisp_css_env {
 	struct ia_css_env isp_css_env;
 	struct ia_css_fw isp_css_fw;
+	struct ia_css_stream *stream;
+	struct ia_css_stream_config stream_config;
+	struct ia_css_pipe *pipes[ATOMISP_CSS2_PIPE_MAX];
+	struct ia_css_pipe_config pipe_configs[ATOMISP_CSS2_PIPE_MAX];
+	struct ia_css_pipe_extra_config pipe_extra_configs[ATOMISP_CSS2_PIPE_MAX];
+	unsigned int pipe_index;
 };
 
 #endif

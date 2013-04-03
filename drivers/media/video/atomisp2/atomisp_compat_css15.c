@@ -88,3 +88,36 @@ void atomisp_set_css_env(const struct firmware *firmware,
 	atomisp_css_env->isp_css_env.sh_env.alloc = atomisp_kernel_zalloc;
 	atomisp_css_env->isp_css_env.sh_env.free = atomisp_kernel_free;
 }
+
+void atomisp_css_init_struct(struct atomisp_device *isp)
+{
+	/* obtain the pointers to the default configurations */
+	sh_css_get_tnr_config(&isp->params.default_tnr_config);
+	sh_css_get_nr_config(&isp->params.default_nr_config);
+	sh_css_get_ee_config(&isp->params.default_ee_config);
+	sh_css_get_ob_config(&isp->params.default_ob_config);
+	sh_css_get_dp_config(&isp->params.default_dp_config);
+	sh_css_get_wb_config(&isp->params.default_wb_config);
+	sh_css_get_cc_config(&isp->params.default_cc_config);
+	sh_css_get_de_config(&isp->params.default_de_config);
+	sh_css_get_gc_config(&isp->params.default_gc_config);
+	sh_css_get_3a_config(&isp->params.default_3a_config);
+	sh_css_get_macc_table(&isp->params.default_macc_table);
+	sh_css_get_ctc_table(&isp->params.default_ctc_table);
+	sh_css_get_gamma_table(&isp->params.default_gamma_table);
+
+	/* we also initialize our configurations with the defaults */
+	isp->params.tnr_config  = *isp->params.default_tnr_config;
+	isp->params.nr_config   = *isp->params.default_nr_config;
+	isp->params.ee_config   = *isp->params.default_ee_config;
+	isp->params.ob_config   = *isp->params.default_ob_config;
+	isp->params.dp_config   = *isp->params.default_dp_config;
+	isp->params.wb_config   = *isp->params.default_wb_config;
+	isp->params.cc_config   = *isp->params.default_cc_config;
+	isp->params.de_config   = *isp->params.default_de_config;
+	isp->params.gc_config   = *isp->params.default_gc_config;
+	isp->params.s3a_config  = *isp->params.default_3a_config;
+	isp->params.macc_table  = *isp->params.default_macc_table;
+	isp->params.ctc_table   = *isp->params.default_ctc_table;
+	isp->params.gamma_table = *isp->params.default_gamma_table;
+}

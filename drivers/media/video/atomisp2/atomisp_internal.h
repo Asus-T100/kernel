@@ -38,6 +38,7 @@
 #include "atomisp_file.h"
 #include "atomisp_subdev.h"
 #include "atomisp_tpg.h"
+#include "atomisp_compat.h"
 
 #include "gp_device.h"
 #include "irq.h"
@@ -340,6 +341,7 @@ struct atomisp_device {
 	struct atomisp_regs saved_regs;
 	struct atomisp_sw_contex sw_contex;
 	struct atomisp_css_params params;
+	struct atomisp_css_env css_env;
 
 	/* isp timeout status flag */
 	bool isp_timeout;

@@ -38,4 +38,6 @@ void atomisp_set_css_env(const struct firmware *isp,
 int atomisp_css_init(struct atomisp_device *isp,
 			struct atomisp_css_env *atomisp_env);
 
+void atomisp_css_init_struct(struct atomisp_device *isp);
+
 #endif
