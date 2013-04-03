@@ -33,8 +33,6 @@
 #include <linux/platform_device.h>
 #include <linux/seq_file.h>
 #include <linux/io.h>
-#include <linux/kthread.h>
-#include <linux/delay.h>
 #include <asm/intel_vlv2.h>
 #include <linux/pnp.h>
 
@@ -48,6 +46,7 @@
 #define VV_INT_STAT_REG		0x800
 
 /* VV_CONF0_REG register bits */
+#define VV_DIRECT_IRQ		BIT(27)
 #define VV_TRIG_NEG		BIT(26)
 #define VV_TRIG_POS		BIT(25)
 #define VV_TRIG_LVL		BIT(24)
@@ -167,6 +166,39 @@ static void vlv_gpio_free(struct gpio_chip *chip, unsigned offset)
 {
 }
 
+static int vlv_irq_type(struct irq_data *d, unsigned type)
+{
+	struct vlv_gpio *vg = irq_data_get_irq_chip_data(d);
+	u32 offset = d->irq - vg->irq_base;
+	u32 value;
+	unsigned long flags;
+	void __iomem *reg = vlv_gpio_reg(&vg->chip, offset, VV_CONF0_REG);
+
+	if (offset >= vg->chip.ngpio)
+		return -EINVAL;
+
+	spin_lock_irqsave(&vg->lock, flags);
+	value = readl(reg);
+	value &= ~(VV_DIRECT_IRQ | VV_TRIG_POS |
+			VV_TRIG_NEG | VV_TRIG_LVL);
+
+	if (type & IRQ_TYPE_EDGE_RISING)
+		value |= VV_TRIG_POS;
+	else
+		value &= ~VV_TRIG_POS;
+
+	if (type & IRQ_TYPE_EDGE_FALLING)
+		value |= VV_TRIG_NEG;
+	else
+		value &= ~VV_TRIG_NEG;
+
+	writel(value, reg);
+
+	spin_unlock_irqrestore(&vg->lock, flags);
+
+	return 0;
+}
+
 static int vlv_gpio_get(struct gpio_chip *chip, unsigned offset)
 {
 	void __iomem *reg = vlv_gpio_reg(chip, offset, VV_VAL_REG);
@@ -268,16 +300,94 @@ static void vlv_gpio_dbg_show(struct seq_file *s, struct gpio_chip *chip)
 	spin_unlock_irqrestore(&vg->lock, flags);
 }
 
+static int vlv_gpio_to_irq(struct gpio_chip *chip, unsigned offset)
+{
+	struct vlv_gpio *vg = container_of(chip, struct vlv_gpio, chip);
+	return vg->irq_base + offset;
+}
+
+static void vlv_gpio_irq_dispatch(struct vlv_gpio *vg)
+{
+	u32 base, pin, mask;
+	void __iomem *reg;
+	u32 pending;
+
+	for (base = 0; base < vg->chip.ngpio; base += 32) {
+		reg = vlv_gpio_reg(&vg->chip, base, VV_INT_STAT_REG);
+		pending = readl(reg);
+		while (pending) {
+			pin = __ffs(pending);
+			mask = BIT(pin);
+			writel(mask, reg);
+			generic_handle_irq(vg->irq_base + base + pin);
+			pending = readl(reg);
+		}
+	}
+}
+
+static void vlv_gpio_irq_handler(unsigned irq, struct irq_desc *desc)
+{
+	struct irq_data *data = irq_desc_get_irq_data(desc);
+	struct vlv_gpio *vg = irq_data_get_irq_handler_data(data);
+	struct irq_chip *chip = irq_data_get_irq_chip(data);
+
+	vlv_gpio_irq_dispatch(vg);
+	chip->irq_eoi(data);
+}
+
+static void vlv_irq_unmask(struct irq_data *d)
+{
+}
+
+static void vlv_irq_mask(struct irq_data *d)
+{
+}
+
+static int vlv_irq_wake(struct irq_data *d, unsigned on)
+{
+	return 0;
+}
+
+static void vlv_irq_ack(struct irq_data *d)
+{
+}
+
+static void vlv_irq_shutdown(struct irq_data *d)
+{
+}
+
+static struct irq_chip vlv_irqchip = {
+	.name = "VLV-GPIO",
+	.irq_mask = vlv_irq_mask,
+	.irq_unmask = vlv_irq_unmask,
+	.irq_set_type = vlv_irq_type,
+	.irq_set_wake = vlv_irq_wake,
+	.irq_ack = vlv_irq_ack,
+	.irq_shutdown = vlv_irq_shutdown,
+};
+
+static void vlv_gpio_irq_init_hw(struct vlv_gpio *vg)
+{
+	void __iomem *reg;
+	u32 base;
+
+	for (base = 0; base < vg->chip.ngpio; base += 32) {
+		reg = vlv_gpio_reg(&vg->chip, base, VV_INT_STAT_REG);
+		writel(0xffffffff, reg);
+	}
+}
+
 static int
 vlv_gpio_pnp_probe(struct pnp_dev *pdev, const struct pnp_device_id *id)
 {
+	int i;
 	struct vlv_gpio *vg;
 	struct gpio_chip *gc;
-	struct resource *mem_rc;
+	struct resource *mem_rc, *irq_rc;
 	struct device *dev = &pdev->dev;
 	struct gpio_bank_pnp *bank;
 	int ret = 0;
-	int gpio_base;
+	int gpio_base, irq_base;
 	char path[GPIO_PATH_MAX];
 
 	vg = devm_kzalloc(dev, sizeof(struct vlv_gpio), GFP_KERNEL);
@@ -300,17 +410,16 @@ vlv_gpio_pnp_probe(struct pnp_dev *pdev, const struct pnp_device_id *id)
 		goto err;
 	}
 
-	snprintf(path, sizeof(path), "\\_SB.%s", bank->name);
-	gpio_base = acpi_get_gpio(path, 0);
-	if (gpio_base < 0) {
-		dev_err(&pdev->dev, "Cannot find ACPI GPIO chip %s", path);
-		gpio_base = bank->gpio_base;
-	}
-	dev_info(&pdev->dev, "%s: gpio base %d\n", path, gpio_base);
-
 	mem_rc = pnp_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!mem_rc) {
 		dev_err(&pdev->dev, "missing MEM resource\n");
+		ret = -EINVAL;
+		goto err;
+	}
+
+	irq_rc = pnp_get_resource(pdev, IORESOURCE_IRQ, 0);
+	if (!irq_rc) {
+		dev_err(&pdev->dev, "missing IRQ resource\n");
 		ret = -EINVAL;
 		goto err;
 	}
@@ -333,7 +442,7 @@ vlv_gpio_pnp_probe(struct pnp_dev *pdev, const struct pnp_device_id *id)
 	gc->get = vlv_gpio_get;
 	gc->set = vlv_gpio_set;
 	gc->dbg_show = vlv_gpio_dbg_show;
-	gc->base = gpio_base;
+	gc->base = bank->gpio_base;
 	gc->can_sleep = 0;
 	gc->dev = dev;
 
@@ -342,6 +451,32 @@ vlv_gpio_pnp_probe(struct pnp_dev *pdev, const struct pnp_device_id *id)
 		dev_err(&pdev->dev, "failed adding vlv-gpio chip\n");
 		goto err;
 	}
+
+	vlv_gpio_irq_init_hw(vg);
+	vg->irq_base = bank->irq_base;
+	if (irq_rc && irq_rc->start) {
+		gc->to_irq = vlv_gpio_to_irq;
+		irq_base = irq_alloc_descs(vg->irq_base, 0, gc->ngpio, 0);
+		if (vg->irq_base != irq_base)
+			panic("gpio base irq fail, needs %d, return %d\n",
+				vg->irq_base, irq_base);
+		for (i = 0; i < gc->ngpio; i++) {
+			irq_set_chip_and_handler_name(i + vg->irq_base,
+					&vlv_irqchip, handle_edge_irq, "gpio");
+			ret = irq_set_chip_data(i + vg->irq_base, vg);
+		}
+		irq_set_handler_data(irq_rc->start, vg);
+		irq_set_chained_handler(irq_rc->start, vlv_gpio_irq_handler);
+	}
+
+	snprintf(path, sizeof(path), "\\_SB.%s", bank->name);
+	gpio_base = acpi_get_gpio(path, 0);
+	if (gpio_base < 0) {
+		dev_err(&pdev->dev, "Cannot find ACPI GPIO chip %s", path);
+		gpio_base = bank->gpio_base;
+	}
+	dev_info(&pdev->dev, "%s: gpio base %d\n", path, gpio_base);
+
 
 	return 0;
 err:
