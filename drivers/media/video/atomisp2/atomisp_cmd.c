@@ -505,7 +505,6 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 	if (irq_infos & SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF) {
 		atomic_inc(&isp->sof_count);
 		atomisp_sof_event(isp);
-		irq_infos &= ~SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF;
 
 		/* If sequence_temp and sequence are the same
 		 * there where no frames lost so we can increase sequence_temp.
@@ -518,13 +517,15 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 					&isp->sequence_temp))
 			atomic_set(&isp->sequence_temp,
 					atomic_read(&isp->sof_count));
-		if (!irq_infos)
-			goto out_nowake;
 	}
 
-	if (irq_infos & SH_CSS_IRQ_INFO_BUFFER_DONE)
+	if (irq_infos & SH_CSS_IRQ_INFO_BUFFER_DONE) {
 		atomic_set(&isp->sequence,
 				atomic_read(&isp->sequence_temp));
+
+		atomic_set(&isp->wdt_count, 0);
+		mod_timer(&isp->wdt, jiffies + isp->wdt_duration);
+	}
 
 #ifdef CONFIG_ISP2400
 	if ((irq_infos & SH_CSS_IRQ_INFO_INPUT_SYSTEM_ERROR) ||
@@ -546,9 +547,6 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 		isp->sw_contex.invalid_s3a = 1;
 		isp->sw_contex.invalid_dis = 1;
 	}
-
-	atomic_set(&isp->wdt_count, 0);
-	mod_timer(&isp->wdt, jiffies + isp->wdt_duration);
 
 	spin_unlock_irqrestore(&isp->lock, flags);
 
@@ -3645,7 +3643,7 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 		if (r->width && r->height
 		    && (r->width > f->fmt.pix.width
 			|| r->height > f->fmt.pix.height))
-			dev_warn(isp->dev, 
+			dev_warn(isp->dev,
 				 "Main Resolution config smaller then Vf Resolution. Force to be equal with Vf Resolution.");
 	}
 
