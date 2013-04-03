@@ -51,6 +51,8 @@ struct psh_ext_if {
 	struct device *hwmon_dev;
 	struct i2c_client *pshc;
 	char psh_frame[LBUF_MAX_CELL_SIZE];
+
+	int irq_disabled;
 };
 
 int read_psh_data(struct psh_ia_priv *ia_data)
@@ -126,6 +128,28 @@ int process_send_cmd(struct psh_ia_priv *ia_data,
 		.buf = (void *)cmd
 	};
 
+	if (ch == 0 && cmd->cmd_id == CMD_RESET) {
+		int *gpio_pins = (int *)psh_if_info->pshc->dev.platform_data;
+
+		if (psh_if_info->irq_disabled == 0) {
+			disable_irq(psh_if_info->pshc->irq);
+			psh_if_info->irq_disabled = 1;
+		}
+
+		gpio_set_value(gpio_pins[0], 1);
+		gpio_set_value(gpio_pins[1], 0);
+		usleep_range(10000, 10000);
+		gpio_set_value(gpio_pins[1], 1);
+
+		/* wait for pshfw to run */
+		msleep(1000);
+
+		if (psh_if_info->irq_disabled == 1) {
+			enable_irq(psh_if_info->pshc->irq);
+			psh_if_info->irq_disabled = 0;
+		}
+	}
+
 	ret = i2c_transfer(psh_if_info->pshc->adapter, &i2c_cmd, 1);
 	if (ret != 1) {
 		dev_err(&psh_if_info->pshc->dev, "sendcmd through I2C fail!\n");
@@ -181,12 +205,6 @@ static int psh_probe(struct i2c_client *client,
 
 	ia_data->platform_priv = psh_if_info;
 
-	ret = request_threaded_irq(client->irq, NULL, psh_byt_irq_thread,
-			IRQF_TRIGGER_FALLING | IRQF_ONESHOT, "psh_byt", client);
-	if (ret) {
-		dev_err(&client->dev, "fail to request irq\n");
-		goto irq_err;
-	}
 	gpio_pins = (int *)client->dev.platform_data;
 	if (gpio_pins) {
 		int rc;
@@ -203,13 +221,23 @@ static int psh_probe(struct i2c_client *client,
 			dev_warn(&client->dev, "fail to request psh_rst pin\n");
 		} else {
 			gpio_export(gpio_pins[1], 1);
-			gpio_direction_output(gpio_pins[1], 0);
-			usleep_range(10000, 10000);
-			gpio_set_value(gpio_pins[1], 1);
+			gpio_direction_output(gpio_pins[1], 1);
 		}
 	} else {
 		dev_warn(&client->dev, "no gpio pins info\n");
 	}
+
+	ret = request_threaded_irq(client->irq, NULL, psh_byt_irq_thread,
+			IRQF_TRIGGER_FALLING | IRQF_ONESHOT, "psh_byt", client);
+	if (ret) {
+		dev_err(&client->dev, "fail to request irq\n");
+		goto irq_err;
+	}
+
+	disable_irq(client->irq);
+
+	psh_if_info->irq_disabled = 1;
+
 	return 0;
 
 irq_err:
