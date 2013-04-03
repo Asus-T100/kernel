@@ -2,6 +2,7 @@
  *  drivers/switch/switch_class.c
  *
  * Copyright (C) 2008 Google, Inc.
+ * Copyright (C) 2012 - NVIDIA, Inc.
  * Author: Mike Lockwood <lockwood@android.com>
  *
  * This software is licensed under the terms of the GNU General Public
