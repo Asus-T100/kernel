@@ -294,7 +294,7 @@ static long __ov2722_set_exposure(struct v4l2_subdev *sd, int coarse_itg,
 	int frame_length;
 	int ret;
 
-	mutex_lock(&dev->power_lock);
+	mutex_lock(&dev->input_lock);
 	/* group hold start */
 	ret = ov2722_write_reg(client, OV2722_8BIT,
 					OV2722_GROUP_ACCESS, 0);
@@ -400,7 +400,7 @@ static long __ov2722_set_exposure(struct v4l2_subdev *sd, int coarse_itg,
 		goto err;
 
 err:
-	mutex_unlock(&dev->power_lock);
+	mutex_unlock(&dev->input_lock);
 	return ret;
 }
 
@@ -819,10 +819,6 @@ static int ov2722_s_mbus_fmt(struct v4l2_subdev *sd,
 		return -EINVAL;
 	}
 	/* workround to enlarge hblanking and vblanking and adjust AWB*/
-	ov2722_write_reg(client, OV2722_8BIT, 0x380c, 0x0f);
-	ov2722_write_reg(client, OV2722_8BIT, 0x380d, 0x5e);
-	ov2722_write_reg(client, OV2722_8BIT, 0x380e, 0x05);
-	ov2722_write_reg(client, OV2722_8BIT, 0x380f, 0x60);
 	ov2722_write_reg(client, OV2722_8BIT, 0x5186, 0x04);
 	ov2722_write_reg(client, OV2722_8BIT, 0x5188, 0x04);
 	ov2722_write_reg(client, OV2722_8BIT, 0x518a, 0x05);
@@ -884,13 +880,13 @@ static int ov2722_s_stream(struct v4l2_subdev *sd, int enable)
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	int ret;
 
-	mutex_lock(&dev->power_lock);
+	mutex_lock(&dev->input_lock);
 
 	ret = ov2722_write_reg(client, OV2722_8BIT, OV2722_SW_STREAM,
 				enable ? OV2722_START_STREAMING :
 				OV2722_STOP_STREAMING);
 
-	mutex_unlock(&dev->power_lock);
+	mutex_unlock(&dev->input_lock);
 	return ret;
 }
 
@@ -950,7 +946,7 @@ static int ov2722_s_config(struct v4l2_subdev *sd,
 	dev->platform_data =
 		(struct camera_sensor_platform_data *)platform_data;
 
-	mutex_lock(&dev->power_lock);
+	mutex_lock(&dev->input_lock);
 	/* power off the module, then power on it in future
 	 * as first power on by board may not fulfill the
 	 * power on sequqence needed by the module
@@ -984,7 +980,7 @@ static int ov2722_s_config(struct v4l2_subdev *sd,
 		dev_err(&client->dev, "ov2722 power-off err.\n");
 		goto fail_csi_cfg;
 	}
-	mutex_unlock(&dev->power_lock);
+	mutex_unlock(&dev->input_lock);
 
 	return 0;
 
@@ -994,7 +990,7 @@ fail_power_on:
 	power_down(sd);
 	dev_err(&client->dev, "sensor power-gating failed\n");
 fail_power_off:
-	mutex_unlock(&dev->power_lock);
+	mutex_unlock(&dev->input_lock);
 	return ret;
 }
 
@@ -1185,7 +1181,6 @@ static int ov2722_probe(struct i2c_client *client,
 		return -ENOMEM;
 	}
 
-	mutex_init(&dev->power_lock);
 	mutex_init(&dev->input_lock);
 
 	dev->fmt_idx = 0;
