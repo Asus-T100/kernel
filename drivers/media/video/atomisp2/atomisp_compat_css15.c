@@ -1,7 +1,7 @@
 /*
  * Support for Clovertrail PNW Camera Imaging ISP subsystem.
  *
- * Copyright (c) 2012 Intel Corporation. All Rights Reserved.
+ * Copyright (c) 2013 Intel Corporation. All Rights Reserved.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License version
@@ -19,18 +19,14 @@
  *
  */
 
-#ifndef __ATOMISP_COMPAT_H__
-#define __ATOMISP_COMPAT_H__
+#include "atomisp_compat.h"
+#include "atomisp_internal.h"
+#include "atomisp_cmd.h"
 
-#ifdef CONFIG_VIDEO_ATOMISP_CSS20
-#include "atomisp_compat_css20.h"
-#else
-#include "atomisp_compat_css15.h"
-#endif
-
-#include <linux/firmware.h>
-
-void atomisp_set_css_env(const struct firmware *isp,
-			struct atomisp_css_env *atomisp_env);
-
-#endif
+void atomisp_set_css_env(const struct firmware *firmware,
+			struct atomisp_css_env *atomisp_css_env)
+{
+	atomisp_css_env->isp_css_env = sh_css_default_env();
+	atomisp_css_env->isp_css_env.sh_env.alloc = atomisp_kernel_zalloc;
+	atomisp_css_env->isp_css_env.sh_env.free = atomisp_kernel_free;
+}

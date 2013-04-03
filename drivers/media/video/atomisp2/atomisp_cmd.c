@@ -92,7 +92,25 @@ void *atomisp_kernel_malloc(size_t bytes)
 	return kmalloc(bytes, GFP_KERNEL);
 }
 
-/* Free buffer allocated with atomisp_kernel_malloc() helper */
+/*
+ * atomisp_kernel_zalloc: chooses whether set 0 to the allocated memory.
+ *
+ * It is also a wrap functions to pass into css framework.
+ */
+void *atomisp_kernel_zalloc(size_t bytes, bool zero_mem)
+{
+	void *ptr = atomisp_kernel_malloc(bytes);
+
+	if (ptr && zero_mem)
+		memset(ptr, 0, bytes);
+
+	return ptr;
+}
+
+/*
+ * Free buffer allocated with atomisp_kernel_malloc()/atomisp_kernel_zalloc
+ * helper
+ */
 void atomisp_kernel_free(void *ptr)
 {
 	/* Verify if buffer was allocated by vmalloc() or kmalloc() */

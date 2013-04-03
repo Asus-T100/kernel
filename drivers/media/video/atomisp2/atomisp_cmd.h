@@ -64,6 +64,7 @@ static inline void __iomem *atomisp_get_io_virt_addr(unsigned int address)
 }
 */
 void *atomisp_kernel_malloc(size_t bytes);
+void *atomisp_kernel_zalloc(size_t bytes, bool zero_mem);
 void atomisp_kernel_free(void *ptr);
 
 /*

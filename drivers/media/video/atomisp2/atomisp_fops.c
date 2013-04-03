@@ -32,6 +32,7 @@
 #include "atomisp_fops.h"
 #include "atomisp_internal.h"
 #include "atomisp_ioctl.h"
+#include "atomisp_compat.h"
 #include "atomisp_subdev.h"
 #include "atomisp-regs.h"
 
@@ -439,16 +440,6 @@ int atomisp_init_struct(struct atomisp_device *isp)
 	return 0;
 }
 
-static void *my_kernel_malloc(size_t bytes, bool zero_mem)
-{
-	void *ptr = atomisp_kernel_malloc(bytes);
-
-	if (ptr && zero_mem)
-		memset(ptr, 0, bytes);
-
-	return ptr;
-}
-
 /*
  * file operation functions
  */
@@ -466,11 +457,9 @@ static int atomisp_open(struct file *file)
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
 	int ret;
-	struct sh_css_env my_env = sh_css_default_env();
+	struct atomisp_css_env atomisp_css_env;
 
-	my_env.sh_env.alloc = my_kernel_malloc;
-	my_env.sh_env.free = atomisp_kernel_free;
-	/* FIXME: my_env.sh_env.flush needs to be implemented */
+	atomisp_set_css_env(isp->firmware, &atomisp_css_env);
 
 	dev_dbg(isp->dev, "open device %s\n", vdev->name);
 

@@ -63,6 +63,12 @@ ifeq ($(CONFIG_ISP2400), y)
 atomisp-objs += $(css_folder)/$(css_platform_folder)/host/input_system.o
 endif
 
+ifeq ($(CONFIG_VIDEO_ATOMISP_CSS20), y)
+atomisp-objs += atomisp_compat_css20.o
+else
+atomisp-objs += atomisp_compat_css15.o
+endif
+
 obj-$(CONFIG_VIDEO_ATOMISP_CSS15) = atomisp.o
 
 INCLUDES := -I$(srctree)/$(src)/include \
