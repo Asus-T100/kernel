@@ -27,6 +27,16 @@
 
 #define ATOMISP_CSS2_PIPE_MAX	2
 
+#define atomisp_css_pipe_id ia_css_pipe_id
+#define atomisp_css_buffer_type ia_css_buffer_type
+
+#define CSS_PIPE_ID_PREVIEW	IA_CSS_PIPE_ID_PREVIEW
+#define CSS_PIPE_ID_COPY	IA_CSS_PIPE_ID_COPY
+#define CSS_PIPE_ID_VIDEO	IA_CSS_PIPE_ID_VIDEO
+#define CSS_PIPE_ID_CAPTURE	IA_CSS_PIPE_ID_CAPTURE
+#define CSS_PIPE_ID_ACC		IA_CSS_PIPE_ID_ACC
+#define CSS_PIPE_ID_NUM		IA_CSS_PIPE_ID_NUM
+
 struct atomisp_css_env {
 	struct ia_css_env isp_css_env;
 	struct ia_css_fw isp_css_fw;

@@ -92,8 +92,8 @@ int atomisp_buf_prepare(struct videobuf_queue *vq,
 
 int atomisp_q_video_buffers_to_css(struct atomisp_device *isp,
 			     struct atomisp_video_pipe *pipe,
-			     enum sh_css_buffer_type css_buf_type,
-			     enum sh_css_pipe_id css_pipe_id)
+			     enum atomisp_css_buffer_type css_buf_type,
+			     enum atomisp_css_pipe_id css_pipe_id)
 {
 	struct videobuf_buffer *vb;
 	struct videobuf_vmalloc_memory *vm_mem;
@@ -113,8 +113,9 @@ int atomisp_q_video_buffers_to_css(struct atomisp_device *isp,
 		spin_unlock_irqrestore(&pipe->irq_lock, irqflags);
 
 		vm_mem = vb->priv;
-		err = sh_css_queue_buffer(css_pipe_id, css_buf_type,
-					  vm_mem->vaddr);
+
+		err = atomisp_q_video_buffer_to_css(isp, vm_mem,
+						css_buf_type, css_pipe_id);
 		if (err) {
 			spin_lock_irqsave(&pipe->irq_lock, irqflags);
 			list_add_tail(&vb->queue, &pipe->activeq);
@@ -197,31 +198,31 @@ static int atomisp_get_css_buf_type(struct atomisp_device *isp,
 /* queue all available buffers to css */
 int atomisp_qbuffers_to_css(struct atomisp_device *isp)
 {
-	enum sh_css_buffer_type buf_type;
-	enum sh_css_pipe_id css_capture_pipe_id = SH_CSS_NR_OF_PIPELINES;
-	enum sh_css_pipe_id css_preview_pipe_id = SH_CSS_NR_OF_PIPELINES;
+	enum atomisp_css_buffer_type buf_type;
+	enum atomisp_css_pipe_id css_capture_pipe_id = CSS_PIPE_ID_NUM;
+	enum atomisp_css_pipe_id css_preview_pipe_id = CSS_PIPE_ID_NUM;
 	struct atomisp_video_pipe *capture_pipe = NULL;
 	struct atomisp_video_pipe *vf_pipe = NULL;
 	struct atomisp_video_pipe *preview_pipe = NULL;
 
 	if (!isp->isp_subdev.enable_vfpp->val) {
 		preview_pipe = &isp->isp_subdev.video_out_capture;
-		css_preview_pipe_id = SH_CSS_VIDEO_PIPELINE;
+		css_preview_pipe_id = CSS_PIPE_ID_VIDEO;
 	} else if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO) {
 		capture_pipe = &isp->isp_subdev.video_out_capture;
 		preview_pipe = &isp->isp_subdev.video_out_preview;
-		css_capture_pipe_id = SH_CSS_VIDEO_PIPELINE;
-		css_preview_pipe_id = SH_CSS_VIDEO_PIPELINE;
+		css_capture_pipe_id = CSS_PIPE_ID_VIDEO;
+		css_preview_pipe_id = CSS_PIPE_ID_VIDEO;
 	} else if (isp->params.continuous_vf) {
 		capture_pipe = &isp->isp_subdev.video_out_capture;
 		vf_pipe = &isp->isp_subdev.video_out_vf;
 		preview_pipe = &isp->isp_subdev.video_out_preview;
 
-		css_preview_pipe_id = SH_CSS_PREVIEW_PIPELINE;
-		css_capture_pipe_id = SH_CSS_CAPTURE_PIPELINE;
+		css_preview_pipe_id = CSS_PIPE_ID_PREVIEW;
+		css_capture_pipe_id = CSS_PIPE_ID_CAPTURE;
 	} else if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_PREVIEW) {
 		preview_pipe = &isp->isp_subdev.video_out_preview;
-		css_preview_pipe_id = SH_CSS_PREVIEW_PIPELINE;
+		css_preview_pipe_id = CSS_PIPE_ID_PREVIEW;
 	} else {
 		/* ATOMISP_RUN_MODE_STILL_CAPTURE */
 		capture_pipe = &isp->isp_subdev.video_out_capture;
@@ -229,7 +230,7 @@ int atomisp_qbuffers_to_css(struct atomisp_device *isp)
 			    isp->isp_subdev.
 			    fmt[isp->isp_subdev.capture_pad].fmt.code))
 			vf_pipe = &isp->isp_subdev.video_out_vf;
-		css_capture_pipe_id = SH_CSS_CAPTURE_PIPELINE;
+		css_capture_pipe_id = CSS_PIPE_ID_CAPTURE;
 	}
 
 	if (capture_pipe) {
@@ -254,9 +255,9 @@ int atomisp_qbuffers_to_css(struct atomisp_device *isp)
 	}
 
 	if (isp->params.curr_grid_info.s3a_grid.enable) {
-		if (css_capture_pipe_id < SH_CSS_NR_OF_PIPELINES)
+		if (css_capture_pipe_id < CSS_PIPE_ID_NUM)
 			atomisp_q_s3a_buffers_to_css(isp, css_capture_pipe_id);
-		if (css_preview_pipe_id < SH_CSS_NR_OF_PIPELINES)
+		if (css_preview_pipe_id < CSS_PIPE_ID_NUM)
 			atomisp_q_s3a_buffers_to_css(isp, css_preview_pipe_id);
 	}
 

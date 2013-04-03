@@ -19,6 +19,8 @@
  *
  */
 
+#include <media/videobuf-vmalloc.h>
+
 #include "mmu/isp_mmu.h"
 #include "mmu/sh_mmu_mrfld.h"
 #include "hmm/hmm.h"
@@ -202,4 +204,22 @@ void atomisp_css_init_struct(struct atomisp_device *isp)
 	ia_css_pipe_extra_config_defaults(
 				&isp->css_env.pipe_extra_configs[0]);
 	ia_css_stream_config_defaults(&isp->css_env.stream_config);
+}
+
+int atomisp_q_video_buffer_to_css(struct atomisp_device *isp,
+			struct videobuf_vmalloc_memory *vm_mem,
+			enum atomisp_css_buffer_type css_buf_type,
+			enum atomisp_css_pipe_id css_pipe_id)
+{
+	struct ia_css_buffer css_buf = {0};
+	enum ia_css_err err;
+
+	css_buf.type = css_buf_type;
+	css_buf.data.frame = vm_mem->vaddr;
+
+	err = ia_css_pipe_enqueue_buffer(isp->css_pipe, &css_buf);
+	if (err != IA_CSS_SUCCESS)
+		return -EINVAL;
+
+	return 0;
 }

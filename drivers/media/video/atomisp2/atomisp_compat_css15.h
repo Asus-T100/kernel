@@ -25,6 +25,16 @@
 #include "sh_css.h"
 #include "sh_css_sp.h"
 
+#define atomisp_css_pipe_id sh_css_pipe_id
+#define atomisp_css_buffer_type sh_css_buffer_type
+
+#define CSS_PIPE_ID_PREVIEW	SH_CSS_PREVIEW_PIPELINE
+#define CSS_PIPE_ID_COPY	SH_CSS_COPY_PIPELINE
+#define CSS_PIPE_ID_VIDEO	SH_CSS_VIDEO_PIPELINE
+#define CSS_PIPE_ID_CAPTURE	SH_CSS_CAPTURE_PIPELINE
+#define CSS_PIPE_ID_ACC		SH_CSS_ACC_PIPELINE
+#define CSS_PIPE_ID_NUM		SH_CSS_NR_OF_PIPELINES
+
 struct atomisp_css_env {
 	struct sh_css_env isp_css_env;
 };

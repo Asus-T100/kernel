@@ -19,6 +19,8 @@
  *
  */
 
+#include <media/videobuf-vmalloc.h>
+
 #include "sh_css_debug.h"
 #include "host/mmu_local.h"
 #include "device_access/device_access.h"
@@ -120,4 +122,19 @@ void atomisp_css_init_struct(struct atomisp_device *isp)
 	isp->params.macc_table  = *isp->params.default_macc_table;
 	isp->params.ctc_table   = *isp->params.default_ctc_table;
 	isp->params.gamma_table = *isp->params.default_gamma_table;
+}
+
+int atomisp_q_video_buffer_to_css(struct atomisp_device *isp,
+			struct videobuf_vmalloc_memory *vm_mem,
+			enum atomisp_css_buffer_type css_buf_type,
+			enum atomisp_css_pipe_id css_pipe_id)
+{
+	enum sh_css_err err;
+
+	err = sh_css_queue_buffer(css_pipe_id, css_buf_type,
+						vm_mem->vaddr);
+	if (err != sh_css_success)
+		return -EINVAL;
+
+	return 0;
 }
