@@ -132,7 +132,7 @@ int atomisp_q_video_buffers_to_css(struct atomisp_device *isp,
 }
 
 int atomisp_q_s3a_buffers_to_css(struct atomisp_device *isp,
-			   enum sh_css_pipe_id css_pipe_id)
+				enum atomisp_css_pipe_id css_pipe_id)
 {
 	struct atomisp_s3a_buf *s3a_buf;
 
@@ -146,19 +146,17 @@ int atomisp_q_s3a_buffers_to_css(struct atomisp_device *isp,
 				struct atomisp_s3a_buf, list);
 		list_move_tail(&s3a_buf->list, &isp->s3a_stats);
 
-		if (sh_css_queue_buffer(css_pipe_id,
-					SH_CSS_BUFFER_TYPE_3A_STATISTICS,
-					&s3a_buf->s3a_data)) {
-			dev_err(isp->dev, "failed to q s3a stat buffer\n");
+		if (atomisp_q_s3a_buffer_to_css(isp, s3a_buf, css_pipe_id))
 			return -EINVAL;
-		}
+
 		isp->s3a_bufs_in_css[css_pipe_id]++;
 	}
+
 	return 0;
 }
 
 int atomisp_q_dis_buffers_to_css(struct atomisp_device *isp,
-			   enum sh_css_pipe_id css_pipe_id)
+				enum atomisp_css_pipe_id css_pipe_id)
 {
 	struct atomisp_dis_buf *dis_buf;
 
@@ -172,15 +170,13 @@ int atomisp_q_dis_buffers_to_css(struct atomisp_device *isp,
 				struct atomisp_dis_buf, list);
 		list_move_tail(&dis_buf->list, &isp->dis_stats);
 
-		if (sh_css_queue_buffer(css_pipe_id,
-					SH_CSS_BUFFER_TYPE_DIS_STATISTICS,
-					&dis_buf->dis_data)) {
-			dev_err(isp->dev, "failed to q dis stat buffer\n");
+		if (atomisp_q_dis_buffer_to_css(isp, dis_buf, css_pipe_id))
 			return -EINVAL;
-		}
+
 		isp->dis_bufs_in_css++;
 		dis_buf = NULL;
 	}
+
 	return 0;
 }
 

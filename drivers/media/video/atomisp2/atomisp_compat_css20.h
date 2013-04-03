@@ -29,6 +29,8 @@
 
 #define atomisp_css_pipe_id ia_css_pipe_id
 #define atomisp_css_buffer_type ia_css_buffer_type
+#define atomisp_css_dis_data ia_css_isp_dvs_statistics
+typedef struct ia_css_isp_3a_statistics atomisp_css_3a_data;
 
 #define CSS_PIPE_ID_PREVIEW	IA_CSS_PIPE_ID_PREVIEW
 #define CSS_PIPE_ID_COPY	IA_CSS_PIPE_ID_COPY
@@ -46,6 +48,16 @@ struct atomisp_css_env {
 	struct ia_css_pipe_config pipe_configs[ATOMISP_CSS2_PIPE_MAX];
 	struct ia_css_pipe_extra_config pipe_extra_configs[ATOMISP_CSS2_PIPE_MAX];
 	unsigned int pipe_index;
+};
+
+struct atomisp_s3a_buf {
+	atomisp_css_3a_data *s3a_data;
+	struct list_head list;
+};
+
+struct atomisp_dis_buf {
+	struct atomisp_css_dis_data *dis_data;
+	struct list_head list;
 };
 
 #endif

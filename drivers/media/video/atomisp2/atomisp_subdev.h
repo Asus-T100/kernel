@@ -60,22 +60,6 @@ struct atomisp_in_fmt_conv {
 	enum sh_css_bayer_order bayer_order;
 };
 
-struct atomisp_3a_dis_stat_buf {
-	union sh_css_s3a_data s3a_data;
-	struct sh_css_dis_data dis_data;
-	struct list_head list;
-};
-
-struct atomisp_s3a_buf {
-	union sh_css_s3a_data s3a_data;
-	struct list_head list;
-};
-
-struct atomisp_dis_buf {
-	struct sh_css_dis_data dis_data;
-	struct list_head list;
-};
-
 struct atomisp_video_pipe {
 	struct video_device vdev;
 	enum v4l2_buf_type type;

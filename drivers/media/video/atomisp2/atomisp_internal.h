@@ -304,7 +304,7 @@ struct atomisp_device {
 		struct ida ida;
 	} acc;
 
-	unsigned int s3a_bufs_in_css[SH_CSS_NR_OF_PIPELINES];
+	unsigned int s3a_bufs_in_css[CSS_PIPE_ID_NUM];
 	unsigned int dis_bufs_in_css;
 
 	/* ISP modules */

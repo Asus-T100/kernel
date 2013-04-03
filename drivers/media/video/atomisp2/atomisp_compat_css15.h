@@ -27,6 +27,8 @@
 
 #define atomisp_css_pipe_id sh_css_pipe_id
 #define atomisp_css_buffer_type sh_css_buffer_type
+#define atomisp_css_dis_data sh_css_dis_data
+typedef union sh_css_s3a_data atomisp_css_3a_data;
 
 #define CSS_PIPE_ID_PREVIEW	SH_CSS_PREVIEW_PIPELINE
 #define CSS_PIPE_ID_COPY	SH_CSS_COPY_PIPELINE
@@ -37,6 +39,16 @@
 
 struct atomisp_css_env {
 	struct sh_css_env isp_css_env;
+};
+
+struct atomisp_s3a_buf {
+	atomisp_css_3a_data s3a_data;
+	struct list_head list;
+};
+
+struct atomisp_dis_buf {
+	struct atomisp_css_dis_data dis_data;
+	struct list_head list;
 };
 
 #endif

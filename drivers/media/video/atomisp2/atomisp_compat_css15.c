@@ -138,3 +138,31 @@ int atomisp_q_video_buffer_to_css(struct atomisp_device *isp,
 
 	return 0;
 }
+
+int atomisp_q_s3a_buffer_to_css(struct atomisp_device *isp,
+			struct atomisp_s3a_buf *s3a_buf,
+			enum atomisp_css_pipe_id css_pipe_id)
+{
+	if (sh_css_queue_buffer(css_pipe_id,
+				SH_CSS_BUFFER_TYPE_3A_STATISTICS,
+				&s3a_buf->s3a_data)) {
+		dev_dbg(isp->dev, "failed to q s3a stat buffer\n");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+int atomisp_q_dis_buffer_to_css(struct atomisp_device *isp,
+			struct atomisp_dis_buf *dis_buf,
+			enum atomisp_css_pipe_id css_pipe_id)
+{
+	if (sh_css_queue_buffer(css_pipe_id,
+				SH_CSS_BUFFER_TYPE_DIS_STATISTICS,
+				&dis_buf->dis_data)) {
+		dev_dbg(isp->dev, "failed to q dis stat buffer\n");
+		return -EINVAL;
+	}
+
+	return 0;
+}
