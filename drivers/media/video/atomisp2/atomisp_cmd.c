@@ -519,13 +519,8 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 					atomic_read(&isp->sof_count));
 	}
 
-	if (irq_infos & SH_CSS_IRQ_INFO_BUFFER_DONE) {
-		atomic_set(&isp->sequence,
-				atomic_read(&isp->sequence_temp));
-
-		atomic_set(&isp->wdt_count, 0);
-		mod_timer(&isp->wdt, jiffies + isp->wdt_duration);
-	}
+	if (irq_infos & SH_CSS_IRQ_INFO_BUFFER_DONE)
+		atomic_set(&isp->sequence, atomic_read(&isp->sequence_temp));
 
 #ifdef CONFIG_ISP2400
 	if ((irq_infos & SH_CSS_IRQ_INFO_INPUT_SYSTEM_ERROR) ||
@@ -623,6 +618,14 @@ void atomisp_clear_css_buffer_counters(struct atomisp_device *isp)
 	isp->isp_subdev.video_out_capture.buffers_in_css = 0;
 	isp->isp_subdev.video_out_vf.buffers_in_css = 0;
 	isp->isp_subdev.video_out_preview.buffers_in_css = 0;
+}
+
+bool atomisp_buffers_queued(struct atomisp_device *isp)
+{
+	return isp->isp_subdev.video_out_capture.buffers_in_css ||
+		isp->isp_subdev.video_out_vf.buffers_in_css ||
+		isp->isp_subdev.video_out_preview.buffers_in_css ?
+		    true : false;
 }
 
 /* 0x100000 is the start of dmem inside SP */
@@ -1076,8 +1079,6 @@ void atomisp_wdt_work(struct work_struct *work)
 		 */
 		atomisp_flush_bufs_and_wakeup(isp);
 		dev_err(isp->dev, "timeout recovery handling done\n");
-
-		mod_timer(&isp->wdt, jiffies + isp->wdt_duration);
 	}
 
 	mutex_unlock(&isp->mutex);
@@ -1122,6 +1123,7 @@ irqreturn_t atomisp_isr_thread(int irq, void *isp_ptr)
 	unsigned long flags;
 	bool frame_done_found = false;
 	bool css_pipe_done = false;
+	bool reset_wdt_timer = false;
 	DEFINE_KFIFO(events, struct atomisp_css_event, ATOMISP_CSS_EVENTS_MAX);
 
 	v4l2_dbg(5, dbg_level, &atomisp_dev, ">%s\n", __func__);
@@ -1141,8 +1143,10 @@ irqreturn_t atomisp_isr_thread(int irq, void *isp_ptr)
 			css_pipe_done = true;
 			break;
 		case SH_CSS_EVENT_OUTPUT_FRAME_DONE:
-		case SH_CSS_EVENT_3A_STATISTICS_DONE:
 		case SH_CSS_EVENT_VF_OUTPUT_FRAME_DONE:
+			reset_wdt_timer = true; /* ISP running */
+			/* fall through */
+		case SH_CSS_EVENT_3A_STATISTICS_DONE:
 		case SH_CSS_EVENT_DIS_STATISTICS_DONE:
 			break;
 		default:
@@ -1197,6 +1201,16 @@ irqreturn_t atomisp_isr_thread(int irq, void *isp_ptr)
 	}
 	atomisp_setup_flash(isp);
 
+	/* If there are no buffers queued then delete wdt timer. */
+	if (!atomisp_buffers_queued(isp)) {
+		del_timer(&isp->wdt);
+	} else {
+		/* SOF irq should not reset wdt timer. */
+		if (reset_wdt_timer) {
+			mod_timer(&isp->wdt, jiffies + isp->wdt_duration);
+			atomic_set(&isp->wdt_count, 0);
+		}
+	}
 out:
 	mutex_unlock(&isp->mutex);
 

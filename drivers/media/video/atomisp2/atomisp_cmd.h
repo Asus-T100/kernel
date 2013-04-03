@@ -52,6 +52,7 @@ struct atomisp_video_pipe *atomisp_to_video_pipe(struct video_device *dev);
 int atomisp_reset(struct atomisp_device *isp);
 void atomisp_flush_bufs_and_wakeup(struct atomisp_device *isp);
 void atomisp_clear_css_buffer_counters(struct atomisp_device *isp);
+bool atomisp_buffers_queued(struct atomisp_device *isp);
 
 /* TODO:should be here instead of atomisp_helper.h
 extern void __iomem *atomisp_io_base;
