@@ -390,12 +390,20 @@
  * @gpio_base: base number for the GPIOs
  * @ngpio_lv: number of low voltage GPIOs
  * @ngpio_hv: number of high voltage GPIOs
+ * @gpio0_lv_ctlo: low voltage GPIO0 output control register
+ * @gpio0_lv_ctli: low voltage GPIO0 input control register
+ * @gpio0_hv_ctlo: high voltage GPIO0 output control register
+ * @gpio0_hv_ctli: high voltage GPIO0 input control register
  * @can_sleep: flag for gpio chip
  */
 struct intel_msic_gpio_pdata {
 	unsigned	gpio_base;
 	int		ngpio_lv;
 	int		ngpio_hv;
+	u16		gpio0_lv_ctlo;
+	u16		gpio0_lv_ctli;
+	u16		gpio0_hv_ctlo;
+	u16		gpio0_hv_ctli;
 	int		can_sleep;
 };
 
