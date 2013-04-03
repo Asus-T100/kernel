@@ -57,6 +57,13 @@ static int sh_set_pd_base(struct isp_mmu *mmu,
 	return 0;
 }
 
+static unsigned int sh_get_pd_base(struct isp_mmu *mmu,
+				   phys_addr_t phys)
+{
+	unsigned int pte = sh_phys_to_pte(mmu, phys);
+	return HOST_ADDRESS(pte);
+}
+
 /*
  * callback to flush tlb.
  *
@@ -78,6 +85,7 @@ struct isp_mmu_client sh_mmu_mrfld = {
 	.pte_valid_mask = 0x80000000,
 	.null_pte = NULL_PAGE >> ISP_PAGE_OFFSET,
 	.set_pd_base = sh_set_pd_base,
+	.get_pd_base = sh_get_pd_base,
 	.tlb_flush_all = sh_tlb_flush,
 	.phys_to_pte = sh_phys_to_pte,
 	.pte_to_phys = sh_pte_to_phys,

@@ -30,7 +30,12 @@
 
 #include <linux/firmware.h>
 
+struct atomisp_device;
+
 void atomisp_set_css_env(const struct firmware *isp,
+			struct atomisp_css_env *atomisp_env);
+
+int atomisp_css_init(struct atomisp_device *isp,
 			struct atomisp_css_env *atomisp_env);
 
 #endif

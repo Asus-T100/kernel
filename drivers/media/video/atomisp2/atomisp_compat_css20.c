@@ -19,6 +19,10 @@
  *
  */
 
+#include "mmu/isp_mmu.h"
+#include "mmu/sh_mmu_mrfld.h"
+#include "hmm/hmm.h"
+
 #include "atomisp_compat.h"
 #include "atomisp_internal.h"
 #include "atomisp_cmd.h"
@@ -113,6 +117,46 @@ static void atomisp_css2_hw_load(hrt_address addr, void *to, uint32_t n)
 	unsigned int _from = (unsigned int)addr;
 	for (i = 0; i < n; i++, _to++, _from++)
 		*_to = _hrt_master_port_load_8(_from);
+}
+
+static int hmm_get_mmu_base_addr(unsigned int *mmu_base_addr)
+{
+	if (sh_mmu_mrfld.get_pd_base == NULL) {
+		v4l2_err(&atomisp_dev, "get mmu base address failed.\n");
+		return -EINVAL;
+	}
+
+	*mmu_base_addr = sh_mmu_mrfld.get_pd_base(&bo_device.mmu,
+					bo_device.mmu.base_address);
+	return 0;
+}
+
+int atomisp_css_init(struct atomisp_device *isp,
+			struct atomisp_css_env *atomisp_css_env)
+{
+	unsigned int mmu_base_addr;
+	int ret;
+	enum ia_css_err err;
+
+	hrt_isp_css_mm_init();
+	ret = hmm_get_mmu_base_addr(&mmu_base_addr);
+	if (ret) {
+		hrt_isp_css_mm_clear();
+		return ret;
+	}
+
+	/* Init ISP */
+	err = ia_css_init(&atomisp_css_env->isp_css_env,
+			  &atomisp_css_env->isp_css_fw,
+			  (uint32_t)mmu_base_addr, IA_CSS_IRQ_TYPE_PULSE);
+	if (err != IA_CSS_SUCCESS) {
+		dev_err(isp->dev, "css init failed --- bad firmware?\n");
+		return -EINVAL;
+	}
+
+	dev_dbg(isp->dev, "sh_css_init success\n");
+
+	return 0;
 }
 
 void atomisp_set_css_env(const struct firmware *firmware,
