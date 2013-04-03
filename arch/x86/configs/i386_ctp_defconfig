@@ -870,24 +870,7 @@ CONFIG_BQL=y
 # CONFIG_HAMRADIO is not set
 # CONFIG_CAN is not set
 # CONFIG_IRDA is not set
-CONFIG_BT=y
-# CONFIG_BT_RFCOMM is not set
-# CONFIG_BT_BNEP is not set
-CONFIG_BT_HIDP=y
-
-#
-# Bluetooth device drivers
-#
-CONFIG_BCM_BT_LPM=m
-# CONFIG_BT_HCIBTUSB is not set
-# CONFIG_BT_HCIBTSDIO is not set
-# CONFIG_BT_HCIUART is not set
-# CONFIG_BT_HCIBCM203X is not set
-# CONFIG_BT_HCIBPA10X is not set
-# CONFIG_BT_HCIBFUSB is not set
-# CONFIG_BT_HCIVHCI is not set
-# CONFIG_BT_MRVL is not set
-CONFIG_BT_WILINK=m
+# CONFIG_BT is not set
 # CONFIG_AF_RXRPC is not set
 CONFIG_WIRELESS=y
 CONFIG_CFG80211=m
@@ -1032,6 +1015,7 @@ CONFIG_ST_HCI=m
 # Altera FPGA firmware download module
 #
 # CONFIG_ALTERA_STAPL is not set
+CONFIG_BCM_BT_LPM=m
 CONFIG_HAVE_IDE=y
 # CONFIG_IDE is not set
 
