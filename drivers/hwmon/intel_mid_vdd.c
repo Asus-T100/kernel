@@ -512,7 +512,6 @@ static irqreturn_t vdd_intrpt_handler(int id, void *dev)
   */
 static irqreturn_t vdd_interrupt_thread_handler(int irq, void *dev_data)
 {
-	int ret;
 	uint8_t irq_data, event = 0;
 	struct vdd_info *vinfo = (struct vdd_info *)dev_data;
 
