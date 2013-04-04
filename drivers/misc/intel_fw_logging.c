@@ -39,6 +39,7 @@
 #include <asm/intel_scu_ipcutil.h>
 
 #include "intel_fabricid_def.h"
+#include "intel_fw_trace.h"
 
 /*
    OSHOB - OS Handoff Buffer
@@ -130,7 +131,17 @@ union flag_status_hilo {
 static void __iomem *oshob_base;
 static u32 *log_buffer;
 static u32 log_buffer_sz;
-static u32 trace_size;
+
+static void __iomem *fabric_err_buf1;
+static void __iomem *fabric_err_buf2;
+static void __iomem *sram_trace_buf;
+
+static struct scu_trace_hdr_t trace_hdr;
+static u32 *trace_buf;
+
+static int sram_buf_sz;
+
+static int irq;
 
 static struct rpmsg_instance *fw_logging_instance;
 
@@ -161,6 +172,95 @@ static char *agent_names[] = {
 	"ARC_IOCP_IA",
 	"SCSF_TOCP_TA"
 };
+
+static irqreturn_t fw_logging_irq_thread(int irq, void *ignored)
+{
+	char *trace, *end, prefix[20];
+	unsigned int count;
+	int i, len;
+	u32 size;
+
+	i = snprintf(prefix, sizeof(prefix), "SCU TRACE ");
+	switch (trace_hdr.cmd & TRACE_ID_MASK) {
+	case TRACE_ID_INFO:
+		i += snprintf(prefix + i, sizeof(prefix) - i, "INFO");
+		break;
+	case TRACE_ID_ERROR:
+		i += snprintf(prefix + i, sizeof(prefix) - i, "ERROR");
+		break;
+	default:
+		pr_err("Invalid message ID!");
+		break;
+	}
+	snprintf(prefix + i, sizeof(prefix) - i, ": ");
+
+	if (trace_hdr.cmd & TRACE_IS_ASCII) {
+		size = trace_hdr.size;
+		trace = (char *)trace_buf;
+		end = trace + trace_hdr.size;
+		while (trace < end) {
+			len = strnlen(trace, size);
+			if (!len) {
+				trace++;
+				continue;
+			}
+			pr_info("%s%s\n", prefix, trace);
+			trace += len + 1;
+			size -= len;
+		}
+	} else {
+		count = trace_hdr.size / sizeof(u32);
+
+		for (i = 0; i < count; i++)
+			pr_info("%s[%d]:0x%08x\n", prefix, i, trace_buf[i]);
+	}
+
+	return IRQ_HANDLED;
+}
+
+static void read_scu_trace_hdr(struct scu_trace_hdr_t *hdr)
+{
+	unsigned int count;
+	u32 *buf = (u32 *) hdr;
+	int i;
+
+	if (!hdr)
+		return;
+
+	count = sizeof(struct scu_trace_hdr_t) / sizeof(u32);
+
+	for (i = 0; i < count; i++)
+		*(buf + i)  = readl(fabric_err_buf1 + i * sizeof(u32));
+}
+
+static void read_sram_trace_buf(u32 *buf, u8 *scubuffer, unsigned int size)
+{
+	int i;
+	unsigned int count;
+
+	if (!buf || !scubuffer || !size)
+		return;
+
+	count = size / sizeof(u32);
+	for (i = 0; i < count; i++)
+		buf[i] = readl(scubuffer + i * sizeof(u32));
+}
+
+static irqreturn_t fw_logging_irq(int irq, void *ignored)
+{
+	read_scu_trace_hdr(&trace_hdr);
+
+	if (trace_hdr.magic != TRACE_MAGIC ||
+	    trace_hdr.offset + trace_hdr.size > sram_buf_sz) {
+		pr_err("Invalid SCU trace!");
+		return IRQ_HANDLED;
+	}
+
+	read_sram_trace_buf(trace_buf, (u8 *) sram_trace_buf + trace_hdr.offset,
+			    trace_hdr.size);
+
+	return IRQ_WAKE_THREAD;
+}
 
 static void __iomem *get_oshob_addr(void)
 {
@@ -462,17 +562,6 @@ out:
 	return ret;
 }
 
-static void read_scu_extended_trace(u32 *buf, void __iomem *scubuffer,
-				    u32 count)
-{
-	int i;
-	unsigned int lines;
-
-	lines = count / sizeof(u32);
-	for (i = 0; i < lines; i++)
-		buf[i] = readl(scubuffer + i * sizeof(u32));
-}
-
 static int dump_scu_extented_trace(char *buf, int size, int log_offset,
 				   int *read)
 {
@@ -517,7 +606,7 @@ static int intel_fw_logging_proc_read(char *buffer, char **start, off_t offset,
 		read = MAX_NUM_ALL_LOGDWORDS * sizeof(u32);
 	} else {
 		ret = dump_scu_extented_trace(buffer, count, offset, &read);
-		if (!read || offset + read > trace_size)
+		if (!read || offset + read > sram_buf_sz)
 			*peof = 1;
 	}
 	*start = (void *) read;
@@ -526,87 +615,188 @@ static int intel_fw_logging_proc_read(char *buffer, char **start, off_t offset,
 }
 #endif /* CONFIG_PROC_FS */
 
-static int intel_fw_logging_init(void)
+static int fw_logging_crash_on_boot(void)
 {
 	int length = 0;
 	int err = 0;
-	u32 buffer, read;
-	void __iomem *scubuffer = NULL;
+	u32 read;
 
-	oshob_base = get_oshob_addr();
-
-	if (oshob_base == NULL)
-		return -EINVAL;
-
-	/*
-	 * Calculate size of SCU extra trace buffer. Size of the buffer
-	 * is given by SCU. Make sanity check in case of incorrect data.
-	 * We don't want to allocate all of the memory for trace dump.
-	 */
-	trace_size = intel_scu_ipc_get_scu_trace_buffer_size();
-	if (trace_size > MAX_SCU_EXTRA_DUMP_SIZE)
-		trace_size = 0;
-
-	log_buffer_sz = MAX_NUM_ALL_LOGDWORDS * sizeof(u32) + trace_size;
+	log_buffer_sz = MAX_NUM_ALL_LOGDWORDS * sizeof(u32) + sram_buf_sz;
 	log_buffer = kzalloc(log_buffer_sz, GFP_KERNEL);
 	if (!log_buffer) {
+		pr_err("Failed to allocate memory for log buffer");
 		err = -ENOMEM;
-		goto err_nomem;
+		goto err1;
 	}
 
 	read_fwerr_log(log_buffer, oshob_base);
-	if (!fw_error_found())
-		goto err_nolog;
+	if (!fw_error_found()) {
+		pr_info("No stored SCU errors found in SRAM");
+		kfree(log_buffer);
+		goto out;
+	}
 	length = dump_fwerr_log(NULL, 0);
 
-	/*
-	 * SCU gives pointer via oshob. Address is a physical
-	 * address somewhere in shared sram
-	 */
-	buffer = intel_scu_ipc_get_scu_trace_buffer();
-	if (buffer && buffer > LOWEST_PHYS_SRAM_ADDRESS && trace_size) {
-		/* Looks that we have valid buffer and size. */
-		scubuffer = ioremap_nocache(buffer, trace_size);
-		if (scubuffer) {
-			read_scu_extended_trace(log_buffer +
-						MAX_NUM_ALL_LOGDWORDS,
-						scubuffer, trace_size);
-			length += dump_scu_extented_trace(NULL, 0, 0, &read);
-		}
+	if (sram_trace_buf) {
+		/*
+		 * SCU gives pointer via oshob. Address is a physical
+		 * address somewhere in shared sram
+		 */
+		read_sram_trace_buf(log_buffer + MAX_NUM_ALL_LOGDWORDS,
+				    sram_trace_buf, sram_buf_sz);
+		length += dump_scu_extented_trace(NULL, 0, 0, &read);
 	}
 
 #ifdef CONFIG_PROC_FS
+
 	ipanic_faberr = create_proc_entry("ipanic_fabric_err",
 					  S_IFREG | S_IRUGO, NULL);
 	if (ipanic_faberr == 0) {
 		pr_err("Fail creating procfile ipanic_fabric_err\n");
-		err = -ENOMEM;
-		goto err_procfail;
+		err = -ENODEV;
+		goto err2;
 	}
 
 	ipanic_faberr->read_proc = intel_fw_logging_proc_read;
 	ipanic_faberr->write_proc = NULL;
 	ipanic_faberr->size = length;
-
 #endif /* CONFIG_PROC_FS */
+
+out:
+	return err;
+
+err2:
+	kfree(log_buffer);
+err1:
+	return err;
+}
+
+static int intel_fw_logging_probe(struct platform_device *pdev)
+{
+	int err = 0;
+
+	if (!sram_trace_buf) {
+		pr_err("No sram trace buffer available, skip SCU tracing init");
+		err = -ENODEV;
+		goto out;
+	}
+	irq = platform_get_irq(pdev, 0);
+	if (irq < 0) {
+		pr_info("No irq available, SCU tracing not available");
+		err = irq;
+		goto out;
+	}
+
+	err = request_threaded_irq(irq, fw_logging_irq,
+				   fw_logging_irq_thread,
+				   IRQF_ONESHOT, "fw_logging",
+				   &pdev->dev);
+	if (err) {
+		pr_err("Requesting irq failed");
+		goto out;
+	}
+out:
+	return err;
+}
+
+static int intel_fw_logging_remove(struct platform_device *pdev)
+{
+	free_irq(irq, &pdev->dev);
+
+	return 0;
+}
+
+static const struct platform_device_id intel_fw_logging_table[] = {
+	{"scuLog", 1 },
+};
+
+static struct platform_driver intel_fw_logging_driver = {
+	.driver = {
+		.name = "scuLog",
+		.owner = THIS_MODULE,
+		},
+	.probe = intel_fw_logging_probe,
+	.remove = __devexit_p(intel_fw_logging_remove),
+	.id_table = intel_fw_logging_table,
+};
+
+static int intel_fw_logging_init(void)
+{
+	u32 buffer;
+	int err = 0;
+
+	oshob_base = get_oshob_addr();
+	if (oshob_base == NULL) {
+		pr_err("Failed to get OSHOB address");
+		err = -EINVAL;
+		goto err1;
+	}
+
+	buffer = intel_scu_ipc_get_scu_trace_buffer();
+	if (buffer && buffer >= LOWEST_PHYS_SRAM_ADDRESS) {
+		/*
+		 * Calculate size of SCU extra trace buffer. Size of the buffer
+		 * is given by SCU. Make sanity check in case of incorrect data.
+		 */
+		sram_buf_sz = intel_scu_ipc_get_scu_trace_buffer_size();
+		if (sram_buf_sz > MAX_SCU_EXTRA_DUMP_SIZE) {
+			pr_err("Failed to get scu trace buffer size");
+			err = -ENODEV;
+			goto err1;
+		}
+		/* Looks that we have valid buffer and size. */
+		sram_trace_buf = ioremap_nocache(buffer, sram_buf_sz);
+		if (!sram_trace_buf) {
+			pr_err("Failed to map scu trace buffer");
+			err =  -ENOMEM;
+			goto err1;
+		}
+
+		trace_buf = kzalloc(sram_buf_sz, GFP_KERNEL);
+		if (!trace_buf) {
+			pr_err("Failed to allocate memory for trace buffer");
+			err = -ENOMEM;
+			goto err2;
+		}
+	} else {
+		pr_info("No extended trace buffer available");
+	}
+
+	fabric_err_buf1 = oshob_base +
+		intel_scu_ipc_get_fabricerror_buf1_offset();
+	fabric_err_buf2 = oshob_base +
+		intel_scu_ipc_get_fabricerror_buf2_offset();
+
+	/* Check and report existing error logs */
+	err = fw_logging_crash_on_boot();
+	if (err) {
+		pr_err("Logging SCU errors stored in SRAM failed");
+		goto err3;
+	}
 
 	/* Clear fabric error region inside OSHOB if neccessary */
 	rpmsg_send_simple_command(fw_logging_instance,
-				IPCMSG_CLEAR_FABERROR, 0);
-	goto leave;
+				  IPCMSG_CLEAR_FABERROR, 0);
 
-err_procfail:
-err_nolog:
-	kfree(log_buffer);
-err_nomem:
-leave:
-	iounmap(scubuffer);
-	iounmap(oshob_base);
+	err = platform_driver_register(&intel_fw_logging_driver);
+	if (err) {
+		pr_err("Failed to register platform driver\n");
+		goto err3;
+	}
+	return err;
+err3:
+	kfree(trace_buf);
+err2:
+	iounmap(sram_trace_buf);
+err1:
 	return err;
 }
 
 static void intel_fw_logging_exit(void)
 {
+	platform_driver_unregister(&intel_fw_logging_driver);
+	kfree(trace_buf);
+	iounmap(sram_trace_buf);
 #ifdef CONFIG_PROC_FS
 	if (ipanic_faberr)
 		remove_proc_entry("ipanic_fabric_err", NULL);
