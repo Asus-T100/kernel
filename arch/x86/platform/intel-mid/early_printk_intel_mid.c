@@ -418,7 +418,7 @@ void hsu_early_console_init(const char *s)
 							  MERR_HSU_CLK_CTL);
 	} else {
 		paddr = MFLD_HSU_PORT_BASE;
-		*clkctl = 0;
+		clkctl = NULL;
 	}
 
 	/*
@@ -445,12 +445,13 @@ void hsu_early_console_init(const char *s)
 
 	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER) {
 		/* detect HSU clock is 50M or 19.2M */
-		if (*clkctl & (1 << 16))
+		if (clkctl && *clkctl & (1 << 16))
 			writel(0x0120, phsu + UART_MUL * 4); /* for 50M */
 		else
 			writel(0x05DC, phsu + UART_MUL * 4);  /* for 19.2M */
-	} else
+	} else {
 		writel(0x0240, phsu + UART_MUL * 4);
+	}
 
 	writel(0x3D09, phsu + UART_DIV * 4);
 

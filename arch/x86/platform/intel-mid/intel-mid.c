@@ -81,7 +81,7 @@ char sfi_ssn[SFI_SSN_SIZE + 1];
 /* intel_mid_ops to store sub arch ops */
 struct intel_mid_ops *intel_mid_ops;
 /* getter function for sub arch ops*/
-void* (*get_intel_mid_ops[])() = INTEL_MID_OPS_INIT;
+static void *(*get_intel_mid_ops[])(void) = INTEL_MID_OPS_INIT;
 static u32 sfi_mtimer_usage[SFI_MTMR_MAX_NUM];
 static struct sfi_timer_table_entry sfi_mtimer_array[SFI_MTMR_MAX_NUM];
 enum intel_mid_cpu_type __intel_mid_cpu_chip;
@@ -380,7 +380,7 @@ MODULE_PARM_DESC(force_cold_boot,
 		 "Set to Y to force a COLD BOOT instead of a COLD RESET "
 		 "on the next reboot system call.");
 
-static void intel_mid_reboot(void)
+static void intel_mid_reboot(char *cmd)
 {
 	if (intel_scu_ipc_fw_update()) {
 		pr_debug("intel_scu_fw_update: IFWI upgrade failed...\n");
@@ -395,7 +395,7 @@ static void intel_mid_reboot(void)
 	}
 }
 
-static void intel_mid_emergency_reboot(char *cmd)
+static void intel_mid_emergency_reboot(void)
 {
 	/* Change system state to poll IPC status until IPC not busy*/
 	system_state = SYSTEM_RESTART;
@@ -813,8 +813,7 @@ static void __init sfi_handle_sd_dev(struct sfi_device_table_entry *pentry,
 
 struct devs_id __init *get_device_id(u8 type, char *name)
 {
-	const struct devs_id *dev =
-			(get_device_ptr ? get_device_ptr() : NULL);
+	struct devs_id *dev = (get_device_ptr ? get_device_ptr() : NULL);
 
 	if (dev == NULL)
 		return NULL;
@@ -914,7 +913,7 @@ static int __init sfi_parse_devs(struct sfi_table_header *table)
 				}
 				io_apic_set_pci_routing(NULL, irq, &irq_attr);
 			} else
-				printk(KERN_INFO, "APIC entry not found for: name=%s, irq=%d, ioapic=%d",
+				printk(KERN_INFO "APIC entry not found for: name=%s, irq=%d, ioapic=%d",
 					pentry->name, irq, ioapic);
 		}
 
@@ -1130,7 +1129,7 @@ static struct attribute_group spid_attr_group = {
 #define SPID_PARAM_NAME "androidboot.spid="
 #define SPID_DEFAULT_VALUE "xxxx:xxxx:xxxx:xxxx:xxxx:xxxx"
 
-void populate_spid_cmdline()
+void populate_spid_cmdline(void)
 {
 	char *spid_param, *spid_default_value;
 	char spid_cmdline[SPID_CMDLINE_SIZE+1];
