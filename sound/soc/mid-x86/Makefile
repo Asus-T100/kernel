@@ -22,6 +22,10 @@ obj-$(CONFIG_SND_CTP_MACHINE) += snd-soc-ctp-machine.o
 snd-merr-saltbay-lm49453-objs := merr_saltbay_lm49453.o
 obj-$(CONFIG_SND_MRFLD_MACHINE) += snd-merr-saltbay-lm49453.o
 
+# Baytrail board
+snd-byt-bl-rt5642-objs := byt_bl_rt5642.o
+obj-$(CONFIG_SND_BYT_MACHINE) += snd-byt-bl-rt5642.o
+
 # DSP driver
 obj-$(CONFIG_SND_INTEL_SST) += sst/
 

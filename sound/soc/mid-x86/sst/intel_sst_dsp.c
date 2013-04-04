@@ -35,6 +35,7 @@
 #include <linux/pci.h>
 #include <linux/delay.h>
 #include <linux/fs.h>
+#include <linux/sched.h>
 #include <linux/firmware.h>
 #include <linux/dmaengine.h>
 #include <linux/intel_mid_dma.h>
@@ -45,7 +46,6 @@
 #include "../sst_platform.h"
 #include "intel_sst_fw_ipc.h"
 #include "intel_sst_common.h"
-#include <linux/sched.h>
 
 /**
  * intel_sst_reset_dsp_medfield - Resetting SST DSP
@@ -116,6 +116,8 @@ int intel_sst_reset_dsp_mrfld(void)
 
 	csr.full &= ~(0x1);
 	sst_shim_write64(sst_drv_ctx->shim, SST_CSR, csr.full);
+
+	csr.full = sst_shim_read64(sst_drv_ctx->shim, SST_CSR);
 	pr_debug("value:0x%llx\n", csr.full);
 	mutex_unlock(&sst_drv_ctx->csr_lock);
 	return 0;

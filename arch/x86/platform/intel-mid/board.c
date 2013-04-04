@@ -42,6 +42,7 @@
 #include "device_libs/platform_msic_adc.h"
 #include <asm/platform_ctp_audio.h>
 #include "device_libs/platform_bcove_adc.h"
+#include <asm/platform_byt_audio.h>
 #include "device_libs/platform_mrfl_pmic.h"
 #include "device_libs/platform_mrfl_thermal.h"
 #include "device_libs/platform_mrfl_pmic_i2c.h"
@@ -169,6 +170,8 @@ struct devs_id __initconst device_ids[] = {
 					&soc_thrm_device_handler},
 	{"vlv2_plat_clk", SFI_DEV_TYPE_IPC, 1,
 		&vlv2_plat_clk_device_platform_data, &ipc_device_handler},
+	{"byt_rt5642", SFI_DEV_TYPE_IPC, 1, &byt_audio_platform_data,
+						&ipc_device_handler},
 
 	/* I2C devices for camera image subsystem */
 	{"lm3554", SFI_DEV_TYPE_I2C, 0, &lm3554_platform_data_func,
@@ -199,6 +202,7 @@ struct devs_id __initconst device_ids[] = {
 					&intel_register_i2c_camera_device},
 	{"audience_es305", SFI_DEV_TYPE_I2C, 0, &audience_platform_data,
 						NULL},
+	{"rt5640", SFI_DEV_TYPE_I2C, 0, &no_platform_data, NULL},
 	{"cs42l73", SFI_DEV_TYPE_I2C, 1, &no_platform_data, NULL},
 	{"mxt224", SFI_DEV_TYPE_I2C, 0, &mxt224_platform_data, NULL},
 	{"synaptics_3202", SFI_DEV_TYPE_I2C, 0, &rmi4_platform_data},

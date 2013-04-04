@@ -898,14 +898,12 @@ static int __devinit sst_soc_probe(struct snd_soc_platform *platform)
 	return sst_platform_clv_init(platform);
 #else
 	if (INTEL_MID_BOARD(1, PHONE, CLVTP) ||
-			INTEL_MID_BOARD(1, TABLET, CLVT))
+	    INTEL_MID_BOARD(1, TABLET, CLVT) ||
+	    INTEL_MID_BOARD(1, TABLET, BYT))
 		return sst_platform_clv_init(platform);
 	if (INTEL_MID_BOARD(1, PHONE, MRFL) ||
-			INTEL_MID_BOARD(1, TABLET, MRFL))
+	    INTEL_MID_BOARD(1, TABLET, MRFL))
 		return sst_dsp_init(platform);
-	if (INTEL_MID_BOARD(1, PHONE, MFLD) ||
-			INTEL_MID_BOARD(1, TABLET, MFLD)) {
-	}
 	return 0;
 #endif
 }

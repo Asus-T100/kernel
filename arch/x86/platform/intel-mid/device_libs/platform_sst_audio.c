@@ -17,6 +17,7 @@
 #include <linux/platform_device.h>
 #include <asm/intel-mid.h>
 #include <asm/intel_sst_ctp.h>
+#include <asm/platform_byt_audio.h>
 #include <sound/asound.h>
 
 static struct sst_platform_data sst_platform_pdata;
@@ -54,6 +55,13 @@ static struct sst_dev_stream_map merr_bb_strm_map[] = {
 	{MERR_BB_AUD_ASP_DEV, 1, SNDRV_PCM_STREAM_PLAYBACK, SST_PCM_OUT1, SST_DEV_MAP_IN_USE},
 	{MERR_BB_AUD_ASP_DEV, 0, SNDRV_PCM_STREAM_CAPTURE, SST_CAPTURE_IN, SST_DEV_MAP_IN_USE},
 	{MERR_BB_AUD_PROBE_DEV, 0, SNDRV_PCM_STREAM_CAPTURE, SST_PROBE_IN, SST_DEV_MAP_IN_USE},
+};
+
+static struct sst_dev_stream_map byt_bl_strm_map[] = {
+	{0xFF, 0xFF, 0xFF, 0xFF, 0xFF}, /* Reserved, not in use */
+	{BYT_AUD_AIF1, 0, SNDRV_PCM_STREAM_PLAYBACK, SST_PCM_OUT0, SST_DEV_MAP_IN_USE},
+	{BYT_AUD_AIF1, 1, SNDRV_PCM_STREAM_PLAYBACK, SST_PCM_OUT1, SST_DEV_MAP_IN_USE},
+	{BYT_AUD_AIF1, 0, SNDRV_PCM_STREAM_CAPTURE, SST_CAPTURE_IN, SST_DEV_MAP_IN_USE},
 };
 
 static struct sst_dev_stream_map mrfld_strm_map[MAX_DEVICES_MRFLD] = {
@@ -147,7 +155,7 @@ static void set_ctp_platform_config(void)
 	sst_platform_pdata.strm_map_size = ARRAY_SIZE(merr_bb_strm_map);
 #else
 	if ((INTEL_MID_BOARD(2, PHONE, CLVTP, VB, PRO)) ||
-	   (INTEL_MID_BOARD(2, PHONE, CLVTP, VB, ENG))) {
+	    (INTEL_MID_BOARD(2, PHONE, CLVTP, VB, ENG))) {
 
 		sst_platform_pdata.pdev_strm_map = ctp_vb_strm_map;
 		sst_platform_pdata.strm_map_size = ARRAY_SIZE(ctp_vb_strm_map);
@@ -162,6 +170,15 @@ static void set_ctp_platform_config(void)
 	}
 #endif
 	pr_debug("audio:ctp:strm_map_size %d\n", sst_platform_pdata.strm_map_size);
+}
+
+static void set_byt_platform_config(void)
+{
+	sst_platform_pdata.pdata = NULL;
+	sst_platform_pdata.bdata = NULL;
+	sst_platform_pdata.use_strm_map = true;
+	sst_platform_pdata.pdev_strm_map = byt_bl_strm_map;
+	sst_platform_pdata.strm_map_size =  ARRAY_SIZE(byt_bl_strm_map);
 }
 
 static void set_mrfld_platform_config(void)
@@ -181,16 +198,19 @@ static void  populate_platform_data(void)
 	set_ctp_platform_config();
 #else
 	if ((INTEL_MID_BOARD(1, PHONE, MFLD)) ||
-			(INTEL_MID_BOARD(1, TABLET, MFLD))) {
+	    (INTEL_MID_BOARD(1, TABLET, MFLD))) {
 		set_mfld_platform_config();
 	} else if ((INTEL_MID_BOARD(1, PHONE, CLVTP)) ||
-			(INTEL_MID_BOARD(1, TABLET, CLVT))) {
+		   (INTEL_MID_BOARD(1, TABLET, CLVT))) {
 		set_ctp_platform_config();
+	} else if ((INTEL_MID_BOARD(1, TABLET, BYT))) {
+		set_byt_platform_config();
 	} else if ((INTEL_MID_BOARD(1, PHONE, MRFL)) ||
-			(INTEL_MID_BOARD(1, TABLET, MRFL))) {
+		   (INTEL_MID_BOARD(1, TABLET, MRFL))) {
 		set_mrfld_platform_config();
-	} else
+	} else {
 		pr_warn("Board not Supported\n");
+	}
 #endif
 }
 

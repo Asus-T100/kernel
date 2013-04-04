@@ -474,6 +474,10 @@ static int sst_driver_ops(struct intel_sst_drv *sst)
 		else
 			sst->ops = &mrfld_ops;
 		return 0;
+	case SST_BYT_PCI_ID:
+		sst->tstamp = SST_TIME_STAMP_MRFLD;
+		sst->ops = &mrfld_32_ops;
+		return 0;
 	case SST_CLV_PCI_ID:
 		sst->tstamp =  SST_TIME_STAMP;
 		sst->ops = &ctp_ops;
@@ -504,6 +508,7 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 	struct intel_sst_ops *ops;
 	struct sst_probe_info *info;
 	int ddr_base;
+	u32 byt_lpe_base;
 
 	pr_debug("Probe for DID %x\n", pci->device);
 	mutex_lock(&drv_ctx_lock);
@@ -523,7 +528,8 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 
 	sst_drv_ctx->pci_id = pci->device;
 
-	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID)
+	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID ||
+	    sst_drv_ctx->pci_id == SST_BYT_PCI_ID)
 		sst_drv_ctx->use_32bit_ops = true;
 	/* This is work around and needs to be removed once we
 		have SPID for PRh - Appplies to all occurances */
@@ -548,6 +554,11 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 	/* we use dma, so set to 1*/
 	sst_drv_ctx->use_dma = 1;
 	sst_drv_ctx->use_lli = 1;
+	if (sst_drv_ctx->pci_id == SST_BYT_PCI_ID) {
+		sst_drv_ctx->use_dma = 0;
+		sst_drv_ctx->use_lli = 0;
+	}
+
 
 	INIT_LIST_HEAD(&sst_drv_ctx->memcpy_list);
 	INIT_LIST_HEAD(&sst_drv_ctx->libmemcpy_list);
@@ -581,16 +592,22 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 
 	info = (void *)pci_id->driver_data;
 	memcpy(&sst_drv_ctx->info, info, sizeof(sst_drv_ctx->info));
-
 #ifdef CONFIG_PRH_TEMP_WA_FOR_SPID
 		sst_drv_ctx->ipc_reg.ipcx = SST_PRH_IPCX;
 		sst_drv_ctx->ipc_reg.ipcd = SST_PRH_IPCD;
 		/* overwrite max_streams for Merr PRh */
 		sst_drv_ctx->info.max_streams = 5;
 #else
+	if (sst_drv_ctx->pci_id == SST_BYT_PCI_ID) {
+		sst_drv_ctx->ipc_reg.ipcx = SST_PRH_IPCX;
+		sst_drv_ctx->ipc_reg.ipcd = SST_PRH_IPCD;
+	} else {
 		sst_drv_ctx->ipc_reg.ipcx = SST_IPCX;
 		sst_drv_ctx->ipc_reg.ipcd = SST_IPCD;
+	}
 #endif
+	pr_debug("ipcx 0x%x ipxd 0x%x", sst_drv_ctx->ipc_reg.ipcx,
+					sst_drv_ctx->ipc_reg.ipcd);
 
 	pr_info("Got drv data max stream %d\n",
 				sst_drv_ctx->info.max_streams);
@@ -634,32 +651,76 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 		sst_drv_ctx->ddr = NULL;
 	}
 
+	if (sst_drv_ctx->pci_id == SST_BYT_PCI_ID) {
+		/* BASE  for BYT is 0xdf400000 */
+		byt_lpe_base = pci_resource_start(pci, 0);
+		pr_err("LPE base is: %#x", byt_lpe_base);
+		byt_lpe_base = 0xdf400000; /* FIXME: workaround till value is correct in PCI BAR */
+	}
+
+#define SST_BYT_SHIM_OFFSET	0x140000
+#define SST_BYT_SHIM_SIZE	0x100
+#define SST_BYT_MAILBOX_OFFSET	0x144000
+#define SST_BYT_MAILBOX_SIZE	0x1000
+#define SST_BYT_IRAM_OFFSET	0xc0000
+#define SST_BYT_IRAM_SIZE	(80 * 1024)
+#define SST_BYT_DRAM_OFFSET	0x100000
+#define SST_BYT_DRAM_SIZE	(160 * 1024)
+
 	/* SST Shim */
-	sst_drv_ctx->shim_phy_add = pci_resource_start(pci, 1);
-	sst_drv_ctx->shim = pci_ioremap_bar(pci, 1);
+	if (sst_drv_ctx->pci_id == SST_BYT_PCI_ID) {
+		sst_drv_ctx->shim_phy_add = byt_lpe_base + SST_BYT_SHIM_OFFSET;
+		sst_drv_ctx->shim = ioremap_nocache(sst_drv_ctx->shim_phy_add,
+						    SST_BYT_SHIM_SIZE);
+	} else {
+		sst_drv_ctx->shim_phy_add = pci_resource_start(pci, 1);
+		sst_drv_ctx->shim = pci_ioremap_bar(pci, 1);
+	}
 	if (!sst_drv_ctx->shim)
 		goto do_release_regions;
 	pr_debug("SST Shim Ptr %p\n", sst_drv_ctx->shim);
 
 	/* Shared SRAM */
-	sst_drv_ctx->mailbox_add = pci_resource_start(pci, 2);
-	sst_drv_ctx->mailbox = pci_ioremap_bar(pci, 2);
+	if (sst_drv_ctx->pci_id == SST_BYT_PCI_ID) {
+		sst_drv_ctx->mailbox_add = byt_lpe_base + SST_BYT_MAILBOX_OFFSET;
+		sst_drv_ctx->mailbox = ioremap_nocache(sst_drv_ctx->mailbox_add,
+						       SST_BYT_MAILBOX_SIZE);
+	} else {
+		sst_drv_ctx->mailbox_add = pci_resource_start(pci, 2);
+		sst_drv_ctx->mailbox = pci_ioremap_bar(pci, 2);
+	}
 	if (!sst_drv_ctx->mailbox)
 		goto do_unmap_shim;
 	pr_debug("SRAM Ptr %p\n", sst_drv_ctx->mailbox);
 
 	/* IRAM */
-	sst_drv_ctx->iram_end = pci_resource_end(pci, 3);
-	sst_drv_ctx->iram_base = pci_resource_start(pci, 3);
-	sst_drv_ctx->iram = pci_ioremap_bar(pci, 3);
+	if (sst_drv_ctx->pci_id == SST_BYT_PCI_ID) {
+		sst_drv_ctx->iram_base = byt_lpe_base + SST_BYT_IRAM_OFFSET;
+		sst_drv_ctx->iram_end = byt_lpe_base + SST_BYT_IRAM_OFFSET
+						 + SST_BYT_IRAM_SIZE;
+		sst_drv_ctx->iram = ioremap_nocache(sst_drv_ctx->iram_base,
+						    SST_BYT_IRAM_SIZE);
+	} else {
+		sst_drv_ctx->iram_end = pci_resource_end(pci, 3);
+		sst_drv_ctx->iram_base = pci_resource_start(pci, 3);
+		sst_drv_ctx->iram = pci_ioremap_bar(pci, 3);
+	}
 	if (!sst_drv_ctx->iram)
 		goto do_unmap_sram;
 	pr_debug("IRAM Ptr %p\n", sst_drv_ctx->iram);
 
 	/* DRAM */
-	sst_drv_ctx->dram_end = pci_resource_end(pci, 4);
-	sst_drv_ctx->dram_base = pci_resource_start(pci, 4);
-	sst_drv_ctx->dram = pci_ioremap_bar(pci, 4);
+	if (sst_drv_ctx->pci_id == SST_BYT_PCI_ID) {
+		sst_drv_ctx->dram_base = byt_lpe_base + SST_BYT_DRAM_OFFSET;
+		sst_drv_ctx->dram_end = byt_lpe_base + SST_BYT_DRAM_OFFSET
+						 + SST_BYT_DRAM_SIZE;
+		sst_drv_ctx->dram = ioremap_nocache(sst_drv_ctx->dram_base,
+						    SST_BYT_DRAM_SIZE);
+	} else {
+		sst_drv_ctx->dram_end = pci_resource_end(pci, 4);
+		sst_drv_ctx->dram_base = pci_resource_start(pci, 4);
+		sst_drv_ctx->dram = pci_ioremap_bar(pci, 4);
+	}
 	if (!sst_drv_ctx->dram)
 		goto do_unmap_iram;
 	pr_debug("DRAM Ptr %p\n", sst_drv_ctx->dram);
@@ -685,28 +746,33 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 			sst_drv_ctx->debugfs.dma_reg,
 			DMA_BASE_CTP, DMA_SIZE_CTP);
 	}
+
+	/* Do not access iram/dram etc before LPE is reset */
+
 #ifdef CONFIG_DEBUG_FS
-	sst_drv_ctx->dump_buf.iram_buf.size = pci_resource_len(pci, 3);
-	sst_drv_ctx->dump_buf.iram_buf.buf = kzalloc(sst_drv_ctx->dump_buf.iram_buf.size,
-						GFP_KERNEL);
-	if (!sst_drv_ctx->dump_buf.iram_buf.buf) {
-		pr_err("%s: no memory\n", __func__);
-		ret = -ENOMEM;
-		goto do_unmap;
-	}
+	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID) {
+		sst_drv_ctx->dump_buf.iram_buf.size = pci_resource_len(pci, 3);
+		sst_drv_ctx->dump_buf.iram_buf.buf = kzalloc(sst_drv_ctx->dump_buf.iram_buf.size,
+							GFP_KERNEL);
+		if (!sst_drv_ctx->dump_buf.iram_buf.buf) {
+			pr_err("%s: no memory\n", __func__);
+			ret = -ENOMEM;
+			goto do_unmap;
+		}
 
-	sst_drv_ctx->dump_buf.dram_buf.size = pci_resource_len(pci, 4);
-	sst_drv_ctx->dump_buf.dram_buf.buf = kzalloc(sst_drv_ctx->dump_buf.dram_buf.size,
-						GFP_KERNEL);
-	if (!sst_drv_ctx->dump_buf.dram_buf.buf) {
-		pr_err("%s: no memory\n", __func__);
-		ret = -ENOMEM;
-		goto do_free_iram_buf;
-	}
+		sst_drv_ctx->dump_buf.dram_buf.size = pci_resource_len(pci, 4);
+		sst_drv_ctx->dump_buf.dram_buf.buf = kzalloc(sst_drv_ctx->dump_buf.dram_buf.size,
+							GFP_KERNEL);
+		if (!sst_drv_ctx->dump_buf.dram_buf.buf) {
+			pr_err("%s: no memory\n", __func__);
+			ret = -ENOMEM;
+			goto do_free_iram_buf;
+		}
 
-	pr_debug("\niram len 0x%x dram len 0x%x",
-			sst_drv_ctx->dump_buf.iram_buf.size,
-			sst_drv_ctx->dump_buf.dram_buf.size);
+		pr_debug("\niram len 0x%x dram len 0x%x",
+				sst_drv_ctx->dump_buf.iram_buf.size,
+				sst_drv_ctx->dump_buf.dram_buf.size);
+	}
 #endif
 	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID) {
 		sst_drv_ctx->probe_bytes = kzalloc(SST_MAX_BIN_BYTES, GFP_KERNEL);
@@ -719,6 +785,11 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 
 	sst_set_fw_state_locked(sst_drv_ctx, SST_UN_INIT);
 	/* Register the ISR */
+
+	if (sst_drv_ctx->pci_id == SST_BYT_PCI_ID) {
+		pr_err("irq expected 29, received %d", pci->irq);
+		pci->irq = 29; /* FIXME */
+	}
 	ret = request_threaded_irq(pci->irq, sst_drv_ctx->ops->interrupt,
 		sst_drv_ctx->ops->irq_thread, NULL, SST_DRV_NAME,
 		sst_drv_ctx);
@@ -733,7 +804,8 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 		goto do_free_irq;
 	}
 	/* default intr are unmasked so set this as masked */
-	if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID)
+	if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID ||
+	    sst_drv_ctx->pci_id == SST_BYT_PCI_ID)
 		sst_shim_write64(sst_drv_ctx->shim, SST_IMRX, 0xFFFF0034);
 
 	if (sst_drv_ctx->use_32bit_ops) {
@@ -748,7 +820,7 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 		sst_drv_ctx->fw_cntx_size = 0;
 	}
 	if ((sst_drv_ctx->pci_id == SST_MFLD_PCI_ID) ||
-			(sst_drv_ctx->pci_id == SST_CLV_PCI_ID)) {
+	    (sst_drv_ctx->pci_id == SST_CLV_PCI_ID)) {
 		u32 csr;
 		u32 csr2;
 		u32 clkctl;
@@ -805,6 +877,8 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 	pci_set_drvdata(pci, sst_drv_ctx);
 	pm_runtime_allow(&pci->dev);
 	pm_runtime_put_noidle(&pci->dev);
+	if (sst_drv_ctx->pci_id == SST_BYT_PCI_ID)
+		pm_runtime_forbid(&pci->dev);
 	register_sst(&pci->dev);
 	sst_debugfs_init(sst_drv_ctx);
 	sst_drv_ctx->qos = kzalloc(sizeof(struct pm_qos_request),
@@ -825,9 +899,11 @@ do_free_probe_bytes:
 		kfree(sst_drv_ctx->probe_bytes);
 do_free_dram_buf:
 #ifdef CONFIG_DEBUG_FS
-	kfree(sst_drv_ctx->dump_buf.dram_buf.buf);
+	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID)
+		kfree(sst_drv_ctx->dump_buf.dram_buf.buf);
 do_free_iram_buf:
-	kfree(sst_drv_ctx->dump_buf.iram_buf.buf);
+	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID)
+		kfree(sst_drv_ctx->dump_buf.iram_buf.buf);
 #endif
 do_unmap:
 	/* FIXME: Support for other platforms after SSP Patch */
@@ -898,8 +974,10 @@ static void __devexit intel_sst_remove(struct pci_dev *pci)
 	iounmap(sst_drv_ctx->mailbox);
 	iounmap(sst_drv_ctx->shim);
 #ifdef CONFIG_DEBUG_FS
-	kfree(sst_drv_ctx->dump_buf.iram_buf.buf);
-	kfree(sst_drv_ctx->dump_buf.dram_buf.buf);
+	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID) {
+		kfree(sst_drv_ctx->dump_buf.iram_buf.buf);
+		kfree(sst_drv_ctx->dump_buf.dram_buf.buf);
+	}
 #endif
 	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID)
 		kfree(sst_drv_ctx->probe_bytes);
@@ -946,7 +1024,8 @@ static int intel_sst_runtime_suspend(struct device *dev)
 	if (sst_drv_ctx->ops->save_dsp_context(sst_drv_ctx))
 		return -EBUSY;
 
-	if (sst_drv_ctx->pci_id != SST_MRFLD_PCI_ID) {
+	if (sst_drv_ctx->pci_id == SST_MFLD_PCI_ID ||
+	    sst_drv_ctx->pci_id == SST_CLV_PCI_ID) {
 		/*Assert RESET on LPE Processor*/
 		csr.full = sst_shim_read(sst_drv_ctx->shim, SST_CSR);
 		sst_drv_ctx->csr_value = csr.full;
@@ -970,7 +1049,8 @@ static int intel_sst_runtime_resume(struct device *dev)
 
 	pr_debug("runtime_resume called\n");
 
-	if (sst_drv_ctx->pci_id != SST_MRFLD_PCI_ID) {
+	if (sst_drv_ctx->pci_id == SST_MFLD_PCI_ID ||
+	    sst_drv_ctx->pci_id == SST_CLV_PCI_ID) {
 		csr = sst_shim_read(sst_drv_ctx->shim, SST_CSR);
 		/*
 		 * To restore the csr_value after S0ix and S3 states.
@@ -1047,6 +1127,11 @@ static const struct dev_pm_ops intel_sst_pm = {
 #define SST_MFLD_DRAM_START	0x400000
 #define SST_MFLD_DRAM_END	0x480000
 
+#define SST_BYT_IRAM_START	0xff2c0000
+#define SST_BYT_IRAM_END	0xff2d4000
+#define SST_BYT_DRAM_START	0xff300000
+#define SST_BYT_DRAM_END	0xff328000
+
 /* PCI Routines */
 static DEFINE_PCI_DEVICE_TABLE(intel_sst_ids) = {
 	{ PCI_VDEVICE(INTEL, SST_MRST_PCI_ID),
@@ -1069,6 +1154,11 @@ static DEFINE_PCI_DEVICE_TABLE(intel_sst_ids) = {
 			0, 0, false,
 			0, 0, false,
 			true, 23, SST_MAX_DMA_LEN_MRFLD, 16)},
+	{ PCI_VDEVICE(INTEL, SST_BYT_PCI_ID),
+		INFO(SST_BYT_IRAM_START, SST_BYT_IRAM_END, true,
+		     SST_BYT_DRAM_START, SST_BYT_DRAM_END, true,
+		     0, 0, false,
+		     true, 4, SST_MAX_DMA_LEN, 0)},
 	{ 0, }
 };
 MODULE_DEVICE_TABLE(pci, intel_sst_ids);

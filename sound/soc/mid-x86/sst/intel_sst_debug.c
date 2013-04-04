@@ -120,6 +120,7 @@ static ssize_t sst_debug_shim_read(struct file *file, char __user *user_buf,
 			val = sst_shim_read(drv->shim, addr);
 			break;
 		case SST_MRFLD_PCI_ID:
+		case SST_BYT_PCI_ID:
 			val = sst_shim_read64(drv->shim, addr);
 			break;
 		}

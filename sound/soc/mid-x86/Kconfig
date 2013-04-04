@@ -54,13 +54,26 @@ config SND_MRFLD_MACHINE
           Say Y if you have such a device
           If unsure select "N".
 
+config SND_BYT_MACHINE
+	tristate "SOC Machine Audio driver for Intel Baytrail MID platform"
+	depends on X86
+	select SND_SOC_RT5642
+	select SND_SST_PLATFORM
+	select SND_INTEL_SST
+	select SND_HWDEP
+	default n
+	help
+	  This adds support for ASoC machine driver for Intel(R) MID Baytrail platform
+          used as alsa device in audio substem in Intel(R) MID devices
+          Say Y if you have such a device
+          If unsure select "N".
+
 config SND_CTP_MACHINE
 	tristate "SOC Machine Audio driver for Intel Cloverview MID platform"
 	depends on INTEL_SCU_IPC_UTIL && X86 && GPIO_LANGWELL
 	select SND_SOC_CS42L73
 	select SND_SST_PLATFORM
 	select SND_INTEL_SST
-	select SND_COMPRESS_SST
 	select SND_COMPRESS_OFFLOAD
 	select SND_SOC_COMMS_SSP
 	default n
@@ -72,9 +85,6 @@ config SND_CTP_MACHINE
 
 config SND_INTEL_SST
        tristate
-
-config SND_COMPRESS_SST
-	tristate "Compressed framework driver for Intel(R) SST engine"
 
 config SND_SST_PLATFORM
 	tristate

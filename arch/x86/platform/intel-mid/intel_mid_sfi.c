@@ -44,6 +44,8 @@ static struct sfi_device_table_entry byt_devs_table[] = {
 	{SFI_DEV_TYPE_I2C, 4, 0x10, 0x0, 0x0, "imx175"},
 	{SFI_DEV_TYPE_I2C, 4, 0x36, 0x0, 0x0, "ov2722"},
 	{SFI_DEV_TYPE_I2C, 4, 0x53, 0x0, 0x0, "lm3554"},
+	{SFI_DEV_TYPE_I2C, 2, 0x1c, 0xff, 250000, "rt5640"},
+	{SFI_DEV_TYPE_IPC, 0, 0, 0xff, 250000, "byt_rt5642"},
 	/* SD devices */
 	{SFI_DEV_TYPE_SD, 0, 0, 0, 0, "bcm43xx_vmmc"},
 };
