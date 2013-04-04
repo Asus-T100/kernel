@@ -228,6 +228,7 @@ int sst_alloc_stream_mrfld(char *params, struct sst_block *block)
 	if (sst_create_ipc_msg(&msg, true))
 		return -ENOMEM;
 
+#ifndef MRFLD_TEST_ON_MFLD
 	block->drv_id = pvt_id;
 	block->msg_id = IPC_CMD;
 
@@ -241,6 +242,18 @@ int sst_alloc_stream_mrfld(char *params, struct sst_block *block)
 	memcpy(msg->mailbox_data, &dsp_hdr, sizeof(dsp_hdr));
 	memcpy(msg->mailbox_data + sizeof(dsp_hdr), &alloc_param,
 			sizeof(alloc_param));
+#else
+	block->drv_id = pvt_id;
+	block->msg_id = IPC_IA_ALLOC_STREAM;
+	sst_fill_header_mrfld_32(&msg->header.full, IPC_QUE_ID_MED,
+			IPC_CMD, pvt_id, 1, 1);
+	len = sizeof(alloc_param) + sizeof(dsp_hdr);
+	sst_fill_header_dsp(&dsp_hdr, IPC_IA_ALLOC_STREAM_MRFLD, pipe_id, sizeof(alloc_param));
+	memcpy(msg->mailbox_data, &len, sizeof(len));
+	memcpy(msg->mailbox_data + sizeof(len), &dsp_hdr, sizeof(dsp_hdr));
+	memcpy(msg->mailbox_data + sizeof(dsp_hdr) + sizeof(len), &alloc_param,
+			sizeof(alloc_param));
+#endif
 	str_info = &sst_drv_ctx->streams[str_id];
 	pr_debug("header:%x\n", msg->mrfld_header.p.header_high);
 	pr_debug("response rqd: %x", msg->mrfld_header.p.header_high.part.res_rqd);
@@ -358,7 +371,11 @@ int sst_alloc_stream(char *params, struct sst_block *block)
 {
 
 	if (sst_drv_ctx->pci_id == SST_MFLD_PCI_ID)
+#ifndef MRFLD_TEST_ON_MFLD
 		return sst_alloc_stream_mfld(params, block);
+#else
+		return sst_alloc_stream_mrfld(params, block);
+#endif
 	else if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID)
 		return sst_alloc_stream_mrfld(params, block);
 	else
@@ -445,10 +462,24 @@ int sst_start_stream(int str_id)
 		memcpy(msg->mailbox_data, &dsp_hdr, sizeof(dsp_hdr));
 		memset(msg->mailbox_data + sizeof(dsp_hdr), 0, sizeof(u16));
 	} else {
+#ifndef MRFLD_TEST_ON_MFLD
 		sst_fill_header(&msg->header, IPC_IA_START_STREAM, 1, str_id);
 		msg->header.part.data =  sizeof(u32) + sizeof(u32);
 		memcpy(msg->mailbox_data, &msg->header, sizeof(u32));
 		memset(msg->mailbox_data + sizeof(u32), 0, sizeof(u32));
+#else
+		pr_debug("start mrfld");
+		pvt_id = sst_assign_pvt_id(sst_drv_ctx);
+		sst_fill_header_mrfld_32(&msg->header.full,
+			IPC_QUE_ID_MED, IPC_CMD, pvt_id, 1, 1);
+
+		len = sizeof(u16) + sizeof(dsp_hdr);
+		sst_fill_header_dsp(&dsp_hdr, IPC_IA_START_STREAM_MRFLD,
+				str_info->pipe_id, sizeof(u16));
+		memcpy(msg->mailbox_data + sizeof(len), &dsp_hdr, sizeof(dsp_hdr));
+		memset(msg->mailbox_data + sizeof(dsp_hdr) + sizeof(len), 0, sizeof(u16));
+		memcpy(msg->mailbox_data, &len, sizeof(len));
+#endif
 	}
 	sst_drv_ctx->ops->sync_post_message(msg);
 	return retval;
@@ -758,10 +789,26 @@ int sst_drop_stream(int str_id)
 	if (str_info->status != STREAM_UN_INIT) {
 
 		if (sst_drv_ctx->pci_id != SST_MRFLD_PCI_ID) {
+#ifndef MRFLD_TEST_ON_MFLD
 			str_info->prev = STREAM_UN_INIT;
 			str_info->status = STREAM_INIT;
 			str_info->cumm_bytes = 0;
 			sst_send_sync_msg(IPC_IA_DROP_STREAM, str_id);
+#else
+			if (sst_create_ipc_msg(&msg, true))
+				return -ENOMEM;
+			pvt_id = sst_assign_pvt_id(sst_drv_ctx);
+			sst_fill_header_mrfld_32(&msg->header.full,
+				IPC_QUE_ID_MED, IPC_CMD, pvt_id, 1, 1);
+
+			len = sizeof(dsp_hdr);
+			sst_fill_header_dsp(&dsp_hdr, IPC_IA_DROP_STREAM_MRFLD,
+					str_info->pipe_id, 0);
+			memcpy(msg->mailbox_data + sizeof(len), &dsp_hdr, sizeof(dsp_hdr));
+			memcpy(msg->mailbox_data, &len, sizeof(len));
+			sst_drv_ctx->ops->sync_post_message(msg);
+
+#endif
 		} else {
 			if (sst_create_ipc_msg(&msg, true))
 				return -ENOMEM;
@@ -878,6 +925,7 @@ int sst_free_stream(int str_id)
 						str_info->pipe_id,  0);
 			memcpy(msg->mailbox_data, &dsp_hdr, sizeof(dsp_hdr));
 		} else {
+#ifndef MRFLD_TEST_ON_MFLD
 			retval = sst_create_block_and_ipc_msg(&msg, false,
 						sst_drv_ctx, &block,
 						IPC_IA_FREE_STREAM, str_id);
@@ -885,6 +933,22 @@ int sst_free_stream(int str_id)
 				return retval;
 			sst_fill_header(&msg->header, IPC_IA_FREE_STREAM,
 								 0, str_id);
+#else
+			u32 len;
+			pvt_id = sst_assign_pvt_id(sst_drv_ctx);
+			retval = sst_create_block_and_ipc_msg(&msg, true,
+						sst_drv_ctx, &block, 0, pvt_id);
+			if (retval)
+				return retval;
+
+			sst_fill_header_mrfld_32(&msg->header.full, IPC_QUE_ID_MED,
+					IPC_CMD, pvt_id, 1, 1);
+			len = sizeof(dsp_hdr);
+			sst_fill_header_dsp(&dsp_hdr, IPC_IA_FREE_STREAM_MRFLD,
+						str_info->pipe_id, 0);
+			memcpy(msg->mailbox_data + sizeof(len), &dsp_hdr, sizeof(dsp_hdr));
+			memcpy(msg->mailbox_data, &len, sizeof(len));
+#endif
 		}
 		spin_lock_irqsave(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 		list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);

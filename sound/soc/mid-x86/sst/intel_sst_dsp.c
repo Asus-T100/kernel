@@ -1058,8 +1058,14 @@ static int sst_request_fw(struct intel_sst_drv *sst)
 	int retval = 0;
 	char name[20];
 
+#ifndef MRFLD_TEST_ON_MFLD
 	snprintf(name, sizeof(name), "%s%04x%s", "fw_sst_",
 				sst->pci_id, ".bin");
+#else
+	snprintf(name, sizeof(name), "%s%04x%s", "fw_sst_",
+				sst->pci_id, "_mt.bin");
+#endif
+
 	pr_debug("Requesting FW %s now...\n", name);
 	retval = request_firmware(&sst->fw, name,
 				 &sst->pci->dev);
@@ -1071,7 +1077,9 @@ static int sst_request_fw(struct intel_sst_drv *sst)
 		pr_err("request fw failed %d\n", retval);
 		return retval;
 	}
+#ifndef MRFLD_TEST_ON_MFLD
 	if (sst->pci_id == SST_MRFLD_PCI_ID)
+#endif
 		retval = sst_validate_fw_elf(sst->fw);
 	if (retval != 0) {
 		pr_err("FW image invalid...\n");
@@ -1087,6 +1095,7 @@ static int sst_request_fw(struct intel_sst_drv *sst)
 	pr_debug("phys: %x", virt_to_phys(sst->fw_in_mem));
 	memcpy(sst->fw_in_mem, sst->fw->data,
 			sst->fw->size);
+#ifndef MRFLD_TEST_ON_MFLD
 	if (sst->use_dma) {
 		if (sst->info.use_elf == true)
 			retval = sst_parse_elf_fw_dma(sst,
@@ -1108,6 +1117,7 @@ static int sst_request_fw(struct intel_sst_drv *sst)
 		goto end_release;
 	}
 
+#endif
 end_release:
 	release_firmware(sst->fw);
 	sst->fw = NULL;

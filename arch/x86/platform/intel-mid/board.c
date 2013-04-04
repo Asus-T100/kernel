@@ -161,6 +161,8 @@ struct devs_id __initconst device_ids[] = {
 						&ipc_device_handler},
 	{"i2c_pmic_adap", SFI_DEV_TYPE_IPC, 1, &mrfl_pmic_i2c_platform_data,
 						&ipc_device_handler},
+	{"mrfld_cs42l73", SFI_DEV_TYPE_IPC, 1, &merfld_audio_platform_data,
+						&ipc_device_handler},
 	{"mrfld_lm49453", SFI_DEV_TYPE_IPC, 1, &merfld_audio_platform_data,
 						&ipc_device_handler},
 	{"soc_thrm", SFI_DEV_TYPE_IPC, 1, &no_platform_data,
