@@ -121,7 +121,7 @@ void rpmsg_global_unlock(void)
 }
 EXPORT_SYMBOL(rpmsg_global_unlock);
 
-static void rpmsg_lock()
+static void rpmsg_lock(void)
 {
 	if (!mutex_trylock(&global_lock.lock)) {
 		if (global_locked_by_current)
@@ -131,7 +131,7 @@ static void rpmsg_lock()
 	}
 }
 
-static void rpmsg_unlock()
+static void rpmsg_unlock(void)
 {
 	if (!is_global_locked_prev)
 		rpmsg_global_unlock();
@@ -241,7 +241,9 @@ EXPORT_SYMBOL(rpmsg_send_simple_command);
 static void rpmsg_recv_cb(struct rpmsg_channel *rpdev, void *data,
 					int len, void *priv, u32 src)
 {
+#ifdef DEBUG_RPMSG_MSG
 	static int rx_count;
+#endif
 	struct rpmsg_instance *instance = priv;
 
 	if (len != sizeof(struct rx_ipc_msg)) {
