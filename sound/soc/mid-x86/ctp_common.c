@@ -49,6 +49,7 @@
 #define JACK_DEBOUNCE_INSERT	100
 
 struct snd_soc_card snd_soc_card_ctp = {
+	.name = "cloverview_audio",
 	.set_bias_level = ctp_set_bias_level,
 	.set_bias_level_post = ctp_set_bias_level_post,
 };
@@ -561,9 +562,6 @@ int snd_ctp_register_jack_data(struct platform_device *pdev,
 			return ret_val;
 		}
 		ctx->bpirq = ret_val;
-		pr_debug("hs_det_gpio:%d, codec_gpio:%d\n",
-			hs_gpio[CTP_HSDET_GPIO].gpio,
-			hs_gpio[CTP_BTN_GPIO].gpio);
 	}
 	ctx->hs_gpio_ops = hs_gpio;
 	return 0;
@@ -588,7 +586,6 @@ static int snd_ctp_mc_probe(struct platform_device *pdev)
 	if (ctx->ops == NULL)
 		return -EINVAL;
 
-	ctx->ops->card_name(&snd_soc_card_ctp);
 	ctx->ops->dai_link(&snd_soc_card_ctp);
 
 	ret_val = snd_ctp_register_jack_data(pdev, ctx);
@@ -624,10 +621,6 @@ static struct platform_device_id ctp_audio_ids[] = {
 	{
 		.name		= "ctp_vb_cs42l73",
 		.driver_data	= &ctp_vb_cs42l73_ops,
-	},
-	{
-		.name		= "merr_prh_cs42l73",
-		.driver_data	= &merr_bb_cs42l73_ops,
 	},
 	{ },
 };
