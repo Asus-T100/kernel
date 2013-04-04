@@ -49,7 +49,7 @@
 #define MAX_FRAGMENT_SIZE (1024 * 1024)
 #define SST_GET_BYTES_PER_SAMPLE(pcm_wd_sz)  (((pcm_wd_sz + 15) >> 4) << 1)
 
-void sst_restore_fw_context(void)
+static void sst_restore_fw_context(void)
 {
 	struct snd_sst_ctxt_params fw_context;
 	struct ipc_post *msg = NULL;
@@ -112,8 +112,8 @@ int sst_download_fw(void)
 		return retval;
 	pr_debug("fw loaded successful!!!\n");
 
-	if (sst_drv_ctx->ops->restore_dsp_context)
-		sst_drv_ctx->ops->restore_dsp_context();
+	if (sst_drv_ctx->pci_id != SST_MRFLD_PCI_ID)
+		sst_restore_fw_context();
 	sst_drv_ctx->sst_state = SST_FW_RUNNING;
 	return retval;
 }
@@ -194,7 +194,7 @@ int sst_get_stream_allocated(struct snd_sst_params *str_param,
 	if (block == NULL)
 		return -ENOMEM;
 
-	retval = sst_drv_ctx->ops->alloc_stream((char *) str_param, block);
+	retval = sst_alloc_stream((char *) str_param, block);
 	str_id = retval;
 	if (retval < 0) {
 		pr_err("sst_alloc_stream failed %d\n", retval);
@@ -237,8 +237,6 @@ int sst_get_stream_allocated(struct snd_sst_params *str_param,
 		str_id = -retval;
 	} else if (retval != 0) {
 		pr_err("sst: FW alloc failed retval %d\n", retval);
-		/* alloc failed, so reset the state to uninit */
-		str_info->status = STREAM_UN_INIT;
 		str_id = retval;
 	}
 free_block:
@@ -526,7 +524,11 @@ static int sst_cdev_ack(unsigned int str_id, unsigned long bytes)
 	addr =  ((void *)(sst_drv_ctx->mailbox + sst_drv_ctx->tstamp)) +
 			(str_id * sizeof(fw_tstamp));
 	offset =  offsetof(struct snd_sst_tstamp, bytes_copied);
-	sst_shim_write(addr, offset, fw_tstamp.bytes_copied);
+
+	if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID)
+		sst_shim_write64(addr, offset, fw_tstamp.bytes_copied);
+	else
+		sst_shim_write(addr, offset, fw_tstamp.bytes_copied);
 	return 0;
 
 }
@@ -837,10 +839,10 @@ static int sst_device_control(int cmd, void *arg)
 		ipc = IPC_IA_DROP_STREAM;
 		str_info->prev = STREAM_UN_INIT;
 		str_info->status = STREAM_INIT;
-		if (sst_drv_ctx->use_32bit_ops)
-			retval = sst_send_sync_msg(ipc, str_id);
-		else
+		if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID)
 			retval = sst_drop_stream(str_id);
+		else
+			retval = sst_send_sync_msg(ipc, str_id);
 		break;
 	}
 	case SST_SND_STREAM_INIT: {

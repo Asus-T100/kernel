@@ -354,6 +354,17 @@ int sst_alloc_stream_mfld(char *params, struct sst_block *block)
 	return str_id;
 }
 
+int sst_alloc_stream(char *params, struct sst_block *block)
+{
+
+	if (sst_drv_ctx->pci_id == SST_MFLD_PCI_ID)
+		return sst_alloc_stream_mfld(params, block);
+	else if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID)
+		return sst_alloc_stream_mrfld(params, block);
+	else
+		return sst_alloc_stream_ctp(params, block);
+}
+
 /**
 * sst_get_fw_info - Send msg to query for firmware configurations
 * @info: out param that holds the firmare configurations
@@ -419,7 +430,7 @@ int sst_start_stream(int str_id)
 	if (sst_create_ipc_msg(&msg, true))
 		return -ENOMEM;
 
-	if (!sst_drv_ctx->use_32bit_ops) {
+	if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID) {
 		pr_debug("start mrfld");
 		pvt_id = sst_assign_pvt_id(sst_drv_ctx);
 		pr_debug("pvt id = %d\n", pvt_id);
@@ -434,7 +445,6 @@ int sst_start_stream(int str_id)
 		memcpy(msg->mailbox_data, &dsp_hdr, sizeof(dsp_hdr));
 		memset(msg->mailbox_data + sizeof(dsp_hdr), 0, sizeof(u16));
 	} else {
-		pr_debug("fill START_STREAM for MFLD/CTP\n");
 		sst_fill_header(&msg->header, IPC_IA_START_STREAM, 1, str_id);
 		msg->header.part.data =  sizeof(u32) + sizeof(u32);
 		memcpy(msg->mailbox_data, &msg->header, sizeof(u32));
@@ -747,8 +757,7 @@ int sst_drop_stream(int str_id)
 
 	if (str_info->status != STREAM_UN_INIT) {
 
-		if ((sst_drv_ctx->pci_id != SST_MRFLD_PCI_ID) ||
-				(sst_drv_ctx->use_32bit_ops == true)) {
+		if (sst_drv_ctx->pci_id != SST_MRFLD_PCI_ID) {
 			str_info->prev = STREAM_UN_INIT;
 			str_info->status = STREAM_INIT;
 			str_info->cumm_bytes = 0;
@@ -854,7 +863,7 @@ int sst_free_stream(int str_id)
 		str_info->status = STREAM_UN_INIT;
 		mutex_unlock(&str_info->lock);
 
-		if (!sst_drv_ctx->use_32bit_ops) {
+		if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID) {
 			pvt_id = sst_assign_pvt_id(sst_drv_ctx);
 			retval = sst_create_block_and_ipc_msg(&msg, true,
 					sst_drv_ctx, &block, IPC_CMD, pvt_id);

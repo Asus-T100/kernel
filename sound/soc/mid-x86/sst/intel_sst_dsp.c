@@ -1071,7 +1071,7 @@ static int sst_request_fw(struct intel_sst_drv *sst)
 		pr_err("request fw failed %d\n", retval);
 		return retval;
 	}
-	if (sst->info.use_elf == true)
+	if (sst->pci_id == SST_MRFLD_PCI_ID)
 		retval = sst_validate_fw_elf(sst->fw);
 	if (retval != 0) {
 		pr_err("FW image invalid...\n");
@@ -1343,11 +1343,13 @@ int sst_load_fw(void)
 	} else {
 		sst_do_memcpy(&sst_drv_ctx->memcpy_list);
 	}
+
 	/* Write the DRAM config before enabling FW
 	 */
-	if (!sst_drv_ctx->use_32bit_ops)
+	if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID)
 		mrfld_dccm_config_write(sst_drv_ctx->dram,
 						sst_drv_ctx->ddr_base);
+
 	sst_drv_ctx->sst_state = SST_FW_LOADED;
 	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID)
 		sst_fill_config(sst_drv_ctx);
