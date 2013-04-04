@@ -175,7 +175,7 @@ static struct intel_mid_thermal_platform_data pdata[] = {
 
 };
 
-void __init *msic_thermal_platform_data(void)
+void __init *msic_thermal_platform_data(void *info)
 {
 	struct platform_device *pdev;
 

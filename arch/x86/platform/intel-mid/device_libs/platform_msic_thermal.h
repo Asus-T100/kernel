@@ -14,7 +14,7 @@
 
 #define MSIC_THERM_DEV_NAME "msic_thermal"
 
-extern void __init *msic_thermal_platform_data(void)
+extern void __init *msic_thermal_platform_data(void *info)
 			__attribute__((weak));
 enum {
 	mfld_thermal,

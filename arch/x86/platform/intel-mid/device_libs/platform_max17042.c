@@ -10,6 +10,7 @@
  * of the License.
  */
 
+#include <linux/export.h>
 #include <linux/gpio.h>
 #include <linux/i2c.h>
 #include <linux/lnw_gpio.h>
@@ -99,7 +100,7 @@ static bool msic_battery_check(struct max17042_platform_data *pdata)
 				pdata->battid[1] >= '0'
 					&& pdata->battid[1] <= '9') {
 				unsigned char tmp[SERIAL_NUM_LEN + 2];
-				int i, offset;
+				int i;
 				snprintf(pdata->model_name,
 					(MODEL_NAME_LEN) + 1,
 						"%s", pdata->battid);
@@ -114,10 +115,10 @@ static bool msic_battery_check(struct max17042_platform_data *pdata)
 								 = '\0';
 			} else {
 				snprintf(pdata->model_name,
-					(MODEL_NAME_LEN + 1),
+						(MODEL_NAME_LEN + 1),
 						"%s", pdata->battid);
 				snprintf(pdata->serial_num,
-					(SERIAL_NUM_LEN + 1), "%s",
+						(SERIAL_NUM_LEN + 1), "%s",
 				pdata->battid + MODEL_NAME_LEN);
 			}
 		}

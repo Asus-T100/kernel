@@ -68,7 +68,10 @@ static int mt9m114_flisclk_ctrl(struct v4l2_subdev *sd, int flag)
 	return intel_scu_ipc_osc_clk(OSC_CLK_CAM1, flag ? clock_khz : 0);
 }
 
+#ifndef CONFIG_BOARD_CTP
 static int mt9e013_reset_value;
+#endif
+
 static int mt9m114_power_ctrl(struct v4l2_subdev *sd, int flag)
 {
 #ifdef CONFIG_BOARD_CTP

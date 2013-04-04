@@ -89,7 +89,7 @@ void *msic_audio_platform_data(void *info)
 			break;
 		}
 	}
-	if (platform_device_add_resources(pdev, &msic_audio_resources,
+	if (platform_device_add_resources(pdev, msic_audio_resources,
 			ARRAY_SIZE(msic_audio_resources))) {
 		pr_err("failed to add audio resources\n");
 		goto pdev_add_fail;
