@@ -55,7 +55,6 @@
 #include <linux/wakelock.h>
 #include <linux/rpmsg.h>
 #include <linux/intel_mid_pm.h>
-#include <linux/nmi.h>
 #include <asm/irq.h>
 #include <asm/intel_scu_ipc.h>
 #include <asm/intel_scu_ipcutil.h>
@@ -215,7 +214,6 @@ static void dump_softlock_debug(unsigned long data)
 
 	if (reboot) {
 		panic_timeout = 10;
-		trigger_all_cpu_backtrace();
 		panic("Soft lock on CPUs\n");
 	}
 }
@@ -373,7 +371,6 @@ static irqreturn_t watchdog_warning_interrupt(int irq, void *dev_id)
 	pr_warn("[SHTDWN] %s, WATCHDOG TIMEOUT!\n", __func__);
 
 	/* Let's reset the platform after dumping some data */
-	trigger_all_cpu_backtrace();
 	panic("Kernel Watchdog");
 
 	/* This code should not be reached */
