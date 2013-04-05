@@ -10,6 +10,8 @@ void gp_device_get_state(
 {
 assert(ID < N_GP_DEVICE_ID);
 assert(state != NULL);
+	if (state == NULL)
+		return;
 
 	state->switch_if = gp_device_reg_load(ID,
 		_REG_GP_SWITCH_IF_ADDR);

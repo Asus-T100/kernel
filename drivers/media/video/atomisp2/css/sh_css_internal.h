@@ -44,6 +44,10 @@
 
 #define SH_CSS_MAX_BINARY_NAME	32
 
+/* this is an internal timeout value for CSS
+   it should apply to all busy-wait inside CSS system */
+#define CSS_TIMEOUT_US 200000
+
 #define SP_DEBUG_NONE	(0)
 #define SP_DEBUG_DUMP	(1)
 #define SP_DEBUG_COPY	(2)

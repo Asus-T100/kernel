@@ -183,6 +183,8 @@ void irq_controller_get_state(
 {
 assert(ID < N_IRQ_ID);
 assert(state != NULL);
+	if (state == NULL)
+		return;
 
 	state->irq_edge = irq_reg_load(ID,
 		_HRT_IRQ_CONTROLLER_EDGE_REG_IDX);
@@ -230,6 +232,7 @@ enum hrt_isp_css_irq_status virq_get_channel_signals(
 
 assert(irq_info != NULL);
 
+
 	if (any_irq_channel_enabled(IRQ0_ID)) {
 		hrt_data	irq_data = irq_reg_load(IRQ0_ID,
 			_HRT_IRQ_CONTROLLER_STATUS_REG_IDX);
@@ -238,8 +241,8 @@ assert(irq_info != NULL);
 /* The error condition is an IRQ pulse received with no IRQ status written */
 			irq_status = hrt_isp_css_irq_status_success;
 		}
-
-		irq_info->irq_status_reg[IRQ0_ID] |= irq_data;
+		if (irq_info != NULL)
+			irq_info->irq_status_reg[IRQ0_ID] |= irq_data;
 
 		irq_reg_store(IRQ0_ID,
 			_HRT_IRQ_CONTROLLER_CLEAR_REG_IDX, irq_data);
@@ -301,6 +304,9 @@ STORAGE_CLASS_INLINE irq_ID_t virq_get_irq_id(
 	irq_ID_t ID = IRQ0_ID;
 
 assert(channel_ID != NULL);
+	if (channel_ID == NULL) {
+		return N_IRQ_ID;
+	}
 
 	*channel_ID = (unsigned int)irq_ID;
 
