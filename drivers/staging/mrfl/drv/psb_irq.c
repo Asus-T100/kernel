@@ -274,6 +274,8 @@ void mdfld_te_handler_work(struct work_struct *work)
 
 #ifdef CONFIG_MID_DSI_DPU
 	mdfld_dpu_update_panel(dev);
+#else
+	mdfld_dbi_update_panel(dev, pipe);
 #endif
 	drm_handle_vblank(dev, pipe);
 
