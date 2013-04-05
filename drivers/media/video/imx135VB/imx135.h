@@ -2649,6 +2649,17 @@ static const struct imx_reg imx135_3M_STILL_37fps[] = {
 /* Capture6: H : 2576 V : 1936 */
 static const struct imx_reg imx135_5M_STILL_19fps[] = {
 	GROUPED_PARAMETER_HOLD_ENABLE,
+	{ IMX_8BIT, 0x011E, 0x13},
+	{ IMX_8BIT, 0x011F, 0x33},
+	{ IMX_8BIT, 0x0301, 0x05},
+	{ IMX_8BIT, 0x0303, 0x01},
+	{ IMX_8BIT, 0x0305, 0x0C},
+	{ IMX_8BIT, 0x0309, 0x05},
+	{ IMX_8BIT, 0x030B, 0x01},
+	{ IMX_8BIT, 0x030C, 0x02},
+	{ IMX_8BIT, 0x030D, 0x32},
+	{ IMX_8BIT, 0x030E, 0x01},
+	{ IMX_8BIT, 0x3A06, 0x11},
 	/* Mode setting */
 	{IMX_8BIT, 0x0108, 0x03 },
 	{IMX_8BIT, 0x0112, 0x0A },
@@ -2841,8 +2852,8 @@ static const struct imx_reg imx135_8M_STILL_15fps[] = {
 	/* Size setting */
 	{IMX_8BIT, 0x0340, 0x0a },
 	{IMX_8BIT, 0x0341, 0x3c },
-	{IMX_8BIT, 0x0342, 0x27 },
-	{IMX_8BIT, 0x0343, 0x10 },
+	{IMX_8BIT, 0x0342, 0x11 },
+	{IMX_8BIT, 0x0343, 0xdc },
 	{IMX_8BIT, 0x0344, 0x01 },
 	{IMX_8BIT, 0x0345, 0xd0 },
 	{IMX_8BIT, 0x0346, 0x01 },
@@ -3814,7 +3825,7 @@ struct imx_resolution imx_res_preview[] = {
 		.lines_per_frame = 1960,
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
-		.used = 0	,
+		.used = 0,
 	},
 /*	{
 		.desc = "imx135_PREVIEW_1028x580_30fps",
@@ -3826,7 +3837,7 @@ struct imx_resolution imx_res_preview[] = {
 		.lines_per_frame = 1960,
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
-		.used = 0	,
+		.used = 0,
 	},*/
 	{
 		.desc = "imx135_1M_16_9_30fps",
@@ -3838,7 +3849,7 @@ struct imx_resolution imx_res_preview[] = {
 		.lines_per_frame = 2650,
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
-		.used = 0	,
+		.used = 0,
 	},
 	{
 		.desc = "imx135_PREVIEW_WIDE_PREVIEW_30fps",
@@ -3853,15 +3864,63 @@ struct imx_resolution imx_res_preview[] = {
 		.used = 0,
 	},
 	{
-		.desc = "imx135_PREVIEW_1632x1224_30fps",
-		.regs = imx135_PREVIEW_1632x1224_30fps,
-		.width = 1632,
-		.height = 1224,
+		.desc = "imx135_2M_30fps",
+		.regs = imx135_2M_30fps,
+		.width = 1640,
+		.height = 1232,
 		.fps = 30,
-		.pixels_per_line = 4572,
-		.lines_per_frame = 1960,
-		.bin_factor_x = 2,
-		.bin_factor_y = 2,
+		.pixels_per_line = 4572, /* consistent with regs arrays */
+		.lines_per_frame = 2650, /* consistent with regs arrays */
+		.bin_factor_x = 1,
+		.bin_factor_y = 1,
+		.used = 0,
+	},
+	{
+		.desc = "imx135_5M_19fps",
+		.regs = imx135_5M_STILL_19fps,
+		.width = 2576,
+		.height = 1936,
+		.fps = 19,
+		.pixels_per_line = 4572, /* consistent with regs arrays */
+		.lines_per_frame = 3050, /* consistent with regs arrays */
+		.bin_factor_x = 0,
+		.bin_factor_y = 0,
+		.used = 0,
+	},
+	{
+		.desc = "imx135_6M_STILL_20fps",
+		.regs = imx135_6M_STILL_20fps,
+		.width = 3280,
+		.height = 1852,
+		.fps = 20,
+		.pixels_per_line = 4696, /* consistent with regs arrays */
+		.lines_per_frame = 2318, /* consistent with regs arrays */
+		.bin_factor_x = 0,
+		.bin_factor_y = 0,
+		.used = 0,
+	},
+	{
+		.desc = "imx135_8M_15fps",
+		.regs = imx135_8M_STILL_15fps,
+		.width = 3280,
+		.height = 2464,
+		.fps = 15,
+		.pixels_per_line = 4572, /* consistent with regs arrays */
+		.lines_per_frame = 2620, /* consistent with regs arrays */
+		.bin_factor_x = 0,
+		.bin_factor_y = 0,
+		.used = 0,
+	},
+	{
+		.desc = "imx135_13M_STILL_7fps",
+		.regs = imx135_13M_STILL_7fps,
+		.width = 4208,
+		.height = 3120,
+		.fps = 7,
+		.pixels_per_line = 10000, /* consistent with regs arrays */
+		.lines_per_frame = 3800, /* consistent with regs arrays */
+		.bin_factor_x = 0,
+		.bin_factor_y = 0,
 		.used = 0,
 	},
 };
@@ -3877,7 +3936,7 @@ struct imx_resolution imx_res_still[] = {
 		.lines_per_frame = 2650, /* consistent with regs arrays */
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
-		.used = 0	,
+		.used = 0,
 	},
 	{
 		.desc = "imx135_QVGA_30fps",
@@ -3889,7 +3948,7 @@ struct imx_resolution imx_res_still[] = {
 		.lines_per_frame = 2650, /* consistent with regs arrays */
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
-		.used = 0	,
+		.used = 0,
 	},
 	{
 		.desc = "imx135_CIF_30fps",
@@ -3901,7 +3960,7 @@ struct imx_resolution imx_res_still[] = {
 		.lines_per_frame = 2650, /* consistent with regs arrays */
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
-		.used = 0	,
+		.used = 0,
 	},
 	{
 		.desc = "imx135_VGA_30fps",
@@ -3913,7 +3972,7 @@ struct imx_resolution imx_res_still[] = {
 		.lines_per_frame = 2650, /* consistent with regs arrays */
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
-		.used = 0	,
+		.used = 0,
 	},
 	{
 		.desc = "imx135_D1_30fps",
@@ -3925,7 +3984,7 @@ struct imx_resolution imx_res_still[] = {
 		.lines_per_frame = 2650, /* consistent with regs arrays */
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
-		.used = 0	,
+		.used = 0,
 	},
 	{
 		.desc = "imx135_1M_16_9_30fps",
@@ -3937,7 +3996,7 @@ struct imx_resolution imx_res_still[] = {
 		.lines_per_frame = 2650, /* consistent with regs arrays */
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
-		.used = 0	,
+		.used = 0,
 	},
 	{
 		.desc = "imx135_1M_4_3_30fps",
@@ -3949,7 +4008,7 @@ struct imx_resolution imx_res_still[] = {
 		.lines_per_frame = 2650, /* consistent with regs arrays */
 		.bin_factor_x = 1,
 		.bin_factor_y = 1,
-		.used = 0	,
+		.used = 0,
 	},
 	{
 		.desc = "imx135_720p_30fps",
@@ -3961,7 +4020,7 @@ struct imx_resolution imx_res_still[] = {
 		.lines_per_frame = 2650, /* consistent with regs arrays */
 		.bin_factor_x = 1,
 		.bin_factor_y = 1,
-		.used = 0	,
+		.used = 0,
 	},
 	{
 		.desc = "imx135_1600x1200_30fps",
@@ -3973,7 +4032,7 @@ struct imx_resolution imx_res_still[] = {
 		.lines_per_frame = 2650, /* consistent with regs arrays */
 		.bin_factor_x = 1,
 		.bin_factor_y = 1,
-		.used = 0	,
+		.used = 0,
 	},
 	{
 		.desc = "imx135_2M_30fps",
@@ -3985,7 +4044,7 @@ struct imx_resolution imx_res_still[] = {
 		.lines_per_frame = 2650, /* consistent with regs arrays */
 		.bin_factor_x = 1,
 		.bin_factor_y = 1,
-		.used = 0	,
+		.used = 0,
 	},
 	{
 		.desc = "imx135_1080p_30fps",
@@ -3997,7 +4056,7 @@ struct imx_resolution imx_res_still[] = {
 		.lines_per_frame = 2650, /* consistent with regs arrays */
 		.bin_factor_x = 1,
 		.bin_factor_y = 1,
-		.used = 0	,
+		.used = 0,
 	},
 	{
 		.desc = "imx135_3M_30fps",
@@ -4009,7 +4068,7 @@ struct imx_resolution imx_res_still[] = {
 		.lines_per_frame = 2650, /* consistent with regs arrays */
 		.bin_factor_x = 1,
 		.bin_factor_y = 1,
-		.used = 0	,
+		.used = 0,
 	},
 	{
 		.desc = "imx135_QCIF_dvs_30fps",
@@ -4021,7 +4080,7 @@ struct imx_resolution imx_res_still[] = {
 		.lines_per_frame = 2650, /* consistent with regs arrays */
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
-		.used = 0	,
+		.used = 0,
 	},
 	{
 		.desc = "imx135_QVGA_dvs_30fps",
@@ -4033,7 +4092,7 @@ struct imx_resolution imx_res_still[] = {
 		.lines_per_frame = 2650, /* consistent with regs arrays */
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
-		.used = 0	,
+		.used = 0,
 	},
 	{
 		.desc = "imx135_CIF_dvs_30fps",
@@ -4045,7 +4104,7 @@ struct imx_resolution imx_res_still[] = {
 		.lines_per_frame = 2650, /* consistent with regs arrays */
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
-		.used = 0	,
+		.used = 0,
 	},
 	{
 		.desc = "imx135_VGA_dvs_30fps",
@@ -4057,7 +4116,7 @@ struct imx_resolution imx_res_still[] = {
 		.lines_per_frame = 2650, /* consistent with regs arrays */
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
-		.used = 0	,
+		.used = 0,
 	},
 	{
 		.desc = "imx135_preview_30fps",
@@ -4069,7 +4128,7 @@ struct imx_resolution imx_res_still[] = {
 		.lines_per_frame = 2650, /* consistent with regs arrays */
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
-		.used = 0	,
+		.used = 0,
 	},
 	{
 		.desc = "imx135_D1_dvs_30fps",
@@ -4081,7 +4140,7 @@ struct imx_resolution imx_res_still[] = {
 		.lines_per_frame = 2650, /* consistent with regs arrays */
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
-		.used = 0	,
+		.used = 0,
 	},
 	{
 		.desc = "imx135_1080p_dvs_30fps",
@@ -4093,7 +4152,7 @@ struct imx_resolution imx_res_still[] = {
 		.lines_per_frame = 2650, /* consistent with regs arrays */
 		.bin_factor_x = 1,
 		.bin_factor_y = 1,
-		.used = 0	,
+		.used = 0,
 	},
 	{
 		.desc = "imx135_1080p_dvs_30fps",
@@ -4105,7 +4164,7 @@ struct imx_resolution imx_res_still[] = {
 		.lines_per_frame = 2650, /* consistent with regs arrays */
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
-		.used = 0	,
+		.used = 0,
 	},
 	{
 		.desc = "imx135_5M_26fps",
@@ -4117,31 +4176,31 @@ struct imx_resolution imx_res_still[] = {
 		.lines_per_frame = 3050, /* consistent with regs arrays */
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
-		.used = 0	,
+		.used = 0,
 	},
 	{
 		.desc = "imx135_6M_STILL_20fps",
 		.regs = imx135_6M_STILL_20fps,
-		.width = 3280	,
+		.width = 3280,
 		.height = 1852,
 		.fps = 20,
 		.pixels_per_line = 4696, /* consistent with regs arrays */
 		.lines_per_frame = 2318, /* consistent with regs arrays */
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
-		.used = 0	,
+		.used = 0,
 	},
 	{
-		.desc = "imx135_8M_25fps",
+		.desc = "imx135_8M_15fps",
 		.regs = imx135_8M_STILL_15fps,
-		.width = 3280	,
+		.width = 3280,
 		.height = 2464,
 		.fps = 15,
 		.pixels_per_line = 4572, /* consistent with regs arrays */
 		.lines_per_frame = 2620, /* consistent with regs arrays */
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
-		.used = 0	,
+		.used = 0,
 	},
 	{
 		.desc = "imx135_13M_STILL_7fps",
@@ -4153,7 +4212,7 @@ struct imx_resolution imx_res_still[] = {
 		.lines_per_frame = 3800, /* consistent with regs arrays */
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
-		.used = 0	,
+		.used = 0,
 	},
 };
 
@@ -4168,7 +4227,7 @@ struct imx_resolution imx_res_video[] = {
 		.lines_per_frame = 2650, /* consistent with regs arrays */
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
-		.used = 0	,
+		.used = 0,
 	},
 	{
 		.desc = "imx135_QVGA_dvs_30fps",
@@ -4180,7 +4239,7 @@ struct imx_resolution imx_res_video[] = {
 		.lines_per_frame = 2650, /* consistent with regs arrays */
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
-		.used = 0	,
+		.used = 0,
 	},
 	{
 		.desc = "imx135_CIF_dvs_30fps",
@@ -4192,7 +4251,7 @@ struct imx_resolution imx_res_video[] = {
 		.lines_per_frame = 2650, /* consistent with regs arrays */
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
-		.used = 0	,
+		.used = 0,
 	},
 	{
 		.desc = "imx135_VGA_dvs_30fps",
@@ -4204,7 +4263,7 @@ struct imx_resolution imx_res_video[] = {
 		.lines_per_frame = 2650, /* consistent with regs arrays */
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
-		.used = 0	,
+		.used = 0,
 	},
 	{
 		.desc = "imx135_D1_dvs_30fps",
@@ -4216,7 +4275,7 @@ struct imx_resolution imx_res_video[] = {
 		.lines_per_frame = 2650, /* consistent with regs arrays */
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
-		.used = 0	,
+		.used = 0,
 	},
 	{
 		.desc = "imx135_1080p_dvs_30fps",
@@ -4228,7 +4287,7 @@ struct imx_resolution imx_res_video[] = {
 		.lines_per_frame = 2650, /* consistent with regs arrays */
 		.bin_factor_x = 1,
 		.bin_factor_y = 1,
-		.used = 0	,
+		.used = 0,
 	},
 	{
 		.desc = "imx135_1080p_dvs_30fps",
@@ -4240,7 +4299,7 @@ struct imx_resolution imx_res_video[] = {
 		.lines_per_frame = 2650, /* consistent with regs arrays */
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
-		.used = 0	,
+		.used = 0,
 	},
 
 };
@@ -4256,7 +4315,7 @@ struct imx_resolution imx_res_video_nodvs[] = {
 		.lines_per_frame = 2650, /* consistent with regs arrays */
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
-		.used = 0	,
+		.used = 0,
 	},
 	{
 		.desc = "imx135_QVGA_30fps",
@@ -4268,7 +4327,7 @@ struct imx_resolution imx_res_video_nodvs[] = {
 		.lines_per_frame = 2650, /* consistent with regs arrays */
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
-		.used = 0	,
+		.used = 0,
 	},
 	{
 		.desc = "imx135_CIF_30fps",
@@ -4280,7 +4339,7 @@ struct imx_resolution imx_res_video_nodvs[] = {
 		.lines_per_frame = 2650, /* consistent with regs arrays */
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
-		.used = 0	,
+		.used = 0,
 	},
 	{
 		.desc = "imx135_VGA_30fps",
@@ -4292,7 +4351,7 @@ struct imx_resolution imx_res_video_nodvs[] = {
 		.lines_per_frame = 2650, /* consistent with regs arrays */
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
-		.used = 0	,
+		.used = 0,
 	},
 	{
 		.desc = "imx135_D1_30fps",
@@ -4304,7 +4363,7 @@ struct imx_resolution imx_res_video_nodvs[] = {
 		.lines_per_frame = 2650, /* consistent with regs arrays */
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
-		.used = 0	,
+		.used = 0,
 	},
 	{
 		.desc = "imx135_720p_30fps",
@@ -4316,7 +4375,7 @@ struct imx_resolution imx_res_video_nodvs[] = {
 		.lines_per_frame = 2650, /* consistent with regs arrays */
 		.bin_factor_x = 1,
 		.bin_factor_y = 1,
-		.used = 0	,
+		.used = 0,
 	},
 	{
 		.desc = "imx135_1080p_30fps",
@@ -4328,7 +4387,7 @@ struct imx_resolution imx_res_video_nodvs[] = {
 		.lines_per_frame = 2650, /* consistent with regs arrays */
 		.bin_factor_x = 1,
 		.bin_factor_y = 1,
-		.used = 0	,
+		.used = 0,
 	},
 };
 

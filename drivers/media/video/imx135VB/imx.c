@@ -1490,6 +1490,10 @@ static int imx_remove(struct i2c_client *client)
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
 	struct imx_device *dev = to_imx_sensor(sd);
 
+	if (dev->platform_data->platform_deinit)
+		dev->platform_data->platform_deinit();
+
+	media_entity_cleanup(&dev->sd.entity);
 	dev->platform_data->csi_cfg(sd, 0);
 	v4l2_device_unregister_subdev(sd);
 	kfree(dev);
