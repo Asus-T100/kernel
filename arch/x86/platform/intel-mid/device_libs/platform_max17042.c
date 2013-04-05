@@ -19,11 +19,20 @@
 #include <linux/power/smb347-charger.h>
 #include <linux/power/bq24192_charger.h>
 #include <linux/power/bq24261_charger.h>
+#include <linux/power/battery_id.h>
 #include <asm/pmic_pdata.h>
 #include <asm/intel-mid.h>
 #include <asm/delay.h>
 #include <asm/intel_scu_ipc.h>
 #include "platform_max17042.h"
+
+#define MRFL_SMIP_SRAM_ADDR		0xFFFCE000
+#define MRFL_PLATFORM_CONFIG_OFFSET	0x3B3
+#define MRFL_SMIP_SHUTDOWN_OFFSET	1
+#define MRFL_SMIP_RESV_CAP_OFFSET	3
+
+#define MRFL_VOLT_SHUTDOWN_MASK (1 << 1)
+#define MRFL_NFC_RESV_MASK	(1 << 3)
 
 void max17042_i2c_reset_workaround(void)
 {
@@ -231,6 +240,34 @@ int mrfl_get_bat_health(void)
 		return bqbat_health;
 }
 
+#define DEFAULT_VMIN	3400000
+int mrfl_get_vsys_min(void)
+{
+	struct ps_batt_chg_prof batt_profile;
+	int ret;
+	ret = get_batt_prop(&batt_profile);
+	if (!ret)
+		return ((struct ps_pse_mod_prof *)batt_profile.batt_prof)
+					->low_batt_mV * 1000;
+	return DEFAULT_VMIN;
+}
+
+static bool is_mapped;
+static void __iomem *smip;
+int get_smip_plat_config(int offset)
+{
+	if (INTEL_MID_BOARD(1, PHONE, MRFL) ||
+		INTEL_MID_BOARD(1, TABLET, MRFL)) {
+		if (!is_mapped) {
+			smip = ioremap_nocache(MRFL_SMIP_SRAM_ADDR +
+				MRFL_PLATFORM_CONFIG_OFFSET, 8);
+			is_mapped = true;
+		}
+		return ioread8(smip + offset);
+	}
+	return -EINVAL;
+}
+
 static void init_tgain_toff(struct max17042_platform_data *pdata)
 {
 	if (INTEL_MID_BOARD(2, TABLET, MFLD, SLP, ENG) ||
@@ -290,6 +327,7 @@ static void init_callbacks(struct max17042_platform_data *pdata)
 		/* MRFL Phones and tablets*/
 		pdata->battery_health = mrfl_get_bat_health;
 		pdata->battery_pack_temp = pmic_get_battery_pack_temp;
+		pdata->get_vmin_threshold = mrfl_get_vsys_min;
 		pdata->reset_chip = true;
 	}
 	pdata->reset_i2c_lines = max17042_i2c_reset_workaround;
@@ -337,6 +375,7 @@ static void init_platform_params(struct max17042_platform_data *pdata)
 
 static void init_platform_thresholds(struct max17042_platform_data *pdata)
 {
+	u8 shutdown_method;
 	if (INTEL_MID_BOARD(2, TABLET, MFLD, RR, ENG) ||
 		INTEL_MID_BOARD(2, TABLET, MFLD, RR, PRO)) {
 		pdata->temp_min_lim = 0;
@@ -349,6 +388,23 @@ static void init_platform_thresholds(struct max17042_platform_data *pdata)
 		pdata->temp_max_lim = 45;
 		pdata->volt_min_lim = 3200;
 		pdata->volt_max_lim = 4350;
+	} else if (INTEL_MID_BOARD(1, PHONE, MRFL) ||
+			INTEL_MID_BOARD(1, TABLET, MRFL)) {
+		/* Bit 1 of shutdown method determines if voltage based
+		 * shutdown in enabled.
+		 * Bit 3 specifies if capacity for NFC should be reserved.
+		 * Reserve capacity only if Bit 3 of shutdown method
+		 * is enabled.
+		 */
+		shutdown_method =
+			get_smip_plat_config(MRFL_SMIP_SHUTDOWN_OFFSET);
+		if (shutdown_method & MRFL_NFC_RESV_MASK)
+			pdata->resv_cap =
+				get_smip_plat_config
+					(MRFL_SMIP_RESV_CAP_OFFSET);
+
+		pdata->is_volt_shutdown = (shutdown_method &
+			MRFL_VOLT_SHUTDOWN_MASK) ? 1 : 0;
 	}
 }
 
@@ -365,5 +421,7 @@ void *max17042_platform_data(void *info)
 	init_platform_params(&platform_data);
 	init_platform_thresholds(&platform_data);
 
+	if (smip)
+		iounmap(smip);
 	return &platform_data;
 }

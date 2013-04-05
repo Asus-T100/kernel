@@ -136,6 +136,7 @@ struct max17042_platform_data {
 	int temp_max_lim;	/* in degrees centigrade */
 	int volt_min_lim;	/* milli volts */
 	int volt_max_lim;	/* milli volts */
+	int resv_cap;
 
 	u16 tgain;
 	u16 toff;
