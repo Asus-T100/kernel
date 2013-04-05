@@ -797,32 +797,6 @@ struct imx_control imx_controls[] = {
 	},
 	{
 		.qc = {
-			.id = V4L2_CID_VCM_SLEW,
-			.type = V4L2_CTRL_TYPE_INTEGER,
-			.name = "vcm slew",
-			.minimum = 0,
-			.maximum = IMX_VCM_SLEW_STEP_MAX,
-			.step = 1,
-			.default_value = 0,
-			.flags = 0,
-		},
-		.tweak = imx_t_vcm_slew,
-	},
-	{
-		.qc = {
-			.id = V4L2_CID_VCM_TIMEING,
-			.type = V4L2_CTRL_TYPE_INTEGER,
-			.name = "vcm step time",
-			.minimum = 0,
-			.maximum = IMX_VCM_SLEW_TIME_MAX,
-			.step = 1,
-			.default_value = 0,
-			.flags = 0,
-		},
-		.tweak = imx_t_vcm_timing,
-	},
-	{
-		.qc = {
 			.id = V4L2_CID_FOCAL_ABSOLUTE,
 			.type = V4L2_CTRL_TYPE_INTEGER,
 			.name = "focal length",
