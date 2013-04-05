@@ -23,7 +23,11 @@
 #include <ttm/ttm_page_alloc.h>
 #include "psb_ttm_fence_api.h"
 #include <drm/drmP.h>
+#ifdef CONFIG_DRM_VXD_BYT
+#include "vxd_drv.h"
+#else
 #include "psb_drv.h"
+#endif
 
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(3,3,0))
 struct drm_psb_ttm_backend {
@@ -167,6 +171,7 @@ static int drm_psb_tbe_unbind(struct ttm_tt *ttm)
 #endif /* SUPPORT_VSP */
 #endif
 
+#ifndef CONFIG_DRM_VXD_BYT
 	if (psb_be->mem_type == TTM_PL_TT) {
 		uint32_t gatt_p_offset =
 			(psb_be->offset - dev_priv->pg->mmu_gatt_start) >> PAGE_SHIFT;
@@ -180,6 +185,7 @@ static int drm_psb_tbe_unbind(struct ttm_tt *ttm)
 					    psb_be->desired_tile_stride,
 					    psb_be->hw_tile_stride, 0);
 	}
+#endif
 
 	psb_mmu_remove_pages(pd, psb_be->offset,
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(3,3,0))
@@ -260,6 +266,7 @@ static int drm_psb_tbe_bind(struct ttm_tt *ttm,
 	type = (bo_mem->placement & TTM_PL_FLAG_CACHED) ?
 				PSB_MMU_CACHED_MEMORY : 0;
 
+#ifndef CONFIG_DRM_VXD_BYT
 	if (psb_be->mem_type == TTM_PL_TT) {
 		uint32_t gatt_p_offset =
 			(psb_be->offset - dev_priv->pg->mmu_gatt_start) >> PAGE_SHIFT;
@@ -280,6 +287,7 @@ static int drm_psb_tbe_bind(struct ttm_tt *ttm,
 					   psb_be->hw_tile_stride, type);
 #endif
 	}
+#endif
 
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(3,3,0))
 	ret = psb_mmu_insert_pages(pd,
@@ -464,6 +472,7 @@ static void drm_psb_ttm_tt_unpopulate(struct ttm_tt *ttm)
 	ttm_dma = (struct ttm_dma_tt *) ttm;
 	bdev = ttm->bdev;
 	dev_priv = container_of(bdev, struct drm_psb_private, bdev);
+
 	ddev = dev_priv->dev;
 
 #if __OS_HAS_AGP && 0
@@ -501,10 +510,11 @@ static int psb_invalidate_caches(struct ttm_bo_device *bdev,
 static int psb_init_mem_type(struct ttm_bo_device *bdev, uint32_t type,
 			     struct ttm_mem_type_manager *man)
 {
-
 	struct drm_psb_private *dev_priv =
 		container_of(bdev, struct drm_psb_private, bdev);
+#ifndef CONFIG_DRM_VXD_BYT
 	struct psb_gtt *pg = dev_priv->pg;
+#endif
 
 	switch (type) {
 	case TTM_PL_SYSTEM:
@@ -522,6 +532,7 @@ static int psb_init_mem_type(struct ttm_bo_device *bdev, uint32_t type,
 					 TTM_PL_FLAG_UNCACHED | TTM_PL_FLAG_WC;
 		man->default_caching = TTM_PL_FLAG_WC;
 		break;
+#ifndef CONFIG_DRM_VXD_BYT
 #if !defined(MERRIFIELD)
 	case TTM_PL_IMR:	/* Unmappable IMR memory */
 		man->func = &ttm_bo_manager_func;
@@ -561,6 +572,7 @@ static int psb_init_mem_type(struct ttm_bo_device *bdev, uint32_t type,
 					 TTM_PL_FLAG_UNCACHED | TTM_PL_FLAG_WC;
 		man->default_caching = TTM_PL_FLAG_WC;
 		break;
+#endif
 	default:
 		DRM_ERROR("Unsupported memory type %u\n", (unsigned) type);
 		return -EINVAL;
@@ -591,7 +603,7 @@ static int psb_move(struct ttm_buffer_object *bo,
 		    bool no_wait, struct ttm_mem_reg *new_mem)
 {
 	struct ttm_mem_reg *old_mem = &bo->mem;
-#if !defined(MERRIFIELD)
+#if (!defined(MERRIFIELD) && !defined(CONFIG_DRM_VXD_BYT))
 	if ((old_mem->mem_type == TTM_PL_IMR) ||
 	    (new_mem->mem_type == TTM_PL_IMR)) {
 		if (old_mem->mm_node) {
@@ -645,7 +657,9 @@ static int psb_ttm_io_mem_reserve(struct ttm_bo_device *bdev, struct ttm_mem_reg
 	struct ttm_mem_type_manager *man = &bdev->man[mem->mem_type];
 	struct drm_psb_private *dev_priv =
 		container_of(bdev, struct drm_psb_private, bdev);
+#ifndef CONFIG_DRM_VXD_BYT
 	struct psb_gtt *pg = dev_priv->pg;
+#endif
 
 	mem->bus.addr = NULL;
 	mem->bus.offset = 0;
@@ -658,15 +672,18 @@ static int psb_ttm_io_mem_reserve(struct ttm_bo_device *bdev, struct ttm_mem_reg
 	case TTM_PL_SYSTEM:
 		/* system memory */
 		return 0;
+#ifndef CONFIG_DRM_VXD_BYT
 	case TTM_PL_TT:
 		mem->bus.offset = mem->start << PAGE_SHIFT;
 		mem->bus.base = pg->gatt_start;
 		mem->bus.is_iomem = false; /* Don't know whether it is IO_MEM, this flag used in vm_fault handle */
 		break;
+#endif
 	case DRM_PSB_MEM_MMU:
 		mem->bus.offset = mem->start << PAGE_SHIFT;
 		mem->bus.base = 0x00000000;
 		break;
+#ifndef CONFIG_DRM_VXD_BYT
 #if !defined(MERRIFIELD)
 	case TTM_PL_IMR:
 		mem->bus.offset = mem->start << PAGE_SHIFT;
@@ -678,6 +695,7 @@ static int psb_ttm_io_mem_reserve(struct ttm_bo_device *bdev, struct ttm_mem_reg
 		mem->bus.offset = mem->start << PAGE_SHIFT;
 		mem->bus.base = 0x00000000;
 		break;
+#endif
 	default:
 		return -EINVAL;
 	}

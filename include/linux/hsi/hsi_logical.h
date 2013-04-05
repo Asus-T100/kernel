@@ -41,7 +41,6 @@
 
 #define HSI_LOGICAL_POWER_SAVING
 
-
 #define HSI_LOGICAL_USE_DEBUG
 # define EPRINTK(...)    printk(KERN_EMERG __VA_ARGS__)
 
@@ -63,10 +62,12 @@
 #define HSI_MAX_CHANNEL_ID 15
 
 #define HSI_LOGICAL_CONTROL_MESSAGE_SIZE 4
+#define HSI_LOGICAL_L2HEADER_MESSAGE_SIZE 128
 
 #define HSI_LOGICAL_INACTIVITY_TIMER 10
 
-
+/*#define HSI_LOGICAL_SEND_ACK_BEFORE_ALLOC*/
+#define HSI_LOGICAL_RXDATA_128_BYTES_PADDED
 /*Control messages definition*/
 #define HSI_BOOT_INFO_REQ         0x10
 #define HSI_BOOT_INFO_RESP        0x20
@@ -75,8 +76,6 @@
 #define HSI_POWER_OFF             0x70
 
 #define CONF_VERSION_MASK 0x000000FF
-
-
 
 #define LENGTH_IN_HEADER(HEADER) (((u32)HEADER) & 0x00FFFFFF)
 
@@ -97,7 +96,7 @@
 
 /* Retrieve from modem: */
 
-#define MAXIMUM_MSG_LENGTH_ALLOWED 0x4000
+#define MAXIMUM_MSG_LENGTH_ALLOWED 0x8000
 
 /** @def HSI_DEFAULT_BOOT_CONFIG
 *   @brief Default boot configuration:
@@ -156,6 +155,8 @@ enum HSI_POWER_STEP {
 enum hsi_logical_trace_states {
 	HSI_ALL = 0,
 	HSI_HIGH,
+	HSI_HIGH_RX,
+	HSI_HIGH_TX,
 	HSI_OFF
 };
 
@@ -187,18 +188,17 @@ struct hsi_protocol_client {
 	/* pointer of top level context */
 	struct hsi_protocol *hsi_top_protocol_context;
 #ifdef HSI_USE_SEND_SCHEDULED
-	struct work_struct send;
+	struct work_struct send_work;
+	struct workqueue_struct *send_wq;
 #endif /* HSI_USE_SEND_SCHEDULED */
 #ifdef HSI_USE_RCV_SCHEDULED
 	struct workqueue_struct *rcv_wq;
 	struct work_struct rcv_work;
 	struct list_head rcv_msgs;
-	struct hsi_msg *rcv_msg;
 	spinlock_t rcv_msgs_lock;
 #endif /* HSI_USE_RCV_SCHEDULED */
 	int gpio_pwr_on;
 	int gpio_rst_out;
-
 };
 
 struct config_exchange {
@@ -215,11 +215,13 @@ struct hsi_msg_array {
 	struct hsi_msg *msg;
 };
 
-#define HSI_LOGICAL_NB_CONTROL_MSG (HSI_NB_CLIENT * 4)
+#define HSI_LOGICAL_NB_CONTROL_MSG (HSI_NB_CLIENT * 7)
+#define HSI_LOGICAL_NB_CONTROL_MSG_L2H (HSI_NB_CLIENT * 2)
 
 struct hsi_protocol {
 	unsigned int main_state;
 	struct timer_list inactivity_timer;
+	bool inactivity_timer_running;
 	spinlock_t tx_activity_status_lock;
 	int wake_state;
 	struct config_exchange cfg_ex;
@@ -230,6 +232,8 @@ struct hsi_protocol {
 	struct hsi_protocol_client *cl[HSI_NB_CLIENT];
 	spinlock_t ctrl_msg_array_lock;
 	struct hsi_msg_array  hsi_ctrl_msg_array[HSI_LOGICAL_NB_CONTROL_MSG];
+	spinlock_t ctrl_msg_array_l2h_lock;
+	struct hsi_msg_array  hsi_ctrl_msg_array_l2h[HSI_LOGICAL_NB_CONTROL_MSG_L2H];
 };
 
 /**** HSI LOGICAL INTERFACES FOR L3 CLIENTS ****/

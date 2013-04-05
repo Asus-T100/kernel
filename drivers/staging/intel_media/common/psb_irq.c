@@ -41,6 +41,7 @@
 #include "psb_irq.h"
 
 #include <linux/time.h>
+#include <linux/history_record.h>
 
 extern int drm_psb_smart_vsync;
 extern atomic_t g_videoenc_access_count;
@@ -662,6 +663,7 @@ irqreturn_t psb_irq_handler(DRM_IRQ_ARGS)
 	uint32_t vdc_stat, dsp_int = 0, sgx_int = 0, msvdx_int = 0, topaz_int = 0;
 	int handled = 0;
 	unsigned long irq_flags;
+	struct saved_history_record *precord = NULL;
 
 #ifdef CONFIG_MDFD_GL3
 	uint32_t gl3_int = 0;
@@ -670,8 +672,13 @@ irqreturn_t psb_irq_handler(DRM_IRQ_ARGS)
 	/*	PSB_DEBUG_ENTRY("\n"); */
 
 	spin_lock_irqsave(&dev_priv->irqmask_lock, irq_flags);
-
 	vdc_stat = PSB_RVDC32(PSB_INT_IDENTITY_R);
+
+	precord = get_new_history_record();
+	if (precord) {
+		precord->type = 5;
+		precord->record_value.vdc_stat = vdc_stat;
+	}
 
 	if (vdc_stat & _MDFLD_DISP_ALL_IRQ_FLAG) {
 		PSB_DEBUG_IRQ("Got DISP interrupt\n");

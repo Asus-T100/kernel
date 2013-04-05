@@ -186,7 +186,7 @@ void ospm_power_using_hw_end(int hw_island);
 bool ospm_power_using_video_begin(int hw_island);
 void ospm_power_using_video_end(int hw_island);
 
-void ospm_apm_power_down_msvdx(struct drm_device *dev, bool on);
+void ospm_apm_power_down_msvdx(struct drm_device *dev, int on);
 bool ospm_power_is_hw_on(u32 hw_island);
 void ospm_apm_power_down_topaz(struct drm_device *dev);
 int ospm_apm_power_down_vsp(struct drm_device *dev);

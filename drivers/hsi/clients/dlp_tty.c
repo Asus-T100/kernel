@@ -606,7 +606,7 @@ static void dlp_tty_port_shutdown(struct tty_port *port)
 	rx_ctx = &ch_ctx->rx;
 
 	/* Don't wait if already in TX timeout state */
-	if (!dlp_drv.tx_timeout) {
+	if (dlp_tty_is_link_valid()) {
 		dlp_tty_wait_until_ctx_sent(ch_ctx, 0);
 		dlp_tty_cleanup(ch_ctx);
 	}
@@ -776,7 +776,7 @@ static void dlp_tty_close(struct tty_struct *tty, struct file *filp)
 
 	/* Set TTY as closed to prevent RX/TX transactions */
 	if (need_cleanup)
-		dlp_tty_set_link_valid(1, 0);
+		dlp_tty_set_link_valid(1, dlp_drv.tx_timeout);
 
 	if (filp && ch_ctx) {
 		struct dlp_tty_context *tty_ctx = ch_ctx->ch_data;
@@ -1106,6 +1106,7 @@ struct dlp_channel *dlp_tty_ctx_create(unsigned int ch_id,
 	struct tty_driver *new_drv;
 	struct dlp_channel *ch_ctx;
 	struct dlp_tty_context *tty_ctx;
+	struct hsi_msg *hsi_msg, *hsi_msg_tmp;
 	int ret;
 
 	ch_ctx = kzalloc(sizeof(struct dlp_channel), GFP_KERNEL);
@@ -1212,7 +1213,7 @@ struct dlp_channel *dlp_tty_ctx_create(unsigned int ch_id,
 	if (ret) {
 		pr_err(DRVNAME ": Cant allocate RX FIFO pdus for ch%d\n",
 				ch_id);
-		goto cleanup;
+		goto free_tx_fifo;
 	}
 
 	return ch_ctx;
@@ -1231,6 +1232,14 @@ free_ch:
 
 	pr_err(DRVNAME": Failed to create context for ch%d", ch_id);
 	return NULL;
+
+free_tx_fifo:
+	/* Free tx fifo */
+	list_for_each_entry_safe(hsi_msg, hsi_msg_tmp,
+				&ch_ctx->tx.recycled_pdus, link) {
+		list_del(&hsi_msg->link);
+		dlp_pdu_free(hsi_msg, hsi_msg->channel);
+	}
 
 cleanup:
 	dlp_tty_ctx_delete(ch_ctx);
@@ -1253,8 +1262,19 @@ static int dlp_tty_ctx_cleanup(struct dlp_channel *ch_ctx)
 {
 	int ret = 0;
 	struct dlp_tty_context *tty_ctx = ch_ctx->ch_data;
+	struct tty_struct *tty;
 
 	dlp_tty_cleanup(ch_ctx);
+
+	tty = tty_port_tty_get(&tty_ctx->tty_prt);
+	if (tty) {
+		/* Clean any waiting data to release potential
+		   dlp_tty_wait_until_sent lock */
+		hsi_flush(dlp_drv.client);
+
+		tty_vhangup(tty);
+		tty_kref_put(tty);
+	}
 
 	/* Clear the hangup context */
 	dlp_ctrl_hangup_ctx_deinit(ch_ctx);

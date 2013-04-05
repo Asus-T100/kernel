@@ -986,3 +986,315 @@ out:
 	return err;
 }
 EXPORT_SYMBOL_GPL(mmc_rpmb_partition_ops);
+
+static int mmc_switch_part(struct mmc_card *card, u8 part)
+{
+	int ret;
+
+	ret = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
+			 EXT_CSD_PART_CONFIG, part,
+			 card->ext_csd.part_time, true);
+	if (ret)
+		pr_err("%s: switch failed with %d, part %d\n",
+				__func__, ret, part);
+
+	return ret;
+}
+/*
+ * @part: GPP partition part number
+ * @addr: GPP write group
+ */
+int mmc_wp_status(struct mmc_card *card, unsigned int part,
+		unsigned int addr, u8 *wp_status)
+{
+	struct mmc_command cmd = {0};
+	struct mmc_data data = {0};
+	struct mmc_request mrq = {0};
+	struct scatterlist sg;
+	u32 status = 0;
+	int err = 0;
+	u8 *rbuf = NULL;
+
+	if (!card)
+		return -ENODEV;
+
+	if (!card->ext_csd.gpp_sz[part - EXT_CSD_PART_CONFIG_ACC_GP0]) {
+		pr_err("%s: doesn't have GPP%d\n", __func__,
+				part - 3);
+		return -ENODEV;
+	}
+
+	rbuf = kzalloc(8, GFP_KERNEL);
+	if (rbuf == NULL) {
+		pr_err("%s: no memory\n", __func__);
+		return -ENOMEM;
+	}
+
+	cmd.opcode = MMC_SEND_WRITE_PROT_TYPE;
+	cmd.arg = addr * card->ext_csd.wpg_sz;
+	cmd.flags = MMC_RSP_SPI_R1 | MMC_RSP_R1 | MMC_CMD_ADTC;
+
+	data.sg = &sg;
+	data.sg_len = 1;
+	data.blksz = 8;
+	data.blocks = 1;
+	data.flags = MMC_DATA_READ;
+	sg_init_one(data.sg, rbuf, 8);
+	mrq.data = &data;
+	mrq.cmd = &cmd;
+
+	mmc_claim_host(card->host);
+
+	mmc_set_data_timeout(&data, card);
+
+	err = mmc_switch_part(card, part);
+	if (err) {
+		mmc_release_host(card->host);
+		dev_err(mmc_dev(card->host), "%s: swith error %d\n",
+						__func__, err);
+		goto out;
+	}
+
+	mmc_wait_for_req(card->host, &mrq);
+	if (cmd.error) {
+		dev_err(mmc_dev(card->host), "%s: cmd error %d\n",
+						__func__, cmd.error);
+	}
+	if (data.error) {
+		dev_err(mmc_dev(card->host), "%s: data error %d\n",
+						__func__, data.error);
+	}
+
+	/* Must check status to be sure of no errors */
+	do {
+		err = mmc_send_status(card, &status);
+		if (err) {
+			pr_err("%s: get card status err %d, status 0x%x\n",
+					__func__, err, status);
+			goto out;
+		}
+		if (card->host->caps & MMC_CAP_WAIT_WHILE_BUSY)
+			break;
+		if (mmc_host_is_spi(card->host))
+			break;
+	} while (R1_CURRENT_STATE(status) == R1_STATE_PRG);
+
+	if (mmc_host_is_spi(card->host)) {
+		if (status & R1_SPI_ILLEGAL_COMMAND) {
+			pr_err("%s: error card status 0x%x\n",
+					__func__, status);
+			goto out;
+		}
+	} else {
+		if (status & 0xFDFFA000)
+			pr_warn("%s: unexpected status %#x after switch",
+					__func__, status);
+		if (status & R1_SWITCH_ERROR) {
+			pr_err("%s: card switch error, status 0x%x\n",
+					__func__, status);
+		}
+		if (status & R1_OUT_OF_RANGE) {
+			pr_err("%s: addr out of range, status 0x%x\n",
+					__func__, status);
+			goto out;
+		}
+	}
+
+	mmc_switch_part(card, EXT_CSD_PART_CONFIG_ACC_USER);
+
+	mmc_release_host(card->host);
+
+	sg_copy_from_buffer(data.sg, 1, rbuf, 8);
+
+	/*
+	 * the first write protect group type is in the last two
+	 * bits in the last byte read from the device.
+	 */
+	*wp_status = rbuf[7] & 0x3;
+
+	kfree(rbuf);
+
+	return 0;
+out:
+	kfree(rbuf);
+
+	return -EPERM;
+}
+EXPORT_SYMBOL_GPL(mmc_wp_status);
+
+/**
+ *	mmc_switch_bits - modify EXT_CSD register
+ *	@card: the MMC card associated with the data transfer
+ *	@set: cmd set values
+ *	@index: EXT_CSD register index
+ *	@value: value to program into EXT_CSD register
+ *	@timeout_ms: timeout (ms) for operation performed by register write,
+ *                   timeout of zero implies maximum possible timeout
+ *	@check_busy: Set the 'R1B' flag or not. Some operations, such as
+ *                   Sanitize, may need long time to finish. And some
+ *                   host controller, such as the SDHCI host controller,
+ *                   only allows limited max timeout value. So, introduce
+ *                   this to skip the busy check for those operations.
+ *	@set: true when want to set value; false when want to clear value
+ *
+ *	Modifies the EXT_CSD register for selected card.
+ */
+static int mmc_switch_bits(struct mmc_card *card, u8 cmdset, u8 index, u8 value,
+	       unsigned int timeout_ms, int check_busy, bool set)
+{
+	int err;
+	struct mmc_command cmd = {0};
+	u32 status;
+	u8 access = set ? MMC_SWITCH_MODE_SET_BITS :
+		MMC_SWITCH_MODE_CLEAR_BITS;
+
+	BUG_ON(!card);
+	BUG_ON(!card->host);
+
+	cmd.opcode = MMC_SWITCH;
+	cmd.arg = (access << 24) |
+		  (index << 16) |
+		  (value << 8) |
+		  cmdset;
+	if (check_busy)
+		cmd.flags = MMC_RSP_SPI_R1B | MMC_RSP_R1B | MMC_CMD_AC;
+	else
+		cmd.flags = MMC_RSP_SPI_R1 | MMC_RSP_R1 | MMC_CMD_AC;
+
+	cmd.cmd_timeout_ms = timeout_ms;
+
+	err = mmc_wait_for_cmd(card->host, &cmd, MMC_CMD_RETRIES);
+	if (err)
+		return err;
+
+	/* Must check status to be sure of no errors */
+	do {
+		err = mmc_send_status(card, &status);
+		if (err)
+			return err;
+		if (card->host->caps & MMC_CAP_WAIT_WHILE_BUSY)
+			break;
+		if (mmc_host_is_spi(card->host))
+			break;
+	} while (R1_CURRENT_STATE(status) == R1_STATE_PRG);
+
+	if (mmc_host_is_spi(card->host)) {
+		if (status & R1_SPI_ILLEGAL_COMMAND)
+			return -EBADMSG;
+	} else {
+		if (status & 0xFDFFA000)
+			pr_warn("%s: unexpected status %#x\n",
+					mmc_hostname(card->host), status);
+		if (status & R1_SWITCH_ERROR)
+			return -EBADMSG;
+	}
+
+	return 0;
+}
+/*
+ * This needs to be called with host claimed
+ * @part: GPP partition part ID, should be 1/2/3/4.
+ * @addr: GPP write group unit
+ */
+int mmc_set_user_wp(struct mmc_card *card, unsigned int part,
+		unsigned int wpg)
+{
+	struct mmc_command cmd = {0};
+	int err = 0;
+	u32 status = 0;
+
+	if (!card)
+		return -ENODEV;
+
+	mmc_claim_host(card->host);
+
+	/*
+	 * enable WP to partitions
+	 * set bit2 of ext_csd[171], permanent write protect
+	 */
+	err = mmc_switch_bits(card, EXT_CSD_CMD_SET_NORMAL, EXT_CSD_USER_WP,
+			EXT_CSD_PERMANENT_WP, card->ext_csd.generic_cmd6_time,
+			true, true);
+	if (err) {
+		pr_err("%s: enable permanent write protect err %d!\n",
+				__func__, err);
+		mmc_release_host(card->host);
+		return err;
+	}
+
+	err = mmc_switch_part(card, part);
+	if (err)
+		goto switchback;
+
+	cmd.opcode = MMC_SET_WRITE_PROT;
+	cmd.arg = wpg * card->ext_csd.wpg_sz;
+	cmd.flags = MMC_RSP_SPI_R1B | MMC_RSP_R1B | MMC_CMD_AC;
+	err = mmc_wait_for_cmd(card->host, &cmd, MMC_CMD_RETRIES);
+	if (err) {
+		pr_err("%s: failed to set addr 0x%x write protected, err %d\n",
+				__func__, cmd.arg, err);
+		goto out;
+	}
+
+	/* Must check status to be sure of no errors */
+	do {
+		err = mmc_send_status(card, &status);
+		if (err) {
+			pr_err("%s: card status get err %d, status 0x%x\n",
+					__func__, err, status);
+			goto out;
+		}
+		if (card->host->caps & MMC_CAP_WAIT_WHILE_BUSY)
+			break;
+		if (mmc_host_is_spi(card->host))
+			break;
+	} while (R1_CURRENT_STATE(status) == R1_STATE_PRG);
+
+	if (mmc_host_is_spi(card->host)) {
+		if (status & R1_SPI_ILLEGAL_COMMAND) {
+			pr_err("%s: error card status 0x%x\n",
+					__func__, status);
+			err = -EILSEQ;
+			goto out;
+		}
+	} else {
+		if (status & 0xFDFFA000)
+			pr_warn("%s: unexpected status %#x after switch",
+					__func__, status);
+		if (status & R1_SWITCH_ERROR) {
+			pr_err("%s: card switch error, status 0x%x\n",
+					__func__, status);
+			err = -EIO;
+			goto out;
+		}
+		if (status & R1_OUT_OF_RANGE) {
+			pr_err("%s: addr out of range, status 0x%x\n",
+					__func__, status);
+			err = -EINVAL;
+		}
+	}
+
+out:
+	err = mmc_switch_part(card, EXT_CSD_PART_CONFIG_ACC_USER);
+	if (err) {
+		pr_warn("%s: switch to USER partition failed!\n", __func__);
+		WARN_ON(err);
+	}
+
+switchback:
+	/*
+	 * clear bit2 of ext_csd[171], permanent write protect
+	 */
+	err = mmc_switch_bits(card, EXT_CSD_CMD_SET_NORMAL, EXT_CSD_USER_WP,
+			EXT_CSD_PERMANENT_WP, card->ext_csd.generic_cmd6_time,
+			true, false);
+	if (err) {
+		pr_err("%s: clear write protect err %d!\n",
+				__func__, err);
+	}
+
+	mmc_release_host(card->host);
+
+	return err;
+}
+EXPORT_SYMBOL_GPL(mmc_set_user_wp);

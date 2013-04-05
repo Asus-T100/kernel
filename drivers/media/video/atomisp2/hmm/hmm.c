@@ -57,7 +57,7 @@ int hmm_init(void)
 {
 	int ret;
 
-	if (IS_MRFLD)
+	if (IS_ISP2400)
 		ret = hmm_bo_device_init(&bo_device, &sh_mmu_mrfld,
 					 ISP_VM_START, ISP_VM_SIZE);
 	else

@@ -22,7 +22,13 @@
 #ifndef _PSB_CMDBUF_H_
 #define _PSB_CMDBUF_H_
 
+#ifdef CONFIG_DRM_VXD_BYT
+#include "vxd_drv.h"
+#include "vxd_drm.h"
+#else
 #include "psb_drv.h"
+#endif
+
 #include "ttm/ttm_execbuf_util.h"
 
 #ifdef MERRIFIELD
@@ -252,6 +258,7 @@ struct psb_video_ctx {
 
 	uint32_t status;
 	uint32_t codec;
+	uint32_t frame_count;
 	/* Firmware data section offset and size */
 	uint32_t mtx_debug_val;
 	uint32_t mtx_bank_size;

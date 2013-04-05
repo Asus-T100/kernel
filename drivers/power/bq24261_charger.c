@@ -96,9 +96,9 @@
 #define BQ24261_ICHRG_1600mA		(0x01 << 7)
 
 #define BQ24261_ITERM_MASK		(0x03)
-#define BQ24261_ITERM_50mA		(0x01 << 1)
-#define BQ24261_ITERM_100mA		(0x01 << 2)
-#define BQ24261_ITERM_200mA		(0x01 << 3)
+#define BQ24261_ITERM_50mA		(0x01 << 0)
+#define BQ24261_ITERM_100mA		(0x01 << 1)
+#define BQ24261_ITERM_200mA		(0x01 << 2)
 
 #define BQ24261_VBREG_MASK		(0x3F << 2)
 
@@ -175,21 +175,21 @@ u16 bq24261_inlmt[][2] = {
 };
 
 u16 bq24261_iterm[][2] = {
-	{50, 0x00}
+	{0, 0x00}
 	,
-	{100, BQ24261_ITERM_50mA}
+	{50, BQ24261_ITERM_50mA}
 	,
-	{150, BQ24261_ITERM_100mA}
+	{100, BQ24261_ITERM_100mA}
 	,
-	{200, BQ24261_ITERM_100mA | BQ24261_ITERM_50mA}
+	{150, BQ24261_ITERM_100mA | BQ24261_ITERM_50mA}
 	,
-	{250, BQ24261_ITERM_200mA}
+	{200, BQ24261_ITERM_200mA}
 	,
-	{300, BQ24261_ITERM_200mA | BQ24261_ITERM_50mA}
+	{250, BQ24261_ITERM_200mA | BQ24261_ITERM_50mA}
 	,
-	{350, BQ24261_ITERM_200mA | BQ24261_ITERM_100mA}
+	{300, BQ24261_ITERM_200mA | BQ24261_ITERM_100mA}
 	,
-	{400, BQ24261_ITERM_200mA | BQ24261_ITERM_100mA | BQ24261_ITERM_50mA}
+	{350, BQ24261_ITERM_200mA | BQ24261_ITERM_100mA | BQ24261_ITERM_50mA}
 	,
 };
 
@@ -241,7 +241,9 @@ static enum power_supply_property bq24261_usb_props[] = {
 	POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT,
 	POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT_MAX,
 	POWER_SUPPLY_PROP_MODEL_NAME,
-	POWER_SUPPLY_PROP_MANUFACTURER
+	POWER_SUPPLY_PROP_MANUFACTURER,
+	POWER_SUPPLY_PROP_MAX_TEMP,
+	POWER_SUPPLY_PROP_MIN_TEMP,
 };
 
 enum bq24261_chrgr_stat {
@@ -285,6 +287,8 @@ struct bq24261_charger {
 	int iterm;
 	int cable_type;
 	int cntl_state;
+	int max_temp;
+	int min_temp;
 	enum bq24261_chrgr_stat chrgr_stat;
 	bool is_charging_enabled;
 	bool is_charger_enabled;
@@ -314,6 +318,7 @@ struct i2c_client *bq24261_client;
 static inline int get_battery_voltage(int *volt);
 static inline int get_battery_current(int *cur);
 static int bq24261_handle_irq(struct bq24261_charger *chip, u8 stat_reg);
+static inline int bq24261_set_iterm(struct bq24261_charger *chip, int iterm);
 
 enum power_supply_type get_power_supply_type(
 		enum power_supply_charger_cable_type cable)
@@ -589,6 +594,7 @@ static inline int bq24261_enable_charging(
 	if (ret || !val)
 		return ret;
 
+	bq24261_set_iterm(chip, chip->iterm);
 	return bq24261_tmr_ntc_init(chip);
 }
 
@@ -738,7 +744,7 @@ static inline int bq24261_enable_boost_mode(
 					    BQ24261_STAT_CTRL0_ADDR,
 					    BQ24261_BOOST_MASK,
 					    BQ24261_ENABLE_BOOST);
-		if (unlikely(!ret))
+		if (unlikely(ret))
 			return ret;
 
 		ret = bq24261_tmr_ntc_init(chip);
@@ -929,6 +935,12 @@ static int bq24261_usb_set_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT:
 		chip->cntl_state = val->intval;
 		break;
+	case POWER_SUPPLY_PROP_MAX_TEMP:
+		chip->max_temp = val->intval;
+		break;
+	case POWER_SUPPLY_PROP_MIN_TEMP:
+		chip->min_temp = val->intval;
+		break;
 	default:
 		ret = -ENODATA;
 	}
@@ -1001,6 +1013,12 @@ static int bq24261_usb_get_property(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_MANUFACTURER:
 		val->strval = chip->manufacturer;
+		break;
+	case POWER_SUPPLY_PROP_MAX_TEMP:
+		val->intval = chip->max_temp;
+		break;
+	case POWER_SUPPLY_PROP_MIN_TEMP:
+		val->intval = chip->min_temp;
 		break;
 	default:
 		mutex_unlock(&chip->lock);
@@ -1545,7 +1563,6 @@ static int bq24261_probe(struct i2c_client *client,
 	bq24261_client = client;
 	power_supply_changed(&chip->psy_usb);
 	bq24261_debugfs_init();
-	chip->is_hw_chrg_term = true;
 
 	return 0;
 }

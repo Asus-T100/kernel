@@ -53,10 +53,12 @@ static int scu_ipc_raw_command(void *tx_buf)
 
 	tx_msg = (struct tx_ipc_msg *)tx_buf;
 
+	intel_scu_ipc_lock();
 	ret = intel_scu_ipc_raw_cmd(tx_msg->cmd, tx_msg->sub,
 				tx_msg->in, tx_msg->inlen,
 				tx_msg->out, tx_msg->outlen,
 				tx_msg->dptr, tx_msg->sptr);
+	intel_scu_ipc_unlock();
 
 	return ret;
 }
@@ -203,10 +205,15 @@ int scu_ipc_rpmsg_handle(void *rx_buf, void *tx_buf, u32 *r_len, u32 *s_len)
 	case RP_PMIC_ACCESS:
 	case RP_SET_WATCHDOG:
 	case RP_FLIS_ACCESS:
+	case RP_IPC_COMMAND:
 		tmp_msg->status = scu_ipc_command(tx_msg);
 		break;
 	case RP_MIP_ACCESS:
+	case RP_IPC_RAW_COMMAND:
 		tmp_msg->status = scu_ipc_raw_command(tx_msg);
+		break;
+	case RP_IPC_SIMPLE_COMMAND:
+		tmp_msg->status = scu_ipc_simple_command(tx_msg);
 		break;
 	case RP_IPC_UTIL:
 		tmp_msg->status = scu_ipc_util_command(tx_msg);
@@ -285,8 +292,11 @@ static void intel_rproc_scu_kick(struct rproc *rproc, int vqid)
 		 * operation.
 		 */
 		rvdev = find_rvdev(rproc, VIRTIO_ID_RPMSG);
-		intel_mid_rproc_vq_interrupt(rproc,
-			rvdev->vring[RX_VRING].notifyid);
+		if (rvdev)
+			intel_mid_rproc_vq_interrupt(rproc,
+				rvdev->vring[RX_VRING].notifyid);
+		else
+			WARN(1, "%s: can't find given rproc state\n", __func__);
 		break;
 
 	default:

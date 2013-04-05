@@ -102,7 +102,7 @@ int drm_psb_disable_vsync = 1;
 int drm_psb_no_fb;
 int drm_psb_force_pipeb;
 int drm_idle_check_interval = 5;
-int drm_msvdx_pmpolicy = PSB_PMPOLICY_NOPM;
+int drm_msvdx_pmpolicy = PSB_PMPOLICY_POWERDOWN;
 int drm_psb_cpurelax;
 int drm_psb_udelaydivider = 1;
 int drm_topaz_pmpolicy = PSB_PMPOLICY_NOPM;
@@ -1226,6 +1226,10 @@ bool mrst_get_vbt_data(struct drm_psb_private *dev_priv)
 	dev_priv->panel_id = TMD_6X10_VID;
 	PanelID = TMD_6X10_VID;
 	printk(KERN_ALERT "%s: TMD_6X10_VID Panel\n", __func__);
+#endif
+#ifdef CONFIG_SUPPORT_JDI_CMD_DISPLAY
+	dev_priv->panel_id = JDI_CMD;
+	PanelID = JDI_CMD;
 #endif
 	return true;
 }
@@ -2974,22 +2978,13 @@ static int psb_vsync_set_ioctl(struct drm_device *dev, void *data,
 			case 2:
 				if (is_panel_vid_or_cmd(dev) ==
 						MDFLD_DSI_ENCODER_DPI) {
-					spin_lock_irqsave(&dev->vbl_lock,
-							irq_flags);
-					if (dev->vblank_enabled[pipe])
-						drm_vblank_put(dev, pipe);
-					spin_unlock_irqrestore(&dev->vbl_lock,
-							irq_flags);
+					drm_vblank_put(dev, pipe);
 				}
 
 				/*mdfld_dsi_dsr_allow(dsi_config);*/
 				break;
 			case 1:
-				spin_lock_irqsave(&dev->vbl_lock, irq_flags);
-				if (dev->vblank_enabled[pipe])
-					drm_vblank_put(dev, pipe);
-				spin_unlock_irqrestore(&dev->vbl_lock,
-						irq_flags);
+				drm_vblank_put(dev, pipe);
 				break;
 			}
 		}
@@ -4182,6 +4177,8 @@ int psb_release(struct inode *inode, struct file *filp)
 	psb_fp = BCVideoGetPriv(file_priv);
 	dev_priv = psb_priv(file_priv->minor->dev);
 	msvdx_priv = (struct msvdx_private *)dev_priv->msvdx_private;
+	struct tng_topaz_private *topaz_priv =
+		(struct tng_topaz_private *)dev_priv->topaz_private;
 
 #if 0
 	/*cleanup for msvdx */
@@ -4193,6 +4190,7 @@ int psb_release(struct inode *inode, struct file *filp)
 		       MAX_DECODE_BUFFERS);
 	}
 #endif
+
 	BCVideoDestroyBuffers(psb_fp->bcd_index);
 
 	ttm_object_file_release(&psb_fp->tfile);

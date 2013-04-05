@@ -105,6 +105,8 @@ struct mmc_ext_csd {
 	unsigned int            feature_support;
 #define MMC_DISCARD_FEATURE	BIT(0)                  /* CMD38 feature */
 	u8			part_set_complete;	/* 155 */
+	unsigned int		gpp_sz[4];
+	unsigned int		wpg_sz;
 };
 
 struct sd_scr {

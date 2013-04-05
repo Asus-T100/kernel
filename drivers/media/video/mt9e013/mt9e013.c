@@ -42,6 +42,7 @@
 #include <media/v4l2-device.h>
 #include <media/v4l2-chip-ident.h>
 #include <asm/intel_scu_ipc.h>
+#include <asm/intel_mid_rpmsg.h>
 
 #if defined(CONFIG_VIDEO_MT9E013_LEXINGTON)
 #include "mt9e013_lexington.h"
@@ -802,7 +803,7 @@ static int __mt9e013_init(struct v4l2_subdev *sd, u32 val)
 	 * to PR3_2_FW instead of PR3_3_FW for testing purposes.
 	 */
 	dev->keeps_focus_pos = false;
-	ret |= intel_scu_ipc_command(IPCMSG_FW_REVISION, 0, NULL, 0,
+	ret |= rpmsg_send_generic_command(IPCMSG_FW_REVISION, 0, NULL, 0,
 				       (u32 *)fw_rev, 4);
 	if (ret == 0) {
 		u16 fw_version = (fw_rev[15] << 8) | fw_rev[14];

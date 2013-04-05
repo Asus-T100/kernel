@@ -80,6 +80,7 @@ enum panel_type {
 	PYR,
 	HDMI,
 	JDI_VID,
+	JDI_CMD,
 	H8C7_VID,
 	GCT_DETECT
 };
@@ -1029,6 +1030,8 @@ struct psb_mmu_driver;
 
 extern int drm_crtc_probe_output_modes(struct drm_device *dev, int, int);
 extern int drm_pick_crtcs(struct drm_device *dev);
+extern int mdfld_intel_crtc_set_gamma(struct drm_device *dev,
+					struct gamma_setting *setting_data);
 
 static inline struct drm_psb_private *psb_priv(struct drm_device *dev)
 {

@@ -163,7 +163,7 @@ typedef struct {
 typedef struct {
 	unsigned char tag;
 	unsigned char map[BLOCK_MAP_SIZE];
-	unsigned char checksum;
+	unsigned short checksum;
 } edid_block_map_t;
 
 /*

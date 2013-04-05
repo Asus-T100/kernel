@@ -47,6 +47,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "sgx_mkif_km.h"
 #include "sgxutils.h"
 #include "pdump_km.h"
+#include <linux/history_record.h>
 
 #if (defined CONFIG_GPU_BURST) || (defined CONFIG_GPU_BURST_MODULE)
 #include <gburst_interface.h>
@@ -386,6 +387,7 @@ PVRSRV_ERROR SGXPrePowerState (IMG_HANDLE				hDevHandle,
 							IMG_FALSE) != PVRSRV_OK)
 		{
 			PVR_DPF((PVR_DBG_ERROR,"SGXPrePowerState: Wait for pending interrupts failed."));
+			interrupt_dump_history();
 			SGXDumpDebugInfo(psDevInfo, IMG_FALSE);
 			PVR_DBG_BREAK;
 		}

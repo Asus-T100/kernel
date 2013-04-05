@@ -462,16 +462,8 @@ intel_mid_dma_desc *midc_first_queued(struct intel_mid_dma_chan *midc)
 {
 	return list_entry(midc->queue.next, struct intel_mid_dma_desc, desc_node);
 }
-/**
- * midc_scan_descriptors -		check the descriptors in channel
- *					mark completed when tx is completete
- * @mid: device
- * @midc: channel to scan
- *
- * Walk the descriptor chain for the device and process any entries
- * that are complete.
- */
-static void midc_scan_descriptors(struct middma_device *mid,
+
+static void midc_collect_descriptors(struct middma_device *mid,
 				struct intel_mid_dma_chan *midc)
 {
 	struct intel_mid_dma_desc *desc = NULL, *_desc = NULL;
@@ -481,6 +473,18 @@ static void midc_scan_descriptors(struct middma_device *mid,
 			midc_descriptor_complete(midc, desc);
 	}
 
+}
+
+/**
+ * midc_start_descriptors -		start the descriptors in queue
+ *
+ * @mid: device
+ * @midc: channel to scan
+ *
+ */
+static void midc_start_descriptors(struct middma_device *mid,
+				struct intel_mid_dma_chan *midc)
+{
 	if (!list_empty(&midc->queue)) {
 		pr_debug("MDMA: submitting txn in queue\n");
 		if (0 == midc_dostart(midc, midc_first_queued(midc)))
@@ -627,7 +631,7 @@ static void intel_mid_dma_issue_pending(struct dma_chan *chan)
 
 	spin_lock_bh(&midc->lock);
 	if (!list_empty(&midc->queue))
-		midc_scan_descriptors(to_middma_device(chan->device), midc);
+		midc_start_descriptors(to_middma_device(chan->device), midc);
 	spin_unlock_bh(&midc->lock);
 }
 
@@ -649,7 +653,7 @@ static enum dma_status intel_mid_dma_tx_status(struct dma_chan *chan,
 	ret = dma_cookie_status(chan, cookie, txstate);
 	if (ret != DMA_SUCCESS) {
 		spin_lock_bh(&midc->lock);
-		midc_scan_descriptors(to_middma_device(chan->device), midc);
+		midc_start_descriptors(to_middma_device(chan->device), midc);
 		spin_unlock_bh(&midc->lock);
 
 		ret = dma_cookie_status(chan, cookie, txstate);
@@ -1318,7 +1322,8 @@ static int intel_mid_dma_alloc_chan_resources(struct dma_chan *chan)
 static void midc_handle_error(struct middma_device *mid,
 		struct intel_mid_dma_chan *midc)
 {
-	midc_scan_descriptors(mid, midc);
+	midc_collect_descriptors(mid, midc);
+	midc_start_descriptors(mid, midc);
 }
 
 /**
@@ -1363,8 +1368,10 @@ static void dma_tasklet(unsigned long data)
 		midc->raw_tfr = raw_tfr;
 		/*clearing this interrupts first*/
 		iowrite32((1 << midc->ch_id), mid->dma_base + CLEAR_TFR);
-		if (likely(midc->in_use))
-			midc_scan_descriptors(mid, midc);
+		if (likely(midc->in_use)) {
+			midc_collect_descriptors(mid, midc);
+			midc_start_descriptors(mid, midc);
+		}
 		pr_debug("MDMA:Scan of desc... complete, unmasking\n");
 		iowrite32(UNMASK_INTR_REG(midc->ch_id),
 					mid->dma_base + MASK_TFR);
@@ -1396,8 +1403,10 @@ static void dma_tasklet(unsigned long data)
 
 		midc->raw_block = raw_block;
 		iowrite32((1 << midc->ch_id), mid->dma_base + CLEAR_BLOCK);
-		if (midc->block_intr_status)
-			midc_scan_descriptors(mid, midc);
+		if (midc->block_intr_status) {
+			midc_collect_descriptors(mid, midc);
+			midc_start_descriptors(mid, midc);
+		}
 
 		iowrite32(UNMASK_INTR_REG(midc->ch_id),
 					mid->dma_base + MASK_BLOCK);

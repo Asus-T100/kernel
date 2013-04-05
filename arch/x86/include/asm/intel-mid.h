@@ -36,7 +36,10 @@
 #define PCI_ROOT_MSGBUS_WRITE		0x11
 #define PCI_ROOT_MSGBUS_DWORD_ENABLE	0xf0
 
+#define SFI_SSN_SIZE	32
+
 extern struct soft_platform_id spid;
+extern char sfi_ssn[SFI_SSN_SIZE + 1];
 extern int intel_mid_pci_init(void);
 extern int get_gpio_by_name(const char *name);
 extern void *get_oem0_table(void);
@@ -56,6 +59,7 @@ extern void register_rpmsg_service(char *name, int id, u32 addr);
 extern int sdhci_pci_request_regulators(void);
 extern u32 intel_mid_soc_stepping(void);
 
+
 /* OEMB table */
 struct sfi_table_oemb {
 	struct sfi_table_header header;
@@ -72,6 +76,7 @@ struct sfi_table_oemb {
 	u8 ifwi_major_version;
 	u8 ifwi_minor_version;
 	struct soft_platform_id spid;
+	u8 ssn[SFI_SSN_SIZE];
 } __packed;
 
 /*

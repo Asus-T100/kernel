@@ -25,8 +25,14 @@
  **************************************************************************/
 
 #include <drm/drmP.h>
+#ifdef CONFIG_DRM_VXD_BYT
+#include "vxd_drv.h"
+#include "vxd_drm.h"
+#else
 #include "psb_drm.h"
 #include "psb_drv.h"
+#include "psb_powermgmt.h"
+#endif
 #include "psb_msvdx.h"
 #include "psb_msvdx_msg.h"
 #include "psb_msvdx_reg.h"
@@ -34,9 +40,9 @@
 #include "psb_msvdx_ec.h"
 #endif
 
-#include "psb_powermgmt.h"
 #include <linux/io.h>
 #include <linux/delay.h>
+#include <linux/history_record.h>
 
 #ifdef CONFIG_MDFD_GL3
 #include "mdfld_gl3.h"
@@ -53,7 +59,7 @@ static void psb_msvdx_set_tile(struct drm_device *dev,
 				unsigned long msvdx_tile);
 static int psb_msvdx_dequeue_send(struct drm_device *dev)
 {
-	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct drm_psb_private *dev_priv = psb_priv(dev);
 	struct psb_msvdx_cmd_queue *msvdx_cmd = NULL;
 	int ret = 0;
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
@@ -73,8 +79,10 @@ static int psb_msvdx_dequeue_send(struct drm_device *dev)
 	spin_unlock_irqrestore(&msvdx_priv->msvdx_lock, irq_flags);
 
 	PSB_DEBUG_GENERAL("MSVDXQUE: Queue has id %08x\n", msvdx_cmd->sequence);
+#ifndef CONFIG_DRM_VXD_BYT
 	if (IS_MSVDX_MEM_TILE(dev) && drm_psb_msvdx_tiling)
 		psb_msvdx_set_tile(dev, msvdx_cmd->msvdx_tile);
+#endif
 
 #ifdef CONFIG_VIDEO_MRFLD_EC
 	/* Seperate update frame and backup cmds because if a batch of cmds
@@ -105,7 +113,7 @@ static int psb_msvdx_dequeue_send(struct drm_device *dev)
 
 void psb_msvdx_flush_cmd_queue(struct drm_device *dev)
 {
-	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct drm_psb_private *dev_priv = psb_priv(dev);
 	struct psb_msvdx_cmd_queue *msvdx_cmd;
 	struct list_head *list, *next;
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
@@ -134,7 +142,7 @@ static int psb_msvdx_map_command(struct drm_device *dev,
 				 unsigned long cmd_offset, unsigned long cmd_size,
 				 void **msvdx_cmd, uint32_t sequence, int copy_cmd)
 {
-	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct drm_psb_private *dev_priv = psb_priv(dev);
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
 	int ret = 0;
 	unsigned long cmd_page_offset = cmd_offset & ~PAGE_MASK;
@@ -322,11 +330,13 @@ static int psb_msvdx_map_command(struct drm_device *dev,
 		*msvdx_cmd = cmd_copy;
 	} else {
 		PSB_DEBUG_GENERAL("MSVDXQUE:did NOT copy command\n");
+#ifndef CONFIG_DRM_VXD_BYT
 		if (IS_MSVDX_MEM_TILE(dev) && drm_psb_msvdx_tiling) {
 			unsigned long msvdx_tile =
 				((msvdx_priv->msvdx_ctx->ctx_type >> 16) & 0xff);
 			psb_msvdx_set_tile(dev, msvdx_tile);
 		}
+#endif
 #ifdef CONFIG_VIDEO_MRFLD_EC
 		if (msvdx_priv->host_be_opp_enabled) {
 			psb_msvdx_update_frame_info(msvdx_priv,
@@ -357,7 +367,7 @@ int psb_submit_video_cmdbuf(struct drm_device *dev,
 			    struct ttm_fence_object *fence,
 			    struct psb_video_ctx *msvdx_ctx)
 {
-	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct drm_psb_private *dev_priv = psb_priv(dev);
 	uint32_t sequence =  (dev_priv->sequence[PSB_ENGINE_DECODE] << 4);
 	unsigned long irq_flags;
 	int ret = 0;
@@ -546,7 +556,7 @@ static int psb_msvdx_send(struct drm_device *dev, void *cmd,
 			  unsigned long cmd_size)
 {
 	int ret = 0;
-	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct drm_psb_private *dev_priv = psb_priv(dev);
 
 	while (cmd_size > 0) {
 		uint32_t cur_cmd_size = MEMIO_READ_FIELD(cmd, MTX_GENMSG_SIZE);
@@ -695,8 +705,7 @@ out:
  */
 static void psb_msvdx_mtx_interrupt(struct drm_device *dev)
 {
-	struct drm_psb_private *dev_priv =
-		(struct drm_psb_private *)dev->dev_private;
+	struct drm_psb_private *dev_priv = psb_priv(dev);
 	static uint32_t buf[128]; /* message buffer */
 	uint32_t ridx, widx, buf_size, buf_offset;
 	uint32_t num, ofs; /* message num and offset */
@@ -1004,30 +1013,37 @@ done:
 	DRM_MEMORYBARRIER();	/* TBD check this... */
 }
 
-
 /*
  * MSVDX interrupt.
  */
-IMG_BOOL psb_msvdx_interrupt(IMG_VOID *pvData)
+int psb_msvdx_interrupt(void *pvData)
 {
 	struct drm_device *dev;
 	struct drm_psb_private *dev_priv;
 	struct msvdx_private *msvdx_priv;
 	uint32_t msvdx_stat;
+	struct saved_history_record *precord = NULL;
 
-	if (pvData == IMG_NULL) {
+	if (pvData == NULL) {
 		DRM_ERROR("ERROR: msvdx %s, Invalid params\n", __func__);
-		return IMG_FALSE;
+		return -EINVAL;
 	}
 
 	dev = (struct drm_device *)pvData;
 
-	dev_priv = (struct drm_psb_private *) dev->dev_private;
+	dev_priv = psb_priv(dev);
+
 	msvdx_priv = dev_priv->msvdx_private;
-
+#ifndef CONFIG_DRM_VXD_BYT
 	msvdx_priv->msvdx_hw_busy = REG_READ(0x20D0) & (0x1 << 9);
-
+#endif
 	msvdx_stat = PSB_RMSVDX32(MSVDX_INTERRUPT_STATUS_OFFSET);
+
+	precord = get_new_history_record();
+	if (precord) {
+		precord->type = 4;
+		precord->record_value.msvdx_stat = msvdx_stat;
+	}
 
 	/* driver only needs to handle mtx irq
 	 * For MMU fault irq, there's always a HW PANIC generated
@@ -1067,7 +1083,7 @@ IMG_BOOL psb_msvdx_interrupt(IMG_VOID *pvData)
 		psb_msvdx_mtx_interrupt(dev);
 	}
 
-	return IMG_TRUE;
+	return 0;
 }
 
 #if 0
@@ -1108,8 +1124,7 @@ void psb_msvdx_lockup(struct drm_psb_private *dev_priv,
 
 int psb_check_msvdx_idle(struct drm_device *dev)
 {
-	struct drm_psb_private *dev_priv =
-		(struct drm_psb_private *)dev->dev_private;
+	struct drm_psb_private *dev_priv = psb_priv(dev);
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
 	uint32_t loop, ret;
 
@@ -1195,8 +1210,7 @@ int psb_check_msvdx_idle(struct drm_device *dev)
 
 int psb_msvdx_save_context(struct drm_device *dev)
 {
-	struct drm_psb_private *dev_priv =
-		(struct drm_psb_private *)dev->dev_private;
+	struct drm_psb_private *dev_priv = psb_priv(dev);
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
 	int offset;
 
@@ -1247,7 +1261,7 @@ int psb_msvdx_restore_context(struct drm_device *dev)
 
 void psb_msvdx_check_reset_fw(struct drm_device *dev)
 {
-	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct drm_psb_private *dev_priv = psb_priv(dev);
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
 	unsigned long irq_flags;
 
@@ -1259,7 +1273,9 @@ void psb_msvdx_check_reset_fw(struct drm_device *dev)
 		msvdx_priv->msvdx_needs_reset &= ~MSVDX_RESET_NEEDS_REUPLOAD_FW;
 		spin_unlock_irqrestore(&msvdx_priv->msvdx_lock, irq_flags);
 		PSB_DEBUG_PM("MSVDX: force to power off msvdx due to decoding error.\n");
+#ifndef CONFIG_DRM_VXD_BYT
 		ospm_apm_power_down_msvdx(dev, 1);
+#endif
 		spin_lock_irqsave(&msvdx_priv->msvdx_lock, irq_flags);
 	}
 	spin_unlock_irqrestore(&msvdx_priv->msvdx_lock, irq_flags);
@@ -1267,7 +1283,7 @@ void psb_msvdx_check_reset_fw(struct drm_device *dev)
 
 static void psb_msvdx_set_tile(struct drm_device *dev, unsigned long msvdx_tile)
 {
-	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct drm_psb_private *dev_priv = psb_priv(dev);
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
 	uint32_t cmd, msvdx_stride;
 	uint32_t start = msvdx_priv->tile_region_start0;
@@ -1304,6 +1320,117 @@ void psb_powerdown_msvdx(struct work_struct *work)
 {
 	struct msvdx_private *msvdx_priv =
 		container_of(work, struct msvdx_private, msvdx_suspend_wq.work);
-
+#ifndef CONFIG_DRM_VXD_BYT
 	ospm_apm_power_down_msvdx(msvdx_priv->dev, 0);
+#endif
+}
+
+void psb_msvdx_mtx_set_clocks(struct drm_device *dev, uint32_t clock_state)
+{
+	struct drm_psb_private *dev_priv = psb_priv(dev);
+	uint32_t old_clock_state = 0;
+	/* PSB_DEBUG_MSVDX("SetClocks to %x.\n", clock_state); */
+	old_clock_state = PSB_RMSVDX32(MSVDX_MAN_CLK_ENABLE_OFFSET);
+	if (old_clock_state == clock_state)
+		return;
+
+	if (clock_state == 0) {
+		/* Turn off clocks procedure */
+		if (old_clock_state) {
+			/* Turn off all the clocks except core */
+			PSB_WMSVDX32(
+				MSVDX_MAN_CLK_ENABLE__CORE_MAN_CLK_ENABLE_MASK,
+				MSVDX_MAN_CLK_ENABLE_OFFSET);
+
+			/* Make sure all the clocks are off except core */
+			psb_wait_for_register(dev_priv,
+				MSVDX_MAN_CLK_ENABLE_OFFSET,
+				MSVDX_MAN_CLK_ENABLE__CORE_MAN_CLK_ENABLE_MASK,
+				0xffffffff, 2000000, 5);
+
+			/* Turn off core clock */
+			PSB_WMSVDX32(0, MSVDX_MAN_CLK_ENABLE_OFFSET);
+		}
+	} else {
+		uint32_t clocks_en = clock_state;
+
+		/*Make sure that core clock is not accidentally turned off */
+		clocks_en |= MSVDX_MAN_CLK_ENABLE__CORE_MAN_CLK_ENABLE_MASK;
+
+		/* If all clocks were disable do the bring up procedure */
+		if (old_clock_state == 0) {
+			/* turn on core clock */
+			PSB_WMSVDX32(
+				MSVDX_MAN_CLK_ENABLE__CORE_MAN_CLK_ENABLE_MASK,
+				MSVDX_MAN_CLK_ENABLE_OFFSET);
+
+			/* Make sure core clock is on */
+			psb_wait_for_register(dev_priv,
+				MSVDX_MAN_CLK_ENABLE_OFFSET,
+				MSVDX_MAN_CLK_ENABLE__CORE_MAN_CLK_ENABLE_MASK,
+				0xffffffff, 2000000, 5);
+
+			/* turn on the other clocks as well */
+			PSB_WMSVDX32(clocks_en, MSVDX_MAN_CLK_ENABLE_OFFSET);
+
+			/* Make sure that all they are on */
+			psb_wait_for_register(dev_priv,
+					MSVDX_MAN_CLK_ENABLE_OFFSET,
+					clocks_en, 0xffffffff, 2000000, 5);
+		} else {
+			PSB_WMSVDX32(clocks_en, MSVDX_MAN_CLK_ENABLE_OFFSET);
+
+			/* Make sure that they are on */
+			psb_wait_for_register(dev_priv,
+					MSVDX_MAN_CLK_ENABLE_OFFSET,
+					clocks_en, 0xffffffff, 2000000, 5);
+		}
+	}
+}
+
+void psb_msvdx_clearirq(struct drm_device *dev)
+{
+	struct drm_psb_private *dev_priv = psb_priv(dev);
+	unsigned long mtx_int = 0;
+
+	PSB_DEBUG_IRQ("MSVDX: clear IRQ\n");
+
+	/* Clear MTX interrupt */
+	REGIO_WRITE_FIELD_LITE(mtx_int, MSVDX_INTERRUPT_STATUS, MTX_IRQ,
+			       1);
+	PSB_WMSVDX32(mtx_int, MSVDX_INTERRUPT_CLEAR_OFFSET);
+}
+
+/* following two functions also works for CLV and MFLD */
+/* PSB_INT_ENABLE_R is set in psb_irq_(un)install_islands */
+void psb_msvdx_disableirq(struct drm_device *dev)
+{
+	struct drm_psb_private *dev_priv = psb_priv(dev);
+	/*uint32_t ier = dev_priv->vdc_irq_mask & (~_PSB_IRQ_MSVDX_FLAG); */
+
+	unsigned long enables = 0;
+
+	PSB_DEBUG_IRQ("MSVDX: enable MSVDX MTX IRQ\n");
+	REGIO_WRITE_FIELD_LITE(enables, MSVDX_INTERRUPT_STATUS, MTX_IRQ,
+			       0);
+	PSB_WMSVDX32(enables, MSVDX_HOST_INTERRUPT_ENABLE_OFFSET);
+
+	/* write in sysirq.c */
+	/* PSB_WVDC32(ier, PSB_INT_ENABLE_R); /\* essential *\/ */
+}
+
+void psb_msvdx_enableirq(struct drm_device *dev)
+{
+	struct drm_psb_private *dev_priv = psb_priv(dev);
+	/* uint32_t ier = dev_priv->vdc_irq_mask | _PSB_IRQ_MSVDX_FLAG; */
+	unsigned long enables = 0;
+
+	PSB_DEBUG_IRQ("MSVDX: enable MSVDX MTX IRQ\n");
+	/* Only enable the master core IRQ*/
+	REGIO_WRITE_FIELD_LITE(enables, MSVDX_INTERRUPT_STATUS, MTX_IRQ,
+			       1);
+	PSB_WMSVDX32(enables, MSVDX_HOST_INTERRUPT_ENABLE_OFFSET);
+
+	/* write in sysirq.c */
+	/* PSB_WVDC32(ier, PSB_INT_ENABLE_R); /\* essential *\/ */
 }

@@ -1,5 +1,5 @@
 /*
- * platform_s3400.h: s3400 platform data header file
+ * platform_r69001.h: r69001 touch platform data header file
  *
  * (C) Copyright 2008 Intel Corporation
  * Author:
@@ -9,8 +9,8 @@
  * as published by the Free Software Foundation; version 2
  * of the License.
  */
-#ifndef _PLATFORM_S3400_H_
-#define _PLATFORM_S3400_H_
+#ifndef _PLATFORM_R69001_H_
+#define _PLATFORM_R69001_H_
 
-extern void *s3400_platform_data(void *info) __attribute__((weak));
+extern void *r69001_platform_data(void *info) __attribute__((weak));
 #endif

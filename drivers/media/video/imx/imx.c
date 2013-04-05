@@ -37,13 +37,15 @@
 #include <linux/types.h>
 #include <media/v4l2-chip-ident.h>
 #include <media/v4l2-device.h>
+#include <asm/intel-mid.h>
 #include "imx.h"
+#include <asm/intel-mid.h>
 
 struct imx_resolution *imx_res;
 static int N_RES;
 
 /* FIXME: workround for MERR Pre-alpha due to ISP performance */
-static int vb = 3142, hb = 4572;
+static int vb = 1616, hb = 6500;
 module_param(vb, int, 0644);
 module_param(hb, int, 0644);
 static int
@@ -420,8 +422,9 @@ static int __imx_init(struct v4l2_subdev *sd, u32 val)
 
 	if (dev->sensor_id == IMX_ID_DEFAULT)
 		return 0;
-	imx_res = imx_sets[dev->sensor_id].res_preview;
-	N_RES = imx_sets[dev->sensor_id].n_res_preview;
+
+	imx_res = imx_sets[dev->sensor_id].res_still;
+	N_RES = imx_sets[dev->sensor_id].n_res_still;
 
 	return imx_write_reg_array(client,
 			imx_sets[dev->sensor_id].init_settings);
@@ -1224,44 +1227,25 @@ static int imx_s_mbus_fmt(struct v4l2_subdev *sd,
 		mutex_unlock(&dev->input_lock);
 		return -EINVAL;
 	}
-	/* FIXME: workround for MERR Pre-alpha due to ISP perf - start */
-	if (imx_res[dev->fmt_idx].height >= 3120) {
-		vb = 3400;
-		hb = 16000;
-	} else if (imx_res[dev->fmt_idx].height >= 1936) {
-		vb = 3400;
-		hb = 15000;
-	} else if (imx_res[dev->fmt_idx].height >= 1320) {
-		vb = 3300;
-		hb = 8000;
-	} else if (imx_res[dev->fmt_idx].height >= 720) {
-		vb = 3300;
-		hb = 6000;
-	} else {
-		vb = 3142;
-		hb = 4572;
+
+	if ((intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2)
+		&& ((imx_res[dev->fmt_idx].width == 1640)
+		|| (imx_res[dev->fmt_idx].width == 2336)
+		|| (imx_res[dev->fmt_idx].height == 1852)
+		|| (imx_res[dev->fmt_idx].width == 2576))) {
+		/* FIXME: workround for VLV2 due to ISP perf - start */
+		ret = imx_write_reg(client, IMX_8BIT, 0x0342, (hb>>8)&0xFF);
+		if (ret) {
+			mutex_unlock(&dev->input_lock);
+			return -EINVAL;
+		}
+		ret = imx_write_reg(client, IMX_8BIT, 0x0343, hb&0xFF);
+		if (ret) {
+			mutex_unlock(&dev->input_lock);
+			return -EINVAL;
+		}
+		/* FIXME: workround for VLV2 due to ISP perf - end */
 	}
-	ret = imx_write_reg(client, IMX_8BIT, 0x0340, (vb>>8)&0xFF);
-	if (ret) {
-		mutex_unlock(&dev->input_lock);
-		return -EINVAL;
-	}
-	ret = imx_write_reg(client, IMX_8BIT, 0x0341, vb&0xFF);
-	if (ret) {
-		mutex_unlock(&dev->input_lock);
-		return -EINVAL;
-	}
-	ret = imx_write_reg(client, IMX_8BIT, 0x0342, (hb>>8)&0xFF);
-	if (ret) {
-		mutex_unlock(&dev->input_lock);
-		return -EINVAL;
-	}
-	ret = imx_write_reg(client, IMX_8BIT, 0x0343, hb&0xFF);
-	if (ret) {
-		mutex_unlock(&dev->input_lock);
-		return -EINVAL;
-	}
-	/* FIXME: workround for MERR Pre-alpha due to ISP perf - end */
 
 	ret = imx_write_reg_array(client, imx_param_update);
 	if (ret) {
@@ -1315,8 +1299,11 @@ static int imx_detect(struct i2c_client *client, u16 *id, u8 *revision)
 		v4l2_err(client, "sensor_id = 0x%x\n", *id);
 		return -ENODEV;
 	}
-	if (*id == IMX175_ID)
+	if (*id == IMX175_ID) {
+		if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2)
+			*id = IMX175_ID0;
 		goto found;
+	}
 
 	/* check sensor chip ID	 */
 	if (imx_read_reg(client, IMX_16BIT, IMX135_CHIP_ID, id)) {

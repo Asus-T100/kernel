@@ -28,6 +28,8 @@
 
 /* CDB42L73 Y1 (6.144 MHz) )oscillator =  MCLK1 */
 #define DEFAULT_MCLK	19200000
+#define SYSCLK_RATE	24576000
+
 #define GPIO_AMP_ON 0x3d
 #define GPIO_AMP_OFF 0x0
 #define GPIOHVCTL 0x70
@@ -46,10 +48,13 @@ struct comms_mc_private {
 /* Headset jack detection gpios func(s) */
 int ctp_soc_jack_gpio_detect(void);
 int ctp_soc_jack_gpio_detect_bp(void);
-extern void *ctp_get_vb_ops(void);
-extern void *ctp_get_rhb_ops(void);
+
+extern struct snd_soc_machine_ops ctp_rhb_cs42l73_ops;
+extern struct snd_soc_machine_ops ctp_vb_cs42l73_ops;
+
 struct snd_soc_machine_ops {
 	int micsdet_debounce;
+	bool jack_support;
 	int (*ctp_init)(struct snd_soc_pcm_runtime *runtime);
 	int (*dai_link) (struct snd_soc_card *card);
 	int (*hp_detection) (struct snd_soc_codec *codec,
@@ -94,12 +99,13 @@ static inline void ctp_config_voicecall_flag(
 	ctx->voice_call_flag = state;
 }
 
-int ctp_dai_link(struct snd_soc_card *card);
-int vb_dai_link(struct snd_soc_card *card);
-int ctp_startup_asp(struct snd_pcm_substream *substream);
-int ctp_startup_bt_xsp(struct snd_pcm_substream *substream);
-int ctp_startup_fm_xsp(struct snd_pcm_substream *substream);
-int ctp_startup_probe(struct snd_pcm_substream *substream);
+struct ctp_clk_fmt {
+	int clk_id;
+	int dir;
+	unsigned int freq;
+	unsigned int fmt;
+};
+
 int snd_ctp_init(struct snd_soc_pcm_runtime *runtime);
 int ctp_init(struct snd_soc_pcm_runtime *runtime);
 int ctp_vb_init(struct snd_soc_pcm_runtime *runtime);
@@ -110,31 +116,8 @@ int ctp_set_bias_level(struct snd_soc_card *card,
 int ctp_set_bias_level_post(struct snd_soc_card *card,
 		struct snd_soc_dapm_context *dapm,
 		enum snd_soc_bias_level level);
-void headset_status_verify(struct work_struct *work);
-int vb_bp_detection(struct snd_soc_codec *codec,
-		struct snd_soc_jack *jack, int plug_status);
-int ctp_hp_detection(struct snd_soc_codec *codec,
-		struct snd_soc_jack *jack, int plug_status);
-int ctp_bp_detection(struct snd_soc_codec *codec,
-		struct snd_soc_jack *jack, int plug_status);
-int vb_hp_detection(struct snd_soc_codec *codec,
-		struct snd_soc_jack *jack, int plug_status);
 
-void ctp_mclk_switch(struct device *dev, bool mode);
-void vb_mclk_switch(struct device *dev, bool mode);
-
-int get_ssp_bt_sco_master_mode(struct snd_kcontrol *kcontrol,
-		struct snd_ctl_elem_value *ucontrol);
-int set_ssp_bt_sco_master_mode(struct snd_kcontrol *kcontrol,
-		struct snd_ctl_elem_value *ucontrol);
-int get_ssp_voip_master_mode(struct snd_kcontrol *kcontrol,
-		struct snd_ctl_elem_value *ucontrol);
-int set_ssp_voip_master_mode(struct snd_kcontrol *kcontrol,
-		struct snd_ctl_elem_value *ucontrol);
-int get_ssp_modem_master_mode(struct snd_kcontrol *kcontrol,
-		struct snd_ctl_elem_value *ucontrol);
-int set_ssp_modem_master_mode(struct snd_kcontrol *kcontrol,
-		struct snd_ctl_elem_value *ucontrol);
+int ctp_set_clk_fmt(struct snd_soc_dai *codec_dai, struct ctp_clk_fmt *clk_fmt);
 
 /* SoC card */
 extern unsigned int rates_8000_16000[];

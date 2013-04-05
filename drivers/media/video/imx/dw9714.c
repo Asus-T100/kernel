@@ -17,6 +17,7 @@
 #include <linux/types.h>
 #include <media/v4l2-chip-ident.h>
 #include <media/v4l2-device.h>
+#include <asm/intel-mid.h>
 
 #include "dw9714.h"
 
@@ -39,7 +40,7 @@ static int dw9714_i2c_write(struct i2c_client *client, u16 data)
 	return ret == num_msg ? 0 : -EIO;
 }
 
-int imx_vcm_power_up(struct v4l2_subdev *sd)
+int dw9714_vcm_power_up(struct v4l2_subdev *sd)
 {
 	int ret;
 
@@ -50,13 +51,13 @@ int imx_vcm_power_up(struct v4l2_subdev *sd)
 	return ret;
 }
 
-int imx_vcm_power_down(struct v4l2_subdev *sd)
+int dw9714_vcm_power_down(struct v4l2_subdev *sd)
 {
 	return dw9714_dev.platform_data->power_ctrl(sd, 0);
 }
 
 
-int imx_t_focus_vcm(struct v4l2_subdev *sd, u16 val)
+int dw9714_t_focus_vcm(struct v4l2_subdev *sd, u16 val)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	int ret = -EINVAL;
@@ -130,12 +131,12 @@ int imx_t_focus_vcm(struct v4l2_subdev *sd, u16 val)
 	return ret;
 }
 
-int imx_t_focus_abs(struct v4l2_subdev *sd, s32 value)
+int dw9714_t_focus_abs(struct v4l2_subdev *sd, s32 value)
 {
 	int ret;
 
 	value = min(value, DW9714_MAX_FOCUS_POS);
-	ret = imx_t_focus_vcm(sd, DW9714_MAX_FOCUS_POS - value);
+	ret = dw9714_t_focus_vcm(sd, DW9714_MAX_FOCUS_POS - value);
 	if (ret == 0) {
 		dw9714_dev.number_of_steps = value - dw9714_dev.focus;
 		dw9714_dev.focus = value;
@@ -145,13 +146,13 @@ int imx_t_focus_abs(struct v4l2_subdev *sd, s32 value)
 	return ret;
 }
 
-int imx_t_focus_rel(struct v4l2_subdev *sd, s32 value)
+int dw9714_t_focus_rel(struct v4l2_subdev *sd, s32 value)
 {
 
-	return imx_t_focus_abs(sd, dw9714_dev.focus + value);
+	return dw9714_t_focus_abs(sd, dw9714_dev.focus + value);
 }
 
-int imx_q_focus_status(struct v4l2_subdev *sd, s32 *value)
+int dw9714_q_focus_status(struct v4l2_subdev *sd, s32 *value)
 {
 	u32 status = 0;
 	struct timespec temptime;
@@ -177,11 +178,11 @@ int imx_q_focus_status(struct v4l2_subdev *sd, s32 *value)
 	return 0;
 }
 
-int imx_q_focus_abs(struct v4l2_subdev *sd, s32 *value)
+int dw9714_q_focus_abs(struct v4l2_subdev *sd, s32 *value)
 {
 	s32 val;
 
-	imx_q_focus_status(sd, &val);
+	dw9714_q_focus_status(sd, &val);
 
 	if (val & ATOMISP_FOCUS_STATUS_MOVING)
 		*value  = dw9714_dev.focus - dw9714_dev.number_of_steps;
@@ -191,7 +192,7 @@ int imx_q_focus_abs(struct v4l2_subdev *sd, s32 *value)
 	return 0;
 }
 
-int imx_t_vcm_slew(struct v4l2_subdev *sd, s32 value)
+int dw9714_t_vcm_slew(struct v4l2_subdev *sd, s32 value)
 {
 	dw9714_dev.vcm_settings.step_setting = value;
 	dw9714_dev.vcm_settings.update = true;
@@ -199,7 +200,7 @@ int imx_t_vcm_slew(struct v4l2_subdev *sd, s32 value)
 	return 0;
 }
 
-int imx_t_vcm_timing(struct v4l2_subdev *sd, s32 value)
+int dw9714_t_vcm_timing(struct v4l2_subdev *sd, s32 value)
 {
 	dw9714_dev.vcm_settings.t_src = value;
 	dw9714_dev.vcm_settings.update = true;
@@ -207,7 +208,7 @@ int imx_t_vcm_timing(struct v4l2_subdev *sd, s32 value)
 	return 0;
 }
 
-int imx_vcm_init(struct v4l2_subdev *sd)
+int dw9714_vcm_init(struct v4l2_subdev *sd)
 {
 
 	/* set VCM to home position and vcm mode to direct*/

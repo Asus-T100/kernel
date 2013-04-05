@@ -566,6 +566,30 @@ static int ulpi_write(struct dwc_otg2 *otg, const u8 reg, const u8 val)
 	return -ETIMEDOUT;
 }
 
+/* As we use SW mode to do charger detection, need to notify HW
+ * the result SW get, charging port or not */
+static int dwc_otg_charger_hwdet(bool enable)
+{
+	struct dwc_otg2 *otg = the_transceiver;
+	int				retval;
+
+	if (enable) {
+		retval = ulpi_write(otg, TUSB1211_POWER_CONTROL_SET,
+				PWCTRL_HWDETECT);
+		if (retval)
+			return retval;
+		otg_dbg(otg, "set HWDETECT\n");
+	} else {
+		retval = ulpi_write(otg, TUSB1211_POWER_CONTROL_CLR,
+				PWCTRL_HWDETECT);
+		if (retval)
+			return retval;
+		otg_dbg(otg, "clear HWDETECT\n");
+	}
+
+	return 0;
+}
+
 static enum power_supply_charger_cable_type aca_check(struct dwc_otg2 *otg)
 {
 	u8 rarbrc;
@@ -988,6 +1012,7 @@ static enum dwc_otg_state do_charger_detection(struct dwc_otg2 *otg)
 	case POWER_SUPPLY_CHARGER_TYPE_USB_DCP:
 	case POWER_SUPPLY_CHARGER_TYPE_USB_CDP:
 	case POWER_SUPPLY_CHARGER_TYPE_SE1:
+		dwc_otg_charger_hwdet(true);
 		mA = 1500;
 		break;
 	case POWER_SUPPLY_CHARGER_TYPE_USB_SDP:
@@ -1068,6 +1093,8 @@ static enum dwc_otg_state do_connector_id_status(struct dwc_otg2 *otg)
 	gctl &= ~GCTL_PRT_CAP_DIR;
 	gctl |= GCTL_PRT_CAP_DIR_DEV << GCTL_PRT_CAP_DIR_SHIFT;
 	otg_write(otg, GCTL, gctl);
+
+	dwc_otg_charger_hwdet(false);
 
 	msleep(60);
 
@@ -1972,6 +1999,14 @@ static int dwc_otg_suspend(struct device *dev)
 
 static int dwc_otg_resume(struct device *dev)
 {
+	struct dwc_otg2 *otg = the_transceiver;
+	unsigned long flags;
+
+	spin_lock_irqsave(&otg->lock, flags);
+	otg->otg_events |= OEVT_B_DEV_SES_VLD_DET_EVNT;
+	wakeup_main_thread(otg);
+	spin_unlock_irqrestore(&otg->lock, flags);
+
 	return 0;
 }
 

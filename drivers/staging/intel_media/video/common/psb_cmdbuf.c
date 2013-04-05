@@ -20,19 +20,26 @@
  **************************************************************************/
 
 #include <drm/drmP.h>
+#ifdef CONFIG_DRM_VXD_BYT
+#include "vxd_drv.h"
+#include "vxd_drm.h"
+#else
 #include "psb_drv.h"
 #include "psb_drm.h"
 #include "psb_reg.h"
-#include "psb_msvdx.h"
-
-#ifdef SUPPORT_MRST
-#include "lnc_topaz.h"
-#endif
-
 #ifdef MERRIFIELD
 #include "tng_topaz.h"
 #else
 #include "pnw_topaz.h"
+#endif
+#include "psb_intel_reg.h"
+#include "psb_powermgmt.h"
+#endif
+
+#include "psb_msvdx.h"
+
+#ifdef SUPPORT_MRST
+#include "lnc_topaz.h"
 #endif
 
 #ifdef SUPPORT_VSP
@@ -44,8 +51,6 @@
 #include "psb_ttm_userobj_api.h"
 #include "ttm/ttm_placement.h"
 #include "psb_video_drv.h"
-#include "psb_intel_reg.h"
-#include "psb_powermgmt.h"
 
 static inline int psb_same_page(unsigned long offset,
 				unsigned long offset2)
@@ -558,8 +563,7 @@ static int psb_fixup_relocs(struct drm_file *file_priv,
 {
 	struct drm_device *dev = file_priv->minor->dev;
 	struct ttm_object_file *tfile = psb_fpriv(file_priv)->tfile;
-	struct drm_psb_private *dev_priv =
-		(struct drm_psb_private *) dev->dev_private;
+	struct drm_psb_private *dev_priv = psb_priv(dev);
 	struct ttm_buffer_object *reloc_buffer = NULL;
 	unsigned int reloc_num_pages;
 	unsigned int reloc_first_page;
@@ -807,8 +811,7 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 	struct ttm_object_file *tfile = psb_fpriv(file_priv)->tfile;
 	struct ttm_buffer_object *cmd_buffer = NULL;
 	struct psb_ttm_fence_rep fence_arg;
-	struct drm_psb_private *dev_priv =
-		(struct drm_psb_private *)file_priv->minor->dev->dev_private;
+	struct drm_psb_private *dev_priv = psb_priv(dev);
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
 #ifdef SUPPORT_VSP
 	struct vsp_private *vsp_priv = dev_priv->vsp_private;
@@ -825,10 +828,12 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 	if (arg->engine == PSB_ENGINE_DECODE) {
 		if (msvdx_priv->fw_loaded_by_punit)
 			psb_msvdx_check_reset_fw(dev);
+#ifndef CONFIG_DRM_VXD_BYT
 		if (!ospm_power_using_video_begin(OSPM_VIDEO_DEC_ISLAND)) {
 			ret = -EBUSY;
 			goto out_err0;
 		}
+#endif
 
 		ret = mutex_lock_interruptible(&msvdx_priv->msvdx_mutex);
 		if (unlikely(ret != 0))
@@ -837,6 +842,8 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 		msvdx_priv->tfile = tfile;
 		context = &dev_priv->decode_context;
 	} else if (arg->engine == LNC_ENGINE_ENCODE) {
+#ifndef CONFIG_DRM_VXD_BYT
+
 		if (dev_priv->topaz_disabled) {
 			ret = -ENODEV;
 			goto out_err0;
@@ -851,6 +858,7 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 		if (unlikely(ret != 0))
 			goto out_err0;
 		context = &dev_priv->encode_context;
+#endif
 	} else if (arg->engine == VSP_ENGINE_VPP) {
 #ifdef SUPPORT_VSP
 		if (!ospm_power_using_video_begin(OSPM_VIDEO_VPP_ISLAND)) {
@@ -945,10 +953,13 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 					(pos->ctx_type >> 8) & 0xff,
 					(pos->ctx_type & 0xff));
 
+#ifndef CONFIG_DRM_VXD_BYT
 			if (entrypoint == VAEntrypointEncSlice ||
 			    entrypoint == VAEntrypointEncPicture)
 				dev_priv->topaz_ctx = pos;
-			else if (entrypoint != VAEntrypointVideoProc ||
+			else
+#endif
+			if (entrypoint != VAEntrypointVideoProc ||
 				arg->engine == PSB_ENGINE_DECODE)
 				msvdx_ctx = pos;
 			found = 1;
@@ -969,7 +980,7 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 		if (unlikely(ret != 0))
 			goto out_err4;
 		break;
-
+#ifndef CONFIG_DRM_VXD_BYT
 	case LNC_ENGINE_ENCODE:
 #ifdef MERRIFIELD
 		if (IS_MRFLD(dev))
@@ -988,6 +999,7 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 		if (unlikely(ret != 0))
 			goto out_err4;
 		break;
+#endif
 	case VSP_ENGINE_VPP:
 #ifdef SUPPORT_VSP
 		ret = vsp_cmdbuf_vpp(file_priv, &context->validate_list,
@@ -1030,7 +1042,7 @@ out_err1:
 #endif
 out_err0:
 	ttm_read_unlock(&dev_priv->ttm_lock);
-
+#ifndef CONFIG_DRM_VXD_BYT
 	if (arg->engine == PSB_ENGINE_DECODE)
 		ospm_power_using_video_end(OSPM_VIDEO_DEC_ISLAND);
 
@@ -1039,6 +1051,7 @@ out_err0:
 #ifdef SUPPORT_VSP
 	if (arg->engine == VSP_ENGINE_VPP)
 		ospm_power_using_video_end(OSPM_VIDEO_VPP_ISLAND);
+#endif
 #endif
 	return ret;
 }

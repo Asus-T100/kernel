@@ -36,6 +36,7 @@
 
 #include <asm/intel_scu_ipc.h>
 #include <asm/intel_scu_pmic.h>
+#include <asm/intel_mid_rpmsg.h>
 
 #define DRIVER_NAME "pmic_battery"
 
@@ -168,7 +169,7 @@ struct battery_property {
  */
 static int pmic_scu_ipc_battery_cc_read(u32 *value)
 {
-	return intel_scu_ipc_command(IPCMSG_BATTERY, IPC_CMD_CC_RD,
+	return rpmsg_send_generic_command(IPCMSG_BATTERY, IPC_CMD_CC_RD,
 					NULL, 0, value, 1);
 }
 
@@ -185,7 +186,7 @@ static int pmic_scu_ipc_battery_property_get(struct battery_property *prop)
 {
 	u32 data[3];
 	u8 *p = (u8 *)&data[1];
-	int err = intel_scu_ipc_command(IPCMSG_BATTERY,
+	int err = rpmsg_send_generic_command(IPCMSG_BATTERY,
 				IPC_CMD_BATTERY_PROPERTY, NULL, 0, data, 3);
 
 	prop->capacity = data[0];
@@ -207,7 +208,7 @@ static int pmic_scu_ipc_battery_property_get(struct battery_property *prop)
 
 static int pmic_scu_ipc_set_charger(int charger)
 {
-	return intel_scu_ipc_simple_command(IPCMSG_BATTERY, charger);
+	return rpmsg_send_generic_simple_command(IPCMSG_BATTERY, charger);
 }
 
 /**

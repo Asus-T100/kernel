@@ -54,6 +54,7 @@ obj-y += psb_bl.o \
 	psb_irq.o \
 	tng_wa.o \
 	jdi_vid.o \
+	jdi_cmd.o \
 	h8c7_vid.o \
 	dc_callbacks.o
 

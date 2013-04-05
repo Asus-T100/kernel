@@ -25,8 +25,12 @@
 #ifndef _PSB_MSVDX_MSG_H_
 #define _PSB_MSVDX_MSG_H_
 
+#ifdef CONFIG_DRM_VXD_BYT
+#include "vxd_drv.h"
+#else
 #include "psb_drv.h"
 #include "img_types.h"
+#endif
 
 /* Start of parser specific Host->MTX messages. */
 #define	FWRK_MSGID_START_PSR_HOSTMTX_MSG	(0x80)

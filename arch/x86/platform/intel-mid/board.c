@@ -46,6 +46,7 @@
 #include "device_libs/platform_mrfl_thermal.h"
 #include "device_libs/platform_mrfl_pmic_i2c.h"
 #include <asm/platform_mrfld_audio.h>
+#include "device_libs/platform_vlv2_plat_clk.h"
 
 /* I2C devices */
 #include "device_libs/platform_apds990x.h"
@@ -75,14 +76,14 @@
 #include "device_libs/platform_ov2722.h"
 #include "device_libs/platform_lm3559.h"
 #include "device_libs/platform_a1026.h"
-#include "device_libs/platform_s3202.h"
-#include "device_libs/platform_s3400.h"
+#include "device_libs/platform_rmi4.h"
 #include "device_libs/platform_bq24192.h"
 #include "device_libs/platform_ov8830.h"
 #include "device_libs/platform_hmc5883.h"
 #include "device_libs/platform_ms5607.h"
 #include "device_libs/platform_lis3dh.h"
 #include "device_libs/platform_bq24261.h"
+#include "device_libs/platform_r69001.h"
 
 /* SPI devices */
 #include "device_libs/platform_max3111.h"
@@ -92,9 +93,6 @@
 #include "device_libs/platform_ffl_modem.h"
 #include "device_libs/platform_edlp_modem.h"
 #include "device_libs/platform_logical_modem.h"
-
-/* HSU devices */
-#include "device_libs/platform_hsu.h"
 
 /* WIFI devices */
 #include "device_libs/platform_wl12xx.h"
@@ -154,7 +152,9 @@ struct devs_id __initconst device_ids[] = {
 						&ipc_device_handler},
 	{"a_gfreq",   SFI_DEV_TYPE_IPC, 0, &no_platform_data,
 						&ipc_device_handler},
-	{"ctp_audio", SFI_DEV_TYPE_IPC, 1, &ctp_audio_platform_data,
+	{"ctp_rhb_cs42l73", SFI_DEV_TYPE_IPC, 1, &ctp_audio_platform_data,
+						&ipc_device_handler},
+	{"ctp_vb_cs42l73", SFI_DEV_TYPE_IPC, 1, &ctp_audio_platform_data,
 						&ipc_device_handler},
 	{"pmic_ccsm", SFI_DEV_TYPE_IPC, 1, &mrfl_pmic_ccsm_platform_data,
 						&ipc_device_handler},
@@ -166,6 +166,8 @@ struct devs_id __initconst device_ids[] = {
 						&ipc_device_handler},
 	{"soc_thrm", SFI_DEV_TYPE_IPC, 1, &no_platform_data,
 					&soc_thrm_device_handler},
+	{"vlv2_plat_clk", SFI_DEV_TYPE_IPC, 1,
+		&vlv2_plat_clk_device_platform_data, &ipc_device_handler},
 
 	/* I2C devices for camera image subsystem */
 	{"lm3554", SFI_DEV_TYPE_I2C, 0, &lm3554_platform_data_func,
@@ -198,12 +200,10 @@ struct devs_id __initconst device_ids[] = {
 						NULL},
 	{"cs42l73", SFI_DEV_TYPE_I2C, 1, &no_platform_data, NULL},
 	{"mxt224", SFI_DEV_TYPE_I2C, 0, &mxt224_platform_data, NULL},
-	{"synaptics_3202", SFI_DEV_TYPE_I2C, 0, &s3202_platform_data},
-	{"syn_3202_ogs", SFI_DEV_TYPE_I2C, 0, &s3202_platform_data},
-	{"syn_3202_gff", SFI_DEV_TYPE_I2C, 0, &s3202_platform_data},
-	{"syn_3400_cgs", SFI_DEV_TYPE_I2C, 0, &s3400_platform_data},
-	{"syn_3400_igzo", SFI_DEV_TYPE_I2C, 0, &s3400_platform_data},
-	{"r69001-ts-i2c", SFI_DEV_TYPE_I2C, 0, &no_platform_data, NULL},
+	{"synaptics_3202", SFI_DEV_TYPE_I2C, 0, &rmi4_platform_data},
+	{"syn_3400_cgs", SFI_DEV_TYPE_I2C, 0, &rmi4_platform_data},
+	{"syn_3400_igzo", SFI_DEV_TYPE_I2C, 0, &rmi4_platform_data},
+	{"r69001-ts-i2c", SFI_DEV_TYPE_I2C, 0, &r69001_platform_data, NULL},
 	{"pn544", SFI_DEV_TYPE_I2C, 0, &pn544_platform_data, NULL},
 	{"bq24192", SFI_DEV_TYPE_I2C, 1, &bq24192_platform_data},
 	{"max17042", SFI_DEV_TYPE_I2C, 1, &max17042_platform_data, NULL},

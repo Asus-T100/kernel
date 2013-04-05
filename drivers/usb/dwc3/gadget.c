@@ -808,7 +808,6 @@ static void dwc3_prepare_trbs(struct dwc3_ep *dep, bool starting)
 {
 	struct dwc3_request	*req, *n;
 	u32			trbs_left;
-	u32			trbs_used;
 	u32			max;
 	unsigned int		last_one = 0;
 
@@ -816,7 +815,6 @@ static void dwc3_prepare_trbs(struct dwc3_ep *dep, bool starting)
 
 	/* the first request must not be queued */
 	trbs_left = (dep->busy_slot - dep->free_slot) & DWC3_TRB_MASK;
-	trbs_used = dep->free_slot - dep->busy_slot;
 
 	/* Can't wrap around on a non-isoc EP since there's no link TRB */
 	if (!usb_endpoint_xfer_isoc(dep->desc)) {
@@ -830,7 +828,7 @@ static void dwc3_prepare_trbs(struct dwc3_ep *dep, bool starting)
 	 * starting to process requests then we are empty. Otherwise we are
 	 * full and don't do anything
 	 */
-	if ((!trbs_left) && (!usb_endpoint_xfer_isoc(dep->desc))) {
+	if (!trbs_left) {
 		if (!starting)
 			return;
 		trbs_left = DWC3_TRB_NUM;
@@ -855,7 +853,8 @@ static void dwc3_prepare_trbs(struct dwc3_ep *dep, bool starting)
 	}
 
 	/* The last TRB is a link TRB, not used for xfer */
-	if ((trbs_used >= 31) && usb_endpoint_xfer_isoc(dep->desc))
+	if ((trbs_left <= 1) && usb_endpoint_xfer_isoc(dep->endpoint.desc) &&
+		(dep->free_slot & DWC3_TRB_MASK) == DWC3_TRB_NUM - 1)
 		return;
 
 	list_for_each_entry_safe(req, n, &dep->request_list, list) {
@@ -1911,6 +1910,7 @@ static int dwc3_cleanup_done_reqs(struct dwc3 *dwc, struct dwc3_ep *dep,
 	struct dwc3_trb		*trb;
 	unsigned int		count;
 	unsigned int		s_pkt = 0;
+	unsigned int		trb_status;
 
 	do {
 		req = next_request(&dep->req_queued);
@@ -1936,9 +1936,35 @@ static int dwc3_cleanup_done_reqs(struct dwc3 *dwc, struct dwc3_ep *dep,
 
 		if (dep->direction) {
 			if (count) {
-				dev_err(dwc->dev, "incomplete IN transfer %s\n",
-						dep->name);
-				status = -ECONNRESET;
+				trb_status = DWC3_TRB_SIZE_TRBSTS(trb->size);
+				if (trb_status == DWC3_TRBSTS_MISSED_ISOC) {
+					dev_dbg(dwc->dev,
+						"Missed ISOC! incomplete IN transfer %s\n",
+							dep->name);
+					/*
+					 * If missed isoc occurred and there is
+					 * no request queued then issue END
+					 * TRANSFER, so that core generates
+					 * next xfernotready and we will issue
+					 * a fresh START TRANSFER.
+					 * If there are still queued request
+					 * then wait, do not issue either END
+					 * or UPDATE TRANSFER, just attach next
+					 * request in request_list during
+					 * giveback.If any future queued request
+					 * is successfully transferred then we
+					 * will issue UPDATE TRANSFER for all
+					 * request in the request_list.
+					 */
+					dep->flags |= DWC3_EP_MISSED_ISOC;
+				} else if (!usb_endpoint_xfer_isoc(
+						dep->endpoint.desc)) {
+					dev_err(dwc->dev, "incomplete IN transfer %s\n",
+							dep->name);
+					status = -ECONNRESET;
+				}
+			} else {
+				dep->flags &= ~DWC3_EP_MISSED_ISOC;
 			}
 		} else {
 			if (count && (event->status & DEPEVT_STATUS_SHORT))
@@ -1963,6 +1989,23 @@ static int dwc3_cleanup_done_reqs(struct dwc3 *dwc, struct dwc3_ep *dep,
 				(trb->ctrl & DWC3_TRB_CTRL_IOC))
 			break;
 	} while (1);
+
+	if (usb_endpoint_xfer_isoc(dep->endpoint.desc) &&
+			list_empty(&dep->req_queued)) {
+		if (list_empty(&dep->request_list)) {
+			/*
+			 * If there is no entry in request list then do
+			 * not issue END TRANSFER now. Just set PENDING
+			 * flag, so that END TRANSFER is issued when an
+			 * entry is added into request list.
+			 */
+			dep->flags = DWC3_EP_PENDING_REQUEST;
+		} else {
+			dwc3_stop_active_transfer(dwc, dep->number, 1);
+			dep->flags = DWC3_EP_ENABLED;
+		}
+		return 1;
+	}
 
 	if ((event->status & DEPEVT_STATUS_IOC) &&
 			(trb->ctrl & DWC3_TRB_CTRL_IOC))
@@ -2025,7 +2068,8 @@ static void dwc3_process_ep_cmd_complete(struct dwc3_ep *dep,
 	 * the end of the list.
 	 */
 	mod_ev.status = DEPEVT_STATUS_LST;
-	dwc3_cleanup_done_reqs(dwc, dep, &mod_ev, -ESHUTDOWN);
+	if (!list_empty(&dep->req_queued))
+		dwc3_cleanup_done_reqs(dwc, dep, &mod_ev, -ESHUTDOWN);
 	dep->flags &= ~DWC3_EP_BUSY;
 	/* pending requests are ignored and are queued on XferNotReady */
 }

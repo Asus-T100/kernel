@@ -31,6 +31,7 @@
 #include "mdfld_dsi_esd.h"
 #include "pwr_mgmt.h"
 #include "mdfld_dsi_dbi_dsr.h"
+#include "mrfld_clock.h"
 
 /**
  * Enter DSR
@@ -119,7 +120,11 @@ void intel_dsi_dbi_update_fb(struct mdfld_dsi_dbi_output *dbi_output)
 	}
 
 	/* check DBI FIFO status */
-	if (!(REG_READ(dpll_reg) & DPLL_VCO_ENABLE) ||
+	if (get_panel_type(dev, pipe) == JDI_CMD) {
+		if (!(REG_READ(dspcntr_reg) & DISPLAY_PLANE_ENABLE) ||
+		   !(REG_READ(pipeconf_reg) & DISPLAY_PLANE_ENABLE))
+			goto update_fb_out0;
+	} else if (!(REG_READ(dpll_reg) & DPLL_VCO_ENABLE) ||
 	   !(REG_READ(dspcntr_reg) & DISPLAY_PLANE_ENABLE) ||
 	   !(REG_READ(pipeconf_reg) & DISPLAY_PLANE_ENABLE))
 		goto update_fb_out0;
@@ -160,7 +165,8 @@ void mdfld_dbi_update_panel(struct drm_device *dev, int pipe)
 	dbi_output = pipe ? dbi_outputs[1] : dbi_outputs[0];
 	dsi_config = pipe ? dev_priv->dsi_configs[1] : dev_priv->dsi_configs[0];
 
-	if (!dbi_output || !dsi_config || (pipe == 1))
+	if (!dbi_output || !dsi_config || (pipe == 1) ||
+		(is_panel_vid_or_cmd(dev) != MDFLD_DSI_ENCODER_DBI))
 		return;
 
 	ctx = &dsi_config->dsi_hw_context;
@@ -279,6 +285,7 @@ int __dbi_power_on(struct mdfld_dsi_config *dsi_config)
 	struct drm_device *dev;
 	int retry;
 	int err = 0;
+	u32 guit_val = 0;
 
 	PSB_DEBUG_ENTRY("\n");
 
@@ -294,41 +301,34 @@ int __dbi_power_on(struct mdfld_dsi_config *dsi_config)
 					OSPM_UHB_FORCE_POWER_ON))
 		return -EAGAIN;
 
-	/*Enable DSI PLL*/
-	if (!(REG_READ(regs->dpll_reg) & BIT31)) {
-		if (ctx->pll_bypass_mode) {
-			uint32_t dpll = 0;
+	/* Disable PLL*/
+	intel_mid_msgbus_write32(CCK_PORT, DSI_PLL_DIV_REG, 0);
+	guit_val = intel_mid_msgbus_read32(CCK_PORT, DSI_PLL_CTRL_REG);
+	intel_mid_msgbus_write32(CCK_PORT, DSI_PLL_CTRL_REG, _DSI_LDO_EN);
 
-			REG_WRITE(regs->dpll_reg, dpll);
-			if (ctx->cck_div)
-				dpll = dpll | BIT11;
-			REG_WRITE(regs->dpll_reg, dpll);
-			udelay(2);
-			dpll = dpll | BIT12;
-			REG_WRITE(regs->dpll_reg, dpll);
-			udelay(2);
-			dpll = dpll | BIT13;
-			REG_WRITE(regs->dpll_reg, dpll);
-			dpll = dpll | BIT31;
-			REG_WRITE(regs->dpll_reg, dpll);
-		} else {
-			REG_WRITE(regs->dpll_reg, 0x0);
-			REG_WRITE(regs->fp_reg, 0x0);
-			REG_WRITE(regs->fp_reg, ctx->fp);
-			REG_WRITE(regs->dpll_reg, ((ctx->dpll) & ~BIT30));
-			udelay(2);
-			val = REG_READ(regs->dpll_reg);
-			REG_WRITE(regs->dpll_reg, (val | BIT31));
+	/* Program PLL */
+	intel_mid_msgbus_write32(CCK_PORT, DSI_PLL_DIV_REG, ctx->fp);
 
-			/*wait for PLL lock on pipe*/
-			retry = 10000;
-			while (--retry && !(REG_READ(PIPEACONF) & BIT29))
-				udelay(3);
-			if (!retry) {
-				DRM_ERROR("PLL failed to lock on pipe\n");
-				err = -EAGAIN;
-				goto power_on_err;
-			}
+	guit_val = intel_mid_msgbus_read32(CCK_PORT, DSI_PLL_CTRL_REG);
+	intel_mid_msgbus_write32(CCK_PORT, DSI_PLL_CTRL_REG,
+			((guit_val & ~_P1_POST_DIV_MASK) |
+			 (ctx->dpll & _P1_POST_DIV_MASK)));
+
+	ctx->dpll |= DPLL_VCO_ENABLE;
+	ctx->dpll &= ~_DSI_LDO_EN;
+
+	intel_mid_msgbus_write32(CCK_PORT, DSI_PLL_CTRL_REG, ctx->dpll);
+
+	/* Wait for DSI PLL lock */
+	retry = 10000;
+	guit_val = intel_mid_msgbus_read32(CCK_PORT, DSI_PLL_CTRL_REG);
+	while (((guit_val & _DSI_PLL_LOCK) != _DSI_PLL_LOCK) && (--retry)) {
+		udelay(3);
+		guit_val = intel_mid_msgbus_read32(CCK_PORT, DSI_PLL_CTRL_REG);
+		if (retry == 0) {
+			DRM_ERROR("DSI PLL fails to lock\n");
+			err = -EAGAIN;
+			goto power_on_err;
 		}
 	}
 
@@ -437,7 +437,6 @@ static int __dbi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 
 	if (!dsi_config)
 		return -EINVAL;
-
 	regs = &dsi_config->regs;
 	ctx = &dsi_config->dsi_hw_context;
 	dev = dsi_config->dev;
@@ -452,8 +451,8 @@ reset_recovery:
 	--reset_count;
 	err = 0;
 	/*after entering dstb mode, need reset*/
-	if (p_funcs && p_funcs->reset)
-		p_funcs->reset(dsi_config);
+	if (p_funcs && p_funcs->exit_deep_standby)
+		p_funcs->exit_deep_standby(dsi_config);
 
 	if (__dbi_power_on(dsi_config)) {
 		DRM_ERROR("Failed to init display controller!\n");
@@ -733,7 +732,6 @@ void mdfld_generic_dsi_dbi_prepare(struct drm_encoder *encoder)
 	dbi_output->mode_flags |= MODE_SETTING_IN_ENCODER;
 	dbi_output->mode_flags &= ~MODE_SETTING_ENCODER_DONE;
 
-	mdfld_generic_dsi_dbi_set_power(encoder, false);
 	gbdispstatus = false;
 }
 
@@ -894,6 +892,9 @@ struct mdfld_dsi_encoder *mdfld_dsi_dbi_init(struct drm_device *dev,
 
 	dsi_config = mdfld_dsi_get_config(dsi_connector);
 	pipe = dsi_connector->pipe;
+
+	if (p_funcs && p_funcs->reset)
+			p_funcs->reset(dsi_config);
 
 	/*detect panel connection stauts*/
 	if (p_funcs->detect) {

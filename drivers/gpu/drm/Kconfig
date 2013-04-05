@@ -155,6 +155,12 @@ config DRM_I915_KMS
 	  the driver to bind to PCI devices, which precludes loading things
 	  like intelfb.
 
+config DRM_VXD_BYT
+	bool "Enable vxd on intel by default"
+	depends on DRM_I915
+	help
+	  Choose this option if you want to enable VXD decoding.
+
 config DRM_MGA
 	tristate "Matrox g200/g400"
 	depends on DRM && PCI

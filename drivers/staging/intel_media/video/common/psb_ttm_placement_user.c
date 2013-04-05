@@ -363,7 +363,6 @@ int ttm_pl_create_ioctl(struct ttm_object_file *tfile,
 	size_t acc_size = ttm_bo_acc_size(bdev, req->size,
 		sizeof(struct ttm_buffer_object));
 #endif
-
 	ret = ttm_mem_global_alloc(mem_glob, acc_size, false, false);
 	if (unlikely(ret != 0))
 		return ret;

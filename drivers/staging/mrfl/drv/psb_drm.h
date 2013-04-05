@@ -820,9 +820,11 @@ typedef enum {
 	CSC,
 	GAMMA_INITIA,
 	GAMMA_SETTING,
+	GAMMA_REG_SETTING,
 	CSC_INITIA,
 	CSC_CHROME_SETTING,
-	CSC_SETTING
+	CSC_SETTING,
+	CSC_REG_SETTING
 } setting_type;
 
 typedef enum {
@@ -838,6 +840,7 @@ typedef enum {
 	GAMMA_10
 } gamma_mode;
 
+#define CSC_REG_COUNT 6
 #define CHROME_COUNT 16
 #define CSC_COUNT    9
 
@@ -847,6 +850,7 @@ struct csc_setting {
 	bool enable_state;
 	uint32_t data_len;
 	union {
+		int csc_reg_data[CSC_REG_COUNT];
 		int chrome_data[CHROME_COUNT];
 		int64_t csc_data[CSC_COUNT];
 	} data;

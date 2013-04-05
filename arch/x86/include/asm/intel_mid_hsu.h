@@ -1,41 +1,56 @@
 #ifndef __INTEL_MID_HSU_H__
 #define __INTEL_MID_HSU_H__
 
+#define hsu_port_func_max 4
+
 enum {
-	HSU_UART,
-	HSU_DMA,
+	hsu_port0,
+	hsu_port1,
+	hsu_port2,
+	hsu_port_share,
+	hsu_port_max,
+	hsu_dma,
 };
 
-struct mfld_hsu_info {
+enum {
+	bt_port,
+	modem_port,
+	gps_port,
+	debug_port,
+};
+
+struct hsu_port_cfg {
+	int type;
+	int index;
 	char *name;
-	int id;
-	int wake_gpio;
-	int rx_gpio;
-	int rx_alt;
-	int tx_gpio;
-	int tx_alt;
-	int cts_gpio;
-	int cts_alt;
-	int rts_gpio;
-	int rts_alt;
+	int idle;
+	int has_alt;
+	int alt;
+	int force_suspend;
+	int preamble;
+	int hw_context_save;
 	struct device *dev;
-	irq_handler_t wake_isr;
+	int (*hw_init)(struct device *dev, int port);
+	void(*hw_set_alt)(int port);
+	void(*hw_set_rts)(int port, int value);
+	void(*hw_suspend)(int port, struct device *dev, irq_handler_t wake_isr);
+	void(*hw_suspend_post)(int port);
+	void(*hw_resume)(int port, struct device *dev);
+	unsigned int (*hw_get_clk)(void);
 	void (*wake_peer)(struct device *tty);
 };
 
-extern struct mfld_hsu_info *platform_hsu_info;
-extern int platform_hsu_num;
-extern unsigned char hsu_dma_enable;
-extern int hsu_rx_wa;
-void intel_mid_hsu_suspend(int port);
-void intel_mid_hsu_set_rts(int port, int set);
-void intel_mid_hsu_resume(int port);
+
+void intel_mid_hsu_suspend(int port, struct device *dev,
+				irq_handler_t wake_isr);
+void intel_mid_hsu_resume(int port, struct device *dev);
+void intel_mid_hsu_rts(int port, int value);
 void intel_mid_hsu_switch(int port);
-int intel_mid_hsu_init(int port, struct device *dev, irq_handler_t wake_isr);
-void intel_mid_hsu_port_map(int *logic_idx, int *share_idx);
-void intel_mid_hsu_wake_peer(int port);
+int intel_mid_hsu_init(struct device *dev, int port);
+int intel_mid_hsu_func_to_port(unsigned int func);
+unsigned int intel_mid_hsu_get_clk(void);
+int hsu_register_board_info(void *inf);
+void intel_mid_hsu_suspend_post(int port);
 struct device *intel_mid_hsu_set_wake_peer(int port,
 	void (*wake_peer)(struct device *));
-
 #endif
-

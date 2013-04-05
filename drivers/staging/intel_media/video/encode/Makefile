@@ -9,6 +9,7 @@ ccflags-y += \
 	-I$(INCDIR)/interface \
 	-I$(INCDIR)/drv \
 	-I$(INCDIR)/../intel_media/video/common \
+	-I$(INCDIR)/../mrfl/drv/ospm \
 	-I$(INCDIR)/../intel_media/video/decode \
 	-I$(INCDIR)/../intel_media/video/encode \
 	-I$(INCDIR)/../../../include/linux \

@@ -451,14 +451,14 @@ struct snd_soc_dai_link mrfld_msic_dailink[] = {
 };
 
 #ifdef CONFIG_PM_SLEEP
-static int snd_mrfld_suspend(struct device *dev)
+static int snd_mrfld_prepare(struct device *dev)
 {
 	pr_debug("In %s device name\n", __func__);
 	snd_soc_suspend(dev);
 	return 0;
 }
 
-static int snd_mrfld_resume(struct device *dev)
+static int snd_mrfld_complete(struct device *dev)
 {
 	pr_debug("In %s\n", __func__);
 	snd_soc_resume(dev);
@@ -472,8 +472,8 @@ static int snd_mrfld_poweroff(struct device *dev)
 	return 0;
 }
 #else
-#define snd_mrfld_suspend NULL
-#define snd_mrfld_resume NULL
+#define snd_mrfld_prepare NULL
+#define snd_mrfld_complete NULL
 #define snd_mrfld_poweroff NULL
 #endif
 
@@ -537,8 +537,8 @@ static int snd_mrfld_mc_remove(struct platform_device *pdev)
 }
 
 const struct dev_pm_ops snd_mrfld_mc_pm_ops = {
-	.suspend = snd_mrfld_suspend,
-	.resume = snd_mrfld_resume,
+	.prepare = snd_mrfld_prepare,
+	.complete = snd_mrfld_complete,
 	.poweroff = snd_mrfld_poweroff,
 };
 

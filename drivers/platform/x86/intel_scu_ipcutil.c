@@ -815,7 +815,7 @@ int intel_scu_ipc_write_osnib(u8 *data, int len, int offset)
 
 	pr_debug("OSHOB base addr value is 0x%8x\n", oshob_info->oshob_base);
 
-	intel_scu_ipc_lock();
+	rpmsg_global_lock();
 
 	oshob_addr = ioremap_nocache(oshob_info->oshob_base,
 				     oshob_info->oshob_size);
@@ -879,7 +879,7 @@ int intel_scu_ipc_write_osnib(u8 *data, int len, int offset)
 unmap_oshob_addr:
 	iounmap(oshob_addr);
 exit:
-	intel_scu_ipc_unlock();
+	rpmsg_global_unlock();
 
 	return ret;
 }
@@ -970,7 +970,7 @@ int intel_scu_ipc_write_osnib_extend(u8 *data, int len, int offset)
 	void __iomem *oshob_addr, *osnibw_addr, *osnibr_addr;
 	u32 sptr_dw_mask;
 
-	intel_scu_ipc_lock();
+	rpmsg_global_lock();
 
 	pr_debug(
 		"ipc_write_osnib_extend: remap OSHOB addr 0x%8x size %d\n",
@@ -1059,7 +1059,7 @@ exit_osnib:
 unmap_oshob_addr:
 	iounmap(oshob_addr);
 exit:
-	intel_scu_ipc_unlock();
+	rpmsg_global_unlock();
 
 	return ret;
 }
@@ -1370,7 +1370,7 @@ int intel_scu_ipc_write_oemnib(u8 *oemnib, int len, int offset)
 		return -EINVAL;
 	}
 
-	intel_scu_ipc_lock();
+	rpmsg_global_lock();
 
 	pr_debug("ipc_write_oemnib: remap OSHOB addr 0x%8x size %d\n",
 		oshob_info->oshob_base, oshob_info->oshob_size);
@@ -1431,7 +1431,7 @@ int intel_scu_ipc_write_oemnib(u8 *oemnib, int len, int offset)
 unmap_oshob_addr:
 	iounmap(oshob_addr);
 exit:
-	intel_scu_ipc_unlock();
+	rpmsg_global_unlock();
 
 	return ret;
 }

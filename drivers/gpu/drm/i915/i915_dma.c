@@ -1455,7 +1455,6 @@ int i915_driver_load(struct drm_device *dev, unsigned long flags)
 	struct intel_device_info *info;
 	int ret = 0, mmio_bar;
 	uint32_t aperture_size;
-
 	info = (struct intel_device_info *) flags;
 
 	/* Refuse to load on gen6+ without kms enabled. */
@@ -1641,6 +1640,10 @@ int i915_driver_load(struct drm_device *dev, unsigned long flags)
 	if (IS_GEN5(dev))
 		intel_gpu_ips_init(dev_priv);
 
+#ifdef CONFIG_DRM_VXD_BYT
+	if (IS_VALLEYVIEW(dev))
+		vxd_driver_load(dev);
+#endif
 	return 0;
 
 out_gem_unload:
@@ -1677,6 +1680,9 @@ int i915_driver_unload(struct drm_device *dev)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	int ret;
 
+#ifdef CONFIG_DRM_VXD_BYT
+	vxd_driver_unload(dev);
+#endif
 	intel_gpu_ips_teardown();
 
 	i915_teardown_sysfs(dev);
@@ -1781,7 +1787,11 @@ int i915_driver_open(struct drm_device *dev, struct drm_file *file)
 
 	idr_init(&file_priv->context_idr);
 
+#ifdef CONFIG_DRM_VXD_BYT
+	return vxd_driver_open(dev, file);
+#else
 	return 0;
+#endif
 }
 
 /**
@@ -1805,6 +1815,10 @@ void i915_driver_lastclose(struct drm_device * dev)
 	 * up anything. */
 	if (!dev_priv)
 		return;
+
+#ifdef CONFIG_DRM_VXD_BYT
+	vxd_lastclose(dev);
+#endif
 
 	if (drm_core_check_feature(dev, DRIVER_MODESET)) {
 		intel_fb_restore_mode(dev);

@@ -471,9 +471,7 @@ void psb_msvdx_backup_cmd(struct msvdx_private *msvdx_priv,
 
 void psb_msvdx_mtx_message_dump(struct drm_device *dev)
 {
-	struct drm_psb_private *dev_priv =
-		(struct drm_psb_private *)dev->dev_private;
-
+	struct drm_psb_private *dev_priv = psb_priv(dev);
 	int i, buf_size, buf_offset;
 	buf_size = PSB_RMSVDX32(MSVDX_COMMS_TO_HOST_BUF_SIZE) & ((1 << 16) - 1);
 	buf_offset =

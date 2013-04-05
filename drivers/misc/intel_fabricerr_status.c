@@ -287,7 +287,6 @@ static char *Audio_FlagStatusHi32_pnw[] = {
 	"",					/* bit 42 */
 	"",					/* bit 43 */
 	"",					/* bit 44 */
-	"",					/* bit 44 */
 	"",					/* bit 45 */
 	"",					/* bit 46 */
 	"",					/* bit 47 */
@@ -322,7 +321,6 @@ static char *Audio_FlagStatusHi32_clv[] = {
 	"",					/* bit 41 */
 	"",					/* bit 42 */
 	"",					/* bit 43 */
-	"",					/* bit 44 */
 	"",					/* bit 44 */
 	"",					/* bit 45 */
 	"",					/* bit 46 */

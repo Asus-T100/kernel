@@ -45,6 +45,7 @@
 #include "psb_drv.h"
 #include "tng_topaz.h"
 #include "psb_powermgmt.h"
+#include "pwr_mgmt.h"
 #include "tng_topaz_hw_reg.h"
 
 /* WARNING: this define is very important */
@@ -621,17 +622,29 @@ void tng_powerdown_topaz(struct work_struct *work)
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *)topaz_priv->dev->dev_private;
 	struct drm_device *dev = (struct drm_device *)topaz_priv->dev;
+	struct ospm_power_island *p_island;
 
 	PSB_DEBUG_GENERAL("TOPAZ: Task start\n");
 
 	tng_topaz_dequeue_send(dev);
 
+	/* Workaround */
+	if (topaz_priv->power_down_by_release) {
+		p_island = get_island_ptr(OSPM_VIDEO_ENC_ISLAND);
+		atomic_dec(&p_island->ref_count);
+		PSB_DEBUG_GENERAL("TOPAZ: decrease ref count to" \
+			" %d for power down by release\n", \
+			atomic_read(&p_island->ref_count));
+	}
+
 	/* If topaz_busy is not 0, then this task should return */
-	if (drm_topaz_pmpolicy != PSB_PMPOLICY_NOPM) {
+	if (topaz_priv->power_down_by_release ||
+	    drm_topaz_pmpolicy != PSB_PMPOLICY_NOPM) {
 		if (topaz_priv->topaz_busy == 0) {
 			PSB_DEBUG_GENERAL("TOPAZ: topaz_busy = 0, " \
 				"try to power down topaz\n");
 			ospm_apm_power_down_topaz(topaz_priv->dev);
+			topaz_priv->power_down_by_release = 0;
 		} else {
 			PSB_DEBUG_GENERAL("TOPAZ: topaz_busy = 1," \
 				 " bypass power down and saving context\n");
@@ -639,8 +652,9 @@ void tng_powerdown_topaz(struct work_struct *work)
 	} else {
 		if (get_ctx_cnt(dev) > 1 &&
 		    topaz_priv->topaz_busy == 0) {
-			PSB_DEBUG_GENERAL("TOPAZ: more than 1 context," \
-			" save current context status\n");
+			PSB_DEBUG_GENERAL("TOPAZ: more than 1(%d) context," \
+			" save current context status\n", \
+			get_ctx_cnt(dev));
 			tng_topaz_save_mtx_state(dev);
 		}
 	}
@@ -694,6 +708,7 @@ int tng_topaz_init(struct drm_device *dev)
 	topaz_priv->topaz_fw_loaded = 0;
 	topaz_priv->cur_codec = 0;
 	topaz_priv->topaz_hw_busy = 1;
+	topaz_priv->power_down_by_release = 0;
 
 	topaz_priv->saved_queue = kzalloc(\
 			sizeof(struct tng_topaz_cmd_queue), \

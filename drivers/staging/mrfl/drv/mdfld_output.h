@@ -92,6 +92,7 @@ struct panel_funcs {
 	void (*dsi_controller_init)(struct mdfld_dsi_config *dsi_config);
 	void (*get_panel_info)(int, struct panel_info *);
 	int (*reset)(struct mdfld_dsi_config *dsi_config);
+	int (*exit_deep_standby)(struct mdfld_dsi_config *dsi_config);
 	int (*detect)(struct mdfld_dsi_config *dsi_config);
 	int (*power_on)(struct mdfld_dsi_config *dsi_config);
 	int (*power_off)(struct mdfld_dsi_config *dsi_config);

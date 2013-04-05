@@ -161,7 +161,7 @@ static int atomisp_save_iunit_reg(struct atomisp_device *isp)
 	pci_read_config_dword(dev, PCI_INTERRUPT_CTRL,
 			      &isp->saved_regs.interrupt_control);
 
-	if (IS_MRFLD) {
+	if (IS_ISP2400) {
 		pci_read_config_dword(dev, MRFLD_PCI_PMCS,
 				      &isp->saved_regs.pmcs);
 		/* Ensure read/write combining is enabled. */
@@ -237,7 +237,7 @@ static int atomisp_restore_iunit_reg(struct atomisp_device *isp)
 	pci_write_config_dword(dev, PCI_I_CONTROL,
 					isp->saved_regs.i_control);
 
-	if (IS_MRFLD) {
+	if (IS_ISP2400) {
 		pci_write_config_dword(dev, MRFLD_PCI_PMCS,
 						isp->saved_regs.pmcs);
 		pci_write_config_dword(dev, MRFLD_PCI_CSI_ACCESS_CTRL_VIOL,
@@ -402,7 +402,7 @@ static int atomisp_runtime_suspend(struct device *dev)
 		dev_get_drvdata(dev);
 	int ret;
 
-	if (IS_MRFLD) {
+	if (IS_ISP2400) {
 		ret = atomisp_mrfld_pre_power_down(isp);
 		if (ret)
 			return ret;
@@ -446,7 +446,7 @@ static int atomisp_runtime_resume(struct device *dev)
 	if (isp->saved_regs.pcicmdsts)
 		atomisp_restore_iunit_reg(isp);
 
-	if (IS_MRFLD)
+	if (IS_ISP2400)
 		atomisp_freq_scaling(isp, ATOMISP_DFS_MODE_LOW);
 
 	return 0;
@@ -476,7 +476,7 @@ static int atomisp_suspend(struct device *dev)
 	spin_unlock_irqrestore(&isp->lock, flags);
 
 	/* Prepare for MRFLD IUNIT power down */
-	if (IS_MRFLD) {
+	if (IS_ISP2400) {
 		ret = atomisp_mrfld_pre_power_down(isp);
 		if (ret)
 			return ret;
@@ -521,7 +521,7 @@ static int atomisp_resume(struct device *dev)
 	if (isp->saved_regs.pcicmdsts)
 		atomisp_restore_iunit_reg(isp);
 
-	if (IS_MRFLD)
+	if (IS_ISP2400)
 		atomisp_freq_scaling(isp, ATOMISP_DFS_MODE_LOW);
 
 	return 0;
@@ -703,7 +703,7 @@ static int atomisp_subdev_probe(struct atomisp_device *isp)
 	if (!isp->inputs[0].camera)
 		dev_warn(isp->dev, "no camera attached or fail to detect\n");
 
-	if (IS_MRFLD)
+	if (IS_ISP2400)
 		return mrfld_csi_lane_config(isp);
 
 	return 0;
@@ -736,7 +736,7 @@ static int atomisp_register_entities(struct atomisp_device *isp)
 
 	strlcpy(isp->media_dev.model, "Intel Atom ISP",
 		sizeof(isp->media_dev.model));
-	if (IS_MRFLD)
+	if (IS_ISP2400)
 		isp->media_dev.hw_revision = ATOMISP_CSS_VERSION_20;
 	else
 		isp->media_dev.hw_revision = ATOMISP_CSS_VERSION_15;
@@ -927,7 +927,7 @@ load_firmware(struct device *dev)
 {
 	const struct firmware *fw;
 	int rc;
-	char *fw_path = IS_MRFLD ? MRFLD_FW_PATH : MFLD_FW_PATH;
+	char *fw_path = IS_ISP2400 ? ISP2400_FW_PATH : MFLD_FW_PATH;
 
 	rc = request_firmware(&fw, fw_path, dev);
 	if (rc) {
@@ -1079,7 +1079,7 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	pm_qos_add_request(&isp->pm_qos, PM_QOS_CPU_DMA_LATENCY,
 			   PM_QOS_DEFAULT_VALUE);
 
-	if (IS_MRFLD) {
+	if (IS_ISP2400) {
 		/*
 		 * for MRFLD, Software/firmware needs to write a 1 to bit 0 of
 		 * the register at CSI_RECEIVER_SELECTION_REG to enable SH CSI
@@ -1162,6 +1162,7 @@ static DEFINE_PCI_DEVICE_TABLE(atomisp_pci_tbl) = {
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x014F)},
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x08D0)},
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x1178)},
+	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x0f38)},
 	{0,}
 };
 

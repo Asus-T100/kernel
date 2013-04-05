@@ -17,6 +17,7 @@
 #include <linux/types.h>
 #include <media/v4l2-chip-ident.h>
 #include <media/v4l2-device.h>
+#include <asm/intel-mid.h>
 
 #include "drv201.h"
 
@@ -154,7 +155,6 @@ int drv201_t_focus_abs(struct v4l2_subdev *sd, s32 value)
 
 int drv201_t_focus_rel(struct v4l2_subdev *sd, s32 value)
 {
-
 	return drv201_t_focus_abs(sd, drv201_dev.focus + value);
 }
 

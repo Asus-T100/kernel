@@ -457,11 +457,14 @@ static int mmc_read_ext_csd(struct mmc_card *card, u8 *ext_csd)
 				ext_csd[EXT_CSD_GP_SIZE_MULT + idx * 3];
 				part_size *= (size_t)(hc_erase_grp_sz *
 					hc_wp_grp_sz);
+				card->ext_csd.gpp_sz[idx] = part_size << 10;
 				mmc_part_add(card, part_size << 19,
 					EXT_CSD_PART_CONFIG_ACC_GP0 + idx,
 					"gp%d", idx, false,
 					MMC_BLK_DATA_AREA_GP);
 			}
+			card->ext_csd.wpg_sz = (size_t)(hc_erase_grp_sz *
+					hc_wp_grp_sz);
 		}
 		card->ext_csd.sec_trim_mult =
 			ext_csd[EXT_CSD_SEC_TRIM_MULT];
@@ -646,6 +649,139 @@ MMC_DEV_ATTR(rpmb_size, "%d\n", card->ext_csd.rpmb_size);
 MMC_DEV_ATTR(rpmb_max_w_blks, "%d\n", card->rpmb_max_w_blks);
 MMC_DEV_ATTR(rpmb_max_r_blks, "%d\n", card->rpmb_max_r_blks);
 
+/* init gpp_wppart as an invalide GPP */
+static unsigned int gpp_wppart = EXT_CSD_PART_CONFIG_ACC_GP0 - 1;
+static ssize_t gpp_wppart_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	/* make GPP number readable */
+	return sprintf(buf, "%d\n", gpp_wppart -
+			EXT_CSD_PART_CONFIG_ACC_GP0 + 1);
+}
+
+static ssize_t gpp_wppart_set(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t n)
+{
+	long part;
+	struct mmc_card *card = mmc_dev_to_card(dev);
+
+	if (card == NULL)
+		return -ENODEV;
+	if (kstrtol(buf, 10, &part) != 0 || part != (u32)part)
+		return -EINVAL;
+	if (part > EXT_CSD_GPP_NUM || part <= 0)
+		return -EINVAL;
+	if (!card->ext_csd.gpp_sz[part - 1])
+		return -EINVAL;
+	device_lock(dev);
+	/* make GPP number recognized by eMMC device */
+	gpp_wppart = part + EXT_CSD_PART_CONFIG_ACC_GP0 - 1;
+	device_unlock(dev);
+	return n;
+}
+static DEVICE_ATTR(gpp_wppart, 0644, gpp_wppart_show, gpp_wppart_set);
+
+static unsigned int gpp_wpgroup;
+static ssize_t gpp_wpgroup_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", gpp_wpgroup);
+}
+
+static ssize_t gpp_wpgroup_set(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t n)
+{
+	long group;
+	struct mmc_card *card = mmc_dev_to_card(dev);
+
+	if (card == NULL)
+		return -ENODEV;
+
+	if (kstrtol(buf, 10, &group) != 0 || group != (u32)group)
+		return -EINVAL;
+
+	if (group < 0 || gpp_wppart < EXT_CSD_PART_CONFIG_ACC_GP0 ||
+		gpp_wppart > EXT_CSD_PART_CONFIG_ACC_GP0 + EXT_CSD_GPP_NUM - 1)
+		return -EINVAL;
+
+	if (group > card->ext_csd.gpp_sz[gpp_wppart -
+			EXT_CSD_PART_CONFIG_ACC_GP0] - 1)
+		return -EINVAL;
+
+	device_lock(dev);
+	gpp_wpgroup = group;
+	device_unlock(dev);
+	return n;
+}
+static DEVICE_ATTR(gpp_wpgroup, 0644, gpp_wpgroup_show, gpp_wpgroup_set);
+
+static ssize_t gpp_wp_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct mmc_card *card = mmc_dev_to_card(dev);
+	int err;
+	u8 wp_status = 0;
+
+	if (card == NULL)
+		return -ENODEV;
+
+	device_lock(dev);
+	if (gpp_wppart < EXT_CSD_PART_CONFIG_ACC_GP0) {
+		device_unlock(dev);
+		return -EINVAL;
+	}
+
+	err = mmc_wp_status(card, gpp_wppart, gpp_wpgroup, &wp_status);
+	if (err) {
+		device_unlock(dev);
+		return err;
+	}
+
+	device_unlock(dev);
+
+	return sprintf(buf, "%d\n", wp_status);
+}
+
+#define PERMANENT_PROTECT	1
+#define GPP_WPG0		0
+/*
+ * protect: 1 means permanent write protect. Right now only allow this
+ * protection method
+ */
+static ssize_t gpp_wp_set(struct device *dev, struct device_attribute *attr,
+			     const char *buf, size_t n)
+{
+	long protect;
+	struct mmc_card *card = mmc_dev_to_card(dev);
+	int err;
+
+	if (card == NULL)
+		return -ENODEV;
+
+	if (kstrtol(buf, 10, &protect) != 0 || protect != (u32)protect)
+		return -EINVAL;
+
+	if (protect != PERMANENT_PROTECT)
+		return -EINVAL;
+
+	device_lock(dev);
+
+	if (gpp_wppart != EXT_CSD_PART_CONFIG_ACC_GP0 ||
+			gpp_wpgroup != GPP_WPG0) {
+		device_unlock(dev);
+		return -EINVAL;
+	}
+
+	err = mmc_set_user_wp(card, gpp_wppart, gpp_wpgroup);
+	if (err) {
+		pr_err("%s: err to set write protect\n", __func__);
+		n = err;
+	}
+	device_unlock(dev);
+	return n;
+}
+static DEVICE_ATTR(gpp_wp, 0644, gpp_wp_show, gpp_wp_set);
+
 static struct attribute *mmc_std_attrs[] = {
 	&dev_attr_cid.attr,
 	&dev_attr_csd.attr,
@@ -669,6 +805,9 @@ static struct attribute *mmc_std_attrs[] = {
 	&dev_attr_rpmb_size.attr,
 	&dev_attr_rpmb_max_w_blks.attr,
 	&dev_attr_rpmb_max_r_blks.attr,
+	&dev_attr_gpp_wppart.attr,
+	&dev_attr_gpp_wpgroup.attr,
+	&dev_attr_gpp_wp.attr,
 	NULL,
 };
 
@@ -1004,19 +1143,14 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 				 EXT_CSD_ERASE_GROUP_DEF, 1,
 				 card->ext_csd.generic_cmd6_time, true);
 
-		if (err && err != -EBADMSG)
+		/*
+		 * GPP partition write protection is set when
+		 * ERASE_GROUP_DEF is 1, if driver failed to set
+		 * this bit to 1, report error
+		 */
+		if (err)
 			goto free_card;
-
-		if (err) {
-			err = 0;
-			/*
-			 * Just disable enhanced area off & sz
-			 * will try to enable ERASE_GROUP_DEF
-			 * during next time reinit
-			 */
-			card->enhanced_area_offset = -EINVAL;
-			card->enhanced_area_size = -EINVAL;
-		} else {
+		else {
 			card->ext_csd.erase_group_def = 1;
 			card->enhanced_area_offset =
 				card->ext_csd.enhanced_area_offset;
@@ -1067,12 +1201,13 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 	/*
 	 * Activate high speed (if supported)
 	 */
-	if (card->ext_csd.hs_max_dtr != 0) {
+	if ((card->ext_csd.hs_max_dtr != 0) &&
+		(host->caps & MMC_CAP_MMC_HIGHSPEED)) {
 		err = 0;
 		if (card->ext_csd.hs_max_dtr > 52000000 &&
 		    host->caps2 & MMC_CAP2_HS200)
 			err = mmc_select_hs200(card);
-		else if	(host->caps & MMC_CAP_MMC_HIGHSPEED)
+		else
 			err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
 					 EXT_CSD_HS_TIMING, 1,
 					 card->ext_csd.generic_cmd6_time, true);

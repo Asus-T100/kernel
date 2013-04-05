@@ -25,11 +25,11 @@
 #include <linux/gpio.h>
 #include <linux/pm_runtime.h>
 #include <linux/mmc/sdhci-pci-data.h>
-#include <linux/syscalls.h>
 
 #include <asm/intel_scu_ipc.h>
 #include <asm/intel_scu_flis.h>
 #include <asm/intel_scu_pmic.h>
+#include <asm/intel_mid_rpmsg.h>
 
 #include "sdhci.h"
 
@@ -274,7 +274,7 @@ static void mfd_emmc_mutex_register(struct sdhci_pci_slot *slot)
 	u32 mutex_var_addr;
 	int err;
 
-	err = intel_scu_ipc_command(IPC_EMMC_MUTEX_CMD, 0,
+	err = rpmsg_send_generic_command(IPC_EMMC_MUTEX_CMD, 0,
 			NULL, 0, &mutex_var_addr, 1);
 	if (err) {
 		dev_err(&slot->chip->pdev->dev, "IPC error: %d\n", err);
@@ -344,6 +344,7 @@ static int mfd_emmc_probe_slot(struct sdhci_pci_slot *slot)
 		break;
 	case PCI_DEVICE_ID_INTEL_BYT_MMC45:
 	case PCI_DEVICE_ID_INTEL_BYT_MMC:
+		sdhci_alloc_panic_host(slot->host);
 		slot->rst_n_gpio = -EINVAL;
 		slot->host->mmc->caps |= MMC_CAP_1_8V_DDR;
 		slot->host->mmc->caps2 |= MMC_CAP2_INIT_CARD_SYNC;
@@ -2015,24 +2016,13 @@ static void __devexit sdhci_pci_shutdown(struct pci_dev *pdev)
 
 	chip = pci_get_drvdata(pdev);
 
-	/* sync data before reboot */
-	sys_sync();
-
 	if (chip) {
 		if (chip->allow_runtime_pm) {
 			pm_runtime_get_sync(&pdev->dev);
 			pm_runtime_disable(&pdev->dev);
 			pm_runtime_put_noidle(&pdev->dev);
 		}
-
-		for (i = 0; i < chip->num_slots; i++)
-			sdhci_pci_remove_slot(chip->slots[i]);
-
-		pci_set_drvdata(pdev, NULL);
-		kfree(chip);
 	}
-
-	pci_disable_device(pdev);
 }
 
 static void __devexit sdhci_pci_remove(struct pci_dev *pdev)

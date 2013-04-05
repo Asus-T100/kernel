@@ -19,6 +19,7 @@
 
 #include "intel_soc_pmu.h"
 #include <linux/proc_fs.h>
+#include <asm/intel_mid_rpmsg.h>
 
 #ifdef CONFIG_DRM_INTEL_MID
 #define GFX_ENABLE
@@ -1879,7 +1880,7 @@ void pmu_power_off(void)
 	else {
 		/* If PM_BUSY bit is not clear issue COLD_OFF */
 		WARN(1, "%s: pmu busy bit not cleared.\n", __func__);
-		intel_scu_ipc_simple_command(IPCMSG_COLD_RESET, 1);
+		rpmsg_send_generic_simple_command(IPCMSG_COLD_RESET, 1);
 	}
 }
 

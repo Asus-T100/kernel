@@ -171,21 +171,25 @@ static int dsi_error_handler(struct mdfld_dsi_pkg_sender *sender)
 			REG_WRITE(intr_stat_reg, mask);
 			break;
 		case BIT18:
-			REG_WRITE(MIPIA_EOT_DISABLE_REG,
-				REG_READ(MIPIA_EOT_DISABLE_REG)|0x30);
-			while ((REG_READ(intr_stat_reg) & BIT18)) {
-				count++;
-				/*
-				* Per silicon feedback, if this bit cannot be
-				* cleared by 3 times, it should be a real
-				* High Contention error.
-				*/
-				if (count == 4) {
-					DRM_INFO("dsi status %s\n",
-						dsi_errors[i]);
-					break;
+			if (get_panel_type(dev, 0) != JDI_CMD) {
+				REG_WRITE(MIPIA_EOT_DISABLE_REG,
+					REG_READ(MIPIA_EOT_DISABLE_REG)|0x30);
+				while ((REG_READ(intr_stat_reg) & BIT18)) {
+					count++;
+					/*
+					* Per silicon feedback,
+					* if this bit cannot be
+					* cleared by 3 times,
+					* it should be a real
+					* High Contention error.
+					*/
+					if (count == 4) {
+						DRM_INFO("dsi status %s\n",
+							dsi_errors[i]);
+						break;
+					}
+					REG_WRITE(intr_stat_reg, mask);
 				}
-				REG_WRITE(intr_stat_reg, mask);
 			}
 			break;
 		case BIT19:
@@ -1289,11 +1293,13 @@ int mdfld_dsi_send_dcs(struct mdfld_dsi_pkg_sender *sender,
 		 * is unnecessary. otherwise, go ahead and kick of a
 		 * write_mem_start.
 		 */
-		if (atomic64_read(&sender->last_screen_update) ==
-			atomic64_read(&sender->te_seq)) {
-			spin_unlock(&sender->lock);
-			DRM_INFO("reject write_mem_start\n");
-			return 0;
+		if (get_panel_type(dev, 0) != JDI_CMD) {
+			if (atomic64_read(&sender->last_screen_update) ==
+				atomic64_read(&sender->te_seq)) {
+				spin_unlock(&sender->lock);
+				DRM_INFO("reject write_mem_start\n");
+				return 0;
+			}
 		}
 
 		/**

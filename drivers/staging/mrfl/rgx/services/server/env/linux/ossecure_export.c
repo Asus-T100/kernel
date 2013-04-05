@@ -99,9 +99,6 @@ PVRSRV_ERROR OSSecureExport(CONNECTION_DATA *psConnection,
 	*/
 	LinuxUnLockMutex(&gPVRSRVLock);
 
-	/* Unlock drm_global_mutex to avoid deadlock in drm_stub_open() */
-	mutex_unlock(&drm_global_mutex);
-
 	/* Open our device (using the file information from our current connection) */
 	secure_file = dentry_open(
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,6,0))
@@ -112,9 +109,6 @@ PVRSRV_ERROR OSSecureExport(CONNECTION_DATA *psConnection,
 #endif
 					  connection_file->f_flags,
 					  current_cred());
-
-	/* Lock drm_global_mutex for drm_ioctl() to unlock */
-	mutex_lock(&drm_global_mutex);
 
 	LinuxLockMutex(&gPVRSRVLock);
 

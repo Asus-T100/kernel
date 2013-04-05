@@ -31,6 +31,7 @@ void *ctp_audio_platform_data(void *info)
 {
 	struct platform_device *pdev;
 	int ret;
+	struct sfi_device_table_entry *pentry = info;
 
 	ctp_audio_pdata.codec_gpio_hsdet = get_gpio_by_name("gpio_plugdet");
 	ctp_audio_pdata.codec_gpio_button = get_gpio_by_name("gpio_codec_int");
@@ -65,7 +66,7 @@ void *ctp_audio_platform_data(void *info)
 		return NULL;
 	}
 
-	pdev = platform_device_alloc("ctp_audio", -1);
+	pdev = platform_device_alloc(pentry->name, -1);
 	if (!pdev) {
 		pr_err("failed to allocate clvcs_audio platform device\n");
 		return NULL;

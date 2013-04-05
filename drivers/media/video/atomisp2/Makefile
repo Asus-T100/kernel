@@ -1,4 +1,4 @@
-ifeq ($(CONFIG_X86_MRFLD), y)
+ifeq ($(CONFIG_ISP2400), y)
 	css_folder = css2400
 	css_platform_folder = hive_isp_css_2400_system
 else
@@ -59,7 +59,7 @@ atomisp-objs += \
 		$(css_folder)/$(css_platform_folder)/host/gp_device.o \
 		$(css_folder)/$(css_platform_folder)/host/input_formatter.o
 
-ifeq ($(CONFIG_X86_MRFLD), y)
+ifeq ($(CONFIG_ISP2400), y)
 atomisp-objs += $(css_folder)/$(css_platform_folder)/host/input_system.o
 endif
 

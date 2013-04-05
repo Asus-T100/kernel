@@ -951,4 +951,5 @@ struct drm_i915_reg_read {
 	__u64 offset;
 	__u64 val; /* Return value */
 };
+
 #endif				/* _I915_DRM_H_ */

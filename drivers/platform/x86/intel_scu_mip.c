@@ -205,9 +205,9 @@ bd_put:
 		if (offset + len > IPC_MIP_MAX_ADDR)
 			return -EINVAL;
 
-		intel_scu_ipc_lock();
+		rpmsg_global_lock();
 		ret = read_mip(data, len, offset, issigned);
-		intel_scu_ipc_unlock();
+		rpmsg_global_unlock();
 
 		return ret;
 	}
@@ -357,7 +357,7 @@ bd_put:
 		if (offset + len > IPC_MIP_MAX_ADDR)
 			return -EINVAL;
 
-		intel_scu_ipc_lock();
+		rpmsg_global_lock();
 
 		offset_align = offset & (~0x3);
 		len_align = (len + (offset - offset_align) + 3) & (~0x3);
@@ -394,7 +394,7 @@ fail:
 		if (buf && len_align != len)
 			kfree(buf);
 
-		intel_scu_ipc_unlock();
+		rpmsg_global_unlock();
 
 		return ret;
 	}

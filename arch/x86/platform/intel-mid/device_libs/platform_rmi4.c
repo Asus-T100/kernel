@@ -1,5 +1,5 @@
 /*
- * platform_s3202.c: s3202 platform data initilization file
+ * platform_rmi4.c: Synaptics rmi4 platform data initilization file
  *
  * (C) Copyright 2008 Intel Corporation
  * Author:
@@ -21,7 +21,7 @@
 #include <linux/synaptics_i2c_rmi4.h>
 #endif
 #include <asm/intel-mid.h>
-#include "platform_s3202.h"
+#include "platform_rmi4.h"
 
 #ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_RMI4_I2C
 static struct rmi_f11_functiondata synaptics_f11_data = {
@@ -61,7 +61,7 @@ static struct rmi_sensordata s3202_sensordata = {
 };
 #endif
 
-void *s3202_platform_data(void *info)
+void *rmi4_platform_data(void *info)
 {
 #ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_RMI4_I2C
 	struct i2c_board_info *i2c_info = info;
@@ -75,30 +75,37 @@ void *s3202_platform_data(void *info)
 	s3202_sensordata.rst_gpio_number  = get_gpio_by_name("ts_rst");
 #else
 	static struct rmi4_touch_calib calib[] = {
-		/* TOUCH_TYPE_S3202_OGS */
+		/* RMI4_S3202_OGS */
 		{
 			.swap_axes = true,
 			.customer_id = 20130123,
 			.fw_name = "s3202_ogs.img",
 			.key_dev_name = "rmi4_key",
 		},
-		/* TOUCH_TYPE_S3202_GFF */
+		/* RMI4_S3202_GFF */
 		{
 			.swap_axes = false,
 			.customer_id = 20130123,
 			.fw_name = "s3202_gff.img",
 			.key_dev_name = "rmi4_key_gff",
 		},
-		/* TOUCH_TYPE_S3408 */
+		/* RMI4_S3400_CGS*/
 		{
-			.swap_axes = false,
-			.customer_id = 0,
-			.fw_name = "s3408.img",
+			.swap_axes = true,
+			.customer_id = 1342177280,
+			.fw_name = "s3400_cgs.img",
+			.key_dev_name = "rmi4_key",
+		},
+		/* RMI4_S3400_IGZO*/
+		{
+			.swap_axes = true,
+			.customer_id = 1342177280,
+			.fw_name = "s3400_igzo.img",
 			.key_dev_name = "rmi4_key",
 		},
 	};
 
-	static struct rmi4_platform_data s3202_platform_data = {
+	static struct rmi4_platform_data pdata = {
 		.irq_type = IRQ_TYPE_EDGE_FALLING | IRQF_ONESHOT,
 		.regulator_en = true,
 		.regulator_name = "vemmc2",
@@ -111,16 +118,15 @@ void *s3202_platform_data(void *info)
 		supplying power to the touch panel. Currently regulator
 		functions are not supported so we don't enable it now
 		(it is turned on by display driver.) */
-		s3202_platform_data.regulator_en = false;
-		s3202_platform_data.regulator_name = "vprog2";
+		pdata.regulator_en = false;
+		pdata.regulator_name = "vprog2";
 		/* on Merrifield based device, FAST-IRQ, not GPIO based,
 		is dedicated for touch interrupt put invalid GPIO number */
-		s3202_platform_data.int_gpio_number = -1;
+		pdata.int_gpio_number = -1;
 	} else
-		s3202_platform_data.int_gpio_number =
-				get_gpio_by_name("ts_int");
+		pdata.int_gpio_number = get_gpio_by_name("ts_int");
 
-	s3202_platform_data.rst_gpio_number = get_gpio_by_name("ts_rst");
+	pdata.rst_gpio_number = get_gpio_by_name("ts_rst");
 #endif
-	return &s3202_platform_data;
+	return &pdata;
 }

@@ -27,7 +27,12 @@
 
 #include <drm/drmP.h>
 #include <drm/drm.h>
+#ifdef CONFIG_DRM_VXD_BYT
+#include "vxd_drv.h"
+#else
 #include "psb_drv.h"
+#endif
+
 #include "psb_msvdx.h"
 #include "psb_msvdx_msg.h"
 #include "psb_msvdx_reg.h"
@@ -286,11 +291,11 @@ static ssize_t psb_msvdx_pmstate_show(struct device *dev,
 
 	dev_priv = drm_dev->dev_private;
 	msvdx_priv = dev_priv->msvdx_private;
-
+#ifndef CONFIG_DRM_VXD_BYT
 	ret = snprintf(buf, 64, "MSVDX Power state 0x%s, gating count 0x%08x\n",
 		       ospm_power_is_hw_on(OSPM_VIDEO_DEC_ISLAND)
 				? "ON" : "OFF", msvdx_priv->pm_gating_count);
-
+#endif
 	return ret;
 }
 
@@ -298,7 +303,6 @@ static DEVICE_ATTR(msvdx_pmstate, 0444, psb_msvdx_pmstate_show, NULL);
 
 static int32_t msvdx_alloc_ccb_for_rendec(struct drm_device *dev)
 {
-	struct drm_psb_private *dev_priv = NULL;
 	struct msvdx_private *msvdx_priv = NULL;
 	int32_t ret = 0;
 
@@ -307,7 +311,7 @@ static int32_t msvdx_alloc_ccb_for_rendec(struct drm_device *dev)
 	if (dev == NULL)
 		return 1;
 
-	dev_priv = dev->dev_private;
+	struct drm_psb_private *dev_priv = psb_priv(dev);
 	if (dev_priv == NULL)
 		return 1;
 
@@ -353,7 +357,7 @@ err_exit:
 
 static void msvdx_rendec_init_by_reg(struct drm_device *dev)
 {
-	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct drm_psb_private *dev_priv = psb_priv(dev);
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
 	uint32_t cmd;
 
@@ -394,7 +398,7 @@ static void msvdx_rendec_init_by_reg(struct drm_device *dev)
 
 static int32_t msvdx_rendec_init_by_msg(struct drm_device *dev)
 {
-	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct drm_psb_private *dev_priv = psb_priv(dev);
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
 
 	/* at this stage, FW is uplaoded successfully,
@@ -546,7 +550,7 @@ void msvdx_init_test(struct drm_device *dev)
 
 static int msvdx_startup_init(struct drm_device *dev)
 {
-	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct drm_psb_private *dev_priv = psb_priv(dev);
 	int ret;
 	struct msvdx_private *msvdx_priv;
 
@@ -565,6 +569,9 @@ static int msvdx_startup_init(struct drm_device *dev)
 	memset(msvdx_priv, 0, sizeof(struct msvdx_private));
 	msvdx_priv->dev_priv = dev_priv;
 	msvdx_priv->dev = dev;
+#ifdef CONFIG_DRM_VXD_BYT
+	msvdx_priv->fw_loaded_by_punit = 0;
+#else
 #ifdef MERRIFIELD
 	msvdx_priv->msvdx_needs_reset = 1;
 
@@ -576,6 +583,7 @@ static int msvdx_startup_init(struct drm_device *dev)
 			((dev)->pdev->revision >= 0xc) || \
 			(((dev)->pci_device & 0xffff) == 0x08c7) || \
 			(((dev)->pci_device & 0xffff) == 0x08c8);
+#endif
 	msvdx_tile_setup(dev_priv);
 	msvdx_priv->pm_gating_count = 0;
 
@@ -602,9 +610,10 @@ static int msvdx_startup_init(struct drm_device *dev)
 	INIT_LIST_HEAD(&msvdx_priv->msvdx_queue);
 	mutex_init(&msvdx_priv->msvdx_mutex);
 	spin_lock_init(&msvdx_priv->msvdx_lock);
+#ifndef CONFIG_DRM_VXD_BYT
 	/*figure out the stepping */
 	pci_read_config_byte(dev->pdev, PSB_REVID_OFFSET, &psb_rev_id);
-
+#endif
 	msvdx_priv->mmu_recover_page = alloc_page(GFP_DMA32);
 	if (!msvdx_priv->mmu_recover_page)
 		goto err_exit;
@@ -632,7 +641,7 @@ err_exit:
 
 void msvdx_post_powerup_core_reset(struct drm_device *dev)
 {
-	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct drm_psb_private *dev_priv = psb_priv(dev);
 	psb_msvdx_mtx_set_clocks(dev_priv->dev, clk_enable_all);
 
 	/* msvdx sw reset should be done by gunit before loading fw */
@@ -661,7 +670,7 @@ void msvdx_post_powerup_core_reset(struct drm_device *dev)
 
 int msvdx_mtx_init(struct drm_device *dev, int error_reset)
 {
-	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct drm_psb_private *dev_priv = psb_priv(dev);
 	uint32_t clk_divider = 200;
 	int ret;
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
@@ -723,7 +732,7 @@ int msvdx_mtx_init(struct drm_device *dev, int error_reset)
 int psb_msvdx_post_boot_init(struct drm_device *dev)
 {
 	struct fw_init_msg init_msg;
-	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct drm_psb_private *dev_priv = psb_priv(dev);
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
 	uint32_t device_node_flags =
 			DSIABLE_IDLE_GPIO_SIG | DSIABLE_Auto_CLOCK_GATING |
@@ -786,8 +795,7 @@ int psb_msvdx_post_boot_init(struct drm_device *dev)
 
 int psb_msvdx_init(struct drm_device *dev)
 {
-	struct drm_psb_private *dev_priv = dev->dev_private;
-
+	struct drm_psb_private *dev_priv = psb_priv(dev);
 	uint32_t cmd;
 	int ret;
 	struct msvdx_private *msvdx_priv;
@@ -850,9 +858,10 @@ int psb_msvdx_init(struct drm_device *dev)
 	psb_msvdx_clearirq(dev);
 	psb_msvdx_enableirq(dev);
 
+#ifndef CONFIG_DRM_VXD_BYT
 	PSB_DEBUG_INIT("MSDVX:old clock gating disable = 0x%08x\n",
 		       PSB_RVDC32(PSB_MSVDX_CLOCKGATING));
-
+#endif
 	if (!msvdx_priv->fw_loaded_by_punit) {
 		cmd = 0;
 		cmd = PSB_RMSVDX32(VEC_SHIFTREG_CONTROL_OFFSET);
@@ -870,7 +879,7 @@ int psb_msvdx_init(struct drm_device *dev)
 
 int psb_msvdx_init(struct drm_device *dev)
 {
-	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct drm_psb_private *dev_priv = psb_priv(dev);
 	uint32_t cmd;
 	int ret;
 	struct msvdx_private *msvdx_priv;
@@ -910,9 +919,10 @@ int psb_msvdx_init(struct drm_device *dev)
 		return 1;
 	}
 
+#ifndef CONFIG_DRM_VXD_BYT
 	PSB_DEBUG_INIT("MSDVX:old clock gating disable = 0x%08x\n",
 		       PSB_RVDC32(PSB_MSVDX_CLOCKGATING));
-
+#endif
 	return 0;
 }
 
@@ -920,7 +930,7 @@ int psb_msvdx_init(struct drm_device *dev)
 
 int psb_msvdx_uninit(struct drm_device *dev)
 {
-	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct drm_psb_private *dev_priv = psb_priv(dev);
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
 
 	/* PSB_WMSVDX32 (clk_enable_minimal, MSVDX_MAN_CLK_ENABLE); */

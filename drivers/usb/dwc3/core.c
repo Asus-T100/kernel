@@ -321,6 +321,7 @@ int dwc3_core_init(struct dwc3 *dwc)
 	unsigned long		timeout;
 	u32			reg;
 	int			ret;
+	void __iomem		*flis_reg;
 
 	reg = dwc3_readl(dwc->regs, DWC3_GSNPSID);
 	/* This should read as U3 followed by revision number */
@@ -349,6 +350,14 @@ int dwc3_core_init(struct dwc3 *dwc)
 
 		cpu_relax();
 	} while (true);
+
+	/*
+	 * workaround for OTG3 IP bug of using EP #8 under host mode
+	 */
+	flis_reg = ioremap_nocache(APBFC_EXIOTG3_MISC0_REG, 4);
+	reg = dwc3_readl(flis_reg, 0);
+	reg &= ~(1 << 3);
+	dwc3_writel(flis_reg, 0, reg);
 
 	ret = dwc3_event_buffers_setup(dwc);
 	if (ret) {

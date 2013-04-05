@@ -376,6 +376,6 @@ extern void *atomisp_kernel_malloc(size_t bytes);
 extern void atomisp_kernel_free(void *ptr);
 
 #define MFLD_FW_PATH	"shisp_css15.bin"
-#define MRFLD_FW_PATH   "shisp_2400.bin"
+#define ISP2400_FW_PATH   "shisp_2400.bin"
 
 #endif /* __ATOMISP_INTERNAL_H__ */

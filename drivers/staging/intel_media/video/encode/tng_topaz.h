@@ -142,6 +142,8 @@ struct tng_topaz_private {
 
 	struct ttm_buffer_object *topaz_bo; /* 4K->2K/2K for writeback/sync */
 	struct ttm_bo_kmap_obj topaz_bo_kmap;
+	struct ttm_bo_kmap_obj reg_kmap;
+	uint32_t *mtx_reg_state;
 #if 0
 	uint32_t wb_handle[MAX_CONTEXT_CNT];
 	struct ttm_buffer_object *wb_bo[MAX_CONTEXT_CNT];
@@ -212,6 +214,7 @@ struct tng_topaz_private {
 	struct drm_device *dev;
 	struct delayed_work topaz_suspend_work;
 	uint32_t isr_enabled;
+	uint32_t power_down_by_release;
 
 	struct ttm_object_file *tfile;
 };

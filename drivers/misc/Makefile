@@ -59,3 +59,4 @@ obj-$(CONFIG_A1026)		+= a1026.o
 obj-$(CONFIG_EMMC_IPANIC)	+= emmc_ipanic.o
 obj-$(CONFIG_SCU_LOGGING)	+= intel_fabric_logging.o
 obj-$(CONFIG_UUID)	+= uuid.o
+obj-$(CONFIG_VLV2_PLAT_CLK)	+= vlv2_plat_clock.o

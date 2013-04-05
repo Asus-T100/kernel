@@ -942,8 +942,13 @@ int sst_fill_config_data(struct sst_data *sst)
 int sst_register_dsp(struct sst_device *sst_dev)
 {
 
-	struct sst_data *sst = dev_get_drvdata(sst_pdev);
-	struct sst_platform_data *sst_pdata = sst->pdata;
+	struct sst_data *sst;
+	struct sst_platform_data *sst_pdata;
+
+	if (!sst_pdev)
+		return -ENODEV;
+	sst =  dev_get_drvdata(sst_pdev);
+	sst_pdata = sst->pdata;
 
 	if (!sst_dev)
 		return -ENODEV;

@@ -160,7 +160,7 @@ static int soc_set_cur_state(struct thermal_cooling_device *cdev,
 	}
 	/* Send IPC command to throttle SoC */
 	mutex_lock(&soc_cdev_info.lock_cool_state);
-	ret = intel_scu_ipc_command(SOC_IPC_COMMAND, 0,
+	ret = rpmsg_send_generic_command(SOC_IPC_COMMAND, 0,
 			(u8 *) &state, 4, NULL, 0);
 	if (ret)
 		pr_err("IPC_COMMAND failed: %d\n", ret);
@@ -273,7 +273,7 @@ static int linear_interpolate(int indx, uint16_t adc_val)
  * Can sleep
  */
 static int adc_to_temp(struct intel_mid_thermal_sensor *sensor,
-		uint16_t adc_val, unsigned long *tp)
+		uint16_t adc_val, long *tp)
 {
 	int indx;
 
@@ -304,7 +304,7 @@ static int adc_to_temp(struct intel_mid_thermal_sensor *sensor,
 	return 0;
 }
 
-int skin0_temp_correlation(void *info, unsigned long temp, unsigned long *res)
+int skin0_temp_correlation(void *info, long temp, long *res)
 {
 	struct intel_mid_thermal_sensor *sensor = info;
 
@@ -313,7 +313,7 @@ int skin0_temp_correlation(void *info, unsigned long temp, unsigned long *res)
 	return 0;
 }
 
-int bptherm_temp_correlation(void *info, unsigned long temp, unsigned long *res)
+int bptherm_temp_correlation(void *info, long temp, long *res)
 {
 	struct intel_mid_thermal_sensor *sensor = info;
 
@@ -322,12 +322,12 @@ int bptherm_temp_correlation(void *info, unsigned long temp, unsigned long *res)
 	return 0;
 }
 
-int skin1_temp_correlation(void *info, unsigned long temp, unsigned long *res)
+int skin1_temp_correlation(void *info, long temp, long *res)
 {
 	struct intel_mid_thermal_sensor *sensor = info;
 	struct intel_mid_thermal_sensor *dsensor; /* dependent sensor */
 	struct skin1_private_info *skin_info;
-	unsigned long sensor_temp = 0, curr_temp;
+	long sensor_temp = 0, curr_temp;
 	int ret, index;
 
 	skin_info = sensor->priv;
@@ -370,7 +370,7 @@ int skin1_temp_correlation(void *info, unsigned long temp, unsigned long *res)
  *
  * Can sleep
  */
-static int mid_read_temp(struct thermal_zone_device *tzd, unsigned long *temp)
+static int mid_read_temp(struct thermal_zone_device *tzd, long *temp)
 {
 	struct thermal_device_info *td_info = tzd->devdata;
 	int ret;
@@ -445,7 +445,7 @@ static int mid_thermal_suspend(struct device *dev)
 }
 
 #ifdef CONFIG_DEBUG_THERMAL
-static int read_slope(struct thermal_zone_device *tzd, unsigned long *slope)
+static int read_slope(struct thermal_zone_device *tzd, long *slope)
 {
 	struct thermal_device_info *td_info = tzd->devdata;
 
@@ -454,7 +454,7 @@ static int read_slope(struct thermal_zone_device *tzd, unsigned long *slope)
 	return 0;
 }
 
-static int update_slope(struct thermal_zone_device *tzd, unsigned long slope)
+static int update_slope(struct thermal_zone_device *tzd, long slope)
 {
 	struct thermal_device_info *td_info = tzd->devdata;
 
@@ -463,8 +463,7 @@ static int update_slope(struct thermal_zone_device *tzd, unsigned long slope)
 	return 0;
 }
 
-static int read_intercept(struct thermal_zone_device *tzd,
-			unsigned long *intercept)
+static int read_intercept(struct thermal_zone_device *tzd, long *intercept)
 {
 	struct thermal_device_info *td_info = tzd->devdata;
 
@@ -473,8 +472,7 @@ static int read_intercept(struct thermal_zone_device *tzd,
 	return 0;
 }
 
-static int update_intercept(struct thermal_zone_device *tzd,
-			unsigned long intercept)
+static int update_intercept(struct thermal_zone_device *tzd, long intercept)
 {
 	struct thermal_device_info *td_info = tzd->devdata;
 
@@ -490,7 +488,7 @@ static int update_intercept(struct thermal_zone_device *tzd,
  *
  * Can sleep
  */
-static int read_curr_temp(struct thermal_zone_device *tzd, unsigned long *temp)
+static int read_curr_temp(struct thermal_zone_device *tzd, long *temp)
 {
 	return (tzd) ? mid_read_temp(tzd, temp) : -EINVAL;
 }

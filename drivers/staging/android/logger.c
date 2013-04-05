@@ -25,6 +25,7 @@
 #include <linux/poll.h>
 #include <linux/slab.h>
 #include <linux/time.h>
+#include <linux/hardirq.h>
 #include <asm/ioctls.h>
 
 #include "logger.h"
@@ -666,6 +667,11 @@ static long logger_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			ret = -EBADF;
 			break;
 		}
+		if (!(in_egroup_p(file->f_dentry->d_inode->i_gid) ||
+				capable(CAP_SYSLOG))) {
+			ret = -EPERM;
+			break;
+		}
 		list_for_each_entry(reader, &log->readers, list)
 			reader->r_off = log->w_off;
 		log->head = log->w_off;
@@ -935,7 +941,7 @@ logger_console_write(struct console *console, const char *s, unsigned int count)
 
 	if (unlikely(!keventd_up()))
 		return;
-	if (!oops_in_progress)
+	if (!oops_in_progress && !in_nmi())
 		schedule_work(&write_console_wq);
 }
 

@@ -32,6 +32,7 @@
 #include <linux/intel_mid_pm.h>
 #include <asm/intel_scu_ipc.h>
 #include <asm/intel_mid_rpmsg.h>
+#include <asm/intel-mid.h>
 
 /* Medfield & Cloverview firmware update.
  * The flow and communication between IA and SCU has changed for
@@ -468,7 +469,7 @@ static int intel_scu_ipc_medfw_upgrade(void)
 		BUG();
 	}
 
-	intel_scu_ipc_lock();
+	rpmsg_global_lock();
 	mfld_fw_upd.wscu = 0;
 	mfld_fw_upd.wia = 0;
 	memset(mfld_fw_upd.mb_status, 0, sizeof(char) * 8);
@@ -625,7 +626,7 @@ unmap_mb:
 unmap_sram:
 	iounmap(mfld_fw_upd.sram);
 out_unlock:
-	intel_scu_ipc_unlock();
+	rpmsg_global_unlock();
 	return ret_val;
 }
 
@@ -842,6 +843,18 @@ static ssize_t fw_version_show(struct kobject *kobj,
 
 	for (i = 0; i < 16; i++)
 		used += snprintf(buf + used, PAGE_SIZE - used, "%x ", data[i]);
+
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER) {
+		ret = rpmsg_send_command(fw_update_instance,
+			IPCMSG_FW_REVISION, 1, NULL, (u32 *)data, 0, 4);
+		if (ret < 0) {
+			cur_err("Error getting fw version");
+			return -EINVAL;
+		}
+		for (i = 0; i < 16; i++)
+			used += snprintf(buf + used, PAGE_SIZE - used,
+				"%x ", data[i]);
+	}
 
 	return used;
 }

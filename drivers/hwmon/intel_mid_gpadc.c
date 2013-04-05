@@ -138,6 +138,8 @@ struct gpadc_info {
 
 	struct pm_qos_request pm_qos_request;
 	void (*gsmadc_notify)(int vol, int cur);
+
+	int pmic_ipc_status;
 };
 
 struct gpadc_request {
@@ -151,22 +153,62 @@ static struct gpadc_info gpadc_info;
 
 static inline int gpadc_clear_bits(u16 addr, u8 mask)
 {
-	return intel_scu_ipc_update_register(addr, 0, mask);
+	struct gpadc_info *mgi = &gpadc_info;
+	int ret;
+
+	if (mgi->pmic_ipc_status)
+		return -EINVAL;
+
+	ret = intel_scu_ipc_update_register(addr, 0, mask);
+	if (ret)
+		mgi->pmic_ipc_status = -EINVAL;
+
+	return ret;
 }
 
 static inline int gpadc_set_bits(u16 addr, u8 mask)
 {
-	return intel_scu_ipc_update_register(addr, 0xff, mask);
+	struct gpadc_info *mgi = &gpadc_info;
+	int ret;
+
+	if (mgi->pmic_ipc_status)
+		return -EINVAL;
+
+	ret = intel_scu_ipc_update_register(addr, 0xff, mask);
+	if (ret)
+		mgi->pmic_ipc_status = -EINVAL;
+
+	return ret;
 }
 
 static inline int gpadc_write(u16 addr, u8 data)
 {
-	return intel_scu_ipc_iowrite8(addr, data);
+	struct gpadc_info *mgi = &gpadc_info;
+	int ret;
+
+	if (mgi->pmic_ipc_status)
+		return -EINVAL;
+
+	ret = intel_scu_ipc_iowrite8(addr, data);
+	if (ret)
+		mgi->pmic_ipc_status = -EINVAL;
+
+	return ret;
 }
 
 static inline int gpadc_read(u16 addr, u8 *data)
 {
-	return intel_scu_ipc_ioread8(addr, data);
+	struct gpadc_info *mgi = &gpadc_info;
+	int ret;
+
+	if (mgi->pmic_ipc_status)
+		return -EINVAL;
+
+	ret = intel_scu_ipc_ioread8(addr, data);
+	if (ret)
+		mgi->pmic_ipc_status = -EINVAL;
+
+	return ret;
 }
 
 static void gpadc_dump(struct gpadc_info *mgi)
@@ -174,6 +216,8 @@ static void gpadc_dump(struct gpadc_info *mgi)
 	u8 data;
 	int i;
 
+	dev_err(mgi->dev, "pmic ipc status: %s\n",
+			mgi->pmic_ipc_status ? "bad" : "good");
 	gpadc_read(VAUDACNT, &data);
 	dev_err(mgi->dev, "VAUDACNT: 0x%x\n", data);
 	gpadc_read(IRQLVL1MSK, &data);
@@ -222,9 +266,15 @@ static int gpadc_poweroff(struct gpadc_info *mgi)
 
 static int gpadc_calib(int rc, int zse, int ge)
 {
+	struct gpadc_info *mgi = &gpadc_info;
 	int tmp;
 
 	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_CLOVERVIEW) {
+		if (ge == 0) {
+			dev_err(mgi->dev, "calibration divider is zero\n");
+			return 0;
+		}
+
 		/**
 		 * For Cloverview, using the calibration data, we have the
 		 * voltage and current after calibration correction as below:
@@ -526,12 +576,15 @@ int intel_mid_gpadc_sample(void *handle, int sample_count, ...)
 		return -ENODEV;
 
 	mutex_lock(&mgi->lock);
+	mgi->pmic_ipc_status = 0;
+
 	va_start(args, sample_count);
 	for (i = 0; i < rq->count; i++) {
 		val[i] = va_arg(args, int*);
 		*val[i] = 0;
 	}
 	va_end(args);
+
 	pm_qos_add_request(&mgi->pm_qos_request,
 			PM_QOS_CPU_DMA_LATENCY,	CSTATE_EXIT_LATENCY_S0i1-1);
 	gpadc_poweron(mgi, rq->vref);
@@ -574,6 +627,11 @@ fail:
 	gpadc_clear_bits(ADC1CNTL1, ADC1CNTL1_ADSTRT);
 	gpadc_poweroff(mgi);
 	pm_qos_remove_request(&mgi->pm_qos_request);
+
+	if (mgi->pmic_ipc_status) {
+		dev_err(mgi->dev, "sample broken\n");
+		ret = mgi->pmic_ipc_status;
+	}
 	mutex_unlock(&mgi->lock);
 	return ret;
 }
@@ -604,6 +662,8 @@ int get_gpadc_sample(void *handle, int sample_count, int *buffer)
 		return -ENODEV;
 
 	mutex_lock(&mgi->lock);
+	mgi->pmic_ipc_status = 0;
+
 	for (i = 0; i < rq->count; i++)
 		buffer[i] = 0;
 
@@ -648,6 +708,10 @@ fail:
 	gpadc_clear_bits(ADC1CNTL1, ADC1CNTL1_ADSTRT);
 	gpadc_poweroff(mgi);
 	pm_qos_remove_request(&mgi->pm_qos_request);
+	if (mgi->pmic_ipc_status) {
+		dev_err(mgi->dev, "sample broken\n");
+		ret = mgi->pmic_ipc_status;
+	}
 	mutex_unlock(&mgi->lock);
 	return ret;
 }
@@ -666,8 +730,13 @@ void intel_mid_gpadc_free(void *handle)
 	int i;
 
 	mutex_lock(&mgi->lock);
+	mgi->pmic_ipc_status = 0;
 	for (i = 0; i < rq->count; i++)
 		free_channel_addr(mgi, rq->addr[i]);
+
+	if (mgi->pmic_ipc_status)
+		dev_err(mgi->dev, "gpadc free broken\n");
+
 	mutex_unlock(&mgi->lock);
 	kfree(rq);
 }
@@ -702,6 +771,8 @@ void *intel_mid_gpadc_alloc(int count, ...)
 
 	va_start(args, count);
 	mutex_lock(&mgi->lock);
+	mgi->pmic_ipc_status = 0;
+
 	rq->count = count;
 	for (i = 0; i < count; i++) {
 		ch = va_arg(args, int);
@@ -719,6 +790,9 @@ void *intel_mid_gpadc_alloc(int count, ...)
 			break;
 		}
 	}
+	if (mgi->pmic_ipc_status)
+		dev_err(mgi->dev, "gpadc alloc broken\n");
+
 	mutex_unlock(&mgi->lock);
 	va_end(args);
 
@@ -758,6 +832,8 @@ void *gpadc_alloc_channels(int n, int *channel_info)
 		return NULL;
 
 	mutex_lock(&mgi->lock);
+	mgi->pmic_ipc_status = 0;
+
 	rq->count = n;
 	for (i = 0; i < n; i++) {
 		ch = channel_info[i];
@@ -775,6 +851,9 @@ void *gpadc_alloc_channels(int n, int *channel_info)
 			break;
 		}
 	}
+	if (mgi->pmic_ipc_status)
+		dev_err(mgi->dev, "gpadc alloc broken\n");
+
 	mutex_unlock(&mgi->lock);
 
 	return rq;
