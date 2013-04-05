@@ -301,6 +301,7 @@ struct max17042_chip {
 	 * batery temperature for conformence testing.
 	 */
 	bool	enable_fake_temp;
+	int	extra_resv_cap;
 };
 
 /* Sysfs entry for disable shutdown methods from user space */
@@ -1182,13 +1183,13 @@ static void write_custom_regs(struct max17042_chip *chip)
 		max17042_write_verify_reg(chip->client, MAX17050_V_empty,
 							fg_conf_data->vempty);
 		max17042_write_verify_reg(chip->client, MAX17050_QRTbl00,
-							fg_conf_data->qrtbl00);
+			fg_conf_data->qrtbl00 + chip->extra_resv_cap);
 		max17042_write_verify_reg(chip->client, MAX17050_QRTbl10,
-							fg_conf_data->qrtbl10);
+			fg_conf_data->qrtbl10 + chip->extra_resv_cap);
 		max17042_write_verify_reg(chip->client, MAX17050_QRTbl20,
-							fg_conf_data->qrtbl20);
+			fg_conf_data->qrtbl20 + chip->extra_resv_cap);
 		max17042_write_verify_reg(chip->client, MAX17050_QRTbl30,
-							fg_conf_data->qrtbl30);
+			fg_conf_data->qrtbl30 + chip->extra_resv_cap);
 	}
 }
 
@@ -1286,15 +1287,20 @@ static void update_runtime_params(struct max17042_chip *chip)
 							MAX17042_RCOMP0);
 	fg_conf_data->tempCo = max17042_read_reg(chip->client,
 							MAX17042_TempCo);
+	/*
+	 * Save only the original qrtbl register values ignoring the
+	 * additionally reserved capacity. We deal with reserved
+	 * capacity while restoring.
+	 */
 	if (chip->chip_type == MAX17050) {
 		fg_conf_data->qrtbl00 = max17042_read_reg(chip->client,
-							MAX17050_QRTbl00);
+			MAX17050_QRTbl00) - chip->extra_resv_cap;
 		fg_conf_data->qrtbl10 = max17042_read_reg(chip->client,
-							MAX17050_QRTbl10);
+			MAX17050_QRTbl10) - chip->extra_resv_cap;
 		fg_conf_data->qrtbl20 = max17042_read_reg(chip->client,
-							MAX17050_QRTbl20);
+			MAX17050_QRTbl20) - chip->extra_resv_cap;
 		fg_conf_data->qrtbl30 = max17042_read_reg(chip->client,
-							MAX17050_QRTbl30);
+			MAX17050_QRTbl30) - chip->extra_resv_cap;
 	}
 
 	fg_conf_data->full_capnom = max17042_read_reg(chip->client,
@@ -2017,6 +2023,10 @@ static int __devinit max17042_probe(struct i2c_client *client,
 	}
 	chip->client = client;
 	chip->pdata = client->dev.platform_data;
+	/* LSB offset for qrtbl registers is 0.25%
+	 * ie, 0x04 = 1% reserved capacity
+	 */
+	chip->extra_resv_cap = 4 * chip->pdata->resv_cap;
 
 	i2c_set_clientdata(client, chip);
 	max17042_client = client;
