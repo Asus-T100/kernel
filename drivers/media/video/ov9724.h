@@ -469,6 +469,7 @@ static struct ov9724_reg const ov9724_656_496_30fps[] = {
 	{OV9724_8BIT, {0x5001},	0x73},/* Isp ctrl1 */
 	{OV9724_TOK_TERM, {0}, 0}
 };
+
 static struct ov9724_reg const ov9724_368_304_30fps[] = {
 	{OV9724_8BIT, {0x0344},	0x00},/* Horizontal start - Hi */
 	{OV9724_8BIT, {0x0345},	0x00},/* Horizontal start - Low */
@@ -1224,7 +1225,7 @@ static struct ov9724_reg const ov9724_QCIF_30fps[] = {
 /* TODO settings of preview/still/video will be updated with new use case */
 struct ov9724_resolution ov9724_res_preview[] = {
 	{
-		.desc = "VGA_strong_dvs_30fps",
+		.desc = "ov9724_656_496_30fps",
 		.regs = ov9724_656_496_30fps,
 		.width = 656,
 		.height = 496,
@@ -1236,31 +1237,7 @@ struct ov9724_resolution ov9724_res_preview[] = {
 		.used = 0	,
 	},
 	{
-		.desc = "VGA_strong_dvs_30fps",
-		.regs = ov9724_WIDE_PREVIEW_30fps,
-		.width = 1040,
-		.height = 596,
-		.fps = 30,
-		.pixels_per_line = 0x0560, /* consistent with regs arrays */
-		.lines_per_frame = 0x0368, /* consistent with regs arrays */
-		.bin_factor_x = 0,
-		.bin_factor_y = 0,
-		.used = 0	,
-	},
-	{
-		.desc = "VGA_strong_dvs_30fps",
-		.regs = ov9724_336_256_30fps,
-		.width = 336,
-		.height = 256,
-		.fps = 30,
-		.pixels_per_line = 0x0560, /* consistent with regs arrays */
-		.lines_per_frame = 0x0368, /* consistent with regs arrays */
-		.bin_factor_x = 0,
-		.bin_factor_y = 0,
-		.used = 0	,
-	},
-	{
-		.desc = "VGA_strong_dvs_30fps",
+		.desc = "ov9724_736_496_30fps",
 		.regs = ov9724_736_496_30fps,
 		.width = 736,
 		.height = 496,
@@ -1272,7 +1249,7 @@ struct ov9724_resolution ov9724_res_preview[] = {
 		.used = 0	,
 	},
 	{
-		.desc = "ov9724_720p_15fps",
+		.desc = "ov9724_720p_30fps",
 		.regs = ov9724_720p_30fps,
 		.width = 1296,
 		.height = 736,
@@ -1289,19 +1266,7 @@ struct ov9724_resolution ov9724_res_preview[] = {
 
 struct ov9724_resolution ov9724_res_still[] = {
 	{
-		.desc = "VGA_strong_dvs_30fps",
-		.regs = ov9724_336_256_30fps,
-		.width = 336,
-		.height = 256,
-		.fps = 30,
-		.pixels_per_line = 0x0560, /* consistent with regs arrays */
-		.lines_per_frame = 0x0368, /* consistent with regs arrays */
-		.bin_factor_x = 0,
-		.bin_factor_y = 0,
-		.used = 0	,
-	},
-	{
-		.desc = "VGA_strong_dvs_30fps",
+		.desc = "ov9724_656_496_30fps",
 		.regs = ov9724_656_496_30fps,
 		.width = 656,
 		.height = 496,
@@ -1313,7 +1278,7 @@ struct ov9724_resolution ov9724_res_still[] = {
 		.used = 0	,
 	},
 	{
-		.desc = "VGA_strong_dvs_30fps",
+		.desc = "ov9724_736_496_30fps",
 		.regs = ov9724_736_496_30fps,
 		.width = 736,
 		.height = 496,
@@ -1325,7 +1290,7 @@ struct ov9724_resolution ov9724_res_still[] = {
 		.used = 0	,
 	},
 	{
-		.desc = "ov9724_720p_15fps",
+		.desc = "ov9724_720p_30fps",
 		.regs = ov9724_720p_30fps,
 		.width = 1296,
 		.height = 736,
