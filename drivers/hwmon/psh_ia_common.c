@@ -81,54 +81,6 @@ long trans_strtol(const char *str, char **endp, unsigned int base)
 
 struct psh_ia_priv *psh_ia_data;
 
-char *phy_sensor_name[] = {
-	"ACCEL",
-	"GYRO ",
-	"COMPS",
-	"BARO ",
-	"ALS_P",
-	"PS_P ",
-	"TCPHY",
-};
-
-char *abs_sensor_name[] = {
-	"COMAG",
-	"TERMC",
-	"GSSPT",
-	"PHYAC",
-	"9DOF ",
-	"BIST ",
-	"GSFLK",
-	"GRAVI",
-	"ORIEN",
-	"LACCL",
-	"RVECT",
-	"COMPC",
-	"GYROC",
-	"PEDOM",
-	"MAGHD",
-};
-
-char *port_name[] = {
-	"CSPRT",
-	"GSPRT",
-	"EVPRT",
-};
-
-const char *ia_get_sensor_name(u8 id)
-{
-	if (id == 0)
-		return "_PSH_";
-	else if (id > 0 && id <= sizeof(phy_sensor_name))
-		return phy_sensor_name[id - 1];
-	else if (id > 100 && id <= (100 + sizeof(abs_sensor_name)))
-		return abs_sensor_name[id - 101];
-	else if (id > 200 && id <= (200 + sizeof(port_name)))
-		return port_name[id - 201];
-	else
-		return "?????";
-}
-
 void ia_lbuf_read_init(struct loop_buffer *lbuf,
 		u8 *buf, u16 size, update_finished_f uf)
 {
@@ -414,7 +366,7 @@ ssize_t ia_get_dbg_mask(struct device *dev,
 	if (!wait_for_completion_timeout(&psh_ia_data->cmpl, HZ))
 		return snprintf(buf, PAGE_SIZE, "no response\n");
 
-	return snprintf(buf, PAGE_SIZE, "mask_out:%d mask_level:%d\n",
+	return snprintf(buf, PAGE_SIZE, "mask_out:0x%x mask_level:0x%x\n",
 			psh_ia_data->dbg_mask.mask_out,
 			psh_ia_data->dbg_mask.mask_level);
 }
@@ -425,6 +377,24 @@ void ia_handle_snr_info(struct circ_buf *circ, const struct snr_info *sinfo)
 	char buf[STR_BUFF_SIZE];
 	ssize_t str_size;
 	int i;
+	static int snr_info_start;
+
+	if (!snr_info_start) {
+		snr_info_start++;
+		str_size = snprintf(buf, STR_BUFF_SIZE,
+				"******** Start Sensor Status ********\n");
+		ia_circ_put_data(circ, buf, str_size);
+	}
+
+	if (!sinfo) {
+		if (snr_info_start) {
+			snr_info_start = 0;
+			str_size = snprintf(buf, STR_BUFF_SIZE,
+					"******** End Sensor Status ********\n");
+			ia_circ_put_data(circ, buf, str_size);
+		}
+		return;
+	}
 
 	str_size = snprintf(buf, STR_BUFF_SIZE,
 			"***** Sensor %5s(%d) Status *****\n",
@@ -445,19 +415,19 @@ void ia_handle_snr_info(struct circ_buf *circ, const struct snr_info *sinfo)
 	for (i = 0; i < sinfo->link_num; i++) {
 		const struct link_info *linfo = &sinfo->linfo[i];
 		str_size = snprintf(buf, STR_BUFF_SIZE,
-			"    %s%s=%5s, slide=%d\n",
+			"    %s%s=%3d, rpt_freq=%d\n",
 			(linfo->ltype == LINK_AS_REPORTER) ?
 						"REPORTER" : "CLIENT",
 			(linfo->ltype == LINK_AS_MONITOR) ?
 						"(M)" : "",
-			ia_get_sensor_name(linfo->id),
+			linfo->id,
 			linfo->slide);
 
 		ia_circ_put_data(circ, buf, str_size);
 	}
 
 	str_size = snprintf(buf, STR_BUFF_SIZE,
-			"*****************************\n\n");
+			"*****************************\n");
 	ia_circ_put_data(circ, buf, str_size);
 }
 
@@ -554,9 +524,10 @@ int ia_handle_frame(void *dbuf, int size)
 				resp->buf, resp->data_len);
 		return size;
 	case RESP_GET_STATUS:
-		if (!resp->data_len)
+		if (!resp->data_len) {
 			complete(&psh_ia_data->get_status_comp);
-		else if (SNR_INFO_SIZE(sinfo) == resp->data_len)
+			ia_handle_snr_info(&psh_ia_data->circ_dbg, NULL);
+		} else if (SNR_INFO_SIZE(sinfo) == resp->data_len)
 			ia_handle_snr_info(&psh_ia_data->circ_dbg, sinfo);
 		else {
 			pr_err("Wrong RESP_GET_STATUS!\n");
@@ -577,7 +548,6 @@ int ia_handle_frame(void *dbuf, int size)
 	ia_circ_put_data(&psh_ia_data->circ, dbuf, size);
 	return size;
 }
-
 
 void ia_process_lbuf(struct device *dev)
 {
