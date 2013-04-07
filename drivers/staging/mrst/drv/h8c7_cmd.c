@@ -821,5 +821,7 @@ static int __init h8c7_lcd_init(void)
 
 	platform_device_register(&h8c7_lcd_device);
 	platform_driver_register(&h8c7_lcd_driver);
+
+	return 0;
 }
 module_init(h8c7_lcd_init);

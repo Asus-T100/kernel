@@ -205,7 +205,7 @@ void intel_mid_panel_register(
 	struct mdfld_dsi_dpi_output *dpi_output = NULL;
 	struct mdfld_dsi_config *dsi_config = NULL;
 	struct panel_funcs *p_funcs = NULL;
-	struct panel_info dsi_panel_info;
+	struct panel_info dsi_panel_info = {0, 0};
 	struct drm_connector *connector = NULL;
 	struct mdfld_dsi_connector *dsi_connector = NULL;
 	int ret = 0;
