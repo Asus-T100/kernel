@@ -41,6 +41,7 @@
 #include <linux/pm_runtime.h>
 #include <linux/semaphore.h>
 #include <linux/fs.h>
+#include <linux/acpi.h>
 #include "i2c-designware-core.h"
 
 #define DRIVER_NAME "i2c-designware-pci"
@@ -89,6 +90,7 @@ struct dw_pci_controller {
 	u32 rx_fifo_depth;
 	u32 clk_khz;
 	int enable_stop;
+	char *acpi_name;
 	int (*scl_cfg) (struct dw_i2c_dev *dev);
 	void (*reset)(struct dw_i2c_dev *dev);
 };
@@ -338,6 +340,7 @@ static struct  dw_pci_controller  dw_pci_controllers[] = {
 		.enable_stop = 1,
 		.scl_cfg = vlv2_i2c_scl_cfg,
 		.reset = vlv2_reset,
+		.acpi_name = "\\_SB.I2C1"
 	},
 	[valleyview_1] = {
 		.bus_num     = 2,
@@ -347,6 +350,7 @@ static struct  dw_pci_controller  dw_pci_controllers[] = {
 		.enable_stop = 1,
 		.scl_cfg = vlv2_i2c_scl_cfg,
 		.reset = vlv2_reset,
+		.acpi_name = "\\_SB.I2C2"
 	},
 	[valleyview_2] = {
 		.bus_num     = 3,
@@ -356,6 +360,7 @@ static struct  dw_pci_controller  dw_pci_controllers[] = {
 		.enable_stop = 1,
 		.scl_cfg = vlv2_i2c_scl_cfg,
 		.reset = vlv2_reset,
+		.acpi_name = "\\_SB.I2C3"
 	},
 	[valleyview_3] = {
 		.bus_num     = 4,
@@ -365,6 +370,7 @@ static struct  dw_pci_controller  dw_pci_controllers[] = {
 		.enable_stop = 1,
 		.scl_cfg = vlv2_i2c_scl_cfg,
 		.reset = vlv2_reset,
+		.acpi_name = "\\_SB.I2C4"
 	},
 	[valleyview_4] = {
 		.bus_num     = 5,
@@ -374,6 +380,7 @@ static struct  dw_pci_controller  dw_pci_controllers[] = {
 		.enable_stop = 1,
 		.scl_cfg = vlv2_i2c_scl_cfg,
 		.reset = vlv2_reset,
+		.acpi_name = "\\_SB.I2C5"
 	},
 	[valleyview_5] = {
 		.bus_num     = 6,
@@ -383,6 +390,7 @@ static struct  dw_pci_controller  dw_pci_controllers[] = {
 		.enable_stop = 1,
 		.scl_cfg = vlv2_i2c_scl_cfg,
 		.reset = vlv2_reset,
+		.acpi_name = "\\_SB.I2C6"
 	},
 	[valleyview_6] = {
 		.bus_num     = 7,
@@ -392,6 +400,7 @@ static struct  dw_pci_controller  dw_pci_controllers[] = {
 		.enable_stop = 1,
 		.scl_cfg = vlv2_i2c_scl_cfg,
 		.reset = vlv2_reset,
+		.acpi_name = "\\_SB.I2C7"
 	}
 };
 
@@ -739,6 +748,15 @@ const struct pci_device_id *id)
 	pm_runtime_allow(&pdev->dev);
 	pm_runtime_use_autosuspend(&pdev->dev);
 	pm_runtime_set_autosuspend_delay(&pdev->dev, 50);
+
+#ifdef CONFIG_ACPI
+	if (controller->acpi_name) {
+		acpi_get_handle(NULL, controller->acpi_name,
+				&adap->dev.acpi_node.handle);
+		acpi_i2c_register_devices(adap);
+		adap->dev.acpi_node.handle = NULL;
+	}
+#endif
 
 	return 0;
 
