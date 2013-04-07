@@ -465,16 +465,26 @@ static void mdfld_adjust_display_fifo(struct drm_device *dev)
 
 	if (IS_CTP(dev)) {
 		if (mode &&
-		    ((mode->hdisplay >= 1920 && mode->vdisplay >= 1280) ||
-		     (mode->hdisplay >= 1280 && mode->vdisplay >= 1920))) {
-			/* for 19x12 mipi panel,
-			 * need to increase display A fifo size
-			 */
-			REG_WRITE(DSPARB, 0x0005F8D4);
-			REG_WRITE(DSPFW1, 0x0F0F1010);
-			REG_WRITE(DSPFW2, 0x5F2F0F0F);
-			REG_WRITE(DSPFW4, 0x07071010);
+		    ((mode->hdisplay >= 1920 && mode->vdisplay >= 1080) ||
+		     (mode->hdisplay >= 1080 && mode->vdisplay >= 1920))) {
+			if ((mode->hdisplay == 1920 &&
+			     mode->vdisplay == 1080) ||
+			    (mode->hdisplay == 1080 &&
+			     mode->vdisplay == 1920)) {
+				/* setting for 1080p panel */
+				REG_WRITE(DSPARB, 0x0005F8C0);
+				REG_WRITE(DSPFW1, 0x0F0F1010);
+				REG_WRITE(DSPFW2, 0x5F2F0F0F);
+				REG_WRITE(DSPFW4, 0x07071010);
+			} else {
+				/* setting for panel bigger than 1080p */
+				REG_WRITE(DSPARB, 0x0005F8D4);
+				REG_WRITE(DSPFW1, 0x0F0F1010);
+				REG_WRITE(DSPFW2, 0x5F2F0F0F);
+				REG_WRITE(DSPFW4, 0x07071010);
+			}
 		} else {
+			/* setting for panel smaller than 1080p, f.e 720p */
 			REG_WRITE(DSPARB, 0x0005E480);
 			REG_WRITE(DSPFW1, 0x0F0F103F);
 			REG_WRITE(DSPFW4, 0x0707101F);
