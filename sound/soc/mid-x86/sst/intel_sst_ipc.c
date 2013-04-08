@@ -673,7 +673,6 @@ void sst_process_reply_mrfld(struct work_struct *work)
 		msg_id = msg_low & SST_ASYNC_MSG_MASK;
 		switch (msg_id) {
 		case IPC_IA_FW_INIT_CMPLT_MRFLD:
-			intel_sst_clear_intr_mrfld();
 			process_fw_init(msg);
 			break;
 		case IPC_IA_FW_ASYNC_ERR_MRFLD:

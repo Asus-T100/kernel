@@ -156,6 +156,8 @@ static irqreturn_t intel_sst_irq_thread_mrfld(int irq, void *context)
 			stream = &sst_drv_ctx->streams[str_id];
 			if (stream->period_elapsed)
 				stream->period_elapsed(stream->pcm_substream);
+			if (stream->compr_cb)
+				stream->compr_cb(stream->compr_cb_param);
 		}
 		return IRQ_HANDLED;
 	}
@@ -632,6 +634,7 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 				sst_drv_ctx->info.max_streams);
 	for (i = 1; i <= sst_drv_ctx->info.max_streams; i++) {
 		struct stream_info *stream = &sst_drv_ctx->streams[i];
+		memset(stream, 0, sizeof(*stream));
 		mutex_init(&stream->lock);
 	}
 

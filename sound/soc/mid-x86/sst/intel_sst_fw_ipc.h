@@ -69,7 +69,7 @@
 #define IPC_IA_GET_CODEC_PARAMS 0x11
 #define IPC_IA_SET_PPP_PARAMS 0x12
 #define IPC_IA_GET_PPP_PARAMS 0x13
-#define IPC_SST_PERIOD_ELAPSED_MRFLD 10
+#define IPC_SST_PERIOD_ELAPSED_MRFLD 0xA
 #define IPC_IA_ALG_PARAMS 0x1A
 #define IPC_IA_TUNING_PARAMS 0x1B
 #define IPC_IA_SET_RUNTIME_PARAMS 0x1C
@@ -82,14 +82,16 @@
 #define IPC_IA_FREE_STREAM_MRFLD 0x03
 #define IPC_IA_FREE_STREAM 0x21 /* Free the stream ID */
 #define IPC_IA_SET_STREAM_PARAMS 0x22
+#define IPC_IA_SET_STREAM_PARAMS_MRFLD 0x12
 #define IPC_IA_GET_STREAM_PARAMS 0x23
 #define IPC_IA_PAUSE_STREAM 0x24
-#define IPC_IA_PAUSE_STREAM_MRFLD 0x24
+#define IPC_IA_PAUSE_STREAM_MRFLD 0x4
 #define IPC_IA_RESUME_STREAM 0x25
-#define IPC_IA_RESUME_STREAM_MRFLD 0x25
+#define IPC_IA_RESUME_STREAM_MRFLD 0x5
 #define IPC_IA_DROP_STREAM 0x26
 #define IPC_IA_DROP_STREAM_MRFLD 0x07
 #define IPC_IA_DRAIN_STREAM 0x27 /* Short msg with str_id */
+#define IPC_IA_DRAIN_STREAM_MRFLD 0x8
 #define IPC_IA_CONTROL_ROUTING 0x29
 
 #define IPC_IA_START_STREAM_MRFLD 0X06
@@ -414,17 +416,6 @@ struct snd_sst_lib_download_info {
 };
 
 /* Codec params struture */
-union snd_sst_codec_params_mrfld {
-	struct snd_pcm_params_mrfld pcm_params;
-	struct snd_mp3_params_mrfld mp3_params;
-	struct snd_aac_params_mrfld aac_params;
-	struct snd_wma_params_mrfld wma_params;
-	struct snd_mp3_get_params_mrfld get_mp3_params;
-	struct snd_aac_get_params_mrfld get_aac_params;
-};
-
-
-
 union snd_sst_codec_params_mfld {
 	struct snd_pcm_params_mfld pcm_params;
 	struct snd_mp3_params mp3_params;
@@ -436,10 +427,6 @@ struct snd_sst_stream_params_mfld {
 	union snd_sst_codec_params_mfld uc;
 } __packed;
 
-struct snd_sst_stream_params_mrfld {
-	union snd_sst_codec_params_mrfld uc;
-} __packed;
-
 struct snd_sst_alloc_mrfld {
 	u16 codec_type;
 	u8 operation;
@@ -447,7 +434,7 @@ struct snd_sst_alloc_mrfld {
 	struct sst_address_info ring_buf_info[8];
 	u32 frag_size;
 	struct snd_sst_tstamp *ts;
-	struct snd_sst_stream_params_mrfld codec_params;
+	struct snd_sst_stream_params codec_params;
 } __packed;
 
 /* Alloc stream params structure */

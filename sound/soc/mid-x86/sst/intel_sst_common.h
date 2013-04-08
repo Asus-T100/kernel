@@ -46,7 +46,6 @@
 #define SST_SUSPEND_DELAY 2000
 #define FW_CONTEXT_MEM (64*1024)
 #define SST_ICCM_BOUNDARY 4
-#define SST_UNSOLICIT_MSG 0x00
 #define SST_CONFIG_SSP_SIGN 0x7ffe8001
 
 /* FIXME: All this info should come from platform data
