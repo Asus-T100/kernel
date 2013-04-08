@@ -743,14 +743,14 @@ int tng_topaz_init(struct drm_device *dev)
 		F_EXTRACT(topaz_priv->topaz_num_pipes,
 			TOPAZHP_TOP_CR_NUM_CORES_SUPPORTED);
 
-	PSB_DEBUG_TOPAZ("TOPAZ: Number of pipes: %d\n",
-		topaz_priv->topaz_num_pipes);
-
 	if (topaz_priv->topaz_num_pipes > TOPAZHP_PIPE_NUM) {
-		DRM_ERROR("TOPAZ: Number of pipes: 0x%x\n",
-			topaz_priv->topaz_num_pipes);
+		/* DRM_ERROR("TOPAZ: Number of pipes: 0x%x\n",
+			topaz_priv->topaz_num_pipes); */
 		topaz_priv->topaz_num_pipes = TOPAZHP_PIPE_NUM;
 	}
+
+	PSB_DEBUG_TOPAZ("TOPAZ: Number of pipes: %d\n",
+		topaz_priv->topaz_num_pipes);
 
 	/* tng_topaz_mmu_flushcache(dev_priv); */
 
