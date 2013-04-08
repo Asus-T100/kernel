@@ -2124,6 +2124,24 @@ unsigned int pmu_get_new_cstate(unsigned int cstate, int *index)
 		cstate_mask	= (u32)((1 << local_cstate)-1);
 		local_cstate_allowed	&= ((1<<MWAIT_MAX_NUM_CSTATES)-1);
 		local_cstate_allowed	&= cstate_mask;
+
+		/* check if we can acquire scu_ready_sem
+		 * if we are not able to then do a c6 */
+		if (down_trylock(&mid_pmu_cxt->scu_ready_sem))
+			local_cstate_allowed &= (u32)((1 << 6)-1);
+		else {
+			if (mid_pmu_cxt->suspend_started ||
+				mid_pmu_cxt->shutdown_started ||
+				!mid_pmu_cxt->s0ix_possible)
+				local_cstate_allowed &= (u32)((1 << 6)-1);
+			else if (mid_pmu_cxt->s0ix_possible == 2) {
+				/* If LPMP3 is possible then restrict to S0I2 */
+				local_cstate_allowed &= (u32)((1 << 8)-1);
+			}
+
+			up(&mid_pmu_cxt->scu_ready_sem);
+		}
+
 		new_cstate	= fls(local_cstate_allowed);
 
 		if (likely(new_cstate))
