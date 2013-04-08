@@ -354,7 +354,7 @@ enum penwell_otg_timer_type {
 };
 
 #define TA_WAIT_VRISE		100
-#define TA_WAIT_BCON		15000
+#define TA_WAIT_BCON		50000
 #define TA_AIDL_BDIS		1500
 #define TA_BIDL_ADIS		300
 #define TA_WAIT_VFALL		950
