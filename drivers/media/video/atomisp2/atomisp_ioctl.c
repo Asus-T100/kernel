@@ -1308,14 +1308,22 @@ static int atomisp_streamon(struct file *file, void *fh,
 		    atomisp_subdev_source_pad(vdev)
 		    == ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE &&
 		    isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO) {
-			if (isp->delayed_init != ATOMISP_DELAYED_INIT_DONE)
+			if (isp->delayed_init != ATOMISP_DELAYED_INIT_DONE) {
 				flush_work_sync(&isp->delayed_init_work);
+				mutex_unlock(&isp->mutex);
+				if (wait_for_completion_interruptible(
+						&isp->init_done) != 0)
+					return -ERESTARTSYS;
+				mutex_lock(&isp->mutex);
+			}
 			ret = sh_css_offline_capture_configure(
 					isp->params.offline_parm.num_captures,
 					isp->params.offline_parm.skip_frames,
 					isp->params.offline_parm.offset);
-			if (ret)
-				return -EINVAL;
+			if (ret) {
+				ret = -EINVAL;
+				goto out;
+			}
 		}
 		atomisp_qbuffers_to_css(isp);
 		goto out;
@@ -1354,9 +1362,9 @@ static int atomisp_streamon(struct file *file, void *fh,
 	}
 	if (isp->params.continuous_vf &&
 	    isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO) {
-		queue_work(isp->delayed_init_workq,
-			   &isp->delayed_init_work);
+		INIT_COMPLETION(isp->init_done);
 		isp->delayed_init = ATOMISP_DELAYED_INIT_QUEUED;
+		queue_work(isp->delayed_init_workq, &isp->delayed_init_work);
 	}
 
 	/* Make sure that update_isp_params is called at least once.*/

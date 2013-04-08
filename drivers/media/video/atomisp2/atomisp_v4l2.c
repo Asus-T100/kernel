@@ -1013,6 +1013,7 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	mutex_init(&isp->mutex);
 	mutex_init(&isp->streamoff_mutex);
 	spin_lock_init(&isp->lock);
+	init_completion(&isp->init_done);
 
 	isp->max_isr_latency = ATOMISP_MAX_ISR_LATENCY;
 	if ((pdata->spid->platform_family_id == INTEL_CLVTP_PHONE ||

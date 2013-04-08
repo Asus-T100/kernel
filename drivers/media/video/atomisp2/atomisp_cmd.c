@@ -530,6 +530,12 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 					&isp->sequence_temp))
 			atomic_set(&isp->sequence_temp,
 					atomic_read(&isp->sof_count));
+
+		/* signal streamon after delayed init is done */
+		if (isp->delayed_init == ATOMISP_DELAYED_INIT_WORK_DONE) {
+			isp->delayed_init = ATOMISP_DELAYED_INIT_DONE;
+			complete(&isp->init_done);
+		}
 	}
 
 	if (irq_infos & SH_CSS_IRQ_INFO_BUFFER_DONE)
@@ -953,7 +959,7 @@ void atomisp_delayed_init_work(struct work_struct *work)
 						  delayed_init_work);
 	sh_css_allocate_continuous_frames(false);
 	sh_css_update_continuous_frames();
-	isp->delayed_init = ATOMISP_DELAYED_INIT_DONE;
+	isp->delayed_init = ATOMISP_DELAYED_INIT_WORK_DONE;
 }
 
 
@@ -983,6 +989,9 @@ void atomisp_wdt_work(struct work_struct *work)
 
 		atomisp_flush_bufs_and_wakeup(isp);
 		isp->isp_fatal_error = true;
+
+		complete(&isp->init_done);
+
 		break;
 	default:
 		sh_css_dump_sp_sw_debug_info();
@@ -1013,10 +1022,12 @@ void atomisp_wdt_work(struct work_struct *work)
 			sh_css_enable_interrupt(
 				SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF, false);
 
-		if (isp->delayed_init == ATOMISP_DELAYED_INIT_QUEUED) {
+		if (isp->delayed_init == ATOMISP_DELAYED_INIT_QUEUED)
 			cancel_work_sync(&isp->delayed_init_work);
-			isp->delayed_init = ATOMISP_DELAYED_INIT_NOT_QUEUED;
-		}
+
+		complete(&isp->init_done);
+		isp->delayed_init = ATOMISP_DELAYED_INIT_NOT_QUEUED;
+
 		css_pipe_id = atomisp_get_css_pipe_id(isp);
 		switch (css_pipe_id) {
 		case SH_CSS_PREVIEW_PIPELINE:
@@ -1076,9 +1087,10 @@ void atomisp_wdt_work(struct work_struct *work)
 		if (isp->params.continuous_vf &&
 		    isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO &&
 		    isp->delayed_init == ATOMISP_DELAYED_INIT_NOT_QUEUED) {
+			INIT_COMPLETION(isp->init_done);
+			isp->delayed_init = ATOMISP_DELAYED_INIT_QUEUED;
 			queue_work(isp->delayed_init_workq,
 				   &isp->delayed_init_work);
-			isp->delayed_init = ATOMISP_DELAYED_INIT_QUEUED;
 		}
 		/*
 		 * dequeueing buffers is not needed. CSS will recycle
@@ -3766,7 +3778,6 @@ int atomisp_offline_capture_configure(struct atomisp_device *isp,
 				min_t(int, ATOMISP_CONT_RAW_FRAMES,
 				      isp->params.offline_parm.num_captures
 				      + 3);
-
 			sh_css_continuous_set_num_raw_frames(num_raw_frames);
 		}
 

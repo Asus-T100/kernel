@@ -87,7 +87,8 @@
 
 #define ATOMISP_DELAYED_INIT_NOT_QUEUED	0
 #define ATOMISP_DELAYED_INIT_QUEUED	1
-#define ATOMISP_DELAYED_INIT_DONE	2
+#define ATOMISP_DELAYED_INIT_WORK_DONE	2
+#define ATOMISP_DELAYED_INIT_DONE	3
 
 /*
  * Define how fast CPU should be able to serve ISP interrupts.
@@ -358,6 +359,8 @@ struct atomisp_device {
 
 	bool need_gfx_throttle;
 
+	/* delayed memory allocation for css */
+	struct completion init_done;
 	struct workqueue_struct *delayed_init_workq;
 	unsigned int delayed_init;
 	struct work_struct delayed_init_work;
