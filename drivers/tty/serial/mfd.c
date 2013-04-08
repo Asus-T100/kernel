@@ -47,6 +47,12 @@
 #define HSU_DMA_BUF_SIZE	2048
 #define HSU_Q_MAX		4096
 #define HSU_CL_BUF_LEN		(1 << CONFIG_LOG_BUF_SHIFT)
+#define HSU_DMA_BSR		32
+#define HSU_DMA_MOTSR		4
+#define HSU_PIO_RX_ERR		0x06
+#define HSU_PIO_RX_AVB		0x04
+#define HSU_PIO_RX_TMO		0x0C
+#define HSU_PIO_TX_REQ		0x02
 
 #define chan_readl(chan, offset)	readl(chan->reg + offset)
 #define chan_writel(chan, offset, val)	writel(val, chan->reg + offset)
@@ -150,6 +156,13 @@ struct uart_hsu_port {
 	unsigned int		qcmd_done;
 	unsigned int		port_irq_num;
 	unsigned int		port_irq_cmddone;
+	unsigned int		port_irq_no_alt;
+	unsigned int		port_irq_no_startup;
+	unsigned int		port_irq_pio_no_irq_pend;
+	unsigned int		port_irq_pio_tx_req;
+	unsigned int		port_irq_pio_rx_avb;
+	unsigned int		port_irq_pio_rx_err;
+	unsigned int		port_irq_pio_rx_timeout;
 	unsigned int		dma_irq_num;
 	unsigned int		dma_irq_cmddone;
 	unsigned int		tasklet_done;
@@ -161,6 +174,7 @@ struct uart_hsu_port {
 struct hsu_port {
 	int dma_irq;
 	int int_sts;
+	int port_num;
 	struct hsu_port_cfg	*configs[HSU_PORT_MAX];
 	void __iomem	*reg;
 	struct uart_hsu_port	port[HSU_PORT_MAX];
@@ -411,7 +425,7 @@ static void serial_clear_alt(int index)
 
 #ifdef CONFIG_DEBUG_FS
 
-#define HSU_DBGFS_BUFSIZE	4096
+#define HSU_DBGFS_BUFSIZE	8192
 
 static int hsu_show_regs_open(struct inode *inode, struct file *file)
 {
@@ -540,7 +554,7 @@ static ssize_t hsu_dump_show(struct file *file, char __user *user_buf,
 		"HSU status dump:\n");
 	len += snprintf(buf + len, HSU_DBGFS_BUFSIZE - len,
 		"\tdma irq (>0: disable): %d\n", dma_irqdesc->depth);
-	for (i = 0; i < 4; i++) {
+	for (i = 0; i < phsu->port_num; i++) {
 		up = phsu->port + i;
 		cfg = hsu_port_func_cfg + i;
 		port_irqdesc = irq_to_desc(up->port.irq);
@@ -582,6 +596,33 @@ static ssize_t hsu_dump_show(struct file *file, char __user *user_buf,
 			"\tport irq count: %d\n", up->port_irq_num);
 		len += snprintf(buf + len, HSU_DBGFS_BUFSIZE - len,
 			"\tport irq cmddone: %d\n", up->port_irq_cmddone);
+		len += snprintf(buf + len, HSU_DBGFS_BUFSIZE - len,
+			"\tport irq cts: %d\n", up->port.icount.cts);
+		len += snprintf(buf + len, HSU_DBGFS_BUFSIZE - len,
+			"\tport irq rng: %d\n", up->port.icount.rng);
+		len += snprintf(buf + len, HSU_DBGFS_BUFSIZE - len,
+			"\tport irq dsr: %d\n", up->port.icount.dsr);
+		len += snprintf(buf + len, HSU_DBGFS_BUFSIZE - len,
+			"\tport irq no irq pending: %d\n",
+			up->port_irq_pio_no_irq_pend);
+		len += snprintf(buf + len, HSU_DBGFS_BUFSIZE - len,
+			"\tport irq no alt: %d\n",
+			up->port_irq_no_alt);
+		len += snprintf(buf + len, HSU_DBGFS_BUFSIZE - len,
+			"\tport irq no startup: %d\n",
+			up->port_irq_no_startup);
+		len += snprintf(buf + len, HSU_DBGFS_BUFSIZE - len,
+			"\tport irq pio rx error: %d\n",
+			up->port_irq_pio_rx_err);
+		len += snprintf(buf + len, HSU_DBGFS_BUFSIZE - len,
+			"\tport irq pio rx available: %d\n",
+			up->port_irq_pio_rx_avb);
+		len += snprintf(buf + len, HSU_DBGFS_BUFSIZE - len,
+			"\tport irq pio rx fifo timeout: %d\n",
+			up->port_irq_pio_rx_timeout);
+		len += snprintf(buf + len, HSU_DBGFS_BUFSIZE - len,
+			"\tport irq pio tx request: %d\n",
+			up->port_irq_pio_tx_req);
 		len += snprintf(buf + len, HSU_DBGFS_BUFSIZE - len,
 			"\tdma irq count: %d\n", up->dma_irq_num);
 		len += snprintf(buf + len, HSU_DBGFS_BUFSIZE - len,
@@ -744,8 +785,8 @@ void hsu_dma_start_rx_chan(struct hsu_dma_chan *rxc,
 {
 	dbuf->ofs = 0;
 
-	chan_writel(rxc, HSU_CH_BSR, 32);
-	chan_writel(rxc, HSU_CH_MOTSR, 4);
+	chan_writel(rxc, HSU_CH_BSR, HSU_DMA_BSR);
+	chan_writel(rxc, HSU_CH_MOTSR, HSU_DMA_MOTSR);
 
 	chan_writel(rxc, HSU_CH_D0SAR, dbuf->dma_addr);
 	chan_writel(rxc, HSU_CH_D0TSR, dbuf->dma_size);
@@ -1009,12 +1050,15 @@ static irqreturn_t port_irq(int irq, void *dev_id)
 	u8 lsr;
 
 	up->port_irq_num++;
-	if (unlikely(!test_bit(flag_set_alt, &up->flags)))
+	if (unlikely(!test_bit(flag_set_alt, &up->flags))) {
+		up->port_irq_no_alt++;
 		return IRQ_NONE;
+	}
 
 	if (unlikely(!test_bit(flag_startup, &up->flags))) {
 		/*SCU might forward it too late when it is closed already*/
 		serial_in(up, UART_LSR);
+		up->port_irq_no_startup++;
 		return IRQ_HANDLED;
 	}
 
@@ -1277,8 +1321,8 @@ static int serial_hsu_startup(struct uart_port *port)
 		dbuf->dma_size = UART_XMIT_SIZE;
 
 		/* This should not be changed all around */
-		chan_writel(up->txc, HSU_CH_BSR, 32);
-		chan_writel(up->txc, HSU_CH_MOTSR, 4);
+		chan_writel(up->txc, HSU_CH_BSR, HSU_DMA_BSR);
+		chan_writel(up->txc, HSU_CH_MOTSR, HSU_DMA_MOTSR);
 		dbuf->ofs = 0;
 	}
 
@@ -1803,14 +1847,14 @@ static void hsu_regs_context(struct uart_hsu_port *up, int op)
 			chan_writel(up->txc, HSU_CH_DCR, up->txc->dcr);
 			chan_writel(up->txc, HSU_CH_D0SAR, up->txc->sar);
 			chan_writel(up->txc, HSU_CH_D0TSR, up->txc->tsr);
-			chan_writel(up->txc, HSU_CH_BSR, 32);
-			chan_writel(up->txc, HSU_CH_MOTSR, 4);
+			chan_writel(up->txc, HSU_CH_BSR, HSU_DMA_BSR);
+			chan_writel(up->txc, HSU_CH_MOTSR, HSU_DMA_MOTSR);
 
 			chan_writel(up->rxc, HSU_CH_DCR, up->rxc->dcr);
 			chan_writel(up->rxc, HSU_CH_D0SAR, up->rxc->sar);
 			chan_writel(up->rxc, HSU_CH_D0TSR, up->rxc->tsr);
-			chan_writel(up->rxc, HSU_CH_BSR, 32);
-			chan_writel(up->rxc, HSU_CH_MOTSR, 4);
+			chan_writel(up->rxc, HSU_CH_BSR, HSU_DMA_BSR);
+			chan_writel(up->rxc, HSU_CH_MOTSR, HSU_DMA_MOTSR);
 		}
 	}
 }
@@ -2081,8 +2125,18 @@ static void serial_hsu_command(struct uart_hsu_port *up)
 			iir = serial_in(up, UART_IIR);
 			if (iir & UART_IIR_NO_INT) {
 				enable_irq(up->port.irq);
+				up->port_irq_pio_no_irq_pend++;
 				break;
 			}
+
+			if (iir & HSU_PIO_RX_ERR)
+				up->port_irq_pio_rx_err++;
+			if (iir & HSU_PIO_RX_AVB)
+				up->port_irq_pio_rx_avb++;
+			if (iir & HSU_PIO_RX_TMO)
+				up->port_irq_pio_rx_timeout++;
+			if (iir & HSU_PIO_TX_REQ)
+				up->port_irq_pio_tx_req++;
 
 			lsr = serial_in(up, UART_LSR);
 			if (lsr & UART_LSR_DR)
@@ -2282,6 +2336,7 @@ static int serial_hsu_port_probe(struct pci_dev *pdev,
 	up->rxc = &phsu->chans[index * 2 + 1];
 
 	serial_port_setup(up, cfg);
+	phsu->port_num++;
 
 	if (cfg->has_alt) {
 		struct hsu_port_cfg *alt_cfg =
