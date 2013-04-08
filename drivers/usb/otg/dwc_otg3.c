@@ -1413,12 +1413,6 @@ static void reset_phy(struct dwc_otg2 *otg)
 int otg_main_thread(void *data)
 {
 	struct dwc_otg2 *otg = (struct dwc_otg2 *)data;
-#ifdef DEBUG
-	u32 snpsid = otg_read(otg, 0xc120);
-
-	otg_dbg(otg, "io_priv=%p\n", otg->phy.io_priv);
-	otg_dbg(otg, "c120: %x\n", snpsid);
-#endif
 	msleep(100);
 
 	/* Allow the thread to be killed by a signal, but set the signal mask
