@@ -29,7 +29,6 @@ obj-$(subst m,y,$(CONFIG_INTEL_SCU_FLIS))				+= platform_scu_flis.o
 obj-$(subst m,y,$(CONFIG_IIO_BASINCOVE_GPADC))				+= platform_bcove_adc.o
 obj-$(subst m,y,$(CONFIG_VLV2_PLAT_CLK))				+= platform_vlv2_plat_clk.o
 # I2C Devices
-obj-$(subst m,y,$(CONFIG_CRYSTAL_COVE))					+= platform_crystal_cove.o
 obj-$(subst m,y,$(CONFIG_SENSORS_EMC1403))				+= platform_emc1403.o
 obj-$(subst m,y,$(CONFIG_SENSORS_HMC5883))				+= platform_hmc5883.o
 obj-$(subst m,y,$(CONFIG_SENSORS_LIS3LV02D))				+= platform_lis331.o

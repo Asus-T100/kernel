@@ -21,6 +21,7 @@
 #include <linux/interrupt.h>
 #include <linux/workqueue.h>
 #include <linux/mfd/intel_mid_pmic.h>
+#include <linux/acpi.h>
 #include <asm/intel_vlv2.h>
 
 #define PMIC_IRQ_NUM	7
@@ -29,6 +30,15 @@
 #define CHIPVER		0x01
 #define IRQLVL1		0x02
 #define MIRQLVL1	0x0E
+enum {
+	PWRSRC_IRQ = 0,
+	THRM_IRQ,
+	BCU_IRQ,
+	ADC_IRQ,
+	CHGR_IRQ,
+	GPIO_IRQ,
+	VHDMIOCP_IRQ
+};
 
 struct intel_mid_pmic {
 	struct i2c_client *i2c;
@@ -40,6 +50,58 @@ struct intel_mid_pmic {
 	unsigned long irq_mask;
 	struct workqueue_struct *workqueue;
 	struct work_struct      work;
+};
+
+static struct device *gpio_dev;
+static struct resource gpio_resources[] = {
+	{
+		.name	= "GPIO",
+		.start	= GPIO_IRQ,
+		.end	= GPIO_IRQ,
+		.flags	= IORESOURCE_IRQ,
+	},
+};
+
+static struct resource pwrsrc_resources[] = {
+	{
+		.name  = "PWRSRC",
+		.start = PWRSRC_IRQ,
+		.end   = PWRSRC_IRQ,
+		.flags = IORESOURCE_IRQ,
+	},
+};
+
+static struct resource adc_resources[] = {
+	{
+		.name  = "ADC",
+		.start = ADC_IRQ,
+		.end   = ADC_IRQ,
+		.flags = IORESOURCE_IRQ,
+	},
+};
+
+static struct mfd_cell crystal_cove_data[] = {
+	{
+		.name = "crystal_cove_pwrsrc",
+		.id = 0,
+		.num_resources = ARRAY_SIZE(pwrsrc_resources),
+		.resources = pwrsrc_resources,
+	},
+	{
+		.name = "crystal_cove_adc",
+		.id = 0,
+		.num_resources = ARRAY_SIZE(adc_resources),
+		.resources = adc_resources,
+	},
+	{
+		.name = "crystal_cove_gpio",
+		.id = 0,
+		.num_resources = ARRAY_SIZE(gpio_resources),
+		.resources = gpio_resources,
+		.platform_data = &gpio_dev,
+		.pdata_size = sizeof(gpio_dev),
+	},
+	{NULL, },
 };
 
 static struct intel_mid_pmic intel_mid_pmic;
@@ -196,13 +258,14 @@ static int pmic_i2c_probe(struct i2c_client *i2c,
 			    const struct i2c_device_id *id)
 {
 	int i;
-	struct mfd_cell *cell_dev = i2c->dev.platform_data;
+	struct mfd_cell *cell_dev = crystal_cove_data;
 
 	mutex_init(&pmic->io_lock);
 	mutex_init(&pmic->irq_lock);
 	pmic->workqueue =
 		create_singlethread_workqueue("crystal cove");
 	INIT_WORK(&pmic->work, pmic_work);
+	gpio_dev = &i2c->dev;
 	pmic->i2c = i2c;
 	pmic->dev = &i2c->dev;
 	pmic->irq = i2c->irq;
@@ -227,10 +290,17 @@ static const struct i2c_device_id pmic_i2c_id[] = {
 };
 MODULE_DEVICE_TABLE(i2c, pmic_i2c_id);
 
+static struct acpi_device_id pmic_acpi_match[] = {
+	{ "TEST0001", 0 },
+	{ },
+};
+MODULE_DEVICE_TABLE(acpi, pmic_acpi_match);
+
 static struct i2c_driver pmic_i2c_driver = {
 	.driver = {
 		.name = "intel_mid_i2c_pmic",
 		.owner = THIS_MODULE,
+		.acpi_match_table = ACPI_PTR(pmic_acpi_match),
 	},
 	.probe = pmic_i2c_probe,
 	.remove = pmic_i2c_remove,
