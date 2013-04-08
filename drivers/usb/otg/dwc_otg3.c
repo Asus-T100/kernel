@@ -1958,29 +1958,44 @@ static int dwc_otg_runtime_idle(struct device *dev)
 static int dwc_otg_runtime_suspend(struct device *dev)
 {
 	struct dwc_otg2 *otg = the_transceiver;
+	struct pci_dev *pci_dev = to_pci_dev(dev);
+	pci_power_t state = PCI_D3cold;
 
 	if (!otg) {
 		printk(KERN_ERR "%s: dwc_otg2 haven't init.\n", __func__);
 		return 0;
 	}
 
-	if (otg->state == DWC_STATE_A_HOST) {
+	if (otg->state == DWC_STATE_B_PERIPHERAL ||
+			otg->state == DWC_STATE_A_HOST)
+		state = PCI_D3hot;
+
+	if (otg->state == DWC_STATE_A_HOST)
 		dwc_otg_notify_charger_type(otg, \
 				POWER_SUPPLY_CHARGER_EVENT_SUSPEND);
-		return 0;
-	}
 
 	set_sus_phy(otg, 1);
+	if (pci_save_state(pci_dev)) {
+		printk(KERN_ERR "dwc-otg3: pci_save_state failed!\n");
+		return -EIO;
+	}
+	pci_disable_device(pci_dev);
+	pci_set_power_state(pci_dev, state);
 
 	return 0;
 }
 static int dwc_otg_runtime_resume(struct device *dev)
 {
 	struct dwc_otg2 *otg = the_transceiver;
+	struct pci_dev *pci_dev = to_pci_dev(dev);
 
-	if (otg->state == DWC_STATE_A_HOST)
-		return 0;
-
+	pci_set_power_state(pci_dev, PCI_D0);
+	pci_restore_state(pci_dev);
+	if (pci_enable_device(pci_dev) < 0) {
+		printk(KERN_ERR "dwc-otg3: pci_enable_device failed.\n");
+		stop_main_thread(otg);
+		return -EIO;
+	}
 	set_sus_phy(otg, 0);
 
 	return 0;
@@ -1988,6 +2003,30 @@ static int dwc_otg_runtime_resume(struct device *dev)
 
 static int dwc_otg_suspend(struct device *dev)
 {
+	struct dwc_otg2 *otg = the_transceiver;
+	struct pci_dev *pci_dev = to_pci_dev(dev);
+	pci_power_t state = PCI_D3cold;
+
+	if (!otg) {
+		printk(KERN_ERR "%s: dwc_otg2 haven't init.\n", __func__);
+		return 0;
+	}
+
+	if (otg->state == DWC_STATE_B_PERIPHERAL ||
+			otg->state == DWC_STATE_A_HOST)
+		state = PCI_D3hot;
+
+	if (otg->state == DWC_STATE_A_HOST)
+		dwc_otg_notify_charger_type(otg, \
+				POWER_SUPPLY_CHARGER_EVENT_SUSPEND);
+
+	set_sus_phy(otg, 1);
+	if (pci_save_state(pci_dev)) {
+		printk(KERN_ERR "dwc-otg3: pci_save_state failed!\n");
+		return -EIO;
+	}
+	pci_disable_device(pci_dev);
+	pci_set_power_state(pci_dev, state);
 	return 0;
 }
 
@@ -1995,6 +2034,16 @@ static int dwc_otg_resume(struct device *dev)
 {
 	struct dwc_otg2 *otg = the_transceiver;
 	unsigned long flags;
+	struct pci_dev *pci_dev = to_pci_dev(dev);
+
+	pci_set_power_state(pci_dev, PCI_D0);
+	pci_restore_state(pci_dev);
+	if (pci_enable_device(pci_dev) < 0) {
+		printk(KERN_ERR "dwc-otg3: pci_enable_device failed.\n");
+		stop_main_thread(otg);
+		return -EIO;
+	}
+	set_sus_phy(otg, 0);
 
 	spin_lock_irqsave(&otg->lock, flags);
 	otg->otg_events |= OEVT_B_DEV_SES_VLD_DET_EVNT;
