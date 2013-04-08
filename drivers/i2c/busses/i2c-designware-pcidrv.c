@@ -44,6 +44,7 @@
 #include "i2c-designware-core.h"
 
 #define DRIVER_NAME "i2c-designware-pci"
+#define DW_I2C_STATIC_BUS_NUM	10
 
 enum dw_pci_ctl_id_t {
 	moorestown_0,
@@ -833,6 +834,17 @@ static void __exit dw_i2c_exit_driver(void)
 	pci_unregister_driver(&dw_i2c_driver);
 }
 module_exit(dw_i2c_exit_driver);
+
+static int __init dw_i2c_reserve_static_bus(void)
+{
+	struct i2c_board_info dummy = {
+		I2C_BOARD_INFO("dummy", 0xff),
+	};
+
+	i2c_register_board_info(DW_I2C_STATIC_BUS_NUM, &dummy, 1);
+	return 0;
+}
+subsys_initcall(dw_i2c_reserve_static_bus);
 
 MODULE_AUTHOR("Baruch Siach <baruch@tkos.co.il>");
 MODULE_DESCRIPTION("Synopsys DesignWare PCI I2C bus adapter");
