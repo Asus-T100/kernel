@@ -228,7 +228,7 @@ struct callback_param {
 	u32 direction;
 };
 
-struct ssp_driver_context {
+struct ssp_drv_context {
 	/* Driver model hookup */
 	struct pci_dev *pdev;
 
@@ -278,8 +278,8 @@ struct ssp_driver_context {
 	dma_addr_t rx_dma;
 	dma_addr_t tx_dma;
 	u8 n_bytes;
-	int (*write)(struct ssp_driver_context *drv_context);
-	int (*read)(struct ssp_driver_context *drv_context);
+	int (*write)(struct ssp_drv_context *sspc);
+	int (*read)(struct ssp_drv_context *sspc);
 
 	struct intel_mid_dma_slave    dmas_tx;
 	struct intel_mid_dma_slave    dmas_rx;
@@ -310,8 +310,8 @@ struct chip_data {
 	u8 dma_enabled;
 	u8 bits_per_word;
 	u32 speed_hz;
-	int (*write)(struct ssp_driver_context *drv_context);
-	int (*read)(struct ssp_driver_context *drv_context);
+	int (*write)(struct ssp_drv_context *sspc);
+	int (*read)(struct ssp_drv_context *sspc);
 };
 
 
@@ -330,7 +330,6 @@ struct intel_mid_ssp_spi_chip {
 	u8 enable_loopback;
 	u8 dma_enabled;
 };
-
 
 #define SPI_DIB_NAME_LEN  16
 #define SPI_DIB_SPEC_INFO_LEN      10

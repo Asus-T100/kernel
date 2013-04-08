@@ -81,49 +81,48 @@ static void dump_trailer(const struct device *dev, char *buf, int len, int sz)
 }
 #endif
 
-static inline u32 is_tx_fifo_empty(struct ssp_driver_context *drv_context)
+static inline u32 is_tx_fifo_empty(struct ssp_drv_context *sspc)
 {
 	u32 sssr;
-	sssr = read_SSSR(drv_context->ioaddr);
+	sssr = read_SSSR(sspc->ioaddr);
 	if ((sssr & SSSR_TFL_MASK) || (sssr & SSSR_TNF) == 0)
 		return 0;
 	else
 		return 1;
 }
 
-static inline u32 is_rx_fifo_empty(struct ssp_driver_context *drv_context)
+static inline u32 is_rx_fifo_empty(struct ssp_drv_context *sspc)
 {
-	return ((read_SSSR(drv_context->ioaddr) & SSSR_RNE) == 0);
+	return ((read_SSSR(sspc->ioaddr) & SSSR_RNE) == 0);
 }
 
-static inline void disable_interface(struct ssp_driver_context *drv_context)
+static inline void disable_interface(struct ssp_drv_context *sspc)
 {
-	void *reg = drv_context->ioaddr;
+	void *reg = sspc->ioaddr;
 	write_SSCR0(read_SSCR0(reg) & ~SSCR0_SSE, reg);
 }
 
-static inline void disable_triggers(struct ssp_driver_context *drv_context)
+static inline void disable_triggers(struct ssp_drv_context *sspc)
 {
-	void *reg = drv_context->ioaddr;
-	write_SSCR1(read_SSCR1(reg) & ~drv_context->cr1_sig, reg);
+	void *reg = sspc->ioaddr;
+	write_SSCR1(read_SSCR1(reg) & ~sspc->cr1_sig, reg);
 }
 
 
-static void flush(struct ssp_driver_context *drv_context)
+static void flush(struct ssp_drv_context *sspc)
 {
-	void *reg = drv_context->ioaddr;
+	void *reg = sspc->ioaddr;
 	u32 i = 0;
 
 	/* If the transmit fifo is not empty, reset the interface. */
-	if (!is_tx_fifo_empty(drv_context)) {
-		dev_err(&drv_context->pdev->dev,
-				"TX FIFO not empty. Reset of SPI IF");
-		disable_interface(drv_context);
+	if (!is_tx_fifo_empty(sspc)) {
+		dev_err(&sspc->pdev->dev, "TX FIFO not empty. Reset of SPI IF");
+		disable_interface(sspc);
 		return;
 	}
 
-	dev_dbg(&drv_context->pdev->dev, " SSSR=%x\r\n", read_SSSR(reg));
-	while (!is_rx_fifo_empty(drv_context) && (i < SPI_FIFO_SIZE + 1)) {
+	dev_dbg(&sspc->pdev->dev, " SSSR=%x\r\n", read_SSSR(reg));
+	while (!is_rx_fifo_empty(sspc) && (i < SPI_FIFO_SIZE + 1)) {
 		read_SSDR(reg);
 		i++;
 	}
@@ -132,120 +131,117 @@ static void flush(struct ssp_driver_context *drv_context)
 	return;
 }
 
-static int null_writer(struct ssp_driver_context *drv_context)
+static int null_writer(struct ssp_drv_context *sspc)
 {
-	void *reg = drv_context->ioaddr;
-	u8 n_bytes = drv_context->n_bytes;
+	void *reg = sspc->ioaddr;
+	u8 n_bytes = sspc->n_bytes;
 
 	if (((read_SSSR(reg) & SSSR_TFL_MASK) == SSSR_TFL_MASK)
-		|| (drv_context->tx == drv_context->tx_end))
+		|| (sspc->tx == sspc->tx_end))
 		return 0;
 
 	write_SSDR(0, reg);
-	drv_context->tx += n_bytes;
+	sspc->tx += n_bytes;
 
 	return 1;
 }
 
-static int null_reader(struct ssp_driver_context *drv_context)
+static int null_reader(struct ssp_drv_context *sspc)
 {
-	void *reg = drv_context->ioaddr;
-	u8 n_bytes = drv_context->n_bytes;
+	void *reg = sspc->ioaddr;
+	u8 n_bytes = sspc->n_bytes;
 
 	while ((read_SSSR(reg) & SSSR_RNE)
-		&& (drv_context->rx < drv_context->rx_end)) {
+		&& (sspc->rx < sspc->rx_end)) {
 		read_SSDR(reg);
-		drv_context->rx += n_bytes;
+		sspc->rx += n_bytes;
 	}
 
-	return drv_context->rx == drv_context->rx_end;
+	return sspc->rx == sspc->rx_end;
 }
 
-static int u8_writer(struct ssp_driver_context *drv_context)
+static int u8_writer(struct ssp_drv_context *sspc)
 {
-	void *reg = drv_context->ioaddr;
+	void *reg = sspc->ioaddr;
 	if (((read_SSSR(reg) & SSSR_TFL_MASK) == SSSR_TFL_MASK)
-		|| (drv_context->tx == drv_context->tx_end))
+		|| (sspc->tx == sspc->tx_end))
 		return 0;
 
-	write_SSDR(*(u8 *)(drv_context->tx), reg);
-	++drv_context->tx;
+	write_SSDR(*(u8 *)(sspc->tx), reg);
+	++sspc->tx;
 
 	return 1;
 }
 
-static int u8_reader(struct ssp_driver_context *drv_context)
+static int u8_reader(struct ssp_drv_context *sspc)
 {
-	void *reg = drv_context->ioaddr;
+	void *reg = sspc->ioaddr;
 	while ((read_SSSR(reg) & SSSR_RNE)
-		&& (drv_context->rx < drv_context->rx_end)) {
-		*(u8 *)(drv_context->rx) = read_SSDR(reg);
-		++drv_context->rx;
+		&& (sspc->rx < sspc->rx_end)) {
+		*(u8 *)(sspc->rx) = read_SSDR(reg);
+		++sspc->rx;
 	}
 
-	return drv_context->rx == drv_context->rx_end;
+	return sspc->rx == sspc->rx_end;
 }
 
-static int u16_writer(struct ssp_driver_context *drv_context)
+static int u16_writer(struct ssp_drv_context *sspc)
 {
-	void *reg = drv_context->ioaddr;
+	void *reg = sspc->ioaddr;
 	if (((read_SSSR(reg) & SSSR_TFL_MASK) == SSSR_TFL_MASK)
-		|| (drv_context->tx == drv_context->tx_end))
+		|| (sspc->tx == sspc->tx_end))
 		return 0;
 
-	write_SSDR(*(u16 *)(drv_context->tx), reg);
-	drv_context->tx += 2;
+	write_SSDR(*(u16 *)(sspc->tx), reg);
+	sspc->tx += 2;
 
 	return 1;
 }
 
-static int u16_reader(struct ssp_driver_context *drv_context)
+static int u16_reader(struct ssp_drv_context *sspc)
 {
-	void *reg = drv_context->ioaddr;
-	while ((read_SSSR(reg) & SSSR_RNE)
-		&& (drv_context->rx < drv_context->rx_end)) {
-		*(u16 *)(drv_context->rx) = read_SSDR(reg);
-		drv_context->rx += 2;
+	void *reg = sspc->ioaddr;
+	while ((read_SSSR(reg) & SSSR_RNE) && (sspc->rx < sspc->rx_end)) {
+		*(u16 *)(sspc->rx) = read_SSDR(reg);
+		sspc->rx += 2;
 	}
 
-	return drv_context->rx == drv_context->rx_end;
+	return sspc->rx == sspc->rx_end;
 }
 
-static int u32_writer(struct ssp_driver_context *drv_context)
+static int u32_writer(struct ssp_drv_context *sspc)
 {
-	void *reg = drv_context->ioaddr;
+	void *reg = sspc->ioaddr;
 	if (((read_SSSR(reg) & SSSR_TFL_MASK) == SSSR_TFL_MASK)
-		|| (drv_context->tx == drv_context->tx_end))
+		|| (sspc->tx == sspc->tx_end))
 		return 0;
 
-	write_SSDR(*(u32 *)(drv_context->tx), reg);
-	drv_context->tx += 4;
+	write_SSDR(*(u32 *)(sspc->tx), reg);
+	sspc->tx += 4;
 
 	return 1;
 }
 
-static int u32_reader(struct ssp_driver_context *drv_context)
+static int u32_reader(struct ssp_drv_context *sspc)
 {
-	void *reg = drv_context->ioaddr;
-	while ((read_SSSR(reg) & SSSR_RNE)
-		&& (drv_context->rx < drv_context->rx_end)) {
-		*(u32 *)(drv_context->rx) = read_SSDR(reg);
-		drv_context->rx += 4;
+	void *reg = sspc->ioaddr;
+	while ((read_SSSR(reg) & SSSR_RNE) && (sspc->rx < sspc->rx_end)) {
+		*(u32 *)(sspc->rx) = read_SSDR(reg);
+		sspc->rx += 4;
 	}
 
-	return drv_context->rx == drv_context->rx_end;
+	return sspc->rx == sspc->rx_end;
 }
 
 static bool chan_filter(struct dma_chan *chan, void *param)
 {
-	struct ssp_driver_context *drv_context =
-		(struct ssp_driver_context *)param;
+	struct ssp_drv_context *sspc = param;
 	bool ret = false;
 
-	if (!drv_context->dmac1)
+	if (!sspc->dmac1)
 		return ret;
 
-	if (chan->device->dev == &drv_context->dmac1->dev)
+	if (chan->device->dev == &sspc->dmac1->dev)
 		ret = true;
 
 	return ret;
@@ -253,19 +249,17 @@ static bool chan_filter(struct dma_chan *chan, void *param)
 
 /**
  * unmap_dma_buffers() - Unmap the DMA buffers used during the last transfer.
- * @drv_context:	Pointer to the private driver context
+ * @sspc:	Pointer to the private driver context
  */
-static void unmap_dma_buffers(struct ssp_driver_context *drv_context)
+static void unmap_dma_buffers(struct ssp_drv_context *sspc)
 {
-	struct device *dev = &drv_context->pdev->dev;
+	struct device *dev = &sspc->pdev->dev;
 
-	if (!drv_context->dma_mapped)
+	if (!sspc->dma_mapped)
 		return;
-	dma_unmap_single(dev, drv_context->rx_dma, drv_context->len,
-		PCI_DMA_FROMDEVICE);
-	dma_unmap_single(dev, drv_context->tx_dma, drv_context->len,
-		PCI_DMA_TODEVICE);
-	drv_context->dma_mapped = 0;
+	dma_unmap_single(dev, sspc->rx_dma, sspc->len, PCI_DMA_FROMDEVICE);
+	dma_unmap_single(dev, sspc->tx_dma, sspc->len, PCI_DMA_TODEVICE);
+	sspc->dma_mapped = 0;
 }
 
 /**
@@ -280,61 +274,61 @@ static void unmap_dma_buffers(struct ssp_driver_context *drv_context)
 static void intel_mid_ssp_spi_dma_done(void *arg)
 {
 	struct callback_param *cb_param = (struct callback_param *)arg;
-	struct ssp_driver_context *drv_context = cb_param->drv_context;
-	struct device *dev = &drv_context->pdev->dev;
-	void *reg = drv_context->ioaddr;
+	struct ssp_drv_context *sspc = cb_param->drv_context;
+	struct device *dev = &sspc->pdev->dev;
+	void *reg = sspc->ioaddr;
 
 	if (cb_param->direction == TX_DIRECTION)
-		drv_context->txdma_done = 1;
+		sspc->txdma_done = 1;
 	else
-		drv_context->rxdma_done = 1;
+		sspc->rxdma_done = 1;
 
 	dev_dbg(dev, "DMA callback for direction %d [RX done:%d] [TX done:%d]\n",
-		cb_param->direction, drv_context->rxdma_done,
-		drv_context->txdma_done);
+		cb_param->direction, sspc->rxdma_done,
+		sspc->txdma_done);
 
-	if (drv_context->txdma_done && drv_context->rxdma_done) {
+	if (sspc->txdma_done && sspc->rxdma_done) {
 		/* Clear Status Register */
-		write_SSSR(drv_context->clear_sr, reg);
+		write_SSSR(sspc->clear_sr, reg);
 		dev_dbg(dev, "DMA done\n");
 		/* Disable Triggers to DMA or to CPU*/
-		disable_triggers(drv_context);
-		unmap_dma_buffers(drv_context);
+		disable_triggers(sspc);
+		unmap_dma_buffers(sspc);
 
-		queue_work(drv_context->dma_wq, &drv_context->complete_work);
+		queue_work(sspc->dma_wq, &sspc->complete_work);
 	}
 }
 
 /**
  * intel_mid_ssp_spi_dma_init() - Initialize DMA
- * @drv_context:	Pointer to the private driver context
+ * @sspc:	Pointer to the private driver context
  *
  * This function is called at driver setup phase to allocate DMA
  * ressources.
  */
-static void intel_mid_ssp_spi_dma_init(struct ssp_driver_context *drv_context)
+static void intel_mid_ssp_spi_dma_init(struct ssp_drv_context *sspc)
 {
 	struct intel_mid_dma_slave *rxs, *txs;
 	struct dma_slave_config *ds;
 	dma_cap_mask_t mask;
-	struct device *dev = &drv_context->pdev->dev;
+	struct device *dev = &sspc->pdev->dev;
 	unsigned int device_id;
 
 	/* Configure RX channel parameters */
-	rxs = &drv_context->dmas_rx;
+	rxs = &sspc->dmas_rx;
 	ds = &rxs->dma_slave;
 
 	ds->direction = DMA_FROM_DEVICE;
 	rxs->hs_mode = LNW_DMA_HW_HS;
 	rxs->cfg_mode = LNW_DMA_PER_TO_MEM;
 	ds->dst_addr_width = DMA_SLAVE_BUSWIDTH_4_BYTES;
-	ds->src_addr_width = drv_context->n_bytes;
+	ds->src_addr_width = sspc->n_bytes;
 
 	/* Use a DMA burst according to the FIFO thresholds */
-	if (drv_context->rx_fifo_threshold == 8) {
+	if (sspc->rx_fifo_threshold == 8) {
 		ds->src_maxburst = 8;
 		ds->dst_maxburst = 8;
-	} else if (drv_context->rx_fifo_threshold == 4) {
+	} else if (sspc->rx_fifo_threshold == 4) {
 		ds->src_maxburst = 4;
 		ds->dst_maxburst = 4;
 	} else {
@@ -343,20 +337,20 @@ static void intel_mid_ssp_spi_dma_init(struct ssp_driver_context *drv_context)
 	}
 
 	/* Configure TX channel parameters */
-	txs = &drv_context->dmas_tx;
+	txs = &sspc->dmas_tx;
 	ds = &txs->dma_slave;
 
 	ds->direction = DMA_TO_DEVICE;
 	txs->hs_mode = LNW_DMA_HW_HS;
 	txs->cfg_mode = LNW_DMA_MEM_TO_PER;
 	ds->src_addr_width = DMA_SLAVE_BUSWIDTH_4_BYTES;
-	ds->dst_addr_width = drv_context->n_bytes;
+	ds->dst_addr_width = sspc->n_bytes;
 
 	/* Use a DMA burst according to the FIFO thresholds */
-	if (drv_context->rx_fifo_threshold == 8) {
+	if (sspc->rx_fifo_threshold == 8) {
 		ds->src_maxburst = 8;
 		ds->dst_maxburst = 8;
-	} else if (drv_context->rx_fifo_threshold == 4) {
+	} else if (sspc->rx_fifo_threshold == 4) {
 		ds->src_maxburst = 4;
 		ds->dst_maxburst = 4;
 	} else {
@@ -365,30 +359,27 @@ static void intel_mid_ssp_spi_dma_init(struct ssp_driver_context *drv_context)
 	}
 
 	/* Nothing more to do if already initialized */
-	if (drv_context->dma_initialized)
+	if (sspc->dma_initialized)
 		return;
 
 	/* Use DMAC1 */
-	if (drv_context->quirks & QUIRKS_PLATFORM_MRST)
+	if (sspc->quirks & QUIRKS_PLATFORM_MRST)
 		device_id = PCI_MRST_DMAC1_ID;
 	else
 		device_id = PCI_MDFL_DMAC1_ID;
 
-	drv_context->dmac1 = pci_get_device(PCI_VENDOR_ID_INTEL,
-							device_id, NULL);
-
-	if (!drv_context->dmac1) {
+	sspc->dmac1 = pci_get_device(PCI_VENDOR_ID_INTEL, device_id, NULL);
+	if (!sspc->dmac1) {
 		dev_err(dev, "Can't find DMAC1");
 		return;
 	}
 
-	if (drv_context->quirks & QUIRKS_SRAM_ADDITIONAL_CPY) {
-		drv_context->virt_addr_sram_rx = ioremap_nocache(SRAM_BASE_ADDR,
+	if (sspc->quirks & QUIRKS_SRAM_ADDITIONAL_CPY) {
+		sspc->virt_addr_sram_rx = ioremap_nocache(SRAM_BASE_ADDR,
 				2 * MAX_SPI_TRANSFER_SIZE);
-		if (drv_context->virt_addr_sram_rx)
-			drv_context->virt_addr_sram_tx =
-				drv_context->virt_addr_sram_rx +
-				MAX_SPI_TRANSFER_SIZE;
+		if (sspc->virt_addr_sram_rx)
+			sspc->virt_addr_sram_tx = sspc->virt_addr_sram_rx +
+							MAX_SPI_TRANSFER_SIZE;
 		else
 			dev_err(dev, "Virt_addr_sram_rx is null\n");
 	}
@@ -398,159 +389,151 @@ static void intel_mid_ssp_spi_dma_init(struct ssp_driver_context *drv_context)
 	dma_cap_set(DMA_MEMCPY, mask);
 	dma_cap_set(DMA_SLAVE, mask);
 
-	drv_context->rxchan = dma_request_channel(mask, chan_filter,
-		drv_context);
-	if (!drv_context->rxchan)
+	sspc->rxchan = dma_request_channel(mask, chan_filter, sspc);
+	if (!sspc->rxchan)
 		goto err_exit;
 
-	drv_context->rxchan->private = rxs;
+	sspc->rxchan->private = rxs;
 
 	/* 2. Allocate tx channel */
 	dma_cap_set(DMA_SLAVE, mask);
 	dma_cap_set(DMA_MEMCPY, mask);
 
-	drv_context->txchan = dma_request_channel(mask, chan_filter,
-		drv_context);
-
-	if (!drv_context->txchan)
+	sspc->txchan = dma_request_channel(mask, chan_filter, sspc);
+	if (!sspc->txchan)
 		goto free_rxchan;
 	else
-		drv_context->txchan->private = txs;
+		sspc->txchan->private = txs;
 
 	/* set the dma done bit to 1 */
-	drv_context->txdma_done = 1;
-	drv_context->rxdma_done = 1;
+	sspc->txdma_done = 1;
+	sspc->rxdma_done = 1;
 
-	drv_context->tx_param.drv_context  = drv_context;
-	drv_context->tx_param.direction = TX_DIRECTION;
-	drv_context->rx_param.drv_context  = drv_context;
-	drv_context->rx_param.direction = RX_DIRECTION;
+	sspc->tx_param.drv_context  = sspc;
+	sspc->tx_param.direction = TX_DIRECTION;
+	sspc->rx_param.drv_context  = sspc;
+	sspc->rx_param.direction = RX_DIRECTION;
 
-	drv_context->dma_initialized = 1;
-
+	sspc->dma_initialized = 1;
 	return;
 
 free_rxchan:
-	dma_release_channel(drv_context->rxchan);
+	dma_release_channel(sspc->rxchan);
 err_exit:
 	dev_err(dev, "Error : DMA Channel Not available\n");
 
-	if (drv_context->quirks & QUIRKS_SRAM_ADDITIONAL_CPY)
-		iounmap(drv_context->virt_addr_sram_rx);
+	if (sspc->quirks & QUIRKS_SRAM_ADDITIONAL_CPY)
+		iounmap(sspc->virt_addr_sram_rx);
 
-	pci_dev_put(drv_context->dmac1);
+	pci_dev_put(sspc->dmac1);
 	return;
 }
 
 /**
  * intel_mid_ssp_spi_dma_exit() - Release DMA ressources
- * @drv_context:	Pointer to the private driver context
+ * @sspc:	Pointer to the private driver context
  */
-static void intel_mid_ssp_spi_dma_exit(struct ssp_driver_context *drv_context)
+static void intel_mid_ssp_spi_dma_exit(struct ssp_drv_context *sspc)
 {
-	dma_release_channel(drv_context->txchan);
-	dma_release_channel(drv_context->rxchan);
+	dma_release_channel(sspc->txchan);
+	dma_release_channel(sspc->rxchan);
 
-	if (drv_context->quirks & QUIRKS_SRAM_ADDITIONAL_CPY)
-		iounmap(drv_context->virt_addr_sram_rx);
+	if (sspc->quirks & QUIRKS_SRAM_ADDITIONAL_CPY)
+		iounmap(sspc->virt_addr_sram_rx);
 
-	pci_dev_put(drv_context->dmac1);
+	pci_dev_put(sspc->dmac1);
 }
 
 /**
  * dma_transfer() - Initiate a DMA transfer
- * @drv_context:	Pointer to the private driver context
+ * @sspc:	Pointer to the private driver context
  */
-static void dma_transfer(struct ssp_driver_context *drv_context)
+static void dma_transfer(struct ssp_drv_context *sspc)
 {
 	dma_addr_t ssdr_addr;
 	struct dma_async_tx_descriptor *txdesc = NULL, *rxdesc = NULL;
 	struct dma_chan *txchan, *rxchan;
 	enum dma_ctrl_flags flag;
-	struct device *dev = &drv_context->pdev->dev;
+	struct device *dev = &sspc->pdev->dev;
 
 	/* get Data Read/Write address */
-	ssdr_addr = (dma_addr_t)(drv_context->paddr + 0x10);
+	ssdr_addr = (dma_addr_t)(sspc->paddr + 0x10);
 
-	if (drv_context->tx_dma)
-		drv_context->txdma_done = 0;
+	if (sspc->tx_dma)
+		sspc->txdma_done = 0;
 
-	if (drv_context->rx_dma)
-		drv_context->rxdma_done = 0;
+	if (sspc->rx_dma)
+		sspc->rxdma_done = 0;
 
 	/* 2. prepare the RX dma transfer */
-	txchan = drv_context->txchan;
-	rxchan = drv_context->rxchan;
+	txchan = sspc->txchan;
+	rxchan = sspc->rxchan;
 
 	flag = DMA_PREP_INTERRUPT | DMA_CTRL_ACK;
 
-	if (likely(drv_context->quirks & QUIRKS_DMA_USE_NO_TRAIL)) {
+	if (likely(sspc->quirks & QUIRKS_DMA_USE_NO_TRAIL)) {
 		/* Since the DMA is configured to do 32bits access */
 		/* to/from the DDR, the DMA transfer size must be  */
 		/* a multiple of 4 bytes                           */
-		drv_context->len_dma_rx = drv_context->len & ~(4 - 1);
-		drv_context->len_dma_tx = drv_context->len_dma_rx;
+		sspc->len_dma_rx = sspc->len & ~(4 - 1);
+		sspc->len_dma_tx = sspc->len_dma_rx;
 
 		/* In Rx direction, TRAIL Bytes are handled by memcpy */
-		if (drv_context->rx_dma &&
-			(drv_context->len_dma_rx >
-			drv_context->rx_fifo_threshold * drv_context->n_bytes))
-			drv_context->len_dma_rx =
-					TRUNCATE(drv_context->len_dma_rx,
-					drv_context->rx_fifo_threshold *
-					drv_context->n_bytes);
-		else if (!drv_context->rx_dma)
+		if (sspc->rx_dma &&
+			(sspc->len_dma_rx >
+				sspc->rx_fifo_threshold * sspc->n_bytes))
+			sspc->len_dma_rx = TRUNCATE(sspc->len_dma_rx,
+				sspc->rx_fifo_threshold * sspc->n_bytes);
+		else if (!sspc->rx_dma)
 			dev_err(dev, "ERROR : rx_dma is null\r\n");
 	} else {
 		/* TRAIL Bytes are handled by DMA */
-		if (drv_context->rx_dma) {
-			drv_context->len_dma_rx = drv_context->len;
-			drv_context->len_dma_tx = drv_context->len;
-		} else {
-			dev_err(dev, "ERROR : drv_context->rx_dma is null!\n");
-		}
+		if (sspc->rx_dma) {
+			sspc->len_dma_rx = sspc->len;
+			sspc->len_dma_tx = sspc->len;
+		} else
+			dev_err(dev, "ERROR : sspc->rx_dma is null!\n");
 	}
 
 	rxdesc = rxchan->device->device_prep_dma_memcpy
-		(rxchan,				/* DMA Channel */
-		drv_context->rx_dma,			/* DAR */
-		ssdr_addr,				/* SAR */
-		drv_context->len_dma_rx,		/* Data Length */
+		(rxchan,			/* DMA Channel */
+		sspc->rx_dma,			/* DAR */
+		ssdr_addr,			/* SAR */
+		sspc->len_dma_rx,		/* Data Length */
 		flag);					/* Flag */
 
 	if (rxdesc) {
 		rxdesc->callback = intel_mid_ssp_spi_dma_done;
-		rxdesc->callback_param = &drv_context->rx_param;
+		rxdesc->callback_param = &sspc->rx_param;
 	} else {
 		dev_dbg(dev, "rxdesc is null! (len_dma_rx:%d)\n",
-			drv_context->len_dma_rx);
-		drv_context->rxdma_done = 1;
+			sspc->len_dma_rx);
+		sspc->rxdma_done = 1;
 	}
 
 	/* 3. prepare the TX dma transfer */
-	if (drv_context->tx_dma) {
+	if (sspc->tx_dma) {
 		txdesc = txchan->device->device_prep_dma_memcpy
-		(txchan,				/* DMA Channel */
-		ssdr_addr,				/* DAR */
-		drv_context->tx_dma,			/* SAR */
-		drv_context->len_dma_tx,		/* Data Length */
-		flag);					/* Flag */
+			(txchan,			/* DMA Channel */
+			ssdr_addr,			/* DAR */
+			sspc->tx_dma,			/* SAR */
+			sspc->len_dma_tx,		/* Data Length */
+			flag);				/* Flag */
 		if (txdesc) {
 			txdesc->callback = intel_mid_ssp_spi_dma_done;
-			txdesc->callback_param = &drv_context->tx_param;
+			txdesc->callback_param = &sspc->tx_param;
 		} else {
 			dev_dbg(dev, "txdesc is null! (len_dma_tx:%d)\n",
-				drv_context->len_dma_tx);
-			drv_context->txdma_done = 1;
+				sspc->len_dma_tx);
+			sspc->txdma_done = 1;
 		}
 	} else {
-		dev_err(dev, "ERROR : drv_context->tx_dma is null!\n");
+		dev_err(dev, "ERROR : sspc->tx_dma is null!\n");
 		return;
 	}
 
 	dev_info(dev, "DMA transfer len:%d len_dma_tx:%d len_dma_rx:%d\n",
-		drv_context->len, drv_context->len_dma_tx,
-		drv_context->len_dma_rx);
+		sspc->len, sspc->len_dma_tx, sspc->len_dma_rx);
 
 	if (rxdesc || txdesc) {
 		if (rxdesc) {
@@ -563,7 +546,7 @@ static void dma_transfer(struct ssp_driver_context *drv_context)
 		}
 	} else {
 		struct callback_param cb_param;
-		cb_param.drv_context = drv_context;
+		cb_param.drv_context = sspc;
 		dev_dbg(dev, "Bypassing DMA transfer\n");
 		intel_mid_ssp_spi_dma_done(&cb_param);
 	}
@@ -571,45 +554,41 @@ static void dma_transfer(struct ssp_driver_context *drv_context)
 
 /**
  * map_dma_buffers() - Map DMA buffer before a transfer
- * @drv_context:	Pointer to the private drivzer context
+ * @sspc:	Pointer to the private drivzer context
  */
-static int map_dma_buffers(struct ssp_driver_context *drv_context)
+static int map_dma_buffers(struct ssp_drv_context *sspc)
 {
-	struct device *dev = &drv_context->pdev->dev;
+	struct device *dev = &sspc->pdev->dev;
 
-	if (unlikely(drv_context->dma_mapped)) {
+	if (unlikely(sspc->dma_mapped)) {
 		dev_err(dev, "ERROR : DMA buffers already mapped\n");
 		return 0;
 	}
-	if (unlikely(drv_context->quirks & QUIRKS_SRAM_ADDITIONAL_CPY)) {
-		/* Copy drv_context->tx into sram_tx */
-		memcpy_toio(drv_context->virt_addr_sram_tx, drv_context->tx,
-			drv_context->len);
+	if (unlikely(sspc->quirks & QUIRKS_SRAM_ADDITIONAL_CPY)) {
+		/* Copy sspc->tx into sram_tx */
+		memcpy_toio(sspc->virt_addr_sram_tx, sspc->tx, sspc->len);
 #ifdef DUMP_RX
-		dump_trailer(&drv_context->pdev->dev, drv_context->tx,
-			drv_context->len, 16);
+		dump_trailer(&sspc->pdev->dev, sspc->tx, sspc->len, 16);
 #endif
-		drv_context->rx_dma = SRAM_RX_ADDR;
-		drv_context->tx_dma = SRAM_TX_ADDR;
+		sspc->rx_dma = SRAM_RX_ADDR;
+		sspc->tx_dma = SRAM_TX_ADDR;
 	} else {
 		/* no QUIRKS_SRAM_ADDITIONAL_CPY */
-		if (unlikely(drv_context->dma_mapped))
+		if (unlikely(sspc->dma_mapped))
 			return 1;
 
-		drv_context->tx_dma =
-			dma_map_single(dev, drv_context->tx, drv_context->len,
-				PCI_DMA_TODEVICE);
-		if (unlikely(dma_mapping_error(dev, drv_context->tx_dma))) {
+		sspc->tx_dma = dma_map_single(dev, sspc->tx, sspc->len,
+						PCI_DMA_TODEVICE);
+		if (unlikely(dma_mapping_error(dev, sspc->tx_dma))) {
 			dev_err(dev, "ERROR : tx dma mapping failed\n");
 			return 0;
 		}
 
-		drv_context->rx_dma =
-			dma_map_single(dev, drv_context->rx, drv_context->len,
-				PCI_DMA_FROMDEVICE);
-		if (unlikely(dma_mapping_error(dev, drv_context->rx_dma))) {
-			dma_unmap_single(dev, drv_context->tx_dma,
-				drv_context->len, DMA_TO_DEVICE);
+		sspc->rx_dma = dma_map_single(dev, sspc->rx, sspc->len,
+						PCI_DMA_FROMDEVICE);
+		if (unlikely(dma_mapping_error(dev, sspc->rx_dma))) {
+			dma_unmap_single(dev, sspc->tx_dma,
+				sspc->len, DMA_TO_DEVICE);
 			dev_err(dev, "ERROR : rx dma mapping failed\n");
 			return 0;
 		}
@@ -619,102 +598,99 @@ static int map_dma_buffers(struct ssp_driver_context *drv_context)
 
 /**
  * drain_trail() - Handle trailing bytes of a transfer
- * @drv_context:	Pointer to the private driver context
+ * @sspc:	Pointer to the private driver context
  *
  * This function handles the trailing bytes of a transfer for the case
  * they are not handled by the DMA.
  */
-void drain_trail(struct ssp_driver_context *drv_context)
+void drain_trail(struct ssp_drv_context *sspc)
 {
-	struct device *dev = &drv_context->pdev->dev;
-	void *reg = drv_context->ioaddr;
+	struct device *dev = &sspc->pdev->dev;
+	void *reg = sspc->ioaddr;
 
-	if (drv_context->len != drv_context->len_dma_rx) {
+	if (sspc->len != sspc->len_dma_rx) {
 		dev_dbg(dev, "Handling trailing bytes. SSSR:%08x\n",
 			read_SSSR(reg));
-		drv_context->rx += drv_context->len_dma_rx;
-		drv_context->tx += drv_context->len_dma_tx;
+		sspc->rx += sspc->len_dma_rx;
+		sspc->tx += sspc->len_dma_tx;
 
-		while ((drv_context->tx != drv_context->tx_end) ||
-			(drv_context->rx != drv_context->rx_end)) {
-			drv_context->read(drv_context);
-			drv_context->write(drv_context);
+		while ((sspc->tx != sspc->tx_end) ||
+			(sspc->rx != sspc->rx_end)) {
+			sspc->read(sspc);
+			sspc->write(sspc);
 		}
 	}
 }
 
 /**
  * sram_to_ddr_cpy() - Copy data from Langwell SDRAM to DDR
- * @drv_context:	Pointer to the private driver context
+ * @sspc:	Pointer to the private driver context
  */
-static void sram_to_ddr_cpy(struct ssp_driver_context *drv_context)
+static void sram_to_ddr_cpy(struct ssp_drv_context *sspc)
 {
-	u32 length = drv_context->len;
+	u32 length = sspc->len;
 
-	if ((drv_context->quirks & QUIRKS_DMA_USE_NO_TRAIL)
-		&& (drv_context->len > drv_context->rx_fifo_threshold *
-		drv_context->n_bytes))
-		length = TRUNCATE(drv_context->len,
-			drv_context->rx_fifo_threshold * drv_context->n_bytes);
+	if ((sspc->quirks & QUIRKS_DMA_USE_NO_TRAIL)
+		&& (sspc->len > sspc->rx_fifo_threshold * sspc->n_bytes))
+		length = TRUNCATE(sspc->len,
+			sspc->rx_fifo_threshold * sspc->n_bytes);
 
-	memcpy_fromio(drv_context->rx, drv_context->virt_addr_sram_rx, length);
+	memcpy_fromio(sspc->rx, sspc->virt_addr_sram_rx, length);
 }
 
-static void int_transfer_complete(struct ssp_driver_context *drv_context)
+static void int_transfer_complete(struct ssp_drv_context *sspc)
 {
-	void *reg = drv_context->ioaddr;
+	void *reg = sspc->ioaddr;
 	struct spi_message *msg;
-	struct device *dev = &drv_context->pdev->dev;
+	struct device *dev = &sspc->pdev->dev;
 
-	if (unlikely(drv_context->quirks & QUIRKS_USE_PM_QOS))
-		pm_qos_update_request(&drv_context->pm_qos_req,
+	if (unlikely(sspc->quirks & QUIRKS_USE_PM_QOS))
+		pm_qos_update_request(&sspc->pm_qos_req,
 					PM_QOS_DEFAULT_VALUE);
 
-	if (unlikely(drv_context->quirks & QUIRKS_SRAM_ADDITIONAL_CPY))
-		sram_to_ddr_cpy(drv_context);
+	if (unlikely(sspc->quirks & QUIRKS_SRAM_ADDITIONAL_CPY))
+		sram_to_ddr_cpy(sspc);
 
-	if (likely(drv_context->quirks & QUIRKS_DMA_USE_NO_TRAIL))
-		drain_trail(drv_context);
+	if (likely(sspc->quirks & QUIRKS_DMA_USE_NO_TRAIL))
+		drain_trail(sspc);
 	else
 		/* Stop getting Time Outs */
 		write_SSTO(0, reg);
 
-	drv_context->cur_msg->status = 0;
-	drv_context->cur_msg->actual_length = drv_context->len;
+	sspc->cur_msg->status = 0;
+	sspc->cur_msg->actual_length = sspc->len;
 
 #ifdef DUMP_RX
-	dump_trailer(dev, drv_context->rx, drv_context->len, 16);
+	dump_trailer(dev, sspc->rx, sspc->len, 16);
 #endif
 
 	dev_dbg(dev, "End of transfer. SSSR:%08X\n", read_SSSR(reg));
-	msg = drv_context->cur_msg;
+	msg = sspc->cur_msg;
 	if (likely(msg->complete))
 		msg->complete(msg->context);
-	complete(&drv_context->msg_done);
+	complete(&sspc->msg_done);
 }
 
 static void int_transfer_complete_work(struct work_struct *work)
 {
-	struct ssp_driver_context *drv_context = container_of(work,
-				struct ssp_driver_context, complete_work);
+	struct ssp_drv_context *sspc = container_of(work,
+				struct ssp_drv_context, complete_work);
 
-	int_transfer_complete(drv_context);
+	int_transfer_complete(sspc);
 }
 
-static void poll_transfer_complete(struct ssp_driver_context *drv_context)
+static void poll_transfer_complete(struct ssp_drv_context *sspc)
 {
 	struct spi_message *msg;
 
 	/* Update total byte transfered return count actual bytes read */
-	drv_context->cur_msg->actual_length +=
-		drv_context->len - (drv_context->rx_end - drv_context->rx);
+	sspc->cur_msg->actual_length += sspc->len - (sspc->rx_end - sspc->rx);
 
-	drv_context->cur_msg->status = 0;
-
-	msg = drv_context->cur_msg;
+	sspc->cur_msg->status = 0;
+	msg = sspc->cur_msg;
 	if (likely(msg->complete))
 		msg->complete(msg->context);
-	complete(&drv_context->msg_done);
+	complete(&sspc->msg_done);
 }
 
 /**
@@ -728,14 +704,14 @@ static void poll_transfer_complete(struct ssp_driver_context *drv_context)
  */
 static irqreturn_t ssp_int(int irq, void *dev_id)
 {
-	struct ssp_driver_context *drv_context = dev_id;
-	void *reg = drv_context->ioaddr;
-	struct device *dev = &drv_context->pdev->dev;
+	struct ssp_drv_context *sspc = dev_id;
+	void *reg = sspc->ioaddr;
+	struct device *dev = &sspc->pdev->dev;
 	u32 status = read_SSSR(reg);
 
 	/* It should never be our interrupt since SSP will */
 	/* only trigs interrupt for under/over run.        */
-	if (likely(!(status & drv_context->mask_sr)))
+	if (likely(!(status & sspc->mask_sr)))
 		return IRQ_NONE;
 
 	if (status & SSSR_ROR || status & SSSR_TUR) {
@@ -748,19 +724,18 @@ static irqreturn_t ssp_int(int irq, void *dev_id)
 	}
 
 	/* We can fall here when not using DMA mode */
-	if (!drv_context->cur_msg) {
-		disable_interface(drv_context);
-		disable_triggers(drv_context);
+	if (!sspc->cur_msg) {
+		disable_interface(sspc);
+		disable_triggers(sspc);
 	}
 	/* clear status register */
-	write_SSSR(drv_context->clear_sr, reg);
+	write_SSSR(sspc->clear_sr, reg);
 	return IRQ_HANDLED;
 }
 
 static void poll_transfer(unsigned long data)
 {
-	struct ssp_driver_context *drv_context =
-		(struct ssp_driver_context *)data;
+	struct ssp_drv_context *sspc = (void *)data;
 
 	bool delay = false;
 
@@ -769,43 +744,41 @@ static void poll_transfer(unsigned long data)
 		delay = true;
 	}
 
-	if (drv_context->tx)
-		while (drv_context->tx != drv_context->tx_end) {
+	if (sspc->tx)
+		while (sspc->tx != sspc->tx_end) {
 			/* [REVERT ME] Tangier simulator requires a delay */
-			if (delay) {
+			if (delay)
 				udelay(10);
-			}
 			if (ssp_timing_wr) {
-				while ((read_SSSR(drv_context->ioaddr)) &
-								0xF00)
+				while ((read_SSSR(sspc->ioaddr)) & 0xF00)
 					;
 			}
-			drv_context->write(drv_context);
-			drv_context->read(drv_context);
+			sspc->write(sspc);
+			sspc->read(sspc);
 		}
 
-	while (!drv_context->read(drv_context))
+	while (!sspc->read(sspc))
 		cpu_relax();
 
-	poll_transfer_complete(drv_context);
+	poll_transfer_complete(sspc);
 }
 
 /**
  * start_bitbanging() - Clock synchronization by bit banging
- * @drv_context:	Pointer to private driver context
+ * @sspc:	Pointer to private driver context
  *
  * This clock synchronization will be removed as soon as it is
  * handled by the SCU.
  */
-static void start_bitbanging(struct ssp_driver_context *drv_context)
+static void start_bitbanging(struct ssp_drv_context *sspc)
 {
 	u32 sssr;
 	u32 count = 0;
 	u32 cr0;
-	void *i2c_reg = drv_context->I2C_ioaddr;
-	struct device *dev = &drv_context->pdev->dev;
-	void *reg = drv_context->ioaddr;
-	struct chip_data *chip = spi_get_ctldata(drv_context->cur_msg->spi);
+	void *i2c_reg = sspc->I2C_ioaddr;
+	struct device *dev = &sspc->pdev->dev;
+	void *reg = sspc->ioaddr;
+	struct chip_data *chip = spi_get_ctldata(sspc->cur_msg->spi);
 	cr0 = chip->cr0;
 
 	dev_warn(dev, "In %s : Starting bit banging\n",\
@@ -874,36 +847,34 @@ static unsigned int ssp_get_clk_div(int speed)
  */
 static int transfer(struct spi_device *spi, struct spi_message *msg)
 {
-	struct ssp_driver_context *drv_context = \
-	spi_master_get_devdata(spi->master);
+	struct ssp_drv_context *sspc = spi_master_get_devdata(spi->master);
 	unsigned long flags;
 
 	msg->actual_length = 0;
 	msg->status = -EINPROGRESS;
-	spin_lock_irqsave(&drv_context->lock, flags);
-	list_add_tail(&msg->queue, &drv_context->queue);
-	if (!drv_context->suspended)
-		queue_work(drv_context->workqueue, &drv_context->pump_messages);
-	spin_unlock_irqrestore(&drv_context->lock, flags);
+	spin_lock_irqsave(&sspc->lock, flags);
+	list_add_tail(&msg->queue, &sspc->queue);
+	if (!sspc->suspended)
+		queue_work(sspc->workqueue, &sspc->pump_messages);
+	spin_unlock_irqrestore(&sspc->lock, flags);
 
 	return 0;
 }
 
-static int handle_message(struct ssp_driver_context *drv_context)
+static int handle_message(struct ssp_drv_context *sspc)
 {
 	struct chip_data *chip = NULL;
 	struct spi_transfer *transfer = NULL;
-	void *reg = drv_context->ioaddr;
+	void *reg = sspc->ioaddr;
 	u32 cr1;
-	struct device *dev = &drv_context->pdev->dev;
-	struct spi_message *msg = drv_context->cur_msg;
+	struct device *dev = &sspc->pdev->dev;
+	struct spi_message *msg = sspc->cur_msg;
 
 	chip = spi_get_ctldata(msg->spi);
 
 	/* We handle only one transfer message since the protocol module has to
 	   control the out of band signaling. */
-	transfer = list_entry(msg->transfers.next,
-					struct spi_transfer,
+	transfer = list_entry(msg->transfers.next, struct spi_transfer,
 					transfer_list);
 
 	/* Check transfer length */
@@ -916,68 +887,61 @@ static int handle_message(struct ssp_driver_context *drv_context)
 
 		if (msg->complete)
 			msg->complete(msg->context);
-		complete(&drv_context->msg_done);
-
+		complete(&sspc->msg_done);
 		return 0;
 	}
 
 	/* Flush any remaining data (in case of failed previous transfer) */
-	flush(drv_context);
+	flush(sspc);
 
-	drv_context->tx  = (void *)transfer->tx_buf;
-	drv_context->rx  = (void *)transfer->rx_buf;
-	drv_context->len = transfer->len;
-	drv_context->write = chip->write;
-	drv_context->read = chip->read;
+	sspc->tx  = (void *)transfer->tx_buf;
+	sspc->rx  = (void *)transfer->rx_buf;
+	sspc->len = transfer->len;
+	sspc->write = chip->write;
+	sspc->read = chip->read;
 
 	if (likely(chip->dma_enabled)) {
-		drv_context->dma_mapped = map_dma_buffers(drv_context);
-		if (unlikely(!drv_context->dma_mapped))
+		sspc->dma_mapped = map_dma_buffers(sspc);
+		if (unlikely(!sspc->dma_mapped))
 			return 0;
 	} else {
-		drv_context->write = drv_context->tx ?
-			chip->write : null_writer;
-		drv_context->read  = drv_context->rx ?
-			chip->read : null_reader;
+		sspc->write = sspc->tx ? chip->write : null_writer;
+		sspc->read  = sspc->rx ? chip->read : null_reader;
 	}
-	drv_context->tx_end = drv_context->tx + transfer->len;
-	drv_context->rx_end = drv_context->rx + transfer->len;
+	sspc->tx_end = sspc->tx + transfer->len;
+	sspc->rx_end = sspc->rx + transfer->len;
 
 	/* [REVERT ME] Bug in status register clear for Tangier simulation */
 	if ((intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER) ||
 	    (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_ANNIEDALE)) {
 		if ((intel_mid_identify_sim() != INTEL_MID_CPU_SIMULATION_VP &&
 		    (intel_mid_identify_sim() != INTEL_MID_CPU_SIMULATION_HVP)))
-			write_SSSR(drv_context->clear_sr, reg);
+			write_SSSR(sspc->clear_sr, reg);
 	} else /* Clear status  */
-		write_SSSR(drv_context->clear_sr, reg);
+		write_SSSR(sspc->clear_sr, reg);
 
 	/* setup the CR1 control register */
-	cr1 = chip->cr1 | drv_context->cr1_sig;
+	cr1 = chip->cr1 | sspc->cr1_sig;
 
-	if (likely(drv_context->quirks & QUIRKS_DMA_USE_NO_TRAIL)) {
+	if (likely(sspc->quirks & QUIRKS_DMA_USE_NO_TRAIL)) {
 		/* in case of len smaller than burst size, adjust the RX     */
 		/* threshold. All other cases will use the default threshold */
 		/* value. The RX fifo threshold must be aligned with the DMA */
 		/* RX transfer size, which may be limited to a multiple of 4 */
 		/* bytes due to 32bits DDR access.                           */
-		if  (drv_context->len / drv_context->n_bytes <=
-			drv_context->rx_fifo_threshold) {
+		if  (sspc->len / sspc->n_bytes <= sspc->rx_fifo_threshold) {
 			u32 rx_fifo_threshold;
 
-			rx_fifo_threshold = (drv_context->len & ~(4 - 1)) /
-				drv_context->n_bytes;
+			rx_fifo_threshold = (sspc->len & ~(4 - 1)) /
+						sspc->n_bytes;
 			cr1 &= ~(SSCR1_RFT);
-			cr1 |= SSCR1_RxTresh(rx_fifo_threshold)
-					& SSCR1_RFT;
-		} else {
+			cr1 |= SSCR1_RxTresh(rx_fifo_threshold) & SSCR1_RFT;
+		} else
 			write_SSTO(chip->timeout, reg);
-		}
 	}
 
-	dev_dbg(dev,
-		"transfer len:%d  n_bytes:%d  cr0:%x  cr1:%x",
-		drv_context->len, drv_context->n_bytes, chip->cr0, cr1);
+	dev_dbg(dev, "transfer len:%d  n_bytes:%d  cr0:%x  cr1:%x",
+		sspc->len, sspc->n_bytes, chip->cr0, cr1);
 
 	/* first set CR1 */
 	write_SSCR1(cr1, reg);
@@ -988,8 +952,8 @@ static int handle_message(struct ssp_driver_context *drv_context)
 	/* Do bitbanging only if SSP not-enabled or not-synchronized */
 	if (unlikely(((read_SSSR(reg) & SSP_NOT_SYNC) ||
 		(!(read_SSCR0(reg) & SSCR0_SSE))) &&
-		(drv_context->quirks & QUIRKS_BIT_BANGING))) {
-			start_bitbanging(drv_context);
+		(sspc->quirks & QUIRKS_BIT_BANGING))) {
+			start_bitbanging(sspc);
 	} else {
 		/* (re)start the SSP */
 		if (ssp_timing_wr) {
@@ -999,48 +963,45 @@ static int handle_message(struct ssp_driver_context *drv_context)
 			write_SSCR0(chip->cr0, reg);
 			chip->cr0 = 0x00C12C8F;
 			write_SSCR0(chip->cr0, reg);
-		} else {
+		} else
 			write_SSCR0(chip->cr0, reg);
-		}
 	}
 
 	if (likely(chip->dma_enabled)) {
-		if (unlikely(drv_context->quirks & QUIRKS_USE_PM_QOS))
-			pm_qos_update_request(&drv_context->pm_qos_req,
+		if (unlikely(sspc->quirks & QUIRKS_USE_PM_QOS))
+			pm_qos_update_request(&sspc->pm_qos_req,
 				MIN_EXIT_LATENCY);
-		dma_transfer(drv_context);
-	} else {
-		tasklet_schedule(&drv_context->poll_transfer);
-	}
+		dma_transfer(sspc);
+	} else
+		tasklet_schedule(&sspc->poll_transfer);
 
 	return 0;
 }
 
 static void pump_messages(struct work_struct *work)
 {
-	struct ssp_driver_context *drv_context =
-		container_of(work, struct ssp_driver_context, pump_messages);
-	struct device *dev = &drv_context->pdev->dev;
+	struct ssp_drv_context *sspc =
+		container_of(work, struct ssp_drv_context, pump_messages);
+	struct device *dev = &sspc->pdev->dev;
 	unsigned long flags;
 	struct spi_message *msg;
 
 	pm_runtime_get_sync(dev);
-	spin_lock_irqsave(&drv_context->lock, flags);
-	while (!list_empty(&drv_context->queue)) {
-		if (drv_context->suspended)
+	spin_lock_irqsave(&sspc->lock, flags);
+	while (!list_empty(&sspc->queue)) {
+		if (sspc->suspended)
 			break;
-		msg = list_entry(drv_context->queue.next,
-				struct spi_message, queue);
+		msg = list_entry(sspc->queue.next, struct spi_message, queue);
 		list_del_init(&msg->queue);
-		drv_context->cur_msg = msg;
-		spin_unlock_irqrestore(&drv_context->lock, flags);
-		INIT_COMPLETION(drv_context->msg_done);
-		handle_message(drv_context);
-		wait_for_completion(&drv_context->msg_done);
-		spin_lock_irqsave(&drv_context->lock, flags);
-		drv_context->cur_msg = NULL;
+		sspc->cur_msg = msg;
+		spin_unlock_irqrestore(&sspc->lock, flags);
+		INIT_COMPLETION(sspc->msg_done);
+		handle_message(sspc);
+		wait_for_completion(&sspc->msg_done);
+		spin_lock_irqsave(&sspc->lock, flags);
+		sspc->cur_msg = NULL;
 	}
-	spin_unlock_irqrestore(&drv_context->lock, flags);
+	spin_unlock_irqrestore(&sspc->lock, flags);
 	pm_runtime_put(dev);
 }
 
@@ -1052,7 +1013,7 @@ static int setup(struct spi_device *spi)
 {
 	struct intel_mid_ssp_spi_chip *chip_info = NULL;
 	struct chip_data *chip;
-	struct ssp_driver_context *drv_context =
+	struct ssp_drv_context *sspc =
 		spi_master_get_devdata(spi->master);
 	u32 tx_fifo_threshold;
 	u32 burst_size;
@@ -1103,26 +1064,24 @@ static int setup(struct spi_device *spi)
 		dev_info(&spi->dev, "setting default chip values\n");
 
 		burst_size = DFLT_FIFO_BURST_SIZE;
-
 		chip->dma_enabled = 1;
-		if (drv_context->quirks & QUIRKS_DMA_USE_NO_TRAIL)
+		if (sspc->quirks & QUIRKS_DMA_USE_NO_TRAIL)
 			chip->timeout = 0;
 		else
 			chip->timeout = DFLT_TIMEOUT_VAL;
 	}
 	/* Set FIFO thresholds according to burst_size */
 	if (burst_size == IMSS_FIFO_BURST_8)
-		drv_context->rx_fifo_threshold = 8;
+		sspc->rx_fifo_threshold = 8;
 	else if (burst_size == IMSS_FIFO_BURST_4)
-		drv_context->rx_fifo_threshold = 4;
+		sspc->rx_fifo_threshold = 4;
 	else
-		drv_context->rx_fifo_threshold = 1;
-	tx_fifo_threshold = SPI_FIFO_SIZE - drv_context->rx_fifo_threshold;
-	chip->cr1 |= (SSCR1_RxTresh(drv_context->rx_fifo_threshold) &
-		SSCR1_RFT) | (SSCR1_TxTresh(tx_fifo_threshold) &
-		SSCR1_TFT);
+		sspc->rx_fifo_threshold = 1;
+	tx_fifo_threshold = SPI_FIFO_SIZE - sspc->rx_fifo_threshold;
+	chip->cr1 |= (SSCR1_RxTresh(sspc->rx_fifo_threshold) &
+		SSCR1_RFT) | (SSCR1_TxTresh(tx_fifo_threshold) & SSCR1_TFT);
 
-	drv_context->dma_mapped = 0;
+	sspc->dma_mapped = 0;
 
 	/* setting phase and polarity. spi->mode comes from boardinfo */
 	if ((spi->mode & SPI_CPHA) != 0)
@@ -1130,14 +1089,13 @@ static int setup(struct spi_device *spi)
 	if ((spi->mode & SPI_CPOL) != 0)
 		chip->cr1 |= SSCR1_SPO;
 
-	if (drv_context->quirks & QUIRKS_SPI_SLAVE_CLOCK_MODE)
+	if (sspc->quirks & QUIRKS_SPI_SLAVE_CLOCK_MODE)
 		/* set slave mode */
 		chip->cr1 |= SSCR1_SCLKDIR | SSCR1_SFRMDIR;
 	chip->cr1 |= SSCR1_SCFR;        /* clock is not free running */
 
 	dev_dbg(&spi->dev, "%d bits/word, mode %d\n",
-		spi->bits_per_word,
-		spi->mode & 0x3);
+		spi->bits_per_word, spi->mode & 0x3);
 	if (spi->bits_per_word <= 8) {
 		chip->n_bytes = 1;
 		chip->read = u8_reader;
@@ -1157,7 +1115,7 @@ static int setup(struct spi_device *spi)
 		return -EINVAL;
 	}
 
-	if ((drv_context->quirks & QUIRKS_SPI_SLAVE_CLOCK_MODE) == 0) {
+	if ((sspc->quirks & QUIRKS_SPI_SLAVE_CLOCK_MODE) == 0) {
 		chip->speed_hz = spi->max_speed_hz;
 		clk_div = ssp_get_clk_div(chip->speed_hz);
 		if (!ssp_timing_wr)
@@ -1168,21 +1126,21 @@ static int setup(struct spi_device *spi)
 
 	spi_set_ctldata(spi, chip);
 
-	/* setup of drv_context members that will not change across transfers */
-	drv_context->n_bytes = chip->n_bytes;
+	/* setup of sspc members that will not change across transfers */
+	sspc->n_bytes = chip->n_bytes;
 
 	if (chip->dma_enabled) {
-		intel_mid_ssp_spi_dma_init(drv_context);
-		drv_context->cr1_sig  = SSCR1_TSRE | SSCR1_RSRE;
-		drv_context->mask_sr  = SSSR_ROR | SSSR_TUR;
-		if (drv_context->quirks & QUIRKS_DMA_USE_NO_TRAIL)
-			drv_context->cr1_sig  |= SSCR1_TRAIL;
+		intel_mid_ssp_spi_dma_init(sspc);
+		sspc->cr1_sig = SSCR1_TSRE | SSCR1_RSRE;
+		sspc->mask_sr = SSSR_ROR | SSSR_TUR;
+		if (sspc->quirks & QUIRKS_DMA_USE_NO_TRAIL)
+			sspc->cr1_sig |= SSCR1_TRAIL;
 	} else {
-		drv_context->cr1_sig = SSCR1_RIE | SSCR1_TIE | SSCR1_TINTE;
-		drv_context->mask_sr = SSSR_RFS | SSSR_TFS |
+		sspc->cr1_sig = SSCR1_RIE | SSCR1_TIE | SSCR1_TINTE;
+		sspc->mask_sr = SSSR_RFS | SSSR_TFS |
 				 SSSR_ROR | SSSR_TUR | SSSR_TINT;
 	}
-	drv_context->clear_sr = SSSR_TUR  | SSSR_ROR | SSSR_TINT;
+	sspc->clear_sr = SSSR_TUR | SSSR_ROR | SSSR_TINT;
 
 	return 0;
 }
@@ -1194,15 +1152,15 @@ static int setup(struct spi_device *spi)
 static void cleanup(struct spi_device *spi)
 {
 	struct chip_data *chip = spi_get_ctldata(spi);
-	struct ssp_driver_context *drv_context =
+	struct ssp_drv_context *sspc =
 		spi_master_get_devdata(spi->master);
 
-	if (drv_context->dma_initialized)
-		intel_mid_ssp_spi_dma_exit(drv_context);
+	if (sspc->dma_initialized)
+		intel_mid_ssp_spi_dma_exit(sspc);
 
 	/* Remove the PM_QOS request */
-	if (drv_context->quirks & QUIRKS_USE_PM_QOS)
-		pm_qos_remove_request(&drv_context->pm_qos_req);
+	if (sspc->quirks & QUIRKS_USE_PM_QOS)
+		pm_qos_remove_request(&sspc->pm_qos_req);
 
 	kfree(chip);
 	spi_set_ctldata(spi, NULL);
@@ -1218,7 +1176,7 @@ static int intel_mid_ssp_spi_probe(struct pci_dev *pdev,
 {
 	struct device *dev = &pdev->dev;
 	struct spi_master *master;
-	struct ssp_driver_context *drv_context = 0;
+	struct ssp_drv_context *sspc = 0;
 	int status;
 	u32 iolen = 0;
 	u8 ssp_cfg;
@@ -1241,8 +1199,7 @@ static int intel_mid_ssp_spi_probe(struct pci_dev *pdev,
 	}
 
 	if (SSP_CFG_GET_MODE(ssp_cfg) != SSP_CFG_SPI_MODE_ID) {
-		dev_info(dev, "Unsupported SSP mode (%02xh)\n",
-			ssp_cfg);
+		dev_info(dev, "Unsupported SSP mode (%02xh)\n", ssp_cfg);
 		goto err_abort_probe;
 	}
 
@@ -1253,8 +1210,8 @@ static int intel_mid_ssp_spi_probe(struct pci_dev *pdev,
 	if (status)
 		return status;
 
-	/* Allocate Slave with space for drv_context and null dma buffer */
-	master = spi_alloc_master(dev, sizeof(struct ssp_driver_context));
+	/* Allocate Slave with space for sspc and null dma buffer */
+	master = spi_alloc_master(dev, sizeof(struct ssp_drv_context));
 
 	if (!master) {
 		dev_err(dev, "cannot alloc spi_slave\n");
@@ -1262,25 +1219,24 @@ static int intel_mid_ssp_spi_probe(struct pci_dev *pdev,
 		goto err_free_0;
 	}
 
-	drv_context = spi_master_get_devdata(master);
-	drv_context->master = master;
+	sspc = spi_master_get_devdata(master);
+	sspc->master = master;
 
-	drv_context->pdev = pdev;
-	drv_context->quirks = ent->driver_data;
+	sspc->pdev = pdev;
+	sspc->quirks = ent->driver_data;
 
 	/* Set platform & configuration quirks */
-	if (drv_context->quirks & QUIRKS_PLATFORM_MRST) {
+	if (sspc->quirks & QUIRKS_PLATFORM_MRST) {
 		/* Apply bit banging workarround on MRST */
-		drv_context->quirks |= QUIRKS_BIT_BANGING;
+		sspc->quirks |= QUIRKS_BIT_BANGING;
 		/* MRST slave mode workarrounds */
 		if (SSP_CFG_IS_SPI_SLAVE(ssp_cfg))
-			drv_context->quirks |=
-				QUIRKS_USE_PM_QOS |
-				QUIRKS_SRAM_ADDITIONAL_CPY;
+			sspc->quirks |= QUIRKS_USE_PM_QOS |
+					QUIRKS_SRAM_ADDITIONAL_CPY;
 	}
-	drv_context->quirks |= QUIRKS_DMA_USE_NO_TRAIL;
+	sspc->quirks |= QUIRKS_DMA_USE_NO_TRAIL;
 	if (SSP_CFG_IS_SPI_SLAVE(ssp_cfg))
-		drv_context->quirks |= QUIRKS_SPI_SLAVE_CLOCK_MODE;
+		sspc->quirks |= QUIRKS_SPI_SLAVE_CLOCK_MODE;
 
 	master->mode_bits = SPI_CPOL | SPI_CPHA;
 	master->bus_num = SSP_CFG_GET_SPI_BUS_NB(ssp_cfg);
@@ -1288,49 +1244,47 @@ static int intel_mid_ssp_spi_probe(struct pci_dev *pdev,
 	master->cleanup = cleanup;
 	master->setup = setup;
 	master->transfer = transfer;
-	drv_context->dma_wq = create_workqueue("intel_mid_ssp_spi");
-	INIT_WORK(&drv_context->complete_work, int_transfer_complete_work);
+	sspc->dma_wq = create_workqueue("intel_mid_ssp_spi");
+	INIT_WORK(&sspc->complete_work, int_transfer_complete_work);
 
-	drv_context->dma_initialized = 0;
-	drv_context->suspended = 0;
-	drv_context->cur_msg = NULL;
+	sspc->dma_initialized = 0;
+	sspc->suspended = 0;
+	sspc->cur_msg = NULL;
 
 	/* get basic io resource and map it */
-	drv_context->paddr = pci_resource_start(pdev, 0);
+	sspc->paddr = pci_resource_start(pdev, 0);
 	iolen = pci_resource_len(pdev, 0);
 
 	status = pci_request_region(pdev, 0, dev_name(&pdev->dev));
 	if (status)
 		goto err_free_1;
 
-	drv_context->ioaddr =
-		ioremap_nocache(drv_context->paddr, iolen);
-	if (!drv_context->ioaddr) {
+	sspc->ioaddr = ioremap_nocache(sspc->paddr, iolen);
+	if (!sspc->ioaddr) {
 		status = -ENOMEM;
 		goto err_free_2;
 	}
-	dev_dbg(dev, "paddr = : %08lx", drv_context->paddr);
-	dev_dbg(dev, "ioaddr = : %p\n", drv_context->ioaddr);
+	dev_dbg(dev, "paddr = : %08lx", sspc->paddr);
+	dev_dbg(dev, "ioaddr = : %p\n", sspc->ioaddr);
 	dev_dbg(dev, "attaching to IRQ: %04x\n", pdev->irq);
-	dev_dbg(dev, "quirks = : %08lx\n", drv_context->quirks);
+	dev_dbg(dev, "quirks = : %08lx\n", sspc->quirks);
 
-	if (drv_context->quirks & QUIRKS_BIT_BANGING) {
+	if (sspc->quirks & QUIRKS_BIT_BANGING) {
 		/* Bit banging on the clock is done through */
 		/* DFT which is available through I2C.      */
 		/* get base address of I2C_Serbus registers */
-		drv_context->I2C_paddr = 0xff12b000;
-		drv_context->I2C_ioaddr =
-			ioremap_nocache(drv_context->I2C_paddr, 0x10);
-		if (!drv_context->I2C_ioaddr) {
+		sspc->I2C_paddr = 0xff12b000;
+		sspc->I2C_ioaddr = ioremap_nocache(sspc->I2C_paddr, 0x10);
+		if (!sspc->I2C_ioaddr) {
 			status = -ENOMEM;
 			goto err_free_3;
 		}
 	}
 
 	/* Attach to IRQ */
-	drv_context->irq = pdev->irq;
-	status = request_irq(drv_context->irq, ssp_int, IRQF_SHARED,
-		"intel_mid_ssp_spi", drv_context);
+	sspc->irq = pdev->irq;
+	status = request_irq(sspc->irq, ssp_int, IRQF_SHARED,
+		"intel_mid_ssp_spi", sspc);
 
 	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER) {
 		if ((intel_mid_identify_sim() ==
@@ -1340,7 +1294,7 @@ static int intel_mid_ssp_spi_probe(struct pci_dev *pdev,
 			/* [REVERT ME] Tangier SLE not supported.
 			 * Requires debug before removal.  Assume
 			 * also required in Si. */
-			disable_irq_nosync(drv_context->irq);
+			disable_irq_nosync(sspc->irq);
 		}
 		if (intel_mid_identify_sim() == INTEL_MID_CPU_SIMULATION_NONE)
 			ssp_timing_wr = 1;
@@ -1351,9 +1305,9 @@ static int intel_mid_ssp_spi_probe(struct pci_dev *pdev,
 		goto err_free_4;
 	}
 
-	if (drv_context->quirks & QUIRKS_PLATFORM_MDFL) {
+	if (sspc->quirks & QUIRKS_PLATFORM_MDFL) {
 		/* get base address of DMA selector. */
-		syscfg = drv_context->paddr - SYSCFG;
+		syscfg = sspc->paddr - SYSCFG;
 		syscfg_ioaddr = ioremap_nocache(syscfg, 0x10);
 		if (!syscfg_ioaddr) {
 			status = -ENOMEM;
@@ -1362,33 +1316,29 @@ static int intel_mid_ssp_spi_probe(struct pci_dev *pdev,
 		iowrite32(ioread32(syscfg_ioaddr) | 2, syscfg_ioaddr);
 	}
 
-	INIT_LIST_HEAD(&drv_context->queue);
-	init_completion(&drv_context->msg_done);
-	spin_lock_init(&drv_context->lock);
-	tasklet_init(&drv_context->poll_transfer, poll_transfer,
-		(unsigned long)drv_context);
-	INIT_WORK(&drv_context->pump_messages, pump_messages);
-	drv_context->workqueue = create_singlethread_workqueue(
-				dev_name(&pdev->dev));
+	INIT_LIST_HEAD(&sspc->queue);
+	init_completion(&sspc->msg_done);
+	spin_lock_init(&sspc->lock);
+	tasklet_init(&sspc->poll_transfer, poll_transfer, (unsigned long)sspc);
+	INIT_WORK(&sspc->pump_messages, pump_messages);
+	sspc->workqueue = create_singlethread_workqueue(dev_name(&pdev->dev));
 
 	/* Register with the SPI framework */
 	dev_info(dev, "register with SPI framework (bus spi%d)\n",
-		master->bus_num);
+			master->bus_num);
 
 	status = spi_register_master(master);
-
-	if (status != 0) {
+	if (status) {
 		dev_err(dev, "problem registering spi\n");
 		goto err_free_5;
 	}
 
-	pci_set_drvdata(pdev, drv_context);
+	pci_set_drvdata(pdev, sspc);
 
 	/* Create the PM_QOS request */
-	if (drv_context->quirks & QUIRKS_USE_PM_QOS)
-		pm_qos_add_request(&drv_context->pm_qos_req,
-		PM_QOS_CPU_DMA_LATENCY,
-		PM_QOS_DEFAULT_VALUE);
+	if (sspc->quirks & QUIRKS_USE_PM_QOS)
+		pm_qos_add_request(&sspc->pm_qos_req, PM_QOS_CPU_DMA_LATENCY,
+				PM_QOS_DEFAULT_VALUE);
 
 	pm_runtime_put_noidle(&pdev->dev);
 	pm_runtime_allow(&pdev->dev);
@@ -1396,11 +1346,11 @@ static int intel_mid_ssp_spi_probe(struct pci_dev *pdev,
 	return status;
 
 err_free_5:
-	free_irq(drv_context->irq, drv_context);
+	free_irq(sspc->irq, sspc);
 err_free_4:
-	iounmap(drv_context->I2C_ioaddr);
+	iounmap(sspc->I2C_ioaddr);
 err_free_3:
-	iounmap(drv_context->ioaddr);
+	iounmap(sspc->ioaddr);
 err_free_2:
 	pci_release_region(pdev, 0);
 err_free_1:
@@ -1421,22 +1371,22 @@ err_abort_probe:
  */
 static void __devexit intel_mid_ssp_spi_remove(struct pci_dev *pdev)
 {
-	struct ssp_driver_context *drv_context = pci_get_drvdata(pdev);
+	struct ssp_drv_context *sspc = pci_get_drvdata(pdev);
 
-	if (!drv_context)
+	if (!sspc)
 		return;
 
 	pm_runtime_forbid(&pdev->dev);
 	pm_runtime_get_noresume(&pdev->dev);
 	/* Release IRQ */
-	free_irq(drv_context->irq, drv_context);
+	free_irq(sspc->irq, sspc);
 
-	iounmap(drv_context->ioaddr);
-	if (drv_context->quirks & QUIRKS_BIT_BANGING)
-		iounmap(drv_context->I2C_ioaddr);
+	iounmap(sspc->ioaddr);
+	if (sspc->quirks & QUIRKS_BIT_BANGING)
+		iounmap(sspc->I2C_ioaddr);
 
 	/* disconnect from the SPI framework */
-	spi_unregister_master(drv_context->master);
+	spi_unregister_master(sspc->master);
 
 	pci_set_drvdata(pdev, NULL);
 	pci_release_region(pdev, 0);
@@ -1449,26 +1399,26 @@ static void __devexit intel_mid_ssp_spi_remove(struct pci_dev *pdev)
 static int intel_mid_ssp_spi_suspend(struct device *dev)
 {
 	struct pci_dev *pdev = to_pci_dev(dev);
-	struct ssp_driver_context *drv_context = pci_get_drvdata(pdev);
+	struct ssp_drv_context *sspc = pci_get_drvdata(pdev);
 	unsigned long flags;
 	int loop = 26;
 
 	dev_dbg(dev, "suspend\n");
 
-	spin_lock_irqsave(&drv_context->lock, flags);
-	drv_context->suspended = 1;
+	spin_lock_irqsave(&sspc->lock, flags);
+	sspc->suspended = 1;
 	/*
 	 * If there is one msg being handled, wait 500ms at most,
 	 * if still not done, return busy
 	 */
-	while (drv_context->cur_msg && --loop) {
-		spin_unlock_irqrestore(&drv_context->lock, flags);
+	while (sspc->cur_msg && --loop) {
+		spin_unlock_irqrestore(&sspc->lock, flags);
 		msleep(20);
-		spin_lock_irqsave(&drv_context->lock, flags);
+		spin_lock_irqsave(&sspc->lock, flags);
 		if (!loop)
-			drv_context->suspended = 0;
+			sspc->suspended = 0;
 	}
-	spin_unlock_irqrestore(&drv_context->lock, flags);
+	spin_unlock_irqrestore(&sspc->lock, flags);
 
 	if (loop)
 		return 0;
@@ -1479,15 +1429,14 @@ static int intel_mid_ssp_spi_suspend(struct device *dev)
 static int intel_mid_ssp_spi_resume(struct device *dev)
 {
 	struct pci_dev *pdev = to_pci_dev(dev);
-	struct ssp_driver_context *drv_context = pci_get_drvdata(pdev);
+	struct ssp_drv_context *sspc = pci_get_drvdata(pdev);
 
-	spin_lock(&drv_context->lock);
-	drv_context->suspended = 0;
-	if (!list_empty(&drv_context->queue))
-		queue_work(drv_context->workqueue, &drv_context->pump_messages);
-
-	spin_unlock(&drv_context->lock);
 	dev_dbg(dev, "resume\n");
+	spin_lock(&sspc->lock);
+	sspc->suspended = 0;
+	if (!list_empty(&sspc->queue))
+		queue_work(sspc->workqueue, &sspc->pump_messages);
+	spin_unlock(&sspc->lock);
 	return 0;
 }
 
@@ -1572,4 +1521,3 @@ static void __exit intel_mid_ssp_spi_exit(void)
 }
 
 module_exit(intel_mid_ssp_spi_exit);
-
