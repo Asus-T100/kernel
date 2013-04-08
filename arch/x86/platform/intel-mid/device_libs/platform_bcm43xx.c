@@ -135,8 +135,6 @@ void __init bcm43xx_platform_data_init_post_scu(void *info)
 		/*Get GPIO numbers from the SFI table*/
 		wifi_irq_gpio = get_gpio_by_name(BCM43XX_SFI_GPIO_IRQ_NAME);
 	} else {
-		pr_err("baytrail detected, hardcoding GPIO even if not used anymore\n");
-		/* sleep needed with arch_initcall? */
 		wifi_irq_gpio = 144;
 	}
 
@@ -152,7 +150,8 @@ void __init bcm43xx_platform_data_init_post_scu(void *info)
 	if (intel_mid_identify_cpu() != INTEL_MID_CPU_CHIP_VALLEYVIEW2)
 		gpio_enable = get_gpio_by_name(BCM43XX_SFI_GPIO_ENABLE_NAME);
 	else {
-		gpio_enable = 149;
+		gpio_enable = 150;
+		pr_err("baytrail, hardcoding GPIO Enable to %d\n", gpio_enable);
 		gpio_request(gpio_enable, "bcm43xx_en");
 	}
 	if (gpio_enable < 0) {
