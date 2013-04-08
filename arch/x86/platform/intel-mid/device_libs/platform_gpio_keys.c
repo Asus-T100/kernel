@@ -105,11 +105,11 @@ late_initcall(pb_keys_init);
 
 #ifdef	CONFIG_ACPI
 static struct gpio_keys_button lesskey_button[] = {
-	{KEY_POWER,		-1, 1, "power_btn",	EV_KEY, 0, 20},
-	{KEY_VOLUMEUP,		-1, 1, "volume_up",	EV_KEY, 0, 20},
-	{KEY_VOLUMEDOWN,	-1, 1, "volume_down",	EV_KEY, 0, 20},
-	{KEY_HOME,		-1, 1, "home_btn",	EV_KEY, 0, 20},
-	{KEY_RO,		-1, 1, "rotationlock",	EV_KEY, 0, 20},
+	{KEY_POWER,		-1, 1, "power_btn",	EV_KEY, },
+	{KEY_HOME,		-1, 1, "home_btn",	EV_KEY, },
+	{KEY_VOLUMEUP,		-1, 1, "volume_up",	EV_KEY, },
+	{KEY_VOLUMEDOWN,	-1, 1, "volume_down",	EV_KEY, },
+	{KEY_RO,		-1, 1, "rotationlock",	EV_KEY, },
 };
 
 static struct gpio_keys_platform_data lesskey_keys = {
@@ -126,56 +126,16 @@ static struct platform_device lesskey_device = {
 	},
 };
 
-static acpi_status lesskey_get_keyinfo(struct acpi_resource *res,
-					      void *data)
-{
-	int index;
-	struct pnp_dev *pdev = data;
-	struct acpi_resource_gpio *gpio_rs;
-	struct gpio_keys_button *gb;
-
-	switch (res->type) {
-	case ACPI_RESOURCE_TYPE_GPIO:
-		gpio_rs = &res->data.gpio;
-		index = lesskey_keys.nbuttons++;
-		gb = &lesskey_button[index];
-		gb->gpio = acpi_get_gpio(gpio_rs->resource_source.string_ptr,
-				gpio_rs->pin_table[0]);
-		gb->active_low = gpio_rs->polarity == 1 ? 1 : 0;
-		dev_info(&pdev->dev,
-			"lesskey %d: ed %d, pl %d, path %s, pin %d, gpio %d\n",
-			(int)gb->code, (int)gpio_rs->triggering,
-			(int)gpio_rs->polarity,
-			gpio_rs->resource_source.string_ptr,
-			(int)gpio_rs->pin_table[0], gb->gpio);
-		break;
-	default:
-		dev_warn(&pdev->dev, "ignore resource type %d in _CRS\n",
-			 res->type);
-	}
-
-	return AE_OK;
-}
-
 static int
 lesskey_pnp_probe(struct pnp_dev *pdev, const struct pnp_device_id *id)
 {
 	int i, num, good = 0;
-	struct acpi_device *acpi_dev = pdev->data;
-	acpi_handle handle = acpi_dev->handle;
-	acpi_status status;
 	struct gpio_keys_button *gb = lesskey_button;
-
-	status = acpi_walk_resources(handle, METHOD_NAME__CRS,
-				     lesskey_get_keyinfo, pdev);
-	if (ACPI_FAILURE(status)) {
-		if (status != AE_NOT_FOUND)
-			dev_err(&pdev->dev, "can't evaluate _CRS: %d", status);
-		return -EPERM;
-	}
+	struct acpi_gpio_info info;
 
 	num = sizeof(lesskey_button) / sizeof(lesskey_button[0]);
 	for (i = 0; i < num; i++) {
+		gb[i].gpio = acpi_get_gpio_by_index(&pdev->dev, i, &info);
 		pr_info("lesskey [%2d]: name = %s, gpio = %d\n",
 			 i, gb[i].desc, gb[i].gpio);
 		if (gb[i].gpio < 0)
