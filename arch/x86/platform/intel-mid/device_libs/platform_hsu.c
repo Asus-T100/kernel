@@ -241,7 +241,6 @@ hsu_port_pin_cfg hsu_port_pin_cfgs[][hsu_pid_max][hsu_port_max] = {
 				.rx_alt = 1,
 				.tx_gpio = 127,
 				.tx_alt = 1,
-				.wake_gpio = 124,
 				.cts_gpio = 124,
 				.cts_alt = 1,
 				.rts_gpio = 125,
