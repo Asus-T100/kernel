@@ -87,8 +87,32 @@
 #define IGNORE_SSS2			0
 #define IGNORE_SSS3			0
 
-/* Ignore all from WKC1 */
-#define IGNORE_S3_WKC0 (0)
+#define PMU_WAKE_GPIO0      (1 << 0)
+#define PMU_WAKE_GPIO1      (1 << 1)
+#define PMU_WAKE_GPIO2      (1 << 2)
+#define PMU_WAKE_GPIO3      (1 << 3)
+#define PMU_WAKE_GPIO4      (1 << 4)
+#define PMU_WAKE_GPIO5      (1 << 5)
+#define PMU_WAKE_TIMERS     (1 << 6)
+#define PMU_WAKE_SECURITY   (1 << 7)
+#define PMU_WAKE_AONT32K    (1 << 8)
+#define PMU_WAKE_AONT       (1 << 9)
+#define PMU_WAKE_SVID_ALERT (1 << 10)
+#define PMU_WAKE_AUDIO      (1 << 11)
+#define PMU_WAKE_USB2       (1 << 12)
+#define PMU_WAKE_USB3       (1 << 13)
+#define PMU_WAKE_ILB        (1 << 14)
+#define PMU_WAKE_TAP        (1 << 15)
+#define PMU_WAKE_WATCHDOG   (1 << 16)
+#define PMU_WAKE_HSIC       (1 << 17)
+#define PMU_WAKE_PSH        (1 << 18)
+#define PMU_WAKE_PSH_GPIO   (1 << 19)
+#define PMU_WAKE_PSH_AONT   (1 << 20)
+#define PMU_WAKE_PSH_HALT   (1 << 21)
+#define PMU_GLBL_WAKE_MASK  (1 << 31)
+
+/* Ignore AONT WAKES and ALL from WKC1 */
+#define IGNORE_S3_WKC0 (PMU_WAKE_AONT32K | PMU_WAKE_AONT)
 #define IGNORE_S3_WKC1 (~0)
 
 #endif
