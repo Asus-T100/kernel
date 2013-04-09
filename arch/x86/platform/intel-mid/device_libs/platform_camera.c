@@ -166,6 +166,9 @@ void intel_register_i2c_camera_device(struct sfi_device_table_entry *pentry,
 	i2c_info.addr = pentry->addr;
 	pr_info("camera pdata: I2C bus = %d, name = %16.16s, irq = 0x%2x, addr = 0x%x\n",
 		pentry->host_num, i2c_info.type, i2c_info.irq, i2c_info.addr);
+
+	if (!dev->get_platform_data)
+		return;
 	pdata = dev->get_platform_data(&i2c_info);
 	i2c_info.platform_data = pdata;
 
