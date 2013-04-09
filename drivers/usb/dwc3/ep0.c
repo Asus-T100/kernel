@@ -70,6 +70,8 @@ enum dwc3_ep0_config {
 static enum dwc3_ep0_config request_config;
 
 static void dwc3_ep0_do_control_status(struct dwc3 *dwc, u32 epnum);
+static void __dwc3_ep0_do_control_data(struct dwc3 *dwc,
+		struct dwc3_ep *dep, struct dwc3_request *req);
 
 static const char *dwc3_ep0_state_string(enum dwc3_ep0_state state)
 {
@@ -165,9 +167,8 @@ static int __dwc3_gadget_ep0_queue(struct dwc3_ep *dep,
 			return 0;
 		}
 
-		ret = dwc3_ep0_start_trans(dwc, direction,
-				req->request.dma, req->request.length,
-				DWC3_TRBCTL_CONTROL_DATA);
+		__dwc3_ep0_do_control_data(dwc, dwc->eps[direction], req);
+
 		dep->flags &= ~(DWC3_EP_PENDING_REQUEST |
 				DWC3_EP0_DIR_IN);
 	} else if (dwc->delayed_status) {
@@ -180,6 +181,16 @@ static int __dwc3_gadget_ep0_queue(struct dwc3_ep *dep,
 			dev_dbg(dwc->dev, "too early for delayed status\n");
 	}
 
+	if (dwc->three_stage_setup) {
+		unsigned        direction;
+
+		direction = dwc->ep0_expect_in;
+		dwc->ep0state = EP0_DATA_PHASE;
+
+		__dwc3_ep0_do_control_data(dwc, dwc->eps[direction], req);
+
+		dep->flags &= ~DWC3_EP0_DIR_IN;
+	}
 	return ret;
 }
 
@@ -824,72 +835,54 @@ static void dwc3_ep0_do_control_setup(struct dwc3 *dwc,
 	dwc3_ep0_out_start(dwc);
 }
 
-static void dwc3_ep0_do_control_data(struct dwc3 *dwc,
-		const struct dwc3_event_depevt *event)
+
+static void __dwc3_ep0_do_control_data(struct dwc3 *dwc,
+		struct dwc3_ep *dep, struct dwc3_request *req)
 {
-	struct dwc3_ep		*dep;
-	struct dwc3_request	*req;
-	int			ret;
+	int                     ret;
 
-	dep = dwc->eps[0];
-
-	if (list_empty(&dep->request_list)) {
-		dev_vdbg(dwc->dev, "pending request for EP0 Data phase\n");
-		dep->flags |= DWC3_EP_PENDING_REQUEST;
-
-		if (event->endpoint_number)
-			dep->flags |= DWC3_EP0_DIR_IN;
-		return;
-	}
-
-	req = next_request(&dep->request_list);
-	req->direction = !!event->endpoint_number;
+	req->direction = !!dep->number;
 
 	if (req->request.length == 0) {
-		ret = dwc3_ep0_start_trans(dwc, event->endpoint_number,
+		ret = dwc3_ep0_start_trans(dwc, dep->number,
 				dwc->ctrl_req_addr, 0,
 				DWC3_TRBCTL_CONTROL_DATA);
-	} else if ((req->request.length % dep->endpoint.maxpacket)
-			&& (event->endpoint_number == 0)) {
+	} else if (!IS_ALIGNED(req->request.length, dep->endpoint.maxpacket)
+			&& (dep->number == 0)) {
+		u32             transfer_size;
+
 		ret = usb_gadget_map_request(&dwc->gadget, &req->request,
-				event->endpoint_number);
+				dep->number);
 		if (ret) {
 			dev_dbg(dwc->dev, "failed to map request\n");
 			return;
 		}
 
-		if (req->request.length > dep->endpoint.maxpacket) {
-			req->request.length = (req->request.length /
-				dep->endpoint.maxpacket + 1) *
-				dep->endpoint.maxpacket;
+		WARN_ON(req->request.length > DWC3_EP0_BOUNCE_SIZE);
 
-			ret = dwc3_ep0_start_trans(dwc, event->endpoint_number,
-					req->request.dma, req->request.length,
-					DWC3_TRBCTL_CONTROL_DATA);
-		} else {
-			dwc->ep0_bounced = true;
+		transfer_size = roundup(req->request.length,
+				(u32) dep->endpoint.maxpacket);
 
-			/*
-			 * REVISIT in case request length is bigger than EP0
-			 * wMaxPacketSize, we will need two chained TRBs to
-			 * handle the transfer.
-			 */
-			ret = dwc3_ep0_start_trans(dwc, event->endpoint_number,
-					dwc->ep0_bounce_addr,
-					dep->endpoint.maxpacket,
-					DWC3_TRBCTL_CONTROL_DATA);
-		}
+		dwc->ep0_bounced = true;
+
+		/*
+		 * REVISIT in case request length is bigger than
+		 * DWC3_EP0_BOUNCE_SIZE we will need two chained
+		 * TRBs to handle the transfer.
+		 */
+		ret = dwc3_ep0_start_trans(dwc, dep->number,
+				dwc->ep0_bounce_addr, transfer_size,
+				DWC3_TRBCTL_CONTROL_DATA);
 	} else {
 		ret = usb_gadget_map_request(&dwc->gadget, &req->request,
-				event->endpoint_number);
+				dep->number);
 		if (ret) {
 			dev_dbg(dwc->dev, "failed to map request\n");
 			return;
 		}
 
-		ret = dwc3_ep0_start_trans(dwc, event->endpoint_number,
-				req->request.dma, req->request.length,
-				DWC3_TRBCTL_CONTROL_DATA);
+		ret = dwc3_ep0_start_trans(dwc, dep->number, req->request.dma,
+				req->request.length, DWC3_TRBCTL_CONTROL_DATA);
 	}
 
 	WARN_ON(ret < 0);
@@ -961,49 +954,23 @@ static void dwc3_ep0_xfernotready(struct dwc3 *dwc,
 	}
 
 	switch (event->status) {
-	case DEPEVT_STATUS_CONTROL_SETUP:
-		dev_vdbg(dwc->dev, "Control Setup\n");
-
-		dwc->ep0state = EP0_SETUP_PHASE;
-
-		dwc3_ep0_do_control_setup(dwc, event);
-		break;
-
 	case DEPEVT_STATUS_CONTROL_DATA:
 		dev_vdbg(dwc->dev, "Control Data\n");
 
-		dwc->ep0state = EP0_DATA_PHASE;
-
-		if (dwc->ep0_next_event != DWC3_EP0_NRDY_DATA) {
-			dev_vdbg(dwc->dev, "Expected %d got %d\n",
-					dwc->ep0_next_event,
-					DWC3_EP0_NRDY_DATA);
-
-			/*
-			 * For full speed OUT transfer, an extra DATA
-			 * XferNotReady interuupt may be seen here.Just
-			 * ignore this invalid interrupt for now.
-			 *
-			 * dwc3_ep0_stall_and_restart(dwc);
-			 */
-			return;
-		}
-
 		/*
-		 * One of the possible error cases is when Host _does_
-		 * request for Data Phase, but it does so on the wrong
-		 * direction.
+		 * We already have a DATA transfer in the controller's cache,
+		 * if we receive a XferNotReady(DATA) we will ignore it, unless
+		 * it's for the wrong direction.
 		 *
-		 * Here, we already know ep0_next_event is DATA (see above),
-		 * so we only need to check for direction.
+		 * In that case, we must issue END_TRANSFER command to the Data
+		 * Phase we already have started and issue SetStall on the
+		 * control endpoint.
 		 */
 		if (dwc->ep0_expect_in != event->endpoint_number) {
 			dev_vdbg(dwc->dev, "Wrong direction for Data phase\n");
 			dwc3_ep0_stall_and_restart(dwc);
 			return;
 		}
-
-		dwc3_ep0_do_control_data(dwc, event);
 		break;
 
 	case DEPEVT_STATUS_CONTROL_STATUS:
