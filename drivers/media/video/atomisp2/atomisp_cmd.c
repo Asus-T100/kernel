@@ -3426,6 +3426,9 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	atomisp_get_dis_envelop(isp, f->fmt.pix.width, f->fmt.pix.height,
 				&dvs_env_w, &dvs_env_h);
 
+	/* Only main stream pipe will be here */
+	isp->isp_subdev.capture_pad = source_pad;
+
 	/*
 	 * set format info to sensor
 	 * In case of continuous_vf, resolution is set only if it is higher than
@@ -3443,9 +3446,6 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 		if (ret)
 			return -EINVAL;
 	}
-
-	/* Only main stream pipe will be here */
-	isp->isp_subdev.capture_pad = source_pad;
 
 	isp_sink_crop = *atomisp_subdev_get_rect(&isp->isp_subdev.subdev, NULL,
 						 V4L2_SUBDEV_FORMAT_ACTIVE,
