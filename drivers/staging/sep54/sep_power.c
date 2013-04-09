@@ -291,16 +291,9 @@ static int process_activate_req(void)
 	int rc;
 
 	sep_state = GET_SEP_STATE(power_control.drvdata);
-	if ((sep_state != DX_SEP_STATE_PROC_WARM_BOOT) &&
-	    (sep_state != DX_SEP_STATE_DONE_WARM_BOOT) &&
-	    (sep_state != DX_SEP_STATE_DONE_FW_INIT)) {
-		SEP_LOG_ERR("Requested activation while SeP state=0x%08X\n",
-			    sep_state);
-		return -EINVAL;
-	}
 	if ((sep_state == DX_SEP_STATE_DONE_FW_INIT) && is_desc_qs_active()) {
-		SEP_LOG_ERR("Requested activation when in active state\n");
-		return -EINVAL;	/* Already in this state */
+		SEP_LOG_INFO("Requested activation when in active state\n");
+		return 0;	/* Already in this state */
 	}
 	/* SeP may have been reset - restore IMR if SeP is not off */
 	/* This must be done before dx_sep_wait_for_state() */
