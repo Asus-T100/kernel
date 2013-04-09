@@ -1934,10 +1934,7 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 
 	pm_runtime_set_autosuspend_delay(&pdev->dev, 100);
 	pm_runtime_allow(&pdev->dev);
-
-	/* FIXME: avoid runtime pm for byt in PO */
-	if (!otg->otg_data->is_byt)
-		pm_runtime_put_autosuspend(&pdev->dev);
+	pm_runtime_put_autosuspend(&pdev->dev);
 
 	return 0;
 exit:
