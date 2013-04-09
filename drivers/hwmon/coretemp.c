@@ -37,6 +37,7 @@
 #include <linux/smp.h>
 #include <linux/moduleparam.h>
 #include <asm/msr.h>
+#include <asm/mce.h>
 #include <asm/processor.h>
 #include <asm/cpu_device_id.h>
 
@@ -116,6 +117,8 @@ struct pdev_entry {
 
 static LIST_HEAD(pdev_list);
 static DEFINE_MUTEX(pdev_list_mutex);
+
+static DEFINE_PER_CPU(struct delayed_work, core_threshold_work);
 
 static ssize_t show_name(struct device *dev,
 			struct device_attribute *devattr, char *buf)
@@ -271,13 +274,9 @@ static ssize_t show_ttarget(struct device *dev,
 	return sprintf(buf, "%d\n", pdata->core_data[attr->index]->ttarget);
 }
 
-static ssize_t show_temp(struct device *dev,
-			struct device_attribute *devattr, char *buf)
+static void update_temp(struct temp_data *tdata)
 {
 	u32 eax, edx;
-	struct sensor_device_attribute *attr = to_sensor_dev_attr(devattr);
-	struct platform_data *pdata = dev_get_drvdata(dev);
-	struct temp_data *tdata = pdata->core_data[attr->index];
 
 	mutex_lock(&tdata->update_lock);
 
@@ -295,6 +294,17 @@ static ssize_t show_temp(struct device *dev,
 	}
 
 	mutex_unlock(&tdata->update_lock);
+}
+
+static ssize_t show_temp(struct device *dev,
+			struct device_attribute *devattr, char *buf)
+{
+	struct sensor_device_attribute *attr = to_sensor_dev_attr(devattr);
+	struct platform_data *pdata = dev_get_drvdata(dev);
+	struct temp_data *tdata = pdata->core_data[attr->index];
+
+	update_temp(tdata);
+
 	return tdata->valid ? sprintf(buf, "%d\n", tdata->temp) : -EAGAIN;
 }
 
@@ -469,6 +479,150 @@ static int __cpuinit get_tjmax(struct cpuinfo_x86 *c, u32 id,
 	return adjust_tjmax(c, id, dev);
 }
 
+static struct platform_device *coretemp_get_pdev(unsigned int cpu)
+{
+	u16 phys_proc_id = TO_PHYS_ID(cpu);
+	struct pdev_entry *p;
+
+	mutex_lock(&pdev_list_mutex);
+
+	list_for_each_entry(p, &pdev_list, list)
+		if (p->phys_proc_id == phys_proc_id) {
+			mutex_unlock(&pdev_list_mutex);
+			return p->pdev;
+		}
+
+	mutex_unlock(&pdev_list_mutex);
+	return NULL;
+}
+
+#ifdef CONFIG_SENSORS_CORETEMP_INTERRUPT
+/* Interrupt Handler for Core Threshold Events */
+static int coretemp_interrupt(__u64 msr_val)
+{
+	unsigned int cpu = smp_processor_id();
+
+	schedule_delayed_work_on(cpu, &per_cpu(core_threshold_work, cpu), 0);
+	return 0;
+}
+
+static void core_threshold_work_fn(struct work_struct *work)
+{
+	u32 eax, edx;
+	int thresh, event;
+	char *thermal_event[5];
+	bool notify = false;
+	unsigned int cpu = smp_processor_id();
+	int indx = TO_ATTR_NO(cpu);
+	struct platform_device *pdev = coretemp_get_pdev(cpu);
+	struct platform_data *pdata = platform_get_drvdata(pdev);
+	struct temp_data *tdata = pdata->core_data[indx];
+
+	if (!tdata) {
+		pr_err("Could not retrieve temp_data\n");
+		return;
+	}
+
+	rdmsr_on_cpu(cpu, MSR_IA32_THERM_STATUS, &eax, &edx);
+	if (eax & THERM_LOG_THRESHOLD0) {
+		thresh = 0;
+		event = !!(eax & THERM_STATUS_THRESHOLD0);
+
+		/* Reset the Threshold0 interrupt */
+		eax = eax & ~THERM_LOG_THRESHOLD0;
+		wrmsr_on_cpu(cpu, MSR_IA32_THERM_STATUS, eax, edx);
+
+		notify = true;
+
+	} else if (eax & THERM_LOG_THRESHOLD1) {
+		thresh = 1;
+		event = !!(eax & THERM_STATUS_THRESHOLD1);
+
+		/* Reset the Threshold1 interrupt */
+		eax = eax & ~THERM_LOG_THRESHOLD1;
+		wrmsr_on_cpu(cpu, MSR_IA32_THERM_STATUS, eax, edx);
+
+		notify = true;
+	}
+
+	if (!notify)
+		return;
+
+	/*
+	 * Read the current Temperature and send it to user land;
+	 * so that the user space can avoid a sysfs read.
+	 */
+	update_temp(tdata);
+
+	thermal_event[0] = kasprintf(GFP_KERNEL, "NAME=Core %u",
+						tdata->cpu_core_id);
+	thermal_event[1] = kasprintf(GFP_KERNEL, "TEMP=%d", tdata->temp);
+	thermal_event[2] = kasprintf(GFP_KERNEL, "EVENT=%d", event);
+	thermal_event[3] = kasprintf(GFP_KERNEL, "LEVEL=%d", thresh);
+	thermal_event[4] = NULL;
+
+	kobject_uevent_env(&pdev->dev.kobj, KOBJ_CHANGE, thermal_event);
+
+	kfree(thermal_event[3]);
+	kfree(thermal_event[2]);
+	kfree(thermal_event[1]);
+	kfree(thermal_event[0]);
+}
+
+static void configure_apic(void *info)
+{
+	u32 l;
+	int *flag = (int *)info;
+
+	l = apic_read(APIC_LVTTHMR);
+
+	if (*flag)	/* Non-Zero flag Masks the APIC */
+		apic_write(APIC_LVTTHMR, l | APIC_LVT_MASKED);
+	else		/* Zero flag UnMasks the APIC */
+		apic_write(APIC_LVTTHMR, l & ~APIC_LVT_MASKED);
+}
+
+static int config_thresh_intrpt(struct temp_data *data, int enable)
+{
+	u32 eax, edx;
+	unsigned int cpu = data->cpu;
+	int flag = 1; /* Non-Zero Flag masks the apic */
+
+	smp_call_function_single(cpu, &configure_apic, &flag, 1);
+
+	rdmsr_on_cpu(cpu, MSR_IA32_THERM_INTERRUPT, &eax, &edx);
+
+	if (enable) {
+		INIT_DELAYED_WORK(&per_cpu(core_threshold_work, cpu),
+					core_threshold_work_fn);
+
+		eax |= (THERM_INT_THRESHOLD0_ENABLE |
+						THERM_INT_THRESHOLD1_ENABLE);
+		platform_thermal_notify = coretemp_interrupt;
+
+		pr_info("Enabled Aux0/Aux1 interrupts for coretemp\n");
+	} else {
+		eax &= (~(THERM_INT_THRESHOLD0_ENABLE |
+						THERM_INT_THRESHOLD1_ENABLE));
+		platform_thermal_notify = NULL;
+
+		cancel_delayed_work_sync(&per_cpu(core_threshold_work, cpu));
+	}
+
+	wrmsr_on_cpu(cpu, MSR_IA32_THERM_INTERRUPT, eax, edx);
+
+	flag = 0; /* Flag should be zero to unmask the apic */
+	smp_call_function_single(cpu, &configure_apic, &flag, 1);
+
+	return 0;
+}
+#else
+static inline int config_thresh_intrpt(struct temp_data *data, int enable)
+{
+	return 0;
+}
+#endif
+
 static int create_name_attr(struct platform_data *pdata,
 				      struct device *dev)
 {
@@ -543,23 +697,6 @@ static int __cpuinit chk_ucode_version(unsigned int cpu)
 		return -ENODEV;
 	}
 	return 0;
-}
-
-static struct platform_device __cpuinit *coretemp_get_pdev(unsigned int cpu)
-{
-	u16 phys_proc_id = TO_PHYS_ID(cpu);
-	struct pdev_entry *p;
-
-	mutex_lock(&pdev_list_mutex);
-
-	list_for_each_entry(p, &pdev_list, list)
-		if (p->phys_proc_id == phys_proc_id) {
-			mutex_unlock(&pdev_list_mutex);
-			return p->pdev;
-		}
-
-	mutex_unlock(&pdev_list_mutex);
-	return NULL;
 }
 
 static struct temp_data __cpuinit *init_temp_data(unsigned int cpu,
@@ -656,6 +793,9 @@ static int __cpuinit create_core_data(struct platform_device *pdev,
 	if (err)
 		goto exit_free;
 
+	/* Enable threshold interrupt support */
+	config_thresh_intrpt(tdata, 1);
+
 	return 0;
 exit_free:
 	pdata->core_data[attr_no] = NULL;
@@ -688,6 +828,9 @@ static void coretemp_remove_core(struct platform_data *pdata,
 			continue;
 		device_remove_file(dev, &tdata->sd_attrs[i].dev_attr);
 	}
+
+	/* Enable threshold interrupt support */
+	config_thresh_intrpt(tdata, 0);
 
 	kfree(pdata->core_data[indx]);
 	pdata->core_data[indx] = NULL;
