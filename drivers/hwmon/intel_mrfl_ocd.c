@@ -425,26 +425,28 @@ static irqreturn_t ocd_intrpt_thread_handler(int irq, void *dev_data)
 
 	/* we are not handling(no action taken) GSMPULSE_IRQ and
 						TXPWRTH_IRQ event */
+
+	if (irq_data & VCRIT_IRQ) {
+		event = CRIT;
+		handle_VC_event(event, dev_data);
+	}
+	if (irq_data & VWARN2_IRQ) {
+		event = WARN2;
+		handle_VW2_event(event, dev_data);
+	}
 	if (irq_data & VWARN1_IRQ) {
 		event = WARN1;
 		handle_VW1_event(event, dev_data);
-	} else if (irq_data & VWARN2_IRQ) {
-		event = WARN2;
-		handle_VW2_event(event, dev_data);
-	} else if (irq_data & VCRIT_IRQ) {
-		event = CRIT;
-		handle_VC_event(event, dev_data);
-	} else if (irq_data & GSMPULSE_IRQ) {
+	}
+	if (irq_data & GSMPULSE_IRQ) {
 		event = GSMPULSE;
 		dev_info(cinfo->dev, "EM:BCU: BCU Event %d has occured\n",
 									event);
-	} else if (irq_data & TXPWRTH_IRQ) {
+	}
+	if (irq_data & TXPWRTH_IRQ) {
 		event = TXPWRTH;
 		dev_info(cinfo->dev, "EM:BCU: BCU Event %d has occured\n",
 									event);
-	} else {
-		event = UNKNOWN;
-		dev_err(cinfo->dev, "EM:BCU: Invalid Interrupt\n");
 	}
 
 	/* Unmask BCU Interrupt in the mask register */
@@ -530,15 +532,6 @@ static int mrfl_ocd_probe(struct platform_device *pdev)
 		goto exit_hwmon;
 	}
 
-	/* Unmask 2nd level BCU Interrupts-VW1,VW2&VC in the mask register */
-	ret = intel_scu_ipc_update_register(MBCUIRQ,
-				0x00, VWARN1_IRQ | VWARN2_IRQ | VCRIT_IRQ);
-	if (ret) {
-		dev_err(&pdev->dev,
-			"EM:BCU: Unmasking of VW1 failed:%d\n", ret);
-		goto exit_ioremap;
-	}
-
 	/* Unmask 1st level BCU interrupt in the mask register */
 	ret = intel_scu_ipc_update_register(MIRQLVL1, 0x00, BCU_ALERT);
 	if (ret) {
@@ -561,8 +554,6 @@ static int mrfl_ocd_probe(struct platform_device *pdev)
 	/*Read BCU configuration values from smip*/
 	ocd_plat_data = pdev->dev.platform_data;
 
-	/* FIXME: Enable this code once SMIP driver is available for MRFLD */
-#if 0
 	ret = ocd_plat_data->bcu_config_data(&ocd_config_data);
 	if (ret) {
 		dev_err(&pdev->dev, "EM:BCU:Read SMIP failed:%d\n", ret);
@@ -575,7 +566,7 @@ static int mrfl_ocd_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "EM:BCU:program_bcu() failed:%d\n", ret);
 		goto exit_freeirq;
 	}
-#endif
+
 	enable_volt_trip_points();
 	enable_current_trip_points();
 
