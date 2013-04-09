@@ -185,7 +185,6 @@ struct atomisp_css_params {
 	bool fpn_en;
 	bool xnr_en;
 	bool low_light;
-	bool continuous_vf;
 	int false_color;
 	unsigned int histogram_elenum;
 

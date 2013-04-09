@@ -687,7 +687,7 @@ static int __atomisp_update_run_mode(struct atomisp_device *isp)
 	s32 mode;
 
 	if (ctrl->val != ATOMISP_RUN_MODE_VIDEO &&
-	    isp->params.continuous_vf)
+	    isp->isp_subdev.continuous_mode->val)
 		mode = ATOMISP_RUN_MODE_PREVIEW;
 	else
 		mode = ctrl->val;
@@ -770,6 +770,68 @@ static const struct v4l2_ctrl_config ctrl_enable_vfpp = {
 	.min = 0,
 	.def = 1,
 	.max = 1,
+};
+
+/*
+ * Control for ISP continuous mode
+ *
+ * When enabled, capture processing is possible without
+ * stopping the preview pipeline. When disabled, ISP needs
+ * to be restarted between preview and capture.
+ */
+static const struct v4l2_ctrl_config ctrl_continuous_mode = {
+	.ops = &ctrl_ops,
+	.id = V4L2_CID_ATOMISP_CONTINUOUS_MODE,
+	.type = V4L2_CTRL_TYPE_BOOLEAN,
+	.name = "Continuous mode",
+	.min = 0,
+	.max = 1,
+	.def = 0,
+};
+
+/*
+ * Control for continuous mode raw buffer size
+ *
+ * The size of the RAW ringbuffer sets limit on how much
+ * back in time application can go when requesting capture
+ * frames to be rendered, and how many frames can be rendered
+ * in a burst at full sensor rate.
+ *
+ * Note: this setting has a big impact on memory consumption of
+ * the CSS subsystem.
+ */
+static const struct v4l2_ctrl_config ctrl_continuous_raw_buffer_size = {
+	.ops = &ctrl_ops,
+	.id = V4L2_CID_ATOMISP_CONTINUOUS_RAW_BUFFER_SIZE,
+	.type = V4L2_CTRL_TYPE_INTEGER,
+	.name = "Continuous raw ringbuffer size",
+	.min = 1,
+	.max = 100, /* depends on CSS version, runtime checked */
+	.step = 1,
+	.def = 3,
+};
+
+/*
+ * Control for enabling continuous viewfinder
+ *
+ * When enabled, and ISP is in continuous mode (see ctrl_continuous_mode ),
+ * preview pipeline continues concurrently with capture
+ * processing. When disabled, and continuous mode is used,
+ * preview is paused while captures are processed, but
+ * full pipeline restart is not needed.
+ *
+ * By setting this to disabled, capture processing is
+ * essentially given priority over preview, and the effective
+ * capture output rate may be higher than with continuous
+ * viewfinder enabled.
+ */
+static const struct v4l2_ctrl_config ctrl_continuous_viewfinder = {
+	.id = V4L2_CID_ATOMISP_CONTINUOUS_VIEWFINDER,
+	.type = V4L2_CTRL_TYPE_BOOLEAN,
+	.name = "Continuous viewfinder",
+	.min = 0,
+	.max = 1,
+	.def = 0,
 };
 
 /*
@@ -879,6 +941,17 @@ static int isp_subdev_init_entities(struct atomisp_sub_device *isp_subdev)
 	isp_subdev->enable_vfpp =
 				v4l2_ctrl_new_custom(&isp_subdev->ctrl_handler,
 						     &ctrl_enable_vfpp, NULL);
+	isp_subdev->continuous_mode =
+			v4l2_ctrl_new_custom(&isp_subdev->ctrl_handler,
+					     &ctrl_continuous_mode, NULL);
+	isp_subdev->continuous_viewfinder =
+			v4l2_ctrl_new_custom(&isp_subdev->ctrl_handler,
+					     &ctrl_continuous_viewfinder,
+					     NULL);
+	isp_subdev->continuous_raw_buffer_size =
+			v4l2_ctrl_new_custom(&isp_subdev->ctrl_handler,
+					     &ctrl_continuous_raw_buffer_size,
+					     NULL);
 
 	/* Make controls visible on subdev as well. */
 	isp_subdev->subdev.ctrl_handler = &isp_subdev->ctrl_handler;

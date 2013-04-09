@@ -1218,7 +1218,7 @@ static int atomisp_dqbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 
 enum sh_css_pipe_id atomisp_get_css_pipe_id(struct atomisp_device *isp)
 {
-	if (isp->params.continuous_vf &&
+	if (isp->isp_subdev.continuous_mode->val &&
 	    isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO)
 		return SH_CSS_PREVIEW_PIPELINE;
 
@@ -1247,7 +1247,7 @@ static unsigned int atomisp_sensor_start_stream(struct atomisp_device *isp)
 	     !atomisp_is_mbuscode_raw(
 		     isp->isp_subdev.fmt[
 			     isp->isp_subdev.capture_pad].fmt.code) &&
-	     !isp->params.continuous_vf))
+	     !isp->isp_subdev.continuous_mode->val))
 		return 2;
 	else
 		return 1;
@@ -1304,7 +1304,7 @@ static int atomisp_streamon(struct file *file, void *fh,
 
 	if (atomisp_streaming_count(isp) > sensor_start_stream) {
 		/* trigger still capture */
-		if (isp->params.continuous_vf &&
+		if (isp->isp_subdev.continuous_mode->val &&
 		    atomisp_subdev_source_pad(vdev)
 		    == ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE &&
 		    isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO) {
@@ -1360,7 +1360,7 @@ static int atomisp_streamon(struct file *file, void *fh,
 		ret = -EINVAL;
 		goto out;
 	}
-	if (isp->params.continuous_vf &&
+	if (isp->isp_subdev.continuous_mode->val &&
 	    isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO) {
 		INIT_COMPLETION(isp->init_done);
 		isp->delayed_init = ATOMISP_DELAYED_INIT_QUEUED;
@@ -1455,7 +1455,7 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 	 * case of continuous capture
 	 */
 	if (isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO &&
-	    isp->params.continuous_vf &&
+	    isp->isp_subdev.continuous_mode->val &&
 	    atomisp_subdev_source_pad(vdev)
 	    != ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW) {
 

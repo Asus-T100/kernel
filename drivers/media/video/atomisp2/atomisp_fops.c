@@ -208,7 +208,7 @@ int atomisp_qbuffers_to_css(struct atomisp_device *isp)
 		preview_pipe = &isp->isp_subdev.video_out_preview;
 		css_capture_pipe_id = CSS_PIPE_ID_VIDEO;
 		css_preview_pipe_id = CSS_PIPE_ID_VIDEO;
-	} else if (isp->params.continuous_vf) {
+	} else if (isp->isp_subdev.continuous_mode->val) {
 		capture_pipe = &isp->isp_subdev.video_out_capture;
 		vf_pipe = &isp->isp_subdev.video_out_vf;
 		preview_pipe = &isp->isp_subdev.video_out_preview;
@@ -382,7 +382,6 @@ int atomisp_init_struct(struct atomisp_device *isp)
 	isp->params.offline_parm.num_captures = 1;
 	isp->params.offline_parm.skip_frames = 0;
 	isp->params.offline_parm.offset = 0;
-	isp->params.continuous_vf = false;
 	isp->sw_contex.file_input = 0;
 	isp->need_gfx_throttle = true;
 	isp->isp_fatal_error = false;

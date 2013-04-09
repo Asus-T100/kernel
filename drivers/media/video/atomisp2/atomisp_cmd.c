@@ -302,11 +302,11 @@ int atomisp_freq_scaling(struct atomisp_device *isp, enum atomisp_dfs_mode mode)
 	curr_rules.fps = fps;
 	curr_rules.run_mode = isp->isp_subdev.run_mode->val;
 	/*
-	 * For continuous vf mode, we need to make the capture setting applied
+	 * For continuous mode, we need to make the capture setting applied
 	 * since preview mode, because there is no chance to do this when
 	 * starting image capture.
 	 */
-	if (isp->params.continuous_vf)
+	if (isp->isp_subdev.continuous_mode->val)
 		curr_rules.run_mode = ATOMISP_RUN_MODE_STILL_CAPTURE;
 
 	/* search for the target frequency by looping freq rules*/
@@ -1084,7 +1084,7 @@ void atomisp_wdt_work(struct work_struct *work)
 			dev_warn(isp->dev,
 				 "can't start streaming on sensor!\n");
 
-		if (isp->params.continuous_vf &&
+		if (isp->isp_subdev.continuous_mode->val &&
 		    isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO &&
 		    isp->delayed_init == ATOMISP_DELAYED_INIT_NOT_QUEUED) {
 			INIT_COMPLETION(isp->init_done);
@@ -3019,13 +3019,24 @@ static inline void atomisp_set_sensor_mipi_to_isp(struct atomisp_device *isp,
 				    mipi_info->num_lanes, 0xffff4);
 }
 
-static void __enable_continuous_vf(struct atomisp_device *isp, bool enable)
+static int __enable_continuous_mode(struct atomisp_device *isp, bool enable)
 {
+	dev_dbg(isp->dev, "continuous mode %d, raw buffers %d, stop preview %d\n",
+		enable, isp->isp_subdev.continuous_raw_buffer_size->val,
+		!isp->isp_subdev.continuous_viewfinder->val);
 	sh_css_capture_set_mode(SH_CSS_CAPTURE_MODE_PRIMARY);
 	sh_css_capture_enable_online(!enable);
 	sh_css_preview_enable_online(!enable);
 	sh_css_enable_continuous(enable);
-	sh_css_enable_cont_capt(enable, enable);
+	sh_css_enable_cont_capt(enable,
+				!isp->isp_subdev.continuous_viewfinder->val);
+	if (sh_css_continuous_set_num_raw_frames(
+			isp->isp_subdev.continuous_raw_buffer_size->val)
+		!= sh_css_success) {
+		dev_err(isp->dev, "css_continuous_set_num_raw_frames failed\n");
+		return -EINVAL;
+	}
+
 	if (!enable) {
 		sh_css_enable_raw_binning(false);
 		sh_css_input_set_two_pixels_per_clock(false);
@@ -3035,7 +3046,7 @@ static void __enable_continuous_vf(struct atomisp_device *isp, bool enable)
 		isp->inputs[isp->input_curr].type != FILE_INPUT)
 		sh_css_input_set_mode(SH_CSS_INPUT_MODE_SENSOR);
 
-	atomisp_update_run_mode(isp);
+	return atomisp_update_run_mode(isp);
 }
 
 static enum sh_css_err configure_pp_input_nop(unsigned int width,
@@ -3131,9 +3142,9 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 				isp->isp_subdev.video_out_vf.sh_fmt);
 	}
 
-	if (isp->params.continuous_vf) {
+	if (isp->isp_subdev.continuous_mode->val) {
 		if (isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO) {
-			__enable_continuous_vf(isp, true);
+			ret = __enable_continuous_mode(isp, true);
 			/*
 			 * Enable only if resolution is equal or above 5M,
 			 * Always enable raw_binning on MRFLD.
@@ -3143,8 +3154,10 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 				sh_css_input_set_two_pixels_per_clock(false);
 			}
 		} else {
-			__enable_continuous_vf(isp, false);
+			ret = __enable_continuous_mode(isp, false);
 		}
+		if (ret)
+			return -EINVAL;
 	}
 
 	sh_css_disable_vf_pp(!isp->isp_subdev.enable_vfpp->val);
@@ -3162,7 +3175,7 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 		if (format->sh_fmt == SH_CSS_FRAME_FORMAT_RAW) {
 			sh_css_capture_set_mode(SH_CSS_CAPTURE_MODE_RAW);
 		}
-		if (!isp->params.continuous_vf)
+		if (!isp->isp_subdev.continuous_mode->val)
 			sh_css_capture_enable_online(
 					isp->params.online_process);
 
@@ -3170,11 +3183,12 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 		get_frame_info = sh_css_capture_get_output_frame_info;
 		configure_pp_input = sh_css_capture_configure_pp_input;
 
-		if (!isp->params.online_process && !isp->params.continuous_vf)
+		if (!isp->params.online_process &&
+		    !isp->isp_subdev.continuous_mode->val)
 			if (sh_css_capture_get_output_raw_frame_info(
 						raw_output_info))
 				return -EINVAL;
-		if (!isp->params.continuous_vf &&
+		if (!isp->isp_subdev.continuous_mode->val &&
 		    isp->isp_subdev.run_mode->val
 		    != ATOMISP_RUN_MODE_STILL_CAPTURE) {
 			dev_err(isp->dev,
@@ -3190,7 +3204,7 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 			width, height, format->sh_fmt);
 		return -EINVAL;
 	}
-	if (isp->params.continuous_vf) {
+	if (isp->isp_subdev.continuous_mode->val) {
 		configure_pp_input(0, 0);
 	} else {
 		ret = configure_pp_input(isp_sink_crop->width,
@@ -3213,8 +3227,8 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 	sh_css_frame_free(isp->raw_output_frame);
 	isp->raw_output_frame = NULL;
 
-	if (!isp->params.continuous_vf && !isp->params.online_process &&
-	    !isp->sw_contex.file_input &&
+	if (!isp->isp_subdev.continuous_mode->val &&
+		!isp->params.online_process && !isp->sw_contex.file_input &&
 	    sh_css_frame_allocate_from_info(&isp->raw_output_frame,
 					       raw_output_info))
 		return -ENOMEM;
@@ -3424,7 +3438,7 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	}
 
 	/* construct resolution supported by isp */
-	if (res_overflow && !isp->params.continuous_vf) {
+	if (res_overflow && !isp->isp_subdev.continuous_mode->val) {
 		f->fmt.pix.width = rounddown(
 			clamp_t(u32, f->fmt.pix.width - padding_w,
 				ATOM_ISP_MIN_WIDTH,
@@ -3443,11 +3457,11 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 
 	/*
 	 * set format info to sensor
-	 * In case of continuous_vf, resolution is set only if it is higher than
+	 * In continuous mode, resolution is set only if it is higher than
 	 * existing value. This because preview pipe will be configured after
 	 * capture pipe and usually has lower resolution than capture pipe.
 	 */
-	if (!isp->params.continuous_vf ||
+	if (!isp->isp_subdev.continuous_mode->val ||
 	    isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO ||
 	    (isp_sink_fmt.width < (f->fmt.pix.width + padding_w + dvs_env_w) &&
 	     isp_sink_fmt.height < (f->fmt.pix.height + padding_h +
@@ -3778,13 +3792,16 @@ int atomisp_offline_capture_configure(struct atomisp_device *isp,
 				min_t(int, ATOMISP_CONT_RAW_FRAMES,
 				      isp->params.offline_parm.num_captures
 				      + 3);
-			sh_css_continuous_set_num_raw_frames(num_raw_frames);
+			/* TODO: this can be removed once user-space
+			 *       has been updated to use control API */
+			isp->isp_subdev.continuous_raw_buffer_size->val =
+				num_raw_frames;
 		}
 
-		isp->params.continuous_vf = true;
+		isp->isp_subdev.continuous_mode->val = true;
 	} else {
-		isp->params.continuous_vf = false;
-		__enable_continuous_vf(isp, false);
+		isp->isp_subdev.continuous_mode->val = false;
+		__enable_continuous_mode(isp, false);
 	}
 
 	return 0;
