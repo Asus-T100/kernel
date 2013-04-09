@@ -38,4 +38,5 @@ struct scu_trace_hdr_t {
 
 #define TRACE_IS_ASCII   0x0001
 
+void apic_scu_panic_dump(void);
 #endif /* __INTEL_FABRICID_DEF_H */
