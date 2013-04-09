@@ -486,13 +486,18 @@ static irqreturn_t ulpmc_thread_handler(int id, void *dev)
 	struct ulpmc_chip_info *chip = dev;
 	int ret;
 
+	pm_runtime_get_sync(&chip->client->dev);
+
 	ret = ulpmc_read_reg8(chip->client, ULPMC_BM_REG_INTSTAT);
 	if (ret < 0) {
 		dev_err(&chip->client->dev, "ulpmc stat reg read error\n");
+		pm_runtime_put_sync(&chip->client->dev);
 		return IRQ_NONE;
 	}
 	log_interrupt_event(chip, ret);
 	power_supply_changed(&chip->bat);
+
+	pm_runtime_put_sync(&chip->client->dev);
 	return IRQ_HANDLED;
 }
 
@@ -603,6 +608,10 @@ static int ulpmc_battery_probe(struct i2c_client *client,
 				"failed to register extcon notifier:%d\n", ret);
 	}
 
+	/* Init Runtime PM State */
+	pm_runtime_put_noidle(&chip->client->dev);
+	pm_schedule_suspend(&chip->client->dev, MSEC_PER_SEC);
+
 	/* get irq and register */
 	ulpmc_init_irq(chip);
 	/* schedule status monitoring worker */
@@ -625,11 +634,69 @@ static int ulpmc_battery_remove(struct i2c_client *client)
 		extcon_unregister_notifier(chip->edev, &chip->nb);
 	power_supply_unregister(&chip->chrg);
 	power_supply_unregister(&chip->bat);
+	pm_runtime_get_noresume(&chip->client->dev);
 	mutex_destroy(&chip->lock);
 	kfree(chip);
 
 	return 0;
 }
+
+static int ulpmc_suspend(struct device *dev)
+{
+	struct ulpmc_chip_info *chip = dev_get_drvdata(dev);
+
+	if (chip->client->irq > 0) {
+		disable_irq(chip->client->irq);
+		enable_irq_wake(chip->client->irq);
+	}
+	cancel_delayed_work_sync(&chip->work);
+	dev_dbg(&chip->client->dev, "ulpmc battery suspend\n");
+
+	return 0;
+}
+
+static int ulpmc_resume(struct device *dev)
+{
+	struct ulpmc_chip_info *chip = dev_get_drvdata(dev);
+
+	if (chip->client->irq > 0) {
+		enable_irq(chip->client->irq);
+		disable_irq_wake(chip->client->irq);
+	}
+	/* schedule status monitoring worker */
+	schedule_delayed_work(&chip->work, STATUS_MON_JIFFIES);
+	dev_dbg(&chip->client->dev, "ulpmc battery resume\n");
+
+	return 0;
+}
+
+static int ulpmc_runtime_suspend(struct device *dev)
+{
+
+	dev_dbg(dev, "%s called\n", __func__);
+	return 0;
+}
+
+static int ulpmc_runtime_resume(struct device *dev)
+{
+	dev_dbg(dev, "%s called\n", __func__);
+	return 0;
+}
+
+static int ulpmc_runtime_idle(struct device *dev)
+{
+
+	dev_dbg(dev, "%s called\n", __func__);
+	return 0;
+}
+
+static const struct dev_pm_ops ulpmc_pm_ops = {
+		SET_SYSTEM_SLEEP_PM_OPS(ulpmc_suspend,
+				ulpmc_resume)
+		SET_RUNTIME_PM_OPS(ulpmc_runtime_suspend,
+				ulpmc_runtime_resume,
+				ulpmc_runtime_idle)
+};
 
 static const struct i2c_device_id ulpmc_id[] = {
 	{ "ulpmc", 0 },
@@ -640,6 +707,7 @@ static struct i2c_driver ulpmc_battery_driver = {
 	.driver = {
 		.name = "ulpmc-battery",
 		.owner	= THIS_MODULE,
+		.pm	= &ulpmc_pm_ops,
 	},
 	.probe = ulpmc_battery_probe,
 	.remove = ulpmc_battery_remove,
