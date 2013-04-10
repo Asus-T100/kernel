@@ -341,10 +341,19 @@ static int sph_pci_runtime_suspend(struct device *dev)
 
 static int sph_pci_runtime_resume(struct device *dev)
 {
-	int	retval;
+	struct pci_dev		*pci_dev = to_pci_dev(dev);
+	struct usb_hcd		*hcd = pci_get_drvdata(pci_dev);
+	int			retval;
 
 	dev_dbg(dev, "%s --->\n", __func__);
 	retval = usb_hcd_pci_pm_ops.runtime_resume(dev);
+	if (hcd->rpm_control) {
+		if (hcd->rpm_resume) {
+			struct device		*rpm_dev = hcd->self.controller;
+			hcd->rpm_resume = 0;
+			pm_runtime_put(rpm_dev);
+		}
+	}
 	dev_dbg(dev, "%s <--- retval = %d\n", __func__, retval);
 	return retval;
 }
