@@ -66,6 +66,7 @@
 #define BQ24261_STAT_MASK		(0x03 << 4)
 #define BQ24261_BOOST_MASK		(0x01 << 6)
 #define BQ24261_TMR_RST_MASK		(0x01 << 7)
+#define BQ24261_TMR_RST			(0x01 << 7)
 
 #define BQ24261_ENABLE_BOOST		(0x01 << 6)
 
@@ -621,6 +622,12 @@ static inline int bq24261_enable_charger(
 
 	ret = bq24261_read_modify_reg(chip->client, BQ24261_CTRL_ADDR,
 		       BQ24261_HZ_MASK|BQ24261_RESET_MASK, reg_val);
+	if (ret)
+		return ret;
+
+	reg_val = BQ24261_TMR_RST;
+	ret = bq24261_read_modify_reg(chip->client, BQ24261_STAT_CTRL0_ADDR,
+			BQ24261_TMR_RST_MASK, reg_val);
 	return ret;
 
 }
@@ -1181,26 +1188,8 @@ static int bq24261_handle_irq(struct bq24261_charger *chip, u8 stat_reg)
 	struct i2c_client *client = chip->client;
 	int ret;
 
-	dev_dbg(&client->dev, "%s:%d\n", __func__, __LINE__);
-
-	/* If fault was set previously and it's not set now,
-	 *  then recover excpetions
-	 */
-
-	if ((chip->chrgr_stat == BQ24261_CHRGR_STAT_FAULT) &&
-		((stat_reg & BQ24261_STAT_MASK) != BQ24261_STAT_FAULT)) {
-		dev_info(&client->dev, "Fault recovered\n");
-		chip->bat_health = POWER_SUPPLY_HEALTH_GOOD;
-
-		if (chip->is_charger_enabled) {
-			bq24261_set_inlmt(chip, chip->inlmt);
-			bq24261_enable_charger(chip, true);
-		}
-		if (chip->is_charging_enabled)
-			bq24261_enable_charging(chip, true);
-
-		bq24261_dump_regs(false);
-	}
+	dev_info(&client->dev, "%s:%d stat=0x%x\n",
+			__func__, __LINE__, stat_reg);
 
 	switch (stat_reg & BQ24261_STAT_MASK) {
 	case BQ24261_STAT_READY:

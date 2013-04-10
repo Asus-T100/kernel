@@ -147,11 +147,11 @@ static struct temp_lookup adc_tbl[] = {
 };
 
 u16 pmic_inlmt[][2] = {
-	{ 100, CHGRCTRL1_FUSB_INLMT_100_MASK},
-	{ 150, CHGRCTRL1_FUSB_INLMT_150_MASK},
-	{ 500, CHGRCTRL1_FUSB_INLMT_500_MASK},
-	{ 900, CHGRCTRL1_FUSB_INLMT_900_MASK},
-	{ 1500, CHGRCTRL1_FUSB_INLMT_1500_MASK},
+	{ 100, CHGRCTRL1_FUSB_INLMT_100},
+	{ 150, CHGRCTRL1_FUSB_INLMT_150},
+	{ 500, CHGRCTRL1_FUSB_INLMT_500},
+	{ 900, CHGRCTRL1_FUSB_INLMT_900},
+	{ 1500, CHGRCTRL1_FUSB_INLMT_1500},
 };
 
 static inline struct power_supply *get_psy_battery(void)
@@ -790,13 +790,13 @@ EXPORT_SYMBOL(pmic_set_cv);
 
 int pmic_set_ilimmA(int ilim_mA)
 {
-	u8 mask;
+	u8 reg_val;
 
 	lookup_regval(pmic_inlmt, ARRAY_SIZE(pmic_inlmt),
-			ilim_mA, &mask);
+			ilim_mA, &reg_val);
 	dev_dbg(chc.dev, "Setting inlmt %d in register %x=%x\n", ilim_mA,
-		CHGRCTRL1_ADDR, mask);
-	return intel_scu_ipc_update_register(CHGRCTRL1_ADDR, 0xFF, mask);
+		CHGRCTRL1_ADDR, reg_val);
+	return intel_scu_ipc_iowrite8(CHGRCTRL1_ADDR, reg_val);
 }
 EXPORT_SYMBOL(pmic_set_ilimmA);
 
