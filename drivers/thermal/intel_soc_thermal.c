@@ -49,6 +49,7 @@
 #define DTS_ENABLE_REG		0xB0
 #define PUNIT_TEMP_REG		0xB1
 #define PUNIT_AUX_REG		0xB2
+#define MSR_THERM_CFG1		0x673
 #define DTS_ENABLE		0x02
 /* There are 4 Aux trips. Only Aux0, Aux1 are writeable */
 #define DTS_TRIP_RW		0x03
@@ -56,6 +57,8 @@
 
 #define TJMAX_TEMP		90
 #define TJMAX_CODE		0x7F
+#define DEFAULT_C2H_HYST	3
+#define DEFAULT_H2C_HYST	3
 
 /* IRQ details */
 #define SOC_DTS_CONTROL		0x80
@@ -205,13 +208,25 @@ static struct thermal_device_info *initialize_sensor(int index)
 		return NULL;
 	td_info->sensor_index = index;
 	mutex_init(&td_info->lock_aux);
+
 	return td_info;
 }
 
 static void enable_soc_dts(void)
 {
 	int i;
-	u32 val;
+	u32 val, eax, edx;
+
+	rdmsr_on_cpu(0, MSR_THERM_CFG1, &eax, &edx);
+
+	/* B[11:13] C2H Hyst */
+	eax = (eax & ~(0x7 << 11)) | (DEFAULT_C2H_HYST << 11);
+
+	/* B[8:10] H2C Hyst */
+	eax = (eax & ~(0x7 << 8)) | (DEFAULT_H2C_HYST << 8);
+
+	/* Set the Hysteresis value */
+	wrmsr_on_cpu(0, MSR_THERM_CFG1, eax, edx);
 
 	/* Enable the DTS */
 	write_soc_reg(DTS_ENABLE_REG, DTS_ENABLE);
@@ -224,6 +239,34 @@ static void enable_soc_dts(void)
 		val = read_soc_reg(TE_AUX0 + i);
 		write_soc_reg(TE_AUX0 + i, (val | RTE_ENABLE));
 	}
+}
+
+static ssize_t show_trip_hyst(struct thermal_zone_device *tzd,
+				int trip, long *hyst)
+{
+	u32 eax, edx;
+	struct thermal_device_info *td_info = tzd->devdata;
+
+	/* Hysteresis is only supported for trip point 0 and 1. */
+	if (trip != 0 && trip != 1)
+		return -EINVAL;
+
+	mutex_lock(&td_info->lock_aux);
+
+	rdmsr_on_cpu(0, MSR_THERM_CFG1, &eax, &edx);
+
+	/*
+	 * B[11:13] C2H Hyst, for trip 0
+	 * B[8:10] H2C Hyst, for trip 1
+	 * Report hysteresis in mC
+	 */
+	if (trip == 0)
+		*hyst = ((eax >> 11) & 0x7) * 1000;
+	else
+		*hyst = ((eax >> 8) & 0x7) * 1000;
+
+	mutex_unlock(&td_info->lock_aux);
+	return 0;
 }
 
 static ssize_t show_temp(struct thermal_zone_device *tzd, long *temp)
@@ -365,6 +408,7 @@ static struct thermal_zone_device_ops tzd_ops = {
 	.get_trip_type = show_trip_type,
 	.get_trip_temp = show_trip_temp,
 	.set_trip_temp = store_trip_temp,
+	.get_trip_hyst = show_trip_hyst,
 };
 
 /*********************************************************************
