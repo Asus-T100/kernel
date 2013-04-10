@@ -73,44 +73,32 @@ int psb_set_brightness(struct backlight_device *bd)
 	if (level < BRIGHTNESS_MIN_LEVEL)
 		level = BRIGHTNESS_MIN_LEVEL;
 
-	if (!gbdispstatus) {
-		PSB_DEBUG_ENTRY
-		    ("[DISPLAY]: already OFF ignoring brighness request \n");
-		//! there may exist concurrent racing, the gbdispstatus may haven't been set in gfx_late_resume yet.
-		//! record here, and we may call brightness setting at the end of gfx_late_resume
-		lastFailedBrightness = level;
-		return 0;
-	}
-
 	lastFailedBrightness = -1;
 
-	if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, OSPM_UHB_ONLY_IF_ON)) {
-		if (IS_FLDS(dev)) {
-			u32 adjusted_level = 0;
+	if (IS_FLDS(dev)) {
+		u32 adjusted_level = 0;
 
-			/* Adjust the backlight level with the percent in
-			 * dev_priv->blc_adj2;
-			 */
-			adjusted_level = level * dev_priv->blc_adj2;
-			adjusted_level = adjusted_level / BLC_ADJUSTMENT_MAX;
+		/* Adjust the backlight level with the percent in
+		 * dev_priv->blc_adj2;
+		 */
+		adjusted_level = level * dev_priv->blc_adj2;
+		adjusted_level = adjusted_level / BLC_ADJUSTMENT_MAX;
 
 #ifndef CONFIG_MID_DSI_DPU
-			if (!(dev_priv->dsr_fb_update & MDFLD_DSR_MIPI_CONTROL)
-			    && (dev_priv->dbi_panel_on
-				|| dev_priv->dbi_panel_on2)) {
-				mdfld_dsi_dbi_exit_dsr(dev,
-						       MDFLD_DSR_MIPI_CONTROL,
-						       0, 0);
-				PSB_DEBUG_ENTRY
-				    ("Out of DSR before set brightness to %d.\n",
-				     adjusted_level);
-			}
+		if (!(dev_priv->dsr_fb_update & MDFLD_DSR_MIPI_CONTROL)
+				&& (dev_priv->dbi_panel_on
+					|| dev_priv->dbi_panel_on2)) {
+			mdfld_dsi_dbi_exit_dsr(dev,
+					MDFLD_DSR_MIPI_CONTROL,
+					0, 0);
+			PSB_DEBUG_ENTRY
+				("Out of DSR before set brightness to %d.\n",
+				 adjusted_level);
+		}
 #endif
 
-			mdfld_dsi_brightness_control(dev, 0, adjusted_level);
-			mdfld_dsi_brightness_control(dev, 2, adjusted_level);
-		}
-		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+		mdfld_dsi_brightness_control(dev, 0, adjusted_level);
+		mdfld_dsi_brightness_control(dev, 2, adjusted_level);
 	}
 
 	/* cache the brightness for later use */

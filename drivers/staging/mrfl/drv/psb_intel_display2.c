@@ -128,6 +128,7 @@ static int mdfld_intel_crtc_cursor_set(struct drm_crtc *crtc,
 	uint32_t page_offset;
 	size_t size;
 	void *bo;
+	u32 power_island = 0;
 	int ret;
 
 	DRM_DEBUG("\n");
@@ -152,6 +153,8 @@ static int mdfld_intel_crtc_cursor_set(struct drm_crtc *crtc,
 	if (pipe != 0)
 		return 0;
 
+	power_island = pipe_to_island(pipe);
+
 	/* if we want to turn of the cursor ignore width and height */
 	if (!handle) {
 		DRM_DEBUG("cursor off\n");
@@ -159,11 +162,10 @@ static int mdfld_intel_crtc_cursor_set(struct drm_crtc *crtc,
 		temp = 0;
 		temp |= CURSOR_MODE_DISABLE;
 
-		if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
-					      OSPM_UHB_ONLY_IF_ON)) {
+		if (power_island_get(power_island)) {
 			REG_WRITE(control, temp);
 			REG_WRITE(base, 0);
-			ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+			power_island_put(power_island);
 		}
 
 		/* unpin the old bo */
@@ -213,10 +215,10 @@ static int mdfld_intel_crtc_cursor_set(struct drm_crtc *crtc,
 	temp |= (pipe << 28);
 	temp |= CURSOR_MODE_64_ARGB_AX | MCURSOR_GAMMA_ENABLE;
 
-	if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, OSPM_UHB_ONLY_IF_ON)) {
+	if (power_island_get(power_island)) {
 		REG_WRITE(control, temp);
 		REG_WRITE(base, addr);
-		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+		power_island_put(power_island);
 	}
 
 	/* unpin the old bo */
@@ -243,6 +245,7 @@ static int mdfld_intel_crtc_cursor_move(struct drm_crtc *crtc, int x, int y)
 	uint32_t base = CURABASE;
 	uint32_t temp = 0;
 	uint32_t addr;
+	u32 power_island = 0;
 
 	switch (pipe) {
 	case 0:
@@ -295,10 +298,12 @@ static int mdfld_intel_crtc_cursor_move(struct drm_crtc *crtc, int x, int y)
 
 	addr = psb_intel_crtc->cursor_addr;
 
-	if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, OSPM_UHB_ONLY_IF_ON)) {
+	power_island = pipe_to_island(pipe);
+
+	if (power_island_get(power_island)) {
 		REG_WRITE(pos, temp);
 		REG_WRITE(base, addr);
-		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+		power_island_put(power_island);
 	}
 
 	return 0;
@@ -353,6 +358,7 @@ int mdfld__intel_pipe_set_base(struct drm_crtc *crtc, int x, int y,
 	int dspstride = DSPASTRIDE;
 	int dspcntr_reg = DSPACNTR;
 	u32 dspcntr;
+	u32 power_island = 0;
 	int ret = 0;
 
 	memcpy(&globle_dev, dev, sizeof(struct drm_device));
@@ -390,8 +396,9 @@ int mdfld__intel_pipe_set_base(struct drm_crtc *crtc, int x, int y,
 		return -EINVAL;
 	}
 
-	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
-				       OSPM_UHB_FORCE_POWER_ON))
+	power_island = pipe_to_island(pipe);
+
+	if (!power_island_get(power_island))
 		return 0;
 
 	Start = mode_dev->bo_offset(dev, psbfb);
@@ -445,7 +452,7 @@ int mdfld__intel_pipe_set_base(struct drm_crtc *crtc, int x, int y,
 
  psb_intel_pipe_set_base_exit:
 
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+	power_island_put(power_island);
 
 	return ret;
 }
@@ -572,6 +579,7 @@ static void mdfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 	u32 dspcntr = dev_priv->dspcntr;
 	u32 mipi_enable_reg = MIPIA_DEVICE_READY_REG;
 	u32 temp;
+	u32 power_island = 0;
 	bool enabled;
 	int timeout = 0;
 
@@ -589,8 +597,9 @@ static void mdfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 	}
 #endif
 
-	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
-				       OSPM_UHB_FORCE_POWER_ON))
+	power_island = pipe_to_island(pipe);
+
+	if (!power_island_get(power_island))
 		return;
 
 #if 0
@@ -600,7 +609,7 @@ static void mdfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 			//          dev_priv->is_mipi_on = false;
 			pm_request_idle(&gpDrmDevice->pdev->dev);
 		}
-		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+		power_island_put(power_island);
 		return;
 	} else if (mode == 0) {
 		//do not need to set gbdispstatus=true in crtc.
@@ -636,7 +645,7 @@ static void mdfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 	default:
 		DRM_ERROR("Illegal Pipe Number.\n");
 
-		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+		power_island_put(power_island);
 		return;
 	}
 
@@ -845,7 +854,7 @@ static void mdfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 	}
 #endif
 
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+	power_island_put(power_island);
 }
 #endif /* if KEEP_UNUSED_CODE */
 
@@ -1290,6 +1299,7 @@ static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 	struct drm_encoder *encoder;
 	struct drm_connector *connector;
 	int timeout = 0;
+	u32 power_island = 0;
 
 	PSB_DEBUG_ENTRY("pipe = 0x%x\n", pipe);
 
@@ -1371,8 +1381,9 @@ static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 	PSB_DEBUG_ENTRY("hdisplay = %d\n", mode->hdisplay);
 	PSB_DEBUG_ENTRY("vdisplay = %d\n", mode->vdisplay);
 
-	if (!ospm_power_using_hw_begin
-	    (OSPM_DISPLAY_ISLAND, OSPM_UHB_FORCE_POWER_ON))
+	power_island = pipe_to_island(pipe);
+
+	if (!power_island_get(power_island))
 		return 0;
 
 	memcpy(&psb_intel_crtc->saved_mode, mode,
@@ -1715,7 +1726,7 @@ static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 
  mrst_crtc_mode_set_exit:
 
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+	power_island_put(power_island);
 
 	return 0;
 }

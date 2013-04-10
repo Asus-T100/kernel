@@ -34,28 +34,6 @@
 #include "gfx_rtpm.h"
 #include "pmu_tng.h"
 
-#if 0
-/*
- * Subsystem status bits for NC_PM_SSS.  Status of all North Cluster IPs.
- * These correspond to the above bits.
- */
-
-#define NC_PM_SSS_GFX_SLC       0x00000003
-#define NC_PM_SSS_GFX_SDKCK     0x0000000c
-#define NC_PM_SSS_GFX_RSCD      0x00000030
-#define NC_PM_SSS_VED           0x000000c0
-#define NC_PM_SSS_VEC           0x00000300
-#define NC_PM_SSS_DPA           0x00000c00
-#define NC_PM_SSS_DPB           0x00003000
-#define NC_PM_SSS_DPC           0x0000c000
-#define NC_PM_SSS_VSP           0x00030000
-#define NC_PM_SSS_ISP           0x000c0000
-#define NC_PM_SSS_MIO           0x00300000
-#define NC_PM_SSS_HDMIO         0x00c00000
-#define NC_PM_SSS_GFX_SLC_LDO   0x03000000
-
-#endif
-
 /* TNG Power Islands defination
  * Subsystem status bits for NC_PM_SSS.  Status of all North Cluster IPs.
  * These correspond to the bits below.
@@ -65,11 +43,6 @@
 #define	OSPM_DISPLAY_C		NC_PM_SSS_DPC
 #define	OSPM_DISPLAY_MIO	NC_PM_SSS_MIO
 #define	OSPM_DISPLAY_HDMI	NC_PM_SSS_HDMIO
-#define	OSPM_GRAPHICS_ISLAND \
-	(NC_PM_SSS_GFX_SLC | \
-	NC_PM_SSS_GFX_SDKCK | \
-	NC_PM_SSS_GFX_RSCD | \
-	NC_PM_SSS_GFX_SLC_LDO)
 #define	OSPM_VIDEO_VPP_ISLAND	NC_PM_SSS_VSP
 #define	OSPM_VIDEO_DEC_ISLAND	NC_PM_SSS_VED
 #define	OSPM_VIDEO_ENC_ISLAND	NC_PM_SSS_VEC
@@ -80,12 +53,11 @@ enum POWER_ISLAND_STATE {
 };
 
 /* All Graphics Islands */
-/*
-#define OSPM_GRAPHICS_ISLAND	(OSPM_RGX_SLC |\
-				OSPM_RGX_SDKCK |\
-				OSPM_RGX_RSCD |\
-				OSPM_RGX_SLC_LDO)
-*/
+#define	OSPM_GRAPHICS_ISLAND	(NC_PM_SSS_GFX_SLC | \
+				NC_PM_SSS_GFX_SDKCK | \
+				NC_PM_SSS_GFX_RSCD | \
+				NC_PM_SSS_GFX_SLC_LDO)
+
 /* All Display Islands */
 #define OSPM_DISPLAY_ISLAND	(OSPM_DISPLAY_A |\
 				OSPM_DISPLAY_B |\
@@ -102,7 +74,6 @@ enum POWER_ISLAND_STATE {
 #define OSPM_ALL_ISLANDS	(OSPM_GRAPHICS_ISLAND |\
 				OSPM_VIDEO_ISLAND |\
 				OSPM_DISPLAY_ISLAND)
-
 
 struct power_ops;
 
@@ -138,8 +109,6 @@ struct _ospm_data_ {
 
 	/* drm device */
 	struct drm_device	*dev;
-	/* pci suspended */
-	bool			b_suspended;
 };
 
 /* get pointer to the island */
@@ -148,7 +117,6 @@ struct ospm_power_island *get_island_ptr(u32 hw_island);
 bool ospm_power_suspend(void);
 void ospm_power_resume(void);
 void ospm_power_init(struct drm_device *dev);
-void ospm_post_init(struct drm_device *dev);
 void ospm_power_uninit(void);
 
 /* Power up */
@@ -159,6 +127,8 @@ bool power_island_put(u32 hw_island);
 /* Check the state of the island */
 bool is_island_on(u32 hw_island);
 
+/* Get Display island from the pipe */
+u32 pipe_to_island(u32 pipe);
 
 #undef OSPM_DEBUG_INFO
 #ifdef OSPM_DEBUG_INFO

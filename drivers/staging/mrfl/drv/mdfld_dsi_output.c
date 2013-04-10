@@ -239,6 +239,7 @@ void mdfld_dsi_brightness_control(struct drm_device *dev, int pipe, int level)
 	struct mdfld_dsi_dbi_output *dbi_output;
 	struct mdfld_dsi_encoder *encoder;
 	struct panel_funcs *p_funcs;
+	u32 power_island = 0;
 
 	if (!dev || (pipe != 0 && pipe != 2)) {
 		DRM_ERROR("Invalid parameter\n");
@@ -275,8 +276,12 @@ void mdfld_dsi_brightness_control(struct drm_device *dev, int pipe, int level)
 		return;
 	}
 
-	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
-				OSPM_UHB_FORCE_POWER_ON))
+	power_island = pipe_to_island(dsi_config->pipe);
+
+	if (power_island & (OSPM_DISPLAY_A | OSPM_DISPLAY_C))
+		power_island |= OSPM_DISPLAY_MIO;
+
+	if (!power_island_get(power_island))
 		return;
 
 	mutex_lock(&dsi_config->context_lock);
@@ -292,7 +297,7 @@ void mdfld_dsi_brightness_control(struct drm_device *dev, int pipe, int level)
 set_brightness_out:
 	mdfld_dsi_dsr_allow_locked(dsi_config);
 	mutex_unlock(&dsi_config->context_lock);
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+	power_island_put(power_island);
 }
 
 int mdfld_dsi_get_panel_status(struct mdfld_dsi_config *dsi_config,
@@ -564,18 +569,12 @@ static void mdfld_dsi_connector_dpms(struct drm_connector *connector, int mode)
 	if (dsi_configs[1])
 		panel_on = dsi_configs[1]->dsi_hw_context.panel_on;
 
-	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
-				OSPM_UHB_ONLY_IF_ON))
-		return ;
-
 	/*then check all display panels + monitors status*/
 	if (!panel_on && !panel_on2) {
 		/*request rpm idle*/
 		if (dev_priv->rpm_enabled)
 			pm_request_idle(&dev->pdev->dev);
 	}
-
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 #endif
 }
 

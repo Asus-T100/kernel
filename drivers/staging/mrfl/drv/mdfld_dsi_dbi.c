@@ -731,8 +731,6 @@ void mdfld_generic_dsi_dbi_prepare(struct drm_encoder *encoder)
 
 	dbi_output->mode_flags |= MODE_SETTING_IN_ENCODER;
 	dbi_output->mode_flags &= ~MODE_SETTING_ENCODER_DONE;
-
-	gbdispstatus = false;
 }
 
 static
@@ -748,7 +746,6 @@ void mdfld_generic_dsi_dbi_commit(struct drm_encoder *encoder)
 	PSB_DEBUG_ENTRY("\n");
 
 	mdfld_generic_dsi_dbi_set_power(encoder, true);
-	gbdispstatus = true;
 
 	dbi_output->mode_flags &= ~MODE_SETTING_IN_ENCODER;
 	if (dbi_output->channel_num == 1)
@@ -776,12 +773,6 @@ void mdfld_generic_dsi_dbi_dpms(struct drm_encoder *encoder, int mode)
 	dev_priv = dev->dev_private;
 
 	PSB_DEBUG_ENTRY("%s\n", (mode == DRM_MODE_DPMS_ON ? "on" : "off"));
-
-	if (!gbdispstatus) {
-		DRM_INFO("panel in suspend status, " \
-			 "skip turn on/off from DMPS");
-		return;
-	}
 
 	mutex_lock(&dev_priv->dpms_mutex);
 

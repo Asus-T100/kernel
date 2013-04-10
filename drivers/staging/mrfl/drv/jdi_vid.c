@@ -148,6 +148,7 @@ static int mdfld_dsi_jdi_detect(struct mdfld_dsi_config *dsi_config)
 	struct mdfld_dsi_hw_registers *regs = &dsi_config->regs;
 	u32 dpll_val, device_ready_val;
 	int pipe = dsi_config->pipe;
+	u32 power_island = 0;
 
 	PSB_DEBUG_ENTRY("\n");
 
@@ -156,9 +157,10 @@ static int mdfld_dsi_jdi_detect(struct mdfld_dsi_config *dsi_config)
 		 * FIXME: WA to detect the panel connection status, and need to
 		 * implement detection feature with get_power_mode DSI command.
 		 */
-		if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
-					OSPM_UHB_FORCE_POWER_ON)) {
-			DRM_ERROR("hw begin failed\n");
+		power_island = pipe_to_island(pipe);
+
+		if (!power_island_get(power_island)) {
+			DRM_ERROR("Failed to turn on power island\n");
 			return -EAGAIN;
 		}
 
@@ -174,7 +176,7 @@ static int mdfld_dsi_jdi_detect(struct mdfld_dsi_config *dsi_config)
 
 		status = MDFLD_DSI_PANEL_CONNECTED;
 
-		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+		power_island_put(power_island);
 	} else {
 		DRM_INFO("%s: do NOT support dual panel\n", __func__);
 		status = MDFLD_DSI_PANEL_DISCONNECTED;

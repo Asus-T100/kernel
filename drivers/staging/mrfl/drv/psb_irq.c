@@ -100,58 +100,69 @@ static inline u32 mid_pipeconf(int pipe)
 
 void psb_enable_pipestat(struct drm_psb_private *dev_priv, int pipe, u32 mask)
 {
+	u32 power_island = pipe_to_island(pipe);
+
 	if ((dev_priv->pipestat[pipe] & mask) != mask) {
 		u32 reg = psb_pipestat(pipe);
 		dev_priv->pipestat[pipe] |= mask;
 		/* Enable the interrupt, clear any pending status */
-		if (ospm_power_using_hw_begin
-		    (OSPM_DISPLAY_ISLAND, OSPM_UHB_ONLY_IF_ON)) {
+		if (power_island_get(power_island)) {
 			u32 writeVal = PSB_RVDC32(reg);
 			writeVal |= (mask | (mask >> 16));
 			PSB_WVDC32(writeVal, reg);
 			(void)PSB_RVDC32(reg);
-			ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+			power_island_put(power_island);
 		}
 	}
 }
 
 void psb_disable_pipestat(struct drm_psb_private *dev_priv, int pipe, u32 mask)
 {
+	u32 power_island = pipe_to_island(pipe);
+
 	if ((dev_priv->pipestat[pipe] & mask) != 0) {
 		u32 reg = psb_pipestat(pipe);
 		dev_priv->pipestat[pipe] &= ~mask;
-		if (ospm_power_using_hw_begin
-		    (OSPM_DISPLAY_ISLAND, OSPM_UHB_ONLY_IF_ON)) {
+		if (power_island_get(power_island)) {
+			if ((mask == PIPE_VBLANK_INTERRUPT_ENABLE) ||
+					(mask == PIPE_TE_ENABLE)) {
+				atomic_inc(&dev_priv->vblank_count[pipe]);
+				wake_up_interruptible(&dev_priv->vsync_queue);
+			}
+
 			u32 writeVal = PSB_RVDC32(reg);
 			writeVal &= ~mask;
 			PSB_WVDC32(writeVal, reg);
 			(void)PSB_RVDC32(reg);
-			ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+			power_island_put(power_island);
 		}
 	}
 }
 
 void mid_enable_pipe_event(struct drm_psb_private *dev_priv, int pipe)
 {
-	if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, OSPM_UHB_ONLY_IF_ON)) {
+	u32 power_island = pipe_to_island(pipe);
+
+	if (power_island_get(power_island)) {
 		u32 pipe_event = mid_pipe_event(pipe);
 		dev_priv->vdc_irq_mask |= pipe_event;
 		PSB_WVDC32(~dev_priv->vdc_irq_mask, PSB_INT_MASK_R);
 		PSB_WVDC32(dev_priv->vdc_irq_mask, PSB_INT_ENABLE_R);
-		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+		power_island_put(power_island);
 	}
 }
 
 void mid_disable_pipe_event(struct drm_psb_private *dev_priv, int pipe)
 {
+	u32 power_island = pipe_to_island(pipe);
+
 	if (dev_priv->pipestat[pipe] == 0) {
-		if (ospm_power_using_hw_begin
-		    (OSPM_DISPLAY_ISLAND, OSPM_UHB_ONLY_IF_ON)) {
+		if (power_island_get(power_island)) {
 			u32 pipe_event = mid_pipe_event(pipe);
 			dev_priv->vdc_irq_mask &= ~pipe_event;
 			PSB_WVDC32(~dev_priv->vdc_irq_mask, PSB_INT_MASK_R);
 			PSB_WVDC32(dev_priv->vdc_irq_mask, PSB_INT_ENABLE_R);
-			ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+			power_island_put(power_island);
 		}
 	}
 }
@@ -263,6 +274,7 @@ void mdfld_vsync_event_work(struct work_struct *work)
 	/* TODO: to report vsync event to HWC. */
 	/*report vsync event*/
 	/* mdfld_vsync_event(dev, pipe); */
+	wake_up_interruptible(&dev_priv->vsync_queue);
 }
 
 void mdfld_te_handler_work(struct work_struct *work)
@@ -679,7 +691,8 @@ void psb_irq_turn_on_dpst(struct drm_device *dev)
 	u32 hist_reg;
 	u32 pwm_reg;
 
-	if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, OSPM_UHB_ONLY_IF_ON)) {
+	/* FIXME: revisit the power island when touching the DPST feature. */
+	if (power_island_get(OSPM_DISPLAY_A)) {
 		PSB_WVDC32(BIT31, HISTOGRAM_LOGIC_CONTROL);
 		hist_reg = PSB_RVDC32(HISTOGRAM_LOGIC_CONTROL);
 		PSB_WVDC32(BIT31, HISTOGRAM_INT_CONTROL);
@@ -700,7 +713,7 @@ void psb_irq_turn_on_dpst(struct drm_device *dev)
 		PSB_WVDC32(pwm_reg | 0x80010100 | PWM_PHASEIN_ENABLE,
 			   PWM_CONTROL_LOGIC);
 
-		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+		power_island_put(OSPM_DISPLAY_A);
 	}
 }
 
@@ -729,7 +742,8 @@ void psb_irq_turn_off_dpst(struct drm_device *dev)
 	u32 hist_reg;
 	u32 pwm_reg;
 
-	if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, OSPM_UHB_ONLY_IF_ON)) {
+	/* FIXME: revisit the power island when touching the DPST feature. */
+	if (power_island_get(OSPM_DISPLAY_A)) {
 		PSB_WVDC32(0x00000000, HISTOGRAM_INT_CONTROL);
 		hist_reg = PSB_RVDC32(HISTOGRAM_INT_CONTROL);
 
@@ -740,7 +754,7 @@ void psb_irq_turn_off_dpst(struct drm_device *dev)
 			   PWM_CONTROL_LOGIC);
 		pwm_reg = PSB_RVDC32(PWM_CONTROL_LOGIC);
 
-		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+		power_island_put(OSPM_DISPLAY_A);
 	}
 }
 
@@ -788,6 +802,7 @@ int psb_enable_vblank(struct drm_device *dev, int pipe)
 	uint32_t reg_val = 0;
 	uint32_t pipeconf_reg = mid_pipeconf(pipe);
 	mdfld_dsi_encoder_t encoder_type;
+	u32 power_island = pipe_to_island(pipe);
 
 	PSB_DEBUG_ENTRY("\n");
 
@@ -795,9 +810,9 @@ int psb_enable_vblank(struct drm_device *dev, int pipe)
 	if (IS_MRFLD(dev) && (encoder_type == MDFLD_DSI_ENCODER_DBI))
 		return mdfld_enable_te(dev, pipe);
 
-	if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, OSPM_UHB_ONLY_IF_ON)) {
+	if (power_island_get(power_island)) {
 		reg_val = REG_READ(pipeconf_reg);
-		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+		power_island_put(power_island);
 	}
 
 	if (!(reg_val & PIPEACONF_ENABLE))
@@ -855,6 +870,7 @@ u32 psb_get_vblank_counter(struct drm_device *dev, int pipe)
 	uint32_t pipeconf_reg = PIPEACONF;
 	uint32_t reg_val = 0;
 	uint32_t high1 = 0, high2 = 0, low = 0, count = 0;
+	u32 power_island = pipe_to_island(pipe);
 
 	switch (pipe) {
 	case 0:
@@ -874,7 +890,7 @@ u32 psb_get_vblank_counter(struct drm_device *dev, int pipe)
 		return 0;
 	}
 
-	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, false))
+	if (!power_island_get(power_island))
 		return 0;
 
 	reg_val = REG_READ(pipeconf_reg);
@@ -903,7 +919,7 @@ u32 psb_get_vblank_counter(struct drm_device *dev, int pipe)
 
  psb_get_vblank_counter_exit:
 
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+	power_island_put(power_island);
 
 	return count;
 }
@@ -918,10 +934,11 @@ int mdfld_enable_te(struct drm_device *dev, int pipe)
 	unsigned long irqflags;
 	uint32_t reg_val = 0;
 	uint32_t pipeconf_reg = mid_pipeconf(pipe);
+	u32 power_island = pipe_to_island(pipe);
 
-	if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, OSPM_UHB_ONLY_IF_ON)) {
+	if (power_island_get(power_island)) {
 		reg_val = REG_READ(pipeconf_reg);
-		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+		power_island_put(power_island);
 	}
 
 	if (!(reg_val & PIPEACONF_ENABLE))
@@ -963,9 +980,9 @@ int mid_irq_enable_hdmi_audio(struct drm_device *dev)
 	unsigned long irqflags;
 	u32 reg_val = 0, mask = 0;
 
-	if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, OSPM_UHB_ONLY_IF_ON)) {
+	if (power_island_get(OSPM_DISPLAY_B)) {
 		reg_val = REG_READ(PIPEBCONF);
-		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+		power_island_put(OSPM_DISPLAY_B);
 	}
 
 	if (!(reg_val & PIPEACONF_ENABLE))

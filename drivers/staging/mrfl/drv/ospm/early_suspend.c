@@ -29,6 +29,7 @@
 #include <linux/mutex.h>
 #include "psb_drv.h"
 #include "early_suspend.h"
+#include "android_hdmi.h"
 
 static struct drm_device *g_dev;
 
@@ -50,18 +51,21 @@ static void gfx_early_suspend(struct early_suspend *h)
 		enc_funcs = encoder->helper_private;
 		if (!drm_helper_encoder_in_use(encoder))
 			continue;
-		if (enc_funcs) {
-			if (enc_funcs->save)
-				enc_funcs->save(encoder);
-			if (enc_funcs->dpms)
-				enc_funcs->dpms(encoder, DRM_MODE_DPMS_OFF);
+		if (enc_funcs && enc_funcs->save)
+			enc_funcs->save(encoder);
+
+		if (encoder->encoder_type == DRM_MODE_ENCODER_TMDS) {
+			/* Turn off vsync interrupt. */
+			drm_vblank_off(dev, 1);
+
+			/* Make the pending flip request as completed. */
+			DCUnAttachPipe(1);
+
+			android_hdmi_suspend_display(dev);
 		}
 	}
 
 	ospm_power_suspend();
-
-	dev_priv->early_suspended = true;
-	gbdispstatus = false;
 
 	mutex_unlock(&dev->mode_config.mutex);
 }
@@ -78,7 +82,6 @@ static void gfx_late_resume(struct early_suspend *h)
 	/* protect early_suspend with dpms and mode config */
 	mutex_lock(&dev->mode_config.mutex);
 
-	dev_priv->early_suspended = false;
 	ospm_power_resume();
 
 	list_for_each_entry(encoder,
@@ -87,15 +90,19 @@ static void gfx_late_resume(struct early_suspend *h)
 		enc_funcs = encoder->helper_private;
 		if (!drm_helper_encoder_in_use(encoder))
 			continue;
-		if (enc_funcs) {
-			if (enc_funcs->restore)
-				enc_funcs->restore(encoder);
-			if (enc_funcs->dpms)
-				enc_funcs->dpms(encoder, DRM_MODE_DPMS_ON);
+		if (enc_funcs && enc_funcs->save)
+			enc_funcs->restore(encoder);
+
+		if (encoder->encoder_type == DRM_MODE_ENCODER_TMDS) {
+			android_hdmi_resume_display(dev);
+			/*
+			 * Devices connect status will be changed
+			 * when system suspend,re-detect once here.
+			 */
+			if (android_hdmi_is_connected(dev))
+				mid_hdmi_audio_resume(dev);
 		}
 	}
-
-	gbdispstatus = true;
 
 	mutex_unlock(&dev->mode_config.mutex);
 }

@@ -782,19 +782,16 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 		return ret;
 
 	if (arg->engine == PSB_ENGINE_VIDEO) {
-		if (!ospm_power_using_hw_begin(OSPM_VIDEO_DEC_ISLAND,
-					       OSPM_UHB_FORCE_POWER_ON))
+		if (!power_island_get(OSPM_VIDEO_DEC_ISLAND))
 			return -EBUSY;
 	} else if (arg->engine == LNC_ENGINE_ENCODE) {
 		if (dev_priv->topaz_disabled)
 			return -ENODEV;
 
-		if (!ospm_power_using_hw_begin(OSPM_VIDEO_ENC_ISLAND,
-					       OSPM_UHB_FORCE_POWER_ON))
+		if (!power_island_get(OSPM_VIDEO_ENC_ISLAND))
 			return -EBUSY;
 	} else if (arg->engine == VSP_ENGINE_VPP) {
-		if (!ospm_power_using_hw_begin(OSPM_VIDEO_VPP_ISLAND,
-					       OSPM_UHB_FORCE_POWER_ON))
+		if (!power_island_get(OSPM_VIDEO_VPP_ISLAND))
 			return -EBUSY;
 	}
 
@@ -961,13 +958,13 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 	ttm_read_unlock(&dev_priv->ttm_lock);
 
 	if (arg->engine == PSB_ENGINE_VIDEO)
-		ospm_power_using_hw_end(OSPM_VIDEO_DEC_ISLAND);
+		power_island_put(OSPM_VIDEO_DEC_ISLAND);
 
 	if (arg->engine == LNC_ENGINE_ENCODE)
-		ospm_power_using_hw_end(OSPM_VIDEO_ENC_ISLAND);
+		power_island_put(OSPM_VIDEO_ENC_ISLAND);
 
 	if (arg->engine == VSP_ENGINE_VPP)
-		ospm_power_using_hw_end(OSPM_VIDEO_VPP_ISLAND);
+		power_island_put(OSPM_VIDEO_VPP_ISLAND);
 
 	return ret;
 }

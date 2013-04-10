@@ -204,6 +204,7 @@ static int __dpi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 	int i;
 	int err = 0;
 	u32 guit_val = 0;
+	u32 power_island = 0;
 
 	PSB_DEBUG_ENTRY("\n");
 
@@ -215,9 +216,14 @@ static int __dpi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 	dev = dsi_config->dev;
 	dev_priv = dev->dev_private;
 
-	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
-				OSPM_UHB_FORCE_POWER_ON))
+	power_island = pipe_to_island(dsi_config->pipe);
+
+	if (power_island & (OSPM_DISPLAY_A | OSPM_DISPLAY_C))
+		power_island |= OSPM_DISPLAY_MIO;
+
+	if (!power_island_get(power_island))
 		return -EAGAIN;
+
 reset_recovery:
 	--reset_count;
 	/*HW-Reset*/
@@ -332,11 +338,6 @@ reset_recovery:
 				err = -EAGAIN;
 				goto power_on_err;
 			}
-			pmu_nc_set_power_state(OSPM_MIPI_ISLAND,
-					OSPM_ISLAND_DOWN, OSPM_REG_TYPE);
-
-			pmu_nc_set_power_state(OSPM_MIPI_ISLAND,
-					OSPM_ISLAND_UP, OSPM_REG_TYPE);
 
 			DRM_ERROR("Failed to init dsi controller, reset it!\n");
 			goto reset_recovery;
@@ -383,8 +384,10 @@ reset_recovery:
 	if (p_funcs->set_brightness(dsi_config, ctx->lastbrightnesslevel))
 		DRM_ERROR("Failed to set panel brightness\n");
 
+	return err;
+
 power_on_err:
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+	power_island_put(power_island);
 	return err;
 }
 
@@ -405,6 +408,7 @@ static int __dpi_panel_power_off(struct mdfld_dsi_config *dsi_config,
 	int i;
 	int err = 0;
 	u32 guit_val = 0;
+	u32 power_island = 0;
 
 	PSB_DEBUG_ENTRY("\n");
 
@@ -415,10 +419,6 @@ static int __dpi_panel_power_off(struct mdfld_dsi_config *dsi_config,
 	ctx = &dsi_config->dsi_hw_context;
 	dev = dsi_config->dev;
 	dev_priv = dev->dev_private;
-
-	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
-				OSPM_UHB_FORCE_POWER_ON))
-		return -EAGAIN;
 
 	/* Don't reset brightness to 0.*/
 	ctx->lastbrightnesslevel = psb_brightness;
@@ -496,7 +496,14 @@ static int __dpi_panel_power_off(struct mdfld_dsi_config *dsi_config,
 	intel_mid_msgbus_write32(CCK_PORT, DSI_PLL_CTRL_REG, _DSI_LDO_EN);
 
 power_off_err:
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+	power_island = pipe_to_island(dsi_config->pipe);
+
+	if (power_island & (OSPM_DISPLAY_A | OSPM_DISPLAY_C))
+		power_island |= OSPM_DISPLAY_MIO;
+
+	if (!power_island_put(power_island))
+		return -EINVAL;
+
 	return err;
 }
 
@@ -655,18 +662,11 @@ void mdfld_dsi_dpi_set_power(struct drm_encoder *encoder, bool on)
 		pipeconf_reg = PIPECCONF;
 	}
 
-	/*start up display island if it was shutdown*/
-	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
-				OSPM_UHB_FORCE_POWER_ON))
-		return;
-
 	/**
 	 * if TMD panel call new power on/off sequences instead.
 	 * NOTE: refine TOSHIBA panel code later
 	 */
 	__mdfld_dsi_dpi_set_power(encoder, on);
-
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 }
 
 static
@@ -682,13 +682,7 @@ void mdfld_dsi_dpi_dpms(struct drm_encoder *encoder, int mode)
 	dev = dsi_config->dev;
 	dev_priv = dev->dev_private;
 
-	PSB_DEBUG_ENTRY(
-			"%s\n", (mode == DRM_MODE_DPMS_ON ? "on" : "off"));
-	if (!gbdispstatus) {
-		PSB_DEBUG_ENTRY(
-				"panel in suspend status, skip turn on/off from DMPS");
-		return ;
-	}
+	PSB_DEBUG_ENTRY("%s\n", (mode == DRM_MODE_DPMS_ON ? "on" : "off"));
 
 	mutex_lock(&dev_priv->dpms_mutex);
 	if (mode == DRM_MODE_DPMS_ON)
@@ -737,28 +731,11 @@ void mdfld_dsi_dpi_commit(struct drm_encoder *encoder)
 {
 	struct mdfld_dsi_encoder *dsi_encoder;
 	struct mdfld_dsi_dpi_output *dpi_output;
-	struct mdfld_dsi_hw_context *ctx;
-	struct mdfld_dsi_config *dsi_config;
-	struct drm_device *dev;
-	u32 temp_val = 0;
 
 	PSB_DEBUG_ENTRY("\n");
 
 	dsi_encoder = MDFLD_DSI_ENCODER(encoder);
 	dpi_output = MDFLD_DSI_DPI_OUTPUT(dsi_encoder);
-	dsi_config = mdfld_dsi_encoder_get_config(dsi_encoder);
-	dev = dsi_config->dev;
-	ctx = &dsi_config->dsi_hw_context;
-
-	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
-				OSPM_UHB_FORCE_POWER_ON))
-		return;
-
-	temp_val = REG_READ(PIPEACONF);
-	temp_val &= ~(BIT27 | BIT28);
-	/* Setup pipe configuration for different panels*/
-	REG_WRITE(PIPEACONF, temp_val | (ctx->pipeconf & (BIT27 | BIT28)));
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 
 	/*Everything is ready, commit DSI hw context to HW*/
 	__mdfld_dsi_dpi_set_power(encoder, true);
@@ -881,38 +858,6 @@ struct drm_encoder_funcs dsi_dpi_generic_encoder_funcs = {
 	.destroy = drm_encoder_cleanup,
 };
 
-/**
- * Exit from DSR
- */
-void mdfld_dsi_dpi_exit_idle(struct drm_device *dev,
-		u32 update_src,
-		void *p_surfaceAddr,
-		bool check_hw_on_only)
-{
-	struct drm_psb_private *dev_priv = dev->dev_private;
-	unsigned long irqflags;
-
-	/* PSB_DEBUG_ENTRY("\n"); */
-
-	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
-				OSPM_UHB_ONLY_IF_ON)) {
-		DRM_ERROR("display island is in off state\n");
-		return;
-	}
-
-	spin_lock_irqsave(&dev_priv->irqmask_lock, irqflags);
-	/* update the surface base address. */
-	if (p_surfaceAddr) {
-		REG_WRITE(DSPASURF, *((u32 *)p_surfaceAddr));
-#if defined(CONFIG_MDFD_DUAL_MIPI)
-		REG_WRITE(DSPCSURF, *((u32 *)p_surfaceAddr));
-#endif
-	}
-
-	spin_unlock_irqrestore(&dev_priv->irqmask_lock, irqflags);
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-}
-
 /*
  * Init DSI DPI encoder. 
  * Allocate an mdfld_dsi_encoder and attach it to given @dsi_connector
@@ -1017,7 +962,7 @@ struct mdfld_dsi_encoder *mdfld_dsi_dpi_init(struct drm_device *dev,
 
 	dev_priv->dsr_fb_update = 0;
 	dev_priv->b_dsr_enable = false;
-	dev_priv->exit_idle = mdfld_dsi_dpi_exit_idle;
+	dev_priv->exit_idle = NULL;
 #if defined(CONFIG_MDFLD_DSI_DPU) || defined(CONFIG_MDFLD_DSI_DSR)
 	dev_priv->b_dsr_enable_config = true;
 #endif /*CONFIG_MDFLD_DSI_DSR*/

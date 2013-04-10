@@ -47,7 +47,6 @@
 /*Append new drm mode definition here, align with libdrm definition*/
 #define DRM_MODE_SCALE_NO_SCALE   4
 
-extern bool gbdispstatus;
 extern int drm_psb_debug;
 extern int drm_psb_dsr;
 extern int drm_psb_enable_pr2_cabc;
