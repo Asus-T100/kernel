@@ -565,7 +565,7 @@ static int atomisp_release(struct file *file)
 
 	if (pm_runtime_put_sync(vdev->v4l2_dev->dev) < 0)
 		dev_err(isp->dev, "Failed to power off device\n");
-		v4l2_err(&atomisp_dev, "Failed to power off device\n");
+
 done:
 	mutex_unlock(&isp->mutex);
 	mutex_unlock(&isp->streamoff_mutex);
