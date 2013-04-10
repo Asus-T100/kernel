@@ -606,6 +606,14 @@ flip_out:
 	ret = MRSTLFBFlipContexts(psDevInfo, psContexts);
 	if (ret != IMG_TRUE)
 		DRM_DEBUG("%s: returning %d from MRSTLFBFlipContexts\n", __func__, ret);
+
+	if (FirstCleanFlag == 1) {
+		memset(psDevInfo->sSystemBuffer.sCPUVAddr, 0,
+				psDevInfo->sSystemBuffer.ui32BufferSize);
+		DRMLFBFlipBlackScreen(psDevInfo, IMG_TRUE);
+		FirstCleanFlag = 0;
+	}
+
 	return ret;
 }
 
@@ -1691,13 +1699,6 @@ static IMG_BOOL ProcessFlip2(IMG_HANDLE hCmdCookie,
 	psFlipCmd->ui32PrivDataLength != sizeof(struct mdfld_plane_contexts)) {
 		DRM_ERROR("%s: Invalid private data\n", __func__);
 		return IMG_FALSE;
-	}
-
-	if (FirstCleanFlag == 1) {
-		memset(psDevInfo->sSystemBuffer.sCPUVAddr, 0,
-				psDevInfo->sSystemBuffer.ui32BufferSize);
-		DRMLFBFlipBlackScreen(psDevInfo, IMG_TRUE);
-		FirstCleanFlag = 0;
 	}
 
 	dsi_config = dev_priv->dsi_configs[0];
