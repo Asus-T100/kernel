@@ -2102,7 +2102,7 @@ static IMG_BOOL DisplayFlip(IMG_HANDLE  hCmdCookie,
 
 	spin_unlock(&display_flip_work_t.flip_commands_lock);
 
-	if (!schedule_work(&display_flip_work_t.flip_work))
+	if (!queue_work(system_nrt_wq, &display_flip_work_t.flip_work))
 		DRM_INFO("Schedule work failed, too heavy system load?\n");
 
 	return IMG_TRUE;
