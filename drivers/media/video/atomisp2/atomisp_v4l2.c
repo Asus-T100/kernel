@@ -373,7 +373,6 @@ static int atomisp_mrfld_power_up(struct atomisp_device *isp)
 	reg_value = intel_mid_msgbus_read32(PUNIT_PORT, MRFLD_ISPSSPM0);
 	reg_value &= ~MRFLD_ISPSSPM0_ISPSSC_MASK;
 	intel_mid_msgbus_write32(PUNIT_PORT, MRFLD_ISPSSPM0, reg_value);
-	reg_value = intel_mid_msgbus_read32(PUNIT_PORT, MRFLD_ISPSSPM0);
 
 	/* FIXME: experienced value for delay */
 	timeout = jiffies + msecs_to_jiffies(50);

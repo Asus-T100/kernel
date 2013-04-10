@@ -94,12 +94,13 @@ int atomisp_q_video_buffers_to_css(struct atomisp_device *isp,
 			     enum atomisp_css_buffer_type css_buf_type,
 			     enum atomisp_css_pipe_id css_pipe_id)
 {
-	struct videobuf_buffer *vb;
 	struct videobuf_vmalloc_memory *vm_mem;
 	unsigned long irqflags;
 	int err;
 
 	while (pipe->buffers_in_css < ATOMISP_CSS_Q_DEPTH) {
+		struct videobuf_buffer *vb;
+
 		spin_lock_irqsave(&pipe->irq_lock, irqflags);
 		if (list_empty(&pipe->activeq)) {
 			spin_unlock_irqrestore(&pipe->irq_lock, irqflags);
@@ -125,7 +126,6 @@ int atomisp_q_video_buffers_to_css(struct atomisp_device *isp,
 			return -EINVAL;
 		}
 		pipe->buffers_in_css++;
-		vb = NULL;
 	}
 	return 0;
 }
@@ -157,23 +157,21 @@ int atomisp_q_s3a_buffers_to_css(struct atomisp_device *isp,
 int atomisp_q_dis_buffers_to_css(struct atomisp_device *isp,
 				enum atomisp_css_pipe_id css_pipe_id)
 {
-	struct atomisp_dis_buf *dis_buf;
-
 	if (list_empty(&isp->dis_stats)) {
 		WARN(1, "%s: No dis buffers available!\n", __func__);
 		return -EINVAL;
 	}
 
 	while (isp->dis_bufs_in_css < ATOMISP_CSS_Q_DEPTH) {
-		dis_buf = list_entry(isp->dis_stats.next,
-				struct atomisp_dis_buf, list);
+		struct atomisp_dis_buf *dis_buf =
+			list_entry(isp->dis_stats.next,
+				   struct atomisp_dis_buf, list);
 		list_move_tail(&dis_buf->list, &isp->dis_stats);
 
 		if (atomisp_q_dis_buffer_to_css(isp, dis_buf, css_pipe_id))
 			return -EINVAL;
 
 		isp->dis_bufs_in_css++;
-		dis_buf = NULL;
 	}
 
 	return 0;
