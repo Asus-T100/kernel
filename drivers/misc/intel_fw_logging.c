@@ -68,6 +68,7 @@
 #define MEMERR_IND			0xf501
 #define INSTERR_IND			0xf502
 #define ECCERR_IND			0xf504
+#define FATALERR_IND			0xf505
 #define FLAG_HILOW_MASK			8
 #define FAB_ID_MASK			7
 #define MAX_AGENT_IDX			15
@@ -343,7 +344,8 @@ static int create_fwerr_log(char *output_buf, void __iomem *oshob_ptr)
 		((err_status_dw0.data & 0xFFFF) == UNDEFLVL2ERR_IND) ||
 		((err_status_dw0.data & 0xFFFF) == MEMERR_IND) ||
 		((err_status_dw0.data & 0xFFFF) == INSTERR_IND) ||
-		((err_status_dw0.data & 0xFFFF) == ECCERR_IND)) &&
+		((err_status_dw0.data & 0xFFFF) == ECCERR_IND) ||
+		((err_status_dw0.data & 0xFFFF) == FATALERR_IND)) &&
 		(err_log_dw10.fields.reserved1 == FWERR_INDICATOR)) {
 
 		sprintf(output_buf, "HW WDT expired");
@@ -364,6 +366,10 @@ static int create_fwerr_log(char *output_buf, void __iomem *oshob_ptr)
 		case ECCERR_IND:
 			strcat(output_buf,
 			" following a SRAM ECC Error exception.\n\n");
+			break;
+		case FATALERR_IND:
+			strcat(output_buf,
+			" following a FATAL Error exception.\n\n");
 			break;
 		default:
 			strcat(output_buf,
