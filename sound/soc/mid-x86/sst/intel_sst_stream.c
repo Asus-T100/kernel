@@ -181,7 +181,7 @@ int sst_alloc_stream_mrfld(char *params, struct sst_block *block)
 	struct ipc_dsp_hdr dsp_hdr;
 	struct snd_sst_params *str_params;
 	struct snd_sst_tstamp fw_tstamp;
-	int str_id, pipe_id, pvt_id;
+	unsigned int str_id, pipe_id, pvt_id, task_id;
 	u32 len = 0;
 	struct stream_info *str_info;
 	unsigned long irq_flags;
@@ -213,13 +213,15 @@ int sst_alloc_stream_mrfld(char *params, struct sst_block *block)
 
 	str_id = str_params->stream_id;
 	pipe_id = str_params->device_type;
+	task_id = str_params->task;
 	sst_drv_ctx->streams[str_id].pipe_id = pipe_id;
+	sst_drv_ctx->streams[str_id].task_id = task_id;
 
 	pvt_id = sst_assign_pvt_id(sst_drv_ctx);
 	alloc_param.ts = (sst_drv_ctx->mailbox_add +
 			sst_drv_ctx->tstamp + (str_id * sizeof(fw_tstamp)));
 	pr_debug("alloc tstamp location = 0x%p\n", alloc_param.ts);
-	pr_debug("assigned pipe id 0x%x\n", pipe_id);
+	pr_debug("assigned pipe id 0x%x to task %d\n", pipe_id, task_id);
 
 	/*allocate device type context*/
 	sst_init_stream(&sst_drv_ctx->streams[str_id], alloc_param.codec_type,
@@ -232,7 +234,7 @@ int sst_alloc_stream_mrfld(char *params, struct sst_block *block)
 	block->msg_id = IPC_CMD;
 
 	sst_fill_header_mrfld(&msg->mrfld_header, IPC_CMD,
-				IPC_QUE_ID_MED, 1, pvt_id);
+			      task_id, 1, pvt_id);
 	pr_debug("header:%x\n", msg->mrfld_header.p.header_high);
 	msg->mrfld_header.p.header_high.part.res_rqd = 1;
 
@@ -422,10 +424,10 @@ int sst_start_stream(int str_id)
 	if (!sst_drv_ctx->use_32bit_ops) {
 		pr_debug("start mrfld");
 		pvt_id = sst_assign_pvt_id(sst_drv_ctx);
-		pr_debug("pvt id = %d\n", pvt_id);
-		pr_debug("pipe id = %d\n", str_info->pipe_id);
-		sst_fill_header_mrfld(&msg->mrfld_header,
-			IPC_CMD, IPC_QUE_ID_MED, 1, pvt_id);
+		pr_debug("pvt_id = %d, pipe id = %d, task = %d\n",
+			 pvt_id, str_info->pipe_id, str_info->task_id);
+		sst_fill_header_mrfld(&msg->mrfld_header, IPC_CMD,
+				      str_info->task_id, 1, pvt_id);
 
 		len = sizeof(u16) + sizeof(dsp_hdr);
 		msg->mrfld_header.p.header_low_payload = len;
@@ -443,7 +445,6 @@ int sst_start_stream(int str_id)
 	sst_drv_ctx->ops->sync_post_message(msg);
 	return retval;
 }
-
 
 int sst_send_byte_stream_mrfld(void *sbytes)
 {
@@ -464,7 +465,6 @@ int sst_send_byte_stream_mrfld(void *sbytes)
 	 */
 	if (sst_create_ipc_msg(&msg, true))
 		return -ENOMEM;
-	/* FIXME: we need pipe id here for str_id */
 
 	pvt_id = sst_assign_pvt_id(sst_drv_ctx);
 	sst_fill_header_mrfld(&msg->mrfld_header, bytes->ipc_msg, bytes->task_id,
@@ -500,9 +500,11 @@ int sst_send_byte_stream_mrfld(void *sbytes)
 		 * we need to update only sz and payload
 		 */
 		if (bytes->block) {
-			struct snd_sst_bytes *r = block->data;
-			bytes->len = r->len;
-			memcpy(bytes->bytes, r->bytes, bytes->len);
+			unsigned char *r = block->data;
+			pr_debug("read back %d bytes", bytes->len);
+			print_bytes(r, bytes->len, 16, 8);
+
+			memcpy(bytes->bytes, r, bytes->len);
 		}
 	}
 	if (bytes->block)
@@ -757,8 +759,8 @@ int sst_drop_stream(int str_id)
 			if (sst_create_ipc_msg(&msg, true))
 				return -ENOMEM;
 			pvt_id = sst_assign_pvt_id(sst_drv_ctx);
-			sst_fill_header_mrfld(&msg->mrfld_header,
-				IPC_CMD, IPC_QUE_ID_MED, 1, pvt_id);
+			sst_fill_header_mrfld(&msg->mrfld_header, IPC_CMD,
+					      str_info->task_id, 1, pvt_id);
 
 			msg->mrfld_header.p.header_low_payload = sizeof(dsp_hdr);
 			sst_fill_header_dsp(&dsp_hdr, IPC_IA_DROP_STREAM_MRFLD,
@@ -827,7 +829,8 @@ int sst_drain_stream(int str_id, bool partial_drain)
  */
 int sst_free_stream(int str_id)
 {
-	int retval = 0, len = 0, pvt_id;
+	int retval = 0;
+	unsigned int pvt_id;
 	struct ipc_post *msg = NULL;
 	struct stream_info *str_info;
 	struct intel_sst_ops *ops;
@@ -862,7 +865,7 @@ int sst_free_stream(int str_id)
 				return retval;
 
 			sst_fill_header_mrfld(&msg->mrfld_header, IPC_CMD,
-				IPC_QUE_ID_MED, 1, pvt_id);
+					      str_info->task_id, 1, pvt_id);
 			msg->mrfld_header.p.header_low_payload =
 							sizeof(dsp_hdr);
 			sst_fill_header_dsp(&dsp_hdr, IPC_IA_FREE_STREAM_MRFLD,

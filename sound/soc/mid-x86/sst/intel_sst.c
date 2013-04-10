@@ -43,6 +43,7 @@
 #include <linux/lnw_gpio.h>
 #include <linux/delay.h>
 #include <asm/intel-mid.h>
+#include <asm/platform_sst_audio.h>
 #include <sound/intel_sst_ioctl.h>
 #include "../sst_platform.h"
 #include "intel_sst_fw_ipc.h"
@@ -129,7 +130,7 @@ static irqreturn_t intel_sst_irq_thread_mrfld(int irq, void *context)
 	msg_id = header.p.header_low_payload & SST_ASYNC_MSG_MASK;
 	pr_debug("interrupt\n");
 	if ((msg_id == IPC_SST_PERIOD_ELAPSED_MRFLD) &&
-			(header.p.header_high.part.msg_id == IPC_CMD)) {
+	    (header.p.header_high.part.msg_id == IPC_CMD)) {
 		sst_drv_ctx->ops->clear_interrupt();
 		pipe_id = header.p.header_low_payload >> 16;
 		str_id = get_stream_id_mrfld(pipe_id);
@@ -331,7 +332,7 @@ static int sst_save_dsp_context_v2(struct intel_sst_drv *sst)
 	}
 
 	sst_fill_header_mrfld(&msg->mrfld_header, IPC_CMD,
-				IPC_QUE_ID_MED, 1, pvt_id);
+			      SST_TASK_ID_MEDIA, 1, pvt_id);
 	msg->mrfld_header.p.header_low_payload = sizeof(dsp_hdr);
 	msg->mrfld_header.p.header_high.part.res_rqd = 1;
 	sst_fill_header_dsp(&dsp_hdr, IPC_PREP_D3, PIPE_RSVD, pvt_id);

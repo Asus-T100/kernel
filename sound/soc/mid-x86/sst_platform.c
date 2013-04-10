@@ -161,9 +161,8 @@ static void sst_fill_pcm_params(struct snd_pcm_substream *substream,
 
 }
 
-static int sst_get_device_id(int dev, int sdev, int dir,
-	struct sst_dev_stream_map *map, int size,
-	u8 pipe_id, int *str_id)
+static int sst_get_stream_mapping(int dev, int sdev, int dir,
+	struct sst_dev_stream_map *map, int size, u8 pipe_id)
 {
 	int index;
 
@@ -173,36 +172,29 @@ static int sst_get_device_id(int dev, int sdev, int dir,
 	/* index 0 is not used in stream map */
 	for (index = 1; index < size; index++) {
 		if ((map[index].dev_num == dev) &&
-			(map[index].subdev_num == sdev) &&
-			(map[index].direction == dir)) {
+		    (map[index].subdev_num == sdev) &&
+		    (map[index].direction == dir)) {
 			/* device id for the probe is assigned dynamically */
 			if (map[index].status == SST_DEV_MAP_IN_USE) {
-				break;
+				return index;
 			} else if (map[index].status == SST_DEV_MAP_FREE) {
 				map[index].status = SST_DEV_MAP_IN_USE;
 				map[index].device_id = pipe_id;
 				pr_debug("%s: pipe_id %d index %d", __func__, pipe_id, index);
 
-				break;
+				return index;
 			}
 		}
 	}
-
-	if (index == size) {
-		*str_id = 0;
-		return 0;
-	}
-
-	*str_id = index;
-	return map[index].device_id;
+	return 0;
 }
 
 static int sst_fill_stream_params(void *substream,
 	const struct sst_data *ctx, struct snd_sst_params *str_params, bool is_compress)
 {
-	int str_id = 0;
 	bool use_strm_map;
 	int map_size;
+	int index;
 	struct sst_dev_stream_map *map;
 	struct snd_pcm_substream *pstream = NULL;
 	struct snd_compr_stream *cstream = NULL;
@@ -221,18 +213,22 @@ static int sst_fill_stream_params(void *substream,
 	/* For pcm streams */
 	if (pstream) {
 		if (use_strm_map) {
-			str_params->device_type = (u8)sst_get_device_id(pstream->pcm->device,
-					pstream->number, pstream->stream,
-					map, map_size, ctx->pipe_id,
-					&str_id);
-			if (str_params->device_type <= 0)
+			index = sst_get_stream_mapping(pstream->pcm->device,
+						  pstream->number, pstream->stream,
+						  map, map_size, ctx->pipe_id);
+			if (index <= 0)
 				return -EINVAL;
+
+			str_params->stream_id = index;
+			str_params->device_type = map[index].device_id;
+			str_params->task = map[index].task_id;
 
 			if (str_params->device_type == SST_PROBE_IN)
 				str_params->stream_type = SST_STREAM_TYPE_PROBE;
 
-			pr_debug(" str_id = %d, device_type = %d", str_id, str_params->device_type);
-			str_params->stream_id = str_id;
+			pr_debug("str_id = %d, device_type = %d, task = %d",
+				 str_params->stream_id, str_params->device_type,
+				 str_params->task);
 		} else {
 			if (pstream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
 				str_params->device_type = pstream->pcm->device + 1;
@@ -251,14 +247,18 @@ static int sst_fill_stream_params(void *substream,
 		if (use_strm_map) {
 			/* FIXME: Add support for subdevice number in
 			 * snd_compr_stream */
-			str_params->device_type = (u8)sst_get_device_id(cstream->device->device,
-					0, cstream->direction,
-					map, map_size, ctx->pipe_id,
-					&str_id);
-			if (str_params->device_type <= 0)
+			index = sst_get_stream_mapping(cstream->device->device,
+						       0, cstream->direction,
+						       map, map_size, ctx->pipe_id);
+			if (index <= 0)
 				return -EINVAL;
-			pr_debug("compress str_id = %d, device_type = %d", str_id, str_params->device_type);
-			str_params->stream_id = str_id;
+			str_params->stream_id = index;
+			str_params->device_type = map[index].device_id;
+			str_params->task = map[index].task_id;
+			pr_debug("compress str_id = %d, device_type = %d, task = %d",
+				 str_params->stream_id, str_params->device_type,
+				 str_params->task);
+
 		}
 		str_params->ops = (u8)cstream->direction;
 	}
@@ -471,6 +471,11 @@ static struct snd_soc_dai_ops sst_media_dai_ops = {
 	.set_tdm_slot = sst_platform_ihf_set_tdm_slot,
 };
 
+static struct snd_soc_dai_ops sst_aware_dai_ops = {
+	.startup = sst_media_open,
+	.shutdown = sst_media_close,
+	.prepare = sst_media_prepare,
+};
 static struct snd_soc_dai_driver sst_platform_dai[] = {
 {
 	.name = SST_HEADSET_DAI,
@@ -514,7 +519,7 @@ static struct snd_soc_dai_driver sst_platform_dai[] = {
 	},
 },
 {
-	.name = "Compress-cpu-dai",
+	.name = SST_COMPRESS_DAI,
 	.compress_dai = 1,
 	.playback = {
 		.channels_min = SST_STEREO,
@@ -524,7 +529,7 @@ static struct snd_soc_dai_driver sst_platform_dai[] = {
 	},
 },
 {
-	.name = "Virtual-cpu-dai",
+	.name = SST_VIRTUAL_DAI,
 	.playback = {
 		.channels_min = SST_STEREO,
 		.channels_max = SST_STEREO,
@@ -533,7 +538,7 @@ static struct snd_soc_dai_driver sst_platform_dai[] = {
 	},
 },
 {
-	.name = "Power-cpu-dai",
+	.name = SST_POWER_DAI,
 	.ops = &sst_media_dai_ops,
 	.playback = {
 		.channels_min = SST_MONO,
@@ -572,6 +577,16 @@ static struct snd_soc_dai_driver sst_platform_dai[] = {
 	.capture = {
 		.channels_min = SST_MONO,
 		.channels_max = SST_STEREO,
+		.rates = SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000,
+		.formats = SNDRV_PCM_FMTBIT_S16_LE,
+	},
+},
+{
+	.name = SST_AWARE_DAI,
+	.ops = &sst_aware_dai_ops,
+	.capture = {
+		.channels_min = SST_MONO,
+		.channels_max = SST_MONO,
 		.rates = SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000,
 		.formats = SNDRV_PCM_FMTBIT_S16_LE,
 	},

@@ -257,14 +257,15 @@ struct stream_info {
 	unsigned int		ops;
 	struct mutex		lock; /* mutex */
 	void			*pcm_substream;
-	void (*period_elapsed) (void *pcm_substream);
+	void (*period_elapsed)	(void *pcm_substream);
 	unsigned int		sfreq;
 	u32			cumm_bytes;
 	void			*compr_cb_param;
-	void			(*compr_cb) (void *compr_cb_param);
+	void (*compr_cb)	(void *compr_cb_param);
 	unsigned int		num_ch;
 	unsigned int		pipe_id;
 	unsigned int		str_id;
+	unsigned int		task_id;
 };
 
 #define SST_FW_SIGN "$SST"
@@ -646,6 +647,10 @@ int sst_create_block_and_ipc_msg(struct ipc_post **arg, bool large,
 int sst_free_block(struct intel_sst_drv *ctx, struct sst_block *freed);
 int sst_wake_up_block(struct intel_sst_drv *ctx, int result,
 		u32 drv_id, u32 ipc, void *data, u32 size);
+void dump_bytes(const void *data, size_t sz, char *dest,
+		unsigned char word_sz, unsigned char words_in_line);
+void print_bytes(const void *data, size_t sz, unsigned char word_sz,
+		 unsigned char words_in_line);
 /*
  * sst_fill_header - inline to fill sst header
  *
@@ -807,7 +812,6 @@ static inline u64 sst_shim_read64(void __iomem *addr, int offset)
 	return val;
 }
 
-
 static inline void
 sst_set_fw_state_locked(struct intel_sst_drv *sst_drv_ctx, int sst_state)
 {
@@ -815,12 +819,14 @@ sst_set_fw_state_locked(struct intel_sst_drv *sst_drv_ctx, int sst_state)
 	sst_drv_ctx->sst_state = sst_state;
 	mutex_unlock(&sst_drv_ctx->sst_lock);
 }
+
 static inline struct stream_info *get_stream_info(int str_id)
 {
 	if (sst_validate_strid(str_id))
 		return NULL;
 	return &sst_drv_ctx->streams[str_id];
 }
+
 int register_sst(struct device *);
 int unregister_sst(struct device *);
 
