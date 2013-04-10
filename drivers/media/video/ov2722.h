@@ -245,31 +245,31 @@ static struct ov2722_reg const ov2722_QVGA_30fps[] = {
 	{OV2722_8BIT, 0x3708, 0x61},
 	{OV2722_8BIT, 0x3709, 0x12},
 	{OV2722_8BIT, 0x3800, 0x01},
-	{OV2722_8BIT, 0x3801, 0x4a},		/*H crop start: 330 */
+	{OV2722_8BIT, 0x3801, 0x4a}, /* H crop start: 330 */
 	{OV2722_8BIT, 0x3802, 0x00},
-	{OV2722_8BIT, 0x3803, 0x02},		/*V crop start: 3 */
+	{OV2722_8BIT, 0x3803, 0x03}, /* V crop start: 3 */
 	{OV2722_8BIT, 0x3804, 0x06},
-	{OV2722_8BIT, 0x3805, 0xe1},		/*H crop end:  1761 */
+	{OV2722_8BIT, 0x3805, 0xe1}, /* H crop end:  1761 */
 	{OV2722_8BIT, 0x3806, 0x04},
-	{OV2722_8BIT, 0x3807, 0x47},		/*V crop end:  1096 */
+	{OV2722_8BIT, 0x3807, 0x47}, /* V crop end:  1096 */
 	{OV2722_8BIT, 0x3808, 0x01},
-	{OV2722_8BIT, 0x3809, 0x50},		/*H output size: 336 */
+	{OV2722_8BIT, 0x3809, 0x50}, /* H output size: 336 */
 	{OV2722_8BIT, 0x380a, 0x01},
-	{OV2722_8BIT, 0x380b, 0x00},		/*V output size: 256 */
+	{OV2722_8BIT, 0x380b, 0x00}, /* V output size: 256 */
 
-	/*H blank timing */
+	/* H blank timing */
 	{OV2722_8BIT, 0x380c, 0x08},
-	{OV2722_8BIT, 0x380d, 0x00},		/*H total size: 2048 */
+	{OV2722_8BIT, 0x380d, 0x00}, /* H total size: 2048 */
 	{OV2722_8BIT, 0x380e, 0x04},
-	{OV2722_8BIT, 0x380f, 0xa0},		/*V total size: 1184 */
+	{OV2722_8BIT, 0x380f, 0xa0}, /* V total size: 1184 */
 	{OV2722_8BIT, 0x3810, 0x00},
-	{OV2722_8BIT, 0x3811, 0x05},		/*H window offset: 5 */
+	{OV2722_8BIT, 0x3811, 0x05}, /* H window offset: 5 */
 	{OV2722_8BIT, 0x3812, 0x00},
-	{OV2722_8BIT, 0x3813, 0x02},		/*V window offset: 2 */
-	{OV2722_8BIT, 0x3820, 0xc0},
-	{OV2722_8BIT, 0x3821, 0x06},         /*r flip isp*/
-	{OV2722_8BIT, 0x3814, 0x31},
-	{OV2722_8BIT, 0x3815, 0x31},
+	{OV2722_8BIT, 0x3813, 0x02}, /* V window offset: 2 */
+	{OV2722_8BIT, 0x3820, 0x80},
+	{OV2722_8BIT, 0x3821, 0x06}, /* flip isp*/
+	{OV2722_8BIT, 0x3814, 0x11},
+	{OV2722_8BIT, 0x3815, 0x11},
 	{OV2722_8BIT, 0x3612, 0x0b},
 	{OV2722_8BIT, 0x3618, 0x04},
 	{OV2722_8BIT, 0x3a08, 0x01},
@@ -285,11 +285,11 @@ static struct ov2722_reg const ov2722_QVGA_30fps[] = {
 	{OV2722_8BIT, 0x3002, 0xf0},
 	{OV2722_8BIT, 0x3600, 0x08},
 	{OV2722_8BIT, 0x3621, 0xc0},
-	{OV2722_8BIT, 0x3632, 0xd2},		/*added for power opt */
+	{OV2722_8BIT, 0x3632, 0xd2}, /* added for power opt */
 	{OV2722_8BIT, 0x3633, 0x23},
 	{OV2722_8BIT, 0x3634, 0x54},
 	{OV2722_8BIT, 0x3f01, 0x0c},
-	{OV2722_8BIT, 0x5001, 0xc1},		/*v_en, h_en, blc_en*/
+	{OV2722_8BIT, 0x5001, 0xc1}, /* v_en, h_en, blc_en */
 	{OV2722_8BIT, 0x3614, 0xf0},
 	{OV2722_8BIT, 0x3630, 0x2d},
 	{OV2722_8BIT, 0x370b, 0x62},
@@ -304,12 +304,12 @@ static struct ov2722_reg const ov2722_QVGA_30fps[] = {
 	{OV2722_8BIT, 0x3a19, 0x80},
 	{OV2722_8BIT, 0x3503, 0x00},
 	{OV2722_8BIT, 0x4521, 0x00},
-	{OV2722_8BIT, 0x5183, 0xb0},		/*AWB red*/
-	{OV2722_8BIT, 0x5184, 0xb0},		/*AWB green*/
-	{OV2722_8BIT, 0x5185, 0xb0},		/*AWB blue*/
-	{OV2722_8BIT, 0x5180, 0x03},		/*AWB manual mode*/
+	{OV2722_8BIT, 0x5183, 0xb0}, /* AWB red */
+	{OV2722_8BIT, 0x5184, 0xb0}, /* AWB green */
+	{OV2722_8BIT, 0x5185, 0xb0}, /* AWB blue */
+	{OV2722_8BIT, 0x5180, 0x03}, /* AWB manual mode */
 	{OV2722_8BIT, 0x370c, 0x0c},
-	{OV2722_8BIT, 0x4800, 0x24},		/*clk lane gate enable, */
+	{OV2722_8BIT, 0x4800, 0x24}, /* clk lane gate enable */
 	{OV2722_8BIT, 0x3035, 0x00},
 	{OV2722_8BIT, 0x3036, 0x26},
 	{OV2722_8BIT, 0x3037, 0xa1},
@@ -317,7 +317,7 @@ static struct ov2722_reg const ov2722_QVGA_30fps[] = {
 	{OV2722_8BIT, 0x3038, 0x06},
 	{OV2722_8BIT, 0x3018, 0x04},
 
-	/*Added for power optimization */
+	/* Added for power optimization */
 	{OV2722_8BIT, 0x3000, 0x00},
 	{OV2722_8BIT, 0x3001, 0x00},
 	{OV2722_8BIT, 0x3002, 0x00},
@@ -353,31 +353,31 @@ static struct ov2722_reg const ov2722_VGA_30fps[] = {
 	{OV2722_8BIT, 0x3708, 0x61},
 	{OV2722_8BIT, 0x3709, 0x12},
 	{OV2722_8BIT, 0x3800, 0x01},
-	{OV2722_8BIT, 0x3801, 0x4a},		/*H crop start: 330 */
+	{OV2722_8BIT, 0x3801, 0x4a}, /* H crop start: 330 */
 	{OV2722_8BIT, 0x3802, 0x00},
-	{OV2722_8BIT, 0x3803, 0x02},		/*V crop start: 3 */
+	{OV2722_8BIT, 0x3803, 0x03}, /* V crop start: 3 */
 	{OV2722_8BIT, 0x3804, 0x06},
-	{OV2722_8BIT, 0x3805, 0xe1},		/*H crop end:  1761 */
+	{OV2722_8BIT, 0x3805, 0xe1}, /* H crop end:  1761 */
 	{OV2722_8BIT, 0x3806, 0x04},
-	{OV2722_8BIT, 0x3807, 0x47},		/*V crop end:  1096 */
+	{OV2722_8BIT, 0x3807, 0x47}, /* V crop end:  1096 */
 	{OV2722_8BIT, 0x3808, 0x02},
-	{OV2722_8BIT, 0x3809, 0x90},		/*H output size: 656 */
+	{OV2722_8BIT, 0x3809, 0x90}, /* H output size: 656 */
 	{OV2722_8BIT, 0x380a, 0x01},
-	{OV2722_8BIT, 0x380b, 0xF0},		/*V output size: 496 */
+	{OV2722_8BIT, 0x380b, 0xF0}, /* V output size: 496 */
 
-	/*H blank timing */
+	/* H blank timing */
 	{OV2722_8BIT, 0x380c, 0x08},
-	{OV2722_8BIT, 0x380d, 0x00},		/*H total size: 2048 */
+	{OV2722_8BIT, 0x380d, 0x00}, /* H total size: 2048 */
 	{OV2722_8BIT, 0x380e, 0x04},
-	{OV2722_8BIT, 0x380f, 0xa0},		/*V total size: 1184 */
+	{OV2722_8BIT, 0x380f, 0xa0}, /* V total size: 1184 */
 	{OV2722_8BIT, 0x3810, 0x00},
-	{OV2722_8BIT, 0x3811, 0x05},		/*H window offset: 5 */
+	{OV2722_8BIT, 0x3811, 0x05}, /* H window offset: 5 */
 	{OV2722_8BIT, 0x3812, 0x00},
-	{OV2722_8BIT, 0x3813, 0x02},		/*V window offset: 2 */
-	{OV2722_8BIT, 0x3820, 0xc0},
-	{OV2722_8BIT, 0x3821, 0x06},         /*r flip isp*/
-	{OV2722_8BIT, 0x3814, 0x31},
-	{OV2722_8BIT, 0x3815, 0x31},
+	{OV2722_8BIT, 0x3813, 0x02}, /* V window offset: 2 */
+	{OV2722_8BIT, 0x3820, 0x80},
+	{OV2722_8BIT, 0x3821, 0x06}, /* flip isp*/
+	{OV2722_8BIT, 0x3814, 0x11},
+	{OV2722_8BIT, 0x3815, 0x11},
 	{OV2722_8BIT, 0x3612, 0x0b},
 	{OV2722_8BIT, 0x3618, 0x04},
 	{OV2722_8BIT, 0x3a08, 0x01},
@@ -393,11 +393,11 @@ static struct ov2722_reg const ov2722_VGA_30fps[] = {
 	{OV2722_8BIT, 0x3002, 0xf0},
 	{OV2722_8BIT, 0x3600, 0x08},
 	{OV2722_8BIT, 0x3621, 0xc0},
-	{OV2722_8BIT, 0x3632, 0xd2},		/*added for power opt */
+	{OV2722_8BIT, 0x3632, 0xd2}, /* added for power opt */
 	{OV2722_8BIT, 0x3633, 0x23},
 	{OV2722_8BIT, 0x3634, 0x54},
 	{OV2722_8BIT, 0x3f01, 0x0c},
-	{OV2722_8BIT, 0x5001, 0xc1},		/*v_en, h_en, blc_en*/
+	{OV2722_8BIT, 0x5001, 0xc1}, /* v_en, h_en, blc_en */
 	{OV2722_8BIT, 0x3614, 0xf0},
 	{OV2722_8BIT, 0x3630, 0x2d},
 	{OV2722_8BIT, 0x370b, 0x62},
@@ -412,12 +412,12 @@ static struct ov2722_reg const ov2722_VGA_30fps[] = {
 	{OV2722_8BIT, 0x3a19, 0x80},
 	{OV2722_8BIT, 0x3503, 0x00},
 	{OV2722_8BIT, 0x4521, 0x00},
-	{OV2722_8BIT, 0x5183, 0xb0},		/*AWB red*/
-	{OV2722_8BIT, 0x5184, 0xb0},		/*AWB green*/
-	{OV2722_8BIT, 0x5185, 0xb0},		/*AWB blue*/
-	{OV2722_8BIT, 0x5180, 0x03},		/*AWB manual mode*/
+	{OV2722_8BIT, 0x5183, 0xb0}, /* AWB red */
+	{OV2722_8BIT, 0x5184, 0xb0}, /* AWB green */
+	{OV2722_8BIT, 0x5185, 0xb0}, /* AWB blue */
+	{OV2722_8BIT, 0x5180, 0x03}, /* AWB manual mode */
 	{OV2722_8BIT, 0x370c, 0x0c},
-	{OV2722_8BIT, 0x4800, 0x24},		/*clk lane gate enable, */
+	{OV2722_8BIT, 0x4800, 0x24}, /* clk lane gate enable */
 	{OV2722_8BIT, 0x3035, 0x00},
 	{OV2722_8BIT, 0x3036, 0x26},
 	{OV2722_8BIT, 0x3037, 0xa1},
@@ -425,7 +425,7 @@ static struct ov2722_reg const ov2722_VGA_30fps[] = {
 	{OV2722_8BIT, 0x3038, 0x06},
 	{OV2722_8BIT, 0x3018, 0x04},
 
-	/*Added for power optimization */
+	/* Added for power optimization */
 	{OV2722_8BIT, 0x3000, 0x00},
 	{OV2722_8BIT, 0x3001, 0x00},
 	{OV2722_8BIT, 0x3002, 0x00},
@@ -460,31 +460,31 @@ static struct ov2722_reg const ov2722_QCIF_30fps[] = {
 	{OV2722_8BIT, 0x3708, 0x61},
 	{OV2722_8BIT, 0x3709, 0x12},
 	{OV2722_8BIT, 0x3800, 0x01},
-	{OV2722_8BIT, 0x3801, 0x4a},		/*H crop start: 330 */
+	{OV2722_8BIT, 0x3801, 0x4a}, /* H crop start: 330 */
 	{OV2722_8BIT, 0x3802, 0x00},
-	{OV2722_8BIT, 0x3803, 0x02},		/*V crop start: 3 */
+	{OV2722_8BIT, 0x3803, 0x03}, /* V crop start: 3 */
 	{OV2722_8BIT, 0x3804, 0x06},
-	{OV2722_8BIT, 0x3805, 0xe1},		/*H crop end:  1761 */
+	{OV2722_8BIT, 0x3805, 0xe1}, /* H crop end:  1761 */
 	{OV2722_8BIT, 0x3806, 0x04},
-	{OV2722_8BIT, 0x3807, 0x47},		/*V crop end:  1096 */
+	{OV2722_8BIT, 0x3807, 0x47}, /* V crop end:  1096 */
 	{OV2722_8BIT, 0x3808, 0x00},
-	{OV2722_8BIT, 0x3809, 0xc0},		/*H output size: 192 */
+	{OV2722_8BIT, 0x3809, 0xc0}, /* H output size: 192 */
 	{OV2722_8BIT, 0x380a, 0x00},
-	{OV2722_8BIT, 0x380b, 0xa0},		/*V output size: 160 */
+	{OV2722_8BIT, 0x380b, 0xa0}, /* V output size: 160 */
 
-	/*H blank timing */
+	/* H blank timing */
 	{OV2722_8BIT, 0x380c, 0x08},
-	{OV2722_8BIT, 0x380d, 0x00},		/*H total size: 2048 */
+	{OV2722_8BIT, 0x380d, 0x00}, /* H total size: 2048 */
 	{OV2722_8BIT, 0x380e, 0x04},
-	{OV2722_8BIT, 0x380f, 0xa0},		/*V total size: 1184 */
+	{OV2722_8BIT, 0x380f, 0xa0}, /* V total size: 1184 */
 	{OV2722_8BIT, 0x3810, 0x00},
-	{OV2722_8BIT, 0x3811, 0x05},		/*H window offset: 5 */
+	{OV2722_8BIT, 0x3811, 0x05}, /* H window offset: 5 */
 	{OV2722_8BIT, 0x3812, 0x00},
-	{OV2722_8BIT, 0x3813, 0x02},		/*V window offset: 2 */
-	{OV2722_8BIT, 0x3820, 0xc0},
-	{OV2722_8BIT, 0x3821, 0x06},         /*r flip isp*/
-	{OV2722_8BIT, 0x3814, 0x31},
-	{OV2722_8BIT, 0x3815, 0x31},
+	{OV2722_8BIT, 0x3813, 0x02}, /* V window offset: 2 */
+	{OV2722_8BIT, 0x3820, 0x80},
+	{OV2722_8BIT, 0x3821, 0x06}, /* flip isp*/
+	{OV2722_8BIT, 0x3814, 0x11},
+	{OV2722_8BIT, 0x3815, 0x11},
 	{OV2722_8BIT, 0x3612, 0x0b},
 	{OV2722_8BIT, 0x3618, 0x04},
 	{OV2722_8BIT, 0x3a08, 0x01},
@@ -500,11 +500,11 @@ static struct ov2722_reg const ov2722_QCIF_30fps[] = {
 	{OV2722_8BIT, 0x3002, 0xf0},
 	{OV2722_8BIT, 0x3600, 0x08},
 	{OV2722_8BIT, 0x3621, 0xc0},
-	{OV2722_8BIT, 0x3632, 0xd2},		/*added for power opt */
+	{OV2722_8BIT, 0x3632, 0xd2}, /* added for power opt */
 	{OV2722_8BIT, 0x3633, 0x23},
 	{OV2722_8BIT, 0x3634, 0x54},
 	{OV2722_8BIT, 0x3f01, 0x0c},
-	{OV2722_8BIT, 0x5001, 0xc1},		/*v_en, h_en, blc_en*/
+	{OV2722_8BIT, 0x5001, 0xc1}, /* v_en, h_en, blc_en */
 	{OV2722_8BIT, 0x3614, 0xf0},
 	{OV2722_8BIT, 0x3630, 0x2d},
 	{OV2722_8BIT, 0x370b, 0x62},
@@ -519,12 +519,12 @@ static struct ov2722_reg const ov2722_QCIF_30fps[] = {
 	{OV2722_8BIT, 0x3a19, 0x80},
 	{OV2722_8BIT, 0x3503, 0x00},
 	{OV2722_8BIT, 0x4521, 0x00},
-	{OV2722_8BIT, 0x5183, 0xb0},		/*AWB red*/
-	{OV2722_8BIT, 0x5184, 0xb0},		/*AWB green*/
-	{OV2722_8BIT, 0x5185, 0xb0},		/*AWB blue*/
-	{OV2722_8BIT, 0x5180, 0x03},		/*AWB manual mode*/
+	{OV2722_8BIT, 0x5183, 0xb0}, /* AWB red */
+	{OV2722_8BIT, 0x5184, 0xb0}, /* AWB green */
+	{OV2722_8BIT, 0x5185, 0xb0}, /* AWB blue */
+	{OV2722_8BIT, 0x5180, 0x03}, /* AWB manual mode */
 	{OV2722_8BIT, 0x370c, 0x0c},
-	{OV2722_8BIT, 0x4800, 0x24},		/*clk lane gate enable, */
+	{OV2722_8BIT, 0x4800, 0x24}, /* clk lane gate enable */
 	{OV2722_8BIT, 0x3035, 0x00},
 	{OV2722_8BIT, 0x3036, 0x26},
 	{OV2722_8BIT, 0x3037, 0xa1},
@@ -532,7 +532,7 @@ static struct ov2722_reg const ov2722_QCIF_30fps[] = {
 	{OV2722_8BIT, 0x3038, 0x06},
 	{OV2722_8BIT, 0x3018, 0x04},
 
-	/*Added for power optimization */
+	/* Added for power optimization */
 	{OV2722_8BIT, 0x3000, 0x00},
 	{OV2722_8BIT, 0x3001, 0x00},
 	{OV2722_8BIT, 0x3002, 0x00},
@@ -568,31 +568,31 @@ static struct ov2722_reg const ov2722_CIF_30fps[] = {
 	{OV2722_8BIT, 0x3708, 0x61},
 	{OV2722_8BIT, 0x3709, 0x12},
 	{OV2722_8BIT, 0x3800, 0x01},
-	{OV2722_8BIT, 0x3801, 0x4a},		/*H crop start: 330 */
+	{OV2722_8BIT, 0x3801, 0x4a}, /* H crop start: 330 */
 	{OV2722_8BIT, 0x3802, 0x00},
-	{OV2722_8BIT, 0x3803, 0x02},		/*V crop start: 3 */
+	{OV2722_8BIT, 0x3803, 0x03}, /* V crop start: 3 */
 	{OV2722_8BIT, 0x3804, 0x06},
-	{OV2722_8BIT, 0x3805, 0xe1},		/*H crop end:  1761 */
+	{OV2722_8BIT, 0x3805, 0xe1}, /* H crop end:  1761 */
 	{OV2722_8BIT, 0x3806, 0x04},
-	{OV2722_8BIT, 0x3807, 0x47},		/*V crop end:  1096 */
+	{OV2722_8BIT, 0x3807, 0x47}, /* V crop end:  1096 */
 	{OV2722_8BIT, 0x3808, 0x01},
-	{OV2722_8BIT, 0x3809, 0x70},		/*H output size: 368 */
+	{OV2722_8BIT, 0x3809, 0x70}, /* H output size: 368 */
 	{OV2722_8BIT, 0x380a, 0x01},
-	{OV2722_8BIT, 0x380b, 0x30},		/*V output size: 304 */
+	{OV2722_8BIT, 0x380b, 0x30}, /* V output size: 304 */
 
-	/*H blank timing */
+	/* H blank timing */
 	{OV2722_8BIT, 0x380c, 0x08},
-	{OV2722_8BIT, 0x380d, 0x00},		/*H total size: 2048 */
+	{OV2722_8BIT, 0x380d, 0x00},	/* H total size: 2048 */
 	{OV2722_8BIT, 0x380e, 0x04},
-	{OV2722_8BIT, 0x380f, 0xa0},		/*V total size: 1184 */
+	{OV2722_8BIT, 0x380f, 0xa0},	/* V total size: 1184 */
 	{OV2722_8BIT, 0x3810, 0x00},
-	{OV2722_8BIT, 0x3811, 0x05},		/*H window offset: 5 */
+	{OV2722_8BIT, 0x3811, 0x05},	/* H window offset: 5 */
 	{OV2722_8BIT, 0x3812, 0x00},
-	{OV2722_8BIT, 0x3813, 0x02},		/*V window offset: 2 */
-	{OV2722_8BIT, 0x3820, 0xc0},
-	{OV2722_8BIT, 0x3821, 0x06},         /*r flip isp*/
-	{OV2722_8BIT, 0x3814, 0x31},
-	{OV2722_8BIT, 0x3815, 0x31},
+	{OV2722_8BIT, 0x3813, 0x02},	/* V window offset: 2 */
+	{OV2722_8BIT, 0x3820, 0x80},
+	{OV2722_8BIT, 0x3821, 0x06},	/* flip isp */
+	{OV2722_8BIT, 0x3814, 0x11},
+	{OV2722_8BIT, 0x3815, 0x11},
 	{OV2722_8BIT, 0x3612, 0x0b},
 	{OV2722_8BIT, 0x3618, 0x04},
 	{OV2722_8BIT, 0x3a08, 0x01},
@@ -608,11 +608,11 @@ static struct ov2722_reg const ov2722_CIF_30fps[] = {
 	{OV2722_8BIT, 0x3002, 0xf0},
 	{OV2722_8BIT, 0x3600, 0x08},
 	{OV2722_8BIT, 0x3621, 0xc0},
-	{OV2722_8BIT, 0x3632, 0xd2},		/*added for power opt */
+	{OV2722_8BIT, 0x3632, 0xd2},	/* added for power opt */
 	{OV2722_8BIT, 0x3633, 0x23},
 	{OV2722_8BIT, 0x3634, 0x54},
 	{OV2722_8BIT, 0x3f01, 0x0c},
-	{OV2722_8BIT, 0x5001, 0xc1},		/*v_en, h_en, blc_en*/
+	{OV2722_8BIT, 0x5001, 0xc1},	/* v_en, h_en, blc_en */
 	{OV2722_8BIT, 0x3614, 0xf0},
 	{OV2722_8BIT, 0x3630, 0x2d},
 	{OV2722_8BIT, 0x370b, 0x62},
@@ -627,12 +627,12 @@ static struct ov2722_reg const ov2722_CIF_30fps[] = {
 	{OV2722_8BIT, 0x3a19, 0x80},
 	{OV2722_8BIT, 0x3503, 0x00},
 	{OV2722_8BIT, 0x4521, 0x00},
-	{OV2722_8BIT, 0x5183, 0xb0},		/*AWB red*/
-	{OV2722_8BIT, 0x5184, 0xb0},		/*AWB green*/
-	{OV2722_8BIT, 0x5185, 0xb0},		/*AWB blue*/
-	{OV2722_8BIT, 0x5180, 0x03},		/*AWB manual mode*/
+	{OV2722_8BIT, 0x5183, 0xb0},	/* AWB red */
+	{OV2722_8BIT, 0x5184, 0xb0},	/* AWB green */
+	{OV2722_8BIT, 0x5185, 0xb0},	/* AWB blue */
+	{OV2722_8BIT, 0x5180, 0x03},	/* AWB manual mode */
 	{OV2722_8BIT, 0x370c, 0x0c},
-	{OV2722_8BIT, 0x4800, 0x24},		/*clk lane gate enable, */
+	{OV2722_8BIT, 0x4800, 0x24},	/* clk lane gate enable */
 	{OV2722_8BIT, 0x3035, 0x00},
 	{OV2722_8BIT, 0x3036, 0x26},
 	{OV2722_8BIT, 0x3037, 0xa1},
@@ -640,7 +640,7 @@ static struct ov2722_reg const ov2722_CIF_30fps[] = {
 	{OV2722_8BIT, 0x3038, 0x06},
 	{OV2722_8BIT, 0x3018, 0x04},
 
-	/*Added for power optimization */
+	/* Added for power optimization */
 	{OV2722_8BIT, 0x3000, 0x00},
 	{OV2722_8BIT, 0x3001, 0x00},
 	{OV2722_8BIT, 0x3002, 0x00},
@@ -676,29 +676,29 @@ static struct ov2722_reg const ov2722_1M3_30fps[] = {
 	{OV2722_8BIT, 0x3708, 0x61},
 	{OV2722_8BIT, 0x3709, 0x12},
 	{OV2722_8BIT, 0x3800, 0x01},
-	{OV2722_8BIT, 0x3801, 0x4a},		/*H crop start: 330 */
+	{OV2722_8BIT, 0x3801, 0x4a},	/* H crop start: 330 */
 	{OV2722_8BIT, 0x3802, 0x00},
-	{OV2722_8BIT, 0x3803, 0x03},		/*V crop start: 3 */
+	{OV2722_8BIT, 0x3803, 0x03},	/* V crop start: 3 */
 	{OV2722_8BIT, 0x3804, 0x06},
-	{OV2722_8BIT, 0x3805, 0xe1},		/*H crop end:  1761 */
+	{OV2722_8BIT, 0x3805, 0xe1},	/* H crop end:  1761 */
 	{OV2722_8BIT, 0x3806, 0x04},
-	{OV2722_8BIT, 0x3807, 0x47},		/*V crop end:  1095 */
+	{OV2722_8BIT, 0x3807, 0x47},	/* V crop end:  1095 */
 	{OV2722_8BIT, 0x3808, 0x05},
-	{OV2722_8BIT, 0x3809, 0x88},		/*H output size: 1416 */
+	{OV2722_8BIT, 0x3809, 0x88},	/* H output size: 1416 */
 	{OV2722_8BIT, 0x380a, 0x04},
-	{OV2722_8BIT, 0x380b, 0x0a},		/*V output size: 1034 */
+	{OV2722_8BIT, 0x380b, 0x0a},	/* V output size: 1034 */
 
-	/*H blank timing */
+	/* H blank timing */
 	{OV2722_8BIT, 0x380c, 0x08},
-	{OV2722_8BIT, 0x380d, 0x00},		/*H total size: 2048 */
+	{OV2722_8BIT, 0x380d, 0x00},	/* H total size: 2048 */
 	{OV2722_8BIT, 0x380e, 0x04},
-	{OV2722_8BIT, 0x380f, 0xa0},		/*V total size: 1184 */
+	{OV2722_8BIT, 0x380f, 0xa0},	/* V total size: 1184 */
 	{OV2722_8BIT, 0x3810, 0x00},
-	{OV2722_8BIT, 0x3811, 0x05},		/*H window offset: 5 */
+	{OV2722_8BIT, 0x3811, 0x05},	/* H window offset: 5 */
 	{OV2722_8BIT, 0x3812, 0x00},
-	{OV2722_8BIT, 0x3813, 0x02},		/*V window offset: 2 */
+	{OV2722_8BIT, 0x3813, 0x02},	/* V window offset: 2 */
 	{OV2722_8BIT, 0x3820, 0x80},
-	{OV2722_8BIT, 0x3821, 0x06},         /*r flip isp*/
+	{OV2722_8BIT, 0x3821, 0x06},	/* flip isp */
 	{OV2722_8BIT, 0x3814, 0x11},
 	{OV2722_8BIT, 0x3815, 0x11},
 	{OV2722_8BIT, 0x3612, 0x0b},
@@ -716,11 +716,11 @@ static struct ov2722_reg const ov2722_1M3_30fps[] = {
 	{OV2722_8BIT, 0x3002, 0xf0},
 	{OV2722_8BIT, 0x3600, 0x08},
 	{OV2722_8BIT, 0x3621, 0xc0},
-	{OV2722_8BIT, 0x3632, 0xd2},		/*added for power opt */
+	{OV2722_8BIT, 0x3632, 0xd2},	/* added for power opt */
 	{OV2722_8BIT, 0x3633, 0x23},
 	{OV2722_8BIT, 0x3634, 0x54},
 	{OV2722_8BIT, 0x3f01, 0x0c},
-	{OV2722_8BIT, 0x5001, 0xc1},		/*v_en, h_en, blc_en*/
+	{OV2722_8BIT, 0x5001, 0xc1},	/* v_en, h_en, blc_en */
 	{OV2722_8BIT, 0x3614, 0xf0},
 	{OV2722_8BIT, 0x3630, 0x2d},
 	{OV2722_8BIT, 0x370b, 0x62},
@@ -735,12 +735,12 @@ static struct ov2722_reg const ov2722_1M3_30fps[] = {
 	{OV2722_8BIT, 0x3a19, 0x80},
 	{OV2722_8BIT, 0x3503, 0x00},
 	{OV2722_8BIT, 0x4521, 0x00},
-	{OV2722_8BIT, 0x5183, 0xb0},		/*AWB red*/
-	{OV2722_8BIT, 0x5184, 0xb0},		/*AWB green*/
-	{OV2722_8BIT, 0x5185, 0xb0},		/*AWB blue*/
-	{OV2722_8BIT, 0x5180, 0x03},		/*AWB manual mode*/
+	{OV2722_8BIT, 0x5183, 0xb0},	/* AWB red */
+	{OV2722_8BIT, 0x5184, 0xb0},	/* AWB green */
+	{OV2722_8BIT, 0x5185, 0xb0},	/* AWB blue */
+	{OV2722_8BIT, 0x5180, 0x03},	/* AWB manual mode */
 	{OV2722_8BIT, 0x370c, 0x0c},
-	{OV2722_8BIT, 0x4800, 0x24},		/*clk lane gate enable, */
+	{OV2722_8BIT, 0x4800, 0x24},	/* clk lane gate enable */
 	{OV2722_8BIT, 0x3035, 0x00},
 	{OV2722_8BIT, 0x3036, 0x27},
 	{OV2722_8BIT, 0x3037, 0xa1},
@@ -748,7 +748,7 @@ static struct ov2722_reg const ov2722_1M3_30fps[] = {
 	{OV2722_8BIT, 0x3038, 0x06},
 	{OV2722_8BIT, 0x3018, 0x04},
 
-	/*Added for power optimization */
+	/* Added for power optimization */
 	{OV2722_8BIT, 0x3000, 0x00},
 	{OV2722_8BIT, 0x3001, 0x00},
 	{OV2722_8BIT, 0x3002, 0x00},
@@ -970,7 +970,47 @@ static struct ov2722_reg const ov2722_720p_30fps[] = {
 	{OV2722_TOK_TERM, 0, 0},
 };
 
-struct ov2722_resolution ov2722_res[] = {
+struct ov2722_resolution ov2722_res_preview[] = {
+	{
+		.desc = "ov2722_1M3_30fps",
+		.width = 1416,
+		.height = 1034,
+		.fps = 30,
+		.used = 0,
+		.regs = ov2722_1M3_30fps,
+	},
+	{
+		.desc = "ov2722_1080P_25fps",
+		.width = 1932,
+		.height = 1092,
+		.fps = 25,
+		.used = 0,
+		.regs = ov2722_1080p_25fps,
+	},
+};
+#define N_RES_PREVIEW (ARRAY_SIZE(ov2722_res_preview))
+
+struct ov2722_resolution ov2722_res_still[] = {
+	{
+		.desc = "ov2722_1M3_30fps",
+		.width = 1416,
+		.height = 1034,
+		.fps = 30,
+		.used = 0,
+		.regs = ov2722_1M3_30fps,
+	},
+	{
+		.desc = "ov2722_1080P_25fps",
+		.width = 1932,
+		.height = 1092,
+		.fps = 25,
+		.used = 0,
+		.regs = ov2722_1080p_25fps,
+	},
+};
+#define N_RES_STILL (ARRAY_SIZE(ov2722_res_still))
+
+struct ov2722_resolution ov2722_res_video[] = {
 	{
 		.desc = "ov2722_QCIF_30fps",
 		.width = 192,
@@ -1028,7 +1068,8 @@ struct ov2722_resolution ov2722_res[] = {
 		.regs = ov2722_1080p_25fps,
 	},
 };
+#define N_RES_VIDEO (ARRAY_SIZE(ov2722_res_video))
 
-#define N_RES (ARRAY_SIZE(ov2722_res))
-
+static struct ov2722_resolution *ov2722_res = ov2722_res_preview;
+static int N_RES = N_RES_PREVIEW;
 #endif
