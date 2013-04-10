@@ -65,6 +65,7 @@ static hrt_vaddress init_dmem_ddr;
 /* TODO: add code that sets this bool to false */
 static bool sp_running;
 
+
 static enum sh_css_err
 set_output_frame_buffer(const struct sh_css_frame *frame,
 			unsigned pipe_num, unsigned stage_num);
@@ -202,6 +203,11 @@ sh_css_sp_start_binary_copy(struct sh_css_frame *out_frame,
 	unsigned stage_num = 0;
 
 assert(out_frame != NULL);
+    if (out_frame == NULL) {
+		sh_css_dtrace(SH_DBG_ERROR,
+		"sh_css_sp_start_binary_copy() leave: error output_frame is NULL\n");
+		return;
+	}
 	pipe_id = SH_CSS_CAPTURE_PIPELINE;
 	sh_css_query_sp_thread_id(pipe_id, &thread_id);
 	pipe = &sh_css_sp_group.pipe[thread_id];
@@ -242,6 +248,11 @@ sh_css_sp_start_raw_copy(struct sh_css_binary *binary,
 	struct sh_css_sp_pipeline *pipe;
 
 assert(out_frame != NULL);
+	if (out_frame == NULL) {
+		sh_css_dtrace(SH_DBG_ERROR,
+		"sh_css_sp_start_raw_copy() leave: error output_frame is NULL\n");
+		return;
+	}
 
 	{
 		/**
@@ -734,7 +745,7 @@ sh_css_sp_init_stage(struct sh_css_binary *binary,
 		    unsigned irq_buf_flags,
 		    const struct sh_css_hmm_isp_interface *isp_mem_if)
 {
-	const struct sh_css_binary_info *info = binary->info;
+	const struct sh_css_binary_info *info;
 	enum sh_css_err err = sh_css_success;
 	int i;
 
@@ -755,6 +766,10 @@ sh_css_sp_init_stage(struct sh_css_binary *binary,
 
 	sh_css_query_sp_thread_id(pipe_id, &thread_id);
 	sh_css_sp_group.pipe[thread_id].num_stages++;
+
+	if (binary == NULL)
+		return sh_css_err_internal_error;
+	info = binary->info;
 
 	if (info == NULL) {
 		sh_css_sp_group.pipe[thread_id].sp_stage_addr[stage] = mmgr_NULL;
@@ -1301,6 +1316,7 @@ sh_css_sp_snd_event(int evt_id, int evt_payload_0, int evt_payload_1, int evt_pa
 {
 	uint32_t tmp[4];
 	uint32_t sw_event;
+	unsigned long timeout = CSS_TIMEOUT_US;
 
 	/*
 	 * Encode the queue type, the thread ID and
@@ -1313,8 +1329,17 @@ sh_css_sp_snd_event(int evt_id, int evt_payload_0, int evt_payload_1, int evt_pa
 	encode_sw_event(tmp, 4, &sw_event);
 
 	/* queue the software event (busy-waiting) */
-	while (!host2sp_enqueue_sp_event(sw_event))
+	while (!host2sp_enqueue_sp_event(sw_event) && timeout) {
+		timeout--;
 		hrt_sleep();
+	}
+	if (timeout == 0) {
+		sh_css_dump_debug_info("sh_css_sp_snd_event point1");
+		sh_css_dump_sp_sw_debug_info();
+#ifdef __KERNEL__
+		printk(KERN_ERR "%s poll timeout point 1!!!\n", __func__);
+#endif
+	}
 }
 
 void

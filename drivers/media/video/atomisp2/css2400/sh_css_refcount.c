@@ -64,6 +64,8 @@ static struct sh_css_refcount_entry *find_entry(hrt_vaddress ptr)
 
 assert(ptr != 0);
 assert(myrefcount.items != NULL);
+	if (myrefcount.items == NULL)
+		return NULL;
 
 	for (i = 0; i < myrefcount.size; i++) {
 		if (myrefcount.items[i].data == ptr) {
@@ -80,6 +82,8 @@ static struct sh_css_refcount_entry *find_free_entry(hrt_vaddress ptr)
 
 assert(ptr != 0);
 assert(myrefcount.items != NULL);
+	if (myrefcount.items == NULL)
+		return NULL;
 
 	for (i = 0; i < myrefcount.size; i++) {
 		if (myrefcount.items[i].data == 0)
@@ -137,8 +141,6 @@ hrt_vaddress sh_css_refcount_alloc(
 	struct sh_css_refcount_entry *entry = NULL;
 	uint32_t i;
 
-	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_refcount_alloc(%x)\n", id);
-
 	assert(size > 0);
 	assert(id != FREE_BUF_CACHE);
 
@@ -151,6 +153,11 @@ hrt_vaddress sh_css_refcount_alloc(
 			assert(entry->data != mmgr_NULL);
 			if (attribute & MMGR_ATTRIBUTE_CLEARED)
 				mmgr_clear(entry->data, size);
+			sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+				"sh_css_refcount_alloc(%x) 0x%x "
+				"reused from cache, refcnt %d\n",
+				id, entry->data, entry->count);
+
 			return entry->data;
 		}
 	}
@@ -163,12 +170,21 @@ hrt_vaddress sh_css_refcount_alloc(
 	entry = find_free_entry(ptr);
 
 	assert(entry != NULL);
+	if (entry == NULL)
+		return mmgr_NULL;
 	assert(entry->data == mmgr_NULL);
+	
 
 	entry->id = id;
 	entry->data = ptr;
 	entry->size = size;
 	entry->count = 1;
+
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"sh_css_refcount_alloc(%x) 0x%x "
+		"new alloc refcnt %d\n",
+		id, ptr, entry->count);
+
 
 	return ptr;
 }
@@ -177,27 +193,27 @@ hrt_vaddress sh_css_refcount_retain(int32_t id, hrt_vaddress ptr)
 {
 	struct sh_css_refcount_entry *entry;
 
-	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_refcount_retain(%x) 0x%x\n", id, ptr);
-
 	assert(id != FREE_BUF_CACHE);
 
 	assert(ptr != mmgr_NULL);
 	entry = find_entry(ptr);
 
 	assert(entry != NULL);
+	if (entry == NULL)
+		return mmgr_NULL;
 	assert(entry->id == id);
 	assert(entry->data == ptr);
 
 	entry->count += 1;
-
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"sh_css_refcount_retain(%x) 0x%x new refcnt %d\n",
+		id, ptr, entry->count );
 	return ptr;
 }
 
 bool sh_css_refcount_release(int32_t id, hrt_vaddress ptr)
 {
 	struct sh_css_refcount_entry *entry;
-
-	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_refcount_release(%x) 0x%x\n", id, ptr);
 
 	assert(id != FREE_BUF_CACHE);
 
@@ -214,13 +230,24 @@ bool sh_css_refcount_release(int32_t id, hrt_vaddress ptr)
 /*				sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
 					"sh_css_refcount_release: freeing\n");*/
 				entry->id = FREE_BUF_CACHE;
+				sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+					"sh_css_refcount_release(%x) 0x%x "
+					"new refcnt 0, returned to cache\n",
+					id, ptr);
+			} else {
+				sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+					"sh_css_refcount_release(%x) 0x%x "
+					"new refcnt %d\n",
+					id, ptr, entry->count );
 			}
 			return true;
 		}
 	}
 
 /* SHOULD NOT HAPPEN: ptr not managed by refcount, or not valid anymore */
-assert(false);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"sh_css_refcount_release(%x) 0x%x ERROR not managed\n", id, ptr);
+	assert(false);
 
 	return false;
 }
@@ -246,6 +273,8 @@ int32_t sh_css_refcount_get_id(hrt_vaddress ptr)
 	assert(ptr != mmgr_NULL);
 	entry = find_entry(ptr);
 	assert(entry != NULL);
+	if (entry == NULL)
+		return mmgr_NULL;
 	return entry->id;
 }
 
@@ -258,26 +287,31 @@ void sh_css_refcount_clear(int32_t id, void (*clear_func)(hrt_vaddress ptr))
 	for (i = 0; i < myrefcount.size; i++) {
 		entry = &myrefcount.items[i];
 		if ((entry->data != mmgr_NULL) && (entry->id == id)) {
-			sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_refcount_clear:"
-					" %x: 0x%x\n", id, entry->data);
+			sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+				"sh_css_refcount_clear: %x: 0x%x refcnt %d\n",
+				id, entry->data, entry->count);
 			if (clear_func) {
 				/* clear using provided function */
+				/* This function will update the entry */
+				/* administration (we should not do that)  */
 				clear_func(entry->data);
+				assert(entry->count == 0);
 			}
 			else {
 				sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
 						"sh_css_refcount_clear: "
-						"using mmgr_free: no clear_func\n");
+						"using default mmgr_free\n");
 				mmgr_free(entry->data);
+
+				assert(entry->count == 0);
+				entry->data = mmgr_NULL;
+				entry->size = 0;
+				entry->count = 0;
+				entry->id = 0;
 			}
-			assert(entry->count == 0);
-			entry->data = mmgr_NULL;
-			entry->size = 0;
-			entry->count = 0;
-			entry->id = 0;
 			count++;
 		}
 	}
-	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_refcount_clear(%x): cleared %d\n",
-		id, count);
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"sh_css_refcount_clear(%x): cleared %d\n", id, count);
 }

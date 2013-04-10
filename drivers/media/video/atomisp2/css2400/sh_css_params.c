@@ -1872,19 +1872,30 @@ sh_css_get_dis_projections(
 {
 	unsigned int hor_num_isp, ver_num_isp,
 		hor_bytes, ver_bytes;
-	hrt_vaddress hor_ptr_isp = dis_data->sdis_hor_proj,
-		ver_ptr_isp = dis_data->sdis_ver_proj;
+	hrt_vaddress hor_ptr_isp, ver_ptr_isp;
 
-assert(horizontal_projections != NULL);
-assert(vertical_projections != NULL);
-assert(dis_data != NULL);
-assert(dis_data->sdis_hor_proj != mmgr_NULL);
-assert(dis_data->sdis_hor_proj != mmgr_NULL);
+	assert(dis_data != NULL);
+	if(dis_data == NULL)
+		return;
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_dis_projections() enter: "
 		"hcoef=%p, vcoef=%p, haddr=%x, vaddr=%x\n",
 		horizontal_projections,vertical_projections,
 		dis_data->sdis_hor_proj,dis_data->sdis_ver_proj);
+
+	assert(horizontal_projections != NULL);
+	if(horizontal_projections == NULL)
+		return;
+
+	assert(vertical_projections != NULL);
+	if(vertical_projections == NULL)
+		return;
+
+	assert(dis_data->sdis_hor_proj != mmgr_NULL);
+	assert(dis_data->sdis_hor_proj != mmgr_NULL);
+
+	hor_ptr_isp = dis_data->sdis_hor_proj;
+	ver_ptr_isp = dis_data->sdis_ver_proj;
 
 	if (current_3a_binary == NULL) {
 		sh_css_dtrace(SH_DBG_TRACE,
@@ -1918,20 +1929,31 @@ sh_css_get_dis_projections(
 		     hor_num_3a, ver_num_3a, i;
 	int *hor_ptr_3a  = horizontal_projections,
 		*ver_ptr_3a  = vertical_projections;
-	hrt_vaddress hor_ptr_isp = dis_data->sdis_hor_proj,
-		ver_ptr_isp = dis_data->sdis_ver_proj;
+	hrt_vaddress hor_ptr_isp, ver_ptr_isp;
 
-assert(horizontal_projections != NULL);
-assert(vertical_projections != NULL);
-assert(dis_data != NULL);
-assert(dis_data->sdis_hor_proj != mmgr_NULL);
-assert(dis_data->sdis_hor_proj != mmgr_NULL);
+	assert(dis_data != NULL);
+	if(dis_data == NULL)
+		return;
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_dis_projections() enter: "
 		"hcoef=%p, vcoef=%p, "
 		"haddr=%x, vaddr=%x\n",
 		horizontal_projections,vertical_projections,
 		dis_data->sdis_hor_proj,dis_data->sdis_ver_proj);
+
+	hor_ptr_isp = dis_data->sdis_hor_proj;
+	ver_ptr_isp = dis_data->sdis_ver_proj;
+
+	assert(horizontal_projections != NULL);
+	if(horizontal_projections == NULL)
+		return;
+
+	assert(vertical_projections != NULL);
+	if(vertical_projections == NULL)
+		return;
+
+	assert(dis_data->sdis_hor_proj != mmgr_NULL);
+	assert(dis_data->sdis_hor_proj != mmgr_NULL);
 
 	if (current_3a_binary == NULL) {
 		sh_css_dtrace(SH_DBG_TRACE,
@@ -1968,8 +1990,11 @@ static void get_3a_stats_from_dmem(
 		out_height = current_3a_binary->s3atbl_height, i;
 	struct sh_css_3a_output *out_ptr = output;
 
-assert(output != NULL);
-assert(ddr_ptr != mmgr_NULL);
+	assert(output != NULL);
+	if(output == NULL)
+		return;
+
+	assert(ddr_ptr != mmgr_NULL);
 
 	for (i = 0; i < out_height; i++) {
 		mmgr_load(ddr_ptr,
@@ -1998,9 +2023,12 @@ get_3a_stats_from_vmem(
 	unsigned short *hi, *lo;
 	int chunk, rest, kmax, y, x, k, elm_start, elm, ofs, bytes;
 
-assert(output != NULL);
-assert(ddr_ptr_hi != mmgr_NULL);
-assert(ddr_ptr_lo != mmgr_NULL);
+	assert(output != NULL);
+	if(output == NULL)
+		return;
+
+	assert(ddr_ptr_hi != mmgr_NULL);
+	assert(ddr_ptr_lo != mmgr_NULL);
 
 	hi = s3a_tbl_hi_buf;
 	lo = s3a_tbl_lo_buf;
@@ -2131,13 +2159,16 @@ convert_coords_to_ispparams(
 
 	unsigned int in_stride = i_width * DVS_INPUT_BYTES_PER_PIXEL << uv_flag;
 
-assert(config != NULL);
-assert(ddr_addr != mmgr_NULL);
+	assert(config != NULL);
+	if (config == NULL)
+		return;
+
+	assert(ddr_addr != mmgr_NULL);
 
 	ddr_addr += (2* DVS_6AXIS_COORDS_ELEMS * uv_flag); /* format is Y0 Y1 UV, so UV starts at 3rd position */
 
-assert (o_height % blockdim_y == 0);
-assert (o_width % blockdim_x == 0);
+	assert (o_height % blockdim_y == 0);
+	assert (o_width % blockdim_x == 0);
 
 	for (j = 0; j < num_blocks_y; j++) {
 		for (i = 0; i < num_blocks_x; i++) {
@@ -2235,12 +2266,19 @@ store_dvs_6axis_config(
 	const struct sh_css_binary *binary,
 	hrt_vaddress ddr_addr_y)
 {
-	unsigned int i_width  = binary->in_frame_info.width;
-	unsigned int o_width  = binary->out_frame_info.width;
-	unsigned int o_height = binary->out_frame_info.height;
+	unsigned int i_width;
+	unsigned int o_width;
+	unsigned int o_height;
 
-assert(binary != NULL);
-assert(ddr_addr_y != mmgr_NULL);
+	assert(binary != NULL);
+	if (binary == NULL)
+		return;
+
+	i_width  = binary->in_frame_info.width;
+	o_width  = binary->out_frame_info.width;
+	o_height = binary->out_frame_info.height;
+
+	assert(ddr_addr_y != mmgr_NULL);
 
 	if (!dvs_6axis_config) {
 /* Checkpatch patch */
@@ -2276,7 +2314,7 @@ store_fpntbl(hrt_vaddress ptr)
 	unsigned int i, j;
 	short *data_ptr = fpn_table.data;
 
-assert(ptr != mmgr_NULL);
+	assert(ptr != mmgr_NULL);
 
 	for (i = 0; i < fpn_table.height; i++) {
 		for (j = 0;
@@ -2335,17 +2373,22 @@ sh_css_set_black_frame(
 	/* this function desperately needs to be moved to the ISP or SP such
 	 * that it can use the DMA.
 	 */
-	unsigned int height = raw_black_frame->info.height,
-		     width = raw_black_frame->info.padded_width,
-		     y, x, k, data;
-	hrt_vaddress ptr = raw_black_frame->data
-		+ raw_black_frame->planes.raw.offset;
+	unsigned int height,
+		     width,
+		     y, x, k, data = 0;
+	hrt_vaddress ptr;
 
-assert(raw_black_frame != NULL);
+	assert(raw_black_frame != NULL);
+	if (raw_black_frame == NULL)
+		return sh_css_err_internal_error;
 
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_set_black_frame() enter: black_frame=%p\n",
 		raw_black_frame);
+
+	height = raw_black_frame->info.height;
+	width = raw_black_frame->info.padded_width;
+	ptr = raw_black_frame->data + raw_black_frame->planes.raw.offset;
 
 	if (fpn_table.data &&
 	    (fpn_table.width != width || fpn_table.height != height)) {
@@ -2853,7 +2896,12 @@ static void ctc_gradient(
 	assert(y1 >= 0 && y1 <= max_dydx);
 	assert(x0 < x1);
 	assert(dydx != NULL);
+	if (dydx == NULL)
+		return;
+
 	assert(shift != NULL);
+	if (shift == NULL)
+		return;
 
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "ctc_gradient() enter:\n");
 
@@ -3000,10 +3048,12 @@ sh_css_set_gamma_table(const struct sh_css_gamma_table *table)
 void
 sh_css_get_gamma_table(const struct sh_css_gamma_table **table)
 {
-assert(table != NULL);
-
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_get_gamma_table() enter: table=%p\n",table);
+
+	assert(table != NULL);
+	if (table == NULL)
+		return;
 
 	*table = gamma_table;
 
@@ -3028,7 +3078,9 @@ sh_css_set_ctc_table(const struct sh_css_ctc_table *table)
 void
 sh_css_get_ctc_table(const struct sh_css_ctc_table **table)
 {
-assert(table != NULL);
+	assert(table != NULL);
+	if(table == NULL)
+		return;
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_ctc_table() enter: "
 		"table=%p\n",table);
@@ -3056,10 +3108,12 @@ sh_css_set_xnr_table(const struct sh_css_xnr_table *table)
 void
 sh_css_get_xnr_table(const struct sh_css_xnr_table **table)
 {
-assert(table != NULL);
-
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_xnr_table() enter: "
 		"table=%p\n",table);
+
+	assert(table != NULL);
+	if (table == NULL)
+		return;
 
 	*table = xnr_table;
 
@@ -3084,10 +3138,12 @@ sh_css_set_macc_table(const struct sh_css_macc_table *table)
 void
 sh_css_get_macc_table(const struct sh_css_macc_table **table)
 {
-assert(table != NULL);
-
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_get_macc_table() enter: table=%p\n",table);
+
+	assert(table != NULL);
+	if (table == NULL)
+		return;
 
 	*table = macc_table;
 
@@ -3176,16 +3232,25 @@ static enum sh_css_err sh_css_params_default_morph_table(
 /* MW 2400 advanced requires different scaling */
 	unsigned int i, j, k,
 		     step = (ISP_VEC_NELEMS / 16) * 128,
-		     width = binary->morph_tbl_width,
-		     height = binary->morph_tbl_height;
+		     width,
+		     height;
 	short start_x[SH_CSS_MORPH_TABLE_NUM_PLANES] = { -8, 0, -8, 0, 0, -8 },
 	      start_y[SH_CSS_MORPH_TABLE_NUM_PLANES] = { 0, 0, -8, -8, -8, 0 };
 	struct sh_css_morph_table *tab;
 
-assert(table != NULL);
-assert(binary != NULL);
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
 		"sh_css_params_default_morph_table() enter:\n");
+
+	assert(table != NULL);
+	if (table == NULL)
+		return sh_css_err_internal_error;
+
+	assert(binary != NULL);
+	if (binary == NULL)
+		return sh_css_err_internal_error;
+
+	width = binary->morph_tbl_width,
+	height = binary->morph_tbl_height;
 
 	tab = sh_css_morph_table_allocate(width, height);
 	if (tab == NULL) {
@@ -3253,10 +3318,12 @@ sh_css_set_morph_table(const struct sh_css_morph_table *table)
 void
 sh_css_get_morph_table(const struct sh_css_morph_table **table)
 {
-assert(table != NULL);
-
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_morph_table() enter: "
 		"table=%p\n",table);
+
+	assert(table != NULL);
+	if (table == NULL)
+		return;
 
 	*table = morph_table;
 
@@ -3270,12 +3337,17 @@ enum sh_css_err sh_css_get_3a_statistics(
 	bool use_dmem,
 	union sh_css_s3a_data *s3a_data)
 {
-/* s3a_data can be NULL */
-assert(output != NULL);
-/* assert(s3a_data != NULL); */
+	/* rvanimme: s3a_data is referenced in this function, so cannot be null */
+	/* But there are test cases that calls this function with NULL */
+	/* This is considered a BUG (see CR 2344). For now comment out assert */
+	/* assert(s3a_data != NULL); */
+	if(s3a_data == NULL)
+		return sh_css_err_internal_error;
+	assert(output != NULL);
+	if(output == NULL)
+		return sh_css_err_internal_error;
 
 	if (current_3a_binary == NULL) {
-/* Checkpatch patch */
 		return sh_css_err_internal_error;
 	}
 
@@ -3294,7 +3366,6 @@ assert(output != NULL);
 	}
 
 	if (use_dmem) {
-/* Checkpatch patch */
 		get_3a_stats_from_dmem(output, s3a_data->dmem.s3a_tbl);
 	} else {
 		get_3a_stats_from_vmem(output, s3a_data->vmem.s3a_tbl_hi,
@@ -3310,7 +3381,9 @@ assert(output != NULL);
 void sh_css_set_3a_config(
 	const struct sh_css_3a_config *config)
 {
-assert(config != NULL);
+	assert(config != NULL);
+	if (config == NULL)
+		return;
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_3a_config() enter: "
 		"config.ae_y_coef_r=%d, config.ae_y_coef_g=%d, "
@@ -3320,13 +3393,8 @@ assert(config != NULL);
 		config->ae_y_coef_b, config->awb_lg_high_raw,
 		config->awb_lg_low, config->awb_lg_high);
 
-	if (config != NULL) {
-/* Checkpatch patch */
-		s3a_config = config;
-	} else {
-/* Checkpatch patch */
-		s3a_config = &disabled_3a_config;
-	}
+
+	s3a_config = config;
 	s3a_config_changed = true;
 
 	sh_css_dtrace(SH_DBG_TRACE,
@@ -3336,10 +3404,12 @@ assert(config != NULL);
 void sh_css_get_3a_config(
 	const struct sh_css_3a_config **config)
 {
-assert(config != NULL);
-
  	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_3a_config() enter: "
 				"config=%p\n",config);
+
+	assert(config != NULL);
+	if (config == NULL)
+		return;
 
 	*config = s3a_config;
 
@@ -3382,10 +3452,12 @@ void sh_css_set_wb_config(
 void sh_css_get_wb_config(
 	const struct sh_css_wb_config **config)
 {
-assert(config != NULL);
-
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_wb_config() enter: "
 		"config=%p\n",config);
+
+	assert(config != NULL);
+	if (config == NULL)
+		return;
 
 	*config = wb_config;
 
@@ -3436,10 +3508,12 @@ void sh_css_set_cc_config(
 void sh_css_get_cc_config(
 	const struct sh_css_cc_config **config)
 {
-assert(config != NULL);
-
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_cc_config() enter: "
 		"config=%p\n",config);
+
+	assert(config != NULL);
+	if (config == NULL)
+		return;
 
 	*config = cc_config;
 
@@ -3485,10 +3559,12 @@ void sh_css_set_tnr_config(
 void sh_css_get_tnr_config(
 	const struct sh_css_tnr_config **config)
 {
-assert(config != NULL);
-
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_get_tnr_config() enter: config=%p\n",config);
+
+	assert(config != NULL);
+	if (config == NULL)
+		return;
 
 	*config = tnr_config;
 
@@ -3531,10 +3607,12 @@ void sh_css_set_ob_config(
 void sh_css_get_ob_config(
 	const struct sh_css_ob_config **config)
 {
-assert(config != NULL);
-
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_get_ob_config() enter: config=%p\n",config);
+
+	assert(config != NULL);
+	if (config == NULL)
+		return;
 
 	*config = ob_config;
 
@@ -3573,10 +3651,12 @@ void sh_css_set_dp_config(const struct sh_css_dp_config *config)
 void sh_css_get_dp_config(
 	const struct sh_css_dp_config **config)
 {
-assert(config != NULL);
-
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_get_dp_config() enter: config=%p\n",config);
+
+	assert(config != NULL);
+	if (config == NULL)
+		return;
 
 	*config = dp_config;
 
@@ -3616,10 +3696,12 @@ void sh_css_set_nr_config(
 void sh_css_get_nr_config(
 	const struct sh_css_nr_config **config)
 {
-assert(config != NULL);
-
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_get_nr_config() enter: config=%p\n",config);
+
+	assert(config != NULL);
+	if (config == NULL)
+		return;
 
 	*config = nr_config;
 
@@ -3661,10 +3743,12 @@ void sh_css_set_ee_config(
 void sh_css_get_ee_config(
 	const struct sh_css_ee_config **config)
 {
-assert(config != NULL);
-
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_get_ee_config() enter: config=%p\n",config);
+
+	assert(config != NULL);
+	if (config == NULL)
+		return;
 
 	*config = ee_config;
 
@@ -3703,10 +3787,12 @@ void sh_css_set_de_config(
 void sh_css_get_de_config(
 	const struct sh_css_de_config **config)
 {
-assert(config != NULL);
-
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_get_de_config() enter: config=%p\n",config);
+
+	assert(config != NULL);
+	if (config == NULL)
+		return;
 
 	*config = de_config;
 
@@ -3743,10 +3829,12 @@ void sh_css_set_gc_config(const struct sh_css_gc_config *config)
 void sh_css_get_gc_config(
 	const struct sh_css_gc_config **config)
 {
-assert(config != NULL);
-
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_gc_config() enter: "
 		"config=%p\n",config);
+
+	assert(config != NULL);
+	if (config == NULL)
+		return;
 
 	*config = gc_config;
 
@@ -3782,10 +3870,12 @@ void sh_css_set_anr_config(
 void sh_css_get_anr_config(
 	const struct sh_css_anr_config **config)
 {
-assert(config != NULL);
-
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_anr_config() enter: "
 		"config=%p\n",config);
+
+	assert(config != NULL);
+	if (config == NULL)
+		return;
 
 	*config = anr_config;
 
@@ -3821,10 +3911,12 @@ void sh_css_set_ce_config(
 void sh_css_get_ce_config(
 	const struct sh_css_ce_config **config)
 {
-assert(config != NULL);
-
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_ce_config() enter: "
 		"config=%p\n",config);
+
+	assert(config != NULL);
+	if (config == NULL)
+		return;
 
 	*config = ce_config;
 
@@ -3858,10 +3950,13 @@ void sh_css_set_dvs_6axis_config(
 void sh_css_get_dvs_6axis_config(
 	const struct sh_css_dvs_6axis_config **dvs_config)
 {
-assert(dvs_config != NULL);
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_dvs_6axis_config() enter: "
 		"dvs_config=%p\n",dvs_config);
+
+	assert(dvs_config != NULL);
+	if (dvs_config == NULL)
+		return;
 
 	*dvs_config = dvs_6axis_config;
 
@@ -3897,10 +3992,12 @@ return;
 void sh_css_get_ecd_config(
 	const struct sh_css_ecd_config **config)
 {
-assert(config != NULL);
-
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_ecd_config() enter: "
 		"config=%p\n",config);
+
+	assert(config != NULL);
+	if (config == NULL)
+		return;
 
 	*config = ecd_config;
 
@@ -3942,10 +4039,12 @@ return;
 void sh_css_get_ynr_config(
 	const struct sh_css_ynr_config **config)
 {
-assert(config != NULL);
-
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_ynr_config() enter: "
 		"config=%p\n",config);
+
+	assert(config != NULL);
+	if (config == NULL)
+		return;
 
 	*config = ynr_config;
 
@@ -3993,10 +4092,12 @@ return;
 void sh_css_get_fc_config(
 	const struct sh_css_fc_config **config)
 {
-assert(config != NULL);
-
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_fc_config() enter: "
 		"config=%p\n",config);
+
+	assert(config != NULL);
+	if (config == NULL)
+		return;
 
 	*config = fc_config;
 
@@ -4049,10 +4150,12 @@ return;
 void sh_css_get_cnr_config(
 	const struct sh_css_cnr_config **config)
 {
-assert(config != NULL);
-
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_cnr_config() enter: "
 		"config=%p\n",config);
+
+	assert(config != NULL);
+	if (config == NULL)
+		return;
 
 	*config = cnr_config;
 
@@ -4096,10 +4199,12 @@ return;
 void sh_css_get_macc_config(
 	const struct sh_css_macc_config **config)
 {
-assert(config != NULL);
-
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_macc_config() enter: "
 		"config=%p\n",config);
+
+	assert(config != NULL);
+	if (config == NULL)
+		return;
 
 	*config = macc_config;
 
@@ -4145,10 +4250,12 @@ return;
 void sh_css_get_ctc_config(
 	const struct sh_css_ctc_config **config)
 {
-assert(config != NULL);
-
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_ctc_config() enter: "
 		"config=%p\n",config);
+
+	assert(config != NULL);
+	if (config == NULL)
+		return;
 
 	*config = ctc_config;
 
@@ -4193,10 +4300,12 @@ void sh_css_set_aa_config(
 void sh_css_get_aa_config(
 	const struct sh_css_aa_config **config)
 {
-assert(config != NULL);
-
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_aa_config() enter: "
 		"config=%p\n",config);
+
+	assert(config != NULL);
+	if (config == NULL)
+		return;
 
 	*config = aa_config;
 
@@ -4224,9 +4333,11 @@ void sh_css_set_r_gamma_table(
 void sh_css_get_r_gamma_table(
 	const struct sh_css_rgb_gamma_table **table)
 {
-assert(table != NULL);
-
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_r_gamma_table() enter:\n");
+
+	assert(table != NULL);
+	if (table == NULL)
+		return;
 
 	*table = r_gamma_table;
 
@@ -4253,9 +4364,11 @@ void sh_css_set_g_gamma_table(
 void sh_css_get_g_gamma_table(
 	const struct sh_css_rgb_gamma_table **table)
 {
-assert(table != NULL);
-
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_g_gamma_table() enter:\n");
+
+	assert(table != NULL);
+	if (table == NULL)
+		return;
 
 	*table = g_gamma_table;
 
@@ -4282,8 +4395,11 @@ void sh_css_set_b_gamma_table(
 void sh_css_get_b_gamma_table(
 	const struct sh_css_rgb_gamma_table **table)
 {
-assert(table != NULL);
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_b_gamma_table() enter:\n");
+
+	assert(table != NULL);
+	if (table == NULL)
+		return;
 
 	*table = b_gamma_table;
 
@@ -4324,9 +4440,11 @@ void sh_css_set_yuv2rgb_cc_config(
 void sh_css_get_yuv2rgb_cc_config(
 	const struct sh_css_yuv2rgb_cc_config **config)
 {
-assert(config != NULL);
-
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_yuv2rgb_cc_config() enter:\n");
+
+	assert(config != NULL);
+	if (config == NULL)
+		return;
 
 	*config = yuv2rgb_cc_config;
 
@@ -4346,10 +4464,12 @@ assert(config != NULL);
 void sh_css_set_rgb2yuv_cc_config(
 	const struct sh_css_rgb2yuv_cc_config *config)
 {
-assert(config != NULL);
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_rgb2yuv_cc_config()\n");
-	if (config != NULL) {
-/* Checkpatch patch */
+
+	assert(config != NULL);
+	if (config == NULL)
+		return;
+
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_rgb2yuv_cc_config() enter: "
 		"config.m[0]=%d, "
 		"config.m[1]=%d, config.m[2]=%d, "
@@ -4361,13 +4481,7 @@ assert(config != NULL);
 		config->matrix[3], config->matrix[4],
 		config->matrix[5], config->matrix[6],
 		config->matrix[7], config->matrix[8]);
-		rgb2yuv_cc_config = config;
-	} else {
-/* Checkpatch patch */
-	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_set_rgb2yuv_cc_config() enter: config=%p\n",config);
-		rgb2yuv_cc_config = &disabled_rgb2yuv_cc_config;
-	}
+
 	rgb2yuv_cc_config_changed = true;
 
 	sh_css_dtrace(SH_DBG_TRACE,
@@ -4377,9 +4491,11 @@ assert(config != NULL);
 void sh_css_get_rgb2yuv_cc_config(
 	const struct sh_css_rgb2yuv_cc_config **config)
 {
-assert(config != NULL);
-
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_rgb2yuv_cc_config() enter:\n");
+
+	assert(config != NULL);
+	if (config == NULL)
+		return;
 
 	*config = rgb2yuv_cc_config;
 
@@ -4404,10 +4520,13 @@ void sh_css_set_isp_config(
 {
 	NOT_USED(pipe);
 
-assert(config != NULL);
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_set_isp_config() enter: pipe=%d, config=%p\n",
 		pipe, config);
+
+	assert(config != NULL);
+	if (config == NULL)
+		return;
 
 	sh_css_set_wb_config(&config->wb_config);
 	sh_css_set_cc_config(&config->cc_config);
@@ -4463,10 +4582,16 @@ void sh_css_get_isp_config(
 	/*const struct sh_css_xnr_config xnr_config;*/
 	NOT_USED(pipe);
 
-assert(config != NULL);
-assert(*config != NULL);
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_isp_config() enter: "
 		"pipe=%d, config=%p\n",pipe, config);
+
+	assert(config != NULL);
+	if (config == NULL)
+		return;
+
+	assert(*config != NULL);
+	if (*config == NULL)
+		return;
 
 	sh_css_get_wb_config(&wb_config);
 	((struct sh_css_isp_config *)*config)->wb_config = *wb_config;
@@ -4544,10 +4669,14 @@ void sh_css_get_zoom_factor(
 	unsigned int *dx,
 	unsigned int *dy)
 {
-assert(dx != NULL);
-assert(dy != NULL);
-
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_zoom_factor() enter:\n");
+
+	assert(dx != NULL);
+	if (dx == NULL)
+		return;
+	assert(dy != NULL);
+	if (dy == NULL)
+		return;
 
 	*dx = zoom_config.dx;
 	*dy = zoom_config.dy;
@@ -4559,9 +4688,11 @@ assert(dy != NULL);
 void sh_css_get_zoom(
 	struct sh_css_zoom *zoom)
 {
-assert(zoom != NULL);
-
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_zoom() enter:\n");
+
+	assert(zoom != NULL);
+	if (zoom == NULL)
+		return;
 
 	*zoom = zoom_config;
 
@@ -4592,9 +4723,11 @@ void sh_css_video_set_dis_vector(
 void sh_css_get_dis_motion(
 	struct sh_css_vector *motion)
 {
-assert(motion);
-
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_dis_motion() enter\n");
+
+	assert(motion != NULL);
+	if (motion == NULL)
+		return;
 
 	*motion = motion_config;
 
@@ -4700,8 +4833,16 @@ enum sh_css_err sh_css_allocate_stat_buffers_from_info(
 	const struct sh_css_dvs_grid_info *dvs_grid;
 
 	assert(grid != NULL);
+	if (grid == NULL)
+		return sh_css_err_internal_error;
+
 	assert(s3a_ptr != NULL);
+	if (s3a_ptr == NULL)
+		return sh_css_err_internal_error;
+
 	assert(dvs_ptr != NULL);
+	if (dvs_ptr == NULL)
+		return sh_css_err_internal_error;
 
 	s3a_grid = &grid->s3a_grid;
 	dvs_grid = &grid->dvs_grid;
@@ -5105,23 +5246,33 @@ static void store_dis_coefficients(
 	hrt_vaddress ddr_addr_hor,
 	hrt_vaddress ddr_addr_ver)
 {
-	unsigned int hor_num_isp = binary->dis_hor_coef_num_isp,
-		     ver_num_isp = binary->dis_ver_coef_num_isp,
-		     hor_num_3a  = binary->dis_hor_coef_num_3a,
-		     ver_num_3a  = binary->dis_ver_coef_num_3a,
-		     hor_padding = hor_num_isp - hor_num_3a,
-		     ver_padding = ver_num_isp - ver_num_3a,
+	unsigned int hor_num_isp,
+		     ver_num_isp,
+		     hor_num_3a,
+		     ver_num_3a,
+		     hor_padding,
+		     ver_padding,
 		     i;
 	const short *hor_ptr_3a = dis_hor_coef_tbl,
 		*ver_ptr_3a = dis_ver_coef_tbl;
 	hrt_vaddress hor_ptr_isp = ddr_addr_hor,
 		ver_ptr_isp = ddr_addr_ver;
 
-assert(binary != NULL);
-assert(ddr_addr_hor != mmgr_NULL);
-assert(ddr_addr_ver != mmgr_NULL);
 
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "store_dis_coefficients() enter:\n");
+
+	assert(binary != NULL);
+	if (binary == NULL)
+		return;
+	assert(ddr_addr_hor != mmgr_NULL);
+	assert(ddr_addr_ver != mmgr_NULL);
+
+	hor_num_isp = binary->dis_hor_coef_num_isp;
+	ver_num_isp = binary->dis_ver_coef_num_isp;
+	hor_num_3a  = binary->dis_hor_coef_num_3a;
+	ver_num_3a  = binary->dis_ver_coef_num_3a;
+	hor_padding = hor_num_isp - hor_num_3a;
+	ver_padding = ver_num_isp - ver_num_3a;
 
 	for (i = 0; i < SH_CSS_DIS_NUM_COEF_TYPES; i++) {
 		if (dis_hor_coef_tbl != NULL) {
@@ -5158,7 +5309,8 @@ void sh_css_update_isp_params_to_ddr(
 {
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_update_isp_params_to_ddr() enter:\n");
 
-	if (SH_CSS_PREVENT_UNINIT_READS) {
+#if SH_CSS_PREVENT_UNINIT_READS
+	{
 		/* ispparm struct is read with DMA which reads
 		 * multiples of the DDR word with (32 bytes):
 		 * So we pad with zeroes to prevent warnings in csim.
@@ -5175,6 +5327,7 @@ void sh_css_update_isp_params_to_ddr(
 				sizeof(struct sh_css_isp_params);
 		mmgr_clear(pad_ptr, padding_bytes);
 	}
+#endif
 	mmgr_store(ddr_ptr,
 	     &isp_parameters,
 	     sizeof(struct sh_css_isp_params));
@@ -5292,7 +5445,6 @@ sh_css_param_update_isp_params(bool commit)
 		struct sh_css_ddr_address_map *cur_map;
 		struct sh_css_ddr_address_map_size *cur_map_size;
 		struct sh_css_ddr_address_map tmp_map;
-		struct sh_css_ddr_address_map_size tmp_map_size;
 		struct sh_css_pipeline *pipeline;
 		struct sh_css_pipeline_stage *stage;
 		unsigned int thread_id;
@@ -5343,11 +5495,11 @@ sh_css_param_update_isp_params(bool commit)
 		err = ref_sh_css_ddr_address_map(
 					cur_map,
 					&tmp_map);
-		tmp_map_size = *cur_map_size;
 		/* now write the copy to ddr */
 		write_sh_css_address_map_to_ddr(&tmp_map, &cpy);
 
-		/* still needed currently for css2400 */
+		/* [PITBULL] disable for now */
+		/* pqiao: you can disable it forever */
 		sh_css_enable_sp_invalidate_tlb();
 		/* enqueue the set to sp */
 		if (err == sh_css_success) {
@@ -5431,10 +5583,18 @@ static enum sh_css_err sh_css_params_write_to_ddr_internal(
 	enum sh_css_err err;
 	bool buff_realloced;
 
-assert(binary != NULL);
-assert(ddr_map != NULL);
-assert(ddr_map_size != NULL);
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_params_write_to_ddr_internal() enter:\n");
+
+	assert(binary != NULL);
+	if (binary == NULL)
+		return sh_css_err_internal_error;
+	assert(ddr_map != NULL);
+	if (ddr_map == NULL)
+		return sh_css_err_internal_error;
+	assert(ddr_map_size != NULL);
+	if (ddr_map_size == NULL)
+		return sh_css_err_internal_error;
+
 
 	if (binary->info->enable.fpnr) {
 		buff_realloced = reallocate_buffer(&ddr_map->fpn_tbl,
@@ -5447,7 +5607,9 @@ assert(ddr_map_size != NULL);
 		if (fpn_table_changed || buff_realloced) {
 			if (isp_parameters.fpn_enabled) {
 				store_fpntbl(ddr_map->fpn_tbl);
-			} else if (SH_CSS_PREVENT_UNINIT_READS) {
+			}
+#if SH_CSS_PREVENT_UNINIT_READS
+			else {
 				hrt_vaddress ptr =
 					(hrt_vaddress)ddr_map->fpn_tbl;
 				/* prevent warnings when reading fpn table
@@ -5457,6 +5619,7 @@ assert(ddr_map_size != NULL);
 				/* MW: fpn_tbl_size*sizeof(whatever)? */
 				mmgr_clear(ptr, ddr_map_size->fpn_tbl);
 			}
+#endif
 		}
 	}
 	if (binary->info->enable.sc) {
@@ -5729,8 +5892,11 @@ enum sh_css_err sh_css_params_write_to_ddr(
 	enum sh_css_err err = sh_css_success;
 	struct sh_css_pipeline *pipeline;
 
-assert(binary != NULL);
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_params_write_to_ddr() enter:\n");
+
+	assert(binary != NULL);
+	if (binary == NULL)
+		return sh_css_err_internal_error;
 
 	sh_css_pipeline_stream_get_num_pipelines(&num_pipes);
 	for (i = 0; i < num_pipes; i++) {
@@ -5751,8 +5917,11 @@ return err;
 void
 sh_css_params_set_current_binary(const struct sh_css_binary *binary)
 {
-assert(binary != NULL);
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_params_set_current_binary() enter:\n");
+
+	assert(binary != NULL);
+	if (binary == NULL)
+		return;
 
 	if (binary->info->enable.s3a)
 		current_3a_binary = binary;
@@ -5805,10 +5974,15 @@ void sh_css_get_isp_dis_coefficients(
 
 /* currently only one pipe supported, update interface if
    multiple are needed */
-assert(num_pipe == 1);
+	assert(num_pipe == 1);
 
-assert(horizontal_coefficients != NULL);
-assert(vertical_coefficients != NULL);
+	assert(horizontal_coefficients != NULL);
+	if (horizontal_coefficients == NULL)
+		return;
+
+	assert(vertical_coefficients != NULL);
+	if (vertical_coefficients == NULL)
+		return;
 
 	if (current_3a_binary == NULL)
 		return;
@@ -5926,9 +6100,13 @@ static enum sh_css_err ref_sh_css_ddr_address_map(
 	hrt_vaddress *in_addrs = (hrt_vaddress *)map;
 	hrt_vaddress *to_addrs = (hrt_vaddress *)out;
 
-assert(map != NULL);
-assert(out != NULL);
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "ref_sh_css_ddr_address_map() enter:\n");
+
+	if (map == NULL)
+		return sh_css_err_internal_error;
+
+	if (out == NULL)
+		return sh_css_err_internal_error;
 
 	/* copy map using size info */
 	for (i = 0; i < (sizeof(struct sh_css_ddr_address_map_size)/
@@ -5952,9 +6130,15 @@ static enum sh_css_err write_sh_css_address_map_to_ddr(
 	enum sh_css_err err = sh_css_success;
 	bool succ;
 
-assert(me != NULL);
-assert(out != NULL);
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "write_sh_css_address_map_to_ddr() enter:\n");
+
+	assert(me != NULL);
+	if (me == NULL)
+		return sh_css_err_internal_error;
+
+	assert(out != NULL);
+	if (out == NULL)
+		return sh_css_err_internal_error;
 
 	*out = sh_css_refcount_alloc(PARAM_SET_POOL,
 		sizeof(struct sh_css_ddr_address_map), MMGR_ATTRIBUTE_DEFAULT);
@@ -5998,7 +6182,8 @@ static enum sh_css_err free_sh_css_ddr_address_map(
 /* Mark all parameters as changed to force recomputing the derived ISP parameters */
 void sh_css_invalidate_params(void)
 {
-	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_invalidate_params() enter:\n");
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"sh_css_invalidate_params() enter:\n");
 
 	isp_params_changed = true;
 	fpn_table_changed = true;
@@ -6027,7 +6212,8 @@ void sh_css_invalidate_params(void)
 	motion_config_changed = true;
 	dvs_6axis_config_changed = true;
 
-	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_invalidate_params() leave:\n");
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"sh_css_invalidate_params() leave:\n");
 }
 
 void sh_css_update_uds_and_crop_info(
@@ -6041,15 +6227,40 @@ void sh_css_update_uds_and_crop_info(
 	struct sh_css_uds_info *uds,		/* out */
 	struct sh_css_crop_pos *sp_out_crop_pos)/* out */
 {
-assert(info != NULL);
-assert(in_frame_info != NULL);
-assert(out_frame_info != NULL);
-assert(dvs_env != NULL);
-assert(zoom != NULL);
-assert(motion_vector != NULL);
-assert(uds != NULL);
-assert(sp_out_crop_pos != NULL);
-	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_update_uds_and_crop_info() enter:\n");
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"sh_css_update_uds_and_crop_info() enter:\n");
+
+	assert(info != NULL);
+	if (info == NULL)
+		return;
+
+	assert(in_frame_info != NULL);
+	if (in_frame_info == NULL)
+		return;
+
+	assert(out_frame_info != NULL);
+	if (out_frame_info == NULL)
+		return;
+
+	assert(dvs_env != NULL);
+	if (dvs_env == NULL)
+		return;
+
+	assert(zoom != NULL);
+	if (zoom == NULL)
+		return;
+
+	assert(motion_vector != NULL);
+	if (motion_vector == NULL)
+		return;
+
+	assert(uds != NULL);
+	if (uds == NULL)
+		return;
+
+	assert(sp_out_crop_pos != NULL);
+	if (sp_out_crop_pos == NULL)
+		return;
 
 	if (info->mode == SH_CSS_BINARY_MODE_VF_PP && !preview_mode) {
 		/* in non-preview modes, VF_PP does not do

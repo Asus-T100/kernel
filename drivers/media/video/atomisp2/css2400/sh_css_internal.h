@@ -39,10 +39,14 @@
 	do { \
 		if (sh_css_printf) { \
 			sh_css_printf(fmt, ## s); \
-		} \
+	   } \
 	} while (0)
 
 #define SH_CSS_MAX_BINARY_NAME	32
+
+/* this is an internal timeout value for CSS
+   it should apply to all busy-wait inside CSS system */
+#define CSS_TIMEOUT_US 200000
 
 #define SP_DEBUG_NONE	(0)
 #define SP_DEBUG_DUMP	(1)
@@ -56,11 +60,18 @@
 
 #define NUM_REF_FRAMES		2
 
+/* Determines MAX_CB_ELEMS_FOR_TAGGER in tagger.sp.c */
+/*
 #if defined(HAS_SP_2400A0)
 #define NUM_CONTINUOUS_FRAMES	5
 #else
 #define NUM_CONTINUOUS_FRAMES	10
 #endif
+*/
+
+/* The maximum depth of the frame buffer queue */
+#define NUM_CONTINUOUS_FRAMES	10
+
 #define NUM_OFFLINE_INIT_CONTINUOUS_FRAMES	3
 #define NUM_ONLINE_INIT_CONTINUOUS_FRAMES	2
 

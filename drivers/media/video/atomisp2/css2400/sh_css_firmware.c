@@ -72,6 +72,8 @@ sh_css_load_firmware(const char *fw_data,
 	/* Only allocate memory for ISP blob info */
 	sh_css_blob_info = sh_css_malloc((sh_css_num_binaries - 1) *
 						sizeof(*sh_css_blob_info));
+	if (sh_css_blob_info == NULL)
+		return sh_css_err_cannot_allocate_memory;
 
 	for (i = 0; i < sh_css_num_binaries; i++) {
 		struct sh_css_fw_info *bi = &binaries[i];
@@ -120,10 +122,12 @@ sh_css_load_blob(const unsigned char *blob, unsigned size)
 	/* this will allocate memory aligned to a DDR word boundary which
 	   is required for the CSS DMA to read the instructions. */
 	mmgr_store(target_addr, blob, size);
-	if (SH_CSS_PREVENT_UNINIT_READS) {
+#if SH_CSS_PREVENT_UNINIT_READS
+	{
 		unsigned padded_size = CEIL_MUL(size, HIVE_ISP_DDR_WORD_BYTES);
 		mmgr_clear(target_addr + size, padded_size - size);
 	}
+#endif
 	return target_addr;
 }
 

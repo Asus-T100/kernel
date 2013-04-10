@@ -733,10 +733,16 @@ struct sh_css_binary_info {
 	const struct sh_css_blob_descr *blob;
 	int			 num_output_formats;
 	enum sh_css_frame_format output_formats[SH_CSS_MAX_NUM_FRAME_FORMATS];
-	unsigned int		max_input_width;
-	unsigned int		min_output_width;
-	unsigned int		max_internal_width;
-	unsigned int		max_output_width;
+	uint32_t		min_input_width;
+	uint32_t		min_input_height;
+	uint32_t		max_input_width;
+	uint32_t		max_input_height;
+	uint32_t		min_output_width;
+	uint32_t		min_output_height;
+	uint32_t		max_output_width;
+	uint32_t		max_output_height;
+	uint32_t		max_internal_width;
+	uint32_t		max_internal_height;
 	unsigned int		max_dvs_envelope_width;
 	unsigned int		max_dvs_envelope_height;
 	unsigned int		variable_resolution;
@@ -799,7 +805,6 @@ struct sh_css_binary_info {
 		unsigned char     macc;
 		unsigned char     ss;
 		unsigned char     output;
-		unsigned char     output_table;
 		unsigned char     ref_frame;
 		unsigned char     tnr;
 		unsigned char     xnr;
