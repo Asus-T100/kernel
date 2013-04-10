@@ -100,9 +100,14 @@ static int mid_pb_probe(struct platform_device *pdev)
 		return -EINVAL;
 
 	priv = kzalloc(sizeof(struct mid_pb_priv), GFP_KERNEL);
-	input = input_allocate_device();
-	if (!priv || !input)
+	if (unlikely(!priv))
 		return -ENOMEM;
+
+	input = input_allocate_device();
+	if (unlikely(!input)) {
+		kfree(priv);
+		return -ENOMEM;
+	}
 
 	priv->input = input;
 	priv->irq = irq;
