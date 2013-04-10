@@ -652,10 +652,8 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 	}
 
 	if (sst_drv_ctx->pci_id == SST_BYT_PCI_ID) {
-		/* BASE  for BYT is 0xdf400000 */
 		byt_lpe_base = pci_resource_start(pci, 0);
-		pr_err("LPE base is: %#x", byt_lpe_base);
-		byt_lpe_base = 0xdf400000; /* FIXME: workaround till value is correct in PCI BAR */
+		pr_info("LPE base is: %#x", byt_lpe_base);
 	}
 
 #define SST_BYT_SHIM_OFFSET	0x140000
