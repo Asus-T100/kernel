@@ -45,11 +45,12 @@ struct byt_mc_private {
 
 enum {
 	BYT_HS_JACK,
-	BYT_DOCK_JACK,
 	BYT_CODEC_INT,
+	BYT_DOCK_JACK,
 };
 
 static int byt_hp_detection(void);
+static int byt_bp_detection(void);
 
 static struct snd_soc_jack_gpio hs_gpio[] = {
 	[BYT_HS_JACK] = {
@@ -60,6 +61,13 @@ static struct snd_soc_jack_gpio hs_gpio[] = {
 		.debounce_time		= 200,
 		.jack_status_check	= byt_hp_detection,
 		.invert			= 1,
+	},
+	[BYT_CODEC_INT] = {
+		.name			= "byt-codec-int",
+		.report			= SND_JACK_HEADSET |
+					  SND_JACK_BTN_0,
+		.debounce_time		= 40,
+		.jack_status_check	= byt_bp_detection,
 	},
 };
 
@@ -118,6 +126,31 @@ static int byt_hp_detection(void)
 	else
 		set_mic_bias(codec, "micbias1", false);
 	return jack_type;
+}
+
+static int byt_bp_detection(void)
+{
+	struct snd_soc_jack_gpio *gpio = &hs_gpio[BYT_CODEC_INT];
+	struct snd_soc_jack *jack = gpio->jack;
+	struct snd_soc_codec *codec = jack->codec;
+	int status = jack->status, enable;
+	bool press;
+
+	enable = gpio_get_value_cansleep(gpio->gpio);
+	if (gpio->invert)
+		enable = !enable;
+	pr_debug("%s: button press - %d", __func__, enable);
+	if ((jack->status & SND_JACK_HEADSET) == SND_JACK_HEADSET) {
+		press = rt5640_button_detect(codec);
+		if (press)
+			status = SND_JACK_HEADSET | SND_JACK_BTN_0;
+		else
+			status = SND_JACK_HEADSET;
+		pr_debug("codec reported = %d, status = %#x", press, status);
+	} else {
+		pr_debug("%s: spurious button press", __func__);
+	}
+	return status;
 }
 
 static const struct snd_soc_dapm_widget byt_dapm_widgets[] = {
@@ -410,6 +443,7 @@ static int snd_byt_mc_probe(struct platform_device *pdev)
 		pdata->codec_gpio, pdata->hsdet_gpio, pdata->dock_hs_gpio);
 
 	hs_gpio[BYT_HS_JACK].gpio = pdata->hsdet_gpio;
+	hs_gpio[BYT_CODEC_INT].gpio = pdata->codec_gpio;
 
 	/* register the soc card */
 	snd_soc_card_byt.dev = &pdev->dev;
