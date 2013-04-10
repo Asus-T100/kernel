@@ -29,7 +29,7 @@ void *r69001_platform_data(void *info)
 		.gpio = -1,
 	};
 
-	if (i2c_info->irq == 0xff) { /* not a fast-int */
+	if (!i2c_info->irq) { /* not a fast-int */
 		r69001_platform_data.gpio = get_gpio_by_name("jdi_touch_int");
 		if (r69001_platform_data.gpio == -1)
 			r69001_platform_data.gpio = 183;
