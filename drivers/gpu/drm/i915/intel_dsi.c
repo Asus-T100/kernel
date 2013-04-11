@@ -448,6 +448,34 @@ static void intel_dsi_mode_set(struct drm_encoder *encoder,
 
 	DRM_DEBUG_KMS("\n");
 
+	/* Enable bandgap fix in GOP driver */
+	intel_cck_write32_bits(dev_priv, 0x6D, 0x00010000, 0x00030000);
+	msleep(20);
+	intel_cck_write32_bits(dev_priv, 0x6E, 0x00010000, 0x00030000);
+	msleep(20);
+	intel_cck_write32_bits(dev_priv, 0x6F, 0x00010000, 0x00030000);
+	msleep(20);
+	intel_cck_write32_bits(dev_priv, 0x00, 0x00008000, 0x00008000);
+	msleep(20);
+	intel_cck_write32_bits(dev_priv, 0x00, 0x00000000, 0x00008000);
+	msleep(20);
+
+	/* Turn Display Trunk on */
+	intel_cck_write32_bits(dev_priv, 0x6B, 0x00020000, 0x00030000);
+	msleep(20);
+
+	intel_cck_write32_bits(dev_priv, 0x6C, 0x00020000, 0x00030000);
+	msleep(20);
+
+	intel_cck_write32_bits(dev_priv, 0x6D, 0x00020000, 0x00030000);
+	msleep(20);
+	intel_cck_write32_bits(dev_priv, 0x6E, 0x00020000, 0x00030000);
+	msleep(20);
+	intel_cck_write32_bits(dev_priv, 0x6F, 0x00020000, 0x00030000);
+
+	/* Need huge delay, otherwise clock is not stable */
+	msleep(100);
+
 	/* Enable all clock gating */
 	I915_WRITE(0x6200, 0xffffffff);
 	I915_WRITE(0x6204, 0xffffffff);
