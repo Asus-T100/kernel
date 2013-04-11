@@ -712,9 +712,6 @@ static int __init mdm_ctrl_module_init(void)
 		goto del_class;
 	}
 
-	wake_lock_init(&new_drv->stay_awake, WAKE_LOCK_SUSPEND,
-				"mcd_wakelock");
-
 	mdm_ctrl_launch_work(new_drv, MDM_CTRL_STATE_OFF);
 	flush_workqueue(new_drv->change_state_wq);
 
