@@ -642,7 +642,7 @@ static int __init mdm_ctrl_module_init(void)
 	/* Pre-initialisation: Retrieve platform device data*/
 	mdm_ctrl_get_device_info(new_drv);
 
-	if (new_drv->pdata->is_mdm_ctrl_disabled) {
+	if (new_drv->is_mdm_ctrl_disabled) {
 		ret = -ENODEV;
 		goto out;
 	}

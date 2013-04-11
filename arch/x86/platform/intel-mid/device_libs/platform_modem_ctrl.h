@@ -16,11 +16,6 @@
 #include <linux/mdm_ctrl.h>
 #include <linux/sfi.h>
 
-static inline int mcd_register_mdm_info(struct modem_base_info const *info)
-{
-	return 0;
-}
-
 extern void *modem_platform_data(void *data) __attribute__((weak));
 
 extern void sfi_handle_mdm(struct sfi_device_table_entry *pentry,
