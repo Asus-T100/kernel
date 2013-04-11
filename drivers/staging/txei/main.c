@@ -212,8 +212,7 @@ static int txei_release(struct inode *inode, struct file *file)
 		cb = NULL;
 	}
 
-	if (cl != NULL)
-		kfree(cl);
+	kfree(cl);
 	mutex_unlock(&dev->device_lock);
 	return rets;
 }

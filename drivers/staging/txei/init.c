@@ -81,12 +81,9 @@ void txei_io_list_flush(struct txei_io_list *list, struct txei_cl *cl)
 
 	list_for_each_entry_safe(cb_pos, cb_next,
 				 &list->txei_cb.cb_list, cb_list) {
-		if (cb_pos) {
-			struct txei_cl *cl_tmp;
-			cl_tmp = (struct txei_cl *)cb_pos->file_private;
-			if (txei_cl_cmp_id(cl, cl_tmp))
-				list_del(&cb_pos->cb_list);
-		}
+		struct txei_cl *cl_tmp = cb_pos->file_private;
+		if (txei_cl_cmp_id(cl, cl_tmp))
+			list_del(&cb_pos->cb_list);
 	}
 }
 /**
@@ -412,15 +409,11 @@ void txei_reset(struct txei_device *dev, bool intr_en)
 		}
 	}
 	/* remove all waiting requests */
-	if (dev->write_list.status == 0 &&
-	    !list_empty(&dev->write_list.txei_cb.cb_list)) {
+	if (dev->write_list.status == 0) {
 		list_for_each_entry_safe(cb_pos, cb_next,
 				&dev->write_list.txei_cb.cb_list, cb_list) {
-			if (cb_pos) {
-				list_del(&cb_pos->cb_list);
-				txei_free_cb_private(cb_pos);
-				cb_pos = NULL;
-			}
+			list_del(&cb_pos->cb_list);
+			txei_free_cb_private(cb_pos);
 		}
 	}
 }
