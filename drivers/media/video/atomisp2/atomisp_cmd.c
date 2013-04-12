@@ -1391,36 +1391,9 @@ static u32 get_pixel_depth(u32 pixelformat)
 	}
 }
 
-static int is_pixelformat_raw(u32 pixelformat)
+bool atomisp_is_mbuscode_raw(uint32_t code)
 {
-	switch (pixelformat) {
-	case V4L2_PIX_FMT_SBGGR16:
-	case V4L2_PIX_FMT_SBGGR12:
-	case V4L2_PIX_FMT_SGBRG12:
-	case V4L2_PIX_FMT_SGRBG12:
-	case V4L2_PIX_FMT_SRGGB12:
-	case V4L2_PIX_FMT_SBGGR10:
-	case V4L2_PIX_FMT_SGBRG10:
-	case V4L2_PIX_FMT_SGRBG10:
-	case V4L2_PIX_FMT_SRGGB10:
-	case V4L2_PIX_FMT_SBGGR8:
-	case V4L2_PIX_FMT_SGBRG8:
-	case V4L2_PIX_FMT_SGRBG8:
-	case V4L2_PIX_FMT_SRGGB8:
-		return 1;
-	default:
-		return 0;
-	}
-}
-
-int atomisp_is_mbuscode_raw(uint32_t code)
-{
-	const struct atomisp_format_bridge *b =
-		atomisp_get_format_bridge_from_mbus(code);
-
-	BUG_ON(!b);
-
-	return is_pixelformat_raw(b->pixelformat);
+	return code >= 0x3000 && code < 0x4000;
 }
 
 /*
