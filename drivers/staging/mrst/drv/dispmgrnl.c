@@ -208,8 +208,7 @@ static int dispmgr_nl_init(void)
 
 void dispmgr_start(struct drm_device *dev)
 {
-	g_dev = dev;
-	printk("kdispmgr: display manager start.\n");
+	pr_info("kdispmgr: display manager start.\n");
 	dispmgr_nl_init();
 	return;
 }

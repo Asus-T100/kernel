@@ -914,9 +914,20 @@ static const struct dev_pm_ops gpio_keys_pm_ops = {
 };
 #endif
 
+static struct platform_device_id gpio_keys_ids[] = {
+	{
+		.name = "gpio-keys",
+	}, {
+		.name = "gpio-lesskey",
+	}, {
+	}
+};
+MODULE_DEVICE_TABLE(platform, gpio_keys_ids);
+
 static struct platform_driver gpio_keys_device_driver = {
 	.probe		= gpio_keys_probe,
 	.remove		= __devexit_p(gpio_keys_remove),
+	.id_table	= gpio_keys_ids,
 	.driver		= {
 		.name	= "gpio-keys",
 		.owner	= THIS_MODULE,

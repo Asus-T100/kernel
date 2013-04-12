@@ -49,7 +49,7 @@
 #define MAX_FRAGMENT_SIZE (1024 * 1024)
 #define SST_GET_BYTES_PER_SAMPLE(pcm_wd_sz)  (((pcm_wd_sz + 15) >> 4) << 1)
 
-static void sst_restore_fw_context(void)
+void sst_restore_fw_context(void)
 {
 	struct snd_sst_ctxt_params fw_context;
 	struct ipc_post *msg = NULL;
@@ -112,10 +112,8 @@ int sst_download_fw(void)
 		return retval;
 	pr_debug("fw loaded successful!!!\n");
 
-#ifndef MRFLD_TEST_ON_MFLD
-	if (sst_drv_ctx->pci_id != SST_MRFLD_PCI_ID)
-		sst_restore_fw_context();
-#endif
+	if (sst_drv_ctx->ops->restore_dsp_context)
+		sst_drv_ctx->ops->restore_dsp_context();
 	sst_drv_ctx->sst_state = SST_FW_RUNNING;
 	return retval;
 }
@@ -163,7 +161,7 @@ static int sst_send_lpe_mixer_algo_params(void)
 	mixer_param.size = sizeof(input_mixer);
 	algo_param.params = &mixer_param;
 	mutex_unlock(&sst_drv_ctx->mixer_ctrl_lock);
-	pr_err("setting pp param\n");
+	pr_debug("setting pp param\n");
 	pr_debug("Algo ID %d Str id %d Enable %d Size %d\n",
 			algo_param.algo_id, algo_param.str_id,
 			algo_param.enable, algo_param.size);
@@ -196,7 +194,7 @@ int sst_get_stream_allocated(struct snd_sst_params *str_param,
 	if (block == NULL)
 		return -ENOMEM;
 
-	retval = sst_alloc_stream((char *) str_param, block);
+	retval = sst_drv_ctx->ops->alloc_stream((char *) str_param, block);
 	str_id = retval;
 	if (retval < 0) {
 		pr_err("sst_alloc_stream failed %d\n", retval);
@@ -239,6 +237,8 @@ int sst_get_stream_allocated(struct snd_sst_params *str_param,
 		str_id = -retval;
 	} else if (retval != 0) {
 		pr_err("sst: FW alloc failed retval %d\n", retval);
+		/* alloc failed, so reset the state to uninit */
+		str_info->status = STREAM_UN_INIT;
 		str_id = retval;
 	}
 free_block:
@@ -526,11 +526,7 @@ static int sst_cdev_ack(unsigned int str_id, unsigned long bytes)
 	addr =  ((void *)(sst_drv_ctx->mailbox + sst_drv_ctx->tstamp)) +
 			(str_id * sizeof(fw_tstamp));
 	offset =  offsetof(struct snd_sst_tstamp, bytes_copied);
-
-	if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID)
-		sst_shim_write64(addr, offset, fw_tstamp.bytes_copied);
-	else
-		sst_shim_write(addr, offset, fw_tstamp.bytes_copied);
+	sst_shim_write(addr, offset, fw_tstamp.bytes_copied);
 	return 0;
 
 }
@@ -767,7 +763,6 @@ static int sst_read_timestamp(struct pcm_stream_info *info)
 	substream = stream->pcm_substream;
 
 	if (sst_drv_ctx->pci_id == SST_MFLD_PCI_ID) {
-#ifndef MRFLD_TEST_ON_MFLD
 		struct snd_sst_tstamp_mfld fw_tstamp_mfld;
 
 		memcpy_fromio(&fw_tstamp_mfld,
@@ -775,16 +770,6 @@ static int sst_read_timestamp(struct pcm_stream_info *info)
 				+ (str_id * sizeof(fw_tstamp_mfld))),
 			sizeof(fw_tstamp_mfld));
 		return sst_calc_mfld_tstamp(info, stream->ops, &fw_tstamp_mfld);
-#else
-		struct snd_sst_tstamp fw_tstamp;
-
-		memcpy_fromio(&fw_tstamp,
-			((void *)(sst_drv_ctx->mailbox + sst_drv_ctx->tstamp)
-				+ (str_id * sizeof(fw_tstamp))),
-			sizeof(fw_tstamp));
-		return sst_calc_tstamp(info, substream, &fw_tstamp);
-#endif
-
 	} else {
 		struct snd_sst_tstamp fw_tstamp;
 
@@ -838,11 +823,7 @@ static int sst_device_control(int cmd, void *arg)
 		if (sst_drv_ctx->pci_id != SST_MFLD_PCI_ID)
 			sst_start_stream(str_id);
 		else
-#ifndef MRFLD_TEST_ON_MFLD
 			retval = sst_send_sync_msg(ipc, str_id);
-#else
-			retval = sst_start_stream(str_id);
-#endif
 
 		break;
 	}
@@ -856,14 +837,10 @@ static int sst_device_control(int cmd, void *arg)
 		ipc = IPC_IA_DROP_STREAM;
 		str_info->prev = STREAM_UN_INIT;
 		str_info->status = STREAM_INIT;
-		if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID)
-			retval = sst_drop_stream(str_id);
-		else
-#ifndef MRFLD_TEST_ON_MFLD
+		if (sst_drv_ctx->use_32bit_ops)
 			retval = sst_send_sync_msg(ipc, str_id);
-#else
+		else
 			retval = sst_drop_stream(str_id);
-#endif
 		break;
 	}
 	case SST_SND_STREAM_INIT: {
@@ -979,11 +956,7 @@ static int sst_set_generic_params(enum sst_controls cmd, void *arg)
 		if (ret_val)
 			return ret_val;
 
-#ifndef MRFLD_TEST_ON_MFLD
 		ret_val = sst_send_byte_stream_mrfld(sst_bytes);
-#else
-		ret_val = sst_send_byte_stream(sst_bytes);
-#endif
 		pm_runtime_put(&sst_drv_ctx->pci->dev);
 		break;
 	}
@@ -1030,11 +1003,9 @@ static int sst_set_generic_params(enum sst_controls cmd, void *arg)
 **/
 void sst_get_max_streams(struct snd_sst_driver_info *info)
 {
-	/* FIXME: Remove the check, MRFLD probe dai changes will update this*/
-	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID)
-		info->max_streams = sst_drv_ctx->info.max_streams - 1;
-	else
-		info->max_streams = sst_drv_ctx->info.max_streams;
+	pr_debug("info.max_streams %d num_probes %d\n", sst_drv_ctx->info.max_streams,
+					sst_drv_ctx->info.num_probes);
+	info->max_streams = sst_drv_ctx->info.max_streams - sst_drv_ctx->info.num_probes;
 }
 
 static struct sst_ops pcm_ops = {

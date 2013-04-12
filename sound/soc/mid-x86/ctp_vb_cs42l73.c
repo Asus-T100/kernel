@@ -46,7 +46,7 @@
  * But having 20ms delay doesn't work */
 #define MIC2SDET_DEBOUNCE_DELAY 50 /* 50 ms */
 
-/* CDB42L73 widgets */
+/* CS42L73 widgets */
 static const struct snd_soc_dapm_widget ctp_vb_dapm_widgets[] = {
 
 	SND_SOC_DAPM_HP("Headphone", NULL),
@@ -54,7 +54,7 @@ static const struct snd_soc_dapm_widget ctp_vb_dapm_widgets[] = {
 	SND_SOC_DAPM_SPK("Ext Spk", ctp_amp_event),
 };
 
-/* CDB42L73 Audio Map */
+/* CS42L73 Audio Map */
 static const struct snd_soc_dapm_route ctp_vb_audio_map[] = {
 	{"MIC2", NULL, "Headset Mic"},
 	/* Headphone (L+R)->  HPOUTA, HPOUTB */
@@ -304,11 +304,13 @@ static struct snd_soc_dai_link ctp_vb_dailink[] = {
 	},
 
 };
+
 int vb_hp_detection(struct snd_soc_codec *codec,
 			struct snd_soc_jack *jack, int enable)
 {
 	return cs42l73_hp_detection(codec, jack, enable);
 }
+
 int vb_bp_detection(struct snd_soc_codec *codec,
 			struct snd_soc_jack *jack, int enable)
 {
@@ -327,7 +329,13 @@ int vb_dai_link(struct snd_soc_card *card)
 	return 0;
 }
 
+static void ctp_vb_card_name(struct snd_soc_card *card)
+{
+	card->name = "cloverview_audio";
+}
+
 struct snd_soc_machine_ops ctp_vb_cs42l73_ops = {
+	.card_name = ctp_vb_card_name,
 	.ctp_init = ctp_vb_init,
 	.dai_link = vb_dai_link,
 	.bp_detection = vb_bp_detection,

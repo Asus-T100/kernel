@@ -766,7 +766,8 @@ int intel_scu_ipc_read_osnib(u8 *data, int len, int offset)
 		goto exit;
 	}
 
-	pr_debug("OSNIB read addr (remapped) is %x\n", osnibr_addr);
+	pr_debug("OSNIB read addr (remapped) is %x\n",
+						(unsigned int)osnibr_addr);
 
 	/* Make a chksum verification for osnib */
 	for (i = 0; i < oshob_info->osnib_size; i++)
@@ -830,7 +831,8 @@ int intel_scu_ipc_write_osnib(u8 *data, int len, int offset)
 			    oshob_info->offs_add;
 	osnibr_addr = oshob_addr + struct_offs;
 
-	pr_debug("OSNIB read addr (remapped) in OSHOB at %x\n", osnibr_addr);
+	pr_debug("OSNIB read addr (remapped) in OSHOB at %x\n",
+						(unsigned int)osnibr_addr);
 
 	for (i = 0; i < oshob_info->osnib_size; i++) {
 		osnib_data[i] = readb(osnibr_addr + i);
@@ -1252,7 +1254,7 @@ int intel_scu_ipc_read_oshob_def_param(void __iomem *poshob_addr)
 
 	struct_offs = offsetof(struct scu_ipc_oshob, osnibr) +
 			    oshob_info->offs_add;
-	oshob_info->osnibr_ptr = poshob_addr + struct_offs;
+	oshob_info->osnibr_ptr = (unsigned long)(poshob_addr + struct_offs);
 
 	pr_info("Using DEFAULT OSHOB structure size = %d bytes\n",
 					oshob_info->oshob_size);

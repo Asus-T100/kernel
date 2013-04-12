@@ -39,6 +39,10 @@ void bcmdhd_register_embedded_control(void *dev_id,
 
 static int bcmdhd_set_power(int on)
 {
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2) {
+		gpio_direction_input(gpio_enable);
+		gpio_direction_output(gpio_enable, 0);
+	}
 	gpio_set_value(gpio_enable, on);
 
 	/* Delay advice by BRCM */
@@ -125,8 +129,15 @@ void __init bcm43xx_platform_data_init_post_scu(void *info)
 	int wifi_irq_gpio;
 	int err;
 
-	/*Get GPIO numbers from the SFI table*/
-	wifi_irq_gpio = get_gpio_by_name(BCM43XX_SFI_GPIO_IRQ_NAME);
+	pr_err("bcm43xx_platform_data_init_post_scu\n");
+
+	if (intel_mid_identify_cpu() != INTEL_MID_CPU_CHIP_VALLEYVIEW2) {
+		/*Get GPIO numbers from the SFI table*/
+		wifi_irq_gpio = get_gpio_by_name(BCM43XX_SFI_GPIO_IRQ_NAME);
+	} else {
+		wifi_irq_gpio = 144;
+	}
+
 	if (wifi_irq_gpio < 0) {
 		pr_err("%s: Unable to find WLAN-interrupt GPIO in the SFI table\n",
 				__func__);
@@ -136,29 +147,41 @@ void __init bcm43xx_platform_data_init_post_scu(void *info)
 	bcmdhd_res[0].start = wifi_irq_gpio;
 	bcmdhd_res[0].end = bcmdhd_res[0].start;
 
-	gpio_enable = get_gpio_by_name(BCM43XX_SFI_GPIO_ENABLE_NAME);
+	if (intel_mid_identify_cpu() != INTEL_MID_CPU_CHIP_VALLEYVIEW2)
+		gpio_enable = get_gpio_by_name(BCM43XX_SFI_GPIO_ENABLE_NAME);
+	else {
+		gpio_enable = 150;
+		pr_err("baytrail, hardcoding GPIO Enable to %d\n", gpio_enable);
+		gpio_request(gpio_enable, "bcm43xx_en");
+	}
 	if (gpio_enable < 0) {
 		pr_err("%s: Unable to find WLAN-enable GPIO in the SFI table\n",
 		       __func__);
 		return;
 	}
 
+
 	bcmdhd_res[1].start = gpio_enable;
 	bcmdhd_res[1].end = bcmdhd_res[1].start;
 
 	/* format vmmc reg address from sfi table */
-	sprintf((char *)bcm43xx_vmmc3_supply.dev_name, "0000:00:%02x.%01x",
-		(sd_info->addr)>>8, sd_info->addr&0xFF);
+	if (intel_mid_identify_cpu() != INTEL_MID_CPU_CHIP_VALLEYVIEW2)
+		sprintf((char *)bcm43xx_vmmc3_supply.dev_name,
+			"0000:00:%02x.%01x", (sd_info->addr)>>8,
+			sd_info->addr&0xFF);
 
 	err = platform_device_register(&bcmdhd_device);
 	if (err < 0)
 		pr_err("platform_device_register failed for bcmdhd_device\n");
 
-	err = platform_device_register(&bcm43xx_vwlan_device);
-	if (err < 0)
-		pr_err("platform_device_register failed for bcm43xx_vwlan_device\n");
+	if (intel_mid_identify_cpu() != INTEL_MID_CPU_CHIP_VALLEYVIEW2) {
+		err = platform_device_register(&bcm43xx_vwlan_device);
+		if (err < 0)
+			pr_err("platform_device_register failed for bcm43xx_vwlan_device\n");
+	}
 
 }
+
 
 void __init *bcm43xx_platform_data(void *info)
 {
@@ -168,17 +191,20 @@ void __init *bcm43xx_platform_data(void *info)
 			| SDHCI_QUIRK2_ENABLE_MMC_PM_IGNORE_PM_NOTIFY;
 
 	pr_err("Using bcm43xx platform data\n");
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2)
+		sdhci_quirk |= SDHCI_QUIRK2_NO_1_8_V;
 
 	sdhci_pdata_set_quirks(sdhci_quirk);
 	sdhci_pdata_set_embedded_control(&bcmdhd_register_embedded_control);
 
-	sd_info = kmemdup(info, sizeof(*sd_info), GFP_KERNEL);
+	if (intel_mid_identify_cpu() != INTEL_MID_CPU_CHIP_VALLEYVIEW2) {
+		sd_info = kmemdup(info, sizeof(*sd_info), GFP_KERNEL);
 
-	if (!sd_info) {
-		pr_err("MRST: fail to alloc mem for delayed bcm43xx dev\n");
-		return NULL;
+		if (!sd_info) {
+			pr_err("MRST: fail to alloc mem for delayed bcm43xx dev\n");
+			return NULL;
+		}
 	}
-
 	bcm43xx_platform_data_init_post_scu(sd_info);
 	return &bcmdhd_device;
 }

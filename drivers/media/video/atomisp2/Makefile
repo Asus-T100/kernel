@@ -1,6 +1,9 @@
 ifeq ($(CONFIG_ISP2400), y)
 	css_folder = css2400
 	css_platform_folder = hive_isp_css_2400_system
+else ifeq ($(CONFIG_ISP2400B0), y)
+	css_folder = css2400b0
+	css_platform_folder = hive_isp_css_2400_system
 else
 	css_folder = css
 	css_platform_folder = hive_isp_css_system
@@ -61,6 +64,15 @@ atomisp-objs += \
 
 ifeq ($(CONFIG_ISP2400), y)
 atomisp-objs += $(css_folder)/$(css_platform_folder)/host/input_system.o
+endif
+ifeq ($(CONFIG_ISP2400B0), y)
+atomisp-objs += $(css_folder)/$(css_platform_folder)/host/input_system.o
+endif
+
+ifeq ($(CONFIG_VIDEO_ATOMISP_CSS20), y)
+atomisp-objs += atomisp_compat_css20.o
+else
+atomisp-objs += atomisp_compat_css15.o
 endif
 
 obj-$(CONFIG_VIDEO_ATOMISP_CSS15) = atomisp.o

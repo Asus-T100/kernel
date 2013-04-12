@@ -36,7 +36,6 @@
  */ 
 struct mdfld_dsi_dbi_output {
 	struct mdfld_dsi_encoder base;
-	struct drm_display_mode *panel_fixed_mode;
 
 	u8 last_cmd;
 	u8 lane_count;
@@ -93,8 +92,7 @@ extern void mdfld_dsi_dbi_enter_dsr(struct mdfld_dsi_dbi_output *dbi_output,
 		int pipe);
 extern int mdfld_dbi_dsr_init(struct drm_device *dev);
 extern struct mdfld_dsi_encoder *mdfld_dsi_dbi_init(struct drm_device *dev,
-		struct mdfld_dsi_connector *dsi_connector,
-		struct panel_funcs *p_funcs);
+		struct mdfld_dsi_connector *dsi_connector);
 extern void mdfld_reset_panel_handler_work(struct work_struct *work);
 extern void mdfld_dbi_update_panel(struct drm_device *dev, int pipe);
 extern int __dbi_power_on(struct mdfld_dsi_config *dsi_config);

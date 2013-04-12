@@ -695,6 +695,7 @@ _fun_exit:
 	mutex_unlock(&dev_priv->gamma_csc_lock);
 	return ret;
 }
+
 /*
  * set display controller side color conversion
  * KAI1
@@ -1765,7 +1766,7 @@ static int mdfld_crtc_dsi_mode_set(struct drm_crtc *crtc,
 	* is 608x1024(64 bits align), then the information between android
 	* and Linux frame buffer is not consistent.
 	*/
-	if (get_panel_type(dev, 0) == TMD_6X10_VID)
+	if (is_tmd_6x10_panel(dev, 0))
 		ctx->dspsize = ((mode->crtc_vdisplay - 1) << 16) |
 			(mode->crtc_hdisplay - 200  - 1);
 	else

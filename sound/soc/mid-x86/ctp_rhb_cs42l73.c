@@ -467,11 +467,13 @@ static struct snd_soc_ops ctp_vsp_ops = {
 	.hw_params = ctp_cs42l73_hw_params,
 	.shutdown = ctp_cs42l73_shutdown,
 };
+
 static struct snd_soc_ops ctp_comms_dai_link_ops = {
 	.startup = ctp_comms_dai_link_startup,
 	.hw_params = ctp_comms_dai_link_hw_params,
 	.prepare = ctp_comms_dai_link_prepare,
 };
+
 static struct snd_soc_ops ctp_comms_voip_dai_link_ops = {
 	.startup = ctp_comms_dai_link_startup,
 	.hw_params = ctp_comms_dai_link_hw_params,
@@ -506,7 +508,6 @@ static struct snd_soc_dai_link ctp_rhb_dailink[] = {
 		.ignore_suspend = 1,
 		.ops = &ctp_vsp_ops,
 	},
-
 	[CTP_RHB_AUD_COMP_ASP_DEV] = {
 		.name = "Cloverview Comp ASP",
 		.stream_name = "Compress-Audio",
@@ -594,7 +595,13 @@ static int ctp_dai_link(struct snd_soc_card *card)
 	return 0;
 }
 
+static void ctp_rhb_card_name(struct snd_soc_card *card)
+{
+	card->name = "cloverview_audio";
+}
+
 struct snd_soc_machine_ops ctp_rhb_cs42l73_ops = {
+	.card_name = ctp_rhb_card_name,
 	.ctp_init = ctp_init,
 	.dai_link = ctp_dai_link,
 	.bp_detection = ctp_bp_detection,

@@ -35,6 +35,7 @@
 #include <linux/pci.h>
 #include <linux/delay.h>
 #include <linux/fs.h>
+#include <linux/sched.h>
 #include <linux/firmware.h>
 #include <linux/dmaengine.h>
 #include <linux/intel_mid_dma.h>
@@ -45,7 +46,6 @@
 #include "../sst_platform.h"
 #include "intel_sst_fw_ipc.h"
 #include "intel_sst_common.h"
-#include <linux/sched.h>
 
 /**
  * intel_sst_reset_dsp_medfield - Resetting SST DSP
@@ -116,6 +116,8 @@ int intel_sst_reset_dsp_mrfld(void)
 
 	csr.full &= ~(0x1);
 	sst_shim_write64(sst_drv_ctx->shim, SST_CSR, csr.full);
+
+	csr.full = sst_shim_read64(sst_drv_ctx->shim, SST_CSR);
 	pr_debug("value:0x%llx\n", csr.full);
 	mutex_unlock(&sst_drv_ctx->csr_lock);
 	return 0;
@@ -1058,14 +1060,8 @@ static int sst_request_fw(struct intel_sst_drv *sst)
 	int retval = 0;
 	char name[20];
 
-#ifndef MRFLD_TEST_ON_MFLD
 	snprintf(name, sizeof(name), "%s%04x%s", "fw_sst_",
 				sst->pci_id, ".bin");
-#else
-	snprintf(name, sizeof(name), "%s%04x%s", "fw_sst_",
-				sst->pci_id, "_mt.bin");
-#endif
-
 	pr_debug("Requesting FW %s now...\n", name);
 	retval = request_firmware(&sst->fw, name,
 				 &sst->pci->dev);
@@ -1077,9 +1073,7 @@ static int sst_request_fw(struct intel_sst_drv *sst)
 		pr_err("request fw failed %d\n", retval);
 		return retval;
 	}
-#ifndef MRFLD_TEST_ON_MFLD
-	if (sst->pci_id == SST_MRFLD_PCI_ID)
-#endif
+	if (sst->info.use_elf == true)
 		retval = sst_validate_fw_elf(sst->fw);
 	if (retval != 0) {
 		pr_err("FW image invalid...\n");
@@ -1095,7 +1089,6 @@ static int sst_request_fw(struct intel_sst_drv *sst)
 	pr_debug("phys: %x", virt_to_phys(sst->fw_in_mem));
 	memcpy(sst->fw_in_mem, sst->fw->data,
 			sst->fw->size);
-#ifndef MRFLD_TEST_ON_MFLD
 	if (sst->use_dma) {
 		if (sst->info.use_elf == true)
 			retval = sst_parse_elf_fw_dma(sst,
@@ -1117,7 +1110,6 @@ static int sst_request_fw(struct intel_sst_drv *sst)
 		goto end_release;
 	}
 
-#endif
 end_release:
 	release_firmware(sst->fw);
 	sst->fw = NULL;
@@ -1353,13 +1345,11 @@ int sst_load_fw(void)
 	} else {
 		sst_do_memcpy(&sst_drv_ctx->memcpy_list);
 	}
-
 	/* Write the DRAM config before enabling FW
 	 */
-	if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID)
+	if (!sst_drv_ctx->use_32bit_ops)
 		mrfld_dccm_config_write(sst_drv_ctx->dram,
 						sst_drv_ctx->ddr_base);
-
 	sst_drv_ctx->sst_state = SST_FW_LOADED;
 	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID)
 		sst_fill_config(sst_drv_ctx);

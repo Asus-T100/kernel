@@ -46,12 +46,14 @@ struct sh_css_frame;
 /*
  * Helper function
  */
-void dump_sp_dmem(unsigned int addr, unsigned int size);
+void dump_sp_dmem(struct atomisp_device *isp, unsigned int addr,
+		  unsigned int size);
 struct camera_mipi_info *atomisp_to_sensor_mipi_info(struct v4l2_subdev *sd);
 struct atomisp_video_pipe *atomisp_to_video_pipe(struct video_device *dev);
 int atomisp_reset(struct atomisp_device *isp);
 void atomisp_flush_bufs_and_wakeup(struct atomisp_device *isp);
 void atomisp_clear_css_buffer_counters(struct atomisp_device *isp);
+bool atomisp_buffers_queued(struct atomisp_device *isp);
 
 /* TODO:should be here instead of atomisp_helper.h
 extern void __iomem *atomisp_io_base;
@@ -63,6 +65,7 @@ static inline void __iomem *atomisp_get_io_virt_addr(unsigned int address)
 }
 */
 void *atomisp_kernel_malloc(size_t bytes);
+void *atomisp_kernel_zalloc(size_t bytes, bool zero_mem);
 void atomisp_kernel_free(void *ptr);
 
 /*
@@ -78,7 +81,8 @@ irqreturn_t atomisp_isr_thread(int irq, void *isp_ptr);
 const struct atomisp_format_bridge *get_atomisp_format_bridge_from_mbus(
 	enum v4l2_mbus_pixelcode mbus_code);
 int atomisp_is_mbuscode_raw(uint32_t code);
-int atomisp_get_frame_pgnr(const struct sh_css_frame *frame, u32 * p_pgnr);
+int atomisp_get_frame_pgnr(struct atomisp_device *isp,
+			   const struct sh_css_frame *frame, u32 * p_pgnr);
 void atomisp_delayed_init_work(struct work_struct *work);
 
 /*
@@ -124,12 +128,6 @@ int atomisp_nr(struct atomisp_device *isp, int flag,
  */
 int atomisp_tnr(struct atomisp_device *isp, int flag,
 		struct atomisp_tnr_config *config);
-
-/*
- * Function to get histogram data for image frame
- */
-int atomisp_histogram(struct atomisp_device *isp,
-	int flag, void *config);
 
 /*
  * Function to configure black level compensation
@@ -235,12 +233,6 @@ int atomisp_fixed_pattern(struct atomisp_device *isp, int flag, __s32 * value);
  */
 int atomisp_fixed_pattern_table(struct atomisp_device *isp,
 				struct v4l2_framebuffer *config);
-
-/*
- * Function to configure vf overlay image
- */
-int atomisp_vf_overlay(struct atomisp_device *isp, int flag,
-		       struct atomisp_overlay *overlay);
 
 /*
  * Function to configure false color correction

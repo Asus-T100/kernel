@@ -155,7 +155,8 @@ int pmu_set_devices_in_d0i0(void)
 	status = pmu_issue_interactive_command(&cur_pmssc, false, false);
 
 	if (unlikely(status != PMU_SUCCESS)) {	/* pmu command failed */
-		printk(KERN_CRIT "Failed to Issue a PM command to PMU2\n");
+		printk(KERN_CRIT "%s: Failed to Issue a PM command to PMU2\n",
+								__func__);
 		mid_pmu_cxt->shutdown_started = false;
 		goto unlock;
 	}
@@ -1602,10 +1603,14 @@ static int __devinit mid_pmu_probe(struct pci_dev *dev,
 	struct mrst_pmu_reg __iomem *pmu;
 	u32 data;
 
-#ifdef CONFIG_HAS_WAKELOCK
-	wake_lock_init(&mid_pmu_cxt->pmu_wake_lock,
-					WAKE_LOCK_SUSPEND, "mid_pmu");
-#endif
+	mid_pmu_cxt->pmu_wake_lock =
+				wakeup_source_register("pmu_wake_lock");
+
+	if (!mid_pmu_cxt->pmu_wake_lock) {
+		pr_err("%s: unable to register pmu wake source.\n", __func__);
+		return -ENOMEM;
+	}
+
 	/* Init the device */
 	ret = pci_enable_device(dev);
 	if (ret) {
@@ -1677,16 +1682,16 @@ static int __devinit mid_pmu_probe(struct pci_dev *dev,
 	mid_pmu_cxt->pmu_init_time =
 		cpu_clock(raw_smp_processor_id());
 
+#ifdef CONFIG_PM_DEBUG
 	/*
 	 * FIXME: Since S3 is not enabled yet we need to take
 	 * a wake lock here. Else S3 will be triggered on display
 	 * time out and platform will hang
 	 */
-	if (!platform_is(INTEL_ATOM_MFLD) && !platform_is(INTEL_ATOM_CLV)) {
-#ifdef CONFIG_HAS_WAKELOCK
-		wake_lock(&mid_pmu_cxt->pmu_wake_lock);
+	if (platform_is(INTEL_ATOM_MRFLD))
+		__pm_stay_awake(mid_pmu_cxt->pmu_wake_lock);
 #endif
-	}
+
 	return 0;
 
 out_err5:
@@ -1703,17 +1708,12 @@ out_err2:
 out_err1:
 	pci_disable_device(dev);
 out_err0:
-#ifdef CONFIG_HAS_WAKELOCK
-	wake_unlock(&mid_pmu_cxt->pmu_wake_lock);
-#endif
-	printk(KERN_ALERT "PMU DRIVER return from probe %d\n", ret);
+	wakeup_source_unregister(mid_pmu_cxt->pmu_wake_lock);
 	return ret;
 }
 
 static void __devexit mid_pmu_remove(struct pci_dev *dev)
 {
-	dev_dbg(&mid_pmu_cxt->pmu_dev->dev, "Mid PM mid_pmu_remove called\n");
-
 	/* Freeing up the irq */
 	free_irq(dev->irq, &pmu_sc_irq);
 
@@ -1730,6 +1730,8 @@ static void __devexit mid_pmu_remove(struct pci_dev *dev)
 	/* disable the current PCI device */
 	pci_release_region(dev, 0);
 	pci_disable_device(dev);
+
+	wakeup_source_unregister(mid_pmu_cxt->pmu_wake_lock);
 }
 
 static void mid_pmu_shutdown(struct pci_dev *dev)
@@ -1778,6 +1780,9 @@ static int standby_enter(void)
 		       &mid_pmu_cxt->pmu_reg->pm_wkc[0]);
 	writel(mid_pmu_cxt->ss_config->wake_state.wake_enable[1],
 		       &mid_pmu_cxt->pmu_reg->pm_wkc[1]);
+
+	if (platform_is(INTEL_ATOM_MRFLD))
+		up(&mid_pmu_cxt->scu_ready_sem);
 
 	return 0;
 }
@@ -1863,7 +1868,6 @@ static int __init mid_pci_register_init(void)
 	sema_init(&mid_pmu_cxt->scu_ready_sem, 1);
 
 	/* registering PCI device */
-	printk(KERN_ALERT "PMU DRIVER BEFORE PROBE\n");
 	ret = pci_register_driver(&driver);
 	suspend_set_ops(&mid_suspend_ops);
 

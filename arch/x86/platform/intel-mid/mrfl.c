@@ -16,6 +16,9 @@
 #include <linux/sfi.h>
 #include <linux/irq.h>
 #include <linux/module.h>
+#include <linux/delay.h>
+#include <linux/intel_mid_pm.h>
+#include <linux/power_supply.h>
 #include <linux/power/intel_mid_powersupply.h>
 #include <linux/power/battery_id.h>
 #include <asm/setup.h>
@@ -24,9 +27,11 @@
 #include <asm/intel_scu_ipc.h>
 
 #define APIC_DIVISOR 16
+#define RSTC_IO_PORT_ADDR 0xcf9
+#define RSTC_COLD_BOOT 0x4
 
-enum intel_mrfl_sim_type __intel_mrfl_sim_platform;
-EXPORT_SYMBOL_GPL(__intel_mrfl_sim_platform);
+enum intel_mid_sim_type __intel_mid_sim_platform;
+EXPORT_SYMBOL_GPL(__intel_mid_sim_platform);
 
 struct plat_battery_config  *plat_batt_config;
 EXPORT_SYMBOL(plat_batt_config);
@@ -42,16 +47,27 @@ static struct intel_mid_ops tangier_ops = {
 	.arch_setup = tangier_arch_setup,
 };
 
+static void tangier_power_off(void)
+{
+	if (power_supply_is_system_supplied()) {
+		outb(RSTC_COLD_BOOT, RSTC_IO_PORT_ADDR); /* Request cold boot */
+		udelay(50);
+	} else
+		pmu_power_off();
+}
+
 static unsigned long __init tangier_calibrate_tsc(void)
 {
+
 	/* [REVERT ME] fast timer calibration method to be defined */
-	if (intel_mrfl_identify_sim() == INTEL_MRFL_CPU_SIMULATION_VP) {
+	if ((intel_mid_identify_sim() == INTEL_MID_CPU_SIMULATION_VP) ||
+		(intel_mid_identify_sim() == INTEL_MID_CPU_SIMULATION_HVP)) {
 		lapic_timer_frequency = 50000;
 		return 1000000;
 	}
 
-	if ((intel_mrfl_identify_sim() == INTEL_MRFL_CPU_SIMULATION_SLE) ||
-		(intel_mrfl_identify_sim() == INTEL_MRFL_CPU_SIMULATION_NONE)) {
+	if ((intel_mid_identify_sim() == INTEL_MID_CPU_SIMULATION_SLE) ||
+		(intel_mid_identify_sim() == INTEL_MID_CPU_SIMULATION_NONE)) {
 
 		unsigned long fast_calibrate;
 		u32 lo, hi, ratio, fsb, bus_freq;
@@ -127,11 +143,11 @@ static int __init set_simulation_platform(char *str)
 {
 	int platform;
 
-	__intel_mrfl_sim_platform = INTEL_MRFL_CPU_SIMULATION_NONE;
+	__intel_mid_sim_platform = INTEL_MID_CPU_SIMULATION_NONE;
 	if (get_option(&str, &platform)) {
-		__intel_mrfl_sim_platform = platform;
+		__intel_mid_sim_platform = platform;
 		pr_info("simulator mode %d enabled.\n",
-			__intel_mrfl_sim_platform);
+			__intel_mid_sim_platform);
 		return 0;
 	}
 
@@ -165,7 +181,8 @@ static int __init get_plat_batt_config(void)
 static void __init tangier_time_init(void)
 {
 	/* [REVERT ME] ARAT capability not set in VP. Force setting */
-	if (intel_mrfl_identify_sim() == INTEL_MRFL_CPU_SIMULATION_VP)
+	if (intel_mid_identify_sim() == INTEL_MID_CPU_SIMULATION_VP ||
+		intel_mid_identify_sim() == INTEL_MID_CPU_SIMULATION_HVP)
 		set_cpu_cap(&boot_cpu_data, X86_FEATURE_ARAT);
 
 	if (intel_mid_timer_init)
@@ -177,6 +194,7 @@ static void __init tangier_arch_setup(void)
 	x86_platform.calibrate_tsc = tangier_calibrate_tsc;
 	intel_mid_timer_init = x86_init.timers.timer_init;
 	x86_init.timers.timer_init = tangier_time_init;
+	pm_power_off = tangier_power_off;
 }
 
 static void set_batt_chrg_prof(struct ps_pse_mod_prof *batt_prof,
@@ -265,7 +283,13 @@ static int __init mrfl_platform_init(void)
 }
 arch_initcall_sync(mrfl_platform_init);
 
-void *get_tangier_ops()
+void *get_tangier_ops(void)
+{
+	return &tangier_ops;
+}
+
+/* piggy back on anniedale ops right now */
+void *get_anniedale_ops()
 {
 	return &tangier_ops;
 }

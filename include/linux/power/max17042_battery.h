@@ -125,6 +125,7 @@ struct max17042_platform_data {
 	bool is_lowbatt_shutdown;
 	bool file_sys_storage_enabled;
 	bool soc_intr_mode_enabled;
+	bool reset_chip;
 	int technology;
 	char battid[BATTID_LEN + 1];
 	char model_name[MODEL_NAME_LEN + 1];
@@ -135,6 +136,10 @@ struct max17042_platform_data {
 	int temp_max_lim;	/* in degrees centigrade */
 	int volt_min_lim;	/* milli volts */
 	int volt_max_lim;	/* milli volts */
+	int resv_cap;
+
+	u16 tgain;
+	u16 toff;
 
 	int (*current_sense_enabled)(void);
 	int (*battery_present)(void);

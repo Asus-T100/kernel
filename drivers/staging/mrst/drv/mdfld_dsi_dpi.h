@@ -56,7 +56,6 @@ struct mdfld_dsi_dpi_output {
 
 /*export functions*/
 extern struct mdfld_dsi_encoder *mdfld_dsi_dpi_init(struct drm_device *dev,
-				struct mdfld_dsi_connector *dsi_connector,
-				struct panel_funcs *p_funcs);
+		struct mdfld_dsi_connector *dsi_connector);
 
 #endif /*__MDFLD_DSI_DPI_H__*/

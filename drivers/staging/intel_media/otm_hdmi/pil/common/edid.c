@@ -1390,3 +1390,121 @@ otm_hdmi_ret_t edid_parse(edid_info_t *edid_info,
 exit:
 	return rc;
 }
+
+/*
+ * Read enhanced EDID data blocks at 0xA0 using segment pointer address 0x60
+ */
+static otm_hdmi_ret_t __enhanced_ddc_read_one_block(struct i2c_adapter *adapter,
+		unsigned char sp, unsigned char offset, unsigned char *buffer)
+{
+	#define SEGMENT_ADDR 0x30
+	#define EDID_ADDR    0x50
+	struct i2c_msg msgs[] = {
+			{
+				.addr = SEGMENT_ADDR,
+				.flags = 0,
+				.len = 1,
+				.buf = &sp,
+
+			}, {
+				.addr = EDID_ADDR,
+				.flags = 0,
+				.len = 1,
+				.buf = &offset,
+
+			}, {
+				.addr = EDID_ADDR,
+				.flags = I2C_M_RD,
+				.len = SEGMENT_SIZE,
+				.buf = buffer,
+			}
+	};
+
+	int ret_i2c, retries = 5, siz = sizeof(msgs) / sizeof(msgs[0]);
+
+	pr_debug("enter %s\n", __func__);
+
+	/* Safty check */
+	if (!adapter || !buffer)
+		return OTM_HDMI_ERR_FAILED;
+
+	do {
+		ret_i2c = i2c_transfer(adapter, msgs, siz);
+		pr_debug("ret_i2c: %d\n", ret_i2c);
+	} while (ret_i2c != siz && --retries);
+
+	if (ret_i2c != siz) {
+		pr_err("i2c failed1\n");
+		return OTM_HDMI_ERR_FAILED;
+	}
+
+	pr_debug("exit %s\n", __func__);
+
+	return OTM_HDMI_SUCCESS;
+}
+
+/*
+ * edid_extension_parse()
+ */
+otm_hdmi_ret_t edid_extension_parse(struct i2c_adapter *adapter,
+			edid_info_t *edid_info, unsigned char *edid)
+{
+	unsigned char *buffer;
+	edid_block_map_t ebm;
+	extention_block_cea_t eb;
+	otm_hdmi_ret_t rc = OTM_HDMI_SUCCESS;
+	int i, sp, offset;
+
+	if (!edid_info || !edid)
+		return OTM_HDMI_ERR_FAILED;
+
+	pr_debug("enter %s\n", __func__);
+
+	/* If there are no extentions - we are done */
+	VERIFY(edid[0x7e] != 0, rc, OTM_HDMI_SUCCESS, exit);
+
+	/* Point to the first extension block */
+	buffer = edid + SEGMENT_SIZE;
+	VERIFY(checksum_valid(buffer, SEGMENT_SIZE), rc,
+			OTM_HDMI_ERR_FAILED, exit);
+
+	/* There is only 1 extention; Assume its CEA Extension [tag = 0x02] */
+	if (edid[0x7e] == 1) {
+		/* Process first extention block */
+		memset(&eb, 0, sizeof(extention_block_cea_t));
+		fetch_extension_block_cea(&eb, buffer);
+		VERIFY(eb.tag == 0x02, rc, OTM_HDMI_SUCCESS, exit);
+		decode_extention_block_cea(&eb, edid_info);
+	}
+	/* There is a block map and more extentions */
+	else {
+		/* Process block map */
+		memset(&ebm, 0, sizeof(edid_block_map_t));
+		fetch_block_map(&ebm, buffer);
+
+		/* Verify we are indeed dealing with map block */
+		VERIFY(ebm.tag == 0xF0, rc, OTM_HDMI_ERR_FAILED, exit);
+
+		/* Deal with each block in the map */
+		for (i = 0; (i < BLOCK_MAP_SIZE) && ebm.map[i]; i++) {
+			/* Compute extension block location */
+			sp = (i + 2) / 2;
+			offset = (i % 2) ? SEGMENT_SIZE : 0;
+
+			/* Read extension block */
+			rc = __enhanced_ddc_read_one_block(adapter, sp, offset,
+					buffer);
+			VERIFY_QUICK(rc == OTM_HDMI_SUCCESS, exit);
+			VERIFY(checksum_valid(buffer, SEGMENT_SIZE), rc,
+			       OTM_HDMI_ERR_FAILED, exit);
+
+			/* Decode extension block */
+			rc = block_decode(edid_info, ebm.map[i], buffer);
+			VERIFY_QUICK(rc == OTM_HDMI_SUCCESS, exit);
+		}
+	}
+exit:
+	pr_debug("exit %s (ret = %d)\n", __func__, rc);
+	return rc;
+}
+

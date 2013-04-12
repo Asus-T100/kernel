@@ -510,7 +510,7 @@ static int parse_port_args(char **arg_list, int arg_num)
 	if (access_width == ACCESS_WIDTH_DEFAULT)
 		access_width = ACCESS_WIDTH_8BIT;
 
-	ret = kstrtou16(arg_list[2], 0, &port_addr);
+	ret = kstrtou16(arg_list[2], 0, (u16 *)&port_addr);
 	if (ret) {
 		snprintf(err_buf, MAX_ERRLEN, "invalid port address %s\n",
 							 arg_list[2]);

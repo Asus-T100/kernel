@@ -1232,6 +1232,7 @@ static int imx_s_mbus_fmt(struct v4l2_subdev *sd,
 		&& ((imx_res[dev->fmt_idx].width == 1640)
 		|| (imx_res[dev->fmt_idx].width == 2336)
 		|| (imx_res[dev->fmt_idx].height == 1852)
+		|| (imx_res[dev->fmt_idx].height == 2464)
 		|| (imx_res[dev->fmt_idx].width == 2576))) {
 		/* FIXME: workround for VLV2 due to ISP perf - start */
 		ret = imx_write_reg(client, IMX_8BIT, 0x0342, (hb>>8)&0xFF);

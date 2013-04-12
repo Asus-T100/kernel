@@ -1,10 +1,13 @@
 #ifndef EHCI_TANGIER_HSIC_PCI_h
 #define EHCI_TANGIER_HSIC_PCI_h
+
 #include <linux/notifier.h>
+#include <linux/usb.h>
 
 #define HSIC_AUX_GPIO_NAME    "usb_hsic_aux1"
 #define HSIC_HUB_RESET_TIME   10
 #define HSIC_ENABLE_SIZE      2
+#define HSIC_DURATION_SIZE    7
 #define PM_BASE		0xff00b000
 #define PM_STS		0x00
 #define PM_CMD		0x04
@@ -21,6 +24,12 @@
 #define PMU_HW_PEN0 0x108
 #define PMU_HW_PEN1 0x10C
 
+#define HSIC_L1_AUTOSUSPEND                     0
+#define HSIC_L1_INACTIVITYDURATION              2000
+#define HSIC_L2_AUTOSUSPEND                     1
+#define HSIC_L2_INACTIVITYDURATION              2000
+#define HSIC_REMOTEWAKEUP                       0
+
 struct hsic_tangier_priv {
 	struct delayed_work  hsic_aux;
 	wait_queue_head_t    aux_wq;
@@ -33,8 +42,17 @@ struct hsic_tangier_priv {
 	unsigned             hsic_lock_init:1;
 	unsigned             hsic_stopped:1;
 
+	unsigned             remoteWakeup_enable;
+	unsigned             L2_autosuspend_enable;
+	unsigned             L1_autosuspend_enable;
 	unsigned             aux_gpio;
+	unsigned             L2_latency;
+	unsigned             L1_inactivityDuration;
+	unsigned             L2_inactivityDuration;
 	spinlock_t           hsic_lock;
+	/* Root hub device */
+	struct usb_device           *rh_dev;
+	struct usb_device           *modem_dev;
 };
 
 enum {

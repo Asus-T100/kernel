@@ -32,80 +32,95 @@
 #include "atomisp_common.h"
 #include "atomisp_internal.h"
 
-static const unsigned int isp_subdev_input_fmts[] = {
-	V4L2_MBUS_FMT_SGRBG10_1X10,
-	V4L2_MBUS_FMT_SRGGB10_1X10,
-	V4L2_MBUS_FMT_SBGGR10_1X10,
-	V4L2_MBUS_FMT_SGBRG10_1X10,
-};
-
-static const unsigned int isp_subdev_preview_output_fmts[] = {
-	/* yuv420, nv12, yv12, nv21, rgb565 */
-	V4L2_MBUS_FMT_UYVY8_1X16,
-	V4L2_MBUS_FMT_YUYV8_1X16,
-	V4L2_PIX_FMT_YUV420,
-	V4L2_PIX_FMT_YVU420,
-	V4L2_PIX_FMT_NV12,
-	V4L2_PIX_FMT_RGB565,
-	V4L2_PIX_FMT_NV21,
-};
-
-static const unsigned int isp_subdev_vf_output_fmts[] = {
-	/* yuv420, nv12, yv12, nv21, rgb565 */
-	V4L2_MBUS_FMT_UYVY8_1X16,
-	V4L2_MBUS_FMT_YUYV8_1X16,
-	V4L2_PIX_FMT_YUV420,
-	V4L2_PIX_FMT_YVU420,
-	V4L2_PIX_FMT_NV12,
-	V4L2_PIX_FMT_RGB565,
-	V4L2_PIX_FMT_NV21,
-};
-
-static const unsigned int isp_subdev_capture_output_fmts[] = {
-	/* yuv420, nv12, yv12, nv21, rgb565, nv11, yuv422, nv16, yv16, yuy2 */
-	/* rgb565, rgb888 */
-	V4L2_MBUS_FMT_UYVY8_1X16,
-	V4L2_MBUS_FMT_YUYV8_1X16,
-	V4L2_PIX_FMT_YUV420,
-	V4L2_PIX_FMT_YVU420,
-	V4L2_PIX_FMT_YUV422P,
-	V4L2_PIX_FMT_YUV444,
-	V4L2_PIX_FMT_NV12,
-	V4L2_PIX_FMT_NV21,
-	V4L2_PIX_FMT_NV16,
-	V4L2_PIX_FMT_NV61,
-	V4L2_PIX_FMT_YUYV,
-	V4L2_PIX_FMT_UYVY,
-	V4L2_PIX_FMT_RGB565,
-	V4L2_PIX_FMT_RGB32
-};
-
 const struct atomisp_in_fmt_conv atomisp_in_fmt_conv[] = {
-	{ V4L2_MBUS_FMT_SBGGR8_1X8, SH_CSS_INPUT_FORMAT_RAW_8, sh_css_bayer_order_bggr },
-	{ V4L2_MBUS_FMT_SGBRG8_1X8, SH_CSS_INPUT_FORMAT_RAW_8, sh_css_bayer_order_gbrg },
-	{ V4L2_MBUS_FMT_SGRBG8_1X8, SH_CSS_INPUT_FORMAT_RAW_8, sh_css_bayer_order_grbg },
-	{ V4L2_MBUS_FMT_SRGGB8_1X8, SH_CSS_INPUT_FORMAT_RAW_8, sh_css_bayer_order_rggb },
-	{ V4L2_MBUS_FMT_SBGGR10_1X10, SH_CSS_INPUT_FORMAT_RAW_10, sh_css_bayer_order_bggr },
-	{ V4L2_MBUS_FMT_SGBRG10_1X10, SH_CSS_INPUT_FORMAT_RAW_10, sh_css_bayer_order_gbrg },
-	{ V4L2_MBUS_FMT_SGRBG10_1X10, SH_CSS_INPUT_FORMAT_RAW_10, sh_css_bayer_order_grbg },
-	{ V4L2_MBUS_FMT_SRGGB10_1X10, SH_CSS_INPUT_FORMAT_RAW_10, sh_css_bayer_order_rggb },
-	{ V4L2_MBUS_FMT_SBGGR12_1X12, SH_CSS_INPUT_FORMAT_RAW_12, sh_css_bayer_order_bggr },
-	{ V4L2_MBUS_FMT_SGBRG12_1X12, SH_CSS_INPUT_FORMAT_RAW_12, sh_css_bayer_order_gbrg },
-	{ V4L2_MBUS_FMT_SGRBG12_1X12, SH_CSS_INPUT_FORMAT_RAW_12, sh_css_bayer_order_grbg },
-	{ V4L2_MBUS_FMT_SRGGB12_1X12, SH_CSS_INPUT_FORMAT_RAW_12, sh_css_bayer_order_rggb },
-	{ V4L2_MBUS_FMT_UYVY8_1X16, ATOMISP_INPUT_FORMAT_YUV422_8, 0 },
+	{ V4L2_MBUS_FMT_SBGGR8_1X8, 8, 8, SH_CSS_INPUT_FORMAT_RAW_8, sh_css_bayer_order_bggr },
+	{ V4L2_MBUS_FMT_SGBRG8_1X8, 8, 8, SH_CSS_INPUT_FORMAT_RAW_8, sh_css_bayer_order_gbrg },
+	{ V4L2_MBUS_FMT_SGRBG8_1X8, 8, 8, SH_CSS_INPUT_FORMAT_RAW_8, sh_css_bayer_order_grbg },
+	{ V4L2_MBUS_FMT_SRGGB8_1X8, 8, 8, SH_CSS_INPUT_FORMAT_RAW_8, sh_css_bayer_order_rggb },
+	{ V4L2_MBUS_FMT_SBGGR10_1X10, 10, 10, SH_CSS_INPUT_FORMAT_RAW_10, sh_css_bayer_order_bggr },
+	{ V4L2_MBUS_FMT_SGBRG10_1X10, 10, 10, SH_CSS_INPUT_FORMAT_RAW_10, sh_css_bayer_order_gbrg },
+	{ V4L2_MBUS_FMT_SGRBG10_1X10, 10, 10, SH_CSS_INPUT_FORMAT_RAW_10, sh_css_bayer_order_grbg },
+	{ V4L2_MBUS_FMT_SRGGB10_1X10, 10, 10, SH_CSS_INPUT_FORMAT_RAW_10, sh_css_bayer_order_rggb },
+	{ V4L2_MBUS_FMT_SBGGR10_DPCM8_1X8, 10, 8, SH_CSS_INPUT_FORMAT_RAW_8, sh_css_bayer_order_bggr },
+	{ V4L2_MBUS_FMT_SGBRG10_DPCM8_1X8, 10, 8, SH_CSS_INPUT_FORMAT_RAW_8, sh_css_bayer_order_gbrg },
+	{ V4L2_MBUS_FMT_SGRBG10_DPCM8_1X8, 10, 8, SH_CSS_INPUT_FORMAT_RAW_8, sh_css_bayer_order_grbg },
+	{ V4L2_MBUS_FMT_SRGGB10_DPCM8_1X8, 10, 8, SH_CSS_INPUT_FORMAT_RAW_8, sh_css_bayer_order_rggb },
+	{ V4L2_MBUS_FMT_SBGGR12_1X12, 12, 12, SH_CSS_INPUT_FORMAT_RAW_12, sh_css_bayer_order_bggr },
+	{ V4L2_MBUS_FMT_SGBRG12_1X12, 12, 12, SH_CSS_INPUT_FORMAT_RAW_12, sh_css_bayer_order_gbrg },
+	{ V4L2_MBUS_FMT_SGRBG12_1X12, 12, 12, SH_CSS_INPUT_FORMAT_RAW_12, sh_css_bayer_order_grbg },
+	{ V4L2_MBUS_FMT_SRGGB12_1X12, 12, 12, SH_CSS_INPUT_FORMAT_RAW_12, sh_css_bayer_order_rggb },
+	{ V4L2_MBUS_FMT_UYVY8_1X16, 8, 8, ATOMISP_INPUT_FORMAT_YUV422_8, 0 },
+	{ V4L2_MBUS_FMT_YUYV8_1X16, 8, 8, ATOMISP_INPUT_FORMAT_YUV422_8, 0 },
+	{}
 };
 
-const struct atomisp_in_fmt_conv *atomisp_find_in_fmt_conv(
+static const struct {
+	enum v4l2_mbus_pixelcode code;
+	enum v4l2_mbus_pixelcode compressed;
+} compressed_codes[] = {
+	{ V4L2_MBUS_FMT_SBGGR10_1X10, V4L2_MBUS_FMT_SBGGR10_DPCM8_1X8 },
+	{ V4L2_MBUS_FMT_SGBRG10_1X10, V4L2_MBUS_FMT_SGBRG10_DPCM8_1X8 },
+	{ V4L2_MBUS_FMT_SGRBG10_1X10, V4L2_MBUS_FMT_SGRBG10_DPCM8_1X8 },
+	{ V4L2_MBUS_FMT_SRGGB10_1X10, V4L2_MBUS_FMT_SRGGB10_DPCM8_1X8 },
+};
+
+enum v4l2_mbus_pixelcode atomisp_subdev_uncompressed_code(
 	enum v4l2_mbus_pixelcode code)
 {
 	unsigned int i;
 
-	for (i = 0; i < ARRAY_SIZE(atomisp_in_fmt_conv); i++)
-		if (code == atomisp_in_fmt_conv[i].code)
-			return &atomisp_in_fmt_conv[i];
+	for (i = 0; i < ARRAY_SIZE(compressed_codes); i++)
+		if (code == compressed_codes[i].compressed)
+			return compressed_codes[i].code;
+
+	return code;
+}
+
+bool atomisp_subdev_is_compressed(enum v4l2_mbus_pixelcode code)
+{
+	const struct atomisp_in_fmt_conv *ic = atomisp_in_fmt_conv;
+
+	while (ic->code) {
+		if (code == ic->code)
+			return ic->bpp != ic->depth;
+		ic++;
+	}
+
+	return false;
+}
+
+const struct atomisp_in_fmt_conv *atomisp_find_in_fmt_conv(
+	enum v4l2_mbus_pixelcode code)
+{
+	const struct atomisp_in_fmt_conv *ic = atomisp_in_fmt_conv;
+
+	while (ic->code) {
+		if (code == ic->code)
+			return ic;
+		ic++;
+	}
 
 	return NULL;
+}
+
+bool atomisp_subdev_format_conversion(struct atomisp_device *isp,
+				      unsigned int source_pad)
+{
+	struct v4l2_mbus_framefmt *sink, *src;
+
+	sink = atomisp_subdev_get_ffmt(&isp->isp_subdev.subdev, NULL,
+				       V4L2_SUBDEV_FORMAT_ACTIVE,
+				       ATOMISP_SUBDEV_PAD_SINK);
+	src = atomisp_subdev_get_ffmt(&isp->isp_subdev.subdev, NULL,
+				      V4L2_SUBDEV_FORMAT_ACTIVE, source_pad);
+
+	return atomisp_is_mbuscode_raw(sink->code)
+		&& !atomisp_is_mbuscode_raw(src->code);
+}
+
+uint16_t atomisp_subdev_source_pad(struct video_device *vdev)
+{
+	return vdev->entity.links[0].source->index;
 }
 
 /*
@@ -168,39 +183,10 @@ static int isp_subdev_enum_mbus_code(struct v4l2_subdev *sd,
 	struct v4l2_subdev_fh *fh,
 	struct v4l2_subdev_mbus_code_enum *code)
 {
-	switch (code->pad) {
-	case ATOMISP_SUBDEV_PAD_SINK:
-		if (code->index >= ARRAY_SIZE(isp_subdev_input_fmts))
-			return -EINVAL;
-
-		code->code = isp_subdev_input_fmts[code->index];
-		break;
-
-	case ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW:
-		/* format conversion inside isp subdev */
-		if (code->index >= ARRAY_SIZE(isp_subdev_preview_output_fmts))
-			return -EINVAL;
-
-		code->code = isp_subdev_preview_output_fmts[code->index];
-		break;
-	case ATOMISP_SUBDEV_PAD_SOURCE_VF:
-		/* format conversion inside isp subdev */
-		if (code->index >= ARRAY_SIZE(isp_subdev_vf_output_fmts))
-			return -EINVAL;
-
-		code->code = isp_subdev_vf_output_fmts[code->index];
-		break;
-	case ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE:
-		/* format conversion inside isp subdev */
-		if (code->index >= ARRAY_SIZE(isp_subdev_capture_output_fmts))
-			return -EINVAL;
-
-		code->code = isp_subdev_capture_output_fmts[code->index];
-		break;
-
-	default:
+	if (code->index >= ARRAY_SIZE(atomisp_in_fmt_conv) - 1)
 		return -EINVAL;
-	}
+
+	code->code = atomisp_in_fmt_conv[code->index].code;
 
 	return 0;
 }
@@ -288,24 +274,24 @@ static void isp_subdev_propagate(struct v4l2_subdev *sd,
 	struct v4l2_mbus_framefmt *ffmt[ATOMISP_SUBDEV_PADS_NUM];
 	struct v4l2_rect *crop[ATOMISP_SUBDEV_PADS_NUM],
 		*comp[ATOMISP_SUBDEV_PADS_NUM];
-	struct v4l2_rect r;
 
 	if (flags & V4L2_SEL_FLAG_KEEP_CONFIG)
 		return;
 
 	isp_get_fmt_rect(sd, fh, which, ffmt, crop, comp);
 
-	memset(&r, 0, sizeof(r));
-
 	switch (pad) {
-	case ATOMISP_SUBDEV_PAD_SINK:
+	case ATOMISP_SUBDEV_PAD_SINK: {
+		struct v4l2_rect r = {0};
+
 		/* Only crop target supported on sink pad. */
 		r.width = ffmt[pad]->width;
 		r.height = ffmt[pad]->height;
 
-		atomisp_subdev_set_selection(
-			sd, fh, which, pad, target, flags, &r);
+		atomisp_subdev_set_selection(sd, fh, which, pad, target, flags,
+					     &r);
 		break;
+	}
 	}
 }
 
@@ -361,8 +347,8 @@ int atomisp_subdev_set_selection(struct v4l2_subdev *sd,
 		crop[pad]->width = ffmt[pad]->width;
 		crop[pad]->height = ffmt[pad]->height;
 
-		if (!isp->sw_contex.bypass && crop[pad]->width
-		    && crop[pad]->height)
+		if (atomisp_subdev_format_conversion(isp, isp_sd->capture_pad)
+		    && crop[pad]->width && crop[pad]->height)
 			crop[pad]->width -= pad_w, crop[pad]->height -= pad_h;
 
 		/* if subdev type is SOC camera,we do not need to set DVS */
@@ -464,15 +450,13 @@ static int isp_subdev_set_selection(struct v4l2_subdev *sd,
 
 static int atomisp_get_sensor_bin_factor(struct atomisp_device *isp)
 {
-	struct v4l2_control ctrl;
+	struct v4l2_control ctrl = {0};
 	int hbin, vbin;
 	int ret;
 
 	if (isp->inputs[isp->input_curr].type == FILE_INPUT ||
 		isp->inputs[isp->input_curr].type == TEST_PATTERN)
 		return 0;
-
-	memset(&ctrl, 0, sizeof(ctrl));
 
 	ctrl.id = V4L2_CID_BIN_FACTOR_HORZ;
 	ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera, core,
@@ -508,18 +492,6 @@ int atomisp_subdev_set_ffmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 		atomisp_pad_str[pad], ffmt->width, ffmt->height, ffmt->code,
 		which == V4L2_SUBDEV_FORMAT_TRY ? "V4L2_SUBDEV_FORMAT_TRY"
 		: "V4L2_SUBDEV_FORMAT_ACTIVE");
-
-	/* Set bypass mode. One must only set raw or non-raw formats
-	 * on the source pads. */
-	if (pad != ATOMISP_SUBDEV_PAD_SINK
-	    && which == V4L2_SUBDEV_FORMAT_ACTIVE) {
-		struct v4l2_mbus_framefmt *f =
-			atomisp_subdev_get_ffmt(sd, fh, which,
-						ATOMISP_SUBDEV_PAD_SINK);
-
-		isp->sw_contex.bypass = !atomisp_is_mbuscode_raw(f->code)
-			|| atomisp_is_mbuscode_raw(ffmt->code);
-	}
 
 	switch (pad) {
 	case ATOMISP_SUBDEV_PAD_SINK: {
@@ -609,6 +581,7 @@ static const struct v4l2_subdev_pad_ops isp_subdev_v4l2_pad_ops = {
 	 .set_fmt = isp_subdev_set_format,
 	 .get_selection = isp_subdev_get_selection,
 	 .set_selection = isp_subdev_set_selection,
+	 .link_validate = v4l2_subdev_link_validate_default,
 };
 
 /* V4L2 subdev operations */
@@ -697,6 +670,7 @@ static int isp_subdev_link_setup(struct media_entity *entity,
 /* media operations */
 static const struct media_entity_operations isp_subdev_media_ops = {
 	 .link_setup = isp_subdev_link_setup,
+	 .link_validate = v4l2_subdev_link_validate,
 /*	 .set_power = v4l2_subdev_set_power,	*/
 };
 
@@ -704,7 +678,7 @@ static int __atomisp_update_run_mode(struct atomisp_device *isp)
 {
 	struct v4l2_ctrl *ctrl = isp->isp_subdev.run_mode;
 	struct v4l2_ctrl *c;
-	struct v4l2_streamparm p;
+	struct v4l2_streamparm p = {0};
 	int modes[] = { CI_MODE_NONE,
 			CI_MODE_VIDEO,
 			CI_MODE_STILL_CAPTURE,
@@ -713,7 +687,7 @@ static int __atomisp_update_run_mode(struct atomisp_device *isp)
 	s32 mode;
 
 	if (ctrl->val != ATOMISP_RUN_MODE_VIDEO &&
-	    isp->params.continuous_vf)
+	    isp->isp_subdev.continuous_mode->val)
 		mode = ATOMISP_RUN_MODE_PREVIEW;
 	else
 		mode = ctrl->val;
@@ -726,8 +700,6 @@ static int __atomisp_update_run_mode(struct atomisp_device *isp)
 		return v4l2_ctrl_s_ctrl(c, mode);
 
 	/* Fall back to obsolete s_parm */
-	memset(&p, 0, sizeof(p));
-
 	p.parm.capture.capturemode = modes[mode];
 
 	return v4l2_subdev_call(
@@ -801,6 +773,68 @@ static const struct v4l2_ctrl_config ctrl_enable_vfpp = {
 };
 
 /*
+ * Control for ISP continuous mode
+ *
+ * When enabled, capture processing is possible without
+ * stopping the preview pipeline. When disabled, ISP needs
+ * to be restarted between preview and capture.
+ */
+static const struct v4l2_ctrl_config ctrl_continuous_mode = {
+	.ops = &ctrl_ops,
+	.id = V4L2_CID_ATOMISP_CONTINUOUS_MODE,
+	.type = V4L2_CTRL_TYPE_BOOLEAN,
+	.name = "Continuous mode",
+	.min = 0,
+	.max = 1,
+	.def = 0,
+};
+
+/*
+ * Control for continuous mode raw buffer size
+ *
+ * The size of the RAW ringbuffer sets limit on how much
+ * back in time application can go when requesting capture
+ * frames to be rendered, and how many frames can be rendered
+ * in a burst at full sensor rate.
+ *
+ * Note: this setting has a big impact on memory consumption of
+ * the CSS subsystem.
+ */
+static const struct v4l2_ctrl_config ctrl_continuous_raw_buffer_size = {
+	.ops = &ctrl_ops,
+	.id = V4L2_CID_ATOMISP_CONTINUOUS_RAW_BUFFER_SIZE,
+	.type = V4L2_CTRL_TYPE_INTEGER,
+	.name = "Continuous raw ringbuffer size",
+	.min = 1,
+	.max = 100, /* depends on CSS version, runtime checked */
+	.step = 1,
+	.def = 3,
+};
+
+/*
+ * Control for enabling continuous viewfinder
+ *
+ * When enabled, and ISP is in continuous mode (see ctrl_continuous_mode ),
+ * preview pipeline continues concurrently with capture
+ * processing. When disabled, and continuous mode is used,
+ * preview is paused while captures are processed, but
+ * full pipeline restart is not needed.
+ *
+ * By setting this to disabled, capture processing is
+ * essentially given priority over preview, and the effective
+ * capture output rate may be higher than with continuous
+ * viewfinder enabled.
+ */
+static const struct v4l2_ctrl_config ctrl_continuous_viewfinder = {
+	.id = V4L2_CID_ATOMISP_CONTINUOUS_VIEWFINDER,
+	.type = V4L2_CTRL_TYPE_BOOLEAN,
+	.name = "Continuous viewfinder",
+	.min = 0,
+	.max = 1,
+	.def = 0,
+};
+
+/*
  * isp_subdev_init_entities - Initialize V4L2 subdev and media entity
  * @isp_subdev: ISP CCDC module
  *
@@ -842,22 +876,18 @@ static int isp_subdev_init_entities(struct atomisp_sub_device *isp_subdev)
 
 	isp_subdev->video_in.type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
 	isp_subdev->video_in.isp = isp_subdev->isp;
-	isp_subdev->video_in.pipe_type = ATOMISP_PIPE_FILEINPUT;
 	spin_lock_init(&isp_subdev->video_in.irq_lock);
 
 	isp_subdev->video_out_preview.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 	isp_subdev->video_out_preview.isp = isp_subdev->isp;
-	isp_subdev->video_out_preview.pipe_type = ATOMISP_PIPE_PREVIEW;
 	spin_lock_init(&isp_subdev->video_out_preview.irq_lock);
 
 	isp_subdev->video_out_vf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 	isp_subdev->video_out_vf.isp = isp_subdev->isp;
-	isp_subdev->video_out_vf.pipe_type = ATOMISP_PIPE_VIEWFINDER;
 	spin_lock_init(&isp_subdev->video_out_vf.irq_lock);
 
 	isp_subdev->video_out_capture.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 	isp_subdev->video_out_capture.isp = isp_subdev->isp;
-	isp_subdev->video_out_capture.pipe_type = ATOMISP_PIPE_CAPTURE;
 	spin_lock_init(&isp_subdev->video_out_capture.irq_lock);
 
 	ret = atomisp_video_init(&isp_subdev->video_in, "MEMORY");
@@ -911,6 +941,17 @@ static int isp_subdev_init_entities(struct atomisp_sub_device *isp_subdev)
 	isp_subdev->enable_vfpp =
 				v4l2_ctrl_new_custom(&isp_subdev->ctrl_handler,
 						     &ctrl_enable_vfpp, NULL);
+	isp_subdev->continuous_mode =
+			v4l2_ctrl_new_custom(&isp_subdev->ctrl_handler,
+					     &ctrl_continuous_mode, NULL);
+	isp_subdev->continuous_viewfinder =
+			v4l2_ctrl_new_custom(&isp_subdev->ctrl_handler,
+					     &ctrl_continuous_viewfinder,
+					     NULL);
+	isp_subdev->continuous_raw_buffer_size =
+			v4l2_ctrl_new_custom(&isp_subdev->ctrl_handler,
+					     &ctrl_continuous_raw_buffer_size,
+					     NULL);
 
 	/* Make controls visible on subdev as well. */
 	isp_subdev->subdev.ctrl_handler = &isp_subdev->ctrl_handler;

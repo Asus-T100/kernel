@@ -1129,6 +1129,7 @@ static int disk_uevent(struct device *dev, struct kobj_uevent_env *env)
 struct class block_class = {
 	.name		= "block",
 };
+EXPORT_SYMBOL(block_class);
 
 static char *block_devnode(struct device *dev, umode_t *mode)
 {

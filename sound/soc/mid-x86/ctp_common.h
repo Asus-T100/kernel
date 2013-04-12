@@ -51,10 +51,12 @@ int ctp_soc_jack_gpio_detect_bp(void);
 
 extern struct snd_soc_machine_ops ctp_rhb_cs42l73_ops;
 extern struct snd_soc_machine_ops ctp_vb_cs42l73_ops;
+extern struct snd_soc_machine_ops merr_bb_cs42l73_ops;
 
 struct snd_soc_machine_ops {
 	int micsdet_debounce;
 	bool jack_support;
+	void (*card_name)(struct snd_soc_card *card);
 	int (*ctp_init)(struct snd_soc_pcm_runtime *runtime);
 	int (*dai_link) (struct snd_soc_card *card);
 	int (*hp_detection) (struct snd_soc_codec *codec,
@@ -94,8 +96,8 @@ static inline struct ctp_mc_private
 static inline void ctp_config_voicecall_flag(
 		struct snd_pcm_substream *substream, bool state)
 {
-	pr_debug("%s voice call flag: %d\n", __func__, state);
 	struct ctp_mc_private *ctx = substream_to_drv_ctx(substream);
+	pr_debug("%s voice call flag: %d\n", __func__, state);
 	ctx->voice_call_flag = state;
 }
 
@@ -130,5 +132,4 @@ extern struct snd_pcm_hw_constraint_list constraints_48000;
 
 extern unsigned int rates_16000[];
 extern struct snd_pcm_hw_constraint_list constraints_16000;
-extern struct snd_soc_card snd_soc_card_ctp;
 #endif

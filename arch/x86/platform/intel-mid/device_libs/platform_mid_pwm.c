@@ -53,7 +53,7 @@ static struct intel_mid_pwm_device_data ctp_pwms[] = {
 		.reg_clkdiv1 = 0x61,
 		.reg_dutycyc = 0x67,
 		.val_clkdiv1 = 0x00,
-		.val_clkdiv0 = 0x63,
+		.val_clkdiv0 = 0x00,
 	},
 	[PWM_VIBRATOR] = {
 		.reg_clkdiv0 = 0x64,
@@ -75,10 +75,14 @@ static struct intel_mid_pwm_platform_data pdata[] = {
 	[mfld_pwm] = {
 		.pwm_num = PWM_NUM,
 		.ddata = mfld_pwms,
+		.reg_clksel = 0x38F,
+		.val_clksel = 0x01,
 	},
 	[ctp_pwm] = {
 		.pwm_num = PWM_NUM,
 		.ddata = ctp_pwms,
+		.reg_clksel = 0x38F,
+		.val_clksel = 0x00,
 	},
 };
 

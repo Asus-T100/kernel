@@ -525,8 +525,7 @@ static irqreturn_t lis3dh_acc_isr1(int irq, void *data)
 	struct lis3dh_acc_data *acc = data;
 	struct device *dev = &acc->client->dev;
 	int int1_stat;
-	int irq_ret = IRQ_HANDLED, ret = 0;
-	int xyz[3];
+	int irq_ret = IRQ_HANDLED;
 
 	mutex_lock(&acc->lock);
 
@@ -650,7 +649,6 @@ static DEVICE_ATTR(poll, S_IRUGO | S_IWUSR,
 static ssize_t attr_get_range(struct device *dev,
 			       struct device_attribute *attr, char *buf)
 {
-	char val;
 	struct lis3dh_acc_data *acc = dev_get_drvdata(dev);
 	char range;
 

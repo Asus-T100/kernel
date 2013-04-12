@@ -36,10 +36,12 @@
 
 /* driver names */
 #define SST_DRV_NAME "intel_sst_driver"
-#define SST_MRST_PCI_ID 0x080A
-#define SST_MFLD_PCI_ID 0x082F
+#define SST_MRST_PCI_ID	0x080A
+#define SST_MFLD_PCI_ID	0x082F
 #define SST_CLV_PCI_ID	0x08E7
-#define SST_MRFLD_PCI_ID  0x119A
+#define SST_MRFLD_PCI_ID 0x119A
+#define SST_BYT_PCI_ID  0x0F28
+
 #define PCI_ID_LENGTH 4
 #define SST_SUSPEND_DELAY 2000
 #define FW_CONTEXT_MEM (64*1024)
@@ -56,19 +58,7 @@
 #define MRFLD_FW_DDR_BASE_OFFSET 0x0
 #define MRFLD_FW_FEATURE_BASE_OFFSET 0x4
 #define MRFLD_FW_BSS_RESET_BIT 0
-
-struct intel_sst_ops {
-	irqreturn_t (*interrupt) (int, void *);
-	irqreturn_t (*irq_thread) (int, void *);
-	void (*clear_interrupt) (void);
-	int (*start) (void);
-	int (*reset) (void);
-	void (*process_reply) (struct work_struct *work);
-	void (*post_message) (struct work_struct *work);
-	int (*sync_post_message) (struct ipc_post *msg);
-	void (*process_message) (struct work_struct *work);
-	void (*set_bypass)(bool set);
-};
+extern struct intel_sst_drv *sst_drv_ctx;
 enum sst_states {
 	SST_FW_LOADED = 1,
 	SST_FW_RUNNING,
@@ -101,6 +91,9 @@ enum sst_states {
 #define SST_IPCLPESC		0x70
 #define SST_CLKCTL		0x78
 #define SST_CSR2		0x80
+
+#define SST_PRH_IPCX		0x3C
+#define SST_PRH_IPCD		0x44
 
 #define SST_SHIM_BEGIN		SST_CSR
 #define SST_SHIM_END		SST_CSR2
@@ -403,6 +396,7 @@ struct sst_probe_info {
 	bool use_elf;
 	unsigned int max_streams;
 	u32 dma_max_len;
+	u8 num_probes;
 };
 
 struct sst_fw_context {
@@ -422,6 +416,10 @@ struct sst_dump_buf {
 	struct sst_ram_buf dram_buf;
 };
 
+struct sst_ipc_reg {
+	int ipcx;
+	int ipcd;
+};
 /***
  * struct intel_sst_drv - driver ops
  *
@@ -462,6 +460,7 @@ struct sst_dump_buf {
 struct intel_sst_drv {
 	int			sst_state;
 	unsigned int		pci_id;
+	bool			use_32bit_ops;
 	void __iomem		*ddr;
 	void __iomem		*shim;
 	void __iomem		*mailbox;
@@ -538,12 +537,30 @@ struct intel_sst_drv {
 	struct mutex	csr_lock;
 	/* byte control to set the probe stream */
 	struct snd_sst_probe_bytes *probe_bytes;
+	/* contains the ipc registers */
+	struct sst_ipc_reg ipc_reg;
 };
 
 extern struct intel_sst_drv *sst_drv_ctx;
 
 /* misc definitions */
 #define FW_DWNL_ID 0xFF
+
+struct intel_sst_ops {
+	irqreturn_t (*interrupt) (int, void *);
+	irqreturn_t (*irq_thread) (int, void *);
+	void (*clear_interrupt) (void);
+	int (*start) (void);
+	int (*reset) (void);
+	void (*process_reply) (struct work_struct *work);
+	void (*post_message) (struct work_struct *work);
+	int (*sync_post_message) (struct ipc_post *msg);
+	void (*process_message) (struct work_struct *work);
+	void (*set_bypass)(bool set);
+	int (*save_dsp_context) (struct intel_sst_drv *sst);
+	void (*restore_dsp_context) (void);
+	int (*alloc_stream) (char *params, struct sst_block *block);
+};
 
 int sst_alloc_stream(char *params, struct sst_block *block);
 int sst_stalled(void);
@@ -617,7 +634,10 @@ int sst_get_num_channel(struct snd_sst_params *str_param);
 int sst_get_wdsize(struct snd_sst_params *str_param);
 int sst_get_sfreq(struct snd_sst_params *str_param);
 int intel_sst_check_device(void);
-
+int sst_alloc_stream_ctp(char *params, struct sst_block *block);
+int sst_alloc_stream_mfld(char *params, struct sst_block *block);
+int sst_alloc_stream_mrfld(char *params, struct sst_block *block);
+void sst_restore_fw_context(void);
 struct sst_block *sst_create_block(struct intel_sst_drv *ctx,
 				u32 msg_id, u32 drv_id);
 int sst_create_block_and_ipc_msg(struct ipc_post **arg, bool large,

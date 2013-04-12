@@ -155,7 +155,7 @@ static void ospm_suspend_pci(struct drm_device *dev)
 {
 	struct pci_dev *pdev = dev->pdev;
 	struct drm_psb_private *dev_priv = dev->dev_private;
-	int bsm, vbt;
+	int bsm, vbt, bgsm;
 
 	OSPM_DPF("%s\n", __func__);
 
@@ -170,12 +170,14 @@ static void ospm_suspend_pci(struct drm_device *dev)
 	dev_priv->saveBSM = bsm;
 	pci_read_config_dword(pdev, 0xFC, &vbt);
 	dev_priv->saveVBT = vbt;
+	pci_read_config_dword(pdev, 0x70, &bgsm);
+	dev_priv->saveBGSM = bgsm;
 	pci_read_config_dword(pdev, PSB_PCIx_MSI_ADDR_LOC, &dev_priv->msi_addr);
 	pci_read_config_dword(pdev, PSB_PCIx_MSI_DATA_LOC, &dev_priv->msi_data);
 
 	pci_disable_device(pdev);
 	/* FIXME: vcheeram : Check we can suspend and resume PCI*/
-	/*pci_set_power_state(pdev, PCI_D3hot);*/
+	pci_set_power_state(pdev, PCI_D3hot);
 
 	g_ospm_data->b_suspended = true;
 }
@@ -201,10 +203,12 @@ static bool ospm_resume_pci(struct drm_device *dev)
 	}
 
 	/* FIXME: vcheeram : Check we can suspend and resume PCI*/
-	/*pci_set_power_state(pdev, PCI_D0);*/
+	pci_set_power_state(pdev, PCI_D0);
 	pci_restore_state(pdev);
+	pci_write_config_dword(pdev, 0x70, dev_priv->saveBGSM);
 	pci_write_config_dword(pdev, 0x5c, dev_priv->saveBSM);
 	pci_write_config_dword(pdev, 0xFC, dev_priv->saveVBT);
+
 	/* retoring MSI address and data in PCIx space */
 	pci_write_config_dword(pdev, PSB_PCIx_MSI_ADDR_LOC, dev_priv->msi_addr);
 	pci_write_config_dword(pdev, PSB_PCIx_MSI_DATA_LOC, dev_priv->msi_data);
@@ -591,13 +595,11 @@ bool ospm_power_suspend(void)
 
 	spin_unlock_irqrestore(&g_ospm_data->ospm_lock, flags);
 
-	/* Save Graphics State */
+	/* Asking RGX to power off */
 	if (!PVRSRVRGXSetPowerState(g_ospm_data->dev, OSPM_POWER_OFF))
 		return false;
 
-	spin_lock_irqsave(&g_ospm_data->ospm_lock, flags);
 	ospm_suspend_pci(g_ospm_data->dev);
-	spin_unlock_irqrestore(&g_ospm_data->ospm_lock, flags);
 
 	return true;
 }
@@ -615,9 +617,7 @@ void ospm_power_resume(void)
 
 	OSPM_DPF("%s\n", __func__);
 
-	spin_lock_irqsave(&g_ospm_data->ospm_lock, flags);
 	ospm_resume_pci(g_ospm_data->dev);
-	spin_unlock_irqrestore(&g_ospm_data->ospm_lock, flags);
 
 	OSPM_DPF("pci resumed.\n");
 

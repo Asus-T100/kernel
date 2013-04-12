@@ -78,6 +78,8 @@ enum {
 	INTEL_MRFL_TABLET = 0x0005,
 	INTEL_BYT_PHONE   = 0x0006,
 	INTEL_BYT_TABLET  = 0x0007,
+	INTEL_MOOR_PHONE  = 0x0008,
+	INTEL_MOOR_TABLET = 0x0009,
 	INTEL_PLATFORM_UNKNOWN = 0xFFFF
 };
 
@@ -133,6 +135,8 @@ enum {
 enum {
 	INTEL_MRFL_PHONE_SB_PRO = 0x0000,
 	INTEL_MRFL_PHONE_SB_ENG = 0x8000,
+	INTEL_MRFL_PHONE_BB_PRO = 0x0001,
+	INTEL_MRFL_PHONE_BB_ENG = 0x8001,
 	INTEL_MRFL_PHONE_UNKNOWN = 0xFFFF
 };
 
@@ -155,6 +159,20 @@ enum {
 	INTEL_BYT_TABLET_TBD_PRO = 0x0000,
 	INTEL_BYT_TABLET_TBD_ENG = 0x8000,
 	INTEL_BYT_TABLET_UNKNOWN = 0xFFFF
+};
+
+/* Product_Line_ID table for Platform_Family_ID == INTEL_MOOR_PHONE */
+enum {
+	INTEL_MOOR_PHONE_FRCB_PRO = 0x0000,
+	INTEL_MOOR_PHONE_FRCB_ENG = 0x8000,
+	INTEL_MOOR_PHONE_UNKNOWN = 0xFFFF
+};
+
+/* Product_Line_ID table for Platform_Family_ID == INTEL_MOOR_TABLET */
+enum {
+	INTEL_MOOR_TABLET_TBD_PRO = 0x0000,
+	INTEL_MOOR_TABLET_TBD_ENG = 0x8000,
+	INTEL_MOOR_TABLET_UNKNOWN = 0xFFFF
 };
 
 /* Hardware_ID table for Product_Line_ID == INTEL_MFLD_PHONE_BB15 */
@@ -269,8 +287,7 @@ enum {
 	MFLD_TABLET_YKB_UNKNOWN = 0xFFFF
 };
 
-/* Combined Hardware_ID table for Product_Line_ID == INTEL_CLVTP_PHONE_RHB
- * and Product_Line_ID == INTEL_CLVTP_PHONE_VB */
+/* Hardware_ID table for Product_Line_ID == INTEL_CLVTP_PHONE_RHB */
 enum {
 	CLVTP_PHONE_RHB_CCVV0,  /* Clover City VV0 FAB A CLV/CLV+ A0*/
 	CLVTP_PHONE_RHB_CCVV1,  /* Clover City VV1 FAB B CLV+ A0*/
@@ -295,7 +312,7 @@ enum {
 	CLVTP_PHONE_RHB_CCVV2VB, /* Clover City VV2-Victoria Bay FAB B CLV B0 */
 	CLVTP_PHONE_RHB_PR19M,  /* Macro PR1.9 CLV+ B0 */
 	CLVTP_PHONE_RHB_PR199M, /* Macro PR1.99 CLV+ B0 */
-	CLVTP_PHONE_VB_PR1A,    /* Victoria Bay PR1 CLV+ B1 */
+	CLVTP_PHONE_RSVD0,
 	CLVTP_PHONE_RHB_PR20B,  /* CLV+ B0 C-Class-touch panel sensor
 					GFF-LPDDR2 */
 	CLVTP_PHONE_RHB_PR30A,  /* CLV+ B1 C-Class */
@@ -308,9 +325,18 @@ enum {
 	CLVTP_PHONE_RSVD1,
 	CLVTP_PHONE_RSVD2,
 	CLVTP_PHONE_RSVD3,
-	CLVTP_PHONE_VB_PR1B,    /* Victoria Bay PR1 CLV+ B2 */
+	CLVTP_PHONE_RSVD4,
+	CLVTP_PHONE_RHB_RDP,    /* Clovertrail RDP CLV+ B2 */
 	CLVTP_PHONE_RHB_RSVD,
 	CLVTP_PHONE_RHB_UNKNOWN = 0xFFFF
+};
+
+/* Hardware_ID table for Product_Line_ID == INTEL_CLVTP_PHONE_VB */
+enum {
+	CLVTP_PHONE_VB_PR1A = 0x17,    /* Victoria Bay PR1 CLV+ B1 */
+	CLVTP_PHONE_VB_PR1B = 0x23,    /* Victoria Bay PR1 CLV+ B2 */
+	CLVTP_PHONE_VB_RSVD,
+	CLVTP_PHONE_VB_UNKNOWN = 0xFFFF
 };
 
 /* Hardware_ID table for Product_Line_ID == INTEL_CLVT_TABLET_TBD */
@@ -349,8 +375,15 @@ enum {
 	MRFL_PHONE_SB_PR2,  /* Salt Bay PR2-FF (B0) */
 	MRFL_PHONE_SB_PR3M, /* Salt Bay PR3-Macro (B0) */
 	MRFL_PHONE_SB_PR3,  /* Salt Bay PR3-FF (B0) */
-	MRFL_PHONE_TBD_RSVD,
-	MRFL_PHONE_TBD_UNKNOWN = 0xFFFF
+	MRFL_PHONE_SB_RSVD,
+	MRFL_PHONE_SB_UNKNOWN = 0xFFFF
+};
+
+/* Hardware_ID table for Product_Line_ID == INTEL_MRFL_PHONE_BB */
+enum {
+	MRFL_PHONE_BB_PRH,  /* Bodega Bay PRh FAB A */
+	MRFL_PHONE_BB_RSVD,
+	MRFL_PHONE_BB_UNKNOWN = 0xFFFF
 };
 
 /* Hardware_ID table for Product_Line_ID == INTEL_MRFL_TABLET_TBD */
@@ -375,6 +408,27 @@ enum {
 	BYT_TABLET_TBD_TBD3,
 	BYT_TABLET_TBD_RSVD,
 	BYT_TABLET_TBD_UNKNOWN = 0xFFFF
+};
+
+/* Hardware_ID table for Product_Line_ID == INTEL_MOOR_PHONE_FRCB */
+enum {
+	MOOR_PHONE_FRCB_VVA, /* Mountain Prairie VV FAB A */
+	MOOR_PHONE_FRCB_VVB, /* Mountain Prairie VV FAB B */
+	MOOR_PHONE_FRCB_VVC, /* Mountain Prairie VV FAB C */
+	MOOR_PHONE_FRCB_VVD, /* Mountain Prairie VV FAB D */
+	MOOR_PHONE_FRCB_PR0, /* Francis Bay FAB A */
+	MOOR_PHONE_FRCB_PR1, /* Francis Bay FAB B */
+	MOOR_PHONE_FRCB_PR2, /* Francis Bay FAB C */
+	MOOR_PHONE_FRCB_PR3, /* Francis Bay FAB D */
+	MOOR_PHONE_FRCB_RSVD,
+	MOOR_PHONE_FRCB_UNKNOWN = 0xFFFF
+};
+
+/* Hardware_ID table for Product_Line_ID == INTEL_MOOR_TABLET_TBD */
+enum {
+	MOOR_TABLET_TBD_TBD,
+	MOOR_TABLET_TBD_RSVD,
+	MOOR_TABLET_TBD_UNKNOWN = 0xFFFF
 };
 
 /* Macros for SPID based checks */

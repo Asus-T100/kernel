@@ -301,6 +301,7 @@ struct max17042_chip {
 	 * batery temperature for conformence testing.
 	 */
 	bool	enable_fake_temp;
+	int	extra_resv_cap;
 };
 
 /* Sysfs entry for disable shutdown methods from user space */
@@ -346,6 +347,7 @@ static void set_soc_intr_thresholds_s0(struct max17042_chip *chip, int offset);
 static void save_runtime_params(struct max17042_chip *chip);
 static void set_chip_config(struct max17042_chip *chip);
 static u16 fg_vfSoc;
+static bool fake_batt_full;
 static struct max17042_config_data *fg_conf_data;
 static struct i2c_client *max17042_client;
 
@@ -864,6 +866,15 @@ static int max17042_get_property(struct power_supply *psy,
 		val->intval = (ret >> 7) * 10000; /* Units of LSB = 10mV */
 		break;
 	case POWER_SUPPLY_PROP_CAPACITY:
+		/*
+		 * WA added to support power supply voltage
+		 * variations b/w supply and FG readings.
+		 */
+		if (fake_batt_full) {
+			val->intval = 100;
+			break;
+		}
+
 		/* Voltage Based shutdown method to avoid modem crash */
 		if (chip->pdata->is_volt_shutdown) {
 			ret = max17042_read_reg(chip->client,
@@ -1154,9 +1165,9 @@ static void write_custom_regs(struct max17042_chip *chip)
 						fg_conf_data->ichgt_term);
 	/* adjust Temperature gain and offset */
 	max17042_write_reg(chip->client,
-			MAX17042_TGAIN, NTC_47K_TGAIN);
+			MAX17042_TGAIN, chip->pdata->tgain);
 	max17042_write_reg(chip->client,
-			MAx17042_TOFF, NTC_47K_TOFF);
+			MAx17042_TOFF, chip->pdata->toff);
 
 	if (chip->chip_type == MAX17042) {
 		max17042_write_reg(chip->client, MAX17042_ETC,
@@ -1172,13 +1183,13 @@ static void write_custom_regs(struct max17042_chip *chip)
 		max17042_write_verify_reg(chip->client, MAX17050_V_empty,
 							fg_conf_data->vempty);
 		max17042_write_verify_reg(chip->client, MAX17050_QRTbl00,
-							fg_conf_data->qrtbl00);
+			fg_conf_data->qrtbl00 + chip->extra_resv_cap);
 		max17042_write_verify_reg(chip->client, MAX17050_QRTbl10,
-							fg_conf_data->qrtbl10);
+			fg_conf_data->qrtbl10 + chip->extra_resv_cap);
 		max17042_write_verify_reg(chip->client, MAX17050_QRTbl20,
-							fg_conf_data->qrtbl20);
+			fg_conf_data->qrtbl20 + chip->extra_resv_cap);
 		max17042_write_verify_reg(chip->client, MAX17050_QRTbl30,
-							fg_conf_data->qrtbl30);
+			fg_conf_data->qrtbl30 + chip->extra_resv_cap);
 	}
 }
 
@@ -1276,15 +1287,20 @@ static void update_runtime_params(struct max17042_chip *chip)
 							MAX17042_RCOMP0);
 	fg_conf_data->tempCo = max17042_read_reg(chip->client,
 							MAX17042_TempCo);
+	/*
+	 * Save only the original qrtbl register values ignoring the
+	 * additionally reserved capacity. We deal with reserved
+	 * capacity while restoring.
+	 */
 	if (chip->chip_type == MAX17050) {
 		fg_conf_data->qrtbl00 = max17042_read_reg(chip->client,
-							MAX17050_QRTbl00);
+			MAX17050_QRTbl00) - chip->extra_resv_cap;
 		fg_conf_data->qrtbl10 = max17042_read_reg(chip->client,
-							MAX17050_QRTbl10);
+			MAX17050_QRTbl10) - chip->extra_resv_cap;
 		fg_conf_data->qrtbl20 = max17042_read_reg(chip->client,
-							MAX17050_QRTbl20);
+			MAX17050_QRTbl20) - chip->extra_resv_cap;
 		fg_conf_data->qrtbl30 = max17042_read_reg(chip->client,
-							MAX17050_QRTbl30);
+			MAX17050_QRTbl30) - chip->extra_resv_cap;
 	}
 
 	fg_conf_data->full_capnom = max17042_read_reg(chip->client,
@@ -1527,9 +1543,8 @@ static void set_chip_config(struct max17042_chip *chip)
 	dev_info(&chip->client->dev, "Status reg: %x\n", val);
 	if (!fg_conf_data->config_init || (val & STATUS_POR_BIT)) {
 		dev_info(&chip->client->dev, "Config data should be loaded\n");
-#if defined(CONFIG_BOARD_REDRIDGE) || defined(CONFIG_BOARD_CTP) || defined(CONFIG_X86_MRFLD)
-		reset_max17042(chip);
-#endif
+		if (chip->pdata->reset_chip)
+			reset_max17042(chip);
 		retval = init_max17042_chip(chip);
 		if (retval < 0) {
 			dev_err(&chip->client->dev, "maxim chip init failed\n");
@@ -2008,6 +2023,10 @@ static int __devinit max17042_probe(struct i2c_client *client,
 	}
 	chip->client = client;
 	chip->pdata = client->dev.platform_data;
+	/* LSB offset for qrtbl registers is 0.25%
+	 * ie, 0x04 = 1% reserved capacity
+	 */
+	chip->extra_resv_cap = 4 * chip->pdata->resv_cap;
 
 	i2c_set_clientdata(client, chip);
 	max17042_client = client;
@@ -2279,7 +2298,16 @@ static int max17042_reboot_callback(struct notifier_block *nfb,
 
 	return NOTIFY_OK;
 }
+
 module_i2c_driver(max17042_i2c_driver);
+
+int __init set_fake_batt_full(char *p)
+{
+	fake_batt_full = true;
+	return 0;
+}
+
+early_param("fake_batt_full", set_fake_batt_full);
 
 MODULE_AUTHOR("MyungJoo Ham <myungjoo.ham@samsung.com>");
 MODULE_DESCRIPTION("MAX17042 Fuel Gauge");

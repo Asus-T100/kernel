@@ -787,8 +787,8 @@ void mdfld_dsi_dpi_dpms(struct drm_encoder *encoder, int mode)
 
 static
 bool mdfld_dsi_dpi_mode_fixup(struct drm_encoder *encoder,
-				struct drm_display_mode *mode,
-				struct drm_display_mode *adjusted_mode)
+		const struct drm_display_mode *mode,
+		struct drm_display_mode *adjusted_mode)
 {
 	struct mdfld_dsi_encoder *dsi_encoder = MDFLD_DSI_ENCODER(encoder);
 	struct mdfld_dsi_config *dsi_config =
@@ -991,8 +991,7 @@ void mdfld_dsi_dpi_exit_idle(struct drm_device *dev,
  * return pointer of newly allocated DPI encoder, NULL on error
  */ 
 struct mdfld_dsi_encoder *mdfld_dsi_dpi_init(struct drm_device *dev,
-				struct mdfld_dsi_connector *dsi_connector,
-				struct panel_funcs *p_funcs)
+		struct mdfld_dsi_connector *dsi_connector)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
 	struct mdfld_dsi_dpi_output *dpi_output = NULL;
@@ -1003,53 +1002,15 @@ struct mdfld_dsi_encoder *mdfld_dsi_dpi_init(struct drm_device *dev,
 	int pipe;
 	int ret;
 
-	PSB_DEBUG_ENTRY("[DISPLAY] %s\n", __func__);
+	PSB_DEBUG_ENTRY("\n");
  
-	if(!dsi_connector || !p_funcs) {
+	if (!dsi_connector) {
 		DRM_ERROR("Invalid parameters\n");
 		return NULL;
 	}
 	dsi_config = mdfld_dsi_get_config(dsi_connector);
 	pipe = dsi_connector->pipe;
-
-	/*detect panel connection stauts*/
-	if (p_funcs->detect) {
-		ret = p_funcs->detect(dsi_config);
-		if (ret) {
-			DRM_INFO("Detecting Panel %d, Not connected\n", pipe);
-			dsi_connector->status = connector_status_disconnected;
-		} else {
-			PSB_DEBUG_ENTRY("Panel %d is connected\n", pipe);
-			dsi_connector->status = connector_status_connected;
-		}
-
-		if (dsi_connector->status == connector_status_disconnected &&
-			pipe == 0) {
-			DRM_ERROR("Primary panel disconnected\n");
-			return NULL;
-		}
-	} else {
-		/*use the default config*/
-		if (pipe == 0)
-			dsi_connector->status = connector_status_connected;
-		else
-			dsi_connector->status = connector_status_disconnected;
-	}
-
-	/*init DSI controller*/
-	if (p_funcs->dsi_controller_init)
-		p_funcs->dsi_controller_init(dsi_config);
-
-	/**
-	 * TODO: can we keep these code out of display driver as
-	 * it will make display driver hard to be maintained
-	 */
-	if (dsi_connector->status == connector_status_connected) {
-		if (pipe == 0)
-			dev_priv->panel_desc |= DISPLAY_A;
-		if (pipe == 2)
-			dev_priv->panel_desc |= DISPLAY_C;
-	}
+	dsi_connector->status = connector_status_connected;
 
 	dpi_output = kzalloc(sizeof(struct mdfld_dsi_dpi_output), GFP_KERNEL);
 	if (!dpi_output) {
@@ -1058,11 +1019,12 @@ struct mdfld_dsi_encoder *mdfld_dsi_dpi_init(struct drm_device *dev,
 	}
 
 	dpi_output->dev = dev;
-	dpi_output->p_funcs = p_funcs;
 	dpi_output->first_boot = 1;
 
-	/*get fixed mode*/
-	fixed_mode = dsi_config->fixed_mode;
+	if (pipe)
+		dev_priv->dpi_output2 = dpi_output;
+	else
+		dev_priv->dpi_output = dpi_output;
 
 	/*create drm encoder object*/
 	connector = &dsi_connector->base.base;

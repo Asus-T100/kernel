@@ -3727,6 +3727,7 @@ int io_apic_set_pci_routing(struct device *dev, int irq,
 
 	return io_apic_setup_irq_pin_once(irq, node, irq_attr);
 }
+EXPORT_SYMBOL(io_apic_set_pci_routing);
 
 #ifdef CONFIG_X86_32
 static int __init io_apic_get_unique_id(int ioapic, int apic_id)
@@ -4024,6 +4025,7 @@ int mp_find_ioapic(u32 gsi)
 	printk(KERN_ERR "ERROR: Unable to locate IOAPIC for GSI %d\n", gsi);
 	return -1;
 }
+EXPORT_SYMBOL(mp_find_ioapic);
 
 int mp_find_ioapic_pin(int ioapic, u32 gsi)
 {

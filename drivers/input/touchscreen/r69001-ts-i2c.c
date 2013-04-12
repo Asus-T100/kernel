@@ -349,13 +349,8 @@ r69001_ts_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	ts->client = client;
 	ts->pdata = pdata;
 
-	if (!client->irq) {
-		dev_err(&client->dev, "Error, there is no IRQ number\n");
-		error = -EINVAL;
-		goto err1;
-	} else if (client->irq == 0xff) {
+	if (!client->irq) /* not fast irq but a gpio one */
 		client->irq = gpio_to_irq(pdata->gpio);
-	}
 
 	input_dev = input_allocate_device();
 	if (!input_dev) {

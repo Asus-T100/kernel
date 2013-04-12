@@ -24,6 +24,7 @@
  */
 
 /* Includes */
+#define DEBUG
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
@@ -1491,6 +1492,9 @@ static int pmic_chrgr_suspend(struct device *dev)
 static int pmic_chrgr_resume(struct device *dev)
 {
 	dev_dbg(dev, "%s called\n", __func__);
+	if (pmic_check_initial_events())
+		dev_err(chc.dev,
+			"Error posting initial events\n");
 	return 0;
 }
 #endif

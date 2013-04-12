@@ -66,6 +66,7 @@
 
 
 #include <linux/types.h>
+#include <linux/i2c.h>
 
 #include "otm_hdmi.h"
 
@@ -138,6 +139,9 @@ typedef struct {
 
 otm_hdmi_ret_t edid_parse(edid_info_t *edid_info, i2c_read_t data_read,
 			  void *cd);
+
+otm_hdmi_ret_t edid_extension_parse(struct i2c_adapter *adapter,
+			 edid_info_t *edid_info, unsigned char *edid);
 
 void print_pd_timing(const otm_hdmi_timing_t *pdt, unsigned int order);
 void print_audio_capability(otm_hdmi_audio_cap_t *adb);

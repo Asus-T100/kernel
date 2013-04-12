@@ -49,6 +49,11 @@
 #include "dx_driver_abi.h"
 #include "dx_dev_defs.h"
 
+#define S3_POWER_HACK
+
+#ifdef S3_POWER_HACK
+#include <linux/suspend.h>
+#endif
 /* Control printf's from SeP via GPR.
  * Keep this macro defined as long as SeP code uses host_printf
  * (otherwise, SeP would stall waiting for host to ack characters)

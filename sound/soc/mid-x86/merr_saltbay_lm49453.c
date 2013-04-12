@@ -1,5 +1,5 @@
 /*
- *  mrfld_machine_lm49453.c - ASoc Machine driver for Intel Merrifield MID platform
+ *  merr_saltbay_lm49453.c - ASoc Machine driver for Intel Merrifield MID platform
  *  for the lm49453 codec
  *
  *  Copyright (C) 2012 Intel Corp
@@ -316,6 +316,7 @@ static int mrfld_init(struct snd_soc_pcm_runtime *runtime)
 	/* using the 32.7khz RTC for HSD */
 	snd_soc_write(codec, LM49453_P0_HSDET_CLK_DIV_REG, 0x00);
 
+	snd_soc_write(codec, LM49453_P0_AUDIO_PORT1_CLK_GEN2_REG, 0x60);
 	/* set some magic reg in page 2 for jack detection to work well */
 	lm49453_set_reg_on_page(codec, LM49453_PAGE2_SELECT, 0xFC, 0xE);
 	/* set HSD mic thresholds to proper values */
@@ -416,10 +417,12 @@ struct snd_soc_dai_link mrfld_msic_dailink[] = {
 	[MRFLD_PROBE] = {
 		.name = "Merrifield Probe Port",
 		.stream_name = "Probe",
-		.cpu_dai_name = "Virtual-cpu-dai",
+		.cpu_dai_name = "Probe-cpu-dai",
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.codec_name = "snd-soc-dummy",
 		.platform_name = "sst-platform",
+		.playback_count = 8,
+		.capture_count = 8,
 	},
 	[MRFLD_AWARE] = {
 		.name = "Merrifield Aware Port",

@@ -61,10 +61,6 @@ static struct drm_device *g_dev;   /* hack for the queue */
 static int blc_adj2;
 static u32 lut_adj[256];
 
-#define AGGRESSIVE_LEVEL_MIN	0
-#define AGGRESSIVE_LEVEL_MAX	5
-#define AGGRESSIVE_LEVEL_DEFAULT	3
-
 void dpst_disable_post_process(struct drm_device *dev);
 
 int send_hist(void)
@@ -662,13 +658,16 @@ void dpst_execute_recv_command(struct dispmgr_command_hdr *cmd_hdr)
 }
 
 /* Initialize the dpst data */
-int dpst_init(struct drm_device *dev, int level, int output_id)
+int dpst_init(struct drm_device *dev, int level)
 {
 	g_dev = dev;
 	/* hack for now - the work queue does not have the device */
 
+	dpst_level = level;
+
 	dpst_save_bl_adj_factor(dev);
 	dpst_save_gamma_settings(dev);
+	dispmgr_start(dev);
 
 	return 0;
 }

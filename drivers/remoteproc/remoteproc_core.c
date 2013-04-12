@@ -337,8 +337,8 @@ __rproc_handle_vring(struct rproc_vdev *rvdev, struct fw_rsc_vdev *rsc, int i)
 	vring->da = dma;
 	vring->notifyid = notifyid;
 
-	dev_dbg(dev, "vring%d: va %p dma %x size %x idr %d\n", i, va,
-					dma, size, notifyid);
+	dev_dbg(dev, "vring%d: va %p dma %lx size %x idr %d\n", i, va,
+					(unsigned long)dma, size, notifyid);
 
 	rvdev->vring[i].len = vring->num;
 	rvdev->vring[i].align = vring->align;
@@ -656,7 +656,8 @@ static int rproc_handle_carveout(struct rproc *rproc,
 		goto free_carv;
 	}
 
-	dev_dbg(dev, "carveout va %p, dma %x, len 0x%x\n", va, dma, rsc->len);
+	dev_dbg(dev, "carveout va %p, dma %lx, len 0x%x\n", va,
+						(unsigned long)dma, rsc->len);
 
 	/*
 	 * Ok, this is non-standard.
@@ -701,7 +702,8 @@ static int rproc_handle_carveout(struct rproc *rproc,
 		mapping->len = rsc->len;
 		list_add_tail(&mapping->node, &rproc->mappings);
 
-		dev_dbg(dev, "carveout mapped 0x%x to 0x%x\n", rsc->da, dma);
+		dev_dbg(dev, "carveout mapped 0x%x to 0x%lx\n", rsc->da,
+							(unsigned long)dma);
 
 		/*
 		 * Some remote processors might need to know the pa

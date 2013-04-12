@@ -1805,6 +1805,7 @@ void usb_disconnect(struct usb_device **pdev)
 	 */
 	device_del(&udev->dev);
 	otg_notify(udev, USB_DEVICE_REMOVE);
+	hsic_notify(udev, USB_DEVICE_REMOVE);
 	/* Free the device number and delete the parent's children[]
 	 * (or root_hub) pointer.
 	 */

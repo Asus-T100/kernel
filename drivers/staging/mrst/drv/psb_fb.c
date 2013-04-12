@@ -1001,7 +1001,7 @@ static int psbfb_create(struct psb_fbdev * fbdev, struct drm_fb_helper_surface_s
 	* is 608x1024(64 bits align), or the information between android
 	* and Linux frame buffer is not consistent.
 	*/
-	if (get_panel_type(dev, 0) == TMD_6X10_VID) {
+	if (is_tmd_6x10_panel(dev, 0)) {
 		mode_cmd.width  = fixed_mode->hdisplay - 200;
 		mode_cmd.height = fixed_mode->vdisplay;
 	} else {
@@ -1071,7 +1071,7 @@ static int psbfb_create(struct psb_fbdev * fbdev, struct drm_fb_helper_surface_s
 
 	drm_fb_helper_fill_fix(info, fb->pitches[0], fb->depth);
 
-	if (get_panel_type(dev, 0) == TMD_6X10_VID)
+	if (is_tmd_6x10_panel(dev, 0))
 		drm_fb_helper_fill_var(info, &fbdev->psb_fb_helper, fb->width, fb->height);
 	else
 		drm_fb_helper_fill_var(info, &fbdev->psb_fb_helper, fb->width, fb->height);
@@ -1701,6 +1701,7 @@ void psb_modeset_init(struct drm_device *dev)
 	int i;
 
 	PSB_DEBUG_ENTRY("\n");
+
 	/* Init mm functions */
 	mode_dev->bo_from_handle = psb_bo_from_handle;
 	mode_dev->bo_size = psb_bo_size;
@@ -1717,7 +1718,8 @@ void psb_modeset_init(struct drm_device *dev)
 
 	/* set memory base */
 	/* MRST and PSB should use BAR 2*/
-	pci_read_config_dword(dev->pdev, PSB_BSM, (uint32_t *) &(dev->mode_config.fb_base));
+	pci_read_config_dword(dev->pdev, PSB_BSM,
+			(uint32_t *)&(dev->mode_config.fb_base));
 
 	for (i = 0; i < dev_priv->num_pipe; i++)
 		psb_intel_crtc_init(dev, i, mode_dev);
@@ -1726,9 +1728,6 @@ void psb_modeset_init(struct drm_device *dev)
 	dev->mode_config.max_height = dev->mode_config.num_crtc * MDFLD_PLANE_MAX_HEIGHT;
 
 	psb_setup_outputs(dev);
-
-	/* setup fbs */
-	/* drm_initial_config(dev); */
 }
 
 void psb_modeset_cleanup(struct drm_device *dev)

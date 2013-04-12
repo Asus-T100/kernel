@@ -48,7 +48,7 @@
 #include <asm/ssse3.h>
 #endif
 
-static struct hmm_bo_device bo_device;
+struct hmm_bo_device bo_device;
 struct hmm_pool	dynamic_pool;
 struct hmm_pool	reserved_pool;
 static void *dummy_ptr;

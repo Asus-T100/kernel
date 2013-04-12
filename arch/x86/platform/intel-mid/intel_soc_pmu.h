@@ -35,9 +35,10 @@
 #include <linux/timer.h>
 #include <linux/jhash.h>
 #include <linux/suspend.h>
-#include <linux/wakelock.h>
 #include <linux/workqueue.h>
 #include <linux/nmi.h>
+#include <linux/pm_qos.h>
+#include <linux/pm_wakeup.h>
 #include <asm/apic.h>
 #include <asm/intel_scu_ipc.h>
 #include <linux/intel_mid_pm.h>
@@ -314,6 +315,10 @@ struct mid_pmu_dev {
 	u32 num_wakes[MAX_DEVICES][SYS_STATE_MAX];
 	u32 ignore_lss[4];
 	u32 os_sss[4];
+#ifdef CONFIG_PM_DEBUG
+	u32 cstate_ignore;
+	struct pm_qos_request *cstate_qos;
+#endif
 
 	u32 __iomem *emergeny_emmc_up_addr;
 	u64 pmu_init_time;
@@ -347,10 +352,7 @@ struct mid_pmu_dev {
 	struct mid_pmu_ipc_irq_log ipc_irq_log[LOG_SIZE];
 	struct mid_pmu_pmu_irq_log pmu_irq_log[LOG_SIZE];
 #endif
-
-#ifdef CONFIG_HAS_WAKELOCK
-	struct wake_lock pmu_wake_lock;
-#endif
+	struct wakeup_source *pmu_wake_lock;
 
 	struct pmu_suspend_config *ss_config;
 	struct pci_dev *pmu_dev;

@@ -28,6 +28,7 @@ struct batt_props {
 	unsigned long tstamp;
 	enum psy_algo_stat algo_stat;
 	int health;
+	int throttle_state;
 };
 
 struct charger_props {
@@ -188,7 +189,8 @@ static inline int get_ps_int_property(struct power_supply *psy,
 	(time_after64(bat_prop.tstamp, (bat_cache.tstamp + PROP_TTL)) &&\
 	 bat_cache.current_now != bat_prop.current_now) || \
 	(bat_cache.temperature != bat_prop.temperature) || \
-	(bat_cache.health != bat_prop.health))
+	(bat_cache.health != bat_prop.health) || \
+	(bat_cache.throttle_state != bat_prop.throttle_state))
 
 #define THROTTLE_ACTION(psy, state)\
 		(((psy->throttle_states)+state)->throttle_action)

@@ -402,8 +402,9 @@ PVRSRV_ERROR RGXPrePowerState (IMG_HANDLE				hDevHandle,
 			/* Wait for the firmware to complete processing. */
 			for (;;)
 			{
-
+				OSSetKeepPVRLock();
 				eError = PVRSRVWaitForValueKM(psDevInfo->psPowSyncPrim->pui32LinAddr, 0x1, 0x1);
+				OSSetReleasePVRLock();
 
 				/* The Firmware has answered */
 				if (eError == PVRSRV_OK)

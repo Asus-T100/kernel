@@ -38,6 +38,7 @@
 #include "atomisp_file.h"
 #include "atomisp_subdev.h"
 #include "atomisp_tpg.h"
+#include "atomisp_compat.h"
 
 #include "gp_device.h"
 #include "irq.h"
@@ -86,7 +87,8 @@
 
 #define ATOMISP_DELAYED_INIT_NOT_QUEUED	0
 #define ATOMISP_DELAYED_INIT_QUEUED	1
-#define ATOMISP_DELAYED_INIT_DONE	2
+#define ATOMISP_DELAYED_INIT_WORK_DONE	2
+#define ATOMISP_DELAYED_INIT_DONE	3
 
 /*
  * Define how fast CPU should be able to serve ISP interrupts.
@@ -153,7 +155,6 @@ struct atomisp_regs {
 };
 
 struct atomisp_sw_contex {
-	bool bypass;
 	bool file_input;
 	int  invalid_frame;
 	int  invalid_vf_frame;
@@ -184,7 +185,6 @@ struct atomisp_css_params {
 	bool fpn_en;
 	bool xnr_en;
 	bool low_light;
-	bool continuous_vf;
 	int false_color;
 	unsigned int histogram_elenum;
 
@@ -219,10 +219,6 @@ struct atomisp_css_params {
 	struct sh_css_gamma_table gamma_table;
 	struct sh_css_ctc_table   ctc_table;
 	struct sh_css_macc_table  macc_table;
-	/*
-	 * overlay removed from css 1.5
-	 * struct sh_css_overlay	*vf_overlay;
-	 */
 
 	/* Current grid info */
 	struct sh_css_grid_info curr_grid_info;
@@ -304,7 +300,7 @@ struct atomisp_device {
 		struct ida ida;
 	} acc;
 
-	unsigned int s3a_bufs_in_css[SH_CSS_NR_OF_PIPELINES];
+	unsigned int s3a_bufs_in_css[CSS_PIPE_ID_NUM];
 	unsigned int dis_bufs_in_css;
 
 	/* ISP modules */
@@ -341,6 +337,7 @@ struct atomisp_device {
 	struct atomisp_regs saved_regs;
 	struct atomisp_sw_contex sw_contex;
 	struct atomisp_css_params params;
+	struct atomisp_css_env css_env;
 
 	/* isp timeout status flag */
 	bool isp_timeout;
@@ -361,6 +358,8 @@ struct atomisp_device {
 
 	bool need_gfx_throttle;
 
+	/* delayed memory allocation for css */
+	struct completion init_done;
 	struct workqueue_struct *delayed_init_workq;
 	unsigned int delayed_init;
 	struct work_struct delayed_init_work;
@@ -377,5 +376,6 @@ extern void atomisp_kernel_free(void *ptr);
 
 #define MFLD_FW_PATH	"shisp_css15.bin"
 #define ISP2400_FW_PATH   "shisp_2400.bin"
+#define ISP2400B0_FW_PATH   "shisp_2400b0.bin"
 
 #endif /* __ATOMISP_INTERNAL_H__ */

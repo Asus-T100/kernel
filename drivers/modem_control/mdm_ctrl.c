@@ -87,6 +87,12 @@ static irqreturn_t mdm_ctrl_coredump_it(int irq, void *data)
 		goto out;
 	}
 
+	/* Ignoring if Modem reset is ongoing. */
+	if (mdm_ctrl_get_reset_ongoing(drv) == 1) {
+		pr_err(DRVNAME": CORE_DUMP while Modem Reset is ongoing\r\n");
+		goto out;
+	}
+
 	/* Set the reason & launch the work to handle the hangup */
 	drv->hangup_causes |= MDM_CTRL_HU_COREDUMP;
 	queue_work(drv->hu_wq, &drv->hangup_work);
@@ -706,6 +712,9 @@ static int __init mdm_ctrl_module_init(void)
 		goto del_class;
 	}
 
+	wake_lock_init(&new_drv->stay_awake, WAKE_LOCK_SUSPEND,
+				"mcd_wakelock");
+
 	mdm_ctrl_launch_work(new_drv, MDM_CTRL_STATE_OFF);
 	flush_workqueue(new_drv->change_state_wq);
 
@@ -713,9 +722,6 @@ static int __init mdm_ctrl_module_init(void)
 
 	if (mdm_ctrl_setup_irq_gpio(new_drv))
 		goto del_dev;
-
-	wake_lock_init(&new_drv->stay_awake, WAKE_LOCK_SUSPEND,
-				"mcd_wakelock");
 
 	/* Everything is OK */
 	mdm_drv = new_drv;

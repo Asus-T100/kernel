@@ -1737,7 +1737,7 @@ static struct sdhci_pci_slot * __devinit sdhci_pci_probe_slot(
 		return ERR_PTR(-ENODEV);
 	}
 
-	if (pci_resource_len(pdev, bar) != 0x100) {
+	if (pci_resource_len(pdev, bar) < 0x100) {
 		dev_err(&pdev->dev, "Invalid iomem size. You may "
 			"experience problems.\n");
 	}
@@ -2011,7 +2011,6 @@ err:
 
 static void __devexit sdhci_pci_shutdown(struct pci_dev *pdev)
 {
-	int i;
 	struct sdhci_pci_chip *chip;
 
 	chip = pci_get_drvdata(pdev);

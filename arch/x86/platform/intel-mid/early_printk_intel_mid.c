@@ -310,7 +310,7 @@ void mrfld_early_console_init(void)
 	pssp = (void *)(__fix_to_virt(FIX_EARLYCON_MEM_BASE) +
 			(MRFLD_REGBASE_SSP5 & (PAGE_SIZE - 1)));
 
-	if (intel_mrfl_identify_sim() == INTEL_MRFL_CPU_SIMULATION_NONE)
+	if (intel_mid_identify_sim() == INTEL_MID_CPU_SIMULATION_NONE)
 		ssp_timing_wr = 1;
 
 	/* mask interrupts, clear enable and set DSS config */
@@ -416,8 +416,10 @@ void hsu_early_console_init(const char *s)
 		paddr = MERR_HSU_PORT_BASE;
 		clkctl = (int *)set_fixmap_offset_nocache(FIX_CLOCK_CTL,
 							  MERR_HSU_CLK_CTL);
-	} else
+	} else {
 		paddr = MFLD_HSU_PORT_BASE;
+		clkctl = NULL;
+	}
 
 	/*
 	 * Select the early HSU console port if specified by user in the
@@ -443,12 +445,13 @@ void hsu_early_console_init(const char *s)
 
 	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER) {
 		/* detect HSU clock is 50M or 19.2M */
-		if (*clkctl & (1 << 16))
+		if (clkctl && *clkctl & (1 << 16))
 			writel(0x0120, phsu + UART_MUL * 4); /* for 50M */
 		else
 			writel(0x05DC, phsu + UART_MUL * 4);  /* for 19.2M */
-	} else
+	} else {
 		writel(0x0240, phsu + UART_MUL * 4);
+	}
 
 	writel(0x3D09, phsu + UART_DIV * 4);
 

@@ -120,6 +120,7 @@
 #define GEN6_PTE_CACHE_BITS		(3 << 1)
 #define GEN6_PTE_GFDT			(1 << 3)
 #define GEN6_PTE_ADDR_ENCODE(addr)	GEN6_GTT_ADDR_ENCODE(addr)
+#define VLV_PTE_WRITE_ENABLE    GEN6_PTE_UNCACHED
 
 #define RING_PP_DIR_BASE(ring)		((ring)->mmio_base+0x228)
 #define RING_PP_DIR_BASE_READ(ring)	((ring)->mmio_base+0x518)
@@ -3005,12 +3006,19 @@
 #define   DISPPLANE_GAMMA_ENABLE		(1<<30)
 #define   DISPPLANE_GAMMA_DISABLE		0
 #define   DISPPLANE_PIXFORMAT_MASK		(0xf<<26)
+#define   DISPPLANE_YUV422			(0x0<<26)
 #define   DISPPLANE_8BPP			(0x2<<26)
-#define   DISPPLANE_15_16BPP			(0x4<<26)
-#define   DISPPLANE_16BPP			(0x5<<26)
-#define   DISPPLANE_32BPP_NO_ALPHA		(0x6<<26)
-#define   DISPPLANE_32BPP			(0x7<<26)
-#define   DISPPLANE_32BPP_30BIT_NO_ALPHA	(0xa<<26)
+#define   DISPPLANE_BGRA555			(0x3<<26)
+#define   DISPPLANE_BGRX555			(0x4<<26)
+#define   DISPPLANE_BGRX565			(0x5<<26)
+#define   DISPPLANE_BGRX888			(0x6<<26)
+#define   DISPPLANE_BGRA888			(0x7<<26)
+#define   DISPPLANE_RGBX101010			(0x8<<26)
+#define   DISPPLANE_RGBA101010			(0x9<<26)
+#define   DISPPLANE_BGRX101010			(0xa<<26)
+#define   DISPPLANE_RGBX161616			(0xc<<26)
+#define   DISPPLANE_RGBX888			(0xe<<26)
+#define   DISPPLANE_RGBA888			(0xf<<26)
 #define   DISPPLANE_STEREO_ENABLE		(1<<25)
 #define   DISPPLANE_STEREO_DISABLE		0
 #define   DISPPLANE_SEL_PIPE_SHIFT		24

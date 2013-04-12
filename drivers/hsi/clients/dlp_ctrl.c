@@ -581,7 +581,7 @@ static int dlp_ctrl_cmd_send(struct dlp_channel *ch_ctx,
 				unsigned char param1,
 				unsigned char param2, unsigned char param3)
 {
-	int ret = 0;
+	int ret = 0, old_state;
 	struct dlp_ctrl_context *ctrl_ctx = DLP_CTRL_CTX;
 	struct dlp_command *dlp_cmd;
 	struct dlp_command_params expected_resp;
@@ -597,6 +597,9 @@ static int dlp_ctrl_cmd_send(struct dlp_channel *ch_ctx,
 
 		return ret;
 	}
+
+	/* Save the current channel state */
+	old_state = dlp_ctrl_get_channel_state(ch_ctx->hsi_channel);
 
 	/* Backup RX callback */
 	dlp_save_rx_callbacks(&ctrl_ctx->ehandler);
@@ -738,6 +741,11 @@ free_cmd:
 out:
 	/* Restore RX callback */
 	dlp_restore_rx_callbacks(&ctrl_ctx->ehandler);
+
+	/* Restore the channel state in error case */
+	if (ret)
+		dlp_ctrl_set_channel_state(ch_ctx->hsi_channel, old_state);
+
 	return ret;
 }
 

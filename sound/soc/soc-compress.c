@@ -170,7 +170,6 @@ static int soc_compr_trigger(struct snd_compr_stream *cstream, int cmd)
 
 	struct snd_soc_pcm_runtime *rtd = cstream->private_data;
 	struct snd_soc_platform *platform = rtd->platform;
-	struct snd_soc_dai *codec_dai = rtd->codec_dai;
 	int ret = 0;
 
 	if (platform->driver->compr_ops && platform->driver->compr_ops->trigger) {

@@ -23,100 +23,14 @@
 #include <media/v4l2-mediabus.h>
 #include "atomisp_internal.h"
 
-static const unsigned int csi2_input_fmts[] = {
-	V4L2_MBUS_FMT_SGRBG10_1X10,
-	V4L2_MBUS_FMT_SRGGB10_1X10,
-	V4L2_MBUS_FMT_SBGGR10_1X10,
-	V4L2_MBUS_FMT_SGBRG10_1X10,
-};
-
-static const unsigned int csi2_output_fmts[] = {
-	V4L2_MBUS_FMT_SGRBG10_1X10,
-	V4L2_MBUS_FMT_SRGGB10_1X10,
-	V4L2_MBUS_FMT_SBGGR10_1X10,
-	V4L2_MBUS_FMT_SGBRG10_1X10,
-};
-
-
-/* V4L2 subdev operations */
-
-static struct v4l2_mbus_framefmt *
-__csi2_get_format(struct atomisp_mipi_csi2_device *csi2,
-		struct v4l2_subdev_fh *fh,
-		unsigned int pad,
-		enum v4l2_subdev_format_whence which)
+static struct v4l2_mbus_framefmt *__csi2_get_format(
+	struct atomisp_mipi_csi2_device *csi2, struct v4l2_subdev_fh *fh,
+	enum v4l2_subdev_format_whence which, unsigned int pad)
 {
 	if (which == V4L2_SUBDEV_FORMAT_TRY)
 		return v4l2_subdev_get_try_format(fh, pad);
 	else
 		return &csi2->formats[pad];
-}
-
-static enum v4l2_mbus_pixelcode
-isp_video_uncompressed_code(enum v4l2_mbus_pixelcode code)
-{
-	switch (code) {
-	case V4L2_MBUS_FMT_SBGGR10_DPCM8_1X8:
-		return V4L2_MBUS_FMT_SBGGR10_1X10;
-	case V4L2_MBUS_FMT_SGRBG10_DPCM8_1X8:
-		return V4L2_MBUS_FMT_SGRBG10_1X10;
-	case V4L2_MBUS_FMT_SRGGB10_DPCM8_1X8:
-		return V4L2_MBUS_FMT_SRGGB10_1X10;
-	case V4L2_MBUS_FMT_SGBRG10_DPCM8_1X8:
-		return V4L2_MBUS_FMT_SGBRG10_1X10;
-	default:
-		return code;
-	}
-}
-
-static void
-csi2_try_format(struct atomisp_mipi_csi2_device *csi2,
-	struct v4l2_subdev_fh *fh,
-	unsigned int pad,
-	struct v4l2_mbus_framefmt *fmt,
-	enum v4l2_subdev_format_whence which)
-{
-	enum v4l2_mbus_pixelcode pixelcode;
-	struct v4l2_mbus_framefmt *format;
-	unsigned int i;
-
-	switch (pad) {
-	case CSI2_PAD_SINK:
-		/* Clamp the width and height to valid range (1-8191). */
-		for (i = 0; i < ARRAY_SIZE(csi2_input_fmts); i++) {
-			if (fmt->code == csi2_input_fmts[i])
-				break;
-		}
-
-		/* If not found, use SGRBG10 as default */
-		if (i >= ARRAY_SIZE(csi2_input_fmts))
-			fmt->code = V4L2_MBUS_FMT_SBGGR10_1X10;
-
-		fmt->width = clamp_t(u32, fmt->width, 1, 4608);
-		fmt->height = clamp_t(u32, fmt->height, 1, 8191);
-		break;
-
-	case CSI2_PAD_SOURCE:
-		/* Source format same as sink format, except for DPCM
-		 * compression.
-		 */
-		pixelcode = fmt->code;
-		format = __csi2_get_format(csi2, fh, CSI2_PAD_SINK, which);
-		memcpy(fmt, format, sizeof(*fmt));
-
-		/* allow dpcm decompression */
-		if (isp_video_uncompressed_code(fmt->code) == pixelcode)
-			fmt->code = pixelcode;
-
-		break;
-
-	default:
-		break;
-	}
-
-	/* RGB, non-interlaced */
-	fmt->colorspace = V4L2_COLORSPACE_SRGB;
-	fmt->field = V4L2_FIELD_NONE;
 }
 
 /*
@@ -130,32 +44,18 @@ static int csi2_enum_mbus_code(struct v4l2_subdev *sd,
 			struct v4l2_subdev_fh *fh,
 			struct v4l2_subdev_mbus_code_enum *code)
 {
-	struct atomisp_mipi_csi2_device *csi2 = v4l2_get_subdevdata(sd);
-	struct v4l2_mbus_framefmt *format;
+	const struct atomisp_in_fmt_conv *ic = atomisp_in_fmt_conv;
+	unsigned int i = 0;
 
-	if (code->pad == CSI2_PAD_SINK) {
-		if (code->index >= ARRAY_SIZE(csi2_input_fmts))
-			return -EINVAL;
-		code->code = csi2_input_fmts[code->index];
-	} else {
-		format = __csi2_get_format(csi2, fh, CSI2_PAD_SINK,
-			V4L2_SUBDEV_FORMAT_TRY);
-		switch (code->index) {
-		case 0:
-			/* Passthrough sink pad code */
-			code->code = format->code;
-			break;
-		case 1:
-			/* Uncompressed code */
-			code->code = isp_video_uncompressed_code(format->code);
-			break;
-		default:
-			/* Fallthrough if above is false */
-			return -EINVAL;
+	while (ic->code) {
+		if (i == code->index) {
+			code->code = ic->code;
+			return 0;
 		}
+		i++, ic++;
 	}
 
-	return 0;
+	return -EINVAL;
 }
 
 /*
@@ -172,11 +72,48 @@ static int csi2_get_format(struct v4l2_subdev *sd,
 	struct atomisp_mipi_csi2_device *csi2 = v4l2_get_subdevdata(sd);
 	struct v4l2_mbus_framefmt *format;
 
-	format = __csi2_get_format(csi2, fh, fmt->pad, fmt->which);
-	if (format == NULL)
-		return -EINVAL;
+	format = __csi2_get_format(csi2, fh, fmt->which, fmt->pad);
 
 	fmt->format = *format;
+
+	return 0;
+}
+
+int atomisp_csi2_set_ffmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
+			  unsigned int which, uint16_t pad,
+			  struct v4l2_mbus_framefmt *ffmt)
+{
+	struct atomisp_mipi_csi2_device *csi2 = v4l2_get_subdevdata(sd);
+	struct v4l2_mbus_framefmt *actual_ffmt =
+		__csi2_get_format(csi2, fh, which, pad);
+
+	if (pad == CSI2_PAD_SINK) {
+		const struct atomisp_in_fmt_conv *ic;
+		struct v4l2_mbus_framefmt tmp_ffmt;
+
+		ic = atomisp_find_in_fmt_conv(ffmt->code);
+		if (ic)
+			actual_ffmt->code = ic->code;
+		else
+			actual_ffmt->code = atomisp_in_fmt_conv[0].code;
+
+		actual_ffmt->width = clamp_t(
+			u32, ffmt->width, ATOM_ISP_MIN_WIDTH,
+			ATOM_ISP_MAX_WIDTH);
+		actual_ffmt->height = clamp_t(
+			u32, ffmt->height, ATOM_ISP_MIN_HEIGHT,
+			ATOM_ISP_MAX_HEIGHT);
+
+		tmp_ffmt = *ffmt = *actual_ffmt;
+
+		return atomisp_csi2_set_ffmt(sd, fh, which, CSI2_PAD_SOURCE,
+					     &tmp_ffmt);
+	}
+
+	/* FIXME: DPCM decompression */
+	*actual_ffmt = *ffmt =
+		*__csi2_get_format(csi2, fh, which, CSI2_PAD_SINK);
+
 	return 0;
 }
 
@@ -191,25 +128,8 @@ static int csi2_get_format(struct v4l2_subdev *sd,
 static int csi2_set_format(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 		    struct v4l2_subdev_format *fmt)
 {
-	struct atomisp_mipi_csi2_device *csi2 = v4l2_get_subdevdata(sd);
-	struct v4l2_mbus_framefmt *format;
-
-	format = __csi2_get_format(csi2, fh, fmt->pad, fmt->which);
-	if (format == NULL)
-		return -EINVAL;
-
-	csi2_try_format(csi2, fh, fmt->pad, &fmt->format, fmt->which);
-	*format = fmt->format;
-
-	/* Propagate the format from sink to source */
-	if (fmt->pad == CSI2_PAD_SINK) {
-		format = __csi2_get_format(csi2, fh, CSI2_PAD_SOURCE,
-			fmt->which);
-		*format = fmt->format;
-		csi2_try_format(csi2, fh, CSI2_PAD_SOURCE, format, fmt->which);
-	}
-
-	return 0;
+	return atomisp_csi2_set_ffmt(sd, fh, fmt->which, fmt->pad,
+				     &fmt->format);
 }
 
 /*
@@ -245,6 +165,7 @@ static const struct v4l2_subdev_pad_ops csi2_pad_ops = {
 	.enum_mbus_code = csi2_enum_mbus_code,
 	.get_fmt = csi2_get_format,
 	.set_fmt = csi2_set_format,
+	.link_validate = v4l2_subdev_link_validate_default,
 };
 
 /* subdev operations */
@@ -296,6 +217,7 @@ static int csi2_link_setup(struct media_entity *entity,
 /* media operations */
 static const struct media_entity_operations csi2_media_ops = {
 	.link_setup = csi2_link_setup,
+	.link_validate = v4l2_subdev_link_validate,
 };
 
 /*
@@ -326,8 +248,9 @@ static int mipi_csi2_init_entities(struct atomisp_mipi_csi2_device *csi2,
 	if (ret < 0)
 		return ret;
 
-	csi2->formats[CSI2_PAD_SINK].code = V4L2_MBUS_FMT_SBGGR10_1X10;
-	csi2->formats[CSI2_PAD_SOURCE].code = V4L2_MBUS_FMT_SBGGR10_1X10;
+	csi2->formats[CSI2_PAD_SINK].code =
+		csi2->formats[CSI2_PAD_SOURCE].code =
+		atomisp_in_fmt_conv[0].code;
 
 	return 0;
 }

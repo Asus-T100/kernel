@@ -21,33 +21,99 @@
 #include "dw9719.h"
 
 static struct dw9719_device dw9719_dev;
-static int dw9719_i2c_write(struct i2c_client *client, u16 data)
+static int dw9719_i2c_rd8(struct i2c_client *client, u8 reg, u8 *val)
+{
+	struct i2c_msg msg[2];
+	u8 buf[2];
+	buf[0] = reg;
+
+	msg[0].addr = DW9719_VCM_ADDR;
+	msg[0].flags = 0;
+	msg[0].len = 1;
+	msg[0].buf = &buf[0];
+
+	msg[1].addr = DW9719_VCM_ADDR;
+	msg[1].flags = I2C_M_RD;
+	msg[1].len = 1;
+	msg[1].buf = &buf[1];
+	*val = 0;
+	if (i2c_transfer(client->adapter, msg, 2) != 2)
+		return -EIO;
+	*val = buf[1];
+	return 0;
+}
+
+static int dw9719_i2c_wr8(struct i2c_client *client, u8 reg, u8 val)
 {
 	struct i2c_msg msg;
-	const int num_msg = 1;
-	int ret;
-	u16 val;
-
-	val = cpu_to_be16(data);
+	u8 buf[2];
+	buf[0] = reg;
+	buf[1] = val;
 	msg.addr = DW9719_VCM_ADDR;
 	msg.flags = 0;
-	msg.len = DW9719_16BIT;
-	msg.buf = (u8 *)&val;
-
-	ret = i2c_transfer(client->adapter, &msg, 1);
-
-	return ret == num_msg ? 0 : -EIO;
+	msg.len = 2;
+	msg.buf = &buf[0];
+	if (i2c_transfer(client->adapter, &msg, 1) != 1)
+		return -EIO;
+	return 0;
+}
+static int dw9719_i2c_wr16(struct i2c_client *client, u8 reg, u16 val)
+{
+	struct i2c_msg msg;
+	u8 buf[3];
+	buf[0] = reg;
+	buf[1] = (u8)(val >> 8);
+	buf[2] = (u8)(val & 0xff);
+	msg.addr = DW9719_VCM_ADDR;
+	msg.flags = 0;
+	msg.len = 3;
+	msg.buf = &buf[0];
+	if (i2c_transfer(client->adapter, &msg, 1) != 1)
+		return -EIO;
+	return 0;
 }
 
 int imx_vcm_power_up(struct v4l2_subdev *sd)
 {
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	int ret;
+	u8 value;
 
 	/* Enable power */
 	ret = dw9719_dev.platform_data->power_ctrl(sd, 1);
 	/* waiting time requested by DW9714A(vcm) */
-	usleep_range(12000, 12500);
+	if (ret)
+		return ret;
+	/* Wait for VBAT to stabilize */
+	udelay(1);
+	/*
+	 * Jiggle SCL pin to wake up device.
+	 */
+	ret = dw9719_i2c_wr8(client, DW9719_CONTROL, 1);
+	/* Need 100us to transit from SHUTDOWN to STANDBY*/
+	usleep_range(100, 1000);
+
+	/* Reset device */
+	ret = dw9719_i2c_wr8(client, DW9719_CONTROL, 1);
+	if (ret < 0)
+		goto fail_powerdown;
+
+	/* Detect device */
+	ret = dw9719_i2c_rd8(client, DW9719_INFO, &value);
+	if (ret < 0)
+		goto fail_powerdown;
+	if (value != DW9719_ID) {
+		ret = -ENXIO;
+		goto fail_powerdown;
+	}
+	dw9719_dev.focus = DW9719_MAX_FOCUS_POS;
+	dw9719_dev.initialized = true;
+
+	return 0;
+fail_powerdown:
+	dw9719_dev.platform_data->power_ctrl(sd, 0);
 	return ret;
+
 }
 
 int imx_vcm_power_down(struct v4l2_subdev *sd)
@@ -55,164 +121,61 @@ int imx_vcm_power_down(struct v4l2_subdev *sd)
 	return dw9719_dev.platform_data->power_ctrl(sd, 0);
 }
 
-
-int imx_t_focus_vcm(struct v4l2_subdev *sd, u16 val)
+int imx_q_focus_status(struct v4l2_subdev *sd, s32 *value)
 {
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
-	int ret = -EINVAL;
-	u8 mclk = vcm_step_mclk(dw9719_dev.vcm_settings.step_setting);
-	u8 s = vcm_step_s(dw9719_dev.vcm_settings.step_setting);
+	static const struct timespec move_time = {
 
-	/*
-	 * For different mode, VCM_PROTECTION_OFF/ON required by the
-	 * control procedure. For DW9719_DIRECT/DLC mode, slew value is
-	 * VCM_DEFAULT_S(0).
-	 */
-	switch (dw9719_dev.vcm_mode) {
-	case DW9719_DIRECT:
-		if (dw9719_dev.vcm_settings.update) {
-			ret = dw9719_i2c_write(client, VCM_PROTECTION_OFF);
-			if (ret)
-				return ret;
-			ret = dw9719_i2c_write(client, DIRECT_VCM);
-			if (ret)
-				return ret;
-			ret = dw9719_i2c_write(client, VCM_PROTECTION_ON);
-			if (ret)
-				return ret;
-			dw9719_dev.vcm_settings.update = false;
-		}
-		ret = dw9719_i2c_write(client,
-					vcm_val(val, VCM_DEFAULT_S));
-		break;
-	case DW9719_LSC:
-		if (dw9719_dev.vcm_settings.update) {
-			ret = dw9719_i2c_write(client, VCM_PROTECTION_OFF);
-			if (ret)
-				return ret;
-			ret = dw9719_i2c_write(client,
-				vcm_dlc_mclk(DLC_DISABLE, mclk));
-			if (ret)
-				return ret;
-			ret = dw9719_i2c_write(client,
-				vcm_tsrc(dw9719_dev.vcm_settings.t_src));
-			if (ret)
-				return ret;
-			ret = dw9719_i2c_write(client, VCM_PROTECTION_ON);
-			if (ret)
-				return ret;
-			dw9719_dev.vcm_settings.update = false;
-		}
-		ret = dw9719_i2c_write(client, vcm_val(val, s));
-		break;
-	case DW9719_DLC:
-		if (dw9719_dev.vcm_settings.update) {
-			ret = dw9719_i2c_write(client, VCM_PROTECTION_OFF);
-			if (ret)
-				return ret;
-			ret = dw9719_i2c_write(client,
-					vcm_dlc_mclk(DLC_ENABLE, mclk));
-			if (ret)
-				return ret;
-			ret = dw9719_i2c_write(client,
-				vcm_tsrc(dw9719_dev.vcm_settings.t_src));
-			if (ret)
-				return ret;
-			ret = dw9719_i2c_write(client, VCM_PROTECTION_ON);
-			if (ret)
-				return ret;
-			dw9719_dev.vcm_settings.update = false;
-		}
-		ret = dw9719_i2c_write(client,
-					vcm_val(val, VCM_DEFAULT_S));
-		break;
+		.tv_sec = 0,
+		.tv_nsec = 60000000
+	};
+	struct timespec current_time, finish_time, delta_time;
+	getnstimeofday(&current_time);
+	finish_time = timespec_add(dw9719_dev.focus_time, move_time);
+	delta_time = timespec_sub(current_time, finish_time);
+	if (delta_time.tv_sec >= 0 && delta_time.tv_nsec >= 0) {
+		*value = ATOMISP_FOCUS_HP_COMPLETE |
+			 ATOMISP_FOCUS_STATUS_ACCEPTS_NEW_MOVE;
+	} else {
+		*value = ATOMISP_FOCUS_STATUS_MOVING |
+			 ATOMISP_FOCUS_HP_IN_PROGRESS;
 	}
-	return ret;
+	return 0;
 }
 
 int imx_t_focus_abs(struct v4l2_subdev *sd, s32 value)
 {
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	int ret;
-
-	value = min(value, DW9719_MAX_FOCUS_POS);
-	ret = imx_t_focus_vcm(sd, DW9719_MAX_FOCUS_POS - value);
-	if (ret == 0) {
-		dw9719_dev.number_of_steps = value - dw9719_dev.focus;
-		dw9719_dev.focus = value;
-		getnstimeofday(&(dw9719_dev.timestamp_t_focus_abs));
-	}
-
-	return ret;
+	value = clamp(value, 0, DW9719_MAX_FOCUS_POS);
+	ret = dw9719_i2c_wr16(client, DW9719_VCM_CURRENT, DW9719_MAX_FOCUS_POS - value);
+	if (ret < 0)
+		return ret;
+	getnstimeofday(&dw9719_dev.focus_time);
+	dw9719_dev.focus = value;
+	return 0;
 }
 
 int imx_t_focus_rel(struct v4l2_subdev *sd, s32 value)
 {
-
 	return imx_t_focus_abs(sd, dw9719_dev.focus + value);
-}
-
-int imx_q_focus_status(struct v4l2_subdev *sd, s32 *value)
-{
-	u32 status = 0;
-	struct timespec temptime;
-	const struct timespec timedelay = {
-		0,
-		min_t(u32, abs(dw9719_dev.number_of_steps)*DELAY_PER_STEP_NS,
-			DELAY_MAX_PER_STEP_NS),
-	};
-
-	ktime_get_ts(&temptime);
-
-	temptime = timespec_sub(temptime, (dw9719_dev.timestamp_t_focus_abs));
-
-	if (timespec_compare(&temptime, &timedelay) <= 0) {
-		status |= ATOMISP_FOCUS_STATUS_MOVING;
-		status |= ATOMISP_FOCUS_HP_IN_PROGRESS;
-	} else {
-		status |= ATOMISP_FOCUS_STATUS_ACCEPTS_NEW_MOVE;
-		status |= ATOMISP_FOCUS_HP_COMPLETE;
-	}
-	*value = status;
-
-	return 0;
 }
 
 int imx_q_focus_abs(struct v4l2_subdev *sd, s32 *value)
 {
-	s32 val;
-
-	imx_q_focus_status(sd, &val);
-
-	if (val & ATOMISP_FOCUS_STATUS_MOVING)
-		*value  = dw9719_dev.focus - dw9719_dev.number_of_steps;
-	else
-		*value  = dw9719_dev.focus ;
-
+	*value  = dw9719_dev.focus ;
 	return 0;
 }
-
 int imx_t_vcm_slew(struct v4l2_subdev *sd, s32 value)
 {
-	dw9719_dev.vcm_settings.step_setting = value;
-	dw9719_dev.vcm_settings.update = true;
-
 	return 0;
 }
 
 int imx_t_vcm_timing(struct v4l2_subdev *sd, s32 value)
 {
-	dw9719_dev.vcm_settings.t_src = value;
-	dw9719_dev.vcm_settings.update = true;
-
 	return 0;
 }
-
 int imx_vcm_init(struct v4l2_subdev *sd)
 {
-
-	/* set VCM to home position and vcm mode to direct*/
-	dw9719_dev.vcm_mode = DW9719_DIRECT;
-	dw9719_dev.vcm_settings.update = false;
 	dw9719_dev.platform_data = camera_get_af_platform_data();
 	return (NULL == dw9719_dev.platform_data) ? -ENODEV : 0;
 

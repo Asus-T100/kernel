@@ -19,5 +19,39 @@
  *
  */
 
-#include "sh_css.h"
-#include "sh_css_sp.h"
+#ifndef __ATOMISP_COMPAT_H__
+#define __ATOMISP_COMPAT_H__
+
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+#include "atomisp_compat_css20.h"
+#else
+#include "atomisp_compat_css15.h"
+#endif
+
+#include <media/videobuf-vmalloc.h>
+#include <linux/firmware.h>
+
+struct atomisp_device;
+
+void atomisp_set_css_env(const struct firmware *isp,
+			struct atomisp_css_env *atomisp_env);
+
+int atomisp_css_init(struct atomisp_device *isp,
+			struct atomisp_css_env *atomisp_env);
+
+void atomisp_css_init_struct(struct atomisp_device *isp);
+
+int atomisp_q_video_buffer_to_css(struct atomisp_device *isp,
+			struct videobuf_vmalloc_memory *vm_mem,
+			enum atomisp_css_buffer_type css_buf_type,
+			enum atomisp_css_pipe_id css_pipe_id);
+
+int atomisp_q_s3a_buffer_to_css(struct atomisp_device *isp,
+			struct atomisp_s3a_buf *s3a_buf,
+			enum atomisp_css_pipe_id css_pipe_id);
+
+int atomisp_q_dis_buffer_to_css(struct atomisp_device *isp,
+			struct atomisp_dis_buf *dis_buf,
+			enum atomisp_css_pipe_id css_pipe_id);
+
+#endif

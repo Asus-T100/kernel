@@ -20,6 +20,7 @@
 #include <linux/pm.h>
 #include <linux/i2c.h>
 #include <linux/regmap.h>
+#include <linux/gpio.h>
 #include <linux/slab.h>
 #include <sound/core.h>
 #include <sound/pcm.h>
@@ -1506,6 +1507,11 @@ static __devinit int cs42l73_i2c_probe(struct i2c_client *i2c_client,
 		return -ENOMEM;
 	}
 
+	/* Workaround till it is fixed in IFWI/SCU.*/
+#ifdef CONFIG_PRH_TEMP_WA_FOR_SPID
+	/* FIXIT: Get the codec out of reset */
+	gpio_set_value(54, 1);
+#endif
 	i2c_set_clientdata(i2c_client, cs42l73);
 
 	cs42l73->regmap = regmap_init_i2c(i2c_client, &cs42l73_regmap);

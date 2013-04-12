@@ -356,7 +356,6 @@ void dlp_pdu_delete(struct dlp_xfer_ctx *xfer_ctx, struct hsi_msg *pdu,
 					unsigned long flags)
 {
 	int full;
-
 	full = (xfer_ctx->all_len > xfer_ctx->wait_max + xfer_ctx->ctrl_max);
 
 	if (full) {
@@ -1036,7 +1035,6 @@ static int _dlp_from_wait_to_ctrl(struct dlp_xfer_ctx *xfer_ctx)
 	}
 	pdu = dlp_fifo_wait_pop(xfer_ctx);
 	write_unlock_irqrestore(&xfer_ctx->lock, flags);
-
 	if (!pdu) {
 		ret = -ENOENT;
 		goto out;
@@ -1241,19 +1239,28 @@ int dlp_hsi_controller_push(struct dlp_xfer_ctx *xfer_ctx, struct hsi_msg *pdu)
 
 	/* Decrease counters values */
 	write_lock_irqsave(&xfer_ctx->lock, flags);
-
 	xfer_ctx->room -= lost_room;
 	xfer_ctx->ctrl_len++;
-
 	if (pdu->ttype == HSI_MSG_WRITE) {
 		xfer_ctx->channel->credits--;
 		xfer_ctx->seq_num++;
 	}
-
 	write_unlock_irqrestore(&xfer_ctx->lock, flags);
 
 	/* Set the DLP signature + seq_num */
 	dlp_pdu_set_header(xfer_ctx, pdu);
+
+	/* Prevent pushing TX PDU if the channel was not opened */
+	if (pdu->ttype == HSI_MSG_WRITE) {
+		int state = dlp_ctrl_get_channel_state(ch_ctx->hsi_channel);
+		if (state != DLP_CH_STATE_OPENED) {
+			pr_err(DRVNAME ": Can't push PDU for CH%d => invalid state: %d\n",
+					ch_ctx->ch_id, state);
+
+			err = -EACCES;
+			goto out;
+		}
+	}
 
 	err = hsi_async(pdu->cl, pdu);
 	if (!err) {
@@ -1806,6 +1813,8 @@ static int dlp_driver_remove(struct device *dev)
 	/* Set TTY as closed to prevent RX/TX transaction */
 	dlp_tty_set_link_valid(1, 0);
 
+	pr_debug(DRVNAME ": driver removed\n");
+
 	/* Unregister the HSI client */
 	if (hsi_port_claimed(client))
 		hsi_unregister_port_event(client);
@@ -1824,6 +1833,8 @@ static int dlp_driver_remove(struct device *dev)
 
 static void dlp_driver_shutdown(struct device *dev)
 {
+	pr_debug(DRVNAME ": driver shutdown\n");
+
 	/* Clear context as when removing the driver */
 	dlp_driver_remove(dev);
 }

@@ -37,8 +37,8 @@
 #include <media/v4l2-device.h>
 #include <media/v4l2-subdev.h>
 
-#define to_drv201_device(sd)	(&container_of(sd, struct ov8830_device, sd) \
-				->drv201)
+#define to_drv201_device(_sd) (&(container_of(_sd, struct ov8830_device, sd) \
+				 ->drv201))
 
 #define DRV201_I2C_ADDR				0x0E
 #define DRV201_CONTROL				2
@@ -432,8 +432,6 @@ struct ov8830_write_ctrl {
 	int index;
 	struct ov8830_write_buffer buffer;
 };
-
-#define MAX_FMTS 1
 
 #define OV8830_RES_WIDTH_MAX	3280
 #define OV8830_RES_HEIGHT_MAX	2464

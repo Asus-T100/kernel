@@ -17,9 +17,9 @@
 #include <linux/init.h>
 #include <linux/sfi.h>
 #include <linux/platform_device.h>
+#include <asm/platform_sst_audio.h>
 #include <asm/intel-mid.h>
 #include <asm/intel_mid_remoteproc.h>
-#include <asm/platform_sst_audio.h>
 #include <asm/platform_ctp_audio.h>
 #include "platform_msic.h"
 
@@ -32,26 +32,14 @@ void *ctp_audio_platform_data(void *info)
 	struct platform_device *pdev;
 	int ret;
 	struct sfi_device_table_entry *pentry = info;
+	char name[SFI_NAME_LEN+1];
 
 	ctp_audio_pdata.codec_gpio_hsdet = get_gpio_by_name("gpio_plugdet");
 	ctp_audio_pdata.codec_gpio_button = get_gpio_by_name("gpio_codec_int");
+
 	ret = add_sst_platform_device();
 	if (ret < 0)
 		return NULL;
-
-	pdev = platform_device_alloc("compress-sst", -1);
-	if (!pdev) {
-		pr_err("failed to allocate compress-sst platform device\n");
-		return NULL;
-	}
-
-	ret = platform_device_add(pdev);
-	if (ret) {
-		pr_err("failed to add compress-sst platform device\n");
-		platform_device_put(pdev);
-		return NULL;
-	}
-
 
 	pdev = platform_device_alloc("hdmi-audio", -1);
 	if (!pdev) {
@@ -66,7 +54,12 @@ void *ctp_audio_platform_data(void *info)
 		return NULL;
 	}
 
-	pdev = platform_device_alloc(pentry->name, -1);
+	/* DEV names from IFWI is not properly terminated.
+	This causes id comparision to fail.
+	Make a copy of name and make sure null terminated */
+	memset(name, 0, sizeof(name));
+	strncpy(name, pentry->name, SFI_NAME_LEN);
+	pdev = platform_device_alloc(name, -1);
 	if (!pdev) {
 		pr_err("failed to allocate clvcs_audio platform device\n");
 		return NULL;

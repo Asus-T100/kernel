@@ -44,6 +44,10 @@ static struct sfi_device_table_entry byt_devs_table[] = {
 	{SFI_DEV_TYPE_I2C, 4, 0x10, 0x0, 0x0, "imx175"},
 	{SFI_DEV_TYPE_I2C, 4, 0x36, 0x0, 0x0, "ov2722"},
 	{SFI_DEV_TYPE_I2C, 4, 0x53, 0x0, 0x0, "lm3554"},
+	{SFI_DEV_TYPE_I2C, 2, 0x1c, 0xff, 250000, "rt5640"},
+	{SFI_DEV_TYPE_IPC, 0, 0, 0xff, 250000, "byt_rt5642"},
+	/* SD devices */
+	{SFI_DEV_TYPE_SD, 0, 0, 0, 0, "bcm43xx_vmmc"},
 };
 
 /* Baytrail gpio table */
@@ -77,6 +81,10 @@ static struct sfi_table_header *get_devs_table(void)
 		tot_len = sizeof(byt_devs_table) +
 				sizeof(struct sfi_table_header);
 		devs_table = kzalloc(tot_len, GFP_KERNEL);
+		if (!devs_table) {
+			pr_err("%s(): Error in kzalloc\n", __func__);
+			return NULL;
+		}
 		devs_table->header.len = tot_len;
 		memcpy(devs_table->pentry, byt_devs_table,
 			sizeof(byt_devs_table));
@@ -97,6 +105,10 @@ static struct sfi_table_header *get_gpio_table(void)
 		tot_len = sizeof(byt_gpio_table) +
 				sizeof(struct sfi_table_header);
 		gpio_table = kzalloc(tot_len, GFP_KERNEL);
+		if (!gpio_table) {
+			pr_err("%s(): Error in kzalloc\n", __func__);
+			return NULL;
+		}
 		gpio_table->header.len = tot_len;
 		memcpy(gpio_table->pentry, byt_gpio_table,
 			sizeof(byt_gpio_table));

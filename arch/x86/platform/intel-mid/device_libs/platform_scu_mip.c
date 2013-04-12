@@ -66,22 +66,23 @@ static struct smip_platform_prop ctp_platform_prop[SMIP_NUM_CONFIG_PROPS] = {
 
 static struct scu_mip_platform_data pdata;
 
-void __init *scu_mip_platform_data(void)
+int __init scu_mip_platform_data(void)
 {
-	int i;
+	int i, err;
 	struct platform_device *pdev;
 
 	pdev = platform_device_alloc(SCU_MIP_DEV_NAME, -1);
 	if (!pdev) {
 		pr_err("out of memory for SFI platform dev %s\n",
 					SCU_MIP_DEV_NAME);
-		return NULL;
+		return -ENOMEM;
 	}
 
-	if (platform_device_add(pdev)) {
+	err = platform_device_add(pdev);
+	if (err) {
 		pr_err("failed to add SCU MIP platform device\n");
 		platform_device_put(pdev);
-		return NULL;
+		return err;
 	}
 
 	if (INTEL_MID_BOARD(1, PHONE, CLVTP) ||

@@ -98,6 +98,7 @@ static int intel_mid_pwm_probe(struct platform_device *pdev)
 {
 	struct pwm_info *pi = &pwm_info;
 	struct intel_mid_pwm_platform_data *pdata = pdev->dev.platform_data;
+	int ret;
 
 	if (!pdata) {
 		dev_err(&pdev->dev, "No platform data\n");
@@ -109,6 +110,12 @@ static int intel_mid_pwm_probe(struct platform_device *pdev)
 	pi->dev = &pdev->dev;
 	pi->ddata = pdata->ddata;
 	pi->pwm_num = pdata->pwm_num;
+
+	ret = intel_scu_ipc_iowrite8(pdata->reg_clksel, pdata->val_clksel);
+	if (ret) {
+		dev_err(pi->dev, "set MSIC_REG_PWMCLKSEL failed\n");
+		return -EINVAL;
+	}
 
 	if (pi->pwm_num && pi->ddata)
 		pi->initialized = 1;

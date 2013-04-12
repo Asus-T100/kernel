@@ -425,7 +425,6 @@ static unsigned extract_freq(u32 msr, struct sfi_cpufreq_data *data)
 {
 	int i;
 	struct sfi_processor_performance *perf;
-	unsigned freq;
 	u32 sfi_ctrl;
 
 	msr &= INTEL_MSR_BUSRATIO_MASK;

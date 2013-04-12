@@ -72,7 +72,8 @@ MODULE_VERSION(SST_DRIVER_VERSION);
 #define INFO(_iram_start, _iram_end, _iram_use,		\
 		_dram_start, _dram_end, _dram_use,	\
 		_imr_start, _imr_end, _imr_use,		\
-		_use_elf, _max_streams, _dma_max_len) \
+		_use_elf, _max_streams, _dma_max_len,	\
+		_num_probes)				\
 	((kernel_ulong_t)&(struct sst_probe_info) {\
 		.iram_start = (_iram_start),		\
 		.iram_end = (_iram_end),		\
@@ -86,6 +87,7 @@ MODULE_VERSION(SST_DRIVER_VERSION);
 		.use_elf = (_use_elf),			\
 		.max_streams = (_max_streams),		\
 		.dma_max_len = (_dma_max_len),		\
+		.num_probes = (_num_probes),		\
 	 })
 
 struct intel_sst_drv *sst_drv_ctx;
@@ -111,9 +113,7 @@ static inline int get_stream_id_mrfld(u32 pipe_id)
 		if (pipe_id == sst_drv_ctx->streams[i].pipe_id)
 			return i;
 
-	pr_err("%s: no such pipe_id(%u), FW what are you doing?",
-			__func__, pipe_id);
-	BUG();
+	pr_err("%s: no such pipe_id(%u)", __func__, pipe_id);
 	return -1;
 }
 
@@ -122,22 +122,23 @@ static irqreturn_t intel_sst_irq_thread_mrfld(int irq, void *context)
 	struct intel_sst_drv *drv = (struct intel_sst_drv *) context;
 	union ipc_header_mrfld header;
 	struct stream_info *stream;
-	unsigned int size = 0, str_id;
-	int msg_id;
-	u32 pipe_id;
+	unsigned int size = 0, msg_id, pipe_id;
+	int str_id;
 
 	header.full = sst_shim_read64(drv->shim, SST_IPCD);
-	msg_id = header.p.header_low_payload & SST_UNSOLICITED_MSG_ID;
-	pipe_id = header.p.header_low_payload >> 16;
+	msg_id = header.p.header_low_payload & SST_ASYNC_MSG_MASK;
 	pr_debug("interrupt\n");
-	if ((msg_id & IPC_SST_PERIOD_ELAPSED_MRFLD) &&
+	if ((msg_id == IPC_SST_PERIOD_ELAPSED_MRFLD) &&
 			(header.p.header_high.part.msg_id == IPC_CMD)) {
 		sst_drv_ctx->ops->clear_interrupt();
+		pipe_id = header.p.header_low_payload >> 16;
 		str_id = get_stream_id_mrfld(pipe_id);
-		stream = &sst_drv_ctx->streams[str_id];
-		pr_debug("Period elapsed rcvd!!!\n");
-		if (stream->period_elapsed)
-			stream->period_elapsed(stream->pcm_substream);
+		if (str_id > 0) {
+			pr_debug("Period elapsed rcvd!!!\n");
+			stream = &sst_drv_ctx->streams[str_id];
+			if (stream->period_elapsed)
+				stream->period_elapsed(stream->pcm_substream);
+		}
 		return IRQ_HANDLED;
 	}
 	if (header.p.header_high.part.large)
@@ -185,47 +186,6 @@ static irqreturn_t intel_sst_interrupt_mrfld(int irq, void *context)
 	return retval;
 }
 
-#ifdef MRFLD_TEST_ON_MFLD
-static irqreturn_t intel_sst_irq_thread_mrfld32(int irq, void *context)
-{
-	struct intel_sst_drv *drv = (struct intel_sst_drv *) context;
-	union ipc_header_high header;
-	struct stream_info *stream;
-	unsigned int str_id;
-	u32 msg_id, size, pipe_id;
-	int msg;
-
-	header.full = sst_shim_read(drv->shim, SST_IPCD);
-	memcpy_fromio(&msg_id,  drv->mailbox + SST_MAILBOX_RCV, sizeof(u32));
-	msg = msg_id & SST_UNSOLICITED_MSG_ID;
-	pipe_id = msg_id >> 16;
-	pr_debug("%s: interrupt header %x Payload %x\n", __func__, header.full, msg_id);
-	if ((msg_id & IPC_SST_PERIOD_ELAPSED_MRFLD) && (header.part.msg_id == IPC_CMD)) {
-		pr_debug("period intr\n");
-		sst_drv_ctx->ops->clear_interrupt();
-		str_id = get_stream_id_mrfld(pipe_id);
-		stream = &sst_drv_ctx->streams[str_id];
-		if (stream->period_elapsed)
-			stream->period_elapsed(stream->pcm_substream);
-		return IRQ_HANDLED;
-	}
-	memcpy_fromio(&size, drv->mailbox + SST_MAILBOX_RCV, sizeof(u32));
-	sst_drv_ctx->ipc_process_reply.mrfld_header.p.header_high = header;
-	sst_drv_ctx->ipc_process_reply.mrfld_header.p.header_low_payload = size;
-	if (size > SST_MAILBOX_SIZE) {
-		pr_err("firmware is giving my exceptionally large sz msg %x\n", size);
-		size = 0;
-	} else {
-		memcpy_fromio(sst_drv_ctx->ipc_process_reply.mailbox,
-			drv->mailbox + SST_MAILBOX_RCV, size);
-	}
-	pr_debug("queue wq for intr now\n");
-	queue_work(sst_drv_ctx->process_reply_wq,
-			&sst_drv_ctx->ipc_process_reply.wq);
-	return IRQ_HANDLED;
-}
-#endif
-
 static irqreturn_t intel_sst_irq_thread_mfld(int irq, void *context)
 {
 	struct intel_sst_drv *drv = (struct intel_sst_drv *) context;
@@ -233,7 +193,7 @@ static irqreturn_t intel_sst_irq_thread_mfld(int irq, void *context)
 	struct stream_info *stream;
 	unsigned int size = 0, str_id;
 
-	header.full = sst_shim_read(drv->shim, SST_IPCD);
+	header.full = sst_shim_read(drv->shim, drv->ipc_reg.ipcd);
 	if (header.part.msg_id == IPC_SST_PERIOD_ELAPSED) {
 		sst_drv_ctx->ops->clear_interrupt();
 		str_id = header.part.str_id;
@@ -282,9 +242,9 @@ static irqreturn_t intel_sst_intr_mfld(int irq, void *context)
 	if (isr.part.done_interrupt) {
 		/* Clear done bit */
 		spin_lock(&sst_drv_ctx->ipc_spin_lock);
-		header.full = sst_shim_read(drv->shim, SST_IPCX);
+		header.full = sst_shim_read(drv->shim, drv->ipc_reg.ipcx);
 		header.part.done = 0;
-		sst_shim_write(sst_drv_ctx->shim, SST_IPCX, header.full);
+		sst_shim_write(sst_drv_ctx->shim, drv->ipc_reg.ipcx, header.full);
 		/* write 1 to clear status register */;
 		isr.part.done_interrupt = 1;
 		sst_shim_write(sst_drv_ctx->shim, SST_ISRX, isr.full);
@@ -305,6 +265,143 @@ static irqreturn_t intel_sst_intr_mfld(int irq, void *context)
 	return retval;
 }
 
+
+static int sst_save_fw_rams(struct intel_sst_drv *sst)
+{
+	/* first reset, stall and bypass the core */
+	sst->ops->reset();
+
+	/* FIXME now we copy, should use DMA here but for now we cant
+	 * so use mempcy instead
+	 */
+	memcpy_fromio(sst->context.iram, sst->iram,
+			sst->iram_end - sst->iram_base);
+	memcpy_fromio(sst->context.dram, sst->dram,
+			sst->dram_end - sst->dram_base);
+	return 0;
+}
+
+static int sst_load_fw_rams(struct intel_sst_drv *sst)
+{
+	struct sst_block *block;
+
+	/* first reset, stall and bypass the core */
+	sst->ops->reset();
+
+	/* FIXME now we copy, should use DMA here but for now we cant
+	 * so use mempcy instead
+	 */
+	block = sst_create_block(sst, 0, FW_DWNL_ID);
+	if (block == NULL)
+		return -ENOMEM;
+
+	memcpy_toio(sst->iram, sst->context.iram,
+			sst->iram_end - sst->iram_base);
+	memcpy_toio(sst->dram, sst->context.dram,
+			sst->dram_end - sst->dram_base);
+	sst_set_fw_state_locked(sst, SST_FW_LOADED);
+
+	sst->ops->start();
+	if (sst_wait_timeout(sst, block)) {
+		pr_err("fw download failed\n");
+		/* assume FW d/l failed due to timeout*/
+		sst_set_fw_state_locked(sst, SST_UN_INIT);
+		sst_free_block(sst, block);
+		return -EBUSY;
+	}
+	pr_debug("Fw loaded!");
+	sst_free_block(sst, block);
+	return 0;
+}
+
+static int sst_save_dsp_context_v2(struct intel_sst_drv *sst)
+{
+	unsigned int pvt_id;
+	struct ipc_post *msg = NULL;
+	unsigned long irq_flags;
+	struct ipc_dsp_hdr dsp_hdr;
+	struct sst_block *block;
+
+	/*send msg to fw*/
+	pvt_id = sst_assign_pvt_id(sst);
+	if (sst_create_block_and_ipc_msg(&msg, true, sst, &block,
+				IPC_CMD, pvt_id)) {
+		pr_err("msg/block alloc failed. Not proceeding with context save\n");
+		return 0;
+	}
+
+	sst_fill_header_mrfld(&msg->mrfld_header, IPC_CMD,
+				IPC_QUE_ID_MED, 1, pvt_id);
+	msg->mrfld_header.p.header_low_payload = sizeof(dsp_hdr);
+	msg->mrfld_header.p.header_high.part.res_rqd = 1;
+	sst_fill_header_dsp(&dsp_hdr, IPC_PREP_D3, PIPE_RSVD, pvt_id);
+	memcpy(msg->mailbox_data, &dsp_hdr, sizeof(dsp_hdr));
+
+	spin_lock_irqsave(&sst->ipc_spin_lock, irq_flags);
+	list_add_tail(&msg->node, &sst->ipc_dispatch_list);
+	spin_unlock_irqrestore(&sst->ipc_spin_lock, irq_flags);
+	sst->ops->post_message(&sst->ipc_post_msg_wq);
+	/*wait for reply*/
+	if (sst_wait_timeout(sst, block)) {
+		pr_err("sst: err fw context save timeout  ...\n");
+		pr_err("not suspending FW!!!");
+		sst_free_block(sst, block);
+		return -EIO;
+	}
+	if (block->ret_code) {
+		pr_err("fw responded w/ error %d", block->ret_code);
+		sst_free_block(sst, block);
+		return -EIO;
+	}
+
+	/* all good, so lets copy the fw */
+	sst_save_fw_rams(sst);
+	sst->context.saved = 0;
+	pr_debug("fw context saved  ...\n");
+	sst_free_block(sst, block);
+	return 0;
+}
+
+static int sst_save_dsp_context(struct intel_sst_drv *sst)
+{
+	struct snd_sst_ctxt_params fw_context;
+	unsigned int pvt_id;
+	struct ipc_post *msg = NULL;
+	unsigned long irq_flags;
+	struct sst_block *block;
+	pr_debug("%s: Enter\n", __func__);
+
+	/*send msg to fw*/
+	pvt_id = sst_assign_pvt_id(sst_drv_ctx);
+	if (sst_create_block_and_ipc_msg(&msg, true, sst_drv_ctx, &block,
+				IPC_IA_GET_FW_CTXT, pvt_id)) {
+		pr_err("msg/block alloc failed. Not proceeding with context save\n");
+		return -ENOMEM;
+	}
+	sst_fill_header(&msg->header, IPC_IA_GET_FW_CTXT, 1, pvt_id);
+	msg->header.part.data = sizeof(fw_context) + sizeof(u32);
+	fw_context.address = virt_to_phys((void *)sst_drv_ctx->fw_cntx);
+	fw_context.size = FW_CONTEXT_MEM;
+	memcpy(msg->mailbox_data, &msg->header, sizeof(u32));
+	memcpy(msg->mailbox_data + sizeof(u32),
+				&fw_context, sizeof(fw_context));
+	spin_lock_irqsave(&sst_drv_ctx->ipc_spin_lock, irq_flags);
+	list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
+	spin_unlock_irqrestore(&sst_drv_ctx->ipc_spin_lock, irq_flags);
+	sst_drv_ctx->ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
+	/*wait for reply*/
+	if (sst_wait_timeout(sst_drv_ctx, block))
+		pr_err("sst: err fw context save timeout  ...\n");
+	pr_debug("fw context saved  ...\n");
+	if (block->ret_code)
+		sst_drv_ctx->fw_cntx_size = 0;
+	else
+		sst_drv_ctx->fw_cntx_size = *sst_drv_ctx->fw_cntx;
+	pr_debug("fw copied data %x\n", sst_drv_ctx->fw_cntx_size);
+	sst_free_block(sst_drv_ctx, block);
+	return 0;
+}
+
 static struct intel_sst_ops mrfld_ops = {
 	.interrupt = intel_sst_interrupt_mrfld,
 	.irq_thread = intel_sst_irq_thread_mrfld,
@@ -315,10 +412,25 @@ static struct intel_sst_ops mrfld_ops = {
 	.sync_post_message = sst_sync_post_message_mrfld,
 	.process_message = sst_process_message_mrfld,
 	.process_reply = sst_process_reply_mrfld,
-	.set_bypass = NULL,
+	.save_dsp_context =  sst_save_dsp_context_v2,
+	.alloc_stream = sst_alloc_stream_mrfld,
 };
 
-#ifndef MRFLD_TEST_ON_MFLD
+static struct intel_sst_ops mrfld_32_ops = {
+	.interrupt = intel_sst_intr_mfld,
+	.irq_thread = intel_sst_irq_thread_mfld,
+	.clear_interrupt = intel_sst_clear_intr_mfld,
+	.start = sst_start_mrfld,
+	.reset = intel_sst_reset_dsp_mrfld,
+	.post_message = sst_post_message_mfld,
+	.sync_post_message = sst_sync_post_message_mfld,
+	.process_message = sst_process_message_mfld,
+	.process_reply = sst_process_reply_mfld,
+	.save_dsp_context =  sst_save_dsp_context,
+	.restore_dsp_context = sst_restore_fw_context,
+	.alloc_stream = sst_alloc_stream_ctp,
+};
+
 static struct intel_sst_ops mfld_ops = {
 	.interrupt = intel_sst_intr_mfld,
 	.irq_thread = intel_sst_irq_thread_mfld,
@@ -330,41 +442,52 @@ static struct intel_sst_ops mfld_ops = {
 	.process_message = sst_process_message_mfld,
 	.process_reply = sst_process_reply_mfld,
 	.set_bypass = intel_sst_set_bypass_mfld,
+	.save_dsp_context =  sst_save_dsp_context,
+	.restore_dsp_context = sst_restore_fw_context,
+	.alloc_stream = sst_alloc_stream_mfld,
 };
-#else
-static struct intel_sst_ops mrfld32_ops = {
+
+static struct intel_sst_ops ctp_ops = {
 	.interrupt = intel_sst_intr_mfld,
-	.irq_thread = intel_sst_irq_thread_mrfld32,
+	.irq_thread = intel_sst_irq_thread_mfld,
 	.clear_interrupt = intel_sst_clear_intr_mfld,
 	.start = sst_start_mfld,
 	.reset = intel_sst_reset_dsp_mfld,
-	.post_message = sst_post_message_mrfld32,
-	.sync_post_message = sst_sync_post_message_mrfld32,
-	.process_message = sst_process_message_mrfld,
-	.process_reply = sst_process_reply_mrfld,
-	.set_bypass = NULL,
+	.post_message = sst_post_message_mfld,
+	.sync_post_message = sst_sync_post_message_mfld,
+	.process_message = sst_process_message_mfld,
+	.process_reply = sst_process_reply_mfld,
+	.set_bypass = intel_sst_set_bypass_mfld,
+	.save_dsp_context =  sst_save_dsp_context,
+	.restore_dsp_context = sst_restore_fw_context,
+	.alloc_stream = sst_alloc_stream_ctp,
 };
-#endif
 
-static int sst_driver_ops(unsigned int pci_id)
+static int sst_driver_ops(struct intel_sst_drv *sst)
 {
 
-	switch (pci_id) {
+	switch (sst->pci_id) {
 	case SST_MRFLD_PCI_ID:
-		sst_drv_ctx->tstamp = SST_TIME_STAMP_MRFLD;
-		sst_drv_ctx->ops = &mrfld_ops;
+		sst->tstamp = SST_TIME_STAMP_MRFLD;
+		if (sst->use_32bit_ops == true)
+			sst->ops = &mrfld_32_ops;
+		else
+			sst->ops = &mrfld_ops;
+		return 0;
+	case SST_BYT_PCI_ID:
+		sst->tstamp = SST_TIME_STAMP_MRFLD;
+		sst->ops = &mrfld_32_ops;
 		return 0;
 	case SST_CLV_PCI_ID:
+		sst->tstamp =  SST_TIME_STAMP;
+		sst->ops = &ctp_ops;
+		return 0;
 	case SST_MFLD_PCI_ID:
-		sst_drv_ctx->tstamp =  SST_TIME_STAMP;
-#ifndef MRFLD_TEST_ON_MFLD
-		sst_drv_ctx->ops = &mfld_ops;
-#else
-		sst_drv_ctx->ops = &mrfld32_ops;
-#endif
+		sst->tstamp =  SST_TIME_STAMP;
+		sst->ops = &mfld_ops;
 		return 0;
 	default:
-		pr_err("SST Driver capablities missing for pci_id: %x", pci_id);
+		pr_err("SST Driver capablities missing for pci_id: %x", sst->pci_id);
 	return -EINVAL;
 	};
 }
@@ -385,6 +508,7 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 	struct intel_sst_ops *ops;
 	struct sst_probe_info *info;
 	int ddr_base;
+	u32 byt_lpe_base;
 
 	pr_debug("Probe for DID %x\n", pci->device);
 	mutex_lock(&drv_ctx_lock);
@@ -404,8 +528,18 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 
 	sst_drv_ctx->pci_id = pci->device;
 
-	if (0 != sst_driver_ops(sst_drv_ctx->pci_id))
+	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID ||
+	    sst_drv_ctx->pci_id == SST_BYT_PCI_ID)
+		sst_drv_ctx->use_32bit_ops = true;
+	/* This is work around and needs to be removed once we
+		have SPID for PRh - Appplies to all occurances */
+#ifdef CONFIG_PRH_TEMP_WA_FOR_SPID
+	sst_drv_ctx->use_32bit_ops = true;
+#endif
+
+	if (0 != sst_driver_ops(sst_drv_ctx))
 		return -EINVAL;
+	ops = sst_drv_ctx->ops;
 	mutex_init(&sst_drv_ctx->stream_lock);
 	mutex_init(&sst_drv_ctx->sst_lock);
 	mutex_init(&sst_drv_ctx->mixer_ctrl_lock);
@@ -420,7 +554,11 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 	/* we use dma, so set to 1*/
 	sst_drv_ctx->use_dma = 1;
 	sst_drv_ctx->use_lli = 1;
-	ops = sst_drv_ctx->ops;
+	if (sst_drv_ctx->pci_id == SST_BYT_PCI_ID) {
+		sst_drv_ctx->use_dma = 0;
+		sst_drv_ctx->use_lli = 0;
+	}
+
 
 	INIT_LIST_HEAD(&sst_drv_ctx->memcpy_list);
 	INIT_LIST_HEAD(&sst_drv_ctx->libmemcpy_list);
@@ -454,6 +592,23 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 
 	info = (void *)pci_id->driver_data;
 	memcpy(&sst_drv_ctx->info, info, sizeof(sst_drv_ctx->info));
+#ifdef CONFIG_PRH_TEMP_WA_FOR_SPID
+		sst_drv_ctx->ipc_reg.ipcx = SST_PRH_IPCX;
+		sst_drv_ctx->ipc_reg.ipcd = SST_PRH_IPCD;
+		/* overwrite max_streams for Merr PRh */
+		sst_drv_ctx->info.max_streams = 5;
+#else
+	if (sst_drv_ctx->pci_id == SST_BYT_PCI_ID) {
+		sst_drv_ctx->ipc_reg.ipcx = SST_PRH_IPCX;
+		sst_drv_ctx->ipc_reg.ipcd = SST_PRH_IPCD;
+	} else {
+		sst_drv_ctx->ipc_reg.ipcx = SST_IPCX;
+		sst_drv_ctx->ipc_reg.ipcd = SST_IPCD;
+	}
+#endif
+	pr_debug("ipcx 0x%x ipxd 0x%x", sst_drv_ctx->ipc_reg.ipcx,
+					sst_drv_ctx->ipc_reg.ipcd);
+
 	pr_info("Got drv data max stream %d\n",
 				sst_drv_ctx->info.max_streams);
 	for (i = 1; i <= sst_drv_ctx->info.max_streams; i++) {
@@ -496,32 +651,74 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 		sst_drv_ctx->ddr = NULL;
 	}
 
+	if (sst_drv_ctx->pci_id == SST_BYT_PCI_ID) {
+		byt_lpe_base = pci_resource_start(pci, 0);
+		pr_info("LPE base is: %#x", byt_lpe_base);
+	}
+
+#define SST_BYT_SHIM_OFFSET	0x140000
+#define SST_BYT_SHIM_SIZE	0x100
+#define SST_BYT_MAILBOX_OFFSET	0x144000
+#define SST_BYT_MAILBOX_SIZE	0x1000
+#define SST_BYT_IRAM_OFFSET	0xc0000
+#define SST_BYT_IRAM_SIZE	(80 * 1024)
+#define SST_BYT_DRAM_OFFSET	0x100000
+#define SST_BYT_DRAM_SIZE	(160 * 1024)
+
 	/* SST Shim */
-	sst_drv_ctx->shim_phy_add = pci_resource_start(pci, 1);
-	sst_drv_ctx->shim = pci_ioremap_bar(pci, 1);
+	if (sst_drv_ctx->pci_id == SST_BYT_PCI_ID) {
+		sst_drv_ctx->shim_phy_add = byt_lpe_base + SST_BYT_SHIM_OFFSET;
+		sst_drv_ctx->shim = ioremap_nocache(sst_drv_ctx->shim_phy_add,
+						    SST_BYT_SHIM_SIZE);
+	} else {
+		sst_drv_ctx->shim_phy_add = pci_resource_start(pci, 1);
+		sst_drv_ctx->shim = pci_ioremap_bar(pci, 1);
+	}
 	if (!sst_drv_ctx->shim)
 		goto do_release_regions;
 	pr_debug("SST Shim Ptr %p\n", sst_drv_ctx->shim);
 
 	/* Shared SRAM */
-	sst_drv_ctx->mailbox_add = pci_resource_start(pci, 2);
-	sst_drv_ctx->mailbox = pci_ioremap_bar(pci, 2);
+	if (sst_drv_ctx->pci_id == SST_BYT_PCI_ID) {
+		sst_drv_ctx->mailbox_add = byt_lpe_base + SST_BYT_MAILBOX_OFFSET;
+		sst_drv_ctx->mailbox = ioremap_nocache(sst_drv_ctx->mailbox_add,
+						       SST_BYT_MAILBOX_SIZE);
+	} else {
+		sst_drv_ctx->mailbox_add = pci_resource_start(pci, 2);
+		sst_drv_ctx->mailbox = pci_ioremap_bar(pci, 2);
+	}
 	if (!sst_drv_ctx->mailbox)
 		goto do_unmap_shim;
 	pr_debug("SRAM Ptr %p\n", sst_drv_ctx->mailbox);
 
 	/* IRAM */
-	sst_drv_ctx->iram_end = pci_resource_end(pci, 3);
-	sst_drv_ctx->iram_base = pci_resource_start(pci, 3);
-	sst_drv_ctx->iram = pci_ioremap_bar(pci, 3);
+	if (sst_drv_ctx->pci_id == SST_BYT_PCI_ID) {
+		sst_drv_ctx->iram_base = byt_lpe_base + SST_BYT_IRAM_OFFSET;
+		sst_drv_ctx->iram_end = byt_lpe_base + SST_BYT_IRAM_OFFSET
+						 + SST_BYT_IRAM_SIZE;
+		sst_drv_ctx->iram = ioremap_nocache(sst_drv_ctx->iram_base,
+						    SST_BYT_IRAM_SIZE);
+	} else {
+		sst_drv_ctx->iram_end = pci_resource_end(pci, 3);
+		sst_drv_ctx->iram_base = pci_resource_start(pci, 3);
+		sst_drv_ctx->iram = pci_ioremap_bar(pci, 3);
+	}
 	if (!sst_drv_ctx->iram)
 		goto do_unmap_sram;
 	pr_debug("IRAM Ptr %p\n", sst_drv_ctx->iram);
 
 	/* DRAM */
-	sst_drv_ctx->dram_end = pci_resource_end(pci, 4);
-	sst_drv_ctx->dram_base = pci_resource_start(pci, 4);
-	sst_drv_ctx->dram = pci_ioremap_bar(pci, 4);
+	if (sst_drv_ctx->pci_id == SST_BYT_PCI_ID) {
+		sst_drv_ctx->dram_base = byt_lpe_base + SST_BYT_DRAM_OFFSET;
+		sst_drv_ctx->dram_end = byt_lpe_base + SST_BYT_DRAM_OFFSET
+						 + SST_BYT_DRAM_SIZE;
+		sst_drv_ctx->dram = ioremap_nocache(sst_drv_ctx->dram_base,
+						    SST_BYT_DRAM_SIZE);
+	} else {
+		sst_drv_ctx->dram_end = pci_resource_end(pci, 4);
+		sst_drv_ctx->dram_base = pci_resource_start(pci, 4);
+		sst_drv_ctx->dram = pci_ioremap_bar(pci, 4);
+	}
 	if (!sst_drv_ctx->dram)
 		goto do_unmap_iram;
 	pr_debug("DRAM Ptr %p\n", sst_drv_ctx->dram);
@@ -547,28 +744,33 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 			sst_drv_ctx->debugfs.dma_reg,
 			DMA_BASE_CTP, DMA_SIZE_CTP);
 	}
+
+	/* Do not access iram/dram etc before LPE is reset */
+
 #ifdef CONFIG_DEBUG_FS
-	sst_drv_ctx->dump_buf.iram_buf.size = pci_resource_len(pci, 3);
-	sst_drv_ctx->dump_buf.iram_buf.buf = kzalloc(sst_drv_ctx->dump_buf.iram_buf.size,
-						GFP_KERNEL);
-	if (!sst_drv_ctx->dump_buf.iram_buf.buf) {
-		pr_err("%s: no memory\n", __func__);
-		ret = -ENOMEM;
-		goto do_unmap;
-	}
+	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID) {
+		sst_drv_ctx->dump_buf.iram_buf.size = pci_resource_len(pci, 3);
+		sst_drv_ctx->dump_buf.iram_buf.buf = kzalloc(sst_drv_ctx->dump_buf.iram_buf.size,
+							GFP_KERNEL);
+		if (!sst_drv_ctx->dump_buf.iram_buf.buf) {
+			pr_err("%s: no memory\n", __func__);
+			ret = -ENOMEM;
+			goto do_unmap;
+		}
 
-	sst_drv_ctx->dump_buf.dram_buf.size = pci_resource_len(pci, 4);
-	sst_drv_ctx->dump_buf.dram_buf.buf = kzalloc(sst_drv_ctx->dump_buf.dram_buf.size,
-						GFP_KERNEL);
-	if (!sst_drv_ctx->dump_buf.dram_buf.buf) {
-		pr_err("%s: no memory\n", __func__);
-		ret = -ENOMEM;
-		goto do_free_iram_buf;
-	}
+		sst_drv_ctx->dump_buf.dram_buf.size = pci_resource_len(pci, 4);
+		sst_drv_ctx->dump_buf.dram_buf.buf = kzalloc(sst_drv_ctx->dump_buf.dram_buf.size,
+							GFP_KERNEL);
+		if (!sst_drv_ctx->dump_buf.dram_buf.buf) {
+			pr_err("%s: no memory\n", __func__);
+			ret = -ENOMEM;
+			goto do_free_iram_buf;
+		}
 
-	pr_debug("\niram len 0x%x dram len 0x%x",
-			sst_drv_ctx->dump_buf.iram_buf.size,
-			sst_drv_ctx->dump_buf.dram_buf.size);
+		pr_debug("\niram len 0x%x dram len 0x%x",
+				sst_drv_ctx->dump_buf.iram_buf.size,
+				sst_drv_ctx->dump_buf.dram_buf.size);
+	}
 #endif
 	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID) {
 		sst_drv_ctx->probe_bytes = kzalloc(SST_MAX_BIN_BYTES, GFP_KERNEL);
@@ -581,6 +783,11 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 
 	sst_set_fw_state_locked(sst_drv_ctx, SST_UN_INIT);
 	/* Register the ISR */
+
+	if (sst_drv_ctx->pci_id == SST_BYT_PCI_ID) {
+		pr_err("irq expected 29, received %d", pci->irq);
+		pci->irq = 29; /* FIXME */
+	}
 	ret = request_threaded_irq(pci->irq, sst_drv_ctx->ops->interrupt,
 		sst_drv_ctx->ops->irq_thread, NULL, SST_DRV_NAME,
 		sst_drv_ctx);
@@ -595,15 +802,12 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 		goto do_free_irq;
 	}
 	/* default intr are unmasked so set this as masked */
-	if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID)
+	if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID ||
+	    sst_drv_ctx->pci_id == SST_BYT_PCI_ID)
 		sst_shim_write64(sst_drv_ctx->shim, SST_IMRX, 0xFFFF0034);
 
-	if ((sst_drv_ctx->pci_id == SST_MFLD_PCI_ID) ||
-			(sst_drv_ctx->pci_id == SST_CLV_PCI_ID)) {
-		u32 csr;
-		u32 csr2;
-		u32 clkctl;
-
+	if (sst_drv_ctx->use_32bit_ops) {
+		pr_debug("allocate mem for context save/restore\n ");
 		/*allocate mem for fw context save during suspend*/
 		sst_drv_ctx->fw_cntx = kzalloc(FW_CONTEXT_MEM, GFP_KERNEL);
 		if (!sst_drv_ctx->fw_cntx) {
@@ -612,6 +816,12 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 		}
 		/*setting zero as that is valid mem to restore*/
 		sst_drv_ctx->fw_cntx_size = 0;
+	}
+	if ((sst_drv_ctx->pci_id == SST_MFLD_PCI_ID) ||
+	    (sst_drv_ctx->pci_id == SST_CLV_PCI_ID)) {
+		u32 csr;
+		u32 csr2;
+		u32 clkctl;
 
 		/*set lpe start clock and ram size*/
 		csr = sst_shim_read(sst_drv_ctx->shim, SST_CSR);
@@ -633,7 +843,8 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 		/*set SSP3 disable DMA finsh for SSSP3 */
 		csr2 |= BIT(1)|BIT(2);
 		sst_shim_write(sst_drv_ctx->shim, SST_CSR2, csr2);
-	} else {
+	} else if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID &&
+			sst_drv_ctx->use_32bit_ops == false) {
 		/*allocate mem for fw context save during suspend*/
 		sst_drv_ctx->context.iram =
 			kzalloc(sst_drv_ctx->iram_end - sst_drv_ctx->iram_base, GFP_KERNEL);
@@ -664,6 +875,8 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 	pci_set_drvdata(pci, sst_drv_ctx);
 	pm_runtime_allow(&pci->dev);
 	pm_runtime_put_noidle(&pci->dev);
+	if (sst_drv_ctx->pci_id == SST_BYT_PCI_ID)
+		pm_runtime_forbid(&pci->dev);
 	register_sst(&pci->dev);
 	sst_debugfs_init(sst_drv_ctx);
 	sst_drv_ctx->qos = kzalloc(sizeof(struct pm_qos_request),
@@ -684,9 +897,11 @@ do_free_probe_bytes:
 		kfree(sst_drv_ctx->probe_bytes);
 do_free_dram_buf:
 #ifdef CONFIG_DEBUG_FS
-	kfree(sst_drv_ctx->dump_buf.dram_buf.buf);
+	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID)
+		kfree(sst_drv_ctx->dump_buf.dram_buf.buf);
 do_free_iram_buf:
-	kfree(sst_drv_ctx->dump_buf.iram_buf.buf);
+	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID)
+		kfree(sst_drv_ctx->dump_buf.iram_buf.buf);
 #endif
 do_unmap:
 	/* FIXME: Support for other platforms after SSP Patch */
@@ -757,8 +972,10 @@ static void __devexit intel_sst_remove(struct pci_dev *pci)
 	iounmap(sst_drv_ctx->mailbox);
 	iounmap(sst_drv_ctx->shim);
 #ifdef CONFIG_DEBUG_FS
-	kfree(sst_drv_ctx->dump_buf.iram_buf.buf);
-	kfree(sst_drv_ctx->dump_buf.dram_buf.buf);
+	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID) {
+		kfree(sst_drv_ctx->dump_buf.iram_buf.buf);
+		kfree(sst_drv_ctx->dump_buf.dram_buf.buf);
+	}
 #endif
 	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID)
 		kfree(sst_drv_ctx->probe_bytes);
@@ -787,158 +1004,6 @@ static void __devexit intel_sst_remove(struct pci_dev *pci)
 	pci_set_drvdata(pci, NULL);
 }
 
-static int sst_save_fw_rams(struct intel_sst_drv *sst)
-{
-	/* first reset, stall and bypass the core */
-	sst->ops->reset();
-
-	/* FIXME now we copy, should use DMA here but for now we cant
-	 * so use mempcy instead
-	 */
-	memcpy_fromio(sst->context.iram, sst->iram,
-			sst->iram_end - sst->iram_base);
-	memcpy_fromio(sst->context.dram, sst->dram,
-			sst->dram_end - sst->dram_base);
-	return 0;
-}
-
-static int sst_load_fw_rams(struct intel_sst_drv *sst)
-{
-	struct sst_block *block;
-
-	/* first reset, stall and bypass the core */
-	sst->ops->reset();
-
-	/* FIXME now we copy, should use DMA here but for now we cant
-	 * so use mempcy instead
-	 */
-	block = sst_create_block(sst, 0, FW_DWNL_ID);
-	if (block == NULL)
-		return -ENOMEM;
-
-	memcpy_toio(sst->iram, sst->context.iram,
-			sst->iram_end - sst->iram_base);
-	memcpy_toio(sst->dram, sst->context.dram,
-			sst->dram_end - sst->dram_base);
-	sst_set_fw_state_locked(sst, SST_FW_LOADED);
-
-	sst->ops->start();
-	if (sst_wait_timeout(sst, block)) {
-		pr_err("fw download failed\n");
-		/* assume FW d/l failed due to timeout*/
-		sst_set_fw_state_locked(sst, SST_UN_INIT);
-		sst_free_block(sst, block);
-		return -EBUSY;
-	}
-	pr_debug("Fw loaded!");
-	sst_free_block(sst, block);
-	return 0;
-}
-
-static int sst_save_dsp_context2(struct intel_sst_drv *sst)
-{
-	unsigned int pvt_id;
-	struct ipc_post *msg = NULL;
-	unsigned long irq_flags;
-	struct ipc_dsp_hdr dsp_hdr;
-	struct sst_block *block;
-
-	/*not supported for rest*/
-	if (sst->sst_state != SST_FW_RUNNING) {
-		pr_debug("fw not running no context save ...\n");
-		return 0;
-	}
-
-	/*send msg to fw*/
-	pvt_id = sst_assign_pvt_id(sst);
-	if (sst_create_block_and_ipc_msg(&msg, true, sst, &block,
-				IPC_CMD, pvt_id)) {
-		pr_err("msg/block alloc failed. Not proceeding with context save\n");
-		return;
-	}
-
-	sst_fill_header_mrfld(&msg->mrfld_header, IPC_CMD,
-				IPC_QUE_ID_MED, 1, pvt_id);
-	msg->mrfld_header.p.header_low_payload = sizeof(dsp_hdr);
-	msg->mrfld_header.p.header_high.part.res_rqd = 1;
-	sst_fill_header_dsp(&dsp_hdr, IPC_PREP_D3, PIPE_RSVD, pvt_id);
-	memcpy(msg->mailbox_data, &dsp_hdr, sizeof(dsp_hdr));
-
-	spin_lock_irqsave(&sst->ipc_spin_lock, irq_flags);
-	list_add_tail(&msg->node, &sst->ipc_dispatch_list);
-	spin_unlock_irqrestore(&sst->ipc_spin_lock, irq_flags);
-	sst->ops->post_message(&sst->ipc_post_msg_wq);
-	/*wait for reply*/
-	if (sst_wait_timeout(sst, block)) {
-		pr_err("sst: err fw context save timeout  ...\n");
-		pr_err("not suspending FW!!!");
-		sst_free_block(sst, block);
-		return -EIO;
-	}
-	if (block->ret_code) {
-		pr_err("fw responded w/ error %d", block->ret_code);
-		sst_free_block(sst, block);
-		return -EIO;
-	}
-
-	/* all good, so lets copy the fw */
-	sst_save_fw_rams(sst);
-	sst->context.saved = 0;
-	pr_debug("fw context saved  ...\n");
-	sst_free_block(sst, block);
-	return 0;
-}
-
-static void sst_save_dsp_context(void)
-{
-	struct snd_sst_ctxt_params fw_context;
-	unsigned int pvt_id;
-	struct ipc_post *msg = NULL;
-	unsigned long irq_flags;
-	struct sst_block *block;
-	pr_debug("%s: Enter\n", __func__);
-
-	/*check cpu type*/
-	if (sst_drv_ctx->pci_id == SST_MRST_PCI_ID)
-		return;
-	/*not supported for rest*/
-	if (sst_drv_ctx->sst_state != SST_FW_RUNNING) {
-		pr_debug("fw not running no context save ...\n");
-		return;
-	}
-
-	/*send msg to fw*/
-	pvt_id = sst_assign_pvt_id(sst_drv_ctx);
-	if (sst_create_block_and_ipc_msg(&msg, true, sst_drv_ctx, &block,
-				IPC_IA_GET_FW_CTXT, pvt_id)) {
-		pr_err("msg/block alloc failed. Not proceeding with context save\n");
-		return;
-	}
-	sst_fill_header(&msg->header, IPC_IA_GET_FW_CTXT, 1, pvt_id);
-	msg->header.part.data = sizeof(fw_context) + sizeof(u32);
-	fw_context.address = virt_to_phys((void *)sst_drv_ctx->fw_cntx);
-	fw_context.size = FW_CONTEXT_MEM;
-	memcpy(msg->mailbox_data, &msg->header, sizeof(u32));
-	memcpy(msg->mailbox_data + sizeof(u32),
-				&fw_context, sizeof(fw_context));
-	spin_lock_irqsave(&sst_drv_ctx->ipc_spin_lock, irq_flags);
-	list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
-	spin_unlock_irqrestore(&sst_drv_ctx->ipc_spin_lock, irq_flags);
-	sst_drv_ctx->ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
-	/*wait for reply*/
-	if (sst_wait_timeout(sst_drv_ctx, block))
-		pr_err("sst: err fw context save timeout  ...\n");
-	pr_debug("fw context saved  ...\n");
-	if (block->ret_code)
-		sst_drv_ctx->fw_cntx_size = 0;
-	else
-		sst_drv_ctx->fw_cntx_size = *sst_drv_ctx->fw_cntx;
-	pr_debug("fw copied data %x\n", sst_drv_ctx->fw_cntx_size);
-	sst_free_block(sst_drv_ctx, block);
-	return;
-}
-
-
 /*
  * The runtime_suspend/resume is pretty much similar to the legacy
  * suspend/resume with the noted exception below: The PCI core takes care of
@@ -948,23 +1013,17 @@ static void sst_save_dsp_context(void)
 static int intel_sst_runtime_suspend(struct device *dev)
 {
 	union config_status_reg csr;
-
 	pr_debug("runtime_suspend called\n");
-	if (sst_drv_ctx->sst_state == SST_SUSPENDED) {
-		pr_err("System already in Suspended state");
+	if (sst_drv_ctx->sst_state == SST_UN_INIT) {
+		pr_debug("LPE is already in UNINIT state, No action");
 		return 0;
 	}
 	/*save fw context*/
+	if (sst_drv_ctx->ops->save_dsp_context(sst_drv_ctx))
+		return -EBUSY;
 
-#ifndef MRFLD_TEST_ON_MFLD
-	if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID) {
-		if (sst_save_dsp_context2(sst_drv_ctx))
-			return -EBUSY;
-	} else {
-		sst_save_dsp_context();
-	}
-#endif
-	if (sst_drv_ctx->pci_id != SST_MRFLD_PCI_ID) {
+	if (sst_drv_ctx->pci_id == SST_MFLD_PCI_ID ||
+	    sst_drv_ctx->pci_id == SST_CLV_PCI_ID) {
 		/*Assert RESET on LPE Processor*/
 		csr.full = sst_shim_read(sst_drv_ctx->shim, SST_CSR);
 		sst_drv_ctx->csr_value = csr.full;
@@ -987,12 +1046,9 @@ static int intel_sst_runtime_resume(struct device *dev)
 	u32 csr;
 
 	pr_debug("runtime_resume called\n");
-	if (sst_drv_ctx->sst_state != SST_SUSPENDED) {
-		pr_err("SST is not in suspended state\n");
-		return 0;
-	}
 
-	if (sst_drv_ctx->pci_id != SST_MRFLD_PCI_ID) {
+	if (sst_drv_ctx->pci_id == SST_MFLD_PCI_ID ||
+	    sst_drv_ctx->pci_id == SST_CLV_PCI_ID) {
 		csr = sst_shim_read(sst_drv_ctx->shim, SST_CSR);
 		/*
 		 * To restore the csr_value after S0ix and S3 states.
@@ -1031,7 +1087,8 @@ static int intel_sst_runtime_resume(struct device *dev)
 	}
 
 	sst_set_fw_state_locked(sst_drv_ctx, SST_UN_INIT);
-	if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID && sst_drv_ctx->context.saved) {
+	if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID && sst_drv_ctx->context.saved &&
+			(!sst_drv_ctx->use_32bit_ops)) {
 		/* in mrfld we have saved ram snapshot
 		 * so check if snapshot is present if so download that
 		 */
@@ -1068,32 +1125,38 @@ static const struct dev_pm_ops intel_sst_pm = {
 #define SST_MFLD_DRAM_START	0x400000
 #define SST_MFLD_DRAM_END	0x480000
 
+#define SST_BYT_IRAM_START	0xff2c0000
+#define SST_BYT_IRAM_END	0xff2d4000
+#define SST_BYT_DRAM_START	0xff300000
+#define SST_BYT_DRAM_END	0xff328000
+
 /* PCI Routines */
 static DEFINE_PCI_DEVICE_TABLE(intel_sst_ids) = {
 	{ PCI_VDEVICE(INTEL, SST_MRST_PCI_ID),
 		INFO(0, 0, false,
 			0, 0, false,
 			0, 0, false,
-			false, 3, SST_MAX_DMA_LEN)},
+			false, 3, SST_MAX_DMA_LEN, 0)},
 	{ PCI_VDEVICE(INTEL, SST_MFLD_PCI_ID),
 		INFO(SST_MFLD_IRAM_START, SST_MFLD_IRAM_END, true,
 			SST_MFLD_DRAM_START, SST_MFLD_DRAM_END, true,
 			0, 0, false,
-#ifdef MRFLD_TEST_ON_MFLD
-			true, 24, SST_MAX_DMA_LEN)},
-#else
-			false, 5, SST_MAX_DMA_LEN)},
-#endif
+			false, 5, SST_MAX_DMA_LEN, 0)},
 	{ PCI_VDEVICE(INTEL, SST_CLV_PCI_ID),
 		INFO(0, 0, false,
 			0, 0, false,
 			0, 0, false,
-			false, 5, SST_MAX_DMA_LEN)},
+			false, 5, SST_MAX_DMA_LEN, 1)},
 	{ PCI_VDEVICE(INTEL, SST_MRFLD_PCI_ID),
 		INFO(0, 0, false,
 			0, 0, false,
 			0, 0, false,
-			true, 23, SST_MAX_DMA_LEN_MRFLD)},
+			true, 23, SST_MAX_DMA_LEN_MRFLD, 16)},
+	{ PCI_VDEVICE(INTEL, SST_BYT_PCI_ID),
+		INFO(SST_BYT_IRAM_START, SST_BYT_IRAM_END, true,
+		     SST_BYT_DRAM_START, SST_BYT_DRAM_END, true,
+		     0, 0, false,
+		     true, 4, SST_MAX_DMA_LEN, 0)},
 	{ 0, }
 };
 MODULE_DEVICE_TABLE(pci, intel_sst_ids);
@@ -1103,10 +1166,13 @@ static struct pci_driver driver = {
 	.id_table = intel_sst_ids,
 	.probe = intel_sst_probe,
 	.remove = __devexit_p(intel_sst_remove),
+/* Temporarily disable PM for Bodegabay */
+#ifndef CONFIG_PRH_TEMP_WA_FOR_SPID
 #ifdef CONFIG_PM
 	.driver = {
 		.pm = &intel_sst_pm,
 	},
+#endif
 #endif
 };
 

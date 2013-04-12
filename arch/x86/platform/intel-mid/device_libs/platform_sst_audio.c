@@ -17,6 +17,7 @@
 #include <linux/platform_device.h>
 #include <asm/intel-mid.h>
 #include <asm/intel_sst_ctp.h>
+#include <asm/platform_byt_audio.h>
 #include <sound/asound.h>
 
 static struct sst_platform_data sst_platform_pdata;
@@ -46,6 +47,21 @@ static struct sst_dev_stream_map ctp_vb_strm_map[] = {
 	{CTP_VB_AUD_COMP_ASP_DEV, 0, SNDRV_PCM_STREAM_PLAYBACK, SST_COMPRESSED_OUT, SST_DEV_MAP_IN_USE},
 	{CTP_VB_AUD_ASP_DEV, 0, SNDRV_PCM_STREAM_CAPTURE, SST_CAPTURE_IN, SST_DEV_MAP_IN_USE},
 	{CTP_VB_AUD_PROBE_DEV, 0, SNDRV_PCM_STREAM_CAPTURE, SST_PROBE_IN, SST_DEV_MAP_IN_USE},
+};
+
+static struct sst_dev_stream_map merr_bb_strm_map[] = {
+	{0xFF, 0xFF, 0xFF, 0xFF, 0xFF}, /* Reserved, not in use */
+	{MERR_BB_AUD_ASP_DEV, 0, SNDRV_PCM_STREAM_PLAYBACK, SST_PCM_OUT0, SST_DEV_MAP_IN_USE},
+	{MERR_BB_AUD_ASP_DEV, 1, SNDRV_PCM_STREAM_PLAYBACK, SST_PCM_OUT1, SST_DEV_MAP_IN_USE},
+	{MERR_BB_AUD_ASP_DEV, 0, SNDRV_PCM_STREAM_CAPTURE, SST_CAPTURE_IN, SST_DEV_MAP_IN_USE},
+	{MERR_BB_AUD_PROBE_DEV, 0, SNDRV_PCM_STREAM_CAPTURE, SST_PROBE_IN, SST_DEV_MAP_IN_USE},
+};
+
+static struct sst_dev_stream_map byt_bl_strm_map[] = {
+	{0xFF, 0xFF, 0xFF, 0xFF, 0xFF}, /* Reserved, not in use */
+	{BYT_AUD_AIF1, 0, SNDRV_PCM_STREAM_PLAYBACK, SST_PCM_OUT0, SST_DEV_MAP_IN_USE},
+	{BYT_AUD_AIF1, 1, SNDRV_PCM_STREAM_PLAYBACK, SST_PCM_OUT1, SST_DEV_MAP_IN_USE},
+	{BYT_AUD_AIF1, 0, SNDRV_PCM_STREAM_CAPTURE, SST_CAPTURE_IN, SST_DEV_MAP_IN_USE},
 };
 
 static struct sst_dev_stream_map mrfld_strm_map[MAX_DEVICES_MRFLD] = {
@@ -121,7 +137,7 @@ static void set_mfld_platform_config(void)
 	sst_platform_pdata.pdata = NULL;
 	sst_platform_pdata.bdata = NULL;
 	sst_platform_pdata.use_strm_map = false;
-	sst_platform_pdata.pdev_strm_map = &mfld_strm_map;
+	sst_platform_pdata.pdev_strm_map = mfld_strm_map;
 	sst_platform_pdata.strm_map_size = MAX_DEVICES_MFLD;
 }
 
@@ -133,10 +149,15 @@ static void set_ctp_platform_config(void)
 					&ssp_ctp_data, sizeof(ssp_ctp_data));
 	sst_platform_pdata.use_strm_map = true;
 
+	/* FIX ME: SPID for PRh is not yet available */
+#ifdef CONFIG_PRH_TEMP_WA_FOR_SPID
+	sst_platform_pdata.pdev_strm_map = &merr_bb_strm_map;
+	sst_platform_pdata.strm_map_size = ARRAY_SIZE(merr_bb_strm_map);
+#else
 	if ((INTEL_MID_BOARD(2, PHONE, CLVTP, VB, PRO)) ||
-	   (INTEL_MID_BOARD(2, PHONE, CLVTP, VB, ENG))) {
+	    (INTEL_MID_BOARD(2, PHONE, CLVTP, VB, ENG))) {
 
-		sst_platform_pdata.pdev_strm_map = &ctp_vb_strm_map;
+		sst_platform_pdata.pdev_strm_map = ctp_vb_strm_map;
 		sst_platform_pdata.strm_map_size = ARRAY_SIZE(ctp_vb_strm_map);
 
 	} else if ((INTEL_MID_BOARD(2, PHONE, CLVTP, RHB, PRO)) ||
@@ -144,10 +165,20 @@ static void set_ctp_platform_config(void)
 		   (INTEL_MID_BOARD(2, TABLET, CLVT, TBD, PRO)) ||
 		   (INTEL_MID_BOARD(2, TABLET, CLVT, TBD, ENG))) {
 
-		sst_platform_pdata.pdev_strm_map = &ctp_rhb_strm_map;
+		sst_platform_pdata.pdev_strm_map = ctp_rhb_strm_map;
 		sst_platform_pdata.strm_map_size = ARRAY_SIZE(ctp_rhb_strm_map);
 	}
+#endif
 	pr_debug("audio:ctp:strm_map_size %d\n", sst_platform_pdata.strm_map_size);
+}
+
+static void set_byt_platform_config(void)
+{
+	sst_platform_pdata.pdata = NULL;
+	sst_platform_pdata.bdata = NULL;
+	sst_platform_pdata.use_strm_map = true;
+	sst_platform_pdata.pdev_strm_map = byt_bl_strm_map;
+	sst_platform_pdata.strm_map_size =  ARRAY_SIZE(byt_bl_strm_map);
 }
 
 static void set_mrfld_platform_config(void)
@@ -155,27 +186,35 @@ static void set_mrfld_platform_config(void)
 	sst_platform_pdata.pdata = NULL;
 	sst_platform_pdata.bdata = NULL;
 	sst_platform_pdata.use_strm_map = true;
-	sst_platform_pdata.pdev_strm_map = &mrfld_strm_map;
+	sst_platform_pdata.pdev_strm_map = mrfld_strm_map;
 	sst_platform_pdata.strm_map_size = MAX_DEVICES_MRFLD;
 }
 
 static void  populate_platform_data(void)
 {
 	sst_platform_pdata.spid = &spid;
+	/* FIX ME: SPID for PRh is not yet available */
+#ifdef CONFIG_PRH_TEMP_WA_FOR_SPID
+	set_ctp_platform_config();
+#else
 	if ((INTEL_MID_BOARD(1, PHONE, MFLD)) ||
-			(INTEL_MID_BOARD(1, TABLET, MFLD))) {
+	    (INTEL_MID_BOARD(1, TABLET, MFLD))) {
 		set_mfld_platform_config();
 	} else if ((INTEL_MID_BOARD(1, PHONE, CLVTP)) ||
-			(INTEL_MID_BOARD(1, TABLET, CLVT))) {
+		   (INTEL_MID_BOARD(1, TABLET, CLVT))) {
 		set_ctp_platform_config();
+	} else if ((INTEL_MID_BOARD(1, TABLET, BYT))) {
+		set_byt_platform_config();
 	} else if ((INTEL_MID_BOARD(1, PHONE, MRFL)) ||
-			(INTEL_MID_BOARD(1, TABLET, MRFL))) {
+		   (INTEL_MID_BOARD(1, TABLET, MRFL))) {
 		set_mrfld_platform_config();
-	} else
+	} else {
 		pr_warn("Board not Supported\n");
+	}
+#endif
 }
 
-int add_sst_platform_device()
+int add_sst_platform_device(void)
 {
 	struct platform_device *pdev = NULL;
 	int ret;

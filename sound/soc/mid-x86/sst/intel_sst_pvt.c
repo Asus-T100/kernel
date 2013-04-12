@@ -109,8 +109,8 @@ void dump_sst_shim(struct intel_sst_drv *sst)
 		sst_shim_read(sst->shim, SST_ISRD),
 		sst_shim_read(sst->shim, SST_IMRX),
 		sst_shim_read(sst->shim, SST_IMRD),
-		sst_shim_read(sst->shim, SST_IPCX),
-		sst_shim_read(sst->shim, SST_IPCD),
+		sst_shim_read(sst->shim, sst->ipc_reg.ipcx),
+		sst_shim_read(sst->shim, sst->ipc_reg.ipcd),
 		sst_shim_read(sst->shim, SST_ISRSC),
 		sst_shim_read(sst->shim, SST_ISRLPESC),
 		sst_shim_read(sst->shim, SST_IMRSC),
@@ -125,8 +125,8 @@ void dump_sst_shim(struct intel_sst_drv *sst)
 void reset_sst_shim(struct intel_sst_drv *sst)
 {
 	pr_err("Resetting few Shim registers\n");
-	sst_shim_write(sst->shim, SST_IPCX, 0x0);
-	sst_shim_write(sst->shim, SST_IPCD, 0x0);
+	sst_shim_write(sst->shim, sst->ipc_reg.ipcx, 0x0);
+	sst_shim_write(sst->shim, sst->ipc_reg.ipcd, 0x0);
 	sst_shim_write(sst->shim, SST_ISRX, 0x0);
 	sst_shim_write(sst->shim, SST_ISRD, 0x0);
 	sst_shim_write(sst->shim, SST_IPCSC, 0x0);
@@ -292,7 +292,8 @@ int sst_wait_timeout(struct intel_sst_drv *sst_drv_ctx, struct sst_block *block)
 		retval = block->ret_code;
 	} else {
 		block->on = false;
-		pr_err("sst: Wait timed-out %x\n", block->condition);
+		pr_err("sst: Wait timed-out condition:%#x, msg_id:%#x\n",
+				block->condition, block->msg_id);
 
 		sst_do_recovery(sst_drv_ctx);
 		/* settign firmware state as uninit so that the

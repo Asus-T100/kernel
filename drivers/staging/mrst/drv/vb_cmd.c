@@ -43,6 +43,8 @@
 
 #define I2C_ADAPTER 0x02
 #define I2C_ADDRESS 0x54
+#define IGZO_PANEL_NAME	"SHARP IGZO VKB"
+#define CGS_PANEL_NAME	"SHARP CGS VKB"
 
 /* #define USE_CABC */
 /*
@@ -263,6 +265,8 @@ MODULE_DEVICE_TABLE(i2c, ir2e69_idtable);
 
 static struct i2c_client *i2c_client;
 
+static int mipi_reset_gpio = -1;
+
 static struct attribute *ir2e69_attributes[] = {
 	NULL
 };
@@ -346,35 +350,45 @@ static struct i2c_driver ir2e69_driver = {
 
 static void ir2e69_set_gpio(int value)
 {
-	static unsigned int mipi_reset_gpio = 0;
 	PSB_DEBUG_ENTRY(": %d\n", value);
+	if (mipi_reset_gpio == -1) {
+		DRM_ERROR("mipi_reset_gpio is not correctly set\n");
+		return;
+	}
 
-	if (mipi_reset_gpio == 0) {
-		mipi_reset_gpio = get_gpio_by_name("mipi-reset");
-		if (mipi_reset_gpio < 0) {
-			DRM_ERROR("can't get mipi-reset gpio pin\n");
-			return;
-		}
-		gpio_request(mipi_reset_gpio, "mipi_display");
-		gpio_direction_output(mipi_reset_gpio, value);
-	} else
-		gpio_set_value(mipi_reset_gpio, value);
+	gpio_set_value(mipi_reset_gpio, value);
 }
 
 static void ir2e69_register(void)
 {
 	struct i2c_adapter *adapter;
+	int ret;
 
 	adapter = i2c_get_adapter(I2C_ADAPTER);
 	i2c_client = i2c_new_device(adapter, &dcdc_board_info);
-	/* get reset gpio and set direction in register */
-	ir2e69_set_gpio(0);
+
+	mipi_reset_gpio = get_gpio_by_name("mipi-reset");
+	if (mipi_reset_gpio < 0) {
+		DRM_ERROR("can't get mipi-reset gpio pin\n");
+		mipi_reset_gpio = -1;
+		return;
+	}
+	ret = gpio_request(mipi_reset_gpio, "mipi_display");
+	if (ret < 0) {
+		DRM_ERROR("failed to request gpio %d\n", mipi_reset_gpio);
+		mipi_reset_gpio = -1;
+		return;
+	}
+	gpio_direction_output(mipi_reset_gpio, 0);
 }
 
 static void ir2e69_unregister(void)
 {
 	if (i2c_client != NULL)
 		i2c_unregister_device(i2c_client);
+
+	if (mipi_reset_gpio != -1)
+		gpio_free(mipi_reset_gpio);
 }
 
 static int ir2e69_send_sequence(u8 data[][2], int count)
@@ -1075,3 +1089,48 @@ void vb_cmd_init(struct drm_device *dev, struct panel_funcs *p_funcs)
 	ir2e69_register();
 	register_reboot_notifier(&vb_cmd_reboot_notifier_block);
 }
+
+static int vb_lcd_probe(struct platform_device *pdev)
+{
+	int ret = 0;
+
+	DRM_INFO("%s\n", __func__);
+
+	ret = intel_mid_mipi_client_detect(IGZO_PANEL_NAME);
+	if (!ret) {
+		DRM_INFO("%s: IGZO panel detected\n", __func__);
+		intel_mid_panel_register(vb_igzo_cmd_init);
+		return 0;
+	}
+
+	ret = intel_mid_mipi_client_detect(CGS_PANEL_NAME);
+	if (!ret) {
+		DRM_INFO("%s: CGS panel detected\n", __func__);
+		intel_mid_panel_register(vb_cgs_cmd_init);
+		return 0;
+	}
+
+	return 0;
+}
+
+static struct platform_device vb_lcd_device = {
+	.name	= "vb_lcd",
+	.id	= -1,
+};
+
+static struct platform_driver vb_lcd_driver = {
+	.probe	= vb_lcd_probe,
+	.driver	= {
+		.name	= "vb_lcd",
+		.owner	= THIS_MODULE,
+	},
+};
+
+static int __init vb_lcd_init(void)
+{
+	DRM_INFO("%s\n", __func__);
+
+	platform_device_register(&vb_lcd_device);
+	platform_driver_register(&vb_lcd_driver);
+}
+module_init(vb_lcd_init);

@@ -1939,13 +1939,23 @@ static int serial_hsu_do_resume(struct pci_dev *pdev)
 static int serial_hsu_suspend(struct device *dev)
 {
 	struct pci_dev *pdev = container_of(dev, struct pci_dev, dev);
-	return serial_hsu_do_suspend(pdev);
+	struct uart_hsu_port *up = pci_get_drvdata(pdev);
+
+	if (!up)
+		return 0;
+	else
+		return serial_hsu_do_suspend(pdev);
 }
 
 static int serial_hsu_resume(struct device *dev)
 {
 	struct pci_dev *pdev = container_of(dev, struct pci_dev, dev);
-	return serial_hsu_do_resume(pdev);
+	struct uart_hsu_port *up = pci_get_drvdata(pdev);
+
+	if (!up)
+		return 0;
+	else
+		return serial_hsu_do_resume(pdev);
 }
 #else
 #define serial_hsu_suspend	NULL

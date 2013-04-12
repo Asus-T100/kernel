@@ -36,17 +36,6 @@ config DRM_MID_DEBUG
 
 endchoice
 
-config DRM_MRST
-	tristate "Intel Moorestown"
-	depends on DRM_INTEL_MID && PCI
-	select FB_CFB_COPYAREA
-        select FB_CFB_FILLRECT
-        select FB_CFB_IMAGEBLIT
-	select DRM_KMS_HELPER
-	help
-	  Choose this option if you have a Moorestown platform.
-          If M is selected the module will be called mid_gfx.
-
 config DRM_MDFLD
 	tristate "Intel Medfield"
         depends on DRM_INTEL_MID && PCI

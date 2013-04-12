@@ -127,6 +127,7 @@ enum intel_mid_cpu_type {
 	INTEL_MID_CPU_CHIP_CLOVERVIEW,
 	INTEL_MID_CPU_CHIP_TANGIER,
 	INTEL_MID_CPU_CHIP_VALLEYVIEW2,
+	INTEL_MID_CPU_CHIP_ANNIEDALE,
 };
 
 extern enum intel_mid_cpu_type __intel_mid_cpu_chip;
@@ -161,6 +162,7 @@ struct intel_mid_ops {
 	DECLARE_INTEL_MID_OPS_INIT(tangier, INTEL_MID_CPU_CHIP_TANGIER) \
 	DECLARE_INTEL_MID_OPS_INIT(valleyview2, \
 		INTEL_MID_CPU_CHIP_VALLEYVIEW2) \
+	DECLARE_INTEL_MID_OPS_INIT(anniedale, INTEL_MID_CPU_CHIP_ANNIEDALE) \
 };
 
 #ifdef CONFIG_X86_INTEL_MID
@@ -244,16 +246,16 @@ extern int get_force_shutdown_occured(void);
 
 extern const struct atomisp_platform_data *intel_get_v4l2_subdev_table(void);
 
-enum intel_mrfl_sim_type {
-	INTEL_MRFL_CPU_SIMULATION_NONE = 0,
-	INTEL_MRFL_CPU_SIMULATION_VP,
-	INTEL_MRFL_CPU_SIMULATION_SLE,
-	INTEL_MRFL_CPU_SIMULATION_HVP,
+enum intel_mid_sim_type {
+	INTEL_MID_CPU_SIMULATION_NONE = 0,
+	INTEL_MID_CPU_SIMULATION_VP,
+	INTEL_MID_CPU_SIMULATION_SLE,
+	INTEL_MID_CPU_SIMULATION_HVP,
 };
-extern enum intel_mrfl_sim_type __intel_mrfl_sim_platform;
-static inline enum intel_mrfl_sim_type intel_mrfl_identify_sim(void)
+extern enum intel_mid_sim_type __intel_mid_sim_platform;
+static inline enum intel_mid_sim_type intel_mid_identify_sim(void)
 {
-	return __intel_mrfl_sim_platform;
+	return __intel_mid_sim_platform;
 }
 
 #define INTEL_MID_IRQ_OFFSET 0x100

@@ -52,33 +52,12 @@ enum atomisp_subdev_input_entity {
 #define ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW	3
 #define ATOMISP_SUBDEV_PADS_NUM			4
 
-enum atomisp_pipe_type {
-	ATOMISP_PIPE_CAPTURE,
-	ATOMISP_PIPE_VIEWFINDER,
-	ATOMISP_PIPE_PREVIEW,
-	ATOMISP_PIPE_FILEINPUT
-};
-
 struct atomisp_in_fmt_conv {
 	enum v4l2_mbus_pixelcode code;
+	uint8_t bpp; /* bits per pixel */
+	uint8_t depth; /* uncompressed */
 	enum sh_css_input_format in_sh_fmt;
 	enum sh_css_bayer_order bayer_order;
-};
-
-struct atomisp_3a_dis_stat_buf {
-	union sh_css_s3a_data s3a_data;
-	struct sh_css_dis_data dis_data;
-	struct list_head list;
-};
-
-struct atomisp_s3a_buf {
-	union sh_css_s3a_data s3a_data;
-	struct list_head list;
-};
-
-struct atomisp_dis_buf {
-	struct sh_css_dis_data dis_data;
-	struct list_head list;
 };
 
 struct atomisp_video_pipe {
@@ -96,7 +75,6 @@ struct atomisp_video_pipe {
 	 * operations atomic. */
 	spinlock_t irq_lock;
 	unsigned int users;
-	enum atomisp_pipe_type pipe_type;
 
 	struct atomisp_device *isp;
 	struct v4l2_pix_format pix;
@@ -128,12 +106,23 @@ struct atomisp_sub_device {
 	struct v4l2_ctrl *fmt_auto;
 	struct v4l2_ctrl *run_mode;
 	struct v4l2_ctrl *enable_vfpp;
+	struct v4l2_ctrl *continuous_mode;
+	struct v4l2_ctrl *continuous_raw_buffer_size;
+	struct v4l2_ctrl *continuous_viewfinder;
 };
 
 extern const struct atomisp_in_fmt_conv atomisp_in_fmt_conv[];
 
+enum v4l2_mbus_pixelcode atomisp_subdev_uncompressed_code(
+	enum v4l2_mbus_pixelcode code);
+bool atomisp_subdev_is_compressed(enum v4l2_mbus_pixelcode code);
 const struct atomisp_in_fmt_conv *atomisp_find_in_fmt_conv(
 	enum v4l2_mbus_pixelcode code);
+const struct atomisp_in_fmt_conv *atomisp_find_in_fmt_conv_compressed(
+	enum v4l2_mbus_pixelcode code);
+bool atomisp_subdev_format_conversion(struct atomisp_device *isp,
+				      unsigned int source_pad);
+uint16_t atomisp_subdev_source_pad(struct video_device *vdev);
 
 /* Get pointer to appropriate format */
 struct v4l2_mbus_framefmt

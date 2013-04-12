@@ -105,6 +105,7 @@
 /* L2I Firmware/Codec Download msgs */
 #define IPC_IA_FW_INIT_CMPLT 0x81
 #define IPC_IA_FW_INIT_CMPLT_MRFLD 0x01
+#define IPC_IA_FW_ASYNC_ERR_MRFLD 0x11
 
 /* L2I Codec Config/control msgs */
 #define IPC_SST_FRAGMENT_ELPASED 0x90 /* Request IA more data */
@@ -132,10 +133,18 @@
 /* L2I Debug msgs */
 #define IPC_IA_PRINT_STRING 0xF0
 
-/*TODO*/
+/* Mrfld specific defines:
+ * For asynchronous messages(INIT_CMPLT, PERIOD_ELAPSED, ASYNC_ERROR)
+ * received from FW, the format is:
+ *  - IPC High: pvt_id is set to zero. Always short message.
+ *  - msg_id is in lower 16-bits of IPC low payload.
+ *  - pipe_id is in higher 16-bits of IPC low payload for period_elapsed.
+ *  - error id is in higher 16-bits of IPC low payload for async errors.
+ */
 #define IPC_QUE_ID_MED 0x03
-#define SST_UNSOLICITED_ERROR_MSG 0xFFFF0000
-#define SST_UNSOLICITED_MSG_ID 0x0000FFFF
+#define SST_ASYNC_ERROR_MASK 0xFFFF0000
+#define SST_ASYNC_MSG_MASK 0x0000FFFF
+#define SST_ASYNC_DRV_ID 0
 
 /* Command Response or Acknowledge message to any IPC message will have
  * same message ID and stream ID information which is sent.

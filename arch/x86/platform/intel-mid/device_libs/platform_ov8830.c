@@ -162,6 +162,8 @@ static int ov8830_platform_deinit(void)
 		return 0;
 
 	regulator_put(vprog1_reg);
+
+	return 0;
 }
 static struct camera_sensor_platform_data ov8830_sensor_platform_data = {
 	.gpio_ctrl      = ov8830_gpio_ctrl,

@@ -268,6 +268,17 @@ static int byt_sd_setup(struct sdhci_pci_data *data)
 	return 0;
 }
 
+
+static int byt_sdio_setup(struct sdhci_pci_data *data)
+{
+	u32 stepping;
+	stepping = intel_mid_soc_stepping();
+	if (stepping == 0x1 || stepping == 0x2)/* VLV2 A0 */
+		data->quirks |= SDHCI_QUIRK2_NO_1_8_V;
+	return 0;
+}
+
+
 /* BYT platform data */
 static struct sdhci_pci_data byt_sdhci_pci_data[] = {
 	[EMMC0_INDEX] = {
@@ -289,6 +300,17 @@ static struct sdhci_pci_data byt_sdhci_pci_data[] = {
 			.quirks = 0,
 			.platform_quirks = 0,
 			.setup = byt_sd_setup,
+			.cleanup = NULL,
+			.power_up = 0,
+	},
+	[SDIO_INDEX] = {
+			.pdev = NULL,
+			.slotno = 0,
+			.rst_n_gpio = -EINVAL,
+			.cd_gpio = -EINVAL,
+			.quirks = 0,
+			.platform_quirks = 0,
+			.setup = byt_sdio_setup,
 			.cleanup = NULL,
 			.power_up = 0,
 	},
@@ -341,19 +363,19 @@ static struct sdhci_pci_data *get_sdhci_platform_data(struct pci_dev *pdev)
 			 * during kernel boot. So, we just disable boot
 			 * partition support for Merrifield VP platform.
 			 */
-			if (intel_mrfl_identify_sim() ==
-					INTEL_MRFL_CPU_SIMULATION_VP)
+			if (intel_mid_identify_sim() ==
+					INTEL_MID_CPU_SIMULATION_VP)
 				pdata->platform_quirks |=
 					PLFM_QUIRK_NO_EMMC_BOOT_PART;
-			if (intel_mrfl_identify_sim() ==
-					INTEL_MRFL_CPU_SIMULATION_HVP)
+			if (intel_mid_identify_sim() ==
+					INTEL_MID_CPU_SIMULATION_HVP)
 				pdata->platform_quirks |=
 					PLFM_QUIRK_NO_HIGH_SPEED;
 			break;
 		case 1:
 			pdata = &mrfl_sdhci_pci_data[EMMC1_INDEX];
-			if (intel_mrfl_identify_sim() ==
-					INTEL_MRFL_CPU_SIMULATION_VP)
+			if (intel_mid_identify_sim() ==
+					INTEL_MID_CPU_SIMULATION_VP)
 				pdata->platform_quirks |=
 					PLFM_QUIRK_NO_EMMC_BOOT_PART;
 			/*
@@ -362,22 +384,22 @@ static struct sdhci_pci_data *get_sdhci_platform_data(struct pci_dev *pdev)
 			 * does not implements other 3 Merrifield
 			 * SDHCI host controllers.
 			 */
-			if (intel_mrfl_identify_sim() ==
-					INTEL_MRFL_CPU_SIMULATION_HVP)
+			if (intel_mid_identify_sim() ==
+					INTEL_MID_CPU_SIMULATION_HVP)
 				pdata->platform_quirks |=
 					PLFM_QUIRK_NO_HOST_CTRL_HW;
 			break;
 		case 2:
 			pdata = &mrfl_sdhci_pci_data[SD_INDEX];
-			if (intel_mrfl_identify_sim() ==
-					INTEL_MRFL_CPU_SIMULATION_HVP)
+			if (intel_mid_identify_sim() ==
+					INTEL_MID_CPU_SIMULATION_HVP)
 				pdata->platform_quirks |=
 					PLFM_QUIRK_NO_HOST_CTRL_HW;
 			break;
 		case 3:
 			pdata = &mrfl_sdhci_pci_data[SDIO_INDEX];
-			if (intel_mrfl_identify_sim() ==
-					INTEL_MRFL_CPU_SIMULATION_HVP)
+			if (intel_mid_identify_sim() ==
+					INTEL_MID_CPU_SIMULATION_HVP)
 				pdata->platform_quirks |=
 					PLFM_QUIRK_NO_HOST_CTRL_HW;
 				pdata->quirks = sdhci_pdata_quirks;
@@ -396,6 +418,12 @@ static struct sdhci_pci_data *get_sdhci_platform_data(struct pci_dev *pdev)
 		break;
 	case PCI_DEVICE_ID_INTEL_BYT_SD:
 		pdata = &byt_sdhci_pci_data[SD_INDEX];
+		break;
+	case PCI_DEVICE_ID_INTEL_BYT_SDIO:
+		pr_err("setting quirks/embedded controls on SDIO");
+		pdata = &byt_sdhci_pci_data[SDIO_INDEX];
+		pdata->quirks = sdhci_pdata_quirks;
+		pdata->register_embedded_control = sdhci_embedded_control;
 		break;
 	default:
 		break;
@@ -467,4 +495,7 @@ DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_BYT_SD,
 DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_BYT_MMC,
 			mmc_sdhci_pci_early_quirks);
 DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_BYT_MMC45,
+mmc_sdhci_pci_early_quirks);
+
+DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_INTEL, PCI_DEVICE_ID_INTEL_BYT_SDIO,
 			mmc_sdhci_pci_early_quirks);

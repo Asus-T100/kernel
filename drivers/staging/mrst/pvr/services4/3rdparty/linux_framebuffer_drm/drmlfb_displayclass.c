@@ -1571,14 +1571,22 @@ static IMG_BOOL bIllegalFlipContexts(IMG_VOID *pvData)
 	int i;
 
 	psFlipCmd = (DISPLAYCLASS_FLIP_COMMAND2 *)pvData;
+	if (!psFlipCmd) {
+		DRM_ERROR("Invalid parameters\n");
+		return IMG_TRUE;
+	}
 	psDevInfo = (MRSTLFB_DEVINFO *)psFlipCmd->hExtDevice;
+	if (!psDevInfo) {
+		DRM_ERROR("Invalid parameters\n");
+		return IMG_TRUE;
+	}
 	dev = psDevInfo->psDrmDevice;
 	dev_priv =
 		(struct drm_psb_private *)psDevInfo->psDrmDevice->dev_private;
 
 	psContexts = (struct mdfld_plane_contexts *)psFlipCmd->pvPrivData;
 
-	if (!psFlipCmd || !psDevInfo || !psContexts || !dev_priv) {
+	if (!psContexts || !dev_priv) {
 		DRM_ERROR("Invalid parameters\n");
 		return IMG_TRUE;
 	}
@@ -2294,7 +2302,6 @@ MRST_ERROR MRSTLFBChangeSwapChainProperty(unsigned long *psSwapChainGTTOffset,
 
 	if (psDevInfo == IMG_NULL) {
 		DRM_ERROR("MRSTLFB hasn't been initialized, SGX unloaded?\n");
-		BUG();
 		/* Won't attach/de-attach the plane in case of no swap chain
 		 * created. */
 		eError = MRST_ERROR_INIT_FAILURE;

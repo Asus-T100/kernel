@@ -69,6 +69,8 @@
 #include <linux/kernel.h>
 #include <linux/interrupt.h>
 #include <linux/types.h>
+#include <linux/i2c.h>
+#include <drm/drm_edid.h>
 
 #include "otm_hdmi_types.h"
 #include "otm_hdmi_defs.h"
@@ -230,6 +232,11 @@ otm_hdmi_ret_t otm_hdmi_hpd_callback_register(void *context,
 
 /* parse the raw edid and fill the capability table */
 otm_hdmi_ret_t otm_hdmi_edid_parse(void *ctx, otm_hdmi_use_edid_t use_edid);
+
+/* parse extension EDID blocks and fill the capability table */
+otm_hdmi_ret_t otm_hdmi_edid_extension_parse(void *context,
+			 struct edid *raw_edid,
+			 struct i2c_adapter *adapter);
 
 /* prepare hdmi eld packet and copy it to the input buffer */
 otm_hdmi_ret_t otm_hdmi_get_eld(void *ctx, otm_hdmi_eld_t *eld);

@@ -385,7 +385,7 @@ int had_process_buffer_underrun(struct snd_intelhad *intelhaddata)
 
 int had_process_hot_plug(struct snd_intelhad *intelhaddata)
 {
-	int caps, retval = 0;
+	int retval = 0;
 	enum intel_had_aud_buf_type buf_id;
 	struct snd_pcm_substream *substream;
 	struct had_pvt_data *had_stream;

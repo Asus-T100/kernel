@@ -290,14 +290,10 @@ static const u8 otpdata[] = {
 extern int imx_vcm_power_up(struct v4l2_subdev *sd);
 extern int imx_vcm_power_down(struct v4l2_subdev *sd);
 extern int imx_vcm_init(struct v4l2_subdev *sd);
-
-extern int imx_t_focus_vcm(struct v4l2_subdev *sd, u16 val);
 extern int imx_t_focus_abs(struct v4l2_subdev *sd, s32 value);
 extern int imx_t_focus_rel(struct v4l2_subdev *sd, s32 value);
 extern int imx_q_focus_status(struct v4l2_subdev *sd, s32 *value);
 extern int imx_q_focus_abs(struct v4l2_subdev *sd, s32 *value);
-extern int imx_t_vcm_slew(struct v4l2_subdev *sd, s32 value);
-extern int imx_t_vcm_timing(struct v4l2_subdev *sd, s32 value);
 
 #endif
 

@@ -21,7 +21,7 @@ static struct intel_dwc_otg_pdata *get_otg_platform_data(struct pci_dev *pdev)
 {
 	switch (pdev->device) {
 	case PCI_DEVICE_ID_INTEL_MRFLD_OTG:
-		if (intel_mrfl_identify_sim() == INTEL_MRFL_CPU_SIMULATION_HVP)
+		if (intel_mid_identify_sim() == INTEL_MID_CPU_SIMULATION_HVP)
 			dwc_otg_pdata.is_hvp = 1;
 		return &dwc_otg_pdata;
 	case PCI_DEVICE_ID_INTEL_BYT_OTG:

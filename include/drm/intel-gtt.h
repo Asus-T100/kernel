@@ -48,6 +48,7 @@ void intel_gtt_insert_pages(unsigned int first_entry, unsigned int num_entries,
 /* New caching attributes for gen6/sandybridge */
 #define AGP_USER_CACHED_MEMORY_LLC_MLC (AGP_USER_TYPES + 2)
 #define AGP_USER_UNCACHED_MEMORY (AGP_USER_TYPES + 4)
+#define AGP_USER_ENCODED (1 << 31)
 
 /* flag for GFDT type */
 #define AGP_USER_CACHED_MEMORY_GFDT (1 << 3)

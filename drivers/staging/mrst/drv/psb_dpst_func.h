@@ -51,7 +51,11 @@
 #ifndef _PSB_DPST_FUNC_H_
 #define _PSB_DPST_FUNC_H_
 
-int dpst_init(struct drm_device *dev, int level, int output_id);
+#define AGGRESSIVE_LEVEL_MIN	0
+#define AGGRESSIVE_LEVEL_MAX	5
+#define AGGRESSIVE_LEVEL_DEFAULT	3
+
+int dpst_init(struct drm_device *dev, int level);
 int dpst_histogram_get_status(struct drm_device *dev,
 			      struct drm_psb_hist_status_arg *hist_data);
 void dpst_process_event(struct umevent_obj *notify_disp_obj, int dst_group_id);

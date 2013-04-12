@@ -450,20 +450,20 @@ const struct atomisp_format_bridge *atomisp_get_format_bridge_from_mbus(
 }
 
 static int __get_css_frame_info(struct atomisp_device *isp,
-				enum atomisp_pipe_type pipe_type,
+				uint16_t source_pad,
 				struct sh_css_frame_info *frame_info)
 {
 	int ret = -1;
 
-	switch (pipe_type) {
-	case ATOMISP_PIPE_CAPTURE:
+	switch (source_pad) {
+	case ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE:
 		if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO
 		    || !isp->isp_subdev.enable_vfpp->val)
 			ret = sh_css_video_get_output_frame_info(frame_info);
 		else
 			ret = sh_css_capture_get_output_frame_info(frame_info);
 		break;
-	case ATOMISP_PIPE_VIEWFINDER:
+	case ATOMISP_SUBDEV_PAD_SOURCE_VF:
 		if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO)
 			ret = sh_css_video_get_viewfinder_frame_info(
 					frame_info);
@@ -473,7 +473,7 @@ static int __get_css_frame_info(struct atomisp_device *isp,
 			ret = sh_css_capture_get_viewfinder_frame_info(
 					frame_info);
 		break;
-	case ATOMISP_PIPE_PREVIEW:
+	case ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW:
 		if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO)
 			ret = sh_css_video_get_viewfinder_frame_info(
 					frame_info);
@@ -906,6 +906,7 @@ int __atomisp_reqbufs(struct file *file, void *fh,
 	struct sh_css_frame_info frame_info;
 	struct sh_css_frame *frame;
 	struct videobuf_vmalloc_memory *vm_mem;
+	uint16_t source_pad = atomisp_subdev_source_pad(vdev);
 	int ret = 0, i = 0;
 
 	if (req->count == 0) {
@@ -931,7 +932,7 @@ int __atomisp_reqbufs(struct file *file, void *fh,
 	if (req->memory == V4L2_MEMORY_USERPTR)
 		return 0;
 
-	ret = __get_css_frame_info(isp, pipe->pipe_type, &frame_info);
+	ret = __get_css_frame_info(isp, source_pad, &frame_info);
 	if (ret)
 		return -EINVAL;
 
@@ -1065,8 +1066,8 @@ static int atomisp_qbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 		if (vb->baddr == buf->m.userptr && vm_mem->vaddr)
 			goto done;
 
-		if (__get_css_frame_info(isp, pipe->pipe_type,
-					   &frame_info)) {
+		if (__get_css_frame_info(isp, atomisp_subdev_source_pad(vdev),
+					 &frame_info)) {
 			ret = -EIO;
 			goto error;
 		}
@@ -1113,9 +1114,16 @@ done:
 		goto error;
 
 	/* TODO: do this better, not best way to queue to css */
-	if (isp->streaming == ATOMISP_DEVICE_STREAMING_ENABLED)
+	if (isp->streaming == ATOMISP_DEVICE_STREAMING_ENABLED) {
 		atomisp_qbuffers_to_css(isp);
+
+		if (!timer_pending(&isp->wdt) && atomisp_buffers_queued(isp))
+			mod_timer(&isp->wdt, jiffies + isp->wdt_duration);
+	}
 	mutex_unlock(&isp->mutex);
+
+	dev_dbg(isp->dev, "qbuf buffer %d (%s)\n", buf->index, vdev->name);
+
 	return ret;
 
 error:
@@ -1203,12 +1211,14 @@ static int atomisp_dqbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 	buf->reserved = isp->frame_status[buf->index];
 	mutex_unlock(&isp->mutex);
 
+	dev_dbg(isp->dev, "dqbuf buffer %d (%s)\n", buf->index, vdev->name);
+
 	return 0;
 }
 
 enum sh_css_pipe_id atomisp_get_css_pipe_id(struct atomisp_device *isp)
 {
-	if (isp->params.continuous_vf &&
+	if (isp->isp_subdev.continuous_mode->val &&
 	    isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO)
 		return SH_CSS_PREVIEW_PIPELINE;
 
@@ -1227,17 +1237,6 @@ enum sh_css_pipe_id atomisp_get_css_pipe_id(struct atomisp_device *isp)
 	}
 }
 
-int atomisp_get_css_buf_type(struct atomisp_device *isp,
-			 struct atomisp_video_pipe *pipe)
-{
-	if (pipe->pipe_type == ATOMISP_PIPE_CAPTURE ||
-	    (pipe->pipe_type == ATOMISP_PIPE_PREVIEW &&
-	     isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO))
-		return SH_CSS_BUFFER_TYPE_OUTPUT_FRAME;
-	else
-		return SH_CSS_BUFFER_TYPE_VF_OUTPUT_FRAME;
-}
-
 static unsigned int atomisp_sensor_start_stream(struct atomisp_device *isp)
 {
 	if (!isp->isp_subdev.enable_vfpp->val)
@@ -1248,7 +1247,7 @@ static unsigned int atomisp_sensor_start_stream(struct atomisp_device *isp)
 	     !atomisp_is_mbuscode_raw(
 		     isp->isp_subdev.fmt[
 			     isp->isp_subdev.capture_pad].fmt.code) &&
-	     !isp->params.continuous_vf))
+	     !isp->isp_subdev.continuous_mode->val))
 		return 2;
 	else
 		return 1;
@@ -1305,17 +1304,26 @@ static int atomisp_streamon(struct file *file, void *fh,
 
 	if (atomisp_streaming_count(isp) > sensor_start_stream) {
 		/* trigger still capture */
-		if (isp->params.continuous_vf &&
-		    pipe->pipe_type == ATOMISP_PIPE_CAPTURE &&
+		if (isp->isp_subdev.continuous_mode->val &&
+		    atomisp_subdev_source_pad(vdev)
+		    == ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE &&
 		    isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO) {
-			if (isp->delayed_init != ATOMISP_DELAYED_INIT_DONE)
+			if (isp->delayed_init != ATOMISP_DELAYED_INIT_DONE) {
 				flush_work_sync(&isp->delayed_init_work);
+				mutex_unlock(&isp->mutex);
+				if (wait_for_completion_interruptible(
+						&isp->init_done) != 0)
+					return -ERESTARTSYS;
+				mutex_lock(&isp->mutex);
+			}
 			ret = sh_css_offline_capture_configure(
 					isp->params.offline_parm.num_captures,
 					isp->params.offline_parm.skip_frames,
 					isp->params.offline_parm.offset);
-			if (ret)
-				return -EINVAL;
+			if (ret) {
+				ret = -EINVAL;
+				goto out;
+			}
 		}
 		atomisp_qbuffers_to_css(isp);
 		goto out;
@@ -1352,11 +1360,11 @@ static int atomisp_streamon(struct file *file, void *fh,
 		ret = -EINVAL;
 		goto out;
 	}
-	if (isp->params.continuous_vf &&
+	if (isp->isp_subdev.continuous_mode->val &&
 	    isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO) {
-		queue_work(isp->delayed_init_workq,
-			   &isp->delayed_init_work);
+		INIT_COMPLETION(isp->init_done);
 		isp->delayed_init = ATOMISP_DELAYED_INIT_QUEUED;
+		queue_work(isp->delayed_init_workq, &isp->delayed_init_work);
 	}
 
 	/* Make sure that update_isp_params is called at least once.*/
@@ -1370,7 +1378,8 @@ static int atomisp_streamon(struct file *file, void *fh,
 		isp->wdt_duration = ATOMISP_ISP_FILE_TIMEOUT_DURATION;
 	else
 		isp->wdt_duration = ATOMISP_ISP_TIMEOUT_DURATION;
-	mod_timer(&isp->wdt, jiffies + isp->wdt_duration);
+	if (atomisp_buffers_queued(isp))
+		mod_timer(&isp->wdt, jiffies + isp->wdt_duration);
 	isp->fr_status = ATOMISP_FRAME_STATUS_OK;
 	isp->sw_contex.invalid_frame = false;
 	isp->params.dis_proj_data_valid = false;
@@ -1425,7 +1434,7 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 	struct atomisp_video_pipe *capture_pipe = NULL;
 	struct atomisp_video_pipe *vf_pipe = NULL;
 	struct atomisp_video_pipe *preview_pipe = NULL;
-	struct videobuf_buffer *vb = NULL;
+	struct videobuf_buffer *vb, *_vb;
 	int ret;
 	unsigned long flags;
 	bool first_streamoff = false;
@@ -1446,11 +1455,13 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 	 * case of continuous capture
 	 */
 	if (isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO &&
-	    isp->params.continuous_vf &&
-	    pipe->pipe_type != ATOMISP_PIPE_PREVIEW) {
+	    isp->isp_subdev.continuous_mode->val &&
+	    atomisp_subdev_source_pad(vdev)
+	    != ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW) {
 
 		/* stop continuous still capture if needed */
-		if (pipe->pipe_type == ATOMISP_PIPE_CAPTURE &&
+		if (atomisp_subdev_source_pad(vdev)
+		    == ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE &&
 		    isp->params.offline_parm.num_captures == -1)
 			sh_css_offline_capture_configure(0, 0, 0);
 		/*
@@ -1462,8 +1473,8 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 		 * buffers back before calling streamoff.
 		 */
 		if (pipe->buffers_in_css != 0)
-			WARN(1, "%s: buffers of pipe %d still in CSS!\n",
-					__func__, pipe->pipe_type);
+			WARN(1, "%s: buffers of vdev %s still in CSS!\n",
+			     __func__, pipe->vdev.name);
 
 		return videobuf_streamoff(&pipe->capq);
 	}
@@ -1554,10 +1565,7 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 	/*atomisp_flush_bufs_in_css(isp);*/
 
 	spin_lock_irqsave(&pipe->irq_lock, flags);
-	while (!list_empty(&pipe->activeq)) {
-		vb = list_first_entry(&pipe->activeq, struct videobuf_buffer, queue);
-		if (!vb)
-			break;
+	list_for_each_entry_safe(vb, _vb, &pipe->activeq, queue) {
 		vb->state = VIDEOBUF_PREPARED;
 		list_del(&vb->queue);
 	}
@@ -2018,7 +2026,6 @@ static int atomisp_s_parm(struct file *file, void *fh,
 {
 	struct video_device *vdev = video_devdata(file);
 	struct atomisp_device *isp = video_get_drvdata(vdev);
-	struct v4l2_subdev_frame_interval fi;
 	int mode;
 	int rval;
 
@@ -2031,8 +2038,9 @@ static int atomisp_s_parm(struct file *file, void *fh,
 	mutex_lock(&isp->mutex);
 
 	switch (parm->parm.capture.capturemode) {
-	case CI_MODE_NONE:
-		memset(&fi, 0, sizeof(fi));
+	case CI_MODE_NONE: {
+		struct v4l2_subdev_frame_interval fi = {0};
+
 		fi.interval = parm->parm.capture.timeperframe;
 
 		rval = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
@@ -2040,6 +2048,7 @@ static int atomisp_s_parm(struct file *file, void *fh,
 		if (!rval)
 			parm->parm.capture.timeperframe = fi.interval;
 		goto out;
+	}
 	case CI_MODE_VIDEO:
 		mode = ATOMISP_RUN_MODE_VIDEO;
 		break;
@@ -2116,14 +2125,6 @@ static long atomisp_vidioc_default(struct file *file, void *fh,
 
 	case ATOMISP_IOC_S_TNR:
 		err = atomisp_tnr(isp, 1, arg);
-		break;
-
-	case ATOMISP_IOC_G_HISTOGRAM:
-		err = atomisp_histogram(isp, 0, arg);
-		break;
-
-	case ATOMISP_IOC_S_HISTOGRAM:
-		err = atomisp_histogram(isp, 1, arg);
 		break;
 
 	case ATOMISP_IOC_G_BLACK_LEVEL_COMP:
@@ -2234,14 +2235,6 @@ static long atomisp_vidioc_default(struct file *file, void *fh,
 		err = atomisp_fixed_pattern_table(isp, arg);
 		break;
 
-	case ATOMISP_IOC_G_ISP_OVERLAY:
-		err = atomisp_vf_overlay(isp, 0, arg);
-		break;
-
-	case ATOMISP_IOC_S_ISP_OVERLAY:
-		err = atomisp_vf_overlay(isp, 1, arg);
-		break;
-
 	case ATOMISP_IOC_ISP_MAKERNOTE:
 		err = atomisp_exif_makernote(isp, arg);
 		break;
@@ -2298,10 +2291,6 @@ static long atomisp_vidioc_default(struct file *file, void *fh,
 
 	case ATOMISP_IOC_ACC_S_MAPPED_ARG:
 		err = atomisp_acc_s_mapped_arg(isp, arg);
-		break;
-
-	case ATOMISP_IOC_CAMERA_BRIDGE:
-		err = -EINVAL;
 		break;
 
 	case ATOMISP_IOC_S_ISP_SHD_TAB:
@@ -2368,5 +2357,4 @@ const struct v4l2_ioctl_ops atomisp_file_ioctl_ops = {
 	.vidioc_reqbufs = atomisp_reqbufs_file,
 	.vidioc_querybuf = atomisp_querybuf_file,
 	.vidioc_qbuf = atomisp_qbuf_file,
-	/* .vidioc_streamon = atomisp_streamon_out, */
 };

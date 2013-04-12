@@ -65,7 +65,14 @@ extern struct atomic_notifier_head    batt_id_notifier;
 
 extern void battery_prop_changed(int battery_conn_stat,
 				struct ps_batt_chg_prof *batt_prop);
+#ifdef CONFIG_POWER_SUPPLY_BATTID
 extern int get_batt_prop(struct ps_batt_chg_prof *batt_prop);
+#else
+static inline int get_batt_prop(struct ps_batt_chg_prof *batt_prop)
+{
+	return -ENOMEM;
+}
+#endif
 extern int batt_id_reg_notifier(struct notifier_block *nb);
 extern void batt_id_unreg_notifier(struct notifier_block *nb);
 #endif

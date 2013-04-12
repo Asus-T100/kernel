@@ -727,10 +727,6 @@ static int atomisp_register_entities(struct atomisp_device *isp)
 {
 	int ret = 0;
 	unsigned int i;
-	struct v4l2_subdev *subdev = NULL;
-	struct media_entity *input = NULL;
-	unsigned int flags;
-	unsigned int pad;
 
 	isp->media_dev.dev = isp->dev;
 
@@ -810,16 +806,14 @@ static int atomisp_register_entities(struct atomisp_device *isp)
 			goto link_failed;
 		}
 
-		subdev = isp->inputs[i].camera;
-		input = &isp->csi2_port[isp->inputs[i].port].subdev.entity;
-		pad = CSI2_PAD_SINK;
-		flags = 0;
-
-		ret = media_entity_create_link(&subdev->entity, 0,
-			input, pad, flags);
+		ret = media_entity_create_link(
+			&isp->inputs[i].camera->entity, 0,
+			&isp->csi2_port[isp->inputs[i].port].subdev.entity,
+			CSI2_PAD_SINK,
+			MEDIA_LNK_FL_ENABLED | MEDIA_LNK_FL_IMMUTABLE);
 		if (ret < 0) {
-			v4l2_err(&atomisp_dev,
-				"snr to mipi csi link failed\n");
+			dev_err(isp->dev,
+				"link create from sensor to csi-2 receiver failed\n");
 			goto link_failed;
 		}
 	}
@@ -929,6 +923,12 @@ load_firmware(struct device *dev)
 	int rc;
 	char *fw_path = IS_ISP2400 ? ISP2400_FW_PATH : MFLD_FW_PATH;
 
+	/*
+	 * FIXME: BYT uses css2400B0 firmware
+	 */
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2)
+		fw_path = ISP2400B0_FW_PATH;
+
 	rc = request_firmware(&fw, fw_path, dev);
 	if (rc) {
 		if (rc == -ENOENT)
@@ -1019,6 +1019,7 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	mutex_init(&isp->mutex);
 	mutex_init(&isp->streamoff_mutex);
 	spin_lock_init(&isp->lock);
+	init_completion(&isp->init_done);
 
 	isp->max_isr_latency = ATOMISP_MAX_ISR_LATENCY;
 	if ((pdata->spid->platform_family_id == INTEL_CLVTP_PHONE ||

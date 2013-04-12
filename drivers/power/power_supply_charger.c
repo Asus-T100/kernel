@@ -369,6 +369,7 @@ update_props:
 	bat_cache->temperature = bat_prop_new->temperature;
 	bat_cache->status = bat_prop_new->status;
 	bat_cache->algo_stat = bat_prop_new->algo_stat;
+	bat_cache->throttle_state = bat_prop_new->throttle_state;
 }
 
 static inline int get_bat_prop_cache(struct power_supply *psy,
@@ -402,6 +403,7 @@ static inline void get_cur_bat_prop(struct power_supply *psy,
 	bat_prop->status = STATUS(psy);
 	bat_prop->health = HEALTH(psy);
 	bat_prop->tstamp = get_jiffies_64();
+	bat_prop->throttle_state = CURRENT_THROTTLE_STATE(psy);
 
 	/* Populate cached algo data to new profile */
 	ret = get_bat_prop_cache(psy, &bat_prop_cache);
@@ -837,23 +839,20 @@ static int select_chrgr_cable(struct device *dev, void *data)
 	 * capabilities changed.switch cable and enable charger and charging
 	 */
 
-	if (CABLE_TYPE(psy) != max_mA_cable->psy_cable_type) {
+	if (CABLE_TYPE(psy) != max_mA_cable->psy_cable_type)
 		switch_cable(psy, max_mA_cable->psy_cable_type);
-		set_inlmt(psy, max_mA_cable->cable_props.mA);
-	} else if (INLMT(psy) != max_mA_cable->cable_props.mA) {
-		set_inlmt(psy, max_mA_cable->cable_props.mA);
-	}
 
 	if (IS_CHARGER_CAN_BE_ENABLED(psy)) {
 		struct psy_batt_thresholds bat_thresh;
 		memset(&bat_thresh, 0, sizeof(bat_thresh));
-
+		enable_charger(psy);
+		set_inlmt(psy, max_mA_cable->cable_props.mA);
 		if (!get_battery_thresholds(psy, &bat_thresh)) {
 			SET_ITERM(psy, bat_thresh.iterm);
 			SET_MIN_TEMP(psy, bat_thresh.temp_min);
 			SET_MAX_TEMP(psy, bat_thresh.temp_max);
 		}
-		enable_charger(psy);
+
 	}
 
 	mutex_unlock(&psy_chrgr.evt_lock);
@@ -939,8 +938,10 @@ int psy_charger_throttle_charger(struct power_supply *psy,
 			break;
 	}
 	mutex_unlock(&psy_chrgr.evt_lock);
+
+	/* Configure the driver based on new state */
 	if (!ret)
-		power_supply_trigger_charging_handler(NULL);
+		configure_chrgr_source(cable_list);
 	return ret;
 }
 EXPORT_SYMBOL(psy_charger_throttle_charger);
