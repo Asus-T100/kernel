@@ -42,6 +42,7 @@
 #include <linux/interrupt.h>
 #include <linux/delay.h>
 #include <linux/firmware.h>
+#include <linux/pm_runtime.h>
 #include "psh_ia_common.h"
 
 #ifdef VPROG2_SENSOR
@@ -182,6 +183,10 @@ static int psh_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto irq_err;
 	}
 
+	/* just put this dev into suspend status always, since this is fake */
+	pm_runtime_put_noidle(&pdev->dev);
+	pm_runtime_allow(&pdev->dev);
+
 	return 0;
 
 irq_err:
@@ -196,7 +201,7 @@ pci_err: */
 	return ret;
 }
 
-static __devexit int psh_remove(struct pci_dev *pdev)
+static void psh_remove(struct pci_dev *pdev)
 {
 	__free_pages(imr, get_order(APP_IMR_SIZE));
 
@@ -207,9 +212,32 @@ static __devexit int psh_remove(struct pci_dev *pdev)
 	hwmon_device_unregister(hwmon_dev);
 
 	/* pci_dev_put(pdev); */
+}
 
+#ifdef CONFIG_PM_RUNTIME
+static int psh_runtime_suspend(struct device *dev)
+{
+	dev_dbg(dev, "runtime suspend called\n");
 	return 0;
 }
+
+static int psh_runtime_resume(struct device *dev)
+{
+	dev_dbg(dev, "runtime resume called\n");
+	return 0;
+}
+
+#else
+
+#define psh_ipc_runtime_suspend	NULL
+#define psh_ipc_runtime_resume	NULL
+
+#endif
+
+static const struct dev_pm_ops psh_drv_pm_ops = {
+	.runtime_suspend	= psh_runtime_suspend,
+	.runtime_resume		= psh_runtime_resume,
+};
 
 static DEFINE_PCI_DEVICE_TABLE(pci_ids) = {
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x11a4)},
@@ -220,6 +248,9 @@ MODULE_DEVICE_TABLE(pci, pci_ids);
 
 static struct pci_driver psh_driver = {
 	.name = "psh",
+	.driver = {
+		.pm = &psh_drv_pm_ops,
+	},
 	.id_table = pci_ids,
 	.probe	= psh_probe,
 	.remove	= psh_remove,
