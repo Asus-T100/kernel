@@ -187,7 +187,7 @@ enum VAProfile {
 	VAProfileH263Baseline		= 11,
 	VAProfileJPEGBaseline           = 12,
 	VAProfileH264ConstrainedBaseline = 13,
-	VAProfileVP8Version0_3          = 17,
+	VAProfileVP8Version0_3          = 16,
 	VAProfileMax
 };
 
