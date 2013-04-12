@@ -450,6 +450,9 @@ static void dwc_otg_sdp_check_work(struct work_struct *work)
 	struct power_supply_cable_props	cap;
 	unsigned long flags;
 
+	cap.mA = 0;
+	cap.chrg_type = POWER_SUPPLY_CHARGER_TYPE_NONE;
+
 	if (otg_get_chr_status(&otg->phy, (void *)&cap)) {
 		otg_err(otg, "%s: sdp checking failed\n", __func__);
 		return;
