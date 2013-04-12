@@ -193,7 +193,7 @@ int vsp_handle_response(struct drm_psb_private *dev_priv)
 		case VssVp8encEncodeFrameResponse:
 		{
 			struct VssVp8encPictureParameterBuffer *t =
-				vsp_priv->vp8_encode_frame_cmd[vsp_priv->rd];
+				vsp_priv->vp8_encode_frame_cmd;
 			struct VssVp8encEncodedFrame *encoded_frame =
 				(struct VssVp8encEncodedFrame *)
 					(vsp_priv->coded_buf);
@@ -202,10 +202,10 @@ int vsp_handle_response(struct drm_psb_private *dev_priv)
 			VSP_DEBUG("receive vp8 encoded frame buffer %x",
 					msg->buffer);
 			VSP_DEBUG("size %x cur command id is %d\n",
-					msg->size, vsp_priv->rd);
+					msg->size, vsp_priv->ctrl->cmd_rd);
 			VSP_DEBUG("read vp8 pic param address %x at %d\n",
-				vsp_priv->vp8_encode_frame_cmd[vsp_priv->rd],
-				vsp_priv->rd);
+				vsp_priv->vp8_encode_frame_cmd,
+				vsp_priv->ctrl->cmd_rd);
 
 			psb_clflush(vsp_priv->coded_buf);
 
@@ -243,10 +243,6 @@ int vsp_handle_response(struct drm_psb_private *dev_priv)
 				VSP_DEBUG("coded buf is: %d, %x\n", j,
 					*(tmp + size - 4 + j));
 			}
-
-			vsp_priv->rd++;
-			if (vsp_priv->rd >= VSP_CMD_QUEUE_SIZE)
-				vsp_priv->rd = 0;
 
 			break;
 		}
@@ -802,12 +798,13 @@ static int vsp_fence_vp8enc_surfaces(struct drm_file *priv,
 	struct drm_device *dev = priv->minor->dev;
 	struct drm_psb_private *dev_priv = dev->dev_private;
 	struct vsp_private *vsp_priv = dev_priv->vsp_private;
+	struct ttm_bo_kmap_obj vp8_encode_frame__kmap;
 
 	INIT_LIST_HEAD(&surf_list);
 
 	/* map pic param */
 	ret = ttm_bo_kmap(pic_param_bo, 0, pic_param_bo->num_pages,
-			  &vsp_priv->vp8_encode_frame__kmap[vsp_priv->wr]);
+			  &vp8_encode_frame__kmap);
 	if (ret) {
 		DRM_ERROR("VSP: ttm_bo_kmap failed: %d\n", ret);
 		goto out;
@@ -815,21 +812,18 @@ static int vsp_fence_vp8enc_surfaces(struct drm_file *priv,
 
 	pic_param = (struct VssVp8encPictureParameterBuffer *)
 		ttm_kmap_obj_virtual(
-				&vsp_priv->vp8_encode_frame__kmap[vsp_priv->wr],
+				&vp8_encode_frame__kmap,
 				&is_iomem);
 
-	VSP_DEBUG("save vp8 pic param address %x at %d\n",
-			pic_param, vsp_priv->wr);
+	VSP_DEBUG("save vp8 pic param address %x\n", pic_param);
 
-	vsp_priv->vp8_encode_frame_cmd[vsp_priv->wr] = pic_param;
-	vsp_priv->wr++;
-
-	VSP_DEBUG("id %d bo addr %x  kernel addr %x surfaceid %x base %x\n",
-			vsp_priv->wr-1,
+	VSP_DEBUG("bo addr %x  kernel addr %x surfaceid %x base %x\n",
 			pic_param_bo,
 			pic_param,
 			pic_param->input_frame.surface_id,
 			pic_param->input_frame.base);
+
+	vsp_priv->vp8_encode_frame_cmd = pic_param;
 	VSP_DEBUG("pic_param->encoded_frame_base = %p\n",
 			pic_param->encoded_frame_base);
 
@@ -845,9 +839,6 @@ static int vsp_fence_vp8enc_surfaces(struct drm_file *priv,
 		ttm_kmap_obj_virtual(
 				&vsp_priv->coded_buf_kmap,
 				&is_iomem);
-
-	if (vsp_priv->wr >= VSP_CMD_QUEUE_SIZE)
-		vsp_priv->wr = 0;
 
 	/* just fence pic param if this is not end command */
 	/* only send last output fence_arg back */
@@ -1177,6 +1168,16 @@ void check_invalid_cmd_type(unsigned int info)
 		DRM_ERROR("before pipeline command %x\n", info);
 		break;
 
+	case VssVp8encSetSequenceParametersCommand:
+		DRM_ERROR("VSP: VP8 sequence parameter command is received\n");
+		DRM_ERROR("before pipeline command %x\n", info);
+		break;
+
+	case VssVp8encEncodeFrameCommand:
+		DRM_ERROR("VSP: VP8 picture parameter command is received\n");
+		DRM_ERROR("before pipeline command %x\n", info);
+		break;
+
 	default:
 		DRM_ERROR("VSP: Unknown command type %x\n",
 			  info >> ERR_INFO_SHIFT);
@@ -1205,10 +1206,12 @@ void handle_error_response(unsigned int error)
 {
 	switch (error & ERR_ID_MASK) {
 	case VssInvalidCommandType:
+	case VssInvalidCommandType_VP8:
 		check_invalid_cmd_type(error);
 		DRM_ERROR("VSP: Invalid command\n");
 		break;
 	case VssInvalidCommandArgument:
+	case VssInvalidCommandArgument_VP8:
 		check_invalid_cmd_arg(error);
 		DRM_ERROR("VSP: Invalid command\n");
 		break;
@@ -1217,6 +1220,14 @@ void handle_error_response(unsigned int error)
 		break;
 	case VssInvalidDdrAddress:
 		DRM_ERROR("VSP: DDR address isn't in allowed 1GB range\n");
+		break;
+	case VssInvalidSequenceParameters_VP8:
+		check_invalid_cmd_type(error);
+		DRM_ERROR("VSP: Invalid sequence parameter\n");
+		break;
+	case VssInvalidPictureParameters_VP8:
+		check_invalid_cmd_type(error);
+		DRM_ERROR("VSP: Invalid picture parameter\n");
 		break;
 	default:
 		DRM_ERROR("VSP: Unknown error, code %x\n", error);

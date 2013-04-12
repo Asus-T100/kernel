@@ -90,10 +90,6 @@ int vsp_init(struct drm_device *dev)
 	vsp_priv->vsp_state = VSP_STATE_DOWN;
 	vsp_priv->dev = dev;
 
-	/* for vp8 */
-	vsp_priv->wr = 0;
-	vsp_priv->rd = 0;
-
 	dev_priv->vsp_private = vsp_priv;
 
 	VSP_DEBUG("allocate buffer for fw\n");

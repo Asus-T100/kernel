@@ -237,11 +237,7 @@ struct vsp_private {
 	unsigned int fw_type;
 
 	/* save the address of vp8 cmd_buffer for now */
-	struct VssVp8encPictureParameterBuffer
-		*vp8_encode_frame_cmd[VSP_CMD_QUEUE_SIZE];
-	struct ttm_bo_kmap_obj vp8_encode_frame__kmap[VSP_CMD_QUEUE_SIZE];
-	unsigned int rd;
-	unsigned int wr;
+	struct VssVp8encPictureParameterBuffer *vp8_encode_frame_cmd;
 
 	void *coded_buf;
 	struct ttm_bo_kmap_obj coded_buf_kmap;
