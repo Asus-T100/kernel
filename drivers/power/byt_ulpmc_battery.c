@@ -134,7 +134,10 @@ struct ulpmc_chip_info {
 
 	struct delayed_work work;
 	struct mutex lock;
+	bool is_fwupdate_on;
 };
+
+static struct ulpmc_chip_info *chip_ptr;
 
 static enum power_supply_property ulpmc_battery_props[] = {
 	POWER_SUPPLY_PROP_STATUS,
@@ -275,6 +278,13 @@ static int ulpmc_get_battery_property(struct power_supply *psy,
 	struct ulpmc_chip_info *chip = container_of(psy,
 				struct ulpmc_chip_info, bat);
 	mutex_lock(&chip->lock);
+
+	if (chip->is_fwupdate_on) {
+		dev_warn(&chip->client->dev, "fwupdate in progress\n");
+		mutex_unlock(&chip->lock);
+		return -EAGAIN;
+	}
+
 	switch (psp) {
 	case POWER_SUPPLY_PROP_STATUS:
 		ret = ulpmc_read_reg16(chip->client, ULPMC_FG_REG_FLAGS);
@@ -404,6 +414,13 @@ static int ulpmc_get_charger_property(struct power_supply *psy,
 				struct ulpmc_chip_info, chrg);
 
 	mutex_lock(&chip->lock);
+
+	if (chip->is_fwupdate_on) {
+		dev_warn(&chip->client->dev, "fwupdate in progress\n");
+		mutex_unlock(&chip->lock);
+		return -EAGAIN;
+	}
+
 	switch (psp) {
 	case POWER_SUPPLY_PROP_PRESENT:
 		ret = ulpmc_read_reg8(chip->client, ULPMC_BC_REG_STAT);
@@ -532,6 +549,44 @@ static int ulpmc_extcon_callback(struct notifier_block *nb,
 	return NOTIFY_OK;
 }
 
+void ulpmc_fwupdate_enter(void)
+{
+	if (chip_ptr) {
+		pm_runtime_get_sync(&chip_ptr->client->dev);
+		dev_info(&chip_ptr->client->dev, ":%s\n", __func__);
+		mutex_lock(&chip_ptr->lock);
+		chip_ptr->is_fwupdate_on = true;
+		mutex_unlock(&chip_ptr->lock);
+		cancel_delayed_work_sync(&chip_ptr->work);
+	}
+}
+EXPORT_SYMBOL(ulpmc_fwupdate_enter);
+
+void ulpmc_fwupdate_exit(void)
+{
+	if (chip_ptr) {
+		dev_info(&chip_ptr->client->dev, ":%s\n", __func__);
+		mutex_lock(&chip_ptr->lock);
+		chip_ptr->is_fwupdate_on = false;
+		mutex_unlock(&chip_ptr->lock);
+		/* schedule status monitoring worker */
+		schedule_delayed_work(&chip_ptr->work, STATUS_MON_JIFFIES);
+		pm_runtime_put_sync(&chip_ptr->client->dev);
+	}
+}
+EXPORT_SYMBOL(ulpmc_fwupdate_exit);
+
+struct i2c_client *ulpmc_get_i2c_client(void)
+{
+	dev_info(&chip_ptr->client->dev, ":%s\n", __func__);
+
+	if (chip_ptr)
+		return chip_ptr->client;
+	else
+		return NULL;
+}
+EXPORT_SYMBOL(ulpmc_get_i2c_client);
+
 static int ulpmc_battery_probe(struct i2c_client *client,
 				 const struct i2c_device_id *id)
 {
@@ -573,6 +628,7 @@ static int ulpmc_battery_probe(struct i2c_client *client,
 
 	INIT_DELAYED_WORK(&chip->work, ulpmc_battery_monitor);
 	mutex_init(&chip->lock);
+	chip_ptr = chip;
 
 	chip->bat.name = "byt-battery";
 	chip->bat.type = POWER_SUPPLY_TYPE_BATTERY;
