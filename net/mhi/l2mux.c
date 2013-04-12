@@ -55,6 +55,7 @@
 #define list_l2mux_first_entry_safe(head, type, member) \
 					(list_empty(head) ? NULL : \
 					list_first_entry(head, type, member))
+
 static DEFINE_RWLOCK(l2mux_stat_lock);
 
 static struct l2mux_stat_info l2mux_sinf;
@@ -102,10 +103,6 @@ static struct device_attribute l2mux_dev_attrs[] = {
 	__ATTR_NULL,
 };
 
-/**
- * l2mux_stat_dowork - work scheduled for L2mux stats node creation
- * @work: work scheduled
- */
 void
 l2mux_stat_dowork(struct work_struct *work)
 {
@@ -126,14 +123,7 @@ l2mux_stat_dowork(struct work_struct *work)
 	}
 }
 
-
-/**
- * l2mux_write_stat - update the l2mux write statistic
- * @l3pid: protocol id to be stored
- * @length: length of the transfer
- * @dir: direction of the transfer
- * @dev: Device L2mux relies on
- */
+/*call this function to update the l2mux write statistic*/
 static void
 l2mux_write_stat(unsigned l3pid,
 		unsigned l3len,
@@ -203,9 +193,7 @@ l2mux_write_stat(unsigned l3pid,
 }
 
 
-/**
- * l2mux_seq_start - start() standard method of L2mux stats node
- */
+/* start() method */
 static void *
 l2mux_seq_start(struct seq_file *seq, loff_t *pos)
 {
@@ -214,7 +202,7 @@ l2mux_seq_start(struct seq_file *seq, loff_t *pos)
 	if (l2mux_sinf.l2mux_traces_state == OFF) {
 		printk(KERN_ERR "L2mux traces are off." \
 			"activation -echo on > " \
-			"/sys/class/net/my_modem_net_device/l2mux_trace_status" \
+			"/sys/class/net/my_modem_net_device/l2mux_trace_status"\
 			" -sizeof(l2muxstat) = %d\n",
 					sizeof(struct l2muxstat));
 	} else {
@@ -229,9 +217,7 @@ l2mux_seq_start(struct seq_file *seq, loff_t *pos)
 	return ret;
 }
 
-/**
- * l2mux_seq_next - next() standard method of L2mux stats node
- */
+/* next() method */
 static void *
 l2mux_seq_next(struct seq_file *seq, void *v, loff_t *pos)
 {
@@ -239,9 +225,7 @@ l2mux_seq_next(struct seq_file *seq, void *v, loff_t *pos)
 				struct l2muxstat, list);
 }
 
-/**
- * l2mux_seq_show - show() standard method of L2mux stats node
- */
+/* show() method */
 static int
 l2mux_seq_show(struct seq_file *seq, void *v)
 {
@@ -288,9 +272,7 @@ l2mux_seq_show(struct seq_file *seq, void *v)
 	return 0;
 }
 
-/**
- * l2mux_seq_stop - stop() standard method of L2mux stats node
- */
+/* stop() method */
 static void
 l2mux_seq_stop(struct seq_file *seq, void *v)
 {
@@ -305,9 +287,6 @@ static const struct seq_operations l2mux_seq_ops = {
 	.show  = l2mux_seq_show,
 };
 
-/**
- * l2mux_seq_open - open() standard method of L2mux stats node
- */
 static int
 l2mux_seq_open(struct inode *inode, struct file *file)
 {
@@ -324,9 +303,7 @@ static const struct file_operations l2mux_proc_fops = {
 };
 
 
-/**
- * init_l2mux_stat - init the l2mux write statistic
- */
+/*call this function to init the l2mux write statistic*/
 void init_l2mux_stat(void)
 {
 	l2mux_sinf.proc_entry = create_proc_entry("l2mux_mhi", 0644, NULL);
@@ -346,9 +323,7 @@ void init_l2mux_stat(void)
 	}
 }
 
-/**
- * exit_l2mux_stat - exit the l2mux write statistic
- */
+/*call this function to exit the l2mux write statistic*/
 void exit_l2mux_stat(void)
 {
 	remove_proc_entry("l2mux_mhi", l2mux_sinf.proc_entry);
@@ -410,11 +385,6 @@ show_l2mux_traces_state(struct device *dev, struct device_attribute *attr,
 #endif /* ACTIVATE_L2MUX_STAT */
 
 
-/**
- * l2mux_netif_rx_register - register RX function of L3 MHI protocol
- * @l3: L3 MHI protocol
- * @fn: registered RX function
- */
 int
 l2mux_netif_rx_register(int l3, l2mux_skb_fn *fn)
 {
@@ -441,10 +411,6 @@ l2mux_netif_rx_register(int l3, l2mux_skb_fn *fn)
 }
 EXPORT_SYMBOL(l2mux_netif_rx_register);
 
-/**
- * l2mux_netif_rx_unregister - Unregister RX function of L3 MHI protocol
- * @l3: L3 MHI protocol
- */
 int
 l2mux_netif_rx_unregister(int l3)
 {
@@ -468,11 +434,6 @@ l2mux_netif_rx_unregister(int l3)
 }
 EXPORT_SYMBOL(l2mux_netif_rx_unregister);
 
-/**
- * l2mux_netif_tx_register - register TX function of L3 MHI protocol
- * @pt: protocol id (= MAPID)
- * @fn: registered TX function
- */
 int
 l2mux_netif_tx_register(int pt, l2mux_skb_fn *fn)
 {
@@ -499,10 +460,6 @@ l2mux_netif_tx_register(int pt, l2mux_skb_fn *fn)
 }
 EXPORT_SYMBOL(l2mux_netif_tx_register);
 
-/**
- * l2mux_netif_tx_unregister - Unregister TX function of L3 MHI protocol
- * @pt: protocol id (= MAPID)
- */
 int
 l2mux_netif_tx_unregister(int pt)
 {
@@ -526,11 +483,6 @@ l2mux_netif_tx_unregister(int pt)
 }
 EXPORT_SYMBOL(l2mux_netif_tx_unregister);
 
-/**
- * l2mux_skb_rx - Format received skb
- * @skb: received skb
- * @dev: device on which skb is received
- */
 int
 l2mux_skb_rx(struct sk_buff *skb, struct net_device *dev)
 {
@@ -604,11 +556,6 @@ drop:
 }
 EXPORT_SYMBOL(l2mux_skb_rx);
 
-/**
- * l2mux_skb_tx - Format skb to be send
- * @skb: skb to be send
- * @dev: device on which skb is to be send
- */
 int
 l2mux_skb_tx(struct sk_buff *skb, struct net_device *dev)
 {
@@ -672,9 +619,6 @@ l2mux_skb_tx(struct sk_buff *skb, struct net_device *dev)
 }
 EXPORT_SYMBOL(l2mux_skb_tx);
 
-/**
- * l2mux_init - L2MUX initialization
- */
 static int __init l2mux_init(void)
 {
 	int i;
@@ -696,9 +640,6 @@ static int __init l2mux_init(void)
 	return 0;
 }
 
-/**
- * l2mux_exit - L2MUX exit
- */
 static void __exit l2mux_exit(void)
 {
 #ifdef ACTIVATE_L2MUX_STAT
@@ -710,7 +651,7 @@ static void __exit l2mux_exit(void)
 module_init(l2mux_init);
 module_exit(l2mux_exit);
 
-MODULE_AUTHOR("RMC");
+MODULE_AUTHOR("Petri Mattila <petri.to.mattila@renesasmobile.com>");
 MODULE_DESCRIPTION("L2MUX for MHI Protocol Stack");
 MODULE_LICENSE("GPL");
 

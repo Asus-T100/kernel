@@ -201,18 +201,13 @@ __print_skb_content(struct sk_buff *skb, const char *tag)
 }
 #endif
 
-/**
- * mhdp_net_dev - Get mhdp_net structure of mhdp tunnel
- */
+
 static inline struct mhdp_net *
 mhdp_net_dev(struct net_device *dev)
 {
 	return net_generic(dev_net(dev), mhdp_net_id);
 }
 
-/**
- * mhdp_tunnel_init - Initialize MHDP tunnel
- */
 static void
 mhdp_tunnel_init(struct net_device *dev,
 		 struct mhdp_tunnel_parm *parms,
@@ -236,9 +231,6 @@ mhdp_tunnel_init(struct net_device *dev,
 	spin_lock_init(&tunnel->timer_lock);
 }
 
-/**
- * mhdp_tunnel_destroy - Destroy MHDP tunnel
- */
 static void
 mhdp_tunnel_destroy(struct net_device *dev)
 {
@@ -247,9 +239,6 @@ mhdp_tunnel_destroy(struct net_device *dev)
 	unregister_netdevice(dev);
 }
 
-/**
- * mhdp_destroy_tunnels - Initialize all MHDP tunnels
- */
 static void
 mhdp_destroy_tunnels(struct mhdp_net *mhdpn)
 {
@@ -261,9 +250,6 @@ mhdp_destroy_tunnels(struct mhdp_net *mhdpn)
 	mhdpn->tunnels = NULL;
 }
 
-/**
- * mhdp_locate_tunnel - Retrieve MHDP tunnel thanks to PDN
- */
 static struct mhdp_tunnel *
 mhdp_locate_tunnel(struct mhdp_net *mhdpn, int pdn_id)
 {
@@ -276,9 +262,6 @@ mhdp_locate_tunnel(struct mhdp_net *mhdpn, int pdn_id)
 	return NULL;
 }
 
-/**
- * mhdp_add_tunnel - Add MHDP tunnel
- */
 static struct net_device *
 mhdp_add_tunnel(struct net *net, struct mhdp_tunnel_parm *parms)
 {
@@ -321,9 +304,7 @@ err_alloc_dev:
 	return NULL;
 }
 
-/**
- * mhdp_netdev_ioctl - I/O control on mhdp tunnel
- */
+
 static int
 mhdp_netdev_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 {
@@ -405,9 +386,6 @@ mhdp_netdev_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 	return err;
 }
 
-/**
- * mhdp_netdev_change_mtu - Change mhdp tunnel MTU
- */
 static int
 mhdp_netdev_change_mtu(struct net_device *dev, int new_mtu)
 {
@@ -419,19 +397,13 @@ mhdp_netdev_change_mtu(struct net_device *dev, int new_mtu)
 	return 0;
 }
 
-/**
- * mhdp_netdev_uninit - Un initialize mhdp tunnel
- */
 static void
 mhdp_netdev_uninit(struct net_device *dev)
 {
 	dev_put(dev);
 }
 
-/**
- * mhdp_submit_queued_skb - Submit packets to master netdev (IPC)
- Packets can be concatenated or not
- */
+
 static void
 mhdp_submit_queued_skb(struct mhdp_tunnel *tunnel, int force_send)
 {
@@ -480,10 +452,6 @@ mhdp_submit_queued_skb(struct mhdp_tunnel *tunnel, int force_send)
 	}
 }
 
-/**
- * mhdp_netdev_rx - Received packets from master netdev (IPC)
-  Packets can be concatenated or not
- */
 static int
 mhdp_netdev_rx(struct sk_buff *skb, struct net_device *dev)
 {
@@ -521,8 +489,7 @@ mhdp_netdev_rx(struct sk_buff *skb, struct net_device *dev)
 		DPRINTK("mhdp header length: %d, skb_headerlen: %d",
 				mhdp_header_len, skbheadlen);
 
-		mhdpHdr = (struct mhdp_hdr *) kmalloc(mhdp_header_len,
-				GFP_ATOMIC);
+		mhdpHdr = kmalloc(mhdp_header_len, GFP_ATOMIC);
 
 		if (skbheadlen == 0) {
 			memcpy((__u8 *)mhdpHdr,	page_address(page) +
@@ -694,10 +661,6 @@ mhdp_netdev_rx_napi(struct sk_buff *skb, struct net_device *dev)
 
 #endif /*MHDP_USE_NAPI*/
 
-/**
- * tx_timer_timeout - Timer expiration function for TX packet concatenation
-  => will then call mhdp_submit_queued_skb to pass concatenated packets to IPC
- */
 static void tx_timer_timeout(unsigned long arg)
 {
 	struct mhdp_tunnel *tunnel = (struct mhdp_tunnel *) arg;
@@ -709,14 +672,7 @@ static void tx_timer_timeout(unsigned long arg)
 	spin_unlock(&tunnel->timer_lock);
 }
 
-/**
- * mhdp_netdev_xmit - Hard xmit function of MHDP tunnel net dev
-  if TX packet doezn't fit in max MHDP frame length, send previous MHDP frame asap
-  else concatenate TX packet.
-	If nb concatenated packets reach max MHDP packets, send current MHDP frame asap
-	else start TX timer (if no further packets to be transmitted, MHDP frame will be
-	send on timer expiry)
- */
+
 static int
 mhdp_netdev_xmit(struct sk_buff *skb, struct net_device *dev)
 {
@@ -861,9 +817,6 @@ tx_error:
 }
 
 
-/**
- * mhdp_netdev_event -  Catch MHDP tunnel net dev states
- */
 static int
 mhdp_netdev_event(struct notifier_block *this, unsigned long event, void *ptr)
 {
@@ -930,10 +883,6 @@ static const struct net_device_ops mhdp_netdev_ops = {
 	.ndo_change_mtu	= mhdp_netdev_change_mtu,
 };
 
-
-/**
- * mhdp_netdev_setup -  Setup MHDP tunnel
- */
 static void mhdp_netdev_setup(struct net_device *dev)
 {
 	dev->netdev_ops	= &mhdp_netdev_ops;
@@ -960,9 +909,6 @@ static void mhdp_netdev_setup(struct net_device *dev)
 
 }
 
-/**
- * mhdp_init_net -  Initalize MHDP net structure
- */
 static int __net_init mhdp_init_net(struct net *net)
 {
 	struct mhdp_net *mhdpn = net_generic(net, mhdp_net_id);
@@ -1000,9 +946,6 @@ static int __net_init mhdp_init_net(struct net *net)
 	return 0;
 }
 
-/**
- * mhdp_exit_net -  destroy MHDP net structure
- */
 static void __net_exit mhdp_exit_net(struct net *net)
 {
 	struct mhdp_net *mhdpn = net_generic(net, mhdp_net_id);
@@ -1020,9 +963,7 @@ static struct pernet_operations mhdp_net_ops = {
 	.size = sizeof(struct mhdp_net),
 };
 
-/**
- * mhdp_init -  Initalize MHDP
- */
+
 static int __init mhdp_init(void)
 {
 	int err;

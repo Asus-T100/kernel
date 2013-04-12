@@ -1,4 +1,3 @@
-
 /* hsi_logical.c
 *
 * Copyright (C) 2011 Renesas. All rights reserved.
@@ -49,12 +48,6 @@ struct wake_lock wake_resoft;
 struct wake_lock wake_no_suspend_l2header;
 struct wake_lock wake_temp;
 
-/* Interface with upper layer (header in hsi_logical.h)*/
-/*int hsi_logical_open(struct hsi_protocol * hsi_protocol_ctx);*/
-/*int hsi_logical_close(struct hsi_protocol * hsi_protocol_ctx);*/
-/*int hsi_logical_send(struct hsi_protocol * hsi_protocol_ctx,
-			struct sk_buff *skb, u16 client_id);*/
-
 /* Configurations exchange */
 static void hsi_logical_check_if_boot_done(
 	struct hsi_protocol *hsi_protocol_context);
@@ -90,13 +83,7 @@ static int hsi_nack_received(
 static void hsi_logical_tx_data_complete(struct hsi_msg *msg);
 
 /* RX */
-static void hsi_logical_wait_rx_control(
-	struct hsi_client *cl,
-	unsigned char channel_id);
-static void hsi_logical_wait_rx_control_l2h(
-	struct hsi_client *cl,
-	unsigned char channel_id);
-static void hsi_logical_wait_rx_control_wrong_channel(
+static int hsi_logical_wait_rx_control(
 	struct hsi_client *cl,
 	unsigned char channel_id);
 static void hsi_logical_rx_control_complete(
@@ -118,10 +105,8 @@ static void hsi_logical_rx_control_complete_step2(
 static void hsi_logical_data_free_msg_and_skb(struct hsi_msg *msg);
 static void hsi_logical_data_free_msg(struct hsi_msg *msg);
 static void hsi_logical_control_destructor(struct hsi_msg *msg);
-static void hsi_logical_control_destructor_l2h(struct hsi_msg *msg);
 static void hsi_logical_tx_control_destructor(struct hsi_msg *msg);
 static void hsi_logical_rx_control_destructor(struct hsi_msg *msg);
-static void hsi_logical_rx_control_destructor_l2h(struct hsi_msg *msg);
 
 /* hsi_msg allocation */
 static struct hsi_msg *hsi_logical_alloc_data(
@@ -129,17 +114,13 @@ static struct hsi_msg *hsi_logical_alloc_data(
 	gfp_t flags);
 static struct hsi_msg *hsi_logical_get_control(
 	struct hsi_protocol_client *hsi_client_context);
-static struct hsi_msg *hsi_logical_get_control_l2h(
-	struct hsi_protocol_client *hsi_client_context);
 static struct hsi_msg *hsi_logical_alloc_tx_control(
 	struct hsi_protocol_client *hsi_client_context,
 	void (*complete)(struct hsi_msg *msg));
 
 /* Libraries */
-#ifdef HSI_LOGICAL_USE_DEBUG
 static int hsi_logical_get_client_id(
 	unsigned char mapid);
-#endif
 static int hsi_logical_retrieve_data_client(
 	struct hsi_protocol_client *hsi_client_context,
 	unsigned char channel_id,
@@ -164,19 +145,7 @@ u32 init_spinlock;
 					printk(KERN_DEBUG __VA_ARGS__); }
 
 #define DPRINTK_HIGH(...)	{if ((hsi_logical_trace_state == HSI_HIGH)\
-				|| (hsi_logical_trace_state == HSI_ALL) \
-				|| (hsi_logical_trace_state == HSI_HIGH_RX) \
-				|| (hsi_logical_trace_state == HSI_HIGH_TX)) \
-					printk(KERN_DEBUG __VA_ARGS__); }
-
-#define DPRINTK_HIGH_RX(...)	{if ((hsi_logical_trace_state == HSI_HIGH)\
-				|| (hsi_logical_trace_state == HSI_ALL) \
-				|| (hsi_logical_trace_state == HSI_HIGH_RX)) \
-					printk(KERN_DEBUG __VA_ARGS__); }
-
-#define DPRINTK_HIGH_TX(...)	{if ((hsi_logical_trace_state == HSI_HIGH)\
-				|| (hsi_logical_trace_state == HSI_ALL) \
-				|| (hsi_logical_trace_state == HSI_HIGH_TX)) \
+				|| (hsi_logical_trace_state == HSI_ALL)) \
 					printk(KERN_DEBUG __VA_ARGS__); }
 #else
 # define DPRINTK(...)
@@ -196,7 +165,7 @@ hsi_logical_config_fail(unsigned long in)
 	wake_unlock(&wake_resoft);
 	if (hsi_protocol_ctx->main_state == HSI_CONFIG_EXCHANGE_NO_DONE) {
 		EPRINTK("hsi_logical state %d, tx_boot_info_req %d, " \
-			"tx_boot_info_resp %d, rx_boot_info_resp %d, " \
+				"tx_boot_info_resp %d, rx_boot_info_resp %d, " \
 				" modem_config %x\n",
 			hsi_protocol_ctx->main_state,
 			hsi_protocol_ctx->cfg_ex.tx_boot_info_req_complete,
@@ -204,8 +173,8 @@ hsi_logical_config_fail(unsigned long in)
 			hsi_protocol_ctx->cfg_ex.rx_boot_info_resp_complete,
 			hsi_protocol_ctx->cfg_ex.received_modem_config);
 
-
-		EPRINTK("Configuration exchange with modem fails. HSI link is broken\n");
+		EPRINTK("Configuration exchange with modem fails. " \
+			"HSI link is broken\n");
 		gpio_set_value(pwr_on, 0);
 	}
 }
@@ -217,8 +186,7 @@ hsi_logical_open(struct hsi_protocol *hsi_protocol_ctx)
 	int err = 0;
 	int i;
 
-	DPRINTK("%s - NB HSI core clients: %d\n",
-		__func__,
+	DPRINTK("hsi_logical_open - NB HSI core clients: %d\n",
 		hsi_protocol_ctx->nb_client);
 
 	if (init_spinlock == 1) {
@@ -230,7 +198,6 @@ hsi_logical_open(struct hsi_protocol *hsi_protocol_ctx)
 		}
 		spin_lock_init(&hsi_protocol_ctx->tx_activity_status_lock);
 		spin_lock_init(&hsi_protocol_ctx->ctrl_msg_array_lock);
-		spin_lock_init(&hsi_protocol_ctx->ctrl_msg_array_l2h_lock);
 	}
 
 	/* Alloc pool of control message */
@@ -240,14 +207,18 @@ hsi_logical_open(struct hsi_protocol *hsi_protocol_ctx)
 		hsi_protocol_ctx->hsi_ctrl_msg_array[i].msg =
 				hsi_alloc_msg(1, GFP_KERNEL | GFP_DMA);
 
-		if (!hsi_protocol_ctx->hsi_ctrl_msg_array[i].msg)
-			BUG();
+		if (!hsi_protocol_ctx->hsi_ctrl_msg_array[i].msg) {
+			err = -ENOMEM;
+			goto out;
+		}
 
 		buf = kmalloc(HSI_LOGICAL_CONTROL_MESSAGE_SIZE,
 				GFP_KERNEL | GFP_DMA);
 
-		if (!buf)
-			BUG();
+		if (!buf) {
+			err = -ENOMEM;
+			goto out;
+		}
 
 		sg_init_one(
 			hsi_protocol_ctx->hsi_ctrl_msg_array[i].msg->sgt.sgl,
@@ -256,31 +227,6 @@ hsi_logical_open(struct hsi_protocol *hsi_protocol_ctx)
 
 
 		hsi_protocol_ctx->hsi_ctrl_msg_array[i].free = 1;
-	}
-
-	/* Alloc pool of control message l2h*/
-	for (i = 0; i < HSI_LOGICAL_NB_CONTROL_MSG_L2H; i++) {
-		u8 *buf;
-
-		hsi_protocol_ctx->hsi_ctrl_msg_array_l2h[i].msg =
-				hsi_alloc_msg(1, GFP_KERNEL | GFP_DMA);
-
-		if (!hsi_protocol_ctx->hsi_ctrl_msg_array_l2h[i].msg)
-			BUG();
-
-		buf = kmalloc(HSI_LOGICAL_L2HEADER_MESSAGE_SIZE,
-				GFP_KERNEL | GFP_DMA);
-
-		if (!buf)
-			BUG();
-
-		sg_init_one(
-			hsi_protocol_ctx->hsi_ctrl_msg_array_l2h[i].msg->sgt.sgl,
-			buf,
-			HSI_LOGICAL_L2HEADER_MESSAGE_SIZE);
-
-
-		hsi_protocol_ctx->hsi_ctrl_msg_array_l2h[i].free = 1;
 	}
 
 	for (i = 0; i < hsi_protocol_ctx->nb_client; i++) {
@@ -317,6 +263,8 @@ hsi_logical_open(struct hsi_protocol *hsi_protocol_ctx)
 		clients, especialy control client) */
 		hsi_protocol_ctx->cl[i]->hsi_top_protocol_context =
 			hsi_protocol_ctx;
+
+
 	}
 
 	/* Setup port using control client setup */
@@ -335,7 +283,6 @@ hsi_logical_open(struct hsi_protocol *hsi_protocol_ctx)
 	hsi_protocol_ctx->inactivity_timer.function =
 		hsi_logical_inactivity_timer;
 
-	hsi_protocol_ctx->inactivity_timer_running = false;
 
 	hsi_protocol_ctx->main_state = HSI_CONFIG_EXCHANGE_NO_DONE;
 	hsi_protocol_ctx->cfg_ex.tx_boot_info_req_complete = 0;
@@ -345,7 +292,7 @@ hsi_logical_open(struct hsi_protocol *hsi_protocol_ctx)
 		hsi_logical_config_fail,
 		(unsigned long)hsi_protocol_ctx);
 	mod_timer(&hsi_protocol_ctx->cfg_ex.to,
-			jiffies + msecs_to_jiffies(10000));
+			jiffies + msecs_to_jiffies(3000));
 	wake_lock_timeout(&wake_resoft, 31 * HZ);
 
 	/* Init is done - wait incomming data on RX control bank
@@ -359,49 +306,23 @@ hsi_logical_open(struct hsi_protocol *hsi_protocol_ctx)
 			hsi_protocol_ctx->cl[HSI_CONTROL_CLIENT_ID]->hsi_cl,
 			HSI_CONTROL_CHANNEL);
 
-	hsi_logical_wait_rx_control_l2h(
+	hsi_logical_wait_rx_control(
 			hsi_protocol_ctx->cl[HSI_CONTROL_CLIENT_ID]->hsi_cl,
 			1);
-	hsi_logical_wait_rx_control_l2h(
+	hsi_logical_wait_rx_control(
 			hsi_protocol_ctx->cl[HSI_CONTROL_CLIENT_ID]->hsi_cl,
 			2);
-	hsi_logical_wait_rx_control_l2h(
+	hsi_logical_wait_rx_control(
 			hsi_protocol_ctx->cl[HSI_CONTROL_CLIENT_ID]->hsi_cl,
 			3);
 
-	hsi_logical_wait_rx_control_wrong_channel(
-			hsi_protocol_ctx->cl[HSI_CONTROL_CLIENT_ID]->hsi_cl,
-			4);
-	hsi_logical_wait_rx_control_wrong_channel(
-			hsi_protocol_ctx->cl[HSI_CONTROL_CLIENT_ID]->hsi_cl,
-			5);
-	hsi_logical_wait_rx_control_wrong_channel(
-			hsi_protocol_ctx->cl[HSI_CONTROL_CLIENT_ID]->hsi_cl,
-			6);
-	hsi_logical_wait_rx_control_wrong_channel(
-			hsi_protocol_ctx->cl[HSI_CONTROL_CLIENT_ID]->hsi_cl,
-			7);
+	/*hsi_logical_send_power_off(hsi_protocol_ctx);	*/
 
 	hsi_logical_start_tx(hsi_protocol_ctx);
 
 	return 0;
 
 out:
-	/* Free pool of control message */
-	for (i = 0; i < HSI_LOGICAL_NB_CONTROL_MSG; i++) {
-		kfree(sg_virt(hsi_protocol_ctx->
-				hsi_ctrl_msg_array[i].msg->
-					sgt.sgl));
-		hsi_free_msg(hsi_protocol_ctx->hsi_ctrl_msg_array[i].msg);
-	}
-
-	/* Free pool of control message l2h*/
-	for (i = 0; i < HSI_LOGICAL_NB_CONTROL_MSG_L2H; i++) {
-		kfree(sg_virt(hsi_protocol_ctx->
-				hsi_ctrl_msg_array_l2h[i].msg->
-					sgt.sgl));
-		hsi_free_msg(hsi_protocol_ctx->hsi_ctrl_msg_array_l2h[i].msg);
-	}
 	return err;
 }
 
@@ -464,7 +385,7 @@ hsi_logical_close(struct hsi_protocol *hsi_protocol_ctx)
 	spin_lock_bh(&hsi_protocol_ctx->tx_activity_status_lock);
 	{
 		del_timer(&hsi_protocol_ctx->inactivity_timer);
-		hsi_protocol_ctx->inactivity_timer_running = false;
+
 	}
 	spin_unlock_bh(&hsi_protocol_ctx->tx_activity_status_lock);
 
@@ -484,14 +405,6 @@ hsi_logical_close(struct hsi_protocol *hsi_protocol_ctx)
 		hsi_free_msg(hsi_protocol_ctx->hsi_ctrl_msg_array[i].msg);
 	}
 
-	/* Free pool of control message l2h*/
-	for (i = 0; i < HSI_LOGICAL_NB_CONTROL_MSG_L2H; i++) {
-		kfree(sg_virt(hsi_protocol_ctx->
-				hsi_ctrl_msg_array_l2h[i].msg->
-					sgt.sgl));
-		hsi_free_msg(hsi_protocol_ctx->hsi_ctrl_msg_array_l2h[i].msg);
-	}
-
 	return 0;
 
 out:
@@ -501,7 +414,7 @@ out:
 void
 hsi_logical_start_tx(struct hsi_protocol *hsi_protocol_ctx)
 {
-	DPRINTK("%s - %d", __func__, hsi_protocol_ctx->wake_state);
+	DPRINTK("hsi_logical_start_tx %d", hsi_protocol_ctx->wake_state);
 	spin_lock_bh(&hsi_protocol_ctx->tx_activity_status_lock);
 
 #ifdef HSI_V3_USED
@@ -513,8 +426,6 @@ hsi_logical_start_tx(struct hsi_protocol *hsi_protocol_ctx)
 		hsi_protocol_ctx->wake_state = 1;
 
 		spin_unlock_bh(&hsi_protocol_ctx->tx_activity_status_lock);
-
-		DPRINTK_HIGH(">hsi_start_tx called by HSI logical");
 
 		hsi_start_tx(hsi_protocol_ctx->
 				cl[HSI_CONTROL_CLIENT_ID]->
@@ -530,7 +441,7 @@ hsi_logical_stop_tx(struct hsi_protocol *hsi_protocol_ctx)
 {
 
 #ifdef HSI_LOGICAL_POWER_SAVING
-	DPRINTK("%s - %d", __func__, hsi_protocol_ctx->wake_state);
+	DPRINTK("hsi_logical_stop_tx %d", hsi_protocol_ctx->wake_state);
 
 	spin_lock_bh(&hsi_protocol_ctx->tx_activity_status_lock);
 
@@ -548,8 +459,6 @@ hsi_logical_stop_tx(struct hsi_protocol *hsi_protocol_ctx)
 
 			spin_unlock_bh(
 				&hsi_protocol_ctx->tx_activity_status_lock);
-
-			DPRINTK_HIGH("<hsi_stop_tx called by HSI logical");
 
 			hsi_stop_tx(hsi_protocol_ctx->
 					cl[HSI_CONTROL_CLIENT_ID]->
@@ -572,7 +481,7 @@ void
 hsi_logical_send_work(struct work_struct *work)
 {
 	struct hsi_protocol_client *hsi_data_client =
-	container_of(work, struct hsi_protocol_client, send_work);
+	container_of(work, struct hsi_protocol_client, send);
 #else
 int
 hsi_logical_do_send(struct hsi_protocol_client *hsi_data_client)
@@ -590,27 +499,22 @@ hsi_logical_do_send(struct hsi_protocol_client *hsi_data_client)
 	HSI_LOGICAL_SET_CHANNEL_ACCORDING_TO_PRIO(hsi_data_client->client_id);
 
 	hsi_data_client->send_state = HSI_TX_HDR_SENT;
-	DPRINTK("%s - L2 header sent: 0x%08x\n",
-		 __func__,
-		hsi_data_client->tx_l2_header);
+	DPRINTK("L2 header sent: 0x%08x\n", hsi_data_client->tx_l2_header);
 
 	spin_lock_bh(&hsi_protocol_ctx->tx_activity_status_lock);
 
 	/* Stop inactivity timer. It will be relaunched on TX
 	data completion callback */
 	del_timer(&hsi_protocol_ctx->inactivity_timer);
-	hsi_protocol_ctx->inactivity_timer_running = false;
 
 	spin_unlock_bh(&hsi_protocol_ctx->tx_activity_status_lock);
 
 	hsi_logical_start_tx(hsi_protocol_ctx);
 
-	hsi_logical_alloc_msg_and_send_on_control_channel(
-			hsi_data_client,
+	hsi_logical_alloc_msg_and_send_on_control_channel(hsi_data_client,
 			hsi_data_client->tx_l2_header,
 			HSI_LOGICAL_SET_CHANNEL_ACCORDING_TO_PRIO(
-				hsi_data_client->client_id
-				),
+				hsi_data_client->client_id),
 			hsi_logical_tx_control_complete);
 #ifdef HSI_USE_SEND_SCHEDULED
 	return;
@@ -633,8 +537,8 @@ hsi_logical_send(struct hsi_protocol *hsi_protocol_ctx,
 	u8 mapid = MAPID_FROM_HEADER(*(u32 *)skb->data);
 	int client_id_according_to_mapid = hsi_logical_get_client_id(mapid);
 
-	DPRINTK_HIGH_TX("%s on mapid %d - client id %d data = 0x%08X\n",
-		__func__, mapid, client_id, *(u32 *)skb->data);
+	DPRINTK("hsi_logical_send on mapid %d - client id %d data = 0x%08X\n",
+		mapid, client_id, *(u32 *)skb->data);
 
 	BUG_ON(client_id_according_to_mapid != client_id);
 #endif
@@ -677,8 +581,8 @@ hsi_logical_send(struct hsi_protocol *hsi_protocol_ctx,
 			int s = hsi_data_client->send_state;
 			spin_unlock_bh(&hsi_data_client->tx_lock);
 			hsi_free_msg(msg);
-		EPRINTK("%s - main_state %d, send_state %d\n",
-			 __func__, m, s);
+			EPRINTK("hsi_logical_send main_state %d, " \
+				"send_state %d\n", m, s);
 			return -ENETDOWN;
 	} else {
 
@@ -688,8 +592,7 @@ hsi_logical_send(struct hsi_protocol *hsi_protocol_ctx,
 		hsi_data_client->data_msg_to_be_send = msg;
 		spin_unlock_bh(&hsi_data_client->tx_lock);
 #ifdef HSI_USE_SEND_SCHEDULED
-		return queue_work(hsi_data_client->send_wq,
-				&hsi_data_client->send_work);
+		return schedule_work(&hsi_data_client->send);
 #else
 		return hsi_logical_do_send(hsi_data_client);
 #endif	/*HSI_USE_SEND_SCHEDULED*/
@@ -708,15 +611,17 @@ hsi_logical_boot_info_req_complete(struct hsi_msg *msg)
 	struct hsi_protocol *hsi_protocol_context =
 		hsi_control_client->hsi_top_protocol_context;
 
-	DPRINTK("%s - client ID %d - port nb %d - channel_id %d\n",
-		__func__,
+	DPRINTK("hsi_logical_boot_info_req_complete" \
+			"- client ID %d - port nb %d - channel %d\n",
 		hsi_control_client->client_id,
 		(hsi_get_port(msg->cl))->num,
 		msg->channel);
 
 	if ((msg->status == HSI_STATUS_ERROR)
-	|| (hsi_control_client->client_id != HSI_CONTROL_CLIENT_ID)) {
-		DPRINTK("%s - TX control error !!\n", __func__);
+			|| (hsi_control_client->client_id !=
+			HSI_CONTROL_CLIENT_ID)) {
+		DPRINTK("hsi_logical_boot_info_req_complete" \
+			" TX control error !!\n");
 
 		hsi_logical_stop_tx(hsi_protocol_context);
 		BUG();
@@ -734,15 +639,16 @@ hsi_logical_boot_info_resp_complete(struct hsi_msg *msg)
 	struct hsi_protocol *hsi_protocol_context =
 				hsi_control_client->hsi_top_protocol_context;
 
-	DPRINTK("%s - client ID %d - port nb %d - channel_id %d\n",
-			__func__,
+	DPRINTK("hsi_logical_boot_info_resp_complete - " \
+			"client ID %d - port nb %d - channel %d\n",
 		hsi_control_client->client_id,
 		(hsi_get_port(msg->cl))->num,
 		msg->channel);
 
 	if ((msg->status == HSI_STATUS_ERROR)
 	|| (hsi_control_client->client_id != HSI_CONTROL_CLIENT_ID)) {
-		DPRINTK("%s - TX control error !!\n", __func__);
+		DPRINTK("hsi_logical_boot_info_resp_complete" \
+			"TX control error !!\n");
 
 		hsi_logical_stop_tx(hsi_protocol_context);
 		BUG();
@@ -755,10 +661,9 @@ hsi_logical_boot_info_resp_complete(struct hsi_msg *msg)
 static void
 hsi_logical_check_if_boot_done(struct hsi_protocol *hsi_protocol_context)
 {
-	DPRINTK("%s - tx_boot_info_req_complete %d" \
-		" - rx_boot_info_resp_complete %d - " \
+	DPRINTK("hsi_logical_check_if_boot_done -tx_boot_info_req_complete %d" \
+			" - rx_boot_info_resp_complete %d - " \
 			"tx_boot_info_resp_complete %d\n",
-		__func__,
 		hsi_protocol_context->cfg_ex.tx_boot_info_req_complete,
 		hsi_protocol_context->cfg_ex.rx_boot_info_resp_complete,
 		hsi_protocol_context->cfg_ex.tx_boot_info_resp_complete);
@@ -770,21 +675,7 @@ hsi_logical_check_if_boot_done(struct hsi_protocol *hsi_protocol_context)
 			/* Configuration exchange is finished */
 			/* Compare sent_ape_config and received_modem_config */
 
-			EPRINTK("Baseband HSI link is up:\n"
-					" - RX L2Header size %d bytes\n"
-#ifdef HSI_LOGICAL_RXDATA_128_BYTES_PADDED
-					" - RX data 128 bytes padded\n"
-#endif
-#ifdef HSI_LOGICAL_POWER_SAVING
-					" - Power saving activated: %dms inactivity timer\n"
-#else
-					" - Power saving deactivated\n"
-#endif
-				, HSI_LOGICAL_L2HEADER_MESSAGE_SIZE
-#ifdef HSI_LOGICAL_POWER_SAVING
-				, HSI_LOGICAL_INACTIVITY_TIMER
-#endif
-				);
+			EPRINTK("HSI CP/AP config exchange succeeded\n");
 
 			if (hsi_protocol_context->cfg_ex.sent_ape_config !=
 			hsi_protocol_context->cfg_ex.received_modem_config) {
@@ -792,7 +683,8 @@ hsi_logical_check_if_boot_done(struct hsi_protocol *hsi_protocol_context)
 
 				EPRINTK("sent_ape_config: 0x%08x" \
 						" received_modem_config:0x%08x",
-				hsi_protocol_context->cfg_ex.sent_ape_config,
+					hsi_protocol_context->
+						cfg_ex.sent_ape_config,
 					hsi_protocol_context->
 						cfg_ex.received_modem_config);
 
@@ -809,7 +701,6 @@ hsi_logical_check_if_boot_done(struct hsi_protocol *hsi_protocol_context)
 			wake_unlock(&wake_resoft);
 			spin_lock_bh(&hsi_protocol_context->
 					tx_activity_status_lock);
-
 			hsi_protocol_context->main_state =
 				HSI_CONFIG_EXCHANGE_DONE;
 
@@ -819,8 +710,6 @@ hsi_logical_check_if_boot_done(struct hsi_protocol *hsi_protocol_context)
 				jiffies + msecs_to_jiffies(
 					HSI_LOGICAL_INACTIVITY_TIMER)
 				);
-			hsi_protocol_context->inactivity_timer_running = true;
-
 			spin_unlock_bh(&hsi_protocol_context->
 					tx_activity_status_lock);
 
@@ -862,12 +751,15 @@ hsi_logical_send_on_control_channel(
 		hsi_client->
 			hsi_top_protocol_context->cl[HSI_CONTROL_CLIENT_ID];
 	int err;
-	DPRINTK("%s - channel_id %d\n", __func__, msg->channel);
+	DPRINTK("hsi_logical_send_on_control_channel" \
+		" - channel %d\n", msg->channel);
 
 	err = hsi_async_write(hsi_control_client->hsi_cl, msg);
 
-	if (err)
-		EPRINTK("%s - hsi_async_write error=%d\n", __func__, err);
+	if (err) {
+		EPRINTK("hsi_logical_send_on_control_channel -" \
+			" hsi_async_write error=%d\n", err);
+	}
 
 	return err;
 }
@@ -878,23 +770,11 @@ hsi_logical_tx_control_complete(struct hsi_msg *msg)
 	struct hsi_protocol_client *hsi_control_client =
 		hsi_client_drvdata(msg->cl);
 
-#ifdef HSI_LOGICAL_USE_DEBUG
-	if (msg->channel == 0) {
-		DPRINTK_HIGH_RX("%s - client ID %d" \
-			" - port nb %d - channel_id %d\n",
-			__func__,
+	DPRINTK("hsi_logical_tx_control_complete - client ID %d" \
+			" - port nb %d - channel %d\n",
 		hsi_control_client->client_id,
 		(hsi_get_port(msg->cl))->num,
 		msg->channel);
-	} else {
-		DPRINTK_HIGH_TX("%s - client ID %d" \
-			" - port nb %d - channel_id %d\n",
-			__func__,
-			hsi_control_client->client_id,
-			(hsi_get_port(msg->cl))->num,
-			msg->channel);
-	}
-#endif
 
 	if (hsi_control_client->send_state != HSI_TX_CLOSE) {
 		if ((msg->status == HSI_STATUS_ERROR) ||
@@ -918,7 +798,7 @@ hsi_ack_received(
 
 	int err = 0;
 
-	DPRINTK_HIGH_TX("%s - for channel_id %d\n", __func__, channel_id);
+	DPRINTK("hsi_ack_received - for channel_id %d\n", channel_id);
 
 	if (hsi_logical_retrieve_data_client(
 		hsi_control_client,
@@ -971,13 +851,13 @@ hsi_nack_received(
 {
 	struct hsi_protocol_client *hsi_data_client;
 
-	EPRINTK("%s - channel_id %d\n", __func__, channel_id);
+	DPRINTK("hsi_nack_received - channel_id %d\n", channel_id);
 
 	if (hsi_logical_retrieve_data_client(hsi_control_client,
 						channel_id,
 						&hsi_data_client) < 0) {
-		EPRINTK("%s - ERROR mismatch with channel" \
-			" ID used in L2 Header\n", __func__);
+		EPRINTK("hsi_nack_received - ERROR mismatch with channel" \
+			" ID used in L2 Header\n");
 
 		return 0;
 	}
@@ -986,8 +866,7 @@ hsi_nack_received(
 
 	if (unlikely(hsi_data_client->send_state != HSI_TX_HDR_SENT)) {
 		/* Should never happen */
-		EPRINTK("%s - ERROR: state is %d !!\n",
-			__func__,
+		EPRINTK("hsi_nack_received - ERROR: state is %d !!\n",
 			hsi_data_client->send_state);
 		spin_unlock_bh(&hsi_data_client->tx_lock);
 		return 0;
@@ -996,9 +875,8 @@ hsi_nack_received(
 	spin_unlock_bh(&hsi_data_client->tx_lock);
 
 	if (unlikely(hsi_data_client->nb_time_l2_header_sent++ >= 2)) {
-		EPRINTK("%s - ERROR:" \
+		EPRINTK("hsi_nack_received - ERROR:" \
 				" nb_time_l2_header_sent = %d\n",
-			__func__,
 			hsi_data_client->nb_time_l2_header_sent);
 
 		/* Free data message */
@@ -1006,10 +884,6 @@ hsi_nack_received(
 			hsi_data_client->data_msg_to_be_send);
 
 	} else {
-		/* Check WAKE line, in case TX is off,
-		need to start TX for sending L2H */
-		hsi_logical_start_tx(hsi_data_client->hsi_top_protocol_context);
-
 		/* Send again L2 header */
 		hsi_logical_alloc_msg_and_send_on_control_channel(
 			hsi_data_client,
@@ -1030,9 +904,8 @@ hsi_logical_tx_data_complete(struct hsi_msg *msg)
 	struct hsi_protocol *hsi_protocol_context =
 		hsi_data_client->hsi_top_protocol_context;
 
-	DPRINTK_HIGH_TX("%s - client ID %d" \
-		" - port nb %d - channel_id %d\n",
-		__func__,
+	DPRINTK("hsi_logical_tx_data_complete - client ID %d" \
+			" - port nb %d - channel %d\n",
 		hsi_data_client->client_id,
 		(hsi_get_port(msg->cl))->num,
 		msg->channel);
@@ -1070,7 +943,6 @@ hsi_logical_tx_data_complete(struct hsi_msg *msg)
 	{
 		mod_timer(&hsi_protocol_context->inactivity_timer,
 		jiffies + msecs_to_jiffies(HSI_LOGICAL_INACTIVITY_TIMER));
-		hsi_protocol_context->inactivity_timer_running = true;
 	}
 	spin_unlock_bh(&hsi_protocol_context->tx_activity_status_lock);
 
@@ -1078,66 +950,21 @@ hsi_logical_tx_data_complete(struct hsi_msg *msg)
 
 
 /* Allocate message on control port and wait reception */
-static void
+static int
 hsi_logical_wait_rx_control(struct hsi_client *cl, unsigned char channel_id)
 {
 	struct hsi_msg *msg = hsi_logical_get_control(hsi_client_drvdata(cl));
 
-	DPRINTK("%s - on channel id %d\n", __func__, channel_id);
+	DPRINTK("hsi_logical_wait_rx_control on channel id %d\n", channel_id);
 
 	msg->channel = channel_id;
 	msg->complete = hsi_logical_rx_control_complete;
 	msg->destructor = hsi_logical_rx_control_destructor;
 
 	if (hsi_async_read(cl, msg))
-		EPRINTK("%s - hsi_async_read error\n", __func__);
+		EPRINTK("hsi_logical_wait_rx_control - hsi_async_read error\n");
 
-}
-
-/* Allocate message on control port and wait reception */
-static void
-hsi_logical_wait_rx_control_l2h(struct hsi_client *cl, unsigned char channel_id)
-{
-	struct hsi_msg *msg = hsi_logical_get_control_l2h(hsi_client_drvdata(cl));
-
-	DPRINTK("%s - on channel id %d\n", __func__, channel_id);
-
-	msg->channel = channel_id;
-	msg->complete = hsi_logical_rx_control_complete;
-	msg->destructor = hsi_logical_rx_control_destructor_l2h;
-
-	if (hsi_async_read(cl, msg))
-		EPRINTK("%s - hsi_async_read error\n", __func__);
-
-}
-
-static void
-hsi_logical_rx_control_complete_wrong_channel(struct hsi_msg *msg)
-{
-	EPRINTK("%s  Receive buffer on wrong channel: 0x%08x, channel_id %d\n",
-		__func__,
-		*(u32 *)sg_virt(msg->sgt.sgl), msg->channel);
-
-	msg->destructor(msg);
-}
-
-/* Allocate message on control port and wait reception */
-static void
-hsi_logical_wait_rx_control_wrong_channel(
-				struct hsi_client *cl,
-				unsigned char channel_id)
-{
-	struct hsi_msg *msg = hsi_logical_get_control(hsi_client_drvdata(cl));
-
-	DPRINTK("%s - on channel id %d\n", __func__, channel_id);
-
-	msg->channel = channel_id;
-	msg->complete = hsi_logical_rx_control_complete_wrong_channel;
-	msg->destructor = hsi_logical_rx_control_destructor;
-
-	if (hsi_async_read(cl, msg))
-		EPRINTK("%s - hsi_async_read error\n", __func__);
-
+	return 0;
 }
 
 static void
@@ -1150,17 +977,11 @@ hsi_logical_rx_control_complete(struct hsi_msg *msg)
 	struct hsi_protocol *hsi_protocol_ctx =
 		hsi_control_client->hsi_top_protocol_context;
 
-	DPRINTK_HIGH_RX("%s  Receive control buffer content: 0x%08x, channel_id %d\n",
-			__func__,
-			*(u32 *)sg_virt(msg->sgt.sgl), msg->channel);
-
 	spin_lock_bh(&hsi_protocol_ctx->tx_activity_status_lock);
 
 	/*Now we need to schedule the reception as start_tx will
 	generate some exceptions*/
 	if (0 == hsi_protocol_ctx->wake_state) {
-		DPRINTK("hsi logical woken up by modem (0x%p)\n", msg);
-
 		spin_unlock_bh(&hsi_protocol_ctx->tx_activity_status_lock);
 
 		spin_lock_bh(&hsi_control_client->rcv_msgs_lock);
@@ -1186,9 +1007,9 @@ hsi_logical_rcv_work(struct work_struct *work)
 {
 	struct hsi_msg *msg, *tmp_msg;
 	struct hsi_protocol_client *hsi_control_client =
-			container_of(work,
-				struct hsi_protocol_client,
-				rcv_work);
+		container_of(work,
+			struct hsi_protocol_client,
+			rcv_work);
 
 	spin_lock_bh(&hsi_control_client->rcv_msgs_lock);
 
@@ -1221,14 +1042,14 @@ hsi_logical_rx_control_complete_step2(struct hsi_msg *msg)
 	unsigned char channel_id = msg->channel;
 
 	DPRINTK("hsi_logical_rx_control_complete - client ID %d" \
-		" - port nb %d - channel_id %d\n",
+			" - port nb %d - channel %d\n",
 		hsi_control_client->client_id,
 		(hsi_get_port(msg->cl))->num,
 		msg->channel);
 
 	if (hsi_control_client->recv_state == HSI_RX_CLOSE) {
 		/* Free control message */
-		msg->destructor(msg);
+		hsi_logical_rx_control_destructor(msg);
 		return;
 	}
 
@@ -1268,9 +1089,11 @@ hsi_logical_rx_control_complete_step2(struct hsi_msg *msg)
 			logical (only TX is bloqued until end of config
 			exchange). */
 
-			if ((control_msg&CONF_VERSION_MASK) != HSI_SUPPORTED_VERSION) {
-				EPRINTK("Modem HSI version is not compatible in" \
-					"control_msg 0x%08x\n", control_msg);
+			if ((control_msg&CONF_VERSION_MASK) !=
+					HSI_SUPPORTED_VERSION) {
+				EPRINTK("BP HSI version is not compatible in" \
+						"control_msg 0x%08x\n",
+					control_msg);
 				goto out;
 			}
 
@@ -1304,7 +1127,8 @@ hsi_logical_rx_control_complete_step2(struct hsi_msg *msg)
 		if (hsi_protocol_ctx->main_state != HSI_CONFIG_EXCHANGE_DONE) {
 			hsi_protocol_ctx->cfg_ex.received_modem_config =
 				control_msg & 0x00FFFFFF;
-			hsi_protocol_ctx->cfg_ex.rx_boot_info_resp_complete = 1;
+			hsi_protocol_ctx->cfg_ex.rx_boot_info_resp_complete
+				= 1;
 			hsi_logical_check_if_boot_done(hsi_protocol_ctx);
 		}
 		hsi_logical_wait_rx_control(cl, channel_id);
@@ -1328,7 +1152,7 @@ hsi_logical_rx_control_complete_step2(struct hsi_msg *msg)
 
 
 	case HSI_POWER_OFF:
-		DPRINTK_HIGH("hsi_logical_rx_control_complete -" \
+		DPRINTK_HIGH("hsi_logical_rx_control_complete - " \
 			"receive POWER_OFF notification");
 		/*TRASHED*/
 		hsi_logical_wait_rx_control(cl, channel_id);
@@ -1349,7 +1173,7 @@ hsi_logical_rx_control_complete_step2(struct hsi_msg *msg)
 out:
 
 	/* Free control message */
-	msg->destructor(msg);
+	hsi_logical_rx_control_destructor(msg);
 
 }
 
@@ -1382,25 +1206,8 @@ static void hsi_rx_data_ack(struct hsi_protocol *hsi_protocol_context,
 		hsi_data_client->
 			hsi_top_protocol_context->
 				cl[HSI_CONTROL_CLIENT_ID];
-#ifdef HSI_LOGICAL_SEND_ACK_BEFORE_ALLOC
-	/* Check WAKE line, in case TX is off,
-	need to start TX for sending ACK */
-	hsi_logical_start_tx(hsi_protocol_context);
-
-	hsi_logical_alloc_msg_and_send_on_control_channel(
-					hsi_control_client,
-					(HSI_ACK<<24 | channel_id),
-					HSI_CONTROL_CHANNEL,
-					hsi_logical_tx_control_complete);
-#endif
 
 	l3len = LENGTH_IN_HEADER(hsi_data_client->rx_l2_header);
-
-#ifdef HSI_LOGICAL_RXDATA_128_BYTES_PADDED
-	if ((l3len%128) != 0)
-		l3len = l3len + 128 - l3len%128;
-#endif
-
 
 	/* Allocate msg for reception */
 	skb = netdev_alloc_skb(hsi_protocol_context->netdev, l3len);
@@ -1432,15 +1239,11 @@ static void hsi_rx_data_ack(struct hsi_protocol *hsi_protocol_context,
 		return;
 	}
 
-	/* Next L2 header will be received on channel X */
-	hsi_logical_wait_rx_control_l2h(hsi_control_client->hsi_cl, channel_id);
+	hsi_logical_wait_rx_control(hsi_control_client->hsi_cl, channel_id);
 
 	/* Then send ACK */
-	DPRINTK_HIGH_RX("%s - send ACK for channel_id %d\n",
-			__func__,
-			channel_id);
+	DPRINTK("hsi_l2header_receive - send ACK\n");
 
-#ifndef HSI_LOGICAL_SEND_ACK_BEFORE_ALLOC
 	/* Check WAKE line, in case TX is off,
 	need to start TX for sending ACK */
 	hsi_logical_start_tx(hsi_protocol_context);
@@ -1450,7 +1253,7 @@ static void hsi_rx_data_ack(struct hsi_protocol *hsi_protocol_context,
 					(HSI_ACK<<24 | channel_id),
 					HSI_CONTROL_CHANNEL,
 					hsi_logical_tx_control_complete);
-#endif
+
 
 	wake_lock_timeout(&wake_no_suspend_l2header, 1 * HZ);
 
@@ -1460,7 +1263,6 @@ err:
 	hsi_data_client->rx_mem.function = hsi_rx_mem_test;
 	hsi_data_client->rx_mem.data = (unsigned long)hsi_data_client;
 	mod_timer(&hsi_data_client->rx_mem, jiffies + msecs_to_jiffies(50));
-	return;
 }
 
 static int
@@ -1472,26 +1274,12 @@ hsi_l2header_receive(struct hsi_protocol_client *hsi_control_client,
 			hsi_control_client->hsi_top_protocol_context;
 	struct hsi_protocol_client *hsi_data_client;
 	u32 l3len;
-	int client_id;
-
-	if (hsi_logical_retrieve_data_client(
-		hsi_control_client,
-		channel_id,
-		&hsi_data_client) < 0) {
-		EPRINTK("hsi_l2header_receive - ERROR mismatch with" \
-			" channel ID used in L2 Header\n");
-		return 0;
-	}
-	client_id = hsi_data_client->client_id;
-
-#ifdef HSI_LOGICAL_USE_DEBUG
-	BUG_ON(hsi_logical_get_client_id(MAPID_FROM_HEADER(l2header)) != client_id);
-#endif
+	int client_id = hsi_logical_get_client_id(MAPID_FROM_HEADER(l2header));
 
 	l3len = LENGTH_IN_HEADER(l2header);
 
-	DPRINTK_HIGH_RX("hsi_l2header_receive - mapid %d - len %d" \
-		" - channel_id %d - corresponding client id %d\n",
+	DPRINTK_HIGH("hsi_l2header_receive - mapid %d - len: %d" \
+			" - channel_id: %d - corresponding client id %d\n",
 		MAPID_FROM_HEADER(l2header),
 		l3len,
 		channel_id,
@@ -1499,18 +1287,19 @@ hsi_l2header_receive(struct hsi_protocol_client *hsi_control_client,
 
 	if (l3len > MAXIMUM_MSG_LENGTH_ALLOWED) {
 		/* length exceed max length => send NACK*/
-		EPRINTK("hsi_l2header 0x%08x received - length %d exceed" \
-			" max length send NACK\n", l2header, l3len);
+		EPRINTK("hsi_l2header_receive - length %d exceed" \
+				" max length send NACK\n", l3len);
 
 		goto nack;
 	}
 	if (l3len == 0) {
 		/* length exceed max length => send NACK*/
-		EPRINTK("hsi_l2header 0x%08x received - length %d exceed" \
-		" max length send NACK\n", l2header, l3len);
+		EPRINTK("hsi_l2header_receive - length %d exceed" \
+			" max length send NACK\n", l3len);
 
 		goto nack;
 	} else {
+		hsi_data_client = hsi_protocol_context->cl[client_id];
 		spin_lock_bh(&hsi_data_client->rx_lock);
 
 		if (hsi_data_client->recv_state == HSI_RX_IDLE) {
@@ -1522,9 +1311,7 @@ hsi_l2header_receive(struct hsi_protocol_client *hsi_control_client,
 			Wait previous RX completion before sending ACK */
 
 			EPRINTK("hsi_l2header_receive L2header while" \
-				" previous RX data ongoing: 0x%08x on channel_id: %d\n",
-				 l2header,
-				 channel_id);
+				" previous RX data ongoing.\n");
 
 			hsi_data_client->pending_rx_l2_header = l2header;
 			hsi_data_client->pending_rx_l2_header_channel =
@@ -1536,9 +1323,10 @@ hsi_l2header_receive(struct hsi_protocol_client *hsi_control_client,
 			return 0;
 		} else if (hsi_data_client->recv_state ==
 				HSI_RX_HDR_RCV_WHILE_DATA_ONGOING) {
-			EPRINTK("Error hsi_l2header_receive L2header" \
-				" while previous RX data ongoing AND " \
-				"there is already a pending RX L2 header\n");
+			EPRINTK("Error hsi_l2header_receive L2header " \
+					"while previous RX data ongoing AND " \
+					"there is already a pending RX L2 " \
+					"header\n");
 			/*BUG();*/
 			spin_unlock_bh(&hsi_data_client->rx_lock);
 			return 0;
@@ -1546,10 +1334,7 @@ hsi_l2header_receive(struct hsi_protocol_client *hsi_control_client,
 
 		/* Stop inactivity timer. It will be relaunched on RX
 		data completion callback */
-		spin_lock_bh(&hsi_protocol_context->tx_activity_status_lock);
 		del_timer(&hsi_protocol_context->inactivity_timer);
-		hsi_protocol_context->inactivity_timer_running = false;
-		spin_unlock_bh(&hsi_protocol_context->tx_activity_status_lock);
 
 		/* Save rx L2 header (to concatenete later with payload) */
 		hsi_data_client->rx_l2_header = l2header;
@@ -1562,20 +1347,11 @@ hsi_l2header_receive(struct hsi_protocol_client *hsi_control_client,
 
 nack:
 
-	/* Check WAKE line, in case TX is off,
-	need to start TX for sending NACK */
-	hsi_logical_start_tx(hsi_protocol_context);
-
 	hsi_logical_alloc_msg_and_send_on_control_channel(
 			hsi_control_client,
 				(HSI_NACK<<24 | channel_id),
 				HSI_CONTROL_CHANNEL,
 				hsi_logical_tx_control_complete);
-
-	/* Reallocate to receive the correct L2HEADER
-	   Next L2 header will be received on channel X */
-	hsi_logical_wait_rx_control_l2h(hsi_control_client->hsi_cl, channel_id);
-
 	return -1;
 }
 
@@ -1589,22 +1365,19 @@ hsi_logical_rx_data_complete(struct hsi_msg *msg)
 		hsi_data_client->hsi_top_protocol_context;
 	struct sk_buff *skb = msg->context;
 
-	DPRINTK_HIGH_RX("hsi_logical_rx_data_complete - client ID %d - " \
-		"port nb %d - channel_id %d - Latest frame is 0x%08x\n",
+	DPRINTK_HIGH("hsi_logical_rx_data_complete - client ID %d - " \
+			"port nb %d - channel %d - Latest frame is 0x%08x\n",
 		hsi_data_client->client_id,
 		(hsi_get_port(msg->cl))->num,
 		msg->channel,
 		*(u32 *)(sg_virt(msg->sgt.sgl) + skb->len - 4));
 
-	/* Start inactivity timer if not already running for TX. On expiration,
+	/* Start inactivity timer. On expiration,
 	if all queues are ready call hsi_stop_tx */
 	spin_lock_bh(&hsi_protocol_context->tx_activity_status_lock);
 	{
-		if (hsi_protocol_context->inactivity_timer_running != true) {
-			mod_timer(&hsi_protocol_context->inactivity_timer,
-				jiffies + msecs_to_jiffies(HSI_LOGICAL_INACTIVITY_TIMER));
-			hsi_protocol_context->inactivity_timer_running = true;
-		}
+		mod_timer(&hsi_protocol_context->inactivity_timer,
+		jiffies + msecs_to_jiffies(HSI_LOGICAL_INACTIVITY_TIMER));
 	}
 	spin_unlock_bh(&hsi_protocol_context->tx_activity_status_lock);
 
@@ -1621,10 +1394,6 @@ hsi_logical_rx_data_complete(struct hsi_msg *msg)
 	skb_push(skb, HSI_LOGICAL_CONTROL_MESSAGE_SIZE);
 	*(u32 *)(skb->data) = hsi_data_client->rx_l2_header;
 
-#ifdef HSI_LOGICAL_RXDATA_128_BYTES_PADDED
-	skb_trim(skb, 4 + LENGTH_IN_HEADER(hsi_data_client->rx_l2_header));
-#endif
-
 	/* Delete only hsi msg - skb will be freed by appli */
 	hsi_logical_data_free_msg(msg);
 
@@ -1639,9 +1408,7 @@ hsi_logical_rx_data_complete(struct hsi_msg *msg)
 	} else if (hsi_data_client->recv_state ==
 			HSI_RX_HDR_RCV_WHILE_DATA_ONGOING) {
 		EPRINTK("hsi_logical_rx_data_complete - managing" \
-			"pending received L2 header: 0x%08x on channel_id %d\n",
-			 hsi_data_client->pending_rx_l2_header,
-			 hsi_data_client->pending_rx_l2_header_channel);
+			" pending received L2 header\n");
 		hsi_data_client->recv_state = HSI_RX_IDLE;
 		spin_unlock_bh(&hsi_data_client->rx_lock);
 		/* Callback receive function */
@@ -1670,7 +1437,8 @@ hsi_logical_data_free_msg_and_skb(struct hsi_msg *msg)
 	struct sk_buff *skb = msg->context;
 
 	DPRINTK("hsi_logical_data_free_msg_and_skb - port num %d" \
-		" - channel_id %d\n", (hsi_get_port(msg->cl))->num,
+			" - channel %d\n",
+		(hsi_get_port(msg->cl))->num,
 		msg->channel);
 
 	msg->destructor = NULL;
@@ -1683,7 +1451,8 @@ static void
 hsi_logical_data_free_msg(struct hsi_msg *msg)
 {
 	DPRINTK("hsi_logical_data_free_msg - port num %d" \
-		" - channel_id %d\n", (hsi_get_port(msg->cl))->num,
+			" - channel %d\n",
+		(hsi_get_port(msg->cl))->num,
 		msg->channel);
 
 	msg->destructor = NULL;
@@ -1719,41 +1488,13 @@ hsi_logical_control_destructor(struct hsi_msg *msg)
 
 }
 
-static void
-hsi_logical_control_destructor_l2h(struct hsi_msg *msg)
-{
-	struct hsi_protocol_client *hsi_client =
-		hsi_client_drvdata(msg->cl);
-	struct hsi_protocol *hsi_protocol_context =
-	hsi_client->hsi_top_protocol_context;
-	int i = 0;
-
-	spin_lock_bh(&hsi_protocol_context->ctrl_msg_array_l2h_lock);
-
-	while ((msg != hsi_protocol_context->hsi_ctrl_msg_array_l2h[i].msg)
-	&& (i < HSI_LOGICAL_NB_CONTROL_MSG_L2H-1))
-		i++;
-
-	if (msg == hsi_protocol_context->hsi_ctrl_msg_array_l2h[i].msg) {
-		/* Msg to free found */
-		DPRINTK("hsi_logical_control_destructor - " \
-			"msg id %d is now free\n", i);
-
-		hsi_protocol_context->hsi_ctrl_msg_array_l2h[i].free = 1;
-	} else {
-		/* Msg not found ! */
-		BUG();
-	}
-	spin_unlock_bh(&hsi_protocol_context->ctrl_msg_array_l2h_lock);
-
-}
-
 
 static void
 hsi_logical_tx_control_destructor(struct hsi_msg *msg)
 {
-	DPRINTK("hsi_logical_tx_control_destructor on port num %d -" \
-		"channel_id %d\n", (hsi_get_port(msg->cl))->num,
+	DPRINTK("hsi_logical_tx_control_destructor on port num %d - " \
+			"channel %d\n",
+		(hsi_get_port(msg->cl))->num,
 		msg->channel);
 
 	hsi_logical_control_destructor(msg);
@@ -1763,19 +1504,12 @@ hsi_logical_tx_control_destructor(struct hsi_msg *msg)
 static void
 hsi_logical_rx_control_destructor(struct hsi_msg *msg)
 {
-	DPRINTK("hsi_logical_rx_control_destructor on port num %d-" \
-		" channel_id %d\n", (hsi_get_port(msg->cl))->num, msg->channel);
+	DPRINTK("hsi_logical_rx_control_destructor on port num %d - " \
+			" channel %d\n",
+		(hsi_get_port(msg->cl))->num,
+		msg->channel);
 
 	hsi_logical_control_destructor(msg);
-}
-
-static void
-hsi_logical_rx_control_destructor_l2h(struct hsi_msg *msg)
-{
-	DPRINTK("hsi_logical_rx_control_destructor_l2h on port num %d-" \
-		" channel_id %d\n", (hsi_get_port(msg->cl))->num, msg->channel);
-
-	hsi_logical_control_destructor_l2h(msg);
 }
 
 static struct hsi_msg *
@@ -1826,35 +1560,6 @@ hsi_logical_get_control(struct hsi_protocol_client *hsi_client_context)
 }
 
 static struct hsi_msg *
-hsi_logical_get_control_l2h(struct hsi_protocol_client *hsi_client_context)
-{
-	struct hsi_protocol *hsi_protocol_context =
-	hsi_client_context->hsi_top_protocol_context;
-	int i = 0;
-
-	spin_lock_bh(&hsi_protocol_context->ctrl_msg_array_l2h_lock);
-
-	/* Find a free msg */
-	while ((hsi_protocol_context->hsi_ctrl_msg_array_l2h[i].free == 0)
-	&& (i < HSI_LOGICAL_NB_CONTROL_MSG_L2H))
-		i++;
-
-	if (hsi_protocol_context->hsi_ctrl_msg_array_l2h[i].free == 0) {
-		/* No free msg !! */
-		BUG();
-	}
-
-	/* msg is now busy */
-	hsi_protocol_context->hsi_ctrl_msg_array_l2h[i].free = 0;
-
-	spin_unlock_bh(&hsi_protocol_context->ctrl_msg_array_l2h_lock);
-
-	DPRINTK("hsi_logical_get_control l2h- msg id %d is now used\n", i);
-
-	return hsi_protocol_context->hsi_ctrl_msg_array_l2h[i].msg;
-}
-
-static struct hsi_msg *
 hsi_logical_alloc_tx_control(struct hsi_protocol_client *hsi_client_context,
 void (*complete)(struct hsi_msg *msg))
 {
@@ -1866,7 +1571,7 @@ void (*complete)(struct hsi_msg *msg))
 	return msg;
 }
 
-#ifdef HSI_LOGICAL_USE_DEBUG
+
 static int hsi_logical_get_client_id(unsigned char mapid)
 {
 	int client_id;
@@ -1914,7 +1619,6 @@ static int hsi_logical_get_client_id(unsigned char mapid)
 
 	return client_id;
 }
-#endif
 
 
 static int
@@ -1934,11 +1638,12 @@ hsi_logical_retrieve_data_client(
 	*hsi_data_client =
 		hsi_client_context->
 			hsi_top_protocol_context->
-				cl[HSI_LOGICAL_GET_PRIO_ACCORDING_TO_CHANNEL(channel_id)];
+				cl[HSI_LOGICAL_GET_PRIO_ACCORDING_TO_CHANNEL(
+					channel_id)];
 
 	if (unlikely(!hsi_data_client)) {
 		/* Should never happen */
-		DPRINTK("hsi_logical_retrieve_data_client - ERROR: Client" \
+		DPRINTK("hsi_logical_retrieve_data_client - ERROR: Client " \
 				"is not allocated (channel ID:  %d) !!\n",
 			channel_id);
 
@@ -1980,7 +1685,7 @@ hsi_logical_power_off_complete(struct hsi_msg *msg)
 		hsi_client_drvdata(msg->cl);
 
 	DPRINTK("hsi_logical_power_off_complete - client ID %d" \
-		" - port nb %d - channel_id %d\n",
+			"- port nb %d - channel %d\n",
 		hsi_control_client->client_id,
 		(hsi_get_port(msg->cl))->num,
 		msg->channel);
@@ -2013,7 +1718,7 @@ hsi_logical_do_power_sequence(
 		int hsi_power_state)
 {
 
-	DPRINTK("hsi_logical_do_power_sequence step %d", hsi_power_state);
+	DPRINTK_HIGH("hsi_logical_do_power_sequence step %d", hsi_power_state);
 
 	switch (hsi_power_state) {
 
@@ -2048,8 +1753,6 @@ hsi_logical_inactivity_timer(unsigned long data)
 
 	spin_lock_bh(&hsi_protocol_context->tx_activity_status_lock);
 	{
-		hsi_protocol_context->inactivity_timer_running = false;
-
 		for (i = 1; i < HSI_NB_CLIENT; i++) {
 			if (__netif_subqueue_stopped(
 				hsi_protocol_context->netdev,
@@ -2059,7 +1762,8 @@ hsi_logical_inactivity_timer(unsigned long data)
 			}
 		}
 		if ((!one_client_up) &&
-			(hsi_protocol_context->main_state != HSI_CONFIG_EXCHANGE_NO_DONE)) {
+			(hsi_protocol_context->main_state !=
+				HSI_CONFIG_EXCHANGE_NO_DONE)) {
 
 #ifdef HSI_V3_USED
 			/*start the power off sequence*/
@@ -2069,7 +1773,7 @@ hsi_logical_inactivity_timer(unsigned long data)
 
 #else
 
-			DPRINTK("hsi_logical_inactivity_timer expires." \
+			DPRINTK("hsi_logical_inactivity_timer expires. " \
 				"No client want to transmit => Stop TX\n");
 			hsi_logical_stop_tx(hsi_protocol_context);
 #endif /*HSI_V3_USED*/
@@ -2081,7 +1785,7 @@ hsi_logical_inactivity_timer(unsigned long data)
 		}
 #ifdef HSI_LOGICAL_USE_DEBUG
 		else {
-			DPRINTK("hsi_logical_inactivity_timer expires." \
+			DPRINTK("hsi_logical_inactivity_timer expires. " \
 				"Don't stop TX (client want to transmit)\n");
 		}
 #endif

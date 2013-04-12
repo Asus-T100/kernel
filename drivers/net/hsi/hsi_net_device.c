@@ -41,9 +41,6 @@
 #define PN_DEV_HOST     0x00
 #endif
 
-#define SIOMODEMONOFF (SIOCDEVPRIVATE + 1)
-#define SIOMODEMRSTOUTID (SIOCDEVPRIVATE + 2)
-
 struct hsi_protocol *hsi_protocol_context;
 
 static int hsi_net_device_xmit(struct sk_buff *skb,
@@ -78,7 +75,6 @@ static struct device_attribute hsi_logical_dev_attrs[] = {
 
 enum hsi_logical_trace_states hsi_logical_trace_state;
 static int traces_activation_done;
-static int hsi_gpio_configured;
 
 #ifdef HSI_LOGICAL_USE_DEBUG
 #define DPRINTK(...)		{if (hsi_logical_trace_state == HSI_ALL) \
@@ -94,9 +90,6 @@ static int hsi_gpio_configured;
 static int configure_gpios(struct hsi_protocol_client *hsi)
 {
 	int ret;
-
-	if (1 == hsi_gpio_configured)
-		return 0;
 
 	ret = gpio_request(hsi->gpio_rst_out, "resetOUT");
 	if (ret < 0) {
@@ -123,10 +116,14 @@ static int configure_gpios(struct hsi_protocol_client *hsi)
 		printk(KERN_ERR "gpio_export failed for rst_out");
 		goto err_pwr_on;
 	}
+	ret = gpio_export(hsi->gpio_pwr_on, 0);
+	if (ret < 0) {
+		printk(KERN_ERR "gpio_export failed for pwr_on");
+		goto err_pwr_on;
+	}
 	pr_info("GPIOs configuration - pwr_on:%d, rst_out: %d\n",
 		hsi->gpio_pwr_on,
 		hsi->gpio_rst_out);
-	hsi_gpio_configured = 1;
 
 	return 0;
 
@@ -159,10 +156,6 @@ show_hsi_logical_traces_state(
 		return sprintf(temp_buf, "all\n");
 	case HSI_HIGH:
 		return sprintf(temp_buf, "high\n");
-	case HSI_HIGH_RX:
-		return sprintf(temp_buf, "high_rx\n");
-	case HSI_HIGH_TX:
-		return sprintf(temp_buf, "high_tx\n");
 	case HSI_OFF:
 		return sprintf(temp_buf, "off\n");
 	default:
@@ -190,14 +183,11 @@ store_hsi_logical_traces_state(struct device *dev,
 		hsi_logical_trace_state = HSI_ALL;
 	else if (sysfs_streq(buf, "high"))
 		hsi_logical_trace_state = HSI_HIGH;
-	else if (sysfs_streq(buf, "high_rx"))
-		hsi_logical_trace_state = HSI_HIGH_RX;
-	else if (sysfs_streq(buf, "high_tx"))
-		hsi_logical_trace_state = HSI_HIGH_TX;
 	else if (sysfs_streq(buf, "off"))
 		hsi_logical_trace_state = HSI_OFF;
 	else
 		retval = -EINVAL;
+
 	return retval;
 }
 
@@ -281,7 +271,6 @@ static int hsi_net_device_ioctl(struct net_device *dev,
 				struct ifreq *ifr, int cmd)
 {
 	struct if_phonet_req *req = (struct if_phonet_req *)ifr;
-	int value;
 
 	switch (cmd) {
 	case SIOCPNGAUTOCONF:
@@ -293,35 +282,7 @@ static int hsi_net_device_ioctl(struct net_device *dev,
 		phonet_route_add(dev, 0x64);
 
 		break;
-
-	case SIOMODEMONOFF:
-
-		if (copy_from_user(&value, (int *)ifr->ifr_data,
-			sizeof(unsigned int)))
-			return -EFAULT;
-
-		if (value > 0) {
-			gpio_set_value(hsi_protocol_context->cl[0]->gpio_pwr_on,
-					1);
-		} else {
-			gpio_set_value(hsi_protocol_context->cl[0]->gpio_pwr_on,
-					0);
 	}
-
-		break;
-
-	case SIOMODEMRSTOUTID:
-		value = hsi_protocol_context->cl[0]->gpio_rst_out;
-		if (copy_to_user((int *)ifr->ifr_data,
-				&value,
-				sizeof(int))) {
-			return -EINVAL;
-
-		}
-
-		break;
-	}
-
 	return 0;
 }
 
@@ -506,14 +467,7 @@ static int hsi_client_probe(struct device *dev)
 
 	hsi_protocol_context->cl[hsi_protocol_context->nb_client] = hsi;
 #ifdef HSI_USE_SEND_SCHEDULED
-	INIT_WORK(&hsi->send_work, hsi_logical_send_work);
-
-	hsi->send_wq = create_singlethread_workqueue("hsi-send_wq");
-	if (!hsi->send_wq) {
-		EPRINTK("%s, Unable to create send workqueue\n", __func__);
-		return -ENOMEM;
-	}
-
+	INIT_WORK(&hsi->send, hsi_logical_send_work);
 #endif /*#ifdef HSI_USE_SEND_SCHEDULED*/
 
 #ifdef HSI_USE_RCV_SCHEDULED
@@ -522,10 +476,9 @@ static int hsi_client_probe(struct device *dev)
 	spin_lock_init(&hsi->rcv_msgs_lock);
 
 	hsi->rcv_wq = create_singlethread_workqueue("hsi-rcv_wq");
-	if (!hsi->rcv_wq) {
-		EPRINTK("%s, Unable to create receive workqueue\n", __func__);
-		return -ENOMEM;
-	}
+	if (!hsi->rcv_wq)
+		EPRINTK("Unable to create receive workqueue\n");
+
 #endif /*#ifdef HSI_USE_RCV_SCHEDULED*/
 
 	hsi->hsi_cl = cl;
@@ -600,6 +553,7 @@ static int hsi_net_device_probe(struct platform_device *dev)
 	struct hsi_protocol *context;
 
 	struct net_device *ndev;
+
 	int err;
 
 	DPRINTK(" hsi_net_device_probe\n");
@@ -684,7 +638,6 @@ static int __init hsi_net_device_init(void)
 
 	hsi_protocol_context = NULL;
 	traces_activation_done = 0;
-	hsi_gpio_configured = 0;
 	hsi_logical_trace_state = HSI_OFF;
 	platform_driver_register(&hsi_net_device_driver);
 
