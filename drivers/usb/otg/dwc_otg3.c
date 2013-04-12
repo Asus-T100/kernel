@@ -2045,11 +2045,6 @@ static int dwc_otg_resume(struct device *dev)
 	}
 	set_sus_phy(otg, 0);
 
-	spin_lock_irqsave(&otg->lock, flags);
-	otg->otg_events |= OEVT_B_DEV_SES_VLD_DET_EVNT;
-	wakeup_main_thread(otg);
-	spin_unlock_irqrestore(&otg->lock, flags);
-
 	return 0;
 }
 
