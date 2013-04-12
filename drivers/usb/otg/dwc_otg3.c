@@ -630,12 +630,9 @@ static enum power_supply_charger_cable_type
 		POWER_SUPPLY_CHARGER_TYPE_NONE;
 
 	/* PHY Enable:
-	 * De-assert USBRST
+	 * Reset PHY
 	 */
-	ret = intel_scu_ipc_update_register(PMIC_USBPHYCTRL, \
-			PMIC_USBPHYCTRL_D0,  PMIC_USBPHYCTRL_D0);
-	if (ret)
-		otg_err(otg, "Fail to de-assert USBRST\n");
+	reset_phy(otg);
 
 	/* Wait 10ms (~5ms before PHY de-asserts DIR,
 	 * XXus for initial Link reg sync-up).*/
