@@ -263,10 +263,16 @@ static void MRSTLFBFlipSprite(MRSTLFB_DEVINFO *psDevInfo,
 		PSB_WVDC32(psContext->stride, DSPASTRIDE + reg_offset);
 	}
 
-	if ((psContext->update_mask & SPRITE_UPDATE_CONTROL))
-		PSB_WVDC32(psContext->cntr | DISPLAY_PLANE_ENABLE |
-					 (PSB_RVDC32(DSPACNTR + reg_offset) & DISPPLANE_GAMMA_ENABLE),
-			       DSPACNTR + reg_offset);
+	if ((psContext->update_mask & SPRITE_UPDATE_CONTROL)) {
+		if (!dev_priv->bhdmi_enable && pipe == 1)
+			PSB_WVDC32(psContext->cntr | ~DISPLAY_PLANE_ENABLE |
+				(PSB_RVDC32(DSPACNTR + reg_offset) &
+				DISPPLANE_GAMMA_ENABLE), DSPACNTR + reg_offset);
+		else
+			PSB_WVDC32(psContext->cntr | DISPLAY_PLANE_ENABLE |
+				(PSB_RVDC32(DSPACNTR + reg_offset) &
+				DISPPLANE_GAMMA_ENABLE), DSPACNTR + reg_offset);
+	}
 
 	if ((psContext->update_mask & SPRITE_UPDATE_SURFACE)) {
 		PSB_WVDC32(psContext->linoff, DSPALINOFF + reg_offset);
@@ -325,10 +331,16 @@ static void MRSTLFBFlipPrimary(MRSTLFB_DEVINFO *psDevInfo,
 		PSB_WVDC32(psContext->stride, DSPASTRIDE + reg_offset);
 	}
 
-	if ((psContext->update_mask & SPRITE_UPDATE_CONTROL))
-		PSB_WVDC32(psContext->cntr | DISPLAY_PLANE_ENABLE |
-					(PSB_RVDC32(DSPACNTR + reg_offset) & DISPPLANE_GAMMA_ENABLE),
-			       DSPACNTR + reg_offset);
+	if ((psContext->update_mask & SPRITE_UPDATE_CONTROL)) {
+		if (!dev_priv->bhdmi_enable && pipe == 1)
+			PSB_WVDC32(psContext->cntr | ~DISPLAY_PLANE_ENABLE |
+				(PSB_RVDC32(DSPACNTR + reg_offset) &
+				DISPPLANE_GAMMA_ENABLE), DSPACNTR + reg_offset);
+		else
+			PSB_WVDC32(psContext->cntr | DISPLAY_PLANE_ENABLE |
+				(PSB_RVDC32(DSPACNTR + reg_offset) &
+				DISPPLANE_GAMMA_ENABLE), DSPACNTR + reg_offset);
+	}
 
 	if ((psContext->update_mask & SPRITE_UPDATE_SURFACE)) {
 		PSB_WVDC32(psContext->linoff, DSPALINOFF + reg_offset);
