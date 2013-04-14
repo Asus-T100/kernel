@@ -55,6 +55,13 @@
 #define PSB_PTE_RO		  0x0004	/* Read only */
 #define PSB_PTE_CACHED		  0x0008	/* CPU cache coherent */
 
+enum APM_VXD_STATUS {
+	VXD_APM_STS_D0 = 0,
+	VXD_APM_STS_D1,
+	VXD_APM_STS_D2,
+	VXD_APM_STS_D3
+};
+
 extern struct ttm_bo_driver psb_ttm_bo_driver;
 
 struct psb_context;
@@ -177,6 +184,8 @@ struct drm_psb_private {
 	char buf[256];
 
 	struct pci_dev *pci_root;
+
+	struct mutex vxd_pm_mutex;
 };
 
 /*
@@ -281,5 +290,12 @@ int vxd_driver_unload(struct drm_device *dev);
 void vxd_lastclose(struct drm_device *dev);
 int vxd_driver_open(struct drm_device *dev, struct drm_file *file);
 long vxd_ioctl(struct file *filp, unsigned int cmd, unsigned long arg);
+
+/* pm related start */
+#define OSPM_VIDEO_DEC_ISLAND	1
+bool ospm_power_using_video_begin(int hw_island);
+void ospm_power_using_video_end(int hw_island);
+void ospm_apm_power_down_msvdx(struct drm_device *dev, int force_off);
+/* end */
 
 #endif

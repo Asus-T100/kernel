@@ -1273,9 +1273,7 @@ void psb_msvdx_check_reset_fw(struct drm_device *dev)
 		msvdx_priv->msvdx_needs_reset &= ~MSVDX_RESET_NEEDS_REUPLOAD_FW;
 		spin_unlock_irqrestore(&msvdx_priv->msvdx_lock, irq_flags);
 		PSB_DEBUG_PM("MSVDX: force to power off msvdx due to decoding error.\n");
-#ifndef CONFIG_DRM_VXD_BYT
 		ospm_apm_power_down_msvdx(dev, 1);
-#endif
 		spin_lock_irqsave(&msvdx_priv->msvdx_lock, irq_flags);
 	}
 	spin_unlock_irqrestore(&msvdx_priv->msvdx_lock, irq_flags);
@@ -1320,9 +1318,8 @@ void psb_powerdown_msvdx(struct work_struct *work)
 {
 	struct msvdx_private *msvdx_priv =
 		container_of(work, struct msvdx_private, msvdx_suspend_wq.work);
-#ifndef CONFIG_DRM_VXD_BYT
+
 	ospm_apm_power_down_msvdx(msvdx_priv->dev, 0);
-#endif
 }
 
 void psb_msvdx_mtx_set_clocks(struct drm_device *dev, uint32_t clock_state)
