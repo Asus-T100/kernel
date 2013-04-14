@@ -3153,11 +3153,19 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 	if (isp->isp_subdev.continuous_mode->val) {
 		if (isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO) {
 			ret = __enable_continuous_mode(isp, true);
+
 			/*
-			 * Enable only if resolution is equal or above 5M,
-			 * Always enable raw_binning on MRFLD.
+			 * Enable only if resolution is >= 3M for ISP2400
 			 */
-			if (IS_MRFLD || width >= 2576 || height >= 1936) {
+			if (IS_ISP2400 && (width >= 2048 || height >= 1536)) {
+				sh_css_enable_raw_binning(true);
+				sh_css_input_set_two_pixels_per_clock(false);
+			}
+
+			/*
+			 * Enable only if resolution is >= 5M for ISP2300
+			 */
+			if (!IS_ISP2400 && (width >= 2576 || height >= 1936)) {
 				sh_css_enable_raw_binning(true);
 				sh_css_input_set_two_pixels_per_clock(false);
 			}
