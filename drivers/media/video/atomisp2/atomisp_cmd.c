@@ -3784,7 +3784,8 @@ int atomisp_offline_capture_configure(struct atomisp_device *isp,
 				      isp->params.offline_parm.num_captures
 				      + 3);
 			/* WORKROUND: To be removed when NUM_CONTINUOUS_FRAMES set to 10 */
-			if ((intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2)
+			if ((intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2
+				|| intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER)
 				&& (num_raw_frames > 5))
 				num_raw_frames = 5;
 			/* TODO: this can be removed once user-space
