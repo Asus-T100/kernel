@@ -1086,7 +1086,7 @@ static int sst_request_fw(struct intel_sst_drv *sst)
 		goto end_release;
 	}
 	pr_debug("copied fw to %p", sst->fw_in_mem);
-	pr_debug("phys: %x", virt_to_phys(sst->fw_in_mem));
+	pr_debug("phys: %lx", (unsigned long)virt_to_phys(sst->fw_in_mem));
 	memcpy(sst->fw_in_mem, sst->fw->data,
 			sst->fw->size);
 	if (sst->use_dma) {
