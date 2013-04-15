@@ -981,6 +981,9 @@ inline void dlp_fifo_wait_push(struct dlp_xfer_ctx *xfer_ctx,
 	unsigned long flags;
 
 	write_lock_irqsave(&xfer_ctx->lock, flags);
+	if (pdu->ttype == HSI_MSG_WRITE)
+		pdu->status = HSI_STATUS_PENDING;
+
 	xfer_ctx->wait_len++;
 	xfer_ctx->buffered += pdu->actual_len;
 

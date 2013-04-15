@@ -850,8 +850,6 @@ int dlp_tty_do_write(struct dlp_xfer_ctx *xfer_ctx, unsigned char *buf,
 			read_unlock_irqrestore(&xfer_ctx->lock, flags);
 
 			dlp_fifo_wait_push(xfer_ctx, pdu);
-
-			pdu->status = HSI_STATUS_PENDING;
 		}
 	}
 
