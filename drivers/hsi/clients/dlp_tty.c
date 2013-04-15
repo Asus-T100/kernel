@@ -675,7 +675,7 @@ static int dlp_tty_open(struct tty_struct *tty, struct file *filp)
 	/* Set the TTY_NO_WRITE_SPLIT to transfer as much data as possible on
 	 * the first write request. This shall not introduce denial of service
 	 * as this flag will later adapt to the available TX buffer size. */
-	tty->flags |= (1 << TTY_NO_WRITE_SPLIT);
+	set_bit(TTY_NO_WRITE_SPLIT, &tty->flags);
 
 out:
 	pr_debug(DRVNAME ": TTY device open done (ret: %d)\n", ret);
@@ -926,9 +926,9 @@ static int dlp_tty_write(struct tty_struct *tty, const unsigned char *buf,
 
 	read_lock_irqsave(&xfer_ctx->lock, flags);
 	if (xfer_ctx->room >= len)
-		tty->flags |= (1 << TTY_NO_WRITE_SPLIT);
+		set_bit(TTY_NO_WRITE_SPLIT, &tty->flags);
 	else
-		tty->flags &= ~(1 << TTY_NO_WRITE_SPLIT);
+		clear_bit(TTY_NO_WRITE_SPLIT, &tty->flags);
 	read_unlock_irqrestore(&xfer_ctx->lock, flags);
 
 	already_copied = 0;
