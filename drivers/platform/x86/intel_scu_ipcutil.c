@@ -69,16 +69,23 @@
 					/* instead of the extended one.      */
 
 /* Defines for the SCU buffer included in OSHOB structure. */
-#define OSHOB_SCU_BUFFER_SIZE	4    /* In dwords. On Merrifield the needed */
-				     /* SCU trace buffer size is 4 dwords.  */
+#define OSHOB_SCU_BUF_BASE_DW_SIZE	1   /* In dwords. By default SCU     */
+					    /* buffer size is 1 dword.       */
 
-#define OSHOB_SCU_BUFFER_SIZE_BYTES   (OSHOB_SCU_BUFFER_SIZE * 4)
+#define OSHOB_SCU_BUF_MRFLD_DW_SIZE (4*OSHOB_SCU_BUF_BASE_DW_SIZE)
+					    /* In dwords. On Merrifield the  */
+					    /* SCU trace buffer size is      */
+					    /* 4 dwords.                     */
+
 
 /* Size (bytes) of the default OSHOB structure. Includes the default OSNIB   */
 /* size.                                                                     */
-#define OSHOB_SIZE		(56 + (4*OSHOB_SCU_BUFFER_SIZE))/* in bytes. */
-/* OSHOB_SCU_BUFFER_SIZE is give in dwords. So it is x4 to get the number of */
-/* bytes.                                                                    */
+#define OSHOB_SIZE	(56 + (4*OSHOB_SCU_BUF_BASE_DW_SIZE)) /* In bytes.   */
+
+#define OSHOB_MRFLD_SIZE (56 + (4*OSHOB_SCU_BUF_MRFLD_DW_SIZE)) /* In bytes. */
+
+/* SCU buffer size is give in dwords. So it is x4 here to get the total      */
+/* number of bytes.                                                          */
 
 #define OSNIB_SIZE		32	/* Size (bytes) of the default OSNIB.*/
 
@@ -107,12 +114,9 @@ struct scu_ipc_osnib {
 	u8 checksum;           /* CHECKSUM.                         */
 };
 
-static u32 scutxl_base;
-static u32 scutxl_ext[OSHOB_SCU_BUFFER_SIZE]; /* For MRFLD (CONFIG_X86_MRFLD)*/
-
 /* Default OSHOB allocation. */
 struct scu_ipc_oshob {
-	u32 *scutxl_ptr;        /* SCUTxl.                      */
+	u32 scutxl;             /* SCUTxl offset position.      */
 	u32 iatxl;              /* IATxl offset.                */
 	u32 bocv;               /* BOCV offset.                 */
 	u8 osnibr[OSNIB_SIZE];  /* OSNIB area offset.           */
@@ -127,21 +131,24 @@ struct scu_ipc_oshob scu_ipc_oshob_default;
 
 /* Extended OSHOB allocation. */
 struct scu_ipc_oshob_extend {
-	u32 magic;              /* MAGIC number.               */
-	u8  rev_major;          /* Revision major.             */
-	u8  rev_minor;          /* Revision minor.             */
-	u16 oshob_size;         /* OSHOB size.                 */
-	u32 head_reserved;      /* OSHOB RESERVED.             */
-	u32 *scutxl_ptr;        /* SCUTxl buffer.              */
-	u32 iatxl;              /* IATxl.                      */
-	u32 bocv;               /* BOCV.                       */
+	u32 magic;              /* MAGIC number.                           */
+	u8  rev_major;          /* Revision major.                         */
+	u8  rev_minor;          /* Revision minor.                         */
+	u16 oshob_size;         /* OSHOB size.                             */
+	u32 head_reserved;      /* OSHOB RESERVED.                         */
+	u32 scutxl;             /* SCUTxl offset position.                 */
+				/* If on MRFLD platform, next param may be */
+				/* shifted by                              */
+				/* (OSHOB_SCU_BUF_MRFLD_DW_SIZE - 1) bytes.*/
+	u32 iatxl;              /* IATxl.                                  */
+	u32 bocv;               /* BOCV.                                   */
 
-	u16 intel_size;         /* Intel size (in OSNIB area). */
-	u16 oem_size;           /* OEM size (of OEM area).     */
-	u32 r_intel_ptr;        /* Read Intel pointer.         */
-	u32 w_intel_ptr;        /* Write Intel pointer.        */
-	u32 r_oem_ptr;          /* Read OEM pointer.           */
-	u32 w_oem_ptr;          /* Write OEM pointer.          */
+	u16 intel_size;         /* Intel size (in OSNIB area).             */
+	u16 oem_size;           /* OEM size (of OEM area).                 */
+	u32 r_intel_ptr;        /* Read Intel pointer.                     */
+	u32 w_intel_ptr;        /* Write Intel pointer.                    */
+	u32 r_oem_ptr;          /* Read OEM pointer.                       */
+	u32 w_oem_ptr;          /* Write OEM pointer.                      */
 
 	u32 pmit;               /* PMIT.                       */
 	u32 pemmcmhki;          /* PeMMCMHKI.                  */
@@ -168,10 +175,10 @@ struct scu_ipc_oshob_info {
 	__u8	oshob_majrev;   /* Major revision number of OSHOB structure. */
 	__u8	oshob_minrev;   /* Minor revision number of OSHOB structure. */
 	__u16	oshob_size;     /* Total size (bytes) of OSHOB structure.    */
-	__u32   scu_trace[OSHOB_SCU_BUFFER_SIZE]; /* SCU trace buffer.       */
-				/* Buffer max size is OSHOB_SCU_BUFFER_SIZE  */
-				/* dwords for MRFLD. On other platforms,     */
-				/* only the first dword is stored and read.  */
+	__u32   scu_trace[OSHOB_SCU_BUF_BASE_DW_SIZE*4]; /* SCU trace buffer.*/
+				/* Set to max SCU buffer size (dwords) to    */
+				/* adapt to MRFLD. On other platforms, only  */
+				/* the first dword is stored and read.       */
 	__u32   ia_trace;       /* IA trace buffer.                          */
 	__u16	osnib_size;     /* Total size (bytes) of OSNIB structure.    */
 	__u16	oemnib_size;    /* Total size (bytes) of OEMNIB area.        */
@@ -189,9 +196,9 @@ struct scu_ipc_oshob_info {
 			       /* platforms is given in intel-mid.h).        */
 
 	u16 offs_add;          /* The additional shift bytes to consider     */
-			       /* giving the offset at which the OSHOB param */
+			       /* giving the offset at which the OSHOB params*/
 			       /* will be read. If MRFLD it must be set to   */
-			       /* OSHOB_SCU_BUFFER_SIZE dwords.              */
+			       /* take into account the extra SCU dwords.    */
 
 };
 
@@ -1099,6 +1106,7 @@ EXPORT_SYMBOL_GPL(intel_scu_ipc_read_osnib_rr);
 int intel_scu_ipc_read_oshob_extend_param(void __iomem *poshob_addr)
 {
 	u16 struct_offs;
+	int buff_size;
 
 	oshob_info->oshob_size = readw(
 			    poshob_addr +
@@ -1132,17 +1140,16 @@ int intel_scu_ipc_read_oshob_extend_param(void __iomem *poshob_addr)
 		return -EFAULT;
 	}
 
-	/* Set SCU and IA trace buffers */
-	if (oshob_info->platform_type == INTEL_MID_CPU_CHIP_TANGIER) {
-		intel_scu_ipc_read_oshob(
-			    (u8 *)(oshob_info->scu_trace),
-			    OSHOB_SCU_BUFFER_SIZE_BYTES,
-			    offsetof(struct scu_ipc_oshob_extend, scutxl_ptr));
-	} else
-		intel_scu_ipc_read_oshob(
-			    (u8 *)(oshob_info->scu_trace),
-			    4,
-			    offsetof(struct scu_ipc_oshob_extend, scutxl_ptr));
+	/* Set SCU and IA trace buffers. Size calculated in bytes here. */
+	if (oshob_info->platform_type == INTEL_MID_CPU_CHIP_TANGIER)
+		buff_size = OSHOB_SCU_BUF_MRFLD_DW_SIZE*4;
+	else
+		buff_size = OSHOB_SCU_BUF_BASE_DW_SIZE*4;
+
+	intel_scu_ipc_read_oshob(
+		(u8 *)(oshob_info->scu_trace),
+		buff_size,
+		offsetof(struct scu_ipc_oshob_extend, scutxl));
 
 	struct_offs = offsetof(struct scu_ipc_oshob_extend, iatxl) +
 			    oshob_info->offs_add;
@@ -1221,24 +1228,29 @@ int intel_scu_ipc_read_oshob_def_param(void __iomem *poshob_addr)
 {
 	u16 struct_offs;
 	int ret = 0;
+	int buff_size;
 
 	oshob_info->oshob_majrev = OSHOB_REV_MAJ_DEFAULT;
 	oshob_info->oshob_minrev = OSHOB_REV_MIN_DEFAULT;
-	oshob_info->oshob_size = OSHOB_SIZE;
 	oshob_info->osnib_size = OSNIB_SIZE;
 	oshob_info->oemnib_size = 0;
 
-	/* Set SCU and IA trace buffers */
-	if (oshob_info->platform_type == INTEL_MID_CPU_CHIP_TANGIER) {
-		ret = intel_scu_ipc_read_oshob(
-			    (u8 *)(oshob_info->scu_trace),
-			    OSHOB_SCU_BUFFER_SIZE_BYTES,
-			    offsetof(struct scu_ipc_oshob_extend, scutxl_ptr));
-	} else
-		ret = intel_scu_ipc_read_oshob(
-			    (u8 *)(oshob_info->scu_trace),
-			    4,
-			    offsetof(struct scu_ipc_oshob_extend, scutxl_ptr));
+	/* Set OSHOB total size */
+	if (oshob_info->platform_type == INTEL_MID_CPU_CHIP_TANGIER)
+		oshob_info->oshob_size = OSHOB_MRFLD_SIZE;
+	else
+		oshob_info->oshob_size = OSHOB_SIZE;
+
+	/* Set SCU and IA trace buffers. Size calculated in bytes here. */
+	if (oshob_info->platform_type == INTEL_MID_CPU_CHIP_TANGIER)
+		buff_size = OSHOB_SCU_BUF_MRFLD_DW_SIZE*4;
+	else
+		buff_size = OSHOB_SCU_BUF_BASE_DW_SIZE*4;
+
+	ret = intel_scu_ipc_read_oshob(
+		(u8 *)(oshob_info->scu_trace),
+		buff_size,
+		offsetof(struct scu_ipc_oshob_extend, scutxl));
 
 	if (ret != 0) {
 		pr_err("Cannot get scutxl data from OSHOB\n");
@@ -1311,11 +1323,18 @@ int intel_scu_ipc_read_oshob_info(void)
 
 	if (oshob_info->platform_type == INTEL_MID_CPU_CHIP_TANGIER) {
 		pr_info("(oshob) identified platform = INTEL_MID_CPU_CHIP_TANGIER\n");
-		oshob_info->offs_add = OSHOB_SCU_BUFFER_SIZE * 3;
+
+		/* By default we already have 1 dword reserved in the OSHOB */
+		/* structures for SCU buffer. For Merrifield, SCU size to   */
+		/* consider is OSHOB_SCU_BUF_MRFLD_DW_SIZE dwords. So with  */
+		/* Merrifield, when calculating structures offsets, we have */
+		/* to add (OSHOB_SCU_BUF_MRFLD_DW_SIZE - 1) dwords, with    */
+		/* the offsets calculated in bytes.                         */
+		oshob_info->offs_add = (OSHOB_SCU_BUF_MRFLD_DW_SIZE - 1)*4;
 	} else
 		oshob_info->offs_add = 0;
 
-	pr_info("(oshob) additional offset = 0x%x\n", oshob_info->offs_add);
+	pr_debug("(oshob) additional offset = 0x%x\n", oshob_info->offs_add);
 
 	/* Extract magic number that will help identifying the good OSHOB  */
 	/* that is going to be used.                                       */
@@ -1330,25 +1349,21 @@ int intel_scu_ipc_read_oshob_info(void)
 		}
 
 		if (oshob_info->platform_type == INTEL_MID_CPU_CHIP_TANGIER) {
-			scu_ipc_oshob_extend_struct.scutxl_ptr = scutxl_ext;
 			pr_info("(extend oshob) SCU buffer size is %d bytes\n",
-				OSHOB_SCU_BUFFER_SIZE_BYTES);
+				OSHOB_SCU_BUF_MRFLD_DW_SIZE*4);
 		} else {
-			scu_ipc_oshob_extend_struct.scutxl_ptr = &scutxl_base;
 			pr_info("(extend oshob) SCU buffer size is %d bytes\n",
-				OSHOB_SCU_BUFFER_SIZE);
+				OSHOB_SCU_BUF_BASE_DW_SIZE*4);
 		}
 	} else {
 		ret = intel_scu_ipc_read_oshob_def_param(oshob_addr);
 
 		if (oshob_info->platform_type == INTEL_MID_CPU_CHIP_TANGIER) {
-			scu_ipc_oshob_default.scutxl_ptr = scutxl_ext;
 			pr_info("(default oshob) SCU buffer size is %d bytes\n",
-				OSHOB_SCU_BUFFER_SIZE_BYTES);
+				OSHOB_SCU_BUF_MRFLD_DW_SIZE*4);
 		} else {
-			scu_ipc_oshob_default.scutxl_ptr = &scutxl_base;
 			pr_info("(default oshob) SCU buffer size is %d bytes\n",
-				OSHOB_SCU_BUFFER_SIZE);
+				OSHOB_SCU_BUF_BASE_DW_SIZE*4);
 		}
 	}
 
@@ -1689,7 +1704,7 @@ static int intel_scu_ipc_oshob_stat(struct seq_file *m, void *unused)
 		if (oshob_info->platform_type == INTEL_MID_CPU_CHIP_TANGIER) {
 			seq_printf(m, "SCU trace : ");
 
-			for (i = 0; i < OSHOB_SCU_BUFFER_SIZE; i++)
+			for (i = 0; i < OSHOB_SCU_BUF_MRFLD_DW_SIZE; i++)
 				seq_printf(m, "%x ", oshob_info->scu_trace[i]);
 
 			seq_printf(m, "\n");
@@ -1706,7 +1721,7 @@ static int intel_scu_ipc_oshob_stat(struct seq_file *m, void *unused)
 		if (oshob_info->platform_type == INTEL_MID_CPU_CHIP_TANGIER) {
 			seq_printf(m, "SCU trace : ");
 
-			for (i = 0; i < OSHOB_SCU_BUFFER_SIZE; i++)
+			for (i = 0; i < OSHOB_SCU_BUF_MRFLD_DW_SIZE; i++)
 				seq_printf(m, "%x ", oshob_info->scu_trace[i]);
 
 			seq_printf(m, "\n");
@@ -1986,7 +2001,8 @@ static int oshob_init(void)
 
 #ifdef DUMP_OSNIB
 	u8 rr, resetirq1, resetirq2, wd, alarm, wakesrc, *ptr;
-	u32 pmit, scu_trace[OSHOB_SCU_BUFFER_SIZE], ia_trace;
+	u32 pmit, scu_trace[OSHOB_SCU_BUF_BASE_DW_SIZE*4], ia_trace;
+	int buff_size;
 #endif
 
 	/* Identify the type and size of OSHOB to be used. */
@@ -2025,17 +2041,16 @@ static int oshob_init(void)
 	/* Dumping OSHOB content */
 	if ((oshob_info->oshob_majrev == OSHOB_REV_MAJ_DEFAULT) &&
 	    (oshob_info->oshob_minrev == OSHOB_REV_MIN_DEFAULT)) {
-		/* Use default OSHOB here. */
-		if (oshob_info->platform_type == INTEL_MID_CPU_CHIP_TANGIER) {
-			ret = intel_scu_ipc_read_oshob(
-			    (u8 *)(scu_trace),
-			    OSHOB_SCU_BUFFER_SIZE_BYTES,
-			    offsetof(struct scu_ipc_oshob, scutxl_ptr));
-		} else
-			ret = intel_scu_ipc_read_oshob(
-			    (u8 *)(scu_trace),
-			    4,
-			    offsetof(struct scu_ipc_oshob, scutxl_ptr));
+		/* Use default OSHOB here. Calculate in bytes here. */
+		if (oshob_info->platform_type == INTEL_MID_CPU_CHIP_TANGIER)
+			buff_size = OSHOB_SCU_BUF_MRFLD_DW_SIZE*4;
+		else
+			buff_size = OSHOB_SCU_BUF_BASE_DW_SIZE*4;
+
+		ret = intel_scu_ipc_read_oshob(
+			(u8 *)(scu_trace),
+			buff_size,
+			offsetof(struct scu_ipc_oshob, scutxl));
 
 		if (ret != 0) {
 			pr_err("Cannot read SCU data\n");
@@ -2054,20 +2069,16 @@ static int oshob_init(void)
 			goto exit;
 		}
 	    } else {
-		/* Use extended OSHOB here. */
+		/* Use extended OSHOB here. Calculate in bytes here. */
+		if (oshob_info->platform_type == INTEL_MID_CPU_CHIP_TANGIER)
+			buff_size = OSHOB_SCU_BUF_MRFLD_DW_SIZE*4;
+		else
+			buff_size = OSHOB_SCU_BUF_BASE_DW_SIZE*4;
 
-		if (oshob_info->platform_type == INTEL_MID_CPU_CHIP_TANGIER) {
-			ret = intel_scu_ipc_read_oshob(
-				(u8 *)(scu_trace),
-				OSHOB_SCU_BUFFER_SIZE_BYTES,
-				offsetof(struct scu_ipc_oshob_extend,
-					 scutxl_ptr));
-		} else
-			ret = intel_scu_ipc_read_oshob(
-				(u8 *)(scu_trace),
-				4,
-				offsetof(struct scu_ipc_oshob_extend,
-					 scutxl_ptr));
+		ret = intel_scu_ipc_read_oshob(
+			(u8 *)(scu_trace),
+			buff_size,
+			offsetof(struct scu_ipc_oshob_extend, scutxl));
 
 		if (ret != 0) {
 			pr_err("Cannot read SCU data\n");
@@ -2088,8 +2099,8 @@ static int oshob_init(void)
 	}
 
 	if (oshob_info->platform_type == INTEL_MID_CPU_CHIP_TANGIER) {
-		for (i = 0; i < OSHOB_SCU_BUFFER_SIZE; i++)
-			pr_warn("BOOT] SCU_TR[%d]=0x%08x\n", i, scu_trace[i]);
+		for (i = 0; i < OSHOB_SCU_BUF_MRFLD_DW_SIZE; i++)
+			pr_warn("[BOOT] SCU_TR[%d]=0x%08x\n", i, scu_trace[i]);
 	} else
 		pr_warn("[BOOT] SCU_TR=0x%08x (oshob)\n", scu_trace[0]);
 
