@@ -121,6 +121,9 @@
 
 #define BQ24261_TS_MASK			(0x01 << 3)
 #define BQ24261_TS_ENABLED		(0x01 << 3)
+#define BQ24261_BOOST_ILIM_MASK		(0x01 << 4)
+#define BQ24261_BOOST_ILIM_500mA	(0x0)
+#define BQ24261_BOOST_ILIM_1A		(0x01 << 4)
 
 #define BQ24261_SAFETY_TIMER_MASK	(0x03 << 5)
 #define BQ24261_SAFETY_TIMER_40MIN	0x00
@@ -567,8 +570,13 @@ static inline int bq24261_tmr_ntc_init(struct bq24261_charger *chip)
 	if (chip->pdata->is_ts_enabled)
 		reg_val |= BQ24261_TS_ENABLED;
 
+	/* Check if boost mode current configuration is above 1A*/
+	if (chip->pdata->boost_mode_mA >= 1000)
+		reg_val |= BQ24261_BOOST_ILIM_1A;
+
 	ret = bq24261_read_modify_reg(chip->client, BQ24261_ST_NTC_MON_ADDR,
-			BQ24261_TS_MASK|BQ24261_SAFETY_TIMER_MASK, reg_val);
+			BQ24261_TS_MASK|BQ24261_SAFETY_TIMER_MASK|
+			BQ24261_BOOST_ILIM_MASK, reg_val);
 
 	return ret;
 }
