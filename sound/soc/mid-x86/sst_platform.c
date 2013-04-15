@@ -909,6 +909,10 @@ static struct snd_compr_ops sst_platform_compr_ops = {
 
 static int __devinit sst_soc_probe(struct snd_soc_platform *platform)
 {
+	struct sst_data *ctx = snd_soc_platform_get_drvdata(platform);
+	struct soft_platform_id spid;
+
+	memcpy(&spid, ctx->pdata->spid, sizeof(spid));
 	pr_debug("Enter:%s\n", __func__);
 #ifdef CONFIG_PRH_TEMP_WA_FOR_SPID
 	return sst_platform_clv_init(platform);
