@@ -1,7 +1,6 @@
 /*************************************************************************/ /*!
-@Title          SGX kernel services structues/functions
+@Title          Services Ion synchronisation integration
 @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
-@Description    SGX initialisation script definitions.
 @License        Dual MIT/GPLv2
 
 The contents of this file are subject to the MIT license as set out below.
@@ -39,68 +38,36 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */ /**************************************************************************/
-#ifndef __SGXSCRIPT_H__
-#define __SGXSCRIPT_H__
 
-#include "sgxfeaturedefs.h"
-#if defined (__cplusplus)
-extern "C" {
-#endif
+#include "img_defs.h"
+#include "img_types.h"
+#include "servicesint.h"
 
-#define	SGX_MAX_INIT_COMMANDS	64
-#define	SGX_MAX_PRINT_COMMANDS	96
-#define	SGX_MAX_DEINIT_COMMANDS	16
+#ifndef __ION_SYNC_H__
+#define __ION_SYNC_H__
 
-typedef	enum _SGX_INIT_OPERATION
+typedef struct _PVRSRV_ION_SYNC_INFO_ {
+	PVRSRV_KERNEL_SYNC_INFO *psSyncInfo;
+	IMG_HANDLE				hUnique;
+	IMG_UINT32				ui32RefCount;
+	IMG_UINT64				ui64Stamp;
+} PVRSRV_ION_SYNC_INFO;
+
+PVRSRV_ERROR PVRSRVIonBufferSyncAcquire(IMG_HANDLE hUnique,
+										IMG_HANDLE hDevCookie,
+										IMG_HANDLE hDevMemContext,
+										PVRSRV_ION_SYNC_INFO **ppsIonSyncInfo);
+
+IMG_VOID PVRSRVIonBufferSyncRelease(PVRSRV_ION_SYNC_INFO *psIonSyncInfo);
+
+static INLINE PVRSRV_KERNEL_SYNC_INFO *IonBufferSyncGetKernelSyncInfo(PVRSRV_ION_SYNC_INFO *psIonSyncInfo)
 {
-	SGX_INIT_OP_ILLEGAL = 0,
-	SGX_INIT_OP_WRITE_HW_REG,
-	SGX_INIT_OP_READ_HW_REG,
-	SGX_INIT_OP_PRINT_HW_REG,
-#if defined(PDUMP)
-	SGX_INIT_OP_PDUMP_HW_REG,
-#endif
-	SGX_INIT_OP_HALT
-} SGX_INIT_OPERATION;
-
-typedef union _SGX_INIT_COMMAND
-{
-	SGX_INIT_OPERATION eOp;
-	struct {
-		SGX_INIT_OPERATION eOp;
-		IMG_UINT32 ui32Offset;
-		IMG_UINT32 ui32Value;
-	} sWriteHWReg;
-	struct {
-		SGX_INIT_OPERATION eOp;
-		IMG_UINT32 ui32Offset;
-	} sReadHWReg;
-#if defined(PDUMP)
-	struct {
-		SGX_INIT_OPERATION eOp;
-		IMG_UINT32 ui32Offset;
-		IMG_UINT32 ui32Value;
-	} sPDumpHWReg;
-#endif
-} SGX_INIT_COMMAND;
-
-typedef struct _SGX_INIT_SCRIPTS_
-{
-	SGX_INIT_COMMAND asInitCommandsPart1[SGX_MAX_INIT_COMMANDS];
-	SGX_INIT_COMMAND asInitCommandsPart2[SGX_MAX_INIT_COMMANDS];
-	SGX_INIT_COMMAND asDeinitCommands[SGX_MAX_DEINIT_COMMANDS];
-#if defined(SGX_FEATURE_MP)
-	SGX_INIT_COMMAND asSGXREGDebugCommandsPart1[SGX_MAX_PRINT_COMMANDS];
-#endif
-	SGX_INIT_COMMAND *apsSGXREGDebugCommandsPart2[SGX_FEATURE_MP_CORE_COUNT_3D];
-} SGX_INIT_SCRIPTS;
-
-#if defined(__cplusplus)
+	return psIonSyncInfo->psSyncInfo;
 }
-#endif
 
-#endif /* __SGXSCRIPT_H__ */
+static INLINE IMG_UINT64 IonBufferSyncGetStamp(PVRSRV_ION_SYNC_INFO *psIonSyncInfo)
+{
+	return psIonSyncInfo->ui64Stamp;
+}
 
-/*****************************************************************************
- End of file (sgxscript.h)
-*****************************************************************************/
+#endif /* __ION_SYNC_H__ */

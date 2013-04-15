@@ -82,6 +82,11 @@ pvrsrvkm-y += \
 	services4/srvkm/env/linux/ion.o
 endif
 
+ifeq ($(PVR_ANDROID_NATIVE_WINDOW_HAS_SYNC),1)
+pvrsrvkm-y += \
+	services4/srvkm/env/linux/pvr_sync.o
+endif
+
 ifeq ($(TTRACE),1)
 pvrsrvkm-y += \
 	services4/srvkm/common/ttrace.o
@@ -153,7 +158,7 @@ pvrsrvkm-y += \
  services4/srvkm/env/linux/pvr_drm.o
 
 ccflags-y += \
- -I$(KERNELDIR)/include/drm \
+ -Iinclude/drm \
  -I$(TOP)/services4/include/env/linux \
 
 ifeq ($(PVR_DRI_DRM_NOT_PCI),1)

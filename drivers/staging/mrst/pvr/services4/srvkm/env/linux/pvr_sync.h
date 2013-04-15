@@ -1,7 +1,9 @@
 /*************************************************************************/ /*!
-@Title          SGX kernel services structues/functions
+@File           pvr_sync.c
+@Title          Kernel sync driver
 @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
-@Description    SGX initialisation script definitions.
+@Description    Version numbers and strings for PVR Consumer services
+				components.
 @License        Dual MIT/GPLv2
 
 The contents of this file are subject to the MIT license as set out below.
@@ -39,68 +41,32 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */ /**************************************************************************/
-#ifndef __SGXSCRIPT_H__
-#define __SGXSCRIPT_H__
 
-#include "sgxfeaturedefs.h"
-#if defined (__cplusplus)
-extern "C" {
-#endif
+#ifndef _PVR_SYNC_H
+#define _PVR_SYNC_H
 
-#define	SGX_MAX_INIT_COMMANDS	64
-#define	SGX_MAX_PRINT_COMMANDS	96
-#define	SGX_MAX_DEINIT_COMMANDS	16
+#include <linux/seq_file.h>
+#include <linux/sync.h>
 
-typedef	enum _SGX_INIT_OPERATION
-{
-	SGX_INIT_OP_ILLEGAL = 0,
-	SGX_INIT_OP_WRITE_HW_REG,
-	SGX_INIT_OP_READ_HW_REG,
-	SGX_INIT_OP_PRINT_HW_REG,
-#if defined(PDUMP)
-	SGX_INIT_OP_PDUMP_HW_REG,
-#endif
-	SGX_INIT_OP_HALT
-} SGX_INIT_OPERATION;
+#include "pvr_sync_user.h"
+#include "servicesint.h" // PVRSRV_DEVICE_SYNC_OBJECT
 
-typedef union _SGX_INIT_COMMAND
-{
-	SGX_INIT_OPERATION eOp;
-	struct {
-		SGX_INIT_OPERATION eOp;
-		IMG_UINT32 ui32Offset;
-		IMG_UINT32 ui32Value;
-	} sWriteHWReg;
-	struct {
-		SGX_INIT_OPERATION eOp;
-		IMG_UINT32 ui32Offset;
-	} sReadHWReg;
-#if defined(PDUMP)
-	struct {
-		SGX_INIT_OPERATION eOp;
-		IMG_UINT32 ui32Offset;
-		IMG_UINT32 ui32Value;
-	} sPDumpHWReg;
-#endif
-} SGX_INIT_COMMAND;
+/* services4 internal interface */
 
-typedef struct _SGX_INIT_SCRIPTS_
-{
-	SGX_INIT_COMMAND asInitCommandsPart1[SGX_MAX_INIT_COMMANDS];
-	SGX_INIT_COMMAND asInitCommandsPart2[SGX_MAX_INIT_COMMANDS];
-	SGX_INIT_COMMAND asDeinitCommands[SGX_MAX_DEINIT_COMMANDS];
-#if defined(SGX_FEATURE_MP)
-	SGX_INIT_COMMAND asSGXREGDebugCommandsPart1[SGX_MAX_PRINT_COMMANDS];
-#endif
-	SGX_INIT_COMMAND *apsSGXREGDebugCommandsPart2[SGX_FEATURE_MP_CORE_COUNT_3D];
-} SGX_INIT_SCRIPTS;
+int PVRSyncDeviceInit(void);
+void PVRSyncDeviceDeInit(void);
+void PVRSyncUpdateAllSyncs(void);
+PVRSRV_ERROR
+PVRSyncPatchCCBKickSyncInfos(IMG_HANDLE    ahSyncs[SGX_MAX_SRC_SYNCS_TA],
+		      PVRSRV_DEVICE_SYNC_OBJECT asDevSyncs[SGX_MAX_SRC_SYNCS_TA],
+							 IMG_UINT32 *pui32NumSrcSyncs);
+PVRSRV_ERROR
+PVRSyncPatchTransferSyncInfos(IMG_HANDLE    ahSyncs[SGX_MAX_SRC_SYNCS_TA],
+			  PVRSRV_DEVICE_SYNC_OBJECT asDevSyncs[SGX_MAX_SRC_SYNCS_TA],
+							 IMG_UINT32 *pui32NumSrcSyncs);
+PVRSRV_ERROR
+PVRSyncFencesToSyncInfos(PVRSRV_KERNEL_SYNC_INFO *apsSyncs[],
+						 IMG_UINT32 *pui32NumSyncs,
+						 struct sync_fence *apsFence[SGX_MAX_SRC_SYNCS_TA]);
 
-#if defined(__cplusplus)
-}
-#endif
-
-#endif /* __SGXSCRIPT_H__ */
-
-/*****************************************************************************
- End of file (sgxscript.h)
-*****************************************************************************/
+#endif /* _PVR_SYNC_H */

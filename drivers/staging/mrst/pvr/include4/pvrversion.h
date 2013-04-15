@@ -20,7 +20,10 @@ all copies or substantial portions of the Software.
 
 Alternatively, the contents of this file may be used under the terms of
 the GNU General Public License Version 2 ("GPL") in which case the provisions
-of GPL are applicable instead of those above.  If you wish to allow use of your version of this file only under the terms of GPL, and not to allow others to use your version of this file under the terms
+of GPL are applicable instead of those above.
+
+If you wish to allow use of your version of this file only under the terms of
+GPL, and not to allow others to use your version of this file under the terms
 of the MIT license, indicate your decision by deleting the provisions above
 and replace them with the notice and other provisions required by GPL as set
 out in the file called "GPL-COPYING" included in this distribution. If you do
@@ -46,21 +49,20 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define PVR_STR2(X) PVR_STR(X)
 
 #define PVRVERSION_MAJ               1
-#define PVRVERSION_MIN               9
-#define PVRVERSION_BRANCH            19
+#define PVRVERSION_MIN               10
 
 #define PVRVERSION_FAMILY           "sgxddk"
-#define PVRVERSION_BRANCHNAME       "1.9"
-#define PVRVERSION_BUILD             2309806
-#define PVRVERSION_BSCONTROL        "INTEL_SGX_DDK_Android"
+#define PVRVERSION_BRANCHNAME       "1.10"
+#define PVRVERSION_BUILD             2359475
+#define PVRVERSION_BSCONTROL        "INTEL_SGX_DDK_Android_RSCompute"
 
-#define PVRVERSION_STRING           "INTEL_SGX_DDK_Android sgxddk 19 1.9@" PVR_STR2(PVRVERSION_BUILD)
-#define PVRVERSION_STRING_SHORT     "1.9@" PVR_STR2(PVRVERSION_BUILD)
+#define PVRVERSION_STRING           "INTEL_SGX_DDK_Android_RSCompute sgxddk 1.10@" PVR_STR2(PVRVERSION_BUILD)
+#define PVRVERSION_STRING_SHORT     "1.10@" PVR_STR2(PVRVERSION_BUILD)
 
 #define COPYRIGHT_TXT               "Copyright (c) Imagination Technologies Ltd. All Rights Reserved."
 
-#define PVRVERSION_BUILD_HI          230
-#define PVRVERSION_BUILD_LO          9806
+#define PVRVERSION_BUILD_HI          235
+#define PVRVERSION_BUILD_LO          9475
 #define PVRVERSION_STRING_NUMERIC    PVR_STR2(PVRVERSION_MAJ) "." PVR_STR2(PVRVERSION_MIN) "." PVR_STR2(PVRVERSION_BUILD_HI) "." PVR_STR2(PVRVERSION_BUILD_LO)
 
 #endif /* _PVRVERSION_H_ */

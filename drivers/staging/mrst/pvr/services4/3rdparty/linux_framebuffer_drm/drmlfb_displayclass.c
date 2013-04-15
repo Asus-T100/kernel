@@ -1013,37 +1013,14 @@ static PVRSRV_ERROR CreateDCSwapChain(IMG_HANDLE hDevice,
 
 	psDevInfo = (MRSTLFB_DEVINFO*)hDevice;
 
-
 	if(ui32BufferCount > psDevInfo->sDisplayInfo.ui32MaxSwapChainBuffers)
 	{
 		return (PVRSRV_ERROR_TOOMANYBUFFERS);
 	}
 
-
 	ulSwapChainLength = ui32BufferCount + 6;
 
-
-	if(psDstSurfAttrib->pixelformat != psDevInfo->sDisplayFormat.pixelformat
-	|| psDstSurfAttrib->sDims.ui32ByteStride != psDevInfo->sDisplayDim.ui32ByteStride
-	|| psDstSurfAttrib->sDims.ui32Width != psDevInfo->sDisplayDim.ui32Width
-	|| psDstSurfAttrib->sDims.ui32Height != psDevInfo->sDisplayDim.ui32Height)
-	{
-
-		return (PVRSRV_ERROR_INVALID_PARAMS);
-	}
-
-	if(psDstSurfAttrib->pixelformat != psSrcSurfAttrib->pixelformat
-	|| psDstSurfAttrib->sDims.ui32ByteStride != psSrcSurfAttrib->sDims.ui32ByteStride
-	|| psDstSurfAttrib->sDims.ui32Width != psSrcSurfAttrib->sDims.ui32Width
-	|| psDstSurfAttrib->sDims.ui32Height != psSrcSurfAttrib->sDims.ui32Height)
-	{
-
-		return (PVRSRV_ERROR_INVALID_PARAMS);
-	}
-
-
 	UNREFERENCED_PARAMETER(ui32Flags);
-
 
 	psSwapChain = (MRSTLFB_SWAPCHAIN*)MRSTLFBAllocKernelMem(sizeof(MRSTLFB_SWAPCHAIN));
 	if(!psSwapChain)

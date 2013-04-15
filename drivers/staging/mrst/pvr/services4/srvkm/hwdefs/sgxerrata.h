@@ -167,13 +167,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 		#define SGX_CORE_REV	SGX_CORE_REV_HEAD
 	#endif
 
-	#if SGX_CORE_REV == 101
-		#define FIX_HW_BRN_25499/* Workaround in sgx featuredefs */
-		#define FIX_HW_BRN_25503/* Workaround in code (services) */
-		#define FIX_HW_BRN_26620/* Workaround in services (srvkm) */
-		#define FIX_HW_BRN_28011/* Workaround in services (srvkm) */
-		#define FIX_HW_BRN_34028/* Workaround in services (srvkm) */
-	#else
 	#if SGX_CORE_REV == 110
 		#define FIX_HW_BRN_25503/* Workaround in code (services) */
 		#define FIX_HW_BRN_26620/* Workaround in services (srvkm) */
@@ -196,7 +189,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 		/* RTL head - no BRNs to apply */
 	#else
 		#error "sgxerrata.h: SGX540 Core Revision unspecified"
-	#endif
 	#endif
 	#endif
 	#endif
@@ -312,13 +304,13 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 		#if defined(SUPPORT_SGX_LOW_LATENCY_SCHEDULING) && defined(SGX_FEATURE_MP)
 			#define FIX_HW_BRN_33657/* workaround in ukernel*/
 		#endif
-	#define FIX_HW_BRN_36513 /* workaround in uKernel and Services */
+		#define FIX_HW_BRN_36513 /* workaround in uKernel and Services */
 	#else
 	#if SGX_CORE_REV == 303
 		#if defined(SUPPORT_SGX_LOW_LATENCY_SCHEDULING) && defined(SGX_FEATURE_MP)
 			#define FIX_HW_BRN_33657/* workaround in ukernel*/
 		#endif
-	#define FIX_HW_BRN_36513 /* workaround in uKernel and Services */
+		#define FIX_HW_BRN_36513 /* workaround in uKernel and Services */
 	#else
 	#if SGX_CORE_REV == SGX_CORE_REV_HEAD
 		#if defined(SUPPORT_SGX_LOW_LATENCY_SCHEDULING) && defined(SGX_FEATURE_MP)
@@ -425,11 +417,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 		#define SGX_CORE_REV	SGX_CORE_REV_HEAD
 	#endif
 
-	#if SGX_CORE_REV == 109
-		#define FIX_HW_BRN_29702/* Workaround in services */
-		#define FIX_HW_BRN_29823/* Workaround in services */
-		#define FIX_HW_BRN_31939/* workaround in uKernel */
-	#else
 	#if SGX_CORE_REV == 10131
 	#else
 	#if SGX_CORE_REV == 1014
@@ -440,7 +427,6 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 		/* RTL head - no BRNs to apply */
 	#else
 		#error "sgxerrata.h: SGX545 Core Revision unspecified"
-	#endif
 	#endif
 	#endif
 	#endif

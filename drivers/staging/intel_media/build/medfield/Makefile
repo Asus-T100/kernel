@@ -82,6 +82,7 @@ sgx-objs += $(ENVDIR)/osfunc.o \
 		$(ENVDIR)/event.o \
 		$(ENVDIR)/osperproc.o \
 		$(ENVDIR)/pvr_drm.o \
+		$(ENVDIR)/pvr_sync.o \
 		$(COMMONDIR)/buffer_manager.o \
 		$(COMMONDIR)/devicemem.o \
 		$(COMMONDIR)/deviceclass.o \
