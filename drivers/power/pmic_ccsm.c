@@ -321,15 +321,20 @@ exit:
 #ifdef CONFIG_DEBUG_FS
 static int pmic_chrgr_reg_show(struct seq_file *seq, void *unused)
 {
-	int ret;
 	long addr;
+	int ret;
+	u16 val1;
 	u8 val;
 
 	addr = *((u8 *)seq->private);
 
-	if ((addr == CHRGRIRQ1_ADDR) || (addr == CHGRIRQ0_ADDR))
-		val = ioread16(chc.pmic_intr_iomap);
-	else {
+	if (addr == CHRGRIRQ1_ADDR) {
+		val1 = ioread16(chc.pmic_intr_iomap);
+		val = (u8)(val1 >> 8);
+	} else if (addr == CHGRIRQ0_ADDR) {
+		val1 = ioread16(chc.pmic_intr_iomap);
+		val = (u8)val1;
+	} else {
 		ret = pmic_read_reg(addr, &val);
 		if (ret != 0) {
 			dev_err(chc.dev,
