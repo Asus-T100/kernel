@@ -1540,6 +1540,15 @@ static int lm49453_probe(struct snd_soc_codec *codec)
 	snd_soc_write(codec, LM49453_P0_AUDIO_PORT1_TX_MSB_REG, 0x00);
 	snd_soc_write(codec, LM49453_P0_AUDIO_PORT1_TDM_CHANNELS_REG, 0x1b);
 
+	/* Configure STEREO_LINK to allow left & right channel volume configuation independently */
+	snd_soc_update_bits(codec, LM49453_P0_DMIC1_LEVELL_REG, LM49453_P0_LEVELL_STEREO_LINK, 0);
+	snd_soc_update_bits(codec, LM49453_P0_DMIC2_LEVELL_REG, LM49453_P0_LEVELL_STEREO_LINK, 0);
+	snd_soc_update_bits(codec, LM49453_P0_ADC_LEVELL_REG, LM49453_P0_LEVELL_STEREO_LINK, 0);
+	snd_soc_update_bits(codec, LM49453_P0_DAC_HP_LEVELL_REG, LM49453_P0_LEVELL_STEREO_LINK, 0);
+	snd_soc_update_bits(codec, LM49453_P0_DAC_LO_LEVELL_REG, LM49453_P0_LEVELL_STEREO_LINK, 0);
+	snd_soc_update_bits(codec, LM49453_P0_DAC_LS_LEVELL_REG, LM49453_P0_LEVELL_STEREO_LINK, 0);
+	snd_soc_update_bits(codec, LM49453_P0_DAC_HA_LEVELL_REG, LM49453_P0_LEVELL_STEREO_LINK, 0);
+
 	return 0;
 }
 
