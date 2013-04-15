@@ -32,6 +32,8 @@
 #include <linux/proc_fs.h>
 #include <linux/pti.h>
 #include <linux/rpmsg.h>
+#include <linux/notifier.h>
+#include <linux/delay.h>
 #include <asm/intel_mid_rpmsg.h>
 
 #include <linux/io.h>
@@ -78,6 +80,10 @@
 /* Special indexes in error data */
 #define FABRIC_ERR_STS_IDX		0
 #define FABRIC_ERR_SIGNATURE_IDX	10
+
+/* Timeout in ms we wait SCU to generate dump on panic */
+#define SCU_PANIC_DUMP_TOUT		1
+#define SCU_PANIC_DUMP_RECHECK		5
 
 #define output_str(ret, out, size, a...)				\
 	do {								\
@@ -671,6 +677,42 @@ err1:
 	return err;
 }
 
+static int intel_fw_logging_panic_handler(struct notifier_block *this,
+					  unsigned long event, void *unused)
+{
+	unsigned int timeout = 0, count;
+	int i;
+
+	apic_scu_panic_dump();
+
+	do {
+		mdelay(SCU_PANIC_DUMP_TOUT);
+		read_scu_trace_hdr(&trace_hdr);
+	} while (trace_hdr.magic != TRACE_MAGIC &&
+		 timeout++ < SCU_PANIC_DUMP_RECHECK);
+
+	if (timeout > SCU_PANIC_DUMP_RECHECK) {
+		pr_info("Waiting for trace from SCU timed out!");
+		goto out;
+	}
+
+	pr_info("SCU trace on Kernel panic:");
+
+	count = sram_buf_sz / sizeof(u32);
+	for (i = 0; i < count; i++)
+		pr_info("[%d]:0x%08x\n", i,
+			readl(sram_trace_buf + i * sizeof(u32)));
+
+out:
+	return 0;
+}
+
+static struct notifier_block fw_logging_panic_notifier = {
+	.notifier_call	= intel_fw_logging_panic_handler,
+	.next		= NULL,
+	.priority	= INT_MAX
+};
+
 static int intel_fw_logging_probe(struct platform_device *pdev)
 {
 	int err = 0;
@@ -678,13 +720,27 @@ static int intel_fw_logging_probe(struct platform_device *pdev)
 	if (!sram_trace_buf) {
 		pr_err("No sram trace buffer available, skip SCU tracing init");
 		err = -ENODEV;
-		goto out;
+		goto err1;
 	}
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0) {
 		pr_info("No irq available, SCU tracing not available");
 		err = irq;
-		goto out;
+		goto err1;
+	}
+
+	err = atomic_notifier_chain_register(
+		&panic_notifier_list,
+		&fw_logging_panic_notifier);
+	if (err) {
+		pr_err("Failed to register notifier!");
+		goto err1;
+	}
+	irq = platform_get_irq(pdev, 0);
+	if (irq < 0) {
+		pr_info("No irq available, SCU tracing not available");
+		err = irq;
+		goto err2;
 	}
 
 	err = request_threaded_irq(irq, fw_logging_irq,
@@ -693,17 +749,21 @@ static int intel_fw_logging_probe(struct platform_device *pdev)
 				   &pdev->dev);
 	if (err) {
 		pr_err("Requesting irq failed");
-		goto out;
+		goto err2;
 	}
-out:
+	return err;
+err2:
+	atomic_notifier_chain_unregister(&panic_notifier_list,
+					 &fw_logging_panic_notifier);
+err1:
 	return err;
 }
 
 static int intel_fw_logging_remove(struct platform_device *pdev)
 {
 	free_irq(irq, &pdev->dev);
-
-	return 0;
+	return atomic_notifier_chain_unregister(&panic_notifier_list,
+						&fw_logging_panic_notifier);
 }
 
 static const struct platform_device_id intel_fw_logging_table[] = {
