@@ -3135,12 +3135,14 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 				sh_css_input_set_two_pixels_per_clock(false);
 			}
 
-			/*
-			 * Enable only if resolution is >= 5M for ISP2300
-			 */
-			if (!IS_ISP2400 && (width >= 2576 || height >= 1936)) {
-				sh_css_enable_raw_binning(true);
-				sh_css_input_set_two_pixels_per_clock(false);
+			if (!IS_ISP2400) {
+				/* enable raw binning for output >= 5M */
+				if (width >= 2576 || height >= 1936)
+					sh_css_enable_raw_binning(true);
+				/* enable 2ppc for CTP if output > 8M */
+				if (width > 3264 || height > 2448)
+					sh_css_input_set_two_pixels_per_clock(
+							true);
 			}
 		} else {
 			ret = __enable_continuous_mode(isp, false);
