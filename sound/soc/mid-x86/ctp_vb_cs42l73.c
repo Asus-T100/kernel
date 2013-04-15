@@ -181,13 +181,14 @@ int ctp_vb_init(struct snd_soc_pcm_runtime *runtime)
 	/* Keep the voice call paths active during
 	suspend. Mark the end points ignore_suspend */
 	snd_soc_dapm_ignore_suspend(dapm, "EAROUT");
-	snd_soc_dapm_ignore_suspend(dapm, "HPOUTA");
-	snd_soc_dapm_ignore_suspend(dapm, "HPOUTB");
-	snd_soc_dapm_ignore_suspend(dapm, "VSPOUT");
+	snd_soc_dapm_ignore_suspend(dapm, "Ext Spk");
+	snd_soc_dapm_ignore_suspend(dapm, "Headphone");
+	snd_soc_dapm_ignore_suspend(dapm, "Headset Mic");
+	snd_soc_dapm_ignore_suspend(dapm, "DMICA");
+	snd_soc_dapm_ignore_suspend(dapm, "DMICB");
 
 	snd_soc_dapm_disable_pin(dapm, "MIC2");
 	snd_soc_dapm_disable_pin(dapm, "SPKLINEOUT");
-	snd_soc_dapm_ignore_suspend(dapm, "SPKOUT");
 	mutex_lock(&codec->mutex);
 	snd_soc_dapm_sync(dapm);
 	mutex_unlock(&codec->mutex);

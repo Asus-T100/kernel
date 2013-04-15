@@ -273,11 +273,11 @@ static int merr_bb_init(struct snd_soc_pcm_runtime *runtime)
 	/* Keep the voice call paths active during
 	suspend. Mark the end points ignore_suspend */
 	snd_soc_dapm_ignore_suspend(dapm, "EAROUT");
-	snd_soc_dapm_ignore_suspend(dapm, "HPOUTA");
-	snd_soc_dapm_ignore_suspend(dapm, "HPOUTB");
-	snd_soc_dapm_ignore_suspend(dapm, "VSPINOUT");
-	snd_soc_dapm_ignore_suspend(dapm, "SPKLINEOUT");
-
+	snd_soc_dapm_ignore_suspend(dapm, "Ext Spk");
+	snd_soc_dapm_ignore_suspend(dapm, "Headphone");
+	snd_soc_dapm_ignore_suspend(dapm, "Headset Mic");
+	snd_soc_dapm_ignore_suspend(dapm, "DMICA");
+	snd_soc_dapm_ignore_suspend(dapm, "DMICB");
 	snd_soc_dapm_sync(dapm);
 	return ret;
 }
