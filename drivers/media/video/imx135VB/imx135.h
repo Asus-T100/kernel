@@ -157,6 +157,24 @@ static struct imx_reg const imx135_13M_25fps[] = {
 };
 static struct imx_reg const imx135_13M_24fps[] = {
 	GROUPED_PARAMETER_HOLD_ENABLE,
+	/* Clock Setting */
+	{IMX_8BIT, 0x011E, 0x13}, /* exck_freq [15:8]integer item */
+	{IMX_8BIT, 0x011F, 0x33}, /* exck_freq [7:0] decimal fraction item */
+	{IMX_8BIT, 0x0301, 0x05}, /* vt_pix_clk_div */
+	{IMX_8BIT, 0x0303, 0x01}, /* vt_sys_clk_div */
+	{IMX_8BIT, 0x0305, 0x0C}, /* op_pre_pll_clk_div */
+	{IMX_8BIT, 0x0309, 0x05}, /* op_pix_clk_div */
+	{IMX_8BIT, 0x030B, 0x01}, /* op_sys_clk_div */
+	{IMX_8BIT, 0x030C, 0x02}, /* op_pll_multiplier [10:8] */
+	{IMX_8BIT, 0x030D, 0x38}, /* op_pll_multiplier [7:0] */
+	{IMX_8BIT, 0x030E, 0x01}, /* pll_singledrive-enable 0:double,1:single */
+	/*
+	 * ckdiv_mode/src2div
+	 * [4] mdbck clock setting,0:auto,1:manual
+	 * [1:0] when ckdiv_mode is1, set same with opsys_div, only 1 or 2
+	 */
+	{IMX_8BIT, 0x3A06, 0x11},
+
 	/* Mode setting */
 	{IMX_8BIT, 0x0108, 0x03},
 	{IMX_8BIT, 0x0112, 0x0A},
@@ -3959,13 +3977,13 @@ struct imx_resolution imx_res_preview[] = {
 		.used = 0,
 	},
 	{
-		.desc = "imx135_13M_STILL_7fps",
-		.regs = imx135_13M_STILL_7fps,
+		.desc = "imx135_13M_24fps",
+		.regs = imx135_13M_24fps,
 		.width = 4208,
 		.height = 3120,
-		.fps = 7,
-		.pixels_per_line = 10000, /* consistent with regs arrays */
-		.lines_per_frame = 3800, /* consistent with regs arrays */
+		.fps = 24,
+		.pixels_per_line = 4572,
+		.lines_per_frame = 3310,
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.used = 0,
@@ -4238,13 +4256,13 @@ struct imx_resolution imx_res_still[] = {
 		.used = 0,
 	},
 	{
-		.desc = "imx135_13M_STILL_7fps",
-		.regs = imx135_13M_STILL_7fps,
-		.width = 4208	,
+		.desc = "imx135_13M_24fps",
+		.regs = imx135_13M_24fps,
+		.width = 4208,
 		.height = 3120,
 		.fps = 24,
-		.pixels_per_line = 10000, /* consistent with regs arrays */
-		.lines_per_frame = 3800, /* consistent with regs arrays */
+		.pixels_per_line = 4572,
+		.lines_per_frame = 3310,
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
 		.used = 0,
