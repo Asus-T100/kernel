@@ -154,27 +154,10 @@ static int sleep_main_thread(struct dwc_otg2 *otg)
 	return rc;
 }
 
-static void get_events(struct dwc_otg2 *otg,
-		u32 *otg_events,
-		u32 *adp_events,
-		u32 *user_events)
-{
-	unsigned long flags;
-
-	spin_lock_irqsave(&otg->lock, flags);
-
-	if (otg_events)
-		*otg_events = otg->otg_events;
-
-	if (adp_events)
-		*adp_events = otg->adp_events;
-
-	if (user_events)
-		*user_events = otg->user_events;
-	spin_unlock_irqrestore(&otg->lock, flags);
-}
-
 static void get_and_clear_events(struct dwc_otg2 *otg,
+				u32 otg_mask,
+				u32 adp_mask,
+				u32 user_mask,
 				u32 *otg_events,
 				u32 *adp_events,
 				u32 *user_events)
@@ -183,18 +166,20 @@ static void get_and_clear_events(struct dwc_otg2 *otg,
 
 	spin_lock_irqsave(&otg->lock, flags);
 
-	if (otg_events)
+	if (otg_events && (otg->otg_events & otg_mask)) {
 		*otg_events = otg->otg_events;
+		otg->otg_events &= ~otg_mask;
+	}
 
-	if (adp_events)
+	if (adp_events && (otg->adp_events & adp_mask)) {
 		*adp_events = otg->adp_events;
+		otg->adp_events &= ~adp_mask;
+	}
 
-	if (user_events)
+	if (user_events && (otg->user_events & user_mask)) {
 		*user_events = otg->user_events;
-
-	otg->otg_events = 0;
-	otg->adp_events = 0;
-	otg->user_events = 0;
+		otg->user_events &= ~user_mask;
+	}
 
 	spin_unlock_irqrestore(&otg->lock, flags);
 }
@@ -202,23 +187,23 @@ static void get_and_clear_events(struct dwc_otg2 *otg,
 static int check_event(struct dwc_otg2 *otg,
 		u32 otg_mask,
 		u32 adp_mask,
-		u32 user_mask)
+		u32 user_mask,
+		u32 *otg_events,
+		u32 *adp_events,
+		u32 *user_events)
 {
-	u32 otg_events = 0;
-	u32 adp_events = 0;
-	u32 user_events = 0;
-
-	get_events(otg, &otg_events, &adp_events, &user_events);
-	if ((otg_events & otg_mask) ||
-			(adp_events & adp_mask) ||
-			(user_events & user_mask)) {
+	get_and_clear_events(otg, otg_mask, adp_mask, user_mask,
+			otg_events, adp_events, user_events);
+	if ((*otg_events & otg_mask) ||
+			(*adp_events & adp_mask) ||
+			(*user_events & user_mask)) {
 		otg_dbg(otg, "Event occurred: "
 			"otg_events=%x, otg_mask=%x, "
 			"adp_events=%x, adp_mask=%x"
 			"user_events=%x, user_mask=%x",
-			otg_events, otg_mask,
-			adp_events, adp_mask,
-			user_events, user_mask);
+			*otg_events, otg_mask,
+			*adp_events, adp_mask,
+			*user_events, user_mask);
 		return 1;
 	}
 
@@ -238,12 +223,14 @@ static int sleep_until_event(struct dwc_otg2 *otg,
 		otg_dbg(otg, "Waiting for event (timeout=%d)...\n", timeout);
 		rc = sleep_main_thread_until_condition_timeout(otg,
 				check_event(otg, otg_mask,
-				adp_mask, user_mask), timeout);
+				adp_mask, user_mask, otg_events,
+				adp_events, user_events), timeout);
 	} else {
 		otg_dbg(otg, "Waiting for event (no timeout)...\n");
 		rc = sleep_main_thread_until_condition(otg,
 				check_event(otg, otg_mask,
-					adp_mask, user_mask));
+					adp_mask, user_mask, otg_events,
+					adp_events, user_events));
 	}
 	pm_runtime_get_sync(otg->dev);
 
@@ -252,12 +239,7 @@ static int sleep_until_event(struct dwc_otg2 *otg,
 	otg_write(otg, ADPEVTEN, 0);
 
 	otg_dbg(otg, "Woke up rc=%d\n", rc);
-	if (rc < 0)
-		goto done;
-	else
-		get_and_clear_events(otg, otg_events, adp_events, user_events);
 
-done:
 	return rc;
 }
 
@@ -1382,10 +1364,13 @@ static int dwc_otg_handle_notification(struct notifier_block *nb,
 		state = NOTIFY_OK;
 		break;
 	case USB_EVENT_VBUS:
-		if (val)
+		if (val) {
 			otg->otg_events |= OEVT_B_DEV_SES_VLD_DET_EVNT;
-		else
+			otg->otg_events &= ~OEVT_A_DEV_SESS_END_DET_EVNT;
+		} else {
 			otg->otg_events |= OEVT_A_DEV_SESS_END_DET_EVNT;
+			otg->otg_events &= ~OEVT_B_DEV_SES_VLD_DET_EVNT;
+		}
 		state = NOTIFY_OK;
 		break;
 	default:
