@@ -310,6 +310,7 @@ struct intel_xfer_ctx {
  * @arb_cfg: current arbiter priority configuration register
  * @sz_cfg: current program1 configuration register
  * @ip_freq: HSI controller IP frequency in kHz
+ * @tx_speed: HSI controller IP TX speed (<= ip_freq) in kHz
  * @brk_us_delay: Minimal BREAK sequence delay in us
  * @acwake_delay: Delay between ACWAKE assertion and data xfer
  * @stay_awake: Android wake lock for preventing entering low power mode
@@ -370,6 +371,7 @@ struct intel_controller {
 	u32			 sz_cfg;
 	/* HSI controller IP frequency */
 	unsigned int		 ip_freq;
+	unsigned int		 tx_speed;
 	unsigned int		 brk_us_delay;
 
 	/* AWCAKE delay (in usec) */
@@ -1580,7 +1582,7 @@ static void hsi_ctrl_clean_reset(struct intel_controller *intel_hsi)
 	hsi_enable_interrupt(ctrl, version, 0);
 	hsi_enable_error_interrupt(ctrl, version, 0);
 
-	/* Reset the controller to for the lines to low*/
+	/* Reset the HSI HW (Set HSI lines to low) */
 	iowrite32(1, ARASAN_REG(PROGRAM));
 	do{
 		program_reg = ioread32(ARASAN_REG(PROGRAM));
@@ -1848,17 +1850,32 @@ static int hsi_debug_show(struct seq_file *m, void *p)
 	seq_printf(m, "PCI Region  : 0x%p\n", intel_hsi->ctrl_io);
 	seq_printf(m, "DMA Region  : 0x%p\n", intel_hsi->dma_io);
 	seq_printf(m, "IRQ number  : %d\n", intel_hsi->irq);
-	seq_printf(m, "Frequcenty  : %d\n", intel_hsi->ip_freq);
+	seq_printf(m, "TX Frequen. : %d KHz\n", intel_hsi->tx_speed);
 	seq_printf(m, "Break delay : %d\n", intel_hsi->brk_us_delay);
 
+	/* Dump the DMA/PIO mapping */
+	seq_printf(m, "TX DMA/PIO  : [");
+	for (ch = 0; ch < HSI_MID_MAX_CHANNELS; ch++)
+		if (intel_hsi->tx_dma_ch[ch] == -1)
+			seq_printf(m, "PIO  ");
+		else
+			seq_printf(m, "DMA%d  ", intel_hsi->tx_dma_ch[ch]);
+
+	seq_printf(m, "]\nRX DMA/PIO  : [");
+	for (ch = 0; ch < HSI_MID_MAX_CHANNELS; ch++)
+		if (intel_hsi->rx_dma_ch[ch] == -1)
+			seq_printf(m, "PIO  ");
+		else
+			seq_printf(m, "DMA%d  ", intel_hsi->rx_dma_ch[ch]);
+
 	/* Current RX and TX states (0 for idle) */
-	seq_printf(m, "\nHSI States : RX:%d, TX:%d, Suspend:%d\n",
+	seq_printf(m, "]\nHSI States  : RX:%d, TX:%d, Suspend:%d\n",
 						intel_hsi->rx_state,
 						intel_hsi->tx_state,
 						intel_hsi->suspend_state);
 
-	seq_printf(m, "DMA Running: 0x%08x\n", intel_hsi->dma_running);
-	seq_printf(m, "DMA Resumed: 0x%08x\n", intel_hsi->dma_resumed);
+	seq_printf(m, "DMA Running : 0x%08x\n", intel_hsi->dma_running);
+	seq_printf(m, "DMA Resumed : 0x%08x\n", intel_hsi->dma_resumed);
 
 #ifdef CONFIG_HAS_WAKELOCK
 	/* Android PM support */
@@ -2301,11 +2318,11 @@ static void hsi_transfer(struct intel_controller *intel_hsi, int is_tx,
 	struct intel_dma_xfer	*done_dma_xfer;
 	struct intel_pio_ctx	*pio_ctx;
 
+	spin_lock_irqsave(&intel_hsi->sw_lock, flags);
 	queue = (is_tx) ?
 			&intel_hsi->tx_queue[hsi_ch] :
 			&intel_hsi->rx_queue[hsi_ch];
 
-	spin_lock_irqsave(&intel_hsi->sw_lock, flags);
 	if (list_empty(queue)) {
 		spin_unlock_irqrestore(&intel_hsi->sw_lock, flags);
 		return;
@@ -2612,7 +2629,7 @@ static int hsi_mid_async(struct hsi_msg *msg)
 	unsigned int hsi_ch, nents;
 	int dma_ch;
 	u8 dir;
-	int is_tx, old_status, err;
+	int is_tx, err;
 	unsigned long flags;
 
 	if (msg->break_frame)
@@ -2660,16 +2677,13 @@ static int hsi_mid_async(struct hsi_msg *msg)
 			return err;
 	}
 
-	old_status = msg->status;
-	msg->status = HSI_STATUS_QUEUED;
-
 	spin_lock_irqsave(&intel_hsi->sw_lock, flags);
 	if (unlikely((*queue_busy) & QUEUE_BUSY(hsi_ch))) {
-		msg->status = old_status;
 		if (dma_ch >= 0)
 			dma_unmap_sg(intel_hsi->pdev, msg->sgt.sgl, nents, dir);
 		err = -EBUSY;
 	} else {
+		msg->status = HSI_STATUS_QUEUED;
 		list_add_tail(&msg->link, queue);
 		err = 0;
 	}
@@ -2886,6 +2900,9 @@ static int hsi_mid_setup(struct hsi_client *cl)
 
 	/* Save the ACWAKE delay */
 	intel_hsi->acwake_delay = HSI_ACWAKE_DELAY;
+
+	/* Save the current TX speed */
+	intel_hsi->tx_speed = cl->tx_cfg.speed;
 
 	/* Compute the arbiter control register */
 	arb_cfg	= cl->tx_cfg.arb_mode;
@@ -3308,6 +3325,14 @@ static void hsi_dma_forward(struct intel_controller *intel_hsi,
 		dma_ctx->ongoing->msg = NULL;
 		list_del(&msg->link);
 		list_add_tail(&msg->link, &intel_hsi->fwd_queue);
+
+		/* Set to QUEUED the remaining items */
+		if (is_tx) {
+			struct hsi_msg *msg;
+			struct list_head *queue = &intel_hsi->tx_queue[hsi_ch];
+			list_for_each_entry(msg, queue, link)
+				msg->status = HSI_STATUS_QUEUED;
+		}
 	}
 	spin_unlock_irqrestore(&intel_hsi->sw_lock, flags);
 
