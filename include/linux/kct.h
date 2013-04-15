@@ -8,6 +8,8 @@
  * ones in libc/kernel/common/linux/kct.h, so that information can
  * be exchange between kernel and userspace throught netlink socket.
  */
+/* flags to optionally filter events on android property activation */
+#define	EV_FLAGS_PRIORITY_LOW	(1<<0)
 
 #  ifndef MAX_SB_N
 #    define MAX_SB_N 32
@@ -83,21 +85,79 @@ struct kct_packet {
 						     + sizeof(*(Attchmt)) + \
 			      (Attchmt)->size, ATTCHMT_ALIGNMENT))
 
-/* Helper functions */
-extern int kct_log_stat(const char *submitter_name,
-			const char *ev_name,
-			gfp_t flags) __weak;
-
-/* Raw API */
+/*
+ * User should use the macros below rather than those extern functions
+ * directly. Laters' declaration are only to set them __weak so
+ * that the macros works fine, and in case of users willing to use GFP_ATOMIC
+ * instead of GFP_KERNEL.
+ */
+/* Raw API (deprecated) */
 extern struct ct_event *kct_alloc_event(const char *submitter_name,
 					const char *ev_name,
 					enum ct_ev_type ev_type,
-					gfp_t flags) __weak;
+					gfp_t flags, uint eflags) __weak;
 extern int kct_add_attchmt(struct ct_event **ev,
 			   enum ct_attchmt_type at_type,
 			   unsigned int size,
 			   char *data, gfp_t flags)  __weak;
 extern void kct_free_event(struct ct_event *ev) __weak;
 extern int kct_log_event(struct ct_event *ev, gfp_t flags) __weak;
+
+/* API */
+#define MKFN(fn, ...) MKFN_N(fn, ##__VA_ARGS__, 8, 7, 6, 5, 4, 3, 2, 1, 0)(__VA_ARGS__)
+#define MKFN_N(fn, n0, n1, n2, n3, n4, n5, n6, n7, n, ...) fn##n
+#define kct_log(...) MKFN(__kct_log_, ##__VA_ARGS__)
+
+#define __kct_log_4(Type, Submitter_name, Ev_name, flags) \
+	do {  if (kct_alloc_event) {	\
+		struct ct_event *__ev =	\
+			kct_alloc_event(Submitter_name, Ev_name, Type, \
+				GFP_KERNEL, flags); \
+		if (__ev) { \
+			kct_log_event(__ev, GFP_KERNEL); \
+		} \
+	} } while (0)
+
+#define __kct_log_5(Type, Submitter_name, Ev_name, flags, Data0) \
+	do {  if (kct_alloc_event) {	\
+		struct ct_event *__ev =	\
+			kct_alloc_event(Submitter_name, Ev_name, Type, \
+				GFP_KERNEL, flags); \
+		if (__ev) { \
+			kct_add_attchmt(&__ev, CT_ATTCHMT_DATA0, \
+					strlen(Data0) + 1, Data0, GFP_KERNEL); \
+			kct_log_event(__ev, GFP_KERNEL); \
+		} \
+	} } while (0)
+
+#define __kct_log_6(Type, Submitter_name, Ev_name, flags, Data0, Data1) \
+	do {  if (kct_alloc_event) {	\
+		struct ct_event *__ev =	\
+			kct_alloc_event(Submitter_name, Ev_name, Type, \
+				GFP_KERNEL, flags); \
+		if (__ev) { \
+			kct_add_attchmt(&__ev, CT_ATTCHMT_DATA0, \
+					strlen(Data0) + 1, Data0, GFP_KERNEL); \
+			kct_add_attchmt(&__ev, CT_ATTCHMT_DATA1, \
+					strlen(Data1) + 1, Data1, GFP_KERNEL); \
+			kct_log_event(__ev, GFP_KERNEL); \
+		} \
+	} } while (0)
+
+#define __kct_log_7(Type, Submitter_name, Ev_name, flags, Data0, Data1, Data2) \
+	do {  if (kct_alloc_event) {	\
+		struct ct_event *__ev =	\
+			kct_alloc_event(Submitter_name, Ev_name, Type, \
+				GFP_KERNEL, flags); \
+		if (__ev) { \
+			kct_add_attchmt(&__ev, CT_ATTCHMT_DATA0, \
+					strlen(Data0) + 1, Data0, GFP_KERNEL); \
+			kct_add_attchmt(&__ev, CT_ATTCHMT_DATA1, \
+					strlen(Data1) + 1, Data1, GFP_KERNEL); \
+			kct_add_attchmt(&__ev, CT_ATTCHMT_DATA2, \
+					strlen(Data2) + 1, Data2, GFP_KERNEL); \
+			kct_log_event(__ev, GFP_KERNEL); \
+		} \
+	} } while (0)
 
 #endif /* !KCT_H_ */
