@@ -1957,7 +1957,7 @@ static int dwc3_cleanup_done_reqs(struct dwc3 *dwc, struct dwc3_ep *dep,
 					 * request in the request_list.
 					 */
 					dep->flags |= DWC3_EP_MISSED_ISOC;
-				} else if (!usb_endpoint_xfer_isoc(
+				} else if (dep->desc && !usb_endpoint_xfer_isoc(
 						dep->endpoint.desc)) {
 					dev_err(dwc->dev, "incomplete IN transfer %s\n",
 							dep->name);
@@ -1990,7 +1990,7 @@ static int dwc3_cleanup_done_reqs(struct dwc3 *dwc, struct dwc3_ep *dep,
 			break;
 	} while (1);
 
-	if (usb_endpoint_xfer_isoc(dep->endpoint.desc) &&
+	if (dep->desc && usb_endpoint_xfer_isoc(dep->endpoint.desc) &&
 			list_empty(&dep->req_queued)) {
 		if (list_empty(&dep->request_list)) {
 			/*
@@ -2019,6 +2019,7 @@ static void dwc3_endpoint_transfer_complete(struct dwc3 *dwc,
 {
 	unsigned		status = 0;
 	int			clean_busy;
+
 
 	if (event->status & DEPEVT_STATUS_BUSERR)
 		status = -ECONNRESET;
@@ -2104,6 +2105,12 @@ static void dwc3_endpoint_interrupt(struct dwc3 *dwc,
 
 	dev_vdbg(dwc->dev, "%s: %s\n", dep->name,
 			dwc3_ep_event_string(event->endpoint_event));
+
+	if (!dep->desc) {
+		dev_dbg(dwc->dev, "Interrupt, endpoint %s has been disabled\n",
+			dep->name);
+		return;
+	}
 
 	if (epnum == 0 || epnum == 1) {
 		dwc3_ep0_interrupt(dwc, event);
