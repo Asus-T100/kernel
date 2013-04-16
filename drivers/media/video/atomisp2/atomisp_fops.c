@@ -421,9 +421,8 @@ static int atomisp_open(struct file *file)
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
 	int ret;
-	struct atomisp_css_env atomisp_css_env;
 
-	atomisp_set_css_env(isp->firmware, &atomisp_css_env);
+	atomisp_set_css_env(isp);
 
 	dev_dbg(isp->dev, "open device %s\n", vdev->name);
 
@@ -455,7 +454,7 @@ static int atomisp_open(struct file *file)
 	}
 
 	/* Init ISP */
-	if (atomisp_css_init(isp, &atomisp_css_env)) {
+	if (atomisp_css_init(isp)) {
 		ret = -EINVAL;
 		goto error;
 	}

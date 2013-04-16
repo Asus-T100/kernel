@@ -44,10 +44,13 @@ struct atomisp_css_env {
 	struct ia_css_fw isp_css_fw;
 	struct ia_css_stream *stream;
 	struct ia_css_stream_config stream_config;
-	struct ia_css_pipe *pipes[ATOMISP_CSS2_PIPE_MAX];
-	struct ia_css_pipe_config pipe_configs[ATOMISP_CSS2_PIPE_MAX];
-	struct ia_css_pipe_extra_config pipe_extra_configs[ATOMISP_CSS2_PIPE_MAX];
-	unsigned int pipe_index;
+	struct ia_css_pipe *pipes[IA_CSS_PIPE_ID_NUM];
+	struct ia_css_pipe *multi_pipes[IA_CSS_PIPE_ID_NUM];
+	struct ia_css_pipe_config pipe_configs[IA_CSS_PIPE_ID_NUM];
+	struct ia_css_pipe_extra_config pipe_extra_configs[IA_CSS_PIPE_ID_NUM];
+	bool update_pipe[IA_CSS_PIPE_ID_NUM];
+	unsigned int curr_pipe;
+	enum atomisp_css2_stream_state stream_state;
 };
 
 struct atomisp_s3a_buf {

@@ -32,8 +32,7 @@
 
 #define CSS_DTRACE_VERBOSITY_LEVEL	5	/* Controls trace verbosity */
 
-int atomisp_css_init(struct atomisp_device *isp,
-			struct atomisp_css_env *atomisp_css_env)
+int atomisp_css_init(struct atomisp_device *isp)
 {
 	device_set_base_address(0);
 
@@ -57,7 +56,7 @@ int atomisp_css_init(struct atomisp_device *isp,
 	mmgr_set_base_address(HOST_ADDRESS(isp->mmu_l1_base));
 
 	/* Init ISP */
-	if (sh_css_init(&atomisp_css_env->isp_css_env,
+	if (sh_css_init(&isp->css_env.isp_css_env,
 			isp->firmware->data, isp->firmware->size)) {
 		dev_err(isp->dev, "css init failed --- bad firmware?\n");
 		return -EINVAL;
@@ -83,12 +82,11 @@ int atomisp_css_init(struct atomisp_device *isp,
 	return 0;
 }
 
-void atomisp_set_css_env(const struct firmware *firmware,
-			struct atomisp_css_env *atomisp_css_env)
+void atomisp_set_css_env(struct atomisp_device *isp)
 {
-	atomisp_css_env->isp_css_env = sh_css_default_env();
-	atomisp_css_env->isp_css_env.sh_env.alloc = atomisp_kernel_zalloc;
-	atomisp_css_env->isp_css_env.sh_env.free = atomisp_kernel_free;
+	isp->css_env.isp_css_env = sh_css_default_env();
+	isp->css_env.isp_css_env.sh_env.alloc = atomisp_kernel_zalloc;
+	isp->css_env.isp_css_env.sh_env.free = atomisp_kernel_free;
 }
 
 void atomisp_css_init_struct(struct atomisp_device *isp)

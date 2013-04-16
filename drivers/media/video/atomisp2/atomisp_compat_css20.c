@@ -133,8 +133,7 @@ static int hmm_get_mmu_base_addr(unsigned int *mmu_base_addr)
 	return 0;
 }
 
-int atomisp_css_init(struct atomisp_device *isp,
-			struct atomisp_css_env *atomisp_css_env)
+int atomisp_css_init(struct atomisp_device *isp)
 {
 	unsigned int mmu_base_addr;
 	int ret;
@@ -148,8 +147,7 @@ int atomisp_css_init(struct atomisp_device *isp,
 	}
 
 	/* Init ISP */
-	err = ia_css_init(&atomisp_css_env->isp_css_env,
-			  &atomisp_css_env->isp_css_fw,
+	err = ia_css_init(&isp->css_env.isp_css_env, &isp->css_env.isp_css_fw,
 			  (uint32_t)mmu_base_addr, IA_CSS_IRQ_TYPE_PULSE);
 	if (err != IA_CSS_SUCCESS) {
 		dev_err(isp->dev, "css init failed --- bad firmware?\n");
@@ -161,15 +159,14 @@ int atomisp_css_init(struct atomisp_device *isp,
 	return 0;
 }
 
-void atomisp_set_css_env(const struct firmware *firmware,
-			struct atomisp_css_env *atomisp_css_env)
+void atomisp_set_css_env(struct atomisp_device *isp)
 {
-	atomisp_css_env->isp_css_fw = {
-		.data = firmware->data,
-		.bytes = firmware->size,
+	isp->css_env.isp_css_fw = {
+		.data = isp->firmware->data,
+		.bytes = isp->firmware->size,
 	};
 
-	atomisp_css_env->isp_css_env = {
+	isp->css_env.isp_css_env = {
 		.cpu_mem_env.alloc = atomisp_kernel_zalloc,
 		.cpu_mem_env.free = atomisp_kernel_free,
 
@@ -199,11 +196,14 @@ void atomisp_set_css_env(const struct firmware *firmware,
 void atomisp_css_init_struct(struct atomisp_device *isp)
 {
 	isp->css_env.stream = NULL;
-	isp->css_env.pipes[0] = NULL;
-	ia_css_pipe_config_defaults(&isp->css_env.pipe_configs[0]);
-	ia_css_pipe_extra_config_defaults(
-				&isp->css_env.pipe_extra_configs[0]);
+	for (i = 0; i < IA_CSS_PIPE_MODE_NUM; i++) {
+		isp->css_env.pipes[i] = NULL;
+		ia_css_pipe_config_defaults(&isp->css_env.pipe_configs[i]);
+		ia_css_pipe_extra_config_defaults(
+				&isp->css_env.pipe_extra_configs[i]);
+	}
 	ia_css_stream_config_defaults(&isp->css_env.stream_config);
+	isp->css_env.curr_pipe = 0;
 }
 
 int atomisp_q_video_buffer_to_css(struct atomisp_device *isp,
@@ -217,7 +217,8 @@ int atomisp_q_video_buffer_to_css(struct atomisp_device *isp,
 	css_buf.type = css_buf_type;
 	css_buf.data.frame = vm_mem->vaddr;
 
-	err = ia_css_pipe_enqueue_buffer(isp->css_pipe, &css_buf);
+	err = ia_css_pipe_enqueue_buffer(isp->css_env.pipes[css_pipe_id],
+					 &css_buf);
 	if (err != IA_CSS_SUCCESS)
 		return -EINVAL;
 
@@ -232,7 +233,8 @@ int atomisp_q_s3a_buffer_to_css(struct atomisp_device *isp,
 
 	buffer.type = IA_CSS_BUFFER_TYPE_3A_STATISTICS;
 	buffer.data.stats_3a = s3a_buf->s3a_data;
-	if (ia_css_pipe_enqueue_buffer(isp->css_pipe, &buffer)) {
+	if (ia_css_pipe_enqueue_buffer(isp->css_env.pipes[css_pipe_id],
+					&buffer)) {
 		dev_dbg(isp->dev, "failed to q s3a stat buffer\n");
 		return -EINVAL;
 	}
@@ -248,7 +250,8 @@ int atomisp_q_dis_buffer_to_css(struct atomisp_device *isp,
 
 	buffer.type = IA_CSS_BUFFER_TYPE_DIS_STATISTICS;
 	buffer.data.stats_dvs = dis_buf->dis_data;
-	if (ia_css_pipe_enqueue_buffer(isp->css_pipe, &buffer)) {
+	if (ia_css_pipe_enqueue_buffer(isp->css_env.pipes[css_pipe_id],
+					&buffer)) {
 		dev_dbg(isp->dev, "failed to q dvs stat buffer\n");
 		return -EINVAL;
 	}
