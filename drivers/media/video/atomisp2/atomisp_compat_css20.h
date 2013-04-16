@@ -39,6 +39,11 @@ typedef struct ia_css_isp_3a_statistics atomisp_css_3a_data;
 #define CSS_PIPE_ID_ACC		IA_CSS_PIPE_ID_ACC
 #define CSS_PIPE_ID_NUM		IA_CSS_PIPE_ID_NUM
 
+/*
+ * Hide IA_ naming difference in otherwise common CSS macros.
+ */
+#define CSS_ID(val)	(IA_ ## val)
+
 struct atomisp_css_env {
 	struct ia_css_env isp_css_env;
 	struct ia_css_fw isp_css_fw;

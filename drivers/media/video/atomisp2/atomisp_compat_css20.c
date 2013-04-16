@@ -206,6 +206,16 @@ int atomisp_css_irq_translate(struct atomisp_device *isp,
 	return 0;
 }
 
+void atomisp_css_rx_get_irq_info(unsigned int *infos)
+{
+	ia_css_rx_get_irq_info(infos);
+}
+
+void atomisp_css_rx_clear_irq_info(unsigned int infos)
+{
+	ia_css_rx_clear_irq_info(infos);
+}
+
 void atomisp_set_css_env(struct atomisp_device *isp)
 {
 	isp->css_env.isp_css_fw = {

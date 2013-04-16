@@ -37,6 +37,11 @@ typedef union sh_css_s3a_data atomisp_css_3a_data;
 #define CSS_PIPE_ID_ACC		SH_CSS_ACC_PIPELINE
 #define CSS_PIPE_ID_NUM		SH_CSS_NR_OF_PIPELINES
 
+/*
+ * Hide SH_ naming difference in otherwise common CSS macros.
+ */
+#define CSS_ID(val)	(SH_ ## val)
+
 struct atomisp_css_env {
 	struct sh_css_env isp_css_env;
 };

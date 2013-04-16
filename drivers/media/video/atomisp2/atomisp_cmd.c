@@ -459,32 +459,32 @@ static void print_csi_rx_errors(struct atomisp_device *isp)
 {
 	u32 infos = 0;
 
-	sh_css_rx_get_interrupt_info(&infos);
+	atomisp_css_rx_get_irq_info(&infos);
 
 	dev_err(isp->dev, "CSI Receiver errors:\n");
 	if (infos & SH_CSS_RX_IRQ_INFO_BUFFER_OVERRUN)
 		dev_err(isp->dev, "  buffer overrun");
-	if (infos & SH_CSS_RX_IRQ_INFO_ERR_SOT)
+	if (infos & CSS_RX_IRQ_INFO_ERR_SOT)
 		dev_err(isp->dev, "  start-of-transmission error");
-	if (infos & SH_CSS_RX_IRQ_INFO_ERR_SOT_SYNC)
+	if (infos & CSS_RX_IRQ_INFO_ERR_SOT_SYNC)
 		dev_err(isp->dev, "  start-of-transmission sync error");
-	if (infos & SH_CSS_RX_IRQ_INFO_ERR_CONTROL)
+	if (infos & CSS_RX_IRQ_INFO_ERR_CONTROL)
 		dev_err(isp->dev, "  control error");
-	if (infos & SH_CSS_RX_IRQ_INFO_ERR_ECC_DOUBLE)
+	if (infos & CSS_RX_IRQ_INFO_ERR_ECC_DOUBLE)
 		dev_err(isp->dev, "  2 or more ECC errors");
-	if (infos & SH_CSS_RX_IRQ_INFO_ERR_CRC)
+	if (infos & CSS_RX_IRQ_INFO_ERR_CRC)
 		dev_err(isp->dev, "  CRC mismatch");
-	if (infos & SH_CSS_RX_IRQ_INFO_ERR_UNKNOWN_ID)
+	if (infos & CSS_RX_IRQ_INFO_ERR_UNKNOWN_ID)
 		dev_err(isp->dev, "  unknown error");
-	if (infos & SH_CSS_RX_IRQ_INFO_ERR_FRAME_SYNC)
+	if (infos & CSS_RX_IRQ_INFO_ERR_FRAME_SYNC)
 		dev_err(isp->dev, "  frame sync error");
-	if (infos & SH_CSS_RX_IRQ_INFO_ERR_FRAME_DATA)
+	if (infos & CSS_RX_IRQ_INFO_ERR_FRAME_DATA)
 		dev_err(isp->dev, "  frame data error");
-	if (infos & SH_CSS_RX_IRQ_INFO_ERR_DATA_TIMEOUT)
+	if (infos & CSS_RX_IRQ_INFO_ERR_DATA_TIMEOUT)
 		dev_err(isp->dev, "  data timeout");
-	if (infos & SH_CSS_RX_IRQ_INFO_ERR_UNKNOWN_ESC)
+	if (infos & CSS_RX_IRQ_INFO_ERR_UNKNOWN_ESC)
 		dev_err(isp->dev, "  unknown escape command entry");
-	if (infos & SH_CSS_RX_IRQ_INFO_ERR_LINE_SYNC)
+	if (infos & CSS_RX_IRQ_INFO_ERR_LINE_SYNC)
 		dev_err(isp->dev, "  line sync error");
 }
 
@@ -548,9 +548,9 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 		u32 rx_infos;
 
 		print_csi_rx_errors(isp);
-		sh_css_rx_get_interrupt_info(&rx_infos);
-		sh_css_rx_clear_interrupt_info(rx_infos);
-		/* TODO: handle SH_CSS_RX_IRQ_INFO_BUFFER_OVERRUN */
+		atomisp_css_rx_get_irq_info(&rx_infos);
+		atomisp_css_rx_clear_irq_info(rx_infos);
+		/* TODO: handle CSS_RX_IRQ_INFO_BUFFER_OVERRUN */
 	}
 
 	if (irq_infos & SH_CSS_IRQ_INFO_INVALID_FIRST_FRAME) {

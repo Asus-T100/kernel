@@ -30,6 +30,39 @@
 
 #include <media/videobuf-vmalloc.h>
 
+#define CSS_RX_IRQ_INFO_BUFFER_OVERRUN \
+	CSS_ID(CSS_RX_IRQ_INFO_BUFFER_OVERRUN)
+#define CSS_RX_IRQ_INFO_ENTER_SLEEP_MODE \
+	CSS_ID(CSS_RX_IRQ_INFO_ENTER_SLEEP_MODE)
+#define CSS_RX_IRQ_INFO_EXIT_SLEEP_MODE \
+	CSS_ID(CSS_RX_IRQ_INFO_EXIT_SLEEP_MODE)
+#define CSS_RX_IRQ_INFO_ECC_CORRECTED \
+	CSS_ID(CSS_RX_IRQ_INFO_ECC_CORRECTED)
+#define CSS_RX_IRQ_INFO_ERR_SOT \
+	CSS_ID(CSS_RX_IRQ_INFO_ERR_SOT)
+#define CSS_RX_IRQ_INFO_ERR_SOT_SYNC \
+	CSS_ID(CSS_RX_IRQ_INFO_ERR_SOT_SYNC)
+#define CSS_RX_IRQ_INFO_ERR_CONTROL \
+	CSS_ID(CSS_RX_IRQ_INFO_ERR_CONTROL)
+#define CSS_RX_IRQ_INFO_ERR_ECC_DOUBLE \
+	CSS_ID(CSS_RX_IRQ_INFO_ERR_ECC_DOUBLE)
+#define CSS_RX_IRQ_INFO_ERR_CRC \
+	CSS_ID(CSS_RX_IRQ_INFO_ERR_CRC)
+#define CSS_RX_IRQ_INFO_ERR_UNKNOWN_ID \
+	CSS_ID(CSS_RX_IRQ_INFO_ERR_UNKNOWN_ID)
+#define CSS_RX_IRQ_INFO_ERR_FRAME_SYNC \
+	CSS_ID(CSS_RX_IRQ_INFO_ERR_FRAME_SYNC)
+#define CSS_RX_IRQ_INFO_ERR_FRAME_DATA \
+	CSS_ID(CSS_RX_IRQ_INFO_ERR_FRAME_DATA)
+#define CSS_RX_IRQ_INFO_ERR_DATA_TIMEOUT \
+	CSS_ID(CSS_RX_IRQ_INFO_ERR_DATA_TIMEOUT)
+#define CSS_RX_IRQ_INFO_ERR_UNKNOWN_ESC \
+	CSS_ID(CSS_RX_IRQ_INFO_ERR_UNKNOWN_ESC)
+#define CSS_RX_IRQ_INFO_ERR_LINE_SYNC \
+	CSS_ID(CSS_RX_IRQ_INFO_ERR_LINE_SYNC)
+#define CSS_RX_IRQ_INFO_INIT_TIMEOUT \
+	CSS_ID(CSS_RX_IRQ_INFO_INIT_TIMEOUT)
+
 struct atomisp_device;
 
 void atomisp_set_css_env(struct atomisp_device *isp);
@@ -46,6 +79,10 @@ void atomisp_css_init_struct(struct atomisp_device *isp);
 
 int atomisp_css_irq_translate(struct atomisp_device *isp,
 			      unsigned int *infos);
+
+void atomisp_css_rx_get_irq_info(unsigned int *infos);
+
+void atomisp_css_rx_clear_irq_info(unsigned int infos);
 
 int atomisp_q_video_buffer_to_css(struct atomisp_device *isp,
 			struct videobuf_vmalloc_memory *vm_mem,
