@@ -233,7 +233,8 @@ static void sst_do_recovery(struct intel_sst_drv *sst)
 #endif
 	dump_sst_crash_area();
 
-#ifdef CONFIG_DEBUG_FS
+/*FIXME Disabling IRAM/DRAM dump for timeout issues */
+#if 0
 	if (sst_drv_ctx->ops->set_bypass) {
 
 		sst_drv_ctx->ops->set_bypass(true);
