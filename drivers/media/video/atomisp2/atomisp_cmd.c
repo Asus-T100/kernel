@@ -3009,13 +3009,6 @@ static int __enable_continuous_mode(struct atomisp_device *isp, bool enable)
 	atomisp_css_enable_cont_capt(isp, enable,
 				!isp->isp_subdev.continuous_viewfinder->val);
 
-	/*
-	 * WORKROUND: To be removed when NUM_CONTINUOUS_FRAMES set to 10
-	 * for ISP2400A0
-	 */
-	if ((intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER)
-		&& (isp->isp_subdev.continuous_raw_buffer_size->val > 5))
-		isp->isp_subdev.continuous_raw_buffer_size->val = 5;
 	if (atomisp_css_continuous_set_num_raw_frames(isp,
 			isp->isp_subdev.continuous_raw_buffer_size->val)) {
 		dev_err(isp->dev, "css_continuous_set_num_raw_frames failed\n");
@@ -3783,21 +3776,13 @@ int atomisp_offline_capture_configure(struct atomisp_device *isp,
 	isp->params.offline_parm = *cvf_config;
 
 	if (isp->params.offline_parm.num_captures) {
-		if (isp->streaming == ATOMISP_DEVICE_STREAMING_DISABLED) {
-			int num_raw_frames =
-				min_t(int, ATOMISP_CONT_RAW_FRAMES,
-				      isp->params.offline_parm.num_captures
-				      + 3);
-			/* WORKROUND: To be removed when NUM_CONTINUOUS_FRAMES set to 10 */
-			if ((intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2
-				|| intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER)
-				&& (num_raw_frames > 5))
-				num_raw_frames = 5;
+		if (isp->streaming == ATOMISP_DEVICE_STREAMING_DISABLED)
 			/* TODO: this can be removed once user-space
 			 *       has been updated to use control API */
 			isp->isp_subdev.continuous_raw_buffer_size->val =
-				num_raw_frames;
-		}
+				min_t(int, ATOMISP_CONT_RAW_FRAMES,
+				      isp->params.offline_parm.num_captures
+				      + 3);
 
 		isp->isp_subdev.continuous_mode->val = true;
 	} else {
