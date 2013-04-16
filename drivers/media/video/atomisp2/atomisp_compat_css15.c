@@ -82,6 +82,26 @@ int atomisp_css_init(struct atomisp_device *isp)
 	return 0;
 }
 
+void atomisp_css_uninit(struct atomisp_device *isp)
+{
+	sh_css_uninit();
+
+	/* store L1 base address for next time we init the CSS */
+	isp->mmu_l1_base = (void *)sh_css_mmu_get_page_table_base_index();
+}
+
+void atomisp_css_suspend(void)
+{
+	sh_css_suspend();
+}
+
+int atomisp_css_resume(struct atomisp_device *isp)
+{
+	sh_css_resume();
+
+	return 0;
+}
+
 void atomisp_set_css_env(struct atomisp_device *isp)
 {
 	isp->css_env.isp_css_env = sh_css_default_env();

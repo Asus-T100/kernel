@@ -356,7 +356,7 @@ int atomisp_reset(struct atomisp_device *isp)
 	int ret = 0;
 
 	dev_dbg(isp->dev, "%s\n", __func__);
-	sh_css_suspend();
+	atomisp_css_suspend();
 	ret = pm_runtime_put_sync(isp->dev);
 	if (ret < 0) {
 		dev_err(isp->dev, "can not disable ISP power\n");
@@ -365,7 +365,7 @@ int atomisp_reset(struct atomisp_device *isp)
 		if (ret < 0)
 			v4l2_err(&atomisp_dev, "can not enable ISP power\n");
 	}
-	sh_css_resume();
+	atomisp_css_resume(isp);
 	return ret;
 }
 

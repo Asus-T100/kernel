@@ -159,6 +159,37 @@ int atomisp_css_init(struct atomisp_device *isp)
 	return 0;
 }
 
+void atomisp_css_uninit(struct atomisp_device *isp)
+{
+	ia_css_uninit();
+}
+
+void atomisp_css_suspend(void)
+{
+	ia_css_uninit();
+}
+
+int atomisp_css_resume(struct atomisp_device *isp)
+{
+	unsigned int mmu_base_addr;
+	int ret;
+
+	ret = hmm_get_mmu_base_addr(&mmu_base_addr);
+	if (ret) {
+		dev_err(isp->dev, "get base address error.\n");
+		return -EINVAL;
+	}
+
+	ret = ia_css_init(&isp->css_env.isp_css_env, &isp->css_env.isp_css_fw,
+			  mmu_base_addr, IA_CSS_IRQ_TYPE_PULSE);
+	if (ret) {
+		dev_err(isp->dev, "re-init css failed.\n");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 void atomisp_set_css_env(struct atomisp_device *isp)
 {
 	isp->css_env.isp_css_fw = {

@@ -36,6 +36,12 @@ void atomisp_set_css_env(struct atomisp_device *isp);
 
 int atomisp_css_init(struct atomisp_device *isp);
 
+void atomisp_css_uninit(struct atomisp_device *isp);
+
+void atomisp_css_suspend(void);
+
+int atomisp_css_resume(struct atomisp_device *isp);
+
 void atomisp_css_init_struct(struct atomisp_device *isp);
 
 int atomisp_q_video_buffer_to_css(struct atomisp_device *isp,

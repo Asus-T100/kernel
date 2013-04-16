@@ -544,21 +544,13 @@ static int atomisp_release(struct file *file)
 	atomisp_free_3a_dis_buffers(isp);
 	atomisp_free_all_shading_tables(isp);
 	atomisp_free_internal_buffers(isp);
-	sh_css_uninit();
+	atomisp_css_uninit(isp);
 	hrt_isp_css_mm_clear();
 
 	ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
 				       core, s_power, 0);
 	if (ret)
 		dev_warn(isp->dev, "Failed to power-off sensor\n");
-
-	/* store L1 base address for next time we init the CSS */
-/*
-	isp->mmu_l1_base =
-			(void *)mmgr_get_base_address();
-*/
-	isp->mmu_l1_base =
-			(void *)sh_css_mmu_get_page_table_base_index();
 
 	if (pm_runtime_put_sync(vdev->v4l2_dev->dev) < 0)
 		dev_err(isp->dev, "Failed to power off device\n");
