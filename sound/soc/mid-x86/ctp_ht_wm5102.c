@@ -130,17 +130,26 @@ static int ctp_wm5102_hw_params(struct snd_pcm_substream *substream,
 	unsigned int device = substream->pcm->device;
 	struct ctp_clk_fmt clk_fmt;
 
+	clk_fmt.clk_id = ARIZONA_CLK_SYSCLK;
+	clk_fmt.freq = SYSCLK_RATE;
+
 	switch (device) {
 	case CTP_HT_AUD_ASP_DEV:
 	case CTP_HT_AUD_VSP_DEV:
-	case CTP_HT_COMMS_MSIC_VOIP_DEV:
-		clk_fmt.clk_id = ARIZONA_CLK_SYSCLK;
-		clk_fmt.freq = SYSCLK_RATE;
+	case CTP_HT_COMMS_VOIP_DEV:
 		clk_fmt.dir = SND_SOC_CLOCK_IN;
 		/* Slave mode */
 		clk_fmt.fmt = SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF |
 						SND_SOC_DAIFMT_CBS_CFS;
 		return ctp_set_clk_fmt(codec_dai, &clk_fmt);
+	case CTP_HT_COMMS_BT_SCO_DEV:
+	case CTP_HT_COMMS_FM_DEV:
+		clk_fmt.dir = SND_SOC_CLOCK_OUT;
+		/* Master mode */
+		clk_fmt.fmt = SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF |
+						SND_SOC_DAIFMT_CBM_CFM;
+		return ctp_set_clk_fmt(codec_dai, &clk_fmt);
+
 	default:
 		pr_err("Invalid device\n");
 		return -EINVAL;
@@ -183,17 +192,10 @@ static int ctp_comms_dai_link_startup(struct snd_pcm_substream *substream)
 
 	/* set the runtime hw parameter with local snd_pcm_hardware struct */
 	switch (substream->pcm->device) {
-	case CTP_HT_COMMS_BT_SCO_DEV:
-		str_runtime->hw = BT_sco_hw_param;
-		break;
-
-	case CTP_HT_COMMS_MSIC_VOIP_DEV:
+	case CTP_HT_COMMS_VOIP_DEV:
 		str_runtime->hw = VOIP_alsa_hw_param;
 		break;
 
-	case CTP_HT_COMMS_IFX_MODEM_DEV:
-		str_runtime->hw = IFX_modem_alsa_hw_param;
-		break;
 	default:
 		pr_err("CTP Comms Machine: bad PCM Device = %d\n",
 						substream->pcm->device);
@@ -224,51 +226,7 @@ static int ctp_comms_dai_link_hw_params(struct snd_pcm_substream *substream,
 	pr_debug("ssp_modem_master_mode %d\n", ctl->ssp_modem_master_mode);
 
 	switch (device) {
-	case CTP_HT_COMMS_BT_SCO_DEV:
-		/*
-		 * set cpu DAI configuration
-		 * frame_format = PSP_FORMAT
-		 * ssp_serial_clk_mode = SSP_CLK_MODE_1
-		 * ssp_frmsync_pol_bit = SSP_FRMS_ACTIVE_HIGH
-		 */
-		ret = snd_soc_dai_set_fmt(cpu_dai,
-				SND_SOC_DAIFMT_I2S |
-				SSP_DAI_SCMODE_1 |
-				SND_SOC_DAIFMT_NB_NF |
-				(ctl->ssp_bt_sco_master_mode ?
-				SND_SOC_DAIFMT_CBM_CFM : SND_SOC_DAIFMT_CBS_CFS));
-
-		if (ret < 0) {
-			pr_err("MFLD Comms Machine: Set FMT Fails %d\n",
-					ret);
-			return -EINVAL;
-		}
-
-		/*
-		 * BT SCO SSP Config
-		 * ssp_active_tx_slots_map = 0x01
-		 * ssp_active_rx_slots_map = 0x01
-		 * frame_rate_divider_control = 1
-		 * data_size = 16
-		 * tristate = 1
-		 * ssp_frmsync_timing_bit = 0
-		 * (NEXT_FRMS_ASS_AFTER_END_OF_T4)
-		 * ssp_frmsync_timing_bit = 1
-		 * (NEXT_FRMS_ASS_WITH_LSB_PREVIOUS_FRM)
-		 * ssp_psp_T2 = 1
-		 * (Dummy start offset = 1 bit clock period)
-		 */
-		nb_slot = SSP_BT_SLOT_NB_SLOT;
-		slot_width = SSP_BT_SLOT_WIDTH;
-		tx_mask = SSP_BT_SLOT_TX_MASK;
-		rx_mask = SSP_BT_SLOT_RX_MASK;
-
-		if (ctl->ssp_bt_sco_master_mode)
-			tristate_offset = BIT(TRISTATE_BIT);
-		else
-			tristate_offset = BIT(FRAME_SYNC_RELATIVE_TIMING_BIT);
-		break;
-	case CTP_HT_COMMS_MSIC_VOIP_DEV:
+	case CTP_HT_COMMS_VOIP_DEV:
 		/*
 		 * set cpu DAI configuration
 		 * frame_format = PSP_FORMAT
@@ -310,49 +268,6 @@ static int ctp_comms_dai_link_hw_params(struct snd_pcm_substream *substream,
 		tristate_offset = BIT(TRISTATE_BIT);
 		break;
 
-	case CTP_HT_COMMS_IFX_MODEM_DEV:
-		/*
-		 * set cpu DAI configuration
-		 * frame_format = PSP_FORMAT
-		 * ssp_serial_clk_mode = SSP_CLK_MODE_0
-		 * ssp_frmsync_pol_bit = SSP_FRMS_ACTIVE_HIGH
-		 */
-		ret = snd_soc_dai_set_fmt(cpu_dai,
-				SND_SOC_DAIFMT_I2S |
-				SSP_DAI_SCMODE_0 |
-				SND_SOC_DAIFMT_NB_NF |
-				(ctl->ssp_modem_master_mode ?
-				SND_SOC_DAIFMT_CBM_CFM : SND_SOC_DAIFMT_CBS_CFS));
-		if (ret < 0) {
-			pr_err("MFLD Comms Machine:  Set FMT Fails %d\n", ret);
-			return -EINVAL;
-		}
-
-		/*
-		 * IFX Modem Mixing SSP Config
-		 * ssp_active_tx_slots_map = 0x01
-		 * ssp_active_rx_slots_map = 0x01
-		 * frame_rate_divider_control = 1
-		 * data_size = 32
-		 * Master:
-		 *	tristate = 3
-		 *	ssp_frmsync_timing_bit = 1, for MASTER
-		 *	(NEXT_FRMS_ASS_WITH_LSB_PREVIOUS_FRM)
-		 * Slave:
-		 *	tristate = 1
-		 *	ssp_frmsync_timing_bit = 0, for SLAVE
-		 *	(NEXT_FRMS_ASS_AFTER_END_OF_T4)
-		 *
-		 */
-		nb_slot = SSP_IFX_SLOT_NB_SLOT;
-		slot_width = SSP_IFX_SLOT_WIDTH;
-		tx_mask = SSP_IFX_SLOT_TX_MASK;
-		rx_mask = SSP_IFX_SLOT_RX_MASK;
-
-		tristate_offset = BIT(TRISTATE_BIT) |\
-				BIT(FRAME_SYNC_RELATIVE_TIMING_BIT);
-
-		break;
 	default:
 		pr_err("CTP Comms Machine: bad PCM Device ID = %d\n",
 				device);
@@ -375,7 +290,7 @@ static int ctp_comms_dai_link_hw_params(struct snd_pcm_substream *substream,
 		return -EINVAL;
 	}
 
-	if (device == CTP_HT_COMMS_MSIC_VOIP_DEV) {
+	if (device == CTP_HT_COMMS_VOIP_DEV) {
 		pr_debug("Call ctp_wm5102_hw_params to enable the PLL Codec\n");
 		ctp_wm5102_hw_params(substream, params);
 	}
@@ -410,12 +325,8 @@ static int ctp_comms_dai_link_prepare(struct snd_pcm_substream *substream)
 	/* BT SCO: CPU DAI is master */
 	/* FM: CPU DAI is master */
 	/* BT_VOIP: CPU DAI is master */
-	if (((device == CTP_HT_COMMS_BT_SCO_DEV &&\
-		ctl->ssp_bt_sco_master_mode) ||
-		((device == CTP_HT_COMMS_MSIC_VOIP_DEV) &&\
-		ctl->ssp_voip_master_mode)) ||
-		(device == CTP_HT_COMMS_IFX_MODEM_DEV &&\
-		ctl->ssp_modem_master_mode)) {
+	if (device == CTP_HT_COMMS_VOIP_DEV &&\
+		ctl->ssp_voip_master_mode) {
 
 		snd_soc_dai_set_sysclk(cpu_dai, SSP_CLK_ONCHIP,
 				substream->runtime->rate, 0);
@@ -503,12 +414,14 @@ static struct snd_soc_ops ctp_wm5102_vsp_ops = {
 	.hw_params = ctp_wm5102_hw_params,
 };
 
-/* dai link ops */
-static struct snd_soc_ops ctp_comms_dai_link_ops = {
-	.startup = ctp_comms_dai_link_startup,
-	.hw_params = ctp_comms_dai_link_hw_params,
-	.prepare = ctp_comms_dai_link_prepare,
+static struct snd_soc_ops ctp_wm5102_bt_ops = {
+	.hw_params = ctp_wm5102_hw_params,
 };
+
+static struct snd_soc_ops ctp_wm5102_fm_ops = {
+	.hw_params = ctp_wm5102_hw_params,
+};
+
 static struct snd_soc_ops ctp_comms_voip_dai_link_ops = {
 	.startup = ctp_comms_dai_link_startup,
 	.hw_params = ctp_comms_dai_link_hw_params,
@@ -552,16 +465,28 @@ static struct snd_soc_dai_link ctp_ht_wm5102_dailink[] = {
 		.ops = &ctp_wm5102_asp_compr_ops,
 	},
 	[CTP_HT_COMMS_BT_SCO_DEV] = {
-		.name = "Cloverview Comms BT SCO",
-		.stream_name = "BTSCO",
-		.cpu_dai_name = SSP_BT_DAI_NAME,
-		.codec_dai_name = "snd-soc-dummy-dai",
-		.codec_name = "snd-soc-dummy",
-		.platform_name = "mid-ssp-dai",
+		.name = "Cloverview BT XSP",
+		.stream_name = "BT-Audio",
+		.cpu_dai_name = "Voice-cpu-dai",
+		.codec_dai_name = "wm5102-aif1",
+		.codec_name = "wm5102-codec",
+		.platform_name = "sst-platform",
 		.init = NULL,
-		.ops = &ctp_comms_dai_link_ops,
+		.ignore_suspend = 1,
+		.ops = &ctp_wm5102_bt_ops,
 	},
-	[CTP_HT_COMMS_MSIC_VOIP_DEV] = {
+	[CTP_HT_COMMS_FM_DEV] = {
+		.name = "Cloverview FM XSP",
+		.stream_name = "FM-Audio",
+		.cpu_dai_name = "Voice-cpu-dai",
+		.codec_dai_name = "wm5102-aif1",
+		.codec_name = "wm5102-codec",
+		.platform_name = "sst-platform",
+		.init = NULL,
+		.ignore_suspend = 1,
+		.ops = &ctp_wm5102_fm_ops,
+	},
+	[CTP_HT_COMMS_VOIP_DEV] = {
 		.name = "Cloverview Comms MSIC VOIP",
 		.stream_name = "VOIP",
 		.cpu_dai_name = SSP_BT_DAI_NAME,
@@ -570,16 +495,6 @@ static struct snd_soc_dai_link ctp_ht_wm5102_dailink[] = {
 		.platform_name = "mid-ssp-dai",
 		.init = NULL,
 		.ops = &ctp_comms_voip_dai_link_ops,
-	},
-	[CTP_HT_COMMS_IFX_MODEM_DEV] = {
-		.name = "Cloverview Comms IFX MODEM",
-		.stream_name = "IFX_MODEM_MIXING",
-		.cpu_dai_name = SSP_MODEM_DAI_NAME,
-		.codec_dai_name = "snd-soc-dummy-dai",
-		.codec_name = "snd-soc-dummy",
-		.platform_name = "mid-ssp-dai",
-		.init = NULL,
-		.ops = &ctp_comms_dai_link_ops,
 	},
 };
 
