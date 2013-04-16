@@ -820,7 +820,9 @@ static void st_tty_close(struct tty_struct *tty)
 	st_gdata->rx_skb = NULL;
 	spin_unlock_irqrestore(&st_gdata->lock, flags);
 
-	pm_runtime_put(st_gdata->tty_dev);
+	pm_runtime_put_noidle(st_gdata->tty_dev);
+	if (!pm_runtime_suspended(st_gdata->tty_dev))
+		__pm_runtime_idle(st_gdata->tty_dev, 0);
 
 	pr_debug("%s: done ", __func__);
 }
@@ -910,6 +912,7 @@ int st_core_init(struct st_data_s **core_data)
 
 	/* Locking used in st_int_enqueue() to avoid multiple execution */
 	spin_lock_init(&st_gdata->lock);
+	spin_lock_init(&st_gdata->pm_lock);
 
 	/* Power Management protection mechanism w.r.t. RX queue activity */
 	wake_lock_init(&st_gdata->wake_lock, WAKE_LOCK_SUSPEND,
