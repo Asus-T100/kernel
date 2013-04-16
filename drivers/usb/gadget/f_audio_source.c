@@ -353,8 +353,23 @@ static void audio_send(struct audio_dev *audio)
 	frames -= audio->frames_sent;
 
 	/* We need to send something to keep the pipeline going */
-	if (frames <= 0)
+	if (frames < FRAMES_PER_MSEC) {
 		frames = FRAMES_PER_MSEC;
+	} else if (frames == 2 * FRAMES_PER_MSEC) {
+		frames = FRAMES_PER_MSEC;
+
+		/* Adjust frames_sent.
+		 *
+		 * "frames" is calulated from kernel time which grows a
+		 * little faster than frames_sent, and we should adjust
+		 * frames_sent to catch up with "frames" to insure the
+		 * jitter won't exceed 2 * FRAMES_PER_MSEC + 1
+		 */
+		audio->frames_sent += FRAMES_PER_MSEC;
+	} else if (frames == 2 * FRAMES_PER_MSEC + 1) {
+		frames = FRAMES_PER_MSEC + 1;
+		audio->frames_sent += FRAMES_PER_MSEC;
+	}
 
 	while (frames > 0) {
 		req = audio_req_get(audio);
