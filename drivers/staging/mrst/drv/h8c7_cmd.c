@@ -158,7 +158,6 @@ int mdfld_h8c7_drv_ic_init(struct mdfld_dsi_config *dsi_config)
 	PSB_DEBUG_ENTRY("\n");
 	sender->status = MDFLD_DSI_PKG_SENDER_FREE;
 
-	/* set password*/
 	mdfld_dsi_send_mcs_short_lp(sender, h8c7_exit_sleep_mode[0], 0, 0, 0);
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
@@ -219,6 +218,7 @@ int mdfld_h8c7_drv_ic_init(struct mdfld_dsi_config *dsi_config)
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
 
+#if 0
 	mdfld_dsi_send_mcs_long_lp(sender, h8c7_gamma_r, 35, 0);
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
@@ -230,6 +230,7 @@ int mdfld_h8c7_drv_ic_init(struct mdfld_dsi_config *dsi_config)
 	mdfld_dsi_send_mcs_long_lp(sender, h8c7_gamma_b, 35, 0);
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
+#endif
 
 	mdfld_dsi_send_mcs_short_lp(sender, h8c7_set_pixel_format[0], h8c7_set_pixel_format[1], 1, 0);
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
@@ -458,20 +459,6 @@ int mdfld_dsi_h8c7_cmd_power_on(struct mdfld_dsi_config *dsi_config)
 		PSB_DEBUG_ENTRY("After power on, regulator is %d\n",
 			regulator_is_enabled(h8c7_regulator_status.regulator));
 	}
-
-	/*exit sleep */
-	err = mdfld_dsi_send_dcs(sender,
-		 exit_sleep_mode,
-		 NULL,
-		 0,
-		 CMD_DATA_SRC_SYSTEM_MEM,
-		 MDFLD_DSI_SEND_PACKAGE);
-	if (err) {
-		DRM_ERROR("faild to exit_sleep mode\n");
-		goto power_err;
-	}
-
-	msleep(120);
 
 	/*set tear on*/
 	err = mdfld_dsi_send_dcs(sender,
