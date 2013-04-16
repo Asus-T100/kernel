@@ -457,8 +457,6 @@ void ospm_power_init(struct drm_device *dev)
 {
 	u32 i = 0;
 	u32 nc_pwr_sts;
-	struct drm_psb_private *dev_priv =
-	    (struct drm_psb_private *)dev->dev_private;
 
 	/* allocate ospm data */
 	g_ospm_data = kmalloc(sizeof(struct _ospm_data_), GFP_KERNEL);
@@ -484,8 +482,6 @@ void ospm_power_init(struct drm_device *dev)
 	nc_pwr_sts = intel_mid_msgbus_read32(PUNIT_PORT, NC_PM_SSS);
 
 	OSPM_DPF("default island state = 0x%08lX\n", nc_pwr_sts);
-
-	dev_priv->initial_power_status = nc_pwr_sts;
 
 	nc_pwr_sts = ~nc_pwr_sts;
 
@@ -539,8 +535,7 @@ void ospm_post_init(struct drm_device *dev)
 	dc_islands = (~dc_islands) & OSPM_DISPLAY_ISLAND;
 	OSPM_DPF("DC island to be turned off : %x\n", dc_islands);
 	/* get the current power state of the island */
-	/*nc_pwr_sts = intel_mid_msgbus_read32(PUNIT_PORT, NC_PM_SSS);*/
-	nc_pwr_sts = dev_priv->initial_power_status;
+	nc_pwr_sts = intel_mid_msgbus_read32(PUNIT_PORT, NC_PM_SSS);
 	/* turn off the islands that are turned on by firmware but the driver
 	 * decides that it does not need */
 	power_island_put(dc_islands & (~nc_pwr_sts));
