@@ -63,6 +63,9 @@
 #define CSS_RX_IRQ_INFO_INIT_TIMEOUT \
 	CSS_ID(CSS_RX_IRQ_INFO_INIT_TIMEOUT)
 
+#define CSS_IRQ_INFO_CSS_RECEIVER_SOF	CSS_ID(CSS_IRQ_INFO_CSS_RECEIVER_SOF)
+#define CSS_IRQ_INFO_CSS_RECEIVER_EOF	CSS_ID(CSS_IRQ_INFO_CSS_RECEIVER_EOF)
+
 struct atomisp_device;
 
 void atomisp_set_css_env(struct atomisp_device *isp);
@@ -83,6 +86,9 @@ int atomisp_css_irq_translate(struct atomisp_device *isp,
 void atomisp_css_rx_get_irq_info(unsigned int *infos);
 
 void atomisp_css_rx_clear_irq_info(unsigned int infos);
+
+int atomisp_css_irq_enable(struct atomisp_device *isp,
+			   enum atomisp_css_irq_info info, bool enable);
 
 int atomisp_q_video_buffer_to_css(struct atomisp_device *isp,
 			struct videobuf_vmalloc_memory *vm_mem,

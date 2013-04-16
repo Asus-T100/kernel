@@ -30,6 +30,7 @@
 #define atomisp_css_pipe_id ia_css_pipe_id
 #define atomisp_css_buffer_type ia_css_buffer_type
 #define atomisp_css_dis_data ia_css_isp_dvs_statistics
+#define atomisp_css_irq_info  ia_css_irq_info
 typedef struct ia_css_isp_3a_statistics atomisp_css_3a_data;
 
 #define CSS_PIPE_ID_PREVIEW	IA_CSS_PIPE_ID_PREVIEW
@@ -38,6 +39,12 @@ typedef struct ia_css_isp_3a_statistics atomisp_css_3a_data;
 #define CSS_PIPE_ID_CAPTURE	IA_CSS_PIPE_ID_CAPTURE
 #define CSS_PIPE_ID_ACC		IA_CSS_PIPE_ID_ACC
 #define CSS_PIPE_ID_NUM		IA_CSS_PIPE_ID_NUM
+
+#define CSS_IRQ_INFO_CSS_RECEIVER_ERROR	IA_CSS_IRQ_INFO_CSS_RECEIVER_ERROR
+#define CSS_IRQ_INFO_EVENTS_READY	IA_CSS_IRQ_INFO_EVENTS_READY
+#define CSS_IRQ_INFO_INPUT_SYSTEM_ERROR \
+	IA_CSS_IRQ_INFO_INPUT_SYSTEM_ERROR
+#define CSS_IRQ_INFO_IF_ERROR	IA_CSS_IRQ_INFO_IF_ERROR
 
 /*
  * Hide IA_ naming difference in otherwise common CSS macros.

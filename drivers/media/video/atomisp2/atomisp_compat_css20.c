@@ -216,6 +216,17 @@ void atomisp_css_rx_clear_irq_info(unsigned int infos)
 	ia_css_rx_clear_irq_info(infos);
 }
 
+int atomisp_css_irq_enable(struct atomisp_device *isp,
+			    enum atomisp_css_irq_info info, bool enable)
+{
+	if (ia_css_irq_enable(info, enable) != IA_CSS_SUCCESS) {
+		dev_warn(isp->dev, "%s:Invalid irq info.\n", __func__);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 void atomisp_set_css_env(struct atomisp_device *isp)
 {
 	isp->css_env.isp_css_fw = {

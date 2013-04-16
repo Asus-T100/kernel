@@ -28,6 +28,7 @@
 #define atomisp_css_pipe_id sh_css_pipe_id
 #define atomisp_css_buffer_type sh_css_buffer_type
 #define atomisp_css_dis_data sh_css_dis_data
+#define atomisp_css_irq_info sh_css_interrupt_info
 typedef union sh_css_s3a_data atomisp_css_3a_data;
 
 #define CSS_PIPE_ID_PREVIEW	SH_CSS_PREVIEW_PIPELINE
@@ -36,6 +37,21 @@ typedef union sh_css_s3a_data atomisp_css_3a_data;
 #define CSS_PIPE_ID_CAPTURE	SH_CSS_CAPTURE_PIPELINE
 #define CSS_PIPE_ID_ACC		SH_CSS_ACC_PIPELINE
 #define CSS_PIPE_ID_NUM		SH_CSS_NR_OF_PIPELINES
+
+#define CSS_IRQ_INFO_EVENTS_READY	SH_CSS_IRQ_INFO_BUFFER_DONE
+#define CSS_IRQ_INFO_INVALID_FIRST_FRAME \
+	SH_CSS_IRQ_INFO_INVALID_FIRST_FRAME
+
+#if defined(HAS_IRQ_MAP_VERSION_2)
+
+#define CSS_IRQ_INFO_INPUT_SYSTEM_ERROR	SH_CSS_IRQ_INFO_INPUT_SYSTEM_ERROR
+#define CSS_IRQ_INFO_IF_ERROR	SH_CSS_IRQ_INFO_IF_ERROR
+
+#elif defined(HAS_IRQ_MAP_VERSION_1) || defined(HAS_IRQ_MAP_VERSION_1_DEMO)
+
+#define CSS_IRQ_INFO_CSS_RECEIVER_ERROR	SH_CSS_IRQ_INFO_CSS_RECEIVER_ERROR
+
+#endif
 
 /*
  * Hide SH_ naming difference in otherwise common CSS macros.

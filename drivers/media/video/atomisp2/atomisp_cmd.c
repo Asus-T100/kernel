@@ -512,9 +512,10 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 	if (isp->streaming != ATOMISP_DEVICE_STREAMING_ENABLED)
 		goto out_nowake;
 
-	if (irq_infos & SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF) {
+	if (irq_infos & CSS_IRQ_INFO_CSS_RECEIVER_SOF) {
 		atomic_inc(&isp->sof_count);
 		atomisp_sof_event(isp);
+		irq_infos &= ~CSS_IRQ_INFO_CSS_RECEIVER_SOF;
 
 		/* If sequence_temp and sequence are the same
 		 * there where no frames lost so we can increase sequence_temp.
@@ -535,14 +536,14 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 		}
 	}
 
-	if (irq_infos & SH_CSS_IRQ_INFO_BUFFER_DONE)
+	if (irq_infos & CSS_IRQ_INFO_EVENTS_READY)
 		atomic_set(&isp->sequence, atomic_read(&isp->sequence_temp));
 
 #if defined(CONFIG_ISP2400) || defined(CONFIG_ISP2400B0)
-	if ((irq_infos & SH_CSS_IRQ_INFO_INPUT_SYSTEM_ERROR) ||
-		(irq_infos & SH_CSS_IRQ_INFO_IF_ERROR)) {
+	if ((irq_infos & CSS_IRQ_INFO_INPUT_SYSTEM_ERROR) ||
+		(irq_infos & CSS_IRQ_INFO_IF_ERROR)) {
 #else
-	if (irq_infos & SH_CSS_IRQ_INFO_CSS_RECEIVER_ERROR) {
+	if (irq_infos & CSS_IRQ_INFO_CSS_RECEIVER_ERROR) {
 #endif
 		/* handle mipi receiver error */
 		u32 rx_infos;
@@ -553,12 +554,14 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 		/* TODO: handle CSS_RX_IRQ_INFO_BUFFER_OVERRUN */
 	}
 
-	if (irq_infos & SH_CSS_IRQ_INFO_INVALID_FIRST_FRAME) {
+#ifndef CONFIG_VIDEO_ATOMISP_CSS20
+	if (irq_infos & CSS_IRQ_INFO_INVALID_FIRST_FRAME) {
 		isp->sw_contex.invalid_frame = 1;
 		isp->sw_contex.invalid_vf_frame = 1;
 		isp->sw_contex.invalid_s3a = 1;
 		isp->sw_contex.invalid_dis = 1;
 	}
+#endif
 
 	spin_unlock_irqrestore(&isp->lock, flags);
 
@@ -1016,8 +1019,8 @@ void atomisp_wdt_work(struct work_struct *work)
 		/*sh_css_dump_isp_state();*/
 
 		if (!isp->sw_contex.file_input)
-			sh_css_enable_interrupt(
-				SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF, false);
+			atomisp_css_irq_enable(isp,
+					CSS_IRQ_INFO_CSS_RECEIVER_SOF, false);
 
 		if (isp->delayed_init == ATOMISP_DELAYED_INIT_QUEUED)
 			cancel_work_sync(&isp->delayed_init_work);
@@ -1068,8 +1071,8 @@ void atomisp_wdt_work(struct work_struct *work)
 
 		sh_css_start(css_pipe_id);
 		if (!isp->sw_contex.file_input) {
-			sh_css_enable_interrupt(
-				SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF, true);
+			atomisp_css_irq_enable(isp,
+					CSS_IRQ_INFO_CSS_RECEIVER_SOF, true);
 
 			atomisp_set_term_en_count(isp);
 

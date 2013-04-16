@@ -35,6 +35,7 @@
 #include "atomisp_internal.h"
 #include "atomisp_ioctl.h"
 #include "atomisp-regs.h"
+#include "atomisp_compat.h"
 
 #include "sh_css_hrt.h"
 #include "sh_css.h"
@@ -1406,7 +1407,7 @@ start_sensor:
 	}
 
 	if (!isp->sw_contex.file_input) {
-		sh_css_enable_interrupt(SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF,
+		atomisp_css_irq_enable(isp, CSS_IRQ_INFO_CSS_RECEIVER_SOF,
 					true);
 
 		atomisp_set_term_en_count(isp);
@@ -1528,7 +1529,7 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 	atomisp_clear_css_buffer_counters(isp);
 
 	if (!isp->sw_contex.file_input)
-		sh_css_enable_interrupt(SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF,
+		atomisp_css_irq_enable(isp, CSS_IRQ_INFO_CSS_RECEIVER_SOF,
 					false);
 
 	if (isp->delayed_init == ATOMISP_DELAYED_INIT_QUEUED) {
