@@ -497,14 +497,11 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 	unsigned long flags;
 	int err;
 
-	err = sh_css_translate_interrupt(&irq_infos);
-	dev_dbg(isp->dev, "irq:0x%x\n", irq_infos);
-
-	if (err != sh_css_success) {
-		dev_warn(isp->dev, "%s: failed to translate irq (err = %d,"
-			  " infos = %d)\n", __func__, err, irq_infos);
+	err = atomisp_css_irq_translate(isp, &irq_infos);
+	if (err)
 		return IRQ_NONE;
-	}
+
+	dev_dbg(isp->dev, "irq:0x%x\n", irq_infos);
 
 	/* Clear irq reg at PENWELL B0 */
 	pci_read_config_dword(isp->pdev, PCI_INTERRUPT_CTRL, &msg_ret);

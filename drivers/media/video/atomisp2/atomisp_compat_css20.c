@@ -190,6 +190,22 @@ int atomisp_css_resume(struct atomisp_device *isp)
 	return 0;
 }
 
+int atomisp_css_irq_translate(struct atomisp_device *isp,
+			      unsigned int *infos)
+{
+	int err;
+
+	err = ia_css_irq_translate(infos);
+	if (err != IA_CSS_SUCCESS) {
+		dev_warn(isp->dev,
+			  "%s:failed to translate irq (err = %d,infos = %d)\n",
+			  __func__, err, *infos);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 void atomisp_set_css_env(struct atomisp_device *isp)
 {
 	isp->css_env.isp_css_fw = {

@@ -44,6 +44,9 @@ int atomisp_css_resume(struct atomisp_device *isp);
 
 void atomisp_css_init_struct(struct atomisp_device *isp);
 
+int atomisp_css_irq_translate(struct atomisp_device *isp,
+			      unsigned int *infos);
+
 int atomisp_q_video_buffer_to_css(struct atomisp_device *isp,
 			struct videobuf_vmalloc_memory *vm_mem,
 			enum atomisp_css_buffer_type css_buf_type,
