@@ -234,4 +234,5 @@ ccflags-y += -I$(srctree)/drivers/media/dvb/dvb-core
 ccflags-y += -I$(srctree)/drivers/media/dvb/frontends
 ccflags-y += -I$(srctree)/drivers/media/common/tuners
 obj-$(CONFIG_VIDEO_ATOMISP_CSS15) += atomisp2/
+obj-$(CONFIG_VIDEO_ATOMISP_CSS20) += atomisp3/
 obj-$(CONFIG_VIDEO_MT9E013) += mt9e013/

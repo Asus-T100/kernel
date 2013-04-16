@@ -1286,6 +1286,7 @@ config VIDEO_S5P_MIPI_CSIS
 
 source "drivers/media/video/s5p-tv/Kconfig"
 source "drivers/media/video/atomisp2/Kconfig"
+source "drivers/media/video/atomisp3/Kconfig"
 source "drivers/media/video/imx/Kconfig"
 source "drivers/media/video/imx135VB/Kconfig"
 
