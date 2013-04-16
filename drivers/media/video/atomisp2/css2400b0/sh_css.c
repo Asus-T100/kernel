@@ -2149,6 +2149,8 @@ sh_css_resume(void)
 	   reloaded by the ISP upon execution. */
 	mmu_set_page_table_base_index(MMU0_ID,
 			my_css.page_table_base_index);
+	mmu_set_page_table_base_index(MMU1_ID,
+			my_css.page_table_base_index);
 	sh_css_params_reconfigure_gdc_lut();
 
 	sh_css_sp_activate_program(&sh_css_sp_fw, my_css.sp_bin_addr,

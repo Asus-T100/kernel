@@ -49,6 +49,7 @@ assert(sizeof(unsigned int) <= sizeof(hrt_data));
 
 	if (invalidate_mmu) {
 		mmu_invalidate_cache(MMU0_ID);
+		mmu_invalidate_cache(MMU1_ID);
 		invalidate_mmu = false;
 	}
 	/* set the start address */
