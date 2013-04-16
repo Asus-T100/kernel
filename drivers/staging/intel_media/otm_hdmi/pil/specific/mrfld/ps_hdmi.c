@@ -74,7 +74,6 @@
 #include "ps_hdmi.h"
 #include <asm/intel_scu_pmic.h>
 #include <asm/intel-mid.h>
-#include "ospm/pwr_mgmt.h"
 
 
 /* Implementation of the Merrifield specific PCI driver for receiving
@@ -241,31 +240,42 @@ otm_hdmi_ret_t ps_hdmi_i2c_edid_read(void *ctx, unsigned int sp,
 	return OTM_HDMI_SUCCESS;
 }
 
+static void ps_hdmi_power_on_pipe(u32 msg_port, u32 msg_reg,
+		u32 val_comp, u32 val_write)
+{
+	u32 ret;
+	int retry = 0;
+
+	pr_debug("Entered %s\n", __func__);
+
+	ret = intel_mid_msgbus_read32(msg_port, msg_reg);
+
+	if ((ret & val_comp) == 0) {
+		pr_err("%s: pipe is already powered on\n", __func__);
+		return;
+	} else {
+		intel_mid_msgbus_write32(msg_port, msg_reg, ret & val_write);
+		ret = intel_mid_msgbus_read32(msg_port, msg_reg);
+		while ((retry < 1000) && ((ret & val_comp) != 0)) {
+			usleep_range(500, 1000);
+			ret = intel_mid_msgbus_read32(msg_port, msg_reg);
+			retry++;
+		}
+		if ((ret & val_comp) != 0)
+			pr_err("%s: powering on pipe failed\n", __func__);
+		if (msg_port == 0x4 && msg_reg == 0x3b)
+			pr_err("%s: skip powering up MIO AFE\n", __func__);
+	}
+	pr_debug("Leaving %s\n", __func__);
+}
 
 bool ps_hdmi_power_rails_on(void)
 {
-	bool ret;
-	hdmi_context_t *ctx = g_context;
-
 	pr_debug("Entered %s\n", __func__);
-	if (ctx == NULL)
-		return false;
-
-	if (ctx->is_connected && ctx->power_rails_on == false) {
-		ret = power_island_get(OSPM_DISPLAY_B);
-		if (ret == false) {
-			pr_err("%s: failed to power on display B\n", __func__);
-			return false;
-		}
-		ret = power_island_get(OSPM_DISPLAY_HDMI);
-		if (ret == false) {
-			pr_err("%s: failed to power on HDMI island\n", __func__);
-			/* Power off display B */
-			power_island_put(OSPM_DISPLAY_B);
-			return false;
-		}
-		ctx->power_rails_on = true;
-	}
+	ps_hdmi_power_on_pipe(0x4, 0x36, 0xc000000, 0xfffffff3);
+		/* pipe B */
+	ps_hdmi_power_on_pipe(0x4, 0x3c, 0x3000000, 0xfffffffc);
+		/* HDMI */
 
 	intel_scu_ipc_iowrite8(0x7F, 0x31);
 	pr_debug("Leaving %s\n", __func__);
@@ -274,20 +284,10 @@ bool ps_hdmi_power_rails_on(void)
 
 bool ps_hdmi_power_rails_off(void)
 {
-	hdmi_context_t *ctx = g_context;
-
 	pr_debug("Entered %s\n", __func__);
-	if (ctx == NULL)
-		return false;
 
-	/* Temporarily disable power rails off as it will cause MIPI freeze */
-	/*if (ctx->power_rails_on == true) {
-		pr_debug("%s: Powering off HDMI island.", __func__);
-		power_island_put(OSPM_DISPLAY_HDMI);
-		power_island_put(OSPM_DISPLAY_B);
-		ctx->power_rails_on = false;
-	}*/
-	return true;
+	return 0;
+
 }
 
 
@@ -312,8 +312,10 @@ bool ps_hdmi_get_cable_status(void *context)
 	 */
 	__ps_gpio_configure_edid_read();
 
-	ctx->is_connected = (gpio_get_value(ctx->gpio_hpd_pin) != 0);
-	return ctx->is_connected;
+	if (gpio_get_value(ctx->gpio_hpd_pin) == 0)
+		return false;
+	else
+		return true;
 }
 
 /**

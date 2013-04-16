@@ -2134,10 +2134,6 @@ android_hdmi_detect(struct drm_connector *connector,
 
 		if (connector->status == connector_status_connected)
 			return connector_status_connected;
-
-		/*  TODO: power on display B island in otm_hdmi_power_rails_on */
-		otm_hdmi_power_rails_on();
-
 		/*
 		 * Handle Hot-plug of HDMI. Display B would be power-gated
 		 * by ospm_post_init if HDMI is not detected during driver load.
