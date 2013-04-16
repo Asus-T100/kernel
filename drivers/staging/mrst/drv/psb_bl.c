@@ -139,7 +139,7 @@ int psb_set_brightness(struct backlight_device *bd)
 #ifndef CONFIG_MDFLD_DSI_DPU
 			if (!(dev_priv->dsr_fb_update & MDFLD_DSR_MIPI_CONTROL)
 			    && dev_priv->b_dsr_enable
-			    && !is_panel_vid_or_cmd(dev)
+			    && is_cmd_mode_panel(dev)
 			    && (panel_on1 || panel_on2)) {
 				dev_priv->exit_idle(dev,
 						MDFLD_DSR_MIPI_CONTROL,

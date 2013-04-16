@@ -101,7 +101,8 @@ struct panel_funcs {
 
 void mdfld_output_init(struct drm_device *dev);
 bool is_tmd_6x10_panel(struct drm_device *dev, int pipe);
-int is_panel_vid_or_cmd(struct drm_device *dev);
+int get_panel_mode(struct drm_device *dev);
+bool is_cmd_mode_panel(struct drm_device *dev);
 bool Check_fw_initilized_reusable(struct mdfld_dsi_config *dsi_config,
 				struct panel_funcs *p_funcs);
 void intel_mid_panel_register(
