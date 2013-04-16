@@ -115,6 +115,12 @@
 #define INTSTAT_THRM_BAT0		0xC
 #define INTSTAT_THRM_BAT1		0xD
 #define INTSTAT_THRM_SKIN0		0xE
+#define INTSTAT_STOP_CHARGING		0xF
+#define INTSTAT_BATT_WARN		0x14
+#define INTSTAT_BATT_LOW		0x15
+#define INTSTAT_BATT_CRIT		0x16
+
+#define ULPMC_INTR_QSIZE		32
 
 #define STATUS_MON_JIFFIES		(HZ * 60)	/*60 sec */
 #define ULPMC_FG_SIGN_INDICATOR		0x8000
@@ -458,60 +464,87 @@ i2c_read_err:
 
 static void log_interrupt_event(struct ulpmc_chip_info *chip, int intstat)
 {
-	if (intstat & INTSTAT_INSERT_AC)
+	switch (intstat) {
+	case INTSTAT_INSERT_AC:
 		dev_info(&chip->client->dev, "AC charger inserted\n");
-	else if (intstat & INTSTAT_REMOVE_AC)
+		break;
+	case INTSTAT_REMOVE_AC:
 		dev_info(&chip->client->dev, "AC charger removeed\n");
-	else if (intstat & INTSTAT_INSERT_USB)
+		break;
+	case INTSTAT_INSERT_USB:
 		dev_info(&chip->client->dev, "USB charger inserted\n");
-	else if (intstat & INTSTAT_REMOVE_USB)
+		break;
+	case INTSTAT_REMOVE_USB:
 		dev_info(&chip->client->dev, "USB charger removed\n");
-	else if (intstat & INTSTAT_START_CHARGE)
+		break;
+	case INTSTAT_START_CHARGE:
 		dev_info(&chip->client->dev, "Charging start event\n");
-	else if (intstat & INTSTAT_STOP_CHARGE)
+		break;
+	case INTSTAT_STOP_CHARGE:
 		dev_info(&chip->client->dev, "Charging stop event\n");
-	else if (intstat & INTSTAT_INSERT_BATTERY)
+		break;
+	case INTSTAT_INSERT_BATTERY:
 		dev_info(&chip->client->dev, "Battery inserted\n");
-	else if (intstat & INTSTAT_REMOVE_BATTERY)
+		break;
+	case INTSTAT_REMOVE_BATTERY:
 		dev_info(&chip->client->dev, "Battery removed\n");
-	else if (intstat & INTSTAT_LOW_BATTERY)
-		dev_info(&chip->client->dev, "Low Battery warning!\n");
-	else if (intstat & INTSTAT_BTP_HIGH)
+		break;
+	case INTSTAT_LOW_BATTERY:
+		dev_info(&chip->client->dev, "BATTLOW event!!\n");
+		break;
+	case INTSTAT_BTP_HIGH:
 		dev_info(&chip->client->dev, "Battery Trip point high\n");
-	else if (intstat & INTSTAT_BTP_LOW)
+		break;
+	case INTSTAT_BTP_LOW:
 		dev_info(&chip->client->dev, "Battery Trip point low\n");
-	else if (intstat & INTSTAT_THRM_BAT0)
+		break;
+	case INTSTAT_THRM_BAT0:
 		dev_info(&chip->client->dev, "Battery0 thermal event\n");
-	else if (intstat & INTSTAT_THRM_BAT1)
+		break;
+	case INTSTAT_THRM_BAT1:
 		dev_info(&chip->client->dev, "Battery1 thermal event\n");
-	else if (intstat & INTSTAT_THRM_SKIN0)
+		break;
+	case INTSTAT_THRM_SKIN0:
 		dev_info(&chip->client->dev, "Skin0 thermal event\n");
-	else
+		break;
+	case INTSTAT_STOP_CHARGING:
+		dev_info(&chip->client->dev, "Stop Charging event\n");
+		break;
+	case INTSTAT_BATT_WARN:
+		dev_info(&chip->client->dev,
+			"Warn Battery level threshold reached\n");
+		break;
+	case INTSTAT_BATT_LOW:
+		dev_info(&chip->client->dev,
+			"Low Battery level threshold reached\n");
+		break;
+	case INTSTAT_BATT_CRIT:
+		dev_info(&chip->client->dev,
+			"Critical Battery level threshold reached\n");
+		break;
+	default:
 		dev_info(&chip->client->dev, "spurious event!!!\n");
-}
-
-static irqreturn_t ulpmc_intr_handler(int id, void *dev)
-{
-	struct ulpmc_chip_info *chip = dev;
-
-	dev_info(&chip->client->dev, "ULPMC Interrupt!!\n");
-	return IRQ_WAKE_THREAD;
+	}
 }
 
 static irqreturn_t ulpmc_thread_handler(int id, void *dev)
 {
 	struct ulpmc_chip_info *chip = dev;
-	int ret;
+	int ret, i;
 
 	pm_runtime_get_sync(&chip->client->dev);
 
-	ret = ulpmc_read_reg8(chip->client, ULPMC_BM_REG_INTSTAT);
-	if (ret < 0) {
-		dev_err(&chip->client->dev, "ulpmc stat reg read error\n");
-		pm_runtime_put_sync(&chip->client->dev);
-		return IRQ_NONE;
+	for (i = 0; i < ULPMC_INTR_QSIZE; i++) {
+		ret = ulpmc_read_reg8(chip->client, ULPMC_BM_REG_INTSTAT);
+		if (ret < 0) {
+			dev_err(&chip->client->dev, "ulpmc stat reg read error\n");
+			pm_runtime_put_sync(&chip->client->dev);
+			return IRQ_NONE;
+		}
+		if (!ret)
+			break;
+		log_interrupt_event(chip, ret);
 	}
-	log_interrupt_event(chip, ret);
 	power_supply_changed(&chip->bat);
 
 	pm_runtime_put_sync(&chip->client->dev);
@@ -521,13 +554,16 @@ static irqreturn_t ulpmc_thread_handler(int id, void *dev)
 static void ulpmc_init_irq(struct ulpmc_chip_info *chip)
 {
 	int ret = 0;
+	int gpio_num;
 
-	chip->client->irq = gpio_to_irq(chip->pdata->gpio);
+	/* get kernel GPIO number */
+	gpio_num = acpi_get_gpio("\\_SB.GPO2", chip->pdata->gpio);
+	/* get irq number */
+	chip->client->irq = gpio_to_irq(gpio_num);
 	/* register interrupt */
-	ret = request_threaded_irq(chip->client->irq,
-					ulpmc_intr_handler,
+	ret = request_threaded_irq(chip->client->irq, NULL,
 					ulpmc_thread_handler,
-					IRQF_TRIGGER_LOW | IRQF_SHARED,
+					IRQF_TRIGGER_FALLING,
 					"ulpmc-battery", chip);
 	if (ret) {
 		dev_warn(&chip->client->dev,
@@ -586,6 +622,20 @@ struct i2c_client *ulpmc_get_i2c_client(void)
 		return NULL;
 }
 EXPORT_SYMBOL(ulpmc_get_i2c_client);
+
+static void ulpmc_clear_pending_intr(struct ulpmc_chip_info *chip)
+{
+	int i, ret;
+
+	for (i = 0; i < ULPMC_INTR_QSIZE; i++) {
+		ret = ulpmc_read_reg8(chip->client, ULPMC_BM_REG_INTSTAT);
+		if (ret < 0)
+			dev_err(&chip->client->dev,
+				"ulpmc stat reg read error\n");
+		if (!ret)
+			break;
+	}
+}
 
 static int ulpmc_battery_probe(struct i2c_client *client,
 				 const struct i2c_device_id *id)
@@ -668,6 +718,8 @@ static int ulpmc_battery_probe(struct i2c_client *client,
 	pm_runtime_put_noidle(&chip->client->dev);
 	pm_schedule_suspend(&chip->client->dev, MSEC_PER_SEC);
 
+	/* clear pending interrupts */
+	ulpmc_clear_pending_intr(chip);
 	/* get irq and register */
 	ulpmc_init_irq(chip);
 	/* schedule status monitoring worker */

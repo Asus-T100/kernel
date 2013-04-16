@@ -12,8 +12,7 @@ static struct i2c_board_info __initdata ulpmc_i2c_device = {
 
 static int __init ulpmc_i2c_init(void)
 {
-	/* SUS GPIO18 is equal to GPIO no 147 */
-	ulpmc_pdata.gpio = 147;
+	ulpmc_pdata.gpio = 0x12; /* GPIOS_18 */
 	ulpmc_pdata.volt_sh_min = 3400;	/* 3400mV */
 	snprintf(ulpmc_pdata.battid, BATTID_LEN, "INT-BYT");
 	snprintf(ulpmc_pdata.extcon_devname,
