@@ -186,6 +186,8 @@ struct rmi4_data {
 	int			irq;
 	int			finger_status[MAX_FINGERS];
 	struct early_suspend	es;
+	unsigned long		touch_counter;
+	unsigned long		key_counter;
 #ifdef DEBUG
 	u16 dbg_reg_addr;
 	unsigned short dbg_fn_num;
@@ -329,6 +331,103 @@ union f34_control_status_v1 {
 		u8 regs[2];
 		u16 address;
 	};
+};
+
+struct f12_query_5 {
+	u8 size_of_query6;
+	u8 ctrl0_is_present:1;
+	u8 ctrl1_is_present:1;
+	u8 ctrl2_is_present:1;
+	u8 ctrl3_is_present:1;
+	u8 ctrl4_is_present:1;
+	u8 ctrl5_is_present:1;
+	u8 ctrl6_is_present:1;
+	u8 ctrl7_is_present:1;
+	u8 ctrl8_is_present:1;
+	u8 ctrl9_is_present:1;
+	u8 ctrl10_is_present:1;
+	u8 ctrl11_is_present:1;
+	u8 ctrl12_is_present:1;
+	u8 ctrl13_is_present:1;
+	u8 ctrl14_is_present:1;
+	u8 ctrl15_is_present:1;
+	u8 ctrl16_is_present:1;
+	u8 ctrl17_is_present:1;
+	u8 ctrl18_is_present:1;
+	u8 ctrl19_is_present:1;
+	u8 ctrl20_is_present:1;
+	u8 ctrl21_is_present:1;
+	u8 ctrl22_is_present:1;
+	u8 ctrl23_is_present:1;
+	u8 ctrl24_is_present:1;
+	u8 ctrl25_is_present:1;
+	u8 ctrl26_is_present:1;
+	u8 ctrl27_is_present:1;
+	u8 ctrl28_is_present:1;
+	u8 ctrl29_is_present:1;
+	u8 ctrl30_is_present:1;
+	u8 ctrl31_is_present:1;
+} __packed;
+
+struct f12_query_8 {
+	u8 size_of_query9;
+	u8 data0_is_present:1;
+	u8 data1_is_present:1;
+	u8 data2_is_present:1;
+	u8 data3_is_present:1;
+	u8 data4_is_present:1;
+	u8 data5_is_present:1;
+	u8 data6_is_present:1;
+	u8 data7_is_present:1;
+} __packed;
+
+struct f12_ctrl_8 {
+	u8 max_x_coord_lsb;
+	u8 max_x_coord_msb;
+	u8 max_y_coord_lsb;
+	u8 max_y_coord_msb;
+	u8 rx_pitch_lsb;
+	u8 rx_pitch_msb;
+	u8 tx_pitch_lsb;
+	u8 tx_pitch_msb;
+	u8 low_rx_clip;
+	u8 high_rx_clip;
+	u8 low_tx_clip;
+	u8 high_tx_clip;
+	u8 num_of_rx;
+	u8 num_of_tx;
+};
+
+struct f12_ctrl_20 {
+	u8 x_suppression;
+	u8 y_suppression;
+	u8 report_always:1;
+	u8 reserved:7;
+} __packed;
+
+struct f12_ctrl_23 {
+	u8 obj_type_enable;
+	u8 max_reported_objects;
+};
+
+struct synaptics_rmi4_f12_finger_data {
+	unsigned char object_type_and_status;
+	unsigned char x_lsb;
+	unsigned char x_msb;
+	unsigned char y_lsb;
+	unsigned char y_msb;
+#ifdef REPORT_2D_Z
+	unsigned char z;
+#endif
+	unsigned char wx;
+	unsigned char wy;
+};
+
+enum finger_state {
+	F11_NO_FINGER = 0,
+	F11_PRESENT = 1,
+	F11_INACCURATE = 2,
+	F11_RESERVED = 3
 };
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
