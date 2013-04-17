@@ -167,14 +167,14 @@ static int intel_fw_logging_proc_read(char *buffer, char **start, off_t offset,
 static void __iomem *get_oshob_addr(void)
 {
 	int ret;
-	u32 oshob_base;
+	u32 oshob_base = NULL;
 	u16 oshob_size;
 	void __iomem *oshob_addr;
 
 	ret = rpmsg_send_command(fw_logging_instance,
 			IPCMSG_GET_HOBADDR, 0, NULL, &oshob_base, 0, 1);
 
-	if (ret < 0) {
+	if (ret < 0 || oshob_base == NULL) {
 		pr_err("ipc_read_oshob address failed!!\n");
 		return NULL;
 	}
