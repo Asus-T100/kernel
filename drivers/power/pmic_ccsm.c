@@ -1009,12 +1009,13 @@ static irqreturn_t pmic_thread_handler(int id, void *data)
 		!(evt->chgrirq0_int & PMIC_CHRGR_CCSM_INT0_MASK)) {
 		intel_scu_ipc_update_register(IRQLVL1_MASK_ADDR, 0x00,
 				IRQLVL1_CHRGR_MASK);
-		kfree(evt);
 		if ((chc.invalid_batt) &&
 			(evt->chgrirq0_int & PMIC_CHRGR_EXT_CHRGR_INT_MASK)) {
 			dev_dbg(chc.dev, "Handling external charger interrupt!!\n");
+			kfree(evt);
 			return IRQ_HANDLED;
 		}
+		kfree(evt);
 		dev_dbg(chc.dev, "Unhandled interrupt!!\n");
 		return IRQ_NONE;
 	}
