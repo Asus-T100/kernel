@@ -409,7 +409,7 @@ static void emmc_panic_notify_add(void)
 
 	if (!ctx) {
 		printk(KERN_ERR "%s:invalid panic handler\n", __func__);
-		goto out_err;
+		return;
 	}
 
 	emmc = ctx->emmc;
@@ -552,8 +552,8 @@ out_err:
 static void emmc_panic_notify_remove(void)
 {
 	struct emmc_ipanic_data *ctx = &drv_ctx;
-	if (!ctx)
-		ctx->emmc = NULL;
+
+	ctx->emmc = NULL;
 }
 
 static int emmc_ipanic_writeflashpage(struct mmc_emergency_info *emmc,
