@@ -254,9 +254,97 @@ void atomisp_css_update_isp_params(struct atomisp_device *isp)
 int atomisp_css_queue_buffer(struct atomisp_device *isp,
 			     enum atomisp_css_pipe_id pipe_id,
 			     enum atomisp_css_buffer_type buf_type,
-			     void *buffer)
+			     struct atomisp_css_buffer *isp_css_buffer)
 {
+	void *buffer;
+
+	switch (buf_type) {
+	case SH_CSS_BUFFER_TYPE_3A_STATISTICS:
+		buffer = isp_css_buffer->s3a_data;
+		break;
+	case SH_CSS_BUFFER_TYPE_DIS_STATISTICS:
+		buffer = isp_css_buffer->dis_data;
+		break;
+	case SH_CSS_BUFFER_TYPE_VF_OUTPUT_FRAME:
+		buffer = isp_css_buffer->css_buffer.data.frame;
+		break;
+	case SH_CSS_BUFFER_TYPE_OUTPUT_FRAME:
+		buffer = isp_css_buffer->css_buffer.data.frame;
+		break;
+	default:
+		return -EINVAL;
+	}
+
 	if (sh_css_queue_buffer(pipe_id, buf_type, buffer) != sh_css_success)
+		return -EINVAL;
+
+	return 0;
+}
+
+int atomisp_css_dequeue_buffer(struct atomisp_device *isp,
+				enum atomisp_css_pipe_id pipe_id,
+				enum atomisp_css_buffer_type buf_type,
+				struct atomisp_css_buffer *isp_css_buffer)
+{
+	enum sh_css_err err;
+	void *buffer;
+
+	err = sh_css_dequeue_buffer(pipe_id, buf_type, (void **)&buffer);
+	if (err != sh_css_success) {
+		dev_err(isp->dev,
+			"sh_css_dequeue_buffer failed: 0x%x\n", err);
+		return -EINVAL;
+	}
+
+	switch (buf_type) {
+	case SH_CSS_BUFFER_TYPE_3A_STATISTICS:
+		isp_css_buffer->s3a_data = buffer;
+		break;
+	case SH_CSS_BUFFER_TYPE_DIS_STATISTICS:
+		isp_css_buffer->dis_data = buffer;
+		break;
+	case SH_CSS_BUFFER_TYPE_VF_OUTPUT_FRAME:
+		isp_css_buffer->css_buffer.data.frame = buffer;
+		break;
+	case SH_CSS_BUFFER_TYPE_OUTPUT_FRAME:
+		isp_css_buffer->css_buffer.data.frame = buffer;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+int atomisp_css_get_3a_statistics(struct atomisp_device *isp,
+				  struct atomisp_css_buffer *isp_css_buffer)
+{
+	enum sh_css_err err;
+
+	err = sh_css_get_3a_statistics(isp->params.s3a_output_buf,
+				isp->params.curr_grid_info.s3a_grid.use_dmem,
+				isp_css_buffer->s3a_data);
+	if (err != sh_css_success) {
+		dev_err(isp->dev,
+			"sh_css_get_3a_statistics failed: 0x%x\n", err);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+void atomisp_css_get_dis_statistics(struct atomisp_device *isp,
+				    struct atomisp_css_buffer *isp_css_buffer)
+{
+	sh_css_get_dis_projections(isp->params.dis_hor_proj_buf,
+				   isp->params.dis_ver_proj_buf,
+				   isp_css_buffer->dis_data);
+}
+
+int atomisp_css_dequeue_event(struct atomisp_css_event *current_event)
+{
+	if (sh_css_dequeue_event(&current_event->pipe, &current_event->event)
+	    != sh_css_success)
 		return -EINVAL;
 
 	return 0;

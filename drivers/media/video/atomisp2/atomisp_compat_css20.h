@@ -47,10 +47,17 @@ typedef struct ia_css_isp_3a_statistics atomisp_css_3a_data;
 	IA_CSS_IRQ_INFO_INPUT_SYSTEM_ERROR
 #define CSS_IRQ_INFO_IF_ERROR	IA_CSS_IRQ_INFO_IF_ERROR
 
+#define CSS_BUFFER_TYPE_NUM	IA_CSS_BUFFER_TYPE_NUM
+
+#define CSS_FRAME_FLASH_STATE_NONE	IA_CSS_FRAME_FLASH_STATE_NONE
+#define CSS_FRAME_FLASH_STATE_PARTIAL	IA_CSS_FRAME_FLASH_STATE_PARTIAL
+#define CSS_FRAME_FLASH_STATE_FULL	IA_CSS_FRAME_FLASH_STATE_FULL
+
 /*
  * Hide IA_ naming difference in otherwise common CSS macros.
  */
 #define CSS_ID(val)	(IA_ ## val)
+#define CSS_EVENT(val)	(IA_CSS_EVENT_TYPE_ ## val)
 
 struct atomisp_css_env {
 	struct ia_css_env isp_css_env;
@@ -85,6 +92,15 @@ enum atomisp_css_stream_state {
 	CSS_STREAM_CREATED,
 	CSS_STREAM_STARTED,
 	CSS_STREAM_STOPPED,
+};
+
+struct atomisp_css_buffer {
+	struct ia_css_buffer css_buffer;
+};
+
+struct atomisp_css_event {
+	enum atomisp_css_pipe_id pipe;
+	struct ia_css_event event;
 };
 
 #endif

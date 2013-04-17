@@ -769,27 +769,28 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error,
 {
 	struct videobuf_buffer *vb = NULL;
 	struct atomisp_video_pipe *pipe = NULL;
-	void *buffer;
+	struct atomisp_css_buffer buffer;
 	bool requeue = false;
 	int err;
 	unsigned long irqflags;
 	struct sh_css_frame* frame = NULL;
 
-	if (buf_type != SH_CSS_BUFFER_TYPE_3A_STATISTICS &&
-	    buf_type != SH_CSS_BUFFER_TYPE_DIS_STATISTICS &&
-	    buf_type != SH_CSS_BUFFER_TYPE_OUTPUT_FRAME &&
-	    buf_type != SH_CSS_BUFFER_TYPE_RAW_OUTPUT_FRAME &&
-	    buf_type != SH_CSS_BUFFER_TYPE_VF_OUTPUT_FRAME) {
+	if (buf_type != CSS_BUFFER_TYPE_3A_STATISTICS &&
+	    buf_type != CSS_BUFFER_TYPE_DIS_STATISTICS &&
+	    buf_type != CSS_BUFFER_TYPE_OUTPUT_FRAME &&
+	    buf_type != CSS_BUFFER_TYPE_RAW_OUTPUT_FRAME &&
+	    buf_type != CSS_BUFFER_TYPE_VF_OUTPUT_FRAME) {
 		dev_err(isp->dev, "%s, unsupported buffer type: %d\n",
 			__func__, buf_type);
 		return;
 	}
 
-	err = sh_css_dequeue_buffer(css_pipe_id,
-			buf_type,
-			(void **)&buffer);
+	memset(&buffer, 0, sizeof(struct atomisp_css_buffer));
+	buffer.css_buffer.type = buf_type;
+	err = atomisp_css_dequeue_buffer(isp, css_pipe_id, buf_type, &buffer);
 	if (err) {
-		dev_err(isp->dev, "sh_css_dequeue_buffer failed: 0x%x\n", err);
+		dev_err(isp->dev,
+			"atomisp_css_dequeue_buffer failed: 0x%x\n", err);
 		return;
 	}
 
@@ -801,7 +802,7 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error,
 	}
 
 	switch (buf_type) {
-		case SH_CSS_BUFFER_TYPE_3A_STATISTICS:
+		case CSS_BUFFER_TYPE_3A_STATISTICS:
 			/* ignore error in case of 3a statistics for now */
 			if (isp->sw_contex.invalid_s3a) {
 				requeue = true;
@@ -812,19 +813,17 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error,
 			if (isp->params.s3a_output_buf &&
 			    isp->params.s3a_output_bytes && !error) {
 				/* To avoid racing with atomisp_3a_stat() */
-				err = sh_css_get_3a_statistics(
-					isp->params.s3a_output_buf,
-					isp->params.curr_grid_info.s3a_grid.use_dmem,
-					buffer);
-				if (err == sh_css_success)
+				err = atomisp_css_get_3a_statistics(isp,
+								    &buffer);
+				if (!err)
 					isp->params.s3a_buf_data_valid = true;
 				else
-					dev_err(isp->dev, "get 3a statistics "
-						"failed, not enough memory\n");
+					dev_err(isp->dev,
+						"get 3a statistics failed, not enough memory\n");
 			}
 			isp->s3a_bufs_in_css[css_pipe_id]--;
 			break;
-		case SH_CSS_BUFFER_TYPE_DIS_STATISTICS:
+		case CSS_BUFFER_TYPE_DIS_STATISTICS:
 			/* ignore error in case of dis statistics for now */
 			if (isp->sw_contex.invalid_dis) {
 				requeue = true;
@@ -837,15 +836,13 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error,
 			    isp->params.dis_hor_proj_bytes &&
 			    !error) {
 				/* To avoid racing with atomisp_get_dis_stat()*/
-				sh_css_get_dis_projections(
-					isp->params.dis_hor_proj_buf,
-					isp->params.dis_ver_proj_buf, buffer);
+				atomisp_css_get_dis_statistics(isp, &buffer);
 
 				isp->params.dis_proj_data_valid = true;
 			}
 			isp->dis_bufs_in_css--;
 			break;
-		case SH_CSS_BUFFER_TYPE_VF_OUTPUT_FRAME:
+		case CSS_BUFFER_TYPE_VF_OUTPUT_FRAME:
 			if (isp->sw_contex.invalid_vf_frame) {
 				error = true;
 				isp->sw_contex.invalid_vf_frame = 0;
@@ -854,25 +851,25 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error,
 			}
 
 			pipe->buffers_in_css--;
-			frame = buffer;
+			frame = buffer.css_buffer.data.frame;
 			if (isp->params.flash_state == ATOMISP_FLASH_ONGOING) {
 				if (frame->flash_state
-				    == SH_CSS_FRAME_PARTIAL_FLASH)
+				    == CSS_FRAME_FLASH_STATE_PARTIAL)
 					dev_dbg(isp->dev, "%s thumb partially "
 						"flashed\n", __func__);
 				else if (frame->flash_state
-					 == SH_CSS_FRAME_FULLY_FLASH)
+					 == CSS_FRAME_FLASH_STATE_FULL)
 					dev_dbg(isp->dev, "%s thumb completely "
 						"flashed\n", __func__);
 				else
 					dev_dbg(isp->dev, "%s thumb no flash "
 						"in this frame\n", __func__);
 			}
-			vb = atomisp_css_frame_to_vbuf(pipe, buffer);
+			vb = atomisp_css_frame_to_vbuf(pipe, frame);
 			if (!vb)
 				dev_err(isp->dev, "dequeued frame unknown!");
 			break;
-		case SH_CSS_BUFFER_TYPE_OUTPUT_FRAME:
+		case CSS_BUFFER_TYPE_OUTPUT_FRAME:
 			if (isp->sw_contex.invalid_frame) {
 				error = true;
 				isp->sw_contex.invalid_frame = 0;
@@ -880,19 +877,19 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error,
 					"frame as invalid\n", __func__);
 			}
 			pipe->buffers_in_css--;
-			vb = atomisp_css_frame_to_vbuf(pipe, buffer);
-			frame = buffer;
+			frame = buffer.css_buffer.data.frame;
+			vb = atomisp_css_frame_to_vbuf(pipe, frame);
 
 			if (isp->params.flash_state == ATOMISP_FLASH_ONGOING) {
 				if (frame->flash_state
-				    == SH_CSS_FRAME_PARTIAL_FLASH) {
+				    == CSS_FRAME_FLASH_STATE_PARTIAL) {
 					isp->frame_status[vb->i] =
 						ATOMISP_FRAME_STATUS_FLASH_PARTIAL;
 					dev_dbg(isp->dev,
 						 "%s partially flashed\n",
 						 __func__);
 				} else if (frame->flash_state
-					   == SH_CSS_FRAME_FULLY_FLASH) {
+					   == CSS_FRAME_FLASH_STATE_FULL) {
 					isp->frame_status[vb->i] =
 						ATOMISP_FRAME_STATUS_FLASH_EXPOSED;
 					isp->params.num_flash_frames--;
@@ -944,7 +941,7 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error,
 	 */
 	if (requeue) {
 		err = atomisp_css_queue_buffer(isp, css_pipe_id,
-						buf_type, buffer);
+						buf_type, &buffer);
 		if (err)
 			dev_err(isp->dev, "%s, q to css fails: %d\n",
 					__func__, err);
@@ -1168,15 +1165,15 @@ irqreturn_t atomisp_isr_thread(int irq, void *isp_ptr)
 	while (sh_css_dequeue_event(&current_event.pipe,
 				    &current_event.event) == sh_css_success) {
 		switch (current_event.event) {
-		case SH_CSS_EVENT_PIPELINE_DONE:
+		case CSS_EVENT_PIPELINE_DONE:
 			css_pipe_done = true;
 			break;
-		case SH_CSS_EVENT_OUTPUT_FRAME_DONE:
-		case SH_CSS_EVENT_VF_OUTPUT_FRAME_DONE:
+		case CSS_EVENT_OUTPUT_FRAME_DONE:
+		case CSS_EVENT_VF_OUTPUT_FRAME_DONE:
 			reset_wdt_timer = true; /* ISP running */
 			/* fall through */
-		case SH_CSS_EVENT_3A_STATISTICS_DONE:
-		case SH_CSS_EVENT_DIS_STATISTICS_DONE:
+		case CSS_EVENT_3A_STATISTICS_DONE:
+		case CSS_EVENT_DIS_STATISTICS_DONE:
 			break;
 		default:
 			dev_err(isp->dev, "unknown event 0x%x pipe:%d\n",
@@ -1188,32 +1185,32 @@ irqreturn_t atomisp_isr_thread(int irq, void *isp_ptr)
 
 	while (kfifo_out(&events, &current_event, 1)) {
 		switch (current_event.event) {
-		case SH_CSS_EVENT_OUTPUT_FRAME_DONE:
+		case CSS_EVENT_OUTPUT_FRAME_DONE:
 			frame_done_found = true;
 			atomisp_buf_done(isp, 0,
 					 SH_CSS_BUFFER_TYPE_OUTPUT_FRAME,
 					 current_event.pipe,
 					 true);
 			break;
-		case SH_CSS_EVENT_3A_STATISTICS_DONE:
+		case CSS_EVENT_3A_STATISTICS_DONE:
 			atomisp_buf_done(isp, 0,
 					 SH_CSS_BUFFER_TYPE_3A_STATISTICS,
 					 current_event.pipe,
 					 css_pipe_done);
 			break;
-		case SH_CSS_EVENT_VF_OUTPUT_FRAME_DONE:
+		case CSS_EVENT_VF_OUTPUT_FRAME_DONE:
 			atomisp_buf_done(isp, 0,
 					 SH_CSS_BUFFER_TYPE_VF_OUTPUT_FRAME,
 					 current_event.pipe,
 					 true);
 			break;
-		case SH_CSS_EVENT_DIS_STATISTICS_DONE:
+		case CSS_EVENT_DIS_STATISTICS_DONE:
 			atomisp_buf_done(isp, 0,
 					 SH_CSS_BUFFER_TYPE_DIS_STATISTICS,
 					 current_event.pipe,
 					 css_pipe_done);
 			break;
-		case SH_CSS_EVENT_PIPELINE_DONE:
+		case CSS_EVENT_PIPELINE_DONE:
 			break;
 		default:
 			dev_err(isp->dev, "unhandled css stored event: 0x%x\n",

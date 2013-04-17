@@ -100,11 +100,6 @@
  */
 #define ATOMISP_MAX_ISR_LATENCY	1000
 
-struct atomisp_css_event {
-	enum sh_css_pipe_id pipe;
-	enum sh_css_event_type event;
-};
-
 struct atomisp_input_subdev {
 	unsigned int type;
 	enum atomisp_camera_port port;

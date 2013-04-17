@@ -408,10 +408,53 @@ void atomisp_css_update_isp_params(struct atomisp_device *isp)
 int atomisp_css_queue_buffer(struct atomisp_device *isp,
 			     enum atomisp_css_pipe_id pipe_id,
 			     enum atomisp_css_buffer_type buf_type,
-			     void *buffer)
+			     struct atomisp_css_buffer *isp_css_buffer)
 {
-	if (ia_css_pipe_enqueue_buffer(isp->css_env.pipes[pipe_id], &buffer)
-	    != IA_CSS_SUCCESS)
+	if (ia_css_pipe_enqueue_buffer(isp->css_env.pipes[pipe_id],
+					&isp_css_buffer->css_buffer)
+					!= IA_CSS_SUCCESS)
+		return -EINVAL;
+
+	return 0;
+}
+
+int atomisp_css_dequeue_buffer(struct atomisp_device *isp,
+				enum atomisp_css_pipe_id pipe_id,
+				enum atomisp_css_buffer_type buf_type,
+				struct atomisp_css_buffer *isp_css_buffer)
+{
+	enum ia_css_err err;
+
+	err = ia_css_pipe_dequeue_buffer(isp->css_env.pipes[pipe_id],
+					&isp_css_buffer->css_buffer);
+	if (err != IA_CSS_SUCCESS) {
+		dev_err(isp->dev,
+			"ia_css_pipe_dequeue_buffer failed: 0x%x\n", err);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+int atomisp_css_get_3a_statistics(struct atomisp_device *isp,
+				  struct atomisp_css_buffer *isp_css_buffer)
+{
+	ia_css_get_3a_statistics(isp->params.s3a_user_stat,
+				 isp_css_buffer->css_buffer.data.stats_3a);
+
+	return 0;
+}
+
+void atomisp_css_get_dis_statistics(struct atomisp_device *isp,
+				    struct atomisp_css_buffer *isp_css_buffer)
+{
+	ia_css_get_dvs_statistics(isp->params.dvs_stat,
+				  isp_css_buffer->css_buffer.data.stats_dvs);
+}
+
+int atomisp_css_dequeue_event(struct atomisp_css_event *current_event)
+{
+	if (ia_css_dequeue_event(&current_event->event) != IA_CSS_SUCCESS)
 		return -EINVAL;
 
 	return 0;

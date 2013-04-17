@@ -66,6 +66,20 @@
 #define CSS_IRQ_INFO_CSS_RECEIVER_SOF	CSS_ID(CSS_IRQ_INFO_CSS_RECEIVER_SOF)
 #define CSS_IRQ_INFO_CSS_RECEIVER_EOF	CSS_ID(CSS_IRQ_INFO_CSS_RECEIVER_EOF)
 
+#define CSS_EVENT_OUTPUT_FRAME_DONE	CSS_EVENT(OUTPUT_FRAME_DONE)
+#define CSS_EVENT_VF_OUTPUT_FRAME_DONE	CSS_EVENT(VF_OUTPUT_FRAME_DONE)
+#define CSS_EVENT_3A_STATISTICS_DONE	CSS_EVENT(3A_STATISTICS_DONE)
+#define CSS_EVENT_DIS_STATISTICS_DONE	CSS_EVENT(DIS_STATISTICS_DONE)
+#define CSS_EVENT_PIPELINE_DONE		CSS_EVENT(PIPELINE_DONE)
+
+#define CSS_BUFFER_TYPE_3A_STATISTICS	CSS_ID(CSS_BUFFER_TYPE_3A_STATISTICS)
+#define CSS_BUFFER_TYPE_DIS_STATISTICS	CSS_ID(CSS_BUFFER_TYPE_DIS_STATISTICS)
+#define CSS_BUFFER_TYPE_INPUT_FRAME	CSS_ID(CSS_BUFFER_TYPE_INPUT_FRAME)
+#define CSS_BUFFER_TYPE_OUTPUT_FRAME	CSS_ID(CSS_BUFFER_TYPE_OUTPUT_FRAME)
+#define CSS_BUFFER_TYPE_VF_OUTPUT_FRAME	CSS_ID(CSS_BUFFER_TYPE_VF_OUTPUT_FRAME)
+#define CSS_BUFFER_TYPE_RAW_OUTPUT_FRAME \
+	CSS_ID(CSS_BUFFER_TYPE_RAW_OUTPUT_FRAME)
+
 struct atomisp_device;
 
 void atomisp_set_css_env(struct atomisp_device *isp);
@@ -113,5 +127,18 @@ void atomisp_css_update_isp_params(struct atomisp_device *isp);
 int atomisp_css_queue_buffer(struct atomisp_device *isp,
 			     enum atomisp_css_pipe_id pipe_id,
 			     enum atomisp_css_buffer_type buf_type,
-			     void *buffer);
+			     struct atomisp_css_buffer *isp_css_buffer);
+
+int atomisp_css_dequeue_buffer(struct atomisp_device *isp,
+				enum atomisp_css_pipe_id pipe_id,
+				enum atomisp_css_buffer_type buf_type,
+				struct atomisp_css_buffer *isp_css_buffer);
+
+int atomisp_css_get_3a_statistics(struct atomisp_device *isp,
+				  struct atomisp_css_buffer *isp_css_buffer);
+
+void atomisp_css_get_dis_statistics(struct atomisp_device *isp,
+				    struct atomisp_css_buffer *isp_css_buffer);
+
+int atomisp_css_dequeue_event(struct atomisp_css_event *current_event);
 #endif
