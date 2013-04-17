@@ -2207,6 +2207,7 @@ static unsigned hub_is_wusb(struct usb_hub *hub)
 #define GET_DESCRIPTOR_TRIES	2
 #define SET_CONFIG_TRIES	(2 * (use_both_schemes + 1))
 #define USE_NEW_SCHEME(i)	((i) / 2 == (int)old_scheme_first)
+#define PORT_RESUME_TRIES	10
 
 #define HUB_ROOT_RESET_TIME	50	/* times are in msec */
 #define HUB_SHORT_RESET_TIME	10
@@ -2680,6 +2681,7 @@ static int finish_port_resume(struct usb_device *udev)
 {
 	int	status = 0;
 	u16	devstatus = 0;
+	int	i;
 
 	/* caller owns the udev device lock */
 	dev_dbg(&udev->dev, "%s\n",
@@ -2709,9 +2711,14 @@ static int finish_port_resume(struct usb_device *udev)
 	 */
 	if (status == 0) {
 		devstatus = 0;
-		status = usb_get_status(udev, USB_RECIP_DEVICE, 0, &devstatus);
-		if (status >= 0)
-			status = (status > 0 ? 0 : -ENODEV);
+		for (i = 0; i < PORT_RESUME_TRIES; i++) {
+			status = usb_get_status(udev,
+				 USB_RECIP_DEVICE, 0, &devstatus);
+			if (status >= 0)
+				status = (status > 0 ? 0 : -ENODEV);
+			if (status == 0)
+				break;
+		}
 
 		/* If a normal resume failed, try doing a reset-resume */
 		if (status && !udev->reset_resume && udev->persist_enabled) {
