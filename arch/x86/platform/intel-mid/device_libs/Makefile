@@ -103,5 +103,3 @@ obj-$(subst m,y,$(CONFIG_BCM_BT_LPM))					+= platform_btlpm.o
 # Pin Control
 obj-$(subst m,y,$(CONFIG_PINCTRL_INTEL_MID))				+= platform_mid_pinctrl.o
 obj-$(subst m,y,$(CONFIG_INTEL_MID_OSNIB_ILB))				+= platform_osnib_ilb.o
-
-obj-$(subst m,y,$(CONFIG_SENSORS_PSH_BYT))				+= platform_psh_byt.o
