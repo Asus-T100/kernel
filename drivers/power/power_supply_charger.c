@@ -357,7 +357,8 @@ static inline void cache_bat_prop(struct batt_props *bat_prop_new)
 
 update_props:
 	if (time_after(bat_prop_new->tstamp,
-		(bat_cache->tstamp + DEF_CUR_VOLT_SAMPLE_JIFF))) {
+		(bat_cache->tstamp + DEF_CUR_VOLT_SAMPLE_JIFF)) ||
+						bat_cache->tstamp == 0) {
 		cache_successive_samples(bat_cache->voltage_now_cache,
 						bat_prop_new->voltage_now);
 		cache_successive_samples(bat_cache->current_now_cache,
