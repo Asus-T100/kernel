@@ -763,8 +763,9 @@ static struct atomisp_video_pipe *__atomisp_get_pipe(struct atomisp_device *isp,
 }
 
 static void atomisp_buf_done(struct atomisp_device *isp, int error,
-			enum sh_css_buffer_type buf_type,
-			enum sh_css_pipe_id css_pipe_id, bool q_buffers)
+			     enum atomisp_css_buffer_type buf_type,
+			     enum atomisp_css_pipe_id css_pipe_id,
+			     bool q_buffers)
 {
 	struct videobuf_buffer *vb = NULL;
 	struct atomisp_video_pipe *pipe = NULL;
@@ -942,7 +943,8 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error,
 	 * Queue/dequeue order will change if driver recycles image buffers.
 	 */
 	if (requeue) {
-		err = sh_css_queue_buffer(css_pipe_id, buf_type, buffer);
+		err = atomisp_css_queue_buffer(isp, css_pipe_id,
+						buf_type, buffer);
 		if (err)
 			dev_err(isp->dev, "%s, q to css fails: %d\n",
 					__func__, err);

@@ -404,3 +404,15 @@ void atomisp_css_update_isp_params(struct atomisp_device *isp)
 	ia_css_stream_set_isp_config(isp->css_env.stream, &isp->params.config);
 	atomisp_isp_parameters_clean_up(&isp->params.config);
 }
+
+int atomisp_css_queue_buffer(struct atomisp_device *isp,
+			     enum atomisp_css_pipe_id pipe_id,
+			     enum atomisp_css_buffer_type buf_type,
+			     void *buffer)
+{
+	if (ia_css_pipe_enqueue_buffer(isp->css_env.pipes[pipe_id], &buffer)
+	    != IA_CSS_SUCCESS)
+		return -EINVAL;
+
+	return 0;
+}

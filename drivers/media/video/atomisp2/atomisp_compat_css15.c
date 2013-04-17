@@ -250,3 +250,14 @@ void atomisp_css_update_isp_params(struct atomisp_device *isp)
 {
 	sh_css_update_isp_params();
 }
+
+int atomisp_css_queue_buffer(struct atomisp_device *isp,
+			     enum atomisp_css_pipe_id pipe_id,
+			     enum atomisp_css_buffer_type buf_type,
+			     void *buffer)
+{
+	if (sh_css_queue_buffer(pipe_id, buf_type, buffer) != sh_css_success)
+		return -EINVAL;
+
+	return 0;
+}

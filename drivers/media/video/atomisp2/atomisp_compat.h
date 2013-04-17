@@ -110,4 +110,8 @@ int atomisp_css_start(struct atomisp_device *isp,
 
 void atomisp_css_update_isp_params(struct atomisp_device *isp);
 
+int atomisp_css_queue_buffer(struct atomisp_device *isp,
+			     enum atomisp_css_pipe_id pipe_id,
+			     enum atomisp_css_buffer_type buf_type,
+			     void *buffer);
 #endif
