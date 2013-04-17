@@ -4,7 +4,8 @@
 #include <linux/notifier.h>
 #include <linux/usb.h>
 
-#define HSIC_AUX_GPIO_NAME    "usb_hsic_aux1"
+#define HSIC_AUX_GPIO_NAME       "usb_hsic_aux1"
+#define HSIC_WAKEUP_GPIO_NAME    "usb_hsic_aux2"
 #define HSIC_HUB_RESET_TIME   10
 #define HSIC_ENABLE_SIZE      2
 #define HSIC_DURATION_SIZE    7
@@ -37,6 +38,7 @@ struct hsic_tangier_priv {
 	unsigned             hsic_mutex_init:1;
 	unsigned             aux_wq_init:1;
 	unsigned             hsic_aux_irq_enable:1;
+	unsigned             hsic_wakeup_irq_enable:1;
 	unsigned             hsic_aux_finish:1;
 	unsigned             hsic_enable_created:1;
 	unsigned             hsic_lock_init:1;
@@ -46,6 +48,7 @@ struct hsic_tangier_priv {
 	unsigned             L2_autosuspend_enable;
 	unsigned             L1_autosuspend_enable;
 	unsigned             aux_gpio;
+	unsigned             wakeup_gpio;
 	unsigned             L2_latency;
 	unsigned             L1_inactivityDuration;
 	unsigned             L2_inactivityDuration;
@@ -53,6 +56,8 @@ struct hsic_tangier_priv {
 	/* Root hub device */
 	struct usb_device           *rh_dev;
 	struct usb_device           *modem_dev;
+	struct workqueue_struct     *work_queue;
+	struct work_struct          wakeup_work;
 };
 
 enum {
