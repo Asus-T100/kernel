@@ -24,6 +24,7 @@
 
 
 #define NANO_SEC		1000000000UL /* 10^9 in sec */
+#define MICRO_SEC		1000000UL /* 10^6 in sec */
 #define PMU_LOG_INTERVAL_SECS	(60*5) /* 5 mins in secs */
 
 #define S0IX_LAT_SRAM_ADDR_CLVP		0xFFFF7FD0
@@ -76,6 +77,10 @@ struct lss_definition {
 
 extern unsigned int enable_s3;
 extern unsigned int enable_s0ix;
+
+extern u32 __iomem *residency[];
+extern u32 __iomem *s0ix_counter[];
+
 #endif
 
 /* platform dependency starts */

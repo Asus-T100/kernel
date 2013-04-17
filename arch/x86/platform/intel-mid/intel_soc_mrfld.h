@@ -38,6 +38,27 @@
 #define PUNIT_PORT			0x04
 #define NC_PM_SSS			0x3F
 
+/* SRAM locations to get S0ix residency */
+#define S0I1_RES_ADDR		0xFFFFF604
+#define S0I2_RES_ADDR		0xFFFFF608
+#define S0I3_RES_ADDR		0xFFFFF60C
+
+/* SRAM locations to get S0ix count */
+#define S0I1_COUNT_ADDR		0xFFFF7FF0
+#define S0I2_COUNT_ADDR		0xFFFF7FF4
+#define S0I3_COUNT_ADDR		0xFFFF7FF8
+
+/* IPC commands to start, stop and
+ * dump S0ix residency counters */
+#define START_RES_COUNTER	0x00EB
+#define STOP_RES_COUNTER	0x10EB
+#define DUMP_RES_COUNTER	0x20EB
+
+/* IPC commands to start/reset and
+ * dump S0ix count */
+#define START_S0IX_COUNT	0x00E1
+#define DUMP_S0IX_COUNT		0x10E1
+
 #define GFX_LSS_INDEX			1
 
 #define PMU_PSH_LSS_00			0
@@ -127,5 +148,7 @@
 
 #define LPMP3_TARGET_SSS0_MASK (0xFFF3FFFF)
 #define LPMP3_TARGET_SSS0 (0xFFC3FFFF)
+
+extern int intel_scu_ipc_simple_command(int, int);
 
 #endif
