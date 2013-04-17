@@ -2828,8 +2828,19 @@ int __devinit dwc3_gadget_init(struct dwc3 *dwc)
 
 	scratch_array = dma_alloc_coherent(NULL, sizeof(*scratch_array),
 			&scratch_array_dma, GFP_KERNEL);
+	if (!scratch_array) {
+		dev_err(dwc->dev, "failed to allocate scratch_arrary\n");
+		return -ENOMEM;
+	}
+
 	scratch_buffer[0] = dma_alloc_coherent(NULL, 4096,
 			&dma_addr, GFP_KERNEL);
+
+	if (!scratch_buffer[0]) {
+		dev_err(dwc->dev, "failed to allocate scratch_buffer\n");
+		ret = -ENOMEM;
+		goto err;
+	}
 
 	scratch_array->dma_addr[0] = (uint64_t)dma_addr;
 
@@ -2966,6 +2977,13 @@ err1:
 			dwc->ctrl_req, dwc->ctrl_req_addr);
 
 err0:
+	dma_free_coherent(NULL, 4096, scratch_buffer[0],
+			  dma_addr);
+
+err:
+	dma_free_coherent(NULL, sizeof(*scratch_array),
+			  scratch_array, scratch_array_dma);
+
 	return ret;
 }
 
