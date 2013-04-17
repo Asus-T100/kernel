@@ -26,7 +26,8 @@ enum hsu_core {
 enum hsu_pid {
 	hsu_pid_def = 0,
 	hsu_pid_rhb = 0,
-	hsu_pid_vtb = 1,
+	hsu_pid_vtb_pro = 1,
+	hsu_pid_vtb_eng = 2,
 	hsu_pid_max,
 };
 

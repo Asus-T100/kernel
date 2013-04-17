@@ -119,7 +119,54 @@ hsu_port_pin_cfg hsu_port_pin_cfgs[][hsu_pid_max][hsu_port_max] = {
 				.rts_alt = 2,
 			},
 		},
-		[hsu_pid_vtb] = {
+		[hsu_pid_vtb_pro] = {
+			[hsu_port0] = {
+				.id = 0,
+				.name = HSU_BT_PORT,
+				.rx_gpio = 96+26,
+				.rx_alt = 1,
+				.tx_gpio = 96+27,
+				.tx_alt = 1,
+				.cts_gpio = 96+28,
+				.cts_alt = 1,
+				.rts_gpio = 96+29,
+				.rts_alt = 1,
+			},
+			[hsu_port1] = {
+				.id = 1,
+				.name = HSU_MODEM_PORT,
+				.wake_gpio = 96+30,
+				.rx_gpio = 96+30,
+				.rx_alt = 1,
+				.tx_gpio = 96+31,
+				.tx_alt = 1,
+				.cts_gpio = 96+33,
+				.cts_alt = 1,
+				.rts_gpio = 96+32,
+				.rts_alt = 2,
+			},
+			[hsu_port2] = {
+				.id = 2,
+				.name = HSU_DEBUG_PORT,
+				.wake_gpio = 67,
+				.rx_gpio = 67,
+				.rx_alt = 1,
+			},
+			[hsu_port_share] = {
+				.id = 1,
+				.name = HSU_GPS_PORT,
+				.wake_gpio = 64,
+				.rx_gpio = 64,
+				.rx_alt = 1,
+				.tx_gpio = 65,
+				.tx_alt = 1,
+				.cts_gpio = 68,
+				.cts_alt = 1,
+				.rts_gpio = 66,
+				.rts_alt = 2,
+			},
+		},
+		[hsu_pid_vtb_eng] = {
 			[hsu_port0] = {
 				.id = 0,
 				.name = HSU_BT_PORT,
@@ -612,10 +659,12 @@ static __init int hsu_dev_platform_data(void)
 	switch (intel_mid_identify_cpu()) {
 	case INTEL_MID_CPU_CHIP_CLOVERVIEW:
 		platform_hsu_info = &hsu_port_cfgs[hsu_clv][0];
-		if (INTEL_MID_BOARD(2, PHONE, CLVTP, VB, PRO) ||
-		INTEL_MID_BOARD(2, PHONE, CLVTP, VB, ENG))
+		if (INTEL_MID_BOARD(2, PHONE, CLVTP, VB, PRO))
 			hsu_port_gpio_mux =
-				&hsu_port_pin_cfgs[hsu_clv][hsu_pid_vtb][0];
+				&hsu_port_pin_cfgs[hsu_clv][hsu_pid_vtb_pro][0];
+		else if (INTEL_MID_BOARD(2, PHONE, CLVTP, VB, ENG))
+			hsu_port_gpio_mux =
+				&hsu_port_pin_cfgs[hsu_clv][hsu_pid_vtb_eng][0];
 		else
 			hsu_port_gpio_mux =
 				&hsu_port_pin_cfgs[hsu_clv][hsu_pid_rhb][0];
