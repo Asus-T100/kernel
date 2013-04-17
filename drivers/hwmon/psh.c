@@ -50,12 +50,14 @@
 #endif
 
 #define APP_IMR_SIZE (1024 * 126)
-struct page *imr;	/* hack as imr before Chabbi ready */
-struct device *hwmon_dev;
 
-struct psh_ia_priv *ia_data;
+struct psh_plt_priv {
+	struct page *imr;	/* hack as imr before Chabbi ready */
+	struct device *hwmon_dev;
+};
 
-int process_send_cmd(int ch, struct ia_cmd *cmd, int len)
+int process_send_cmd(struct psh_ia_priv *psh_ia_data,
+			int ch, struct ia_cmd *cmd, int len)
 {
 	int i, j;
 	int ret = 0;
@@ -97,13 +99,18 @@ int process_send_cmd(int ch, struct ia_cmd *cmd, int len)
 
 int do_setup_ddr(struct device *dev)
 {
+	struct psh_ia_priv *ia_data =
+			(struct psh_ia_priv *)dev_get_drvdata(dev);
+	struct psh_plt_priv *plt_priv =
+			(struct psh_plt_priv *)ia_data->platform_priv;
 	u32 ddr_phy = page_to_phys(ia_data->pg);
-	u32 imr_phy = page_to_phys(imr);
+	u32 imr_phy = page_to_phys(plt_priv->imr);
 	const struct firmware *fw_entry;
 	struct ia_cmd cmd_user = {
 		.cmd_id = CMD_SETUP_DDR,
 		.sensor_id = 0,
 		};
+
 #ifdef VPROG2_SENSOR
 	intel_scu_ipc_msic_vprog2(1);
 #endif
@@ -118,11 +125,11 @@ int do_setup_ddr(struct device *dev)
 				.sensor_id = 0,
 				};
 
-			memcpy(page_address(imr), fw_entry->data,
+			memcpy(page_address(plt_priv->imr), fw_entry->data,
 				fw_entry->size);
 			*(u32 *)(&cmd.param) = imr_phy;
 			cmd.tran_id = 0x1;
-			if (ia_send_cmd(PSH2IA_CHANNEL3, &cmd, 7))
+			if (ia_send_cmd(ia_data, PSH2IA_CHANNEL3, &cmd, 7))
 				return -1;
 			ia_data->load_in_progress = 1;
 			wait_for_completion_timeout(&ia_data->cmd_load_comp,
@@ -131,12 +138,14 @@ int do_setup_ddr(struct device *dev)
 		release_firmware(fw_entry);
 	}
 	*(unsigned long *)(&cmd_user.param) = ddr_phy;
-	return ia_send_cmd(PSH2IA_CHANNEL0, &cmd_user, 7);
+	return ia_send_cmd(ia_data, PSH2IA_CHANNEL0, &cmd_user, 7);
 }
 
 static void psh2ia_channel_handle(u32 msg, u32 param, void *data)
 {
 	struct pci_dev *pdev = (struct pci_dev *)data;
+	struct psh_ia_priv *ia_data =
+			(struct psh_ia_priv *)dev_get_drvdata(&pdev->dev);
 
 	ia_process_lbuf(&pdev->dev);
 	if (unlikely(ia_data->load_in_progress)) {
@@ -148,6 +157,8 @@ static void psh2ia_channel_handle(u32 msg, u32 param, void *data)
 static int psh_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 {
 	int ret = -1;
+	struct psh_ia_priv *ia_data;
+	struct psh_plt_priv *plt_priv;
 
 	/* No resource for this PCI device, it's only for probe */
 	/*
@@ -157,10 +168,15 @@ static int psh_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto pci_err;
 	}
 	*/
+	plt_priv = kzalloc(sizeof(*plt_priv), GFP_KERNEL);
+	if (!plt_priv) {
+		dev_err(&pdev->dev, "can not allocate plt_priv\n");
+		goto plt_err;
+	}
 
-	imr = alloc_pages(GFP_KERNEL | GFP_DMA32 | __GFP_ZERO,
+	plt_priv->imr = alloc_pages(GFP_KERNEL | GFP_DMA32 | __GFP_ZERO,
 			get_order(APP_IMR_SIZE));
-	if (!imr) {
+	if (!plt_priv->imr) {
 		dev_err(&pdev->dev, "can not allocate app imr buffer\n");
 		goto imr_err;
 	}
@@ -171,11 +187,13 @@ static int psh_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto psh_ia_err;
 	}
 
-	hwmon_dev = hwmon_device_register(&pdev->dev);
-	if (!hwmon_dev) {
+	plt_priv->hwmon_dev = hwmon_device_register(&pdev->dev);
+	if (!plt_priv->hwmon_dev) {
 		dev_err(&pdev->dev, "fail to register hwmon device\n");
 		goto hwmon_err;
 	}
+
+	ia_data->platform_priv = plt_priv;
 
 	ret = intel_psh_ipc_bind(PSH_RECV_CH0, psh2ia_channel_handle, pdev);
 	if (ret) {
@@ -190,12 +208,14 @@ static int psh_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	return 0;
 
 irq_err:
-	hwmon_device_unregister(hwmon_dev);
+	hwmon_device_unregister(plt_priv->hwmon_dev);
 hwmon_err:
 	psh_ia_common_deinit(&pdev->dev);
 psh_ia_err:
-	__free_pages(imr, get_order(APP_IMR_SIZE));
+	__free_pages(plt_priv->imr, get_order(APP_IMR_SIZE));
 imr_err:
+	kfree(plt_priv);
+plt_err:
 	/* pci_dev_put(pdev);
 pci_err: */
 	return ret;
@@ -203,13 +223,20 @@ pci_err: */
 
 static void psh_remove(struct pci_dev *pdev)
 {
-	__free_pages(imr, get_order(APP_IMR_SIZE));
+	struct psh_ia_priv *ia_data =
+			(struct psh_ia_priv *)dev_get_drvdata(&pdev->dev);
+	struct psh_plt_priv *plt_priv =
+			(struct psh_plt_priv *)ia_data->platform_priv;
 
-	psh_ia_common_deinit(&pdev->dev);
+	__free_pages(plt_priv->imr, get_order(APP_IMR_SIZE));
 
 	intel_psh_ipc_unbind(PSH_RECV_CH0);
 
-	hwmon_device_unregister(hwmon_dev);
+	hwmon_device_unregister(plt_priv->hwmon_dev);
+
+	kfree(plt_priv);
+
+	psh_ia_common_deinit(&pdev->dev);
 
 	/* pci_dev_put(pdev); */
 }
