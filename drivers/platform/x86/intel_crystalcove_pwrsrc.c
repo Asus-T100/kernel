@@ -39,6 +39,10 @@
 #define CRYSTALCOVE_MPWRSRCIRQS0_REG	0x0F
 #define CRYSTALCOVE_MPWRSRCIRQSX_REG	0x10
 #define CRYSTALCOVE_SPWRSRC_REG		0x1E
+#define CRYSTALCOVE_RESETSRC0_REG	0x20
+#define CRYSTALCOVE_RESETSRC1_REG	0x21
+#define CRYSTALCOVE_WAKESRC_REG		0x22
+
 #define PWRSRC_VBUS_DET			(1 << 0)
 #define PWRSRC_DCIN_DET			(1 << 1)
 #define PWRSRC_BAT_DET			(1 << 2)
@@ -67,6 +71,55 @@ struct pwrsrc_info {
 	struct usb_phy *otg;
 	struct extcon_dev *edev;
 };
+
+static char *pwrsrc_resetsrc0_info[] = {
+	/* bit 0 */ "Last shutdown caused by SOC reporting a thermal event",
+	/* bit 1 */ "Last shutdown caused by critical PMIC temperature",
+	/* bit 2 */ "Last shutdown caused by critical system temperature",
+	/* bit 3 */ "Last shutdown caused by critical battery temperature",
+	/* bit 4 */ "Last shutdown caused by VSYS under voltage",
+	/* bit 5 */ "Last shutdown caused by VSYS over voltage",
+	/* bit 6 */ "Last shutdown caused by battery removal",
+	NULL,
+};
+
+static char *pwrsrc_resetsrc1_info[] = {
+	/* bit 0 */ "Last shutdown caused by VCRIT threshold",
+	/* bit 1 */ "Last shutdown caused by BATID reporting battery removal",
+	/* bit 2 */ "Last shutdown caused by user pressing the power button",
+	NULL,
+};
+
+static char *pwrsrc_wakesrc_info[] = {
+	/* bit 0 */ "Last wake caused by user pressing the power button",
+	/* bit 1 */ "Last wake caused by a battery insertion",
+	/* bit 2 */ "Last wake caused by a USB charger insertion",
+	/* bit 3 */ "Last wake caused by an adapter insertion",
+	NULL,
+};
+
+/* Decode and log the given "reset source indicator" register, then clear it */
+static void crystalcove_pwrsrc_log_rsi(struct platform_device *pdev,
+					char **pwrsrc_rsi_info,
+					int reg_s)
+{
+	char *rsi_info = pwrsrc_rsi_info[0];
+	int val, i = 0;
+	int bit_select, clear_mask = 0x0;
+
+	val = intel_mid_pmic_readb(reg_s);
+	while (rsi_info) {
+		bit_select = (1 << i);
+		if (val & bit_select) {
+			dev_info(&pdev->dev, "%s\n", rsi_info);
+			clear_mask |= bit_select;
+		}
+		rsi_info = pwrsrc_rsi_info[++i];
+	}
+
+	/* Clear the register value for next reboot (write 1 to clear bit) */
+	intel_mid_pmic_writeb(reg_s, clear_mask);
+}
 
 static irqreturn_t crystalcove_pwrsrc_isr(int irq, void *data)
 {
@@ -138,6 +191,14 @@ static int crystalcove_pwrsrc_probe(struct platform_device *pdev)
 	info->pdev = pdev;
 	info->irq = platform_get_irq(pdev, 0);
 	platform_set_drvdata(pdev, info);
+
+	/* Log reason for last reset and wake events */
+	crystalcove_pwrsrc_log_rsi(pdev, pwrsrc_resetsrc0_info,
+				CRYSTALCOVE_RESETSRC0_REG);
+	crystalcove_pwrsrc_log_rsi(pdev, pwrsrc_resetsrc1_info,
+				CRYSTALCOVE_RESETSRC1_REG);
+	crystalcove_pwrsrc_log_rsi(pdev, pwrsrc_wakesrc_info,
+				CRYSTALCOVE_WAKESRC_REG);
 
 	/* TODO: Battery Channel ADC support */
 
