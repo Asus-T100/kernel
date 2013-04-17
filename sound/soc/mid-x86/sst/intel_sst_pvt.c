@@ -168,7 +168,7 @@ static void dump_sst_crash_area(void)
  * @iram		: true if iram dump else false
  * This function dumps the iram dram data into the respective buffers
  */
-#ifdef CONFIG_DEBUG_FS
+#if defined(DEBUG_SST_REC) && defined(CONFIG_DEBUG_FS)
 static void dump_ram_area(struct intel_sst_drv *sst,
 			struct sst_dump_buf *dump_buf, enum sst_ram_type type)
 {
@@ -184,6 +184,8 @@ static void dump_ram_area(struct intel_sst_drv *sst,
 }
 #endif
 
+/*FIXME Disabling IRAM/DRAM dump for timeout issues */
+#ifdef DEBUG_SST_REC
 static void sst_stream_recovery(struct intel_sst_drv *sst)
 {
 	struct stream_info *str_info;
@@ -216,25 +218,20 @@ static void sst_do_recovery(struct intel_sst_drv *sst)
 	 * redownloaded on next request.This is because firmare not responding
 	 * for 1 sec is equalant to some unrecoverable error of FW.
 	 */
-#if 0
 	pr_err("Audio: Intel SST engine encountered an unrecoverable error\n");
 	pr_err("Audio: trying to reset the dsp now\n");
 	mutex_lock(&sst->sst_lock);
-	sst->sst_state = SST_UN_INIT;
 
+	sst->sst_state = SST_UN_INIT;
 	sst_stream_recovery(sst);
 
 	mutex_unlock(&sst->sst_lock);
-#endif
+
 	dump_stack();
 	dump_sst_shim(sst);
-#if 0
 	reset_sst_shim(sst);
-#endif
 	dump_sst_crash_area();
 
-/*FIXME Disabling IRAM/DRAM dump for timeout issues */
-#if 0
 	if (sst_drv_ctx->ops->set_bypass) {
 
 		sst_drv_ctx->ops->set_bypass(true);
@@ -251,20 +248,42 @@ static void sst_do_recovery(struct intel_sst_drv *sst)
 	envp[env_offset] = NULL;
 	kobject_uevent_env(&sst->pci->dev.kobj, KOBJ_CHANGE, envp);
 	pr_err("Recovery Uevent Sent!!\n");
-#endif
+
 	spin_lock_irqsave(&sst->ipc_spin_lock, irq_flags);
 	if (list_empty(&sst->ipc_dispatch_list))
 		pr_err("List is Empty\n");
 	spin_unlock_irqrestore(&sst->ipc_spin_lock, irq_flags);
+
 	list_for_each_entry_safe(m, _m, &sst->ipc_dispatch_list, node) {
 		pr_err("pending msg header %#x\n", m->header.full);
-#if 0
 		list_del(&m->node);
 		kfree(m->mailbox_data);
 		kfree(m);
-#endif
 	}
 }
+#else
+static void sst_do_recovery(struct intel_sst_drv *sst)
+{
+	struct ipc_post *m, *_m;
+	unsigned long irq_flags;
+
+	if (sst->pci_id == SST_MRFLD_PCI_ID) {
+		dump_stack();
+		return;
+	}
+
+	dump_stack();
+	dump_sst_shim(sst);
+	dump_sst_crash_area();
+
+	spin_lock_irqsave(&sst->ipc_spin_lock, irq_flags);
+	if (list_empty(&sst->ipc_dispatch_list))
+		pr_err("List is Empty\n");
+	spin_unlock_irqrestore(&sst->ipc_spin_lock, irq_flags);
+	list_for_each_entry_safe(m, _m, &sst->ipc_dispatch_list, node)
+		pr_err("pending msg header %#x\n", m->header.full);
+}
+#endif
 
 /*
  * sst_wait_timeout - wait on event for timeout

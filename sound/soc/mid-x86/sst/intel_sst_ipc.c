@@ -307,8 +307,11 @@ void sst_post_message_mrfld32(struct work_struct *work)
 	size = (u32 *)msg->mailbox_data;
 	pr_debug("size: = %x\n", *size);
 
-	print_bytes((unsigned char *)msg->mailbox_data, *size + sizeof(u32), 32, 8);
-
+#ifdef SST_BYTE_DUMP
+	pr_debug("printing %lu bytes", *size+sizeof(u32));
+	print_hex_dump_bytes(__func__, DUMP_PREFIX_OFFSET,
+			(unsigned char *)msg->mailbox_data, *size + sizeof(u32));
+#endif
 	memcpy_toio(sst_drv_ctx->mailbox + SST_MAILBOX_SEND,
 		msg->mailbox_data, *size + 4);
 

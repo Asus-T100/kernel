@@ -893,8 +893,8 @@ static int sst_parse_elf_module_memcpy(struct intel_sst_drv *sst,
 	if (ret_val)
 		return ret_val;
 
-	ret_val = sst_fill_memcpy_list(memcpy_list,
-					dstn, fw + pr->p_offset, pr->p_filesz, mem_type);
+	ret_val = sst_fill_memcpy_list(memcpy_list, dstn,
+			(void *)fw + pr->p_offset, pr->p_filesz, mem_type);
 	if (ret_val)
 		return ret_val;
 
@@ -1296,8 +1296,7 @@ free_block:
  * Writing the DDR physical base to DCCM offset
  * so that FW can use it to setup TLB
  */
-static void mrfld_dccm_config_write(unsigned int dram_base,
-					unsigned int ddr_base)
+static void mrfld_dccm_config_write(void __iomem *dram_base, unsigned int ddr_base)
 {
 	void __iomem *addr;
 	u32 bss_reset = 0;
@@ -1359,8 +1358,8 @@ int sst_load_fw(void)
 	/* Write the DRAM config before enabling FW
 	 */
 	if (!sst_drv_ctx->use_32bit_ops) {
-		mrfld_dccm_config_write((u32)sst_drv_ctx->dram,
-						(u32)sst_drv_ctx->ddr_base);
+		mrfld_dccm_config_write(sst_drv_ctx->dram,
+						sst_drv_ctx->ddr_base);
 		/* For mrfld, download all libraries the first time fw is
 		 * downloaded */
 		pr_debug("lib_dwnld = %d\n", lib_dwnld);

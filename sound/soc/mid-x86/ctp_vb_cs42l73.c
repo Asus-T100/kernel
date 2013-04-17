@@ -125,17 +125,16 @@ static int ctp_vb_cs42l73_startup(struct snd_pcm_substream *substream)
 	return 0;
 }
 
-static int ctp_vb_cs42l73_shutdown(struct snd_pcm_substream *substream)
+static void ctp_vb_cs42l73_shutdown(struct snd_pcm_substream *substream)
 {
 	unsigned int device = substream->pcm->device;
 	switch (device) {
 	case CTP_VB_AUD_VSP_DEV:
 		ctp_config_voicecall_flag(substream, false);
+		break;
 	default:
 		pr_err("%s: Invalid device %d\n", __func__, device);
-		return -EINVAL;
 	}
-	return 0;
 }
 
 static int ctp_vb_cs42l73_hw_params(struct snd_pcm_substream *substream,
@@ -493,7 +492,7 @@ static struct snd_soc_dai_link ctp_vb_dailink[] = {
 		.platform_name = "sst-platform",
 		.init = NULL,
 		.ignore_suspend = 1,
-		.ops = &ctp_vb_asp_compr_ops,
+		.compr_ops = &ctp_vb_asp_compr_ops,
 	},
 	[CTP_VB_COMMS_BT_SCO_DEV] = {
 		.name = "Cloverview BT XSP",

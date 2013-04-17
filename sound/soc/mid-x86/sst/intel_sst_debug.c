@@ -59,64 +59,6 @@ u32 dma_reg_off[] = {0x2C0, 0x2C8, 0x2D0, 0x2D8, 0x2E0, 0x2E8,
 		0x380, 0x388, 0x390, 0x398, 0x3A0, 0x3A8, 0x3B0, 0x3C8, 0x3D0,
 		0x3D8, 0x3E0, 0x3E8, 0x3F0, 0x3F8};
 
-/* each_word_occupies + newlines_needed + pointer_print_size_per_line */
-#define DUMP_BYTES_SIZE(num_words, chars_in_word, num_lines) \
-	  ((num_words) * ((chars_in_word) + 1) \
-	    + (num_lines) \
-	    + (2 * sizeof(void *) + 4) * (num_lines))
-
-#define WORDS_PER_LINE		4
-#define MAX_CHARS_IN_DWORD	10
-
-void dump_bytes(const void *data, size_t sz, char *dest,
-		unsigned char word_sz, unsigned char words_in_line)
-{
-	unsigned int i, j, words;
-	unsigned long long val;
-	const unsigned char *d = data;
-	int pos = 0;
-
-	for (words = 0; words < sz / word_sz; words += words_in_line) {
-		pos += sprintf(dest + pos, "0x%p: ", data + (words * word_sz));
-		for (i = 0; i < words_in_line && words + i < sz/word_sz; i++) {
-			val = 0;
-			for (j = 0; j < word_sz; j++) {
-				val |= ((unsigned long long)*d)
-						<< (j * sizeof(*d) * 8);
-				d += sizeof(*d);
-			}
-			/* 2 ascii chars per byte displayed */
-			pos += sprintf(dest + pos, "%.*llx ", word_sz * 2, val);
-		}
-		pos += sprintf(dest + pos, "\n");
-	}
-}
-
-void print_bytes(const void *data, size_t sz, unsigned char word_sz,
-		 unsigned char words_in_line)
-{
-	int num_dwords = sz / 4;
-	char *buf = vmalloc(DUMP_BYTES_SIZE(num_dwords, MAX_CHARS_IN_DWORD,
-					    num_dwords / WORDS_PER_LINE));
-	if (!buf) {
-		pr_err("%s: no memory\n", __func__);
-		return;
-	}
-	*buf = 0;
-	dump_bytes(data, sz, buf, word_sz, words_in_line);
-	pr_debug("printing %lu bytes\n", sz);
-	pr_debug("%s", buf);
-	vfree(buf);
-}
-
-/* FIXME: replace with simple_open from 3.4 kernel */
-static int sst_debug_open(struct inode *inode, struct file *file)
-{
-	if (inode->i_private)
-		file->private_data = inode->i_private;
-	return 0;
-}
-
 static ssize_t sst_debug_shim_read(struct file *file, char __user *user_buf,
 				   size_t count, loff_t *ppos)
 {
@@ -227,7 +169,7 @@ static ssize_t sst_debug_shim_write(struct file *file,
 }
 
 static const struct file_operations sst_debug_shim_ops = {
-	.open = sst_debug_open,
+	.open = simple_open,
 	.read = sst_debug_shim_read,
 	.write = sst_debug_shim_write,
 	.llseek = default_llseek,
@@ -251,39 +193,53 @@ static inline int is_fw_running(struct intel_sst_drv *drv)
 	return 0;
 }
 
-static inline int read_buffer_fromio(char *dest, const u32 __iomem *from,
+static inline int read_buffer_fromio(char *dest, unsigned int sz,
+				     const u32 __iomem *from,
 				     unsigned int num_dwords)
 {
+	int i;
+	const unsigned int rowsz = 16, groupsz = 4;
 	const unsigned int size = num_dwords * sizeof(u32);
-	u32 *tmp = vmalloc(size);
+	unsigned int linelen, printed = 0, remaining = size;
+
+	u8 *tmp = kmalloc(size, GFP_KERNEL);
 	if (!tmp)
 		return -ENOMEM;
 	memcpy_fromio(tmp, from, size);
-	/* assumes dest has enough space for dump_bytes to print into */
-	dump_bytes(tmp, size, dest, sizeof(u32), WORDS_PER_LINE);
-	vfree(tmp);
+	for (i = 0; i < size; i += rowsz) {
+		linelen = min(remaining, rowsz);
+		remaining -= rowsz;
+		hex_dump_to_buffer(tmp + i, linelen, rowsz, groupsz,
+				   dest + printed, sz - printed, false);
+		printed += linelen * 2 + linelen / groupsz - 1;
+		*(dest + printed++) = '\n';
+		*(dest + printed) = 0;
+	}
+	kfree(tmp);
 	return 0;
 }
 
 static inline int copy_sram_to_user_buffer(char __user *user_buf, size_t count, loff_t *ppos,
-					   unsigned int num_dwords, const u32 __iomem *from)
+					   unsigned int num_dwords, const u32 __iomem *from,
+					   u32 offset)
 {
 	ssize_t bytes_read;
 	char *buf;
 	int pos;
+	unsigned int bufsz = 48 + sizeof(u32) * num_dwords * (2 + 1) + 1;
 
-	buf = vmalloc(DUMP_BYTES_SIZE(num_dwords, MAX_CHARS_IN_DWORD, num_dwords / WORDS_PER_LINE)
-			+ 32 + 1);
+	buf = kmalloc(bufsz, GFP_KERNEL);
 	if (!buf) {
 		pr_err("%s: no memory\n", __func__);
 		return -ENOMEM;
 	}
 	*buf = 0;
-	pos = sprintf(buf, "Reading %u dwords from %p\n", num_dwords, from);
-	read_buffer_fromio(buf + pos, from, num_dwords);
+	pos = scnprintf(buf, 48, "Reading %u dwords from offset %#x\n",
+			num_dwords, offset);
+	read_buffer_fromio(buf + pos, bufsz - pos, from, num_dwords);
 	bytes_read = simple_read_from_buffer(user_buf, count, ppos,
-			buf, strlen(buf));
-	vfree(buf);
+					     buf, strlen(buf));
+	kfree(buf);
 	return bytes_read;
 }
 
@@ -298,15 +254,16 @@ static ssize_t sst_debug_sram_lpe_debug_read(struct file *file,
 	if (ret)
 		return ret;
 
-	ret = copy_sram_to_user_buffer(user_buf, count, ppos,
-			RESVD_DUMP_SZ, (u32 *)(drv->mailbox + SST_RESERVED_OFFSET));
+	ret = copy_sram_to_user_buffer(user_buf, count, ppos, RESVD_DUMP_SZ,
+				       (u32 *)(drv->mailbox + SST_RESERVED_OFFSET),
+				       SST_RESERVED_OFFSET);
 
 	pm_runtime_put(&drv->pci->dev);
 	return ret;
 }
 
 static const struct file_operations sst_debug_sram_lpe_debug_ops = {
-	.open = sst_debug_open,
+	.open = simple_open,
 	.read = sst_debug_sram_lpe_debug_read,
 	.llseek = default_llseek,
 };
@@ -320,14 +277,15 @@ static ssize_t sst_debug_sram_lpe_checkpoint_read(struct file *file,
 	ret = is_fw_running(drv);
 	if (ret)
 		return ret;
-	ret = copy_sram_to_user_buffer(user_buf, count, ppos,
-			CHECKPOINT_DUMP_SZ, (u32 *)(drv->mailbox + SST_CHECKPOINT_OFFSET));
+	ret = copy_sram_to_user_buffer(user_buf, count, ppos, CHECKPOINT_DUMP_SZ,
+				       (u32 *)(drv->mailbox + SST_CHECKPOINT_OFFSET),
+				       SST_CHECKPOINT_OFFSET);
 	pm_runtime_put(&drv->pci->dev);
 	return ret;
 }
 
 static const struct file_operations sst_debug_sram_lpe_checkpoint_ops = {
-	.open = sst_debug_open,
+	.open = simple_open,
 	.read = sst_debug_sram_lpe_checkpoint_read,
 	.llseek = default_llseek,
 };
@@ -342,14 +300,15 @@ static ssize_t sst_debug_sram_ia_lpe_mbox_read(struct file *file,
 	ret = is_fw_running(drv);
 	if (ret)
 		return ret;
-	ret = copy_sram_to_user_buffer(user_buf, count, ppos,
-			IA_LPE_MAILBOX_DUMP_SZ, (u32 *)(drv->mailbox + SST_MAILBOX_SEND));
+	ret = copy_sram_to_user_buffer(user_buf, count, ppos, IA_LPE_MAILBOX_DUMP_SZ,
+				       (u32 *)(drv->mailbox + SST_MAILBOX_SEND),
+				       SST_MAILBOX_SEND);
 	pm_runtime_put(&drv->pci->dev);
 	return ret;
 }
 
 static const struct file_operations sst_debug_sram_ia_lpe_mbox_ops = {
-	.open = sst_debug_open,
+	.open = simple_open,
 	.read = sst_debug_sram_ia_lpe_mbox_read,
 	.llseek = default_llseek,
 };
@@ -369,14 +328,15 @@ static ssize_t sst_debug_sram_lpe_ia_mbox_read(struct file *file,
 		mailbox_offset = SST_MAILBOX_RCV_MRFLD;
 	else
 		mailbox_offset = SST_MAILBOX_RCV;
-	ret = copy_sram_to_user_buffer(user_buf, count, ppos,
-			LPE_IA_MAILBOX_DUMP_SZ , (u32 *)(drv->mailbox + mailbox_offset));
+	ret = copy_sram_to_user_buffer(user_buf, count, ppos, LPE_IA_MAILBOX_DUMP_SZ,
+				       (u32 *)(drv->mailbox + mailbox_offset),
+				       mailbox_offset);
 	pm_runtime_put(&drv->pci->dev);
 	return ret;
 }
 
 static const struct file_operations sst_debug_sram_lpe_ia_mbox_ops = {
-	.open = sst_debug_open,
+	.open = simple_open,
 	.read = sst_debug_sram_lpe_ia_mbox_read,
 	.llseek = default_llseek,
 };
@@ -389,14 +349,15 @@ static ssize_t sst_debug_sram_lpe_scu_mbox_read(struct file *file,
 	ret = is_fw_running(drv);
 	if (ret)
 		return ret;
-	ret = copy_sram_to_user_buffer(user_buf, count, ppos,
-			LPE_SCU_MAILBOX_DUMP_SZ, (u32 *)(drv->mailbox + SST_LPE_SCU_MAILBOX));
+	ret = copy_sram_to_user_buffer(user_buf, count, ppos, LPE_SCU_MAILBOX_DUMP_SZ,
+				       (u32 *)(drv->mailbox + SST_LPE_SCU_MAILBOX),
+				       SST_LPE_SCU_MAILBOX);
 	pm_runtime_put(&drv->pci->dev);
 	return ret;
 }
 
 static const struct file_operations sst_debug_sram_lpe_scu_mbox_ops = {
-	.open = sst_debug_open,
+	.open = simple_open,
 	.read = sst_debug_sram_lpe_scu_mbox_read,
 	.llseek = default_llseek,
 };
@@ -408,14 +369,15 @@ static ssize_t sst_debug_sram_scu_lpe_mbox_read(struct file *file,
 	ret = is_fw_running(drv);
 	if (ret)
 		return ret;
-	ret = copy_sram_to_user_buffer(user_buf, count, ppos,
-			SCU_LPE_MAILBOX_DUMP_SZ, (u32 *)(drv->mailbox + SST_SCU_LPE_MAILBOX));
+	ret = copy_sram_to_user_buffer(user_buf, count, ppos, SCU_LPE_MAILBOX_DUMP_SZ,
+				       (u32 *)(drv->mailbox + SST_SCU_LPE_MAILBOX),
+				       SST_SCU_LPE_MAILBOX);
 	pm_runtime_put(&drv->pci->dev);
 	return ret;
 }
 
 static const struct file_operations sst_debug_sram_scu_lpe_mbox_ops = {
-	.open = sst_debug_open,
+	.open = simple_open,
 	.read = sst_debug_sram_scu_lpe_mbox_read,
 	.llseek = default_llseek,
 };
@@ -433,7 +395,6 @@ static ssize_t sst_debug_lpe_log_enable_write(struct file *file,
 	int i = 0;
 	u8 *addr;
 	unsigned long tmp;
-	addr = &params.dbg_type;
 
 	size_t buf_size = min(count, sizeof(buf)-1);
 	memset(&params, 0, sizeof(params));
@@ -454,6 +415,7 @@ static ssize_t sst_debug_lpe_log_enable_write(struct file *file,
 
 	buf[buf_size] = 0;
 
+	addr = &params.dbg_type;
 	for (i = 0; i < (sizeof(params) - sizeof(u8)); i++) {
 		while (*start == ' ')
 			start++;
@@ -596,7 +558,7 @@ put_pm_runtime:
 }
 
 static const struct file_operations sst_debug_lpe_log_enable_ops = {
-	.open = sst_debug_open,
+	.open = simple_open,
 	.write = sst_debug_lpe_log_enable_write,
 	.read = sst_debug_lpe_log_enable_read,
 	.llseek = default_llseek,
@@ -648,7 +610,7 @@ static ssize_t sst_debug_rtpm_write(struct file *file,
 }
 
 static const struct file_operations sst_debug_rtpm_ops = {
-	.open = sst_debug_open,
+	.open = simple_open,
 	.read = sst_debug_rtpm_read,
 	.write = sst_debug_rtpm_write,
 	.llseek = default_llseek,
@@ -690,7 +652,7 @@ static ssize_t sst_debug_readme_read(struct file *file, char __user *user_buf,
 }
 
 static const struct file_operations sst_debug_readme_ops = {
-	.open = sst_debug_open,
+	.open = simple_open,
 	.read = sst_debug_readme_read,
 };
 
@@ -732,7 +694,7 @@ static ssize_t sst_debug_osc_clk0_write(struct file *file,
 }
 
 static const struct file_operations sst_debug_osc_clk0_ops = {
-	.open = sst_debug_open,
+	.open = simple_open,
 	.read = sst_debug_osc_clk0_read,
 	.write = sst_debug_osc_clk0_write,
 };
@@ -771,7 +733,7 @@ static ssize_t sst_debug_fw_clear_cntx_write(struct file *file,
 }
 
 static const struct file_operations sst_debug_fw_clear_cntx = {
-	.open = sst_debug_open,
+	.open = simple_open,
 	.read = sst_debug_fw_clear_cntx_read,
 	.write = sst_debug_fw_clear_cntx_write,
 };
@@ -809,7 +771,7 @@ static ssize_t sst_debug_fw_clear_cache_write(struct file *file,
 }
 
 static const struct file_operations sst_debug_fw_clear_cache = {
-	.open = sst_debug_open,
+	.open = simple_open,
 	.read = sst_debug_fw_clear_cache_read,
 	.write = sst_debug_fw_clear_cache_write,
 };
@@ -819,7 +781,7 @@ static ssize_t sst_debug_fw_reset_state_read(struct file *file,
 {
 	char state[16];
 
-	sprintf(state, "%d\n", atomic_read(&sst_drv_ctx->sst_state));
+	sprintf(state, "%d\n", sst_drv_ctx->sst_state);
 
 	return simple_read_from_buffer(user_buf, count, ppos,
 			state, strlen(state));
@@ -847,7 +809,7 @@ static ssize_t sst_debug_fw_reset_state_write(struct file *file,
 }
 
 static const struct file_operations sst_debug_fw_reset_state = {
-	.open = sst_debug_open,
+	.open = simple_open,
 	.read = sst_debug_fw_reset_state_read,
 	.write = sst_debug_fw_reset_state_write,
 };
@@ -857,10 +819,10 @@ static ssize_t sst_debug_dwnld_mode_read(struct file *file,
 {
 	char *state = "error\n";
 
-	if (atomic_read(&sst_drv_ctx->use_dma) == 0) {
+	if (sst_drv_ctx->use_dma == 0) {
 		state = "memcpy\n";
-	} else if (atomic_read(&sst_drv_ctx->use_dma) == 1) {
-		state = atomic_read(&sst_drv_ctx->use_lli) ? \
+	} else if (sst_drv_ctx->use_dma == 1) {
+		state = sst_drv_ctx->use_lli ? \
 				"lli\n" : "dma\n";
 
 	}
@@ -877,7 +839,7 @@ static ssize_t sst_debug_dwnld_mode_write(struct file *file,
 	char buf[16];
 	int sz = min(count, sizeof(buf)-1);
 
-	if (atomic_read(&sst_drv_ctx->sst_state) != SST_SUSPENDED) {
+	if (sst_drv_ctx->sst_state != SST_SUSPENDED) {
 		pr_err("FW should be in suspended state\n");
 		return -EFAULT;
 	}
@@ -890,20 +852,20 @@ static ssize_t sst_debug_dwnld_mode_write(struct file *file,
 	atomic_set(&sst_drv_ctx->fw_clear_cache, 1);
 
 	if (!strncmp(buf, "memcpy\n", sz)) {
-		atomic_set(&sst_drv_ctx->use_dma, 0);
+		sst_drv_ctx->use_dma = 0;
 	} else if (!strncmp(buf, "lli\n", sz)) {
-		atomic_set(&sst_drv_ctx->use_dma, 1);
-		atomic_set(&sst_drv_ctx->use_lli, 1);
+		sst_drv_ctx->use_dma = 1;
+		sst_drv_ctx->use_lli = 1;
 	} else if (!strncmp(buf, "dma\n", sz)) {
-		atomic_set(&sst_drv_ctx->use_dma, 1);
-		atomic_set(&sst_drv_ctx->use_lli, 0);
+		sst_drv_ctx->use_dma = 1;
+		sst_drv_ctx->use_lli = 0;
 	}
 	return sz;
 
 }
 
 static const struct file_operations sst_debug_dwnld_mode = {
-	.open = sst_debug_open,
+	.open = simple_open,
 	.read = sst_debug_dwnld_mode_read,
 	.write = sst_debug_dwnld_mode_write,
 };
@@ -936,7 +898,7 @@ static ssize_t sst_debug_ssp_reg_read(struct file *file,
 }
 
 static const struct file_operations sst_debug_ssp_reg = {
-		.open = sst_debug_open,
+		.open = simple_open,
 		.read = sst_debug_ssp_reg_read,
 };
 
@@ -1001,7 +963,7 @@ static ssize_t sst_debug_dma_reg_read(struct file *file,
 }
 
 static const struct file_operations sst_debug_dma_reg = {
-		.open = sst_debug_open,
+		.open = simple_open,
 		.read = sst_debug_dma_reg_read,
 };
 
@@ -1056,7 +1018,7 @@ int sst_debug_iram_dump_mmap(struct file *file, struct vm_area_struct *vma)
 }
 
 static const struct file_operations sst_debug_iram_dump = {
-	.open = sst_debug_open,
+	.open = simple_open,
 	.mmap = sst_debug_iram_dump_mmap,
 };
 
@@ -1076,7 +1038,7 @@ int sst_debug_dram_dump_mmap(struct file *file, struct vm_area_struct *vma)
 }
 
 static const struct file_operations sst_debug_dram_dump = {
-	.open = sst_debug_open,
+	.open = simple_open,
 	.mmap = sst_debug_dram_dump_mmap,
 };
 
