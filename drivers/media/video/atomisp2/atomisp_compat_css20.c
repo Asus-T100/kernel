@@ -326,3 +326,81 @@ int atomisp_q_dis_buffer_to_css(struct atomisp_device *isp,
 
 	return 0;
 }
+
+void atomisp_css_mmu_invalidate_cache(void)
+{
+	ia_css_mmu_invalidate_cache();
+}
+
+int atomisp_css_start(struct atomisp_device *isp,
+			enum atomisp_css_pipe_id pipe_id, bool in_reset)
+{
+	int ret = 0;
+
+	if (in_reset) {
+		if (__destroy_stream(isp, true) != IA_CSS_SUCCESS)
+			dev_warn(isp->dev, "destroy stream failed.\n");
+
+		if (__destroy_pipes(isp, true) != IA_CSS_SUCCESS)
+			dev_warn(isp->dev, "destroy pipe failed.\n");
+
+		if (__create_pipe(isp) != IA_CSS_SUCCESS) {
+			dev_err(isp->dev, "create pipe error.\n");
+			return -EINVAL;
+		}
+		if (__create_stream(isp) != IA_CSS_SUCCESS) {
+			dev_err(isp->dev, "create stream error.\n");
+			return -EINVAL;
+		}
+	}
+
+	if (ia_css_start_sp() != IA_CSS_SUCCESS) {
+		dev_err(isp->dev, "start sp error.\n");
+		ret = -EINVAL;
+		goto start_err;
+	}
+
+	if (ia_css_stream_start(isp->css_env.stream) != IA_CSS_SUCCESS) {
+		dev_err(isp->dev, "stream start error.\n");
+		ret = -EINVAL;
+		goto start_err;
+	}
+
+	isp->css_env.stream_state = CSS_STREAM_CREATED;
+	return 0;
+
+start_err:
+	__destroy_stream(isp, true);
+stream_err:
+	__destroy_pipes(isp, true);
+
+	/* css 2.0 API limitation: ia_css_stop_sp() could be only called after
+	 * destroy all pipes
+	 */
+	if (ia_css_isp_has_started() &&
+	   (ia_css_stop_sp() != IA_CSS_SUCCESS))
+		dev_err(isp->dev, "stop sp failed.\n");
+pipe_err:
+	return ret;
+}
+
+static void atomisp_isp_parameters_clean_up(
+				struct atomisp_css_isp_config *config)
+{
+	if (config->shading_table)
+		ia_css_shading_table_free(config->shading_table);
+	if (config->morph_table)
+		ia_css_morph_table_free(config->morph_table);
+
+	/*
+	 * Set NULL to configs pointer to avoid they are set into isp again when
+	 * some configs are changed and need to be updated later.
+	 */
+	memset(config, 0, sizeof(struct atomisp_css_isp_config));
+}
+
+void atomisp_css_update_isp_params(struct atomisp_device *isp)
+{
+	ia_css_stream_set_isp_config(isp->css_env.stream, &isp->params.config);
+	atomisp_isp_parameters_clean_up(&isp->params.config);
+}

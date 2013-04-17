@@ -31,6 +31,7 @@
 #define atomisp_css_buffer_type ia_css_buffer_type
 #define atomisp_css_dis_data ia_css_isp_dvs_statistics
 #define atomisp_css_irq_info  ia_css_irq_info
+#define atomisp_css_isp_config ia_css_isp_config
 typedef struct ia_css_isp_3a_statistics atomisp_css_3a_data;
 
 #define CSS_PIPE_ID_PREVIEW	IA_CSS_PIPE_ID_PREVIEW
@@ -73,6 +74,17 @@ struct atomisp_s3a_buf {
 struct atomisp_dis_buf {
 	struct atomisp_css_dis_data *dis_data;
 	struct list_head list;
+};
+
+/*
+ * These are used to indicate the css stream state, corresponding
+ * stream handling can be done via judging the different state.
+ */
+enum atomisp_css_stream_state {
+	CSS_STREAM_UNINIT,
+	CSS_STREAM_CREATED,
+	CSS_STREAM_STARTED,
+	CSS_STREAM_STOPPED,
 };
 
 #endif

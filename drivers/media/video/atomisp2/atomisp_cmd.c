@@ -1068,8 +1068,8 @@ void atomisp_wdt_work(struct work_struct *work)
 		if (atomisp_acc_load_extensions(isp) < 0)
 			dev_err(isp->dev, "acc extension failed to reload\n");
 
+		atomisp_css_start(isp, css_pipe_id, true);
 
-		sh_css_start(css_pipe_id);
 		if (!isp->sw_contex.file_input) {
 			atomisp_css_irq_enable(isp,
 					CSS_IRQ_INFO_CSS_RECEIVER_SOF, true);
@@ -1222,7 +1222,7 @@ irqreturn_t atomisp_isr_thread(int irq, void *isp_ptr)
 
 	if (frame_done_found &&
 	    isp->params.css_update_params_needed) {
-		sh_css_update_isp_params();
+		atomisp_css_update_isp_params(isp);
 		isp->params.css_update_params_needed = false;
 		frame_done_found = false;
 	}

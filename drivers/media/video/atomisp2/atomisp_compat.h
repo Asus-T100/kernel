@@ -103,4 +103,11 @@ int atomisp_q_dis_buffer_to_css(struct atomisp_device *isp,
 			struct atomisp_dis_buf *dis_buf,
 			enum atomisp_css_pipe_id css_pipe_id);
 
+void atomisp_css_mmu_invalidate_cache(void);
+
+int atomisp_css_start(struct atomisp_device *isp,
+		      enum atomisp_css_pipe_id pipe_id, bool in_reset);
+
+void atomisp_css_update_isp_params(struct atomisp_device *isp);
+
 #endif

@@ -221,3 +221,32 @@ int atomisp_q_dis_buffer_to_css(struct atomisp_device *isp,
 
 	return 0;
 }
+
+void atomisp_css_mmu_invalidate_cache(void)
+{
+	sh_css_mmu_invalidate_cache();
+}
+
+void atomisp_css_mmu_invalidate_tlb(void)
+{
+	sh_css_enable_sp_invalidate_tlb();
+}
+
+int atomisp_css_start(struct atomisp_device *isp,
+			enum atomisp_css_pipe_id pipe_id, bool in_reset)
+{
+	enum sh_css_err err;
+
+	err = sh_css_start(pipe_id);
+	if (err != sh_css_success) {
+		dev_err(isp->dev, "sh_css_start error:%d.\n", err);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+void atomisp_css_update_isp_params(struct atomisp_device *isp)
+{
+	sh_css_update_isp_params();
+}

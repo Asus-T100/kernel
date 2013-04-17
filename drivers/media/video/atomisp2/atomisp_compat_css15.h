@@ -72,4 +72,6 @@ struct atomisp_dis_buf {
 	struct list_head list;
 };
 
+void atomisp_css_mmu_invalidate_tlb(void);
+
 #endif

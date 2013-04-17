@@ -1268,7 +1268,7 @@ static int atomisp_streamon(struct file *file, void *fh,
 	struct video_device *vdev = video_devdata(file);
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
 	struct atomisp_device *isp = video_get_drvdata(vdev);
-	enum sh_css_pipe_id css_pipe_id;
+	enum atomisp_css_pipe_id css_pipe_id;
 	unsigned int sensor_start_stream;
 	int ret = 0;
 	unsigned long irqflags;
@@ -1360,12 +1360,10 @@ static int atomisp_streamon(struct file *file, void *fh,
 		dev_err(isp->dev, "acc extension failed to load\n");
 		goto out;
 	}
-	ret = sh_css_start(css_pipe_id);
-	if (ret != sh_css_success) {
-		dev_err(isp->dev, "sh_css_start fails: %d\n", ret);
-		ret = -EINVAL;
+	ret = atomisp_css_start(isp, css_pipe_id, false);
+	if (ret)
 		goto out;
-	}
+
 	if (isp->isp_subdev.continuous_mode->val &&
 	    isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO) {
 		INIT_COMPLETION(isp->init_done);
