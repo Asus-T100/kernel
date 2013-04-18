@@ -935,6 +935,9 @@ load_firmware(struct atomisp_device *isp)
 	return fw;
 }
 
+/* Declared in hmm.c. */
+extern bool atomisp_hmm_is_2400;
+
 #define ATOM_ISP_PCI_BAR	0
 
 static int __devinit atomisp_pci_probe(struct pci_dev *dev,
@@ -1018,6 +1021,7 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 #else
 			ATOMISP_HW_STEPPING_B0;
 #endif
+		atomisp_hmm_is_2400 = true;
 		break;
 	default:
 		/* Medfield and Clovertrail. */

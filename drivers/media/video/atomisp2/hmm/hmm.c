@@ -52,12 +52,13 @@ struct hmm_bo_device bo_device;
 struct hmm_pool	dynamic_pool;
 struct hmm_pool	reserved_pool;
 static void *dummy_ptr;
+bool atomisp_hmm_is_2400;
 
 int hmm_init(void)
 {
 	int ret;
 
-	if (IS_ISP2400)
+	if (atomisp_hmm_is_2400)
 		ret = hmm_bo_device_init(&bo_device, &sh_mmu_mrfld,
 					 ISP_VM_START, ISP_VM_SIZE);
 	else
