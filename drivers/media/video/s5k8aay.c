@@ -38,6 +38,14 @@ struct s5k8aay_reg {
 	u16 val;
 };
 
+struct s5k8aay_resolution {
+	u8 *desc;
+	unsigned int width;
+	unsigned int height;
+	const struct s5k8aay_reg *regs;
+	const struct s5k8aay_reg *clock_regs;
+};
+
 #include "s5k8aay_settings.h"
 
 #define S5K8AAY_REG_CHIP_ID			0x00000040
@@ -54,9 +62,6 @@ struct s5k8aay_reg {
 
 #define S5K8AAY_R16_AHB_MSB_ADDR_PTR		0xfcfc
 
-#define S5K8AAY_RES_WIDTH		1280
-#define S5K8AAY_RES_HEIGHT		720
-
 #define to_s5k8aay_sensor(_sd) container_of(_sd, struct s5k8aay_device, sd)
 
 struct s5k8aay_device {
@@ -66,6 +71,35 @@ struct s5k8aay_device {
 	struct camera_sensor_platform_data *platform_data;
 	struct mutex input_lock;
 	bool streaming;
+	int fmt_idx;
+};
+
+/*
+ * Biggest resolution should be last.
+ *
+ * NOTE: Currently sensor outputs only one size per aspect ratio. */
+static const struct s5k8aay_resolution const s5k8aay_res_modes[] = {
+	{
+		.desc = "s5k8aay_1200x800",
+		.width = 1200,
+		.height = 800,
+		.regs = s5k8aay_regs_19_1200x800,
+		.clock_regs = s5k8aay_regs_10,
+	},
+	{
+		.desc = "s5k8aay_1280x720",
+		.width = 1280,
+		.height = 720,
+		.regs = s5k8aay_regs_19_1280x720,
+		.clock_regs = s5k8aay_regs_10,
+	},
+	{
+		.desc = "s5k8aay_1280x960",
+		.width = 1280,
+		.height = 960,
+		.regs = s5k8aay_regs_19_1280x960,
+		.clock_regs = s5k8aay_regs_10_clock_1280x960,
+	}
 };
 
 static int
@@ -234,9 +268,26 @@ static int s5k8aay_set_suspend(struct v4l2_subdev *sd)
 			     0x0001);
 }
 
+static int s5k8aay_write_array_list(struct v4l2_subdev *sd,
+		struct s5k8aay_reg const *regs[], unsigned int size)
+{
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	int i;
+
+	for (i = 0; i < size; i++) {
+		int ret = s5k8aay_write_array(client, regs[i]);
+		if (ret)
+			return ret;
+	}
+	return 0;
+}
+
 static int s5k8aay_set_streaming(struct v4l2_subdev *sd)
 {
-	static struct s5k8aay_reg const *s5k8aay_regs[] = {
+	struct s5k8aay_device *dev = to_s5k8aay_sensor(sd);
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
+
+	static struct s5k8aay_reg const *pre_regs[] = {
 		s5k8aay_regs_1,
 		s5k8aay_regs_2,
 		s5k8aay_regs_3,
@@ -246,7 +297,6 @@ static int s5k8aay_set_streaming(struct v4l2_subdev *sd)
 		s5k8aay_regs_7,
 		s5k8aay_regs_8,
 		s5k8aay_regs_9,
-		s5k8aay_regs_10,
 		s5k8aay_regs_11,
 		s5k8aay_regs_12,
 		s5k8aay_regs_13,
@@ -255,20 +305,33 @@ static int s5k8aay_set_streaming(struct v4l2_subdev *sd)
 		s5k8aay_regs_16,
 		s5k8aay_regs_17,
 		s5k8aay_regs_18,
-		s5k8aay_regs_19,
-		s5k8aay_regs_20,
+	};
+
+	const struct s5k8aay_reg const *mode_regs[] = {
+		s5k8aay_res_modes[dev->fmt_idx].clock_regs,
+		s5k8aay_res_modes[dev->fmt_idx].regs,
+	};
+
+	static struct s5k8aay_reg const *post_regs[] = {
 		s5k8aay_regs_21,
 	};
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
-	struct s5k8aay_device *dev = to_s5k8aay_sensor(sd);
-	int i;
+	int ret;
 
-	for (i = 0; i < ARRAY_SIZE(s5k8aay_regs); i++) {
-		int ret = s5k8aay_write_array(client, s5k8aay_regs[i]);
-		if (ret)
-			return ret;
-	}
-	s5k8aay_check_error(dev, client);
+	ret = s5k8aay_write_array_list(sd, pre_regs, ARRAY_SIZE(pre_regs));
+	if (ret)
+		return ret;
+
+	ret = s5k8aay_write_array_list(sd, mode_regs, ARRAY_SIZE(mode_regs));
+	if (ret)
+		return ret;
+
+	ret = s5k8aay_write_array_list(sd, post_regs, ARRAY_SIZE(post_regs));
+	if (ret)
+		return ret;
+
+	ret = s5k8aay_check_error(dev, client);
+	if (ret)
+		return ret;
 
 	dev->streaming = true;
 
@@ -363,11 +426,62 @@ static int s5k8aay_s_power(struct v4l2_subdev *sd, int power)
 	return ret;
 }
 
+#define ASPECT_RATIO(w, h)  (((w) << 13) / (h))
+
+static bool check_aspect_ratio(struct s5k8aay_resolution const *res,
+		unsigned int width, unsigned int height)
+{
+	return ASPECT_RATIO(res->width, res->height) == ASPECT_RATIO(width,
+			height);
+}
+
+/*
+ * Returns the nearest higher resolution index.
+ * @w: width
+ * @h: height
+ * matching is done based on aspect ratio.
+ * If the aspect ratio cannot be matched to any index, -1 is returned.
+ */
+static int nearest_resolution_index(struct v4l2_subdev *sd, int w, int h)
+{
+	int i;
+	int idx = -1;
+
+	for (i = 0; i < ARRAY_SIZE(s5k8aay_res_modes); i++) {
+		if (check_aspect_ratio(&s5k8aay_res_modes[i], w, h)) {
+			idx = i;
+			break;
+		}
+	}
+	return idx;
+}
+
 static int s5k8aay_try_mbus_fmt(struct v4l2_subdev *sd,
 				struct v4l2_mbus_framefmt *fmt)
 {
-	fmt->width = S5K8AAY_RES_WIDTH;
-	fmt->height = S5K8AAY_RES_HEIGHT;
+	int idx;
+	const struct s5k8aay_resolution *biggest =
+		&s5k8aay_res_modes[ARRAY_SIZE(s5k8aay_res_modes) - 1];
+
+	if ((fmt->width > biggest->width) ||
+	    (fmt->height > biggest->height)) {
+		fmt->width = biggest->width;
+		fmt->height = biggest->height;
+	} else {
+		/* Find nearest resolution with same aspect ratio. */
+		idx = nearest_resolution_index(sd, fmt->width, fmt->height);
+
+		/* Same aspect ratio was not found from the list.
+		 * Take last defined resolution. */
+		if (idx == -1) {
+			idx = ARRAY_SIZE(s5k8aay_res_modes) - 1;
+			WARN_ONCE(1, "Correct aspect ratio was not found.");
+		}
+
+		fmt->width = s5k8aay_res_modes[idx].width;
+		fmt->height = s5k8aay_res_modes[idx].height;
+	}
+
 	fmt->code = S5K8AAY_FORMAT;
 	return 0;
 }
@@ -375,9 +489,14 @@ static int s5k8aay_try_mbus_fmt(struct v4l2_subdev *sd,
 static int s5k8aay_get_mbus_fmt(struct v4l2_subdev *sd,
 				struct v4l2_mbus_framefmt *fmt)
 {
-	fmt->width = S5K8AAY_RES_WIDTH;
-	fmt->height = S5K8AAY_RES_HEIGHT;
+	struct s5k8aay_device *dev = to_s5k8aay_sensor(sd);
+
+	mutex_lock(&dev->input_lock);
+	fmt->width = s5k8aay_res_modes[dev->fmt_idx].width;
+	fmt->height = s5k8aay_res_modes[dev->fmt_idx].height;
 	fmt->code = S5K8AAY_FORMAT;
+	mutex_unlock(&dev->input_lock);
+
 	return 0;
 }
 
@@ -385,7 +504,8 @@ static int s5k8aay_set_mbus_fmt(struct v4l2_subdev *sd,
 			      struct v4l2_mbus_framefmt *fmt)
 {
 	struct s5k8aay_device *dev = to_s5k8aay_sensor(sd);
-	int ret = 0;
+	int ret;
+	int tmp_idx;
 
 	mutex_lock(&dev->input_lock);
 
@@ -394,13 +514,20 @@ static int s5k8aay_set_mbus_fmt(struct v4l2_subdev *sd,
 		goto out;
 	}
 
-	fmt->width = S5K8AAY_RES_WIDTH;
-	fmt->height = S5K8AAY_RES_HEIGHT;
-	fmt->code = S5K8AAY_FORMAT;
+	ret = s5k8aay_try_mbus_fmt(sd, fmt);
+	if (ret)
+		goto out;
+
+	tmp_idx = nearest_resolution_index(sd, fmt->width, fmt->height);
+	/* Sanity check */
+	if (unlikely(tmp_idx == -1)) {
+		ret = -EINVAL;
+		goto out;
+	}
+	dev->fmt_idx = tmp_idx;
 
 out:
 	mutex_unlock(&dev->input_lock);
-
 	return ret;
 }
 
@@ -507,12 +634,17 @@ static int s5k8aay_s_stream(struct v4l2_subdev *sd, int enable)
 static int
 s5k8aay_enum_framesizes(struct v4l2_subdev *sd, struct v4l2_frmsizeenum *fsize)
 {
-	if (fsize->index)
+	struct s5k8aay_device *dev = to_s5k8aay_sensor(sd);
+
+	if (fsize->index >= ARRAY_SIZE(s5k8aay_res_modes))
 		return -EINVAL;
 
+	mutex_lock(&dev->input_lock);
 	fsize->type = V4L2_FRMSIZE_TYPE_DISCRETE;
-	fsize->discrete.width = S5K8AAY_RES_WIDTH;
-	fsize->discrete.height = S5K8AAY_RES_HEIGHT;
+	fsize->discrete.width = s5k8aay_res_modes[fsize->index].width;
+	fsize->discrete.height = s5k8aay_res_modes[fsize->index].height;
+	mutex_unlock(&dev->input_lock);
+
 	return 0;
 }
 
@@ -532,13 +664,17 @@ static int s5k8aay_enum_frame_size(struct v4l2_subdev *sd,
 	struct v4l2_subdev_fh *fh,
 	struct v4l2_subdev_frame_size_enum *fse)
 {
-	if (fse->index)
+	struct s5k8aay_device *dev = to_s5k8aay_sensor(sd);
+
+	if (fse->index >= ARRAY_SIZE(s5k8aay_res_modes))
 		return -EINVAL;
 
-	fse->min_width = S5K8AAY_RES_WIDTH;
-	fse->min_height = S5K8AAY_RES_HEIGHT;
-	fse->max_width = S5K8AAY_RES_WIDTH;
-	fse->max_height = S5K8AAY_RES_HEIGHT;
+	mutex_lock(&dev->input_lock);
+	fse->min_width = s5k8aay_res_modes[fse->index].width;
+	fse->min_height = s5k8aay_res_modes[fse->index].height;
+	fse->max_width = s5k8aay_res_modes[fse->index].width;
+	fse->max_height = s5k8aay_res_modes[fse->index].height;
+	mutex_unlock(&dev->input_lock);
 
 	return 0;
 }
@@ -653,6 +789,8 @@ static int s5k8aay_probe(struct i2c_client *client,
 	dev->pad.flags = MEDIA_PAD_FL_SOURCE;
 	dev->sd.entity.type = MEDIA_ENT_T_V4L2_SUBDEV_SENSOR;
 	dev->format.code = V4L2_MBUS_FMT_UYVY8_1X16;
+	/* Set default resolution to biggest resolution. */
+	dev->fmt_idx = ARRAY_SIZE(s5k8aay_res_modes) - 1;
 
 	ret = media_entity_init(&dev->sd.entity, 1, &dev->pad, 0);
 	if (ret) {

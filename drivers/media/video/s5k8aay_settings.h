@@ -17,8 +17,10 @@
  *
  */
 
-/***** Automatically generated code *****/
-/* Source: [8AA_EVT1]1280x720_30fps_M24_S36_P72_CN.tSet */
+/* Source: [8AA_EVT1]1280x720_30fps_M24_S36_P72_CN.tSet
+ *  [8AA_EVT1]Preview 640x480_30fps_Capture 1280x960_30fps_M19.2_S58_P116.nset
+ */
+
 
 static struct s5k8aay_reg const s5k8aay_regs_1[] = {		/* 01.Start Setting */
 	/* $MIPI[Width:1280,Height:720,Format:YUV422,Lane:1,ErrorCheck:0,PolarityData:0,PolarityClock:0,Buffer:2] */
@@ -1788,6 +1790,30 @@ static struct s5k8aay_reg const s5k8aay_regs_10[] = {		/* 10.Clock Setting */
 	{ S5K8AAY_TOK_TERM, 0, 0 }
 };
 
+static struct s5k8aay_reg const s5k8aay_regs_10_clock_1280x960[] = {		/* 10.Clock Setting */
+	/* // Input Clock (Mclk) */
+	{ S5K8AAY_TOK_16BIT, 0x002A, 0x012E },
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x4B00 },	/* REG_TC_IPRM_InClockLSBs 19.2 MHz */
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0000 },	/* REG_TC_IPRM_InClockMSBs */
+	{ S5K8AAY_TOK_16BIT, 0x002A, 0x0146 },
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0000 },	/* 0000	// REG_TC_IPRM_UseNPviClocks */
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0001 },	/* 0001	// REG_TC_IPRM_UseNMipiClocks */
+
+	/* // System Clock & Output clock (Pclk) */
+	{ S5K8AAY_TOK_16BIT, 0x002A, 0x014C },
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x38A4 },	/* REG_TC_IPRM_OpClk4KHz_0 */
+	{ S5K8AAY_TOK_16BIT, 0x002A, 0x0152 },
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x7148 },	/* REG_TC_IPRM_MinOutRate4KHz_0 */
+	{ S5K8AAY_TOK_16BIT, 0x002A, 0x014E },
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x7148 },	/* REG_TC_IPRM_MaxOutRate4KHz_0 */
+	/* { S5K8AAY_TOK_16BIT, 0x0F12, 0x00FA },*/	/* // REG_TC_IPRM_MaxOIFReduction4KHz_0 */
+
+	{ S5K8AAY_TOK_16BIT, 0x002A, 0x0164 },
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0001 },	/* REG_TC_IPRM_InitParamsUpdated */
+
+	{ S5K8AAY_TOK_TERM, 0, 0 }
+};
+
 static struct s5k8aay_reg const s5k8aay_regs_11[] = {		/* 11.Auto Flicker Detection */
 	{ S5K8AAY_TOK_16BIT, 0x0028, 0x7000 },
 	{ S5K8AAY_TOK_16BIT, 0x002A, 0x03F4 },
@@ -2582,7 +2608,69 @@ static struct s5k8aay_reg const s5k8aay_regs_18[] = {		/* 18.JPEG Thumnail Setti
 	{ S5K8AAY_TOK_TERM, 0, 0 }
 };
 
-static struct s5k8aay_reg const s5k8aay_regs_19[] = {		/* 19.Input Size Setting */
+static struct s5k8aay_reg const s5k8aay_regs_19_1200x800[] = {		/* 19.Input Size Setting */
+	{ S5K8AAY_TOK_16BIT, 0x002A, 0x0138 },
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x04B0 },	/* REG_TC_IPRM_InputWidthSize */
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0320 },	/* REG_TC_IPRM_InputHeightSize */
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0028 },	/* REG_TC_IPRM_InputWidthOfs */
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0080 },	/* REG_TC_IPRM_InputHeightOfs */
+
+
+	{ S5K8AAY_TOK_16BIT, 0x002A, 0x03A6 },
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x04B0 },	/* REG_TC_PZOOM_ZoomInputWidth */
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0320 },	/* REG_TC_PZOOM_ZoomInputHeight */
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0000 },	/* REG_TC_PZOOM_ZoomInputWidthOfs */
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0080 },	/* REG_TC_PZOOM_ZoomInputHeightOfs */
+	{ S5K8AAY_TOK_16BIT, 0x002A, 0x03A0 },
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0000 },	/* REG_TC_PZOOM_ZoomPanTiltRequest */
+
+	/* Preview config[0] 1200X800  xxfps // */
+	{ S5K8AAY_TOK_16BIT, 0x002A, 0x01BE },
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x04B0 },	/* REG_0TC_PCFG_usWidth 500:1280; 280:640  0500 */
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0320 },	/* REG_0TC_PCFG_usHeight 3C0:960; 1E0:480 */
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0005 },	/* REG_0TC_PCFG_Format 5:YUV422; 7:RAW10 */
+	{ S5K8AAY_TOK_16BIT, 0x002A, 0x01C8 },
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0000 },	/* REG_0TC_PCFG_uClockInd */
+	{ S5K8AAY_TOK_16BIT, 0x002A, 0x01C4 },
+	/* debug liao */
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0052 },	/* REG_0TC_PCFG_PVIMask 52:YUV422, 42:RAW10   42;40;4E;4A;46 */
+	{ S5K8AAY_TOK_16BIT, 0x002A, 0x01D4 },
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0002 },	/* REG_0TC_PCFG_FrRateQualityType  1b:FR(bin) 2b:Quality(no-bin) */
+	{ S5K8AAY_TOK_16BIT, 0x002A, 0x01D2 },
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0000 },	/* REG_0TC_PCFG_usFrTimeType  0:dynamic; 1:fixed not accurate; 2:fixed accurate */
+	{ S5K8AAY_TOK_16BIT, 0x002A, 0x01D8 },
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x014D },	/* 02BA	// REG_0TC_PCFG_usMaxFrTimeMsecMult10  30fps-014D; 15fps-029A; 7.5-0535; 6.0-0682; 3.75-0A6A */
+	{ S5K8AAY_TOK_16BIT, 0x002A, 0x01D6 },
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x014D },	/* 014D// REG_0TC_PCFG_usMinFrTimeMsecMult10 */
+	{ S5K8AAY_TOK_16BIT, 0x002A, 0x01E8 },
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0000 },	/* REG_0TC_PCFG_uPrevMirror */
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0000 },	/* REG_0TC_PCFG_uCaptureMirror */
+
+	/* // Capture config[0] 1200x800  xxfps */
+	{ S5K8AAY_TOK_16BIT, 0x002A, 0x02AE },
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0001 },	/* Capture mode AE On */
+	{ S5K8AAY_TOK_16BIT, 0x002A, 0x02B0 },
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x04B0 },	/* REG_0TC_CCFG_usWidth 500:1280; 280:640 */
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0320 },	/* REG_0TC_CCFG_usHeight 3C0:960; 1E0:480 */
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0005 },	/* REG_0TC_CCFG_Format 5:YUV422; 7:RAW10 */
+	{ S5K8AAY_TOK_16BIT, 0x002A, 0x02BA },
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0000 },	/* REG_0TC_CCFG_uClockInd */
+	{ S5K8AAY_TOK_16BIT, 0x002A, 0x02B6 },
+	/* debug liao */
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0042 },	/* REG_0TC_CCFG_PVIMask 52:YUV422; 42:RAW10  42;40;4E;4A;46 */
+	{ S5K8AAY_TOK_16BIT, 0x002A, 0x02C6 },
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0002 },	/* REG_0TC_CCFG_FrRateQualityType  1b:FR(bin) 2b:Quality(no-bin) */
+	{ S5K8AAY_TOK_16BIT, 0x002A, 0x02C4 },
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0002 },	/* REG_0TC_CCFG_usFrTimeType  0:dynamic; 1:fixed not accurate;	2:fixed accurate */
+	{ S5K8AAY_TOK_16BIT, 0x002A, 0x02CA },
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x014D },	/* 014D	// REG_0TC_CCFG_usMaxFrTimeMsecMult10  30fps-014D; 15fps-029A; 7.5-0535; 6.0-0682; 3.75-0A6A */
+	{ S5K8AAY_TOK_16BIT, 0x002A, 0x02C8 },
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0000 },	/* REG_0TC_CCFG_usMinFrTimeMsecMult10 */
+
+	{ S5K8AAY_TOK_TERM, 0, 0 }
+};
+
+static struct s5k8aay_reg const s5k8aay_regs_19_1280x720[] = {		/* 19.Input Size Setting */
 	{ S5K8AAY_TOK_16BIT, 0x002A, 0x0138 },
 	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0500 },	/* REG_TC_IPRM_InputWidthSize */
 	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x02D0 },	/* 03C0 //REG_TC_IPRM_InputHeightSize */
@@ -2597,10 +2685,7 @@ static struct s5k8aay_reg const s5k8aay_regs_19[] = {		/* 19.Input Size Setting 
 	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0078 },	/* REG_TC_PZOOM_ZoomInputHeightOfs */
 	{ S5K8AAY_TOK_16BIT, 0x002A, 0x03A0 },
 	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0001 },	/* REG_TC_PZOOM_ZoomPanTiltRequest */
-	{ S5K8AAY_TOK_TERM, 0, 0 }
-};
 
-static struct s5k8aay_reg const s5k8aay_regs_20[] = {		/* 20.Preview & Capture Configration Setting */
 	/* Preview config[0] 1280X720  30fps // */
 	{ S5K8AAY_TOK_16BIT, 0x002A, 0x01BE },
 	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0500 },	/* REG_0TC_PCFG_usWidth 500:1280; 280:640  0500 */
@@ -2647,6 +2732,70 @@ static struct s5k8aay_reg const s5k8aay_regs_20[] = {		/* 20.Preview & Capture C
 	{ S5K8AAY_TOK_TERM, 0, 0 }
 };
 
+
+static struct s5k8aay_reg const s5k8aay_regs_19_1280x960[] = {		/* 19.Input Size Setting */
+	{ S5K8AAY_TOK_16BIT, 0x002A, 0x0138 },
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0500 },	/* REG_TC_IPRM_InputWidthSize */
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x03C0 },	/* REG_TC_IPRM_InputHeightSize */
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0000 },	/* REG_TC_IPRM_InputWidthOfs */
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0000 },	/* REG_TC_IPRM_InputHeightOfs */
+
+
+	{ S5K8AAY_TOK_16BIT, 0x002A, 0x03A6 },
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0500 },	/* REG_TC_PZOOM_ZoomInputWidth */
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x03C0 },	/* REG_TC_PZOOM_ZoomInputHeight */
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0000 },	/* REG_TC_PZOOM_ZoomInputWidthOfs */
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0000 },	/* REG_TC_PZOOM_ZoomInputHeightOfs */
+	{ S5K8AAY_TOK_16BIT, 0x002A, 0x03A0 },
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0000 },	/* REG_TC_PZOOM_ZoomPanTiltRequest */
+
+	/* Preview config[0] 1280X960  30fps // */
+	{ S5K8AAY_TOK_16BIT, 0x002A, 0x01BE },
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0500 },	/* REG_0TC_PCFG_usWidth 500:1280; 280:640  0500 */
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x03C0 },	/* REG_0TC_PCFG_usHeight 3C0:960; 1E0:480 */
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0005 },	/* REG_0TC_PCFG_Format 5:YUV422; 7:RAW10 */
+	{ S5K8AAY_TOK_16BIT, 0x002A, 0x01C8 },
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0000 },	/* REG_0TC_PCFG_uClockInd */
+	{ S5K8AAY_TOK_16BIT, 0x002A, 0x01C4 },
+	/* debug liao */
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0052 },	/* REG_0TC_PCFG_PVIMask 52:YUV422, 42:RAW10   42;40;4E;4A;46 */
+	{ S5K8AAY_TOK_16BIT, 0x002A, 0x01D4 },
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0002 },	/* REG_0TC_PCFG_FrRateQualityType  1b:FR(bin) 2b:Quality(no-bin) */
+	{ S5K8AAY_TOK_16BIT, 0x002A, 0x01D2 },
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0001 },	/* REG_0TC_PCFG_usFrTimeType  0:dynamic; 1:fixed not accurate; 2:fixed accurate */
+	{ S5K8AAY_TOK_16BIT, 0x002A, 0x01D8 },
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x014D },	/* 02BA	// REG_0TC_PCFG_usMaxFrTimeMsecMult10  30fps-014D; 15fps-029A; 7.5-0535; 6.0-0682; 3.75-0A6A */
+	{ S5K8AAY_TOK_16BIT, 0x002A, 0x01D6 },
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x014D },	/* 014D// REG_0TC_PCFG_usMinFrTimeMsecMult10 */
+	{ S5K8AAY_TOK_16BIT, 0x002A, 0x01E8 },
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0000 },	/* REG_0TC_PCFG_uPrevMirror */
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0000 },	/* REG_0TC_PCFG_uCaptureMirror */
+
+	/* // Capture config[0] 1280x960  xxfps */
+	{ S5K8AAY_TOK_16BIT, 0x002A, 0x02AE },
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0001 },	/* Capture mode AE On */
+	{ S5K8AAY_TOK_16BIT, 0x002A, 0x02B0 },
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0500 },	/* REG_0TC_CCFG_usWidth 500:1280; 280:640 */
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x03C0 },	/* REG_0TC_CCFG_usHeight 3C0:960; 1E0:480 */
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0005 },	/* REG_0TC_CCFG_Format 5:YUV422; 7:RAW10 */
+	{ S5K8AAY_TOK_16BIT, 0x002A, 0x02BA },
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0000 },	/* REG_0TC_CCFG_uClockInd */
+	{ S5K8AAY_TOK_16BIT, 0x002A, 0x02B6 },
+	/* debug liao */
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0042 },	/* REG_0TC_CCFG_PVIMask 52:YUV422; 42:RAW10  42;40;4E;4A;46 */
+	{ S5K8AAY_TOK_16BIT, 0x002A, 0x02C6 },
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0002 },	/* REG_0TC_CCFG_FrRateQualityType  1b:FR(bin) 2b:Quality(no-bin) */
+	{ S5K8AAY_TOK_16BIT, 0x002A, 0x02C4 },
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0001 },	/* REG_0TC_CCFG_usFrTimeType  0:dynamic; 1:fixed not accurate;	2:fixed accurate */
+	{ S5K8AAY_TOK_16BIT, 0x002A, 0x02CA },
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x014D },	/* 014D	// REG_0TC_CCFG_usMaxFrTimeMsecMult10  30fps-014D; 15fps-029A; 7.5-0535; 6.0-0682; 3.75-0A6A */
+	{ S5K8AAY_TOK_16BIT, 0x002A, 0x02C8 },
+	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0000 },	/* REG_0TC_CCFG_usMinFrTimeMsecMult10 */
+
+	{ S5K8AAY_TOK_TERM, 0, 0 }
+};
+
+
 static struct s5k8aay_reg const s5k8aay_regs_21[] = {		/* 21.Select Cofigration Display */
 	{ S5K8AAY_TOK_16BIT, 0x002A, 0x01A8 },
 	{ S5K8AAY_TOK_16BIT, 0x0F12, 0x0000 },	/* REG_TC_GP_ActivePreviewConfig */
@@ -2673,5 +2822,3 @@ static struct s5k8aay_reg const s5k8aay_regs_21[] = {		/* 21.Select Cofigration 
 
 	{ S5K8AAY_TOK_TERM, 0, 0 }
 };
-
-/***** End of automatically generated code *****/
