@@ -64,6 +64,7 @@ struct s5k8aay_device {
 	struct media_pad pad;
 	struct v4l2_mbus_framefmt format;
 	struct camera_sensor_platform_data *platform_data;
+	struct mutex input_lock;
 };
 
 static int
@@ -590,6 +591,8 @@ static int s5k8aay_probe(struct i2c_client *client,
 		return -ENOMEM;
 	}
 
+	mutex_init(&dev->input_lock);
+
 	v4l2_i2c_subdev_init(&dev->sd, client, &s5k8aay_ops);
 
 	ret = s5k8aay_s_config(&dev->sd, client->irq,
@@ -622,6 +625,7 @@ static int s5k8aay_remove(struct i2c_client *client)
 	if (dev->platform_data->platform_deinit)
 		dev->platform_data->platform_deinit();
 	media_entity_cleanup(&dev->sd.entity);
+	mutex_destroy(&dev->input_lock);
 	kfree(dev);
 	return 0;
 }
