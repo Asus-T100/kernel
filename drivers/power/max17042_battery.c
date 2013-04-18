@@ -302,6 +302,7 @@ struct max17042_chip {
 	 */
 	bool	enable_fake_temp;
 	int	extra_resv_cap;
+	int	voltage_max;
 };
 
 /* Sysfs entry for disable shutdown methods from user space */
@@ -470,6 +471,7 @@ static enum power_supply_property max17042_battery_props[] = {
 	POWER_SUPPLY_PROP_VOLTAGE_AVG,
 	POWER_SUPPLY_PROP_VOLTAGE_OCV,
 	POWER_SUPPLY_PROP_VOLTAGE_MIN_DESIGN,
+	POWER_SUPPLY_PROP_VOLTAGE_MAX_DESIGN,
 	POWER_SUPPLY_PROP_CURRENT_NOW,
 	POWER_SUPPLY_PROP_CURRENT_AVG,
 	POWER_SUPPLY_PROP_CAPACITY,
@@ -864,6 +866,9 @@ static int max17042_get_property(struct power_supply *psy,
 		if (ret < 0)
 			goto ps_prop_read_err;
 		val->intval = (ret >> 7) * 10000; /* Units of LSB = 10mV */
+		break;
+	case POWER_SUPPLY_PROP_VOLTAGE_MAX_DESIGN:
+		val->intval = chip->voltage_max * 1000;
 		break;
 	case POWER_SUPPLY_PROP_CAPACITY:
 		/*
@@ -2027,6 +2032,11 @@ static int __devinit max17042_probe(struct i2c_client *client,
 	 * ie, 0x04 = 1% reserved capacity
 	 */
 	chip->extra_resv_cap = 4 * chip->pdata->resv_cap;
+
+	if (chip->pdata->get_vmax_threshold)
+		chip->voltage_max = chip->pdata->get_vmax_threshold();
+	else
+		chip->voltage_max = VBATT_MAX;
 
 	i2c_set_clientdata(client, chip);
 	max17042_client = client;
