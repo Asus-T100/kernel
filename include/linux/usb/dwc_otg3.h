@@ -336,6 +336,7 @@ struct intel_dwc_otg_pdata {
 	int is_byt;
 	int no_host_mode;
 	int no_device_mode;
+	int charging_compliance;
 };
 
 /** The main structure to keep track of OTG driver state. */

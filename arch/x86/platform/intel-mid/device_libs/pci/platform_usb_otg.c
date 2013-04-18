@@ -13,9 +13,26 @@
 #include <linux/pci.h>
 #include <asm/intel-mid.h>
 #include <asm/intel_scu_ipc.h>
+#include <linux/dma-mapping.h>
 
 #ifdef CONFIG_USB_DWC_OTG_XCEIV
 #include <linux/usb/dwc_otg3.h>
+
+static bool dwc_otg_get_usbspecoverride(void)
+{
+	void __iomem *usb_comp_iomap;
+	bool usb_spec_override;
+
+	/* Read MISCFLAGS byte from offset 0x717 */
+	usb_comp_iomap = ioremap_nocache(0xFFFCE717, 4);
+	/* MISCFLAGS.BIT[6] indicates USB spec override */
+	usb_spec_override = ioread8(usb_comp_iomap) & 0x40;
+	iounmap(usb_comp_iomap);
+
+	return usb_spec_override;
+}
+
+
 static struct intel_dwc_otg_pdata dwc_otg_pdata;
 static struct intel_dwc_otg_pdata *get_otg_platform_data(struct pci_dev *pdev)
 {
@@ -23,6 +40,9 @@ static struct intel_dwc_otg_pdata *get_otg_platform_data(struct pci_dev *pdev)
 	case PCI_DEVICE_ID_INTEL_MRFLD_OTG:
 		if (intel_mid_identify_sim() == INTEL_MID_CPU_SIMULATION_HVP)
 			dwc_otg_pdata.is_hvp = 1;
+
+		dwc_otg_pdata.charging_compliance =
+			dwc_otg_get_usbspecoverride();
 		return &dwc_otg_pdata;
 	case PCI_DEVICE_ID_INTEL_BYT_OTG:
 		dwc_otg_pdata.is_hvp = 1;
