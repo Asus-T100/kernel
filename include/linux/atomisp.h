@@ -25,9 +25,20 @@
 #include <linux/types.h>
 #include <linux/version.h>
 
-#define ATOMISP_CSS_VERSION_15	KERNEL_VERSION(1, 5, 0)
-#define ATOMISP_CSS_VERSION_17	KERNEL_VERSION(1, 7, 0)
-#define ATOMISP_CSS_VERSION_20	KERNEL_VERSION(2, 0, 0)
+/* struct media_device_info.driver_version */
+#define ATOMISP_CSS_VERSION_MASK	0x00ffffff
+#define ATOMISP_CSS_VERSION_15		KERNEL_VERSION(1, 5, 0)
+#define ATOMISP_CSS_VERSION_20		KERNEL_VERSION(2, 0, 0)
+
+/* struct media_device_info.hw_revision */
+#define ATOMISP_HW_REVISION_MASK	0x0000ff00
+#define ATOMISP_HW_REVISION_SHIFT	8
+#define ATOMISP_HW_REVISION_ISP2300	0x00
+#define ATOMISP_HW_REVISION_ISP2400	0x10
+
+#define ATOMISP_HW_STEPPING_MASK	0x000000ff
+#define ATOMISP_HW_STEPPING_A0		0x00
+#define ATOMISP_HW_STEPPING_B0		0x10
 
 /*ISP binary running mode*/
 #define CI_MODE_PREVIEW		0x8000
