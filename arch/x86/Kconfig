@@ -446,7 +446,6 @@ config X86_MDFLD
 	select X86_PLATFORM_DEVICES
 	select MFD_INTEL_MSIC
 	select PINCTRL
-	select PINCTRL_INTEL_MID
 	---help---
 	  Medfield is Intel's Low Power Intel Architecture (LPIA) based Mobile
 	  Internet Device(MID) platform. 
