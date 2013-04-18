@@ -1807,8 +1807,10 @@ static int dlp_driver_probe(struct device *dev)
 	/* Create DLP contexts */
 	for (i = 0; i < DLP_CHANNEL_COUNT; i++) {
 		dlp_drv.channels[i] = create_funcs[i] (i, hsi_ch[i], dev);
-		if (!dlp_drv.channels[i])
+		if (!dlp_drv.channels[i]) {
+			ret = -ENOMEM;
 			goto cleanup;
+		}
 
 		dlp_drv.channels_hsi[i].edlp_channel = i;
 	}
