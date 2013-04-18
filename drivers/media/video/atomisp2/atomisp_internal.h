@@ -43,6 +43,10 @@
 #include "gp_device.h"
 #include "irq.h"
 
+#define ATOMISP_PCI_DEVICE_SOC_MASK	0xfff8
+#define ATOMISP_PCI_DEVICE_SOC_MRFLD	0x1178
+#define ATOMISP_PCI_DEVICE_SOC_BYT	0x0f38
+
 #define ATOMISP_MAJOR		0
 #define ATOMISP_MINOR		5
 #define ATOMISP_PATCHLEVEL	1
