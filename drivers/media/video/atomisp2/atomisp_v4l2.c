@@ -912,7 +912,7 @@ error_mipi_csi2:
 }
 
 static const struct firmware *
-load_firmware(struct device *dev)
+load_firmware(struct atomisp_device *isp)
 {
 	const struct firmware *fw;
 	int rc;
@@ -924,22 +924,11 @@ load_firmware(struct device *dev)
 	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2)
 		fw_path = ISP2400B0_FW_PATH;
 
-	rc = request_firmware(&fw, fw_path, dev);
+	rc = request_firmware(&fw, fw_path, isp->dev);
 	if (rc) {
-		if (rc == -ENOENT)
-			v4l2_err(&atomisp_dev,
-				    "Error ISP firmware %s not found.\n",
-				    fw_path);
-		else
-			v4l2_err(&atomisp_dev,
-				    "atomisp: Error %d while requesting"
-				    " firmware %s\n", rc, fw_path);
-		return NULL;
-	}
-
-	if (fw->data == NULL) {
-		v4l2_err(&atomisp_dev,
-			    "ISP firmware data is NULL.\n");
+		dev_err(isp->dev,
+			"atomisp: Error %d while requesting firmware %s\n",
+			rc, fw_path);
 		return NULL;
 	}
 
@@ -1049,7 +1038,7 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	}
 
 	/* Load isp firmware from user space */
-	isp->firmware = load_firmware(&dev->dev);
+	isp->firmware = load_firmware(isp);
 	if (!isp->firmware) {
 		dev_err(&dev->dev, "Load firmwares failed\n");
 		goto load_fw_fail;
