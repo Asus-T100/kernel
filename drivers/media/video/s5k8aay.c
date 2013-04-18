@@ -65,6 +65,7 @@ struct s5k8aay_device {
 	struct v4l2_mbus_framefmt format;
 	struct camera_sensor_platform_data *platform_data;
 	struct mutex input_lock;
+	bool streaming;
 };
 
 static int
@@ -219,8 +220,10 @@ static int s5k8aay_reset(struct v4l2_subdev *sd)
 static int s5k8aay_set_suspend(struct v4l2_subdev *sd)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	struct s5k8aay_device *dev = to_s5k8aay_sensor(sd);
 	int ret;
 
+	dev->streaming = false;
 	ret = s5k8aay_write(client, S5K8AAY_REG_TC_GP_ENABLEPREVIEW, 0x0000);
 	if (ret < 0)
 		return ret;
@@ -264,6 +267,8 @@ static int s5k8aay_set_streaming(struct v4l2_subdev *sd)
 			return ret;
 	}
 	s5k8aay_check_error(dev, client);
+
+	dev->streaming = true;
 
 	return 0;
 }
@@ -375,10 +380,24 @@ static int s5k8aay_get_mbus_fmt(struct v4l2_subdev *sd,
 static int s5k8aay_set_mbus_fmt(struct v4l2_subdev *sd,
 			      struct v4l2_mbus_framefmt *fmt)
 {
+	struct s5k8aay_device *dev = to_s5k8aay_sensor(sd);
+	int ret = 0;
+
+	mutex_lock(&dev->input_lock);
+
+	if (dev->streaming) {
+		ret = -EBUSY;
+		goto out;
+	}
+
 	fmt->width = S5K8AAY_RES_WIDTH;
 	fmt->height = S5K8AAY_RES_HEIGHT;
 	fmt->code = S5K8AAY_FORMAT;
-	return 0;
+
+out:
+	mutex_unlock(&dev->input_lock);
+
+	return ret;
 }
 
 static int s5k8aay_detect(struct s5k8aay_device *dev, struct i2c_client *client)
