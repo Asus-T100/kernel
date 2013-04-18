@@ -80,12 +80,14 @@ struct ctp_mc_private {
 	void __iomem *int_base;
 	struct snd_soc_codec *codec;
 	/* Jack related */
-	struct delayed_work jack_work;
+	struct delayed_work jack_work_insert;
+	struct delayed_work jack_work_remove;
 	struct snd_soc_jack ctp_jack;
 	struct snd_soc_jack_gpio *hs_gpio_ops;
 	struct snd_soc_machine_ops *ops;
 	atomic_t bpirq_flag;
 	int bpirq;
+	atomic_t hs_det_retry;
 #ifdef CONFIG_HAS_WAKELOCK
 	struct wake_lock *jack_wake_lock;
 #endif
