@@ -28,6 +28,7 @@
 #include <linux/pm_runtime.h>
 #include <linux/intel_mid_dma.h>
 #include <linux/module.h>
+#include <linux/delay.h>
 
 #include "dmaengine.h"
 
@@ -636,6 +637,69 @@ static void intel_mid_dma_issue_pending(struct dma_chan *chan)
 }
 
 /**
+ * dma_wait_for_suspend - performs following functionality
+ * 		1. Suspends channel using mask bits
+ * 		2. Wait till FIFO to get empty
+ * 		3. Disable channel
+ * 		4. restore the previous masked bits
+ *
+ * @chan: chan where pending trascation needs to be checked and submitted
+ * @mask: mask bits to be used for suspend operation
+ *
+ */
+static inline void dma_wait_for_suspend(struct dma_chan *chan, unsigned int mask)
+{
+	union intel_mid_dma_cfg_lo cfg_lo;
+	struct middma_device	*mid = to_middma_device(chan->device);
+	struct intel_mid_dma_chan	*midc = to_intel_mid_dma_chan(chan);
+	int i;
+
+	/* Suspend channel */
+	cfg_lo.cfg_lo = ioread32(midc->ch_regs + CFG_LOW);
+	cfg_lo.cfg_lo |= mask;
+	iowrite32(cfg_lo.cfg_lo, midc->ch_regs + CFG_LOW);
+	/* wait till FIFO gets empty */
+	/* FIFO should be cleared in couple of milli secs */
+	for (i = 0; i < 10; i++) {
+		cfg_lo.cfg_lo = ioread32(midc->ch_regs + CFG_LOW);
+		if (cfg_lo.cfgx.fifo_empty)
+			break;
+	/* use delay since this might called from atomic context */
+		mdelay(1);
+	}
+	pr_debug("waited for %d ms for FIFO to get empty", i);
+	iowrite32(DISABLE_CHANNEL(midc->ch_id), mid->dma_base + DMA_CHAN_EN);
+
+	cfg_lo.cfg_lo = ioread32(midc->ch_regs + CFG_LOW);
+	cfg_lo.cfg_lo &= ~mask;
+	iowrite32(cfg_lo.cfg_lo, midc->ch_regs + CFG_LOW);
+}
+/**
+ * intel_mid_dma_chan_suspend_v1 - suspends the given channel, waits
+ *		till FIFO is cleared and disables channel.
+ * @chan: chan where pending trascation needs to be checked and submitted
+ *
+ */
+static void intel_mid_dma_chan_suspend_v1(struct dma_chan *chan)
+{
+
+	pr_debug("%s", __func__);
+	dma_wait_for_suspend(chan, CH_SUSPEND);
+}
+
+/**
+ * intel_mid_dma_chan_suspend_v2 - suspends the given channel, waits
+ *		till FIFO is cleared and disables channel.
+ * @chan: chan where pending trascation needs to be checked and submitted
+ *
+ */
+static void intel_mid_dma_chan_suspend_v2(struct dma_chan *chan)
+{
+	pr_debug("%s", __func__);
+	dma_wait_for_suspend(chan, CH_SUSPEND | CH_DRAIN);
+}
+
+/**
  * intel_mid_dma_tx_status -	Return status of txn
  * @chan: chan for where status needs to be checked
  * @cookie: cookie for txn
@@ -694,7 +758,6 @@ static int intel_mid_dma_device_control(struct dma_chan *chan,
 	struct intel_mid_dma_chan	*midc = to_intel_mid_dma_chan(chan);
 	struct middma_device	*mid = to_middma_device(chan->device);
 	struct intel_mid_dma_desc	*desc, *_desc;
-	union intel_mid_dma_cfg_lo cfg_lo;
 
 	pr_debug("%s:CMD:%d for channel:%d\n", __func__, cmd, midc->ch_id);
 	if (cmd == DMA_SLAVE_CONFIG)
@@ -708,22 +771,13 @@ static int intel_mid_dma_device_control(struct dma_chan *chan,
 		spin_unlock_bh(&midc->lock);
 		return 0;
 	}
-
 	/* Disable CH interrupts */
 	disable_dma_interrupt(midc);
 	/* clear channel interrupts */
 	clear_dma_channel_interrupt(midc);
-
-	/*Suspend and disable the channel*/
-	cfg_lo.cfg_lo = ioread32(midc->ch_regs + CFG_LOW);
-	/* ch_susp =  1 */
-	cfg_lo.cfg_lo |= (1 << CFG_LO_BIT_CH_SUSP);
-
-	iowrite32(cfg_lo.cfg_lo, midc->ch_regs + CFG_LOW);
-	iowrite32(DISABLE_CHANNEL(midc->ch_id), mid->dma_base + DMA_CHAN_EN);
+	mid->dma_ops.dma_chan_suspend(chan);
 	midc->busy = false;
 	midc->descs_allocated = 0;
-
 	list_for_each_entry_safe(desc, _desc, &midc->active_list, desc_node) {
 		list_del(&desc->desc_node);
 		if (desc->lli != NULL)
@@ -1541,6 +1595,7 @@ static void config_dma_fifo_partition(struct middma_device *dma)
 	iowrite32(DMA_FIFO_SIZE | BIT(26), dma->dma_base + FIFO_PARTITION0_LO);
 }
 
+/* v1 ops will be used for Medfield & CTP platforms */
 static struct intel_mid_dma_ops v1_dma_ops = {
 	.device_alloc_chan_resources	= intel_mid_dma_alloc_chan_resources,
 	.device_free_chan_resources	= intel_mid_dma_free_chan_resources,
@@ -1550,8 +1605,10 @@ static struct intel_mid_dma_ops v1_dma_ops = {
 	.device_control			= intel_mid_dma_device_control,
 	.device_tx_status		= intel_mid_dma_tx_status,
 	.device_issue_pending		= intel_mid_dma_issue_pending,
+	.dma_chan_suspend		= intel_mid_dma_chan_suspend_v1,
 };
 
+/* v2 ops will be used in Merrifield and beyond plantforms */
 static struct intel_mid_dma_ops v2_dma_ops = {
 	.device_alloc_chan_resources    = intel_mid_dma_alloc_chan_resources,
 	.device_free_chan_resources     = intel_mid_dma_free_chan_resources,
@@ -1561,6 +1618,7 @@ static struct intel_mid_dma_ops v2_dma_ops = {
 	.device_control                 = intel_mid_dma_device_control,
 	.device_tx_status               = intel_mid_dma_tx_status,
 	.device_issue_pending           = intel_mid_dma_issue_pending,
+	.dma_chan_suspend		= intel_mid_dma_chan_suspend_v2,
 };
 
 /**

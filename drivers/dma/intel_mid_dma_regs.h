@@ -94,7 +94,8 @@
 #define CTL_LO_BIT_LLP_DST_EN	27
 #define CTL_LO_BIT_LLP_SRC_EN	28
 
-#define CFG_LO_BIT_CH_SUSP	8
+#define CH_SUSPEND	(BIT(8))
+#define CH_DRAIN	(BIT(10))
 
 /*DMA channel control registers*/
 union intel_mid_dma_ctl_lo {
@@ -261,6 +262,7 @@ struct intel_mid_dma_ops {
 					    dma_cookie_t cookie,
 					    struct dma_tx_state *txstate);
 	void (*device_issue_pending)(struct dma_chan *chan);
+	void (*dma_chan_suspend)(struct dma_chan *chan);
 };
 
 /**
