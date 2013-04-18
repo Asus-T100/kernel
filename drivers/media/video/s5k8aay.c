@@ -215,6 +215,8 @@ static int s5k8aay_reset(struct v4l2_subdev *sd)
 
 	/* Allow startup code to run */
 	usleep_range(1000, 1000);
+
+	return 0;
 }
 
 static int s5k8aay_set_suspend(struct v4l2_subdev *sd)
@@ -345,6 +347,8 @@ static int __s5k8aay_s_power(struct v4l2_subdev *sd, int power)
 		if (ret)
 			return ret;
 	}
+
+	return 0;
 }
 
 static int s5k8aay_s_power(struct v4l2_subdev *sd, int power)
