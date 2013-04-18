@@ -808,6 +808,7 @@ static void ehci_hsic_remove(struct pci_dev *pdev)
 
 	usb_remove_hcd(hcd);
 	ehci_hsic_port_power(ehci, 0);
+	pci_set_power_state(pci_dev, PCI_D3hot);
 
 	if (hcd->driver->flags & HCD_MEMORY) {
 		iounmap(hcd->regs);
