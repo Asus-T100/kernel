@@ -1992,7 +1992,7 @@ static int dwc_otg_runtime_suspend(struct device *dev)
 			otg->state == DWC_STATE_A_HOST)
 		state = PCI_D3hot;
 
-	if (otg->state == DWC_STATE_A_HOST)
+	if (otg->state == DWC_STATE_B_PERIPHERAL)
 		dwc_otg_notify_charger_type(otg, \
 				POWER_SUPPLY_CHARGER_EVENT_SUSPEND);
 
@@ -2020,6 +2020,10 @@ static int dwc_otg_runtime_resume(struct device *dev)
 	}
 	set_sus_phy(otg, 0);
 
+	if (otg->state == DWC_STATE_B_PERIPHERAL)
+		dwc_otg_notify_charger_type(otg,
+				POWER_SUPPLY_CHARGER_EVENT_CONNECT);
+
 	return 0;
 }
 
@@ -2038,7 +2042,7 @@ static int dwc_otg_suspend(struct device *dev)
 			otg->state == DWC_STATE_A_HOST)
 		state = PCI_D3hot;
 
-	if (otg->state == DWC_STATE_A_HOST)
+	if (otg->state == DWC_STATE_B_PERIPHERAL)
 		dwc_otg_notify_charger_type(otg, \
 				POWER_SUPPLY_CHARGER_EVENT_SUSPEND);
 
@@ -2065,6 +2069,10 @@ static int dwc_otg_resume(struct device *dev)
 		return -EIO;
 	}
 	set_sus_phy(otg, 0);
+
+	if (otg->state == DWC_STATE_B_PERIPHERAL)
+		dwc_otg_notify_charger_type(otg,
+				POWER_SUPPLY_CHARGER_EVENT_CONNECT);
 
 	return 0;
 }
