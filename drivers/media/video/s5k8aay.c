@@ -327,7 +327,7 @@ static int power_down(struct v4l2_subdev *sd)
 	return ret;
 }
 
-static int s5k8aay_s_power(struct v4l2_subdev *sd, int power)
+static int __s5k8aay_s_power(struct v4l2_subdev *sd, int power)
 {
 	if (power == 0) {
 		return power_down(sd);
@@ -340,6 +340,18 @@ static int s5k8aay_s_power(struct v4l2_subdev *sd, int power)
 		if (ret)
 			return ret;
 	}
+}
+
+static int s5k8aay_s_power(struct v4l2_subdev *sd, int power)
+{
+	struct s5k8aay_device *dev = to_s5k8aay_sensor(sd);
+	int ret;
+
+	mutex_lock(&dev->input_lock);
+	ret = __s5k8aay_s_power(sd, power);
+	mutex_unlock(&dev->input_lock);
+
+	return ret;
 }
 
 static int s5k8aay_try_mbus_fmt(struct v4l2_subdev *sd,
@@ -415,7 +427,7 @@ s5k8aay_s_config(struct v4l2_subdev *sd, int irq, void *platform_data)
 		}
 	}
 
-	ret = s5k8aay_s_power(sd, 1);
+	ret = __s5k8aay_s_power(sd, 1);
 	if (ret) {
 		dev_err(&client->dev, "s5k8aay power-up err %i\n", ret);
 		return ret;
@@ -438,7 +450,7 @@ s5k8aay_s_config(struct v4l2_subdev *sd, int irq, void *platform_data)
 		return ret;
 	}
 
-	ret = s5k8aay_s_power(sd, 0);
+	ret = __s5k8aay_s_power(sd, 0);
 	if (ret) {
 		dev_err(&client->dev, "s5k8aay power down err");
 		return ret;
@@ -449,17 +461,24 @@ s5k8aay_s_config(struct v4l2_subdev *sd, int irq, void *platform_data)
 fail_csi_cfg:
 	dev->platform_data->csi_cfg(sd, 0);
 fail_detect:
-	s5k8aay_s_power(sd, 0);
+	__s5k8aay_s_power(sd, 0);
 	dev_err(&client->dev, "sensor detection failed\n");
 	return ret;
 }
 
 static int s5k8aay_s_stream(struct v4l2_subdev *sd, int enable)
 {
+	struct s5k8aay_device *dev = to_s5k8aay_sensor(sd);
+	int ret;
+
+	mutex_lock(&dev->input_lock);
 	if (enable)
-		return s5k8aay_set_streaming(sd);
+		ret = s5k8aay_set_streaming(sd);
 	else
-		return s5k8aay_set_suspend(sd);
+		ret = s5k8aay_set_suspend(sd);
+	mutex_unlock(&dev->input_lock);
+
+	return ret;
 }
 
 static int
@@ -526,7 +545,10 @@ s5k8aay_get_pad_format(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 
 	if (format == NULL)
 		return -EINVAL;
+
+	mutex_lock(&snr->input_lock);
 	fmt->format = *format;
+	mutex_unlock(&snr->input_lock);
 
 	return 0;
 }
@@ -542,8 +564,10 @@ s5k8aay_set_pad_format(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 	if (format == NULL)
 		return -EINVAL;
 
+	mutex_lock(&snr->input_lock);
 	if (fmt->which == V4L2_SUBDEV_FORMAT_ACTIVE)
 		snr->format = fmt->format;
+	mutex_unlock(&snr->input_lock);
 
 	return 0;
 }
