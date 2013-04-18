@@ -405,6 +405,8 @@ static void sst_media_close(struct snd_pcm_substream *substream,
 {
 	struct sst_runtime_stream *stream;
 	int ret_val = 0, str_id;
+	struct sst_data *ctx = snd_soc_platform_get_drvdata(dai->platform);
+	struct sst_dev_stream_map *map = ctx->pdata->pdev_strm_map;
 
 	stream = substream->runtime->private_data;
 	if (strstr(dai->name, "Power-cpu-dai"))
@@ -413,6 +415,16 @@ static void sst_media_close(struct snd_pcm_substream *substream,
 	str_id = stream->stream_info.str_id;
 	if (str_id)
 		ret_val = stream->ops->close(str_id);
+
+	if (strstr(dai->name, SST_PROBE_DAI)) {
+		if ((map[str_id].task_id == SST_TASK_ID_MEDIA) &&
+			(map[str_id].status == SST_DEV_MAP_IN_USE)) {
+				pr_debug("str_id %d deviced_id %d\n", str_id, map[str_id].device_id);
+				map[str_id].status = SST_DEV_MAP_FREE;
+				map[str_id].device_id = PIPE_RSVD;
+		}
+	}
+
 	module_put(sst_dsp->dev->driver->owner);
 	kfree(stream);
 	pr_debug("%s: %d\n", __func__, ret_val);
