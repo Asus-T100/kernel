@@ -609,7 +609,7 @@ void atomisp_set_term_en_count(struct atomisp_device *isp)
 	int pwn_b0 = 0;
 
 	/* For MRFLD, there is no Tescape-clock cycles control. */
-	if (IS_ISP2400)
+	if (IS_ISP2400(isp))
 		return;
 
 	if (isp->pdev->device == 0x0148 && isp->pdev->revision < 0x6 &&
@@ -1076,11 +1076,11 @@ void atomisp_wdt_work(struct work_struct *work)
 
 			atomisp_set_term_en_count(isp);
 
-			if (IS_ISP2400 &&
+			if (IS_ISP2400(isp) &&
 			atomisp_freq_scaling(isp, ATOMISP_DFS_MODE_AUTO) < 0)
 				dev_dbg(isp->dev, "dfs failed!\n");
 		} else {
-			if (IS_ISP2400 &&
+			if (IS_ISP2400(isp) &&
 			atomisp_freq_scaling(isp, ATOMISP_DFS_MODE_MAX) < 0)
 				dev_dbg(isp->dev, "dfs failed!\n");
 		}
@@ -2792,7 +2792,7 @@ int atomisp_digital_zoom(struct atomisp_device *isp, int flag, __s32 *value)
 {
 	u32 zoom;
 	unsigned int max_zoom =
-		IS_ISP2400 ? MRFLD_MAX_ZOOM_FACTOR : MFLD_MAX_ZOOM_FACTOR;
+		IS_ISP2400(isp) ? MRFLD_MAX_ZOOM_FACTOR : MFLD_MAX_ZOOM_FACTOR;
 
 	if (flag == 0) {
 		sh_css_get_zoom_factor(&zoom, &zoom);
@@ -3138,12 +3138,13 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 			/*
 			 * Enable only if resolution is >= 3M for ISP2400
 			 */
-			if (IS_ISP2400 && (width >= 2048 || height >= 1536)) {
+			if (IS_ISP2400(isp) && (width >= 2048
+						|| height >= 1536)) {
 				sh_css_enable_raw_binning(true);
 				sh_css_input_set_two_pixels_per_clock(false);
 			}
 
-			if (!IS_ISP2400) {
+			if (!IS_ISP2400(isp)) {
 				/* enable raw binning for output >= 5M */
 				if (width >= 2576 || height >= 1936)
 					sh_css_enable_raw_binning(true);
@@ -3704,7 +3705,7 @@ int atomisp_ospm_dphy_down(struct atomisp_device *isp)
 	}
 
 done:
-	if (IS_ISP2400) {
+	if (IS_ISP2400(isp)) {
 		/*
 		 * MRFLD IUNIT DPHY is located in an always-power-on island
 		 * MRFLD HW design need all CSI ports are disabled before
@@ -3733,7 +3734,7 @@ int atomisp_ospm_dphy_up(struct atomisp_device *isp)
 	dev_dbg(isp->dev, "%s\n", __func__);
 
 	/* MRFLD IUNIT DPHY is located in an always-power-on island */
-	if (!IS_ISP2400) {
+	if (!IS_ISP2400(isp)) {
 		/* power on DPHY */
 		pwr_cnt = intel_mid_msgbus_read32(MFLD_IUNITPHY_PORT,
 							MFLD_CSI_CONTROL);
