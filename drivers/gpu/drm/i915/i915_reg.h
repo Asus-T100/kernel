@@ -577,6 +577,15 @@
 #define   I915_USER_INTERRUPT				(1<<1)
 #define   I915_ASLE_INTERRUPT				(1<<0)
 #define   I915_BSD_USER_INTERRUPT                      (1<<25)
+/* Added for HDMI Audio */
+/* HDMI AUDIO INTERRUPT TYPE */
+#define I915_LPE_AUDIO_HDMI_STATUS_A			0x65064
+#define I915_LPE_AUDIO_HDMI_STATUS_B			0x65864
+#define I915_LPE_PIPE_B_INTERRUPT			(1<<21)
+#define I915_LPE_PIPE_A_INTERRUPT			(1<<20)
+#define I915_HDMI_AUDIO_UNDERRUN			(1UL<<31)
+#define I915_HDMI_AUDIO_BUFFER_DONE			(1UL<<29)
+#define I915_HDMI_AUDIO_UNDERRUN_ENABLE			(1UL<<15)
 #define EIR		0x020b0
 #define EMR		0x020b4
 #define ESR		0x020b8

@@ -4836,6 +4836,11 @@ static int i9xx_crtc_mode_set(struct drm_crtc *crtc,
 	ret = intel_pipe_set_base(crtc, x, y, old_fb);
 
 	intel_update_watermarks(dev);
+	/* Added for HDMI Audio */
+	if (IS_VALLEYVIEW(dev) && intel_pipe_has_type(crtc,
+		INTEL_OUTPUT_HDMI)) {
+		dev_priv->tmds_clock_speed = adjusted_mode->clock;
+	}
 
 	/* Wait for Phy status bits to go low */
 	for_each_encoder_on_crtc(dev, crtc, encoder) {

@@ -40,6 +40,7 @@
 #include <linux/backlight.h>
 #include <linux/intel-iommu.h>
 #include <linux/kref.h>
+#include "hdmi_audio_if.h"
 
 #ifdef CONFIG_DRM_VXD_BYT
 #include "vxd_drv.h"
@@ -880,6 +881,13 @@ typedef struct drm_i915_private {
 #ifdef CONFIG_DRM_VXD_BYT
 	struct drm_psb_private *vxd_priv;
 #endif
+	/* Added for HDMI Audio */
+	had_event_call_back had_event_callbacks;
+	struct snd_intel_had_interface *had_interface;
+	void *had_pvt_data;
+	int tmds_clock_speed;
+	int hdmi_audio_interrupt_mask;
+	struct work_struct hdmi_audio_wq;
 } drm_i915_private_t;
 
 /* Iterate over initialised rings */
