@@ -828,9 +828,37 @@ static int dwc_otg_set_power(struct usb_phy *_otg,
 {
 	unsigned long flags;
 	struct dwc_otg2 *otg = the_transceiver;
+	struct power_supply_cable_props cap;
 
 	if (otg->otg_data->charging_compliance)
 		return 0;
+
+	if (mA == OTG_DEVICE_SUSPEND) {
+		spin_lock_irqsave(&otg->lock, flags);
+		cap.chrg_type = otg->charging_cap.chrg_type;
+		cap.mA = otg->charging_cap.mA;
+		cap.chrg_evt = POWER_SUPPLY_CHARGER_EVENT_SUSPEND;
+		spin_unlock_irqrestore(&otg->lock, flags);
+
+		if ((cap.chrg_type ==
+			POWER_SUPPLY_CHARGER_TYPE_USB_SDP) &&
+			(!otg->otg_data->charging_compliance))
+			cap.mA = 0;
+
+		atomic_notifier_call_chain(&otg->phy.notifier,
+				USB_EVENT_CHARGER, &cap);
+		otg_dbg(otg, "Notify EM"\
+			"POWER_SUPPLY_CHARGER_EVENT_SUSPEND\n");
+
+		return 0;
+	} else if (mA == OTG_DEVICE_RESUME) {
+		otg_dbg(otg, "Notify EM"\
+			"POWER_SUPPLY_CHARGER_EVENT_CONNECT\n");
+		dwc_otg_notify_charger_type(otg,
+				POWER_SUPPLY_CHARGER_EVENT_CONNECT);
+
+		return 0;
+	}
 
 	/* force 896mA to 900mA
 	 * Beucause the power just can be set as an
