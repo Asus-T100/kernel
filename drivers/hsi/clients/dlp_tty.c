@@ -606,10 +606,11 @@ static void dlp_tty_port_shutdown(struct tty_port *port)
 	rx_ctx = &ch_ctx->rx;
 
 	/* Don't wait if already in TX timeout state */
-	if (dlp_tty_is_link_valid()) {
+	if (dlp_tty_is_link_valid())
 		dlp_tty_wait_until_ctx_sent(ch_ctx, 0);
-		dlp_tty_cleanup(ch_ctx);
-	}
+
+	/* TTY channel cleanup */
+	dlp_tty_cleanup(ch_ctx);
 
 	/* device closed => Set the channel state flag */
 	dlp_ctrl_set_channel_state(ch_ctx->hsi_channel,
