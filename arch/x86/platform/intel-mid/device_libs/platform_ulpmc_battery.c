@@ -14,6 +14,14 @@ static int __init ulpmc_i2c_init(void)
 {
 	ulpmc_pdata.gpio = 0x12; /* GPIOS_18 */
 	ulpmc_pdata.volt_sh_min = 3400;	/* 3400mV */
+	/*
+	 * cc limit values will be
+	 * further tuned on ffrd later.
+	 */
+	ulpmc_pdata.cc_lim0 = 3000;	/* 3000mA */
+	ulpmc_pdata.cc_lim1 = 2500;	/* 2500mA */
+	ulpmc_pdata.cc_lim2 = 1500;	/* 1500mA */
+	ulpmc_pdata.cc_lim3 = 1000;	/* 1000mA */
 	snprintf(ulpmc_pdata.battid, BATTID_LEN, "INT-BYT");
 	snprintf(ulpmc_pdata.extcon_devname,
 			EXTCON_NAME_LEN, "BYT-Charger");

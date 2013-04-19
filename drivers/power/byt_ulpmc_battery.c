@@ -95,8 +95,6 @@
 #define ULPMC_BC_CHRG_CUR_CNTL_REG	0x2F
 #define BC_CHRG_CUR_OFFSET		500	/* 500 mA */
 #define BC_CHRG_CUR_LSB_TO_CUR		64	/* 64 mA */
-#define BC_GET_CHRG_CUR(reg)		((reg>>2)*BC_CHRG_CUR_LSB_TO_CUR\
-					+ BC_CHRG_CUR_OFFSET) /* in mA */
 
 #define ULPMC_BC_FAULT_REG			0x4B
 #define FAULT_WDT_TMR_EXP			(1 << 7)
@@ -127,6 +125,7 @@
 
 #define ULPMC_BM_REG_RESVBATT_THR	0x52 /* Reserve Battery Threhsold */
 #define ULPMC_BM_REG_CNTL		0x53 /* UMPLC command register */
+#define CNTL_CHRG_EN			(1 << 0)
 #define ULPMC_BM_REG_BATT_PRESENT	0x4E
 #define BATT_PRESENT_DET_FAIL		(0 << 0)
 #define BATT_PRESENT_DET_1P		(1 << 0)
@@ -158,6 +157,12 @@
 
 #define ULPMC_FG_SIGN_INDICATOR		0x8000
 
+#define CHARGE_CURRENT_CNTL_LIM0	0x0
+#define CHARGE_CURRENT_CNTL_LIM1	0x1
+#define CHARGE_CURRENT_CNTL_LIM2	0x2
+#define CHARGE_CURRENT_CNTL_LIM3	0x3
+#define CHARGE_CURRENT_CNTL_LIM_MAX	0x4
+
 /* No of times we should retry on -EAGAIN error */
 #define NR_RETRY_CNT	3
 
@@ -173,6 +178,7 @@ struct ulpmc_chip_info {
 
 	struct mutex lock;
 	bool is_fwupdate_on;
+	int cur_throttle_state;
 };
 
 static struct ulpmc_chip_info *chip_ptr;
@@ -200,6 +206,8 @@ static enum power_supply_property ulpmc_charger_properties[] = {
 	POWER_SUPPLY_PROP_ONLINE,
 	POWER_SUPPLY_PROP_HEALTH,
 	POWER_SUPPLY_PROP_CHARGE_CURRENT,
+	POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT,
+	POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT_MAX,
 };
 
 static int ulpmc_write_reg16(struct i2c_client *client, u8 reg, u16 value)
@@ -286,6 +294,91 @@ static short adjust_sign_value(int value)
 	}
 
 	return result;
+}
+
+static int bc_reg_to_cur(u8 reg)
+{
+	/*
+	 * D0, D1 bits of charge current
+	 * register are not used.
+	 */
+	reg = reg >> 2;
+	reg = (reg * BC_CHRG_CUR_LSB_TO_CUR) + BC_CHRG_CUR_OFFSET;
+
+	return reg;
+}
+
+static u8 cur_to_cc_reg(int cur)
+{
+	u8 reg = 0;
+
+	if (cur > BC_CHRG_CUR_OFFSET)
+		reg = ((cur - BC_CHRG_CUR_OFFSET) /
+				BC_CHRG_CUR_LSB_TO_CUR) + 1;
+
+	/*
+	 * D0, D1 bits of charge current
+	 * register are not used.
+	 */
+	return reg << 2;
+}
+
+static int ulpmc_throttle_chrg_cur(struct ulpmc_chip_info *chip, int lim)
+{
+	int ret, cur;
+	u8 chrg_en;
+
+	switch (lim) {
+	case CHARGE_CURRENT_CNTL_LIM0:
+		/* re-program default setting */
+		cur = chip->pdata->cc_lim0;
+		break;
+	case CHARGE_CURRENT_CNTL_LIM1:
+		/* limit the charge current */
+		cur = chip->pdata->cc_lim1;
+		break;
+	case CHARGE_CURRENT_CNTL_LIM2:
+		/* limit the charge current */
+		cur = chip->pdata->cc_lim2;
+		break;
+	case CHARGE_CURRENT_CNTL_LIM3:
+		/* limit the charge current */
+		cur = chip->pdata->cc_lim3;
+		break;
+	case CHARGE_CURRENT_CNTL_LIM_MAX:
+		/* disable charging */
+		cur = 0;
+		break;
+	default:
+		dev_err(&chip->client->dev, "unknown limit:%d\n", lim);
+		return -EINVAL;
+	}
+
+	ret = ulpmc_read_reg8(chip->client, ULPMC_BM_REG_CNTL);
+	if (ret < 0)
+		goto cc_throttle_fail;
+	else
+		chrg_en = ret;
+
+	if (cur) {
+		ret = ulpmc_write_reg8(chip->client,
+			ULPMC_BC_CHRG_CUR_CNTL_REG, cur_to_cc_reg(cur));
+		if (ret < 0)
+			goto cc_throttle_fail;
+
+		if (!(chrg_en & CNTL_CHRG_EN)) {
+			ret = ulpmc_write_reg8(chip->client, ULPMC_BM_REG_CNTL,
+						(chrg_en | CNTL_CHRG_EN));
+		}
+	} else {
+		ret = ulpmc_write_reg8(chip->client, ULPMC_BM_REG_CNTL,
+						(chrg_en & ~CNTL_CHRG_EN));
+	}
+
+cc_throttle_fail:
+	if (ret < 0)
+		dev_err(&chip->client->dev, "i2c write error:%d\n", ret);
+	return ret;
 }
 
 static int ulpmc_charger_health(struct ulpmc_chip_info *chip)
@@ -615,7 +708,13 @@ static int ulpmc_get_charger_property(struct power_supply *psy,
 		ret = ulpmc_read_reg8(chip->client, ULPMC_BC_CHRG_CUR_CNTL_REG);
 		if (ret < 0)
 			goto i2c_read_err;
-		val->intval = BC_GET_CHRG_CUR(ret) * 1000;
+		val->intval = bc_reg_to_cur(ret) * 1000;
+		break;
+	case POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT:
+		val->intval = chip->cur_throttle_state;
+		break;
+	case POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT_MAX:
+		val->intval = CHARGE_CURRENT_CNTL_LIM_MAX;
 		break;
 	default:
 		mutex_unlock(&chip->lock);
@@ -626,6 +725,59 @@ static int ulpmc_get_charger_property(struct power_supply *psy,
 	return 0;
 
 i2c_read_err:
+	mutex_unlock(&chip->lock);
+	return ret;
+}
+
+static int ulpmc_set_charger_property(struct power_supply *psy,
+				    enum power_supply_property psp,
+				    const union power_supply_propval *val)
+{
+	struct ulpmc_chip_info *chip = container_of(psy,
+				struct ulpmc_chip_info, chrg);
+	int ret;
+
+	mutex_lock(&chip->lock);
+
+	if (chip->is_fwupdate_on) {
+		dev_warn(&chip->client->dev, "fwupdate in progress\n");
+		ret = -EAGAIN;
+		goto set_prop_err;
+	}
+
+	ret = ulpmc_read_reg8(chip->client, ULPMC_BC_REG_STAT);
+	if (ret < 0) {
+		dev_err(&chip->client->dev, "i2c read error:%d\n", ret);
+		goto set_prop_err;
+	}
+
+	/* return error if charger is not present */
+	if (!((ret & BC_STAT_VBUS_MASK) == BC_STAT_VBUS_ADP)) {
+		ret = -EINVAL;
+		goto set_prop_err;
+	}
+
+	switch (psp) {
+	case POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT:
+		if ((val->intval < 0) ||
+			(val->intval > CHARGE_CURRENT_CNTL_LIM_MAX)) {
+			ret = -ERANGE;
+			goto set_prop_err;
+		} else {
+			ret = ulpmc_throttle_chrg_cur(chip, val->intval);
+			if (ret < 0)
+				goto set_prop_err;
+			chip->cur_throttle_state = val->intval;
+		}
+		break;
+	default:
+		ret = -EINVAL;
+	}
+
+	/* return 0 on success */
+	ret = 0;
+
+set_prop_err:
 	mutex_unlock(&chip->lock);
 	return ret;
 }
@@ -655,15 +807,19 @@ static void dump_registers(struct ulpmc_chip_info *chip)
 
 static void log_interrupt_event(struct ulpmc_chip_info *chip, int intstat)
 {
+	bool conn_evt = false;
+
 	switch (intstat) {
 	case INTSTAT_INSERT_AC:
 		dev_info(&chip->client->dev, "AC charger inserted\n");
+		conn_evt = true;
 		break;
 	case INTSTAT_REMOVE_AC:
 		dev_info(&chip->client->dev, "AC charger removeed\n");
 		break;
 	case INTSTAT_INSERT_USB:
 		dev_info(&chip->client->dev, "USB charger inserted\n");
+		conn_evt = true;
 		break;
 	case INTSTAT_REMOVE_USB:
 		dev_info(&chip->client->dev, "USB charger removed\n");
@@ -718,6 +874,12 @@ static void log_interrupt_event(struct ulpmc_chip_info *chip, int intstat)
 		break;
 	default:
 		dev_info(&chip->client->dev, "spurious event!!!\n");
+	}
+
+	if (conn_evt) {
+		mutex_lock(&chip->lock);
+		ulpmc_throttle_chrg_cur(chip, chip->cur_throttle_state);
+		mutex_unlock(&chip->lock);
 	}
 }
 
@@ -939,6 +1101,7 @@ static int ulpmc_battery_probe(struct i2c_client *client,
 	chip->chrg.properties = ulpmc_charger_properties;
 	chip->chrg.num_properties = ARRAY_SIZE(ulpmc_charger_properties);
 	chip->chrg.get_property = ulpmc_get_charger_property;
+	chip->chrg.set_property = ulpmc_set_charger_property;
 	ret = power_supply_register(&client->dev, &chip->chrg);
 	if (ret) {
 		dev_err(&client->dev, "failed to register charger: %d\n", ret);
