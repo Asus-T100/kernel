@@ -229,15 +229,20 @@ static struct penwell_otg *the_transceiver;
 void penwell_update_transceiver(void)
 {
 	struct penwell_otg	*pnw = the_transceiver;
+	unsigned long	flags;
 
-	dev_dbg(pnw->dev, "transceiver is updated\n");
 
 	if (!pnw->qwork) {
 		dev_warn(pnw->dev, "no workqueue for state machine\n");
 		return ;
 	}
 
-	queue_work(pnw->qwork, &pnw->work);
+	spin_lock_irqsave(&pnw->lock, flags);
+	if (!pnw->queue_stop) {
+		queue_work(pnw->qwork, &pnw->work);
+		dev_dbg(pnw->dev, "transceiver is updated\n");
+	}
+	spin_unlock_irqrestore(&pnw->lock, flags);
 }
 
 static int penwell_otg_set_host(struct usb_otg *otg, struct usb_bus *host)
@@ -2102,7 +2107,7 @@ static void penwell_otg_timer_fn(unsigned long indicator)
 
 	dev_dbg(pnw->dev, "kernel timer - timeout\n");
 
-	queue_work(pnw->qwork, &pnw->work);
+	penwell_update_transceiver();
 }
 
 /* kernel timer used for OTG timing */
@@ -2589,7 +2594,6 @@ static int penwell_otg_iotg_notify(struct notifier_block *nb,
 {
 	struct penwell_otg		*pnw = the_transceiver;
 	struct intel_mid_otg_xceiv	*iotg = data;
-	unsigned long			flags;
 	int				flag = 0;
 	struct pci_dev			*pdev;
 
@@ -2709,10 +2713,8 @@ static int penwell_otg_iotg_notify(struct notifier_block *nb,
 		return NOTIFY_DONE;
 	}
 
-	spin_lock_irqsave(&pnw->notify_lock, flags);
-	if (flag && pnw->queue_stop == 0)
+	if (flag)
 		penwell_update_transceiver();
-	spin_unlock_irqrestore(&pnw->notify_lock, flags);
 
 	return NOTIFY_OK;
 }
@@ -4826,7 +4828,6 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 	pnw->iotg.ulpi_ops.write = penwell_otg_ulpi_write;
 
 	spin_lock_init(&pnw->iotg.hnp_poll_lock);
-	spin_lock_init(&pnw->notify_lock);
 	spin_lock_init(&pnw->lock);
 
 	wake_lock_init(&pnw->wake_lock, WAKE_LOCK_SUSPEND, "pnw_wake_lock");
@@ -5088,13 +5089,10 @@ static int penwell_otg_suspend_noirq(struct device *dev)
 {
 	struct penwell_otg		*pnw = the_transceiver;
 	struct intel_mid_otg_xceiv	*iotg = &pnw->iotg;
-	struct pci_dev			*pdev = to_pci_dev(dev);
 	int				ret = 0;
+	unsigned long	flags;
 
 	dev_dbg(pnw->dev, "%s --->\n", __func__);
-
-	synchronize_irq(pdev->irq);
-	flush_workqueue(pnw->qwork);
 
 	switch (iotg->otg.state) {
 	case OTG_STATE_A_VBUS_ERR:
@@ -5174,10 +5172,9 @@ static int penwell_otg_suspend_noirq(struct device *dev)
 
 
 	if (ret) {
-		/* allow queue work from notifier */
-		spin_lock(&pnw->notify_lock);
+		spin_lock_irqsave(&pnw->lock, flags);
 		pnw->queue_stop = 0;
-		spin_unlock(&pnw->notify_lock);
+		spin_unlock_irqrestore(&pnw->lock, flags);
 
 		penwell_update_transceiver();
 	} else {
@@ -5201,6 +5198,7 @@ static int penwell_otg_suspend(struct device *dev)
 	struct penwell_otg		*pnw = the_transceiver;
 	struct intel_mid_otg_xceiv	*iotg = &pnw->iotg;
 	int				ret = 0;
+	unsigned long	flags;
 
 	dev_dbg(pnw->dev, "%s --->\n", __func__);
 
@@ -5210,15 +5208,15 @@ static int penwell_otg_suspend(struct device *dev)
 		goto done;
 	}
 
-	/* Stop queue work from notifier */
-	spin_lock(&pnw->notify_lock);
+	/* quiesce any work scheduled */
+	spin_lock_irqsave(&pnw->lock, flags);
 	pnw->queue_stop = 1;
-	spin_unlock(&pnw->notify_lock);
+	spin_unlock_irqrestore(&pnw->lock, flags);
 	flush_workqueue(pnw->qwork);
 	if (delayed_work_pending(&pnw->ulpi_check_work)) {
-		spin_lock(&pnw->notify_lock);
+		spin_lock(&pnw->lock);
 		pnw->queue_stop = 0;
-		spin_unlock(&pnw->notify_lock);
+		spin_unlock(&pnw->lock);
 		ret = -EBUSY;
 		goto done;
 	} else
@@ -5388,6 +5386,7 @@ static int penwell_otg_resume(struct device *dev)
 	struct penwell_otg	*pnw = the_transceiver;
 	struct intel_mid_otg_xceiv	*iotg = &pnw->iotg;
 	int			ret = 0;
+	unsigned long	flags;
 
 	dev_dbg(pnw->dev, "%s --->\n", __func__);
 	switch (iotg->otg.state) {
@@ -5412,9 +5411,9 @@ static int penwell_otg_resume(struct device *dev)
 		return ret;
 
 	/* allow queue work from notifier */
-	spin_lock(&pnw->notify_lock);
+	spin_lock_irqsave(&pnw->lock, flags);
 	pnw->queue_stop = 0;
-	spin_unlock(&pnw->notify_lock);
+	spin_unlock_irqrestore(&pnw->lock, flags);
 
 	penwell_otg_intr(1);
 
