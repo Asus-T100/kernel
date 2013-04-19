@@ -74,7 +74,7 @@
 #include "ps_hdmi.h"
 #include <asm/intel_scu_pmic.h>
 #include <asm/intel-mid.h>
-
+#include "psb_powermgmt.h"
 
 /* Implementation of the Merrifield specific PCI driver for receiving
  * Hotplug and other device status signals.
@@ -240,42 +240,9 @@ otm_hdmi_ret_t ps_hdmi_i2c_edid_read(void *ctx, unsigned int sp,
 	return OTM_HDMI_SUCCESS;
 }
 
-static void ps_hdmi_power_on_pipe(u32 msg_port, u32 msg_reg,
-		u32 val_comp, u32 val_write)
-{
-	u32 ret;
-	int retry = 0;
-
-	pr_debug("Entered %s\n", __func__);
-
-	ret = intel_mid_msgbus_read32(msg_port, msg_reg);
-
-	if ((ret & val_comp) == 0) {
-		pr_err("%s: pipe is already powered on\n", __func__);
-		return;
-	} else {
-		intel_mid_msgbus_write32(msg_port, msg_reg, ret & val_write);
-		ret = intel_mid_msgbus_read32(msg_port, msg_reg);
-		while ((retry < 1000) && ((ret & val_comp) != 0)) {
-			usleep_range(500, 1000);
-			ret = intel_mid_msgbus_read32(msg_port, msg_reg);
-			retry++;
-		}
-		if ((ret & val_comp) != 0)
-			pr_err("%s: powering on pipe failed\n", __func__);
-		if (msg_port == 0x4 && msg_reg == 0x3b)
-			pr_err("%s: skip powering up MIO AFE\n", __func__);
-	}
-	pr_debug("Leaving %s\n", __func__);
-}
-
 bool ps_hdmi_power_rails_on(void)
 {
 	pr_debug("Entered %s\n", __func__);
-	ps_hdmi_power_on_pipe(0x4, 0x36, 0xc000000, 0xfffffff3);
-		/* pipe B */
-	ps_hdmi_power_on_pipe(0x4, 0x3c, 0x3000000, 0xfffffffc);
-		/* HDMI */
 
 	intel_scu_ipc_iowrite8(0x7F, 0x31);
 	pr_debug("Leaving %s\n", __func__);
@@ -290,6 +257,22 @@ bool ps_hdmi_power_rails_off(void)
 
 }
 
+bool ps_hdmi_power_islands_on(int hw_island)
+{
+	return ospm_power_using_hw_begin(hw_island, OSPM_UHB_FORCE_POWER_ON);
+}
+
+void ps_hdmi_power_islands_off(int hw_island)
+{
+	/*
+	 * FIXME: need to turn off OSPM_DISPLAY_HDMI island after plugging out
+	 * HDMI cable, but here fabric error happens.
+	 */
+	if (!hw_island)
+		hw_island = OSPM_DISPLAY_B;
+
+	ospm_power_using_hw_end(hw_island);
+}
 
 /*
  * ps_hdmi_get_cable_status - Get HDMI cable connection status

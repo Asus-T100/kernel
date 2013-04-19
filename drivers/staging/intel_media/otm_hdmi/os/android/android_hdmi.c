@@ -322,8 +322,6 @@ exit:
 		/* Notify user space */
 		pr_debug("%s: HDMI hot plug state  = %d\n", __func__, hdmi_status);
 
-		drm_helper_hpd_irq_event(hdmi_priv->dev);
-
 		if (hdmi_status) {
 			/* hdmi_state indicates that hotplug event happens */
 			hdmi_state = 1;
@@ -341,7 +339,12 @@ exit:
 			edid_ready_in_hpd = 0;
 			uevent_string = "HOTPLUG_OUT=1";
 			psb_sysfs_uevent(hdmi_priv->dev, uevent_string);
+
+			/* Keep DSPB & HDMIO islands off after plug out. */
+			otm_hdmi_power_islands_off(0);
 		}
+
+		drm_helper_hpd_irq_event(hdmi_priv->dev);
 	}
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 	return IRQ_HANDLED;
@@ -1569,6 +1572,10 @@ void android_hdmi_suspend_display(struct drm_device *dev)
 	otm_disable_hdmi(hdmi_priv->context);
 
 	otm_hdmi_power_rails_off();
+
+	/* Keep DSPB & HDMIO islands off after suspending. */
+	otm_hdmi_power_islands_off(OSPM_DISPLAY_ISLAND);
+
 	return;
 }
 
@@ -1650,6 +1657,12 @@ void android_hdmi_resume_display(struct drm_device *dev)
 	hdmi_priv = dev_priv->hdmi_priv;
 	if (NULL == hdmi_priv)
 		return;
+
+	/* Keep DSPB & HDMIO islands on after resuming. */
+	if (!otm_hdmi_power_islands_on(OSPM_DISPLAY_ISLAND)) {
+		pr_err("Unable to power on display island!");
+		return;
+	}
 
 	otm_hdmi_power_rails_on();
 	/* Check if monitor is attached to HDMI connector. */
