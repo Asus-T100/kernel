@@ -4526,66 +4526,6 @@ struct imx_resolution imx_res_still[] = {
 
 struct imx_resolution imx_res_video[] = {
 	{
-		.desc = "imx135_QCIF_dvs_30fps",
-		.regs = imx135_QCIF_dvs_30fps,
-		.width = 216,
-		.height = 176,
-		.fps = 30,
-		.pixels_per_line = 4572, /* consistent with regs arrays */
-		.lines_per_frame = 2650, /* consistent with regs arrays */
-		.bin_factor_x = 2,
-		.bin_factor_y = 2,
-		.used = 0,
-	},
-	{
-		.desc = "imx135_QVGA_dvs_30fps",
-		.regs = imx135_QVGA_dvs_30fps,
-		.width = 408,
-		.height = 308,
-		.fps = 30,
-		.pixels_per_line = 4572, /* consistent with regs arrays */
-		.lines_per_frame = 2650, /* consistent with regs arrays */
-		.bin_factor_x = 2,
-		.bin_factor_y = 2,
-		.used = 0,
-	},
-	{
-		.desc = "imx135_CIF_dvs_30fps",
-		.regs = imx135_CIF_dvs_30fps,
-		.width = 444,
-		.height = 348,
-		.fps = 30,
-		.pixels_per_line = 4572, /* consistent with regs arrays */
-		.lines_per_frame = 2650, /* consistent with regs arrays */
-		.bin_factor_x = 2,
-		.bin_factor_y = 2,
-		.used = 0,
-	},
-	{
-		.desc = "imx135_VGA_dvs_30fps",
-		.regs = imx135_VGA_dvs_30fps,
-		.width = 820,
-		.height = 616,
-		.fps = 30,
-		.pixels_per_line = 4572, /* consistent with regs arrays */
-		.lines_per_frame = 2650, /* consistent with regs arrays */
-		.bin_factor_x = 2,
-		.bin_factor_y = 2,
-		.used = 0,
-	},
-	{
-		.desc = "imx135_D1_dvs_30fps",
-		.regs = imx135_D1_dvs_30fps,
-		.width = 936	,
-		.height = 602,
-		.fps = 30,
-		.pixels_per_line = 4572, /* consistent with regs arrays */
-		.lines_per_frame = 2650, /* consistent with regs arrays */
-		.bin_factor_x = 2,
-		.bin_factor_y = 2,
-		.used = 0,
-	},
-	{
 		.desc = "imx135_2336x1320_30fps",
 		.regs = imx135_2336x1320_30fps,
 		.width = 2336,
