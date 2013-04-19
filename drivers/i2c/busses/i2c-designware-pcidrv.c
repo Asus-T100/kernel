@@ -370,7 +370,6 @@ static struct  dw_pci_controller  dw_pci_controllers[] = {
 		.enable_stop = 1,
 		.scl_cfg = vlv2_i2c_scl_cfg,
 		.reset = vlv2_reset,
-		.acpi_name = "\\_SB.I2C4"
 	},
 	[valleyview_4] = {
 		.bus_num     = 5,
