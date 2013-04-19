@@ -52,9 +52,11 @@
 #define SP_DEBUG_DUMP	(1)
 #define SP_DEBUG_COPY	(2)
 #define SP_DEBUG_TRACE	(3) /* not yet functional */
-#define SP_DEBUG_INPUT_SYSTEM (4)
+#define SP_DEBUG_MINIMAL (4)
 
 #define SP_DEBUG SP_DEBUG_NONE
+#define SP_DEBUG_MINIMAL_OVERWRITE 1
+
 
 #ifdef __DISABLE_UNUSED_THREAD__
 #define SH_CSS_MAX_SP_THREADS	1 /* preview */
@@ -137,6 +139,7 @@ enum sh_css_sp_event_type {
 	SH_CSS_SP_EVENT_3A_STATISTICS_DONE,
 	SH_CSS_SP_EVENT_DIS_STATISTICS_DONE,
 	SH_CSS_SP_EVENT_PIPELINE_DONE,
+	SH_CSS_SP_EVENT_PORT_EOF,
 	SH_CSS_SP_EVENT_NR_OF_TYPES,		/* must be last */
 };
 
@@ -316,9 +319,9 @@ struct sh_css_sp_debug_state {
 };
 
 
-#elif SP_DEBUG == SP_DEBUG_INPUT_SYSTEM
+#elif SP_DEBUG == SP_DEBUG_MINIMAL
 
-#define SH_CSS_NUM_SP_DEBUG 64
+#define SH_CSS_NUM_SP_DEBUG 128
 
 struct sh_css_sp_debug_state {
 	unsigned int error;
@@ -565,6 +568,7 @@ struct sh_css_sp_stage {
 	/* enum sh_css_stage_type	stage_type; */
 	uint8_t			stage_type;
 	uint8_t			num_stripes;
+	uint8_t			isp_pipe_version;
 	struct {
 		uint8_t		vf_output;
 		uint8_t		s3a;

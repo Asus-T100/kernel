@@ -1291,6 +1291,7 @@ irqreturn_t atomisp_isr_thread(int irq, void *isp_ptr)
 			/* fall through */
 		case IA_CSS_EVENT_TYPE_3A_STATISTICS_DONE:
 		case IA_CSS_EVENT_TYPE_DIS_STATISTICS_DONE:
+		case IA_CSS_EVENT_TYPE_PORT_EOF:
 			break;
 		default:
 			dev_err(isp->dev, "unknown event 0x%x pipe:%d\n",
@@ -1330,6 +1331,7 @@ irqreturn_t atomisp_isr_thread(int irq, void *isp_ptr)
 					 css_pipe_done);
 			break;
 		case IA_CSS_EVENT_TYPE_PIPELINE_DONE:
+		case IA_CSS_EVENT_TYPE_PORT_EOF:
 			break;
 		default:
 			dev_err(isp->dev, "unhandled css stored event: 0x%x\n",

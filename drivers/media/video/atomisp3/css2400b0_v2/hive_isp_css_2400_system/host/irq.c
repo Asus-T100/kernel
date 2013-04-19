@@ -242,10 +242,15 @@ void cnd_virq_enable_channel(
 	const virq_id_t				irq_ID,
 	const bool					en)
 {
+	irq_ID_t		i;
 	unsigned int	channel_ID;
 	irq_ID_t		ID = virq_get_irq_id(irq_ID, &channel_ID);
 	
 assert(ID < N_IRQ_ID);
+for (i=IRQ1_ID;i<N_IRQ_ID;i++) {
+/* It is not allowed to enable the pin of a nested IRQ directly */
+	assert(irq_ID != IRQ_NESTING_ID[i]);
+}
 
 	if (en) {
 		irq_enable_channel(ID, channel_ID);

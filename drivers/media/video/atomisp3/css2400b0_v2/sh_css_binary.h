@@ -88,6 +88,10 @@ struct sh_css_binary {
 	int                      sctbl_width_per_color;
 	int                      sctbl_aligned_width_per_color;
 	int                      sctbl_height;
+	int                      dis_hor_grid_num_3a;
+	int                      dis_ver_grid_num_3a;
+	int                      dis_hor_grid_num_isp;
+	int                      dis_ver_grid_num_isp;
 	int                      dis_hor_coef_num_3a;
 	int                      dis_ver_coef_num_3a;
 	int                      dis_hor_coef_num_isp;
@@ -122,28 +126,32 @@ struct sh_css_binary {
 	DEFAULT_FRAME_INFO, \
 	DEFAULT_FRAME_INFO, \
 	DEFAULT_FRAME_INFO, \
-	0, \
-	0, \
-	0, \
-	0, \
-	0, \
-	0, \
-	0, \
-	0, \
-	0, \
-	0, \
-	0, \
-	0, \
-	0, \
-	0, \
-	0, \
-	0, \
-	0, \
-	0, \
-	0, \
-	0, \
-	0, \
-	0, \
+	0,	/* input_buf_vectors */  		\
+	0,	/* deci_factor_log2 */  		\
+	0,	/* dis_deci_factor_log2 */  		\
+	0,	/* vf_downscale_log2 */ 		\
+	0,	/* s3atbl_width */  			\
+	0,	/* s3atbl_height */  			\
+	0,	/* s3atbl_isp_width */  		\
+	0,	/* s3atbl_isp_height */  		\
+	0,	/* morph_tbl_width */  			\
+	0,	/* morph_tbl_aligned_width */  		\
+	0,	/* morph_tbl_height */  		\
+	0,	/* sctbl_width_per_color */  		\
+	0,	/* sctbl_aligned_width_per_color */  	\
+	0,	/* sctbl_height */  			\
+	0,	/* dis_hor_grid_num_3a */  		\
+	0,	/* dis_ver_grid_num_3a */  		\
+	0,	/* dis_hor_grid_num_isp */  		\
+	0,	/* dis_ver_grid_num_isp */  		\
+	0,	/* dis_hor_coef_num_3a */  		\
+	0,	/* dis_ver_coef_num_3a */ 		\
+	0,	/* dis_hor_coef_num_isp */ 		\
+	0,	/* dis_ver_coef_num_isp */ 		\
+	0,	/* dis_hor_proj_num_3a */ 		\
+	0,	/* dis_ver_proj_num_3a */ 		\
+	0,	/* dis_hor_proj_num_isp */ 		\
+	0,	/* dis_ver_proj_num_isp */ 		\
 	{ 0,0 },		/* dvs_envelope_info */			\
 	false,			/* online */				\
 	0, 			/* uds_xc */				\

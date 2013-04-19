@@ -238,7 +238,8 @@ sh_css_sp_start_raw_copy(struct ia_css_frame *out_frame,
 			 unsigned two_ppc,
 			 bool input_needs_raw_binning,
 			 unsigned max_input_width,
-			 enum sh_css_pipe_config_override pipe_conf_override)
+			 enum sh_css_pipe_config_override pipe_conf_override,
+			 unsigned int if_config_index)
 {
 	enum ia_css_pipe_id pipe_id;
 	unsigned int thread_id;
@@ -290,11 +291,9 @@ assert(out_frame != NULL);
 	sh_css_sp_stage.xmem_bin_addr = 0x0;
 #endif
 	sh_css_sp_stage.stage_type = SH_CSS_SP_STAGE_TYPE;
-	sh_css_sp_stage.func =
-		(unsigned int)SH_CSS_SP_RAW_COPY;
-	//assert(0);// fix this when the assert hits- replace pipeid by pipenum in the following line (justin)
-	set_output_frame_buffer(out_frame,
-						(unsigned)pipe_id, stage_num);
+	sh_css_sp_stage.func = (unsigned int)SH_CSS_SP_RAW_COPY;
+	sh_css_sp_stage.if_config_index = (uint8_t) if_config_index;
+	set_output_frame_buffer(out_frame, (unsigned)pipe_id, stage_num);
 
 #if 0
 	/* sp_raw_copy_init on the SP does not deal with dynamica/static yet */
@@ -628,6 +627,8 @@ void sh_css_sp_set_if_configs(
 	{IS_ISP_2300_SYSTEM, IS_ISP_2400_SYSTEM}"
 #endif
 
+	if  (if_config_index == SH_CSS_IF_CONFIG_NOT_NEEDED) return;
+	
 	assert(if_config_index <= SH_CSS_MAX_IF_CONFIGS);
 
 	block[INPUT_FORMATTER0_ID] = config_a->block_no_reqs;
@@ -644,16 +645,12 @@ if (reset) {
 		input_formatter_set_fifo_blocking_mode(id, block[id]);
 	}
 }
-	if (if_config_index != SH_CSS_IF_CONFIG_NOT_NEEDED){
 		sh_css_sp_group.config.input_formatter.set[if_config_index].config_a = *config_a;
-	}
-	sh_css_sp_group.config.input_formatter.a_changed = true;
+		sh_css_sp_group.config.input_formatter.a_changed = true;
 
 	if (config_b != NULL) {
-		if (if_config_index != SH_CSS_IF_CONFIG_NOT_NEEDED){
 			sh_css_sp_group.config.input_formatter.set[if_config_index].config_b = *config_b;
-		}
-		sh_css_sp_group.config.input_formatter.b_changed = true;
+			sh_css_sp_group.config.input_formatter.b_changed = true;
 	}
 
 return;
@@ -746,13 +743,16 @@ sh_css_sp_init_group(bool two_ppc,
 			 uint8_t if_config_index
 			 )
 {
-	assert(if_config_index <= SH_CSS_MAX_IF_CONFIGS);
-	sh_css_sp_group.config.input_formatter.set[if_config_index].stream_format = input_format;
+
 	sh_css_sp_group.config.input_formatter.isp_2ppc = two_ppc;
 
 	sh_css_sp_group.config.no_isp_sync = no_isp_sync;
 	/* decide whether the frame is processed online or offline */
 	sh_css_sp_group.config.is_offline  = sh_css_continuous_start_sp_copy();
+	if (if_config_index == SH_CSS_IF_CONFIG_NOT_NEEDED) return; 
+	assert(if_config_index <= SH_CSS_MAX_IF_CONFIGS);
+	sh_css_sp_group.config.input_formatter.set[if_config_index].stream_format = input_format;
+
 }
 
 void
@@ -779,7 +779,7 @@ sh_css_sp_init_stage(struct sh_css_binary *binary,
 		    bool xnr,
 		    unsigned irq_buf_flags,
 		    const struct ia_css_data *isp_mem_if,
-			int if_config_index)
+		    unsigned int if_config_index)
 {
 	const struct ia_css_binary_info *info = binary->info;
 	enum ia_css_err err = IA_CSS_SUCCESS;
@@ -832,9 +832,10 @@ sh_css_sp_init_stage(struct sh_css_binary *binary,
 				&binary->internal_frame_info);
 	sh_css_sp_stage.dvs_envelope.width    = binary->dvs_envelope.width;
 	sh_css_sp_stage.dvs_envelope.height   = binary->dvs_envelope.height;
+	sh_css_sp_stage.isp_pipe_version      = info->isp_pipe_version;
 	sh_css_sp_stage.isp_deci_log_factor   = binary->deci_factor_log2;
 	sh_css_sp_stage.isp_vf_downscale_bits = binary->vf_downscale_log2;
-	
+
 	sh_css_sp_stage.if_config_index = (uint8_t) if_config_index;
 
 	sh_css_sp_stage.sp_enable_xnr = xnr;
@@ -890,7 +891,7 @@ sp_init_stage(struct sh_css_pipeline_stage *stage,
 	      bool preview_mode,
 	      bool low_light,
 	      bool xnr,
-		  int if_config_index)
+	      unsigned int if_config_index)
 {
 	struct sh_css_binary *binary = stage->binary;
 	const struct ia_css_fw_info *firmware = stage->firmware;
@@ -949,7 +950,7 @@ sp_init_stage(struct sh_css_pipeline_stage *stage,
 			     xnr,
 			     stage->irq_buf_flags,
 			     mem_if,
-				 if_config_index);
+			     if_config_index);
 	return IA_CSS_SUCCESS;
 }
 
@@ -958,7 +959,8 @@ sp_init_sp_stage(struct sh_css_pipeline_stage *stage,
 		 unsigned pipe_num,
 		 bool two_ppc,
 		 bool input_needs_raw_binning,
-		 enum sh_css_pipe_config_override copy_ovrd)
+		 enum sh_css_pipe_config_override copy_ovrd,
+		 unsigned int if_config_index)
 {
 	const struct sh_css_binary_args *args = &stage->args;
 
@@ -967,7 +969,7 @@ sp_init_sp_stage(struct sh_css_pipeline_stage *stage,
 		sh_css_sp_start_raw_copy(args->out_frame,
 				pipe_num, two_ppc, input_needs_raw_binning,
 				stage->max_input_width,
-				copy_ovrd);
+				copy_ovrd, if_config_index);
 		break;
 	case SH_CSS_SP_BIN_COPY:
 		assert(false); /* TBI */
@@ -1005,9 +1007,9 @@ sh_css_sp_init_pipeline(struct sh_css_pipeline *me,
 	if (input_mode == IA_CSS_INPUT_MODE_SENSOR
 		|| input_mode == IA_CSS_INPUT_MODE_BUFFERED_SENSOR) {
 		if_config_index  = (uint8_t) (port_id - MIPI_PORT0_ID);
-	} else {
-		if_config_index = 0;
-	}
+	} else if (input_mode == IA_CSS_INPUT_MODE_MEMORY){
+		if_config_index = SH_CSS_IF_CONFIG_NOT_NEEDED;
+	} else if_config_index = 0x0;
 
 	sh_css_query_sp_thread_id(pipe_num, &thread_id);
 	memset(&sh_css_sp_group.pipe[thread_id], 0, sizeof(struct sh_css_sp_pipeline));
@@ -1044,7 +1046,7 @@ sh_css_sp_init_pipeline(struct sh_css_pipeline *me,
 	sh_css_sp_group.pipe[thread_id].pipe_num = pipe_num;
 	sh_css_sp_group.pipe[thread_id].input_system_mode
 						= (uint32_t)input_mode;
-	sh_css_sp_group.pipe[thread_id].port_id = if_config_index;
+	sh_css_sp_group.pipe[thread_id].port_id = port_id;
 
 	/* TODO: next indicates from which queues parameters need to be
 		 sampled, needs checking/improvement */
@@ -1062,8 +1064,7 @@ sh_css_sp_init_pipeline(struct sh_css_pipeline *me,
 		sh_css_sp_group.pipe[thread_id].num_stages++;
 		if (is_sp_stage(stage)) {
 			sp_init_sp_stage(stage, pipe_num, two_ppc, input_needs_raw_binning,
-				copy_ovrd
-				);
+				copy_ovrd, if_config_index);
 		} else {
 			sp_init_stage(stage, pipe_num, num, preview_mode,
 					low_light, xnr, if_config_index);

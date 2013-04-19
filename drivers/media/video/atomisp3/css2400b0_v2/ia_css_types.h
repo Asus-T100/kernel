@@ -373,14 +373,14 @@ struct ia_css_gc_config {
 };
 
 struct ia_css_dvs_6axis_config {
-                uint32_t width_y;
-                uint32_t height_y;
-                uint32_t width_uv;
-                uint32_t height_uv;
-                uint32_t *xcoords_y;
-                uint32_t *ycoords_y;
-                uint32_t *xcoords_uv;
-                uint32_t *ycoords_uv;   
+	uint32_t width_y;
+	uint32_t height_y;
+	uint32_t width_uv;
+	uint32_t height_uv;
+	uint32_t *xcoords_y;
+	uint32_t *ycoords_y;
+	uint32_t *xcoords_uv;
+	uint32_t *ycoords_uv;   
 };
 
 /** Advanced Noise Reduction configuration.
@@ -512,9 +512,7 @@ struct ia_css_xnr_config {
 };
 
 /**
- * Digital zoom: this feature can be configured with a zoom factor
- * which determines the amount of zoom and a zoom center which determines
- * the point to zoom in at.
+ * Digital zoom:
  * This feature is currently available only for video, but will become
  * available for preview and capture as well.
  * Set the digital zoom factor, this is a logarithmic scale. The actual zoom
@@ -641,10 +639,10 @@ struct ia_css_dvs_statistics {
  *  arrays that contain the coeffients for each type.
  */
 struct ia_css_dvs2_coef_types {
-  int16_t *odd_real; /**< real part of the odd coefficients*/
-  int16_t *odd_imag; /**< imaginary part of the odd coefficients*/
-  int16_t *even_real;/**< real part of the even coefficients*/
-  int16_t *even_imag;/**< imaginary part of the even coefficients*/
+	int16_t *odd_real; /**< real part of the odd coefficients*/
+	int16_t *odd_imag; /**< imaginary part of the odd coefficients*/
+	int16_t *even_real;/**< real part of the even coefficients*/
+	int16_t *even_imag;/**< imaginary part of the even coefficients*/
 };
 
 /** DVS 2.0 Coefficients. This structure describes the coefficients that are needed for the dvs statistics.
@@ -661,10 +659,10 @@ struct ia_css_dvs2_coefficients {
  *  arrays that contain the statistics for each type.
  */
 struct ia_css_dvs2_stat_types {
-  int32_t *odd_real; /**< real part of the odd statistics*/
-  int32_t *odd_imag; /**< imaginary part of the odd statistics*/
-  int32_t *even_real;/**< real part of the even statistics*/
-  int32_t *even_imag;/**< imaginary part of the even statistics*/
+	int32_t *odd_real; /**< real part of the odd statistics*/
+	int32_t *odd_imag; /**< imaginary part of the odd statistics*/
+	int32_t *even_real;/**< real part of the even statistics*/
+	int32_t *even_imag;/**< imaginary part of the even statistics*/
 };
 
 /** DVS 2.0 Statistics. This structure describes the statistics that are generated using the provided coefficients.

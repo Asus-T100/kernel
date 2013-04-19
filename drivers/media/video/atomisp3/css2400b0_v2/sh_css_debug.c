@@ -1195,7 +1195,7 @@ void sh_css_print_sp_debug_state(
 
 #endif
 
-#elif SP_DEBUG == SP_DEBUG_INPUT_SYSTEM
+#elif SP_DEBUG == SP_DEBUG_MINIMAL
 	int i;
 	int base = 0;
 	int limit = SH_CSS_NUM_SP_DEBUG;
@@ -1712,14 +1712,14 @@ void sh_css_dump_debug_info(
 	sh_css_dump_rx_state();
 	sh_css_dump_if_state();
 	sh_css_dump_isp_state();
-//	sh_css_dump_isp_sp_fifo_state();
-//	sh_css_dump_isp_gdc_fifo_state();
-//	sh_css_dump_sp_state();
-//	sh_css_dump_dma_isp_fifo_state();
-//	sh_css_dump_dma_sp_fifo_state();
-//	sh_css_dump_dma_state();
+	sh_css_dump_isp_sp_fifo_state();
+	sh_css_dump_isp_gdc_fifo_state();
+	sh_css_dump_sp_state();
+	sh_css_dump_dma_isp_fifo_state();
+	sh_css_dump_dma_sp_fifo_state();
+	sh_css_dump_dma_state();
 #if defined(HAS_INPUT_FORMATTER_VERSION_2)
-//	sh_css_dump_isys_state();
+	sh_css_dump_isys_state();
 	
     {
         irq_controller_state_t state;

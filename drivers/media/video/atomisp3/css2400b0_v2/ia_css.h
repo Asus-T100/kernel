@@ -557,7 +557,7 @@ struct ia_css_isp_3a_statistics {
 };
 
 /** Structure that holds DVS statistics in the ISP internal
- * format. Use ia_css_get_3a_statistics() to translate
+ * format. Use ia_css_get_dvs_statistics() to translate
  * this to the format used on the host (DVS engine).
  * */
 struct ia_css_isp_dvs_statistics {
@@ -752,14 +752,16 @@ enum ia_css_event_type {
 	IA_CSS_EVENT_TYPE_3A_STATISTICS_DONE   = 1 << 2,
 	IA_CSS_EVENT_TYPE_DIS_STATISTICS_DONE  = 1 << 3,
 	IA_CSS_EVENT_TYPE_PIPELINE_DONE        = 1 << 4,
+	IA_CSS_EVENT_TYPE_PORT_EOF	       = 1 << 5,
 };
-#define IA_CSS_EVENT_TYPE_NUM (IA_CSS_EVENT_TYPE_PIPELINE_DONE + 1)
+#define IA_CSS_EVENT_TYPE_NUM (IA_CSS_EVENT_TYPE_PORT_EOF + 1)
 #define IA_CSS_EVENT_TYPE_NONE 0
 #define IA_CSS_EVENT_TYPE_ALL  0xFFFF
 
 struct ia_css_event {
 	struct ia_css_pipe    *pipe;
 	enum ia_css_event_type type;
+	uint8_t                port;
 };
 
 /** Interrupt info structure. This structure contains information about an
@@ -1532,6 +1534,12 @@ ia_css_isp_dvs_statistics_allocate(const struct ia_css_dvs_grid_info *grid);
 void
 ia_css_isp_dvs_statistics_free(struct ia_css_isp_dvs_statistics *me);
 
+struct ia_css_isp_dvs_statistics *
+ia_css_isp_dvs2_statistics_allocate(const struct ia_css_dvs_grid_info *grid);
+
+void
+ia_css_isp_dvs2_statistics_free(struct ia_css_isp_dvs_statistics *me);
+
 struct ia_css_3a_statistics *
 ia_css_3a_statistics_allocate(const struct ia_css_3a_grid_info *grid);
 
@@ -1549,6 +1557,18 @@ ia_css_dvs_coefficients_allocate(const struct ia_css_dvs_grid_info *grid);
 
 void
 ia_css_dvs_coefficients_free(struct ia_css_dvs_coefficients *me);
+
+struct ia_css_dvs2_statistics *
+ia_css_dvs2_statistics_allocate(const struct ia_css_dvs_grid_info *grid);
+
+void
+ia_css_dvs2_statistics_free(struct ia_css_dvs2_statistics *me);
+
+struct ia_css_dvs2_coefficients *
+ia_css_dvs2_coefficients_allocate(const struct ia_css_dvs_grid_info *grid);
+
+void
+ia_css_dvs2_coefficients_free(struct ia_css_dvs2_coefficients *me);
 
 /** @brief start SP hardware
  *

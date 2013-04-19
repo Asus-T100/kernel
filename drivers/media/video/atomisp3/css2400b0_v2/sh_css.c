@@ -22,6 +22,7 @@
 */
 
 /*! \file */
+//#include "stdio.h"
 
 #include "ia_css.h"
 #include "sh_css_hrt.h"		/* only for file 2 MIPI */
@@ -180,6 +181,7 @@ static int thread_alive;
 	NULL,                      /* new_pipe */ \
 	DEFAULT_FRAME,             /* out_frame */ \
 	DEFAULT_FRAME,             /* vf_frame */ \
+	{ NULL },                  /* continuous_frames */\
 	{ DEFAULT_PREVIEW_SETTINGS } /* pipe */ \
 }
 
@@ -187,7 +189,6 @@ struct sh_css_preview_settings {
 	struct sh_css_binary copy_binary;
 	struct sh_css_binary preview_binary;
 	struct sh_css_binary vf_pp_binary;
-	struct ia_css_frame *continuous_frames[NUM_CONTINUOUS_FRAMES];
 	struct sh_css_pipe *copy_pipe;
 	struct sh_css_pipe *capture_pipe;
 };
@@ -197,7 +198,6 @@ struct sh_css_preview_settings {
 	DEFAULT_BINARY_SETTINGS,  /* copy_binary */\
 	DEFAULT_BINARY_SETTINGS,  /* preview_binary */\
 	DEFAULT_BINARY_SETTINGS,  /* vf_pp_binary */\
-	{ NULL },                 /* continuous_frames */\
 	NULL,                     /* copy_pipe */\
 	NULL,                     /* capture_pipe */\
 }
@@ -238,6 +238,8 @@ struct sh_css_video_settings {
 	struct ia_css_frame *ref_frames[NUM_VIDEO_REF_FRAMES];
 	struct ia_css_frame *tnr_frames[NUM_VIDEO_TNR_FRAMES];
 	struct ia_css_frame *vf_pp_in_frame;
+	struct sh_css_pipe *copy_pipe;
+	struct sh_css_pipe *capture_pipe;
 };
 
 #define DEFAULT_VIDEO_SETTINGS \
@@ -248,6 +250,8 @@ struct sh_css_video_settings {
 	{ NULL },                /* ref_frames */ \
 	{ NULL },                /* tnr_frames */ \
 	NULL,                    /* vf_pp_in_frame */ \
+	NULL,                    /* copy_pipe */ \
+	NULL,                    /* capture_pipe */ \
 }
 
 struct ia_css_pipe {
@@ -288,6 +292,7 @@ struct sh_css_pipe {
 	struct ia_css_pipe           *new_pipe;
 	struct ia_css_frame          out_frame_struct;
 	struct ia_css_frame          vf_frame_struct;
+	struct ia_css_frame         *continuous_frames[NUM_CONTINUOUS_FRAMES];
 	union {
 		struct sh_css_preview_settings preview;
 		struct sh_css_video_settings   video;
@@ -475,15 +480,6 @@ static enum ia_css_err
 sh_css_pipeline_stop(struct sh_css_pipe *pipe);
 #endif
 
-static uint32_t
-translate_sp_event(uint32_t sp_event);
-
-static void decode_sp_event(
-	uint32_t event,
-	enum ia_css_pipe_id *pipe_id,
-	uint8_t *pipe_num,
-	enum ia_css_event_type *event_id);
-
 static struct sh_css_binary *
 ia_css_pipe_get_3a_binary (const struct ia_css_pipe *pipe);
 
@@ -629,7 +625,7 @@ static enum ia_css_err
 verify_copy_out_frame_format(struct sh_css_pipe *pipe)
 {
 	enum ia_css_frame_format out_fmt = pipe->output_info.format;
-	unsigned int i, found = 0;
+	unsigned int i, found = 0;	
 
 	switch (pipe->stream->config.format) {
 	case IA_CSS_STREAM_FORMAT_YUV420_8_LEGACY:
@@ -716,6 +712,7 @@ unsigned int
 sh_css_input_format_bits_per_pixel(enum ia_css_stream_format format,
 	bool two_ppc)
 {
+	unsigned int rval = 0;
 	switch (format) {
 	case IA_CSS_STREAM_FORMAT_YUV420_8_LEGACY:
 	case IA_CSS_STREAM_FORMAT_YUV420_8:
@@ -723,41 +720,53 @@ sh_css_input_format_bits_per_pixel(enum ia_css_stream_format format,
 	case IA_CSS_STREAM_FORMAT_RGB_888:
 	case IA_CSS_STREAM_FORMAT_RAW_8:
 	case IA_CSS_STREAM_FORMAT_BINARY_8:
-		return 8;
+		rval = 8;
+		break;
 	case IA_CSS_STREAM_FORMAT_YUV420_10:
 	case IA_CSS_STREAM_FORMAT_YUV422_10:
 	case IA_CSS_STREAM_FORMAT_RAW_10:
-		return 10;
+		rval = 10;
+		break;
 	case IA_CSS_STREAM_FORMAT_RGB_444:
-		return 4;
+		rval = 4;
+		break;
 	case IA_CSS_STREAM_FORMAT_RGB_555:
-		return 5;
+		rval = 5;
+		break;
 	case IA_CSS_STREAM_FORMAT_RGB_565:
-		return 65;
+		rval = 65;
+		break;
 	case IA_CSS_STREAM_FORMAT_RGB_666:
 	case IA_CSS_STREAM_FORMAT_RAW_6:
-		return 6;
+		rval = 6;
+		break;
 	case IA_CSS_STREAM_FORMAT_RAW_7:
-		return 7;
+		rval = 7;
+		break;
 	case IA_CSS_STREAM_FORMAT_RAW_12:
-		return 12;
+		rval = 12;
+		break;
 	case IA_CSS_STREAM_FORMAT_RAW_14:
 		if (two_ppc)
-			return 14;
+			rval = 14;
 		else
-			return 12;
+			rval = 12;
+		break;
 	case IA_CSS_STREAM_FORMAT_RAW_16:
 		if (two_ppc)
-			return 16;
+			rval = 16;
 		else
-			return 12;
+			rval = 12;
+		break;
 	default:
-		return 0;
+		rval = 0;
+		break;
+		
 	}
-return 0;
+return rval;
 }
 
-unsigned int
+unsigned int 
 ia_css_stream_input_format_bits_per_pixel(struct ia_css_stream *stream)
 {
 	int bpp = 0;
@@ -910,18 +919,21 @@ program_input_formatter(struct sh_css_pipe *pipe,
 	/* Determine which input formatter config set is targeted. */
 	/* Index is equal to the CSI-2 port used. */
 	enum ia_css_csi2_port port;
-
+	
 	if (pipe->stream->config.mode == IA_CSS_INPUT_MODE_SENSOR
-	 || pipe->stream->config.mode == IA_CSS_INPUT_MODE_BUFFERED_SENSOR
-	) {
+	 || pipe->stream->config.mode == IA_CSS_INPUT_MODE_BUFFERED_SENSOR) 
+	{
 		port = pipe->stream->config.source.port.port;
 		if_config_index = (uint8_t) (port - IA_CSS_CSI2_PORT_4LANE);
-	} else {
+	}
+	else if (pipe->stream->config.mode == IA_CSS_INPUT_MODE_MEMORY){
+		if_config_index = SH_CSS_IF_CONFIG_NOT_NEEDED;
+	}
+	else{
 		if_config_index = 0;
 	}
 
-	assert(if_config_index <= SH_CSS_MAX_IF_CONFIGS);
-
+	assert(if_config_index <= SH_CSS_MAX_IF_CONFIGS || if_config_index == SH_CSS_IF_CONFIG_NOT_NEEDED);
 
 	if (pipe->input_needs_raw_binning &&
 	    binary->info->enable.raw_binning) {
@@ -1630,7 +1642,7 @@ assert(me != NULL);
 		last->next = new_stage;
 	else
 		me->stages = new_stage;
-
+	
 	return IA_CSS_SUCCESS;
 }
 
@@ -1725,6 +1737,7 @@ static void start_pipe(
 			 (me->capture_mode == IA_CSS_CAPTURE_MODE_LOW_LIGHT ||
 			  me->capture_mode == IA_CSS_CAPTURE_MODE_BAYER);
 	bool is_preview = me->mode == IA_CSS_PIPE_ID_PREVIEW;
+	assert(me != NULL);
 
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
 		"start_pipe() enter:\n");
@@ -1965,7 +1978,7 @@ enable_interrupts(enum ia_css_irq_type irq_type)
 
 #if defined(HRT_CSIM)
 /*
- * Enable IRQ on the SP which signals that SP goes to idle
+ * Enable IRQ on the SP which signals that SP goes to idle 
  * to get statistics for each binary
  */
 	cnd_isp_irq_enable(ISP0_ID, true);
@@ -2245,6 +2258,8 @@ create_old_pipe(enum ia_css_pipe_mode mode,
 	if (!me)
 		return IA_CSS_ERR_CANNOT_ALLOCATE_MEMORY;
 
+	memset(me, 0, sizeof(*me));
+
 	*me = default_pipe;
 	/* TODO: JB should not be needed, but temporary backward reference */
 	switch (mode) {
@@ -2283,7 +2298,7 @@ create_pipe(enum ia_css_pipe_mode mode,
 	    bool copy_pipe)
 {
 	enum ia_css_err err = IA_CSS_SUCCESS;
-	struct ia_css_pipe *me = sh_css_calloc(1, sizeof(*me));
+	struct ia_css_pipe *me = sh_css_malloc(sizeof(*me));
 
 	if (!me)
 		return IA_CSS_ERR_CANNOT_ALLOCATE_MEMORY;
@@ -2329,12 +2344,15 @@ destroy_frames(unsigned int num_frames, struct ia_css_frame **frames)
 enum ia_css_err
 ia_css_pipe_destroy(struct ia_css_pipe *pipe)
 {
-	struct sh_css_pipe *old_pipe = pipe->old_pipe;
+	struct sh_css_pipe *old_pipe = NULL;
+	enum ia_css_err err = IA_CSS_SUCCESS;
 	sh_css_dtrace(SH_DBG_TRACE, "ia_css_pipe_destroy() enter\n");
 
 	if (pipe == NULL) return IA_CSS_ERR_INVALID_ARGUMENTS;
 
-	if (pipe->old_pipe->stream != NULL) {
+	old_pipe = pipe->old_pipe;
+
+	if (old_pipe->stream != NULL) {
 		sh_css_dtrace(SH_DBG_TRACE, "ia_css_pipe_destroy(): "
 				"ia_css_stream_destroy not called!\n");
 		return IA_CSS_ERR_INVALID_ARGUMENTS;
@@ -2342,27 +2360,31 @@ ia_css_pipe_destroy(struct ia_css_pipe *pipe)
 
 	release_pipe_num(pipe->pipe_num);
 
+	
 	switch (pipe->config.mode) {
 	case IA_CSS_PIPE_MODE_PREVIEW:
-		destroy_frames(NUM_CONTINUOUS_FRAMES,
-			       old_pipe->pipe.preview.continuous_frames);
-		if (old_pipe->pipe.preview.copy_pipe) {
-			struct ia_css_pipe *t = old_pipe->pipe.preview.copy_pipe->new_pipe;
-			release_pipe_num(t->pipe_num);
-			if (t->old_pipe->pipe.preview.continuous_frames[0]) {
-				destroy_frames(NUM_CONTINUOUS_FRAMES,
-					       t->old_pipe->pipe.preview.continuous_frames);
+		/* need to take into account that this function is also called
+		   on the internal copy pipe */
+		if (old_pipe->mode == IA_CSS_PIPE_ID_PREVIEW) {
+			destroy_frames(NUM_CONTINUOUS_FRAMES,
+				old_pipe->continuous_frames);
+			if (old_pipe->pipe.preview.copy_pipe) {
+				err = ia_css_pipe_destroy(old_pipe->pipe.preview.copy_pipe->new_pipe);
+				sh_css_dtrace(SH_DBG_TRACE, "ia_css_pipe_destroy(): "
+					"destroyed internal copy pipe err=%d\n", err);
 			}
-			my_css.active_pipes[t->pipe_num] = NULL;
-			sh_css_pipe_free_shading_table(t->old_pipe);
-			sh_css_pipe_invalidate_binaries(t->old_pipe);
-			sh_css_pipeline_clean(&t->old_pipe->pipeline);
-			sh_css_free(t->old_pipe);
-			t->old_pipe = NULL;
-			sh_css_free(t);
 		}
 		break;
 	case IA_CSS_PIPE_MODE_VIDEO:
+		if (old_pipe->mode == IA_CSS_PIPE_ID_VIDEO) {
+			destroy_frames(NUM_CONTINUOUS_FRAMES,
+				old_pipe->continuous_frames);
+			if (old_pipe->pipe.video.copy_pipe) {
+				err = ia_css_pipe_destroy(old_pipe->pipe.video.copy_pipe->new_pipe);
+				sh_css_dtrace(SH_DBG_TRACE, "ia_css_pipe_destroy(): "
+					"destroyed internal copy pipe err=%d\n", err);
+			}
+		}
 		destroy_frames(NUM_TNR_FRAMES, old_pipe->pipe.video.tnr_frames);
 		destroy_frames(NUM_REF_FRAMES, old_pipe->pipe.video.ref_frames);
 		break;
@@ -2385,13 +2407,14 @@ ia_css_pipe_destroy(struct ia_css_pipe *pipe)
 	sh_css_free(old_pipe);
 	old_pipe = NULL;
 	sh_css_free(pipe);
-	sh_css_dtrace(SH_DBG_TRACE, "ia_css_pipe_destroy() exit\n");
-	return IA_CSS_SUCCESS;
+	sh_css_dtrace(SH_DBG_TRACE, "ia_css_pipe_destroy() exit, err=%d\n", err);
+	return err;
 }
 
 void
 ia_css_uninit(void)
 {
+	int i = 0;
 	sh_css_dtrace(SH_DBG_TRACE, "ia_css_uninit() enter: void\n");
 #if WITH_PC_MONITORING
 	sh_css_print("PC_MONITORING: %s() -- started\n", __func__);
@@ -2405,6 +2428,13 @@ ia_css_uninit(void)
 
 	ia_css_i_host_rmgr_uninit();
 
+	for (i = 0; i < my_css.num_mipi_frames; i++) {
+		if (my_css.mipi_frames[i] != NULL)
+		{
+			ia_css_frame_free(my_css.mipi_frames[i]);
+			my_css.mipi_frames[i] = NULL;
+		}
+	}
 	sh_css_binary_uninit();
 	sh_css_sp_uninit();
 	sh_css_unload_firmware();
@@ -2420,14 +2450,12 @@ ia_css_uninit(void)
 
 static unsigned int translate_sw_interrupt(unsigned value)
 {
-	enum ia_css_pipe_id pipe_id = (enum ia_css_pipe_id)(value >> 24);
-	unsigned stage_num;
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "translate_sw_interrupt() enter:\n");
-	value &= ~(0xff<<24);
-	stage_num = value >> 16;
-	value &= ~(0xff<<16);
-	(void)pipe_id;
-	(void)stage_num;
+	/* previous versions of sp would put info in the upper word
+	   better safe than sorry so mask that away
+	*/
+	value = value & 0xffff;
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "translate_sw_interrupt() leave: return %d\n", value);
 	return value;
 }
 
@@ -2521,7 +2549,7 @@ enum ia_css_err ia_css_irq_translate(
 			infos |= IA_CSS_IRQ_INFO_ISP_BINARY_STATISTICS_READY;
 #endif
 			break;
-		case virq_isys:
+		case virq_isys_csi:
 			/* css rx interrupt, read error bits from css rx */
 			infos |= IA_CSS_IRQ_INFO_CSS_RECEIVER_ERROR;
 			break;
@@ -2603,7 +2631,7 @@ ia_css_irq_enable(enum ia_css_irq_info info,
 
 	switch (info) {
 	case IA_CSS_IRQ_INFO_CSS_RECEIVER_ERROR:
-		irq = virq_isys;
+		irq = virq_isys_csi;
 		break;
 	case IA_CSS_IRQ_INFO_CSS_RECEIVER_FIFO_OVERFLOW:
 		irq = virq_isys_fifo_full;
@@ -2976,23 +3004,32 @@ assert(copy_binary != NULL);
 }
 
 static enum ia_css_err
-preview_alloc_continuous_frames(
+alloc_continuous_frames(
 	struct sh_css_pipe *pipe)
 {
 	enum ia_css_err err = IA_CSS_SUCCESS;
 	struct ia_css_frame_info ref_info;
+	enum ia_css_pipe_id pipe_id = pipe->mode;
 	bool continuous = pipe->stream->config.continuous;
 	bool input_needs_raw_binning = pipe->input_needs_raw_binning;
 	unsigned int i;
-	unsigned int left_cropping;
-	left_cropping = pipe->pipe.preview.preview_binary.info->left_cropping;
+	unsigned int left_cropping = 0;
+	uint8_t raw_binning = 0;
 
-	ref_info = pipe->pipe.preview.preview_binary.in_frame_info;
-	if (input_needs_raw_binning &&
-	    pipe->pipe.preview.preview_binary.info->enable.raw_binning) {
+	if (pipe_id == IA_CSS_PIPE_ID_PREVIEW) {
+		left_cropping = pipe->pipe.preview.preview_binary.info->left_cropping;
+		ref_info = pipe->pipe.preview.preview_binary.in_frame_info;
+		raw_binning = pipe->pipe.preview.preview_binary.info->enable.raw_binning;
+	} else if (pipe_id == IA_CSS_PIPE_ID_VIDEO) {
+		left_cropping = pipe->pipe.video.video_binary.info->left_cropping;
+		ref_info = pipe->pipe.video.video_binary.in_frame_info;
+		raw_binning = pipe->pipe.video.video_binary.info->enable.raw_binning;
+	}
+
+	if (input_needs_raw_binning && raw_binning) {
 		/* TODO: Remove this; when the decimated
 		 * resolution is available */
-		/* Only for continuous preview mode
+		/* Only for continuous preview/video mode
 		 * where we need 2xOut resolution */
 		ref_info.padded_width *= 2;
 		ref_info.res.width -= left_cropping;
@@ -3016,15 +3053,15 @@ preview_alloc_continuous_frames(
 
 	for (i = 0; i < NUM_CONTINUOUS_FRAMES; i++) {
 		/* free previous frame */
-		if (pipe->pipe.preview.continuous_frames[i]) {
-			ia_css_frame_free(pipe->pipe.preview.continuous_frames[i]);
-			pipe->pipe.preview.continuous_frames[i] = NULL;
+		if (pipe->continuous_frames[i]) {
+			ia_css_frame_free(pipe->continuous_frames[i]);
+			pipe->continuous_frames[i] = NULL;
 		}
 		/* check if new frame needed */
 		if (i < my_css.num_cont_raw_frames) {
 			/* allocate new frame */
 			err = ia_css_frame_allocate_from_info(
-				&pipe->pipe.preview.continuous_frames[i],
+				&pipe->continuous_frames[i],
 				&ref_info);
 			if (err != IA_CSS_SUCCESS)
 				return err;
@@ -3041,17 +3078,17 @@ allocate_mipi_frames(struct sh_css_pipe *pipe)
 	struct ia_css_frame_info mipi_intermediate_info;
 
 	assert(pipe != NULL);
-	assert(pipe->stream != NULL);
-
+	assert(pipe->stream != NULL); 
+	
 	if (pipe->stream->config.mode != IA_CSS_INPUT_MODE_BUFFERED_SENSOR)
 		return err;
 
-	ref_count_mipi_allocation++;
+
+	ref_count_mipi_allocation++;	
 	if (ref_count_mipi_allocation > 1)
 		return err;
-
 	assert(ref_count_mipi_allocation == 1);
-
+	
 // This code needs to modified to allocate the MIPI frames in the correct normal way with a allocate from info
 // by justin
 	mipi_intermediate_info = pipe->pipe.video.video_binary.internal_frame_info;
@@ -3079,7 +3116,6 @@ allocate_mipi_frames(struct sh_css_pipe *pipe)
 				&my_css.mipi_frames[i],
 				my_css.size_mem_words * HIVE_ISP_DDR_WORD_BYTES,
 				my_css.contiguous);
-
 			if (err != IA_CSS_SUCCESS)
 				return err;
 			if (SH_CSS_PREVENT_UNINIT_READS)
@@ -3094,19 +3130,18 @@ static void
 free_mipi_frames(struct sh_css_pipe *pipe)
 {
 	unsigned int i;
-
-	assert(pipe != NULL);
-	assert(pipe->stream != NULL);
+		
+	assert(pipe != NULL); 
+	assert(pipe->stream != NULL); 
 
 	if (pipe->stream->config.mode != IA_CSS_INPUT_MODE_BUFFERED_SENSOR)
 		return;
 
 	assert(ref_count_mipi_allocation > 0);
-	if (ref_count_mipi_allocation != 0)
-		ref_count_mipi_allocation--;
+	ref_count_mipi_allocation--;
 	if (ref_count_mipi_allocation > 0)
-		return;
-
+		return; 
+		
 
 	for (i = 0; i < my_css.num_mipi_frames; i++) {
 		if (my_css.mipi_frames[i] != NULL)
@@ -3213,17 +3248,21 @@ load_preview_binaries(struct sh_css_pipe *pipe)
 
 	left_cropping = pipe->pipe.preview.preview_binary.info->left_cropping;
 
-	err = preview_alloc_continuous_frames(pipe);
+	err = alloc_continuous_frames(pipe);
 	if (err != IA_CSS_SUCCESS)
 		return err;
 
 	if (SH_CSS_PREVENT_UNINIT_READS)
-		ia_css_frame_zero(pipe->pipe.preview.continuous_frames[0]);
+		ia_css_frame_zero(pipe->continuous_frames[0]);
 
 	if (pipe->shading_table) {
 		ia_css_shading_table_free(pipe->shading_table);
 		pipe->shading_table = NULL;
 	}
+
+	err = allocate_mipi_frames(pipe);
+	if (err != IA_CSS_SUCCESS)
+		return err;
 
 	return IA_CSS_SUCCESS;
 }
@@ -3439,7 +3478,7 @@ sh_css_init_buffer_queues(void)
 		(unsigned int)sp_address_of(host_sp_queues_initialized),
 		(uint32_t)(1));
 
-
+	
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_init_buffer_queues() leave:\n");
 }
@@ -3464,7 +3503,7 @@ preview_start(struct sh_css_pipe *pipe)
 	 */
 	struct ia_css_frame *raw_out_frame = NULL;
 	struct ia_css_frame *out_frame = &me->out_frame;
-
+	
 	assert(pipe != NULL);
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
 		"preview_start() enter: void\n");
@@ -3473,7 +3512,7 @@ preview_start(struct sh_css_pipe *pipe)
 
 	copy_pipe    = pipe->pipe.preview.copy_pipe;
 	capture_pipe = pipe->pipe.preview.capture_pipe;
-
+	
 	sh_css_pipeline_clean(me);
 
 	sh_css_pipe_get_output_frame_info(pipe, &out_frame->info);
@@ -3512,7 +3551,7 @@ preview_start(struct sh_css_pipe *pipe)
 				return err;
 			in_frame = me->stages->args.out_frame;
 		} else {
-			in_frame = pipe->pipe.preview.continuous_frames[0];
+			in_frame = pipe->continuous_frames[0];
 		}
 		err = sh_css_pipeline_add_stage(me, preview_binary, NULL,
 						preview_binary->info->mode,
@@ -3556,13 +3595,13 @@ preview_start(struct sh_css_pipe *pipe)
 
 	if (pipe->stream->config.continuous) {
 		int i;
-		in_frame = pipe->pipe.preview.continuous_frames[0];
+		in_frame = pipe->continuous_frames[0];
 		preview_stage->args.in_frame = in_frame;
 
 		/* Hand-over all the SP-internal buffers */
 		for (i = 0; i < NUM_CONTINUOUS_FRAMES; i++) {
 			sh_css_update_host2sp_offline_frame(i,
-				pipe->pipe.preview.continuous_frames[i]);
+				pipe->continuous_frames[i]);
 		}
 	}
 	/* update the arguments with the latest info */
@@ -3572,10 +3611,10 @@ preview_start(struct sh_css_pipe *pipe)
 
 	{
 		unsigned int thread_id;
-
+		
 		sh_css_query_sp_thread_id(pipe->pipe_num, &thread_id);
 		copy_ovrd = 1 << thread_id;
-
+		
 		if (pipe->stream->cont_capt) {
 			sh_css_query_sp_thread_id(capture_pipe->pipe_num, &thread_id);
 			copy_ovrd |= 1 << thread_id;
@@ -3586,7 +3625,7 @@ preview_start(struct sh_css_pipe *pipe)
 	if (pipe->stream->config.continuous) {
 		err = construct_copy_pipe(copy_pipe,
 					  preview_binary->info->max_input_width,
-					  pipe->pipe.preview.continuous_frames[0]);
+					  pipe->continuous_frames[0]);
 		if (err != IA_CSS_SUCCESS)
 			return err;
 
@@ -3603,7 +3642,7 @@ preview_start(struct sh_css_pipe *pipe)
 		   the actual mode */
 		preview_pipe_input_mode = IA_CSS_INPUT_MODE_MEMORY;
 	}
-
+	
 	/* Construct and load the capture pipe */
 	if (pipe->stream->cont_capt) {
 		bool low_light;
@@ -3647,7 +3686,7 @@ sh_css_pipe_has_stopped(struct ia_css_pipe *pipe)
 	struct sh_css_sp_group sp_group;
 	const struct ia_css_fw_info *fw;
 	unsigned int HIVE_ADDR_sp_group;
-
+	
 	fw = &sh_css_sp_fw;
 	HIVE_ADDR_sp_group = fw->info.sp.group;
 
@@ -3670,7 +3709,7 @@ sh_css_pipe_request_stop(struct ia_css_pipe *pipe)
 		"sh_css_pipe_request_stop() enter: pipe=%p\n",
 		pipe);
 	pipe->stop_requested = true;
-
+	
 	// Send stop event to the sp
 	// This needs improvement, stop on all the pipes available in the stream
 	sh_css_query_sp_thread_id(pipe->old_pipe->pipe_num, &thread_id);
@@ -3695,7 +3734,7 @@ sh_css_pipe_stop(struct ia_css_pipe *pipe)
 		hrt_sleep();
 
 	ia_css_pipe_dequeue_unused_buffer(pipe);
-
+	
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_pipe_stop() leave: return_err=%d\n",err);
 	return err;
@@ -3739,7 +3778,7 @@ ia_css_pipe_enqueue_buffer(struct ia_css_pipe *pipe,
 
 	//sh_css_query_sp_thread_id(pipe_id, &thread_id);
 	sh_css_query_sp_thread_id(pipe->pipe_num, &thread_id);
-
+	
 	sh_css_query_internal_queue_id(buf_type, &queue_id);
 
 	if (pipe != NULL && pipe->old_pipe != NULL)
@@ -3902,7 +3941,7 @@ ia_css_pipe_dequeue_buffer(struct ia_css_pipe *pipe,
 		case IA_CSS_BUFFER_TYPE_OUTPUT_FRAME:
 			if (pipe->stop_requested == true)
 			{
-				/*free_mipi_frames(old_pipe);*/
+				free_mipi_frames(old_pipe);
 				pipe->stop_requested = false;
 			}
 		case IA_CSS_BUFFER_TYPE_VF_OUTPUT_FRAME:
@@ -3926,7 +3965,7 @@ ia_css_pipe_dequeue_buffer(struct ia_css_pipe *pipe,
 					    sh_css_sp_get_binary_copy_size();
 				}
 			}
-
+		
 			break;
 		case IA_CSS_BUFFER_TYPE_3A_STATISTICS:
 			buffer->data.stats_3a =
@@ -4044,82 +4083,60 @@ ia_css_pipe_dequeue_unused_buffer(struct ia_css_pipe *pipe)
 	return err;
 }
 
-static uint32_t translate_sp_event(
-	uint32_t	sp_event)
-{
-	unsigned int bit_width = 0, i;
-	enum sh_css_sp_event_type sp_event_id;
-	uint32_t event;
-
-	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "translate_sp_event() enter:\n");
-
-	i = SH_CSS_SP_EVENT_NR_OF_TYPES - 1;
-	bit_width = 0;
-	while (i != 0) {
-		bit_width++;
-		i = i >> 1;
-	}
-	sp_event_id = (enum sh_css_sp_event_type)(sp_event & ((1ull << bit_width) - 1));
-	switch (sp_event_id) {
-	case SH_CSS_SP_EVENT_OUTPUT_FRAME_DONE:
-		event = (sp_event & 0xFFFFFF00) |
-					IA_CSS_EVENT_TYPE_OUTPUT_FRAME_DONE;
-		break;
-	case SH_CSS_SP_EVENT_VF_OUTPUT_FRAME_DONE:
-		event = (sp_event & 0xFFFFFF00) |
-					IA_CSS_EVENT_TYPE_VF_OUTPUT_FRAME_DONE;
-		break;
-	case SH_CSS_SP_EVENT_3A_STATISTICS_DONE:
-		event = (sp_event & 0xFFFFFF00) |
-					IA_CSS_EVENT_TYPE_3A_STATISTICS_DONE;
-		break;
-	case SH_CSS_SP_EVENT_DIS_STATISTICS_DONE:
-		event = (sp_event & 0xFFFFFF00) |
-					IA_CSS_EVENT_TYPE_DIS_STATISTICS_DONE;
-		break;
-	case SH_CSS_SP_EVENT_PIPELINE_DONE:
-		event = (sp_event & 0xFFFFFF00) |
-					IA_CSS_EVENT_TYPE_PIPELINE_DONE;
-		break;
-	default:
-		event = (sp_event & 0xFFFFFF00);
-		break;
-	}
-
-	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
-			"translate_sp_event() exit_event: %d\n", event);
-
-	return event;
-}
-
 static void decode_sp_event(
 	uint32_t event,
+	uint8_t *port_id,
 	enum ia_css_pipe_id *pipe_id,
 	uint8_t *pipe_num,
 	enum ia_css_event_type *event_id)
 {
-	unsigned int bit_width = 0, i;
+	enum ia_css_event_type event_code = IA_CSS_EVENT_TYPE_NUM;
+	enum sh_css_sp_event_type sh_event_id;
 
-assert(pipe_id != NULL);
-assert(event_id != NULL);
+	assert(pipe_id != NULL);
+	assert(event_id != NULL);
+
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "decode_sp_event() enter:\n");
 
-	i = IA_CSS_PIPE_ID_NUM - 1;
-	while (i != 0) {
-		bit_width++;
-		i = i >> 1;
-	}
-	*pipe_id = (enum ia_css_pipe_id)((event >> 16) & ((1ull << bit_width) - 1));
+	/* First decode according to the common case
+	 * In case of a PORT_EOF event we overwrite with 
+	 * the specific values
+	 * This is somewhat ugly but probably somewhat efficient 
+	 * (and it avoids some code duplication)
+	 */
+	*port_id = 0;
+	*pipe_id = (enum ia_css_pipe_id)((event >> 16) & 0xff);
+	*pipe_num = (event >> 8) & 0xff;
+	sh_event_id = event & 0xff;
 
-	*pipe_num = (event>>8) & 0xff;
-
-	i = IA_CSS_EVENT_TYPE_NUM - 1;
-	bit_width = 0;
-	while (i != 0) {
-		bit_width++;
-		i = i >> 1;
+	/* convert event_code from sp (SH) domain to host (IA) domain */
+	switch (sh_event_id) {
+	case SH_CSS_SP_EVENT_OUTPUT_FRAME_DONE:
+		event_code = IA_CSS_EVENT_TYPE_OUTPUT_FRAME_DONE;
+		break;
+	case SH_CSS_SP_EVENT_VF_OUTPUT_FRAME_DONE:
+		event_code = IA_CSS_EVENT_TYPE_VF_OUTPUT_FRAME_DONE;
+		break;
+	case SH_CSS_SP_EVENT_3A_STATISTICS_DONE:
+		event_code = IA_CSS_EVENT_TYPE_3A_STATISTICS_DONE;
+		break;
+	case SH_CSS_SP_EVENT_DIS_STATISTICS_DONE:
+		event_code = IA_CSS_EVENT_TYPE_DIS_STATISTICS_DONE;
+		break;
+	case SH_CSS_SP_EVENT_PIPELINE_DONE:
+		event_code = IA_CSS_EVENT_TYPE_PIPELINE_DONE;
+		break;
+	case SH_CSS_SP_EVENT_PORT_EOF:
+		*port_id = (event >> 8) & 0xff;
+		*pipe_id = 0;
+		*pipe_num = 0;
+		event_code = IA_CSS_EVENT_TYPE_PORT_EOF;
+		break;
+	default:
+		break;
 	}
-	*event_id = (enum ia_css_event_type)(event & ((1ull << bit_width) - 1));
+	*event_id = event_code;
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "decode_sp_event() leave:\n");
 }
 
 
@@ -4128,7 +4145,6 @@ ia_css_dequeue_event(struct ia_css_event *event)
 {
 	bool is_event_available;
 	uint32_t sp_event;
-	uint32_t host_event;
 	enum ia_css_pipe_id pipe_id;
 	uint8_t pipe_num = 0;
 
@@ -4150,17 +4166,62 @@ ia_css_dequeue_event(struct ia_css_event *event)
 		sh_css_sp_snd_event(SP_SW_EVENT_ID_3, 0, 0, 0);
 	}
 
-	host_event = translate_sp_event(sp_event);
-
-	decode_sp_event(host_event, &pipe_id, &pipe_num, &event->type);
-
-	event->pipe = find_pipe_by_num(pipe_num);
-	if (!event->pipe)
-	{
-		/* an event is generated of a port that is not longer available*/
-		return IA_CSS_ERR_RESOURCE_NOT_AVAILABLE;
+	decode_sp_event(sp_event, &event->port, &pipe_id, &pipe_num, &event->type);
+	
+	if (event->type != IA_CSS_EVENT_TYPE_PORT_EOF) {
+		/* pipe related events */
+		event->pipe = find_pipe_by_num(pipe_num);
+		if (!event->pipe)
+		{
+			/* an event is generated of a port that is not longer available*/
+			return IA_CSS_ERR_RESOURCE_NOT_AVAILABLE;
+		}
 	}
+	else {
+		/* event is not directly correlated to a pipe */
+		event->pipe = NULL;
+	}
+#if 0
+  /* temporary debug code to dump the intermediate vf buffer to raw file*/
+	if (event->type == IA_CSS_EVENT_TYPE_VF_OUTPUT_FRAME_DONE)
+	{
+	  static int count = 0;
+	  FILE* fp;
+    char *xmem_y_addr  = (char*)(event->pipe->old_pipe->pipeline.stages->args.out_vf_frame->data + event->pipe->old_pipe->pipeline.stages->args.out_vf_frame->planes.yuyv.offset);
+    unsigned stride = event->pipe->old_pipe->pipeline.stages->args.out_vf_frame->planes.yuyv.stride;
+    unsigned height = event->pipe->old_pipe->pipeline.stages->args.out_vf_frame->planes.yuyv.height;
+    //printf ("init_frame_pointers format %d\n", stage->frames.in.info.format);
+    //if (stage->frames.in.info.format == IA_CSS_FRAME_FORMAT_YUV_LINE) {
+    unsigned char pixel;
+    unsigned char buf[5000];
+    unsigned int i;
+    mmgr_load(xmem_y_addr, &pixel, sizeof(char));
+    printf ("vf_pp: line 0 pixel %d\n", pixel);
+    mmgr_load(xmem_y_addr+stride, &pixel, sizeof(char));
+    printf ("vf_pp: line 1 pixel %d\n", pixel);
+    mmgr_load(xmem_y_addr+2*stride, &pixel, sizeof(char));
+    printf ("vf_pp: line 2 pixel %d\n", pixel);
+    mmgr_load(xmem_y_addr+3*stride, &pixel, sizeof(char));
+    printf ("vf_pp: line 3 pixel %d\n", pixel);
 
+    fp = fopen("dump.raw", "w+");
+
+    for (i=0; i< height/2; i++)
+    {
+      mmgr_load(xmem_y_addr, buf, stride);
+      fwrite(buf, 1, stride, fp);
+      xmem_y_addr += stride;
+      mmgr_load(xmem_y_addr, buf, stride);
+      fwrite(buf, 1, stride, fp);
+      xmem_y_addr += stride;
+      xmem_y_addr += stride;
+
+    }
+    fclose(fp);
+  
+    count++;
+	}
+#endif
 	sh_css_dtrace(SH_DBG_TRACE,
 		"ia_css_dequeue_event() leave: pipe_id=%d, event_id=%d\n",
 				pipe_id, event->type);
@@ -4198,11 +4259,6 @@ sh_css_pipe_start(struct ia_css_stream *stream)
 	old_pipe->pipe_num = pipe->pipe_num;
 	pipe->stop_requested = false;
 
-
-	err = allocate_mipi_frames(old_pipe);
-	if (err != IA_CSS_SUCCESS)
-		return err;
-
 	switch (pipe_id) {
 	case IA_CSS_PIPE_ID_PREVIEW:
 		err = preview_start(old_pipe);
@@ -4225,8 +4281,8 @@ sh_css_pipe_start(struct ia_css_stream *stream)
 		"sh_css_pipe_start() leave: return_err=%d\n", err);
 		return err;
 	}
-
-	/* Force ISP parameter calculation after a mode change
+	
+	/* Force ISP parameter calculation after a mode change 
 	 * Acceleration API examples pass NULL for stream but they
 	 * don't use ISP parameters anyway. So this should be okay.
 	 * The SP binary (jpeg) copy does not use any parameters.
@@ -4243,12 +4299,24 @@ sh_css_pipe_start(struct ia_css_stream *stream)
 
 	/* in case of continuous capture mode, we also start capture thread and copy thread*/
 	if (old_pipe->stream->config.continuous) {
-		struct sh_css_pipe *copy_pipe = pipe->old_pipe->pipe.preview.copy_pipe;
+		struct sh_css_pipe *copy_pipe = NULL;
+		if (pipe_id == IA_CSS_PIPE_ID_PREVIEW)
+			copy_pipe = pipe->old_pipe->pipe.preview.copy_pipe;
+		else if (pipe_id == IA_CSS_PIPE_ID_VIDEO)
+			copy_pipe = pipe->old_pipe->pipe.video.copy_pipe;
+		
+		assert(copy_pipe != NULL);
 		sh_css_query_sp_thread_id(copy_pipe->pipe_num, &thread_id);
 		sh_css_sp_snd_event(SP_SW_EVENT_ID_4, thread_id, 0,  0);
 	}
 	if (old_pipe->stream->cont_capt) {
-		struct sh_css_pipe *capture_pipe = pipe->old_pipe->pipe.preview.capture_pipe;
+		struct sh_css_pipe *capture_pipe = NULL;
+		if (pipe_id == IA_CSS_PIPE_ID_PREVIEW)
+			capture_pipe = pipe->old_pipe->pipe.preview.capture_pipe;
+		else if (pipe_id == IA_CSS_PIPE_ID_VIDEO)
+			capture_pipe = pipe->old_pipe->pipe.video.capture_pipe;
+
+		assert(capture_pipe != NULL);
 		sh_css_query_sp_thread_id(capture_pipe->pipe_num, &thread_id);
 		sh_css_sp_snd_event(SP_SW_EVENT_ID_4, thread_id, 0,  0);
 	}
@@ -4353,7 +4421,7 @@ sh_css_continuous_is_enabled(uint8_t pipe_num)
 	struct ia_css_pipe *pipe;
 	bool continuous;
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_continuous_is_enabled() enter: void\n");
-
+	
 	pipe = find_pipe_by_num(pipe_num);
 	continuous = pipe && pipe->old_pipe->stream->config.continuous;
 	sh_css_dtrace(SH_DBG_TRACE,
@@ -4435,7 +4503,7 @@ sh_css_pipe_get_grid_info(struct sh_css_pipe *pipe,
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_pipe_get_grid_info() enter:\n");
 
 	err = sh_css_pipe_load_binaries(pipe);
-	if (err == IA_CSS_SUCCESS) {
+	if (err == IA_CSS_SUCCESS) {	
 		s3a_binary = ia_css_pipe_get_3a_binary(pipe->new_pipe);
 		if (s3a_binary)
 			sh_css_binary_grid_info(s3a_binary, info);
@@ -4485,6 +4553,7 @@ assert(in_info != NULL);
 		video_descr.enable_dvs_6axis    = pipe->enable_dvs_6axis;
 		video_descr.enable_reduced_pipe = pipe->enable_reduced_pipe;
 		video_descr.isp_pipe_version    = pipe->isp_pipe_version;
+		video_descr.binning             = pipe->input_needs_raw_binning;
 	}
 }
 
@@ -4606,6 +4675,7 @@ static enum ia_css_err load_video_binaries(
 				 *video_vf_info;
 	bool online;
 	enum ia_css_err err = IA_CSS_SUCCESS;
+	bool continuous = pipe->stream->config.continuous;
 	unsigned int i;
 	unsigned num_output_pins;
 
@@ -4656,7 +4726,7 @@ assert(pipe != NULL);
 		pipe->num_invalid_frames = 1;
 
 	/* Copy */
-	if (!online) {
+	if (!online && !continuous) {
 		/* TODO: what exactly needs doing, prepend the copy binary to
 		 *	 video base this only on !online?
 		 */
@@ -4734,10 +4804,23 @@ assert(pipe != NULL);
 		if (SH_CSS_PREVENT_UNINIT_READS) {
 			ia_css_frame_zero(pipe->pipe.video.tnr_frames[i]);
 		}
-
+		
 		if (err != IA_CSS_SUCCESS)
 			return err;
 	}
+
+	if (pipe->stream->cont_capt) {
+		err = alloc_continuous_frames(pipe);
+		if (err != IA_CSS_SUCCESS)
+			return err;
+	
+		if (SH_CSS_PREVENT_UNINIT_READS)
+			ia_css_frame_zero(pipe->continuous_frames[0]);
+	}
+	
+	err = allocate_mipi_frames(pipe);
+	if (err != IA_CSS_SUCCESS)
+		return err;
 
 	return IA_CSS_SUCCESS;
 }
@@ -4752,6 +4835,9 @@ static enum ia_css_err video_start(
 	struct sh_css_pipeline_stage *in_stage    = NULL;
 	struct sh_css_binary *copy_binary, *video_binary, *vf_pp_binary;
 	enum ia_css_err err = IA_CSS_SUCCESS;
+	struct sh_css_pipe *copy_pipe, *capture_pipe;
+	enum sh_css_pipe_config_override copy_ovrd;
+	enum ia_css_input_mode video_pipe_input_mode;
 	/**
 	 * rvanimme: in_frame support is broken and forced to NULL
 	 * TODO: add a way to tell the pipeline construction that an in_frame
@@ -4767,6 +4853,11 @@ static enum ia_css_err video_start(
 
 	assert(pipe != NULL);
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "video_start() enter:\n");
+
+	video_pipe_input_mode = pipe->stream->config.mode;
+
+	copy_pipe    = pipe->pipe.video.copy_pipe;
+	capture_pipe = pipe->pipe.video.capture_pipe;
 
 	sh_css_pipe_get_output_frame_info(pipe, &out_frame->info);
 	out_frame->contiguous = false;
@@ -4831,6 +4922,8 @@ static enum ia_css_err video_start(
 				return err;
 			in_frame = me->stages->args.out_frame;
 			in_stage = copy_stage;
+		} else if (pipe->stream->cont_capt) {
+			in_frame = pipe->continuous_frames[0];
 		}
 		err = sh_css_pipeline_add_stage(me, video_binary, NULL,
 						video_binary->info->mode, NULL,
@@ -4852,10 +4945,6 @@ static enum ia_css_err video_start(
 	} else {
 		sh_css_pipeline_restart(me);
 	}
-
-	err = sh_css_config_input_network(pipe, copy_binary);
-	if (err != IA_CSS_SUCCESS)
-		return err;
 
 	err = sh_css_pipeline_get_stage(me, video_binary->info->mode,
 					&video_stage);
@@ -4888,6 +4977,18 @@ static enum ia_css_err video_start(
 	if (vf_pp_stage)
 		vf_pp_stage->args.out_frame = vf_frame;
 
+	if (pipe->stream->config.continuous) {
+		int i;
+		in_frame = pipe->continuous_frames[0];
+		video_stage->args.in_frame = in_frame;
+
+		/* Hand-over all the SP-internal buffers */
+		for (i = 0; i < NUM_CONTINUOUS_FRAMES; i++) {
+			sh_css_update_host2sp_offline_frame(i,
+				pipe->continuous_frames[i]);
+		}
+	}
+
 	if (pipe->stream->config.online)
 		sh_css_set_irq_buffer(in_stage, sh_css_frame_in, in_frame);
 	sh_css_set_irq_buffer(video_stage, sh_css_frame_out,    out_frame);
@@ -4895,7 +4996,70 @@ static enum ia_css_err video_start(
 		sh_css_set_irq_buffer(vf_pp_stage, sh_css_frame_out_vf,
 					vf_frame);
 
-	start_pipe(pipe, SH_CSS_PIPE_CONFIG_OVRD_NO_OVRD, pipe->stream->config.mode);
+	{
+		unsigned int thread_id;
+		
+		sh_css_query_sp_thread_id(pipe->pipe_num, &thread_id);
+		copy_ovrd = 1 << thread_id;
+		
+		if (pipe->stream->cont_capt) {
+			sh_css_query_sp_thread_id(capture_pipe->pipe_num, &thread_id);
+			copy_ovrd |= 1 << thread_id;
+		}
+	}
+
+	/* Construct and load the copy pipe */
+	if (pipe->stream->config.continuous) {
+		err = construct_copy_pipe(copy_pipe,
+					  video_binary->info->max_input_width,
+					  pipe->continuous_frames[0]);
+		if (err != IA_CSS_SUCCESS)
+			return err;
+
+		sh_css_sp_init_pipeline(&copy_pipe->pipeline, IA_CSS_PIPE_ID_COPY,
+			copy_pipe->pipe_num,
+			false, false, false,
+			pipe->stream->config.two_pixels_per_clock, false,
+			false, pipe->input_needs_raw_binning,
+			copy_ovrd,
+			pipe->stream->config.mode,
+			pipe->stream->config.source.port.port);
+
+		/* make the video pipe start with mem mode input, copy handles
+		   the actual mode */
+		video_pipe_input_mode = IA_CSS_INPUT_MODE_MEMORY;
+	}
+	
+	/* Construct and load the capture pipe */
+	if (pipe->stream->cont_capt) {
+		bool low_light;
+
+		err = construct_capture_pipe(capture_pipe);
+		if (err != IA_CSS_SUCCESS)
+			return err;
+
+		low_light = (capture_pipe->capture_mode ==
+				IA_CSS_CAPTURE_MODE_LOW_LIGHT) ||
+				(capture_pipe->capture_mode ==
+				IA_CSS_CAPTURE_MODE_BAYER);
+
+		sh_css_sp_init_pipeline(&capture_pipe->pipeline, IA_CSS_PIPE_ID_CAPTURE,
+			capture_pipe->pipe_num,
+			false, low_light, pipe->xnr,
+			capture_pipe->stream->config.two_pixels_per_clock,
+			true, /* continuous */
+			false, /* offline */
+			capture_pipe->input_needs_raw_binning,
+			0,
+			IA_CSS_INPUT_MODE_MEMORY,
+			(mipi_port_ID_t)0);
+	}
+
+	err = sh_css_config_input_network(pipe, copy_binary);
+	if (err != IA_CSS_SUCCESS)
+		return err;
+
+	start_pipe(pipe, copy_ovrd, video_pipe_input_mode);
 	me->reload = false;
 
 	return IA_CSS_SUCCESS;
@@ -4924,7 +5088,7 @@ assert(info != NULL);
 		return IA_CSS_ERR_MODE_HAS_NO_VIEWFINDER;
 	/* offline video does not generate viewfinder output */
 	if ( pipe->mode == IA_CSS_PIPE_ID_VIDEO &&
-	    !pipe->stream->config.online) {
+	    !pipe->stream->config.online && !pipe->stream->config.continuous) {
 		sh_css_dtrace(SH_DBG_TRACE,
 			"sh_css_pipe_get_viewfinder_frame_info() leave: return_err=%d\n",
 			IA_CSS_ERR_MODE_HAS_NO_VIEWFINDER);
@@ -4932,7 +5096,7 @@ assert(info != NULL);
 	} else {
 		*info = pipe->vf_output_info;
 	}
-
+		
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_pipe_get_viewfinder_frame_info() leave: \
 		info.res.width=%d, info.res.height=%d, \
@@ -5021,8 +5185,12 @@ static bool need_capture_pp(
 	    (pipe->stream->isp_params_configs->dz_config.dy < HRT_GDC_N))
 		return true;
 
-	if (pipe->stream->cont_capt)
+	/* check if we are trying to a 'digital zoom' */
+	if (true == pipe->enable_dz)
 		return true;
+
+	/*if (my_css.cont_capt)
+		return true;*/
 
 	return false;
 }
@@ -5607,6 +5775,10 @@ assert(pipe != NULL);
 	if (err != IA_CSS_SUCCESS)
 		return err;
 
+	err = allocate_mipi_frames(pipe);
+	if (err != IA_CSS_SUCCESS)
+		return err;
+
 	return err;
 }
 
@@ -5646,7 +5818,7 @@ construct_copy_pipe(struct sh_css_pipe *pipe,
 {
 	struct sh_css_pipeline *me = &pipe->pipeline;
 	enum ia_css_err err = IA_CSS_SUCCESS;
-
+	
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "construct_copy_pipe() enter:\n");
 	sh_css_pipeline_clean(me);
 
@@ -5703,7 +5875,7 @@ construct_capture_pipe(struct sh_css_pipe *pipe)
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "construct_capture_pipe() enter:\n");
 	sh_css_pipeline_clean(me);
 
-
+	
 	err = sh_css_pipe_load_binaries(pipe);
 	if (err != IA_CSS_SUCCESS)
 		return err;
@@ -5757,7 +5929,7 @@ construct_capture_pipe(struct sh_css_pipe *pipe)
 			return err;
 		in_stage = post_stage;
 	} else if (pipe->stream->config.continuous) {
-		in_frame = pipe->stream->last_pipe->old_pipe->pipe.preview.continuous_frames[0];//pipe->pipe.capture.continuous_frames[0];
+		in_frame = pipe->stream->last_pipe->old_pipe->continuous_frames[0];//pipe->pipe.capture.continuous_frames[0];
 	}
 
 	if (mode == IA_CSS_CAPTURE_MODE_PRIMARY) {
@@ -5978,10 +6150,10 @@ static enum ia_css_err capture_start(
 
 	{
 		unsigned int thread_id;
-
+		
 		sh_css_query_sp_thread_id(pipe->pipe_num, &thread_id);
 		copy_ovrd = 1 << thread_id;
-
+		
 	}
 	start_pipe(pipe, copy_ovrd, pipe->stream->config.mode);
 
@@ -6450,7 +6622,7 @@ ia_css_mipi_frame_allocate(struct	ia_css_frame **frame,
 	struct ia_css_frame *me = sh_css_malloc(sizeof(*me));
 
 	sh_css_dtrace(SH_DBG_TRACE, "ia_css_mipi_frame_allocate()\n");
-
+	
 	if (me == NULL)
 		return IA_CSS_ERR_CANNOT_ALLOCATE_MEMORY;
 
@@ -6484,7 +6656,7 @@ ia_css_mipi_frame_specify(const unsigned int size_mem_words,
 	enum ia_css_err err = IA_CSS_SUCCESS;
 
 	my_css.size_mem_words 	= size_mem_words;
-	my_css.contiguous		= contiguous;
+	my_css.contiguous		= contiguous;		
 
 
 	return err;
@@ -6498,7 +6670,7 @@ ia_css_mipi_frame_specify(const unsigned int size_mem_words,
  *	- Custom size of embedded data.
  *  -- Interleaved frames are not taken into account.
  *  -- Lines are multiples of 8B, and not necessary of (custom 3B, or 7B
- *  etc.).
+ *  etc.). 
  * Result is given in DDR mem words, 32B or 256 bits
  */
 enum ia_css_err
@@ -6511,7 +6683,7 @@ ia_css_mipi_frame_calculate_size(const unsigned int width,
 {
 	enum ia_css_err err = IA_CSS_SUCCESS;
 
-	unsigned int bits_per_pixel = 0;
+	unsigned int bits_per_pixel = 0; 
 	unsigned int even_line_bytes = 0;
 	unsigned int odd_line_bytes = 0;
 	unsigned int words_per_odd_line = 0;
@@ -6540,8 +6712,8 @@ ia_css_mipi_frame_calculate_size(const unsigned int width,
 		case IA_CSS_STREAM_FORMAT_YUV420_10:		/* odd 4p, 5B, 40bits, even 4p, 10B, 80bits */
 		case IA_CSS_STREAM_FORMAT_RAW_10:		/* 4p, 5B, 40bits */
 			bits_per_pixel = 10;	break;
-		case IA_CSS_STREAM_FORMAT_YUV420_8_LEGACY:	/* 2p, 3B, 24bits */
-		case IA_CSS_STREAM_FORMAT_RAW_12:			/* 2p, 3B, 24bits */
+		case IA_CSS_STREAM_FORMAT_YUV420_8_LEGACY:	/* 2p, 3B, 24bits */	
+		case IA_CSS_STREAM_FORMAT_RAW_12:			/* 2p, 3B, 24bits */			
 			bits_per_pixel = 12;	break;
 		case IA_CSS_STREAM_FORMAT_RAW_14:		/* 4p, 7B, 56bits */
 			bits_per_pixel = 14;	break;
@@ -6556,12 +6728,12 @@ ia_css_mipi_frame_calculate_size(const unsigned int width,
 			bits_per_pixel = 20;	break;
 		case IA_CSS_STREAM_FORMAT_RGB_888:		/* 1p, 3B, 24bits */
 			bits_per_pixel = 24;	break;
-
+		
 		case IA_CSS_STREAM_FORMAT_RAW_16:        /* TODO: not specified in MIPI SPEC, check */
 		default:
 			return IA_CSS_ERR_INVALID_ARGUMENTS;
 	}
-
+	
 	odd_line_bytes = (width * bits_per_pixel + 7) >> 3; /* ceil ( bits per line / 8 ) */
 
 	/* Even lines for YUV420 formats are double in bits_per_pixel. */
@@ -6569,18 +6741,18 @@ ia_css_mipi_frame_calculate_size(const unsigned int width,
 		|| format == IA_CSS_STREAM_FORMAT_YUV420_10) {
 		even_line_bytes = (width * 2 * bits_per_pixel + 7) >> 3; /* ceil ( bits per line / 8 ) */
 	} else {
-		even_line_bytes = odd_line_bytes;
+		even_line_bytes = odd_line_bytes; 
 	}
 
    /*  a frame represented in memory:  ()- optional; data - payload words.
 	*  addr		0		1		2		3		4		5		6		7:
 	*  first	SOF		(SOL)	PACK_H	data	data	data	data	data
 	*          	data	data	data	data	data	data	data	data
-	*           ...
+	*           ...              
 	*			data 	data	0		0		0		0		0		0
-	*  second   (EOL)	(SOL)	PACK_H	data	data	data	data	data
+	*  second   (EOL)	(SOL)	PACK_H	data	data	data	data	data			
 	*          	data	data	data	data	data	data	data	data
-	*           ...
+	*           ...              
 	*			data 	data	0		0		0		0		0		0
 	*  ...
 	*  last		(EOL)	EOF		0		0		0		0		0		0
@@ -6602,16 +6774,16 @@ ia_css_mipi_frame_calculate_size(const unsigned int width,
 	mem_words_for_EOF        = 1; /* last line consisit of the optional (EOL) and EOF */
 
 	mem_words = ((embedded_data_size_words + 7) >> 3) +
-                mem_words_for_first_line +
+                mem_words_for_first_line + 
 				(((height + 1) >> 1) - 1) * mem_words_per_odd_line + /* ceil (height/2) - 1 (first line is calculated separatelly) */
 				(  height      >> 1     ) * mem_words_per_even_line + /* floor(height/2) */
 				mem_words_for_EOF;
-
+	
 	*size_mem_words = mem_words; /* ceil(words/8); mem word is 32B = 8words. */ //Check if this is still needed.
 
 	sh_css_dtrace(SH_DBG_TRACE,
 		"ia_css_mipi_frame_calculate_size() leave: return_err=%d\n",err);
-
+	
 	return err;
 }
 
@@ -6731,7 +6903,7 @@ remove_firmware(struct ia_css_fw_info **l, struct ia_css_fw_info *firmware)
 /* Load firmware for acceleration */
 
 /* Unload firmware for acceleration */
-//fix me, to be removed
+//fix me, to be removed 
 void
 sh_css_unload_acceleration(struct ia_css_acc_fw *firmware)
 {
@@ -6776,7 +6948,10 @@ sh_css_set_acceleration_parameter(struct ia_css_acc_fw *firmware,
 				  hrt_vaddress val, size_t size)
 {
 	enum ia_css_err err = IA_CSS_SUCCESS;
-	struct ia_css_data par = { val, size };
+	struct ia_css_data par; 
+	par.address =  val;
+	par.size = size ;
+	
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_set_acceleration_parameter() enter:\n");
 	err = sh_css_acc_set_parameter(firmware, par);
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_set_acceleration_parameter() leave:\n");
@@ -6790,7 +6965,10 @@ sh_css_set_firmware_dmem_parameters(struct ia_css_fw_info *firmware,
 				  hrt_vaddress val, size_t size)
 {
 	enum ia_css_err err = IA_CSS_SUCCESS;
-	struct ia_css_data par = { val, size };
+	struct ia_css_data par; 
+	par.address =  val;
+	par.size = size ;
+	
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_set_firmware_dmem_parameters() enter:\n");
 	err = sh_css_acc_set_firmware_parameters(firmware, mem, par);
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_set_firmware_dmem_parameters() leave:\n");
@@ -7288,7 +7466,7 @@ sh_css_init_host_sp_control_vars(void)
 {
 	const struct ia_css_fw_info *fw;
 	unsigned int HIVE_ADDR_sp_isp_started;
-
+	
 	unsigned int HIVE_ADDR_host_sp_queues_initialized;
 	unsigned int HIVE_ADDR_sp_sleep_mode;
 	unsigned int HIVE_ADDR_sp_invalidate_tlb;
@@ -7303,7 +7481,7 @@ sh_css_init_host_sp_control_vars(void)
 
 	fw = &sh_css_sp_fw;
 	HIVE_ADDR_sp_isp_started = fw->info.sp.isp_started;
-
+	
 	HIVE_ADDR_host_sp_queues_initialized =
 		fw->info.sp.host_sp_queues_initialized;
 	HIVE_ADDR_sp_sleep_mode = fw->info.sp.sleep_mode;
@@ -7313,7 +7491,7 @@ sh_css_init_host_sp_control_vars(void)
 	HIVE_ADDR_host_sp_com = fw->info.sp.host_sp_com;
 
 	(void)HIVE_ADDR_sp_isp_started; /* Suppres warnings in CRUN */
-
+	
 	(void)HIVE_ADDR_sp_sleep_mode;
 	(void)HIVE_ADDR_sp_invalidate_tlb;
 	(void)HIVE_ADDR_sp_request_flash;
@@ -7323,7 +7501,7 @@ sh_css_init_host_sp_control_vars(void)
 	sp_dmem_store_uint32(SP0_ID,
 		(unsigned int)sp_address_of(sp_isp_started),
 		(uint32_t)(0));
-
+	
 	sp_dmem_store_uint32(SP0_ID,
 		(unsigned int)sp_address_of(host_sp_queues_initialized),
 		(uint32_t)(0));
@@ -7467,11 +7645,11 @@ ia_css_pipe_create_extra(const struct ia_css_pipe_config *config,
 		return IA_CSS_ERR_INVALID_ARGUMENTS;
 	if (*pipe != NULL)
 		return IA_CSS_ERR_INVALID_ARGUMENTS;
-
+	
 	err = create_pipe(config->mode, &internal_pipe, false);
 	if (internal_pipe == NULL)
 		return IA_CSS_ERR_CANNOT_ALLOCATE_MEMORY;
-
+	
 	if (pipe_num_counter > MAX_NUM_PIPES) return IA_CSS_ERR_RESOURCE_LIST_TO_SMALL;
 
 	/* now we have a pipe structure to fill */
@@ -7492,7 +7670,7 @@ ia_css_pipe_create_extra(const struct ia_css_pipe_config *config,
 	internal_pipe->old_pipe->capture_mode =
 		internal_pipe->config.default_capture_config.mode;
 	internal_pipe->old_pipe->xnr =
-		internal_pipe->config.default_capture_config.enable_xnr;
+		(bool)internal_pipe->config.default_capture_config.enable_xnr;
 	/* DVS envelope */
 	internal_pipe->old_pipe->dvs_envelope =
 		internal_pipe->config.dvs_envelope;
@@ -7745,7 +7923,7 @@ ia_css_stream_create(const struct ia_css_stream_config *stream_config,
 	curr_stream->last_pipe = curr_stream->pipes[0];
 	/* take over stream config */
 	curr_stream->config = *stream_config;
-
+	
 	/* copy mode specific stuff */
 	switch (curr_stream->config.mode) {
 		case IA_CSS_INPUT_MODE_SENSOR:
@@ -7801,6 +7979,8 @@ ia_css_stream_create(const struct ia_css_stream_config *stream_config,
 	if (curr_stream->config.continuous && num_pipes >= 2) {
 		/* Search for the preview pipe and create the copy pipe */
 		struct ia_css_pipe *preview_pipe;
+		struct ia_css_pipe *video_pipe;
+		struct ia_css_pipe *capture_pipe;
 		struct ia_css_pipe *copy_pipe;
 
 		curr_stream->cont_capt = true;
@@ -7808,24 +7988,36 @@ ia_css_stream_create(const struct ia_css_stream_config *stream_config,
 		/* Create copy pipe here, since it may not be exposed to the driver */
 		preview_pipe = find_pipe(pipes, num_pipes,
 						IA_CSS_PIPE_MODE_PREVIEW, false);
-		if (!preview_pipe->old_pipe->pipe.preview.copy_pipe) {
+		video_pipe = find_pipe(pipes, num_pipes,
+						IA_CSS_PIPE_MODE_VIDEO, false);
+		capture_pipe = find_pipe(pipes, num_pipes,
+						IA_CSS_PIPE_MODE_CAPTURE, false);
+		/* We do not support preview and video pipe at the same time */
+		if (preview_pipe && video_pipe)
+			return IA_CSS_ERR_INVALID_ARGUMENTS;
+
+		if (preview_pipe && !preview_pipe->old_pipe->pipe.preview.copy_pipe) {
 			create_pipe(IA_CSS_PIPE_MODE_CAPTURE, &copy_pipe, true);
 			ia_css_pipe_config_defaults(&copy_pipe->config);
 			preview_pipe->old_pipe->pipe.preview.copy_pipe =
 				copy_pipe->old_pipe;
 			copy_pipe->old_pipe->stream = curr_stream;
 		}
-	}
-	if (curr_stream->config.continuous && curr_stream->cont_capt && num_pipes >= 2) {
-		/* Search for the preview and capture pipe */
-		struct ia_css_pipe *preview_pipe,
-				   *capture_pipe;
-		preview_pipe = find_pipe(pipes, num_pipes,
-						IA_CSS_PIPE_MODE_PREVIEW, false);
-		capture_pipe = find_pipe(pipes, num_pipes,
-						IA_CSS_PIPE_MODE_CAPTURE, false);
-		preview_pipe->old_pipe->pipe.preview.capture_pipe =
-			capture_pipe->old_pipe;
+		if (preview_pipe) {
+			preview_pipe->old_pipe->pipe.preview.capture_pipe =
+				capture_pipe->old_pipe;
+		}
+		if (video_pipe && !video_pipe->old_pipe->pipe.video.copy_pipe) {
+			create_pipe(IA_CSS_PIPE_MODE_CAPTURE, &copy_pipe, true);
+			ia_css_pipe_config_defaults(&copy_pipe->config);
+			video_pipe->old_pipe->pipe.video.copy_pipe =
+				copy_pipe->old_pipe;
+			copy_pipe->old_pipe->stream = curr_stream;
+		}
+		if (video_pipe) {
+			video_pipe->old_pipe->pipe.video.capture_pipe =
+				capture_pipe->old_pipe;
+		}
 	}
 	for (i = 0; i < num_pipes; i++) {
 		curr_pipe = pipes[i];
@@ -7876,7 +8068,7 @@ ia_css_stream_create(const struct ia_css_stream_config *stream_config,
 		sh_css_pipe_get_input_resolution(old_pipe,
 			&stream_info->raw_info.width,
 			&stream_info->raw_info.height);
-
+		
 	}
 
 	/* assign curr_stream */
@@ -7901,8 +8093,16 @@ ia_css_stream_destroy(struct ia_css_stream *stream)
 		struct ia_css_pipe *entry = stream->pipes[i];
 		assert(entry != NULL);
 		if (entry->old_pipe != NULL) {
-			free_mipi_frames(entry->old_pipe);
+			/* clear reference to stream */
 			entry->old_pipe->stream = NULL;
+			/* check internal copy pipe */
+			if (entry->old_pipe->mode == IA_CSS_PIPE_ID_PREVIEW &&
+			    entry->old_pipe->pipe.preview.copy_pipe) {
+				sh_css_dtrace(SH_DBG_TRACE,
+					"ia_css_stream_destroy: "
+					"clearing stream on internal copy pipe\n");
+				entry->old_pipe->pipe.preview.copy_pipe->stream = NULL;
+			}
 		}
 	}
 	/* free associated memory of stream struct */
@@ -7957,7 +8157,6 @@ ia_css_stream_start(struct ia_css_stream *stream)
 enum ia_css_err
 ia_css_stream_stop(struct ia_css_stream *stream)
 {
-	enum ia_css_err err;
 	sh_css_dtrace(SH_DBG_TRACE, "ia_css_stream_stop() enter/exit\n");
 	assert(stream != NULL);
 	if (stream == NULL)
@@ -7970,11 +8169,7 @@ ia_css_stream_stop(struct ia_css_stream *stream)
 
 	// Check if this is the last pipe, if not return else stop everything
 	//if (pipe_num_counter > 1) return IA_CSS_SUCCESS;
-	err = sh_css_pipe_request_stop(stream->last_pipe);
-	if (err != IA_CSS_SUCCESS)
-		return err;
-	free_mipi_frames(stream->last_pipe->old_pipe);
-	return IA_CSS_SUCCESS;
+	return sh_css_pipe_request_stop(stream->last_pipe);
 }
 
 bool
@@ -8068,7 +8263,7 @@ ia_css_pipe_get_3a_binary (const struct ia_css_pipe *pipe)
 			 pipe->old_pipe->capture_mode == IA_CSS_CAPTURE_MODE_LOW_LIGHT ||
 			 pipe->old_pipe->capture_mode == IA_CSS_CAPTURE_MODE_BAYER) {
 			if (pipe->extra_config.isp_pipe_version == 1) {
-				s3a_binary
+				s3a_binary 
 				= &pipe->old_pipe->pipe.capture.pre_isp_binary;
 			} else {
 				s3a_binary

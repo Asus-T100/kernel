@@ -59,10 +59,10 @@ sh_css_binary_grid_info(const struct sh_css_binary *binary,
 	 * valid for DIS.
 	 */
 	dvs_info->enable            = binary->info->enable.dis;
-	dvs_info->width             = binary->dis_ver_proj_num_3a;
-	dvs_info->height            = binary->dis_hor_proj_num_3a;
-	dvs_info->aligned_width     = binary->dis_ver_proj_num_isp;
-	dvs_info->aligned_height    = binary->dis_hor_proj_num_isp;
+	dvs_info->width             = binary->dis_hor_grid_num_3a;
+	dvs_info->height            = binary->dis_ver_grid_num_3a;
+	dvs_info->aligned_width     = binary->dis_hor_grid_num_isp;
+	dvs_info->aligned_height    = binary->dis_ver_grid_num_isp;
 	dvs_info->bqs_per_grid_cell = 1 << binary->dis_deci_factor_log2;
 	dvs_info->num_hor_coefs     = binary->dis_hor_coef_num_3a;
 	dvs_info->num_ver_coefs     = binary->dis_ver_coef_num_3a;
@@ -388,7 +388,7 @@ assert(binary != NULL);
 		/* we also store the raw downscaled width. This is used for
 		 * digital zoom in preview to zoom only on the width that
 		 * we actually want to keep, not on the aligned width. */
-			if (out_info == NULL) 
+			if (out_info == NULL)
 				return IA_CSS_ERR_INTERNAL_ERROR;
 			binary->vf_frame_info.res.width =
 				(out_info->res.width >> vf_log_ds);
@@ -461,6 +461,26 @@ assert(binary != NULL);
 	}
 	if (info->enable.dis) {
 		binary->dis_deci_factor_log2 = SH_CSS_DIS_DECI_FACTOR_LOG2;
+
+		binary->dis_hor_grid_num_3a  =
+			_ISP_SDIS_HOR_GRID_NUM_3A(binary->in_frame_info.res.width,
+						  SH_CSS_DIS_DECI_FACTOR_LOG2);
+		binary->dis_ver_grid_num_3a  =
+			_ISP_SDIS_VER_GRID_NUM_3A(binary->in_frame_info.res.height,
+						  SH_CSS_DIS_DECI_FACTOR_LOG2);
+		binary->dis_hor_grid_num_isp =
+			_ISP_SDIS_HOR_GRID_NUM_ISP(
+				_ISP_SDIS_ELEMS_ISP(isp_input_width,
+				isp_internal_width,
+				enable_hus || enable_yuv_ds),
+						SH_CSS_DIS_DECI_FACTOR_LOG2);
+		binary->dis_ver_grid_num_isp =
+			_ISP_SDIS_VER_GRID_NUM_ISP(
+				_ISP_SDIS_ELEMS_ISP(isp_input_height,
+				isp_internal_height,
+				enable_vus || enable_yuv_ds),
+						SH_CSS_DIS_DECI_FACTOR_LOG2);
+
 		binary->dis_hor_coef_num_3a  =
 			_ISP_SDIS_HOR_COEF_NUM_3A(binary->in_frame_info.res.width,
 						  SH_CSS_DIS_DECI_FACTOR_LOG2);
@@ -478,23 +498,37 @@ assert(binary != NULL);
 				isp_internal_height,
 				enable_vus || enable_yuv_ds));
 		binary->dis_hor_proj_num_3a  =
-			_ISP_SDIS_HOR_PROJ_NUM_3A(binary->in_frame_info.res.height,
-						  SH_CSS_DIS_DECI_FACTOR_LOG2);
+			_ISP_SDIS_HOR_PROJ_NUM_3A(
+				binary->in_frame_info.res.width,
+				binary->in_frame_info.res.height,
+				SH_CSS_DIS_DECI_FACTOR_LOG2,
+				info->isp_pipe_version);
 		binary->dis_ver_proj_num_3a  =
-			_ISP_SDIS_VER_PROJ_NUM_3A(binary->in_frame_info.res.width,
-						  SH_CSS_DIS_DECI_FACTOR_LOG2);
+			_ISP_SDIS_VER_PROJ_NUM_3A(
+				binary->in_frame_info.res.width,
+				binary->in_frame_info.res.height,
+				SH_CSS_DIS_DECI_FACTOR_LOG2,
+				info->isp_pipe_version);
 		binary->dis_hor_proj_num_isp =
 			__ISP_SDIS_HOR_PROJ_NUM_ISP(
+				_ISP_SDIS_ELEMS_ISP(isp_input_width,
+				isp_internal_width,
+				enable_hus || enable_yuv_ds),
 				_ISP_SDIS_ELEMS_ISP(isp_input_height,
 				isp_internal_height,
 				enable_vus || enable_yuv_ds),
-						SH_CSS_DIS_DECI_FACTOR_LOG2);
+				SH_CSS_DIS_DECI_FACTOR_LOG2,
+				info->isp_pipe_version);
 		binary->dis_ver_proj_num_isp =
 			__ISP_SDIS_VER_PROJ_NUM_ISP(
 				_ISP_SDIS_ELEMS_ISP(isp_input_width,
 				isp_internal_width,
 				enable_hus || enable_yuv_ds),
-						SH_CSS_DIS_DECI_FACTOR_LOG2);
+				_ISP_SDIS_ELEMS_ISP(isp_input_height,
+				isp_internal_height,
+				enable_vus || enable_yuv_ds),
+				SH_CSS_DIS_DECI_FACTOR_LOG2,
+				info->isp_pipe_version);
 	} else {
 		binary->dis_deci_factor_log2 = 0;
 		binary->dis_hor_coef_num_3a  = 0;

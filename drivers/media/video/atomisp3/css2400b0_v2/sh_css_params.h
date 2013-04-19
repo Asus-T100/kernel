@@ -56,7 +56,6 @@ struct ia_css_isp_parameters {
 	struct ia_css_ce_config     ce_config;
 	
 	struct ia_css_dvs_6axis_config	*dvs_6axis_config;
-	struct ia_css_resolution	dvs_envelope;
 	
 	struct ia_css_ecd_config    ecd_config;
 	struct ia_css_ynr_config    ynr_config;

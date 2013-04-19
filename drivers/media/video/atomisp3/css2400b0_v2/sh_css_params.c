@@ -99,7 +99,7 @@
 #endif
 /* SDIS */
 #define SDIS_VER_COEF_TBL__IN_DMEM(b) \
-	_SDIS_VER_COEF_TBL_USE_DMEM(b->info->mode, b->info->enable.dis)
+	_SDIS_VER_COEF_TBL_USE_DMEM(b->info->mode, b->info->enable.dis, b->info->isp_pipe_version)
 
 #define SH_CSS_DIS_VER_NUM_COEF_TYPES(b) \
   (((b)->info->isp_pipe_version == 2) ? IA_CSS_DVS2_NUM_COEF_TYPES : \
@@ -1574,7 +1574,7 @@ ia_css_get_dvs_statistics(struct ia_css_dvs_statistics           *host_stats,
 			  const struct ia_css_isp_dvs_statistics *isp_stats)
 {
 	unsigned int hor_num_isp, ver_num_isp,
-#ifndef __KERNEL__
+#ifdef __KERNEL__
 		     hor_bytes, ver_bytes;
 #else
 		     hor_num_dvs, ver_num_dvs, i;
@@ -1604,7 +1604,7 @@ ia_css_get_dvs_statistics(struct ia_css_dvs_statistics           *host_stats,
 		host_stats->hor_proj, host_stats->ver_proj,
 		isp_stats->hor_proj, isp_stats->ver_proj);
 
-#ifndef __KERNEL__
+#ifdef __KERNEL__
 	/* This is the optimized code that uses the aligned_width and
 	 * aligned_height for the projections. This should be enabled in the
 	 * same patch set that adds the correct handling of these strides to
@@ -1674,8 +1674,10 @@ ia_css_get_dvs2_statistics(struct ia_css_dvs2_statistics           *host_stats,
 	assert(isp_stats->hor_proj);
 	assert(isp_stats->ver_proj);
 
-	hor_num_isp = host_stats->grid.aligned_height;
-	ver_num_isp = host_stats->grid.aligned_width;
+	hor_num_isp =
+	ver_num_isp = host_stats->grid.aligned_width
+		    * host_stats->grid.aligned_height;
+
 	hor_ptr_isp = isp_stats->hor_proj;
 	ver_ptr_isp = isp_stats->ver_proj;
 
@@ -1930,7 +1932,9 @@ convert_coords_to_ispparams(
 	unsigned int num_blocks_x = o_width / blockdim_x;
 
 	unsigned int in_stride = i_width * DVS_INPUT_BYTES_PER_PIXEL << uv_flag;
-	unsigned width_y = config->width_y;
+	unsigned width;
+	unsigned int *xbuff = NULL;
+	unsigned int *ybuff = NULL;	                  
 
 assert(config != NULL);
 assert(ddr_addr != mmgr_NULL);
@@ -1940,18 +1944,35 @@ assert(ddr_addr != mmgr_NULL);
 assert (o_height % blockdim_y == 0);
 assert (o_width % blockdim_x == 0);
 
+
+	if(uv_flag == 0)
+	{
+		xbuff = config->xcoords_y;
+		ybuff = config->ycoords_y;
+		width = config->width_y;
+	}
+	else
+	{
+		xbuff = config->xcoords_uv;
+		ybuff = config->ycoords_uv;
+		width = config->width_uv;
+	}
+	
+	sh_css_dtrace(SH_DBG_TRACE, "convert_coords_to_ispparams blockdim_x %d blockdim_y %d\n",blockdim_x,blockdim_y);
+	sh_css_dtrace(SH_DBG_TRACE, "convert_coords_to_ispparams num_blocks_x %d num_blocks_y %d\n",num_blocks_x,num_blocks_y);
+	
 	for (j = 0; j < num_blocks_y; j++) {
-		for (i = 0; i < num_blocks_x; i++) {			
-		      x00 = config->xcoords_y[j * width_y + (i<<uv_flag)] >> uv_flag;
-		      x01 = config->xcoords_y[j * width_y + ((i+1)<<uv_flag)] >> uv_flag;
-		      x10 = config->xcoords_y[(j+1) * width_y + (i<<uv_flag)] >> uv_flag;
-		      x11 = config->xcoords_y[(j+1) * width_y + ((i+1)<<uv_flag)] >> uv_flag;
+		for (i = 0; i < num_blocks_x; i++) {	
+
+		      x00 = xbuff[j * width + i];
+		      x01 = xbuff[j * width + (i+1)];
+		      x10 = xbuff[(j+1) * width + i];
+		      x11 = xbuff[(j+1) * width + (i+1)];
 		
-		      y00 = config->ycoords_y[j * width_y + (i<<uv_flag)] >> uv_flag;
-		      y01 = config->ycoords_y[j * width_y + ((i+1)<<uv_flag)] >> uv_flag;
-		      y10 = config->ycoords_y[(j+1) * width_y + (i<<uv_flag)] >> uv_flag;
-		      y11 = config->ycoords_y[(j+1) * width_y + ((i+1)<<uv_flag)] >> uv_flag;
-		
+		      y00 = ybuff[j * width + i];
+		      y01 = ybuff[j * width + (i+1)];
+		      y10 = ybuff[(j+1) * width + i];
+		      y11 = ybuff[(j+1) * width + (i+1)];
 
 			/* TODO: Assert that right column's X is greater */
 			xmin = min(x00, x10);
@@ -2053,6 +2074,7 @@ store_dvs_6axis_config(
 	/* UV plane (packed inside the y plane) */
 	convert_coords_to_ispparams(ddr_addr_y, params->dvs_6axis_config,
 				    i_width/2, o_width/2, o_height/2, 1);
+				    
 
 	params->isp_params_changed = true;	
 }
@@ -4665,6 +4687,56 @@ ia_css_isp_dvs_statistics_free(struct ia_css_isp_dvs_statistics *me)
 	}
 }
 
+
+struct ia_css_isp_dvs_statistics *
+ia_css_isp_dvs2_statistics_allocate(const struct ia_css_dvs_grid_info *grid)
+{
+	struct ia_css_isp_dvs_statistics *me;
+	int hor_size, ver_size;
+
+	assert(grid != NULL);
+
+	sh_css_dtrace(SH_DBG_TRACE, "ia_css_isp_dvs2_statistics_allocate() enter: grid=%p\n",grid);
+
+	if (!grid->enable)
+		return NULL;
+
+	me = sh_css_calloc(1,sizeof(*me));
+	if (!me)
+		goto err;
+
+	hor_size =
+	ver_size = sizeof(int) * IA_CSS_DVS2_NUM_COEF_TYPES
+		* grid->aligned_width * grid->aligned_height;
+
+	me->hor_proj = mmgr_malloc(hor_size);
+	if (me->hor_proj == mmgr_NULL)
+		goto err;
+	me->ver_proj = mmgr_malloc(ver_size);
+	if (me->hor_proj == mmgr_NULL)
+		goto err;
+
+	sh_css_dtrace(SH_DBG_TRACE, "ia_css_isp_dvs2_statistics_allocate() leave: return=%p\n",me);
+
+	return me;
+err:
+	ia_css_isp_dvs2_statistics_free(me);
+
+	sh_css_dtrace(SH_DBG_TRACE, "ia_css_isp_dvs2_statistics_allocate() leave: return=%p\n",NULL);
+
+	return NULL;
+}
+
+void
+ia_css_isp_dvs2_statistics_free(struct ia_css_isp_dvs_statistics *me)
+{
+	if (me != NULL) {
+		mmgr_free(me->hor_proj);
+		mmgr_free(me->ver_proj);
+		sh_css_free(me);
+	}
+}
+
 enum ia_css_err
 ia_css_stream_isp_parameters_init(struct ia_css_stream *stream)
 {
@@ -5574,14 +5646,13 @@ assert(ddr_map_size != NULL);
 			if(params->dvs_6axis_config == NULL) /* Generate default DVS unity table on start up*/
 			{				
 				struct ia_css_resolution dvs_offset;
-				dvs_offset.width = 192/*binary->dvs_envelope.width / 2*/; /*TODO: Remove temporary envelope*/
-				dvs_offset.height = 108/*binary->dvs_envelope.height / 2*/;
-				
-				params->dvs_envelope.width = 192 * 2 /*binary->dvs_envelope.width*/;
-				params->dvs_envelope.height =  108 * 2/*binary->dvs_envelope.height*/;
+				dvs_offset.width = binary->dvs_envelope.width / 2;
+				dvs_offset.height = binary->dvs_envelope.height / 2;
 
 				params->dvs_6axis_config = generate_dvs_6axis_table(&binary->out_frame_info.res,
-										&dvs_offset);
+										    &dvs_offset);
+				if(params->dvs_6axis_config == NULL)
+					return IA_CSS_ERR_CANNOT_ALLOCATE_MEMORY;
 			}
 			
 			store_dvs_6axis_config(params,
@@ -5876,6 +5947,64 @@ void ia_css_get_isp_dis_coefficients(
 	}
 
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "ia_css_get_isp_dis_coefficients() leave\n");
+}
+
+void ia_css_get_isp_dvs2_coefficients(struct ia_css_stream *stream,
+	short *hor_coefs_odd_real,
+	short *hor_coefs_odd_imag,
+	short *hor_coefs_even_real,
+	short *hor_coefs_even_imag,
+	short *ver_coefs_odd_real,
+	short *ver_coefs_odd_imag,
+	short *ver_coefs_even_real,
+	short *ver_coefs_even_imag)
+{
+	struct ia_css_isp_parameters *params = stream->isp_params_configs;
+	unsigned int hor_num_3a, ver_num_3a;
+	unsigned int hor_num_isp, ver_num_isp;
+	hrt_vaddress hor_ptr_isp;
+	hrt_vaddress ver_ptr_isp;
+	struct sh_css_binary *dvs_binary;
+
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "ia_css_get_isp_dvs2_coefficients() enter\n");
+	assert(hor_coefs_odd_real != NULL);
+	assert(hor_coefs_odd_imag != NULL);
+	assert(hor_coefs_even_real != NULL);
+	assert(hor_coefs_even_imag != NULL);
+	assert(ver_coefs_odd_real != NULL);
+	assert(ver_coefs_odd_imag != NULL);
+	assert(ver_coefs_even_real != NULL);
+	assert(ver_coefs_even_imag != NULL);
+
+	/* Only video pipe supports DVS */
+	hor_ptr_isp = params->pipe_ddr_ptrs[IA_CSS_PIPE_ID_VIDEO].sdis_hor_coef;
+	ver_ptr_isp = params->pipe_ddr_ptrs[IA_CSS_PIPE_ID_VIDEO].sdis_ver_coef;
+	dvs_binary = ia_css_stream_get_dvs_binary(stream);
+	if (!dvs_binary)
+		return;
+
+	hor_num_3a  = dvs_binary->dis_hor_coef_num_3a;
+	ver_num_3a  = dvs_binary->dis_ver_coef_num_3a;
+	hor_num_isp = dvs_binary->dis_hor_coef_num_isp;
+	ver_num_isp = dvs_binary->dis_ver_coef_num_isp;
+
+	mmgr_load(hor_ptr_isp, hor_coefs_odd_real, hor_num_3a * sizeof(short));
+	hor_ptr_isp += hor_num_isp * sizeof(short);
+	mmgr_load(hor_ptr_isp, hor_coefs_odd_imag, hor_num_3a * sizeof(short));
+	hor_ptr_isp += hor_num_isp * sizeof(short);
+	mmgr_load(hor_ptr_isp, hor_coefs_even_real, hor_num_3a * sizeof(short));
+	hor_ptr_isp += hor_num_isp * sizeof(short);
+	mmgr_load(hor_ptr_isp, hor_coefs_even_imag, hor_num_3a * sizeof(short));
+
+	mmgr_load(ver_ptr_isp, ver_coefs_odd_real, ver_num_3a * sizeof(short));
+	ver_ptr_isp += ver_num_isp * sizeof(short);
+	mmgr_load(ver_ptr_isp, ver_coefs_odd_imag, ver_num_3a * sizeof(short));
+	ver_ptr_isp += ver_num_isp * sizeof(short);
+	mmgr_load(ver_ptr_isp, ver_coefs_even_real, ver_num_3a * sizeof(short));
+	ver_ptr_isp += ver_num_isp * sizeof(short);
+	mmgr_load(ver_ptr_isp, ver_coefs_even_imag, ver_num_3a * sizeof(short));
+
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "ia_css_get_isp_dvs2_coefficients() leave\n");
 }
 
 hrt_vaddress sh_css_store_sp_group_to_ddr(void)
@@ -6302,3 +6431,153 @@ ia_css_dvs_coefficients_free(struct ia_css_dvs_coefficients *me)
 	}
 }
 
+struct ia_css_dvs2_statistics *
+ia_css_dvs2_statistics_allocate(const struct ia_css_dvs_grid_info *grid)
+{
+	struct ia_css_dvs2_statistics *me;
+
+	assert(grid);
+
+	me = sh_css_calloc(1,sizeof(*me));
+	if (!me)
+		goto err;
+
+	me->grid = *grid;
+	
+	me->hor_prod.odd_real = sh_css_malloc(grid->aligned_width *
+		grid->aligned_height * sizeof(*me->hor_prod.odd_real));
+	if (!me->hor_prod.odd_real)
+		goto err;
+
+	me->hor_prod.odd_imag = sh_css_malloc(grid->aligned_width *
+		grid->aligned_height * sizeof(*me->hor_prod.odd_imag));
+	if (!me->hor_prod.odd_imag)
+		goto err;
+
+	me->hor_prod.even_real = sh_css_malloc(grid->aligned_width *
+		grid->aligned_height * sizeof(*me->hor_prod.even_real));
+	if (!me->hor_prod.even_real)
+		goto err;
+
+	me->hor_prod.even_imag = sh_css_malloc(grid->aligned_width *
+		grid->aligned_height * sizeof(*me->hor_prod.even_imag));
+	if (!me->hor_prod.even_imag)
+		goto err;
+
+	me->ver_prod.odd_real = sh_css_malloc(grid->aligned_width *
+		grid->aligned_height * sizeof(*me->ver_prod.odd_real));
+	if (!me->ver_prod.odd_real)
+		goto err;
+
+	me->ver_prod.odd_imag = sh_css_malloc(grid->aligned_width *
+		grid->aligned_height * sizeof(*me->ver_prod.odd_imag));
+	if (!me->ver_prod.odd_imag)
+		goto err;
+
+	me->ver_prod.even_real = sh_css_malloc(grid->aligned_width *
+		grid->aligned_height * sizeof(*me->ver_prod.even_real));
+	if (!me->ver_prod.even_real)
+		goto err;
+
+	me->ver_prod.even_imag = sh_css_malloc(grid->aligned_width *
+		grid->aligned_height * sizeof(*me->ver_prod.even_imag));
+	if (!me->ver_prod.even_imag)
+		goto err;
+
+	return me;
+err:
+	ia_css_dvs2_statistics_free(me);
+	return NULL;
+
+}
+
+void
+ia_css_dvs2_statistics_free(struct ia_css_dvs2_statistics *me)
+{
+	if (me) {
+		sh_css_free(me->hor_prod.odd_real);
+		sh_css_free(me->hor_prod.odd_imag);
+		sh_css_free(me->hor_prod.even_real);
+		sh_css_free(me->hor_prod.even_imag);
+		sh_css_free(me->ver_prod.odd_real);
+		sh_css_free(me->ver_prod.odd_imag);
+		sh_css_free(me->ver_prod.even_real);
+		sh_css_free(me->ver_prod.even_imag);
+		sh_css_free(me);
+	}
+}
+
+struct ia_css_dvs2_coefficients *
+ia_css_dvs2_coefficients_allocate(const struct ia_css_dvs_grid_info *grid)
+{
+	struct ia_css_dvs2_coefficients *me;
+
+	assert(grid);
+
+	me = sh_css_calloc(1,sizeof(*me));
+	if (!me)
+		goto err;
+
+	me->grid = *grid;
+
+	me->hor_coefs.odd_real = sh_css_malloc(grid->num_hor_coefs *
+		sizeof(*me->hor_coefs.odd_real));
+	if (!me->hor_coefs.odd_real)
+		goto err;
+
+	me->hor_coefs.odd_imag = sh_css_malloc(grid->num_hor_coefs *
+		sizeof(*me->hor_coefs.odd_imag));
+	if (!me->hor_coefs.odd_imag)
+		goto err;
+
+	me->hor_coefs.even_real = sh_css_malloc(grid->num_hor_coefs *
+		sizeof(*me->hor_coefs.even_real));
+	if (!me->hor_coefs.even_real)
+		goto err;
+
+	me->hor_coefs.even_imag = sh_css_malloc(grid->num_hor_coefs *
+		sizeof(*me->hor_coefs.even_imag));
+	if (!me->hor_coefs.even_imag)
+		goto err;
+
+	me->ver_coefs.odd_real = sh_css_malloc(grid->num_ver_coefs *
+		sizeof(*me->ver_coefs.odd_real));
+	if (!me->ver_coefs.odd_real)
+		goto err;
+
+	me->ver_coefs.odd_imag = sh_css_malloc(grid->num_ver_coefs *
+		sizeof(*me->ver_coefs.odd_imag));
+	if (!me->ver_coefs.odd_imag)
+		goto err;
+
+	me->ver_coefs.even_real = sh_css_malloc(grid->num_ver_coefs *
+		sizeof(*me->ver_coefs.even_real));
+	if (!me->ver_coefs.even_real)
+		goto err;
+
+	me->ver_coefs.even_imag = sh_css_malloc(grid->num_ver_coefs *
+		sizeof(*me->ver_coefs.even_imag));
+	if (!me->ver_coefs.even_imag)
+		goto err;
+
+	return me;
+err:
+	ia_css_dvs2_coefficients_free(me);
+	return NULL;
+}
+
+void
+ia_css_dvs2_coefficients_free(struct ia_css_dvs2_coefficients *me)
+{
+	if (me) {
+		sh_css_free(me->hor_coefs.odd_real);
+		sh_css_free(me->hor_coefs.odd_imag);
+		sh_css_free(me->hor_coefs.even_real);
+		sh_css_free(me->hor_coefs.even_imag);
+		sh_css_free(me->ver_coefs.odd_real);
+		sh_css_free(me->ver_coefs.odd_imag);
+		sh_css_free(me->ver_coefs.even_real);
+		sh_css_free(me->ver_coefs.even_imag);
+		sh_css_free(me);
+	}
+}

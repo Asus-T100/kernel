@@ -57,6 +57,17 @@ ia_css_get_isp_dis_coefficients(struct ia_css_stream *stream,
 				short *horizontal_coefficients,
 				short *vertical_coefficients);
 
+void
+ia_css_get_isp_dvs2_coefficients(struct ia_css_stream *stream,
+	short *hor_coefs_odd_real,
+	short *hor_coefs_odd_imag,
+	short *hor_coefs_even_real,
+	short *hor_coefs_even_imag,
+	short *ver_coefs_odd_real,
+	short *ver_coefs_odd_imag,
+	short *ver_coefs_even_real,
+	short *ver_coefs_even_imag);
+
 enum ia_css_err
 ia_css_stream_isp_parameters_init(struct ia_css_stream *stream);
 

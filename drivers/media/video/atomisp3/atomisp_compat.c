@@ -243,6 +243,9 @@ static void __dump_stream_pipe_config(struct atomisp_device *isp)
 	v4l2_dbg(3, dbg_level, &atomisp_dev,
 		 "dumping stream config:\n");
 	v4l2_dbg(3, dbg_level, &atomisp_dev,
+		 "stream_config.mode=%d.\n",
+		 s_config->mode);
+	v4l2_dbg(3, dbg_level, &atomisp_dev,
 		 "stream_config.input_res w=%d, h=%d.\n",
 		 s_config->input_res.width,
 		 s_config->input_res.height);

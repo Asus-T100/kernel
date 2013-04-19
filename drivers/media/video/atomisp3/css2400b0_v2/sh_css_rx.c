@@ -56,6 +56,12 @@ sh_css_rx_enable_all_interrupts(void)
 
 	receiver_port_reg_store(RX0_ID,
 		MIPI_PORT1_ID, _HRT_CSS_RECEIVER_IRQ_ENABLE_REG_IDX, bits);
+
+/*
+ * The CSI is nested into the Iunit IRQ's
+ */
+	ia_css_irq_enable(IA_CSS_IRQ_INFO_CSS_RECEIVER_ERROR, true);
+
 return;
 }
 
@@ -155,6 +161,7 @@ ia_css_rx_clear_irq_info(unsigned int irq_infos)
 
 	receiver_port_reg_store(RX0_ID,
 		MIPI_PORT1_ID, _HRT_CSS_RECEIVER_IRQ_ENABLE_REG_IDX, bits);
+
 return;
 }
 
@@ -363,8 +370,13 @@ void sh_css_rx_configure(
 {
 #if defined(HAS_RX_VERSION_2)
 	bool	port_enabled[N_MIPI_PORT_ID];
+	bool	any_port_enabled = false;
 	mipi_port_ID_t	port;
 
+	for (port = (mipi_port_ID_t)0; port < N_MIPI_PORT_ID; port++) {
+		if (is_receiver_port_enabled(RX0_ID, port))
+			any_port_enabled = true;
+	}
 /* AM: Check whether this is a problem with multiple streams. MS: This is the case.*/
 
 /* Must turn off all ports because of the 2ppc setting */
@@ -425,10 +437,12 @@ void sh_css_rx_configure(
 /* AM: Check whether this is a problem with multiple streams. */
 /* MS: 2ppc should be a property per binary and should be enabled/disabled per binary.
        Currently it is implemented as a system wide setting due to effort and risks. */
-	receiver_reg_store(RX0_ID,
-		_HRT_CSS_RECEIVER_TWO_PIXEL_EN_REG_IDX, config->is_two_ppc);
-	receiver_reg_store(RX0_ID,
-		_HRT_CSS_RECEIVER_BE_TWO_PPC_REG_IDX, config->is_two_ppc);
+	if (!any_port_enabled) {
+		receiver_reg_store(RX0_ID,
+			_HRT_CSS_RECEIVER_TWO_PIXEL_EN_REG_IDX, config->is_two_ppc);
+		receiver_reg_store(RX0_ID,
+			_HRT_CSS_RECEIVER_BE_TWO_PPC_REG_IDX, config->is_two_ppc);
+	}
 #ifdef THIS_CODE_IS_NO_LONGER_NEEDED_FOR_DUAL_STREAM
 /* enable the selected port(s) */
 	for (port = (mipi_port_ID_t)0; port < N_MIPI_PORT_ID; port++) {

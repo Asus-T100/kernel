@@ -77,6 +77,7 @@
 #define SH_CSS_YEE_SCALE_SHIFT            8
 #define SH_CSS_TNR_COEF_SHIFT                    13
 #define SH_CSS_MACC_COEF_SHIFT            11 /* [s2.11] */
+#define SH_CSS_DIS_COEF_SHIFT             13
 
 /*--------------- sRGB Gamma -----------------
 CCM        : YCgCo[0,8191] -> RGB[0,4095]
@@ -234,28 +235,59 @@ RGB[0,8191],coef[-8192,8191] -> RGB[0,8191]
  * ********************************************************/
 /* Some binaries put the vertical coefficients in DMEM instead
    of VMEM to save VMEM. */
-#define _SDIS_VER_COEF_TBL_USE_DMEM(mode, enable_sdis) \
-	(mode == SH_CSS_BINARY_MODE_VIDEO && enable_sdis)
+#define _SDIS_VER_COEF_TBL_USE_DMEM(mode, enable_sdis, isp_pipe_version) \
+	(mode == SH_CSS_BINARY_MODE_VIDEO \
+	&& enable_sdis && isp_pipe_version == 1)
 
 /* For YUV upscaling, the internal size is used for DIS statistics */
 #define _ISP_SDIS_ELEMS_ISP(input, internal, enable_us) \
 	((enable_us) ? (internal) : (input))
 
+/* SDIS Number of Grid */
+#define _ISP_SDIS_HOR_GRID_NUM_ISP(in_width, deci_factor_log2) \
+	CEIL_SHIFT(_ISP_BQS(in_width), deci_factor_log2)
+#define _ISP_SDIS_VER_GRID_NUM_ISP(in_height, deci_factor_log2) \
+	CEIL_SHIFT(_ISP_BQS(in_height), deci_factor_log2)
+
+#define _ISP_SDIS_HOR_GRID_NUM_3A(in_width, deci_factor_log2) \
+	(_ISP_BQS(in_width) >> deci_factor_log2)
+#define _ISP_SDIS_VER_GRID_NUM_3A(in_height, deci_factor_log2) \
+	(_ISP_BQS(in_height) >> deci_factor_log2)
+
 /* SDIS Projections:
- * Horizontal projections are calculated for each line.
+ * SDIS1: Horizontal projections are calculated for each line.
  * Vertical projections are calculated for each column.
+ * SDIS2: Projections are calculated for each grid cell.
  * Grid cells that do not fall completely within the image are not
  * valid. The host needs to use the bigger one for the stride but
  * should only return the valid ones to the 3A. */
-#define __ISP_SDIS_HOR_PROJ_NUM_ISP(in_height, deci_factor_log2) \
-	CEIL_SHIFT(_ISP_BQS(in_height), deci_factor_log2)
-#define __ISP_SDIS_VER_PROJ_NUM_ISP(in_width, deci_factor_log2) \
-	CEIL_SHIFT(_ISP_BQS(in_width), deci_factor_log2)
+#define __ISP_SDIS_HOR_PROJ_NUM_ISP(in_width, in_height, deci_factor_log2, \
+	isp_pipe_version) \
+	((isp_pipe_version == 1) ? \
+		CEIL_SHIFT(_ISP_BQS(in_height), deci_factor_log2) : \
+		(CEIL_SHIFT(_ISP_BQS(in_width), deci_factor_log2) * \
+		 CEIL_SHIFT(_ISP_BQS(in_height), deci_factor_log2)))
 
-#define _ISP_SDIS_HOR_PROJ_NUM_3A(in_height, deci_factor_log2) \
-	(_ISP_BQS(in_height) >> deci_factor_log2)
-#define _ISP_SDIS_VER_PROJ_NUM_3A(in_width, deci_factor_log2) \
-	(_ISP_BQS(in_width) >> deci_factor_log2)
+#define __ISP_SDIS_VER_PROJ_NUM_ISP(in_width, in_height, deci_factor_log2, \
+	isp_pipe_version) \
+	((isp_pipe_version == 1) ? \
+		CEIL_SHIFT(_ISP_BQS(in_width), deci_factor_log2) : \
+		(CEIL_SHIFT(_ISP_BQS(in_width), deci_factor_log2) * \
+		 CEIL_SHIFT(_ISP_BQS(in_height), deci_factor_log2)))
+
+#define _ISP_SDIS_HOR_PROJ_NUM_3A(in_width, in_height, deci_factor_log2, \
+	isp_pipe_version) \
+	((isp_pipe_version == 1) ? \
+		(_ISP_BQS(in_height) >> deci_factor_log2) : \
+		((_ISP_BQS(in_width) >> deci_factor_log2) * \
+		 (_ISP_BQS(in_height) >> deci_factor_log2)))
+
+#define _ISP_SDIS_VER_PROJ_NUM_3A(in_width, in_height, deci_factor_log2, \
+	isp_pipe_version) \
+	((isp_pipe_version == 1) ? \
+		(_ISP_BQS(in_width) >> deci_factor_log2) : \
+		((_ISP_BQS(in_width) >> deci_factor_log2) * \
+		 (_ISP_BQS(in_height) >> deci_factor_log2)))
 
 /* SDIS Coefficients: */
 /* The ISP uses vectors to store the coefficients, so we round
