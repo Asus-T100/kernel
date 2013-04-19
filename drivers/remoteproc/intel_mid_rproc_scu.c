@@ -26,6 +26,7 @@
 #include <asm/intel_scu_ipc.h>
 #include <asm/intel_mid_remoteproc.h>
 #include <asm/scu_ipc_rpmsg.h>
+#include <asm/intel-mid.h>
 
 #include "intel_mid_rproc_core.h"
 #include "remoteproc_internal.h"
@@ -203,10 +204,15 @@ int scu_ipc_rpmsg_handle(void *rx_buf, void *tx_buf, u32 *r_len, u32 *s_len)
 
 	switch (tx_hdr->dst) {
 	case RP_PMIC_ACCESS:
-	case RP_SET_WATCHDOG:
 	case RP_FLIS_ACCESS:
 	case RP_IPC_COMMAND:
 		tmp_msg->status = scu_ipc_command(tx_msg);
+		break;
+	case RP_SET_WATCHDOG:
+		if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER)
+			tmp_msg->status = scu_ipc_raw_command(tx_msg);
+		else
+			tmp_msg->status = scu_ipc_command(tx_msg);
 		break;
 	case RP_MIP_ACCESS:
 	case RP_IPC_RAW_COMMAND:
