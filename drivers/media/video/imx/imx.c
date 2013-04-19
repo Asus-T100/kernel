@@ -44,10 +44,6 @@
 struct imx_resolution *imx_res;
 static int N_RES;
 
-/* FIXME: workround for MERR Pre-alpha due to ISP performance */
-static int vb = 1616, hb = 6500;
-module_param(vb, int, 0644);
-module_param(hb, int, 0644);
 static int
 imx_read_reg(struct i2c_client *client, u16 len, u16 reg, u16 *val)
 {
@@ -1226,26 +1222,6 @@ static int imx_s_mbus_fmt(struct v4l2_subdev *sd,
 	if (ret) {
 		mutex_unlock(&dev->input_lock);
 		return -EINVAL;
-	}
-
-	if ((intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2)
-		&& ((imx_res[dev->fmt_idx].width == 1640)
-		|| (imx_res[dev->fmt_idx].width == 2336)
-		|| (imx_res[dev->fmt_idx].height == 1852)
-		|| (imx_res[dev->fmt_idx].height == 2464)
-		|| (imx_res[dev->fmt_idx].width == 2576))) {
-		/* FIXME: workround for VLV2 due to ISP perf - start */
-		ret = imx_write_reg(client, IMX_8BIT, 0x0342, (hb>>8)&0xFF);
-		if (ret) {
-			mutex_unlock(&dev->input_lock);
-			return -EINVAL;
-		}
-		ret = imx_write_reg(client, IMX_8BIT, 0x0343, hb&0xFF);
-		if (ret) {
-			mutex_unlock(&dev->input_lock);
-			return -EINVAL;
-		}
-		/* FIXME: workround for VLV2 due to ISP perf - end */
 	}
 
 	ret = imx_write_reg_array(client, imx_param_update);
