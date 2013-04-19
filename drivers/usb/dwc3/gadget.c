@@ -1526,6 +1526,16 @@ static int dwc3_dev_init(struct dwc3 *dwc)
 	u32         reg;
 	u32         num;
 
+	if (dwc->revision == DWC3_REVISION_250A) {
+		reg = dwc3_readl(dwc->regs, DWC3_GRXTHRCFG);
+		dwc->hwregs.grxthrcfg = reg;
+		reg &= ~DWC3_GRXTHRCFG_USBRXPKTCNTSEL;
+		reg &= ~DWC3_GRXTHRCFG_USBRXPKTCNT_MASK;
+		reg &= ~DWC3_GRXTHRCFG_USBMAXRXBURSTSIZE_MASK;
+
+		dwc3_writel(dwc->regs, DWC3_GRXTHRCFG, reg);
+	}
+
 	reg = dwc3_readl(dwc->regs, DWC3_GCTL);
 
 	reg &= ~DWC3_GCTL_SCALEDOWN(3);
@@ -1782,6 +1792,8 @@ static int dwc3_stop_peripheral(struct usb_gadget *g)
 			dwc3_readl(dwc->regs, DWC3_GEVNTCOUNT(n)));
 	}
 
+	if (dwc->revision == DWC3_REVISION_250A)
+		dwc3_writel(dwc->regs, DWC3_GRXTHRCFG, dwc->hwregs.grxthrcfg);
 #if 0
 	dwc3_gadget_usb2_phy_power(dwc, false);
 	dwc3_gadget_usb3_phy_power(dwc, false);
