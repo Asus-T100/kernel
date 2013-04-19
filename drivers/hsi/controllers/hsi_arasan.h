@@ -134,6 +134,13 @@ static inline int is_arasan_v1(int version)
 	return version < 0x19;
 }
 
+static inline int use_oob_cawake(void)
+{
+	return SPID_PLATFORM_ID(INTEL, MRFL, PHONE) ||
+			 SPID_PLATFORM_ID(INTEL, MRFL, TABLET);
+
+}
+
 /*
  * Register access macros
  */
