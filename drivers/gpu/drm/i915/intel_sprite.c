@@ -49,7 +49,8 @@ vlv_update_plane(struct drm_plane *dplane, struct drm_framebuffer *fb,
 	int pipe = intel_plane->pipe;
 	int plane = intel_plane->plane;
 	u32 sprctl;
-	int pixel_size;
+	unsigned long sprsurf_offset, linear_offset;
+	int pixel_size = drm_format_plane_cpp(fb->pixel_format, 0);
 
 	sprctl = I915_READ(SPCNTR(pipe, plane));
 
@@ -61,52 +62,43 @@ vlv_update_plane(struct drm_plane *dplane, struct drm_framebuffer *fb,
 	switch (fb->pixel_format) {
 	case DRM_FORMAT_YUYV:
 		sprctl |= SP_FORMAT_YUV422 | SP_YUV_ORDER_YUYV;
-		pixel_size = 2;
 		break;
 	case DRM_FORMAT_YVYU:
 		sprctl |= SP_FORMAT_YUV422 | SP_YUV_ORDER_YVYU;
-		pixel_size = 2;
 		break;
 	case DRM_FORMAT_UYVY:
 		sprctl |= SP_FORMAT_YUV422 | SP_YUV_ORDER_UYVY;
-		pixel_size = 2;
 		break;
 	case DRM_FORMAT_VYUY:
 		sprctl |= SP_FORMAT_YUV422 | SP_YUV_ORDER_VYUY;
-		pixel_size = 2;
 		break;
-	case DRM_FORMAT_BGR565:
+	case DRM_FORMAT_RGB565:
 		sprctl |= SP_FORMAT_BGR565;
-		pixel_size = 2;
 		break;
-	case DRM_FORMAT_BGRX8888:
+	case DRM_FORMAT_XRGB8888:
 		sprctl |= SP_FORMAT_BGRX8888;
-		pixel_size = 4;
 		break;
-	case DRM_FORMAT_BGRA8888:
+	case DRM_FORMAT_ARGB8888:
 		sprctl |= SP_FORMAT_BGRA8888;
-		pixel_size = 4;
 		break;
-	case DRM_FORMAT_RGBX1010102:
+	case DRM_FORMAT_XBGR2101010:
 		sprctl |= SP_FORMAT_RGBX1010102;
-		pixel_size = 4;
 		break;
-	case DRM_FORMAT_RGBA1010102:
+	case DRM_FORMAT_ABGR2101010:
 		sprctl |= SP_FORMAT_RGBA1010102;
-		pixel_size = 4;
 		break;
-	case DRM_FORMAT_RGBX8888:
+	case DRM_FORMAT_XBGR8888:
 		sprctl |= SP_FORMAT_RGBX8888;
-		pixel_size = 4;
 		break;
-	case DRM_FORMAT_RGBA8888:
+	case DRM_FORMAT_ABGR8888:
 		sprctl |= SP_FORMAT_RGBA8888;
-		pixel_size = 4;
 		break;
 	default:
-		DRM_DEBUG_DRIVER("bad pixel format, assuming BGRX8888\n");
-		sprctl |= SP_FORMAT_BGRX8888;
-		pixel_size = 4;
+		/*
+		 * If we get here one of the upper layers failed to filter
+		 * out the unsupported plane formats
+		 */
+		BUG();
 		break;
 	}
 
@@ -125,17 +117,23 @@ vlv_update_plane(struct drm_plane *dplane, struct drm_framebuffer *fb,
 
 	I915_WRITE(SPSTRIDE(pipe, plane), fb->pitches[0]);
 	I915_WRITE(SPPOS(pipe, plane), (crtc_y << 16) | crtc_x);
-	if (obj->tiling_mode != I915_TILING_NONE) {
-		I915_WRITE(SPTILEOFF(pipe, plane), (y << 16) | x);
-	} else {
-		unsigned long offset;
 
-		offset = y * fb->pitches[0] + x * (fb->bits_per_pixel / 8);
-		I915_WRITE(SPLINOFF(pipe, plane), offset);
-	}
+	linear_offset = y * fb->pitches[0] + x * pixel_size;
+	sprsurf_offset = intel_gen4_compute_page_offset(&x, &y,
+							obj->tiling_mode,
+							pixel_size,
+							fb->pitches[0]);
+	linear_offset -= sprsurf_offset;
+
+	if (obj->tiling_mode != I915_TILING_NONE)
+		I915_WRITE(SPTILEOFF(pipe, plane), (y << 16) | x);
+	else
+		I915_WRITE(SPLINOFF(pipe, plane), linear_offset);
+
 	I915_WRITE(SPSIZE(pipe, plane), (crtc_h << 16) | crtc_w);
 	I915_WRITE(SPCNTR(pipe, plane), sprctl);
-	I915_MODIFY_DISPBASE(SPSURF(pipe, plane), obj->gtt_offset);
+	I915_MODIFY_DISPBASE(SPSURF(pipe, plane), obj->gtt_offset +
+			     sprsurf_offset);
 	POSTING_READ(SPSURF(pipe, plane));
 }
 
@@ -153,11 +151,6 @@ vlv_disable_plane(struct drm_plane *dplane)
 	/* Activate double buffered register update */
 	I915_MODIFY_DISPBASE(SPSURF(pipe, plane), 0);
 	POSTING_READ(SPSURF(pipe, plane));
-
-	intel_wait_for_vblank(dev, pipe);
-
-	dev_priv->sprite_scaling_enabled = false;
-	intel_update_watermarks(dev);
 }
 
 static int
@@ -233,6 +226,7 @@ ivb_update_plane(struct drm_plane *plane, struct drm_framebuffer *fb,
 	int pipe = intel_plane->pipe;
 	u32 sprctl, sprscale = 0;
 	int pixel_size;
+	unsigned long sprsurf_offset, linear_offset;
 
 	sprctl = I915_READ(SPRCTL(pipe));
 
@@ -311,18 +305,22 @@ ivb_update_plane(struct drm_plane *plane, struct drm_framebuffer *fb,
 
 	I915_WRITE(SPRSTRIDE(pipe), fb->pitches[0]);
 	I915_WRITE(SPRPOS(pipe), (crtc_y << 16) | crtc_x);
-	if (obj->tiling_mode != I915_TILING_NONE) {
-		I915_WRITE(SPRTILEOFF(pipe), (y << 16) | x);
-	} else {
-		unsigned long offset;
 
-		offset = y * fb->pitches[0] + x * (fb->bits_per_pixel / 8);
-		I915_WRITE(SPRLINOFF(pipe), offset);
-	}
+	linear_offset = y * fb->pitches[0] + x * (fb->bits_per_pixel / 8);
+	sprsurf_offset =
+		intel_gen4_compute_page_offset(&x, &y, obj->tiling_mode,
+					       pixel_size, fb->pitches[0]);
+	linear_offset -= sprsurf_offset;
+
+	if (obj->tiling_mode != I915_TILING_NONE)
+		I915_WRITE(SPRTILEOFF(pipe), (y << 16) | x);
+	else
+		I915_WRITE(SPRLINOFF(pipe), linear_offset);
+
 	I915_WRITE(SPRSIZE(pipe), (crtc_h << 16) | crtc_w);
 	I915_WRITE(SPRSCALE(pipe), sprscale);
 	I915_WRITE(SPRCTL(pipe), sprctl);
-	I915_MODIFY_DISPBASE(SPRSURF(pipe), obj->gtt_offset);
+	I915_MODIFY_DISPBASE(SPRSURF(pipe), obj->gtt_offset + sprsurf_offset);
 	POSTING_READ(SPRSURF(pipe));
 }
 
@@ -410,6 +408,7 @@ ilk_update_plane(struct drm_plane *plane, struct drm_framebuffer *fb,
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_plane *intel_plane = to_intel_plane(plane);
 	int pipe = intel_plane->pipe, pixel_size;
+	unsigned long dvssurf_offset, linear_offset;
 	u32 dvscntr, dvsscale;
 
 	dvscntr = I915_READ(DVSCNTR(pipe));
@@ -473,18 +472,22 @@ ilk_update_plane(struct drm_plane *plane, struct drm_framebuffer *fb,
 
 	I915_WRITE(DVSSTRIDE(pipe), fb->pitches[0]);
 	I915_WRITE(DVSPOS(pipe), (crtc_y << 16) | crtc_x);
-	if (obj->tiling_mode != I915_TILING_NONE) {
-		I915_WRITE(DVSTILEOFF(pipe), (y << 16) | x);
-	} else {
-		unsigned long offset;
 
-		offset = y * fb->pitches[0] + x * (fb->bits_per_pixel / 8);
-		I915_WRITE(DVSLINOFF(pipe), offset);
-	}
+	linear_offset = y * fb->pitches[0] + x * (fb->bits_per_pixel / 8);
+	dvssurf_offset =
+		intel_gen4_compute_page_offset(&x, &y, obj->tiling_mode,
+					       pixel_size, fb->pitches[0]);
+	linear_offset -= dvssurf_offset;
+
+	if (obj->tiling_mode != I915_TILING_NONE)
+		I915_WRITE(DVSTILEOFF(pipe), (y << 16) | x);
+	else
+		I915_WRITE(DVSLINOFF(pipe), linear_offset);
+
 	I915_WRITE(DVSSIZE(pipe), (crtc_h << 16) | crtc_w);
 	I915_WRITE(DVSSCALE(pipe), dvsscale);
 	I915_WRITE(DVSCNTR(pipe), dvscntr);
-	I915_MODIFY_DISPBASE(DVSSURF(pipe), obj->gtt_offset);
+	I915_MODIFY_DISPBASE(DVSSURF(pipe), obj->gtt_offset + dvssurf_offset);
 	POSTING_READ(DVSSURF(pipe));
 }
 
@@ -831,18 +834,19 @@ static uint32_t snb_plane_formats[] = {
 };
 
 static uint32_t vlv_plane_formats[] = {
-	DRM_FORMAT_BGR565,
-	DRM_FORMAT_BGRA8888,
-	DRM_FORMAT_RGBA8888,
-	DRM_FORMAT_BGRX8888,
-	DRM_FORMAT_RGBX8888,
-	DRM_FORMAT_RGBX1010102,
-	DRM_FORMAT_RGBA1010102,
+	DRM_FORMAT_RGB565,
+	DRM_FORMAT_ABGR8888,
+	DRM_FORMAT_ARGB8888,
+	DRM_FORMAT_XBGR8888,
+	DRM_FORMAT_XRGB8888,
+	DRM_FORMAT_XBGR2101010,
+	DRM_FORMAT_ABGR2101010,
 	DRM_FORMAT_YUYV,
 	DRM_FORMAT_YVYU,
 	DRM_FORMAT_UYVY,
 	DRM_FORMAT_VYUY,
 };
+
 
 int
 intel_plane_init(struct drm_device *dev, enum pipe pipe, int plane)

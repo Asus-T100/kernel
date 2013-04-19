@@ -45,6 +45,7 @@
 /* As per the codec spec the mic2_sdet debounce delay is 20ms.
  * But having 20ms delay doesn't work */
 #define MIC2SDET_DEBOUNCE_DELAY 50 /* 50 ms */
+#define MICBIAS_NAME	"MIC2 Bias"
 
 /* CS42L73 widgets */
 static const struct snd_soc_dapm_widget ctp_vb_dapm_widgets[] = {
@@ -180,13 +181,14 @@ int ctp_vb_init(struct snd_soc_pcm_runtime *runtime)
 	/* Keep the voice call paths active during
 	suspend. Mark the end points ignore_suspend */
 	snd_soc_dapm_ignore_suspend(dapm, "EAROUT");
-	snd_soc_dapm_ignore_suspend(dapm, "HPOUTA");
-	snd_soc_dapm_ignore_suspend(dapm, "HPOUTB");
-	snd_soc_dapm_ignore_suspend(dapm, "VSPOUT");
+	snd_soc_dapm_ignore_suspend(dapm, "Ext Spk");
+	snd_soc_dapm_ignore_suspend(dapm, "Headphone");
+	snd_soc_dapm_ignore_suspend(dapm, "Headset Mic");
+	snd_soc_dapm_ignore_suspend(dapm, "DMICA");
+	snd_soc_dapm_ignore_suspend(dapm, "DMICB");
 
 	snd_soc_dapm_disable_pin(dapm, "MIC2");
 	snd_soc_dapm_disable_pin(dapm, "SPKLINEOUT");
-	snd_soc_dapm_ignore_suspend(dapm, "SPKOUT");
 	mutex_lock(&codec->mutex);
 	snd_soc_dapm_sync(dapm);
 	mutex_unlock(&codec->mutex);
@@ -343,6 +345,7 @@ struct snd_soc_machine_ops ctp_vb_cs42l73_ops = {
 	.mclk_switch = vb_mclk_switch,
 	.jack_support = true,
 	.micsdet_debounce = MIC2SDET_DEBOUNCE_DELAY,
+	.mic_bias = MICBIAS_NAME,
 };
 
 MODULE_DESCRIPTION("ASoC Intel(R) Cloverview MID Machine driver");

@@ -211,15 +211,21 @@ static void tng_topaz_Int_clear(
 	spin_unlock_irqrestore(&topaz_priv->topaz_lock, irq_flags);
 }
 
-static struct psb_video_ctx *get_ctx_from_fp(
+struct psb_video_ctx *get_ctx_from_fp(
 	struct drm_device *dev, struct file *filp)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
 	struct psb_video_ctx *pos;
+	int entrypoint;
 
-	list_for_each_entry(pos, &dev_priv->video_ctx, head)
-		if (pos->filp == filp)
-			return pos;
+	list_for_each_entry(pos, &dev_priv->video_ctx, head) {
+		if (pos->filp == filp) {
+			entrypoint = pos->ctx_type & 0xff;
+			if (entrypoint == VAEntrypointEncSlice ||
+			    entrypoint == VAEntrypointEncPicture)
+				return pos;
+		}
+	}
 
 	return NULL;
 }
@@ -2635,6 +2641,34 @@ int tng_topaz_remove_ctx(
 	}
 
 	return 0;
+}
+
+int tng_topaz_handle_sigint(
+	struct drm_device *dev,
+	struct file *filp)
+{
+	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct tng_topaz_private *topaz_priv = dev_priv->topaz_private;
+	struct psb_video_ctx *video_ctx;
+	uint32_t count = 0;
+
+	video_ctx = get_ctx_from_fp(dev, filp);
+	if (video_ctx) {
+		PSB_DEBUG_TOPAZ("TOPAZ: Prepare to handle CTRL + C\n");
+	} else {
+		PSB_DEBUG_TOPAZ("TOPAZ: Not VEC context or already released\n");
+		return 0;
+	}
+
+	while (topaz_priv->topaz_busy == 1 &&
+	       count++ < 20000)
+		PSB_UDELAY(6);
+
+	if (count == 20000)
+		DRM_ERROR("Failed to handle sigint event\n");
+
+	PSB_DEBUG_TOPAZ("TOPAZ: Start to handle CTRL + C\n");
+	psb_remove_videoctx(dev_priv, filp);
 }
 
 int tng_topaz_dequeue_send(struct drm_device *dev)

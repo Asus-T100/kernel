@@ -42,6 +42,8 @@ void input_formatter_get_state(
 {
 assert(ID < N_INPUT_FORMATTER_ID);
 assert(state != NULL);
+	if (state == NULL)
+		return;
 
 	state->reset = input_formatter_reg_load(ID,
 		HIVE_IF_RESET_ADDRESS);

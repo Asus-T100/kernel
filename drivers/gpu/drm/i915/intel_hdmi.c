@@ -36,6 +36,7 @@
 #include "intel_drv.h"
 #include "i915_drm.h"
 #include "i915_drv.h"
+#include "../drm_edid_modes.h"
 
 static void
 assert_hdmi_port_disabled(struct intel_hdmi *intel_hdmi)
@@ -315,7 +316,40 @@ static void intel_hdmi_set_avi_infoframe(struct drm_encoder *encoder,
 		.type = DIP_TYPE_AVI,
 		.ver = DIP_VERSION_AVI,
 		.len = DIP_LEN_AVI,
+		.body.avi.Y_A_B_S = 0,
+		.body.avi.C_M_R = 8,
+		.body.avi.ITC_EC_Q_SC = 0,
+		.body.avi.VIC = 0,
+		.body.avi.YQ_CN_PR = 0,
+		.body.avi.top_bar_end = 0,
+		.body.avi.bottom_bar_start = 0,
+		.body.avi.left_bar_end = 0,
+		.body.avi.right_bar_start = 0,
 	};
+	u32 uindex = 0;
+	int hdisp, vdisp, vref, htot, vtot, am_flag, em_flag;
+	int chk_hdisp, chk_vdisp, chk_vref, chk_flag;
+	for (uindex = 0; uindex < drm_num_cea_modes ; uindex++) {
+		hdisp = edid_cea_modes[uindex].hdisplay;
+		vdisp = edid_cea_modes[uindex].vdisplay;
+		htot = edid_cea_modes[uindex].htotal;
+		vtot = edid_cea_modes[uindex].vtotal;
+		vref = edid_cea_modes[uindex].clock*1000/htot/vtot;
+		em_flag = edid_cea_modes[uindex].flags&DRM_MODE_FLAG_INTERLACE;
+		am_flag = adjusted_mode->flags & DRM_MODE_FLAG_INTERLACE;
+		chk_hdisp = (adjusted_mode->hdisplay == hdisp);
+		chk_vdisp = (adjusted_mode->vdisplay == vdisp);
+		chk_vref = (adjusted_mode->vrefresh == vref);
+		chk_flag = am_flag == em_flag;
+		if (chk_hdisp && chk_vdisp && chk_vref && chk_flag) {
+			avi_if.body.avi.VIC = uindex+1;
+			if (!(vdisp % 3) && ((vdisp * 4 / 3) == hdisp))
+				avi_if.body.avi.C_M_R |= 0x10;
+			else if (!(vdisp % 9) && ((vdisp * 16 / 9) == hdisp))
+				avi_if.body.avi.C_M_R |= 0x20;
+			break;
+		}
+	}
 
 	if (adjusted_mode->flags & DRM_MODE_FLAG_DBLCLK)
 		avi_if.body.avi.YQ_CN_PR |= DIP_AVI_PR_2;
@@ -957,10 +991,7 @@ void intel_hdmi_init(struct drm_device *dev, int sdvox_reg, enum port port)
 
 	intel_hdmi->sdvox_reg = sdvox_reg;
 
-	if (!HAS_PCH_SPLIT(dev)) {
-		intel_hdmi->write_infoframe = g4x_write_infoframe;
-		intel_hdmi->set_infoframes = g4x_set_infoframes;
-	} else if (IS_VALLEYVIEW(dev)) {
+	if (IS_VALLEYVIEW(dev)) {
 		intel_hdmi->write_infoframe = vlv_write_infoframe;
 		intel_hdmi->set_infoframes = vlv_set_infoframes;
 	} else if (IS_HASWELL(dev)) {
@@ -969,6 +1000,9 @@ void intel_hdmi_init(struct drm_device *dev, int sdvox_reg, enum port port)
 	} else if (HAS_PCH_IBX(dev)) {
 		intel_hdmi->write_infoframe = ibx_write_infoframe;
 		intel_hdmi->set_infoframes = ibx_set_infoframes;
+	} else if (!HAS_PCH_SPLIT(dev)) {
+		intel_hdmi->write_infoframe = g4x_write_infoframe;
+		intel_hdmi->set_infoframes = g4x_set_infoframes;
 	} else {
 		intel_hdmi->write_infoframe = cpt_write_infoframe;
 		intel_hdmi->set_infoframes = cpt_set_infoframes;

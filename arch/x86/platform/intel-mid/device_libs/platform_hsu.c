@@ -25,129 +25,183 @@
 #define TNG_CLOCK_CTL 0xFF00B830
 #define TNG_CLOCK_SC  0xFF00B868
 
-static struct hsu_port_pin_cfg hsu_port_pin_cfgs[][hsu_port_max] = {
+static struct
+hsu_port_pin_cfg hsu_port_pin_cfgs[][hsu_pid_max][hsu_port_max] = {
 	[hsu_pnw] = {
-		[hsu_port0] = {
-			.id = 0,
-			.name = HSU_BT_PORT,
-			.wake_gpio = 13,
-			.rx_gpio = 96+26,
-			.rx_alt = 1,
-			.tx_gpio = 96+27,
-			.tx_alt = 1,
-			.cts_gpio = 96+28,
-			.cts_alt = 1,
-			.rts_gpio = 96+29,
-			.rts_alt = 1,
-		},
-		[hsu_port1] = {
-			.id = 1,
-			.name = HSU_MODEM_PORT,
-			.wake_gpio = 64,
-			.rx_gpio = 64,
-			.rx_alt = 1,
-			.tx_gpio = 65,
-			.tx_alt = 1,
-			.cts_gpio = 68,
-			.cts_alt = 1,
-			.rts_gpio = 66,
-			.rts_alt = 2,
-		},
-		[hsu_port2] = {
-			.id = 2,
-			.name = HSU_GPS_PORT,
-		},
-		[hsu_port_share] = {
-			.id = 1,
-			.name = HSU_DEBUG_PORT,
-			.wake_gpio = 96+30,
-			.rx_gpio = 96+30,
-			.rx_alt = 1,
-			.tx_gpio = 96+31,
-			.tx_alt = 1,
+		[hsu_pid_def] = {
+			[hsu_port0] = {
+				.id = 0,
+				.name = HSU_BT_PORT,
+				.wake_gpio = 13,
+				.rx_gpio = 96+26,
+				.rx_alt = 1,
+				.tx_gpio = 96+27,
+				.tx_alt = 1,
+				.cts_gpio = 96+28,
+				.cts_alt = 1,
+				.rts_gpio = 96+29,
+				.rts_alt = 1,
+			},
+			[hsu_port1] = {
+				.id = 1,
+				.name = HSU_MODEM_PORT,
+				.wake_gpio = 64,
+				.rx_gpio = 64,
+				.rx_alt = 1,
+				.tx_gpio = 65,
+				.tx_alt = 1,
+				.cts_gpio = 68,
+				.cts_alt = 1,
+				.rts_gpio = 66,
+				.rts_alt = 2,
+			},
+			[hsu_port2] = {
+				.id = 2,
+				.name = HSU_GPS_PORT,
+			},
+			[hsu_port_share] = {
+				.id = 1,
+				.name = HSU_DEBUG_PORT,
+				.wake_gpio = 96+30,
+				.rx_gpio = 96+30,
+				.rx_alt = 1,
+				.tx_gpio = 96+31,
+				.tx_alt = 1,
+			},
 		},
 	},
 	[hsu_clv] = {
-		[hsu_port0] = {
-			.id = 0,
-			.name = HSU_BT_PORT,
-			.wake_gpio = 42,
-			.rx_gpio = 96+26,
-			.rx_alt = 1,
-			.tx_gpio = 96+27,
-			.tx_alt = 1,
-			.cts_gpio = 96+28,
-			.cts_alt = 1,
-			.rts_gpio = 96+29,
-			.rts_alt = 1,
+		[hsu_pid_rhb] = {
+			[hsu_port0] = {
+				.id = 0,
+				.name = HSU_BT_PORT,
+				.wake_gpio = 42,
+				.rx_gpio = 96+26,
+				.rx_alt = 1,
+				.tx_gpio = 96+27,
+				.tx_alt = 1,
+				.cts_gpio = 96+28,
+				.cts_alt = 1,
+				.rts_gpio = 96+29,
+				.rts_alt = 1,
+			},
+			[hsu_port1] = {
+				.id = 1,
+				.name = HSU_MODEM_PORT,
+				.wake_gpio = 64,
+				.rx_gpio = 64,
+				.rx_alt = 1,
+				.tx_gpio = 65,
+				.tx_alt = 1,
+				.cts_gpio = 68,
+				.cts_alt = 1,
+				.rts_gpio = 66,
+				.rts_alt = 2,
+			},
+			[hsu_port2] = {
+				.id = 2,
+				.name = HSU_DEBUG_PORT,
+				.wake_gpio = 67,
+				.rx_gpio = 67,
+				.rx_alt = 1,
+			},
+			[hsu_port_share] = {
+				.id = 1,
+				.name = HSU_GPS_PORT,
+				.wake_gpio = 96+30,
+				.rx_gpio = 96+30,
+				.rx_alt = 1,
+				.tx_gpio = 96+31,
+				.tx_alt = 1,
+				.cts_gpio = 96+33,
+				.cts_alt = 1,
+				.rts_gpio = 96+32,
+				.rts_alt = 2,
+			},
 		},
-		[hsu_port1] = {
-			.id = 1,
-			.name = HSU_MODEM_PORT,
-			.wake_gpio = 64,
-			.rx_gpio = 64,
-			.rx_alt = 1,
-			.tx_gpio = 65,
-			.tx_alt = 1,
-			.cts_gpio = 68,
-			.cts_alt = 1,
-			.rts_gpio = 66,
-			.rts_alt = 2,
-		},
-		[hsu_port2] = {
-			.id = 2,
-			.name = HSU_DEBUG_PORT,
-			.wake_gpio = 67,
-			.rx_gpio = 67,
-			.rx_alt = 1,
-		},
-		[hsu_port_share] = {
-			.id = 1,
-			.name = HSU_GPS_PORT,
-			.wake_gpio = 96+30,
-			.rx_gpio = 96+30,
-			.rx_alt = 1,
-			.tx_gpio = 96+31,
-			.tx_alt = 1,
-			.cts_gpio = 96+33,
-			.cts_alt = 1,
-			.rts_gpio = 96+32,
-			.rts_alt = 2,
+		[hsu_pid_vtb] = {
+			[hsu_port0] = {
+				.id = 0,
+				.name = HSU_BT_PORT,
+				.rx_gpio = 96+26,
+				.rx_alt = 1,
+				.tx_gpio = 96+27,
+				.tx_alt = 1,
+				.cts_gpio = 96+28,
+				.cts_alt = 1,
+				.rts_gpio = 96+29,
+				.rts_alt = 1,
+			},
+			[hsu_port1] = {
+				.id = 1,
+				.name = HSU_MODEM_PORT,
+				.wake_gpio = 64,
+				.rx_gpio = 64,
+				.rx_alt = 1,
+				.tx_gpio = 65,
+				.tx_alt = 1,
+				.cts_gpio = 68,
+				.cts_alt = 1,
+				.rts_gpio = 66,
+				.rts_alt = 2,
+			},
+			[hsu_port2] = {
+				.id = 2,
+				.name = HSU_DEBUG_PORT,
+				.wake_gpio = 67,
+				.rx_gpio = 67,
+				.rx_alt = 1,
+			},
+			[hsu_port_share] = {
+				.id = 1,
+				.name = HSU_GPS_PORT,
+				.wake_gpio = 96+30,
+				.rx_gpio = 96+30,
+				.rx_alt = 1,
+				.tx_gpio = 96+31,
+				.tx_alt = 1,
+				.cts_gpio = 96+33,
+				.cts_alt = 1,
+				.rts_gpio = 96+32,
+				.rts_alt = 2,
+			},
 		},
 	},
 	[hsu_tng] = {
-		[hsu_port0] = {
-			.id = 0,
-			.name = HSU_BT_PORT,
-			.rx_gpio = 126,
-			.rx_alt = 1,
-			.tx_gpio = 127,
-			.tx_alt = 1,
-			.wake_gpio = 124,
-			.cts_gpio = 124,
-			.cts_alt = 1,
-			.rts_gpio = 125,
-			.rts_alt = 1,
-		},
-		[hsu_port1] = {
-			.id = 1,
-			.name = HSU_GPS_PORT,
-			.wake_gpio = 128,
-			.cts_gpio = 128,
-			.cts_alt = 1,
-			.rts_gpio = 129,
-			.rts_alt = 1,
-		},
-		[hsu_port2] = {
-			.id = 2,
-			.name = HSU_DEBUG_PORT,
-			.wake_gpio = 134,
-			.rx_gpio = 134,
-			.rx_alt = 1,
-			.cts_gpio = 132,
-			.cts_alt = 1,
-			.rts_gpio = 133,
-			.rts_alt = 1,
+		[hsu_pid_def] = {
+			[hsu_port0] = {
+				.id = 0,
+				.name = HSU_BT_PORT,
+				.rx_gpio = 126,
+				.rx_alt = 1,
+				.tx_gpio = 127,
+				.tx_alt = 1,
+				.wake_gpio = 124,
+				.cts_gpio = 124,
+				.cts_alt = 1,
+				.rts_gpio = 125,
+				.rts_alt = 1,
+			},
+			[hsu_port1] = {
+				.id = 1,
+				.name = HSU_GPS_PORT,
+				.wake_gpio = 128,
+				.cts_gpio = 128,
+				.cts_alt = 1,
+				.rts_gpio = 129,
+				.rts_alt = 1,
+			},
+			[hsu_port2] = {
+				.id = 2,
+				.name = HSU_DEBUG_PORT,
+				.wake_gpio = 134,
+				.rx_gpio = 134,
+				.rx_alt = 1,
+				.cts_gpio = 132,
+				.cts_alt = 1,
+				.rts_gpio = 133,
+				.rts_alt = 1,
+			},
 		},
 	},
 };
@@ -558,19 +612,25 @@ static __init int hsu_dev_platform_data(void)
 	switch (intel_mid_identify_cpu()) {
 	case INTEL_MID_CPU_CHIP_CLOVERVIEW:
 		platform_hsu_info = &hsu_port_cfgs[hsu_clv][0];
-		hsu_port_gpio_mux = &hsu_port_pin_cfgs[hsu_clv][0];
+		if (INTEL_MID_BOARD(2, PHONE, CLVTP, VB, PRO) ||
+		INTEL_MID_BOARD(2, PHONE, CLVTP, VB, ENG))
+			hsu_port_gpio_mux =
+				&hsu_port_pin_cfgs[hsu_clv][hsu_pid_vtb][0];
+		else
+			hsu_port_gpio_mux =
+				&hsu_port_pin_cfgs[hsu_clv][hsu_pid_rhb][0];
 		break;
 
 	case INTEL_MID_CPU_CHIP_TANGIER:
 		platform_hsu_info = &hsu_port_cfgs[hsu_tng][0];
-		hsu_port_gpio_mux = &hsu_port_pin_cfgs[hsu_tng][0];
+		hsu_port_gpio_mux = &hsu_port_pin_cfgs[hsu_tng][hsu_pid_def][0];
 		break;
 
 	case INTEL_MID_CPU_CHIP_LINCROFT:
 	case INTEL_MID_CPU_CHIP_PENWELL:
 	default:
 		platform_hsu_info = &hsu_port_cfgs[hsu_pnw][0];
-		hsu_port_gpio_mux = &hsu_port_pin_cfgs[hsu_pnw][0];
+		hsu_port_gpio_mux = &hsu_port_pin_cfgs[hsu_pnw][hsu_pid_def][0];
 		break;
 	}
 
@@ -586,4 +646,4 @@ static __init int hsu_dev_platform_data(void)
 	return 0;
 }
 
-arch_initcall(hsu_dev_platform_data);
+fs_initcall(hsu_dev_platform_data);

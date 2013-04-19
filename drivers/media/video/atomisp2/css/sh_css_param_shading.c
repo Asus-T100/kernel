@@ -402,6 +402,8 @@ sh_css_param_shading_table_store(
 	/* shading table is full resolution, reduce */
 	sh_css_param_shading_table_prepare(sc_table, sensor_binning,
 					raw_binning, &tmp_sc_table_isp, binary);
+	if (tmp_sc_table_isp == NULL)
+		return false;
 
 	mmgr_store(isp_sc_tbl, sh_table_entry(tmp_sc_table_isp, 0, 0, 0),
 		SH_CSS_SC_NUM_COLORS * tmp_sc_table_isp->height *
@@ -421,8 +423,8 @@ sh_css_param_shading_table_get(
 	unsigned int sensor_binning,
 	bool raw_binning)
 {
-	struct sh_css_shading_table *sc_table_css;
-	struct sh_css_shading_table_isp *tmp_sc_table_isp;
+	struct sh_css_shading_table *sc_table_css = NULL;
+	struct sh_css_shading_table_isp *tmp_sc_table_isp = NULL;
 	struct sh_css_binary *binary = NULL;
 	unsigned num_pipes, p, l;
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
@@ -435,7 +437,9 @@ sh_css_param_shading_table_get(
 		unsigned int thread_id;
 		sh_css_pipeline_stream_get_pipeline(p, &pipeline);
 
-assert(pipeline != NULL);
+		assert(pipeline != NULL);
+		if (pipeline == NULL)
+			return NULL;
 
 		sh_css_query_sp_thread_id(pipeline->pipe_id, &thread_id);
 
@@ -450,7 +454,7 @@ assert(pipeline != NULL);
 		if (binary)
 			break;
 	}
-	if (binary)
+	if (binary) {
 		sh_css_param_shading_table_prepare(
 			(const struct sh_css_shading_table *)sc_table,
 			sensor_binning,
@@ -458,28 +462,31 @@ assert(pipeline != NULL);
 			&tmp_sc_table_isp,
 			binary);
 
-	sc_table_css = sh_css_shading_table_alloc(
+		sc_table_css = sh_css_shading_table_alloc(
 			binary->sctbl_width_per_color, binary->sctbl_height);
+		if ((sc_table_css == NULL) || (tmp_sc_table_isp == NULL))
+			return NULL;
 
-	sc_table_css->sensor_width = tmp_sc_table_isp->sensor_width;
-	sc_table_css->sensor_height = tmp_sc_table_isp->sensor_height;
-	sc_table_css->width = tmp_sc_table_isp->width;
-	sc_table_css->height = tmp_sc_table_isp->height;
-	sc_table_css->fraction_bits = tmp_sc_table_isp->fraction_bits;
+		sc_table_css->sensor_width = tmp_sc_table_isp->sensor_width;
+		sc_table_css->sensor_height = tmp_sc_table_isp->sensor_height;
+		sc_table_css->width = tmp_sc_table_isp->width;
+		sc_table_css->height = tmp_sc_table_isp->height;
+		sc_table_css->fraction_bits = tmp_sc_table_isp->fraction_bits;
 
-	/* Copy + reformat shading table data from ISP to CSS data structure */
-	for (l = 0; l < sc_table_css->height; l++) {
-		unsigned int c;
-		for (c = 0; c < SH_CSS_SC_NUM_COLORS; c++) {
-			memcpy(&sc_table_css->data[c][l*sc_table_css->width],
-			     sh_table_entry(tmp_sc_table_isp, c, l, 0),
-			     sc_table_css->width * sizeof(short));
+		/* Copy + reformat shading table data from ISP to CSS data structure */
+		for (l = 0; l < sc_table_css->height; l++) {
+			unsigned int c;
+			for (c = 0; c < SH_CSS_SC_NUM_COLORS; c++) {
+				memcpy(&sc_table_css->data[c][l*sc_table_css->width],
+				     sh_table_entry(tmp_sc_table_isp, c, l, 0),
+				     sc_table_css->width * sizeof(short));
+			}
 		}
-	}
 
-	/* Free the isp shading table in HMM */
-	sh_css_free(tmp_sc_table_isp->data);
-	sh_css_free(tmp_sc_table_isp);
+		/* Free the isp shading table in HMM */
+		sh_css_free(tmp_sc_table_isp->data);
+		sh_css_free(tmp_sc_table_isp);
+	}
 
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
 		"sh_css_param_shading_table_get() leave:\n");

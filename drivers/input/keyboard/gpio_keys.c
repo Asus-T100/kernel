@@ -54,6 +54,30 @@ struct gpio_keys_drvdata {
 	struct gpio_button_data data[0];
 };
 
+static int gpio_keys_request_irq(int gpio, irq_handler_t isr,
+		unsigned long flags, const char *name, void *data)
+{
+	int ret;
+
+	if (gpio_cansleep(gpio))
+		ret = request_threaded_irq(gpio_to_irq(gpio), NULL, isr,
+				flags, name, data);
+	else
+		ret = request_irq(gpio_to_irq(gpio), isr, flags, name, data);
+	return ret;
+}
+
+static int gpio_keys_getval(int gpio)
+{
+	int ret;
+
+	if (gpio_cansleep(gpio))
+		ret = gpio_get_value_cansleep(gpio);
+	else
+		ret = gpio_get_value(gpio);
+	return ret;
+}
+
 /*
  * SYSFS interface for enabling/disabling keys and switches:
  *
@@ -380,7 +404,8 @@ static void gpio_keys_gpio_report_event(struct gpio_button_data *bdata)
 	const struct gpio_keys_button *button = bdata->button;
 	struct input_dev *input = bdata->input;
 	unsigned int type = button->type ?: EV_KEY;
-	int state = (gpio_get_value_cansleep(button->gpio) ? 1 : 0) ^ button->active_low;
+	int state =
+		(gpio_keys_getval(button->gpio) ? 1 : 0) ^ button->active_low;
 
 	if (type == EV_ABS) {
 		if (state)
@@ -420,7 +445,7 @@ static irqreturn_t gpio_keys_gpio_isr(int irq, void *dev_id)
 
 	button = bdata->button;
 	input = bdata->input;
-	state = (gpio_get_value(button->gpio) ? 1 : 0) ^ button->active_low;
+	state = (gpio_keys_getval(button->gpio) ? 1 : 0) ^ button->active_low;
 
 	if (bdata->ddata->force_trigger && !state) {
 		type = button->type ?: EV_KEY;
@@ -571,7 +596,7 @@ static int __devinit gpio_keys_setup_key(struct platform_device *pdev,
 	if (!button->can_disable)
 		irqflags |= IRQF_SHARED;
 
-	error = request_any_context_irq(bdata->irq, isr, irqflags, desc, bdata);
+	error = gpio_keys_request_irq(button->gpio, isr, irqflags, desc, bdata);
 	if (error < 0) {
 		dev_err(dev, "Unable to claim irq %d; error %d\n",
 			bdata->irq, error);
@@ -882,8 +907,9 @@ static int gpio_keys_resume(struct device *dev)
 				bdata->button->desc : "gpio_keys";
 			if (!bdata->button->can_disable)
 				irqflags |= IRQF_SHARED;
-			error = request_irq(bdata->irq, gpio_keys_gpio_isr,
-						irqflags, desc, bdata);
+			error = gpio_keys_request_irq(bdata->button->gpio,
+					gpio_keys_gpio_isr, irqflags,
+					desc, bdata);
 			if (error) {
 				dev_err(dev, "Unable to claim irq %d; error %d\n",
 						bdata->irq, error);
@@ -918,9 +944,10 @@ static struct platform_device_id gpio_keys_ids[] = {
 	{
 		.name = "gpio-keys",
 	}, {
-		.name = "gpio-lesskey",
+		.name = "gpio-lesskey-nrpt",
 	}, {
-	}
+		.name = "gpio-lesskey-rpt",
+	},
 };
 MODULE_DEVICE_TABLE(platform, gpio_keys_ids);
 

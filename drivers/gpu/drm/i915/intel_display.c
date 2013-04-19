@@ -1715,8 +1715,8 @@ static void intel_enable_transcoder(struct drm_i915_private *dev_priv,
 		 * make the BPC in transcoder be consistent with
 		 * that in pipeconf reg.
 		 */
-		val &= ~PIPE_BPC_MASK;
-		val |= pipeconf_val & PIPE_BPC_MASK;
+		val &= ~PIPECONF_BPC_MASK;
+		val |= pipeconf_val & PIPECONF_BPC_MASK;
 	}
 
 	val &= ~TRANS_INTERLACE_MASK;
@@ -2018,18 +2018,29 @@ void intel_unpin_fb_obj(struct drm_i915_gem_object *obj)
 
 /* Computes the linear offset to the base tile and adjusts x, y. bytes per pixel
  * is assumed to be a power-of-two. */
-static unsigned long gen4_compute_dspaddr_offset_xtiled(int *x, int *y,
-							unsigned int bpp,
-							unsigned int pitch)
+unsigned long intel_gen4_compute_page_offset(int *x, int *y,
+					     unsigned int tiling_mode,
+					     unsigned int cpp,
+					     unsigned int pitch)
 {
-	int tile_rows, tiles;
+	if (tiling_mode != I915_TILING_NONE) {
+		unsigned int tile_rows, tiles;
 
-	tile_rows = *y / 8;
-	*y %= 8;
-	tiles = *x / (512/bpp);
-	*x %= 512/bpp;
+		tile_rows = *y / 8;
+		*y %= 8;
 
-	return tile_rows * pitch * 8 + tiles * 4096;
+		tiles = *x / (512/cpp);
+		*x %= 512/cpp;
+
+		return tile_rows * pitch * 8 + tiles * 4096;
+	} else {
+		unsigned int offset;
+
+		offset = *y * pitch + *x * cpp;
+		*y = 0;
+		*x = (offset & 4095) / cpp;
+		return offset & -4096;
+	}
 }
 
 static int i9xx_update_plane(struct drm_crtc *crtc, struct drm_framebuffer *fb,
@@ -2106,9 +2117,9 @@ static int i9xx_update_plane(struct drm_crtc *crtc, struct drm_framebuffer *fb,
 
 	if (INTEL_INFO(dev)->gen >= 4) {
 		intel_crtc->dspaddr_offset =
-			gen4_compute_dspaddr_offset_xtiled(&x, &y,
-							   fb->bits_per_pixel / 8,
-							   fb->pitches[0]);
+			intel_gen4_compute_page_offset(&x, &y, obj->tiling_mode,
+						       fb->bits_per_pixel / 8,
+						       fb->pitches[0]);
 		linear_offset -= intel_crtc->dspaddr_offset;
 	} else {
 		intel_crtc->dspaddr_offset = linear_offset;
@@ -2199,9 +2210,9 @@ static int ironlake_update_plane(struct drm_crtc *crtc,
 
 	linear_offset = y * fb->pitches[0] + x * (fb->bits_per_pixel / 8);
 	intel_crtc->dspaddr_offset =
-		gen4_compute_dspaddr_offset_xtiled(&x, &y,
-						   fb->bits_per_pixel / 8,
-						   fb->pitches[0]);
+		intel_gen4_compute_page_offset(&x, &y, obj->tiling_mode,
+					       fb->bits_per_pixel / 8,
+					       fb->pitches[0]);
 	linear_offset -= intel_crtc->dspaddr_offset;
 
 	DRM_DEBUG_KMS("Writing base %08X %08lX %d %d %d\n",
@@ -2785,7 +2796,7 @@ static void ironlake_fdi_pll_enable(struct drm_crtc *crtc)
 	temp = I915_READ(reg);
 	temp &= ~((0x7 << 19) | (0x7 << 16));
 	temp |= (intel_crtc->fdi_lanes - 1) << 19;
-	temp |= (I915_READ(PIPECONF(pipe)) & PIPE_BPC_MASK) << 11;
+	temp |= (I915_READ(PIPECONF(pipe)) & PIPECONF_BPC_MASK) << 11;
 	I915_WRITE(reg, temp | FDI_RX_PLL_ENABLE);
 
 	POSTING_READ(reg);
@@ -2841,7 +2852,7 @@ static void ironlake_fdi_disable(struct drm_crtc *crtc)
 	reg = FDI_RX_CTL(pipe);
 	temp = I915_READ(reg);
 	temp &= ~(0x7 << 16);
-	temp |= (I915_READ(PIPECONF(pipe)) & PIPE_BPC_MASK) << 11;
+	temp |= (I915_READ(PIPECONF(pipe)) & PIPECONF_BPC_MASK) << 11;
 	I915_WRITE(reg, temp & ~FDI_RX_ENABLE);
 
 	POSTING_READ(reg);
@@ -2875,7 +2886,7 @@ static void ironlake_fdi_disable(struct drm_crtc *crtc)
 	}
 	/* BPC in FDI rx is consistent with that in PIPECONF */
 	temp &= ~(0x07 << 16);
-	temp |= (I915_READ(PIPECONF(pipe)) & PIPE_BPC_MASK) << 11;
+	temp |= (I915_READ(PIPECONF(pipe)) & PIPECONF_BPC_MASK) << 11;
 	I915_WRITE(reg, temp);
 
 	POSTING_READ(reg);
@@ -3093,7 +3104,7 @@ static void ironlake_pch_enable(struct drm_crtc *crtc)
 	if (HAS_PCH_CPT(dev) &&
 	    (intel_pipe_has_type(crtc, INTEL_OUTPUT_DISPLAYPORT) ||
 	     intel_pipe_has_type(crtc, INTEL_OUTPUT_EDP))) {
-		u32 bpc = (I915_READ(PIPECONF(pipe)) & PIPE_BPC_MASK) >> 5;
+		u32 bpc = (I915_READ(PIPECONF(pipe)) & PIPECONF_BPC_MASK) >> 5;
 		reg = TRANS_DP_CTL(pipe);
 		temp = I915_READ(reg);
 		temp &= ~(TRANS_DP_PORT_SEL_MASK |
@@ -3440,6 +3451,54 @@ static void intel_crtc_dpms_overlay(struct intel_crtc *intel_crtc, bool enable)
 	 */
 }
 
+static void vlv_pll_enable_reset(struct drm_crtc *crtc)
+{
+	struct drm_device *dev = crtc->dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
+	int pipe = intel_crtc->pipe;
+
+	if (intel_pipe_has_type(crtc, INTEL_OUTPUT_HDMI)) {
+		u32 val;
+		val = intel_dpio_read(dev_priv, _DPIO_DATA_LANE0);
+		if (pipe)
+			val |= (1<<21);
+		val |= (1<<20);
+		intel_dpio_write(dev_priv, DPIO_DATA_CHANNEL1, val);
+
+		intel_dpio_write(dev_priv, 0x8238, 0x00760018);
+		intel_dpio_write(dev_priv, 0x825c, 0x00400888);
+
+		intel_dpio_write(dev_priv, 0x8200, 0x10080);
+		intel_dpio_write(dev_priv, 0x8204, 0x00600060);
+
+		intel_dpio_write(dev_priv, 0x8294, 0x00000000);
+		intel_dpio_write(dev_priv, 0x8290, 0x2b245f5f);
+		intel_dpio_write(dev_priv, 0x8288, 0x5578b83a);
+		intel_dpio_write(dev_priv, 0x828c, 0x0c782040);
+		intel_dpio_write(dev_priv, 0x690, 0x2b247878);
+		intel_dpio_write(dev_priv, 0x822c, 0x00030000);
+		intel_dpio_write(dev_priv, 0x8224, 0x00002000);
+		intel_dpio_write(dev_priv, 0x8294, 0x80000000);
+
+	}
+	if (intel_pipe_has_type(crtc, INTEL_OUTPUT_DISPLAYPORT) ||
+	    intel_pipe_has_type(crtc, INTEL_OUTPUT_EDP)) {
+		u32 val;
+		val = intel_dpio_read(dev_priv, _DPIO_DATA_LANE2);
+		if (pipe)
+			val |= (1<<21);
+		val |= (1<<20);
+		intel_dpio_write(dev_priv, DPIO_DATA_CHANNEL2, val);
+
+		intel_dpio_write(dev_priv, 0x8438, 0x00760018);
+		intel_dpio_write(dev_priv, 0x845c, 0x00400888);
+
+		intel_dpio_write(dev_priv, 0x8400, 0x10080);
+		intel_dpio_write(dev_priv, 0x8404, 0x00600060);
+	}
+}
+
 static void i9xx_crtc_enable(struct drm_crtc *crtc)
 {
 	struct drm_device *dev = crtc->dev;
@@ -3455,6 +3514,7 @@ static void i9xx_crtc_enable(struct drm_crtc *crtc)
 	intel_update_watermarks(dev);
 
 	intel_enable_pll(dev_priv, pipe);
+	vlv_pll_enable_reset(crtc);
 	intel_enable_pipe(dev_priv, pipe, false);
 	intel_enable_plane(dev_priv, plane, pipe);
 
@@ -3501,10 +3561,8 @@ static void i9xx_crtc_disable(struct drm_crtc *crtc)
 			intel_dpio_write(dev_priv, 0x8204, 0x00e00060);
 		}
 
-		if (pipe) {
-			I915_WRITE(0x2110, 0x00000000);
-			I915_WRITE(0x2110, 0x00000001);
-		}
+		if (pipe)
+			vlv_init_dpio(dev);
 	}
 }
 
@@ -4183,46 +4241,10 @@ static void vlv_update_pll(struct drm_crtc *crtc,
 		POSTING_READ(DPLL_MD(pipe));
 	}
 
-	if (intel_pipe_has_type(crtc, INTEL_OUTPUT_HDMI)) {
-		u32 val;
-		val = intel_dpio_read(dev_priv, _DPIO_DATA_LANE0);
-		if (pipe)
-			val |= (1<<21);
-		val |= (1<<20);
-		intel_dpio_write(dev_priv, DPIO_DATA_CHANNEL1, val);
+	vlv_pll_enable_reset(crtc);
 
-		intel_dpio_write(dev_priv, 0x8238, 0x00760018);
-		intel_dpio_write(dev_priv, 0x825c, 0x00400888);
-
-		intel_dpio_write(dev_priv, 0x8200, 0x10080);
-		intel_dpio_write(dev_priv, 0x8204, 0x00600060);
-
-		intel_dpio_write(dev_priv, 0x8294, 0x00000000);
-		intel_dpio_write(dev_priv, 0x8290, 0x2b245f5f);
-		intel_dpio_write(dev_priv, 0x8288, 0x5578b83a);
-		intel_dpio_write(dev_priv, 0x828c, 0x0c782040);
-		intel_dpio_write(dev_priv, 0x690, 0x2b247878);
-		intel_dpio_write(dev_priv, 0x822c, 0x00030000);
-		intel_dpio_write(dev_priv, 0x8224, 0x00002000);
-		intel_dpio_write(dev_priv, 0x8294, 0x80000000);
-
-	}
-	if (intel_pipe_has_type(crtc, INTEL_OUTPUT_DISPLAYPORT)
-			|| intel_pipe_has_type(crtc, INTEL_OUTPUT_EDP)) {
-		u32 val;
-		val = intel_dpio_read(dev_priv, _DPIO_DATA_LANE2);
-		if (pipe)
-			val |= (1<<21);
-		val |= (1<<20);
-		intel_dpio_write(dev_priv, DPIO_DATA_CHANNEL2, val);
-
-		intel_dpio_write(dev_priv, 0x8438, 0x00760018);
-		intel_dpio_write(dev_priv, 0x845c, 0x00400888);
-
-		intel_dpio_write(dev_priv, 0x8400, 0x10080);
-		intel_dpio_write(dev_priv, 0x8404, 0x00600060);
-	}
-	if (intel_pipe_has_type(crtc, INTEL_OUTPUT_DISPLAYPORT))
+	if (intel_pipe_has_type(crtc, INTEL_OUTPUT_DISPLAYPORT) ||
+	    intel_pipe_has_type(crtc, INTEL_OUTPUT_EDP))
 		intel_dp_set_m_n(crtc, mode, adjusted_mode);
 }
 
@@ -4515,19 +4537,21 @@ static int i9xx_crtc_mode_set(struct drm_crtc *crtc,
 	}
 
 	/* default to 8bpc */
-	pipeconf &= ~(PIPECONF_BPP_MASK | PIPECONF_DITHER_EN);
+	pipeconf &= ~(PIPECONF_BPC_MASK | PIPECONF_DITHER_EN);
 	if (is_dp) {
-		if (mode->private_flags & INTEL_MODE_DP_FORCE_6BPC) {
-			pipeconf |= PIPECONF_BPP_6 |
+		if (adjusted_mode->private_flags & INTEL_MODE_DP_FORCE_6BPC) {
+			pipeconf |= PIPECONF_6BPC |
 				    PIPECONF_DITHER_EN |
 				    PIPECONF_DITHER_TYPE_SP;
 		}
 	}
 
 	if (IS_VALLEYVIEW(dev) && intel_pipe_has_type(crtc, INTEL_OUTPUT_EDP)) {
-		pipeconf |= PIPECONF_BPP_6 |
-			PIPECONF_ENABLE |
-			I965_PIPECONF_ACTIVE;
+		if (adjusted_mode->private_flags & INTEL_MODE_DP_FORCE_6BPC) {
+			pipeconf |= PIPECONF_6BPC |
+				PIPECONF_ENABLE |
+				I965_PIPECONF_ACTIVE;
+		}
 	}
 
 	DRM_DEBUG_KMS("Mode for pipe %c:\n", pipe == 0 ? 'A' : 'B');
@@ -4888,25 +4912,25 @@ static int ironlake_crtc_mode_set(struct drm_crtc *crtc,
 
 	/* determine panel color depth */
 	temp = I915_READ(PIPECONF(pipe));
-	temp &= ~PIPE_BPC_MASK;
-	dither = intel_choose_pipe_bpp_dither(crtc, &pipe_bpp, mode);
+	temp &= ~PIPECONF_BPC_MASK;
+	dither = intel_choose_pipe_bpp_dither(crtc, &pipe_bpp, adjusted_mode);
 	switch (pipe_bpp) {
 	case 18:
-		temp |= PIPE_6BPC;
+		temp |= PIPECONF_6BPC;
 		break;
 	case 24:
-		temp |= PIPE_8BPC;
+		temp |= PIPECONF_8BPC;
 		break;
 	case 30:
-		temp |= PIPE_10BPC;
+		temp |= PIPECONF_10BPC;
 		break;
 	case 36:
-		temp |= PIPE_12BPC;
+		temp |= PIPECONF_12BPC;
 		break;
 	default:
 		WARN(1, "intel_choose_pipe_bpp returned invalid value %d\n",
 			pipe_bpp);
-		temp |= PIPE_8BPC;
+		temp |= PIPECONF_8BPC;
 		pipe_bpp = 24;
 		break;
 	}
@@ -5427,19 +5451,28 @@ static void i9xx_update_cursor(struct drm_crtc *crtc, u32 base)
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 	int pipe = intel_crtc->pipe;
 	bool visible = base != 0;
-
 	if (intel_crtc->cursor_visible != visible) {
+		int x = intel_crtc->cursor_width;
 		uint32_t cntl = I915_READ(CURCNTR(pipe));
+
 		if (base) {
 			cntl &= ~(CURSOR_MODE | MCURSOR_PIPE_SELECT);
-			cntl |= CURSOR_MODE_64_ARGB_AX | MCURSOR_GAMMA_ENABLE;
+			if (x == 128)
+				cntl |= CURSOR_MODE_128_ARGB_AX |
+					CURSOR_GAMMA_ENABLE;
+			else if (x == 256)
+				cntl |= CURSOR_MODE_256_ARGB_AX |
+					MCURSOR_GAMMA_ENABLE;
+			else
+				cntl |= CURSOR_MODE_64_ARGB_AX |
+					MCURSOR_GAMMA_ENABLE;
+
 			cntl |= pipe << 28; /* Connect to correct pipe */
 		} else {
 			cntl &= ~(CURSOR_MODE | MCURSOR_GAMMA_ENABLE);
 			cntl |= CURSOR_MODE_DISABLE;
 		}
 		I915_WRITE(CURCNTR(pipe), cntl);
-
 		intel_crtc->cursor_visible = visible;
 	}
 	/* and commit changes on next vblank */
@@ -5552,23 +5585,20 @@ static int intel_crtc_cursor_set(struct drm_crtc *crtc,
 		mutex_lock(&dev->struct_mutex);
 		goto finish;
 	}
-
-	/* Currently we only support 64x64 cursors */
-	if (width != 64 || height != 64) {
-		DRM_ERROR("we currently only support 64x64 cursors\n");
+	/* Check for which cursor types we support */
+	if (width > 256 && height > 256) {
+		DRM_ERROR("only supports 64, 128, 256 cursor mode\n");
 		return -EINVAL;
 	}
-
 	obj = to_intel_bo(drm_gem_object_lookup(dev, file, handle));
 	if (&obj->base == NULL)
 		return -ENOENT;
-
 	if (obj->base.size < width * height * 4) {
-		DRM_ERROR("buffer is to small\n");
+		DRM_ERROR("buffer is to small %d needs to be bigger than %d\n",\
+				obj->base.size, width * height * 4);
 		ret = -ENOMEM;
 		goto fail;
 	}
-
 	/* we only need to pin inside GTT if cursor is non-phy */
 	mutex_lock(&dev->struct_mutex);
 	if (!dev_priv->info->cursor_needs_physical) {
@@ -7399,12 +7429,6 @@ void intel_modeset_cleanup(struct drm_device *dev)
 	intel_disable_gt_powersave(dev);
 
 	ironlake_teardown_rc6(dev);
-#if 0
-	// Has to be done only once after h/w is poweron.
-	// Currently GOP driver is doing it
-	if (IS_VALLEYVIEW(dev))
-		vlv_init_dpio(dev);
-#endif
 
 	mutex_unlock(&dev->struct_mutex);
 

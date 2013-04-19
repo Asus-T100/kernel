@@ -2660,11 +2660,11 @@
 #define   PIPECONF_INTERLACED_DBL_ILK		(4 << 21) /* ilk/snb only */
 #define   PIPECONF_PFIT_PF_INTERLACED_DBL_ILK	(5 << 21) /* ilk/snb only */
 #define   PIPECONF_CXSR_DOWNCLOCK	(1<<16)
-#define   PIPECONF_BPP_MASK	(0x000000e0)
-#define   PIPECONF_BPP_8	(0<<5)
-#define   PIPECONF_BPP_10	(1<<5)
-#define   PIPECONF_BPP_6	(2<<5)
-#define   PIPECONF_BPP_12	(3<<5)
+#define   PIPECONF_BPC_MASK	(0x7 << 5)
+#define   PIPECONF_8BPC		(0<<5)
+#define   PIPECONF_10BPC	(1<<5)
+#define   PIPECONF_6BPC		(2<<5)
+#define   PIPECONF_12BPC	(3<<5)
 #define   PIPECONF_DITHER_EN	(1<<4)
 #define   PIPECONF_DITHER_TYPE_MASK (0x0000000c)
 #define   PIPECONF_DITHER_TYPE_SP (0<<2)
@@ -2708,11 +2708,6 @@
 #define   PIPE_START_VBLANK_INTERRUPT_STATUS	(1UL<<2) /* 965 or later */
 #define   PIPE_VBLANK_INTERRUPT_STATUS		(1UL<<1)
 #define   PIPE_OVERLAY_UPDATED_STATUS		(1UL<<0)
-#define   PIPE_BPC_MASK				(7 << 5) /* Ironlake */
-#define   PIPE_8BPC				(0 << 5)
-#define   PIPE_10BPC				(1 << 5)
-#define   PIPE_6BPC				(2 << 5)
-#define   PIPE_12BPC				(3 << 5)
 
 #define PIPESRC(pipe) _PIPE(pipe, _PIPEASRC, _PIPEBSRC)
 #define PIPECONF(pipe) _PIPE(pipe, _PIPEACONF, _PIPEBCONF)
@@ -2771,38 +2766,75 @@
 #define   DSPFW_PLANEB_SHIFT	8
 #define   DSPFW_PLANEB_MASK	(0x7f<<8)
 #define   DSPFW_PLANEA_MASK	(0x7f)
+#define   DSPFW1_VLV		0x3F8F0F0F
+#define   DSPFW_PLANEA_VAL	0x0F
+#define   DSPFW_PLANEB_VAL	0x0F
+#define   DSPFW_CURSORB_VAL	0x0F
+#define   DSPFW_SR_VAL		0x7F
 #define DSPFW2			0x70038
 #define   DSPFW_CURSORA_MASK	0x00003f00
 #define   DSPFW_CURSORA_SHIFT	8
 #define   DSPFW_PLANEC_MASK	(0x7f)
+#define   DSPFW2_VLV		0x0B0F0F0F
+#define   DSPFW_PLANEC_VAL	0x0F
+#define   DSPFW_CURSORA_VAL	0x0F
+#define   DSPFW2_RESERVED	(0xB0F<<16)
 #define DSPFW3			0x7003c
 #define   DSPFW_HPLL_SR_EN	(1<<31)
 #define   DSPFW_CURSOR_SR_SHIFT	24
+#define   DSPFW3_VLV			0x0
 #define   PINEVIEW_SELF_REFRESH_EN	(1<<30)
 #define   DSPFW_CURSOR_SR_MASK		(0x3f<<24)
 #define   DSPFW_HPLL_CURSOR_SHIFT	16
 #define   DSPFW_HPLL_CURSOR_MASK	(0x3f<<16)
 #define   DSPFW_HPLL_SR_MASK		(0x1ff)
 #define DSPFW4			0x70070
+#define   DSPFW4_SPRITEA_VAL	0x04
+#define   DSPFW4_CURSORA_SHIFT	8
+#define   DSPFW4_CURSORA_VAL	0x04
+#define   DSPFW4_SPRITEB_SHIFT	16
+#define   DSPFW4_SPRITEB_VAL	0x04
+#define   DSPFW4_VLV		0x00040404
+#define DSPFW5			0x70074
+#define   DSPFW5_CURSORSR_VAL	0x4
+#define   DSPFW5_CURSORB_SHIFT	8
+#define   DSPFW5_CURSORB_VAL	0x4
+#define   DSPFW5_DISPLAYA_SHIFT	16
+#define   DSPFW5_DISPLAYA_VAL	0x4
+#define   DSPFW5_DISPLAYB_SHIFT	24
+#define   DSPFW5_DISPLAYB_VAL	0x4
+#define   DSPFW5_VLV		0x04040404
+#define DSPFW6			0x70078
+#define   DSPFW6_DISPLAYSR_VAL	0xF
+#define   DSPFW6_VLV		0x0000000F
+#define DSPFW7			0x7007C
+#define   DSPFW7_SPRITEC_VAL	0x0F
+#define   DSPFW7_SPRITEC1_VAL	0x04
+#define   DSPFW7_SPRITEC1_SHIFT	8
+#define   DSPFW7_SPRITED_VAL	0x0F
+#define   DSPFW7_SPRITED_SHIFT	16
+#define   DSPFW7_SPRITED1_VAL	0x04
+#define   DSPFW7_SPRITED1_SHIFT	24
+#define   DSPFW7_VLV		0x040F040F
 
 /* drain latency register values*/
+#define DRAIN_LATENCY_PRECISION_64	64
 #define DRAIN_LATENCY_PRECISION_32	32
-#define DRAIN_LATENCY_PRECISION_16	16
 #define VLV_DDL1			0x70050
-#define DDL_CURSORA_PRECISION_32	(1<<31)
-#define DDL_CURSORA_PRECISION_16	(0<<31)
+#define DDL_CURSORA_PRECISION_64	(1<<31)
+#define DDL_CURSORA_PRECISION_32	(0<<31)
 #define DDL_CURSORA_SHIFT		24
-#define DDL_SPRITEA_PRECISION_32	(1<<15)
-#define DDL_SPRITEA_PRECISION_16	(0<<15)
+#define DDL_SPRITEA_PRECISION_64	(1<<15)
+#define DDL_SPRITEA_PRECISION_32	(0<<15)
 #define DDL_SPRITEA_SHIFT		8
-#define DDL_PLANEA_PRECISION_32		(1<<7)
-#define DDL_PLANEA_PRECISION_16		(0<<7)
+#define DDL_PLANEA_PRECISION_64		(1<<7)
+#define DDL_PLANEA_PRECISION_32		(0<<7)
 #define VLV_DDL2			0x70054
-#define DDL_CURSORB_PRECISION_32	(1<<31)
-#define DDL_CURSORB_PRECISION_16	(0<<31)
+#define DDL_CURSORB_PRECISION_64	(1<<31)
+#define DDL_CURSORB_PRECISION_32	(0<<31)
 #define DDL_CURSORB_SHIFT		24
-#define DDL_PLANEB_PRECISION_32		(1<<7)
-#define DDL_PLANEB_PRECISION_16		(0<<7)
+#define DDL_PLANEB_PRECISION_64		(1<<7)
+#define DDL_PLANEB_PRECISION_32		(0<<7)
 
 /* FIFO watermark sizes etc */
 #define G4X_FIFO_LINE_SIZE	64
@@ -2970,14 +3002,18 @@
 /* New style CUR*CNTR flags */
 #define   CURSOR_MODE		0x27
 #define   CURSOR_MODE_DISABLE   0x00
+#define   CURSOR_MODE_128_32B_AX      0x02
+#define   CURSOR_MODE_256_32B_AX      0x03
 #define   CURSOR_MODE_64_32B_AX 0x07
+#define   CURSOR_MODE_128_ARGB_AX     ((1 << 5) | CURSOR_MODE_128_32B_AX)
+#define   CURSOR_MODE_256_ARGB_AX     ((1 << 5) | CURSOR_MODE_256_32B_AX)
 #define   CURSOR_MODE_64_ARGB_AX ((1 << 5) | CURSOR_MODE_64_32B_AX)
 #define   MCURSOR_PIPE_SELECT	(1 << 28)
 #define   MCURSOR_PIPE_A	0x00
 #define   MCURSOR_PIPE_B	(1 << 28)
 #define   MCURSOR_GAMMA_ENABLE  (1 << 26)
-#define _CURABASE		0x70084
-#define _CURAPOS			0x70088
+#define   _CURABASE		0x70084
+#define   _CURAPOS		0x70088
 #define   CURSOR_POS_MASK       0x007FF
 #define   CURSOR_POS_SIGN       0x8000
 #define   CURSOR_X_SHIFT        0
@@ -2985,8 +3021,7 @@
 #define CURSIZE			0x700a0
 #define _CURBCNTR		0x700c0
 #define _CURBBASE		0x700c4
-#define _CURBPOS			0x700c8
-
+#define _CURBPOS		0x700c8
 #define _CURBCNTR_IVB		0x71080
 #define _CURBBASE_IVB		0x71084
 #define _CURBPOS_IVB		0x71088

@@ -98,8 +98,7 @@ static unsigned long __init mfld_calibrate_tsc(void)
 	}
 
 	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_CLOVERVIEW
-		&& fsb == FSB_FREQ_133SKU
-		&& ratio == 15) {
+		&& fsb == FSB_FREQ_133SKU) {
 		pr_warn("See a Clovertrail+ B0/B1/B2 processor and will correct its tsc info!\n");
 		/* The 133MHz FSB for CLVP+ is actuall 133.120 MHz */
 		fsb = 133120;

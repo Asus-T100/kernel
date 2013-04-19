@@ -584,6 +584,9 @@ struct drm_psb_register_rw_arg {
 		uint32_t vtotal_b;
 		uint32_t dspcntr_a;
 		uint32_t dspcntr_b;
+		uint32_t pipestat_a;
+		uint32_t int_mask;
+		uint32_t int_enable;
 	} display;
 
 	uint32_t overlay_read_mask;
@@ -610,6 +613,7 @@ struct drm_psb_register_rw_arg {
 	struct {
 		uint32_t pipe;
 		int vsync_pipe;
+		int vsync_count;
 		uint64_t timestamp;
 	} vsync;
 
@@ -630,6 +634,14 @@ struct drm_psb_register_rw_arg {
 
 	uint32_t subpicture_enable_mask;
 	uint32_t subpicture_disable_mask;
+	struct {
+		uint32_t CursorADDR;
+		uint32_t xPos;
+		uint32_t yPos;
+		uint32_t CursorSize;
+	} cursor;
+	uint32_t cursor_enable_mask;
+	uint32_t cursor_disable_mask;
 };
 
 enum {

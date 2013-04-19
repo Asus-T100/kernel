@@ -3,6 +3,12 @@
 
 #  include <linux/netlink.h>
 
+/*
+ * warning: structures and constants in this header must match the
+ * ones in libc/kernel/common/linux/kct.h, so that information can
+ * be exchange between kernel and userspace throught netlink socket.
+ */
+
 #  ifndef MAX_SB_N
 #    define MAX_SB_N 32
 #  endif
@@ -43,6 +49,7 @@ struct ct_event {
 	enum ct_ev_type type;
 	__u64 timestamp;
 	__u32 attchmt_size; /* sizeof(all_attachments inc. padding) */
+	__u32 flags;
 	struct ct_attchmt attachments[];
 }  __aligned(4);
 
@@ -76,8 +83,6 @@ struct kct_packet {
 						     + sizeof(*(Attchmt)) + \
 			      (Attchmt)->size, ATTCHMT_ALIGNMENT))
 
-#  ifdef __KERNEL__
-
 /* Helper functions */
 extern int kct_log_stat(const char *submitter_name,
 			const char *ev_name,
@@ -94,7 +99,5 @@ extern int kct_add_attchmt(struct ct_event **ev,
 			   char *data, gfp_t flags)  __weak;
 extern void kct_free_event(struct ct_event *ev) __weak;
 extern int kct_log_event(struct ct_event *ev, gfp_t flags) __weak;
-
-#  endif /* !__KERNEL__ */
 
 #endif /* !KCT_H_ */

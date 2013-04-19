@@ -108,11 +108,15 @@ static struct data_rate_divider_selector_list_t
 	/ sizeof(struct data_rate_divider_selector_list_t))
 
 /* DPLL registers on IOSF */
-#define PLLA_DWORD3     0x800C
-#define PLLA_DWORD5     0x8014
-#define PLLA_DWORD7     0x801C
+#define PLLA_DWORD3_1   0x800C
+#define PLLA_DWORD3_2   0x802C
+#define PLLA_DWORD5_1   0x8014
+#define PLLA_DWORD5_2   0x8034
+#define PLLA_DWORD7_1   0x801C
+#define PLLA_DWORD7_2   0x803C
 #define PLLB_DWORD8     0x8040
-#define PLLB_DWORD10    0x8048
+#define PLLB_DWORD10_1  0x8048
+#define PLLB_DWORD10_2  0x8068
 #define CMN_DWORD3      0x810C
 #define CMN_DWORD8      0x8100
 #define REF_DWORD18     0x80C0
@@ -123,6 +127,13 @@ static struct data_rate_divider_selector_list_t
 #define DPLL_Tx_GRC     0x8244
 #define PCS_DWORD12_1   0x0230
 #define PCS_DWORD12_2   0x0430
+#define TX_SWINGS_1     0x8294
+#define TX_SWINGS_2     0x8290
+#define TX_SWINGS_3     0x8288
+#define TX_SWINGS_4     0x828C
+#define TX_SWINGS_5     0x0690
+#define TX_SWINGS_6     0x822C
+#define TX_SWINGS_7     0x8224
 
 #define DPLL_IOSF_EP 0x13
 
@@ -276,13 +287,16 @@ static void __ips_hdmi_set_program_dpll(int n, int p1, int p2, int m1, int m2)
 	gunit_iosf_write32(DPLL_IOSF_EP, CMN_DWORD8, 0x0);
 
 	/* Set divisors*/
-	gunit_iosf_write32(DPLL_IOSF_EP, PLLA_DWORD3, div);
+	gunit_iosf_write32(DPLL_IOSF_EP, PLLA_DWORD3_1, div);
+	gunit_iosf_write32(DPLL_IOSF_EP, PLLA_DWORD3_2, div);
 
 	/* Set up LCPLL in digital mode */
-	gunit_iosf_write32(DPLL_IOSF_EP, PLLA_DWORD5, 0x0DF44300);
+	gunit_iosf_write32(DPLL_IOSF_EP, PLLA_DWORD5_1, 0x0DF44300);
+	gunit_iosf_write32(DPLL_IOSF_EP, PLLA_DWORD5_2, 0x0DF44300);
 
 	/* LPF co-efficients for LCPLL in digital mode */
-	gunit_iosf_write32(DPLL_IOSF_EP, PLLB_DWORD10, 0x005F0021);
+	gunit_iosf_write32(DPLL_IOSF_EP, PLLB_DWORD10_1, 0x005F0021);
+	gunit_iosf_write32(DPLL_IOSF_EP, PLLB_DWORD10_2, 0x005F0021);
 
 	/* Disable unused TLine clocks on right side */
 	gunit_iosf_write32(DPLL_IOSF_EP, CMN_DWORD3, 0x14540000);
@@ -292,14 +306,24 @@ static void __ips_hdmi_set_program_dpll(int n, int p1, int p2, int m1, int m2)
 	hdmi_write32(IPS_DPLL_B, tmp | IPIL_DPLL_VCO_ENABLE);
 
 	/* Enable DCLP to core */
-	tmp = gunit_iosf_read32(DPLL_IOSF_EP, PLLA_DWORD7);
-	gunit_iosf_write32(DPLL_IOSF_EP, PLLA_DWORD7, tmp | (1 << 24));
+	tmp = gunit_iosf_read32(DPLL_IOSF_EP, PLLA_DWORD7_1);
+	gunit_iosf_write32(DPLL_IOSF_EP, PLLA_DWORD7_1, tmp | (1 << 24));
+	tmp = gunit_iosf_read32(DPLL_IOSF_EP, PLLA_DWORD7_2);
+	gunit_iosf_write32(DPLL_IOSF_EP, PLLA_DWORD7_2, tmp | (1 << 24));
 
 	/* Set HDMI lane CML clock */
 	gunit_iosf_write32(DPLL_IOSF_EP, DPLL_CML_CLK1, 0x07760018);
 	gunit_iosf_write32(DPLL_IOSF_EP, DPLL_CML_CLK2, 0x00400888);
 
-	/* TODO: add swing settings */
+	/* Swing settings */
+	gunit_iosf_write32(DPLL_IOSF_EP, TX_SWINGS_1, 0x00000000);
+	gunit_iosf_write32(DPLL_IOSF_EP, TX_SWINGS_2, 0x2B245F5F);
+	gunit_iosf_write32(DPLL_IOSF_EP, TX_SWINGS_3, 0x5578B83A);
+	gunit_iosf_write32(DPLL_IOSF_EP, TX_SWINGS_4, 0x0C782040);
+	gunit_iosf_write32(DPLL_IOSF_EP, TX_SWINGS_5, 0x2B247878);
+	gunit_iosf_write32(DPLL_IOSF_EP, TX_SWINGS_6, 0x00030000);
+	gunit_iosf_write32(DPLL_IOSF_EP, TX_SWINGS_7, 0x00002000);
+	gunit_iosf_write32(DPLL_IOSF_EP, TX_SWINGS_1, 0x80000000);
 
 	/* Stagger Programming */
 	gunit_iosf_write32(DPLL_IOSF_EP, PCS_DWORD12_1, 0x00401F00);

@@ -134,7 +134,10 @@ struct ulpmc_chip_info {
 
 	struct delayed_work work;
 	struct mutex lock;
+	bool is_fwupdate_on;
 };
+
+static struct ulpmc_chip_info *chip_ptr;
 
 static enum power_supply_property ulpmc_battery_props[] = {
 	POWER_SUPPLY_PROP_STATUS,
@@ -275,6 +278,13 @@ static int ulpmc_get_battery_property(struct power_supply *psy,
 	struct ulpmc_chip_info *chip = container_of(psy,
 				struct ulpmc_chip_info, bat);
 	mutex_lock(&chip->lock);
+
+	if (chip->is_fwupdate_on) {
+		dev_warn(&chip->client->dev, "fwupdate in progress\n");
+		mutex_unlock(&chip->lock);
+		return -EAGAIN;
+	}
+
 	switch (psp) {
 	case POWER_SUPPLY_PROP_STATUS:
 		ret = ulpmc_read_reg16(chip->client, ULPMC_FG_REG_FLAGS);
@@ -404,6 +414,13 @@ static int ulpmc_get_charger_property(struct power_supply *psy,
 				struct ulpmc_chip_info, chrg);
 
 	mutex_lock(&chip->lock);
+
+	if (chip->is_fwupdate_on) {
+		dev_warn(&chip->client->dev, "fwupdate in progress\n");
+		mutex_unlock(&chip->lock);
+		return -EAGAIN;
+	}
+
 	switch (psp) {
 	case POWER_SUPPLY_PROP_PRESENT:
 		ret = ulpmc_read_reg8(chip->client, ULPMC_BC_REG_STAT);
@@ -486,13 +503,18 @@ static irqreturn_t ulpmc_thread_handler(int id, void *dev)
 	struct ulpmc_chip_info *chip = dev;
 	int ret;
 
+	pm_runtime_get_sync(&chip->client->dev);
+
 	ret = ulpmc_read_reg8(chip->client, ULPMC_BM_REG_INTSTAT);
 	if (ret < 0) {
 		dev_err(&chip->client->dev, "ulpmc stat reg read error\n");
+		pm_runtime_put_sync(&chip->client->dev);
 		return IRQ_NONE;
 	}
 	log_interrupt_event(chip, ret);
 	power_supply_changed(&chip->bat);
+
+	pm_runtime_put_sync(&chip->client->dev);
 	return IRQ_HANDLED;
 }
 
@@ -526,6 +548,44 @@ static int ulpmc_extcon_callback(struct notifier_block *nb,
 	power_supply_changed(&chip->bat);
 	return NOTIFY_OK;
 }
+
+void ulpmc_fwupdate_enter(void)
+{
+	if (chip_ptr) {
+		pm_runtime_get_sync(&chip_ptr->client->dev);
+		dev_info(&chip_ptr->client->dev, ":%s\n", __func__);
+		mutex_lock(&chip_ptr->lock);
+		chip_ptr->is_fwupdate_on = true;
+		mutex_unlock(&chip_ptr->lock);
+		cancel_delayed_work_sync(&chip_ptr->work);
+	}
+}
+EXPORT_SYMBOL(ulpmc_fwupdate_enter);
+
+void ulpmc_fwupdate_exit(void)
+{
+	if (chip_ptr) {
+		dev_info(&chip_ptr->client->dev, ":%s\n", __func__);
+		mutex_lock(&chip_ptr->lock);
+		chip_ptr->is_fwupdate_on = false;
+		mutex_unlock(&chip_ptr->lock);
+		/* schedule status monitoring worker */
+		schedule_delayed_work(&chip_ptr->work, STATUS_MON_JIFFIES);
+		pm_runtime_put_sync(&chip_ptr->client->dev);
+	}
+}
+EXPORT_SYMBOL(ulpmc_fwupdate_exit);
+
+struct i2c_client *ulpmc_get_i2c_client(void)
+{
+	dev_info(&chip_ptr->client->dev, ":%s\n", __func__);
+
+	if (chip_ptr)
+		return chip_ptr->client;
+	else
+		return NULL;
+}
+EXPORT_SYMBOL(ulpmc_get_i2c_client);
 
 static int ulpmc_battery_probe(struct i2c_client *client,
 				 const struct i2c_device_id *id)
@@ -568,6 +628,7 @@ static int ulpmc_battery_probe(struct i2c_client *client,
 
 	INIT_DELAYED_WORK(&chip->work, ulpmc_battery_monitor);
 	mutex_init(&chip->lock);
+	chip_ptr = chip;
 
 	chip->bat.name = "byt-battery";
 	chip->bat.type = POWER_SUPPLY_TYPE_BATTERY;
@@ -603,6 +664,10 @@ static int ulpmc_battery_probe(struct i2c_client *client,
 				"failed to register extcon notifier:%d\n", ret);
 	}
 
+	/* Init Runtime PM State */
+	pm_runtime_put_noidle(&chip->client->dev);
+	pm_schedule_suspend(&chip->client->dev, MSEC_PER_SEC);
+
 	/* get irq and register */
 	ulpmc_init_irq(chip);
 	/* schedule status monitoring worker */
@@ -625,11 +690,69 @@ static int ulpmc_battery_remove(struct i2c_client *client)
 		extcon_unregister_notifier(chip->edev, &chip->nb);
 	power_supply_unregister(&chip->chrg);
 	power_supply_unregister(&chip->bat);
+	pm_runtime_get_noresume(&chip->client->dev);
 	mutex_destroy(&chip->lock);
 	kfree(chip);
 
 	return 0;
 }
+
+static int ulpmc_suspend(struct device *dev)
+{
+	struct ulpmc_chip_info *chip = dev_get_drvdata(dev);
+
+	if (chip->client->irq > 0) {
+		disable_irq(chip->client->irq);
+		enable_irq_wake(chip->client->irq);
+	}
+	cancel_delayed_work_sync(&chip->work);
+	dev_dbg(&chip->client->dev, "ulpmc battery suspend\n");
+
+	return 0;
+}
+
+static int ulpmc_resume(struct device *dev)
+{
+	struct ulpmc_chip_info *chip = dev_get_drvdata(dev);
+
+	if (chip->client->irq > 0) {
+		enable_irq(chip->client->irq);
+		disable_irq_wake(chip->client->irq);
+	}
+	/* schedule status monitoring worker */
+	schedule_delayed_work(&chip->work, STATUS_MON_JIFFIES);
+	dev_dbg(&chip->client->dev, "ulpmc battery resume\n");
+
+	return 0;
+}
+
+static int ulpmc_runtime_suspend(struct device *dev)
+{
+
+	dev_dbg(dev, "%s called\n", __func__);
+	return 0;
+}
+
+static int ulpmc_runtime_resume(struct device *dev)
+{
+	dev_dbg(dev, "%s called\n", __func__);
+	return 0;
+}
+
+static int ulpmc_runtime_idle(struct device *dev)
+{
+
+	dev_dbg(dev, "%s called\n", __func__);
+	return 0;
+}
+
+static const struct dev_pm_ops ulpmc_pm_ops = {
+		SET_SYSTEM_SLEEP_PM_OPS(ulpmc_suspend,
+				ulpmc_resume)
+		SET_RUNTIME_PM_OPS(ulpmc_runtime_suspend,
+				ulpmc_runtime_resume,
+				ulpmc_runtime_idle)
+};
 
 static const struct i2c_device_id ulpmc_id[] = {
 	{ "ulpmc", 0 },
@@ -640,6 +763,7 @@ static struct i2c_driver ulpmc_battery_driver = {
 	.driver = {
 		.name = "ulpmc-battery",
 		.owner	= THIS_MODULE,
+		.pm	= &ulpmc_pm_ops,
 	},
 	.probe = ulpmc_battery_probe,
 	.remove = ulpmc_battery_remove,

@@ -167,35 +167,6 @@ void mdfld_output_init(struct drm_device *dev)
 #endif
 }
 
-int intel_mid_mipi_client_detect(const char *name)
-{
-	struct drm_device *dev = g_drm_dev;
-	struct drm_psb_private *dev_priv;
-	int len = 0;
-
-	if (unlikely(!dev)) {
-		DRM_ERROR("%s: invalid drm device\n", __func__);
-		return -EINVAL;
-	}
-
-	dev_priv = dev->dev_private;
-	if (unlikely(!dev_priv)) {
-		DRM_ERROR("%s: invalid drm private data\n", __func__);
-		return -EINVAL;
-	}
-
-	len = strnlen(dev_priv->panel_info.name, PANEL_NAME_MAX_LEN);
-	if (len) {
-		if (!strncmp(name, dev_priv->panel_info.name, len))
-			return 0;
-		else
-			return -EPERM;
-	} else {
-		DRM_ERROR("%s: invalid length of panel name\n", __func__);
-		return -EINVAL;
-	}
-}
-
 void intel_mid_panel_register(
 		void (*panel_init)(struct drm_device *, struct panel_funcs *))
 {

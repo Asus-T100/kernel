@@ -264,20 +264,9 @@ static long __imx_set_exposure(struct v4l2_subdev *sd, u16 coarse_itg,
 	int ret;
 	struct imx_device *dev = to_imx_sensor(sd);
 
-	if (1)
-		return 0;
-
-	/* imx sensor driver has a limitation that the exposure
-	 * should not exceed beyond VTS-4
-	 */
+	/* imx max exposure is VTS-4 */
 	 if (coarse_itg > dev->lines_per_frame - 4)
 		coarse_itg = dev->lines_per_frame - 4;
-
-	/* TODO - to be removed and implemented in 3a library
-	 * change gain to imx reg value
-	 */
-	if (gain > 0)
-		gain = 256 - 256 * 16 / gain;
 
 	/* enable group hold */
 	ret = imx_write_reg_array(client, imx_param_hold);
@@ -323,13 +312,6 @@ static long imx_s_exposure(struct v4l2_subdev *sd,
 
 	coarse_itg = exposure->integration_time[0];
 	gain = exposure->gain[0];
-
-	/* we should not accept the invalid value below. */
-	if (gain == 0) {
-		struct i2c_client *client = v4l2_get_subdevdata(sd);
-		v4l2_err(client, "%s: invalid value\n", __func__);
-		return -EINVAL;
-	}
 
 	return imx_set_exposure(sd, coarse_itg, gain);
 }

@@ -4177,8 +4177,6 @@ int psb_release(struct inode *inode, struct file *filp)
 	psb_fp = BCVideoGetPriv(file_priv);
 	dev_priv = psb_priv(file_priv->minor->dev);
 	msvdx_priv = (struct msvdx_private *)dev_priv->msvdx_private;
-	struct tng_topaz_private *topaz_priv =
-		(struct tng_topaz_private *)dev_priv->topaz_private;
 
 #if 0
 	/*cleanup for msvdx */
@@ -4190,6 +4188,8 @@ int psb_release(struct inode *inode, struct file *filp)
 		       MAX_DECODE_BUFFERS);
 	}
 #endif
+
+	tng_topaz_handle_sigint(file_priv->minor->dev, filp);
 
 	BCVideoDestroyBuffers(psb_fp->bcd_index);
 

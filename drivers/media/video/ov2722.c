@@ -596,6 +596,21 @@ static int ov2722_s_ctrl(struct v4l2_subdev *sd, struct v4l2_control *ctrl)
 	return ret;
 }
 
+static int ov2722_init(struct v4l2_subdev *sd)
+{
+	struct ov2722_device *dev = to_ov2722_sensor(sd);
+
+	mutex_lock(&dev->input_lock);
+
+	/* restore settings */
+	ov2722_res = ov2722_res_preview;
+	N_RES = N_RES_PREVIEW;
+
+	mutex_unlock(&dev->input_lock);
+
+	return 0;
+}
+
 
 static int power_up(struct v4l2_subdev *sd)
 {
@@ -672,10 +687,15 @@ static int power_down(struct v4l2_subdev *sd)
 
 static int ov2722_s_power(struct v4l2_subdev *sd, int on)
 {
+	int ret;
 	if (on == 0)
 		return power_down(sd);
-	else
-		return power_up(sd);
+	else {
+		ret = power_up(sd);
+		if (!ret)
+			return ov2722_init(sd);
+	}
+	return ret;
 }
 
 /*
@@ -818,10 +838,6 @@ static int ov2722_s_mbus_fmt(struct v4l2_subdev *sd,
 		dev_err(&client->dev, "ov2722 startup err\n");
 		return -EINVAL;
 	}
-	/* workround to enlarge hblanking and vblanking and adjust AWB*/
-	ov2722_write_reg(client, OV2722_8BIT, 0x5186, 0x04);
-	ov2722_write_reg(client, OV2722_8BIT, 0x5188, 0x04);
-	ov2722_write_reg(client, OV2722_8BIT, 0x518a, 0x05);
 	return ret;
 }
 static int ov2722_g_mbus_fmt(struct v4l2_subdev *sd,
@@ -885,6 +901,9 @@ static int ov2722_s_stream(struct v4l2_subdev *sd, int enable)
 	ret = ov2722_write_reg(client, OV2722_8BIT, OV2722_SW_STREAM,
 				enable ? OV2722_START_STREAMING :
 				OV2722_STOP_STREAMING);
+	/* restore settings */
+	ov2722_res = ov2722_res_preview;
+	N_RES = N_RES_PREVIEW;
 
 	mutex_unlock(&dev->input_lock);
 	return ret;
@@ -1025,12 +1044,25 @@ static int ov2722_s_parm(struct v4l2_subdev *sd,
 			struct v4l2_streamparm *param)
 {
 	struct ov2722_device *dev = to_ov2722_sensor(sd);
-
 	dev->run_mode = param->parm.capture.capturemode;
 
+	mutex_lock(&dev->input_lock);
+	switch (dev->run_mode) {
+	case CI_MODE_VIDEO:
+		ov2722_res = ov2722_res_video;
+		N_RES = N_RES_VIDEO;
+		break;
+	case CI_MODE_STILL_CAPTURE:
+		ov2722_res = ov2722_res_still;
+		N_RES = N_RES_STILL;
+		break;
+	default:
+		ov2722_res = ov2722_res_preview;
+		N_RES = N_RES_PREVIEW;
+	}
+	mutex_unlock(&dev->input_lock);
 	return 0;
 }
-
 
 static int ov2722_g_frame_interval(struct v4l2_subdev *sd,
 				   struct v4l2_subdev_frame_interval *interval)

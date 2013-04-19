@@ -560,6 +560,22 @@ static struct snd_soc_dai_driver sst_platform_dai[] = {
 		.formats = SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S24_LE,
 	},
 },
+{
+	.name = SST_VOIP_DAI,
+	.ops = &sst_media_dai_ops,
+	.playback = {
+		.channels_min = SST_MONO,
+		.channels_max = SST_STEREO,
+		.rates = SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000,
+		.formats = SNDRV_PCM_FMTBIT_S16_LE,
+	},
+	.capture = {
+		.channels_min = SST_MONO,
+		.channels_max = SST_STEREO,
+		.rates = SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000,
+		.formats = SNDRV_PCM_FMTBIT_S16_LE,
+	},
+},
 };
 
 static int sst_platform_open(struct snd_pcm_substream *substream)

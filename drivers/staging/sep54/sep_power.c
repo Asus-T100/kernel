@@ -215,6 +215,10 @@ static int process_hibernation_req(void)
 	int rc;
 
 	sep_state = GET_SEP_STATE(power_control.drvdata);
+	/* Already off, no need to send the sleep descriptor */
+	if (sep_state == DX_SEP_STATE_OFF)
+		return 0;
+
 	if (sep_state != DX_SEP_STATE_DONE_FW_INIT) {
 		SEP_LOG_ERR("Requested hibernation while SeP state=0x%08X\n",
 			    sep_state);

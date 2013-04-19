@@ -1202,11 +1202,14 @@ static void ironlake_edp_backlight_on(struct intel_dp *intel_dp)
 {
 	struct drm_device *dev = intel_dp->base.base.dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
+	int pipe = to_intel_crtc(intel_dp->base.base.crtc)->pipe;
 	u32 pp;
 	u32 pp_ctrl_reg;
 
 	if (!is_edp(intel_dp))
 		return;
+
+	intel_panel_disable_backlight(dev);
 
 	DRM_DEBUG_KMS("\n");
 	/*
@@ -1223,6 +1226,8 @@ static void ironlake_edp_backlight_on(struct intel_dp *intel_dp)
 
 	I915_WRITE(pp_ctrl_reg, pp);
 	POSTING_READ(pp_ctrl_reg);
+
+	intel_panel_enable_backlight(dev, pipe);
 }
 
 static void ironlake_edp_backlight_off(struct intel_dp *intel_dp)
@@ -2710,13 +2715,6 @@ intel_dp_init(struct drm_device *dev, int output_reg, enum port port)
 			pp_on = I915_READ(PCH_PP_ON_DELAYS);
 			pp_off = I915_READ(PCH_PP_OFF_DELAYS);
 			pp_div = I915_READ(PCH_PP_DIVISOR);
-		}
-
-		if (!pp_on || !pp_off || !pp_div) {
-			DRM_INFO("bad panel power sequencing delays, disabling panel\n");
-			intel_dp_encoder_destroy(&intel_dp->base.base);
-			intel_dp_destroy(&intel_connector->base);
-			return;
 		}
 
 		/* Pull timing values out of registers */

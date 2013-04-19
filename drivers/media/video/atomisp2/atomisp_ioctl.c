@@ -1016,6 +1016,8 @@ static int atomisp_querybuf_file(struct file *file, void *fh,
  */
 static int atomisp_qbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 {
+	static const int NOFLUSH_FLAGS = V4L2_BUF_FLAG_NO_CACHE_INVALIDATE |
+					 V4L2_BUF_FLAG_NO_CACHE_CLEAN;
 	struct video_device *vdev = video_devdata(file);
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
@@ -1109,6 +1111,9 @@ static int atomisp_qbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 	}
 
 done:
+	if (!((buf->flags & NOFLUSH_FLAGS) == NOFLUSH_FLAGS))
+		wbinvd();
+
 	ret = videobuf_qbuf(&pipe->capq, buf);
 	if (ret)
 		goto error;
@@ -1392,7 +1397,9 @@ static int atomisp_streamon(struct file *file, void *fh,
 
 start_sensor:
 	if (isp->flash) {
-		ret += v4l2_subdev_call(isp->flash, core, s_power, 1);
+		ret = v4l2_subdev_call(isp->flash, core, s_power, 1);
+		if (ret && ret != -ENODEV && ret != -ENOIOCTLCMD)
+			dev_info(isp->dev, "can't power on flash\n");
 		isp->params.num_flash_frames = 0;
 		isp->params.flash_state = ATOMISP_FLASH_IDLE;
 		atomisp_setup_flash(isp);
@@ -1408,7 +1415,7 @@ start_sensor:
 			atomisp_freq_scaling(isp, ATOMISP_DFS_MODE_AUTO) < 0)
 			dev_dbg(isp->dev, "dfs failed!\n");
 	} else {
-		if (IS_MRFLD &&
+		if (IS_ISP2400 &&
 			atomisp_freq_scaling(isp, ATOMISP_DFS_MODE_MAX) < 0)
 			dev_dbg(isp->dev, "dfs failed!\n");
 	}

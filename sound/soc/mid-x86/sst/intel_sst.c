@@ -652,10 +652,8 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 	}
 
 	if (sst_drv_ctx->pci_id == SST_BYT_PCI_ID) {
-		/* BASE  for BYT is 0xdf400000 */
 		byt_lpe_base = pci_resource_start(pci, 0);
-		pr_err("LPE base is: %#x", byt_lpe_base);
-		byt_lpe_base = 0xdf400000; /* FIXME: workaround till value is correct in PCI BAR */
+		pr_info("LPE base is: %#x", byt_lpe_base);
 	}
 
 #define SST_BYT_SHIM_OFFSET	0x140000
@@ -1078,7 +1076,6 @@ static int intel_sst_runtime_resume(struct device *dev)
 	/* fw_clear_cache is set through debugfs support */
 	if (atomic_read(&sst_drv_ctx->fw_clear_cache)) {
 		mutex_lock(&sst_drv_ctx->sst_in_mem_lock);
-
 		if (sst_drv_ctx->fw_in_mem) {
 			pr_debug("Clearing the cached firmware\n");
 			kfree(sst_drv_ctx->fw_in_mem);
@@ -1168,13 +1165,10 @@ static struct pci_driver driver = {
 	.id_table = intel_sst_ids,
 	.probe = intel_sst_probe,
 	.remove = __devexit_p(intel_sst_remove),
-/* Temporarily disable PM for Bodegabay */
-#ifndef CONFIG_PRH_TEMP_WA_FOR_SPID
 #ifdef CONFIG_PM
 	.driver = {
 		.pm = &intel_sst_pm,
 	},
-#endif
 #endif
 };
 

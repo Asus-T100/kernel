@@ -40,6 +40,10 @@ sh_css_pipeline_stream_add_pipeline(struct sh_css_pipeline *pipeline)
 		sh_css_malloc(sizeof(struct sh_css_stream_pipeline));
 	struct sh_css_stream_pipeline *curr;
 
+	assert(me != NULL);
+	if (me == NULL)
+		return;
+
 	me->pipeline = pipeline;
 	me->next = NULL;
 

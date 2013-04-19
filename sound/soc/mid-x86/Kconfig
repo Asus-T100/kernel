@@ -72,6 +72,7 @@ config SND_CTP_MACHINE
 	tristate "SOC Machine Audio driver for Intel Cloverview MID platform"
 	depends on INTEL_SCU_IPC_UTIL && X86 && GPIO_LANGWELL
 	select SND_SOC_CS42L73
+	select SND_SOC_WM5102
 	select SND_SST_PLATFORM
 	select SND_INTEL_SST
 	select SND_COMPRESS_OFFLOAD

@@ -111,7 +111,6 @@ static u8 pr2_backlight_control_2[] = {
 	0x18, 0x00, 0x00, 0x00};
 
 #define MIPI_RESET_GPIO_DEFAULT	128
-#define TMD_6X10_PANEL_NAME	"TMD BB PRx"
 
 static
 int mdfld_dsi_pr2_ic_init(struct mdfld_dsi_config *dsi_config)
@@ -592,28 +591,16 @@ void tmd_6x10_vid_init(struct drm_device *dev, struct panel_funcs *p_funcs)
 
 static int tmd_6x10_lcd_vid_probe(struct platform_device *pdev)
 {
-	int ret = 0;
-
-	DRM_INFO("%s\n", __func__);
-
-	ret = intel_mid_mipi_client_detect(TMD_6X10_PANEL_NAME);
-	if (!ret) {
-		DRM_INFO("%s: TMD_6X10 panel detected\n", __func__);
-		intel_mid_panel_register(tmd_6x10_vid_init);
-	}
+	DRM_INFO("%s: TMD_6X10 panel detected\n", __func__);
+	intel_mid_panel_register(tmd_6x10_vid_init);
 
 	return 0;
 }
 
-static struct platform_device tmd_lcd_device = {
-	.name	= "tmd_6x10_lcd",
-	.id	= -1,
-};
-
 static struct platform_driver tmd_lcd_driver = {
 	.probe	= tmd_6x10_lcd_vid_probe,
 	.driver	= {
-		.name	= "tmd_6x10_lcd",
+		.name	= "TMD BB PRx",
 		.owner	= THIS_MODULE,
 	},
 };
@@ -621,8 +608,6 @@ static struct platform_driver tmd_lcd_driver = {
 static int __init tmd_6x10_lcd_init(void)
 {
 	DRM_INFO("%s\n", __func__);
-
-	platform_device_register(&tmd_lcd_device);
-	platform_driver_register(&tmd_lcd_driver);
+	return platform_driver_register(&tmd_lcd_driver);
 }
 module_init(tmd_6x10_lcd_init);

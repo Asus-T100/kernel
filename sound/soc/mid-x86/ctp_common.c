@@ -126,6 +126,8 @@ int ctp_set_bias_level(struct snd_soc_card *card,
 		enum snd_soc_bias_level level)
 {
 	struct snd_soc_codec *codec;
+	struct ctp_mc_private *ctx = snd_soc_card_get_drvdata(card);
+	int ret = 0;
 
 	/* Clock management is done only if there is an associated codec
 	 * to dapm context and if this not the dummy codec
@@ -143,8 +145,16 @@ int ctp_set_bias_level(struct snd_soc_card *card,
 	case SND_SOC_BIAS_ON:
 	case SND_SOC_BIAS_PREPARE:
 	case SND_SOC_BIAS_STANDBY:
-		if (card->dapm.bias_level == SND_SOC_BIAS_OFF)
+		if (card->dapm.bias_level == SND_SOC_BIAS_OFF) {
 			intel_scu_ipc_set_osc_clk0(true, CLK0_MSIC);
+			if (ctx->ops->set_bias_level) {
+				ret = ctx->ops->set_bias_level(card, codec, level);
+				if (ret < 0) {
+					pr_err("Failed with %d\n", ret);
+					return ret;
+				}
+			}
+		}
 		card->dapm.bias_level = level;
 		break;
 	case SND_SOC_BIAS_OFF:
@@ -168,6 +178,8 @@ int ctp_set_bias_level_post(struct snd_soc_card *card,
 		enum snd_soc_bias_level level)
 {
 	struct snd_soc_codec *codec;
+	struct ctp_mc_private *ctx = snd_soc_card_get_drvdata(card);
+	int ret = 0;
 
 	/* Clock management is done only if there is an associated codec
 	 * to dapm context and if this not the dummy codec
@@ -192,6 +204,13 @@ int ctp_set_bias_level_post(struct snd_soc_card *card,
 	case SND_SOC_BIAS_OFF:
 		if (codec->dapm.bias_level != SND_SOC_BIAS_OFF)
 			break;
+		if (ctx->ops->set_bias_level_post) {
+			ret = ctx->ops->set_bias_level_post(card, codec, level);
+			if (ret < 0) {
+				pr_err("Failed with %d\n", ret);
+				return ret;
+			}
+		}
 		intel_scu_ipc_set_osc_clk0(false, CLK0_MSIC);
 		card->dapm.bias_level = level;
 		break;
@@ -200,6 +219,7 @@ int ctp_set_bias_level_post(struct snd_soc_card *card,
 		return -EINVAL;
 		break;
 	}
+	dapm->bias_level = level;
 	pr_debug("%s:card(%s)->bias_level %u\n", __func__, card->name,
 			card->dapm.bias_level);
 	return 0;
@@ -286,12 +306,12 @@ int ctp_soc_jack_gpio_detect(void)
 	pr_debug("%s:gpio->%d=0x%d\n", __func__, gpio->gpio, enable);
 	pr_debug("Current jack status = 0x%x\n", jack->status);
 
-	set_mic_bias(jack, "MIC2 Bias", true);
+	set_mic_bias(jack, ctx->ops->mic_bias, true);
 	msleep(ctx->ops->micsdet_debounce);
 	status = ctx->ops->hp_detection(codec, jack, enable);
 	if (!status) {
 		ctx->headset_plug_flag = false;
-		set_mic_bias(jack, "MIC2 Bias", false);
+		set_mic_bias(jack, ctx->ops->mic_bias, false);
 		/* Jack removed, Disable BP interrupts if not done already */
 		set_bp_interrupt(ctx, false);
 	} else { /* If jack inserted, schedule delayed_wq */
@@ -338,7 +358,7 @@ void headset_status_verify(struct work_struct *work)
 		gpio->debounce_time = JACK_DEBOUNCE_REMOVE;
 		ctx->headset_plug_flag = true;
 	} else {
-		set_mic_bias(jack, "MIC2 Bias", false);
+		set_mic_bias(jack, ctx->ops->mic_bias, false);
 		/* Disable Button_press interrupt if no Headset */
 		set_bp_interrupt(ctx, false);
 		/* Restore the debounce time for HS insertion detection */
@@ -391,7 +411,7 @@ int ctp_soc_jack_gpio_detect_bp(void)
 	} else {
 		pr_debug("%s:Spurious BP interrupt : jack_status 0x%x, HS_status 0x%x\n",
 				__func__, jack->status, hs_status);
-		set_mic_bias(jack, "MIC2 Bias", false);
+		set_mic_bias(jack, ctx->ops->mic_bias, false);
 		/* Disable Button_press interrupt if no Headset */
 		set_bp_interrupt(ctx, false);
 	}
@@ -439,7 +459,6 @@ static void snd_ctp_poweroff(struct device *dev)
 {
 	pr_debug("In %s\n", __func__);
 	snd_soc_poweroff(dev);
-	return 0;
 }
 
 #else
@@ -451,7 +470,7 @@ static void snd_ctp_poweroff(struct device *dev)
 static void free_jack_wake_lock(struct ctp_mc_private *ctx)
 {
 	if (!ctx->ops->jack_support)
-		return 0;
+		return;
 #ifdef CONFIG_HAS_WAKELOCK
 	if (wake_lock_active(ctx->jack_wake_lock))
 		wake_unlock(ctx->jack_wake_lock);
@@ -628,6 +647,10 @@ static struct platform_device_id ctp_audio_ids[] = {
 	{
 		.name		= "merr_prh_cs42l73",
 		.driver_data	= &merr_bb_cs42l73_ops,
+	},
+	{
+		.name		= "ctp_ht_wm5102",
+		.driver_data	= &ctp_ht_wm5102_ops,
 	},
 	{ },
 };

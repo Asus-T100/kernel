@@ -333,7 +333,7 @@ int atomisp_freq_scaling(struct atomisp_device *isp, enum atomisp_dfs_mode mode)
 done:
 	/* workround to get isp works at 400Mhz for byt due to perf issue */
 	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2)
-		new_freq = ISP_FREQ_320MHZ;
+		new_freq = ISP_FREQ_400MHZ;
 
 	dev_dbg(isp->dev, "DFS target frequency=%d.\n", new_freq);
 
@@ -541,7 +541,7 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 	if (irq_infos & SH_CSS_IRQ_INFO_BUFFER_DONE)
 		atomic_set(&isp->sequence, atomic_read(&isp->sequence_temp));
 
-#ifdef CONFIG_ISP2400
+#if defined(CONFIG_ISP2400) || defined(CONFIG_ISP2400B0)
 	if ((irq_infos & SH_CSS_IRQ_INFO_INPUT_SYSTEM_ERROR) ||
 		(irq_infos & SH_CSS_IRQ_INFO_IF_ERROR)) {
 #else
@@ -1075,6 +1075,14 @@ void atomisp_wdt_work(struct work_struct *work)
 				SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF, true);
 
 			atomisp_set_term_en_count(isp);
+
+			if (IS_ISP2400 &&
+			atomisp_freq_scaling(isp, ATOMISP_DFS_MODE_AUTO) < 0)
+				dev_dbg(isp->dev, "dfs failed!\n");
+		} else {
+			if (IS_ISP2400 &&
+			atomisp_freq_scaling(isp, ATOMISP_DFS_MODE_MAX) < 0)
+				dev_dbg(isp->dev, "dfs failed!\n");
 		}
 
 		ret = v4l2_subdev_call(
@@ -1383,36 +1391,9 @@ static u32 get_pixel_depth(u32 pixelformat)
 	}
 }
 
-static int is_pixelformat_raw(u32 pixelformat)
+bool atomisp_is_mbuscode_raw(uint32_t code)
 {
-	switch (pixelformat) {
-	case V4L2_PIX_FMT_SBGGR16:
-	case V4L2_PIX_FMT_SBGGR12:
-	case V4L2_PIX_FMT_SGBRG12:
-	case V4L2_PIX_FMT_SGRBG12:
-	case V4L2_PIX_FMT_SRGGB12:
-	case V4L2_PIX_FMT_SBGGR10:
-	case V4L2_PIX_FMT_SGBRG10:
-	case V4L2_PIX_FMT_SGRBG10:
-	case V4L2_PIX_FMT_SRGGB10:
-	case V4L2_PIX_FMT_SBGGR8:
-	case V4L2_PIX_FMT_SGBRG8:
-	case V4L2_PIX_FMT_SGRBG8:
-	case V4L2_PIX_FMT_SRGGB8:
-		return 1;
-	default:
-		return 0;
-	}
-}
-
-int atomisp_is_mbuscode_raw(uint32_t code)
-{
-	const struct atomisp_format_bridge *b =
-		atomisp_get_format_bridge_from_mbus(code);
-
-	BUG_ON(!b);
-
-	return is_pixelformat_raw(b->pixelformat);
+	return code >= 0x3000 && code < 0x4000;
 }
 
 /*
@@ -3145,13 +3126,23 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 	if (isp->isp_subdev.continuous_mode->val) {
 		if (isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO) {
 			ret = __enable_continuous_mode(isp, true);
+
 			/*
-			 * Enable only if resolution is equal or above 5M,
-			 * Always enable raw_binning on MRFLD.
+			 * Enable only if resolution is >= 3M for ISP2400
 			 */
-			if (IS_MRFLD || width >= 2576 || height >= 1936) {
+			if (IS_ISP2400 && (width >= 2048 || height >= 1536)) {
 				sh_css_enable_raw_binning(true);
 				sh_css_input_set_two_pixels_per_clock(false);
+			}
+
+			if (!IS_ISP2400) {
+				/* enable raw binning for output >= 5M */
+				if (width >= 2576 || height >= 1936)
+					sh_css_enable_raw_binning(true);
+				/* enable 2ppc for CTP if output > 8M */
+				if (width > 3264 || height > 2448)
+					sh_css_input_set_two_pixels_per_clock(
+							true);
 			}
 		} else {
 			ret = __enable_continuous_mode(isp, false);
@@ -3792,6 +3783,10 @@ int atomisp_offline_capture_configure(struct atomisp_device *isp,
 				min_t(int, ATOMISP_CONT_RAW_FRAMES,
 				      isp->params.offline_parm.num_captures
 				      + 3);
+			/* WORKROUND: To be removed when NUM_CONTINUOUS_FRAMES set to 10 */
+			if ((intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2)
+				&& (num_raw_frames > 5))
+				num_raw_frames = 5;
 			/* TODO: this can be removed once user-space
 			 *       has been updated to use control API */
 			isp->isp_subdev.continuous_raw_buffer_size->val =

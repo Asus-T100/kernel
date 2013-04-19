@@ -3102,7 +3102,7 @@ static int gburst_init(struct gburst_pvt_s *gbprv)
 	read_PWRGT_CNT_toggle(gbprv);
 
 	{       /* Not a shared interrupt, so no IRQF_SHARED. */
-		const unsigned long request_flags = 0;
+		const unsigned long request_flags = IRQF_TRIGGER_RISING;
 
 		sts = request_irq(GBURST_IRQ_LEVEL, gburst_irq_handler,
 			request_flags, GBURST_DRIVER_NAME, gbprv);

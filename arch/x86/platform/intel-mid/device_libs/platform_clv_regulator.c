@@ -167,6 +167,17 @@ static struct platform_device *regulator_devices[] __initdata = {
 	&vemmc2_device,
 };
 
+void __init set_consumer_supply(struct platform_device *dev)
+{
+	regulator_devices[0] = dev;
+	return;
+}
+
+struct platform_device __init *get_regulator_dev(void)
+{
+	return regulator_devices[0];
+}
+
 static int __init regulator_init(void)
 {
 	platform_add_devices(regulator_devices,

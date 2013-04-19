@@ -43,10 +43,12 @@
 
 #define I2C_ADAPTER 0x02
 #define I2C_ADDRESS 0x54
-#define IGZO_PANEL_NAME	"SHARP IGZO VKB"
-#define CGS_PANEL_NAME	"SHARP CGS VKB"
 
-/* #define USE_CABC */
+enum vb_panel_type {
+	PANEL_IGZO = 0,
+	PANEL_CGS
+};
+
 /*
 #define NO_POWER_OFF
 #define NO_DRIVER_IC_INIT
@@ -189,7 +191,7 @@ static u8 ls04x_low_power_function[] = {
 	0x33, 0x00, 0xf0, 0x33,
 	0x33};
 static u8 ls04x_panel_sync_out1[] = {
-	0xec, 0x01, 0x00};
+	0xec, 0x01, 0x40};
 static u8 ls04x_panel_sync_out2[] = {
 	0xed, 0x00, 0x00, 0x00,
 	0x00, 0x00};
@@ -217,19 +219,11 @@ static u8 ir2e69_power_on_seq[][2] = {
 	{0,      20},
 	{0x28, 0x40},
 	{0x2b, 0x01},
-#ifdef USE_CABC
 	{0x05, 0x0d},
 	{0x06, 0x01},
 	{0x25, 0x20},
 	{0x0a, 0x20},
 	{0x0b, 0x20},
-#else
-	{0x05, 0x09},
-	{0x06, 0x01},
-	{0x25, 0x20},
-	{0x0a, 0x00},
-	{0x0b, 0x00},
-#endif
 	{0xdc, 0x3b},
 	{0xee, 0x00},
 	{0xf1, 0x00},
@@ -812,49 +806,34 @@ static void ls04x_cmd_get_panel_info(int pipe, struct panel_info *pi)
 	}
 }
 
+
 static int ls04x_cmd_set_brightness(struct mdfld_dsi_config *dsi_config,
 					int level)
 {
-	int r;
-#ifdef USE_CABC
-	u8 brightness[3];
-
-	PSB_DEBUG_ENTRY("%d\n", level);
 	struct mdfld_dsi_pkg_sender *sender
-				= mdfld_dsi_get_pkg_sender(dsi_config);
-	mdfld_dsi_send_mcs_short_lp(sender, write_ctrl_display, 0x2c, 1,
-				    MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_mcs_short_lp(sender, write_ctrl_cabc, 0x1, 1,
-				    MDFLD_DSI_SEND_PACKAGE);
+		= mdfld_dsi_get_pkg_sender(dsi_config);
 
-	memset(brightness, 0, sizeof(brightness));
-	r = mdfld_dsi_read_mcs_lp(sender,
-				write_display_brightness,
-				brightness,
-				2);
+	if (drm_psb_enable_cabc) {
+		u8 brightness[3] = {0, };
 
-	brightness[0] = write_display_brightness;
-	brightness[1] = (level * 4095 / 100) >> 8;
-	brightness[2] = (level * 4095 / 100) & 0xff;
-	mdfld_dsi_send_mcs_long_lp(sender,
+		brightness[0] = write_display_brightness;
+		brightness[1] = 0;
+		brightness[2] = (level * 255 / 100) & 0xff;
+		mdfld_dsi_send_mcs_long_lp(sender,
 				brightness,
 				sizeof(brightness),
 				MDFLD_DSI_SEND_PACKAGE);
+	} else {
+		u8 brightness[2];
 
-	memset(brightness, 0, sizeof(brightness));
-	r = mdfld_dsi_read_mcs_lp(sender,
-				write_display_brightness,
-				brightness,
-				2);
-#else
-	u8 brightness[2];
+		PSB_DEBUG_ENTRY("%d\n", level);
+		brightness[0] = 0x0a;
+		brightness[1] = level * 255 / 100;
+		i2c_master_send(i2c_client, brightness, sizeof(brightness));
+		brightness[0] = 0x0b;
+		i2c_master_send(i2c_client, brightness, sizeof(brightness));
+	}
 
-	PSB_DEBUG_ENTRY("%d\n", level);
-	brightness[0] = 0x0a; brightness[1] = level * 255 / 100;
-	i2c_master_send(i2c_client, brightness, sizeof(brightness));
-	brightness[0] = 0x0b;
-	i2c_master_send(i2c_client, brightness, sizeof(brightness));
-#endif
 	return 0;
 }
 
@@ -894,6 +873,12 @@ static int vb_cmd_power_on(struct mdfld_dsi_config *dsi_config)
 				    MDFLD_DSI_SEND_PACKAGE);
 	mdelay(100);
 
+	if (drm_psb_enable_cabc) {
+		mdfld_dsi_send_mcs_short_lp(sender, write_ctrl_display, 0x2c, 1,
+				MDFLD_DSI_SEND_PACKAGE);
+		mdfld_dsi_send_mcs_short_lp(sender, write_ctrl_cabc, 0x1, 1,
+				MDFLD_DSI_SEND_PACKAGE);
+	}
 #ifdef ENABLE_PANEL_READ
 	r = mdfld_dsi_get_power_mode(dsi_config, &power,
 					MDFLD_DSI_LP_TRANSMISSION);
@@ -1093,29 +1078,28 @@ void vb_cmd_init(struct drm_device *dev, struct panel_funcs *p_funcs)
 static int vb_lcd_probe(struct platform_device *pdev)
 {
 	int ret = 0;
+	enum vb_panel_type panel_type;
 
 	DRM_INFO("%s\n", __func__);
-
-	ret = intel_mid_mipi_client_detect(IGZO_PANEL_NAME);
-	if (!ret) {
+	panel_type = platform_get_device_id(pdev)->driver_data;
+	if (panel_type == PANEL_IGZO) {
 		DRM_INFO("%s: IGZO panel detected\n", __func__);
 		intel_mid_panel_register(vb_igzo_cmd_init);
-		return 0;
-	}
-
-	ret = intel_mid_mipi_client_detect(CGS_PANEL_NAME);
-	if (!ret) {
+	} else if (panel_type == PANEL_CGS) {
 		DRM_INFO("%s: CGS panel detected\n", __func__);
 		intel_mid_panel_register(vb_cgs_cmd_init);
-		return 0;
+	} else {
+		DRM_ERROR("bad vb panel type %d\n", panel_type);
+		return -EINVAL;
 	}
 
 	return 0;
 }
 
-static struct platform_device vb_lcd_device = {
-	.name	= "vb_lcd",
-	.id	= -1,
+static struct platform_device_id vb_panel_tbl[] = {
+	{ "SHARP IGZO VKB", PANEL_IGZO },
+	{ "SHARP CGS VKB",  PANEL_CGS },
+	{ }
 };
 
 static struct platform_driver vb_lcd_driver = {
@@ -1124,13 +1108,13 @@ static struct platform_driver vb_lcd_driver = {
 		.name	= "vb_lcd",
 		.owner	= THIS_MODULE,
 	},
+	.id_table = vb_panel_tbl
 };
 
 static int __init vb_lcd_init(void)
 {
 	DRM_INFO("%s\n", __func__);
-
-	platform_device_register(&vb_lcd_device);
-	platform_driver_register(&vb_lcd_driver);
+	return platform_driver_register(&vb_lcd_driver);
 }
+
 module_init(vb_lcd_init);

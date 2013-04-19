@@ -35,4 +35,17 @@ struct ulpmc_platform_data {
 	char extcon_devname[EXTCON_NAME_LEN];
 };
 
+#ifdef CONFIG_BYT_ULPMC_BATTERY
+extern void ulpmc_fwupdate_enter(void);
+extern void ulpmc_fwupdate_exit(void);
+extern struct i2c_client *ulpmc_get_i2c_client(void);
+#else
+static void ulpmc_fwupdate_enter(void){ }
+static void ulpmc_fwupdate_exit(void) { }
+static struct i2c_client *ulpmc_get_i2c_client(void)
+{
+	return NULL;
+}
+#endif
+
 #endif /* __BYT_ULPMC_BATTERY_H_ */

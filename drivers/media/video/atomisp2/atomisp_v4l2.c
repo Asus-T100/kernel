@@ -373,7 +373,6 @@ static int atomisp_mrfld_power_up(struct atomisp_device *isp)
 	reg_value = intel_mid_msgbus_read32(PUNIT_PORT, MRFLD_ISPSSPM0);
 	reg_value &= ~MRFLD_ISPSSPM0_ISPSSC_MASK;
 	intel_mid_msgbus_write32(PUNIT_PORT, MRFLD_ISPSSPM0, reg_value);
-	reg_value = intel_mid_msgbus_read32(PUNIT_PORT, MRFLD_ISPSSPM0);
 
 	/* FIXME: experienced value for delay */
 	timeout = jiffies + msecs_to_jiffies(50);
@@ -922,6 +921,12 @@ load_firmware(struct device *dev)
 	const struct firmware *fw;
 	int rc;
 	char *fw_path = IS_ISP2400 ? ISP2400_FW_PATH : MFLD_FW_PATH;
+
+	/*
+	 * FIXME: BYT uses css2400B0 firmware
+	 */
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2)
+		fw_path = ISP2400B0_FW_PATH;
 
 	rc = request_firmware(&fw, fw_path, dev);
 	if (rc) {

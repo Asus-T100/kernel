@@ -312,6 +312,12 @@ int tng_topaz_dequeue_send(struct drm_device *dev);
 
 uint32_t get_ctx_cnt(struct drm_device *dev);
 
+struct psb_video_ctx *get_ctx_from_fp(
+	struct drm_device *dev, struct file *filp);
+
+int tng_topaz_handle_sigint(
+	struct drm_device *dev,
+	struct file *filp);
 
 #define TNG_TOPAZ_NEW_PMSTATE(drm_dev, topaz_priv, new_state)		\
 do { \

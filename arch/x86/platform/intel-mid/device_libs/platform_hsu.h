@@ -23,6 +23,13 @@ enum hsu_core {
 	hsu_tng,
 };
 
+enum hsu_pid {
+	hsu_pid_def = 0,
+	hsu_pid_rhb = 0,
+	hsu_pid_vtb = 1,
+	hsu_pid_max,
+};
+
 struct hsu_port_pin_cfg {
 	char *name;
 	int id;

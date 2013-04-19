@@ -20,8 +20,12 @@ struct socket_port_s {
 	unsigned				channel;	/* the port entity */
 	socket_port_direction_t direction;	/* the port direction */
 	socket_port_callout_fp	callout;	/* the port callout function */
-	
+
 	socket_t				*socket;	/* point to the socket */
+
+	struct {
+		unsigned data;
+	} buf;								/* the buffer at the port */
 };
 
 /* data structure of the socket */

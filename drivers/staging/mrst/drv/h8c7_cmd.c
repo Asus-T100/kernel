@@ -145,7 +145,6 @@ static u8 h8c7_set_cabc_gain[] = {
 	0x25, 0x22};
 
 #define MIPI_RESET_GPIO_DEFAULT 128
-#define REDHOOKBAY_PANEL_NAME	"H8C7 CMD RHB"
 
 static
 int mdfld_h8c7_drv_ic_init(struct mdfld_dsi_config *dsi_config)
@@ -789,28 +788,16 @@ void h8c7_cmd_init(struct drm_device *dev, struct panel_funcs *p_funcs)
 
 static int h8c7_lcd_cmd_probe(struct platform_device *pdev)
 {
-	int ret = 0;
-
-	DRM_INFO("%s\n", __func__);
-
-	ret = intel_mid_mipi_client_detect(REDHOOKBAY_PANEL_NAME);
-	if (!ret) {
-		DRM_INFO("%s: H8C7 panel detected\n", __func__);
-		intel_mid_panel_register(h8c7_cmd_init);
-	}
+	DRM_INFO("%s: H8C7 panel detected\n", __func__);
+	intel_mid_panel_register(h8c7_cmd_init);
 
 	return 0;
 }
 
-static struct platform_device h8c7_lcd_device = {
-	.name	= "h8c7_cmd_lcd",
-	.id	= -1,
-};
-
 static struct platform_driver h8c7_lcd_driver = {
 	.probe	= h8c7_lcd_cmd_probe,
 	.driver	= {
-		.name	= "h8c7_cmd_lcd",
+		.name	= "H8C7 CMD RHB",
 		.owner	= THIS_MODULE,
 	},
 };
@@ -818,10 +805,6 @@ static struct platform_driver h8c7_lcd_driver = {
 static int __init h8c7_lcd_init(void)
 {
 	DRM_INFO("%s\n", __func__);
-
-	platform_device_register(&h8c7_lcd_device);
-	platform_driver_register(&h8c7_lcd_driver);
-
-	return 0;
+	return platform_driver_register(&h8c7_lcd_driver);
 }
 module_init(h8c7_lcd_init);

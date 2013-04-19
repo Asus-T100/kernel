@@ -29,7 +29,6 @@ obj-$(subst m,y,$(CONFIG_INTEL_SCU_FLIS))				+= platform_scu_flis.o
 obj-$(subst m,y,$(CONFIG_IIO_BASINCOVE_GPADC))				+= platform_bcove_adc.o
 obj-$(subst m,y,$(CONFIG_VLV2_PLAT_CLK))				+= platform_vlv2_plat_clk.o
 # I2C Devices
-obj-$(subst m,y,$(CONFIG_CRYSTAL_COVE))					+= platform_crystal_cove.o
 obj-$(subst m,y,$(CONFIG_SENSORS_EMC1403))				+= platform_emc1403.o
 obj-$(subst m,y,$(CONFIG_SENSORS_HMC5883))				+= platform_hmc5883.o
 obj-$(subst m,y,$(CONFIG_SENSORS_LIS3LV02D))				+= platform_lis331.o
@@ -60,6 +59,7 @@ obj-$(subst m,y,$(CONFIG_TOUCHSCREEN_SYNAPTICS_I2C_RMI4))              += platfo
 endif
 obj-$(subst m,y,$(CONFIG_BQ24261_CHARGER))                            += platform_bq24261.o
 obj-$(subst m,y,$(CONFIG_TOUCHSCREEN_R69001_I2C))			+= platform_r69001.o
+obj-$(subst m,y,$(CONFIG_SND_SOC_WM5102))				+= platform_wm5102.o
 # Camera
 obj-$(subst m,y,$(CONFIG_VIDEO_ATOMISP))				+= platform_camera.o
 ifdef CONFIG_VIDEO_ATOMISP
@@ -90,8 +90,9 @@ obj-$(subst m,y,$(CONFIG_MDM_CTRL))					+= platform_modem_ctrl.o
 obj-$(subst m,y,$(CONFIG_SERIAL_MFD_HSU))				+= platform_hsu.o
 # MISC Devices
 obj-$(subst m,y,$(CONFIG_KEYBOARD_GPIO))				+= platform_gpio_keys.o
-obj-$(subst m,y,$(CONFIG_SWITCH_MID))				+= platform_switch_mid.o
-obj-$(subst m,y,$(CONFIG_SWITCH_MID_USER_NOTIFY))		+= platform_switch_mid_user_notify.o
+obj-$(subst m,y,$(CONFIG_SWITCH_MID))					+= platform_switch_mid.o
+obj-$(subst m,y,$(CONFIG_SWITCH_MID_USER_NOTIFY))			+= platform_switch_mid_user_notify.o
+obj-$(subst m,y,$(CONFIG_EXTCON_MID))					+= platform_extcon_mid.o
 obj-$(subst m,y,$(CONFIG_I2C_GPIO))					+= platform_i2c_gpio.o
 # WIFI
 obj-$(subst m,y,$(CONFIG_WL12XX_PLATFORM_DATA))				+= platform_wl12xx.o
