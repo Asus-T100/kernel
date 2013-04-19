@@ -473,6 +473,12 @@ struct snd_sst_drop_response {
 	u32 bytes;
 };
 
+struct snd_sst_async_msg {
+	u32 msg_id; /* Async error msg id */
+	u32 fw_resp; /* Firmware Result */
+	u32 lib_resp; /*Library result */
+} __packed;
+
 /* CSV Voice call routing structure */
 struct snd_sst_control_routing {
 	u8 control; /* 0=start, 1=Stop */
