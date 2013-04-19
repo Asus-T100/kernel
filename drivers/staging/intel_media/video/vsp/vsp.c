@@ -189,6 +189,10 @@ int vsp_handle_response(struct drm_psb_private *dev_priv)
 		}
 		case VssVp8encSetSequenceParametersResponse:
 			VSP_DEBUG("receive vp8 sequence response\n");
+			VSP_DEBUG("VSP clock cycles from pre response %x\n",
+				  msg->vss_cc);
+			vsp_priv->vss_cc_acc += msg->vss_cc;
+
 			break;
 		case VssVp8encEncodeFrameResponse:
 		{
@@ -199,6 +203,10 @@ int vsp_handle_response(struct drm_psb_private *dev_priv)
 					(vsp_priv->coded_buf);
 			int i = 0;
 			int j = 0;
+			VSP_DEBUG("VSP clock cycles from pre response %x\n",
+				  msg->vss_cc);
+			vsp_priv->vss_cc_acc += msg->vss_cc;
+
 			VSP_DEBUG("receive vp8 encoded frame buffer %x",
 					msg->buffer);
 			VSP_DEBUG("size %x cur command id is %d\n",
@@ -217,6 +225,8 @@ int vsp_handle_response(struct drm_psb_private *dev_priv)
 					encoded_frame->status);
 			VSP_DEBUG("frame flags[1=Key, 0=Non-key] %d\n",
 					encoded_frame->frame_flags);
+			VSP_DEBUG("ref frame flags %d\n",
+					encoded_frame->ref_frame_flags);
 			VSP_DEBUG("segments = %d\n", encoded_frame->segments);
 			VSP_DEBUG("frame size %d[bytes]\n",
 					encoded_frame->frame_size);
@@ -224,6 +234,8 @@ int vsp_handle_response(struct drm_psb_private *dev_priv)
 					encoded_frame->partitions);
 			VSP_DEBUG("coded data start %p\n",
 					encoded_frame->coded_data);
+			VSP_DEBUG("surfaced_of_ref_frame %p\n",
+					encoded_frame->surfaced_of_ref_frame);
 
 			if (encoded_frame->partitions > PARTITIONS_MAX) {
 				VSP_DEBUG("partitions num error\n");
@@ -519,6 +531,7 @@ int vsp_send_command(struct drm_device *dev,
 out:
 	/* update write index */
 	VSP_DEBUG("%d cmd will send to VSP!\n", num_cmd);
+
 	vsp_priv->ctrl->cmd_wr =
 		(vsp_priv->ctrl->cmd_wr + num_cmd) % VSP_CMD_QUEUE_SIZE;
 
@@ -582,8 +595,14 @@ static int vsp_prehandle_command(struct drm_file *priv,
 			VSP_DEBUG("set context base %x, size %x\n",
 				  cur_cmd->buffer, cur_cmd->size);
 
-			vsp_priv->setting->state_buffer_size = cur_cmd->size;
-			vsp_priv->setting->state_buffer_addr = cur_cmd->buffer;
+			/* initialize the context-data */
+			vsp_priv->context_setting->app_id = VSP_APP_ID_VP8_ENC;
+			vsp_priv->context_setting->usage = vsp_context_starting;
+			vsp_priv->context_setting->state_buffer_size =
+								cur_cmd->size;
+			vsp_priv->context_setting->state_buffer_addr =
+								cur_cmd->buffer;
+
 			vsp_priv->fw_type = cur_cmd->type;
 
 			vsp_new_context(dev_priv->dev);
@@ -1020,8 +1039,8 @@ int psb_vsp_dump_info(struct drm_psb_private *dev_priv)
 
 	/* The setting-struct */
 	VSP_DEBUG("setting addr:%x\n", vsp_priv->setting_bo->offset);
-	VSP_DEBUG("setting->reserved0:%x\n",
-			vsp_priv->setting->reserved0);
+	VSP_DEBUG("setting->max_contexts: %d\n",
+			vsp_priv->setting->max_contexts);
 	VSP_DEBUG("setting->command_queue_size:0x%x\n",
 			vsp_priv->setting->command_queue_size);
 	VSP_DEBUG("setting->command_queue_addr:%x\n",
@@ -1030,10 +1049,20 @@ int psb_vsp_dump_info(struct drm_psb_private *dev_priv)
 			vsp_priv->setting->response_queue_size);
 	VSP_DEBUG("setting->response_queue_addr:%x\n",
 			vsp_priv->setting->response_queue_addr);
-	VSP_DEBUG("setting->state_buffer_size:0x%x\n",
-			vsp_priv->setting->state_buffer_size);
-	VSP_DEBUG("setting->state_buffer_addr:%x\n",
-			vsp_priv->setting->state_buffer_addr);
+	VSP_DEBUG("setting->contexts_array_addr:%x\n",
+			vsp_priv->setting->contexts_array_addr);
+
+	/* The context_setting struct */
+	VSP_DEBUG("context_settings(addr):%x\n",
+			vsp_priv->context_setting_bo->offset);
+	VSP_DEBUG("context_settings.app_id:%d\n",
+			vsp_priv->context_setting->app_id);
+	VSP_DEBUG("context_setting->state_buffer_size:0x%x\n",
+			vsp_priv->context_setting->state_buffer_size);
+	VSP_DEBUG("context_setting->state_buffer_addr:%x\n",
+			vsp_priv->context_setting->state_buffer_addr);
+	VSP_DEBUG("context_settings.usage:%d\n",
+			vsp_priv->context_setting->usage);
 
 	/* IRQ registers */
 	for (i = 0; i < 6; i++) {
@@ -1082,6 +1111,63 @@ int psb_vsp_dump_info(struct drm_psb_private *dev_priv)
 	VSP_DEBUG("sp1_cfg_pmem_iam_op0:%x\n", reg);
 	SP_REG_READ32(0x10, &reg, vsp_sp1);
 	VSP_DEBUG("sp1_cfg_pmem_master:%x\n", reg);
+
+	/* VP0 info */
+	VSP_DEBUG("vp0_processor:%d\n", vsp_vp0);
+	SP_REG_READ32(0x0, &reg, vsp_vp0);
+	VSP_DEBUG("partition2_vp0_tile_vp_stat_and_ctrl:%x\n", reg);
+	SP_REG_READ32(0x4, &reg, vsp_vp0);
+	VSP_DEBUG("partition2_vp0_tile_vp_base_address:%x\n", reg);
+	SP_REG_READ32(0x34, &reg, vsp_vp0);
+	VSP_DEBUG("partition2_vp0_tile_vp_debug_pc:%x\n", reg);
+	SP_REG_READ32(0x38, &reg, vsp_vp0);
+	VSP_DEBUG("partition2_vp0_tile_vp_stall_stat_cfg_pmem_iam_op0:%x\n",
+			reg);
+	SP_REG_READ32(0x10, &reg, vsp_vp0);
+	VSP_DEBUG("partition2_vp0_tile_vp_base_addr_MI_cfg_pmem_master:%x\n",
+			reg);
+
+	/* VP1 info */
+	VSP_DEBUG("vp1_processor:%d\n", vsp_vp1);
+	SP_REG_READ32(0x0, &reg, vsp_vp1);
+	VSP_DEBUG("partition2_vp1_tile_vp_stat_and_ctrl:%x\n", reg);
+	SP_REG_READ32(0x4, &reg, vsp_vp1);
+	VSP_DEBUG("partition2_vp1_tile_vp_base_address:%x\n", reg);
+	SP_REG_READ32(0x34, &reg, vsp_vp1);
+	VSP_DEBUG("partition2_vp1_tile_vp_debug_pc:%x\n", reg);
+	SP_REG_READ32(0x38, &reg, vsp_vp1);
+	VSP_DEBUG("partition2_vp1_tile_vp_stall_stat_cfg_pmem_iam_op0:%x\n",
+			reg);
+	SP_REG_READ32(0x10, &reg, vsp_vp1);
+	VSP_DEBUG("partition2_vp1_tile_vp_base_addr_MI_cfg_pmem_master:%x\n",
+			reg);
+
+	/* MEA info */
+	VSP_DEBUG("mea_processor:%d\n", vsp_mea);
+	SP_REG_READ32(0x0, &reg, vsp_mea);
+	VSP_DEBUG("partition3_mea_tile_mea_stat_and_ctrl:%x\n", reg);
+	SP_REG_READ32(0x4, &reg, vsp_mea);
+	VSP_DEBUG("partition3_mea_tile_mea_base_address:%x\n", reg);
+	SP_REG_READ32(0x2C, &reg, vsp_mea);
+	VSP_DEBUG("partition3_mea_tile_mea_debug_pc:%x\n", reg);
+	SP_REG_READ32(0x30, &reg, vsp_mea);
+	VSP_DEBUG("partition3_mea_tile_mea_stall_stat_cfg_pmem_iam_op0:%x\n",
+			reg);
+	SP_REG_READ32(0x10, &reg, vsp_mea);
+	VSP_DEBUG("partition3_mea_tile_mea_base_addr_MI_cfg_pmem_master:%x\n",
+			reg);
+
+	/* ECA info */
+	VSP_DEBUG("ECA info\n");
+	MM_READ32(0x30000, 0x0, &reg);
+	VSP_DEBUG("partition1_sp0_tile_eca_stat_and_ctrl:%x\n", reg);
+	MM_READ32(0x30000, 0x4, &reg);
+	VSP_DEBUG("partition1_sp0_tile_eca_base_address:%x\n", reg);
+	MM_READ32(0x30000, 0x2C, &reg);
+	VSP_DEBUG("partition1_sp0_tile_eca_debug_pc:%x\n", reg);
+	MM_READ32(0x30000, 0x30, &reg);
+	VSP_DEBUG("partition1_sp0_tile_eca_stall_stat_cfg_pmem_loc_op0:%x\n",
+			reg);
 
 	/* WDT info */
 	for (i = 0; i < 14; i++) {

@@ -30,6 +30,15 @@
 #define VSS_PROC_MAX_INPUT_PICTURES  1
 #define VSS_PROC_MAX_OUTPUT_PICTURES 4
 
+#define VSP_APP_ID_NONE 0
+
+/* Application IDs for applications that use secure boot
+ * and context-switching
+ * */
+#define VSP_APP_ID_FRC_VPP 1
+#define VSP_APP_ID_VP8_ENC 2
+#define VSP_APP_ID_WIDI_ENC 3
+
 enum VssProcFilterType {
 	VssProcFilterDenoise,
 	VssProcFilterSharpening,
@@ -312,11 +321,11 @@ struct vsp_secure_boot_header {
 };
 
 enum vsp_ctrl_reg_addr {
-	VSP_FIRMWARE_ADDR_REG     = 2,
 	VSP_SETTING_ADDR_REG      = 3,
 	VSP_SECBOOT_DEBUG_REG     = 4,
 	VSP_ENTRY_KIND_REG        = 5,
 	VSP_POWER_SAVING_MODE_REG = 6,
+	VSP_CONTEXT_ID_REG        = 7,
 	VSP_CMD_QUEUE_RD_REG      = 12,
 	VSP_CMD_QUEUE_WR_REG      = 13,
 	VSP_ACK_QUEUE_RD_REG      = 14,
@@ -329,7 +338,7 @@ struct vsp_ctrl_reg {
 	 * For TNG-B0, this is the program-index-number in the
 	 *		multi-application firmware blob
 	 */
-	unsigned int firmware_addr;
+	unsigned int reserved_2;
 
 	/* setting address from host to firmware */
 	unsigned int setting_addr;
@@ -345,7 +354,8 @@ struct vsp_ctrl_reg {
 	/* set the power-saving-mode setting */
 	unsigned int power_saving_mode;
 
-	unsigned int reserved_7;
+	unsigned int context_setting_addr;
+
 	unsigned int reserved_8;
 	unsigned int reserved_9;
 	unsigned int reserved_10;
@@ -363,15 +373,43 @@ struct vsp_ctrl_reg {
  * struct is written to ddr in vsp_init call, destroyed upon uninit
  */
 struct vsp_settings_t {
-	unsigned int reserved0;
+	unsigned int max_contexts;
 	unsigned int command_queue_size;
 	unsigned int command_queue_addr;
 	unsigned int response_queue_size;
 	unsigned int response_queue_addr;
-	unsigned int state_buffer_size;
-	unsigned int state_buffer_addr;
+	unsigned int contexts_array_addr;
+	unsigned int reserved6;
 	/* Extra field to align to 256 bit (for DMA) */
 	unsigned int reserved7;
+};
+
+/*
+ * Struct for the settings of a single context. Normally placed in an array in
+ * the generic settings struct.
+ *
+ * Context-id is determined by the position in the array, so it is not stored in
+ * the struct itself.
+ *
+ * Usage field is the last field, so that it gets written last during a memory
+ * transfer.
+ * */
+struct vsp_context_settings_t {
+	unsigned int app_id;  /* Which app this context belongs to */
+	unsigned int state_buffer_size; /* state buffer for single context */
+	unsigned int state_buffer_addr; /* state buffer for single context */
+	unsigned int reserved3; /* Extra field to align to 256 bit (for DMA) */
+	unsigned int reserved4; /* Extra field to align to 256 bit (for DMA) */
+	unsigned int reserved5; /* Extra field to align to 256 bit (for DMA) */
+	unsigned int reserved6; /* Extra field to align to 256 bit (for DMA) */
+	unsigned int usage; /* Indicates if this context is in use */
+};
+
+enum vsp_context_usage {
+	vsp_context_unused = 0,
+	vsp_context_deinit = 1,
+	vsp_context_starting = 16,
+	vsp_context_in_use = 17
 };
 
 /* default initializer to initialize vsp_settings struct
@@ -456,7 +494,8 @@ struct VssVp8encEncodedFrame {
 	uint32_t partition_id;
 	uint32_t buffer_level;
 	uint32_t quality;
-	uint32_t reserved;
+	uint32_t surfaced_of_ref_frame[3];
+	uint32_t reserved[15];
 	uint32_t coded_data[1];
 };
 
@@ -465,6 +504,7 @@ struct VssVp8encEncodedFrame {
  */
 struct VssVp8encPictureParameterBuffer {
 	struct VssProcPictureVP8 input_frame;
+	struct VssProcPictureVP8 recon_frame;
 
 	uint32_t version;
 	uint32_t pic_flags;
