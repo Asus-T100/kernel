@@ -881,6 +881,24 @@ static int mt9m114_g_2a_status(struct v4l2_subdev *sd, s32 *val)
 	return 0;
 }
 
+/* This returns the exposure time being used. This should only be used
+   for filling in EXIF data, not for actual image processing. */
+static int mt9m114_g_exposure(struct v4l2_subdev *sd, s32 *value)
+{
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	u16 coarse;
+	int ret;
+
+	/* the fine integration time is currently not calculated */
+	ret = mt9m114_read_reg(client, MISENSOR_16BIT,
+			       MISENSOR_COARSE_INTEGRATION_TIME, &coarse);
+	if (ret)
+		return ret;
+
+	*value = coarse;
+	return 0;
+}
+
 static struct mt9m114_control mt9m114_controls[] = {
 	{
 		.qc = {
@@ -973,6 +991,19 @@ static struct mt9m114_control mt9m114_controls[] = {
 			.flags = 0,
 		},
 		.query = mt9m114_g_2a_status,
+	},
+	{
+		.qc = {
+			.id = V4L2_CID_EXPOSURE_ABSOLUTE,
+			.type = V4L2_CTRL_TYPE_INTEGER,
+			.name = "exposure",
+			.minimum = 0x0,
+			.maximum = 0xffff,
+			.step = 0x01,
+			.default_value = 0x00,
+			.flags = 0,
+		},
+		.query = mt9m114_g_exposure,
 	},
 
 };
