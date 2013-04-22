@@ -151,6 +151,9 @@ enum s3_parts {
 #define S0I1_POWER_USAGE       50
 #define S0I3_POWER_USAGE       31
 
+extern unsigned int enable_s3;
+extern unsigned int enable_s0ix;
+
 extern void pmu_s0ix_demotion_stat(int req_state, int grant_state);
 extern unsigned int pmu_get_new_cstate(unsigned int cstate, int *index);
 extern int get_target_platform_state(unsigned long *eax);
