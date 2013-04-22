@@ -3011,6 +3011,14 @@ static int __enable_continuous_mode(struct atomisp_device *isp, bool enable)
 	sh_css_enable_continuous(enable);
 	sh_css_enable_cont_capt(enable,
 				!isp->isp_subdev.continuous_viewfinder->val);
+
+	/*
+	 * WORKROUND: To be removed when NUM_CONTINUOUS_FRAMES set to 10
+	 * for ISP2400A0
+	 */
+	if ((intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER)
+		&& (isp->isp_subdev.continuous_raw_buffer_size->val > 5))
+		isp->isp_subdev.continuous_raw_buffer_size->val = 5;
 	if (sh_css_continuous_set_num_raw_frames(
 			isp->isp_subdev.continuous_raw_buffer_size->val)
 		!= sh_css_success) {
