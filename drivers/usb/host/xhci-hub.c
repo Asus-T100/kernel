@@ -552,6 +552,7 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 		NUM_PORT_REGS*((wIndex & 0xff) - 1);
 	u32 i, command, num_ports, selector;
 
+	selector = wIndex >> 8;
 	max_ports = xhci_get_ports(hcd, &port_array);
 	bus_state = &xhci->bus_state[hcd_index(hcd)];
 
@@ -852,7 +853,6 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 			temp = xhci_readl(xhci, port_array[wIndex]);
 			break;
 		case USB_PORT_FEAT_TEST:
-			selector = wIndex >> 8;
 			if (!selector || selector >= 5)
 				goto error;
 			/*
