@@ -314,6 +314,16 @@ static ssize_t get_shutdown_methods(struct device *device,
 static DEVICE_ATTR(disable_shutdown_methods, S_IRUGO | S_IWUSR,
 	get_shutdown_methods, override_shutdown_methods);
 
+/* Sysfs entry to enter shutdown voltage from user space */
+static int shutdown_volt;
+static ssize_t set_shutdown_voltage(struct device *device,
+				struct device_attribute *attr, const char *buf,
+				size_t count);
+static ssize_t get_shutdown_voltage_set_by_user(struct device *device,
+				struct device_attribute *attr, char *buf);
+static DEVICE_ATTR(shutdown_voltage, S_IRUGO | S_IWUSR,
+	get_shutdown_voltage_set_by_user, set_shutdown_voltage);
+
 /*
  * Sysfs entry to report fake battery temperature. This
  * interface is needed to support conformence testing
@@ -889,7 +899,9 @@ static int max17042_get_property(struct power_supply *psy,
 			volt_ocv = (ret >> 3) * MAX17042_VOLT_CONV_FCTR;
 
 			/* Get the minimum voltage thereshold */
-			if (chip->pdata->get_vmin_threshold)
+			if (shutdown_volt)
+				batt_vmin = shutdown_volt;
+			else if (chip->pdata->get_vmin_threshold)
 				batt_vmin = chip->pdata->get_vmin_threshold();
 			else
 				batt_vmin = BATTERY_VOLT_MIN_THRESHOLD;
@@ -1878,6 +1890,34 @@ static ssize_t get_shutdown_methods(struct device *dev,
 }
 
 /**
+ * get_shutdown_voltage_set_by_user - get function for sysfs shutdown_voltage
+ * Parameters as defined by sysfs interface
+ */
+static ssize_t get_shutdown_voltage_set_by_user(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", shutdown_volt);
+}
+
+/**
+ * set_shutdown_voltage - set function for sysfs shutdown_voltage
+ * Parameters as defined by sysfs interface
+ * shutdown_volt can take the values between 3.4V to 4.2V
+ */
+static ssize_t set_shutdown_voltage(struct device *dev,
+				struct device_attribute *attr, const char *buf,
+				size_t count)
+{
+	unsigned long value;
+	if (kstrtoul(buf, 10, &value))
+		return -EINVAL;
+	if ((value < VBATT_MIN * 1000) || (value > VBATT_MAX * 1000))
+		return -EINVAL;
+	shutdown_volt = value;
+	return count;
+}
+
+/**
  * set_fake_temp_enable - sysfs to set enable_fake_temp
  * Parameter as define by sysfs interface
  */
@@ -2142,6 +2182,12 @@ static int __devinit max17042_probe(struct i2c_client *client,
 	if (ret)
 		dev_warn(&client->dev, "cannot create sysfs entry\n");
 
+	/* create sysfs file to enter shutdown voltage */
+	ret = device_create_file(&client->dev,
+			&dev_attr_shutdown_voltage);
+	if (ret)
+		dev_warn(&client->dev, "cannot create sysfs entry\n");
+
 	/* create sysfs file to enable fake battery temperature */
 	ret = device_create_file(&client->dev,
 			&dev_attr_enable_fake_temp);
@@ -2164,6 +2210,7 @@ static int __devexit max17042_remove(struct i2c_client *client)
 	else
 		unregister_reboot_notifier(&max17042_reboot_notifier_block);
 	device_remove_file(&client->dev, &dev_attr_disable_shutdown_methods);
+	device_remove_file(&client->dev, &dev_attr_shutdown_voltage);
 	device_remove_file(&client->dev, &dev_attr_enable_fake_temp);
 	max17042_remove_debugfs(chip);
 	if (client->irq > 0)
