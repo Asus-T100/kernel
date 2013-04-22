@@ -66,6 +66,7 @@
 
 #include <linux/interrupt.h>
 #include <linux/pci.h>
+#include <asm/intel_scu_ipc.h>
 #include "otm_hdmi_types.h"
 #include "otm_hdmi_defs.h"
 #include "edid.h"
@@ -118,5 +119,15 @@ int ps_hdmi_hpd_register_driver(void);
 
 /* PCI Driver Cleanup function */
 int ps_hdmi_hpd_unregister_driver(void);
+
+/**
+ * notify security component of hdcp and hdmi cable status
+ *
+ * @hdcp	HDCP status: true if phase1 is enabled
+ * @cable	HDMI connection status: true if connected
+ *
+ * Returns:	none
+ */
+void ps_hdmi_update_security_hdmi_hdcp_status(bool hdcp, bool cable);
 
 #endif /* _PLATFORM_SPEC_H */

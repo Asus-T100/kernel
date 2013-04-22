@@ -102,6 +102,8 @@ static hdmi_context_t *g_context;
 #define PS_VCC330_OFF				0x24
 #define PS_VCC330_ON				0x37
 
+extern int intel_scu_ipc_command(u32 cmd, u32 sub, u8 *in, u32 inlen,
+		u32 *out, u32 outlen);
 
 /* For CTP, it is required that SW pull up or pull down the
  * LS_OE GPIO pin based on cable status. This is needed before
@@ -309,6 +311,48 @@ bool ps_hdmi_get_cable_status(void *context)
 }
 
 /**
+ * notify security component of hdcp and hdmi cable status
+ *
+ * @hdcp	HDCP status: true if phase1 is enabled
+ * @cable	HDMI connection status: true if connected
+ *
+ * Returns:	none
+ */
+void ps_hdmi_update_security_hdmi_hdcp_status(bool hdcp, bool cable)
+{
+#define IA_SCU_CMD      0XE8
+#define SCU_CHAABI_CMD  0X85
+#define CHAABI_MSG_SIZE 16
+
+	uint8_t  in_buf[CHAABI_MSG_SIZE];
+	uint32_t out_buf[CHAABI_MSG_SIZE/sizeof(uint32_t)];
+
+	pr_debug("hdcp: enter %s\n", __func__);
+
+	/* init
+	 * do not care about out_buf.
+	 */
+	memset(in_buf, 0, CHAABI_MSG_SIZE);
+
+	/* chaabi msg use byte 3 for command */
+	in_buf[3] = SCU_CHAABI_CMD;
+
+	/* chaabi msg use bits 1:0 of byte 4 for status */
+	if (cable)
+		in_buf[4] |= 1 << 0;
+	if (hdcp)
+		in_buf[4] |= 1 << 1;
+
+	/* no sub-cmd, so set "sub" argument to 0 */
+	intel_scu_ipc_command(IA_SCU_CMD, 0, in_buf, sizeof(in_buf),
+			out_buf, sizeof(out_buf)/sizeof(uint32_t));
+
+	pr_debug("hdcp: leave %s\n", __func__);
+	return;
+}
+
+
+/**
  * hdmi interrupt handler (top half).
  * @irq:	irq number
  * @data:	data for the interrupt handler
@@ -453,3 +497,4 @@ int ps_hdmi_hpd_unregister_driver(void)
 	pci_unregister_driver(&ps_hdmi_hpd_driver);
 	return 0;
 }
+
