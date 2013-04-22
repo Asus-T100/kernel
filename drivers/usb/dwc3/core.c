@@ -268,6 +268,7 @@ static int dwc3_event_buffers_setup(struct dwc3 *dwc)
 				evt->length);
 
 		memset(evt->buf, 0, evt->length);
+		evt->lpos = 0;
 
 		dwc3_writel(dwc->regs, DWC3_GEVNTADRLO(n),
 				lower_32_bits(evt->dma));
