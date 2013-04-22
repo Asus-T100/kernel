@@ -1709,6 +1709,19 @@ void otm_hdmi_save_display_registers(void *context, bool connected)
 }
 
 /**
+ * notify security component of hdcp and hdmi cable status
+ *
+ * @hdcp	HDCP status: true if phase1 is enabled
+ * @cable	HDMI connection status: true if connected
+ *
+ * Returns:	none
+ */
+void otm_hdmi_update_security_hdmi_hdcp_status(bool hdcp, bool cable)
+{
+	ps_hdmi_update_security_hdmi_hdcp_status(hdcp, cable);
+}
+
+/**
  * disable HDMI display
  * @context:	hdmi_context
  *

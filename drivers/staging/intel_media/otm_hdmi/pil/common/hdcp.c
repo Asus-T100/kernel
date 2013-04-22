@@ -110,8 +110,10 @@ struct hdcp_context_t {
 	bool	is_phase1_enabled;
 	bool	is_phase2_enabled;
 	bool	is_phase3_valid;
+	bool	previous_phase1_status;
 	bool	suspend;
 	bool	hpd;
+	bool	previous_hpd;
 	bool	display_power_on;
 	bool	auto_retry;
 	bool	wdt_expired;
@@ -936,8 +938,7 @@ static void hdcp_retry_enable(void)
  *  */
 static bool hdcp_ri_check_reschedule(void)
 {
-	#define ctx hdcp_context
-
+	struct hdcp_context_t *ctx = hdcp_context;
 	uint32_t prev_ri_frm_cnt_status = ctx->prev_ri_frm_cnt_status;
 	uint8_t  ri_frm_cnt_status;
 	int32_t  ri_frm_cnt;
@@ -1028,6 +1029,7 @@ static void hdcp_task_event_handler(struct work_struct *work)
 	int msg = 0;
 	void *msg_data = NULL;
 	bool reset_hdcp = false;
+	struct hdcp_context_t *ctx = hdcp_context;
 
 	if (hwq != NULL) {
 		msg = hwq->msg;
@@ -1153,6 +1155,17 @@ static void hdcp_task_event_handler(struct work_struct *work)
 	} else
 		/* if disabled retry HDCP authentication */
 		hdcp_retry_enable();
+
+	/* Update security component of hdmi and hdcp status */
+	if ((ctx->is_phase1_enabled != ctx->previous_phase1_status) ||
+			(ctx->hpd != ctx->previous_hpd)) {
+		ctx->previous_phase1_status = ctx->is_phase1_enabled;
+		ctx->previous_hpd           = ctx->hpd;
+
+		otm_hdmi_update_security_hdmi_hdcp_status(
+				ctx->is_phase1_enabled, ctx->hpd);
+	}
+
 EXIT_HDCP_HANDLER:
 	if (msg_data != NULL)
 		kfree(msg_data);
@@ -1522,6 +1535,9 @@ bool otm_hdmi_hdcp_init(hdmi_context_t *hdmi_context,
 	hdcp_context->ri_check_interval	= 0u;
 	hdcp_context->force_reset	= false;
 	hdcp_context->auth_id		= 0;
+
+	hdcp_context->previous_hpd = false;
+	hdcp_context->previous_phase1_status = false;
 
 	/* store i2c function pointer used for ddc read/write */
 	hdcp_context->ddc_read_write = ddc_rd_wr;
