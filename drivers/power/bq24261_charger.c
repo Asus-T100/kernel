@@ -259,7 +259,6 @@ enum bq24261_chrgr_stat {
 	BQ24261_CHRGR_STAT_CHARGING,
 	BQ24261_CHRGR_STAT_BAT_FULL,
 	BQ24261_CHRGR_STAT_FAULT,
-	BQ24261_CHRGR_STAT_LOW_SUPPLY_FAULT
 };
 
 struct bq24261_otg_event {
@@ -1160,9 +1159,8 @@ static void bq24261_low_supply_fault_work(struct work_struct *work)
 						    struct bq24261_charger,
 						    low_supply_fault_work.work);
 
-	if (chip->chrgr_stat == BQ24261_CHRGR_STAT_LOW_SUPPLY_FAULT) {
+	if (chip->chrgr_stat == BQ24261_CHRGR_STAT_FAULT) {
 		dev_err(&chip->client->dev, "Low Supply Fault detected!!\n");
-		chip->chrgr_stat = BQ24261_CHRGR_STAT_FAULT;
 		chip->chrgr_health = POWER_SUPPLY_HEALTH_DEAD;
 		power_supply_changed(&chip->psy_usb);
 		bq24261_dump_regs(true);
@@ -1295,23 +1293,6 @@ static int bq24261_handle_irq(struct bq24261_charger *chip, u8 stat_reg)
 		dev_info(&client->dev, "Boost Mode\n");
 
 	if ((stat_reg & BQ24261_STAT_MASK) == BQ24261_STAT_FAULT) {
-
-		/* The STAT register is Read On Clear. If the exception
-		*  is set even after reading means the fault persisits else
-		*  it's cleared. So reading again to see the fault persist or
-		* not
-		*/
-
-		ret = bq24261_read_reg(chip->client, BQ24261_STAT_CTRL0_ADDR);
-		if (ret < 0) {
-			dev_err(&chip->client->dev,
-			"Error (%d) in reading BQ24261_STAT_CTRL0_ADDR\n", ret);
-			return ret;
-		}
-		stat_reg = ret;
-	}
-
-	if ((stat_reg & BQ24261_STAT_MASK) == BQ24261_STAT_FAULT) {
 		bool dump_master = true;
 		chip->chrgr_stat = BQ24261_CHRGR_STAT_FAULT;
 
@@ -1322,13 +1303,15 @@ static int bq24261_handle_irq(struct bq24261_charger *chip, u8 stat_reg)
 			break;
 
 		case BQ24261_LOW_SUPPLY:
-			chip->chrgr_stat =
-				BQ24261_CHRGR_STAT_LOW_SUPPLY_FAULT;
+			notify = false;
 			if (chip->cable_type !=
-					POWER_SUPPLY_CHARGER_TYPE_NONE)
+					POWER_SUPPLY_CHARGER_TYPE_NONE) {
 				schedule_delayed_work
 					(&chip->low_supply_fault_work,
 					5*HZ);
+				dev_dbg(&client->dev,
+					"Schedule Low Supply Fault work!!\n");
+			}
 			break;
 
 		case BQ24261_THERMAL_SHUTDOWN:
