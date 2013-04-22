@@ -104,6 +104,7 @@ struct gpio_bank_pnp {
 	int		irq_base;
 	int		ngpio;
 	unsigned	*to_pad;
+	struct vlv_gpio *vg;
 };
 
 static struct gpio_bank_pnp vlv_banks_pnp[] = {
@@ -164,7 +165,35 @@ static int vlv_gpio_request(struct gpio_chip *chip, unsigned offset)
 
 static void vlv_gpio_free(struct gpio_chip *chip, unsigned offset)
 {
+	return;
 }
+
+void lnw_gpio_set_alt(int gpio, int alt)
+{
+	struct gpio_bank_pnp *bank;
+	struct vlv_gpio *vg = NULL;
+	void __iomem *reg;
+	int value;
+	u32 offset;
+
+	for (bank = vlv_banks_pnp; bank; bank++)
+		if (gpio >= bank->gpio_base && gpio < bank->ngpio) {
+			vg = bank->vg;
+			offset = gpio - bank->gpio_base;
+			break;
+		}
+	if (!vg) {
+		pr_info("vlv_gpio: can not find pin %d\n", gpio);
+		return;
+	}
+
+	reg = vlv_gpio_reg(&vg->chip, offset, VV_CONF0_REG);
+
+	value = readl(reg) & (~VV_PIN_MUX);
+	value = value | (alt & VV_PIN_MUX);
+	writel(value, reg);
+}
+EXPORT_SYMBOL_GPL(lnw_gpio_set_alt);
 
 static int vlv_irq_type(struct irq_data *d, unsigned type)
 {
@@ -401,6 +430,7 @@ vlv_gpio_pnp_probe(struct pnp_dev *pdev, const struct pnp_device_id *id)
 		if (!strcmp(pdev->name, bank->name)) {
 			vg->chip.ngpio = bank->ngpio;
 			vg->gpio_to_pad = bank->to_pad;
+			bank->vg = vg;
 			break;
 		}
 	}
