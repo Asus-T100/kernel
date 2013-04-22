@@ -990,25 +990,6 @@ ps_prop_read_err:
 	return ret;
 }
 
-static void init_fg_config_data(void)
-{
-	fg_conf_data->cfg = 0x2210;
-	fg_conf_data->learn_cfg = 0x0076;
-	fg_conf_data->filter_cfg = 0x87A4;
-	fg_conf_data->relax_cfg = 0x506B;
-	memcpy(&fg_conf_data->cell_char_tbl, cell_char_tbl,
-					sizeof(cell_char_tbl));
-	fg_conf_data->rcomp0 = 0x0056;
-	fg_conf_data->tempCo = 0x1621;
-	fg_conf_data->etc = 0x2D51;
-	fg_conf_data->kempty0 = 0x0350;
-	fg_conf_data->ichgt_term = 0x0140;
-	fg_conf_data->full_cap = 3100;
-	fg_conf_data->design_cap = 3100;
-	fg_conf_data->full_capnom = 3100;
-	fg_conf_data->rsense = 1;
-}
-
 static void dump_fg_conf_data(struct max17042_chip *chip)
 {
 	int i;
@@ -1242,7 +1223,7 @@ static void reset_vfsoc0_reg(struct max17042_chip *chip)
 
 static void load_new_capacity_params(struct max17042_chip *chip, bool is_por)
 {
-	u16 full_cap0, rem_cap, rep_cap, dq_acc;
+	u16 rem_cap, rep_cap, dq_acc;
 
 	if (is_por) {
 		/* fg_vfSoc needs to shifted by 8 bits to get the
@@ -1362,74 +1343,6 @@ static void save_runtime_params(struct max17042_chip *chip)
 
 }
 
-static void restore_runtime_params(struct max17042_chip *chip)
-{
-	u16 full_cap0, rem_cap, soc, dq_acc;
-	int size, retval;
-
-	if (!chip->pdata->restore_config_data)
-		return ;
-
-	size = sizeof(*fg_conf_data) - sizeof(fg_conf_data->cell_char_tbl);
-	retval = chip->pdata->restore_config_data(DRV_NAME, fg_conf_data, size);
-	if (retval < 0) {
-		dev_err(&chip->client->dev, "%s failed\n", __func__);
-		return ;
-	}
-
-	/* Dump data after restoring */
-	dump_fg_conf_data(chip);
-
-	max17042_write_verify_reg(chip->client, MAX17042_RCOMP0,
-						fg_conf_data->rcomp0);
-	max17042_write_verify_reg(chip->client, MAX17042_TempCo,
-						fg_conf_data->tempCo);
-	max17042_write_verify_reg(chip->client, MAX17042_K_empty0,
-						fg_conf_data->kempty0);
-	if (chip->chip_type == MAX17042)
-		max17042_write_verify_reg(chip->client, MAX17042_FullCAPNom,
-			MAX17042_MODEL_MUL_FACTOR(fg_conf_data->full_capnom)
-			* fg_conf_data->rsense);
-	else
-		max17042_write_verify_reg(chip->client, MAX17042_FullCAPNom,
-			fg_conf_data->full_capnom * fg_conf_data->rsense);
-
-	max17042_write_verify_reg(chip->client, MAX17042_Cycles,
-						fg_conf_data->cycles);
-
-	/* delay must be atleast 350mS to allow SOC
-	 * to be calculated from the restored configuration
-	 */
-	msleep(350);
-
-	/* restore full capacity value */
-	full_cap0 = max17042_read_reg(chip->client, MAX17042_FullCAP0);
-	soc = max17042_read_reg(chip->client, MAX17042_SOC);
-
-	rem_cap = (soc * (u32)full_cap0) / 25600;
-	max17042_write_verify_reg(chip->client, MAX17042_RemCap, rem_cap);
-	max17042_write_verify_reg(chip->client, MAX17042_FullCAP,
-			fg_conf_data->full_cap * fg_conf_data->rsense);
-
-	/* Write dQ_acc to 200% of Capacity and dP_acc to 200% */
-	if (chip->chip_type == MAX17042)
-		dq_acc = MAX17042_MODEL_MUL_FACTOR(
-				fg_conf_data->full_cap) / dQ_ACC_DIV;
-	else
-		dq_acc = fg_conf_data->full_cap / dQ_ACC_DIV;
-
-	max17042_write_verify_reg(chip->client, MAX17042_dQacc, dq_acc);
-	max17042_write_verify_reg(chip->client, MAX17042_dPacc, dP_ACC_200);
-
-	/* delay must be atleast 350mS to write Cycles
-	 * value from the restored configuration
-	 */
-	msleep(350);
-
-	max17042_write_verify_reg(chip->client, MAX17042_Cycles,
-						fg_conf_data->cycles);
-}
-
 static int init_max17042_chip(struct max17042_chip *chip)
 {
 	int ret = 0, val;
@@ -1488,8 +1401,6 @@ static int init_max17042_chip(struct max17042_chip *chip)
 
 static void reset_max17042(struct max17042_chip *chip)
 {
-	int val;
-
 	/* do soft power reset */
 	enable_soft_POR(chip);
 
@@ -1702,7 +1613,7 @@ static void max17042_evt_worker(struct work_struct *work)
 {
 	struct max17042_chip *chip = container_of(work,
 			  struct max17042_chip, evt_worker);
-	int status, health;
+	int status = 0, health;
 
 	pm_runtime_get_sync(&chip->client->dev);
 
