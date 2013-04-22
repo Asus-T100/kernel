@@ -39,10 +39,6 @@ void bcmdhd_register_embedded_control(void *dev_id,
 
 static int bcmdhd_set_power(int on)
 {
-	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2) {
-		gpio_direction_input(gpio_enable);
-		gpio_direction_output(gpio_enable, 0);
-	}
 	gpio_set_value(gpio_enable, on);
 
 	/* Delay advice by BRCM */
@@ -191,8 +187,6 @@ void __init *bcm43xx_platform_data(void *info)
 			| SDHCI_QUIRK2_ENABLE_MMC_PM_IGNORE_PM_NOTIFY;
 
 	pr_err("Using bcm43xx platform data\n");
-	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2)
-		sdhci_quirk |= SDHCI_QUIRK2_NO_1_8_V;
 
 	sdhci_pdata_set_quirks(sdhci_quirk);
 	sdhci_pdata_set_embedded_control(&bcmdhd_register_embedded_control);
