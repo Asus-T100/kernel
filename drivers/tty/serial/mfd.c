@@ -553,7 +553,8 @@ static ssize_t hsu_dump_show(struct file *file, char __user *user_buf,
 	len += snprintf(buf + len, HSU_DBGFS_BUFSIZE - len,
 		"HSU status dump:\n");
 	len += snprintf(buf + len, HSU_DBGFS_BUFSIZE - len,
-		"\tdma irq (>0: disable): %d\n", dma_irqdesc->depth);
+		"\tdma irq (>0: disable): %d\n",
+		dma_irqdesc ? dma_irqdesc->depth : 0);
 	for (i = 0; i < phsu->port_num; i++) {
 		up = phsu->port + i;
 		cfg = hsu_port_func_cfg + i;
@@ -641,7 +642,8 @@ static ssize_t hsu_dump_show(struct file *file, char __user *user_buf,
 		len += snprintf(buf + len, HSU_DBGFS_BUFSIZE - len,
 			"\tin workq: %d\n", up->in_workq);
 		len += snprintf(buf + len, HSU_DBGFS_BUFSIZE - len,
-			"\tport irq (>0: disable): %d\n", port_irqdesc->depth);
+			"\tport irq (>0: disable): %d\n",
+			port_irqdesc ? port_irqdesc->depth : 0);
 	}
 	if (len > HSU_DBGFS_BUFSIZE)
 		len = HSU_DBGFS_BUFSIZE;
@@ -2314,6 +2316,8 @@ static int serial_hsu_port_probe(struct pci_dev *pdev,
 	/* calculate if DLAB=1, the ideal uartclk */
 	if (cfg->hw_get_clk)
 		clock = cfg->hw_get_clk();
+	else
+		clock = 50000;
 	uclk = clock * 1000 / (115200 * 16); /* 16 is default ps */
 	if (uclk >= 32)
 		uclk = 32;
