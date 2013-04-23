@@ -64,6 +64,7 @@ struct sep_device {
 	dma_addr_t reg_physical_addr;
 	dma_addr_t reg_physical_end;
 	void __iomem *reg_addr;
+	u32 __iomem *chaabiAccessState;
 
 	/* wait queue heads of the driver */
 	wait_queue_head_t event_interrupt;
