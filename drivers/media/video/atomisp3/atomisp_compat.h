@@ -22,7 +22,7 @@
 #include "ia_css.h"
 #include "sh_css_sp.h"
 
-#ifdef CONFIG_ISP2400B0
+#ifdef ATOMISP_CSS2
 #define ia_css_sp_has_booted() ia_css_sp_has_initialized()
 
 //static inline enum sh_css_err sh_css_allocate_continuous_frames(bool enable)

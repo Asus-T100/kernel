@@ -929,6 +929,9 @@ load_firmware(struct device *dev)
 	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2)
 		fw_path = ISP2400B0_FW_PATH;
 
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER)
+		fw_path = ISP2400A0_FW_PATH;
+
 	rc = request_firmware(&fw, fw_path, dev);
 	if (rc) {
 		if (rc == -ENOENT)

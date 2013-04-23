@@ -409,6 +409,7 @@ extern void atomisp_kernel_free(void *ptr);
 #define MFLD_FW_PATH	"shisp_css15.bin"
 #ifdef ATOMISP_CSS2
 #define ISP2400B0_FW_PATH   "shisp_2400b0_cssv2.bin"
+#define ISP2400A0_FW_PATH   "shisp_2400_cssv2.bin"
 #else
 #define MRFLD_FW_PATH   "shisp_2400.bin"
 #endif
