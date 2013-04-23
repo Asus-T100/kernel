@@ -957,6 +957,7 @@ struct mdfld_dsi_encoder *mdfld_dsi_dbi_init(struct drm_device *dev,
 	dev_priv->dsr_fb_update = 0;
 	dev_priv->b_dsr_enable = false;
 	dev_priv->exit_idle = mdfld_dsi_dbi_exit_dsr;
+	dev_priv->b_async_flip_enable = false;
 
 #if defined(CONFIG_MDFLD_DSI_DPU) || defined(CONFIG_MDFLD_DSI_DSR)
 	dev_priv->b_dsr_enable_config = true;

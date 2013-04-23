@@ -946,6 +946,7 @@ struct drm_psb_private {
 			   void *p_surfaceAddr, bool check_hw_on_only);
 	bool b_vblank_enable;
 
+	bool b_async_flip_enable;
 	/*
 	 * DSR TIMER
 	 */

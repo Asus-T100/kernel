@@ -138,6 +138,11 @@ static void _Flip_Primary(DC_MRFLD_DEVICE *psDevice,
 	DCCBFlipPrimary(psDevice->psDrmDevice, psContext);
 }
 
+static void _Update_Dbi_Panel(DC_MRFLD_DEVICE *psDevice)
+{
+	DCCBUpdateDbiPanel(psDevice->psDrmDevice);
+}
+
 static enum DC_MRFLD_FLIP_STATUS _Do_Flip(DC_MRFLD_FLIP *psFlip)
 {
 	DC_MRFLD_SURF_CUSTOM *psSurfCustom;
@@ -150,6 +155,7 @@ static enum DC_MRFLD_FLIP_STATUS _Do_Flip(DC_MRFLD_FLIP *psFlip)
 	IMG_UINT32 uiPipe = 0;
 	struct drm_device *psDrmDev;
 	int i = 0;
+	IMG_UINT32 uiEnabledPipe = 0;
 
 	if (!gpsDevice || !psFlip) {
 		DRM_ERROR("%s: Invalid Flip\n", __func__);
@@ -177,6 +183,7 @@ static enum DC_MRFLD_FLIP_STATUS _Do_Flip(DC_MRFLD_FLIP *psFlip)
 			/* FIXME */
 			psFlip->asPipeInfo[0].uiSwapInterval =
 				psFlip->uiSwapInterval;
+			uiEnabledPipe |= (1 << 0);
 			continue;
 		}
 
@@ -194,6 +201,7 @@ static enum DC_MRFLD_FLIP_STATUS _Do_Flip(DC_MRFLD_FLIP *psFlip)
 			_Flip_Sprite(gpsDevice,
 				&psSurfCustom->ctx.sp_ctx);
 			uiPipe = psSurfCustom->ctx.sp_ctx.index;
+			uiEnabledPipe |= (1 << 0);
 			break;
 		case DC_PRIMARY_PLANE:
 			/*need fix up the surface address*/
@@ -204,12 +212,14 @@ static enum DC_MRFLD_FLIP_STATUS _Do_Flip(DC_MRFLD_FLIP *psFlip)
 			_Flip_Primary(gpsDevice,
 				&psSurfCustom->ctx.prim_ctx);
 			uiPipe = psSurfCustom->ctx.prim_ctx.index;
+			uiEnabledPipe |= (1 << 0);
 			break;
 		case DC_OVERLAY_PLANE:
 			/*Flip overlay context*/
 			_Flip_Overlay(gpsDevice,
 				&psSurfCustom->ctx.ov_ctx);
 			uiPipe = psSurfCustom->ctx.ov_ctx.index;
+			uiEnabledPipe |= (1 << 0);
 			break;
 		default:
 			DRM_ERROR("Unknown plane type %d\n",
@@ -228,6 +238,11 @@ static enum DC_MRFLD_FLIP_STATUS _Do_Flip(DC_MRFLD_FLIP *psFlip)
 		psFlip->asPipeInfo[uiPipe].uiSwapInterval =
 			psFlip->uiSwapInterval;
 	}
+
+    /* Issue write_mem_start DSI
+		command for command mode panel. */
+	if (uiEnabledPipe)
+		_Update_Dbi_Panel(gpsDevice);
 
 	if (psFlip->uiSwapInterval > 0) {
 		uiNumPipes = DCCBGetPipeCount();

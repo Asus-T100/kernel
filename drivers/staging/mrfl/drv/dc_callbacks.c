@@ -108,6 +108,7 @@ void DCCBInstallVSyncISR(struct drm_device *dev,
 
 	dev_priv = (struct drm_psb_private *)dev->dev_private;
 	dev_priv->psb_vsync_handler = pVsyncHandler;
+	dev_priv->b_async_flip_enable = true;
 }
 
 void DCCBUninstallVSyncISR(struct drm_device *dev)
@@ -334,6 +335,11 @@ void DCCBFlipPrimary(struct drm_device *dev,
 	}
 
 	power_island_put(power_island);
+}
+
+void DCCBUpdateDbiPanel(struct drm_device *dev)
+{
+	mdfld_dbi_update_panel(dev, 0);
 }
 
 void DCCBUnblankDisplay(struct drm_device *dev)
