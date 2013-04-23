@@ -21,6 +21,7 @@ enum hsu_core {
 	hsu_pnw,
 	hsu_clv,
 	hsu_tng,
+	hsu_vlv2,
 };
 
 enum hsu_pid {
