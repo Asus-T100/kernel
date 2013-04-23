@@ -68,7 +68,8 @@
  * bits 7-0: min f-number denominator
  */
 #define OV2722_F_NUMBER_RANGE 0x1a0a1a0a
-#define OV2722_ID	0x2720
+#define OV2720_ID	0x2720
+#define OV2722_ID	0x2722
 
 #define OV2722_FINE_INTG_TIME_MIN 0
 #define OV2722_FINE_INTG_TIME_MAX_MARGIN 0
