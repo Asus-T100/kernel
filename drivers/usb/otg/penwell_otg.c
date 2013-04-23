@@ -95,10 +95,10 @@ int check_pm_otg(void)
 #undef writel
 #endif
 #define readl(addr) ({ if (check_pm_otg()) { \
-	panic("usb otg, read reg:0x%x, pm_sss0_base:0x%x",  \
+	panic("usb otg, read reg:%p, pm_sss0_base:0x%x",  \
 	addr, *(pm_sss0_base)); }; __le32_to_cpu(__raw_readl(addr)); })
 #define writel(b, addr) ({ if (check_pm_otg()) { \
-	panic("usb otg, write reg:0x%x, pm_sss0_base:0x%x",  \
+	panic("usb otg, write reg:%p, pm_sss0_base:0x%x",  \
 	addr, *(pm_sss0_base)); }; __raw_writel(__cpu_to_le32(b), addr); })
 #endif
 
@@ -2063,8 +2063,6 @@ void penwell_otg_phy_reset(void)
 static void penwell_otg_notify_warning(int warning_code)
 {
 	struct penwell_otg	*pnw = the_transceiver;
-	struct usb_hcd		*hcd;
-	int			err;
 
 	dev_dbg(pnw->dev, "%s ---> %d\n", __func__, warning_code);
 
@@ -2074,7 +2072,7 @@ static void penwell_otg_notify_warning(int warning_code)
 	else
 		dev_dbg(pnw->dev, "no valid device for notification\n");
 
-	dev_dbg(pnw->dev, "%s <--- %d\n", __func__);
+	dev_dbg(pnw->dev, "%s <--- %d\n", __func__, warning_code);
 }
 
 void penwell_otg_nsf_msg(unsigned long indicator)
