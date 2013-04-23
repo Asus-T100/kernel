@@ -24,7 +24,9 @@
 #include <linux/init.h>
 #include <linux/slab.h>
 #include <linux/module.h>
+#include <linux/debugfs.h>
 #include <linux/thermal.h>
+#include <linux/seq_file.h>
 #include <linux/interrupt.h>
 #include <linux/platform_device.h>
 
@@ -139,6 +141,88 @@ struct thermal_data {
 	int cached_vals[PMIC_THERMAL_SENSORS];
 };
 static struct thermal_data *tdata;
+
+#ifdef CONFIG_DEBUG_FS
+static struct thermal_regs {
+	char *name;
+	int addr;
+} thermal_regs[] = {
+	/* Thermal Management Registers */
+	{"THRM_MON_CTRL0",	0x8E},
+	{"THRM_MON_CTRL1",	0x8F},
+	{"TS_ENABLE",		0x90},
+	{"TS_CRIT_ENABLE",	0x91},
+	{"TS_A0_STATUS",	0x92},
+	{"TS_A1_STATUS",	0x93},
+	{"TS_CRIT_STATUS",	0xBD},
+	{"IRQLVL1",		0x02},
+	{"MIRQLVL1",		0x0E},
+	{"THRMIRQ0",		0x04},
+	{"THRMIRQ1",		0x05},
+	{"MTHRMIRQ0",		0x11},
+	{"MTHRMIRQ1",		0x12},
+};
+
+static struct dentry *thermal_dent[ARRAY_SIZE(thermal_regs)];
+static struct dentry *ccove_thermal_dir;
+
+static int ccove_thermal_debugfs_show(struct seq_file *s, void *unused)
+{
+	int addr = *((int *)s->private);
+	int val = intel_mid_pmic_readb(addr);
+
+	seq_printf(s, "Addr[0x%X] Val: 0x%X\n", addr, val);
+
+	return 0;
+}
+
+static int debugfs_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, ccove_thermal_debugfs_show, inode->i_private);
+}
+
+static const struct file_operations ccove_thermal_debugfs_ops = {
+	.open           = debugfs_open,
+	.read           = seq_read,
+	.llseek         = seq_lseek,
+	.release        = single_release,
+};
+
+static void create_ccove_thermal_debugfs(void)
+{
+	int i, err;
+
+	/* /sys/kernel/debug/ccove_thermal/ */
+	ccove_thermal_dir = debugfs_create_dir("ccove_thermal", NULL);
+	if (IS_ERR(ccove_thermal_dir)) {
+		err = PTR_ERR(ccove_thermal_dir);
+		pr_err("debugfs_create_dir failed:%d\n", err);
+		return;
+	}
+
+	/* /sys/kernel/debug/ccove_thermal/REG_NAME */
+	for (i = 0; i < ARRAY_SIZE(thermal_regs); i++) {
+		thermal_dent[i] = debugfs_create_file(thermal_regs[i].name,
+						S_IFREG | S_IRUGO,
+						ccove_thermal_dir,
+						&thermal_regs[i].addr,
+						&ccove_thermal_debugfs_ops);
+		if (IS_ERR(thermal_dent[i])) {
+			err = PTR_ERR(thermal_dent[i]);
+			debugfs_remove_recursive(ccove_thermal_dir);
+			pr_debug("debugfs_create_file failed:%d\n", err);
+		}
+	}
+}
+
+static void remove_ccove_thermal_debugfs(void)
+{
+	debugfs_remove_recursive(ccove_thermal_dir);
+}
+#else
+static inline void create_pmic_thermal_debugfs(void) { }
+static inline void remove_pmic_thermal_debugfs(void) { }
+#endif
 
 static inline int adc_to_pmic_die_temp(unsigned int val)
 {
@@ -655,6 +739,8 @@ static int byt_thermal_probe(struct platform_device *pdev)
 		goto exit_reg;
 	}
 
+	create_ccove_thermal_debugfs();
+
 	return 0;
 
 exit_reg:
@@ -692,6 +778,9 @@ static int byt_thermal_remove(struct platform_device *pdev)
 
 	iio_st_channel_release_all(tdata->iio_chan);
 	kfree(tdata);
+
+	remove_ccove_thermal_debugfs();
+
 	return 0;
 }
 
