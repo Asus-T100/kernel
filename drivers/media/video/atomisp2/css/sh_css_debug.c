@@ -279,25 +279,25 @@ static void print_if_state(
 		fsm_sync_status_str = "ERROR";
 	else {
 		switch (val) {
-		case 0:
-			fsm_sync_status_str = "idle";
-			break;
-		case 1:
-			fsm_sync_status_str = "request frame";
-			break;
-		case 2:
-			fsm_sync_status_str = "request lines";
-			break;
-		case 3:
-			fsm_sync_status_str = "request vectors";
-			break;
-		case 4:
-			fsm_sync_status_str = "send acknowledge";
-			break;
-		default:
-			fsm_sync_status_str = "unknown";
-			break;
-		}
+	case 0:
+		fsm_sync_status_str = "idle";
+		break;
+	case 1:
+		fsm_sync_status_str = "request frame";
+		break;
+	case 2:
+		fsm_sync_status_str = "request lines";
+		break;
+	case 3:
+		fsm_sync_status_str = "request vectors";
+		break;
+	case 4:
+		fsm_sync_status_str = "send acknowledge";
+		break;
+	default:
+		fsm_sync_status_str = "unknown";
+		break;
+	}
 	}
 
 	sh_css_dtrace(2, "\t\t%-32s: (0x%X: %s)\n",
@@ -312,31 +312,31 @@ static void print_if_state(
 		fsm_crop_status_str = "ERROR";
 	else {
 		switch (val) {
-		case 0:
-			fsm_crop_status_str = "idle";
-			break;
-		case 1:
-			fsm_crop_status_str = "wait line";
-			break;
-		case 2:
-			fsm_crop_status_str = "crop line";
-			break;
-		case 3:
-			fsm_crop_status_str = "crop pixel";
-			break;
-		case 4:
-			fsm_crop_status_str = "pass pixel";
-			break;
-		case 5:
-			fsm_crop_status_str = "pass line";
-			break;
-		case 6:
-			fsm_crop_status_str = "lost line";
-			break;
-		default:
-			fsm_crop_status_str = "unknown";
-			break;
-		}
+	case 0:
+		fsm_crop_status_str = "idle";
+		break;
+	case 1:
+		fsm_crop_status_str = "wait line";
+		break;
+	case 2:
+		fsm_crop_status_str = "crop line";
+		break;
+	case 3:
+		fsm_crop_status_str = "crop pixel";
+		break;
+	case 4:
+		fsm_crop_status_str = "pass pixel";
+		break;
+	case 5:
+		fsm_crop_status_str = "pass line";
+		break;
+	case 6:
+		fsm_crop_status_str = "lost line";
+		break;
+	default:
+		fsm_crop_status_str = "unknown";
+		break;
+	}
 	}
 	sh_css_dtrace(2, "\t\t%-32s: (0x%X: %s)\n",
 		     "FSM Crop Status", val, fsm_crop_status_str);
@@ -366,25 +366,25 @@ static void print_if_state(
 		fsm_padding_status_str = "ERROR";
 	else {
 		switch (val) {
-		case 0:
-			fsm_padding_status_str = "idle";
-			break;
-		case 1:
-			fsm_padding_status_str = "left pad";
-			break;
-		case 2:
-			fsm_padding_status_str = "write";
-			break;
-		case 3:
-			fsm_padding_status_str = "right pad";
-			break;
-		case 4:
-			fsm_padding_status_str = "send end of line";
-			break;
-		default:
-			fsm_padding_status_str = "unknown";
-			break;
-		}
+	case 0:
+		fsm_padding_status_str = "idle";
+		break;
+	case 1:
+		fsm_padding_status_str = "left pad";
+		break;
+	case 2:
+		fsm_padding_status_str = "write";
+		break;
+	case 3:
+		fsm_padding_status_str = "right pad";
+		break;
+	case 4:
+		fsm_padding_status_str = "send end of line";
+		break;
+	default:
+		fsm_padding_status_str = "unknown";
+		break;
+	}
 	}
 
 	sh_css_dtrace(2, "\t\t%-32s: (0x%X: %s)\n", "FSM Padding Status",
@@ -1063,8 +1063,14 @@ void sh_css_print_sp_debug_state(
 #if 1
 
 	static char const *id2filename[8] = {
-		"N.A.", "sp.hive.c", "event.sp.c", "sp_raw_copy.hive.c",
-		"buffer_queue.sp.c", "event_proxy_sp.hive.c", "ERROR", "ERROR"
+		"param_buffer.sp.c | tagger.sp.c | pipe_data.sp.c",
+		"isp_init.sp.c",
+		"sp_raw_copy.hive.c",
+		"dma_configure.sp.c",
+		"sp.hive.c",
+		"event_proxy_sp.hive.c",
+		"circular_buffer.sp.c",
+		"frame_buffer.sp.c"
 		};
 
 #if 0
@@ -1073,16 +1079,34 @@ void sh_css_print_sp_debug_state(
 				"acceleration", "control", "TBD" };
 #else
 	static char const *trace_name[SH_CSS_SP_DBG_NR_OF_TRACES] = {
-				"copy", "preview/video", "event_ext_io",
-				"event_PIF_A" };
+				"default"};
 #endif
-	int t, d;
+
+	/* Remember host_index_last because we only want to print new entries */
+	static int host_index_last[SH_CSS_SP_DBG_NR_OF_TRACES] = {0};
+	int t, n;
 
 	for (t = 0; t < SH_CSS_SP_DBG_NR_OF_TRACES; t++) {
-		/* base contains the "oldest" index */
-		int base = state->index[t];
-		for (d = 0; d < SH_CSS_SP_DBG_TRACE_DEPTH; d++) {
-			int i = (base + d) % SH_CSS_SP_DBG_TRACE_DEPTH;
+		int sp_index_last = state->index_last[t];
+
+		if (sp_index_last < host_index_last[t]) {
+			/* SP has been reset */
+			host_index_last[t] = 0;
+		}
+
+		if ((host_index_last[t] + SH_CSS_SP_DBG_TRACE_DEPTH) < sp_index_last) {
+			/* last index can be multiple rounds behind */
+			/* while trace size is only SH_CSS_SP_DBG_TRACE_DEPTH */
+			DTRACE_SP_STATE(
+			  "Warning: trace %s has gap of %d traces\n",
+			  trace_name[t],
+			  (sp_index_last - (host_index_last[t] + SH_CSS_SP_DBG_TRACE_DEPTH)));
+
+			host_index_last[t] = sp_index_last - SH_CSS_SP_DBG_TRACE_DEPTH;
+		}
+
+		for (n = host_index_last[t]; n < sp_index_last; n++) {
+			int i = n % SH_CSS_SP_DBG_TRACE_DEPTH;
 			int l = state->trace[t][i].location &
 				((1<<SH_CSS_SP_DBG_TRACE_FILE_ID_BIT_POS)-1);
 			int fid = state->trace[t][i].location >>
@@ -1098,6 +1122,7 @@ void sh_css_print_sp_debug_state(
 				  state->trace[t][i].data);
 			}
 		}
+		host_index_last[t] = sp_index_last;
 	}
 
 
@@ -1175,26 +1200,6 @@ void sh_css_dump_debug_info(
 	sh_css_dump_dma_state();
 return;
 }
-
-#if SP_DEBUG == SP_DEBUG_TRACE
-
-void
-sh_css_sp_debug_dump_mipi_fifo_high_water(void)
-{
-	const struct sh_css_fw_info *fw = &sh_css_sp_fw;
-	unsigned int mfhw;
-	unsigned int HIVE_ADDR_sp_output = fw->info.sp.output;
-	unsigned offset = offsetof(struct sh_css_sp_output, debug.mipi_fifo_high_water);
-
-	(void)HIVE_ADDR_sp_output; /* To get rid of warning in CRUN */
-
-	load_sp_var_with_offset(sp_output, offset, &mfhw, sizeof(mfhw));
-
-	DTRACE_SP_STATE("Mipi fifo high water mark: %d, line %d\n",mfhw&0xFFFF, mfhw>>16);
-}
-
-#endif
-
 
 /* this function is for debug use, it can make SP go to sleep
   state after each frame, then user can dump the stable SP dmem.
@@ -1825,11 +1830,10 @@ sh_css_debug_pipe_graph_dump_stage(
 			bi->enable.dp_2adjacent ?	"dp2a," : ""
 			);
 
-		snprintf( enable_info2, 100, "%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s",
+		snprintf( enable_info2, 100, "%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s",
 			bi->enable.macc ?		"macc," : "",
 			bi->enable.ss ?			"ss," : "",
 			bi->enable.output ?		"outp," : "",
-			bi->enable.output_table ?	"outt," : "",
 			bi->enable.ref_frame ?		"reff," : "",
 			bi->enable.tnr ?		"tnr," : "",
 			bi->enable.xnr ?		"xnr," : "",

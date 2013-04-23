@@ -359,11 +359,11 @@ struct sh_css {
 	false,                    /* cont_capt */ \
 	false,                    /* stop_copy_preview */ \
 	NUM_CONTINUOUS_FRAMES,    /* num_cont_raw_frames */ \
-	{{SH_CSS_EVENT_IRQ_MASK_ALL, SH_CSS_EVENT_IRQ_MASK_ALL}, \
-	{SH_CSS_EVENT_IRQ_MASK_ALL, SH_CSS_EVENT_IRQ_MASK_ALL}, \
-	{SH_CSS_EVENT_IRQ_MASK_ALL, SH_CSS_EVENT_IRQ_MASK_ALL}, \
-	{SH_CSS_EVENT_IRQ_MASK_ALL, SH_CSS_EVENT_IRQ_MASK_ALL}, \
-	{SH_CSS_EVENT_IRQ_MASK_ALL, SH_CSS_EVENT_IRQ_MASK_ALL}},    /* sp_irq_mask */ \
+	{{SH_CSS_EVENT_IRQ_MASK_OUTPUT_FRAME_DONE | SH_CSS_EVENT_IRQ_MASK_VF_OUTPUT_FRAME_DONE | SH_CSS_EVENT_IRQ_MASK_3A_STATISTICS_DONE, SH_CSS_EVENT_IRQ_MASK_NONE}, \
+	{SH_CSS_EVENT_IRQ_MASK_OUTPUT_FRAME_DONE | SH_CSS_EVENT_IRQ_MASK_VF_OUTPUT_FRAME_DONE | SH_CSS_EVENT_IRQ_MASK_3A_STATISTICS_DONE, SH_CSS_EVENT_IRQ_MASK_NONE}, \
+	{SH_CSS_EVENT_IRQ_MASK_OUTPUT_FRAME_DONE | SH_CSS_EVENT_IRQ_MASK_VF_OUTPUT_FRAME_DONE | SH_CSS_EVENT_IRQ_MASK_3A_STATISTICS_DONE, SH_CSS_EVENT_IRQ_MASK_NONE}, \
+	{SH_CSS_EVENT_IRQ_MASK_OUTPUT_FRAME_DONE | SH_CSS_EVENT_IRQ_MASK_VF_OUTPUT_FRAME_DONE | SH_CSS_EVENT_IRQ_MASK_3A_STATISTICS_DONE, SH_CSS_EVENT_IRQ_MASK_NONE}, \
+	{SH_CSS_EVENT_IRQ_MASK_OUTPUT_FRAME_DONE | SH_CSS_EVENT_IRQ_MASK_VF_OUTPUT_FRAME_DONE | SH_CSS_EVENT_IRQ_MASK_3A_STATISTICS_DONE, SH_CSS_EVENT_IRQ_MASK_NONE}},    /* sp_irq_mask */ \
 	false,                    /* start_sp_copy */ \
 	0,                        /* sp_bin_addr */ \
 	0,                        /* page_table_base_index */ \
@@ -2077,7 +2077,7 @@ static void
 enable_interrupts(void)
 {
 /* Select whether the top IRQ delivers a level signal or not. In CSS 2.0 this choice is on the interface */
-	bool enable_pulse = true;
+	bool enable_pulse = false;
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "enable_interrupts() enter:\n");
 /* Enable IRQ on the SP which signals that SP goes to idle (aka ready state) */
 	cnd_sp_irq_enable(SP0_ID, true);
@@ -5388,7 +5388,7 @@ static void init_primary_descr(
 			   in_info,
 			   out_info,
 			   vf_info);
-	if (pipe->online) {
+	if (pipe->online && pipe->input_mode != SH_CSS_INPUT_MODE_MEMORY) {
 		prim_descr.online        = true;
 		prim_descr.two_ppc       = pipe->two_ppc;
 		prim_descr.stream_format = pipe->input_format;
@@ -6037,12 +6037,31 @@ static enum sh_css_err construct_capture_pipe(
 	 * TODO: add a way to tell the pipeline construction that an in_frame
 	 * is used.
 	 */
-	struct sh_css_frame *in_frame = NULL;
+	struct sh_css_frame *in_frame = &me->in_frame;
 	struct sh_css_frame *out_frame = &me->out_frame;
 	struct sh_css_frame *vf_frame = &me->vf_frame;
 
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "construct_capture_pipe() enter:\n");
 	sh_css_pipeline_clean(me);
+
+	/* Construct in_frame info (only in case we have dynamic input) */
+	if (pipe->input_mode == SH_CSS_INPUT_MODE_MEMORY) {
+		in_frame->info.format = SH_CSS_FRAME_FORMAT_RAW;
+		in_frame->info.width = pipe->input_width;
+		in_frame->info.height = pipe->input_height;
+		in_frame->info.raw_bit_depth =
+			sh_css_pipe_input_format_bits_per_pixel(pipe);
+		sh_css_frame_info_set_width(&in_frame->info, pipe->input_width);
+	
+		in_frame->contiguous = false;
+		in_frame->flash_state = SH_CSS_FRAME_NO_FLASH;
+		in_frame->dynamic_data_index = sh_css_frame_in;
+		err = init_frame_planes(in_frame);
+		if (err != sh_css_success)
+			return err;
+	} else {
+		in_frame = NULL;
+	}
 
 	err = sh_css_pipe_load_binaries(pipe);
 	if (err != sh_css_success)
@@ -6188,9 +6207,11 @@ static enum sh_css_err capture_start(
 
 	my_css.curr_pipe = pipe;
 
+	if (pipe->input_mode != SH_CSS_INPUT_MODE_MEMORY) {
 	err = sh_css_config_input_network(pipe, &pipe->pipe.capture.copy_binary);
 	if (err != sh_css_success)
 		return err;
+	}
 
 	if (pipe->capture_mode == SH_CSS_CAPTURE_MODE_RAW ||
 	    pipe->capture_mode == SH_CSS_CAPTURE_MODE_BAYER) {
@@ -8533,4 +8554,25 @@ sh_css_update_continuous_frames(void)
 			(my_css.num_cont_raw_frames, true);
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_update_continuous_frames() leave: return_void\n");
+}
+
+void
+sh_css_set_cont_prev_start_time(unsigned int overlap)
+{
+	const struct sh_css_fw_info *fw;
+	unsigned int HIVE_ADDR_sp_copy_preview_overlap;
+
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_set_cont_prev_start_time() enter:\n");
+
+	fw = &sh_css_sp_fw;
+	HIVE_ADDR_sp_copy_preview_overlap = fw->info.sp.copy_preview_overlap;
+
+	(void)HIVE_ADDR_sp_copy_preview_overlap;
+
+	overlap = overlap/4; /* we request 4 lines each time in copy pipe */
+
+	sp_dmem_store_uint32(SP0_ID,
+		(unsigned int)sp_address_of(sp_copy_preview_overlap),
+		(uint32_t)(overlap));
 }
