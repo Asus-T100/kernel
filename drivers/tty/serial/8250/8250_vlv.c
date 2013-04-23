@@ -433,8 +433,6 @@ static void vlv_hsu_debugfs_exit(struct vlv_hsu_port *vp) { return; }
 #endif	/* DEBUG_FS */
 
 DEFINE_PCI_DEVICE_TABLE(hsu_port_pci_ids) = {
-	{ PCI_VDEVICE(INTEL, 0x0f0a), baylake_0},
-	{ PCI_VDEVICE(INTEL, 0x0f0C), baylake_1},
 	{},
 };
 
