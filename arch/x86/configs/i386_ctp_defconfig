@@ -2937,6 +2937,11 @@ CONFIG_RPMSG_IPC=y
 # CONFIG_PM_DEVFREQ is not set
 
 #
+# Pinctrl drivers (EXPERIMENTAL)
+#
+CONFIG_PINCTRL_INTEL_MID=y
+
+#
 # Modem control driver
 #
 CONFIG_MDM_CTRL=y
