@@ -631,6 +631,19 @@ static void intel_hdmi_mode_set(struct drm_encoder *encoder,
 	else if (intel_crtc->pipe == PIPE_B)
 		sdvox |= SDVO_PIPE_B_SELECT;
 
+	if (intel_hdmi->pfit) {
+		u32 val = 0;
+		if (intel_hdmi->pfit == PILLAR_BOX)
+			val =  PFIT_ENABLE | (1 << PFIT_PIPE_SHIFT) |
+				PFIT_SCALING_PILLAR;
+		else if (intel_hdmi->pfit == LETTER_BOX)
+			val =  PFIT_ENABLE | (1 << PFIT_PIPE_SHIFT) |
+				PFIT_SCALING_LETTER;
+		DRM_DEBUG_DRIVER("pfit val = %x", val);
+
+		I915_WRITE(PFIT_CONTROL, val);
+	}
+
 	I915_WRITE(intel_hdmi->sdvox_reg, sdvox);
 	POSTING_READ(intel_hdmi->sdvox_reg);
 
@@ -692,6 +705,19 @@ static void intel_hdmi_dpms(struct drm_encoder *encoder, int mode)
 		temp &= ~enable_bits;
 	} else {
 		temp |= enable_bits;
+	}
+
+	if (intel_hdmi->pfit) {
+		u32 val = 0;
+		if (intel_hdmi->pfit == PILLAR_BOX)
+			val =  PFIT_ENABLE | (1 << PFIT_PIPE_SHIFT) |
+				PFIT_SCALING_PILLAR;
+		else if (intel_hdmi->pfit == LETTER_BOX)
+			val =  PFIT_ENABLE | (1 << PFIT_PIPE_SHIFT) |
+				PFIT_SCALING_LETTER;
+		DRM_DEBUG_DRIVER("pfit val = %x", val);
+
+		I915_WRITE(PFIT_CONTROL, val);
 	}
 
 	I915_WRITE(intel_hdmi->sdvox_reg, temp);
@@ -894,6 +920,15 @@ intel_hdmi_set_property(struct drm_connector *connector,
 		goto done;
 	}
 
+	if (property == dev_priv->force_pfit_property) {
+		if (val == intel_hdmi->pfit)
+			return 0;
+
+		DRM_DEBUG_DRIVER("val = %d", val);
+		intel_hdmi->pfit = val;
+		goto done;
+	}
+
 	return -EINVAL;
 
 done:
@@ -953,6 +988,7 @@ intel_hdmi_add_properties(struct intel_hdmi *intel_hdmi, struct drm_connector *c
 {
 	intel_attach_force_audio_property(connector);
 	intel_attach_broadcast_rgb_property(connector);
+	intel_attach_force_pfit_property(connector);
 }
 
 
@@ -984,6 +1020,7 @@ void intel_hdmi_init(struct drm_device *dev, int sdvox_reg, enum port port)
 	intel_hdmi = kzalloc(sizeof(struct intel_hdmi), GFP_KERNEL);
 	if (!intel_hdmi)
 		return;
+	intel_hdmi->pfit = 0;
 
 	intel_connector = kzalloc(sizeof(struct intel_connector), GFP_KERNEL);
 	if (!intel_connector) {

@@ -111,3 +111,31 @@ intel_attach_broadcast_rgb_property(struct drm_connector *connector)
 
 	drm_connector_attach_property(connector, prop, 0);
 }
+
+static const struct drm_prop_enum_list pfit_names[] = {
+	{ 0, "Auto scale" },
+	{ 1, "PillarBox" },
+	{ 2, "LetterBox" },
+};
+
+void
+intel_attach_force_pfit_property(struct drm_connector *connector)
+{
+	struct drm_device *dev = connector->dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct drm_property *prop;
+
+	prop = dev_priv->force_pfit_property;
+	if (prop == NULL) {
+		prop = drm_property_create_enum(dev, 0,
+						"pfit",
+						pfit_names,
+						ARRAY_SIZE(pfit_names));
+		if (prop == NULL)
+			return;
+
+		dev_priv->force_pfit_property = prop;
+	}
+
+	drm_connector_attach_property(connector, prop, 0);
+}

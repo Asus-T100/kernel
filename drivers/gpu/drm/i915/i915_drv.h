@@ -874,6 +874,7 @@ typedef struct drm_i915_private {
 
 	struct drm_property *broadcast_rgb_property;
 	struct drm_property *force_audio_property;
+	struct drm_property *force_pfit_property;
 
 	struct work_struct parity_error_work;
 	bool hw_contexts_disabled;
@@ -900,6 +901,12 @@ enum hdmi_force_audio {
 	HDMI_AUDIO_OFF,			/* force turn off HDMI audio */
 	HDMI_AUDIO_AUTO,		/* trust EDID */
 	HDMI_AUDIO_ON,			/* force turn on HDMI audio */
+};
+
+enum hdmi_panel_fitter {
+	AUTO_SCALE,
+	PILLAR_BOX,
+	LETTER_BOX,
 };
 
 enum i915_cache_level {

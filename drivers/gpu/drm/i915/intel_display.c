@@ -7120,7 +7120,8 @@ static void intel_setup_outputs(struct drm_device *dev)
 			intel_dp_init(dev, PCH_DP_D, PORT_D);
 	}
 
-	intel_crt_init(dev);
+	if (!IS_VALLEYVIEW(dev))
+		intel_crt_init(dev);
 
 	if (IS_HASWELL(dev)) {
 		int found;
