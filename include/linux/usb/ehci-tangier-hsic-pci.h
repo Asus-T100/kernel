@@ -25,9 +25,9 @@
 #define PMU_HW_PEN1 0x10C
 
 #define HSIC_L1_AUTOSUSPEND                     0
-#define HSIC_L1_INACTIVITYDURATION              2000
-#define HSIC_L2_AUTOSUSPEND                     1
-#define HSIC_L2_INACTIVITYDURATION              2000
+#define HSIC_L1_INACTIVITYDURATION              500
+#define HSIC_L2_AUTOSUSPEND                     0
+#define HSIC_L2_INACTIVITYDURATION              500
 #define HSIC_REMOTEWAKEUP                       0
 
 struct hsic_tangier_priv {
