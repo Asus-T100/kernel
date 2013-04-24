@@ -884,3 +884,28 @@ void atomisp_css_shading_table_free(struct atomisp_css_shading_table *table)
 {
 	sh_css_shading_table_free(table);
 }
+
+struct atomisp_css_morph_table *atomisp_css_morph_table_allocate(
+				unsigned int width, unsigned int height)
+{
+	return sh_css_morph_table_allocate(width, height);
+}
+
+void atomisp_css_set_morph_table(struct atomisp_device *isp,
+				const struct atomisp_css_morph_table *table)
+{
+	sh_css_set_morph_table(table);
+}
+
+void atomisp_css_get_morph_table(struct atomisp_device *isp,
+				struct atomisp_css_morph_table *table)
+{
+	const struct atomisp_css_morph_table *tab;
+	sh_css_get_morph_table(&tab);
+	memcpy(table, tab, sizeof(*table));
+}
+
+void atomisp_css_morph_table_free(struct atomisp_css_morph_table *table)
+{
+	sh_css_morph_table_free(table);
+}

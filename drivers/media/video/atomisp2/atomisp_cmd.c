@@ -1415,11 +1415,12 @@ int atomisp_gdc_cac(struct atomisp_device *isp, int flag, __s32 * value)
 
 	isp->params.gdc_cac_en = !!*value;
 	if (isp->params.gdc_cac_en) {
-		sh_css_set_morph_table(
+		atomisp_css_set_morph_table(isp,
 				isp->inputs[isp->input_curr].morph_table);
 	} else {
-		sh_css_set_morph_table(NULL);
+		atomisp_css_set_morph_table(isp, NULL);
 	}
+	isp->params.css_update_params_needed = true;
 	atomisp_update_capture_mode(isp);
 	return 0;
 }
@@ -1602,11 +1603,11 @@ int atomisp_gamma_correction(struct atomisp_device *isp, int flag,
 
 void atomisp_free_internal_buffers(struct atomisp_device *isp)
 {
-	struct sh_css_morph_table *tab;
+	struct atomisp_css_morph_table *tab;
 
 	tab = isp->inputs[isp->input_curr].morph_table;
 	if (tab) {
-		sh_css_morph_table_free(tab);
+		atomisp_css_morph_table_free(tab);
 		isp->inputs[isp->input_curr].morph_table = NULL;
 	}
 	if (isp->raw_output_frame) {
@@ -1847,24 +1848,24 @@ int atomisp_gdc_cac_table(struct atomisp_device *isp, int flag,
 
 	if (flag == 0) {
 		/* Get gdc table from current setup */
-		const struct sh_css_morph_table *tab;
-		sh_css_get_morph_table(&tab);
+		struct atomisp_css_morph_table tab = {0};
+		atomisp_css_get_morph_table(isp, &tab);
 
-		config->width = tab->width;
-		config->height = tab->height;
+		config->width = tab.width;
+		config->height = tab.height;
 
-		for (i = 0; i < SH_CSS_MORPH_TABLE_NUM_PLANES; i++) {
+		for (i = 0; i < CSS_MORPH_TABLE_NUM_PLANES; i++) {
 			ret = copy_to_user(config->coordinates_x[i],
-				tab->coordinates_x[i], tab->height *
-				tab->width * sizeof(*tab->coordinates_x[i]));
+				tab.coordinates_x[i], tab.height *
+				tab.width * sizeof(*tab.coordinates_x[i]));
 			if (ret) {
 				dev_err(isp->dev,
 					"Failed to copy to User for x\n");
 				return -EFAULT;
 			}
 			ret = copy_to_user(config->coordinates_y[i],
-				tab->coordinates_y[i], tab->height *
-				tab->width * sizeof(*tab->coordinates_y[i]));
+				tab.coordinates_y[i], tab.height *
+				tab.width * sizeof(*tab.coordinates_y[i]));
 			if (ret) {
 				dev_err(isp->dev,
 					"Failed to copy to User for y\n");
@@ -1872,17 +1873,17 @@ int atomisp_gdc_cac_table(struct atomisp_device *isp, int flag,
 			}
 		}
 	} else {
-		struct sh_css_morph_table *tab =
+		struct atomisp_css_morph_table *tab =
 			isp->inputs[isp->input_curr].morph_table;
 
 		/* free first if we have one */
 		if (tab) {
-			sh_css_morph_table_free(tab);
+			atomisp_css_morph_table_free(tab);
 			isp->inputs[isp->input_curr].morph_table = NULL;
 		}
 
 		/* allocate new one */
-		tab = sh_css_morph_table_allocate(config->width,
+		tab = atomisp_css_morph_table_allocate(config->width,
 						  config->height);
 
 		if (!tab) {
@@ -1890,7 +1891,7 @@ int atomisp_gdc_cac_table(struct atomisp_device *isp, int flag,
 			return -EINVAL;
 		}
 
-		for (i = 0; i < SH_CSS_MORPH_TABLE_NUM_PLANES; i++) {
+		for (i = 0; i < CSS_MORPH_TABLE_NUM_PLANES; i++) {
 			ret = copy_from_user(tab->coordinates_x[i],
 				config->coordinates_x[i],
 				config->height * config->width *
@@ -1899,7 +1900,7 @@ int atomisp_gdc_cac_table(struct atomisp_device *isp, int flag,
 				dev_err(isp->dev,
 				"Failed to copy from User for x, ret %d\n",
 				ret);
-				sh_css_morph_table_free(tab);
+				atomisp_css_morph_table_free(tab);
 				return -EFAULT;
 			}
 			ret = copy_from_user(tab->coordinates_y[i],
@@ -1910,13 +1911,13 @@ int atomisp_gdc_cac_table(struct atomisp_device *isp, int flag,
 				dev_err(isp->dev,
 				"Failed to copy from User for y, ret is %d\n",
 				ret);
-				sh_css_morph_table_free(tab);
+				atomisp_css_morph_table_free(tab);
 				return -EFAULT;
 			}
 		}
 		isp->inputs[isp->input_curr].morph_table = tab;
 		if (isp->params.gdc_cac_en)
-			sh_css_set_morph_table(tab);
+			atomisp_css_set_morph_table(isp, tab);
 	}
 
 	return 0;
@@ -2263,20 +2264,20 @@ static int __atomisp_set_morph_table(struct atomisp_device *isp,
 {
 	int ret = -EFAULT;
 	unsigned int i;
-	struct sh_css_morph_table *morph_table;
-	struct sh_css_morph_table *old_morph_table;
+	struct atomisp_css_morph_table *morph_table;
+	struct atomisp_css_morph_table *old_morph_table;
 
 	if (!user_morph_table)
 		return 0;
 
 	old_morph_table = isp->inputs[isp->input_curr].morph_table;
 
-	morph_table = sh_css_morph_table_allocate(user_morph_table->width,
+	morph_table = atomisp_css_morph_table_allocate(user_morph_table->width,
 				user_morph_table->height);
 	if (!morph_table)
 		return -ENOMEM;
 
-	for (i = 0; i < SH_CSS_MORPH_TABLE_NUM_PLANES; i++) {
+	for (i = 0; i < CSS_MORPH_TABLE_NUM_PLANES; i++) {
 		if (copy_from_user(morph_table->coordinates_x[i],
 			user_morph_table->coordinates_x[i],
 			user_morph_table->height * user_morph_table->width *
@@ -2292,16 +2293,16 @@ static int __atomisp_set_morph_table(struct atomisp_device *isp,
 
 	isp->inputs[isp->input_curr].morph_table = morph_table;
 	if (isp->params.gdc_cac_en)
-		sh_css_set_morph_table(morph_table);
+		atomisp_css_set_morph_table(isp, morph_table);
 
 	if (old_morph_table)
-		sh_css_morph_table_free(old_morph_table);
+		atomisp_css_morph_table_free(old_morph_table);
 
 	return 0;
 
 error:
 	if (morph_table)
-		sh_css_morph_table_free(morph_table);
+		atomisp_css_morph_table_free(morph_table);
 	return ret;
 }
 

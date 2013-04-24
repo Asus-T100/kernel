@@ -109,7 +109,7 @@ struct atomisp_input_subdev {
 	enum atomisp_camera_port port;
 	struct v4l2_subdev *camera;
 	struct v4l2_subdev *motor;
-	struct sh_css_morph_table *morph_table;
+	struct atomisp_css_morph_table *morph_table;
 	struct atomisp_css_shading_table *shading_table;
 	struct v4l2_frmsizeenum frame_size;
 };

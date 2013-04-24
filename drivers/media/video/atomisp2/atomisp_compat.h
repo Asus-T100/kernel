@@ -91,6 +91,8 @@
 #define CSS_CAPTURE_MODE_ADVANCED	CSS_ID(CSS_CAPTURE_MODE_ADVANCED)
 #define CSS_CAPTURE_MODE_LOW_LIGHT	CSS_ID(CSS_CAPTURE_MODE_LOW_LIGHT)
 
+#define CSS_MORPH_TABLE_NUM_PLANES	CSS_ID(CSS_MORPH_TABLE_NUM_PLANES)
+
 struct atomisp_device;
 
 void atomisp_set_css_env(struct atomisp_device *isp);
@@ -360,4 +362,15 @@ void atomisp_css_set_shading_table(struct atomisp_device *isp,
 		const struct atomisp_css_shading_table *table);
 
 void atomisp_css_shading_table_free(struct atomisp_css_shading_table *table);
+
+struct atomisp_css_morph_table *atomisp_css_morph_table_allocate(
+				unsigned int width, unsigned int height);
+
+void atomisp_css_set_morph_table(struct atomisp_device *isp,
+				const struct atomisp_css_morph_table *table);
+
+void atomisp_css_get_morph_table(struct atomisp_device *isp,
+				struct atomisp_css_morph_table *table);
+
+void atomisp_css_morph_table_free(struct atomisp_css_morph_table *table);
 #endif

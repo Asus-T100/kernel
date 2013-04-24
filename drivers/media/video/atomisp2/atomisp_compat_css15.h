@@ -54,6 +54,7 @@
 #define atomisp_css_macc_table	sh_css_macc_table
 #define atomisp_css_grid_info	sh_css_grid_info
 #define atomisp_css_shading_table	sh_css_shading_table
+#define atomisp_css_morph_table	sh_css_morph_table
 typedef union sh_css_s3a_data atomisp_css_3a_data;
 
 #define CSS_PIPE_ID_PREVIEW	SH_CSS_PREVIEW_PIPELINE

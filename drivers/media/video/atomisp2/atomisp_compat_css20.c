@@ -1449,3 +1449,36 @@ void atomisp_css_shading_table_free(struct atomisp_css_shading_table *table)
 {
 	ia_css_shading_table_free(table);
 }
+
+struct atomisp_css_morph_table *atomisp_css_morph_table_allocate(
+				unsigned int width, unsigned int height)
+{
+	return ia_css_morph_table_allocate(width, height);
+}
+
+void atomisp_css_set_morph_table(struct atomisp_device *isp,
+				const struct atomisp_css_morph_table *table)
+{
+	isp->params.config.morph_table = table;
+}
+
+void atomisp_css_get_morph_table(struct atomisp_device *isp,
+				struct atomisp_css_morph_table *table)
+{
+	struct ia_css_isp_config isp_config;
+
+	if (!isp->css_env.stream) {
+		dev_err(isp->dev,
+			"%s called after streamoff, skipping.\n", __func__);
+		return -EINVAL;
+	}
+	memset(table, 0, sizeof(struct atomisp_css_morph_table));
+	memset(&isp_config, 0, sizeof(struct ia_css_isp_config));
+	isp_config.morph_table = table;
+	ia_css_stream_get_isp_config(isp->css_env.stream, &isp_config);
+}
+
+void atomisp_css_morph_table_free(struct atomisp_css_morph_table *table)
+{
+	ia_css_morph_table_free(table);
+}
