@@ -28,6 +28,7 @@
 #include "atomisp_compat_css15.h"
 #endif
 
+#include <linux/atomisp.h>
 #include <media/videobuf-vmalloc.h>
 
 #define CSS_RX_IRQ_INFO_BUFFER_OVERRUN \
@@ -262,4 +263,93 @@ void atomisp_css_send_input_frame(struct atomisp_device *isp,
 bool atomisp_css_isp_has_started(void);
 
 void atomisp_css_request_flash(struct atomisp_device *isp);
+
+void atomisp_css_set_wb_config(struct atomisp_device *isp,
+			const struct atomisp_css_wb_config *wb_config);
+
+void atomisp_css_set_ob_config(struct atomisp_device *isp,
+			const struct atomisp_css_ob_config *ob_config);
+
+void atomisp_css_set_dp_config(struct atomisp_device *isp,
+			const struct atomisp_css_dp_config *dp_config);
+
+void atomisp_css_set_de_config(struct atomisp_device *isp,
+			const struct atomisp_css_de_config *de_config);
+
+void atomisp_css_set_default_de_config(struct atomisp_device *isp);
+
+void atomisp_css_set_ce_config(struct atomisp_device *isp,
+			const struct atomisp_css_ce_config *ce_config);
+
+void atomisp_css_set_nr_config(struct atomisp_device *isp,
+			const struct atomisp_css_nr_config *nr_config);
+
+void atomisp_css_set_ee_config(struct atomisp_device *isp,
+			const struct atomisp_css_ee_config *ee_config);
+
+void atomisp_css_set_tnr_config(struct atomisp_device *isp,
+			const struct atomisp_css_tnr_config *tnr_config);
+
+void atomisp_css_set_cc_config(struct atomisp_device *isp,
+			const struct atomisp_css_cc_config *cc_config);
+
+void atomisp_css_set_macc_table(struct atomisp_device *isp,
+			const struct atomisp_css_macc_table *macc_table);
+
+void atomisp_css_set_gamma_table(struct atomisp_device *isp,
+			const struct atomisp_css_gamma_table *gamma_table);
+
+void atomisp_css_set_ctc_table(struct atomisp_device *isp,
+			const struct atomisp_css_ctc_table *ctc_table);
+
+void atomisp_css_set_gc_config(struct atomisp_device *isp,
+			const struct atomisp_css_gc_config *gc_config);
+
+void atomisp_css_set_3a_config(struct atomisp_device *isp,
+			const struct atomisp_css_3a_config *s3a_config);
+
+void atomisp_css_video_set_dis_vector(struct atomisp_device *isp,
+				struct atomisp_dis_vector *vector);
+
+int atomisp_css_set_dis_coefs(struct atomisp_device *isp,
+			  struct atomisp_dis_coefficients *coefs);
+
+void atomisp_css_set_zoom_factor(struct atomisp_device *isp,
+					unsigned int zoom);
+
+int atomisp_css_get_wb_config(struct atomisp_device *isp,
+			struct atomisp_wb_config *config);
+
+int atomisp_css_get_ob_config(struct atomisp_device *isp,
+			struct atomisp_ob_config *config);
+
+int atomisp_css_get_dp_config(struct atomisp_device *isp,
+			struct atomisp_dp_config *config);
+
+int atomisp_css_get_de_config(struct atomisp_device *isp,
+			struct atomisp_de_config *config);
+
+int atomisp_css_get_nr_config(struct atomisp_device *isp,
+			struct atomisp_nr_config *config);
+
+int atomisp_css_get_ee_config(struct atomisp_device *isp,
+			struct atomisp_ee_config *config);
+
+int atomisp_css_get_tnr_config(struct atomisp_device *isp,
+			struct atomisp_tnr_config *config);
+
+int atomisp_css_get_ctc_table(struct atomisp_device *isp,
+			struct atomisp_ctc_table *config);
+
+int atomisp_css_get_gamma_table(struct atomisp_device *isp,
+			struct atomisp_gamma_table *config);
+
+int atomisp_css_get_gc_config(struct atomisp_device *isp,
+			struct atomisp_gc_config *config);
+
+int atomisp_css_get_3a_config(struct atomisp_device *isp,
+			struct atomisp_3a_config *config);
+
+int atomisp_css_get_zoom_factor(struct atomisp_device *isp,
+					unsigned int *zoom);
 #endif

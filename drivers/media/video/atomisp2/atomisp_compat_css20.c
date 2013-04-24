@@ -1035,3 +1035,400 @@ void atomisp_css_request_flash(struct atomisp_device *isp)
 {
 	ia_css_stream_request_flash(isp->css_env.stream);
 }
+
+void atomisp_css_set_wb_config(struct atomisp_device *isp,
+			const struct atomisp_css_wb_config *wb_config)
+{
+	isp->params.config.wb_config = wb_config;
+}
+
+void atomisp_css_set_ob_config(struct atomisp_device *isp,
+			const struct atomisp_css_ob_config *ob_config)
+{
+	isp->params.config.ob_config = ob_config;
+}
+
+void atomisp_css_set_dp_config(struct atomisp_device *isp,
+			const struct atomisp_css_dp_config *dp_config)
+{
+	isp->params.config.dp_config = dp_config;
+}
+
+void atomisp_css_set_de_config(struct atomisp_device *isp,
+			const struct atomisp_css_de_config *de_config)
+{
+	isp->params.config.de_config = de_config;
+}
+
+void atomisp_css_set_default_de_config(struct atomisp_device *isp)
+{
+	isp->params.config.de_config = NULL;
+}
+
+void atomisp_css_set_ce_config(struct atomisp_device *isp,
+			const struct atomisp_css_ce_config *ce_config)
+{
+	isp->params.config.ce_config = ce_config;
+}
+
+void atomisp_css_set_nr_config(struct atomisp_device *isp,
+			const struct atomisp_css_nr_config *nr_config)
+{
+	isp->params.config.nr_config = nr_config;
+}
+
+void atomisp_css_set_ee_config(struct atomisp_device *isp,
+			const struct atomisp_css_ee_config *ee_config)
+{
+	isp->params.config.ee_config = ee_config;
+}
+
+void atomisp_css_set_tnr_config(struct atomisp_device *isp,
+			const struct atomisp_css_tnr_config *tnr_config)
+{
+	isp->params.config.tnr_config = tnr_config;
+}
+
+void atomisp_css_set_cc_config(struct atomisp_device *isp,
+			const struct atomisp_css_cc_config *cc_config)
+{
+	isp->params.config.cc_config = cc_config;
+}
+
+void atomisp_css_set_macc_table(struct atomisp_device *isp,
+			const struct atomisp_css_macc_table *macc_table)
+{
+	isp->params.config.macc_table = macc_table;
+}
+
+void atomisp_css_set_gamma_table(struct atomisp_device *isp,
+			const struct atomisp_css_gamma_table *gamma_table)
+{
+	/* TBD */
+	return;
+}
+
+void atomisp_css_set_ctc_table(struct atomisp_device *isp,
+			const struct atomisp_css_ctc_table *ctc_table)
+{
+	/* TBD */
+	return;
+}
+
+void atomisp_css_set_gc_config(struct atomisp_device *isp,
+			const struct atomisp_css_gc_config *gc_config)
+{
+	isp->params.config.gc_config = gc_config;
+}
+
+void atomisp_css_set_3a_config(struct atomisp_device *isp,
+			const struct atomisp_css_3a_config *s3a_config)
+{
+	isp->params.config.s3a_config = s3a_config;
+}
+
+void atomisp_css_video_set_dis_vector(struct atomisp_device *isp,
+				struct atomisp_dis_vector *vector)
+{
+	if (!isp->params.config.motion_vector)
+		isp->params.config.motion_vector = &isp->params.motion_vector;
+
+	memset(isp->params.config.motion_vector,
+			0, sizeof(struct ia_css_vector));
+	isp->params.motion_vector.x = vector->x;
+	isp->params.motion_vector.y = vector->y;
+}
+
+int atomisp_css_set_dis_coefs(struct atomisp_device *isp,
+			  struct atomisp_dis_coefficients *coefs)
+{
+	if (coefs->horizontal_coefficients == NULL ||
+	    coefs->vertical_coefficients   == NULL ||
+	    isp->params.dvs_coeff->hor_coefs == NULL ||
+	    isp->params.dvs_coeff->ver_coefs == NULL)
+		return -EINVAL;
+
+	if (copy_from_user(isp->params.dvs_coeff->hor_coefs,
+	    coefs->horizontal_coefficients, isp->params.dvs_hor_coef_bytes))
+		return -EFAULT;
+	if (copy_from_user(isp->params.dvs_coeff->ver_coefs,
+	    coefs->vertical_coefficients, isp->params.dvs_ver_coef_bytes))
+		return -EFAULT;
+
+	isp->params.config.dvs_coefs = isp->params.dvs_coeff;
+	isp->params.dvs_proj_data_valid = false;
+
+	return 0;
+}
+
+void atomisp_css_set_zoom_factor(struct atomisp_device *isp,
+					unsigned int zoom)
+{
+	if (!isp->params.config.dz_config)
+		isp->params.config.dz_config = &isp->params.dz_config;
+
+	if (zoom == isp->params.config.dz_config->dx &&
+		 zoom == isp->params.config.dz_config->dy) {
+		dev_dbg(isp->dev, "same zoom scale. skipped.\n");
+		return;
+	}
+
+	memset(isp->params.config.dz_config, 0,
+		sizeof(struct ia_css_dz_config));
+	isp->params.dz_config.dx = zoom;
+	isp->params.dz_config.dy = zoom;
+}
+
+int atomisp_css_get_wb_config(struct atomisp_device *isp,
+			struct atomisp_wb_config *config)
+{
+	struct atomisp_css_wb_config wb_config;
+	struct ia_css_isp_config isp_config;
+
+	if (!isp->css_env.stream) {
+		dev_err(isp->dev,
+			"%s called after streamoff, skipping.\n",
+			__func__);
+		return -EINVAL;
+	}
+	memset(&wb_config, 0, sizeof(struct atomisp_css_wb_config));
+	memset(&isp_config, 0, sizeof(struct ia_css_isp_config));
+	isp_config.wb_config = &wb_config;
+	ia_css_stream_get_isp_config(isp->css_env.stream, &isp_config);
+	memcpy(config, &wb_config, sizeof(*config));
+
+	return 0;
+}
+
+int atomisp_css_get_ob_config(struct atomisp_device *isp,
+			struct atomisp_ob_config *config)
+{
+	struct atomisp_css_ob_config ob_config;
+	struct ia_css_isp_config isp_config;
+
+	if (!isp->css_env.stream) {
+		dev_err(isp->dev,
+			"%s called after streamoff, skipping.\n",
+			__func__);
+		return -EINVAL;
+	}
+	memset(&ob_config, 0, sizeof(struct atomisp_css_ob_config));
+	memset(&isp_config, 0, sizeof(struct ia_css_isp_config));
+	isp_config.ob_config = &ob_config;
+	ia_css_stream_get_isp_config(isp->css_env.stream, &isp_config);
+	memcpy(config, &ob_config, sizeof(*config));
+
+	return 0;
+}
+
+int atomisp_css_get_dp_config(struct atomisp_device *isp,
+			struct atomisp_dp_config *config)
+{
+	struct atomisp_css_dp_config dp_config;
+	struct ia_css_isp_config isp_config;
+
+	if (!isp->css_env.stream) {
+		dev_err(isp->dev,
+			"%s called after streamoff, skipping.\n",
+			__func__);
+		return -EINVAL;
+	}
+	memset(&dp_config, 0, sizeof(struct atomisp_css_dp_config));
+	memset(&isp_config, 0, sizeof(struct ia_css_isp_config));
+	isp_config.dp_config = &dp_config;
+	ia_css_stream_get_isp_config(isp->css_env.stream, &isp_config);
+	memcpy(config, &dp_config, sizeof(*config));
+
+	return 0;
+}
+
+int atomisp_css_get_de_config(struct atomisp_device *isp,
+			struct atomisp_de_config *config)
+{
+	struct atomisp_css_de_config de_config;
+	struct ia_css_isp_config isp_config;
+
+	if (!isp->css_env.stream) {
+		dev_err(isp->dev,
+			"%s called after streamoff, skipping.\n",
+			__func__);
+		return -EINVAL;
+	}
+	memset(&de_config, 0, sizeof(struct atomisp_css_de_config));
+	memset(&isp_config, 0, sizeof(struct ia_css_isp_config));
+	isp_config.de_config = &de_config;
+	ia_css_stream_get_isp_config(isp->css_env.stream, &isp_config);
+	memcpy(config, &de_config, sizeof(*config));
+
+	return 0;
+}
+
+int atomisp_css_get_nr_config(struct atomisp_device *isp,
+			struct atomisp_nr_config *config)
+{
+	struct atomisp_css_nr_config nr_config;
+	struct ia_css_isp_config isp_config;
+
+	if (!isp->css_env.stream) {
+		dev_err(isp->dev,
+			"%s called after streamoff, skipping.\n",
+			__func__);
+		return -EINVAL;
+	}
+	memset(&nr_config, 0, sizeof(struct atomisp_css_nr_config));
+	memset(&isp_config, 0, sizeof(struct ia_css_isp_config));
+
+	isp_config.nr_config = &nr_config;
+	ia_css_stream_get_isp_config(isp->css_env.stream, &isp_config);
+	memcpy(config, &nr_config, sizeof(*config));
+
+	return 0;
+}
+
+int atomisp_css_get_ee_config(struct atomisp_device *isp,
+			struct atomisp_ee_config *config)
+{
+	struct atomisp_css_ee_config ee_config;
+	struct ia_css_isp_config isp_config;
+
+	if (!isp->css_env.stream) {
+		dev_err(isp->dev,
+			 "%s called after streamoff, skipping.\n",
+			 __func__);
+		return -EINVAL;
+	}
+	memset(&ee_config, 0, sizeof(struct atomisp_css_ee_config));
+	memset(&isp_config, 0, sizeof(struct ia_css_isp_config));
+	isp_config.ee_config = &ee_config;
+	ia_css_stream_get_isp_config(isp->css_env.stream, &isp_config);
+	memcpy(config, &ee_config, sizeof(*config));
+
+	return 0;
+}
+
+int atomisp_css_get_tnr_config(struct atomisp_device *isp,
+			struct atomisp_tnr_config *config)
+{
+	struct atomisp_css_tnr_config tnr_config;
+	struct ia_css_isp_config isp_config;
+
+	if (!isp->css_env.stream) {
+		dev_err(isp->dev,
+			"%s called after streamoff, skipping.\n",
+			__func__);
+		return -EINVAL;
+	}
+	memset(&tnr_config, 0, sizeof(struct atomisp_css_tnr_config));
+	memset(&isp_config, 0, sizeof(struct ia_css_isp_config));
+	isp_config.tnr_config = &tnr_config;
+	ia_css_stream_get_isp_config(isp->css_env.stream, &isp_config);
+	memcpy(config, &tnr_config, sizeof(*config));
+
+	return 0;
+}
+
+int atomisp_css_get_ctc_table(struct atomisp_device *isp,
+			struct atomisp_ctc_table *config)
+{
+	struct atomisp_css_ctc_table tab;
+	struct ia_css_isp_config isp_config;
+
+	if (!isp->css_env.stream) {
+		dev_err(isp->dev,
+			"%s called after streamoff, skipping.\n",
+			__func__);
+		return -EINVAL;
+	}
+	memset(&tab, 0, sizeof(struct atomisp_css_ctc_table));
+	memset(&isp_config, 0, sizeof(struct ia_css_isp_config));
+	isp_config.ctc_table = &tab;
+	ia_css_stream_get_isp_config(isp->css_env.stream, &isp_config);
+	memcpy(config, &tab, sizeof(*config));
+
+	return 0;
+}
+
+int atomisp_css_get_gamma_table(struct atomisp_device *isp,
+			struct atomisp_gamma_table *config)
+{
+	struct atomisp_css_gamma_table tab;
+	struct ia_css_isp_config isp_config;
+
+	if (!isp->css_env.stream) {
+		dev_err(isp->dev,
+			"%s called after streamoff, skipping.\n",
+			__func__);
+		return -EINVAL;
+	}
+	memset(&tab, 0, sizeof(struct atomisp_css_gamma_table));
+	memset(&isp_config, 0, sizeof(struct ia_css_isp_config));
+	isp_config.gamma_table = &tab;
+	ia_css_stream_get_isp_config(isp->css_env.stream, &isp_config);
+	memcpy(config, &tab, sizeof(*config));
+
+	return 0;
+}
+
+int atomisp_css_get_gc_config(struct atomisp_device *isp,
+			struct atomisp_gc_config *config)
+{
+	struct atomisp_css_gc_config gc_config;
+	struct ia_css_isp_config isp_config;
+
+	if (!isp->css_env.stream) {
+		dev_err(isp->dev,
+			"%s called after streamoff, skipping.\n",
+			__func__);
+		return -EINVAL;
+	}
+	memset(&gc_config, 0, sizeof(struct atomisp_css_gc_config));
+	memset(&isp_config, 0, sizeof(struct ia_css_isp_config));
+	isp_config.gc_config = &gc_config;
+	ia_css_stream_get_isp_config(isp->css_env.stream, &isp_config);
+	/* Get gamma correction params from current setup */
+	memcpy(config, &gc_config, sizeof(*config));
+
+	return 0;
+}
+
+int atomisp_css_get_3a_config(struct atomisp_device *isp,
+			struct atomisp_3a_config *config)
+{
+	struct atomisp_css_3a_config s3a_config;
+	struct ia_css_isp_config isp_config;
+
+	if (!isp->css_env.stream) {
+		dev_err(isp->dev,
+			"%s called after streamoff, skipping.\n",
+			__func__);
+		return -EINVAL;
+	}
+	memset(&s3a_config, 0, sizeof(struct atomisp_css_3a_config));
+	memset(&isp_config, 0, sizeof(struct ia_css_isp_config));
+	isp_config.s3a_config = &s3a_config;
+	ia_css_stream_get_isp_config(isp->css_env.stream, &isp_config);
+	/* Get white balance from current setup */
+	memcpy(config, &s3a_config, sizeof(*config));
+
+	return 0;
+}
+
+int atomisp_css_get_zoom_factor(struct atomisp_device *isp,
+					unsigned int *zoom)
+{
+	struct ia_css_dz_config dz_config;  /**< Digital Zoom */
+	struct ia_css_isp_config isp_config;
+	if (!isp->css_env.stream) {
+		dev_err(isp->dev,
+			"%s called after streamoff, skipping.\n",
+			__func__);
+		return -EINVAL;
+	}
+	memset(&dz_config, 0, sizeof(struct ia_css_dz_config));
+	memset(&isp_config, 0, sizeof(struct ia_css_isp_config));
+	isp_config.dz_config = &dz_config;
+	ia_css_stream_get_isp_config(isp->css_env.stream, &isp_config);
+	*zoom = dz_config.dx;
+
+	return 0;
+}

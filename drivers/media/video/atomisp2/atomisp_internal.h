@@ -187,47 +187,49 @@ struct atomisp_css_params {
 	int false_color;
 	unsigned int histogram_elenum;
 
-	/* default configurations */
-	const struct sh_css_dp_config   *default_dp_config;
-	const struct sh_css_wb_config   *default_wb_config;
-	const struct sh_css_cc_config   *default_cc_config;
-	const struct sh_css_nr_config   *default_nr_config;
-	const struct sh_css_ee_config   *default_ee_config;
-	const struct sh_css_ob_config   *default_ob_config;
-	const struct sh_css_de_config   *default_de_config;
-	const struct sh_css_ce_config   *default_ce_config;
-	const struct sh_css_gc_config   *default_gc_config;
-	const struct sh_css_tnr_config  *default_tnr_config;
-	const struct sh_css_3a_config   *default_3a_config;
-	const struct sh_css_macc_table  *default_macc_table;
-	const struct sh_css_ctc_table   *default_ctc_table;
-	const struct sh_css_gamma_table *default_gamma_table;
+	/* Current grid info */
+	struct atomisp_css_grid_info curr_grid_info;
+
+	int s3a_output_bytes;
+	bool s3a_buf_data_valid;
 
 	/* current configurations */
-	struct sh_css_dp_config   dp_config;
-	struct sh_css_wb_config   wb_config;
-	struct sh_css_cc_config   cc_config;
-	struct sh_css_nr_config   nr_config;
-	struct sh_css_ee_config   ee_config;
-	struct sh_css_ob_config   ob_config;
-	struct sh_css_de_config   de_config;
-	struct sh_css_ce_config   ce_config;
-	struct sh_css_gc_config   gc_config;
-	struct sh_css_tnr_config  tnr_config;
-	struct sh_css_3a_config   s3a_config;
-	struct sh_css_gamma_table gamma_table;
-	struct sh_css_ctc_table   ctc_table;
-	struct sh_css_macc_table  macc_table;
+	struct atomisp_css_dp_config   dp_config;
+	struct atomisp_css_wb_config   wb_config;
+	struct atomisp_css_cc_config   cc_config;
+	struct atomisp_css_nr_config   nr_config;
+	struct atomisp_css_ee_config   ee_config;
+	struct atomisp_css_ob_config   ob_config;
+	struct atomisp_css_de_config   de_config;
+	struct atomisp_css_ce_config   ce_config;
+	struct atomisp_css_gc_config   gc_config;
+	struct atomisp_css_tnr_config  tnr_config;
+	struct atomisp_css_3a_config   s3a_config;
+	struct atomisp_css_gamma_table gamma_table;
+	struct atomisp_css_ctc_table   ctc_table;
+	struct atomisp_css_macc_table  macc_table;
 
-	/* Current grid info */
-	struct sh_css_grid_info curr_grid_info;
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+	struct ia_css_dz_config   dz_config;  /**< Digital Zoom */
+	struct ia_css_capture_config   capture_config;
+	struct ia_css_dvs_coefficients dvs_coefs;
+	struct ia_css_vector  motion_vector;
+
+	struct atomisp_css_isp_config config;
 
 	/* Intermediate buffers used to communicate data between
 	   CSS and user space. These are needed to perform the
 	   copy_to_user. */
+	struct ia_css_3a_statistics *s3a_user_stat;
+	struct ia_css_dvs_coefficients *dvs_coeff;
+	struct ia_css_dvs_statistics *dvs_stat;
+	bool dvs_proj_data_valid;
+	int  dvs_hor_coef_bytes;
+	int  dvs_ver_coef_bytes;
+	int  dvs_ver_proj_bytes;
+	int  dvs_hor_proj_bytes;
+#else
 	struct sh_css_3a_output *s3a_output_buf;
-	int s3a_output_bytes;
-	bool s3a_buf_data_valid;
 	/* DIS Coefficients */
 	short *dis_hor_coef_buf;
 	int    dis_hor_coef_bytes;
@@ -239,6 +241,24 @@ struct atomisp_css_params {
 	int *dis_hor_proj_buf;
 	int  dis_hor_proj_bytes;
 	bool dis_proj_data_valid;
+
+	/* default configurations */
+	const struct atomisp_css_dp_config   *default_dp_config;
+	const struct atomisp_css_wb_config   *default_wb_config;
+	const struct atomisp_css_cc_config   *default_cc_config;
+	const struct atomisp_css_nr_config   *default_nr_config;
+	const struct atomisp_css_ee_config   *default_ee_config;
+	const struct atomisp_css_ob_config   *default_ob_config;
+	const struct atomisp_css_de_config   *default_de_config;
+	const struct atomisp_css_ce_config   *default_ce_config;
+	const struct atomisp_css_gc_config   *default_gc_config;
+	const struct atomisp_css_tnr_config  *default_tnr_config;
+	const struct atomisp_css_3a_config   *default_3a_config;
+	const struct atomisp_css_macc_table  *default_macc_table;
+	const struct atomisp_css_ctc_table   *default_ctc_table;
+	const struct atomisp_css_gamma_table *default_gamma_table;
+#endif
+
 	/* Flash */
 	int num_flash_frames;
 	enum atomisp_flash_state flash_state;

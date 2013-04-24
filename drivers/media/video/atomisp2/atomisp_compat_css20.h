@@ -41,6 +41,21 @@
 #define atomisp_css_frame ia_css_frame
 #define atomisp_css_frame_format ia_css_frame_format
 #define atomisp_css_frame_info ia_css_frame_info
+#define atomisp_css_dp_config	ia_css_dp_config
+#define atomisp_css_wb_config	ia_css_wb_config
+#define atomisp_css_cc_config	ia_css_cc_config
+#define atomisp_css_nr_config	ia_css_nr_config
+#define atomisp_css_ee_config	ia_css_ee_config
+#define atomisp_css_ob_config	ia_css_ob_config
+#define atomisp_css_de_config	ia_css_de_config
+#define atomisp_css_ce_config	ia_css_ce_config
+#define atomisp_css_gc_config	ia_css_gc_config
+#define atomisp_css_tnr_config	ia_css_tnr_config
+#define atomisp_css_3a_config	ia_css_3a_config
+#define atomisp_css_gamma_table	ia_css_gamma_table
+#define atomisp_css_ctc_table	ia_css_ctc_table
+#define atomisp_css_macc_table	ia_css_macc_table
+#define atomisp_css_grid_info	ia_css_grid_info
 typedef struct ia_css_isp_3a_statistics atomisp_css_3a_data;
 
 #define CSS_PIPE_ID_PREVIEW	IA_CSS_PIPE_ID_PREVIEW
