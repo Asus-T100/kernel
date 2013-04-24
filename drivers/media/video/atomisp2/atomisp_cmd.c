@@ -2997,8 +2997,9 @@ static inline void atomisp_set_sensor_mipi_to_isp(struct atomisp_device *isp,
 						mipi_info->raw_bayer_order);
 		atomisp_css_input_set_format(isp, mipi_info->input_format);
 	}
-	sh_css_input_configure_port(__get_mipi_port(isp, mipi_info->port),
-				    mipi_info->num_lanes, 0xffff4);
+	atomisp_css_input_configure_port(isp,
+					__get_mipi_port(isp, mipi_info->port),
+					mipi_info->num_lanes, 0xffff4);
 }
 
 static int __enable_continuous_mode(struct atomisp_device *isp, bool enable)
@@ -3585,7 +3586,7 @@ int atomisp_set_fmt_file(struct video_device *vdev, struct v4l2_format *f)
 
 	pipe->pix = f->fmt.pix;
 	atomisp_css_input_set_mode(isp, CSS_INPUT_MODE_FIFO);
-	sh_css_input_configure_port(
+	atomisp_css_input_configure_port(isp,
 		__get_mipi_port(isp, ATOMISP_CAMERA_PORT_PRIMARY), 2, 0xffff4);
 
 	ffmt.width = f->fmt.pix.width;

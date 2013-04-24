@@ -193,4 +193,9 @@ void atomisp_css_enable_continuous(struct atomisp_device *isp,
 
 void atomisp_css_enable_cont_capt(struct atomisp_device *isp,
 				  bool enable, bool stop_copy_preview);
+
+int atomisp_css_input_configure_port(struct atomisp_device *isp,
+					mipi_port_ID_t port,
+					unsigned int num_lanes,
+					unsigned int timeout);
 #endif

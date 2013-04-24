@@ -441,3 +441,15 @@ void atomisp_css_enable_cont_capt(struct atomisp_device *isp,
 {
 	sh_css_enable_cont_capt(enable, stop_copy_preview);
 }
+
+int atomisp_css_input_configure_port(struct atomisp_device *isp,
+					mipi_port_ID_t port,
+					unsigned int num_lanes,
+					unsigned int timeout)
+{
+	if (sh_css_input_configure_port(port, num_lanes, timeout)
+	    != sh_css_success)
+		return -EINVAL;
+
+	return 0;
+}

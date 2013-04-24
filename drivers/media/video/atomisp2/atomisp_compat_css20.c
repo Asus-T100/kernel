@@ -589,3 +589,15 @@ void atomisp_css_enable_cont_capt(struct atomisp_device *isp,
 				  bool enable, bool stop_copy_preview)
 {
 }
+
+int atomisp_css_input_configure_port(struct atomisp_device *isp,
+					mipi_port_ID_t port,
+					unsigned int num_lanes,
+					unsigned int timeout)
+{
+	isp->css_env.stream_config.source.port.port = port;
+	isp->css_env.stream_config.source.port.num_lanes = num_lanes;
+	isp->css_env.stream_config.source.port.timeout = timeout;
+
+	return 0;
+}
