@@ -867,3 +867,20 @@ int atomisp_css_get_zoom_factor(struct atomisp_device *isp,
 	sh_css_get_zoom_factor(zoom, zoom);
 	return 0;
 }
+
+struct atomisp_css_shading_table *atomisp_css_shading_table_alloc(
+				unsigned int width, unsigned int height)
+{
+	return sh_css_shading_table_alloc(width, height);
+}
+
+void atomisp_css_set_shading_table(struct atomisp_device *isp,
+		const struct atomisp_css_shading_table *table)
+{
+	sh_css_set_shading_table(table);
+}
+
+void atomisp_css_shading_table_free(struct atomisp_css_shading_table *table)
+{
+	sh_css_shading_table_free(table);
+}

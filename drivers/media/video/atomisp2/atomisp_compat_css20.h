@@ -56,6 +56,7 @@
 #define atomisp_css_ctc_table	ia_css_ctc_table
 #define atomisp_css_macc_table	ia_css_macc_table
 #define atomisp_css_grid_info	ia_css_grid_info
+#define atomisp_css_shading_table	ia_css_shading_table
 typedef struct ia_css_isp_3a_statistics atomisp_css_3a_data;
 
 #define CSS_PIPE_ID_PREVIEW	IA_CSS_PIPE_ID_PREVIEW

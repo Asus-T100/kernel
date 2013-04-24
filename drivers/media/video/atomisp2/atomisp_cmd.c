@@ -2203,8 +2203,8 @@ static int __atomisp_set_lsc_table(struct atomisp_device *isp,
 {
 	unsigned int i;
 	unsigned int len_table;
-	struct sh_css_shading_table *shading_table;
-	struct sh_css_shading_table *old_shading_table;
+	struct atomisp_css_shading_table *shading_table;
+	struct atomisp_css_shading_table *old_shading_table;
 
 	if (!user_st)
 		return 0;
@@ -2228,8 +2228,8 @@ static int __atomisp_set_lsc_table(struct atomisp_device *isp,
 		user_st->height > SH_CSS_MAX_SCTBL_HEIGHT_PER_COLOR)
 		return -EINVAL;
 
-	shading_table = sh_css_shading_table_alloc(user_st->width,
-			user_st->height);
+	shading_table = atomisp_css_shading_table_alloc(user_st->width,
+							user_st->height);
 	if (!shading_table)
 			return -ENOMEM;
 
@@ -2249,11 +2249,11 @@ static int __atomisp_set_lsc_table(struct atomisp_device *isp,
 set_lsc:
 	/* set LSC to CSS */
 	isp->inputs[isp->input_curr].shading_table = shading_table;
-	sh_css_set_shading_table(shading_table);
+	atomisp_css_set_shading_table(isp, shading_table);
 	isp->params.sc_en = shading_table != NULL;
 
 	if (old_shading_table)
-		sh_css_shading_table_free(old_shading_table);
+		atomisp_css_shading_table_free(old_shading_table);
 
 	return 0;
 }
@@ -2769,9 +2769,9 @@ int atomisp_shading_correction(struct atomisp_device *isp, int flag,
 	}
 
 	if (*value == 0)
-		sh_css_set_shading_table(NULL);
+		atomisp_css_set_shading_table(isp, NULL);
 	else
-		sh_css_set_shading_table(
+		atomisp_css_set_shading_table(isp,
 			isp->inputs[isp->input_curr].shading_table);
 
 	isp->params.sc_en = *value;
@@ -3609,8 +3609,8 @@ void atomisp_free_all_shading_tables(struct atomisp_device *isp)
 int atomisp_set_shading_table(struct atomisp_device *isp,
 		struct atomisp_shading_table *user_shading_table)
 {
-	struct sh_css_shading_table *shading_table;
-	struct sh_css_shading_table *free_table;
+	struct atomisp_css_shading_table *shading_table;
+	struct atomisp_css_shading_table *free_table;
 	unsigned int len_table;
 	int i;
 	int ret = 0;
@@ -3624,7 +3624,7 @@ int atomisp_set_shading_table(struct atomisp_device *isp,
 	}
 
 	if (!user_shading_table->enable) {
-		sh_css_set_shading_table(NULL);
+		atomisp_css_set_shading_table(isp, NULL);
 		isp->params.sc_en = 0;
 		return 0;
 	}
@@ -3640,8 +3640,8 @@ int atomisp_set_shading_table(struct atomisp_device *isp,
 	    user_shading_table->height > SH_CSS_MAX_SCTBL_HEIGHT_PER_COLOR)
 		return -EINVAL;
 
-	shading_table = sh_css_shading_table_alloc(user_shading_table->width,
-						   user_shading_table->height);
+	shading_table = atomisp_css_shading_table_alloc(
+			user_shading_table->width, user_shading_table->height);
 	if (!shading_table)
 		return -ENOMEM;
 
@@ -3662,12 +3662,12 @@ int atomisp_set_shading_table(struct atomisp_device *isp,
 
 	free_table = isp->inputs[isp->input_curr].shading_table;
 	isp->inputs[isp->input_curr].shading_table = shading_table;
-	sh_css_set_shading_table(shading_table);
+	atomisp_css_set_shading_table(isp, shading_table);
 	isp->params.sc_en = 1;
 
 out:
 	if (free_table != NULL)
-		sh_css_shading_table_free(free_table);
+		atomisp_css_shading_table_free(free_table);
 
 	return ret;
 }
