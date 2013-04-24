@@ -501,3 +501,51 @@ void atomisp_css_video_set_dis_envelope(struct atomisp_device *isp,
 	isp->css_env.pipe_configs[0].dvs_envelope.width = dvs_w;
 	isp->css_env.pipe_configs[0].dvs_envelope.height = dvs_h;
 }
+
+void atomisp_css_input_set_two_pixels_per_clock(struct atomisp_device *isp,
+						bool two_ppc)
+{
+	int i;
+
+	if (isp->css_env.stream_config.two_pixels_per_clock == !!enable)
+			return;
+
+	isp->css_env.stream_config.two_pixels_per_clock = !!enable;
+	for (i = 0; i < IA_CSS_PIPE_ID_NUM; i++)
+		isp->css_env.update_pipe[i] = true;
+}
+
+void atomisp_css_enable_raw_binning(struct atomisp_device *isp,
+					bool enable)
+{
+	int i;
+
+	for (i = 0; i < IA_CSS_PIPE_ID_NUM; i++) {
+		if (isp->css_env.pipe_extra_configs[i].enable_raw_binning
+							== !!enable)
+			continue;
+
+		isp->css_env.pipe_extra_configs[i].enable_raw_binning
+							= !!enable;
+		isp->css_env.update_pipe[i] = true;
+	}
+}
+
+void atomisp_css_capture_set_mode(struct atomisp_device *isp,
+				enum atomisp_css_capture_mode mode)
+{
+	isp->css_env.curr_pipe = IA_CSS_PIPE_ID_CAPTURE;
+	if (isp->css_env.pipe_configs[IA_CSS_PIPE_ID_CAPTURE].
+					default_capture_config.mode == mode)
+		return;
+
+	isp->css_env.pipe_configs[IA_CSS_PIPE_ID_CAPTURE].
+					default_capture_config.mode = mode;
+	isp->css_env.update_pipe[IA_CSS_PIPE_ID_CAPTURE] = true;
+}
+
+void atomisp_css_input_set_mode(struct atomisp_device *isp,
+				enum atomisp_css_input_mode mode)
+{
+	isp->css_env.stream_config.mode = mode;
+}

@@ -33,6 +33,8 @@
 #define atomisp_css_irq_info sh_css_interrupt_info
 #define atomisp_css_bayer_order sh_css_bayer_order
 #define atomisp_css_stream_format sh_css_input_format
+#define atomisp_css_capture_mode sh_css_capture_mode
+#define atomisp_css_input_mode sh_css_input_mode
 typedef union sh_css_s3a_data atomisp_css_3a_data;
 
 #define CSS_PIPE_ID_PREVIEW	SH_CSS_PREVIEW_PIPELINE
@@ -41,6 +43,12 @@ typedef union sh_css_s3a_data atomisp_css_3a_data;
 #define CSS_PIPE_ID_CAPTURE	SH_CSS_CAPTURE_PIPELINE
 #define CSS_PIPE_ID_ACC		SH_CSS_ACC_PIPELINE
 #define CSS_PIPE_ID_NUM		SH_CSS_NR_OF_PIPELINES
+
+#define CSS_INPUT_MODE_SENSOR	SH_CSS_INPUT_MODE_SENSOR
+#define CSS_INPUT_MODE_FIFO	SH_CSS_INPUT_MODE_FIFO
+#define CSS_INPUT_MODE_TPG	SH_CSS_INPUT_MODE_TPG
+#define CSS_INPUT_MODE_PRBS	SH_CSS_INPUT_MODE_PRBS
+#define CSS_INPUT_MODE_MEMORY	SH_CSS_INPUT_MODE_MEMORY
 
 #define CSS_IRQ_INFO_EVENTS_READY	SH_CSS_IRQ_INFO_BUFFER_DONE
 #define CSS_IRQ_INFO_INVALID_FIRST_FRAME \

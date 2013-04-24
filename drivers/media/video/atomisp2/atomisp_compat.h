@@ -84,6 +84,12 @@
 #define CSS_FORMAT_RAW_10	CSS_FORMAT(RAW_10)
 #define CSS_FORMAT_RAW_12	CSS_FORMAT(RAW_12)
 
+#define CSS_CAPTURE_MODE_RAW		CSS_ID(CSS_CAPTURE_MODE_RAW)
+#define CSS_CAPTURE_MODE_BAYER		CSS_ID(CSS_CAPTURE_MODE_BAYER)
+#define CSS_CAPTURE_MODE_PRIMARY	CSS_ID(CSS_CAPTURE_MODE_PRIMARY)
+#define CSS_CAPTURE_MODE_ADVANCED	CSS_ID(CSS_CAPTURE_MODE_ADVANCED)
+#define CSS_CAPTURE_MODE_LOW_LIGHT	CSS_ID(CSS_CAPTURE_MODE_LOW_LIGHT)
+
 struct atomisp_device;
 
 void atomisp_set_css_env(struct atomisp_device *isp);
@@ -163,4 +169,16 @@ int atomisp_css_input_set_effective_resolution(struct atomisp_device *isp,
 
 void atomisp_css_video_set_dis_envelope(struct atomisp_device *isp,
 					unsigned int dvs_w, unsigned int dvs_h);
+
+void atomisp_css_input_set_two_pixels_per_clock(struct atomisp_device *isp,
+						bool two_ppc);
+
+void atomisp_css_enable_raw_binning(struct atomisp_device *isp,
+					bool enable);
+
+void atomisp_css_capture_set_mode(struct atomisp_device *isp,
+				enum atomisp_css_capture_mode mode);
+
+void atomisp_css_input_set_mode(struct atomisp_device *isp,
+				enum atomisp_css_input_mode mode);
 #endif

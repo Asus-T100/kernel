@@ -36,6 +36,8 @@
 #define atomisp_css_isp_config ia_css_isp_config
 #define atomisp_css_bayer_order ia_css_bayer_order
 #define atomisp_css_stream_format ia_css_stream_format
+#define atomisp_css_capture_mode ia_css_capture_mode
+#define atomisp_css_input_mode ia_css_input_mode
 typedef struct ia_css_isp_3a_statistics atomisp_css_3a_data;
 
 #define CSS_PIPE_ID_PREVIEW	IA_CSS_PIPE_ID_PREVIEW
@@ -44,6 +46,13 @@ typedef struct ia_css_isp_3a_statistics atomisp_css_3a_data;
 #define CSS_PIPE_ID_CAPTURE	IA_CSS_PIPE_ID_CAPTURE
 #define CSS_PIPE_ID_ACC		IA_CSS_PIPE_ID_ACC
 #define CSS_PIPE_ID_NUM		IA_CSS_PIPE_ID_NUM
+
+#define CSS_INPUT_MODE_SENSOR	IA_CSS_INPUT_MODE_SENSOR
+#define CSS_INPUT_MODE_FIFO	IA_CSS_INPUT_MODE_FIFO
+#define CSS_INPUT_MODE_TPG	IA_CSS_INPUT_MODE_TPG
+#define CSS_INPUT_MODE_PRBS	IA_CSS_INPUT_MODE_PRBS
+#define CSS_INPUT_MODE_MEMORY	IA_CSS_INPUT_MODE_MEMORY
+#define CSS_INPUT_MODE_BUFFERED_SENSOR	IA_CSS_INPUT_MODE_BUFFERED_SENSOR
 
 #define CSS_IRQ_INFO_CSS_RECEIVER_ERROR	IA_CSS_IRQ_INFO_CSS_RECEIVER_ERROR
 #define CSS_IRQ_INFO_EVENTS_READY	IA_CSS_IRQ_INFO_EVENTS_READY

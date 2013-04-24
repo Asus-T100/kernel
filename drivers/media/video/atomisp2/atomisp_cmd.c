@@ -1406,11 +1406,11 @@ bool atomisp_is_mbuscode_raw(uint32_t code)
 static void atomisp_update_capture_mode(struct atomisp_device *isp)
 {
 	if (isp->params.low_light)
-		sh_css_capture_set_mode(SH_CSS_CAPTURE_MODE_LOW_LIGHT);
+		atomisp_css_capture_set_mode(isp, CSS_CAPTURE_MODE_LOW_LIGHT);
 	else if (isp->params.gdc_cac_en)
-		sh_css_capture_set_mode(SH_CSS_CAPTURE_MODE_ADVANCED);
+		atomisp_css_capture_set_mode(isp, CSS_CAPTURE_MODE_ADVANCED);
 	else
-		sh_css_capture_set_mode(SH_CSS_CAPTURE_MODE_PRIMARY);
+		atomisp_css_capture_set_mode(isp, CSS_CAPTURE_MODE_PRIMARY);
 }
 
 /*
@@ -3006,7 +3006,7 @@ static int __enable_continuous_mode(struct atomisp_device *isp, bool enable)
 	dev_dbg(isp->dev, "continuous mode %d, raw buffers %d, stop preview %d\n",
 		enable, isp->isp_subdev.continuous_raw_buffer_size->val,
 		!isp->isp_subdev.continuous_viewfinder->val);
-	sh_css_capture_set_mode(SH_CSS_CAPTURE_MODE_PRIMARY);
+	atomisp_css_capture_set_mode(isp, CSS_CAPTURE_MODE_PRIMARY);
 	sh_css_capture_enable_online(!enable);
 	sh_css_preview_enable_online(!enable);
 	sh_css_enable_continuous(enable);
@@ -3028,13 +3028,13 @@ static int __enable_continuous_mode(struct atomisp_device *isp, bool enable)
 	}
 
 	if (!enable) {
-		sh_css_enable_raw_binning(false);
-		sh_css_input_set_two_pixels_per_clock(false);
+		atomisp_css_enable_raw_binning(isp, false);
+		atomisp_css_input_set_two_pixels_per_clock(isp, false);
 	}
 
 	if (isp->inputs[isp->input_curr].type != TEST_PATTERN &&
 		isp->inputs[isp->input_curr].type != FILE_INPUT)
-		sh_css_input_set_mode(SH_CSS_INPUT_MODE_SENSOR);
+		atomisp_css_input_set_mode(isp, CSS_INPUT_MODE_SENSOR);
 
 	return atomisp_update_run_mode(isp);
 }
@@ -3141,18 +3141,20 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 			 */
 			if (IS_ISP2400(isp) && (width >= 2048
 						|| height >= 1536)) {
-				sh_css_enable_raw_binning(true);
-				sh_css_input_set_two_pixels_per_clock(false);
+				atomisp_css_enable_raw_binning(isp, true);
+				atomisp_css_input_set_two_pixels_per_clock(isp,
+									false);
 			}
 
 			if (!IS_ISP2400(isp)) {
 				/* enable raw binning for output >= 5M */
 				if (width >= 2576 || height >= 1936)
-					sh_css_enable_raw_binning(true);
+					atomisp_css_enable_raw_binning(isp,
+									true);
 				/* enable 2ppc for CTP if output > 8M */
 				if (width > 3264 || height > 2448)
-					sh_css_input_set_two_pixels_per_clock(
-							true);
+					atomisp_css_input_set_two_pixels_per_clock(
+								isp, true);
 			}
 		} else {
 			ret = __enable_continuous_mode(isp, false);
@@ -3174,7 +3176,7 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 		configure_pp_input = sh_css_preview_configure_pp_input;
 	} else {
 		if (format->sh_fmt == SH_CSS_FRAME_FORMAT_RAW) {
-			sh_css_capture_set_mode(SH_CSS_CAPTURE_MODE_RAW);
+			atomisp_css_capture_set_mode(isp, CSS_CAPTURE_MODE_RAW);
 		}
 		if (!isp->isp_subdev.continuous_mode->val)
 			sh_css_capture_enable_online(
@@ -3582,7 +3584,7 @@ int atomisp_set_fmt_file(struct video_device *vdev, struct v4l2_format *f)
 	}
 
 	pipe->pix = f->fmt.pix;
-	sh_css_input_set_mode(SH_CSS_INPUT_MODE_FIFO);
+	atomisp_css_input_set_mode(isp, CSS_INPUT_MODE_FIFO);
 	sh_css_input_configure_port(
 		__get_mipi_port(isp, ATOMISP_CAMERA_PORT_PRIMARY), 2, 0xffff4);
 

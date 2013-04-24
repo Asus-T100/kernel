@@ -393,3 +393,27 @@ void atomisp_css_video_set_dis_envelope(struct atomisp_device *isp,
 {
 	sh_css_video_set_dis_envelope(dvs_w, dvs_h);
 }
+
+void atomisp_css_input_set_two_pixels_per_clock(struct atomisp_device *isp,
+						bool two_ppc)
+{
+	sh_css_input_set_two_pixels_per_clock(two_ppc);
+}
+
+void atomisp_css_enable_raw_binning(struct atomisp_device *isp,
+					bool enable)
+{
+	sh_css_enable_raw_binning(enable);
+}
+
+void atomisp_css_capture_set_mode(struct atomisp_device *isp,
+				enum atomisp_css_capture_mode mode)
+{
+	sh_css_capture_set_mode(mode);
+}
+
+void atomisp_css_input_set_mode(struct atomisp_device *isp,
+				enum atomisp_css_input_mode mode)
+{
+	sh_css_input_set_mode(mode);
+}
