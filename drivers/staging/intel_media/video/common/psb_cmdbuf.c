@@ -838,6 +838,9 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 	struct psb_video_ctx *pos = NULL;
 	struct psb_video_ctx *n = NULL;
 	struct psb_video_ctx *msvdx_ctx = NULL;
+#if defined(MERRIFIELD)
+	struct tng_topaz_private *topaz_priv = dev_priv->topaz_private;
+#endif
 	int engine, po_correct;
 	int found = 0;
 	struct psb_context *context = NULL;
@@ -845,9 +848,19 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 	if (dev_priv == NULL)
 		return -EINVAL;
 	msvdx_priv = dev_priv->msvdx_private;
+
 #ifdef SUPPORT_VSP
 	vsp_priv = dev_priv->vsp_private;
 #endif
+
+#if defined(MERRIFIELD)
+	if (drm_topaz_cmdpolicy != PSB_CMDPOLICY_PARALLEL) {
+		wait_event_interruptible(topaz_priv->cmd_wq, \
+			(atomic_read(&topaz_priv->cmd_wq_free) == 1));
+		atomic_set(&topaz_priv->cmd_wq_free, 0);
+	}
+#endif
+
 	ret = ttm_read_lock(&dev_priv->ttm_lock, true);
 	if (unlikely(ret != 0))
 		return ret;
@@ -873,12 +886,12 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 			ret = -ENODEV;
 			goto out_err0;
 		}
-
+#ifndef MERRIFIELD
 		if (!ospm_power_using_video_begin(OSPM_VIDEO_ENC_ISLAND)) {
 			ret = -EBUSY;
 			goto out_err0;
 		}
-
+#endif
 		ret = mutex_lock_interruptible(&dev_priv->cmdbuf_mutex);
 		if (unlikely(ret != 0))
 			goto out_err0;
@@ -1072,8 +1085,10 @@ out_err0:
 		ospm_power_using_video_end(OSPM_VIDEO_DEC_ISLAND);
 
 #ifndef CONFIG_DRM_VXD_BYT
+#ifndef MERRIFIELD
 	if (arg->engine == LNC_ENGINE_ENCODE)
 		ospm_power_using_video_end(OSPM_VIDEO_ENC_ISLAND);
+#endif
 #endif
 
 #ifdef SUPPORT_VSP

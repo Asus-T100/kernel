@@ -260,17 +260,18 @@ static bool power_up_island(struct ospm_power_island *p_island)
 			p_island->island_state = OSPM_POWER_ON;
 
 			/*
-			 * FIXME: revisit to check whether the 1st level
-			 * interrupts of VED/VEC/VSP need to be turned on here.
-			 */
+			* FIXME: revisit to check whether the 1st level
+			* interrupts of VED/VEC/VSP need to be turned on here.
+			*/
 			/* Video irq need to be set */
-			if (p_island->island & OSPM_VIDEO_ISLAND) {
+			if (p_island->island & OSPM_VIDEO_DEC_ISLAND ||
+			    p_island->island & OSPM_VIDEO_VPP_ISLAND) {
 				psb_irq_preinstall_islands(
-						g_ospm_data->dev,
-						p_island->island);
+					g_ospm_data->dev,
+					p_island->island);
 				psb_irq_postinstall_islands(
-						g_ospm_data->dev,
-						p_island->island);
+					g_ospm_data->dev,
+					p_island->island);
 			}
 		} else
 			return ret;

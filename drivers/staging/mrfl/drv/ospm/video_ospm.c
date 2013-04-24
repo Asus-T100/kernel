@@ -198,11 +198,14 @@ static bool vec_power_up(struct drm_device *dev,
 		return false;
 	}
 
-	/* Add the count to make sure the VEC don't be shut down
-	* when the count be decrease to 0.
-	*/
-	if (drm_topaz_pmpolicy == PSB_PMPOLICY_NOPM)
-		atomic_inc(&p_island->ref_count);
+	if (!tng_topaz_set_vec_freq(IP_FREQ_320_00))
+		PSB_DEBUG_PM("TOPAZ: Set VEC frequency to " \
+			"320MHZ after power up\n");
+
+	if (drm_topaz_cgpolicy != PSB_CGPOLICY_ON)
+		tng_topaz_CG_disable(dev);
+
+	PSB_DEBUG_PM("powering up vec done\n");
 
 	return ret;
 }
@@ -217,31 +220,31 @@ static bool vec_power_down(struct drm_device *dev,
 {
 	bool ret = true;
 	int pm_ret = 0;
+	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct tng_topaz_private *topaz_priv = dev_priv->topaz_private;
 
-	PSB_DEBUG_PM("powering down vec\n");
+	int d0i3_power_down = (drm_topaz_pmpolicy == PSB_PMPOLICY_NOPM ? 0 : 1);
+	/* Avoid handle the previous context's power down request */
+	int release_power_down = (topaz_priv->power_down_by_release \
+		== topaz_priv->cur_context ? 1 : 0);
+	topaz_priv->power_down_by_release = 0;
 
-	if (atomic_read(&p_island->ref_count)) {
-		PSB_DEBUG_PM("TOPAZ: VEC ref count is not 0");
-		return false;
-	}
+	PSB_DEBUG_PM("TOPAZ: powering down vec\n");
 
-	if (tng_check_topaz_idle(dev))
-		return false;
+	tng_topaz_save_mtx_state(dev);
 
-	psb_irq_uninstall_islands(dev, OSPM_VIDEO_ENC_ISLAND);
+	if (!tng_topaz_set_vec_freq(IP_FREQ_200_00))
+		PSB_DEBUG_PM("TOPAZ: Set VEC frequency to 200MHZ " \
+			"before power down\n");
 
-	if (get_ctx_cnt(dev) > 1) {
-		PSB_DEBUG_GENERAL("TOPAZ: more than 1(%d) context," \
-			" save current context status\n", \
-			get_ctx_cnt(dev));
-		tng_topaz_save_mtx_state(dev);
-	}
-
-	pm_ret = pmu_nc_set_power_state(PMU_ENC, OSPM_ISLAND_DOWN, VEC_SS_PM0);
+	pm_ret = pmu_nc_set_power_state(PMU_ENC, \
+		OSPM_ISLAND_DOWN, VEC_SS_PM0);
 	if (pm_ret) {
-		PSB_DEBUG_PM("power down ved failed\n");
+		DRM_ERROR("Power down ved failed\n");
 		return false;
 	}
+
+	PSB_DEBUG_PM("TOPAZ: powering down vec done\n");
 
 	return ret;
 }

@@ -105,8 +105,10 @@ int drm_idle_check_interval = 5;
 int drm_msvdx_pmpolicy = PSB_PMPOLICY_POWERDOWN;
 int drm_psb_cpurelax;
 int drm_psb_udelaydivider = 1;
-int drm_topaz_pmpolicy = PSB_PMPOLICY_NOPM;
+int drm_topaz_pmpolicy = PSB_PMPOLICY_POWERDOWN;
 int drm_vsp_pmpolicy = PSB_PMPOLICY_POWERDOWN;
+int drm_topaz_cgpolicy = PSB_CGPOLICY_VECCG_DIS;
+int drm_topaz_cmdpolicy = PSB_CMDPOLICY_PARALLEL;
 int drm_topaz_sbuswa;
 int drm_psb_ospm = 1;
 int drm_psb_dsr;
@@ -138,6 +140,8 @@ MODULE_PARM_DESC(rtpm, "Specifies Runtime PM delay for GFX");
 MODULE_PARM_DESC(msvdx_pmpolicy, "msvdx power management policy btw frames");
 MODULE_PARM_DESC(topaz_pmpolicy, "topaz power managerment policy btw frames");
 MODULE_PARM_DESC(vsp_pmpolicy, "vsp power managerment policy btw frames");
+MODULE_PARM_DESC(topaz_cgpolicy, "disable VEC and GFX clock gating");
+MODULE_PARM_DESC(topaz_cmdpolicy, "execute cmd in parallel mode");
 MODULE_PARM_DESC(topaz_sbuswa, "WA for topaz sysbus write");
 MODULE_PARM_DESC(PanelID, "Panel info for querying");
 MODULE_PARM_DESC(hdmi_edid, "EDID info for HDMI monitor");
@@ -165,6 +169,8 @@ module_param_named(cpu_relax, drm_psb_cpurelax, int, 0600);
 module_param_named(udelay_divider, drm_psb_udelaydivider, int, 0600);
 module_param_named(topaz_pmpolicy, drm_topaz_pmpolicy, int, 0600);
 module_param_named(vsp_pmpolicy, drm_vsp_pmpolicy, int, 0600);
+module_param_named(topaz_cgpolicy, drm_topaz_cgpolicy, int, 0600);
+module_param_named(topaz_cmdpolicy, drm_topaz_cmdpolicy, int, 0600);
 module_param_named(topaz_sbuswa, drm_topaz_sbuswa, int, 0600);
 module_param_named(ospm, drm_psb_ospm, int, 0600);
 module_param_named(dsr, drm_psb_dsr, int, 0600);
@@ -1552,6 +1558,10 @@ static int psb_driver_unload(struct drm_device *dev)
 			iounmap(dev_priv->wrapper_reg);
 			dev_priv->wrapper_reg = NULL;
 		}
+		if (dev_priv->vec_wrapper_reg) {
+			iounmap(dev_priv->vec_wrapper_reg);
+			dev_priv->vec_wrapper_reg = NULL;
+		}
 		if (dev_priv->msvdx_reg) {
 			iounmap(dev_priv->msvdx_reg);
 			dev_priv->msvdx_reg = NULL;
@@ -1715,6 +1725,13 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 				GFX_WRAPPER_SIZE);
 
 		if (!dev_priv->wrapper_reg)
+			goto out_err;
+
+		dev_priv->vec_wrapper_reg =
+			ioremap(resource_start + VEC_WRAPPER_OFFSET,
+				VEC_WRAPPER_SIZE);
+
+		if (!dev_priv->vec_wrapper_reg)
 			goto out_err;
 
 	}

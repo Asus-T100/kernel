@@ -128,6 +128,9 @@ enum panel_type {
 #define GFX_WRAPPER_OFFSET	 0x00160000	/* GFX Wrapper */
 #define GFX_WRAPPER_SIZE	 0x00001000
 
+#define VEC_WRAPPER_OFFSET	 0x00162000	/* VEC Wrapper */
+#define VEC_WRAPPER_SIZE	 0x00001000
+
 #define MRFLD_MSAC		 0x60
 #define _APERTURE_SIZE_POS	 28
 #define _APERTURE_SIZE_MASK	 ((1<<28) | (1<<29))
@@ -312,6 +315,13 @@ enum panel_type {
 #define PSB_PMPOLICY_CLOCKGATING	1
 #define PSB_PMPOLICY_POWERDOWN		2
 
+#define PSB_CGPOLICY_ON		0
+#define PSB_CGPOLICY_GFXCG_DIS		1
+#define PSB_CGPOLICY_VECCG_DIS		2
+#define PSB_CGPOLICY_VEDCG_DIS		3
+
+#define PSB_CMDPOLICY_PARALLEL		1
+
 #define PSB_PMSTATE_POWERUP		0
 #define PSB_PMSTATE_CLOCKGATED		1
 #define PSB_PMSTATE_POWERDOWN		2
@@ -403,6 +413,7 @@ struct drm_psb_private {
 
 	uint8_t *rgx_reg;
 	uint8_t *wrapper_reg;
+	uint8_t *vec_wrapper_reg;
 	uint8_t *vdc_reg;
 	uint32_t gatt_free_offset;
 

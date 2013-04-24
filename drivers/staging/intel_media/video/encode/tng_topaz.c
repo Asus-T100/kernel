@@ -92,7 +92,7 @@ void mtx_kick(struct drm_device *dev)
 	struct drm_psb_private *dev_priv = dev->dev_private;
 
 	mtx_set_target(dev_priv);
-	PSB_DEBUG_GENERAL("TOPAZ: Kick MTX to start\n");
+	PSB_DEBUG_TOPAZ("TOPAZ: Kick MTX to start\n");
 	MTX_WRITE32(MTX_CR_MTX_KICK, 1);
 }
 
@@ -280,9 +280,9 @@ int32_t dispatch_wb_message_polling(
 
 	/* Read and compare consumer and producer */
 	if (topaz_priv->producer == topaz_priv->consumer) {
-		PSB_DEBUG_GENERAL("TOPAZ: producer = consumer = %d",
+		PSB_DEBUG_TOPAZ("TOPAZ: producer = consumer = %d",
 			topaz_priv->producer);
-		PSB_DEBUG_GENERAL("polling producer until change\n");
+		PSB_DEBUG_TOPAZ("polling producer until change\n");
 		/* if the same -> poll on Producer change */
 		ret = tng_topaz_wait_for_register(dev_priv, CHECKFUNC_NOTEQUAL,
 			TOPAZHP_TOP_CR_FIRMWARE_REG_1 +
@@ -307,7 +307,7 @@ int32_t dispatch_wb_message_polling(
 
 	/* Dispatch new messages */
 	do {
-		PSB_DEBUG_GENERAL("TOPAZ: Dispatch write back message, " \
+		PSB_DEBUG_TOPAZ("TOPAZ: Dispatch write back message, " \
 			"producer = %d, consumer = %d\n",
 			topaz_priv->producer, topaz_priv->consumer);
 
@@ -334,11 +334,11 @@ int32_t dispatch_wb_message_polling(
 	    cur_cmd_header->id != MTX_CMDID_ISSUEBUFF)
 		return 0;
 
-	PSB_DEBUG_GENERAL("TOPAZ: Handle context saving/fence " \
+	PSB_DEBUG_TOPAZ("TOPAZ: Handle context saving/fence " \
 		"handler/dequeue send on ENCODE_FRAME command\n");
 
 	if (get_ctx_cnt(dev) > 1) {
-		PSB_DEBUG_GENERAL("TOPAZ: More than one context, " \
+		PSB_DEBUG_TOPAZ("TOPAZ: More than one context, " \
 			"save current context\n");
 		if (topaz_priv->cur_context->codec != IMG_CODEC_JPEG) {
 			ret = tng_topaz_save_mtx_state(dev);
@@ -390,7 +390,7 @@ int32_t dispatch_wb_message_irq(struct drm_device *dev)
 		return -1;
 	}
 
-	PSB_DEBUG_GENERAL("TOPAZ: Producer = %d, Consumer = %d\n",
+	PSB_DEBUG_TOPAZ("TOPAZ: Producer = %d, Consumer = %d\n",
 		topaz_priv->producer, topaz_priv->consumer);
 
 	do {
@@ -444,7 +444,8 @@ int32_t tng_wait_on_sync(
 	}
 
 	if (count == LOOP_COUNT * 1000) {
-		DRM_ERROR("Waiting for IRQ timeout\n");
+		DRM_ERROR("Sync cmd(%s) timeout\n", \
+			cmd_to_string(cmd_id & (~MTX_CMDID_PRIORITY)));
 		return -1;
 	}
 #else
@@ -452,7 +453,7 @@ int32_t tng_wait_on_sync(
 
 	/* Read and compare consumer and producer */
 	if (topaz_priv->producer == topaz_priv->consumer) {
-		PSB_DEBUG_GENERAL("TOPAZ: producer = consumer = %d, " \
+		PSB_DEBUG_TOPAZ("TOPAZ: producer = consumer = %d, " \
 			"polling producer until change\n",
 			topaz_priv->producer);
 		/* if the same -> poll on Producer change */
@@ -472,7 +473,7 @@ int32_t tng_wait_on_sync(
 #endif
 	/* Dispatch new messages */
 	do {
-		PSB_DEBUG_GENERAL("TOPAZ: Dispatch write back message, " \
+		PSB_DEBUG_TOPAZ("TOPAZ: Dispatch write back message, " \
 			"producer = %d, consumer = %d\n",
 			topaz_priv->producer, topaz_priv->consumer);
 		/*
@@ -501,11 +502,11 @@ int32_t tng_wait_on_sync(
 	    cmd_id != MTX_CMDID_ISSUEBUFF)
 		return 0;
 
-	PSB_DEBUG_GENERAL("TOPAZ: Handle context saving/fence " \
+	PSB_DEBUG_TOPAZ("TOPAZ: Handle context saving/fence " \
 		"handler/dequeue send on ENCODE_FRAME command\n");
 
 	if (get_ctx_cnt(dev) > 1) {
-		PSB_DEBUG_GENERAL("TOPAZ: More than one context, " \
+		PSB_DEBUG_TOPAZ("TOPAZ: More than one context, " \
 			"save current context\n");
 		if (topaz_priv->cur_context->codec != IMG_CODEC_JPEG) {
 			ret = tng_topaz_save_mtx_state(dev);
@@ -566,7 +567,7 @@ bool tng_topaz_interrupt(void *pvData)
 	/* if interrupts enabled and fired */
 	if ((crMultiCoreIntStat & MASK_TOPAZHP_TOP_CR_INT_STAT_MTX) ==
 		MASK_TOPAZHP_TOP_CR_INT_STAT_MTX) {
-		PSB_DEBUG_GENERAL("TOPAZ: Get MTX interrupt , clear IRQ\n");
+		PSB_DEBUG_TOPAZ("TOPAZ: Get MTX interrupt , clear IRQ\n");
 		tng_topaz_Int_clear(dev_priv, MASK_TOPAZHP_TOP_CR_INTCLR_MTX);
 	} else
 		return 0;
@@ -581,7 +582,7 @@ bool tng_topaz_interrupt(void *pvData)
 			? 31 \
 			: topaz_priv->producer - 1];
 
-	PSB_DEBUG_GENERAL("TOPAZ: Dispatch write back message, " \
+	PSB_DEBUG_TOPAZ("TOPAZ: Dispatch write back message, " \
 		"producer = %d, consumer = %d\n",
 		topaz_priv->producer, topaz_priv->consumer);
 
@@ -594,7 +595,7 @@ bool tng_topaz_interrupt(void *pvData)
 		};
 	}
 
-	PSB_DEBUG_GENERAL("TOPAZ: Context %08x(%s), frame %d, command %s IRQ\n",
+	PSB_DEBUG_TOPAZ("TOPAZ: Context %08x(%s), frame %d, command %s IRQ\n",
 		(unsigned int)video_ctx, codec_to_string(video_ctx->codec),
 		video_ctx->frame_count,
 		cmd_to_string(wb_msg->ui32CmdWord));
@@ -605,7 +606,7 @@ bool tng_topaz_interrupt(void *pvData)
 		if (wb_msg->ui32CmdWord != MTX_CMDID_NULL) {
 			/* The LAST ISSUEBUF cmd means encoding complete */
 			if (--topaz_priv->issuebuf_cmd_count) {
-				PSB_DEBUG_GENERAL("TOPAZ: JPEG ISSUEBUF cmd " \
+				PSB_DEBUG_TOPAZ("TOPAZ: JPEG ISSUEBUF cmd " \
 					  "count left %d, return\n", \
 					  topaz_priv->issuebuf_cmd_count);
 			return true;
@@ -617,7 +618,7 @@ bool tng_topaz_interrupt(void *pvData)
 #endif
 	*topaz_priv->topaz_sync_addr = wb_msg->ui32WritebackVal;
 
-	PSB_DEBUG_GENERAL("TOPAZ: Set seq %08x, " \
+	PSB_DEBUG_TOPAZ("TOPAZ: Set seq %08x, " \
 		"dqueue cmd and schedule other work queue\n",
 		wb_msg->ui32WritebackVal);
 	psb_fence_handler(dev, LNC_ENGINE_ENCODE);
@@ -641,7 +642,7 @@ static int tng_submit_encode_cmdbuf(struct drm_device *dev,
 	uint32_t sequence = dev_priv->sequence[LNC_ENGINE_ENCODE];
 	struct tng_topaz_private *topaz_priv = dev_priv->topaz_private;
 
-	PSB_DEBUG_GENERAL("TOPAZ: command submit, topaz busy = %d\n",
+	PSB_DEBUG_TOPAZ("TOPAZ: command submit, topaz busy = %d\n",
 		topaz_priv->topaz_busy);
 
 	if (topaz_priv->topaz_fw_loaded == 0) {
@@ -661,11 +662,11 @@ static int tng_submit_encode_cmdbuf(struct drm_device *dev,
 	/* # if topaz need to reset, reset it */
 	if (topaz_priv->topaz_needs_reset) {
 		/* #.# reset it */
-		PSB_DEBUG_GENERAL("TOPAZ: needs reset.\n");
+		PSB_DEBUG_TOPAZ("TOPAZ: needs reset.\n");
 
 		tng_topaz_reset(dev_priv);
 
-		PSB_DEBUG_GENERAL("TOPAZ: reset ok.\n");
+		PSB_DEBUG_TOPAZ("TOPAZ: reset ok.\n");
 
 		/* #.# upload firmware */
 		ret = tng_topaz_setup_fw(dev, 0, topaz_priv->cur_codec);
@@ -677,10 +678,8 @@ static int tng_submit_encode_cmdbuf(struct drm_device *dev,
 
 	if (!topaz_priv->topaz_busy) {
 		/* # direct map topaz command if topaz is free */
-		PSB_DEBUG_GENERAL("TOPAZ:direct send command,sequence %08x\n",
+		PSB_DEBUG_TOPAZ("TOPAZ:direct send command,sequence %08x\n",
 				  sequence);
-
-		topaz_priv->topaz_busy = 1;
 
 		ret = tng_topaz_deliver_command(dev, file_priv,
 			cmd_buffer, cmd_offset, cmd_size, NULL, sequence, 0);
@@ -690,7 +689,7 @@ static int tng_submit_encode_cmdbuf(struct drm_device *dev,
 			return ret;
 		}
 	} else {
-		PSB_DEBUG_GENERAL("TOPAZ: queue command of sequence %08x\n",
+		PSB_DEBUG_TOPAZ("TOPAZ: queue command of sequence %08x\n",
 				  sequence);
 		cmd = NULL;
 
@@ -722,7 +721,7 @@ static int tng_topaz_save_command(
 	unsigned long irq_flags;
 	struct tng_topaz_private *topaz_priv = dev_priv->topaz_private;
 
-	PSB_DEBUG_GENERAL("TOPAZ: queue command,sequence: %08x..\n",
+	PSB_DEBUG_TOPAZ("TOPAZ: queue command,sequence: %08x..\n",
 			  sequence);
 
 	topaz_cmd = kzalloc(sizeof(struct tng_topaz_cmd_queue),
@@ -744,9 +743,9 @@ static int tng_topaz_save_command(
 
 	if (!topaz_priv->topaz_busy) {
 		/* topaz_priv->topaz_busy = 1; */
-		PSB_DEBUG_GENERAL("TOPAZ: need immediate dequeue...\n");
+		PSB_DEBUG_TOPAZ("TOPAZ: need immediate dequeue...\n");
 		tng_topaz_dequeue_send(dev);
-		PSB_DEBUG_GENERAL("TOPAZ: after dequeue command\n");
+		PSB_DEBUG_TOPAZ("TOPAZ: after dequeue command\n");
 	}
 
 	return 0;
@@ -761,10 +760,11 @@ int tng_cmdbuf_video(struct drm_file *file_priv,
 {
 	struct drm_device *dev = file_priv->minor->dev;
 	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct tng_topaz_private *topaz_priv = dev_priv->topaz_private;
 	struct ttm_fence_object *fence = NULL;
 	int32_t ret = 0;
 
-	PSB_DEBUG_GENERAL("TOPAZ : enter %s cmdsize: %d\n", __func__,
+	PSB_DEBUG_TOPAZ("TOPAZ : enter %s cmdsize: %d\n", __func__,
 			  arg->cmdbuf_size);
 
 	ret = tng_submit_encode_cmdbuf(dev, file_priv, cmd_buffer,
@@ -776,7 +776,7 @@ int tng_cmdbuf_video(struct drm_file *file_priv,
 	psb_fence_or_sync(file_priv, LNC_ENGINE_ENCODE,
 		fence_type, arg->fence_flags,
 		validate_list, fence_arg, &fence);
-	PSB_DEBUG_GENERAL("TOPAZ : current fence 0x%08x\n",
+	PSB_DEBUG_TOPAZ("TOPAZ : current fence 0x%08x\n",
 		dev_priv->sequence[LNC_ENGINE_ENCODE]);
 	if (fence)
 		ttm_fence_object_unref(&fence);
@@ -786,7 +786,7 @@ int tng_cmdbuf_video(struct drm_file *file_priv,
 		ttm_fence_sync_obj_unref(&cmd_buffer->sync_obj);
 	spin_unlock(&cmd_buffer->bdev->fence_lock);
 
-	PSB_DEBUG_GENERAL("TOPAZ exit %s\n", __func__);
+	PSB_DEBUG_TOPAZ("TOPAZ exit %s\n", __func__);
 	return ret;
 }
 
@@ -807,198 +807,198 @@ static int tng_error_dump_reg(struct drm_psb_private *dev_priv)
 	uint32_t reg_val;
 	DRM_ERROR("MULTICORE Registers:\n");
 	MULTICORE_READ32(0x00, &reg_val);
-	PSB_DEBUG_GENERAL("MULTICORE_SRST %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MULTICORE_SRST %08x\n", reg_val);
 	MULTICORE_READ32(0x04, &reg_val);
-	PSB_DEBUG_GENERAL("MULTICORE_INT_STAT %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MULTICORE_INT_STAT %08x\n", reg_val);
 	MULTICORE_READ32(0x08, &reg_val);
-	PSB_DEBUG_GENERAL("MULTICORE_MTX_INT_ENAB %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MULTICORE_MTX_INT_ENAB %08x\n", reg_val);
 	MULTICORE_READ32(0x0C, &reg_val);
-	PSB_DEBUG_GENERAL("MULTICORE_HOST_INT_ENAB %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MULTICORE_HOST_INT_ENAB %08x\n", reg_val);
 	MULTICORE_READ32(0x10, &reg_val);
-	PSB_DEBUG_GENERAL("MULTICORE_INT_CLEAR %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MULTICORE_INT_CLEAR %08x\n", reg_val);
 	MULTICORE_READ32(0x14, &reg_val);
-	PSB_DEBUG_GENERAL("MULTICORE_MAN_CLK_GATE %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MULTICORE_MAN_CLK_GATE %08x\n", reg_val);
 	MULTICORE_READ32(0x18, &reg_val);
-	PSB_DEBUG_GENERAL("TOPAZ_MTX_C_RATIO %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("TOPAZ_MTX_C_RATIO %08x\n", reg_val);
 	MULTICORE_READ32(0x1c, &reg_val);
-	PSB_DEBUG_GENERAL("MMU_STATUS %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MMU_STATUS %08x\n", reg_val);
 	MULTICORE_READ32(0x1c, &reg_val);
-	PSB_DEBUG_GENERAL("MMU_STATUS %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MMU_STATUS %08x\n", reg_val);
 	MULTICORE_READ32(0x20, &reg_val);
-	PSB_DEBUG_GENERAL("MMU_MEM_REQ %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MMU_MEM_REQ %08x\n", reg_val);
 	MULTICORE_READ32(0x24, &reg_val);
-	PSB_DEBUG_GENERAL("MMU_CONTROL0 %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MMU_CONTROL0 %08x\n", reg_val);
 	MULTICORE_READ32(0x28, &reg_val);
-	PSB_DEBUG_GENERAL("MMU_CONTROL1 %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MMU_CONTROL1 %08x\n", reg_val);
 	MULTICORE_READ32(0x2c , &reg_val);
-	PSB_DEBUG_GENERAL("MMU_CONTROL2 %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MMU_CONTROL2 %08x\n", reg_val);
 	MULTICORE_READ32(0x30, &reg_val);
-	PSB_DEBUG_GENERAL("MMU_DIR_LIST_BASE %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MMU_DIR_LIST_BASE %08x\n", reg_val);
 	MULTICORE_READ32(0x38, &reg_val);
-	PSB_DEBUG_GENERAL("MMU_TILE %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MMU_TILE %08x\n", reg_val);
 	MULTICORE_READ32(0x44, &reg_val);
-	PSB_DEBUG_GENERAL("MTX_DEBUG_MSTR %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MTX_DEBUG_MSTR %08x\n", reg_val);
 	MULTICORE_READ32(0x48, &reg_val);
-	PSB_DEBUG_GENERAL("MTX_DEBUG_SLV %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MTX_DEBUG_SLV %08x\n", reg_val);
 	MULTICORE_READ32(0x50, &reg_val);
-	PSB_DEBUG_GENERAL("MULTICORE_CORE_SEL_0 %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MULTICORE_CORE_SEL_0 %08x\n", reg_val);
 	MULTICORE_READ32(0x54, &reg_val);
-	PSB_DEBUG_GENERAL("MULTICORE_CORE_SEL_1 %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MULTICORE_CORE_SEL_1 %08x\n", reg_val);
 	MULTICORE_READ32(0x58, &reg_val);
-	PSB_DEBUG_GENERAL("MULTICORE_HW_CFG %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MULTICORE_HW_CFG %08x\n", reg_val);
 	MULTICORE_READ32(0x60, &reg_val);
-	PSB_DEBUG_GENERAL("MULTICORE_CMD_FIFO_WRITE %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MULTICORE_CMD_FIFO_WRITE %08x\n", reg_val);
 	MULTICORE_READ32(0x64, &reg_val);
-	PSB_DEBUG_GENERAL("MULTICORE_CMD_FIFO_WRITE_SPACE %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MULTICORE_CMD_FIFO_WRITE_SPACE %08x\n", reg_val);
 	MULTICORE_READ32(0x70, &reg_val);
-	PSB_DEBUG_GENERAL("TOPAZ_CMD_FIFO_READ %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("TOPAZ_CMD_FIFO_READ %08x\n", reg_val);
 	MULTICORE_READ32(0x74, &reg_val);
-	PSB_DEBUG_GENERAL("TOPAZ_CMD_FIFO_READ_AVAILABLE %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("TOPAZ_CMD_FIFO_READ_AVAILABLE %08x\n", reg_val);
 	MULTICORE_READ32(0x78, &reg_val);
-	PSB_DEBUG_GENERAL("TOPAZ_CMD_FIFO_FLUSH %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("TOPAZ_CMD_FIFO_FLUSH %08x\n", reg_val);
 	MULTICORE_READ32(0x80, &reg_val);
-	PSB_DEBUG_GENERAL("MMU_TILE_EXT %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MMU_TILE_EXT %08x\n", reg_val);
 	MULTICORE_READ32(0x100, &reg_val);
-	PSB_DEBUG_GENERAL("FIRMWARE_REG_1 %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("FIRMWARE_REG_1 %08x\n", reg_val);
 	MULTICORE_READ32(0x104, &reg_val);
-	PSB_DEBUG_GENERAL("FIRMWARE_REG_2 %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("FIRMWARE_REG_2 %08x\n", reg_val);
 	MULTICORE_READ32(0x108, &reg_val);
-	PSB_DEBUG_GENERAL("FIRMWARE_REG_3 %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("FIRMWARE_REG_3 %08x\n", reg_val);
 	MULTICORE_READ32(0x110, &reg_val);
-	PSB_DEBUG_GENERAL("CYCLE_COUNTER %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("CYCLE_COUNTER %08x\n", reg_val);
 	MULTICORE_READ32(0x114, &reg_val);
-	PSB_DEBUG_GENERAL("CYCLE_COUNTER_CTRL %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("CYCLE_COUNTER_CTRL %08x\n", reg_val);
 	MULTICORE_READ32(0x118, &reg_val);
-	PSB_DEBUG_GENERAL("MULTICORE_IDLE_PWR_MAN %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MULTICORE_IDLE_PWR_MAN %08x\n", reg_val);
 	MULTICORE_READ32(0x124, &reg_val);
-	PSB_DEBUG_GENERAL("DIRECT_BIAS_TABLE %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("DIRECT_BIAS_TABLE %08x\n", reg_val);
 	MULTICORE_READ32(0x128, &reg_val);
-	PSB_DEBUG_GENERAL("INTRA_BIAS_TABLE %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("INTRA_BIAS_TABLE %08x\n", reg_val);
 	MULTICORE_READ32(0x12c, &reg_val);
-	PSB_DEBUG_GENERAL("INTER_BIAS_TABLE %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("INTER_BIAS_TABLE %08x\n", reg_val);
 	MULTICORE_READ32(0x130, &reg_val);
-	PSB_DEBUG_GENERAL("INTRA_SCALE_TABLE %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("INTRA_SCALE_TABLE %08x\n", reg_val);
 	MULTICORE_READ32(0x134, &reg_val);
-	PSB_DEBUG_GENERAL("QPCB_QPCR_OFFSET %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("QPCB_QPCR_OFFSET %08x\n", reg_val);
 	MULTICORE_READ32(0x140, &reg_val);
-	PSB_DEBUG_GENERAL("INTER_INTRA_SCALE_TABLE %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("INTER_INTRA_SCALE_TABLE %08x\n", reg_val);
 	MULTICORE_READ32(0x144, &reg_val);
-	PSB_DEBUG_GENERAL("SKIPPED_CODED_SCALE_TABLE %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("SKIPPED_CODED_SCALE_TABLE %08x\n", reg_val);
 	MULTICORE_READ32(0x148, &reg_val);
-	PSB_DEBUG_GENERAL("POLYNOM_ALPHA_COEFF_CORE0 %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("POLYNOM_ALPHA_COEFF_CORE0 %08x\n", reg_val);
 	MULTICORE_READ32(0x14c, &reg_val);
-	PSB_DEBUG_GENERAL("POLYNOM_GAMMA_COEFF_CORE0 %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("POLYNOM_GAMMA_COEFF_CORE0 %08x\n", reg_val);
 	MULTICORE_READ32(0x150, &reg_val);
-	PSB_DEBUG_GENERAL("POLYNOM_CUTOFF_CORE0 %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("POLYNOM_CUTOFF_CORE0 %08x\n", reg_val);
 	MULTICORE_READ32(0x154, &reg_val);
-	PSB_DEBUG_GENERAL("POLYNOM_ALPHA_COEFF_CORE1 %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("POLYNOM_ALPHA_COEFF_CORE1 %08x\n", reg_val);
 	MULTICORE_READ32(0x158, &reg_val);
-	PSB_DEBUG_GENERAL("POLYNOM_GAMMA_COEFF_CORE1 %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("POLYNOM_GAMMA_COEFF_CORE1 %08x\n", reg_val);
 	MULTICORE_READ32(0x15c, &reg_val);
-	PSB_DEBUG_GENERAL("POLYNOM_CUTOFF_CORE1 %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("POLYNOM_CUTOFF_CORE1 %08x\n", reg_val);
 	MULTICORE_READ32(0x300, &reg_val);
-	PSB_DEBUG_GENERAL("FIRMWARE_REG_4 %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("FIRMWARE_REG_4 %08x\n", reg_val);
 	MULTICORE_READ32(0x304, &reg_val);
-	PSB_DEBUG_GENERAL("FIRMWARE_REG_5 %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("FIRMWARE_REG_5 %08x\n", reg_val);
 	MULTICORE_READ32(0x308, &reg_val);
-	PSB_DEBUG_GENERAL("FIRMWARE_REG_6 %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("FIRMWARE_REG_6 %08x\n", reg_val);
 	MULTICORE_READ32(0x30c, &reg_val);
-	PSB_DEBUG_GENERAL("FIRMWARE_REG_7 %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("FIRMWARE_REG_7 %08x\n", reg_val);
 	MULTICORE_READ32(0x3b0, &reg_val);
-	PSB_DEBUG_GENERAL("MULTICORE_RSVD0 %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MULTICORE_RSVD0 %08x\n", reg_val);
 
 	DRM_ERROR("TopazHP Core Registers:\n");
 	TOPAZCORE_READ32(0, 0x0, &reg_val);
-	PSB_DEBUG_GENERAL("TOPAZHP_SRST %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("TOPAZHP_SRST %08x\n", reg_val);
 	TOPAZCORE_READ32(0, 0x4, &reg_val);
-	PSB_DEBUG_GENERAL("TOPAZHP_INTSTAT %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("TOPAZHP_INTSTAT %08x\n", reg_val);
 	TOPAZCORE_READ32(0, 0x8, &reg_val);
-	PSB_DEBUG_GENERAL("TOPAZHP_MTX_INTENAB %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("TOPAZHP_MTX_INTENAB %08x\n", reg_val);
 	TOPAZCORE_READ32(0, 0xc, &reg_val);
-	PSB_DEBUG_GENERAL("TOPAZHP_HOST_INTENAB %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("TOPAZHP_HOST_INTENAB %08x\n", reg_val);
 	TOPAZCORE_READ32(0, 0x10, &reg_val);
-	PSB_DEBUG_GENERAL("TOPAZHP_INTCLEAR %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("TOPAZHP_INTCLEAR %08x\n", reg_val);
 	TOPAZCORE_READ32(0, 0x14, &reg_val);
-	PSB_DEBUG_GENERAL("TOPAZHP_INT_COMB_SEL %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("TOPAZHP_INT_COMB_SEL %08x\n", reg_val);
 	TOPAZCORE_READ32(0, 0x18, &reg_val);
-	PSB_DEBUG_GENERAL("TOPAZHP_BUSY %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("TOPAZHP_BUSY %08x\n", reg_val);
 	TOPAZCORE_READ32(0, 0x24, &reg_val);
-	PSB_DEBUG_GENERAL("TOPAZHP_AUTO_CLOCK_GATING %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("TOPAZHP_AUTO_CLOCK_GATING %08x\n", reg_val);
 	TOPAZCORE_READ32(0, 0x28, &reg_val);
-	PSB_DEBUG_GENERAL("TOPAZHP_MAN_CLOCK_GATING %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("TOPAZHP_MAN_CLOCK_GATING %08x\n", reg_val);
 	TOPAZCORE_READ32(0, 0x30, &reg_val);
-	PSB_DEBUG_GENERAL("TOPAZHP_RTM %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("TOPAZHP_RTM %08x\n", reg_val);
 	TOPAZCORE_READ32(0, 0x34, &reg_val);
-	PSB_DEBUG_GENERAL("TOPAZHP_RTM_VALUE %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("TOPAZHP_RTM_VALUE %08x\n", reg_val);
 	TOPAZCORE_READ32(0, 0x38, &reg_val);
-	PSB_DEBUG_GENERAL("TOPAZHP_MB_PERFORMANCE_RESULT %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("TOPAZHP_MB_PERFORMANCE_RESULT %08x\n", reg_val);
 	TOPAZCORE_READ32(0, 0x3c, &reg_val);
-	PSB_DEBUG_GENERAL("TOPAZHP_MB_PERFORMANCE_MB_NUMBER %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("TOPAZHP_MB_PERFORMANCE_MB_NUMBER %08x\n", reg_val);
 	TOPAZCORE_READ32(0, 0x188, &reg_val);
-	PSB_DEBUG_GENERAL("FIELD_PARITY %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("FIELD_PARITY %08x\n", reg_val);
 	TOPAZCORE_READ32(0, 0x3d0, &reg_val);
-	PSB_DEBUG_GENERAL("WEIGHTED_PRED_CONTROL %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("WEIGHTED_PRED_CONTROL %08x\n", reg_val);
 	TOPAZCORE_READ32(0, 0x3d4, &reg_val);
-	PSB_DEBUG_GENERAL("WEIGHTED_PRED_COEFFS %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("WEIGHTED_PRED_COEFFS %08x\n", reg_val);
 	TOPAZCORE_READ32(0, 0x3e0, &reg_val);
-	PSB_DEBUG_GENERAL("WEIGHTED_PRED_INV_WEIGHT %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("WEIGHTED_PRED_INV_WEIGHT %08x\n", reg_val);
 	TOPAZCORE_READ32(0, 0x3f0, &reg_val);
-	PSB_DEBUG_GENERAL("TOPAZHP_RSVD0 %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("TOPAZHP_RSVD0 %08x\n", reg_val);
 	TOPAZCORE_READ32(0, 0x3f4, &reg_val);
-	PSB_DEBUG_GENERAL("TOPAZHP_CRC_CLEAR %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("TOPAZHP_CRC_CLEAR %08x\n", reg_val);
 
 
 	DRM_ERROR("MTX Registers:\n");
 	MTX_READ32(0x00, &reg_val);
-	PSB_DEBUG_GENERAL("MTX_ENABLE %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MTX_ENABLE %08x\n", reg_val);
 	MTX_READ32(0x08, &reg_val);
-	PSB_DEBUG_GENERAL("MTX_STATUS %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MTX_STATUS %08x\n", reg_val);
 	MTX_READ32(0x80, &reg_val);
-	PSB_DEBUG_GENERAL("MTX_KICK %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MTX_KICK %08x\n", reg_val);
 	MTX_READ32(0x88, &reg_val);
-	PSB_DEBUG_GENERAL("MTX_KICKI %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MTX_KICKI %08x\n", reg_val);
 	MTX_READ32(0x90, &reg_val);
-	PSB_DEBUG_GENERAL("MTX_FAULT0 %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MTX_FAULT0 %08x\n", reg_val);
 	MTX_READ32(0xf8, &reg_val);
-	PSB_DEBUG_GENERAL("MTX_REGISTER_READ_WRITE_DATA %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MTX_REGISTER_READ_WRITE_DATA %08x\n", reg_val);
 	MTX_READ32(0xfc, &reg_val);
-	PSB_DEBUG_GENERAL("MTX_REGISTER_READ_WRITE_REQUEST %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MTX_REGISTER_READ_WRITE_REQUEST %08x\n", reg_val);
 	MTX_READ32(0x100, &reg_val);
-	PSB_DEBUG_GENERAL("MTX_RAM_ACCESS_DATA_EXCHANGE %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MTX_RAM_ACCESS_DATA_EXCHANGE %08x\n", reg_val);
 	MTX_READ32(0x104, &reg_val);
-	PSB_DEBUG_GENERAL("MTX_RAM_ACCESS_DATA_TRANSFER %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MTX_RAM_ACCESS_DATA_TRANSFER %08x\n", reg_val);
 	MTX_READ32(0x108, &reg_val);
-	PSB_DEBUG_GENERAL("MTX_RAM_ACCESS_CONTROL %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MTX_RAM_ACCESS_CONTROL %08x\n", reg_val);
 	MTX_READ32(0x10c, &reg_val);
-	PSB_DEBUG_GENERAL("MTX_RAM_ACCESS_STATUS %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MTX_RAM_ACCESS_STATUS %08x\n", reg_val);
 	MTX_READ32(0x200, &reg_val);
-	PSB_DEBUG_GENERAL("MTX_SOFT_RESET %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MTX_SOFT_RESET %08x\n", reg_val);
 	MTX_READ32(0x340, &reg_val);
-	PSB_DEBUG_GENERAL("MTX_SYSC_CDMAC %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MTX_SYSC_CDMAC %08x\n", reg_val);
 	MTX_READ32(0x344, &reg_val);
-	PSB_DEBUG_GENERAL("MTX_SYSC_CDMAA %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MTX_SYSC_CDMAA %08x\n", reg_val);
 	MTX_READ32(0x348, &reg_val);
-	PSB_DEBUG_GENERAL("MTX_SYSC_CDMAS0 %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MTX_SYSC_CDMAS0 %08x\n", reg_val);
 	MTX_READ32(0x34c, &reg_val);
-	PSB_DEBUG_GENERAL("MTX_SYSC_CDMAS1 %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MTX_SYSC_CDMAS1 %08x\n", reg_val);
 	MTX_READ32(0x350, &reg_val);
-	PSB_DEBUG_GENERAL("MTX_SYSC_CDMAT %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MTX_SYSC_CDMAT %08x\n", reg_val);
 
 	DRM_ERROR("DMA Registers:\n");
 	DMAC_READ32(0x00, &reg_val);
-	PSB_DEBUG_GENERAL("DMA_Setup_n %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("DMA_Setup_n %08x\n", reg_val);
 	DMAC_READ32(0x04, &reg_val);
-	PSB_DEBUG_GENERAL("DMA_Count_n %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("DMA_Count_n %08x\n", reg_val);
 	DMAC_READ32(0x08, &reg_val);
-	PSB_DEBUG_GENERAL(" DMA_Peripheral_param_n %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ(" DMA_Peripheral_param_n %08x\n", reg_val);
 	DMAC_READ32(0x0C, &reg_val);
-	PSB_DEBUG_GENERAL("DMA_IRQ_Stat_n %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("DMA_IRQ_Stat_n %08x\n", reg_val);
 	DMAC_READ32(0x10, &reg_val);
-	PSB_DEBUG_GENERAL("DMA_2D_Mode_n %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("DMA_2D_Mode_n %08x\n", reg_val);
 	DMAC_READ32(0x14, &reg_val);
-	PSB_DEBUG_GENERAL("DMA_Peripheral_addr_n %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("DMA_Peripheral_addr_n %08x\n", reg_val);
 	DMAC_READ32(0x18, &reg_val);
-	PSB_DEBUG_GENERAL("DMA_Per_hold %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("DMA_Per_hold %08x\n", reg_val);
 	return 0;
 }
 
@@ -1040,7 +1040,7 @@ int tng_topaz_deliver_command(struct drm_device *dev,
 		memcpy(tmp, cmd_start, cmd_size);
 		*topaz_cmd = tmp;
 	} else {
-		PSB_DEBUG_GENERAL("TOPAZ: directly send the command\n");
+		PSB_DEBUG_TOPAZ("TOPAZ: directly send the command\n");
 		ret = tng_topaz_send(dev, file_priv,
 			cmd_start, cmd_size, sequence);
 		if (ret) {
@@ -1068,8 +1068,6 @@ static int32_t tng_topaz_wait_for_completion(struct drm_psb_private *dev_priv)
 		MASK_MTX_MTX_TOFF | MASK_MTX_MTX_ENABLE);
 	if (ret)
 		DRM_ERROR("TOPAZ: Wait for MTX completion time out\n");
-
-	topaz_priv->frame_count = 0;
 
 	return ret;
 }
@@ -1109,7 +1107,7 @@ static int32_t tng_restore_bias_table(
 
 	size = *p_command++;
 
-	PSB_DEBUG_GENERAL("TOPAZ: Restore BIAS %d registers " \
+	PSB_DEBUG_TOPAZ("TOPAZ: Restore BIAS %d registers " \
 		"of ctx %08x(%s)\n",
 		size - 1, (unsigned int)video_ctx, \
 		codec_to_string(video_ctx->codec));
@@ -1198,19 +1196,19 @@ int32_t tng_topaz_restore_mtx_state(struct drm_device *dev)
 
 	if (0 == need_restore) {
 		topaz_priv->topaz_mtx_saved = 0;
-		PSB_DEBUG_GENERAL("topaz: no vec context found. needn't" \
+		PSB_DEBUG_TOPAZ("topaz: no vec context found. needn't" \
 			" to restore mtx registers.\n");
 		return ret;
 	}
 
 	if (topaz_priv->topaz_fw_loaded == 0) {
-		PSB_DEBUG_GENERAL("TOPAZ: needn't to restore context" \
+		PSB_DEBUG_TOPAZ("TOPAZ: needn't to restore context" \
 			" without firmware uploaded\n");
 		return ret;
 	}
 
 	if (video_ctx->data_saving_bo == NULL) {
-		PSB_DEBUG_GENERAL("TOPAZ: try to restore context" \
+		PSB_DEBUG_TOPAZ("TOPAZ: try to restore context" \
 			" without space allocated, return" \
 			" directly without restore\n");
 		ret = -1;
@@ -1229,8 +1227,6 @@ int32_t tng_topaz_restore_mtx_state(struct drm_device *dev)
 		return 0;
 	}
 	*/
-	PSB_DEBUG_GENERAL("TOPAZ: Restore context %08x(%s)\n",
-		(unsigned int)video_ctx, codec_to_string(video_ctx->codec));
 
 	MULTICORE_READ32(TOPAZHP_TOP_CR_MULTICORE_HW_CFG, &num_pipes);
 	num_pipes = num_pipes & MASK_TOPAZHP_TOP_CR_NUM_CORES_SUPPORTED;
@@ -1266,12 +1262,10 @@ int32_t tng_topaz_restore_mtx_state(struct drm_device *dev)
 
 	cur_codec_fw = &topaz_priv->topaz_fw[video_ctx->codec];
 
-	PSB_DEBUG_GENERAL("TOPAZ: Restore status to %08x of " \
+	PSB_DEBUG_TOPAZ("TOPAZ: Restore status to %08x of " \
 		"size %08x of context %08x(%s)\n",
 		video_ctx->fw_data_dma_offset, video_ctx->fw_data_dma_size,
 		(unsigned int)video_ctx, codec_to_string(video_ctx->codec));
-
-	PSB_DEBUG_GENERAL("TOPAZ: Restore MTX core registers\n");
 
 	/*
 	ret = ttm_bo_kmap(video_ctx->reg_saving_bo, 0,
@@ -1417,7 +1411,7 @@ int32_t tng_topaz_restore_mtx_state(struct drm_device *dev)
 	}
 
 	/* topaz_priv->topaz_mtx_saved = 0; */
-	PSB_DEBUG_GENERAL("TOPAZ: Restore MTX status successfully\n");
+	PSB_DEBUG_TOPAZ("TOPAZ: Restore MTX status successfully\n");
 
 	video_ctx->status &= ~MASK_TOPAZ_CONTEXT_SAVED;
 
@@ -1477,9 +1471,24 @@ int tng_topaz_save_mtx_state(struct drm_device *dev)
 	/* bool is_iomem; */
 	uint32_t num_pipes;
 	int32_t ret = 0;
+	unsigned long irq_flags;
 
 #ifdef TOPAZHP_IRQ_ENABLED
+	spin_lock_irqsave(&topaz_priv->topaz_lock, irq_flags);
+
+	/* In case the context has been removed in
+	 * tng_topaz_remove_ctx()
+	*/
 	video_ctx = topaz_priv->irq_context;
+	if (!video_ctx ||
+	    !video_ctx->reg_saving_bo ||
+	    !video_ctx->data_saving_bo ||
+	    !video_ctx->wb_bo) {
+		PSB_DEBUG_TOPAZ("TOPAZ: Context %08x has " \
+			"been released, bypass saving context\n", \
+			video_ctx);
+		goto out;
+	}
 #else
 	if (topaz_priv->cur_context) {
 		video_ctx = topaz_priv->cur_context;
@@ -1488,9 +1497,6 @@ int tng_topaz_save_mtx_state(struct drm_device *dev)
 		return -1;
 	}
 #endif
-	PSB_DEBUG_GENERAL("TOPAZ: Save context %08x(%s)\n",
-		(unsigned int)video_ctx,
-		codec_to_string(video_ctx->codec));
 	/* topaz_priv->topaz_mtx_saved = 0; */
 	list_for_each_entry_safe(pos, n, &dev_priv->video_ctx, head) {
 		if ((pos->ctx_type & 0xff) == VAEntrypointEncSlice ||
@@ -1499,26 +1505,27 @@ int tng_topaz_save_mtx_state(struct drm_device *dev)
 	}
 
 	if (0 == need_save) {
-		PSB_DEBUG_GENERAL("TOPAZ: vec context not found. No need" \
+		PSB_DEBUG_TOPAZ("TOPAZ: vec context not found. No need" \
 			" to save mtx registers.\n");
-		return ret;
+		goto out;
 	}
 
 	/*TopazSC will be reset, no need to save context.*/
 	if (topaz_priv->topaz_needs_reset)
-		return ret;
+		goto out;
 
 	if (topaz_priv->topaz_fw_loaded == 0) {
-		PSB_DEBUG_GENERAL("TOPAZ: No need to restore context since" \
+		PSB_DEBUG_TOPAZ("TOPAZ: No need to restore context since" \
 			" firmware has not been uploaded.\n");
-		return -1;
+		ret = -1;
+		goto out;
 	}
 
 	/*JPEG encoding needn't to save context*/
 	if (TNG_IS_JPEG_ENC(topaz_priv->cur_codec)) {
-		PSB_DEBUG_GENERAL("TOPAZ: Bypass context saving for JPEG\n");
+		PSB_DEBUG_TOPAZ("TOPAZ: Bypass context saving for JPEG\n");
 		topaz_priv->topaz_mtx_saved = 1;
-		return ret;
+		goto out;
 	}
 
 	MULTICORE_READ32(TOPAZHP_TOP_CR_MULTICORE_HW_CFG, &num_pipes);
@@ -1528,14 +1535,14 @@ int tng_topaz_save_mtx_state(struct drm_device *dev)
 
 	ret = tng_poll_hw_inactive(dev);
 	if (ret)
-		return ret;
+		goto out;
 
 	/* Turn off MTX */
 	mtx_stop(dev_priv);
 	ret = mtx_wait_for_completion(dev_priv);
 	if (ret) {
 		DRM_ERROR("Mtx wait for completion error");
-		return ret;
+		goto out;
 	}
 
 	/*
@@ -1606,7 +1613,7 @@ int tng_topaz_save_mtx_state(struct drm_device *dev)
 			mtx_reg_state);
 		if (ret) {
 			DRM_ERROR("Failed to read core reg");
-			return ret;
+			goto out;
 		} else
 			mtx_reg_state++;
 	}
@@ -1663,14 +1670,13 @@ int tng_topaz_save_mtx_state(struct drm_device *dev)
 
 	/* ttm_bo_kunmap(&tmp_kmap); */
 
-	PSB_DEBUG_GENERAL("TOPAZ: Save core registers done\n");
-
 	target = video_ctx->data_saving_bo;
 
-	PSB_DEBUG_GENERAL("TOPAZ: Save status from %08x of size %08x, " \
-		"to BO %08x offset %08x\n",
+	PSB_DEBUG_TOPAZ("TOPAZ: Save status from %08x of size %08x " \
+		"to BO %08x offset %08x of context %08x(%s)\n",
 		 video_ctx->fw_data_dma_offset, video_ctx->fw_data_dma_size,
-		(unsigned int)target, (unsigned int)target->offset);
+		(unsigned int)target, (unsigned int)target->offset, \
+		video_ctx, codec_to_string(video_ctx->codec));
 
 	ret = mtx_dma_read(dev, target,
 			   video_ctx->fw_data_dma_offset,
@@ -1682,10 +1688,12 @@ int tng_topaz_save_mtx_state(struct drm_device *dev)
 
 	video_ctx->status |= MASK_TOPAZ_CONTEXT_SAVED;
 
-	/* topaz_priv->topaz_mtx_saved = 1; */
-	PSB_DEBUG_GENERAL("TOPAZ: Save MTX status successfully\n");
-
 out:
+#ifdef TOPAZHP_IRQ_ENABLED
+	spin_unlock_irqrestore(&topaz_priv->topaz_lock, irq_flags);
+#endif
+	/* topaz_priv->topaz_mtx_saved = 1; */
+	PSB_DEBUG_TOPAZ("TOPAZ: Save MTX status successfully\n");
 	/* ttm_bo_kunmap(&tmp_kmap); */
 	return ret;
 }
@@ -1753,7 +1761,7 @@ static int tng_save_bias_table(
 	p_command++;
 	/* Register count */
 	size = *reg_saving_ptr = *p_command;
-	PSB_DEBUG_GENERAL("TOPAZ: Save BIAS table %d registers " \
+	PSB_DEBUG_TOPAZ("TOPAZ: Save BIAS table %d registers " \
 		"for context %08x\n", size, (unsigned int)video_ctx);
 
 	p_command++;
@@ -1800,7 +1808,7 @@ static int32_t tng_release_context(
 	}
 
 	if (cur_codec != IMG_CODEC_JPEG) {
-		PSB_DEBUG_GENERAL("TOPAZ: Unmap reg/data saving BO\n");
+		PSB_DEBUG_TOPAZ("TOPAZ: Unmap reg/data saving BO\n");
 		ttm_bo_unref(&video_ctx->reg_saving_bo);
 		video_ctx->reg_saving_bo = NULL;
 
@@ -1809,7 +1817,7 @@ static int32_t tng_release_context(
 
 		video_ctx->status |= MASK_TOPAZ_FIRMWARE_EXIT;
 	} else {
-		PSB_DEBUG_GENERAL("TOPAZ: JPEG bypass unmap " \
+		PSB_DEBUG_TOPAZ("TOPAZ: JPEG bypass unmap " \
 			"reg/data saving BO\n");
 	}
 
@@ -1864,7 +1872,7 @@ int tng_topaz_kick_null_cmd(struct drm_device *dev,
 	MULTICORE_WRITE32(TOPAZHP_TOP_CR_MULTICORE_CMD_FIFO_WRITE,
 			 sync_seq);
 
-	PSB_DEBUG_GENERAL("TOPAZ: Write to command FIFO: " \
+	PSB_DEBUG_TOPAZ("TOPAZ: Write to command FIFO: " \
 		"%08x, %08x, %08x, %08x\n",
 		MTX_CMDID_NULL, 0, 0, 0);
 
@@ -1940,7 +1948,7 @@ int mtx_write_FIFO(
 
 	MULTICORE_WRITE32(TOPAZHP_TOP_CR_MULTICORE_CMD_FIFO_WRITE,
 			  wb_val);
-	PSB_DEBUG_GENERAL("TOPAZ: Write to command FIFO: " \
+	PSB_DEBUG_TOPAZ("TOPAZ: Write to command FIFO: " \
 		"%08x, %08x, %08x, %08x\n",
 		cmd_header->val, param, param_addr, wb_val);
 
@@ -1974,10 +1982,10 @@ static int tng_context_switch(
 		return -1;
 	}
 
-	PSB_DEBUG_GENERAL("TOPAZ: Frame (%d)\n", video_ctx->frame_count);
+	PSB_DEBUG_TOPAZ("TOPAZ: Frame (%d)\n", video_ctx->frame_count);
 
 	if (codec == IMG_CODEC_JPEG) {
-		PSB_DEBUG_GENERAL("TOPAZ: JPEG context(%08x), " \
+		PSB_DEBUG_TOPAZ("TOPAZ: JPEG context(%08x), " \
 			"continue doing other commands\n",
 			(unsigned int)video_ctx);
 		topaz_priv->cur_context = video_ctx;
@@ -1987,7 +1995,7 @@ static int tng_context_switch(
 
 	/* Continue doing other commands */
 	if (is_first_frame) {
-		PSB_DEBUG_GENERAL("TOPAZ: First frame of ctx %08x(%s), " \
+		PSB_DEBUG_TOPAZ("TOPAZ: First frame of ctx %08x(%s), " \
 			"continue doing other commands\n",
 			(unsigned int)video_ctx, codec_to_string(codec));
 		topaz_priv->cur_context = video_ctx;
@@ -1998,7 +2006,7 @@ static int tng_context_switch(
 	/* Continue doing other commands */
 	if ((topaz_priv->cur_context == video_ctx) &&
 		!(video_ctx->status & MASK_TOPAZ_CONTEXT_SAVED)) {
-		PSB_DEBUG_GENERAL("TOPAZ: Current context equals " \
+		PSB_DEBUG_TOPAZ("TOPAZ: Current context equals " \
 			"incoming context %08x(%s) status %08x, " \
 			"continue doing other commands\n",
 			(unsigned int)video_ctx, codec_to_string(codec),\
@@ -2007,7 +2015,7 @@ static int tng_context_switch(
 		topaz_priv->cur_codec = codec;
 		return ret;
 	} else {
-		PSB_DEBUG_GENERAL("TOPAZ: Restore context %08x(%s)" \
+		PSB_DEBUG_TOPAZ("TOPAZ: Restore context %08x(%s)" \
 			" status %08x\n", video_ctx, \
 			codec_to_string(video_ctx->codec), \
 			video_ctx->status);
@@ -2046,7 +2054,7 @@ static int32_t tng_setup_WB_mem(
 	}
 
 	wb_handle = *((uint32_t *)command + 3);
-	PSB_DEBUG_GENERAL("TOPAZ: Map write back memory from handle %08x\n",
+	PSB_DEBUG_TOPAZ("TOPAZ: Map write back memory from handle %08x\n",
 		wb_handle);
 
 
@@ -2057,9 +2065,9 @@ static int32_t tng_setup_WB_mem(
                 return -1;
         }
 
-	PSB_DEBUG_GENERAL("TOPAZ: wb_bo 0x%08x, 0x%08x\n",
+	PSB_DEBUG_TOPAZ("TOPAZ: wb_bo 0x%08x, 0x%08x\n",
 		video_ctx->wb_bo, wb_handle);
-	PSB_DEBUG_GENERAL("TOPAZ: wb_bo num page, 0x%08x\n",
+	PSB_DEBUG_TOPAZ("TOPAZ: wb_bo num page, 0x%08x\n",
 		video_ctx->wb_bo->num_pages);
 
 	ret = ttm_bo_reserve(video_ctx->wb_bo , true, true, false, 0);
@@ -2116,7 +2124,7 @@ static int tng_setup_new_context(
 	video_ctx->status = 0;
 	video_ctx->frame_count = 0;
 
-	PSB_DEBUG_GENERAL("TOPAZ: new context %08x(%s)\n",
+	PSB_DEBUG_TOPAZ("TOPAZ: new context %08x(%s)\n",
 		(unsigned int)video_ctx, codec_to_string(codec));
 
 	if (video_ctx->codec != IMG_CODEC_JPEG) {
@@ -2178,7 +2186,7 @@ static int tng_setup_new_context(
 		video_ctx->reg_saving_bo = NULL;
 		video_ctx->data_saving_bo = NULL;
 		topaz_priv->issuebuf_cmd_count = *(cmd + 2);
-		PSB_DEBUG_GENERAL("TOPAZ: JPEG ISSUEBUF cmd count is " \
+		PSB_DEBUG_TOPAZ("TOPAZ: JPEG ISSUEBUF cmd count is " \
 				  "%d\n", topaz_priv->issuebuf_cmd_count);
 	}
 
@@ -2259,7 +2267,7 @@ static int tng_topaz_set_bias(
 	*cmd_size = *p_command;
 	p_command++;
 
-	PSB_DEBUG_GENERAL("TOPAZ: Start to write %d Registers\n", *cmd_size);
+	PSB_DEBUG_TOPAZ("TOPAZ: Start to write %d Registers\n", *cmd_size);
 	for (reg_cnt = 0; reg_cnt < *cmd_size; reg_cnt++) {
 		/* Reg space ID */
 		reg_id = *p_command;
@@ -2314,7 +2322,7 @@ static int tng_topaz_set_bias(
 		MULTICORE_WRITE32(TOPAZHP_TOP_CR_FIRMWARE_REG_1 +
 			(MTX_SCRATCHREG_TOHOST<<2), ui32ToHostReg);
 
-		PSB_DEBUG_GENERAL("TOPAZ: Init producer(%08x) " \
+		PSB_DEBUG_TOPAZ("TOPAZ: Init producer(%08x) " \
 			"and consumer(%08x)\n", ui32ToMtxReg, ui32ToHostReg);
 	}
 
@@ -2346,23 +2354,32 @@ tng_topaz_send(
 	struct psb_video_ctx *video_ctx;
 #endif
 
-	PSB_DEBUG_GENERAL("TOPAZ : send the command in the buffer " \
+	if (drm_topaz_pmpolicy == PSB_PMPOLICY_NOPM) {
+		if (!power_island_get_dummy(dev)) {
+			DRM_ERROR("Failed to power on ENC island\n");
+			return -1;
+		}
+	} else {
+		if (!power_island_get(OSPM_VIDEO_ENC_ISLAND)) {
+			DRM_ERROR("Failed to power on ENC island\n");
+			return -1;
+		}
+	}
+
+	topaz_priv->topaz_busy = 1;
+
+	PSB_DEBUG_TOPAZ("TOPAZ : send the command in the buffer " \
 		"one by one, cmdsize(%d), sequence(%08x)\n",
 		cmd_size, sync_seq);
 
 	/* Must flush here in case of invalid cache data */
 	tng_topaz_mmu_flushcache(dev_priv);
 
-	/*
-	printk(KERN_ERR "\t\t\tFrame number = %d\n", \
-	       topaz_priv->frame_count);
-	*/
-
 	while (cmd_size > 0) {
 		cur_cmd_header = (struct tng_topaz_cmd_header *) command;
 		cur_cmd_id = cur_cmd_header->id;
 
-		PSB_DEBUG_GENERAL("TOPAZ : cmd is(%s), " \
+		PSB_DEBUG_TOPAZ("TOPAZ : cmd is(%s), " \
 			"remaining cmd size is(%d)\n",
 			cmd_to_string(cur_cmd_id & (~MTX_CMDID_PRIORITY)),
 			cmd_size);
@@ -2381,8 +2398,8 @@ tng_topaz_send(
 
 			break;
 		case MTX_CMDID_SW_ENTER_LOWPOWER:
-			PSB_DEBUG_GENERAL("TOPAZ : Enter lowpower....\n");
-			PSB_DEBUG_GENERAL("XXX : implement it\n");
+			PSB_DEBUG_TOPAZ("TOPAZ : Enter lowpower....\n");
+			PSB_DEBUG_TOPAZ("XXX : implement it\n");
 			cur_cmd_size = 1;
 			break;
 
@@ -2456,7 +2473,7 @@ tng_topaz_send(
 			/*
 			if (cur_cmd_header->id == MTX_CMDID_SHUTDOWN) {
 				cur_cmd_size = 4;
-				PSB_DEBUG_GENERAL("TOPAZ : Doesn't handle " \
+				PSB_DEBUG_TOPAZ("TOPAZ : Doesn't handle " \
 					"SHUTDOWN command for now\n");
 				break;
 			}
@@ -2514,7 +2531,7 @@ tng_topaz_send(
 		command += cur_cmd_size * 4;
 		cmd_size -= cur_cmd_size * 4;
 
-		PSB_DEBUG_GENERAL("TOPAZ : remaining cmd size is(%d)\n",
+		PSB_DEBUG_TOPAZ("TOPAZ : remaining cmd size is(%d)\n",
 			cmd_size);
 
 	}
@@ -2544,8 +2561,6 @@ tng_topaz_send(
 	}
 #endif
 
-	topaz_priv->frame_count++;
-
 out:
 	return ret;
 }
@@ -2558,14 +2573,17 @@ int tng_topaz_remove_ctx(
 	/* struct psb_video_ctx *video_ctx; */
 	struct psb_video_ctx *pos;
 	int32_t ret;
-
+	struct tng_topaz_cmd_queue *entry, *next;
 	topaz_priv = dev_priv->topaz_private;
+
+	mutex_lock(&topaz_priv->topaz_mutex);
+
 	topaz_priv->topaz_busy = 0;
 	/* video_ctx = NULL; */
 
 	/* Disable ISR */
 	/*if (TOPAZHP_IRQ_ENABLED) {
-		PSB_DEBUG_GENERAL("TOPAZ: Disalbe IRQ and " \
+		PSB_DEBUG_TOPAZ("TOPAZ: Disalbe IRQ and " \
 			"Wait for MTX completion\n");
 		tng_topaz_disableirq(dev_priv);
 	}*/
@@ -2589,27 +2607,28 @@ int tng_topaz_remove_ctx(
 
 	if (video_ctx == NULL) {
 		DRM_ERROR("Invalid video context\n");
+		mutex_unlock(&topaz_priv->topaz_mutex);
 		return -1;
 	}
 
-	PSB_DEBUG_GENERAL("TOPAZ: release context %08x(%s)\n",
+	PSB_DEBUG_TOPAZ("TOPAZ: release context %08x(%s)\n",
 		(unsigned int)video_ctx, codec_to_string(video_ctx->codec));
 
 	if (video_ctx->reg_saving_bo) {
-		PSB_DEBUG_GENERAL("TOPAZ: unref reg saving bo\n");
+		PSB_DEBUG_TOPAZ("TOPAZ: unref reg saving bo\n");
 		ttm_bo_kunmap(&topaz_priv->reg_kmap);
 		ttm_bo_unref(&video_ctx->reg_saving_bo);
 		video_ctx->reg_saving_bo = NULL;
 	}
 
 	if (video_ctx->data_saving_bo) {
-		PSB_DEBUG_GENERAL("TOPAZ: unref data saving bo\n");
+		PSB_DEBUG_TOPAZ("TOPAZ: unref data saving bo\n");
 		ttm_bo_unref(&video_ctx->data_saving_bo);
 		video_ctx->data_saving_bo = NULL;
 	}
 
 	if (video_ctx->wb_bo) {
-		PSB_DEBUG_GENERAL("TOPAZ: unref write back bo\n");
+		PSB_DEBUG_TOPAZ("TOPAZ: unref write back bo\n");
 		ttm_bo_kunmap(&video_ctx->wb_bo_kmap);
 		ttm_bo_unreserve(video_ctx->wb_bo);
 		ttm_bo_unref(&video_ctx->wb_bo);
@@ -2621,14 +2640,20 @@ int tng_topaz_remove_ctx(
 	video_ctx->status = 0;
 	video_ctx->codec = 0;
 
-	topaz_priv->frame_count = 0;
-
-	if (ospm_power_is_hw_on(OSPM_VIDEO_ENC_ISLAND)) {
-		PSB_DEBUG_PM("Suspend topazhp in 10ms\n");
-		topaz_priv->power_down_by_release = 1;
-		schedule_delayed_work(&topaz_priv->topaz_suspend_work,
-				msecs_to_jiffies(10));
+	if (!list_empty(&topaz_priv->topaz_queue)) {
+		PSB_DEBUG_TOPAZ("TOPAZ: Flush all commands " \
+			"the in queue\n");
+		/* clear all the commands in queue */
+		list_for_each_entry_safe(entry, next,
+				 &topaz_priv->topaz_queue,
+				 head) {
+			list_del(&entry->head);
+			kfree(entry->cmd);
+			kfree(entry);
+		}
 	}
+
+	mutex_unlock(&topaz_priv->topaz_mutex);
 
 	return 0;
 }
@@ -2647,6 +2672,7 @@ void tng_topaz_handle_sigint(
 		PSB_DEBUG_TOPAZ("TOPAZ: Prepare to handle CTRL + C\n");
 	} else {
 		PSB_DEBUG_TOPAZ("TOPAZ: Not VEC context or already released\n");
+		return;
 	}
 
 	while (topaz_priv->topaz_busy == 1 &&
@@ -2671,13 +2697,12 @@ int tng_topaz_dequeue_send(struct drm_device *dev)
 	mutex_lock(&topaz_priv->topaz_mutex);
 	if (list_empty(&topaz_priv->topaz_queue)) {
 		topaz_priv->topaz_busy = 0;
-		PSB_DEBUG_GENERAL("TOPAZ: empty command queue, " \
+		PSB_DEBUG_TOPAZ("TOPAZ: empty command queue, " \
 			"set topaz_busy = 0, directly return\n");
 		mutex_unlock(&topaz_priv->topaz_mutex);
 		return ret;
 	}
 
-	topaz_priv->topaz_busy = 1;
 	topaz_cmd = list_first_entry(&topaz_priv->topaz_queue,
 			struct tng_topaz_cmd_queue, head);
 
@@ -2696,7 +2721,7 @@ int tng_topaz_dequeue_send(struct drm_device *dev)
 	kfree(topaz_cmd);
 	mutex_unlock(&topaz_priv->topaz_mutex);
 
-	PSB_DEBUG_GENERAL("TOPAZ: dequeue command of sequence %08x " \
+	PSB_DEBUG_TOPAZ("TOPAZ: dequeue command of sequence %08x " \
 			"and send it to topaz\n", \
 			topaz_priv->saved_queue->sequence);
 
@@ -2710,7 +2735,7 @@ int tng_topaz_dequeue_send(struct drm_device *dev)
 		ret = -EINVAL;
 	}
 
-	PSB_DEBUG_GENERAL("TOPAZ: dequeue command of sequence %08x " \
+	PSB_DEBUG_TOPAZ("TOPAZ: dequeue command of sequence %08x " \
 			"finished\n", topaz_priv->saved_queue->sequence);
 
 	return ret;
@@ -2724,18 +2749,18 @@ int32_t tng_check_topaz_idle(struct drm_device *dev)
 	uint32_t reg_val;
 
 	if (dev_priv->topaz_ctx == NULL) {
-		PSB_DEBUG_GENERAL("TOPAZ: topaz context is null\n");
+		PSB_DEBUG_TOPAZ("TOPAZ: topaz context is null\n");
 		return 0;
 	}
 
 	/*HW is stuck. Need to power off TopazSC to reset HW*/
 	if (1 == topaz_priv->topaz_needs_reset) {
-		PSB_DEBUG_GENERAL("TOPAZ: Topaz needs reset\n");
+		PSB_DEBUG_TOPAZ("TOPAZ: Topaz needs reset\n");
 		return 0;
 	}
 
 	if (topaz_priv->topaz_busy) {
-		PSB_DEBUG_GENERAL("TOPAZ: can't save, topaz_busy = %d\n", \
+		PSB_DEBUG_TOPAZ("TOPAZ: can't save, topaz_busy = %d\n", \
 				   topaz_priv->topaz_busy);
 		return -EBUSY;
 	}
@@ -2744,7 +2769,7 @@ int32_t tng_check_topaz_idle(struct drm_device *dev)
 		&reg_val);
 	reg_val &= MASK_TOPAZHP_TOP_CR_CMD_FIFO_SPACE;
 	if (reg_val != 32) {
-		PSB_DEBUG_GENERAL("TOPAZ: HW is busy. Free words in command" \
+		PSB_DEBUG_TOPAZ("TOPAZ: HW is busy. Free words in command" \
 				"FIFO is %d.\n",
 				reg_val);
 		return -EBUSY;
@@ -2827,6 +2852,7 @@ void tng_topaz_handle_timeout(struct ttm_fence_device *fdev)
 			codec_to_string(topaz_priv->cur_codec));
 	tng_topaz_flush_cmd_queue(topaz_priv);
 
+
 	/* Power down TopazSC to reset HW*/
 	/* schedule_delayed_work(&topaz_priv->topaz_suspend_wq, 0); */
 }
@@ -2837,7 +2863,7 @@ void tng_topaz_enableirq(struct drm_device *dev)
 	struct drm_psb_private *dev_priv = dev->dev_private;
 	uint32_t crImgTopazIntenab;
 
-	PSB_DEBUG_GENERAL("TOPAZ: Enable TOPAZHP IRQ\n");
+	PSB_DEBUG_TOPAZ("TOPAZ: Enable TOPAZHP IRQ\n");
 
 	MULTICORE_READ32(TOPAZHP_TOP_CR_MULTICORE_HOST_INT_ENAB,
 		&crImgTopazIntenab);
@@ -2860,7 +2886,7 @@ void tng_topaz_disableirq(struct drm_device *dev)
 	uint32_t crImgTopazIntenab;
 	struct drm_psb_private *dev_priv = dev->dev_private;
 
-	PSB_DEBUG_GENERAL("TOPAZ: Disable TOPAZHP IRQ\n");
+	PSB_DEBUG_TOPAZ("TOPAZ: Disable TOPAZHP IRQ\n");
 	MULTICORE_READ32(TOPAZHP_TOP_CR_MULTICORE_HOST_INT_ENAB,
 		&crImgTopazIntenab);
 
@@ -2868,4 +2894,109 @@ void tng_topaz_disableirq(struct drm_device *dev)
 
 	MULTICORE_WRITE32(TOPAZHP_TOP_CR_MULTICORE_HOST_INT_ENAB,
 		crImgTopazIntenab);
+}
+
+/* Disable VEC or GFX clock gating */
+void tng_topaz_CG_disable(struct drm_device *dev)
+{
+	int reg_val;
+	struct drm_psb_private *dev_priv = dev->dev_private;
+
+	if (drm_topaz_cgpolicy & PSB_CGPOLICY_GFXCG_DIS) {
+		reg_val = ioread32(dev_priv->wrapper_reg + 0);
+		PSB_DEBUG_TOPAZ("TOPAZ: GFX CG 0 = %08x, " \
+			"disable GFX CG\n", reg_val);
+		iowrite32(0x103, dev_priv->wrapper_reg + 0);
+		reg_val = ioread32(dev_priv->wrapper_reg + 0);
+		PSB_DEBUG_TOPAZ("TOPAZ: GFX CG 0 = %08x\n", reg_val);
+	}
+
+	if (drm_topaz_cgpolicy & PSB_CGPOLICY_VECCG_DIS) {
+		reg_val = ioread32(dev_priv->vec_wrapper_reg + 0);
+		PSB_DEBUG_TOPAZ("TOPAZ: VEC CG 0 = %08x, " \
+			"disable VEC CG\n", reg_val);
+		iowrite32(0x03, dev_priv->vec_wrapper_reg + 0);
+		reg_val = ioread32(dev_priv->vec_wrapper_reg + 0);
+		PSB_DEBUG_TOPAZ("TOPAZ: VEC CG 0 = %08x\n", reg_val);
+	}
+}
+
+static int pm_cmd_freq_wait(u32 reg_freq)
+{
+	int tcount;
+	u32 freq_val;
+
+	for (tcount = 0; ; tcount++) {
+		freq_val = intel_mid_msgbus_read32(PUNIT_PORT, reg_freq);
+		if ((freq_val & IP_FREQ_VALID) == 0)
+			break;
+		if (tcount > 500) {
+			DRM_ERROR(1, "%s: P-Unit freq request wait timeout",
+				__func__);
+			return -EBUSY;
+		}
+		udelay(1);
+	}
+
+	return 0;
+}
+
+static int pm_cmd_freq_set(u32 reg_freq, u32 freq_code)
+{
+	u32 freq_val;
+	int rva;
+
+	pm_cmd_freq_wait(reg_freq);
+
+	freq_val = IP_FREQ_VALID | freq_code;
+	intel_mid_msgbus_write32(PUNIT_PORT, reg_freq, freq_val);
+
+	rva = pm_cmd_freq_wait(reg_freq);
+
+	return rva;
+}
+
+int tng_topaz_set_vec_freq(u32 freq_code)
+{
+	return pm_cmd_freq_set(VEC_SS_PM1, freq_code);
+}
+
+#define PMU_ENC			0x1
+/* Workaround to disable D0i3 */
+bool power_island_get_dummy(struct drm_device *dev)
+{
+	int pm_ret = 0;
+	unsigned long irqflags;
+	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct tng_topaz_private *topaz_priv = dev_priv->topaz_private;
+
+	if (atomic_read(&topaz_priv->vec_ref_count))
+		goto out;
+
+	pm_ret = pmu_nc_set_power_state(PMU_ENC, OSPM_ISLAND_UP, VEC_SS_PM0);
+	if (pm_ret) {
+		PSB_DEBUG_PM("power up vec failed\n");
+		return false;
+	}
+
+	spin_lock_irqsave(&dev_priv->irqmask_lock, irqflags);
+
+	dev_priv->vdc_irq_mask |= _LNC_IRQ_TOPAZ_FLAG;
+	PSB_WVDC32(~dev_priv->vdc_irq_mask, PSB_INT_MASK_R);
+	PSB_WVDC32(dev_priv->vdc_irq_mask, PSB_INT_ENABLE_R);
+
+	spin_unlock_irqrestore(&dev_priv->irqmask_lock, irqflags);
+
+	atomic_inc(&topaz_priv->vec_ref_count);
+
+	if (drm_topaz_cgpolicy != PSB_CGPOLICY_ON)
+		tng_topaz_CG_disable(dev);
+out:
+	return true;
+}
+
+/* Workaround to disable D0i3 */
+bool power_island_put_dummy(struct drm_device *dev)
+{
+	return true;
 }
