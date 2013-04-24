@@ -88,7 +88,7 @@ static inline int get_ps_int_property(struct power_supply *psy,
 * algorithm calls. This can be used by properties which will be changed
 * very frequently (eg. current, volatge..)
 */
-#define PROP_TTL (HZ)
+#define PROP_TTL (HZ*10)
 #define enable_charging(psy) \
 		({if ((CABLE_TYPE(psy) != POWER_SUPPLY_CHARGER_TYPE_NONE) &&\
 			!IS_CHARGING_ENABLED(psy)) { \
@@ -187,7 +187,8 @@ static inline int get_ps_int_property(struct power_supply *psy,
 #define IS_BAT_PROP_CHANGED(bat_prop, bat_cache)\
 	((bat_cache.voltage_now != bat_prop.voltage_now) || \
 	(time_after64(bat_prop.tstamp, (bat_cache.tstamp + PROP_TTL)) &&\
-	 bat_cache.current_now != bat_prop.current_now) || \
+	((bat_cache.current_now != bat_prop.current_now) || \
+	(bat_cache.voltage_now != bat_prop.voltage_now))) || \
 	(bat_cache.temperature != bat_prop.temperature) || \
 	(bat_cache.health != bat_prop.health) || \
 	(bat_cache.throttle_state != bat_prop.throttle_state))

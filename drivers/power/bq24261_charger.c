@@ -882,8 +882,6 @@ static int bq24261_usb_set_property(struct power_supply *psy,
 		else
 			cancel_delayed_work_sync(&chip->sw_term_work);
 
-		power_supply_changed(&chip->psy_usb);
-
 		break;
 	case POWER_SUPPLY_PROP_ENABLE_CHARGER:
 
@@ -898,7 +896,6 @@ static int bq24261_usb_set_property(struct power_supply *psy,
 					(val->intval ? "enable" : "disable"));
 			else
 				chip->is_charger_enabled = val->intval;
-			power_supply_changed(&chip->psy_usb);
 		} else {
 			dev_info(&chip->client->dev, "Battery Over Voltage. Charger will be disabled\n");
 		}
@@ -949,7 +946,6 @@ static int bq24261_usb_set_property(struct power_supply *psy,
 			cancel_delayed_work_sync(&chip->low_supply_fault_work);
 		}
 
-		power_supply_changed(&chip->psy_usb);
 
 		break;
 	case POWER_SUPPLY_PROP_INLMT:

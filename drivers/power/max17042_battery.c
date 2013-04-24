@@ -739,7 +739,6 @@ static int max17042_set_property(struct power_supply *psy,
 	}
 
 	mutex_unlock(&chip->batt_lock);
-	power_supply_changed(&chip->battery);
 
 	return ret;
 }
