@@ -549,3 +549,43 @@ void atomisp_css_input_set_mode(struct atomisp_device *isp,
 {
 	isp->css_env.stream_config.mode = mode;
 }
+
+void atomisp_css_capture_enable_online(struct atomisp_device *isp,
+							bool enable)
+{
+	isp->css_env.curr_pipe = IA_CSS_PIPE_ID_CAPTURE;
+	if (isp->css_env.stream_config.online == !!enable)
+		return;
+
+	isp->css_env.stream_config.online = !!enable;
+	isp->css_env.update_pipe[IA_CSS_PIPE_ID_CAPTURE] = true;
+}
+
+void atomisp_css_preview_enable_online(struct atomisp_device *isp,
+							bool enable)
+{
+	int i;
+
+	if (isp->css_env.stream_config.online != !!enable) {
+		isp->css_env.stream_config.online = !!enable;
+		for (i = 0; i < IA_CSS_PIPE_ID_NUM; i++)
+			isp->css_env.update_pipe[i] = true;
+	}
+}
+
+void atomisp_css_enable_continuous(struct atomisp_device *isp,
+							bool enable)
+{
+	int i;
+
+	if (isp->css_env.stream_config.continuous != !!enable) {
+		isp->css_env.stream_config.continuous = !!enable;
+		for (i = 0; i < IA_CSS_PIPE_ID_NUM; i++)
+			isp->css_env.update_pipe[i] = true;
+	}
+}
+
+void atomisp_css_enable_cont_capt(struct atomisp_device *isp,
+				  bool enable, bool stop_copy_preview)
+{
+}

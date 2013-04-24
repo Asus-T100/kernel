@@ -181,4 +181,16 @@ void atomisp_css_capture_set_mode(struct atomisp_device *isp,
 
 void atomisp_css_input_set_mode(struct atomisp_device *isp,
 				enum atomisp_css_input_mode mode);
+
+void atomisp_css_capture_enable_online(struct atomisp_device *isp,
+							bool enable);
+
+void atomisp_css_preview_enable_online(struct atomisp_device *isp,
+							bool enable);
+
+void atomisp_css_enable_continuous(struct atomisp_device *isp,
+							bool enable);
+
+void atomisp_css_enable_cont_capt(struct atomisp_device *isp,
+				  bool enable, bool stop_copy_preview);
 #endif

@@ -417,3 +417,27 @@ void atomisp_css_input_set_mode(struct atomisp_device *isp,
 {
 	sh_css_input_set_mode(mode);
 }
+
+void atomisp_css_capture_enable_online(struct atomisp_device *isp,
+							bool enable)
+{
+	sh_css_capture_enable_online(enable);
+}
+
+void atomisp_css_preview_enable_online(struct atomisp_device *isp,
+							bool enable)
+{
+	sh_css_preview_enable_online(enable);
+}
+
+void atomisp_css_enable_continuous(struct atomisp_device *isp,
+							bool enable)
+{
+	sh_css_enable_continuous(enable);
+}
+
+void atomisp_css_enable_cont_capt(struct atomisp_device *isp,
+				  bool enable, bool stop_copy_preview)
+{
+	sh_css_enable_cont_capt(enable, stop_copy_preview);
+}

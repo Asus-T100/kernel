@@ -3007,10 +3007,10 @@ static int __enable_continuous_mode(struct atomisp_device *isp, bool enable)
 		enable, isp->isp_subdev.continuous_raw_buffer_size->val,
 		!isp->isp_subdev.continuous_viewfinder->val);
 	atomisp_css_capture_set_mode(isp, CSS_CAPTURE_MODE_PRIMARY);
-	sh_css_capture_enable_online(!enable);
-	sh_css_preview_enable_online(!enable);
-	sh_css_enable_continuous(enable);
-	sh_css_enable_cont_capt(enable,
+	atomisp_css_capture_enable_online(isp, !enable);
+	atomisp_css_preview_enable_online(isp, !enable);
+	atomisp_css_enable_continuous(isp, enable);
+	atomisp_css_enable_cont_capt(isp, enable,
 				!isp->isp_subdev.continuous_viewfinder->val);
 
 	/*
@@ -3179,7 +3179,7 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 			atomisp_css_capture_set_mode(isp, CSS_CAPTURE_MODE_RAW);
 		}
 		if (!isp->isp_subdev.continuous_mode->val)
-			sh_css_capture_enable_online(
+			atomisp_css_capture_enable_online(isp,
 					isp->params.online_process);
 
 		configure_output = sh_css_capture_configure_output;
