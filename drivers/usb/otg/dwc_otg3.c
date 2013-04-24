@@ -194,18 +194,27 @@ static int check_event(struct dwc_otg2 *otg,
 {
 	get_and_clear_events(otg, otg_mask, adp_mask, user_mask,
 			otg_events, adp_events, user_events);
-	if ((*otg_events & otg_mask) ||
-			(*adp_events & adp_mask) ||
-			(*user_events & user_mask)) {
-		otg_dbg(otg, "Event occurred: "
-			"otg_events=%x, otg_mask=%x, "
-			"adp_events=%x, adp_mask=%x"
-			"user_events=%x, user_mask=%x",
-			*otg_events, otg_mask,
-			*adp_events, adp_mask,
-			*user_events, user_mask);
+
+	otg_dbg(otg, "Event occurred:");
+
+	if (otg_events && (*otg_events & otg_mask)) {
+		otg_dbg(otg, "otg_events=0x%x, otg_mask=0x%x",
+				*otg_events, otg_mask);
 		return 1;
 	}
+
+	if (adp_events && (*adp_events & adp_mask)) {
+		otg_dbg(otg, "adp_events=0x%x, adp_mask=0x%x",
+				*adp_events, adp_mask);
+		return 1;
+	}
+
+	if (user_events && (*user_events & user_mask)) {
+		otg_dbg(otg, "user_events=0x%x, user_mask=0x%x",
+				*user_events, user_mask);
+		return 1;
+	}
+
 
 	return 0;
 }
