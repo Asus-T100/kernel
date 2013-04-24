@@ -42,6 +42,7 @@
 #include <linux/i2c.h>
 #include <linux/gpio.h>
 #include <linux/acpi_gpio.h>
+#include <linux/pm_runtime.h>
 #include <asm/intel_vlv2.h>
 
 #include "psh_ia_common.h"
@@ -62,7 +63,7 @@ int read_psh_data(struct psh_ia_priv *ia_data)
 {
 	struct psh_ext_if *psh_if_info =
 			(struct psh_ext_if *)ia_data->platform_priv;
-	int total_read = 0, ret = 0;
+	int cur_read = 0, ret = 0;
 	struct frame_head fh;
 	struct i2c_msg msg[2] = {
 		{
@@ -80,6 +81,7 @@ int read_psh_data(struct psh_ia_priv *ia_data)
 
 	/* We may need to zero all the buffer */
 
+	pm_runtime_get_sync(&psh_if_info->pshc->dev);
 	/* Loop read till error or no more valid data */
 	while (1) {
 		ret = i2c_transfer(psh_if_info->pshc->adapter, msg, 1);
@@ -91,11 +93,12 @@ int read_psh_data(struct psh_ia_priv *ia_data)
 
 		if (fh.sign == LBUF_CELL_SIGN) {
 			if (fh.length > LBUF_MAX_CELL_SIZE) {
+				dev_err(&psh_if_info->pshc->dev, "frame size is too big!\n");
 				ret = -EPERM;
 				break;
 			}
 		} else
-			break;		/* No valid data read */
+			break;
 
 		msg[1].len = frame_size(fh.length) - sizeof(fh);
 		ret = i2c_transfer(psh_if_info->pshc->adapter, msg + 1, 1);
@@ -107,12 +110,22 @@ int read_psh_data(struct psh_ia_priv *ia_data)
 
 		ret = ia_handle_frame(ia_data,
 					psh_if_info->psh_frame, fh.length);
-		if (ret > 0)
-			total_read += ret;
+		if (ret > 0) {
+			cur_read += ret;
+
+			if (cur_read > 250) {
+				cur_read = 0;
+				sysfs_notify(&psh_if_info->pshc->dev.kobj,
+							NULL, "data_size");
+			}
+		}
 
 	}
 
-	if (total_read)
+	pm_runtime_mark_last_busy(&psh_if_info->pshc->dev);
+	pm_runtime_put_autosuspend(&psh_if_info->pshc->dev);
+
+	if (cur_read)
 		sysfs_notify(&psh_if_info->pshc->dev.kobj, NULL, "data_size");
 
 	return ret;
@@ -131,13 +144,14 @@ int process_send_cmd(struct psh_ia_priv *ia_data,
 		.buf = (void *)cmd
 	};
 
+	pm_runtime_get_sync(&psh_if_info->pshc->dev);
+
 	if (ch == 0 && cmd->cmd_id == CMD_RESET) {
 		if (psh_if_info->irq_disabled == 0) {
 			disable_irq(psh_if_info->pshc->irq);
 			psh_if_info->irq_disabled = 1;
 		}
 
-		gpio_set_value(psh_if_info->gpio_psh_ctl, 1);
 		gpio_set_value(psh_if_info->gpio_psh_rst, 0);
 		usleep_range(10000, 10000);
 		gpio_set_value(psh_if_info->gpio_psh_rst, 1);
@@ -154,10 +168,14 @@ int process_send_cmd(struct psh_ia_priv *ia_data,
 	ret = i2c_transfer(psh_if_info->pshc->adapter, &i2c_cmd, 1);
 	if (ret != 1) {
 		dev_err(&psh_if_info->pshc->dev, "sendcmd through I2C fail!\n");
-		return -EPERM;
+		ret = -EPERM;
+	} else {
+		ret = 0;
 	}
+	pm_runtime_mark_last_busy(&psh_if_info->pshc->dev);
+	pm_runtime_put_autosuspend(&psh_if_info->pshc->dev);
 
-	return 0;
+	return ret;
 }
 
 int do_setup_ddr(struct device *dev)
@@ -174,6 +192,39 @@ static irqreturn_t psh_byt_irq_thread(int irq, void *dev)
 	read_psh_data(ia_data);
 	return IRQ_HANDLED;
 }
+
+static int psh_byt_suspend(struct device *dev)
+{
+	struct psh_ia_priv *ia_data =
+			(struct psh_ia_priv *)dev_get_drvdata(dev);
+	struct psh_ext_if *psh_if_info =
+			(struct psh_ext_if *)ia_data->platform_priv;
+	if (psh_if_info->gpio_psh_ctl > 0)
+		gpio_set_value(psh_if_info->gpio_psh_ctl, 0);
+	dev_dbg(dev, "PSH_BYT: %s\n", __func__);
+	return 0;
+}
+
+static int psh_byt_resume(struct device *dev)
+{
+	struct psh_ia_priv *ia_data =
+			(struct psh_ia_priv *)dev_get_drvdata(dev);
+	struct psh_ext_if *psh_if_info =
+			(struct psh_ext_if *)ia_data->platform_priv;
+	if (psh_if_info->gpio_psh_ctl > 0) {
+		gpio_set_value(psh_if_info->gpio_psh_ctl, 1);
+		usleep_range(800, 800);
+	}
+	dev_dbg(dev, "PSH_BYT: %s\n", __func__);
+	return 0;
+}
+
+static const struct dev_pm_ops psh_byt_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(psh_byt_suspend,
+			psh_byt_resume)
+	SET_RUNTIME_PM_OPS(psh_byt_suspend,
+			psh_byt_resume, NULL)
+};
 
 /* FIXME: it will be a platform device */
 static int psh_probe(struct i2c_client *client,
@@ -248,6 +299,11 @@ static int psh_probe(struct i2c_client *client,
 
 	psh_if_info->irq_disabled = 1;
 
+	pm_runtime_set_active(&client->dev);
+	pm_runtime_use_autosuspend(&client->dev);
+	pm_runtime_set_autosuspend_delay(&client->dev, 10);
+	pm_runtime_enable(&client->dev);
+
 	return 0;
 
 irq_err:
@@ -267,6 +323,8 @@ static int __devexit psh_remove(struct i2c_client *client)
 	struct psh_ext_if *psh_if_info =
 			(struct psh_ext_if *)ia_data->platform_priv;
 
+	pm_runtime_get_sync(&client->dev);
+	pm_runtime_disable(&client->dev);
 	free_irq(client->irq, psh_if_info->pshc);
 	gpio_unexport(psh_if_info->gpio_psh_rst);
 	gpio_unexport(psh_if_info->gpio_psh_ctl);
@@ -276,6 +334,21 @@ static int __devexit psh_remove(struct i2c_client *client)
 	psh_ia_common_deinit(&client->dev);
 
 	return 0;
+}
+
+static void psh_shutdown(struct i2c_client *client)
+{
+	struct psh_ia_priv *ia_data =
+			(struct psh_ia_priv *)dev_get_drvdata(&client->dev);
+	struct psh_ext_if *psh_if_info =
+			(struct psh_ext_if *)ia_data->platform_priv;
+
+	free_irq(client->irq, psh_if_info->pshc);
+
+	if (psh_if_info->gpio_psh_rst)
+		gpio_set_value(psh_if_info->gpio_psh_rst, 0);
+
+	dev_dbg(&psh_if_info->pshc->dev, "PSH_BYT: %s\n", __func__);
 }
 
 static const struct i2c_device_id psh_byt_id[] = {
@@ -288,10 +361,12 @@ static struct i2c_driver psh_byt_driver = {
 	.driver = {
 		.name	= "psh_byt_i2c",
 		.owner	= THIS_MODULE,
+		.pm	= &psh_byt_pm_ops,
 	},
 	.probe		= psh_probe,
 	.remove		= psh_remove,
 	.id_table	= psh_byt_id,
+	.shutdown	= psh_shutdown,
 };
 
 module_i2c_driver(psh_byt_driver);
