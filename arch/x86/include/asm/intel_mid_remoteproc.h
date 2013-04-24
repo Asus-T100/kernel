@@ -64,6 +64,7 @@
 #define RP_BCOVE_THERMAL	0x25
 #define RP_MRFL_OCD		0x26
 #define RP_FW_LOGGING		0x27
+#define RP_PMIC_CHARGER		0x28
 
 enum rproc_type {
 	RPROC_SCU = 0,

@@ -532,5 +532,9 @@ void *bq24192_platform_data(void *info)
 
 	register_rpmsg_service("rpmsg_bq24192", RPROC_SCU,
 				RP_BQ24192);
+	/* WA for pmic rpmsg service registration
+	   for power source detection driver */
+	register_rpmsg_service("rpmsg_pmic_charger", RPROC_SCU,
+				RP_PMIC_CHARGER);
 	return &platform_data;
 }
