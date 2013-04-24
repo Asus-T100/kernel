@@ -459,3 +459,45 @@ int atomisp_css_dequeue_event(struct atomisp_css_event *current_event)
 
 	return 0;
 }
+
+int atomisp_css_input_set_resolution(struct atomisp_device *isp,
+					struct v4l2_mbus_framefmt *ffmt)
+{
+	isp->css_env.stream_config.input_res.width = ffmt->width;
+	isp->css_env.stream_config.input_res.height = ffmt->height;
+	return 0;
+}
+
+void atomisp_css_input_set_binning_factor(struct atomisp_device *isp,
+						unsigned int bin_factor)
+{
+	isp->css_env.stream_config.sensor_binning_factor = bin_factor;
+}
+
+void atomisp_css_input_set_bayer_order(struct atomisp_device *isp,
+				enum atomisp_css_bayer_order bayer_order)
+{
+	isp->css_env.stream_config.bayer_order = bayer_order;
+}
+
+void atomisp_css_input_set_format(struct atomisp_device *isp,
+					enum atomisp_css_stream_format format)
+{
+	isp->css_env.stream_config.format = format;
+}
+
+int atomisp_css_input_set_effective_resolution(struct atomisp_device *isp,
+					unsigned int width, unsigned int height)
+{
+	isp->css_env.stream_config.effective_res.width = width;
+	isp->css_env.stream_config.effective_res.height = height;
+
+	return 0;
+}
+
+void atomisp_css_video_set_dis_envelope(struct atomisp_device *isp,
+					unsigned int dvs_w, unsigned int dvs_h)
+{
+	isp->css_env.pipe_configs[0].dvs_envelope.width = dvs_w;
+	isp->css_env.pipe_configs[0].dvs_envelope.height = dvs_h;
+}

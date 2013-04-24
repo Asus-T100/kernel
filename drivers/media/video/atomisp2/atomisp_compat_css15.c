@@ -349,3 +349,47 @@ int atomisp_css_dequeue_event(struct atomisp_css_event *current_event)
 
 	return 0;
 }
+
+int atomisp_css_input_set_resolution(struct atomisp_device *isp,
+					struct v4l2_mbus_framefmt *ffmt)
+{
+	if (sh_css_input_set_resolution(ffmt->width, ffmt->height)
+	    != sh_css_success)
+		return -EINVAL;
+
+	return 0;
+}
+
+void atomisp_css_input_set_binning_factor(struct atomisp_device *isp,
+						unsigned int bin_factor)
+{
+	sh_css_input_set_binning_factor(bin_factor);
+}
+
+void atomisp_css_input_set_bayer_order(struct atomisp_device *isp,
+				enum atomisp_css_bayer_order bayer_order)
+{
+	sh_css_input_set_bayer_order(bayer_order);
+}
+
+void atomisp_css_input_set_format(struct atomisp_device *isp,
+					enum atomisp_css_stream_format format)
+{
+	sh_css_input_set_format(format);
+}
+
+int atomisp_css_input_set_effective_resolution(struct atomisp_device *isp,
+					unsigned int width, unsigned int height)
+{
+	if (sh_css_input_set_effective_resolution(width, height)
+	    != sh_css_success)
+		return -EINVAL;
+
+	return 0;
+}
+
+void atomisp_css_video_set_dis_envelope(struct atomisp_device *isp,
+					unsigned int dvs_w, unsigned int dvs_h)
+{
+	sh_css_video_set_dis_envelope(dvs_w, dvs_h);
+}

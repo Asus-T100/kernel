@@ -30,25 +30,28 @@
 #include <media/v4l2-mediabus.h>
 #include "atomisp_cmd.h"
 #include "atomisp_common.h"
+#include "atomisp_compat.h"
 #include "atomisp_internal.h"
 
 const struct atomisp_in_fmt_conv atomisp_in_fmt_conv[] = {
-	{ V4L2_MBUS_FMT_SBGGR8_1X8, 8, 8, SH_CSS_INPUT_FORMAT_RAW_8, sh_css_bayer_order_bggr },
-	{ V4L2_MBUS_FMT_SGBRG8_1X8, 8, 8, SH_CSS_INPUT_FORMAT_RAW_8, sh_css_bayer_order_gbrg },
-	{ V4L2_MBUS_FMT_SGRBG8_1X8, 8, 8, SH_CSS_INPUT_FORMAT_RAW_8, sh_css_bayer_order_grbg },
-	{ V4L2_MBUS_FMT_SRGGB8_1X8, 8, 8, SH_CSS_INPUT_FORMAT_RAW_8, sh_css_bayer_order_rggb },
-	{ V4L2_MBUS_FMT_SBGGR10_1X10, 10, 10, SH_CSS_INPUT_FORMAT_RAW_10, sh_css_bayer_order_bggr },
-	{ V4L2_MBUS_FMT_SGBRG10_1X10, 10, 10, SH_CSS_INPUT_FORMAT_RAW_10, sh_css_bayer_order_gbrg },
-	{ V4L2_MBUS_FMT_SGRBG10_1X10, 10, 10, SH_CSS_INPUT_FORMAT_RAW_10, sh_css_bayer_order_grbg },
-	{ V4L2_MBUS_FMT_SRGGB10_1X10, 10, 10, SH_CSS_INPUT_FORMAT_RAW_10, sh_css_bayer_order_rggb },
-	{ V4L2_MBUS_FMT_SBGGR10_DPCM8_1X8, 10, 8, SH_CSS_INPUT_FORMAT_RAW_8, sh_css_bayer_order_bggr },
-	{ V4L2_MBUS_FMT_SGBRG10_DPCM8_1X8, 10, 8, SH_CSS_INPUT_FORMAT_RAW_8, sh_css_bayer_order_gbrg },
-	{ V4L2_MBUS_FMT_SGRBG10_DPCM8_1X8, 10, 8, SH_CSS_INPUT_FORMAT_RAW_8, sh_css_bayer_order_grbg },
-	{ V4L2_MBUS_FMT_SRGGB10_DPCM8_1X8, 10, 8, SH_CSS_INPUT_FORMAT_RAW_8, sh_css_bayer_order_rggb },
-	{ V4L2_MBUS_FMT_SBGGR12_1X12, 12, 12, SH_CSS_INPUT_FORMAT_RAW_12, sh_css_bayer_order_bggr },
-	{ V4L2_MBUS_FMT_SGBRG12_1X12, 12, 12, SH_CSS_INPUT_FORMAT_RAW_12, sh_css_bayer_order_gbrg },
-	{ V4L2_MBUS_FMT_SGRBG12_1X12, 12, 12, SH_CSS_INPUT_FORMAT_RAW_12, sh_css_bayer_order_grbg },
-	{ V4L2_MBUS_FMT_SRGGB12_1X12, 12, 12, SH_CSS_INPUT_FORMAT_RAW_12, sh_css_bayer_order_rggb },
+	{ V4L2_MBUS_FMT_SBGGR8_1X8, 8, 8, CSS_FORMAT_RAW_8, CSS_BAYER_ORDER_BGGR },
+	{ V4L2_MBUS_FMT_SGBRG8_1X8, 8, 8, CSS_FORMAT_RAW_8, CSS_BAYER_ORDER_GBRG },
+	{ V4L2_MBUS_FMT_SGRBG8_1X8, 8, 8, CSS_FORMAT_RAW_8, CSS_BAYER_ORDER_GRBG },
+	{ V4L2_MBUS_FMT_SRGGB8_1X8, 8, 8, CSS_FORMAT_RAW_8, CSS_BAYER_ORDER_RGGB },
+	{ V4L2_MBUS_FMT_SBGGR10_1X10, 10, 10, CSS_FORMAT_RAW_10, CSS_BAYER_ORDER_BGGR },
+	{ V4L2_MBUS_FMT_SGBRG10_1X10, 10, 10, CSS_FORMAT_RAW_10, CSS_BAYER_ORDER_GBRG },
+	{ V4L2_MBUS_FMT_SGRBG10_1X10, 10, 10, CSS_FORMAT_RAW_10, CSS_BAYER_ORDER_GRBG },
+	{ V4L2_MBUS_FMT_SRGGB10_1X10, 10, 10, CSS_FORMAT_RAW_10, CSS_BAYER_ORDER_RGGB },
+#ifndef CONFIG_VIDEO_ATOMISP_CSS20
+	{ V4L2_MBUS_FMT_SBGGR10_DPCM8_1X8, 10, 8, CSS_FORMAT_RAW_8, CSS_BAYER_ORDER_BGGR },
+	{ V4L2_MBUS_FMT_SGBRG10_DPCM8_1X8, 10, 8, CSS_FORMAT_RAW_8, CSS_BAYER_ORDER_GBRG },
+	{ V4L2_MBUS_FMT_SGRBG10_DPCM8_1X8, 10, 8, CSS_FORMAT_RAW_8, CSS_BAYER_ORDER_GRBG },
+	{ V4L2_MBUS_FMT_SRGGB10_DPCM8_1X8, 10, 8, CSS_FORMAT_RAW_8, CSS_BAYER_ORDER_RGGB },
+#endif
+	{ V4L2_MBUS_FMT_SBGGR12_1X12, 12, 12, CSS_FORMAT_RAW_12, CSS_BAYER_ORDER_BGGR },
+	{ V4L2_MBUS_FMT_SGBRG12_1X12, 12, 12, CSS_FORMAT_RAW_12, CSS_BAYER_ORDER_GBRG },
+	{ V4L2_MBUS_FMT_SGRBG12_1X12, 12, 12, CSS_FORMAT_RAW_12, CSS_BAYER_ORDER_GRBG },
+	{ V4L2_MBUS_FMT_SRGGB12_1X12, 12, 12, CSS_FORMAT_RAW_12, CSS_BAYER_ORDER_RGGB },
 	{ V4L2_MBUS_FMT_UYVY8_1X16, 8, 8, ATOMISP_INPUT_FORMAT_YUV422_8, 0 },
 	{ V4L2_MBUS_FMT_YUYV8_1X16, 8, 8, ATOMISP_INPUT_FORMAT_YUV422_8, 0 },
 	{}
@@ -395,9 +398,9 @@ int atomisp_subdev_set_selection(struct v4l2_subdev *sd,
 			dvs_w = dvs_h = 0;
 		}
 
-		sh_css_video_set_dis_envelope(dvs_w, dvs_h);
-		sh_css_input_set_effective_resolution(
-			crop[pad]->width, crop[pad]->height);
+		atomisp_css_video_set_dis_envelope(isp, dvs_w, dvs_h);
+		atomisp_css_input_set_effective_resolution(isp,
+					crop[pad]->width, crop[pad]->height);
 
 		break;
 	}
@@ -511,11 +514,11 @@ int atomisp_subdev_set_ffmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 				     V4L2_SEL_TGT_CROP, 0);
 
 		if (which == V4L2_SUBDEV_FORMAT_ACTIVE) {
-			sh_css_input_set_resolution(ffmt->width, ffmt->height);
-			sh_css_input_set_binning_factor(
+			atomisp_css_input_set_resolution(isp, ffmt);
+			atomisp_css_input_set_binning_factor(isp,
 				atomisp_get_sensor_bin_factor(isp));
-			sh_css_input_set_bayer_order(fc->bayer_order);
-			sh_css_input_set_format(fc->in_sh_fmt);
+			atomisp_css_input_set_bayer_order(isp, fc->bayer_order);
+			atomisp_css_input_set_format(isp, fc->in_sh_fmt);
 		}
 
 		break;

@@ -22,6 +22,8 @@
 #ifndef __ATOMISP_COMPAT_CSS20_H__
 #define __ATOMISP_COMPAT_CSS20_H__
 
+#include <media/v4l2-mediabus.h>
+
 #include "ia_css.h"
 #include "ia_css_types.h"
 
@@ -32,6 +34,8 @@
 #define atomisp_css_dis_data ia_css_isp_dvs_statistics
 #define atomisp_css_irq_info  ia_css_irq_info
 #define atomisp_css_isp_config ia_css_isp_config
+#define atomisp_css_bayer_order ia_css_bayer_order
+#define atomisp_css_stream_format ia_css_stream_format
 typedef struct ia_css_isp_3a_statistics atomisp_css_3a_data;
 
 #define CSS_PIPE_ID_PREVIEW	IA_CSS_PIPE_ID_PREVIEW
@@ -53,11 +57,17 @@ typedef struct ia_css_isp_3a_statistics atomisp_css_3a_data;
 #define CSS_FRAME_FLASH_STATE_PARTIAL	IA_CSS_FRAME_FLASH_STATE_PARTIAL
 #define CSS_FRAME_FLASH_STATE_FULL	IA_CSS_FRAME_FLASH_STATE_FULL
 
+#define CSS_BAYER_ORDER_GRBG	IA_CSS_BAYER_ORDER_GRBG
+#define CSS_BAYER_ORDER_RGGB	IA_CSS_BAYER_ORDER_RGGB
+#define CSS_BAYER_ORDER_BGGR	IA_CSS_BAYER_ORDER_BGGR
+#define CSS_BAYER_ORDER_GBRG	IA_CSS_BAYER_ORDER_GBRG
+
 /*
  * Hide IA_ naming difference in otherwise common CSS macros.
  */
 #define CSS_ID(val)	(IA_ ## val)
 #define CSS_EVENT(val)	(IA_CSS_EVENT_TYPE_ ## val)
+#define CSS_FORMAT(val)	(IA_CSS_STREAM_FORMAT_ ## val)
 
 struct atomisp_css_env {
 	struct ia_css_env isp_css_env;

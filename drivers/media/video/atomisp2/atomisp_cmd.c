@@ -2993,8 +2993,9 @@ static inline void atomisp_set_sensor_mipi_to_isp(struct atomisp_device *isp,
 	/* Compatibility for sensors which provide no media bus code
 	 * in s_mbus_framefmt() nor support pad formats. */
 	if (mipi_info->input_format != -1) {
-		sh_css_input_set_bayer_order(mipi_info->raw_bayer_order);
-		sh_css_input_set_format(mipi_info->input_format);
+		atomisp_css_input_set_bayer_order(isp,
+						mipi_info->raw_bayer_order);
+		atomisp_css_input_set_format(isp, mipi_info->input_format);
 	}
 	sh_css_input_configure_port(__get_mipi_port(isp, mipi_info->port),
 				    mipi_info->num_lanes, 0xffff4);

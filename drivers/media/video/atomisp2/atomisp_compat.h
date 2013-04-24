@@ -80,6 +80,10 @@
 #define CSS_BUFFER_TYPE_RAW_OUTPUT_FRAME \
 	CSS_ID(CSS_BUFFER_TYPE_RAW_OUTPUT_FRAME)
 
+#define CSS_FORMAT_RAW_8	CSS_FORMAT(RAW_8)
+#define CSS_FORMAT_RAW_10	CSS_FORMAT(RAW_10)
+#define CSS_FORMAT_RAW_12	CSS_FORMAT(RAW_12)
+
 struct atomisp_device;
 
 void atomisp_set_css_env(struct atomisp_device *isp);
@@ -141,4 +145,22 @@ void atomisp_css_get_dis_statistics(struct atomisp_device *isp,
 				    struct atomisp_css_buffer *isp_css_buffer);
 
 int atomisp_css_dequeue_event(struct atomisp_css_event *current_event);
+
+int atomisp_css_input_set_resolution(struct atomisp_device *isp,
+					struct v4l2_mbus_framefmt *ffmt);
+
+void atomisp_css_input_set_binning_factor(struct atomisp_device *isp,
+						unsigned int bin_factor);
+
+void atomisp_css_input_set_bayer_order(struct atomisp_device *isp,
+				enum atomisp_css_bayer_order bayer_order);
+
+void atomisp_css_input_set_format(struct atomisp_device *isp,
+					enum atomisp_css_stream_format format);
+
+int atomisp_css_input_set_effective_resolution(struct atomisp_device *isp,
+				unsigned int width, unsigned int height);
+
+void atomisp_css_video_set_dis_envelope(struct atomisp_device *isp,
+					unsigned int dvs_w, unsigned int dvs_h);
 #endif

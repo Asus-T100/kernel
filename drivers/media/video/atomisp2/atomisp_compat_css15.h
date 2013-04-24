@@ -22,6 +22,8 @@
 #ifndef __ATOMISP_COMPAT_CSS15_H__
 #define __ATOMISP_COMPAT_CSS15_H__
 
+#include <media/v4l2-mediabus.h>
+
 #include "sh_css.h"
 #include "sh_css_sp.h"
 
@@ -29,6 +31,8 @@
 #define atomisp_css_buffer_type sh_css_buffer_type
 #define atomisp_css_dis_data sh_css_dis_data
 #define atomisp_css_irq_info sh_css_interrupt_info
+#define atomisp_css_bayer_order sh_css_bayer_order
+#define atomisp_css_stream_format sh_css_input_format
 typedef union sh_css_s3a_data atomisp_css_3a_data;
 
 #define CSS_PIPE_ID_PREVIEW	SH_CSS_PREVIEW_PIPELINE
@@ -59,11 +63,17 @@ typedef union sh_css_s3a_data atomisp_css_3a_data;
 #define CSS_FRAME_FLASH_STATE_PARTIAL	SH_CSS_FRAME_PARTIAL_FLASH
 #define CSS_FRAME_FLASH_STATE_FULL	SH_CSS_FRAME_FULLY_FLASH
 
+#define CSS_BAYER_ORDER_GRBG	sh_css_bayer_order_grbg
+#define CSS_BAYER_ORDER_RGGB	sh_css_bayer_order_rggb
+#define CSS_BAYER_ORDER_BGGR	sh_css_bayer_order_bggr
+#define CSS_BAYER_ORDER_GBRG	sh_css_bayer_order_gbrg
+
 /*
  * Hide SH_ naming difference in otherwise common CSS macros.
  */
 #define CSS_ID(val)	(SH_ ## val)
 #define CSS_EVENT(val)	(SH_CSS_EVENT_ ## val)
+#define CSS_FORMAT(val)	(SH_CSS_INPUT_FORMAT_ ## val)
 
 struct atomisp_css_env {
 	struct sh_css_env isp_css_env;
