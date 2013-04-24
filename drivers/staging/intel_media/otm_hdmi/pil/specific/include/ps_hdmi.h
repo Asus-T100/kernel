@@ -101,6 +101,9 @@ bool ps_hdmi_power_islands_on(int hw_island);
 /* turn off HDMI power islands */
 void ps_hdmi_power_islands_off(int hw_island);
 
+/* control HDMI power islands */
+void ps_hdmi_pmu_nc_set_power_state(int islands, int state_type, int reg);
+
 /**
  * hdmi interrupt handler (top half).
  * @irq:	irq number

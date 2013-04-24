@@ -269,6 +269,13 @@ void ps_hdmi_power_islands_off(int hw_island)
 {
 }
 
+void ps_hdmi_pmu_nc_set_power_state(int islands, int state_type, int reg)
+{
+	if (pmu_nc_set_power_state(OSPM_DISPLAY_B_ISLAND,
+				OSPM_ISLAND_UP, OSPM_REG_TYPE))
+		BUG();
+}
+
 /*
  * ps_hdmi_get_cable_status - Get HDMI cable connection status
  * @context: hdmi device context

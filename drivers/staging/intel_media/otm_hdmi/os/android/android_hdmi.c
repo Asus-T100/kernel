@@ -2159,9 +2159,8 @@ android_hdmi_detect(struct drm_connector *connector,
 		 * If pmu_nc_set_power_state fails then accessing HW
 		 * reg would result in a crash - IERR/Fabric error.
 		 */
-		if (pmu_nc_set_power_state(OSPM_DISPLAY_B_ISLAND,
-					OSPM_ISLAND_UP, OSPM_REG_TYPE))
-			BUG();
+		otm_hdmi_pmu_nc_set_power_state(OSPM_DISPLAY_B_ISLAND,
+				OSPM_ISLAND_UP, OSPM_REG_TYPE);
 
 		dev_priv->panel_desc |= DISPLAY_B;
 

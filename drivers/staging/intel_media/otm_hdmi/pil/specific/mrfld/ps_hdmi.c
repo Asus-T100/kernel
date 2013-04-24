@@ -274,6 +274,11 @@ void ps_hdmi_power_islands_off(int hw_island)
 	ospm_power_using_hw_end(hw_island);
 }
 
+void ps_hdmi_pmu_nc_set_power_state(int islands, int state_type, int reg)
+{
+	/* Don't need to force powering on DSPB for MRFLD. */
+}
+
 /*
  * ps_hdmi_get_cable_status - Get HDMI cable connection status
  * @context: hdmi device context

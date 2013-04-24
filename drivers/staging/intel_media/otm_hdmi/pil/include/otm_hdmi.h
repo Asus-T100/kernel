@@ -262,6 +262,9 @@ bool otm_hdmi_power_islands_on(int hw_island);
 /* turn HDMI power islands off */
 void otm_hdmi_power_islands_off(int hw_island);
 
+/* control HDMI power islands */
+void otm_hdmi_pmu_nc_set_power_state(int islands, int state_type, int reg);
+
 /*
  * otm_hdmi_get_cable_status - Get HDMI cable connection status
  * @context: hdmi device context
