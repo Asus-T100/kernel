@@ -71,6 +71,7 @@
 #include "otm_hdmi.h"
 #include "ipil_hdmi.h"
 #include "ps_hdmi.h"
+#include "psb_drv.h"
 
 #include <asm/intel_scu_pmic.h>
 
@@ -274,6 +275,14 @@ void ps_hdmi_pmu_nc_set_power_state(int islands, int state_type, int reg)
 	if (pmu_nc_set_power_state(OSPM_DISPLAY_B_ISLAND,
 				OSPM_ISLAND_UP, OSPM_REG_TYPE))
 		BUG();
+}
+
+void ps_hdmi_vblank_control(struct drm_device *dev, bool on)
+{
+	if (on)
+		psb_enable_vblank(dev, 1);
+	else
+		psb_disable_vblank(dev, 1);
 }
 
 /*

@@ -75,6 +75,7 @@
 #include "otm_hdmi_types.h"
 #include "otm_hdmi_defs.h"
 #include "otm_hdmi_eld.h"
+#include <drm/drmP.h>
 
 /**
  * Attribute name getting routine
@@ -264,6 +265,9 @@ void otm_hdmi_power_islands_off(int hw_island);
 
 /* control HDMI power islands */
 void otm_hdmi_pmu_nc_set_power_state(int islands, int state_type, int reg);
+
+/* control HDMI vblank interrupt */
+void otm_hdmi_vblank_control(struct drm_device *dev, bool on);
 
 /*
  * otm_hdmi_get_cable_status - Get HDMI cable connection status

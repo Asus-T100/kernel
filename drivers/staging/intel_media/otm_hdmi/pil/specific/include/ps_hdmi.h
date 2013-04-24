@@ -104,6 +104,9 @@ void ps_hdmi_power_islands_off(int hw_island);
 /* control HDMI power islands */
 void ps_hdmi_pmu_nc_set_power_state(int islands, int state_type, int reg);
 
+/* control HDMI vblank interrupt */
+void ps_hdmi_vblank_control(struct drm_device *dev, bool on);
+
 /**
  * hdmi interrupt handler (top half).
  * @irq:	irq number

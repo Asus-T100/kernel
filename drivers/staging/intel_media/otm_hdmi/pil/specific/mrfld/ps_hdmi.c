@@ -279,6 +279,11 @@ void ps_hdmi_pmu_nc_set_power_state(int islands, int state_type, int reg)
 	/* Don't need to force powering on DSPB for MRFLD. */
 }
 
+void ps_hdmi_vblank_control(struct drm_device *dev, bool on)
+{
+	/* Won't force turning on/off vblank interrupt for MRFLD. */
+}
+
 /*
  * ps_hdmi_get_cable_status - Get HDMI cable connection status
  * @context: hdmi device context
