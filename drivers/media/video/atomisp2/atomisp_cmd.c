@@ -968,7 +968,7 @@ void atomisp_wdt_work(struct work_struct *work)
 	struct atomisp_device *isp = container_of(work, struct atomisp_device,
 						  wdt_work);
 	char debug_context[64];
-	enum sh_css_pipe_id css_pipe_id;
+	enum atomisp_css_pipe_id css_pipe_id;
 	int ret;
 
 	dev_err(isp->dev, "timeout %d of %d\n",
@@ -1029,19 +1029,8 @@ void atomisp_wdt_work(struct work_struct *work)
 		isp->delayed_init = ATOMISP_DELAYED_INIT_NOT_QUEUED;
 
 		css_pipe_id = atomisp_get_css_pipe_id(isp);
-		switch (css_pipe_id) {
-		case SH_CSS_PREVIEW_PIPELINE:
-			sh_css_preview_stop();
-			break;
-		case SH_CSS_VIDEO_PIPELINE:
-			sh_css_video_stop();
-			break;
-		case SH_CSS_CAPTURE_PIPELINE:
-			/* fall through */
-		default:
-			sh_css_capture_stop();
-			break;
-		}
+		atomisp_css_stop(isp, css_pipe_id, true);
+
 		atomisp_acc_unload_extensions(isp);
 
 		/* clear irq */
@@ -1623,7 +1612,7 @@ void atomisp_free_internal_buffers(struct atomisp_device *isp)
 		isp->inputs[isp->input_curr].morph_table = NULL;
 	}
 	if (isp->raw_output_frame) {
-		sh_css_frame_free(isp->raw_output_frame);
+		atomisp_css_frame_free(isp->raw_output_frame);
 		isp->raw_output_frame = NULL;
 	}
 }
@@ -2628,7 +2617,7 @@ atomisp_v4l2_framebuffer_to_sh_css_frame(const struct v4l2_framebuffer *arg,
 	/* Note: the padded width on an sh_css_frame is in elements, not in
 	   bytes. The RAW frame we use here should always be a 16bit RAW
 	   frame. This is why we bytesperline/2 is equal to the padded with */
-	if (sh_css_frame_allocate(&res, arg->fmt.width, arg->fmt.height,
+	if (atomisp_css_frame_allocate(&res, arg->fmt.width, arg->fmt.height,
 				  sh_format, padded_width, 0)) {
 		ret = -ENOMEM;
 		goto err;
@@ -2652,7 +2641,7 @@ atomisp_v4l2_framebuffer_to_sh_css_frame(const struct v4l2_framebuffer *arg,
 
 err:
 	if (ret && res)
-		sh_css_frame_free(res);
+		atomisp_css_frame_free(res);
 	if (tmp_buf)
 		vfree(tmp_buf);
 	if (ret == 0)
@@ -2678,7 +2667,7 @@ int atomisp_fixed_pattern_table(struct atomisp_device *isp,
 	if (sh_css_set_black_frame(raw_black_frame) != sh_css_success)
 		ret = -ENOMEM;
 
-	sh_css_frame_free(raw_black_frame);
+	atomisp_css_frame_free(raw_black_frame);
 	return ret;
 }
 
@@ -3228,13 +3217,13 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 	atomisp_update_grid_info(isp);
 
 	/* Free the raw_dump buffer first */
-	sh_css_frame_free(isp->raw_output_frame);
+	atomisp_css_frame_free(isp->raw_output_frame);
 	isp->raw_output_frame = NULL;
 
 	if (!isp->isp_subdev.continuous_mode->val &&
 		!isp->params.online_process && !isp->sw_contex.file_input &&
-	    sh_css_frame_allocate_from_info(&isp->raw_output_frame,
-					       raw_output_info))
+		atomisp_css_frame_allocate_from_info(&isp->raw_output_frame,
+							raw_output_info))
 		return -ENOMEM;
 
 	return 0;

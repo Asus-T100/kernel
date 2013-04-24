@@ -453,3 +453,68 @@ int atomisp_css_input_configure_port(struct atomisp_device *isp,
 
 	return 0;
 }
+
+int atomisp_css_frame_allocate(struct atomisp_css_frame **frame,
+				unsigned int width, unsigned int height,
+				enum atomisp_css_frame_format format,
+				unsigned int padded_width,
+				unsigned int raw_bit_depth)
+{
+	if (sh_css_frame_allocate(frame, width, height, format,
+			padded_width, raw_bit_depth) != sh_css_success)
+		return -ENOMEM;
+
+	return 0;
+}
+
+int atomisp_css_frame_allocate_from_info(struct atomisp_css_frame **frame,
+				const struct atomisp_css_frame_info *info)
+{
+	if (sh_css_frame_allocate_from_info(frame, info) != sh_css_success)
+		return -ENOMEM;
+
+	return 0;
+}
+
+void atomisp_css_frame_free(struct atomisp_css_frame *frame)
+{
+	sh_css_frame_free(frame);
+}
+
+int atomisp_css_frame_map(struct atomisp_css_frame **frame,
+				const struct atomisp_css_frame_info *info,
+				const void *data, uint16_t attribute,
+				void *context)
+{
+	if (sh_css_frame_map(frame, info, data, attribute, context)
+	    != sh_css_success)
+		return -ENOMEM;
+
+	return 0;
+}
+
+int atomisp_css_stop(struct atomisp_device *isp,
+			enum atomisp_css_pipe_id pipe_id, bool in_reset)
+{
+	enum sh_css_err ret;
+
+	switch (pipe_id) {
+	case SH_CSS_PREVIEW_PIPELINE:
+		ret = sh_css_preview_stop();
+		break;
+	case SH_CSS_VIDEO_PIPELINE:
+		ret = sh_css_video_stop();
+		break;
+	case SH_CSS_CAPTURE_PIPELINE:
+		/* fall through */
+	default:
+		ret = sh_css_capture_stop();
+		break;
+	}
+	if (ret != sh_css_success) {
+		dev_err(isp->dev, "stop css fatal error.\n");
+		return -EINVAL;
+	}
+
+	return 0;
+}

@@ -133,6 +133,132 @@ static int hmm_get_mmu_base_addr(unsigned int *mmu_base_addr)
 	return 0;
 }
 
+static int __destroy_stream(struct atomisp_device *isp, bool force)
+{
+	int i;
+
+	if (!isp->css_env.stream)
+		return -EINVAL;
+
+	if (!force) {
+		for (i = 0; i < IA_CSS_PIPE_ID_NUM; i++)
+			if (isp->css_env.update_pipe[i])
+				break;
+
+		if (i == IA_CSS_PIPE_ID_NUM)
+			return 0;
+	}
+
+	if (isp->css_env.stream_state == CSS_STREAM_STARTED
+	    && ia_css_stream_stop(isp->css_env.stream) != IA_CSS_SUCCESS) {
+		dev_err(isp->dev, "stop stream failed.\n");
+		return -EINVAL;
+	}
+
+	if (ia_css_stream_destroy(isp->css_env.stream) != IA_CSS_SUCCESS) {
+		dev_err(isp->dev, "destroy stream failed.\n");
+		return -EINVAL;
+	}
+	isp->css_env.stream = NULL;
+
+	return 0;
+}
+
+static int __create_stream(struct atomisp_device *isp)
+{
+	int pipe_index = 0, i;
+	struct ia_css_pipe *multi_pipes[IA_CSS_PIPE_ID_NUM];
+
+	dump_stream_pipe_config(isp);
+	for (i = 0; i < IA_CSS_PIPE_ID_NUM; i++) {
+		if (isp->css_env.pipes[i])
+			multi_pipes[pipe_index++] = isp->css_env.pipes[i];
+	}
+
+	if (ia_css_stream_create(&isp->css_env.stream_config,
+	    pipe_index, multi_pipes, &isp->css_env.stream)
+	    != IA_CSS_SUCCESS)
+		return -EINVAL;
+
+	return 0;
+}
+
+static int __destroy_pipes(struct atomisp_device *isp, bool force)
+{
+	int i;
+	int ret = 0;
+
+	if (isp->css_env.stream) {
+		dev_err(isp->dev, "cannot destroy css stream.\n");
+		return -EINVAL;
+	}
+	for (i = 0; i < IA_CSS_PIPE_ID_NUM; i++) {
+		if (!isp->css_env.pipes[i]
+				|| !(force || isp->css_env.update_pipe[i]))
+			continue;
+
+		if (ia_css_pipe_destroy(isp->css_env.pipes[i])
+		    != IA_CSS_SUCCESS) {
+			dev_err(isp->dev,
+				"destroy pipe[%d]failed.cannot recover.\n", i);
+			ret = -EINVAL;
+		}
+
+		isp->css_env.pipes[i] = NULL;
+		isp->css_env.update_pipe[i] = false;
+	}
+
+	return ret;
+}
+
+static int __create_pipe(struct atomisp_device *isp)
+{
+	struct ia_css_pipe_extra_config extra_config;
+	enum ia_css_err ret;
+	int i;
+
+	ia_css_pipe_extra_config_defaults(&extra_config);
+	for (i = 0; i < IA_CSS_PIPE_ID_NUM; i++) {
+		if (!isp->css_env.pipe_configs[i].output_info.res.width)
+			continue;
+
+		if (!memcmp(&extra_config, &isp->css_env.pipe_extra_configs[i],
+		    sizeof(extra_config)))
+			ret = ia_css_pipe_create(&isp->css_env.pipe_configs[i],
+						&isp->css_env.pipes[i]);
+		else
+			ret = ia_css_pipe_create_extra(
+				&isp->css_env.pipe_configs[i],
+				&isp->css_env.pipe_extra_configs[i],
+				&isp->css_env.pipes[i]);
+		if (ret != IA_CSS_SUCCESS) {
+			dev_err(isp->dev, "create pipe[%d] error.\n", i);
+			goto pipe_err;
+		}
+		dev_dbg(isp->dev,
+			"dump pipe[%d] info w=%d, h=%d,f=%d vf_w=%d"
+			"vf_h=%d vf_f=%d.\n", i,
+			isp->css_env.pipe_configs[i].output_info.res.width,
+			isp->css_env.pipe_configs[i].output_info.res.height,
+			isp->css_env.pipe_configs[i].output_info.format,
+			isp->css_env.pipe_configs[i].vf_output_info.res.width,
+			isp->css_env.pipe_configs[i].vf_output_info.res.height,
+			isp->css_env.pipe_configs[i].vf_output_info.format);
+	}
+
+	return 0;
+
+pipe_err:
+	for (i--; i >= 0; i--) {
+		if (isp->css_env.pipes[i]) {
+			ia_css_pipe_destroy(isp->css_env.pipes[i]);
+			isp->css_env.pipes[i] = NULL;
+		}
+	}
+
+	return -EINVAL;
+}
+
 int atomisp_css_init(struct atomisp_device *isp)
 {
 	unsigned int mmu_base_addr;
@@ -338,17 +464,17 @@ int atomisp_css_start(struct atomisp_device *isp,
 	int ret = 0;
 
 	if (in_reset) {
-		if (__destroy_stream(isp, true) != IA_CSS_SUCCESS)
+		if (__destroy_stream(isp, true))
 			dev_warn(isp->dev, "destroy stream failed.\n");
 
-		if (__destroy_pipes(isp, true) != IA_CSS_SUCCESS)
+		if (__destroy_pipes(isp, true))
 			dev_warn(isp->dev, "destroy pipe failed.\n");
 
-		if (__create_pipe(isp) != IA_CSS_SUCCESS) {
+		if (__create_pipe(isp)) {
 			dev_err(isp->dev, "create pipe error.\n");
 			return -EINVAL;
 		}
-		if (__create_stream(isp) != IA_CSS_SUCCESS) {
+		if (__create_stream(isp)) {
 			dev_err(isp->dev, "create stream error.\n");
 			return -EINVAL;
 		}
@@ -598,6 +724,76 @@ int atomisp_css_input_configure_port(struct atomisp_device *isp,
 	isp->css_env.stream_config.source.port.port = port;
 	isp->css_env.stream_config.source.port.num_lanes = num_lanes;
 	isp->css_env.stream_config.source.port.timeout = timeout;
+
+	return 0;
+}
+
+int atomisp_css_frame_allocate(struct atomisp_css_frame **frame,
+				unsigned int width, unsigned int height,
+				enum atomisp_css_frame_format format,
+				unsigned int padded_width,
+				unsigned int raw_bit_depth)
+{
+	if (ia_css_frame_allocate(frame, width, height, format,
+			padded_width, raw_bit_depth) != IA_CSS_SUCCESS)
+		return -ENOMEM;
+
+	return 0;
+}
+
+int atomisp_css_frame_allocate_from_info(struct atomisp_css_frame **frame,
+				const struct atomisp_css_frame_info *info)
+{
+	if (ia_css_frame_allocate_from_info(frame, info) != IA_CSS_SUCCESS)
+		return -ENOMEM;
+
+	return 0;
+}
+
+void atomisp_css_frame_free(struct atomisp_css_frame *frame)
+{
+	ia_css_frame_free(frame);
+}
+
+int atomisp_css_frame_map(struct atomisp_css_frame **frame,
+				const struct atomisp_css_frame_info *info,
+				const void *data, uint16_t attribute,
+				void *context)
+{
+	if (ia_css_frame_map(frame, info, data, attribute, context)
+	    != IA_CSS_SUCCESS)
+		return -ENOMEM;
+
+	return 0;
+}
+
+int atomisp_css_stop(struct atomisp_device *isp,
+			enum atomisp_css_pipe_id pipe_id, bool in_reset)
+{
+	/* if is called in atomisp_reset(), force destroy stream */
+	if (__destroy_stream(isp, true))
+		dev_err(isp->dev, "destroy stream failed.\n");
+
+	/* if is called in atomisp_reset(), force destroy all pipes */
+	if (__destroy_pipes(isp, true))
+		dev_err(isp->dev, "destroy pipes failed.\n");
+
+	if (ia_css_isp_has_started() && (ia_css_stop_sp() != IA_CSS_SUCCESS)) {
+		dev_err(isp->dev, "stop sp failed. stop css fatal error.\n");
+		return -EINVAL;
+	}
+
+	isp->css_env.stream_state = CSS_STREAM_STOPPED;
+	if (!in_reset) {
+		int i;
+		for (i = 0; i < IA_CSS_PIPE_ID_NUM; i++) {
+			ia_css_pipe_config_defaults(
+					&isp->css_env.pipe_configs[i]);
+			ia_css_pipe_extra_config_defaults(
+					&isp->css_env.pipe_extra_configs[i]);
+		}
+		ia_css_stream_config_defaults(&isp->css_env.stream_config);
+	}
 
 	return 0;
 }

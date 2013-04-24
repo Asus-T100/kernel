@@ -35,6 +35,9 @@
 #define atomisp_css_stream_format sh_css_input_format
 #define atomisp_css_capture_mode sh_css_capture_mode
 #define atomisp_css_input_mode sh_css_input_mode
+#define atomisp_css_frame sh_css_frame
+#define atomisp_css_frame_format sh_css_frame_format
+#define atomisp_css_frame_info sh_css_frame_info
 typedef union sh_css_s3a_data atomisp_css_3a_data;
 
 #define CSS_PIPE_ID_PREVIEW	SH_CSS_PREVIEW_PIPELINE

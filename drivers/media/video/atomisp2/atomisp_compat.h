@@ -198,4 +198,23 @@ int atomisp_css_input_configure_port(struct atomisp_device *isp,
 					mipi_port_ID_t port,
 					unsigned int num_lanes,
 					unsigned int timeout);
+
+int atomisp_css_frame_allocate(struct atomisp_css_frame **frame,
+				unsigned int width, unsigned int height,
+				enum atomisp_css_frame_format format,
+				unsigned int padded_width,
+				unsigned int raw_bit_depth);
+
+int atomisp_css_frame_allocate_from_info(struct atomisp_css_frame **frame,
+				const struct atomisp_css_frame_info *info);
+
+void atomisp_css_frame_free(struct atomisp_css_frame *frame);
+
+int atomisp_css_frame_map(struct atomisp_css_frame **frame,
+				const struct atomisp_css_frame_info *info,
+				const void *data, uint16_t attribute,
+				void *context);
+
+int atomisp_css_stop(struct atomisp_device *isp,
+			enum atomisp_css_pipe_id pipe_id, bool in_reset);
 #endif

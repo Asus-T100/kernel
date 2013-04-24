@@ -819,7 +819,7 @@ void atomisp_videobuf_free_buf(struct videobuf_buffer *vb)
 
 	vm_mem = vb->priv;
 	if (vm_mem && vm_mem->vaddr) {
-		sh_css_frame_free(vm_mem->vaddr);
+		atomisp_css_frame_free(vm_mem->vaddr);
 		vm_mem->vaddr = NULL;
 	}
 }
@@ -942,7 +942,7 @@ int __atomisp_reqbufs(struct file *file, void *fh,
 	 * memory management function
 	 */
 	for (i = 0; i < req->count; i++) {
-		if (sh_css_frame_allocate_from_info(&frame, &frame_info))
+		if (atomisp_css_frame_allocate_from_info(&frame, &frame_info))
 			goto error;
 		vm_mem = pipe->capq.bufs[i]->priv;
 		vm_mem->vaddr = frame;
@@ -953,11 +953,11 @@ int __atomisp_reqbufs(struct file *file, void *fh,
 error:
 	while (i--) {
 		vm_mem = pipe->capq.bufs[i]->priv;
-		sh_css_frame_free(vm_mem->vaddr);
+		atomisp_css_frame_free(vm_mem->vaddr);
 	}
 
 	if (isp->vf_frame)
-		sh_css_frame_free(isp->vf_frame);
+		atomisp_css_frame_free(isp->vf_frame);
 
 	return -ENOMEM;
 }
@@ -1082,18 +1082,17 @@ static int atomisp_qbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 #else
 		attributes.type = HRT_USR_PTR;
 #endif
-		ret = sh_css_frame_map(&handle, &frame_info,
+		ret = atomisp_css_frame_map(&handle, &frame_info,
 				       (void *)buf->m.userptr,
 				       0, &attributes);
-		if (ret != sh_css_success) {
+		if (ret) {
 			dev_err(isp->dev, "Failed to map user buffer\n");
-			ret = -ENOMEM;
 			goto error;
 		}
 
 		if (vm_mem->vaddr) {
 			mutex_lock(&pipe->capq.vb_lock);
-			sh_css_frame_free(vm_mem->vaddr);
+			atomisp_css_frame_free(vm_mem->vaddr);
 			vm_mem->vaddr = NULL;
 			vb->state = VIDEOBUF_NEEDS_INIT;
 			mutex_unlock(&pipe->capq.vb_lock);
@@ -1222,7 +1221,7 @@ static int atomisp_dqbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 	return 0;
 }
 
-enum sh_css_pipe_id atomisp_get_css_pipe_id(struct atomisp_device *isp)
+enum atomisp_css_pipe_id atomisp_get_css_pipe_id(struct atomisp_device *isp)
 {
 	if (isp->isp_subdev.continuous_mode->val &&
 	    isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO)
@@ -1442,6 +1441,7 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 	struct atomisp_video_pipe *vf_pipe = NULL;
 	struct atomisp_video_pipe *preview_pipe = NULL;
 	struct videobuf_buffer *vb, *_vb;
+	enum atomisp_css_pipe_id css_pipe_id;
 	int ret;
 	unsigned long flags;
 	bool first_streamoff = false;
@@ -1536,19 +1536,10 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 		isp->delayed_init = ATOMISP_DELAYED_INIT_NOT_QUEUED;
 	}
 
-	switch (atomisp_get_css_pipe_id(isp)) {
-	case SH_CSS_PREVIEW_PIPELINE:
-		sh_css_preview_stop();
-		break;
-	case SH_CSS_VIDEO_PIPELINE:
-		sh_css_video_stop();
-		break;
-	case SH_CSS_CAPTURE_PIPELINE:
-		/* fall through */
-	default:
-		sh_css_capture_stop();
-		break;
-	}
+	css_pipe_id = atomisp_get_css_pipe_id(isp);
+	ret = atomisp_css_stop(isp, css_pipe_id, false);
+	if (ret)
+		return ret;
 
 	/* cancel work queue*/
 	if (isp->isp_subdev.video_out_capture.users) {

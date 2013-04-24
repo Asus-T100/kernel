@@ -38,6 +38,9 @@
 #define atomisp_css_stream_format ia_css_stream_format
 #define atomisp_css_capture_mode ia_css_capture_mode
 #define atomisp_css_input_mode ia_css_input_mode
+#define atomisp_css_frame ia_css_frame
+#define atomisp_css_frame_format ia_css_frame_format
+#define atomisp_css_frame_info ia_css_frame_info
 typedef struct ia_css_isp_3a_statistics atomisp_css_3a_data;
 
 #define CSS_PIPE_ID_PREVIEW	IA_CSS_PIPE_ID_PREVIEW
