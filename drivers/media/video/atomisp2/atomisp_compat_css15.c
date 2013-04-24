@@ -610,3 +610,26 @@ int atomisp_css_capture_configure_pp_input(struct atomisp_device *isp,
 
 	return 0;
 }
+
+int atomisp_css_offline_capture_configure(struct atomisp_device *isp,
+				int num_captures, unsigned int skip, int offset)
+{
+	if (sh_css_offline_capture_configure(num_captures, skip, offset)
+	    != sh_css_success)
+		return -EINVAL;
+
+	return 0;
+}
+
+int atomisp_css_capture_enable_xnr(struct atomisp_device *isp, bool enable)
+{
+	sh_css_capture_enable_xnr(enable);
+	return 0;
+}
+
+void atomisp_css_send_input_frame(struct atomisp_device *isp,
+				  unsigned short *data, unsigned int width,
+				  unsigned int height)
+{
+	sh_css_send_input_frame(data, width, height);
+}

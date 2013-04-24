@@ -249,4 +249,13 @@ int atomisp_css_preview_configure_pp_input(struct atomisp_device *isp,
 
 int atomisp_css_capture_configure_pp_input(struct atomisp_device *isp,
 				unsigned int width, unsigned int height);
+
+int atomisp_css_offline_capture_configure(struct atomisp_device *isp,
+			int num_captures, unsigned int skip, int offset);
+
+int atomisp_css_capture_enable_xnr(struct atomisp_device *isp, bool enable);
+
+void atomisp_css_send_input_frame(struct atomisp_device *isp,
+				  unsigned short *data, unsigned int width,
+				  unsigned int height);
 #endif

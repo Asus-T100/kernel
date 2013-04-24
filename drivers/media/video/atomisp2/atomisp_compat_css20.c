@@ -984,3 +984,44 @@ int atomisp_css_capture_configure_pp_input(struct atomisp_device *isp,
 	__configure_pp_input(isp, width, height, IA_CSS_PIPE_ID_CAPTURE);
 	return 0;
 }
+
+int atomisp_css_offline_capture_configure(struct atomisp_device *isp,
+			int num_captures, unsigned int skip, int offset)
+{
+	struct ia_css_err ret;
+
+	ret = ia_css_stream_capture(isp->css_env.stream,
+					num_captures, skip, offset);
+	if (ret != IA_CSS_SUCCESS)
+		return -EINVAL;
+
+	return 0;
+}
+
+int atomisp_css_capture_enable_xnr(struct atomisp_device *isp, bool enable)
+{
+	struct ia_css_isp_config isp_config;
+
+	if (!isp->css_env.stream) {
+		dev_err(isp->dev,
+			"%s called after streamoff, skipping.\n", __func__);
+		return -EINVAL;
+	}
+
+	memset(&isp_config, 0, sizeof(struct ia_css_isp_config));
+	isp_config.capture_config = &isp->params.capture_config;
+	ia_css_stream_get_isp_config(isp->css_env.stream, &isp_config);
+
+	if (isp->params.capture_config.enable_xnr != enable)
+		isp->params.capture_config.enable_xnr = enable;
+
+	return 0;
+}
+
+void atomisp_css_send_input_frame(struct atomisp_device *isp,
+				  unsigned short *data, unsigned int width,
+				  unsigned int height)
+{
+	ia_css_stream_send_input_frame(isp->css_env.stream,
+					data, width, height);
+}

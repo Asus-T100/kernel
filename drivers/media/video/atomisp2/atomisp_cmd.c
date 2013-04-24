@@ -1450,7 +1450,7 @@ int atomisp_xnr(struct atomisp_device *isp, int flag, int *xnr_enable)
 		return 0;
 	}
 
-	sh_css_capture_enable_xnr(!!*xnr_enable);
+	atomisp_css_capture_enable_xnr(isp, !!*xnr_enable);
 
 	return 0;
 }

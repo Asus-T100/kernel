@@ -1324,7 +1324,7 @@ static int atomisp_streamon(struct file *file, void *fh,
 					return -ERESTARTSYS;
 				mutex_lock(&isp->mutex);
 			}
-			ret = sh_css_offline_capture_configure(
+			ret = atomisp_css_offline_capture_configure(isp,
 					isp->params.offline_parm.num_captures,
 					isp->params.offline_parm.skip_frames,
 					isp->params.offline_parm.offset);
@@ -1473,7 +1473,7 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 		if (atomisp_subdev_source_pad(vdev)
 		    == ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE &&
 		    isp->params.offline_parm.num_captures == -1)
-			sh_css_offline_capture_configure(0, 0, 0);
+			atomisp_css_offline_capture_configure(isp, 0, 0, 0);
 		/*
 		 * Currently there is no way to flush buffers queued to css.
 		 * When doing videobuf_streamoff, active buffers will be
