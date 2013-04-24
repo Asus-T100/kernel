@@ -762,7 +762,7 @@ module_param(enable_standby, uint, 0000);
  * with display lockup, HSIC etc., so have a boot time option
  * to enable S0ix/S3
  */
-unsigned int enable_s3 __read_mostly;
+unsigned int enable_s3 __read_mostly = 1;
 module_param(enable_s3, uint, S_IRUGO | S_IWUSR);
 
 /* FIXME:: We have issues with S0ix/S3 enabling by default
