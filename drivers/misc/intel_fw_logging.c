@@ -34,6 +34,7 @@
 #include <linux/rpmsg.h>
 #include <linux/notifier.h>
 #include <linux/delay.h>
+#include <linux/ctype.h>
 #include <asm/intel_mid_rpmsg.h>
 
 #include <linux/io.h>
@@ -72,6 +73,8 @@
 #define FLAG_HILOW_MASK			8
 #define FAB_ID_MASK			7
 #define MAX_AGENT_IDX			15
+
+#define DWORDS_PER_LINE			2
 
 /* Safety limits for SCU extra trace dump */
 #define LOWEST_PHYS_SRAM_ADDRESS        0xFFFC0000
@@ -699,9 +702,32 @@ static int intel_fw_logging_panic_handler(struct notifier_block *this,
 	pr_info("SCU trace on Kernel panic:");
 
 	count = sram_buf_sz / sizeof(u32);
-	for (i = 0; i < count; i++)
-		pr_info("[%d]:0x%08x\n", i,
-			readl(sram_trace_buf + i * sizeof(u32)));
+	for (i = 0; i < count; i += DWORDS_PER_LINE) {
+		/* EW111:0xdeadcafe EW112:0xdeadcafe \0 */
+		char dword_line[DWORDS_PER_LINE * 17 + 1] = {0};
+		/* abcdefgh\0 */
+		char ascii_line[DWORDS_PER_LINE * sizeof(u32) + 1] = {0};
+		int ascii_offset = 0, dword_offset = 0, j;
+
+		for (j = 0; i + j < count && j < DWORDS_PER_LINE; j++) {
+			int k;
+			u32 dword = readl(sram_trace_buf + (i + j) *
+					  sizeof(u32));
+			char *c = (char *) &dword;
+
+			dword_offset = sprintf(dword_line + dword_offset,
+					       "EW%d:0x%08x ", i + j, dword);
+			for (k = 0; k < sizeof(dword); k++)
+				if (isascii(*(c + k)) && isalnum(*(c + k)) &&
+				    *(c + k) != 0)
+					ascii_line[ascii_offset++] = *(c + k);
+				else
+					ascii_line[ascii_offset++] = '.';
+		}
+		ascii_line[ascii_offset++] = '\0';
+
+		pr_info("%s %s", dword_line, ascii_line);
+	}
 
 out:
 	return 0;
