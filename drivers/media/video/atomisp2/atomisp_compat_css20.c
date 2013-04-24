@@ -29,6 +29,12 @@
 #include "atomisp_internal.h"
 #include "atomisp_cmd.h"
 
+enum frame_info_type {
+	ATOMISP_CSS_VF_FRAME,
+	ATOMISP_CSS_OUTPUT_FRAME,
+	ATOMISP_CSS_RAW_FRAME,
+};
+
 static ia_css_ptr atomisp_css2_mm_alloc(size_t bytes, uint32_t attr)
 {
 	if (attr & IA_CSS_MEM_ATTR_CACHED)
@@ -476,7 +482,8 @@ int atomisp_css_start(struct atomisp_device *isp,
 		}
 		if (__create_stream(isp)) {
 			dev_err(isp->dev, "create stream error.\n");
-			return -EINVAL;
+			ret = -EINVAL;
+			goto stream_err;
 		}
 	}
 
@@ -506,7 +513,7 @@ stream_err:
 	if (ia_css_isp_has_started() &&
 	   (ia_css_stop_sp() != IA_CSS_SUCCESS))
 		dev_err(isp->dev, "stop sp failed.\n");
-pipe_err:
+
 	return ret;
 }
 
@@ -814,4 +821,166 @@ void atomisp_css_disable_vf_pp(struct atomisp_device *isp, bool disable)
 
 	for (i = 0; i < IA_CSS_PIPE_ID_NUM; i++)
 		isp->css_env.pipe_extra_configs[i].disable_vf_pp = !!disable;
+}
+
+static enum ia_css_pipe_mode __pipe_id_to_pipe_mode(
+					enum ia_css_pipe_id pipe_id)
+{
+	switch (pipe_id) {
+	case IA_CSS_PIPE_ID_PREVIEW:
+		return IA_CSS_PIPE_MODE_PREVIEW;
+	case IA_CSS_PIPE_ID_CAPTURE:
+		return IA_CSS_PIPE_MODE_CAPTURE;
+	case IA_CSS_PIPE_ID_VIDEO:
+		return IA_CSS_PIPE_MODE_VIDEO;
+	case IA_CSS_PIPE_ID_ACC:
+		return IA_CSS_PIPE_MODE_ACC;
+	default:
+		WARN_ON(1);
+		return IA_CSS_PIPE_MODE_PREVIEW;
+	}
+
+}
+
+static void __configure_output(struct atomisp_device *isp,
+			       unsigned int width,
+			       unsigned int height,
+			       enum ia_css_frame_format format,
+			       enum ia_css_pipe_id pipe_id)
+{
+
+	isp->css_env.curr_pipe = pipe_id;
+	isp->css_env.pipe_configs[pipe_id].mode =
+				__pipe_id_to_pipe_mode(pipe_id);
+	isp->css_env.update_pipe[pipe_id] = true;
+
+	isp->css_env.pipe_configs[pipe_id].output_info.res.width = width;
+	isp->css_env.pipe_configs[pipe_id].output_info.res.height = height;
+	isp->css_env.pipe_configs[pipe_id].output_info.format = format;
+	dev_dbg(isp->dev, "configuring pipe[%d] output info w=%d.h=%d.f=%d.\n",
+		pipe_id, width, height, format);
+}
+
+static void __configure_pp_input(struct atomisp_device *isp,
+				 unsigned int width,
+				 unsigned int height,
+				 enum ia_css_pipe_id pipe_id)
+{
+	if (width == 0 && height == 0)
+		return;
+
+	isp->css_env.curr_pipe = pipe_id;
+	isp->css_env.pipe_configs[pipe_id].mode =
+					__pipe_id_to_pipe_mode(pipe_id);
+	isp->css_env.update_pipe[pipe_id] = true;
+
+	isp->css_env.pipe_extra_configs[pipe_id].enable_yuv_ds = true;
+	isp->css_env.pipe_configs[pipe_id].bayer_ds_out_res.width = width;
+	isp->css_env.pipe_configs[pipe_id].bayer_ds_out_res.height = height;
+	dev_dbg(isp->dev, "configuring pipe[%d]capture pp input w=%d.h=%d.\n",
+		pipe_id, width, height);
+}
+
+static int __get_frame_info(struct atomisp_device *isp,
+				struct atomisp_css_frame_info *info,
+				enum frame_info_type type)
+{
+	enum ia_css_err ret;
+	struct ia_css_pipe_info p_info;
+	unsigned int pipe_id = isp->css_env.curr_pipe;
+
+	if (__destroy_stream(isp, true))
+		dev_warn(isp->dev, "destroy stream failed.\n");
+
+	if (__destroy_pipes(isp, true))
+		dev_warn(isp->dev, "destroy pipe failed.\n");
+
+	if (__create_pipe(isp))
+		return -EINVAL;
+
+	if (__create_stream(isp))
+		goto stream_err;
+
+	ret = ia_css_pipe_get_info(isp->css_env.pipes[pipe_id], &p_info);
+	if (ret == IA_CSS_SUCCESS) {
+		switch (type) {
+		case ATOMISP_CSS_VF_FRAME:
+			*info = p_info.vf_output_info;
+			dev_dbg(isp->dev, "getting vf frame info.\n");
+			break;
+		case ATOMISP_CSS_OUTPUT_FRAME:
+			*info = p_info.output_info;
+			dev_dbg(isp->dev, "getting main frame info.\n");
+			break;
+		case ATOMISP_CSS_RAW_FRAME:
+			*info = p_info.raw_output_info;
+			dev_dbg(isp->dev, "getting raw frame info.\n");
+		}
+		dev_dbg(isp->dev, "get frame info: w=%d, h=%d.\n",
+			info->res.width, info->res.height);
+		return 0;
+	}
+
+stream_err:
+	__destroy_pipes(isp, true);
+	return -EINVAL;
+}
+
+int atomisp_css_preview_configure_output(struct atomisp_device *isp,
+				unsigned int width, unsigned int height,
+				enum atomisp_css_frame_format format)
+{
+	__configure_output(isp, width, height, format, IA_CSS_PIPE_ID_PREVIEW);
+	return 0;
+}
+
+int atomisp_css_capture_configure_output(struct atomisp_device *isp,
+				unsigned int width, unsigned int height,
+				enum atomisp_css_frame_format format)
+{
+	__configure_output(isp, width, height, format, IA_CSS_PIPE_ID_CAPTURE);
+	return 0;
+}
+
+int atomisp_css_video_configure_output(struct atomisp_device *isp,
+				unsigned int width, unsigned int height,
+				enum atomisp_css_frame_format format)
+{
+	__configure_output(isp, width, height, format, IA_CSS_PIPE_ID_VIDEO);
+	return 0;
+}
+
+int atomisp_css_preview_get_output_frame_info(struct atomisp_device *isp,
+					struct atomisp_css_frame_info *info)
+{
+	isp->css_env.curr_pipe = IA_CSS_PIPE_ID_PREVIEW;
+	return __get_frame_info(isp, info, ATOMISP_CSS_OUTPUT_FRAME);
+}
+
+int atomisp_css_capture_get_output_frame_info(struct atomisp_device *isp,
+					struct atomisp_css_frame_info *info)
+{
+	isp->css_env.curr_pipe = IA_CSS_PIPE_ID_CAPTURE;
+	return __get_frame_info(isp, info, ATOMISP_CSS_OUTPUT_FRAME);
+}
+
+int atomisp_css_video_get_output_frame_info(struct atomisp_device *isp,
+					struct atomisp_css_frame_info *info)
+{
+	isp->css_env.curr_pipe = IA_CSS_PIPE_ID_VIDEO;
+	return __get_frame_info(isp, info, ATOMISP_CSS_OUTPUT_FRAME);
+}
+
+int atomisp_css_preview_configure_pp_input(struct atomisp_device *isp,
+				unsigned int width, unsigned int height)
+{
+	__configure_pp_input(isp, width, height, IA_CSS_PIPE_ID_PREVIEW);
+	return 0;
+}
+
+int atomisp_css_capture_configure_pp_input(struct atomisp_device *isp,
+				unsigned int width, unsigned int height)
+{
+	__configure_pp_input(isp, width, height, IA_CSS_PIPE_ID_CAPTURE);
+	return 0;
 }

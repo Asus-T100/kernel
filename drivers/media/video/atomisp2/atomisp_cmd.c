@@ -3028,8 +3028,8 @@ static int __enable_continuous_mode(struct atomisp_device *isp, bool enable)
 	return atomisp_update_run_mode(isp);
 }
 
-static enum sh_css_err configure_pp_input_nop(unsigned int width,
-					      unsigned int height)
+int configure_pp_input_nop(struct atomisp_device *isp,
+			   unsigned int width, unsigned int height)
 {
 	return 0;
 }
@@ -3046,13 +3046,14 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 	struct atomisp_sub_device *asd = &isp->isp_subdev;
 	const struct atomisp_format_bridge *format;
 	struct v4l2_rect *isp_sink_crop;
-	enum sh_css_err (*configure_output)(unsigned int width,
-					    unsigned int height,
-					    enum sh_css_frame_format sh_fmt);
-	enum sh_css_err (*get_frame_info)(struct sh_css_frame_info *finfo);
-	enum sh_css_err (*configure_pp_input)(unsigned int width,
-					      unsigned int height) =
-		configure_pp_input_nop;
+	int (*configure_output)(struct atomisp_device *isp,
+				unsigned int width, unsigned int height,
+				enum atomisp_css_frame_format sh_fmt);
+	int (*get_frame_info)(struct atomisp_device *isp,
+				struct atomisp_css_frame_info *finfo);
+	int (*configure_pp_input)(struct atomisp_device *isp,
+				  unsigned int width, unsigned int height) =
+							configure_pp_input_nop;
 	int ret;
 
 	isp_sink_crop = atomisp_subdev_get_rect(
@@ -3157,12 +3158,12 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 	/* video same in continuouscapture and online modes */
 	if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO
 	    || !isp->isp_subdev.enable_vfpp->val) {
-		configure_output = sh_css_video_configure_output;
-		get_frame_info = sh_css_video_get_output_frame_info;
+		configure_output = atomisp_css_video_configure_output;
+		get_frame_info = atomisp_css_video_get_output_frame_info;
 	} else if (source_pad == ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW) {
-		configure_output = sh_css_preview_configure_output;
-		get_frame_info = sh_css_preview_get_output_frame_info;
-		configure_pp_input = sh_css_preview_configure_pp_input;
+		configure_output = atomisp_css_preview_configure_output;
+		get_frame_info = atomisp_css_preview_get_output_frame_info;
+		configure_pp_input = atomisp_css_preview_configure_pp_input;
 	} else {
 		if (format->sh_fmt == SH_CSS_FRAME_FORMAT_RAW) {
 			atomisp_css_capture_set_mode(isp, CSS_CAPTURE_MODE_RAW);
@@ -3171,9 +3172,9 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 			atomisp_css_capture_enable_online(isp,
 					isp->params.online_process);
 
-		configure_output = sh_css_capture_configure_output;
-		get_frame_info = sh_css_capture_get_output_frame_info;
-		configure_pp_input = sh_css_capture_configure_pp_input;
+		configure_output = atomisp_css_capture_configure_output;
+		get_frame_info = atomisp_css_capture_get_output_frame_info;
+		configure_pp_input = atomisp_css_capture_configure_pp_input;
 
 		if (!isp->params.online_process &&
 		    !isp->isp_subdev.continuous_mode->val)
@@ -3190,16 +3191,16 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 		}
 	}
 
-	ret = configure_output(width, height, format->sh_fmt);
+	ret = configure_output(isp, width, height, format->sh_fmt);
 	if (ret) {
 		dev_err(isp->dev, "configure_output %ux%u, format %8.8x\n",
 			width, height, format->sh_fmt);
 		return -EINVAL;
 	}
 	if (isp->isp_subdev.continuous_mode->val) {
-		configure_pp_input(0, 0);
+		configure_pp_input(isp, 0, 0);
 	} else {
-		ret = configure_pp_input(isp_sink_crop->width,
+		ret = configure_pp_input(isp, isp_sink_crop->width,
 					 isp_sink_crop->height);
 		if (ret) {
 			dev_err(isp->dev, "configure_pp_input %ux%u\n",
@@ -3207,7 +3208,7 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 			return -EINVAL;
 		}
 	}
-	ret = get_frame_info(output_info);
+	ret = get_frame_info(isp, output_info);
 	if (ret) {
 		dev_err(isp->dev, "get_frame_info %ux%u\n", width, height);
 		return -EINVAL;

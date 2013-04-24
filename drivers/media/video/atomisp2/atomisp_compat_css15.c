@@ -532,3 +532,81 @@ void atomisp_css_disable_vf_pp(struct atomisp_device *isp, bool disable)
 {
 	sh_css_disable_vf_pp(disable);
 }
+
+int atomisp_css_preview_configure_output(struct atomisp_device *isp,
+				unsigned int width, unsigned int height,
+				enum atomisp_css_frame_format format)
+{
+	if (sh_css_preview_configure_output(width, height, format)
+	    != sh_css_success)
+		return -EINVAL;
+
+	return 0;
+}
+
+int atomisp_css_capture_configure_output(struct atomisp_device *isp,
+				unsigned int width, unsigned int height,
+				enum atomisp_css_frame_format format)
+{
+	if (sh_css_capture_configure_output(width, height, format)
+	    != sh_css_success)
+		return -EINVAL;
+
+	return 0;
+}
+
+int atomisp_css_video_configure_output(struct atomisp_device *isp,
+				unsigned int width, unsigned int height,
+				enum atomisp_css_frame_format format)
+{
+	if (sh_css_video_configure_output(width, height, format)
+	    != sh_css_success)
+		return -EINVAL;
+
+	return 0;
+}
+
+int atomisp_css_preview_get_output_frame_info(struct atomisp_device *isp,
+					struct atomisp_css_frame_info *info)
+{
+	if (sh_css_preview_get_output_frame_info(info) != sh_css_success)
+		return -EINVAL;
+
+	return 0;
+}
+
+int atomisp_css_capture_get_output_frame_info(struct atomisp_device *isp,
+					struct atomisp_css_frame_info *info)
+{
+	if (sh_css_capture_get_output_frame_info(info) != sh_css_success)
+		return -EINVAL;
+
+	return 0;
+}
+
+int atomisp_css_video_get_output_frame_info(struct atomisp_device *isp,
+					struct atomisp_css_frame_info *info)
+{
+	if (sh_css_video_get_output_frame_info(info) != sh_css_success)
+		return -EINVAL;
+
+	return 0;
+}
+
+int atomisp_css_preview_configure_pp_input(struct atomisp_device *isp,
+				unsigned int width, unsigned int height)
+{
+	if (sh_css_preview_configure_pp_input(width, height) != sh_css_success)
+		return -EINVAL;
+
+	return 0;
+}
+
+int atomisp_css_capture_configure_pp_input(struct atomisp_device *isp,
+				unsigned int width, unsigned int height)
+{
+	if (sh_css_capture_configure_pp_input(width, height) != sh_css_success)
+		return -EINVAL;
+
+	return 0;
+}

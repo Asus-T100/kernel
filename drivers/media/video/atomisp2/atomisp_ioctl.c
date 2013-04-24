@@ -460,9 +460,11 @@ static int __get_css_frame_info(struct atomisp_device *isp,
 	case ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE:
 		if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO
 		    || !isp->isp_subdev.enable_vfpp->val)
-			ret = sh_css_video_get_output_frame_info(frame_info);
+			ret = atomisp_css_video_get_output_frame_info(isp,
+								frame_info);
 		else
-			ret = sh_css_capture_get_output_frame_info(frame_info);
+			ret = atomisp_css_capture_get_output_frame_info(isp,
+								frame_info);
 		break;
 	case ATOMISP_SUBDEV_PAD_SOURCE_VF:
 		if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO)
@@ -479,7 +481,8 @@ static int __get_css_frame_info(struct atomisp_device *isp,
 			ret = sh_css_video_get_viewfinder_frame_info(
 					frame_info);
 		else
-			ret = sh_css_preview_get_output_frame_info(frame_info);
+			ret = atomisp_css_preview_get_output_frame_info(isp,
+								frame_info);
 		break;
 	default:
 		/* Return with error */

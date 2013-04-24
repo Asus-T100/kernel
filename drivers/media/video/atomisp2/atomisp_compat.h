@@ -222,4 +222,31 @@ int atomisp_css_continuous_set_num_raw_frames(struct atomisp_device *isp,
 							int num_frames);
 
 void atomisp_css_disable_vf_pp(struct atomisp_device *isp, bool disable);
+
+int atomisp_css_preview_configure_output(struct atomisp_device *isp,
+				unsigned int width, unsigned int height,
+				enum atomisp_css_frame_format format);
+
+int atomisp_css_capture_configure_output(struct atomisp_device *isp,
+				unsigned int width, unsigned int height,
+				enum atomisp_css_frame_format format);
+
+int atomisp_css_video_configure_output(struct atomisp_device *isp,
+				unsigned int width, unsigned int height,
+				enum atomisp_css_frame_format format);
+
+int atomisp_css_preview_get_output_frame_info(struct atomisp_device *isp,
+					struct atomisp_css_frame_info *info);
+
+int atomisp_css_capture_get_output_frame_info(struct atomisp_device *isp,
+					struct atomisp_css_frame_info *info);
+
+int atomisp_css_video_get_output_frame_info(struct atomisp_device *isp,
+					struct atomisp_css_frame_info *info);
+
+int atomisp_css_preview_configure_pp_input(struct atomisp_device *isp,
+				unsigned int width, unsigned int height);
+
+int atomisp_css_capture_configure_pp_input(struct atomisp_device *isp,
+				unsigned int width, unsigned int height);
 #endif
