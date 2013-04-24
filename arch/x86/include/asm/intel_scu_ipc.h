@@ -23,6 +23,7 @@
 #define IPCMSG_OSC_CLK		0xE6 /* Turn on/off osc clock */
 #define IPCMSG_S0IX_COUNTER	0xEB /* Get S0ix residency */
 #define IPCMSG_CLEAR_FABERROR	0xE3 /* Clear fabric error log */
+#define IPCMSG_STORE_NV_DATA	0xCD /* Store the Non Volatile data to RAM */
 
 #define IPC_CMD_UMIP_RD     0
 #define IPC_CMD_UMIP_WR     1
@@ -70,6 +71,10 @@ int intel_scu_ipc_medfw_prepare(void __user *arg);
 
 int intel_scu_ipc_read_mip(u8 *data, int len, int offset, int issigned);
 int intel_scu_ipc_write_umip(u8 *data, int len, int offset);
+
+/* NVRAM access */
+u32 intel_scu_ipc_get_nvram_size(void);
+u32 intel_scu_ipc_get_nvram_addr(void);
 
 /* Penwell has 4 osc clocks */
 #define OSC_CLK_AUDIO	0	/* Audio */

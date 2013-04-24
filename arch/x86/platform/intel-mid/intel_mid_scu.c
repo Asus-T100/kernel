@@ -77,6 +77,8 @@ int intel_mid_rproc_init(void)
 	register_rpmsg_service("rpmsg_fw_logging", RPROC_SCU, RP_FW_LOGGING);
 	register_rpmsg_service("rpmsg_kpd_led", RPROC_SCU,
 				RP_MSIC_KPD_LED);
+	register_rpmsg_service("rpmsg_modem_nvram", RPROC_SCU,
+					RP_IPC_SIMPLE_COMMAND);
 
 	err = platform_device_register(&intel_scu_device);
 	if (err < 0)

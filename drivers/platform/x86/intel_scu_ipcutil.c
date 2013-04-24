@@ -135,7 +135,7 @@ struct scu_ipc_oshob_extend {
 	u8  rev_major;          /* Revision major.                         */
 	u8  rev_minor;          /* Revision minor.                         */
 	u16 oshob_size;         /* OSHOB size.                             */
-	u32 head_reserved;      /* OSHOB RESERVED.                         */
+	u32 nvram_addr;         /* NVRAM phys addres                       */
 	u32 scutxl;             /* SCUTxl offset position.                 */
 				/* If on MRFLD platform, next param may be */
 				/* shifted by                              */
@@ -154,7 +154,7 @@ struct scu_ipc_oshob_extend {
 	u32 pemmcmhki;          /* PeMMCMHKI.                  */
 
 	/* OSHOB as defined for CLOVERVIEW */
-	u32 reserved1;          /* Reserved field              */
+	u32 nvram_size;         /* NVRAM max size in bytes     */
 	u32 fabricerrlog1[OSHOB_FABRIC_ERROR1_SIZE]; /* fabric error data */
 	u8  vrtc_alarm_dow;     /* Alarm sync                  */
 	u8  vrtc_alarm_dom;     /* Alarm sync                  */
@@ -188,6 +188,8 @@ struct scu_ipc_oshob_info {
 	__u32	oemnibw_ptr;    /* Pointer to OEM write zone.                */
 	__u32   scu_trace_buf;  /* SCU extended trace buffer                 */
 	__u32   scu_trace_size; /* SCU extended trace buffer size            */
+	__u32   nvram_addr;     /* NV ram phys addr                          */
+	__u32   nvram_size;     /* NV ram size in bytes                      */
 
 	int (*scu_ipc_write_osnib)(u8 *data, int len, int offset);
 	int (*scu_ipc_read_osnib)(u8 *data, int len, int offset);
@@ -203,7 +205,7 @@ struct scu_ipc_oshob_info {
 };
 
 /* Structure for OSHOB info */
-static struct scu_ipc_oshob_info *oshob_info;
+struct scu_ipc_oshob_info *oshob_info;
 
 static struct rpmsg_instance *ipcutil_instance;
 
@@ -1219,6 +1221,18 @@ int intel_scu_ipc_read_oshob_extend_param(void __iomem *poshob_addr)
 				      offsetof(struct scu_ipc_oshob_extend,
 					       sculogbuffersize));
 		}
+		if ((oshob_info->oshob_majrev >= 1) &&
+		    (oshob_info->oshob_minrev >= 3)) {
+			/* CLVP and correct version of the oshob. */
+			oshob_info->nvram_addr =
+				readl(poshob_addr +
+				      offsetof(struct scu_ipc_oshob_extend,
+					       nvram_addr));
+			oshob_info->nvram_size =
+				readl(poshob_addr +
+				      offsetof(struct scu_ipc_oshob_extend,
+					       nvram_size));
+		}
 	}
 	return 0;
 }
@@ -1320,6 +1334,8 @@ int intel_scu_ipc_read_oshob_info(void)
 	 */
 	oshob_info->scu_trace_buf = 0;
 	oshob_info->scu_trace_size = 0;
+	oshob_info->nvram_addr = 0;
+	oshob_info->nvram_size = 0;
 
 	if (oshob_info->platform_type == INTEL_MID_CPU_CHIP_TANGIER) {
 		pr_info("(oshob) identified platform = INTEL_MID_CPU_CHIP_TANGIER\n");
@@ -1636,6 +1652,28 @@ u32 intel_scu_ipc_get_scu_trace_buffer_size(void)
 	return oshob_info->scu_trace_size;
 }
 EXPORT_SYMBOL_GPL(intel_scu_ipc_get_scu_trace_buffer_size);
+
+/*
+ * Get nvram size
+ */
+u32 intel_scu_ipc_get_nvram_size(void)
+{
+	if (oshob_info == NULL)
+		return 0;
+	return oshob_info->nvram_size;
+}
+EXPORT_SYMBOL_GPL(intel_scu_ipc_get_nvram_size);
+
+/*
+ * Get nvram addr
+ */
+u32 intel_scu_ipc_get_nvram_addr(void)
+{
+	if (oshob_info == NULL)
+		return 0;
+	return oshob_info->nvram_addr;
+}
+EXPORT_SYMBOL_GPL(intel_scu_ipc_get_nvram_addr);
 
 /*
  * Get SCU fabric error buffer1 offset
