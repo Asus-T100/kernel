@@ -1124,7 +1124,7 @@ void atomisp_setup_flash(struct atomisp_device *isp)
 			dev_err(isp->dev, "flash timeout configure failed\n");
 			return;
 		}
-		sh_css_request_flash();
+		atomisp_css_request_flash(isp);
 		isp->params.flash_state = ATOMISP_FLASH_ONGOING;
 	} else {
 		/* Flashing all frames is done */

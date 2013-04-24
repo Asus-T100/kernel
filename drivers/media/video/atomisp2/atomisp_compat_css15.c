@@ -633,3 +633,13 @@ void atomisp_css_send_input_frame(struct atomisp_device *isp,
 {
 	sh_css_send_input_frame(data, width, height);
 }
+
+bool atomisp_css_isp_has_started(void)
+{
+	return sh_css_isp_has_started();
+}
+
+void atomisp_css_request_flash(struct atomisp_device *isp)
+{
+	sh_css_request_flash();
+}

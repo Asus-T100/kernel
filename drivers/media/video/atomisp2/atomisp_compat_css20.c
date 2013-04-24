@@ -1025,3 +1025,13 @@ void atomisp_css_send_input_frame(struct atomisp_device *isp,
 	ia_css_stream_send_input_frame(isp->css_env.stream,
 					data, width, height);
 }
+
+bool atomisp_css_isp_has_started(void)
+{
+	return ia_css_isp_has_started();
+}
+
+void atomisp_css_request_flash(struct atomisp_device *isp)
+{
+	ia_css_stream_request_flash(isp->css_env.stream);
+}

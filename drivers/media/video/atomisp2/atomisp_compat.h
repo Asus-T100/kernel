@@ -258,4 +258,8 @@ int atomisp_css_capture_enable_xnr(struct atomisp_device *isp, bool enable);
 void atomisp_css_send_input_frame(struct atomisp_device *isp,
 				  unsigned short *data, unsigned int width,
 				  unsigned int height);
+
+bool atomisp_css_isp_has_started(void);
+
+void atomisp_css_request_flash(struct atomisp_device *isp);
 #endif
