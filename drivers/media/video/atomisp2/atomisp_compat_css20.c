@@ -797,3 +797,21 @@ int atomisp_css_stop(struct atomisp_device *isp,
 
 	return 0;
 }
+
+int atomisp_css_continuous_set_num_raw_frames(struct atomisp_device *isp,
+							int num_frames)
+{
+	if (ia_css_stream_set_buffer_depth(isp->css_env.stream, num_frames)
+	    != IA_CSS_SUCCESS)
+		return -EINVAL;
+
+	return 0;
+}
+
+void atomisp_css_disable_vf_pp(struct atomisp_device *isp, bool disable)
+{
+	int i;
+
+	for (i = 0; i < IA_CSS_PIPE_ID_NUM; i++)
+		isp->css_env.pipe_extra_configs[i].disable_vf_pp = !!disable;
+}

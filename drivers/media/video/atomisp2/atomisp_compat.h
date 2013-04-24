@@ -217,4 +217,9 @@ int atomisp_css_frame_map(struct atomisp_css_frame **frame,
 
 int atomisp_css_stop(struct atomisp_device *isp,
 			enum atomisp_css_pipe_id pipe_id, bool in_reset);
+
+int atomisp_css_continuous_set_num_raw_frames(struct atomisp_device *isp,
+							int num_frames);
+
+void atomisp_css_disable_vf_pp(struct atomisp_device *isp, bool disable);
 #endif

@@ -518,3 +518,17 @@ int atomisp_css_stop(struct atomisp_device *isp,
 
 	return 0;
 }
+
+int atomisp_css_continuous_set_num_raw_frames(struct atomisp_device *isp,
+						int num_frames)
+{
+	if (sh_css_continuous_set_num_raw_frames(num_frames) != sh_css_success)
+		return -EINVAL;
+
+	return 0;
+}
+
+void atomisp_css_disable_vf_pp(struct atomisp_device *isp, bool disable)
+{
+	sh_css_disable_vf_pp(disable);
+}

@@ -3010,9 +3010,8 @@ static int __enable_continuous_mode(struct atomisp_device *isp, bool enable)
 	if ((intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER)
 		&& (isp->isp_subdev.continuous_raw_buffer_size->val > 5))
 		isp->isp_subdev.continuous_raw_buffer_size->val = 5;
-	if (sh_css_continuous_set_num_raw_frames(
-			isp->isp_subdev.continuous_raw_buffer_size->val)
-		!= sh_css_success) {
+	if (atomisp_css_continuous_set_num_raw_frames(isp,
+			isp->isp_subdev.continuous_raw_buffer_size->val)) {
 		dev_err(isp->dev, "css_continuous_set_num_raw_frames failed\n");
 		return -EINVAL;
 	}
@@ -3153,7 +3152,7 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 			return -EINVAL;
 	}
 
-	sh_css_disable_vf_pp(!isp->isp_subdev.enable_vfpp->val);
+	atomisp_css_disable_vf_pp(isp, !isp->isp_subdev.enable_vfpp->val);
 
 	/* video same in continuouscapture and online modes */
 	if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO
