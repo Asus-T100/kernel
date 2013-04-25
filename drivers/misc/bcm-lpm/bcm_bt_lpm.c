@@ -441,11 +441,9 @@ static int bcm43xx_bluetooth_probe(struct platform_device *pdev)
 		goto err_rfkill_register;
 
 #ifdef LPM_ON
-	if (intel_mid_identify_cpu() != INTEL_MID_CPU_CHIP_VALLEYVIEW2) {
-		ret = bcm_bt_lpm_init(pdev);
-		if (ret)
-			goto err_lpm_init;
-	}
+	ret = bcm_bt_lpm_init(pdev);
+	if (ret)
+		goto err_lpm_init;
 #endif
 
 	return ret;
