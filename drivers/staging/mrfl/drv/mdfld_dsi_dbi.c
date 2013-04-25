@@ -114,7 +114,7 @@ void intel_dsi_dbi_update_fb(struct mdfld_dsi_dbi_output *dbi_output)
 	}
 
 	/* check DBI FIFO status */
-	if (get_panel_type(dev, pipe) == JDI_CMD) {
+	if (is_panel_vid_or_cmd(dev) == MDFLD_DSI_ENCODER_DBI) {
 		if (!(REG_READ(dspcntr_reg) & DISPLAY_PLANE_ENABLE) ||
 		   !(REG_READ(pipeconf_reg) & DISPLAY_PLANE_ENABLE))
 			return;

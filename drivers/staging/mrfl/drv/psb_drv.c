@@ -1233,8 +1233,8 @@ bool mrst_get_vbt_data(struct drm_psb_private *dev_priv)
 
 	if (INTEL_MID_BOARD(2, PHONE, MRFL, BB, PRO) ||
 		INTEL_MID_BOARD(2, PHONE, MRFL, BB, ENG)) {
-		dev_priv->panel_id = H8C7_VID;
-		PanelID = H8C7_VID;
+		dev_priv->panel_id = CMI_CMD;
+		PanelID = CMI_CMD;
 	} else if (INTEL_MID_BOARD(2, PHONE, MRFL, SB, PRO) ||
 			INTEL_MID_BOARD(2, PHONE, MRFL, SB, ENG)) {
 		if (spid.hardware_id <= MRFL_PHONE_SB_PR0) {
@@ -1248,7 +1248,6 @@ bool mrst_get_vbt_data(struct drm_psb_private *dev_priv)
 		DRM_INFO("Panel id %d from cmd line\n");
 		dev_priv->panel_id = PanelID;
 	}
-
 	return true;
 }
 void hdmi_do_hotplug_wq(struct work_struct *work)

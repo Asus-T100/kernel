@@ -145,7 +145,7 @@ void mrfld_disable_crtc(struct drm_device *dev, int pipe, bool plane_d)
 	PSB_DEBUG_ENTRY("pipe = %d\n", pipe);
 
 	if (pipe != 1 && ((get_panel_type(dev, pipe) == JDI_VID) ||
-			(get_panel_type(dev, pipe) == H8C7_VID)))
+			(get_panel_type(dev, pipe) == CMI_VID)))
 		return;
 
 	switch (pipe) {
@@ -250,7 +250,8 @@ static void mrfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 	 */
 	if (pipe != 1 && ((get_panel_type(dev, pipe) == TMD_VID) ||
 				(get_panel_type(dev, pipe) == TMD_6X10_VID) ||
-				(get_panel_type(dev, pipe) == H8C7_VID) ||
+				(get_panel_type(dev, pipe) == CMI_VID) ||
+				(get_panel_type(dev, pipe) == CMI_CMD) ||
 				(get_panel_type(dev, pipe) == JDI_CMD) ||
 				(get_panel_type(dev, pipe) == JDI_VID))) {
 		return;

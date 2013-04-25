@@ -171,25 +171,23 @@ static int dsi_error_handler(struct mdfld_dsi_pkg_sender *sender)
 			REG_WRITE(intr_stat_reg, mask);
 			break;
 		case BIT18:
-			if (get_panel_type(dev, 0) != JDI_CMD) {
-				REG_WRITE(MIPIA_EOT_DISABLE_REG,
-					REG_READ(MIPIA_EOT_DISABLE_REG)|0x30);
-				while ((REG_READ(intr_stat_reg) & BIT18)) {
-					count++;
-					/*
-					* Per silicon feedback,
-					* if this bit cannot be
-					* cleared by 3 times,
-					* it should be a real
-					* High Contention error.
-					*/
-					if (count == 4) {
-						DRM_INFO("dsi status %s\n",
-							dsi_errors[i]);
-						break;
-					}
-					REG_WRITE(intr_stat_reg, mask);
+			REG_WRITE(MIPIA_EOT_DISABLE_REG,
+				REG_READ(MIPIA_EOT_DISABLE_REG)|0x30);
+			while ((REG_READ(intr_stat_reg) & BIT18)) {
+				count++;
+				/*
+				* Per silicon feedback,
+				* if this bit cannot be
+				* cleared by 3 times,
+				* it should be a real
+				* High Contention error.
+				*/
+				if (count == 4) {
+					DRM_INFO("dsi status %s\n",
+						dsi_errors[i]);
+					break;
 				}
+				REG_WRITE(intr_stat_reg, mask);
 			}
 			break;
 		case BIT19:
@@ -1255,7 +1253,6 @@ int mdfld_dsi_check_fifo_empty(struct mdfld_dsi_pkg_sender *sender)
 	return REG_READ(sender->mipi_gen_fifo_stat_reg) & BIT27;
 }
 
-
 int mdfld_dsi_send_dcs(struct mdfld_dsi_pkg_sender *sender,
 			u8 dcs, u8 *param, u32 param_num, u8 data_src,
 			int delay)
@@ -1285,22 +1282,6 @@ int mdfld_dsi_send_dcs(struct mdfld_dsi_pkg_sender *sender,
 	 */
 	if (dcs == write_mem_start) {
 		spin_lock(&sender->lock);
-
-		/**
-		 * check the whether is there any write_mem_start already being
-		 * sent in this between current te_seq and next te.
-		 * if yes, simply reject the rest of write_mem_start because it
-		 * is unnecessary. otherwise, go ahead and kick of a
-		 * write_mem_start.
-		 */
-		if (get_panel_type(dev, 0) != JDI_CMD) {
-			if (atomic64_read(&sender->last_screen_update) ==
-				atomic64_read(&sender->te_seq)) {
-				spin_unlock(&sender->lock);
-				DRM_INFO("reject write_mem_start\n");
-				return 0;
-			}
-		}
 
 		/**
 		 * query whether DBI FIFO is empty,

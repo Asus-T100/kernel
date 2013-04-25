@@ -821,8 +821,10 @@ int psb_enable_vblank(struct drm_device *dev, int pipe)
 	PSB_DEBUG_ENTRY("\n");
 
 	encoder_type = is_panel_vid_or_cmd(dev);
-	if (IS_MRFLD(dev) && (encoder_type == MDFLD_DSI_ENCODER_DBI))
-		return mdfld_enable_te(dev, pipe);
+	if (IS_MRFLD(dev) &&
+		(encoder_type == MDFLD_DSI_ENCODER_DBI) &&
+			(pipe == 0))
+				return 0;
 
 	if (power_island_get(power_island)) {
 		reg_val = REG_READ(pipeconf_reg);
@@ -859,9 +861,10 @@ void psb_disable_vblank(struct drm_device *dev, int pipe)
 	PSB_DEBUG_ENTRY("\n");
 
 	encoder_type = is_panel_vid_or_cmd(dev);
+#if 0
 	if (IS_MRFLD(dev) && (encoder_type == MDFLD_DSI_ENCODER_DBI))
 		mdfld_disable_te(dev, pipe);
-
+#endif
 	dev_priv->b_vblank_enable = false;
 
 	spin_lock_irqsave(&dev_priv->irqmask_lock, irqflags);
