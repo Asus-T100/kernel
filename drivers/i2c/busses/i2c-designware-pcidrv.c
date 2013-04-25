@@ -245,10 +245,10 @@ static struct  dw_pci_controller  dw_pci_controllers[] = {
 	},
 	[cloverview_2] = {
 		.bus_num     = 2,
-		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_STD,
+		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_FAST,
 		.tx_fifo_depth = 256,
 		.rx_fifo_depth = 256,
-		.clk_khz      = 20500,
+		.clk_khz      = 17000,
 		.scl_cfg = ctp_i2c_scl_cfg,
 	},
 	[cloverview_3] = {
