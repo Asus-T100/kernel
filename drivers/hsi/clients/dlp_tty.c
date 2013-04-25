@@ -775,6 +775,9 @@ static void dlp_tty_close(struct tty_struct *tty, struct file *filp)
 	pr_debug(DRVNAME ": TTY device close request (%s, %d)\n",
 			current->comm, current->tgid);
 
+	/* Set TTY flow_stopped to flush TX buffer */
+	tty->flow_stopped = 1;
+
 	/* Set TTY as closed to prevent RX/TX transactions */
 	if (need_cleanup)
 		dlp_tty_set_link_valid(1, dlp_drv.tx_timeout);
