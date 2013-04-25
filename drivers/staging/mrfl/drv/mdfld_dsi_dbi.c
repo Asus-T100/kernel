@@ -113,21 +113,15 @@ void intel_dsi_dbi_update_fb(struct mdfld_dsi_dbi_output *dbi_output)
 		dspsurf_reg = DSPCSURF;
 	}
 
-	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
-				OSPM_UHB_FORCE_POWER_ON)) {
-		DRM_ERROR("hw begin failed\n");
-		return;
-	}
-
 	/* check DBI FIFO status */
 	if (get_panel_type(dev, pipe) == JDI_CMD) {
 		if (!(REG_READ(dspcntr_reg) & DISPLAY_PLANE_ENABLE) ||
 		   !(REG_READ(pipeconf_reg) & DISPLAY_PLANE_ENABLE))
-			goto update_fb_out0;
+			return;
 	} else if (!(REG_READ(dpll_reg) & DPLL_VCO_ENABLE) ||
 	   !(REG_READ(dspcntr_reg) & DISPLAY_PLANE_ENABLE) ||
 	   !(REG_READ(pipeconf_reg) & DISPLAY_PLANE_ENABLE))
-		goto update_fb_out0;
+		return;
 
 	/* refresh plane changes */
 
@@ -143,9 +137,6 @@ void intel_dsi_dbi_update_fb(struct mdfld_dsi_dbi_output *dbi_output)
 			   MDFLD_DSI_SEND_PACKAGE);
 	dbi_output->dsr_fb_update_done = true;
 	mdfld_dsi_cmds_kick_out(sender);
-
-update_fb_out0:
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 }
 
 /* Perodically update dbi panel */
@@ -297,10 +288,6 @@ int __dbi_power_on(struct mdfld_dsi_config *dsi_config)
 	dev = dsi_config->dev;
 	dev_priv = dev->dev_private;
 
-	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
-					OSPM_UHB_FORCE_POWER_ON))
-		return -EAGAIN;
-
 	/* Disable PLL*/
 	intel_mid_msgbus_write32(CCK_PORT, DSI_PLL_DIV_REG, 0);
 	guit_val = intel_mid_msgbus_read32(CCK_PORT, DSI_PLL_CTRL_REG);
@@ -413,7 +400,6 @@ int __dbi_power_on(struct mdfld_dsi_config *dsi_config)
 	}
 	mdfld_enable_te(dev, 0);
 power_on_err:
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 	return err;
 }
 
@@ -441,10 +427,6 @@ static int __dbi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 	ctx = &dsi_config->dsi_hw_context;
 	dev = dsi_config->dev;
 	dev_priv = dev->dev_private;
-
-	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
-					OSPM_UHB_FORCE_POWER_ON))
-		return -EAGAIN;
 
 	mdfld_dsi_dsr_forbid_locked(dsi_config);
 reset_recovery:
@@ -493,16 +475,10 @@ reset_recovery:
 
 power_on_err:
 	if (err && reset_count) {
-		/* FIXME: hkpatel - Adapt to new ospm */
-#if 0
-		ospm_power_island_down(OSPM_DISPLAY_A_ISLAND);
-		ospm_power_island_up(OSPM_DISPLAY_A_ISLAND);
-#endif
 		DRM_ERROR("Failed to init panel, try  reset it again!\n");
 		goto reset_recovery;
 	}
 	mdfld_dsi_dsr_allow_locked(dsi_config);
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 	return err;
 }
 /**
@@ -528,10 +504,6 @@ int __dbi_power_off(struct mdfld_dsi_config *dsi_config)
 	ctx = &dsi_config->dsi_hw_context;
 	dev = dsi_config->dev;
 	dev_priv = dev->dev_private;
-
-	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
-					OSPM_UHB_FORCE_POWER_ON))
-		return -EAGAIN;
 
 	/*Disable plane*/
 	val = ctx->dspcntr;
@@ -559,7 +531,6 @@ int __dbi_power_off(struct mdfld_dsi_config *dsi_config)
 	REG_WRITE(regs->mipi_reg,
 	      REG_READ(regs->mipi_reg) & (~PASS_FROM_SPHY_TO_AFE));
 power_off_err:
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 	return err;
 }
 
@@ -585,10 +556,6 @@ static int __dbi_panel_power_off(struct mdfld_dsi_config *dsi_config,
 	ctx = &dsi_config->dsi_hw_context;
 	dev = dsi_config->dev;
 	dev_priv = dev->dev_private;
-
-	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
-					OSPM_UHB_FORCE_POWER_ON))
-		return -EAGAIN;
 
 	mdfld_dsi_dsr_forbid_locked(dsi_config);
 	mdfld_disable_te(dev, 0);
@@ -617,7 +584,6 @@ static int __dbi_panel_power_off(struct mdfld_dsi_config *dsi_config,
 
 power_off_err:
 	mdfld_dsi_dsr_allow_locked(dsi_config);
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 	return err;
 }
 
@@ -670,6 +636,11 @@ int mdfld_generic_dsi_dbi_set_power(struct drm_encoder *encoder, bool on)
 
 	switch (on) {
 	case true:
+		if (!power_island_get(OSPM_DISPLAY_ISLAND)) {
+			DRM_ERROR("%s: Failed to power up islands\n", __func__);
+			return -EAGAIN;
+		}
+
 		/* panel is already on */
 		if (dsi_config->dsi_hw_context.panel_on)
 			goto fun_exit;
@@ -696,6 +667,8 @@ int mdfld_generic_dsi_dbi_set_power(struct drm_encoder *encoder, bool on)
 
 		dsi_config->dsi_hw_context.panel_on = 0;
 		dbi_output->dbi_panel_on = 0;
+		power_island_put(OSPM_DISPLAY_ISLAND);
+
 		break;
 	default:
 		break;
@@ -1042,11 +1015,6 @@ void mdfld_reset_panel_handler_work(struct work_struct *work)
 			mutex_unlock(&dsi_config->context_lock);
 			return;
 		}
-		/* FIXME: hkpatel - Adapt to new ospm */
-#if 0
-		ospm_power_island_down(OSPM_DISPLAY_ISLAND);
-		ospm_power_island_up(OSPM_DISPLAY_ISLAND);
-#endif
 
 		if (__dbi_panel_power_on(dsi_config, p_funcs)) {
 			mutex_unlock(&dsi_config->context_lock);
