@@ -55,6 +55,7 @@
 #include "io.h"
 static irqreturn_t dwc3_interrupt(int irq, void *_dwc);
 static void dwc3_gadget_power_on_or_soft_reset(struct dwc3 *dwc);
+static void dwc3_stop_active_transfers(struct dwc3 *dwc);
 
 struct dwc_scratch_array {
 	uint64_t dma_addr[1];
@@ -1474,6 +1475,8 @@ static int dwc3_gadget_pullup(struct usb_gadget *g, int is_on)
 			if (dep->flags & DWC3_EP_ENABLED)
 				__dwc3_gadget_ep_disable(dep);
 		}
+
+		dwc3_stop_active_transfers(dwc);
 		dwc3_gadget_run_stop(dwc, 0);
 		dwc->pm_state = PM_DISCONNECTED;
 	}
@@ -1727,7 +1730,6 @@ static int dwc3_start_peripheral(struct usb_gadget *g)
 }
 
 static void dwc3_disconnect_gadget(struct dwc3 *dwc);
-static void dwc3_stop_active_transfers(struct dwc3 *dwc);
 static int dwc3_stop_peripheral(struct usb_gadget *g)
 {
 	struct dwc3			*dwc = gadget_to_dwc(g);
