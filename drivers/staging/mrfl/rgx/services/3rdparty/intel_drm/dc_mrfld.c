@@ -302,7 +302,10 @@ static void _Queue_Flip(IMG_HANDLE hConfigData, IMG_HANDLE *ahBuffers,
 	}
 
 	/* Update swap interval */
-	psFlip->uiSwapInterval = ui32DisplayPeriod;
+	if (DCCBIsSuspended(gpsDevice->psDrmDevice))
+		psFlip->uiSwapInterval = 0;
+	else
+		psFlip->uiSwapInterval = ui32DisplayPeriod;
 
 	psFlip->hConfigData = hConfigData;
 

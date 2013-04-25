@@ -66,6 +66,7 @@ static void gfx_early_suspend(struct early_suspend *h)
 	}
 
 	ospm_power_suspend();
+	dev_priv->early_suspended = true;
 
 	mutex_unlock(&dev->mode_config.mutex);
 }
@@ -103,6 +104,8 @@ static void gfx_late_resume(struct early_suspend *h)
 				mid_hdmi_audio_resume(dev);
 		}
 	}
+
+	dev_priv->early_suspended = false;
 
 	mutex_unlock(&dev->mode_config.mutex);
 }

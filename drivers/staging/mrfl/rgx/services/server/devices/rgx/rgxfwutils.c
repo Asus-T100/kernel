@@ -1307,16 +1307,8 @@ PVRSRV_ERROR RGXSendCommandWithPowLock(PVRSRV_RGXDEV_INFO 	*psDevInfo,
 	PVRSRV_DEVICE_NODE *psDeviceNode = psDevInfo->psDeviceNode;
 
 	/* Ensure RGX is powered up before kicking MTS */
-	eError = PVRSRVPowerLock();
+	PVRSRVForcedPowerLock()
 
-	if (eError != PVRSRV_OK) 
-	{
-		PVR_DPF((PVR_DBG_WARNING, "RGXSendCommandWithPowLock: failed to acquire powerlock (%s)",
-					PVRSRVGetErrorStringKM(eError)));
-
-		return eError;
-	}
-	
 	PDUMPPOWCMDSTART();
 
 	eError = PVRSRVSetDevicePowerStateKM(psDeviceNode->sDevId.ui32DeviceIndex,

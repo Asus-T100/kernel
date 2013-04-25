@@ -376,3 +376,19 @@ u32 DCCBGetPipeCount(void)
 	/* FIXME */
 	return 3;
 }
+
+bool DCCBIsSuspended(struct drm_device *dev)
+{
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *)dev->dev_private;
+	bool ret = false;
+
+	if (!dev_priv)
+		return false;
+
+	mutex_lock(&dev->mode_config.mutex);
+	ret = dev_priv->early_suspended;
+	mutex_unlock(&dev->mode_config.mutex);
+
+	return ret;
+}

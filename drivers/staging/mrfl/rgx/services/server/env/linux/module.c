@@ -1150,10 +1150,21 @@ int PVRSRVRGXSetPowerState(struct drm_device *dev, int ePVRState)
 {
 	PVRSRV_ERROR eError = PVRSRV_OK;
 
+	LinuxLockMutex(&gsPMMutex);
+
+	LinuxLockMutex(&gPVRSRVLock);
+
 	eError = PVRSRVSetPowerStateKM(ePVRState, IMG_FALSE);
 
-	if (eError != PVRSRV_OK)
+	if (eError != PVRSRV_OK) {
+		LinuxUnLockMutex(&gPVRSRVLock);
+		LinuxUnLockMutex(&gsPMMutex);
 		return 0;
+	}
+
+	LinuxUnLockMutex(&gPVRSRVLock);
+
+	LinuxUnLockMutex(&gsPMMutex);
 
 	return 1;
 }
