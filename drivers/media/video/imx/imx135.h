@@ -1271,7 +1271,7 @@ static struct imx_reg const imx135_720p_dvs_15fps[] = {
 	/* Size setting */
 	{IMX_8BIT, 0x0340, 0x10},
 	{IMX_8BIT, 0x0341, 0x00},
-	{IMX_8BIT, 0x0342, 0x18},
+	{IMX_8BIT, 0x0342, 0x19},
 	{IMX_8BIT, 0x0343, 0x00},
 	{IMX_8BIT, 0x0344, 0x00},
 	{IMX_8BIT, 0x0345, 0x2E},
@@ -3486,7 +3486,7 @@ struct imx_resolution imx135_res_video[] = {
 		.width = 1568	,
 		.height = 880,
 		.fps = 15,
-		.pixels_per_line = 0x1800, /* consistent with regs arrays */
+		.pixels_per_line = 0x1900, /* consistent with regs arrays */
 		.lines_per_frame = 0x1000, /* consistent with regs arrays */
 		.bin_factor_x = 1,
 		.bin_factor_y = 1,
