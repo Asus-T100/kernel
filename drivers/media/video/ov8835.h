@@ -1039,8 +1039,8 @@ static struct ov8830_resolution ov8835_res_preview[] = {
 				.lines_per_frame = 2500,
 			},
 			{
-				.fps = 20,
-				.pixels_per_line = 5450,
+				.fps = 19,
+				.pixels_per_line = 5800,
 				.lines_per_frame = 2500,
 			},
 			{
