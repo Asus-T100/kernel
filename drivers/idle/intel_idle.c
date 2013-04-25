@@ -259,6 +259,23 @@ static struct cpuidle_state atom_cstates[MWAIT_MAX_NUM_CSTATES] = {
 		.enter = &intel_idle },
 };
 
+/* FIXME: Please populate below with proper values */
+static struct cpuidle_state vlv2_atom_cstates[MWAIT_MAX_NUM_CSTATES] = {
+	{ /* MWAIT C0 */ },
+	{ /* MWAIT C1 */
+		.name = "C1-ATM",
+		.desc = "MWAIT 0x00",
+		.flags = CPUIDLE_FLAG_TIME_VALID,
+		.exit_latency = 1,
+		.target_residency = 4,
+		.enter = &intel_idle },
+	{ /* MWAIT C2 */ },
+	{ /* MWAIT C3 */ },
+	{ /* MWAIT C4 */ },
+	{ /* MWAIT C5 */ },
+	{ /* MWAIT C6 */ },
+};
+
 #ifdef CONFIG_ATOM_SOC_POWER
 
 #ifdef CONFIG_X86_MDFLD
@@ -667,7 +684,7 @@ static int intel_idle_probe(void)
 		break;
 #endif
 	 case 0x37:	/* 55 - Valleyview Atom Processor */
-		cpuidle_state_table = atom_cstates;
+		cpuidle_state_table = vlv2_atom_cstates;
 		break;
 #ifdef CONFIG_X86_MRFLD
 	case 0x4a:	/*74 - Tangier Atom Processor */
