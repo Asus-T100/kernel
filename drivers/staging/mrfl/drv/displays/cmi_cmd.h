@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010 Intel Corporation
+ * Copyright (c)  2010 Intel Corporation
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -25,18 +25,15 @@
 */
 
 
-#ifndef H8C7_VID_H
-#define H8C7_VID_H
+#ifndef CMI_CMD_H
+#define CMI_CMD_H
 
 #include <drm/drmP.h>
 #include <drm/drm.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_edid.h>
-#include <asm/intel_scu_pmic.h>
+
 #include "mdfld_output.h"
-#include "mdfld_dsi_dpi.h"
-#include "mdfld_dsi_pkg_sender.h"
 
-void h8c7_vid_init(struct drm_device *dev, struct panel_funcs *p_funcs);
-
+void cmi_cmd_init(struct drm_device *dev, struct panel_funcs *p_funcs);
 #endif

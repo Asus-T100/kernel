@@ -24,51 +24,51 @@
  * Faxing Lu
  */
 
-#include "displays/h8c7_vid.h"
+#include "displays/cmi_vid.h"
 
-static u8 h8c7_set_extension[] = {0xb9, 0xff, 0x83, 0x92};
-static u8 h8c7_ic_bias_current[] = {
+static u8 cmi_set_extension[] = {0xb9, 0xff, 0x83, 0x92};
+static u8 cmi_ic_bias_current[] = {
 	0xbf, 0x05, 0x60, 0x82,
 	0x00, 0x00, 0x00, 0x00};
-static u8 h8c7_set_power[] = {
+static u8 cmi_set_power[] = {
 	0xb1, 0x7c, 0x00, 0x44,
 	0x24, 0x00, 0x0d, 0x0d,
 	0x12, 0x1a, 0x3f, 0x3f,
 	0x42, 0x72, 0x00, 0x00};
-static u8 h8c7_set_power_dstb[] = {
+static u8 cmi_set_power_dstb[] = {
 	0xb1, 0x01, 0x01, 0x00,
 	0x00, 0x00, 0x00, 0x00,
 	0x00, 0x00, 0x00, 0x00,
 	0x00, 0x00};
-static u8 h8c7_set_disp_reg[] = {
+static u8 cmi_set_disp_reg[] = {
 	0xb2, 0x0f, 0xc8, 0x05,
 	0x0f, 0x08, 0x84, 0x00,
 	0xff, 0x05, 0x0f, 0x04,
 	0x20, 0x00, 0x00, 0x00};
-static u8 h8c7_set_command_cyc[] = {
+static u8 cmi_set_command_cyc[] = {
 	0xb4, 0x00, 0x00, 0x05,
 	0x00, 0xa0, 0x05, 0x16,
 	0x9d, 0x30, 0x03, 0x16,
 	0x00, 0x03, 0x03, 0x00,
 	0x1b, 0x06, 0x07, 0x07,
 	0x00, 0x00, 0x00, 0x00};
-static u8 h8c7_set_mipi_ctrl[] = {0xba, 0x12, 0x83, 0x00};
-static u8 h8c7_set_blanking_opt_2[]  = {0xc7, 0x00, 0x40, 0x00};
-static u8 h8c7_set_ltps_ctrl_output[] = {
+static u8 cmi_set_mipi_ctrl[] = {0xba, 0x12, 0x83, 0x00};
+static u8 cmi_set_blanking_opt_2[]  = {0xc7, 0x00, 0x40, 0x00};
+static u8 cmi_set_ltps_ctrl_output[] = {
 	0xd5, 0x00, 0x08, 0x08,
 	0x00, 0x44, 0x55, 0x66,
 	0x77, 0xcc, 0xcc, 0xcc,
 	0xcc, 0x00, 0x77, 0x66,
 	0x55, 0x44, 0xcc, 0xcc,
 	0xcc, 0xcc, 0x00, 0x00};
-static u8 h8c7_set_video_cyc[] = {
+static u8 cmi_set_video_cyc[] = {
 	0xd8, 0x00, 0x00, 0x04,
 	0x00, 0xa0, 0x04, 0x16,
 	0x9d, 0x30, 0x03, 0x16,
 	0x00, 0x03, 0x03, 0x00,
 	0x1b, 0x06, 0x07, 0x07,
 	0x00, 0x00, 0x00, 0x00};
-static u8 h8c7_gamma_r[] = {
+static u8 cmi_gamma_r[] = {
 	0xe0, 0x3a, 0x3e, 0x3c,
 	0x2f, 0x31, 0x32, 0x33,
 	0x46, 0x04, 0x08, 0x0c,
@@ -78,7 +78,7 @@ static u8 h8c7_gamma_r[] = {
 	0x33, 0x46, 0x04, 0x08,
 	0x0c, 0x0d, 0x10, 0x0f,
 	0x11, 0x10, 0x17, 0x00};
-static u8 h8c7_gamma_g[] = {
+static u8 cmi_gamma_g[] = {
 	0xe1, 0x3b, 0x3e, 0x3d,
 	0x31, 0x31, 0x32, 0x33,
 	0x46, 0x03, 0x07, 0x0b,
@@ -88,7 +88,7 @@ static u8 h8c7_gamma_g[] = {
 	0x33, 0x46, 0x03, 0x07,
 	0x0b, 0x0d, 0x10, 0x0e,
 	0x11, 0x10, 0x17, 0x00};
-static u8 h8c7_gamma_b[] = {
+static u8 cmi_gamma_b[] = {
 	0xe2, 0x01, 0x06, 0x07,
 	0x2d, 0x2a, 0x32, 0x1f,
 	0x40, 0x05, 0x0c, 0x0e,
@@ -98,14 +98,14 @@ static u8 h8c7_gamma_b[] = {
 	0x1f, 0x40, 0x05, 0x0c,
 	0x0e, 0x11, 0x14, 0x12,
 	0x13, 0x0f, 0x18, 0x00};
-static u8 h8c7_enter_set_cabc[] = {
+static u8 cmi_enter_set_cabc[] = {
 	0xc9, 0x1f, 0x00, 0x1e,
 	0x1e, 0x00, 0x00, 0x00,
 	0x01, 0xe3, 0x00, 0x00};
-static u8 h8c7_mcs_protect_on[]      = {0xb9, 0x00, 0x00, 0x00};
-static u8 h8c7_set_address_mode[]    = {0x36, 0x00, 0x00, 0x00};
-static u8 h8c7_set_pixel_format[] = {0x3a, 0x70, 0x00, 0x00};
-static int mdfld_dsi_h8c7_ic_init(struct mdfld_dsi_config *dsi_config)
+static u8 cmi_mcs_protect_on[]      = {0xb9, 0x00, 0x00, 0x00};
+static u8 cmi_set_address_mode[]    = {0x36, 0x00, 0x00, 0x00};
+static u8 cmi_set_pixel_format[] = {0x3a, 0x70, 0x00, 0x00};
+static int mdfld_dsi_cmi_ic_init(struct mdfld_dsi_config *dsi_config)
 {
 	struct mdfld_dsi_pkg_sender *sender
 			= mdfld_dsi_get_pkg_sender(dsi_config);
@@ -130,7 +130,7 @@ static int mdfld_dsi_h8c7_ic_init(struct mdfld_dsi_config *dsi_config)
 		return -EIO;
 
 	mdfld_dsi_send_gen_long_hs(sender,
-			h8c7_set_extension, 4, 0);
+			cmi_set_extension, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
@@ -171,7 +171,7 @@ static int mdfld_dsi_h8c7_ic_init(struct mdfld_dsi_config *dsi_config)
 		return -EIO;
 
 	mdfld_dsi_send_gen_long_hs(sender,
-			h8c7_ic_bias_current, 5, 0);
+			cmi_ic_bias_current, 5, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
@@ -179,7 +179,7 @@ static int mdfld_dsi_h8c7_ic_init(struct mdfld_dsi_config *dsi_config)
 		return -EIO;
 
 	mdfld_dsi_send_gen_long_hs(sender,
-			h8c7_set_power, 0xe, 0);
+			cmi_set_power, 0xe, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
@@ -187,7 +187,7 @@ static int mdfld_dsi_h8c7_ic_init(struct mdfld_dsi_config *dsi_config)
 		return -EIO;
 
 	mdfld_dsi_send_gen_long_hs(sender,
-			h8c7_set_disp_reg, 0xd, 0);
+			cmi_set_disp_reg, 0xd, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
@@ -195,7 +195,7 @@ static int mdfld_dsi_h8c7_ic_init(struct mdfld_dsi_config *dsi_config)
 		return -EIO;
 
 	mdfld_dsi_send_gen_long_hs(sender,
-			h8c7_set_command_cyc, 24, 0);
+			cmi_set_command_cyc, 24, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
@@ -203,7 +203,7 @@ static int mdfld_dsi_h8c7_ic_init(struct mdfld_dsi_config *dsi_config)
 		return -EIO;
 
 	mdfld_dsi_send_gen_long_hs(sender,
-			h8c7_set_mipi_ctrl, 4, 0);
+			cmi_set_mipi_ctrl, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
@@ -248,7 +248,7 @@ static int mdfld_dsi_h8c7_ic_init(struct mdfld_dsi_config *dsi_config)
 		return -EIO;
 
 	mdfld_dsi_send_gen_long_hs(sender,
-			h8c7_set_blanking_opt_2, 4, 0);
+			cmi_set_blanking_opt_2, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
@@ -271,63 +271,63 @@ static int mdfld_dsi_h8c7_ic_init(struct mdfld_dsi_config *dsi_config)
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
 
-	mdfld_dsi_send_gen_long_hs(sender, h8c7_set_ltps_ctrl_output, 24, 0);
+	mdfld_dsi_send_gen_long_hs(sender, cmi_set_ltps_ctrl_output, 24, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
 
-	mdfld_dsi_send_gen_long_hs(sender, h8c7_set_video_cyc, 24, 0);
+	mdfld_dsi_send_gen_long_hs(sender, cmi_set_video_cyc, 24, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
 
-	mdfld_dsi_send_gen_long_hs(sender, h8c7_gamma_r, 36, 0);
+	mdfld_dsi_send_gen_long_hs(sender, cmi_gamma_r, 36, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
 
-	mdfld_dsi_send_gen_long_hs(sender, h8c7_gamma_g, 36, 0);
+	mdfld_dsi_send_gen_long_hs(sender, cmi_gamma_g, 36, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
 
-	mdfld_dsi_send_gen_long_hs(sender, h8c7_gamma_b, 36, 0);
+	mdfld_dsi_send_gen_long_hs(sender, cmi_gamma_b, 36, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
 
-	mdfld_dsi_send_gen_long_hs(sender, h8c7_enter_set_cabc, 10, 0);
+	mdfld_dsi_send_gen_long_hs(sender, cmi_enter_set_cabc, 10, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
 
-	mdfld_dsi_send_gen_long_hs(sender, h8c7_mcs_protect_on, 4, 0);
+	mdfld_dsi_send_gen_long_hs(sender, cmi_mcs_protect_on, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
 
-	mdfld_dsi_send_gen_long_hs(sender, h8c7_set_address_mode, 4, 0);
+	mdfld_dsi_send_gen_long_hs(sender, cmi_set_address_mode, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
 
-	mdfld_dsi_send_gen_long_hs(sender, h8c7_set_pixel_format, 4, 0);
+	mdfld_dsi_send_gen_long_hs(sender, cmi_set_pixel_format, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
@@ -338,7 +338,7 @@ static int mdfld_dsi_h8c7_ic_init(struct mdfld_dsi_config *dsi_config)
 }
 
 static
-void mdfld_dsi_h8c7_dsi_controller_init(struct mdfld_dsi_config *dsi_config)
+void mdfld_dsi_cmi_dsi_controller_init(struct mdfld_dsi_config *dsi_config)
 {
 	struct mdfld_dsi_hw_context *hw_ctx =
 		&dsi_config->dsi_hw_context;
@@ -376,7 +376,7 @@ void mdfld_dsi_h8c7_dsi_controller_init(struct mdfld_dsi_config *dsi_config)
 }
 
 static
-int mdfld_dsi_h8c7_detect(struct mdfld_dsi_config *dsi_config)
+int mdfld_dsi_cmi_detect(struct mdfld_dsi_config *dsi_config)
 {
 	int status;
 	int pipe = dsi_config->pipe;
@@ -393,7 +393,7 @@ int mdfld_dsi_h8c7_detect(struct mdfld_dsi_config *dsi_config)
 	return status;
 }
 
-static int mdfld_dsi_h8c7_power_on(struct mdfld_dsi_config *dsi_config)
+static int mdfld_dsi_cmi_power_on(struct mdfld_dsi_config *dsi_config)
 {
 	struct mdfld_dsi_pkg_sender *sender =
 		mdfld_dsi_get_pkg_sender(dsi_config);
@@ -455,7 +455,7 @@ static void __vpro2_power_ctrl(bool on)
 				__func__, __LINE__);
 }
 
-static int mdfld_dsi_h8c7_power_off(struct mdfld_dsi_config *dsi_config)
+static int mdfld_dsi_cmi_power_off(struct mdfld_dsi_config *dsi_config)
 {
 	struct mdfld_dsi_pkg_sender *sender =
 		mdfld_dsi_get_pkg_sender(dsi_config);
@@ -507,7 +507,7 @@ power_off_err:
 	return err;
 }
 
-static int mdfld_dsi_h8c7_set_brightness(struct mdfld_dsi_config *dsi_config,
+static int mdfld_dsi_cmi_set_brightness(struct mdfld_dsi_config *dsi_config,
 		int level)
 {
 	struct drm_device *dev = dsi_config->dev;
@@ -531,7 +531,7 @@ static int mdfld_dsi_h8c7_set_brightness(struct mdfld_dsi_config *dsi_config,
 	return 0;
 }
 
-static int mdfld_dsi_h8c7_panel_reset(struct mdfld_dsi_config *dsi_config)
+static int mdfld_dsi_cmi_panel_reset(struct mdfld_dsi_config *dsi_config)
 {
 	static int mipi_reset_gpio;
 	int ret = 0;
@@ -552,7 +552,7 @@ static int mdfld_dsi_h8c7_panel_reset(struct mdfld_dsi_config *dsi_config)
 	return 0;
 }
 
-static struct drm_display_mode *h8c7_vid_get_config_mode(void)
+static struct drm_display_mode *cmi_vid_get_config_mode(void)
 {
 	struct drm_display_mode *mode;
 
@@ -583,7 +583,7 @@ static struct drm_display_mode *h8c7_vid_get_config_mode(void)
 	return mode;
 }
 
-static void  h8c7_vid_get_panel_info(int pipe, struct panel_info *pi)
+static void  cmi_vid_get_panel_info(int pipe, struct panel_info *pi)
 {
 	if (!pi)
 		return;
@@ -596,19 +596,19 @@ static void  h8c7_vid_get_panel_info(int pipe, struct panel_info *pi)
 	return;
 }
 
-void  h8c7_vid_init(struct drm_device *dev, struct panel_funcs *p_funcs)
+void  cmi_vid_init(struct drm_device *dev, struct panel_funcs *p_funcs)
 {
 	PSB_DEBUG_ENTRY("\n");
 
-	p_funcs->get_config_mode =  h8c7_vid_get_config_mode;
-	p_funcs->get_panel_info =  h8c7_vid_get_panel_info;
-	p_funcs->reset = mdfld_dsi_h8c7_panel_reset;
-	p_funcs->drv_ic_init = mdfld_dsi_h8c7_ic_init;
+	p_funcs->get_config_mode =  cmi_vid_get_config_mode;
+	p_funcs->get_panel_info =  cmi_vid_get_panel_info;
+	p_funcs->reset = mdfld_dsi_cmi_panel_reset;
+	p_funcs->drv_ic_init = mdfld_dsi_cmi_ic_init;
 	p_funcs->dsi_controller_init =
-		mdfld_dsi_h8c7_dsi_controller_init;
-	p_funcs->detect = mdfld_dsi_h8c7_detect;
-	p_funcs->power_on = mdfld_dsi_h8c7_power_on;
-	p_funcs->power_off = mdfld_dsi_h8c7_power_off;
+		mdfld_dsi_cmi_dsi_controller_init;
+	p_funcs->detect = mdfld_dsi_cmi_detect;
+	p_funcs->power_on = mdfld_dsi_cmi_power_on;
+	p_funcs->power_off = mdfld_dsi_cmi_power_off;
 	p_funcs->set_brightness =
-		mdfld_dsi_h8c7_set_brightness;
+		mdfld_dsi_cmi_set_brightness;
 }
