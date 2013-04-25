@@ -19,14 +19,15 @@ config HSI_ARASAN_CONFIG
 	boolean
 	default y
 
-config HSI_WAKEUP_PACKETS_DUMP
-	bool "HSI Wakeup packets dump"
+config HSI_WAKEUP_PACKET_DUMP_LEN
+	int "HSI Wakeup packet dump length"
 	depends on HSI_ARASAN
-	default n
+	range 4 8192
+	default "20"
 	help
-		If you say Y here, you will enable the dump of the first packet after
-		the HSI controller resume
+		Setting value greater than zero Will enable the dump of the first packet
+		received after the HSI controller wakeup
 
-		If unsure, say N.
+		If unsure, keep default value (20)
 
 endif # HSI_ARASAN

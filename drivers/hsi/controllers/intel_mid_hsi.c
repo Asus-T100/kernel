@@ -320,6 +320,8 @@ struct intel_xfer_ctx {
  * @acwake_delay: Delay between ACWAKE assertion and data xfer
  * @stay_awake: Android wake lock for preventing entering low power mode
  * @dir: debugfs HSI root directory
+ * @wakeup_packet_log: Enable/Disable the dump of the wakeup packet
+ * @resumed: Set to TRUE when the HSI driver exit the resume state
  */
 struct intel_controller {
 	/* Devices and resources */
@@ -391,9 +393,8 @@ struct intel_controller {
 #ifdef CONFIG_DEBUG_FS
 	struct dentry		*dir;
 #endif
-#ifdef CONFIG_HSI_WAKEUP_PACKETS_DUMP
-	u16 packet_dumped;
-#endif
+	u16 wakeup_packet_log;
+	u16 resumed;
 };
 
 /* Disable the following to deactivate the runtime power management
@@ -413,15 +414,12 @@ static unsigned int hsi_pm = 1;
 module_param(hsi_pm, uint, 0644);
 
 /*
- * Helper functions
- */
-
-
-/* Help debugging PnP/Power consumption issues
+ * Dump HSI wakeup packet
+ *
+ * Help debugging PnP/Power consumption issues
  * This will enable dumping the HSI wakeup packets
  */
-#ifdef CONFIG_HSI_WAKEUP_PACKETS_DUMP
-static unsigned int wakeup_packet_len = 20;
+static unsigned int wakeup_packet_len = CONFIG_HSI_WAKEUP_PACKET_DUMP_LEN;
 module_param(wakeup_packet_len, uint, 0644);
 
 #ifndef MIN
@@ -436,8 +434,11 @@ module_param(wakeup_packet_len, uint, 0644);
 static inline void hsi_msg_complete(struct intel_controller *intel_hsi,
 				struct hsi_msg *msg)
 {
-	if (!intel_hsi->packet_dumped) {
-		intel_hsi->packet_dumped = 1;
+	if (!wakeup_packet_len)
+		goto done;
+
+	if (intel_hsi->wakeup_packet_log) {
+		intel_hsi->wakeup_packet_log = 0;
 
 		/* Any data do dump (ex: BREAK frame) ? */
 		if (msg->sgt.sgl) {
@@ -447,16 +448,10 @@ static inline void hsi_msg_complete(struct intel_controller *intel_hsi,
 				MIN(wakeup_packet_len, msg->actual_len), 1);
 		}
 	}
-	msg->complete(msg);
-}
-#else
 
-static inline void hsi_msg_complete(struct intel_controller *intel_hsi,
-				struct hsi_msg *msg)
-{
+done:
 	msg->complete(msg);
 }
-#endif
 
 /**
  * is_using_link_list - checks if the DMA context is using link listing
@@ -1186,6 +1181,10 @@ static int hsi_ctrl_resume(struct intel_controller *intel_hsi, int rtpm)
 		enable_irq(intel_hsi->irq);
 		intel_hsi->suspend_state--;
 	}
+
+	if (!rtpm)
+		intel_hsi->resumed = 1;
+
 	spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
 
 	return err;
@@ -1263,10 +1262,9 @@ static int hsi_ctrl_suspend(struct intel_controller *intel_hsi, int rtpm)
 		iowrite32(0, ARASAN_REG(PROGRAM));
 		intel_hsi->suspend_state = DEVICE_SUSPENDED;
 
-#ifdef CONFIG_HSI_WAKEUP_PACKETS_DUMP
 		if (!rtpm)
-			intel_hsi->packet_dumped = 0;
-#endif
+			intel_hsi->resumed = 0;
+
 #ifdef CONFIG_HAS_WAKELOCK
 		wake_unlock(&intel_hsi->stay_awake);
 #endif
@@ -3512,8 +3510,11 @@ static void hsi_isr_tasklet(unsigned long hsi)
 	intel_hsi->dma_status = 0;
 	spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
 
-	if (irq_status & ARASAN_IRQ_RX_WAKE)
+	if (irq_status & ARASAN_IRQ_RX_WAKE) {
+		if (!intel_hsi->resumed)
+			intel_hsi->wakeup_packet_log = 1;
 		enable_acready(intel_hsi);
+	}
 
 	if (err_status & ARASAN_IRQ_RX_ERROR)
 		hsi_rx_error(intel_hsi);
@@ -4160,6 +4161,7 @@ static int hsi_add_controller(struct hsi_controller *hsi,
 	hsi_controller_set_drvdata(hsi, intel_hsi);
 	intel_hsi->dev = &hsi->device;
 	intel_hsi->irq = pdev->irq;
+	intel_hsi->resumed = 1;
 
 	err = pci_enable_device(pdev);
 	if (err) {
