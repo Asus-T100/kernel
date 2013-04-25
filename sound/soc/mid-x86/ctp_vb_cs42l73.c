@@ -119,7 +119,6 @@ static int ctp_vb_cs42l73_hw_params(struct snd_pcm_substream *substream,
 	switch (device) {
 	case CTP_VB_AUD_ASP_DEV:
 	case CTP_VB_AUD_VSP_DEV:
-	case CTP_VB_COMMS_BT_SCO_DEV:
 	case CTP_VB_COMMS_FM_DEV:
 	case CTP_VB_AUD_VIRTUAL_ASP_DEV:
 		clk_fmt.clk_id = CS42L73_CLKID_MCLK1;
@@ -127,6 +126,14 @@ static int ctp_vb_cs42l73_hw_params(struct snd_pcm_substream *substream,
 		clk_fmt.dir = SND_SOC_CLOCK_IN;
 		/* Slave mode */
 		clk_fmt.fmt = SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF |
+					SND_SOC_DAIFMT_CBS_CFS;
+		return ctp_set_clk_fmt(codec_dai, &clk_fmt);
+	case CTP_VB_COMMS_BT_SCO_DEV:
+		clk_fmt.clk_id = CS42L73_CLKID_MCLK1;
+		clk_fmt.freq = DEFAULT_MCLK;
+		clk_fmt.dir = SND_SOC_CLOCK_IN;
+		/* Slave mode */
+		clk_fmt.fmt = SND_SOC_DAIFMT_DSP_B | SND_SOC_DAIFMT_IB_NF |
 					SND_SOC_DAIFMT_CBS_CFS;
 		return ctp_set_clk_fmt(codec_dai, &clk_fmt);
 	default:
