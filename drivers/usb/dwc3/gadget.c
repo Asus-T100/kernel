@@ -1800,13 +1800,10 @@ static int dwc3_stop_peripheral(struct usb_gadget *g)
 	return 0;
 }
 
-static int dwc3_vbus_draw(struct usb_gadget *g, unsigned mA)
+static int __dwc3_vbus_draw(struct dwc3 *dwc, unsigned mA)
 {
-	struct dwc3         *dwc = gadget_to_dwc(g);
-	struct usb_phy      *usb_phy;
-	int             ret;
-
-	dev_dbg(dwc->dev, "otg_set_power: %d mA\n", mA);
+	int		ret;
+	struct usb_phy	*usb_phy;
 
 	usb_phy = usb_get_transceiver();
 	if (!usb_phy) {
@@ -1818,6 +1815,15 @@ static int dwc3_vbus_draw(struct usb_gadget *g, unsigned mA)
 	usb_put_transceiver(usb_phy);
 
 	return ret;
+}
+
+static int dwc3_vbus_draw(struct usb_gadget *g, unsigned mA)
+{
+	struct dwc3	*dwc = gadget_to_dwc(g);
+
+	dev_dbg(dwc->dev, "otg_set_power: %d mA\n", mA);
+
+	return __dwc3_vbus_draw(dwc, mA);
 }
 #endif
 static const struct usb_gadget_ops dwc3_gadget_ops = {
@@ -2348,6 +2354,16 @@ static void dwc3_gadget_power_on_or_soft_reset(struct dwc3 *dwc)
 		dwc3_gadget_keep_conn(dwc, 1);
 }
 
+static void link_state_change_work(struct work_struct *data)
+{
+	struct dwc3 *dwc = container_of(data, struct dwc3, link_work);
+
+	if (dwc->link_state == DWC3_LINK_STATE_U3) {
+		dev_info(dwc->dev, "device suspended; notify OTG\n");
+		__dwc3_vbus_draw(dwc, OTG_DEVICE_SUSPEND);
+	}
+}
+
 static void dwc3_gadget_reset_interrupt(struct dwc3 *dwc)
 {
 	u32			reg;
@@ -2541,7 +2557,12 @@ static void dwc3_gadget_wakeup_interrupt(struct dwc3 *dwc)
 {
 	dev_vdbg(dwc->dev, "%s\n", __func__);
 
-	pm_runtime_get(dwc->dev);
+	if (!dwc->hibernation.enabled) {
+		dev_info(dwc->dev, "device resumed; notify OTG\n");
+		__dwc3_vbus_draw(dwc, OTG_DEVICE_RESUME);
+	} else
+		pm_runtime_get(dwc->dev);
+
 	/*
 	 * TODO take core out of low power mode when that's
 	 * implemented.
@@ -2602,6 +2623,10 @@ static void dwc3_gadget_linksts_change_interrupt(struct dwc3 *dwc,
 	}
 
 	dwc->link_state = next;
+
+	if (next ==  DWC3_LINK_STATE_U3)
+		schedule_delayed_work(
+			&dwc->link_work, msecs_to_jiffies(1000));
 
 	dev_vdbg(dwc->dev, "%s link %d\n", __func__, dwc->link_state);
 }
@@ -2823,6 +2848,8 @@ int __devinit dwc3_gadget_init(struct dwc3 *dwc)
 	dwc->gadget.dev.dma_mask	= dwc->dev->dma_mask;
 	dwc->gadget.dev.release		= dwc3_gadget_release;
 	dwc->gadget.name		= "dwc3-gadget";
+
+	INIT_DELAYED_WORK(&dwc->link_work, link_state_change_work);
 
 	/*
 	 * REVISIT: Here we should clear all pending IRQs to be

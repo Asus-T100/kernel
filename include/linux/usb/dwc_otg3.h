@@ -40,6 +40,8 @@ struct dwc_device_par {
 #define DRIVER_VERSION "0.1"
 #define PERI_MODE_PERIPHERAL	1
 #define PERI_MODE_HOST		0
+#define OTG_DEVICE_SUSPEND	0xfffe
+#define OTG_DEVICE_RESUME	0xffff
 
 #define ADP_RAMP_TIME_CHANGE_THRESHOLD	5
 #define ADP_PROBE_TIMEOUT		5000

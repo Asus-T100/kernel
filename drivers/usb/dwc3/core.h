@@ -717,6 +717,9 @@ struct dwc3 {
 	struct  wake_lock   wake_lock;
 
 	struct dwc3_hwregs	hwregs;
+
+	/* delayed work for handling Link State Change */
+	struct delayed_work link_work;
 };
 
 /* -------------------------------------------------------------------------- */
