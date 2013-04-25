@@ -18,14 +18,14 @@ static int __init ulpmc_i2c_init(void)
 	 * cc limit values will be
 	 * further tuned on ffrd later.
 	 */
-	ulpmc_pdata.cc_lim0 = 3000;	/* 3000mA */
-	ulpmc_pdata.cc_lim1 = 2500;	/* 2500mA */
-	ulpmc_pdata.cc_lim2 = 1500;	/* 1500mA */
-	ulpmc_pdata.cc_lim3 = 1000;	/* 1000mA */
+	ulpmc_pdata.cc_lim0 = 2000;	/* 2000mA */
+	ulpmc_pdata.cc_lim1 = 1500;	/* 1500mA */
+	ulpmc_pdata.cc_lim2 = 1000;	/* 1000mA */
+	ulpmc_pdata.cc_lim3 = 500;	/* 500mA */
 	snprintf(ulpmc_pdata.battid, BATTID_LEN, "INT-BYT");
 	snprintf(ulpmc_pdata.extcon_devname,
-			EXTCON_NAME_LEN, "BYT-Charger");
-	ulpmc_pdata.version = BYTULPMCFGV3;
+			EXTCON_NAME_LEN, "fsa9285");
+	ulpmc_pdata.version = BYTULPMCFGV4;
 	return i2c_register_board_info(1, &ulpmc_i2c_device, 1);
 }
 module_init(ulpmc_i2c_init);

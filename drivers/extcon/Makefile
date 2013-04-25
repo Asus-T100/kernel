@@ -9,3 +9,4 @@ obj-$(CONFIG_EXTCON_MAX77693)	+= extcon-max77693.o
 obj-$(CONFIG_EXTCON_MAX8997)	+= extcon-max8997.o
 obj-$(CONFIG_EXTCON_ARIZONA)	+= extcon-arizona.o
 obj-$(CONFIG_EXTCON_MID)	+= extcon-mid.o
+obj-$(CONFIG_EXTCON_FSA9285)	+= extcon-fsa9285.o
