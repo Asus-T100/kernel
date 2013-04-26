@@ -263,15 +263,20 @@ static long __imx_set_exposure(struct v4l2_subdev *sd, unsigned int coarse_itg,
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	int ret;
 	struct imx_device *dev = to_imx_sensor(sd);
-
-	/* imx max exposure is VTS-4 */
-	 if (coarse_itg > dev->lines_per_frame - 4)
-		coarse_itg = dev->lines_per_frame - 4;
+	u16 vts = dev->lines_per_frame;
 
 	/* enable group hold */
 	ret = imx_write_reg_array(client, imx_param_hold);
 	if (ret)
 		goto out;
+
+	/* imx max exposure is VTS-4 */
+	if (coarse_itg > dev->lines_per_frame - IMX_INTEGRATION_TIME_MARGIN)
+		vts = coarse_itg + IMX_INTEGRATION_TIME_MARGIN;
+
+	ret = imx_write_reg(client, IMX_16BIT, IMX_FRAME_LENGTH_LINES, vts);
+	if (ret)
+		return ret;
 
 	ret = imx_write_reg(client, IMX_16BIT,
 		IMX_COARSE_INTEGRATION_TIME, coarse_itg);
@@ -321,7 +326,8 @@ static long __imx_set_exposure(struct v4l2_subdev *sd, unsigned int coarse_itg,
 	if (ret)
 		return ret;
 
-	dev->gain       = gain;
+	dev->gain = gain;
+	dev->digital_gain = digitgain;
 	dev->coarse_itg = coarse_itg;
 
 out_disable:
@@ -427,6 +433,7 @@ static void imx_uninit(struct v4l2_subdev *sd)
 	dev->coarse_itg = 0;
 	dev->fine_itg   = 0;
 	dev->gain       = 0;
+	dev->digital_gain = 0;
 	dev->focus      = IMX_INVALID_CONFIG;
 }
 
@@ -1117,41 +1124,43 @@ static int imx_s_mbus_fmt(struct v4l2_subdev *sd,
 
 	/* Sanity check */
 	if (unlikely(dev->fmt_idx == -1)) {
-		mutex_unlock(&dev->input_lock);
 		v4l2_err(sd, "get resolution fail\n");
-		return -EINVAL;
+		ret = -EINVAL;
+		goto out;
 	}
 
 	imx_def_reg = imx_res[dev->fmt_idx].regs;
 
 	ret = imx_write_reg_array(client, imx_def_reg);
 	if (ret) {
-		mutex_unlock(&dev->input_lock);
-		return -EINVAL;
+		ret = -EINVAL;
+		goto out;
 	}
 	/* FIXME: workround for MERR Pre-alpha due to ISP perf - start */
 
 	ret = imx_write_reg_array(client, imx_param_update);
 	if (ret) {
-		mutex_unlock(&dev->input_lock);
-		return -EINVAL;
+		ret = -EINVAL;
+		goto out;
 	}
 
 	dev->fps = imx_res[dev->fmt_idx].fps;
 	dev->pixels_per_line = imx_res[dev->fmt_idx].pixels_per_line;
 	dev->lines_per_frame = imx_res[dev->fmt_idx].lines_per_frame;
-	dev->coarse_itg = 0;
-	dev->fine_itg = 0;
-	dev->gain = 0;
+
+	ret = __imx_set_exposure(sd, dev->coarse_itg, dev->gain,
+				 dev->digital_gain);
+	if (ret)
+		goto out;
 
 	ret = imx_get_intg_factor(client, imx_info, imx_def_reg);
-	mutex_unlock(&dev->input_lock);
 	if (ret) {
 		v4l2_err(sd, "failed to get integration_factor\n");
-		return -EINVAL;
+		goto out;
 	}
-
-	return 0;
+out:
+	mutex_unlock(&dev->input_lock);
+	return ret;
 }
 
 

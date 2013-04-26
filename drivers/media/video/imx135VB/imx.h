@@ -54,6 +54,8 @@
 #define IMX_MASK_11BIT	0x7FF
 #define IMX_INTG_BUF_COUNT		2
 
+#define IMX_INTEGRATION_TIME_MARGIN	4
+
 #define IMX_FINE_INTG_TIME		0x1E8
 
 #define IMX_VT_PIX_CLK_DIV			0x0301
@@ -202,6 +204,7 @@ struct imx_device {
 	u16 coarse_itg;
 	u16 fine_itg;
 	u16 gain;
+	u16 digital_gain;
 	u16 pixels_per_line;
 	u16 lines_per_frame;
 	u8 fps;
