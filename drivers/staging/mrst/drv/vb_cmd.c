@@ -51,7 +51,6 @@ enum vb_panel_type {
 
 /*
 #define NO_POWER_OFF
-#define NO_DRIVER_IC_INIT
 #define NO_DCDC_POWER_OFF
 #define NO_DISPLAY_RESET
 #define ENABLE_PANEL_READ
@@ -529,280 +528,272 @@ static void ls04x_reset()
 
 static int ls04x_igzo_drv_ic_init(struct mdfld_dsi_config *dsi_config)
 {
-	int r = 0;
+	struct mdfld_dsi_pkg_sender *sender
+		= mdfld_dsi_get_pkg_sender(dsi_config);
 
 	DRM_INFO("IGZO panel detected!\n");
-
-#ifndef NO_DRIVER_IC_INIT
-	struct mdfld_dsi_pkg_sender *sender
-				= mdfld_dsi_get_pkg_sender(dsi_config);
 
 	if (!sender)
 		return -EINVAL;
 	sender->status = MDFLD_DSI_PKG_SENDER_FREE;
 
-	r = mdfld_dsi_send_gen_short_lp(sender,
-					ls04x_mcap[0],
-					ls04x_mcap[1], 2,
-					MDFLD_DSI_SEND_PACKAGE);
-
-	mdfld_dsi_send_gen_long_lp(sender,
+	/**
+	  * This works because the default lane count of panel is 4, otherwise
+	  * need switch lane count to the default value before using high speed
+	  * mode
+	  */
+	mdfld_dsi_send_gen_short_hs(sender,
+				    ls04x_mcap[0],
+				    ls04x_mcap[1], 2,
+				    MDFLD_DSI_SEND_PACKAGE);
+	mdfld_dsi_send_gen_long_hs(sender,
 				   ls04x_frame_memory_access_igzo,
 				   sizeof(ls04x_frame_memory_access_igzo),
 				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_lp(sender,
+	mdfld_dsi_send_gen_long_hs(sender,
 				   ls04x_interface_id,
 				   sizeof(ls04x_interface_id),
 				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_lp(sender,
+	mdfld_dsi_send_gen_long_hs(sender,
 				   ls04x_dsi_control1_igzo,
 				   sizeof(ls04x_dsi_control1_igzo),
 				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_short_lp(sender,
+	mdfld_dsi_send_gen_short_hs(sender,
 				    ls04x_dsi_control2[0],
 				    ls04x_dsi_control2[1], 2,
 				    MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_lp(sender,
+	mdfld_dsi_send_gen_long_hs(sender,
 				   ls04x_panel_pin_ctrl,
 				   sizeof(ls04x_panel_pin_ctrl),
 				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_short_lp(sender,
+	mdfld_dsi_send_gen_short_hs(sender,
 				    ls04x_panel_interface_ctrl_igzo[0],
 				    ls04x_panel_interface_ctrl_igzo[1], 2,
 				    MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_lp(sender,
+	mdfld_dsi_send_gen_long_hs(sender,
 				   ls04x_display_setting1_igzo,
 				   sizeof(ls04x_display_setting1_igzo),
 				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_lp(sender,
+	mdfld_dsi_send_gen_long_hs(sender,
 				   ls04x_display_setting2_igzo,
 				   sizeof(ls04x_display_setting2_igzo),
 				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_lp(sender,
+	mdfld_dsi_send_gen_long_hs(sender,
 				   ls04x_tpc_sync_ctrl,
 				   sizeof(ls04x_tpc_sync_ctrl),
 				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_lp(sender,
+	mdfld_dsi_send_gen_long_hs(sender,
 				   ls04x_source_timing_setting_igzo,
 				   sizeof(ls04x_source_timing_setting_igzo),
 				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_lp(sender,
+	mdfld_dsi_send_gen_long_hs(sender,
 				   ls04x_gip_timing_setting,
 				   sizeof(ls04x_gip_timing_setting),
 				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_lp(sender,
+	mdfld_dsi_send_gen_long_hs(sender,
 				   ls04x_backlight_setting1_pwr_save,
 				   sizeof(ls04x_backlight_setting1_pwr_save),
 				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_lp(sender,
+	mdfld_dsi_send_gen_long_hs(sender,
 				   ls04x_backlight_setting2_pwr_save,
 				   sizeof(ls04x_backlight_setting2_pwr_save),
 				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_lp(sender,
+	mdfld_dsi_send_gen_long_hs(sender,
 				   ls04x_backlight_setting4_pwr_save,
 				   sizeof(ls04x_backlight_setting4_pwr_save),
 				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_lp(sender,
+	mdfld_dsi_send_gen_long_hs(sender,
 				   ls04x_backlight_setting6_igzo,
 				   sizeof(ls04x_backlight_setting6_igzo),
 				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_lp(sender,
+	mdfld_dsi_send_gen_long_hs(sender,
 				   ls04x_gamma_a_setting_igzo,
 				   sizeof(ls04x_gamma_a_setting_igzo),
 				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_lp(sender,
+	mdfld_dsi_send_gen_long_hs(sender,
 				   ls04x_gamma_b_setting_igzo,
 				   sizeof(ls04x_gamma_b_setting_igzo),
 				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_lp(sender,
+	mdfld_dsi_send_gen_long_hs(sender,
 				   ls04x_gamma_c_setting_igzo,
 				   sizeof(ls04x_gamma_c_setting_igzo),
 				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_lp(sender,
+	mdfld_dsi_send_gen_long_hs(sender,
 				   ls04x_power_setting_igzo,
 				   sizeof(ls04x_power_setting_igzo),
 				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_short_lp(sender,
+	mdfld_dsi_send_gen_short_hs(sender,
 				    ls04x_power_setting_int_pwr1_igzo[0],
 				    ls04x_power_setting_int_pwr1_igzo[1], 2,
 				    MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_lp(sender,
+	mdfld_dsi_send_gen_long_hs(sender,
 				   ls04x_power_setting_int_pwr2_igzo,
 				   sizeof(ls04x_power_setting_int_pwr2_igzo),
 				   MDFLD_DSI_SEND_PACKAGE);
+#if 0
 	/* comment vcom setting for igzo and use default setting
-	* it is used to avoiding 1-hz panel flicker issue.
-	*/
-	/*
+	 * it is used to avoiding 1-hz panel flicker issue.
+	 */
 	mdfld_dsi_send_gen_long_lp(sender,
 				   ls04x_vcom_setting,
 				   sizeof(ls04x_vcom_setting),
 				   MDFLD_DSI_SEND_PACKAGE);
-	*/
-	mdfld_dsi_send_gen_short_lp(sender,
+#endif
+	mdfld_dsi_send_gen_short_hs(sender,
 				    ls04x_sleep_out_nvm_load_setting[0],
 				    ls04x_sleep_out_nvm_load_setting[1], 2,
 				    MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_lp(sender,
+	mdfld_dsi_send_gen_long_hs(sender,
 				   ls04x_sequencer_timing_power_on_igzo,
 				   sizeof(ls04x_sequencer_timing_power_on_igzo),
 				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_lp(sender,
+	mdfld_dsi_send_gen_long_hs(sender,
 				   ls04x_low_power_function,
 				   sizeof(ls04x_low_power_function),
 				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_lp(sender,
+	mdfld_dsi_send_gen_long_hs(sender,
 				   ls04x_panel_sync_out1,
 				   sizeof(ls04x_panel_sync_out1),
 				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_lp(sender,
+	mdfld_dsi_send_gen_long_hs(sender,
 				   ls04x_panel_sync_out2,
 				   sizeof(ls04x_panel_sync_out2),
 				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_short_lp(sender,
+	mdfld_dsi_send_gen_short_hs(sender,
 				    ls04x_panel_sync_out3[0],
 				    ls04x_panel_sync_out3[1], 2,
 				    MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_lp(sender,
+	mdfld_dsi_send_gen_long_hs(sender,
 				   ls04x_panel_sync_out4,
 				   sizeof(ls04x_panel_sync_out4),
 				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_mcs_short_lp(sender, write_ctrl_display, 0x2c, 1,
+	mdfld_dsi_send_mcs_short_hs(sender, write_ctrl_display, 0x2c, 1,
 				    MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_mcs_short_lp(sender, write_ctrl_cabc, 0x1, 1,
+	mdfld_dsi_send_mcs_short_hs(sender, write_ctrl_cabc, 0x1, 1,
 				    MDFLD_DSI_SEND_PACKAGE);
 
 	/* Send column and page addr before write mem start,
-	* as the default setting causes partial screen messy.
-	*/
-	mdfld_dsi_send_mcs_long_lp(sender,
+	 * as the default setting causes partial screen messy.
+	 */
+	mdfld_dsi_send_mcs_long_hs(sender,
 				   ls04x_set_column_addr,
 				   sizeof(ls04x_set_column_addr),
 				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_mcs_long_lp(sender,
+	mdfld_dsi_send_mcs_long_hs(sender,
 				   ls04x_set_page_addr,
 				   sizeof(ls04x_set_page_addr),
 				   MDFLD_DSI_SEND_PACKAGE);
-#endif
 	return 0;
 }
 
 static int ls04x_cgs_drv_ic_init(struct mdfld_dsi_config *dsi_config)
 {
-	int r = 0;
-	u8 data[16];
+	struct mdfld_dsi_pkg_sender *sender
+		= mdfld_dsi_get_pkg_sender(dsi_config);
 
 	DRM_INFO("CGS panel detected!\n");
-
-#ifndef NO_DRIVER_IC_INIT
-	memset(data, 0, sizeof(data));
-	struct mdfld_dsi_pkg_sender *sender
-				= mdfld_dsi_get_pkg_sender(dsi_config);
 
 	if (!sender)
 		return -EINVAL;
 	sender->status = MDFLD_DSI_PKG_SENDER_FREE;
 
-	r = mdfld_dsi_send_gen_short_lp(sender,
-					ls04x_mcap_cgs[0],
-					ls04x_mcap_cgs[1], 2,
-					MDFLD_DSI_SEND_PACKAGE);
-
-	r = mdfld_dsi_read_gen_lp(sender,
-				  ls04x_device_code_read[0], 0, 1,
-				  data, 5);
-	PSB_DEBUG_GENERAL("device code: %d %02x %02x %02x %02x %02x\n",
-		r, data[0], data[1], data[2], data[3], data[4]);
-
-	mdfld_dsi_send_gen_long_lp(sender,
+	/**
+	  * This works because the default lane count of panel is 4, otherwise
+	  * need switch lane count to the default value before using high speed
+	  * mode
+	  */
+	mdfld_dsi_send_gen_short_hs(sender,
+				    ls04x_mcap_cgs[0],
+				    ls04x_mcap_cgs[1], 2,
+				    MDFLD_DSI_SEND_PACKAGE);
+	mdfld_dsi_send_gen_long_hs(sender,
 				   ls04x_frame_memory_access_cgs,
 				   sizeof(ls04x_frame_memory_access_cgs),
 				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_lp(sender,
+	mdfld_dsi_send_gen_long_hs(sender,
 				   ls04x_interface_id,
 				   sizeof(ls04x_interface_id),
 				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_lp(sender,
+	mdfld_dsi_send_gen_long_hs(sender,
 				   ls04x_dsi_control1_cgs,
 				   sizeof(ls04x_dsi_control1_cgs),
 				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_short_lp(sender,
+	mdfld_dsi_send_gen_short_hs(sender,
 				    ls04x_panel_interface_ctrl_cgs[0],
 				    ls04x_panel_interface_ctrl_cgs[1], 2,
 				    MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_lp(sender,
+	mdfld_dsi_send_gen_long_hs(sender,
 				   ls04x_display_setting1_cgs,
 				   sizeof(ls04x_display_setting1_cgs),
 				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_lp(sender,
+	mdfld_dsi_send_gen_long_hs(sender,
 				   ls04x_display_setting2_cgs,
 				   sizeof(ls04x_display_setting2_cgs),
 				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_lp(sender,
+	mdfld_dsi_send_gen_long_hs(sender,
 				   ls04x_tpc_sync_ctrl,
 				   sizeof(ls04x_tpc_sync_ctrl),
 				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_lp(sender,
+	mdfld_dsi_send_gen_long_hs(sender,
 				   ls04x_source_timing_setting_cgs,
 				   sizeof(ls04x_source_timing_setting_cgs),
 				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_lp(sender,
+	mdfld_dsi_send_gen_long_hs(sender,
 				   ls04x_ltps_timing_setting_cgs,
 				   sizeof(ls04x_ltps_timing_setting_cgs),
 				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_lp(sender,
+	mdfld_dsi_send_gen_long_hs(sender,
 				   ls04x_gamma_a_setting_cgs,
 				   sizeof(ls04x_gamma_a_setting_cgs),
 				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_lp(sender,
+	mdfld_dsi_send_gen_long_hs(sender,
 				   ls04x_gamma_b_setting_cgs,
 				   sizeof(ls04x_gamma_b_setting_cgs),
 				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_lp(sender,
+	mdfld_dsi_send_gen_long_hs(sender,
 				   ls04x_gamma_c_setting_cgs,
 				   sizeof(ls04x_gamma_c_setting_cgs),
 				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_lp(sender,
+	mdfld_dsi_send_gen_long_hs(sender,
 				   ls04x_power_setting_cgs,
 				   sizeof(ls04x_power_setting_cgs),
 				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_short_lp(sender,
+	mdfld_dsi_send_gen_short_hs(sender,
 				    ls04x_power_setting_int_pwr1_cgs[0],
 				    ls04x_power_setting_int_pwr1_cgs[1], 2,
 				    MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_lp(sender,
+	mdfld_dsi_send_gen_long_hs(sender,
 				   ls04x_power_setting_int_pwr2_cgs,
 				   sizeof(ls04x_power_setting_int_pwr2_cgs),
 				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_lp(sender,
+	mdfld_dsi_send_gen_long_hs(sender,
 				   ls04x_vcom_setting,
 				   sizeof(ls04x_vcom_setting),
 				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_short_lp(sender,
+	mdfld_dsi_send_gen_short_hs(sender,
 				    ls04x_sleep_out_nvm_load_setting[0],
 				    ls04x_sleep_out_nvm_load_setting[1], 2,
 				    MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_gen_long_lp(sender,
+	mdfld_dsi_send_gen_long_hs(sender,
 				   ls04x_sequencer_timing_power_on_cgs,
 				   sizeof(ls04x_sequencer_timing_power_on_cgs),
 				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_mcs_short_lp(sender, write_ctrl_display, 0x2c, 1,
+	mdfld_dsi_send_mcs_short_hs(sender, write_ctrl_display, 0x2c, 1,
 				    MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_mcs_short_lp(sender, write_ctrl_cabc, 0x1, 1,
+	mdfld_dsi_send_mcs_short_hs(sender, write_ctrl_cabc, 0x1, 1,
 				    MDFLD_DSI_SEND_PACKAGE);
 
 	/* Send column and page addr before write mem start,
-	* as the default setting causes partial screen messy.
-	*/
-	mdfld_dsi_send_mcs_long_lp(sender,
+	 * as the default setting causes partial screen messy.
+	 */
+	mdfld_dsi_send_mcs_long_hs(sender,
 				   ls04x_set_column_addr,
 				   sizeof(ls04x_set_column_addr),
 				   MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_mcs_long_lp(sender,
+	mdfld_dsi_send_mcs_long_hs(sender,
 				   ls04x_set_page_addr,
 				   sizeof(ls04x_set_page_addr),
 				   MDFLD_DSI_SEND_PACKAGE);
-#endif
 	return 0;
 }
 
@@ -821,14 +812,14 @@ static int ls04x_drv_ic_init(struct mdfld_dsi_config *dsi_config)
 		return -EINVAL;
 	sender->status = MDFLD_DSI_PKG_SENDER_FREE;
 
-	r = mdfld_dsi_send_gen_short_lp(sender,
-					ls04x_mcap[0],
-					ls04x_mcap[1], 2,
-					MDFLD_DSI_SEND_PACKAGE);
+	mdfld_dsi_send_gen_short_hs(sender,
+			ls04x_mcap[0],
+			ls04x_mcap[1], 2,
+			MDFLD_DSI_SEND_PACKAGE);
 
 #ifdef ENABLE_PANEL_READ
-	r = mdfld_dsi_read_gen_lp(sender,
-				  ls04x_device_code_read[0], 0, 1, data, 5);
+	r = mdfld_dsi_read_gen_hs(sender,
+			ls04x_device_code_read[0], 0, 1, data, 5);
 	PSB_DEBUG_GENERAL("device code read: %d %02x %02x %02x %02x %02x\n",
 			  r, data[0], data[1], data[2], data[3], data[4]);
 #endif
@@ -923,7 +914,7 @@ static int ls04x_cgs_cmd_set_brightness(struct mdfld_dsi_config *dsi_config,
 		brightness[0] = write_display_brightness;
 		brightness[1] = 0;
 		brightness[2] = (level * 255 / 100) & 0xff;
-		mdfld_dsi_send_mcs_long_lp(sender,
+		mdfld_dsi_send_mcs_long_hs(sender,
 				brightness,
 				sizeof(brightness),
 				MDFLD_DSI_SEND_PACKAGE);
@@ -999,25 +990,21 @@ static int vb_cmd_power_on(struct mdfld_dsi_config *dsi_config)
 	ir2e69_power_on();
 	struct mdfld_dsi_pkg_sender *sender
 				= mdfld_dsi_get_pkg_sender(dsi_config);
-	mdfld_dsi_send_mcs_short_lp(sender, set_tear_on, 0x00, 1,
+	mdfld_dsi_send_mcs_short_hs(sender, set_tear_on, 0x00, 1,
 				    MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_mcs_short_lp(sender, set_display_on, 0, 0,
+	mdfld_dsi_send_mcs_short_hs(sender, set_display_on, 0, 0,
 				    MDFLD_DSI_SEND_PACKAGE);
-	mdfld_dsi_send_mcs_short_lp(sender, exit_sleep_mode, 0, 0,
+	mdfld_dsi_send_mcs_short_hs(sender, exit_sleep_mode, 0, 0,
 				    MDFLD_DSI_SEND_PACKAGE);
 	mdelay(100);
 
 	if (drm_psb_enable_cabc) {
-		mdfld_dsi_send_mcs_short_lp(sender, write_ctrl_display, 0x2c, 1,
+		mdfld_dsi_send_mcs_short_hs(sender, write_ctrl_display, 0x2c, 1,
 				MDFLD_DSI_SEND_PACKAGE);
-		mdfld_dsi_send_mcs_short_lp(sender, write_ctrl_cabc, 0x1, 1,
+		mdfld_dsi_send_mcs_short_hs(sender, write_ctrl_cabc, 0x1, 1,
 				MDFLD_DSI_SEND_PACKAGE);
 	}
-#ifdef ENABLE_PANEL_READ
-	r = mdfld_dsi_get_power_mode(dsi_config, &power,
-					MDFLD_DSI_LP_TRANSMISSION);
-	PSB_DEBUG_GENERAL(": %d %x\n", r, power);
-#endif
+
 	return 0;
 }
 
@@ -1030,17 +1017,18 @@ static int vb_cmd_power_off(struct mdfld_dsi_config *dsi_config)
 
 
 	PSB_DEBUG_ENTRY("\n");
-	r = mdfld_dsi_send_mcs_short_lp(sender, set_display_off, 0, 0,
+	mdfld_dsi_send_mcs_short_hs(sender, set_display_off, 0, 0,
 					MDFLD_DSI_SEND_PACKAGE);
 	mdelay(16);
-	r = mdfld_dsi_send_mcs_short_lp(sender, enter_sleep_mode, 0, 0,
+	mdfld_dsi_send_mcs_short_hs(sender, enter_sleep_mode, 0, 0,
 					MDFLD_DSI_SEND_PACKAGE);
 	mdelay(100);
+
 #ifdef ENABLE_DEEP_SLEEP
-	r = mdfld_dsi_send_gen_short_lp(sender,
-					ls04x_deep_standby[0],
-					ls04x_deep_standby[1],
-					2, MDFLD_DSI_SEND_PACKAGE);
+	r = mdfld_dsi_send_gen_short_hs(sender,
+			ls04x_deep_standby[0],
+			ls04x_deep_standby[1],
+			2, MDFLD_DSI_SEND_PACKAGE);
 	mdelay(16);
 #endif
 
