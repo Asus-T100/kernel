@@ -165,6 +165,8 @@ do {									\
 		: "clockgated"));					\
 } while (0)
 
+extern int drm_vsp_pmpolicy;
+
 /* The status of vsp hardware */
 enum vsp_power_state {
 	VSP_STATE_DOWN = 0,
@@ -183,6 +185,17 @@ enum vsp_irq_reg {
 	VSP_IRQ_REG_ENB    = 4,
 	VSP_IRQ_REG_PULSE  = 5,
 	VSP_IRQ_REG_SIZE
+};
+
+enum vsp_context_num {
+	VSP_CONTEXT_NUM_VPP = 0,
+	VSP_CONTEXT_NUM_VP8 = 0,
+	VSP_CONTEXT_NUM_MAX
+};
+
+enum vsp_fw_type {
+	VSP_FW_TYPE_VPP,
+	VSP_FW_TYPE_VP8
 };
 
 struct vsp_private {

@@ -29,11 +29,12 @@
 #include "psb_reg.h"
 #ifdef MERRIFIELD
 #include "tng_topaz.h"
+#include "pwr_mgmt.h"
 #else
 #include "pnw_topaz.h"
+#include "psb_powermgmt.h"
 #endif
 #include "psb_intel_reg.h"
-#include "psb_powermgmt.h"
 #endif
 
 #include "psb_msvdx.h"

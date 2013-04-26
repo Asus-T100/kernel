@@ -63,6 +63,7 @@ int vsp_init(struct drm_device *dev)
 	struct vsp_private *vsp_priv;
 	bool is_iomem;
 	int ret;
+	unsigned int context_size;
 
 	VSP_DEBUG("init vsp private data structure\n");
 	vsp_priv = kmalloc(sizeof(struct vsp_private), GFP_KERNEL);
@@ -144,8 +145,10 @@ int vsp_init(struct drm_device *dev)
 	}
 
 	/* Create context buffer */
+	context_size = VSP_CONTEXT_NUM_MAX *
+			sizeof(struct vsp_context_settings_t);
 	ret =  ttm_buffer_object_create(bdev,
-				       sizeof(struct vsp_context_settings_t),
+				       context_size,
 				       ttm_bo_type_kernel,
 				       DRM_PSB_FLAG_MEM_MMU |
 				       TTM_PL_FLAG_NO_EVICT,
@@ -326,15 +329,19 @@ int vsp_init_fw(struct drm_device *dev)
 	bool is_iomem;
 	int i;
 
-	VSP_DEBUG("read firmware into buffer\n");
+	PSB_DEBUG_GENERAL("read firmware into buffer\n");
 
 	/* read firmware img */
-	if (vsp_priv->fw_type == Vss_Sys_STATE_BUF_COMMAND) {
+	if (vsp_priv->fw_type == VSP_FW_TYPE_VP8) {
 		VSP_DEBUG("load vp8 fw\n");
 		ret = request_firmware(&raw, FW_VP8_NAME, &dev->pdev->dev);
-	} else {
+	} else if (vsp_priv->fw_type == VSP_FW_TYPE_VPP) {
 		VSP_DEBUG("load vpp fw\n");
 		ret = request_firmware(&raw, FW_NAME, &dev->pdev->dev);
+	} else {
+		DRM_ERROR("Don't support this fw type=%d!\n",
+			vsp_priv->fw_type);
+		ret = -1;
 	}
 
 	if (ret < 0) {
@@ -467,8 +474,10 @@ int vsp_setup_fw(struct drm_psb_private *dev_priv)
 	vsp_set_firmware(dev_priv, vsp_vp0);
 
 	/* Set power-saving mode */
-	/* vsp_priv->ctrl->power_saving_mode = vsp_always_on;*/
-	vsp_priv->ctrl->power_saving_mode = vsp_suspend_on_empty_queue;
+	if (drm_vsp_pmpolicy == PSB_PMPOLICY_NOPM)
+		vsp_priv->ctrl->power_saving_mode = vsp_always_on;
+	else
+		vsp_priv->ctrl->power_saving_mode = vsp_suspend_on_empty_queue;
 
 	/* communicate the type of init
 	 * this is the last value to write
