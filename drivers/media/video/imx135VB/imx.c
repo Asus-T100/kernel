@@ -256,8 +256,8 @@ static int imx_write_reg_array(struct i2c_client *client,
 	return __imx_flush_reg_array(client, &ctrl);
 }
 
-static long __imx_set_exposure(struct v4l2_subdev *sd, u16 coarse_itg,
-				 u16 gain)
+static long __imx_set_exposure(struct v4l2_subdev *sd, unsigned int coarse_itg,
+			       unsigned int gain, unsigned int digitgain)
 
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
@@ -283,6 +283,44 @@ static long __imx_set_exposure(struct v4l2_subdev *sd, u16 coarse_itg,
 		IMX_GLOBAL_GAIN, gain);
 	if (ret)
 		goto out_disable;
+
+	/* digital gain: GR */
+	ret = imx_write_reg(client, IMX_8BIT,
+			IMX_DGC_ADJ, (digitgain >> 8) & 0xFF);
+	if (ret)
+		return ret;
+	ret = imx_write_reg(client, IMX_8BIT,
+			IMX_DGC_ADJ+1, digitgain & 0xFF);
+	if (ret)
+		return ret;
+	/* digital gain: R */
+	ret = imx_write_reg(client, IMX_8BIT,
+			IMX_DGC_ADJ+2, (digitgain >> 8) & 0xFF);
+	if (ret)
+		return ret;
+	ret = imx_write_reg(client, IMX_8BIT,
+			IMX_DGC_ADJ+3, digitgain & 0xFF);
+	if (ret)
+		return ret;
+	/*  digital gain: B */
+	ret = imx_write_reg(client, IMX_8BIT,
+			IMX_DGC_ADJ+4, (digitgain >> 8) & 0xFF);
+	if (ret)
+		return ret;
+	ret = imx_write_reg(client, IMX_8BIT,
+			IMX_DGC_ADJ+5, digitgain & 0xFF);
+	if (ret)
+		return ret;
+	/* digital gain: GB */
+	ret = imx_write_reg(client, IMX_8BIT,
+			IMX_DGC_ADJ+6, (digitgain >> 8) & 0xFF);
+	if (ret)
+		return ret;
+	ret = imx_write_reg(client, IMX_8BIT,
+			IMX_DGC_ADJ+7, digitgain & 0xFF);
+	if (ret)
+		return ret;
+
 	dev->gain       = gain;
 	dev->coarse_itg = coarse_itg;
 
@@ -293,13 +331,14 @@ out:
 	return ret;
 }
 
-static int imx_set_exposure(struct v4l2_subdev *sd, u16 exposure, u16 gain)
+static int imx_set_exposure(struct v4l2_subdev *sd, int exposure,
+	int gain, int digitgain)
 {
 	struct imx_device *dev = to_imx_sensor(sd);
 	int ret;
 
 	mutex_lock(&dev->input_lock);
-	ret = __imx_set_exposure(sd, exposure, gain);
+	ret = __imx_set_exposure(sd, exposure, gain, digitgain);
 	mutex_unlock(&dev->input_lock);
 
 	return ret;
@@ -308,12 +347,11 @@ static int imx_set_exposure(struct v4l2_subdev *sd, u16 exposure, u16 gain)
 static long imx_s_exposure(struct v4l2_subdev *sd,
 			       struct atomisp_exposure *exposure)
 {
-	u16 coarse_itg, gain;
+	unsigned int exp = exposure->integration_time[0];
+	unsigned int gain = exposure->gain[0];
+	unsigned int digitgain = exposure->gain[1];
 
-	coarse_itg = exposure->integration_time[0];
-	gain = exposure->gain[0];
-
-	return imx_set_exposure(sd, coarse_itg, gain);
+	return imx_set_exposure(sd, exp, gain, digitgain);
 }
 
 /* FIXME -To be updated with real OTP reading */
