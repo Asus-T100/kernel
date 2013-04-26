@@ -710,10 +710,10 @@ static struct imx_reg const imx_1080p_strong_dvs_30fps[] = {
 	{IMX_8BIT, 0x030C, 0x01},
 	{IMX_8BIT, 0x030D, 0x12},
 	/* image sizing */
-	{IMX_8BIT, 0x0340, 0x07},  /* frame_length_lines[15:8] */
-	{IMX_8BIT, 0x0341, 0x08},  /*	frame_length_lines[7:0]	*/
-	{IMX_8BIT, 0x0342, 0x15},  /*	line_length_pck[15:8]	*/
-	{IMX_8BIT, 0x0343, 0x7C},  /*	line_length_pck[7:0]	*/
+	{IMX_8BIT, 0x0340, 0x06},  /* frame_length_lines[15:8] */
+	{IMX_8BIT, 0x0341, 0xA4},  /*	frame_length_lines[7:0]	*/
+	{IMX_8BIT, 0x0342, 0x11},  /*	line_length_pck[15:8]	*/
+	{IMX_8BIT, 0x0343, 0xEE},  /*	line_length_pck[7:0]	*/
 	{IMX_8BIT, 0x0344, 0x01},  /*	x_addr_start[15:8]	*/
 	{IMX_8BIT, 0x0345, 0xD8},  /*	x_addr_start[7:0]	*/
 	{IMX_8BIT, 0x0346, 0x02},  /*	y_addr_start[15:8]	*/
