@@ -426,17 +426,6 @@ static int imx_init(struct v4l2_subdev *sd, u32 val)
 	return ret;
 }
 
-static void imx_uninit(struct v4l2_subdev *sd)
-{
-	struct imx_device *dev = to_imx_sensor(sd);
-
-	dev->coarse_itg = 0;
-	dev->fine_itg   = 0;
-	dev->gain       = 0;
-	dev->digital_gain = 0;
-	dev->focus      = IMX_INVALID_CONFIG;
-}
-
 static long imx_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
 {
 
@@ -515,7 +504,6 @@ static int __imx_s_power(struct v4l2_subdev *sd, int on)
 	int ret, r;
 
 	if (on == 0) {
-		imx_uninit(sd);
 		ret = power_down(sd);
 
 		r = imx_vcm_power_down(sd);
