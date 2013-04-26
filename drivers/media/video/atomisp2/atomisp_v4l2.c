@@ -1038,7 +1038,7 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	/* Load isp firmware from user space */
 	isp->firmware = load_firmware(isp);
 	if (!isp->firmware) {
-		dev_err(&dev->dev, "Load firmwares failed\n");
+		err = -ENOENT;
 		goto load_fw_fail;
 	}
 
