@@ -499,7 +499,7 @@ int intel_mid_i2s_lli_rd_req(struct intel_mid_i2s_hdl *drv_data,
 			 ((drv_data->current_settings).rx_fifo_interrupt));
 
 	rxdesc = rxchan->device->device_prep_slave_sg(rxchan, drv_data->rxsgl,
-			lli_length, DMA_FROM_DEVICE, flag, NULL);
+			lli_length, DMA_DEV_TO_MEM, flag, NULL);
 
 	if (!rxdesc) {
 		dev_WARN(&(drv_data->pdev->dev),
@@ -588,7 +588,7 @@ int intel_mid_i2s_lli_wr_req(struct intel_mid_i2s_hdl *drv_data,
 
 	dev_dbg(&(drv_data->pdev->dev), "prep slave sg wr\n");
 	txdesc =  txchan->device->device_prep_slave_sg(txchan, drv_data->txsgl,
-				lli_length, DMA_TO_DEVICE, flag, NULL);
+				lli_length, DMA_MEM_TO_DEV, flag, NULL);
 	dev_dbg(&(drv_data->pdev->dev), "prep slave sg wr done\n");
 	if (!txdesc) {
 		dev_WARN(&(drv_data->pdev->dev),
