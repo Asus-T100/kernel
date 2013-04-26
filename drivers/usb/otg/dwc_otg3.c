@@ -27,7 +27,6 @@ static void reset_hw(struct dwc_otg2 *otg);
 static int otg_id = -1;
 static struct mutex lock;
 static int enable_usb_phy(struct dwc_otg2 *otg, bool on_off);
-static void reset_phy(struct dwc_otg2 *otg);
 static const char driver_name[] = "dwc_otg3";
 static void dwc_otg_remove(struct pci_dev *pdev);
 static struct dwc_device_par *platform_par;
@@ -322,9 +321,6 @@ static int stop_host(struct dwc_otg2 *otg)
 static void start_peripheral(struct dwc_otg2 *otg)
 {
 	struct usb_gadget *gadget;
-
-	if (!is_hybridvp(otg))
-		enable_usb_phy(otg, true);
 
 	gadget = otg->otg.gadget;
 	if (!gadget) {
@@ -655,10 +651,8 @@ static enum power_supply_charger_cable_type
 	enum power_supply_charger_cable_type type =
 		POWER_SUPPLY_CHARGER_TYPE_NONE;
 
-	/* PHY Enable:
-	 * Reset PHY
-	 */
-	reset_phy(otg);
+	/* PHY Enable: */
+	enable_usb_phy(otg, true);
 
 	/* Wait 10ms (~5ms before PHY de-asserts DIR,
 	 * XXus for initial Link reg sync-up).*/
@@ -1099,7 +1093,6 @@ static enum dwc_otg_state do_connector_id_status(struct dwc_otg2 *otg)
 	u32 otg_mask = 0, user_mask = 0, tmp;
 	enum dwc_otg_state state = DWC_STATE_INVALID;
 	u32 gctl;
-	u8 val = 0;
 
 	otg_dbg(otg, "\n");
 	spin_lock_irqsave(&otg->lock, flags);
@@ -1108,10 +1101,12 @@ static enum dwc_otg_state do_connector_id_status(struct dwc_otg2 *otg)
 	otg->charging_cap.chrg_evt = POWER_SUPPLY_CHARGER_EVENT_DISCONNECT;
 	spin_unlock_irqrestore(&otg->lock, flags);
 
+	dwc_otg_charger_hwdet(false);
+
 	/* change mode to DRD mode to void ulpi access fail */
 	reset_hw(otg);
 	if (!is_hybridvp(otg))
-		reset_phy(otg);
+		enable_usb_phy(otg, false);
 
 	/* Disable hibernation mode by default */
 	gctl = otg_read(otg, GCTL);
@@ -1137,8 +1132,6 @@ static enum dwc_otg_state do_connector_id_status(struct dwc_otg2 *otg)
 	gctl |= GCTL_PRT_CAP_DIR_DEV << GCTL_PRT_CAP_DIR_SHIFT;
 	otg_write(otg, GCTL, gctl);
 
-	dwc_otg_charger_hwdet(false);
-
 	msleep(60);
 
 stay_init:
@@ -1150,24 +1143,7 @@ stay_init:
 				USER_ID_A_CHANGE_EVENT;
 #endif
 
-	if (!is_hybridvp(otg)) {
-		ret = ulpi_read(otg, TUSB1211_VENDOR_ID_LO, &val);
-		if (ret < 0)
-			printk(KERN_ERR "ulpi read error!\n");
-		printk(KERN_ERR "Vendor ID low = 0x%x\n", val);
-		ret = ulpi_read(otg, TUSB1211_VENDOR_ID_HI, &val);
-		if (ret < 0)
-			printk(KERN_ERR "ulpi read error!\n");
-		printk(KERN_ERR "Vendor ID high = 0x%x\n", val);
-		ret = ulpi_read(otg, TUSB1211_PRODUCT_ID_LO, &val);
-		if (ret < 0)
-			printk(KERN_ERR "ulpi read error!\n");
-		printk(KERN_ERR "Product ID low = 0x%x\n", val);
-		ret = ulpi_read(otg, TUSB1211_PRODUCT_ID_HI, &val);
-		if (ret < 0)
-			printk(KERN_ERR "ulpi read error!\n");
-		printk(KERN_ERR "Product ID high = 0x%x\n", val);
-	}
+	otg_dbg(otg, "Return to DWC_STATE_INIT\n");
 
 	/* FIXME: assume VBUS is always on.
 	 * Need to remove this when PMIC event
@@ -1439,37 +1415,29 @@ static int dwc_otg_handle_notification(struct notifier_block *nb,
 	return state;
 }
 
-/* This function will assert/deassert USBRST pin for USB2PHY. */
+/* This function will control VUSBPHY to power gate/ungate USBPHY */
 static int enable_usb_phy(struct dwc_otg2 *otg, bool on_off)
 {
 	int ret;
 
 	if (on_off) {
-		ret = intel_scu_ipc_iowrite8(PMIC_USBPHYCTRL,
-				PMIC_USBPHYCTRL_D0);
+		ret = intel_scu_ipc_update_register(PMIC_VLDOCNT,
+				0xff, PMIC_VLDOCNT_VUSBPHYEN);
 		if (ret)
-			otg_err(otg, "Fail to assert USBRST\n");
+			otg_err(otg, "Fail to enable VBUSPHY\n");
 		msleep(20);
+
+		/* Set 0x7f for better quality in eye diagram
+		 * It means ZHSDRV = 0b11 and IHSTX = 0b1111*/
+		ulpi_write(otg, TUSB1211_VENDOR_SPECIFIC1_SET, 0x7f);
 	} else {
-		ret = intel_scu_ipc_iowrite8(PMIC_USBPHYCTRL, 0);
+		ret = intel_scu_ipc_update_register(PMIC_VLDOCNT,
+				0x00, PMIC_VLDOCNT_VUSBPHYEN);
 		if (ret)
-			otg_err(otg, "Fail to de-assert USBRST\n");
+			otg_err(otg, "Fail to disable VBUSPHY\n");
 	}
 
 	return 0;
-}
-
-static void reset_phy(struct dwc_otg2 *otg)
-{
-	enable_usb_phy(otg, false);
-
-	udelay(500);
-
-	enable_usb_phy(otg, true);
-
-	/* Set 0x7f for better quality in eye diagram
-	 * It means ZHSDRV = 0b11 and IHSTX = 0b1111*/
-	ulpi_write(otg, TUSB1211_VENDOR_SPECIFIC1_SET, 0x7f);
 }
 
 int otg_main_thread(void *data)
@@ -1485,8 +1453,6 @@ int otg_main_thread(void *data)
 	allow_signal(SIGUSR1);
 
 	pm_runtime_get_sync(otg->dev);
-	if (!is_hybridvp(otg))
-		enable_usb_phy(otg, true);
 
 	/* Allow the thread to be frozen */
 	set_freezable();
@@ -1956,6 +1922,14 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 		goto exit;
 	pm_qos_add_request(otg->qos, PM_QOS_CPU_DMA_LATENCY,\
 			PM_QOS_DEFAULT_VALUE);
+
+	if (!is_hybridvp(otg)) {
+		otg_info(otg, "De-assert USBRST# to enable PHY\n");
+		retval = intel_scu_ipc_iowrite8(PMIC_USBPHYCTRL,
+				PMIC_USBPHYCTRL_D0);
+		if (retval)
+			otg_err(otg, "Fail to de-assert USBRST#\n");
+	}
 
 	/* Don't let phy go to suspend mode, which
 	 * will cause FS/LS devices enum failed in host mode.
