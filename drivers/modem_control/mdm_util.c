@@ -225,6 +225,10 @@ void mdm_ctrl_set_func(struct mdm_ctrl *drv)
 
 	if (drv->pdata)
 		modem_type = drv->pdata->modem;
+	else {
+		pr_info(DRVNAME": No modem data available");
+		return;
+	}
 
 	pr_info(DRVNAME": Taking %d modem sequences", modem_type);
 
@@ -381,7 +385,6 @@ struct mdm_ctrl_pdata *modem_ctrl_create_platform_data(void)
 
 Free_mid_info:
 	kfree(mid_info);
-	mid_info = NULL;
 Error:
 	kfree(pdata);
 	pdata = NULL;
@@ -435,6 +438,7 @@ void mdm_ctrl_get_device_info(struct mdm_ctrl *drv)
 	if (!drv->pdata || drv->pdata->is_mdm_ctrl_disabled) {
 		drv->is_mdm_ctrl_disabled = true;
 		pr_info(DRVNAME": Disabling driver. No known device.");
+		kfree(mcd_reg_info);
 		goto out;
 	}
 

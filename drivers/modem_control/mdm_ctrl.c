@@ -643,8 +643,11 @@ static int __init mdm_ctrl_module_init(void)
 	mdm_ctrl_get_device_info(new_drv);
 
 	if (new_drv->is_mdm_ctrl_disabled) {
+		/* KW fix can't happen. */
+		if (unlikely(new_drv->pdata))
+			kfree(new_drv->pdata);
 		ret = -ENODEV;
-		goto out;
+		goto free_drv;
 	}
 
 	/* Initialization */
