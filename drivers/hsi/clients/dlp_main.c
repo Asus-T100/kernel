@@ -1245,6 +1245,7 @@ int dlp_hsi_controller_push(struct dlp_xfer_ctx *xfer_ctx, struct hsi_msg *pdu)
 			xfer_ctx->seq_num,
 			dlp_drv.tty_closed, dlp_drv.tx_timeout);
 
+		err = -EAGAIN;
 		goto out;
 	}
 
