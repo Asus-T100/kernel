@@ -661,7 +661,12 @@ static int imx_get_intg_factor(struct i2c_client *client,
 		ret = -EINVAL;
 		goto out;
 	}
-	vt_pix_clk_freq_mhz = ext_clk_freq_hz/div*pll_multiplier;
+	/*
+	 * imx135 uses vt_pix_clk * 2 for calculations, i.e. integration
+	 * time: coarse_int_time * line_length_pck/(2*vt_pix_clk).
+	 * Provide correct value to user.
+	 */
+	vt_pix_clk_freq_mhz = ext_clk_freq_hz / div * pll_multiplier * 2;
 
 	dev->vt_pix_clk_freq_mhz = vt_pix_clk_freq_mhz;
 	buf.coarse_integration_time_min = coarse_integration_time_min;
