@@ -421,9 +421,8 @@ static int atomisp_open(struct file *file)
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
 	int ret;
-	struct atomisp_css_env atomisp_css_env;
 
-	atomisp_set_css_env(isp->firmware, &atomisp_css_env);
+	atomisp_set_css_env(isp);
 
 	dev_dbg(isp->dev, "open device %s\n", vdev->name);
 
@@ -455,7 +454,7 @@ static int atomisp_open(struct file *file)
 	}
 
 	/* Init ISP */
-	if (atomisp_css_init(isp, &atomisp_css_env)) {
+	if (atomisp_css_init(isp)) {
 		ret = -EINVAL;
 		goto error;
 	}
@@ -545,21 +544,13 @@ static int atomisp_release(struct file *file)
 	atomisp_free_3a_dis_buffers(isp);
 	atomisp_free_all_shading_tables(isp);
 	atomisp_free_internal_buffers(isp);
-	sh_css_uninit();
+	atomisp_css_uninit(isp);
 	hrt_isp_css_mm_clear();
 
 	ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
 				       core, s_power, 0);
 	if (ret)
 		dev_warn(isp->dev, "Failed to power-off sensor\n");
-
-	/* store L1 base address for next time we init the CSS */
-/*
-	isp->mmu_l1_base =
-			(void *)mmgr_get_base_address();
-*/
-	isp->mmu_l1_base =
-			(void *)sh_css_mmu_get_page_table_base_index();
 
 	if (pm_runtime_put_sync(vdev->v4l2_dev->dev) < 0)
 		dev_err(isp->dev, "Failed to power off device\n");

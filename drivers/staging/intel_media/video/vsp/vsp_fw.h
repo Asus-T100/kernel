@@ -214,7 +214,11 @@ enum VssStatus {
 	VssInvalidCommandType         = 0x80020000,
 	VssInvalidCommandArgument     = 0x80030000,
 	VssInvalidProcPictureCommand  = 0x80040000,
-	VssInvalidDdrAddress          = 0x80050000
+	VssInvalidDdrAddress          = 0x80050000,
+	VssInvalidSequenceParameters_VP8 = 0x1,
+	VssInvalidPictureParameters_VP8  = 0x2,
+	VssInvalidCommandType_VP8        = 0x3,
+	VssInvalidCommandArgument_VP8    = 0x4
 };
 
 enum FrcResponseType {

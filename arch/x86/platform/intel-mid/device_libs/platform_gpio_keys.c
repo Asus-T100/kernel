@@ -54,7 +54,7 @@ static struct gpio_keys_button gpio_button[] = {
 	{KEY_BACK,              -1, 1, "fp_back_key",   EV_KEY, 0, 20},
 	{KEY_VOLUMEUP,          -1, 1, "volume_up",     EV_KEY, 0, 20},
 	{KEY_VOLUMEDOWN,        -1, 1, "volume_down",   EV_KEY, 0, 20},
-	{KEY_MUTE,              -1, 1, "mute_enable",   EV_KEY, 0, 20},
+	{SW_MUTE,               -1, 1, "mute_enable",   EV_SW,  0, 20},
 	{KEY_CAMERA,            -1, 1, "camera0_sb1",   EV_KEY, 0, 20},
 	{KEY_CAMERA_FOCUS,      -1, 1, "camera0_sb2",   EV_KEY, 0, 20},
 };
@@ -104,50 +104,105 @@ static int __init pb_keys_init(void)
 late_initcall(pb_keys_init);
 
 #ifdef	CONFIG_ACPI
-static struct gpio_keys_button lesskey_button[] = {
-	{KEY_POWER,		-1, 1, "power_btn",	EV_KEY, },
-	{KEY_HOME,		-1, 1, "home_btn",	EV_KEY, },
-	{KEY_VOLUMEUP,		-1, 1, "volume_up",	EV_KEY, },
-	{KEY_VOLUMEDOWN,	-1, 1, "volume_down",	EV_KEY, },
-	{KEY_RO,		-1, 1, "rotationlock",	EV_KEY, },
+enum {
+	NON_REPEAT_KEYS,
+	AUTO_REPEAT_KEYS,
+	KEY_TYPE_NUMS,
 };
 
-static struct gpio_keys_platform_data lesskey_keys = {
-	.buttons	= lesskey_button,
-	.rep		= 1,
-	.nbuttons	= 0,
+static struct gpio_keys_button lesskey_button_non_repeat[] = {
+	{KEY_POWER,		-1, 1, "power_btn",	EV_KEY, .acpi_idx = 0},
+	{ },
 };
 
-static struct platform_device lesskey_device = {
-	.name		= "gpio-lesskey",
-	.id		= -1,
-	.dev		= {
-		.platform_data	= &lesskey_keys,
+static struct gpio_keys_button lesskey_button_auto_repeat[] = {
+	{KEY_HOME,		-1, 1, "home_btn",	EV_KEY, .acpi_idx = 1},
+	{KEY_VOLUMEUP,		-1, 1, "volume_up",	EV_KEY, .acpi_idx = 2},
+	{KEY_VOLUMEDOWN,	-1, 1, "volume_down",	EV_KEY, .acpi_idx = 3},
+	{KEY_RO,		-1, 1, "rotationlock",	EV_KEY, .acpi_idx = 4},
+};
+
+struct gpio_keys_init_data {
+	struct gpio_keys_button *keys_button;
+	int nkeys;
+};
+
+static struct gpio_keys_init_data lesskey_init_data[KEY_TYPE_NUMS] = {
+	{
+		.keys_button = lesskey_button_non_repeat,
+		.nkeys = 1,
+	}, {
+		.keys_button = lesskey_button_auto_repeat,
+		.nkeys = sizeof(lesskey_button_auto_repeat) /
+			 sizeof(struct gpio_keys_button),
+	},
+};
+
+static struct gpio_keys_platform_data lesskey_keys[KEY_TYPE_NUMS] = {
+	{
+		.buttons	= lesskey_button_non_repeat,
+		.rep		= 0,
+		.nbuttons	= 0,
+	}, {
+		.buttons	= lesskey_button_auto_repeat,
+		.rep		= 1,
+		.nbuttons	= 0,
+	},
+};
+
+static struct platform_device lesskey_device[KEY_TYPE_NUMS] = {
+	{
+		.name		= "gpio-lesskey-nrpt",
+		.id		= -1,
+		.dev		= {
+			.platform_data	= &lesskey_keys[NON_REPEAT_KEYS],
+		},
+	}, {
+		.name		= "gpio-lesskey-rpt",
+		.id		= -1,
+		.dev		= {
+			.platform_data	= &lesskey_keys[AUTO_REPEAT_KEYS],
+		},
 	},
 };
 
 static int
 lesskey_pnp_probe(struct pnp_dev *pdev, const struct pnp_device_id *id)
 {
-	int i, num, good = 0;
-	struct gpio_keys_button *gb = lesskey_button;
+	int type, i, num, good;
+	struct gpio_keys_button *gb;
 	struct acpi_gpio_info info;
+	int ret = 0;
 
-	num = sizeof(lesskey_button) / sizeof(lesskey_button[0]);
-	for (i = 0; i < num; i++) {
-		gb[i].gpio = acpi_get_gpio_by_index(&pdev->dev, i, &info);
-		pr_info("lesskey [%2d]: name = %s, gpio = %d\n",
-			 i, gb[i].desc, gb[i].gpio);
-		if (gb[i].gpio < 0)
-			continue;
-		if (i != good)
-			gb[good] = gb[i];
-		good++;
-	}
+	for (type = 0; type < KEY_TYPE_NUMS; type++) {
+		good = 0;
+		gb = lesskey_init_data[type].keys_button;
+		num = lesskey_init_data[type].nkeys;
+		pr_info("%s, num = %d\n", __func__, num);
 
-	if (good) {
-		lesskey_keys.nbuttons = good;
-		return platform_device_register(&lesskey_device);
+		for (i = 0; i < num; i++) {
+			gb[i].gpio = acpi_get_gpio_by_index(&pdev->dev,
+							gb[i].acpi_idx, &info);
+			pr_info("%s lesskey [%2d]: name = %s, gpio = %d\n",
+				 (type == NON_REPEAT_KEYS) ?
+				 "non repeat" : "auto repeat",
+				 i, gb[i].desc, gb[i].gpio);
+			if (gb[i].gpio < 0)
+				continue;
+			if (i != good)
+				gb[good] = gb[i];
+			good++;
+		}
+
+		if (good) {
+			lesskey_keys[type].nbuttons = good;
+			ret = platform_device_register(&lesskey_device[type]);
+			if (ret) {
+				dev_err(&pdev->dev, "register platform device %s failed\n",
+					lesskey_device[type].name);
+				return ret;
+			}
+		}
 	}
 
 	return 0;

@@ -2759,10 +2759,10 @@ static int psb_dpu_query_ioctl(struct drm_device *dev, void *arg,
 		return -EOPNOTSUPP;
 	}
 
-	DRM_INFO("dsr query. \n");
+	DRM_INFO("dsr query.\n");
 
 	dev_priv->um_start = true;
-	panel_type = is_panel_vid_or_cmd(dev);
+	panel_type = get_panel_mode(dev);
 
 	if (panel_type == MDFLD_DSI_ENCODER_DPI) {
 		DRM_INFO("DSI panel is working in video mode\n");
@@ -2800,7 +2800,7 @@ static int psb_dpu_dsr_on_ioctl(struct drm_device *dev, void *arg,
 		return -EOPNOTSUPP;
 	}
 
-	panel_type = is_panel_vid_or_cmd(dev);
+	panel_type = get_panel_mode(dev);
 
 	if (panel_type == MDFLD_DSI_ENCODER_DPI) {
 		DRM_INFO("DSI panel is working in video mode\n");
@@ -3298,7 +3298,7 @@ static int psb_vsync_set_ioctl(struct drm_device *dev, void *data,
 				mdfld_dsi_dsr_forbid(dsi_config);
 				psb_fp->dsr_blocked = true;
 
-				if (is_panel_vid_or_cmd(dev) ==
+				if (get_panel_mode(dev) ==
 						MDFLD_DSI_ENCODER_DPI)
 					psb_enable_vblank(dev, pipe);
 				break;
@@ -3314,7 +3314,7 @@ static int psb_vsync_set_ioctl(struct drm_device *dev, void *data,
 			case 0:
 			case 2:
 				psb_fp = psb_fpriv(file_priv);
-				if (is_panel_vid_or_cmd(dev) ==
+				if (get_panel_mode(dev) ==
 						MDFLD_DSI_ENCODER_DPI)
 					psb_disable_vblank(dev, pipe);
 

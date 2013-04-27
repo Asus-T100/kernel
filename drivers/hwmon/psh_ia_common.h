@@ -2,6 +2,7 @@
 #define _PSH_IA_COMMON_H_
 
 #include <linux/device.h>
+#include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/io.h>
 #include <linux/mm.h>
@@ -132,7 +133,9 @@ struct sensor_cfg {
 
 
 #ifndef _LOOP_BUFFER_H_
-typedef int (*update_finished_f)(u16 offset);
+struct psh_ia_priv;
+typedef int (*update_finished_f)(struct psh_ia_priv *psh_ia_data,
+					u16 offset);
 
 struct loop_buffer {
 	int in_reading;
@@ -183,11 +186,14 @@ struct psh_ia_priv {
 	u32 reset_in_progress;
 	u32 load_in_progress;
 	u32 status_bitmask;
+
+	void *platform_priv;
 };
 
 /* exports */
 void ia_process_lbuf(struct device *dev);
-int ia_send_cmd(int ch, struct ia_cmd *cmd, int len);
+int ia_send_cmd(struct psh_ia_priv *psh_ia_data,
+		int ch, struct ia_cmd *cmd, int len);
 int psh_ia_common_init(struct device *dev, struct psh_ia_priv **data);
 void psh_ia_common_deinit(struct device *dev);
 
@@ -195,6 +201,7 @@ void psh_ia_common_deinit(struct device *dev);
 /* imports */
 /* need implemented by user */
 int do_setup_ddr(struct device *dev);
-int process_send_cmd(int ch, struct ia_cmd *cmd, int len);
-int ia_handle_frame(void *dbuf, int size);
+int process_send_cmd(struct psh_ia_priv *psh_ia_data,
+			int ch, struct ia_cmd *cmd, int len);
+int ia_handle_frame(struct psh_ia_priv *psh_ia_data, void *dbuf, int size);
 #endif

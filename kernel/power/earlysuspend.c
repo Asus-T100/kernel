@@ -60,7 +60,8 @@ static void try_to_suspend(struct work_struct *work)
 {
 	unsigned int initial_count, final_count;
 
-	if (!pm_get_wakeup_count(&initial_count, true))
+	if (!pm_get_wakeup_count(&initial_count, true) ||
+	    !alarm_pm_wake_check())
 		goto queue_again;
 
 	mutex_lock(&suspend_lock);

@@ -29,17 +29,80 @@
 #endif
 
 #include <media/videobuf-vmalloc.h>
-#include <linux/firmware.h>
+
+#define CSS_RX_IRQ_INFO_BUFFER_OVERRUN \
+	CSS_ID(CSS_RX_IRQ_INFO_BUFFER_OVERRUN)
+#define CSS_RX_IRQ_INFO_ENTER_SLEEP_MODE \
+	CSS_ID(CSS_RX_IRQ_INFO_ENTER_SLEEP_MODE)
+#define CSS_RX_IRQ_INFO_EXIT_SLEEP_MODE \
+	CSS_ID(CSS_RX_IRQ_INFO_EXIT_SLEEP_MODE)
+#define CSS_RX_IRQ_INFO_ECC_CORRECTED \
+	CSS_ID(CSS_RX_IRQ_INFO_ECC_CORRECTED)
+#define CSS_RX_IRQ_INFO_ERR_SOT \
+	CSS_ID(CSS_RX_IRQ_INFO_ERR_SOT)
+#define CSS_RX_IRQ_INFO_ERR_SOT_SYNC \
+	CSS_ID(CSS_RX_IRQ_INFO_ERR_SOT_SYNC)
+#define CSS_RX_IRQ_INFO_ERR_CONTROL \
+	CSS_ID(CSS_RX_IRQ_INFO_ERR_CONTROL)
+#define CSS_RX_IRQ_INFO_ERR_ECC_DOUBLE \
+	CSS_ID(CSS_RX_IRQ_INFO_ERR_ECC_DOUBLE)
+#define CSS_RX_IRQ_INFO_ERR_CRC \
+	CSS_ID(CSS_RX_IRQ_INFO_ERR_CRC)
+#define CSS_RX_IRQ_INFO_ERR_UNKNOWN_ID \
+	CSS_ID(CSS_RX_IRQ_INFO_ERR_UNKNOWN_ID)
+#define CSS_RX_IRQ_INFO_ERR_FRAME_SYNC \
+	CSS_ID(CSS_RX_IRQ_INFO_ERR_FRAME_SYNC)
+#define CSS_RX_IRQ_INFO_ERR_FRAME_DATA \
+	CSS_ID(CSS_RX_IRQ_INFO_ERR_FRAME_DATA)
+#define CSS_RX_IRQ_INFO_ERR_DATA_TIMEOUT \
+	CSS_ID(CSS_RX_IRQ_INFO_ERR_DATA_TIMEOUT)
+#define CSS_RX_IRQ_INFO_ERR_UNKNOWN_ESC \
+	CSS_ID(CSS_RX_IRQ_INFO_ERR_UNKNOWN_ESC)
+#define CSS_RX_IRQ_INFO_ERR_LINE_SYNC \
+	CSS_ID(CSS_RX_IRQ_INFO_ERR_LINE_SYNC)
+#define CSS_RX_IRQ_INFO_INIT_TIMEOUT \
+	CSS_ID(CSS_RX_IRQ_INFO_INIT_TIMEOUT)
+
+#define CSS_IRQ_INFO_CSS_RECEIVER_SOF	CSS_ID(CSS_IRQ_INFO_CSS_RECEIVER_SOF)
+#define CSS_IRQ_INFO_CSS_RECEIVER_EOF	CSS_ID(CSS_IRQ_INFO_CSS_RECEIVER_EOF)
+
+#define CSS_EVENT_OUTPUT_FRAME_DONE	CSS_EVENT(OUTPUT_FRAME_DONE)
+#define CSS_EVENT_VF_OUTPUT_FRAME_DONE	CSS_EVENT(VF_OUTPUT_FRAME_DONE)
+#define CSS_EVENT_3A_STATISTICS_DONE	CSS_EVENT(3A_STATISTICS_DONE)
+#define CSS_EVENT_DIS_STATISTICS_DONE	CSS_EVENT(DIS_STATISTICS_DONE)
+#define CSS_EVENT_PIPELINE_DONE		CSS_EVENT(PIPELINE_DONE)
+
+#define CSS_BUFFER_TYPE_3A_STATISTICS	CSS_ID(CSS_BUFFER_TYPE_3A_STATISTICS)
+#define CSS_BUFFER_TYPE_DIS_STATISTICS	CSS_ID(CSS_BUFFER_TYPE_DIS_STATISTICS)
+#define CSS_BUFFER_TYPE_INPUT_FRAME	CSS_ID(CSS_BUFFER_TYPE_INPUT_FRAME)
+#define CSS_BUFFER_TYPE_OUTPUT_FRAME	CSS_ID(CSS_BUFFER_TYPE_OUTPUT_FRAME)
+#define CSS_BUFFER_TYPE_VF_OUTPUT_FRAME	CSS_ID(CSS_BUFFER_TYPE_VF_OUTPUT_FRAME)
+#define CSS_BUFFER_TYPE_RAW_OUTPUT_FRAME \
+	CSS_ID(CSS_BUFFER_TYPE_RAW_OUTPUT_FRAME)
 
 struct atomisp_device;
 
-void atomisp_set_css_env(const struct firmware *isp,
-			struct atomisp_css_env *atomisp_env);
+void atomisp_set_css_env(struct atomisp_device *isp);
 
-int atomisp_css_init(struct atomisp_device *isp,
-			struct atomisp_css_env *atomisp_env);
+int atomisp_css_init(struct atomisp_device *isp);
+
+void atomisp_css_uninit(struct atomisp_device *isp);
+
+void atomisp_css_suspend(void);
+
+int atomisp_css_resume(struct atomisp_device *isp);
 
 void atomisp_css_init_struct(struct atomisp_device *isp);
+
+int atomisp_css_irq_translate(struct atomisp_device *isp,
+			      unsigned int *infos);
+
+void atomisp_css_rx_get_irq_info(unsigned int *infos);
+
+void atomisp_css_rx_clear_irq_info(unsigned int infos);
+
+int atomisp_css_irq_enable(struct atomisp_device *isp,
+			   enum atomisp_css_irq_info info, bool enable);
 
 int atomisp_q_video_buffer_to_css(struct atomisp_device *isp,
 			struct videobuf_vmalloc_memory *vm_mem,
@@ -54,4 +117,28 @@ int atomisp_q_dis_buffer_to_css(struct atomisp_device *isp,
 			struct atomisp_dis_buf *dis_buf,
 			enum atomisp_css_pipe_id css_pipe_id);
 
+void atomisp_css_mmu_invalidate_cache(void);
+
+int atomisp_css_start(struct atomisp_device *isp,
+		      enum atomisp_css_pipe_id pipe_id, bool in_reset);
+
+void atomisp_css_update_isp_params(struct atomisp_device *isp);
+
+int atomisp_css_queue_buffer(struct atomisp_device *isp,
+			     enum atomisp_css_pipe_id pipe_id,
+			     enum atomisp_css_buffer_type buf_type,
+			     struct atomisp_css_buffer *isp_css_buffer);
+
+int atomisp_css_dequeue_buffer(struct atomisp_device *isp,
+				enum atomisp_css_pipe_id pipe_id,
+				enum atomisp_css_buffer_type buf_type,
+				struct atomisp_css_buffer *isp_css_buffer);
+
+int atomisp_css_get_3a_statistics(struct atomisp_device *isp,
+				  struct atomisp_css_buffer *isp_css_buffer);
+
+void atomisp_css_get_dis_statistics(struct atomisp_device *isp,
+				    struct atomisp_css_buffer *isp_css_buffer);
+
+int atomisp_css_dequeue_event(struct atomisp_css_event *current_event);
 #endif

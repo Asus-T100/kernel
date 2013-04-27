@@ -1,0 +1,28 @@
+config VIDEO_ATOMISP_CSS20
+	tristate "Intel Atom Image Signal Processor CSS2.0 Driver"
+	depends on VIDEO_V4L2
+	depends on VIDEO_ATOMISP
+	select VIDEOBUF_VMALLOC
+
+	---help---
+	  Say Y here if your platform support camera imaging subsystem on
+	  the Intel Atom SoC platform.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called atomisp.
+config ISP2400
+	tristate "Intel Atom Image Signal Processor ISP2400 driver"
+	depends on VIDEO_V4L2
+	depends on VIDEO_ATOMISP
+
+	 ---help---
+	  Say Y here if your platform support camera imaging subsystem 2400b0 on
+	  the Intel Atom SoC platform.
+config ISP2400B0
+	  tristate "Intel Atom Image Signal Processor ISP2400B0 driver"
+	  depends on VIDEO_V4L2
+	  depends on VIDEO_ATOMISP
+
+	  ---help---
+	  Say Y here if your platform support camera imaging subsystem 2400b0 on
+	  the Intel Atom SoC platform

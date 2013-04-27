@@ -49,6 +49,8 @@ static struct sg_table *i915_gem_map_dma_buf(struct dma_buf_attachment *attachme
 
 	/* link the pages into an SG then map the sg */
 	sg = drm_prime_pages_to_sg(obj->pages, npages);
+	if (!sg)
+		goto out;
 	nents = dma_map_sg(attachment->dev, sg->sgl, sg->nents, dir);
 out:
 	mutex_unlock(&dev->struct_mutex);

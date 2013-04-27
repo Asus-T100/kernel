@@ -118,7 +118,9 @@ struct pdev_entry {
 static LIST_HEAD(pdev_list);
 static DEFINE_MUTEX(pdev_list_mutex);
 
+#ifdef CONFIG_SENSORS_CORETEMP_INTERRUPT
 static DEFINE_PER_CPU(struct delayed_work, core_threshold_work);
+#endif
 
 static ssize_t show_name(struct device *dev,
 			struct device_attribute *devattr, char *buf)
@@ -456,8 +458,8 @@ static int __cpuinit get_tjmax(struct cpuinfo_x86 *c, u32 id,
 		 * If the TjMax is not plausible, an assumption
 		 * will be used
 		 */
-		/* TODO: Remove the below workaround in Tangier B0 stepping */
-		if (c->x86_model == 0x4a) {
+		/* TODO: Remove the below workaround in TNG/VLV2 B0 stepping */
+		if (c->x86_model == 0x4a || c->x86_model == 0x37) {
 			return 90000;
 		}
 		if (val) {

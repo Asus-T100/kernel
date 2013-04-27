@@ -395,27 +395,14 @@ static const struct sdhci_pci_fixes sdhci_intel_mrst_hc1_hc2 = {
 #define ENCTRL0_OFF		0x10
 #define ENCTRL1_OFF		0x11
 
-static int intel_mfld_clv_sd_suspend(struct sdhci_pci_chip *chip)
+static int intel_scu_ipc_suspend(struct sdhci_pci_chip *chip)
 {
-	int err, i;
+	int err;
 	u16 addr;
 	u8 data;
 
 	if (chip->pdev->device != PCI_DEVICE_ID_INTEL_CLV_SDIO0)
 		return 0;
-
-	/*
-	 * Make this function only be called when entering S3 but
-	 * not D0i3.
-	 *
-	 * As PM core designed, when entering S3, the device will
-	 * be blocked to enter D0i3, that is to say the
-	 * runtime_suspended should be false when calling this.
-	 */
-	for (i = 0; i < chip->num_slots; i++) {
-		if (chip->slots[i]->host->runtime_suspended == true)
-			return 0;
-	}
 
 	err = intel_scu_ipc_read_shim(&chip->enctrl0_orig,
 			STORAGESTIO_FLISNUM, ENCTRL0_OFF);
@@ -487,6 +474,37 @@ static int intel_mfld_clv_sd_suspend(struct sdhci_pci_chip *chip)
 		 */
 	}
 	return 0;
+}
+
+static int intel_mfld_clv_sd_suspend(struct sdhci_pci_chip *chip)
+{
+	int err, i;
+
+	/*
+	 * Make this function only be called when entering S3 but
+	 * not D0i3.
+	 *
+	 * As PM core designed, when entering S3, the device will
+	 * be blocked to enter D0i3, that is to say the
+	 * runtime_suspended should be false when calling this.
+	 */
+	for (i = 0; i < chip->num_slots; i++) {
+		if (chip->slots[i]->host->runtime_suspended == true)
+			return 0;
+	}
+	err = intel_scu_ipc_suspend(chip);
+	if (err)
+		pr_err("SDHCI device %04X: intel_scu_ipc_suspend, err %d\n",
+				chip->pdev->device, err);
+	return 0;
+}
+
+static void scu_ipc_shutdown(struct sdhci_pci_chip *chip)
+{
+	int ret;
+	ret = intel_scu_ipc_suspend(chip);
+	if (ret)
+		printk(KERN_INFO "scu_ipc_shutdown failed\n");
 }
 
 static int intel_mfld_clv_sd_resume(struct sdhci_pci_chip *chip)
@@ -2021,6 +2039,7 @@ static void __devexit sdhci_pci_shutdown(struct pci_dev *pdev)
 			pm_runtime_disable(&pdev->dev);
 			pm_runtime_put_noidle(&pdev->dev);
 		}
+		scu_ipc_shutdown(chip);
 	}
 }
 

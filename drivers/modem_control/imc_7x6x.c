@@ -94,9 +94,6 @@ int mdm_ctrl_cold_boot_7x6x(struct mdm_ctrl *drv)
 		usleep_range(pdata->pwr_down_duration,
 				pdata->pwr_down_duration);
 
-	} else {
-		/* TO BE REVERTED: Workaround for ctp_pr2*/
-		wake_lock(&drv->stay_awake);
 	}
 
 	/* Toggle the RESET_BB_N */
@@ -154,9 +151,6 @@ int mdm_ctrl_cold_reset_7x6x(struct mdm_ctrl *drv)
 			pr_err(DRVNAME ": ipc_readv() failed (ret: %d)", ret);
 			goto out;
 		}
-	} else {
-		/* TO BE REVERTED: Workaround for ctp_pr2*/
-		wake_lock(&drv->stay_awake);
 	}
 
 	/* Toggle the RESET_BB_N */
@@ -206,10 +200,6 @@ out:
 int mdm_ctrl_silent_warm_reset_7x6x(struct mdm_ctrl *drv)
 {
 	struct mdm_ctrl_device_info *mid_info = drv->pdata->device_data;
-
-	/* TO BE REVERTED: workaround for ctp_pr2*/
-	if (!drv->pdata->chipctrl_mask)
-		wake_lock(&drv->stay_awake);
 
 	gpio_set_value(drv->gpio_rst_bbn, 0);
 	usleep_range(mid_info->warm_rst_duration, mid_info->warm_rst_duration);

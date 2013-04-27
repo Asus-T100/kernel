@@ -73,6 +73,9 @@ struct lss_definition {
 #define PUNIT_CR_CORE_C6_RES_MSR	0x3fd
 
 #define NUM_CSTATES_RES_MEASURE		3
+
+extern unsigned int enable_s3;
+extern unsigned int enable_s0ix;
 #endif
 
 /* platform dependency starts */

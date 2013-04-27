@@ -88,6 +88,10 @@ static int xhci_dwc_bus_suspend(struct usb_hcd *hcd)
 static int xhci_dwc_bus_resume(struct usb_hcd *hcd)
 {
 	int ret;
+
+	/* delay 1ms to waiting core stable */
+	mdelay(1);
+
 	ret = xhci_bus_resume(hcd);
 	set_phy_suspend_resume(hcd, 0);
 	return ret;

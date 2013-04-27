@@ -755,6 +755,20 @@ void init_nc_device_states(void)
 unsigned int enable_standby __read_mostly;
 module_param(enable_standby, uint, 0000);
 
+/* FIXME:: We have issues with S0ix/S3 enabling by default
+ * with display lockup, HSIC etc., so have a boot time option
+ * to enable S0ix/S3
+ */
+unsigned int enable_s3 __read_mostly = 1;
+module_param(enable_s3, uint, S_IRUGO | S_IWUSR);
+
+/* FIXME:: We have issues with S0ix/S3 enabling by default
+ * with display lockup, HSIC etc., so have a boot time option
+ * to enable S0ix/S3
+ */
+unsigned int enable_s0ix __read_mostly = 1;
+module_param(enable_s0ix, uint, S_IRUGO | S_IWUSR);
+
 int pmu_set_emmc_to_d0i0_atomic(void)
 {
 	u32 pm_cmd_val;
@@ -1688,7 +1702,7 @@ static int __devinit mid_pmu_probe(struct pci_dev *dev,
 	 * a wake lock here. Else S3 will be triggered on display
 	 * time out and platform will hang
 	 */
-	if (platform_is(INTEL_ATOM_MRFLD))
+	if (platform_is(INTEL_ATOM_MRFLD) && !enable_s3)
 		__pm_stay_awake(mid_pmu_cxt->pmu_wake_lock);
 #endif
 

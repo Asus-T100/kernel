@@ -971,8 +971,7 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 
 	pdata = atomisp_get_platform_data();
 	if (pdata == NULL) {
-		dev_err(&dev->dev, "no platform data available\n");
-		return -ENODEV;
+		dev_warn(&dev->dev, "no platform data available\n");
 	}
 
 	err = pcim_enable_device(dev);
@@ -1021,7 +1020,8 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	init_completion(&isp->init_done);
 
 	isp->max_isr_latency = ATOMISP_MAX_ISR_LATENCY;
-	if ((pdata->spid->platform_family_id == INTEL_CLVTP_PHONE ||
+	if (pdata &&
+	    (pdata->spid->platform_family_id == INTEL_CLVTP_PHONE ||
 	     pdata->spid->platform_family_id == INTEL_CLVT_TABLET) &&
 	    isp->pdev->revision < 0x09) {
 		/* Workaround for Cloverview(+) older than stepping B0 */

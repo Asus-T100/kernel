@@ -34,7 +34,10 @@ static struct imx_reg const imx_STILL_8M_20fps[] = {
 	{IMX_8BIT, 0x034D, 0xD0},  /*	x_output_size[7:0]	*/
 	{IMX_8BIT, 0x034E, 0x09},  /*	y_output_size[15:8]	*/
 	{IMX_8BIT, 0x034F, 0xA0},  /*	y_output_size[7:0]	*/
-	{IMX_8BIT, 0x0390, 0x00},
+	/* binning & scaling */
+	{IMX_8BIT, 0x0390, 0x00}, /* binning mode */
+	{IMX_8BIT, 0x0401, 0x00}, /* scaling mode*/
+	{IMX_8BIT, 0x0405, 0x10}, /* scale_m[7:0] */
 	/* timer */
 	{IMX_8BIT, 0x3344, 0x57},
 	{IMX_8BIT, 0x3345, 0x1F},
@@ -58,7 +61,6 @@ static struct imx_reg const imx_STILL_8M_20fps[] = {
 
 	{IMX_8BIT, 0x030e, 0x01},
 	{IMX_8BIT, 0x41c0, 0x01},
-
 	{IMX_TOK_TERM, 0, 0}
 };
 
@@ -93,7 +95,10 @@ static struct imx_reg const imx_STILL_3M_20fps[] = {
 	{IMX_8BIT, 0x034D, 0x10},  /*	x_output_size[7:0]	*/
 	{IMX_8BIT, 0x034E, 0x06},  /*	y_output_size[15:8]	*/
 	{IMX_8BIT, 0x034F, 0x10},  /*	y_output_size[7:0]	*/
-	{IMX_8BIT, 0x0390, 0x00},
+	/* binning & scaling */
+	{IMX_8BIT, 0x0390, 0x00}, /* binning mode */
+	{IMX_8BIT, 0x0401, 0x00}, /* scaling mode*/
+	{IMX_8BIT, 0x0405, 0x10}, /* scale_m[7:0] */
 	/* timer */
 	{IMX_8BIT, 0x3344, 0x57},
 	{IMX_8BIT, 0x3345, 0x1F},
@@ -117,7 +122,6 @@ static struct imx_reg const imx_STILL_3M_20fps[] = {
 
 	{IMX_8BIT, 0x030e, 0x01},
 	{IMX_8BIT, 0x41c0, 0x01},
-
 	{IMX_TOK_TERM, 0, 0}
 };
 
@@ -152,7 +156,10 @@ static struct imx_reg const imx_STILL_5M_20fps[] = {
 	{IMX_8BIT, 0x034D, 0x10},  /*	x_output_size[7:0]	*/
 	{IMX_8BIT, 0x034E, 0x07},  /*	y_output_size[15:8]	*/
 	{IMX_8BIT, 0x034F, 0x90},  /*	y_output_size[7:0]	*/
-	{IMX_8BIT, 0x0390, 0x00},
+	/* binning & scaling */
+	{IMX_8BIT, 0x0390, 0x00}, /* binning mode */
+	{IMX_8BIT, 0x0401, 0x00}, /* scaling mode*/
+	{IMX_8BIT, 0x0405, 0x10}, /* scale_m[7:0] */
 	/* timer */
 	{IMX_8BIT, 0x3344, 0x57},
 	{IMX_8BIT, 0x3345, 0x1F},
@@ -176,7 +183,6 @@ static struct imx_reg const imx_STILL_5M_20fps[] = {
 
 	{IMX_8BIT, 0x030e, 0x01},
 	{IMX_8BIT, 0x41c0, 0x01},
-
 	{IMX_TOK_TERM, 0, 0}
 };
 
@@ -211,7 +217,10 @@ static struct imx_reg const imx_STILL_6M_20fps[] = {
 	{IMX_8BIT, 0x034D, 0xD0},  /*	x_output_size[7:0]	*/
 	{IMX_8BIT, 0x034E, 0x07},  /*	y_output_size[15:8]	*/
 	{IMX_8BIT, 0x034F, 0x3C},  /*	y_output_size[7:0]	*/
-	{IMX_8BIT, 0x0390, 0x00},
+	/* binning & scaling */
+	{IMX_8BIT, 0x0390, 0x00}, /* binning mode */
+	{IMX_8BIT, 0x0401, 0x00}, /* scaling mode*/
+	{IMX_8BIT, 0x0405, 0x10}, /* scale_m[7:0] */
 	/* timer */
 	{IMX_8BIT, 0x3344, 0x57},
 	{IMX_8BIT, 0x3345, 0x1F},
@@ -235,7 +244,6 @@ static struct imx_reg const imx_STILL_6M_20fps[] = {
 
 	{IMX_8BIT, 0x030e, 0x01},
 	{IMX_8BIT, 0x41c0, 0x01},
-
 	{IMX_TOK_TERM, 0, 0}
 }
 ;
@@ -272,7 +280,10 @@ static struct imx_reg const imx_STILL_2M_25fps[] = {
 	{IMX_8BIT, 0x034D, 0x68},  /*	x_output_size[7:0]	*/
 	{IMX_8BIT, 0x034E, 0x04},  /*	y_output_size[15:8]	*/
 	{IMX_8BIT, 0x034F, 0xD0},  /*	y_output_size[7:0]	*/
-	{IMX_8BIT, 0x0390, 0x01},
+	/* binning & scaling */
+	{IMX_8BIT, 0x0390, 0x01}, /* binning mode */
+	{IMX_8BIT, 0x0401, 0x00}, /* scaling mode*/
+	{IMX_8BIT, 0x0405, 0x10}, /* scale_m[7:0] */
 	/* timer */
 	{IMX_8BIT, 0x3344, 0x57},
 	{IMX_8BIT, 0x3345, 0x1F},
@@ -296,7 +307,6 @@ static struct imx_reg const imx_STILL_2M_25fps[] = {
 
 	{IMX_8BIT, 0x030e, 0x01},
 	{IMX_8BIT, 0x41c0, 0x01},
-
 	{IMX_TOK_TERM, 0, 0}
 };
 
@@ -331,7 +341,10 @@ static struct imx_reg const imx_PREVIEW_30fps[] = {
 	{IMX_8BIT, 0x034D, 0x34},  /*	x_output_size[7:0]	*/
 	{IMX_8BIT, 0x034E, 0x02},  /*	y_output_size[15:8]	*/
 	{IMX_8BIT, 0x034F, 0x68},  /*	y_output_size[7:0]	*/
-	{IMX_8BIT, 0x0390, 0x02},
+	/* binning & scaling */
+	{IMX_8BIT, 0x0390, 0x02}, /* binning mode */
+	{IMX_8BIT, 0x0401, 0x00}, /* scaling mode*/
+	{IMX_8BIT, 0x0405, 0x10}, /* scale_m[7:0] */
 	/* timer */
 	{IMX_8BIT, 0x3344, 0x37},
 	{IMX_8BIT, 0x3345, 0x1F},
@@ -383,7 +396,10 @@ static struct imx_reg const imx_WIDE_PREVIEW_30fps[] = {
 	{IMX_8BIT, 0x034D, 0x68},  /*	x_output_size[7:0]	*/
 	{IMX_8BIT, 0x034E, 0x03},  /*	y_output_size[15:8]	*/
 	{IMX_8BIT, 0x034F, 0xBC},  /*	y_output_size[7:0]	*/
-	{IMX_8BIT, 0x0390, 0x01},
+	/* binning & scaling */
+	{IMX_8BIT, 0x0390, 0x01}, /* binning mode */
+	{IMX_8BIT, 0x0401, 0x00}, /* scaling mode*/
+	{IMX_8BIT, 0x0405, 0x10}, /* scale_m[7:0] */
 	/* timer */
 	{IMX_8BIT, 0x3344, 0x37},
 	{IMX_8BIT, 0x3345, 0x1F},
@@ -436,7 +452,10 @@ static struct imx_reg const imx_1080p_strong_dvs_30fps[] = {
 	{IMX_8BIT, 0x034D, 0x20},  /*	x_output_size[7:0]	*/
 	{IMX_8BIT, 0x034E, 0x05},  /*	y_output_size[15:8]	*/
 	{IMX_8BIT, 0x034F, 0x1C},  /*	y_output_size[7:0]	*/
-	{IMX_8BIT, 0x0390, 0x00},
+	/* binning & scaling */
+	{IMX_8BIT, 0x0390, 0x00}, /* binning mode */
+	{IMX_8BIT, 0x0401, 0x00}, /* scaling mode*/
+	{IMX_8BIT, 0x0405, 0x10}, /* scale_m[7:0] */
 	/* timer */
 	{IMX_8BIT, 0x3344, 0x57},
 	{IMX_8BIT, 0x3345, 0x1F},
@@ -473,9 +492,9 @@ static struct imx_reg const imx_1080p_no_dvs_30fps[] = {
 	{IMX_8BIT, 0x030C, 0x01},
 	{IMX_8BIT, 0x030D, 0x12},
 	/* image sizing */
-	{IMX_8BIT, 0x0340, 0x08},  /* frame_length_lines[15:8] */
+	{IMX_8BIT, 0x0340, 0x09},  /* frame_length_lines[15:8] */
 	{IMX_8BIT, 0x0341, 0xD9},  /*	frame_length_lines[7:0]	*/
-	{IMX_8BIT, 0x0342, 0x0D},  /*	line_length_pck[15:8]	*/
+	{IMX_8BIT, 0x0342, 0x13},  /*	line_length_pck[15:8]	*/
 	{IMX_8BIT, 0x0343, 0x70},  /*	line_length_pck[7:0]	*/
 	{IMX_8BIT, 0x0344, 0x00},  /*	x_addr_start[15:8]	*/
 	{IMX_8BIT, 0x0345, 0x00},  /*	x_addr_start[7:0]	*/
@@ -489,7 +508,10 @@ static struct imx_reg const imx_1080p_no_dvs_30fps[] = {
 	{IMX_8BIT, 0x034D, 0x94},  /*	x_output_size[7:0]	*/
 	{IMX_8BIT, 0x034E, 0x04},  /*	y_output_size[15:8]	*/
 	{IMX_8BIT, 0x034F, 0x48},  /*	y_output_size[7:0]	*/
-	{IMX_8BIT, 0x0390, 0x00},
+	/* binning & scaling */
+	{IMX_8BIT, 0x0390, 0x00}, /* binning mode */
+	{IMX_8BIT, 0x0401, 0x02}, /* scaling mode*/
+	{IMX_8BIT, 0x0405, 0x1B}, /* scale_m[7:0] */
 	/* timer */
 	{IMX_8BIT, 0x3344, 0x57},
 	{IMX_8BIT, 0x3345, 0x1F},
@@ -542,7 +564,10 @@ static struct imx_reg const imx_720p_strong_dvs_30fps[] = {
 	{IMX_8BIT, 0x034D, 0x20},  /*	x_output_size[7:0]	*/
 	{IMX_8BIT, 0x034E, 0x03},  /*	y_output_size[15:8]	*/
 	{IMX_8BIT, 0x034F, 0x6C},  /*	y_output_size[7:0]	*/
-	{IMX_8BIT, 0x0390, 0x01},
+	/* binning & scaling */
+	{IMX_8BIT, 0x0390, 0x01}, /* binning mode */
+	{IMX_8BIT, 0x0401, 0x00}, /* scaling mode*/
+	{IMX_8BIT, 0x0405, 0x10}, /* scale_m[7:0] */
 	/* timer */
 	{IMX_8BIT, 0x3344, 0x57},
 	{IMX_8BIT, 0x3345, 0x1F},
@@ -595,7 +620,10 @@ static struct imx_reg const imx_STILL_720p_30fps[] = {
 	{IMX_8BIT, 0x034D, 0x20},  /*	x_output_size[7:0]	*/
 	{IMX_8BIT, 0x034E, 0x03},  /*	y_output_size[15:8]	*/
 	{IMX_8BIT, 0x034F, 0x6C},  /*	y_output_size[7:0]	*/
-	{IMX_8BIT, 0x0390, 0x01},
+	/* binning & scaling */
+	{IMX_8BIT, 0x0390, 0x01}, /* binning mode */
+	{IMX_8BIT, 0x0401, 0x00}, /* scaling mode*/
+	{IMX_8BIT, 0x0405, 0x10}, /* scale_m[7:0] */
 	/* timer */
 	{IMX_8BIT, 0x3344, 0x37},
 	{IMX_8BIT, 0x3345, 0x1F},
@@ -648,7 +676,10 @@ static struct imx_reg const imx_WVGA_strong_dvs_30fps[] = {
 	{IMX_8BIT, 0x034D, 0x68},  /*	x_output_size[7:0]	*/
 	{IMX_8BIT, 0x034E, 0x04},  /*	y_output_size[15:8]	*/
 	{IMX_8BIT, 0x034F, 0x00},  /*	y_output_size[7:0]	*/
-	{IMX_8BIT, 0x0390, 0x01},
+	/* binning & scaling */
+	{IMX_8BIT, 0x0390, 0x01}, /* binning mode */
+	{IMX_8BIT, 0x0401, 0x00}, /* scaling mode*/
+	{IMX_8BIT, 0x0405, 0x10}, /* scale_m[7:0] */
 	/* timer */
 	{IMX_8BIT, 0x3344, 0x57},
 	{IMX_8BIT, 0x3345, 0x1F},
@@ -700,7 +731,10 @@ static struct imx_reg const imx_VGA_strong_dvs_30fps[] = {
 	{IMX_8BIT, 0x034D, 0x34},  /*	x_output_size[7:0]	*/
 	{IMX_8BIT, 0x034E, 0x02},  /*	y_output_size[15:8]	*/
 	{IMX_8BIT, 0x034F, 0x68},  /*	y_output_size[7:0]	*/
-	{IMX_8BIT, 0x0390, 0x02},
+	/* binning & scaling */
+	{IMX_8BIT, 0x0390, 0x02}, /* binning mode */
+	{IMX_8BIT, 0x0401, 0x00}, /* scaling mode*/
+	{IMX_8BIT, 0x0405, 0x10}, /* scale_m[7:0] */
 	/* timer */
 	{IMX_8BIT, 0x3344, 0x37},
 	{IMX_8BIT, 0x3345, 0x1F},
@@ -752,7 +786,10 @@ static struct imx_reg const imx_QVGA_strong_dvs_30fps[] = {
 	{IMX_8BIT, 0x034D, 0x98},  /*	x_output_size[7:0]	*/
 	{IMX_8BIT, 0x034E, 0x01},  /*	y_output_size[15:8]	*/
 	{IMX_8BIT, 0x034F, 0x34},  /*	y_output_size[7:0]	*/
-	{IMX_8BIT, 0x0390, 0x02},
+	/* binning & scaling */
+	{IMX_8BIT, 0x0390, 0x02}, /* binning mode */
+	{IMX_8BIT, 0x0401, 0x00}, /* scaling mode*/
+	{IMX_8BIT, 0x0405, 0x10}, /* scale_m[7:0] */
 	/* timer */
 	{IMX_8BIT, 0x3344, 0x37},
 	{IMX_8BIT, 0x3345, 0x1F},
@@ -804,7 +841,10 @@ static struct imx_reg const imx_QCIF_strong_dvs_30fps[] = {
 	{IMX_8BIT, 0x034D, 0xD8},  /*	x_output_size[7:0]	*/
 	{IMX_8BIT, 0x034E, 0x00},  /*	y_output_size[15:8]	*/
 	{IMX_8BIT, 0x034F, 0xB0},  /*	y_output_size[7:0]	*/
-	{IMX_8BIT, 0x0390, 0x02},
+	/* binning & scaling */
+	{IMX_8BIT, 0x0390, 0x02}, /* binning mode */
+	{IMX_8BIT, 0x0401, 0x00}, /* scaling mode*/
+	{IMX_8BIT, 0x0405, 0x10}, /* scale_m[7:0] */
 	/* timer */
 	{IMX_8BIT, 0x3344, 0x37},
 	{IMX_8BIT, 0x3345, 0x1F},
@@ -907,6 +947,18 @@ struct imx_resolution imx175_res_preview[] = {
 		.lines_per_frame = 0x0A90, /* consistent with regs arrays */
 		.bin_factor_x = 2,
 		.bin_factor_y = 2,
+		.used = 0,
+	},
+	{
+		.desc = "1080p_strong_dvs_30fps",
+		.regs = imx_1080p_no_dvs_30fps,
+		.width = 1940,
+		.height = 1096,
+		.fps = 30,
+		.pixels_per_line = 0x1370, /* consistent with regs arrays */
+		.lines_per_frame = 0x09D9, /* consistent with regs arrays */
+		.bin_factor_x = 0,
+		.bin_factor_y = 0,
 		.used = 0,
 	},
 	{

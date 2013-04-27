@@ -317,12 +317,12 @@ static void __ips_hdmi_set_program_dpll(int n, int p1, int p2, int m1, int m2)
 
 	/* Swing settings */
 	gunit_iosf_write32(DPLL_IOSF_EP, TX_SWINGS_1, 0x00000000);
-	gunit_iosf_write32(DPLL_IOSF_EP, TX_SWINGS_2, 0x2B245F5F);
-	gunit_iosf_write32(DPLL_IOSF_EP, TX_SWINGS_3, 0x5578B83A);
+	gunit_iosf_write32(DPLL_IOSF_EP, TX_SWINGS_2, 0x2B407055);
+	gunit_iosf_write32(DPLL_IOSF_EP, TX_SWINGS_3, 0x55A0983A);
 	gunit_iosf_write32(DPLL_IOSF_EP, TX_SWINGS_4, 0x0C782040);
 	gunit_iosf_write32(DPLL_IOSF_EP, TX_SWINGS_5, 0x2B247878);
 	gunit_iosf_write32(DPLL_IOSF_EP, TX_SWINGS_6, 0x00030000);
-	gunit_iosf_write32(DPLL_IOSF_EP, TX_SWINGS_7, 0x00002000);
+	gunit_iosf_write32(DPLL_IOSF_EP, TX_SWINGS_7, 0x00004000);
 	gunit_iosf_write32(DPLL_IOSF_EP, TX_SWINGS_1, 0x80000000);
 
 	/* Stagger Programming */

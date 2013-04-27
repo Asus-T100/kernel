@@ -35,6 +35,7 @@ static const char *dummy_hid = "device";
 static const struct acpi_device_id acpi_platform_device_ids[] = {
 
 	{ "PNP0D40" },
+	{ "BCM2E1A" },
 
 	/* Haswell LPSS devices */
 	{ "INT33C0", 0 },

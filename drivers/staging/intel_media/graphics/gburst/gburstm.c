@@ -40,11 +40,9 @@
  *   - Execution context: non-atomic
  *   - Execution context: hard irq level
 	if (gbprv->gbp_task)
- * - Stop timer interrupts when not busy, restart somehow, or maybe extend
- *   period.
  * - Preference "long battery life" should disable burst.
  * - Low battery state should disable burst.
- * - future: compatibility for simultaneous use with pvrtune?
+ * - Check TSC freq. properly (timestamp function). Now assumes 2GHz.
  */
 
 
@@ -249,8 +247,35 @@
 
 #define GBURST_TIMER_PERIOD_DEFAULT_USECS 5000
 
-#define GBURST_THRESHOLD_DEFAULT_HIGH       70
+#define GBURST_THRESHOLD_DEFAULT_HIGH       80
 #define GBURST_THRESHOLD_DEFAULT_DOWN_DIFF  20
+
+/**
+ * Burst dynamic control parameters
+ * VSYNC_FRAMES      - number of frames rendered within vsync time before
+ * we deny burst request even if utilization would indicate otherwise
+ * FRAME_TIME_BUFFER - additional buffer after frame 'ready' before the
+ * next vsync event (as CPU cycles)
+ * FRAME_DURATION    - frame time as max. CPU freq cycles, given system
+ * latencies this value is taken as 17ms
+ * OFFSCREEN_TIME    - time to last resume even after which we infer that
+ * we have an offscreen rendering case (or a very long frame rendering)
+ */
+#define VSYNC_FRAMES         1
+#define FRAME_TIME_BUFFER    ((unsigned long long)(0))
+#define OFFSCREEN_FRAMES     ((unsigned long long)(20))
+#define FRAME_DURATION       ((unsigned long long)(34000000))
+#define OFFSCREEN_TIME       (OFFSCREEN_FRAMES*FRAME_DURATION)
+
+/**
+ * timestamp - Helper used when storing internal timestamps used for burst control
+ */
+unsigned long long timestamp(void)
+{
+	unsigned int a, d;
+	__asm__ volatile("rdtsc" : "=a" (a), "=d" (d));
+	return ((unsigned long long)a) | (((unsigned long long)d) << 32);
+}
 
 /**
  * pfs_data - Structure to describe one file under /proc/gburst.
@@ -502,6 +527,13 @@ struct gburst_pvt_s {
 	u32                     gbp_pwrgt_cnt_toggle_bit;
 	u32                     gbp_pwrgt_sts_last_read;
 	u32                     gbp_pwrgt_cnt_last_written;
+
+	/**
+	 * Burst dynamic control parameters
+	 */
+	unsigned long long	gbp_resume_time;
+	int			gbp_offscreen_rendering;
+	int			gbp_num_of_vsync_limited_frames;
 };
 
 
@@ -1074,6 +1106,7 @@ static int desired_burst_state_query(struct gburst_pvt_s *gbprv,
 static void request_desired_burst_mode(struct gburst_pvt_s *gbprv)
 {
 	int rva;
+	u32 reqbits;
 	const char *whymsg;
 	int burst_request_prev;
 #if GBURST_VERBOSE_EXPLANATION
@@ -1084,35 +1117,39 @@ static void request_desired_burst_mode(struct gburst_pvt_s *gbprv)
 	if (!gbprv->gbp_initialized)
 		return;
 
-	rva = desired_burst_state_query(gbprv, &whymsg
-#if GBURST_VERBOSE_EXPLANATION
-		, sbuf, sizeof(sbuf)
-#endif /* if GBURST_VERBOSE_EXPLANATION */
-		);
-
-	/**
-	 * The value returned by desired_burst_state_query indicates
-	 * the desired burst state, vis a vis the presentvburst state.
-	 * 0 -> request un-burst
-	 * 1 -> request burst
-	 * 2 -> no change.
-	 */
-
-	/* Get previous burst_request state. */
-	burst_request_prev = GBURST_BURST_REQUESTED(gbprv);
-
-	/**
-	 * If desired burst_request state changed, then issue the request.
-	 */
-	if ((rva != 2) && (rva != burst_request_prev)) {
-		u32 reqbits;
-
-		if (rva)
-			reqbits = PWRGT_CNT_BURST_REQUEST_M_533;
-		else
-			reqbits = PWRGT_CNT_BURST_REQUEST_M_400;
-
+	if (gbprv->gbp_offscreen_rendering) {
+		reqbits = PWRGT_CNT_BURST_REQUEST_M_533;
 		set_state_pwrgt_cnt(gbprv, reqbits);
+	} else {
+
+		rva = desired_burst_state_query(gbprv, &whymsg
+#if GBURST_VERBOSE_EXPLANATION
+			, sbuf, sizeof(sbuf)
+#endif /* if GBURST_VERBOSE_EXPLANATION */
+			);
+
+		/**
+		* The value returned by desired_burst_state_query indicates
+		* the desired burst state, vis a vis the presentvburst state.
+		* 0 -> request un-burst
+		* 1 -> request burst
+		* 2 -> no change.
+		*/
+
+		/* Get previous burst_request state. */
+		burst_request_prev = GBURST_BURST_REQUESTED(gbprv);
+
+		/**
+		 * If desired burst_request state changed, then issue the request.
+		 */
+		if ((rva != 2) && (rva != burst_request_prev)) {
+			if ((rva) && (gbprv->gbp_num_of_vsync_limited_frames < VSYNC_FRAMES))
+				reqbits = PWRGT_CNT_BURST_REQUEST_M_533;
+			else
+				reqbits = PWRGT_CNT_BURST_REQUEST_M_400;
+
+			set_state_pwrgt_cnt(gbprv, reqbits);
+		}
 	}
 }
 
@@ -1175,6 +1212,8 @@ static int thread_action(struct gburst_pvt_s *gbprv)
 {
 	int gpustate;
 	int utilpct;
+	unsigned long long ctime;
+	unsigned long long delta;
 
 	smp_rmb();
 	if (!gbprv->gbp_initialized || gbprv->gbp_suspended)
@@ -1191,29 +1230,34 @@ static int thread_action(struct gburst_pvt_s *gbprv)
 
 	gbprv->gbp_thread_check_utilization = 0;
 
-	/* Check the GPU operating point*/
-	gpustate = GBURST_BURST_REALIZED(gbprv);
-	/* Determine current utilization. */
-	utilpct = gburst_stats_gfx_hw_perf_record(gpustate);
-	if (utilpct < 0) {
-		/**
-		 * This should only fail if not initialized and is
-		 * most likely because some initialization has
-		 * yet to complete.
-		 */
-		if (gbprv->gbp_utilization_percentage >= 0) {
-			/* Only fail if already succeeded once. */
-			printk(GBURST_ALERT "obtaining counters failed\n");
-			return 0;
-		}
-	} else {
-		gbprv->gbp_utilization_percentage = utilpct;
+	ctime = timestamp();
+	delta = ctime - gbprv->gbp_resume_time;
 
-		/* Read current status. */
-		read_and_process_PWRGT_STS(gbprv);
+	if (delta > FRAME_DURATION)
+		gbprv->gbp_num_of_vsync_limited_frames = 0;
+	if (delta > OFFSCREEN_TIME)
+		gbprv->gbp_offscreen_rendering = 1;
 
-		request_desired_burst_mode(gbprv);
+	if (!gbprv->gbp_offscreen_rendering) {
+		utilpct = gburst_stats_gfx_hw_perf_record();
+		if (utilpct < 0) {
+			/**
+			 * This should only fail if not initialized and is
+			 * most likely because some initialization has
+			 * yet to complete.
+			 */
+			if (gbprv->gbp_utilization_percentage >= 0) {
+				/* Only fail if already succeeded once. */
+				printk(GBURST_ALERT "obtaining counters failed\n");
+				return 0;
+			}
+		} else
+			gbprv->gbp_utilization_percentage = utilpct;
 	}
+
+	/* Read current status. */
+	read_and_process_PWRGT_STS(gbprv);
+	request_desired_burst_mode(gbprv);
 
 	return 1;
 }
@@ -2799,6 +2843,8 @@ static irqreturn_t gburst_irq_handler(int irq, void *pvd)
  */
 static int gburst_suspend(struct gburst_pvt_s *gbprv)
 {
+	unsigned long long ctime;
+
 	smp_rmb();
 	if (!gbprv || !gbprv->gbp_initialized)
 		return 0;
@@ -2819,6 +2865,12 @@ static int gburst_suspend(struct gburst_pvt_s *gbprv)
 
 	/* Cancel timer events. */
 	hrt_cancel(gbprv);
+
+	ctime = timestamp();
+	if ((ctime-gbprv->gbp_resume_time+FRAME_TIME_BUFFER) < FRAME_DURATION)
+		gbprv->gbp_num_of_vsync_limited_frames += 1;
+	else
+		gbprv->gbp_num_of_vsync_limited_frames = 0;
 
 	write_PWRGT_CNT(gbprv, 0);
 
@@ -2897,6 +2949,9 @@ static int gburst_resume(struct gburst_pvt_s *gbprv)
 	}
 
 	gbprv->gbp_suspended = 0;
+	gbprv->gbp_resume_time = timestamp();
+	gbprv->gbp_offscreen_rendering = 0;
+
 	smp_wmb();
 
 	mutex_lock(&gbprv->gbp_mutex_pwrgt_sts);
@@ -3135,6 +3190,11 @@ static int gburst_init(struct gburst_pvt_s *gbprv)
 	}
 
 	gbprv->gbp_cooldv_state_override = -1;
+
+	/* Burst dynamic control parameters*/
+	gbprv->gbp_resume_time = 0;
+	gbprv->gbp_offscreen_rendering = 0;
+	gbprv->gbp_num_of_vsync_limited_frames = 0;
 
 	/* Initialize timer.  This does not start the timer. */
 	hrtimer_init(&gbprv->gbp_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);

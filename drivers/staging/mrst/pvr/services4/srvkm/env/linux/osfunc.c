@@ -4240,6 +4240,15 @@ static void x86_flush_cache_range(const void *pvStart, const void *pvEnd)
 	IMG_BYTE *pbStart = (IMG_BYTE *)pvStart;
 	IMG_BYTE *pbEnd = (IMG_BYTE *)pvEnd;
 	IMG_BYTE *pbBase;
+#define CACHE_SIZE_THRESHOLD (236 << 10)
+	/* From experimental data, when flushing data size more than 236K,
+	** it is better to use wbinvb rather than clflush to flush cache
+	** one block by one block.
+	*/
+	if ((int)pvEnd - (int)pvStart > CACHE_SIZE_THRESHOLD) {
+		wbinvd_on_all_cpus();
+		return ;
+	}
 
 	pbEnd = (IMG_BYTE *)ROUND_UP((IMG_UINTPTR_T)pbEnd,
 								 boot_cpu_data.x86_clflush_size);

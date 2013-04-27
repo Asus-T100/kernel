@@ -276,10 +276,12 @@ void psb_remove_videoctx(struct drm_psb_private *dev_priv, struct file *filp)
 				  (found_ctx->ctx_type & 0xff));
 #ifndef CONFIG_DRM_VXD_BYT
 		/* if current ctx points to it, set to NULL */
-		if (VAEntrypointEncSlice ==
+		if ((VAEntrypointEncSlice ==
 				(found_ctx->ctx_type & 0xff)
 			|| VAEntrypointEncPicture ==
-				(found_ctx->ctx_type & 0xff)) {
+				(found_ctx->ctx_type & 0xff))
+			&& VAProfileVP8Version0_3 !=
+				((found_ctx->ctx_type >> 8) & 0xff)) {
 			if (dev_priv->topaz_ctx == found_ctx) {
 #ifdef MERRIFIELD
 				tng_topaz_remove_ctx(dev_priv,
@@ -297,7 +299,11 @@ void psb_remove_videoctx(struct drm_psb_private *dev_priv, struct file *filp)
 				dev_priv->last_topaz_ctx = NULL;
 #ifdef SUPPORT_VSP
 		} else if (VAEntrypointVideoProc ==
-					(found_ctx->ctx_type & 0xff)) {
+					(found_ctx->ctx_type & 0xff)
+				|| (VAEntrypointEncSlice ==
+					(found_ctx->ctx_type & 0xff)
+				&& VAProfileVP8Version0_3 ==
+					((found_ctx->ctx_type >> 8) & 0xff))) {
 			PSB_DEBUG_PM("Remove vsp context.\n");
 			vsp_rm_context(dev_priv->dev);
 #endif
@@ -425,7 +431,10 @@ int psb_video_getparam(struct drm_device *dev, void *data,
 #endif
 
 #ifdef SUPPORT_VSP
-		if (VAEntrypointVideoProc == (ctx_type & 0xff))
+		if (VAEntrypointVideoProc == (ctx_type & 0xff)
+			|| (VAEntrypointEncSlice == (ctx_type & 0xff)
+				&& VAProfileVP8Version0_3 ==
+					((ctx_type >> 8) & 0xff)))
 			vsp_new_context(dev);
 #endif
 #endif

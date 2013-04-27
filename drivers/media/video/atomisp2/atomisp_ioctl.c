@@ -35,6 +35,7 @@
 #include "atomisp_internal.h"
 #include "atomisp_ioctl.h"
 #include "atomisp-regs.h"
+#include "atomisp_compat.h"
 
 #include "sh_css_hrt.h"
 #include "sh_css.h"
@@ -1267,7 +1268,7 @@ static int atomisp_streamon(struct file *file, void *fh,
 	struct video_device *vdev = video_devdata(file);
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
 	struct atomisp_device *isp = video_get_drvdata(vdev);
-	enum sh_css_pipe_id css_pipe_id;
+	enum atomisp_css_pipe_id css_pipe_id;
 	unsigned int sensor_start_stream;
 	int ret = 0;
 	unsigned long irqflags;
@@ -1359,12 +1360,10 @@ static int atomisp_streamon(struct file *file, void *fh,
 		dev_err(isp->dev, "acc extension failed to load\n");
 		goto out;
 	}
-	ret = sh_css_start(css_pipe_id);
-	if (ret != sh_css_success) {
-		dev_err(isp->dev, "sh_css_start fails: %d\n", ret);
-		ret = -EINVAL;
+	ret = atomisp_css_start(isp, css_pipe_id, false);
+	if (ret)
 		goto out;
-	}
+
 	if (isp->isp_subdev.continuous_mode->val &&
 	    isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO) {
 		INIT_COMPLETION(isp->init_done);
@@ -1406,7 +1405,7 @@ start_sensor:
 	}
 
 	if (!isp->sw_contex.file_input) {
-		sh_css_enable_interrupt(SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF,
+		atomisp_css_irq_enable(isp, CSS_IRQ_INFO_CSS_RECEIVER_SOF,
 					true);
 
 		atomisp_set_term_en_count(isp);
@@ -1528,7 +1527,7 @@ int __atomisp_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
 	atomisp_clear_css_buffer_counters(isp);
 
 	if (!isp->sw_contex.file_input)
-		sh_css_enable_interrupt(SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF,
+		atomisp_css_irq_enable(isp, CSS_IRQ_INFO_CSS_RECEIVER_SOF,
 					false);
 
 	if (isp->delayed_init == ATOMISP_DELAYED_INIT_QUEUED) {

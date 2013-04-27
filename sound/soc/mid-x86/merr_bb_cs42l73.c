@@ -40,8 +40,11 @@
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
 #include <sound/jack.h>
-#include "ctp_common.h"
 #include "../codecs/cs42l73.h"
+#include "mid_ssp.h"
+#include "ctp_common.h"
+#include "ctp_comms_common.h"
+#include "merr_bb_cs42l73.h"
 
 #define GPIO_AMP_ON		0x30
 #define GPIO_AMP_OFF		0x31
@@ -143,6 +146,7 @@ static int merr_bb_cs42l73_hw_params(struct snd_pcm_substream *substream,
 	case MERR_BB_COMMS_BT_SCO_DEV:
 	case MERR_BB_COMMS_FM_DEV:
 	case MERR_BB_AUD_VIRTUAL_ASP_DEV:
+	case MERR_BB_COMMS_VOIP_DEV:
 		clk_fmt.clk_id = CS42L73_CLKID_MCLK1;
 		clk_fmt.freq = DEFAULT_MCLK;
 		clk_fmt.dir = SND_SOC_CLOCK_IN;
@@ -154,6 +158,210 @@ static int merr_bb_cs42l73_hw_params(struct snd_pcm_substream *substream,
 		pr_err("Invalid device\n");
 		return -EINVAL;
 	}
+}
+
+static int merr_bb_comms_dai_link_hw_params(struct snd_pcm_substream *substream,
+				      struct snd_pcm_hw_params *params)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
+	struct snd_soc_card *soc_card = rtd->card;
+	struct ctp_mc_private *ctx = snd_soc_card_get_drvdata(soc_card);
+	struct comms_mc_private *ctl = &(ctx->comms_ctl);
+
+	int ret = 0;
+	unsigned int tx_mask, rx_mask;
+	unsigned int nb_slot = 0;
+	unsigned int slot_width = 0;
+	unsigned int tristate_offset = 0;
+	unsigned int device = substream->pcm->device;
+
+
+	pr_debug("ssp_bt_sco_master_mode %d\n", ctl->ssp_bt_sco_master_mode);
+	pr_debug("ssp_voip_master_mode %d\n", ctl->ssp_voip_master_mode);
+	pr_debug("ssp_modem_master_mode %d\n", ctl->ssp_modem_master_mode);
+
+	switch (device) {
+	case MERR_BB_COMMS_VOIP_DEV:
+		/*
+		 * set cpu DAI configuration
+		 * frame_format = PSP_FORMAT
+		 * ssp_serial_clk_mode = SSP_CLK_MODE_0
+		 * ssp_frmsync_pol_bit = SSP_FRMS_ACTIVE_LOW
+		 */
+		ret = snd_soc_dai_set_fmt(cpu_dai,
+				SND_SOC_DAIFMT_I2S |
+				SSP_DAI_SCMODE_0 |
+				SND_SOC_DAIFMT_NB_IF |
+				(ctl->ssp_voip_master_mode ?
+					 SND_SOC_DAIFMT_CBM_CFM :
+					 SND_SOC_DAIFMT_CBS_CFS));
+
+		if (ret < 0) {
+			pr_err("MERR BB Comms Machine: Set FMT Fails %d\n",
+							ret);
+			return -EINVAL;
+		}
+
+		/*
+		 * MSIC VOIP SSP Config
+		 * ssp_active_tx_slots_map = 0x01
+		 * ssp_active_rx_slots_map = 0x01
+		 * frame_rate_divider_control = 1
+		 * data_size = 32
+		 * tristate = 1
+		 * ssp_frmsync_timing_bit = 0, for SLAVE
+		 * (NEXT_FRMS_ASS_AFTER_END_OF_T4)
+		 * ssp_frmsync_timing_bit = 1, for MASTER
+		 * (NEXT_FRMS_ASS_WITH_LSB_PREVIOUS_FRM)
+		 */
+		nb_slot = MERR_BB_SSP_VOIP_SLOT_NB_SLOT;
+		slot_width = MERR_BB_SSP_VOIP_SLOT_WIDTH;
+		tx_mask = MERR_BB_SSP_VOIP_SLOT_TX_MASK;
+		rx_mask = MERR_BB_SSP_VOIP_SLOT_RX_MASK;
+
+		tristate_offset = BIT(TRISTATE_BIT);
+		break;
+
+	case MERR_BB_COMMS_MIXING_DEV:
+		/*
+		 * set cpu DAI configuration
+		 * frame_format = PSP_FORMAT
+		 * ssp_serial_clk_mode = SSP_CLK_MODE_0
+		 * ssp_frmsync_pol_bit = SSP_FRMS_ACTIVE_HIGH
+		 */
+		ret = snd_soc_dai_set_fmt(cpu_dai,
+				SND_SOC_DAIFMT_I2S |
+				SSP_DAI_SCMODE_0 |
+				SND_SOC_DAIFMT_NB_NF |
+				(ctl->ssp_modem_master_mode ?
+					 SND_SOC_DAIFMT_CBM_CFM :
+					 SND_SOC_DAIFMT_CBS_CFS));
+		if (ret < 0) {
+			pr_err("MFLD Comms Machine:  Set FMT Fails %d\n", ret);
+			return -EINVAL;
+		}
+
+		/*
+		 * Mixing SSP Config
+		 * ssp_active_tx_slots_map = 0x01
+		 * ssp_active_rx_slots_map = 0x01
+		 * frame_rate_divider_control = 1
+		 * data_size = 32
+		 * Master:
+		 *	tristate = 3
+		 *	ssp_frmsync_timing_bit = 1, for MASTER
+		 *	(NEXT_FRMS_ASS_WITH_LSB_PREVIOUS_FRM)
+		 * Slave:
+		 *	tristate = 1
+		 *	ssp_frmsync_timing_bit = 0, for SLAVE
+		 *	(NEXT_FRMS_ASS_AFTER_END_OF_T4)
+		 */
+		nb_slot = MERR_BB_SSP_MIXING_SLOT_NB_SLOT;
+		slot_width = MERR_BB_SSP_MIXING_SLOT_WIDTH;
+		tx_mask = MERR_BB_SSP_MIXING_SLOT_TX_MASK;
+		rx_mask = MERR_BB_SSP_MIXING_SLOT_RX_MASK;
+
+		tristate_offset = BIT(TRISTATE_BIT) |\
+				BIT(FRAME_SYNC_RELATIVE_TIMING_BIT);
+
+		break;
+	default:
+		pr_err("MERR BB Comms Machine: bad PCM Device ID = %d\n",
+				device);
+		return -EINVAL;
+	}
+
+	ret = snd_soc_dai_set_tdm_slot(cpu_dai, tx_mask,
+			rx_mask, nb_slot, slot_width);
+
+	if (ret < 0) {
+		pr_err("MRFLD Comms Machine:  Set TDM Slot Fails %d\n",
+				ret);
+		return -EINVAL;
+	}
+
+	ret = snd_soc_dai_set_tristate(cpu_dai, tristate_offset);
+	if (ret < 0) {
+		pr_err("MRFLD Comms Machine: Set Tristate Fails %d\n",
+				ret);
+		return -EINVAL;
+	}
+
+	if (device == MERR_BB_COMMS_VOIP_DEV) {
+		pr_debug("Call merr_bb_vsp_hw_params to enable the PLL Codec\n");
+		merr_bb_cs42l73_hw_params(substream, params);
+	}
+
+	pr_debug("MERR BB Comms Machine: slot_width = %d\n",
+			slot_width);
+	pr_debug("MERR BB Comms Machine: tx_mask = %d\n",
+			tx_mask);
+	pr_debug("MERR BB Comms Machine: rx_mask = %d\n",
+			rx_mask);
+	pr_debug("MERR BB Comms Machine: tristate_offset = %d\n",
+			tristate_offset);
+
+	return 0;
+
+}
+
+static int merr_bb_comms_dai_link_prepare(struct snd_pcm_substream *substream)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
+	struct ctp_mc_private *ctx = snd_soc_card_get_drvdata(rtd->card);
+	struct comms_mc_private *ctl = &(ctx->comms_ctl);
+
+	unsigned int device = substream->pcm->device;
+
+	pr_debug("%s substream->runtime->rate %d\n",
+			__func__,
+			substream->runtime->rate);
+
+	/* select clock source (if master) */
+	/* BT SCO: CPU DAI is master */
+	/* FM: CPU DAI is master */
+	/* BT_VOIP: CPU DAI is master */
+	if ((((device == MERR_BB_COMMS_VOIP_DEV) &&\
+		ctl->ssp_voip_master_mode)) ||
+		(device == MERR_BB_COMMS_MIXING_DEV &&\
+		ctl->ssp_modem_master_mode)) {
+
+		snd_soc_dai_set_sysclk(cpu_dai, SSP_CLK_ONCHIP,
+				substream->runtime->rate, 0);
+
+	}
+
+	return 0;
+}
+
+static int merr_bb_comms_dai_link_startup(struct snd_pcm_substream *substream)
+{
+	struct snd_pcm_runtime *str_runtime;
+
+	str_runtime = substream->runtime;
+
+	WARN(!substream->pcm, "MERR BB Comms Machine: ERROR NULL substream->pcm\n");
+
+	if (!substream->pcm)
+		return -EINVAL;
+
+	/* set the runtime hw parameter with local snd_pcm_hardware struct */
+	switch (substream->pcm->device) {
+	case MERR_BB_COMMS_VOIP_DEV:
+		str_runtime->hw = MERR_BB_VOIP_alsa_hw_param;
+		break;
+
+	case MERR_BB_COMMS_MIXING_DEV:
+		str_runtime->hw = MERR_BB_MIXING_alsa_hw_param;
+		break;
+	default:
+		pr_err("MERR BB Comms Machine: bad PCM Device = %d\n",
+						substream->pcm->device);
+	}
+	return snd_pcm_hw_constraint_integer(str_runtime,
+						SNDRV_PCM_HW_PARAM_PERIODS);
 }
 
 static struct snd_soc_ops merr_bb_asp_ops = {
@@ -178,6 +386,18 @@ static struct snd_soc_ops merr_bb_fm_xsp_ops = {
 
 static struct snd_soc_ops merr_bb_probe_ops = {
 	.startup = merr_bb_cs42l73_startup,
+};
+
+static struct snd_soc_ops merr_bb_comms_dai_link_ops = {
+	.startup = merr_bb_comms_dai_link_startup,
+	.hw_params = merr_bb_comms_dai_link_hw_params,
+	.prepare = merr_bb_comms_dai_link_prepare,
+};
+
+static struct snd_soc_ops merr_bb_comms_voip_dai_link_ops = {
+	.startup = merr_bb_comms_dai_link_startup,
+	.hw_params = merr_bb_comms_dai_link_hw_params,
+	.prepare = merr_bb_comms_dai_link_prepare,
 };
 
 struct snd_soc_dai_link merr_bb_dailink[] = {
@@ -225,6 +445,26 @@ struct snd_soc_dai_link merr_bb_dailink[] = {
 		.ignore_suspend = 1,
 		.ops = &merr_bb_fm_xsp_ops,
 	},
+	[MERR_BB_COMMS_VOIP_DEV] = {
+		.name = "Merrifield BB Comms MSIC VOIP",
+		.stream_name = "VOIP",
+		.cpu_dai_name = SSP_BT_DAI_NAME,
+		.codec_dai_name = "cs42l73-vsp",
+		.codec_name = "cs42l73.1-004a",
+		.platform_name = "mid-ssp-dai",
+		.init = NULL,
+		.ops = &merr_bb_comms_voip_dai_link_ops,
+	},
+	[MERR_BB_COMMS_MIXING_DEV] = {
+		.name = "Merrifield BB Comms MIXING",
+		.stream_name = "MIXING",
+		.cpu_dai_name = SSP_MODEM_DAI_NAME,
+		.codec_dai_name = "snd-soc-dummy-dai",
+		.codec_name = "snd-soc-dummy",
+		.platform_name = "mid-ssp-dai",
+		.init = NULL,
+		.ops = &merr_bb_comms_dai_link_ops,
+	},
 	[MERR_BB_AUD_PROBE_DEV] = {
 		.name = "Merrifield BB Probe",
 		.stream_name = "Probe",
@@ -254,6 +494,7 @@ static int merr_bb_init(struct snd_soc_pcm_runtime *runtime)
 	struct snd_soc_codec *codec = runtime->codec;
 	struct snd_soc_dapm_context *dapm = &codec->dapm;
 	struct snd_soc_card *card = runtime->card;
+	struct ctp_mc_private *ctx = snd_soc_card_get_drvdata(runtime->card);
 
 	pr_debug("%s:%d", __func__, __LINE__);
 	/* Set codec bias level */
@@ -269,6 +510,18 @@ static int merr_bb_init(struct snd_soc_pcm_runtime *runtime)
 	/* Set up Jack specific audio path audio_map */
 	snd_soc_dapm_add_routes(dapm, merr_bb_audio_map,
 					ARRAY_SIZE(merr_bb_audio_map));
+
+	ctx->comms_ctl.ssp_bt_sco_master_mode = false;
+	ctx->comms_ctl.ssp_voip_master_mode = false;
+	ctx->comms_ctl.ssp_modem_master_mode = false;
+
+	ret = snd_soc_add_card_controls(card, ssp_comms_controls,
+				ARRAY_SIZE(ssp_comms_controls));
+	if (ret) {
+		pr_err("Add Comms Controls failed %d",
+			   ret);
+		return ret;
+	}
 
 	/* Keep the voice call paths active during
 	suspend. Mark the end points ignore_suspend */

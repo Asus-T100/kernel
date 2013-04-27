@@ -10,6 +10,8 @@
 #include <linux/delay.h>
 #include <linux/kthread.h>
 #include <linux/version.h>
+#include <linux/pm_qos.h>
+#include <linux/intel_mid_pm.h>
 
 #include <linux/usb.h>
 #include <linux/usb/hcd.h>
@@ -152,27 +154,10 @@ static int sleep_main_thread(struct dwc_otg2 *otg)
 	return rc;
 }
 
-static void get_events(struct dwc_otg2 *otg,
-		u32 *otg_events,
-		u32 *adp_events,
-		u32 *user_events)
-{
-	unsigned long flags;
-
-	spin_lock_irqsave(&otg->lock, flags);
-
-	if (otg_events)
-		*otg_events = otg->otg_events;
-
-	if (adp_events)
-		*adp_events = otg->adp_events;
-
-	if (user_events)
-		*user_events = otg->user_events;
-	spin_unlock_irqrestore(&otg->lock, flags);
-}
-
 static void get_and_clear_events(struct dwc_otg2 *otg,
+				u32 otg_mask,
+				u32 adp_mask,
+				u32 user_mask,
 				u32 *otg_events,
 				u32 *adp_events,
 				u32 *user_events)
@@ -181,18 +166,20 @@ static void get_and_clear_events(struct dwc_otg2 *otg,
 
 	spin_lock_irqsave(&otg->lock, flags);
 
-	if (otg_events)
+	if (otg_events && (otg->otg_events & otg_mask)) {
 		*otg_events = otg->otg_events;
+		otg->otg_events &= ~otg_mask;
+	}
 
-	if (adp_events)
+	if (adp_events && (otg->adp_events & adp_mask)) {
 		*adp_events = otg->adp_events;
+		otg->adp_events &= ~adp_mask;
+	}
 
-	if (user_events)
+	if (user_events && (otg->user_events & user_mask)) {
 		*user_events = otg->user_events;
-
-	otg->otg_events = 0;
-	otg->adp_events = 0;
-	otg->user_events = 0;
+		otg->user_events &= ~user_mask;
+	}
 
 	spin_unlock_irqrestore(&otg->lock, flags);
 }
@@ -200,23 +187,23 @@ static void get_and_clear_events(struct dwc_otg2 *otg,
 static int check_event(struct dwc_otg2 *otg,
 		u32 otg_mask,
 		u32 adp_mask,
-		u32 user_mask)
+		u32 user_mask,
+		u32 *otg_events,
+		u32 *adp_events,
+		u32 *user_events)
 {
-	u32 otg_events = 0;
-	u32 adp_events = 0;
-	u32 user_events = 0;
-
-	get_events(otg, &otg_events, &adp_events, &user_events);
-	if ((otg_events & otg_mask) ||
-			(adp_events & adp_mask) ||
-			(user_events & user_mask)) {
+	get_and_clear_events(otg, otg_mask, adp_mask, user_mask,
+			otg_events, adp_events, user_events);
+	if ((*otg_events & otg_mask) ||
+			(*adp_events & adp_mask) ||
+			(*user_events & user_mask)) {
 		otg_dbg(otg, "Event occurred: "
 			"otg_events=%x, otg_mask=%x, "
 			"adp_events=%x, adp_mask=%x"
 			"user_events=%x, user_mask=%x",
-			otg_events, otg_mask,
-			adp_events, adp_mask,
-			user_events, user_mask);
+			*otg_events, otg_mask,
+			*adp_events, adp_mask,
+			*user_events, user_mask);
 		return 1;
 	}
 
@@ -236,12 +223,14 @@ static int sleep_until_event(struct dwc_otg2 *otg,
 		otg_dbg(otg, "Waiting for event (timeout=%d)...\n", timeout);
 		rc = sleep_main_thread_until_condition_timeout(otg,
 				check_event(otg, otg_mask,
-				adp_mask, user_mask), timeout);
+				adp_mask, user_mask, otg_events,
+				adp_events, user_events), timeout);
 	} else {
 		otg_dbg(otg, "Waiting for event (no timeout)...\n");
 		rc = sleep_main_thread_until_condition(otg,
 				check_event(otg, otg_mask,
-					adp_mask, user_mask));
+					adp_mask, user_mask, otg_events,
+					adp_events, user_events));
 	}
 	pm_runtime_get_sync(otg->dev);
 
@@ -250,12 +239,7 @@ static int sleep_until_event(struct dwc_otg2 *otg,
 	otg_write(otg, ADPEVTEN, 0);
 
 	otg_dbg(otg, "Woke up rc=%d\n", rc);
-	if (rc < 0)
-		goto done;
-	else
-		get_and_clear_events(otg, otg_events, adp_events, user_events);
 
-done:
 	return rc;
 }
 
@@ -293,6 +277,7 @@ static int start_host(struct dwc_otg2 *otg)
 		return -ENODEV;
 	}
 
+	pm_qos_update_request(otg->qos, CSTATE_EXIT_LATENCY_S0i1 - 1);
 	/* Start host driver */
 	hcd = container_of(otg->otg.host, struct usb_hcd, self);
 	ret = hcd->driver->start_host(hcd);
@@ -312,6 +297,7 @@ static int stop_host(struct dwc_otg2 *otg)
 		ret = hcd->driver->stop_host(hcd);
 	}
 
+	pm_qos_update_request(otg->qos, PM_QOS_DEFAULT_VALUE);
 	return ret;
 }
 
@@ -328,6 +314,7 @@ static void start_peripheral(struct dwc_otg2 *otg)
 		return;
 	}
 
+	pm_qos_update_request(otg->qos, CSTATE_EXIT_LATENCY_S0i1 - 1);
 	gadget->ops->start_device(gadget);
 }
 
@@ -340,6 +327,7 @@ static void stop_peripheral(struct dwc_otg2 *otg)
 
 	cancel_delayed_work_sync(&otg->sdp_check_work);
 	gadget->ops->stop_device(gadget);
+	pm_qos_update_request(otg->qos, PM_QOS_DEFAULT_VALUE);
 }
 
 static int get_id(struct dwc_otg2 *otg)
@@ -371,6 +359,12 @@ static int get_id(struct dwc_otg2 *otg)
 		id = RID_B;
 	else if (idsts & USBIDSTS_ID_RARBRC_STS(3))
 		id = RID_C;
+
+	ret = intel_scu_ipc_update_register(PMIC_USBIDCTRL, \
+			USBIDCTRL_ACA_DETEN_D1 | PMIC_USBPHYCTRL_D0, \
+			0);
+	if (ret)
+		otg_err(otg, "Fail to enable ACA&ID detection logic\n");
 
 	return id;
 }
@@ -597,6 +591,12 @@ static enum power_supply_charger_cable_type aca_check(struct dwc_otg2 *otg)
 		POWER_SUPPLY_CHARGER_TYPE_NONE;
 	int ret;
 
+	ret = intel_scu_ipc_update_register(PMIC_USBIDCTRL, \
+			USBIDCTRL_ACA_DETEN_D1, \
+			USBIDCTRL_ACA_DETEN_D1);
+	if (ret)
+		otg_err(otg, "Fail to enable ACA&ID detection logic\n");
+
 	/* Wait >66.1ms (for TCHGD_SERX_DEB) */
 	msleep(66);
 
@@ -605,6 +605,7 @@ static enum power_supply_charger_cable_type aca_check(struct dwc_otg2 *otg)
 	if (ret)
 		otg_err(otg, "Fail to read decoded RID value\n");
 	rarbrc &= USBIDSTS_ID_RARBRC_STS(3);
+	rarbrc >>= 1;
 
 	/* If ID_RARBRC_STS==01: ACA-Dock detected
 	 * If ID_RARBRC_STS==00: MHL detected
@@ -617,6 +618,11 @@ static enum power_supply_charger_cable_type aca_check(struct dwc_otg2 *otg)
 		type = POWER_SUPPLY_CHARGER_TYPE_MHL;
 	}
 
+	ret = intel_scu_ipc_update_register(PMIC_USBIDCTRL, \
+			USBIDCTRL_ACA_DETEN_D1, \
+			0);
+	if (ret)
+		otg_err(otg, "Fail to enable ACA&ID detection logic\n");
 	return type;
 }
 
@@ -630,12 +636,9 @@ static enum power_supply_charger_cable_type
 		POWER_SUPPLY_CHARGER_TYPE_NONE;
 
 	/* PHY Enable:
-	 * De-assert USBRST
+	 * Reset PHY
 	 */
-	ret = intel_scu_ipc_update_register(PMIC_USBPHYCTRL, \
-			PMIC_USBPHYCTRL_D0,  PMIC_USBPHYCTRL_D0);
-	if (ret)
-		otg_err(otg, "Fail to de-assert USBRST\n");
+	reset_phy(otg);
 
 	/* Wait 10ms (~5ms before PHY de-asserts DIR,
 	 * XXus for initial Link reg sync-up).*/
@@ -1361,10 +1364,13 @@ static int dwc_otg_handle_notification(struct notifier_block *nb,
 		state = NOTIFY_OK;
 		break;
 	case USB_EVENT_VBUS:
-		if (val)
+		if (val) {
 			otg->otg_events |= OEVT_B_DEV_SES_VLD_DET_EVNT;
-		else
+			otg->otg_events &= ~OEVT_A_DEV_SESS_END_DET_EVNT;
+		} else {
 			otg->otg_events |= OEVT_A_DEV_SESS_END_DET_EVNT;
+			otg->otg_events &= ~OEVT_B_DEV_SES_VLD_DET_EVNT;
+		}
 		state = NOTIFY_OK;
 		break;
 	default:
@@ -1713,7 +1719,7 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 	struct resource		res[2];
 	struct dwc_otg2 *otg;
 	struct usb_phy *usb_phy;
-	struct platform_device *dwc_host, *dwc_gadget;
+	struct platform_device *dwc_host = NULL, *dwc_gadget = NULL;
 	unsigned long resource, len;
 	int retval;
 
@@ -1888,6 +1894,12 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 		goto exit;
 	}
 
+	otg->qos = kzalloc(sizeof(struct pm_qos_request), GFP_KERNEL);
+	if (!otg->qos)
+		goto exit;
+	pm_qos_add_request(otg->qos, PM_QOS_CPU_DMA_LATENCY,\
+			PM_QOS_DEFAULT_VALUE);
+
 	/* Don't let phy go to suspend mode, which
 	 * will cause FS/LS devices enum failed in host mode.
 	 */
@@ -1902,6 +1914,10 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 
 	return 0;
 exit:
+	if (otg->qos) {
+		pm_qos_remove_request(otg->qos);
+		kfree(otg->qos);
+	}
 	if (the_transceiver)
 		dwc_otg_remove(pdev);
 	free_irq(otg->irqnum, NULL);
@@ -1930,6 +1946,12 @@ static void dwc_otg_remove(struct pci_dev *pdev)
 	pci_disable_device(pdev);
 	usb_set_transceiver(NULL);
 	otg_dbg(otg, "\n");
+
+	if (otg->qos) {
+		pm_qos_remove_request(otg->qos);
+		kfree(otg->qos);
+	}
+
 	kfree(otg);
 }
 
@@ -2033,7 +2055,6 @@ static int dwc_otg_suspend(struct device *dev)
 static int dwc_otg_resume(struct device *dev)
 {
 	struct dwc_otg2 *otg = the_transceiver;
-	unsigned long flags;
 	struct pci_dev *pci_dev = to_pci_dev(dev);
 
 	pci_set_power_state(pci_dev, PCI_D0);
@@ -2044,11 +2065,6 @@ static int dwc_otg_resume(struct device *dev)
 		return -EIO;
 	}
 	set_sus_phy(otg, 0);
-
-	spin_lock_irqsave(&otg->lock, flags);
-	otg->otg_events |= OEVT_B_DEV_SES_VLD_DET_EVNT;
-	wakeup_main_thread(otg);
-	spin_unlock_irqrestore(&otg->lock, flags);
 
 	return 0;
 }

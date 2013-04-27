@@ -22,10 +22,21 @@
 
 static int get_bcu_config(struct ocd_bcove_config_data *ocd_smip_data)
 {
+	int i;
+	void __iomem *bcu_smip_sram_addr;
+	u8 *plat_smip_data;
 
-	/* intel_scu_ipc_read_mip function reads MIP data in terms of bytes */
-	return (intel_scu_ipc_read_mip(ocd_smip_data, sizeof(*ocd_smip_data),
-							BCU_SMIP_BASE, 1));
+	if (!ocd_smip_data)
+		return -ENXIO;
+
+	plat_smip_data = (u8 *)ocd_smip_data;
+	bcu_smip_sram_addr = ioremap_nocache(MRFL_SMIP_SRAM_ADDR +
+					BCU_SMIP_OFFSET, NUM_SMIP_BYTES);
+
+	for (i = 0; i < NUM_SMIP_BYTES ; i++)
+		*(plat_smip_data + i) = ioread8(bcu_smip_sram_addr + i);
+
+	return 0;
 }
 
 static struct ocd_platform_data ocd_data;

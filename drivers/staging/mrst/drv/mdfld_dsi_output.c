@@ -605,7 +605,7 @@ static int mdfld_dsi_get_default_config(struct drm_device *dev,
 	}
 	
 	config->bpp = 24;
-	config->type = is_panel_vid_or_cmd(dev);
+	config->type = get_panel_mode(dev);
 	config->lane_count = 2;
 	config->lane_config = MDFLD_DSI_DATA_LANE_2_2;
 

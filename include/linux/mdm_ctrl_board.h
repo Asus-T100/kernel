@@ -26,11 +26,24 @@
 #ifndef __MDM_CTRL_BOARD_H__
 #define __MDM_CTRL_BOARD_H__
 
+#include <asm/intel-mid.h>
+
 /* Supported Modem IDs*/
-#define MODEM_6260 6260
-#define MODEM_6268 6268
-#define MODEM_6360 6360
-#define MODEM_7160 7160
+#define MODEM_UNSUP	0
+#define MODEM_6260	6260
+#define MODEM_6268	6268
+#define MODEM_6360	6360
+#define MODEM_7160	7160
+#define MODEM_7260	7260
+
+/* Supported PMIC IDs*/
+enum {
+	UNKNOWN_PMIC,
+	MFLD_PMIC,
+	CLVT_PMIC,
+	MRFL_PMIC,
+	BYT_PMIC
+};
 
 /* GPIO names */
 #define GPIO_RST_OUT	"ifx_mdm_rst_out"
@@ -40,6 +53,24 @@
 #define GPIO_CDUMP_MRFL	"MODEM_CORE_DUMP"
 
 extern void *modem_ctrl_platform_data(void *data) __attribute__((weak));
+
+/* Modem basical info */
+struct modem_base_info {
+	char	modem_name[SFI_NAME_LEN + 1];
+	int	id;
+	int	pmic;
+	int	cpu;
+	char	cpu_name[SFI_NAME_LEN + 1];
+};
+
+#ifdef CONFIG_MDM_CTRL
+extern int mcd_register_mdm_info(struct modem_base_info const *info);
+#else
+static inline int mcd_register_mdm_info(struct modem_base_info const *info)
+{
+	return 0;
+}
+#endif
 
 /* struct mdm_ctrl_pdata
  * @modem_name: Modem name, used to select correct sequences
@@ -84,12 +115,12 @@ struct mdm_ctrl_pdata {
  * @warm_rst_duration:Warm reset duration (ms)
  */
 struct mdm_ctrl_device_info {
-	int			pre_on_delay;
-	int			on_duration;
-	int			pre_wflash_delay;
-	int			pre_cflash_delay;
-	int			flash_duration;
-	int			warm_rst_duration;
+	int	pre_on_delay;
+	int	on_duration;
+	int	pre_wflash_delay;
+	int	pre_cflash_delay;
+	int	flash_duration;
+	int	warm_rst_duration;
 };
 
 #endif /* __MDM_CTRL_BOARD_H__ */

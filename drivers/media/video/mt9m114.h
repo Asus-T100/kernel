@@ -79,6 +79,9 @@
 #define MISENSOR_AE_TRACK_STATUS	0xA800
 /* sensor awb status register */
 #define MISENSOR_AWB_STATUS	0xAC00
+/* sensor coarse integration time register */
+#define MISENSOR_COARSE_INTEGRATION_TIME 0xC83C
+
 
 #define SENSOR_DETECTED		1
 #define SENSOR_NOT_DETECTED	0

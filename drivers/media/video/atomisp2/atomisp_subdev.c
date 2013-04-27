@@ -499,11 +499,10 @@ int atomisp_subdev_set_ffmt(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 			atomisp_find_in_fmt_conv(ffmt->code);
 
 		if (!fc) {
-			ffmt->code = atomisp_in_fmt_conv[0].code;
+			fc = atomisp_in_fmt_conv;
+			ffmt->code = fc->code;
 			dev_dbg(isp->dev, "using 0x%8.8x instead\n",
 				ffmt->code);
-			fc = atomisp_find_in_fmt_conv(ffmt->code);
-			BUG_ON(!fc);
 		}
 
 		*__ffmt = *ffmt;

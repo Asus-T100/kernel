@@ -63,7 +63,7 @@ static void __iomem *lpeshim_base_address;
  * Currently this limit to ONE modem on platform
  */
 static unsigned long modem_found_and_i2s_setup_ok;
-static unsigned long clv_ssps_found;
+static unsigned long ssps_found;
 
 static void(*intel_mid_i2s_modem_probe_cb)(void);
 static void(*intel_mid_i2s_modem_remove_cb)(void);
@@ -809,7 +809,7 @@ int intel_mid_i2s_wr_req(struct intel_mid_i2s_hdl	*drv_data,
 
 	/* Error management: free resources */
 return_clr_busy:
-	clear_bit(I2S_PORT_READ_BUSY, &drv_data->flags);
+	clear_bit(I2S_PORT_WRITE_BUSY, &drv_data->flags);
 	return result;
 }
 EXPORT_SYMBOL_GPL(intel_mid_i2s_wr_req);
@@ -2878,13 +2878,14 @@ static int intel_mid_i2s_probe(struct pci_dev *pdev,
 	 */
 	pr_info("ALLOCATE FOR ASOC\n");
 
-	if (pdev->device == CLV_SSP0_DEVICE_ID)
-		WARN(test_and_set_bit(CLV_SSP0_FND, &clv_ssps_found), "CLV SSP0 already probed");
+	if (usage == SSP_USAGE_MODEM)
+		WARN(test_and_set_bit(MODEM_USAGE_FND, &ssps_found), "SSP for modem usage already probed");
 
-	if (pdev->device == CLV_SSP1_DEVICE_ID)
-		WARN(test_and_set_bit(CLV_SSP1_FND, &clv_ssps_found), "CLV SSP1 already probed");
+	if (usage == SSP_USAGE_BLUETOOTH_FM)
+		WARN(test_and_set_bit(BT_USAGE_FND, &ssps_found), "SSP for BT/FM usage already probed");
 
-	if (test_bit(CLV_SSP0_FND, &clv_ssps_found) & test_bit(CLV_SSP1_FND, &clv_ssps_found)) {
+	if (test_bit(MODEM_USAGE_FND, &ssps_found) &
+		test_bit(BT_USAGE_FND, &ssps_found)) {
 		/*
 		 * MID SSP CPU DAI
 		 */
@@ -2950,9 +2951,9 @@ static void __devexit intel_mid_i2s_remove(struct pci_dev *pdev)
 			(*intel_mid_i2s_modem_remove_cb)();
 	}
 	if (device == CLV_SSP0_DEVICE_ID)
-		clear_bit(CLV_SSP0_FND, &clv_ssps_found);
+		clear_bit(MODEM_USAGE_FND, &ssps_found);
 	if (device == CLV_SSP1_DEVICE_ID)
-		clear_bit(CLV_SSP1_FND, &clv_ssps_found);
+		clear_bit(BT_USAGE_FND, &ssps_found);
 
 leave:
 	return;
@@ -2965,8 +2966,8 @@ leave:
 static int __init intel_mid_i2s_init(void)
 {
 	clear_bit(MODEM_FND, &modem_found_and_i2s_setup_ok);
-	clear_bit(CLV_SSP0_FND, &clv_ssps_found);
-	clear_bit(CLV_SSP1_FND, &clv_ssps_found);
+	clear_bit(MODEM_USAGE_FND, &ssps_found);
+	clear_bit(BT_USAGE_FND, &ssps_found);
 #ifdef __MRFL_SPECIFIC_TMP__
 	/* FIXME: use of MRFL_LPE_SHIM_REG_BASE_ADDRESS should be
 	 * avoided and replaced by a call to SST driver that will

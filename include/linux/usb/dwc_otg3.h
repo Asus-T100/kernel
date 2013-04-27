@@ -398,6 +398,11 @@ struct dwc_otg2 {
 	struct notifier_block nb;
 	struct delayed_work sdp_check_work;
 	struct intel_dwc_otg_pdata *otg_data;
+
+	/* pm request to prevent enter Cx state
+	 * Because it have big impact to USB performance
+	 * */
+	struct pm_qos_request *qos;
 };
 
 /* Invalid SDP checking timeout */
@@ -549,7 +554,7 @@ struct dwc_otg2 {
 #define USBIDCTRL_USB_IDEN_D0	(1 << 0)
 #define PMIC_USBIDSTS				0x1A
 #define USBIDSTS_ID_GND			(1 << 0)
-#define USBIDSTS_ID_RARBRC_STS(v)	((v & 0x3)  << 0)
+#define USBIDSTS_ID_RARBRC_STS(v)	((v & 0x3)  << 1)
 #define USBIDSTS_ID_FLOAT_STS	(1 << 3)
 #define PMIC_USBPHYCTRL_D0		(1 << 0)
 

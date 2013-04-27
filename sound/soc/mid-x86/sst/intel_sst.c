@@ -117,6 +117,23 @@ static inline int get_stream_id_mrfld(u32 pipe_id)
 	return -1;
 }
 
+static inline void set_imr_interrupts(struct intel_sst_drv *ctx, bool enable)
+{
+	union interrupt_reg isr, imr;
+
+	spin_lock(&ctx->ipc_spin_lock);
+	imr.full = sst_shim_read(ctx->shim, SST_IMRX);
+	if (enable) {
+		imr.part.done_interrupt = 0;
+		imr.part.busy_interrupt = 0;
+	} else {
+		imr.part.done_interrupt = 1;
+		imr.part.busy_interrupt = 1;
+	}
+	sst_shim_write(ctx->shim, SST_IMRX, imr.full);
+	spin_unlock(&ctx->ipc_spin_lock);
+}
+
 static irqreturn_t intel_sst_irq_thread_mrfld(int irq, void *context)
 {
 	struct intel_sst_drv *drv = (struct intel_sst_drv *) context;
@@ -240,6 +257,8 @@ static irqreturn_t intel_sst_intr_mfld(int irq, void *context)
 	/* Interrupt arrived, check src */
 	isr.full = sst_shim_read(drv->shim, SST_ISRX);
 	if (isr.part.done_interrupt) {
+		/* Mask all interrupts till this one is processsed */
+		set_imr_interrupts(drv, false);
 		/* Clear done bit */
 		spin_lock(&sst_drv_ctx->ipc_spin_lock);
 		header.full = sst_shim_read(drv->shim, drv->ipc_reg.ipcx);
@@ -251,15 +270,14 @@ static irqreturn_t intel_sst_intr_mfld(int irq, void *context)
 		spin_unlock(&sst_drv_ctx->ipc_spin_lock);
 		queue_work(sst_drv_ctx->post_msg_wq,
 			&sst_drv_ctx->ipc_post_msg.wq);
+
+		/* Un mask done and busy intr */
+		set_imr_interrupts(drv, true);
 		retval = IRQ_HANDLED;
 	}
 	if (isr.part.busy_interrupt) {
-		/* mask busy interrupt */
-		spin_lock(&sst_drv_ctx->ipc_spin_lock);
-		imr.full = sst_shim_read(drv->shim, SST_IMRX);
-		imr.part.busy_interrupt = 1;
-		sst_shim_write(sst_drv_ctx->shim, SST_IMRX, imr.full);
-		spin_unlock(&sst_drv_ctx->ipc_spin_lock);
+		/* Mask all interrupts till we process it in bottom half */
+		set_imr_interrupts(drv, false);
 		retval = IRQ_WAKE_THREAD;
 	}
 	return retval;
@@ -1076,7 +1094,6 @@ static int intel_sst_runtime_resume(struct device *dev)
 	/* fw_clear_cache is set through debugfs support */
 	if (atomic_read(&sst_drv_ctx->fw_clear_cache)) {
 		mutex_lock(&sst_drv_ctx->sst_in_mem_lock);
-
 		if (sst_drv_ctx->fw_in_mem) {
 			pr_debug("Clearing the cached firmware\n");
 			kfree(sst_drv_ctx->fw_in_mem);
@@ -1166,13 +1183,10 @@ static struct pci_driver driver = {
 	.id_table = intel_sst_ids,
 	.probe = intel_sst_probe,
 	.remove = __devexit_p(intel_sst_remove),
-/* Temporarily disable PM for Bodegabay */
-#ifndef CONFIG_PRH_TEMP_WA_FOR_SPID
 #ifdef CONFIG_PM
 	.driver = {
 		.pm = &intel_sst_pm,
 	},
-#endif
 #endif
 };
 

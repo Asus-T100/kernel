@@ -34,7 +34,7 @@
 #define FW_SZ (2 * 800 * 1024)
 
 #define FW_NAME "vsp_VPP_sle.bin"
-#define FW_VP8_NAME "vsp_VP8_sle.bin"
+#define FW_VP8_NAME "vsp_vp8_enc.bin"
 
 static inline unsigned int vsp_set_firmware(struct drm_psb_private *dev_priv,
 					    unsigned int processor);
@@ -89,10 +89,6 @@ int vsp_init(struct drm_device *dev)
 	vsp_priv->current_sequence = 0;
 	vsp_priv->vsp_state = VSP_STATE_DOWN;
 	vsp_priv->dev = dev;
-
-	/* for vp8 */
-	vsp_priv->wr = 0;
-	vsp_priv->rd = 0;
 
 	dev_priv->vsp_private = vsp_priv;
 

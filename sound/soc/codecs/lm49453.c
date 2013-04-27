@@ -1379,35 +1379,30 @@ static struct snd_soc_dai_ops lm49453_headset_dai_ops = {
 	.hw_params	= lm49453_hw_params,
 	.set_sysclk	= lm49453_set_dai_sysclk,
 	.set_fmt	= lm49453_set_dai_fmt,
-	.digital_mute	= lm49453_hp_mute,
 };
 
 static struct snd_soc_dai_ops lm49453_speaker_dai_ops = {
 	.hw_params	= lm49453_hw_params,
 	.set_sysclk	= lm49453_set_dai_sysclk,
 	.set_fmt	= lm49453_set_dai_fmt,
-	.digital_mute	= lm49453_ls_mute,
 };
 
 static struct snd_soc_dai_ops lm49453_haptic_dai_ops = {
 	.hw_params	= lm49453_hw_params,
 	.set_sysclk	= lm49453_set_dai_sysclk,
 	.set_fmt	= lm49453_set_dai_fmt,
-	.digital_mute	= lm49453_ha_mute,
 };
 
 static struct snd_soc_dai_ops lm49453_ep_dai_ops = {
 	.hw_params	= lm49453_hw_params,
 	.set_sysclk	= lm49453_set_dai_sysclk,
 	.set_fmt	= lm49453_set_dai_fmt,
-	.digital_mute	= lm49453_ep_mute,
 };
 
 static struct snd_soc_dai_ops lm49453_lineout_dai_ops = {
 	.hw_params	= lm49453_hw_params,
 	.set_sysclk	= lm49453_set_dai_sysclk,
 	.set_fmt	= lm49453_set_dai_fmt,
-	.digital_mute	= lm49453_lo_mute,
 };
 
 /* LM49453 dai structure. */
@@ -1544,6 +1539,15 @@ static int lm49453_probe(struct snd_soc_codec *codec)
 	snd_soc_write(codec, LM49453_P0_AUDIO_PORT1_RX_MSB_REG, 0x00);
 	snd_soc_write(codec, LM49453_P0_AUDIO_PORT1_TX_MSB_REG, 0x00);
 	snd_soc_write(codec, LM49453_P0_AUDIO_PORT1_TDM_CHANNELS_REG, 0x1b);
+
+	/* Configure STEREO_LINK to allow left & right channel volume configuation independently */
+	snd_soc_update_bits(codec, LM49453_P0_DMIC1_LEVELL_REG, LM49453_P0_LEVELL_STEREO_LINK, 0);
+	snd_soc_update_bits(codec, LM49453_P0_DMIC2_LEVELL_REG, LM49453_P0_LEVELL_STEREO_LINK, 0);
+	snd_soc_update_bits(codec, LM49453_P0_ADC_LEVELL_REG, LM49453_P0_LEVELL_STEREO_LINK, 0);
+	snd_soc_update_bits(codec, LM49453_P0_DAC_HP_LEVELL_REG, LM49453_P0_LEVELL_STEREO_LINK, 0);
+	snd_soc_update_bits(codec, LM49453_P0_DAC_LO_LEVELL_REG, LM49453_P0_LEVELL_STEREO_LINK, 0);
+	snd_soc_update_bits(codec, LM49453_P0_DAC_LS_LEVELL_REG, LM49453_P0_LEVELL_STEREO_LINK, 0);
+	snd_soc_update_bits(codec, LM49453_P0_DAC_HA_LEVELL_REG, LM49453_P0_LEVELL_STEREO_LINK, 0);
 
 	return 0;
 }

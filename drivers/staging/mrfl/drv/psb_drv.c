@@ -82,6 +82,8 @@
 /* SH DPST */
 #include "psb_dpst_func.h"
 
+#include "asm/intel-mid.h"
+
 #define KEEP_UNUSED_CODE 0
 #define KEEP_UNUSED_CODE_S3D 0
 
@@ -340,6 +342,9 @@ MODULE_DEVICE_TABLE(pci, pciidlist);
 		DRM_IO(DRM_PSB_ENABLE_HDCP + DRM_COMMAND_BASE)
 #define DRM_IOCTL_PSB_DISABLE_HDCP \
 		DRM_IO(DRM_PSB_DISABLE_HDCP + DRM_COMMAND_BASE)
+#define DRM_IOCTL_PSB_GET_HDCP_LINK_STATUS \
+		DRM_IOR(DRM_PSB_GET_HDCP_LINK_STATUS + \
+		DRM_COMMAND_BASE, uint32_t)
 
 /* S3D IOCTLs */
 #define DRM_IOCTL_PSB_S3D_QUERY \
@@ -516,10 +521,8 @@ static int psb_enable_hdcp_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv);
 static int psb_disable_hdcp_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv);
-#if KEEP_UNUSED_CODE
 static int psb_get_hdcp_link_status_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv);
-#endif /* if KEEP_UNUSED_CODE */
 
 #if KEEP_UNUSED_CODE_S3D
 static int psb_s3d_query_ioctl(struct drm_device *dev, void *data,
@@ -647,6 +650,8 @@ static struct drm_ioctl_desc psb_ioctls[] = {
 		      DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_DISABLE_HDCP, psb_disable_hdcp_ioctl,
 		      DRM_AUTH),
+	PSB_IOCTL_DEF(DRM_IOCTL_PSB_GET_HDCP_LINK_STATUS,
+			psb_get_hdcp_link_status_ioctl, DRM_AUTH),
 #endif
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_SET_CSC, psb_set_csc_ioctl, DRM_AUTH),
 /*
@@ -1188,49 +1193,24 @@ bool mrst_get_vbt_data(struct drm_psb_private *dev_priv)
 		return false;
 	}
 
-	if (IS_FLDS(dev_priv->dev)) {
-		if (PanelID == GCT_DETECT) {
-			if (dev_priv->gct_data.bpi == 2) {
-				PSB_DEBUG_ENTRY("[GFX] PYR Panel Detected\n");
-				dev_priv->panel_id = PYR_CMD;
-				PanelID = PYR_CMD;
-			} else if (dev_priv->gct_data.bpi == 0) {
-				PSB_DEBUG_ENTRY("[GFX] TMD Panel Detected.\n");
-				dev_priv->panel_id = TMD_VID;
-				PanelID = TMD_VID;
-			} else {
-#ifdef CONFIG_SUPPORT_MIPI_H8C7_VID_DISPLAY
-				/* CMI panel is default one for BODEGABAY */
-				PSB_DEBUG_ENTRY("Default Panel (CMI-H8C7)\n");
-				dev_priv->panel_id = H8C7_VID;
-				PanelID = H8C7_VID;
-#else
-				/* JDI panel is default one for MERRIFIELD */
-				PSB_DEBUG_ENTRY("Default Panel (JDI VID)\n");
-				dev_priv->panel_id = JDI_VID;
-				PanelID = JDI_VID;
-#endif
-			}
+	if (INTEL_MID_BOARD(2, PHONE, MRFL, BB, PRO) ||
+		INTEL_MID_BOARD(2, PHONE, MRFL, BB, ENG)) {
+		dev_priv->panel_id = H8C7_VID;
+		PanelID = H8C7_VID;
+	} else if (INTEL_MID_BOARD(2, PHONE, MRFL, SB, PRO) ||
+			INTEL_MID_BOARD(2, PHONE, MRFL, SB, ENG)) {
+		if (spid.hardware_id <= MRFL_PHONE_SB_PR0) {
+			dev_priv->panel_id = JDI_VID;
+			PanelID = JDI_VID;
 		} else {
-			PSB_DEBUG_ENTRY
-			("[GFX] Panel Parameter Passed in through cmd line\n");
-			dev_priv->panel_id = PanelID;
+			dev_priv->panel_id = JDI_CMD;
+			PanelID = JDI_CMD;
 		}
+	} else {
+		DRM_INFO("Panel id %d from cmd line\n");
+		dev_priv->panel_id = PanelID;
 	}
-#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
-	dev_priv->panel_id = TMD_VID;
-	PSB_DEBUG_ENTRY("[DISPLAY] %s: TMD_VID Panel\n", __func__);
-#endif
 
-#ifdef CONFIG_SUPPORT_TMD_MIPI_600X1024_DISPLAY
-	dev_priv->panel_id = TMD_6X10_VID;
-	PanelID = TMD_6X10_VID;
-	printk(KERN_ALERT "%s: TMD_6X10_VID Panel\n", __func__);
-#endif
-#ifdef CONFIG_SUPPORT_JDI_CMD_DISPLAY
-	dev_priv->panel_id = JDI_CMD;
-	PanelID = JDI_CMD;
-#endif
 	return true;
 }
 void hdmi_do_hotplug_wq(struct work_struct *work)
@@ -2264,7 +2244,6 @@ static int psb_disable_hdcp_ioctl(struct drm_device *dev, void *data,
 	return -1;
 }
 
-#if KEEP_UNUSED_CODE
 static int psb_get_hdcp_link_status_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv)
 {
@@ -2276,7 +2255,6 @@ static int psb_get_hdcp_link_status_ioctl(struct drm_device *dev, void *data,
 	}
 	return 0;
 }
-#endif /* if KEEP_UNUSED_CODE */
 
 #endif /* ifdef CONFIG_SUPPORT_HDMI */
 

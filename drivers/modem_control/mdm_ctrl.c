@@ -642,7 +642,7 @@ static int __init mdm_ctrl_module_init(void)
 	/* Pre-initialisation: Retrieve platform device data*/
 	mdm_ctrl_get_device_info(new_drv);
 
-	if (new_drv->pdata->is_mdm_ctrl_disabled) {
+	if (new_drv->is_mdm_ctrl_disabled) {
 		ret = -ENODEV;
 		goto out;
 	}
@@ -711,9 +711,6 @@ static int __init mdm_ctrl_module_init(void)
 		ret = -EIO;
 		goto del_class;
 	}
-
-	wake_lock_init(&new_drv->stay_awake, WAKE_LOCK_SUSPEND,
-				"mcd_wakelock");
 
 	mdm_ctrl_launch_work(new_drv, MDM_CTRL_STATE_OFF);
 	flush_workqueue(new_drv->change_state_wq);

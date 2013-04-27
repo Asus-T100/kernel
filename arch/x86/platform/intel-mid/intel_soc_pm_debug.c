@@ -1313,7 +1313,6 @@ void pmu_stats_finish(void)
 #endif /*if CONFIG_X86_MDFLD_POWER || CONFIG_X86_CLV_POWER*/
 
 #ifdef CONFIG_INTEL_ATOM_MRFLD_POWER
-
 static char *nc_devices[] = {
 	"GFXSLC",
 	"GSDKCK",
@@ -2057,11 +2056,9 @@ static const struct file_operations cstate_ignore_remove_ops = {
 	.release	= single_release,
 };
 
-static int s3_ctrl = 1;
-
 static int s3_ctrl_show(struct seq_file *s, void *unused)
 {
-	seq_printf(s, "%d\n", s3_ctrl);
+	seq_printf(s, "%d\n", enable_s3);
 	return 0;
 }
 
@@ -2088,12 +2085,12 @@ static ssize_t s3_ctrl_write(struct file *file,
 	if (res)
 		return -EINVAL;
 
-	s3_ctrl = local_s3_ctrl ? 1 : 0;
+	enable_s3 = local_s3_ctrl ? 1 : 0;
 
-	if (s3_ctrl)
-		__pm_stay_awake(mid_pmu_cxt->pmu_wake_lock);
-	else
+	if (enable_s3)
 		__pm_relax(mid_pmu_cxt->pmu_wake_lock);
+	else
+		__pm_stay_awake(mid_pmu_cxt->pmu_wake_lock);
 
 	return buf_size;
 }
@@ -2127,6 +2124,24 @@ unsigned int pmu_get_new_cstate(unsigned int cstate, int *index)
 		cstate_mask	= (u32)((1 << local_cstate)-1);
 		local_cstate_allowed	&= ((1<<MWAIT_MAX_NUM_CSTATES)-1);
 		local_cstate_allowed	&= cstate_mask;
+
+		/* check if we can acquire scu_ready_sem
+		 * if we are not able to then do a c6 */
+		if (down_trylock(&mid_pmu_cxt->scu_ready_sem))
+			local_cstate_allowed &= (u32)((1 << 6)-1);
+		else {
+			if (mid_pmu_cxt->suspend_started ||
+				mid_pmu_cxt->shutdown_started ||
+				!mid_pmu_cxt->s0ix_possible)
+				local_cstate_allowed &= (u32)((1 << 6)-1);
+			else if (mid_pmu_cxt->s0ix_possible == 2) {
+				/* If LPMP3 is possible then restrict to S0I2 */
+				local_cstate_allowed &= (u32)((1 << 8)-1);
+			}
+
+			up(&mid_pmu_cxt->scu_ready_sem);
+		}
+
 		new_cstate	= fls(local_cstate_allowed);
 
 		if (likely(new_cstate))
@@ -2239,19 +2254,23 @@ void pmu_stats_init(void)
 				NULL, NULL, &c_states_stat_ops);
 #ifdef CONFIG_PM_DEBUG
 	if (platform_is(INTEL_ATOM_MRFLD)) {
-		mid_pmu_cxt->cstate_ignore =
+		/* If s0ix is disabled then restrict to C6 */
+		if (!enable_s0ix) {
+			mid_pmu_cxt->cstate_ignore =
 				~((1 << MWAIT_MAX_NUM_CSTATES) - 1);
-		/* Ignore C2, C3, C4, C5 states */
-		mid_pmu_cxt->cstate_ignore |= (1 << 1);
-		mid_pmu_cxt->cstate_ignore |= (1 << 2);
-		mid_pmu_cxt->cstate_ignore |= (1 << 3);
-		mid_pmu_cxt->cstate_ignore |= (1 << 4);
 
-		/* For now ignore C7, C8, C9, C10 states */
-		mid_pmu_cxt->cstate_ignore |= (1 << 6);
-		mid_pmu_cxt->cstate_ignore |= (1 << 7);
-		mid_pmu_cxt->cstate_ignore |= (1 << 8);
-		mid_pmu_cxt->cstate_ignore |= (1 << 9);
+			/* Ignore C2, C3, C4, C5 states */
+			mid_pmu_cxt->cstate_ignore |= (1 << 1);
+			mid_pmu_cxt->cstate_ignore |= (1 << 2);
+			mid_pmu_cxt->cstate_ignore |= (1 << 3);
+			mid_pmu_cxt->cstate_ignore |= (1 << 4);
+
+			/* For now ignore C7, C8, C9, C10 states */
+			mid_pmu_cxt->cstate_ignore |= (1 << 6);
+			mid_pmu_cxt->cstate_ignore |= (1 << 7);
+			mid_pmu_cxt->cstate_ignore |= (1 << 8);
+			mid_pmu_cxt->cstate_ignore |= (1 << 9);
+		}
 
 		mid_pmu_cxt->cstate_qos =
 			kzalloc(sizeof(struct pm_qos_request), GFP_KERNEL);
@@ -2260,9 +2279,12 @@ void pmu_stats_init(void)
 				 PM_QOS_CPU_DMA_LATENCY, PM_QOS_DEFAULT_VALUE);
 		}
 
-		/* Restrict platform Cx state to C6 */
-		pm_qos_update_request(mid_pmu_cxt->cstate_qos,
+		/* If s0ix is disabled then restrict to C6 */
+		if (!enable_s0ix) {
+			/* Restrict platform Cx state to C6 */
+			pm_qos_update_request(mid_pmu_cxt->cstate_qos,
 						(CSTATE_EXIT_LATENCY_S0i1-1));
+		}
 
 		/* /sys/kernel/debug/ignore_add */
 		(void) debugfs_create_file("ignore_add", S_IFREG | S_IRUGO,

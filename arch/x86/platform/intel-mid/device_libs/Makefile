@@ -85,13 +85,14 @@ obj-$(subst m,y,$(CONFIG_HSI_ARASAN))					+= platform_edlp_modem.o
 obj-$(subst m,y,$(CONFIG_HSI_ARASAN))					+= platform_edlp_fast.o
 obj-$(subst m,y,$(CONFIG_HSI_ARASAN))					+= platform_logical_modem.o
 # Modem control Device
-obj-$(subst m,y,$(CONFIG_MDM_CTRL))					+= platform_modem_ctrl.o
+obj-y									+= platform_modem_ctrl.o
 # UART Devices
 obj-$(subst m,y,$(CONFIG_SERIAL_MFD_HSU))				+= platform_hsu.o
 # MISC Devices
 obj-$(subst m,y,$(CONFIG_KEYBOARD_GPIO))				+= platform_gpio_keys.o
-obj-$(subst m,y,$(CONFIG_SWITCH_MID))				+= platform_switch_mid.o
-obj-$(subst m,y,$(CONFIG_SWITCH_MID_USER_NOTIFY))		+= platform_switch_mid_user_notify.o
+obj-$(subst m,y,$(CONFIG_SWITCH_MID))					+= platform_switch_mid.o
+obj-$(subst m,y,$(CONFIG_SWITCH_MID_USER_NOTIFY))			+= platform_switch_mid_user_notify.o
+obj-$(subst m,y,$(CONFIG_EXTCON_MID))					+= platform_extcon_mid.o
 obj-$(subst m,y,$(CONFIG_I2C_GPIO))					+= platform_i2c_gpio.o
 # WIFI
 obj-$(subst m,y,$(CONFIG_WL12XX_PLATFORM_DATA))				+= platform_wl12xx.o
@@ -102,5 +103,3 @@ obj-$(subst m,y,$(CONFIG_BCM_BT_LPM))					+= platform_btlpm.o
 # Pin Control
 obj-$(subst m,y,$(CONFIG_PINCTRL_INTEL_MID))				+= platform_mid_pinctrl.o
 obj-$(subst m,y,$(CONFIG_INTEL_MID_OSNIB_ILB))				+= platform_osnib_ilb.o
-
-obj-$(subst m,y,$(CONFIG_SENSORS_PSH_BYT))				+= platform_psh_byt.o

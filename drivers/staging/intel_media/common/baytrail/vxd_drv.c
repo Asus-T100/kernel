@@ -34,15 +34,35 @@ extern int drm_psb_trap_pagefaults;
 
 int drm_psb_cpurelax;
 int drm_psb_udelaydivider = 1;
-int drm_psb_debug = 0xffff;
 
 static struct pci_dev *pci_root;
 
 int drm_psb_trap_pagefaults;
-int drm_msvdx_pmpolicy = PSB_PMPOLICY_NOPM;
+
+
+struct drm_device *gpDrmDevice;
+atomic_t g_videodec_access_count;
+
+static void vxd_power_init(struct drm_device *dev);
 
 module_param_named(trap_pagefaults, drm_psb_trap_pagefaults, int, 0600);
+
+int drm_msvdx_pmpolicy = PSB_PMPOLICY_POWERDOWN;
 module_param_named(msvdx_pmpolicy, drm_msvdx_pmpolicy, int, 0600);
+MODULE_PARM_DESC(msvdx_pmpolicy,
+		"control d0i3 of msvdx "
+		"(default: 2"
+		"0 - d0i3 is disabled"
+		"1 - clockgating is enabled"
+		"2 - powerdown is enabled)");
+
+int drm_psb_debug = 0x0;
+module_param_named(psb_debug, drm_psb_debug, int, 0600);
+MODULE_PARM_DESC(psb_debug,
+		"control debug info output"
+		"default: 0"
+		"0:PSB_D_GENERAL, 1:PSB_D_INIT, 2:PSB_D_IRQ, 3:PSB_D_ENTRY"
+		"6:PSB_D_PM, 8:PSB_D_REG, 9:PSB_D_MSVDX, 13:PSB_D_WARN");
 
 #define DRM_IOCTL_PSB_EXTENSION			\
 	DRM_IOWR(DRM_PSB_EXTENSION, 		\
@@ -354,22 +374,7 @@ int vxd_driver_load(struct drm_device *dev)
 	printk("fei 0 MSVDX_CORE_REV_OFFSET value is 0x%x.\n", readl(i915_dev_priv->regs + 0x170640));
 	printk("fei 1 MSVDX_CORE_REV_OFFSET value is 0x%x.\n", PSB_RMSVDX32(MSVDX_CORE_REV_OFFSET));
 
-#if 1
-	pci_root = pci_get_bus_and_slot(0, PCI_DEVFN(0, 0));
-	if (!pci_root) {
-		printk(KERN_ALERT "%s: Error: msgbus PCI handle NULL",
-			__func__);
-		return -ENODEV;
-	}
-	pwr_sts = intel_mid_msgbus_read32_vxd(PUNIT_PORT, VEDSSPM0);
-	intel_mid_msgbus_write32_vxd(PUNIT_PORT, VEDSSPM0, 0);
-	pwr_sts = intel_mid_msgbus_read32_vxd(PUNIT_PORT, VEDSSPM0);
-	while (pwr_sts != 0) {
-		intel_mid_msgbus_write32_vxd(PUNIT_PORT, VEDSSPM0, 0);
-		pwr_sts = intel_mid_msgbus_read32_vxd(PUNIT_PORT, VEDSSPM0);
-	}
-	printk("fei 2 MSVDX_CORE_REV_OFFSET value is 0x%x.\n", readl(dev_priv->msvdx_reg + 0x640));
-#endif
+	vxd_power_init(dev);
 
 #if 0
 	get_imr_info(dev_priv);
@@ -638,4 +643,177 @@ err_i1:
 	if (retcode)
 		DRM_DEBUG("ret = %d\n", retcode);
 	return retcode;
+}
+
+static void vxd_power_down(struct drm_device *dev)
+{
+	uint32_t pwr_sts;
+	PSB_DEBUG_PM("MSVDX: power off msvdx.\n");
+
+	intel_mid_msgbus_write32_vxd(PUNIT_PORT, VEDSSPM0, VXD_APM_STS_D3);
+	pwr_sts = intel_mid_msgbus_read32_vxd(PUNIT_PORT, VEDSSPM0);
+	while (pwr_sts != 0x03000003) {
+		intel_mid_msgbus_write32_vxd(PUNIT_PORT, VEDSSPM0, VXD_APM_STS_D3);
+		pwr_sts = intel_mid_msgbus_read32_vxd(PUNIT_PORT, VEDSSPM0);
+	}
+}
+
+static void vxd_power_on(struct drm_device *dev)
+{
+	uint32_t pwr_sts;
+	PSB_DEBUG_PM("MSVDX: power on msvdx.\n");
+
+	intel_mid_msgbus_write32_vxd(PUNIT_PORT, VEDSSPM0, VXD_APM_STS_D0);
+	pwr_sts = intel_mid_msgbus_read32_vxd(PUNIT_PORT, VEDSSPM0);
+	while (pwr_sts != 0x0) {
+		intel_mid_msgbus_write32_vxd(PUNIT_PORT, VEDSSPM0, VXD_APM_STS_D0);
+		pwr_sts = intel_mid_msgbus_read32_vxd(PUNIT_PORT, VEDSSPM0);
+	}
+
+	intel_mid_msgbus_write32_vxd(PUNIT_PORT, VEDSSPM0, VXD_APM_STS_D3);
+	pwr_sts = intel_mid_msgbus_read32_vxd(PUNIT_PORT, VEDSSPM0);
+	while (pwr_sts != 0x03000003) {
+		intel_mid_msgbus_write32_vxd(PUNIT_PORT, VEDSSPM0, VXD_APM_STS_D3);
+		pwr_sts = intel_mid_msgbus_read32_vxd(PUNIT_PORT, VEDSSPM0);
+	}
+
+	intel_mid_msgbus_write32_vxd(PUNIT_PORT, VEDSSPM0, VXD_APM_STS_D0);
+	pwr_sts = intel_mid_msgbus_read32_vxd(PUNIT_PORT, VEDSSPM0);
+	while (pwr_sts != 0x0) {
+		intel_mid_msgbus_write32_vxd(PUNIT_PORT, VEDSSPM0, VXD_APM_STS_D0);
+		pwr_sts = intel_mid_msgbus_read32_vxd(PUNIT_PORT, VEDSSPM0);
+	}
+}
+
+static void vxd_power_init(struct drm_device *dev)
+{
+	struct drm_psb_private *dev_priv = psb_priv(dev);
+	PSB_DEBUG_PM("MSVDX: vxd power init.\n");
+	pci_root = pci_get_bus_and_slot(0, PCI_DEVFN(0, 0));
+	if (!pci_root) {
+		printk(KERN_ALERT "%s: Error: msgbus PCI handle NULL",
+			__func__);
+	}
+	gpDrmDevice = dev;
+	mutex_init(&dev_priv->vxd_pm_mutex);
+	vxd_power_on(dev);
+}
+
+/**
+ * is_island_on
+ *
+ * Description: checks to see if the island is up
+ * returns true if hw_island is ON
+ * returns false if hw_island is OFF
+ */
+bool is_vxd_on()
+{
+	PSB_DEBUG_PM("MSVDX: check if vxd is power on.\n");
+	uint32_t pwr_sts =
+		intel_mid_msgbus_read32_vxd(PUNIT_PORT, VEDSSPM0);
+	if (pwr_sts == VXD_APM_STS_D0)
+		return true;
+	else
+		return false;
+}
+
+void ospm_apm_power_down_msvdx(struct drm_device *dev, int force_off)
+{
+	struct drm_psb_private *dev_priv = psb_priv(dev);
+	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
+	PSB_DEBUG_PM("MSVDX: work queue is scheduled to power off msvdx.\n");
+
+	mutex_lock(&dev_priv->vxd_pm_mutex);
+	if (force_off)
+		goto power_off;
+
+	if (atomic_read(&g_videodec_access_count)) {
+		PSB_DEBUG_PM("g_videodec_access_count has been set.\n");
+		goto out;
+	}
+
+	if (is_vxd_on() == false) {
+		PSB_DEBUG_PM("vxd already is in power off.\n");
+		goto out;
+	}
+
+	if (psb_check_msvdx_idle(dev))
+		goto out;
+
+	psb_msvdx_save_context(dev);
+
+power_off:
+	vxd_power_down(dev);
+
+	/* MSVDX_NEW_PMSTATE(dev, msvdx_priv, PSB_PMSTATE_POWERDOWN); */
+
+out:
+	mutex_unlock(&dev_priv->vxd_pm_mutex);
+	return;
+}
+
+/*
+ * ospm_resume_pci
+ *
+ * Description: Resume the pci device restoring state and enabling
+ * as necessary.
+ */
+static bool ospm_resume_pci(struct pci_dev *pdev)
+{
+	struct drm_device *dev = pci_get_drvdata(pdev);
+	struct drm_psb_private *dev_priv = psb_priv(dev);
+	int ret = 0;
+
+	PSB_DEBUG_PM("ospm_resume_pci.\n");
+
+	pci_set_power_state(pdev, PCI_D0);
+	pci_restore_state(pdev);
+#if 0
+	pci_write_config_dword(pdev, 0x5c, dev_priv->saveBSM);
+	pci_write_config_dword(pdev, 0xFC, dev_priv->saveVBT);
+	/* retoring MSI address and data in PCIx space */
+	pci_write_config_dword(pdev, PSB_PCIx_MSI_ADDR_LOC, dev_priv->msi_addr);
+	pci_write_config_dword(pdev, PSB_PCIx_MSI_DATA_LOC, dev_priv->msi_data);
+#endif
+	ret = pci_enable_device(pdev);
+
+	if (ret != 0)
+		printk(KERN_ALERT "ospm_resume_pci: pci_enable_device failed: %d\n", ret);
+	return true;
+}
+
+bool ospm_power_using_video_begin(int hw_island)
+{
+	struct pci_dev *pdev = gpDrmDevice->pdev;
+	struct drm_psb_private *dev_priv = psb_priv(gpDrmDevice);
+	PSB_DEBUG_PM("MSVDX: %s is called.\n", __func__);
+	if (hw_island != OSPM_VIDEO_DEC_ISLAND) {
+		DRM_ERROR("failed.\n");
+		return true;
+	}
+	mutex_lock(&dev_priv->vxd_pm_mutex);
+	/* ospm_resume_pci(pdev); */
+	if (!is_vxd_on()) {
+		vxd_power_on(gpDrmDevice);
+	}
+	atomic_inc(&g_videodec_access_count);
+	mutex_unlock(&dev_priv->vxd_pm_mutex);
+	return true;
+}
+
+void ospm_power_using_video_end(int hw_island)
+{
+	struct pci_dev *pdev = gpDrmDevice->pdev;
+	struct drm_psb_private *dev_priv = psb_priv(gpDrmDevice);
+	PSB_DEBUG_PM("MSVDX: %s is called.\n", __func__);
+	if (hw_island != OSPM_VIDEO_DEC_ISLAND) {
+		DRM_ERROR("failed.\n");
+		return true;
+	}
+	mutex_lock(&dev_priv->vxd_pm_mutex);
+	if (atomic_read(&g_videodec_access_count) <= 0)
+		DRM_ERROR("g_videodec_access_count <=0.\n");
+	else
+		atomic_dec(&g_videodec_access_count);
+	mutex_unlock(&dev_priv->vxd_pm_mutex);
 }

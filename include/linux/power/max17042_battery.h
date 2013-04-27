@@ -154,6 +154,7 @@ struct max17042_platform_data {
 	bool (*is_volt_shutdown_enabled)(void);
 	bool (*is_lowbatt_shutdown_enabled)(void);
 	int (*get_vmin_threshold)(void);
+	int (*get_vmax_threshold)(void);
 };
 
 #endif /* __MAX17042_BATTERY_H_ */

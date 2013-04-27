@@ -32,7 +32,6 @@
 #include "display_callbacks.h"
 #include "dc_server.h"
 #include "dc_mrfld.h"
-#include "psb_intel_drv.h"
 
 #if !defined(SUPPORT_DRM)
 #error "SUPPORT_DRM must be set"
@@ -149,7 +148,6 @@ static enum DC_MRFLD_FLIP_STATUS _Do_Flip(DC_MRFLD_FLIP *psFlip)
 	IMG_UINT32 ulStride;
 	IMG_UINT32 uiNumPipes = 0;
 	IMG_UINT32 uiPipe = 0;
-	IMG_UINT32 uiEnabledPipe = 0;
 	struct drm_device *psDrmDev;
 	int i = 0;
 
@@ -179,7 +177,6 @@ static enum DC_MRFLD_FLIP_STATUS _Do_Flip(DC_MRFLD_FLIP *psFlip)
 			/* FIXME */
 			psFlip->asPipeInfo[0].uiSwapInterval =
 				psFlip->uiSwapInterval;
-			uiEnabledPipe |= (1 << 0);
 			continue;
 		}
 
@@ -197,7 +194,6 @@ static enum DC_MRFLD_FLIP_STATUS _Do_Flip(DC_MRFLD_FLIP *psFlip)
 			_Flip_Sprite(gpsDevice,
 				&psSurfCustom->ctx.sp_ctx);
 			uiPipe = psSurfCustom->ctx.sp_ctx.index;
-			uiEnabledPipe |= (1 << 0);
 			break;
 		case DC_PRIMARY_PLANE:
 			/*need fix up the surface address*/
@@ -208,14 +204,12 @@ static enum DC_MRFLD_FLIP_STATUS _Do_Flip(DC_MRFLD_FLIP *psFlip)
 			_Flip_Primary(gpsDevice,
 				&psSurfCustom->ctx.prim_ctx);
 			uiPipe = psSurfCustom->ctx.prim_ctx.index;
-			uiEnabledPipe |= (1 << 0);
 			break;
 		case DC_OVERLAY_PLANE:
 			/*Flip overlay context*/
 			_Flip_Overlay(gpsDevice,
 				&psSurfCustom->ctx.ov_ctx);
 			uiPipe = psSurfCustom->ctx.ov_ctx.index;
-			uiEnabledPipe |= (1 << 0);
 			break;
 		default:
 			DRM_ERROR("Unknown plane type %d\n",
@@ -235,14 +229,8 @@ static enum DC_MRFLD_FLIP_STATUS _Do_Flip(DC_MRFLD_FLIP *psFlip)
 			psFlip->uiSwapInterval;
 	}
 
-	uiNumPipes = DCCBGetPipeCount();
-	/* Issue write_mem_start DSI
-		command for command mode panel. */
-	for (i = 0; i < uiNumPipes; i++)
-		if (uiEnabledPipe & (1 << i))
-			mdfld_dbi_update_panel(gpsDevice->psDrmDevice, i);
-
 	if (psFlip->uiSwapInterval > 0) {
+		uiNumPipes = DCCBGetPipeCount();
 		for (i = 0; i < uiNumPipes; i++) {
 			if (psFlip->asPipeInfo[i].uiSwapInterval > 0) {
 				/*

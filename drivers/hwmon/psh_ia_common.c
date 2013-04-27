@@ -79,8 +79,6 @@ long trans_strtol(const char *str, char **endp, unsigned int base)
 	return _strtoul(str, endp, base);
 }
 
-struct psh_ia_priv *psh_ia_data;
-
 void ia_lbuf_read_init(struct loop_buffer *lbuf,
 		u8 *buf, u16 size, update_finished_f uf)
 {
@@ -97,8 +95,9 @@ void ia_lbuf_read_reset(struct loop_buffer *lbuf)
 	lbuf->in_reading = 0;
 }
 
-int ia_lbuf_read_next(struct loop_buffer *lbuf,
-		u8 **buf, u16 *size)
+int ia_lbuf_read_next(struct psh_ia_priv *psh_ia_data,
+			struct loop_buffer *lbuf,
+			u8 **buf, u16 *size)
 {
 	struct frame_head *fhead =
 			(struct frame_head *)(lbuf->addr + lbuf->off_head);
@@ -132,7 +131,7 @@ int ia_lbuf_read_next(struct loop_buffer *lbuf,
 f_out:
 	if (!lbuf->in_reading && lbuf->off_head) {
 		/* no more data frame, inform FW to update its HEAD */
-		lbuf->update_finished(lbuf->off_head);
+		lbuf->update_finished(psh_ia_data, lbuf->off_head);
 	}
 
 	return !lbuf->in_reading;
@@ -190,7 +189,8 @@ int ia_circ_get_data(struct circ_buf *circ, char *buf, u32 size)
 	return avail_tail + cnt;
 }
 
-int ia_send_cmd(int ch, struct ia_cmd *cmd, int len)
+int ia_send_cmd(struct psh_ia_priv *psh_ia_data,
+			int ch, struct ia_cmd *cmd, int len)
 {
 	int ret;
 
@@ -201,7 +201,7 @@ int ia_send_cmd(int ch, struct ia_cmd *cmd, int len)
 		ia_lbuf_read_reset(&psh_ia_data->lbuf);
 		ia_circ_reset_off(&psh_ia_data->circ);
 	}
-	ret = process_send_cmd(ch, cmd, len);
+	ret = process_send_cmd(psh_ia_data, ch, cmd, len);
 	mutex_unlock(&psh_ia_data->cmd_mutex);
 	if (ret)
 		return ret;
@@ -223,7 +223,7 @@ int ia_send_cmd(int ch, struct ia_cmd *cmd, int len)
 	return 0;
 }
 
-int ia_update_finished(u16 offset)
+int ia_update_finished(struct psh_ia_priv *psh_ia_data, u16 offset)
 {
 	struct ia_cmd cmd_buf = {
 		.cmd_id = CMD_UPDATE_DDR,
@@ -231,13 +231,15 @@ int ia_update_finished(u16 offset)
 	};
 
 	*(u16 *)cmd_buf.param = offset;
-	return process_send_cmd(PSH2IA_CHANNEL0, &cmd_buf, 7);
+	return process_send_cmd(psh_ia_data, PSH2IA_CHANNEL0, &cmd_buf, 7);
 }
 
 ssize_t ia_start_control(struct device *dev,
 			struct device_attribute *attr,
 			const char *str, size_t count)
 {
+	struct psh_ia_priv *psh_ia_data =
+			(struct psh_ia_priv *)dev_get_drvdata(dev);
 	struct ia_cmd cmd_user = { 0 };
 	u8 *ptr = (u8 *)&cmd_user;
 	char *s;
@@ -267,7 +269,7 @@ ssize_t ia_start_control(struct device *dev,
 		}
 	}
 
-	ret = ia_send_cmd(PSH2IA_CHANNEL0, &cmd_user, token);
+	ret = ia_send_cmd(psh_ia_data, PSH2IA_CHANNEL0, &cmd_user, token);
 	if (ret) {
 		pr_err("send cmd (cmd_user.cmd_id = %d) failed\n",
 				cmd_user.cmd_id);
@@ -279,6 +281,8 @@ ssize_t ia_start_control(struct device *dev,
 ssize_t ia_read_data_size(struct device *dev,
 			struct device_attribute *attr, char *buf)
 {
+	struct psh_ia_priv *psh_ia_data =
+			(struct psh_ia_priv *)dev_get_drvdata(dev);
 	int avail = CIRC_CNT(psh_ia_data->circ.head,
 				psh_ia_data->circ.tail, CIRC_SIZE);
 
@@ -289,6 +293,10 @@ ssize_t ia_read_data(struct file *file, struct kobject *kobj,
 			struct bin_attribute *attr, char *buf,
 			loff_t off, size_t count)
 {
+	struct device *dev = container_of(kobj, struct device, kobj);
+	struct psh_ia_priv *psh_ia_data =
+			(struct psh_ia_priv *)dev_get_drvdata(dev);
+
 	return ia_circ_get_data(&psh_ia_data->circ, buf, count);
 }
 
@@ -296,6 +304,10 @@ ssize_t ia_read_debug_data(struct file *file, struct kobject *kobj,
 			struct bin_attribute *attr, char *buf,
 			loff_t off, size_t count)
 {
+	struct device *dev = container_of(kobj, struct device, kobj);
+	struct psh_ia_priv *psh_ia_data =
+			(struct psh_ia_priv *)dev_get_drvdata(dev);
+
 	return ia_circ_get_data(&psh_ia_data->circ_dbg, buf, count);
 }
 
@@ -305,6 +317,8 @@ ssize_t ia_set_dbg_mask(struct device *dev,
 {
 	struct ia_cmd cmd;
 	struct cmd_debug_param *param = (struct cmd_debug_param *)cmd.param;
+	struct psh_ia_priv *psh_ia_data =
+			(struct psh_ia_priv *)dev_get_drvdata(dev);
 	int token = 0;
 	char *s;
 	long val;
@@ -335,7 +349,7 @@ ssize_t ia_set_dbg_mask(struct device *dev,
 		cmd.cmd_id = CMD_DEBUG;
 		cmd.sensor_id = 0;
 		param->sub_cmd = SCMD_DEBUG_SET_MASK;
-		ret = ia_send_cmd(PSH2IA_CHANNEL0, &cmd, 10);
+		ret = ia_send_cmd(psh_ia_data, PSH2IA_CHANNEL0, &cmd, 10);
 		if (ret) {
 			pr_err("set_dbg_mask failed when send_cmd\n");
 			return ret;
@@ -352,12 +366,14 @@ ssize_t ia_get_dbg_mask(struct device *dev,
 {
 	struct ia_cmd cmd;
 	struct cmd_debug_param *param = (struct cmd_debug_param *)cmd.param;
+	struct psh_ia_priv *psh_ia_data =
+			(struct psh_ia_priv *)dev_get_drvdata(dev);
 	int ret;
 
 	cmd.cmd_id = CMD_DEBUG;
 	cmd.sensor_id = 0;
 	param->sub_cmd = SCMD_DEBUG_GET_MASK;
-	ret = ia_send_cmd(PSH2IA_CHANNEL0, &cmd, 8);
+	ret = ia_send_cmd(psh_ia_data, PSH2IA_CHANNEL0, &cmd, 8);
 	if (ret) {
 		pr_err("get_dbg_mask failed when send_cmd\n");
 		return ret;
@@ -437,6 +453,8 @@ ssize_t ia_set_status_mask(struct device *dev,
 {
 	char *s;
 	long val = 0;
+	struct psh_ia_priv *psh_ia_data =
+			(struct psh_ia_priv *)dev_get_drvdata(dev);
 
 	while (*str) {
 		val = trans_strtol(str, &s, 0);
@@ -455,6 +473,9 @@ ssize_t ia_set_status_mask(struct device *dev,
 ssize_t ia_get_status_mask(struct device *dev,
 			struct device_attribute *attr, char *buf)
 {
+	struct psh_ia_priv *psh_ia_data =
+			(struct psh_ia_priv *)dev_get_drvdata(dev);
+
 	return snprintf(buf, PAGE_SIZE, "status_mask=0x%x\n",
 						psh_ia_data->status_bitmask);
 }
@@ -465,6 +486,8 @@ ssize_t ia_trig_get_status(struct device *dev,
 {
 	struct ia_cmd cmd;
 	struct get_status_param *param = (struct get_status_param *)cmd.param;
+	struct psh_ia_priv *psh_ia_data =
+			(struct psh_ia_priv *)dev_get_drvdata(dev);
 	int ret;
 
 	if (str[0] == 'm')
@@ -476,7 +499,7 @@ ssize_t ia_trig_get_status(struct device *dev,
 
 	cmd.cmd_id = CMD_GET_STATUS;
 	cmd.sensor_id = 0;
-	ret = ia_send_cmd(PSH2IA_CHANNEL0, &cmd, 7);
+	ret = ia_send_cmd(psh_ia_data, PSH2IA_CHANNEL0, &cmd, 7);
 	if (ret) {
 		pr_err("trig_get_status failed when send_cmd\n");
 		return ret;
@@ -506,7 +529,7 @@ static struct bin_attribute dbg_attr = {
  * return value > 0	data frame
  * return value < 0	error data frame
  */
-int ia_handle_frame(void *dbuf, int size)
+int ia_handle_frame(struct psh_ia_priv *psh_ia_data, void *dbuf, int size)
 {
 	struct cmd_resp *resp = dbuf;
 	const struct snr_info *sinfo = (struct snr_info *)resp->buf;
@@ -551,11 +574,14 @@ int ia_handle_frame(void *dbuf, int size)
 
 void ia_process_lbuf(struct device *dev)
 {
+	struct psh_ia_priv *psh_ia_data =
+			(struct psh_ia_priv *)dev_get_drvdata(dev);
 	u8 *dbuf = NULL;
 	u16 size = 0;
 
 	mutex_lock(&psh_ia_data->cmd_mutex);
-	while (!ia_lbuf_read_next(&psh_ia_data->lbuf, &dbuf, &size)) {
+	while (!ia_lbuf_read_next(psh_ia_data,
+			&psh_ia_data->lbuf, &dbuf, &size)) {
 		struct cmd_resp *resp = (struct cmd_resp *)dbuf;
 		if (resp->type == RESP_BIST_RESULT) {
 			if (psh_ia_data->reset_in_progress) {
@@ -597,6 +623,7 @@ void ia_process_lbuf(struct device *dev)
 int psh_ia_common_init(struct device *dev, struct psh_ia_priv **data)
 {
 	int ret = -1;
+	struct psh_ia_priv *psh_ia_data;
 
 	psh_ia_data = kzalloc(sizeof(*psh_ia_data), GFP_KERNEL);
 	if (!psh_ia_data) {
@@ -645,6 +672,8 @@ int psh_ia_common_init(struct device *dev, struct psh_ia_priv **data)
 
 	psh_ia_data->status_bitmask = ((u32)-1) & ~SNR_RUNONLY_BITMASK;
 
+	dev_set_drvdata(dev, psh_ia_data);
+
 	ret = sysfs_create_file(&dev->kobj,
 			&sensor_dev_attr_status_mask.dev_attr.attr);
 	ret += sysfs_create_file(&dev->kobj,
@@ -691,6 +720,9 @@ priv_err:
 
 void psh_ia_common_deinit(struct device *dev)
 {
+	struct psh_ia_priv *psh_ia_data =
+			(struct psh_ia_priv *)dev_get_drvdata(dev);
+
 	sysfs_remove_file(&dev->kobj,
 		&sensor_dev_attr_status_mask.dev_attr.attr);
 	sysfs_remove_file(&dev->kobj,

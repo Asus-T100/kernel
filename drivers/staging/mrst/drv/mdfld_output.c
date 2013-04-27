@@ -58,7 +58,7 @@ bool is_tmd_6x10_panel(struct drm_device *dev, int pipe)
 		return false;
 }
 
-int is_panel_vid_or_cmd(struct drm_device *dev)
+int get_panel_mode(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv;
 
@@ -70,6 +70,13 @@ int is_panel_vid_or_cmd(struct drm_device *dev)
 		return -EINVAL;
 
 	return dev_priv->panel_info.mode;
+}
+
+bool is_cmd_mode_panel(struct drm_device *dev)
+{
+	int mode = get_panel_mode(dev);
+
+	return (mode == MDFLD_DSI_ENCODER_DBI) ? true : false;
 }
 
 static void init_panel(struct drm_device *dev, int pipe)

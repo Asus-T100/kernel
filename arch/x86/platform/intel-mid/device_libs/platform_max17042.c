@@ -253,6 +253,18 @@ int mrfl_get_vsys_min(void)
 	return DEFAULT_VMIN;
 }
 
+#define DEFAULT_VMAX_LIM	4200
+int mrfl_get_volt_max(void)
+{
+	struct ps_batt_chg_prof batt_profile;
+	int ret;
+	ret = get_batt_prop(&batt_profile);
+	if (!ret)
+		return ((struct ps_pse_mod_prof *)batt_profile.batt_prof)
+					->voltage_max;
+	return DEFAULT_VMAX_LIM;
+}
+
 static bool is_mapped;
 static void __iomem *smip;
 int get_smip_plat_config(int offset)
@@ -329,6 +341,7 @@ static void init_callbacks(struct max17042_platform_data *pdata)
 		pdata->battery_health = mrfl_get_bat_health;
 		pdata->battery_pack_temp = pmic_get_battery_pack_temp;
 		pdata->get_vmin_threshold = mrfl_get_vsys_min;
+		pdata->get_vmax_threshold = mrfl_get_volt_max;
 		pdata->reset_chip = true;
 	}
 	pdata->reset_i2c_lines = max17042_i2c_reset_workaround;

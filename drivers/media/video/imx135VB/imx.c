@@ -530,8 +530,8 @@ static int imx_get_intg_factor(struct i2c_client *client,
 	u32 op_sys_clk_div;
 
 	const int ext_clk_freq_hz = 19200000;
-	struct sensor_mode_data buf;
-	int vt_pix_clk_freq_mhz, ret;
+	struct atomisp_sensor_mode_data buf;
+	int vt_pix_clk_freq_mhz, ret = 0;
 	u16 data[IMX_INTG_BUF_COUNT];
 
 	u32 coarse_integration_time_min;
@@ -541,33 +541,35 @@ static int imx_get_intg_factor(struct i2c_client *client,
 	u32 read_mode;
 	u32 div;
 
-	if (info == NULL)
-		return -EINVAL;
+	if (info == NULL) {
+		ret = -EINVAL;
+		goto out;
+	}
 
 	memset(data, 0, IMX_INTG_BUF_COUNT * sizeof(u16));
 	ret = imx_read_reg(client, 1, IMX_VT_PIX_CLK_DIV, data);
 	if (ret)
-		return ret;
-	vt_pix_clk_div = data[0] & IMX_MASK_4BIT;
+		goto out;
+	vt_pix_clk_div = data[0] & IMX_MASK_5BIT;
 	ret = imx_read_reg(client, 1, IMX_VT_SYS_CLK_DIV, data);
 	if (ret)
-		return ret;
+		goto out;
 	vt_sys_clk_div = data[0] & IMX_MASK_2BIT;
 	ret = imx_read_reg(client, 1, IMX_PRE_PLL_CLK_DIV, data);
 	if (ret)
-		return ret;
+		goto out;
 	pre_pll_clk_div = data[0] & IMX_MASK_4BIT;
 	ret = imx_read_reg(client, 2, IMX_PLL_MULTIPLIER, data);
 	if (ret)
-		return ret;
+		goto out;
 	pll_multiplier = data[0] & IMX_MASK_11BIT;
 	ret = imx_read_reg(client, 1, IMX_OP_PIX_DIV, data);
 	if (ret)
-		return ret;
-	op_pix_clk_div = data[0] & IMX_MASK_4BIT;
+		goto out;
+	op_pix_clk_div = data[0] & IMX_MASK_5BIT;
 	ret = imx_read_reg(client, 1, IMX_OP_SYS_DIV, data);
 	if (ret)
-		return ret;
+		goto out;
 	op_sys_clk_div = data[0] & IMX_MASK_2BIT;
 
 	memset(data, 0, IMX_INTG_BUF_COUNT * sizeof(u16));
@@ -576,24 +578,52 @@ static int imx_get_intg_factor(struct i2c_client *client,
 		return ret;
 	frame_length_lines = data[0];
 	line_length_pck = data[1];
-
 	memset(data, 0, IMX_INTG_BUF_COUNT * sizeof(u16));
-	ret = imx_read_reg(client, 4, IMX_COARSE_INTG_TIME_MIN, data);
+	ret = imx_read_reg(client, 2, IMX_COARSE_INTG_TIME_MIN, data);
 	if (ret)
-		return ret;
+		goto out;
 	coarse_integration_time_min = data[0];
-	coarse_integration_time_max_margin = data[1];
+	ret = imx_read_reg(client, 2, IMX_COARSE_INTG_TIME_MAX, data);
+	if (ret)
+		goto out;
+	coarse_integration_time_max_margin = data[0];
+	ret = imx_read_reg(client, 2, IMX_CROP_X_START, data);
+	if (ret)
+		goto out;
+	buf.crop_horizontal_start = data[0];
+	ret = imx_read_reg(client, 2, IMX_CROP_X_END, data);
+	if (ret)
+		goto out;
+	buf.crop_horizontal_end = data[0];
+	ret = imx_read_reg(client, 2, IMX_CROP_Y_START, data);
+	if (ret)
+		goto out;
+	buf.crop_vertical_start = data[0];
+	ret = imx_read_reg(client, 2, IMX_CROP_Y_END, data);
+	if (ret)
+		goto out;
+	buf.crop_vertical_end = data[0];
+	ret = imx_read_reg(client, 2, IMX_OUTPUT_WIDTH, data);
+	if (ret)
+		goto out;
+	buf.output_width = data[0];
+	ret = imx_read_reg(client, 2, IMX_OUTPUT_HEIGHT, data);
+	if (ret)
+		goto out;
+	buf.output_height = data[0];
 
 	memset(data, 0, IMX_INTG_BUF_COUNT * sizeof(u16));
 	ret = imx_read_reg(client, 1, IMX_READ_MODE, data);
 	if (ret)
-		return ret;
+		goto out;
 	read_mode = data[0] & IMX_MASK_2BIT;
 
 	div = pre_pll_clk_div*vt_sys_clk_div*vt_pix_clk_div;
-	if (div == 0)
-		return -EINVAL;
-	vt_pix_clk_freq_mhz = ext_clk_freq_hz*pll_multiplier/div;
+	if (div == 0) {
+		ret = -EINVAL;
+		goto out;
+	}
+	vt_pix_clk_freq_mhz = ext_clk_freq_hz/div*pll_multiplier;
 
 	dev->vt_pix_clk_freq_mhz = vt_pix_clk_freq_mhz;
 	buf.coarse_integration_time_min = coarse_integration_time_min;
@@ -609,7 +639,8 @@ static int imx_get_intg_factor(struct i2c_client *client,
 
 	memcpy(&info->data, &buf, sizeof(buf));
 
-	return 0;
+out:
+	return ret;
 }
 
 /* This returns the exposure time being used. This should only be used
@@ -917,7 +948,7 @@ static int imx_s_ctrl(struct v4l2_subdev *sd, struct v4l2_control *ctrl)
  * res->width/height smaller than w/h wouldn't be considered.
  * Returns the value of gap or -1 if fail.
  */
-#define LARGEST_ALLOWED_RATIO_MISMATCH  140 /* 600 */
+#define LARGEST_ALLOWED_RATIO_MISMATCH  600
 static int distance(struct imx_resolution *res, u32 w, u32 h)
 {
 	unsigned int w_ratio = ((res->width << 13)/w);

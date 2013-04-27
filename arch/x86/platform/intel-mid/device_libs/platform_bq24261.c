@@ -68,6 +68,7 @@ void __init *bq24261_platform_data(void *info)
 	bq24261_pdata.dump_master_regs = dump_pmic_regs;
 #endif
 	bq24261_pdata.set_iterm = NULL;
+	bq24261_pdata.boost_mode_mA = 500;
 
 	return &bq24261_pdata;
 }

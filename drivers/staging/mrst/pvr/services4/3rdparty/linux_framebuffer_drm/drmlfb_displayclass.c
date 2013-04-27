@@ -263,10 +263,16 @@ static void MRSTLFBFlipSprite(MRSTLFB_DEVINFO *psDevInfo,
 		PSB_WVDC32(psContext->stride, DSPASTRIDE + reg_offset);
 	}
 
-	if ((psContext->update_mask & SPRITE_UPDATE_CONTROL))
-		PSB_WVDC32(psContext->cntr | DISPLAY_PLANE_ENABLE |
-					 (PSB_RVDC32(DSPACNTR + reg_offset) & DISPPLANE_GAMMA_ENABLE),
-			       DSPACNTR + reg_offset);
+	if ((psContext->update_mask & SPRITE_UPDATE_CONTROL)) {
+		if (!dev_priv->bhdmi_enable && pipe == 1)
+			PSB_WVDC32(psContext->cntr | ~DISPLAY_PLANE_ENABLE |
+				(PSB_RVDC32(DSPACNTR + reg_offset) &
+				DISPPLANE_GAMMA_ENABLE), DSPACNTR + reg_offset);
+		else
+			PSB_WVDC32(psContext->cntr | DISPLAY_PLANE_ENABLE |
+				(PSB_RVDC32(DSPACNTR + reg_offset) &
+				DISPPLANE_GAMMA_ENABLE), DSPACNTR + reg_offset);
+	}
 
 	if ((psContext->update_mask & SPRITE_UPDATE_SURFACE)) {
 		PSB_WVDC32(psContext->linoff, DSPALINOFF + reg_offset);
@@ -325,10 +331,16 @@ static void MRSTLFBFlipPrimary(MRSTLFB_DEVINFO *psDevInfo,
 		PSB_WVDC32(psContext->stride, DSPASTRIDE + reg_offset);
 	}
 
-	if ((psContext->update_mask & SPRITE_UPDATE_CONTROL))
-		PSB_WVDC32(psContext->cntr | DISPLAY_PLANE_ENABLE |
-					(PSB_RVDC32(DSPACNTR + reg_offset) & DISPPLANE_GAMMA_ENABLE),
-			       DSPACNTR + reg_offset);
+	if ((psContext->update_mask & SPRITE_UPDATE_CONTROL)) {
+		if (!dev_priv->bhdmi_enable && pipe == 1)
+			PSB_WVDC32(psContext->cntr | ~DISPLAY_PLANE_ENABLE |
+				(PSB_RVDC32(DSPACNTR + reg_offset) &
+				DISPPLANE_GAMMA_ENABLE), DSPACNTR + reg_offset);
+		else
+			PSB_WVDC32(psContext->cntr | DISPLAY_PLANE_ENABLE |
+				(PSB_RVDC32(DSPACNTR + reg_offset) &
+				DISPPLANE_GAMMA_ENABLE), DSPACNTR + reg_offset);
+	}
 
 	if ((psContext->update_mask & SPRITE_UPDATE_SURFACE)) {
 		PSB_WVDC32(psContext->linoff, DSPALINOFF + reg_offset);
@@ -2102,7 +2114,7 @@ static IMG_BOOL DisplayFlip(IMG_HANDLE  hCmdCookie,
 
 	spin_unlock(&display_flip_work_t.flip_commands_lock);
 
-	if (!schedule_work(&display_flip_work_t.flip_work))
+	if (!queue_work(system_nrt_wq, &display_flip_work_t.flip_work))
 		DRM_INFO("Schedule work failed, too heavy system load?\n");
 
 	return IMG_TRUE;

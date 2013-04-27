@@ -206,7 +206,7 @@ int i2c_dw_init(struct dw_i2c_dev *dev)
 	}
 
 	/* Disable the adapter */
-	dw_writel(dev, 0, DW_IC_ENABLE);
+	i2c_dw_disable(dev);
 
 	if (dev->get_scl_cfg && !dev->use_dyn_clk)
 		dev->get_scl_cfg(dev);
@@ -281,7 +281,7 @@ static void i2c_dw_xfer_init(struct dw_i2c_dev *dev)
 	u32 ic_con;
 
 	/* Disable the adapter */
-	dw_writel(dev, 0, DW_IC_ENABLE);
+	i2c_dw_disable(dev);
 
 	/* set the slave (target) address */
 	dw_writel(dev, msgs[dev->msg_write_idx].addr, DW_IC_TAR);
@@ -295,7 +295,7 @@ static void i2c_dw_xfer_init(struct dw_i2c_dev *dev)
 	dw_writel(dev, ic_con, DW_IC_CON);
 
 	/* Enable the adapter */
-	dw_writel(dev, 1, DW_IC_ENABLE);
+	i2c_dw_enable(dev);
 
 	/* Enable interrupts */
 	dw_writel(dev, DW_IC_INTR_DEFAULT_MASK, DW_IC_INTR_MASK);
@@ -516,7 +516,7 @@ i2c_dw_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 	/* no error */
 	if (likely(!dev->cmd_err)) {
 		/* Disable the adapter */
-		dw_writel(dev, 0, DW_IC_ENABLE);
+		i2c_dw_disable(dev);
 		ret = num;
 		goto done;
 	}
@@ -666,21 +666,37 @@ tx_aborted:
 	return IRQ_HANDLED;
 }
 
+u32 i2c_dw_is_enabled(struct dw_i2c_dev *dev)
+{
+	return dw_readl(dev, DW_IC_ENABLE_STATUS);
+}
+
+static void __i2c_dw_enable(struct dw_i2c_dev *dev, bool enable)
+{
+	int timeout = 100;
+
+	do {
+		dw_writel(dev, enable, DW_IC_ENABLE);
+		if (i2c_dw_is_enabled(dev) == enable)
+			return;
+
+		usleep_range(25, 250);
+	} while (timeout-- > 0);
+
+	dev_warn(dev->dev, "timeout in %sabling adapter\n",
+		enable ? "en" : "dis");
+}
+
 void i2c_dw_enable(struct dw_i2c_dev *dev)
 {
        /* Enable the adapter */
-	dw_writel(dev, 1, DW_IC_ENABLE);
-}
-
-u32 i2c_dw_is_enabled(struct dw_i2c_dev *dev)
-{
-	return dw_readl(dev, DW_IC_ENABLE);
+	__i2c_dw_enable(dev, true);
 }
 
 void i2c_dw_disable(struct dw_i2c_dev *dev)
 {
 	/* Disable controller */
-	dw_writel(dev, 0, DW_IC_ENABLE);
+	__i2c_dw_enable(dev, false);
 
 	/* Disable all interupts */
 	dw_writel(dev, 0, DW_IC_INTR_MASK);

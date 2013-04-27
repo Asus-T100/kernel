@@ -27,11 +27,6 @@
 
 #define DRIVER_NAME "msic_gpio"
 
-#define GPIO0LV0CTLO		0x048
-#define GPIO0HV0CTLO		0x06D
-#define GPIO0LV0CTLI		0x058
-#define GPIO0HV0CTLI		0x075
-
 #define CTLO_DOUT_MASK		(1 << 0)
 #define CTLO_DOUT_H		(1 << 0)
 #define CTLO_DOUT_L		(0 << 0)
@@ -46,6 +41,10 @@
 struct msic_gpio {
 	struct gpio_chip chip;
 	int ngpio_lv; /* number of low voltage gpio */
+	u16 gpio0_lv_ctlo;
+	u16 gpio0_lv_ctli;
+	u16 gpio0_hv_ctlo;
+	u16 gpio0_hv_ctli;
 };
 
 static struct msic_gpio msic_gpio;
@@ -54,8 +53,8 @@ static int msic_gpio_direction_input(struct gpio_chip *chip, unsigned offset)
 {
 	struct msic_gpio *mg = &msic_gpio;
 
-	u16 ctlo = offset < mg->ngpio_lv ? GPIO0LV0CTLO + offset
-			: GPIO0HV0CTLO + (offset - mg->ngpio_lv);
+	u16 ctlo = offset < mg->ngpio_lv ? mg->gpio0_lv_ctlo + offset
+			: mg->gpio0_hv_ctlo + (offset - mg->ngpio_lv);
 
 	return intel_scu_ipc_iowrite8(ctlo, CTLO_IN_DEF);
 }
@@ -65,8 +64,8 @@ static int msic_gpio_direction_output(struct gpio_chip *chip,
 {
 	struct msic_gpio *mg = &msic_gpio;
 
-	u16 ctlo = offset < mg->ngpio_lv ? GPIO0LV0CTLO + offset
-			: GPIO0HV0CTLO + (offset - mg->ngpio_lv);
+	u16 ctlo = offset < mg->ngpio_lv ? mg->gpio0_lv_ctlo + offset
+			: mg->gpio0_hv_ctlo + (offset - mg->ngpio_lv);
 
 	return intel_scu_ipc_iowrite8(ctlo,
 			CTLO_OUT_DEF | (value ? CTLO_DOUT_H : CTLO_DOUT_L));
@@ -79,10 +78,10 @@ static int msic_gpio_get(struct gpio_chip *chip, unsigned offset)
 	int ret;
 	u16 ctlo, ctli, reg;
 
-	ctlo = offset < mg->ngpio_lv ? GPIO0LV0CTLO + offset
-			: GPIO0HV0CTLO + (offset - mg->ngpio_lv);
-	ctli = offset < mg->ngpio_lv ? GPIO0LV0CTLI + offset
-			: GPIO0HV0CTLI + (offset - mg->ngpio_lv);
+	ctlo = offset < mg->ngpio_lv ? mg->gpio0_lv_ctlo + offset
+			: mg->gpio0_hv_ctlo + (offset - mg->ngpio_lv);
+	ctli = offset < mg->ngpio_lv ? mg->gpio0_lv_ctli + offset
+			: mg->gpio0_hv_ctli + (offset - mg->ngpio_lv);
 
 	/* First get pin direction */
 	ret = intel_scu_ipc_ioread8(ctlo, &value);
@@ -105,8 +104,8 @@ static void msic_gpio_set(struct gpio_chip *chip, unsigned offset, int value)
 {
 	struct msic_gpio *mg = &msic_gpio;
 
-	u16 ctlo = offset < mg->ngpio_lv ? GPIO0LV0CTLO + offset
-			: GPIO0HV0CTLO + (offset - mg->ngpio_lv);
+	u16 ctlo = offset < mg->ngpio_lv ? mg->gpio0_lv_ctlo + offset
+			: mg->gpio0_hv_ctlo + (offset - mg->ngpio_lv);
 
 	intel_scu_ipc_update_register(ctlo,
 			value ? CTLO_DOUT_H : CTLO_DOUT_L, CTLO_DOUT_MASK);
@@ -129,6 +128,10 @@ static int msic_gpio_probe(struct platform_device *pdev)
 	dev_set_drvdata(dev, mg);
 
 	mg->ngpio_lv = pdata->ngpio_lv;
+	mg->gpio0_lv_ctlo = pdata->gpio0_lv_ctlo;
+	mg->gpio0_lv_ctli = pdata->gpio0_lv_ctli;
+	mg->gpio0_hv_ctlo = pdata->gpio0_hv_ctlo;
+	mg->gpio0_hv_ctli = pdata->gpio0_hv_ctli;
 	mg->chip.label = dev_name(&pdev->dev);
 	mg->chip.direction_input = msic_gpio_direction_input;
 	mg->chip.direction_output = msic_gpio_direction_output;

@@ -32,8 +32,7 @@
 
 #define CSS_DTRACE_VERBOSITY_LEVEL	5	/* Controls trace verbosity */
 
-int atomisp_css_init(struct atomisp_device *isp,
-			struct atomisp_css_env *atomisp_css_env)
+int atomisp_css_init(struct atomisp_device *isp)
 {
 	device_set_base_address(0);
 
@@ -57,7 +56,7 @@ int atomisp_css_init(struct atomisp_device *isp,
 	mmgr_set_base_address(HOST_ADDRESS(isp->mmu_l1_base));
 
 	/* Init ISP */
-	if (sh_css_init(&atomisp_css_env->isp_css_env,
+	if (sh_css_init(&isp->css_env.isp_css_env,
 			isp->firmware->data, isp->firmware->size)) {
 		dev_err(isp->dev, "css init failed --- bad firmware?\n");
 		return -EINVAL;
@@ -83,12 +82,68 @@ int atomisp_css_init(struct atomisp_device *isp,
 	return 0;
 }
 
-void atomisp_set_css_env(const struct firmware *firmware,
-			struct atomisp_css_env *atomisp_css_env)
+void atomisp_css_uninit(struct atomisp_device *isp)
 {
-	atomisp_css_env->isp_css_env = sh_css_default_env();
-	atomisp_css_env->isp_css_env.sh_env.alloc = atomisp_kernel_zalloc;
-	atomisp_css_env->isp_css_env.sh_env.free = atomisp_kernel_free;
+	sh_css_uninit();
+
+	/* store L1 base address for next time we init the CSS */
+	isp->mmu_l1_base = (void *)sh_css_mmu_get_page_table_base_index();
+}
+
+void atomisp_css_suspend(void)
+{
+	sh_css_suspend();
+}
+
+int atomisp_css_resume(struct atomisp_device *isp)
+{
+	sh_css_resume();
+
+	return 0;
+}
+
+int atomisp_css_irq_translate(struct atomisp_device *isp,
+			      unsigned int *infos)
+{
+	int err;
+
+	err = sh_css_translate_interrupt(infos);
+	if (err != sh_css_success) {
+		dev_warn(isp->dev,
+			  "%s:failed to translate irq (err = %d,infos = %d)\n",
+			  __func__, err, *infos);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+void atomisp_css_rx_get_irq_info(unsigned int *infos)
+{
+	sh_css_rx_get_interrupt_info(infos);
+}
+
+void atomisp_css_rx_clear_irq_info(unsigned int infos)
+{
+	sh_css_rx_clear_interrupt_info(infos);
+}
+
+int atomisp_css_irq_enable(struct atomisp_device *isp,
+			    enum atomisp_css_irq_info info, bool enable)
+{
+	if (sh_css_enable_interrupt(info, enable) != sh_css_success) {
+		dev_warn(isp->dev, "%s:Invalid irq info.\n", __func__);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+void atomisp_set_css_env(struct atomisp_device *isp)
+{
+	isp->css_env.isp_css_env = sh_css_default_env();
+	isp->css_env.isp_css_env.sh_env.alloc = atomisp_kernel_zalloc;
+	isp->css_env.isp_css_env.sh_env.free = atomisp_kernel_free;
 }
 
 void atomisp_css_init_struct(struct atomisp_device *isp)
@@ -163,6 +218,134 @@ int atomisp_q_dis_buffer_to_css(struct atomisp_device *isp,
 		dev_dbg(isp->dev, "failed to q dis stat buffer\n");
 		return -EINVAL;
 	}
+
+	return 0;
+}
+
+void atomisp_css_mmu_invalidate_cache(void)
+{
+	sh_css_mmu_invalidate_cache();
+}
+
+void atomisp_css_mmu_invalidate_tlb(void)
+{
+	sh_css_enable_sp_invalidate_tlb();
+}
+
+int atomisp_css_start(struct atomisp_device *isp,
+			enum atomisp_css_pipe_id pipe_id, bool in_reset)
+{
+	enum sh_css_err err;
+
+	err = sh_css_start(pipe_id);
+	if (err != sh_css_success) {
+		dev_err(isp->dev, "sh_css_start error:%d.\n", err);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+void atomisp_css_update_isp_params(struct atomisp_device *isp)
+{
+	sh_css_update_isp_params();
+}
+
+int atomisp_css_queue_buffer(struct atomisp_device *isp,
+			     enum atomisp_css_pipe_id pipe_id,
+			     enum atomisp_css_buffer_type buf_type,
+			     struct atomisp_css_buffer *isp_css_buffer)
+{
+	void *buffer;
+
+	switch (buf_type) {
+	case SH_CSS_BUFFER_TYPE_3A_STATISTICS:
+		buffer = isp_css_buffer->s3a_data;
+		break;
+	case SH_CSS_BUFFER_TYPE_DIS_STATISTICS:
+		buffer = isp_css_buffer->dis_data;
+		break;
+	case SH_CSS_BUFFER_TYPE_VF_OUTPUT_FRAME:
+		buffer = isp_css_buffer->css_buffer.data.frame;
+		break;
+	case SH_CSS_BUFFER_TYPE_OUTPUT_FRAME:
+		buffer = isp_css_buffer->css_buffer.data.frame;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	if (sh_css_queue_buffer(pipe_id, buf_type, buffer) != sh_css_success)
+		return -EINVAL;
+
+	return 0;
+}
+
+int atomisp_css_dequeue_buffer(struct atomisp_device *isp,
+				enum atomisp_css_pipe_id pipe_id,
+				enum atomisp_css_buffer_type buf_type,
+				struct atomisp_css_buffer *isp_css_buffer)
+{
+	enum sh_css_err err;
+	void *buffer;
+
+	err = sh_css_dequeue_buffer(pipe_id, buf_type, (void **)&buffer);
+	if (err != sh_css_success) {
+		dev_err(isp->dev,
+			"sh_css_dequeue_buffer failed: 0x%x\n", err);
+		return -EINVAL;
+	}
+
+	switch (buf_type) {
+	case SH_CSS_BUFFER_TYPE_3A_STATISTICS:
+		isp_css_buffer->s3a_data = buffer;
+		break;
+	case SH_CSS_BUFFER_TYPE_DIS_STATISTICS:
+		isp_css_buffer->dis_data = buffer;
+		break;
+	case SH_CSS_BUFFER_TYPE_VF_OUTPUT_FRAME:
+		isp_css_buffer->css_buffer.data.frame = buffer;
+		break;
+	case SH_CSS_BUFFER_TYPE_OUTPUT_FRAME:
+		isp_css_buffer->css_buffer.data.frame = buffer;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+int atomisp_css_get_3a_statistics(struct atomisp_device *isp,
+				  struct atomisp_css_buffer *isp_css_buffer)
+{
+	enum sh_css_err err;
+
+	err = sh_css_get_3a_statistics(isp->params.s3a_output_buf,
+				isp->params.curr_grid_info.s3a_grid.use_dmem,
+				isp_css_buffer->s3a_data);
+	if (err != sh_css_success) {
+		dev_err(isp->dev,
+			"sh_css_get_3a_statistics failed: 0x%x\n", err);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+void atomisp_css_get_dis_statistics(struct atomisp_device *isp,
+				    struct atomisp_css_buffer *isp_css_buffer)
+{
+	sh_css_get_dis_projections(isp->params.dis_hor_proj_buf,
+				   isp->params.dis_ver_proj_buf,
+				   isp_css_buffer->dis_data);
+}
+
+int atomisp_css_dequeue_event(struct atomisp_css_event *current_event)
+{
+	if (sh_css_dequeue_event(&current_event->pipe, &current_event->event)
+	    != sh_css_success)
+		return -EINVAL;
 
 	return 0;
 }

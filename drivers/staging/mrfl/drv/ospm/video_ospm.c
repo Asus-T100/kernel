@@ -229,7 +229,13 @@ static bool vec_power_down(struct drm_device *dev,
 		return false;
 
 	psb_irq_uninstall_islands(dev, OSPM_VIDEO_ENC_ISLAND);
-	tng_topaz_save_mtx_state(dev);
+
+	if (get_ctx_cnt(dev) > 1) {
+		PSB_DEBUG_GENERAL("TOPAZ: more than 1(%d) context," \
+			" save current context status\n", \
+			get_ctx_cnt(dev));
+		tng_topaz_save_mtx_state(dev);
+	}
 
 	pm_ret = pmu_nc_set_power_state(PMU_ENC, OSPM_ISLAND_DOWN, VEC_SS_PM0);
 	if (pm_ret) {

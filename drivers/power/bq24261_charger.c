@@ -49,6 +49,7 @@
 #define DEV_MANUFACTURER_NAME_SIZE 4
 
 #define CHRG_TERM_WORKER_DELAY (30 * HZ)
+#define EXCEPTION_MONITOR_DELAY (60 * HZ)
 
 /* BQ24261 registers */
 #define BQ24261_STAT_CTRL0_ADDR		0x00
@@ -66,6 +67,7 @@
 #define BQ24261_STAT_MASK		(0x03 << 4)
 #define BQ24261_BOOST_MASK		(0x01 << 6)
 #define BQ24261_TMR_RST_MASK		(0x01 << 7)
+#define BQ24261_TMR_RST			(0x01 << 7)
 
 #define BQ24261_ENABLE_BOOST		(0x01 << 6)
 
@@ -121,6 +123,9 @@
 
 #define BQ24261_TS_MASK			(0x01 << 3)
 #define BQ24261_TS_ENABLED		(0x01 << 3)
+#define BQ24261_BOOST_ILIM_MASK		(0x01 << 4)
+#define BQ24261_BOOST_ILIM_500mA	(0x0)
+#define BQ24261_BOOST_ILIM_1A		(0x01 << 4)
 
 #define BQ24261_SAFETY_TIMER_MASK	(0x03 << 5)
 #define BQ24261_SAFETY_TIMER_40MIN	0x00
@@ -128,8 +133,10 @@
 #define BQ24261_SAFETY_TIMER_9HR	(0x02 << 5)
 #define BQ24261_SAFETY_TIMER_DISABLED	(0x03 << 5)
 
-#define BQ24261_OVP_MULTIPLIER		1050
-#define BQ24261_MIN_BAT_CV		4200
+/* 1% above voltage max design to report over voltage */
+#define BQ24261_OVP_MULTIPLIER			1010
+#define BQ24261_OVP_RECOVER_MULTIPLIER		990
+#define BQ24261_DEF_BAT_VOLT_MAX_DESIGN		4200000
 
 /* Settings for Voltage / DPPM Register (05) */
 #define BQ24261_VINDPM_MASK		(0x07)
@@ -268,6 +275,7 @@ struct bq24261_charger {
 	struct power_supply psy_usb;
 	struct delayed_work sw_term_work;
 	struct delayed_work low_supply_fault_work;
+	struct delayed_work exception_mon_work;
 	struct notifier_block otg_nb;
 	struct usb_phy *transceiver;
 	struct work_struct otg_work;
@@ -567,8 +575,13 @@ static inline int bq24261_tmr_ntc_init(struct bq24261_charger *chip)
 	if (chip->pdata->is_ts_enabled)
 		reg_val |= BQ24261_TS_ENABLED;
 
+	/* Check if boost mode current configuration is above 1A*/
+	if (chip->pdata->boost_mode_mA >= 1000)
+		reg_val |= BQ24261_BOOST_ILIM_1A;
+
 	ret = bq24261_read_modify_reg(chip->client, BQ24261_ST_NTC_MON_ADDR,
-			BQ24261_TS_MASK|BQ24261_SAFETY_TIMER_MASK, reg_val);
+			BQ24261_TS_MASK|BQ24261_SAFETY_TIMER_MASK|
+			BQ24261_BOOST_ILIM_MASK, reg_val);
 
 	return ret;
 }
@@ -613,6 +626,12 @@ static inline int bq24261_enable_charger(
 
 	ret = bq24261_read_modify_reg(chip->client, BQ24261_CTRL_ADDR,
 		       BQ24261_HZ_MASK|BQ24261_RESET_MASK, reg_val);
+	if (ret)
+		return ret;
+
+	reg_val = BQ24261_TMR_RST;
+	ret = bq24261_read_modify_reg(chip->client, BQ24261_STAT_CTRL0_ADDR,
+			BQ24261_TMR_RST_MASK, reg_val);
 	return ret;
 
 }
@@ -683,6 +702,9 @@ static inline int bq24261_set_inlmt(struct bq24261_charger *chip, int inlmt)
 
 static inline void resume_charging(struct bq24261_charger *chip)
 {
+
+	if (chip->is_charger_enabled)
+		bq24261_enable_charger(chip, true);
 	if (chip->inlmt)
 		bq24261_set_inlmt(chip, chip->inlmt);
 	if (chip->cc)
@@ -691,8 +713,6 @@ static inline void resume_charging(struct bq24261_charger *chip)
 		bq24261_set_cv(chip, chip->cv);
 	if (chip->is_charging_enabled)
 		bq24261_enable_charging(chip, true);
-	if (chip->is_charger_enabled)
-		bq24261_enable_charger(chip, true);
 }
 
 static inline int bq24261_set_iterm(struct bq24261_charger *chip, int iterm)
@@ -867,16 +887,22 @@ static int bq24261_usb_set_property(struct power_supply *psy,
 
 		break;
 	case POWER_SUPPLY_PROP_ENABLE_CHARGER:
-		ret = bq24261_enable_charger(chip, val->intval);
 
-		if (ret)
-			dev_err(&chip->client->dev,
-				"Error(%d) in %s charger", ret,
-				(val->intval ? "enable" : "disable"));
-		else
-			chip->is_charger_enabled = val->intval;
+		/* Don't enable the charger unless overvoltage is recovered */
 
-		power_supply_changed(&chip->psy_usb);
+		if (chip->bat_health != POWER_SUPPLY_HEALTH_OVERVOLTAGE) {
+			ret = bq24261_enable_charger(chip, val->intval);
+
+			if (ret)
+				dev_err(&chip->client->dev,
+					"Error(%d) in %s charger", ret,
+					(val->intval ? "enable" : "disable"));
+			else
+				chip->is_charger_enabled = val->intval;
+			power_supply_changed(&chip->psy_usb);
+		} else {
+			dev_info(&chip->client->dev, "Battery Over Voltage. Charger will be disabled\n");
+		}
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_CURRENT:
 		ret = bq24261_set_cc(chip, val->intval);
@@ -900,6 +926,7 @@ static int bq24261_usb_set_property(struct power_supply *psy,
 			chip->iterm = val->intval;
 		break;
 	case POWER_SUPPLY_PROP_CABLE_TYPE:
+
 		chip->cable_type = val->intval;
 		chip->psy_usb.type = get_power_supply_type(chip->cable_type);
 		if (chip->cable_type != POWER_SUPPLY_CHARGER_TYPE_NONE) {
@@ -920,10 +947,9 @@ static int bq24261_usb_set_property(struct power_supply *psy,
 		} else {
 			chip->chrgr_stat = BQ24261_CHRGR_STAT_UNKNOWN;
 			chip->chrgr_health = POWER_SUPPLY_HEALTH_UNKNOWN;
+			cancel_delayed_work_sync(&chip->low_supply_fault_work);
 		}
 
-
-		cancel_delayed_work_sync(&chip->low_supply_fault_work);
 		power_supply_changed(&chip->psy_usb);
 
 		break;
@@ -1060,8 +1086,25 @@ static inline int get_battery_voltage(int *volt)
 
 	ret = psy->get_property(psy, POWER_SUPPLY_PROP_VOLTAGE_NOW, &val);
 	if (!ret)
-		*volt = val.intval;
+		*volt = (val.intval);
 
+	return ret;
+}
+
+static inline int get_battery_volt_max_design(int *volt)
+{
+	struct power_supply *psy;
+	union power_supply_propval val;
+	int ret;
+
+	psy = get_psy_battery();
+	if (!psy)
+		return -EINVAL;
+
+	ret = psy->get_property(psy,
+		POWER_SUPPLY_PROP_VOLTAGE_MAX_DESIGN, &val);
+	if (!ret)
+		(*volt = val.intval);
 	return ret;
 }
 
@@ -1127,86 +1170,116 @@ static void bq24261_low_supply_fault_work(struct work_struct *work)
 	return;
 }
 
+
 /* is_bat_over_voltage: check battery is over voltage or not
 *  @chip: bq24261_charger context
 *
 *  This function is used to verify the over voltage condition.
 *  In some scenarios, HW generates Over Voltage exceptions when
 *  battery voltage is normal. This function uses the over voltage
-*  condition (CV*1.05) to verify battery is really over charged or not.
-*
-*  Battery OVP can happen even when charger cable is disconnected. But with
-*  charger disconnected, charging framework will not notify the CV to
-*  the driver. So driver is using a default CV (4.2V) which is expected to be
-*  the minimum among the batteries available in the market. Also with
-*  this, the overvoltage limit calculated (4.2*1.05 = 4.41V) is more than
-*  the supported maximum CV (4.4V).
+*  condition (voltage_max_design * 1.01) to verify battery is really
+*  over charged or not.
 */
 
-static bool is_bat_over_voltage(struct bq24261_charger *chip)
+static bool is_bat_over_voltage(struct bq24261_charger *chip,
+		bool verify_recovery)
 {
 
-	int bat_volt, ret, cv;
+	int bat_volt, bat_volt_max_des, ret;
 
 	ret = get_battery_voltage(&bat_volt);
-	if (ret) {
-		dev_err(&chip->client->dev,
-			"%s: Error in getting battery voltage."
-			"Reporting OVP to avoid battery reaching over voltage\n",
-			__func__);
-		return true;
+	if (ret)
+		return verify_recovery ? false : true;
+
+	ret = get_battery_volt_max_design(&bat_volt_max_des);
+
+	if (ret)
+		bat_volt_max_des = BQ24261_DEF_BAT_VOLT_MAX_DESIGN;
+
+	dev_info(&chip->client->dev, "bat_volt=%d Voltage Max Design=%d OVP_VOLT=%d OVP recover volt=%d\n",
+			bat_volt, bat_volt_max_des,
+			(bat_volt_max_des/1000 * BQ24261_OVP_MULTIPLIER),
+			(bat_volt_max_des/1000 *
+				BQ24261_OVP_RECOVER_MULTIPLIER));
+	if (verify_recovery) {
+		if ((bat_volt) <= (bat_volt_max_des / 1000 *
+				BQ24261_OVP_RECOVER_MULTIPLIER))
+			return true;
+		else
+			return false;
+	} else {
+		if ((bat_volt) >= (bat_volt_max_des / 1000 *
+					BQ24261_OVP_MULTIPLIER))
+			return true;
+		else
+			return false;
 	}
 
-	cv = chip->cv ? chip->cv : BQ24261_MIN_BAT_CV;
+	return false;
+}
 
-	dev_info(&chip->client->dev, "bat_volt=%d CV=%d OVP_COND=%d\n",
-			bat_volt, cv, (cv * BQ24261_OVP_MULTIPLIER));
+#define IS_BATTERY_OVER_VOLTAGE(chip) \
+	is_bat_over_voltage(chip , false)
 
-	if ((bat_volt) >= (cv * BQ24261_OVP_MULTIPLIER))
-		return true;
-	else
-		return false;
+#define IS_BATTERY_OVER_VOLTAGE_RECOVERED(chip) \
+	is_bat_over_voltage(chip , true)
+
+static void handle_battery_over_voltage(struct bq24261_charger *chip)
+{
+	/* Set Health to Over Voltage. Disable charger to discharge
+	*  battery to reduce the battery voltage.
+	*/
+	chip->bat_health = POWER_SUPPLY_HEALTH_OVERVOLTAGE;
+	bq24261_enable_charger(chip, false);
+	chip->is_charger_enabled = false;
+	cancel_delayed_work_sync(&chip->exception_mon_work);
+	schedule_delayed_work(&chip->exception_mon_work,
+			EXCEPTION_MONITOR_DELAY);
+}
+
+static void bq24261_exception_mon_work(struct work_struct *work)
+{
+	struct bq24261_charger *chip = container_of(work,
+						    struct bq24261_charger,
+						    exception_mon_work.work);
+	/* Only overvoltage exception need to monitor.*/
+	if (IS_BATTERY_OVER_VOLTAGE_RECOVERED(chip)) {
+		dev_info(&chip->client->dev, "Over Voltage Exception Recovered\n");
+		chip->bat_health = POWER_SUPPLY_HEALTH_GOOD;
+		bq24261_enable_charger(chip, true);
+		chip->is_charger_enabled = true;
+		resume_charging(chip);
+	} else {
+		schedule_delayed_work(&chip->exception_mon_work,
+			      EXCEPTION_MONITOR_DELAY);
+	}
 }
 
 static int bq24261_handle_irq(struct bq24261_charger *chip, u8 stat_reg)
 {
 	struct i2c_client *client = chip->client;
 	int ret;
+	bool notify = true;
 
-	dev_dbg(&client->dev, "%s:%d\n", __func__, __LINE__);
-
-	/* If fault was set previously and it's not set now,
-	 *  then recover excpetions
-	 */
-
-	if ((chip->chrgr_stat == BQ24261_CHRGR_STAT_FAULT) &&
-		((stat_reg & BQ24261_STAT_MASK) != BQ24261_STAT_FAULT)) {
-		dev_info(&client->dev, "Fault recovered\n");
-		chip->bat_health = POWER_SUPPLY_HEALTH_GOOD;
-
-		if (chip->is_charger_enabled) {
-			bq24261_set_inlmt(chip, chip->inlmt);
-			bq24261_enable_charger(chip, true);
-		}
-		if (chip->is_charging_enabled)
-			bq24261_enable_charging(chip, true);
-
-		bq24261_dump_regs(false);
-	}
+	dev_info(&client->dev, "%s:%d stat=0x%x\n",
+			__func__, __LINE__, stat_reg);
 
 	switch (stat_reg & BQ24261_STAT_MASK) {
 	case BQ24261_STAT_READY:
 		chip->chrgr_stat = BQ24261_CHRGR_STAT_READY;
 		chip->chrgr_health = POWER_SUPPLY_HEALTH_GOOD;
+		chip->bat_health = POWER_SUPPLY_HEALTH_GOOD;
 		dev_info(&client->dev, "Charger Status: Ready\n");
 		break;
 	case BQ24261_STAT_CHRG_PRGRSS:
 		chip->chrgr_stat = BQ24261_CHRGR_STAT_CHARGING;
 		chip->chrgr_health = POWER_SUPPLY_HEALTH_GOOD;
+		chip->bat_health = POWER_SUPPLY_HEALTH_GOOD;
 		dev_info(&client->dev, "Charger Status: Charge Progress\n");
 		break;
 	case BQ24261_STAT_CHRG_DONE:
 		chip->chrgr_health = POWER_SUPPLY_HEALTH_GOOD;
+		chip->bat_health = POWER_SUPPLY_HEALTH_GOOD;
 		dev_info(&client->dev, "Charger Status: Charge Done\n");
 
 		bq24261_enable_hw_charge_term(chip, false);
@@ -1275,13 +1348,18 @@ static int bq24261_handle_irq(struct bq24261_charger *chip, u8 stat_reg)
 			break;
 
 		case BQ24261_BATT_OVP:
-			if (is_bat_over_voltage(chip)) {
-				chip->bat_health =
-					POWER_SUPPLY_HEALTH_OVERVOLTAGE;
-				dev_err(&client->dev, "Battery Over Voltage Fault\n");
-			} else {
-				chip->chrgr_stat = BQ24261_CHRGR_STAT_UNKNOWN;
-				resume_charging(chip);
+			notify = false;
+			if (chip->bat_health !=
+					POWER_SUPPLY_HEALTH_OVERVOLTAGE) {
+				if (!IS_BATTERY_OVER_VOLTAGE(chip)) {
+					chip->chrgr_stat =
+						BQ24261_CHRGR_STAT_UNKNOWN;
+					resume_charging(chip);
+				} else {
+					dev_err(&client->dev, "Battery Over Voltage Fault\n");
+					handle_battery_over_voltage(chip);
+					notify = true;
+				}
 			}
 			break;
 		case BQ24261_NO_BATTERY:
@@ -1290,12 +1368,13 @@ static int bq24261_handle_irq(struct bq24261_charger *chip, u8 stat_reg)
 
 		}
 
-		if (chip->chrgr_stat == BQ24261_CHRGR_STAT_FAULT)
+		if (chip->chrgr_stat == BQ24261_CHRGR_STAT_FAULT && notify)
 			bq24261_dump_regs(dump_master);
 	}
 
 	chip->is_vsys_on = bq24261_is_vsys_on(chip);
-	power_supply_changed(&chip->psy_usb);
+	if (notify)
+		power_supply_changed(&chip->psy_usb);
 
 	return 0;
 }
@@ -1520,7 +1599,6 @@ static int bq24261_probe(struct i2c_client *client,
 	chip->max_cc = 1500;
 	chip->chrgr_stat = BQ24261_CHRGR_STAT_UNKNOWN;
 	chip->chrgr_health = POWER_SUPPLY_HEALTH_UNKNOWN;
-	chip->bat_health = POWER_SUPPLY_HEALTH_GOOD;
 
 	strncpy(chip->model_name,
 		bq24261_model_name[bq24261_rev].model_name,
@@ -1540,6 +1618,8 @@ static int bq24261_probe(struct i2c_client *client,
 	INIT_DELAYED_WORK(&chip->sw_term_work, bq24261_sw_charge_term_worker);
 	INIT_DELAYED_WORK(&chip->low_supply_fault_work,
 				bq24261_low_supply_fault_work);
+	INIT_DELAYED_WORK(&chip->exception_mon_work,
+				bq24261_exception_mon_work);
 
 	INIT_WORK(&chip->irq_work, bq24261_irq_worker);
 	if (chip->client->irq) {
@@ -1556,6 +1636,11 @@ static int bq24261_probe(struct i2c_client *client,
 			return ret;
 		}
 	}
+
+	if (IS_BATTERY_OVER_VOLTAGE(chip))
+		handle_battery_over_voltage(chip);
+	else
+		chip->bat_health = POWER_SUPPLY_HEALTH_GOOD;
 
 	if (register_otg_notifications(chip))
 		dev_err(&client->dev, "Error in registering OTG notifications. Unable to supply power to Host\n");

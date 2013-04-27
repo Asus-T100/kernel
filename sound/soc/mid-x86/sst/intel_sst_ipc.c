@@ -475,6 +475,7 @@ void intel_sst_clear_intr_mfld(void)
 	sst_shim_write(sst_drv_ctx->shim, sst_drv_ctx->ipc_reg.ipcd, clear_ipc.full);
 	/* un mask busy interrupt */
 	imr.part.busy_interrupt = 0;
+	imr.part.done_interrupt = 0;
 	sst_shim_write(sst_drv_ctx->shim, SST_IMRX, imr.full);
 	spin_unlock_irqrestore(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 }

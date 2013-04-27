@@ -15,7 +15,7 @@
 
 /* PMIC SRAM address for BCU register */
 #define PMIC_SRAM_BCU_ADDR      0xFFFFF614
-#define IOMAP_LEN               4
+#define IOMAP_LEN               1
 
 #define NUM_VOLT_LEVELS         3
 #define NUM_CURR_LEVELS         2
@@ -72,8 +72,10 @@
 /*IRQ Mask Register*/
 #define MBCUIRQ                 0x10
 
-/* Base SMIP address from where the BCU related info should be read */
-#define BCU_SMIP_BASE           0x47E
+#define MRFL_SMIP_SRAM_ADDR	0xFFFCE000
+
+/* SMIP offset address from where the BCU related info should be read */
+#define BCU_SMIP_OFFSET		0x3BA
 
 /* No of Bytes we have to read from SMIP from BCU_SMIP_BASE*/
 #define NUM_SMIP_BYTES          14

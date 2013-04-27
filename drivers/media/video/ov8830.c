@@ -1395,8 +1395,10 @@ static int ov8830_enum_frameintervals(struct v4l2_subdev *sd,
 	res = &dev->curr_res_table[fmt_index];
 
 	/* Check if this index is supported */
-	if (index > __ov8830_get_max_fps_index(res->fps_options))
+	if (index > __ov8830_get_max_fps_index(res->fps_options)) {
+		mutex_unlock(&dev->input_lock);
 		return -EINVAL;
+	}
 
 	fival->type = V4L2_FRMIVAL_TYPE_DISCRETE;
 	fival->discrete.numerator = 1;

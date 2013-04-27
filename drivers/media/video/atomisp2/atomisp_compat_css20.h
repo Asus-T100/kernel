@@ -30,6 +30,8 @@
 #define atomisp_css_pipe_id ia_css_pipe_id
 #define atomisp_css_buffer_type ia_css_buffer_type
 #define atomisp_css_dis_data ia_css_isp_dvs_statistics
+#define atomisp_css_irq_info  ia_css_irq_info
+#define atomisp_css_isp_config ia_css_isp_config
 typedef struct ia_css_isp_3a_statistics atomisp_css_3a_data;
 
 #define CSS_PIPE_ID_PREVIEW	IA_CSS_PIPE_ID_PREVIEW
@@ -39,15 +41,36 @@ typedef struct ia_css_isp_3a_statistics atomisp_css_3a_data;
 #define CSS_PIPE_ID_ACC		IA_CSS_PIPE_ID_ACC
 #define CSS_PIPE_ID_NUM		IA_CSS_PIPE_ID_NUM
 
+#define CSS_IRQ_INFO_CSS_RECEIVER_ERROR	IA_CSS_IRQ_INFO_CSS_RECEIVER_ERROR
+#define CSS_IRQ_INFO_EVENTS_READY	IA_CSS_IRQ_INFO_EVENTS_READY
+#define CSS_IRQ_INFO_INPUT_SYSTEM_ERROR \
+	IA_CSS_IRQ_INFO_INPUT_SYSTEM_ERROR
+#define CSS_IRQ_INFO_IF_ERROR	IA_CSS_IRQ_INFO_IF_ERROR
+
+#define CSS_BUFFER_TYPE_NUM	IA_CSS_BUFFER_TYPE_NUM
+
+#define CSS_FRAME_FLASH_STATE_NONE	IA_CSS_FRAME_FLASH_STATE_NONE
+#define CSS_FRAME_FLASH_STATE_PARTIAL	IA_CSS_FRAME_FLASH_STATE_PARTIAL
+#define CSS_FRAME_FLASH_STATE_FULL	IA_CSS_FRAME_FLASH_STATE_FULL
+
+/*
+ * Hide IA_ naming difference in otherwise common CSS macros.
+ */
+#define CSS_ID(val)	(IA_ ## val)
+#define CSS_EVENT(val)	(IA_CSS_EVENT_TYPE_ ## val)
+
 struct atomisp_css_env {
 	struct ia_css_env isp_css_env;
 	struct ia_css_fw isp_css_fw;
 	struct ia_css_stream *stream;
 	struct ia_css_stream_config stream_config;
-	struct ia_css_pipe *pipes[ATOMISP_CSS2_PIPE_MAX];
-	struct ia_css_pipe_config pipe_configs[ATOMISP_CSS2_PIPE_MAX];
-	struct ia_css_pipe_extra_config pipe_extra_configs[ATOMISP_CSS2_PIPE_MAX];
-	unsigned int pipe_index;
+	struct ia_css_pipe *pipes[IA_CSS_PIPE_ID_NUM];
+	struct ia_css_pipe *multi_pipes[IA_CSS_PIPE_ID_NUM];
+	struct ia_css_pipe_config pipe_configs[IA_CSS_PIPE_ID_NUM];
+	struct ia_css_pipe_extra_config pipe_extra_configs[IA_CSS_PIPE_ID_NUM];
+	bool update_pipe[IA_CSS_PIPE_ID_NUM];
+	unsigned int curr_pipe;
+	enum atomisp_css2_stream_state stream_state;
 };
 
 struct atomisp_s3a_buf {
@@ -58,6 +81,26 @@ struct atomisp_s3a_buf {
 struct atomisp_dis_buf {
 	struct atomisp_css_dis_data *dis_data;
 	struct list_head list;
+};
+
+/*
+ * These are used to indicate the css stream state, corresponding
+ * stream handling can be done via judging the different state.
+ */
+enum atomisp_css_stream_state {
+	CSS_STREAM_UNINIT,
+	CSS_STREAM_CREATED,
+	CSS_STREAM_STARTED,
+	CSS_STREAM_STOPPED,
+};
+
+struct atomisp_css_buffer {
+	struct ia_css_buffer css_buffer;
+};
+
+struct atomisp_css_event {
+	enum atomisp_css_pipe_id pipe;
+	struct ia_css_event event;
 };
 
 #endif

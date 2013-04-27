@@ -128,6 +128,22 @@ int get_extended_cstate_mode(char *buffer, struct kernel_param *kp)
 	return strlen(default_string);
 }
 
+static char *nc_devices[] = {
+	"GFXSLC",
+	"GSDKCK",
+	"GRSCD",
+	"VED",
+	"VEC",
+	"DPA",
+	"DPB",
+	"DPC",
+	"VSP",
+	"ISP",
+	"MIO",
+	"HDMIO",
+	"GFXSLCLDO"
+};
+
 static int wait_for_nc_pmcmd_complete(int verify_mask,
 				int status_mask, int state_type , int reg)
 {
@@ -201,8 +217,59 @@ static int mrfld_nc_set_power_state(int islands, int state_type,
 	return ret;
 }
 
+void pmu_set_s0ix_possible(int state)
+{
+	bool north_good;
+	int no_of_nc_devices = sizeof(nc_devices)/sizeof(nc_devices[0]);
+
+	/* assume S0ix not possible */
+	mid_pmu_cxt->s0ix_possible = 0;
+
+	if (state != PCI_D0) {
+		struct pmu_ss_states cur_pmsss;
+
+		pmu_read_sss(&cur_pmsss);
+
+		if ((((cur_pmsss.pmu2_states[1] & S0IX_TARGET_SSS1_MASK) ==
+						S0IX_TARGET_SSS1) &&
+			((cur_pmsss.pmu2_states[2] & S0IX_TARGET_SSS2_MASK) ==
+						S0IX_TARGET_SSS2) &&
+			((cur_pmsss.pmu2_states[3] & S0IX_TARGET_SSS3_MASK) ==
+						S0IX_TARGET_SSS3))) {
+			u32 val, nc_pwr_sts;
+			int i;
+
+			/* assume north good */
+			north_good = true;
+			nc_pwr_sts =
+				intel_mid_msgbus_read32(PUNIT_PORT, NC_PM_SSS);
+			for (i = 0; i < no_of_nc_devices; i++) {
+				val = nc_pwr_sts & 3;
+				if (val != 3) {
+					north_good = false;
+					break;
+				}
+				nc_pwr_sts >>= BITS_PER_LSS;
+			}
+
+			/* If S0iX is not possible check
+			 * LPMP3 is possible
+			 */
+			if (north_good) {
+				if ((cur_pmsss.pmu2_states[0] &
+				S0IX_TARGET_SSS0_MASK) == S0IX_TARGET_SSS0)
+					mid_pmu_cxt->s0ix_possible = 1;
+				else if ((cur_pmsss.pmu2_states[0] &
+				LPMP3_TARGET_SSS0_MASK) == LPMP3_TARGET_SSS0)
+					mid_pmu_cxt->s0ix_possible = 2;
+			}
+		}
+	}
+}
+
 struct platform_pmu_ops mrfld_pmu_ops = {
 	.init	 = mrfld_pmu_init,
 	.enter	 = mrfld_pmu_enter,
 	.nc_set_power_state = mrfld_nc_set_power_state,
+	.set_power_state_ops = pmu_set_s0ix_possible,
 };

@@ -56,6 +56,13 @@ config DRM_MRFLD
           Choose this option if you have a Merrifield platform.
           If M is selected the module will be called mid_gfx.
 
+config PDUMP
+        bool "Enable pdump in Merrifield graphics driver"
+        depends on DRM_MRFLD
+        default n
+        help
+          Choose this option to enable pdump on Merrifield.
+
 config MID_DSI_DSR
 	bool "Support DSI Fullscreen Display Self Refreshment "
 	depends on DRM_INTEL_HANDSET && !MID_DSI_DPU

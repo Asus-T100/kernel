@@ -175,7 +175,7 @@ static struct sdhci_pci_data mrfl_sdhci_pci_data[] = {
 			.platform_quirks = 0,
 			.setup = 0,
 			.cleanup = 0,
-			.power_up = dummy_emmc0_power_up,
+			.power_up = panic_mode_emmc0_power_up,
 	},
 	[EMMC1_INDEX] = {
 			.pdev = NULL,

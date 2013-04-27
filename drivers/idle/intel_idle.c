@@ -666,6 +666,9 @@ static int intel_idle_probe(void)
 		auto_demotion_disable_flags = ATM_LNC_C6_AUTO_DEMOTE;
 		break;
 #endif
+	 case 0x37:	/* 55 - Valleyview Atom Processor */
+		cpuidle_state_table = atom_cstates;
+		break;
 #ifdef CONFIG_X86_MRFLD
 	case 0x4a:	/*74 - Tangier Atom Processor */
 		cpuidle_state_table = mrfld_cstates;

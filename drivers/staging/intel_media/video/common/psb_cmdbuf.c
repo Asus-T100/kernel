@@ -828,12 +828,10 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 	if (arg->engine == PSB_ENGINE_DECODE) {
 		if (msvdx_priv->fw_loaded_by_punit)
 			psb_msvdx_check_reset_fw(dev);
-#ifndef CONFIG_DRM_VXD_BYT
 		if (!ospm_power_using_video_begin(OSPM_VIDEO_DEC_ISLAND)) {
 			ret = -EBUSY;
 			goto out_err0;
 		}
-#endif
 
 		ret = mutex_lock_interruptible(&msvdx_priv->msvdx_mutex);
 		if (unlikely(ret != 0))
@@ -1042,16 +1040,18 @@ out_err1:
 #endif
 out_err0:
 	ttm_read_unlock(&dev_priv->ttm_lock);
-#ifndef CONFIG_DRM_VXD_BYT
+
 	if (arg->engine == PSB_ENGINE_DECODE)
 		ospm_power_using_video_end(OSPM_VIDEO_DEC_ISLAND);
 
+#ifndef CONFIG_DRM_VXD_BYT
 	if (arg->engine == LNC_ENGINE_ENCODE)
 		ospm_power_using_video_end(OSPM_VIDEO_ENC_ISLAND);
+#endif
+
 #ifdef SUPPORT_VSP
 	if (arg->engine == VSP_ENGINE_VPP)
 		ospm_power_using_video_end(OSPM_VIDEO_VPP_ISLAND);
-#endif
 #endif
 	return ret;
 }

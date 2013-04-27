@@ -42,20 +42,6 @@
 #define MAX_NUM_CORES 2
 #define MAX_NUM_COUNTERS 8
 
-/* Performance counter collection for gpu burst load information. */
-
-/**
- * HSTLEN - "history array size" - number of consecutive counter utilization
- * values stored/
- */
-#define HSTLEN 16
-
-#if ((HSTLEN & (HSTLEN - 1)) == HSTLEN)
-/* HSTLEN is a power of two. */
-#define HSTLEN_MASK (HSTLEN - 1)
-#else
-#define HSTLEN_MASK 0
-#endif
 
 /**
  * struct pcel_s -- Performance counter element.
@@ -64,14 +50,8 @@
 struct pcel_s {
 	/* for calculating delta */
 	uint32_t last_value;
-	/* pce_value_index - index into pce_values for next time. */
-	uint32_t pce_value_index;
 	/* pce_time_stamp - gpu clock divided by 16. */
 	uint32_t pce_time_stamp;
-	/* maximum counter value over monitored history */
-	uint32_t max_pce_value;
-	/* counter values.  Current plus previous.  Circular buffer. */
-	uint32_t pce_values[HSTLEN];
 };
 
 struct gburst_stats_data_s {
@@ -130,64 +110,6 @@ static void gpu_init_perf_counters(void)
 
 
 /**
- * next_index_for_buffer() - increment the circular buffer index.
- * @ndx: Input index
- *
- * Function return value: Updated index into circular buffer.
- */
-static inline uint32_t next_index_for_buffer(uint32_t ndx)
-{
-#if HSTLEN_MASK
-	return (ndx + 1) & HSTLEN_MASK;
-#else
-	ndx++;
-	if (ndx >= HSTLEN)
-		ndx = 0;
-
-	return ndx;
-#endif
-}
-
-
-/**
- * compute_utilization() - Compute a utilization metric.
- * Calculate counter max value over history (max_pce_value)
- */
-static uint32_t compute_utilization(void)
-{
-	int i;
-	int ndx;
-	unsigned int ix_core;
-	uint32_t sgx_util;
-
-	ix_core = 0;
-	i = 0;
-	ndx = 0;
-	sgx_util = 0;
-
-	for (ix_core = 0; ix_core < gsdat.gsd_num_cores; ix_core++) {
-		for (ndx = 0; ndx < HSTLEN; ndx++) {
-			if (gsdat.gsd_pcd[ix_core]
-			    [gsdat.gsd_first_active_counter].
-				pce_values[ndx]	> sgx_util)
-				sgx_util =
-				gsdat.gsd_pcd[ix_core]
-				[gsdat.gsd_first_active_counter].
-				pce_values[ndx];
-			if (gsdat.gsd_pcd[ix_core]
-				[gsdat.gsd_last_active_counter].
-				pce_values[ndx] > sgx_util)
-				sgx_util =
-				gsdat.gsd_pcd[ix_core]
-				[gsdat.gsd_last_active_counter].
-				pce_values[ndx];
-		}
-	}
-	return sgx_util;
-}
-
-
-/**
  * update_perf_counter_value() - Store one hw counter into database.
  * @ix_core - gpu core index
  * @ndx     - our counter index
@@ -213,11 +135,8 @@ static uint32_t update_perf_counter_value(int ix_core, int ndx,
 	pce = &gsdat.gsd_pcd[ix_core][ndx];
 
 	if (counters_storable) {
-		/* Upd counter data history only when periodic event arrives */
+		/* Update counter data history only when periodic event arrives */
 		counter_coeff = gburst_hw_inq_counter_coeff(ndx);
-		value_index = pce->pce_value_index;
-		pce->pce_values[value_index] = 0;
-
 		if ((time_stamp > pce->pce_time_stamp)
 			&& (counter_coeff != 0)
 			&& (value > pce->last_value)) {
@@ -227,13 +146,9 @@ static uint32_t update_perf_counter_value(int ix_core, int ndx,
 			denominator = counter_coeff * (time_stamp -
 				pce->pce_time_stamp);
 			utilization = (uint32_t) (numerator / denominator);
-			pce->pce_values[value_index] = utilization;
 		}
 		pce->pce_time_stamp = time_stamp;
 		pce->last_value = value;
-		pce->pce_value_index = next_index_for_buffer(
-			pce->pce_value_index);
-
 	} else if (time_stamp < pce->pce_time_stamp ||
 				value < pce->last_value) {
 		/* counter reset or roll over between periodic events
@@ -360,7 +275,7 @@ int gburst_stats_gfx_hw_perf_counters_set(const char *buf)
  * Function return value: Utilization value (0-100) or
  * < 0 if error (indicating not inited).
  */
-int gburst_stats_gfx_hw_perf_record(int gpu_state)
+int gburst_stats_gfx_hw_perf_record()
 {
 	int icx;            /* counter index */
 	int i;
@@ -411,19 +326,6 @@ int gburst_stats_gfx_hw_perf_record(int gpu_state)
 	}
 
 	if (ix_woff == ix_roff) {
-		/* Buffer is empty, so clear utilization calculation table */
-		for (ix_core = 0; ix_core < gsdat.gsd_num_cores; ix_core++) {
-			pce = &gsdat.gsd_pcd[ix_core]
-			[gsdat.gsd_first_active_counter];
-			pce->max_pce_value = 0;
-			for (i = 0; i < HSTLEN; i++)
-				pce->pce_values[i] = 0;
-			pce = &gsdat.gsd_pcd[ix_core]
-			[gsdat.gsd_last_active_counter];
-			pce->max_pce_value = 0;
-			for (i = 0; i < HSTLEN; i++)
-				pce->pce_values[i] = 0;
-		}
 		gburst_hw_mutex_unlock();
 		return 0; /* return with zero utilization */
 	}
@@ -480,14 +382,6 @@ int gburst_stats_gfx_hw_perf_record(int gpu_state)
 			return sts;
 		}
 	}
-
-	/**
-	 * Calculate utilization based on the state the GPU is in.
-	 * If GPU is in nominal state (not burst) react to transient load spikes
-	 * If GPU is in burst calculate utilization over longer period (HSTLEN)
-	 */
-	if (gpu_state)
-		sgx_util = compute_utilization();
 
 	gburst_hw_mutex_unlock();
 

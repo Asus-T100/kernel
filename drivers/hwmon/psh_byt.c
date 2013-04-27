@@ -41,6 +41,7 @@
 #include <linux/firmware.h>
 #include <linux/i2c.h>
 #include <linux/gpio.h>
+#include <linux/acpi_gpio.h>
 #include <asm/intel_vlv2.h>
 
 #include "psh_ia_common.h"
@@ -51,26 +52,29 @@ struct psh_ext_if {
 	struct device *hwmon_dev;
 	struct i2c_client *pshc;
 	char psh_frame[LBUF_MAX_CELL_SIZE];
+
+	int gpio_psh_ctl, gpio_psh_rst;
+
+	int irq_disabled;
 };
 
-static struct psh_ia_priv *ia_data;
-static struct psh_ext_if psh_if_info;
-
-int read_psh_data(void)
+int read_psh_data(struct psh_ia_priv *ia_data)
 {
+	struct psh_ext_if *psh_if_info =
+			(struct psh_ext_if *)ia_data->platform_priv;
 	int total_read = 0, ret = 0;
 	struct frame_head fh;
 	struct i2c_msg msg[2] = {
 		{
-		.addr = psh_if_info.pshc->addr,
+		.addr = psh_if_info->pshc->addr,
 		.flags = I2C_M_RD,
 		.len = sizeof(fh),
 		.buf = (void *)&fh
 		},
 		{
-		.addr = psh_if_info.pshc->addr,
+		.addr = psh_if_info->pshc->addr,
 		.flags = I2C_M_RD,
-		.buf = (void *)&psh_if_info.psh_frame
+		.buf = (void *)&psh_if_info->psh_frame
 		}
 	};
 
@@ -78,9 +82,9 @@ int read_psh_data(void)
 
 	/* Loop read till error or no more valid data */
 	while (1) {
-		ret = i2c_transfer(psh_if_info.pshc->adapter, msg, 1);
+		ret = i2c_transfer(psh_if_info->pshc->adapter, msg, 1);
 		if (ret != 1) {
-			dev_err(&psh_if_info.pshc->dev, "Read frame header error!\n");
+			dev_err(&psh_if_info->pshc->dev, "Read frame header error!\n");
 			ret = -EPERM;
 			break;
 		}
@@ -94,38 +98,62 @@ int read_psh_data(void)
 			break;		/* No valid data read */
 
 		msg[1].len = frame_size(fh.length) - sizeof(fh);
-		ret = i2c_transfer(psh_if_info.pshc->adapter, msg + 1, 1);
+		ret = i2c_transfer(psh_if_info->pshc->adapter, msg + 1, 1);
 		if (ret != 1) {
-			dev_err(&psh_if_info.pshc->dev, "Read main frame error!\n");
+			dev_err(&psh_if_info->pshc->dev, "Read main frame error!\n");
 			ret = -EPERM;
 			break;
 		}
 
-		ret = ia_handle_frame(psh_if_info.psh_frame, fh.length);
+		ret = ia_handle_frame(ia_data,
+					psh_if_info->psh_frame, fh.length);
 		if (ret > 0)
 			total_read += ret;
 
 	}
 
 	if (total_read)
-		sysfs_notify(&psh_if_info.pshc->dev.kobj, NULL, "data_size");
+		sysfs_notify(&psh_if_info->pshc->dev.kobj, NULL, "data_size");
 
 	return ret;
 }
 
-int process_send_cmd(int ch, struct ia_cmd *cmd, int len)
+int process_send_cmd(struct psh_ia_priv *ia_data,
+			int ch, struct ia_cmd *cmd, int len)
 {
+	struct psh_ext_if *psh_if_info =
+			(struct psh_ext_if *)ia_data->platform_priv;
 	int ret = 0;
 	struct i2c_msg i2c_cmd = {
-		.addr = psh_if_info.pshc->addr,
+		.addr = psh_if_info->pshc->addr,
 		.flags = 0,
 		.len = len,
 		.buf = (void *)cmd
 	};
 
-	ret = i2c_transfer(psh_if_info.pshc->adapter, &i2c_cmd, 1);
+	if (ch == 0 && cmd->cmd_id == CMD_RESET) {
+		if (psh_if_info->irq_disabled == 0) {
+			disable_irq(psh_if_info->pshc->irq);
+			psh_if_info->irq_disabled = 1;
+		}
+
+		gpio_set_value(psh_if_info->gpio_psh_ctl, 1);
+		gpio_set_value(psh_if_info->gpio_psh_rst, 0);
+		usleep_range(10000, 10000);
+		gpio_set_value(psh_if_info->gpio_psh_rst, 1);
+
+		/* wait for pshfw to run */
+		msleep(1000);
+
+		if (psh_if_info->irq_disabled == 1) {
+			enable_irq(psh_if_info->pshc->irq);
+			psh_if_info->irq_disabled = 0;
+		}
+	}
+
+	ret = i2c_transfer(psh_if_info->pshc->adapter, &i2c_cmd, 1);
 	if (ret != 1) {
-		dev_err(&psh_if_info.pshc->dev, "sendcmd through I2C fail!\n");
+		dev_err(&psh_if_info->pshc->dev, "sendcmd through I2C fail!\n");
 		return -EPERM;
 	}
 
@@ -139,7 +167,11 @@ int do_setup_ddr(struct device *dev)
 
 static irqreturn_t psh_byt_irq_thread(int irq, void *dev)
 {
-	read_psh_data();
+	struct i2c_client *client = (struct i2c_client *)dev;
+	struct psh_ia_priv *ia_data =
+			(struct psh_ia_priv *)dev_get_drvdata(&client->dev);
+
+	read_psh_data(ia_data);
 	return IRQ_HANDLED;
 }
 
@@ -148,7 +180,14 @@ static int psh_probe(struct i2c_client *client,
 				const struct i2c_device_id *id)
 {
 	int ret = -EPERM;
-	int *gpio_pins;
+	struct psh_ia_priv *ia_data;
+	struct psh_ext_if *psh_if_info;
+
+	psh_if_info = kzalloc(sizeof(*psh_if_info), GFP_KERNEL);
+	if (!psh_if_info) {
+		dev_err(&client->dev, "can not allocate psh_if_info\n");
+		goto psh_if_err;
+	}
 
 	ret = psh_ia_common_init(&client->dev, &ia_data);
 	if (ret) {
@@ -156,13 +195,47 @@ static int psh_probe(struct i2c_client *client,
 		goto psh_ia_err;
 	}
 
-	psh_if_info.hwmon_dev = hwmon_device_register(&client->dev);
-	if (!psh_if_info.hwmon_dev) {
+	psh_if_info->hwmon_dev = hwmon_device_register(&client->dev);
+	if (!psh_if_info->hwmon_dev) {
 		dev_err(&client->dev, "fail to register hwmon device\n");
 		goto hwmon_err;
 	}
 
-	psh_if_info.pshc = client;
+	psh_if_info->pshc = client;
+
+	ia_data->platform_priv = psh_if_info;
+
+	psh_if_info->gpio_psh_ctl =
+				acpi_get_gpio_by_index(&client->dev, 1, NULL);
+	if (psh_if_info->gpio_psh_ctl < 0) {
+		dev_warn(&client->dev, "fail to get psh_ctl pin by ACPI\n");
+	} else {
+		int rc = gpio_request(psh_if_info->gpio_psh_ctl, "psh_ctl");
+		if (rc) {
+			dev_warn(&client->dev, "fail to request psh_ctl pin\n");
+			psh_if_info->gpio_psh_ctl = -1;
+		} else {
+			gpio_export(psh_if_info->gpio_psh_ctl, 1);
+			gpio_direction_output(psh_if_info->gpio_psh_ctl, 1);
+			gpio_set_value(psh_if_info->gpio_psh_ctl, 1);
+		}
+	}
+
+	psh_if_info->gpio_psh_rst =
+				acpi_get_gpio_by_index(&client->dev, 0, NULL);
+	if (psh_if_info->gpio_psh_rst < 0) {
+		dev_warn(&client->dev, "failed to get psh_rst pin by ACPI\n");
+	} else {
+		int rc = gpio_request(psh_if_info->gpio_psh_rst, "psh_rst");
+		if (rc) {
+			dev_warn(&client->dev, "fail to request psh_rst pin\n");
+			psh_if_info->gpio_psh_rst = -1;
+		} else {
+			gpio_export(psh_if_info->gpio_psh_rst, 1);
+			gpio_direction_output(psh_if_info->gpio_psh_rst, 1);
+			gpio_set_value(psh_if_info->gpio_psh_rst, 1);
+		}
+	}
 
 	ret = request_threaded_irq(client->irq, NULL, psh_byt_irq_thread,
 			IRQF_TRIGGER_FALLING | IRQF_ONESHOT, "psh_byt", client);
@@ -170,48 +243,43 @@ static int psh_probe(struct i2c_client *client,
 		dev_err(&client->dev, "fail to request irq\n");
 		goto irq_err;
 	}
-	gpio_pins = (int *)client->dev.platform_data;
-	if (gpio_pins) {
-		int rc;
 
-		rc = gpio_request(gpio_pins[0], "psh_ctl");
-		if (rc) {
-			dev_warn(&client->dev, "fail to request psh_ctl pin\n");
-		} else {
-			gpio_export(gpio_pins[0], 1);
-			gpio_direction_output(gpio_pins[0], 1);
-		}
-		rc = gpio_request(gpio_pins[1], "psh_rst");
-		if (rc) {
-			dev_warn(&client->dev, "fail to request psh_rst pin\n");
-		} else {
-			gpio_export(gpio_pins[1], 1);
-			gpio_direction_output(gpio_pins[1], 0);
-			usleep_range(10000, 10000);
-			gpio_set_value(gpio_pins[1], 1);
-		}
-	} else {
-		dev_warn(&client->dev, "no gpio pins info\n");
-	}
+	disable_irq(client->irq);
+
+	psh_if_info->irq_disabled = 1;
+
 	return 0;
+
 irq_err:
-	hwmon_device_unregister(psh_if_info.hwmon_dev);
+	hwmon_device_unregister(psh_if_info->hwmon_dev);
 hwmon_err:
 	psh_ia_common_deinit(&client->dev);
 psh_ia_err:
+	kfree(psh_if_info);
+psh_if_err:
 	return ret;
 }
 
 static int __devexit psh_remove(struct i2c_client *client)
 {
-	free_irq(client->irq, psh_if_info.pshc);
-	hwmon_device_unregister(psh_if_info.hwmon_dev);
+	struct psh_ia_priv *ia_data =
+			(struct psh_ia_priv *)dev_get_drvdata(&client->dev);
+	struct psh_ext_if *psh_if_info =
+			(struct psh_ext_if *)ia_data->platform_priv;
+
+	free_irq(client->irq, psh_if_info->pshc);
+	gpio_unexport(psh_if_info->gpio_psh_rst);
+	gpio_unexport(psh_if_info->gpio_psh_ctl);
+	gpio_free(psh_if_info->gpio_psh_rst);
+	gpio_free(psh_if_info->gpio_psh_ctl);
+	hwmon_device_unregister(psh_if_info->hwmon_dev);
 	psh_ia_common_deinit(&client->dev);
+
 	return 0;
 }
 
 static const struct i2c_device_id psh_byt_id[] = {
-	{ "psh_byt_i2c", 0 },
+	{ "SMO91D0:00", 0 },
 	{ }
 };
 MODULE_DEVICE_TABLE(i2c, psh_byt_id);
