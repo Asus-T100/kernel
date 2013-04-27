@@ -1403,20 +1403,6 @@ config SENSORS_APPLESMC
 	  Say Y here if you have an applicable laptop and want to experience
 	  the awesome power of applesmc.
 
-config SENSORS_LPS331AP
-	tristate "LPS331AP pressure sensor Driver"
-	depends on I2C && INPUT
-	default y
-	help
-	   Say yes here to enable LPS331AP pressure sensor driver
-
-	   Pressure sensor LPS331AP from STMicroelectronics
-	   please search on
-	   http://www.st.com/ for more details.
-
-	   This driver can also be built as a module. If so, the module
-	   will be called lps331ap.
-
 config SENSORS_MC13783_ADC
         tristate "Freescale MC13783/MC13892 ADC"
         depends on MFD_MC13XXX

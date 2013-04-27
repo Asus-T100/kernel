@@ -130,7 +130,6 @@ obj-$(CONFIG_SENSORS_WM831X)	+= wm831x-hwmon.o
 obj-$(CONFIG_SENSORS_WM8350)	+= wm8350-hwmon.o
 obj-$(CONFIG_SENSORS_HMC5883)           += hmc5883.o
 obj-$(CONFIG_SENSORS_MS5607)		+= ms5607.o
-obj-$(CONFIG_SENSORS_LPS331AP)         += lps331ap.o
 obj-$(CONFIG_SENSORS_LTR502ALS)		+= ltr502als.o
 obj-$(CONFIG_SENSORS_MPU3050)		+= mpu3050.o
 obj-$(CONFIG_SENSORS_LIS3DH_ACC)        += lis3dh_acc.o
