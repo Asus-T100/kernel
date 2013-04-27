@@ -1200,10 +1200,7 @@ static bool IS_DISPLAYREG(u32 reg)
 	case IVB_CHICKEN3:
 	case GEN7_HALF_SLICE_CHICKEN1:
 	case GEN7_COMMON_SLICE_CHICKEN1:
-	case GEN7_L3CNTLREG1:
-	case GEN7_L3_CHICKEN_MODE_REGISTER:
 	case GEN7_ROW_CHICKEN2:
-	case GEN7_L3SQCREG4:
 	case GEN7_SQ_CHICKEN_MBCUNIT_CONFIG:
 	case GEN6_MBCTL:
 	case GEN6_UCGCTL2:
@@ -1308,6 +1305,44 @@ __i915_write(16, w)
 __i915_write(32, l)
 __i915_write(64, q)
 #undef __i915_write
+
+#define __i915_write_bits(x, y) \
+void i915_write_bits##x(struct drm_i915_private *dev_priv,\
+		u32 reg, u##x val, u##x mask, bool trace) \
+{ \
+	u32 __fifo_ret = 0; \
+	u##x tmp; \
+	if (trace) \
+		trace_i915_reg_rw(true, reg, val, sizeof(val)); \
+	if (NEEDS_FORCE_WAKE((dev_priv), (reg)) && (trace)) {	\
+		__fifo_ret = __gen6_gt_wait_for_fifo(dev_priv); \
+	} \
+	if (IS_VALLEYVIEW(dev_priv->dev) && IS_DISPLAYREG(reg)) { \
+		\
+		tmp = read##y(dev_priv->regs + reg + 0x180000);		\
+		tmp = tmp & ~mask;		\
+		val = val & mask;		\
+		tmp = val | tmp;		\
+		write##y(tmp, dev_priv->regs + reg + 0x180000);		\
+		if (/*0 &&*/ (reg != 0x70040) && (reg != 0x71040)) {	\
+			DRM_ERROR("Writing 0x%x val 0x%x\n", reg, val); \
+		}	\
+	} else {							\
+		tmp = read##y(dev_priv->regs + reg);		\
+		tmp = tmp & ~mask;		\
+		val = val & mask;		\
+		tmp = val | tmp;		\
+		write##y(tmp, dev_priv->regs + reg);		\
+	}								\
+	if (unlikely(__fifo_ret) && trace) { \
+		gen6_gt_check_fifodbg(dev_priv); \
+	} \
+}
+__i915_write_bits(8, b)
+__i915_write_bits(16, w)
+__i915_write_bits(32, l)
+__i915_write_bits(64, q)
+#undef __i915_write_bits
 
 static const struct register_whitelist {
 	uint64_t offset;

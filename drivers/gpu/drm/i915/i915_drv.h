@@ -1750,6 +1750,16 @@ __i915_write(32, l)
 __i915_write(64, q)
 #undef __i915_write
 
+#define __i915_write_bits(x, y) \
+	void i915_write_bits##x(struct drm_i915_private *dev_priv, \
+		u32 reg, u##x val, u##x mask, bool trace);
+
+__i915_write_bits(8, b)
+__i915_write_bits(16, w)
+__i915_write_bits(32, l)
+__i915_write_bits(64, q)
+#undef __i915_write_bits
+
 #define I915_READ8(reg)		i915_read8(dev_priv, (reg), true)
 #define I915_WRITE8(reg, val)	i915_write8(dev_priv, (reg), (val), true)
 
@@ -1760,6 +1770,8 @@ __i915_write(64, q)
 
 #define I915_READ(reg)		i915_read32(dev_priv, (reg), true)
 #define I915_WRITE(reg, val)	i915_write32(dev_priv, (reg), (val), true)
+#define I915_WRITE_BITS(reg, val, mask)	i915_write_bits32(dev_priv, \
+				(reg), (val), (mask), true)
 #define I915_READ_NOTRACE(reg)		i915_read32(dev_priv, (reg), false)
 #define I915_WRITE_NOTRACE(reg, val)	i915_write32(dev_priv, (reg), (val), false)
 
