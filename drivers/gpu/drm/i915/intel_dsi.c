@@ -20,7 +20,9 @@
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  * DEALINGS IN THE SOFTWARE.
  *
- * Author: Jani Nikula <jani.nikula@intel.com>  */
+ * Author: Jani Nikula <jani.nikula@intel.com>
+ *	 : Shobhit Kumar <shobhit.kumar@intel.com>
+ *	 : Yogesh Mohan Marimuthu <yogesh.mohan.marimuthu@intel.com> */
 
 /**
  * This file should lay the groundwork for supporting DSI video and command mode
@@ -84,9 +86,12 @@
 #include <drm/drm_edid.h>
 #include <drm/i915_drm.h>
 #include <linux/slab.h>
+#include "linux/mfd/intel_mid_pmic.h"
 #include "i915_drv.h"
 #include "intel_drv.h"
 #include "intel_dsi.h"
+#include "intel_dsi_cmd.h"
+#include "intel_dsi_pll.h"
 
 /* the panel drivers are here */
 static const struct intel_dsi_device intel_dsi_devices[] = {
@@ -150,15 +155,11 @@ static void intel_dsi_enable(struct intel_encoder *encoder)
 	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->base.crtc);
 	struct intel_dsi *intel_dsi = enc_to_intel_dsi(&encoder->base);
 	int pipe = intel_crtc->pipe;
-	u32 temp;
+	u32 temp, status;
 
 	DRM_DEBUG_KMS("\n");
 
-	/* device ready */
-
-	/* bridge reset & configure etc... */
-
-
+	/* Device Ready */
 	temp = I915_READ(MIPI_DEVICE_READY(pipe));
 	temp &= ~ULPS_STATE_MASK;
 	temp &= ~DEVICE_READY; /* XXX */
@@ -166,16 +167,27 @@ static void intel_dsi_enable(struct intel_encoder *encoder)
 	msleep(20);
 	I915_WRITE(MIPI_DEVICE_READY(pipe), temp);
 
-	/* XXX: lane configuration etc. XXX: port ctrl is a mess */
 	temp = I915_READ(MIPI_PORT_CTRL(pipe));
 	I915_WRITE(MIPI_PORT_CTRL(pipe), temp | DPI_ENABLE);
 	POSTING_READ(MIPI_PORT_CTRL(pipe));
 
-	intel_dsi->dev.dev_ops->dpms(&intel_dsi->dev, true);
-
 	/* XXX: Placement of this? */
 	temp = I915_READ(MIPI_DEVICE_READY(pipe));
 	I915_WRITE(MIPI_DEVICE_READY(pipe), temp | DEVICE_READY);
+
+
+	/* XXX: Enable DPMS later */
+	/*intel_dsi->dev.dev_ops->dpms(&intel_dsi->dev, true); */
+
+	/* XXX: fix the bits with constants */
+	I915_WRITE(MIPI_DPI_CONTROL(pipe), ((0x1 << 1) &
+			~(0x1 << 0) & ~(0x1 << 6)));
+	I915_WRITE(MIPI_DPI_CONTROL(pipe), 0x2);
+
+	/* Wait till SPL Packet Sent status bit is not set */
+	if (wait_for(I915_READ(MIPI_INTR_STAT(pipe)) &
+			SPL_PKT_SENT_INTERRUPT, 50))
+		DRM_DEBUG_KMS("SPL Packet Sent failed\n");
 }
 
 static void intel_dsi_disable(struct intel_encoder *encoder)
@@ -365,6 +377,7 @@ static void set_dsi_timings(struct drm_encoder *encoder,
 
 	u16 hactive, hfp, hsync, hbp, vfp, vsync, vbp;
 
+	lane_count = lane_count + 1;
 	hactive = mode->hdisplay;
 	hfp = mode->hsync_start - mode->hdisplay;
 	hsync = mode->hsync_end - mode->hsync_start;
@@ -380,15 +393,35 @@ static void set_dsi_timings(struct drm_encoder *encoder,
 	hsync = txbyteclkhs(hsync, bpp, lane_count);
 	hbp = txbyteclkhs(hbp, bpp, lane_count);
 
-	I915_WRITE(MIPI_HACTIVE_AREA_COUNT(pipe), hactive);
-	I915_WRITE(MIPI_HFP_COUNT(pipe), hfp);
+	I915_WRITE(0xb034, hactive);
+	I915_WRITE(0xb030, hfp);
 	I915_WRITE(MIPI_HSYNC_PADDING_COUNT(pipe), hsync);
 	I915_WRITE(MIPI_HBP_COUNT(pipe), hbp);
 
 	/* vertical values are in terms of lines */
 	I915_WRITE(MIPI_VFP_COUNT(pipe), vfp);
 	I915_WRITE(MIPI_VSYNC_PADDING_COUNT(pipe), vsync);
-	I915_WRITE(MIPI_VBP_COUNT(pipe), vbp); }
+	I915_WRITE(MIPI_VBP_COUNT(pipe), vbp);
+
+	DRM_DEBUG_KMS("lane_count = %0d bpp = %0d\n", lane_count, bpp);
+	DRM_DEBUG_KMS("MIPI_HACTIVE_AREA_COUNT %0x = %0x\n",
+			MIPI_HACTIVE_AREA_COUNT(pipe),
+			I915_READ(MIPI_HACTIVE_AREA_COUNT(pipe)));
+	DRM_DEBUG_KMS("MIPI_HFP_COUNT %0x = %0x\n",
+			MIPI_HFP_COUNT(pipe), I915_READ(MIPI_HFP_COUNT(pipe)));
+	DRM_DEBUG_KMS("MIPI_HSYNC_PADDING_COUNT %0x = %0x\n",
+			MIPI_HSYNC_PADDING_COUNT(pipe),
+			I915_READ(MIPI_HSYNC_PADDING_COUNT(pipe)));
+	DRM_DEBUG_KMS("MIPI_HBP_COUNT %0x = %0x\n",
+			MIPI_HBP_COUNT(pipe), I915_READ(MIPI_HBP_COUNT(pipe)));
+	DRM_DEBUG_KMS("MIPI_VFP_COUNT %0x = %0x\n",
+			MIPI_VFP_COUNT(pipe), I915_READ(MIPI_VFP_COUNT(pipe)));
+	DRM_DEBUG_KMS("MIPI_VSYNC_PADDING_COUNT %0x = %0x\n",
+			MIPI_VSYNC_PADDING_COUNT(pipe),
+			I915_READ(MIPI_VSYNC_PADDING_COUNT(pipe)));
+	DRM_DEBUG_KMS("MIPI_VBP_COUNT %0x = %0x\n",
+			MIPI_VBP_COUNT(pipe), I915_READ(MIPI_VBP_COUNT(pipe)));
+}
 
 
 /* this is called for each encoder after i9xx_crtc_mode_set, from
@@ -403,10 +436,67 @@ static void intel_dsi_mode_set(struct drm_encoder *encoder,
 	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->crtc);
 	struct intel_dsi *intel_dsi = enc_to_intel_dsi(encoder);
 	int pipe = intel_crtc->pipe;
+	int plane = intel_crtc->plane;
 	unsigned int bpp = intel_crtc->bpp;
 	u32 val;
+	u32 hblank;
+	u32 vblank;
+	u32 hsync_offset;
+	u32 hsync_width;
+	u32 vsync_offset;
+	u32 vsync_width;
 
 	DRM_DEBUG_KMS("\n");
+
+	/* Enable all clock gating */
+	I915_WRITE(0x6200, 0xffffffff);
+	I915_WRITE(0x6204, 0xffffffff);
+
+	drm_mode_set_crtcinfo(adjusted_mode, 0);
+
+#ifdef CONFIG_CRYSTAL_COVE
+	/* Crystal cove PMIC is not there in Baytrail-M
+	 * XXX:
+	 * We need to fix for Backlight on Baytrail-M when
+	 * we start work on that
+	 */
+
+	/* enable panel backlight and pwm*/
+	intel_mid_pmic_writeb(0x4B, 0xFF);
+	intel_mid_pmic_writeb(0x4E, 0xFF);
+	intel_mid_pmic_writeb(0x51, 0x01);
+	intel_mid_pmic_writeb(0x52, 0x01);
+#endif
+
+	/* enable dsi pll */
+	intel_configure_dsi_pll(intel_dsi, mode);
+	intel_enable_dsi_pll(intel_dsi);
+
+	/* configure pipe*/
+	I915_WRITE(HTOTAL(pipe),
+		   (adjusted_mode->crtc_hdisplay - 1) |
+		   ((adjusted_mode->crtc_htotal - 1) << 16));
+	I915_WRITE(HBLANK(pipe),
+		   (adjusted_mode->crtc_hblank_start - 1) |
+		   ((adjusted_mode->crtc_hblank_end - 1) << 16));
+	I915_WRITE(HSYNC(pipe),
+		   (adjusted_mode->crtc_hsync_start - 1) |
+		   ((adjusted_mode->crtc_hsync_end - 1) << 16));
+	I915_WRITE(VTOTAL(pipe),
+		   (adjusted_mode->crtc_vdisplay - 1) |
+		   ((adjusted_mode->crtc_vtotal - 1) << 16));
+	I915_WRITE(VBLANK(pipe),
+		   (adjusted_mode->crtc_vblank_start - 1) |
+		   ((adjusted_mode->crtc_vblank_end - 1) << 16));
+	I915_WRITE(VSYNC(pipe),
+		   (adjusted_mode->crtc_vsync_start - 1) |
+		   ((adjusted_mode->crtc_vsync_end - 1) << 16));
+	I915_WRITE(PIPESRC(pipe),
+		   ((mode->hdisplay - 1) << 16) | (mode->vdisplay - 1));
+	I915_WRITE(PIPECONF(pipe), 0x00000000);
+
+	/* enable mipi port */
+	dsi_config(encoder);
 
 	I915_WRITE(MIPI_DPI_RESOLUTION(pipe),
 		   adjusted_mode->vdisplay << VERTICAL_ADDRESS_SHIFT |
@@ -438,6 +528,7 @@ static void intel_dsi_mode_set(struct drm_encoder *encoder,
 	I915_WRITE(MIPI_HS_TX_TIMEOUT(pipe),
 		   txbyteclkhs(adjusted_mode->vtotal * adjusted_mode->htotal,
 			       bpp, intel_dsi->dev.lane_count));
+
 	I915_WRITE(MIPI_LP_RX_TIMEOUT(pipe), 0xffff);
 	I915_WRITE(MIPI_TURN_AROUND_TIMEOUT(pipe), 0x14); /* XXX: unit??? */
 
@@ -458,7 +549,7 @@ static void intel_dsi_mode_set(struct drm_encoder *encoder,
 	 * and txclkesc. txclkesc time / txbyteclk time * (105 +
 	 * MIPI_STOP_STATE_STALL) / 105. ???
 	 */
-	I915_WRITE(MIPI_LP_BYTECLK(pipe), 4);
+	I915_WRITE(MIPI_LP_BYTECLK(pipe), 1);
 
 	/* the bw essential for transmitting 16 long packets containing 252
 	 * bytes meant for dcs write memory command is programmed in this
@@ -472,19 +563,8 @@ static void intel_dsi_mode_set(struct drm_encoder *encoder,
 		   0x14 << HS_LP_PWR_SW_CNT_SHIFT);
 
 	/* XXX: video mode vs. command mode */
-	I915_WRITE(MIPI_VIDEO_MODE_FORMAT(pipe), VIDEO_MODE_BURST);
-
-	/* XXX: MIPI_DEVICE_READY here? where? */
-
-	/* set up pipe... is done in mode set func *before* this one is
-	 * called */
-
-	/* this should be done someplace else. it's odd all in all. is this dpi
-	 * or video mode? seems dpi but (why) do we need it?! */
-
-#if 0	/* rule of thumb, no intel_dsi_dsi.c functions called in this file? */
-	dpi_send_cmd(intel_dsi, TURN_ON);
-#endif
+	I915_WRITE(MIPI_VIDEO_MODE_FORMAT(pipe),
+			VIDEO_MODE_NON_BURST_WITH_SYNC_PULSE);
 }
 
 static enum drm_connector_status
@@ -555,7 +635,6 @@ static const struct drm_connector_funcs intel_dsi_connector_funcs = {
 	.fill_modes = drm_helper_probe_single_connector_modes,
 };
 
-/* XXX: I don't know where all this should be set... */
 static void dsi_config(struct drm_encoder *encoder)
 {
 	struct drm_device *dev = encoder->dev;
@@ -568,16 +647,6 @@ static void dsi_config(struct drm_encoder *encoder)
 	u32 tmp;
 
 	DRM_DEBUG_KMS("\n");
-
-	/* XXX:
-	 *
-	 * - order of all of these
-	 * - persistence; *when* do we need to reset these
-	 * - video vs. command mode needs
-	 * - etc.
-	 *
-	 */
-	/* */
 
 	/* escape clock divider, 20MHz, shared for A and C. device ready must be
 	 * off when doing this! txclkesc? */
@@ -594,37 +663,7 @@ static void dsi_config(struct drm_encoder *encoder)
 	I915_WRITE(MIPI_INTR_EN(pipe), 0xffffffff);
 
 	/* why here, was elsewhere... also 2a, 0c, 60, 08 for values */
-	I915_WRITE(MIPI_DPHY_PARAM(pipe),
-		   0x15 << EXIT_ZERO_COUNT_SHIFT |
-		   0x0a << TRAIL_COUNT_SHIFT |
-		   0x60 << CLK_ZERO_COUNT_SHIFT |
-		   0x0f << PREPARE_COUNT_SHIFT);
-
-#if 0	/* XXX: do we need to set/check these: */
-	I915_WRITE(MIPI_TEARING_CTRL(pipe), 0);
-	I915_WRITE(_MIPIA_AUTOPWG, 0);
-
-	/*
-	MIPI_INTR_STAT - irq handling, or just checking them?
-	MIPI_INTR_EN off
-	MIPI_DBI_FIFO_THROTTLE
-	MIPI_MAX_RETURN_PKT_SIZE - command mode?
-
-	MIPI_MAX_RETURN_PKT_SIZE - more checks? just in command mode? what?
-
-	MIPI_HS_LS_DBI_ENABLE - command mode? needed to change mode in advance?
-
-
-	"stop state stall: need to change MIPI_HIGH_LOW_SWITCH_COUNT and
-	MIPI_LP_BYTECLK to compensate too."
-	MIPI_STOP_STATE_STALL
-	MIPI_INTR_STAT_REG_1
-	MIPI_INTR_EN_REG_1
-
-	MIPIA_DBI_TYPEC_CTRL - type C? only pipe a?
-	*/
-#endif
-
+	I915_WRITE(MIPI_DPHY_PARAM(pipe), 0x150c3408);
 }
 
 bool intel_dsi_init(struct drm_device *dev)
@@ -659,15 +698,7 @@ bool intel_dsi_init(struct drm_device *dev)
 	/* XXX: encoder type */
 	drm_encoder_init(dev, encoder, &intel_dsi_funcs,
 			 DRM_MODE_ENCODER_MIPI);
-#if 0
-	intel_encoder->pre_enable = intel_dsi_pre_enable;
-	intel_encoder->enable = intel_dsi_enable;
-	intel_encoder->pre_pll_enable = intel_dsi_pre_pll_enable;
-	intel_encoder->disable = intel_dsi_disable;
-	intel_encoder->post_disable = intel_dsi_post_disable;
-	intel_encoder->get_hw_state = intel_dsi_get_hw_state;
-	intel_connector->get_hw_state = intel_connector_get_hw_state;
-#endif
+
 	for (i = 0; i < ARRAY_SIZE(intel_dsi_devices); i++) {
 		dsi = &intel_dsi_devices[i];
 		/* find the panel based on panel_id */
@@ -680,6 +711,11 @@ bool intel_dsi_init(struct drm_device *dev)
 				break;
 		}
 	}
+
+	intel_dsi->panel_type = intel_dsi->dev.type;
+	intel_dsi->lane_count = intel_dsi->dev.lane_count;
+	intel_dsi->dsi_packet_format = dsi_24Bpp_packed;
+	intel_dsi->channel = 0;
 
 	if (i == ARRAY_SIZE(intel_dsi_devices))
 		goto err;
@@ -710,14 +746,6 @@ bool intel_dsi_init(struct drm_device *dev)
 	/* FIXME: try to get a fixed mode. */
 
 	/* FIXME: if fail, try to get the current mode, if any */
-
-	/*
-	 * FIXME: if CDF requires adding the panel driver module later, this may
-	 * need to be completely hotplug based from drm perspective
-	 */
-
-	 /* XXX: fixed_mode */
-	/*intel_panel_init(&intel_connector->panel, fixed_mode);*/
 
 	return true;
 

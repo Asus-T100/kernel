@@ -124,6 +124,9 @@ static inline struct intel_dsi *enc_to_intel_dsi(struct drm_encoder *encoder)
 extern struct intel_dsi_dev_ops cmi_dsi_display_ops;
 extern struct intel_dsi_dev_ops auo_dsi_display_ops;
 
+/* internal functions */
+static void dsi_config(struct drm_encoder *encoder);
+
 /* FIXME */
 #define	MIPI_DSI_CMI_PANEL_ID	0x00
 #define	MIPI_DSI_AUO_PANEL_ID	0x01
