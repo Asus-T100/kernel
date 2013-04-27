@@ -1430,26 +1430,6 @@ config SENSORS_MPU3050
 	   http://www.invensense.com/ for product details.
 	   http://www.st.com/ for more details.
 
-config SENSORS_PSH_MRLD
-        tristate "Intel PSH driver for Merrifield"
-        depends on INTEL_PSH_IPC && INTEL_SCU_IPC_UTIL
-        help
-	  Say Y here to enable PSH driver on Intel Merrifield Platform, and
-	  this driver depends on PSH IPC and SCU IPC driver.
-
-          This driver can also be built as a module. If so, the module
-          will be called psh.
-
-config SENSORS_PSH_BYT
-        tristate "Intel PSH driver for Baytrail platform"
-        depends on !SENSORS_PSH_MRLD
-	default n
-        help
-	  Say Y here to enable PSH driver for Baytrail platform,
-	  this driver depends on !SENSORS_PSH_MRLD.
-	  For more information, please refer to the driver
-	  source code.
-
 if ACPI
 
 comment "ACPI drivers"
