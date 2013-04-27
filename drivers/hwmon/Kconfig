@@ -1431,21 +1431,6 @@ config SENSORS_LIS3DH_ACC
           This driver can also be built as a module. If so, the module
           will be called lis3dh_acc.
 
-config SENSORS_LSM303_MAG
-	tristate "ST LSM303DLHC Magnetometer Driver"
-	depends on I2C
-	select INPUT_POLLDEV
-	default y
-	help
-	  Say Yes here to enable the ST LSM303DLHC Magnetometer Driver
-
-	  This driver will enable ST LSM303DLHC Magnetometer device.
-	  LSM303DLHC Magnetometer device is ultra compact high performance
-	  e-compass.
-
-	  This driver can also be built as a module. If so, the module
-	  will be called lsm303dlhc_compass.
-
 config SENSORS_LTR502ALS
 	bool "Liteon ALS Driver"
 	depends on I2C

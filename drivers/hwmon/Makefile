@@ -134,7 +134,6 @@ obj-$(CONFIG_SENSORS_LTR502ALS)		+= ltr502als.o
 obj-$(CONFIG_SENSORS_MPU3050)		+= mpu3050.o
 obj-$(CONFIG_SENSORS_LIS3DH_ACC)        += lis3dh_acc.o
 obj-$(CONFIG_MID_PWM)		+= intel_mid_pwm.o
-obj-$(CONFIG_SENSORS_LSM303_MAG)   += lsm303dlhc_compass.o
 obj-$(CONFIG_MSIC_GPADC)        += intel_mid_gpadc.o
 obj-$(CONFIG_SENSORS_PSH_MRLD)	+= psh_ia_common.o psh.o
 obj-$(CONFIG_SENSORS_PSH_BYT)	+= psh_ia_common.o psh_byt.o
