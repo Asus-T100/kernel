@@ -131,8 +131,6 @@ obj-$(CONFIG_SENSORS_HMC5883)           += hmc5883.o
 obj-$(CONFIG_SENSORS_MS5607)		+= ms5607.o
 obj-$(CONFIG_SENSORS_LTR502ALS)		+= ltr502als.o
 obj-$(CONFIG_SENSORS_MPU3050)		+= mpu3050.o
-obj-$(CONFIG_SENSORS_PSH_MRLD)	+= psh_ia_common.o psh.o
-obj-$(CONFIG_SENSORS_PSH_BYT)	+= psh_ia_common.o psh_byt.o
 
 obj-$(CONFIG_PMBUS)		+= pmbus/
 
