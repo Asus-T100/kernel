@@ -658,7 +658,7 @@ bool intel_dsi_init(struct drm_device *dev)
 
 	/* XXX: encoder type */
 	drm_encoder_init(dev, encoder, &intel_dsi_funcs,
-			 DRM_MODE_ENCODER_LVDS);
+			 DRM_MODE_ENCODER_MIPI);
 #if 0
 	intel_encoder->pre_enable = intel_dsi_pre_enable;
 	intel_encoder->enable = intel_dsi_enable;
@@ -690,7 +690,7 @@ bool intel_dsi_init(struct drm_device *dev)
 	intel_encoder->cloneable = false;
 	/* XXX: connector type */
 	drm_connector_init(dev, connector, &intel_dsi_connector_funcs,
-			   DRM_MODE_CONNECTOR_LVDS);
+			   DRM_MODE_CONNECTOR_MIPI);
 
 	drm_connector_helper_add(connector, &intel_dsi_connector_helper_funcs);
 
