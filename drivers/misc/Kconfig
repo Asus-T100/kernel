@@ -558,12 +558,6 @@ config EMMC_IPANIC
 	 Driver which handles kernel panics and attempts to write
 	 critical debugging data to EMMC.
 
-config UUID
-	tristate "get uuid"
-	default n
-	---help---
-	 Driver for get UUID.
-
 config VLV2_PLAT_CLK
 	tristate "Vlv2 platform clock control driver"
 	---help---
