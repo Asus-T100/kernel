@@ -1417,20 +1417,6 @@ config SENSORS_HMC5883
 	help
 	  Say Yes here to enable the Honeywell HMC5883 Magnetometer Driver
 
-config SENSORS_LIS3DH_ACC
-	tristate "ST Accel Sensor Driver"
-	depends on I2C
-	select INPUT_POLLDEV
-	default y
-	help
-	  Say Yes here to enable the ST LIS3DH accelerometer support
-	  conected through I2C.
-
-	  ST LIS3DH is a 3-axis linear accelerometer with digital output.
-
-          This driver can also be built as a module. If so, the module
-          will be called lis3dh_acc.
-
 config SENSORS_LTR502ALS
 	bool "Liteon ALS Driver"
 	depends on I2C
