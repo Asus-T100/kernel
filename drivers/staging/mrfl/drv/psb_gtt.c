@@ -206,44 +206,16 @@ int mrfld_gtt_init(struct psb_gtt *pg, int resume)
 		iowrite32(pte, pg->gtt_map + i);
 
 	/*
-	 * insert CI stolen pages
-	 */
-
-	pfn_base = dev_priv->ci_region_start >> PAGE_SHIFT;
-	ci_pages = num_pages = ci_stolen_size >> PAGE_SHIFT;
-	printk(KERN_INFO
-	       "Set up %d CI stolen pages starting at 0x%08x, GTT offset %dK\n",
-	       num_pages, pfn_base, (ttm_gtt_map - pg->gtt_map) * 4);
-	for (i = 0; i < num_pages; ++i) {
-		pte = psb_gtt_mask_pte(pfn_base + i, 0);
-		iowrite32(pte, ttm_gtt_map + i);
-	}
-
-	/*
-	 * insert RAR stolen pages
-	 */
-	if (rar_stolen_size != 0) {
-		pfn_base = dev_priv->rar_region_start >> PAGE_SHIFT;
-		num_pages = rar_stolen_size >> PAGE_SHIFT;
-		printk(KERN_INFO
-		       "Set up %d RAR stolen pages starting at 0x%08x, GTT offset %dK\n",
-		       num_pages, pfn_base,
-		       (ttm_gtt_map - pg->gtt_map + i) * 4);
-		for (; i < num_pages + ci_pages; ++i) {
-			pte = psb_gtt_mask_pte(pfn_base + i - ci_pages, 0);
-			iowrite32(pte, ttm_gtt_map + i);
-		}
-	}
-	/*
 	 * Init rest of gtt managed by TTM.
 	 */
 
 	pfn_base = page_to_pfn(dev_priv->scratch_page);
 	pte = psb_gtt_mask_pte(pfn_base, 0);
-	PSB_DEBUG_INIT("Initializing the rest of a total "
-		       "of %d gtt pages.\n", pg->gatt_pages);
+	printk(KERN_INFO
+	       "Initializing the rest of a total "
+	       "of %d gtt pages.\n", pg->gatt_pages);
 
-	for (; i < pg->gatt_pages - tt_pages / 2; ++i)
+	for (i = 0; i < pg->gatt_pages - tt_pages / 2; ++i)
 		iowrite32(pte, ttm_gtt_map + i);
 	(void)ioread32(pg->gtt_map + i - 1);
 
@@ -407,35 +379,6 @@ int psb_gtt_init(struct psb_gtt *pg, int resume)
 		iowrite32(pte, pg->gtt_map + i);
 
 	/*
-	 * insert CI stolen pages
-	 */
-
-	pfn_base = dev_priv->ci_region_start >> PAGE_SHIFT;
-	ci_pages = num_pages = ci_stolen_size >> PAGE_SHIFT;
-	printk(KERN_INFO
-	       "Set up %d CI stolen pages starting at 0x%08x, GTT offset %dK\n",
-	       num_pages, pfn_base, (ttm_gtt_map - pg->gtt_map) * 4);
-	for (i = 0; i < num_pages; ++i) {
-		pte = psb_gtt_mask_pte(pfn_base + i, 0);
-		iowrite32(pte, ttm_gtt_map + i);
-	}
-
-	/*
-	 * insert RAR stolen pages
-	 */
-	if (rar_stolen_size != 0) {
-		pfn_base = dev_priv->rar_region_start >> PAGE_SHIFT;
-		num_pages = rar_stolen_size >> PAGE_SHIFT;
-		printk(KERN_INFO
-		       "Set up %d RAR stolen pages starting at 0x%08x, GTT offset %dK\n",
-		       num_pages, pfn_base,
-		       (ttm_gtt_map - pg->gtt_map + i) * 4);
-		for (; i < num_pages + ci_pages; ++i) {
-			pte = psb_gtt_mask_pte(pfn_base + i - ci_pages, 0);
-			iowrite32(pte, ttm_gtt_map + i);
-		}
-	}
-	/*
 	 * Init rest of gtt managed by TTM.
 	 */
 
@@ -444,7 +387,7 @@ int psb_gtt_init(struct psb_gtt *pg, int resume)
 	PSB_DEBUG_INIT("Initializing the rest of a total "
 		       "of %d gtt pages.\n", pg->gatt_pages);
 
-	for (; i < pg->gatt_pages - tt_pages / 2; ++i)
+	for (i = 0; i < pg->gatt_pages - tt_pages / 2; ++i)
 		iowrite32(pte, ttm_gtt_map + i);
 	(void)ioread32(pg->gtt_map + i - 1);
 

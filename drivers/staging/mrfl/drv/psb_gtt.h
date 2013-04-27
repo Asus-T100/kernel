@@ -27,7 +27,7 @@ struct psb_gtt {
 	int initialized;
 	uint32_t gatt_start;
 	uint32_t mmu_gatt_start;
-	uint32_t ci_start;
+	uint32_t gtt_video_start;
 	uint32_t rar_start;
 	uint32_t gtt_start;
 	uint32_t gtt_phys_start;

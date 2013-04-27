@@ -1212,7 +1212,7 @@ static int psb_do_init(struct drm_device *dev)
 
 	/* TT region managed by TTM. */
 	tmp = pg->gatt_pages -
-		(pg->ci_start >> PAGE_SHIFT) -
+		(pg->gtt_video_start >> PAGE_SHIFT) -
 		(dev_priv->ci_region_size >> PAGE_SHIFT); /* TT region size */
 	if (!ttm_bo_init_mm(bdev, TTM_PL_TT, tmp))
 		dev_priv->have_tt = 1;
@@ -1312,12 +1312,6 @@ static int psb_driver_unload(struct drm_device *dev)
 				(dev_priv->mmu),
 				pg->mmu_gatt_start,
 				pg->vram_stolen_size >> PAGE_SHIFT);
-			if (pg->ci_stolen_size != 0)
-				psb_mmu_remove_pfn_sequence(
-					psb_mmu_get_default_pd
-					(dev_priv->mmu),
-					pg->ci_start,
-					pg->ci_stolen_size >> PAGE_SHIFT);
 			if (pg->rar_stolen_size != 0)
 				psb_mmu_remove_pfn_sequence(
 					psb_mmu_get_default_pd
@@ -1618,8 +1612,8 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 		   (pg->gatt_pages) : PSB_TT_PRIV0_PLIMIT;
 
 	/* CI/RAR use the lower half of TT. */
-	pg->ci_start = (tt_pages / 2) << PAGE_SHIFT;
-	pg->rar_start = pg->ci_start + pg->ci_stolen_size;
+	pg->gtt_video_start = (tt_pages / 2) << PAGE_SHIFT;
+	pg->rar_start = pg->gtt_video_start + pg->ci_stolen_size;
 
 
 #ifdef CONFIG_MDFD_VIDEO_DECODE
