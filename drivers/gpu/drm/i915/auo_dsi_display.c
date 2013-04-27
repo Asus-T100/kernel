@@ -69,6 +69,8 @@ void auo_dpms(struct intel_dsi_device *dsi, bool enable)
 {
 	struct intel_dsi *intel_dsi = container_of(dsi, struct intel_dsi, dev);
 
+	DRM_DEBUG_KMS("\n");
+
 	if (enable) {
 		int i;
 
@@ -77,6 +79,8 @@ void auo_dpms(struct intel_dsi_device *dsi, bool enable)
 		dsi_vc_dcs_write_1(intel_dsi, 0, MIPI_DCS_SET_TEAR_ON, 0x00);
 
 		dsi_vc_dcs_write_0(intel_dsi, 0, MIPI_DCS_SET_DISPLAY_ON);
+		dsi_vc_dcs_write_1(intel_dsi, 0, 0x14, 0x55);
+
 	} else {
 		dsi_vc_dcs_write_0(intel_dsi, 0, MIPI_DCS_SET_DISPLAY_OFF);
 		dsi_vc_dcs_write_0(intel_dsi, 0, MIPI_DCS_ENTER_SLEEP_MODE);
