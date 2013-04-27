@@ -12,19 +12,6 @@ config SWITCH_GPIO
 	help
 	  Say Y here to enable GPIO based switch support.
 
-config SWITCH_MID
-	tristate "Jack Switch support"
-	depends on SWITCH
-	help
-	  Say Y here to support switch driver for audio jack detection.
-
-config SWITCH_MID_USER_NOTIFY
-	tristate "Userspace notification Switch support"
-	help
-	  Say Y here to support USER_NOTIFY switch. Needed for devices where
-	  userspace requires notification of specific device events reported by drivers to
-	  the USER_NOTIFY switch driver.
-
 config SWITCH_ARIZONA
 	tristate "Arizona Switch support"
 	depends on MFD_ARIZONA
