@@ -209,7 +209,7 @@ struct drm_psb_private {
 #define PSB_D_MIPI    (1 << 14)
 
 #define VXD_TTM_MMAP_OFFSET_START DRM_PSB_FILE_PAGE_OFFSET
-#define VXD_TTM_MMAP_OFFSET_END (DRM_PSB_FILE_PAGE_OFFSET * 2)
+#define VXD_TTM_MMAP_OFFSET_END (DRM_PSB_FILE_PAGE_OFFSET + 0x10000000)
 
 extern int drm_psb_debug;
 

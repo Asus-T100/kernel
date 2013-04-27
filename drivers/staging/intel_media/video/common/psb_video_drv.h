@@ -41,7 +41,12 @@ struct drm_psb_private;
 /*
  * TTM driver private offsets used for mmap.
  */
+#ifdef BAYTRAIL
+/* need distinguish between gem mmap and ttm mmap */
+#define DRM_PSB_FILE_PAGE_OFFSET ((0x100000000ULL >> PAGE_SHIFT) * 18)
+#else
 #define DRM_PSB_FILE_PAGE_OFFSET (0x100000000ULL >> PAGE_SHIFT)
+#endif
 
 #ifdef MERRIFIELD
 #define PSB_OBJECT_HASH_ORDER 13
