@@ -946,6 +946,7 @@ static void __exit dw_i2c_exit_driver(void)
 }
 module_exit(dw_i2c_exit_driver);
 
+#ifndef MODULE
 static int __init dw_i2c_reserve_static_bus(void)
 {
 	struct i2c_board_info dummy = {
@@ -956,6 +957,15 @@ static int __init dw_i2c_reserve_static_bus(void)
 	return 0;
 }
 subsys_initcall(dw_i2c_reserve_static_bus);
+
+static void __devinit dw_i2c_pci_final_quirks(struct pci_dev *pdev)
+{
+	pdev->pm_cap = 0x80;
+}
+
+DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_INTEL, 0x0F44,
+				dw_i2c_pci_final_quirks);
+#endif
 
 MODULE_AUTHOR("Baruch Siach <baruch@tkos.co.il>");
 MODULE_DESCRIPTION("Synopsys DesignWare PCI I2C bus adapter");
