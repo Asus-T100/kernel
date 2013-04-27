@@ -1949,6 +1949,16 @@ static void hsu_regs_context(struct uart_hsu_port *up, int op)
 			up->rxc->tsr = chan_readl(up->rxc, HSU_CH_D0TSR);
 		}
 	} else {
+		/*
+		 * Delay a while before HW get stable. Without this the
+		 * resume will just fail, as the value you write to the
+		 * HW register will not be really written.
+		 *
+		 * This is only needed for Tangier, which really powers gate
+		 * the HSU HW in runtime suspend. While in Penwell/CLV it is
+		 * only clock gated.
+		*/
+		usleep_range(500, 500);
 
 		serial_out(up, UART_LCR, up->lcr);
 		serial_out(up, UART_LCR, up->lcr | UART_LCR_DLAB);
