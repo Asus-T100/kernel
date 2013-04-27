@@ -1076,6 +1076,7 @@ static int intel_sst_runtime_resume(struct device *dev)
 	/* fw_clear_cache is set through debugfs support */
 	if (atomic_read(&sst_drv_ctx->fw_clear_cache)) {
 		mutex_lock(&sst_drv_ctx->sst_in_mem_lock);
+
 		if (sst_drv_ctx->fw_in_mem) {
 			pr_debug("Clearing the cached firmware\n");
 			kfree(sst_drv_ctx->fw_in_mem);
@@ -1165,10 +1166,13 @@ static struct pci_driver driver = {
 	.id_table = intel_sst_ids,
 	.probe = intel_sst_probe,
 	.remove = __devexit_p(intel_sst_remove),
+/* Temporarily disable PM for Bodegabay */
+#ifndef CONFIG_PRH_TEMP_WA_FOR_SPID
 #ifdef CONFIG_PM
 	.driver = {
 		.pm = &intel_sst_pm,
 	},
+#endif
 #endif
 };
 

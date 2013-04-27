@@ -28,6 +28,11 @@ static struct pci_dev	*pci_dev;
 
 static int ehci_hsic_start_host(struct pci_dev  *pdev);
 static int ehci_hsic_stop_host(struct pci_dev *pdev);
+static int create_L1_device_files();
+static void remove_L1_device_files();
+static int create_L2_device_files();
+static void remove_L2_device_files();
+
 static int hsic_enable;
 static struct hsic_tangier_priv hsic;
 
@@ -176,14 +181,12 @@ err:
 static void hsic_notify(struct usb_device *udev, unsigned action)
 {
 	int retval;
+	struct pci_dev *pdev = to_pci_dev(udev->bus->controller);
 
-	/* Ignore root hub add/remove event */
-	if (!udev->parent) {
-		pr_debug("%s Disable autosuspend\n", __func__);
-		usb_disable_autosuspend(udev);
-		pr_debug("%s Ignore root hub otg_notify\n", __func__);
+	/* Ignore and only valid for HSIC. Filter out
+	 * the USB devices added by other USB2 host driver */
+	if (pdev->device != 0x119d)
 		return;
-	}
 
 	/* Ignore USB devices on external hub */
 	if (udev->parent && udev->parent->parent)
@@ -197,21 +200,72 @@ static void hsic_notify(struct usb_device *udev, unsigned action)
 
 	switch (action) {
 	case USB_DEVICE_ADD:
-		pr_debug("%s----> enable autosuspend\n", __func__);
-		usb_enable_autosuspend(udev->parent);
 		pr_debug("Notify HSIC add device\n");
-		retval = hsic_aux_irq_init();
-		if (retval)
-			dev_err(&pci_dev->dev,
-				"unable to request IRQ\n");
+		/* Root hub */
+		if (!udev->parent) {
+			hsic.rh_dev = udev;
+			pr_debug("%s Disable autosuspend\n", __func__);
+			pm_runtime_set_autosuspend_delay(&udev->dev,
+					hsic.L2_inactivityDuration);
+			usb_disable_autosuspend(udev);
+		} else {
+			/* Modem devices */
+			hsic.modem_dev = udev;
+			pm_runtime_set_autosuspend_delay
+				(&udev->dev, hsic.L1_inactivityDuration);
+
+			if (hsic.remoteWakeup_enable) {
+				pr_debug("%s Modem dev remote wakeup enabled\n",
+						 __func__);
+				device_set_wakeup_capable
+					(&hsic.modem_dev->dev, 1);
+				device_set_wakeup_capable
+					(&hsic.rh_dev->dev, 1);
+			} else {
+				pr_debug("%s Modem dev remote wakeup disabled\n",
+						 __func__);
+				device_set_wakeup_capable
+					(&hsic.modem_dev->dev, 0);
+				device_set_wakeup_capable
+					(&hsic.rh_dev->dev, 0);
+			}
+
+			if (hsic.L2_autosuspend_enable ||
+				hsic.L1_autosuspend_enable) {
+				pr_debug("%s----> enable autosuspend\n",
+					 __func__);
+				usb_enable_autosuspend(udev->parent);
+			}
+
+			if ((hsic.L1_autosuspend_enable == 0) &&
+				(hsic.L2_autosuspend_enable == 0)) {
+				pr_debug("%s Modem dev autosuspend disable\n",
+						 __func__);
+				usb_disable_autosuspend(hsic.modem_dev);
+			}
+
+			pr_debug("%s----> Enable AUX irq\n", __func__);
+			retval = hsic_aux_irq_init();
+			if (retval)
+				dev_err(&pci_dev->dev,
+					"unable to request IRQ\n");
+		}
 		break;
 	case USB_DEVICE_REMOVE:
 		pr_debug("Notify HSIC delete device\n");
-		hsic_aux_irq_free();
+		/* Root hub */
+		if (!udev->parent) {
+			pr_debug("%s rh_dev deleted\n", __func__);
+			hsic.rh_dev = NULL;
+		} else {
+			/* Modem devices */
+			pr_debug("%s----> modem dev deleted\n", __func__);
+			hsic.modem_dev = NULL;
+		}
 		break;
 	default:
 		pr_debug("Notify action not supported\n");
-		return ;
+		break ;
 	}
 	return;
 }
@@ -303,11 +357,296 @@ static ssize_t hsic_port_enable_store(struct device *dev,
 		}
 	}
 
-	return -1;
+	return -EINVAL;
 }
 
 static DEVICE_ATTR(hsic_enable, S_IRUGO | S_IWUSR | S_IROTH | S_IWOTH,
 		hsic_port_enable_show, hsic_port_enable_store);
+
+/* Interfaces for LPM L1 */
+static ssize_t hsic_L1_autosuspend_enable_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", hsic.L1_autosuspend_enable);
+}
+
+static ssize_t hsic_L1_autosuspend_enable_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	int retval;
+
+	if (size > HSIC_ENABLE_SIZE)
+		return -EINVAL;
+
+	if (hsic.modem_dev == NULL) {
+		dev_dbg(dev, "Modem dev is not created\n");
+		sscanf(buf, "%d", &hsic.L1_autosuspend_enable);
+		return -ENODEV;
+	}
+
+	if (sscanf(buf, "%d", &hsic.L1_autosuspend_enable) == 1) {
+		if ((hsic.L1_autosuspend_enable == 0) &&
+			(hsic.L2_autosuspend_enable == 0)) {
+			dev_dbg(dev,
+			 "Modem dev autosuspend disable\n");
+			mutex_lock(&hsic.hsic_mutex);
+			usb_disable_autosuspend(hsic.modem_dev);
+			mutex_unlock(&hsic.hsic_mutex);
+		} else {
+			dev_dbg(dev, "Disable L1 auto suspend\n");
+			mutex_lock(&hsic.hsic_mutex);
+			usb_disable_autosuspend(hsic.modem_dev);
+			usb_enable_autosuspend(hsic.modem_dev);
+			mutex_unlock(&hsic.hsic_mutex);
+		}
+
+		return size;
+	}
+
+	return -EINVAL;
+}
+
+static DEVICE_ATTR(L1_autosuspend_enable, S_IRUGO | S_IWUSR | S_IROTH | S_IWOTH,
+		hsic_L1_autosuspend_enable_show,
+		 hsic_L1_autosuspend_enable_store);
+
+static ssize_t hsic_L1_inactivityDuration_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", hsic.L1_inactivityDuration);
+}
+
+static ssize_t hsic_L1_inactivityDuration_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	int retval;
+
+	if (size > HSIC_DURATION_SIZE) {
+		dev_dbg(dev, "Invalid, size = %d\n", size);
+		sscanf(buf, "%d", &hsic.L1_inactivityDuration);
+		return -EINVAL;
+	}
+
+	if (sscanf(buf, "%d", &hsic.L1_inactivityDuration) == 1) {
+		mutex_lock(&hsic.hsic_mutex);
+		if (hsic.modem_dev == NULL) {
+			dev_dbg(dev, "Root hub dev is not created\n");
+			mutex_unlock(&hsic.hsic_mutex);
+			return -ENODEV;
+		}
+
+		dev_dbg(dev, "L2 Duration: %d\n", hsic.L1_inactivityDuration);
+		pm_runtime_set_autosuspend_delay
+			(&hsic.modem_dev->dev, hsic.L1_inactivityDuration);
+		mutex_unlock(&hsic.hsic_mutex);
+		return size;
+	}
+
+	return -EINVAL;
+}
+
+static DEVICE_ATTR(L1_inactivityDuration, S_IRUGO | S_IWUSR | S_IROTH | S_IWOTH,
+		hsic_L1_inactivityDuration_show,
+		 hsic_L1_inactivityDuration_store);
+
+static int create_L1_device_files()
+{
+	int retval;
+
+	hsic.L1_autosuspend_enable = HSIC_L1_AUTOSUSPEND;
+	retval = device_create_file(&pci_dev->dev,
+			 &dev_attr_L1_autosuspend_enable);
+	if (retval < 0) {
+		dev_dbg(&pci_dev->dev, "Error create L1_autosuspend_enable\n");
+		return retval;
+	}
+
+	hsic.L1_inactivityDuration = HSIC_L1_INACTIVITYDURATION;
+	retval = device_create_file(&pci_dev->dev,
+			 &dev_attr_L1_inactivityDuration);
+	if (retval < 0) {
+		dev_dbg(&pci_dev->dev, "Error create L1_inactiveDuration\n");
+		return retval;
+	}
+
+	return retval;
+}
+
+static void remove_L1_device_files()
+{
+	device_remove_file(&pci_dev->dev, &dev_attr_L1_autosuspend_enable);
+	device_remove_file(&pci_dev->dev, &dev_attr_L1_inactivityDuration);
+}
+
+/* Interfaces for L2 suspend */
+static ssize_t hsic_L2_autosuspend_enable_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", hsic.L2_autosuspend_enable);
+}
+
+static ssize_t hsic_L2_autosuspend_enable_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	int retval;
+
+	if (size > HSIC_ENABLE_SIZE)
+		return -EINVAL;
+
+	if (hsic.modem_dev == NULL) {
+		dev_dbg(dev, "Modem dev is not created\n");
+		sscanf(buf, "%d", &hsic.L2_autosuspend_enable);
+		return -ENODEV;
+	}
+
+	if (sscanf(buf, "%d", &hsic.L2_autosuspend_enable) == 1) {
+		if ((hsic.L1_autosuspend_enable == 0) &&
+			(hsic.L2_autosuspend_enable == 0)) {
+			dev_dbg(dev, "Modem dev autosuspend disable\n",
+					 __func__);
+			mutex_lock(&hsic.hsic_mutex);
+			usb_disable_autosuspend(hsic.modem_dev);
+			mutex_unlock(&hsic.hsic_mutex);
+		} else {
+			dev_dbg(dev, "Disable L2 auto suspend\n", __func__);
+			mutex_lock(&hsic.hsic_mutex);
+			usb_disable_autosuspend(hsic.modem_dev);
+			usb_enable_autosuspend(hsic.modem_dev);
+			mutex_unlock(&hsic.hsic_mutex);
+		}
+
+		return size;
+	}
+
+	return -EINVAL;
+}
+
+static DEVICE_ATTR(L2_autosuspend_enable, S_IRUGO | S_IWUSR | S_IROTH | S_IWOTH,
+		hsic_L2_autosuspend_enable_show,
+		 hsic_L2_autosuspend_enable_store);
+
+static ssize_t hsic_L2_inactivityDuration_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", hsic.L2_inactivityDuration);
+}
+
+static ssize_t hsic_L2_inactivityDuration_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	int retval;
+
+	if (size > HSIC_DURATION_SIZE) {
+		dev_dbg(dev, "Invalid, size = %d\n", size);
+		return -EINVAL;
+	}
+
+	if (sscanf(buf, "%d", &hsic.L2_inactivityDuration) == 1) {
+		mutex_lock(&hsic.hsic_mutex);
+		if (hsic.rh_dev == NULL) {
+			dev_dbg(dev, "Root hub dev is not created\n");
+			sscanf(buf, "%d", &hsic.L2_inactivityDuration);
+			mutex_unlock(&hsic.hsic_mutex);
+			return -ENODEV;
+		}
+
+		dev_dbg(dev, "L2 Duration: %d\n", hsic.L2_inactivityDuration);
+		pm_runtime_set_autosuspend_delay
+			(&hsic.rh_dev->dev, hsic.L2_inactivityDuration);
+		mutex_unlock(&hsic.hsic_mutex);
+		return size;
+	}
+
+	return -EINVAL;
+}
+
+static DEVICE_ATTR(L2_inactivityDuration, S_IRUGO | S_IWUSR | S_IROTH | S_IWOTH,
+		hsic_L2_inactivityDuration_show,
+		 hsic_L2_inactivityDuration_store);
+
+static ssize_t hsic_remoteWakeup_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", hsic.remoteWakeup_enable);
+}
+
+static ssize_t hsic_remoteWakeup_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	int retval;
+
+	if (size > HSIC_ENABLE_SIZE)
+		return -EINVAL;
+
+	if (hsic.modem_dev == NULL) {
+		dev_dbg(dev, "Modem dev is not created\n");
+		sscanf(buf, "%d", &hsic.remoteWakeup_enable);
+		return -ENODEV;
+	}
+
+	if (sscanf(buf, "%d", &hsic.remoteWakeup_enable) == 1) {
+		if (hsic.remoteWakeup_enable) {
+			dev_dbg(dev, "Modem dev remote wakeup enabled\n");
+			mutex_lock(&hsic.hsic_mutex);
+			device_set_wakeup_capable(&hsic.modem_dev->dev, 1);
+			device_set_wakeup_capable(&hsic.rh_dev->dev, 1);
+			pm_runtime_get_sync(&hsic.modem_dev->dev);
+			pm_runtime_put_sync(&hsic.modem_dev->dev);
+			mutex_unlock(&hsic.hsic_mutex);
+		} else {
+			dev_dbg(dev, "Modem dev remote wakeup disabled\n");
+			mutex_lock(&hsic.hsic_mutex);
+			device_set_wakeup_capable(&hsic.modem_dev->dev, 0);
+			device_set_wakeup_capable(&hsic.rh_dev->dev, 0);
+			pm_runtime_get_sync(&hsic.modem_dev->dev);
+			pm_runtime_put_sync(&hsic.modem_dev->dev);
+			mutex_unlock(&hsic.hsic_mutex);
+		}
+		return size;
+	}
+
+	return -EINVAL;
+}
+
+static DEVICE_ATTR(remoteWakeup, S_IRUGO | S_IWUSR | S_IROTH | S_IWOTH,
+		hsic_remoteWakeup_show, hsic_remoteWakeup_store);
+
+static int create_L2_device_files()
+{
+	int retval;
+
+	hsic.L2_autosuspend_enable = HSIC_L2_AUTOSUSPEND;
+	retval = device_create_file(&pci_dev->dev,
+			 &dev_attr_L2_autosuspend_enable);
+	if (retval < 0) {
+		dev_dbg(&pci_dev->dev, "Error create L2_autosuspend_enable\n");
+		return retval;
+	}
+
+	hsic.L2_inactivityDuration = HSIC_L2_INACTIVITYDURATION;
+	retval = device_create_file(&pci_dev->dev,
+			 &dev_attr_L2_inactivityDuration);
+	if (retval < 0) {
+		dev_dbg(&pci_dev->dev, "Error create L2_inactiveDuration\n");
+		return retval;
+	}
+
+	hsic.remoteWakeup_enable = HSIC_REMOTEWAKEUP;
+	retval = device_create_file(&pci_dev->dev, &dev_attr_remoteWakeup);
+	if (retval < 0) {
+		dev_dbg(&pci_dev->dev, "Error create remoteWakeup\n");
+		return retval;
+	}
+
+	return retval;
+}
+
+static void remove_L2_device_files()
+{
+	device_remove_file(&pci_dev->dev, &dev_attr_L2_autosuspend_enable);
+	device_remove_file(&pci_dev->dev, &dev_attr_L2_inactivityDuration);
+	device_remove_file(&pci_dev->dev, &dev_attr_remoteWakeup);
+}
 
 static int ehci_hsic_probe(struct pci_dev *pdev,
 				const struct pci_device_id *id)
@@ -382,6 +721,8 @@ static int ehci_hsic_probe(struct pci_dev *pdev,
 			dev_dbg(&pdev->dev, "error create hsic_enable\n");
 			goto release_mem_region;
 		}
+		create_L1_device_files();
+		create_L2_device_files();
 		hsic.hsic_enable_created = 1;
 	}
 

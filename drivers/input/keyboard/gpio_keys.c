@@ -944,10 +944,9 @@ static struct platform_device_id gpio_keys_ids[] = {
 	{
 		.name = "gpio-keys",
 	}, {
-		.name = "gpio-lesskey-nrpt",
+		.name = "gpio-lesskey",
 	}, {
-		.name = "gpio-lesskey-rpt",
-	},
+	}
 };
 MODULE_DEVICE_TABLE(platform, gpio_keys_ids);
 

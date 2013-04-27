@@ -275,6 +275,7 @@ static int ehci_pci_setup(struct usb_hcd *hcd)
 			ehci_info(ehci, "Detected HSIC HC\n");
 			hcd->has_tt = 1;
 			ehci->has_hostpc = 1;
+			ehci->has_lpm = 0;
 			hcd->has_sram = 1;
 			hcd->sram_no_payload = 1;
 			sram_init(hcd);

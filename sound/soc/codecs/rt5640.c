@@ -39,7 +39,7 @@
 #endif
 
 #define RT5640_REG_RW 0		/* for debug */
-#define RT5640_DET_EXT_MIC 1
+#define RT5640_DET_EXT_MIC 0
 #define USE_ONEBIT_DEPOP 0	/* for one bit depop */
 /*#define USE_EQ*/
 #define USE_ASRC
@@ -115,9 +115,8 @@ static struct rt5640_init_reg init_list[] = {
 #endif
 #if RT5640_DET_EXT_MIC
 	{RT5640_MICBIAS, 0x3800},	/* enable MICBIAS short current */
-	{RT5640_GPIO_CTRL1, 0x0400},	/* set GPIO1 to IRQ */
+	{RT5640_GPIO_CTRL1, 0x8400},	/* set GPIO1 to IRQ */
 	{RT5640_GPIO_CTRL3, 0x0004},	/* set GPIO1 output */
-/*	{RT5640_GEN_CTRL2, 0x5100},*/	/* enable JD2 */
 	{RT5640_IRQ_CTRL2, 0x8000},	/*set MICBIAS short current to IRQ */
 	/*( if sticky set regBE : 8800 ) */
 #endif
@@ -507,87 +506,45 @@ int rt5640_headset_detect(struct snd_soc_codec *codec, int jack_insert)
 	if (jack_insert) {
 		if (SND_SOC_BIAS_OFF == codec->dapm.bias_level) {
 			snd_soc_write(codec, RT5640_PWR_ANLG1, 0x2004);
-			snd_soc_write(codec, RT5640_MICBIAS, 0x3a30);
-			snd_soc_write(codec, RT5640_GEN_CTRL1 , 0x3701);
-			sclk_src = snd_soc_read(codec, RT5640_GLB_CLK) &
-				RT5640_SCLK_SRC_MASK;
-			snd_soc_update_bits(codec, RT5640_GLB_CLK,
-				RT5640_SCLK_SRC_MASK, 0x3 << RT5640_SCLK_SRC_SFT);
+			snd_soc_write(codec, RT5640_MICBIAS, 0x3830);
+			snd_soc_write(codec, RT5640_GEN_CTRL1, 0x3701);
 		}
-
-		snd_soc_update_bits(codec, RT5640_PWR_ANLG1,
-			RT5640_PWR_LDO2, RT5640_PWR_LDO2);
-		snd_soc_update_bits(codec, RT5640_PWR_ANLG2,
-			RT5640_PWR_MB1, RT5640_PWR_MB1);
+		sclk_src = snd_soc_read(codec, RT5640_GLB_CLK) &
+		    RT5640_SCLK_SRC_MASK;
+		snd_soc_update_bits(codec, RT5640_GLB_CLK,
+				    RT5640_SCLK_SRC_MASK,
+				    0x3 << RT5640_SCLK_SRC_SFT);
+		snd_soc_update_bits(codec, RT5640_PWR_ANLG1, RT5640_PWR_LDO2,
+				    RT5640_PWR_LDO2);
+		snd_soc_update_bits(codec, RT5640_PWR_ANLG2, RT5640_PWR_MB1,
+				    RT5640_PWR_MB1);
 		snd_soc_update_bits(codec, RT5640_MICBIAS,
 				    RT5640_MIC1_OVCD_MASK |
 				    RT5640_MIC1_OVTH_MASK |
 				    RT5640_PWR_CLK25M_MASK | RT5640_PWR_MB_MASK,
-				    RT5640_MIC1_OVCD_EN | RT5640_MIC1_OVTH_1500UA
+				    RT5640_MIC1_OVCD_EN | RT5640_MIC1_OVTH_600UA
 				    | RT5640_PWR_MB_PU | RT5640_PWR_CLK25M_PU);
 		snd_soc_update_bits(codec, RT5640_GEN_CTRL1, 0x1, 0x1);
 		msleep(100);
-		if (snd_soc_read(codec, RT5640_IRQ_CTRL2) & 0x8) {
+		if (snd_soc_read(codec, RT5640_IRQ_CTRL2) & 0x8)
 			jack_type = RT5640_HEADPHO_DET;
-			snd_soc_update_bits(codec, RT5640_GPIO_CTRL1,
-				RT5640_GP1_PIN_MASK, RT5640_GP1_PIN_GPIO1);
-		} else {
+		else
 			jack_type = RT5640_HEADSET_DET;
-			snd_soc_update_bits(codec, RT5640_GPIO_CTRL1,
-				RT5640_GP1_PIN_MASK, RT5640_GP1_PIN_IRQ);
-		}
 		snd_soc_update_bits(codec, RT5640_IRQ_CTRL2,
 				    RT5640_MB1_OC_CLR, 0);
-		if (SND_SOC_BIAS_OFF == codec->dapm.bias_level &&
-		    jack_type == RT5640_HEADPHO_DET)
-			snd_soc_update_bits(codec, RT5640_GLB_CLK,
-					    RT5640_SCLK_SRC_MASK, sclk_src);
+		snd_soc_update_bits(codec, RT5640_GLB_CLK,
+				    RT5640_SCLK_SRC_MASK, sclk_src);
 	} else {
 		snd_soc_update_bits(codec, RT5640_MICBIAS,
 				    RT5640_MIC1_OVCD_MASK,
 				    RT5640_MIC1_OVCD_DIS);
-		snd_soc_update_bits(codec, RT5640_GPIO_CTRL1,
-			RT5640_GP1_PIN_MASK, RT5640_GP1_PIN_GPIO1);
+
 		jack_type = RT5640_NO_JACK;
 	}
 
 	return jack_type;
 }
 EXPORT_SYMBOL(rt5640_headset_detect);
-
-int rt5640_button_detect(struct snd_soc_codec *codec)
-{
-	bool press;
-
-	if (SND_SOC_BIAS_OFF == codec->dapm.bias_level) {
-		snd_soc_write(codec, RT5640_PWR_ANLG1, 0x2004);
-		snd_soc_write(codec, RT5640_MICBIAS, 0x3830);
-		snd_soc_write(codec, RT5640_GEN_CTRL1 , 0x3701);
-	}
-
-	snd_soc_update_bits(codec, RT5640_PWR_ANLG1,
-			RT5640_PWR_LDO2, RT5640_PWR_LDO2);
-	snd_soc_update_bits(codec, RT5640_PWR_ANLG2,
-			RT5640_PWR_MB1, RT5640_PWR_MB1);
-	snd_soc_update_bits(codec, RT5640_MICBIAS,
-			RT5640_MIC1_OVCD_MASK |
-			RT5640_PWR_CLK25M_MASK | RT5640_PWR_MB_MASK,
-			RT5640_MIC1_OVCD_EN |
-			RT5640_PWR_MB_PU | RT5640_PWR_CLK25M_PU);
-	snd_soc_update_bits(codec, RT5640_GEN_CTRL1,
-			0x1, 0x1);
-	msleep(100);
-	if (snd_soc_read(codec, RT5640_IRQ_CTRL2) & 0x8)
-		press = true;
-	else
-		press = false;
-
-	snd_soc_update_bits(codec, RT5640_IRQ_CTRL2,
-			RT5640_MB1_OC_CLR, 0);
-
-	return press;
-}
-EXPORT_SYMBOL(rt5640_button_detect);
 
 static const char * const rt5640_dacr2_src[] = { "TxDC_R", "TxDP_R" };
 
@@ -2647,7 +2604,6 @@ static int rt5640_hw_params(struct snd_pcm_substream *substream,
 	struct rt5640_priv *rt5640 = snd_soc_codec_get_drvdata(codec);
 	unsigned int val_len = 0, val_clk, mask_clk, dai_sel;
 	int pre_div, bclk_ms, frame_size;
-	unsigned int reg_val = 0;
 
 	rt5640->lrck[dai->id] = params_rate(params);
 	pre_div = get_clk_info(rt5640->sysclk, rt5640->lrck[dai->id]);
@@ -2725,21 +2681,6 @@ static int rt5640_hw_params(struct snd_pcm_substream *substream,
 #ifdef USE_ASRC
 	snd_soc_write(codec, RT5640_ADDA_CLK1, 0x0014);
 #endif
-	switch (rt5640->sysclk_src) {
-	case RT5640_SCLK_S_MCLK:
-		reg_val |= RT5640_SCLK_SRC_MCLK;
-		break;
-	case RT5640_SCLK_S_PLL1:
-		reg_val |= RT5640_SCLK_SRC_PLL1;
-		break;
-	case RT5640_SCLK_S_RCCLK:
-		reg_val |= RT5640_SCLK_SRC_RCCLK;
-		break;
-	default:
-		dev_err(codec->dev, "Invalid clock id (%d)\n", rt5640->sysclk_src);
-	}
-	snd_soc_update_bits(codec, RT5640_GLB_CLK,
-				RT5640_SCLK_SRC_MASK, reg_val);
 	return 0;
 }
 

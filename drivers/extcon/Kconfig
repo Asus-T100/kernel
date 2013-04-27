@@ -53,11 +53,4 @@ config EXTCON_ARIZONA
 	  with Wolfson Arizona devices. These are audio CODECs with
 	  advanced audio accessory detection support.
 
-config EXTCON_MID
-	tristate "Intel MID devices EXTCON support"
-	default n
-	help
-	  Say Y here to enable support for external accessory (headset)
-	  detection for Intel MID devices on Android.
-
 endif # MULTISTATE_SWITCH

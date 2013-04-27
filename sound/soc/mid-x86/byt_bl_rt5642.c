@@ -27,11 +27,8 @@
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/device.h>
-#include <linux/gpio.h>
 #include <linux/slab.h>
 #include <linux/vlv2_plat_clock.h>
-#include <linux/acpi_gpio.h>
-#include <linux/extcon-mid.h>
 #include <asm/platform_byt_audio.h>
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
@@ -39,118 +36,30 @@
 #include <sound/jack.h>
 #include "../codecs/rt5640.h"
 
+#ifdef CONFIG_SWITCH_MID
+extern void mid_headset_report(int state);
+#endif
+
 struct byt_mc_private {
 	struct snd_soc_jack jack;
 };
 
-enum {
-	BYT_HS_JACK,
-	BYT_CODEC_INT,
-	BYT_DOCK_JACK,
-};
-
-static int byt_hp_detection(void);
-static int byt_bp_detection(void);
-
-static struct snd_soc_jack_gpio hs_gpio[] = {
-	[BYT_HS_JACK] = {
-		.name			= "byt-hsdet-gpio",
-		.report			= SND_JACK_HEADSET |
-					  SND_JACK_HEADPHONE |
-					  SND_JACK_BTN_0,
-		.debounce_time		= 200,
-		.jack_status_check	= byt_hp_detection,
-		.invert			= 1,
-	},
-	[BYT_CODEC_INT] = {
-		.name			= "byt-codec-int",
-		.report			= SND_JACK_HEADSET |
-					  SND_JACK_BTN_0,
-		.debounce_time		= 40,
-		.jack_status_check	= byt_bp_detection,
-	},
-};
-
-static inline void byt_jack_report(int status)
+inline void byt_jack_report(int status)
 {
-	switch (status) {
-	case SND_JACK_HEADPHONE:
-		mid_extcon_headset_report(HEADSET_NO_MIC);
-		break;
-	case SND_JACK_HEADSET:
-		mid_extcon_headset_report(HEADSET_WITH_MIC);
-		break;
-	default:
-		mid_extcon_headset_report(HEADSET_PULL_OUT);
-		break;
-	}
-	pr_debug("%s: headset reported: 0x%x\n", __func__, status);
-}
-
-static void set_mic_bias(struct snd_soc_codec *codec,
-			 const char *bias_widget, bool enable)
-{
-	pr_debug("%s %s\n", enable ? "enable" : "disable", bias_widget);
-	if (enable)
-		snd_soc_dapm_force_enable_pin(&codec->dapm, bias_widget);
-	else
-		snd_soc_dapm_disable_pin(&codec->dapm, bias_widget);
-	snd_soc_dapm_sync(&codec->dapm);
-}
-
-static int byt_hp_detection(void)
-{
-	struct snd_soc_jack_gpio *gpio = &hs_gpio[BYT_HS_JACK];
-	struct snd_soc_jack *jack = gpio->jack;
-	struct snd_soc_codec *codec = jack->codec;
-	int status, jack_type, enable;
-
-	enable = gpio_get_value_cansleep(gpio->gpio);
-	if (gpio->invert)
-		enable = !enable;
-	pr_debug("%s: headset detected - %#x, currently = %#x\n",
-		 __func__, enable, jack->status);
-
-	status = rt5640_headset_detect(codec, enable);
-	if (status == RT5640_HEADPHO_DET)
-		jack_type = SND_JACK_HEADPHONE;
-	else if (status == RT5640_HEADSET_DET)
-		jack_type = SND_JACK_HEADSET;
-	else /* RT5640_NO_JACK */
-		jack_type = 0;
-
-	byt_jack_report(jack_type);
-
-	if (jack_type == SND_JACK_HEADSET)
-		set_mic_bias(codec, "micbias1", true);
-	else
-		set_mic_bias(codec, "micbias1", false);
-	return jack_type;
-}
-
-static int byt_bp_detection(void)
-{
-	struct snd_soc_jack_gpio *gpio = &hs_gpio[BYT_CODEC_INT];
-	struct snd_soc_jack *jack = gpio->jack;
-	struct snd_soc_codec *codec = jack->codec;
-	int status = jack->status, enable;
-	bool press;
-
-	enable = gpio_get_value_cansleep(gpio->gpio);
-	if (gpio->invert)
-		enable = !enable;
-	pr_debug("%s: button press - %d", __func__, enable);
-	if ((jack->status & SND_JACK_HEADSET) == SND_JACK_HEADSET) {
-		press = rt5640_button_detect(codec);
-		if (press)
-			status = SND_JACK_HEADSET | SND_JACK_BTN_0;
-		else
-			status = SND_JACK_HEADSET;
-		pr_debug("codec reported = %d, status = %#x", press, status);
+#ifdef CONFIG_SWITCH_MID
+	if (status) {
+		if (status == SND_JACK_HEADPHONE)
+			mid_headset_report((1<<1));
+		else if (status == SND_JACK_HEADSET)
+			mid_headset_report(1);
 	} else {
-		pr_debug("%s: spurious button press", __func__);
+		mid_headset_report(0);
 	}
-	return status;
+#endif
+#if 0
+	snd_soc_jack_report(jack, status, gpio->report);
+#endif
+	pr_debug("headset status: 0x%x\n", status);
 }
 
 static const struct snd_soc_dapm_widget byt_dapm_widgets[] = {
@@ -304,11 +213,6 @@ static int byt_init(struct snd_soc_pcm_runtime *runtime)
 		pr_err("jack creation failed\n");
 		return ret;
 	}
-	ret = snd_soc_jack_add_gpios(&ctx->jack, ARRAY_SIZE(hs_gpio), hs_gpio);
-	if (ret) {
-		pr_err("adding jack GPIO failed\n");
-		return ret;
-	}
 
 	ret = snd_soc_add_card_controls(card, byt_mc_controls,
 					ARRAY_SIZE(byt_mc_controls));
@@ -386,6 +290,24 @@ static struct snd_soc_dai_link byt_dailink[] = {
 	},
 };
 
+/* call from HSD interrupt handler */
+int byt_hp_detection(struct snd_soc_codec *codec,
+		     struct snd_soc_jack *jack, int enable)
+{
+	int status;
+
+	status = rt5640_headset_detect(codec, !enable); /* bard: What does enable mean? */
+	if (status == RT5640_HEADPHO_DET)
+		return SND_JACK_HEADPHONE;
+	else if (status == RT5640_HEADSET_DET)
+		return SND_JACK_HEADSET;
+
+#if 0
+	byt_jack_report(status);
+#endif
+	return 0;
+}
+
 #ifdef CONFIG_PM_SLEEP
 static int snd_byt_prepare(struct device *dev)
 {
@@ -393,10 +315,10 @@ static int snd_byt_prepare(struct device *dev)
 	return snd_soc_suspend(dev);
 }
 
-static void snd_byt_complete(struct device *dev)
+static int snd_byt_complete(struct device *dev)
 {
 	pr_debug("In %s\n", __func__);
-	snd_soc_resume(dev);
+	return snd_soc_resume(dev);
 }
 
 static int snd_byt_poweroff(struct device *dev)
@@ -436,15 +358,6 @@ static int snd_byt_mc_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	}
 
-	pdata->codec_gpio = acpi_get_gpio("\\_SB.GPO2", 4); /* GPIO_SUS4 */
-	pdata->hsdet_gpio = acpi_get_gpio("\\_SB.GPO2", 28); /* GPIO_SUS28 */
-	pdata->dock_hs_gpio = acpi_get_gpio("\\_SB.GPO2", 27); /* GPIO_SUS27 */
-	pr_info("%s: GPIOs - codec %d, hsdet %d, dock_hs %d", __func__,
-		pdata->codec_gpio, pdata->hsdet_gpio, pdata->dock_hs_gpio);
-
-	hs_gpio[BYT_HS_JACK].gpio = pdata->hsdet_gpio;
-	hs_gpio[BYT_CODEC_INT].gpio = pdata->codec_gpio;
-
 	/* register the soc card */
 	snd_soc_card_byt.dev = &pdev->dev;
 	snd_soc_card_set_drvdata(&snd_soc_card_byt, drv);
@@ -464,7 +377,6 @@ static int snd_byt_mc_remove(struct platform_device *pdev)
 	struct byt_mc_private *drv = snd_soc_card_get_drvdata(soc_card);
 
 	pr_debug("In %s\n", __func__);
-	snd_soc_jack_free_gpios(&drv->jack, ARRAY_SIZE(hs_gpio), hs_gpio);
 	snd_soc_card_set_drvdata(soc_card, NULL);
 	snd_soc_unregister_card(soc_card);
 	platform_set_drvdata(pdev, NULL);

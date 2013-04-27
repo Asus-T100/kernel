@@ -21,26 +21,11 @@
 #include <asm/platform_sst_audio.h>
 #include <asm/platform_byt_audio.h>
 
-#define LPE_IRQ	29
+#define LPE_IRQ 29
 
 static struct byt_audio_platform_data byt_audio_pdata = {
 	.spid = &spid,
 };
-
-static inline int byt_program_ioapic(int irq, int trigger, int polarity)
-{
-	struct io_apic_irq_attr irq_attr;
-	int ioapic;
-
-	ioapic = mp_find_ioapic(irq);
-	if (ioapic < 0)
-		return -EINVAL;
-	irq_attr.ioapic = ioapic;
-	irq_attr.ioapic_pin = irq;
-	irq_attr.trigger = trigger;
-	irq_attr.polarity = polarity;
-	return io_apic_set_pci_routing(NULL, irq, &irq_attr);
-}
 
 void *byt_audio_platform_data(void *info)
 {
@@ -56,11 +41,18 @@ void *byt_audio_platform_data(void *info)
 	}
 
 	/* configure SST IRQ */
-	ret = byt_program_ioapic(LPE_IRQ, 0, 1);
-	if (ret) {
-		pr_err("%s: ioapic programming failed", __func__);
-		return NULL;
-	}
+	struct io_apic_irq_attr irq_attr;
+	int ioapic = mp_find_ioapic(LPE_IRQ);
+	irq_attr.ioapic = ioapic;
+	irq_attr.ioapic_pin = LPE_IRQ;
+	irq_attr.trigger = 0;
+	irq_attr.polarity = 1;
+	io_apic_set_pci_routing(NULL, LPE_IRQ, &irq_attr);
+
+	/* FIXME: hardcode proper GPIO numbers, then get the entries in the ACPI
+	 * table */
+	byt_audio_pdata.codec_gpio = 0;
+	byt_audio_pdata.codec_rst = 0;
 
 	pdev = platform_device_alloc("byt_rt5642", -1);
 	if (!pdev) {
