@@ -652,6 +652,9 @@ void intel_crt_init(struct drm_device *dev)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	const struct drm_encoder_helper_funcs *encoder_helper_funcs;
 
+	if (IS_VALLEYVIEW(dev))
+		return;
+
 	/* Skip machines without VGA that falsely report hotplug events */
 	if (dmi_check_system(intel_no_crt))
 		return;
