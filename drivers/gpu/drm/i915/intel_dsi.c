@@ -506,7 +506,7 @@ static void intel_dsi_mode_set(struct drm_encoder *encoder,
 	set_dsi_timings(encoder, adjusted_mode);
 
 	val = intel_dsi->channel << VID_MODE_CHANNEL_NUMBER_SHIFT |
-		intel_dsi->dev.lane_count << DATA_LANES_PRG_REG_SHIFT;
+		(intel_dsi->dev.lane_count + 1) << DATA_LANES_PRG_REG_SHIFT;
 
 	switch (intel_crtc->bpp) {
 	case 16:
@@ -669,7 +669,7 @@ static void dsi_config(struct drm_encoder *encoder)
 	I915_WRITE(MIPI_INTR_EN(pipe), 0xffffffff);
 
 	/* why here, was elsewhere... also 2a, 0c, 60, 08 for values */
-	I915_WRITE(MIPI_DPHY_PARAM(pipe), 0x150c3408);
+	I915_WRITE(MIPI_DPHY_PARAM(pipe), 0x3c1fc51f);
 }
 
 bool intel_dsi_init(struct drm_device *dev)
