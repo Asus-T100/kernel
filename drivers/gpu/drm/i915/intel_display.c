@@ -1830,7 +1830,7 @@ static void intel_enable_pipe(struct drm_i915_private *dev_priv, enum pipe pipe,
 	 * need the check.
 	 */
 	if (!HAS_PCH_SPLIT(dev_priv->dev)) {
-		if ((pipe == PIPE_A) && dev_priv->mipi.panel_id) {
+		if ((pipe == PIPE_A) && dev_priv->is_mipi) {
 			/* XXX
 			 * for MIPI need to check dsi pll
 			 */
@@ -3622,14 +3622,14 @@ static void i9xx_crtc_enable(struct drm_crtc *crtc)
 		intel_crtc->disp_suspend_state = false;
 	intel_update_watermarks(dev);
 
-	if (!dev_priv->mipi.panel_id)
+	if (!dev_priv->is_mipi)
 		intel_enable_pll(dev_priv, pipe);
 
 	vlv_pll_enable_reset(crtc);
 	intel_enable_pipe(dev_priv, pipe, false);
 	intel_enable_plane(dev_priv, plane, pipe);
 
-	if (dev_priv->mipi.panel_id) {
+	if (dev_priv->is_mipi) {
 		for_each_encoder_on_crtc(dev, crtc, encoder) {
 			if (encoder->type == INTEL_OUTPUT_DSI) {
 				intel_dsi_enable(encoder);
@@ -7457,6 +7457,7 @@ static void intel_setup_outputs(struct drm_device *dev)
 		 * GOP.
 		 */
 		intel_dp_init(dev, DP_C, PORT_C);
+		intel_dsi_init(dev);
 		intel_hdmi_init(dev, SDVOB, PORT_B);
 	} else if (SUPPORTS_DIGITAL_OUTPUTS(dev)) {
 		bool found = false;

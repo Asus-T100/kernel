@@ -553,8 +553,18 @@ static enum drm_connector_status
 intel_dsi_detect(struct drm_connector *connector, bool force)
 {
 	struct intel_dsi *intel_dsi = intel_attached_dsi(connector);
+	struct drm_i915_private *dev_priv = connector->dev->dev_private;
 	DRM_DEBUG_KMS("\n");
-	return intel_dsi->dev.dev_ops->detect(&intel_dsi->dev);
+
+	/* Either eDP or MIPI will be there, so if eDP detect
+	 * assume no MIPI
+	 * TBD: Fix proper MIPI detection logic
+	 */
+	if (dev_priv->is_edp) {
+		dev_priv->is_mipi = false;
+		return connector_status_disconnected;
+	} else
+		return intel_dsi->dev.dev_ops->detect(&intel_dsi->dev);
 }
 
 static int intel_dsi_get_modes(struct drm_connector *connector)

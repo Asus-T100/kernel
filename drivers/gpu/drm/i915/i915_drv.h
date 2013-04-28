@@ -534,6 +534,13 @@ typedef struct drm_i915_private {
 	/* MIPI panel info */
 	struct mipi_info mipi;
 
+	/* Either of the below will be true based on detection
+	 * presence of one indicates absence of other as of now
+	 * till we have proper fix for dynamic detection
+	 */
+	bool is_edp;
+	bool is_mipi;
+
 	bool no_aux_handshake;
 
 	struct notifier_block lid_notifier;

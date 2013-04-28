@@ -146,6 +146,7 @@ static void dsi_config(struct drm_encoder *encoder);
 
 /* external functions */
 void intel_dsi_enable(struct intel_encoder *encoder);
+bool intel_dsi_init(struct drm_device *dev);
 
 /* FIXME */
 #define	MIPI_DSI_CMI_PANEL_ID	0x00
