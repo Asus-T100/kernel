@@ -370,13 +370,6 @@ static long imx_s_exposure(struct v4l2_subdev *sd,
 	int gain = exposure->gain[0];
 	int digitgain = exposure->gain[1];
 
-	/* we should not accept the invalid value below. */
-	if (gain == 0) {
-		struct i2c_client *client = v4l2_get_subdevdata(sd);
-		v4l2_err(client, "%s: invalid value\n", __func__);
-		return -EINVAL;
-	}
-
 	return imx_set_exposure(sd, exp, gain, digitgain);
 }
 
