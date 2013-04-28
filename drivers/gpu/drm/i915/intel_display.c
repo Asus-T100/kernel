@@ -3666,6 +3666,12 @@ static void i9xx_crtc_disable(struct drm_crtc *crtc)
 	if (dev_priv->cfb_plane == plane)
 		intel_disable_fbc(dev);
 
+	/* XXX: Disable PPS */
+	I915_WRITE_BITS(VLV_PIPE_PP_CONTROL(pipe), 0, 0x00000001);
+	if (wait_for((I915_READ(VLV_PIPE_PP_STATUS(pipe)) &
+						0x80000000) == 0, 50))
+		DRM_DEBUG_KMS("PPS Disableing timedout\n");
+
 	intel_disable_plane(dev_priv, plane, pipe);
 	intel_disable_pipe(dev_priv, pipe);
 	intel_disable_pll(dev_priv, pipe);
@@ -3781,7 +3787,24 @@ static void intel_crtc_disable(struct drm_crtc *crtc)
  */
 static void i9xx_crtc_prepare(struct drm_crtc *crtc)
 {
+	struct drm_device *dev = crtc->dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
 	i9xx_crtc_disable(crtc);
+
+	/* Ensure that port, plane, pipe, pf, pll are all disabled
+	 * XXX Fis the register constants
+	 */
+	I915_WRITE_BITS(0x64200, 0, 0x80000000);
+	I915_WRITE_BITS(0x70180, 0, 0x80000000);
+	I915_WRITE_BITS(0x70008, 0, 0x80000000);
+
+	/* Wait till pipe off bit is not set */
+	if (wait_for(I915_READ(0x70008) & 0x40000000, 50))
+		DRM_DEBUG_KMS("pipe not turned off\n");
+
+	I915_WRITE_BITS(0x61230, 0, 0x80000000);
+	I915_WRITE_BITS(0x6014, 0, 0x80000000);
 }
 
 static void i9xx_crtc_commit(struct drm_crtc *crtc)
