@@ -41,6 +41,14 @@
 
 void  auo_vid_get_panel_info(int pipe, struct drm_connector *connector)
 {
+	if (!connector)
+		return;
+
+	if (pipe == 0) {
+		connector->display_info.width_mm = 216;
+		connector->display_info.height_mm = 135;
+	}
+
 	return;
 }
 
