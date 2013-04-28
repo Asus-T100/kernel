@@ -148,6 +148,9 @@
 
 /* Bit fields */
 
+/* Global User Control Register */
+#define DWC3_GUCTL_USB_HST_IN_AUTO_RETRY_EN (1<<14)
+
 /* Global Configuration Register */
 #define DWC3_GRXTHRCFG_USBRXPKTCNTSEL		(1 << 29)
 #define DWC3_GRXTHRCFG_USBRXPKTCNT(n)		(n << 24)

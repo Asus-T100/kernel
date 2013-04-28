@@ -1591,6 +1591,14 @@ static int dwc3_dev_init(struct dwc3 *dwc)
 			scratch_array_dma & 0xffffffffU);
 	}
 
+	/* WORKAROUND: Need to clears bit DWC3_GUCTL_USB_HST_IN_AUTO_RETRY_EN
+	 * of GUCTL, otherwise device will reply ACK even the DP received
+	 * is corrupted with CRC32 error.
+	 */
+	reg = dwc3_readl(dwc->regs, DWC3_GUCTL);
+	reg &= ~DWC3_GUCTL_USB_HST_IN_AUTO_RETRY_EN;
+	dwc3_writel(dwc->regs, DWC3_GUCTL, reg);
+
 	dwc3_gadget_usb2_phy_power(dwc, true);
 	dwc3_gadget_usb3_phy_power(dwc, true);
 
@@ -1747,6 +1755,7 @@ static int dwc3_stop_peripheral(struct usb_gadget *g)
 	u8              epnum;
 	struct dwc3_event_buffer    *evt;
 	int             n;
+	u32	reg;
 
 	spin_lock_irqsave(&dwc->lock, flags);
 
@@ -1798,6 +1807,13 @@ static int dwc3_stop_peripheral(struct usb_gadget *g)
 	dwc3_gadget_usb2_phy_power(dwc, false);
 	dwc3_gadget_usb3_phy_power(dwc, false);
 #endif
+
+	/* WORKAROUND: set DWC3_GUCTL_USB_HST_IN_AUTO_RETRY_EN bit of
+	 * GUCTL back as host mode needs it
+	 */
+	reg = dwc3_readl(dwc->regs, DWC3_GUCTL);
+	reg |= DWC3_GUCTL_USB_HST_IN_AUTO_RETRY_EN;
+	dwc3_writel(dwc->regs, DWC3_GUCTL, reg);
 
 	spin_unlock_irqrestore(&dwc->lock, flags);
 
