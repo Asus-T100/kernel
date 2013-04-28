@@ -75,8 +75,8 @@ static u8 ls04x_dsi_control1_cgs[] = {
 	0xb6, 0x31, 0xb5};
 static u8 ls04x_dsi_control2[] = { 0xb7, 0x00 };
 static u8 ls04x_panel_pin_ctrl[] = {
-	0xcb, 0x65, 0x26, 0xc0,
-	0x19, 0x0a, 0x00, 0x00,
+	0xcb, 0x67, 0x26, 0xc0,
+	0x19, 0x0e, 0x00, 0x00,
 	0x00, 0x00, 0xc0, 0x00};
 static u8 ls04x_panel_interface_ctrl_igzo[] = { 0xcc, 0x01 };
 static u8 ls04x_panel_interface_ctrl_cgs[] = { 0xcc, 0x06 };
@@ -85,7 +85,7 @@ static u8 ls04x_display_setting1_igzo[] = {
 	0x52, 0x02, 0x00, 0x00,
 	0x00, 0x00, 0x00, 0x02,
 	0xc7, 0x06, 0x02, 0x08,
-	0x09, 0x0a, 0x0b, 0x00,
+	0x09, 0x08, 0x09, 0x00,
 	0x00, 0x00, 0x00, 0x62,
 	0x30, 0x40, 0xa5, 0x0f,
 	0x04, 0x00, 0x20, 0x00,
@@ -110,7 +110,7 @@ static u8 ls04x_tpc_sync_ctrl[] = {
 static u8 ls04x_source_timing_setting_igzo[] = {
 	0xc4, 0x70, 0x00, 0x00,
 	0x00, 0x43, 0x2d, 0x00,
-	0x00, 0x00, 0x00, 0x43,
+	0x00, 0x00, 0x00, 0x03,
 	0x2d, 0x00};
 static u8 ls04x_source_timing_setting_cgs[] = {
 	0xc4, 0x00, 0x00, 0x00,
@@ -180,6 +180,23 @@ static u8 ls04x_gamma_c_setting_cgs[] = {
 	0x1f, 0x2e, 0x42, 0x2e,
 	0x3b, 0x46, 0x51, 0x5f,
 	0x6d};
+static u8 ls04x_backlight_setting1_pwr_save[] = {
+	0xb8, 0x18, 0x80, 0x18,
+	0x18, 0xcf, 0x1f, 0x00,
+	0x0c, 0x10, 0x5c, 0x10,
+	0xac, 0x10, 0x0c, 0x10,
+	0xda, 0x6d, 0xff, 0xff,
+	0x10, 0x67, 0x89, 0xaf,
+	0xd6, 0xff};
+static u8 ls04x_backlight_setting2_pwr_save[] = {
+	0xb9, 0x0f, 0x18, 0x04,
+	0x40, 0x9f, 0x1f, 0x80};
+static u8 ls04x_backlight_setting4_pwr_save[] = {
+	0xba, 0x0f, 0x18, 0x04,
+	0x40, 0x9f, 0x1f, 0xd7};
+static u8 ls04x_backlight_setting6_igzo[] = {
+	0xce, 0x00, 0x0f, 0x08,
+	0x01, 0x00, 0x00, 0x00};
 static u8 ls04x_power_setting_igzo[] = {
 	0xd0, 0x00, 0x10, 0x19,
 	0x18, 0x99, 0x99, 0x18,
@@ -263,15 +280,15 @@ static u8 ir2e69_power_on_seq[][2] = {
 	{0x03, 0x01},
 	{0,      20},
 	{0x27, 0xe8},
-	{0x03, 0x81},
+	{0x03, 0x83},
 	{0,      20},
 	{0x28, 0x40},
 	{0x2b, 0x01},
 	{0x05, 0x0d},
 	{0x06, 0x01},
 	{0x25, 0x20},
-	{0x0a, 0x20},
-	{0x0b, 0x20},
+	{0x0a, 0xc8},
+	{0x0b, 0xc8},
 	{0xdc, 0x3b},
 	{0xee, 0x00},
 	{0xf1, 0x00},
@@ -290,7 +307,7 @@ static u8 ir2e69_bias_off_seq[][2] = {
 static u8 ir2e69_standby_seq[][2] = {
 	{0x03, 0x00} };
 static u8 ir2e69_normal_seq[][2] = {
-	{0x03, 0x81} };
+	{0x03, 0x83} };
 static u8 ls04x_reset_low[] = {0xd8, 0x00};
 static u8 ls04x_reset_high[] = {0xd8, 0x10};
 
@@ -574,6 +591,22 @@ static int ls04x_igzo_drv_ic_init(struct mdfld_dsi_config *dsi_config)
 				   sizeof(ls04x_gip_timing_setting),
 				   MDFLD_DSI_SEND_PACKAGE);
 	mdfld_dsi_send_gen_long_lp(sender,
+				   ls04x_backlight_setting1_pwr_save,
+				   sizeof(ls04x_backlight_setting1_pwr_save),
+				   MDFLD_DSI_SEND_PACKAGE);
+	mdfld_dsi_send_gen_long_lp(sender,
+				   ls04x_backlight_setting2_pwr_save,
+				   sizeof(ls04x_backlight_setting2_pwr_save),
+				   MDFLD_DSI_SEND_PACKAGE);
+	mdfld_dsi_send_gen_long_lp(sender,
+				   ls04x_backlight_setting4_pwr_save,
+				   sizeof(ls04x_backlight_setting4_pwr_save),
+				   MDFLD_DSI_SEND_PACKAGE);
+	mdfld_dsi_send_gen_long_lp(sender,
+				   ls04x_backlight_setting6_igzo,
+				   sizeof(ls04x_backlight_setting6_igzo),
+				   MDFLD_DSI_SEND_PACKAGE);
+	mdfld_dsi_send_gen_long_lp(sender,
 				   ls04x_gamma_a_setting_igzo,
 				   sizeof(ls04x_gamma_a_setting_igzo),
 				   MDFLD_DSI_SEND_PACKAGE);
@@ -830,7 +863,7 @@ static void ls04x_dsi_controller_init(struct mdfld_dsi_config *dsi_config)
 	hw_ctx->device_reset_timer = 0xffff;
 	hw_ctx->high_low_switch_count = 0x28;
 	hw_ctx->init_count = 0xf0;
-	hw_ctx->eot_disable = 0x3;
+	hw_ctx->eot_disable = 0x2;
 	hw_ctx->lp_byteclk = 0x4;
 	hw_ctx->clk_lane_switch_time_cnt = 0x18000b;
 	hw_ctx->dbi_bw_ctrl = 820;
@@ -878,8 +911,7 @@ static void ls04x_cmd_get_panel_info(int pipe, struct panel_info *pi)
 	}
 }
 
-
-static int ls04x_cmd_set_brightness(struct mdfld_dsi_config *dsi_config,
+static int ls04x_cgs_cmd_set_brightness(struct mdfld_dsi_config *dsi_config,
 					int level)
 {
 	struct mdfld_dsi_pkg_sender *sender
@@ -891,6 +923,36 @@ static int ls04x_cmd_set_brightness(struct mdfld_dsi_config *dsi_config,
 		brightness[0] = write_display_brightness;
 		brightness[1] = 0;
 		brightness[2] = (level * 255 / 100) & 0xff;
+		mdfld_dsi_send_mcs_long_lp(sender,
+				brightness,
+				sizeof(brightness),
+				MDFLD_DSI_SEND_PACKAGE);
+	} else {
+		u8 brightness[2];
+
+		PSB_DEBUG_ENTRY("%d\n", level);
+		brightness[0] = 0x0a;
+		brightness[1] = level * 255 / 100;
+		i2c_master_send(i2c_client, brightness, sizeof(brightness));
+		brightness[0] = 0x0b;
+		i2c_master_send(i2c_client, brightness, sizeof(brightness));
+	}
+
+	return 0;
+}
+
+static int ls04x_cmd_set_brightness(struct mdfld_dsi_config *dsi_config,
+					int level)
+{
+	struct mdfld_dsi_pkg_sender *sender
+		= mdfld_dsi_get_pkg_sender(dsi_config);
+
+	if (drm_psb_enable_cabc) {
+		u8 brightness[3] = {0, };
+
+		brightness[0] = write_display_brightness;
+		brightness[1] = (level * 4095 / 100) >> 8;
+		brightness[2] = (level * 4095 / 100) & 0xff;
 		mdfld_dsi_send_mcs_long_lp(sender,
 				brightness,
 				sizeof(brightness),
@@ -965,6 +1027,7 @@ static int vb_cmd_power_off(struct mdfld_dsi_config *dsi_config)
 	struct mdfld_dsi_pkg_sender *sender
 				= mdfld_dsi_get_pkg_sender(dsi_config);
 	u8 power = 0;
+
 
 	PSB_DEBUG_ENTRY("\n");
 	r = mdfld_dsi_send_mcs_short_lp(sender, set_display_off, 0, 0,
@@ -1125,7 +1188,7 @@ void vb_cgs_cmd_init(struct drm_device *dev, struct panel_funcs *p_funcs)
 	p_funcs->detect = vb_cmd_detect;
 	p_funcs->power_on = vb_cmd_power_on;
 	p_funcs->power_off = vb_cmd_power_off;
-	p_funcs->set_brightness = ls04x_cmd_set_brightness;
+	p_funcs->set_brightness = ls04x_cgs_cmd_set_brightness;
 	ir2e69_register();
 	register_reboot_notifier(&vb_cmd_reboot_notifier_block);
 }
