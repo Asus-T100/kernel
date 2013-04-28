@@ -120,7 +120,8 @@ int dsi_60hz_formula(struct intel_dsi *intel_dsi,
 
 	bytes_per_60_frame = 60 * bytes_per_frame;
 
-	bytes_per_60_frame_n_lanes = bytes_per_60_frame / intel_dsi->lane_count;
+	bytes_per_60_frame_n_lanes = bytes_per_60_frame /
+			intel_dsi->dev.lane_count;
 
 	/* the dsi clock is divided by 2 in the hardware to get dsi ddr clock */
 	dsi_byte_clock_hz = bytes_per_60_frame_n_lanes;
@@ -144,7 +145,8 @@ int dsi_15percent_formula(struct intel_dsi *intel_dsi,
 	else
 		bpp = 18;
 
-	dsi_pixel_clk = (mode->clock * bpp) / (intel_dsi->lane_count * 100);
+	dsi_pixel_clk = (mode->clock * bpp) /
+			(intel_dsi->dev.lane_count * 1000);
 	*dsi_clk = ((dsi_pixel_clk * 15) / 100) + dsi_pixel_clk;
 
 	return 0;

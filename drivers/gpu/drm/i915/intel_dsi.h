@@ -103,8 +103,6 @@ struct intel_dsi {
 	int channel;
 	uint32_t reg_base;
 	enum pipe pipe;
-	u16 panel_type;
-	u8 lane_count;
 	u8 dsi_packet_format;
 };
 

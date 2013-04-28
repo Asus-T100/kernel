@@ -100,21 +100,21 @@ static const struct intel_dsi_device intel_dsi_devices[] = {
 		.type = INTEL_DSI_COMMAND_MODE,
 		.name = "cmi-dsi-cmd-mode-display",
 		.dev_ops = &cmi_dsi_display_ops,
-		.lane_count = 3, /* XXX: this really doesn't belong here */
+		.lane_count = 4, /* XXX: this really doesn't belong here */
 	},
 	{
 		.panel_id = MIPI_DSI_CMI_PANEL_ID,
 		.type = INTEL_DSI_VIDEO_MODE,
 		.name = "cmi-dsi-vid-mode-display",
 		.dev_ops = &cmi_dsi_display_ops,
-		.lane_count = 3, /* XXX: this really doesn't belong here */
+		.lane_count = 4, /* XXX: this really doesn't belong here */
 	},
 	{
 		.panel_id = MIPI_DSI_AUO_PANEL_ID,
 		.type = INTEL_DSI_VIDEO_MODE,
 		.name = "auo-dsi-vid-mode-display",
 		.dev_ops = &auo_dsi_display_ops,
-		.lane_count = 3, /* XXX: this really doesn't belong here */
+		.lane_count = 4, /* XXX: this really doesn't belong here */
 	},
 };
 
@@ -363,7 +363,7 @@ static void intel_dsi_commit(struct drm_encoder *encoder)
 }
 
 /* return pixels in terms of txbyteclkhs */
-static u16 txbyteclkhs(u16 pixels, int bpp, int lane_count)
+static u32 txbyteclkhs(u32 pixels, int bpp, int lane_count)
 {
 	u32 pixel_bytes;
 	pixel_bytes =  ((pixels * bpp) / 8) + (((pixels * bpp) % 8) && 1);
@@ -383,7 +383,6 @@ static void set_dsi_timings(struct drm_encoder *encoder,
 
 	u16 hactive, hfp, hsync, hbp, vfp, vsync, vbp;
 
-	lane_count = lane_count + 1;
 	hactive = mode->hdisplay;
 	hfp = mode->hsync_start - mode->hdisplay;
 	hsync = mode->hsync_end - mode->hsync_start;
@@ -507,7 +506,7 @@ static void intel_dsi_mode_set(struct drm_encoder *encoder,
 	set_dsi_timings(encoder, adjusted_mode);
 
 	val = intel_dsi->channel << VID_MODE_CHANNEL_NUMBER_SHIFT |
-		(intel_dsi->dev.lane_count + 1) << DATA_LANES_PRG_REG_SHIFT;
+		intel_dsi->dev.lane_count  << DATA_LANES_PRG_REG_SHIFT;
 
 	switch (intel_crtc->bpp) {
 	case 16:
@@ -695,7 +694,6 @@ static void dsi_config(struct drm_encoder *encoder)
 	struct intel_dsi *intel_dsi = enc_to_intel_dsi(encoder);
 	int pipe = intel_crtc->pipe;
 	unsigned int bpp = intel_crtc->bpp;
-	unsigned int lane_count = intel_dsi->dev.lane_count;
 	u32 tmp;
 
 	DRM_DEBUG_KMS("\n");
@@ -764,8 +762,6 @@ bool intel_dsi_init(struct drm_device *dev)
 		}
 	}
 
-	intel_dsi->panel_type = intel_dsi->dev.type;
-	intel_dsi->lane_count = intel_dsi->dev.lane_count;
 	intel_dsi->dsi_packet_format = dsi_24Bpp_packed;
 	intel_dsi->channel = 0;
 
