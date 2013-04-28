@@ -580,19 +580,64 @@ intel_dsi_detect(struct drm_connector *connector, bool force)
 static int intel_dsi_get_modes(struct drm_connector *connector)
 {
 	struct intel_dsi *intel_dsi = intel_attached_dsi(connector);
-	struct intel_dsi_dev_priv *dsi_dev_priv = intel_dsi->dev.dev_priv;
+	struct drm_i915_private *dev_priv = connector->dev->dev_private;
 	struct drm_display_mode *mode;
+
+	u32 hblank;
+	u32 vblank;
+	u32 hsync_offset;
+	u32 hsync_width;
+	u32 vsync_offset;
+	u32 vsync_width;
 
 	DRM_DEBUG_KMS("\n");
 
-	if (!intel_dsi->panel_fixed_mode)
+	hblank = 0x78;
+	vblank = 0x0C;
+	hsync_offset = 0x28;
+	hsync_width = 0x28;
+	vsync_offset = 0x4;
+	vsync_width = 0x4;
+
+	intel_dsi->panel_fixed_mode = kzalloc(sizeof(struct drm_display_mode),
+			GFP_KERNEL);
+	if (intel_dsi->panel_fixed_mode == NULL) {
+		DRM_ERROR("out of memory for fixed panel mode\n");
 		return 0;
+	}
+
+	strcpy(intel_dsi->panel_fixed_mode->name, "1920x1200");
+	intel_dsi->panel_fixed_mode->hdisplay = 0x780;
+	intel_dsi->panel_fixed_mode->vdisplay = 0x4B0;
+	intel_dsi->panel_fixed_mode->hsync_start =
+			intel_dsi->panel_fixed_mode->hdisplay + hsync_offset;
+	intel_dsi->panel_fixed_mode->hsync_end =
+			intel_dsi->panel_fixed_mode->hdisplay +
+			hsync_offset + hsync_width;
+	intel_dsi->panel_fixed_mode->htotal =
+			intel_dsi->panel_fixed_mode->hdisplay + hblank;
+	intel_dsi->panel_fixed_mode->vsync_start =
+			intel_dsi->panel_fixed_mode->vdisplay + vsync_offset;
+	intel_dsi->panel_fixed_mode->vsync_end =
+			intel_dsi->panel_fixed_mode->vdisplay +
+			vsync_offset + vsync_width;
+	intel_dsi->panel_fixed_mode->vtotal =
+			intel_dsi->panel_fixed_mode->vdisplay + vblank;
+
+	intel_dsi->panel_fixed_mode->vrefresh = 60;
+	intel_dsi->panel_fixed_mode->clock =  148350;
+	intel_dsi->panel_fixed_mode->flags =
+			DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC;
+	intel_dsi->panel_fixed_mode->type |= DRM_MODE_TYPE_PREFERRED;
 
 	mode = drm_mode_duplicate(connector->dev, intel_dsi->panel_fixed_mode);
 	if (!mode)
 		return 0;
 
+	mode->status = MODE_OK;
+
 	drm_mode_probed_add(connector, mode);
+	DRM_DEBUG_KMS("1\n");
 
 	/* fill the panel info here for now */
 	intel_dsi->dev.dev_ops->get_info(0, connector);
@@ -609,8 +654,8 @@ static void intel_dsi_destroy(struct drm_connector *connector)
 }
 
 static int intel_dsi_set_property(struct drm_connector *connector,
-				  struct drm_property *property,
-				  uint64_t value)
+		struct drm_property *property,
+		uint64_t value)
 {
 	DRM_DEBUG_KMS("\n");
 	return 0;
@@ -704,7 +749,7 @@ bool intel_dsi_init(struct drm_device *dev)
 
 	/* XXX: encoder type */
 	drm_encoder_init(dev, encoder, &intel_dsi_funcs,
-			 DRM_MODE_ENCODER_MIPI);
+			DRM_MODE_ENCODER_MIPI);
 
 	for (i = 0; i < ARRAY_SIZE(intel_dsi_devices); i++) {
 		dsi = &intel_dsi_devices[i];
@@ -733,7 +778,7 @@ bool intel_dsi_init(struct drm_device *dev)
 	intel_encoder->cloneable = false;
 	/* XXX: connector type */
 	drm_connector_init(dev, connector, &intel_dsi_connector_funcs,
-			   DRM_MODE_CONNECTOR_MIPI);
+			DRM_MODE_CONNECTOR_MIPI);
 
 	drm_connector_helper_add(connector, &intel_dsi_connector_helper_funcs);
 
