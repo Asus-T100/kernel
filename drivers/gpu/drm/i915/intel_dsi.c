@@ -480,7 +480,8 @@ static void intel_dsi_mode_set(struct drm_encoder *encoder,
 	I915_WRITE(0x6200, 0xffffffff);
 	I915_WRITE(0x6204, 0xffffffff);
 
-	drm_mode_set_crtcinfo(adjusted_mode, 0);
+	/* MIPI PORT Control register */
+	I915_WRITE(0x61190, 0x80010000);
 
 #ifdef CONFIG_CRYSTAL_COVE
 	/* Crystal cove PMIC is not there in Baytrail-M
