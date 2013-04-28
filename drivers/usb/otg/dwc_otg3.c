@@ -166,19 +166,28 @@ static void get_and_clear_events(struct dwc_otg2 *otg,
 
 	spin_lock_irqsave(&otg->lock, flags);
 
-	if (otg_events && (otg->otg_events & otg_mask)) {
-		*otg_events = otg->otg_events;
-		otg->otg_events &= ~otg_mask;
+	if (otg_events) {
+		if (otg->otg_events & otg_mask) {
+			*otg_events = otg->otg_events;
+			otg->otg_events &= ~otg_mask;
+		} else
+			*otg_events = 0;
 	}
 
-	if (adp_events && (otg->adp_events & adp_mask)) {
-		*adp_events = otg->adp_events;
-		otg->adp_events &= ~adp_mask;
+	if (adp_events) {
+		if (otg->adp_events & adp_mask) {
+			*adp_events = otg->adp_events;
+			otg->adp_events &= ~adp_mask;
+		} else
+			*adp_events = 0;
 	}
 
-	if (user_events && (otg->user_events & user_mask)) {
-		*user_events = otg->user_events;
-		otg->user_events &= ~user_mask;
+	if (user_events) {
+		if (otg->user_events & user_mask) {
+			*user_events = otg->user_events;
+			otg->user_events &= ~user_mask;
+		} else
+			*user_events = 0;
 	}
 
 	spin_unlock_irqrestore(&otg->lock, flags);
@@ -906,14 +915,12 @@ static int dwc_otg_set_power(struct usb_phy *_otg,
 static enum dwc_otg_state do_wait_vbus_raise(struct dwc_otg2 *otg)
 {
 	int ret;
-	unsigned long flags;
 	u32 otg_events = 0;
 	u32 user_events = 0;
 	u32 otg_mask = 0;
 	u32 user_mask = 0;
 
-	otg_mask = OEVT_B_DEV_SES_VLD_DET_EVNT |
-				OEVT_CONN_ID_STS_CHNG_EVNT;
+	otg_mask = OEVT_B_DEV_SES_VLD_DET_EVNT;
 
 	ret = sleep_until_event(otg, otg_mask, \
 			0, user_mask, &otg_events,\
@@ -926,24 +933,11 @@ static enum dwc_otg_state do_wait_vbus_raise(struct dwc_otg2 *otg)
 		return DWC_STATE_CHARGER_DETECTION;
 	}
 
-	if (otg_events & OEVT_CONN_ID_STS_CHNG_EVNT) {
-		otg_dbg(otg, "OEVT_CONN_ID_STS_CHNG_EVNT\n");
-		return DWC_STATE_INIT;
-	}
-
 	/* timeout*/
-	if (!ret) {
-		if (is_self_powered_b_device(otg)) {
-			spin_lock_irqsave(&otg->lock, flags);
-			otg->charging_cap.chrg_type =
-				POWER_SUPPLY_CHARGER_TYPE_B_DEVICE;
-			spin_unlock_irqrestore(&otg->lock, flags);
+	if (!ret)
+		return DWC_STATE_A_HOST;
 
-			return DWC_STATE_A_HOST;
-		}
-	}
-
-	return DWC_STATE_INVALID;
+	return DWC_STATE_INIT;
 }
 
 static enum dwc_otg_state do_wait_vbus_fall(struct dwc_otg2 *otg)
@@ -1144,6 +1138,7 @@ static enum dwc_otg_state do_connector_id_status(struct dwc_otg2 *otg)
 
 	msleep(60);
 
+stay_init:
 	otg_mask = OEVT_CONN_ID_STS_CHNG_EVNT | \
 			OEVT_B_DEV_SES_VLD_DET_EVNT;
 
@@ -1190,6 +1185,15 @@ static enum dwc_otg_state do_connector_id_status(struct dwc_otg2 *otg)
 
 	if (events & OEVT_CONN_ID_STS_CHNG_EVNT) {
 		otg_dbg(otg, "OEVT_CONN_ID_STS_CHNG_EVNT\n");
+
+		/* Prevent user fast plug out after plug in.
+		 * It will cause the first ID change event lost.
+		 * So need to check real ID currently.
+		 */
+		if (get_id(otg) == RID_FLOAT) {
+			otg_dbg(otg, "Stay DWC_STATE_INIT\n");
+			goto stay_init;
+		}
 		state = DWC_STATE_WAIT_VBUS_RAISE;
 	}
 
@@ -1244,10 +1248,8 @@ static enum dwc_otg_state do_a_host(struct dwc_otg2 *otg)
 		dwc_otg_enable_vbus(otg, 1);
 
 		/* meant receive vbus valid event*/
-		if (do_wait_vbus_raise(otg) !=
-				DWC_STATE_CHARGER_DETECTION) {
+		if (do_wait_vbus_raise(otg) == DWC_STATE_A_HOST)
 			printk(KERN_ERR "Drive VBUS maybe fail!\n");
-		}
 	}
 
 	if (!is_hybridvp(otg))
@@ -1260,6 +1262,7 @@ static enum dwc_otg_state do_a_host(struct dwc_otg2 *otg)
 		return DWC_STATE_INVALID;
 	}
 
+stay_host:
 	otg_events = 0;
 	user_events = 0;
 	otg_mask = 0;
@@ -1319,6 +1322,13 @@ static enum dwc_otg_state do_a_host(struct dwc_otg2 *otg)
 				stop_host(otg);
 				dwc_otg_enable_vbus(otg, 0);
 			}
+		} else if (id == RID_GND || id == RID_A) {
+			otg_dbg(otg, "Stay DWC_STATE_A_HOST!!\n");
+			/* Prevent user fast plug in after plug out.
+			 * It will cause the first ID change event lost.
+			 * So need to check real ID currently.
+			 */
+			goto stay_host;
 		} else {
 			otg_err(otg, "Meet invalid charger cases!");
 			spin_lock_irqsave(&otg->lock, flags);
