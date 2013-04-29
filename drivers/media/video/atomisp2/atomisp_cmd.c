@@ -2801,7 +2801,7 @@ int atomisp_digital_zoom(struct atomisp_device *isp, int flag, __s32 *value)
 		if (*value < 0)
 			return -EINVAL;
 
-		zoom = max_zoom - min_t(u32, max_zoom, (*value));
+		zoom = max_zoom - min_t(u32, max_zoom - 1, *value);
 
 		dev_dbg(isp->dev, "%s, zoom: %d\n", __func__, zoom);
 		sh_css_set_zoom_factor(zoom, zoom);
