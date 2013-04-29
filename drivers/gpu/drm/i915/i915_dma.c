@@ -1573,6 +1573,7 @@ int i915_driver_load(struct drm_device *dev, unsigned long flags)
 	/* This must be called before any calls to HAS_PCH_* */
 	intel_detect_pch(dev);
 
+	i915_pm_init(dev);
 	intel_irq_init(dev);
 	intel_gt_init(dev);
 

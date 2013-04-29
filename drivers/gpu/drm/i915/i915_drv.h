@@ -287,6 +287,11 @@ struct drm_i915_gt_funcs {
 				int fw_engine);
 };
 
+struct drm_i915_pm_funcs {
+	int (*drm_freeze)(struct drm_device *dev);
+	int (*drm_thaw)(struct drm_device *dev);
+};
+
 #define DEV_INFO_FLAGS \
 	DEV_INFO_FLAG(is_mobile) DEV_INFO_SEP \
 	DEV_INFO_FLAG(is_i85x) DEV_INFO_SEP \
@@ -407,6 +412,9 @@ typedef struct drm_i915_private {
 	void __iomem *regs;
 
 	struct drm_i915_gt_funcs gt;
+
+	/** related to power management */
+	struct drm_i915_pm_funcs pm;
 	/** gt_fifo_count and the subsequent register write are synchronized
 	 * with dev->struct_mutex. */
 	unsigned int gt_fifo_count;
@@ -700,6 +708,11 @@ typedef struct drm_i915_private {
 	u32 savePIPEB_LINK_N1;
 	u32 saveMCHBAR_RENDER_STANDBY;
 	u32 savePCH_PORT_HOTPLUG;
+	u32 saveGUNIT_Control;
+	u32 saveGUNIT_Control2;
+	u32 saveGUNIT_CZClockGatingDisable1;
+	u32 saveGUNIT_CZClockGatingDisable2;
+	u32 saveDPIO_CFG_DATA;
 
 	struct {
 		/** Bridge to intel-gtt-ko */
@@ -1574,6 +1587,7 @@ void i915_debugfs_cleanup(struct drm_minor *minor);
 /* i915_suspend.c */
 extern int i915_save_state(struct drm_device *dev);
 extern int i915_restore_state(struct drm_device *dev);
+extern void i915_pm_init(struct drm_device *dev);
 
 /* i915_suspend.c */
 extern int i915_save_state(struct drm_device *dev);
@@ -1729,6 +1743,5 @@ __i915_write(64, q)
 
 #define POSTING_READ(reg)	(void)I915_READ_NOTRACE(reg)
 #define POSTING_READ16(reg)	(void)I915_READ16_NOTRACE(reg)
-
 
 #endif
