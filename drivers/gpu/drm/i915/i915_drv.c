@@ -1105,7 +1105,7 @@ static void __exit i915_exit(void)
 	drm_pci_exit(&driver, &i915_pci_driver);
 }
 
-module_init(i915_init);
+device_initcall_sync(i915_init);
 module_exit(i915_exit);
 
 MODULE_AUTHOR(DRIVER_AUTHOR);
