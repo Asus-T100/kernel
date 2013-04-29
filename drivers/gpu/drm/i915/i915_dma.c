@@ -1524,6 +1524,13 @@ int i915_driver_load(struct drm_device *dev, unsigned long flags)
 		goto put_gmch;
 	}
 
+	/* RS state has to be initialized to pull render/media power wells out
+	 * of sleep. This is required before initializing gem, which touches
+	 * render/media registers
+	 */
+	if (IS_VALLEYVIEW(dev))
+		vlv_rs_sleepstateinit(dev, true);
+
 	aperture_size = dev_priv->mm.gtt->gtt_mappable_entries << PAGE_SHIFT;
 	dev_priv->mm.gtt_base_addr = dev_priv->mm.gtt->gma_bus_addr;
 

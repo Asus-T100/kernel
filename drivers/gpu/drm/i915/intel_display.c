@@ -6804,15 +6804,24 @@ static int intel_gen7_queue_flip(struct drm_device *dev,
 		goto err_unpin;
 	}
 
-	ret = intel_ring_begin(ring, 4);
+	ret = intel_ring_begin(ring, 8);
 	if (ret)
 		goto err_unpin;
+
+	/*Blitter engine is not coming out of RC6 upon MI_DISPLAY_FLIP.
+	Adding 4 NOOPS helped:)... Need to check with SV team*/
+	intel_ring_emit(ring, (MI_NOOP));
+	intel_ring_emit(ring, (MI_NOOP));
+	intel_ring_emit(ring, (MI_NOOP));
+	intel_ring_emit(ring, (MI_NOOP));
 
 	intel_ring_emit(ring, MI_DISPLAY_FLIP_I915 | plane_bit);
 	intel_ring_emit(ring, (fb->pitches[0] | obj->tiling_mode));
 	intel_ring_emit(ring, obj->gtt_offset + intel_crtc->dspaddr_offset);
 	intel_ring_emit(ring, (MI_NOOP));
 	intel_ring_advance(ring);
+
+
 	return 0;
 
 err_unpin:

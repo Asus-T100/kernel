@@ -532,6 +532,13 @@ extern u32 intel_dpio_read(struct drm_i915_private *dev_priv, int reg);
 
 /* Power-related functions, located in intel_pm.c */
 extern void intel_init_pm(struct drm_device *dev);
+extern bool vlv_rs_initialize(struct drm_device *dev);
+extern void vlv_rs_sleepstateinit(struct drm_device *dev,
+				 bool   bdisable_rs);
+
+extern void vlv_rs_setstate(struct drm_device *dev,
+				bool enable);
+
 /* FBC */
 extern bool intel_fbc_enabled(struct drm_device *dev);
 extern void intel_enable_fbc(struct drm_crtc *crtc, unsigned long interval);

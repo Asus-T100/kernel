@@ -280,8 +280,10 @@ struct drm_i915_display_funcs {
 };
 
 struct drm_i915_gt_funcs {
-	void (*force_wake_get)(struct drm_i915_private *dev_priv);
-	void (*force_wake_put)(struct drm_i915_private *dev_priv);
+	void (*force_wake_get)(struct drm_i915_private *dev_priv,
+				int fw_engine);
+	void (*force_wake_put)(struct drm_i915_private *dev_priv,
+				int fw_engine);
 };
 
 #define DEV_INFO_FLAGS \
@@ -406,9 +408,14 @@ typedef struct drm_i915_private {
 	struct drm_i915_gt_funcs gt;
 	/** gt_fifo_count and the subsequent register write are synchronized
 	 * with dev->struct_mutex. */
-	unsigned gt_fifo_count;
+	unsigned int gt_fifo_count;
 	/** forcewake_count is protected by gt_lock */
-	unsigned forcewake_count;
+	unsigned int forcewake_count;
+
+	/*VLV specific FW counters. Clean this later*/
+	unsigned int fw_rendercount;
+	unsigned int fw_mediacount;
+
 	/** gt_lock is also taken in irq contexts. */
 	struct spinlock gt_lock;
 
@@ -879,6 +886,7 @@ typedef struct drm_i915_private {
 	struct work_struct parity_error_work;
 	bool hw_contexts_disabled;
 	uint32_t hw_context_size;
+	bool need_pcbr_setup;
 #ifdef CONFIG_DRM_VXD_BYT
 	struct drm_psb_private *vxd_priv;
 #endif
@@ -1609,8 +1617,8 @@ extern void intel_display_print_error_state(struct seq_file *m,
  * must be set to prevent GT core from power down and stale values being
  * returned.
  */
-void gen6_gt_force_wake_get(struct drm_i915_private *dev_priv);
-void gen6_gt_force_wake_put(struct drm_i915_private *dev_priv);
+void gen6_gt_force_wake_get(struct drm_i915_private *dev_priv, int fw_engine);
+void gen6_gt_force_wake_put(struct drm_i915_private *dev_priv, int fw_engine);
 int __gen6_gt_wait_for_fifo(struct drm_i915_private *dev_priv);
 
 u32 intel_dpio_read(struct drm_i915_private *dev_priv, int reg);
@@ -1618,6 +1626,24 @@ void intel_dpio_write(struct drm_i915_private *dev_priv, int reg, u32 val);
 
 void intel_iosf_rw(struct drm_i915_private *dev_priv,
 			u8 opcode, u32 port, u32 reg, u32 *val);
+
+void vlv_force_wake_get(struct drm_i915_private *dev_priv, int fw_engine);
+void vlv_force_wake_put(struct drm_i915_private *dev_priv, int fw_engine);
+
+#define FORCEWAKE_VLV_RENDER_RANGE_OFFSET(MmioOffset) \
+			((MmioOffset >= 0x2000 && MmioOffset < 0x4000) ||\
+			 (MmioOffset >= 0x5000 && MmioOffset < 0x8000) ||\
+			 (MmioOffset >= 0xB000 && MmioOffset < 0x12000) ||\
+			 (MmioOffset >= 0x2E000 && MmioOffset < 0x30000))
+
+#define FORCEWAKE_VLV_MEDIA_RANGE_OFFSET(MmioOffset)\
+			((MmioOffset >= 0x12000 && MmioOffset < 0x14000) ||\
+			 (MmioOffset >= 0x22000 && MmioOffset < 0x24000) ||\
+			 (MmioOffset >= 0x30000 && MmioOffset < 0x40000))
+
+#define FORCEWAKE_RENDER	(1 << 0)
+#define FORCEWAKE_MEDIA		(1 << 1)
+#define FORCEWAKE_ALL		(FORCEWAKE_RENDER | FORCEWAKE_MEDIA)
 
 #define __i915_read(x, y) \
 	u##x i915_read##x(struct drm_i915_private *dev_priv, u32 reg, bool trace);

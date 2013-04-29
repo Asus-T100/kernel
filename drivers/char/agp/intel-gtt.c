@@ -375,9 +375,9 @@ static unsigned int intel_gtt_stolen_size(void)
 			stolen_size = 0;
 			break;
 		}
-	} else if (INTEL_GTT_GEN == 6) {
+	} else if (INTEL_GTT_GEN >= 6) {
 		/*
-		 * SandyBridge has new memory control reg at 0x50.w
+		 * SandyBridge and above has new memory control reg at 0x50.
 		 */
 		u16 snb_gmch_ctl;
 		pci_read_config_word(intel_private.pcidev, SNB_GMCH_CTRL, &snb_gmch_ctl);
