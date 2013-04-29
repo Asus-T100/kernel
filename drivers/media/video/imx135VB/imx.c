@@ -675,6 +675,21 @@ static int imx_get_intg_factor(struct i2c_client *client,
 	buf.frame_length_lines = frame_length_lines;
 	buf.read_mode = read_mode;
 
+	ret = imx_read_reg(client, 1, IMX_BINNING_ENABLE, data);
+	if (ret)
+		return ret;
+	/* 1:binning enabled, 0:disabled */
+	if (data[0] == 1) {
+		ret = imx_read_reg(client, 1, IMX_BINNING_TYPE, data);
+		if (ret)
+			return ret;
+		buf.binning_factor_x = data[0] >> 4 & 0x0f;
+		buf.binning_factor_y = data[0] & 0xf;
+	} else {
+		buf.binning_factor_x = 1;
+		buf.binning_factor_y = 1;
+	}
+
 	memcpy(&info->data, &buf, sizeof(buf));
 
 out:
