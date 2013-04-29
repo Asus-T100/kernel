@@ -98,7 +98,7 @@
 
 #define ULPMC_BC_FAULT_REG			0x4B
 #define FAULT_WDT_TMR_EXP			(1 << 7)
-#define FAULT_OTG_FLT				(1 << 6)
+#define FAULT_VBUS_OVP				(1 << 6)
 /* D4, D5 show charger fault status */
 #define FAULT_CHRG_NORMAL			(0 << 4)
 #define FAULT_CHRG_IN_FLT			(1 << 4)
@@ -118,6 +118,7 @@
 #define FAULT_NTC_MASK				(7 << 0)
 
 /* ULPMC Battery Manager Registers */
+#define ULPMC_BM_REG_TEMP		0x34
 #define ULPMC_BM_REG_LOWBATT_THR	0x50 /* Low Battery Threshold */
 #define ULPMC_BM_REG_CRITBATT_THR	0x51 /* Critical Battery Threshold */
 #define LOWBATT_THR_SETTING		15	/* 15 perc */
@@ -204,6 +205,7 @@ static enum power_supply_property ulpmc_battery_props[] = {
 static enum power_supply_property ulpmc_charger_properties[] = {
 	POWER_SUPPLY_PROP_PRESENT,
 	POWER_SUPPLY_PROP_ONLINE,
+	POWER_SUPPLY_PROP_TYPE,
 	POWER_SUPPLY_PROP_HEALTH,
 	POWER_SUPPLY_PROP_CHARGE_CURRENT,
 	POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT,
@@ -405,7 +407,7 @@ static int ulpmc_charger_health(struct ulpmc_chip_info *chip)
 		goto report_chrg_health;
 	}
 
-	if ((fault & FAULT_CHRG_MASK) == FAULT_CHRG_IN_FLT) {
+	if (fault & FAULT_VBUS_OVP) {
 		dev_info(&chip->client->dev, "charger over voltage fault\n");
 		health = POWER_SUPPLY_HEALTH_OVERVOLTAGE;
 		goto report_chrg_health;
@@ -598,15 +600,10 @@ static int ulpmc_get_battery_property(struct power_supply *psy,
 		val->intval = ret;
 		break;
 	case POWER_SUPPLY_PROP_TEMP:
-		ret = ulpmc_read_reg16(chip->client, ULPMC_FG_REG_TEMP);
+		ret = ulpmc_read_reg8(chip->client, ULPMC_BM_REG_TEMP);
 		if (ret < 0)
 			goto i2c_read_err;
-		dev_dbg(&chip->client->dev, "BQ FG Temp:%d\n", ret - 2731);
-		/*
-		 * RVP doesn't support temperature readings.
-		 * This feature will be supported on PR1.
-		 */
-		val->intval = 350;
+		val->intval = ret * 10;
 		break;
 	case POWER_SUPPLY_PROP_TECHNOLOGY:
 		ret = ulpmc_read_reg8(chip->client, ULPMC_BM_REG_BATT_PRESENT);
@@ -932,13 +929,62 @@ static void ulpmc_init_irq(struct ulpmc_chip_info *chip)
 	}
 }
 
+static void handle_extcon_events(struct ulpmc_chip_info *chip)
+{
+	int chrg_type, idx, ret;
+	u32 event;
+
+	/* current extcon cable status */
+	event = chip->edev->state;
+	dev_info(&chip->client->dev, "extcon cur state:%d\n", event);
+
+	if (!event) {
+		chrg_type = POWER_SUPPLY_TYPE_USB;
+		goto extcon_evt_ret;
+	}
+	/* get the edev index from extcon event */
+	for (idx = 0; idx < chip->edev->max_supported; idx++) {
+		if ((event >> idx) & 0x1)
+			break;
+	}
+	/* get extcon cable type */
+	ret = extcon_find_cable_type(chip->edev, idx);
+	if (ret < 0) {
+		dev_warn(&chip->client->dev,
+			"extcon_find_cable_type failed\n");
+		chrg_type = POWER_SUPPLY_TYPE_USB;
+		goto extcon_evt_ret;
+	}
+
+	switch (ret) {
+	case EXTCON_SDP:
+		chrg_type = POWER_SUPPLY_TYPE_USB;
+		break;
+	case EXTCON_CDP:
+		chrg_type = POWER_SUPPLY_TYPE_USB_CDP;
+		break;
+	case EXTCON_DCP:
+		chrg_type = POWER_SUPPLY_TYPE_USB_DCP;
+		break;
+	case EXTCON_ACA:
+		chrg_type = POWER_SUPPLY_TYPE_USB_ACA;
+		break;
+	default:
+		chrg_type = POWER_SUPPLY_TYPE_USB;
+		dev_warn(&chip->client->dev, "unknown extcon cable\n");
+	}
+
+extcon_evt_ret:
+	chip->chrg.type = chrg_type;
+}
+
 static int ulpmc_extcon_callback(struct notifier_block *nb,
-					unsigned long event, void *data)
+					unsigned long old_state, void *data)
 {
 	struct ulpmc_chip_info *chip = container_of(nb,
 					struct ulpmc_chip_info, nb);
 
-	dev_info(&chip->client->dev, "In extcon callback\n");
+	handle_extcon_events(chip);
 	power_supply_changed(&chip->bat);
 	return NOTIFY_OK;
 }
@@ -1132,6 +1178,9 @@ static int ulpmc_battery_probe(struct i2c_client *client,
 	set_s0ix_soc_thresholds(chip);
 	/* get irq and register */
 	ulpmc_init_irq(chip);
+	/* check for charger presence */
+	if (chip->edev)
+		handle_extcon_events(chip);
 	return 0;
 
 probe_failed_2:
