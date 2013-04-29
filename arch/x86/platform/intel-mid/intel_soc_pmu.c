@@ -20,6 +20,7 @@
 #include "intel_soc_pmu.h"
 #include <linux/proc_fs.h>
 #include <asm/intel_mid_rpmsg.h>
+#include <asm/mwait.h>
 
 #ifdef CONFIG_DRM_INTEL_MID
 #define GFX_ENABLE
@@ -760,14 +761,74 @@ module_param(enable_standby, uint, 0000);
  * to enable S0ix/S3
  */
 unsigned int enable_s3 __read_mostly = 1;
-module_param(enable_s3, uint, S_IRUGO | S_IWUSR);
+int set_enable_s3(const char *val, struct kernel_param *kp)
+{
+	int rv = param_set_int(val, kp);
+	if (rv)
+		return rv;
+
+	if (platform_is(INTEL_ATOM_MRFLD)) {
+		if (!enable_s3)
+			__pm_stay_awake(mid_pmu_cxt->pmu_wake_lock);
+		else
+			__pm_relax(mid_pmu_cxt->pmu_wake_lock);
+	}
+
+	return 0;
+}
+module_param_call(enable_s3, set_enable_s3, param_get_uint,
+				&enable_s3, S_IRUGO | S_IWUSR);
 
 /* FIXME:: We have issues with S0ix/S3 enabling by default
  * with display lockup, HSIC etc., so have a boot time option
  * to enable S0ix/S3
  */
 unsigned int enable_s0ix __read_mostly = 1;
-module_param(enable_s0ix, uint, S_IRUGO | S_IWUSR);
+int set_enable_s0ix(const char *val, struct kernel_param *kp)
+{
+	int rv = param_set_int(val, kp);
+	if (rv)
+		return rv;
+
+	if (platform_is(INTEL_ATOM_MRFLD)) {
+		if (!enable_s0ix) {
+			mid_pmu_cxt->cstate_ignore =
+				~((1 << MWAIT_MAX_NUM_CSTATES) - 1);
+
+			/* Ignore C2, C3, C4, C5 states */
+			mid_pmu_cxt->cstate_ignore |= (1 << 1);
+			mid_pmu_cxt->cstate_ignore |= (1 << 2);
+			mid_pmu_cxt->cstate_ignore |= (1 << 3);
+			mid_pmu_cxt->cstate_ignore |= (1 << 4);
+
+			/* For now ignore C7, C8, C9, C10 states */
+			mid_pmu_cxt->cstate_ignore |= (1 << 6);
+			mid_pmu_cxt->cstate_ignore |= (1 << 7);
+			mid_pmu_cxt->cstate_ignore |= (1 << 8);
+			mid_pmu_cxt->cstate_ignore |= (1 << 9);
+
+			/* Restrict platform Cx state to C6 */
+			pm_qos_update_request(mid_pmu_cxt->cstate_qos,
+						(CSTATE_EXIT_LATENCY_S0i1-1));
+		} else {
+			mid_pmu_cxt->cstate_ignore =
+				~((1 << MWAIT_MAX_NUM_CSTATES) - 1);
+
+			/* Ignore C2, C3, C4, C5 states */
+			mid_pmu_cxt->cstate_ignore |= (1 << 1);
+			mid_pmu_cxt->cstate_ignore |= (1 << 2);
+			mid_pmu_cxt->cstate_ignore |= (1 << 3);
+			mid_pmu_cxt->cstate_ignore |= (1 << 4);
+
+			pm_qos_update_request(mid_pmu_cxt->cstate_qos,
+							PM_QOS_DEFAULT_VALUE);
+		}
+	}
+
+	return 0;
+}
+module_param_call(enable_s0ix, set_enable_s0ix, param_get_uint,
+				&enable_s0ix, S_IRUGO | S_IWUSR);
 
 int pmu_set_emmc_to_d0i0_atomic(void)
 {
