@@ -416,6 +416,7 @@ static int __dbi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 	struct drm_device *dev;
 	int reset_count = 10;
 	int err = 0;
+	u32 power_island = 0;
 	struct mdfld_dsi_pkg_sender *sender
 			= mdfld_dsi_get_pkg_sender(dsi_config);
 
@@ -427,6 +428,14 @@ static int __dbi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 	ctx = &dsi_config->dsi_hw_context;
 	dev = dsi_config->dev;
 	dev_priv = dev->dev_private;
+
+	power_island = pipe_to_island(dsi_config->pipe);
+
+	if (power_island & (OSPM_DISPLAY_A | OSPM_DISPLAY_C))
+		power_island |= OSPM_DISPLAY_MIO;
+
+	if (!power_island_get(power_island))
+		return -EAGAIN;
 
 	mdfld_dsi_dsr_forbid_locked(dsi_config);
 reset_recovery:
@@ -494,6 +503,7 @@ int __dbi_power_off(struct mdfld_dsi_config *dsi_config)
 	int pipe0_enabled;
 	int pipe2_enabled;
 	int err = 0;
+	u32 power_island = 0;
 
 	if (!dsi_config)
 		return -EINVAL;
@@ -531,6 +541,15 @@ int __dbi_power_off(struct mdfld_dsi_config *dsi_config)
 	REG_WRITE(regs->mipi_reg,
 	      REG_READ(regs->mipi_reg) & (~PASS_FROM_SPHY_TO_AFE));
 power_off_err:
+
+	power_island = pipe_to_island(dsi_config->pipe);
+
+	if (power_island & (OSPM_DISPLAY_A | OSPM_DISPLAY_C))
+		power_island |= OSPM_DISPLAY_MIO;
+
+	if (!power_island_put(power_island))
+		return -EINVAL;
+
 	return err;
 }
 
@@ -636,11 +655,6 @@ int mdfld_generic_dsi_dbi_set_power(struct drm_encoder *encoder, bool on)
 
 	switch (on) {
 	case true:
-		if (!power_island_get(OSPM_DISPLAY_ISLAND)) {
-			DRM_ERROR("%s: Failed to power up islands\n", __func__);
-			return -EAGAIN;
-		}
-
 		/* panel is already on */
 		if (dsi_config->dsi_hw_context.panel_on)
 			goto fun_exit;
@@ -667,8 +681,6 @@ int mdfld_generic_dsi_dbi_set_power(struct drm_encoder *encoder, bool on)
 
 		dsi_config->dsi_hw_context.panel_on = 0;
 		dbi_output->dbi_panel_on = 0;
-		power_island_put(OSPM_DISPLAY_ISLAND);
-
 		break;
 	default:
 		break;
