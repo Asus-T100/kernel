@@ -502,7 +502,7 @@ void DC_Calibrate(struct snd_soc_codec *codec)
 int rt5640_headset_detect(struct snd_soc_codec *codec, int jack_insert)
 {
 	int jack_type;
-	int sclk_src;
+	int sclk_src = 0;
 
 	if (jack_insert) {
 		if (SND_SOC_BIAS_OFF == codec->dapm.bias_level) {
