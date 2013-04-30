@@ -118,11 +118,10 @@
 #define FAULT_NTC_MASK				(7 << 0)
 
 /* ULPMC Battery Manager Registers */
-#define ULPMC_BM_REG_TEMP		0x34
-#define ULPMC_BM_REG_LOWBATT_THR	0x50 /* Low Battery Threshold */
-#define ULPMC_BM_REG_CRITBATT_THR	0x51 /* Critical Battery Threshold */
+#define ULPMC_BM_REG_LOWBAT_BTP		0x30
 #define LOWBATT_THR_SETTING		15	/* 15 perc */
-#define CRITBATT_THR_SETTING		4	/* 4 perc */
+#define CRITBATT_THR_SETTING		5	/* 5 perc */
+#define ULPMC_BM_REG_TEMP		0x34
 
 #define ULPMC_BM_REG_RESVBATT_THR	0x52 /* Reserve Battery Threhsold */
 #define ULPMC_BM_REG_CNTL		0x53 /* UMPLC command register */
@@ -540,6 +539,18 @@ batt_stat_report:
 	return ret;
 }
 
+static int ulpmc_get_capacity(struct ulpmc_chip_info *chip)
+{
+	int ret;
+
+	if (chip->pdata->version == BYTULPMCFGV3)
+		ret = ulpmc_read_reg16(chip->client, ULPMC_FG_REG_SOC);
+	else
+		ret = ulpmc_read_reg16(chip->client, ULPMC_FG_REG_SOC_V4);
+
+	return ret;
+}
+
 static int ulpmc_get_battery_property(struct power_supply *psy,
 					enum power_supply_property psp,
 					union power_supply_propval *val)
@@ -590,11 +601,7 @@ static int ulpmc_get_battery_property(struct power_supply *psy,
 		val->intval = (ret & FG_FLAG_BDET) ? 1 : 0;
 		break;
 	case POWER_SUPPLY_PROP_CAPACITY:
-		if (chip->pdata->version == BYTULPMCFGV3)
-			ret = ulpmc_read_reg16(chip->client, ULPMC_FG_REG_SOC);
-		else
-			ret = ulpmc_read_reg16(chip->client,
-							ULPMC_FG_REG_SOC_V4);
+		ret = ulpmc_get_capacity(chip);
 		if (ret < 0)
 			goto i2c_read_err;
 		val->intval = ret;
@@ -996,26 +1003,49 @@ static void set_s0ix_soc_thresholds(struct ulpmc_chip_info *chip)
 	/* set 1% soc trigger threshold */
 	ret = ulpmc_write_reg8(chip->client, ULPMC_SOC_INT_TRIG_REG, 1);
 	if (ret < 0)
-		dev_err(&chip->client->dev, "i2c write error:%d\n", ret);
-	/*
-	 * TODO: set low or critical battery
-	 * warning threshold  to 0x0 once after
-	 * getting offset details from ulpmc team.
-	 */
+		goto s0ix_thr_err;
+
+	/* set 0% as lowbatt threshold */
+	ret = ulpmc_write_reg16(chip->client, ULPMC_BM_REG_LOWBAT_BTP, 0);
+	if (ret < 0)
+		goto s0ix_thr_err;
+
+	return ;
+
+s0ix_thr_err:
+	dev_err(&chip->client->dev, "i2c write error:%d\n", ret);
 }
 
 static void set_s3_soc_thresholds(struct ulpmc_chip_info *chip)
 {
 	int ret;
+	u16 low_thr;
+
+	ret = ulpmc_get_capacity(chip);
+	if (ret < 0)
+		goto s3_thr_err;
+
+	if (ret > LOWBATT_THR_SETTING)
+		low_thr = LOWBATT_THR_SETTING;
+	else if (ret > CRITBATT_THR_SETTING)
+		low_thr = CRITBATT_THR_SETTING;
+	else
+		low_thr = 0;
+
+	/* set lowbatt threshold */
+	ret = ulpmc_write_reg16(chip->client, ULPMC_BM_REG_LOWBAT_BTP, low_thr);
+	if (ret < 0)
+		goto s3_thr_err;
 
 	/* disable 1% soc change interrupts */
 	ret = ulpmc_write_reg8(chip->client, ULPMC_SOC_INT_TRIG_REG, 0);
 	if (ret < 0)
-		dev_err(&chip->client->dev, "i2c write error:%d\n", ret);
-	/*
-	 * TODO: set low or critical battery
-	 * warning threshold based on current SOC.
-	 */
+		goto s3_thr_err;
+
+	return ;
+
+s3_thr_err:
+	dev_err(&chip->client->dev, "i2c write error:%d\n", ret);
 }
 
 void ulpmc_fwupdate_enter(void)
