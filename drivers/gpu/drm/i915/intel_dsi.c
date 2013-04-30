@@ -398,8 +398,8 @@ static void set_dsi_timings(struct drm_encoder *encoder,
 	hsync = txbyteclkhs(hsync, bpp, lane_count);
 	hbp = txbyteclkhs(hbp, bpp, lane_count);
 
-	I915_WRITE(0xb034, hactive);
-	I915_WRITE(0xb030, hfp);
+	I915_WRITE(MIPI_HACTIVE_AREA_COUNT(pipe), hactive);
+	I915_WRITE(MIPI_HFP_COUNT(pipe), hfp);
 	I915_WRITE(MIPI_HSYNC_PADDING_COUNT(pipe), hsync);
 	I915_WRITE(MIPI_HBP_COUNT(pipe), hbp);
 
@@ -447,7 +447,7 @@ static void intel_dsi_mode_set(struct drm_encoder *encoder,
 
 	DRM_DEBUG_KMS("\n");
 
-	/* Enable bandgap fix in GOP driver */
+	/* Enable bandgap fix */
 	intel_cck_write32_bits(dev_priv, 0x6D, 0x00010000, 0x00030000);
 	msleep(20);
 	intel_cck_write32_bits(dev_priv, 0x6E, 0x00010000, 0x00030000);
@@ -475,10 +475,6 @@ static void intel_dsi_mode_set(struct drm_encoder *encoder,
 	/* Need huge delay, otherwise clock is not stable */
 	msleep(100);
 
-	/* Enable all clock gating */
-	I915_WRITE(0x6200, 0xffffffff);
-	I915_WRITE(0x6204, 0xffffffff);
-
 	/* MIPI PORT Control register */
 	I915_WRITE(0x61190, 0x80010000);
 
@@ -490,13 +486,13 @@ static void intel_dsi_mode_set(struct drm_encoder *encoder,
 	 */
 
 	/* enable panel backlight and pwm*/
+	/* need to do this as per panel enabling sequence */
 	intel_mid_pmic_writeb(0x4B, 0xFF);
 	intel_mid_pmic_writeb(0x4E, 0xFF);
 	intel_mid_pmic_writeb(0x51, 0x01);
 	intel_mid_pmic_writeb(0x52, 0x01);
 #endif
 
-	/* enable mipi port */
 	dsi_config(encoder);
 
 	I915_WRITE(MIPI_DPI_RESOLUTION(pipe),
@@ -506,66 +502,51 @@ static void intel_dsi_mode_set(struct drm_encoder *encoder,
 	set_dsi_timings(encoder, adjusted_mode);
 
 	val = intel_dsi->channel << VID_MODE_CHANNEL_NUMBER_SHIFT |
-		intel_dsi->dev.lane_count  << DATA_LANES_PRG_REG_SHIFT;
-
-	switch (intel_crtc->bpp) {
-	case 16:
-		val |= VID_MODE_FORMAT_RGB565;
-		break;
-	case 18:
-		val |= VID_MODE_FORMAT_RGB666;
-		break;
-	default:
-		DRM_ERROR("%d bpp is not supported\n", intel_crtc->bpp);
-	case 24:
-		val |= VID_MODE_FORMAT_RGB888;
-		break;
-	}
-
-	/* XXX: cmd mode vs. video mode */
+			intel_dsi->dev.lane_count  << DATA_LANES_PRG_REG_SHIFT |
+			intel_dsi->dev.pixel_format;
 	I915_WRITE(MIPI_DSI_FUNC_PRG(pipe), val);
 
-	/* one frame IIUC. if counter expires, EOT and stop state */
-	I915_WRITE(MIPI_HS_TX_TIMEOUT(pipe),
+	if ((intel_dsi->dev.operation_mode == DSI_VIDEO_MODE) && \
+			(intel_dsi->dev.video_mode_type == DSI_VIDEO_BURST))
+		I915_WRITE(MIPI_HS_TX_TIMEOUT(pipe),
+			txbyteclkhs(adjusted_mode->htotal + 1, bpp,
+			intel_dsi->dev.lane_count));
+	else
+		I915_WRITE(MIPI_HS_TX_TIMEOUT(pipe),
 		   txbyteclkhs(adjusted_mode->vtotal * adjusted_mode->htotal,
 			       bpp, intel_dsi->dev.lane_count));
 
 	I915_WRITE(MIPI_LP_RX_TIMEOUT(pipe), 0xffff);
-	I915_WRITE(MIPI_TURN_AROUND_TIMEOUT(pipe), 0x14); /* XXX: unit??? */
-
-	I915_WRITE(MIPI_DEVICE_RESET_TIMER(pipe), 0xffff); /* also 0xff */
-
-
+	I915_WRITE(MIPI_TURN_AROUND_TIMEOUT(pipe), 0x14);
+	I915_WRITE(MIPI_DEVICE_RESET_TIMER(pipe), 0xffff);
 	/* in terms of low power clock */
-	I915_WRITE(MIPI_INIT_COUNT(pipe), 0x7d0); /* also 0xf0 */
+	I915_WRITE(MIPI_INIT_COUNT(pipe), 0x7d0);
 
-	I915_WRITE(MIPI_EOT_DISABLE(pipe), 0);
+	if (intel_dsi->dev.eotp_pkt)
+		I915_WRITE(MIPI_EOT_DISABLE(pipe), 0);
+	else
+		I915_WRITE(MIPI_EOT_DISABLE(pipe), 1);
 
-	/* in terms of txbyteclkhs. actual high to low switch +
-	 * MIPI_STOP_STATE_STALL * MIPI_LP_BYTECLK */
-	I915_WRITE(MIPI_HIGH_LOW_SWITCH_COUNT(pipe), 0x46); /* also 0x25 */
-
-	/* XXX: low power clock equivalence in terms of byte clock. the number
-	 * of byte clocks occupied in one low power clock. based on txbyteclkhs
-	 * and txclkesc. txclkesc time / txbyteclk time * (105 +
-	 * MIPI_STOP_STATE_STALL) / 105. ???
-	 */
+	I915_WRITE(MIPI_HIGH_LOW_SWITCH_COUNT(pipe), 0x46);
 	I915_WRITE(MIPI_LP_BYTECLK(pipe), 1);
-
-	/* the bw essential for transmitting 16 long packets containing 252
-	 * bytes meant for dcs write memory command is programmed in this
-	 * register in terms of byte clocks. based on dsi transfer rate and the
-	 * number of lanes configured the time taken to transmit 16 long packets
-	 * in a dsi stream varies. */
 	I915_WRITE(MIPI_DBI_BW_CTRL(pipe), 0x820);
 
 	I915_WRITE(MIPI_CLK_LANE_SWITCH_TIME_CNT(pipe),
 		   0xa << LP_HS_SSW_CNT_SHIFT |
 		   0x14 << HS_LP_PWR_SW_CNT_SHIFT);
 
-	/* XXX: video mode vs. command mode */
-	I915_WRITE(MIPI_VIDEO_MODE_FORMAT(pipe),
-			VIDEO_MODE_NON_BURST_WITH_SYNC_PULSE);
+	if ((intel_dsi->dev.operation_mode == DSI_VIDEO_MODE) && \
+			(intel_dsi->dev.video_mode_type ==
+					DSI_VIDEO_NBURST_SPULSE))
+		I915_WRITE(MIPI_VIDEO_MODE_FORMAT(pipe),
+				VIDEO_MODE_NON_BURST_WITH_SYNC_PULSE);
+	else if ((intel_dsi->dev.operation_mode == DSI_VIDEO_MODE) &&	\
+			(intel_dsi->dev.video_mode_type ==
+					DSI_VIDEO_NBURST_SEVENT))
+		I915_WRITE(MIPI_VIDEO_MODE_FORMAT(pipe),
+				VIDEO_MODE_NON_BURST_WITH_SYNC_EVENTS);
+	else
+		I915_WRITE(MIPI_VIDEO_MODE_FORMAT(pipe), VIDEO_MODE_BURST);
 }
 
 static enum drm_connector_status

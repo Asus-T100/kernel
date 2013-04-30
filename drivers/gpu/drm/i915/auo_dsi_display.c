@@ -68,6 +68,11 @@ bool auo_init(struct intel_dsi_device *dsi)
 	 */
 	DRM_DEBUG_KMS("\n");
 
+	dsi->eotp_pkt = 1;
+	dsi->operation_mode = DSI_VIDEO_MODE;
+	dsi->video_mode_type = DSI_VIDEO_NBURST_SPULSE;
+	dsi->pixel_format = VID_MODE_FORMAT_RGB888;
+
 	return true;
 }
 

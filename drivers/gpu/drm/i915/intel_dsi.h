@@ -34,15 +34,29 @@
 #define dsi_16Bpp_packed		2
 #define dsi_24Bpp_packed		3
 
+#define DSI_18BPP_LOOSELY_PACKED		0
+#define DSI_18BPP_PACKED				1
+#define DSI_16BPP_PACKED				2
+#define DSI_24BPP_PACKED				3
+
 #define ColorConversionInBridge		0
 #define ColorConversionInHostController	1
 
+#define DSI_VIDEO_MODE		0
+#define DSI_CMD_MODE		1
+
+#define DSI_VIDEO_NBURST_SPULSE		0
+#define DSI_VIDEO_NBURST_SEVENT		1
+#define DSI_VIDEO_BURST				2
+
 #define DSI_HSS_PACKET_SIZE 4
 #define DSI_HSE_PACKET_SIZE 4
-#define DSI_HSA_LPACKET_EXTRA_SIZE 6
-#define DSI_HBP_LPACKET_EXTRA_SIZE 6
-#define DSI_HACTIVE_LPACKET_EXTRA_SIZE 6
-#define DSI_HFP_LPACKET_EXTRA_SIZE 6
+#define DSI_HSA_PACKET_EXTRA_SIZE 6
+#define DSI_HBP_PACKET_EXTRA_SIZE 6
+#define DSI_HACTIVE_PACKET_EXTRA_SIZE 6
+#define DSI_HFP_PACKET_EXTRA_SIZE 6
+#define DSI_HFP_PACKET_EXTRA_SIZE 6
+#define DSI_EOTP_PACKET_SIZE 4
 
 struct intel_dsi_device {
 	unsigned short panel_id;
@@ -51,6 +65,11 @@ struct intel_dsi_device {
 	unsigned int lane_count;
 	const struct intel_dsi_dev_ops *dev_ops;
 	void *dev_priv;
+	u8 eotp_pkt;
+	u8 operation_mode;
+	u8 video_mode_type;
+	u32 pixel_format;
+
 };
 
 /* XXX: this is just copy-paste from dvo for now */

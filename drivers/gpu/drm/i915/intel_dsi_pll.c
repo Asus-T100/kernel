@@ -21,7 +21,6 @@
  * DEALINGS IN THE SOFTWARE.
  *
  * Authors:
- *	Jesse Barnes <jesse.barnes@intel.com>
  *	Shobhit Kumar <shobhit.kumar@intel.com>
  *	Yogesh Mohan Marimuthu <yogesh.mohan.marimuthu@intel.com>
  */
@@ -71,64 +70,117 @@ struct dsi_clock_table dsi_clk_tbl[] = {
 		{1000, 80, 2},		/* dsi clock frequency in Mhz*/
 };
 
-int dsi_60hz_formula(struct intel_dsi *intel_dsi,
-		struct drm_display_mode *mode, u32 *dsi_clk)
-{
-	u32 bpp;
-	u32 bytes_per_line;
-	u32 bytes_per_frame;
-	u32 bytes_per_60_frame;
-	u32 bytes_per_60_frame_n_lanes;
+int dsi_rr_formula(struct intel_dsi *intel_dsi,
+		struct drm_display_mode *mode, u32 *dsi_clk) {
 	u32 hactive, vactive, hfp, hsync, hbp, vfp, vsync, vbp;
+	u32 pkt_pixel_size;		/* in bits */
 	u32 hsync_bytes;
 	u32 hbp_bytes;
 	u32 hactive_bytes;
 	u32 hfp_bytes;
+	u32 bytes_per_line;
+	u32 bytes_per_frame;
+	u32 num_frames;
+	u32 bytes_per_x_frames;
+	u32 bytes_per_x_frames_x_lanes;
 	u32 dsi_byte_clock_hz;
 	u32 dsi_bit_clock_hz;
 
-	if (intel_dsi->dsi_packet_format == dsi_24Bpp_packed)
-		bpp = 24;
-	else if (intel_dsi->dsi_packet_format == dsi_18Bpp_loosely_packed)
-		bpp = 24;
+	if (intel_dsi->dsi_packet_format == DSI_24BPP_PACKED)
+		pkt_pixel_size = 24;
+	else if (intel_dsi->dsi_packet_format == DSI_18BPP_LOOSELY_PACKED)
+		pkt_pixel_size = 24;
+	else if (intel_dsi->dsi_packet_format == DSI_18BPP_PACKED)
+		pkt_pixel_size = 18;
+	else if (intel_dsi->dsi_packet_format == DSI_16BPP_PACKED)
+		pkt_pixel_size = 16;
 	else
-		bpp = 18;
+		return -ECHRNG;
 
 	hactive = mode->hdisplay;
 	vactive = mode->vdisplay;
 	hfp = mode->hsync_start - mode->hdisplay;
 	hsync = mode->hsync_end - mode->hsync_start;
 	hbp = mode->htotal - mode->hsync_end;
-
 	vfp = mode->vsync_start - mode->vdisplay;
 	vsync = mode->vsync_end - mode->vsync_start;
 	vbp = mode->vtotal - mode->vsync_end;
 
-	hsync_bytes = ((hsync * bpp) / 8) + (((hsync * bpp) % 8) && 1);
-	hbp_bytes = ((hbp * bpp) / 8) + (((hbp * bpp) % 8) && 1);
-	hactive_bytes = ((hactive * bpp) / 8) + (((hactive * bpp) % 8) && 1);
-	hfp_bytes = ((hfp * bpp) / 8) + (((hfp * bpp) % 8) && 1);
+	hsync_bytes = ((hsync * pkt_pixel_size) / 8) +
+			(((hsync * pkt_pixel_size) % 8) && 1);
+	hbp_bytes = ((hbp * pkt_pixel_size) / 8) +
+			(((hbp * pkt_pixel_size) % 8) && 1);
+	hactive_bytes = ((hactive * pkt_pixel_size) / 8) +
+			(((hactive * pkt_pixel_size) % 8) && 1);
+	hfp_bytes = ((hfp * pkt_pixel_size) / 8) +
+			(((hfp * pkt_pixel_size) % 8) && 1);
+
+	DRM_DEBUG_KMS("### hactive = %0d\n", hactive);
+	DRM_DEBUG_KMS("### hfp = %0d\n", hfp);
+	DRM_DEBUG_KMS("### hsync = %0d\n", hsync);
+	DRM_DEBUG_KMS("### hbp = %0d\n", hbp);
+	DRM_DEBUG_KMS("### vfp = %0d\n", vfp);
+	DRM_DEBUG_KMS("### vsync = %0d\n", vsync);
+	DRM_DEBUG_KMS("### vbp = %0d\n", vbp);
+	DRM_DEBUG_KMS("### hsync_bytes = %0d\n", hsync_bytes);
+	DRM_DEBUG_KMS("### hbp_bytes = %0d\n", hbp_bytes);
+	DRM_DEBUG_KMS("### hactive_bytes = %0d\n", hactive_bytes);
+	DRM_DEBUG_KMS("### hfp_bytes = %0d\n", hfp_bytes);
 
 	bytes_per_line = DSI_HSS_PACKET_SIZE + hsync_bytes + \
-		DSI_HSA_LPACKET_EXTRA_SIZE + DSI_HSE_PACKET_SIZE + \
-		hbp_bytes + DSI_HBP_LPACKET_EXTRA_SIZE + \
-		hactive_bytes + DSI_HACTIVE_LPACKET_EXTRA_SIZE + \
-		hfp_bytes + DSI_HFP_LPACKET_EXTRA_SIZE;
+		DSI_HSA_PACKET_EXTRA_SIZE + DSI_HSE_PACKET_SIZE + \
+		hbp_bytes + DSI_HBP_PACKET_EXTRA_SIZE + \
+		hactive_bytes + DSI_HACTIVE_PACKET_EXTRA_SIZE + \
+		hfp_bytes + DSI_HFP_PACKET_EXTRA_SIZE;
+
+	if ((intel_dsi->dev.eotp_pkt == 1) && \
+			(intel_dsi->dev.operation_mode == DSI_VIDEO_MODE) && \
+			(intel_dsi->dev.video_mode_type == DSI_VIDEO_BURST)) {
+		bytes_per_line = bytes_per_line + DSI_EOTP_PACKET_SIZE;
+		/* Need to accurately calculate LP to HS transition
+		 * timeout and add it to bytes_per_line*/
+	}
 
 	bytes_per_frame = (vsync * bytes_per_line) + (vbp * bytes_per_line) + \
 			(vactive * bytes_per_line) + (vfp * bytes_per_line);
 
-	bytes_per_60_frame = 60 * bytes_per_frame;
+	if ((intel_dsi->dev.eotp_pkt == 1) &&
+			(intel_dsi->dev.operation_mode == DSI_VIDEO_MODE)) {
+		if ((intel_dsi->dev.video_mode_type ==
+				DSI_VIDEO_NBURST_SPULSE) ||
+				(intel_dsi->dev.video_mode_type ==
+				DSI_VIDEO_NBURST_SEVENT))
+			bytes_per_frame = bytes_per_frame +
+					DSI_EOTP_PACKET_SIZE;
+			/* Need to accurately calculate LP to HS
+			 * transition timeout and add it to bytes_per_frame*/
+	}
 
-	bytes_per_60_frame_n_lanes = bytes_per_60_frame /
+	num_frames = (mode->clock * 1000) / (mode->htotal * mode->vtotal);
+	bytes_per_x_frames = num_frames * bytes_per_frame;
+	bytes_per_x_frames_x_lanes = bytes_per_x_frames /
 			intel_dsi->dev.lane_count;
 
 	/* the dsi clock is divided by 2 in the hardware to get dsi ddr clock */
-	dsi_byte_clock_hz = bytes_per_60_frame_n_lanes;
+	dsi_byte_clock_hz = bytes_per_x_frames_x_lanes;
 	dsi_bit_clock_hz = dsi_byte_clock_hz * 8;
-
 	*dsi_clk = dsi_bit_clock_hz / (1000 * 1000);
 
+	if ((intel_dsi->dev.eotp_pkt == 1) &&
+			(intel_dsi->dev.operation_mode == DSI_VIDEO_MODE) &&
+			(intel_dsi->dev.video_mode_type == DSI_VIDEO_BURST)) {
+		*dsi_clk = *dsi_clk * 2;
+	}
+
+	DRM_DEBUG_KMS("### bytes_per_line = %0d\n", bytes_per_line);
+	DRM_DEBUG_KMS("### bytes_per_frame = %0d\n", bytes_per_frame);
+	DRM_DEBUG_KMS("### num_frames = %0d\n", num_frames);
+	DRM_DEBUG_KMS("### bytes_per_x_frames = %0d\n", bytes_per_x_frames);
+	DRM_DEBUG_KMS("### bytes_per_x_frames_x_lanes = %0d\n",
+			bytes_per_x_frames_x_lanes);
+	DRM_DEBUG_KMS("### dsi_byte_clock_hz = %0d\n", dsi_byte_clock_hz);
+	DRM_DEBUG_KMS("### dsi_bit_clock_hz = %0d\n", dsi_bit_clock_hz);
+	DRM_DEBUG_KMS("### dsi_clk = %0d\n", *dsi_clk);
 	return 0;
 }
 
@@ -156,8 +208,8 @@ int get_dsi_clk(struct intel_dsi *intel_dsi, struct drm_display_mode *mode, \
 		u32 *dsi_clk)
 {
 
-	/*return dsi_60hz_formula(intel_dsi, mode, dsi_clk);*/
-	return dsi_15percent_formula(intel_dsi, mode, dsi_clk);
+	return dsi_rr_formula(intel_dsi, mode, dsi_clk);
+	/*return dsi_15percent_formula(intel_dsi, mode, dsi_clk);*/
 }
 
 int mnp_from_clk_table(u32 dsi_clk, struct dsi_mnp *dsi_mnp)
