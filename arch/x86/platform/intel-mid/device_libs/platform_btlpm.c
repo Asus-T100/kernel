@@ -91,7 +91,12 @@ static int __init bluetooth_init(void)
 			return -ENODEV;
 		}
 	} else {
-		bcm_bt_lpm_pdata.gpio_host_wake = 17;
+		/*
+		 * Once the FW configure it correctly, need to use
+		 * acpi_get_gpio_by_index() API to get gpio info. Now use
+		 * a hardcoded number as temp solution
+		 */
+		bcm_bt_lpm_pdata.gpio_host_wake = 147;
 		pr_err("baytrail, hardcoding GPIO Host Wake to %d\n",
 					bcm_bt_lpm_pdata.gpio_host_wake);
 		bcm_bt_lpm_pdata.int_host_wake = 70;
