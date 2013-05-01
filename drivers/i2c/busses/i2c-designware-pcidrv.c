@@ -803,9 +803,8 @@ const struct pci_device_id *id)
 	dev->clk_khz = controller->clk_khz;
 	dev->speed_cfg = dev->master_cfg & DW_IC_SPEED_MASK;
 	dev->use_dyn_clk = 0;
+	dev->reset = controller->reset;
 
-	if (controller->reset)
-		controller->reset(dev);
 	pci_set_drvdata(pdev, dev);
 
 	dev->tx_fifo_depth = controller->tx_fifo_depth;

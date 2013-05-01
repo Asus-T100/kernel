@@ -218,6 +218,7 @@ struct dw_i2c_dev {
 	struct clk		*clk;
 	u32			(*get_clk_rate_khz) (struct dw_i2c_dev *dev);
 	int			(*get_scl_cfg) (struct dw_i2c_dev *dev);
+	void			(*reset)(struct dw_i2c_dev *dev);
 	struct dw_pci_controller *controller;
 	int			enable_stop;
 	int			cmd_err;
