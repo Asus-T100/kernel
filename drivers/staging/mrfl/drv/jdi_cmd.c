@@ -393,7 +393,7 @@ int jdi_cmd_set_brightness(
 {
 	struct mdfld_dsi_pkg_sender *sender =
 		mdfld_dsi_get_pkg_sender(dsi_config);
-	int duty_val = 0;
+	u8 duty_val = 0;
 
 	PSB_DEBUG_ENTRY("level = %d\n", level);
 
@@ -402,7 +402,7 @@ int jdi_cmd_set_brightness(
 		return -EINVAL;
 	}
 
-	duty_val = (0xFFF * level) / 100;
+	duty_val = (0xFF * level) / 100;
 	mdfld_dsi_send_mcs_short_hs(sender,
 			write_display_brightness, duty_val, 1,
 			MDFLD_DSI_SEND_PACKAGE);
