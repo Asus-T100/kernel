@@ -265,7 +265,6 @@ static void serial_m3110_stop_rx(struct uart_port *port)
 	return;
 }
 
-#define WORDS_PER_XFER	128
 static void send_circ_buf(struct uart_max3110 *max,
 				struct circ_buf *xmit)
 {
@@ -274,7 +273,7 @@ static void send_circ_buf(struct uart_max3110 *max,
 	int i, len, blen, dma_size, left, ret = 0;
 
 
-	dma_size = WORDS_PER_XFER * sizeof(u16) * 2;
+	dma_size = M3110_RX_FIFO_DEPTH * sizeof(u16) * 2;
 	buf = kzalloc(dma_size, GFP_KERNEL | GFP_DMA);
 	if (!buf)
 		return;
@@ -284,7 +283,7 @@ static void send_circ_buf(struct uart_max3110 *max,
 	while (!uart_circ_empty(xmit)) {
 		left = uart_circ_chars_pending(xmit);
 		while (left) {
-			len = min(left, WORDS_PER_XFER);
+			len = min(left, M3110_RX_FIFO_DEPTH);
 			blen = len * sizeof(u16);
 			memset(ibuf, 0, blen);
 
