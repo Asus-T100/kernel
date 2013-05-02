@@ -54,6 +54,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "pdump_physmem.h"
 #include "sync_server.h"
 #include "pvrsrv.h"
+#include "debug_request_ids.h"
 
 #include <linux/kernel.h>
 
@@ -72,6 +73,7 @@ struct _DC_DISPLAY_CONTEXT_
 
 	IMG_BOOL		bIssuedNullFlip;
 	IMG_HANDLE		hMISR;
+	IMG_HANDLE		hDebugNotify;
 };
 
 struct _DC_DEVICE_
@@ -257,6 +259,8 @@ static IMG_VOID _DCDisplayContextReleaseRef(DC_DISPLAY_CONTEXT *psDisplayContext
 	if (ui32RefCount == 0)
 	{
 		DC_DEVICE *psDevice = psDisplayContext->psDevice;
+
+		PVRSRVUnregisterDbgRequestNotify(psDisplayContext->hDebugNotify);
 
 		/* unregister the device from cmd complete notifications */
 		PVRSRVUnregisterCmdCompleteNotify(psDisplayContext->hCmdCompNotify);
@@ -832,6 +836,26 @@ static IMG_VOID _DCDisplayContextNotify(PVRSRV_CMDCOMP_HANDLE hCmdCompHandle)
 	_DCDisplayContextRun(psDisplayContext);
 }
 
+static IMG_VOID _DCDebugRequest(PVRSRV_DBGREQ_HANDLE hDebugRequestHandle, IMG_UINT32 ui32VerbLevel)
+{
+	DC_DISPLAY_CONTEXT	*psDisplayContext = (DC_DISPLAY_CONTEXT*) hDebugRequestHandle;
+
+	switch(ui32VerbLevel)
+	{
+		case DEBUG_REQUEST_VERBOSITY_LOW:
+			PVR_LOG(("Configs in-flight = %d", psDisplayContext->ui32ConfigsInFlight));
+			break;
+
+		case DEBUG_REQUEST_VERBOSITY_MEDIUM:
+			PVR_LOG(("Display context SCP status"));
+			SCPDumpStatus(psDisplayContext->psSCPContext);
+			break;
+			
+		default:
+			break;
+	}
+}
+
 /*****************************************************************************
  * Public interface functions exposed through the bridge to services client  *
  *****************************************************************************/
@@ -1176,10 +1200,22 @@ PVRSRV_ERROR DCDisplayContextCreate(DC_DEVICE *psDevice,
 		goto FailRegisterCmdComplete;
 	}
 
+	/* Register our debug request notify callback */
+	eError = PVRSRVRegisterDbgRequestNotify(&psDisplayContext->hDebugNotify,
+											_DCDebugRequest,
+											DEBUG_REQUEST_DC,
+											psDisplayContext);
+	if (eError != PVRSRV_OK)
+	{
+		goto FailRegisterDbgRequest;
+	}
+
 	*ppsDisplayContext = psDisplayContext;
 
 	return PVRSRV_OK;
 
+FailRegisterDbgRequest:
+	PVRSRVUnregisterCmdCompleteNotify(psDisplayContext->hCmdCompNotify);
 FailRegisterCmdComplete:
 	OSUninstallMISR(psDisplayContext->hMISR);
 FailMISR:
@@ -1248,7 +1284,9 @@ PVRSRV_ERROR DCDisplayContextConfigure(DC_DISPLAY_CONTEXT *psDisplayContext,
 									   SERVER_SYNC_PRIMITIVE **papsSync,
 									   IMG_BOOL *pabUpdate,
 									   IMG_UINT32 ui32DisplayPeriod,
-									   IMG_UINT32 ui32MaxDepth)
+									   IMG_UINT32 ui32MaxDepth,
+									   IMG_INT32 i32AcquireFenceFd,
+									   IMG_INT32 *pi32ReleaseFenceFd)
 {
 	DC_DEVICE *psDevice = psDisplayContext->psDevice;
 	PVRSRV_ERROR eError;
@@ -1280,6 +1318,10 @@ PVRSRV_ERROR DCDisplayContextConfigure(DC_DISPLAY_CONTEXT *psDisplayContext,
 			goto FailMaxDepth;
 		}
 	}
+
+	/* Reset the release fd */
+	if (pi32ReleaseFenceFd)
+		*pi32ReleaseFenceFd = -1;
 
 	/* If we get sent a NULL flip then we don't need to do the check or map */
 	if (ui32PipeCount != 0)
@@ -1331,12 +1373,14 @@ PVRSRV_ERROR DCDisplayContextConfigure(DC_DISPLAY_CONTEXT *psDisplayContext,
 							 ui32SyncOpCount,
 							 papsSync,
 							 pabUpdate,
+							 i32AcquireFenceFd,
 							 _DCDisplayContextReady,
 							 _DCDisplayContextConfigure,
 							 ui32CmdRdySize,
 							 ui32CmdCompSize,
 							 &pvReadyData,
-							 &pvCompleteData);
+							 &pvCompleteData,
+							 pi32ReleaseFenceFd);
 
 	if (eError != PVRSRV_OK)
 	{
@@ -1458,7 +1502,9 @@ PVRSRV_ERROR DCDisplayContextDestroy(DC_DISPLAY_CONTEXT *psDisplayContext)
 										   IMG_NULL,
 										   IMG_NULL,
 										   0,
-										   0);
+										   0,
+										   -1,
+										   IMG_NULL);
 
 		if (eError != PVRSRV_OK)
 		{

@@ -50,6 +50,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "devicemem.h"
 #include "devicemem_pdump.h"
 #include "osfunc.h"
+#include "rgxccb.h"
+
+#include "sync_server.h"
 #include "sync_internal.h"
 
 IMG_EXPORT
@@ -108,6 +111,7 @@ PVRSRV_ERROR PVRSRVRGXCreateComputeContextKM(PVRSRV_DEVICE_NODE			*psDeviceNode,
 	}
 	psTmpCleanup->psFWComputeContextMemDesc = *ppsFWComputeContextMemDesc;
 	psTmpCleanup->psDeviceNode = psDeviceNode;
+	psTmpCleanup->bDumpedCCBCtlAlready = IMG_FALSE;
 
 	/*
 		Temporarily map the firmware compute context to the kernel.
@@ -232,14 +236,125 @@ e0:
 
 
 IMG_EXPORT
-PVRSRV_ERROR PVRSRVRGXKickCDMKM(PVRSRV_DEVICE_NODE	*psDeviceNode,
+PVRSRV_ERROR PVRSRVRGXKickCDMKM(CONNECTION_DATA		*psConnection,
+								PVRSRV_DEVICE_NODE	*psDeviceNode,
 								DEVMEM_MEMDESC 		*psFWComputeContextMemDesc,
-								IMG_UINT32			ui32cCCBWoffUpdate,
-								IMG_BOOL			bbPDumpContinuous)
+								IMG_UINT32			*pui32cCCBWoffUpdate,
+								DEVMEM_MEMDESC 		*pscCCBMemDesc,
+								DEVMEM_MEMDESC 		*psCCBCtlMemDesc,
+								IMG_UINT32			ui32ServerSyncPrims,
+								PVRSRV_CLIENT_SYNC_PRIM_OP**	pasSyncOp,
+								SERVER_SYNC_PRIMITIVE **pasServerSyncs,
+								IMG_UINT32			ui32CmdSize,
+								IMG_PBYTE			pui8Cmd,
+								IMG_UINT32			ui32FenceEnd,
+								IMG_UINT32			ui32UpdateEnd,
+								IMG_BOOL			bPDumpContinuous,
+								RGX_CC_CLEANUP_DATA *psCleanupData)
 {
 	PVRSRV_ERROR			eError;
 	RGXFWIF_KCCB_CMD		sCmpKCCBCmd;
+	volatile RGXFWIF_CCCB_CTL	*psCCBCtl;
+	IMG_UINT8					*pui8CmdPtr;
+	IMG_UINT32 i = 0;
+	RGXFWIF_UFO					*psUFOPtr;
+	IMG_UINT8 *pui8FencePtr = pui8Cmd + ui32FenceEnd; 
+	IMG_UINT8 *pui8UpdatePtr = pui8Cmd + ui32UpdateEnd;
 
+	for (i = 0; i < ui32ServerSyncPrims; i++)
+	{
+		PVRSRV_CLIENT_SYNC_PRIM_OP *psSyncOp = pasSyncOp[i];
+
+			IMG_BOOL bUpdate;
+			
+			PVR_ASSERT(psSyncOp->ui32Flags != 0);
+			if (psSyncOp->ui32Flags & PVRSRV_CLIENT_SYNC_PRIM_OP_UPDATE)
+			{
+				bUpdate = IMG_TRUE;
+			}
+			else
+			{
+				bUpdate = IMG_FALSE;
+			}
+
+			eError = PVRSRVServerSyncQueueHWOpKM(pasServerSyncs[i],
+												  bUpdate,
+												  &psSyncOp->ui32FenceValue,
+												  &psSyncOp->ui32UpdateValue);
+			if (eError != PVRSRV_OK)
+			{
+				PVR_DPF((PVR_DBG_ERROR,"PVRSRVServerSyncQueueHWOpKM: Failed (0x%x)", eError));
+				return eError;
+			}
+			
+			if(psSyncOp->ui32Flags & PVRSRV_CLIENT_SYNC_PRIM_OP_CHECK)
+			{
+				psUFOPtr = (RGXFWIF_UFO *) pui8FencePtr;
+				psUFOPtr->puiAddrUFO.ui32Addr =  SyncPrimGetFirmwareAddr(psSyncOp->psSync);
+				psUFOPtr->ui32Value = psSyncOp->ui32FenceValue;
+				PDUMPCOMMENT("TQ client server fence - 0x%x <- 0x%x",
+								   psUFOPtr->puiAddrUFO.ui32Addr, psUFOPtr->ui32Value);
+				pui8FencePtr += sizeof(*psUFOPtr);
+			}
+			if(psSyncOp->ui32Flags & PVRSRV_CLIENT_SYNC_PRIM_OP_UPDATE)
+			{
+				psUFOPtr = (RGXFWIF_UFO *) pui8UpdatePtr;
+				psUFOPtr->puiAddrUFO.ui32Addr =  SyncPrimGetFirmwareAddr(psSyncOp->psSync);
+				psUFOPtr->ui32Value = psSyncOp->ui32UpdateValue;
+				PDUMPCOMMENT("TQ client server update - 0x%x -> 0x%x",
+								   psUFOPtr->puiAddrUFO.ui32Addr, psUFOPtr->ui32Value);
+				pui8UpdatePtr += sizeof(*psUFOPtr);
+			}
+		
+	}
+	
+	eError = DevmemAcquireCpuVirtAddr(psCCBCtlMemDesc,
+									  (IMG_VOID **)&psCCBCtl);
+	if (eError != PVRSRV_OK)
+	{
+		PVR_DPF((PVR_DBG_ERROR,"CreateCCB: Failed to map client CCB control (0x%x)", eError));
+		goto PVRSRVRGXKickCDMKM_Exit;
+	}
+	/*
+	 * Acquire space in the compute CCB for the command.
+	 */
+	eError = RGXAcquireCCB(psCCBCtl,
+						   pui32cCCBWoffUpdate,
+						   pscCCBMemDesc,
+						   ui32CmdSize,
+						   (IMG_PVOID *)&pui8CmdPtr,
+						   psCleanupData->bDumpedCCBCtlAlready,
+						   bPDumpContinuous);
+
+	if (eError != PVRSRV_OK)
+	{
+		PVR_DPF((PVR_DBG_ERROR, "RGXKickCDM: Failed to acquire %d bytes in client CCB", ui32CmdSize));
+		goto PVRSRVRGXKickCDMKM_Exit;
+	}
+	
+	OSMemCopy(pui8CmdPtr, pui8Cmd, ui32CmdSize);
+	
+	/*
+	 * Release the compute CCB for the command.
+	 */
+	PDUMPCOMMENT("Compute command");
+
+	eError = RGXReleaseCCB(psDeviceNode, 
+						   psCCBCtl,
+						   pscCCBMemDesc, 
+						   psCCBCtlMemDesc,
+						   &psCleanupData->bDumpedCCBCtlAlready,
+						   pui32cCCBWoffUpdate,
+						   ui32CmdSize, 
+						   bPDumpContinuous,
+						   psConnection->psSyncConnectionData);
+
+	if (eError != PVRSRV_OK)
+	{
+		PVR_DPF((PVR_DBG_ERROR, "RGXKickCDM: Failed to release space in Compute CCB"));
+		goto PVRSRVRGXKickCDMKM_Exit;
+	}
+	
 	/*
 	 * Construct the kernel compute CCB command.
 	 * (Safe to release reference to compute context virtual address because
@@ -249,7 +364,8 @@ PVRSRV_ERROR PVRSRVRGXKickCDMKM(PVRSRV_DEVICE_NODE	*psDeviceNode,
 	RGXSetFirmwareAddress(&sCmpKCCBCmd.uCmdData.sCmdKickData.psContext,
 						  psFWComputeContextMemDesc,
 						  0, RFW_FWADDR_NOREF_FLAG);
-	sCmpKCCBCmd.uCmdData.sCmdKickData.ui32CWoffUpdate = ui32cCCBWoffUpdate;
+	sCmpKCCBCmd.uCmdData.sCmdKickData.ui32CWoffUpdate = *pui32cCCBWoffUpdate;
+
 
 	/*
 	 * Submit the compute command to the firmware.
@@ -258,13 +374,19 @@ PVRSRV_ERROR PVRSRVRGXKickCDMKM(PVRSRV_DEVICE_NODE	*psDeviceNode,
 								RGXFWIF_DM_CDM,
 								&sCmpKCCBCmd,
 								sizeof(sCmpKCCBCmd),
-								bbPDumpContinuous);
+								bPDumpContinuous);
 	if (eError != PVRSRV_OK)
 	{
 		PVR_DPF((PVR_DBG_ERROR, "PVRSRVRGXKickCDMKM failed to schedule kernel CCB command. (0x%x)", eError));
 		goto PVRSRVRGXKickCDMKM_Exit;
 	}
 	
+/*	if (psSyncSubmitData)
+	{
+		SyncUtilSubmitDataDestroy(psSyncSubmitData);
+	}
+	*/
+	DevmemReleaseCpuVirtAddr(psCCBCtlMemDesc);
 PVRSRVRGXKickCDMKM_Exit:
 	return eError;
 }

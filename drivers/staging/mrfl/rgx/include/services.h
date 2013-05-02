@@ -181,8 +181,6 @@ typedef struct _PVRSRV_DEV_DATA_
 	PVRSRV_CONNECTION	 *psConnection;	/*!< Services connection info */
 	IMG_HANDLE			hDevCookie;				/*!< Dev cookie */
 
-	IMG_BOOL			bSyncPrimAlreadyPdumped;
-
 } PVRSRV_DEV_DATA;
 
 /*
@@ -1022,7 +1020,7 @@ IMG_IMPORT IMG_PVOID IMG_CALLCONV PVRSRVReallocUserModeMemTracking(IMG_VOID *pvM
 @Return         IMG_VOID
  */ /**************************************************************************/
 IMG_IMPORT IMG_VOID
-PVRSRVDumpDebugInfo(const PVRSRV_CONNECTION *psConnection);
+PVRSRVDumpDebugInfo(const PVRSRV_CONNECTION *psConnection, IMG_UINT32 ui32VerbLevel);
 
 
 /******************************************************************************
@@ -1073,6 +1071,9 @@ IMG_IMPORT PVRSRV_ERROR PVRSRVEventObjectWait(const PVRSRV_CONNECTION *psConnect
 IMG_IMPORT
 const IMG_CHAR *PVRSRVGetErrorString(PVRSRV_ERROR eError);
 
+
+IMG_IMPORT PVRSRV_ERROR
+PVRSRVKickDevices(const PVRSRV_CONNECTION *psConnection);
 
 /*!
  Time wrapping macro

@@ -46,6 +46,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define COMMON_RGXTQ_BRIDGE_H
 
 #include "rgx_bridge.h"
+#include "sync_external.h"
 
 
 /* FIXME: need to create pvrbridge_common.h" */
@@ -114,8 +115,20 @@ typedef struct PVRSRV_BRIDGE_IN_SUBMITTQ3DKICK_TAG
 {
 	IMG_HANDLE hDevNode;
 	IMG_HANDLE hFWTQ3DContext;
-	IMG_UINT32 ui32ui32TQ3DcCCBWoffUpdate;
+	IMG_PVOID pvui32TQ3DcCCBWoffUpdate;
+	IMG_HANDLE hcCCB;
+	IMG_HANDLE hcCCBCtl;
+	IMG_UINT32 ui32NumServerSyncs;
+	PVRSRV_CLIENT_SYNC_PRIM_OP* * psSyncOp;
+	IMG_HANDLE * phSyncHandle;
+	IMG_UINT32 ui32CmdSize;
+	IMG_BYTE * psCmd;
+	IMG_UINT32 ui32FenceOffset;
+	IMG_UINT32 ui32UpdateOffset;
+	IMG_UINT32 ui32NumFenceFds;
+	IMG_INT32 * pi32FenceFds;
 	IMG_BOOL bbPDumpContinuous;
+	IMG_HANDLE hCleanupCookie;
 } PVRSRV_BRIDGE_IN_SUBMITTQ3DKICK;
 
 
@@ -176,8 +189,20 @@ typedef struct PVRSRV_BRIDGE_IN_SUBMITTQ2DKICK_TAG
 {
 	IMG_HANDLE hDevNode;
 	IMG_HANDLE hFWTQ2DContext;
-	IMG_UINT32 ui32ui32TQ2DcCCBWoffUpdate;
+	IMG_PVOID pvui32TQ2DcCCBWoffUpdate;
+	IMG_HANDLE hcCCB;
+	IMG_HANDLE hcCCBCtl;
+	IMG_UINT32 ui32NumServerSyncs;
+	PVRSRV_CLIENT_SYNC_PRIM_OP* * psSyncOp;
+	IMG_HANDLE * phSyncHandle;
+	IMG_UINT32 ui32CmdSize;
+	IMG_BYTE * psCmd;
+	IMG_UINT32 ui32FenceOffset;
+	IMG_UINT32 ui32UpdateOffset;
+	IMG_UINT32 ui32NumFenceFds;
+	IMG_INT32 * pi32FenceFds;
 	IMG_BOOL bbPDumpContinuous;
+	IMG_HANDLE hCleanupCookie;
 } PVRSRV_BRIDGE_IN_SUBMITTQ2DKICK;
 
 

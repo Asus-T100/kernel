@@ -42,8 +42,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #ifndef _RGXCONFIG_KM_1_11_4_10_H_
 #define _RGXCONFIG_KM_1_11_4_10_H_
 
-/***** Automatically generated file (1/9/2013 5:43:28 PM): Do not edit manually ********************/
-/***** Timestamp:  (1/9/2013 5:43:28 PM)************************************************************/
+/***** Automatically generated file (4/8/2013 10:23:31 AM): Do not edit manually ********************/
+/***** Timestamp:  (4/8/2013 10:23:31 AM)************************************************************/
 /***** CS: @812371 ******************************************************************/
 
 
@@ -61,6 +61,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #define FIX_HW_BRN_36492
 #define FIX_HW_BRN_37200
+#define FIX_HW_BRN_38344
+#define FIX_HW_BRN_38835
 
 
  
@@ -68,19 +70,14 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  * Enhancements 
  *****************************************************************************/
 
-
-
 /******************************************************************************
- * DDK Defines
- *****************************************************************************/
+* DDK Defines
+*****************************************************************************/
+
 #define RGX_FEATURE_SLC_SIZE_IN_BYTES (128*1024)
 #define RGX_FEATURE_PHYS_BUS_WIDTH (40)
 #define RGX_FEATURE_AXI_ACELITE 
 #define RGX_FEATURE_SLC_CACHE_LINE_SIZE_BITS (512)
 #define RGX_FEATURE_VIRTUAL_ADDRESS_SPACE_BITS (40)
 
-
 #endif /* _RGXCONFIG_KM_1_11_4_10_H_ */
-
-
-

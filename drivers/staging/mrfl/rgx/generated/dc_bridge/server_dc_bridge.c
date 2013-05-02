@@ -1105,7 +1105,9 @@ PVRSRVBridgeDCDisplayContextConfigure(IMG_UINT32 ui32BridgeID,
 					psSyncInt,
 					bUpdateInt,
 					psDCDisplayContextConfigureIN->ui32DisplayPeriod,
-					psDCDisplayContextConfigureIN->ui32MaxDepth);
+					psDCDisplayContextConfigureIN->ui32MaxDepth,
+					psDCDisplayContextConfigureIN->i32AcquireFd,
+					&psDCDisplayContextConfigureOUT->i32ReleaseFd);
 
 
 

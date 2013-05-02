@@ -46,10 +46,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "devicemem.h"
 #include "pdump.h"
 #include "pvrsrv_error.h"
-
-#if defined(SUPPORT_SECURE_EXPORT)
 #include "connection_server.h"
-#endif
 
 #ifndef _SYNC_SERVER_H_
 #define _SYNC_SERVER_H_
@@ -58,9 +55,11 @@ typedef struct _SERVER_OP_COOKIE_ SERVER_OP_COOKIE;
 typedef struct _SERVER_SYNC_PRIMITIVE_ SERVER_SYNC_PRIMITIVE;
 typedef struct _SYNC_PRIMITIVE_BLOCK_ SYNC_PRIMITIVE_BLOCK;
 typedef struct _SERVER_SYNC_EXPORT_ SERVER_SYNC_EXPORT;
+typedef struct _SYNC_CONNECTION_DATA_ SYNC_CONNECTION_DATA;
 
 PVRSRV_ERROR
-PVRSRVAllocSyncPrimitiveBlockKM(PVRSRV_DEVICE_NODE *psDevNode,
+PVRSRVAllocSyncPrimitiveBlockKM(CONNECTION_DATA *psConnection,
+								PVRSRV_DEVICE_NODE *psDevNode,
 								SYNC_PRIMITIVE_BLOCK **ppsSyncBlk,
 								IMG_UINT32 *puiSyncPrimVAddr,
 								IMG_UINT32 *puiSyncPrimBlockSize,
@@ -142,6 +141,7 @@ PVRSRVServerSyncQueueSWOpKM(SERVER_SYNC_PRIMITIVE *psSync,
 
 PVRSRV_ERROR
 PVRSRVServerSyncQueueHWOpKM(SERVER_SYNC_PRIMITIVE *psSync,
+							   IMG_BOOL bUpdate,
 						       IMG_UINT32 *pui32FenceValue,
 						       IMG_UINT32 *pui32UpdateValue);
 
@@ -182,6 +182,20 @@ PVRSRVSyncPrimOpCompleteKM(SERVER_OP_COOKIE *psServerCookie);
 
 PVRSRV_ERROR
 PVRSRVSyncPrimOpDestroyKM(SERVER_OP_COOKIE *psServerCookie);
+
+IMG_UINT32 ServerSyncGetFWAddr(SERVER_SYNC_PRIMITIVE *psSync);
+
+IMG_UINT32 ServerSyncGetValue(SERVER_SYNC_PRIMITIVE *psSync);
+
+IMG_VOID ServerSyncDumpPending(IMG_VOID);
+
+PVRSRV_ERROR SyncRegisterConnection(SYNC_CONNECTION_DATA **ppsSyncConnectionData);
+IMG_VOID SyncUnregisterConnection(SYNC_CONNECTION_DATA *ppsSyncConnectionData);
+IMG_VOID SyncConnectionPDumpSyncBlocks(SYNC_CONNECTION_DATA *ppsSyncConnectionData);
+IMG_VOID SyncConnectionPDumpExit(SYNC_CONNECTION_DATA *psSyncConnectionData);
+
+PVRSRV_ERROR ServerSyncInit(IMG_VOID);
+IMG_VOID ServerSyncDeinit(IMG_VOID);
 
 #if defined(PDUMP)
 PVRSRV_ERROR

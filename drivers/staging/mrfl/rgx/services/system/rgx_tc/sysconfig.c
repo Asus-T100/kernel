@@ -53,6 +53,10 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "pci_support.h"
 #include "tcf_clk_ctrl.h"
 #include "tcf_pll.h"
+#if defined(SUPPORT_ION)
+#include <linux/ion.h>
+#include "ion_support.h"
+#endif
 
 #if defined(LDM_PCI) || defined(SUPPORT_DRM)
 /* The following is exported by the Linux module code */
@@ -230,11 +234,39 @@ static PVRSRV_ERROR InitLocalMemory(PVRSRV_SYSTEM_CONFIG *psSysConfig, SYS_DATA 
 
 	/* Setup the RGX heap */
 	psSysConfig->pasPhysHeaps[0].sStartAddr.uiAddr	= uiMemCpuPAddr;
-	psSysConfig->pasPhysHeaps[0].uiSize		= uiMemSize - RGX_TC_RESERVE_DC_MEM_SIZE;
+	psSysConfig->pasPhysHeaps[0].uiSize =
+		uiMemSize
+		- RGX_TC_RESERVE_DC_MEM_SIZE
+#if defined(SUPPORT_ION)
+		- RGX_TC_RESERVE_ION_MEM_SIZE
+#endif
+		;
 
 	/* Setup the DC heap */
 	psSysConfig->pasPhysHeaps[1].sStartAddr.uiAddr	= uiMemCpuPAddr + psSysConfig->pasPhysHeaps[0].uiSize;
 	psSysConfig->pasPhysHeaps[1].uiSize		= RGX_TC_RESERVE_DC_MEM_SIZE;
+
+#if defined(SUPPORT_ION)
+	/* Setup the ion heap */
+	psSysConfig->pasPhysHeaps[2].sStartAddr.uiAddr =
+		psSysConfig->pasPhysHeaps[1].sStartAddr.uiAddr + RGX_TC_RESERVE_DC_MEM_SIZE;
+	psSysConfig->pasPhysHeaps[2].uiSize = RGX_TC_RESERVE_ION_MEM_SIZE;
+
+	/* Set up the ion heap according to the physical heap we just created.
+	   This lets the ion support code continue to work if the heap
+	   configuration changes. FIXME: It's kind of ugly to do this by
+	   tweaking global variables. */
+	{
+		extern struct ion_platform_data gsTCIonConfig;
+		extern IMG_UINT32 gui32IonPhysHeapID;
+		extern IMG_CPU_PHYADDR gsPCIAddrRangeStart;
+		gsTCIonConfig.heaps[0].base =
+			psSysConfig->pasPhysHeaps[2].sStartAddr.uiAddr;
+		gsTCIonConfig.heaps[0].size = RGX_TC_RESERVE_ION_MEM_SIZE;
+		gui32IonPhysHeapID = psSysConfig->pasPhysHeaps[2].ui32PhysHeapID;
+		gsPCIAddrRangeStart = psSysConfig->pasPhysHeaps[0].sStartAddr;
+	}
+#endif
 
 	/* Configure Apollo for regression compatibility (i.e. local memory) mode */
 	ui32Value = OSReadHWReg32(psSysData->pvSystemRegCpuVBase, TCF_CLK_CTRL_TEST_CTRL);
@@ -1010,6 +1042,11 @@ PVRSRV_ERROR SysCreateConfigData(PVRSRV_SYSTEM_CONFIG **ppsSysConfig)
 
 #if (TC_MEMORY_CONFIG == TC_MEMORY_LOCAL) || (TC_MEMORY_CONFIG == TC_MEMORY_HYBRID)
 	gsPhysHeapConfig[1].hPrivData = (IMG_HANDLE)&gsSysConfig;
+#endif
+
+#if defined(SUPPORT_ION)
+	gsPhysHeapConfig[2].hPrivData = (IMG_HANDLE)&gsSysConfig;
+	IonInit();
 #endif
 
 	*ppsSysConfig = &gsSysConfig;

@@ -46,6 +46,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define COMMON_RGXCMP_BRIDGE_H
 
 #include "rgx_bridge.h"
+#include "sync_external.h"
 
 
 /* FIXME: need to create pvrbridge_common.h" */
@@ -111,8 +112,18 @@ typedef struct PVRSRV_BRIDGE_IN_RGXKICKCDM_TAG
 {
 	IMG_HANDLE hDevNode;
 	IMG_HANDLE hFWComputeContext;
-	IMG_UINT32 ui32cCCBWoffUpdate;
+	IMG_PVOID pvcCCBWoffUpdate;
+	IMG_HANDLE hcCCB;
+	IMG_HANDLE hcCCBCtl;
+	IMG_UINT32 ui32NumServerSyncs;
+	PVRSRV_CLIENT_SYNC_PRIM_OP* * psSyncOp;
+	IMG_HANDLE * phSyncHandle;
+	IMG_UINT32 ui32CmdSize;
+	IMG_BYTE * psCmd;
+	IMG_UINT32 ui32FenceOffset;
+	IMG_UINT32 ui32UpdateOffset;
 	IMG_BOOL bbPDumpContinuous;
+	IMG_HANDLE hCleanupCookie;
 } PVRSRV_BRIDGE_IN_RGXKICKCDM;
 
 

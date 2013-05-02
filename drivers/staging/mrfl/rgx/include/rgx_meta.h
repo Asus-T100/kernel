@@ -236,9 +236,9 @@ typedef struct
 #define RGXFW_SEGMMU_BOOTLDR_ID			(2)
 #define RGXFW_SEGMMU_THR1_ID			(3)
 
-/* To configure the Page Catalog used */
-#define RGXFW_SEGMMU_META_DM_PC(pc)			((((IMG_UINT64) ((pc) & 0xF)) << 44) | IMG_UINT64_C(0x70000000000))
-
+/* To configure the Page Catalog and BIF-DM fed into the BIF for Garten accesses through this segment */
+#define RGXFW_SEGMMU_META_DM_ID						(0x7)
+#define RGXFW_SEGMMU_META_DM_PC(pc, bifdm)			((((IMG_UINT64) ((pc) & 0xF)) << 44) | (((IMG_UINT64) ((bifdm) & 0xF)) << 40))
 /* META segments have 4kB minimum size */
 #define RGXFW_SEGMMU_ALIGN			(0x1000) 
 
@@ -260,7 +260,7 @@ typedef struct
 * 2nd thread
 ************************************************************************/
 #define RGXFW_THR1_PC		(0x78900000)
-#define RGXFW_THR1_SP		(0x78899000)
+#define RGXFW_THR1_SP		(0x7889B000)
 
 #endif /*  __RGX_META_H__ */
 
