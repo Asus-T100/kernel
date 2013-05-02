@@ -23,6 +23,8 @@
 #include "atomisp_internal.h"
 #include "ia_css_types.h"
 
+#include <asm/intel-mid.h>
+
 enum frame_info_type {
 	VF_FRAME,
 	OUTPUT_FRAME,
@@ -739,6 +741,10 @@ ia_css_input_set_mode(struct atomisp_device *isp,
 		      enum ia_css_input_mode mode)
 {
 	isp->css2_basis.stream_config.mode = mode;
-	if (mode == IA_CSS_INPUT_MODE_BUFFERED_SENSOR)
-		ia_css_mipi_frame_specify(0x60000, false);
+	if (mode == IA_CSS_INPUT_MODE_BUFFERED_SENSOR) {
+		if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER)
+			ia_css_mipi_frame_specify(0x80000, false);
+		else
+			ia_css_mipi_frame_specify(0x60000, false);
+	}
 }
