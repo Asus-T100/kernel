@@ -83,11 +83,13 @@ typedef struct PVRSRV_DATA_TAG
    	PVRSRV_SERVICES_STATE		eServicesState;				/*!< global driver state */
 
 	IMG_HANDLE					hGlobalEventObject;			/*!< OS Global Event Object */
+	IMG_UINT32					ui32GEOConsecutiveTimeouts;	/*!< OS Global Event Object Timeouts */
 	
 	PVRSRV_CACHE_OP				uiCacheOp;					/*!< Pending cache operations in the system */
 	PRESMAN_DEFER_CONTEXT		hResManDeferContext;		/*!< Device driver global defer resman context */
 
 	IMG_HANDLE					hCleanupThread;				/*!< Cleanup thread */
+	IMG_HANDLE					hFatalErrorDetectionThread;	/*!< Fatal Error Detection thread */
 	IMG_BOOL					bUnload;					/*!< Driver unload is in progress */
 } PVRSRV_DATA;
 
@@ -103,6 +105,23 @@ typedef struct PVRSRV_CMDCOMP_NOTIFY_TAG
 	DLLIST_NODE					sListNode;
 } PVRSRV_CMDCOMP_NOTIFY;
 
+#define DEBUG_REQUEST_VERBOSITY_LOW		0
+#define DEBUG_REQUEST_VERBOSITY_MEDIUM	1
+#define DEBUG_REQUEST_VERBOSITY_HIGH	2
+
+#define DEBUG_REQUEST_VERBOSITY_MAX	(DEBUG_REQUEST_VERBOSITY_HIGH)
+
+typedef IMG_HANDLE PVRSRV_DBGREQ_HANDLE;
+typedef IMG_VOID (*PFN_DBGREQ_NOTIFY) (PVRSRV_DBGREQ_HANDLE hDebugRequestHandle, IMG_UINT32 ui32VerbLevel);
+
+typedef struct PVRSRV_DBGREQ_NOTIFY_TAG
+{
+	PVRSRV_DBGREQ_HANDLE	hDbgRequestHandle;
+	PFN_DBGREQ_NOTIFY		pfnDbgRequestNotify;
+	IMG_UINT32				ui32RequesterID;
+
+	DLLIST_NODE					sListNode;
+} PVRSRV_DBGREQ_NOTIFY;
 
 /*!
 ******************************************************************************
@@ -236,6 +255,8 @@ IMG_VOID PVRSRVSystemWaitCycles(PVRSRV_DEVICE_CONFIG *psDevConfig, IMG_UINT32 ui
 *****************************************************************************/
 IMG_VOID IMG_CALLCONV PVRSRVCheckStatus(PVRSRV_CMDCOMP_HANDLE hCmdCompCallerHandle);
 
+PVRSRV_ERROR IMG_CALLCONV PVRSRVKickDevicesKM(IMG_VOID);
+
 /*!
 *****************************************************************************
  @Function	: PVRSRVRegisterCmdCompleteNotify
@@ -262,6 +283,53 @@ PVRSRV_ERROR PVRSRVRegisterCmdCompleteNotify(IMG_HANDLE *phNotify, PFN_CMDCOMP_N
 
 *****************************************************************************/
 PVRSRV_ERROR PVRSRVUnregisterCmdCompleteNotify(IMG_HANDLE hNotify);
+
+
+/*!
+*****************************************************************************
+ @Function	: PVRSRVDebugRequest
+
+ @Description	: Notify any registered debug request handler that a debug
+                  request has been made and at what level.
+
+ @Input ui32VerbLevel	: The maximum verbosity level to dump
+
+*****************************************************************************/
+IMG_VOID IMG_CALLCONV PVRSRVDebugRequest(IMG_UINT32 ui32VerbLevel);
+
+/*!
+*****************************************************************************
+ @Function	: PVRSRVRegisterDebugRequestNotify
+
+ @Description	: Register a notify function which is called when a debug
+				  reqiuest is made into the driver (that is, when someone
+				  calls to PVRSRVDebugRequest). There are a number of levels
+				  of verbosity, starting at 0 and going to
+				  DEBUG_REQUEST_VERBOSITY_MAX. For each level that's required
+				  a new call to the notify function will be made.
+
+ @Input phNotify : Pointer to the debug request notify handler
+
+ @Input pfnDbgRequestNotify : Notify function
+
+ @Input ui32RequesterID : Used to determine the order debug request callbacks get
+                          called in with the table passed into 
+
+ @Input hDbgReqeustHandle : Handler to data passed to the Notify function when called
+
+*****************************************************************************/
+PVRSRV_ERROR PVRSRVRegisterDbgRequestNotify(IMG_HANDLE *phNotify, PFN_DBGREQ_NOTIFY pfnDbgRequestNotify, IMG_UINT32 ui32RequesterID, PVRSRV_DBGREQ_HANDLE hDbgReqeustHandle);
+
+/*!
+*****************************************************************************
+ @Function	: PVRSRVUnregisterDebugRequestNotify
+
+ @Description	: Unregister a previously registered notify func.
+
+ @Input hNotify : Debug request notify handler registered previously
+
+*****************************************************************************/
+PVRSRV_ERROR PVRSRVUnregisterDbgRequestNotify(IMG_HANDLE hNotify);
 
 /*!
 *****************************************************************************

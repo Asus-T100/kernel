@@ -49,6 +49,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "rgxfwutils.h"
 #include "osfunc.h"
 #include "rgxccb.h"
+#include "devicemem_pdump.h"
+
 
 static
 PVRSRV_ERROR RGXDestroyCCB(DEVMEM_MEMDESC 		*psClientCCBMemDesc,
@@ -81,7 +83,8 @@ PVRSRV_ERROR PVRSRVRGXCreateCCBKM(PVRSRV_DEVICE_NODE	*psDeviceNode,
 								PVRSRV_MEMALLOCFLAG_GPU_WRITEABLE |
 								PVRSRV_MEMALLOCFLAG_CPU_READABLE |
 								PVRSRV_MEMALLOCFLAG_UNCACHED |
-								PVRSRV_MEMALLOCFLAG_ZERO_ON_ALLOC;
+								PVRSRV_MEMALLOCFLAG_ZERO_ON_ALLOC |
+								PVRSRV_MEMALLOCFLAG_KERNEL_CPU_MAPPABLE;
 
 	uiClientCCBCtlMemAllocFlags = PVRSRV_MEMALLOCFLAG_DEVICE_FLAG(PMMETA_PROTECT) |
 								PVRSRV_MEMALLOCFLAG_GPU_READABLE |
@@ -91,7 +94,8 @@ PVRSRV_ERROR PVRSRVRGXCreateCCBKM(PVRSRV_DEVICE_NODE	*psDeviceNode,
 									(it is not because for now we initialize it from the host) */
 								PVRSRV_MEMALLOCFLAG_CPU_WRITEABLE | 
 								PVRSRV_MEMALLOCFLAG_UNCACHED |
-								PVRSRV_MEMALLOCFLAG_ZERO_ON_ALLOC;
+								PVRSRV_MEMALLOCFLAG_ZERO_ON_ALLOC |
+								PVRSRV_MEMALLOCFLAG_KERNEL_CPU_MAPPABLE;
 
 	PDUMPCOMMENT("Allocate RGXFW cCCB");
 	eError = DevmemFwAllocateExportable(psDeviceNode,
@@ -198,6 +202,353 @@ PVRSRV_ERROR RGXDestroyCCB(DEVMEM_MEMDESC 		*psClientCCBMemDesc,
 	return PVRSRV_OK;
 }
 
+
+static PVRSRV_ERROR _RGXAcquireCCB(volatile RGXFWIF_CCCB_CTL	*psCCBCtl,
+								   IMG_UINT32		ui32Woff,
+								   IMG_PVOID		pvCCB,
+								   IMG_UINT32		ui32CmdSize,
+								   IMG_PVOID			*ppvBufferSpace)
+{
+	/* For now the client does the wait for space so we don't need to */
+#if 0
+	IMG_UINT32 ui32FreeSpace;
+	IMG_UINT32	uiStart;
+	IMG_HANDLE hOSEvent = IMG_NULL;
+
+	PVRSRV_ERROR eError;
+	PVRSRV_DATA *psPVRSRVData = PVRSRVGetPVRSRVData();
+
+
+	uiStart = OSClockus();
+
+	eError = OSEventObjectOpen(psPVRSRVData->hGlobalEventObject, &hOSEvent);
+	if (eError != PVRSRV_OK)
+	{
+		PVR_DPF((PVR_DBG_ERROR,"PVRSRVWaitForValueKM: Failed to setup EventObject with error (%d)", eError));
+		return eError;
+	}
+
+	for (;;)
+	{
+		ui32FreeSpace = GET_CCB_SPACE(ui32Woff,
+									  psCCBCtl->ui32ReadOffset,
+									  (1 << RGX_CCB_SIZE_LOG2));
+		if (ui32FreeSpace >= ui32CmdSize)
+		{
+			*ppvBufferSpace = (pvCCB + ui32Woff);
+			if (hOSEvent)
+			{
+				OSEventObjectClose(hOSEvent);
+			}
+			return PVRSRV_OK;
+		}
+
+		if ((OSClockus() - uiStart) >= MAX_HW_TIME_US)
+		{
+			/* FIXME: We should decide if Services or Client Drivers should retry to get CCB space.
+			 * For the moment it is Services that does the retry
+			 */
+			PVR_DPF((PVR_DBG_WARNING, "_RGXAcquireCCB: Timeout, insufficient space in CCB: Required=0x%x, available=0x%x. (woff=%d, roff=%d) Keep trying...",
+					ui32CmdSize,
+					ui32FreeSpace,
+					ui32Woff,
+					psCCBCtl->ui32ReadOffset));
+			uiStart = OSClockus();
+/*			break;*/
+
+		}
+		
+		if (hOSEvent)
+		{
+			if(OSEventObjectWait(hOSEvent) != PVRSRV_OK)
+			{
+				PVR_DPF((PVR_DBG_MESSAGE, "RGXAcquireCCB: PVRSRVEventObjectWait failed"));
+			}
+		}
+		else
+		{
+			OSWaitus(MAX_HW_TIME_US/WAIT_TRY_COUNT);
+		}
+	}
+#else
+	IMG_UINT32 ui32FreeSpace;
+
+	ui32FreeSpace = GET_CCB_SPACE(ui32Woff,
+								  psCCBCtl->ui32ReadOffset,
+								  (1 << RGX_CCB_SIZE_LOG2));
+	if (ui32FreeSpace >= ui32CmdSize)
+	{
+		*ppvBufferSpace = (pvCCB + ui32Woff);
+		return PVRSRV_OK;
+	}
+
+	/* If we get here there is nothing we can do to recover */
+	PVR_ASSERT(0);
+	return PVRSRV_ERROR_OUT_OF_MEMORY;
+#endif
+}
+
+
+static IMG_VOID _WaitForFWtoDrainCCB(volatile RGXFWIF_CCCB_CTL		*psCCBCtl, 
+									 IMG_UINT32			ui32Woff)
+{
+	PVRSRV_ERROR eError;
+	IMG_HANDLE hOSEvent;
+	PVRSRV_DATA *psPVRSRVData = PVRSRVGetPVRSRVData();
+
+	/*
+		Note:
+		This means that we block all other calls across the bridge which
+		can cause performance issues, but as this code only runs when
+		PDump is active then this isn't an issue
+	*/
+	OSSetKeepPVRLock();
+	eError = OSEventObjectOpen(psPVRSRVData->hGlobalEventObject, &hOSEvent);
+	if (eError != PVRSRV_OK)
+	{
+		PVR_DPF((PVR_DBG_ERROR,"PVRSRVWaitForValueKM: Failed to setup EventObject with error (%d)", eError));
+	}
+
+
+	while (psCCBCtl->ui32ReadOffset != ui32Woff)
+	{
+		PVR_DPF((PVR_DBG_WARNING, "_WaitForCCBToDrain: Waiting on CCB(%p) for readoff (%d) == wroff (%d)", 
+					psCCBCtl,
+					psCCBCtl->ui32ReadOffset,
+					ui32Woff));
+
+		/* wait */
+		if (hOSEvent)
+		{
+			if(OSEventObjectWait(hOSEvent) != PVRSRV_OK)
+			{
+				PVR_DPF((PVR_DBG_MESSAGE, "RGXAcquireCCB: PVRSRVEventObjectWait failed"));
+			}
+		}
+		else
+		{
+			OSWaitus(MAX_HW_TIME_US/WAIT_TRY_COUNT);
+		}
+
+	}
+
+	if (hOSEvent)
+	{
+		OSEventObjectClose(hOSEvent);
+	}
+}
+
+/******************************************************************************
+ FUNCTION	: RGXAcquireCCB
+
+ PURPOSE	: Obtains access to write some commands to a CCB
+
+ PARAMETERS	: psDevData			- device data
+  			  psCCB				- the CCB
+			  ui32CmdSize		- How much space is required
+			  hOSEvent			- Event object handle
+			  ppvBufferSpace	- Pointer to space in the buffer
+
+ RETURNS	: PVRSRV_ERROR
+******************************************************************************/
+IMG_INTERNAL PVRSRV_ERROR RGXAcquireCCB(volatile RGXFWIF_CCCB_CTL	*psCCBCtl,
+										IMG_UINT32		*pui32Woff,
+										DEVMEM_MEMDESC 		*pscCCBMemDesc,
+										IMG_UINT32		ui32CmdSize,
+										IMG_PVOID		*ppvBufferSpace,
+										IMG_BOOL		bDumpedCCBCtlAlready,
+										IMG_BOOL		bPDumpContinuous)
+{
+	PVRSRV_ERROR eError;
+	IMG_UINT32	ui32PDumpFlags	= bPDumpContinuous ? PDUMP_FLAGS_CONTINUOUS : 0;
+	IMG_BOOL	bInCaptureRange;
+	IMG_BOOL	bPdumpEnabled;
+	IMG_PVOID	pvCCB;
+	
+	PDumpIsCaptureFrameKM(&bInCaptureRange);
+	bPdumpEnabled = (bInCaptureRange || bPDumpContinuous);
+		
+	/* need to dump initial state */
+	if (bPdumpEnabled && !bDumpedCCBCtlAlready)
+	{
+		/* wait for the firmware to catch up (in nohw this is a noop) */
+		_WaitForFWtoDrainCCB(psCCBCtl, *pui32Woff);
+
+	}
+
+	/* FIXME: Once the PR-3Ds are removed, the 2*ui32CmdSize has to change to ui32CmdSize */
+	/* Check that the CCB can hold this command + padding (the CCBSize/2 is to allow
+	   previous commands to be swallowed for the roff to advance */
+	if ((2*ui32CmdSize + PADDING_COMMAND_SIZE + 1) > ((1 << RGX_CCB_SIZE_LOG2)/2))
+	{
+		PVR_DPF((PVR_DBG_ERROR, "Command size (%d bytes) too big for CCB (%d bytes)\n", ui32CmdSize, (1 << RGX_CCB_SIZE_LOG2)));
+		return PVRSRV_ERROR_CMD_TOO_BIG;
+	}
+	
+	eError = DevmemAcquireCpuVirtAddr(pscCCBMemDesc,
+									  &pvCCB);
+	if (eError != PVRSRV_OK)
+	{
+		PVR_DPF((PVR_DBG_ERROR,"CreateCCB: Failed to map client CCB (0x%x)", eError));
+		return eError;
+	}
+	
+
+	/*
+		Check we don't overflow the end of the buffer and make sure we have
+		enough for the padding command.
+	*/
+	if ((*pui32Woff + ui32CmdSize + PADDING_COMMAND_SIZE) > (1 << RGX_CCB_SIZE_LOG2))
+	{
+		RGXFWIF_CCB_CMD_HEADER *psHeader;
+		IMG_VOID *pvHeader;
+		PVRSRV_ERROR eError;
+		IMG_UINT32 ui32Remain = (1 << RGX_CCB_SIZE_LOG2) - *pui32Woff;
+
+		/* We're at the end of the buffer without enough contiguous space */
+		eError = _RGXAcquireCCB(psCCBCtl, *pui32Woff, pvCCB, ui32Remain,
+								&pvHeader);
+		if (eError != PVRSRV_OK)
+		{
+
+			/* We should never get here */
+			PVR_DPF((PVR_DBG_ERROR, "Failed to get space for padding command\n"));
+			PVR_ASSERT(0);
+			return PVRSRV_ERROR_CMD_TOO_BIG;
+		}
+		psHeader = pvHeader;
+		psHeader->eCmdType = RGXFWIF_CCB_CMD_TYPE_PADDING;
+		psHeader->ui32CmdSize = ui32Remain - sizeof(RGXFWIF_CCB_CMD_HEADER);
+
+		//PDUMPCOMMENT("cCCB(%p): Padding cmd %d", psCCB, psHeader->ui32CmdSize);
+		if (bPdumpEnabled)
+		{
+			DevmemPDumpLoadMem(pscCCBMemDesc,
+						   *pui32Woff,
+						   ui32Remain,
+						   ui32PDumpFlags);
+		}
+				
+		UPDATE_CCB_OFFSET(*pui32Woff, ui32Remain, (1 << RGX_CCB_SIZE_LOG2));
+	}
+
+	return _RGXAcquireCCB(psCCBCtl, *pui32Woff, pvCCB, ui32CmdSize,
+						  ppvBufferSpace);
+}
+
+/******************************************************************************
+ FUNCTION	: RGXReleaseCCB
+
+ PURPOSE	: Release a CCB that we have been writing to.
+
+ PARAMETERS	: psDevData			- device data
+  			  psCCB				- the CCB
+
+ RETURNS	: PVRSRV_ERROR
+******************************************************************************/
+IMG_INTERNAL PVRSRV_ERROR RGXReleaseCCB(PVRSRV_DEVICE_NODE	*psDevNode,
+										volatile RGXFWIF_CCCB_CTL	*psCCBCtl,
+										DEVMEM_MEMDESC 		*pscCCBMemDesc,
+										DEVMEM_MEMDESC 		*pscCCBCtlMemDesc,
+										IMG_BOOL		*pbDumpedCCBCtlAlready,
+										IMG_UINT32		*pui32Woff,
+										IMG_UINT32		ui32CmdSize,
+										IMG_BOOL		bPDumpContinuous,
+										SYNC_CONNECTION_DATA 	*psSyncConnectionData)
+{
+	PVRSRV_ERROR				eError		= PVRSRV_OK;
+
+	IMG_UINT32	ui32PDumpFlags	= bPDumpContinuous ? PDUMP_FLAGS_CONTINUOUS : 0;
+	IMG_BOOL	bInCaptureRange;
+	IMG_BOOL	bPdumpEnabled;
+	
+	PDumpIsCaptureFrameKM(&bInCaptureRange);
+	bPdumpEnabled = (bInCaptureRange || bPDumpContinuous);
+		
+	/* Entering a pdumped perido: CCB ctl state at the start of the day */
+	if (bPdumpEnabled)
+	{
+		/* FIXME: For this to work properly, the CCB flush should happen for all the CCBs */
+
+		/* This function will only PDump the syncs is required */
+		SyncConnectionPDumpSyncBlocks(psSyncConnectionData);
+
+		/* check if we need to pdump ccb state */
+		if (!(*pbDumpedCCBCtlAlready))
+		{
+
+			/* fw should have reach this point, therefore it's safe to modify this value */
+			psCCBCtl->ui32WriteOffset = *pui32Woff;
+
+			PDUMPCOMMENT("cCCB: Dump initial state woff: 0x%x roff: 0x%x",
+								   psCCBCtl->ui32WriteOffset, psCCBCtl->ui32ReadOffset);
+
+			DevmemPDumpLoadMem(pscCCBCtlMemDesc,
+							   0,
+							   sizeof(RGXFWIF_CCCB_CTL),
+							   ui32PDumpFlags);
+							   
+			*pbDumpedCCBCtlAlready = IMG_TRUE;
+		}
+	}
+
+	/* Exiting a pdumped period: need to sync to this point */
+	if (!bPdumpEnabled)
+	{
+		/* SyncPrim needs to be re-pdump next time we enter in the pdump */
+		SyncConnectionPDumpExit(psSyncConnectionData);
+
+		if (*pbDumpedCCBCtlAlready)
+		{
+			/* CCB needs to be re-pdump next time we enter in the pdump */
+			*pbDumpedCCBCtlAlready = IMG_FALSE;
+
+			/* make sure previous cmds are drained in pdump in case we will 'jump' over some future cmds */
+			PDUMPCOMMENT("cCCB: Draining rgxfw_roff (0x%x) == woff (0x%x)",
+							psCCBCtl->ui32ReadOffset,
+							*pui32Woff);
+
+			eError = DevmemPDumpDevmemPol32(pscCCBMemDesc,
+											offsetof(RGXFWIF_CCCB_CTL, ui32ReadOffset),
+											*pui32Woff,
+											0xffffffff,
+											PDUMP_POLL_OPERATOR_EQUAL,
+											PDUMP_FLAGS_CONTINUOUS);
+			if (eError != PVRSRV_OK)
+			{
+				PVR_DPF((PVR_DBG_WARNING, "RGXReleaseCCB: problem pdumping POL for cCCBCtl (%d)", eError));
+				return eError;
+			}
+		}
+	}
+
+	/* Dump the CCB data */
+	if (bPdumpEnabled)
+	{
+		DevmemPDumpLoadMem(pscCCBMemDesc,
+						   *pui32Woff,
+						   ui32CmdSize,
+						   ui32PDumpFlags);
+	}
+	/*
+	 * Update the CCB write offset.
+	 */
+	UPDATE_CCB_OFFSET(*pui32Woff,
+					  ui32CmdSize,
+					  (1 << RGX_CCB_SIZE_LOG2));
+
+#if defined(NO_HARDWARE)
+	/*
+		The firmware is not running, it cannot update these; we do here instead.
+	*/
+	psCCBCtl->ui32ReadOffset = *pui32Woff;
+	psCCBCtl->ui32DepOffset = *pui32Woff;
+#endif
+
+	DevmemReleaseCpuVirtAddr(pscCCBMemDesc);
+	
+	return eError;
+}
 /******************************************************************************
  End of file (rgxccb.c)
 ******************************************************************************/

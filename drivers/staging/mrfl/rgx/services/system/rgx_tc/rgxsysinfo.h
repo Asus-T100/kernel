@@ -55,7 +55,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 /* RGX, DISPLAY (external), BUFFER (external) */
 #define SYS_DEVICE_COUNT	(3)
 
-#define SYS_PHYS_HEAP_COUNT	(2)
+#if defined(SUPPORT_ION)
+#define SYS_PHYS_HEAP_COUNT (3)
+#else
+#define SYS_PHYS_HEAP_COUNT (2)
+#endif
 
 #if defined(__linux__)
 #define SYS_RGX_DEV_NAME	"rgxtc"

@@ -42,8 +42,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #ifndef _RGXCONFIG_KM_2_7_6_3_H_
 #define _RGXCONFIG_KM_2_7_6_3_H_
 
-/***** Automatically generated file (1/9/2013 5:43:29 PM): Do not edit manually ********************/
-/***** Timestamp:  (1/9/2013 5:43:29 PM)************************************************************/
+/***** Automatically generated file (4/8/2013 10:23:32 AM): Do not edit manually ********************/
+/***** Timestamp:  (4/8/2013 10:23:32 AM)************************************************************/
 /***** CS: @2200583 ******************************************************************/
 
 
@@ -66,19 +66,14 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  * Enhancements 
  *****************************************************************************/
 
-
-
 /******************************************************************************
- * DDK Defines
- *****************************************************************************/
+* DDK Defines
+*****************************************************************************/
+
 #define RGX_FEATURE_SLC_SIZE_IN_BYTES (256*1024)
 #define RGX_FEATURE_OCPBUS 
 #define RGX_FEATURE_SLC_CACHE_LINE_SIZE_BITS (1024)
 #define RGX_FEATURE_PHYS_BUS_WIDTH (36)
 #define RGX_FEATURE_VIRTUAL_ADDRESS_SPACE_BITS (40)
 
-
 #endif /* _RGXCONFIG_KM_2_7_6_3_H_ */
-
-
-

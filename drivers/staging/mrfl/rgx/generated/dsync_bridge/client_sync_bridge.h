@@ -73,6 +73,7 @@ IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeServerSyncFree(IMG_HANDLE hBridge,
 
 IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeServerSyncQueueHWOp(IMG_HANDLE hBridge,
 								 IMG_HANDLE hSyncHandle,
+								 IMG_BOOL bbUpdate,
 								 IMG_UINT32 *pui32FenceValue,
 								 IMG_UINT32 *pui32UpdateValue);
 

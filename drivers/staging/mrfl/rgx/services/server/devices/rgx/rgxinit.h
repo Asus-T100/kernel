@@ -75,6 +75,7 @@ PVRSRV_ERROR PVRSRVRGXInitDevPart2KM (PVRSRV_DEVICE_NODE	*psDeviceNode,
 									  RGX_INIT_COMMAND		*psDbgScript,
 									  RGX_INIT_COMMAND		*psDeinitScript,
 									  IMG_UINT32			ui32KernelCatBase,
+									  IMG_UINT32			ui32DeviceFlags,
 									  RGX_ACTIVEPM_CONF		eActivePMConf);
 
 

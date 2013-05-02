@@ -416,7 +416,7 @@ PVRSRV_ERROR RGXFWRequestHWRTDataCleanUp(PVRSRV_DEVICE_NODE *psDeviceNode,
  @Input eDM - Data master, to which the cleanup command should be send
 
  ******************************************************************************/
-PVRSRV_ERROR RGXFWRequestFreeListCleanUp(PVRSRV_DEVICE_NODE *psDeviceNode,
+PVRSRV_ERROR RGXFWRequestFreeListCleanUp(PVRSRV_RGXDEV_INFO *psDeviceNode,
 										 PRGXFWIF_FREELIST psFWFreeList,
 										 PVRSRV_CLIENT_SYNC_PRIM *psSync);
 
@@ -437,9 +437,45 @@ PVRSRV_ERROR RGXFWRequestFreeListCleanUp(PVRSRV_DEVICE_NODE *psDeviceNode,
 
  ******************************************************************************/
 
-PVRSRV_ERROR RGXFWRequestZSBufferCleanUp(PVRSRV_DEVICE_NODE *psDeviceNode,
+PVRSRV_ERROR RGXFWRequestZSBufferCleanUp(PVRSRV_RGXDEV_INFO *psDevInfo,
 										 PRGXFWIF_ZSBUFFER psFWZSBuffer,
 										 PVRSRV_CLIENT_SYNC_PRIM *psSync);
+
+/*!
+******************************************************************************
+
+ @Function	   RGXUpdateHealthStatus
+
+ @Description  Tests a number of conditions which might indicate a fatal error has
+               occurred in the firmware. The result is stored in the device node
+               eheathStatus.
+
+ @Input        psDevNode              Pointer to device node structure.
+ @Input        bCheckAfterTimePassed  When TRUE, the function will also test for
+                                      firmware queues and polls not changing
+                                      since the previous test.
+                                      
+                                      Note: if not enough time has passed since
+                                      the last call, false positives may occur.
+
+ @returns      PVRSRV_ERROR 
+ ******************************************************************************/
+PVRSRV_ERROR RGXUpdateHealthStatus(PVRSRV_DEVICE_NODE* psDevNode,
+                                   IMG_BOOL bCheckAfterTimePassed);
+
+
+/*!
+******************************************************************************
+
+ @Function	RGXCheckFirmwareCCBs
+
+ @Description Processes all commands that are found in any firmware CCB.
+
+ @Input psDevInfo - pointer to device
+
+ ******************************************************************************/
+IMG_VOID RGXCheckFirmwareCCBs(PVRSRV_RGXDEV_INFO *psDevInfo);
+
 
 #endif /* __RGXFWUTILS_H__ */
 /******************************************************************************

@@ -1143,6 +1143,7 @@ PVRSRVBridgeDevmemSLCFlushInvalRequest(IMG_UINT32 ui32BridgeID,
 {
 	IMG_HANDLE hDeviceNodeInt;
 	PMR * psPmrInt;
+	IMG_HANDLE hPmrInt2;
 
 	PVRSRV_BRIDGE_ASSERT_CMD(ui32BridgeID, PVRSRV_BRIDGE_MM_DEVMEMSLCFLUSHINVALREQUEST);
 
@@ -1160,9 +1161,16 @@ PVRSRVBridgeDevmemSLCFlushInvalRequest(IMG_UINT32 ui32BridgeID,
 	/* Look up the address from the handle */
 	psDevmemSLCFlushInvalRequestOUT->eError =
 		PVRSRVLookupHandle(psConnection->psHandleBase,
-						   (IMG_HANDLE *) &psPmrInt,
+						   (IMG_HANDLE *) &hPmrInt2,
 						   psDevmemSLCFlushInvalRequestIN->hPmr,
 						   PVRSRV_HANDLE_TYPE_PHYSMEM_PMR);
+	if(psDevmemSLCFlushInvalRequestOUT->eError != PVRSRV_OK)
+	{
+		goto DevmemSLCFlushInvalRequest_exit;
+	}
+
+	/* Look up the data from the resman address */
+	psDevmemSLCFlushInvalRequestOUT->eError = ResManFindPrivateDataByPtr(hPmrInt2, (IMG_VOID **) &psPmrInt);
 	if(psDevmemSLCFlushInvalRequestOUT->eError != PVRSRV_OK)
 	{
 		goto DevmemSLCFlushInvalRequest_exit;

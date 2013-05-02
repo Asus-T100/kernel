@@ -523,15 +523,13 @@ PVRSRVBridgeDumpDebugInfo(IMG_UINT32 ui32BridgeID,
 
 	PVR_UNREFERENCED_PARAMETER(psConnection);
 
-	PVR_UNREFERENCED_PARAMETER(psDumpDebugInfoIN);
-
 	PVRSRV_BRIDGE_ASSERT_CMD(ui32BridgeID, PVRSRV_BRIDGE_SRVCORE_DUMPDEBUGINFO);
 
 
 
 	psDumpDebugInfoOUT->eError =
 		PVRSRVDumpDebugInfoKM(
-					);
+					psDumpDebugInfoIN->ui32ui32VerbLevel);
 
 
 
@@ -564,6 +562,31 @@ PVRSRVBridgeHWOpTimeout(IMG_UINT32 ui32BridgeID,
 	return 0;
 }
 
+static IMG_INT
+PVRSRVBridgeKickDevices(IMG_UINT32 ui32BridgeID,
+					 PVRSRV_BRIDGE_IN_KICKDEVICES *psKickDevicesIN,
+					 PVRSRV_BRIDGE_OUT_KICKDEVICES *psKickDevicesOUT,
+					 CONNECTION_DATA *psConnection)
+{
+
+	PVR_UNREFERENCED_PARAMETER(psConnection);
+
+	PVR_UNREFERENCED_PARAMETER(psKickDevicesIN);
+
+	PVRSRV_BRIDGE_ASSERT_CMD(ui32BridgeID, PVRSRV_BRIDGE_SRVCORE_KICKDEVICES);
+
+
+
+	psKickDevicesOUT->eError =
+		PVRSRVKickDevicesKM(
+					);
+
+
+
+
+	return 0;
+}
+
 
 PVRSRV_ERROR RegisterSRVCOREFunctions(IMG_VOID);
 IMG_VOID UnregisterSRVCOREFunctions(IMG_VOID);
@@ -586,6 +609,7 @@ PVRSRV_ERROR RegisterSRVCOREFunctions(IMG_VOID)
 	SetDispatchTableEntry(PVRSRV_BRIDGE_SRVCORE_EVENTOBJECTCLOSE, PVRSRVBridgeEventObjectClose);
 	SetDispatchTableEntry(PVRSRV_BRIDGE_SRVCORE_DUMPDEBUGINFO, PVRSRVBridgeDumpDebugInfo);
 	SetDispatchTableEntry(PVRSRV_BRIDGE_SRVCORE_HWOPTIMEOUT, PVRSRVBridgeHWOpTimeout);
+	SetDispatchTableEntry(PVRSRV_BRIDGE_SRVCORE_KICKDEVICES, PVRSRVBridgeKickDevices);
 
 	return PVRSRV_OK;
 }
