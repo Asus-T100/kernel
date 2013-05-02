@@ -344,6 +344,7 @@ config CHARGER_SMB347
 
 config CHARGER_BQ24192
 	tristate "TI BQ24192/BQ24191/BQ24190 Charger"
+	select POWER_SUPPLY_CHARGER
 	depends on I2C
 	help
 	  BQ24192 is the charger chip for lithium-ion (Li+) batteries

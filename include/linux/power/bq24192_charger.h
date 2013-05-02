@@ -22,7 +22,7 @@
 #ifndef __BQ24192_CHARGER_H_
 #define __BQ24192_CHARGER_H_
 
-#define CLT_SFI_TEMP_NR_RNG	4
+#define TEMP_NR_RNG	4
 #define BATTID_STR_LEN	8
 #define RANGE	25
 /* User limits for sysfs charge enable/disable */
@@ -66,7 +66,7 @@ enum bq24192_bat_chrg_mode {
  *		Platform Data Section
  *********************************************************************/
 /* Battery Thresholds info which need to get from SMIP area */
-struct ctp_batt_safety_thresholds {
+struct platform_batt_safety_param {
 	u8 smip_rev;
 	u8 fpo;		/* fixed implementation options */
 	u8 fpo1;	/* fixed implementation options1 */
@@ -87,7 +87,7 @@ struct ctp_batt_safety_thresholds {
 } __packed;
 
 /* Parameters defining the range */
-struct ctp_temp_mon_table {
+struct platform_temp_mon_table {
 	short int temp_up_lim;
 	short int temp_low_lim;
 	short int rbatt;
@@ -98,63 +98,47 @@ struct ctp_temp_mon_table {
 	short int maint_chrg_cur;
 } __packed;
 
-struct ctp_batt_sfi_prop {
+struct platform_batt_profile {
 	char batt_id[BATTID_STR_LEN];
 	unsigned short int voltage_max;
 	unsigned int capacity;
 	u8 battery_type;
 	u8 temp_mon_ranges;
-	struct ctp_temp_mon_table temp_mon_range[CLT_SFI_TEMP_NR_RNG];
+	struct platform_temp_mon_table temp_mon_range[TEMP_NR_RNG];
 
 } __packed;
 
 struct bq24192_platform_data {
 	bool slave_mode;
-	unsigned int vHigh;
-	unsigned int vLow;
-	int fc_dcp_curr;
-	int fc_sdp_curr;
-	int maint_chrg_curr;
-	u8  temp_mon_ranges;
-	struct ctp_temp_mon_table temp_mon_range[CLT_SFI_TEMP_NR_RNG];
 	short int temp_low_lim;
 	bool sfi_tabl_present;
+	short int safetemp;
+	struct platform_batt_profile batt_profile;
+	struct platform_batt_safety_param safety_param;
+	struct power_supply_throttle *throttle_states;
+
+	char **supplied_to;
+	size_t	num_supplicants;
+	size_t num_throttle_states;
+	unsigned long supported_cables;
+	/* Function pointers for platform specific initialization */
+	int (*init_platform_data)(void);
+	int (*get_irq_number)(void);
+	int (*query_otg)(void *, void *);
+	int (*drive_vbus)(bool);
+	int (*get_battery_pack_temp)(int *);
+	void (*free_platform_data)(void);
 };
 
 #ifdef CONFIG_CHARGER_BQ24192
 extern int bq24192_slave_mode_enable_charging(int volt, int cur, int ilim);
 extern int bq24192_slave_mode_disable_charging(void);
-extern int ctp_query_battery_status(void);
-extern int ctp_get_battery_pack_temp(int *temp);
-extern int ctp_get_battery_health(void);
-extern bool ctp_is_volt_shutdown_enabled(void);
-extern int ctp_get_vsys_min(void);
+extern int bq24192_query_battery_status(void);
+extern int bq24192_get_battery_pack_temp(int *temp);
+extern int bq24192_get_battery_health(void);
+extern bool bq24192_is_volt_shutdown_enabled(void);
 #else
-static int bq24192_slave_mode_enable_charging(int volt, int cur, int ilim)
-{
-	return 0;
-}
-static int bq24192_slave_mode_disable_charging(void)
-{
-	return 0;
-}
-static int ctp_query_battery_status(void)
-{
-	return 0;
-}
-static int ctp_get_battery_pack_temp(int *temp)
-{
-	return 0;
-}
-static int ctp_get_battery_health(void)
-{
-	return 0;
-}
-static bool ctp_is_volt_shutdown_enabled(void)
-{
-	return false;
-}
-static int ctp_get_vsys_min(void)
+static int bq24192_get_battery_health(void)
 {
 	return 0;
 }

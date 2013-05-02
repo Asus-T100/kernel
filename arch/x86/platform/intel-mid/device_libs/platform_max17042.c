@@ -26,6 +26,7 @@
 #include <asm/delay.h>
 #include <asm/intel_scu_ipc.h>
 #include "platform_max17042.h"
+#include "platform_bq24192.h"
 
 #define MRFL_SMIP_SRAM_ADDR		0xFFFCE000
 #define MRFL_PLATFORM_CONFIG_OFFSET	0x3B3
@@ -211,6 +212,18 @@ static int ctp_fg_save_config_data(const char *name, void *data, int len)
 }
 EXPORT_SYMBOL(ctp_fg_save_config_data);
 
+static int ctp_get_vsys_min(void)
+{
+	struct ps_batt_chg_prof batt_profile;
+	int ret;
+	ret = get_batt_prop(&batt_profile);
+	if (!ret)
+		return ((struct ps_pse_mod_prof *)batt_profile.batt_prof)
+					->low_batt_mV * 1000;
+
+	return BATT_VMIN_THRESHOLD_DEF * 1000;
+}
+
 int mrfl_get_bat_health(void)
 {
 
@@ -252,7 +265,6 @@ int mrfl_get_vsys_min(void)
 					->low_batt_mV * 1000;
 	return DEFAULT_VMIN;
 }
-
 #define DEFAULT_VMAX_LIM	4200
 int mrfl_get_volt_max(void)
 {
@@ -328,11 +340,7 @@ static void init_callbacks(struct max17042_platform_data *pdata)
 	} else if (INTEL_MID_BOARD(1, PHONE, CLVTP)
 			|| INTEL_MID_BOARD(1, TABLET, CLVT)) {
 		/* CLTP Phones and tablets */
-		pdata->battery_status = ctp_query_battery_status;
-		pdata->battery_pack_temp = ctp_get_battery_pack_temp;
-		pdata->battery_health = ctp_get_battery_health;
-		pdata->is_volt_shutdown_enabled =
-					ctp_is_volt_shutdown_enabled;
+		pdata->battery_health = bq24192_get_battery_health;
 		pdata->get_vmin_threshold = ctp_get_vsys_min;
 		pdata->reset_chip = true;
 	} else if (INTEL_MID_BOARD(1, PHONE, MRFL)

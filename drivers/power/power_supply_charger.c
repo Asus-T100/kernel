@@ -128,6 +128,10 @@ static int otg_handle_notification(struct notifier_block *nb,
 				__FILE__, __LINE__, cap->mA);
 		cable->cable_props.cable_stat = EXTCON_CHRGR_CABLE_CONNECTED;
 		break;
+	case POWER_SUPPLY_CHARGER_EVENT_UPDATE:
+		printk(KERN_ERR "%s:%d Connected\n", __FILE__, __LINE__);
+		cable->cable_props.cable_stat = EXTCON_CHRGR_CABLE_UPDATED;
+		break;
 	case POWER_SUPPLY_CHARGER_EVENT_DISCONNECT:
 		printk(KERN_ERR "%s:%d Disconnected inlmt=%d\n",
 			__FILE__, __LINE__, cap->mA);
