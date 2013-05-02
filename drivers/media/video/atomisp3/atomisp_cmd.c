@@ -3699,6 +3699,10 @@ static int __enable_continuous_mode(struct atomisp_device *isp, bool enable)
 	ia_css_enable_continuous(isp, enable);
 	sh_css_enable_cont_capt(enable,
 				!isp->isp_subdev.continuous_viewfinder->val);
+	/* TODO: remove this if FW limitation is removed*/
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER &&
+		isp->isp_subdev.continuous_raw_buffer_size->val > 5)
+		isp->isp_subdev.continuous_raw_buffer_size->val = 5;
 	if (ia_css_stream_set_buffer_depth(isp->css2_basis.stream,
 			isp->isp_subdev.continuous_raw_buffer_size->val)
 		!= IA_CSS_SUCCESS) {
@@ -4477,6 +4481,13 @@ int atomisp_offline_capture_configure(struct atomisp_device *isp,
 				min_t(int, ATOMISP_CONT_RAW_FRAMES,
 				      isp->params.offline_parm.num_captures
 				      + 3);
+
+			/* TODO: remove this if FW limitation is removed*/
+			if (intel_mid_identify_cpu() ==
+				INTEL_MID_CPU_CHIP_TANGIER &&
+				num_raw_frames > 5)
+				num_raw_frames = 5;
+
 			/* TODO: this can be removed once user-space
 			 *       has been updated to use control API */
 			isp->isp_subdev.continuous_raw_buffer_size->val =
