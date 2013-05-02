@@ -78,7 +78,21 @@
 #define MAX_SCU_EXTRA_DUMP_SIZE         1024
 #define CHAR_PER_LINE_EXTRA_TRACE       20
 
-union error_log_dw10 {
+/* Special indexes in error data */
+#define FABRIC_ERR_STS_IDX		0
+#define FABRIC_ERR_SIGNATURE_IDX	10
+
+#define output_str(ret, out, size, a...)	\
+	do {					\
+		if ((size) - (ret) > 1) {				\
+			(ret) += snprintf((out) + (ret),		\
+					  (size) - (ret), ## a);	\
+			if ((size) - (ret) <= 0)			\
+				ret = size - 1;				\
+		}							\
+	} while (0);
+
+union error_log {
 	struct {
 		u32 cmd:3;
 		u32 signature:5;
@@ -86,13 +100,13 @@ union error_log_dw10 {
 		u32 num_err_logs:4;
 		u32 agent_idx:4;
 		u32 err_code:4;
-		u32 reserved1:3;
+		u32 fw_err_ind:3;
 		u32 multi_err:1;
 	} fields;
 	u32 data;
 };
 
-union fabric_status_dw0 {
+union fabric_status {
 	struct {
 		u32 status_has_hilo:11;
 		u32 flag_status_cnt:5;
@@ -120,7 +134,7 @@ static char *log_buffer;
 
 static struct rpmsg_instance *fw_logging_instance;
 
-static char *Fabric_Names[] = {
+static char *fabric_names[] = {
 	"\nFull Chip Fabric [error]\n\n",
 	"\nAudio Fabric [error]\n\n",
 	"\nSecondary Chip Fabric [error]\n\n",
@@ -129,7 +143,7 @@ static char *Fabric_Names[] = {
 	"\nUnknown Fabric [error]\n\n"
 };
 
-static char *Agent_Names[] = {
+static char *agent_names[] = {
 	"FULLFAB_FLAG_STATUS",
 	"AUDIO",
 	"SECONDARY",
@@ -199,89 +213,88 @@ static void __iomem *get_oshob_addr(void)
 	return oshob_addr; /* Return OSHOB base address */
 }
 
-static void get_fabric_error_cause_detail(char *buf, u32 FabId,
-				u32 *fid_status, int IsHiDword)
+static int get_fabric_error_cause_detail(char *buf, u32 size, u32 fabid,
+				u32 *fid_status, int ishidword)
 {
-	int index = 0;
+	int index = 0, ret = 0;
 	char *ptr;
 	u32 fid_mask = 1;
 
 	while (index < MAX_FID_REG_LEN) {
 
 		if ((*fid_status) & fid_mask) {
-			ptr = fabric_error_lookup(FabId, index, IsHiDword);
+			ptr = fabric_error_lookup(fabid, index, ishidword);
 
-			if (ptr != NULL && strlen(ptr)) {
-				strlcat(buf, ptr, MAX_BUFFER_SIZE);
-				strlcat(buf, "\n", MAX_BUFFER_SIZE);
-			}
+			if (ptr && *ptr)
+				output_str(ret, buf, size, "%s\n", ptr);
 		}
 
 		index++;
 		fid_mask <<= 1;
 	}
 
-	strlcat(buf, "\n", MAX_BUFFER_SIZE);
+	output_str(ret, buf, size, "\n");
+
+	return ret;
 }
 
-static void get_additional_error(char *buf, int num_err_log,
+static int get_additional_error(char *buf, int size, int num_err_log,
 			u32 *faberr_dwords, int max_dw_left)
 {
-	int i = 0;
-	char temp[100], str[50];
-	union error_log_dw10 log;
+	int i = 0, ret = 0;
+	union error_log log;
 
-	strlcat(buf, "\nAdditional logs associated with error(s): ",
-							MAX_BUFFER_SIZE);
+	output_str(ret, buf, size,
+		   "\nAdditional logs associated with error(s): ");
 
 	if (num_err_log) {
 
 		while (i < num_err_log && i < max_dw_left) {
 
-			sprintf(temp, "\nerror_log: 0x%X\n",
-					*(faberr_dwords + i));
+			output_str(ret, buf, size, "\nerror_log: 0x%X\n",
+				*(faberr_dwords + i));
 
-			strlcat(buf, temp, MAX_BUFFER_SIZE);
-			sprintf(temp, "error_addr: 0x%X\n",
-				*(faberr_dwords + i + 1));
+			output_str(ret, buf, size, "error_addr: 0x%X\n",
+				   *(faberr_dwords + i + 1));
 
-			strlcat(buf, temp, MAX_BUFFER_SIZE);
 			log.data = *(faberr_dwords + i);
 
-			strlcat(buf, "\nDecoded error log detail\n",
-							MAX_BUFFER_SIZE);
-			strlcat(buf, "---------------------------\n\n",
-							MAX_BUFFER_SIZE);
+			output_str(ret, buf, size,
+				   "\nDecoded error log detail\n");
+			output_str(ret, buf, size,
+				   "---------------------------\n\n");
 
-			if (log.fields.agent_idx > MAX_AGENT_IDX)
-				sprintf(str, "Unknown agent index (%d)\n",
-					log.fields.agent_idx);
-			else
-				snprintf(str, sizeof(str)-1, "%s\n",
-					Agent_Names[log.fields.agent_idx]);
+			output_str(ret, buf, size, "Agent Index:");
+			if (log.fields.agent_idx > MAX_AGENT_IDX) {
+				output_str(ret, buf, size,
+					   "Unknown agent index (%d)\n\n",
+					   log.fields.agent_idx);
+			} else {
+				output_str(ret, buf, size, "%s\n\n",
+					   agent_names[log.fields.agent_idx]);
+			}
 
-			snprintf(temp, sizeof(temp)-1, "Agent Index:%s\n", str);
-			strlcat(buf, temp, MAX_BUFFER_SIZE);
+			output_str(ret, buf, size,
+				   "Cmd initiator ID: %d\n",
+				   log.fields.initid);
 
-			sprintf(temp, "Cmd initiator ID: %d\n",
-						log.fields.initid);
-			strlcat(buf, temp, MAX_BUFFER_SIZE);
+			output_str(ret, buf, size, "Command: %d\n",
+				   log.fields.cmd);
 
-			sprintf(temp, "Command: %d\n", log.fields.cmd);
-			strlcat(buf, temp, MAX_BUFFER_SIZE);
-
-			sprintf(temp, "Code: %d\n", log.fields.err_code);
-			strlcat(buf, temp, MAX_BUFFER_SIZE);
+			output_str(ret, buf, size, "Code: %d\n",
+				   log.fields.err_code);
 
 			if (log.fields.multi_err)
-				strlcat(buf, "\n Multiple errors detected!\n",
-							MAX_BUFFER_SIZE);
+				output_str(ret, buf, size,
+					   "\n Multiple errors detected!\n");
 
 			i += 2; /* Skip one error_log/addr pair */
 		}
 	} else {
-		strlcat(buf, "Not present\n", MAX_BUFFER_SIZE);
+		output_str(ret, buf, size, "Not present\n");
 	}
+
+	return ret;
 }
 
 char *get_fabric_name(u32 fabric_idx, u32 *fab_id)
@@ -299,20 +312,19 @@ char *get_fabric_name(u32 fabric_idx, u32 *fab_id)
 		break;
 	}
 
-	return Fabric_Names[*fab_id];
+	return fabric_names[*fab_id];
 }
 
-static int create_fwerr_log(char *output_buf, void __iomem *oshob_ptr)
+static int create_fwerr_log(char *buf, int size, void __iomem *oshob_ptr)
 {
 	char *ptr = NULL;
-	union error_log_dw10 err_log_dw10;
+	union error_log err_log;
 	union flag_status_hilo flag_status;
-	union fabric_status_dw0 err_status_dw0;
+	union fabric_status err_status;
 	u32 id = FAB_ID_UNKNOWN;
 	u32 faberr_dwords[MAX_NUM_LOGDWORDS + MAX_NUM_LOGDWORDS_EXTENDED] = {0};
 	int count, num_flag_status, num_err_logs;
-	int prev_id = FAB_ID_UNKNOWN, offset = 0;
-	char temp[100];
+	int prev_id = FAB_ID_UNKNOWN, offset = 0, ret = 0;
 
 	void __iomem *fabric_err_dump_offset = oshob_ptr +
 		intel_scu_ipc_get_fabricerror_buf1_offset();
@@ -331,77 +343,75 @@ static int create_fwerr_log(char *output_buf, void __iomem *oshob_ptr)
 			readl(fabric_err_dump_offset + sizeof(u32) * count);
 	}
 
-	err_status_dw0.data = faberr_dwords[0];
-	err_log_dw10.data = faberr_dwords[10];
+	err_status.data = faberr_dwords[FABRIC_ERR_STS_IDX];
+	err_log.data = faberr_dwords[FABRIC_ERR_SIGNATURE_IDX];
 
 	/* No SCU/fabric error if tenth DW signature field is not 10101 */
-	if (err_log_dw10.fields.signature != FABERR_INDICATOR)
-		return 0;
+	if (err_log.fields.signature != FABERR_INDICATOR)
+		goto out;
 
 	/* FW error if tenth DW reserved field is 111 */
-	if ((((err_status_dw0.data & 0xFFFF) == SWDTERR_IND) ||
-		((err_status_dw0.data & 0xFFFF) == UNDEFLVL1ERR_IND) ||
-		((err_status_dw0.data & 0xFFFF) == UNDEFLVL2ERR_IND) ||
-		((err_status_dw0.data & 0xFFFF) == MEMERR_IND) ||
-		((err_status_dw0.data & 0xFFFF) == INSTERR_IND) ||
-		((err_status_dw0.data & 0xFFFF) == ECCERR_IND) ||
-		((err_status_dw0.data & 0xFFFF) == FATALERR_IND)) &&
-		(err_log_dw10.fields.reserved1 == FWERR_INDICATOR)) {
+	if ((((err_status.data & 0xFFFF) == SWDTERR_IND) ||
+		((err_status.data & 0xFFFF) == UNDEFLVL1ERR_IND) ||
+		((err_status.data & 0xFFFF) == UNDEFLVL2ERR_IND) ||
+		((err_status.data & 0xFFFF) == MEMERR_IND) ||
+		((err_status.data & 0xFFFF) == INSTERR_IND) ||
+		((err_status.data & 0xFFFF) == ECCERR_IND) ||
+		((err_status.data & 0xFFFF) == FATALERR_IND)) &&
+		(err_log.fields.fw_err_ind == FWERR_INDICATOR)) {
 
-		sprintf(output_buf, "HW WDT expired");
+		output_str(ret, buf, size, "HW WDT expired");
 
-		switch (err_status_dw0.data & 0xFFFF) {
+		switch (err_status.data & 0xFFFF) {
 		case SWDTERR_IND:
-			strcat(output_buf,
-			" without facing any exception.\n\n");
+			output_str(ret, buf, size,
+				   " without facing any exception.\n\n");
 			break;
 		case MEMERR_IND:
-			strcat(output_buf,
-			" following a Memory Error exception.\n\n");
+			output_str(ret, buf, size,
+				   " following a Memory Error exception.\n\n");
 			break;
 		case INSTERR_IND:
-			strcat(output_buf,
-			" following an Instruction Error exception.\n\n");
+			output_str(ret, buf, size,
+				   " following an Instruction Error exception.\n\n");
 			break;
 		case ECCERR_IND:
-			strcat(output_buf,
-			" following a SRAM ECC Error exception.\n\n");
+			output_str(ret, buf, size,
+				   " following a SRAM ECC Error exception.\n\n");
 			break;
 		case FATALERR_IND:
-			strcat(output_buf,
-			" following a FATAL Error exception.\n\n");
+			output_str(ret, buf, size,
+				   " following a FATAL Error exception.\n\n");
 			break;
 		default:
-			strcat(output_buf,
-			".\n\n");
+			output_str(ret, buf, size, ".\n\n");
 			break;
 		}
-		strcat(output_buf, "HW WDT debug data:\n");
-		strcat(output_buf, "===================\n");
+		output_str(ret, buf, size, "HW WDT debug data:\n");
+		output_str(ret, buf, size, "===================\n");
 		for (count = 0;
 			count < MAX_NUM_LOGDWORDS + MAX_NUM_LOGDWORDS_EXTENDED;
 			count++) {
-			sprintf(temp, "DW%d:0x%08x\n",
-					count, faberr_dwords[count]);
-			strcat(output_buf, temp);
+			output_str(ret, buf, size, "DW%d:0x%08x\n",
+				   count, faberr_dwords[count]);
 		}
-		return strlen(output_buf);
+		goto out;
 	}
 
-	num_flag_status = err_status_dw0.fields.flag_status_cnt;
+	num_flag_status = err_status.fields.flag_status_cnt;
 	/* num_err_logs indicates num of error_log/addr pairs */
-	num_err_logs = err_log_dw10.fields.num_err_logs * 2;
+	num_err_logs = err_log.fields.num_err_logs * 2;
 
-	sprintf(output_buf,
-		"HW WDT fired following a Fabric Error exception.\n\n");
-	strcat(output_buf, "Fabric Error debug data:\n");
-	strcat(output_buf, "===================\n");
+	output_str(ret, buf, size,
+		   "HW WDT fired following a Fabric Error exception.\n\n");
+	output_str(ret, buf, size, "Fabric Error debug data:\n");
+	output_str(ret, buf, size, "===================\n");
 
 	for (count = 0; count < num_flag_status; count++) {
 
-		err_status_dw0.data = faberr_dwords[count];
+		err_status.data = faberr_dwords[count];
 		ptr = get_fabric_name(
-			err_status_dw0.fields.regidx & FAB_ID_MASK, &id);
+			err_status.fields.regidx & FAB_ID_MASK, &id);
 
 		/*
 		 * Only print the fabric name if is unknown
@@ -409,16 +419,16 @@ static int create_fwerr_log(char *output_buf, void __iomem *oshob_ptr)
 		 */
 
 		if (prev_id != id || id == FAB_ID_UNKNOWN) {
-			strlcat(output_buf, ptr, MAX_BUFFER_SIZE);
+			output_str(ret, buf, size, ptr);
 			prev_id = id;
 		}
 
 		flag_status.data = 0;
 		flag_status.fields.bits_rang0 =
-				err_status_dw0.fields.status_has_hilo;
+				err_status.fields.status_has_hilo;
 
 		flag_status.fields.bits_rang1 =
-				err_status_dw0.fields.status_has_hilo1;
+				err_status.fields.status_has_hilo1;
 
 		/*
 		 * The most significant bit in REGIDX field is set
@@ -427,12 +437,18 @@ static int create_fwerr_log(char *output_buf, void __iomem *oshob_ptr)
 		 * the dword
 		 */
 
-		if (err_status_dw0.fields.regidx & FLAG_HILOW_MASK)
-			get_fabric_error_cause_detail(output_buf, id,
-						&flag_status.data, 1);
+		if (err_status.fields.regidx & FLAG_HILOW_MASK)
+			ret += get_fabric_error_cause_detail(buf + ret,
+							     size - ret,
+							     id,
+							     &flag_status.data,
+							     1);
 		else
-			get_fabric_error_cause_detail(output_buf, id,
-						&flag_status.data, 0);
+			ret += get_fabric_error_cause_detail(buf + ret,
+							     size - ret,
+							     id,
+							     &flag_status.data,
+							     0);
 
 		offset++; /* Use this to track error_log/address offset */
 	}
@@ -440,31 +456,29 @@ static int create_fwerr_log(char *output_buf, void __iomem *oshob_ptr)
 	if (offset & 1)
 		offset++; /* If offset is odd number, adjust to even offset */
 
-	get_additional_error(output_buf, num_err_logs, &faberr_dwords[offset],
-						MAX_NUM_LOGDWORDS - offset);
+	ret += get_additional_error(buf + ret, size - ret, num_err_logs,
+				    &faberr_dwords[offset],
+				    MAX_NUM_LOGDWORDS - offset);
 
-	strlcat(output_buf, "\n\n\nAdditional debug data:\n\n", MAX_FULL_SIZE);
+	output_str(ret, buf, size, "\n\n\nAdditional debug data:\n\n");
 	for (count = 0;
 		count < MAX_NUM_LOGDWORDS + MAX_NUM_LOGDWORDS_EXTENDED;
 		count++) {
-		sprintf(temp, "DW%d:0x%08x\n",
-			count, faberr_dwords[count]);
-		strlcat(output_buf, temp, MAX_FULL_SIZE);
+		output_str(ret, buf, size, "DW%d:0x%08x\n",
+			   count, faberr_dwords[count]);
 	}
-	return strlen(output_buf);
+out:
+	return ret;
 }
 
-static int dump_scu_extented_trace(char *outbuf, int start_offset, u32 size)
+static int dump_scu_extented_trace(char *buf, int size)
 {
 	u32 buffer;
-	int offset;
-	int i;
+	int i, ret = 0;
 	unsigned int lines;
 	void __iomem *scubuffer;
 
-	offset = start_offset;
-
-	if ((size == 0) || (size > MAX_SCU_EXTRA_DUMP_SIZE))
+	if (!size)
 		goto leave;
 
 	/*
@@ -483,28 +497,25 @@ static int dump_scu_extented_trace(char *outbuf, int start_offset, u32 size)
 	lines = size / sizeof(u32);
 
 	/* Title for error dump */
-	offset += snprintf(outbuf + offset, CHAR_PER_LINE_EXTRA_TRACE,
-			   "SCU Extra trace\n");
+	output_str(ret, buf, size, "SCU Extra trace\n");
 
 	for (i = 0; i < lines; i++) {
 		/*
 		 * "EW:" to separate lines from "DW:" lines
 		 * elsewhere in this file.
 		 */
-		offset += snprintf(outbuf + offset,
-				   CHAR_PER_LINE_EXTRA_TRACE, "EW%d:0x%08x\n",
-				   i,
-				   readl(scubuffer + i * sizeof(u32)));
+		output_str(ret, buf, size, "EW%d:0x%08x\n", i,
+			   readl(scubuffer + i * sizeof(u32)));
 	}
+
 	iounmap(scubuffer);
 leave:
-	return offset;
+	return ret;
 }
 
 static int intel_fw_logging_init(void)
 {
-	int length = 0;
-	int err = 0;
+	int err = 0, length = 0;
 	u32 scu_trace_size;
 	u32 trace_size;
 
@@ -531,18 +542,20 @@ static int intel_fw_logging_init(void)
 		CHAR_PER_LINE_EXTRA_TRACE;
 
 	/* Allocate buffer for traditional trace and extra trace */
-	log_buffer = vzalloc(MAX_FULL_SIZE + scu_trace_size);
+	log_buffer = kzalloc(MAX_FULL_SIZE + scu_trace_size, GFP_KERNEL);
 	if (!log_buffer) {
 		err = -ENOMEM;
 		goto err_nomem;
 	}
 
-	length = create_fwerr_log(log_buffer, oshob_base);
+	length = create_fwerr_log(log_buffer, MAX_FULL_SIZE + scu_trace_size,
+				  oshob_base);
 	if (!length)
 		goto err_nolog;
 
-	length = dump_scu_extented_trace(log_buffer, length,
-					 trace_size);
+	length += dump_scu_extented_trace(log_buffer + length,
+					  MAX_FULL_SIZE + scu_trace_size -
+					  length);
 
 #ifdef CONFIG_PROC_FS
 	ipanic_faberr = create_proc_entry("ipanic_fabric_err",
@@ -569,7 +582,7 @@ static int intel_fw_logging_init(void)
 
 err_procfail:
 err_nolog:
-	vfree(log_buffer);
+	kfree(log_buffer);
 err_nomem:
 leave:
 	iounmap(oshob_base);
@@ -582,7 +595,7 @@ static void intel_fw_logging_exit(void)
 	if (ipanic_faberr)
 		remove_proc_entry("ipanic_fabric_err", NULL);
 #endif /* CONFIG_PROC_FS */
-	vfree(log_buffer);
+	kfree(log_buffer);
 }
 
 static int fw_logging_rpmsg_probe(struct rpmsg_channel *rpdev)
