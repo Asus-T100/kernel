@@ -3130,9 +3130,13 @@ EDP_PSR_SW_TIMER
 #define _DSPASIZE		0x70190
 #define _DSPASURF		0x7019C /* 965+ only */
 #define _DSPATILEOFF		0x701A4 /* 965+ only */
+#define _VLV_DSPAADDR		0x7017C
+#define _DSPASURFLIVE		0x701AC
 
 #define DSPCNTR(plane) _PIPE(plane, _DSPACNTR, _DSPBCNTR)
 #define DSPADDR(plane) _PIPE(plane, _DSPAADDR, _DSPBADDR)
+#define VLV_DSPADDR(plane) _PIPE(plane, _VLV_DSPAADDR, _VLV_DSPBADDR)
+#define DSPSURFLIVE(plane) _PIPE(plane, _DSPASURFLIVE, _DSPBSURFLIVE)
 #define DSPSTRIDE(plane) _PIPE(plane, _DSPASTRIDE, _DSPBSTRIDE)
 #define DSPPOS(plane) _PIPE(plane, _DSPAPOS, _DSPBPOS)
 #define DSPSIZE(plane) _PIPE(plane, _DSPASIZE, _DSPBSIZE)
@@ -3184,6 +3188,8 @@ EDP_PSR_SW_TIMER
 #define _DSPBSIZE		0x71190
 #define _DSPBSURF		0x7119C
 #define _DSPBTILEOFF		0x711A4
+#define _VLV_DSPBADDR		0x7117C
+#define _DSPBSURFLIVE		0x711AC
 
 /* Sprite A control */
 #define _DVSACNTR		0x72180
@@ -3378,6 +3384,9 @@ EDP_PSR_SW_TIMER
 #define SPTILEOFF(pipe, plane) _PIPE(pipe * 2 + plane, _SPATILEOFF, _SPBTILEOFF)
 #define SPCONSTALPHA(pipe, plane) _PIPE(pipe * 2 + plane, _SPACONSTALPHA, _SPBCONSTALPHA)
 #define SPGAMC(pipe, plane) _PIPE(pipe * 2 + plane, _SPAGAMC, _SPBGAMC)
+
+#define	  PLANE_RESERVED_REG_BIT_2_ENABLE	(1 << 2)
+#define          CURSOR_DECRYPTION_ENABLE      (1<<4)
 
 /* VBIOS regs */
 #define VGACNTRL		0x71400

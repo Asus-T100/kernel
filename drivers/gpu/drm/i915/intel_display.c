@@ -2058,6 +2058,50 @@ void intel_unpin_fb_obj(struct drm_i915_gem_object *obj)
 	i915_gem_object_unpin(obj);
 }
 
+int i915_enable_plane_reserved_reg_bit_2(struct drm_device *dev, void *data,
+				 struct drm_file *file)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct drm_i915_reserved_reg_bit_2 *rrb = data;
+	u32 enable = rrb->enable;
+	int plane = rrb->plane;
+	u32 val;
+
+	/* Clear the older rrb setting*/
+	val = I915_READ(DSPSURF(plane));
+	val &= ~PLANE_RESERVED_REG_BIT_2_ENABLE;
+	I915_WRITE(DSPSURF(plane), val);
+
+	val = I915_READ(DSPSURFLIVE(plane));
+	val &= ~PLANE_RESERVED_REG_BIT_2_ENABLE;
+	I915_WRITE(DSPSURFLIVE(plane), val);
+
+	if (plane == 1 || plane == 4) {
+		val = I915_READ(VLV_DSPADDR(plane));
+		val &= ~PLANE_RESERVED_REG_BIT_2_ENABLE;
+		I915_WRITE(VLV_DSPADDR(plane), val);
+	}
+
+	/* Program bit enable if it was requested */
+	if (enable) {
+		val = I915_READ(DSPSURF(plane));
+		val |= PLANE_RESERVED_REG_BIT_2_ENABLE;
+		I915_WRITE(DSPSURF(plane), val);
+
+		val = I915_READ(DSPSURFLIVE(plane));
+		val |= PLANE_RESERVED_REG_BIT_2_ENABLE;
+		I915_WRITE(DSPSURFLIVE(plane), val);
+
+		if (plane == 1 || plane == 4) {
+			val = I915_READ(VLV_DSPADDR(plane));
+			val |= PLANE_RESERVED_REG_BIT_2_ENABLE;
+			I915_WRITE(VLV_DSPADDR(plane), val);
+		}
+	}
+
+	return 0;
+}
+
 /* Computes the linear offset to the base tile and adjusts x, y. bytes per pixel
  * is assumed to be a power-of-two. */
 unsigned long intel_gen4_compute_page_offset(int *x, int *y,
