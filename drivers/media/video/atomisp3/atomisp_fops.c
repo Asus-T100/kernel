@@ -631,6 +631,9 @@ static int atomisp_release(struct file *file)
 				ATOMISP_SUBDEV_PAD_SINK, &isp_sink_fmt);
 	}
 
+	atomisp_ISP_parameters_clean_up(isp, &isp->params.config);
+	isp->params.css_update_params_needed = false;
+
 	del_timer_sync(&isp->wdt);
 	atomisp_acc_release(isp);
 	atomisp_free_3a_dvs_buffers(isp);
