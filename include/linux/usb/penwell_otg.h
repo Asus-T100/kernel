@@ -420,7 +420,7 @@ struct otg_bc_cap {
 
 struct otg_bc_event {
 	struct list_head		node;
-	struct power_supply_charger_cap	cap;
+	struct power_supply_cable_props	cap;
 };
 
 /* Bus monitor action for b_ssend_srp/b_se0_srp */
@@ -480,7 +480,7 @@ struct penwell_otg {
 	struct list_head		chrg_evt_queue;
 	struct otg_bc_cap		charging_cap;
 	spinlock_t			cap_lock;
-	struct power_supply_charger_cap psc_cap;
+	struct power_supply_cable_props psc_cap;
 	int (*bc_callback)(void *arg, int event, struct otg_bc_cap *cap);
 	void				*bc_arg;
 
@@ -503,7 +503,7 @@ struct penwell_otg *iotg_to_penwell(struct intel_mid_otg_xceiv *iotg)
 
 extern int penwell_otg_query_charging_cap(struct otg_bc_cap *cap);
 extern int penwell_otg_query_power_supply_cap(
-			struct power_supply_charger_cap *cap);
+			struct power_supply_cable_props *cap);
 extern void *penwell_otg_register_bc_callback(
 	int (*cb)(void *, int, struct otg_bc_cap *), void *arg);
 extern int penwell_otg_unregister_bc_callback(void *handler);
