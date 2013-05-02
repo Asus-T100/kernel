@@ -44,32 +44,17 @@ struct byt_mc_private {
 	struct snd_soc_jack jack;
 };
 
-enum {
-	BYT_HS_JACK,
-	BYT_CODEC_INT,
-	BYT_DOCK_JACK,
-};
-
 static int byt_hp_detection(void);
 static int byt_bp_detection(void);
 
-static struct snd_soc_jack_gpio hs_gpio[] = {
-	[BYT_HS_JACK] = {
-		.name			= "byt-hsdet-gpio",
+static struct snd_soc_jack_gpio hs_gpio = {
+		.name			= "byt-codec-int",
 		.report			= SND_JACK_HEADSET |
 					  SND_JACK_HEADPHONE |
 					  SND_JACK_BTN_0,
-		.debounce_time		= 200,
+		.debounce_time		= 100,
 		.jack_status_check	= byt_hp_detection,
-		.invert			= 1,
-	},
-	[BYT_CODEC_INT] = {
-		.name			= "byt-codec-int",
-		.report			= SND_JACK_HEADSET |
-					  SND_JACK_BTN_0,
-		.debounce_time		= 40,
-		.jack_status_check	= byt_bp_detection,
-	},
+		.irq_flags		= IRQF_TRIGGER_RISING,
 };
 
 static inline void byt_jack_report(int status)
@@ -101,57 +86,56 @@ static void set_mic_bias(struct snd_soc_codec *codec,
 
 static int byt_hp_detection(void)
 {
-	struct snd_soc_jack_gpio *gpio = &hs_gpio[BYT_HS_JACK];
+	struct snd_soc_jack_gpio *gpio = &hs_gpio;
 	struct snd_soc_jack *jack = gpio->jack;
 	struct snd_soc_codec *codec = jack->codec;
-	int status, jack_type, enable;
+	int status, jack_type = 0, enable;
 
-	enable = gpio_get_value_cansleep(gpio->gpio);
-	if (gpio->invert)
-		enable = !enable;
-	pr_debug("%s: headset detected - %#x, currently = %#x\n",
-		 __func__, enable, jack->status);
-
-	status = rt5640_headset_detect(codec, enable);
-	if (status == RT5640_HEADPHO_DET)
-		jack_type = SND_JACK_HEADPHONE;
-	else if (status == RT5640_HEADSET_DET)
-		jack_type = SND_JACK_HEADSET;
-	else /* RT5640_NO_JACK */
-		jack_type = 0;
-
-	byt_jack_report(jack_type);
-
-	if (jack_type == SND_JACK_HEADSET)
+	pr_debug("Enter:%s", __func__);
+	status = rt5640_check_interrupt_event(codec);
+	switch (status) {
+	case RT5640_J_IN_EVENT:
+		pr_debug("Jack insert intr");
 		set_mic_bias(codec, "micbias1", true);
-	else
+		status = rt5640_headset_detect(codec, true);
+		if (status == RT5640_HEADPHO_DET)
+			jack_type = SND_JACK_HEADPHONE;
+		else if (status == RT5640_HEADSET_DET)
+			jack_type = SND_JACK_HEADSET;
+		else /* RT5640_NO_JACK */
+			jack_type = 0;
+
+		byt_jack_report(jack_type);
+
+		if (jack_type != SND_JACK_HEADSET)
+			set_mic_bias(codec, "micbias1", false);
+
+		pr_debug("Jack type detected:%d", jack_type);
+		break;
+	case RT5640_J_OUT_EVENT:
+		pr_debug("Jack remove intr");
+		status = rt5640_headset_detect(codec, false);
+		jack_type = 0;
+		byt_jack_report(jack_type);
 		set_mic_bias(codec, "micbias1", false);
-	return jack_type;
-}
-
-static int byt_bp_detection(void)
-{
-	struct snd_soc_jack_gpio *gpio = &hs_gpio[BYT_CODEC_INT];
-	struct snd_soc_jack *jack = gpio->jack;
-	struct snd_soc_codec *codec = jack->codec;
-	int status = jack->status, enable;
-	bool press;
-
-	enable = gpio_get_value_cansleep(gpio->gpio);
-	if (gpio->invert)
-		enable = !enable;
-	pr_debug("%s: button press - %d", __func__, enable);
-	if ((jack->status & SND_JACK_HEADSET) == SND_JACK_HEADSET) {
-		press = rt5640_button_detect(codec);
-		if (press)
-			status = SND_JACK_HEADSET | SND_JACK_BTN_0;
-		else
-			status = SND_JACK_HEADSET;
-		pr_debug("codec reported = %d, status = %#x", press, status);
-	} else {
-		pr_debug("%s: spurious button press", __func__);
+		break;
+	case RT5640_BR_EVENT:
+		pr_debug("BR event received");
+		jack_type = SND_JACK_HEADSET;
+		break;
+	case RT5640_BP_EVENT:
+		pr_debug("BP event received");
+		jack_type = status = SND_JACK_HEADSET | SND_JACK_BTN_0;
+		break;
+	case RT5640_UN_EVENT:
+		pr_debug("Reported invalid/RT5640_UN_EVENT");
+		/* return previous status */
+		jack_type = jack->status;
+		break;
+	default:
+		pr_err("Error: Invalid event");
 	}
-	return status;
+	return jack_type;
 }
 
 static const struct snd_soc_dapm_widget byt_dapm_widgets[] = {
@@ -303,7 +287,7 @@ static int byt_init(struct snd_soc_pcm_runtime *runtime)
 		pr_err("jack creation failed\n");
 		return ret;
 	}
-	ret = snd_soc_jack_add_gpios(&ctx->jack, ARRAY_SIZE(hs_gpio), hs_gpio);
+	ret = snd_soc_jack_add_gpios(&ctx->jack, 1, &hs_gpio);
 	if (ret) {
 		pr_err("adding jack GPIO failed\n");
 		return ret;
@@ -442,9 +426,7 @@ static int snd_byt_mc_probe(struct platform_device *pdev)
 	pr_info("%s: GPIOs - codec %d, hsdet %d, dock_hs %d", __func__,
 		pdata->codec_gpio, pdata->hsdet_gpio, pdata->dock_hs_gpio);
 
-	hs_gpio[BYT_HS_JACK].gpio = pdata->hsdet_gpio;
-	hs_gpio[BYT_CODEC_INT].gpio = pdata->codec_gpio;
-
+	hs_gpio.gpio = pdata->codec_gpio;
 	/* register the soc card */
 	snd_soc_card_byt.dev = &pdev->dev;
 	snd_soc_card_set_drvdata(&snd_soc_card_byt, drv);
@@ -464,7 +446,7 @@ static int snd_byt_mc_remove(struct platform_device *pdev)
 	struct byt_mc_private *drv = snd_soc_card_get_drvdata(soc_card);
 
 	pr_debug("In %s\n", __func__);
-	snd_soc_jack_free_gpios(&drv->jack, ARRAY_SIZE(hs_gpio), hs_gpio);
+	snd_soc_jack_free_gpios(&drv->jack, 1, &hs_gpio);
 	snd_soc_card_set_drvdata(soc_card, NULL);
 	snd_soc_unregister_card(soc_card);
 	platform_set_drvdata(pdev, NULL);

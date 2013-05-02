@@ -8,7 +8,6 @@
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
-
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/init.h>
@@ -114,12 +113,15 @@ static struct rt5640_init_reg init_list[] = {
 	{RT5640_DSP_PATH2, 0x0c00},
 #endif
 #if RT5640_DET_EXT_MIC
-	{RT5640_MICBIAS, 0x3800},	/* enable MICBIAS short current */
-	{RT5640_GPIO_CTRL1, 0x0400},	/* set GPIO1 to IRQ */
+	{RT5640_MICBIAS, 0xb830},	/* enable MICBIAS short current */
+	{RT5640_GPIO_CTRL1, 0x8400},	/* set GPIO1 to IRQ */
 	{RT5640_GPIO_CTRL3, 0x0004},	/* set GPIO1 output */
 /*	{RT5640_GEN_CTRL2, 0x5100},*/	/* enable JD2 */
-	{RT5640_IRQ_CTRL2, 0x8000},	/*set MICBIAS short current to IRQ */
+/*	{RT5640_IRQ_CTRL2, 0x8000},*/	/*set MICBIAS short current to IRQ */
 	/*( if sticky set regBE : 8800 ) */
+	/* for Jack Detection */
+	{RT5640_JD_CTRL, 0x6003},
+	{RT5640_IRQ_CTRL1, 0x8800}, /* enable jd and output invert */
 #endif
 };
 
@@ -502,18 +504,11 @@ void DC_Calibrate(struct snd_soc_codec *codec)
 int rt5640_headset_detect(struct snd_soc_codec *codec, int jack_insert)
 {
 	int jack_type;
-	int sclk_src = 0;
 
 	if (jack_insert) {
-		if (SND_SOC_BIAS_OFF == codec->dapm.bias_level) {
-			snd_soc_write(codec, RT5640_PWR_ANLG1, 0x2004);
-			snd_soc_write(codec, RT5640_MICBIAS, 0x3a30);
-			snd_soc_write(codec, RT5640_GEN_CTRL1 , 0x3701);
-			sclk_src = snd_soc_read(codec, RT5640_GLB_CLK) &
-				RT5640_SCLK_SRC_MASK;
-			snd_soc_update_bits(codec, RT5640_GLB_CLK,
-				RT5640_SCLK_SRC_MASK, 0x3 << RT5640_SCLK_SRC_SFT);
-		}
+		rt5640_index_write(codec, RT5640_BIAS_CUR4, 0xab00);
+		if (SND_SOC_BIAS_OFF == codec->dapm.bias_level)
+			snd_soc_write(codec, RT5640_PWR_ANLG1, 0xa814);
 
 		snd_soc_update_bits(codec, RT5640_PWR_ANLG1,
 			RT5640_PWR_LDO2, RT5640_PWR_LDO2);
@@ -523,31 +518,33 @@ int rt5640_headset_detect(struct snd_soc_codec *codec, int jack_insert)
 				    RT5640_MIC1_OVCD_MASK |
 				    RT5640_MIC1_OVTH_MASK |
 				    RT5640_PWR_CLK25M_MASK | RT5640_PWR_MB_MASK,
-				    RT5640_MIC1_OVCD_EN | RT5640_MIC1_OVTH_1500UA
+				    RT5640_MIC1_OVCD_EN | RT5640_MIC1_OVTH_600UA
 				    | RT5640_PWR_MB_PU | RT5640_PWR_CLK25M_PU);
 		snd_soc_update_bits(codec, RT5640_GEN_CTRL1, 0x1, 0x1);
+		pr_debug("%s:jack inserted", __func__);
 		msleep(100);
 		if (snd_soc_read(codec, RT5640_IRQ_CTRL2) & 0x8) {
+			snd_soc_update_bits(codec, RT5640_IRQ_CTRL2,
+				RT5640_IRQ_MB1_OC_MASK, RT5640_IRQ_MB1_OC_BP);
 			jack_type = RT5640_HEADPHO_DET;
-			snd_soc_update_bits(codec, RT5640_GPIO_CTRL1,
-				RT5640_GP1_PIN_MASK, RT5640_GP1_PIN_GPIO1);
+			pr_debug("%s:detected headphone", __func__);
 		} else {
+			snd_soc_update_bits(codec, RT5640_IRQ_CTRL2,
+				RT5640_IRQ_MB1_OC_MASK, RT5640_IRQ_MB1_OC_NOR);
 			jack_type = RT5640_HEADSET_DET;
-			snd_soc_update_bits(codec, RT5640_GPIO_CTRL1,
-				RT5640_GP1_PIN_MASK, RT5640_GP1_PIN_IRQ);
+			pr_debug("%s:detected headset", __func__);
 		}
 		snd_soc_update_bits(codec, RT5640_IRQ_CTRL2,
 				    RT5640_MB1_OC_CLR, 0);
-		if (SND_SOC_BIAS_OFF == codec->dapm.bias_level &&
-		    jack_type == RT5640_HEADPHO_DET)
-			snd_soc_update_bits(codec, RT5640_GLB_CLK,
-					    RT5640_SCLK_SRC_MASK, sclk_src);
+		rt5640_index_write(codec, RT5640_BIAS_CUR4, 0xaa00);
 	} else {
 		snd_soc_update_bits(codec, RT5640_MICBIAS,
-				    RT5640_MIC1_OVCD_MASK,
-				    RT5640_MIC1_OVCD_DIS);
-		snd_soc_update_bits(codec, RT5640_GPIO_CTRL1,
-			RT5640_GP1_PIN_MASK, RT5640_GP1_PIN_GPIO1);
+				RT5640_MIC1_OVCD_MASK,
+				RT5640_MIC1_OVCD_DIS);
+		snd_soc_update_bits(codec, RT5640_IRQ_CTRL2,
+				RT5640_IRQ_MB1_OC_MASK,
+				RT5640_IRQ_MB1_OC_BP);
+		pr_debug("%s:NO Jack detected", __func__);
 		jack_type = RT5640_NO_JACK;
 	}
 
@@ -557,6 +554,7 @@ EXPORT_SYMBOL(rt5640_headset_detect);
 
 int rt5640_button_detect(struct snd_soc_codec *codec)
 {
+	struct rt5640_priv *rt5640 = snd_soc_codec_get_drvdata(codec);
 	bool press;
 
 	if (SND_SOC_BIAS_OFF == codec->dapm.bias_level) {
@@ -582,12 +580,84 @@ int rt5640_button_detect(struct snd_soc_codec *codec)
 	else
 		press = false;
 
+	rt5640->bp_status = press;
+
 	snd_soc_update_bits(codec, RT5640_IRQ_CTRL2,
 			RT5640_MB1_OC_CLR, 0);
 
 	return press;
 }
 EXPORT_SYMBOL(rt5640_button_detect);
+
+int rt5640_check_interrupt_event(struct snd_soc_codec *codec)
+{
+	struct rt5640_priv *rt5640 = snd_soc_codec_get_drvdata(codec);
+	int event = RT5640_UN_EVENT;
+	int val;
+
+	val = snd_soc_read(codec, RT5640_INT_IRQ_ST) & 0x0010;
+	if (val) { /* Jack evulse */
+		rt5640->jd_status = false;
+		rt5640->bp_status = false;
+		/* change jd polarity */
+		snd_soc_update_bits(codec, RT5640_IRQ_CTRL1,
+				    RT5640_JD_P_MASK, RT5640_JD_P_INV);
+		pr_debug("%s-RT5640_J_OUT_EVENT\n", __func__);
+		return RT5640_J_OUT_EVENT;
+	}
+	if (!rt5640->jd_status) {
+		if (!val) {  /* Jack Insert */
+			rt5640->jd_status = true;
+			rt5640->bp_status = false;
+			/* change jd polarity */
+			snd_soc_update_bits(codec, RT5640_IRQ_CTRL1,
+					    RT5640_JD_P_MASK, RT5640_JD_P_NOR);
+			pr_debug("%s-RT5640_J_IN_EVENT\n", __func__);
+			return RT5640_J_IN_EVENT;
+		}
+	} else { /* handle button press event only when jack inserted */
+		val = snd_soc_read(codec, RT5640_IRQ_CTRL2) & 0x8;
+		if (rt5640->bp_status) {
+			if (!val) {
+				pr_debug("%s-RT5640_BR_EVENT\n", __func__);
+				event = RT5640_BR_EVENT;
+				rt5640->bp_status = false;
+				/* change bp polarity */
+				snd_soc_update_bits(codec, RT5640_IRQ_CTRL2,
+						    RT5640_MB1_OC_P_MASK,
+						    RT5640_MB1_OC_P_NOR);
+			}
+		} else {
+			if (val) {
+				pr_debug("%s-RT5640_BP_EVENT\n", __func__);
+				event = RT5640_BP_EVENT;
+				rt5640->bp_status = true;
+				/* change bp polarity */
+				snd_soc_update_bits(codec, RT5640_IRQ_CTRL2,
+						    RT5640_MB1_OC_P_MASK,
+						    RT5640_MB1_OC_P_INV);
+			}
+		}
+	}
+	pr_debug("%s-EVENT detected:%d", __func__, event);
+	return event;
+}
+EXPORT_SYMBOL(rt5640_check_interrupt_event);
+
+bool get_jd_status(struct snd_soc_codec *codec)
+{
+	struct rt5640_priv *rt5640 = snd_soc_codec_get_drvdata(codec);
+	bool status;
+
+	if (snd_soc_read(codec, RT5640_INT_IRQ_ST) & 0x0010)
+		status = false;
+	else
+		status = true;
+
+	pr_debug("%s-reported status:%d", __func__, status);
+	return status;
+}
+EXPORT_SYMBOL(get_jd_status);
 
 static const char * const rt5640_dacr2_src[] = { "TxDC_R", "TxDP_R" };
 
@@ -3214,9 +3284,10 @@ static int rt5640_set_bias_level(struct snd_soc_codec *codec,
 
 	case SND_SOC_BIAS_OFF:
 		pr_debug("In case SND_SOC_BIAS_OFF:\n");
+		snd_soc_update_bits(codec, RT5640_GLB_CLK,
+			RT5640_SCLK_SRC_MASK, 0x3 << RT5640_SCLK_SRC_SFT);
 		snd_soc_write(codec, RT5640_DEPOP_M1, 0x0004);
 		snd_soc_write(codec, RT5640_DEPOP_M2, 0x1100);
-		snd_soc_write(codec, RT5640_GEN_CTRL1, 0x3700);
 		snd_soc_write(codec, RT5640_PWR_DIG1, 0x0000);
 		snd_soc_write(codec, RT5640_PWR_DIG2, 0x0000);
 		snd_soc_write(codec, RT5640_PWR_VOL, 0x0000);
@@ -3288,6 +3359,8 @@ static int rt5640_probe(struct snd_soc_codec *codec)
 	DC_Calibrate(codec);
 	codec->dapm.bias_level = SND_SOC_BIAS_STANDBY;
 	rt5640->codec = codec;
+	rt5640->jd_status = false;
+	rt5640->bp_status = false;
 
 #if IS_ENABLED(CONFIG_SND_SOC_RT5642)
 	rt5640->dsp_sw = RT5640_DSP_AEC_NS_FENS;
@@ -3346,11 +3419,13 @@ static int rt5640_suspend(struct snd_soc_codec *codec)
 
 static int rt5640_resume(struct snd_soc_codec *codec)
 {
+	struct rt5640_priv *rt5640 = snd_soc_codec_get_drvdata(codec);
 	rt5640_set_bias_level(codec, SND_SOC_BIAS_STANDBY);
 #if IS_ENABLED(CONFIG_SND_SOC_RT5642)
 	/* After opening LDO of codec, then close LDO of DSP. */
 	rt5640_dsp_resume(codec);
 #endif
+	rt5640->jd_status = false;
 	return 0;
 }
 #else
