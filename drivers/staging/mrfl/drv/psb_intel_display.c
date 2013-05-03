@@ -120,6 +120,7 @@ int psb_intel_pipe_set_base(struct drm_crtc *crtc,
 	int dspstride = (pipe == 0) ? DSPASTRIDE : DSPBSTRIDE;
 	int dspcntr_reg = (pipe == 0) ? DSPACNTR : DSPBCNTR;
 	u32 dspcntr;
+	u32 power_island = 0;
 	int ret = 0;
 
 	PSB_DEBUG_ENTRY("\n");
@@ -130,8 +131,9 @@ int psb_intel_pipe_set_base(struct drm_crtc *crtc,
 		return 0;
 	}
 
-	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
-				       OSPM_UHB_FORCE_POWER_ON))
+	power_island = pipe_to_island(pipe);
+
+	if (!power_island_get(power_island))
 		return 0;
 
 	Start = mode_dev->bo_offset(dev, psbfb);
@@ -169,7 +171,7 @@ int psb_intel_pipe_set_base(struct drm_crtc *crtc,
 
  psb_intel_pipe_set_base_exit:
 
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+	power_island_put(power_island);
 
 	return ret;
 }
@@ -239,6 +241,7 @@ void psb_intel_crtc_load_lut(struct drm_crtc *crtc)
 	    (struct drm_psb_private *)dev->dev_private;
 	struct psb_intel_crtc *psb_intel_crtc = to_psb_intel_crtc(crtc);
 	int palreg = PALETTE_A;
+	u32 power_island = 0;
 	int i;
 
 	/* The clocks have to be on to load the palette. */
@@ -259,7 +262,9 @@ void psb_intel_crtc_load_lut(struct drm_crtc *crtc)
 		return;
 	}
 
-	if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, OSPM_UHB_ONLY_IF_ON)) {
+	power_island = pipe_to_island(psb_intel_crtc->pipe);
+
+	if (power_island_get(power_island)) {
 		for (i = 0; i < 256; i++) {
 			REG_WRITE(palreg + 4 * i,
 				  ((psb_intel_crtc->lut_r[i] +
@@ -269,7 +274,7 @@ void psb_intel_crtc_load_lut(struct drm_crtc *crtc)
 				  (psb_intel_crtc->lut_b[i] +
 				   psb_intel_crtc->lut_adj[i]));
 		}
-		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+		power_island_put(power_island);
 	} else {
 		for (i = 0; i < 256; i++) {
 			dev_priv->save_palette_a[i] =

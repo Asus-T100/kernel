@@ -6,6 +6,9 @@ menuconfig GPS
 
 if GPS
 
+# Intel MID GPS
+source "drivers/gps/intel_mid_gps/Kconfig"
+
 # TI's ST based wl128x GPS
 source "drivers/gps/wl128x/Kconfig"
 

@@ -84,9 +84,6 @@ struct v4l2_device atomisp_dev = {
 
 void __iomem *atomisp_io_base;
 
-int atomisp_pci_vendor; /* pci vendor id */
-int atomisp_pci_device; /* pci device id */
-
 int atomisp_video_init(struct atomisp_video_pipe *video, const char *name)
 {
 	int ret;
@@ -161,7 +158,7 @@ static int atomisp_save_iunit_reg(struct atomisp_device *isp)
 	pci_read_config_dword(dev, PCI_INTERRUPT_CTRL,
 			      &isp->saved_regs.interrupt_control);
 
-	if (IS_ISP2400) {
+	if (IS_ISP2400(isp)) {
 		pci_read_config_dword(dev, MRFLD_PCI_PMCS,
 				      &isp->saved_regs.pmcs);
 		/* Ensure read/write combining is enabled. */
@@ -237,7 +234,7 @@ static int atomisp_restore_iunit_reg(struct atomisp_device *isp)
 	pci_write_config_dword(dev, PCI_I_CONTROL,
 					isp->saved_regs.i_control);
 
-	if (IS_ISP2400) {
+	if (IS_ISP2400(isp)) {
 		pci_write_config_dword(dev, MRFLD_PCI_PMCS,
 						isp->saved_regs.pmcs);
 		pci_write_config_dword(dev, MRFLD_PCI_CSI_ACCESS_CTRL_VIOL,
@@ -401,7 +398,7 @@ static int atomisp_runtime_suspend(struct device *dev)
 		dev_get_drvdata(dev);
 	int ret;
 
-	if (IS_ISP2400) {
+	if (IS_ISP2400(isp)) {
 		ret = atomisp_mrfld_pre_power_down(isp);
 		if (ret)
 			return ret;
@@ -445,7 +442,7 @@ static int atomisp_runtime_resume(struct device *dev)
 	if (isp->saved_regs.pcicmdsts)
 		atomisp_restore_iunit_reg(isp);
 
-	if (IS_ISP2400)
+	if (IS_ISP2400(isp))
 		atomisp_freq_scaling(isp, ATOMISP_DFS_MODE_LOW);
 
 	return 0;
@@ -475,7 +472,7 @@ static int atomisp_suspend(struct device *dev)
 	spin_unlock_irqrestore(&isp->lock, flags);
 
 	/* Prepare for MRFLD IUNIT power down */
-	if (IS_ISP2400) {
+	if (IS_ISP2400(isp)) {
 		ret = atomisp_mrfld_pre_power_down(isp);
 		if (ret)
 			return ret;
@@ -520,7 +517,7 @@ static int atomisp_resume(struct device *dev)
 	if (isp->saved_regs.pcicmdsts)
 		atomisp_restore_iunit_reg(isp);
 
-	if (IS_ISP2400)
+	if (IS_ISP2400(isp))
 		atomisp_freq_scaling(isp, ATOMISP_DFS_MODE_LOW);
 
 	return 0;
@@ -702,7 +699,7 @@ static int atomisp_subdev_probe(struct atomisp_device *isp)
 	if (!isp->inputs[0].camera)
 		dev_warn(isp->dev, "no camera attached or fail to detect\n");
 
-	if (IS_ISP2400)
+	if (IS_ISP2400(isp))
 		return mrfld_csi_lane_config(isp);
 
 	return 0;
@@ -731,10 +728,6 @@ static int atomisp_register_entities(struct atomisp_device *isp)
 
 	strlcpy(isp->media_dev.model, "Intel Atom ISP",
 		sizeof(isp->media_dev.model));
-	if (IS_ISP2400)
-		isp->media_dev.hw_revision = ATOMISP_CSS_VERSION_20;
-	else
-		isp->media_dev.hw_revision = ATOMISP_CSS_VERSION_15;
 
 	ret = media_device_register(&isp->media_dev);
 	if (ret < 0) {
@@ -916,11 +909,11 @@ error_mipi_csi2:
 }
 
 static const struct firmware *
-load_firmware(struct device *dev)
+load_firmware(struct atomisp_device *isp)
 {
 	const struct firmware *fw;
 	int rc;
-	char *fw_path = IS_ISP2400 ? ISP2400_FW_PATH : MFLD_FW_PATH;
+	char *fw_path = IS_ISP2400(isp) ? ISP2400_FW_PATH : MFLD_FW_PATH;
 
 	/*
 	 * FIXME: BYT uses css2400B0 firmware
@@ -928,27 +921,19 @@ load_firmware(struct device *dev)
 	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2)
 		fw_path = ISP2400B0_FW_PATH;
 
-	rc = request_firmware(&fw, fw_path, dev);
+	rc = request_firmware(&fw, fw_path, isp->dev);
 	if (rc) {
-		if (rc == -ENOENT)
-			v4l2_err(&atomisp_dev,
-				    "Error ISP firmware %s not found.\n",
-				    fw_path);
-		else
-			v4l2_err(&atomisp_dev,
-				    "atomisp: Error %d while requesting"
-				    " firmware %s\n", rc, fw_path);
-		return NULL;
-	}
-
-	if (fw->data == NULL) {
-		v4l2_err(&atomisp_dev,
-			    "ISP firmware data is NULL.\n");
+		dev_err(isp->dev,
+			"atomisp: Error %d while requesting firmware %s\n",
+			rc, fw_path);
 		return NULL;
 	}
 
 	return fw;
 }
+
+/* Declared in hmm.c. */
+extern bool atomisp_hmm_is_2400;
 
 #define ATOM_ISP_PCI_BAR	0
 
@@ -965,9 +950,6 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 		dev_err(&dev->dev, "atomisp: error device ptr\n");
 		return -EINVAL;
 	}
-
-	atomisp_pci_vendor = id->vendor;
-	atomisp_pci_device = id->device;
 
 	pdata = atomisp_get_platform_data();
 	if (pdata == NULL) {
@@ -1019,6 +1001,31 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	spin_lock_init(&isp->lock);
 	init_completion(&isp->init_done);
 
+	/* FIXME: Add config option for CSS 2.0 */
+	isp->media_dev.driver_version = ATOMISP_CSS_VERSION_15;
+
+	switch (id->device & ATOMISP_PCI_DEVICE_SOC_MASK) {
+	case ATOMISP_PCI_DEVICE_SOC_MRFLD:
+	case ATOMISP_PCI_DEVICE_SOC_BYT:
+		isp->media_dev.hw_revision =
+			(ATOMISP_HW_REVISION_ISP2400
+			 << ATOMISP_HW_REVISION_SHIFT) |
+#ifdef CONFIG_ISP2400
+			ATOMISP_HW_STEPPING_A0;
+#else
+			ATOMISP_HW_STEPPING_B0;
+#endif
+		atomisp_hmm_is_2400 = true;
+		break;
+	default:
+		/* Medfield and Clovertrail. */
+		isp->media_dev.hw_revision =
+			(ATOMISP_HW_REVISION_ISP2300
+			 << ATOMISP_HW_REVISION_SHIFT) |
+			(dev->revision < 0x09 ?
+			 ATOMISP_HW_STEPPING_A0 : ATOMISP_HW_STEPPING_B0);
+	}
+
 	isp->max_isr_latency = ATOMISP_MAX_ISR_LATENCY;
 	if (pdata &&
 	    (pdata->spid->platform_family_id == INTEL_CLVTP_PHONE ||
@@ -1029,9 +1036,9 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	}
 
 	/* Load isp firmware from user space */
-	isp->firmware = load_firmware(&dev->dev);
+	isp->firmware = load_firmware(isp);
 	if (!isp->firmware) {
-		dev_err(&dev->dev, "Load firmwares failed\n");
+		err = -ENOENT;
 		goto load_fw_fail;
 	}
 
@@ -1079,7 +1086,7 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	pm_qos_add_request(&isp->pm_qos, PM_QOS_CPU_DMA_LATENCY,
 			   PM_QOS_DEFAULT_VALUE);
 
-	if (IS_ISP2400) {
+	if (IS_ISP2400(isp)) {
 		/*
 		 * for MRFLD, Software/firmware needs to write a 1 to bit 0 of
 		 * the register at CSI_RECEIVER_SELECTION_REG to enable SH CSI

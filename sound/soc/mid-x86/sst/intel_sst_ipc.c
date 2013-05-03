@@ -105,19 +105,6 @@ int sst_free_block(struct intel_sst_drv *ctx, struct sst_block *freed)
 	return -EINVAL;
 }
 
-static void dump_bytes(unsigned const char *data,
-		       size_t sz, unsigned int width)
-{
-	unsigned int i, j;
-
-	for (i = 0; i < sz; i += width) {
-		printk(KERN_INFO "%p: ", data + i);
-		for (j = 0; j < width && i+j < sz; j++)
-			printk("%.2hhx ", data[i+j]);
-		printk("\n");
-	}
-}
-
 /**
  * sst_send_ipc_msg_nowait - send ipc msg for algorithm parameters
  *		and returns immediately without waiting for reply
@@ -320,10 +307,8 @@ void sst_post_message_mrfld32(struct work_struct *work)
 	size = (u32 *)msg->mailbox_data;
 	pr_debug("size: = %x\n", *size);
 
-#ifdef SST_BYTE_DUMP
-	pr_debug("printing %lu bytes", *size+sizeof(u32));
-	dump_bytes((unsigned char *)msg->mailbox_data, *size + sizeof(u32), 8);
-#endif
+	print_bytes((unsigned char *)msg->mailbox_data, *size + sizeof(u32), 32, 8);
+
 	memcpy_toio(sst_drv_ctx->mailbox + SST_MAILBOX_SEND,
 		msg->mailbox_data, *size + 4);
 
@@ -475,6 +460,7 @@ void intel_sst_clear_intr_mfld(void)
 	sst_shim_write(sst_drv_ctx->shim, sst_drv_ctx->ipc_reg.ipcd, clear_ipc.full);
 	/* un mask busy interrupt */
 	imr.part.busy_interrupt = 0;
+	imr.part.done_interrupt = 0;
 	sst_shim_write(sst_drv_ctx->shim, SST_IMRX, imr.full);
 	spin_unlock_irqrestore(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 }

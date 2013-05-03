@@ -271,6 +271,14 @@ bool ps_hdmi_power_rails_off(void)
 	return true;
 }
 
+bool ps_hdmi_power_islands_on(int hw_island)
+{
+	return true;
+}
+
+void ps_hdmi_power_islands_off(int hw_island)
+{
+}
 
 /*
  * ps_hdmi_get_cable_status - Get HDMI cable connection status

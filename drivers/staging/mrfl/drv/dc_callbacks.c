@@ -127,8 +127,10 @@ void DCCBFlipToSurface(struct drm_device *dev, unsigned long uiAddr,
 	u32 dspsurf = (dev_priv->cur_pipe == 0 ? DSPASURF : DSPBSURF);
 	u32 dspcntr;
 	u32 dspstride;
+	u32 reg_offset;
 	u32 val;
-	struct mdfld_dsi_config *dsi_config;
+	u32 power_island = 0;
+	struct mdfld_dsi_config *dsi_config = NULL;
 	struct mdfld_dsi_hw_context *dsi_ctx;
 
 	DRM_DEBUG("%s %s %d, uiAddr = 0x%lx\n", __FILE__, __func__,
@@ -140,27 +142,19 @@ void DCCBFlipToSurface(struct drm_device *dev, unsigned long uiAddr,
 			dev_priv->b_dsr_enable = true;
 	}
 
-	if (!power_island_get(OSPM_DISPLAY_ISLAND))
-		return;
-
-	/*flip mipi*/
-	dspsurf = DSPASURF;
-	dspcntr = DSPACNTR;
-	dspstride = DSPASTRIDE;
-	/*update format*/
-	val = (0x80000000 | uiFormat);
-	DCWriteReg(dev, dspcntr, val);
-	/*update stride*/
-	DCWriteReg(dev, dspstride, uiStride);
-	/*update surface address*/
-	DCWriteReg(dev, dspsurf, uiAddr);
-
-	if (pipeflag == 0)
+	if (pipeflag == 0) {
 		dsi_config = dev_priv->dsi_configs[0];
-	else if (pipeflag == 2)
+		reg_offset = 0;
+	} else if (pipeflag == 2) {
 		dsi_config = dev_priv->dsi_configs[1];
-	else
+		reg_offset = 0x2000;
+	} else if (pipeflag == 1) {
 		dsi_config = NULL;
+		reg_offset = 0x1000;
+	} else {
+		DRM_ERROR("%s: invalid pipe %u\n", __func__, pipeflag);
+		return;
+	}
 
 	if (dsi_config) {
 		dsi_ctx = &dsi_config->dsi_hw_context;
@@ -169,10 +163,14 @@ void DCCBFlipToSurface(struct drm_device *dev, unsigned long uiAddr,
 		dsi_ctx->dspsurf = uiAddr;
 	}
 
-	/*flip hdmi*/
-	dspsurf = DSPBSURF;
-	dspcntr = DSPBCNTR;
-	dspstride = DSPBSTRIDE;
+	power_island = pipe_to_island(pipeflag);
+
+	if (!power_island_get(power_island))
+		return;
+
+	dspsurf = DSPASURF + reg_offset;
+	dspcntr = DSPACNTR + reg_offset;
+	dspstride = DSPASTRIDE + reg_offset;
 	/*update format*/
 	val = (0x80000000 | uiFormat);
 	DCWriteReg(dev, dspcntr, val);
@@ -181,7 +179,7 @@ void DCCBFlipToSurface(struct drm_device *dev, unsigned long uiAddr,
 	/*update surface address*/
 	DCWriteReg(dev, dspsurf, uiAddr);
 
-	power_island_put(OSPM_DISPLAY_ISLAND);
+	power_island_put(power_island);
 }
 
 void DCCBFlipOverlay(struct drm_device *dev,
@@ -189,43 +187,47 @@ void DCCBFlipOverlay(struct drm_device *dev,
 {
 	struct drm_psb_private *dev_priv;
 	u32 ovadd_reg = OV_OVADD;
+	u32 power_island = OSPM_DISPLAY_A;
 
 	if (!dev || !ctx)
 		return;
 
 	dev_priv = (struct drm_psb_private *)dev->dev_private;
 
-	if (ctx->index == 1)
+	if (ctx->index == 1) {
 		ovadd_reg = OVC_OVADD;
+		power_island = OSPM_DISPLAY_C;
+	}
 
 	ctx->ovadd |= ctx->pipe;
 	ctx->ovadd |= 1;
 
-	if (!power_island_get(OSPM_DISPLAY_ISLAND))
+	if (!power_island_get(power_island))
 		return;
 
 	PSB_WVDC32(ctx->ovadd, ovadd_reg);
 
-	power_island_put(OSPM_DISPLAY_ISLAND);
+	power_island_put(power_island);
 }
 
 void DCCBFlipSprite(struct drm_device *dev,
 			struct intel_dc_sprite_ctx *ctx)
 {
 	struct drm_psb_private *dev_priv;
-	struct mdfld_dsi_config *dsi_config;
+	struct mdfld_dsi_config *dsi_config = NULL;
 	struct mdfld_dsi_hw_context *dsi_ctx;
 	u32 reg_offset;
 	int pipe;
+	u32 power_island = 0;
 
 	if (!dev || !ctx)
 		return;
 
 	dev_priv = (struct drm_psb_private *)dev->dev_private;
-	dsi_config = dev_priv->dsi_configs[0];
 
 	if (ctx->index == 0) {
 		reg_offset = 0;
+		dsi_config = dev_priv->dsi_configs[0];
 		pipe = 0;
 	} else if (ctx->index == 1) {
 		reg_offset = 0x1000;
@@ -237,7 +239,19 @@ void DCCBFlipSprite(struct drm_device *dev,
 	} else
 		return;
 
-	if (!power_island_get(OSPM_DISPLAY_ISLAND))
+	if (dsi_config) {
+		dsi_ctx = &dsi_config->dsi_hw_context;
+		dsi_ctx->dsppos = ctx->pos;
+		dsi_ctx->dspsize = ctx->size;
+		dsi_ctx->dspstride = ctx->stride;
+		dsi_ctx->dspcntr = ctx->cntr;
+		dsi_ctx->dsplinoff = ctx->linoff;
+		dsi_ctx->dspsurf = ctx->surf;
+	}
+
+	power_island = pipe_to_island(pipe);
+
+	if (!power_island_get(power_island))
 		return;
 
 	if ((ctx->update_mask & SPRITE_UPDATE_POSITION))
@@ -256,36 +270,27 @@ void DCCBFlipSprite(struct drm_device *dev,
 		PSB_WVDC32(ctx->surf, DSPASURF + reg_offset);
 	}
 
-	power_island_put(OSPM_DISPLAY_ISLAND);
-
-	if (dsi_config) {
-		dsi_ctx = &dsi_config->dsi_hw_context;
-		dsi_ctx->dsppos = ctx->pos;
-		dsi_ctx->dspsize = ctx->size;
-		dsi_ctx->dspstride = ctx->stride;
-		dsi_ctx->dspcntr = ctx->cntr;
-		dsi_ctx->dsplinoff = ctx->linoff;
-		dsi_ctx->dspsurf = ctx->surf;
-	}
+	power_island_put(power_island);
 }
 
 void DCCBFlipPrimary(struct drm_device *dev,
 			struct intel_dc_primary_ctx *ctx)
 {
 	struct drm_psb_private *dev_priv;
-	struct mdfld_dsi_config *dsi_config;
+	struct mdfld_dsi_config *dsi_config = NULL;
 	struct mdfld_dsi_hw_context *dsi_ctx;
 	u32 reg_offset;
 	int pipe;
+	u32 power_island = 0;
 
 	if (!dev || !ctx)
 		return;
 
 	dev_priv = (struct drm_psb_private *)dev->dev_private;
-	dsi_config = dev_priv->dsi_configs[0];
 
 	if (ctx->index == 0) {
 		reg_offset = 0;
+		dsi_config = dev_priv->dsi_configs[0];
 		pipe = 0;
 	} else if (ctx->index == 1) {
 		reg_offset = 0x1000;
@@ -297,7 +302,19 @@ void DCCBFlipPrimary(struct drm_device *dev,
 	} else
 		return;
 
-	if (!power_island_get(OSPM_DISPLAY_ISLAND))
+	if (dsi_config) {
+		dsi_ctx = &dsi_config->dsi_hw_context;
+		dsi_ctx->dsppos = ctx->pos;
+		dsi_ctx->dspsize = ctx->size;
+		dsi_ctx->dspstride = ctx->stride;
+		dsi_ctx->dspcntr = ctx->cntr;
+		dsi_ctx->dsplinoff = ctx->linoff;
+		dsi_ctx->dspsurf = ctx->surf;
+	}
+
+	power_island = pipe_to_island(pipe);
+
+	if (!power_island_get(power_island))
 		return;
 
 	if ((ctx->update_mask & SPRITE_UPDATE_POSITION))
@@ -316,17 +333,7 @@ void DCCBFlipPrimary(struct drm_device *dev,
 		PSB_WVDC32(ctx->surf, DSPASURF + reg_offset);
 	}
 
-	power_island_put(OSPM_DISPLAY_ISLAND);
-
-	if (dsi_config) {
-		dsi_ctx = &dsi_config->dsi_hw_context;
-		dsi_ctx->dsppos = ctx->pos;
-		dsi_ctx->dspsize = ctx->size;
-		dsi_ctx->dspstride = ctx->stride;
-		dsi_ctx->dspcntr = ctx->cntr;
-		dsi_ctx->dsplinoff = ctx->linoff;
-		dsi_ctx->dspsurf = ctx->surf;
-	}
+	power_island_put(power_island);
 }
 
 void DCCBUnblankDisplay(struct drm_device *dev)
@@ -368,4 +375,20 @@ u32 DCCBGetPipeCount(void)
 {
 	/* FIXME */
 	return 3;
+}
+
+bool DCCBIsSuspended(struct drm_device *dev)
+{
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *)dev->dev_private;
+	bool ret = false;
+
+	if (!dev_priv)
+		return false;
+
+	mutex_lock(&dev->mode_config.mutex);
+	ret = dev_priv->early_suspended;
+	mutex_unlock(&dev->mode_config.mutex);
+
+	return ret;
 }

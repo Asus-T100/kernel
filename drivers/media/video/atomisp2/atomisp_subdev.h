@@ -27,6 +27,7 @@
 #include <media/videobuf-core.h>
 
 #include "atomisp_common.h"
+#include "atomisp_compat.h"
 #include "atomisp_v4l2.h"
 #include "sh_css.h"
 
@@ -56,8 +57,8 @@ struct atomisp_in_fmt_conv {
 	enum v4l2_mbus_pixelcode code;
 	uint8_t bpp; /* bits per pixel */
 	uint8_t depth; /* uncompressed */
-	enum sh_css_input_format in_sh_fmt;
-	enum sh_css_bayer_order bayer_order;
+	enum atomisp_css_stream_format in_sh_fmt;
+	enum atomisp_css_bayer_order bayer_order;
 };
 
 struct atomisp_video_pipe {

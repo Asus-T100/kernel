@@ -472,7 +472,6 @@ struct penwell_otg {
 	enum msic_vendor		msic;
 
 	struct notifier_block		iotg_notifier;
-	spinlock_t			notify_lock;
 	int				queue_stop;
 
 	struct adp_status		adp;

@@ -166,7 +166,7 @@ void ospm_disp_b_init(struct drm_device *dev,
 {
 	p_island->p_funcs->power_up = disp_b_power_up;
 	p_island->p_funcs->power_down = disp_b_power_down;
-	p_island->p_dependency = NULL;
+	p_island->p_dependency = get_island_ptr(OSPM_DISPLAY_A);
 }
 
 /***********************************************************
@@ -216,7 +216,7 @@ void ospm_disp_c_init(struct drm_device *dev,
 {
 	p_island->p_funcs->power_up = disp_c_power_up;
 	p_island->p_funcs->power_down = disp_c_power_down;
-	p_island->p_dependency = NULL;
+	p_island->p_dependency = get_island_ptr(OSPM_DISPLAY_A);
 }
 
 /***********************************************************
@@ -275,7 +275,7 @@ void ospm_mio_init(struct drm_device *dev,
 {
 	p_island->p_funcs->power_up = mio_power_up;
 	p_island->p_funcs->power_down = mio_power_down;
-	p_island->p_dependency = NULL;
+	p_island->p_dependency = get_island_ptr(OSPM_DISPLAY_A);
 }
 
 /***********************************************************
@@ -325,5 +325,5 @@ void ospm_hdmi_init(struct drm_device *dev,
 {
 	p_island->p_funcs->power_up = hdmi_power_up;
 	p_island->p_funcs->power_down = hdmi_power_down;
-	p_island->p_dependency = NULL;
+	p_island->p_dependency = get_island_ptr(OSPM_DISPLAY_A);
 }

@@ -57,20 +57,8 @@
 #define IPC_CMD_SHIM_RD		0 /* SHIM read */
 #define IPC_CMD_SHIM_WR		1 /* SHIM write */
 
-/* Send ipc command and check ipc status */
-void intel_scu_ipc_send_command(u32 cmd);
+/* check ipc status */
 int intel_scu_ipc_check_status(void);
-
-/* Issue commands to the SCU with or without data */
-int intel_scu_ipc_simple_command(int cmd, int sub);
-int intel_scu_ipc_command(u32 cmd, u32 sub, u8 *in, u32 inlen,
-		u32 *out, u32 outlen);
-int intel_scu_ipc_raw_cmd(u32 cmd, u32 sub, u8 *in, u32 inlen,
-		u32 *out, u32 outlen, u32 dptr, u32 sptr);
-
-/* IPC locking */
-void intel_scu_ipc_lock(void);
-void intel_scu_ipc_unlock(void);
 
 /* I2C control api */
 int intel_scu_ipc_i2c_cntrl(u32 addr, u32 *data);

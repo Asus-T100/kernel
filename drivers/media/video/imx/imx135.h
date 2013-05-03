@@ -150,7 +150,7 @@ static struct imx_reg const imx135_13M_10fps[] = {
 	/* Size setting */
 	{IMX_8BIT, 0x0340, 0x10},
 	{IMX_8BIT, 0x0341, 0x00},
-	{IMX_8BIT, 0x0342, 0x25},
+	{IMX_8BIT, 0x0342, 0x2A},
 	{IMX_8BIT, 0x0343, 0x00},
 	{IMX_8BIT, 0x0344, 0x00},
 	{IMX_8BIT, 0x0345, 0x00},
@@ -197,7 +197,7 @@ static struct imx_reg const imx135_13M_10fps[] = {
 	{IMX_8BIT, 0x083A, 0x17},
 	{IMX_8BIT, 0x083B, 0x02},
 	/* Integration Time Setting */
-	{IMX_8BIT, 0x0202, 0x0D},
+	{IMX_8BIT, 0x0202, 0x0E},
 	{IMX_8BIT, 0x0203, 0xFC},
 	/* Gain Setting */
 	{IMX_8BIT, 0x0205, 0x00},
@@ -3423,7 +3423,7 @@ struct imx_resolution imx135_res_still[] = {
 		.width = 4208	,
 		.height = 3120,
 		.fps = 10,
-		.pixels_per_line = 0x2500, /* consistent with regs arrays */
+		.pixels_per_line = 0x2A00, /* consistent with regs arrays */
 		.lines_per_frame = 0x1000, /* consistent with regs arrays */
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,

@@ -22,6 +22,7 @@
 #include <asm/timer.h>
 #include <asm/hpet.h>
 #include <asm/time.h>
+#include <asm/intel-mid.h>
 
 #ifdef CONFIG_X86_64
 DEFINE_VVAR(volatile unsigned long, jiffies) = INITIAL_JIFFIES;
@@ -82,7 +83,9 @@ void __init hpet_time_init(void)
 {
 	if (!hpet_enable())
 		setup_pit_timer();
-	setup_default_timer_irq();
+	/* Skip the lecacy timer setup for Valleyview2 */
+	if (intel_mid_identify_cpu() != INTEL_MID_CPU_CHIP_VALLEYVIEW2)
+		setup_default_timer_irq();
 }
 
 static __init void x86_late_time_init(void)

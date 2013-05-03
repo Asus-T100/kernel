@@ -282,6 +282,32 @@ int intel_scu_ipc_check_status(void)
 	return ret;
 }
 
+void intel_scu_ipc_lock(void)
+{
+	/* Prevent C-states beyond C6 */
+	pm_qos_update_request(qos, CSTATE_EXIT_LATENCY_S0i1 - 1);
+
+	/* Prevent S3 */
+	mutex_lock(&scu_suspend_lock);
+
+	if (!suspend_in_progress())
+		wake_lock(&ipc_wake_lock);
+}
+EXPORT_SYMBOL_GPL(intel_scu_ipc_lock);
+
+void intel_scu_ipc_unlock(void)
+{
+	/* Re-enable S3 */
+	if (!suspend_in_progress())
+		wake_unlock(&ipc_wake_lock);
+
+	mutex_unlock(&scu_suspend_lock);
+
+	/* Re-enable Deeper C-states beyond C6 */
+	pm_qos_update_request(qos, PM_QOS_DEFAULT_VALUE);
+}
+EXPORT_SYMBOL_GPL(intel_scu_ipc_unlock);
+
 /**
  *	intel_scu_ipc_simple_command - send a simple command
  *	@cmd: command
@@ -308,32 +334,6 @@ int intel_scu_ipc_simple_command(int cmd, int sub)
 	return err;
 }
 EXPORT_SYMBOL(intel_scu_ipc_simple_command);
-
-void intel_scu_ipc_lock(void)
-{
-	/* Prevent C-states beyond C6 */
-	pm_qos_update_request(qos, CSTATE_EXIT_LATENCY_S0i1 - 1);
-
-	/* Prevent S3 */
-	mutex_lock(&scu_suspend_lock);
-
-	if (!suspend_in_progress())
-		wake_lock(&ipc_wake_lock);
-}
-EXPORT_SYMBOL_GPL(intel_scu_ipc_lock);
-
-void intel_scu_ipc_unlock(void)
-{
-	/* Re-enable S3 */
-	if (!suspend_in_progress())
-		wake_unlock(&ipc_wake_lock);
-
-	mutex_unlock(&scu_suspend_lock);
-
-	/* Re-enable Deeper C-states beyond C6 */
-	pm_qos_update_request(qos, PM_QOS_DEFAULT_VALUE);
-}
-EXPORT_SYMBOL_GPL(intel_scu_ipc_unlock);
 
 /**
  * intel_scu_ipc_raw_cmd - raw ipc command with data

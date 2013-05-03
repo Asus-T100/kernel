@@ -133,10 +133,15 @@ static int mid_hdmi_audio_write(uint32_t reg, uint32_t val)
 	if (hdmi_priv->monitor_type == MONITOR_TYPE_DVI)
 		return 0;
 
+	if (!power_island_get(OSPM_DISPLAY_B | OSPM_DISPLAY_HDMI))
+		return 0;
+
 	if (IS_HDMI_AUDIO_REG(reg))
 		REG_WRITE(reg, val);
 	else
 		ret = -EINVAL;
+
+	power_island_put(OSPM_DISPLAY_B | OSPM_DISPLAY_HDMI);
 
 	return ret;
 }
@@ -155,10 +160,15 @@ static int mid_hdmi_audio_read(uint32_t reg, uint32_t *val)
 	if (hdmi_priv->monitor_type == MONITOR_TYPE_DVI)
 		return 0;
 
+	if (!power_island_get(OSPM_DISPLAY_B | OSPM_DISPLAY_HDMI))
+		return 0;
+
 	if (IS_HDMI_AUDIO_REG(reg))
 		*val = REG_READ(reg);
 	else
 		ret = -EINVAL;
+
+	power_island_put(OSPM_DISPLAY_B | OSPM_DISPLAY_HDMI);
 
 	return ret;
 }
@@ -176,12 +186,17 @@ static int mid_hdmi_audio_rmw(uint32_t reg,
 	int ret = 0;
 	uint32_t val_tmp = 0;
 
+	if (!power_island_get(OSPM_DISPLAY_B | OSPM_DISPLAY_HDMI))
+		return 0;
+
 	if (IS_HDMI_AUDIO_REG(reg)) {
 		val_tmp = (val & mask) | (REG_READ(reg) & ~mask);
 		REG_WRITE(reg, val_tmp);
 	} else {
 		ret = -EINVAL;
 	}
+
+	power_island_put(OSPM_DISPLAY_B | OSPM_DISPLAY_HDMI);
 
 	return ret;
 }
@@ -238,6 +253,9 @@ static int mid_hdmi_audio_set_caps(
 
 	switch (set_element) {
 	case HAD_SET_ENABLE_AUDIO:
+		if (!power_island_get(OSPM_DISPLAY_B | OSPM_DISPLAY_HDMI))
+			return -EINVAL;
+
 		hdmib = REG_READ(hdmi_priv->hdmib_reg);
 
 		if (hdmib & HDMIB_PORT_EN)
@@ -245,11 +263,18 @@ static int mid_hdmi_audio_set_caps(
 
 		REG_WRITE(hdmi_priv->hdmib_reg, hdmib);
 		REG_READ(hdmi_priv->hdmib_reg);
+
+		power_island_put(OSPM_DISPLAY_B | OSPM_DISPLAY_HDMI);
 		break;
 	case HAD_SET_DISABLE_AUDIO:
+		if (!power_island_get(OSPM_DISPLAY_B | OSPM_DISPLAY_HDMI))
+			return -EINVAL;
+
 		hdmib = REG_READ(hdmi_priv->hdmib_reg) & ~HDMIB_AUDIO_ENABLE;
 		REG_WRITE(hdmi_priv->hdmib_reg, hdmib);
 		REG_READ(hdmi_priv->hdmib_reg);
+
+		power_island_put(OSPM_DISPLAY_B | OSPM_DISPLAY_HDMI);
 		break;
 	case HAD_SET_ENABLE_AUDIO_INT:
 		if (*((u32 *)capabilties) & HDMI_AUDIO_UNDERRUN)

@@ -1,5 +1,33 @@
-#if !defined _PMU_TNG_H
-#define _PMU_TNG_H 1
+/**************************************************************************
+ * Copyright (c) 2012, Intel Corporation.
+ * All Rights Reserved.
+
+ * Permission is hereby granted, free of charge, to any person obtaining a
+ * copy of this software and associated documentation files (the "Software"),
+ * to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
+ * and/or sell copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice (including the next
+ * paragraph) shall be included in all copies or substantial portions of the
+ * Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ *
+ * Authors:
+ *    Dale B. Stimson <dale.b.stimson@intel.com>
+ *    Austin Hu <austin.hu@intel.com>
+ */
+
+#ifndef _PMU_TNG_H_
+#define _PMU_TNG_H_
 
 #include <linux/types.h>
 
@@ -12,20 +40,6 @@
  * Bits 7:0 of the PM0 (or just PM) registers are power control bits, whereas
  * bits 31:24 are the corresponding status bits.
 */
-#define GFX_SS_PM0              0x30
-#define GFX_SS_PM1              0x31
-#define VED_SS_PM0              0x32
-#define VED_SS_PM1              0x33
-#define VEC_SS_PM0              0x34
-#define VEC_SS_PM1              0x35
-#define DSP_SS_PM               0x36
-#define VSP_SS_PM0              0x37
-#define VSP_SS_PM1              0x38
-
-#define ISP_SS_PM0              0x39
-#define ISP_SS_PM1              0x3a
-#define MIO_SS_PM               0x3b
-#define HDMIO_SS_PM             0x3c
 
 /*  Subsystem status of all North Cluster IPs (bits NC_PM_SSS_*) */
 #define NC_PM_SSS               0x3f
@@ -36,10 +50,12 @@
  * as status bits in bits 31:24 of each register.
  * Each power island has a 2-bit field which contains a value of TNG_SSC_*.
  */
-
 #define SSC_TO_SSS_SHIFT        24
 
-/* GFX_SS_PM0 islands */
+/* GFX_SS_PM0 island */
+#define GFX_SS_PM0              0x30
+#define GFX_SS_PM1              0x31
+
 #define GFX_SLC_SSC             0x03
 #define GFX_SDKCK_SSC           0x0c
 #define GFX_RSCD_SSC            0x30
@@ -50,13 +66,20 @@
 #define GFX_RSCD_SHIFT          4
 #define GFX_SLC_LDO_SHIFT       6
 
-/* VED_SS_PM0 power island */
+/* VED_SS_PMx power island */
+#define VED_SS_PM0              0x32
+#define VED_SS_PM1              0x33
+
 #define VED_SSC                 0x03
 
-/* VEC_SS_PM0 power island */
+/* VEC_SS_PMx power island */
+#define VEC_SS_PM0              0x34
+#define VEC_SS_PM1              0x35
+
 #define VEC_SSC                 0x03
 
-/*  DSP_SS_PM power islands */
+/* DSP_SS_PM power islands */
+#define DSP_SS_PM               0x36
 
 #define DPA_SSC                 0x03
 #define DPB_SSC                 0x0c
@@ -66,23 +89,32 @@
 #define DPB_SHIFT               2
 #define DPC_SHIFT               4
 
-/*  VSP_SS_PM0 power islands */
+/* VSP_SS_PMx power islands */
+#define VSP_SS_PM0              0x37
+#define VSP_SS_PM1              0x38
+
 #define VSP_SSC                 0x03
 
-/*  ISP_SS_PM power islands */
+/* ISP_SS_PMx power islands */
+#define ISP_SS_PM0              0x39
+#define ISP_SS_PM1              0x3a
+
 #define ISP_SSC                 0x03
 
-/*  MIO_SS_PM power islands */
+/* MIO_SS_PM power island */
+#define MIO_SS_PM               0x3b
+
 #define MIO_SSC                 0x03
 
-/*  HDMIO_SS_PM power islands */
+/* HDMIO_SS_PM power island */
+#define HDMIO_SS_PM             0x3c
+
 #define HDMIO_SSC               0x03
 
 /*
  * Subsystem status bits for NC_PM_SSS.  Status of all North Cluster IPs.
  * These correspond to the above bits.
  */
-
 #define NC_PM_SSS_GFX_SLC       0x00000003
 #define NC_PM_SSS_GFX_SDKCK     0x0000000c
 #define NC_PM_SSS_GFX_RSCD      0x00000030
@@ -117,22 +149,6 @@
 #define IP_FREQ_640_00 0x04        /* 0b00100 640.00 */
 #define IP_FREQ_800_00 0x03        /* 0b00011 800.00 */
 
-
-
-/*  FIXME - Deprecated power island names, temp for back compat. */
-#if 0
-#define DSPASSC			DPA_SSC
-#define DSPBSSC			DPB_SSC
-#define DSPCSSC			DPC_SSC
-#define MIOSSC			MIO_SSC
-#define HDMIOSSC		HDMIO_SSC
-
-#define VSP_SSS			0x3000000
-#define VED_SSS			0x3000000
-#define VEC_SSS			0x3000000
-#endif
-
-
 /*  Tangier power states for each island */
 #define TNG_SSC_I0    (0b00)    /* i0 - power on, no clock or p[ower gating */
 #define TNG_SSC_I1    (0b01)    /* i1 - clock gated */
@@ -150,12 +166,10 @@
 #define DEBUG_PM_CMD 1
 #endif
 
-
 int pmu_set_power_state_tng(u32 reg_pm0, u32 si_mask, u32 ns_mask);
 
 #if (defined DEBUG_PM_CMD) && DEBUG_PM_CMD
 const char *pm_cmd_reg_name(u32 reg_addr);
 #endif
 
-
-#endif /* if !defined _PMU_TNG_H */
+#endif /* ifndef _PMU_TNG_H_ */

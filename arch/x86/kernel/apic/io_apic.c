@@ -60,6 +60,7 @@
 #include <asm/irq_remapping.h>
 #include <asm/hpet.h>
 #include <asm/hw_irq.h>
+#include <asm/intel-mid.h>
 
 #include <asm/apic.h>
 
@@ -3064,7 +3065,9 @@ void __init setup_IO_APIC(void)
 	sync_Arb_IDs();
 	setup_IO_APIC_irqs();
 	init_IO_APIC_traps();
-	if (legacy_pic->nr_legacy_irqs)
+	/* Skip the timer check for Valleyview2 */
+	if (intel_mid_identify_cpu() != INTEL_MID_CPU_CHIP_VALLEYVIEW2 &&
+		legacy_pic->nr_legacy_irqs)
 		check_timer();
 }
 

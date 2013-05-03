@@ -43,6 +43,7 @@
 #include <linux/lnw_gpio.h>
 #include <linux/delay.h>
 #include <asm/intel-mid.h>
+#include <asm/platform_sst_audio.h>
 #include <sound/intel_sst_ioctl.h>
 #include "../sst_platform.h"
 #include "intel_sst_fw_ipc.h"
@@ -117,6 +118,23 @@ static inline int get_stream_id_mrfld(u32 pipe_id)
 	return -1;
 }
 
+static inline void set_imr_interrupts(struct intel_sst_drv *ctx, bool enable)
+{
+	union interrupt_reg isr, imr;
+
+	spin_lock(&ctx->ipc_spin_lock);
+	imr.full = sst_shim_read(ctx->shim, SST_IMRX);
+	if (enable) {
+		imr.part.done_interrupt = 0;
+		imr.part.busy_interrupt = 0;
+	} else {
+		imr.part.done_interrupt = 1;
+		imr.part.busy_interrupt = 1;
+	}
+	sst_shim_write(ctx->shim, SST_IMRX, imr.full);
+	spin_unlock(&ctx->ipc_spin_lock);
+}
+
 static irqreturn_t intel_sst_irq_thread_mrfld(int irq, void *context)
 {
 	struct intel_sst_drv *drv = (struct intel_sst_drv *) context;
@@ -129,7 +147,7 @@ static irqreturn_t intel_sst_irq_thread_mrfld(int irq, void *context)
 	msg_id = header.p.header_low_payload & SST_ASYNC_MSG_MASK;
 	pr_debug("interrupt\n");
 	if ((msg_id == IPC_SST_PERIOD_ELAPSED_MRFLD) &&
-			(header.p.header_high.part.msg_id == IPC_CMD)) {
+	    (header.p.header_high.part.msg_id == IPC_CMD)) {
 		sst_drv_ctx->ops->clear_interrupt();
 		pipe_id = header.p.header_low_payload >> 16;
 		str_id = get_stream_id_mrfld(pipe_id);
@@ -240,6 +258,8 @@ static irqreturn_t intel_sst_intr_mfld(int irq, void *context)
 	/* Interrupt arrived, check src */
 	isr.full = sst_shim_read(drv->shim, SST_ISRX);
 	if (isr.part.done_interrupt) {
+		/* Mask all interrupts till this one is processsed */
+		set_imr_interrupts(drv, false);
 		/* Clear done bit */
 		spin_lock(&sst_drv_ctx->ipc_spin_lock);
 		header.full = sst_shim_read(drv->shim, drv->ipc_reg.ipcx);
@@ -251,15 +271,14 @@ static irqreturn_t intel_sst_intr_mfld(int irq, void *context)
 		spin_unlock(&sst_drv_ctx->ipc_spin_lock);
 		queue_work(sst_drv_ctx->post_msg_wq,
 			&sst_drv_ctx->ipc_post_msg.wq);
+
+		/* Un mask done and busy intr */
+		set_imr_interrupts(drv, true);
 		retval = IRQ_HANDLED;
 	}
 	if (isr.part.busy_interrupt) {
-		/* mask busy interrupt */
-		spin_lock(&sst_drv_ctx->ipc_spin_lock);
-		imr.full = sst_shim_read(drv->shim, SST_IMRX);
-		imr.part.busy_interrupt = 1;
-		sst_shim_write(sst_drv_ctx->shim, SST_IMRX, imr.full);
-		spin_unlock(&sst_drv_ctx->ipc_spin_lock);
+		/* Mask all interrupts till we process it in bottom half */
+		set_imr_interrupts(drv, false);
 		retval = IRQ_WAKE_THREAD;
 	}
 	return retval;
@@ -331,7 +350,7 @@ static int sst_save_dsp_context_v2(struct intel_sst_drv *sst)
 	}
 
 	sst_fill_header_mrfld(&msg->mrfld_header, IPC_CMD,
-				IPC_QUE_ID_MED, 1, pvt_id);
+			      SST_TASK_ID_MEDIA, 1, pvt_id);
 	msg->mrfld_header.p.header_low_payload = sizeof(dsp_hdr);
 	msg->mrfld_header.p.header_high.part.res_rqd = 1;
 	sst_fill_header_dsp(&dsp_hdr, IPC_PREP_D3, PIPE_RSVD, pvt_id);
@@ -647,9 +666,21 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 		if (!sst_drv_ctx->ddr)
 			goto do_unmap_ddr;
 		pr_debug("sst: DDR Ptr %p\n", sst_drv_ctx->ddr);
-	} else {
+	} else if (sst_drv_ctx->pci_id == SST_BYT_PCI_ID) {
+		/* IFWI reserves 2MB of DDR memory which satisfies
+		512MB alignment. Hardcode the value till we have
+		in DSDT table */
+#define SST_BYT_DDR_BASE	0x20000000
+#define SST_BYT_DDR_SIZE	(2 * 1024 * 1024)
+		sst_drv_ctx->ddr_base = SST_BYT_DDR_BASE;
+		sst_drv_ctx->ddr_end = SST_BYT_DDR_BASE + SST_BYT_DDR_SIZE;
+		sst_drv_ctx->ddr = devm_ioremap_nocache(&pci->dev,
+						sst_drv_ctx->ddr_base,
+						SST_BYT_DDR_SIZE);
+		pr_debug("DDR Phys:%p, Virtual:%p",
+			sst_drv_ctx->ddr_base, sst_drv_ctx->ddr);
+	} else
 		sst_drv_ctx->ddr = NULL;
-	}
 
 	if (sst_drv_ctx->pci_id == SST_BYT_PCI_ID) {
 		byt_lpe_base = pci_resource_start(pci, 0);

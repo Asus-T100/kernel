@@ -92,7 +92,8 @@
 /* After device enable a short delay
  * is needed for device to be stable.
  */
-#define L3G4200D_STABLE_DELAY	500
+#define L3GD20_STABLE_DELAY	100
+#define L3G4200D_STABLE_DELAY	300
 
 struct output_rate {
 	int poll_rate_ms;
@@ -116,6 +117,7 @@ struct l3g4200d_data {
 	u8 resume_state[RESUME_ENTRIES];
 	struct delayed_work work;
 	int need_resume;
+	int hw_init_delay;
 };
 
 static void l3g4200d_update_odr_bits(struct l3g4200d_data *gyro)
@@ -145,8 +147,11 @@ static int l3g4200d_hw_init(struct l3g4200d_data *gyro)
 
 	switch (ret) {
 	case WHOAMI_L3G4200D:
+		gyro->hw_init_delay = L3G4200D_STABLE_DELAY;
+		break;
 	case WHOAMI_L3GD20:
 	case WHOAMI_L3GD20H:
+		gyro->hw_init_delay = L3GD20_STABLE_DELAY;
 		break;
 	default:
 		dev_err(&gyro->client->dev, "Invalid device id, %x", ret);
@@ -189,10 +194,10 @@ static int l3g4200d_hw_init(struct l3g4200d_data *gyro)
 	return ret;
 }
 
-static void l3g4200d_queue_delayed_work(struct l3g4200d_data *gyro)
+static void l3g4200d_queue_delayed_work(struct l3g4200d_data *gyro, int more)
 {
 	unsigned long delay =
-		msecs_to_jiffies(gyro->pdata->poll_interval);
+		msecs_to_jiffies(gyro->pdata->poll_interval + more);
 	schedule_delayed_work(&gyro->work, delay);
 }
 
@@ -260,7 +265,7 @@ static void l3g4200d_poll_work(struct work_struct *work)
 		goto leave;
 
 	l3g4200d_report_data(gyro);
-	l3g4200d_queue_delayed_work(gyro);
+	l3g4200d_queue_delayed_work(gyro, 0);
 leave:
 	mutex_unlock(&gyro->lock);
 }
@@ -281,9 +286,7 @@ static int l3g4200d_enable(struct l3g4200d_data *gyro)
 		return err;
 	}
 
-	/* wait L3G4200D_STABLE_DELAY for device to be stable */
-	msleep(L3G4200D_STABLE_DELAY);
-	l3g4200d_queue_delayed_work(gyro);
+	l3g4200d_queue_delayed_work(gyro, gyro->hw_init_delay);
 	return 0;
 }
 

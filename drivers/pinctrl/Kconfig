@@ -85,8 +85,8 @@ config PINCTRL_COH901
 	  ports of 8 GPIO pins each.
 
 config PINCTRL_INTEL_MID
-	bool "Intel MID pin controller driver"
-	depends on X86_INTEL_MID
+	tristate "Intel MID pin controller driver"
+	depends on X86_INTEL_MID && INTEL_SCU_FLIS
 	select GENERIC_PINCONF
 
 endmenu

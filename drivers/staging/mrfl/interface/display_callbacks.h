@@ -64,5 +64,6 @@ int DCCBgttUnmapMemory(struct drm_device *dev,
 bool DCChangeSwapChainProperty(unsigned long *psSwapChainGTTOffset,
 			int pipe);
 u32 DCCBGetPipeCount(void);
+bool DCCBIsSuspended(struct drm_device *dev);
 
 #endif				/* __DC_CALLBACKS_H__ */

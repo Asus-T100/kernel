@@ -54,6 +54,8 @@
 #define IMX_MASK_11BIT	0x7FF
 #define IMX_INTG_BUF_COUNT		2
 
+#define IMX_INTEGRATION_TIME_MARGIN	4
+
 #define IMX_FINE_INTG_TIME		0x1E8
 
 #define IMX_VT_PIX_CLK_DIV			0x0301
@@ -66,6 +68,8 @@
 #define IMX_LINE_LENGTH_PIXELS		0x0342
 #define IMX_COARSE_INTG_TIME_MIN	0x1004
 #define IMX_COARSE_INTG_TIME_MAX	0x1006
+#define IMX_BINNING_ENABLE		0x0390
+#define IMX_BINNING_TYPE		0x0391
 
 #define IMX_CROP_X_START		0x0344
 #define IMX_CROP_Y_START		0x0346
@@ -81,6 +85,7 @@
 #define IMX_IMG_ORIENTATION			0x0101
 #define IMX_VFLIP_BIT			1
 #define IMX_GLOBAL_GAIN			0x0205
+#define IMX_DGC_ADJ			0x020E
 
 /* Defines for register writes and register array processing */
 #define IMX_BYTE_MAX	30
@@ -199,6 +204,7 @@ struct imx_device {
 	u16 coarse_itg;
 	u16 fine_itg;
 	u16 gain;
+	u16 digital_gain;
 	u16 pixels_per_line;
 	u16 lines_per_frame;
 	u8 fps;

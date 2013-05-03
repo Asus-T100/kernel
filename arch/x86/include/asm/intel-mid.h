@@ -259,4 +259,11 @@ static inline enum intel_mid_sim_type intel_mid_identify_sim(void)
 }
 
 #define INTEL_MID_IRQ_OFFSET 0x100
+
+#ifdef CONFIG_INTEL_MID_RAM_CONSOLE
+extern void ram_console_reserve_memory(void);
+#else
+static inline void ram_console_reserve_memory(void){ }
+#endif/* !CONFIG_INTEL_MID_RAM_CONSOLE*/
+
 #endif /* _ASM_X86_INTEL_MID_H */

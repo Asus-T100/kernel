@@ -1,4 +1,3 @@
-#define DEBUG
 #include <linux/module.h>
 #include <linux/types.h>
 #include <linux/init.h>
@@ -730,9 +729,10 @@ static void __power_supply_trigger_charging_handler(struct power_supply *psy)
 		}
 
 		update_battery_status(psy);
-
+		power_supply_changed(psy);
 	}
 	mutex_unlock(&psy_chrgr.evt_lock);
+
 }
 
 static int __trigger_charging_handler(struct device *dev, void *data)
@@ -753,10 +753,23 @@ static void trigger_algo_psy_class(struct work_struct *work)
 
 }
 
+static bool is_cable_connected(void)
+{
+	int i;
+	struct charger_cable *cable;
+
+	for (i = 0; i < ARRAY_SIZE(cable_list); ++i) {
+		cable = cable_list + i;
+		if (IS_CABLE_ACTIVE(cable->cable_props.cable_stat))
+			return true;
+	}
+	return false;
+}
+
 void power_supply_trigger_charging_handler(struct power_supply *psy)
 {
 
-	if (!psy_chrgr.is_cable_evt_reg)
+	if (!psy_chrgr.is_cable_evt_reg || !is_cable_connected())
 		return;
 
 	if (psy)
@@ -836,6 +849,7 @@ static int select_chrgr_cable(struct device *dev, void *data)
 		switch_cable(psy, POWER_SUPPLY_CHARGER_TYPE_NONE);
 
 		mutex_unlock(&psy_chrgr.evt_lock);
+		power_supply_changed(psy);
 		return 0;
 	}
 
@@ -857,7 +871,11 @@ static int select_chrgr_cable(struct device *dev, void *data)
 			SET_MAX_TEMP(psy, bat_thresh.temp_max);
 		}
 
+	} else {
+
+		disable_charger(psy);
 	}
+
 
 	mutex_unlock(&psy_chrgr.evt_lock);
 	power_supply_trigger_charging_handler(NULL);

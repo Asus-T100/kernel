@@ -64,3 +64,19 @@ extern void intel_mid_rproc_vring_init(struct rproc *rproc,
 			struct vring *vring, enum local_vring_idx id);
 
 extern void rpmsg_ns_del_list(struct rpmsg_ns_list *nslist);
+
+/* Please do NOT use these APIs to send ipc commands,
+ * use rpmsg commands defined in <asm/intel_mid_rpmsg.h>
+ */
+extern void intel_scu_ipc_send_command(u32 cmd);
+
+/* Issue commands to the SCU with or without data */
+extern int intel_scu_ipc_simple_command(int cmd, int sub);
+extern int intel_scu_ipc_command(u32 cmd, u32 sub, u8 *in, u32 inlen,
+		u32 *out, u32 outlen);
+extern int intel_scu_ipc_raw_cmd(u32 cmd, u32 sub, u8 *in, u32 inlen,
+		u32 *out, u32 outlen, u32 dptr, u32 sptr);
+
+/* IPC locking */
+extern void intel_scu_ipc_lock(void);
+extern void intel_scu_ipc_unlock(void);

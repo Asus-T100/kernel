@@ -153,6 +153,7 @@ gfx-y += $(DISPLAYDIR)/psb_bl.o \
 gfx-$(CONFIG_SUPPORT_TMD_MIPI_600X1024_DISPLAY) += $(DISPLAYDIR)/tmd_6x10_vid.o
 gfx-$(CONFIG_SUPPORT_MIPI_H8C7_CMD_DISPLAY) += $(DISPLAYDIR)/h8c7_cmd.o
 gfx-$(CONFIG_SUPPORT_VB_MIPI_DISPLAY) += $(DISPLAYDIR)/vb_cmd.o
+gfx-$(CONFIG_R63311_MIPI_VIDEO_MODE) += $(DISPLAYDIR)/r63311_vid.o
 
 gfx-y += $(DISPLAYDIR)/mdfld_hdmi_audio.o
 
@@ -177,7 +178,6 @@ gfx-$(CONFIG_VIDEO_MRFLD) += $(DECODE_DIR)/psb_msvdx_ec.o
 gfx-$(CONFIG_MDFLD_DSI_DPU) += $(DISPLAYDIR)/mdfld_dsi_dbi_dpu.o
 
 gfx-$(CONFIG_MDFD_GL3) += $(MEDIA_COMMON_DIR)/mdfld_gl3.o
-
 obj-$(CONFIG_DRM_MDFLD) += gfx.o
 obj-$(CONFIG_DRM_CTP) += gfx.o
 

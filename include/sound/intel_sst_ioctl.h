@@ -332,6 +332,7 @@ struct snd_sst_params {
 	__u8 ops;
 	__u8 stream_type;
 	__u8 device_type;
+	__u8 task;
 	struct snd_sst_stream_params sparams;
 	struct snd_sst_alloc_params_ext aparams;
 };

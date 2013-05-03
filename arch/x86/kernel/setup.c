@@ -113,6 +113,9 @@
 #include <asm/mce.h>
 #include <asm/alternative.h>
 #include <asm/prom.h>
+#ifdef CONFIG_INTEL_MID_RAM_CONSOLE
+#include <asm/intel-mid.h>
+#endif
 
 /*
  * end_pfn only includes RAM, while max_pfn_mapped includes all e820 entries.
@@ -998,6 +1001,10 @@ void __init setup_arch(char **cmdline_p)
 	setup_trampolines();
 
 	trim_platform_memory_ranges();
+
+#ifdef CONFIG_INTEL_MID_RAM_CONSOLE
+	ram_console_reserve_memory();
+#endif
 
 	init_gbpages();
 

@@ -650,18 +650,9 @@ static int tng_submit_encode_cmdbuf(struct drm_device *dev,
 		topaz_priv->topaz_fw_loaded = 1;
 	}
 
-	tng_topaz_mmu_flushcache(dev_priv);
-
-	/* # schedule watchdog */
-	/* psb_schedule_watchdog(dev_priv); */
-
-	/* # spin lock irq save [msvdx_lock] */
-	spin_lock_irqsave(&topaz_priv->topaz_lock, irq_flags);
-
 	/* # if topaz need to reset, reset it */
 	if (topaz_priv->topaz_needs_reset) {
 		/* #.# reset it */
-		spin_unlock_irqrestore(&topaz_priv->topaz_lock, irq_flags);
 		PSB_DEBUG_GENERAL("TOPAZ: needs reset.\n");
 
 		tng_topaz_reset(dev_priv);
@@ -674,8 +665,6 @@ static int tng_submit_encode_cmdbuf(struct drm_device *dev,
 			DRM_ERROR("TOPAZ: upload FW to HW failed\n");
 			return ret;
 		}
-
-		spin_lock_irqsave(&topaz_priv->topaz_lock, irq_flags);
 	}
 
 	if (!topaz_priv->topaz_busy) {
@@ -684,7 +673,6 @@ static int tng_submit_encode_cmdbuf(struct drm_device *dev,
 				  sequence);
 
 		topaz_priv->topaz_busy = 1;
-		spin_unlock_irqrestore(&topaz_priv->topaz_lock, irq_flags);
 
 		ret = tng_topaz_deliver_command(dev, file_priv,
 			cmd_buffer, cmd_offset, cmd_size, NULL, sequence, 0);
@@ -697,8 +685,6 @@ static int tng_submit_encode_cmdbuf(struct drm_device *dev,
 		PSB_DEBUG_GENERAL("TOPAZ: queue command of sequence %08x\n",
 				  sequence);
 		cmd = NULL;
-
-		spin_unlock_irqrestore(&topaz_priv->topaz_lock, irq_flags);
 
 		ret = tng_topaz_deliver_command(dev, file_priv,
 			cmd_buffer, cmd_offset, cmd_size, &cmd, sequence, 1);
@@ -743,7 +729,6 @@ static int tng_topaz_save_command(
 	topaz_cmd->cmd_size = cmd_size;
 	topaz_cmd->sequence = sequence;
 
-	/* spin_lock_irqsave(&topaz_priv->topaz_lock, irq_flags); */
 	/* Avoid race condition with dequeue buffer in kernel task */
 	mutex_lock(&topaz_priv->topaz_mutex);
 	list_add_tail(&topaz_cmd->head, &topaz_priv->topaz_queue);
@@ -755,7 +740,6 @@ static int tng_topaz_save_command(
 		tng_topaz_dequeue_send(dev);
 		PSB_DEBUG_GENERAL("TOPAZ: after dequeue command\n");
 	}
-	/* spin_unlock_irqrestore(&topaz_priv->topaz_lock, irq_flags); */
 
 	return 0;
 }
@@ -1405,8 +1389,6 @@ int32_t tng_topaz_restore_mtx_state(struct drm_device *dev)
 		mtx_reg_state++;
 	}
 
-	tng_topaz_mmu_flushcache(dev_priv);
-
 	ret = mtx_upload_fw(dev, video_ctx->codec, video_ctx, 1);
 	if (ret) {
 		DRM_ERROR("Failed to upload firmware for codec %s\n",
@@ -1689,8 +1671,6 @@ int tng_topaz_save_mtx_state(struct drm_device *dev)
 		DRM_ERROR("TOPAZ: mtx_dma_read failed!\n");
 		goto out;
 	}
-
-	tng_topaz_mmu_flushcache(dev_priv);
 
 	video_ctx->status |= MASK_TOPAZ_CONTEXT_SAVED;
 
@@ -2361,6 +2341,9 @@ tng_topaz_send(
 		"one by one, cmdsize(%d), sequence(%08x)\n",
 		cmd_size, sync_seq);
 
+	/* Must flush here in case of invalid cache data */
+	tng_topaz_mmu_flushcache(dev_priv);
+
 	/*
 	printk(KERN_ERR "\t\t\tFrame number = %d\n", \
 	       topaz_priv->frame_count);
@@ -2603,8 +2586,6 @@ int tng_topaz_remove_ctx(
 	PSB_DEBUG_GENERAL("TOPAZ: release context %08x(%s)\n",
 		(unsigned int)video_ctx, codec_to_string(video_ctx->codec));
 
-	/* tng_topaz_mmu_flushcache(dev_priv); */
-
 	if (video_ctx->reg_saving_bo) {
 		PSB_DEBUG_GENERAL("TOPAZ: unref reg saving bo\n");
 		ttm_bo_kunmap(&topaz_priv->reg_kmap);
@@ -2687,11 +2668,13 @@ int tng_topaz_dequeue_send(struct drm_device *dev)
 		mutex_unlock(&topaz_priv->topaz_mutex);
 		return ret;
 	}
-	mutex_unlock(&topaz_priv->topaz_mutex);
 
 	topaz_priv->topaz_busy = 1;
 	topaz_cmd = list_first_entry(&topaz_priv->topaz_queue,
 			struct tng_topaz_cmd_queue, head);
+
+	memset(topaz_priv->saved_queue, 0, sizeof(struct tng_topaz_cmd_queue));
+	memset(topaz_priv->saved_cmd, 0, MAX_CMD_SIZE);
 
 	topaz_priv->saved_queue->file_priv = topaz_cmd->file_priv;
 	topaz_priv->saved_queue->cmd_size = topaz_cmd->cmd_size;
@@ -2703,6 +2686,7 @@ int tng_topaz_dequeue_send(struct drm_device *dev)
 	list_del(&topaz_cmd->head);
 	kfree(topaz_cmd->cmd);
 	kfree(topaz_cmd);
+	mutex_unlock(&topaz_priv->topaz_mutex);
 
 	PSB_DEBUG_GENERAL("TOPAZ: dequeue command of sequence %08x " \
 			"and send it to topaz\n", \

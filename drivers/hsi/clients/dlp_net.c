@@ -61,15 +61,6 @@ struct dlp_net_context {
 
 /*
  *
- *
- */
-struct dlp_net_tx_params {
-	struct dlp_channel *ch_ctx;
-	struct sk_buff *skb;
-};
-
-/*
- *
  * LOCAL functions
  *
  **/
@@ -78,6 +69,32 @@ static inline int dlp_net_is_trace_channel(struct dlp_channel *ch_ctx)
 {
 	/* The channel 4 can be used for modem Trace or NET IF */
 	return (ch_ctx->hsi_channel == DLP_CHANNEL_NET3);
+}
+
+static int dlp_net_alloc_xfer_pdus(struct dlp_channel *ch_ctx)
+{
+	int ret;
+
+	/* Allocate TX FIFO */
+	ret = dlp_allocate_pdus_pool(ch_ctx, &ch_ctx->tx);
+	if (ret) {
+		pr_err(DRVNAME ": Cant allocate RX FIFO pdus for ch%d\n",
+				ch_ctx->ch_id);
+		return ret;
+	}
+
+	/* Allocate RX FIFO */
+	ret = dlp_allocate_pdus_pool(ch_ctx, &ch_ctx->rx);
+	if (ret) {
+		pr_err(DRVNAME ": Cant allocate RX FIFO pdus for ch%d\n",
+				ch_ctx->ch_id);
+
+		/* Release the allocated TX context PDUs */
+		dlp_xfer_ctx_clear(&ch_ctx->tx);
+		return ret;
+	}
+
+	return 0;
 }
 
 /**
@@ -153,34 +170,31 @@ static __be16 dlp_net_type_trans(const char *buffer)
 static void dlp_net_complete_tx(struct hsi_msg *pdu)
 {
 	unsigned long flags;
-	struct dlp_net_tx_params *msg_param = pdu->context;
-	struct dlp_channel *ch_ctx = msg_param->ch_ctx;
+	struct dlp_xfer_ctx *xfer_ctx = pdu->context;
+	struct dlp_channel *ch_ctx = xfer_ctx->channel;
 	struct dlp_net_context *net_ctx = ch_ctx->ch_data;
-	struct dlp_xfer_ctx *xfer_ctx = &ch_ctx->tx;
+	int wakeup, avail, pending;
 
-	/* Update statistics */
-	net_ctx->ndev->stats.tx_bytes += msg_param->skb->len;
-	net_ctx->ndev->stats.tx_packets++;
-
-	/* TX done, free the skb */
-	dev_kfree_skb(msg_param->skb);
-
-	/* Free the pdu */
-	dlp_pdu_free(pdu, -1);
+	/* Recycle or Free the pdu */
+	write_lock_irqsave(&xfer_ctx->lock, flags);
+	dlp_pdu_delete(xfer_ctx, pdu, flags);
 
 	/* Decrease the CTRL fifo size */
-	write_lock_irqsave(&xfer_ctx->lock, flags);
 	dlp_hsi_controller_pop(xfer_ctx);
 
-	/* Still have queued TX pdu ? */
-	if (xfer_ctx->ctrl_len) {
-		mod_timer(&dlp_drv.timer[ch_ctx->ch_id],
-			  jiffies + usecs_to_jiffies(DLP_HANGUP_DELAY));
-	} else {
-		del_timer_sync(&dlp_drv.timer[ch_ctx->ch_id]);
-	}
-
+	/* Check the wait FIFO size */
+	avail = (xfer_ctx->wait_len <= xfer_ctx->wait_max / 2);
 	write_unlock_irqrestore(&xfer_ctx->lock, flags);
+
+	/* Start new waiting pdus (if any) */
+	dlp_pop_wait_push_ctrl(xfer_ctx);
+
+	/* Wake-up the NET if whenever the TX wait FIFO is half empty, and
+	 * not before, to prevent too many wakeups */
+	pending = netif_queue_stopped(net_ctx->ndev);
+	wakeup = (pending && avail);
+	if (wakeup)
+		netif_wake_queue(net_ctx->ndev);
 }
 
 /*
@@ -201,9 +215,9 @@ static void dlp_net_complete_rx(struct hsi_msg *pdu)
 	if (!dlp_tty_is_link_valid()) {
 		if ((EDLP_NET_RX_DATA_REPORT) ||
 			(EDLP_NET_RX_DATA_LEN_REPORT))
-				pr_debug(DRVNAME ": NET: CH%d RX PDU ignored (close:%d, Time out: %d)\n",
-					ch_ctx->ch_id,
-					dlp_drv.tty_closed, dlp_drv.tx_timeout);
+			pr_debug(DRVNAME ": NET: CH%d RX PDU ignored (close:%d, Time out: %d)\n",
+				ch_ctx->ch_id,
+				dlp_drv.tty_closed, dlp_drv.tx_timeout);
 		return;
 	}
 
@@ -351,37 +365,22 @@ int dlp_net_open(struct net_device *dev)
 	if (state != DLP_CH_STATE_CLOSED) {
 		pr_err(DRVNAME ": Can't open CH%d (HSI CH%d) => invalid state: %d\n",
 				ch_ctx->ch_id, ch_ctx->hsi_channel, state);
-		ret = -EBUSY;
-		goto out;
+		return -EBUSY;
 	}
 
 	/* Update/Set the eDLP channel id */
 	dlp_drv.channels_hsi[ch_ctx->hsi_channel].edlp_channel = ch_ctx->ch_id;
 
 	if (dlp_net_is_trace_channel(ch_ctx)) {
-		/* Allocate TX FIFO */
-		ret = dlp_allocate_pdus_pool(ch_ctx, &ch_ctx->tx);
-		if (ret) {
-			pr_err(DRVNAME ": Cant allocate RX FIFO pdus for ch%d\n",
-					ch_ctx->ch_id);
-			goto out;
-		}
-
-		/* Allocate RX FIFO */
-		ret = dlp_allocate_pdus_pool(ch_ctx, &ch_ctx->rx);
-		if (ret) {
-			pr_err(DRVNAME ": Cant allocate RX FIFO pdus for ch%d\n",
-					ch_ctx->ch_id);
-			goto out;
-		}
+		if (dlp_net_alloc_xfer_pdus(ch_ctx))
+			return -ENOMEM;
 	}
 
 	/* Open the channel */
 	ret = dlp_ctrl_open_channel(ch_ctx);
 	if (ret) {
 		pr_err(DRVNAME ": ch%d open failed !\n", ch_ctx->ch_id);
-		ret = -EIO;
-		goto out;
+		return -EIO;
 	}
 
 	/* Push all RX pdus */
@@ -389,8 +388,6 @@ int dlp_net_open(struct net_device *dev)
 
 	/* Start the netif */
 	netif_wake_queue(dev);
-
-out:
 	return ret;
 }
 
@@ -440,21 +437,148 @@ int dlp_net_stop(struct net_device *dev)
 	return 0;
 }
 
-static void dlp_net_pdu_destructor(struct hsi_msg *pdu)
+/*
+* @brief Check if the skb is 4B aligned
+*
+* @param skb : skb reference
+*
+* @return: if skb data is:
+*	=> 4B aligned, return the same provided skb
+*	=> NOT 4B aligned, retrun a new allocated & 4B data aligned skb
+*/
+static struct sk_buff *dlp_net_aligne_skb(struct sk_buff *skb)
 {
-	struct dlp_net_tx_params *msg_param = pdu->context;
-	struct dlp_channel *ch_ctx = msg_param->ch_ctx;
-	struct dlp_xfer_ctx *xfer_ctx = &ch_ctx->tx;
+	struct sk_buff *new_skb = skb;
 
-	dlp_hsi_controller_pop(xfer_ctx);
+	/* Workaround for the 4Bytes alignment issue */
+	if (IS_ALIGNED((u32)(skb->data), 4))
+		return new_skb;
 
-	if (timer_pending(&dlp_drv.timer[ch_ctx->ch_id]))
-		del_timer_sync(&dlp_drv.timer[ch_ctx->ch_id]);
+	new_skb = alloc_skb(NET_IP_ALIGN + skb->len + 4, GFP_ATOMIC);
+	if (!new_skb)
+		goto out;
 
-	if (pdu->ttype == HSI_MSG_WRITE)
-		dlp_pdu_free(pdu, -1);
-	else
-		dlp_pdu_free(pdu, pdu->channel);
+	skb_reserve(new_skb, 4);
+	skb_reset_mac_header(new_skb);
+	skb_set_network_header(new_skb, skb_network_header(skb) - skb->head);
+	skb_set_transport_header(new_skb,
+			skb_transport_header(skb) - skb->head);
+	skb_copy_and_csum_dev(skb, skb_put(new_skb, skb->len));
+
+out:
+	kfree_skb(skb);
+	return new_skb;
+}
+
+/*
+* @brief Get an available TX PDU
+*
+* @param ch_ctx : Channel context reference
+* @param xfer_ctx : TX xfer context reference
+* @param data_len : data to transfer size
+*
+* @return PDU reference or NULL if no PDU available
+*/
+struct hsi_msg *dlp_net_get_xmit_pdu(struct dlp_channel *ch_ctx,
+					struct dlp_xfer_ctx *xfer_ctx,
+					int data_len)
+{
+	struct hsi_msg *pdu;
+	unsigned long flags;
+	unsigned int offset, size, pdu_size;
+	u32 *ptr;
+
+	offset = DLP_DEFAULT_DESC_OFFSET;
+
+	read_lock_irqsave(&xfer_ctx->lock, flags);
+	pdu = dlp_fifo_tail(&xfer_ctx->wait_pdus);
+	if (!pdu) {
+		read_unlock_irqrestore(&xfer_ctx->lock, flags);
+		goto recycled;
+	}
+
+	pdu_size = xfer_ctx->pdu_size;
+
+	/* Start Address & Size */
+	ptr = sg_virt(pdu->sgt.sgl);
+	ptr += 2;
+
+	for (offset += DLP_HDR_SPACE_CP;
+		(*ptr) & DLP_HDR_COMPLETE_PACKET && (offset < pdu_size);
+		ptr += 2) {
+		/* Read the size (mask the N/P fields) */
+		size = DLP_HDR_DATA_SIZE(*ptr) - DLP_HDR_SPACE_AP;
+
+		/* Update the offset */
+		offset += ALIGN(size, DLP_PACKET_ALIGN_CP);
+		offset += DLP_HDR_SPACE_AP;
+	}
+	read_unlock_irqrestore(&xfer_ctx->lock, flags);
+
+	/* Still have enough space ? */
+	size = ALIGN(data_len, DLP_PACKET_ALIGN_CP);
+	if ((offset + size) <= xfer_ctx->pdu_size)
+		return pdu;
+
+recycled:
+	pdu = dlp_fifo_recycled_pop(xfer_ctx);
+	if (pdu) {
+		dlp_fifo_wait_push(xfer_ctx, pdu);
+		pdu->status = HSI_STATUS_PENDING;
+
+		/* Need to be done only when new PDU */
+		dlp_start_tx(xfer_ctx);
+	}
+
+	return pdu;
+}
+
+/*
+* @brief Calculate the eDLP header desc size
+*
+* @param pdu: PDU to consider
+*
+* @return : Header desc size
+*/
+void dlp_net_edlp_header_size(struct hsi_msg *pdu,
+			u32 **start_addr,
+			u32 **data_addr,
+			u32 *offset)
+{
+	int size, nb_items;
+	struct scatterlist *sg = pdu->sgt.sgl;
+	u32 *ptr = sg_virt(sg);
+
+	(*offset)  = DLP_DEFAULT_DESC_OFFSET;
+
+	/* Start Address */
+	ptr++;
+	(*start_addr) = ptr;
+
+	/* Size */
+	ptr++;
+
+	for (nb_items = 0; (*ptr) & DLP_HDR_COMPLETE_PACKET; nb_items++) {
+		/* Read the size (mask the N/P fields) */
+		size = DLP_HDR_DATA_SIZE((*ptr)) - DLP_HDR_SPACE_AP;
+		(*offset) += ALIGN(size, DLP_PACKET_ALIGN_CP);
+		(*offset) += DLP_HDR_SPACE_AP;
+
+		/* Go to the next packet desc */
+		ptr += 2;
+		(*start_addr) += 2;
+	}
+
+	if (nb_items) {
+		/* Goto the last packet */
+		ptr -= 2;
+
+		/* Set the packet flag */
+		(*ptr) |= DLP_HDR_MORE_DESC;
+	}
+
+	ptr = sg_virt(sg);
+	(*data_addr) = (u32 *)(((char *)ptr) + (*offset) + DLP_HDR_SPACE_CP);
 }
 
 /*
@@ -464,55 +588,36 @@ static int dlp_net_start_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	struct dlp_channel *ch_ctx = netdev_priv(dev);
 	struct dlp_net_context *net_ctx = ch_ctx->ch_data;
-	struct dlp_net_tx_params *msg_param;
-	int i, ret, nb_padding, nb_entries, nb_packets;
-	unsigned char *skb_data;
-	unsigned int *ptr;
-	unsigned int skb_len, padding_len, offset, desc_size, align_size;
-	struct hsi_msg *new;
-	struct scatterlist *sg;
-	skb_frag_t *frag;
+	struct dlp_xfer_ctx *xfer_ctx = &ch_ctx->tx;
+	struct hsi_msg *pdu;
+	unsigned long flags;
+	u32 *start_addr, *size_ptr, *data_ptr, offset;
 
-	if (!dlp_ctx_have_credits(&ch_ctx->tx, ch_ctx)) {
+	if (!dlp_ctx_have_credits(xfer_ctx, ch_ctx)) {
 		/* Stop the NET if */
 		netif_stop_queue(net_ctx->ndev);
 
-		if ((EDLP_NET_TX_DATA_REPORT) ||
-			(EDLP_NET_TX_DATA_LEN_REPORT))
-				pr_warn(DRVNAME ": CH%d (HSI CH%d) out of credits (%d)",
-					ch_ctx->ch_id,
-					ch_ctx->hsi_channel,
-					ch_ctx->tx.seq_num);
-		ret = NETDEV_TX_BUSY;
-		goto out;
+		pr_warn(DRVNAME ": CH%d TX ignored (credits:%d, seq_num:%d, closed:%d, timeout:%d)",
+			xfer_ctx->channel->ch_id,
+			xfer_ctx->channel->credits,
+			xfer_ctx->seq_num,
+			dlp_drv.tty_closed, dlp_drv.tx_timeout);
+		return NETDEV_TX_BUSY;
 	}
 
-	if (skb->len < ETH_ZLEN) {
-		/* WARNING("Padding received packet (size: %d)", skb->len); */
-		if (skb_padto(skb, ETH_ZLEN))
-			return NETDEV_TX_OK;
-	}
+	if (skb_padto(skb, ETH_ZLEN))
+		return NETDEV_TX_OK;
 
-	/* Workaround for the 4Bytes alignment issue */
-	if ((unsigned int)(skb->data) & 3) {
-		struct sk_buff *new_skb;
-		new_skb = alloc_skb(NET_IP_ALIGN + skb->len + 4, GFP_ATOMIC);
-		if (new_skb == NULL) {
-			kfree_skb(skb);
-			return NETDEV_TX_OK;
-		}
-		skb_reserve(new_skb, 4);
-		skb_reset_mac_header(new_skb);
-		skb_set_network_header(new_skb,
-				skb_network_header(skb) - skb->head);
-		skb_set_transport_header(new_skb,
-				skb_transport_header(skb) - skb->head);
-		skb_copy_and_csum_dev(skb,
-				skb_put(new_skb, skb->len));
-		kfree_skb(skb);
+	skb = dlp_net_aligne_skb(skb);
+	if (!skb)
+		return NETDEV_TX_OK;
 
-		/* Update to the new skb */
-		skb = new_skb;
+	pdu = dlp_net_get_xmit_pdu(ch_ctx, xfer_ctx, skb->len);
+	if (!pdu) {
+		/* Stop the NET if */
+		netif_stop_queue(net_ctx->ndev);
+
+		return NETDEV_TX_BUSY;
 	}
 
 	/* Dump the TX data/length */
@@ -524,154 +629,52 @@ static int dlp_net_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	else if (EDLP_NET_TX_DATA_LEN_REPORT)
 		pr_debug(DRVNAME ": NET_TX %d bytes\n", skb->len);
 
-	/* Set msg params */
-	msg_param = (struct dlp_net_tx_params *)skb->cb;
-	msg_param->ch_ctx = ch_ctx;
-	msg_param->skb = skb;
+	/* Set the eDLP header  */
+	/*-----------------------*/
+	dlp_net_edlp_header_size(pdu, &start_addr, &data_ptr, &offset);
+	if (!data_ptr) {
+		/* Stop the NET if */
+		netif_stop_queue(net_ctx->ndev);
+
+		return NETDEV_TX_BUSY;
+	}
+
+	/* Set the start offset */
+	(*start_addr) = offset;
+
+	/* Set the size (skb->len + header_space) */
+	size_ptr = ++start_addr;
+	(*size_ptr) = (DLP_HDR_NO_MORE_DESC|DLP_HDR_COMPLETE_PACKET|skb->len);
+	(*size_ptr) += DLP_HDR_SPACE_CP;
+
+	/* Copy the data */
+	memcpy(data_ptr, skb->data, skb->len);
+
+	/* Update statistics */
+	dev->stats.tx_bytes += skb->len;
+	dev->stats.tx_packets++;
+
+	/* Free the skb */
+	dev_kfree_skb(skb);
 
 	/* Save the timestamp */
 	dev->trans_start = jiffies;
 
-	/* Compute the number of needed padding entries */
-	nb_padding = 1;
-	if (skb_has_frag_list(skb)) {
-		for (i = 0; i < skb_shinfo(skb)->nr_frags; i++) {
-			align_size = IS_ALIGNED(skb_shinfo(skb)->frags[i].size,
-						DLP_PACKET_ALIGN_CP);
-			/* Size aligned ? */
-			nb_padding += (align_size ? 0 : 1);
-		}
+	if (pdu->status != HSI_STATUS_ERROR) {  /* still valid ? */
+		pdu->status = HSI_STATUS_COMPLETED;
+		if (dlp_ctx_get_state(xfer_ctx) != IDLE)
+			dlp_pop_wait_push_ctrl(xfer_ctx);
+	} else {
+		/* ERROR frame have already been popped from the wait FIFO */
+		pr_debug(DRVNAME ": ERROR: PDU alrady popped\n");
+		write_lock_irqsave(&xfer_ctx->lock, flags);
+		dlp_pdu_delete(xfer_ctx, pdu, flags);
+		write_unlock_irqrestore(&xfer_ctx->lock, flags);
+		return NETDEV_TX_BUSY;
 	}
 
-	/* Compute the number of needed SGT entries */
-	nb_packets = skb_shinfo(skb)->nr_frags + 1;
-	nb_entries = 1 +	/* Header */
-	    nb_packets +	/* Packets */
-	    nb_padding;		/* Padding */
-
-	/* Allocate the HSI msg */
-	new = hsi_alloc_msg(nb_entries, GFP_ATOMIC);
-	if (!new) {
-		pr_err(DRVNAME ": Out of memory (hsi_msg)\n");
-		ret = NETDEV_TX_BUSY;
-		goto out;
-	}
-
-	new->cl = dlp_drv.client;
-	new->channel = ch_ctx->hsi_channel;
-	new->ttype = HSI_MSG_WRITE;
-	new->context = msg_param;
-	new->complete = dlp_net_complete_tx;
-	new->destructor = dlp_net_pdu_destructor;
-
-	/* Allocate the header buffer */
-	sg = new->sgt.sgl;
-
-	desc_size = 1 * 4 +	/* Signature + Seq_num */
-	    nb_packets * 8;	/* Packets Offset+Size */
-
-	desc_size = ALIGN(desc_size, DLP_PACKET_ALIGN_CP);
-	desc_size += DLP_HDR_SPACE_CP;
-
-	ptr = dlp_buffer_alloc(desc_size, &sg_dma_address(sg));
-	if (!ptr) {
-		pr_err(DRVNAME ": Out of memory (msg_desc)\n");
-		ret = NETDEV_TX_BUSY;
-		goto free_msg;
-	}
-
-	/* Set the header buffer */
-	/*-----------------------*/
-	sg_set_buf(sg, ptr, desc_size);
-
-	/* Write packets desc  */
-	/*---------------------*/
-	i = 0;
-	offset = desc_size - DLP_HDR_SPACE_CP;
-
-	do {
-		if (nb_packets == 1) {
-			skb_data = skb->data;
-			skb_len = skb->len;
-		} else {
-			frag = &skb_shinfo(skb)->frags[i];
-
-			skb_len = frag->size;
-			skb_data = (void *)skb_frag_page(frag);
-		}
-
-		/* Set the start offset */
-		ptr++;
-		(*ptr) = offset;
-
-		/* Set the size (skb_len + header_space) */
-		ptr++;
-		(*ptr) = (DLP_HDR_NO_MORE_DESC|DLP_HDR_COMPLETE_PACKET|skb_len);
-		(*ptr) += DLP_HDR_SPACE_CP;
-
-		/* Set the packet SG entry */
-		sg = sg_next(sg);
-		if (!sg)
-			break;
-
-		sg_set_buf(sg, skb_data, skb_len);
-		sg->dma_address = dma_map_single(dlp_drv.controller,
-						 skb_data,
-						 skb_len, DMA_TO_DEVICE);
-
-		/* Still have packets ? */
-		i++;
-		if (i < nb_packets) {
-			/* Need padding ? */
-			align_size = ALIGN(skb_len, DLP_PACKET_ALIGN_CP);
-			if (align_size != skb_len) {
-				skb_data = net_ctx->net_padd;
-				skb_len = align_size - skb_len;
-
-				sg = sg_next(sg);
-				if (!sg)
-					break;
-				sg_set_buf(sg, skb_data, skb_len);
-
-				sg->dma_address =
-				    dma_map_single(dlp_drv.controller, skb_data,
-						   skb_len, DMA_TO_DEVICE);
-			}
-
-			/* Update the offset value */
-			offset += align_size + DLP_HDR_SPACE_CP;
-		} else {
-			/* Update the offset value */
-			offset += skb_len + DLP_HDR_SPACE_CP;
-		}
-	} while (i < nb_packets);
-
-	/* Write the padding entry (Check 4 bytes alignment) */
-	/*---------------------------------------------------*/
-	padding_len = ch_ctx->tx.pdu_size - offset;
-	padding_len = (padding_len / 4) * 4;
-	if (sg && padding_len) {
-		sg = sg_next(sg);
-		if (sg) {
-			sg_set_buf(sg, net_ctx->net_padd, padding_len);
-			sg->dma_address = net_ctx->net_padd_dma;
-		}
-	}
-
-	ret = dlp_hsi_controller_push(&ch_ctx->tx, new);
-	if (ret) {
-		ret = NETDEV_TX_BUSY;
-		goto free_msg;
-	}
-
-	ret = NETDEV_TX_OK;
-	return ret;
-
-free_msg:
-	hsi_free_msg(new);
-
-out:
-	return ret;
+	/* Everythin is OK */
+	return NETDEV_TX_OK;
 }
 
 /*
@@ -819,21 +822,8 @@ struct dlp_channel *dlp_net_ctx_create(unsigned int ch_id,
 	ch_ctx->rx.timer.function = dlp_net_rx_stop;
 
 	if (!dlp_net_is_trace_channel(ch_ctx)) {
-		/* Allocate TX FIFO */
-		ret = dlp_allocate_pdus_pool(ch_ctx, &ch_ctx->tx);
-		if (ret) {
-			pr_err(DRVNAME ": Cant allocate RX FIFO pdus for ch%d\n",
-					ch_id);
+		if (dlp_net_alloc_xfer_pdus(ch_ctx))
 			goto cleanup;
-		}
-
-		/* Allocate RX FIFO */
-		ret = dlp_allocate_pdus_pool(ch_ctx, &ch_ctx->rx);
-		if (ret) {
-			pr_err(DRVNAME ": Cant allocate RX FIFO pdus for ch%d\n",
-					ch_id);
-			goto cleanup;
-		}
 	}
 
 	return ch_ctx;

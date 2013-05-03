@@ -718,15 +718,14 @@ int tng_topaz_init(struct drm_device *dev)
 		return -1;
 	}
 
-	topaz_priv->saved_cmd = kzalloc(2048, GFP_KERNEL);
+	/* Allocate a large enough buffer to save command */
+	topaz_priv->saved_cmd = kzalloc(MAX_CMD_SIZE, GFP_KERNEL);
 	if (!topaz_priv->saved_cmd) {
 		DRM_ERROR("TOPAZ: Failed to alloc memory for saved cmd\n");
 		return -1;
 	}
 
 	/* tng_topaz_mmu_configure(dev); */
-
-	tng_topaz_mmu_flushcache(dev_priv);
 
 	ui32RegValue = F_ENCODE(1, TOPAZHP_TOP_CR_IMG_TOPAZ_MTX_SOFT_RESET) |
 		F_ENCODE(1, TOPAZHP_TOP_CR_IMG_TOPAZ_CORE_SOFT_RESET) |
@@ -751,8 +750,6 @@ int tng_topaz_init(struct drm_device *dev)
 
 	PSB_DEBUG_TOPAZ("TOPAZ: Number of pipes: %d\n",
 		topaz_priv->topaz_num_pipes);
-
-	/* tng_topaz_mmu_flushcache(dev_priv); */
 
 	tng_topaz_mmu_hwsetup(dev_priv);
 
@@ -787,8 +784,6 @@ int tng_topaz_init(struct drm_device *dev)
 
 	topaz_priv->cur_context = NULL;
 
-	/* tng_topaz_mmu_flushcache(dev_priv); */
-
 	for (n = 0; n < topaz_priv->topaz_num_pipes; n++) {
 		PSB_DEBUG_TOPAZ("TOPAZ: Reset topaz registers for pipe %d",
 			n);
@@ -806,8 +801,6 @@ int tng_topaz_init(struct drm_device *dev)
 
 		TOPAZCORE_WRITE32(n, TOPAZHP_CR_TOPAZHP_SRST, 0);
 	}
-
-	tng_topaz_mmu_flushcache(dev_priv);
 
 	PSB_DEBUG_TOPAZ("TOPAZ: Create fiwmware text/data storage");
 	/* create firmware storage */
@@ -932,8 +925,6 @@ int tng_topaz_uninit(struct drm_device *dev)
 		PSB_DEBUG_TOPAZ("TOPAZ: topaz_priv is NULL!\n");
 		return -1;
 	}
-
-	tng_topaz_mmu_flushcache(dev_priv);
 
 	tng_topaz_reset(dev_priv);
 
@@ -1247,8 +1238,6 @@ int tng_topaz_init_board(
 		topaz_priv->topaz_num_pipes = TOPAZHP_PIPE_NUM;
 	}
 
-	tng_topaz_mmu_flushcache(dev_priv);
-
 	reg_val = F_ENCODE(1, TOPAZHP_TOP_CR_IMG_TOPAZ_MTX_SOFT_RESET) |
 		F_ENCODE(1, TOPAZHP_TOP_CR_IMG_TOPAZ_CORE_SOFT_RESET) |
 		F_ENCODE(1, TOPAZHP_TOP_CR_IMG_TOPAZ_IO_SOFT_RESET);
@@ -1256,8 +1245,6 @@ int tng_topaz_init_board(
 	MULTICORE_WRITE32(TOPAZHP_TOP_CR_MULTICORE_SRST, reg_val);
 
 	MULTICORE_WRITE32(TOPAZHP_TOP_CR_MULTICORE_SRST, 0x0);
-
-	/* tng_topaz_mmu_flushcache(dev_priv); */
 
 	tng_topaz_mmu_hwsetup(dev_priv);
 
@@ -1279,7 +1266,6 @@ int tng_topaz_init_board(
 		TOPAZCORE_WRITE32(i, TOPAZHP_CR_TOPAZHP_SRST, 0);
 	}
 
-	tng_topaz_mmu_flushcache(dev_priv);
 	tng_set_producer(dev, 0);
 	tng_set_consumer(dev, 0);
 	return 0;

@@ -91,6 +91,14 @@ enum sst_audio_device_id_ctp {
 	SST_PROBE_IN = 5,
 };
 
+enum sst_audio_task_id_mrfld {
+	SST_TASK_ID_NONE = 0,
+	SST_TASK_ID_SBA = 1,
+	SST_TASK_ID_FBA = 2,
+	SST_TASK_ID_MEDIA = 3,
+	SST_TASK_ID_AWARE = 4,
+};
+
 /* Device IDs for Merrifield are Pipe IDs,
  * ref: LPE DSP command interface spec v0.75 */
 enum sst_audio_device_id_mrfld {
@@ -167,6 +175,7 @@ struct sst_dev_stream_map {
 	u8 subdev_num;
 	u8 direction;
 	u8 device_id;
+	u8 task_id;
 	u8 status;
 };
 

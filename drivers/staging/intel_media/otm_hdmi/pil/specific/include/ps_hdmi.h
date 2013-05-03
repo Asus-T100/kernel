@@ -94,6 +94,11 @@ bool ps_hdmi_power_rails_on(void);
 /* turn off HDMI power rails not used for HPD */
 bool ps_hdmi_power_rails_off(void);
 
+/* turn on HDMI power islands */
+bool ps_hdmi_power_islands_on(int hw_island);
+
+/* turn off HDMI power islands */
+void ps_hdmi_power_islands_off(int hw_island);
 
 /**
  * hdmi interrupt handler (top half).

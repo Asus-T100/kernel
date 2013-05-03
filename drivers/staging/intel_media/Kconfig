@@ -118,6 +118,10 @@ config GFX_RTPM
 	help
 	  xxxxxx
 
+config R63311_MIPI_VIDEO_MODE
+	bool "support jdi 1920x1080 MIPI panel"
+	default n
+
 config SUPPORT_TOSHIBA_MIPI_DISPLAY
 	bool "Support Toshiba TC358762 MIPI Bridge and Toshiba JBT6K84 Panel"
 	depends on DRM_MDFLD

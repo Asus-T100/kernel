@@ -149,6 +149,12 @@
 /* Bit fields */
 
 /* Global Configuration Register */
+#define DWC3_GRXTHRCFG_USBRXPKTCNTSEL		(1 << 29)
+#define DWC3_GRXTHRCFG_USBRXPKTCNT(n)		(n << 24)
+#define DWC3_GRXTHRCFG_USBRXPKTCNT_MASK		(0xf << 24)
+#define DWC3_GRXTHRCFG_USBMAXRXBURSTSIZE(n)	(n << 19)
+#define DWC3_GRXTHRCFG_USBMAXRXBURSTSIZE_MASK	(0x1f << 19)
+
 #define DWC3_GCTL_PWRDNSCALE(n)	((n) << 19)
 #define DWC3_GCTL_U2RSTECN	(1 << 16)
 #define DWC3_GCTL_RAMCLKSEL(x)	(((x) & DWC3_GCTL_CLK_MASK) << 6)
@@ -523,6 +529,7 @@ struct dwc3_hwregs {
 	u32	gevntadrlo;
 	u32	gevntadrhi;
 	u32	gevntsiz;
+	u32	grxthrcfg;
 };
 
 struct dwc3_hiber {
@@ -679,6 +686,7 @@ struct dwc3 {
 #define DWC3_REVISION_185A	0x5533185a
 #define DWC3_REVISION_188A	0x5533188a
 #define DWC3_REVISION_190A	0x5533190a
+#define DWC3_REVISION_250A	0x5533250a
 
 	unsigned		is_selfpowered:1;
 	unsigned		three_stage_setup:1;
@@ -717,6 +725,9 @@ struct dwc3 {
 	struct  wake_lock   wake_lock;
 
 	struct dwc3_hwregs	hwregs;
+
+	/* delayed work for handling Link State Change */
+	struct delayed_work link_work;
 };
 
 /* -------------------------------------------------------------------------- */

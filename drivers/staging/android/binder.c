@@ -419,9 +419,9 @@ repeat:
 	files->next_fd = fd + 1;
 #if 1
 	/* Sanity check */
-	if (fdt->fd[fd] != NULL) {
+	if (rcu_dereference_raw(fdt->fd[fd]) != NULL) {
 		printk(KERN_WARNING "get_unused_fd: slot %d not NULL!\n", fd);
-		fdt->fd[fd] = NULL;
+		rcu_assign_pointer(fdt->fd[fd], NULL);
 	}
 #endif
 	error = fd;

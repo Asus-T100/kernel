@@ -139,6 +139,7 @@
 #define APDS_ALS_GAIN_MASK	0x3
 #define APDS_ALS_WORK_GAIN	0
 #define APDS_ALS_INIT_GAIN	2
+#define APDS_PS_INIT_DATA	0xffff
 
 /* Reverse chip factors for threshold calculation */
 struct reverse_factors {
@@ -823,7 +824,9 @@ static ssize_t apds990x_prox_show(struct device *dev,
 		ret = -EIO;
 		goto out;
 	}
-	apds990x_read_word(chip, APDS990X_PDATAL, &chip->prox_data);
+	/* If the hardware is not ready, report the init data directly*/
+	if (chip->prox_data != APDS_PS_INIT_DATA)
+		apds990x_read_word(chip, APDS990X_PDATAL, &chip->prox_data);
 	ret = sprintf(buf, "%d\n", chip->prox_data);
 out:
 	mutex_unlock(&chip->mutex);
@@ -1135,6 +1138,7 @@ static void apds990x_mode(struct alsps_client *client, int mode)
 		}
 		if (--chip->ps_cnt <= 0) {
 			chip->ps_cnt = 0;
+			chip->prox_data = APDS_PS_INIT_DATA;
 			chip->alsps_switch &= ~APDS_PS_ENABLE;
 		}
 		break;
@@ -1451,6 +1455,7 @@ static void apds990x_init_params(struct apds990x_chip *chip)
 	chip->pgain = APDS_PGAIN_1X;
 	chip->prox_calib = APDS_PROX_NEUTRAL_CALIB_VALUE;
 	chip->prox_persistence = APDS_DEFAULT_PROX_PERS;
+	chip->prox_data = APDS_PS_INIT_DATA;
 }
 
 static int __devinit apds990x_probe(struct i2c_client *client,

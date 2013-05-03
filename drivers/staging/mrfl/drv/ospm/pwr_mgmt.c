@@ -27,7 +27,7 @@
 
 
 #include <linux/earlysuspend.h>
-#include <linux/mutex.h>
+#include <linux/spinlock.h>
 #include <asm/intel-mid.h>
 #include <asm/intel_scu_ipc.h>
 
@@ -159,12 +159,6 @@ static void ospm_suspend_pci(struct drm_device *dev)
 
 	OSPM_DPF("%s\n", __func__);
 
-	if (g_ospm_data->b_suspended) {
-		/* Warning to catch logic error */
-		OSPM_DPF("ospm_suspend_pci: already suspended.\n");
-		return;
-	}
-
 	pci_save_state(pdev);
 	pci_read_config_dword(pdev, 0x5C, &bsm);
 	dev_priv->saveBSM = bsm;
@@ -176,10 +170,7 @@ static void ospm_suspend_pci(struct drm_device *dev)
 	pci_read_config_dword(pdev, PSB_PCIx_MSI_DATA_LOC, &dev_priv->msi_data);
 
 	pci_disable_device(pdev);
-	/* FIXME: vcheeram : Check we can suspend and resume PCI*/
 	pci_set_power_state(pdev, PCI_D3hot);
-
-	g_ospm_data->b_suspended = true;
 }
 
 /**
@@ -188,7 +179,7 @@ static void ospm_suspend_pci(struct drm_device *dev)
  * Description: Resume the pci device restoring state and enabling
  * as necessary.
  */
-static bool ospm_resume_pci(struct drm_device *dev)
+static void ospm_resume_pci(struct drm_device *dev)
 {
 	struct pci_dev *pdev = dev->pdev;
 	struct drm_psb_private *dev_priv = dev->dev_private;
@@ -196,13 +187,6 @@ static bool ospm_resume_pci(struct drm_device *dev)
 
 	OSPM_DPF("%s\n", __func__);
 
-	if (!g_ospm_data->b_suspended) {
-		/* Warning to catch logic error */
-		OSPM_DPF("not suspended.\n");
-		return true;
-	}
-
-	/* FIXME: vcheeram : Check we can suspend and resume PCI*/
 	pci_set_power_state(pdev, PCI_D0);
 	pci_restore_state(pdev);
 	pci_write_config_dword(pdev, 0x70, dev_priv->saveBGSM);
@@ -216,10 +200,6 @@ static bool ospm_resume_pci(struct drm_device *dev)
 
 	if (ret != 0)
 		OSPM_DPF("pci_enable_device failed: %d\n", ret);
-	else
-		g_ospm_data->b_suspended = false;
-
-	return !g_ospm_data->b_suspended;
 }
 
 /**
@@ -266,37 +246,38 @@ static bool power_up_island(struct ospm_power_island *p_island)
 
 	/* handle the dependency first */
 	if (p_island->p_dependency) {
-		if (p_island->p_dependency->island_state == OSPM_POWER_OFF) {
-			/* Power up dependent island */
-			ret = power_up_island(p_island->p_dependency);
-			atomic_inc(&p_island->p_dependency->ref_count);
-		}
+		/* Power up dependent island */
+		ret = power_up_island(p_island->p_dependency);
+		if (!ret)
+			return ret;
 	}
 
 	/* if successfully handled dependency */
-	if (ret) {
-		if (!atomic_read(&p_island->ref_count)) {
-			/* power on the island */
-			ret = p_island->p_funcs->power_up(
-						g_ospm_data->dev,
-						p_island);
-			if (ret) {
-				p_island->island_state = OSPM_POWER_ON;
-				/* Video irq need to be set */
-				if (p_island->island & OSPM_VIDEO_ISLAND) {
-					psb_irq_preinstall_islands(
-							g_ospm_data->dev,
-							p_island->island);
-					psb_irq_postinstall_islands(
-							g_ospm_data->dev,
-							p_island->island);
-				}
-			}
-		}
+	if (!atomic_read(&p_island->ref_count)) {
+		/* power on the island */
+		ret = p_island->p_funcs->power_up(g_ospm_data->dev, p_island);
+		if (ret) {
+			p_island->island_state = OSPM_POWER_ON;
 
-		/* increment the ref count */
-		atomic_inc(&p_island->ref_count);
+			/*
+			 * FIXME: revisit to check whether the 1st level
+			 * interrupts of VED/VEC/VSP need to be turned on here.
+			 */
+			/* Video irq need to be set */
+			if (p_island->island & OSPM_VIDEO_ISLAND) {
+				psb_irq_preinstall_islands(
+						g_ospm_data->dev,
+						p_island->island);
+				psb_irq_postinstall_islands(
+						g_ospm_data->dev,
+						p_island->island);
+			}
+		} else
+			return ret;
 	}
+
+	/* increment the ref count */
+	atomic_inc(&p_island->ref_count);
 
 	return ret;
 }
@@ -310,40 +291,40 @@ static bool power_down_island(struct ospm_power_island *p_island)
 {
 	bool ret = true;
 
-	/* handle the dependency first */
-	if (p_island->p_dependency) {
-		if (p_island->p_dependency->island_state == OSPM_POWER_ON) {
-			/* decrement the ref count */
-			atomic_dec(&p_island->p_dependency->ref_count);
-			/* Power down dependent island */
-			ret = power_down_island(p_island->p_dependency);
-		}
-	}
-
-	/* if successfully handled dependency */
-	if (ret) {
-		/* decrement the ref count */
-		if (atomic_dec_return(&p_island->ref_count) < 0) {
-			OSPM_DPF("Island %x, UnExpect RefCount %d\n",
+	if (atomic_dec_return(&p_island->ref_count) < 0) {
+		OSPM_DPF("Island %x, UnExpect RefCount %d\n",
 				p_island->island,
 				p_island->ref_count);
-			dump_stack();
-		}
-		/* check to see if island is turned off */
-		if (!atomic_read(&p_island->ref_count)) {
-			/* power on the island */
-			ret = p_island->p_funcs->power_down(
-					g_ospm_data->dev,
-					p_island);
-
-			/* set the island state */
-			if (ret)
-				p_island->island_state = OSPM_POWER_OFF;
-		}
-
-		/*WARN_ON(atomic_read(&g_graphics_access_count) < 0);*/
+		goto power_down_err;
 	}
 
+	/* check to see if island is turned off */
+	if (!atomic_read(&p_island->ref_count)) {
+		/* power on the island */
+		ret = p_island->p_funcs->power_down(
+				g_ospm_data->dev,
+				p_island);
+
+		/* set the island state */
+		if (ret)
+			p_island->island_state = OSPM_POWER_OFF;
+		else
+			goto power_down_err;
+	}
+
+	/* handle the dependency later */
+	if (p_island->p_dependency) {
+		/* Power down dependent island */
+		ret = power_down_island(p_island->p_dependency);
+		if (!ret)
+			goto power_down_err;
+	}
+
+	return ret;
+
+power_down_err:
+	atomic_inc(&p_island->ref_count);
+	ret = false;
 	return ret;
 }
 
@@ -363,12 +344,6 @@ bool power_island_get(u32 hw_island)
 	struct drm_psb_private *dev_priv = g_ospm_data->dev->dev_private;
 	unsigned long flags;
 
-	if (dev_priv->early_suspended) {
-		OSPM_DPF("power_island_get: System suspended.\n");
-		return false;
-	}
-
-	/* mutex lock */
 	spin_lock_irqsave(&g_ospm_data->ospm_lock, flags);
 
 	for (i = 0; i < ARRAY_SIZE(island_list); i++) {
@@ -384,7 +359,6 @@ bool power_island_get(u32 hw_island)
 	}
 
 out_err:
-	/* mutex unlock */
 	spin_unlock_irqrestore(&g_ospm_data->ospm_lock, flags);
 
 	return ret;
@@ -406,12 +380,6 @@ bool power_island_put(u32 hw_island)
 	struct drm_psb_private *dev_priv = g_ospm_data->dev->dev_private;
 	unsigned long flags;
 
-	if (dev_priv->early_suspended) {
-		OSPM_DPF("power_island_put: System suspended.\n");
-		return false;
-	}
-
-	/* mutex lock */
 	spin_lock_irqsave(&g_ospm_data->ospm_lock, flags);
 
 	for (i = 0; i < ARRAY_SIZE(island_list); i++) {
@@ -428,7 +396,6 @@ bool power_island_put(u32 hw_island)
 	}
 
 out_err:
-	/* mutex unlock */
 	spin_unlock_irqrestore(&g_ospm_data->ospm_lock, flags);
 
 	return ret;
@@ -445,7 +412,35 @@ bool is_island_on(u32 hw_island)
 {
 	/* get the power island */
 	struct ospm_power_island *p_island = get_island_ptr(hw_island);
-	return (p_island->island_state == OSPM_POWER_ON);
+	unsigned long flags;
+	bool island_on = false;
+
+	/* TODO: add lock here. */
+	island_on = (p_island->island_state == OSPM_POWER_ON) ? true : false;
+
+	return island_on;
+}
+
+u32 pipe_to_island(u32 pipe)
+{
+	u32 power_island = 0;
+
+	switch (pipe) {
+	case 0:
+		power_island = OSPM_DISPLAY_A;
+		break;
+	case 1:
+		power_island = OSPM_DISPLAY_B;
+		break;
+	case 2:
+		power_island = OSPM_DISPLAY_C;
+		break;
+	default:
+		DRM_ERROR("%s: invalid pipe %u\n", __func__, pipe);
+		return 0;
+	}
+
+	return power_island;
 }
 
 /**
@@ -457,8 +452,6 @@ void ospm_power_init(struct drm_device *dev)
 {
 	u32 i = 0;
 	u32 nc_pwr_sts;
-	struct drm_psb_private *dev_priv =
-	    (struct drm_psb_private *)dev->dev_private;
 
 	/* allocate ospm data */
 	g_ospm_data = kmalloc(sizeof(struct _ospm_data_), GFP_KERNEL);
@@ -467,7 +460,6 @@ void ospm_power_init(struct drm_device *dev)
 
 	spin_lock_init(&g_ospm_data->ospm_lock);
 	g_ospm_data->dev = dev;
-	g_ospm_data->b_suspended = false;
 	gpDrmDevice = dev;
 
 	/* initilize individual islands */
@@ -480,72 +472,11 @@ void ospm_power_init(struct drm_device *dev)
 		}
 	}
 
-	/* get the current power state of the island */
-	nc_pwr_sts = intel_mid_msgbus_read32(PUNIT_PORT, NC_PM_SSS);
-
-	OSPM_DPF("default island state = 0x%08lX\n", nc_pwr_sts);
-
-	dev_priv->initial_power_status = nc_pwr_sts;
-
-	nc_pwr_sts = ~nc_pwr_sts;
-
-	/* get the islands that are powered on by default */
-	/* this are powered on at boot by FW */
-	for (i = 0; i < ARRAY_SIZE(island_list); i++) {
-		if (nc_pwr_sts & island_list[i].island) {
-			OSPM_DPF("Island powered by FW : %x\n",
-				island_list[i].island);
-			power_island_get(island_list[i].island);
-		}
-	}
-
 	/* register early_suspend runtime pm */
 	intel_media_early_suspend_init(dev);
 
 out_err:
 	return;
-}
-
-/**
-* ospm_post_init
-*
-* Description: Power gate unused GFX & Display islands.
-*/
-void ospm_post_init(struct drm_device *dev)
-{
-	u32 nc_pwr_sts;
-	u32 dc_islands = 0;
-	struct drm_psb_private *dev_priv =
-	    (struct drm_psb_private *)dev->dev_private;
-
-	if (dev_priv->panel_desc & DISPLAY_A)
-		dc_islands |= OSPM_DISPLAY_A;
-
-	if (dev_priv->panel_desc & DISPLAY_B) {
-		dc_islands |= OSPM_DISPLAY_B;
-		dc_islands |= OSPM_DISPLAY_HDMI;
-	}
-
-	if (dev_priv->panel_desc & DISPLAY_C)
-		dc_islands |= OSPM_DISPLAY_C;
-
-	if (dev_priv->panel_desc)
-		dc_islands |= OSPM_DISPLAY_MIO;
-
-	/* dc_islands now contains islands that needs to be enabled */
-	/* disable islands that were enabled by FW at boot */
-	OSPM_DPF("DC island to be turned ON : %x\n",
-			dc_islands & OSPM_DISPLAY_ISLAND);
-	dc_islands = (~dc_islands) & OSPM_DISPLAY_ISLAND;
-	OSPM_DPF("DC island to be turned off : %x\n", dc_islands);
-	/* get the current power state of the island */
-	/*nc_pwr_sts = intel_mid_msgbus_read32(PUNIT_PORT, NC_PM_SSS);*/
-	nc_pwr_sts = dev_priv->initial_power_status;
-	/* turn off the islands that are turned on by firmware but the driver
-	 * decides that it does not need */
-	power_island_put(dc_islands & (~nc_pwr_sts));
-
-	OSPM_DPF("nc island state = 0x%08lX\n", nc_pwr_sts);
 }
 
 /**
@@ -583,27 +514,11 @@ bool ospm_power_suspend(void)
 
 	OSPM_DPF("%s\n", __func__);
 
-	spin_lock_irqsave(&g_ospm_data->ospm_lock, flags);
-
-	/* power down all individual islands */
-	for (i = 0; i < ARRAY_SIZE(island_list); i++) {
-		p_island = &island_list[i];
-
-		if (p_island->island & OSPM_DISPLAY_ISLAND) {
-			if (atomic_read(&p_island->ref_count)) {
-				p_island->p_funcs->power_down(
-						g_ospm_data->dev,
-						p_island);
-			}
-		}
-	}
-
-	spin_unlock_irqrestore(&g_ospm_data->ospm_lock, flags);
-
 	/* Asking RGX to power off */
 	if (!PVRSRVRGXSetPowerState(g_ospm_data->dev, OSPM_POWER_OFF))
 		return false;
 
+	/* FIXME: try to turn off PCI in power_island_put(). */
 	ospm_suspend_pci(g_ospm_data->dev);
 
 	return true;
@@ -630,28 +545,6 @@ void ospm_power_resume(void)
 	PVRSRVRGXSetPowerState(g_ospm_data->dev, OSPM_POWER_ON);
 	OSPM_DPF("Graphics state restored.\n");
 
-	spin_lock_irqsave(&g_ospm_data->ospm_lock, flags);
-
-	/* power down all individual islands */
-	for (i = 0; i < ARRAY_SIZE(island_list); i++) {
-		p_island = &island_list[i];
-
-		if (p_island->island & OSPM_DISPLAY_ISLAND) {
-			if (atomic_read(&p_island->ref_count)) {
-				p_island->p_funcs->power_up(
-							g_ospm_data->dev,
-							p_island);
-
-				psb_irq_preinstall_islands(g_ospm_data->dev,
-							p_island->island);
-				psb_irq_postinstall_islands(g_ospm_data->dev,
-							p_island->island);
-			}
-		}
-	}
-
-	spin_unlock_irqrestore(&g_ospm_data->ospm_lock, flags);
-
 	OSPM_DPF("display resumed.\n");
 }
 
@@ -664,10 +557,20 @@ bool ospm_power_using_hw_begin(int hw_island, u32 usage)
 {
 	bool ret = true;
 
+	/*
+	 * FIXME: make ospm_power_using_hw_begin used for Display islands only
+	 * take effect for DSPB/HDMIO islands, becaused it's called by the OTM
+	 * HDMI codes and not to impact CTP/MDFLD. But eventually need to
+	 * replace hw_begin() with power_island_get() in OTM HDMI.
+	 */
+	if (hw_island == OSPM_DISPLAY_ISLAND)
+		hw_island = OSPM_DISPLAY_B | OSPM_DISPLAY_HDMI;
+
 	ret = power_island_get(hw_island);
 
 	return ret;
 }
+
 bool ospm_power_is_hw_on(u32 hw_island)
 {
 	return is_island_on(hw_island);
@@ -675,6 +578,15 @@ bool ospm_power_is_hw_on(u32 hw_island)
 
 void ospm_power_using_hw_end(int hw_island)
 {
+	/*
+	 * FIXME: make ospm_power_using_hw_end used for Display islands only
+	 * take effect for DSPB/HDMIO islands, becaused it's called by the OTM
+	 * HDMI codes and not to impact CTP/MDFLD. But eventually need to
+	 * replace hw_end() with power_island_put() in OTM HDMI.
+	 */
+	if (hw_island == OSPM_DISPLAY_ISLAND)
+		hw_island = OSPM_DISPLAY_B | OSPM_DISPLAY_HDMI;
+
 	power_island_put(hw_island);
 }
 

@@ -26,6 +26,7 @@
 
 #include "android_hdmi.h"
 #include "displayclass_interface.h"
+#include "pwr_mgmt.h"
 
 #define KEEP_UNUSED_CODE_S3D 0
 
@@ -50,11 +51,7 @@ static int mrfld_set_up_s3d_InfoFrame(struct drm_device *dev, enum
 	u32 buf_size = 0;
 	int i = 0;
 
-	PSB_DEBUG_ENTRY("s3d_format = %d \n", s3d_format);
-
-	if (!ospm_power_using_hw_begin
-	    (OSPM_DISPLAY_ISLAND, OSPM_UHB_FORCE_POWER_ON))
-		return 0;
+	PSB_DEBUG_ENTRY("s3d_format = %d\n", s3d_format);
 
 	/* Fill the 3d format in the HDMI Vendor Specific InfoFrame. */
 	vsif[8] = s3d_format << 4;
@@ -98,8 +95,6 @@ static int mrfld_set_up_s3d_InfoFrame(struct drm_device *dev, enum
 	viddipctl_val |= DIP_TYPE_VS | DIP_TX_FREQ_2VSNC;
 	REG_WRITE(VIDEO_DIP_CTL, viddipctl_val);
 
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-
 	return 0;
 }
 #endif /* if KEEP_UNUSED_CODE_S3D */
@@ -115,10 +110,6 @@ static int mrfld_disable_s3d_InfoFrame(struct drm_device *dev)
 
 	PSB_DEBUG_ENTRY("\n");
 
-	if (!ospm_power_using_hw_begin
-	    (OSPM_DISPLAY_ISLAND, OSPM_UHB_FORCE_POWER_ON))
-		return 0;
-
 	/* Wait for 2 VSyncs. */
 	mdelay(20);		/* msleep(20); */
 	mdelay(20);		/* msleep(20); */
@@ -130,8 +121,6 @@ static int mrfld_disable_s3d_InfoFrame(struct drm_device *dev)
 	viddipctl_val = REG_READ(VIDEO_DIP_CTL);
 	viddipctl_val &= ~DIP_TYPE_VS;
 	REG_WRITE(VIDEO_DIP_CTL, viddipctl_val);
-
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 
 	return 0;
 }
@@ -241,6 +230,7 @@ static void mrfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 	u32 mipi_enable_reg = MIPIA_DEVICE_READY_REG;
 	u32 temp;
 	bool enabled;
+	u32 power_island = 0;
 
 	PSB_DEBUG_ENTRY("mode = %d, pipe = %d\n", mode, pipe);
 
@@ -267,10 +257,10 @@ static void mrfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 	}
 #endif
 
-	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
-				       OSPM_UHB_FORCE_POWER_ON))
-		return;
+	power_island = pipe_to_island(pipe);
 
+	if (!power_island_get(power_island))
+		return;
 #if 0
 	/* Ignore if system is already in DSR and in suspended state. */
 	if (gbgfxsuspended && gbdispstatus == false && mode == 3) {
@@ -311,10 +301,8 @@ static void mrfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 		mipi_enable_reg = MIPIA_DEVICE_READY_REG + MIPIC_REG_OFFSET;
 		break;
 	default:
-		DRM_ERROR("Illegal Pipe Number. \n");
-
-		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-		return;
+		DRM_ERROR("Illegal Pipe Number.\n");
+		goto crtc_dpms_err;
 	}
 
 	/* XXX: When our outputs are all unaware of DPMS modes other than off
@@ -490,7 +478,8 @@ static void mrfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 
 	enabled = crtc->enabled && mode != DRM_MODE_DPMS_OFF;
 
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+crtc_dpms_err:
+	power_island_put(power_island);
 }
 
 static int mrfld_crtc_mode_set(struct drm_crtc *crtc,
@@ -516,11 +505,12 @@ static int mrfld_crtc_mode_set(struct drm_crtc *crtc,
 
 		return mdfld_crtc_dsi_mode_set(crtc, dsi_config, mode,
 				adjusted_mode, x, y, old_fb);
-	 } else {
-		 android_hdmi_crtc_mode_set(crtc, mode, adjusted_mode,
-				 x, y, old_fb);
+	} else {
+		power_island_get(OSPM_DISPLAY_B | OSPM_DISPLAY_HDMI);
+		android_hdmi_crtc_mode_set(crtc, mode, adjusted_mode,
+				x, y, old_fb);
 
-		 return 0;
+		return 0;
 	}
 }
 
@@ -557,18 +547,12 @@ int mrfld_s3d_flip_surf_addr(struct drm_device *dev, int pipe, struct
 		return 0;
 	}
 
-	if (!ospm_power_using_hw_begin
-	    (OSPM_DISPLAY_ISLAND, OSPM_UHB_FORCE_POWER_ON))
-		return 0;
-
 	if (ps3d_flip->s3d_state & S3D_STATE_ENALBLED) {
 		REG_WRITE(dspsurf_reg, ps3d_flip->uiAddr_l);
 		REG_WRITE(dspsurf_reg_d, ps3d_flip->uiAddr_r);
 	} else {
 		REG_WRITE(dspsurf_reg, ps3d_flip->uiAddr_l);
 	}
-
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 
 	return 1;
 }
@@ -633,10 +617,6 @@ int mrfld_s3d_to_line_interleave_half(struct drm_device *dev, int pipe, struct
 		return 0;
 	}
 
-	if (!ospm_power_using_hw_begin
-	    (OSPM_DISPLAY_ISLAND, OSPM_UHB_FORCE_POWER_ON))
-		return 0;
-
 	/* Save the related DC registers. */
 	pipeconf_val = REG_READ(pipeconf_reg);
 	dspcntr_val = REG_READ(dspcntr_reg);
@@ -687,8 +667,6 @@ int mrfld_s3d_to_line_interleave_half(struct drm_device *dev, int pipe, struct
 
 	/*enable the pipe */
 	REG_WRITE(pipeconf_reg, pipeconf_val);
-
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 
 	return 0;
 }
@@ -742,10 +720,6 @@ int mrfld_s3d_from_line_interleave_half(struct drm_device *dev, int pipe, struct
 		return 0;
 	}
 
-	if (!ospm_power_using_hw_begin
-	    (OSPM_DISPLAY_ISLAND, OSPM_UHB_FORCE_POWER_ON))
-		return 0;
-
 	/* Save the related DC registers. */
 	pipeconf_val = REG_READ(pipeconf_reg);
 	dspcntr_val = REG_READ(dspcntr_reg);
@@ -789,8 +763,6 @@ int mrfld_s3d_from_line_interleave_half(struct drm_device *dev, int pipe, struct
 
 	/*enable the pipe */
 	REG_WRITE(pipeconf_reg, pipeconf_val);
-
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 
 	return 0;
 }
@@ -877,10 +849,6 @@ int mrfld_s3d_to_line_interleave(struct drm_device *dev, int pipe, struct
 		return 0;
 	}
 
-	if (!ospm_power_using_hw_begin
-	    (OSPM_DISPLAY_ISLAND, OSPM_UHB_FORCE_POWER_ON))
-		return 0;
-
 	/* Save the related DC registers. */
 	pipeconf_val = REG_READ(pipeconf_reg);
 	pipesrc_val = REG_READ(pipesrc_reg);
@@ -957,8 +925,6 @@ int mrfld_s3d_to_line_interleave(struct drm_device *dev, int pipe, struct
 	/* set up Vendor Specific InfoFrame for 3D format. */
 	if (pipe == 1)
 		mrfld_set_up_s3d_InfoFrame(dev, S3D_LINE_ALTERNATIVE);
-
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 
 	return 0;
 }
@@ -1037,10 +1003,6 @@ int mrfld_s3d_from_line_interleave(struct drm_device *dev, int pipe, struct
 		return 0;
 	}
 
-	if (!ospm_power_using_hw_begin
-	    (OSPM_DISPLAY_ISLAND, OSPM_UHB_FORCE_POWER_ON))
-		return 0;
-
 	/* Save the related DC registers. */
 	pipeconf_val = REG_READ(pipeconf_reg);
 	pipesrc_val = REG_READ(pipesrc_reg);
@@ -1113,8 +1075,6 @@ int mrfld_s3d_from_line_interleave(struct drm_device *dev, int pipe, struct
 	if (pipe == 1)
 		mrfld_disable_s3d_InfoFrame(dev);
 
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-
 	return 0;
 }
 
@@ -1169,10 +1129,6 @@ int mrfld_s3d_to_frame_packing(struct drm_device *dev, int pipe, struct
 		DRM_ERROR("Illegal Pipe Number. \n");
 		return 0;
 	}
-
-	if (!ospm_power_using_hw_begin
-	    (OSPM_DISPLAY_ISLAND, OSPM_UHB_FORCE_POWER_ON))
-		return 0;
 
 	/* Save the related DC registers. */
 	pipeconf_val = REG_READ(pipeconf_reg);
@@ -1251,8 +1207,6 @@ int mrfld_s3d_to_frame_packing(struct drm_device *dev, int pipe, struct
 	if (pipe == 1)
 		mrfld_set_up_s3d_InfoFrame(dev, S3D_FRAME_PACKING);
 
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-
 	return 0;
 }
 
@@ -1296,10 +1250,6 @@ int mrfld_s3d_from_frame_packing(struct drm_device *dev, int pipe, struct
 		DRM_ERROR("Illegal Pipe Number. \n");
 		return 0;
 	}
-
-	if (!ospm_power_using_hw_begin
-	    (OSPM_DISPLAY_ISLAND, OSPM_UHB_FORCE_POWER_ON))
-		return 0;
 
 	/* Save the related DC registers. */
 	pipeconf_val = REG_READ(pipeconf_reg);
@@ -1366,8 +1316,6 @@ int mrfld_s3d_from_frame_packing(struct drm_device *dev, int pipe, struct
 	if (pipe == 1)
 		mrfld_disable_s3d_InfoFrame(dev);
 
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-
 	return 0;
 }
 
@@ -1409,10 +1357,6 @@ int mrfld_s3d_to_top_and_bottom(struct drm_device *dev, int pipe, struct
 		DRM_ERROR("Illegal Pipe Number. \n");
 		return 0;
 	}
-
-	if (!ospm_power_using_hw_begin
-	    (OSPM_DISPLAY_ISLAND, OSPM_UHB_FORCE_POWER_ON))
-		return 0;
 
 	/* Save the related DC registers. */
 	pipeconf_val = REG_READ(pipeconf_reg);
@@ -1456,8 +1400,6 @@ int mrfld_s3d_to_top_and_bottom(struct drm_device *dev, int pipe, struct
 	if (pipe == 1)
 		mrfld_set_up_s3d_InfoFrame(dev, S3D_TOP_AND_BOTTOM);
 
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-
 	return 0;
 }
 
@@ -1488,10 +1430,6 @@ int mrfld_s3d_from_top_and_bottom(struct drm_device *dev, int pipe, struct
 		DRM_ERROR("Illegal Pipe Number. \n");
 		return 0;
 	}
-
-	if (!ospm_power_using_hw_begin
-	    (OSPM_DISPLAY_ISLAND, OSPM_UHB_FORCE_POWER_ON))
-		return 0;
 
 	/* Save the related DC registers. */
 	pipeconf_val = REG_READ(pipeconf_reg);
@@ -1528,8 +1466,6 @@ int mrfld_s3d_from_top_and_bottom(struct drm_device *dev, int pipe, struct
 	/* set up Vendor Specific InfoFrame for 3D format. */
 	if (pipe == 1)
 		mrfld_disable_s3d_InfoFrame(dev);
-
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 
 	return 0;
 }
@@ -1583,10 +1519,6 @@ int mrfld_s3d_to_full_side_by_side(struct drm_device *dev, int pipe, struct
 		DRM_ERROR("Illegal Pipe Number. \n");
 		return 0;
 	}
-
-	if (!ospm_power_using_hw_begin
-	    (OSPM_DISPLAY_ISLAND, OSPM_UHB_FORCE_POWER_ON))
-		return 0;
 
 	/* Save the related DC registers. */
 	pipeconf_val = REG_READ(pipeconf_reg);
@@ -1657,8 +1589,6 @@ int mrfld_s3d_to_full_side_by_side(struct drm_device *dev, int pipe, struct
 	if (pipe == 1)
 		mrfld_set_up_s3d_InfoFrame(dev, S3D_SIDE_BY_SIDE_FULL);
 
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-
 	return 0;
 }
 
@@ -1700,10 +1630,6 @@ int mrfld_s3d_from_full_side_by_side(struct drm_device *dev, int pipe, struct
 		DRM_ERROR("Illegal Pipe Number. \n");
 		return 0;
 	}
-
-	if (!ospm_power_using_hw_begin
-	    (OSPM_DISPLAY_ISLAND, OSPM_UHB_FORCE_POWER_ON))
-		return 0;
 
 	/* Save the related DC registers. */
 	pipeconf_val = REG_READ(pipeconf_reg);
@@ -1764,8 +1690,6 @@ int mrfld_s3d_from_full_side_by_side(struct drm_device *dev, int pipe, struct
 	if (pipe == 1)
 		mrfld_disable_s3d_InfoFrame(dev);
 
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-
 	return 0;
 }
 
@@ -1805,10 +1729,6 @@ int mrfld_s3d_to_half_side_by_side(struct drm_device *dev, int pipe, struct
 		DRM_ERROR("Illegal Pipe Number. \n");
 		return 0;
 	}
-
-	if (!ospm_power_using_hw_begin
-	    (OSPM_DISPLAY_ISLAND, OSPM_UHB_FORCE_POWER_ON))
-		return 0;
 
 	/* Save the related DC registers. */
 	pipeconf_val = REG_READ(pipeconf_reg);
@@ -1855,8 +1775,6 @@ int mrfld_s3d_to_half_side_by_side(struct drm_device *dev, int pipe, struct
 	if (pipe == 1)
 		mrfld_set_up_s3d_InfoFrame(dev, S3D_SIDE_BY_SIDE_HALF);
 
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-
 	return 0;
 }
 
@@ -1886,10 +1804,6 @@ int mrfld_s3d_from_half_side_by_side(struct drm_device *dev, int pipe, struct
 		DRM_ERROR("Illegal Pipe Number. \n");
 		return 0;
 	}
-
-	if (!ospm_power_using_hw_begin
-	    (OSPM_DISPLAY_ISLAND, OSPM_UHB_FORCE_POWER_ON))
-		return 0;
 
 	/* Save the related DC registers. */
 	pipeconf_val = REG_READ(pipeconf_reg);
@@ -1925,8 +1839,6 @@ int mrfld_s3d_from_half_side_by_side(struct drm_device *dev, int pipe, struct
 	/* set up Vendor Specific InfoFrame for 3D format. */
 	if (pipe == 1)
 		mrfld_disable_s3d_InfoFrame(dev);
-
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 
 	return 0;
 }
@@ -2003,10 +1915,6 @@ int mrfld_s3d_to_pixel_interleaving_full(struct drm_device *dev, int pipe, struc
 		DRM_ERROR("Illegal Pipe Number. \n");
 		return 0;
 	}
-
-	if (!ospm_power_using_hw_begin
-	    (OSPM_DISPLAY_ISLAND, OSPM_UHB_FORCE_POWER_ON))
-		return 0;
 
 	/* Save the related DC registers. */
 	pipeconf_val = REG_READ(pipeconf_reg);
@@ -2086,8 +1994,6 @@ int mrfld_s3d_to_pixel_interleaving_full(struct drm_device *dev, int pipe, struc
 	/*enable the pipe */
 	REG_WRITE(pipeconf_reg, pipeconf_val);
 
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-
 	return 0;
 }
 
@@ -2154,10 +2060,6 @@ int mrfld_s3d_from_pixel_interleaving_full(struct drm_device *dev, int pipe, str
 		DRM_ERROR("Illegal Pipe Number. \n");
 		return 0;
 	}
-
-	if (!ospm_power_using_hw_begin
-	    (OSPM_DISPLAY_ISLAND, OSPM_UHB_FORCE_POWER_ON))
-		return 0;
 
 	/* Save the related DC registers. */
 	pipeconf_val = REG_READ(pipeconf_reg);
@@ -2228,8 +2130,6 @@ int mrfld_s3d_from_pixel_interleaving_full(struct drm_device *dev, int pipe, str
 	/*enable the pipe */
 	REG_WRITE(pipeconf_reg, pipeconf_val);
 
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-
 	return 0;
 }
 
@@ -2288,10 +2188,6 @@ int mrfld_s3d_to_pixel_interleaving_half(struct drm_device *dev, int pipe, struc
 		return 0;
 	}
 
-	if (!ospm_power_using_hw_begin
-	    (OSPM_DISPLAY_ISLAND, OSPM_UHB_FORCE_POWER_ON))
-		return 0;
-
 	/* Save the related DC registers. */
 	pipeconf_val = REG_READ(pipeconf_reg);
 	dspcntr_val = REG_READ(dspcntr_reg);
@@ -2345,8 +2241,6 @@ int mrfld_s3d_to_pixel_interleaving_half(struct drm_device *dev, int pipe, struc
 	/*enable the pipe */
 	REG_WRITE(pipeconf_reg, pipeconf_val);
 
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-
 	return 0;
 }
 
@@ -2399,10 +2293,6 @@ int mrfld_s3d_from_pixel_interleaving_half(struct drm_device *dev, int pipe, str
 		return 0;
 	}
 
-	if (!ospm_power_using_hw_begin
-	    (OSPM_DISPLAY_ISLAND, OSPM_UHB_FORCE_POWER_ON))
-		return 0;
-
 	/* Save the related DC registers. */
 	pipeconf_val = REG_READ(pipeconf_reg);
 	dspcntr_val = REG_READ(dspcntr_reg);
@@ -2446,8 +2336,6 @@ int mrfld_s3d_from_pixel_interleaving_half(struct drm_device *dev, int pipe, str
 
 	/*enable the pipe */
 	REG_WRITE(pipeconf_reg, pipeconf_val);
-
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 
 	return 0;
 }
@@ -2578,10 +2466,6 @@ static int mrfld_s3d_crtc_mode_set(struct drm_crtc *crtc,
 		DRM_ERROR("Illegal Pipe Number. \n");
 		return 0;
 	}
-
-	if (!ospm_power_using_hw_begin
-	    (OSPM_DISPLAY_ISLAND, OSPM_UHB_FORCE_POWER_ON))
-		return 0;
 
 	memcpy(&psb_intel_crtc->saved_mode, mode,
 	       sizeof(struct drm_display_mode));
@@ -2719,8 +2603,6 @@ static int mrfld_s3d_crtc_mode_set(struct drm_crtc *crtc,
 
  mrst_crtc_mode_set_exit:
 
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-
 	return 0;
 }
 
@@ -2738,11 +2620,7 @@ static int mrfld_s3d_half_top_and_bottom(struct drm_device *dev, int pipe)
 	/* values */
 	u32 dspsurf_val = 0;
 
-	PSB_DEBUG_ENTRY("pipe = 0x%x \n", pipe);
-
-	if (!ospm_power_using_hw_begin
-	    (OSPM_DISPLAY_ISLAND, OSPM_UHB_FORCE_POWER_ON))
-		return 0;
+	PSB_DEBUG_ENTRY("pipe = 0x%x\n", pipe);
 
 	dspsurf_val = REG_READ(dspsurf_reg);
 
@@ -2756,8 +2634,6 @@ static int mrfld_s3d_half_top_and_bottom(struct drm_device *dev, int pipe)
 	/* set up Vendor Specific InfoFrame for 3D format. */
 	if (pipe == 1)
 		mrfld_set_up_s3d_InfoFrame(dev, S3D_TOP_AND_BOTTOM);
-
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 
 	return 0;
 }
@@ -2803,11 +2679,7 @@ static int mrfld_s3d_line_interleaving(struct drm_device *dev, int pipe)
 	u32 dspsize_val = 0;
 	u32 dspsurf_val = 0;
 
-	PSB_DEBUG_ENTRY("pipe = 0x%x \n", pipe);
-
-	if (!ospm_power_using_hw_begin
-	    (OSPM_DISPLAY_ISLAND, OSPM_UHB_FORCE_POWER_ON))
-		return 0;
+	PSB_DEBUG_ENTRY("pipe = 0x%x\n", pipe);
 
 	/* Save the related DC registers. */
 	pipeconf_val = REG_READ(pipeconf_reg);
@@ -2871,8 +2743,6 @@ static int mrfld_s3d_line_interleaving(struct drm_device *dev, int pipe)
 	if (pipe == 1)
 		mrfld_set_up_s3d_InfoFrame(dev, S3D_LINE_ALTERNATIVE);
 
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-
 	return 0;
 }
 
@@ -2916,11 +2786,7 @@ static int mrfld_s3d_side_by_side(struct drm_device *dev, int pipe)
 	u32 dspsize_val = 0;
 	u32 dspsurf_val = 0;
 
-	PSB_DEBUG_ENTRY("pipe = 0x%x \n", pipe);
-
-	if (!ospm_power_using_hw_begin
-	    (OSPM_DISPLAY_ISLAND, OSPM_UHB_FORCE_POWER_ON))
-		return 0;
+	PSB_DEBUG_ENTRY("pipe = 0x%x\n", pipe);
 
 	/* Save the related DC registers. */
 	pipeconf_val = REG_READ(pipeconf_reg);
@@ -2982,8 +2848,6 @@ static int mrfld_s3d_side_by_side(struct drm_device *dev, int pipe)
 	if (pipe == 1)
 		mrfld_set_up_s3d_InfoFrame(dev, S3D_SIDE_BY_SIDE_FULL);
 
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-
 	return 0;
 }
 
@@ -3001,11 +2865,7 @@ static int mrfld_s3d_half_side_by_side(struct drm_device *dev, int pipe)
 	/* values */
 	u32 dspsurf_val = 0;
 
-	PSB_DEBUG_ENTRY("pipe = 0x%x \n", pipe);
-
-	if (!ospm_power_using_hw_begin
-	    (OSPM_DISPLAY_ISLAND, OSPM_UHB_FORCE_POWER_ON))
-		return 0;
+	PSB_DEBUG_ENTRY("pipe = 0x%x\n", pipe);
 
 	dspsurf_val = REG_READ(dspsurf_reg);
 
@@ -3019,8 +2879,6 @@ static int mrfld_s3d_half_side_by_side(struct drm_device *dev, int pipe)
 	/* set up Vendor Specific InfoFrame for 3D format. */
 	if (pipe == 1)
 		mrfld_set_up_s3d_InfoFrame(dev, S3D_SIDE_BY_SIDE_HALF);
-
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 
 	return 0;
 }
@@ -3069,10 +2927,6 @@ static int mrfld_s3d_frame_packing(struct drm_device *dev, int pipe)
 		DRM_ERROR("Illegal Pipe Number. \n");
 		return 0;
 	}
-
-	if (!ospm_power_using_hw_begin
-	    (OSPM_DISPLAY_ISLAND, OSPM_UHB_FORCE_POWER_ON))
-		return 0;
 
 	/* Save the related DC registers. */
 	pipeconf_val = REG_READ(pipeconf_reg);
@@ -3144,8 +2998,6 @@ static int mrfld_s3d_frame_packing(struct drm_device *dev, int pipe)
 	if (pipe == 1)
 		mrfld_set_up_s3d_InfoFrame(dev, S3D_FRAME_PACKING);
 
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-
 	return 0;
 }
 
@@ -3204,10 +3056,6 @@ static int mrfld_s3d_half_top_bottom_to_line_interleave(struct drm_device *dev,
 		DRM_ERROR("Illegal Pipe Number. \n");
 		return 0;
 	}
-
-	if (!ospm_power_using_hw_begin
-	    (OSPM_DISPLAY_ISLAND, OSPM_UHB_FORCE_POWER_ON))
-		return 0;
 
 	/* Save the related DC registers. */
 	pipeconf_val = REG_READ(pipeconf_reg);
@@ -3269,8 +3117,6 @@ static int mrfld_s3d_half_top_bottom_to_line_interleave(struct drm_device *dev,
 	/* set up Vendor Specific InfoFrame for 3D format. */
 	if (pipe == 1)
 		mrfld_set_up_s3d_InfoFrame(dev, S3D_LINE_ALTERNATIVE);
-
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 
 	return 0;
 }
@@ -3388,12 +3234,8 @@ static int mdfld_intel_crtc_cursor_set(struct drm_crtc *crtc,
 		temp = 0;
 		temp |= CURSOR_MODE_DISABLE;
 
-		if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
-					      OSPM_UHB_ONLY_IF_ON)) {
-			REG_WRITE(control, temp);
-			REG_WRITE(base, 0);
-			ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-		}
+		REG_WRITE(control, temp);
+		REG_WRITE(base, 0);
 
 		/* unpin the old bo */
 		if (psb_intel_crtc->cursor_bo) {
@@ -3442,11 +3284,8 @@ static int mdfld_intel_crtc_cursor_set(struct drm_crtc *crtc,
 	temp |= (pipe << 28);
 	temp |= CURSOR_MODE_64_ARGB_AX | MCURSOR_GAMMA_ENABLE;
 
-	if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, OSPM_UHB_ONLY_IF_ON)) {
-		REG_WRITE(control, temp);
-		REG_WRITE(base, addr);
-		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-	}
+	REG_WRITE(control, temp);
+	REG_WRITE(base, addr);
 
 	/* unpin the old bo */
 	if (psb_intel_crtc->cursor_bo && psb_intel_crtc->cursor_bo != bo) {

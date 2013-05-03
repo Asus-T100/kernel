@@ -84,6 +84,33 @@ static struct sdhci_pci_data mfld_sdhci_pci_data[] = {
 	},
 };
 
+#define VCCSDIO_ADDR		0xd5
+#define VCCSDIO_OFF		0x4
+#define VR_REG_MASK             0x7
+
+static int clv_sd_setup(struct sdhci_pci_data *data)
+{
+	int err;
+	u16 addr;
+	u8 value;
+
+	addr = VCCSDIO_ADDR;
+	err = intel_scu_ipc_readv(&addr, &value, 1);
+	if (err) {
+		pr_err("%s: read VCCSDIO status failed\n", __func__);
+		/*
+		 * In this case, assume the VCCSDIO is on, and let driver
+		 * try to see if the SD card can be detected
+		 */
+		return 0;
+	}
+
+	if ((value & VR_REG_MASK) == VCCSDIO_OFF)
+		data->platform_quirks |=  PLFM_QUIRK_NO_SDCARD_SLOT;
+
+	return 0;
+}
+
 /* CLV platform data */
 static struct sdhci_pci_data clv_sdhci_pci_data[] = {
 	[EMMC0_INDEX] = {
@@ -115,7 +142,7 @@ static struct sdhci_pci_data clv_sdhci_pci_data[] = {
 			.cd_gpio = 69,
 			.quirks = 0,
 			.platform_quirks = 0,
-			.setup = 0,
+			.setup = clv_sd_setup,
 			.cleanup = 0,
 			.power_up = 0,
 	},

@@ -364,6 +364,7 @@ static struct snd_pcm_hw_constraint_list constraints_8000_16000 = {
 	.count = ARRAY_SIZE(rates_8000_16000),
 	.list  = rates_8000_16000,
 };
+
 static unsigned int rates_48000[] = {
 	48000,
 };
@@ -385,15 +386,15 @@ static struct snd_soc_ops mrfld_ops = {
 	.hw_params = mrfld_hw_params,
 };
 
-static int mrfld_voip_startup(struct snd_pcm_substream *substream)
+static int mrfld_voip_aware_startup(struct snd_pcm_substream *substream)
 {
 	return snd_pcm_hw_constraint_list(substream->runtime, 0,
 			SNDRV_PCM_HW_PARAM_RATE,
 			&constraints_8000_16000);
 }
 
-static struct snd_soc_ops mrfld_voip_ops = {
-	.startup = mrfld_voip_startup,
+static struct snd_soc_ops mrfld_voip_aware_ops = {
+	.startup = mrfld_voip_aware_startup,
 	.hw_params = mrfld_hw_params,
 };
 
@@ -408,7 +409,7 @@ enum {
 };
 
 struct snd_soc_dai_link mrfld_msic_dailink[] = {
-	[MRFLD_AUDIO] =	{
+	[MRFLD_AUDIO] = {
 		.name = "Merrifield Audio Port",
 		.stream_name = "Audio",
 		.cpu_dai_name = "Headset-cpu-dai",
@@ -436,7 +437,7 @@ struct snd_soc_dai_link mrfld_msic_dailink[] = {
 		.platform_name = "sst-platform",
 		.init = NULL,
 		.ignore_suspend = 1,
-		.ops = &mrfld_voip_ops,
+		.ops = &mrfld_voip_aware_ops,
 	},
 	[MRFLD_PROBE] = {
 		.name = "Merrifield Probe Port",
@@ -451,12 +452,13 @@ struct snd_soc_dai_link mrfld_msic_dailink[] = {
 	[MRFLD_AWARE] = {
 		.name = "Merrifield Aware Port",
 		.stream_name = "Aware",
-		.cpu_dai_name = "Virtual-cpu-dai",
-		.codec_dai_name = "snd-soc-dummy-dai",
-		.codec_name = "snd-soc-dummy",
+		.cpu_dai_name = "Aware-cpu-dai",
+		.codec_dai_name = "LM49453 Headset",
+		.codec_name = "lm49453.1-001a",
 		.platform_name = "sst-platform",
 		.init = NULL,
 		.ignore_suspend = 1,
+		.ops = &mrfld_voip_aware_ops,
 	},
 	[MRFLD_VAD] = {
 		.name = "Merrifield VAD Port",
@@ -474,7 +476,6 @@ struct snd_soc_dai_link mrfld_msic_dailink[] = {
 		.codec_dai_name = "snd-soc-dummy-dai",
 		.codec_name = "snd-soc-dummy",
 	},
-
 };
 
 #ifdef CONFIG_PM_SLEEP

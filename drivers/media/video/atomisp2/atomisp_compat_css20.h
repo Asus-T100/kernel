@@ -22,6 +22,8 @@
 #ifndef __ATOMISP_COMPAT_CSS20_H__
 #define __ATOMISP_COMPAT_CSS20_H__
 
+#include <media/v4l2-mediabus.h>
+
 #include "ia_css.h"
 #include "ia_css_types.h"
 
@@ -32,6 +34,30 @@
 #define atomisp_css_dis_data ia_css_isp_dvs_statistics
 #define atomisp_css_irq_info  ia_css_irq_info
 #define atomisp_css_isp_config ia_css_isp_config
+#define atomisp_css_bayer_order ia_css_bayer_order
+#define atomisp_css_stream_format ia_css_stream_format
+#define atomisp_css_capture_mode ia_css_capture_mode
+#define atomisp_css_input_mode ia_css_input_mode
+#define atomisp_css_frame ia_css_frame
+#define atomisp_css_frame_format ia_css_frame_format
+#define atomisp_css_frame_info ia_css_frame_info
+#define atomisp_css_dp_config	ia_css_dp_config
+#define atomisp_css_wb_config	ia_css_wb_config
+#define atomisp_css_cc_config	ia_css_cc_config
+#define atomisp_css_nr_config	ia_css_nr_config
+#define atomisp_css_ee_config	ia_css_ee_config
+#define atomisp_css_ob_config	ia_css_ob_config
+#define atomisp_css_de_config	ia_css_de_config
+#define atomisp_css_ce_config	ia_css_ce_config
+#define atomisp_css_gc_config	ia_css_gc_config
+#define atomisp_css_tnr_config	ia_css_tnr_config
+#define atomisp_css_3a_config	ia_css_3a_config
+#define atomisp_css_gamma_table	ia_css_gamma_table
+#define atomisp_css_ctc_table	ia_css_ctc_table
+#define atomisp_css_macc_table	ia_css_macc_table
+#define atomisp_css_grid_info	ia_css_grid_info
+#define atomisp_css_shading_table	ia_css_shading_table
+#define atomisp_css_morph_table	ia_css_morph_table
 typedef struct ia_css_isp_3a_statistics atomisp_css_3a_data;
 
 #define CSS_PIPE_ID_PREVIEW	IA_CSS_PIPE_ID_PREVIEW
@@ -40,6 +66,13 @@ typedef struct ia_css_isp_3a_statistics atomisp_css_3a_data;
 #define CSS_PIPE_ID_CAPTURE	IA_CSS_PIPE_ID_CAPTURE
 #define CSS_PIPE_ID_ACC		IA_CSS_PIPE_ID_ACC
 #define CSS_PIPE_ID_NUM		IA_CSS_PIPE_ID_NUM
+
+#define CSS_INPUT_MODE_SENSOR	IA_CSS_INPUT_MODE_SENSOR
+#define CSS_INPUT_MODE_FIFO	IA_CSS_INPUT_MODE_FIFO
+#define CSS_INPUT_MODE_TPG	IA_CSS_INPUT_MODE_TPG
+#define CSS_INPUT_MODE_PRBS	IA_CSS_INPUT_MODE_PRBS
+#define CSS_INPUT_MODE_MEMORY	IA_CSS_INPUT_MODE_MEMORY
+#define CSS_INPUT_MODE_BUFFERED_SENSOR	IA_CSS_INPUT_MODE_BUFFERED_SENSOR
 
 #define CSS_IRQ_INFO_CSS_RECEIVER_ERROR	IA_CSS_IRQ_INFO_CSS_RECEIVER_ERROR
 #define CSS_IRQ_INFO_EVENTS_READY	IA_CSS_IRQ_INFO_EVENTS_READY
@@ -53,11 +86,17 @@ typedef struct ia_css_isp_3a_statistics atomisp_css_3a_data;
 #define CSS_FRAME_FLASH_STATE_PARTIAL	IA_CSS_FRAME_FLASH_STATE_PARTIAL
 #define CSS_FRAME_FLASH_STATE_FULL	IA_CSS_FRAME_FLASH_STATE_FULL
 
+#define CSS_BAYER_ORDER_GRBG	IA_CSS_BAYER_ORDER_GRBG
+#define CSS_BAYER_ORDER_RGGB	IA_CSS_BAYER_ORDER_RGGB
+#define CSS_BAYER_ORDER_BGGR	IA_CSS_BAYER_ORDER_BGGR
+#define CSS_BAYER_ORDER_GBRG	IA_CSS_BAYER_ORDER_GBRG
+
 /*
  * Hide IA_ naming difference in otherwise common CSS macros.
  */
 #define CSS_ID(val)	(IA_ ## val)
 #define CSS_EVENT(val)	(IA_CSS_EVENT_TYPE_ ## val)
+#define CSS_FORMAT(val)	(IA_CSS_STREAM_FORMAT_ ## val)
 
 struct atomisp_css_env {
 	struct ia_css_env isp_css_env;

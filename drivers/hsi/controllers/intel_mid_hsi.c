@@ -42,6 +42,9 @@
 #include <linux/delay.h>
 #include <linux/pci.h>
 #include <linux/ioport.h>
+#include <linux/gpio.h>
+#include <linux/lnw_gpio.h>
+#include <asm/intel-mid.h>
 #ifdef CONFIG_HAS_WAKELOCK
 #include <linux/wakelock.h>
 #endif
@@ -273,6 +276,8 @@ struct intel_xfer_ctx {
  * @ctrl_io: HSI I/O ctrl address
  * @dma_io: GDD I/O ctrl address
  * @irq: interrupt line index of the HSI controller
+ * @irq_wake: hsi_cawake irq connected to gpio_wake
+ * @gpio_wake: gpio used for out of band wake; mainly used on Tangier
  * @isr_tasklet: first-level high priority interrupt handling tasklet
  * @fwd_tasklet: second level response forwarding tasklet
  * @tx_idle_poll: timer for polling the TX side idleness
@@ -324,6 +329,9 @@ struct intel_controller {
 	void __iomem		*ctrl_io;
 	void __iomem		*dma_io;
 	unsigned int		 irq;
+	/* GPIO and associated irq when using oob wake */
+	unsigned int		 irq_wake;
+	unsigned int		 gpio_wake;
 	/* Dual-level interrupt tasklets */
 	struct tasklet_struct	 isr_tasklet;
 	struct tasklet_struct	 fwd_tasklet;
@@ -721,7 +729,8 @@ static void rx_idle_poll(unsigned long param)
 		mod_timer(&intel_hsi->rx_idle_poll,
 			  jiffies + IDLE_POLL_JIFFIES);
 	} else {
-		intel_hsi->irq_cfg |= ARASAN_IRQ_RX_WAKE;
+		if (!use_oob_cawake())
+			intel_hsi->irq_cfg |= ARASAN_IRQ_RX_WAKE;
 		hsi_enable_interrupt(ctrl, version, intel_hsi->irq_cfg);
 		intel_hsi->rx_state = RX_CAN_SLEEP;
 		schedule_rx_sleep = 1;
@@ -752,7 +761,8 @@ static int has_enabled_acready(struct intel_controller *intel_hsi)
 	do_wakeup = (intel_hsi->rx_state == RX_SLEEPING);
 
 	intel_hsi->prg_cfg |= ARASAN_RX_ENABLE;
-	intel_hsi->irq_cfg &= ~ARASAN_IRQ_RX_WAKE;
+	if (!use_oob_cawake())
+		intel_hsi->irq_cfg &= ~ARASAN_IRQ_RX_WAKE;
 	intel_hsi->irq_cfg |= ARASAN_IRQ_RX_SLEEP(version);
 
 	if ((do_wakeup) && (intel_hsi->suspend_state == DEVICE_READY)) {
@@ -855,7 +865,10 @@ static void force_disable_acready(struct intel_controller *intel_hsi)
 	 * The CAWAKE event interrupt shall be re-enabled whenever the
 	 * RX fifo is no longer empty */
 	del_timer(&intel_hsi->rx_idle_poll);
-	irq_clr = ARASAN_IRQ_RX_WAKE | ARASAN_IRQ_RX_SLEEP(version);
+	if (use_oob_cawake())
+		irq_clr = ARASAN_IRQ_RX_SLEEP(version);
+	else
+		irq_clr = ARASAN_IRQ_RX_WAKE | ARASAN_IRQ_RX_SLEEP(version);
 	intel_hsi->irq_status	&= ~irq_clr;
 	intel_hsi->irq_cfg	&= ~irq_clr;
 	if (likely(intel_hsi->suspend_state == DEVICE_READY)) {
@@ -1238,6 +1251,7 @@ static int hsi_ctrl_suspend(struct intel_controller *intel_hsi, int rtpm)
 				iowrite32(0,
 					ARASAN_CHN_V2(RX_CHAN_CURR_PTR, i));
 			}
+
 		}
 		intel_hsi->dma_running = 0;
 
@@ -1542,6 +1556,8 @@ static void hsi_ctrl_clean_reset(struct intel_controller *intel_hsi)
 
 	/* Disable the interrupt line */
 	disable_irq(intel_hsi->irq);
+	if (use_oob_cawake())
+		disable_irq(intel_hsi->irq_wake);
 
 	/* Disable (and flush) all tasklets */
 	tasklet_disable(&intel_hsi->isr_tasklet);
@@ -1610,6 +1626,8 @@ exit_clean_reset:
 
 	/* Do not forget to re-enable the interrupt */
 	enable_irq(intel_hsi->irq);
+	if (use_oob_cawake())
+		enable_irq(intel_hsi->irq_wake);
 }
 
 /**
@@ -2919,7 +2937,8 @@ static int hsi_mid_setup(struct hsi_client *cl)
 			  ARASAN_TX_MODE(cl->tx_cfg.mode) |
 			  ARASAN_RX_FLOW(cl->rx_cfg.flow) |
 			  ARASAN_RX_MODE(cl->rx_cfg.mode);
-	irq_cfg		= ARASAN_IRQ_RX_WAKE;
+	if (!use_oob_cawake())
+		irq_cfg		= ARASAN_IRQ_RX_WAKE;
 	err_cfg		= ARASAN_IRQ_BREAK | ARASAN_IRQ_RX_ERROR;
 
 	full_tx_sz   = 0;
@@ -3629,8 +3648,9 @@ static irqreturn_t hsi_isr(int irq, void *hsi)
 	/* The only interrupt source when suspended is an external wakeup, so
 	 * notify it to the interrupt tasklet */
 	if (unlikely(intel_hsi->suspend_state != DEVICE_READY)) {
+		if (intel_hsi->suspend_state != DEVICE_AND_IRQ_SUSPENDED)
+			disable_irq_nosync(intel_hsi->irq);
 		intel_hsi->suspend_state = DEVICE_AND_IRQ_SUSPENDED;
-		disable_irq_nosync(intel_hsi->irq);
 
 		/* Ignore this wakeup signal if not configured */
 		if (intel_hsi->prg_cfg & ARASAN_RESET) {
@@ -3645,12 +3665,19 @@ static irqreturn_t hsi_isr(int irq, void *hsi)
 	dma_status = 0;
 	err_status = 0;
 	irq_status = ioread32(ARASAN_REG(INT_STATUS));
+
 	if (irq_status & ARASAN_IRQ_ERROR)
 		err_status = ioread32(ARASAN_REG(ERR_INT_STATUS));
 	if (irq_status & ARASAN_IRQ_DMA(version))
 		dma_status = ioread32(ARASAN_REG_V2(ctrl, DMA_INT_STATUS));
 
-	irq_disable = irq_status &
+	if (use_oob_cawake())
+		irq_disable = irq_status &
+			(ARASAN_IRQ_RX_SLEEP(version)|
+			 ARASAN_IRQ_ANY_RX_THRESHOLD |
+			 ARASAN_IRQ_ANY_TX_THRESHOLD);
+	else
+		irq_disable = irq_status &
 			(ARASAN_IRQ_RX_SLEEP(version) | ARASAN_IRQ_RX_WAKE |
 			 ARASAN_IRQ_ANY_RX_THRESHOLD |
 			 ARASAN_IRQ_ANY_TX_THRESHOLD);
@@ -3870,7 +3897,7 @@ static void hsi_unmap_resources(struct intel_controller *intel_hsi,
 static int hsi_controller_init(struct intel_controller *intel_hsi)
 {
 	unsigned int ch;
-	int err;
+	int err = 0;
 
 	for (ch = 0; ch < HSI_MID_MAX_CHANNELS; ch++) {
 		INIT_LIST_HEAD(&intel_hsi->tx_queue[ch]);
@@ -3895,6 +3922,12 @@ static int hsi_controller_init(struct intel_controller *intel_hsi)
 	tasklet_init(&intel_hsi->fwd_tasklet, hsi_fwd_tasklet,
 		     (unsigned long) intel_hsi);
 
+	if (use_oob_cawake()) {
+		intel_hsi->gpio_wake = get_gpio_by_name("hsi_cawake");
+		gpio_request_one(intel_hsi->gpio_wake, GPIOF_IN, DRVNAME);
+		intel_hsi->irq_wake = gpio_to_irq(intel_hsi->gpio_wake);
+	}
+
 	init_timer(&intel_hsi->tx_idle_poll);
 	intel_hsi->tx_idle_poll.data = (unsigned long) intel_hsi;
 	intel_hsi->tx_idle_poll.function = tx_idle_poll;
@@ -3906,18 +3939,34 @@ static int hsi_controller_init(struct intel_controller *intel_hsi)
 	err = request_irq(intel_hsi->irq, hsi_isr,
 			  IRQF_TRIGGER_RISING | IRQF_NO_SUSPEND,
 			  HSI_MPU_IRQ_NAME, intel_hsi);
+
 	if (err < 0) {
 		dev_err(intel_hsi->dev, "Request IRQ %d failed (%d)\n",
 			intel_hsi->irq, err);
-
-#ifdef CONFIG_HAS_WAKELOCK
-		if (!runtime_pm)
-			wake_unlock(&intel_hsi->stay_awake);
-
-		wake_lock_destroy(&intel_hsi->stay_awake);
-#endif
+		goto out_err;
 	}
 
+	if (use_oob_cawake()) {
+		err = request_irq(intel_hsi->irq_wake, hsi_isr,
+				IRQF_TRIGGER_RISING | IRQF_NO_SUSPEND,
+				DRVNAME, intel_hsi);
+
+		if (err < 0) {
+			dev_err(intel_hsi->dev, "Request GPIO IRQ %d failed (%d)\n",
+					intel_hsi->irq_wake, err);
+			goto out_err;
+		}
+	}
+
+	return err;
+
+out_err:
+#ifdef CONFIG_HAS_WAKELOCK
+	if (!runtime_pm)
+		wake_unlock(&intel_hsi->stay_awake);
+
+	wake_lock_destroy(&intel_hsi->stay_awake);
+#endif
 	return err;
 }
 
@@ -3932,6 +3981,12 @@ static void hsi_controller_exit(struct intel_controller *intel_hsi)
 
 	/* Free the interrupt */
 	free_irq(intel_hsi->irq, intel_hsi);
+
+	if (use_oob_cawake()) {
+		free_irq(intel_hsi->irq_wake, intel_hsi);
+		gpio_free(intel_hsi->gpio_wake);
+	}
+
 
 	/* Kill the tasklets */
 	tasklet_kill(&intel_hsi->isr_tasklet);
@@ -4343,4 +4398,3 @@ MODULE_AUTHOR("Olivier Stoltz Douchet <olivierx.stoltz-douchet@intel.com>");
 MODULE_AUTHOR("Faouaz Tenoutit <faouazx.tenoutit@intel.com>");
 MODULE_DESCRIPTION("Intel mid HSI Controller Driver");
 MODULE_LICENSE("GPL v2");
-

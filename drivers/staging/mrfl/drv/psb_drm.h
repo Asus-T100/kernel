@@ -209,6 +209,7 @@ struct psb_validate_arg {
 	} d;
 };
 
+
 #define DRM_PSB_FENCE_NO_USER        (1 << 0)
 
 struct psb_ttm_fence_rep {
@@ -670,6 +671,7 @@ struct drm_psb_getpageaddrs_arg {
 	unsigned long gtt_offset;
 };
 
+
 #define MAX_SLICES_PER_PICTURE 72
 struct  psb_msvdx_mb_region {
 	uint32_t start;
@@ -733,21 +735,39 @@ typedef struct drm_psb_msvdx_decode_status {
 #define DRM_PSB_GET_HDCP_STATUS		0x26
 #define DRM_PSB_ENABLE_HDCP		0x27
 #define DRM_PSB_DISABLE_HDCP		0x28
-#define DRM_PSB_CSC_GAMMA_SETTING	0x29
 #define DRM_PSB_GET_HDCP_LINK_STATUS	0x2b
-#define DRM_PSB_ENABLE_HDCP_REPEATER	0x2c
-#define DRM_PSB_DISABLE_HDCP_REPEATER	0x2d
-#define DRM_PSB_HDCP_REPEATER_PRESENT	0x2e
+#define DRM_PSB_ENABLE_HDCP_REPEATER		0x2c
+#define DRM_PSB_DISABLE_HDCP_REPEATER		0x2d
+#define DRM_PSB_HDCP_REPEATER_PRESENT		0x2e
 
 /* CSC IOCTLS */
-#define DRM_PSB_SET_CSC			0x2A
-#define DRM_PSB_GET_HDCP_LINK_STATUS	0x2b
+#define DRM_PSB_CSC_GAMMA_SETTING 0x29
+#define DRM_PSB_SET_CSC         0x2a
+
+/* IED session */
+#define DRM_PSB_ENABLE_IED_SESSION  0x30
+#define DRM_PSB_DISABLE_IED_SESSION 0x31
+
+/* VSYNC IOCTLS */
+#define DRM_PSB_VSYNC_SET         0x32
+
+/* HDCP */
+#define DRM_PSB_HDCP_DISPLAY_IED_OFF		0x33
+#define DRM_PSB_HDCP_DISPLAY_IED_ON		0x34
+#define DRM_PSB_QUERY_HDCP_DISPLAY_IED_CAPS	0x35
+
+/* DPST LEVEL */
+#define DRM_PSB_DPST_LEVEL	0x36
+
+/* GET DC INFO IOCTLS */
+#define DRM_PSB_GET_DC_INFO         0x37
+
 
     /*****************************
      *  BEGIN HDMI TEST IOCTLS
      ****************************/
 
-#define DRM_PSB_HDMITEST    0x32
+#define DRM_PSB_HDMITEST    0x38
 
 #define HT_READ     1		/*  read an hdmi test register  */
 #define HT_WRITE    2		/*  write an hdmi test register */
@@ -767,11 +787,13 @@ typedef struct tagHDMITESTREGREADWRITE {
      *  END HDMI TEST IOCTLS
      ****************************/
 
-#define DRM_PSB_DSR_ENABLE	0xfffffffe
-#define DRM_PSB_DSR_DISABLE	0xffffffff
 
-/* VSYNC IOCTLS */
-#define DRM_PSB_VSYNC_SET         0x33
+/* Do not use IOCTL between 0x40 and 0x4F */
+/* These will be reserved for OEM to use */
+/* OEM IOCTLs */
+#define DRM_OEM_RESERVED_START		0x40
+#define DRM_OEM_RESERVED_END		0x4F
+
 
 /*
  * TTM execbuf extension.
@@ -785,6 +807,12 @@ typedef struct tagHDMITESTREGREADWRITE {
 #endif
 #define DRM_PSB_SCENE_UNREF	  (DRM_PSB_CMDBUF + 1)
 #define DRM_PSB_PLACEMENT_OFFSET   (DRM_PSB_SCENE_UNREF + 1)
+
+
+
+
+#define DRM_PSB_DSR_ENABLE	0xfffffffe
+#define DRM_PSB_DSR_DISABLE	0xffffffff
 
 struct drm_psb_csc_matrix {
 	int pipe;
@@ -800,6 +828,7 @@ struct drm_psb_drv_dsr_off_arg {
 	int screen;
 	struct psb_drm_dpu_rect damage_rect;
 };
+
 
 struct drm_psb_dev_info_arg {
 	uint32_t num_use_attribute_registers;

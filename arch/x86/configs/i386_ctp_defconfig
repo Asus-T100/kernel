@@ -905,6 +905,8 @@ CONFIG_RFKILL_LEDS=y
 # CONFIG_CEPH_LIB is not set
 CONFIG_NFC=y
 CONFIG_PN544_NFC=y
+CONFIG_GPS=y
+CONFIG_INTEL_MID_GPS=y
 
 #
 # Device Drivers
@@ -2935,6 +2937,11 @@ CONFIG_RPMSG=y
 CONFIG_RPMSG_IPC=y
 # CONFIG_VIRT_DRIVERS is not set
 # CONFIG_PM_DEVFREQ is not set
+
+#
+# Pinctrl drivers (EXPERIMENTAL)
+#
+CONFIG_PINCTRL_INTEL_MID=y
 
 #
 # Modem control driver

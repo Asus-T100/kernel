@@ -1485,7 +1485,7 @@ static int sst_byte_control_get(struct snd_kcontrol *kcontrol,
 	struct sst_data *sst = snd_soc_platform_get_drvdata(platform);
 
 	pr_debug("in %s\n", __func__);
-	memcpy(sst->byte_stream, ucontrol->value.bytes.data, SST_MAX_BIN_BYTES);
+	memcpy(ucontrol->value.bytes.data, sst->byte_stream, SST_MAX_BIN_BYTES);
 	/*dump_bytes((unsigned char *)sst->byte_stream, 32, 8);*/
 	return 0;
 }

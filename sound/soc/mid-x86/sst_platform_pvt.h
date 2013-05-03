@@ -30,6 +30,7 @@
 /* TODO rmv this global */
 
 extern struct sst_device *sst_dsp;
+
 #define SST_MONO		1
 #define SST_STEREO		2
 
@@ -45,16 +46,17 @@ extern struct sst_device *sst_dsp;
 #define SST_MIN_PERIODS		2
 #define SST_MAX_PERIODS		50
 #define SST_FIFO_SIZE		0
-#define SST_CLK_UNINIT		0x03
 #define SST_CODEC_TYPE_PCM	1
 
-#define SST_HEADSET_DAI "Headset-cpu-dai"
-#define SST_SPEAKER_DAI "Speaker-cpu-dai"
-#define SST_VIBRA1_DAI "Vibra1-cpu-dai"
-#define SST_VIBRA2_DAI "Vibra2-cpu-dai"
-#define SST_VOICE_DAI "Voice-cpu-dai"
-#define SST_PROBE_DAI "Probe-cpu-dai"
-#define SST_VOIP_DAI "Voip-cpu-dai"
+#define SST_HEADSET_DAI		"Headset-cpu-dai"
+#define SST_SPEAKER_DAI		"Speaker-cpu-dai"
+#define SST_VOICE_DAI		"Voice-cpu-dai"
+#define SST_VIRTUAL_DAI		"Virtual-cpu-dai"
+#define SST_AWARE_DAI		"Aware-cpu-dai"
+#define SST_POWER_DAI		"Power-cpu-dai"
+#define SST_COMPRESS_DAI	"Compress-cpu-dai"
+#define SST_PROBE_DAI		"Probe-cpu-dai"
+#define SST_VOIP_DAI		"Voip-cpu-dai"
 
 struct sst_device;
 
@@ -65,7 +67,6 @@ enum sst_drv_status {
 	SST_PLATFORM_PAUSED,
 	SST_PLATFORM_DROPPED,
 };
-
 
 int __devinit sst_dsp_init(struct snd_soc_platform *platform);
 

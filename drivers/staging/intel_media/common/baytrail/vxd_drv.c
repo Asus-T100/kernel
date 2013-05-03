@@ -44,6 +44,7 @@ struct drm_device *gpDrmDevice;
 atomic_t g_videodec_access_count;
 
 static void vxd_power_init(struct drm_device *dev);
+static void vxd_power_post_init(struct drm_device *dev);
 
 module_param_named(trap_pagefaults, drm_psb_trap_pagefaults, int, 0600);
 
@@ -437,6 +438,8 @@ int vxd_driver_load(struct drm_device *dev)
 	PSB_DEBUG_INIT("Init MSVDX\n");
 	psb_msvdx_init(dev);
 
+	vxd_power_post_init(dev);
+
 #if 0
 	ospm_post_init(dev);
 #endif
@@ -698,6 +701,16 @@ static void vxd_power_init(struct drm_device *dev)
 	mutex_init(&dev_priv->vxd_pm_mutex);
 	vxd_power_on(dev);
 }
+
+static void vxd_power_post_init(struct drm_device *dev)
+{
+	struct drm_psb_private *dev_priv = psb_priv(dev);
+	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
+	/* need power down msvdx after init */
+	vxd_power_down(dev);
+	msvdx_priv->msvdx_needs_reset = 1;
+}
+
 
 /**
  * is_island_on

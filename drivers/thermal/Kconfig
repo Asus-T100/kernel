@@ -47,6 +47,16 @@ config SENSORS_THERMAL_MRFLD
           To load this driver as a module, select M here. The module
           will be called "mrfl_thermal"
 
+config INTEL_BYT_THERMAL
+        tristate "Thermal driver for Intel Baytrail platform"
+        depends on THERMAL && IIO
+        help
+          Say Y here to enable thermal driver on Intel Baytrail
+          platform.
+
+          To load this driver as a module, select M here. The module
+          will be called "byt_thermal"
+
 config SOC_THERMAL
 	tristate "SoC Thermal driver"
 	depends on THERMAL

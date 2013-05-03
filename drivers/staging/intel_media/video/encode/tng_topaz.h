@@ -55,6 +55,8 @@
 #define MASK_WB_SYNC_CNT        0x000000FF
 #define SHIFT_WB_SYNC_CNT       0
 
+#define MAX_CMD_SIZE		4096
+
 /*#define VERIFYFW*/
 /*#define VERIFY_CONTEXT_SWITCH*/
 

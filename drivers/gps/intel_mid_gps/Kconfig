@@ -1,0 +1,13 @@
+#
+# Intel MID GPS driver.
+#
+menu "Intel MID GPS driver"
+config INTEL_MID_GPS
+	tristate "Intel MID GPS driver"
+	depends on X86_INTEL_MID
+	help
+	  Select this driver to enable kernel interface for GPS devices
+	  used in Intel MID platforms.
+	  This driver exports GPIO to user space GPS software
+	  that use a standard tty to communicate with the GPS device.
+endmenu

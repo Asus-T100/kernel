@@ -379,9 +379,9 @@ static void dlp_tty_complete_rx(struct hsi_msg *pdu)
 	if (!dlp_tty_is_link_valid()) {
 		if ((EDLP_TTY_RX_DATA_REPORT) ||
 			(EDLP_TTY_RX_DATA_LEN_REPORT))
-				pr_debug(DRVNAME ": TTY: CH%d RX PDU ignored (close:%d, Time out: %d)\n",
-					xfer_ctx->channel->ch_id,
-					dlp_drv.tty_closed, dlp_drv.tx_timeout);
+			pr_debug(DRVNAME ": TTY: CH%d RX PDU ignored (close:%d, Time out: %d)\n",
+				xfer_ctx->channel->ch_id,
+				dlp_drv.tty_closed, dlp_drv.tx_timeout);
 		return;
 	}
 
@@ -606,10 +606,11 @@ static void dlp_tty_port_shutdown(struct tty_port *port)
 	rx_ctx = &ch_ctx->rx;
 
 	/* Don't wait if already in TX timeout state */
-	if (dlp_tty_is_link_valid()) {
+	if (dlp_tty_is_link_valid())
 		dlp_tty_wait_until_ctx_sent(ch_ctx, 0);
-		dlp_tty_cleanup(ch_ctx);
-	}
+
+	/* TTY channel cleanup */
+	dlp_tty_cleanup(ch_ctx);
 
 	/* device closed => Set the channel state flag */
 	dlp_ctrl_set_channel_state(ch_ctx->hsi_channel,
@@ -675,7 +676,7 @@ static int dlp_tty_open(struct tty_struct *tty, struct file *filp)
 	/* Set the TTY_NO_WRITE_SPLIT to transfer as much data as possible on
 	 * the first write request. This shall not introduce denial of service
 	 * as this flag will later adapt to the available TX buffer size. */
-	tty->flags |= (1 << TTY_NO_WRITE_SPLIT);
+	set_bit(TTY_NO_WRITE_SPLIT, &tty->flags);
 
 out:
 	pr_debug(DRVNAME ": TTY device open done (ret: %d)\n", ret);
@@ -774,6 +775,9 @@ static void dlp_tty_close(struct tty_struct *tty, struct file *filp)
 	pr_debug(DRVNAME ": TTY device close request (%s, %d)\n",
 			current->comm, current->tgid);
 
+	/* Set TTY flow_stopped to flush TX buffer */
+	tty->flow_stopped = 1;
+
 	/* Set TTY as closed to prevent RX/TX transactions */
 	if (need_cleanup)
 		dlp_tty_set_link_valid(1, dlp_drv.tx_timeout);
@@ -785,7 +789,9 @@ static void dlp_tty_close(struct tty_struct *tty, struct file *filp)
 
 	/* Flush everything & Release the HSI port */
 	if (need_cleanup) {
-		dlp_ctrl_clean_stored_cmd();
+		/* Reset channels params */
+		dlp_reset_channels_params();
+
 		pr_debug(DRVNAME": Flushing the HSI controller\n");
 		hsi_flush(dlp_drv.client);
 		dlp_hsi_port_unclaim();
@@ -817,12 +823,11 @@ int dlp_tty_do_write(struct dlp_xfer_ctx *xfer_ctx, unsigned char *buf,
 	copied = 0;
 
 	if (!dlp_ctx_have_credits(xfer_ctx, xfer_ctx->channel)) {
-		if ((EDLP_TTY_TX_DATA_REPORT) ||
-			(EDLP_TTY_TX_DATA_LEN_REPORT))
-				pr_warn(DRVNAME ": CH%d (HSI CH%d) out of credits (%d)",
-					xfer_ctx->channel->ch_id,
-					xfer_ctx->channel->hsi_channel,
-					xfer_ctx->seq_num);
+		pr_warn(DRVNAME ": CH%d TX ignored (credits:%d, seq_num:%d, closed:%d, timeout:%d)",
+			xfer_ctx->channel->ch_id,
+			xfer_ctx->channel->credits,
+			xfer_ctx->seq_num,
+			dlp_drv.tty_closed, dlp_drv.tx_timeout);
 		goto out;
 	}
 
@@ -848,8 +853,6 @@ int dlp_tty_do_write(struct dlp_xfer_ctx *xfer_ctx, unsigned char *buf,
 			read_unlock_irqrestore(&xfer_ctx->lock, flags);
 
 			dlp_fifo_wait_push(xfer_ctx, pdu);
-
-			pdu->status = HSI_STATUS_PENDING;
 		}
 	}
 
@@ -925,9 +928,9 @@ static int dlp_tty_write(struct tty_struct *tty, const unsigned char *buf,
 
 	read_lock_irqsave(&xfer_ctx->lock, flags);
 	if (xfer_ctx->room >= len)
-		tty->flags |= (1 << TTY_NO_WRITE_SPLIT);
+		set_bit(TTY_NO_WRITE_SPLIT, &tty->flags);
 	else
-		tty->flags &= ~(1 << TTY_NO_WRITE_SPLIT);
+		clear_bit(TTY_NO_WRITE_SPLIT, &tty->flags);
 	read_unlock_irqrestore(&xfer_ctx->lock, flags);
 
 	already_copied = 0;

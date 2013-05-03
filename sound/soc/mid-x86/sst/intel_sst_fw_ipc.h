@@ -141,7 +141,6 @@
  *  - pipe_id is in higher 16-bits of IPC low payload for period_elapsed.
  *  - error id is in higher 16-bits of IPC low payload for async errors.
  */
-#define IPC_QUE_ID_MED 0x03
 #define SST_ASYNC_ERROR_MASK 0xFFFF0000
 #define SST_ASYNC_MSG_MASK 0x0000FFFF
 #define SST_ASYNC_DRV_ID 0
@@ -160,71 +159,6 @@ enum ipc_ia_msg_id {
 	IPC_SET_PARAMS = 2,/*!< Task Set param message ID */
 	IPC_GET_PARAMS = 3,	/*!< Task Get param message ID */
 	IPC_INVALID = 0xFF	/*!<Task Get param message ID */
-};
-
-/* Pipe IDs ref: LPE DSP command interface spec v0.75 */
-enum lpe_pipe_id {
-/* Output pipeline IDs */
-	PIPE_ID_OUT_START = 0x0,
-	PIPE_MODEM_OUT = 0x0,
-	PIPE_BT_OUT = 0x1,
-	PIPE_CODEC_OUT0 = 0x2,
-	PIPE_CODEC_OUT1 = 0x3,
-	PIPE_SPROT_LOOP_OUT = 0x4,
-	PIPE_MEDIA_LOOP1_OUT = 0x5,
-	PIPE_MEDIA_LOOP2_OUT = 0x6,
-	PIPE_PROBE_OUT = 0x7,
-	PIPE_HF_SNS_OUT = 0x8, /* VOCIE_UPLINK_REF2 */
-	PIPE_HF_OUT = 0x9, /* VOICE_UPLINK_REF1 */
-	PIPE_SPEECH_OUT = 0xA, /* VOICE UPLINK */
-	PIPE_RxSPEECH_OUT = 0xB, /* VOICE_DOWNLINK */
-	PIPE_VOIP_OUT = 0xC,
-	PIPE_PCM0_OUT = 0xD,
-	PIPE_PCM1_OUT = 0xE,
-	PIPE_PCM2_OUT = 0xF,
-	PIPE_AWARE_OUT = 0x10,
-	PIPE_VAD_OUT = 0x11,
-	PIPE_MEDIA0_OUT = 0x12,
-	PIPE_MEDIA1_OUT = 0x12,
-	PIPE_FM_OUT = 0x14,
-	PIPE_PROBE1_OUT = 0x15,
-	PIPE_PROBE2_OUT = 0x16,
-	PIPE_PROBE3_OUT = 0x17,
-	PIPE_PROBE4_OUT = 0x18,
-	PIPE_PROBE5_OUT = 0x19,
-	PIPE_PROBE6_OUT = 0x1A,
-	PIPE_PROBE7_OUT = 0x1B,
-	PIPE_PROBE8_OUT = 0x1C,
-/* Input Pipeline IDs */
-	PIPE_ID_IN_START = 0x80,
-	PIPE_MODEM_IN = 0x80,
-	PIPE_BT_IN = 0x81,
-	PIPE_CODEC_IN0 = 0x82,
-	PIPE_CODEC_IN1 = 0x83,
-	PIPE_SPROT_LOOP_IN = 0x84,
-	PIPE_MEDIA_LOOP1_IN = 0x85,
-	PIPE_MEDIA_LOOP2_IN = 0x86,
-	PIPE_PROBE_IN = 0x87,
-	PIPE_SIDETONE_IN = 0x88,
-	PIPE_TxSPEECH_IN = 0x89,
-	PIPE_SPEECH_IN = 0x8A,
-	PIPE_TONE_IN = 0x8B,
-	PIPE_VOIP_IN = 0x8C,
-	PIPE_PCM0_IN = 0x8D,
-	PIPE_PCM1_IN = 0x8E,
-	PIPE_MEDIA0_IN = 0x8F,
-	PIPE_MEDIA1_IN = 0x90,
-	PIPE_MEDIA2_IN = 0x91,
-	PIPE_FM_IN = 0x92,
-	PIPE_PROBE1_IN = 0x93,
-	PIPE_PROBE2_IN = 0x94,
-	PIPE_PROBE3_IN = 0x95,
-	PIPE_PROBE4_IN = 0x96,
-	PIPE_PROBE5_IN = 0x97,
-	PIPE_PROBE6_IN = 0x98,
-	PIPE_PROBE7_IN = 0x99,
-	PIPE_PROBE8_IN = 0x9A,
-	PIPE_RSVD = 0xFF,
 };
 
 enum sst_error_codes {

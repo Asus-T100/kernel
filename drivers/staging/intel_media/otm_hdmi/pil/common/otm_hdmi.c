@@ -849,6 +849,18 @@ bool otm_hdmi_power_rails_off(void)
 	return ps_hdmi_power_rails_off();
 }
 
+/* turn HDMI power islands on */
+bool otm_hdmi_power_islands_on(int hw_island)
+{
+	return ps_hdmi_power_islands_on(hw_island);
+}
+
+/* turn HDMI power islands off */
+void otm_hdmi_power_islands_off(int hw_island)
+{
+	ps_hdmi_power_islands_off(hw_island);
+}
+
 /*
  * otm_hdmi_get_cable_status - Get HDMI cable connection status
  * @context: hdmi device context

@@ -74,8 +74,7 @@
 #include "ps_hdmi.h"
 #include <asm/intel_scu_pmic.h>
 #include <asm/intel-mid.h>
-#include "ospm/pwr_mgmt.h"
-
+#include "psb_powermgmt.h"
 
 /* Implementation of the Merrifield specific PCI driver for receiving
  * Hotplug and other device status signals.
@@ -241,31 +240,9 @@ otm_hdmi_ret_t ps_hdmi_i2c_edid_read(void *ctx, unsigned int sp,
 	return OTM_HDMI_SUCCESS;
 }
 
-
 bool ps_hdmi_power_rails_on(void)
 {
-	bool ret;
-	hdmi_context_t *ctx = g_context;
-
 	pr_debug("Entered %s\n", __func__);
-	if (ctx == NULL)
-		return false;
-
-	if (ctx->is_connected && ctx->power_rails_on == false) {
-		ret = power_island_get(OSPM_DISPLAY_B);
-		if (ret == false) {
-			pr_err("%s: failed to power on display B\n", __func__);
-			return false;
-		}
-		ret = power_island_get(OSPM_DISPLAY_HDMI);
-		if (ret == false) {
-			pr_err("%s: failed to power on HDMI island\n", __func__);
-			/* Power off display B */
-			power_island_put(OSPM_DISPLAY_B);
-			return false;
-		}
-		ctx->power_rails_on = true;
-	}
 
 	intel_scu_ipc_iowrite8(0x7F, 0x31);
 	pr_debug("Leaving %s\n", __func__);
@@ -274,22 +251,28 @@ bool ps_hdmi_power_rails_on(void)
 
 bool ps_hdmi_power_rails_off(void)
 {
-	hdmi_context_t *ctx = g_context;
-
 	pr_debug("Entered %s\n", __func__);
-	if (ctx == NULL)
-		return false;
 
-	/* Temporarily disable power rails off as it will cause MIPI freeze */
-	/*if (ctx->power_rails_on == true) {
-		pr_debug("%s: Powering off HDMI island.", __func__);
-		power_island_put(OSPM_DISPLAY_HDMI);
-		power_island_put(OSPM_DISPLAY_B);
-		ctx->power_rails_on = false;
-	}*/
-	return true;
+	return 0;
+
 }
 
+bool ps_hdmi_power_islands_on(int hw_island)
+{
+	return ospm_power_using_hw_begin(hw_island, OSPM_UHB_FORCE_POWER_ON);
+}
+
+void ps_hdmi_power_islands_off(int hw_island)
+{
+	/*
+	 * FIXME: need to turn off OSPM_DISPLAY_HDMI island after plugging out
+	 * HDMI cable, but here fabric error happens.
+	 */
+	if (!hw_island)
+		hw_island = OSPM_DISPLAY_B;
+
+	ospm_power_using_hw_end(hw_island);
+}
 
 /*
  * ps_hdmi_get_cable_status - Get HDMI cable connection status
@@ -312,8 +295,10 @@ bool ps_hdmi_get_cable_status(void *context)
 	 */
 	__ps_gpio_configure_edid_read();
 
-	ctx->is_connected = (gpio_get_value(ctx->gpio_hpd_pin) != 0);
-	return ctx->is_connected;
+	if (gpio_get_value(ctx->gpio_hpd_pin) == 0)
+		return false;
+	else
+		return true;
 }
 
 /**

@@ -25,6 +25,24 @@
 #define TNG_CLOCK_CTL 0xFF00B830
 #define TNG_CLOCK_SC  0xFF00B868
 
+static unsigned int clock;
+static struct hsu_port_pin_cfg *hsu_port_gpio_mux;
+static struct hsu_port_cfg *platform_hsu_info;
+
+static void dw_hsu_rts(int port, int value)
+{
+	struct hsu_port_pin_cfg *info = hsu_port_gpio_mux + port;
+
+	if (!info->rts_gpio)
+		return;
+
+	if (value) {
+		gpio_request(info->rts_gpio, "dw_hsu");
+		gpio_direction_output(info->rts_gpio, 1);
+	} else
+		gpio_free(info->rts_gpio);
+}
+
 static struct
 hsu_port_pin_cfg hsu_port_pin_cfgs[][hsu_pid_max][hsu_port_max] = {
 	[hsu_pnw] = {
@@ -413,6 +431,28 @@ static struct hsu_port_cfg hsu_port_cfgs[][hsu_port_max] = {
 			.hw_context_save = 1,
 		},
 	},
+	[hsu_vlv2] = {
+		[hsu_port0] = {
+			.type = bt_port,
+			.index = 0,
+			.name = HSU_BT_PORT,
+			.idle = 100,
+			/* Trust FW has set it correctly */
+			.hw_set_alt = NULL,
+			.hw_set_rts = dw_hsu_rts,
+		},
+		[hsu_port1] = {
+			.type = gps_port,
+			.index = 1,
+			.name = HSU_GPS_PORT,
+			.idle = 100,
+			.preamble = 1,
+			/* Trust FW has set it correctly */
+			.hw_set_alt = NULL,
+			.hw_set_rts = dw_hsu_rts,
+		},
+	},
+
 };
 
 static int hsu_port_func_id_tlb[][hsu_port_func_max] = {
@@ -434,11 +474,13 @@ static int hsu_port_func_id_tlb[][hsu_port_func_max] = {
 		[2] = hsu_port1,
 		[3] = hsu_port2,
 	},
+	[hsu_vlv2] = {
+		[0] = hsu_port0,
+		[1] = hsu_port1,
+		[2] = -1,
+		[3] = -1,
+	},
 };
-
-static unsigned int clock;
-static struct hsu_port_pin_cfg *hsu_port_gpio_mux;
-static struct hsu_port_cfg *platform_hsu_info;
 
 static void hsu_port_enable(int port)
 {
@@ -575,7 +617,10 @@ int intel_mid_hsu_func_to_port(unsigned int func)
 	case INTEL_MID_CPU_CHIP_TANGIER:
 		return hsu_port_func_id_tlb[hsu_tng][func];
 		break;
-
+	case INTEL_MID_CPU_CHIP_VALLEYVIEW2:
+		/* 1e.3 and 1e.4 */
+		return hsu_port_func_id_tlb[hsu_vlv2][func-3];
+		break;
 	case INTEL_MID_CPU_CHIP_LINCROFT:
 	case INTEL_MID_CPU_CHIP_PENWELL:
 	default:
@@ -644,6 +689,10 @@ static void hsu_platform_clk(enum intel_mid_cpu_type cpu_type)
 		iounmap(clksc);
 		break;
 
+	case INTEL_MID_CPU_CHIP_VALLEYVIEW2:
+		clock = 100000;
+		break;
+
 	case INTEL_MID_CPU_CHIP_LINCROFT:
 	case INTEL_MID_CPU_CHIP_PENWELL:
 	case INTEL_MID_CPU_CHIP_CLOVERVIEW:
@@ -669,6 +718,9 @@ static __init int hsu_dev_platform_data(void)
 			hsu_port_gpio_mux =
 				&hsu_port_pin_cfgs[hsu_clv][hsu_pid_rhb][0];
 		break;
+	case INTEL_MID_CPU_CHIP_VALLEYVIEW2:
+		platform_hsu_info = &hsu_port_cfgs[hsu_vlv2][0];
+		break;
 
 	case INTEL_MID_CPU_CHIP_TANGIER:
 		platform_hsu_info = &hsu_port_cfgs[hsu_tng][0];
@@ -684,9 +736,6 @@ static __init int hsu_dev_platform_data(void)
 	}
 
 	if (platform_hsu_info == NULL)
-		return -ENODEV;
-
-	if (hsu_port_gpio_mux == NULL)
 		return -ENODEV;
 
 	hsu_register_board_info(platform_hsu_info);

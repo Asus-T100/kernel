@@ -2,6 +2,7 @@
 # Direct Rendering Infrastructure (DRI) in XFree86 4.1.0 and higher.
 
 INCDIR=drivers/staging/mrfl
+HDMI_DIR=drivers/staging/intel_media/otm_hdmi
 
 ccflags-y += \
 	-I$(INCDIR)/ \
@@ -11,8 +12,7 @@ ccflags-y += \
 	-I$(INCDIR)/drv/ospm \
 	-I$(INCDIR)/imgv \
 	-I$(INCDIR)/vsp \
-	-I$(INCDIR)/drv/otm_hdmi/os/android/include \
-	-I$(INCDIR)/drv/otm_hdmi/pil/include \
+	-I$(HDMI_DIR)/os/android/include \
 	-Iinclude/linux \
 	-Iinclude/drm \
 	-I$(INCDIR)/../intel_media/video/common \

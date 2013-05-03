@@ -80,11 +80,8 @@ int psb_hist_enable(struct drm_device *dev, void *data)
 	struct dpst_guardband guardband_reg;
 	struct dpst_ie_histogram_control ie_hist_cont_reg;
 	uint32_t * enable = data;
-	 if (!ospm_power_using_hw_begin
-	       (OSPM_DISPLAY_ISLAND, OSPM_UHB_ONLY_IF_ON)) {
-		return 0;
-	}
-	 if (*enable == 1) {
+
+	if (*enable == 1) {
 		ie_hist_cont_reg.data = PSB_RVDC32(HISTOGRAM_LOGIC_CONTROL);
 		ie_hist_cont_reg.ie_pipe_assignment = 0;
 		ie_hist_cont_reg.histogram_mode_select = DPST_YUV_LUMA_MODE;
@@ -110,8 +107,7 @@ int psb_hist_enable(struct drm_device *dev, void *data)
 		irqCtrl &= ~PIPE_DPST_EVENT_ENABLE;
 		PSB_WVDC32(irqCtrl, PIPEASTAT);
 	}
-	 ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-	 return 0;
+	return 0;
 }
 
  static int psb_hist_status(struct drm_device *dev, void *data)
@@ -128,15 +124,12 @@ int psb_hist_enable(struct drm_device *dev, void *data)
 	uint32_t segvalue_max_22_bit = 0x3fffff;
 	uint32_t iedbr_busy_bit = 0x80000000;
 	int dpst3_bin_count = 32;
-	 if (!ospm_power_using_hw_begin
-	       (OSPM_DISPLAY_ISLAND, OSPM_UHB_ONLY_IF_ON)) {
-		return 0;
-	}
-	 ie_hist_cont_reg.data = PSB_RVDC32(blm_hist_ctl);
+
+	ie_hist_cont_reg.data = PSB_RVDC32(blm_hist_ctl);
 	ie_hist_cont_reg.bin_reg_func_select = dpst3_bin_threshold_count;
 	ie_hist_cont_reg.bin_reg_index = 0;
-	 PSB_WVDC32(ie_hist_cont_reg.data, blm_hist_ctl);
-	 for (i = 0; i < dpst3_bin_count; i++) {
+	PSB_WVDC32(ie_hist_cont_reg.data, blm_hist_ctl);
+	for (i = 0; i < dpst3_bin_count; i++) {
 		iedbr_reg_data = PSB_RVDC32(iebdr_reg);
 		 if (!(iedbr_reg_data & iedbr_busy_bit)) {
 			arg[i] = iedbr_reg_data & segvalue_max_22_bit;
@@ -147,8 +140,7 @@ int psb_hist_enable(struct drm_device *dev, void *data)
 			PSB_WVDC32(ie_hist_cont_reg.data, blm_hist_ctl);
 		}
 	}
-	 ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-	 return 0;
+	return 0;
 }
 
 
@@ -165,11 +157,8 @@ int psb_diet_enable(struct drm_device *dev, void *data)
 	uint32_t blm_hist_ctl = HISTOGRAM_LOGIC_CONTROL;
 	uint32_t iebdr_reg = HISTOGRAM_BIN_DATA;
 	int dpst3_bin_count = 32;
-	 if (!ospm_power_using_hw_begin
-	       (OSPM_DISPLAY_ISLAND, OSPM_UHB_ONLY_IF_ON)) {
-		return 0;
-	}
-	 if (data) {
+
+	if (data) {
 		ie_hist_cont_reg.data = PSB_RVDC32(blm_hist_ctl);
 		ie_hist_cont_reg.bin_reg_func_select =
 		    dpst3_bin_threshold_count;
@@ -189,8 +178,7 @@ int psb_diet_enable(struct drm_device *dev, void *data)
 		ie_hist_cont_reg.ie_mode_table_enabled = 0;
 		 PSB_WVDC32(ie_hist_cont_reg.data, blm_hist_ctl);
 	}
-	 ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-	 return 0;
+	return 0;
 }
 
 
@@ -235,12 +223,8 @@ int psb_init_comm(struct drm_device *dev, void *data)
 	uint32_t x;
 	uint32_t y;
 	uint32_t reg;
-	 if (!ospm_power_using_hw_begin
-	       (OSPM_DISPLAY_ISLAND, OSPM_UHB_ONLY_IF_ON)) {
-		return 0;
-	}
+
 	 reg = PSB_RVDC32(PIPEASRC);
-	 ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 
 	    /* horizontal is the left 16 bits */
 	    x = reg >> 16;
@@ -260,10 +244,7 @@ int psb_init_comm(struct drm_device *dev, void *data)
 	struct drm_psb_private *dev_priv = psb_priv(dev);
 	struct dpst_guardband *input = (struct dpst_guardband *)data;
 	struct dpst_guardband reg_data;
-	 if (!ospm_power_using_hw_begin
-	       (OSPM_DISPLAY_ISLAND, OSPM_UHB_ONLY_IF_ON)) {
-		return 0;
-	}
+
 	reg_data.data = PSB_RVDC32(HISTOGRAM_INT_CONTROL);
 	reg_data.guardband = input->guardband;
 	reg_data.guardband_interrupt_delay = input->guardband_interrupt_delay;
@@ -271,7 +252,6 @@ int psb_init_comm(struct drm_device *dev, void *data)
 	    /* printk(KERN_ALERT "guardband = %u\ninterrupt delay = %u\n",
 	       reg_data.guardband, reg_data.guardband_interrupt_delay); */
 	    PSB_WVDC32(reg_data.data, HISTOGRAM_INT_CONTROL);
-	 ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 	 return 0;
 }
 

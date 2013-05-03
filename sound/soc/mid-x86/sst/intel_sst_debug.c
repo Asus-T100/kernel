@@ -47,12 +47,6 @@
 #include "intel_sst_fw_ipc.h"
 #include "intel_sst_common.h"
 
-/* each_word_occupies + newlines_needed + pointer_print_size_per_line */
-#define DUMP_BYTES_SIZE(num_words, chars_in_word, num_lines) \
-	  ((num_words) * ((chars_in_word) + 1) \
-	    + (num_lines) \
-	    + (2 * sizeof(void *) + 4) * (num_lines))
-
 #define DMA_NUM_CH	8
 
 /* Register Offsets of SSP3 and LPE DMA */
@@ -65,8 +59,17 @@ u32 dma_reg_off[] = {0x2C0, 0x2C8, 0x2D0, 0x2D8, 0x2E0, 0x2E8,
 		0x380, 0x388, 0x390, 0x398, 0x3A0, 0x3A8, 0x3B0, 0x3C8, 0x3D0,
 		0x3D8, 0x3E0, 0x3E8, 0x3F0, 0x3F8};
 
-static void dump_bytes(const void *data, size_t sz, char *dest,
-		       unsigned char word_sz, unsigned char words_in_line)
+/* each_word_occupies + newlines_needed + pointer_print_size_per_line */
+#define DUMP_BYTES_SIZE(num_words, chars_in_word, num_lines) \
+	  ((num_words) * ((chars_in_word) + 1) \
+	    + (num_lines) \
+	    + (2 * sizeof(void *) + 4) * (num_lines))
+
+#define WORDS_PER_LINE		4
+#define MAX_CHARS_IN_DWORD	10
+
+void dump_bytes(const void *data, size_t sz, char *dest,
+		unsigned char word_sz, unsigned char words_in_line)
 {
 	unsigned int i, j, words;
 	unsigned long long val;
@@ -87,6 +90,23 @@ static void dump_bytes(const void *data, size_t sz, char *dest,
 		}
 		pos += sprintf(dest + pos, "\n");
 	}
+}
+
+void print_bytes(const void *data, size_t sz, unsigned char word_sz,
+		 unsigned char words_in_line)
+{
+	int num_dwords = sz / 4;
+	char *buf = vmalloc(DUMP_BYTES_SIZE(num_dwords, MAX_CHARS_IN_DWORD,
+					    num_dwords / WORDS_PER_LINE));
+	if (!buf) {
+		pr_err("%s: no memory\n", __func__);
+		return;
+	}
+	*buf = 0;
+	dump_bytes(data, sz, buf, word_sz, words_in_line);
+	pr_debug("printing %lu bytes\n", sz);
+	pr_debug("%s", buf);
+	vfree(buf);
 }
 
 /* FIXME: replace with simple_open from 3.4 kernel */
@@ -219,9 +239,6 @@ static const struct file_operations sst_debug_shim_ops = {
 #define LPE_IA_MAILBOX_DUMP_SZ	100
 #define SCU_LPE_MAILBOX_DUMP_SZ	20
 #define LPE_SCU_MAILBOX_DUMP_SZ	20
-
-#define WORDS_PER_LINE		4
-#define MAX_CHARS_IN_DWORD	10
 
 static inline int is_fw_running(struct intel_sst_drv *drv)
 {

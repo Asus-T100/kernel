@@ -590,4 +590,15 @@ struct x86_cpu_id {
 #define X86_MODEL_ANY  0
 #define X86_FEATURE_ANY 0	/* Same as FPU, you can't test for that */
 
+
+#define MEI_CL_MODULE_PREFIX "mei:"
+#define MEI_CL_NAME_SIZE 32
+
+struct mei_cl_device_id {
+	char name[MEI_CL_NAME_SIZE];
+	kernel_ulong_t driver_info;
+};
+
 #endif /* LINUX_MOD_DEVICETABLE_H */
+
+
