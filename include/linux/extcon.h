@@ -223,7 +223,6 @@ extern int extcon_update_state(struct extcon_dev *edev, u32 mask, u32 state);
  */
 extern int extcon_find_cable_index(struct extcon_dev *sdev,
 				   const char *cable_name);
-extern int extcon_find_cable_type(struct extcon_dev *edev, int index);
 extern int extcon_get_cable_state_(struct extcon_dev *edev, int cable_index);
 extern int extcon_set_cable_state_(struct extcon_dev *edev, int cable_index,
 				   bool cable_state);
@@ -283,11 +282,6 @@ static inline int extcon_update_state(struct extcon_dev *edev, u32 mask,
 
 static inline int extcon_find_cable_index(struct extcon_dev *edev,
 					  const char *cable_name)
-{
-	return 0;
-}
-
-static int extcon_find_cable_type(struct extcon_dev *edev, int index)
 {
 	return 0;
 }
