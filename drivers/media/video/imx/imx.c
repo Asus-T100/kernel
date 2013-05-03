@@ -57,6 +57,7 @@ imx_read_reg(struct i2c_client *client, u16 len, u16 reg, u16 *val)
 	}
 
 	memset(msg, 0 , sizeof(msg));
+	memset(data, 0 , sizeof(data));
 
 	msg[0].addr = client->addr;
 	msg[0].flags = 0;
