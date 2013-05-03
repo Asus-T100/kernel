@@ -32,6 +32,7 @@
 #include <linux/slab.h>
 #include <linux/vgaarb.h>
 #include <drm/drm_edid.h>
+#include <linux/dma_remapping.h>
 #include "drmP.h"
 #include "intel_drv.h"
 #include "i915_drm.h"
@@ -40,7 +41,8 @@
 #include "i915_trace.h"
 #include "drm_dp_helper.h"
 #include "drm_crtc_helper.h"
-#include <linux/dma_remapping.h>
+#include "intel_dsi.h"
+#include "intel_dsi_pll.h"
 
 #define HAS_eDP (intel_pipe_has_type(crtc, INTEL_OUTPUT_EDP))
 
@@ -1827,9 +1829,14 @@ static void intel_enable_pipe(struct drm_i915_private *dev_priv, enum pipe pipe,
 	 * a plane.  On ILK+ the pipe PLLs are integrated, so we don't
 	 * need the check.
 	 */
-	if (!HAS_PCH_SPLIT(dev_priv->dev))
-		assert_pll_enabled(dev_priv, pipe);
-	else {
+	if (!HAS_PCH_SPLIT(dev_priv->dev)) {
+		if ((pipe == PIPE_A) && dev_priv->mipi.panel_id) {
+			/* XXX
+			 * for MIPI need to check dsi pll
+			 */
+		} else
+			assert_pll_enabled(dev_priv, pipe);
+	} else {
 		if (pch_port) {
 			/* if driving the PCH, we need FDI enabled */
 			assert_fdi_rx_pll_enabled(dev_priv, pipe);
@@ -3602,8 +3609,10 @@ static void i9xx_crtc_enable(struct drm_crtc *crtc)
 	struct drm_device *dev = crtc->dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
+	struct intel_encoder *encoder;
 	int pipe = intel_crtc->pipe;
 	int plane = intel_crtc->plane;
+	u32 temp;
 
 	if (intel_crtc->active)
 		return;
@@ -3613,10 +3622,21 @@ static void i9xx_crtc_enable(struct drm_crtc *crtc)
 		intel_crtc->disp_suspend_state = false;
 	intel_update_watermarks(dev);
 
-	intel_enable_pll(dev_priv, pipe);
+	if (!dev_priv->mipi.panel_id)
+		intel_enable_pll(dev_priv, pipe);
+
 	vlv_pll_enable_reset(crtc);
 	intel_enable_pipe(dev_priv, pipe, false);
 	intel_enable_plane(dev_priv, plane, pipe);
+
+	if (dev_priv->mipi.panel_id) {
+		for_each_encoder_on_crtc(dev, crtc, encoder) {
+			if (encoder->type == INTEL_OUTPUT_DSI) {
+				intel_dsi_enable(encoder);
+				break;
+			}
+		}
+	}
 
 	intel_crtc_load_lut(crtc);
 	intel_update_fbc(dev);
@@ -4688,8 +4708,9 @@ static int i9xx_crtc_mode_set(struct drm_crtc *crtc,
 	intel_clock_t clock, reduced_clock;
 	u32 dspcntr, pipeconf, vsyncshift;
 	bool ok, has_reduced_clock = false, is_sdvo = false;
-	bool is_lvds = false, is_tv = false, is_dp = false;
+	bool is_lvds = false, is_tv = false, is_dp = false, is_dsi = false;
 	struct intel_encoder *encoder;
+	struct intel_dsi *intel_dsi;
 	const intel_limit_t *limit;
 	int ret;
 	struct intel_program_clock_bending clockbend;
@@ -4711,24 +4732,31 @@ static int i9xx_crtc_mode_set(struct drm_crtc *crtc,
 		case INTEL_OUTPUT_DISPLAYPORT:
 			is_dp = true;
 			break;
+		case INTEL_OUTPUT_DSI:
+			is_dsi = true;
+			intel_dsi = enc_to_intel_dsi(&encoder->base);
+			break;
 		}
 
 		num_connectors++;
 	}
 
-	refclk = i9xx_get_refclk(crtc, num_connectors);
+	if (!is_dsi) {
+		refclk = i9xx_get_refclk(crtc, num_connectors);
 
-	/*
-	 * Returns a set of divisors for the desired target clock with the given
-	 * refclk, or FALSE.  The returned values represent the clock equation:
-	 * reflck * (5 * (m1 + 2) + (m2 + 2)) / (n + 2) / p1 / p2.
-	 */
-	limit = intel_limit(crtc, refclk);
-	ok = limit->find_pll(limit, crtc, adjusted_mode->clock, refclk, NULL,
-			     &clock);
-	if (!ok) {
-		DRM_ERROR("Couldn't find PLL settings for mode!\n");
-		return -EINVAL;
+		/*
+		 * Returns a set of divisors for the desired target clock with
+		 * the given refclk, or FALSE.  The returned values represent
+		 * the clock equation:
+		 * reflck * (5 * (m1 + 2) + (m2 + 2)) / (n + 2) / p1 / p2.
+		 */
+		limit = intel_limit(crtc, refclk);
+		ok = limit->find_pll(limit, crtc, adjusted_mode->clock,
+				refclk, NULL, &clock);
+		if (!ok) {
+			DRM_ERROR("Couldn't find PLL settings for mode!\n");
+			return -EINVAL;
+		}
 	}
 
 	/* Ensure that the cursor is valid for the new mode before changing... */
@@ -4751,8 +4779,9 @@ static int i9xx_crtc_mode_set(struct drm_crtc *crtc,
 	if (is_sdvo && is_tv)
 		i9xx_adjust_sdvo_tv_clock(adjusted_mode, &clock);
 
-	i9xx_update_pll_dividers(crtc, &clock, has_reduced_clock ?
-				 &reduced_clock : NULL);
+	if (!is_dsi)
+		i9xx_update_pll_dividers(crtc, &clock, has_reduced_clock ?
+					 &reduced_clock : NULL);
 
 	if (IS_VALLEYVIEW(dev)) {
 		clockbend.referenceclk = refclk;
@@ -4776,9 +4805,15 @@ static int i9xx_crtc_mode_set(struct drm_crtc *crtc,
 	if (IS_GEN2(dev))
 		i8xx_update_pll(crtc, adjusted_mode, &clock, num_connectors);
 	else if (IS_VALLEYVIEW(dev)) {
-		refclk = i9xx_get_refclk(crtc, num_connectors);
-		vlv_update_pll(crtc, mode, adjusted_mode, &clock, NULL, refclk,
-				num_connectors);
+		if (is_dsi) {
+			/* enable dsi pll */
+			intel_configure_dsi_pll(intel_dsi, mode);
+			intel_enable_dsi_pll(intel_dsi);
+		} else {
+			refclk = i9xx_get_refclk(crtc, num_connectors);
+			vlv_update_pll(crtc, mode, adjusted_mode, &clock,
+					NULL, refclk, num_connectors);
+		}
 	}
 	else
 		i9xx_update_pll(crtc, mode, adjusted_mode, &clock,

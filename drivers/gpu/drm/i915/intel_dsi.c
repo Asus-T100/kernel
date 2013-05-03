@@ -149,7 +149,7 @@ static void intel_dsi_pre_enable(struct intel_encoder *encoder)
 	DRM_DEBUG_KMS("\n");
 }
 
-static void intel_dsi_enable(struct intel_encoder *encoder)
+void intel_dsi_enable(struct intel_encoder *encoder)
 {
 	struct drm_i915_private *dev_priv = encoder->base.dev->dev_private;
 	struct intel_crtc *intel_crtc = to_intel_crtc(encoder->base.crtc);
@@ -190,6 +190,7 @@ static void intel_dsi_enable(struct intel_encoder *encoder)
 		DRM_DEBUG_KMS("SPL Packet Sent failed\n");
 }
 
+/* XXX: We need to call this from crtc disable sequence ??? */
 static void intel_dsi_disable(struct intel_encoder *encoder)
 {
 	struct drm_i915_private *dev_priv = encoder->base.dev->dev_private;
@@ -199,6 +200,11 @@ static void intel_dsi_disable(struct intel_encoder *encoder)
 	u32 temp;
 
 	DRM_DEBUG_KMS("\n");
+
+	/* XXX: Check if we have to do this
+	I915_WRITE_BITS(0x61204, 0, 0x00000001);
+	while (I915_READ(0x61200) & 0xB0000000) {};
+	*/
 
 	intel_dsi->dev.dev_ops->dpms(&intel_dsi->dev, false);
 
@@ -439,12 +445,6 @@ static void intel_dsi_mode_set(struct drm_encoder *encoder,
 	int plane = intel_crtc->plane;
 	unsigned int bpp = intel_crtc->bpp;
 	u32 val;
-	u32 hblank;
-	u32 vblank;
-	u32 hsync_offset;
-	u32 hsync_width;
-	u32 vsync_offset;
-	u32 vsync_width;
 
 	DRM_DEBUG_KMS("\n");
 
@@ -467,33 +467,6 @@ static void intel_dsi_mode_set(struct drm_encoder *encoder,
 	intel_mid_pmic_writeb(0x51, 0x01);
 	intel_mid_pmic_writeb(0x52, 0x01);
 #endif
-
-	/* enable dsi pll */
-	intel_configure_dsi_pll(intel_dsi, mode);
-	intel_enable_dsi_pll(intel_dsi);
-
-	/* configure pipe*/
-	I915_WRITE(HTOTAL(pipe),
-		   (adjusted_mode->crtc_hdisplay - 1) |
-		   ((adjusted_mode->crtc_htotal - 1) << 16));
-	I915_WRITE(HBLANK(pipe),
-		   (adjusted_mode->crtc_hblank_start - 1) |
-		   ((adjusted_mode->crtc_hblank_end - 1) << 16));
-	I915_WRITE(HSYNC(pipe),
-		   (adjusted_mode->crtc_hsync_start - 1) |
-		   ((adjusted_mode->crtc_hsync_end - 1) << 16));
-	I915_WRITE(VTOTAL(pipe),
-		   (adjusted_mode->crtc_vdisplay - 1) |
-		   ((adjusted_mode->crtc_vtotal - 1) << 16));
-	I915_WRITE(VBLANK(pipe),
-		   (adjusted_mode->crtc_vblank_start - 1) |
-		   ((adjusted_mode->crtc_vblank_end - 1) << 16));
-	I915_WRITE(VSYNC(pipe),
-		   (adjusted_mode->crtc_vsync_start - 1) |
-		   ((adjusted_mode->crtc_vsync_end - 1) << 16));
-	I915_WRITE(PIPESRC(pipe),
-		   ((mode->hdisplay - 1) << 16) | (mode->vdisplay - 1));
-	I915_WRITE(PIPECONF(pipe), 0x00000000);
 
 	/* enable mipi port */
 	dsi_config(encoder);
