@@ -60,12 +60,4 @@ config EXTCON_MID
 	  Say Y here to enable support for external accessory (headset)
 	  detection for Intel MID devices on Android.
 
-config EXTCON_FSA9285
-	tristate "FSA9295 EXTCON support"
-	depends on I2C
-	help
-	  Say Y here to enable support for external accessory detection
-	  with FSA9285. FSA9285 is MCPC compliant, USB port, multimedia
-	  switch with auto detection.
-
 endif # MULTISTATE_SWITCH

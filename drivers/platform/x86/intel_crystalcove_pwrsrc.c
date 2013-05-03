@@ -34,7 +34,6 @@
 #include <linux/notifier.h>
 #include <linux/extcon.h>
 #include <linux/mfd/intel_mid_pmic.h>
-#include <asm/intel_crystalcove_pwrsrc.h>
 
 #define CRYSTALCOVE_PWRSRCIRQ_REG	0x03
 #define CRYSTALCOVE_MPWRSRCIRQS0_REG	0x0F
@@ -122,42 +121,32 @@ static void crystalcove_pwrsrc_log_rsi(struct platform_device *pdev,
 	intel_mid_pmic_writeb(reg_s, clear_mask);
 }
 
-/*
- * D1 ensures SW control: D1[0]  = HW mode, D1[1] = SW mode
- * D0 control the VBUS: D0[0] = disable VBUS, D0[1] = enable VBUS
- */
-int crystal_cove_enable_vbus(void)
+static irqreturn_t crystalcove_pwrsrc_isr(int irq, void *data)
 {
-	int ret;
+	struct pwrsrc_info *info = data;
+	int pwrsrcirq = 0x0, spwrsrc = 0x0;
+	int mask;
 
-	ret = intel_mid_pmic_writeb(CRYSTALCOVE_VBUSCNTL_REG, 0x03);
-	return ret;
-}
-EXPORT_SYMBOL(crystal_cove_enable_vbus);
-
-int crystal_cove_disable_vbus(void)
-{
-	int ret;
-
-	ret = intel_mid_pmic_writeb(CRYSTALCOVE_VBUSCNTL_REG, 0x02);
-	return ret;
-}
-EXPORT_SYMBOL(crystal_cove_disable_vbus);
-
-static void handle_pwrsrc_event(struct pwrsrc_info *info, int pwrsrcirq)
-{
-	int spwrsrc, mask;
+	pwrsrcirq = intel_mid_pmic_readb(CRYSTALCOVE_PWRSRCIRQ_REG);
+	if (pwrsrcirq < 0) {
+		dev_err(&info->pdev->dev, "PWRSRCIRQ read failed\n");
+		goto pmic_read_fail;
+	}
 
 	spwrsrc = intel_mid_pmic_readb(CRYSTALCOVE_SPWRSRC_REG);
-	if (spwrsrc < 0)
+	if (spwrsrc < 0) {
+		dev_err(&info->pdev->dev, "SPWRSRC read failed\n");
 		goto pmic_read_fail;
+	}
+	dev_dbg(&info->pdev->dev,
+			"pwrsrcirq=%x, spwrsrc=%x\n", pwrsrcirq, spwrsrc);
 
 	if (pwrsrcirq & PWRSRC_VBUS_DET) {
 		if (spwrsrc & PWRSRC_VBUS_DET) {
-			dev_dbg(&info->pdev->dev, "VBUS attach event\n");
+			dev_dbg(&info->pdev->dev, "VBUS attach interrupt\n");
 			mask = 1;
 		} else {
-			dev_dbg(&info->pdev->dev, "VBUS detach event\n");
+			dev_dbg(&info->pdev->dev, "VBUS detach interrupt\n");
 			mask = 0;
 		}
 		/* notify OTG driver */
@@ -166,54 +155,32 @@ static void handle_pwrsrc_event(struct pwrsrc_info *info, int pwrsrcirq)
 				USB_EVENT_VBUS, &mask);
 	} else if (pwrsrcirq & PWRSRC_DCIN_DET) {
 		if (spwrsrc & PWRSRC_DCIN_DET) {
-			dev_dbg(&info->pdev->dev, "ADP attach event\n");
-			if (info->edev)
-				extcon_set_cable_state(info->edev,
+			dev_dbg(&info->pdev->dev, "ADP attach interrupt\n");
+			extcon_set_cable_state(info->edev,
 						PWRSRC_EXTCON_CABLE_AC, true);
 		} else {
-			dev_dbg(&info->pdev->dev, "ADP detach event\n");
-			if (info->edev)
-				extcon_set_cable_state(info->edev,
+			dev_dbg(&info->pdev->dev, "ADP detach interrupt\n");
+			extcon_set_cable_state(info->edev,
 						PWRSRC_EXTCON_CABLE_AC, false);
 		}
 	} else if (pwrsrcirq & PWRSRC_BAT_DET) {
 		if (spwrsrc & PWRSRC_BAT_DET)
-			dev_dbg(&info->pdev->dev, "Battery attach event\n");
+			dev_dbg(&info->pdev->dev, "Battery attach interrupt\n");
 		else
-			dev_dbg(&info->pdev->dev, "Battery detach event\n");
+			dev_dbg(&info->pdev->dev, "Battery detach interrupt\n");
 	} else {
-		dev_dbg(&info->pdev->dev, "event none or spurious\n");
+		dev_dbg(&info->pdev->dev, "Spurious interrupt\n");
 	}
-
-	return ;
 
 pmic_read_fail:
-	dev_err(&info->pdev->dev, "SPWRSRC read failed:%d\n", spwrsrc);
-	return ;
-}
-
-static irqreturn_t crystalcove_pwrsrc_isr(int irq, void *data)
-{
-	struct pwrsrc_info *info = data;
-	int pwrsrcirq;
-
-	pwrsrcirq = intel_mid_pmic_readb(CRYSTALCOVE_PWRSRCIRQ_REG);
-	if (pwrsrcirq < 0) {
-		dev_err(&info->pdev->dev, "PWRSRCIRQ read failed\n");
-		goto pmic_irq_fail;
-	}
-
-	dev_dbg(&info->pdev->dev, "pwrsrcirq=%x\n", pwrsrcirq);
-	handle_pwrsrc_event(info, pwrsrcirq);
-
-pmic_irq_fail:
 	intel_mid_pmic_writeb(CRYSTALCOVE_PWRSRCIRQ_REG, pwrsrcirq);
 	return IRQ_HANDLED;
 }
+
 static int crystalcove_pwrsrc_probe(struct platform_device *pdev)
 {
 	struct pwrsrc_info *info;
-	int ret, pwrsrcirq = 0x0;
+	int ret, spwrsrc, mask;
 
 	info = kzalloc(sizeof(*info), GFP_KERNEL);
 	if (!info) {
@@ -233,10 +200,8 @@ static int crystalcove_pwrsrc_probe(struct platform_device *pdev)
 	crystalcove_pwrsrc_log_rsi(pdev, pwrsrc_wakesrc_info,
 				CRYSTALCOVE_WAKESRC_REG);
 
-	/* Set VBUS supply mode to SW control mode */
-	intel_mid_pmic_writeb(CRYSTALCOVE_VBUSCNTL_REG, 0x02);
+	/* TODO: Battery Channel ADC support */
 
-#ifndef CONFIG_EXTCON_FSA9285
 	/* register with extcon */
 	info->edev = kzalloc(sizeof(struct extcon_dev), GFP_KERNEL);
 	if (!info->edev) {
@@ -252,24 +217,38 @@ static int crystalcove_pwrsrc_probe(struct platform_device *pdev)
 		goto extcon_reg_failed;
 	}
 
+	/* Workaround: Set VBUS supply mode to HW control mode */
+	intel_mid_pmic_writeb(CRYSTALCOVE_VBUSCNTL_REG, 0x00);
+
 	/* OTG notification */
 	info->otg = usb_get_transceiver();
-	if (!info->otg) {
+	if (!info->otg)
 		dev_warn(&pdev->dev, "Failed to get otg transceiver!!\n");
-		goto otg_reg_failed;
-	}
-#else
-	info->edev = NULL;
-	info->otg = NULL;
-#endif
 
-	/* check if device is already connected */
-	if (info->otg)
-		pwrsrcirq |= PWRSRC_VBUS_DET;
-	if (info->edev)
-		pwrsrcirq |= PWRSRC_DCIN_DET;
-	if (pwrsrcirq)
-		handle_pwrsrc_event(info, pwrsrcirq);
+	/* check if the VBUS is already attached */
+	spwrsrc = intel_mid_pmic_readb(CRYSTALCOVE_SPWRSRC_REG);
+	if (spwrsrc < 0)
+		dev_warn(&info->pdev->dev, "SPWRSRC read failed\n");
+
+	if ((spwrsrc > 0) && (spwrsrc & PWRSRC_VBUS_DET)) {
+		dev_dbg(&info->pdev->dev, "VBUS attached\n");
+		mask = 1;
+		/* notify OTG driver */
+		if (info->otg)
+			atomic_notifier_call_chain(&info->otg->notifier,
+				USB_EVENT_VBUS, &mask);
+	}
+
+	/* check if adapter is already connected */
+	if (spwrsrc & PWRSRC_DCIN_DET) {
+		dev_dbg(&info->pdev->dev, "ADP attached\n");
+		extcon_set_cable_state(info->edev,
+						PWRSRC_EXTCON_CABLE_AC, true);
+	} else {
+		dev_dbg(&info->pdev->dev, "ADP detached\n");
+		extcon_set_cable_state(info->edev,
+						PWRSRC_EXTCON_CABLE_AC, false);
+	}
 
 	ret = request_threaded_irq(info->irq, NULL, crystalcove_pwrsrc_isr,
 				IRQF_ONESHOT, PWRSRC_DRV_NAME, info);
@@ -285,16 +264,10 @@ static int crystalcove_pwrsrc_probe(struct platform_device *pdev)
 	return 0;
 
 intr_teg_failed:
-#ifndef CONFIG_EXTCON_FSA9285
-	if (info->otg)
-		usb_put_transceiver(info->otg);
-otg_reg_failed:
-	if (info->edev)
-		extcon_dev_unregister(info->edev);
+	extcon_dev_unregister(info->edev);
 extcon_reg_failed:
 	kfree(info->edev);
 extcon_mem_failed:
-#endif
 	kfree(info);
 	return ret;
 }
@@ -304,8 +277,6 @@ static int crystalcove_pwrsrc_remove(struct platform_device *pdev)
 	struct pwrsrc_info *info = platform_get_drvdata(pdev);
 
 	free_irq(info->irq, info);
-	if (info->otg)
-		usb_put_transceiver(info->otg);
 	if (info->edev) {
 		extcon_dev_unregister(info->edev);
 		kfree(info->edev);
