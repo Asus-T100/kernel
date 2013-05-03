@@ -1035,11 +1035,12 @@ static void check_modem_status(struct uart_hsu_port *up)
 	struct uart_port *uport = &up->port;
 	struct tty_port *port = &uport->state->port;
 	struct tty_struct *tty = port->tty;
+	struct hsu_port_cfg *cfg = phsu->configs[up->index];
 	int status;
 	int delta_msr = 0;
 
 	status = serial_in(up, UART_MSR);
-	if (port->flags & ASYNC_CTS_FLOW) {
+	if (port->flags & ASYNC_CTS_FLOW && !cfg->hw_ctrl_cts) {
 		if (tty->hw_stopped) {
 			if (status & UART_MSR_CTS) {
 				serial_sched_cmd(up, qcmd_start_tx);
@@ -2188,6 +2189,7 @@ static void serial_hsu_command(struct uart_hsu_port *up)
 	int status;
 	struct hsu_dma_chan *txc = up->txc;
 	struct hsu_dma_chan *rxc = up->rxc;
+	struct hsu_port_cfg *cfg = phsu->configs[up->index];
 
 	if (unlikely(test_bit(flag_cmd_off, &up->flags)))
 		return;
@@ -2316,6 +2318,8 @@ static void serial_hsu_command(struct uart_hsu_port *up)
 			break;
 	}
 	up->msr = serial_in(up, UART_MSR);
+	if (cfg->hw_ctrl_cts)
+		up->msr |= UART_MSR_CTS;
 	check_modem_status(up);
 	spin_unlock_irqrestore(&up->port.lock, flags);
 }

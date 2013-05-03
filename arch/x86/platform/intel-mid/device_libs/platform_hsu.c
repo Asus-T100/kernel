@@ -436,6 +436,7 @@ static struct hsu_port_cfg hsu_port_cfgs[][hsu_port_max] = {
 			.index = 0,
 			.name = HSU_BT_PORT,
 			.idle = 100,
+			.hw_ctrl_cts = 1,
 			/* Trust FW has set it correctly */
 			.hw_set_alt = NULL,
 			.hw_set_rts = dw_hsu_rts,
@@ -446,6 +447,7 @@ static struct hsu_port_cfg hsu_port_cfgs[][hsu_port_max] = {
 			.name = HSU_GPS_PORT,
 			.idle = 100,
 			.preamble = 1,
+			.hw_ctrl_cts = 1,
 			/* Trust FW has set it correctly */
 			.hw_set_alt = NULL,
 			.hw_set_rts = dw_hsu_rts,
