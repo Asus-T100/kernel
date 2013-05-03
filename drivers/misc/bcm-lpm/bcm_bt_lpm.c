@@ -31,10 +31,6 @@
 #include <linux/pm_runtime.h>
 #include <asm/intel-mid.h>
 #include <asm/intel_mid_hsu.h>
-#ifdef CONFIG_ACPI
-#include <linux/acpi.h>
-#include <linux/acpi_gpio.h>
-#endif
 
 static struct rfkill *bt_rfkill;
 static bool bt_enabled;
@@ -67,34 +63,6 @@ struct bcm_bt_lpm {
 	void (*uart_enable)(struct device *tty);
 	void (*uart_disable)(struct device *tty);
 } bt_lpm;
-
-#ifdef CONFIG_ACPI
-static int bcm_bt_lpm_acpi_probe(struct platform_device *pdev)
-{
-	struct acpi_gpio_info info;
-
-	/*
-	 * Handle ACPI specific initializations.
-	 */
-	dev_dbg(&pdev->dev, "BCM2E1A ACPI specific probe\n");
-
-#ifdef LPM_ON
-	bt_lpm.gpio_wake = acpi_get_gpio_by_index(&pdev->dev, 0, &info);
-	if (!gpio_is_valid(bt_lpm.gpio_wake)) {
-		pr_err("%s: gpio not valid\n", __func__);
-		return -EINVAL;
-	}
-#endif
-
-	bt_lpm.gpio_enable_bt = acpi_get_gpio_by_index(&pdev->dev, 1, &info);
-	if (!gpio_is_valid(bt_lpm.gpio_enable_bt)) {
-		pr_err("%s: gpio not valid\n", __func__);
-		return -EINVAL;
-	}
-
-	return 0;
-}
-#endif
 
 static int bcm43xx_bt_rfkill_set_power(void *data, bool blocked)
 {
@@ -292,9 +260,10 @@ static int bcm_bt_lpm_init(struct platform_device *pdev)
 }
 #endif
 
-static int bcm_bt_lpm_device_gpio_probe(struct platform_device *pdev)
+static int bcm43xx_bluetooth_probe(struct platform_device *pdev)
 {
 	struct bcm_bt_lpm_platform_data *pdata = pdev->dev.platform_data;
+	bool default_state = true;	/* off */
 	int ret = 0;
 
 	int_handler_enabled = false;
@@ -304,73 +273,23 @@ static int bcm_bt_lpm_device_gpio_probe(struct platform_device *pdev)
 		return -EINVAL;
 	}
 
-#ifndef CONFIG_ACPI
 	if (!gpio_is_valid(pdata->gpio_enable)) {
 		pr_err("%s: gpio not valid\n", __func__);
 		return -EINVAL;
 	}
 
 #ifdef LPM_ON
-	if (!gpio_is_valid(pdata->gpio_wake)) {
+	if (!gpio_is_valid(pdata->gpio_wake) ||
+		!gpio_is_valid(pdata->gpio_host_wake)) {
 		pr_err("%s: gpio not valid\n", __func__);
 		return -EINVAL;
 	}
 #endif
+
 	bt_lpm.gpio_wake = pdata->gpio_wake;
-	bt_lpm.gpio_enable_bt = pdata->gpio_enable;
-#endif
-
-#ifdef LPM_ON
-	if (!gpio_is_valid(pdata->gpio_host_wake)) {
-		pr_err("%s: gpio not valid\n", __func__);
-		return -EINVAL;
-	}
-#endif
-
 	bt_lpm.gpio_host_wake = pdata->gpio_host_wake;
 	bt_lpm.int_host_wake = pdata->int_host_wake;
-
-	return ret;
-}
-
-static int bcm43xx_bluetooth_probe(struct platform_device *pdev)
-{
-	struct bcm_bt_lpm_platform_data *pdata = pdev->dev.platform_data;
-	bool default_state = true;	/* off */
-	int ret = 0;
-#ifdef CONFIG_ACPI
-	/* FIXME: keep tracking of the probes as the driver will be binded twice
-	 * once with pdev bcm_bt_lpm and once through ACPI with BCM2E1A
-	 */
-	static bool pdev_register, acpi_register;
-#endif
-
-#ifdef CONFIG_ACPI
-	if (ACPI_HANDLE(&pdev->dev)) {
-		/*
-		 * acpi specific probe
-		 */
-		pr_debug("%s for ACPI device %s\n", __func__,
-							dev_name(&pdev->dev));
-		if (bcm_bt_lpm_acpi_probe(pdev) < 0)
-			return -EINVAL;
-		else
-			acpi_register = true;
-	} else {
-		pr_debug("%s for non ACPI device %s\n", __func__,
-							dev_name(&pdev->dev));
-		if (bcm_bt_lpm_device_gpio_probe(pdev) < 0)
-			return -EINVAL;
-		else
-			pdev_register = true;
-	}
-
-	if (acpi_register == false || pdev_register == false)
-		return -EAGAIN;
-#else
-	if (bcm_bt_lpm_device_gpio_probe(pdev) < 0)
-		return -EINVAL;
-#endif
+	bt_lpm.gpio_enable_bt = pdata->gpio_enable;
 
 	ret = gpio_request(bt_lpm.gpio_enable_bt, pdev->name);
 	if (ret < 0) {
@@ -416,9 +335,6 @@ static int bcm43xx_bluetooth_probe(struct platform_device *pdev)
 	}
 #endif
 
-	pr_debug("%s: gpio_wake=%d, gpio_enable=%d\n", __func__,
-				bt_lpm.gpio_wake, bt_lpm.gpio_enable_bt);
-
 	bt_lpm.port = pdata->port;
 	bt_lpm.uart_disable = pdata->uart_disable;
 	WARN_ON(!bt_lpm.uart_disable);
@@ -441,11 +357,9 @@ static int bcm43xx_bluetooth_probe(struct platform_device *pdev)
 		goto err_rfkill_register;
 
 #ifdef LPM_ON
-	if (intel_mid_identify_cpu() != INTEL_MID_CPU_CHIP_VALLEYVIEW2) {
-		ret = bcm_bt_lpm_init(pdev);
-		if (ret)
-			goto err_lpm_init;
-	}
+	ret = bcm_bt_lpm_init(pdev);
+	if (ret)
+		goto err_lpm_init;
 #endif
 
 	return ret;
@@ -510,16 +424,6 @@ int bcm43xx_bluetooth_resume(struct platform_device *pdev)
 }
 #endif
 
-#ifdef CONFIG_ACPI
-static struct acpi_device_id bcm_id_table[] = {
-	/* ACPI IDs here */
-	{ "BCM2E1A", 0 },
-	{ }
-};
-
-MODULE_DEVICE_TABLE(acpi, bcm_id_table);
-#endif
-
 static struct platform_driver bcm43xx_bluetooth_platform_driver = {
 	.probe = bcm43xx_bluetooth_probe,
 	.remove = bcm43xx_bluetooth_remove,
@@ -530,9 +434,6 @@ static struct platform_driver bcm43xx_bluetooth_platform_driver = {
 	.driver = {
 		   .name = "bcm_bt_lpm",
 		   .owner = THIS_MODULE,
-#ifdef CONFIG_ACPI
-		.acpi_match_table = ACPI_PTR(bcm_id_table),
-#endif
 		   },
 };
 

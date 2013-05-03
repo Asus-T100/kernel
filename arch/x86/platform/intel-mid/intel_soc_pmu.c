@@ -627,6 +627,9 @@ static void pmu_enumerate(void)
 	unsigned int base_class;
 
 	while ((pdev = pci_get_device(PCI_ID_ANY, PCI_ID_ANY, pdev)) != NULL) {
+		if (platform_is(INTEL_ATOM_MRFLD) &&
+			pdev->device == MID_MRFL_HDMI_DRV_DEV_ID)
+			continue;
 
 		/* find the base class info */
 		base_class = pdev->class >> 16;
@@ -759,7 +762,7 @@ module_param(enable_standby, uint, 0000);
  * with display lockup, HSIC etc., so have a boot time option
  * to enable S0ix/S3
  */
-unsigned int enable_s3 __read_mostly = 1;
+unsigned int enable_s3 __read_mostly;
 module_param(enable_s3, uint, S_IRUGO | S_IWUSR);
 
 /* FIXME:: We have issues with S0ix/S3 enabling by default
@@ -1195,6 +1198,11 @@ int __ref pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state)
 		record->real_change = 0;
 	}
 
+	/* Ignore HDMI HPD driver d0ix on LSS 0 on MRFLD */
+	if (platform_is(INTEL_ATOM_MRFLD) &&
+			pdev->device == MID_MRFL_HDMI_DRV_DEV_ID)
+			goto unlock;
+
 	/*in case a LSS is assigned to more than one pdev, we need
 	  *to find the shallowest state the LSS should be put into*/
 	state = pmu_pci_get_weakest_state_for_lss(i, pdev, state);
@@ -1209,12 +1217,6 @@ int __ref pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state)
 				update_dev_res(i, state);
 			goto nc_done;
 		}
-	}
-
-	/* Ignore d0ix on LSS 0 on MRFLD */
-	if (platform_is(INTEL_ATOM_MRFLD)) {
-		if ((sub_sys_pos == 0) && (sub_sys_index == 0))
-			goto unlock;
 	}
 
 	/* initialize the current pmssc states */

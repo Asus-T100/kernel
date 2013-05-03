@@ -372,7 +372,6 @@ static struct snd_soc_dai_link byt_dailink[] = {
 		.init = byt_init,
 		.ignore_suspend = 1,
 		.ops = &byt_aif1_ops,
-		.playback_count = 2,
 	},
 	[BYT_AUD_AIF2] = {
 		.name = "Baytrail Voice",

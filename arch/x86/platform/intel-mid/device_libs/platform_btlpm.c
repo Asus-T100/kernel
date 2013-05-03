@@ -56,57 +56,27 @@ static int __init bluetooth_init(void)
 
 	int error_reg;
 
-	/* Get the GPIO numbers from SFI or ACPI table */
+	/* Get the GPIO numbers from the SFI table */
 
-	if (intel_mid_identify_cpu() != INTEL_MID_CPU_CHIP_VALLEYVIEW2) {
-		bcm_bt_lpm_pdata.gpio_enable = get_gpio_by_name("BT-reset");
-		if (!gpio_is_valid(bcm_bt_lpm_pdata.gpio_enable)) {
-			pr_err("%s: gpio %s not found\n", __func__, "BT-reset");
-			return -ENODEV;
-		}
-	} else {
-#ifndef CONFIG_ACPI
-		bcm_bt_lpm_pdata.gpio_enable = 53;
-		if (!gpio_is_valid(bcm_bt_lpm_pdata.gpio_enable)) {
-			pr_err("%s: gpio %d not found\n", __func__,
-						bcm_bt_lpm_pdata.gpio_enable);
-			return -ENODEV;
-		}
-#endif
+	bcm_bt_lpm_pdata.gpio_enable = get_gpio_by_name("BT-reset");
+	if (!gpio_is_valid(bcm_bt_lpm_pdata.gpio_enable)) {
+		pr_err("%s: gpio %s not found\n", __func__, "BT-reset");
+		return -ENODEV;
 	}
-
 
 #ifdef LPM_ON
-	if (intel_mid_identify_cpu() != INTEL_MID_CPU_CHIP_VALLEYVIEW2) {
-		bcm_bt_lpm_pdata.gpio_host_wake =
-				get_gpio_by_name("bt_uart_enable");
-		bcm_bt_lpm_pdata.int_host_wake =
-				gpio_to_irq(bcm_bt_lpm_pdata.gpio_host_wake);
-
-		bcm_bt_lpm_pdata.gpio_wake = get_gpio_by_name("bt_wakeup");
-
-		if (!gpio_is_valid(bcm_bt_lpm_pdata.gpio_wake)) {
-			pr_err("%s: gpio %s not found\n", __func__,
-								"bt_wakeup");
-			return -ENODEV;
-		}
-	} else {
-		bcm_bt_lpm_pdata.gpio_host_wake = 17;
-		pr_err("baytrail, hardcoding GPIO Host Wake to %d\n",
-					bcm_bt_lpm_pdata.gpio_host_wake);
-		bcm_bt_lpm_pdata.int_host_wake = 70;
-#ifndef CONFIG_ACPI
-		bcm_bt_lpm_pdata.gpio_wake = 52;
-		if (!gpio_is_valid(bcm_bt_lpm_pdata.gpio_wake)) {
-			pr_err("%s: gpio %d not found\n", __func__,
-						bcm_bt_lpm_pdata.gpio_wake);
-			return -ENODEV;
-		}
-#endif
+	bcm_bt_lpm_pdata.gpio_host_wake = get_gpio_by_name("bt_uart_enable");
+	if (!gpio_is_valid(bcm_bt_lpm_pdata.gpio_host_wake)) {
+		pr_err("%s: gpio %s not found\n", __func__, "bt_uart_enable");
+		return -ENODEV;
 	}
 
-	if (!gpio_is_valid(bcm_bt_lpm_pdata.gpio_host_wake)) {
-		pr_err("%s: gpio %s not found\n", __func__, "bt_host_wake");
+	bcm_bt_lpm_pdata.int_host_wake =
+				gpio_to_irq(bcm_bt_lpm_pdata.gpio_host_wake);
+
+	bcm_bt_lpm_pdata.gpio_wake = get_gpio_by_name("bt_wakeup");
+	if (!gpio_is_valid(bcm_bt_lpm_pdata.gpio_wake)) {
+		pr_err("%s: gpio %s not found\n", __func__, "bt_wakeup");
 		return -ENODEV;
 	}
 
