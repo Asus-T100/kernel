@@ -467,6 +467,16 @@ int gburst_stats_gpu_freq_mhz_info(int freq_mhz)
 
 
 /**
+ * gburst_stats_cleanup_gfx_load_data() -- clean-up gpu load information
+ * storage from all data.
+ */
+void gburst_stats_cleanup_gfx_load_data(void)
+{
+	gburst_hw_flush_buffer();
+}
+
+
+/**
  * gburst_stats_init() -- Attempt initialization.
  * Function return value:  1 if initialized, 0 if not.
  */

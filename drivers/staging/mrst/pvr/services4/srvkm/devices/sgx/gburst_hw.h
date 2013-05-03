@@ -66,6 +66,8 @@ int gburst_hw_mutex_unlock(void);
 
 int gburst_hw_is_access_denied(void);
 
+void gburst_hw_flush_buffer(void);
+
 #endif /* if (defined CONFIG_GPU_BURST) || (defined CONFIG_GPU_BURST_MODULE) */
 
 #endif /* if !defined GBURST_HW_H */
