@@ -210,7 +210,7 @@ static int crystalcove_adc_read_raw(struct iio_dev *indio_dev,
 	ret = iio_crystalcove_gpadc_sample(indio_dev, (1 << ch), &res);
 	if (ret) {
 		dev_err(info->dev, "sample failed\n");
-		return -EINVAL;
+		return ret;
 	}
 
 	*val = res.data[ch];
@@ -243,7 +243,6 @@ static int crystalcove_adc_read_all_raw(struct iio_channel *chan,
 	ret = iio_crystalcove_gpadc_sample(chan->indio_dev, ch, &res);
 	if (ret) {
 		dev_err(info->dev, "sample failed\n");
-		ret = -EINVAL;
 		goto end;
 	}
 
