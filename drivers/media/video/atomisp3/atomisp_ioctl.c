@@ -482,6 +482,9 @@ static int __get_css_frame_info(struct atomisp_device *isp,
 	struct ia_css_pipe_info info;
 	int pipe_index = atomisp_get_pipe_index(isp, source_pad);
 
+	if (pipe_index >= IA_CSS_PIPE_ID_NUM)
+		return -EINVAL;
+
 	ia_css_pipe_get_info(isp->css2_basis.pipes[pipe_index], &info);
 	switch (source_pad) {
 	case ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE:

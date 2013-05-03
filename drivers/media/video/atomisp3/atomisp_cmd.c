@@ -849,6 +849,12 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error,
 		}
 		pipe->buffers_in_css--;
 		vb = atomisp_css_frame_to_vbuf(pipe, buffer.data.frame);
+
+		if (!vb) {
+			dev_err(isp->dev, "dequeued frame unknown!");
+			return;
+		}
+
 		frame = buffer.data.frame;
 
 		if (isp->params.flash_state == ATOMISP_FLASH_ONGOING) {
@@ -884,8 +890,6 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error,
 
 			isp->params.last_frame_status = isp->frame_status[vb->i];
 
-			if (!vb)
-				dev_err(isp->dev, "dequeued frame unknown!");
 			break;
 		default:
 			break;
@@ -1540,8 +1544,9 @@ int atomisp_is_mbuscode_raw(uint32_t code)
 		atomisp_get_format_bridge_from_mbus(code);
 
 	BUG_ON(!b);
-
-	return is_pixelformat_raw(b->pixelformat);
+	if (b)
+		return is_pixelformat_raw(b->pixelformat);
+	return -EINVAL;
 }
 
 /*
@@ -2225,7 +2230,7 @@ int atomisp_macc_table(struct atomisp_device *isp, int flag,
 	switch (config->color_effect) {
 	case V4L2_COLORFX_NONE:
 		macc_table = NULL;
-		break;
+		return 0;
 	case V4L2_COLORFX_SKY_BLUE:
 		macc_table = &blue_macc_table;
 		break;
@@ -3964,7 +3969,7 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 {
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
-	const struct atomisp_format_bridge *format_bridge;
+	const struct atomisp_format_bridge *format_bridge, *fmt;
 	struct ia_css_frame_info output_info, raw_output_info;
 	struct v4l2_format snr_fmt = *f;
 	unsigned int dvs_env_w = 0,
@@ -4075,18 +4080,25 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	f->fmt.pix.width = snr_fmt.fmt.pix.width;
 	f->fmt.pix.height = snr_fmt.fmt.pix.height;
 
-	atomisp_subdev_get_ffmt(&isp->isp_subdev.subdev, NULL,
-				V4L2_SUBDEV_FORMAT_ACTIVE,
-				ATOMISP_SUBDEV_PAD_SINK)->code =
-		atomisp_get_format_bridge(
-			snr_fmt.fmt.pix.pixelformat)->mbus_code;
+	fmt = atomisp_get_format_bridge(
+					snr_fmt.fmt.pix.pixelformat);
+	if (!fmt)
+		return -EINVAL;
+
+	atomisp_subdev_get_ffmt(
+		&isp->isp_subdev.subdev, NULL,
+		V4L2_SUBDEV_FORMAT_ACTIVE,
+		ATOMISP_SUBDEV_PAD_SINK)->code = fmt->mbus_code;
 
 	isp_sink_fmt = *atomisp_subdev_get_ffmt(&isp->isp_subdev.subdev, NULL,
 					    V4L2_SUBDEV_FORMAT_ACTIVE,
 					    ATOMISP_SUBDEV_PAD_SINK);
 
-	isp_source_fmt.code = atomisp_get_format_bridge(
-		f->fmt.pix.pixelformat)->mbus_code;
+	fmt =  atomisp_get_format_bridge(f->fmt.pix.pixelformat);
+	if (!fmt)
+		return -EINVAL;
+
+	isp_source_fmt.code = fmt->mbus_code;
 	atomisp_subdev_set_ffmt(&isp->isp_subdev.subdev, NULL,
 				V4L2_SUBDEV_FORMAT_ACTIVE,
 				source_pad, &isp_source_fmt);
@@ -4176,11 +4188,14 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 					     f->fmt.pix.height);
 		}
 
-		atomisp_subdev_set_selection(&isp->isp_subdev.subdev, NULL,
+		ret = atomisp_subdev_set_selection(
+					     &isp->isp_subdev.subdev, NULL,
 					     V4L2_SUBDEV_FORMAT_ACTIVE,
 					     ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE,
 					     V4L2_SEL_TGT_COMPOSE, 0,
 					     &main_compose);
+		if (ret)
+			return -EINVAL;
 	}
 
 set_fmt_to_isp:
