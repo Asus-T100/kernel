@@ -283,7 +283,7 @@ bool vsp_interrupt(void *pvData)
 	struct drm_psb_private *dev_priv;
 	struct vsp_private *vsp_priv;
 	unsigned long status;
-	bool ret;
+	bool ret = true;
 	uint32_t sequence;
 
 	PSB_DEBUG_GENERAL("got vsp interrupt\n");
@@ -340,7 +340,9 @@ int vsp_cmdbuf_vpp(struct drm_file *priv,
 	struct ttm_bo_kmap_obj cmd_kmap;
 	bool is_iomem;
 
+	memset(&cmd_kmap, 0, sizeof(cmd_kmap));
 	vsp_priv->vsp_cmd_num = 1;
+
 	/* check command buffer parameter */
 	if ((arg->cmdbuf_offset > cmd_buffer->acc_size) ||
 	    (arg->cmdbuf_size > cmd_buffer->acc_size) ||
@@ -349,8 +351,8 @@ int vsp_cmdbuf_vpp(struct drm_file *priv,
 		DRM_ERROR("VSP: offset=%x, size=%x,cmd_buffer size=%x\n",
 			  arg->cmdbuf_offset, arg->cmdbuf_size,
 			  cmd_buffer->acc_size);
-		ret = -EFAULT;
-		goto out;
+		vsp_priv->vsp_cmd_num = 0;
+		return -EFAULT;
 	}
 
 	VSP_DEBUG("map command first\n");
@@ -1227,6 +1229,7 @@ int psb_vsp_dump_info(struct drm_psb_private *dev_priv)
 			vsp_priv->ack_queue[i].reserved7);
 	}
 
+	return 0;
 }
 
 void psb_powerdown_vsp(struct work_struct *work)
