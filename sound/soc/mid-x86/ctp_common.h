@@ -88,6 +88,7 @@ struct ctp_mc_private {
 	atomic_t bpirq_flag;
 	int bpirq;
 	atomic_t hs_det_retry;
+	bool btn_press_flag;
 #ifdef CONFIG_HAS_WAKELOCK
 	struct wake_lock *jack_wake_lock;
 #endif

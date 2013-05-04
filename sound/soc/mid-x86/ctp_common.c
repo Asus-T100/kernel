@@ -408,6 +408,7 @@ int ctp_soc_jack_gpio_detect_bp(void)
 	int enable, hs_status, status;
 	struct snd_soc_jack *jack = gpio->jack;
 	struct snd_soc_codec *codec = jack->codec;
+	unsigned int mask = SND_JACK_BTN_0 | SND_JACK_HEADSET;
 	struct ctp_mc_private *ctx =
 		container_of(jack, struct ctp_mc_private, ctp_jack);
 
@@ -432,6 +433,13 @@ int ctp_soc_jack_gpio_detect_bp(void)
 			 * before proceeding for button press detection */
 			if (!atomic_dec_return(&ctx->bpirq_flag)) {
 				status = ctx->ops->bp_detection(codec, jack, enable);
+				if (status == mask) {
+					ctx->btn_press_flag = true;
+				} else {
+					if (!(ctx->btn_press_flag))
+						snd_soc_jack_report(jack, mask, mask);
+					ctx->btn_press_flag = false;
+				}
 				atomic_inc(&ctx->bpirq_flag);
 			} else
 				atomic_inc(&ctx->bpirq_flag);
