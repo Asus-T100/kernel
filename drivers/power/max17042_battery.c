@@ -118,16 +118,8 @@
 
 #define MAX17042_MAX_MEM	(0xFF + 1)
 
-/* Model multiplying and dividing factors for Max17050
- * chip to be added later as needed
- */
-#ifdef CONFIG_BOARD_REDRIDGE
-#define MAX17042_MODEL_MUL_FACTOR(a)	(a)
-#define MAX17042_MODEL_DIV_FACTOR(a)	(a)
-#else
-#define MAX17042_MODEL_MUL_FACTOR(a)	((a * 10) / 7)
-#define MAX17042_MODEL_DIV_FACTOR(a)	((a * 7) / 10)
-#endif
+#define MAX17042_MODEL_MUL_FACTOR(a, b)	((a * 100) / b)
+#define MAX17042_MODEL_DIV_FACTOR(a, b)	((a * b) / 100)
 
 #define CONSTANT_TEMP_IN_POWER_SUPPLY	350
 #define POWER_SUPPLY_VOLT_MIN_THRESHOLD	3500000
@@ -303,6 +295,7 @@ struct max17042_chip {
 	bool	enable_fake_temp;
 	int	extra_resv_cap;
 	int	voltage_max;
+	int	model_algo_factor;
 };
 
 /* Sysfs entry for disable shutdown methods from user space */
@@ -1192,24 +1185,18 @@ static void write_custom_regs(struct max17042_chip *chip)
 
 static void update_capacity_regs(struct max17042_chip *chip)
 {
-	if (chip->chip_type == MAX17042) {
-		max17042_write_verify_reg(chip->client, MAX17042_FullCAP,
-			MAX17042_MODEL_MUL_FACTOR(fg_conf_data->full_cap)
-			* fg_conf_data->rsense);
-		max17042_write_verify_reg(chip->client, MAX17042_FullCAPNom,
-			MAX17042_MODEL_MUL_FACTOR(fg_conf_data->full_cap)
-			* fg_conf_data->rsense);
-		max17042_write_reg(chip->client, MAX17042_DesignCap,
-			MAX17042_MODEL_MUL_FACTOR(fg_conf_data->full_cap)
-			* fg_conf_data->rsense);
-	} else {
-		max17042_write_verify_reg(chip->client, MAX17042_FullCAP,
-			fg_conf_data->full_cap * fg_conf_data->rsense);
-		max17042_write_verify_reg(chip->client, MAX17042_FullCAPNom,
-			fg_conf_data->full_capnom * fg_conf_data->rsense);
-		max17042_write_reg(chip->client, MAX17042_DesignCap,
-			fg_conf_data->design_cap * fg_conf_data->rsense);
-	}
+	max17042_write_verify_reg(chip->client, MAX17042_FullCAP,
+			MAX17042_MODEL_MUL_FACTOR(fg_conf_data->full_cap,
+				chip->model_algo_factor)
+					* fg_conf_data->rsense);
+	max17042_write_verify_reg(chip->client, MAX17042_FullCAPNom,
+			MAX17042_MODEL_MUL_FACTOR(fg_conf_data->full_cap,
+				chip->model_algo_factor)
+					* fg_conf_data->rsense);
+	max17042_write_reg(chip->client, MAX17042_DesignCap,
+			MAX17042_MODEL_MUL_FACTOR(fg_conf_data->full_cap,
+				chip->model_algo_factor)
+					* fg_conf_data->rsense);
 }
 
 static void reset_vfsoc0_reg(struct max17042_chip *chip)
@@ -1230,13 +1217,10 @@ static void load_new_capacity_params(struct max17042_chip *chip, bool is_por)
 		 * full_cap by model multiplication factor,fg_vfSoc
 		 * and divide by 100
 		 */
-		if (chip->chip_type == MAX17042)
-			rem_cap = ((fg_vfSoc >> 8) *
+		rem_cap = ((fg_vfSoc >> 8) *
 			(u32)(MAX17042_MODEL_MUL_FACTOR
-			(fg_conf_data->full_cap))) / 100;
-		else
-			rem_cap = ((fg_vfSoc >> 8) *
-			(u32)fg_conf_data->full_capnom) / 100;
+				(fg_conf_data->full_cap,
+					chip->model_algo_factor))) / 100;
 
 		max17042_write_verify_reg(chip->client,
 					MAX17042_RemCap, rem_cap);
@@ -1248,31 +1232,22 @@ static void load_new_capacity_params(struct max17042_chip *chip, bool is_por)
 	}
 
 	/* Write dQ_acc to 200% of Capacity and dP_acc to 200% */
-	if (chip->chip_type == MAX17042)
-		dq_acc = MAX17042_MODEL_MUL_FACTOR(fg_conf_data->full_cap)
-		/ dQ_ACC_DIV;
-	else
-		dq_acc = fg_conf_data->full_capnom / dQ_ACC_DIV;
+	dq_acc = MAX17042_MODEL_MUL_FACTOR(fg_conf_data->full_cap,
+			chip->model_algo_factor) / dQ_ACC_DIV;
 	max17042_write_verify_reg(chip->client, MAX17042_dQacc, dq_acc);
 	max17042_write_verify_reg(chip->client, MAX17042_dPacc, dP_ACC_200);
 
 	max17042_write_verify_reg(chip->client, MAX17042_FullCAP,
 			fg_conf_data->full_cap
 			* fg_conf_data->rsense);
-	if (chip->chip_type == MAX17042) {
-		max17042_write_reg(chip->client, MAX17042_DesignCap,
-			MAX17042_MODEL_MUL_FACTOR(fg_conf_data->full_cap)
+	max17042_write_reg(chip->client, MAX17042_DesignCap,
+			MAX17042_MODEL_MUL_FACTOR(fg_conf_data->full_cap,
+			chip->model_algo_factor)
 			* fg_conf_data->rsense);
-		max17042_write_verify_reg(chip->client, MAX17042_FullCAPNom,
-			MAX17042_MODEL_MUL_FACTOR(fg_conf_data->full_cap)
+	max17042_write_verify_reg(chip->client, MAX17042_FullCAPNom,
+			MAX17042_MODEL_MUL_FACTOR(fg_conf_data->full_cap,
+			chip->model_algo_factor)
 			* fg_conf_data->rsense);
-	} else {
-		max17042_write_reg(chip->client, MAX17042_DesignCap,
-			fg_conf_data->design_cap * fg_conf_data->rsense);
-		max17042_write_verify_reg(chip->client, MAX17042_FullCAPNom,
-			fg_conf_data->full_capnom
-			* fg_conf_data->rsense);
-	}
 	/* Update SOC register with new SOC */
 	max17042_write_reg(chip->client, MAX17042_RepSOC, fg_vfSoc);
 }
@@ -1305,13 +1280,9 @@ static void update_runtime_params(struct max17042_chip *chip)
 	fg_conf_data->full_cap = max17042_read_reg(chip->client,
 							MAX17042_FullCAP);
 	if (fg_conf_data->rsense) {
-		if (chip->chip_type == MAX17042)
-			fg_conf_data->full_capnom = MAX17042_MODEL_DIV_FACTOR(
-					fg_conf_data->full_capnom)
+		fg_conf_data->full_capnom = MAX17042_MODEL_DIV_FACTOR(
+			fg_conf_data->full_capnom, chip->model_algo_factor)
 					/ fg_conf_data->rsense;
-		else
-			fg_conf_data->full_capnom = fg_conf_data->full_capnom
-						/ fg_conf_data->rsense;
 
 		fg_conf_data->full_cap /= fg_conf_data->rsense;
 	}
@@ -1987,6 +1958,11 @@ static int __devinit max17042_probe(struct i2c_client *client,
 		chip->voltage_max = chip->pdata->get_vmax_threshold();
 	else
 		chip->voltage_max = VBATT_MAX;
+
+	if (chip->pdata->fg_algo_model)
+		chip->model_algo_factor = chip->pdata->fg_algo_model;
+	else
+		chip->model_algo_factor = 100;
 
 	i2c_set_clientdata(client, chip);
 	max17042_client = client;

@@ -127,6 +127,7 @@ struct max17042_platform_data {
 	bool soc_intr_mode_enabled;
 	bool reset_chip;
 	int technology;
+	int fg_algo_model; /* maxim chip algorithm model */
 	char battid[BATTID_LEN + 1];
 	char model_name[MODEL_NAME_LEN + 1];
 	char serial_num[2*SERIAL_NUM_LEN + 1];

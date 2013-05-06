@@ -357,10 +357,23 @@ static void init_callbacks(struct max17042_platform_data *pdata)
 
 static void init_platform_params(struct max17042_platform_data *pdata)
 {
-	if (INTEL_MID_BOARD(1, PHONE, MFLD) ||
-		INTEL_MID_BOARD(2, TABLET, MFLD, YKB, ENG) ||
+	pdata->fg_algo_model = 100;
+	if (INTEL_MID_BOARD(1, PHONE, MFLD)) {
+		/* MFLD phones */
+		if (!(INTEL_MID_BOARD(2, PHONE, MFLD, LEX, ENG)) ||
+			!(INTEL_MID_BOARD(2, PHONE, MFLD, LEX, PRO)))
+			/* MFLD phones except Lex phones */
+			pdata->fg_algo_model = 70;
+		if (msic_battery_check(pdata)) {
+			pdata->enable_current_sense = true;
+			pdata->technology = POWER_SUPPLY_TECHNOLOGY_LION;
+		} else {
+			pdata->enable_current_sense = false;
+			pdata->technology = POWER_SUPPLY_TECHNOLOGY_UNKNOWN;
+		}
+	} else if (INTEL_MID_BOARD(2, TABLET, MFLD, YKB, ENG) ||
 		INTEL_MID_BOARD(2, TABLET, MFLD, YKB, PRO)) {
-		/* MFLD Phones and Yukka beach Tablet */
+		/* Yukka beach Tablet */
 		if (msic_battery_check(pdata)) {
 			pdata->enable_current_sense = true;
 			pdata->technology = POWER_SUPPLY_TECHNOLOGY_LION;
