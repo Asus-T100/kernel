@@ -263,6 +263,8 @@ struct devs_id __initconst device_ids[] = {
 		&sfi_handle_mdm},
 	{"XMM_7160_REV3", SFI_DEV_TYPE_MDM, 0, &modem_platform_data,
 		&sfi_handle_mdm},
+	{"XMM_7160_REV3_5", SFI_DEV_TYPE_MDM, 0, &modem_platform_data,
+		&sfi_handle_mdm},
 	{"RMC_CYGNUS", SFI_DEV_TYPE_MDM, 0, &modem_platform_data,
 		&sfi_handle_mdm},
 	{"RMC_CYGNUS_FFRD", SFI_DEV_TYPE_MDM, 0, &modem_platform_data,
