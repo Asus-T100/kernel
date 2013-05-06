@@ -861,6 +861,7 @@ static int i915_cur_delayinfo(struct seq_file *m, void *unused)
 	struct drm_device *dev = node->minor->dev;
 	drm_i915_private_t *dev_priv = dev->dev_private;
 	int ret;
+	u32 pval = 0;
 
 	if (IS_GEN5(dev)) {
 		u16 rgvswctl = I915_READ16(MEMSWCTL);
@@ -872,6 +873,22 @@ static int i915_cur_delayinfo(struct seq_file *m, void *unused)
 			   MEMSTAT_VID_SHIFT);
 		seq_printf(m, "Current P-state: %d\n",
 			   (rgvstat & MEMSTAT_PSTATE_MASK) >> MEMSTAT_PSTATE_SHIFT);
+	} else if (IS_VALLEYVIEW(dev)) {
+		seq_printf(m, "Max Gpu Freq _max_delay_: %d\n",
+				dev_priv->rps.max_delay);
+		seq_printf(m, "Min Gpu Freq _min_delay_: %d\n",
+				dev_priv->rps.min_delay);
+		valleyview_punit_read(dev_priv, PUNIT_REG_GPU_FREQ_STS,
+					&pval);
+		seq_printf(m, "Cur Gpu Freq _cur_delay_: %d\n",
+				pval >> 8);
+		seq_printf(m, "Up Threshold: %ld\n",
+			atomic_read(&dev_priv->turbodebug.up_threshold));
+		seq_printf(m, "Down Threshold: %ld\n",
+			atomic_read(&dev_priv->turbodebug.down_threshold));
+		seq_printf(m, "RP_UP: %d\nRP_DOWN:%d\n",
+				dev_priv->rps.rp_up_masked,
+					dev_priv->rps.rp_down_masked);
 	} else if (IS_GEN6(dev) || IS_GEN7(dev)) {
 		u32 gt_perf_status = I915_READ(GEN6_GT_PERF_STATUS);
 		u32 rp_state_limits = I915_READ(GEN6_RP_STATE_LIMITS);
@@ -1735,7 +1752,7 @@ i915_max_freq_write(struct file *filp,
 	char buf[20];
 	int val = 1, ret;
 
-	if (!(IS_GEN6(dev) || IS_GEN7(dev)))
+	if (!(IS_GEN6(dev) || IS_GEN7(dev) || IS_VALLEYVIEW(dev)))
 		return -ENODEV;
 
 	if (cnt > 0) {
@@ -1758,9 +1775,12 @@ i915_max_freq_write(struct file *filp,
 	/*
 	 * Turbo will still be enabled, but won't go above the set value.
 	 */
-	dev_priv->rps.max_delay = val / 50;
-
-	gen6_set_rps(dev, val / 50);
+	if (IS_VALLEYVIEW(dev)) {
+		valleyview_set_rps(dev, val);
+	} else {
+		dev_priv->rps.max_delay = val / 50;
+		gen6_set_rps(dev, val / 50);
+	}
 	mutex_unlock(&dev->struct_mutex);
 
 	return cnt;

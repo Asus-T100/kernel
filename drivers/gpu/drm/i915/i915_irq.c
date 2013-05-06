@@ -412,6 +412,7 @@ static void gen6_pm_rps_work(struct work_struct *work)
 			I915_WRITE(GEN6_PMINTRMSK, 0);
 			dev_priv->rps.rp_down_masked = 0;
 		}
+		atomic_inc(&dev_priv->turbodebug.up_threshold);
 	} else {
 		if (dev_priv->rps.cur_delay <= dev_priv->rps.min_delay) {
 			I915_WRITE(GEN6_PMINTRMSK,
@@ -425,6 +426,7 @@ static void gen6_pm_rps_work(struct work_struct *work)
 			I915_WRITE(GEN6_PMINTRMSK, 0);
 			dev_priv->rps.rp_up_masked = 0;
 		}
+		atomic_inc(&dev_priv->turbodebug.down_threshold);
 	}
 
 	if (IS_VALLEYVIEW(dev_priv->dev))
