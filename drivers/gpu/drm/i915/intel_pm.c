@@ -2664,6 +2664,89 @@ static void gen6_update_ring_freq(struct drm_device *dev)
 	}
 }
 
+void bios_init_rps(struct drm_i915_private *dev_priv)
+{
+	/* This function implements the Power meter Weights sequencing done
+	 * usually by the BIOS. Since ehis sequencing is not being done in
+	 * the IA firmware code, we are taking care of it in the driver
+	 * for turbo as a hack until IAFW adds support for this. */
+
+	/* Write 0x0 to P-Unit offset 0x6 to enable Turbo */
+	valleyview_punit_write(dev_priv, 0x6, 0);
+
+	I915_WRITE(0xA000, 0x71388);
+	I915_WRITE(0xA080, 0x4);
+	I915_WRITE(0x9424, 0x1);
+	I915_WRITE(0x907C, 0x10000);
+	I915_WRITE(0xA0B0, 0x0);
+	I915_WRITE(0xA010, 0xF4240);
+	I915_WRITE(0xA02C, 0xE8E8);
+	I915_WRITE(0xA030, 0x3BD08);
+	I915_WRITE(0xA068, 0x101D0);
+	I915_WRITE(0xA06C, 0x55730);
+	I915_WRITE(0xA070, 0xA);
+	I915_WRITE(0xA090, 0);	/* Disabling RC6 */
+	I915_WRITE(0xA024, 0x592);
+	I915_WRITE(0xA168, 0x7E);
+
+	I915_WRITE(0xa800, 0x00000000);
+	I915_WRITE(0xa804, 0x00000000);
+	I915_WRITE(0xa808, 0x0000ff0A);
+	I915_WRITE(0xa80c, 0x1D000000);
+	I915_WRITE(0xa810, 0xAC004800);
+	I915_WRITE(0xa814, 0x000F0000);
+	I915_WRITE(0xa818, 0x5A000000);
+	I915_WRITE(0xa81c, 0x2600001F);
+	I915_WRITE(0xa820, 0x00090000);
+	I915_WRITE(0xa824, 0x2000ff00);
+	I915_WRITE(0xa828, 0xff090017);
+	I915_WRITE(0xa82c, 0x00000000);
+	I915_WRITE(0xa830, 0x00000100);
+	I915_WRITE(0xa834, 0x009C0F51);
+	I915_WRITE(0xa838, 0x000B0000);
+	I915_WRITE(0xa83c, 0x007D3307);
+	I915_WRITE(0xa840, 0xff3C0000);
+	I915_WRITE(0xa844, 0xffff00ff);
+	I915_WRITE(0xa848, 0x00220000);
+	I915_WRITE(0xa84c, 0x43000000);
+	I915_WRITE(0xa850, 0x00000800);
+	I915_WRITE(0xa854, 0x00000100);
+	I915_WRITE(0xa858, 0x00000000);
+	I915_WRITE(0xa85c, 0x00000000);
+	I915_WRITE(0xa860, 0x00ff0000);
+	I915_WRITE(0xa900, 0x00000000);
+	I915_WRITE(0xa904, 0x00001c00);
+	I915_WRITE(0xa908, 0x00000000);
+	I915_WRITE(0xa90c, 0x06000000);
+	I915_WRITE(0xa910, 0x09000200);
+	I915_WRITE(0xa914, 0x00000000);
+	I915_WRITE(0xa918, 0x00590000);
+	I915_WRITE(0xa91c, 0x00000000);
+	I915_WRITE(0xa920, 0x04002501);
+	I915_WRITE(0xa924, 0x00000100);
+	I915_WRITE(0xa928, 0x03000410);
+	I915_WRITE(0xa92c, 0x00000000);
+	I915_WRITE(0xa930, 0x00020000);
+	I915_WRITE(0xa934, 0x02070106);
+	I915_WRITE(0xa938, 0x00010100);
+	I915_WRITE(0xa93c, 0x00401c00);
+	I915_WRITE(0xa940, 0x00000000);
+	I915_WRITE(0xa944, 0x00000000);
+	I915_WRITE(0xa948, 0x10000e00);
+	I915_WRITE(0xa94c, 0x02000004);
+	I915_WRITE(0xa950, 0x00000001);
+	I915_WRITE(0xa954, 0x00000004);
+	I915_WRITE(0xa960, 0x00060000);
+	I915_WRITE(0xaa3c, 0x00001c00);
+	I915_WRITE(0xaa54, 0x00000004);
+	I915_WRITE(0xaa60, 0x00060000);
+	I915_WRITE(0xaa80, 0x00B5005A);
+	I915_WRITE(0xaa84, 0x00000000);
+	I915_WRITE(0x1300a4, 0x00000000);
+	I915_WRITE(0xa248, 0x00000058);
+	valleyview_punit_write(dev_priv, 0xd2, 0x1EF53);
+}
+
 static void valleyview_enable_rps(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
@@ -2672,8 +2755,7 @@ static void valleyview_enable_rps(struct drm_device *dev)
 	int i;
 	unsigned long flags;
 
-	/* Write 0x0 to P-Unit offset 0x6 to enable Turbo */
-	valleyview_punit_write(dev_priv, 0x6, 0);
+	bios_init_rps(dev_priv);
 
 	/* Setup RC6 */
 	vlv_rs_initialize(dev);
