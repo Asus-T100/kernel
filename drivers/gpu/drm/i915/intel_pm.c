@@ -4653,5 +4653,134 @@ void vlv_rs_setstate(struct drm_device *dev,
 
 		DRM_DEBUG_DRIVER("RC6 feature is disabled\n");
 	}
+}
 
+/* Ideally we would have liked to use a mutex to lock the critical
+ * sections below. However, the sideband interface is being used by
+ * DPIO display section as well and a spinlock is being used to
+ * safeguard against that because it is being called from an interrupt
+ * context. We therefore need to use the same  mechanism as well in
+ * order to avoid conflicts there. Hence, until a cleaned up sideband
+ * routine enters, we will use the following routines and this spinlock
+ * to gate access. */
+
+int valleyview_iosf_fuse_read(struct drm_i915_private *dev_priv,
+				u8 addr, u32 *val)
+{
+	u32 cmd, devfn, opcode, port, be, bar;
+	unsigned long flags;
+
+	bar = 0;
+	be = 0xf;
+	port = IOSF_PORT_FUSE;
+	opcode = PUNIT_OPCODE_REG_READ;
+	devfn = 0;
+
+	cmd = (devfn << IOSF_DEVFN_SHIFT) | (opcode << IOSF_OPCODE_SHIFT) |
+		(port << IOSF_PORT_SHIFT) | (be << IOSF_BYTE_ENABLES_SHIFT) |
+		(bar << IOSF_BAR_SHIFT);
+
+	spin_lock_irqsave(&dev_priv->dpio_lock, flags);
+
+	if (wait_for((I915_READ(VLV_IOSF_DOORBELL_REQ) & IOSF_SB_BUSY) == 0,
+		     500)) {
+		DRM_ERROR("timeout waiting for pcode write (%d) to finish\n",
+			   addr);
+		return -ETIMEDOUT;
+	}
+
+	I915_WRITE(VLV_IOSF_ADDR, addr);
+	I915_WRITE(VLV_IOSF_DOORBELL_REQ, cmd);
+
+	/* Make sure that the SB is not busy since we need to be synchronous */
+	if (wait_for((I915_READ(VLV_IOSF_DOORBELL_REQ) & IOSF_SB_BUSY) == 0,
+		     500)) {
+		DRM_ERROR("timeout waiting for pcode write (%d) to finish\n",
+			  addr);
+		return -ETIMEDOUT;
+	}
+
+	*val = I915_READ(VLV_IOSF_DATA);
+	I915_WRITE(VLV_IOSF_DATA, 0);
+
+	spin_unlock_irqrestore(&dev_priv->dpio_lock, flags);
+
+	return 0;
+}
+
+int valleyview_punit_read(struct drm_i915_private *dev_priv, u8 addr, u32 *val)
+{
+	u32 cmd, devfn, opcode, port, be, bar;
+	unsigned long flags;
+
+	bar = 0;
+	be = 0xf;
+	port = IOSF_PORT_PUNIT;
+	opcode = PUNIT_OPCODE_REG_READ;
+	devfn = 16;
+
+	cmd = (devfn << IOSF_DEVFN_SHIFT) | (opcode << IOSF_OPCODE_SHIFT) |
+		(port << IOSF_PORT_SHIFT) | (be << IOSF_BYTE_ENABLES_SHIFT) |
+		(bar << IOSF_BAR_SHIFT);
+
+	spin_lock_irqsave(&dev_priv->dpio_lock, flags);
+
+	if (wait_for((I915_READ(VLV_IOSF_DOORBELL_REQ) & IOSF_SB_BUSY) == 0,
+		     500)) {
+		DRM_ERROR("timeout waiting for pcode write (%d) to finish\n",
+			  addr);
+		return -ETIMEDOUT;
+	}
+
+	I915_WRITE(VLV_IOSF_ADDR, addr);
+	I915_WRITE(VLV_IOSF_DOORBELL_REQ, cmd);
+
+	/* Make sure that the SB is not busy since we need to be synchronous */
+	if (wait_for((I915_READ(VLV_IOSF_DOORBELL_REQ) & IOSF_SB_BUSY) == 0,
+		     500)) {
+		DRM_ERROR("timeout waiting for pcode write (%d) to finish\n",
+			  addr);
+		return -ETIMEDOUT;
+	}
+
+	*val = I915_READ(VLV_IOSF_DATA);
+	I915_WRITE(VLV_IOSF_DATA, 0);
+
+	spin_unlock_irqrestore(&dev_priv->dpio_lock, flags);
+
+	return 0;
+}
+
+int valleyview_punit_write(struct drm_i915_private *dev_priv, u8 addr, u32 val)
+{
+	u32 cmd, devfn, opcode, port, be, bar;
+	unsigned long flags;
+
+	bar = 0;
+	be = 0xf;
+	port = IOSF_PORT_PUNIT;
+	opcode = PUNIT_OPCODE_REG_WRITE;
+	devfn = 16;
+
+	cmd = (devfn << IOSF_DEVFN_SHIFT) | (opcode << IOSF_OPCODE_SHIFT) |
+		(port << IOSF_PORT_SHIFT) | (be << IOSF_BYTE_ENABLES_SHIFT) |
+		(bar << IOSF_BAR_SHIFT);
+
+	spin_lock_irqsave(&dev_priv->dpio_lock, flags);
+
+	if (wait_for((I915_READ(VLV_IOSF_DOORBELL_REQ) & IOSF_SB_BUSY) == 0,
+		     500)) {
+		DRM_ERROR("timeout waiting for pcode write (%d) to finish\n",
+			  addr);
+		return -ETIMEDOUT;
+	}
+
+	I915_WRITE(VLV_IOSF_ADDR, addr);
+	I915_WRITE(VLV_IOSF_DATA, val);
+	I915_WRITE(VLV_IOSF_DOORBELL_REQ, cmd);
+	I915_WRITE(VLV_IOSF_DATA, 0);
+
+	spin_unlock_irqrestore(&dev_priv->dpio_lock, flags);
+
+	return 0;
 }

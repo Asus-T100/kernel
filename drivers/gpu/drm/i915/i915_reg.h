@@ -4490,6 +4490,20 @@ EDP_PSR_SW_TIMER
 #define   iCLK0_STEPSIZE_SHIFT			9
 #define   iCLK0_BENDSTEPSIZE			(0xF<<9)
 
+#define   IOSF_PORT_PUNIT			0x4
+#define   IOSF_PORT_FUSE			0x11
+
+#define PUNIT_REG_GPU_LFM			0xd3
+#define PUNIT_REG_GPU_FREQ_REQ			0xd4
+#define PUNIT_REG_GPU_FREQ_STS			0xd8
+#define PUNIT_REG_MEDIA_TURBO_FREQ_REQ		0xdc
+
+#define PUNIT_OPCODE_REG_READ			6
+#define PUNIT_OPCODE_REG_WRITE			7
+
+#define PUNIT_FUSE_BUS2				0xf6 /* bits 47:40 */
+#define PUNIT_FUSE_BUS1				0xf5 /* bits 55:48 */
+
 #define GEN6_GT_CORE_STATUS		0x138060
 #define   GEN6_CORE_CPD_STATE_MASK	(7<<4)
 #define   GEN6_RCn_MASK			7
