@@ -91,7 +91,7 @@ copy_modules_to_root: build_bzImage
 	@find $(KERNEL_MODULES_OUT) -name "*.ko" -exec cp -f {} $(KERNEL_MODULES_ROOT)/ \;
 	@find $(ALL_KERNEL_MODULES) -name "*.ko" -exec cp -f {} $(KERNEL_MODULES_ROOT)/ \;
 	@mkdir -p $(KERNEL_FAKE_DEPMOD)
-	@ln -fs $(ANDROID_BUILD_TOP)/$(KERNEL_MODULES_ROOT) $(KERNEL_FAKE_DEPMOD)/$(KERNEL_VERSION_TAG)
+	@ln -fns $(ANDROID_BUILD_TOP)/$(KERNEL_MODULES_ROOT) $(KERNEL_FAKE_DEPMOD)/$(KERNEL_VERSION_TAG)
 	@/sbin/depmod -b $(KERNEL_OUT_DIR)/fakedepmod $(KERNEL_VERSION_TAG)
 
 get_kernel_from_source: copy_modules_to_root
