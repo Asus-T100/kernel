@@ -261,8 +261,10 @@ int32_t dispatch_wb_message_polling(
 	int32_t ret;
 
 	dev_priv = (struct drm_psb_private *) dev->dev_private;
-	if (!dev_priv)
+	if (!dev_priv) {
 		DRM_ERROR("Failed to get dev_priv\n");
+		return -1;
+	}
 
 	topaz_priv = dev_priv->topaz_private;
 
@@ -368,8 +370,10 @@ int32_t dispatch_wb_message_irq(struct drm_device *dev)
 	int32_t count = 0;
 
 	dev_priv = (struct drm_psb_private *) dev->dev_private;
-	if (!dev_priv)
+	if (!dev_priv) {
 		DRM_ERROR("Failed to get dev_priv\n");
+		return -1;
+	}
 
 	topaz_priv = dev_priv->topaz_private;
 
@@ -422,8 +426,10 @@ int32_t tng_wait_on_sync(
 	/* uint32_t crMultiCoreIntStat; */
 
 	dev_priv = (struct drm_psb_private *) dev->dev_private;
-	if (!dev_priv)
+	if (!dev_priv) {
 		DRM_ERROR("Failed to get dev_priv\n");
+		return -1;
+	}
 
 	topaz_priv = dev_priv->topaz_private;
 
@@ -547,8 +553,10 @@ bool tng_topaz_interrupt(void *pvData)
 	}
 	*/
 	dev_priv = (struct drm_psb_private *) dev->dev_private;
-	if (!dev_priv)
+	if (!dev_priv) {
 		DRM_ERROR("Failed to get dev_priv\n");
+		return false;
+	}
 
 	topaz_priv = dev_priv->topaz_private;
 
@@ -1168,7 +1176,7 @@ int32_t tng_topaz_restore_mtx_state(struct drm_device *dev)
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *)dev->dev_private;
 	uint32_t *mtx_reg_state;
-	int i, need_restore;
+	int i, need_restore = 0;
 	struct tng_topaz_private *topaz_priv = dev_priv->topaz_private;
 	struct psb_video_ctx *pos, *n;
 	const struct tng_topaz_codec_fw *cur_codec_fw;
@@ -2044,14 +2052,15 @@ static int32_t tng_setup_WB_mem(
 
 	video_ctx->wb_bo = ttm_buffer_object_lookup(tfile, wb_handle);
 
+        if (unlikely(video_ctx->wb_bo == NULL)) {
+                DRM_ERROR("TOPAZ: error wb_bo\n");
+                return -1;
+        }
+
 	PSB_DEBUG_GENERAL("TOPAZ: wb_bo 0x%08x, 0x%08x\n",
 		video_ctx->wb_bo, wb_handle);
 	PSB_DEBUG_GENERAL("TOPAZ: wb_bo num page, 0x%08x\n",
 		video_ctx->wb_bo->num_pages);
-	if (unlikely(video_ctx->wb_bo == NULL)) {
-		DRM_ERROR("TOPAZ: error wb_bo\n");
-		return -1;
-	}
 
 	ret = ttm_bo_reserve(video_ctx->wb_bo , true, true, false, 0);
 	if (ret) {
@@ -2624,7 +2633,7 @@ int tng_topaz_remove_ctx(
 	return 0;
 }
 
-int tng_topaz_handle_sigint(
+void tng_topaz_handle_sigint(
 	struct drm_device *dev,
 	struct file *filp)
 {
@@ -2638,7 +2647,6 @@ int tng_topaz_handle_sigint(
 		PSB_DEBUG_TOPAZ("TOPAZ: Prepare to handle CTRL + C\n");
 	} else {
 		PSB_DEBUG_TOPAZ("TOPAZ: Not VEC context or already released\n");
-		return 0;
 	}
 
 	while (topaz_priv->topaz_busy == 1 &&

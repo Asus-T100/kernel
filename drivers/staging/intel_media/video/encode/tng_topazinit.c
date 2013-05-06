@@ -759,9 +759,12 @@ int tng_topaz_init(struct drm_device *dev)
 	ret = ttm_buffer_object_create(bdev, 4096, ttm_bo_type_kernel,
 		DRM_PSB_FLAG_MEM_MMU | TTM_PL_FLAG_NO_EVICT,
 		0, 0, 0, NULL, &(topaz_priv->topaz_bo));
-	if (ret) {
+	if (ret || (NULL==topaz_priv->topaz_bo)) {
 		DRM_ERROR("TOPAZ: failed to allocate topaz BO.\n");
-		ttm_bo_unref(&topaz_priv->topaz_bo);
+		if (topaz_priv->topaz_bo)
+		{
+			ttm_bo_unref(&topaz_priv->topaz_bo);
+		}
 		return ret;
 	}
 
@@ -850,10 +853,6 @@ int tng_topaz_init(struct drm_device *dev)
 	return ret;
 
 out:
-
-	kfree(topaz_priv);
-	dev_priv->topaz_private = NULL;
-
 	for (n = 0; n < IMG_CODEC_NUM; ++n) {
 		if (topaz_priv->topaz_fw[n].text)
 			ttm_bo_unref(&topaz_priv->topaz_fw[n].text);
@@ -862,9 +861,10 @@ out:
 	}
 
 	ttm_bo_kunmap(&topaz_priv->topaz_bo_kmap);
+	ttm_bo_unref(&topaz_priv->topaz_bo);
 
-	if (topaz_priv->topaz_bo)
-		ttm_bo_unref(&topaz_priv->topaz_bo);
+	kfree(topaz_priv);
+	dev_priv->topaz_private = NULL;
 
 	return ret;
 }

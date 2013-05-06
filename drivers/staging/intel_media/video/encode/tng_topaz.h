@@ -317,7 +317,7 @@ uint32_t get_ctx_cnt(struct drm_device *dev);
 struct psb_video_ctx *get_ctx_from_fp(
 	struct drm_device *dev, struct file *filp);
 
-int tng_topaz_handle_sigint(
+void tng_topaz_handle_sigint(
 	struct drm_device *dev,
 	struct file *filp);
 
