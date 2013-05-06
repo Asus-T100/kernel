@@ -2383,9 +2383,31 @@ void gen6_set_rps(struct drm_device *dev, u8 val)
 	dev_priv->rps.cur_delay = val;
 }
 
+void valleyview_set_rps(struct drm_device *dev, u8 val)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	u32 pval = 0;
+
+	valleyview_punit_read(dev_priv, PUNIT_REG_GPU_FREQ_STS, &pval);
+	dev_priv->rps.cur_delay = pval >> 8;
+
+	if (val == dev_priv->rps.cur_delay)
+		return;
+
+	if (val > dev_priv->rps.max_delay || val < dev_priv->rps.min_delay)
+		return;
+
+	valleyview_punit_write(dev_priv, PUNIT_REG_GPU_FREQ_REQ, val);
+}
+
 static void gen6_disable_rps(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
+
+	if (IS_VALLEYVIEW(dev)) {
+		valleyview_set_rps(dev, dev_priv->rps.min_delay);
+		I915_WRITE(GEN6_RP_CONTROL, 0);
+	}
 
 	I915_WRITE(GEN6_RC_CONTROL, 0);
 	I915_WRITE(GEN6_RPNSWREQ, 1 << 31);
@@ -2640,6 +2662,98 @@ static void gen6_update_ring_freq(struct drm_device *dev)
 			continue;
 		}
 	}
+}
+
+static void valleyview_enable_rps(struct drm_device *dev)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct intel_ring_buffer *ring;
+	u32 val = 0;
+	int i;
+	unsigned long flags;
+
+	/* Write 0x0 to P-Unit offset 0x6 to enable Turbo */
+	valleyview_punit_write(dev_priv, 0x6, 0);
+
+	/* Setup RC6 */
+	vlv_rs_initialize(dev);
+
+	I915_WRITE(GEN6_RP_UP_THRESHOLD, 59400);
+	I915_WRITE(GEN6_RP_DOWN_THRESHOLD, 245000);
+	I915_WRITE(GEN6_RP_UP_EI, 66000);
+	I915_WRITE(GEN6_RP_DOWN_EI, 350000);
+
+	I915_WRITE(GEN6_RP_IDLE_HYSTERSIS, 10);
+	I915_WRITE(GEN6_RP_DOWN_TIMEOUT, 0xf4240);
+
+	I915_WRITE(GEN6_RP_CONTROL,
+/*		   GEN6_RP_MEDIA_TURBO | */
+		   GEN6_RP_MEDIA_HW_NORMAL_MODE |
+/*		   GEN6_RP_MEDIA_IS_GFX | */
+		   GEN6_RP_ENABLE |
+		   GEN6_RP_UP_BUSY_AVG |
+		   GEN7_RP_DOWN_IDLE_AVG);
+
+	valleyview_iosf_fuse_read(dev_priv, VLV_PUNIT_RPS_FUSE6, &val);
+	/* Bits [10:3] */
+	dev_priv->rps.max_delay = (val >> 3) & 0xFF;
+	DRM_DEBUG_DRIVER("max GPU freq: %d\n", dev_priv->rps.max_delay);
+
+	/* Rpe is min freq */
+	valleyview_iosf_fuse_read(dev_priv, VLV_PUNIT_RPS_FUSE11, &val);
+	dev_priv->rps.min_delay = (val >> 27);
+	valleyview_iosf_fuse_read(dev_priv, VLV_PUNIT_RPS_FUSE12, &val);
+	dev_priv->rps.min_delay = dev_priv->rps.min_delay | ((val & 0x7) << 5);
+	DRM_DEBUG_DRIVER("min GPU freq: %d\n", dev_priv->rps.min_delay);
+
+	valleyview_punit_read(dev_priv, PUNIT_FUSE_BUS2, &val);
+	DRM_DEBUG_DRIVER("max GPLL freq: %d\n", val);
+
+	valleyview_punit_read(dev_priv, PUNIT_REG_GPU_FREQ_STS, &val);
+	DRM_DEBUG_DRIVER("DDR speed: ");
+	switch (((val >> 6) & 3)) {
+	case 0:
+		dev_priv->mem_freq = 800;
+		DRM_DEBUG_DRIVER("800 MHz\n");
+		break;
+	case 1:
+		DRM_DEBUG_DRIVER("1066 MHz\n");
+		dev_priv->mem_freq = 1066;
+		break;
+	case 2:
+		DRM_DEBUG_DRIVER("1333 MHz\n");
+		dev_priv->mem_freq = 1333;
+		break;
+	case 3:
+		DRM_DEBUG_DRIVER("invalid\n");
+		break;
+	}
+	DRM_DEBUG_DRIVER("GPLL enabled? %s\n", val & 8 ? "yes" : "no");
+	DRM_DEBUG_DRIVER("GPU status: 0x%08x\n", val);
+
+	DRM_DEBUG_DRIVER("Starting GPU freq: %x\n", (val >> 8) & 0xff);
+	dev_priv->rps.cur_delay = (val >> 8) & 0xff;
+
+	/* Setting IA/GT Fixed Power Bias  */
+	val = VLV_OVERRIDE_MSR_REG
+		| VLV_ENABLE_TDP_SHARE_WITH_SOC
+		| VLV_CPU_GPU_BIAS_VAL_87_12; /* 6 => CPU:12.5% GPU:87.5% */
+	valleyview_punit_write(dev_priv, VLV_IOSFB_RPS_OVERRIDE, val);
+
+	dev_priv->rps.rp_up_masked = 0;
+	dev_priv->rps.rp_down_masked = 0;
+
+	valleyview_set_rps(dev_priv->dev, dev_priv->rps.min_delay);
+	DRM_DEBUG_DRIVER("setting GPU freq to %d\n", dev_priv->rps.min_delay);
+
+	/* requires MSI enabled */
+	I915_WRITE(GEN6_PMIER, GEN6_PM_DEFERRED_EVENTS);
+	spin_lock_irqsave(&dev_priv->rps.lock, flags);
+	WARN_ON(dev_priv->rps.pm_iir != 0);
+	I915_WRITE(GEN6_PMIMR, 0);
+	spin_unlock_irqrestore(&dev_priv->rps.lock, flags);
+	/* enable all PM interrupts */
+	I915_WRITE(GEN6_PMINTRMSK, 0);
 }
 
 void ironlake_teardown_rc6(struct drm_device *dev)
@@ -3323,15 +3437,6 @@ static void intel_init_emon(struct drm_device *dev)
 	dev_priv->corr = (lcfuse & LCFUSE_HIV_MASK);
 }
 
-/* This routine is to enable RC6, Turbo and other power features on VLV */
-static void valleyview_enable_rps(struct drm_device *dev)
-{
-	struct drm_i915_private *dev_priv = dev->dev_private;
-
-	/* 1. Setup RC6 */
-	vlv_rs_initialize(dev);
-}
-
 /* This routine is to clean up RC6, Turbo and other power features on VLV */
 static void valleyview_disable_rps(struct drm_device *dev)
 {
@@ -3346,7 +3451,7 @@ void intel_disable_gt_powersave(struct drm_device *dev)
 	if (IS_IRONLAKE_M(dev)) {
 		ironlake_disable_drps(dev);
 		ironlake_disable_rc6(dev);
-	} else if (INTEL_INFO(dev)->gen >= 6 && !IS_VALLEYVIEW(dev)) {
+	} else if (INTEL_INFO(dev)->gen >= 6) {
 		gen6_disable_rps(dev);
 		gen6_update_ring_freq(dev);
 	} else if (IS_VALLEYVIEW(dev)) {
@@ -3360,11 +3465,11 @@ void intel_enable_gt_powersave(struct drm_device *dev)
 		ironlake_enable_drps(dev);
 		ironlake_enable_rc6(dev);
 		intel_init_emon(dev);
-	} else if ((IS_GEN6(dev) || IS_GEN7(dev)) && !IS_VALLEYVIEW(dev)) {
-		gen6_enable_rps(dev);
-		gen6_update_ring_freq(dev);
 	} else if (IS_VALLEYVIEW(dev)) {
 		valleyview_enable_rps(dev);
+	} else if (IS_GEN6(dev) || IS_GEN7(dev)) {
+		gen6_enable_rps(dev);
+		gen6_update_ring_freq(dev);
 	}
 }
 
@@ -3774,21 +3879,6 @@ static void valleyview_init_clock_gating(struct drm_device *dev)
 
 	I915_WRITE(CACHE_MODE_1,
 		   _MASKED_BIT_ENABLE(PIXEL_SUBSPAN_COLLECT_OPT_DISABLE));
-
-	/*
-	 * On ValleyView, the GUnit needs to signal the GT
-	 * when flip and other events complete.  So enable
-	 * all the GUnit->GT interrupts here
-	 */
-	/*
-	I915_WRITE(VLV_DPFLIPSTAT, PIPEB_LINE_COMPARE_INT_EN |
-		   PIPEB_HLINE_INT_EN | PIPEB_VBLANK_INT_EN |
-		   SPRITED_FLIPDONE_INT_EN | SPRITEC_FLIPDONE_INT_EN |
-		   PLANEB_FLIPDONE_INT_EN | PIPEA_LINE_COMPARE_INT_EN |
-		   PIPEA_HLINE_INT_EN | PIPEA_VBLANK_INT_EN |
-		   SPRITEB_FLIPDONE_INT_EN | SPRITEA_FLIPDONE_INT_EN |
-		   PLANEA_FLIPDONE_INT_EN);
-	*/
 
 	/*
 	 * WaDisableVLVClockGating_VBIIssue

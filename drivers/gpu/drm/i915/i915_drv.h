@@ -863,6 +863,9 @@ typedef struct drm_i915_private {
 		u8 cur_delay;
 		u8 min_delay;
 		u8 max_delay;
+
+		u8 rp_up_masked;
+		u8 rp_down_masked;
 	} rps;
 
 	u8 cur_delay;
@@ -1655,6 +1658,7 @@ extern void intel_disable_fbc(struct drm_device *dev);
 extern bool ironlake_set_drps(struct drm_device *dev, u8 val);
 extern void ironlake_init_pch_refclk(struct drm_device *dev);
 extern void gen6_set_rps(struct drm_device *dev, u8 val);
+extern void valleyview_set_rps(struct drm_device *dev, u8 val);
 extern void intel_detect_pch(struct drm_device *dev);
 extern int intel_trans_dp_port_sel(struct drm_crtc *crtc);
 extern int intel_enable_rc6(const struct drm_device *dev);

@@ -399,12 +399,38 @@ static void gen6_pm_rps_work(struct work_struct *work)
 
 	mutex_lock(&dev_priv->dev->struct_mutex);
 
-	if (pm_iir & GEN6_PM_RP_UP_THRESHOLD)
-		new_delay = dev_priv->rps.cur_delay + 1;
-	else
-		new_delay = dev_priv->rps.cur_delay - 1;
+	if (pm_iir & GEN6_PM_RP_UP_THRESHOLD) {
+		if (dev_priv->rps.cur_delay > dev_priv->rps.max_delay) {
+			I915_WRITE(GEN6_PMINTRMSK,
+					I915_READ(GEN6_PMINTRMSK) | 1 << 5);
+			dev_priv->rps.rp_up_masked = 1;
+			new_delay = dev_priv->rps.cur_delay;
+		} else {
+			new_delay = dev_priv->rps.cur_delay + 1;
+		}
+		if (dev_priv->rps.rp_down_masked) {
+			I915_WRITE(GEN6_PMINTRMSK, 0);
+			dev_priv->rps.rp_down_masked = 0;
+		}
+	} else {
+		if (dev_priv->rps.cur_delay <= dev_priv->rps.min_delay) {
+			I915_WRITE(GEN6_PMINTRMSK,
+					I915_READ(GEN6_PMINTRMSK) | 1 << 4);
+			dev_priv->rps.rp_down_masked = 1;
+			new_delay = dev_priv->rps.cur_delay;
+		} else {
+			new_delay = dev_priv->rps.cur_delay - 1;
+		}
+		if (dev_priv->rps.rp_up_masked) {
+			I915_WRITE(GEN6_PMINTRMSK, 0);
+			dev_priv->rps.rp_up_masked = 0;
+		}
+	}
 
-	gen6_set_rps(dev_priv->dev, new_delay);
+	if (IS_VALLEYVIEW(dev_priv->dev))
+		valleyview_set_rps(dev_priv->dev, new_delay);
+	else
+		gen6_set_rps(dev_priv->dev, new_delay);
 
 	mutex_unlock(&dev_priv->dev->struct_mutex);
 }
