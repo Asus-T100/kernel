@@ -268,6 +268,23 @@ hsu_port_pin_cfg hsu_port_pin_cfgs[][hsu_pid_max][hsu_port_max] = {
 			},
 		},
 	},
+	[hsu_vlv2] = {
+		[hsu_pid_def] = {
+			[hsu_port0] = {
+				.id = 0,
+				.name = HSU_BT_PORT,
+				.rts_gpio = 72,
+				.rts_alt = 1,
+			},
+			[hsu_port1] = {
+				.id = 1,
+				.name = HSU_GPS_PORT,
+				.rts_gpio = 76,
+				.rts_alt = 1,
+			},
+		},
+	},
+
 };
 
 static struct hsu_port_cfg hsu_port_cfgs[][hsu_port_max] = {
@@ -437,9 +454,12 @@ static struct hsu_port_cfg hsu_port_cfgs[][hsu_port_max] = {
 			.name = HSU_BT_PORT,
 			.idle = 100,
 			.hw_ctrl_cts = 1,
+			.hw_init = intel_mid_hsu_init,
 			/* Trust FW has set it correctly */
 			.hw_set_alt = NULL,
 			.hw_set_rts = dw_hsu_rts,
+			.hw_suspend = intel_mid_hsu_suspend,
+			.hw_resume = intel_mid_hsu_resume,
 		},
 		[hsu_port1] = {
 			.type = gps_port,
@@ -448,9 +468,12 @@ static struct hsu_port_cfg hsu_port_cfgs[][hsu_port_max] = {
 			.idle = 100,
 			.preamble = 1,
 			.hw_ctrl_cts = 1,
+			.hw_init = intel_mid_hsu_init,
 			/* Trust FW has set it correctly */
 			.hw_set_alt = NULL,
 			.hw_set_rts = dw_hsu_rts,
+			.hw_suspend = intel_mid_hsu_suspend,
+			.hw_resume = intel_mid_hsu_resume,
 		},
 	},
 
@@ -721,6 +744,8 @@ static __init int hsu_dev_platform_data(void)
 		break;
 	case INTEL_MID_CPU_CHIP_VALLEYVIEW2:
 		platform_hsu_info = &hsu_port_cfgs[hsu_vlv2][0];
+		hsu_port_gpio_mux =
+			&hsu_port_pin_cfgs[hsu_vlv2][hsu_pid_def][0];
 		break;
 
 	case INTEL_MID_CPU_CHIP_TANGIER:
@@ -737,6 +762,9 @@ static __init int hsu_dev_platform_data(void)
 	}
 
 	if (platform_hsu_info == NULL)
+		return -ENODEV;
+
+	if (hsu_port_gpio_mux == NULL)
 		return -ENODEV;
 
 	hsu_register_board_info(platform_hsu_info);

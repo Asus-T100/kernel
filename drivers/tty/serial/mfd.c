@@ -397,9 +397,6 @@ static void serial_set_alt(int index)
 	struct hsu_port_cfg *cfg = phsu->configs[index];
 	struct pci_dev *pdev = container_of(up->dev, struct pci_dev, dev);
 
-	if (up->hw_type == HSU_DW)
-		return;
-
 	if (test_bit(flag_set_alt, &up->flags))
 		return;
 
