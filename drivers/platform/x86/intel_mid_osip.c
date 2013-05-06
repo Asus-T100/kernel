@@ -204,7 +204,6 @@ static int osip_reboot_notifier_call(struct notifier_block *notifier,
 {
 	int ret = NOTIFY_DONE;
 	int ret_ipc;
-	int ret_cmos;
 	char *cmd = (char *)data;
 #ifdef DEBUG
 	u8 rbt_reason;
@@ -468,7 +467,7 @@ int release_cmdline(struct inode *i, struct file *f)
 	kfree(p);
 	return 0;
 }
-int fsync_cmdline(struct file *f, int datasync)
+int fsync_cmdline(struct file *f, loff_t start, loff_t end, int datasync)
 {
 	struct cmdline_priv *p =
 		(struct cmdline_priv *)f->private_data;
