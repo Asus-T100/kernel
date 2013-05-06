@@ -1516,11 +1516,6 @@ void dlp_restore_rx_callbacks(hsi_client_cb *event_cb)
 */
 int dlp_set_flashing_mode(int flashing)
 {
-	/* Release the HSI controller */
-	dlp_hsi_port_unclaim();
-
-	/* Flush everything */
-	hsi_flush(dlp_drv.client);
 
 	if (flashing) {
 		/* Set the Boot/Flashing configs */
@@ -1538,8 +1533,7 @@ int dlp_set_flashing_mode(int flashing)
 		dlp_restore_rx_callbacks(&dlp_drv.ehandler);
 	}
 
-	/* Claim the HSI port (to use for IPC) */
-	return dlp_hsi_port_claim();
+	return 0;
 }
 
 /**
