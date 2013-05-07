@@ -545,11 +545,19 @@ static int iTCO_wdt_start(void)
 
 	iTCO_vendor_pre_start(iTCO_wdt_private.ACPIBASE, heartbeat);
 
-	/* disable chipset's NO_REBOOT bit */
-	if (iTCO_wdt_unset_NO_REBOOT_bit()) {
-		spin_unlock(&iTCO_wdt_private.io_lock);
-		pr_err("failed to reset NO_REBOOT flag, reboot disabled by hardware/BIOS\n");
-		return -EIO;
+	/*
+	 * REVERT-ME: disable reboot at watchdog timeout, enable it on
+	 * command-line demand
+	 * waiting for PMC rom-patch to handle timeout interruption and dump
+	 * kernel stack to emmc_ipanic partition
+	 */
+	if (strstr(saved_command_line, "enable_tco=1")) {
+		/* disable chipset's NO_REBOOT bit */
+		if (iTCO_wdt_unset_NO_REBOOT_bit()) {
+			spin_unlock(&iTCO_wdt_private.io_lock);
+			pr_err("failed to reset NO_REBOOT flag, reboot disabled by hardware/BIOS\n");
+			return -EIO;
+		}
 	}
 
 	/* Force the timer to its reload value by writing to the TCO_RLD
