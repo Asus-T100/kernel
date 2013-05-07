@@ -590,6 +590,7 @@ enum dwc3_link_state {
 };
 
 enum dwc3_device_state {
+	DWC3_DETACHED_STATE,
 	DWC3_DEFAULT_STATE,
 	DWC3_ADDRESS_STATE,
 	DWC3_CONFIGURED_STATE,

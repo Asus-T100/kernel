@@ -1769,6 +1769,8 @@ static int dwc3_stop_peripheral(struct usb_gadget *g)
 
 	spin_lock_irqsave(&dwc->lock, flags);
 
+	dwc->dev_state = DWC3_DETACHED_STATE;
+
 	dwc3_stop_active_transfers(dwc);
 
 	if (dwc->gadget.speed != USB_SPEED_UNKNOWN) {
