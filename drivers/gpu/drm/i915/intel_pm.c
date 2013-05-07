@@ -2400,14 +2400,9 @@ void valleyview_set_rps(struct drm_device *dev, u8 val)
 	valleyview_punit_write(dev_priv, PUNIT_REG_GPU_FREQ_REQ, val);
 }
 
-static void gen6_disable_rps(struct drm_device *dev)
+void gen6_disable_rps(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
-
-	if (IS_VALLEYVIEW(dev)) {
-		valleyview_set_rps(dev, dev_priv->rps.min_delay);
-		I915_WRITE(GEN6_RP_CONTROL, 0);
-	}
 
 	I915_WRITE(GEN6_RC_CONTROL, 0);
 	I915_WRITE(GEN6_RPNSWREQ, 1 << 31);
@@ -2747,7 +2742,7 @@ void bios_init_rps(struct drm_i915_private *dev_priv)
 	valleyview_punit_write(dev_priv, 0xd2, 0x1EF53);
 }
 
-static void valleyview_enable_rps(struct drm_device *dev)
+void valleyview_enable_rps(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct intel_ring_buffer *ring;
@@ -3520,12 +3515,19 @@ static void intel_init_emon(struct drm_device *dev)
 }
 
 /* This routine is to clean up RC6, Turbo and other power features on VLV */
-static void valleyview_disable_rps(struct drm_device *dev)
+void valleyview_disable_rps(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
-	/* 1. Clear RC6 */
+	/* Clear RC6 */
 	vlv_rs_setstate(dev, false);
+
+	/* Disable Turbo */
+	valleyview_set_rps(dev, dev_priv->rps.min_delay);
+	I915_WRITE(GEN6_RP_CONTROL, 0);
+
+	/* Do the gen6 disable seq also */
+	gen6_disable_rps(dev);
 }
 
 void intel_disable_gt_powersave(struct drm_device *dev)
@@ -3533,11 +3535,11 @@ void intel_disable_gt_powersave(struct drm_device *dev)
 	if (IS_IRONLAKE_M(dev)) {
 		ironlake_disable_drps(dev);
 		ironlake_disable_rc6(dev);
+	} else if (IS_VALLEYVIEW(dev)) {
+		valleyview_disable_rps(dev);
 	} else if (INTEL_INFO(dev)->gen >= 6) {
 		gen6_disable_rps(dev);
 		gen6_update_ring_freq(dev);
-	} else if (IS_VALLEYVIEW(dev)) {
-		valleyview_disable_rps(dev);
 	}
 }
 
