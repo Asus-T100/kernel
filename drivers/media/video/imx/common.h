@@ -31,6 +31,7 @@ struct imx_resolution {
 	int fps;
 	unsigned short pixels_per_line;
 	unsigned short lines_per_frame;
+	unsigned short skip_frames;
 	u8 bin_factor_x;
 	u8 bin_factor_y;
 	bool used;

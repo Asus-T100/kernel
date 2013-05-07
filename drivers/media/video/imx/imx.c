@@ -1575,6 +1575,21 @@ imx_g_frame_interval(struct v4l2_subdev *sd,
 	return 0;
 }
 
+static int imx_g_skip_frames(struct v4l2_subdev *sd, u32 *frames)
+{
+	struct imx_device *dev = to_imx_sensor(sd);
+
+	mutex_lock(&dev->input_lock);
+	*frames = imx_res[dev->fmt_idx].skip_frames;
+	mutex_unlock(&dev->input_lock);
+
+	return 0;
+}
+
+static const struct v4l2_subdev_sensor_ops imx_sensor_ops = {
+	.g_skip_frames	= imx_g_skip_frames,
+};
+
 static const struct v4l2_subdev_video_ops imx_video_ops = {
 	.s_stream = imx_s_stream,
 	.enum_framesizes = imx_enum_framesizes,
@@ -1608,6 +1623,7 @@ static const struct v4l2_subdev_ops imx_ops = {
 	.core = &imx_core_ops,
 	.video = &imx_video_ops,
 	.pad = &imx_pad_ops,
+	.sensor = &imx_sensor_ops,
 };
 
 static const struct media_entity_operations imx_entity_ops = {
