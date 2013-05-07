@@ -521,8 +521,18 @@ mhdp_netdev_rx(struct sk_buff *skb, struct net_device *dev)
 		DPRINTK("mhdp header length: %d, skb_headerlen: %d",
 				mhdp_header_len, skbheadlen);
 
+		if ((!frag) || (!page)) {
+			pr_err("Invalid skb (frag:%p, page:%p), packet dropped\n",
+					frag, page);
+			goto free_skb;
+		}
+
 		mhdpHdr = (struct mhdp_hdr *) kmalloc(mhdp_header_len,
 				GFP_ATOMIC);
+		if (!mhdpHdr) {
+			pr_err("Out of memory (mhdpHdr), packet dropped\n");
+			goto free_skb;
+		}
 
 		if (skbheadlen == 0) {
 			memcpy((__u8 *)mhdpHdr,	page_address(page) +
@@ -644,6 +654,7 @@ error:
 	if (mhdp_header_len > skb_headlen(skb))
 		kfree(mhdpHdr);
 
+free_skb:
 	dev_kfree_skb(skb);
 
 	return err;
@@ -743,6 +754,7 @@ xmit_again:
 		if (!tunnel->skb) {
 			EPRINTK("mhdp_netdev_xmit error1");
 			BUG();
+			return NETDEV_TX_BUSY; /* Avoid klockwork warning :( */
 		}
 
 		/* Place holder for the mhdp packet count */
