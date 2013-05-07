@@ -953,6 +953,33 @@ load_firmware(struct atomisp_device *isp)
 	return fw;
 }
 
+/*
+ * Check for flags the driver was compiled with against the PCI
+ * device. Always returns true on other than ISP 2400.
+ */
+static bool is_valid_device(struct pci_dev *dev,
+			    const struct pci_device_id *id)
+{
+	unsigned int a0_max_id;
+
+	switch (id->device & ATOMISP_PCI_DEVICE_SOC_MASK) {
+	case ATOMISP_PCI_DEVICE_SOC_MRFLD:
+		a0_max_id = ATOMISP_PCI_REV_MRFLD_A0_MAX;
+		break;
+	case ATOMISP_PCI_DEVICE_SOC_BYT:
+		a0_max_id = ATOMISP_PCI_REV_BYT_A0_MAX;
+		break;
+	default:
+		return true;
+	}
+
+#ifdef CONFIG_ISP2400
+	return dev->revision <= a0_max_id;
+#else /* CONFIG_ISP2400 */
+	return dev->revision > a0_max_id;
+#endif /* CONFIG_ISP2400 */
+}
+
 /* Declared in hmm.c. */
 extern bool atomisp_hmm_is_2400;
 
@@ -971,6 +998,9 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 		dev_err(&dev->dev, "atomisp: error device ptr\n");
 		return -EINVAL;
 	}
+
+	if (!is_valid_device(dev, id))
+		return -ENODEV;
 
 	pdata = atomisp_get_platform_data();
 	if (pdata == NULL) {
@@ -1180,6 +1210,8 @@ static void __devexit atomisp_pci_remove(struct pci_dev *dev)
 }
 
 static DEFINE_PCI_DEVICE_TABLE(atomisp_pci_tbl) = {
+#if defined CONFIG_ISP2300
+	/* Medfield */
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x0148)},
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x0149)},
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x014A)},
@@ -1188,9 +1220,14 @@ static DEFINE_PCI_DEVICE_TABLE(atomisp_pci_tbl) = {
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x014D)},
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x014E)},
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x014F)},
+	/* Clovertrail */
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x08D0)},
+#elif defined CONFIG_ISP2400 || defined CONFIG_ISP2400B0
+	/* Merrifield */
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x1178)},
+	/* Baytrail */
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x0f38)},
+#endif
 	{0,}
 };
 
