@@ -2471,7 +2471,7 @@ tng_topaz_send(
 				goto out;
 			}
 
-			tng_wait_on_sync(dev, sync_seq, cur_cmd_id);
+			/*tng_wait_on_sync(dev, sync_seq, cur_cmd_id);*/
 
 			/*
 			for (m = 0; m < 1000; m++) {
