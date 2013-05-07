@@ -148,6 +148,8 @@
 #define INTSTAT_THRM_BAT1		0xD
 #define INTSTAT_THRM_SKIN0		0xE
 #define INTSTAT_STOP_CHARGING		0xF
+#define INTSTAT_PERC_HIGH		0x10
+#define INTSTAT_PERC_LOW		0x11
 #define INTSTAT_FAULT_TRIGGER		0x13
 #define INTSTAT_BATT_WARN		0x14
 #define INTSTAT_BATT_LOW		0x15
@@ -860,6 +862,12 @@ static void log_interrupt_event(struct ulpmc_chip_info *chip, int intstat)
 		break;
 	case INTSTAT_STOP_CHARGING:
 		dev_info(&chip->client->dev, "Stop Charging event\n");
+		break;
+	case INTSTAT_PERC_HIGH:
+		dev_info(&chip->client->dev, "Battery perc change high event\n");
+		break;
+	case INTSTAT_PERC_LOW:
+		dev_info(&chip->client->dev, "Battery perc change low event\n");
 		break;
 	case INTSTAT_FAULT_TRIGGER:
 		dev_info(&chip->client->dev, "fault event recieved\n");
