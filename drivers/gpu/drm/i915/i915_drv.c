@@ -121,6 +121,11 @@ module_param_named(i915_enable_ppgtt, i915_enable_ppgtt, int, 0600);
 MODULE_PARM_DESC(i915_enable_ppgtt,
 		"Enable PPGTT (default: true)");
 
+int i915_enable_turbo __read_mostly = 1;
+module_param_named(i915_enable_turbo, i915_enable_turbo, int, 0600);
+MODULE_PARM_DESC(i915_enable_turbo,
+		"Enable VLV Turbo (default: true)");
+
 static struct drm_driver driver;
 extern int intel_agp_enabled;
 
