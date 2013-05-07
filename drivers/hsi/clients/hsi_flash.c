@@ -1026,11 +1026,17 @@ static long hsi_flash_ioctl(struct file *file, unsigned int cmd,
 static int hsi_flash_open(struct inode *inode, struct file *file)
 {
 	struct hsi_flash_client_data *cl_data = &hsi_flash_cl_data;
-	struct hsi_flash_channel *channel = cl_data->channels + iminor(inode);
-	int ret = 0, refcnt;
+	struct hsi_flash_channel *channel;
+	int ret = 0, refcnt, minor = iminor(inode);
 
 	DPRINTK("hsi_flash_open\n");
 
+	if (minor >= HSI_FLASH_DEVS) {
+		pr_err("Invalid node id (%d)\n", minor);
+		return -EINVAL;
+	}
+
+	channel = cl_data->channels + minor;
 	spin_lock_bh(&channel->lock);
 	if ((channel->state == HSI_CHST_UNAVAIL) || (!channel->cl)) {
 		ret = -ENODEV;

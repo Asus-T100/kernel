@@ -1794,6 +1794,7 @@ hsi_logical_alloc_data(struct sk_buff *skb, gfp_t flags)
 out:
 	EPRINTK("hsi_logical_alloc_data BUG\n") ;
 	BUG();
+	return NULL; /* Useless, just avoid Klockwork error */
 }
 
 static struct hsi_msg *
@@ -1835,8 +1836,8 @@ hsi_logical_get_control_l2h(struct hsi_protocol_client *hsi_client_context)
 	spin_lock_bh(&hsi_protocol_context->ctrl_msg_array_l2h_lock);
 
 	/* Find a free msg */
-	while ((hsi_protocol_context->hsi_ctrl_msg_array_l2h[i].free == 0)
-	&& (i < HSI_LOGICAL_NB_CONTROL_MSG_L2H))
+	while ((i < HSI_LOGICAL_NB_CONTROL_MSG_L2H) &&
+		(hsi_protocol_context->hsi_ctrl_msg_array_l2h[i].free == 0))
 		i++;
 
 	if (hsi_protocol_context->hsi_ctrl_msg_array_l2h[i].free == 0) {
