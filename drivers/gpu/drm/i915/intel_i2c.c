@@ -500,6 +500,12 @@ int intel_setup_gmbus(struct drm_device *dev)
 		if (ret)
 			goto err;
 	}
+	if (IS_VALLEYVIEW(dev)) {
+		/*
+		 * TODO: Need to program proper GMBUS frequency using cdclk
+		 */
+		intel_set_gmbus_frequency(dev_priv, 0);
+	}
 
 	intel_i2c_reset(dev_priv->dev);
 
@@ -511,6 +517,11 @@ err:
 		i2c_del_adapter(&bus->adapter);
 	}
 	return ret;
+}
+
+void intel_set_gmbus_frequency(struct drm_i915_private *dev_priv, int clock)
+{
+	I915_WRITE(GMBUSFREQ, clock);
 }
 
 struct i2c_adapter *intel_gmbus_get_adapter(struct drm_i915_private *dev_priv,

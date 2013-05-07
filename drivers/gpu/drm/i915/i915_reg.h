@@ -867,7 +867,7 @@
 #define   GMBUS_RATE_50KHZ	(1<<8)
 #define   GMBUS_RATE_400KHZ	(2<<8) /* reserved on Pineview */
 #define   GMBUS_RATE_1MHZ	(3<<8) /* reserved on Pineview */
-#define   GMBUS_HOLD_EXT	(1<<7) /* 300ns hold time, rsvd on Pineview */
+#define   GMBUS_HOLD_EXT	(1<<15)
 #define   GMBUS_PORT_DISABLED	0
 #define   GMBUS_PORT_SSC	1
 #define   GMBUS_PORT_VGADDC	2
@@ -907,6 +907,7 @@
 #define   GMBUS_HW_RDY_EN	(1<<0)
 #define GMBUS5			0x5120 /* byte index */
 #define   GMBUS_2BYTE_INDEX_EN	(1<<31)
+#define GMBUSFREQ		0x6510
 
 /*
  * Clock control & power management
