@@ -41,6 +41,7 @@
 #include "sh_css_refcount.h"
 #include "ia_css_i_rmgr.h"
 #include "sh_css_debug.h"
+#include "sh_css_debug_internal.h"
 
 #include "memory_access.h"
 #include "tag.h"
@@ -740,7 +741,7 @@ sh_css_vf_downscale_log2(const struct sh_css_frame_info *out_info,
 			 unsigned int *downscale_log2)
 {
 	unsigned int ds_log2 = 0;
-	unsigned int out_width = out_info ? out_info->padded_width : 0;
+	unsigned int out_width = out_info ? out_info->width : 0;
 
 	if (out_width == 0)
 		return 0;
@@ -860,6 +861,7 @@ program_input_formatter(struct sh_css_pipe *pipe,
 		     vectors_per_buffer,
 		     vectors_per_line = 0,
 		     buffers_per_line = 0,
+		     buf_offset_a = 0,
 		     buf_offset_b = 0,
 		     line_width = 0,
 		     width_b_factor = 1,
@@ -867,6 +869,8 @@ program_input_formatter(struct sh_css_pipe *pipe,
 	input_formatter_cfg_t	if_a_config, if_b_config;
 	enum sh_css_input_format input_format = binary->input_format;
 	enum sh_css_err err = sh_css_success;
+
+        bool input_is_raw = input_format_is_raw(input_format);
 
 	if (pipe->input_needs_raw_binning &&
 	    binary->info->enable.raw_binning) {
@@ -1104,6 +1108,26 @@ program_input_formatter(struct sh_css_pipe *pipe,
 		width_a -= start_column;
 	}
 
+        /* When two_ppc is enabled, IF_A and IF_B gets seperate
+         * bayer components. Therefore, it is not possible to
+         * correct the bayer order to GRBG in horizontal direction
+         * by shifting start_column.
+         * Instead, IF_A and IF_B output (VMEM) addresses should be
+         * swapped for this purpose (@Gokturk).
+         */
+        if (two_ppc && input_is_raw && start_column%2 == 1) {
+           /* Still correct for center of image. Just subtract the part
+            * (which used to be correcting bayer order, now we do it by
+            * swapping the buffers) */
+           start_column   = start_column - 1;
+           start_column_b = start_column;
+
+           /* Buffer start address swap from (0, buf_offset_b) ->
+            * (buf_offset_b, 0) */
+           buf_offset_a = buf_offset_b;
+           buf_offset_b = 0;
+        }
+	
 	if_a_config.start_line = start_line;
 	if_a_config.start_column = start_column;
 	if_a_config.left_padding = left_padding / deinterleaving;
@@ -1111,7 +1135,7 @@ program_input_formatter(struct sh_css_pipe *pipe,
 	if_a_config.cropped_width = width_a;
 	if_a_config.deinterleaving = deinterleaving;
 	if_a_config.buf_vecs = vectors_per_buffer;
-	if_a_config.buf_start_index = 0;
+	if_a_config.buf_start_index = buf_offset_a;
 	if_a_config.buf_increment = vmem_increment;
 	if_a_config.buf_eol_offset =
 	    buffer_width * bits_per_pixel / 8 - line_width;
@@ -1742,8 +1766,8 @@ void sh_css_frame_info_set_width(
 
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_frame_info_set_width() enter: "
-		"width=%d\n",
-		width);
+		"width=%d, format=%d\n",
+		width, info->format);
 
 	assert(info != NULL);
 	if (info == NULL)
@@ -1762,6 +1786,11 @@ void sh_css_frame_info_set_width(
 		info->padded_width = CEIL_MUL(align, 2*ISP_VEC_NELEMS);
 	else
 		info->padded_width = CEIL_MUL(align, HIVE_ISP_DDR_WORD_BYTES);
+
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_frame_info_set_width() leave: "
+		"padded_width=%d\n",
+		info->padded_width);
 }
 
 static void sh_css_frame_info_set_format(
@@ -1825,6 +1854,8 @@ static void invalidate_video_binaries(
 		sh_css_shading_table_free(pipe->shading_table);
 		pipe->shading_table = NULL;
 	}
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"invalidate_video_binaries() leave:\n");
 }
 
 void sh_css_set_shading_table(
@@ -2071,6 +2102,7 @@ static void sh_css_pipe_invalidate_binaries(
 	default:
 		break;
 	}
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_pipe_invalidate_binaries() leave:\n");
 }
 
 static void
@@ -2293,7 +2325,7 @@ sh_css_free(void *ptr)
 	if (ptr && my_css.free)
 		my_css.free(ptr);
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
-		"sh_css_free() leve: return=void\n");
+		"sh_css_free() leave: return=void\n");
 }
 
 /* For Acceleration API: Flush FW (shared buffer pointer) arguments */
@@ -3728,7 +3760,7 @@ static enum sh_css_err preview_start(
 				SH_CSS_CAPTURE_MODE_BAYER);
 
 		sh_css_sp_init_pipeline(&capture_pipe->pipeline, SH_CSS_CAPTURE_PIPELINE,
-			false, low_light, pipe->xnr,
+			false, low_light, capture_pipe->xnr,
 			capture_pipe->two_ppc, false,
 			false, capture_pipe->input_needs_raw_binning,
 			SH_CSS_PIPE_CONFIG_OVRD_THRD_1_2);
@@ -4618,6 +4650,7 @@ static void init_video_descr(
 		video_descr.online = pipe->online;
 		video_descr.two_ppc = pipe->two_ppc;
 	}
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "init_video_descr() leave:\n");
 }
 
 
@@ -4747,7 +4780,8 @@ static enum sh_css_err load_video_binaries(
 	enum sh_css_err err = sh_css_success;
 	int i;
 
-	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "load_video_binaries() enter:\n");
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "load_video_binaries() enter: "
+		"pipe=%p\n", pipe);
 	/* we only test the video_binary because offline video doesn't need a
 	 * vf_pp binary and online does not (always use) the copy_binary.
 	 * All are always reset at the same time anyway.
@@ -4757,8 +4791,12 @@ static enum sh_css_err load_video_binaries(
 	if (pipe == NULL)
 		return sh_css_err_internal_error;
 
-	if (pipe->pipe.video.video_binary.info)
+	if (pipe->pipe.video.video_binary.info) {
+		sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+			"load_video_binaries() leave: "
+			"return=sh_css_success (binary already loaded)\n");
 		return sh_css_success;
+	}
 
 	online = pipe->online;
 	err = check_input(pipe, !online);
@@ -4865,8 +4903,11 @@ static enum sh_css_err load_video_binaries(
 #endif
 
 	/* YUV copy does not need tnr frames */
-	if (input_format_is_yuv(pipe->input_format))
+	if (input_format_is_yuv(pipe->input_format)) {
+		sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "load_video_binaries() "
+			"leave: return=sh_css_success (L%d)\n", __LINE__);
 		return sh_css_success;
+	}
 
 	tnr_info = pipe->pipe.video.video_binary.internal_frame_info;
 	tnr_info.format = SH_CSS_FRAME_FORMAT_YUV_LINE;
@@ -4886,6 +4927,8 @@ static enum sh_css_err load_video_binaries(
 	sh_css_frame_zero(pipe->pipe.video.tnr_frames[0]);
 	sh_css_frame_zero(pipe->pipe.video.tnr_frames[1]);
 #endif
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "load_video_binaries() "
+		"leave: return=sh_css_success (L%d)\n", __LINE__);
 	return sh_css_success;
 }
 
@@ -6052,7 +6095,7 @@ static enum sh_css_err construct_capture_pipe(
 		in_frame->info.raw_bit_depth =
 			sh_css_pipe_input_format_bits_per_pixel(pipe);
 		sh_css_frame_info_set_width(&in_frame->info, pipe->input_width);
-	
+
 		in_frame->contiguous = false;
 		in_frame->flash_state = SH_CSS_FRAME_NO_FLASH;
 		in_frame->dynamic_data_index = sh_css_frame_in;
@@ -6792,16 +6835,17 @@ enum sh_css_err sh_css_frame_allocate(
 	enum sh_css_err err = sh_css_success;
 
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_frame_allocate() enter: width=%d, height=%d, format=%d\n",
-		width, height, format);
+		"sh_css_frame_allocate() enter: width=%d, height=%d, "
+		"padded_width=%d, format=%d\n",
+		width, height, padded_width, format);
 
 
 	err = allocate_frame_and_data(frame, width, height, format,
 			      padded_width, raw_bit_depth, false);
 
 	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_frame_allocate() leave: frame=%p\n",
-		frame ? *frame : (void *)-1);
+		"sh_css_frame_allocate() leave: return=%d, frame=%p\n",
+		err, frame ? *frame : (void *)-1);
 
 	return err;
 }
@@ -6811,7 +6855,9 @@ enum sh_css_err sh_css_frame_allocate_from_info(
 	const struct sh_css_frame_info *info)
 {
 	enum sh_css_err err = sh_css_success;
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_frame_allocate_from_info() enter:\n");
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_frame_allocate_from_info() enter: "
+		"frame=%p, info=%p\n", frame, info);
 
 	assert(frame != NULL);
 	if (frame == NULL)
@@ -6823,7 +6869,9 @@ enum sh_css_err sh_css_frame_allocate_from_info(
 				     info->format,
 				     info->padded_width,
 				     info->raw_bit_depth);
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_frame_allocate_from_info() leave:\n");
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_frame_allocate_from_info() leave: "
+		"return=%d, *frame=%p\n", err, *frame);
 return err;
 }
 
@@ -7969,6 +8017,7 @@ sh_css_input_set_format(enum sh_css_input_format format)
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_input_set_format() enter: format%d\n", format);
 
+	sh_css_debug_pipe_graph_dump_input_set_format(format);
 	sh_css_pipe_set_input_format(&my_css.preview_pipe, format);
 	sh_css_pipe_set_input_format(&my_css.video_pipe, format);
 	sh_css_pipe_set_input_format(&my_css.capture_pipe, format);
@@ -8258,6 +8307,7 @@ sh_css_input_set_effective_resolution(unsigned int width, unsigned int height)
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_input_set_effective_resolution() "
 		"enter: width=%d, height=%d\n",width, height);
+	sh_css_debug_pipe_graph_dump_input_set_effective_resolution(width, height);
 	sh_css_pipe_set_effective_input_resolution(&my_css.preview_pipe, width, height);
 	sh_css_pipe_set_effective_input_resolution(&my_css.video_pipe, width, height);
 	err = sh_css_pipe_set_effective_input_resolution(&my_css.capture_pipe, width, height);
@@ -8274,6 +8324,7 @@ sh_css_input_set_resolution(unsigned int width, unsigned int height)
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_input_set_resolution() enter: width=%d, height=%d\n",
 		width, height);
+	sh_css_debug_pipe_graph_dump_input_set_resolution(width, height);
 	sh_css_pipe_set_input_resolution(&my_css.preview_pipe, width, height);
 	sh_css_pipe_set_input_resolution(&my_css.video_pipe, width, height);
 	err = sh_css_pipe_set_input_resolution(&my_css.capture_pipe, width, height);

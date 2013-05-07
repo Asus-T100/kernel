@@ -489,7 +489,8 @@ sh_css_param_shading_table_get(
 	}
 
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
-		"sh_css_param_shading_table_get() leave:\n");
+		"sh_css_param_shading_table_get() leave:return=%p\n",
+		sc_table_css);
 
 	return sc_table_css;
 }
@@ -561,7 +562,7 @@ sh_css_shading_table_free(struct sh_css_shading_table *table)
 
 	if (table == NULL) {
 		sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
-			"sh_css_shading_table_free() leave:\n");
+			"sh_css_shading_table_free() leave: table == NULL\n");
 		return;
 	}
 

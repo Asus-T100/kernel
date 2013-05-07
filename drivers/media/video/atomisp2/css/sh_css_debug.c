@@ -1593,7 +1593,15 @@ sh_css_debug_mode_enable_dma_channel(int dma_id,
 	return rc;
 }
 
-static bool debug_pipe_graph_do_init = true;
+static struct pipe_graph_class {
+	bool do_init;
+	int height;
+	int width;
+	int eff_height;
+	int eff_width;
+	enum sh_css_input_format input_format;
+
+} pg_inst = {true, 0, 0, 0, 0, N_SH_CSS_INPUT_FORMAT};
 
 static const char *format2str[] = {
 	[SH_CSS_FRAME_FORMAT_NV11]	= "NV11",
@@ -1616,7 +1624,30 @@ static const char *format2str[] = {
 	[SH_CSS_FRAME_FORMAT_PLANAR_RGB888] = "PLANAR_RGB888",
 	[SH_CSS_FRAME_FORMAT_RGBA888]	= "RGBA888",
 	[SH_CSS_FRAME_FORMAT_QPLANE6]	= "QPLANE6",
-	[SH_CSS_FRAME_FORMAT_BINARY_8]	= "BINARY_8"
+	[SH_CSS_FRAME_FORMAT_BINARY_8]	= "BINARY_8",
+	[N_SH_CSS_FRAME_FORMAT]		= "INVALID"
+};
+
+static const char* input_format2str[] = {
+  [SH_CSS_INPUT_FORMAT_YUV420_8_LEGACY] = "yuv420-8-legacy",
+  [SH_CSS_INPUT_FORMAT_YUV420_8]        = "yuv420-8",
+  [SH_CSS_INPUT_FORMAT_YUV420_10]       = "yuv420-10",
+  [SH_CSS_INPUT_FORMAT_YUV422_8]        = "yuv422-8",
+  [SH_CSS_INPUT_FORMAT_YUV422_10]       = "yuv422-10",
+  [SH_CSS_INPUT_FORMAT_RGB_444]         = "rgb444",
+  [SH_CSS_INPUT_FORMAT_RGB_555]         = "rgb555",
+  [SH_CSS_INPUT_FORMAT_RGB_565]         = "rgb565",
+  [SH_CSS_INPUT_FORMAT_RGB_666]         = "rgb666",
+  [SH_CSS_INPUT_FORMAT_RGB_888]         = "rgb888",
+  [SH_CSS_INPUT_FORMAT_RAW_6]           = "raw6",
+  [SH_CSS_INPUT_FORMAT_RAW_7]           = "raw7",
+  [SH_CSS_INPUT_FORMAT_RAW_8]           = "raw8",
+  [SH_CSS_INPUT_FORMAT_RAW_10]          = "raw10",
+  [SH_CSS_INPUT_FORMAT_RAW_12]          = "raw12",
+  [SH_CSS_INPUT_FORMAT_RAW_14]          = "raw14",
+  [SH_CSS_INPUT_FORMAT_RAW_16]          = "raw16",
+  [SH_CSS_INPUT_FORMAT_BINARY_8]        = "binary8",
+  [N_SH_CSS_INPUT_FORMAT]               = "invalid"
 };
 
 
@@ -1689,13 +1720,13 @@ sh_css_debug_pipe_graph_dump_frame(
 
 	if (in_frame){
 		DTRACE_DOT(
-			"\"0x%08lx\"->\"%s_%d\" "
+			"\"0x%08lx\"->\"%s(pipe%d)\" "
 			"[label = %s_frame];",
 			join_input_buf ? 0x11111111 : HOST_ADDRESS(frame),
 			blob_name, id, frame_name);
 	} else {
 		DTRACE_DOT(
-			"\"%s_%d\"->\"0x%08lx\" "
+			"\"%s(pipe%d)\"->\"0x%08lx\" "
 			"[label = %s_frame];",
 			blob_name, id,
 			HOST_ADDRESS(frame),
@@ -1732,8 +1763,9 @@ sh_css_debug_pipe_graph_dump_epilogue(void)
 
 	DTRACE_DOT(
 		"\"input_system\"->\"%s\" "
-		"[label = \"Format W x H\"];",
-		dot_id_input_bin);
+		"[label = \"%s\\n%d x %d\"];",
+		dot_id_input_bin, input_format2str[pg_inst.input_format],
+		pg_inst.eff_width, pg_inst.eff_height);
 
 #if 0
 	if (pipe->input_mode == SH_CSS_INPUT_MODE_SENSOR) {
@@ -1745,7 +1777,9 @@ sh_css_debug_pipe_graph_dump_epilogue(void)
 
 		DTRACE_DOT(
 			"\"sensor\"->\"input_system\" "
-			"[label = \"Format W x H\"];");
+			"[label = \"%s\\n%d x %d\"];",
+			input_format2str[pg_inst.input_format],
+			pg_inst.width, pg_inst.height);
 #if 0
 	} else if (pipe->input_mode == SH_CSS_INPUT_MODE_FIFO) {
 
@@ -1773,7 +1807,14 @@ sh_css_debug_pipe_graph_dump_epilogue(void)
 #endif
 
 	DTRACE_DOT("}");
-	debug_pipe_graph_do_init = true;
+
+	pg_inst.do_init = true;
+	pg_inst.width = 0;
+	pg_inst.height = 0;
+	pg_inst.eff_width = 0;
+	pg_inst.eff_height = 0;
+	pg_inst.input_format = N_SH_CSS_INPUT_FORMAT;
+
 }
 
 void
@@ -1785,9 +1826,9 @@ sh_css_debug_pipe_graph_dump_stage(
 	char const *blob_name = "<unknow name>";
 	char const *bin_type = "<unknow type>";
 
-	if (debug_pipe_graph_do_init) {
+	if (pg_inst.do_init) {
 		sh_css_debug_pipe_graph_dump_prologue();
-		debug_pipe_graph_do_init = false;
+		pg_inst.do_init = false;
 	}
 
 	if (stage->binary) {
@@ -1908,13 +1949,13 @@ sh_css_debug_pipe_graph_dump_stage(
 		}
 
 		DTRACE_DOT("node [shape = circle, fixedsize=true, width=2, "
-			"label=\"%s\\n%s\\n\\n%s\"]; \"%s_%d\"",
+			"label=\"%s\\n%s\\n\\n%s\"]; \"%s(pipe%d)\"",
 			bin_type, blob_name, enable_info, blob_name, id);
 
 	}
 
 	if (stage->stage_num == 0) {
-		sprintf(dot_id_input_bin, "%s_%d", blob_name, id);
+		sprintf(dot_id_input_bin, "%s(pipe%d)", blob_name, id);
 	}
 
 	/* CC is a bit of special case, it used to be the alternating IN */
@@ -1972,7 +2013,7 @@ sh_css_debug_pipe_graph_dump_sp_raw_copy(
 	struct sh_css_frame *cc_frame)
 {
 	DTRACE_DOT("node [shape = circle, fixedsize=true, width=2, "
-		"label=\"%s\\n%s\"]; \"%s_%d\"",
+		"label=\"%s\\n%s\"]; \"%s(pipe%d)\"",
 		"sp-binary", "sp_raw_copy", "sp_raw_copy", 1);
 
 
@@ -1987,14 +2028,36 @@ sh_css_debug_pipe_graph_dump_sp_raw_copy(
 
 
 	DTRACE_DOT(
-		"\"%s_%d\"->\"0x11111111\" "
+		"\"%s(pipe%d)\"->\"0x11111111\" "
 		"[label = cc_frame];",
 		"sp_raw_copy", 1);
 
-	sprintf(dot_id_input_bin, "%s_%d", "sp_raw_copy", 1);
+	sprintf(dot_id_input_bin, "%s(pipe%d)", "sp_raw_copy", 1);
 
 }
 
+void
+sh_css_debug_pipe_graph_dump_input_set_resolution
+(unsigned int width, unsigned int height)
+{
+	pg_inst.width = width;
+	pg_inst.height = height;
+}
+
+void
+sh_css_debug_pipe_graph_dump_input_set_effective_resolution
+(unsigned int effective_width, unsigned int effective_height)
+{
+	pg_inst.eff_width = effective_width;
+	pg_inst.eff_height = effective_height;
+}
+
+void
+sh_css_debug_pipe_graph_dump_input_set_format
+(enum sh_css_input_format input_format)
+{
+	pg_inst.input_format = input_format;
+}
 
 #if defined(HRT_SCHED) || defined(SH_CSS_DEBUG_SPMEM_DUMP_SUPPORT)
 #include "spmem_dump.c"
