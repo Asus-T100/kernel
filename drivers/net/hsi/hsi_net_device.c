@@ -495,14 +495,16 @@ static int hsi_client_probe(struct device *dev)
 
 	DPRINTK("hsi_client_probe\n");
 
+	if (!hsi_protocol_context) {
+		DPRINTK("hsi_protocol_context" \
+			"is NULL => net device has not be probed\n");
+		return -EFAULT;
+	}
+
 	hsi = kzalloc(sizeof(*hsi), GFP_KERNEL);
 
 	if (!hsi)
 		return -ENOMEM;
-
-	if (!hsi_protocol_context)
-		DPRINTK("hsi_protocol_context" \
-			"is NULL => net device has not be probed\n");
 
 	hsi_protocol_context->cl[hsi_protocol_context->nb_client] = hsi;
 #ifdef HSI_USE_SEND_SCHEDULED
@@ -609,6 +611,10 @@ static int hsi_net_device_probe(struct platform_device *dev)
 		due to HSI control client that has no associated queue */
 	ndev = alloc_netdev_mq(sizeof(struct hsi_protocol),
 			"mhi%d", hsi_net_device_setup, HSI_NB_CLIENT-1);
+	if (!ndev) {
+		pr_err("alloc_netdev_mq failed\n");
+		return -ENOMEM;
+	}
 
 	/* Stop all queues.
 		They will be waked up after configuration exchange */
