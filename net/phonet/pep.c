@@ -931,7 +931,8 @@ static int pep_sock_enable(struct sock *sk, struct sockaddr *addr, int len)
 static int pep_ioctl(struct sock *sk, int cmd, unsigned long arg)
 {
 	struct pep_sock *pn = pep_sk(sk);
-	int answ;
+	struct sk_buff *skb;
+	int answ = 0;
 	int ret = -ENOIOCTLCMD;
 
 	switch (cmd) {
@@ -943,12 +944,13 @@ static int pep_ioctl(struct sock *sk, int cmd, unsigned long arg)
 
 		lock_sock(sk);
 		if (sock_flag(sk, SOCK_URGINLINE) &&
-		    !skb_queue_empty(&pn->ctrlreq_queue))
-			answ = skb_peek(&pn->ctrlreq_queue)->len;
-		else if (!skb_queue_empty(&sk->sk_receive_queue))
-			answ = skb_peek(&sk->sk_receive_queue)->len;
-		else
-			answ = 0;
+		    !skb_queue_empty(&pn->ctrlreq_queue)) {
+			skb = skb_peek(&pn->ctrlreq_queue);
+			answ = skb ? skb->len : 0;
+		} else if (!skb_queue_empty(&sk->sk_receive_queue)) {
+			skb = skb_peek(&sk->sk_receive_queue);
+			answ = skb ? skb->len : 0;
+		}
 		release_sock(sk);
 		ret = put_user(answ, (int __user *)arg);
 		break;
