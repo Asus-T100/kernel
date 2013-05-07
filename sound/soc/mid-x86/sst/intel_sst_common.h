@@ -381,7 +381,8 @@ struct snd_sst_probe_bytes {
 #define PCI_DMAC_CLV_ID 0x08F0
 #define PCI_DMAC_MRFLD_ID 0x119B
 #define SST_MAX_DMA_LEN (4095*4)
-#define SST_MAX_DMA_LEN_MRFLD (1024*128)
+/* On Mrfld, MAX DMA BLOCK SIZE is (2*17 - 1)*/
+#define SST_MAX_DMA_LEN_MRFLD (131071)
 
 struct sst_probe_info {
 	u32 iram_start;
