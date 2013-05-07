@@ -735,10 +735,6 @@ static int atomisp_register_entities(struct atomisp_device *isp)
 
 	strlcpy(isp->media_dev.model, "Intel Atom ISP",
 		sizeof(isp->media_dev.model));
-	if (IS_ISP2400)
-		isp->media_dev.hw_revision = ATOMISP_CSS_VERSION_20;
-	else
-		isp->media_dev.hw_revision = ATOMISP_CSS_VERSION_15;
 
 	ret = media_device_register(&isp->media_dev);
 	if (ret < 0) {
@@ -1023,6 +1019,29 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	mutex_init(&isp->streamoff_mutex);
 	spin_lock_init(&isp->lock);
 	init_completion(&isp->init_done);
+
+	isp->media_dev.driver_version = ATOMISP_CSS_VERSION_20;
+
+	switch (id->device & ATOMISP_PCI_DEVICE_SOC_MASK) {
+	case ATOMISP_PCI_DEVICE_SOC_MRFLD:
+	case ATOMISP_PCI_DEVICE_SOC_BYT:
+		isp->media_dev.hw_revision =
+			(ATOMISP_HW_REVISION_ISP2400
+			 << ATOMISP_HW_REVISION_SHIFT) |
+#ifdef CONFIG_ISP2400
+			ATOMISP_HW_STEPPING_A0;
+#else
+			ATOMISP_HW_STEPPING_B0;
+#endif
+		break;
+	default:
+		/* Medfield and Clovertrail. */
+		isp->media_dev.hw_revision =
+			(ATOMISP_HW_REVISION_ISP2300
+			 << ATOMISP_HW_REVISION_SHIFT) |
+			(dev->revision < 0x09 ?
+			 ATOMISP_HW_STEPPING_A0 : ATOMISP_HW_STEPPING_B0);
+	}
 
 	isp->max_isr_latency = ATOMISP_MAX_ISR_LATENCY;
 	if ((pdata->spid->platform_family_id == INTEL_CLVTP_PHONE ||
