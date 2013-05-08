@@ -1342,6 +1342,10 @@ static void intel_dp_commit(struct drm_encoder *encoder)
 		intel_cpt_verify_modeset(dev, intel_crtc->pipe);
 }
 
+static bool is_edp_psr(struct intel_dp *intel_dp)
+{
+	return is_edp(intel_dp) && (intel_dp->psr_dpcd[0] & 0x1);
+}
 static void
 intel_dp_dpms(struct drm_encoder *encoder, int mode)
 {
@@ -2128,11 +2132,23 @@ intel_dp_get_dpcd(struct intel_dp *intel_dp)
 {
 	if (intel_dp_aux_native_read_retry(intel_dp, 0x000, intel_dp->dpcd,
 					   sizeof(intel_dp->dpcd)) &&
-	    (intel_dp->dpcd[DP_DPCD_REV] != 0)) {
-		return true;
+	    (intel_dp->dpcd[DP_DPCD_REV] == 0)) {
+		return false;
 	}
 
-	return false;
+	/* Check if the panel supports PSR */
+	memset(intel_dp->psr_dpcd, 0, EDP_PSR_RECEIVER_CAP_SIZE);
+	intel_dp_aux_native_read_retry(intel_dp, DP_PSR_SUPPORT,
+					intel_dp->psr_dpcd,
+					sizeof(intel_dp->psr_dpcd));
+
+	DRM_DEBUG_KMS("DPCD Revision = %d", intel_dp->dpcd[DP_DPCD_REV]);
+	if (is_edp_psr(intel_dp)) {
+		DRM_DEBUG_KMS("Detected EDP PSR Panel.\n");
+		intel_dp_aux_native_write_1(intel_dp, DP_PSR_ESI, 0x1);
+	}
+
+	return true;
 }
 
 static void
