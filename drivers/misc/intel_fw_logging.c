@@ -35,6 +35,7 @@
 #include <linux/notifier.h>
 #include <linux/delay.h>
 #include <linux/ctype.h>
+#include <linux/intel_mid_pm.h>
 #include <asm/intel_mid_rpmsg.h>
 
 #include <linux/io.h>
@@ -1025,6 +1026,67 @@ out:
 	return 0;
 }
 
+#ifdef CONFIG_ATOM_SOC_POWER
+static void __iomem *ia_trace_buf;
+static void intel_fw_logging_report_nc_pwr(u32 value, int reg_type)
+{
+	struct ia_trace_t *ia_trace = ia_trace_buf;
+
+	switch (reg_type) {
+	case APM_REG_TYPE:
+		ia_trace->apm_cmd[1] = ia_trace->apm_cmd[0];
+		ia_trace->apm_cmd[0] = value;
+		break;
+	case OSPM_REG_TYPE:
+		ia_trace->ospm_pm_ssc[1] = ia_trace->ospm_pm_ssc[0];
+		ia_trace->ospm_pm_ssc[0] = value;
+		break;
+	default:
+		pr_err("Invalid reg type!");
+		break;
+	}
+}
+
+static int intel_fw_logging_start_nc_pwr_reporting(void)
+{
+	u32 buffer;
+
+	if (sram_buf_sz <  sizeof(struct ia_trace_t)) {
+		pr_warn("Sram_buf_sz is smaller than expected");
+		return 0;
+	}
+
+	buffer = intel_scu_ipc_get_scu_trace_buffer();
+	buffer += sram_buf_sz - sizeof(struct ia_trace_t);
+	ia_trace_buf = ioremap_nocache(buffer, sizeof(struct ia_trace_t));
+	if (!ia_trace_buf) {
+		pr_err("Failed to map ia trace buffer");
+		return -ENOMEM;
+	}
+	nc_report_power_state =  intel_fw_logging_report_nc_pwr;
+
+	return 0;
+}
+
+static void intel_fw_logging_stop_nc_pwr_reporting(void)
+{
+	iounmap(ia_trace_buf);
+	nc_report_power_state = NULL;
+}
+
+#else /* !CONFIG_ATOM_SOC_POWER */
+
+static int intel_fw_logging_start_nc_pwr_reporting(void)
+{
+	return 0;
+}
+
+static void intel_fw_logging_stop_nc_pwr_reporting(void)
+{
+}
+
+#endif /* CONFIG_ATOM_SOC_POWER */
+
 static struct notifier_block fw_logging_panic_notifier = {
 	.notifier_call	= intel_fw_logging_panic_handler,
 	.next		= NULL,
@@ -1054,11 +1116,18 @@ static int intel_fw_logging_probe(struct platform_device *pdev)
 		pr_err("Failed to register notifier!\n");
 		goto err1;
 	}
+
+	err = intel_fw_logging_start_nc_pwr_reporting();
+	if (err) {
+		pr_err("Failed to start nc power reporting!");
+		goto err2;
+	}
+
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0) {
 		pr_info("No irq available, SCU tracing not available\n");
 		err = irq;
-		goto err2;
+		goto err3;
 	}
 
 	err = request_threaded_irq(irq, fw_logging_irq,
@@ -1067,7 +1136,7 @@ static int intel_fw_logging_probe(struct platform_device *pdev)
 				   &pdev->dev);
 	if (err) {
 		pr_err("Requesting irq for logging trace failed\n");
-		goto err2;
+		goto err3;
 	}
 
 	if (!disable_scu_tracing)
@@ -1075,6 +1144,8 @@ static int intel_fw_logging_probe(struct platform_device *pdev)
 
 	return err;
 
+err3:
+	intel_fw_logging_stop_nc_pwr_reporting();
 err2:
 	atomic_notifier_chain_unregister(&panic_notifier_list,
 					 &fw_logging_panic_notifier);
@@ -1086,7 +1157,7 @@ static int intel_fw_logging_remove(struct platform_device *pdev)
 {
 	free_irq(irq, &pdev->dev);
 	free_irq(recoverable_irq, &pdev->dev);
-
+	intel_fw_logging_stop_nc_pwr_reporting();
 	return atomic_notifier_chain_unregister(&panic_notifier_list,
 						&fw_logging_panic_notifier);
 }

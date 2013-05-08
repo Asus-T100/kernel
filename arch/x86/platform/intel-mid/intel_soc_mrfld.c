@@ -304,6 +304,8 @@ static int mrfld_nc_set_power_state(int islands, int state_type,
 					status_mask, state_type, reg);
 		if (!ret)
 			*change = 1;
+		if (nc_report_power_state)
+			nc_report_power_state(pwr_mask, reg);
 	}
 
 	return ret;

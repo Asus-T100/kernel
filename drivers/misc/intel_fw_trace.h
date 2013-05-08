@@ -30,6 +30,11 @@ struct scu_trace_hdr_t {
 	u32 size;
 };
 
+struct ia_trace_t {
+	u32 apm_cmd[2];
+	u32 ospm_pm_ssc[2];
+};
+
 #define TRACE_MAGIC 0x53435554
 
 #define TRACE_ID_INFO    0x0100
