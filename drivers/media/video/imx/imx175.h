@@ -1080,6 +1080,60 @@ static struct imx_reg const imx_WVGA_strong_dvs_30fps[] = {
 	{IMX_8BIT, 0x33D7, 0x38},
 	{IMX_TOK_TERM, 0, 0}
 };
+static struct imx_reg const imx_CIF_strong_dvs_30fps[] = {
+	GROUPED_PARAMETER_HOLD_ENABLE,
+	{IMX_8BIT, 0x0100, 0x00},  /*	mode_select	*/
+	/* shutter */
+	{IMX_8BIT, 0x0202, 0x05},  /* coarse _integration_time[15:8] */
+	{IMX_8BIT, 0x0203, 0xFC},  /* coarse _integration_time[7:0] */
+	/* pll */
+	{IMX_8BIT, 0x0301, 0x05},  /*	vt_pix_clk_div[7:0]	*/
+	{IMX_8BIT, 0x0303, 0x01},  /*	vt_sys_clk_div[7:0]	*/
+	{IMX_8BIT, 0x0305, 0x04},  /*	pre_pll_clk_div[7:0]	*/
+	{IMX_8BIT, 0x0309, 0x05},  /*	op_pix_clk_div[7:0]	*/
+	{IMX_8BIT, 0x030B, 0x01},  /*	op_sys_clk_div[7:0]	*/
+	{IMX_8BIT, 0x030C, 0x00},
+	{IMX_8BIT, 0x030D, 0x6D},
+	/* image sizing */
+	{IMX_8BIT, 0x0340, 0x06},  /* frame_length_lines[15:8] */
+	{IMX_8BIT, 0x0341, 0x00},  /*	frame_length_lines[7:0]	*/
+	{IMX_8BIT, 0x0342, 0x11},  /*	line_length_pck[15:8]	*/
+	{IMX_8BIT, 0x0343, 0xDB},  /*	line_length_pck[7:0]	*/
+	{IMX_8BIT, 0x0344, 0x00},  /*	x_addr_start[15:8]	*/
+	{IMX_8BIT, 0x0345, 0x00},  /*	x_addr_start[7:0]	*/
+	{IMX_8BIT, 0x0346, 0x00},  /*	y_addr_start[15:8]	*/
+	{IMX_8BIT, 0x0347, 0x00},  /*	y_addr_start[7:0]	*/
+	{IMX_8BIT, 0x0348, 0x0C},  /*	x_addr_end[15:8]	*/
+	{IMX_8BIT, 0x0349, 0xCF},  /*	x_addr_end[7:0]	*/
+	{IMX_8BIT, 0x034A, 0x09},  /*	y_addr_end[15:8]	*/
+	{IMX_8BIT, 0x034B, 0x9F},  /*	y_addr_end[7:0]	*/
+	{IMX_8BIT, 0x034C, 0x01},  /*	x_output_size[15:8]	*/
+	{IMX_8BIT, 0x034D, 0x70},  /*	x_output_size[7:0]	*/
+	{IMX_8BIT, 0x034E, 0x01},  /*	y_output_size[15:8]	*/
+	{IMX_8BIT, 0x034F, 0x30},  /*	y_output_size[7:0]	*/
+	/* binning & scaling */
+	{IMX_8BIT, 0x0390, 0x02}, /* binning mode */
+	{IMX_8BIT, 0x0401, 0x00}, /* scaling mode*/
+	{IMX_8BIT, 0x0405, 0x10}, /* scale_m[7:0] */
+	/* timer */
+	{IMX_8BIT, 0x3344, 0x37},
+	{IMX_8BIT, 0x3345, 0x1F},
+	/* timing */
+	{IMX_8BIT, 0x3370, 0x5F},
+	{IMX_8BIT, 0x3371, 0x17},
+	{IMX_8BIT, 0x3372, 0x37},
+	{IMX_8BIT, 0x3373, 0x17},
+	{IMX_8BIT, 0x3374, 0x17},
+	{IMX_8BIT, 0x3375, 0x0F},
+	{IMX_8BIT, 0x3376, 0x57},
+	{IMX_8BIT, 0x3377, 0x27},
+	{IMX_8BIT, 0x33C8, 0x01},
+	{IMX_8BIT, 0x33D4, 0x06},
+	{IMX_8BIT, 0x33D5, 0x20},
+	{IMX_8BIT, 0x33D6, 0x03},
+	{IMX_8BIT, 0x33D7, 0x6C},
+	{IMX_TOK_TERM, 0, 0}
+};
 
 static struct imx_reg const imx_VGA_strong_dvs_30fps[] = {
 	GROUPED_PARAMETER_HOLD_ENABLE,
@@ -1338,10 +1392,22 @@ static struct imx_reg const imx175_init_settings[] = {
 /* TODO settings of preview/still/video will be updated with new use case */
 struct imx_resolution imx175_res_preview[] = {
 	{
+		.desc = "CIF_strong_dvs_30fps",
+		.regs = imx_CIF_strong_dvs_30fps,
+		.width = 368,
+		.height = 304,
+		.fps = 30,
+		.pixels_per_line = 0x11DB, /* consistent with regs arrays */
+		.lines_per_frame = 0x0600, /* consistent with regs arrays */
+		.bin_factor_x = 4,
+		.bin_factor_y = 4,
+		.used = 0,
+	},
+	{
 		.desc = "VGA_strong_dvs_30fps",
 		.regs = imx_VGA_strong_dvs_30fps,
-		.width = 820	,
-		.height = 616	,
+		.width = 820,
+		.height = 616,
 		.fps = 30,
 		.pixels_per_line = 0x11DB, /* consistent with regs arrays */
 		.lines_per_frame = 0x0600, /* consistent with regs arrays */
@@ -1353,8 +1419,8 @@ struct imx_resolution imx175_res_preview[] = {
 	{
 		.desc = "WIDE_PREVIEW_30fps",
 		.regs = imx_WIDE_PREVIEW_30fps,
-		.width = 1640	,
-		.height = 956	,
+		.width = 1640,
+		.height = 956,
 		.fps = 30,
 		.pixels_per_line = 0x1000, /* consistent with regs arrays */
 		.lines_per_frame = 0x0D70, /* consistent with regs arrays */
@@ -1367,7 +1433,7 @@ struct imx_resolution imx175_res_preview[] = {
 		.desc = "STILL_720p_30fps",
 		.regs = imx_STILL_720p_30fps,
 		.width = 1568,
-		.height =	876,
+		.height = 876,
 		.fps = 30,
 		.pixels_per_line = 0x1428, /* consistent with regs arrays */
 		.lines_per_frame = 0x0548, /* consistent with regs arrays */
@@ -1432,7 +1498,7 @@ struct imx_resolution imx175_res_preview[] = {
 		.desc = "STILL_6M_30fps",
 		.regs = imx_STILL_6M_30fps,
 		.width = 3280,
-		.height =	1852,
+		.height = 1852,
 		.fps = 30,
 		.pixels_per_line = 0x0D66, /* consistent with regs arrays */
 		.lines_per_frame = 0x09C4, /* consistent with regs arrays */
@@ -1458,10 +1524,22 @@ struct imx_resolution imx175_res_preview[] = {
 
 struct imx_resolution imx175_res_still[] = {
 	{
+		.desc = "CIF_strong_dvs_30fps",
+		.regs = imx_CIF_strong_dvs_30fps,
+		.width = 368,
+		.height = 304,
+		.fps = 30,
+		.pixels_per_line = 0x11DB, /* consistent with regs arrays */
+		.lines_per_frame = 0x0600, /* consistent with regs arrays */
+		.bin_factor_x = 4,
+		.bin_factor_y = 4,
+		.used = 0,
+	},
+	{
 		.desc = "VGA_strong_dvs_15fps",
 		.regs = imx_VGA_strong_dvs_15fps,
-		.width = 820	,
-		.height = 616	,
+		.width = 820,
+		.height = 616,
 		.fps = 15,
 		.pixels_per_line = 0x1C86, /* consistent with regs arrays */
 		.lines_per_frame = 0x079E, /* consistent with regs arrays */
@@ -1474,7 +1552,7 @@ struct imx_resolution imx175_res_still[] = {
 		.desc = "imx_STILL_720p_15fps",
 		.regs = imx_STILL_720p_15fps,
 		.width = 1568,
-		.height =	876,
+		.height = 876,
 		.fps = 15,
 		.pixels_per_line = 0x1838, /* consistent with regs arrays */
 		.lines_per_frame = 0x08CA, /* consistent with regs arrays */
@@ -1539,7 +1617,7 @@ struct imx_resolution imx175_res_still[] = {
 		.desc = "STILL_6M_15fps",
 		.regs = imx_STILL_6M_15fps,
 		.width = 3280,
-		.height =	1852,
+		.height = 1852,
 		.fps = 15,
 		.pixels_per_line = 0x1646, /* consistent with regs arrays */
 		.lines_per_frame = 0x0BB8, /* consistent with regs arrays */
@@ -1580,8 +1658,8 @@ struct imx_resolution imx175_res_video[] = {
 	{
 		.desc =	"QVGA_strong_dvs_30fps",
 		.regs = imx_QVGA_strong_dvs_30fps,
-		.width =	408	,
-		.height =	308	,
+		.width = 408,
+		.height = 308,
 		.fps = 30,
 		.pixels_per_line = 0x0D70, /* consistent with regs arrays */
 		.lines_per_frame = 0x0548, /* consistent with regs arrays */
@@ -1593,8 +1671,8 @@ struct imx_resolution imx175_res_video[] = {
 	{
 		.desc = "VGA_strong_dvs_30fps",
 		.regs = imx_VGA_strong_dvs_30fps,
-		.width = 820	,
-		.height = 616	,
+		.width = 820,
+		.height = 616,
 		.fps = 30,
 		.pixels_per_line = 0x11DB, /* consistent with regs arrays */
 		.lines_per_frame = 0x0600, /* consistent with regs arrays */
@@ -1607,7 +1685,7 @@ struct imx_resolution imx175_res_video[] = {
 		.desc = "720p_strong_dvs_30fps",
 		.regs = imx_720p_strong_dvs_30fps,
 		.width = 1568,
-		.height =	876,
+		.height = 876,
 		.fps = 30,
 		.pixels_per_line = 0x1428, /* consistent with regs arrays */
 		.lines_per_frame = 0x0600, /* consistent with regs arrays */
@@ -1620,7 +1698,7 @@ struct imx_resolution imx175_res_video[] = {
 		.desc = "WVGA_strong_dvs_30fps",
 		.regs = imx_WVGA_strong_dvs_30fps,
 		.width = 1640,
-		.height =	1024,
+		.height = 1024,
 		.fps = 30,
 		.pixels_per_line = 0x1428, /* consistent with regs arrays */
 		.lines_per_frame = 0x0600, /* consistent with regs arrays */
@@ -1633,7 +1711,7 @@ struct imx_resolution imx175_res_video[] = {
 		.desc = "1080p_strong_dvs_30fps",
 		.regs = imx_1080p_strong_dvs_30fps,
 		.width = 2336,
-		.height =	1308,
+		.height = 1308,
 		.fps = 30,
 		.pixels_per_line = 0x157C, /* consistent with regs arrays */
 		.lines_per_frame = 0x0708, /* consistent with regs arrays */
