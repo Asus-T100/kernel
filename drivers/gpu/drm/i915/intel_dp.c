@@ -1209,7 +1209,7 @@ static void ironlake_edp_backlight_on(struct intel_dp *intel_dp)
 	if (!is_edp(intel_dp))
 		return;
 
-	intel_panel_disable_backlight(dev);
+	/*intel_panel_disable_backlight(dev);*/
 
 	DRM_DEBUG_KMS("\n");
 	/*
@@ -1227,7 +1227,7 @@ static void ironlake_edp_backlight_on(struct intel_dp *intel_dp)
 	I915_WRITE(pp_ctrl_reg, pp);
 	POSTING_READ(pp_ctrl_reg);
 
-	intel_panel_enable_backlight(dev, pipe);
+	/*intel_panel_enable_backlight(dev, pipe);*/
 }
 
 static void ironlake_edp_backlight_off(struct intel_dp *intel_dp)
