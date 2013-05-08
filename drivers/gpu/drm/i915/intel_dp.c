@@ -3073,3 +3073,56 @@ intel_dp_init(struct drm_device *dev, int output_reg, enum port port)
 		I915_WRITE(PEG_BAND_GAP_DATA, (temp & ~0xf) | 0xd);
 	}
 }
+
+void intel_edp_psr_ctl_ioctl(struct drm_device *device, void *data,
+					struct drm_file *file)
+{
+	struct drm_i915_private *dev_priv = device->dev_private;
+	struct drm_connector *connector;
+	struct intel_dp *intel_dp;
+	struct drm_i915_edp_psr_ctl *edp_psr_ctl =
+				(struct drm_i915_edp_psr_ctl *)data;
+	connector = dev_priv->int_edp_connector;
+
+	if (connector == NULL) {
+		DRM_ERROR("CTL : Connector is NULL");
+	} else {
+		intel_dp = intel_attached_dp(connector);
+		if (intel_dp == NULL) {
+			DRM_ERROR("Intel Dp  = NULL");
+		} else {
+			if (edp_psr_ctl->state == 1) {
+				intel_edp_enable_psr(intel_dp, EDP_PSR_MODE,
+						edp_psr_ctl->idle_frames);
+			} else {
+				intel_edp_disable_psr(intel_dp, EDP_PSR_MODE);
+			}
+		}
+	}
+}
+
+void intel_edp_psr_exit_ioctl(struct drm_device *device, void *data,
+						struct drm_file *file)
+{
+	struct drm_i915_private *dev_priv = device->dev_private;
+	struct drm_connector *connector;
+	struct intel_dp *intel_dp;
+	connector = dev_priv->int_edp_connector;
+
+	if (connector == NULL) {
+		DRM_ERROR("Exit : Connector is NULL");
+	} else {
+		intel_dp = intel_attached_dp(connector);
+
+	if (intel_dp == NULL) {
+		DRM_ERROR("Intel Dp  = NULL");
+		} else {
+			/* For SW Timer mode, exit and disable have the exact
+				implementation, hence reusing */
+			if (EDP_PSR_MODE == EDP_PSR_HW_TIMER)
+				intel_edp_exit_psr(intel_dp);
+			else
+				intel_edp_disable_psr(intel_dp, EDP_PSR_MODE);
+		}
+	}
+}

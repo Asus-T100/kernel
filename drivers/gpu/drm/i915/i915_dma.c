@@ -1895,6 +1895,9 @@ struct drm_ioctl_desc i915_ioctls[] = {
 	DRM_IOCTL_DEF_DRV(I915_REG_READ, i915_reg_read_ioctl, DRM_UNLOCKED),
 	DRM_IOCTL_DEF_DRV(I915_SET_PLANE_ZORDER, i915_set_plane_zorder, \
 							DRM_AUTH|DRM_UNLOCKED),
+	DRM_IOCTL_DEF_DRV(I915_EDP_PSR_CTL, intel_edp_psr_ctl_ioctl, DRM_AUTH),
+	DRM_IOCTL_DEF_DRV(I915_EDP_PSR_EXIT, intel_edp_psr_exit_ioctl,
+								DRM_AUTH),
 	DRM_IOCTL_DEF_DRV(I915_DISP_SCREEN_CONTROL, i915_disp_screen_control, \
 							DRM_AUTH|DRM_UNLOCKED),
 };
