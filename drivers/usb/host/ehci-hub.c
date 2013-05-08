@@ -1051,7 +1051,7 @@ static int ehci_hub_control (
 			ehci_writel(ehci, temp | PORT_SUSPEND, status_reg);
 			if (hostpc_reg) {
 				spin_unlock_irqrestore(&ehci->lock, flags);
-				msleep(5);/* 5ms for HCD enter low pwr mode */
+				mdelay(5);/* 4ms for HCD enter low pwr mode */
 				spin_lock_irqsave(&ehci->lock, flags);
 				temp1 = ehci_readl(ehci, hostpc_reg);
 				ehci_writel(ehci, temp1 | HOSTPC_PHCD,

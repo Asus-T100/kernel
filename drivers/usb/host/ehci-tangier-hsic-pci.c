@@ -411,14 +411,11 @@ static void wakeup_work(struct work_struct *work)
 	}
 
 	mutex_lock(&hsic.hsic_mutex);
-	/* Free the wakeup irq */
-	hsic_wakeup_irq_free();
 	dev_dbg(&pci_dev->dev,
 		"%s---->Wakeup IRQ is disabled\n", __func__);
 	pm_runtime_get_sync(&hsic.modem_dev->dev);
 	usleep_range(500, 600);
 	pm_runtime_put_sync(&hsic.modem_dev->dev);
-	hsic_wakeup_irq_init();
 	mutex_unlock(&hsic.hsic_mutex);
 
 	dev_dbg(&pci_dev->dev,
