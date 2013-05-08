@@ -315,6 +315,7 @@ struct intel_program_clock_bending {
 
 #define DP_RECEIVER_CAP_SIZE		0xf
 #define DP_LINK_CONFIGURATION_SIZE	9
+#define EDP_PSR_RECEIVER_CAP_SIZE	2
 
 struct intel_dp {
 	struct intel_encoder base;
@@ -329,6 +330,7 @@ struct intel_dp {
 	uint8_t link_bw;
 	uint8_t lane_count;
 	uint8_t dpcd[DP_RECEIVER_CAP_SIZE];
+	uint8_t psr_dpcd[EDP_PSR_RECEIVER_CAP_SIZE];
 	struct i2c_adapter adapter;
 	struct i2c_algo_dp_aux_data algo;
 	bool is_pch_edp;
@@ -343,6 +345,7 @@ struct intel_dp {
 	bool want_panel_vdd;
 	struct edid *edid; /* cached EDID for eDP */
 	int edid_mode_count;
+	uint8_t psr_setup;
 };
 
 static inline struct drm_crtc *
@@ -547,6 +550,11 @@ extern void intel_ddi_dpms(struct drm_encoder *encoder, int mode);
 extern void intel_ddi_mode_set(struct drm_encoder *encoder,
 				struct drm_display_mode *mode,
 				struct drm_display_mode *adjusted_mode);
+/* intel_dp.c */
+extern void intel_edp_psr_ctl_ioctl(struct drm_device *device, void *data,
+					struct drm_file *file_priv);
+extern void intel_edp_psr_exit_ioctl(struct drm_device *device, void *data,
+					struct drm_file *file_priv);
 
 /* VLV LP clock bending */
 extern void valleyview_program_clock_bending(struct drm_i915_private *dev_priv,
