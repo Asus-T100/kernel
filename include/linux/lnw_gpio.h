@@ -8,4 +8,5 @@ enum {
 };
 
 void lnw_gpio_set_alt(int gpio, int alt);
+int gpio_get_alt(int gpio);
 #endif

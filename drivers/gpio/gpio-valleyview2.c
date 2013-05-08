@@ -1,6 +1,6 @@
 /*
  * GPIO driver for Intel Valleyview 2 PCH >
- * Copyright (c) 2012, Intel Corporation.
+ * Copyright (c) 2012-2013, Intel Corporation.
  *
  * Author: Mathias Nyman <mathias.nyman@linux.intel.com>
  * Author: Yang Bin <bin.yang@linux.intel.com>
@@ -197,6 +197,37 @@ void lnw_gpio_set_alt(int gpio, int alt)
 	writel(value, reg);
 }
 EXPORT_SYMBOL_GPL(lnw_gpio_set_alt);
+
+int gpio_get_alt(int gpio)
+{
+	struct gpio_bank_pnp *bank;
+	struct vlv_gpio *vg = NULL;
+	void __iomem *reg;
+	u32 offset;
+	int value;
+	int i;
+	int nbanks = sizeof(vlv_banks_pnp) / sizeof(struct gpio_bank_pnp);
+
+	for (i = 0; i < nbanks; i++) {
+		bank = vlv_banks_pnp + i;
+		if (gpio >= bank->gpio_base &&
+			gpio < (bank->gpio_base + bank->ngpio)) {
+			vg = bank->vg;
+			offset = gpio - bank->gpio_base;
+			break;
+		}
+	}
+	if (!vg) {
+		pr_info("vlv_gpio: can not find pin %d\n", gpio);
+		return -1;
+	}
+
+	reg = vlv_gpio_reg(&vg->chip, offset, VV_CONF0_REG);
+	value = readl(reg) & VV_PIN_MUX;
+
+	return value;
+}
+EXPORT_SYMBOL_GPL(gpio_get_alt);
 
 static int vlv_irq_type(struct irq_data *d, unsigned type)
 {
@@ -474,6 +505,8 @@ vlv_gpio_pnp_probe(struct pnp_dev *pdev, const struct pnp_device_id *id)
 	gc->free = vlv_gpio_free;
 	gc->direction_input = vlv_gpio_direction_input;
 	gc->direction_output = vlv_gpio_direction_output;
+	gc->set_pinmux = lnw_gpio_set_alt;
+	gc->get_pinmux = gpio_get_alt;
 	gc->get = vlv_gpio_get;
 	gc->set = vlv_gpio_set;
 	gc->dbg_show = vlv_gpio_dbg_show;
