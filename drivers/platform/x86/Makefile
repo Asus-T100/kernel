@@ -36,7 +36,10 @@ obj-$(CONFIG_TOPSTAR_LAPTOP)	+= topstar-laptop.o
 obj-$(CONFIG_ACPI_TOSHIBA)	+= toshiba_acpi.o
 
 obj-$(CONFIG_TOSHIBA_BT_RFKILL)	+= toshiba_bluetooth.o
-obj-$(CONFIG_INTEL_SCU_IPC)	+= intel_scu_ipc.o intel_scu_pmic.o intel_scu_mip.o intel_scu_fw_update.o
+obj-$(CONFIG_INTEL_SCU_IPC)	+= intel_scu_ipc.o intel_scu_mip.o intel_scu_fw_update.o
+ifneq ($(CONFIG_CRYSTAL_COVE), y)
+obj-$(CONFIG_INTEL_SCU_IPC)	+= intel_scu_pmic.o
+endif
 obj-$(CONFIG_INTEL_SCU_IPC_UTIL) += intel_scu_ipcutil.o
 obj-$(CONFIG_INTEL_PSH_IPC)	+= intel_psh_ipc.o
 obj-$(CONFIG_INTEL_SCU_FLIS)	+= intel_scu_flis.o

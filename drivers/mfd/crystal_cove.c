@@ -122,6 +122,75 @@ static struct mfd_cell crystal_cove_data[] = {
 static struct intel_mid_pmic intel_mid_pmic;
 static struct intel_mid_pmic *pmic = &intel_mid_pmic;
 
+/* These intel_scu_ipc_* APIs are formed to
+ * be compatible with old SCU IPC APIs.
+ */
+int intel_scu_ipc_ioread8(u16 addr, u8 *data)
+{
+	int ret;
+
+	ret = intel_mid_pmic_readb(addr);
+	if (ret < 0)
+		return ret;
+
+	*data = ret;
+	return 0;
+}
+EXPORT_SYMBOL(intel_scu_ipc_ioread8);
+
+int intel_scu_ipc_iowrite8(u16 addr, u8 data)
+{
+	return intel_mid_pmic_writeb(addr, data);
+}
+EXPORT_SYMBOL(intel_scu_ipc_iowrite8);
+
+int intel_scu_ipc_update_register(u16 addr, u8 data, u8 mask)
+{
+	int ret;
+
+	mutex_lock(&pmic->io_lock);
+	ret = i2c_smbus_write_byte_data(pmic->i2c, addr, data & mask);
+	mutex_unlock(&pmic->io_lock);
+	return ret;
+}
+EXPORT_SYMBOL(intel_scu_ipc_update_register);
+
+int intel_scu_ipc_readv(u16 *addr, u8 *data, int len)
+{
+	int i;
+	int ret;
+
+	if (len < 1 || len > 4)
+		return -EINVAL;
+
+	for (i = 0; i < len; i++) {
+		ret = intel_scu_ipc_ioread8(addr[i], &data[i]);
+		if (ret)
+			return ret;
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL(intel_scu_ipc_readv);
+
+int intel_scu_ipc_writev(u16 *addr, u8 *data, int len)
+{
+	int i;
+	int ret;
+
+	if (len < 1 || len > 4)
+		return -EINVAL;
+
+	for (i = 0; i < len; i++) {
+		ret = intel_scu_ipc_iowrite8(addr[i], data[i]);
+		if (ret)
+			return ret;
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL(intel_scu_ipc_writev);
+
 int intel_mid_pmic_readb(int reg)
 {
 	int ret;
