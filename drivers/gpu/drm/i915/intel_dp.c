@@ -39,7 +39,7 @@
 
 #define DP_LINK_STATUS_SIZE	6
 #define DP_LINK_CHECK_TIMEOUT	(10 * 1000)
-
+#define EDP_PSR_MODE 0 /* 0 = HW TIMER, 1 = SW TIMER */
 /**
  * is_edp - is the given port attached to an eDP panel (either CPU or PCH)
  * @intel_dp: DP struct
@@ -1346,6 +1346,258 @@ static bool is_edp_psr(struct intel_dp *intel_dp)
 {
 	return is_edp(intel_dp) && (intel_dp->psr_dpcd[0] & 0x1);
 }
+
+static void intel_edp_psr_setup(struct intel_dp *intel_dp)
+{
+	int ack = 0;
+	uint8_t val;
+
+	/* No need to setup if already done as these setting are persistent
+	 * until power states are entered */
+	if (intel_dp->psr_setup == 1)
+		return;
+
+	 val = 0x00;
+	 ack = intel_dp_aux_native_write_1(intel_dp, DP_PSR_EN_CFG, val);
+
+	if (ack)
+		intel_dp->psr_setup = 1;
+	else
+		intel_dp->psr_setup = 0;
+}
+static bool
+intel_edp_is_psr_active(struct intel_dp *intel_dp)
+{
+	struct drm_device *dev = intel_dp->base.base.dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	enum PSR_STATE curr_state;
+	curr_state = I915_READ(EDP_PSR_STATUS_CTL) & EDP_PSR_CURR_STATE_MASK;
+	if ((curr_state == EDP_PSR_ACTIVE_NORFB) ||
+				(curr_state == EDP_PSR_ACTIVE_SINGLE_FRAME))
+		return true;
+	else
+		return false;
+}
+static void
+intel_edp_psr_enable_src(struct intel_dp *intel_dp, enum PSR_MODE mode,
+					int idle_frames)
+{
+	struct drm_device *dev = intel_dp->base.base.dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	uint32_t val = 0x0;
+	int count = 0;
+
+
+	val = I915_READ(EDP_PSR_CTL);
+	val |= EDP_PSR_ENABLE;
+	val &= ~EDP_PSR_MODE_MASK;
+	if (mode == EDP_PSR_HW_TIMER) {
+		if (idle_frames > 0xff)
+			idle_frames = 0xff;
+		val |= EDP_PSR_MODE_HW_TIMER;
+		val &= ~EDP_PSR_FRAME_COUNT_MASK;
+		val |= idle_frames << 16;
+	} else if (mode == EDP_PSR_SW_TIMER)
+			val |= EDP_PSR_MODE_SW_TIMER | EDP_PSR_ACTIVE_ENTRY;
+	I915_WRITE(EDP_PSR_CTL, val);
+
+	if (mode == EDP_PSR_SW_TIMER) {
+		val |= EDP_PSR_ACTIVE_ENTRY;
+		I915_WRITE(EDP_PSR_CTL, val);
+
+		val = I915_READ(EDP_PSR_STATUS_CTL);
+		val &= EDP_PSR_CURR_STATE_MASK;
+
+		while ((count < 400) && ((val != EDP_PSR_ACTIVE_NORFB) &&
+				(val != EDP_PSR_ACTIVE_SINGLE_FRAME))) {
+			udelay(100);
+			val = I915_READ(EDP_PSR_STATUS_CTL);
+			val &=  EDP_PSR_CURR_STATE_MASK;
+			count++;
+		/* This while loop has a maximum delay of 40ms */
+		}
+	}
+}
+
+void intel_edp_enable_psr(struct intel_dp *intel_dp, enum PSR_MODE mode,
+						int idle_frames)
+{
+
+	struct drm_device *dev = intel_dp->base.base.dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct intel_crtc *intel_crtc = to_intel_crtc(intel_dp->base.base.crtc);
+	int i = 0, ack = 0;
+	uint32_t val = 0;
+
+	if (!is_edp_psr(intel_dp) || intel_edp_is_psr_active(intel_dp))
+		return;
+
+	if (intel_dp->psr_setup == 1)
+		return;
+
+	val = I915_READ(_PIPEASTAT);
+	val &= 0xffff0000;
+	val |= PIPE_FIFO_UNDERRUN;
+	I915_WRITE(_PIPEASTAT, val);
+
+	val  = I915_READ(PIPEA_VSC_SDP_REG);
+	val &= ~EDP_PSR_SDP_FREQ_MASK;
+	val |= EDP_PSR_SDP_FREQ_EVFRAME;
+	I915_WRITE(PIPEA_VSC_SDP_REG, val);
+
+	val = I915_READ(PSR_CLK_GATE_DISABLE);
+	val |= CLK_DISABLE_PIPE_B;
+	I915_WRITE(PSR_CLK_GATE_DISABLE, val);
+
+	/* setup AUX registers in case returned from pm states */
+	intel_edp_psr_setup(intel_dp);
+
+	if (intel_dp->psr_setup == 1) {
+		ack = intel_dp_aux_native_write_1(intel_dp, DP_PSR_EN_CFG,
+							DP_PSR_ENABLE);
+		if (ack == 1) {
+			intel_edp_psr_enable_src(intel_dp, mode, idle_frames);
+		} else {
+			DRM_ERROR("No Ack received from Sink\n");
+			intel_dp->psr_setup = 0;
+		}
+	}
+
+	val = I915_READ(_PIPEASTAT);
+	val &= 0xffff0000;
+	val |= PIPE_FIFO_UNDERRUN;
+	I915_WRITE(_PIPEASTAT, val);
+
+}
+void intel_edp_disable_psr(struct intel_dp *intel_dp, enum PSR_MODE mode)
+{
+	struct drm_device *dev = intel_dp->base.base.dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct intel_crtc *intel_crtc = to_intel_crtc(intel_dp->base.base.crtc);
+	struct drm_crtc *crtc = intel_dp->base.base.crtc;
+	struct intel_encoder *intel_encoder;
+	uint32_t val = 0;
+	uint8_t data;
+	int count = 0;
+
+	if (intel_dp->psr_setup == 0)
+		return;
+
+	/*If PSR in transition add worst case delay of 250us */
+	val = I915_READ(EDP_PSR_STATUS_CTL);
+	if (val & EDP_PSR_IN_TRANS)
+		udelay(250);
+
+	/*Disable PSR */
+	val = I915_READ(EDP_PSR_CTL);
+	val &= ~EDP_PSR_ACTIVE_ENTRY;
+	val &= ~EDP_PSR_ENABLE;
+	if (mode == EDP_PSR_HW_TIMER)
+		val &= ~EDP_PSR_MODE_MASK;
+	I915_WRITE(EDP_PSR_CTL, val);
+
+	val = I915_READ(EDP_PSR_STATUS_CTL);
+	val = val & EDP_PSR_CURR_STATE_MASK;
+	while ((count < 400) && intel_edp_is_psr_active(intel_dp)) {
+		udelay(100);
+		val = I915_READ(EDP_PSR_STATUS_CTL);
+		val = val & EDP_PSR_CURR_STATE_MASK;
+		count++;
+		/* This while loop has a maximum delay of 40ms */
+	}
+
+	if (count == 400) {
+		DRM_ERROR("PSR disable unsuccessfull");
+
+		/* Reset PSR */
+		val = 0;
+		val |= EDP_PSR_RESET;
+		I915_WRITE(EDP_PSR_CTL, val);
+
+		/* Clear the reset bit */
+		val = 0;
+		I915_WRITE(EDP_PSR_CTL, val);
+	}
+
+	 /* Set sink power state to D0 through DPCD register 600h */
+	intel_dp_sink_dpms(intel_dp, DRM_MODE_DPMS_ON);
+
+	list_for_each_entry(crtc, &dev->mode_config.crtc_list, head) {
+		for_each_encoder_on_crtc(dev, crtc, intel_encoder) {
+			intel_encoder_commit(&intel_encoder->base);
+		}
+	}
+
+	val = I915_READ(_PIPEASTAT);
+	val &= 0xffff0000;
+	val |= PIPE_FIFO_UNDERRUN;
+	I915_WRITE(_PIPEASTAT, val);
+
+	intel_dp->psr_setup = 0;
+}
+/* This function is used when in SW Timer mode to exit out of PSR */
+void intel_edp_exit_psr(struct intel_dp *intel_dp)
+{
+	struct drm_device *dev = intel_dp->base.base.dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct intel_crtc *intel_crtc = to_intel_crtc(intel_dp->base.base.crtc);
+	struct drm_crtc *crtc = intel_dp->base.base.crtc;
+	struct intel_encoder *intel_encoder;
+	uint32_t val = 0;
+	int count = 0;
+
+	if (!intel_edp_is_psr_active(intel_dp))
+		return;
+
+	/*If PSR in transition add worst case delay of 250us */
+	val = I915_READ(EDP_PSR_STATUS_CTL);
+	if (val & EDP_PSR_IN_TRANS)
+		udelay(250);
+
+	/*Exit PSR */
+	val = I915_READ(EDP_PSR_CTL);
+	val &= ~EDP_PSR_ACTIVE_ENTRY;
+	I915_WRITE(EDP_PSR_CTL, val);
+
+	val = I915_READ(EDP_PSR_STATUS_CTL);
+	val = val & EDP_PSR_CURR_STATE_MASK;
+	while ((count < 400) && intel_edp_is_psr_active(intel_dp)) {
+		udelay(100);
+		val = I915_READ(EDP_PSR_STATUS_CTL);
+		val = val & EDP_PSR_CURR_STATE_MASK;
+		count++;
+	/* This while loop has a maximum delay of 40ms */
+	}
+
+	if (count == 400) {
+		DRM_ERROR("PSR Exit unsuccessfull");
+
+		/* Reset PSR */
+		val = 0;
+		val |= EDP_PSR_RESET;
+		I915_WRITE(EDP_PSR_CTL, val);
+
+		/* Clear the reset bit */
+		val = 0;
+		I915_WRITE(EDP_PSR_CTL, val);
+	}
+
+	/* Set sink power state to D0 through DPCD register 600h */
+	intel_dp_sink_dpms(intel_dp, DRM_MODE_DPMS_ON);
+
+	list_for_each_entry(crtc, &dev->mode_config.crtc_list, head) {
+		for_each_encoder_on_crtc(dev, crtc, intel_encoder) {
+			intel_encoder_commit(&intel_encoder->base);
+		}
+	}
+
+	val = I915_READ(_PIPEASTAT);
+	val &= 0xffff0000;
+	val |= PIPE_FIFO_UNDERRUN;
+	I915_WRITE(_PIPEASTAT, val);
+
+}
+
 static void
 intel_dp_dpms(struct drm_encoder *encoder, int mode)
 {
@@ -2643,6 +2895,7 @@ intel_dp_init(struct drm_device *dev, int output_reg, enum port port)
 	intel_dp->output_reg = output_reg;
 	intel_dp->port = port;
 	intel_dp->dpms_mode = -1;
+	intel_dp->psr_setup = 0;
 
 	intel_connector = kzalloc(sizeof(struct intel_connector), GFP_KERNEL);
 	if (!intel_connector) {
