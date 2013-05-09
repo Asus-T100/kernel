@@ -455,6 +455,12 @@ static inline void dw_set_clk(struct uart_hsu_port *up, u32 m, u32 n)
 	writel(param, (up->port.membase + 0x800));
 }
 
+static inline void dw_hw_reset(struct uart_hsu_port *up)
+{
+	writel(0, (up->port.membase + 0x804));
+	writel(3, (up->port.membase + 0x804));
+}
+
 #ifdef CONFIG_DEBUG_FS
 
 #define HSU_DBGFS_BUFSIZE	8192
@@ -1102,7 +1108,8 @@ static irqreturn_t port_irq(int irq, void *dev_id)
 				return IRQ_NONE;
 			if (up->iir == 0x7)
 				return IRQ_HANDLED;
-		}
+		} else
+			return IRQ_NONE;
 	}
 
 	if (unlikely(!test_bit(flag_startup, &up->flags))) {
@@ -1250,24 +1257,6 @@ static void serial_hsu_break_ctl(struct uart_port *port, int break_state)
 	pm_runtime_put(up->dev);
 }
 
-static void hsu_dw_setup(struct uart_hsu_port *up)
-{
-	struct uart_port *port = &up->port;
-
-	writel(0, (port->membase + 0x804));
-	writel(3, (port->membase + 0x804));
-
-	/* This is for 58.9824 MHz reqclk */
-	up->m = 9216;
-	up->n = 15625;
-	dw_set_clk(up, up->m, up->n);
-}
-
-static inline void hsu_dw_stop(struct uart_hsu_port *up)
-{
-	writel(0, up->port.membase + 0x804);
-}
-
 /*
  * What special to do:
  * 1. chose the 64B fifo mode
@@ -1290,7 +1279,7 @@ static int serial_hsu_startup(struct uart_port *port)
 
 	/* HW start it */
 	if (up->hw_type == HSU_DW)
-		hsu_dw_setup(up);
+		dw_hw_reset(up);
 
 	if (console_first_init && test_bit(flag_console, &up->flags)) {
 		serial_sched_stop(up);
@@ -1993,13 +1982,20 @@ static void hsu_regs_context(struct uart_hsu_port *up, int op)
 		*/
 		usleep_range(500, 500);
 
+		if (up->hw_type == HSU_DW)
+			dw_hw_reset(up);
+
 		serial_out(up, UART_LCR, up->lcr);
 		serial_out(up, UART_LCR, up->lcr | UART_LCR_DLAB);
 		serial_out(up, UART_DLL, up->dll);
 		serial_out(up, UART_DLM, up->dlm);
 		serial_out(up, UART_LCR, up->lcr);
-		serial_out(up, UART_MUL, up->mul);
-		serial_out(up, UART_PS, up->ps);
+
+		if (up->hw_type == HSU_INTEL) {
+			serial_out(up, UART_MUL, up->mul);
+			serial_out(up, UART_PS, up->ps);
+		} else
+			dw_set_clk(up, up->m, up->n);
 
 		serial_out(up, UART_MCR, up->mcr);
 		serial_out(up, UART_FCR, up->fcr);
