@@ -389,7 +389,7 @@ static struct ov9724_reg const ov9724_736_496_30fps[] = {
 	{OV9724_8BIT, {0x0340},	0x03},/* Vertical length - Hi */
 	{OV9724_8BIT, {0x0341},	0x68},/* Vertical length - Low */
 	{OV9724_8BIT, {0x0342},	0x05},/* Horizontal length - Hi */
-	{OV9724_8BIT, {0x0343},	0x60},/* Horizontal length - Low */
+	{OV9724_8BIT, {0x0343},	0xA0},/* Horizontal length - Low */
 
 	{OV9724_8BIT, {0x0301},	0x0a},
 	{OV9724_8BIT, {0x0303},	0x02},
@@ -439,7 +439,7 @@ static struct ov9724_reg const ov9724_656_496_30fps[] = {
 	{OV9724_8BIT, {0x0340},	0x03},/* Vertical length - Hi */
 	{OV9724_8BIT, {0x0341},	0x68},/* Vertical length - Low */
 	{OV9724_8BIT, {0x0342},	0x05},/* Horizontal length - Hi */
-	{OV9724_8BIT, {0x0343},	0x60},/* Horizontal length - Low */
+	{OV9724_8BIT, {0x0343},	0xA0},/* Horizontal length - Low */
 
 	{OV9724_8BIT, {0x0301},	0x0a},
 	{OV9724_8BIT, {0x0303},	0x02},
@@ -777,7 +777,7 @@ static struct ov9724_reg const ov9724_720p_30fps[] = {
 	{OV9724_8BIT, {0x0340},	0x03},/* Vertical length - Hi */
 	{OV9724_8BIT, {0x0341},	0x68},/* Vertical length - Low */
 	{OV9724_8BIT, {0x0342},	0x05},/* Horizontal length - Hi */
-	{OV9724_8BIT, {0x0343},	0x60},/* Horizontal length - Low */
+	{OV9724_8BIT, {0x0343},	0xA0},/* Horizontal length - Low */
 
 	{OV9724_8BIT, {0x0301},	0x0a},
 	{OV9724_8BIT, {0x0303},	0x02},
@@ -1347,7 +1347,7 @@ struct ov9724_resolution ov9724_res_video[] = {
 		.width = 656,
 		.height = 496,
 		.fps = 30,
-		.pixels_per_line = 0x0560, /* consistent with regs arrays */
+		.pixels_per_line = 0x05A0, /* consistent with regs arrays */
 		.lines_per_frame = 0x0368, /* consistent with regs arrays */
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
@@ -1359,7 +1359,7 @@ struct ov9724_resolution ov9724_res_video[] = {
 		.width = 736,
 		.height = 496,
 		.fps = 30,
-		.pixels_per_line = 0x0560, /* consistent with regs arrays */
+		.pixels_per_line = 0x05A0, /* consistent with regs arrays */
 		.lines_per_frame = 0x0368, /* consistent with regs arrays */
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
@@ -1371,7 +1371,7 @@ struct ov9724_resolution ov9724_res_video[] = {
 		.width = 1296,
 		.height =	736,
 		.fps = 30,
-		.pixels_per_line = 0x0560, /* consistent with regs arrays */
+		.pixels_per_line = 0x05A0, /* consistent with regs arrays */
 		.lines_per_frame = 0x0368, /* consistent with regs arrays */
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
