@@ -81,6 +81,7 @@
 #define IMX_GLOBAL_GAIN			0x0205
 #define IMX_SHORT_AGC_GAIN		0x0233
 #define IMX_DGC_ADJ		0x020E
+#define IMX_DGC_LEN		10
 
 /* Defines for register writes and register array processing */
 #define IMX_BYTE_MAX	30
