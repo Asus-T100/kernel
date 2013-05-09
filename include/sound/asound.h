@@ -859,15 +859,15 @@ struct snd_ctl_elem_value {
 	unsigned int indirect: 1;	/* W: indirect access - obsoleted */
 	union {
 		union {
-			long value[128];
+			long value[256];
 			long *value_ptr;	/* obsoleted */
 		} integer;
 		union {
-			long long value[64];
+			long long value[128];
 			long long *value_ptr;	/* obsoleted */
 		} integer64;
 		union {
-			unsigned int item[128];
+			unsigned int item[256];
 			unsigned int *item_ptr;	/* obsoleted */
 		} enumerated;
 		union {
