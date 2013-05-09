@@ -43,12 +43,22 @@ struct ulpmc_platform_data {
 extern void ulpmc_fwupdate_enter(void);
 extern void ulpmc_fwupdate_exit(void);
 extern struct i2c_client *ulpmc_get_i2c_client(void);
+extern int byt_ulpmc_suspend_sdp_charging(void);
+extern int byt_ulpmc_reset_charger(void);
 #else
 static void ulpmc_fwupdate_enter(void){ }
 static void ulpmc_fwupdate_exit(void) { }
 static struct i2c_client *ulpmc_get_i2c_client(void)
 {
 	return NULL;
+}
+int byt_ulpmc_suspend_sdp_charging(void)
+{
+	return 0;
+}
+int byt_ulpmc_reset_charger(void)
+{
+	return 0;
 }
 #endif
 
