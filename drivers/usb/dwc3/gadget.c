@@ -1462,6 +1462,10 @@ static int dwc3_gadget_pullup(struct usb_gadget *g, int is_on)
 		 * or soft reset.
 		 */
 		if (can_pullup(dwc)) {
+			local_irq_restore(flags);
+			dwc3_core_init(dwc);
+			local_irq_save(flags);
+
 			dwc3_gadget_power_on_or_soft_reset(dwc);
 			dwc->pm_state = PM_ACTIVE;
 		}
@@ -1731,6 +1735,11 @@ static int dwc3_start_peripheral(struct usb_gadget *g)
 
 	dwc->got_irq = 1;
 	if (can_pullup(dwc)) {
+
+		local_irq_restore(flags);
+		dwc3_core_init(dwc);
+		local_irq_save(flags);
+
 		dwc3_gadget_power_on_or_soft_reset(dwc);
 		dwc->pm_state = PM_ACTIVE;
 	}
@@ -2359,7 +2368,6 @@ static void dwc3_gadget_power_on_or_soft_reset(struct dwc3 *dwc)
 {
 	u32	reg;
 
-	dwc3_core_init(dwc);
 
 	/* Enable all but Start and End of Frame IRQs */
 	reg = (DWC3_DEVTEN_VNDRDEVTSTRCVEDEN |
