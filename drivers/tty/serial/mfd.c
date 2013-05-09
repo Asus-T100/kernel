@@ -185,6 +185,8 @@ struct uart_hsu_port {
 	unsigned int		workq_done;
 	unsigned int		in_workq;
 	unsigned int		in_tasklet;
+
+	unsigned int		byte_delay;
 };
 
 struct hsu_port {
@@ -674,6 +676,8 @@ static ssize_t hsu_dump_show(struct file *file, char __user *user_buf,
 		len += snprintf(buf + len, HSU_DBGFS_BUFSIZE - len,
 			"\tport irq (>0: disable): %d\n",
 			port_irqdesc ? port_irqdesc->depth : 0);
+		len += snprintf(buf + len, HSU_DBGFS_BUFSIZE - len,
+			"\tbyte delay: %d\n", up->byte_delay);
 	}
 	if (len > HSU_DBGFS_BUFSIZE)
 		len = HSU_DBGFS_BUFSIZE;
@@ -1491,32 +1495,40 @@ serial_hsu_set_termios(struct uart_port *port, struct ktermios *termios,
 	struct hsu_port_cfg *cfg = phsu->configs[up->index];
 	unsigned char cval, fcr = 0;
 	unsigned long flags;
-	unsigned int baud, quot, clock;
+	unsigned int baud, quot, clock, bits;
 	u32 ps = 0, mul = 0, m = 0, n = 0;
 
 	switch (termios->c_cflag & CSIZE) {
 	case CS5:
 		cval = UART_LCR_WLEN5;
+		bits = 7;
 		break;
 	case CS6:
 		cval = UART_LCR_WLEN6;
+		bits = 8;
 		break;
 	case CS7:
 		cval = UART_LCR_WLEN7;
+		bits = 9;
 		break;
 	default:
 	case CS8:
 		cval = UART_LCR_WLEN8;
+		bits = 10;
 		break;
 	}
 
 	/* CMSPAR isn't supported by this driver */
 	termios->c_cflag &= ~CMSPAR;
 
-	if (termios->c_cflag & CSTOPB)
+	if (termios->c_cflag & CSTOPB) {
 		cval |= UART_LCR_STOP;
-	if (termios->c_cflag & PARENB)
+		bits++;
+	}
+	if (termios->c_cflag & PARENB) {
 		cval |= UART_LCR_PARITY;
+		bits++;
+	}
 	if (!(termios->c_cflag & PARODD))
 		cval |= UART_LCR_EPAR;
 
@@ -1610,6 +1622,9 @@ serial_hsu_set_termios(struct uart_port *port, struct ktermios *termios,
 			fcr |= UART_FCR_TRIGGER_1;
 		}
 	}
+
+	/* one byte transfer duration unit microsecond */
+	up->byte_delay = (bits * 1000000 + baud - 1) / baud;
 
 	pm_runtime_get_sync(up->dev);
 	serial_sched_stop(up);
@@ -1932,6 +1947,26 @@ static irqreturn_t wakeup_irq(int irq, void *dev)
 }
 
 #if defined(CONFIG_PM) || defined(CONFIG_PM_RUNTIME)
+static void hsu_flush_rxfifo(struct uart_hsu_port *up)
+{
+	unsigned int lsr, cnt;
+	if (up->hw_type == HSU_INTEL) {
+		cnt = serial_in(up, UART_FOR) & 0x7F;
+		dev_info(up->dev,
+			"Warning: %d bytes are received"
+			" in RX fifo after RTS active for %d us\n",
+			cnt, up->byte_delay);
+		lsr = serial_in(up, UART_LSR);
+		if (lsr & UART_LSR_DR && cnt)
+			dev_info(up->dev,
+				"flush abnormal data in rx fifo\n");
+			while (cnt) {
+				serial_in(up, UART_RX);
+				cnt--;
+			}
+	}
+}
+
 static void hsu_regs_context(struct uart_hsu_port *up, int op)
 {
 	if (op == context_save) {
@@ -1999,8 +2034,10 @@ static int serial_hsu_do_suspend(struct pci_dev *pdev)
 	char cmd;
 	unsigned long flags;
 
-	if (cfg->hw_suspend)
-		cfg->hw_suspend(up->index, &pdev->dev, wakeup_irq);
+	if (cfg->hw_set_rts) {
+		cfg->hw_set_rts(up->index, 1);
+		usleep_range(up->byte_delay, up->byte_delay);
+	}
 	disable_irq(up->port.irq);
 	disable_irq(phsu->dma_irq);
 	serial_sched_stop(up);
@@ -2057,17 +2094,18 @@ static int serial_hsu_do_suspend(struct pci_dev *pdev)
 		}
 	}
 
-
-	if (cfg->preamble && cfg->hw_suspend_post)
-		cfg->hw_suspend_post(up->index);
+	if (cfg->hw_suspend)
+		cfg->hw_suspend(up->index, &pdev->dev, wakeup_irq);
 	if (cfg->hw_context_save)
 		hsu_regs_context(up, context_save);
+	if (cfg->preamble && cfg->hw_suspend_post)
+		cfg->hw_suspend_post(up->index);
 	enable_irq(phsu->dma_irq);
 	enable_irq(up->port.irq);
 	return 0;
 err:
-	if (cfg->hw_resume)
-		cfg->hw_resume(up->index, &pdev->dev);
+	if (cfg->hw_set_rts)
+		cfg->hw_set_rts(up->index, 0);
 	clear_bit(flag_suspend, &up->flags);
 	enable_irq(up->port.irq);
 	if (up->use_dma) {
@@ -2093,10 +2131,14 @@ static int serial_hsu_do_resume(struct pci_dev *pdev)
 	if (!test_and_clear_bit(flag_suspend, &up->flags))
 		return 0;
 	disable_irq(up->port.irq);
-	if (cfg->hw_resume)
-		cfg->hw_resume(up->index, &pdev->dev);
 	if (cfg->hw_context_save)
 		hsu_regs_context(up, context_load);
+	if (cfg->hw_resume)
+		cfg->hw_resume(up->index, &pdev->dev);
+	if (test_bit(flag_startup, &up->flags))
+		hsu_flush_rxfifo(up);
+	if (cfg->hw_set_rts)
+		cfg->hw_set_rts(up->index, 0);
 	enable_irq(up->port.irq);
 	if (up->use_dma)
 		chan_writel(up->rxc, HSU_CH_CR, up->rxc_chcr_save);
@@ -2510,6 +2552,7 @@ static int serial_hsu_port_probe(struct pci_dev *pdev,
 
 		memcpy(alt_up, up, sizeof(*up));
 		serial_port_setup(alt_up, alt_cfg);
+		phsu->port_num++;
 	}
 
 	pm_runtime_put_noidle(&pdev->dev);

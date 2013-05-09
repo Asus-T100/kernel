@@ -544,11 +544,7 @@ void intel_mid_hsu_suspend(int port, struct device *dev, irq_handler_t wake_isr)
 
 	info->dev = dev;
 	info->wake_isr = wake_isr;
-	if (info->rts_gpio) {
-		gpio_direction_output(info->rts_gpio, 1);
-		lnw_gpio_set_alt(info->rts_gpio, LNW_GPIO);
-		udelay(100);
-	}
+
 	if (info->wake_gpio) {
 		lnw_gpio_set_alt(info->wake_gpio, LNW_GPIO);
 		gpio_direction_input(info->wake_gpio);
@@ -568,7 +564,19 @@ void intel_mid_hsu_resume(int port, struct device *dev)
 	if (info->wake_gpio)
 		free_irq(gpio_to_irq(info->wake_gpio), info->dev);
 
-	hsu_port_enable(port);
+	if (info->rx_gpio) {
+		lnw_gpio_set_alt(info->rx_gpio, info->rx_alt);
+		gpio_direction_input(info->rx_gpio);
+	}
+	if (info->tx_gpio) {
+		gpio_direction_output(info->tx_gpio, 0);
+		lnw_gpio_set_alt(info->tx_gpio, info->tx_alt);
+
+	}
+	if (info->cts_gpio) {
+		lnw_gpio_set_alt(info->cts_gpio, info->cts_alt);
+		gpio_direction_input(info->cts_gpio);
+	}
 }
 
 void intel_mid_hsu_switch(int port)
