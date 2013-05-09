@@ -35,32 +35,10 @@
 #include <linux/i2c.h>
 #include <linux/pm_runtime.h>
 #include <linux/lnw_gpio.h>
+#include <linux/input/intel_mid_vibra.h>
 #include <asm/intel-mid.h>
 
-#define INTEL_VIBRA_DRV_NAME "intel_vibra_driver"
-#define INTEL_VIBRA_CLV_PCI_ID 0x0905
-#define INTEL_VIBRA_MRFLD_PCI_ID 0x11a5
 
-#define INTEL_VIBRA_ENABLE_GPIO 40
-#define INTEL_PWM_ENABLE_GPIO 49
-
-#define INTEL_VIBRA_MAX_TIMEDIVISOR  0xFF
-#define INTEL_VIBRA_MAX_BASEUNIT 0x80
-
-struct mid_vibra_probe {
-	u8 time_divisor;
-	u8 base_unit;
-	u8 alt_fn;
-	u8 ext_drv;
-};
-
-#define INFO(_time_divisor, _base_unit, _alt_fn, _ext_drv)	\
-	((kernel_ulong_t)&(struct mid_vibra_probe) {	\
-	 .time_divisor = _time_divisor,			\
-	 .base_unit = _base_unit,			\
-	 .alt_fn = _alt_fn,				\
-	 .ext_drv = _ext_drv				\
-	 })
 
 union sst_pwmctrl_reg {
 	struct {
@@ -377,12 +355,17 @@ static int __devinit intel_mid_vibra_probe(struct pci_dev *pci,
 			const struct pci_device_id *pci_id)
 {
 	struct vibra_info *info;
-	struct mid_vibra_probe *data;
+	struct mid_vibra_pdata *data;
 	int ret = 0;
 
 	pr_debug("Probe for DID %x\n", pci->device);
 
-	data = (void *)pci_id->driver_data;
+	data = pci->dev.platform_data;
+
+	if (!data) {
+		dev_err(&pci->dev, "Failed to get vibrator platform data\n");
+		return -ENODEV;
+	}
 	pr_debug("probe data divisor %x, base %x, alt_fn %d ext_drv %d",
 			data->time_divisor, data->base_unit, data->alt_fn, data->ext_drv);
 
@@ -390,15 +373,11 @@ static int __devinit intel_mid_vibra_probe(struct pci_dev *pci,
 	if (!info)
 		return -ENOMEM;
 
-	if (pci->device == INTEL_VIBRA_CLV_PCI_ID) {
-		info->gpio_en = INTEL_VIBRA_ENABLE_GPIO;
-		info->gpio_pwm = INTEL_PWM_ENABLE_GPIO;
-	} else if (pci->device == INTEL_VIBRA_MRFLD_PCI_ID) {
-		info->gpio_en = get_gpio_by_name("haptics_en");
-		info->gpio_pwm = get_gpio_by_name("haptics_pwm");
-	}
 	info->alt_fn = data->alt_fn;
 	info->ext_drv = data->ext_drv;
+	info->gpio_en = data->gpio_en;
+	info->gpio_pwm = data->gpio_pwm;
+
 	pr_debug("using gpios en: %d, pwm %d", info->gpio_en, info->gpio_pwm);
 	ret = gpio_request_one(info->gpio_en, GPIOF_DIR_OUT, "VIBRA ENABLE");
 	if (ret != 0) {
@@ -482,10 +461,8 @@ static void __devexit intel_mid_vibra_remove(struct pci_dev *pci)
 
 /* PCI Routines */
 static DEFINE_PCI_DEVICE_TABLE(intel_vibra_ids) = {
-	{ PCI_VDEVICE(INTEL, INTEL_VIBRA_CLV_PCI_ID),
-		INFO(0xFF, 0x80, LNW_ALT_2, 0)},
-	{ PCI_VDEVICE(INTEL, INTEL_VIBRA_MRFLD_PCI_ID),
-		INFO(0x40, 0x80, LNW_ALT_1, 1)},
+	{ PCI_VDEVICE(INTEL, PCI_DEVICE_ID_INTEL_VIBRA_CLV), 0},
+	{ PCI_VDEVICE(INTEL, PCI_DEVICE_ID_INTEL_VIBRA_MRFLD), 0},
 	{ 0, }
 };
 MODULE_DEVICE_TABLE(pci, intel_vibra_ids);
