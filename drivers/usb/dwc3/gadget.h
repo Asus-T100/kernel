@@ -70,6 +70,7 @@ struct dwc3;
 #define DWC3_DEPCFG_FIFO_NUMBER(n)	((n) << 17)
 #define DWC3_DEPCFG_BURST_SIZE(n)	((n) << 22)
 #define DWC3_DEPCFG_DATA_SEQ_NUM(n)	((n) << 26)
+#define DWC3_DEPCFG_CONFIG_ACTION(n)	((n) << 30)
 #define DWC3_DEPCFG_IGN_SEQ_NUM		(1 << 31)
 
 /* DEPXFERCFG parameter 0 */
