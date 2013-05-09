@@ -383,6 +383,13 @@ static int __devinit intel_mid_vibra_probe(struct pci_dev *pci,
 	pr_debug("Probe for DID %x\n", pci->device);
 
 	data = (void *)pci_id->driver_data;
+	/* Override MRFLD settings for PRh */
+	if ((INTEL_MID_BOARD(2, PHONE, MRFL, BB, PRO)) ||
+	    (INTEL_MID_BOARD(2, PHONE, MRFL, BB, ENG))) {
+			data->ext_drv = 0;
+			data->time_divisor = 0xFF;
+	}
+
 	pr_debug("probe data divisor %x, base %x, alt_fn %d ext_drv %d",
 			data->time_divisor, data->base_unit, data->alt_fn, data->ext_drv);
 
