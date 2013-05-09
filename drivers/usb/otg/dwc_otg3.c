@@ -1757,6 +1757,10 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 
 	the_transceiver = otg;
 	otg->otg_data = pdev->dev.platform_data;
+	if (!otg->otg_data) {
+		otg_err(otg, "Get otg platform data failed\n");
+		goto exit;
+	}
 
 	/* control register: BAR 0 */
 	resource = pci_resource_start(pdev, 0);
@@ -2041,7 +2045,11 @@ static int dwc_otg_runtime_suspend(struct device *dev)
 		return -EIO;
 	}
 	pci_disable_device(pci_dev);
-	pci_set_power_state(pci_dev, state);
+	/* Always set to D3Hot for BayTrail */
+	if (otg->otg_data->is_byt)
+		pci_set_power_state(pci_dev, PCI_D3hot);
+	else
+		pci_set_power_state(pci_dev, state);
 
 	return 0;
 }
@@ -2091,7 +2099,11 @@ static int dwc_otg_suspend(struct device *dev)
 		return -EIO;
 	}
 	pci_disable_device(pci_dev);
-	pci_set_power_state(pci_dev, state);
+	/* Always set to D3hot for BayTrail */
+	if (otg->otg_data->is_byt)
+		pci_set_power_state(pci_dev, PCI_D3hot);
+	else
+		pci_set_power_state(pci_dev, state);
 	return 0;
 }
 
