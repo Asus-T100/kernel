@@ -680,6 +680,7 @@ void psb_fence_or_sync(struct drm_file *file_priv,
 	struct ttm_object_file *tfile = psb_fpriv(file_priv)->tfile;
 	uint32_t handle;
 	struct ttm_validate_buffer *entry, *next;
+	struct ttm_bo_global *glob = dev_priv->bdev.glob;
 
 	ret = ttm_fence_user_create(fdev, tfile,
 				    engine, fence_types,
@@ -711,6 +712,7 @@ void psb_fence_or_sync(struct drm_file *file_priv,
 	}
 
 #ifndef CONFIG_DRM_VXD_BYT
+	spin_lock(&glob->lru_lock);
 	list_for_each_entry_safe(entry, next, list, head) {
 		struct psb_validate_buffer *vbuf =
 			container_of(entry, struct psb_validate_buffer,
@@ -722,6 +724,7 @@ void psb_fence_or_sync(struct drm_file *file_priv,
 			entry->reserved = false;
 		}
 	}
+	spin_unlock(&glob->lru_lock);
 #endif
 
 	ttm_eu_fence_buffer_objects(list, fence);
