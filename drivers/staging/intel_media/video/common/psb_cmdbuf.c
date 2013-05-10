@@ -29,11 +29,12 @@
 #include "psb_reg.h"
 #ifdef MERRIFIELD
 #include "tng_topaz.h"
+#include "pwr_mgmt.h"
 #else
 #include "pnw_topaz.h"
+#include "psb_powermgmt.h"
 #endif
 #include "psb_intel_reg.h"
-#include "psb_powermgmt.h"
 #endif
 
 #include "psb_msvdx.h"
@@ -678,6 +679,7 @@ void psb_fence_or_sync(struct drm_file *file_priv,
 	struct ttm_fence_object *fence;
 	struct ttm_object_file *tfile = psb_fpriv(file_priv)->tfile;
 	uint32_t handle;
+	struct ttm_validate_buffer *entry, *next;
 
 	ret = ttm_fence_user_create(fdev, tfile,
 				    engine, fence_types,
@@ -707,6 +709,20 @@ void psb_fence_or_sync(struct drm_file *file_priv,
 			*fence_p = NULL;
 		return;
 	}
+
+#ifndef CONFIG_DRM_VXD_BYT
+	list_for_each_entry_safe(entry, next, list, head) {
+		struct psb_validate_buffer *vbuf =
+			container_of(entry, struct psb_validate_buffer,
+				     base);
+		if (vbuf->req.unfence_flag) {
+			list_del(&entry->head);
+			ttm_bo_unreserve_locked(entry->bo);
+			ttm_bo_unref(&entry->bo);
+			entry->reserved = false;
+		}
+	}
+#endif
 
 	ttm_eu_fence_buffer_objects(list, fence);
 	if (!(fence_flags & DRM_PSB_FENCE_NO_USER)) {

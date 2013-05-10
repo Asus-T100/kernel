@@ -661,6 +661,12 @@ otm_hdmi_ret_t ipil_hdmi_enc_mode_set(hdmi_device_t *dev,
 
 	/* disable HDMI port since the DPMS will take care of the enabling */
 	hdmib &= ~IPIL_HDMIB_PORT_EN;
+	/* Hdmi specification define that 640x480: full range
+	* other timing: limited range when RGB output */
+	if (adjusted_mode->width == 640 && adjusted_mode->height == 480)
+		hdmib |= IPIL_HDMIB_COLOR_RANGE_SELECT;
+	else
+		hdmib &= ~IPIL_HDMIB_COLOR_RANGE_SELECT;
 
 	/* set output polarity */
 	phsync = !!(adjusted_mode->mode_info_flags & PD_HSYNC_HIGH);

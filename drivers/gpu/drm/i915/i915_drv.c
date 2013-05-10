@@ -38,6 +38,8 @@
 #include <linux/console.h>
 #include <linux/module.h>
 #include "drm_crtc_helper.h"
+/*Added for HDMI Audio */
+#include "hdmi_audio_if.h"
 
 static int i915_modeset __read_mostly = -1;
 module_param_named(modeset, i915_modeset, int, 0400);
@@ -508,6 +510,10 @@ int i915_suspend(struct drm_device *dev, pm_message_t state)
 
 	if (dev->switch_power_state == DRM_SWITCH_POWER_OFF)
 		return 0;
+	/* Added for HDMI Audio */
+	error = i915_hdmi_audio_suspend(dev);
+	if (error)
+		return error;
 
 	error = i915_drm_freeze(dev);
 	if (error)
@@ -584,6 +590,8 @@ int i915_resume(struct drm_device *dev)
 		return ret;
 
 	drm_kms_helper_poll_enable(dev);
+	/* Added for HDMI Audio */
+	i915_hdmi_audio_resume(dev);
 	return 0;
 }
 
@@ -908,6 +916,10 @@ static int i915_pm_suspend(struct device *dev)
 
 	if (drm_dev->switch_power_state == DRM_SWITCH_POWER_OFF)
 		return 0;
+	/* Added for HDMI Audio */
+	error = i915_hdmi_audio_suspend(drm_dev);
+	if (error)
+		return error;
 
 	error = i915_drm_freeze(drm_dev);
 	if (error)

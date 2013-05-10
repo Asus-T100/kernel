@@ -403,6 +403,107 @@ static struct  dw_pci_controller  dw_pci_controllers[] = {
 	}
 };
 
+#ifdef CONFIG_ACPI
+struct i2c_dw_board_info {
+	struct i2c_adapter *adap;
+	struct i2c_board_info info;
+};
+
+static int i2c_dw_find_irq(struct acpi_resource *ares, void *data)
+{
+	struct i2c_dw_board_info *dwinfo = data;
+
+	if (dwinfo->info.irq < 0) {
+		struct resource r;
+
+		if (acpi_dev_resource_interrupt(ares, 0, &r))
+			dwinfo->info.irq = r.start;
+	}
+
+	/* Tell the ACPI core to skip this resource */
+	return 1;
+}
+
+static int i2c_dw_find_slaves(struct acpi_resource *ares, void *data)
+{
+	struct i2c_dw_board_info *dwinfo = data;
+	struct device *dev = &dwinfo->adap->dev;
+
+	if (ares->type == ACPI_RESOURCE_TYPE_SERIAL_BUS) {
+		struct acpi_resource_i2c_serialbus *sb;
+
+		sb = &ares->data.i2c_serial_bus;
+		if (sb->type == ACPI_RESOURCE_SERIAL_TYPE_I2C) {
+			dwinfo->info.addr = sb->slave_address;
+			if (sb->access_mode == ACPI_I2C_10BIT_MODE)
+				dwinfo->info.flags |= I2C_CLIENT_TEN;
+			dev_info(dev, "\t\tslave_addr 0x%x, irq %d\n",
+				dwinfo->info.addr, dwinfo->info.irq);
+			if (!i2c_new_device(dwinfo->adap, &dwinfo->info))
+				dev_err(dev, "failed to add %s\n",
+					dwinfo->info.type);
+		}
+	}
+
+	/* Tell the ACPI core to skip this resource */
+	return 1;
+}
+
+static acpi_status i2c_dw_add_device(acpi_handle handle, u32 level,
+				       void *data, void **return_value)
+{
+	struct i2c_dw_board_info *dwinfo = data;
+	struct device *dev = &dwinfo->adap->dev;
+	struct list_head resource_list;
+	struct acpi_device *adev;
+	int ret;
+
+	dev_info(dev, "\tCheck next device ...");
+	ret = acpi_bus_get_device(handle, &adev);
+	if (ret) {
+		dev_info(dev, "\t err %d\n", ret);
+		return AE_OK;
+	}
+	dev_info(dev, "\t%s\n", dev_name(&adev->dev));
+	if (acpi_bus_get_status(adev) || !adev->status.present) {
+		dev_err(dev, "\t\terror, present %d\n", adev->status.present);
+		return AE_OK;
+	}
+
+	dwinfo->info.acpi_node.handle = handle;
+	dwinfo->info.irq = -1;
+	strlcpy(dwinfo->info.type, dev_name(&adev->dev),
+			sizeof(dwinfo->info.type));
+
+	INIT_LIST_HEAD(&resource_list);
+	acpi_dev_get_resources(adev, &resource_list,
+				     i2c_dw_find_irq, dwinfo);
+	acpi_dev_get_resources(adev, &resource_list,
+				     i2c_dw_find_slaves, dwinfo);
+	acpi_dev_free_resource_list(&resource_list);
+
+	return AE_OK;
+}
+
+static void i2c_dw_scan_devices(struct i2c_adapter *adapter, char *acpi_name)
+{
+	acpi_handle handle;
+	acpi_status status;
+	struct i2c_dw_board_info dw_info;
+	struct device *dev = &adapter->dev;
+
+	dev_err(dev, "Scan devices on i2c-%d\n", adapter->nr);
+	memset(&dw_info, 0, sizeof(dw_info));
+	dw_info.adap = adapter;
+	acpi_get_handle(NULL, acpi_name, &handle);
+	acpi_walk_namespace(ACPI_TYPE_DEVICE, handle, 1,
+				     i2c_dw_add_device, NULL,
+				     &dw_info, NULL);
+}
+#else
+static void i2c_dw_scan_devices(struct i2c_adapter *adapter, char *acpi_name) {}
+#endif
+
 static struct i2c_algorithm i2c_dw_algo = {
 	.master_xfer	= i2c_dw_xfer,
 	.functionality	= i2c_dw_func,
@@ -702,9 +803,8 @@ const struct pci_device_id *id)
 	dev->clk_khz = controller->clk_khz;
 	dev->speed_cfg = dev->master_cfg & DW_IC_SPEED_MASK;
 	dev->use_dyn_clk = 0;
+	dev->reset = controller->reset;
 
-	if (controller->reset)
-		controller->reset(dev);
 	pci_set_drvdata(pdev, dev);
 
 	dev->tx_fifo_depth = controller->tx_fifo_depth;
@@ -748,14 +848,8 @@ const struct pci_device_id *id)
 	pm_runtime_use_autosuspend(&pdev->dev);
 	pm_runtime_set_autosuspend_delay(&pdev->dev, 50);
 
-#ifdef CONFIG_ACPI
-	if (controller->acpi_name) {
-		acpi_get_handle(NULL, controller->acpi_name,
-				&adap->dev.acpi_node.handle);
-		acpi_i2c_register_devices(adap);
-		adap->dev.acpi_node.handle = NULL;
-	}
-#endif
+	if (controller->acpi_name)
+		i2c_dw_scan_devices(adap, controller->acpi_name);
 
 	return 0;
 
@@ -852,6 +946,7 @@ static void __exit dw_i2c_exit_driver(void)
 }
 module_exit(dw_i2c_exit_driver);
 
+#ifndef MODULE
 static int __init dw_i2c_reserve_static_bus(void)
 {
 	struct i2c_board_info dummy = {
@@ -862,6 +957,15 @@ static int __init dw_i2c_reserve_static_bus(void)
 	return 0;
 }
 subsys_initcall(dw_i2c_reserve_static_bus);
+
+static void __devinit dw_i2c_pci_final_quirks(struct pci_dev *pdev)
+{
+	pdev->pm_cap = 0x80;
+}
+
+DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_INTEL, 0x0F44,
+				dw_i2c_pci_final_quirks);
+#endif
 
 MODULE_AUTHOR("Baruch Siach <baruch@tkos.co.il>");
 MODULE_DESCRIPTION("Synopsys DesignWare PCI I2C bus adapter");

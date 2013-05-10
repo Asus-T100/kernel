@@ -36,6 +36,48 @@
 #include "i915_drm.h"
 #include "i915_drv.h"
 
+int i915_set_plane_zorder(struct drm_device *dev, void *data,
+			  struct drm_file *file)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	u32 val;
+	struct drm_i915_set_plane_zorder *zorder = data;
+	u32 order = zorder->order;
+	int s1_zorder, s1_bottom, s2_zorder, s2_bottom;
+	int pipe = (order >> 31) & 0x1;
+
+	s1_zorder = (order >> 3) & 0x1;
+	s1_bottom = (order >> 2) & 0x1;
+	s2_zorder = (order >> 1) & 0x1;
+	s2_bottom = (order >> 0) & 0x1;
+
+	/* Clear the older Z-order */
+	val = I915_READ(SPCNTR(pipe, 0));
+	val &= ~(SPRITE_FORCE_BOTTOM | SPRITE_ZORDER_ENABLE);
+	I915_WRITE(SPCNTR(pipe, 0), val);
+
+	val = I915_READ(SPCNTR(pipe, 1));
+	val &= ~(SPRITE_FORCE_BOTTOM | SPRITE_ZORDER_ENABLE);
+	I915_WRITE(SPCNTR(pipe, 1), val);
+
+	/* Program new Z-order */
+	val = I915_READ(SPCNTR(pipe, 0));
+	if (s1_zorder)
+		val |= SPRITE_ZORDER_ENABLE;
+	if (s1_bottom)
+		val |= SPRITE_FORCE_BOTTOM;
+	I915_WRITE(SPCNTR(pipe, 0), val);
+
+	val = I915_READ(SPCNTR(pipe, 1));
+	if (s2_zorder)
+		val |= SPRITE_ZORDER_ENABLE;
+	if (s2_bottom)
+		val |= SPRITE_FORCE_BOTTOM;
+	I915_WRITE(SPCNTR(pipe, 1), val);
+
+	return 0;
+}
+
 static void
 vlv_update_plane(struct drm_plane *dplane, struct drm_framebuffer *fb,
 		 struct drm_i915_gem_object *obj, int crtc_x, int crtc_y,
@@ -53,7 +95,6 @@ vlv_update_plane(struct drm_plane *dplane, struct drm_framebuffer *fb,
 	int pixel_size = drm_format_plane_cpp(fb->pixel_format, 0);
 
 	sprctl = I915_READ(SPCNTR(pipe, plane));
-
 	/* Mask out pixel format bits in case we change it */
 	sprctl &= ~SP_PIXFORMAT_MASK;
 	sprctl &= ~SP_YUV_BYTE_ORDER_MASK;

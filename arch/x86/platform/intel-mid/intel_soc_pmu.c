@@ -830,6 +830,18 @@ int set_enable_s0ix(const char *val, struct kernel_param *kp)
 module_param_call(enable_s0ix, set_enable_s0ix, param_get_uint,
 				&enable_s0ix, S_IRUGO | S_IWUSR);
 
+unsigned int pmu_ignore_lss0 __read_mostly = IGNORE_SSS0;
+module_param(pmu_ignore_lss0, uint, S_IRUGO | S_IWUSR);
+
+unsigned int pmu_ignore_lss1 __read_mostly = IGNORE_SSS1;
+module_param(pmu_ignore_lss1, uint, S_IRUGO | S_IWUSR);
+
+unsigned int pmu_ignore_lss2 __read_mostly = IGNORE_SSS2;
+module_param(pmu_ignore_lss2, uint, S_IRUGO | S_IWUSR);
+
+unsigned int pmu_ignore_lss3 __read_mostly = IGNORE_SSS3;
+module_param(pmu_ignore_lss3, uint, S_IRUGO | S_IWUSR);
+
 int pmu_set_emmc_to_d0i0_atomic(void)
 {
 	u32 pm_cmd_val;
@@ -1592,10 +1604,10 @@ static int pmu_init(void)
 	mid_pmu_cxt->ss_config->wake_state.wake_enable[1] = WAKE_ENABLE_1;
 
 	/* setup the ignore lss list */
-	mid_pmu_cxt->ignore_lss[0] = IGNORE_SSS0;
-	mid_pmu_cxt->ignore_lss[1] = IGNORE_SSS1;
-	mid_pmu_cxt->ignore_lss[2] = IGNORE_SSS2;
-	mid_pmu_cxt->ignore_lss[3] = IGNORE_SSS3;
+	mid_pmu_cxt->ignore_lss[0] = pmu_ignore_lss0;
+	mid_pmu_cxt->ignore_lss[1] = pmu_ignore_lss1;
+	mid_pmu_cxt->ignore_lss[2] = pmu_ignore_lss2;
+	mid_pmu_cxt->ignore_lss[3] = pmu_ignore_lss3;
 
 	/*set wkc to appropriate value suitable for s0ix*/
 	writel(mid_pmu_cxt->ss_config->wake_state.wake_enable[0],

@@ -297,6 +297,21 @@ struct intel_hdmi {
 			       struct drm_display_mode *adjusted_mode);
 };
 
+/*VLV clock bending*/
+#define VLV_ACCUMULATOR_SIZE	249
+#define ACCURACY_MULTIPLIER	1000000
+#define BENDADJUST_MULT		10000000
+#define PPM_MULTIPLIER		1000000
+#define NANOSEC_MULTIPLIER	1000000000
+#define INVERSE_BEND_RESOLUTION	(VLV_ACCUMULATOR_SIZE*48*128)
+
+struct intel_program_clock_bending {
+	u32 dotclock;
+	u32 referenceclk;
+	u32 targetclk;
+	bool is_enable;
+};
+
 #define DP_RECEIVER_CAP_SIZE		0xf
 #define DP_LINK_CONFIGURATION_SIZE	9
 
@@ -530,5 +545,9 @@ extern void intel_ddi_dpms(struct drm_encoder *encoder, int mode);
 extern void intel_ddi_mode_set(struct drm_encoder *encoder,
 				struct drm_display_mode *mode,
 				struct drm_display_mode *adjusted_mode);
+
+/* VLV LP clock bending */
+extern void valleyview_program_clock_bending(struct drm_i915_private *dev_priv,
+		struct intel_program_clock_bending *clockbendargs);
 
 #endif /* __INTEL_DRV_H__ */

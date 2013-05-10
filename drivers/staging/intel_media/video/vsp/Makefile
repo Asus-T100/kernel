@@ -8,6 +8,7 @@ ccflags-y += \
 	-I$(INCDIR)/rgx/include \
 	-I$(INCDIR)/interface \
 	-I$(INCDIR)/drv \
+	-I$(INCDIR)/drv/ospm \
 	-I$(INCDIR)/../intel_media/video/common \
 	-I$(INCDIR)/../intel_media/video/vsp \
 	-I$(INCDIR)/../../../include/linux \

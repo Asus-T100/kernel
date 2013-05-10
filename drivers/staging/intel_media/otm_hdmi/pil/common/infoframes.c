@@ -216,6 +216,14 @@ otm_hdmi_ret_t otm_hdmi_infoframes_set_avi(void *context,
 			PD_ATTR_BOOL(ATTRS[OTM_HDMI_ATTR_ID_OUTPUT_CLAMP]) ?
 			(0x01 << 2) : (0x02 << 2);
 
+	/* Only support RGB output, 640x480: full range Q0=1, Q1=0
+	* other timing: limited range Q0=0, Q1=1 */
+	avi_pkt.data[3] &= ~OTM_HDMI_COLOR_RANGE_MASK;
+	if (mode->width == 640 && mode->height == 480)
+		avi_pkt.data[3] |= 0x02 << 2;
+	else
+		avi_pkt.data[3] |= 0x01 << 2;
+
 	/* Fill Video Identification Code [adjust VIC according to PAR] */
 	vic = mode->metadata;
 	avi_pkt.data[4] = vic;

@@ -466,7 +466,7 @@ static int sst_alloc_dma_chan(struct sst_dma *dma)
 		return -EIO;
 	}
 
-	slave->dma_slave.direction = DMA_FROM_DEVICE;
+	slave->dma_slave.direction = DMA_MEM_TO_MEM;
 	slave->hs_mode = 0;
 	slave->cfg_mode = LNW_DMA_MEM_TO_MEM;
 	slave->dma_slave.src_addr_width = slave->dma_slave.dst_addr_width =

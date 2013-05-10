@@ -49,11 +49,6 @@
 #include "dx_driver_abi.h"
 #include "dx_dev_defs.h"
 
-#define S3_POWER_HACK
-
-#ifdef S3_POWER_HACK
-#include <linux/suspend.h>
-#endif
 /* Control printf's from SeP via GPR.
  * Keep this macro defined as long as SeP code uses host_printf
  * (otherwise, SeP would stall waiting for host to ack characters)
@@ -79,7 +74,12 @@
 #define VER_PATCH(ver)  (((ver) >> 8) & 0xFF)
 #define VER_INTERNAL(ver) ((ver) & 0xFF)
 
+#define SECURITY_CFG_ADDR	0xFF03A01C
+#define PWR_DWN_ENB_MASK	0x20
+#define SEP_TIMEOUT		500000
+
 #define SEP_RUNTIME_PM
+#define SEP_AUTOSUSPEND_DELAY 5000
 
 /* GPR that holds SeP state */
 #define SEP_STATE_GPR_OFFSET SEP_HOST_GPR_REG_OFFSET(DX_SEP_STATE_GPR_IDX)

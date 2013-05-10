@@ -59,7 +59,7 @@ static struct sfi_table_header *get_oem_b_table(void)
 {
 	struct sfi_table_header *sfi_oemb_table = NULL;
 
-	sfi_oemb_table = &byt_oemb_table;
+	sfi_oemb_table = (struct sfi_table_header *) &byt_oemb_table;
 
 	return sfi_oemb_table;
 }
@@ -90,7 +90,7 @@ static struct sfi_table_header *get_devs_table(void)
 			sizeof(byt_devs_table));
 	}
 
-	sfi_devs_table = devs_table;
+	sfi_devs_table = (struct sfi_table_header *)devs_table;
 
 	return sfi_devs_table;
 }
@@ -115,7 +115,7 @@ static struct sfi_table_header *get_gpio_table(void)
 
 	}
 
-	sfi_gpio_table = gpio_table;
+	sfi_gpio_table = (struct sfi_table_header *)gpio_table;
 
 	return sfi_gpio_table;
 }

@@ -79,6 +79,8 @@ void *edlp_modem_platform_data(void *data)
 
 		hsi_info[0].platform_data = (void *)&mid_info_v2;
 		hsi_info[1].platform_data = (void *)&mid_info_v2;
+		hsi_info[0].rx_cfg.flow = HSI_FLOW_PIPE;
+		hsi_info[1].rx_cfg.flow = HSI_FLOW_PIPE;
 	} else {
 		static struct hsi_mid_platform_data mid_info_v1 = {
 		  /* TX/RX DMA channels mapping */

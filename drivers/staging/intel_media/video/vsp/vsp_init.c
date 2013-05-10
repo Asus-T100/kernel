@@ -63,6 +63,7 @@ int vsp_init(struct drm_device *dev)
 	struct vsp_private *vsp_priv;
 	bool is_iomem;
 	int ret;
+	unsigned int context_size;
 
 	VSP_DEBUG("init vsp private data structure\n");
 	vsp_priv = kmalloc(sizeof(struct vsp_private), GFP_KERNEL);
@@ -143,6 +144,20 @@ int vsp_init(struct drm_device *dev)
 		goto out_clean;
 	}
 
+	/* Create context buffer */
+	context_size = VSP_CONTEXT_NUM_MAX *
+			sizeof(struct vsp_context_settings_t);
+	ret =  ttm_buffer_object_create(bdev,
+				       context_size,
+				       ttm_bo_type_kernel,
+				       DRM_PSB_FLAG_MEM_MMU |
+				       TTM_PL_FLAG_NO_EVICT,
+				       0, 0, 0, NULL,
+				       &vsp_priv->context_setting_bo);
+	if (ret != 0) {
+		DRM_ERROR("VSP: failed to allocate context setting buffer\n");
+		goto out_clean;
+	}
 
 	/* map cmd queue */
 	ret = ttm_bo_kmap(vsp_priv->cmd_queue_bo, 0,
@@ -186,6 +201,20 @@ int vsp_init(struct drm_device *dev)
 	vsp_priv->setting = ttm_kmap_obj_virtual(&vsp_priv->setting_kmap,
 						 &is_iomem);
 
+	/* map vsp context setting */
+	ret = ttm_bo_kmap(vsp_priv->context_setting_bo, 0,
+			  vsp_priv->context_setting_bo->num_pages,
+			  &vsp_priv->context_setting_kmap);
+	if (ret) {
+		DRM_ERROR("drm_bo_kmap context_setting_bo failed: %d\n", ret);
+		ttm_bo_unref(&vsp_priv->context_setting_bo);
+		ttm_bo_kunmap(&vsp_priv->context_setting_kmap);
+		goto out_clean;
+	}
+	vsp_priv->context_setting = ttm_kmap_obj_virtual(
+						&vsp_priv->context_setting_kmap,
+						&is_iomem);
+
 	spin_lock_init(&vsp_priv->lock);
 	mutex_init(&vsp_priv->vsp_mutex);
 
@@ -221,12 +250,19 @@ int vsp_deinit(struct drm_device *dev)
 		vsp_priv->setting = NULL;
 	}
 
+	if (vsp_priv->context_setting) {
+		ttm_bo_kunmap(&vsp_priv->context_setting);
+		vsp_priv->context_setting = NULL;
+	}
+
 	if (vsp_priv->ack_queue_bo)
 		ttm_bo_unref(&vsp_priv->ack_queue_bo);
 	if (vsp_priv->cmd_queue_bo)
 		ttm_bo_unref(&vsp_priv->cmd_queue_bo);
 	if (vsp_priv->setting_bo)
 		ttm_bo_unref(&vsp_priv->setting_bo);
+	if (vsp_priv->context_setting_bo)
+		ttm_bo_unref(&vsp_priv->context_setting_bo);
 
 
 	device_remove_file(&dev->pdev->dev, &dev_attr_vsp_pmstate);
@@ -293,15 +329,19 @@ int vsp_init_fw(struct drm_device *dev)
 	bool is_iomem;
 	int i;
 
-	VSP_DEBUG("read firmware into buffer\n");
+	PSB_DEBUG_GENERAL("read firmware into buffer\n");
 
 	/* read firmware img */
-	if (vsp_priv->fw_type == Vss_Sys_STATE_BUF_COMMAND) {
+	if (vsp_priv->fw_type == VSP_FW_TYPE_VP8) {
 		VSP_DEBUG("load vp8 fw\n");
 		ret = request_firmware(&raw, FW_VP8_NAME, &dev->pdev->dev);
-	} else {
+	} else if (vsp_priv->fw_type == VSP_FW_TYPE_VPP) {
 		VSP_DEBUG("load vpp fw\n");
 		ret = request_firmware(&raw, FW_NAME, &dev->pdev->dev);
+	} else {
+		DRM_ERROR("Don't support this fw type=%d!\n",
+			vsp_priv->fw_type);
+		ret = -1;
 	}
 
 	if (ret < 0) {
@@ -419,7 +459,12 @@ int vsp_setup_fw(struct drm_psb_private *dev_priv)
 	vsp_priv->setting->response_queue_size = VSP_ACK_QUEUE_SIZE;
 	vsp_priv->setting->response_queue_addr = vsp_priv->ack_queue_bo->offset;
 
+	vsp_priv->setting->max_contexts = 1;
+	vsp_priv->setting->contexts_array_addr =
+				vsp_priv->context_setting_bo->offset;
+
 	vsp_priv->ctrl->setting_addr = vsp_priv->setting_bo->offset;
+
 	vsp_priv->ctrl->cmd_rd = 0;
 	vsp_priv->ctrl->cmd_wr = 0;
 	vsp_priv->ctrl->ack_rd = 0;
@@ -429,8 +474,10 @@ int vsp_setup_fw(struct drm_psb_private *dev_priv)
 	vsp_set_firmware(dev_priv, vsp_vp0);
 
 	/* Set power-saving mode */
-	/* vsp_priv->ctrl->power_saving_mode = vsp_always_on;*/
-	vsp_priv->ctrl->power_saving_mode = vsp_suspend_on_empty_queue;
+	if (drm_vsp_pmpolicy == PSB_PMPOLICY_NOPM)
+		vsp_priv->ctrl->power_saving_mode = vsp_always_on;
+	else
+		vsp_priv->ctrl->power_saving_mode = vsp_suspend_on_empty_queue;
 
 	/* communicate the type of init
 	 * this is the last value to write
@@ -468,9 +515,6 @@ unsigned int vsp_set_firmware(struct drm_psb_private *dev_priv,
 {
 	struct vsp_private *vsp_priv = dev_priv->vsp_private;
 	unsigned int reg = 0;
-
-	/* set app-id to start to 0, can be overwritten later */
-	vsp_priv->ctrl->firmware_addr = 0x0;
 
 	/* config icache */
 	VSP_SET_FLAG(reg, SP_STAT_AND_CTRL_REG_ICACHE_INVALID_FLAG);

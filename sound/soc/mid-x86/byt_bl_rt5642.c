@@ -161,10 +161,8 @@ static const struct snd_soc_dapm_widget byt_dapm_widgets[] = {
 };
 
 static const struct snd_soc_dapm_route byt_audio_map[] = {
-	/* TODO: check if micbias link is reqd */
-	{"micbias1", NULL, "Headset Mic"},
-	{"IN2P", NULL, "micbias1"},
-	{"IN2N", NULL, "micbias1"},
+	{"IN2P", NULL, "Headset Mic"},
+	{"IN2N", NULL, "Headset Mic"},
 	{"DMIC1", NULL, "Int Mic"},
 	{"Headphone", NULL, "HPOL"},
 	{"Headphone", NULL, "HPOR"},

@@ -20,6 +20,7 @@
 #include "platform_bcm43xx.h"
 #include <linux/mmc/sdhci.h>
 #include <linux/delay.h>
+#include <linux/pm_runtime.h>
 
 #include "pci/platform_sdhci_pci.h"
 
@@ -29,20 +30,18 @@
 static int gpio_enable;
 static void (*g_virtual_cd)(void *dev_id, int card_present);
 void *g_host;
-
-void bcmdhd_register_embedded_control(void *dev_id,
-			void (*virtual_cd)(void *dev_id, int card_present))
-{
-	g_virtual_cd = virtual_cd;
-	g_host = dev_id;
-}
+static struct platform_device bcm43xx_vwlan_device;
+static struct fixed_voltage_config bcm43xx_vwlan;
+static char nvram_id[30];
 
 static int bcmdhd_set_power(int on)
 {
-	gpio_set_value(gpio_enable, on);
+	struct sdhci_host *host = (struct sdhci_host *)g_host;
 
-	/* Delay advice by BRCM */
-	msleep(DELAY_ONOFF);
+	if (on)
+		mmc_power_restore_host(host->mmc);
+	else
+		mmc_power_save_host(host->mmc);
 
 	return 0;
 }
@@ -61,6 +60,7 @@ static int bcmdhd_set_card_detect(int detect)
 static struct wifi_platform_data bcmdhd_data = {
 	.set_power = bcmdhd_set_power,
 	.set_carddetect = bcmdhd_set_card_detect,
+	.nvram_id = (char *)&nvram_id,
 };
 
 static struct resource bcmdhd_res[] = {
@@ -90,7 +90,6 @@ static struct platform_device bcmdhd_device = {
 
 static struct regulator_consumer_supply bcm43xx_vmmc3_supply = {
 	.supply		= "vmmc",
-	.dev_name	= "0000:00:00.0", /*default value*/
 };
 
 static struct regulator_init_data bcm43xx_vmmc3 = {
@@ -105,23 +104,61 @@ static struct fixed_voltage_config bcm43xx_vwlan = {
 	.supply_name		= "vbcm43xx",
 	.microvolts		= 1800000,
 	.gpio			= -EINVAL,
-	.startup_delay		= 70000,
+	.startup_delay		= 1000 * DELAY_ONOFF,
 	.enable_high		= 1,
 	.enabled_at_boot	= 0,
 	.init_data		= &bcm43xx_vmmc3,
 };
+
+static void bcm43xx_vwlan_device_release(struct device *dev) {}
 
 static struct platform_device bcm43xx_vwlan_device = {
 	.name		= "reg-fixed-voltage",
 	.id		= 1,
 	.dev = {
 		.platform_data	= &bcm43xx_vwlan,
+		.release = bcm43xx_vwlan_device_release,
 	},
 };
 
-void __init bcm43xx_platform_data_init_post_scu(void *info)
+static void generate_nvram_id(void)
 {
-	struct sd_board_info *sd_info = info;
+	if (INTEL_MID_BOARD(3, PHONE, CLVTP, VB, PRO, PR1A) ||
+			INTEL_MID_BOARD(3, PHONE, CLVTP, VB, PRO, PR1B)) {
+		strncpy(nvram_id, "victoriabay_pr1", sizeof(nvram_id));
+	} else if (INTEL_MID_BOARD(2, PHONE, MRFL, BB, PRO)) {
+		strncpy(nvram_id, "bodegabay_pr1", sizeof(nvram_id));
+	} else {
+		strncpy(nvram_id, "aob", sizeof(nvram_id));
+	}
+
+	nvram_id[sizeof(nvram_id) - 1] = '\0';
+}
+
+void bcmdhd_register_embedded_control(void *dev_id,
+			void (*virtual_cd)(void *dev_id, int card_present))
+{
+	struct sdhci_host *host = (struct sdhci_host *)dev_id;
+	int err;
+
+	g_virtual_cd = virtual_cd;
+	g_host = dev_id;
+
+	bcm43xx_vmmc3_supply.dev_name = kstrdup(dev_name(mmc_dev(host->mmc)),
+						GFP_KERNEL);
+
+	bcm43xx_vwlan.gpio = gpio_enable;
+
+	/* add a fake sdhci controler regulator routed to bcm enable gpio */
+	err = platform_device_register(&bcm43xx_vwlan_device);
+	if (err < 0)
+		pr_err("platform_device_register failed for bcm43xx_vwlan_device\n");
+
+	sdhci_pci_request_regulators();
+}
+
+void __init bcm43xx_platform_data_init_post_scu(void)
+{
 	int wifi_irq_gpio;
 	int err;
 
@@ -148,7 +185,6 @@ void __init bcm43xx_platform_data_init_post_scu(void *info)
 	else {
 		gpio_enable = 150;
 		pr_err("baytrail, hardcoding GPIO Enable to %d\n", gpio_enable);
-		gpio_request(gpio_enable, "bcm43xx_en");
 	}
 	if (gpio_enable < 0) {
 		pr_err("%s: Unable to find WLAN-enable GPIO in the SFI table\n",
@@ -160,30 +196,15 @@ void __init bcm43xx_platform_data_init_post_scu(void *info)
 	bcmdhd_res[1].start = gpio_enable;
 	bcmdhd_res[1].end = bcmdhd_res[1].start;
 
-	/* format vmmc reg address from sfi table */
-	if (intel_mid_identify_cpu() != INTEL_MID_CPU_CHIP_VALLEYVIEW2)
-		sprintf((char *)bcm43xx_vmmc3_supply.dev_name,
-			"0000:00:%02x.%01x", (sd_info->addr)>>8,
-			sd_info->addr&0xFF);
-
 	err = platform_device_register(&bcmdhd_device);
 	if (err < 0)
 		pr_err("platform_device_register failed for bcmdhd_device\n");
-
-	if (intel_mid_identify_cpu() != INTEL_MID_CPU_CHIP_VALLEYVIEW2) {
-		err = platform_device_register(&bcm43xx_vwlan_device);
-		if (err < 0)
-			pr_err("platform_device_register failed for bcm43xx_vwlan_device\n");
-	}
-
 }
-
 
 void __init *bcm43xx_platform_data(void *info)
 {
 	struct sd_board_info *sd_info;
 	unsigned int sdhci_quirk = SDHCI_QUIRK2_ADVERTISE_2V0_FORCE_1V8
-			| SDHCI_QUIRK2_DISABLE_MMC_CAP_NONREMOVABLE
 			| SDHCI_QUIRK2_ENABLE_MMC_PM_IGNORE_PM_NOTIFY;
 
 	pr_err("Using bcm43xx platform data\n");
@@ -199,6 +220,9 @@ void __init *bcm43xx_platform_data(void *info)
 			return NULL;
 		}
 	}
-	bcm43xx_platform_data_init_post_scu(sd_info);
+
+	generate_nvram_id();
+
+	bcm43xx_platform_data_init_post_scu();
 	return &bcmdhd_device;
 }

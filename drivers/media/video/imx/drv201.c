@@ -28,6 +28,7 @@ static int drv201_i2c_rd8(struct i2c_client *client, u8 reg, u8 *val)
 	struct i2c_msg msg[2];
 	u8 buf[2];
 	buf[0] = reg;
+	buf[1] = 0;
 
 	msg[0].addr = DRV201_VCM_ADDR;
 	msg[0].flags = 0;

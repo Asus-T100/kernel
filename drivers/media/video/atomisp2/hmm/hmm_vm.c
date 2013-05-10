@@ -83,9 +83,8 @@ void hmm_vm_clean(struct hmm_vm *vm)
 	kmem_cache_destroy(vm->cache);
 }
 
-static struct hmm_vm_node *alloc_hmm_vm_node(unsigned int start,
-					       unsigned int pgnr,
-					       struct hmm_vm *vm)
+static struct hmm_vm_node *alloc_hmm_vm_node(unsigned int pgnr,
+					     struct hmm_vm *vm)
 {
 	struct hmm_vm_node *node;
 
@@ -96,7 +95,6 @@ static struct hmm_vm_node *alloc_hmm_vm_node(unsigned int start,
 	}
 
 	INIT_LIST_HEAD(&node->list);
-	node->start = start;
 	node->pgnr = pgnr;
 	node->size = pgnr_to_size(pgnr);
 	node->vm = vm;
@@ -122,6 +120,12 @@ struct hmm_vm_node *hmm_vm_alloc_node(struct hmm_vm *vm, unsigned int pgnr)
 	addr = vm_start;
 	head = &vm->vm_node_list;
 
+	node = alloc_hmm_vm_node(pgnr, vm);
+	if (!node) {
+		v4l2_err(&atomisp_dev, "no memory to allocate hmm vm node.\n");
+		return NULL;
+	}
+
 	spin_lock(&vm->lock);
 	/*
 	 * if list is empty, the loop code will not be executed.
@@ -134,7 +138,8 @@ struct hmm_vm_node *hmm_vm_alloc_node(struct hmm_vm *vm, unsigned int pgnr)
 			if (addr + size > vm_end) {
 				/* vm area does not have space anymore */
 				spin_unlock(&vm->lock);
-				v4l2_info(&atomisp_dev,
+				kmem_cache_free(vm->cache, node);
+				v4l2_err(&atomisp_dev,
 					  "no enough virtual address space.\n");
 				return NULL;
 			}
@@ -147,15 +152,8 @@ struct hmm_vm_node *hmm_vm_alloc_node(struct hmm_vm *vm, unsigned int pgnr)
 		if ((next->start - addr) > size)
 			break;
 	}
-	spin_unlock(&vm->lock);
-
-	node = alloc_hmm_vm_node(addr, pgnr, vm);
-	if (!node) {
-		v4l2_info(&atomisp_dev, "no memory to allocate hmm vm node.\n");
-		return NULL;
-	}
-
-	spin_lock(&vm->lock);
+	node->start = addr;
+	node->vm = vm;
 	list_add(&node->list, &cur->list);
 	spin_unlock(&vm->lock);
 

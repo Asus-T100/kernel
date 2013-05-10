@@ -2652,7 +2652,7 @@ static irqreturn_t sdhci_irq(int irq, void *dev_id)
 
 	if (host->runtime_suspended) {
 		spin_unlock(&host->lock);
-		pr_warning("%s: got irq while runtime suspended\n",
+		DBG("%s: got irq while runtime suspended\n",
 		       mmc_hostname(host->mmc));
 		return IRQ_HANDLED;
 	}

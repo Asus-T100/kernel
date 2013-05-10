@@ -64,7 +64,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 	#if defined(__arm__) || defined(__sh__)
 		#define	PGPROT_WC(pv)	pgprot_writecombine(pv)
 	#else
-		#if defined(__i386__) || defined(__mips__)
+		#if defined(__i386__) || defined(__x86_64) || defined(__mips__)
 			#define	PGPROT_WC(pv)	pgprot_noncached(pv)
 		#else
 			#define PGPROT_WC(pv)	pgprot_noncached(pv)

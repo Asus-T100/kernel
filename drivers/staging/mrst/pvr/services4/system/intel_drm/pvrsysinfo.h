@@ -27,6 +27,7 @@
 #if !defined(__SYSINFO_H__)
 #define __SYSINFO_H__
 
+#define SYS_SGX_CLOCK_SPEED                     (400000000)
 #define MAX_HW_TIME_US				(500000)
 #define WAIT_TRY_COUNT				(10000)
 

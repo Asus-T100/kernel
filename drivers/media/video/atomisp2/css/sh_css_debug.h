@@ -64,6 +64,15 @@ extern unsigned int sh_css_trace_level;
 		if (sh_css_trace_level >= level)       \
 			trace_printk(format, ## args); \
 	} while (0)
+#if 0
+#define sh_css_dtrace(level, format, args...)          \
+	do {                                           \
+		if (level == SH_DBG_ERROR)             \
+			printk(KERN_ERR "sh_css FATAL ERROR: " format,##args); \
+		if (sh_css_trace_level >= level)       \
+			trace_printk(format, ## args); \
+	} while (0)
+#endif
 #else
 #include "sh_css_internal.h"
 

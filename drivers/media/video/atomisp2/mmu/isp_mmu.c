@@ -313,6 +313,7 @@ static int mmu_map(struct isp_mmu *mmu, unsigned int isp_virt,
 	phys_addr_t l1_pt;
 	int ret;
 
+	mutex_lock(&mmu->pt_mutex);
 	if (!ISP_PTE_VALID(mmu, mmu->l1_pte)) {
 		/*
 		 * allocate 1 new page for L1 page table
@@ -321,6 +322,7 @@ static int mmu_map(struct isp_mmu *mmu, unsigned int isp_virt,
 		if (l1_pt == NULL_PAGE) {
 			v4l2_err(&atomisp_dev,
 				    "alloc page table fail.\n");
+			mutex_unlock(&mmu->pt_mutex);
 			return -ENOMEM;
 		}
 
@@ -332,6 +334,7 @@ static int mmu_map(struct isp_mmu *mmu, unsigned int isp_virt,
 			v4l2_err(&atomisp_dev,
 				     "set page directory base address "
 				     "fail.\n");
+			mutex_unlock(&mmu->pt_mutex);
 			return ret;
 		}
 		mmu->l1_pte = isp_pgaddr_to_pte_valid(mmu, l1_pt);
@@ -349,6 +352,7 @@ static int mmu_map(struct isp_mmu *mmu, unsigned int isp_virt,
 		v4l2_err(&atomisp_dev,
 			    "setup mapping in L1PT fail.\n");
 
+	mutex_unlock(&mmu->pt_mutex);
 	return ret;
 }
 
@@ -443,8 +447,10 @@ static void mmu_unmap(struct isp_mmu *mmu, unsigned int isp_virt,
 	unsigned int start, end;
 	phys_addr_t l1_pt;
 
+	mutex_lock(&mmu->pt_mutex);
 	if (!ISP_PTE_VALID(mmu, mmu->l1_pte)) {
 		mmu_unmap_l1_pt_error(mmu, mmu->l1_pte);
+		mutex_unlock(&mmu->pt_mutex);
 		return;
 	}
 
@@ -454,6 +460,7 @@ static void mmu_unmap(struct isp_mmu *mmu, unsigned int isp_virt,
 	end = start + (pgnr << ISP_PAGE_OFFSET);
 
 	mmu_l1_unmap(mmu, l1_pt, start, end);
+	mutex_unlock(&mmu->pt_mutex);
 }
 
 /*

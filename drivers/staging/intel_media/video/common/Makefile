@@ -8,6 +8,7 @@ ccflags-$(CONFIG_DRM_MRFLD) += \
 	-I$(INCDIR)/rgx/include \
 	-I$(INCDIR)/interface \
 	-I$(INCDIR)/drv \
+	-I$(INCDIR)/drv/ospm \
 	-I$(INCDIR)/rgx/services/server/env/linux \
 	-I$(INCDIR)/rgx/services/server/include \
 	-I$(INCDIR)/../intel_media/video/common \

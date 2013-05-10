@@ -62,7 +62,7 @@ atomisp-objs += \
 		$(css_folder)/$(css_platform_folder)/host/input_formatter.o \
 	#	$(css_folder)/sh_css_pipeline.o \
 
-ifeq ($(CONFIG_ISP2400B0), y)
+ifeq ($(CONFIG_VIDEO_ATOMISP_CSS20), m)
 atomisp-objs += $(css_folder)/$(css_platform_folder)/host/input_system.o \
 		$(css_folder)/input_system_init.o \
 		$(css_folder)/ia_css_memory_access.o \

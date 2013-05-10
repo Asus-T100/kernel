@@ -190,6 +190,9 @@ int i2c_dw_init(struct dw_i2c_dev *dev)
 	u32 hcnt, lcnt;
 	u32 reg;
 
+	if (dev->reset)
+		dev->reset(dev);
+
 	input_clock_khz = dev->get_clk_rate_khz(dev);
 
 	/* Configure register endianess access */

@@ -613,7 +613,11 @@ static void __exit flis_rpmsg_exit(void)
 	return unregister_rpmsg_driver(&flis_rpmsg);
 }
 
+#ifdef MODULE
 module_init(flis_rpmsg_init);
+#else
+rootfs_initcall(flis_rpmsg_init);
+#endif
 module_exit(flis_rpmsg_exit);
 
 MODULE_AUTHOR("Ning Li <ning.li@intel.com>");

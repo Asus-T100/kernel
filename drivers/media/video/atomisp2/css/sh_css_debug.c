@@ -279,25 +279,25 @@ static void print_if_state(
 		fsm_sync_status_str = "ERROR";
 	else {
 		switch (val) {
-		case 0:
-			fsm_sync_status_str = "idle";
-			break;
-		case 1:
-			fsm_sync_status_str = "request frame";
-			break;
-		case 2:
-			fsm_sync_status_str = "request lines";
-			break;
-		case 3:
-			fsm_sync_status_str = "request vectors";
-			break;
-		case 4:
-			fsm_sync_status_str = "send acknowledge";
-			break;
-		default:
-			fsm_sync_status_str = "unknown";
-			break;
-		}
+	case 0:
+		fsm_sync_status_str = "idle";
+		break;
+	case 1:
+		fsm_sync_status_str = "request frame";
+		break;
+	case 2:
+		fsm_sync_status_str = "request lines";
+		break;
+	case 3:
+		fsm_sync_status_str = "request vectors";
+		break;
+	case 4:
+		fsm_sync_status_str = "send acknowledge";
+		break;
+	default:
+		fsm_sync_status_str = "unknown";
+		break;
+	}
 	}
 
 	sh_css_dtrace(2, "\t\t%-32s: (0x%X: %s)\n",
@@ -312,31 +312,31 @@ static void print_if_state(
 		fsm_crop_status_str = "ERROR";
 	else {
 		switch (val) {
-		case 0:
-			fsm_crop_status_str = "idle";
-			break;
-		case 1:
-			fsm_crop_status_str = "wait line";
-			break;
-		case 2:
-			fsm_crop_status_str = "crop line";
-			break;
-		case 3:
-			fsm_crop_status_str = "crop pixel";
-			break;
-		case 4:
-			fsm_crop_status_str = "pass pixel";
-			break;
-		case 5:
-			fsm_crop_status_str = "pass line";
-			break;
-		case 6:
-			fsm_crop_status_str = "lost line";
-			break;
-		default:
-			fsm_crop_status_str = "unknown";
-			break;
-		}
+	case 0:
+		fsm_crop_status_str = "idle";
+		break;
+	case 1:
+		fsm_crop_status_str = "wait line";
+		break;
+	case 2:
+		fsm_crop_status_str = "crop line";
+		break;
+	case 3:
+		fsm_crop_status_str = "crop pixel";
+		break;
+	case 4:
+		fsm_crop_status_str = "pass pixel";
+		break;
+	case 5:
+		fsm_crop_status_str = "pass line";
+		break;
+	case 6:
+		fsm_crop_status_str = "lost line";
+		break;
+	default:
+		fsm_crop_status_str = "unknown";
+		break;
+	}
 	}
 	sh_css_dtrace(2, "\t\t%-32s: (0x%X: %s)\n",
 		     "FSM Crop Status", val, fsm_crop_status_str);
@@ -366,25 +366,25 @@ static void print_if_state(
 		fsm_padding_status_str = "ERROR";
 	else {
 		switch (val) {
-		case 0:
-			fsm_padding_status_str = "idle";
-			break;
-		case 1:
-			fsm_padding_status_str = "left pad";
-			break;
-		case 2:
-			fsm_padding_status_str = "write";
-			break;
-		case 3:
-			fsm_padding_status_str = "right pad";
-			break;
-		case 4:
-			fsm_padding_status_str = "send end of line";
-			break;
-		default:
-			fsm_padding_status_str = "unknown";
-			break;
-		}
+	case 0:
+		fsm_padding_status_str = "idle";
+		break;
+	case 1:
+		fsm_padding_status_str = "left pad";
+		break;
+	case 2:
+		fsm_padding_status_str = "write";
+		break;
+	case 3:
+		fsm_padding_status_str = "right pad";
+		break;
+	case 4:
+		fsm_padding_status_str = "send end of line";
+		break;
+	default:
+		fsm_padding_status_str = "unknown";
+		break;
+	}
 	}
 
 	sh_css_dtrace(2, "\t\t%-32s: (0x%X: %s)\n", "FSM Padding Status",
@@ -1063,8 +1063,14 @@ void sh_css_print_sp_debug_state(
 #if 1
 
 	static char const *id2filename[8] = {
-		"N.A.", "sp.hive.c", "event.sp.c", "sp_raw_copy.hive.c",
-		"buffer_queue.sp.c", "event_proxy_sp.hive.c", "ERROR", "ERROR"
+		"param_buffer.sp.c | tagger.sp.c | pipe_data.sp.c",
+		"isp_init.sp.c",
+		"sp_raw_copy.hive.c",
+		"dma_configure.sp.c",
+		"sp.hive.c",
+		"event_proxy_sp.hive.c",
+		"circular_buffer.sp.c",
+		"frame_buffer.sp.c"
 		};
 
 #if 0
@@ -1073,16 +1079,34 @@ void sh_css_print_sp_debug_state(
 				"acceleration", "control", "TBD" };
 #else
 	static char const *trace_name[SH_CSS_SP_DBG_NR_OF_TRACES] = {
-				"copy", "preview/video", "event_ext_io",
-				"event_PIF_A" };
+				"default"};
 #endif
-	int t, d;
+
+	/* Remember host_index_last because we only want to print new entries */
+	static int host_index_last[SH_CSS_SP_DBG_NR_OF_TRACES] = {0};
+	int t, n;
 
 	for (t = 0; t < SH_CSS_SP_DBG_NR_OF_TRACES; t++) {
-		/* base contains the "oldest" index */
-		int base = state->index[t];
-		for (d = 0; d < SH_CSS_SP_DBG_TRACE_DEPTH; d++) {
-			int i = (base + d) % SH_CSS_SP_DBG_TRACE_DEPTH;
+		int sp_index_last = state->index_last[t];
+
+		if (sp_index_last < host_index_last[t]) {
+			/* SP has been reset */
+			host_index_last[t] = 0;
+		}
+
+		if ((host_index_last[t] + SH_CSS_SP_DBG_TRACE_DEPTH) < sp_index_last) {
+			/* last index can be multiple rounds behind */
+			/* while trace size is only SH_CSS_SP_DBG_TRACE_DEPTH */
+			DTRACE_SP_STATE(
+			  "Warning: trace %s has gap of %d traces\n",
+			  trace_name[t],
+			  (sp_index_last - (host_index_last[t] + SH_CSS_SP_DBG_TRACE_DEPTH)));
+
+			host_index_last[t] = sp_index_last - SH_CSS_SP_DBG_TRACE_DEPTH;
+		}
+
+		for (n = host_index_last[t]; n < sp_index_last; n++) {
+			int i = n % SH_CSS_SP_DBG_TRACE_DEPTH;
 			int l = state->trace[t][i].location &
 				((1<<SH_CSS_SP_DBG_TRACE_FILE_ID_BIT_POS)-1);
 			int fid = state->trace[t][i].location >>
@@ -1098,6 +1122,7 @@ void sh_css_print_sp_debug_state(
 				  state->trace[t][i].data);
 			}
 		}
+		host_index_last[t] = sp_index_last;
 	}
 
 
@@ -1175,26 +1200,6 @@ void sh_css_dump_debug_info(
 	sh_css_dump_dma_state();
 return;
 }
-
-#if SP_DEBUG == SP_DEBUG_TRACE
-
-void
-sh_css_sp_debug_dump_mipi_fifo_high_water(void)
-{
-	const struct sh_css_fw_info *fw = &sh_css_sp_fw;
-	unsigned int mfhw;
-	unsigned int HIVE_ADDR_sp_output = fw->info.sp.output;
-	unsigned offset = offsetof(struct sh_css_sp_output, debug.mipi_fifo_high_water);
-
-	(void)HIVE_ADDR_sp_output; /* To get rid of warning in CRUN */
-
-	load_sp_var_with_offset(sp_output, offset, &mfhw, sizeof(mfhw));
-
-	DTRACE_SP_STATE("Mipi fifo high water mark: %d, line %d\n",mfhw&0xFFFF, mfhw>>16);
-}
-
-#endif
-
 
 /* this function is for debug use, it can make SP go to sleep
   state after each frame, then user can dump the stable SP dmem.
@@ -1588,7 +1593,15 @@ sh_css_debug_mode_enable_dma_channel(int dma_id,
 	return rc;
 }
 
-static bool debug_pipe_graph_do_init = true;
+static struct pipe_graph_class {
+	bool do_init;
+	int height;
+	int width;
+	int eff_height;
+	int eff_width;
+	enum sh_css_input_format input_format;
+
+} pg_inst = {true, 0, 0, 0, 0, N_SH_CSS_INPUT_FORMAT};
 
 static const char *format2str[] = {
 	[SH_CSS_FRAME_FORMAT_NV11]	= "NV11",
@@ -1611,7 +1624,30 @@ static const char *format2str[] = {
 	[SH_CSS_FRAME_FORMAT_PLANAR_RGB888] = "PLANAR_RGB888",
 	[SH_CSS_FRAME_FORMAT_RGBA888]	= "RGBA888",
 	[SH_CSS_FRAME_FORMAT_QPLANE6]	= "QPLANE6",
-	[SH_CSS_FRAME_FORMAT_BINARY_8]	= "BINARY_8"
+	[SH_CSS_FRAME_FORMAT_BINARY_8]	= "BINARY_8",
+	[N_SH_CSS_FRAME_FORMAT]		= "INVALID"
+};
+
+static const char* input_format2str[] = {
+  [SH_CSS_INPUT_FORMAT_YUV420_8_LEGACY] = "yuv420-8-legacy",
+  [SH_CSS_INPUT_FORMAT_YUV420_8]        = "yuv420-8",
+  [SH_CSS_INPUT_FORMAT_YUV420_10]       = "yuv420-10",
+  [SH_CSS_INPUT_FORMAT_YUV422_8]        = "yuv422-8",
+  [SH_CSS_INPUT_FORMAT_YUV422_10]       = "yuv422-10",
+  [SH_CSS_INPUT_FORMAT_RGB_444]         = "rgb444",
+  [SH_CSS_INPUT_FORMAT_RGB_555]         = "rgb555",
+  [SH_CSS_INPUT_FORMAT_RGB_565]         = "rgb565",
+  [SH_CSS_INPUT_FORMAT_RGB_666]         = "rgb666",
+  [SH_CSS_INPUT_FORMAT_RGB_888]         = "rgb888",
+  [SH_CSS_INPUT_FORMAT_RAW_6]           = "raw6",
+  [SH_CSS_INPUT_FORMAT_RAW_7]           = "raw7",
+  [SH_CSS_INPUT_FORMAT_RAW_8]           = "raw8",
+  [SH_CSS_INPUT_FORMAT_RAW_10]          = "raw10",
+  [SH_CSS_INPUT_FORMAT_RAW_12]          = "raw12",
+  [SH_CSS_INPUT_FORMAT_RAW_14]          = "raw14",
+  [SH_CSS_INPUT_FORMAT_RAW_16]          = "raw16",
+  [SH_CSS_INPUT_FORMAT_BINARY_8]        = "binary8",
+  [N_SH_CSS_INPUT_FORMAT]               = "invalid"
 };
 
 
@@ -1684,13 +1720,13 @@ sh_css_debug_pipe_graph_dump_frame(
 
 	if (in_frame){
 		DTRACE_DOT(
-			"\"0x%08lx\"->\"%s_%d\" "
+			"\"0x%08lx\"->\"%s(pipe%d)\" "
 			"[label = %s_frame];",
 			join_input_buf ? 0x11111111 : HOST_ADDRESS(frame),
 			blob_name, id, frame_name);
 	} else {
 		DTRACE_DOT(
-			"\"%s_%d\"->\"0x%08lx\" "
+			"\"%s(pipe%d)\"->\"0x%08lx\" "
 			"[label = %s_frame];",
 			blob_name, id,
 			HOST_ADDRESS(frame),
@@ -1727,8 +1763,9 @@ sh_css_debug_pipe_graph_dump_epilogue(void)
 
 	DTRACE_DOT(
 		"\"input_system\"->\"%s\" "
-		"[label = \"Format W x H\"];",
-		dot_id_input_bin);
+		"[label = \"%s\\n%d x %d\"];",
+		dot_id_input_bin, input_format2str[pg_inst.input_format],
+		pg_inst.eff_width, pg_inst.eff_height);
 
 #if 0
 	if (pipe->input_mode == SH_CSS_INPUT_MODE_SENSOR) {
@@ -1740,7 +1777,9 @@ sh_css_debug_pipe_graph_dump_epilogue(void)
 
 		DTRACE_DOT(
 			"\"sensor\"->\"input_system\" "
-			"[label = \"Format W x H\"];");
+			"[label = \"%s\\n%d x %d\"];",
+			input_format2str[pg_inst.input_format],
+			pg_inst.width, pg_inst.height);
 #if 0
 	} else if (pipe->input_mode == SH_CSS_INPUT_MODE_FIFO) {
 
@@ -1768,7 +1807,14 @@ sh_css_debug_pipe_graph_dump_epilogue(void)
 #endif
 
 	DTRACE_DOT("}");
-	debug_pipe_graph_do_init = true;
+
+	pg_inst.do_init = true;
+	pg_inst.width = 0;
+	pg_inst.height = 0;
+	pg_inst.eff_width = 0;
+	pg_inst.eff_height = 0;
+	pg_inst.input_format = N_SH_CSS_INPUT_FORMAT;
+
 }
 
 void
@@ -1780,9 +1826,9 @@ sh_css_debug_pipe_graph_dump_stage(
 	char const *blob_name = "<unknow name>";
 	char const *bin_type = "<unknow type>";
 
-	if (debug_pipe_graph_do_init) {
+	if (pg_inst.do_init) {
 		sh_css_debug_pipe_graph_dump_prologue();
-		debug_pipe_graph_do_init = false;
+		pg_inst.do_init = false;
 	}
 
 	if (stage->binary) {
@@ -1825,11 +1871,10 @@ sh_css_debug_pipe_graph_dump_stage(
 			bi->enable.dp_2adjacent ?	"dp2a," : ""
 			);
 
-		snprintf( enable_info2, 100, "%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s",
+		snprintf( enable_info2, 100, "%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s",
 			bi->enable.macc ?		"macc," : "",
 			bi->enable.ss ?			"ss," : "",
 			bi->enable.output ?		"outp," : "",
-			bi->enable.output_table ?	"outt," : "",
 			bi->enable.ref_frame ?		"reff," : "",
 			bi->enable.tnr ?		"tnr," : "",
 			bi->enable.xnr ?		"xnr," : "",
@@ -1904,13 +1949,13 @@ sh_css_debug_pipe_graph_dump_stage(
 		}
 
 		DTRACE_DOT("node [shape = circle, fixedsize=true, width=2, "
-			"label=\"%s\\n%s\\n\\n%s\"]; \"%s_%d\"",
+			"label=\"%s\\n%s\\n\\n%s\"]; \"%s(pipe%d)\"",
 			bin_type, blob_name, enable_info, blob_name, id);
 
 	}
 
 	if (stage->stage_num == 0) {
-		sprintf(dot_id_input_bin, "%s_%d", blob_name, id);
+		sprintf(dot_id_input_bin, "%s(pipe%d)", blob_name, id);
 	}
 
 	/* CC is a bit of special case, it used to be the alternating IN */
@@ -1968,7 +2013,7 @@ sh_css_debug_pipe_graph_dump_sp_raw_copy(
 	struct sh_css_frame *cc_frame)
 {
 	DTRACE_DOT("node [shape = circle, fixedsize=true, width=2, "
-		"label=\"%s\\n%s\"]; \"%s_%d\"",
+		"label=\"%s\\n%s\"]; \"%s(pipe%d)\"",
 		"sp-binary", "sp_raw_copy", "sp_raw_copy", 1);
 
 
@@ -1983,14 +2028,36 @@ sh_css_debug_pipe_graph_dump_sp_raw_copy(
 
 
 	DTRACE_DOT(
-		"\"%s_%d\"->\"0x11111111\" "
+		"\"%s(pipe%d)\"->\"0x11111111\" "
 		"[label = cc_frame];",
 		"sp_raw_copy", 1);
 
-	sprintf(dot_id_input_bin, "%s_%d", "sp_raw_copy", 1);
+	sprintf(dot_id_input_bin, "%s(pipe%d)", "sp_raw_copy", 1);
 
 }
 
+void
+sh_css_debug_pipe_graph_dump_input_set_resolution
+(unsigned int width, unsigned int height)
+{
+	pg_inst.width = width;
+	pg_inst.height = height;
+}
+
+void
+sh_css_debug_pipe_graph_dump_input_set_effective_resolution
+(unsigned int effective_width, unsigned int effective_height)
+{
+	pg_inst.eff_width = effective_width;
+	pg_inst.eff_height = effective_height;
+}
+
+void
+sh_css_debug_pipe_graph_dump_input_set_format
+(enum sh_css_input_format input_format)
+{
+	pg_inst.input_format = input_format;
+}
 
 #if defined(HRT_SCHED) || defined(SH_CSS_DEBUG_SPMEM_DUMP_SUPPORT)
 #include "spmem_dump.c"

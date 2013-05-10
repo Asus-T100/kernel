@@ -250,13 +250,14 @@ int ctxmgr_map_user_ctx(struct client_crypto_ctx_info *ctx_info,
 	ctx_info->ctx_kptr = kzalloc(PAGE_SIZE, GFP_KERNEL);
 
 	if (alg_class == ALG_CLASS_NONE) {
+		size_t host_ctx_size = sizeof(struct host_crypto_ctx);
+		/* Copy common header to get the alg class */
 		if (copy_from_user(ctx_info->ctx_kptr,
-					user_ctx_ptr, PAGE_SIZE)) {
+				user_ctx_ptr, host_ctx_size)) {
 			SEP_LOG_ERR("Copy from user failed\n");
 			rc = -EINVAL;
 			goto copy_from_user_failed;
 		}
-
 		/* Verify actual context size with class saved in context */
 		alg_class = ctx_info->ctx_kptr->alg_class;
 		ctx_size = ctxmgr_get_ctx_size(alg_class);
@@ -271,6 +272,14 @@ int ctxmgr_map_user_ctx(struct client_crypto_ctx_info *ctx_info,
 				    user_ctx_ptr);
 			rc = -EINVAL;
 			goto ctx_cross_page;
+		}
+		/* Copy rest of the context when we know the actual size */
+		if (copy_from_user((u8 *)ctx_info->ctx_kptr + host_ctx_size,
+				(u8 *)user_ctx_ptr + host_ctx_size,
+				ctx_size - host_ctx_size)) {
+			SEP_LOG_ERR("Copy from user failed\n");
+			rc = -EINVAL;
+			goto copy_from_user_failed;
 		}
 	}
 
@@ -313,7 +322,7 @@ int ctxmgr_map_user_ctx(struct client_crypto_ctx_info *ctx_info,
  */
 void ctxmgr_unmap_user_ctx(struct client_crypto_ctx_info *ctx_info)
 {
-	size_t ctx_size = ctxmgr_get_ctx_size(ctx_info->ctx_kptr->alg_class);
+	size_t ctx_size;
 
 	if (ctx_info->ctx_kptr == NULL) {
 		/* This is a valid case since we invoke this function in some
@@ -321,6 +330,8 @@ void ctxmgr_unmap_user_ctx(struct client_crypto_ctx_info *ctx_info)
 		SEP_LOG_DEBUG("Context not mapped\n");
 		return;
 	}
+
+	ctx_size = ctxmgr_get_ctx_size(ctx_info->ctx_kptr->alg_class);
 
 	dma_unmap_single(ctx_info->dev, ctx_info->sep_ctx_dma_addr,
 			 sizeof(struct sep_ctx_cache_entry), DMA_BIDIRECTIONAL);

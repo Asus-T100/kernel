@@ -1217,9 +1217,10 @@ static int ov2722_get_pad_format(struct v4l2_subdev *sd,
 	struct ov2722_device *snr = to_ov2722_sensor(sd);
 	struct v4l2_mbus_framefmt *format =
 			__ov2722_get_pad_format(snr, fh, fmt->pad, fmt->which);
+	if (!format)
+		return -EINVAL;
 
 	fmt->format = *format;
-
 	return 0;
 }
 

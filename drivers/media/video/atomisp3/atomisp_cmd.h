@@ -298,4 +298,7 @@ int  atomisp_flash_enable(struct atomisp_device *isp, int num_frames);
 
 int atomisp_freq_scaling(struct atomisp_device *vdev,
 			 enum atomisp_dfs_mode mode);
+
+void atomisp_ISP_parameters_clean_up(struct atomisp_device *isp,
+				     struct ia_css_isp_config *config);
 #endif /* __ATOMISP_CMD_H__ */

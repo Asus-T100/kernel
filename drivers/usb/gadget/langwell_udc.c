@@ -77,14 +77,15 @@ static void ep_set_halt(struct langwell_ep *ep, int value);
 #undef writel
 #endif
 #define readl(addr) ({ if (check_pm_otg()) { \
-	panic("usb otg, read reg:0x%x, pm_sss0_base:0x%x",  \
+	panic("usb otg, read reg:%p, pm_sss0_base:0x%x",  \
 	addr, *(pm_sss0_base)); }; __le32_to_cpu(__raw_readl(addr)); })
 #define writel(b, addr) ({ if (check_pm_otg()) { \
-	panic("usb otg, write reg:0x%x, pm_sss0_base:0x%x",  \
+	panic("usb otg, write reg:%p, pm_sss0_base:0x%x",  \
 	addr, *(pm_sss0_base)); }; __raw_writel(__cpu_to_le32(b), addr); })
 #endif
 
 
+#ifdef	VERBOSE_DEBUG
 /*-------------------------------------------------------------------------*/
 /* debugging */
 
@@ -159,7 +160,7 @@ static void dump_ep(struct langwell_udc *dev, int ep_index)
 				"\t\tdtd_status = 0x%08x\n"
 				"\t\tdtd_ioc = 0x%08x\n"
 				"\t\tdtd_total = 0x%08x\n"
-				"\t\tdtd_dma = 0x%08x\n",
+				"\t\tdtd_dma = 0x%08llx\n",
 				i, dtd,
 				dtd->dtd_next,
 				dtd->dtd_status,
@@ -177,7 +178,6 @@ static void dump_ep(struct langwell_udc *dev, int ep_index)
 }
 
 
-#ifdef	VERBOSE_DEBUG
 static inline void print_all_registers(struct langwell_udc *dev)
 {
 	int	i;
@@ -1524,7 +1524,6 @@ static int langwell_vbus_draw(struct usb_gadget *_gadget, unsigned mA)
 static int langwell_pullup(struct usb_gadget *_gadget, int is_on)
 {
 	struct langwell_udc	*dev;
-	u32			usbcmd;
 	unsigned long		flags;
 
 	if (!_gadget)
@@ -1899,14 +1898,14 @@ static void langwell_dump_ep(struct langwell_udc *dev, int ep_index,
 
 		lnw_scnprintf(*next, *size,
 			"req %p actual 0x%x length 0x%x "
-			"buf 0x%p (dma addr 0x%x)\n",
+			"buf 0x%p (dma addr 0x%llx)\n",
 			&req->req, req->req.actual,
 			req->req.length, req->req.buf, req->req.dma);
 
 		dtd = req->head;
 		for (i = 0; i < req->dtd_count; i++) {
 			lnw_scnprintf(*next, *size,
-				"\tdTD %d virt_addr 0x%p, dma addr 0x%08x\n",
+				"\tdTD %d virt_addr 0x%p, dma addr 0x%08llx\n",
 				i, dtd, dtd->dtd_dma);
 
 			for (j = 0; j < DTD_DW_SIZE; j++)

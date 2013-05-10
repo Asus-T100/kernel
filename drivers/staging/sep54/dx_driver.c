@@ -117,10 +117,6 @@
 
 static struct class *sep_class;
 
-#ifdef S3_POWER_HACK
-int is_s3_state;
-#endif
-
 int q_num;			/* Initialized to 0 */
 module_param(q_num, int, 0444);
 MODULE_PARM_DESC(q_num, "Num. of active queues 1-2");
@@ -169,6 +165,8 @@ static const u32 gpr_interrupt_mask[] = {
 	SEP_HOST_GPR_IRQ_MASK(6),
 	SEP_HOST_GPR_IRQ_MASK(7)
 };
+
+u32 __iomem *security_cfg_reg;
 
 #ifdef DEBUG
 void dump_byte_array(const char *name, const u8 *the_array,
@@ -3740,10 +3738,6 @@ static long sep_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	unsigned long long ioctl_start;
 	int err = 0;
 
-#ifdef SEP_RUNTIME_PM
-	dx_sep_pm_runtime_get();
-#endif
-
 	ioctl_start = sched_clock();
 
 	/* Verify IOCTL command: magic + number */
@@ -3766,6 +3760,10 @@ static long sep_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 				 (void __user *)arg, _IOC_SIZE(cmd));
 	if (err)
 		return -EFAULT;
+
+#ifdef SEP_RUNTIME_PM
+	dx_sep_pm_runtime_get();
+#endif
 
 	switch (_IOC_NR(cmd)) {
 		/* Version info. commands */
@@ -4642,6 +4640,12 @@ static int __devinit sep_pci_probe(struct pci_dev *pdev,
 	struct resource res;
 	struct resource r_irq;
 
+	security_cfg_reg = ioremap_nocache(SECURITY_CFG_ADDR, 4);
+	if (security_cfg_reg == NULL) {
+		dev_err(&pdev->dev, "ioremap of security_cfg_reg failed\n");
+		return -ENOMEM;
+	}
+
 	/* Enable Chaabi */
 	error = pci_enable_device(pdev);
 	if (error) {
@@ -4682,14 +4686,18 @@ static int __devinit sep_pci_probe(struct pci_dev *pdev,
 #ifdef SEP_RUNTIME_PM
 	pm_runtime_put_noidle(&pdev->dev);
 	pm_runtime_allow(&pdev->dev);
-	pm_runtime_set_autosuspend_delay(&pdev->dev, 300);
+	pm_runtime_set_autosuspend_delay(&pdev->dev, SEP_AUTOSUSPEND_DELAY);
 	pm_runtime_mark_last_busy(&pdev->dev);
 	pm_runtime_use_autosuspend(&pdev->dev);
 #endif
 
+	return 0;
+
  disable_pci:
 	pci_disable_device(pdev);
  end:
+	iounmap(security_cfg_reg);
+
 	return error;
 }
 
@@ -4697,18 +4705,29 @@ static int __devinit sep_pci_probe(struct pci_dev *pdev,
 static int sep_runtime_suspend(struct device *dev)
 {
 	int ret;
-
-    /* If we are in S3 state don't suspend
-     * TODO: FIX WITH DX
-     */
-#ifdef S3_POWER_HACK
-	if (is_s3_state)
-		return 0;
-#endif
+	int count = 0;
+	u32 val;
+	struct pci_dev *pdev = to_pci_dev(dev);
 
 	ret = dx_sep_power_state_set(DX_SEP_POWER_HIBERNATED);
-	if (ret)
+	if (ret) {
 		SEP_LOG_ERR("%s failed! ret = %d\n", __func__, ret);
+		return ret;
+	}
+
+	/*poll for chaabi_powerdown_en bit in SECURITY_CFG*/
+	while (count < SEP_TIMEOUT) {
+		val = readl(security_cfg_reg);
+		if (val & PWR_DWN_ENB_MASK)
+			break;
+		usleep_range(1, 5);
+		count++;
+	}
+	if (count >= SEP_TIMEOUT) {
+		dev_err(&pdev->dev,
+			"SEP: timed out waiting for chaabi_powerdown_en\n");
+		return -EBUSY;
+	}
 
 	return ret;
 }
@@ -4717,14 +4736,6 @@ static int sep_runtime_resume(struct device *dev)
 {
 	int ret;
 
-    /* If we are in S3 state no need to resume
-     * TODO: FIX WITH DX
-     */
-#ifdef S3_POWER_HACK
-	if (is_s3_state)
-		return 0;
-#endif
-
 	ret = dx_sep_power_state_set(DX_SEP_POWER_ACTIVE);
 	if (ret)
 		SEP_LOG_ERR("%s failed! ret = %d\n", __func__, ret);
@@ -4732,23 +4743,52 @@ static int sep_runtime_resume(struct device *dev)
 	return ret;
 }
 
-#ifndef S3_POWER_HACK
 static int sep_suspend(struct device *dev)
 {
 	int ret = 0;
+	struct pci_dev *pdev = to_pci_dev(dev);
+	int count = 0;
+	u32 val;
 
 	ret = dx_sep_power_state_set(DX_SEP_POWER_HIBERNATED);
-	if (ret)
+	if (ret) {
 		SEP_LOG_ERR("%s failed! ret = %d\n", __func__, ret);
+		return ret;
+	}
+
+	/*poll for chaabi_powerdown_en bit in SECURITY_CFG*/
+	while (count < SEP_TIMEOUT) {
+		val = readl(security_cfg_reg);
+		if (val & PWR_DWN_ENB_MASK)
+			break;
+		usleep_range(1, 5);
+		count++;
+	}
+	if (count >= SEP_TIMEOUT) {
+		dev_err(&pdev->dev,
+			"SEP: timed out waiting for chaabi_powerdown_en\n");
+		return -EBUSY;
+	}
+
+	pci_save_state(pdev);
+	pci_disable_device(pdev);
+	pci_set_power_state(pdev, PCI_D3hot);
 
 	return ret;
 }
-#endif
 
-#ifndef S3_POWER_HACK
 static int sep_resume(struct device *dev)
 {
 	int ret = 0;
+	struct pci_dev *pdev = to_pci_dev(dev);
+
+	pci_set_power_state(pdev, PCI_D0);
+	pci_restore_state(pdev);
+	ret = pci_enable_device(pdev);
+	if (ret < 0) {
+		dev_err(&pdev->dev, "SEP: pci_enable_device failed\n");
+		return ret;
+	}
 
 	ret = dx_sep_power_state_set(DX_SEP_POWER_ACTIVE);
 	if (ret)
@@ -4756,15 +4796,12 @@ static int sep_resume(struct device *dev)
 
 	return ret;
 }
-#endif
 
 static const struct dev_pm_ops sep_pm_ops = {
 	.runtime_suspend = sep_runtime_suspend,
 	.runtime_resume = sep_runtime_resume,
-#ifndef S3_POWER_HACK
 	.suspend = sep_suspend,
 	.resume = sep_resume,
-#endif
 };
 #endif /* CONFIG_PM_RUNTIME && SEP_RUNTIME_PM */
 
@@ -4781,32 +4818,6 @@ static struct pci_driver sep_pci_driver = {
 	.remove = sep_pci_remove
 };
 
-#ifdef S3_POWER_HACK
-static int s3_suspend_notifier(struct notifier_block *nb,
-				unsigned long event,
-				void *dummy)
-{
-	switch (event) {
-	case PM_SUSPEND_PREPARE:
-		is_s3_state = 1;
-		break;
-
-	case PM_POST_SUSPEND:
-		is_s3_state = 0;
-		break;
-
-	default:
-		return NOTIFY_DONE;
-	}
-
-	return 0;
-}
-
-static struct notifier_block s3_notif_block = {
-	.notifier_call = s3_suspend_notifier,
-};
-#endif
-
 static int __init sep_module_init(void)
 {
 	int rc;
@@ -4819,15 +4830,6 @@ static int __init sep_module_init(void)
 		class_destroy(sep_class);
 		return rc;
 	}
-
-#ifdef S3_POWER_HACK
-	rc = register_pm_notifier(&s3_notif_block);
-	if (rc) {
-		pci_unregister_driver(&sep_pci_driver);
-		class_destroy(sep_class);
-		return rc;
-	}
-#endif
 
 	return 0;		/*success */
 }

@@ -203,20 +203,28 @@ static const char *charger_string(enum usb_charger_type charger)
 	}
 }
 
-static const char *psc_string(enum power_supply_type charger)
+static const char *psc_string(enum power_supply_charger_cable_type charger)
 {
 	switch (charger) {
-	case POWER_SUPPLY_TYPE_USB:
+	case POWER_SUPPLY_CHARGER_TYPE_USB_SDP:
 		return "Standard Downstream Port";
-	case POWER_SUPPLY_TYPE_USB_CDP:
+	case POWER_SUPPLY_CHARGER_TYPE_USB_CDP:
 		return "Charging Downstream Port";
-	case POWER_SUPPLY_TYPE_USB_DCP:
+	case POWER_SUPPLY_CHARGER_TYPE_USB_DCP:
 		return "Dedicated Charging Port";
-	case POWER_SUPPLY_TYPE_USB_ACA:
+	case POWER_SUPPLY_CHARGER_TYPE_USB_ACA:
 		return "Accessory Charger Adaptor";
-	case POWER_SUPPLY_TYPE_USB_HOST:
-		return "USB Host";
-	case POWER_SUPPLY_TYPE_BATTERY:
+	case POWER_SUPPLY_CHARGER_TYPE_ACA_DOCK:
+		return "Accessory Charger Adaptor Dock";
+	case POWER_SUPPLY_CHARGER_TYPE_ACA_A:
+		return "Accessory Charger Adaptor Type A";
+	case POWER_SUPPLY_CHARGER_TYPE_ACA_B:
+		return "Accessory Charger Adaptor Type B";
+	case POWER_SUPPLY_CHARGER_TYPE_ACA_C:
+		return "Accessory Charger Adaptor Type C";
+	case POWER_SUPPLY_CHARGER_TYPE_SE1:
+		return "SE1 Charger";
+	case POWER_SUPPLY_CHARGER_TYPE_NONE:
 		return "Unknown";
 	default:
 		return "Undefined";
@@ -412,21 +420,29 @@ static void _penwell_otg_update_chrg_cap(enum usb_charger_type charger,
 	dev_dbg(pnw->dev, "%s <---\n", __func__);
 }
 
-static enum power_supply_type usb_chrg_to_power_supply_chrg(
+static enum power_supply_charger_cable_type usb_chrg_to_power_supply_chrg(
 				enum usb_charger_type chrg_type)
 {
 	switch (chrg_type) {
-	case CHRG_SDP: return POWER_SUPPLY_TYPE_USB;
-	case CHRG_CDP: return POWER_SUPPLY_TYPE_USB_CDP;
-	case CHRG_DCP: return POWER_SUPPLY_TYPE_USB_DCP;
-	case CHRG_ACA: return POWER_SUPPLY_TYPE_USB_ACA;
-	default: return POWER_SUPPLY_TYPE_BATTERY;
+	case CHRG_UNKNOWN: return POWER_SUPPLY_CHARGER_TYPE_NONE;
+	case CHRG_SDP: return POWER_SUPPLY_CHARGER_TYPE_USB_SDP;
+	case CHRG_CDP: return POWER_SUPPLY_CHARGER_TYPE_USB_CDP;
+	case CHRG_SDP_INVAL: return POWER_SUPPLY_CHARGER_TYPE_USB_SDP;
+	case CHRG_DCP: return POWER_SUPPLY_CHARGER_TYPE_USB_DCP;
+	case CHRG_ACA: return POWER_SUPPLY_CHARGER_TYPE_USB_ACA;
+	case CHRG_ACA_DOCK: return POWER_SUPPLY_CHARGER_TYPE_ACA_DOCK;
+	case CHRG_ACA_A: return POWER_SUPPLY_CHARGER_TYPE_ACA_A;
+	case CHRG_ACA_B: return POWER_SUPPLY_CHARGER_TYPE_ACA_B;
+	case CHRG_ACA_C: return POWER_SUPPLY_CHARGER_TYPE_ACA_C;
+	case CHRG_SE1: return POWER_SUPPLY_CHARGER_TYPE_SE1;
+	case CHRG_MHL: return POWER_SUPPLY_CHARGER_TYPE_MHL;
+	default: return POWER_SUPPLY_CHARGER_TYPE_NONE;
 	}
 }
 
 static enum power_supply_charger_event check_psc_event(
-			struct power_supply_charger_cap old,
-			struct power_supply_charger_cap new)
+			struct power_supply_cable_props old,
+			struct power_supply_cable_props new)
 {
 	struct penwell_otg *pnw = the_transceiver;
 
@@ -434,9 +450,10 @@ static enum power_supply_charger_event check_psc_event(
 
 	/* Check charger type information */
 	if (old.chrg_type != new.chrg_type) {
-		if (old.chrg_type == POWER_SUPPLY_TYPE_BATTERY && new.mA != 0)
+		if (old.chrg_type == POWER_SUPPLY_CHARGER_TYPE_NONE
+					&& new.mA != 0)
 			return POWER_SUPPLY_CHARGER_EVENT_CONNECT;
-		else if (new.chrg_type == POWER_SUPPLY_TYPE_BATTERY)
+		else if (new.chrg_type == POWER_SUPPLY_CHARGER_TYPE_NONE)
 			return POWER_SUPPLY_CHARGER_EVENT_DISCONNECT;
 		else {
 			dev_dbg(pnw->dev, "not a valid event\n");
@@ -451,7 +468,7 @@ static enum power_supply_charger_event check_psc_event(
 	}
 
 	switch (new.chrg_type) {
-	case POWER_SUPPLY_TYPE_USB:
+	case POWER_SUPPLY_CHARGER_TYPE_USB_SDP:
 		if (old.mA == CHRG_CURR_DISCONN &&
 		   (new.mA == CHRG_CURR_SDP_LOW ||
 		    new.mA == CHRG_CURR_SDP_HIGH)) {
@@ -478,14 +495,14 @@ static enum power_supply_charger_event check_psc_event(
 		} else
 			dev_dbg(pnw->dev, "SDP: no need to update EM\n");
 		break;
-	case POWER_SUPPLY_TYPE_USB_DCP:
+	case POWER_SUPPLY_CHARGER_TYPE_USB_DCP:
 		if (new.mA == CHRG_CURR_DCP) {
 			/* DCP event: charger connect */
 			return POWER_SUPPLY_CHARGER_EVENT_CONNECT;
 		} else
 			dev_dbg(pnw->dev, "DCP: no need to update EM\n");
 		break;
-	case POWER_SUPPLY_TYPE_USB_CDP:
+	case POWER_SUPPLY_CHARGER_TYPE_USB_CDP:
 		if (pnw->charging_cap.mA == CHRG_CURR_DISCONN &&
 		   new.mA == CHRG_CURR_CDP) {
 			/* CDP event: charger connect */
@@ -493,7 +510,7 @@ static enum power_supply_charger_event check_psc_event(
 		} else
 			dev_dbg(pnw->dev, "CDP: no need to update EM\n");
 		break;
-	case POWER_SUPPLY_TYPE_BATTERY:
+	case POWER_SUPPLY_CHARGER_TYPE_NONE:
 		if (new.mA == CHRG_CURR_DISCONN) {
 			/* event: chargers disconnect */
 			return POWER_SUPPLY_CHARGER_EVENT_DISCONNECT;
@@ -526,7 +543,7 @@ static void penwell_otg_update_chrg_cap(enum usb_charger_type charger,
 		_penwell_otg_update_chrg_cap(charger, mA);
 		spin_unlock_irqrestore(&pnw->charger_lock, flags);
 	} else {
-		dev_dbg(pnw->dev, "clv charger_cap_update\n");
+		dev_dbg(pnw->dev, "clv cable_props_update\n");
 
 		event = kzalloc(sizeof(*event), GFP_ATOMIC);
 		if (!event) {
@@ -576,7 +593,7 @@ static int penwell_otg_set_power(struct usb_phy *otg, unsigned mA)
 	} else {
 		dev_dbg(pnw->dev, "clv charger_set_power\n");
 
-		if (pnw->psc_cap.chrg_type != POWER_SUPPLY_TYPE_USB)
+		if (pnw->psc_cap.chrg_type != POWER_SUPPLY_CHARGER_TYPE_USB_SDP)
 			return 0;
 
 		if (!pnw->otg_pdata->charging_compliance)
@@ -588,7 +605,7 @@ static int penwell_otg_set_power(struct usb_phy *otg, unsigned mA)
 			return -ENOMEM;
 		}
 
-		event->cap.chrg_type = POWER_SUPPLY_TYPE_USB;
+		event->cap.chrg_type = POWER_SUPPLY_CHARGER_TYPE_USB_SDP;
 		event->cap.mA = mA;
 		INIT_LIST_HEAD(&event->node);
 
@@ -604,22 +621,20 @@ static int penwell_otg_set_power(struct usb_phy *otg, unsigned mA)
 	return 0;
 }
 
-/* for Clovertrail only */
-int penwell_otg_query_power_supply_cap(struct power_supply_charger_cap *cap)
+int penwell_otg_get_chr_status(struct usb_phy *x, void *data)
 {
-	struct penwell_otg *pnw = the_transceiver;
 	unsigned long flags;
+	struct power_supply_cable_props *cap =
+		(struct power_supply_cable_props *)data;
+	struct penwell_otg *pnw = the_transceiver;
 
 	if (pnw == NULL)
 		return -ENODEV;
 
 	dev_dbg(pnw->dev, "%s --->\n", __func__);
 
-	if (cap == NULL)
+	if (data == NULL)
 		return -EINVAL;
-
-	if (!is_clovertrail(to_pci_dev(pnw->dev)))
-		return -ENODEV;
 
 	spin_lock_irqsave(&pnw->cap_lock, flags);
 	cap->chrg_evt = pnw->psc_cap.chrg_evt;
@@ -630,8 +645,6 @@ int penwell_otg_query_power_supply_cap(struct power_supply_charger_cap *cap)
 	dev_dbg(pnw->dev, "%s <---\n", __func__);
 	return 0;
 }
-EXPORT_SYMBOL_GPL(penwell_otg_query_power_supply_cap);
-
 
 int penwell_otg_query_charging_cap(struct otg_bc_cap *cap)
 {
@@ -735,7 +748,7 @@ static void penwell_otg_phy_enable(int on)
 /* A-device drives vbus, controlled through MSIC register */
 static int penwell_otg_set_vbus(struct usb_otg *otg, bool enabled)
 {
-	struct penwell_otg	*pnw = the_transceiver;
+	struct penwell_otg		*pnw = the_transceiver;
 	u8				data;
 	unsigned long			flags;
 	int				retval = 0;
@@ -762,24 +775,21 @@ static int penwell_otg_set_vbus(struct usb_otg *otg, bool enabled)
 			return -ENOMEM;
 		}
 
-		evt->cap.chrg_type = POWER_SUPPLY_TYPE_USB;
+		evt->cap.chrg_type = POWER_SUPPLY_CHARGER_TYPE_NONE;
 		INIT_LIST_HEAD(&evt->node);
 
-		if (enabled) {
-			evt->cap.chrg_type = POWER_SUPPLY_TYPE_USB_HOST;
-			evt->cap.mA = 500;
-			evt->cap.chrg_evt = POWER_SUPPLY_CHARGER_EVENT_CONNECT;
-		} else if (pnw->iotg.hsm.id == ID_ACA_A
+		if ((!enabled) && (pnw->iotg.hsm.id == ID_ACA_A
 				|| pnw->iotg.hsm.id == ID_ACA_B
-				|| pnw->iotg.hsm.id == ID_ACA_C) {
-			evt->cap.chrg_type = POWER_SUPPLY_TYPE_USB_ACA;
+				|| pnw->iotg.hsm.id == ID_ACA_C)) {
+			evt->cap.chrg_type = POWER_SUPPLY_CHARGER_TYPE_USB_ACA;
 			evt->cap.mA = CHRG_CURR_ACA;
 			evt->cap.chrg_evt = POWER_SUPPLY_CHARGER_EVENT_CONNECT;
 		} else {
-			evt->cap.chrg_type = POWER_SUPPLY_TYPE_BATTERY;
-			evt->cap.mA = 0;
-			evt->cap.chrg_evt =
-				POWER_SUPPLY_CHARGER_EVENT_DISCONNECT;
+			dev_info(pnw->dev, "notification: turn %s VBUS\n",
+						enabled ? "ON" : "OFF");
+			atomic_notifier_call_chain(&pnw->iotg.otg.notifier,
+				USB_EVENT_DRIVE_VBUS, &enabled);
+			goto done;
 		}
 
 		dev_dbg(pnw->dev, "notify power_supply_charger_event\n");
@@ -2881,7 +2891,8 @@ static void penwell_otg_ulpi_poll_work(struct work_struct *work)
 static void penwell_otg_psc_notify_work(struct work_struct *work)
 {
 	struct penwell_otg		*pnw = the_transceiver;
-	struct power_supply_charger_cap	psc_cap;
+	struct intel_mid_otg_xceiv	*iotg = &pnw->iotg;
+	struct power_supply_cable_props	psc_cap;
 	enum power_supply_charger_event chrg_event;
 	unsigned long			flags;
 	struct otg_bc_event		*event, *temp;
@@ -2895,7 +2906,15 @@ static void penwell_otg_psc_notify_work(struct work_struct *work)
 		chrg_event = check_psc_event(pnw->psc_cap, event->cap);
 		if (chrg_event == -1)
 			dev_dbg(pnw->dev, "no need to notify\n");
-		else {
+		else if (chrg_event == POWER_SUPPLY_CHARGER_EVENT_DISCONNECT) {
+			/* In Disconnect case, EM driver needs same chrg type
+			 * like Connect even, construct one here */
+			psc_cap = event->cap;
+			psc_cap.chrg_evt = chrg_event;
+			psc_cap.chrg_type = pnw->psc_cap.chrg_type;
+			pnw->psc_cap = event->cap;
+			pnw->psc_cap.chrg_evt = chrg_event;
+		} else {
 			pnw->psc_cap = event->cap;
 			pnw->psc_cap.chrg_evt = chrg_event;
 			psc_cap = pnw->psc_cap;
@@ -2909,7 +2928,8 @@ static void penwell_otg_psc_notify_work(struct work_struct *work)
 			dev_dbg(pnw->dev, "type = %s\n",
 					psc_string(psc_cap.chrg_type));
 
-			power_supply_charger_event(psc_cap);
+			atomic_notifier_call_chain(&iotg->otg.notifier,
+					USB_EVENT_CHARGER, &psc_cap);
 		}
 
 		kfree(event);
@@ -2944,15 +2964,15 @@ static void penwell_otg_sdp_check_work(struct work_struct *work)
 
 static void penwell_otg_work(struct work_struct *work)
 {
-	struct penwell_otg		*pnw = container_of(work,
-					struct penwell_otg, work);
-	struct intel_mid_otg_xceiv	*iotg = &pnw->iotg;
-	struct otg_hsm			*hsm = &iotg->hsm;
-	enum usb_charger_type		charger_type;
-	enum power_supply_type		ps_type;
-	int				retval;
-	struct pci_dev			*pdev;
-	unsigned long			flags;
+	struct penwell_otg			*pnw = container_of(work,
+						struct penwell_otg, work);
+	struct intel_mid_otg_xceiv		*iotg = &pnw->iotg;
+	struct otg_hsm				*hsm = &iotg->hsm;
+	enum usb_charger_type			charger_type;
+	enum power_supply_charger_cable_type	type;
+	int					retval;
+	struct pci_dev				*pdev;
+	unsigned long				flags;
 
 	dev_dbg(pnw->dev,
 		"old state = %s\n", state_string(iotg->otg.state));
@@ -2997,9 +3017,9 @@ static void penwell_otg_work(struct work_struct *work)
 			/* Check if DCP is detected */
 			spin_lock_irqsave(&pnw->charger_lock, flags);
 			charger_type = pnw->charging_cap.chrg_type;
-			ps_type = pnw->psc_cap.chrg_type;
+			type = pnw->psc_cap.chrg_type;
 			if (charger_type == CHRG_DCP ||
-				ps_type == POWER_SUPPLY_TYPE_USB_DCP) {
+				type == POWER_SUPPLY_CHARGER_TYPE_USB_DCP) {
 				spin_unlock_irqrestore(&pnw->charger_lock,
 						flags);
 				break;
@@ -3265,7 +3285,7 @@ static void penwell_otg_work(struct work_struct *work)
 		} else if (!hsm->b_sess_vld && hsm->id == ID_B) {
 			spin_lock_irqsave(&pnw->charger_lock, flags);
 			charger_type = pnw->charging_cap.chrg_type;
-			ps_type = pnw->psc_cap.chrg_type;
+			type = pnw->psc_cap.chrg_type;
 			spin_unlock_irqrestore(&pnw->charger_lock, flags);
 
 			if (charger_type == CHRG_DCP) {
@@ -3290,12 +3310,12 @@ static void penwell_otg_work(struct work_struct *work)
 				penwell_otg_msic_write(MSIC_FUNCTRLSET,
 							PHYRESET);
 				penwell_otg_msic_spi_access(false);
-			} else if (ps_type == POWER_SUPPLY_TYPE_USB_ACA) {
+			} else if (type == POWER_SUPPLY_CHARGER_TYPE_USB_ACA) {
 				/* Notify EM charger remove event */
 				penwell_otg_update_chrg_cap(CHRG_UNKNOWN,
 						CHRG_CURR_DISCONN);
 				penwell_otg_charger_hwdet(false);
-			} else if (ps_type == POWER_SUPPLY_TYPE_USB_DCP) {
+			} else if (type == POWER_SUPPLY_CHARGER_TYPE_USB_DCP) {
 				/* Notify EM charger remove event */
 				penwell_otg_update_chrg_cap(CHRG_UNKNOWN,
 						CHRG_CURR_DISCONN);
@@ -3435,10 +3455,10 @@ static void penwell_otg_work(struct work_struct *work)
 			penwell_otg_update_chrg_cap(CHRG_ACA, CHRG_CURR_ACA);
 		} else if (hsm->id == ID_B) {
 			spin_lock_irqsave(&pnw->charger_lock, flags);
-			ps_type = pnw->psc_cap.chrg_type;
+			type = pnw->psc_cap.chrg_type;
 			spin_unlock_irqrestore(&pnw->charger_lock, flags);
 
-			if (ps_type == POWER_SUPPLY_TYPE_USB_ACA) {
+			if (type == POWER_SUPPLY_CHARGER_TYPE_USB_ACA) {
 				/* Notify EM charger ACA removal event */
 				penwell_otg_update_chrg_cap(CHRG_UNKNOWN,
 						CHRG_CURR_DISCONN);
@@ -4376,7 +4396,7 @@ show_chargers(struct device *_dev, struct device_attribute *attr, char *buf)
 	unsigned int			mA;
 	unsigned long			flags;
 	struct pci_dev			*pdev;
-	struct power_supply_charger_cap	psc_cap;
+	struct power_supply_cable_props	psc_cap;
 
 	pdev = to_pci_dev(pnw->dev);
 
@@ -4807,6 +4827,7 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 	pnw->iotg.otg.set_power = penwell_otg_set_power;
 	pnw->iotg.otg.otg->set_vbus =  penwell_otg_set_vbus;
 	pnw->iotg.otg.otg->start_srp = penwell_otg_start_srp;
+	pnw->iotg.otg.get_chr_status = penwell_otg_get_chr_status;
 	pnw->iotg.set_adp_probe = NULL;
 	pnw->iotg.set_adp_sense = NULL;
 	pnw->iotg.start_hnp_poll = penwell_otg_start_hnp_poll;
@@ -4842,7 +4863,7 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 	pnw->charging_cap.chrg_type = CHRG_UNKNOWN;
 	pnw->charging_cap.current_event = USBCHRG_EVENT_DISCONN;
 	pnw->psc_cap.mA = CHRG_CURR_DISCONN;
-	pnw->psc_cap.chrg_type = POWER_SUPPLY_TYPE_BATTERY;
+	pnw->psc_cap.chrg_type = POWER_SUPPLY_CHARGER_TYPE_NONE;
 	pnw->psc_cap.chrg_evt = POWER_SUPPLY_CHARGER_EVENT_DISCONNECT;
 
 	ATOMIC_INIT_NOTIFIER_HEAD(&pnw->iotg.iotg_notifier);

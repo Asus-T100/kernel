@@ -423,6 +423,8 @@ int atomisp_subdev_set_selection(struct v4l2_subdev *sd,
 		comp[pad]->width = r->width;
 		comp[pad]->height = r->height;
 		break;
+	default:
+		return -EINVAL;
 	}
 
 	/* Set format dimensions on non-sink pads as well. */

@@ -2227,9 +2227,6 @@ static const struct snd_soc_dapm_widget rt5640_dapm_widgets[] = {
 	SND_SOC_DAPM_OUTPUT("LOUTR"),
 	SND_SOC_DAPM_OUTPUT("MonoP"),
 	SND_SOC_DAPM_OUTPUT("MonoN"),
-
-	SND_SOC_DAPM_POST("DAPM_POST", rt5640_post_event),
-	SND_SOC_DAPM_PRE("DAPM_PRE", rt5640_pre_event),
 };
 
 static const struct snd_soc_dapm_route rt5640_dapm_routes[] = {
@@ -3177,20 +3174,22 @@ static int rt5640_set_bias_level(struct snd_soc_codec *codec,
 	switch (level) {
 	case SND_SOC_BIAS_ON:
 		pr_debug("In case SND_SOC_BIAS_ON:\n");
+#ifdef USE_ASRC
+		snd_soc_write(codec, RT5640_ASRC_1, 0x9a00);
+		snd_soc_write(codec, RT5640_ASRC_2, 0xf800);
+#endif
 		break;
 
 	case SND_SOC_BIAS_PREPARE:
-		/*
-		   snd_soc_update_bits(codec, RT5640_PWR_ANLG2,
-		   RT5640_PWR_MB1 | RT5640_PWR_MB2,
-		   RT5640_PWR_MB1 | RT5640_PWR_MB2);
-		 */
+		pr_debug("In case SND_SOC_BIAS_PREPARE:\n");
 		break;
 
 	case SND_SOC_BIAS_STANDBY:
 		pr_debug("In case SND_SOC_BIAS_STANDBY:\n");
-		snd_soc_update_bits(codec, RT5640_PWR_ANLG2,
-				    RT5640_PWR_MB1 | RT5640_PWR_MB2, 0);
+#ifdef USE_ASRC
+		snd_soc_write(codec, RT5640_ASRC_1, 0x00);
+		snd_soc_write(codec, RT5640_ASRC_2, 0x00);
+#endif
 		if (SND_SOC_BIAS_OFF == codec->dapm.bias_level) {
 			snd_soc_update_bits(codec, RT5640_PWR_ANLG1,
 					    RT5640_PWR_VREF1 | RT5640_PWR_MB |
@@ -3214,6 +3213,7 @@ static int rt5640_set_bias_level(struct snd_soc_codec *codec,
 		break;
 
 	case SND_SOC_BIAS_OFF:
+		pr_debug("In case SND_SOC_BIAS_OFF:\n");
 		snd_soc_write(codec, RT5640_DEPOP_M1, 0x0004);
 		snd_soc_write(codec, RT5640_DEPOP_M2, 0x1100);
 		snd_soc_write(codec, RT5640_GEN_CTRL1, 0x3700);

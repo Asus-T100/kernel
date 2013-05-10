@@ -26,6 +26,7 @@
 #include <asm/delay.h>
 #include <asm/intel_scu_ipc.h>
 #include "platform_max17042.h"
+#include "platform_bq24192.h"
 
 #define MRFL_SMIP_SRAM_ADDR		0xFFFCE000
 #define MRFL_PLATFORM_CONFIG_OFFSET	0x3B3
@@ -211,6 +212,18 @@ static int ctp_fg_save_config_data(const char *name, void *data, int len)
 }
 EXPORT_SYMBOL(ctp_fg_save_config_data);
 
+static int ctp_get_vsys_min(void)
+{
+	struct ps_batt_chg_prof batt_profile;
+	int ret;
+	ret = get_batt_prop(&batt_profile);
+	if (!ret)
+		return ((struct ps_pse_mod_prof *)batt_profile.batt_prof)
+					->low_batt_mV * 1000;
+
+	return BATT_VMIN_THRESHOLD_DEF * 1000;
+}
+
 int mrfl_get_bat_health(void)
 {
 
@@ -252,7 +265,6 @@ int mrfl_get_vsys_min(void)
 					->low_batt_mV * 1000;
 	return DEFAULT_VMIN;
 }
-
 #define DEFAULT_VMAX_LIM	4200
 int mrfl_get_volt_max(void)
 {
@@ -328,11 +340,7 @@ static void init_callbacks(struct max17042_platform_data *pdata)
 	} else if (INTEL_MID_BOARD(1, PHONE, CLVTP)
 			|| INTEL_MID_BOARD(1, TABLET, CLVT)) {
 		/* CLTP Phones and tablets */
-		pdata->battery_status = ctp_query_battery_status;
-		pdata->battery_pack_temp = ctp_get_battery_pack_temp;
-		pdata->battery_health = ctp_get_battery_health;
-		pdata->is_volt_shutdown_enabled =
-					ctp_is_volt_shutdown_enabled;
+		pdata->battery_health = bq24192_get_battery_health;
 		pdata->get_vmin_threshold = ctp_get_vsys_min;
 		pdata->reset_chip = true;
 	} else if (INTEL_MID_BOARD(1, PHONE, MRFL)
@@ -349,10 +357,23 @@ static void init_callbacks(struct max17042_platform_data *pdata)
 
 static void init_platform_params(struct max17042_platform_data *pdata)
 {
-	if (INTEL_MID_BOARD(1, PHONE, MFLD) ||
-		INTEL_MID_BOARD(2, TABLET, MFLD, YKB, ENG) ||
+	pdata->fg_algo_model = 100;
+	if (INTEL_MID_BOARD(1, PHONE, MFLD)) {
+		/* MFLD phones */
+		if (!(INTEL_MID_BOARD(2, PHONE, MFLD, LEX, ENG)) ||
+			!(INTEL_MID_BOARD(2, PHONE, MFLD, LEX, PRO)))
+			/* MFLD phones except Lex phones */
+			pdata->fg_algo_model = 70;
+		if (msic_battery_check(pdata)) {
+			pdata->enable_current_sense = true;
+			pdata->technology = POWER_SUPPLY_TECHNOLOGY_LION;
+		} else {
+			pdata->enable_current_sense = false;
+			pdata->technology = POWER_SUPPLY_TECHNOLOGY_UNKNOWN;
+		}
+	} else if (INTEL_MID_BOARD(2, TABLET, MFLD, YKB, ENG) ||
 		INTEL_MID_BOARD(2, TABLET, MFLD, YKB, PRO)) {
-		/* MFLD Phones and Yukka beach Tablet */
+		/* Yukka beach Tablet */
 		if (msic_battery_check(pdata)) {
 			pdata->enable_current_sense = true;
 			pdata->technology = POWER_SUPPLY_TECHNOLOGY_LION;

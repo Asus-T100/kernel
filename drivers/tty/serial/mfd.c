@@ -397,9 +397,6 @@ static void serial_set_alt(int index)
 	struct hsu_port_cfg *cfg = phsu->configs[index];
 	struct pci_dev *pdev = container_of(up->dev, struct pci_dev, dev);
 
-	if (up->hw_type == HSU_DW)
-		return;
-
 	if (test_bit(flag_set_alt, &up->flags))
 		return;
 
@@ -1035,11 +1032,12 @@ static void check_modem_status(struct uart_hsu_port *up)
 	struct uart_port *uport = &up->port;
 	struct tty_port *port = &uport->state->port;
 	struct tty_struct *tty = port->tty;
+	struct hsu_port_cfg *cfg = phsu->configs[up->index];
 	int status;
 	int delta_msr = 0;
 
 	status = serial_in(up, UART_MSR);
-	if (port->flags & ASYNC_CTS_FLOW) {
+	if (port->flags & ASYNC_CTS_FLOW && !cfg->hw_ctrl_cts) {
 		if (tty->hw_stopped) {
 			if (status & UART_MSR_CTS) {
 				serial_sched_cmd(up, qcmd_start_tx);
@@ -1949,6 +1947,16 @@ static void hsu_regs_context(struct uart_hsu_port *up, int op)
 			up->rxc->tsr = chan_readl(up->rxc, HSU_CH_D0TSR);
 		}
 	} else {
+		/*
+		 * Delay a while before HW get stable. Without this the
+		 * resume will just fail, as the value you write to the
+		 * HW register will not be really written.
+		 *
+		 * This is only needed for Tangier, which really powers gate
+		 * the HSU HW in runtime suspend. While in Penwell/CLV it is
+		 * only clock gated.
+		*/
+		usleep_range(500, 500);
 
 		serial_out(up, UART_LCR, up->lcr);
 		serial_out(up, UART_LCR, up->lcr | UART_LCR_DLAB);
@@ -2178,6 +2186,7 @@ static void serial_hsu_command(struct uart_hsu_port *up)
 	int status;
 	struct hsu_dma_chan *txc = up->txc;
 	struct hsu_dma_chan *rxc = up->rxc;
+	struct hsu_port_cfg *cfg = phsu->configs[up->index];
 
 	if (unlikely(test_bit(flag_cmd_off, &up->flags)))
 		return;
@@ -2306,6 +2315,8 @@ static void serial_hsu_command(struct uart_hsu_port *up)
 			break;
 	}
 	up->msr = serial_in(up, UART_MSR);
+	if (cfg->hw_ctrl_cts)
+		up->msr |= UART_MSR_CTS;
 	check_modem_status(up);
 	spin_unlock_irqrestore(&up->port.lock, flags);
 }

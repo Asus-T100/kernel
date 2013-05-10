@@ -98,7 +98,7 @@ static void dump_dma_reg(struct dma_chan *chan)
 		return;
 
 	pr_debug("<<<<<<<<<<<< DMA Dump Start >>>>>>>>>>>>");
-	pr_debug("DMA Dump for Channel id:%d & Chnl Base:%#x",
+	pr_debug("DMA Dump for Channel id:%d & Chnl Base:%p",
 					midc->ch_id, midc->ch_regs);
 	/* dump common DMA registers */
 	pr_debug("PIMR:\t%#x", readl(mid->mask_reg) - 8);
@@ -440,7 +440,7 @@ static void midc_descriptor_complete(struct intel_mid_dma_chan *midc,
 	if (midc->raw_tfr) {
 		list_del(&desc->desc_node);
 		desc->status = DMA_SUCCESS;
-		if (desc->lli != NULL && desc->lli->llp != NULL)
+		if (desc->lli != NULL && desc->lli->llp != 0)
 			pci_pool_free(desc->lli_pool, desc->lli,
 						desc->lli_phys);
 		list_add(&desc->desc_node, &midc->free_list);
@@ -559,7 +559,7 @@ static int midc_lli_fill_sg(struct intel_mid_dma_chan *midc,
 		} else if (desc->dirn ==  DMA_DEV_TO_MEM) {
 			lli_bloc_desc->sar  = mids->dma_slave.src_addr;
 			lli_bloc_desc->dar  = sg_phy_addr;
-		} else if (desc->dirn == DMA_NONE && dst_sglist) {
+		} else if (desc->dirn == DMA_MEM_TO_MEM && dst_sglist) {
 				lli_bloc_desc->sar = sg_phy_addr;
 				lli_bloc_desc->dar = sg_phys(dst_sglist);
 		}
@@ -1108,7 +1108,7 @@ static struct dma_async_tx_descriptor *intel_mid_dma_chan_prep_desc(
 			struct dma_chan *chan, struct scatterlist *src_sg,
 			struct scatterlist *dst_sg, unsigned long flags,
 			unsigned long src_sg_len,
-			enum dma_data_direction direction)
+			enum dma_transfer_direction direction)
 {
 	struct middma_device *mid = NULL;
 	struct intel_mid_dma_chan *midc = NULL;
@@ -1210,7 +1210,7 @@ static struct dma_async_tx_descriptor *intel_mid_dma_prep_sg(
 				src_sg_len, flags, src_sg->length);
 
 	return intel_mid_dma_chan_prep_desc(chan, src_sg, dst_sg, flags,
-						src_sg_len, DMA_NONE);
+						src_sg_len, DMA_MEM_TO_MEM);
 
 }
 
@@ -1227,7 +1227,7 @@ static struct dma_async_tx_descriptor *intel_mid_dma_prep_sg(
  */
 static struct dma_async_tx_descriptor *intel_mid_dma_prep_slave_sg(
 			struct dma_chan *chan, struct scatterlist *sg,
-			unsigned int sg_len, enum dma_data_direction direction,
+			unsigned int sg_len, enum dma_transfer_direction direction,
 			unsigned long flags, void *context)
 {
 
@@ -1239,7 +1239,7 @@ static struct dma_async_tx_descriptor *intel_mid_dma_prep_slave_sg(
 	}
 	pr_debug("MDMA: SG Length = %d, direction = %d, Flags = %#lx\n",
 				sg_len, direction, flags);
-	if (direction != DMA_NONE) {
+	if (direction != DMA_MEM_TO_MEM) {
 		return intel_mid_dma_chan_prep_desc(chan, sg, NULL, flags,
 							sg_len, direction);
 	} else {
@@ -1401,7 +1401,8 @@ static void dma_tasklet(unsigned long data)
 	raw_tfr = ioread32(mid->dma_base + RAW_TFR);
 	status = raw_tfr & mid->tfr_intr_mask;
 	pr_debug("MDMA: in tasklet for device %x\n", mid->pci_id);
-	pr_debug("tfr_mask:%#x, raw_tfr:%#x, status:%#x\n", mid->tfr_intr_mask, raw_tfr, status);
+	pr_debug("tfr_mask:%#lx, raw_tfr:%#x, status:%#x\n",
+			mid->tfr_intr_mask, raw_tfr, status);
 	while (status) {
 		/*txn interrupt*/
 		i = get_ch_index(status, mid->chan_base);
@@ -1435,7 +1436,8 @@ static void dma_tasklet(unsigned long data)
 	raw_block = ioread32(mid->dma_base + RAW_BLOCK);
 	status = raw_block & mid->block_intr_mask;
 	pr_debug("MDMA: in tasklet for device %x\n", mid->pci_id);
-	pr_debug("block_mask:%#x, raw_block%#x, status:%#x\n", mid->block_intr_mask, raw_block, status);
+	pr_debug("block_mask:%#lx, raw_block%#x, status:%#x\n",
+			 mid->block_intr_mask, raw_block, status);
 	while (status) {
 		/*txn interrupt*/
 		i = get_ch_index(status, mid->chan_base);

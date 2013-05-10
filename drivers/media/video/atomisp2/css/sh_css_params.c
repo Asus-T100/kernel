@@ -6010,7 +6010,17 @@ void sh_css_get_isp_dis_coefficients(
 struct sh_css_shading_table *
 sh_css_get_shading_table(void)
 {
-	return sh_css_param_shading_table_get(sensor_binning, raw_binning);
+	struct sh_css_shading_table *shading_table;
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"sh_css_get_shading_table() enter:\n");
+
+	shading_table = sh_css_param_shading_table_get(sensor_binning, raw_binning);
+
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"sh_css_get_shading_table() leave: shading_table=%p\n",
+		shading_table);
+
+	return shading_table;
 }
 
 bool

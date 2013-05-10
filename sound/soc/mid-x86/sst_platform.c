@@ -39,7 +39,7 @@
 #include "sst_platform.h"
 #include "sst_platform_pvt.h"
 struct sst_device *sst_dsp;
-struct device *sst_pdev;
+static struct device *sst_pdev;
 
 static DEFINE_MUTEX(sst_dsp_lock);
 
@@ -1003,7 +1003,10 @@ int sst_register_dsp(struct sst_device *sst_dev)
 
 	if (!sst_pdev)
 		return -ENODEV;
+
 	sst =  dev_get_drvdata(sst_pdev);
+	if (!sst)
+		return -ENODEV;
 	sst_pdata = sst->pdata;
 
 	if (!sst_dev)

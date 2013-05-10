@@ -57,6 +57,7 @@ imx_read_reg(struct i2c_client *client, u16 len, u16 reg, u16 *val)
 	}
 
 	memset(msg, 0 , sizeof(msg));
+	memset(data, 0 , sizeof(data));
 
 	msg[0].addr = client->addr;
 	msg[0].flags = 0;
@@ -368,13 +369,6 @@ static long imx_s_exposure(struct v4l2_subdev *sd,
 	int exp = exposure->integration_time[0];
 	int gain = exposure->gain[0];
 	int digitgain = exposure->gain[1];
-
-	/* we should not accept the invalid value below. */
-	if (gain == 0) {
-		struct i2c_client *client = v4l2_get_subdevdata(sd);
-		v4l2_err(client, "%s: invalid value\n", __func__);
-		return -EINVAL;
-	}
 
 	return imx_set_exposure(sd, exp, gain, digitgain);
 }
@@ -1574,6 +1568,21 @@ imx_g_frame_interval(struct v4l2_subdev *sd,
 	return 0;
 }
 
+static int imx_g_skip_frames(struct v4l2_subdev *sd, u32 *frames)
+{
+	struct imx_device *dev = to_imx_sensor(sd);
+
+	mutex_lock(&dev->input_lock);
+	*frames = imx_res[dev->fmt_idx].skip_frames;
+	mutex_unlock(&dev->input_lock);
+
+	return 0;
+}
+
+static const struct v4l2_subdev_sensor_ops imx_sensor_ops = {
+	.g_skip_frames	= imx_g_skip_frames,
+};
+
 static const struct v4l2_subdev_video_ops imx_video_ops = {
 	.s_stream = imx_s_stream,
 	.enum_framesizes = imx_enum_framesizes,
@@ -1607,6 +1616,7 @@ static const struct v4l2_subdev_ops imx_ops = {
 	.core = &imx_core_ops,
 	.video = &imx_video_ops,
 	.pad = &imx_pad_ops,
+	.sensor = &imx_sensor_ops,
 };
 
 static const struct media_entity_operations imx_entity_ops = {

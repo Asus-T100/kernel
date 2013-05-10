@@ -370,9 +370,14 @@ void sfi_handle_mdm(struct sfi_device_table_entry *pentry,
 		pr_info("SFI register modem platform data for MCD device %s\n",
 				dev->name);
 		mcd_register_mdm_info(pdata);
-		pr_info("SFI creates sysfs entry for modem named %s\n",
-				dev->name);
-		create_sysfs_telephony_entry(pdata);
+		if (!telephony_kobj) {
+			pr_info("SFI creates sysfs entry for modem named %s\n",
+					dev->name);
+			create_sysfs_telephony_entry(pdata);
+		} else {
+			pr_info("Unexpected SFI entry for modem named %s\n",
+					dev->name);
+		}
 		kfree(pdata);
 	}
 }

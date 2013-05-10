@@ -80,8 +80,6 @@ static int __init bluetooth_init(void)
 	if (intel_mid_identify_cpu() != INTEL_MID_CPU_CHIP_VALLEYVIEW2) {
 		bcm_bt_lpm_pdata.gpio_host_wake =
 				get_gpio_by_name("bt_uart_enable");
-		bcm_bt_lpm_pdata.int_host_wake =
-				gpio_to_irq(bcm_bt_lpm_pdata.gpio_host_wake);
 
 		bcm_bt_lpm_pdata.gpio_wake = get_gpio_by_name("bt_wakeup");
 
@@ -91,10 +89,14 @@ static int __init bluetooth_init(void)
 			return -ENODEV;
 		}
 	} else {
-		bcm_bt_lpm_pdata.gpio_host_wake = 17;
+		/*
+		 * Once the FW configure it correctly, need to use
+		 * acpi_get_gpio_by_index() API to get gpio info. Now use
+		 * a hardcoded number as temp solution
+		 */
+		bcm_bt_lpm_pdata.gpio_host_wake = 147;
 		pr_err("baytrail, hardcoding GPIO Host Wake to %d\n",
 					bcm_bt_lpm_pdata.gpio_host_wake);
-		bcm_bt_lpm_pdata.int_host_wake = 70;
 #ifndef CONFIG_ACPI
 		bcm_bt_lpm_pdata.gpio_wake = 52;
 		if (!gpio_is_valid(bcm_bt_lpm_pdata.gpio_wake)) {
@@ -110,8 +112,12 @@ static int __init bluetooth_init(void)
 		return -ENODEV;
 	}
 
-	pr_debug("%s: gpio_wake %d, gpio_host_wake %d\n", __func__,
-		bcm_bt_lpm_pdata.gpio_wake, bcm_bt_lpm_pdata.gpio_host_wake);
+	bcm_bt_lpm_pdata.int_host_wake =
+				gpio_to_irq(bcm_bt_lpm_pdata.gpio_host_wake);
+
+	pr_debug("%s: gpio_host_wake %d, int_host_wake %d\n", __func__,
+						bcm_bt_lpm_pdata.gpio_host_wake,
+						bcm_bt_lpm_pdata.int_host_wake);
 #endif
 
 	error_reg = platform_device_register(&bcm_bt_lpm_device);

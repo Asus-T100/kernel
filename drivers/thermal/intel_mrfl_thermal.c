@@ -78,7 +78,6 @@
 #define DEFAULT_MAX_TEMP	85
 
 /* Constants defined in BasinCove PMIC spec */
-#define PMIC_DIE_SENSOR		0
 #define PMIC_DIE_ADC_MIN	395
 #define PMIC_DIE_ADC_MAX	661
 #define PMIC_DIE_TEMP_MIN	-40
@@ -523,7 +522,7 @@ static struct thermal_device_info *initialize_sensor(int index)
 
 	td_info->sensor_index = index;
 
-	if (index == PMIC_DIE_SENSOR)
+	if (index == PMIC_DIE)
 		td_info->is_direct = true;
 
 	return td_info;
@@ -609,7 +608,7 @@ static int mrfl_thermal_probe(struct platform_device *pdev)
 {
 	int ret, i;
 	static char *name[PMIC_THERMAL_SENSORS] = {
-			"PMICDIE", "SYSTHERM0", "SYSTHERM1", "SYSTHERM2" };
+			"SYSTHERM0", "SYSTHERM1", "SYSTHERM2", "PMICDIE" };
 
 	tdata = kzalloc(sizeof(struct thermal_data), GFP_KERNEL);
 	if (!tdata) {

@@ -577,6 +577,15 @@
 #define   I915_USER_INTERRUPT				(1<<1)
 #define   I915_ASLE_INTERRUPT				(1<<0)
 #define   I915_BSD_USER_INTERRUPT                      (1<<25)
+/* Added for HDMI Audio */
+/* HDMI AUDIO INTERRUPT TYPE */
+#define I915_LPE_AUDIO_HDMI_STATUS_A			0x65064
+#define I915_LPE_AUDIO_HDMI_STATUS_B			0x65864
+#define I915_LPE_PIPE_B_INTERRUPT			(1<<21)
+#define I915_LPE_PIPE_A_INTERRUPT			(1<<20)
+#define I915_HDMI_AUDIO_UNDERRUN			(1UL<<31)
+#define I915_HDMI_AUDIO_BUFFER_DONE			(1UL<<29)
+#define I915_HDMI_AUDIO_UNDERRUN_ENABLE			(1UL<<15)
 #define EIR		0x020b0
 #define EMR		0x020b4
 #define ESR		0x020b8
@@ -3218,6 +3227,8 @@
 #define   SPRITE_INT_GAMMA_ENABLE	(1<<13)
 #define   SPRITE_TILED			(1<<10)
 #define   SPRITE_DEST_KEY		(1<<2)
+#define	  SPRITE_FORCE_BOTTOM		(1<<2)
+#define	  SPRITE_ZORDER_ENABLE		(1<<0)
 #define _SPRA_LINOFF		0x70284
 #define _SPRA_STRIDE		0x70288
 #define _SPRA_POS		0x7028c
@@ -4343,6 +4354,33 @@
 #define   GEN6_PCODE_READ_MIN_FREQ_TABLE	0x9
 #define GEN6_PCODE_DATA				0x138128
 #define   GEN6_PCODE_FREQ_IA_RATIO_SHIFT	8
+
+#define VLV_IOSF_DOORBELL_REQ			0x182100
+#define   IOSF_DEVFN_SHIFT			24
+#define   IOSF_OPCODE_SHIFT			16
+#define   IOSF_PORT_SHIFT			8
+#define   IOSF_BYTE_ENABLES_SHIFT		4
+#define   IOSF_BAR_SHIFT			1
+#define   IOSF_SB_BUSY				(1<<0)
+#define   IOSF_PORT_CCU				0xA9
+#define VLV_IOSF_DATA				0x182104
+#define VLV_IOSF_ADDR				0x182108
+
+#define OPCODE_REG_READ				6
+#define OPCODE_REG_WRITE			7
+
+#define CCU_iCLK5_REG				0x0114
+#define   iCLK5_BENDCLKEN_SHIFT			16
+#define   iCLK5_DISPBENDCLKEN			(1<<16)
+#define   iCLK5_DISPBENDCLKREQ			(1<<0)
+#define CCU_iCLK1_REG				0x0104
+#define   iCLK1_BENDTIME_SHIFT			20
+#define   iCLK1_BENDUPDOWN_SHIFT		28
+#define   iCLK1_BENDTIMETOSW			(0xFF<<20)
+#define   iCLK1_BENDUPDOWN			(1<<28)
+#define CCU_iCLK0_REG				0x0100
+#define   iCLK0_STEPSIZE_SHIFT			9
+#define   iCLK0_BENDSTEPSIZE			(0xF<<9)
 
 #define GEN6_GT_CORE_STATUS		0x138060
 #define   GEN6_CORE_CPD_STATE_MASK	(7<<4)

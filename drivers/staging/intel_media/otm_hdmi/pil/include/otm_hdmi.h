@@ -459,6 +459,7 @@ typedef enum {
 #define PD_DTV_MODE           0x00000400 /* Digital Panel mode                */
 #define PD_SVBI               0x00000010 /* Software VBI supported timings    */
 #define PD_AR_16_BY_9         OTM_HDMI_PAR_16_9 /* 16:9 aspect ratio          */
+#define OTM_HDMI_COLOR_RANGE_MASK	0x0c
 
 /*
  * Description: report edid tool helper function

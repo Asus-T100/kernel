@@ -805,7 +805,6 @@ struct sh_css_binary_info {
 		unsigned char     macc;
 		unsigned char     ss;
 		unsigned char     output;
-		unsigned char     output_table;
 		unsigned char     ref_frame;
 		unsigned char     tnr;
 		unsigned char     xnr;
@@ -881,6 +880,7 @@ struct sh_css_sp_info {
 	unsigned int	invalidate_tlb;		/**< inform SP to invalidate mmu TLB */
 	unsigned int	request_flash;	/**< inform SP to switch on flash for next frame */
 	unsigned int	stop_copy_preview;	/**< suspend copy and preview pipe when capture */
+	unsigned int	copy_preview_overlap; /**< indicate when to start preview pipe in continuous mode */
 	unsigned int	copy_pack;	/**< use packed memory layout for raw data */
 	unsigned int	debug_buffer_ddr_address;	/**< inform SP the address
 	of DDR debug queue */

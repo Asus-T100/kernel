@@ -32,11 +32,8 @@
 #include "vsp.h"
 #include "ttm/ttm_execbuf_util.h"
 #include "vsp_fw.h"
+#include "pwr_mgmt.h"
 
-#include "psb_powermgmt.h"
-
-#define ERR_ID_MASK 0xFFFF
-#define ERR_INFO_SHIFT 16
 #define PARTITIONS_MAX 9
 
 static int vsp_submit_cmdbuf(struct drm_device *dev,
@@ -51,15 +48,14 @@ static int vsp_prehandle_command(struct drm_file *priv,
 			    struct drm_psb_cmdbuf_arg *arg,
 			    unsigned char *cmd_start,
 			    struct psb_ttm_fence_rep *fence_arg);
-static void check_invalid_cmd_type(unsigned int info);
-static void check_invalid_cmd_arg(unsigned int info);
 static int vsp_fence_surfaces(struct drm_file *priv,
 			      struct list_head *validate_list,
 			      uint32_t fence_type,
 			      struct drm_psb_cmdbuf_arg *arg,
 			      struct psb_ttm_fence_rep *fence_arg,
 			      struct ttm_buffer_object *pic_param_bo);
-static void handle_error_response(unsigned int error);
+static void handle_error_response(unsigned int error_type,
+				unsigned int cmd_type);
 static int vsp_fence_vp8enc_surfaces(struct drm_file *priv,
 				struct list_head *validate_list,
 				uint32_t fence_type,
@@ -88,7 +84,7 @@ int vsp_handle_response(struct drm_psb_private *dev_priv)
 	wr = vsp_priv->ctrl->ack_wr;
 	msg_num = wr > rd ? wr - rd : wr == rd ? 0 :
 		VSP_ACK_QUEUE_SIZE - (rd - wr);
-	VSP_DEBUG("ack rd %d wr %d, msg_num %d, size %d\n",
+	PSB_DEBUG_GENERAL("ack rd %d wr %d, msg_num %d, size %d\n",
 		  rd, wr, msg_num, VSP_ACK_QUEUE_SIZE);
 
 	sequence = vsp_priv->current_sequence;
@@ -99,17 +95,25 @@ int vsp_handle_response(struct drm_psb_private *dev_priv)
 
 		switch (msg->type) {
 		case VssErrorResponse:
+			DRM_ERROR("error response:%.8x %.8x %.8x %.8x %.8x\n",
+				  msg->context, msg->type, msg->buffer,
+				  msg->size, msg->vss_cc);
+			handle_error_response(msg->buffer & 0xFFFF0000,
+					      msg->buffer & 0xFFFF);
+			ret = false;
+			break;
 		case VssErrorResponse_VP8:
 			DRM_ERROR("error response:%.8x %.8x %.8x %.8x %.8x\n",
 				  msg->context, msg->type, msg->buffer,
 				  msg->size, msg->vss_cc);
-			handle_error_response(msg->buffer);
+			handle_error_response(msg->buffer & 0xFFFF,
+					      msg->buffer >> 16);
 			ret = false;
 			break;
 
 		case VssEndOfSequenceResponse:
 		case VssEndOfSequenceResponse_VP8:
-			VSP_DEBUG("end of the sequence received\n");
+			PSB_DEBUG_GENERAL("end of the sequence received\n");
 			VSP_DEBUG("VSP clock cycles from pre response %x\n",
 				  msg->vss_cc);
 			vsp_priv->vss_cc_acc += msg->vss_cc;
@@ -117,7 +121,8 @@ int vsp_handle_response(struct drm_psb_private *dev_priv)
 			break;
 
 		case VssOutputSurfaceReadyResponse:
-			VSP_DEBUG("sequence %x is done!!\n", msg->buffer);
+			PSB_DEBUG_GENERAL("sequence %x is done!!\n",
+					  msg->buffer);
 			VSP_DEBUG("VSP clock cycles from pre response %x\n",
 				  msg->vss_cc);
 			vsp_priv->vss_cc_acc += msg->vss_cc;
@@ -174,21 +179,23 @@ int vsp_handle_response(struct drm_psb_private *dev_priv)
 			 * the application state.
 			 */
 			if (cmd_rd == cmd_wr) {
-#if 1
 				if (!vsp_priv->vsp_cmd_num) {
-					VSP_DEBUG("Trying to shut down ...\n");
+					PSB_DEBUG_PM("Trying to off...\n");
 					schedule_delayed_work(
 						&vsp_priv->vsp_suspend_wq, 0);
 				}
-#endif
 			} else {
-				VSP_DEBUG("cmd_queue has data,continue...\n");
+				PSB_DEBUG_PM("cmd_queue has data,continue.\n");
 				vsp_continue_function(dev_priv);
 			}
 			break;
 		}
 		case VssVp8encSetSequenceParametersResponse:
 			VSP_DEBUG("receive vp8 sequence response\n");
+			VSP_DEBUG("VSP clock cycles from pre response %x\n",
+				  msg->vss_cc);
+			vsp_priv->vss_cc_acc += msg->vss_cc;
+
 			break;
 		case VssVp8encEncodeFrameResponse:
 		{
@@ -199,6 +206,10 @@ int vsp_handle_response(struct drm_psb_private *dev_priv)
 					(vsp_priv->coded_buf);
 			int i = 0;
 			int j = 0;
+			VSP_DEBUG("VSP clock cycles from pre response %x\n",
+				  msg->vss_cc);
+			vsp_priv->vss_cc_acc += msg->vss_cc;
+
 			VSP_DEBUG("receive vp8 encoded frame buffer %x",
 					msg->buffer);
 			VSP_DEBUG("size %x cur command id is %d\n",
@@ -217,6 +228,8 @@ int vsp_handle_response(struct drm_psb_private *dev_priv)
 					encoded_frame->status);
 			VSP_DEBUG("frame flags[1=Key, 0=Non-key] %d\n",
 					encoded_frame->frame_flags);
+			VSP_DEBUG("ref frame flags %d\n",
+					encoded_frame->ref_frame_flags);
 			VSP_DEBUG("segments = %d\n", encoded_frame->segments);
 			VSP_DEBUG("frame size %d[bytes]\n",
 					encoded_frame->frame_size);
@@ -224,6 +237,8 @@ int vsp_handle_response(struct drm_psb_private *dev_priv)
 					encoded_frame->partitions);
 			VSP_DEBUG("coded data start %p\n",
 					encoded_frame->coded_data);
+			VSP_DEBUG("surfaced_of_ref_frame %p\n",
+					encoded_frame->surfaced_of_ref_frame);
 
 			if (encoded_frame->partitions > PARTITIONS_MAX) {
 				VSP_DEBUG("partitions num error\n");
@@ -271,7 +286,7 @@ bool vsp_interrupt(void *pvData)
 	bool ret;
 	uint32_t sequence;
 
-	VSP_DEBUG("got vsp interrupt\n");
+	PSB_DEBUG_GENERAL("got vsp interrupt\n");
 
 	if (pvData == NULL) {
 		DRM_ERROR("VSP: vsp %s, Invalid params\n", __func__);
@@ -504,6 +519,8 @@ int vsp_send_command(struct drm_device *dev,
 				cur_cell_cmd->context, cur_cell_cmd->type,
 				cur_cell_cmd->buffer, cur_cell_cmd->size,
 				cur_cell_cmd->buffer_id, cur_cell_cmd->irq);
+			PSB_DEBUG_GENERAL("send %.8x cmd to VSP",
+					cur_cell_cmd->type);
 			num_cmd++;
 			cur_cmd++;
 			cmd_size -= sizeof(*cur_cmd);
@@ -519,6 +536,7 @@ int vsp_send_command(struct drm_device *dev,
 out:
 	/* update write index */
 	VSP_DEBUG("%d cmd will send to VSP!\n", num_cmd);
+
 	vsp_priv->ctrl->cmd_wr =
 		(vsp_priv->ctrl->cmd_wr + num_cmd) % VSP_CMD_QUEUE_SIZE;
 
@@ -575,16 +593,38 @@ static int vsp_prehandle_command(struct drm_file *priv,
 				ret = -1;
 				goto out;
 			}
-		} else if (cur_cmd->type == VspSetContextCommand ||
-				cur_cmd->type == Vss_Sys_STATE_BUF_COMMAND) {
-
-			VSP_DEBUG("set context and new vsp context\n");
+		} else if (cur_cmd->type == VspSetContextCommand) {
+			struct vsp_context_settings_t *context_setting;
+			context_setting =
+			    &(vsp_priv->context_setting[VSP_CONTEXT_NUM_VPP]);
+			VSP_DEBUG("set context and new vsp FRC context\n");
 			VSP_DEBUG("set context base %x, size %x\n",
 				  cur_cmd->buffer, cur_cmd->size);
 
-			vsp_priv->setting->state_buffer_size = cur_cmd->size;
-			vsp_priv->setting->state_buffer_addr = cur_cmd->buffer;
-			vsp_priv->fw_type = cur_cmd->type;
+			/* initialize the context-data */
+			context_setting->app_id = VSP_APP_ID_FRC_VPP;
+			context_setting->usage = vsp_context_starting;
+			context_setting->state_buffer_size = cur_cmd->size;
+			context_setting->state_buffer_addr = cur_cmd->buffer;
+
+			vsp_priv->fw_type = VSP_FW_TYPE_VPP;
+
+			vsp_new_context(dev_priv->dev);
+		} else if (cur_cmd->type == Vss_Sys_STATE_BUF_COMMAND) {
+			struct vsp_context_settings_t *context_setting;
+			context_setting =
+			    &(vsp_priv->context_setting[VSP_CONTEXT_NUM_VP8]);
+			VSP_DEBUG("set context and new vsp VP8 context\n");
+			VSP_DEBUG("set context base %x, size %x\n",
+				  cur_cmd->buffer, cur_cmd->size);
+
+			/* initialize the context-data */
+			context_setting->app_id = VSP_APP_ID_VP8_ENC;
+			context_setting->usage = vsp_context_starting;
+			context_setting->state_buffer_size = cur_cmd->size;
+			context_setting->state_buffer_addr = cur_cmd->buffer;
+
+			vsp_priv->fw_type = VSP_FW_TYPE_VP8;
 
 			vsp_new_context(dev_priv->dev);
 		} else
@@ -868,7 +908,7 @@ uint32_t vsp_fence_poll(struct drm_psb_private *dev_priv)
 	unsigned long irq_flags;
 	struct vss_response_t *msg;
 
-	VSP_DEBUG("polling vsp msg\n");
+	PSB_DEBUG_GENERAL("polling vsp msg\n");
 
 	sequence = vsp_priv->current_sequence;
 
@@ -908,6 +948,7 @@ void vsp_new_context(struct drm_device *dev)
 		return;
 	}
 	vsp_priv->vss_cc_acc = 0;
+	vsp_priv->fw_loaded = 0;
 
 	return;
 }
@@ -1020,8 +1061,8 @@ int psb_vsp_dump_info(struct drm_psb_private *dev_priv)
 
 	/* The setting-struct */
 	VSP_DEBUG("setting addr:%x\n", vsp_priv->setting_bo->offset);
-	VSP_DEBUG("setting->reserved0:%x\n",
-			vsp_priv->setting->reserved0);
+	VSP_DEBUG("setting->max_contexts: %d\n",
+			vsp_priv->setting->max_contexts);
 	VSP_DEBUG("setting->command_queue_size:0x%x\n",
 			vsp_priv->setting->command_queue_size);
 	VSP_DEBUG("setting->command_queue_addr:%x\n",
@@ -1030,10 +1071,20 @@ int psb_vsp_dump_info(struct drm_psb_private *dev_priv)
 			vsp_priv->setting->response_queue_size);
 	VSP_DEBUG("setting->response_queue_addr:%x\n",
 			vsp_priv->setting->response_queue_addr);
-	VSP_DEBUG("setting->state_buffer_size:0x%x\n",
-			vsp_priv->setting->state_buffer_size);
-	VSP_DEBUG("setting->state_buffer_addr:%x\n",
-			vsp_priv->setting->state_buffer_addr);
+	VSP_DEBUG("setting->contexts_array_addr:%x\n",
+			vsp_priv->setting->contexts_array_addr);
+
+	/* The context_setting struct */
+	VSP_DEBUG("context_settings(addr):%x\n",
+			vsp_priv->context_setting_bo->offset);
+	VSP_DEBUG("context_settings.app_id:%d\n",
+			vsp_priv->context_setting->app_id);
+	VSP_DEBUG("context_setting->state_buffer_size:0x%x\n",
+			vsp_priv->context_setting->state_buffer_size);
+	VSP_DEBUG("context_setting->state_buffer_addr:%x\n",
+			vsp_priv->context_setting->state_buffer_addr);
+	VSP_DEBUG("context_settings.usage:%d\n",
+			vsp_priv->context_setting->usage);
 
 	/* IRQ registers */
 	for (i = 0; i < 6; i++) {
@@ -1082,6 +1133,63 @@ int psb_vsp_dump_info(struct drm_psb_private *dev_priv)
 	VSP_DEBUG("sp1_cfg_pmem_iam_op0:%x\n", reg);
 	SP_REG_READ32(0x10, &reg, vsp_sp1);
 	VSP_DEBUG("sp1_cfg_pmem_master:%x\n", reg);
+
+	/* VP0 info */
+	VSP_DEBUG("vp0_processor:%d\n", vsp_vp0);
+	SP_REG_READ32(0x0, &reg, vsp_vp0);
+	VSP_DEBUG("partition2_vp0_tile_vp_stat_and_ctrl:%x\n", reg);
+	SP_REG_READ32(0x4, &reg, vsp_vp0);
+	VSP_DEBUG("partition2_vp0_tile_vp_base_address:%x\n", reg);
+	SP_REG_READ32(0x34, &reg, vsp_vp0);
+	VSP_DEBUG("partition2_vp0_tile_vp_debug_pc:%x\n", reg);
+	SP_REG_READ32(0x38, &reg, vsp_vp0);
+	VSP_DEBUG("partition2_vp0_tile_vp_stall_stat_cfg_pmem_iam_op0:%x\n",
+			reg);
+	SP_REG_READ32(0x10, &reg, vsp_vp0);
+	VSP_DEBUG("partition2_vp0_tile_vp_base_addr_MI_cfg_pmem_master:%x\n",
+			reg);
+
+	/* VP1 info */
+	VSP_DEBUG("vp1_processor:%d\n", vsp_vp1);
+	SP_REG_READ32(0x0, &reg, vsp_vp1);
+	VSP_DEBUG("partition2_vp1_tile_vp_stat_and_ctrl:%x\n", reg);
+	SP_REG_READ32(0x4, &reg, vsp_vp1);
+	VSP_DEBUG("partition2_vp1_tile_vp_base_address:%x\n", reg);
+	SP_REG_READ32(0x34, &reg, vsp_vp1);
+	VSP_DEBUG("partition2_vp1_tile_vp_debug_pc:%x\n", reg);
+	SP_REG_READ32(0x38, &reg, vsp_vp1);
+	VSP_DEBUG("partition2_vp1_tile_vp_stall_stat_cfg_pmem_iam_op0:%x\n",
+			reg);
+	SP_REG_READ32(0x10, &reg, vsp_vp1);
+	VSP_DEBUG("partition2_vp1_tile_vp_base_addr_MI_cfg_pmem_master:%x\n",
+			reg);
+
+	/* MEA info */
+	VSP_DEBUG("mea_processor:%d\n", vsp_mea);
+	SP_REG_READ32(0x0, &reg, vsp_mea);
+	VSP_DEBUG("partition3_mea_tile_mea_stat_and_ctrl:%x\n", reg);
+	SP_REG_READ32(0x4, &reg, vsp_mea);
+	VSP_DEBUG("partition3_mea_tile_mea_base_address:%x\n", reg);
+	SP_REG_READ32(0x2C, &reg, vsp_mea);
+	VSP_DEBUG("partition3_mea_tile_mea_debug_pc:%x\n", reg);
+	SP_REG_READ32(0x30, &reg, vsp_mea);
+	VSP_DEBUG("partition3_mea_tile_mea_stall_stat_cfg_pmem_iam_op0:%x\n",
+			reg);
+	SP_REG_READ32(0x10, &reg, vsp_mea);
+	VSP_DEBUG("partition3_mea_tile_mea_base_addr_MI_cfg_pmem_master:%x\n",
+			reg);
+
+	/* ECA info */
+	VSP_DEBUG("ECA info\n");
+	MM_READ32(0x30000, 0x0, &reg);
+	VSP_DEBUG("partition1_sp0_tile_eca_stat_and_ctrl:%x\n", reg);
+	MM_READ32(0x30000, 0x4, &reg);
+	VSP_DEBUG("partition1_sp0_tile_eca_base_address:%x\n", reg);
+	MM_READ32(0x30000, 0x2C, &reg);
+	VSP_DEBUG("partition1_sp0_tile_eca_debug_pc:%x\n", reg);
+	MM_READ32(0x30000, 0x30, &reg);
+	VSP_DEBUG("partition1_sp0_tile_eca_stall_stat_cfg_pmem_loc_op0:%x\n",
+			reg);
 
 	/* WDT info */
 	for (i = 0; i < 14; i++) {
@@ -1133,63 +1241,62 @@ void psb_powerdown_vsp(struct work_struct *work)
 	ret = ospm_apm_power_down_vsp(vsp_priv->dev);
 
 	if (ret)
-		VSP_DEBUG("The VSP could NOT be powered off!\n");
+		PSB_DEBUG_PM("The VSP could NOT be powered off!\n");
 	else
-		VSP_DEBUG("The VSP has been powered off!\n");
+		PSB_DEBUG_PM("The VSP has been powered off!\n");
 
 	return;
 }
 
-void check_invalid_cmd_type(unsigned int info)
+void check_invalid_cmd_type(unsigned int cmd_type)
 {
-	switch (info >> ERR_INFO_SHIFT) {
+	switch (cmd_type) {
 	case VssProcSharpenParameterCommand:
 		DRM_ERROR("VSP: Sharpen parameter command is received ");
-		DRM_ERROR("before pipeline command %x\n", info);
+		DRM_ERROR("before pipeline command %x\n", cmd_type);
 		break;
 
 	case VssProcDenoiseParameterCommand:
 		DRM_ERROR("VSP: Denoise parameter command is received ");
-		DRM_ERROR("before pipeline command %x\n", info);
+		DRM_ERROR("before pipeline command %x\n", cmd_type);
 		break;
 
 	case VssProcColorEnhancementParameterCommand:
 		DRM_ERROR("VSP: color enhancer parameter command is received");
-		DRM_ERROR("before pipeline command %x\n", info);
+		DRM_ERROR("before pipeline command %x\n", cmd_type);
 		break;
 
 	case VssProcFrcParameterCommand:
 		DRM_ERROR("VSP: Frc parameter command is received ");
-		DRM_ERROR("before pipeline command %x\n", info);
+		DRM_ERROR("before pipeline command %x\n", cmd_type);
 		break;
 
 	case VssProcPictureCommand:
 		DRM_ERROR("VSP: Picture parameter command is received ");
-		DRM_ERROR("before pipeline command %x\n", info);
+		DRM_ERROR("before pipeline command %x\n", cmd_type);
 		break;
 
 	case VssVp8encSetSequenceParametersCommand:
 		DRM_ERROR("VSP: VP8 sequence parameter command is received\n");
-		DRM_ERROR("before pipeline command %x\n", info);
+		DRM_ERROR("before pipeline command %x\n", cmd_type);
 		break;
 
 	case VssVp8encEncodeFrameCommand:
 		DRM_ERROR("VSP: VP8 picture parameter command is received\n");
-		DRM_ERROR("before pipeline command %x\n", info);
+		DRM_ERROR("before pipeline command %x\n", cmd_type);
 		break;
 
 	default:
-		DRM_ERROR("VSP: Unknown command type %x\n",
-			  info >> ERR_INFO_SHIFT);
+		DRM_ERROR("VSP: Unknown command type %x\n", cmd_type);
 		break;
 	}
 
 	return;
 }
 
-void check_invalid_cmd_arg(unsigned int info)
+void check_invalid_cmd_arg(unsigned int cmd_type)
 {
-	switch (info >> ERR_INFO_SHIFT) {
+	switch (cmd_type) {
 	case VssProcDenoiseParameterCommand:
 		DRM_ERROR("VSP: unsupport value for denoise parameter\n");
 		break;
@@ -1202,17 +1309,18 @@ void check_invalid_cmd_arg(unsigned int info)
 	return;
 }
 
-void handle_error_response(unsigned int error)
+void handle_error_response(unsigned int error_type, unsigned int cmd_type)
 {
-	switch (error & ERR_ID_MASK) {
+
+	switch (error_type) {
 	case VssInvalidCommandType:
 	case VssInvalidCommandType_VP8:
-		check_invalid_cmd_type(error);
+		check_invalid_cmd_type(cmd_type);
 		DRM_ERROR("VSP: Invalid command\n");
 		break;
 	case VssInvalidCommandArgument:
 	case VssInvalidCommandArgument_VP8:
-		check_invalid_cmd_arg(error);
+		check_invalid_cmd_arg(cmd_type);
 		DRM_ERROR("VSP: Invalid command\n");
 		break;
 	case VssInvalidProcPictureCommand:
@@ -1222,15 +1330,15 @@ void handle_error_response(unsigned int error)
 		DRM_ERROR("VSP: DDR address isn't in allowed 1GB range\n");
 		break;
 	case VssInvalidSequenceParameters_VP8:
-		check_invalid_cmd_type(error);
+		check_invalid_cmd_type(cmd_type);
 		DRM_ERROR("VSP: Invalid sequence parameter\n");
 		break;
 	case VssInvalidPictureParameters_VP8:
-		check_invalid_cmd_type(error);
+		check_invalid_cmd_type(cmd_type);
 		DRM_ERROR("VSP: Invalid picture parameter\n");
 		break;
 	default:
-		DRM_ERROR("VSP: Unknown error, code %x\n", error);
+		DRM_ERROR("VSP: Unknown error, code %x\n", error_type);
 		break;
 	}
 

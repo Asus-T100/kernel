@@ -58,7 +58,7 @@ extern struct drm_device *gpDrmDevice;
 #define IS_MDFLD(x) (0)
 #endif
 
-#define SYS_SGX_CLOCK_SPEED			(400000000)
+//#define SYS_SGX_CLOCK_SPEED			(400000000)
 #define SYS_SGX_HWRECOVERY_TIMEOUT_FREQ		(100)
 #define SYS_SGX_PDS_TIMER_FREQ			(1000)
 #ifdef CONFIG_GFX_ON_GI

@@ -1229,8 +1229,8 @@ static otm_hdmi_ret_t fetch_block_map(edid_block_map_t *ebm,
 
 	/* Fill tag, map and checksum fields */
 	fetch_next_field(&ebm->tag, rctx, 1);
-	fetch_next_field(&ebm->map, rctx, BLOCK_MAP_SIZE);
-	fetch_next_field(&ebm->checksum, rctx, 2);
+	fetch_next_field(ebm->map, rctx, BLOCK_MAP_SIZE);
+	fetch_next_field(&ebm->checksum, rctx, 1);
 
 exit:
 	return rc;

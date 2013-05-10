@@ -44,9 +44,8 @@
 #include "ctp_common.h"
 
 /* Headset jack detection gpios func(s) */
-#define HPDETECT_POLL_INTERVAL  msecs_to_jiffies(1000)  /* 1sec */
-#define JACK_DEBOUNCE_REMOVE	50
-#define JACK_DEBOUNCE_INSERT	100
+#define HPDETECT_POLL_INTERVAL  msecs_to_jiffies(300)  /* 300ms */
+#define HS_DET_RETRY	5
 
 struct snd_soc_card snd_soc_card_ctp = {
 	.set_bias_level = ctp_set_bias_level,
@@ -85,9 +84,7 @@ static struct snd_soc_jack_gpio hs_gpio[] = {
 	[CTP_HSDET_GPIO] = {
 		.name = "cs-hsdet-gpio",
 		.report = SND_JACK_HEADSET,
-		.debounce_time = JACK_DEBOUNCE_INSERT,
 		.jack_status_check = ctp_soc_jack_gpio_detect,
-		.irq_flags = IRQF_TRIGGER_FALLING,
 	},
 	[CTP_BTN_GPIO] = {
 		.name = "cs-hsbutton-gpio",
@@ -281,7 +278,8 @@ static inline void set_bp_interrupt(struct ctp_mc_private *ctx, bool enable)
 void cancel_all_work(struct ctp_mc_private *ctx)
 {
 	struct snd_soc_jack_gpio *gpio;
-	cancel_delayed_work_sync(&ctx->jack_work);
+	cancel_delayed_work_sync(&ctx->jack_work_insert);
+	cancel_delayed_work_sync(&ctx->jack_work_remove);
 	gpio = &hs_gpio[CTP_BTN_GPIO];
 	cancel_delayed_work_sync(&gpio->work);
 }
@@ -289,85 +287,118 @@ void cancel_all_work(struct ctp_mc_private *ctx)
 int ctp_soc_jack_gpio_detect(void)
 {
 	struct snd_soc_jack_gpio *gpio = &hs_gpio[CTP_HSDET_GPIO];
-	int enable, status;
 	struct snd_soc_jack *jack = gpio->jack;
-	struct snd_soc_codec *codec = jack->codec;
 	struct ctp_mc_private *ctx =
 		container_of(jack, struct ctp_mc_private, ctp_jack);
 
+	int enable;
+
 	/* During jack removal, spurious BP interrupt may occur.
 	 * Better to disable interrupt until jack insert/removal stabilize.
-	 * Also cancel the BP and jack_status_verify work if already sceduled */
+	 * Also cancel the BP and jack_work if already sceduled */
 	cancel_all_work(ctx);
 	set_bp_interrupt(ctx, false);
 	enable = gpio_get_value(gpio->gpio);
 	if (gpio->invert)
 		enable = !enable;
 	pr_debug("%s:gpio->%d=0x%d\n", __func__, gpio->gpio, enable);
-	pr_debug("Current jack status = 0x%x\n", jack->status);
 
-	set_mic_bias(jack, ctx->ops->mic_bias, true);
-	msleep(ctx->ops->micsdet_debounce);
-	status = ctx->ops->hp_detection(codec, jack, enable);
-	if (!status) {
-		ctx->headset_plug_flag = false;
-		set_mic_bias(jack, ctx->ops->mic_bias, false);
-		/* Jack removed, Disable BP interrupts if not done already */
-		set_bp_interrupt(ctx, false);
-	} else { /* If jack inserted, schedule delayed_wq */
-		schedule_delayed_work(&ctx->jack_work, HPDETECT_POLL_INTERVAL);
+	if (!enable) {
+		atomic_set(&ctx->hs_det_retry, HS_DET_RETRY);
+		schedule_delayed_work(&ctx->jack_work_insert,
+					HPDETECT_POLL_INTERVAL);
+	} else
+		schedule_delayed_work(&ctx->jack_work_remove,
+					HPDETECT_POLL_INTERVAL);
 #ifdef CONFIG_HAS_WAKELOCK
-		/*
-		 * Take wakelock for one second to give time for the detection
-		 * to finish. Jack detection is happening rarely so this doesn't
-		 * have big impact to power consumption.
-		 */
-		wake_lock_timeout(ctx->jack_wake_lock,
-				HPDETECT_POLL_INTERVAL + msecs_to_jiffies(50));
+	/*
+	 * Take wakelock for one second to give time for the detection
+	 * to finish. Jack detection is happening rarely so this doesn't
+	 * have big impact to power consumption.
+	 */
+	wake_lock_timeout(ctx->jack_wake_lock,
+			HPDETECT_POLL_INTERVAL + msecs_to_jiffies(50));
 #endif
-	}
 
-	return status;
+	/* Report old status */
+	return jack->status;
 }
 
-/* Func to verify Jack status after HPDETECT_POLL_INTERVAL */
-void headset_status_verify(struct work_struct *work)
+/* Jack insert delayed work */
+void headset_insert_poll(struct work_struct *work)
 {
 	struct snd_soc_jack_gpio *gpio = &hs_gpio[CTP_HSDET_GPIO];
-	int enable, status;
 	struct snd_soc_jack *jack = gpio->jack;
 	struct snd_soc_codec *codec = jack->codec;
-	unsigned int mask = SND_JACK_HEADSET;
 	struct ctp_mc_private *ctx =
 		container_of(jack, struct ctp_mc_private, ctp_jack);
 
+	int enable, status;
+	unsigned int mask = SND_JACK_HEADSET;
+
 	enable = gpio_get_value(gpio->gpio);
-	if (gpio->invert)
-		enable = !enable;
-	pr_debug("%s:gpio->%d=0x%d\n", __func__, gpio->gpio, enable);
-	pr_debug("Current jack status = 0x%x\n", jack->status);
-
-	status = ctx->ops->hp_detection(codec, jack, enable);
-
-	/* Enable Button_press interrupt if HS is inserted
-	 * and interrupts are not already enabled
-	 */
-	if (status == SND_JACK_HEADSET) {
-		set_bp_interrupt(ctx, true);
-		/* Decrease the debounce time for HS removal detection */
-		gpio->debounce_time = JACK_DEBOUNCE_REMOVE;
-		ctx->headset_plug_flag = true;
-	} else {
-		set_mic_bias(jack, ctx->ops->mic_bias, false);
-		/* Disable Button_press interrupt if no Headset */
-		set_bp_interrupt(ctx, false);
-		/* Restore the debounce time for HS insertion detection */
-		gpio->debounce_time = JACK_DEBOUNCE_INSERT;
+	if (enable != 0) {
+		pr_err("%s:gpio status = 0x%d\n", __func__, enable);
+		return;
 	}
 
+	pr_debug("%s: Current jack status = 0x%x\n", __func__, jack->status);
+	set_mic_bias(jack, ctx->ops->mic_bias, true);
+	msleep(ctx->ops->micsdet_debounce);
+	status = ctx->ops->hp_detection(codec, jack, enable);
+	if (status == SND_JACK_HEADSET) {
+		set_bp_interrupt(ctx, true);
+		ctx->headset_plug_flag = true;
+	}
 	if (jack->status != status)
 		snd_soc_jack_report(jack, status, mask);
 
+	/*
+	 * At this point the HS may be half inserted and still be
+	 * detected as HP, so recheck after HPDETECT_POLL_INTERVAL
+	 */
+	if (!atomic_dec_and_test(&ctx->hs_det_retry) &&
+			status != SND_JACK_HEADSET) {
+		pr_debug("HS Jack detect Retry %d\n",
+				atomic_read(&ctx->hs_det_retry));
+#ifdef CONFIG_HAS_WAKELOCK
+		/* Give sufficient time for the detection to propagate*/
+		wake_lock_timeout(ctx->jack_wake_lock,
+				HPDETECT_POLL_INTERVAL + msecs_to_jiffies(50));
+#endif
+		schedule_delayed_work(&ctx->jack_work_insert,
+					HPDETECT_POLL_INTERVAL);
+	}
+
+	pr_debug("%s: status 0x%x\n", __func__, status);
+}
+
+/* Jack remove delayed work */
+void headset_remove_poll(struct work_struct *work)
+{
+	struct snd_soc_jack_gpio *gpio = &hs_gpio[CTP_HSDET_GPIO];
+	struct snd_soc_jack *jack = gpio->jack;
+	struct snd_soc_codec *codec = jack->codec;
+	struct ctp_mc_private *ctx =
+		container_of(jack, struct ctp_mc_private, ctp_jack);
+
+	int enable, status;
+	unsigned int mask = SND_JACK_HEADSET;
+
+	enable = gpio_get_value(gpio->gpio);
+	if (enable == 0) {
+		pr_err("%s:gpio status = 0x%d\n", __func__, enable);
+		return;
+	}
+
+	pr_debug("%s: Current jack status = 0x%x\n", __func__, jack->status);
+	status = ctx->ops->hp_detection(codec, jack, enable);
+	set_bp_interrupt(ctx, false);
+	ctx->headset_plug_flag = false;
+	set_mic_bias(jack, ctx->ops->mic_bias, false);
+
+	if (jack->status != status)
+		snd_soc_jack_report(jack, status, mask);
 	pr_debug("%s: status 0x%x\n", __func__, status);
 }
 
@@ -377,6 +408,7 @@ int ctp_soc_jack_gpio_detect_bp(void)
 	int enable, hs_status, status;
 	struct snd_soc_jack *jack = gpio->jack;
 	struct snd_soc_codec *codec = jack->codec;
+	unsigned int mask = SND_JACK_BTN_0 | SND_JACK_HEADSET;
 	struct ctp_mc_private *ctx =
 		container_of(jack, struct ctp_mc_private, ctp_jack);
 
@@ -401,6 +433,13 @@ int ctp_soc_jack_gpio_detect_bp(void)
 			 * before proceeding for button press detection */
 			if (!atomic_dec_return(&ctx->bpirq_flag)) {
 				status = ctx->ops->bp_detection(codec, jack, enable);
+				if (status == mask) {
+					ctx->btn_press_flag = true;
+				} else {
+					if (!(ctx->btn_press_flag))
+						snd_soc_jack_report(jack, mask, mask);
+					ctx->btn_press_flag = false;
+				}
 				atomic_inc(&ctx->bpirq_flag);
 			} else
 				atomic_inc(&ctx->bpirq_flag);
@@ -483,7 +522,8 @@ static void snd_ctp_unregister_jack(struct ctp_mc_private *ctx,
 {
 	if (!ctx->ops->jack_support)
 		return;
-	cancel_delayed_work_sync(&ctx->jack_work);
+	cancel_delayed_work_sync(&ctx->jack_work_insert);
+	cancel_delayed_work_sync(&ctx->jack_work_remove);
 	free_jack_wake_lock(ctx);
 	snd_soc_jack_free_gpios(&ctx->ctp_jack, 2, ctx->hs_gpio_ops);
 }
@@ -513,7 +553,8 @@ static int snd_ctp_jack_init(struct snd_soc_pcm_runtime *runtime,
 		return 0;
 
 	/* Setup the HPDET timer */
-	INIT_DELAYED_WORK(&ctx->jack_work, headset_status_verify);
+	INIT_DELAYED_WORK(&ctx->jack_work_insert, headset_insert_poll);
+	INIT_DELAYED_WORK(&ctx->jack_work_remove, headset_remove_poll);
 
 	/* Headset and button jack detection */
 	ret = snd_soc_jack_new(codec, "Intel MID Audio Jack",
@@ -537,6 +578,7 @@ static int snd_ctp_jack_init(struct snd_soc_pcm_runtime *runtime,
 	pr_err("Disable %d interrupt line\n", irq);
 	disable_irq_nosync(irq);
 	atomic_set(&ctx->bpirq_flag, 0);
+	atomic_set(&ctx->hs_det_retry, HS_DET_RETRY);
 	return 0;
 }
 
@@ -592,7 +634,6 @@ static int snd_ctp_mc_probe(struct platform_device *pdev)
 {
 	int ret_val = 0;
 	struct ctp_mc_private *ctx;
-	struct ctp_audio_platform_data *pdata = pdev->dev.platform_data;
 
 	pr_debug("In %s\n", __func__);
 	ctx = devm_kzalloc(&pdev->dev, sizeof(*ctx), GFP_ATOMIC);

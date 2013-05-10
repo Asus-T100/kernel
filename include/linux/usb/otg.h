@@ -131,10 +131,13 @@ struct usb_phy {
 				int suspend);
 
 	/* for A or B-peripheral: host has released the bus.  */
-	int     (*host_release)(struct usb_phy *otg);
+	int	(*host_release)(struct usb_phy *x);
 
 	/* for a_bus_drop handler fromed user space */
-	void (*a_bus_drop)(struct usb_phy *phy);
+	void	(*a_bus_drop)(struct usb_phy *x);
+
+	/* check charger status */
+	int	(*get_chr_status)(struct usb_phy *x, void *data);
 };
 
 
@@ -267,6 +270,15 @@ usb_phy_set_suspend(struct usb_phy *x, int suspend)
 		return x->set_suspend(x, suspend);
 	else
 		return 0;
+}
+
+static inline int
+otg_get_chr_status(struct usb_phy *x, void *data)
+{
+	if (x && x->get_chr_status)
+		return x->get_chr_status(x, data);
+
+	return -ENOTSUPP;
 }
 
 static inline int

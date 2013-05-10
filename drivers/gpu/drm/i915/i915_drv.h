@@ -40,6 +40,7 @@
 #include <linux/backlight.h>
 #include <linux/intel-iommu.h>
 #include <linux/kref.h>
+#include "hdmi_audio_if.h"
 
 #ifdef CONFIG_DRM_VXD_BYT
 #include "vxd_drv.h"
@@ -880,6 +881,13 @@ typedef struct drm_i915_private {
 #ifdef CONFIG_DRM_VXD_BYT
 	struct drm_psb_private *vxd_priv;
 #endif
+	/* Added for HDMI Audio */
+	had_event_call_back had_event_callbacks;
+	struct snd_intel_had_interface *had_interface;
+	void *had_pvt_data;
+	int tmds_clock_speed;
+	int hdmi_audio_interrupt_mask;
+	struct work_struct hdmi_audio_wq;
 } drm_i915_private_t;
 
 /* Iterate over initialised rings */
@@ -1573,6 +1581,8 @@ extern int intel_enable_rc6(const struct drm_device *dev);
 extern bool i915_semaphore_is_enabled(struct drm_device *dev);
 int i915_reg_read_ioctl(struct drm_device *dev, void *data,
 			struct drm_file *file);
+int i915_set_plane_zorder(struct drm_device *dev, void *data,
+			  struct drm_file *file);
 
 /* overlay */
 #ifdef CONFIG_DEBUG_FS
@@ -1595,6 +1605,9 @@ int __gen6_gt_wait_for_fifo(struct drm_i915_private *dev_priv);
 
 u32 intel_dpio_read(struct drm_i915_private *dev_priv, int reg);
 void intel_dpio_write(struct drm_i915_private *dev_priv, int reg, u32 val);
+
+void intel_iosf_rw(struct drm_i915_private *dev_priv,
+			u8 opcode, u32 port, u32 reg, u32 *val);
 
 #define __i915_read(x, y) \
 	u##x i915_read##x(struct drm_i915_private *dev_priv, u32 reg, bool trace);

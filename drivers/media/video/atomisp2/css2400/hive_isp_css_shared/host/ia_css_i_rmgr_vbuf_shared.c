@@ -43,7 +43,11 @@ void ia_css_i_host_refcount_retain_vbuf(
 	int i;
 	struct ia_css_i_host_rmgr_vbuf_handle *h;
 	assert(handle != NULL);
+	if(handle == NULL)
+		return;
 	assert(*handle != NULL);
+	if(*handle == NULL)
+		return;
 	/* new vbuf to count on */
 	if ((*handle)->count == 0) {
 		h = *handle;
@@ -69,7 +73,11 @@ void ia_css_i_host_refcount_release_vbuf(
 		struct ia_css_i_host_rmgr_vbuf_handle **handle)
 {
 	assert(handle != NULL);
+	if(handle == NULL)
+		return;
 	assert(*handle != NULL);
+	if(*handle == NULL)
+		return;
 	assert((*handle)->count != 0);
 	/* decrease reference count */
 	(*handle)->count--;
@@ -110,6 +118,8 @@ void ia_css_i_host_rmgr_uninit_vbuf(struct ia_css_i_host_rmgr_vbuf_pool *pool)
 	sh_css_dtrace(SH_DBG_TRACE,
 		"ia_css_i_host_rmgr_uninit_vbuf()\n");
 	assert(pool != NULL);
+	if(pool == NULL)
+		return;
 	if (pool->handles != NULL) {
 		/* free the hmm buffers */
 		for (i = 0; i < pool->size; i++) {
@@ -139,9 +149,15 @@ void ia_css_i_host_rmgr_push_handle(
 	uint32_t i;
 	bool succes = false;
 	assert(pool != NULL);
+	if(pool == NULL)
+		return;
 	assert(pool->recycle);
 	assert(pool->handles != NULL);
+	if(pool->handles == NULL)
+		return;
 	assert(handle != NULL);
+	if(handle == NULL)
+		return;
 	for (i = 0; i < pool->size; i++) {
 		if (pool->handles[i] == NULL) {
 			ia_css_i_host_refcount_retain_vbuf(handle);
@@ -161,9 +177,15 @@ void ia_css_i_host_rmgr_pop_handle(
 	uint32_t i;
 	bool succes = false;
 	assert(pool != NULL);
+	if(pool == NULL)
+		return;
 	assert(pool->recycle);
 	assert(pool->handles != NULL);
+	if(pool->handles == NULL)
+		return;
 	assert(handle != NULL);
+	if(handle == NULL)
+		return;
 	for (i = 0; i < pool->size; i++) {
 		if (pool->handles[i] != NULL && pool->handles[i]->size == (*handle)->size) {
 			*handle = pool->handles[i];
@@ -182,7 +204,11 @@ void ia_css_i_host_rmgr_acq_vbuf(
 {
 	struct ia_css_i_host_rmgr_vbuf_handle h;
 	assert(pool != NULL);
+	if(pool == NULL)
+		return;
 	assert(handle != NULL);
+	if(handle == NULL)
+		return;
 	if (pool->copy_on_write) {
 		/* only one reference, reuse (no new retain) */
 		if ((*handle)->count == 1)
@@ -201,16 +227,13 @@ void ia_css_i_host_rmgr_acq_vbuf(
 			if (pool->recycle) {
 				/* try and pop from pool */
 				ia_css_i_host_rmgr_pop_handle(pool, handle);
+				if ((*handle)->vptr != 0x0) {
+					/* we popped a buffer */
+					return;
+				}
 			}
-			if ((*handle)->vptr == 0x0) {
-				/* we need to allocate */
-				(*handle)->vptr =
-					mmgr_alloc_attr((*handle)->size, 0);
-			}
-			else {
-				/* we popped a buffer */
-				return;
-			}
+			/* we need to allocate */
+			(*handle)->vptr = mmgr_alloc_attr((*handle)->size, 0);
 		}
 	}
 	/* Note that handle will change to an internally maintained one */
@@ -222,8 +245,14 @@ void ia_css_i_host_rmgr_rel_vbuf(
 	struct ia_css_i_host_rmgr_vbuf_handle **handle)
 {
 	assert(pool != NULL);
+	if(pool == NULL)
+		return;
 	assert(handle != NULL);
+	if(handle == NULL)
+		return;
 	assert(*handle != NULL);
+	if(*handle == NULL)
+		return;
 	/* release the handle */
 	if ((*handle)->count == 1) {
 		if (!pool->recycle) {
@@ -238,3 +267,4 @@ void ia_css_i_host_rmgr_rel_vbuf(
 	ia_css_i_host_refcount_release_vbuf(handle);
 	*handle = NULL;
 }
+

@@ -29,6 +29,7 @@ struct hsu_port_cfg {
 	int force_suspend;
 	int preamble;
 	int hw_context_save;
+	int hw_ctrl_cts;
 	struct device *dev;
 	int (*hw_init)(struct device *dev, int port);
 	void(*hw_set_alt)(int port);

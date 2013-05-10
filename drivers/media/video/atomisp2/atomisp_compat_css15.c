@@ -522,6 +522,14 @@ int atomisp_css_stop(struct atomisp_device *isp,
 int atomisp_css_continuous_set_num_raw_frames(struct atomisp_device *isp,
 						int num_frames)
 {
+	int max_raw_frames = sh_css_continuous_get_max_raw_frames();
+
+	if (num_frames > max_raw_frames) {
+		dev_warn(isp->dev, "continuous_num_raw_frames %d->%d\n",
+				num_frames, max_raw_frames);
+		num_frames = max_raw_frames;
+	}
+
 	if (sh_css_continuous_set_num_raw_frames(num_frames) != sh_css_success)
 		return -EINVAL;
 

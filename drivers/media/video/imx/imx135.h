@@ -3,7 +3,7 @@
 #include "common.h"
 
 /********************** settings for imx from vendor*********************/
-static struct imx_reg const imx135_13M_20fps[] = {
+static struct imx_reg const imx135_13M_13fps[] = {
 	GROUPED_PARAMETER_HOLD_ENABLE,
 	/* Clock Setting */
 	{IMX_8BIT, 0x011E, 0x13},
@@ -38,7 +38,7 @@ static struct imx_reg const imx135_13M_20fps[] = {
 	/* Size setting */
 	{IMX_8BIT, 0x0340, 0x0E},
 	{IMX_8BIT, 0x0341, 0x00},
-	{IMX_8BIT, 0x0342, 0x16},
+	{IMX_8BIT, 0x0342, 0x1C},
 	{IMX_8BIT, 0x0343, 0x00},
 	{IMX_8BIT, 0x0344, 0x00},
 	{IMX_8BIT, 0x0345, 0x00},
@@ -1271,7 +1271,7 @@ static struct imx_reg const imx135_720p_dvs_15fps[] = {
 	/* Size setting */
 	{IMX_8BIT, 0x0340, 0x10},
 	{IMX_8BIT, 0x0341, 0x00},
-	{IMX_8BIT, 0x0342, 0x18},
+	{IMX_8BIT, 0x0342, 0x19},
 	{IMX_8BIT, 0x0343, 0x00},
 	{IMX_8BIT, 0x0344, 0x00},
 	{IMX_8BIT, 0x0345, 0x2E},
@@ -3223,12 +3223,12 @@ struct imx_resolution imx135_res_preview[] = {
 		.used = 0	,
 	},
 	{
-		.desc = "imx135_13M_20fps",
-		.regs = imx135_13M_20fps,
+		.desc = "imx135_13M_13fps",
+		.regs = imx135_13M_13fps,
 		.width = 4208	,
 		.height = 3120,
-		.fps = 20,
-		.pixels_per_line = 0x1600, /* consistent with regs arrays */
+		.fps = 13,
+		.pixels_per_line = 0x1C00, /* consistent with regs arrays */
 		.lines_per_frame = 0x0E00, /* consistent with regs arrays */
 		.bin_factor_x = 0,
 		.bin_factor_y = 0,
@@ -3486,7 +3486,7 @@ struct imx_resolution imx135_res_video[] = {
 		.width = 1568	,
 		.height = 880,
 		.fps = 15,
-		.pixels_per_line = 0x1800, /* consistent with regs arrays */
+		.pixels_per_line = 0x1900, /* consistent with regs arrays */
 		.lines_per_frame = 0x1000, /* consistent with regs arrays */
 		.bin_factor_x = 1,
 		.bin_factor_y = 1,

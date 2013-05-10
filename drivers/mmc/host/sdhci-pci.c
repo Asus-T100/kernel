@@ -25,6 +25,7 @@
 #include <linux/gpio.h>
 #include <linux/pm_runtime.h>
 #include <linux/mmc/sdhci-pci-data.h>
+#include <linux/acpi_gpio.h>
 
 #include <asm/intel_scu_ipc.h>
 #include <asm/intel_scu_flis.h>
@@ -577,6 +578,12 @@ static int intel_mfld_clv_sd_resume(struct sdhci_pci_chip *chip)
 	return 0;
 }
 
+static int byt_sd_probe_slot(struct sdhci_pci_slot *slot)
+{
+	slot->cd_gpio = acpi_get_gpio("\\_SB.GPO0", 7);
+	return 0;
+}
+
 static const struct sdhci_pci_fixes sdhci_intel_mfd_sd = {
 	.quirks		= SDHCI_QUIRK_NO_ENDATTR_IN_NOPDESC,
 	.allow_runtime_pm = true,
@@ -599,17 +606,21 @@ static const struct sdhci_pci_fixes sdhci_intel_mfd_emmc = {
 };
 
 static const struct sdhci_pci_fixes sdhci_intel_byt_emmc = {
+	.allow_runtime_pm = true,
 	.probe_slot	= mfd_emmc_probe_slot,
 };
 
 static const struct sdhci_pci_fixes sdhci_intel_byt_sd = {
 	.quirks		= SDHCI_QUIRK_INVERTED_WRITE_PROTECT,
+	.allow_runtime_pm = true,
+	.probe_slot	= byt_sd_probe_slot,
 };
 
 static const struct sdhci_pci_fixes sdhci_intel_byt_sdio = {
 	.quirks2	= SDHCI_QUIRK2_HOST_OFF_CARD_ON |
 		SDHCI_QUIRK2_CAN_VDD_300 | SDHCI_QUIRK2_CAN_VDD_330,
 	.probe_slot	= mfd_sdio_probe_slot,
+	.allow_runtime_pm = true,
 };
 
 static const struct sdhci_pci_fixes sdhci_intel_pch_sdio = {
@@ -632,6 +643,9 @@ static int intel_mrfl_mmc_probe_slot(struct sdhci_pci_slot *slot)
 		slot->host->mmc->caps |= MMC_CAP_8_BIT_DATA |
 					MMC_CAP_NONREMOVABLE |
 					MMC_CAP_1_8V_DDR;
+
+	if (PCI_FUNC(slot->chip->pdev->devfn) == INTEL_MRFL_SDIO)
+		slot->host->mmc->caps |= MMC_CAP_NONREMOVABLE;
 
 	if (PCI_FUNC(slot->chip->pdev->devfn) == INTEL_MRFL_EMMC_0)
 		sdhci_alloc_panic_host(slot->host);
@@ -1490,6 +1504,12 @@ static int sdhci_pci_power_up_host(struct sdhci_host *host)
 
 	if (slot->data && slot->data->power_up)
 		ret = slot->data->power_up(host);
+	else {
+		/*
+		 * use standard PCI power up function
+		 */
+		ret = pci_set_power_state(slot->chip->pdev, PCI_D0);
+	}
 	/*
 	 * If there is no power_up callbacks in platform data,
 	 * return -ENOSYS;
