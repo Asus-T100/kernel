@@ -344,6 +344,7 @@ static int mfd_emmc_probe_slot(struct sdhci_pci_slot *slot)
 		slot->rst_n_gpio = -EINVAL;
 		break;
 	case PCI_DEVICE_ID_INTEL_BYT_MMC45:
+		slot->host->quirks2 |= SDHCI_QUIRK2_2MS_DELAY;
 	case PCI_DEVICE_ID_INTEL_BYT_MMC:
 		sdhci_alloc_panic_host(slot->host);
 		slot->rst_n_gpio = -EINVAL;
