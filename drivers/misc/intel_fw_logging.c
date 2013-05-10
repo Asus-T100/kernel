@@ -72,6 +72,7 @@
 #define TOTAL_MAX_NUM_FABERR_DWORD	50
 #define MAX_NUM_LOGDWORDS		12
 #define MAX_NUM_LOGDWORDS_EXTENDED      9
+
 #define TOTAL_NUM_PADDED_DWORDS		(TOTAL_MAX_NUM_FABERR_DWORD - \
 					MAX_NUM_LOGDWORDS - \
 					MAX_NUM_LOGDWORDS_EXTENDED)
@@ -79,6 +80,9 @@
 					MAX_NUM_LOGDWORDS_EXTENDED)
 #define MAX_NUM_ALL_LOGDWORDS_PADDED	(MAX_NUM_ALL_LOGDWORDS + \
 					TOTAL_NUM_PADDED_DWORDS)
+
+#define SIZE_ALL_LOGDWORDS		(MAX_NUM_ALL_LOGDWORDS *	\
+					 sizeof(u32))
 
 #define FABERR_INDICATOR		0x15
 #define FABERR_INDICATOR1		0x0dec0ded
@@ -702,7 +706,7 @@ static int dump_scu_extented_trace(char *buf, int size, int log_offset,
 	*read = 0;
 
 	/* Title for error dump */
-	if (!log_offset)
+	if (log_offset == SIZE_ALL_LOGDWORDS)
 		output_str(ret, buf, size, "SCU Extra trace\n");
 
 	start = log_offset / sizeof(u32);
@@ -875,13 +879,12 @@ static int intel_fw_logging_proc_read(char *buffer, char **start, off_t offset,
 			read = MAX_NUM_ALL_LOGDWORDS * sizeof(u32);
 		} else {
 			ret = dump_scu_extented_trace(buffer, count,
-						      offset, &read);
+					      offset, &read);
 			if (!read || offset + read > sram_buf_sz)
 				*peof = 1;
 		}
 		*start = (void *) read;
 	}
-
 	return ret;
 }
 #endif /* CONFIG_PROC_FS */
@@ -954,6 +957,17 @@ static int fw_logging_crash_on_boot(void)
 		}
 	} else
 		length = new_dump_fwerr_log(NULL, 0);
+
+	if (sram_trace_buf) {
+		/*
+		 * SCU gives pointer via oshob. Address is a physical
+		 * address somewhere in shared sram
+		 */
+		read_sram_trace_buf(log_buffer + MAX_NUM_ALL_LOGDWORDS,
+				    sram_trace_buf, sram_buf_sz);
+		length += dump_scu_extented_trace(NULL, 0,
+						  SIZE_ALL_LOGDWORDS, &read);
+	}
 
 #ifdef CONFIG_PROC_FS
 	ipanic_faberr = create_proc_entry("ipanic_fabric_err",
