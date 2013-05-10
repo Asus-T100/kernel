@@ -666,21 +666,9 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 		if (!sst_drv_ctx->ddr)
 			goto do_unmap_ddr;
 		pr_debug("sst: DDR Ptr %p\n", sst_drv_ctx->ddr);
-	} else if (sst_drv_ctx->pci_id == SST_BYT_PCI_ID) {
-		/* IFWI reserves 2MB of DDR memory which satisfies
-		512MB alignment. Hardcode the value till we have
-		in DSDT table */
-#define SST_BYT_DDR_BASE	0x20000000
-#define SST_BYT_DDR_SIZE	(2 * 1024 * 1024)
-		sst_drv_ctx->ddr_base = SST_BYT_DDR_BASE;
-		sst_drv_ctx->ddr_end = SST_BYT_DDR_BASE + SST_BYT_DDR_SIZE;
-		sst_drv_ctx->ddr = devm_ioremap_nocache(&pci->dev,
-						sst_drv_ctx->ddr_base,
-						SST_BYT_DDR_SIZE);
-		pr_debug("DDR Phys:%p, Virtual:%p",
-			sst_drv_ctx->ddr_base, sst_drv_ctx->ddr);
-	} else
+	} else {
 		sst_drv_ctx->ddr = NULL;
+	}
 
 	if (sst_drv_ctx->pci_id == SST_BYT_PCI_ID) {
 		byt_lpe_base = pci_resource_start(pci, 0);

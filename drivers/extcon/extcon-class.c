@@ -42,17 +42,17 @@
  * names that are actually used in your extcon device.
  */
 const char *extcon_cable_name[] = {
-	[EXTCON_SDP]		= "CHARGER_USB_SDP",
-	[EXTCON_DCP]		= "CHARGER_USB_DCP",
-	[EXTCON_CDP]		= "CHARGER_USB_CDP",
-	[EXTCON_ACA]		= "CHARGER_USB_ACA",
-	[EXTCON_AC]		= "CHARGER_AC",
 	[EXTCON_USB]		= "USB",
 	[EXTCON_USB_HOST]	= "USB-Host",
 	[EXTCON_TA]		= "TA",
 	[EXTCON_FAST_CHARGER]	= "Fast-charger",
 	[EXTCON_SLOW_CHARGER]	= "Slow-charger",
 	[EXTCON_CHARGE_DOWNSTREAM]	= "Charge-downstream",
+	[EXTCON_SDP]		= "CHARGER_USB_SDP",
+	[EXTCON_DCP]		= "CHARGER_USB_DCP",
+	[EXTCON_CDP]		= "CHARGER_USB_CDP",
+	[EXTCON_ACA]		= "CHARGER_USB_ACA",
+	[EXTCON_AC]		= "CHARGER_AC",
 	[EXTCON_HDMI]		= "HDMI",
 	[EXTCON_MHL]		= "MHL",
 	[EXTCON_DVI]		= "DVI",
@@ -336,6 +336,30 @@ int extcon_find_cable_index(struct extcon_dev *edev, const char *cable_name)
 	return -EINVAL;
 }
 EXPORT_SYMBOL_GPL(extcon_find_cable_index);
+
+/**
+ * extcon_find_cable_type() - Get the cable type based on the cable index.
+ * @edev:	the extcon device that has the cable.
+ * @idx:	cable idx to be searched.
+ *
+ * This function is useful if the notifee want to know the cable type
+ * equivalent value defined in extcon_cable_name enum.
+ */
+int extcon_find_cable_type(struct extcon_dev *edev, int index)
+{
+	int i;
+
+	if (edev->supported_cable) {
+		for (i = 0; extcon_cable_name[i]; i++) {
+			if (!strncmp(edev->supported_cable[index],
+				extcon_cable_name[i], CABLE_NAME_MAX))
+				return i;
+		}
+	}
+
+	return -EINVAL;
+}
+EXPORT_SYMBOL_GPL(extcon_find_cable_type);
 
 /**
  * extcon_get_cable_state_() - Get the status of a specific cable.

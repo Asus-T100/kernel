@@ -31,7 +31,7 @@
 #define SR_MASK			0x2
 
 #define PMU1_MAX_DEVS			8
-#define PMU2_MAX_DEVS			55
+#define PMU2_MAX_DEVS			32
 
 #define MRFLD_S3_HINT			0x64
 
