@@ -3018,10 +3018,10 @@ static int psb_vsync_set_ioctl(struct drm_device *dev, void *data,
 
 				if (is_panel_vid_or_cmd(dev) ==
 						MDFLD_DSI_ENCODER_DPI)
-					drm_vblank_get(dev, pipe);
+					ret = drm_vblank_get(dev, pipe);
 				break;
 			case 1:
-				drm_vblank_get(dev, pipe);
+				ret = drm_vblank_get(dev, pipe);
 				break;
 			}
 		}
@@ -3045,7 +3045,7 @@ static int psb_vsync_set_ioctl(struct drm_device *dev, void *data,
 	}
 
 	mutex_unlock(&dev_priv->vsync_lock);
-	return 0;
+	return ret;
 }
 
 static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
