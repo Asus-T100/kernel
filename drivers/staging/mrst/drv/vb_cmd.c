@@ -861,13 +861,13 @@ static void ls04x_dsi_controller_init(struct mdfld_dsi_config *dsi_config)
 	hw_ctx->lp_rx_timeout = 0xffffff;
 	hw_ctx->turn_around_timeout = 0x18;
 	hw_ctx->device_reset_timer = 0xffff;
-	hw_ctx->high_low_switch_count = 0x1b;
+	hw_ctx->high_low_switch_count = 0x28;
 	hw_ctx->init_count = 0xf0;
 	hw_ctx->eot_disable = 0x2;
 	hw_ctx->lp_byteclk = 0x4;
-	hw_ctx->clk_lane_switch_time_cnt = 0x1b000c;
+	hw_ctx->clk_lane_switch_time_cnt = 0x18000b;
 	hw_ctx->dbi_bw_ctrl = 820;
-	hw_ctx->dphy_param = 0x1b104315;
+	hw_ctx->dphy_param = 0x160d3610;
 	hw_ctx->dsi_func_prg = (0xa000 | dsi_config->lane_count);
 	hw_ctx->mipi = TE_TRIGGER_GPIO_PIN | PASS_FROM_SPHY_TO_AFE;
 	hw_ctx->mipi |= dsi_config->lane_config;
@@ -888,7 +888,7 @@ static struct drm_display_mode *ls04x_cmd_get_config_mode(void)
 	mode->hdisplay = 720;
 	mode->hsync_start = 816;
 	mode->hsync_end = 824;
-	mode->vtotal = 1550;
+	mode->vtotal = 1300;
 	mode->vdisplay = 1280;
 	mode->vsync_start = 1294;
 	mode->vsync_end = 1296;
