@@ -639,7 +639,7 @@ static int __init fsa9285_extcon_init(void)
 
 	return ret;
 }
-device_initcall(fsa9285_extcon_init);
+late_initcall(fsa9285_extcon_init);
 
 static void __exit fsa9285_extcon_exit(void)
 {

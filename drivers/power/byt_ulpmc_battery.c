@@ -1073,6 +1073,29 @@ static int ulpmc_extcon_callback(struct notifier_block *nb,
 	return NOTIFY_OK;
 }
 
+static int ulpmc_extcon_dev_reg_callback(struct notifier_block *nb,
+					unsigned long event, void *data)
+{
+	struct ulpmc_chip_info *chip = container_of(nb,
+					struct ulpmc_chip_info, nb);
+	int ret;
+
+	chip->edev = extcon_get_extcon_dev(chip->pdata->extcon_devname);
+	if (!chip->edev) {
+		dev_err(&chip->client->dev, "failed to get extcon device\n");
+		return NOTIFY_OK;
+	} else {
+		extcon_dev_unregister_notify(&chip->nb);
+		chip->nb.notifier_call = &ulpmc_extcon_callback;
+		ret = extcon_register_notifier(chip->edev, &chip->nb);
+		if (ret)
+			dev_err(&chip->client->dev,
+				"failed to register extcon notifier:%d\n", ret);
+	}
+
+	return NOTIFY_OK;
+}
+
 static void set_s0ix_soc_thresholds(struct ulpmc_chip_info *chip)
 {
 	int ret;
@@ -1265,6 +1288,8 @@ static int ulpmc_battery_probe(struct i2c_client *client,
 	chip->edev = extcon_get_extcon_dev(chip->pdata->extcon_devname);
 	if (!chip->edev) {
 		dev_err(&client->dev, "failed to get extcon device\n");
+		chip->nb.notifier_call = &ulpmc_extcon_dev_reg_callback;
+		extcon_dev_register_notify(&chip->nb);
 	} else {
 		chip->nb.notifier_call = &ulpmc_extcon_callback;
 		ret = extcon_register_notifier(chip->edev, &chip->nb);
@@ -1397,7 +1422,7 @@ static int __init ulpmc_battery_init(void)
 
 	return ret;
 }
-late_initcall(ulpmc_battery_init);
+device_initcall(ulpmc_battery_init);
 
 static void __exit ulpmc_battery_exit(void)
 {
