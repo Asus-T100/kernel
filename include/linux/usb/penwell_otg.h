@@ -440,6 +440,7 @@ struct intel_mid_otg_pdata {
 	int gpio_cs;
 	int gpio_reset;
 	int charging_compliance;
+	int hnp_poll_support;
 	unsigned power_budget;
 };
 
