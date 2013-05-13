@@ -82,7 +82,7 @@ static inline u32 mei_txe_sec_reg_read(struct mei_txe_hw *hw,
 {
 	struct mei_device *dev = hw_txe_to_mei(hw);
 
-	if (!nopg && !hw->aliveness)
+	if (!hw->aliveness)
 		dev_warn(&dev->pdev->dev, "aliveness not asserted\n");
 	hw->aliveness_atime = jiffies;
 
@@ -115,7 +115,7 @@ static inline void mei_txe_sec_reg_write(struct mei_txe_hw *hw,
 
 	struct mei_device *dev = hw_txe_to_mei(hw);
 
-	if (!nopg && !hw->aliveness)
+	if (!hw->aliveness)
 		dev_warn(&dev->pdev->dev, "aliveness not asserted\n");
 	hw->aliveness_atime = jiffies;
 	mei_txe_sec_reg_write_silent(hw, offset, value);
@@ -231,31 +231,42 @@ static int mei_txe_aliveness_poll(struct mei_device *dev, u32 expected)
  *	Waits for HICR_HOST_ALIVENESS_RESP.ALIVENESS_RESP to be set
  * @dev: the device struct
  * @expected: expected aliveness value
- * return: true if the expected value was received
+ * return: returns 0 on success error otherwise
  */
 static long mei_txe_aliveness_wait(struct mei_device *dev, u32 expected)
 {
 	struct mei_txe_hw *hw = to_txe_hw(dev);
 	const unsigned long timeout =
 			msecs_to_jiffies(SEC_ALIVENESS_WAIT_TIMEOUT);
-	long err = 0;
+	long err;
 
 	hw->aliveness = mei_txe_aliveness_get(dev);
-	if (hw->aliveness != expected) {
-		mutex_unlock(&dev->device_lock);
-		err = wait_event_interruptible_timeout(hw->wait_aliveness_resp,
-				hw->recvd_aliv_resp, timeout);
-		mutex_lock(&dev->device_lock);
-		if (!err && !hw->recvd_aliv_resp) {
-			dev_err(&dev->pdev->dev,
-				"aliveness timed out = 0x%ld\n", err);
+	if (hw->aliveness == expected)
+		return 0;
+
+	mutex_unlock(&dev->device_lock);
+	err = wait_event_interruptible_timeout(hw->wait_aliveness_resp,
+			hw->recvd_aliv_resp, timeout);
+	mutex_lock(&dev->device_lock);
+	if (err <= 0 || !hw->recvd_aliv_resp) {
+		dev_err(&dev->pdev->dev, "aliveness timed out = 0x%ld\n", err);
 			return -ETIMEDOUT;
-		}
 	}
 	dev_dbg(&dev->pdev->dev, "alivness settled after %d msec\n",
 			jiffies_to_msecs(timeout - err));
 	hw->recvd_aliv_resp = false;
-	return err;
+	return hw->aliveness == expected ? 0 : -EIO;
+}
+
+/**
+ * mei_txe_aliveness_set_sync - sets an wait for aliveness to complete
+ * @dev: the device struct
+ * return: returns 0 on success en error otherwise
+ */
+int mei_txe_aliveness_set_sync(struct mei_device *dev, u32 req)
+{
+	mei_txe_aliveness_set(dev, req);
+	return mei_txe_aliveness_wait(dev, req);
 }
 
 static void mei_txe_aliveness_timer(struct work_struct *work)
@@ -384,11 +395,11 @@ static bool mei_txe_pending_interrupts(struct mei_device *dev)
 
 	if (ret) {
 		dev_err(&dev->pdev->dev,
-			"Pending Interrupts InReady=%ld Readiness=%ld, Aliveness=%ld, OutDoor=%ld\n",
-			hw->intr_cause & TXE_INTR_IN_READY,
-			hw->intr_cause & TXE_INTR_READINESS,
-			hw->intr_cause & TXE_INTR_ALIVENESS,
-			hw->intr_cause & TXE_INTR_OUT_DB);
+			"Pending Interrupts InReady=%01d Readiness=%01d, Aliveness=%01d, OutDoor=%01d\n",
+			!!(hw->intr_cause & TXE_INTR_IN_READY),
+			!!(hw->intr_cause & TXE_INTR_READINESS),
+			!!(hw->intr_cause & TXE_INTR_ALIVENESS),
+			!!(hw->intr_cause & TXE_INTR_OUT_DB));
 	}
 	return ret;
 }
@@ -515,6 +526,22 @@ static void mei_txe_hw_config(struct mei_device *dev)
 		hw->aliveness, hw->readiness_state);
 }
 
+static void mei_txe_reset(struct work_struct *work)
+{
+	struct mei_txe_hw *hw =
+		container_of(work, struct mei_txe_hw,  reset_work);
+	struct mei_device *dev = hw_txe_to_mei(hw);
+
+	mutex_lock(&dev->device_lock);
+
+	mei_reset(dev, true);
+
+	mutex_unlock(&dev->device_lock);
+}
+
+
+
+
 /**
  * mei_txe_write - writes a message to mei device.
  *
@@ -541,11 +568,9 @@ static int mei_txe_write(struct mei_device *dev,
 		return 0;
 	}
 
-	if (!nopg && !hw->aliveness) {
-		dev_dbg(&dev->pdev->dev,
-			"Aliveness not set .... requesting\n");
-		mei_txe_aliveness_set(dev, 1);
-		if (mei_txe_aliveness_wait(dev, 1) < 0)
+	if (!hw->aliveness) {
+		dev_dbg(&dev->pdev->dev, "Aliveness not set .... requesting\n");
+		if (mei_txe_aliveness_set_sync(dev, 1))
 			return 0;
 	}
 
@@ -730,6 +755,14 @@ static int mei_txe_hw_start(struct mei_device *dev)
 	/* Clear the interrupt cause of OutputDoorbell */
 	clear_bit(TXE_INTR_OUT_DB_BIT, &hw->intr_cause);
 
+
+	ret = mei_txe_aliveness_set_sync(dev, 1);
+	if (ret < 0) {
+		dev_err(&dev->pdev->dev,
+			"wait for aliveness failed ... bailing out\n");
+		return ret;
+	}
+
 	/* HPS: 3.1.1.1-11
 	 * set SATT2 - not here */
 
@@ -743,14 +776,6 @@ static int mei_txe_hw_start(struct mei_device *dev)
 	/* HPS: 3.1.1.1-13 */
 	/*  Set the SICR_SEC_IPC_OUTPUT_STATUS.IPC_OUTPUT_READY bit */
 	mei_txe_output_ready_set(hw);
-
-	mei_txe_aliveness_set(dev, 1);
-	ret = mei_txe_aliveness_wait(dev, 1);
-	if (ret < 0) {
-		dev_err(&dev->pdev->dev,
-			"wait for aliveness failed ... bailing out\n");
-		return ret;
-	}
 
 	/* HPS: 3.1.1.1-14 */
 	/* Set bit SICR_HOST_IPC_READINESS.HOST_RDY
@@ -777,7 +802,7 @@ static bool mei_txe_check_and_ack_intrs(struct mei_device *dev, bool do_ack)
 
 	hisr = mei_txe_br_reg_read(hw, HISR_REG);
 
-	if (hhisr & IPC_HHIER_SEC)
+	if (hhisr & IPC_HHIER_SEC && hw->aliveness)
 		ipc_isr = mei_txe_sec_reg_read_silent(hw,
 				SEC_IPC_HOST_INT_STATUS_REG);
 	else
@@ -880,8 +905,10 @@ again:
 			    dev->dev_state != MEI_DEV_POWER_DOWN &&
 			    dev->dev_state != MEI_DEV_INITIALIZING) {
 				dev_dbg(&dev->pdev->dev, "FW not ready.\n");
-				mei_reset(dev, true);
-				goto end;
+
+				schedule_work(&hw->reset_work);
+				mutex_unlock(&dev->device_lock);
+				return IRQ_HANDLED;
 			}
 		}
 		wake_up_interruptible(&dev->wait_hw_ready);
@@ -910,12 +937,6 @@ again:
 	}
 
 
-	if (nopg == false && !hw->aliveness) {
-		dev_dbg(&dev->pdev->dev,
-			"Bailing Out: HW Is dromant %d\n", hw->aliveness);
-		mutex_unlock(&dev->device_lock);
-		goto out;
-	}
 	/* Output Doorbell:
 	 * Detection of SeC having sent output to host
 	 */
@@ -927,8 +948,10 @@ again:
 		rets = mei_irq_read_handler(dev, &complete_list, &slots);
 		dev_dbg(&dev->pdev->dev,
 			"from mei_irq_read_handler ret=%d.\n", rets);
-		if (rets)
-			goto end;
+		if (rets) {
+			mutex_unlock(&dev->device_lock);
+			goto out;
+		}
 		/* clear the pending interrupt only if read hanlder suceeded */
 		clear_bit(TXE_INTR_OUT_DB_BIT, &hw->intr_cause);
 	}
@@ -936,13 +959,12 @@ again:
 	else if (test_and_clear_bit(TXE_INTR_IN_READY_BIT, &hw->intr_cause))
 		dev->hbuf_is_ready = true;
 
-	if (dev->hbuf_is_ready) {
+	if (hw->aliveness && dev->hbuf_is_ready) {
 		/* if SeC did not complete reading the written data by host */
 		if (!mei_txe_is_input_ready(dev)) {
-			dev_err(&dev->pdev->dev,
-				"reset: got Input Ready Int, but SEC_IPC_INPUT_STATUS_RDY is 0.\n");
-			mei_reset(dev, true);
-			goto end;
+			dev_dbg(&dev->pdev->dev, "got Input Ready Int, but SEC_IPC_INPUT_STATUS_RDY is 0.\n");
+			mutex_unlock(&dev->device_lock);
+			goto out;
 		}
 
 		rets = mei_irq_write_handler(dev, &complete_list);
@@ -950,19 +972,15 @@ again:
 				"mei_irq_write_handler ret=%d.\n", rets);
 	}
 
-end:
 	dev_dbg(&dev->pdev->dev, "end of bottom half function.\n");
-	/* FIXME: Check if this is correct !!! */
-	dev->hbuf_is_ready = mei_txe_is_input_ready(dev);
 
 	mutex_unlock(&dev->device_lock);
 
 	mei_irq_compl_handler(dev, &complete_list);
 
-out:
 	if (mei_txe_pending_interrupts(dev))
 		goto again;
-
+out:
 	mei_enable_interrupts(dev);
 	return IRQ_HANDLED;
 }
@@ -1010,6 +1028,7 @@ struct mei_device *mei_txe_dev_init(struct pci_dev *pdev)
 
 	init_waitqueue_head(&hw->wait_aliveness_resp);
 	INIT_DELAYED_WORK(&hw->aliveness_timer, mei_txe_aliveness_timer);
+	INIT_WORK(&hw->reset_work, mei_txe_reset);
 
 	dev->ops = &mei_txe_hw_ops;
 
