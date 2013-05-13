@@ -35,6 +35,7 @@
 #include <linux/sched.h>
 #include <linux/hsi/hsi.h>
 #include <linux/debugfs.h>
+#include <linux/reboot.h>
 
 #include "dlp_main.h"
 
@@ -1713,6 +1714,17 @@ void dlp_reset_channels_params(void)
 	}
 }
 
+/*
+ * Callback to be called by the system in case of reboot and halt
+ * This allow to block the DLP driver API until the driver is removed
+ * by the system.
+ */
+static int dlp_driver_remove_notify_cb(struct notifier_block *this,
+		unsigned long code,	void *unused)
+{
+	atomic_set(&dlp_drv.drv_remove_ongoing, 1);
+	return NOTIFY_DONE;
+}
 
 /**
  * dlp_driver_probe - creates a new context in the DLP driver
@@ -1752,6 +1764,11 @@ static int dlp_driver_probe(struct device *dev)
 	dlp_drv.client = client;
 	dlp_drv.is_dma_capable = is_device_dma_capable(controller);
 	spin_lock_init(&dlp_drv.lock);
+
+	/* Register notifier for driver remove and resource conflicts*/
+	atomic_set(&dlp_drv.drv_remove_ongoing, 0);
+	dlp_drv.nb.notifier_call = dlp_driver_remove_notify_cb;
+	register_reboot_notifier(&dlp_drv.nb);
 
 	/* Warn if no DMA capability */
 	if (!dlp_drv.is_dma_capable)
@@ -1818,6 +1835,8 @@ static int dlp_driver_remove(struct device *dev)
 	if (hsi_port_claimed(client))
 		hsi_unregister_port_event(client);
 	hsi_client_set_drvdata(client, NULL);
+
+	unregister_reboot_notifier(&dlp_drv.nb);
 
 	/* Cleanup all channels */
 	dlp_driver_cleanup();
