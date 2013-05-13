@@ -938,14 +938,11 @@ static void hdcp_retry_enable(void)
  *  */
 static bool hdcp_ri_check_reschedule(void)
 {
-	#define RI_FRAME_WAIT_LIMIT 150
-
 	struct hdcp_context_t *ctx = hdcp_context;
 	uint32_t prev_ri_frm_cnt_status = ctx->prev_ri_frm_cnt_status;
 	uint8_t  ri_frm_cnt_status;
 	int32_t  ri_frm_cnt;
 	int32_t  adj;  /* Adjustment of ri_check_interval in msec */
-	uint32_t cnt_ri_wait = 0;
 	bool     ret = false;
 
 
@@ -1002,21 +999,11 @@ static bool hdcp_ri_check_reschedule(void)
 	 * (ie, ri_frm_cnt_status % 128 < 64) we continue.
 	 * Note the assumption here is this thread is scheduled to run at least
 	 * once in one 64-frame period.
-	 *
-	 * RI_FRAME_WAIT_LIMIT is in case HW stops updating ri frame
-	 * count and causes infinite looping.
 	*/
-	while ((ri_frm_cnt_status % 128 >= 64) &&
-			(cnt_ri_wait < RI_FRAME_WAIT_LIMIT)) {
+	while (ri_frm_cnt_status % 128 >= 64) {
 		msleep(hdcp_context->video_refresh_interval);
 		ipil_hdcp_get_ri_frame_count(&ri_frm_cnt_status);
-		cnt_ri_wait++;
 		pr_debug("current Ri frame count = %d\n", ri_frm_cnt_status);
-	}
-
-	if (RI_FRAME_WAIT_LIMIT == cnt_ri_wait) {
-		ret = false;
-		goto exit;
 	}
 
 	/* Match Ri with Ri'*/
