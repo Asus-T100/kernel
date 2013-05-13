@@ -805,6 +805,9 @@ int psb_msvdx_init(struct drm_device *dev)
 			return 1;
 	}
 
+	if (dev_priv->msvdx_private == NULL)
+		return 1;
+
 	msvdx_priv = dev_priv->msvdx_private;
 
 	msvdx_priv->msvdx_busy = 0;
@@ -880,7 +883,6 @@ int psb_msvdx_init(struct drm_device *dev)
 int psb_msvdx_init(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv = psb_priv(dev);
-	uint32_t cmd;
 	int ret;
 	struct msvdx_private *msvdx_priv;
 

@@ -831,15 +831,23 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 	struct ttm_buffer_object *cmd_buffer = NULL;
 	struct psb_ttm_fence_rep fence_arg;
 	struct drm_psb_private *dev_priv = psb_priv(dev);
-	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
+	struct msvdx_private *msvdx_priv = NULL;
 #ifdef SUPPORT_VSP
-	struct vsp_private *vsp_priv = dev_priv->vsp_private;
+	struct vsp_private *vsp_priv = NULL;
 #endif
-	struct psb_video_ctx *pos, *n, *msvdx_ctx;
+	struct psb_video_ctx *pos = NULL;
+	struct psb_video_ctx *n = NULL;
+	struct psb_video_ctx *msvdx_ctx = NULL;
 	int engine, po_correct;
 	int found = 0;
 	struct psb_context *context = NULL;
 
+	if (dev_priv == NULL)
+		return -EINVAL;
+	msvdx_priv = dev_priv->msvdx_private;
+#ifdef SUPPORT_VSP
+	vsp_priv = dev_priv->vsp_private;
+#endif
 	ret = ttm_read_lock(&dev_priv->ttm_lock, true);
 	if (unlikely(ret != 0))
 		return ret;
