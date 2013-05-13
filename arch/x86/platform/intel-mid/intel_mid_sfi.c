@@ -33,7 +33,7 @@ static struct sfi_table_oemb byt_oemb_table_vv = {
 		.vendor_id = VENDOR_INTEL,
 		.platform_family_id = INTEL_BYT_TABLET,
 		.product_line_id = INTEL_BYT_TABLET_BLK_ENG,
-		.hardware_id = BYT_TABLET_FRCB_VV3,
+		.hardware_id = BYT_TABLET_BLK_VV3,
 	},
 };
 
@@ -44,7 +44,7 @@ static struct sfi_table_oemb byt_oemb_table_pr1 = {
 		.vendor_id = VENDOR_INTEL,
 		.platform_family_id = INTEL_BYT_TABLET,
 		.product_line_id = INTEL_BYT_TABLET_BLK_ENG,
-		.hardware_id = BYT_TABLET_FRCB_PR1_1,
+		.hardware_id = BYT_TABLET_BLK_PR1_1,
 	},
 };
 
