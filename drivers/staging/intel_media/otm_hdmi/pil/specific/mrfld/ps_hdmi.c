@@ -302,20 +302,6 @@ bool ps_hdmi_get_cable_status(void *context)
 }
 
 /**
- * notify security component of hdcp and hdmi cable status
- *
- * @hdcp	HDCP status: true if phase1 is enabled
- * @cable	HDMI connection status: true if connected
- *
- * Returns:	none
- */
-void ps_hdmi_update_security_hdmi_hdcp_status(bool hdcp, bool cable)
-{
-	/* Note: do nothing since not clear if mrfld needs this or not */
-	return;
-}
-
-/**
  * hdmi interrupt handler (top half).
  * @irq:	irq number
  * @data:	data for the interrupt handler

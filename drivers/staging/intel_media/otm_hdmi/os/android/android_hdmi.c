@@ -2137,8 +2137,6 @@ android_hdmi_detect(struct drm_connector *connector,
 
 #ifdef OTM_HDMI_HDCP_ENABLE
 	otm_hdmi_hdcp_set_hpd_state(hdmi_priv->context, data);
-#else
-	otm_hdmi_update_security_hdmi_hdcp_status(false, data);
 #endif
 
 	if (data) {
