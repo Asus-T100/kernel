@@ -79,6 +79,8 @@ static struct class_compat *switch_class;
 static LIST_HEAD(extcon_dev_list);
 static DEFINE_MUTEX(extcon_dev_list_lock);
 
+static BLOCKING_NOTIFIER_HEAD(extcon_dev_notifier_list);
+
 /**
  * check_mutually_exclusive - Check if new_state violates mutually_exclusive
  *			    condition.
@@ -647,6 +649,30 @@ static void dummy_sysfs_dev_release(struct device *dev)
 {
 }
 
+void extcon_dev_register_notify(struct notifier_block *nb)
+{
+	blocking_notifier_chain_register(&extcon_dev_notifier_list, nb);
+}
+EXPORT_SYMBOL_GPL(extcon_dev_register_notify);
+
+void extcon_dev_unregister_notify(struct notifier_block *nb)
+{
+	blocking_notifier_chain_unregister(&extcon_dev_notifier_list, nb);
+}
+EXPORT_SYMBOL_GPL(extcon_dev_unregister_notify);
+
+void extcon_dev_notify_add_device(struct extcon_dev *edev)
+{
+	blocking_notifier_call_chain(&extcon_dev_notifier_list,
+				EXTCON_DEVICE_ADD, edev);
+}
+
+void extcon_dev_notify_remove_device(struct extcon_dev *edev)
+{
+	blocking_notifier_call_chain(&extcon_dev_notifier_list,
+			EXTCON_DEVICE_REMOVE, edev);
+}
+
 /**
  * extcon_dev_register() - Register a new extcon device
  * @edev	: the new extcon device (should be allocated before calling)
@@ -832,6 +858,8 @@ int extcon_dev_register(struct extcon_dev *edev, struct device *dev)
 	list_add(&edev->entry, &extcon_dev_list);
 	mutex_unlock(&extcon_dev_list_lock);
 
+	extcon_dev_notify_add_device(edev);
+
 	return 0;
 
 err_dev:
@@ -865,6 +893,7 @@ EXPORT_SYMBOL_GPL(extcon_dev_register);
  */
 void extcon_dev_unregister(struct extcon_dev *edev)
 {
+	extcon_dev_notify_remove_device(edev);
 	extcon_cleanup(edev, false);
 }
 EXPORT_SYMBOL_GPL(extcon_dev_unregister);
