@@ -562,7 +562,7 @@ static int ulpmc_get_battery_property(struct power_supply *psy,
 					enum power_supply_property psp,
 					union power_supply_propval *val)
 {
-	int ret = 0;
+	int ret = 0, batt_volt;
 	struct ulpmc_chip_info *chip = container_of(psy,
 				struct ulpmc_chip_info, bat);
 	mutex_lock(&chip->lock);
@@ -614,6 +614,18 @@ static int ulpmc_get_battery_property(struct power_supply *psy,
 		ret = ulpmc_get_capacity(chip);
 		if (ret < 0)
 			goto i2c_read_err;
+		/* do critical battery voltage check */
+		if (ret > 0) {
+			batt_volt = ulpmc_read_reg16(chip->client,
+							ULPMC_FG_REG_VOLT);
+			if (batt_volt < 0) {
+				ret = batt_volt;
+				goto i2c_read_err;
+			}
+			/* set capacity to 0% in case crit batt threshold */
+			if (batt_volt < chip->pdata->volt_sh_min)
+				ret = 0;
+		}
 		val->intval = ret;
 		break;
 	case POWER_SUPPLY_PROP_TEMP:
