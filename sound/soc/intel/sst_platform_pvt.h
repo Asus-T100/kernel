@@ -158,6 +158,19 @@ int sst_fill_stream_params(void *substream,
 #define SST_IP_FM		SST_MIX_IP(18)
 
 #define SST_PIPE_CONTROL	0x00
+#define SST_COMPRESS_VOL	0x01
+
+int sst_algo_int_ctl_info(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_info *uinfo);
+
+struct sst_algo_int_control_v2 {
+	struct soc_mixer_control mc;
+	u16 module_id; /* module identifieer */
+	u16 pipe_id; /* location info: pipe_id + instance_id */
+	u16 instance_id;
+	unsigned int value; /* Value received is stored here */
+};
+
 struct sst_data {
 	struct platform_device *pdev;
 	struct sst_platform_data *pdata;

@@ -25,19 +25,42 @@
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
 #include <sound/soc.h>
+#include <sound/asound.h>
+#include <asm/platform_sst_audio.h>
+#include "../platform_ipc_v2.h"
 #include "../sst_platform.h"
 #include "../sst_platform_pvt.h"
+#include "ipc_lib.h"
 
-struct snd_sst_bytes {
-	u8 type;
-	u8 ipc_msg;
-	u8 block;
-	u8 task_id;
-	u8 pipe_id;
-	u8 rsvd;
-	u16 len;
-	char bytes[0];
-};
+
+#define SST_ALGO_KCONTROL_INT(xname, xreg, xshift, xmax, xinvert,\
+	xhandler_get, xhandler_put, xmod, xpipe, xinstance, default_val) \
+{	.iface = SNDRV_CTL_ELEM_IFACE_MIXER, .name = xname, \
+	.info = sst_algo_int_ctl_info, \
+	.get = xhandler_get, .put = xhandler_put, \
+	.private_value = (unsigned long)&(struct sst_algo_int_control_v2) \
+		{.mc.reg = xreg, .mc.rreg = xreg, .mc.shift = xshift, \
+		.mc.rshift = xshift, .mc.max = xmax, .mc.platform_max = xmax, \
+		.mc.invert = xinvert, .module_id = xmod, .pipe_id = xpipe, \
+		.instance_id = xinstance, .value = default_val } }
+
+int sst_algo_int_ctl_info(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_info *uinfo)
+{
+	struct sst_algo_int_control_v2 *amc = (void *)kcontrol->private_value;
+	struct soc_mixer_control *mc = &amc->mc;
+	int platform_max;
+
+	if (!mc->platform_max)
+		mc->platform_max = mc->max;
+	platform_max = mc->platform_max;
+
+	uinfo->type = SNDRV_CTL_ELEM_TYPE_INTEGER;
+	uinfo->count = 1;
+	uinfo->value.integer.min = 0;
+	uinfo->value.integer.max = platform_max;
+	return 0;
+}
 
 unsigned int sst_soc_read(struct snd_soc_platform *platform,
 			unsigned int reg)
@@ -1480,7 +1503,7 @@ static int sst_byte_control_get(struct snd_kcontrol *kcontrol,
 
 static int sst_check_binary_input(char *stream)
 {
-	struct snd_sst_bytes *bytes = (struct snd_sst_bytes *)stream;
+	struct snd_sst_bytes_v2 *bytes = (struct snd_sst_bytes_v2 *)stream;
 
 	if (bytes->len == 0 || bytes->len > 1000) {
 		pr_err("length out of bounds %d\n", bytes->len);
@@ -1549,11 +1572,64 @@ static int sst_pipe_id_control_set(struct snd_kcontrol *kcontrol,
 	return ret;
 }
 
-static const struct snd_kcontrol_new sst_byte_controls[] = {
+/* dB range for mrfld compress volume is -144dB to +36dB.
+ * Gain library expects user input in terms of 0.1dB, for example,
+ * 60 (in decimal) represents 6dB.
+ * MW will pass 2's complement value for negative dB values.
+ */
+static int sst_compr_vol_get(struct snd_kcontrol *kcontrol,
+	struct snd_ctl_elem_value *ucontrol)
+{
+	struct sst_algo_int_control_v2 *amc = (void *)kcontrol->private_value;
+
+	ucontrol->value.integer.value[0] = amc->value;
+	pr_debug("%s: cell_gain = %d\n", __func__, amc->value);
+
+	return 0;
+}
+
+static int sst_compr_vol_set(struct snd_kcontrol *kcontrol,
+	struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_platform *platform = snd_kcontrol_chip(kcontrol);
+	struct sst_data *sst = snd_soc_platform_get_drvdata(platform);
+	struct sst_algo_int_control_v2 *amc = (void *)kcontrol->private_value;
+	int ret = 0;
+	unsigned int old_val;
+
+	pr_debug("%s: cell_gain = %ld\n", __func__,\
+				ucontrol->value.integer.value[0]);
+	old_val = amc->value;
+	amc->value = ucontrol->value.integer.value[0];
+	sst_create_compr_vol_ipc(sst->byte_stream, SND_SST_BYTES_SET,
+					amc);
+
+	mutex_lock(&sst->lock);
+	ret = sst_dsp->ops->set_generic_params(SST_SET_BYTE_STREAM,
+						sst->byte_stream);
+	mutex_unlock(&sst->lock);
+	if (ret) {
+		pr_err("failed to set compress vol in fw: %d\n", ret);
+		amc->value = old_val;
+		return ret;
+	}
+	return 0;
+}
+
+/* This value corresponds to two's complement value of -10 or -1dB */
+#define SST_COMPR_VOL_MAX_INTEG_GAIN 0xFFF6
+#define SST_COMPR_VOL_MUTE 0xFA60 /* 2's complement of -1440 or -144dB*/
+
+static const struct snd_kcontrol_new sst_mrfld_controls[] = {
 	SND_SOC_BYTES_EXT("SST Byte control", SST_MAX_BIN_BYTES,
 		       sst_byte_control_get, sst_byte_control_set),
 	SOC_SINGLE_EXT("SST Pipe_id control", SST_PIPE_CONTROL, 0, 0x9A, 0,
 		sst_pipe_id_control_get, sst_pipe_id_control_set),
+	SST_ALGO_KCONTROL_INT("Compress Volume", SST_COMPRESS_VOL,
+		0, SST_COMPR_VOL_MAX_INTEG_GAIN, 0,
+		sst_compr_vol_get, sst_compr_vol_set,
+		SST_CODEC_VOLUME_CONTROL, PIPE_MEDIA0_IN, 0,
+		SST_COMPR_VOL_MUTE),
 };
 
 int __devinit sst_dsp_init(struct snd_soc_platform *platform)
@@ -1572,7 +1648,7 @@ int __devinit sst_dsp_init(struct snd_soc_platform *platform)
 	snd_soc_dapm_add_routes(&platform->dapm, intercon,
 			ARRAY_SIZE(intercon));
 	snd_soc_dapm_new_widgets(&platform->dapm);
-	snd_soc_add_platform_controls(platform, sst_byte_controls,
-			ARRAY_SIZE(sst_byte_controls));
+	snd_soc_add_platform_controls(platform, sst_mrfld_controls,
+			ARRAY_SIZE(sst_mrfld_controls));
 	return 0;
 }

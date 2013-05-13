@@ -355,21 +355,10 @@ struct lpe_log_buf_hdr {
 	u32 wr_addr;
 };
 
-enum snd_sst_bytes_type {
-	SND_SST_BYTES_SET = 0x1,
-	SND_SST_BYTES_GET = 0x2,
-};
-
-struct snd_sst_bytes {
-	u8 type;
-	u8 ipc_msg;
-	u8 block;
-	u8 task_id;
-	u8 pipe_id;
-	u8 rsvd;
-	u16 len;
+struct snd_ssp_config {
+	int size;
 	char bytes[0];
-} __packed;
+};
 
 struct snd_sst_probe_bytes {
 	u16 len;
