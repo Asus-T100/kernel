@@ -635,6 +635,7 @@ static int snd_ctp_mc_probe(struct platform_device *pdev)
 {
 	int ret_val = 0;
 	struct ctp_mc_private *ctx;
+	struct ctp_audio_platform_data *pdata = pdev->dev.platform_data;
 
 	pr_debug("In %s\n", __func__);
 	ctx = devm_kzalloc(&pdev->dev, sizeof(*ctx), GFP_ATOMIC);
@@ -651,7 +652,15 @@ static int snd_ctp_mc_probe(struct platform_device *pdev)
 
 	ctx->ops->card_name(&snd_soc_card_ctp);
 	ctx->ops->dai_link(&snd_soc_card_ctp);
-
+	if (ctx->ops->dmic3_support) {
+		ret_val = gpio_request(pdata->codec_gpio_dmic, "dmic_switch_gpio");
+		if (!ret_val) {
+			ctx->dmic_gpio = pdata->codec_gpio_dmic;
+		} else {
+			pr_err("req dmic_switch_gpio failed:%d\n", ret_val);
+			return ret_val;
+		}
+	}
 	ret_val = snd_ctp_register_jack_data(pdev, ctx);
 	if (ret_val)
 		goto free_jack;

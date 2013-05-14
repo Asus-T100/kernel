@@ -515,6 +515,7 @@ struct snd_soc_machine_ops ctp_ht_wm5102_ops = {
 	.ctp_init = ctp_wm5102_init,
 	.dai_link = ctp_wm5102_dai_link,
 	.jack_support = false,
+	.dmic3_support = false,
 	.mic_bias = MICBIAS_NAME,
 	.set_bias_level = set_bias_level,
 	.set_bias_level_post = set_bias_level_post,
