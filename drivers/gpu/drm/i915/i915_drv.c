@@ -486,7 +486,7 @@ int i915_suspend(struct drm_device *dev, pm_message_t state)
 	if (dev->switch_power_state == DRM_SWITCH_POWER_OFF)
 		return 0;
 	/* Added for HDMI Audio */
-	error = i915_hdmi_audio_suspend(dev);
+	error = mid_hdmi_audio_suspend(dev);
 	if (error)
 		return error;
 
@@ -528,7 +528,7 @@ int i915_resume(struct drm_device *dev)
 
 	drm_kms_helper_poll_enable(dev);
 	/* Added for HDMI Audio */
-	i915_hdmi_audio_resume(dev);
+	mid_hdmi_audio_resume(dev);
 	return 0;
 }
 
@@ -862,7 +862,7 @@ static int i915_pm_suspend(struct device *dev)
 	if (drm_dev->switch_power_state == DRM_SWITCH_POWER_OFF)
 		return 0;
 	/* Added for HDMI Audio */
-	error = i915_hdmi_audio_suspend(drm_dev);
+	error = mid_hdmi_audio_suspend(drm_dev);
 	if (error)
 		return error;
 

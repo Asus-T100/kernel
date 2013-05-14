@@ -92,22 +92,16 @@ i915_disable_pipestat(drm_i915_private_t *dev_priv, int pipe, u32 mask)
 void
 i915_enable_lpe_pipestat(drm_i915_private_t *dev_priv, int pipe, u32 mask)
 {
-	/* Currently Enabling on both streams. verify correct stream */
 	mask |= I915_HDMI_AUDIO_UNDERRUN | I915_HDMI_AUDIO_BUFFER_DONE;
 	/* Enable the interrupt, clear any pending status */
-	I915_WRITE(I915_LPE_AUDIO_HDMI_STATUS_A, mask);
 	I915_WRITE(I915_LPE_AUDIO_HDMI_STATUS_B, mask);
-	POSTING_READ(I915_LPE_AUDIO_HDMI_STATUS_A);
 	POSTING_READ(I915_LPE_AUDIO_HDMI_STATUS_B);
 }
 
 void
 i915_disable_lpe_pipestat(drm_i915_private_t *dev_priv, int pipe, u32 mask)
 {
-	/* Currently Disabling on both streams. verify correct stream */
-	I915_WRITE(I915_LPE_AUDIO_HDMI_STATUS_A, ~mask);
 	I915_WRITE(I915_LPE_AUDIO_HDMI_STATUS_B, ~mask);
-	POSTING_READ(I915_LPE_AUDIO_HDMI_STATUS_A);
 	POSTING_READ(I915_LPE_AUDIO_HDMI_STATUS_B);
 }
 
@@ -595,30 +589,12 @@ static irqreturn_t valleyview_irq_handler(DRM_IRQ_ARGS)
 			}
 		}
 
-		if (iir & I915_LPE_PIPE_A_INTERRUPT) {
-			/* Added for HDMI Audio */
-			lpe_stream = I915_READ(I915_LPE_AUDIO_HDMI_STATUS_A);
-			if (lpe_stream & I915_HDMI_AUDIO_UNDERRUN) {
-				I915_WRITE(I915_LPE_AUDIO_HDMI_STATUS_A,
-						lpe_stream);
-				i915_hdmi_audio_signal_event(dev,
-					HAD_EVENT_AUDIO_BUFFER_UNDERRUN);
-			}
-
-			if (lpe_stream & I915_HDMI_AUDIO_BUFFER_DONE) {
-				I915_WRITE(I915_LPE_AUDIO_HDMI_STATUS_A,
-						lpe_stream);
-				i915_hdmi_audio_signal_event(dev,
-					HAD_EVENT_AUDIO_BUFFER_DONE);
-			}
-		}
-
 		if (iir & I915_LPE_PIPE_B_INTERRUPT) {
 			lpe_stream = I915_READ(I915_LPE_AUDIO_HDMI_STATUS_B);
 			if (lpe_stream & I915_HDMI_AUDIO_UNDERRUN) {
 				I915_WRITE(I915_LPE_AUDIO_HDMI_STATUS_B,
 						lpe_stream);
-				i915_hdmi_audio_signal_event(dev,
+				mid_hdmi_audio_signal_event(dev,
 					HAD_EVENT_AUDIO_BUFFER_UNDERRUN);
 			}
 
@@ -626,7 +602,7 @@ static irqreturn_t valleyview_irq_handler(DRM_IRQ_ARGS)
 			if (lpe_stream & I915_HDMI_AUDIO_BUFFER_DONE) {
 				I915_WRITE(I915_LPE_AUDIO_HDMI_STATUS_B,
 						lpe_stream);
-				i915_hdmi_audio_signal_event(dev,
+				mid_hdmi_audio_signal_event(dev,
 					HAD_EVENT_AUDIO_BUFFER_DONE);
 			}
 		}
@@ -1607,27 +1583,12 @@ int i915_enable_hdmi_audio_int(struct drm_device *dev)
 	drm_i915_private_t *dev_priv = (drm_i915_private_t *) dev->dev_private;
 	unsigned long irqflags;
 	u32 imr;
-	/* hack for time being */
-	int pipe;
-#if 0
-/* ToDo: Check for pipe enabled. How LPE stream A/B
- * related to display pipe A/B */
-	if (!i915_pipe_enabled(dev, pipe))
-		return -EINVAL;
-#endif
+	int pipe = 1;
+
 	spin_lock_irqsave(&dev_priv->irq_lock, irqflags);
 	imr = I915_READ(VLV_IMR);
-#if 0
-/* Check for LPE A/B */
-	if (pipe == 0)
-		imr &= ~I915_DISPLAY_PIPE_A_VBLANK_INTERRUPT;
-	else
-		imr &= ~I915_DISPLAY_PIPE_B_VBLANK_INTERRUPT;
-#endif
-	/* if (pipe == 0) */
-		imr &= ~I915_LPE_PIPE_A_INTERRUPT;
-	/* else */
-		imr &= ~I915_LPE_PIPE_B_INTERRUPT;
+	/* Audio is on Stream B */
+	imr &= ~I915_LPE_PIPE_B_INTERRUPT;
 	I915_WRITE(VLV_IMR, imr);
 	i915_enable_lpe_pipestat(dev_priv, pipe,
 			     I915_HDMI_AUDIO_UNDERRUN_ENABLE);
@@ -1700,27 +1661,11 @@ int i915_disable_hdmi_audio_int(struct drm_device *dev)
 	drm_i915_private_t *dev_priv = (drm_i915_private_t *) dev->dev_private;
 	unsigned long irqflags;
 	u32 imr;
-	/* hack for time being */
-	int pipe;
-#if 0
-/* ToDo: Check for pipe enabled. How LPE stream A/B
- * related to display pipe A/B */
-	if (!i915_pipe_enabled(dev, pipe))
-		return -EINVAL;
-#endif
+	int pipe = 1;
+
 	spin_lock_irqsave(&dev_priv->irq_lock, irqflags);
 	imr = I915_READ(VLV_IMR);
-#if 0
-/* Check for LPE A/B */
-	if (pipe == 0)
-		imr &= I915_DISPLAY_PIPE_A_VBLANK_INTERRUPT;
-	else
-		imr &= I915_DISPLAY_PIPE_B_VBLANK_INTERRUPT;
-#endif
-	/*if (pipe == 0) */
-		imr &= I915_LPE_PIPE_A_INTERRUPT;
-	/*else */
-		imr &= I915_LPE_PIPE_B_INTERRUPT;
+	imr |= I915_LPE_PIPE_B_INTERRUPT;
 	I915_WRITE(VLV_IMR, imr);
 	i915_disable_lpe_pipestat(dev_priv, pipe,
 			     I915_HDMI_AUDIO_UNDERRUN_ENABLE);

@@ -813,14 +813,14 @@ intel_hdmi_detect(struct drm_connector *connector, bool force)
 	if ((status == connector_status_connected)
 			&& (status != i915_hdmi_state)) {
 		/* Added for HDMI Audio */
-		i915_hdmi_audio_signal_event(dev_priv->dev,
+		mid_hdmi_audio_signal_event(dev_priv->dev,
 				HAD_EVENT_HOT_PLUG);
 		if (intel_hdmi->force_audio != HDMI_AUDIO_AUTO)
 			intel_hdmi->has_audio =
 			(intel_hdmi->force_audio == HDMI_AUDIO_ON);
 	} else if (status != i915_hdmi_state)  {
 		/* Added for HDMI Audio */
-		i915_hdmi_audio_signal_event(dev_priv->dev,
+		mid_hdmi_audio_signal_event(dev_priv->dev,
 			HAD_EVENT_HOT_UNPLUG);
 	}
 
@@ -1002,7 +1002,7 @@ void i915_had_wq(struct work_struct *work)
 	DRM_ERROR("Checking for HDMI connection at boot\n");
 	if (i915_hdmi_state == connector_status_connected) {
 		DRM_ERROR("hdmi_do_audio_wq: HDMI plugged in\n");
-		i915_hdmi_audio_signal_event(dev_priv->dev,
+		mid_hdmi_audio_signal_event(dev_priv->dev,
 			HAD_EVENT_HOT_PLUG);
 	}
 }

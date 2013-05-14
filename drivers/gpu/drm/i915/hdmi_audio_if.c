@@ -33,8 +33,8 @@ int i915_hdmi_state;
 #define IS_HDMI_AUDIO_I915(reg) ((reg >= 0x65000) && (reg < 0x65FFF))
 
 /* Added for HDMI Audio */
-#define MAX_ELD_BYTES 128
-uint8_t hdmi_eld[MAX_ELD_BYTES];
+#define HAD_MAX_ELD_BYTES 84
+uint8_t hdmi_eld[HAD_MAX_ELD_BYTES];
 
 static struct hdmi_audio_priv *hdmi_priv;
 
@@ -46,24 +46,24 @@ void i915_hdmi_audio_init(struct hdmi_audio_priv *p_hdmi_priv)
 /* Added for HDMI Audio */
 void hdmi_get_eld(uint8_t *eld)
 {
-	memcpy(hdmi_eld, eld, MAX_ELD_BYTES);
+	memcpy(hdmi_eld, eld, HAD_MAX_ELD_BYTES);
 }
 
 static inline int android_hdmi_get_eld(struct drm_device *dev, void *eld)
 {
-	memcpy(eld, hdmi_eld, MAX_ELD_BYTES);
+	memcpy(eld, hdmi_eld, HAD_MAX_ELD_BYTES);
 	return 0;
 }
 
 /*
  * return whether HDMI audio device is busy.
  */
-bool i915_hdmi_audio_is_busy(struct drm_device *dev)
+bool mid_hdmi_audio_is_busy(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv =
 		(struct drm_i915_private *) dev->dev_private;
 	int hdmi_audio_busy = 0;
-	struct hdmi_audio_event hdmi_audio_event;
+	hdmi_audio_event_t hdmi_audio_event;
 
 	if (i915_hdmi_state == 0) {
 		/* HDMI is not connected, assuming audio device is idle. */
@@ -83,11 +83,11 @@ bool i915_hdmi_audio_is_busy(struct drm_device *dev)
 /*
  * return whether HDMI audio device is suspended.
  */
-bool i915_hdmi_audio_suspend(struct drm_device *dev)
+bool mid_hdmi_audio_suspend(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv =
 		(struct drm_i915_private *) dev->dev_private;
-	struct hdmi_audio_event hdmi_audio_event;
+	hdmi_audio_event_t hdmi_audio_event;
 	int ret = 0;
 
 	DRM_DEBUG_DRIVER("%s: i915_hdmi_state %d", __func__,
@@ -108,7 +108,7 @@ bool i915_hdmi_audio_suspend(struct drm_device *dev)
 	return true;
 }
 
-void i915_hdmi_audio_resume(struct drm_device *dev)
+void mid_hdmi_audio_resume(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv =
 		(struct drm_i915_private *) dev->dev_private;
@@ -125,12 +125,12 @@ void i915_hdmi_audio_resume(struct drm_device *dev)
 		dev_priv->had_interface->resume(dev_priv->had_pvt_data);
 }
 
-void i915_hdmi_audio_signal_event(struct drm_device *dev,
+void mid_hdmi_audio_signal_event(struct drm_device *dev,
 		enum had_event_type event)
 {
 	struct drm_i915_private *dev_priv =
 		(struct drm_i915_private *) dev->dev_private;
-	DRM_ERROR("i915_hdmi_state =%d\n" , i915_hdmi_state);
+
 	if (dev_priv->had_event_callbacks)
 		(*dev_priv->had_event_callbacks)(event,
 			dev_priv->had_pvt_data);
@@ -314,7 +314,7 @@ static struct hdmi_audio_query_set_ops hdmi_audio_get_set_ops = {
 	.hdmi_audio_set_caps = hdmi_audio_set_caps,
 };
 
-int i915_hdmi_audio_setup(
+int mid_hdmi_audio_setup(
 		had_event_call_back audio_callbacks,
 		struct hdmi_audio_registers_ops *reg_ops,
 		struct hdmi_audio_query_set_ops *query_ops)
@@ -323,7 +323,7 @@ int i915_hdmi_audio_setup(
 	struct drm_i915_private *dev_priv =
 		(struct drm_i915_private *) dev->dev_private;
 	int ret = 0;
-	DRM_ERROR("%s: called\n", __func__);
+	DRM_DEBUG_DRIVER("%s: called\n", __func__);
 
 	reg_ops->hdmi_audio_read_register =
 		(hdmi_audio_reg_ops.hdmi_audio_read_register);
@@ -340,15 +340,15 @@ int i915_hdmi_audio_setup(
 
 	return ret;
 }
-EXPORT_SYMBOL(i915_hdmi_audio_setup);
+EXPORT_SYMBOL(mid_hdmi_audio_setup);
 
-int i915_hdmi_audio_register(struct snd_intel_had_interface *driver,
+int mid_hdmi_audio_register(struct snd_intel_had_interface *driver,
 				void *had_data)
 {
 	struct drm_device *dev = hdmi_priv->dev;
 	struct drm_i915_private *dev_priv =
 		(struct drm_i915_private *) dev->dev_private;
-	DRM_ERROR("%s: called\n", __func__);
+	DRM_DEBUG_DRIVER("%s: called\n", __func__);
 	dev_priv->had_pvt_data = had_data;
 	dev_priv->had_interface = driver;
 
@@ -363,7 +363,7 @@ int i915_hdmi_audio_register(struct snd_intel_had_interface *driver,
 
 	return 0;
 }
-EXPORT_SYMBOL(i915_hdmi_audio_register);
+EXPORT_SYMBOL(mid_hdmi_audio_register);
 #else
 bool hdmi_audio_is_busy(struct drm_device *dev)
 {
@@ -390,7 +390,7 @@ void i915_hdmi_audio_init(struct hdmi_audio_priv *hdmi_priv)
 	DRM_INFO("%s: HDMI is not supported.\n", __func__);
 }
 
-int i915_hdmi_audio_setup(
+int mid_hdmi_audio_setup(
 		had_event_call_back audio_callbacks,
 		struct hdmi_audio_registers_ops *reg_ops,
 		struct hdmi_audio_query_set_ops *query_ops)
@@ -398,13 +398,13 @@ int i915_hdmi_audio_setup(
 	DRM_ERROR("%s: HDMI is not supported.\n", __func__);
 	return -ENODEV;
 }
-EXPORT_SYMBOL(i915_hdmi_audio_setup);
+EXPORT_SYMBOL(mid_hdmi_audio_setup);
 
-int i915_hdmi_audio_register(struct snd_intel_had_interface *driver,
+int mid_hdmi_audio_register(struct snd_intel_had_interface *driver,
 			void *had_data)
 {
 	DRM_ERROR("%s: HDMI is not supported.\n", __func__);
 	return -ENODEV;
 }
-EXPORT_SYMBOL(i915_hdmi_audio_register);
+EXPORT_SYMBOL(mid_hdmi_audio_register);
 #endif

@@ -36,6 +36,7 @@
 #include "intel_drv.h"
 #include "i915_drm.h"
 #include "i915_drv.h"
+#include "hdmi_audio_if.h"
 /*#include "i915_rpm.h"*/
 #include "i915_trace.h"
 #include "drm_dp_helper.h"
@@ -7108,7 +7109,7 @@ ssize_t display_runtime_suspend(struct drm_device *drm_dev)
 				intel_encoder_prepare(&intel_encoder->base);
 		}
 	}
-	int ret = i915_hdmi_audio_suspend(drm_dev);
+	int ret = mid_hdmi_audio_suspend(drm_dev);
 	if (ret != true)
 		DRM_ERROR("Error suspending HDMI audio\n");
 	dev_priv->s0ixstat = false;
@@ -7142,7 +7143,7 @@ ssize_t display_runtime_resume(struct drm_device *drm_dev)
 			}
 		}
 	}
-	i915_hdmi_audio_resume(drm_dev);
+	mid_hdmi_audio_resume(drm_dev);
 	dev_priv->s0ixstat = false;
 	mutex_unlock(&drm_dev->mode_config.mutex);
 	return 0;
