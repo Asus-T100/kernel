@@ -1250,7 +1250,7 @@ static struct pci_driver atomisp_pci_driver = {
 	.driver = {
 		.pm = DEV_PM_OPS,
 	},
-	.name = "atomisp",
+	.name = "atomisp-" ATOMISP_POSTFIX,
 	.id_table = atomisp_pci_tbl,
 	.probe = atomisp_pci_probe,
 	.remove = atomisp_pci_remove,
