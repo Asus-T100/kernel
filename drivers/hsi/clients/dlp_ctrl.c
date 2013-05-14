@@ -424,16 +424,12 @@ static void dlp_ctrl_complete_tx_async(struct hsi_msg *msg)
 static void dlp_ctrl_complete_rx(struct hsi_msg *msg)
 {
 	struct dlp_channel *ch_ctx;
-	struct dlp_ctrl_context *ctrl_ctx = DLP_CTRL_CTX;
+	struct dlp_ctrl_context *ctrl_ctx;
 	struct dlp_command_params params, tx_params;
 	unsigned long flags;
 	int hsi_channel, elp_channel, ret, response, msg_complete, state;
 
 	params.channel = 0; /* To please KlocWork */
-
-	/* Copy the reponse */
-	memcpy(&params,
-	       sg_virt(msg->sgt.sgl), sizeof(struct dlp_command_params));
 
 	/* Check the link readiness (TTY still opened) */
 	if (!dlp_tty_is_link_valid()) {
@@ -444,6 +440,12 @@ static void dlp_ctrl_complete_rx(struct hsi_msg *msg)
 		return;
 	}
 
+	/* Copy the reponse */
+	memcpy(&params,
+			sg_virt(msg->sgt.sgl),
+			sizeof(struct dlp_command_params));
+
+	ctrl_ctx = DLP_CTRL_CTX;
 	response = -1;
 	memcpy(&tx_params, &params, sizeof(struct dlp_command_params));
 	msg_complete = (msg->status == HSI_STATUS_COMPLETED);
@@ -582,7 +584,7 @@ static int dlp_ctrl_cmd_send(struct dlp_channel *ch_ctx,
 				unsigned char param2, unsigned char param3)
 {
 	int ret = 0, old_state;
-	struct dlp_ctrl_context *ctrl_ctx = DLP_CTRL_CTX;
+	struct dlp_ctrl_context *ctrl_ctx;
 	struct dlp_command *dlp_cmd;
 	struct dlp_command_params expected_resp;
 	struct hsi_msg *tx_msg = NULL;
@@ -597,6 +599,8 @@ static int dlp_ctrl_cmd_send(struct dlp_channel *ch_ctx,
 
 		return ret;
 	}
+
+	ctrl_ctx = DLP_CTRL_CTX;
 
 	/* Save the current channel state */
 	old_state = dlp_ctrl_get_channel_state(ch_ctx->hsi_channel);
