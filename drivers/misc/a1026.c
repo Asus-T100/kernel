@@ -55,16 +55,8 @@ static int es305_i2c_read(u8 *rxData, int length, struct vp_ctxt *the_vp)
 {
 	int rc;
 	struct i2c_client *client = the_vp->i2c_dev;
-	struct i2c_msg msgs[] = {
-		{
-			.addr = client->addr,
-			.flags = I2C_M_RD,
-			.len = length,
-			.buf = rxData,
-		},
-	};
 
-	rc = i2c_transfer(client->adapter, msgs, 1);
+	rc = i2c_master_recv(client, rxData, length);
 	if (rc < 0) {
 		pr_debug("%s: transfer error %d\n", __func__, rc);
 		return rc;
@@ -85,16 +77,8 @@ static int es305_i2c_write(const u8 *txData, int length, struct vp_ctxt *the_vp)
 {
 	int rc;
 	struct i2c_client *client = the_vp->i2c_dev;
-	struct i2c_msg msg[] = {
-		{
-			.addr = client->addr,
-			.flags = 0,
-			.len = length,
-			.buf = txData,
-		},
-	};
 
-	rc = i2c_transfer(client->adapter, msg, 1);
+	rc = i2c_master_send(client, txData, length);
 	if (rc < 0) {
 		pr_debug("%s: transfer error %d\n", __func__, rc);
 		return rc;
