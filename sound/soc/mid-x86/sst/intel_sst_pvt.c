@@ -43,9 +43,10 @@
 #include "intel_sst_common.h"
 
 #define SST_EXCE_DUMP_BASE	0xFFFF2c00
-#define SST_EXCE_DUMP_WORD 4
-#define SST_EXCE_DUMP_LEN 32
-#define SST_EXCE_DUMP_SIZE ((SST_EXCE_DUMP_LEN)*(SST_EXCE_DUMP_WORD))
+#define SST_EXCE_DUMP_WORD	4
+#define SST_EXCE_DUMP_LEN	32
+#define SST_EXCE_DUMP_SIZE	((SST_EXCE_DUMP_LEN)*(SST_EXCE_DUMP_WORD))
+#define SST_EXCE_DUMP_OFFSET	0xA00
 
 /*
  * sst_wait_interruptible - wait on event
@@ -144,6 +145,7 @@ static void dump_sst_crash_area(void)
 
 	/* dump the firmware SRAM where the exception details are stored */
 	fw_dump_area = ioremap_nocache(SST_EXCE_DUMP_BASE, SST_EXCE_DUMP_SIZE);
+
 	pr_err("Firmware exception dump begins:\n");
 	pr_err("Exception start signature:%#x\n", readl(fw_dump_area + SST_EXCE_DUMP_WORD));
 	pr_err("EXCCAUSE:\t\t\t%#x\n", readl(fw_dump_area + SST_EXCE_DUMP_WORD*2));
@@ -246,7 +248,7 @@ static void sst_do_recovery(struct intel_sst_drv *sst)
 	sprintf(dram_event, "DRAM_DUMP_SIZE=%d", sst->dump_buf.dram_buf.size);
 	envp[env_offset++] = dram_event;
 	envp[env_offset] = NULL;
-	kobject_uevent_env(&sst->pci->dev.kobj, KOBJ_CHANGE, envp);
+	kobject_uevent_env(&sst->dev->kobj, KOBJ_CHANGE, envp);
 	pr_err("Recovery Uevent Sent!!\n");
 
 	spin_lock_irqsave(&sst->ipc_spin_lock, irq_flags);

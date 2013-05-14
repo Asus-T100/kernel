@@ -447,6 +447,27 @@ struct sst_ipc_reg {
 	int ipcx;
 	int ipcd;
 };
+
+struct sst_shim_regs64 {
+	u64 csr;
+	u64 pisr;
+	u64 pimr;
+	u64 isrx;
+	u64 isrd;
+	u64 imrx;
+	u64 imrd;
+	u64 ipcx;
+	u64 ipcd;
+	u64 isrsc;
+	u64 isrlpesc;
+	u64 imrsc;
+	u64 imrlpesc;
+	u64 ipcsc;
+	u64 ipclpesc;
+	u64 clkctl;
+	u64 csr2;
+};
+
 /***
  * struct intel_sst_drv - driver ops
  *
@@ -457,6 +478,7 @@ struct sst_ipc_reg {
  * @iram : SST IRAM pointer
  * @dram : SST DRAM pointer
  * @shim_phy_add : SST shim phy addr
+ * @shim_regs64: Struct to save shim registers
  * @ipc_dispatch_list : ipc messages dispatched
  * @ipc_post_msg_wq : wq to post IPC messages context
  * @ipc_process_msg : wq to process msgs from FW context
@@ -472,15 +494,13 @@ struct sst_ipc_reg {
  * @ipc_spin_lock : spin lock to handle audio shim access and ipc queue
  * @scard_ops : sst card ops
  * @pci : sst pci device struture
+ * @dev : pointer to current device struct
  * @sst_lock : sst device lock
  * @stream_lock : sst stream lock
  * @unique_id : sst unique id
  * @stream_cnt : total sst active stream count
  * @pb_streams : total active pb streams
  * @cp_streams : total active cp streams
- * @lpe_stalled : lpe stall status
- * @pmic_port_instance : active pmic port instance
- * @lpaudio_start : lpaudio status
  * @audio_start : audio status
  * @qos		: PM Qos struct
  */
@@ -501,6 +521,7 @@ struct intel_sst_drv {
 	unsigned int		dram_end;
 	unsigned int		ddr_end;
 	unsigned int		ddr_base;
+	struct sst_shim_regs64	*shim_regs64;
 	struct list_head        block_list;
 	struct list_head	ipc_dispatch_list;
 	struct snd_ssp_config   *ssp_config;
@@ -521,6 +542,7 @@ struct intel_sst_drv {
 	spinlock_t              pvt_id_lock; /* lock for allocating private id */
 	struct snd_pmic_ops	*scard_ops;
 	struct pci_dev		*pci;
+	struct device		*dev;
 	struct mutex            sst_lock;
 	struct mutex		stream_lock;
 	unsigned int            unique_id;
@@ -678,6 +700,14 @@ void dump_bytes(const void *data, size_t sz, char *dest,
 		unsigned char word_sz, unsigned char words_in_line);
 void print_bytes(const void *data, size_t sz, unsigned char word_sz,
 		 unsigned char words_in_line);
+int sst_alloc_drv_context(struct device *dev);
+int sst_driver_ops(struct intel_sst_drv *sst);
+struct sst_probe_info *sst_get_acpi_driver_data(const char *hid);
+int __devinit sst_acpi_probe(struct platform_device *pdev);
+int sst_acpi_remove(struct platform_device *pdev);
+void sst_save_shim64(struct intel_sst_drv *ctx, void __iomem *shim,
+		     struct sst_shim_regs64 *shim_regs);
+
 /*
  * sst_fill_header - inline to fill sst header
  *
