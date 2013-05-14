@@ -2390,7 +2390,7 @@ static void dwc3_gadget_power_on_or_soft_reset(struct dwc3 *dwc)
 
 static void link_state_change_work(struct work_struct *data)
 {
-	struct dwc3 *dwc = container_of(data, struct dwc3, link_work);
+	struct dwc3 *dwc = container_of(data, struct dwc3, link_work.work);
 
 	if (dwc->link_state == DWC3_LINK_STATE_U3) {
 		dev_info(dwc->dev, "device suspended; notify OTG\n");

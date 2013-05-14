@@ -857,13 +857,6 @@ static void dwc3_ep0_xfer_complete(struct dwc3 *dwc,
 	}
 }
 
-static void dwc3_ep0_do_control_setup(struct dwc3 *dwc,
-		const struct dwc3_event_depevt *event)
-{
-	dwc3_ep0_out_start(dwc);
-}
-
-
 static void __dwc3_ep0_do_control_data(struct dwc3 *dwc,
 		struct dwc3_ep *dep, struct dwc3_request *req)
 {
