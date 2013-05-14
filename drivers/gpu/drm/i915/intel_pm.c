@@ -30,6 +30,8 @@
 #include "intel_drv.h"
 #include "../../../platform/x86/intel_ips.h"
 #include <linux/module.h>
+/* HDMI Audio OSPM handling */
+#include <psb_powermgmt.h>
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 	#include <linux/earlysuspend.h>
@@ -3982,6 +3984,18 @@ void intel_s0ix_init(struct drm_device *dev)
 	register_early_suspend(&intel_display_early_suspend);
 }
 #endif
+
+/* Dummy Function for HDMI Audio Power management.
+ * Will be updated once S0iX code is integrated */
+bool ospm_power_using_hw_begin(int hw_island, UHBUsage usage)
+{
+	return 1;
+}
+
+void ospm_power_using_hw_end(int hw_island)
+{
+
+}
 
 /* Set up chip specific power management-related functions */
 void intel_init_pm(struct drm_device *dev)
