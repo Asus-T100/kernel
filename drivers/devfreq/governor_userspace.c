@@ -11,6 +11,7 @@
 
 #include <linux/slab.h>
 #include <linux/device.h>
+#include <linux/export.h>
 #include <linux/devfreq.h>
 #include <linux/pm.h>
 #include <linux/mutex.h>
@@ -123,3 +124,4 @@ const struct devfreq_governor devfreq_userspace = {
 	.exit = userspace_exit,
 	.no_central_polling = true,
 };
+EXPORT_SYMBOL(devfreq_userspace);

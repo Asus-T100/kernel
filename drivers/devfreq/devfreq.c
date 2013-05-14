@@ -119,6 +119,7 @@ int update_devfreq(struct devfreq *devfreq)
 	devfreq->previous_freq = freq;
 	return err;
 }
+EXPORT_SYMBOL(update_devfreq);
 
 /**
  * devfreq_notifier_call() - Notify that the device frequency requirements
@@ -428,6 +429,7 @@ err_dev:
 err_out:
 	return ERR_PTR(err);
 }
+EXPORT_SYMBOL(devfreq_add_device);
 
 /**
  * devfreq_remove_device() - Remove devfreq feature from a device.
@@ -459,6 +461,7 @@ int devfreq_remove_device(struct devfreq *devfreq)
 
 	return 0;
 }
+EXPORT_SYMBOL(devfreq_remove_device);
 
 static ssize_t show_governor(struct device *dev,
 			     struct device_attribute *attr, char *buf)

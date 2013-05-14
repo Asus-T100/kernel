@@ -10,6 +10,7 @@
  */
 
 #include <linux/errno.h>
+#include <linux/export.h>
 #include <linux/devfreq.h>
 #include <linux/math64.h>
 
@@ -25,7 +26,7 @@ static int devfreq_simple_ondemand_func(struct devfreq *df,
 	unsigned int dfso_upthreshold = DFSO_UPTHRESHOLD;
 	unsigned int dfso_downdifferential = DFSO_DOWNDIFFERENCTIAL;
 	struct devfreq_simple_ondemand_data *data = df->data;
-	unsigned long max = (df->max_freq) ? df->max_freq : UINT_MAX;
+	unsigned long max = (df->max_freq) ? df->max_freq : ULONG_MAX;
 
 	if (err)
 		return err;
@@ -92,3 +93,4 @@ const struct devfreq_governor devfreq_simple_ondemand = {
 	.name = "simple_ondemand",
 	.get_target_freq = devfreq_simple_ondemand_func,
 };
+EXPORT_SYMBOL(devfreq_simple_ondemand);
