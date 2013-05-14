@@ -736,7 +736,7 @@ static bool update_nc_device_states(int i, pci_power_t state)
 
 void init_nc_device_states(void)
 {
-#ifndef CONFIG_VIDEO_ATOMISP
+#if !IS_ENABLED(CONFIG_VIDEO_ATOMISP)
 	mid_pmu_cxt->camera_off = false;
 #endif
 
@@ -1427,7 +1427,7 @@ retry:
 		update_dev_res(i, state);
 
 nc_done:
-#ifndef CONFIG_VIDEO_ATOMISP
+#if !IS_ENABLED(CONFIG_VIDEO_ATOMISP)
 	/* ATOMISP is always powered up on system-resume path. It needs
 	 * to be turned off here if there is no driver to do it. */
 	if (!mid_pmu_cxt->camera_off) {
