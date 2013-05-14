@@ -255,6 +255,7 @@ static bool power_up_island(struct ospm_power_island *p_island)
 	/* if successfully handled dependency */
 	if (!atomic_read(&p_island->ref_count)) {
 		/* power on the island */
+		OSPM_DPF("Power up island %x\n", p_island->island);
 		ret = p_island->p_funcs->power_up(g_ospm_data->dev, p_island);
 		if (ret) {
 			p_island->island_state = OSPM_POWER_ON;
@@ -264,8 +265,7 @@ static bool power_up_island(struct ospm_power_island *p_island)
 			* interrupts of VED/VEC/VSP need to be turned on here.
 			*/
 			/* Video irq need to be set */
-			if (p_island->island & OSPM_VIDEO_DEC_ISLAND ||
-			    p_island->island & OSPM_VIDEO_VPP_ISLAND) {
+			if (p_island->island & OSPM_VIDEO_VPP_ISLAND) {
 				psb_irq_preinstall_islands(
 					g_ospm_data->dev,
 					p_island->island);
@@ -302,6 +302,7 @@ static bool power_down_island(struct ospm_power_island *p_island)
 	/* check to see if island is turned off */
 	if (!atomic_read(&p_island->ref_count)) {
 		/* power on the island */
+		OSPM_DPF("Power down island %x\n", p_island->island);
 		ret = p_island->p_funcs->power_down(
 				g_ospm_data->dev,
 				p_island);
@@ -471,8 +472,20 @@ void ospm_power_init(struct drm_device *dev)
 	/* register early_suspend runtime pm */
 	intel_media_early_suspend_init(dev);
 
+	power_island_get(OSPM_VIDEO_DEC_ISLAND);
+
 out_err:
 	return;
+}
+
+/*
+* ospm_post_init
+*
+* Description: Power gate unused GFX & Display islands.
+*/
+void ospm_post_init(struct drm_device *dev)
+{
+	power_island_put(OSPM_VIDEO_DEC_ISLAND);
 }
 
 /**
@@ -580,11 +593,17 @@ void ospm_power_using_hw_end(int hw_island)
 
 void ospm_power_using_video_end(int hw_island)
 {
+	if (hw_island == OSPM_VIDEO_DEC_ISLAND)
+		return;
+
 	ospm_power_using_hw_end(hw_island);
 }
 
 bool ospm_power_using_video_begin(int hw_island)
 {
+	if (hw_island == OSPM_VIDEO_DEC_ISLAND)
+		return true;
+
 	return ospm_power_using_hw_begin(hw_island, 0);
 }
 
@@ -593,37 +612,34 @@ void ospm_apm_power_down_msvdx(struct drm_device *dev, int force_off)
 	struct ospm_power_island *p_island;
 	int ret;
 	unsigned long flags;
-	PSB_DEBUG_PM("MSVDX: work queue is scheduled to power off msvdx.\n");
 	p_island = get_island_ptr(OSPM_VIDEO_DEC_ISLAND);
 
-	spin_lock_irqsave(&g_ospm_data->ospm_lock, flags);
 
-	if (force_off)
-		goto power_off;
-	if (!ospm_power_is_hw_on(OSPM_VIDEO_DEC_ISLAND)) {
-		PSB_DEBUG_PM("g_hw_power_status_mask: msvdx in power off.\n");
-		goto out;
-	}
-
-	if (atomic_read(&p_island->ref_count)) {
-		PSB_DEBUG_PM("ved ref_count has been set.\n");
-		goto out;
-	}
-
-power_off:
-	ret = p_island->p_funcs->power_down(
+	if (force_off) {
+		spin_lock_irqsave(&g_ospm_data->ospm_lock, flags);
+		ret = p_island->p_funcs->power_down(
 			g_ospm_data->dev,
 			p_island);
 
-	/* set the island state */
-	if (ret)
-		p_island->island_state = OSPM_POWER_OFF;
+		/* set the island state */
+		if (ret)
+			p_island->island_state = OSPM_POWER_OFF;
 
-	/* MSVDX_NEW_PMSTATE(dev, msvdx_priv, PSB_PMSTATE_POWERDOWN); */
-out:
-	spin_unlock_irqrestore(&g_ospm_data->ospm_lock, flags);
+		spin_unlock_irqrestore(&g_ospm_data->ospm_lock, flags);
+		/* MSVDX_NEW_PMSTATE(dev, msvdx_priv, PSB_PMSTATE_POWERDOWN); */
+		return;
+	}
+
+	if (!ospm_power_is_hw_on(OSPM_VIDEO_DEC_ISLAND))
+		PSB_DEBUG_PM("msvdx in power off.\n");
+
+	psb_msvdx_dequeue_send(dev);
+
+	power_island_put(OSPM_VIDEO_DEC_ISLAND);
+
 	return;
 }
+
 void ospm_apm_power_down_topaz(struct drm_device *dev)
 {
 	int ret;

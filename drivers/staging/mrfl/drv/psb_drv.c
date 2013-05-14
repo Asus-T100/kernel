@@ -126,6 +126,7 @@ char HDMI_EDID[HDMI_MONITOR_NAME_LENGTH];
 int hdmi_state;
 u32 DISP_PLANEB_STATUS = ~DISPLAY_PLANE_ENABLE;
 int drm_psb_msvdx_tiling;
+int drm_msvdx_bottom_half;
 
 static int psb_probe(struct pci_dev *pdev, const struct pci_device_id *ent);
 
@@ -171,6 +172,7 @@ module_param_named(topaz_pmpolicy, drm_topaz_pmpolicy, int, 0600);
 module_param_named(vsp_pmpolicy, drm_vsp_pmpolicy, int, 0600);
 module_param_named(topaz_cgpolicy, drm_topaz_cgpolicy, int, 0600);
 module_param_named(topaz_cmdpolicy, drm_topaz_cmdpolicy, int, 0600);
+module_param_named(msvdx_bottom_half, drm_msvdx_bottom_half, int, 0600);
 module_param_named(topaz_sbuswa, drm_topaz_sbuswa, int, 0600);
 module_param_named(ospm, drm_psb_ospm, int, 0600);
 module_param_named(dsr, drm_psb_dsr, int, 0600);
@@ -1903,6 +1905,8 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	ret = psb_do_init(dev);
 	if (ret)
 		return ret;
+
+	ospm_post_init(dev);
 
 	/*initialize the MSI for MRST */
 	if (IS_MID(dev)) {

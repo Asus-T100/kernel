@@ -321,7 +321,6 @@ void ospm_apm_power_down_msvdx(struct drm_device *dev, int force_off)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
-	PSB_DEBUG_PM("MSVDX: work queue is scheduled to power off msvdx.\n");
 
 	mutex_lock(&g_ospm_mutex);
 	if (force_off)

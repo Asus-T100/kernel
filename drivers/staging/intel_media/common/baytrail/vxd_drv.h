@@ -36,6 +36,9 @@
 #define PSB_PMPOLICY_CLOCKGATING	1
 #define PSB_PMPOLICY_POWERDOWN		2
 
+#define PSB_BOTTOM_HALF_WQ              1
+#define PSB_BOTTOM_HALF_TQ              2
+
 #define PSB_MSVDX_CLOCKGATING	  0x2064
 
 #define PSB_MMU_CACHED_MEMORY	  0x0001	/* Bind to MMU only */
@@ -54,6 +57,8 @@
 #define PSB_PTE_WO		  0x0002	/* Write only */
 #define PSB_PTE_RO		  0x0004	/* Read only */
 #define PSB_PTE_CACHED		  0x0008	/* CPU cache coherent */
+
+#define IS_MDFLD(dev) (0)
 
 enum APM_VXD_STATUS {
 	VXD_APM_STS_D0 = 0,

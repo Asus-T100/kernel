@@ -57,7 +57,7 @@ static int psb_msvdx_send(struct drm_device *dev, void *cmd,
 			  unsigned long cmd_size);
 static void psb_msvdx_set_tile(struct drm_device *dev,
 				unsigned long msvdx_tile);
-static int psb_msvdx_dequeue_send(struct drm_device *dev)
+int psb_msvdx_dequeue_send(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv = psb_priv(dev);
 	struct psb_msvdx_cmd_queue *msvdx_cmd = NULL;
@@ -77,6 +77,10 @@ static int psb_msvdx_dequeue_send(struct drm_device *dev)
 				     struct psb_msvdx_cmd_queue, head);
 	list_del(&msvdx_cmd->head);
 	spin_unlock_irqrestore(&msvdx_priv->msvdx_lock, irq_flags);
+
+#ifdef MERRIFIELD
+	power_island_get(OSPM_VIDEO_DEC_ISLAND);
+#endif
 
 	PSB_DEBUG_GENERAL("MSVDXQUE: Queue has id %08x\n", msvdx_cmd->sequence);
 #ifndef CONFIG_DRM_VXD_BYT
@@ -361,10 +365,63 @@ out:
 	return ret;
 }
 
+int psb__submit_cmdbuf_copy(struct drm_device *dev,
+			    struct ttm_buffer_object *cmd_buffer,
+			    unsigned long cmd_offset, unsigned long cmd_size,
+			    struct psb_video_ctx *msvdx_ctx)
+{
+	struct drm_psb_private *dev_priv = psb_priv(dev);
+	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
+	struct psb_msvdx_cmd_queue *msvdx_cmd;
+	uint32_t sequence =  (dev_priv->sequence[PSB_ENGINE_DECODE] << 4);
+	unsigned long irq_flags;
+	void *cmd = NULL;
+	int ret;
+
+	/* queue the command to be sent when the h/w is ready */
+	PSB_DEBUG_GENERAL("MSVDXQUE: queueing sequence:%08x..\n",
+			  sequence);
+	msvdx_cmd = kzalloc(sizeof(struct psb_msvdx_cmd_queue),
+			    GFP_KERNEL);
+	if (msvdx_cmd == NULL) {
+		DRM_ERROR("MSVDXQUE: Out of memory...\n");
+		return -ENOMEM;
+	}
+
+	ret = psb_msvdx_map_command(dev, cmd_buffer, cmd_offset,
+				    cmd_size, &cmd, sequence, 1);
+	if (ret) {
+		DRM_ERROR("MSVDXQUE: Failed to extract cmd\n");
+		kfree(msvdx_cmd
+		     );
+		return ret;
+	}
+	msvdx_cmd->cmd = cmd;
+	msvdx_cmd->cmd_size = cmd_size;
+	msvdx_cmd->sequence = sequence;
+
+	msvdx_cmd->msvdx_tile =
+		((msvdx_priv->msvdx_ctx->ctx_type >> 16) & 0xff);
+	msvdx_cmd->deblock_cmd_offset =
+		msvdx_priv->deblock_cmd_offset;
+	msvdx_cmd->host_be_opp_enabled =
+		msvdx_priv->host_be_opp_enabled;
+	msvdx_cmd->tfile =
+		msvdx_priv->tfile;
+	spin_lock_irqsave(&msvdx_priv->msvdx_lock, irq_flags);
+	list_add_tail(&msvdx_cmd->head, &msvdx_priv->msvdx_queue);
+	spin_unlock_irqrestore(&msvdx_priv->msvdx_lock, irq_flags);
+	if (!msvdx_priv->msvdx_busy) {
+		msvdx_priv->msvdx_busy = 1;
+		PSB_DEBUG_GENERAL("MSVDXQUE: Need immediate dequeue\n");
+		psb_msvdx_dequeue_send(dev);
+	}
+	return ret;
+}
+
 int psb_submit_video_cmdbuf(struct drm_device *dev,
 			    struct ttm_buffer_object *cmd_buffer,
 			    unsigned long cmd_offset, unsigned long cmd_size,
-			    struct ttm_fence_object *fence,
 			    struct psb_video_ctx *msvdx_ctx)
 {
 	struct drm_psb_private *dev_priv = psb_priv(dev);
@@ -381,6 +438,27 @@ int psb_submit_video_cmdbuf(struct drm_device *dev,
 
 	PSB_DEBUG_PM("sequence is 0x%x, needs_reset is 0x%x.\n",
 			sequence, msvdx_priv->msvdx_needs_reset);
+
+#ifdef MERRIFIELD
+	/* get power island when submit cmd to hardware */
+	if (!power_island_get(OSPM_VIDEO_DEC_ISLAND)) {
+		spin_unlock_irqrestore(&msvdx_priv->msvdx_lock, irq_flags);
+		return -EBUSY;
+	}
+#endif
+
+	if (msvdx_priv->msvdx_busy) {
+		spin_unlock_irqrestore(&msvdx_priv->msvdx_lock, irq_flags);
+		ret = psb__submit_cmdbuf_copy(dev, cmd_buffer,
+			    cmd_offset, cmd_size,
+			    msvdx_ctx);
+
+#ifdef MERRIFIELD
+		power_island_put(OSPM_VIDEO_DEC_ISLAND);
+#endif
+		return ret;
+	}
+
 	if (msvdx_priv->msvdx_needs_reset) {
 		spin_unlock_irqrestore(&msvdx_priv->msvdx_lock, irq_flags);
 		PSB_DEBUG_GENERAL("MSVDX: will reset msvdx\n");
@@ -401,16 +479,6 @@ int psb_submit_video_cmdbuf(struct drm_device *dev,
 			PSB_DEBUG_WARN("WARN: psb_msvdx_init failed.\n");
 			return ret;
 		}
-
-#ifdef PSB_MSVDX_SAVE_RESTORE_VEC
-		/* restore vec local mem if needed */
-		if (msvdx_priv->vec_local_mem_saved) {
-			for (offset = 0; offset < VEC_LOCAL_MEM_BYTE_SIZE / 4; ++offset)
-				PSB_WMSVDX32(msvdx_priv->vec_local_mem_data[offset],
-					     VEC_LOCAL_MEM_OFFSET + offset * 4);
-			msvdx_priv->vec_local_mem_saved = 0;
-		}
-#endif
 
 #ifdef CONFIG_VIDEO_MRFLD_EC
 		/* restore the state when power up during EC */
@@ -456,61 +524,14 @@ int psb_submit_video_cmdbuf(struct drm_device *dev,
 		spin_lock_irqsave(&msvdx_priv->msvdx_lock, irq_flags);
 	}
 #endif
-	if (!msvdx_priv->msvdx_busy) {
-		msvdx_priv->msvdx_busy = 1;
-		spin_unlock_irqrestore(&msvdx_priv->msvdx_lock, irq_flags);
-		PSB_DEBUG_GENERAL("MSVDX: commit command to HW,seq=0x%08x\n",
-				  sequence);
-		ret = psb_msvdx_map_command(dev, cmd_buffer, cmd_offset,
-					    cmd_size, NULL, sequence, 0);
-		if (ret) {
-			DRM_ERROR("MSVDXQUE: Failed to extract cmd\n");
-			return ret;
-		}
-	} else {
-		struct psb_msvdx_cmd_queue *msvdx_cmd;
-		void *cmd = NULL;
-
-		spin_unlock_irqrestore(&msvdx_priv->msvdx_lock, irq_flags);
-		/* queue the command to be sent when the h/w is ready */
-		PSB_DEBUG_GENERAL("MSVDXQUE: queueing sequence:%08x..\n",
-				  sequence);
-		msvdx_cmd = kzalloc(sizeof(struct psb_msvdx_cmd_queue),
-				    GFP_KERNEL);
-		if (msvdx_cmd == NULL) {
-			DRM_ERROR("MSVDXQUE: Out of memory...\n");
-			return -ENOMEM;
-		}
-
-		ret = psb_msvdx_map_command(dev, cmd_buffer, cmd_offset,
-					    cmd_size, &cmd, sequence, 1);
-		if (ret) {
-			DRM_ERROR("MSVDXQUE: Failed to extract cmd\n");
-			kfree(msvdx_cmd
-			     );
-			return ret;
-		}
-		msvdx_cmd->cmd = cmd;
-		msvdx_cmd->cmd_size = cmd_size;
-		msvdx_cmd->sequence = sequence;
-
-		msvdx_cmd->msvdx_tile =
-			((msvdx_priv->msvdx_ctx->ctx_type >> 16) & 0xff);
-		msvdx_cmd->deblock_cmd_offset =
-			msvdx_priv->deblock_cmd_offset;
-		msvdx_cmd->host_be_opp_enabled =
-			msvdx_priv->host_be_opp_enabled;
-		msvdx_cmd->tfile =
-			msvdx_priv->tfile;
-		spin_lock_irqsave(&msvdx_priv->msvdx_lock, irq_flags);
-		list_add_tail(&msvdx_cmd->head, &msvdx_priv->msvdx_queue);
-		spin_unlock_irqrestore(&msvdx_priv->msvdx_lock, irq_flags);
-		if (!msvdx_priv->msvdx_busy) {
-			msvdx_priv->msvdx_busy = 1;
-			PSB_DEBUG_GENERAL("MSVDXQUE: Need immediate dequeue\n");
-			psb_msvdx_dequeue_send(dev);
-		}
-	}
+	msvdx_priv->msvdx_busy = 1;
+	spin_unlock_irqrestore(&msvdx_priv->msvdx_lock, irq_flags);
+	PSB_DEBUG_GENERAL("MSVDX: commit command to HW,seq=0x%08x\n",
+			  sequence);
+	ret = psb_msvdx_map_command(dev, cmd_buffer, cmd_offset,
+				    cmd_size, NULL, sequence, 0);
+	if (ret)
+		DRM_ERROR("MSVDXQUE: Failed to extract cmd\n");
 
 	return ret;
 }
@@ -532,7 +553,7 @@ int psb_cmdbuf_video(struct drm_file *priv,
 	 * submission and make sure drm_psb_idle idles the MSVDX completely.
 	 */
 	ret = psb_submit_video_cmdbuf(dev, cmd_buffer, arg->cmdbuf_offset,
-					arg->cmdbuf_size, NULL, msvdx_ctx);
+					arg->cmdbuf_size, msvdx_ctx);
 	if (ret)
 		return ret;
 
@@ -857,12 +878,14 @@ loop: /* just for coding style check */
 
 		if (flags & FW_VA_RENDER_HOST_INT) {
 			/*Now send the next command from the msvdx cmd queue */
-			psb_msvdx_dequeue_send(dev);
+#ifndef CONFIG_DRM_VXD_BYT
+			if (!(IS_MRFLD(dev)))
+#endif
+				psb_msvdx_dequeue_send(dev);
 			goto done;
 		}
 
 		break;
-		msvdx_priv->decoding_err = 0;
 	}
 
 #ifdef CONFIG_VIDEO_MRFLD
@@ -994,22 +1017,25 @@ done:
 		goto loop;
 	}
 
-	/* we get a frame/slice done, try to save some power*/
-	if (msvdx_priv->fw_loaded_by_punit) {
-		if ((drm_msvdx_pmpolicy == PSB_PMPOLICY_POWERDOWN) &&
-			(msvdx_priv->msvdx_busy == 0)) {
-			PSB_DEBUG_PM("MSVDX: schedule work queue to\n"
-				"suspend msvdx, current sequence is 0x%x.\n",
-				msvdx_priv->msvdx_current_sequence);
-			schedule_delayed_work(&msvdx_priv->msvdx_suspend_wq, 0);
-		}
+	if (drm_msvdx_pmpolicy == PSB_PMPOLICY_NOPM ||
+			(IS_MDFLD(dev) && (msvdx_priv->msvdx_busy))) {
+		DRM_MEMORYBARRIER();	/* TBD check this... */
+		return;
 	}
-#ifdef PSB_MSVDX_FW_LOADED_BY_HOST
-	else {
-		if (drm_msvdx_pmpolicy != PSB_PMPOLICY_NOPM)
-			schedule_delayed_work(&msvdx_priv->msvdx_suspend_wq, 0);
-	}
-#endif
+
+	/* we get a frame/slice done, try to save some power */
+	PSB_DEBUG_PM("MSVDX: schedule bottom half to\n"
+		"suspend msvdx, current sequence is 0x%x.\n",
+		msvdx_priv->msvdx_current_sequence);
+
+	if (drm_msvdx_bottom_half == PSB_BOTTOM_HALF_WQ)
+		schedule_delayed_work(
+			&msvdx_priv->msvdx_suspend_wq, 0);
+	else if (drm_msvdx_bottom_half == PSB_BOTTOM_HALF_TQ)
+		tasklet_hi_schedule(&msvdx_priv->msvdx_tasklet);
+	else
+		PSB_DEBUG_PM("MSVDX: Unknown Bottom Half\n");
+
 	DRM_MEMORYBARRIER();	/* TBD check this... */
 }
 
@@ -1219,14 +1245,6 @@ int psb_msvdx_save_context(struct drm_device *dev)
 	else
 		msvdx_priv->msvdx_needs_reset = 1;
 
-#ifdef PSB_MSVDX_SAVE_RESTORE_VEC
-	for (offset = 0; offset < VEC_LOCAL_MEM_BYTE_SIZE / 4; ++offset)
-		msvdx_priv->vec_local_mem_data[offset] =
-			PSB_RMSVDX32(VEC_LOCAL_MEM_OFFSET + offset * 4);
-
-	msvdx_priv->vec_local_mem_saved = 1;
-#endif
-
 #ifdef CONFIG_VIDEO_MRFLD_EC
 	/* we should restore the state, if we power down/up during EC */
 	for (offset = 0; offset < 4; ++offset)
@@ -1319,7 +1337,16 @@ void psb_powerdown_msvdx(struct work_struct *work)
 	struct msvdx_private *msvdx_priv =
 		container_of(work, struct msvdx_private, msvdx_suspend_wq.work);
 
+	PSB_DEBUG_PM("MSVDX: work queue is scheduled to power off msvdx.\n");
 	ospm_apm_power_down_msvdx(msvdx_priv->dev, 0);
+}
+
+void msvdx_powerdown_tasklet(unsigned long data)
+{
+	struct drm_device *dev = (struct drm_device *)data;
+
+	PSB_DEBUG_PM("MSVDX: tasklet is scheduled to power off msvdx.\n");
+	ospm_apm_power_down_msvdx(dev, 0);
 }
 
 void psb_msvdx_mtx_set_clocks(struct drm_device *dev, uint32_t clock_state)
