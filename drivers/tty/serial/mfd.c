@@ -2581,11 +2581,22 @@ static void serial_hsu_port_remove(struct pci_dev *pdev)
 	pci_disable_device(pdev);
 }
 
+static void serial_hsu_port_shutdown(struct pci_dev *pdev)
+{
+	struct uart_hsu_port *up = pci_get_drvdata(pdev);
+
+	if (!up)
+		return;
+
+	uart_suspend_port(&serial_hsu_reg, &up->port);
+}
+
 static struct pci_driver hsu_port_pci_driver = {
 	.name =		"HSU serial",
 	.id_table =	hsuart_port_pci_ids,
 	.probe =	serial_hsu_port_probe,
 	.remove =	__devexit_p(serial_hsu_port_remove),
+	.shutdown =	serial_hsu_port_shutdown,
 /* Disable PM only when kgdb(poll mode uart) is enabled */
 #if defined(CONFIG_PM) && !defined(CONFIG_CONSOLE_POLL)
 	.driver = {
