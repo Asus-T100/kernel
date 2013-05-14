@@ -283,6 +283,8 @@ static enum power_supply_property bq24192_usb_props[] = {
 	POWER_SUPPLY_PROP_ENABLE_CHARGER,
 	POWER_SUPPLY_PROP_CHARGE_TERM_CUR,
 	POWER_SUPPLY_PROP_CABLE_TYPE,
+	POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT,
+	POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT_MAX,
 	POWER_SUPPLY_PROP_MAX_TEMP,
 	POWER_SUPPLY_PROP_MIN_TEMP
 };
@@ -1197,7 +1199,7 @@ static int bq24192_usb_set_property(struct power_supply *psy,
 	struct bq24192_chip *chip = container_of(psy,
 						struct bq24192_chip,
 						usb);
-	int ret;
+	int ret = 0;
 
 	dev_dbg(&chip->client->dev, "%s %d\n", __func__, psp);
 
@@ -1275,6 +1277,9 @@ static int bq24192_usb_set_property(struct power_supply *psy,
 			dev_err(&chip->client->dev,
 				"IPC Failed with %d error\n", ret);
 		}
+		break;
+	case POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT:
+		chip->cntl_state = val->intval;
 		break;
 	default:
 		ret = -ENODATA;
