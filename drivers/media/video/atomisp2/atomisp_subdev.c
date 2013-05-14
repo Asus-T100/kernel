@@ -407,6 +407,12 @@ int atomisp_subdev_set_selection(struct v4l2_subdev *sd,
 	case ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE: {
 		/* Only compose target is supported on source pads. */
 
+		if (isp->isp_subdev.vfpp->val == ATOMISP_VFPP_DISABLE_LOWLAT) {
+			/* Scaling is disabled in this mode */
+			r->width = crop[ATOMISP_SUBDEV_PAD_SINK]->width;
+			r->height = crop[ATOMISP_SUBDEV_PAD_SINK]->height;
+		}
+
 		if (crop[ATOMISP_SUBDEV_PAD_SINK]->width == r->width
 		    && crop[ATOMISP_SUBDEV_PAD_SINK]->height == r->height)
 			isp->params.yuv_ds_en = false;
