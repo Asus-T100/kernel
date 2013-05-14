@@ -366,7 +366,7 @@ static struct ov9724_reg const ov9724_1040_592_30fps[] = {
 	{OV9724_8BIT, {0x370a},	0x23},
 
 	{OV9724_8BIT, {0x5000},	0x06},/* Isp ctrl0 */
-	{OV9724_8BIT, {0x5001},	0x73},/* Isp ctrl1 */
+	{OV9724_8BIT, {0x5001},	0x71},/* Isp ctrl1 */
 	{OV9724_TOK_TERM, {0}, 0}
 };
 static struct ov9724_reg const ov9724_736_496_30fps[] = {
@@ -416,7 +416,7 @@ static struct ov9724_reg const ov9724_736_496_30fps[] = {
 	{OV9724_8BIT, {0x370a},	0x23},
 
 	{OV9724_8BIT, {0x5000},	0x06},/* Isp ctrl0 */
-	{OV9724_8BIT, {0x5001},	0x73},/* Isp ctrl1 */
+	{OV9724_8BIT, {0x5001},	0x71},/* Isp ctrl1 */
 	{OV9724_TOK_TERM, {0}, 0}
 };
 static struct ov9724_reg const ov9724_656_496_30fps[] = {
@@ -466,7 +466,7 @@ static struct ov9724_reg const ov9724_656_496_30fps[] = {
 	{OV9724_8BIT, {0x370a},	0x23},
 
 	{OV9724_8BIT, {0x5000},	0x06},/* Isp ctrl0 */
-	{OV9724_8BIT, {0x5001},	0x73},/* Isp ctrl1 */
+	{OV9724_8BIT, {0x5001},	0x71},/* Isp ctrl1 */
 	{OV9724_TOK_TERM, {0}, 0}
 };
 
@@ -517,7 +517,7 @@ static struct ov9724_reg const ov9724_368_304_30fps[] = {
 	{OV9724_8BIT, {0x370a},	0x23},
 
 	{OV9724_8BIT, {0x5000},	0x06},/* Isp ctrl0 */
-	{OV9724_8BIT, {0x5001},	0x73},/* Isp ctrl1 */
+	{OV9724_8BIT, {0x5001},	0x71},/* Isp ctrl1 */
 	{OV9724_TOK_TERM, {0}, 0}
 };
 static struct ov9724_reg const ov9724_336_256_30fps[] = {
@@ -567,7 +567,7 @@ static struct ov9724_reg const ov9724_336_256_30fps[] = {
 	{OV9724_8BIT, {0x370a},	0x23},
 
 	{OV9724_8BIT, {0x5000},	0x06},/* Isp ctrl0 */
-	{OV9724_8BIT, {0x5001},	0x73},/* Isp ctrl1 */
+	{OV9724_8BIT, {0x5001},	0x71},/* Isp ctrl1 */
 	{OV9724_TOK_TERM, {0}, 0}
 };
 static struct ov9724_reg const ov9724_848_616_30fps[] = {
@@ -617,7 +617,7 @@ static struct ov9724_reg const ov9724_848_616_30fps[] = {
 	{OV9724_8BIT, {0x370a},	0x23},
 
 	{OV9724_8BIT, {0x5000},	0x06},/* Isp ctrl0 */
-	{OV9724_8BIT, {0x5001},	0x73},/* Isp ctrl1 */
+	{OV9724_8BIT, {0x5001},	0x71},/* Isp ctrl1 */
 	{OV9724_TOK_TERM, {0}, 0}
 };
 static struct ov9724_reg const ov9724_444_348_30fps[] = {
@@ -667,7 +667,7 @@ static struct ov9724_reg const ov9724_444_348_30fps[] = {
 	{OV9724_8BIT, {0x370a},	0x23},
 
 	{OV9724_8BIT, {0x5000},	0x06},/* Isp ctrl0 */
-	{OV9724_8BIT, {0x5001},	0x73},/* Isp ctrl1 */
+	{OV9724_8BIT, {0x5001},	0x71},/* Isp ctrl1 */
 	{OV9724_TOK_TERM, {0}, 0}
 };
 static struct ov9724_reg const ov9724_936_602_30fps[] = {
@@ -717,7 +717,7 @@ static struct ov9724_reg const ov9724_936_602_30fps[] = {
 	{OV9724_8BIT, {0x370a},	0x23},
 
 	{OV9724_8BIT, {0x5000},	0x06},/* Isp ctrl0 */
-	{OV9724_8BIT, {0x5001},	0x73},/* Isp ctrl1 */
+	{OV9724_8BIT, {0x5001},	0x71},/* Isp ctrl1 */
 	{OV9724_TOK_TERM, {0}, 0}
 };
 
@@ -752,7 +752,7 @@ static struct ov9724_reg const ov9724_720p_15fps[] = {
 	{OV9724_8BIT, {0x4814},	0x2b},/* Mipi ctrl14 */
 	{OV9724_8BIT, {0x4307},	0x3a},
 	{OV9724_8BIT, {0x5000},	0x06},/* Isp ctrl0 */
-	{OV9724_8BIT, {0x5001},	0x73},/* Isp ctrl1 */
+	{OV9724_8BIT, {0x5001},	0x71},/* Isp ctrl1 */
 	{OV9724_8BIT, {0x0205},	0x3f},/* Analog gain - Low */
 	{OV9724_TOK_TERM, {0}, 0}
 };
@@ -804,7 +804,7 @@ static struct ov9724_reg const ov9724_720p_30fps[] = {
 	{OV9724_8BIT, {0x370a},	0x23},
 
 	{OV9724_8BIT, {0x5000},	0x06},/* Isp ctrl0 */
-	{OV9724_8BIT, {0x5001},	0x73},/* Isp ctrl1 */
+	{OV9724_8BIT, {0x5001},	0x71},/* Isp ctrl1 */
 	{OV9724_TOK_TERM, {0}, 0}
 };
 
@@ -855,7 +855,7 @@ static struct ov9724_reg const ov9724_D1NTSC_strong_dvs_30fps[] = {
 	{OV9724_8BIT, {0x370a},	0x23},
 
 	{OV9724_8BIT, {0x5000},	0x06},/* Isp ctrl0 */
-	{OV9724_8BIT, {0x5001},	0x73},/* Isp ctrl1 */
+	{OV9724_8BIT, {0x5001},	0x71},/* Isp ctrl1 */
 	{OV9724_TOK_TERM, {0}, 0}
 };
 
@@ -906,7 +906,7 @@ static struct ov9724_reg const ov9724_D1PAL_strong_dvs_30fps[] = {
 	{OV9724_8BIT, {0x370a},	0x23},
 
 	{OV9724_8BIT, {0x5000},	0x06},/* Isp ctrl0 */
-	{OV9724_8BIT, {0x5001},	0x73},/* Isp ctrl1 */
+	{OV9724_8BIT, {0x5001},	0x71},/* Isp ctrl1 */
 	{OV9724_TOK_TERM, {0}, 0}
 };
 
@@ -957,7 +957,7 @@ static struct ov9724_reg const ov9724_VGA_strong_dvs_30fps[] = {
 	{OV9724_8BIT, {0x370a},	0x23},
 
 	{OV9724_8BIT, {0x5000},	0x06},
-	{OV9724_8BIT, {0x5001},	0x73},
+	{OV9724_8BIT, {0x5001},	0x71},
 	{OV9724_TOK_TERM, {0}, 0}
 };
 
@@ -1008,7 +1008,7 @@ static struct ov9724_reg const ov9724_WIDE_PREVIEW_30fps[] = {
 	{OV9724_8BIT, {0x370a},	0x23},
 
 	{OV9724_8BIT, {0x5000},	0x06},
-	{OV9724_8BIT, {0x5001},	0x73},
+	{OV9724_8BIT, {0x5001},	0x71},
 	{OV9724_TOK_TERM, {0}, 0}
 };
 
@@ -1060,7 +1060,7 @@ static struct ov9724_reg const ov9724_QVGA_strong_dvs_30fps[] = {
 	{OV9724_8BIT, {0x370a},	0x23},
 
 	{OV9724_8BIT, {0x5000},	0x06},
-	{OV9724_8BIT, {0x5001},	0x73},
+	{OV9724_8BIT, {0x5001},	0x71},
 	{OV9724_TOK_TERM, {0}, 0}
 };
 
@@ -1116,7 +1116,7 @@ static struct ov9724_reg const ov9724_QCIF_strong_dvs_30fps[] = {
 
 
 	{OV9724_8BIT, {0x5000},	0x06},
-	{OV9724_8BIT, {0x5001},	0x73},
+	{OV9724_8BIT, {0x5001},	0x71},
 	{OV9724_TOK_TERM, {0}, 0}
 };
 
@@ -1167,7 +1167,7 @@ static struct ov9724_reg const ov9724_LOW_30fps[] = {
 	{OV9724_8BIT, {0x370a},	0xa2},
 
 	{OV9724_8BIT, {0x5000},	0x06},
-	{OV9724_8BIT, {0x5001},	0x73},
+	{OV9724_8BIT, {0x5001},	0x71},
 	{OV9724_TOK_TERM, {0}, 0}
 };
 
@@ -1218,7 +1218,7 @@ static struct ov9724_reg const ov9724_QCIF_30fps[] = {
 	{OV9724_8BIT, {0x370a},	0xa2},
 
 	{OV9724_8BIT, {0x5000},	0x06},
-	{OV9724_8BIT, {0x5001},	0x73},
+	{OV9724_8BIT, {0x5001},	0x71},
 	{OV9724_TOK_TERM, {0}, 0}
 };
 
