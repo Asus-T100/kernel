@@ -322,7 +322,7 @@ static void xhci_cleanup_msix(struct xhci_hcd *xhci)
 
 	/* No need to cleanup msi if we have XHCI_BROKEN_MSI flag */
 	if (xhci->quirks & XHCI_BROKEN_MSI)
-		return 0;
+		return;
 
 	xhci_free_irq(xhci);
 

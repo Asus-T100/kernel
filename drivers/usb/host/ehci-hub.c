@@ -236,7 +236,6 @@ static int ehci_bus_suspend (struct usb_hcd *hcd)
 	int			port;
 	int			mask;
 	int			changed;
-	u32 __iomem		*hostpc_reg = NULL;
 	int			rc = 0;
 
 	ehci_dbg(ehci, "suspend root hub\n");
