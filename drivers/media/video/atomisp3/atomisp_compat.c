@@ -682,6 +682,15 @@ ia_css_enable_high_speed(struct atomisp_device *isp, bool enable)
 		isp->css2_basis.pipe_extra_configs[i].enable_high_speed
 							= enable;
 }
+
+void
+ia_css_enbale_dz(struct atomisp_device *isp, bool enable)
+{
+	int i;
+	for (i = 0; i < IA_CSS_PIPE_ID_NUM; i++)
+		isp->css2_basis.pipe_extra_configs[i].enable_dz = enable;
+}
+
 void
 ia_css_video_set_dis_envelope(struct atomisp_device *isp,
 			      unsigned int dvs_w,
