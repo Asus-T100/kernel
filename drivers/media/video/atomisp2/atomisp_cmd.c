@@ -742,7 +742,7 @@ static struct atomisp_video_pipe *__atomisp_get_pipe(struct atomisp_device *isp,
 		enum sh_css_buffer_type buf_type)
 {
 	/* video is same in online as in continuouscapture mode */
-	if (!isp->isp_subdev.enable_vfpp->val) {
+	if (isp->isp_subdev.vfpp->val != ATOMISP_VFPP_ENABLE) {
 		return &isp->isp_subdev.video_out_capture;
 	} else if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO) {
 		if (buf_type == SH_CSS_BUFFER_TYPE_OUTPUT_FRAME)
@@ -3080,11 +3080,11 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 	}
 
 	/*
-	 * Configure viewfinder also if enable_vfpp is disabled: the
+	 * Configure viewfinder also when vfpp is disabled: the
 	 * CSS still requires viewfinder configuration.
 	 */
 	if (isp->isp_subdev.fmt_auto->val
-	    || !isp->isp_subdev.enable_vfpp->val) {
+	    || isp->isp_subdev.vfpp->val != ATOMISP_VFPP_ENABLE) {
 		struct v4l2_rect vf_size = {0};
 		struct v4l2_mbus_framefmt vf_ffmt = {0};
 
@@ -3111,11 +3111,13 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 		isp->isp_subdev.video_out_vf.sh_fmt = SH_CSS_FRAME_FORMAT_YUV420;
 
 		if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO
-		    || !isp->isp_subdev.enable_vfpp->val)
+		    || isp->isp_subdev.vfpp->val == ATOMISP_VFPP_DISABLE_SCALER)
 			sh_css_video_configure_viewfinder(
 				vf_size.width, vf_size.height,
 				isp->isp_subdev.video_out_vf.sh_fmt);
-		else if (source_pad != ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW)
+		else if (source_pad != ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW
+			 || isp->isp_subdev.vfpp->val ==
+			    ATOMISP_VFPP_DISABLE_LOWLAT)
 			sh_css_capture_configure_viewfinder(
 				vf_size.width, vf_size.height,
 				isp->isp_subdev.video_out_vf.sh_fmt);
@@ -3152,11 +3154,12 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 			return -EINVAL;
 	}
 
-	atomisp_css_disable_vf_pp(isp, !isp->isp_subdev.enable_vfpp->val);
+	atomisp_css_disable_vf_pp(isp,
+			isp->isp_subdev.vfpp->val != ATOMISP_VFPP_ENABLE);
 
 	/* video same in continuouscapture and online modes */
 	if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO
-	    || !isp->isp_subdev.enable_vfpp->val) {
+	    || isp->isp_subdev.vfpp->val == ATOMISP_VFPP_DISABLE_SCALER) {
 		configure_output = atomisp_css_video_configure_output;
 		get_frame_info = atomisp_css_video_get_output_frame_info;
 	} else if (source_pad == ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW) {
@@ -3475,7 +3478,9 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 	if (isp_sink_crop.width * 9 / 10 < f->fmt.pix.width
 	    || isp_sink_crop.height * 9 / 10 < f->fmt.pix.height
 	    || (atomisp_subdev_format_conversion(isp, source_pad)
-		&& isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO)) {
+		&& (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO
+		    || isp->isp_subdev.vfpp->val ==
+		       ATOMISP_VFPP_DISABLE_SCALER))) {
 		isp_sink_crop.width = f->fmt.pix.width;
 		isp_sink_crop.height = f->fmt.pix.height;
 		atomisp_subdev_set_selection(&isp->isp_subdev.subdev, NULL,

@@ -198,9 +198,12 @@ int atomisp_qbuffers_to_css(struct atomisp_device *isp)
 	struct atomisp_video_pipe *vf_pipe = NULL;
 	struct atomisp_video_pipe *preview_pipe = NULL;
 
-	if (!isp->isp_subdev.enable_vfpp->val) {
+	if (isp->isp_subdev.vfpp->val == ATOMISP_VFPP_DISABLE_SCALER) {
 		preview_pipe = &isp->isp_subdev.video_out_capture;
 		css_preview_pipe_id = CSS_PIPE_ID_VIDEO;
+	} else if (isp->isp_subdev.vfpp->val == ATOMISP_VFPP_DISABLE_LOWLAT) {
+		preview_pipe = &isp->isp_subdev.video_out_capture;
+		css_preview_pipe_id = CSS_PIPE_ID_CAPTURE;
 	} else if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO) {
 		capture_pipe = &isp->isp_subdev.video_out_capture;
 		preview_pipe = &isp->isp_subdev.video_out_preview;
