@@ -462,6 +462,12 @@ static int atomisp_open(struct file *file)
 		goto error;
 	}
 
+	/* Initialize the CSS debug trace verbosity level. To change
+	 * the verbosity level, change the definition of this macro
+	 * up in the file
+	 */
+	sh_css_set_dtrace_level(CSS_DTRACE_VERBOSITY_LEVEL);
+
 	atomisp_init_struct(isp);
 
 done:
