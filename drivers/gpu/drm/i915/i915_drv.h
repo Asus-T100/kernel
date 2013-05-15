@@ -41,6 +41,7 @@
 #include <linux/intel-iommu.h>
 #include <linux/kref.h>
 #include "hdmi_audio_if.h"
+#include <linux/mmu_notifier.h>
 
 #ifdef CONFIG_DRM_VXD_BYT
 #include "vxd_drv.h"
@@ -925,6 +926,16 @@ enum i915_cache_level {
 	I915_CACHE_ELLC,    /* some HSW skus */
 };
 
+struct drm_i915_gem_object_ops {
+	int (*get_pages)(struct drm_i915_gem_object *,
+			 struct page **pages,
+			 gfp_t gfpmask,
+			 u32 *offset);
+	int (*put_pages)(struct drm_i915_gem_object *);
+	void(*release)(struct drm_i915_gem_object *);
+	bool(*is_vmap_obj)(void);
+};
+
 struct drm_i915_gem_object {
 	struct drm_gem_object base;
 
@@ -1073,6 +1084,22 @@ struct drm_i915_gem_object {
 	 * reaches 0, dev_priv->pending_flip_queue will be woken up.
 	 */
 	atomic_t pending_flip;
+};
+
+struct i915_gem_vmap_object {
+	struct drm_i915_gem_object gem;
+	uintptr_t user_ptr;
+	size_t user_size;
+	int read_only;
+	struct mm_struct *mm;
+#if defined(CONFIG_MMU_NOTIFIER)
+	struct mmu_notifier mn;
+#endif
+};
+
+union drm_i915_gem_objects {
+	struct drm_i915_gem_object base;
+	struct i915_gem_vmap_object vmap;
 };
 
 #define to_intel_bo(x) container_of(x, struct drm_i915_gem_object, base)
@@ -1331,6 +1358,8 @@ int i915_gem_entervt_ioctl(struct drm_device *dev, void *data,
 			   struct drm_file *file_priv);
 int i915_gem_leavevt_ioctl(struct drm_device *dev, void *data,
 			   struct drm_file *file_priv);
+int i915_gem_vmap_ioctl(struct drm_device *dev, void *data,
+			struct drm_file *file);
 int i915_gem_set_tiling(struct drm_device *dev, void *data,
 			struct drm_file *file_priv);
 int i915_gem_get_tiling(struct drm_device *dev, void *data,
@@ -1343,6 +1372,9 @@ void i915_gem_load(struct drm_device *dev);
 int i915_gem_init_object(struct drm_gem_object *obj);
 struct drm_i915_gem_object *i915_gem_alloc_object(struct drm_device *dev,
 						  size_t size);
+void i915_gem_object_init(struct drm_device *dev,
+				struct drm_i915_gem_object *obj,
+				const struct drm_i915_gem_object_ops *ops);
 void i915_gem_free_object(struct drm_gem_object *obj);
 int __must_check i915_gem_object_pin(struct drm_i915_gem_object *obj,
 				     uint32_t alignment,
@@ -1352,8 +1384,12 @@ int __must_check i915_gem_object_unbind(struct drm_i915_gem_object *obj);
 void i915_gem_release_mmap(struct drm_i915_gem_object *obj);
 void i915_gem_lastclose(struct drm_device *dev);
 
+int i915_gem_object_get_pages(struct drm_i915_gem_object *obj,
+			  gfp_t gfpmask);
 int i915_gem_object_get_pages_gtt(struct drm_i915_gem_object *obj,
-				  gfp_t gfpmask);
+				  struct page **pages,
+				  gfp_t gfpmask,
+				  u32 *offset);
 int __must_check i915_mutex_lock_interruptible(struct drm_device *dev);
 int i915_gem_object_sync(struct drm_i915_gem_object *obj,
 			 struct intel_ring_buffer *to);
@@ -1400,6 +1436,15 @@ i915_gem_object_unpin_fence(struct drm_i915_gem_object *obj)
 		struct drm_i915_private *dev_priv = obj->base.dev->dev_private;
 		dev_priv->fence_regs[obj->fence_reg].pin_count--;
 	}
+}
+
+static inline bool
+i915_gem_is_vmap_object(struct drm_i915_gem_object *obj)
+{
+	const struct drm_i915_gem_object_ops *ops = obj->base.driver_private;
+	if (ops == NULL)
+		return 0;
+	return ops->is_vmap_obj();
 }
 
 void i915_gem_retire_requests(struct drm_device *dev);
