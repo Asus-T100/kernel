@@ -1353,6 +1353,16 @@ static int ulpmc_battery_remove(struct i2c_client *client)
 	return 0;
 }
 
+static void ulpmc_battery_shutdown(struct i2c_client *client)
+{
+	dev_dbg(&client->dev, "ulpmc battery shutdown\n");
+
+	if (client->irq > 0)
+		disable_irq(client->irq);
+
+	return;
+}
+
 static int ulpmc_suspend(struct device *dev)
 {
 	struct ulpmc_chip_info *chip = dev_get_drvdata(dev);
@@ -1424,6 +1434,7 @@ static struct i2c_driver ulpmc_battery_driver = {
 	.probe = ulpmc_battery_probe,
 	.remove = ulpmc_battery_remove,
 	.id_table = ulpmc_id,
+	.shutdown = ulpmc_battery_shutdown,
 };
 
 /*
