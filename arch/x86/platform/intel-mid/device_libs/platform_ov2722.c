@@ -112,7 +112,7 @@ static int ov2722_gpio_ctrl(struct v4l2_subdev *sd, int flag)
 	if (flag) {
 		gpio_set_value(gp_camera1_power_down, 1);
 		gpio_set_value(gp_camera1_reset, 0);
-		msleep(50);
+		msleep(20);
 		gpio_set_value(gp_camera1_reset, 1);
 	} else {
 		gpio_set_value(gp_camera1_reset, 0);
@@ -161,7 +161,6 @@ static int ov2722_power_ctrl(struct v4l2_subdev *sd, int flag)
 #endif
 			if (!ret)
 				camera_vprog1_on = 1;
-			msleep(100);
 			return ret;
 		}
 	} else {
