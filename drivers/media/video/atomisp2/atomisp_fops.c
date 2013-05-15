@@ -47,7 +47,6 @@
 #include "atomisp_fw.h"
 
 #define ISP_LEFT_PAD			128	/* equal to 2*NWAY */
-#define CSS_DTRACE_VERBOSITY_LEVEL	5	/* Controls trace verbosity */
 
 /*
  * input image data, and current frame resolution for test
