@@ -58,6 +58,10 @@ static struct charger_cable cable_list[] = {
 	 .extcon_cable_type = EXTCON_ACA,
 	 },
 	{
+	 .psy_cable_type = POWER_SUPPLY_CHARGER_TYPE_ACA_DOCK,
+	 .extcon_cable_type = EXTCON_ACA,
+	 },
+	{
 	 .psy_cable_type = POWER_SUPPLY_CHARGER_TYPE_AC,
 	 .extcon_cable_type = EXTCON_AC,
 	 },
@@ -79,17 +83,23 @@ struct charger_cable *get_cable(unsigned long usb_chrgr_type)
 
 	switch (usb_chrgr_type) {
 	case POWER_SUPPLY_CHARGER_TYPE_USB_SDP:
-		printk(KERN_ERR "%s:%d SDP\n", __FILE__, __LINE__);
+		pr_info("%s:%d SDP\n", __FILE__, __LINE__);
 		return &cable_list[0];
 	case POWER_SUPPLY_CHARGER_TYPE_USB_CDP:
-		printk(KERN_ERR "%s:%d CDP\n", __FILE__, __LINE__);
+		pr_info("%s:%d CDP\n", __FILE__, __LINE__);
 		return &cable_list[1];
 	case POWER_SUPPLY_CHARGER_TYPE_USB_DCP:
-		printk(KERN_ERR "%s:%d DCP\n", __FILE__, __LINE__);
+		pr_info("%s:%d DCP\n", __FILE__, __LINE__);
 		return &cable_list[2];
 	case POWER_SUPPLY_CHARGER_TYPE_USB_ACA:
-		printk(KERN_ERR "%s:%d ACA\n", __FILE__, __LINE__);
+		pr_info("%s:%d ACA\n", __FILE__, __LINE__);
 		return &cable_list[3];
+	case POWER_SUPPLY_CHARGER_TYPE_ACA_DOCK:
+		pr_info("%s:%d ACA DOCK\n", __FILE__, __LINE__);
+		return &cable_list[4];
+	case POWER_SUPPLY_CHARGER_TYPE_AC:
+		pr_info("%s:%d AC\n", __FILE__, __LINE__);
+		return &cable_list[5];
 	}
 
 	return NULL;
