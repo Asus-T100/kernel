@@ -1577,6 +1577,10 @@
 #define _BCLRPAT_B	0x61020
 #define _VSYNCSHIFT_B	0x61028
 
+/* CSC Control Register */
+#define	_PIPEACSC	0x600b0
+#define	_PIPEBCSC	0x610b0
+#define	PIPECONF_CSC_ENABLE	(1<<15)
 
 #define HTOTAL(pipe) _PIPE(pipe, _HTOTAL_A, _HTOTAL_B)
 #define HBLANK(pipe) _PIPE(pipe, _HBLANK_A, _HBLANK_B)
