@@ -1060,7 +1060,7 @@ static int aif1clk_ev(struct snd_soc_dapm_widget *w,
 	switch (event) {
 	case SND_SOC_DAPM_PRE_PMU:
 		/* Don't enable timeslot 2 if not in use */
-		if (wm8994->channels[0] <= 2)
+		if ((wm8994->channels[0] <= 2) && (wm8994->slots <= 2))
 			mask &= ~(WM8994_AIF1DAC2L_ENA | WM8994_AIF1DAC2R_ENA);
 
 		val = snd_soc_read(codec, WM8994_AIF1_CONTROL_1);
@@ -2719,6 +2719,7 @@ static int wm8994_hw_params(struct snd_pcm_substream *substream,
 	int lrclk = 0;
 	int rate_val = 0;
 	int id = dai->id - 1;
+	int format_bits = 0;
 
 	int i, cur_val, best_val, bclk_rate, best;
 
@@ -2754,7 +2755,12 @@ static int wm8994_hw_params(struct snd_pcm_substream *substream,
 	}
 
 	bclk_rate = params_rate(params);
-	switch (params_format(params)) {
+	if (wm8994->format_bits)
+		format_bits = wm8994->format_bits;
+	else
+		format_bits = params_format(params);
+
+	switch (format_bits) {
 	case SNDRV_PCM_FORMAT_S16_LE:
 		bclk_rate *= 16;
 		break;
@@ -2968,6 +2974,26 @@ static int wm8994_set_tristate(struct snd_soc_dai *codec_dai, int tristate)
 	return snd_soc_update_bits(codec, reg, mask, val);
 }
 
+static int wm8994_set_tdm_slots(struct snd_soc_dai *dai,
+	unsigned int tx_mask, unsigned int rx_mask, int slots, int slot_width)
+{
+	struct snd_soc_codec *codec = dai->codec;
+	struct wm8994_priv *wm8994 = snd_soc_codec_get_drvdata(codec);
+	struct wm8994 *control = wm8994->wm8994;
+
+	switch (control->type) {
+	case WM8958:
+		wm8994->slots = slots;
+		wm8994->format_bits = slot_width;
+		break;
+	default:
+		pr_err("we dont support tdm for non 8958!");
+		return -EINVAL;
+		break;
+	}
+	return 0;
+}
+
 static int wm8994_aif2_probe(struct snd_soc_dai *dai)
 {
 	struct snd_soc_codec *codec = dai->codec;
@@ -2995,6 +3021,7 @@ static const struct snd_soc_dai_ops wm8994_aif1_dai_ops = {
 	.digital_mute	= wm8994_aif_mute,
 	.set_pll	= wm8994_set_fll,
 	.set_tristate	= wm8994_set_tristate,
+	.set_tdm_slot	= wm8994_set_tdm_slots,
 };
 
 static const struct snd_soc_dai_ops wm8994_aif2_dai_ops = {

@@ -86,6 +86,8 @@ struct wm8994_priv {
 	bool fll_locked_irq;
 	bool fll_byp;
 	bool clk_has_run;
+	int format_bits;
+	int slots;
 
 	int vmid_refcount;
 	int active_refcount;
