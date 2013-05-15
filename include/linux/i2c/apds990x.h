@@ -39,6 +39,10 @@
  * @cf2: clear channel factor 2 for raw to lux conversion
  * @irf2: IR channel factor 2 for raw to lux conversion
  * @df: device factor for conversion formulas
+ * @incan: one threshold of using cf1/irf1 or cf2/irf2
+ * (the radio of clear/infrared, compare with clear*APDS_PARAM_SCALE/infrared)
+ * @min_ir: the other threshold of using cf1/irf1 or cf2/irf2
+ * (the infrared value)
  *
  * Structure for tuning ALS calculation to match with environment.
  * Values depend on the material above the sensor and the sensor
@@ -53,6 +57,8 @@ struct apds990x_chip_factors {
 	int cf2;
 	int irf2;
 	int df;
+	int incan;
+	int min_ir;
 };
 
 /**

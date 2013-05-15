@@ -132,10 +132,8 @@
 #define ALS_DATA_READY    2
 #define ALS_IOCTL_ENABLE  3
 
-#define APDS_RATIO_INCAN	1638
 #define APDS_ALS_MAX_LUX	10000
 #define APDS_ALS_MIN_ADC	3
-#define APDS_ALS_INCAN_MIN_IR	8
 #define APDS_ALS_GAIN_MASK	0x3
 #define APDS_ALS_WORK_GAIN	0
 #define APDS_ALS_INIT_GAIN	2
@@ -515,7 +513,7 @@ static int apds990x_get_lux(struct apds990x_chip *chip, int clear, int ir)
 	irf = chip->cf.irf1;
 
 	ratio = (ir * APDS_PARAM_SCALE) / clear;
-	if (ratio > APDS_RATIO_INCAN && ir > APDS_ALS_INCAN_MIN_IR) {
+	if (ratio > chip->cf.incan && ir > chip->cf.min_ir) {
 		cf = chip->cf.cf2;
 		irf = chip->cf.irf2;
 	}
