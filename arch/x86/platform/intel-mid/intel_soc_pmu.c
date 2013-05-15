@@ -1106,6 +1106,9 @@ int pmu_nc_set_power_state(int islands, int state_type, int reg)
 	int ret = 0;
 	int change;
 
+	if (platform_is(INTEL_ATOM_BYT))
+		return byt_pmu_nc_set_power_state(islands, state_type, reg);
+
 	spin_lock_irqsave(&mid_pmu_cxt->nc_ready_lock, flags);
 
 	record = get_new_record_history();
@@ -1152,6 +1155,9 @@ int pmu_nc_get_power_state(int island, int reg_type)
 	unsigned long flags;
 	int i, lss;
 	int ret = -EINVAL;
+
+	if (platform_is(INTEL_ATOM_BYT))
+		return byt_pmu_nc_get_power_state(island, reg_type);
 
 	/*do nothing if platform is nether medfield or clv*/
 	if (!platform_is(INTEL_ATOM_MFLD) && !platform_is(INTEL_ATOM_CLV))

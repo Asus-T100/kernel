@@ -31,6 +31,7 @@
 #define INTEL_ATOM_MFLD 0x27
 #define INTEL_ATOM_CLV 0x35
 #define INTEL_ATOM_MRFLD 0x4a
+#define INTEL_ATOM_BYT 0x37
 
 /* Register Type definitions */
 #define OSPM_REG_TYPE          0x0
@@ -196,6 +197,7 @@ extern bool mid_pmu_is_wake_source(u32 lss_number);
 
 static inline int pmu_nc_set_power_state
 	(int islands, int state_type, int reg_type) { return 0; }
+static inline int pmu_nc_get_power_state(int island, int reg_type) { return 0; }
 
 static inline void pmu_set_s0ix_complete(void) { return; }
 static inline bool pmu_is_s0ix_in_progress(void) { return false; };

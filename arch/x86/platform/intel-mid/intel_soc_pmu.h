@@ -404,6 +404,8 @@ extern struct platform_pmu_ops *pmu_ops;
 extern void platform_update_all_lss_states(struct pmu_ss_states *, int *);
 extern int set_extended_cstate_mode(const char *val, struct kernel_param *kp);
 extern int get_extended_cstate_mode(char *buffer, struct kernel_param *kp);
+extern int byt_pmu_nc_set_power_state(int islands, int state_type, int reg);
+extern int byt_pmu_nc_get_power_state(int islands, int reg);
 
 #ifdef LOG_PMU_EVENTS
 extern void pmu_log_pmu_irq(int status);
