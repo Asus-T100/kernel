@@ -34,6 +34,7 @@
 #include <linux/firmware.h>
 #include <linux/pm_runtime.h>
 #include <linux/pm_qos.h>
+#include <linux/math64.h>
 #include <linux/intel_mid_pm.h>
 #include <sound/compress_offload.h>
 #include <sound/pcm.h>
@@ -550,7 +551,7 @@ static int sst_cdev_ack(unsigned int str_id, unsigned long bytes)
 		sizeof(fw_tstamp));
 
 	fw_tstamp.bytes_copied = stream->cumm_bytes;
-	pr_debug("bytes sent to fw %d inc by %ld\n", fw_tstamp.bytes_copied,
+	pr_debug("bytes sent to fw %llu inc by %ld\n", fw_tstamp.bytes_copied,
 							 bytes);
 
 	addr =  ((void *)(sst_drv_ctx->mailbox + sst_drv_ctx->tstamp)) +
@@ -645,12 +646,12 @@ static int sst_cdev_tstamp(unsigned int str_id, struct snd_compr_tstamp *tstamp)
 	stream = get_stream_info(str_id);
 	if (!stream)
 		return -EINVAL;
-	pr_debug("rb_counter %d in bytes\n", fw_tstamp.ring_buffer_counter);
+	pr_debug("rb_counter %llu in bytes\n", fw_tstamp.ring_buffer_counter);
 
 	tstamp->copied_total = fw_tstamp.ring_buffer_counter;
 	tstamp->pcm_frames = fw_tstamp.frames_decoded;
-	tstamp->pcm_io_frames = fw_tstamp.hardware_counter /
-			((stream->num_ch) * SST_GET_BYTES_PER_SAMPLE(24));
+	tstamp->pcm_io_frames = div_u64(fw_tstamp.hardware_counter,
+			(u64)((stream->num_ch) * SST_GET_BYTES_PER_SAMPLE(24)));
 	tstamp->sampling_rate = fw_tstamp.sampling_frequency;
 	pr_debug("PCM  = %lu\n", tstamp->pcm_io_frames);
 	pr_debug("Pointer Query on strid = %d  copied_total %d, decodec %ld\n",
@@ -772,19 +773,19 @@ static inline int sst_calc_tstamp(struct pcm_stream_info *info,
 	size_t buffer_sz;
 	size_t pointer_bytes, pointer_samples;
 
-	pr_debug("mrfld ring_buffer_counter %d in bytes\n",
+	pr_debug("mrfld ring_buffer_counter %llu in bytes\n",
 			fw_tstamp->ring_buffer_counter);
-	pr_debug("mrfld hardware_counter %d in bytes\n",
+	pr_debug("mrfld hardware_counter %llu in bytes\n",
 			 fw_tstamp->hardware_counter);
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
-		delay_bytes = fw_tstamp->ring_buffer_counter -
-					fw_tstamp->hardware_counter;
+		delay_bytes = (size_t) (fw_tstamp->ring_buffer_counter -
+					fw_tstamp->hardware_counter);
 	else
-		delay_bytes = fw_tstamp->hardware_counter -
-					fw_tstamp->ring_buffer_counter;
+		delay_bytes = (size_t) (fw_tstamp->hardware_counter -
+					fw_tstamp->ring_buffer_counter);
 	delay_frames = bytes_to_frames(substream->runtime, delay_bytes);
 	buffer_sz = snd_pcm_lib_buffer_bytes(substream);
-	pointer_bytes = fw_tstamp->ring_buffer_counter % buffer_sz;
+	div_u64_rem(fw_tstamp->ring_buffer_counter, buffer_sz, &pointer_bytes);
 	pointer_samples = bytes_to_samples(substream->runtime, pointer_bytes);
 
 	pr_debug("pcm delay %zu in bytes\n", delay_bytes);

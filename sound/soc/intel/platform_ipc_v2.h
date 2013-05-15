@@ -387,11 +387,11 @@ struct snd_sst_tstamp_mfld {
 };
 
 struct snd_sst_tstamp {
-	u32 ring_buffer_counter;	/* PB/CP: Bytes copied from/to DDR. */
-	u32 hardware_counter;	    /* PB/CP: Bytes DMAed to/from SSP. */
-	u32 frames_decoded;
-	u32 bytes_decoded;
-	u32 bytes_copied;
+	u64 ring_buffer_counter;	/* PB/CP: Bytes copied from/to DDR. */
+	u64 hardware_counter;	    /* PB/CP: Bytes DMAed to/from SSP. */
+	u64 frames_decoded;
+	u64 bytes_decoded;
+	u64 bytes_copied;
 	u32 sampling_frequency;
 	u32 channel_peak[8];
 };
