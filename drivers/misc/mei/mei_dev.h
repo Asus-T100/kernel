@@ -322,6 +322,7 @@ struct mei_cl_device {
  * struct mei_device -  MEI private device struct
 
  * @hbm_state - state of host bus message protocol
+ * @support_rpm - support runtime power managment
  * @mem_addr - mem mapped base register address
 
  * @hbuf_depth - depth of hardware host/write buffer is slots
@@ -367,6 +368,7 @@ struct mei_device {
 	enum mei_dev_state dev_state;
 	enum mei_hbm_state hbm_state;
 	u16 init_clients_timer;
+	bool support_rpm;
 
 	unsigned char rd_msg_buf[MEI_RD_MSG_BUF_SIZE];	/* control messages */
 	u32 rd_msg_hdr;
@@ -633,6 +635,8 @@ static inline int mei_count_full_read_slots(struct mei_device *dev)
 {
 	return dev->ops->rdbuf_full_slots(dev);
 }
+
+bool mei_write_is_idle(struct mei_device *dev);
 
 #if IS_ENABLED(CONFIG_DEBUG_FS)
 int mei_dbgfs_register(struct mei_device *dev, const char *name);

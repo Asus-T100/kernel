@@ -36,6 +36,8 @@
 #include <linux/interrupt.h>
 #include <linux/workqueue.h>
 
+#include <linux/pm_runtime.h>
+
 #include <linux/mei.h>
 
 #include "mei_dev.h"
@@ -158,6 +160,9 @@ static int mei_txe_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 		goto release_irq;
 	}
 
+	pm_runtime_set_autosuspend_delay(&pdev->dev, MEI_TXI_RPM_TIMEOUT);
+	pm_runtime_use_autosuspend(&pdev->dev);
+
 	err = mei_register(dev);
 	if (err)
 		goto release_irq;
@@ -166,6 +171,8 @@ static int mei_txe_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	pci_set_drvdata(pdev, dev);
 
 	mutex_unlock(&mei_mutex);
+
+	pm_runtime_put_noidle(&pdev->dev);
 
 	return 0;
 
@@ -215,6 +222,10 @@ static void mei_txe_remove(struct pci_dev *pdev)
 		return;
 	}
 
+	pm_runtime_get_noresume(&pdev->dev);
+	dev_dbg(&pdev->dev, "rpm: remove: usage count: %d\n",
+		atomic_read(&pdev->dev.power.usage_count));
+
 	hw = to_txe_hw(dev);
 
 	mei_stop(dev);
@@ -247,7 +258,7 @@ static int mei_txe_pci_suspend(struct device *device)
 	if (!dev)
 		return -ENODEV;
 
-	dev_err(&pdev->dev, "suspend\n");
+	dev_dbg(&pdev->dev, "suspend\n");
 
 	mei_stop(dev);
 
@@ -292,8 +303,82 @@ static int mei_txe_pci_resume(struct device *device)
 
 	return err;
 }
-static SIMPLE_DEV_PM_OPS(mei_txe_pm_ops,
-		mei_txe_pci_suspend, mei_txe_pci_resume);
+
+#ifdef CONFIG_PM_RUNTIME
+static int mei_txe_pm_runtime_idle(struct device *device)
+{
+	struct pci_dev *pdev = to_pci_dev(device);
+	struct mei_device *dev;
+
+	dev_dbg(&pdev->dev, "rpm: txe: runtime_idle\n");
+
+	dev = pci_get_drvdata(pdev);
+	if (!dev)
+		return -ENODEV;
+	if (mei_write_is_idle(dev))
+		pm_schedule_suspend(device, MEI_TXI_RPM_TIMEOUT * 2);
+
+	return -EBUSY;
+}
+static int mei_txe_pm_runtime_suspend(struct device *device)
+{
+	struct pci_dev *pdev = to_pci_dev(device);
+	struct mei_device *dev;
+	int ret;
+
+	dev_dbg(&pdev->dev, "rpm: txe: runtime suspend\n");
+
+	dev = pci_get_drvdata(pdev);
+	if (!dev)
+		return -ENODEV;
+
+	mutex_lock(&dev->device_lock);
+
+	if (mei_write_is_idle(dev))
+		/* FIXME: need to check API what error is epxected */
+		ret = mei_txe_aliveness_set_sync(dev, 0);
+	else
+		ret = -EAGAIN;
+
+	dev_dbg(&pdev->dev, "rpm: txe: runtime suspend ret=%d\n", ret);
+
+	mutex_unlock(&dev->device_lock);
+	return ret;
+}
+
+static int mei_txe_pm_runtime_resume(struct device *device)
+{
+	struct pci_dev *pdev = to_pci_dev(device);
+	struct mei_device *dev;
+	int ret;
+
+	dev_dbg(&pdev->dev, "rpm: txe: runtime resume\n");
+
+	dev = pci_get_drvdata(pdev);
+	if (!dev)
+		return -ENODEV;
+
+	mutex_lock(&dev->device_lock);
+
+	ret = mei_txe_aliveness_set_sync(dev, 1);
+
+	mutex_unlock(&dev->device_lock);
+
+	dev_dbg(&pdev->dev, "rpm: txe: runtime resume ret = %d\n", ret);
+
+	return ret;
+}
+#endif /* CONFIG_PM_RUNTIME */
+
+static const struct dev_pm_ops mei_txe_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(mei_txe_pci_suspend,
+				mei_txe_pci_resume)
+	SET_RUNTIME_PM_OPS(
+		mei_txe_pm_runtime_suspend,
+		mei_txe_pm_runtime_resume,
+		mei_txe_pm_runtime_idle)
+};
+
 #define MEI_TXE_PM_OPS	(&mei_txe_pm_ops)
 #else
 #define MEI_TXE_PM_OPS	NULL

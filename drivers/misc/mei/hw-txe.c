@@ -153,10 +153,11 @@ static inline void mei_txe_br_reg_write(struct mei_txe_hw *hw,
  * @dev: the device structure
  * @req: requested aliveness value
  */
-static void mei_txe_aliveness_set(struct mei_device *dev, u32 req)
+static bool mei_txe_aliveness_set(struct mei_device *dev, u32 req)
 {
 
 	struct mei_txe_hw *hw = to_txe_hw(dev);
+	bool do_req = hw->aliveness != req;
 
 	dev_dbg(&dev->pdev->dev, "Aliveness current=%d request=%d\n",
 				hw->aliveness, req);
@@ -164,10 +165,11 @@ static void mei_txe_aliveness_set(struct mei_device *dev, u32 req)
 	if (req)
 		hw->aliveness_atime = jiffies;
 
-	if (hw->aliveness != req) {
+	if (do_req) {
 		hw->recvd_aliv_resp = false;
 		mei_txe_br_reg_write(hw, SICR_HOST_ALIVENESS_REQ_REG, req);
 	}
+	return do_req;
 }
 
 
@@ -265,32 +267,9 @@ static long mei_txe_aliveness_wait(struct mei_device *dev, u32 expected)
  */
 int mei_txe_aliveness_set_sync(struct mei_device *dev, u32 req)
 {
-	mei_txe_aliveness_set(dev, req);
-	return mei_txe_aliveness_wait(dev, req);
-}
-
-static void mei_txe_aliveness_timer(struct work_struct *work)
-{
-	struct mei_txe_hw *hw = container_of(work,
-			struct mei_txe_hw,  aliveness_timer.work);
-	struct mei_device *dev = hw_txe_to_mei(hw);
-	/*
-	 * if we passed the time dassert the alivness
-	 * else schedule next attempt after last access
-	 */
-	dev_dbg(&dev->pdev->dev,
-		"aliveness timer jiffies=%ld timeout=%ld atime=%ld\n",
-		jiffies, hw->aliveness_timeout, hw->aliveness_atime);
-	mutex_lock(&dev->device_lock);
-	if (dev->dev_state != MEI_DEV_ENABLED)
-		return;
-
-	if (time_after(jiffies, hw->aliveness_atime + hw->aliveness_timeout))
-			mei_txe_aliveness_set(dev, 0);
-	else
-		schedule_delayed_work(&hw->aliveness_timer,
-				hw->aliveness_timeout);
-	mutex_unlock(&dev->device_lock);
+	if (mei_txe_aliveness_set(dev, req))
+		return mei_txe_aliveness_wait(dev, req);
+	return 0;
 }
 
 /**
@@ -675,9 +654,6 @@ static int mei_txe_hw_reset(struct mei_device *dev, bool intr_enable)
 	 */
 	(void)mei_txe_sec_reg_read_silent(hw, SEC_IPC_INPUT_DOORBELL_REG);
 
-	/* Cancle aliveness machine */
-	cancel_delayed_work_sync(&hw->aliveness_timer);
-
 	aliveness_req = mei_txe_aliveness_req_get(dev);
 	hw->aliveness = mei_txe_aliveness_get(dev);
 
@@ -926,14 +902,6 @@ again:
 			"Aliveness Interrrupt: Status: %d\n", hw->aliveness);
 		hw->recvd_aliv_resp = true;
 		wake_up_interruptible(&hw->wait_aliveness_resp);
-
-		if (nopg == false &&
-		    dev->dev_state == MEI_DEV_ENABLED && hw->aliveness &&
-		    !delayed_work_pending(&hw->aliveness_timer)) {
-			dev_dbg(&dev->pdev->dev, "sechudle aliveness timer\n");
-			schedule_delayed_work(&hw->aliveness_timer,
-					hw->aliveness_timeout);
-		}
 	}
 
 
@@ -1027,7 +995,6 @@ struct mei_device *mei_txe_dev_init(struct pci_dev *pdev)
 	hw = to_txe_hw(dev);
 
 	init_waitqueue_head(&hw->wait_aliveness_resp);
-	INIT_DELAYED_WORK(&hw->aliveness_timer, mei_txe_aliveness_timer);
 	INIT_WORK(&hw->reset_work, mei_txe_reset);
 
 	dev->ops = &mei_txe_hw_ops;

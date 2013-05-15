@@ -20,6 +20,8 @@
 #include "hw.h"
 #include "hw-txe-regs.h"
 
+#define MEI_TXI_RPM_TIMEOUT    500 /* ms */
+
 extern bool nopg;
 
 
@@ -41,7 +43,6 @@ struct mei_txe_hw {
 	unsigned long aliveness_timeout;
 	bool recvd_aliv_resp;
 	wait_queue_head_t wait_aliveness_resp;
-	struct delayed_work aliveness_timer;
 	struct work_struct reset_work;
 
 	u32 readiness_state;
@@ -59,6 +60,8 @@ struct mei_device *mei_txe_dev_init(struct pci_dev *pdev);
 
 irqreturn_t mei_txe_irq_quick_handler(int irq, void *dev_id);
 irqreturn_t mei_txe_irq_thread_handler(int irq, void *dev_id);
+int mei_txe_aliveness_set_sync(struct mei_device *dev, u32 req);
+
 int mei_txe_aliveness_set_sync(struct mei_device *dev, u32 req);
 
 #endif /* _MEI_HW_TXE_H_ */
