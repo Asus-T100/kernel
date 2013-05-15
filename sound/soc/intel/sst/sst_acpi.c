@@ -251,8 +251,8 @@ int __devinit sst_acpi_probe(struct platform_device *pdev)
 	ctx->cp_streams = 0;
 	ctx->fw = NULL;
 	ctx->fw_in_mem = NULL;
-	ctx->use_dma = 0;
-	ctx->use_lli = 0;
+	ctx->use_dma = 1;
+	ctx->use_lli = 1;
 
 	if (sst_workqueue_init(ctx))
 		goto do_free_wq;
@@ -283,7 +283,8 @@ int __devinit sst_acpi_probe(struct platform_device *pdev)
 		pr_err("couldn't register control device\n");
 		goto do_free_wq;
 	}
-	sst_shim_write64(ctx->shim, SST_IMRX, 0xFFFF0034);
+	/* mask all SSP and DMA interrupts to IA - enable when needed */
+	sst_shim_write64(ctx->shim, SST_IMRX, 0xFFFF0038);
 
 	if (ctx->use_32bit_ops) {
 		pr_debug("allocate mem for context save/restore\n ");

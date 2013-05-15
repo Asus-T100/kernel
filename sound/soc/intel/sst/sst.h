@@ -316,7 +316,7 @@ struct sst_ipc_msg_wq {
 struct sst_dma {
 	struct dma_chan *ch;
 	struct intel_mid_dma_slave slave;
-	struct pci_dev *dmac;
+	struct device *dev;
 };
 
 struct sst_runtime_param {

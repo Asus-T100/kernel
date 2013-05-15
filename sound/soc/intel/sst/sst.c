@@ -759,7 +759,7 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 	}
 	/* default intr are unmasked so set this as masked */
 	if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID)
-		sst_shim_write64(sst_drv_ctx->shim, SST_IMRX, 0xFFFF0034);
+		sst_shim_write64(sst_drv_ctx->shim, SST_IMRX, 0xFFFF0038);
 
 	if (sst_drv_ctx->use_32bit_ops) {
 		pr_debug("allocate mem for context save/restore\n ");
@@ -982,35 +982,8 @@ static inline void sst_restore_shim64(struct intel_sst_drv *ctx,
 {
 	unsigned long irq_flags;
 	spin_lock_irqsave(&ctx->ipc_spin_lock, irq_flags);
-
-	sst_shim_write64(shim, SST_PISR, shim_regs->pisr),
-	sst_shim_write64(shim, SST_PIMR, shim_regs->pimr),
-	sst_shim_write64(shim, SST_ISRX, shim_regs->isrx),
-	sst_shim_write64(shim, SST_ISRD, shim_regs->isrd),
 	sst_shim_write64(shim, SST_IMRX, shim_regs->imrx),
-	sst_shim_write64(shim, SST_IMRD, shim_regs->imrd),
-	sst_shim_write64(shim, ctx->ipc_reg.ipcx, shim_regs->ipcx),
-	sst_shim_write64(shim, ctx->ipc_reg.ipcd, shim_regs->ipcd),
-	sst_shim_write64(shim, SST_ISRSC, shim_regs->isrsc),
-	sst_shim_write64(shim, SST_ISRLPESC, shim_regs->isrlpesc),
-	sst_shim_write64(shim, SST_IMRSC, shim_regs->imrsc),
-	sst_shim_write64(shim, SST_IMRLPESC, shim_regs->imrlpesc),
-	sst_shim_write64(shim, SST_IPCSC, shim_regs->ipcsc),
-	sst_shim_write64(shim, SST_IPCLPESC, shim_regs->ipclpesc),
-	sst_shim_write64(shim, SST_CLKCTL, shim_regs->clkctl),
-	sst_shim_write64(shim, SST_CSR2, shim_regs->csr2);
-
 	spin_unlock_irqrestore(&ctx->ipc_spin_lock, irq_flags);
-}
-
-static inline int sst_set_acpi_state(struct device *dev, u8 state)
-{
-	int ret = 0;
-#if IS_ENABLED(CONFIG_ACPI)
-	acpi_handle handle = ACPI_HANDLE(dev);
-	ret = acpi_bus_set_power(handle, state);
-#endif
-	return ret;
 }
 
 /*
@@ -1053,13 +1026,6 @@ static int intel_sst_runtime_suspend(struct device *dev)
 	if (ctx->pci_id == SST_BYT_PCI_ID) {
 		/* save the shim registers because PMC doesn't save state */
 		sst_save_shim64(ctx, ctx->shim, ctx->shim_regs64);
-#if IS_ENABLED(CONFIG_ACPI)
-		ret = sst_set_acpi_state(dev, ACPI_STATE_D3);
-		if (ret) {
-			pr_err("%s: unable to set ACPI state to D3", __func__);
-			return ret;
-		}
-#endif
 	}
 	return ret;
 }
@@ -1073,13 +1039,6 @@ static int intel_sst_runtime_resume(struct device *dev)
 	pr_debug("runtime_resume called\n");
 
 	if (ctx->pci_id == SST_BYT_PCI_ID) {
-#if IS_ENABLED(CONFIG_ACPI)
-		ret = sst_set_acpi_state(dev, ACPI_STATE_D0);
-		if (ret) {
-			pr_err("%s: unable to set ACPI state to D0", __func__);
-			return ret;
-		}
-#endif
 		/* wait for device power up a/c to PCI spec */
 		usleep_range(10000, 11000);
 		sst_restore_shim64(ctx, ctx->shim, ctx->shim_regs64);

@@ -181,24 +181,26 @@ static int sst_fill_dstn(struct intel_sst_drv *sst, struct sst_info info,
 		if (data_size)
 			pr->p_filesz += 4 - data_size;
 		*dstn = sst->iram + (pr->p_paddr - info.iram_start);
-		*dstn_phys = sst->iram_base + pr->p_paddr - info.iram_start;
+		*dstn_phys = pr->p_paddr;
 		*mem_type = 1;
+	}
 #else
 	if ((pr->p_paddr >= info.iram_start) &&
-			(pr->p_paddr < info.iram_end)) {
+	    (pr->p_paddr < info.iram_end)) {
 
 		*dstn = sst->iram + (pr->p_paddr - info.iram_start);
-		*dstn_phys = sst->iram_base + pr->p_paddr - info.iram_start;
+		*dstn_phys = pr->p_paddr;
 		*mem_type = 1;
+	}
 #endif
-	} else if ((pr->p_paddr >= info.dram_start) &&
-			(pr->p_paddr < info.dram_end)) {
+	else if ((pr->p_paddr >= info.dram_start) &&
+		 (pr->p_paddr < info.dram_end)) {
 
 		*dstn = sst->dram + (pr->p_paddr - info.dram_start);
-		*dstn_phys = sst->dram_base + pr->p_paddr - info.dram_start;
+		*dstn_phys = pr->p_paddr;
 		*mem_type = 1;
 	} else if ((pr->p_paddr >= info.imr_start) &&
-			(pr->p_paddr < info.imr_end)) {
+		   (pr->p_paddr < info.imr_end)) {
 
 		*dstn = sst->ddr + (pr->p_paddr - info.imr_start);
 		*dstn_phys =  sst->ddr_base + pr->p_paddr - info.imr_start;
@@ -365,13 +367,12 @@ exit:
 static bool chan_filter(struct dma_chan *chan, void *param)
 {
 	struct sst_dma *dma = (struct sst_dma *)param;
-	bool ret = false;
 
 	/* we only need MID_DMAC1 as that can access DSP RAMs*/
-	if (chan->device->dev == &dma->dmac->dev)
-		ret = true;
+	if (chan->device->dev == dma->dev)
+		return true;
 
-	return ret;
+	return false;
 }
 
 static unsigned int
@@ -444,25 +445,32 @@ static int sst_alloc_dma_chan(struct sst_dma *dma)
 	dma_cap_mask_t mask;
 	struct intel_mid_dma_slave *slave = &dma->slave;
 	int retval;
+	struct pci_dev *dmac = NULL;
 
 	pr_debug("%s\n", __func__);
+	dma->dev = NULL;
 	dma_cap_zero(mask);
 	dma_cap_set(DMA_MEMCPY, mask);
 
 	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID)
-		dma->dmac = pci_get_device(PCI_VENDOR_ID_INTEL,
-						PCI_DMAC_CLV_ID, NULL);
+		dmac = pci_get_device(PCI_VENDOR_ID_INTEL,
+				      PCI_DMAC_CLV_ID, NULL);
 	else if (sst_drv_ctx->pci_id == SST_MFLD_PCI_ID)
-		dma->dmac = pci_get_device(PCI_VENDOR_ID_INTEL,
-						PCI_DMAC_MFLD_ID, NULL);
+		dmac = pci_get_device(PCI_VENDOR_ID_INTEL,
+				      PCI_DMAC_MFLD_ID, NULL);
 	else if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID)
-		dma->dmac = pci_get_device(PCI_VENDOR_ID_INTEL,
-						PCI_DMAC_MRFLD_ID, NULL);
+		dmac = pci_get_device(PCI_VENDOR_ID_INTEL,
+				      PCI_DMAC_MRFLD_ID, NULL);
+	else if (sst_drv_ctx->pci_id == SST_BYT_PCI_ID)
+		dma->dev = intel_mid_get_acpi_dma();
 
-	if (!dma->dmac) {
+	if (!dmac && !dma->dev) {
 		pr_err("Can't find DMAC\n");
 		return -ENODEV;
 	}
+	if (dmac)
+		dma->dev = &dmac->dev;
+
 	dma->ch = dma_request_channel(mask, chan_filter, dma);
 	if (!dma->ch) {
 		pr_err("unable to request dma channel\n");
@@ -836,7 +844,9 @@ static int sst_do_dma(struct sst_sg_list *sg_list)
 	int ret_val;
 
 	/* get a dmac channel */
-	sst_alloc_dma_chan(&sst_drv_ctx->dma);
+	ret_val = sst_alloc_dma_chan(&sst_drv_ctx->dma);
+	if (ret_val)
+		return ret_val;
 
 	/* allocate desc for transfer and submit */
 	ret_val = sst_dma_firmware(&sst_drv_ctx->dma, sg_list);
