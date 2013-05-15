@@ -19,7 +19,8 @@ obj-$(CONFIG_SND_CTP_MACHINE) += snd-soc-ctp-machine.o
 
 # Merrifield board
 snd-merr-saltbay-lm49453-objs := merr_saltbay_lm49453.o
-obj-$(CONFIG_SND_MRFLD_MACHINE) += snd-merr-saltbay-lm49453.o
+snd-merr-saltbay-wm8958-objs := merr_saltbay_wm8958.o
+obj-$(CONFIG_SND_MRFLD_MACHINE) += snd-merr-saltbay-lm49453.o snd-merr-saltbay-wm8958.o
 
 # Baytrail board
 snd-byt-bl-rt5642-objs := byt_bl_rt5642.o
