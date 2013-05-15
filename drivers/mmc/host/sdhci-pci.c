@@ -2057,14 +2057,19 @@ err:
 static void __devexit sdhci_pci_shutdown(struct pci_dev *pdev)
 {
 	struct sdhci_pci_chip *chip;
-
 	chip = pci_get_drvdata(pdev);
 
 	if (chip) {
 		if (chip->allow_runtime_pm) {
-			pm_runtime_get_sync(&pdev->dev);
-			pm_runtime_disable(&pdev->dev);
-			pm_runtime_put_noidle(&pdev->dev);
+			if (chip->pdev->device ==
+					PCI_DEVICE_ID_INTEL_MRFL_MMC) {
+				pm_runtime_get_sync(&pdev->dev);
+				pm_runtime_disable(&pdev->dev);
+				pm_runtime_put_noidle(&pdev->dev);
+			} else {
+				pm_runtime_put_sync_suspend(&pdev->dev);
+				pm_runtime_disable(&pdev->dev);
+			}
 		}
 		scu_ipc_shutdown(chip);
 	}
