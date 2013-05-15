@@ -3699,7 +3699,10 @@ static int __enable_continuous_mode(struct atomisp_device *isp, bool enable)
 	ia_css_enable_continuous(isp, enable);
 	sh_css_enable_cont_capt(enable,
 				!isp->isp_subdev.continuous_viewfinder->val);
-
+	/* TODO: remove this if FW limitation is removed*/
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2 &&
+		isp->isp_subdev.continuous_raw_buffer_size->val > NUM_CONTINUOUS_FRAMES)
+		isp->isp_subdev.continuous_raw_buffer_size->val = NUM_CONTINUOUS_FRAMES;
 	if (ia_css_stream_set_buffer_depth(isp->css2_basis.stream,
 			isp->isp_subdev.continuous_raw_buffer_size->val)
 		!= IA_CSS_SUCCESS) {
