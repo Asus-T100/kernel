@@ -199,7 +199,7 @@ $(modules): %.ko :%.ko.stripped $(KEYRING_DEP) FORCE
 $(patsubst %.ko,%.ko.stripped,$(modules)): %.ko.stripped :%.ko.unsigned FORCE
 	$(call if_changed,sign_ko_stripped_ko_unsigned)
 
-targets += $(modules)
+targets += $(modules) $(patsubst %.ko,%.ko.stripped,$(modules))
 endif
 
 # Add FORCE to the prequisites of a target to force it to be always rebuilt.
