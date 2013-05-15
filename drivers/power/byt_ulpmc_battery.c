@@ -1188,12 +1188,11 @@ EXPORT_SYMBOL(ulpmc_fwupdate_exit);
 
 struct i2c_client *ulpmc_get_i2c_client(void)
 {
-	dev_info(&chip_ptr->client->dev, ":%s\n", __func__);
-
-	if (chip_ptr)
+	if (chip_ptr) {
+		dev_info(&chip_ptr->client->dev, ":%s\n", __func__);
 		return chip_ptr->client;
-	else
-		return NULL;
+	}
+	return NULL;
 }
 EXPORT_SYMBOL(ulpmc_get_i2c_client);
 
