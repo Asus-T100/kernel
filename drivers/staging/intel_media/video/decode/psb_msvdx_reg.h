@@ -31,7 +31,7 @@
 #include "img_types.h"
 #endif
 
-#if MFLD_MSVDX_FABRIC_DEBUG
+#if (defined MFLD_MSVDX_FABRIC_DEBUG) && MFLD_MSVDX_FABRIC_DEBUG
 #define PSB_WMSVDX32(_val, _offs)					\
 do {									\
 	if (psb_get_power_state(OSPM_VIDEO_DEC_ISLAND) == 0)		\
@@ -53,7 +53,7 @@ static inline uint32_t PSB_RMSVDX32(uint32_t _offs)
 	}
 }
 
-#elif MSVDX_REG_DUMP
+#elif (defined MSVDX_REG_DUMP) && MSVDX_REG_DUMP
 
 #define PSB_WMSVDX32(_val, _offs) \
 do {                                                \

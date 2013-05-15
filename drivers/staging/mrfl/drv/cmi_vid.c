@@ -398,7 +398,6 @@ static int mdfld_dsi_cmi_power_on(struct mdfld_dsi_config *dsi_config)
 	struct mdfld_dsi_pkg_sender *sender =
 		mdfld_dsi_get_pkg_sender(dsi_config);
 	int err;
-	struct drm_device *dev = dsi_config->dev;
 	PSB_DEBUG_ENTRY("\n");
 
 	if (!sender) {
@@ -510,7 +509,6 @@ power_off_err:
 static int mdfld_dsi_cmi_set_brightness(struct mdfld_dsi_config *dsi_config,
 		int level)
 {
-	struct drm_device *dev = dsi_config->dev;
 	struct mdfld_dsi_pkg_sender *sender =
 		mdfld_dsi_get_pkg_sender(dsi_config);
 	u8 duty_val = 0;
@@ -534,8 +532,6 @@ static int mdfld_dsi_cmi_set_brightness(struct mdfld_dsi_config *dsi_config,
 static int mdfld_dsi_cmi_panel_reset(struct mdfld_dsi_config *dsi_config)
 {
 	static int mipi_reset_gpio;
-	int ret = 0;
-	int reg_value = 0;
 
 	PSB_DEBUG_ENTRY("\n");
 	__vpro2_power_ctrl(true);

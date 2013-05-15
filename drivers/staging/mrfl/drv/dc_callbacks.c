@@ -162,6 +162,9 @@ void DCCBFlipToSurface(struct drm_device *dev, unsigned long uiAddr,
 		return;
 	}
 
+	/*update format*/
+	val = (0x80000000 | uiFormat);
+
 	if (dsi_config) {
 		dsi_ctx = &dsi_config->dsi_hw_context;
 		dsi_ctx->dspstride = uiStride;
@@ -177,8 +180,7 @@ void DCCBFlipToSurface(struct drm_device *dev, unsigned long uiAddr,
 	dspsurf = DSPASURF + reg_offset;
 	dspcntr = DSPACNTR + reg_offset;
 	dspstride = DSPASTRIDE + reg_offset;
-	/*update format*/
-	val = (0x80000000 | uiFormat);
+
 	DCWriteReg(dev, dspcntr, val);
 	/*update stride*/
 	DCWriteReg(dev, dspstride, uiStride);

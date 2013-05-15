@@ -102,111 +102,6 @@ int set_gpu_freq(u32 freq_code)
 	return pm_cmd_freq_set(GFX_SS_PM1, freq_code);
 }
 
-/**
- * mrfl_pwr_cmd_gfx - Change graphics power state.
- * Change island power state in the require sequence.
- *
- * @gfx_mask: Mask of islands to be changed.
- * @new_state: 0 for power-off, 1 for power-on.
- */
-static int mrfl_pwr_cmd_gfx(u32 gfx_mask, int new_state)
-{
-	/*
-	 * pwrtab - gfx pwr sub-islands in required power-up order and
-	 * in reverse of required power-down order.
-	 */
-	static const u32 pwrtab[] = {
-		GFX_SLC_LDO_SHIFT,
-		GFX_SLC_SHIFT,
-		GFX_SDKCK_SHIFT,
-		GFX_RSCD_SHIFT,
-	};
-	const int pwrtablen = ARRAY_SIZE(pwrtab);
-	int i;
-	int j;
-	int ret;
-	u32 ns_mask;
-	u32 done_mask;
-	u32 this_mask;
-	u32 pwr_state_prev;
-
-	pwr_state_prev = intel_mid_msgbus_read32(PUNIT_PORT, GFX_SS_PM0);
-
-	if (new_state == OSPM_ISLAND_UP)
-		ns_mask = TNG_COMPOSITE_I0;
-	else
-		ns_mask = TNG_COMPOSITE_D3;
-
-	/*  Call underlying function separately for each step in the
-	    power sequence. */
-	done_mask = 0;
-	for (i = 0; i < pwrtablen ; i++) {
-		if (new_state == OSPM_ISLAND_UP)
-			j = i;
-		else
-			j = pwrtablen - i - 1;
-
-		done_mask |= TNG_SSC_MASK << pwrtab[j];
-		this_mask = gfx_mask & done_mask;
-		if (this_mask) {
-			/*  FIXME - if (new_state == 0), check for required
-			    conditions per the SAS. */
-			ret = pmu_set_power_state_tng(GFX_SS_PM0,
-					this_mask, ns_mask);
-			if (ret)
-				return ret;
-		}
-
-#if A0_WORKAROUNDS
-		/**
-		 * If turning some power on, and the power to be on includes SLC,
-		 * and SLC was not previously on, then setup some registers.
-		 */
-		if ((new_state == OSPM_ISLAND_UP)
-			&& (pwrtab[j] == GFX_SLC_SHIFT)
-			&& ((pwr_state_prev >> GFX_SLC_SHIFT) != TNG_SSC_I0))
-			apply_A0_workarounds(OSPM_GRAPHICS_ISLAND, 1);
-#endif
-
-		if ((gfx_mask & ~done_mask) == 0)
-			break;
-	}
-
-	if (new_state == OSPM_ISLAND_UP)
-		pm_cmd_freq_set(GFX_SS_PM1, IP_FREQ_320_00);
-
-	return 0;
-}
-
-/***********************************************************
- * Check island status functions
- ***********************************************************/
-static enum GFX_ISLAND_STATUS get_rscd_status(u32 pwd_cur)
-{
-	return (pwd_cur >> SSC_TO_SSS_SHIFT) & GFX_RSCD_SSC;
-}
-
-static enum GFX_ISLAND_STATUS get_slc_status(u32 pwd_cur)
-{
-	return (pwd_cur >> SSC_TO_SSS_SHIFT) & GFX_SLC_SSC;
-}
-
-static enum GFX_ISLAND_STATUS get_sdkck_status(u32 pwd_cur)
-{
-	return (pwd_cur >> SSC_TO_SSS_SHIFT) & GFX_SDKCK_SSC;
-}
-
-/**
- * checks to see if gfx is busy
- * returns true - gfx is busy
- * returns false - gfx is idle
- */
-static bool gfx_busy(struct drm_device *dev)
-{
-	u32 busy = WRAPPER_REG_READ(GFX_STATUS_OFFSET);
-	return busy & 0x1;
-}
-
 /***********************************************************
  * All Graphics Island
  ***********************************************************/
@@ -220,8 +115,6 @@ static bool first_boot = true;
 static bool ospm_gfx_power_up(struct drm_device *dev,
 			struct ospm_power_island *p_island)
 {
-	struct drm_psb_private *dev_priv =
-			(struct drm_psb_private *)dev->dev_private;
 	bool ret = true;
 	u32 gfx_all = gfx_island_selected;
 
@@ -269,9 +162,6 @@ static bool ospm_gfx_power_up(struct drm_device *dev,
 static bool ospm_gfx_power_down(struct drm_device *dev,
 			struct ospm_power_island *p_island)
 {
-	struct drm_psb_private *dev_priv =
-			(struct drm_psb_private *)dev->dev_private;
-
 	bool ret = true;
 
 	OSPM_DPF("Pre-power-off Status = 0x%08lX\n",

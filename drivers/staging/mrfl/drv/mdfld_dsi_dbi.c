@@ -807,7 +807,7 @@ void mdfld_generic_dsi_dbi_restore(struct drm_encoder *encoder)
 
 static
 bool mdfld_generic_dsi_dbi_mode_fixup(struct drm_encoder *encoder,
-		struct drm_display_mode *mode,
+		const struct drm_display_mode *mode,
 		struct drm_display_mode *adjusted_mode)
 {
 	struct mdfld_dsi_encoder *dsi_encoder = MDFLD_DSI_ENCODER(encoder);

@@ -72,7 +72,7 @@ static void apply_HSD_3940227_4568479(struct drm_device *dev)
 	REG_WRITE(GBYPASSENABLE_OFFSET, GBYPASSENABLE_DATA);
 }
 
-#if HSD_4568152
+#if (defined HSD_4568152) && HSD_4568152
 /* Not needed if apply 3940227 and 4568479 */
 static void apply_HSD_4568152(struct drm_device *dev)
 {
@@ -121,7 +121,7 @@ static void apply_HSD_4582616(struct drm_device *dev)
 	REG_WRITE(DISPLAY_OFFSET, DISPLAY_DATA);
 }
 
-#if NO_HSD_WORKAROUND
+#if (defined NO_HSD_WORKAROUND) && NO_HSD_WORKAROUND
 /* No need as this is default setting of HW */
 static void apply_NO_HSD_Workaround(struct drm_device *dev)
 {

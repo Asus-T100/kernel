@@ -1245,7 +1245,7 @@ bool mrst_get_vbt_data(struct drm_psb_private *dev_priv)
 			PanelID = JDI_CMD;
 		}
 	} else {
-		DRM_INFO("Panel id %d from cmd line\n");
+		DRM_INFO("Panel id %d from cmd line\n", PanelID);
 		dev_priv->panel_id = PanelID;
 	}
 	return true;
@@ -3054,8 +3054,6 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 	struct drm_psb_register_rw_arg *arg = data;
 	unsigned int iep_ble_status;
 	unsigned long iep_timeout;
-	u32 usage =
-	    arg->b_force_hw_on ? OSPM_UHB_FORCE_POWER_ON : OSPM_UHB_ONLY_IF_ON;
 	u32 power_island = 0;
 
 	if (arg->display_write_mask != 0) {

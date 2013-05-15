@@ -342,7 +342,6 @@ bool power_island_get(u32 hw_island)
 	u32 i = 0;
 	bool ret = true;
 	struct ospm_power_island *p_island;
-	struct drm_psb_private *dev_priv = g_ospm_data->dev->dev_private;
 	unsigned long flags;
 
 	spin_lock_irqsave(&g_ospm_data->ospm_lock, flags);
@@ -376,9 +375,7 @@ bool power_island_put(u32 hw_island)
 {
 	bool ret = true;
 	u32 i = 0;
-	u32 ref_count = 0;
 	struct ospm_power_island *p_island;
-	struct drm_psb_private *dev_priv = g_ospm_data->dev->dev_private;
 	unsigned long flags;
 
 	spin_lock_irqsave(&g_ospm_data->ospm_lock, flags);
@@ -413,7 +410,6 @@ bool is_island_on(u32 hw_island)
 {
 	/* get the power island */
 	struct ospm_power_island *p_island = get_island_ptr(hw_island);
-	unsigned long flags;
 	bool island_on = false;
 
 	/* TODO: add lock here. */
@@ -452,7 +448,6 @@ u32 pipe_to_island(u32 pipe)
 void ospm_power_init(struct drm_device *dev)
 {
 	u32 i = 0;
-	u32 nc_pwr_sts;
 
 	/* allocate ospm data */
 	g_ospm_data = kmalloc(sizeof(struct _ospm_data_), GFP_KERNEL);
@@ -509,10 +504,6 @@ void ospm_power_uninit(void)
  */
 bool ospm_power_suspend(void)
 {
-	int i;
-	struct ospm_power_island *p_island = NULL;
-	unsigned long flags;
-
 	OSPM_DPF("%s\n", __func__);
 
 	/* Asking RGX to power off */
@@ -532,10 +523,6 @@ bool ospm_power_suspend(void)
  */
 void ospm_power_resume(void)
 {
-	int i;
-	struct ospm_power_island *p_island = NULL;
-	unsigned long flags;
-
 	OSPM_DPF("%s\n", __func__);
 
 	ospm_resume_pci(g_ospm_data->dev);
@@ -598,7 +585,7 @@ void ospm_power_using_video_end(int hw_island)
 
 bool ospm_power_using_video_begin(int hw_island)
 {
-	ospm_power_using_hw_begin(hw_island, 0);
+	return ospm_power_using_hw_begin(hw_island, 0);
 }
 
 void ospm_apm_power_down_msvdx(struct drm_device *dev, int force_off)
@@ -640,7 +627,6 @@ out:
 void ospm_apm_power_down_topaz(struct drm_device *dev)
 {
 	int ret;
-	struct drm_psb_private *dev_priv = dev->dev_private;
 	struct ospm_power_island *p_island;
 	unsigned long flags;
 
@@ -658,7 +644,6 @@ void ospm_apm_power_down_topaz(struct drm_device *dev)
 		goto out;
 	}
 
-power_off:
 	ret = p_island->p_funcs->power_down(
 			g_ospm_data->dev,
 			p_island);

@@ -28,6 +28,7 @@
 #include "psb_drv.h"
 #include "dc_ospm.h"
 #include "pmu_tng.h"
+#include "tng_wa.h"
 
 #define BZ96571
 
@@ -49,7 +50,6 @@ extern struct drm_device *gpDrmDevice;
 void sb_write_packet(bool pwr_on)
 {
 	struct drm_device *dev = gpDrmDevice;
-	struct drm_psb_private *dev_priv = psb_priv(dev);
 	u32 ulData = MIO_ON;
 
 	if (!pwr_on)
@@ -61,7 +61,6 @@ void sb_write_packet(bool pwr_on)
 
 }
 #endif
-/***********************************************************
 
 /***********************************************************
  * display A Island implementation
@@ -230,7 +229,7 @@ void ospm_disp_c_init(struct drm_device *dev,
 static bool mio_power_up(struct drm_device *dev,
 			struct ospm_power_island *p_island)
 {
-	bool ret;
+	bool ret = false;
 
 #ifdef BZ96571
 	sb_write_packet(true);

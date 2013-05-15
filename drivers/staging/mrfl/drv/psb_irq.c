@@ -123,6 +123,7 @@ void psb_disable_pipestat(struct drm_psb_private *dev_priv, int pipe, u32 mask)
 
 	if ((dev_priv->pipestat[pipe] & mask) != 0) {
 		u32 reg = psb_pipestat(pipe);
+		u32 writeVal;
 		dev_priv->pipestat[pipe] &= ~mask;
 		if (power_island_get(power_island)) {
 			if ((mask == PIPE_VBLANK_INTERRUPT_ENABLE) ||
@@ -131,7 +132,7 @@ void psb_disable_pipestat(struct drm_psb_private *dev_priv, int pipe, u32 mask)
 				wake_up_interruptible(&dev_priv->vsync_queue);
 			}
 
-			u32 writeVal = PSB_RVDC32(reg);
+			writeVal = PSB_RVDC32(reg);
 			writeVal &= ~mask;
 			PSB_WVDC32(writeVal, reg);
 			(void)PSB_RVDC32(reg);
