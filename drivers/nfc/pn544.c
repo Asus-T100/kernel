@@ -40,10 +40,6 @@
 
 #define MAX_BUFFER_SIZE		512
 
-#if defined(CONFIG_I2C_DESIGNWARE_PCI_SPLIT_XFER)
-#define MAX_I2C_XFER_SIZE	31
-#endif
-
 enum polarity {
 	UNKNOWN = -1,
 	ACTIVE_LOW = 0,
@@ -60,6 +56,7 @@ struct pn544_dev	{
 	unsigned int		irq_gpio;
 	enum polarity		nfc_en_polarity;
 	int			busy;
+	unsigned int		max_i2c_xfer_size;
 };
 
 static void pn544_platform_init(struct pn544_dev *pn544_dev)
@@ -131,11 +128,10 @@ static ssize_t pn544_dev_read(struct file *filp, char __user *buf,
 	struct pn544_dev *pn544_dev = filp->private_data;
 	char tmp[MAX_BUFFER_SIZE];
 	int ret;
-#if defined(CONFIG_I2C_DESIGNWARE_PCI_SPLIT_XFER)
 	char *tmp_p = tmp;
 	int i2c_xfer_size;
 	int i2c_xfer_ret;
-#endif
+	unsigned int max_i2c_xfer_size = pn544_dev->max_i2c_xfer_size;
 
 	if (count > MAX_BUFFER_SIZE)
 		count = MAX_BUFFER_SIZE;
@@ -159,25 +155,12 @@ static ssize_t pn544_dev_read(struct file *filp, char __user *buf,
 	}
 
 	/* Read data */
-#if !defined(CONFIG_I2C_DESIGNWARE_PCI_SPLIT_XFER)
-	ret = i2c_master_recv(pn544_dev->client, tmp, count);
-
-	if (ret < 0) {
-		pr_err("%s: i2c_master_recv returned %d\n", __func__, ret);
-		return ret;
-	}
-	if (ret > count) {
-		pr_err("%s: received too many bytes from i2c (%d)\n",
-			__func__, ret);
-		return -EIO;
-	}
-#else
 	ret = count;
 
 	while (count) {
 		i2c_xfer_size = count;
-		if (i2c_xfer_size > MAX_I2C_XFER_SIZE)
-			i2c_xfer_size = MAX_I2C_XFER_SIZE;
+		if (max_i2c_xfer_size > 0 && i2c_xfer_size > max_i2c_xfer_size)
+			i2c_xfer_size = max_i2c_xfer_size;
 
 		i2c_xfer_ret = i2c_master_recv(pn544_dev->client,
 				tmp_p, i2c_xfer_size);
@@ -195,7 +178,7 @@ static ssize_t pn544_dev_read(struct file *filp, char __user *buf,
 		count -= i2c_xfer_size;
 		tmp_p += i2c_xfer_size;
 	}
-#endif
+
 	if (copy_to_user(buf, tmp, ret)) {
 		pr_warning("%s : failed to copy to user space\n", __func__);
 		return -EFAULT;
@@ -261,16 +244,13 @@ static unsigned int pn544_dev_poll(struct file *file, poll_table *wait)
 static ssize_t pn544_dev_write(struct file *filp, const char __user *buf,
 		size_t count, loff_t *offset)
 {
-	struct pn544_dev  *pn544_dev;
+	struct pn544_dev  *pn544_dev = filp->private_data;
 	char tmp[MAX_BUFFER_SIZE];
 	int ret;
-#if defined(CONFIG_I2C_DESIGNWARE_PCI_SPLIT_XFER)
 	char *tmp_p = tmp;
 	int i2c_xfer_size;
 	int i2c_xfer_ret;
-#endif
-
-	pn544_dev = filp->private_data;
+	unsigned int max_i2c_xfer_size = pn544_dev->max_i2c_xfer_size;
 
 	if (count > MAX_BUFFER_SIZE)
 		count = MAX_BUFFER_SIZE;
@@ -283,20 +263,12 @@ static ssize_t pn544_dev_write(struct file *filp, const char __user *buf,
 	pr_debug("%s : writing %zu bytes.\n", __func__, count);
 
 	/* Write data */
-#if !defined(CONFIG_I2C_DESIGNWARE_PCI_SPLIT_XFER)
-	ret = i2c_master_send(pn544_dev->client, tmp, count);
-	if (ret != count) {
-		pr_err("%s : i2c_master_send returned %d\n",
-			__func__, ret);
-		ret = -EIO;
-	}
-#else
 	ret = count;
 
 	while (count) {
 		i2c_xfer_size = count;
-		if (i2c_xfer_size > MAX_I2C_XFER_SIZE)
-			i2c_xfer_size = MAX_I2C_XFER_SIZE;
+		if (max_i2c_xfer_size > 0 && i2c_xfer_size > max_i2c_xfer_size)
+			i2c_xfer_size = max_i2c_xfer_size;
 
 		i2c_xfer_ret = i2c_master_send(pn544_dev->client,
 				tmp_p, i2c_xfer_size);
@@ -309,7 +281,7 @@ static ssize_t pn544_dev_write(struct file *filp, const char __user *buf,
 		count -= i2c_xfer_size;
 		tmp_p += i2c_xfer_size;
 	}
-#endif
+
 	return ret;
 }
 
@@ -450,9 +422,15 @@ static int pn544_probe(struct i2c_client *client,
 	pn544_dev->irq_gpio = platform_data->irq_gpio;
 	pn544_dev->ven_gpio  = platform_data->ven_gpio;
 	pn544_dev->firm_gpio  = platform_data->firm_gpio;
+	pn544_dev->max_i2c_xfer_size = platform_data->max_i2c_xfer_size;
 	pn544_dev->client   = client;
 	pn544_dev->busy = 0;
 	pn544_dev->nfc_en_polarity = UNKNOWN;
+
+	pr_info("%s : irq gpio:      %d\n", __func__, pn544_dev->irq_gpio);
+	pr_info("%s : ven gpio:      %d\n", __func__, pn544_dev->ven_gpio);
+	pr_info("%s : fw gpio:       %d\n", __func__, pn544_dev->firm_gpio);
+	pr_info("%s : i2c xfer size: %d\n", __func__, pn544_dev->max_i2c_xfer_size);
 
 	/* init wakelock and queues */
 	init_waitqueue_head(&pn544_dev->read_wq);
