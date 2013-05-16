@@ -2519,7 +2519,6 @@ intel_finish_fb(struct drm_framebuffer *old_fb)
 	int ret;
 
 	wait_event(dev_priv->pending_flip_queue,
-		   atomic_read(&dev_priv->mm.wedged) ||
 		   atomic_read(&obj->pending_flip) == 0);
 
 	/* Big Hammer, we also need to ensure that any pending
@@ -7171,7 +7170,7 @@ static int intel_gen7_queue_flip(struct drm_device *dev,
 		goto err_unpin;
 	}
 
-	ret = intel_ring_begin(ring, 8);
+	ret = intel_ring_begin(ring, 16);
 	if (ret)
 		goto err_unpin;
 
@@ -7182,12 +7181,36 @@ static int intel_gen7_queue_flip(struct drm_device *dev,
 	intel_ring_emit(ring, (MI_NOOP));
 	intel_ring_emit(ring, (MI_NOOP));
 
+	/* Set a flag to indicate that a page flip interrupt is expected.
+	* The flag is used by the TDR logic to detect whether the blitter hung
+	* on a page flip command, in which case it will need to manually
+	* complete the page flip.
+	* The 'flag' is actually the pipe value associated with this page
+	* flip + 1 so that the TDR code knows which pipe failed to flip.
+	* A value of 0 indicates that a flip is not currently in progress on
+	* the HW.*/
+	intel_ring_emit(ring, MI_STORE_DWORD_INDEX);
+	intel_ring_emit(ring, I915_GEM_PGFLIP_INDEX <<
+				MI_STORE_DWORD_INDEX_SHIFT);
+	intel_ring_emit(ring, intel_crtc->pipe + 1);
+	intel_ring_emit(ring, MI_NOOP);
+
 	intel_ring_emit(ring, MI_DISPLAY_FLIP_I915 | plane_bit);
 	intel_ring_emit(ring, (fb->pitches[0] | obj->tiling_mode));
 	intel_ring_emit(ring, obj->gtt_offset + intel_crtc->dspaddr_offset);
 	intel_ring_emit(ring, (MI_NOOP));
-	intel_ring_advance(ring);
 
+	/* Clear the flag as soon as we pass over the page flip command.
+	* If we passed over the command without hanging then an interrupt should
+	* be received to complete the page flip.*/
+	intel_ring_emit(ring, MI_STORE_DWORD_INDEX);
+	intel_ring_emit(ring, I915_GEM_PGFLIP_INDEX <<
+				MI_STORE_DWORD_INDEX_SHIFT);
+	intel_ring_emit(ring, 0);
+	intel_ring_emit(ring, MI_NOOP);
+
+
+	intel_ring_advance(ring);
 
 	return 0;
 

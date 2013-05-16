@@ -7,6 +7,23 @@ struct  intel_hw_status_page {
 	struct		drm_i915_gem_object *obj;
 };
 
+
+/* These values must match the requirements of the ring save/restore functions
+* which may need to change for different versions of the chip*/
+#define COMMON_RING_CTX_SIZE 6
+
+#define RCS_RING_CTX_SIZE 13
+#define VCS_RING_CTX_SIZE 10
+#define BCS_RING_CTX_SIZE 11
+
+#define MAX_CTX(a, b) (((a) > (b)) ? (a) : (b))
+
+/* Largest of individual rings + common*/
+#define I915_RING_CONTEXT_SIZE (COMMON_RING_CTX_SIZE + \
+				MAX_CTX(MAX_CTX(RCS_RING_CTX_SIZE, \
+						VCS_RING_CTX_SIZE), \
+						BCS_RING_CTX_SIZE))
+
 #define I915_READ_TAIL(ring) I915_READ(RING_TAIL((ring)->mmio_base))
 #define I915_WRITE_TAIL(ring, val) I915_WRITE(RING_TAIL((ring)->mmio_base), val)
 
@@ -22,9 +39,17 @@ struct  intel_hw_status_page {
 #define I915_READ_IMR(ring) I915_READ(RING_IMR((ring)->mmio_base))
 #define I915_WRITE_IMR(ring, val) I915_WRITE(RING_IMR((ring)->mmio_base), val)
 
+#define I915_READ_MODE(ring) \
+	I915_READ(RING_MI_MODE((ring)->mmio_base))
+#define I915_WRITE_MODE(ring, val) \
+	I915_WRITE(RING_MI_MODE((ring)->mmio_base), val)
+
 #define I915_READ_NOPID(ring) I915_READ(RING_NOPID((ring)->mmio_base))
 #define I915_READ_SYNC_0(ring) I915_READ(RING_SYNC_0((ring)->mmio_base))
 #define I915_READ_SYNC_1(ring) I915_READ(RING_SYNC_1((ring)->mmio_base))
+
+#define RESET_HEAD_TAIL   0x1
+#define FORCE_ADVANCE     0x2
 
 struct  intel_ring_buffer {
 	const char	*name;
@@ -87,6 +112,15 @@ struct  intel_ring_buffer {
 				   struct intel_ring_buffer *to,
 				   u32 seqno);
 
+	int		(*enable)(struct intel_ring_buffer *ring);
+	int		(*disable)(struct intel_ring_buffer *ring);
+	int		(*reset)(struct intel_ring_buffer *ring);
+	int		(*save)(struct intel_ring_buffer *ring,
+				uint32_t *data, uint32_t max,
+				u32 flags);
+	int		(*restore)(struct intel_ring_buffer *ring,
+				uint32_t *data, uint32_t max);
+
 	u32		semaphore_register[3]; /*our mbox written by others */
 	u32		signal_mbox[2]; /* mboxes this ring signals to */
 	/**
@@ -121,6 +155,10 @@ struct  intel_ring_buffer {
 	bool itlb_before_ctx_switch;
 	struct i915_hw_context *default_context;
 	struct drm_i915_gem_object *last_context_obj;
+
+	/* Area large enough to store all the register
+	* data associated with this ring*/
+	u32 saved_state[I915_RING_CONTEXT_SIZE];
 
 	void *private;
 };
@@ -165,6 +203,15 @@ intel_read_status_page(struct intel_ring_buffer *ring,
 	return ring->status_page.page_addr[reg];
 }
 
+static inline void
+intel_write_status_page(struct intel_ring_buffer *ring,
+			int reg, uint32_t data)
+{
+	/* Ensure that the compiler doesn't optimize away the access. */
+	barrier();
+	ring->status_page.page_addr[reg] = data;
+}
+
 /**
  * Reads a dword out of the status page, which is written to from the command
  * queue by automatic updates, MI_REPORT_HEAD, MI_STORE_DATA_INDEX, or
@@ -182,6 +229,7 @@ intel_read_status_page(struct intel_ring_buffer *ring,
  */
 #define I915_GEM_HWS_INDEX		0x20
 #define I915_GEM_SCRATCH_INDEX		0x28 /* Some commands need a scratch store */
+#define I915_GEM_PGFLIP_INDEX           0x30
 
 void intel_cleanup_ring_buffer(struct intel_ring_buffer *ring);
 
@@ -192,6 +240,7 @@ static inline int intel_wait_ring_idle(struct intel_ring_buffer *ring)
 }
 
 int __must_check intel_ring_begin(struct intel_ring_buffer *ring, int n);
+
 
 static inline void intel_ring_emit(struct intel_ring_buffer *ring,
 				   u32 data)
@@ -226,5 +275,17 @@ static inline void i915_trace_irq_get(struct intel_ring_buffer *ring, u32 seqno)
 
 /* DRI warts */
 int intel_render_ring_init_dri(struct drm_device *dev, u64 start, u32 size);
+
+void intel_ring_resample(struct intel_ring_buffer *ring);
+int intel_ring_disable(struct intel_ring_buffer *ring);
+int intel_ring_enable(struct intel_ring_buffer *ring);
+int intel_ring_reset(struct intel_ring_buffer *ring);
+int intel_ring_save(struct intel_ring_buffer *ring,
+			u32 flags);
+int intel_ring_restore(struct intel_ring_buffer *ring);
+
+
+
+
 
 #endif /* _INTEL_RINGBUFFER_H_ */

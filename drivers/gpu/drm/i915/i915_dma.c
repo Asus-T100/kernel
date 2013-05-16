@@ -1464,6 +1464,8 @@ int i915_driver_load(struct drm_device *dev, unsigned long flags)
 	struct intel_device_info *info;
 	int ret = 0, mmio_bar;
 	uint32_t aperture_size;
+	uint32_t i;
+
 	info = (struct intel_device_info *) flags;
 
 	/* Refuse to load on gen6+ without kms enabled. */
@@ -1651,8 +1653,16 @@ int i915_driver_load(struct drm_device *dev, unsigned long flags)
 	intel_opregion_init(dev);
 	acpi_video_register();
 
-	setup_timer(&dev_priv->hangcheck_timer, i915_hangcheck_elapsed,
-		    (unsigned long) dev);
+	for (i = 0; i < I915_NUM_RINGS; i++) {
+		dev_priv->hangcheck[i].count = 0;
+		dev_priv->hangcheck[i].last_acthd = 0;
+		dev_priv->hangcheck[i].ringid = i;
+		dev_priv->hangcheck[i].dev = dev;
+
+		setup_timer(&dev_priv->hangcheck[i].timer,
+			i915_hangcheck_elapsed,
+			(unsigned long) &dev_priv->hangcheck[i]);
+	}
 
 	if (IS_GEN5(dev))
 		intel_gpu_ips_init(dev_priv);
@@ -1696,6 +1706,7 @@ int i915_driver_unload(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	int ret;
+	uint32_t i;
 
 #ifdef CONFIG_DRM_VXD_BYT
 	vxd_driver_unload(dev);
@@ -1748,7 +1759,9 @@ int i915_driver_unload(struct drm_device *dev)
 	}
 
 	/* Free error state after interrupts are fully disabled. */
-	del_timer_sync(&dev_priv->hangcheck_timer);
+	for (i = 0; i < I915_NUM_RINGS; i++)
+		del_timer_sync(&dev_priv->hangcheck[i].timer);
+
 	cancel_work_sync(&dev_priv->error_work);
 	i915_destroy_error_state(dev);
 

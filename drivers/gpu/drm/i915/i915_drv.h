@@ -194,7 +194,7 @@ struct drm_i915_error_state {
 	u32 head[I915_NUM_RINGS];
 	u32 ipeir[I915_NUM_RINGS];
 	u32 ipehr[I915_NUM_RINGS];
-	u32 instdone[I915_NUM_RINGS];
+	u32 instdone[I915_NUM_RINGS][I915_MAX_INSTDONE_REG];
 	u32 acthd[I915_NUM_RINGS];
 	u32 semaphore_mboxes[I915_NUM_RINGS][I915_NUM_RINGS - 1];
 	u32 rc_psmi[I915_NUM_RINGS]; /* sleep state */
@@ -204,7 +204,6 @@ struct drm_i915_error_state {
 	u32 error; /* gen6+ */
 	u32 instpm[I915_NUM_RINGS];
 	u32 instps[I915_NUM_RINGS];
-	u32 instdone1;
 	u32 seqno[I915_NUM_RINGS];
 	u64 bbaddr;
 	u32 fault_reg[I915_NUM_RINGS];
@@ -402,6 +401,45 @@ struct intel_gmbus {
 	struct drm_i915_private *dev_priv;
 };
 
+struct intel_hangcheck {
+	/* The ring being monitored*/
+	uint32_t ringid;
+
+	/* Parent drm_device*/
+	struct drm_device *dev;
+
+	/* Timer for this ring only*/
+	struct timer_list timer;
+
+	/* Count of consecutive hang detections
+	 * (reset flag set once count exceeds threshold)*/
+#define HANGCHECK_THRESHOLD      1
+#define MBOX_HANGCHECK_THRESHOLD 4
+	int count;
+
+	/* Last recorded active head*/
+	uint32_t last_acthd;
+
+	/* Last recorded ring head index.
+	* This is only ever a ring index where as active
+	* head may be a graphics address in a ring buffer */
+	uint32_t last_head;
+
+	/* Last recorded instdone*/
+	uint32_t prev_instdone[I915_MAX_INSTDONE_REG];
+
+	/* Flag to indicate if ring reset required*/
+	atomic_t reset;
+
+	/* Keep a record of the last time the ring was reset */
+	unsigned long last_reset;
+
+	/* Number of times this ring has been
+	* reset since boot*/
+	uint32_t total;
+};
+
+
 typedef struct drm_i915_private {
 	struct drm_device *dev;
 
@@ -482,12 +520,10 @@ typedef struct drm_i915_private {
 	int num_pch_pll;
 
 	/* For hangcheck timer */
-#define DRM_I915_HANGCHECK_PERIOD 1500 /* in ms */
-	struct timer_list hangcheck_timer;
-	int hangcheck_count;
-	uint32_t last_acthd[I915_NUM_RINGS];
-	uint32_t last_instdone;
-	uint32_t last_instdone1;
+#define MINIMUM_HANGCHECK_PERIOD 100   /* 100ms */
+#define MAXIMUM_HANGCHECK_PERIOD 30000 /* 30s */
+#define DRM_I915_HANGCHECK_JIFFIES msecs_to_jiffies(i915_hangcheck_period)
+	struct intel_hangcheck hangcheck[I915_NUM_RINGS];
 
 	unsigned int stop_rings;
 
@@ -556,7 +592,10 @@ typedef struct drm_i915_private {
 	/* Protected by dev->error_lock. */
 	struct drm_i915_error_state *first_error;
 	struct work_struct error_work;
-	struct completion error_completion;
+	atomic_t full_reset;
+	uint32_t total_resets;
+
+	wait_queue_head_t error_queue;
 	struct workqueue_struct *wq;
 
 	/* Display functions */
@@ -805,9 +844,7 @@ typedef struct drm_i915_private {
 		int suspended;
 
 		/**
-		 * Flag if the hardware appears to be wedged.
-		 *
-		 * This is set when attempts to idle the device timeout.
+		 * This is set when the error_recovery function is running.
 		 * It prevents command submission from occurring and makes
 		 * every pending request fail
 		 */
@@ -1305,6 +1342,9 @@ extern int i915_mipi_panel_id __read_mostly;
 extern int i915_enable_rc6 __read_mostly;
 extern int i915_enable_fbc __read_mostly;
 extern bool i915_enable_hangcheck __read_mostly;
+extern unsigned int i915_hangcheck_period __read_mostly;
+extern unsigned int i915_ring_reset_min_alive_period __read_mostly;
+extern unsigned int i915_gpu_reset_min_alive_period __read_mostly;
 extern int i915_enable_ppgtt __read_mostly;
 extern int i915_enable_turbo __read_mostly;
 extern int i915_psr_support __read_mostly;
@@ -1335,6 +1375,7 @@ extern int i915_emit_box(struct drm_device *dev,
 			 struct drm_clip_rect *box,
 			 int DR1, int DR4);
 extern int intel_gpu_reset(struct drm_device *dev);
+extern int i915_handle_hung_ring(struct drm_device *dev, uint32_t ringid);
 extern int i915_reset(struct drm_device *dev);
 extern unsigned long i915_chipset_val(struct drm_i915_private *dev_priv);
 extern unsigned long i915_mch_val(struct drm_i915_private *dev_priv);
@@ -1344,7 +1385,7 @@ extern void i915_update_gfx_val(struct drm_i915_private *dev_priv);
 
 /* i915_irq.c */
 void i915_hangcheck_elapsed(unsigned long data);
-void i915_handle_error(struct drm_device *dev, bool wedged);
+void i915_handle_error(struct drm_device *dev, struct intel_hangcheck *hc);
 
 extern void intel_irq_init(struct drm_device *dev);
 extern void intel_gt_init(struct drm_device *dev);
@@ -1497,7 +1538,8 @@ i915_gem_is_vmap_object(struct drm_i915_gem_object *obj)
 void i915_gem_retire_requests(struct drm_device *dev);
 void i915_gem_retire_requests_ring(struct intel_ring_buffer *ring);
 int __must_check i915_gem_check_wedge(struct drm_i915_private *dev_priv,
-				      bool interruptible);
+				      bool interruptible,
+				      struct intel_ring_buffer *ring);
 
 void i915_gem_reset(struct drm_device *dev);
 void i915_gem_clflush_object(struct drm_i915_gem_object *obj);
@@ -1722,6 +1764,7 @@ int valleyview_punit_read(struct drm_i915_private *dev_priv, u8 addr, u32 *val);
 int valleyview_punit_write(struct drm_i915_private *dev_priv, u8 addr, u32 val);
 int valleyview_iosf_fuse_read(struct drm_i915_private *dev_priv,
 				u8 addr, u32 *val);
+void gen6_gt_force_wake_restore(struct drm_i915_private *dev_priv);
 
 u32 intel_dpio_read(struct drm_i915_private *dev_priv, int reg);
 void intel_dpio_write(struct drm_i915_private *dev_priv, int reg, u32 val);
@@ -1731,6 +1774,8 @@ void intel_iosf_rw(struct drm_i915_private *dev_priv,
 
 void vlv_force_wake_get(struct drm_i915_private *dev_priv, int fw_engine);
 void vlv_force_wake_put(struct drm_i915_private *dev_priv, int fw_engine);
+void vlv_force_wake_restore(struct drm_i915_private *dev_priv, int fw_engine);
+
 
 #define FORCEWAKE_VLV_RENDER_RANGE_OFFSET(MmioOffset) \
 			((MmioOffset >= 0x2000 && MmioOffset < 0x4000) ||\

@@ -639,10 +639,30 @@ static void i915_ring_error_state(struct seq_file *m,
 	seq_printf(m, "  ACTHD: 0x%08x\n", error->acthd[ring]);
 	seq_printf(m, "  IPEIR: 0x%08x\n", error->ipeir[ring]);
 	seq_printf(m, "  IPEHR: 0x%08x\n", error->ipehr[ring]);
-	seq_printf(m, "  INSTDONE: 0x%08x\n", error->instdone[ring]);
-	if (ring == RCS && INTEL_INFO(dev)->gen >= 4) {
-		seq_printf(m, "  INSTDONE1: 0x%08x\n", error->instdone1);
-		seq_printf(m, "  BBADDR: 0x%08llx\n", error->bbaddr);
+	seq_printf(m, "  INSTDONE: 0x%08x\n", error->instdone[ring][0]);
+	if (ring == RCS) {
+		switch (INTEL_INFO(dev)->gen) {
+		case 4:
+		case 5:
+		case 6:
+			seq_printf(m, "  INSTDONE1: 0x%08x\n",
+				error->instdone[ring][1]);
+			break;
+
+		case 7:
+			seq_printf(m, "  INSTDONE1: 0x%08x\n",
+				error->instdone[ring][1]);
+			seq_printf(m, "  INSTDONE2: 0x%08x\n",
+				error->instdone[ring][2]);
+			seq_printf(m, "  INSTDONE3: 0x%08x\n",
+				error->instdone[ring][3]);
+			break;
+		}
+
+		if (INTEL_INFO(dev)->gen >= 4) {
+			seq_printf(m, "  BBADDR: 0x%08llx\n",
+				error->bbaddr);
+		}
 	}
 	if (INTEL_INFO(dev)->gen >= 4)
 		seq_printf(m, "  INSTPS: 0x%08x\n", error->instps[ring]);
@@ -1618,6 +1638,7 @@ i915_wedged_write(struct file *filp,
 		  loff_t *ppos)
 {
 	struct drm_device *dev = filp->private_data;
+	drm_i915_private_t *dev_priv = dev->dev_private;
 	char buf[20];
 	int val = 1;
 
@@ -1632,8 +1653,10 @@ i915_wedged_write(struct file *filp,
 		val = simple_strtoul(buf, NULL, 0);
 	}
 
-	DRM_INFO("Manually setting wedged to %d\n", val);
-	i915_handle_error(dev, val);
+	if (val) {
+		if (!atomic_read(&dev_priv->full_reset))
+			i915_handle_error(dev, NULL);
+	}
 
 	return cnt;
 }
@@ -1675,7 +1698,7 @@ i915_ring_stop_write(struct file *filp,
 	struct drm_device *dev = filp->private_data;
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	char buf[20];
-	int val = 0, ret;
+	int val = 0;
 
 	if (cnt > 0) {
 		if (cnt > sizeof(buf) - 1)
@@ -1690,15 +1713,73 @@ i915_ring_stop_write(struct file *filp,
 
 	DRM_DEBUG_DRIVER("Stopping rings 0x%08x\n", val);
 
+	if (val < I915_NUM_RINGS)
+		intel_ring_disable(&dev_priv->ring[val]);
+
+	return cnt;
+}
+
+static ssize_t
+i915_ring_hangcheck_read(struct file *filp,
+			char __user *ubuf,
+			size_t max,
+			loff_t *ppos)
+{
+	/* Returns the total number of times the rings
+	 * have hung and been reset since boot */
+	struct drm_device *dev = filp->private_data;
+	drm_i915_private_t *dev_priv = dev->dev_private;
+	char buf[100];
+	int len;
+
+	len = snprintf(buf, sizeof(buf),
+		       "GPU=0x%08x,RCS=0x%08x,VCS=0x%08x,BCS=0x%08x\n",
+			dev_priv->total_resets,
+			dev_priv->hangcheck[RCS].total,
+			dev_priv->hangcheck[VCS].total,
+			dev_priv->hangcheck[BCS].total);
+
+
+	if (len > sizeof(buf))
+		len = sizeof(buf);
+
+	return simple_read_from_buffer(ubuf, max, ppos, buf, len);
+}
+
+static ssize_t
+i915_ring_hangcheck_write(struct file *filp,
+			const char __user *ubuf,
+			size_t cnt,
+			loff_t *ppos)
+{
+	struct drm_device *dev = filp->private_data;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	int ret;
+	uint32_t i;
+
 	ret = mutex_lock_interruptible(&dev->struct_mutex);
 	if (ret)
 		return ret;
 
-	dev_priv->stop_rings = val;
+	for (i = 0; i < I915_NUM_RINGS; i++) {
+		/* Reset the hangcheck counters */
+		dev_priv->hangcheck[i].total = 0;
+	}
+
+	dev_priv->total_resets = 0;
+
 	mutex_unlock(&dev->struct_mutex);
 
 	return cnt;
 }
+
+static const struct file_operations i915_ring_hangcheck_fops = {
+	.owner = THIS_MODULE,
+	.open = simple_open,
+	.read = i915_ring_hangcheck_read,
+	.write = i915_ring_hangcheck_write,
+	.llseek = default_llseek,
+};
 
 static const struct file_operations i915_ring_stop_fops = {
 	.owner = THIS_MODULE,
@@ -2949,6 +3030,18 @@ int i915_debugfs_init(struct drm_minor *minor)
 		return ret;
 
 	ret = i915_debugfs_create(minor->debugfs_root, minor,
+				  "i915_ring_hangcheck",
+				  &i915_ring_hangcheck_fops);
+	if (ret)
+		return ret;
+
+	ret = i915_debugfs_create(minor->debugfs_root, minor,
+				  "i915_error_state",
+				  &i915_error_state_fops);
+	if (ret)
+		return ret;
+
+	ret = i915_debugfs_create(minor->debugfs_root, minor,
 					"i915_turbo_api",
 					&i915_turbo_fops);
 	if (ret)
@@ -3014,6 +3107,9 @@ void i915_debugfs_cleanup(struct drm_minor *minor)
 	drm_debugfs_remove_files((struct drm_info_list *) &i915_cache_sharing_fops,
 				 1, minor);
 	drm_debugfs_remove_files((struct drm_info_list *) &i915_ring_stop_fops,
+				 1, minor);
+	drm_debugfs_remove_files((struct drm_info_list *)
+				&i915_ring_hangcheck_fops,
 				 1, minor);
 	drm_debugfs_remove_files((struct drm_info_list *) &i915_error_state_fops,
 				 1, minor);

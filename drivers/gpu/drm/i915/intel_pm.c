@@ -4512,6 +4512,33 @@ void gen6_gt_force_wake_get(struct drm_i915_private *dev_priv,
 	spin_unlock_irqrestore(&dev_priv->gt_lock, irqflags);
 }
 
+
+
+void gen6_gt_force_wake_restore(struct drm_i915_private *dev_priv)
+{
+	/* Restore the current expected force wake state with the
+	* hardware. This may be required following a reset.
+	*
+	* WARNING: Caller *MUST* hold gt_lock whilst calling this.
+	*
+	* gt_lock isn't taken in this function to allow the caller the
+	* flexibility to do other work immediately before/after
+	* whilst holding the lock*/
+
+	if (IS_VALLEYVIEW(dev_priv->dev))
+		return vlv_force_wake_restore(dev_priv, FORCEWAKE_ALL);
+
+	if (dev_priv->forcewake_count) {
+		/* Currently enabled */
+		dev_priv->gt.force_wake_get(dev_priv, FORCEWAKE_ALL);
+	} else {
+		dev_priv->gt.force_wake_put(dev_priv, FORCEWAKE_ALL);
+	}
+
+	dev_priv->gt_fifo_count = I915_READ_NOTRACE(GT_FIFO_FREE_ENTRIES);
+}
+
+
 void gen6_gt_check_fifodbg(struct drm_i915_private *dev_priv)
 {
 	u32 gtfifodbg;
@@ -4698,6 +4725,7 @@ void intel_gt_init(struct drm_device *dev)
 	}
 }
 
+
 void vlv_force_wake_get(struct drm_i915_private *dev_priv,
 			int fw_engine)
 {
@@ -4741,6 +4769,31 @@ void vlv_force_wake_put(struct drm_i915_private *dev_priv,
 
 	spin_unlock_irqrestore(&dev_priv->gt_lock, irqflags);
 }
+
+
+void vlv_force_wake_restore(struct drm_i915_private *dev_priv,
+				int fw_engine)
+{
+	/* Restore the current force wake state with the hardware
+	*  WARNING: Caller *MUST* hold gt_lock whilst calling this function*/
+
+	if (FORCEWAKE_RENDER & fw_engine) {
+		if (dev_priv->fw_rendercount)
+			dev_priv->gt.force_wake_get(dev_priv, FORCEWAKE_RENDER);
+		else
+			dev_priv->gt.force_wake_put(dev_priv, FORCEWAKE_RENDER);
+	}
+
+	if (FORCEWAKE_MEDIA & fw_engine) {
+		if (dev_priv->fw_mediacount)
+			dev_priv->gt.force_wake_get(dev_priv, FORCEWAKE_MEDIA);
+		else
+			dev_priv->gt.force_wake_put(dev_priv, FORCEWAKE_MEDIA);
+	}
+
+	dev_priv->gt_fifo_count = I915_READ_NOTRACE(GT_FIFO_FREE_ENTRIES);
+}
+
 
 void vlv_rs_sleepstateinit(struct drm_device *dev,
 			 bool   disable_rs)

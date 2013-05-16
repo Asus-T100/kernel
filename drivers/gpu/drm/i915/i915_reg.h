@@ -472,6 +472,8 @@
 #define RING_CTL(base)		((base)+0x3c)
 #define RING_SYNC_0(base)	((base)+0x40)
 #define RING_SYNC_1(base)	((base)+0x44)
+#define RING_MI_MODE(base)		((base)+0x9c)
+#define RING_UHPTR(base)	((base)+0x134)
 #define GEN6_RVSYNC (RING_SYNC_0(RENDER_RING_BASE))
 #define GEN6_RBSYNC (RING_SYNC_1(RENDER_RING_BASE))
 #define GEN6_VRSYNC (RING_SYNC_1(GEN6_BSD_RING_BASE))
@@ -521,6 +523,12 @@
 #define IPEIR_I965	0x02064
 #define IPEHR_I965	0x02068
 #define INSTDONE_I965	0x0206c
+
+#define GEN7_SC_INSTDONE	0x07100
+#define GEN7_SAMPLER_INSTDONE	0x0e160
+#define GEN7_ROW_INSTDONE	0x0e164
+#define I915_MAX_INSTDONE_REG	4
+
 #define RING_IPEIR(base)	((base)+0x64)
 #define RING_IPEHR(base)	((base)+0x68)
 #define RING_INSTDONE(base)	((base)+0x6c)
@@ -562,10 +570,13 @@
 #define MI_MODE		0x0209c
 # define VS_TIMER_DISPATCH				(1 << 6)
 # define MI_FLUSH_ENABLE				(1 << 12)
+# define MODE_STOP					(1 << 8)
+# define MODE_IDLE					(1 << 9)
 
 #define GFX_MODE	0x02520
 #define GFX_MODE_GEN7	0x0229c
 #define RING_MODE_GEN7(ring)	((ring)->mmio_base+0x29c)
+#define RING_EXCC_GEN7(ring)	((ring)->mmio_base+0x028)
 #define   GFX_RUN_LIST_ENABLE		(1<<15)
 #define   GFX_TLB_INVALIDATE_ALWAYS	(1<<13)
 #define   GFX_SURFACE_FAULT_ENABLE	(1<<12)

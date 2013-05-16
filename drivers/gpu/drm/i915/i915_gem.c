@@ -36,7 +36,7 @@
 #include <linux/swap.h>
 #include <linux/pci.h>
 #include <linux/dma-buf.h>
-
+#include "intel_ringbuffer.h"
 #include "bp_34_linux_pagemap.h"
 
 static void i915_gem_object_flush_gtt_write_domain(struct drm_i915_gem_object *obj);
@@ -86,40 +86,27 @@ static void i915_gem_info_remove_obj(struct drm_i915_private *dev_priv,
 	dev_priv->mm.object_memory -= size;
 }
 
-static int
-i915_gem_wait_for_error(struct drm_device *dev)
+
+int i915_gem_wedged(struct drm_device *dev, bool interruptible)
 {
+	/* Warning: This function can only give an indication
+	 * if the GPU is wedged at a particular instance of time.
+	 * The hangcheck process is asynchronous so a hang
+	 * may be detected just after the flags have been sampled */
+	unsigned i;
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	struct completion *x = &dev_priv->error_completion;
-	unsigned long flags;
-	int ret;
+	int err = !interruptible ? -EIO : -EAGAIN;
 
-	if (!atomic_read(&dev_priv->mm.wedged))
-		return 0;
+	/* Full reset requested */
+	if (atomic_read(&dev_priv->full_reset))
+		return err;
 
-	/*
-	 * Only wait 10 seconds for the gpu reset to complete to avoid hanging
-	 * userspace. If it takes that long something really bad is going on and
-	 * we should simply try to bail out and fail as gracefully as possible.
-	 */
-	ret = wait_for_completion_interruptible_timeout(x, 10*HZ);
-	if (ret == 0) {
-		DRM_ERROR("Timed out waiting for the gpu reset to complete\n");
-		return -EIO;
-	} else if (ret < 0) {
-		return ret;
+	/* Check for an individual ring which has hung */
+	for (i = 0; i < I915_NUM_RINGS; i++) {
+		if (atomic_read(&dev_priv->hangcheck[i].reset))
+			return err;
 	}
 
-	if (atomic_read(&dev_priv->mm.wedged)) {
-		/* GPU is hung, bump the completion count to account for
-		 * the token we just consumed so that we never hit zero and
-		 * end up waiting upon a subsequent completion event that
-		 * will never happen.
-		 */
-		spin_lock_irqsave(&x->wait.lock, flags);
-		x->done++;
-		spin_unlock_irqrestore(&x->wait.lock, flags);
-	}
 	return 0;
 }
 
@@ -127,10 +114,11 @@ int i915_mutex_lock_interruptible(struct drm_device *dev)
 {
 	int ret;
 
-	ret = i915_gem_wait_for_error(dev);
-	if (ret)
-		return ret;
-
+	/*  There should be no need to call i915_gem_wait_for_error
+	*    as the error recovery handler takes dev->struct_mutex
+	*     so if it is active we will wait on the
+	*     mutex_lock_interruptible call instead.
+	*/
 	ret = mutex_lock_interruptible(&dev->struct_mutex);
 	if (ret)
 		return ret;
@@ -1157,7 +1145,7 @@ out:
 		/* If this -EIO is due to a gpu hang, give the reset code a
 		 * chance to clean up the mess. Otherwise return the proper
 		 * SIGBUS. */
-		if (!atomic_read(&dev_priv->mm.wedged))
+		if (!i915_gem_wedged(dev, 0))
 			return VM_FAULT_SIGBUS;
 	case -EAGAIN:
 		/* Give the error handler a chance to run and move the
@@ -1600,11 +1588,6 @@ i915_add_request_noflush(struct intel_ring_buffer *ring)
 	ring->outstanding_lazy_request = 0;
 
 	if (!dev_priv->mm.suspended) {
-		if (i915_enable_hangcheck) {
-			mod_timer(&dev_priv->hangcheck_timer,
-				  jiffies +
-				  msecs_to_jiffies(DRM_I915_HANGCHECK_PERIOD));
-		}
 		if (was_empty) {
 			queue_delayed_work(dev_priv->wq,
 					   &dev_priv->mm.retire_work, HZ);
@@ -1684,11 +1667,6 @@ i915_add_request(struct intel_ring_buffer *ring,
 	ring->outstanding_lazy_request = 0;
 
 	if (!dev_priv->mm.suspended) {
-		if (i915_enable_hangcheck) {
-			mod_timer(&dev_priv->hangcheck_timer,
-				  jiffies +
-				  msecs_to_jiffies(DRM_I915_HANGCHECK_PERIOD));
-		}
 		if (was_empty) {
 			queue_delayed_work(dev_priv->wq,
 					   &dev_priv->mm.retire_work, HZ);
@@ -1969,25 +1947,16 @@ i915_gem_retire_work_handler(struct work_struct *work)
 
 int
 i915_gem_check_wedge(struct drm_i915_private *dev_priv,
-		     bool interruptible)
+		     bool interruptible,
+		     struct intel_ring_buffer *ring)
 {
-	if (atomic_read(&dev_priv->mm.wedged)) {
-		struct completion *x = &dev_priv->error_completion;
-		bool recovery_complete;
-		unsigned long flags;
-
-		/* Give the error handler a chance to run. */
-		spin_lock_irqsave(&x->wait.lock, flags);
-		recovery_complete = x->done > 0;
-		spin_unlock_irqrestore(&x->wait.lock, flags);
+	/* Check if this ring is wedged or full GPU reset requested */
+	if (atomic_read(&dev_priv->hangcheck[ring->id].reset) ||
+	    atomic_read(&dev_priv->full_reset)) {
 
 		/* Non-interruptible callers can't handle -EAGAIN, hence return
 		 * -EIO unconditionally for these. */
 		if (!interruptible)
-			return -EIO;
-
-		/* Recovery complete, but still wedged means reset failure. */
-		if (recovery_complete)
 			return -EIO;
 
 		return -EAGAIN;
@@ -2027,8 +1996,7 @@ i915_gem_check_olr(struct intel_ring_buffer *ring, u32 seqno)
 static int __wait_seqno(struct intel_ring_buffer *ring, u32 seqno,
 			bool interruptible, struct timespec *timeout)
 {
-	drm_i915_private_t *dev_priv = ring->dev->dev_private;
-	struct timespec before, now, wait_time={1,0};
+	struct timespec before, now, wait_time = {1, 0};
 	unsigned long timeout_jiffies;
 	long end;
 	bool wait_forever = true;
@@ -2054,7 +2022,8 @@ static int __wait_seqno(struct intel_ring_buffer *ring, u32 seqno,
 
 #define EXIT_COND \
 	(i915_seqno_passed(ring->get_seqno(ring, false), seqno) || \
-	atomic_read(&dev_priv->mm.wedged))
+	i915_gem_wedged(ring->dev, interruptible))
+
 	do {
 		if (interruptible)
 			end = wait_event_interruptible_timeout(ring->irq_queue,
@@ -2064,7 +2033,7 @@ static int __wait_seqno(struct intel_ring_buffer *ring, u32 seqno,
 			end = wait_event_timeout(ring->irq_queue, EXIT_COND,
 						 timeout_jiffies);
 
-		ret = i915_gem_check_wedge(dev_priv, interruptible);
+		ret = i915_gem_wedged(ring->dev, interruptible);
 		if (ret)
 			end = ret;
 	} while (end == 0 && wait_forever);
@@ -2102,12 +2071,15 @@ static int __wait_seqno(struct intel_ring_buffer *ring, u32 seqno,
 int
 i915_wait_seqno(struct intel_ring_buffer *ring, uint32_t seqno)
 {
-	drm_i915_private_t *dev_priv = ring->dev->dev_private;
+	struct drm_device *dev = ring->dev;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	bool interruptible = dev_priv->mm.interruptible;
 	int ret = 0;
 
+	BUG_ON(!mutex_is_locked(&dev->struct_mutex));
 	BUG_ON(seqno == 0);
 
-	ret = i915_gem_check_wedge(dev_priv, dev_priv->mm.interruptible);
+	ret = i915_gem_wedged(dev, interruptible);
 	if (ret)
 		return ret;
 
@@ -2115,7 +2087,7 @@ i915_wait_seqno(struct intel_ring_buffer *ring, uint32_t seqno)
 	if (ret)
 		return ret;
 
-	ret = __wait_seqno(ring, seqno, dev_priv->mm.interruptible, NULL);
+	ret = __wait_seqno(ring, seqno, interruptible, NULL);
 
 	return ret;
 }
@@ -3394,10 +3366,7 @@ i915_gem_ring_throttle(struct drm_device *dev, struct drm_file *file)
 	struct drm_i915_gem_request *request;
 	struct intel_ring_buffer *ring = NULL;
 	u32 seqno = 0;
-	int ret;
-
-	if (atomic_read(&dev_priv->mm.wedged))
-		return -EIO;
+	int ret = -EIO;
 
 	spin_lock(&file_priv->mm.lock);
 	list_for_each_entry(request, &file_priv->mm.request_list, client_list) {
@@ -3412,9 +3381,15 @@ i915_gem_ring_throttle(struct drm_device *dev, struct drm_file *file)
 	if (seqno == 0)
 		return 0;
 
-	ret = __wait_seqno(ring, seqno, true, NULL);
-	if (ret == 0)
-		queue_delayed_work(dev_priv->wq, &dev_priv->mm.retire_work, 0);
+	if (ring) {
+		if (i915_gem_wedged(dev, 1) != 0)
+			return -EIO;
+
+		ret = __wait_seqno(ring, seqno, true, NULL);
+		if (ret == 0)
+			queue_delayed_work(dev_priv->wq,
+				&dev_priv->mm.retire_work, 0);
+	}
 
 	return ret;
 }
@@ -3768,6 +3743,7 @@ i915_gem_idle(struct drm_device *dev)
 {
 	drm_i915_private_t *dev_priv = dev->dev_private;
 	int ret;
+	uint32_t i;
 
 	mutex_lock(&dev->struct_mutex);
 
@@ -3794,7 +3770,11 @@ i915_gem_idle(struct drm_device *dev)
 	 * And not confound mm.suspended!
 	 */
 	dev_priv->mm.suspended = 1;
-	del_timer_sync(&dev_priv->hangcheck_timer);
+
+	for (i = 0; i < I915_NUM_RINGS; i++) {
+		/* Clean up timer*/
+		del_timer_sync(&dev_priv->hangcheck[i].timer);
+	}
 
 	i915_kernel_lost_context(dev);
 	i915_gem_cleanup_ringbuffer(dev);
@@ -4067,14 +4047,18 @@ i915_gem_entervt_ioctl(struct drm_device *dev, void *data,
 		       struct drm_file *file_priv)
 {
 	drm_i915_private_t *dev_priv = dev->dev_private;
-	int ret;
+	int ret, i;
 
 	if (drm_core_check_feature(dev, DRIVER_MODESET))
 		return 0;
 
-	if (atomic_read(&dev_priv->mm.wedged)) {
+	if (atomic_read(&dev_priv->full_reset)) {
 		DRM_ERROR("Reenabling wedged hardware, good luck\n");
-		atomic_set(&dev_priv->mm.wedged, 0);
+		for (i = 0; i < I915_NUM_RINGS; i++) {
+			/* Clear the reset flag*/
+			atomic_set(&dev_priv->hangcheck[i].reset, 0);
+		}
+		atomic_set(&dev_priv->full_reset, 0);
 	}
 
 	mutex_lock(&dev->struct_mutex);
@@ -4152,7 +4136,6 @@ i915_gem_load(struct drm_device *dev)
 		INIT_LIST_HEAD(&dev_priv->fence_regs[i].lru_list);
 	INIT_DELAYED_WORK(&dev_priv->mm.retire_work,
 			  i915_gem_retire_work_handler);
-	init_completion(&dev_priv->error_completion);
 
 	/* On GEN3 we really need to make sure the ARB C3 LP bit is set */
 	if (IS_GEN3(dev)) {
