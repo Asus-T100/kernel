@@ -36,17 +36,18 @@ extern void log_buf_clear(void);
 
 #define IPANIC_LOG_CONSOLE       0
 #define IPANIC_LOG_THREADS       1
+#define IPANIC_LOG_GBUFFER       2
 #ifdef CONFIG_ANDROID_LOGGER
-#define IPANIC_LOG_LOGCAT_MAIN   2
-#define IPANIC_LOG_LOGCAT_EVENTS 3
-#define IPANIC_LOG_LOGCAT_RADIO  4
-#define IPANIC_LOG_LOGCAT_SYSTEM 5
-#define LOGCAT_BUFF_COUNT        4
-#define IPANIC_LOG_MAX           2
+#define IPANIC_LOG_LOGCAT_MAIN   3
+#define IPANIC_LOG_LOGCAT_EVENTS 4
+#define IPANIC_LOG_LOGCAT_RADIO  5
+#define IPANIC_LOG_LOGCAT_SYSTEM 6
+#define LOGCAT_BUFF_COUNT        5
+#define IPANIC_LOG_MAX           3
 #else
-#define IPANIC_LOG_MAX           2
+#define IPANIC_LOG_MAX           3
 #endif
-#define IPANIC_LOG_PROC_ENTRY    2
+#define IPANIC_LOG_PROC_ENTRY    3
 
 struct mmc_emergency_info {
 #define DISK_NAME_LENGTH 20
@@ -82,7 +83,7 @@ struct panic_header {
 	u32 log_offset[IPANIC_LOG_MAX];
 	u32 log_length[IPANIC_LOG_MAX];
 
-	/*Only for logcat buffer log status */
+	/* For logcat and generic buffer log status */
 	size_t log_head[IPANIC_LOG_MAX];
 	size_t log_woff[IPANIC_LOG_MAX];
 };
