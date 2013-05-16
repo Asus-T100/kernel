@@ -50,6 +50,16 @@ static int FindCurPipe(struct drm_device *dev)
 }
 #endif /* if KEEP_UNUSED_CODE */
 
+static user_mode_start(struct drm_psb_private *dev_priv)
+{
+	if (!dev_priv->um_start) {
+		dev_priv->um_start = true;
+		dev_priv->b_async_flip_enable = true;
+		if (dev_priv->b_dsr_enable_config)
+			dev_priv->b_dsr_enable = true;
+	}
+}
+
 static void DCWriteReg(struct drm_device *dev, unsigned long ulOffset,
 		       unsigned long ulValue)
 {
@@ -108,7 +118,6 @@ void DCCBInstallVSyncISR(struct drm_device *dev,
 
 	dev_priv = (struct drm_psb_private *)dev->dev_private;
 	dev_priv->psb_vsync_handler = pVsyncHandler;
-	dev_priv->b_async_flip_enable = true;
 }
 
 void DCCBUninstallVSyncISR(struct drm_device *dev)
@@ -137,11 +146,7 @@ void DCCBFlipToSurface(struct drm_device *dev, unsigned long uiAddr,
 	DRM_DEBUG("%s %s %d, uiAddr = 0x%lx\n", __FILE__, __func__,
 			  __LINE__, uiAddr);
 
-	if (!dev_priv->um_start) {
-		dev_priv->um_start = true;
-		if (dev_priv->b_dsr_enable_config)
-			dev_priv->b_dsr_enable = true;
-	}
+	user_mode_start(dev_priv);
 
 	if (pipeflag == 0) {
 		dsi_config = dev_priv->dsi_configs[0];
@@ -195,6 +200,8 @@ void DCCBFlipOverlay(struct drm_device *dev,
 
 	dev_priv = (struct drm_psb_private *)dev->dev_private;
 
+	user_mode_start(dev_priv);
+
 	if (ctx->index == 1) {
 		ovadd_reg = OVC_OVADD;
 		power_island = OSPM_DISPLAY_C;
@@ -225,6 +232,8 @@ void DCCBFlipSprite(struct drm_device *dev,
 		return;
 
 	dev_priv = (struct drm_psb_private *)dev->dev_private;
+
+	user_mode_start(dev_priv);
 
 	if (ctx->index == 0) {
 		reg_offset = 0;
@@ -288,6 +297,8 @@ void DCCBFlipPrimary(struct drm_device *dev,
 		return;
 
 	dev_priv = (struct drm_psb_private *)dev->dev_private;
+
+	user_mode_start(dev_priv);
 
 	if (ctx->index == 0) {
 		reg_offset = 0;
