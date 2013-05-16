@@ -97,8 +97,8 @@ static void set_cmdline_serialno(void)
 	int serialno_len;
 	int value_length;
 
-	if (intel_mid_ssn[0] != '\0') {
-		serialno = intel_mid_ssn;
+	if (sfi_ssn[0] != '\0') {
+		serialno = sfi_ssn;
 	} else {
 		if (strlen(emmc0_id)) {
 			serialno = emmc0_id;
