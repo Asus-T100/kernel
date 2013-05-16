@@ -841,6 +841,7 @@ intel_dp_mode_set(struct drm_encoder *encoder, struct drm_display_mode *mode,
 	struct drm_crtc *crtc = intel_dp->base.base.crtc;
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 
+	i915_rpm_get_reg(dev);
 	/* Turn on the eDP PLL if needed */
 	if (is_edp(intel_dp)) {
 		if (!is_pch_edp(intel_dp))
@@ -951,6 +952,7 @@ intel_dp_mode_set(struct drm_encoder *encoder, struct drm_display_mode *mode,
 	} else {
 		intel_dp->DP |= DP_LINK_TRAIN_OFF_CPT;
 	}
+	i915_rpm_put_reg(dev);
 }
 
 #define IDLE_ON_MASK		(PP_ON | 0 	  | PP_SEQUENCE_MASK | 0                     | PP_SEQUENCE_STATE_MASK)
@@ -1072,6 +1074,11 @@ static void ironlake_panel_vdd_off_sync(struct intel_dp *intel_dp)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	u32 pp;
 	u32 pp_stat_reg, pp_ctrl_reg;
+
+	if (i915_is_device_suspended(dev)) {
+		DRM_ERROR("FIXME: should not be here\n");
+		return;
+	}
 
 	if (!intel_dp->want_panel_vdd && ironlake_edp_have_panel_vdd(intel_dp)) {
 		pp = ironlake_get_pp_control(intel_dp);

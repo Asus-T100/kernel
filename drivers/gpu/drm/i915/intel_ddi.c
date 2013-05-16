@@ -659,6 +659,7 @@ void intel_ddi_mode_set(struct drm_encoder *encoder,
 	int p, n2, r2;
 	u32 temp, i;
 
+	i915_rpm_get_reg(dev);
 	/* On Haswell, we need to enable the clocks and prepare DDI function to
 	 * work in HDMI mode for this pipe.
 	 */
@@ -751,6 +752,7 @@ void intel_ddi_mode_set(struct drm_encoder *encoder,
 	I915_WRITE(DDI_FUNC_CTL(pipe), temp);
 
 	intel_hdmi->set_infoframes(encoder, adjusted_mode);
+	i915_rpm_put_reg(dev);
 }
 
 void intel_ddi_dpms(struct drm_encoder *encoder, int mode)
@@ -761,6 +763,7 @@ void intel_ddi_dpms(struct drm_encoder *encoder, int mode)
 	int port = intel_hdmi->ddi_port;
 	u32 temp;
 
+	i915_rpm_get_reg(dev);
 	temp = I915_READ(DDI_BUF_CTL(port));
 
 	if (mode != DRM_MODE_DPMS_ON) {
@@ -775,4 +778,5 @@ void intel_ddi_dpms(struct drm_encoder *encoder, int mode)
 	 */
 	I915_WRITE(DDI_BUF_CTL(port),
 			temp);
+	i915_rpm_put_reg(dev);
 }

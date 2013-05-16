@@ -1556,6 +1556,66 @@ i915_gem_next_request_seqno(struct intel_ring_buffer *ring)
 }
 
 int
+i915_add_request_noflush(struct intel_ring_buffer *ring)
+{
+	drm_i915_private_t *dev_priv = ring->dev->dev_private;
+	uint32_t seqno;
+	u32 request_ring_position;
+	int was_empty;
+	int ret;
+	struct drm_i915_gem_request *request;
+
+	request = kmalloc(sizeof(*request), GFP_KERNEL);
+	if (request == NULL)
+		return -ENOMEM;
+
+	seqno = i915_gem_next_request_seqno(ring);
+
+	/* Record the position of the start of the request so that
+	 * should we detect the updated seqno part-way through the
+	 * GPU processing the request, we never over-estimate the
+	 * position of the head.
+	 */
+	request_ring_position = intel_ring_get_tail(ring);
+
+	ret = ring->add_request(ring, &seqno);
+	if (ret) {
+		kfree(request);
+		return ret;
+	}
+
+	trace_i915_gem_request_add(ring, seqno);
+
+	/* make sure that we keep the GPU on */
+	i915_rpm_get_ring(ring);
+
+	request->seqno = seqno;
+	request->ring = ring;
+	request->tail = request_ring_position;
+	request->emitted_jiffies = jiffies;
+	was_empty = list_empty(&ring->request_list);
+	list_add_tail(&request->list, &ring->request_list);
+	request->file_priv = NULL;
+
+	ring->outstanding_lazy_request = 0;
+
+	if (!dev_priv->mm.suspended) {
+		if (i915_enable_hangcheck) {
+			mod_timer(&dev_priv->hangcheck_timer,
+				  jiffies +
+				  msecs_to_jiffies(DRM_I915_HANGCHECK_PERIOD));
+		}
+		if (was_empty) {
+			queue_delayed_work(dev_priv->wq,
+					   &dev_priv->mm.retire_work, HZ);
+			intel_mark_busy(dev_priv->dev);
+		}
+	}
+
+	return 0;
+}
+
+int
 i915_add_request(struct intel_ring_buffer *ring,
 		 struct drm_file *file,
 		 struct drm_i915_gem_request *request)
@@ -1599,6 +1659,9 @@ i915_add_request(struct intel_ring_buffer *ring,
 	}
 
 	trace_i915_gem_request_add(ring, seqno);
+
+	/* make sure that we keep the GPU on */
+	i915_rpm_get_ring(ring);
 
 	request->seqno = seqno;
 	request->ring = ring;
@@ -1896,8 +1959,10 @@ i915_gem_retire_work_handler(struct work_struct *work)
 
 	if (!dev_priv->mm.suspended && !idle)
 		queue_delayed_work(dev_priv->wq, &dev_priv->mm.retire_work, HZ);
-	if (idle)
+	if (idle) {
 		intel_mark_idle(dev);
+		i915_rpm_put_ring(ring);
+	}
 
 	mutex_unlock(&dev->struct_mutex);
 }

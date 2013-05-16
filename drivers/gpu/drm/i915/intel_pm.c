@@ -4431,16 +4431,13 @@ void vlv_force_wake_put(struct drm_i915_private *dev_priv,
 	spin_lock_irqsave(&dev_priv->gt_lock, irqflags);
 
 	if (FORCEWAKE_RENDER & fw_engine) {
-
 		if (--dev_priv->fw_rendercount == 0)
 			dev_priv->gt.force_wake_put(dev_priv, FORCEWAKE_RENDER);
-
 	}
 
 	if (FORCEWAKE_MEDIA & fw_engine) {
 		if (--dev_priv->fw_mediacount == 0)
 			dev_priv->gt.force_wake_put(dev_priv, FORCEWAKE_MEDIA);
-
 	}
 
 	spin_unlock_irqrestore(&dev_priv->gt_lock, irqflags);
@@ -4646,6 +4643,8 @@ void vlv_rs_setstate(struct drm_device *dev,
 	} else {
 		/* Forcewake all engines first */
 		vlv_force_wake_get(dev_priv, FORCEWAKE_ALL);
+
+		dev_priv->fw_rendercount = dev_priv->fw_mediacount = 1;
 
 		regdata &= ~(1 << 28);
 		regdata &= ~(1 << 24);
