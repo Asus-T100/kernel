@@ -1148,14 +1148,18 @@ stay_init:
 	/* FIXME: assume VBUS is always on.
 	 * Need to remove this when PMIC event
 	 * notification is working */
+#ifdef CONFIG_WA_BAYTRAIL_IS_NOT_CRB
 	if (!otg->otg_data->is_byt) {
+#endif
 		ret = sleep_until_event(otg, otg_mask, \
 				0, user_mask, &events,\
 				NULL, &user_events, 0);
 		if (ret < 0)
 			return DWC_STATE_EXIT;
+#ifdef CONFIG_WA_BAYTRAIL_IS_NOT_CRB
 	} else
 		events |= OEVT_B_DEV_SES_VLD_DET_EVNT;
+#endif
 
 	if (events & OEVT_B_DEV_SES_VLD_DET_EVNT) {
 		otg_dbg(otg, "OEVT_B_DEV_SES_VLD_DET_EVNT\n");
