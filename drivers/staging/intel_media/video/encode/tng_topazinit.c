@@ -682,6 +682,7 @@ int tng_topaz_init(struct drm_device *dev)
 	INIT_LIST_HEAD(&topaz_priv->topaz_queue);
 	mutex_init(&topaz_priv->topaz_mutex);
 	spin_lock_init(&topaz_priv->topaz_lock);
+	spin_lock_init(&topaz_priv->ctx_spinlock);
 
 	topaz_priv->topaz_busy = 0;
 	topaz_priv->topaz_fw_loaded = 0;

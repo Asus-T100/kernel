@@ -268,6 +268,9 @@ struct psb_video_ctx {
 	uint32_t mtx_debug_val;
 	uint32_t mtx_bank_size;
 	uint32_t mtx_ram_size;
+
+	bool handle_sequence_needed;
+	uint32_t cur_sequence;
 };
 
 #ifdef MERRIFIELD
