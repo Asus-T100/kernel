@@ -12,6 +12,7 @@
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/sfi.h>
+#include <linux/irq.h>
 #include <asm/intel-mid.h>
 
 void __init *scu_log_platform_data(void *info)
@@ -31,6 +32,7 @@ void __init *scu_log_platform_data(void *info)
 		platform_device_put(pdev);
 		goto out;
 	}
+	irq_set_status_flags(entry->irq, IRQ_NOAUTOEN);
 	install_irq_resource(pdev, entry->irq);
 out:
 	return NULL;
