@@ -47,6 +47,11 @@
 #define WM8994_NUM_DRC 3
 #define WM8994_NUM_EQ  3
 
+#ifdef CONFIG_SWITCH_MID
+extern void mid_headset_report(int state);
+#else
+static inline void mid_headset_report(int state) { return; }
+#endif
 static struct {
 	unsigned int reg;
 	unsigned int mask;
@@ -3450,6 +3455,7 @@ static void wm8994_mic_work(struct work_struct *work)
 
 	snd_soc_jack_report(priv->micdet[0].jack, report,
 			    SND_JACK_HEADSET | SND_JACK_BTN_0);
+	mid_headset_report(1);
 
 	report = 0;
 	if (reg & WM8994_MIC2_DET_STS) {
@@ -3469,6 +3475,7 @@ static void wm8994_mic_work(struct work_struct *work)
 
 	snd_soc_jack_report(priv->micdet[1].jack, report,
 			    SND_JACK_HEADSET | SND_JACK_BTN_0);
+	mid_headset_report(1);
 
 	pm_runtime_put(dev);
 }
@@ -3556,6 +3563,7 @@ static void wm8958_mic_id(void *data, u16 status)
 		snd_soc_jack_report(wm8994->micdet[0].jack, 0,
 				    wm8994->btn_mask |
 				    SND_JACK_HEADSET);
+		mid_headset_report(0);
 		return;
 	}
 
@@ -3572,6 +3580,7 @@ static void wm8958_mic_id(void *data, u16 status)
 
 		snd_soc_jack_report(wm8994->micdet[0].jack, SND_JACK_HEADSET,
 				    SND_JACK_HEADSET);
+		mid_headset_report(1);
 	}
 
 
@@ -3583,12 +3592,14 @@ static void wm8958_mic_id(void *data, u16 status)
 
 		snd_soc_jack_report(wm8994->micdet[0].jack, SND_JACK_HEADPHONE,
 				    SND_JACK_HEADSET);
+		mid_headset_report(2);
 
 		/* If we have jackdet that will detect removal */
 		wm1811_micd_stop(codec);
 
 		snd_soc_jack_report(wm8994->micdet[0].jack, SND_JACK_HEADPHONE,
 				    SND_JACK_HEADSET);
+		mid_headset_report(2);
 	}
 }
 
@@ -3710,6 +3721,7 @@ static irqreturn_t wm1811_jackdet_irq(int irq, void *data)
 	/* Since we only report deltas force an update, ensures we
 	 * avoid bootstrapping issues with the core. */
 	snd_soc_jack_report(wm8994->micdet[0].jack, 0, 0);
+	mid_headset_report(0);
 
 	pm_runtime_put(codec->dev);
 	return IRQ_HANDLED;
@@ -3890,6 +3902,7 @@ static irqreturn_t wm8958_mic_irq(int irq, void *data)
 				    SND_JACK_MECHANICAL | SND_JACK_HEADSET |
 				    wm8994->btn_mask);
 		wm8994->mic_detecting = true;
+		mid_headset_report(0);
 		goto out;
 	}
 
