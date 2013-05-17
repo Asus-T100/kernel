@@ -1658,6 +1658,7 @@ static ssize_t pmu_sync_d0ix_write(struct file *file,
 	u32 lss, local_os_sss[4];
 	int sub_sys_pos, sub_sys_index;
 	u32 pm_cmd_val;
+	u32 temp_sss;
 
 	struct pmu_ss_states cur_pmsss;
 
@@ -1714,9 +1715,10 @@ static ssize_t pmu_sync_d0ix_write(struct file *file,
 			if (same)
 				goto unlock;
 
-			cur_pmsss.pmu2_states[sub_sys_index] |=
-					mid_pmu_cxt->os_sss[sub_sys_index]
-								& pm_cmd_val;
+			cur_pmsss.pmu2_states[sub_sys_index] &= ~pm_cmd_val;
+			temp_sss =
+				mid_pmu_cxt->os_sss[sub_sys_index] & pm_cmd_val;
+			cur_pmsss.pmu2_states[sub_sys_index] |= temp_sss;
 		}
 
 		/* Issue the pmu command to PMU 2
