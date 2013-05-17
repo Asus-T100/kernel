@@ -230,9 +230,6 @@ static void __dump_stream_pipe_config(struct atomisp_device *isp)
 				 "pipe_extra_config.enable_dz:%d.\n",
 				pe_config->enable_dz);
 			v4l2_dbg(3, dbg_level, &atomisp_dev,
-				 "pipe_extra_config.isp_pipe_version:%d.\n",
-				pe_config->isp_pipe_version);
-			v4l2_dbg(3, dbg_level, &atomisp_dev,
 				 "pipe_extra_config.disable_vf_pp:%d.\n",
 				pe_config->disable_vf_pp);
 			v4l2_dbg(3, dbg_level, &atomisp_dev,
