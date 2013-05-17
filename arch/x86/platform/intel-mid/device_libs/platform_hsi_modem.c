@@ -202,3 +202,28 @@ void *hsi_modem_platform_data(void *data)
 
 	return &hsi_info[0];
 }
+
+
+struct hsi_mid_pci_platform_data pci_pdata;
+
+static struct hsi_mid_pci_platform_data *intel_hsi_mid_get_pci_pdata(
+	struct pci_dev *pdev)
+{
+	pci_pdata.gpio_wake = get_gpio_by_name("hsi_cawake");
+	pci_pdata.use_oob_cawake = SPID_PLATFORM_ID(INTEL, MRFL, PHONE) ||
+		SPID_PLATFORM_ID(INTEL, MRFL, TABLET);
+
+	return &pci_pdata;
+}
+
+static void intel_hsi_mid_pci_early_quirks(struct pci_dev *pdev)
+{
+	pdev->dev.platform_data = intel_hsi_mid_get_pci_pdata(pdev);
+}
+
+DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_INTEL, HSI_PNW_PCI_DEVICE_ID,
+			intel_hsi_mid_pci_early_quirks);
+DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_INTEL, HSI_CLV_PCI_DEVICE_ID,
+			intel_hsi_mid_pci_early_quirks);
+DECLARE_PCI_FIXUP_EARLY(PCI_VENDOR_ID_INTEL, HSI_TNG_PCI_DEVICE_ID,
+			intel_hsi_mid_pci_early_quirks);
