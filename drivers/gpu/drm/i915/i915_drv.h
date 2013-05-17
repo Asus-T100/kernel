@@ -459,6 +459,8 @@ typedef struct drm_i915_private {
 	/** Cached value of IMR to avoid reads in updating the bitfield */
 	u32 pipestat[2];
 	u32 irq_mask;
+	u32 hotplugstat;
+	bool s0ixstat;
 	u32 gt_irq_mask;
 	u32 pch_irq_mask;
 
@@ -539,6 +541,7 @@ typedef struct drm_i915_private {
 
 	/* Display functions */
 	struct drm_i915_display_funcs display;
+	bool early_suspended;
 
 	/* PCH chipset type */
 	enum intel_pch pch_type;

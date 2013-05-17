@@ -36,6 +36,7 @@
 #include "intel_drv.h"
 #include "i915_drm.h"
 #include "i915_drv.h"
+/*#include "i915_rpm.h"*/
 #include "i915_trace.h"
 #include "drm_dp_helper.h"
 #include "drm_crtc_helper.h"
@@ -3597,6 +3598,8 @@ static void i9xx_crtc_enable(struct drm_crtc *crtc)
 		return;
 
 	intel_crtc->active = true;
+	if (dev_priv->s0ixstat == true)
+		intel_crtc->s0ix_suspend_state = false;
 	intel_update_watermarks(dev);
 
 	intel_enable_pll(dev_priv, pipe);
@@ -3637,6 +3640,8 @@ static void i9xx_crtc_disable(struct drm_crtc *crtc)
 	intel_disable_pll(dev_priv, pipe);
 
 	intel_crtc->active = false;
+	if (dev_priv->s0ixstat == true)
+		intel_crtc->s0ix_suspend_state = true;
 	intel_update_fbc(dev);
 	intel_update_watermarks(dev);
 
@@ -7039,6 +7044,110 @@ static void intel_pch_pll_init(struct drm_device *dev)
 	}
 }
 
+static int display_disable_wq(struct drm_device *drm_dev)
+{
+	struct drm_i915_private *dev_priv = drm_dev->dev_private;
+	struct drm_crtc *crtc;
+	struct intel_encoder *intel_encoder;
+
+	cancel_work_sync(&dev_priv->hotplug_work);
+	cancel_work_sync(&dev_priv->error_work);
+	cancel_work_sync(&dev_priv->parity_error_work);
+	cancel_work_sync(&dev_priv->rps.work);
+	/* Uncomment this once HDMI audio code is integrated */
+	/* cancel_work_sync(&dev_priv->hdmi_audio_wq); */
+	list_for_each_entry(crtc, &drm_dev->mode_config.crtc_list, head) {
+		struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
+		for_each_encoder_on_crtc(drm_dev, crtc, intel_encoder) {
+			struct intel_dp *intel_dp = container_of(intel_encoder,
+					struct intel_dp, base);
+			if (intel_dp)
+				cancel_delayed_work_sync(\
+					&intel_dp->panel_vdd_work);
+		}
+	}
+	/* flush any delayed tasks or pending work */
+	flush_scheduled_work();
+	return 0;
+
+}
+
+enum {SAVEHPD, RESTOREHPD};
+
+static void display_save_restore_hotplug(struct drm_device *drm_dev, int flag)
+{
+	struct drm_i915_private *dev_priv = drm_dev->dev_private;
+	u32 hotplug_en;
+
+	if (flag == SAVEHPD) {
+		hotplug_en = I915_READ(PORT_HOTPLUG_EN);
+		dev_priv->hotplugstat = hotplug_en;
+		hotplug_en &= ~(HDMIB_HOTPLUG_INT_EN | HDMIC_HOTPLUG_INT_EN |
+				HDMID_HOTPLUG_INT_EN | SDVOB_HOTPLUG_INT_EN |
+				SDVOC_HOTPLUG_INT_EN);
+		I915_WRITE(PORT_HOTPLUG_EN, hotplug_en);
+	} else if (flag == RESTOREHPD)
+		I915_WRITE(PORT_HOTPLUG_EN, dev_priv->hotplugstat);
+}
+ssize_t display_runtime_suspend(struct drm_device *drm_dev)
+{
+	struct drm_i915_private *dev_priv = drm_dev->dev_private;
+	struct drm_crtc *crtc;
+	struct intel_encoder *intel_encoder;
+
+	drm_kms_helper_poll_disable(drm_dev);
+	display_save_restore_hotplug(drm_dev, SAVEHPD);
+	display_disable_wq(drm_dev);
+	dev_priv->s0ixstat = true;
+	mutex_lock(&drm_dev->mode_config.mutex);
+	list_for_each_entry(crtc, &drm_dev->mode_config.crtc_list, head) {
+		struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
+		if (intel_crtc->s0ix_suspend_state == false) {
+			i9xx_crtc_disable(crtc);
+			for_each_encoder_on_crtc(drm_dev, crtc, intel_encoder)
+				intel_encoder_prepare(&intel_encoder->base);
+		}
+	}
+	int ret = i915_hdmi_audio_suspend(drm_dev);
+	if (ret != true)
+		DRM_ERROR("Error suspending HDMI audio\n");
+	dev_priv->s0ixstat = false;
+	mutex_unlock(&drm_dev->mode_config.mutex);
+#if 0
+	i915_rpm_put(drm_dev, RPM_AUTOSUSPEND);
+#endif
+	return 0;
+}
+
+ssize_t display_runtime_resume(struct drm_device *drm_dev)
+{
+	struct drm_crtc *crtc;
+	struct intel_encoder *intel_encoder;
+	struct intel_crtc *intel_crtc;
+	struct drm_i915_private *dev_priv = drm_dev->dev_private;
+
+#if 0
+	i915_rpm_get(drm_dev, RPM_SYNC);
+#endif
+	drm_kms_helper_poll_enable(drm_dev);
+	display_save_restore_hotplug(drm_dev, RESTOREHPD);
+	mutex_lock(&drm_dev->mode_config.mutex);
+	dev_priv->s0ixstat = true;
+	list_for_each_entry(crtc, &drm_dev->mode_config.crtc_list, head) {
+		intel_crtc = to_intel_crtc(crtc);
+		if (intel_crtc->s0ix_suspend_state == true) {
+			i9xx_crtc_enable(crtc);
+			for_each_encoder_on_crtc(drm_dev, crtc, intel_encoder) {
+				intel_encoder_commit(&intel_encoder->base);
+			}
+		}
+	}
+	i915_hdmi_audio_resume(drm_dev);
+	dev_priv->s0ixstat = false;
+	mutex_unlock(&drm_dev->mode_config.mutex);
+	return 0;
+}
+
 static void intel_crtc_init(struct drm_device *dev, int pipe)
 {
 	drm_i915_private_t *dev_priv = dev->dev_private;
@@ -7073,6 +7182,8 @@ static void intel_crtc_init(struct drm_device *dev, int pipe)
 
 	intel_crtc_reset(&intel_crtc->base);
 	intel_crtc->active = true; /* force the pipe off on setup_init_config */
+	dev_priv->s0ixstat = false; /* Keep the s0ixstat false initially */
+	intel_crtc->s0ix_suspend_state = false;
 	intel_crtc->bpp = 24; /* default for pre-Ironlake */
 
 	if (HAS_PCH_SPLIT(dev)) {
@@ -7084,6 +7195,7 @@ static void intel_crtc_init(struct drm_device *dev, int pipe)
 	}
 
 	drm_crtc_helper_add(&intel_crtc->base, &intel_helper_funcs);
+
 }
 
 int intel_get_pipe_from_crtc_id(struct drm_device *dev, void *data,
