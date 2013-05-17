@@ -1045,6 +1045,7 @@ struct drm_i915_gem_object {
 	 * Only honoured if hardware has relevant pte bit
 	 */
 	unsigned long gt_ro;
+	unsigned long gt_old_ro;
 
 	struct page **pages;
 
