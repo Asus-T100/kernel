@@ -122,21 +122,6 @@
 	(SH_CSS_MORPH_TABLE_ELEM_BYTES * (binary)->morph_tbl_aligned_width * \
 	 (binary)->morph_tbl_height)
 
-/* @GC TODO: Move these defines to the appropriate place later. */
-#define DVS_BLOCKDIM_X (64)
-#define DVS_BLOCKDIM_Y (64)
-#define DVS_COORD_FRAC_BITS (10)
-#define DVS_INPUT_BYTES_PER_PIXEL (1)
-#define XMEM_ALIGN_LOG2 (5)
-
-#define DVS_6AXIS_COORDS_ELEMS CEIL_MUL(sizeof(gdc_warp_param_mem_t) \
-					, HIVE_ISP_DDR_WORD_BYTES)
-
-#define DVS_6AXIS_BYTES(binary) \
-	(DVS_6AXIS_COORDS_ELEMS \
-	 * (binary)->out_frame_info.res.width / DVS_BLOCKDIM_X \
-	 * (binary)->out_frame_info.res.height) / (DVS_BLOCKDIM_Y)
-
 
 /* We keep a second copy of the ptr struct for the SP to access.
    Again, this would not be necessary on the chip. */
@@ -1910,7 +1895,7 @@ static void
 convert_coords_to_ispparams(
 	hrt_vaddress ddr_addr,
 	const struct ia_css_dvs_6axis_config *config,
-	unsigned int i_width,
+	unsigned int i_stride,
 	unsigned int o_width,
 	unsigned int o_height,
 	unsigned int uv_flag)
@@ -1924,15 +1909,13 @@ convert_coords_to_ispparams(
 	unsigned int topleft_x, topleft_y,
 		     topleft_x_frac, topleft_y_frac;
 
-	unsigned int blockdim_y = DVS_BLOCKDIM_Y >> uv_flag;
-	unsigned int blockdim_x = DVS_BLOCKDIM_X;
-
 	/* number of blocks per height and width */
-	unsigned int num_blocks_y = o_height / blockdim_y;
-	unsigned int num_blocks_x = o_width / blockdim_x;
+	unsigned int num_blocks_y =  (uv_flag ? DVS_NUM_BLOCKS_Y_CHROMA(o_height) : DVS_NUM_BLOCKS_Y(o_height) );
+	unsigned int num_blocks_x =  (uv_flag ? DVS_NUM_BLOCKS_X_CHROMA(o_width)  : DVS_NUM_BLOCKS_X(o_width)  ); // round num_x up to blockdim_x, if it concerns the Y0Y1 block (uv_flag==0) round up to even 
 
-	unsigned int in_stride = i_width * DVS_INPUT_BYTES_PER_PIXEL << uv_flag;
-	unsigned width;
+
+	unsigned int in_stride = i_stride * DVS_INPUT_BYTES_PER_PIXEL << uv_flag;
+	unsigned width, height;
 	unsigned int *xbuff = NULL;
 	unsigned int *ybuff = NULL;	                  
 
@@ -1941,25 +1924,27 @@ assert(ddr_addr != mmgr_NULL);
 
 	ddr_addr += (2* DVS_6AXIS_COORDS_ELEMS * uv_flag); /* format is Y0 Y1 UV, so UV starts at 3rd position */
 
-assert (o_height % blockdim_y == 0);
-assert (o_width % blockdim_x == 0);
-
-
 	if(uv_flag == 0)
 	{
 		xbuff = config->xcoords_y;
 		ybuff = config->ycoords_y;
 		width = config->width_y;
+		height = config->height_y;
 	}
 	else
 	{
 		xbuff = config->xcoords_uv;
 		ybuff = config->ycoords_uv;
 		width = config->width_uv;
+		height = config->height_uv;
 	}
 	
-	sh_css_dtrace(SH_DBG_TRACE, "convert_coords_to_ispparams blockdim_x %d blockdim_y %d\n",blockdim_x,blockdim_y);
+	sh_css_dtrace(SH_DBG_TRACE, "convert_coords_to_ispparams blockdim_x %d blockdim_y %d\n", DVS_BLOCKDIM_X, DVS_BLOCKDIM_Y_LUMA >> uv_flag);
 	sh_css_dtrace(SH_DBG_TRACE, "convert_coords_to_ispparams num_blocks_x %d num_blocks_y %d\n",num_blocks_x,num_blocks_y);
+	sh_css_dtrace(SH_DBG_TRACE, "convert_coords_to_ispparams width %d height %d\n",width,height);
+
+	assert(width == num_blocks_x + 1); // the width and height of the provided morphing table should be 1 more than the number of blocks
+	assert(height == num_blocks_y + 1);
 	
 	for (j = 0; j < num_blocks_y; j++) {
 		for (i = 0; i < num_blocks_x; i++) {	
@@ -1974,10 +1959,15 @@ assert (o_width % blockdim_x == 0);
 		      y10 = ybuff[(j+1) * width + i];
 		      y11 = ybuff[(j+1) * width + (i+1)];
 
-			/* TODO: Assert that right column's X is greater */
 			xmin = min(x00, x10);
-			/* TODO: Assert that bottom row's Y is greater */
 			ymin = min(y00, y01);
+
+/* Assert that right column's X is greater */
+assert ( x01 >= xmin);
+assert ( x11 >= xmin);
+/* Assert that bottom row's Y is greater */
+assert ( y10 >= ymin);
+assert ( y11 >= ymin);
 
 #if 0
 			/* TODO: Round width to the multiple of bus width */
@@ -2013,34 +2003,44 @@ assert (o_width % blockdim_x == 0);
 			s.p1_y = y01 - topleft_y_frac;
 			s.p2_y = y10 - topleft_y_frac;
 			s.p3_y = y11 - topleft_y_frac;
+
+      // block should fit within the boundingbox.
+      assert (s.p0_x < (s.in_block_width << DVS_COORD_FRAC_BITS));
+      assert (s.p1_x < (s.in_block_width << DVS_COORD_FRAC_BITS));
+      assert (s.p2_x < (s.in_block_width << DVS_COORD_FRAC_BITS));
+      assert (s.p3_x < (s.in_block_width << DVS_COORD_FRAC_BITS));
+      assert (s.p0_y < (s.in_block_height << DVS_COORD_FRAC_BITS));
+      assert (s.p1_y < (s.in_block_height << DVS_COORD_FRAC_BITS));
+      assert (s.p2_y < (s.in_block_height << DVS_COORD_FRAC_BITS));
+      assert (s.p3_y < (s.in_block_height << DVS_COORD_FRAC_BITS));
+
+      // block size should be greater than zero.
+      assert (s.p0_x < s.p1_x);
+      assert (s.p2_x < s.p3_x);
+      assert (s.p0_y < s.p2_y);
+      assert (s.p1_y < s.p3_y);
+      
 #if 0
-			sh_css_dtrace(SH_DBG_TRACE, "j: %d\ti:%d\n", j, i);
-			sh_css_dtrace(SH_DBG_TRACE, "offset: %d\n", s.in_addr_offset);
-			sh_css_dtrace(SH_DBG_TRACE, "relative_x[0]: %d\n", s.relative_x[0]);
-			sh_css_dtrace(SH_DBG_TRACE, "relative_x[1]: %d\n", s.relative_x[1]);
-			sh_css_dtrace(SH_DBG_TRACE, "relative_x[2]: %d\n", s.relative_x[2]);
-			sh_css_dtrace(SH_DBG_TRACE, "relative_x[3]: %d\n", s.relative_x[3]);
-			sh_css_dtrace(SH_DBG_TRACE, "relative_y[0]: %d\n", s.relative_y[0]);
-			sh_css_dtrace(SH_DBG_TRACE, "relative_y[1]: %d\n", s.relative_y[1]);
-			sh_css_dtrace(SH_DBG_TRACE, "relative_y[2]: %d\n", s.relative_y[2]);
-			sh_css_dtrace(SH_DBG_TRACE, "relative_y[3]: %d\n", s.relative_y[3]);
-			sh_css_dtrace(SH_DBG_TRACE,
-					"relative_x_nofrac[0]: %d\n", s.relative_x[0]>>DVS_COORD_FRAC_BITS);
-			sh_css_dtrace(SH_DBG_TRACE,
-					"relative_x_nofrac[1]: %d\n", s.relative_x[1]>>DVS_COORD_FRAC_BITS);
-			sh_css_dtrace(SH_DBG_TRACE,
-					"relative_x_nofrac[2]: %d\n", s.relative_x[2]>>DVS_COORD_FRAC_BITS);
-			sh_css_dtrace(SH_DBG_TRACE,
-					"relative_x_nofrac[3]: %d\n", s.relative_x[3]>>DVS_COORD_FRAC_BITS);
-			sh_css_dtrace(SH_DBG_TRACE,
-					"relative_y_nofrac[0]: %d\n", s.relative_y[0]>>DVS_COORD_FRAC_BITS);
-			sh_css_dtrace(SH_DBG_TRACE,
-					"relative_y_nofrac[1]: %d\n", s.relative_y[1]>>DVS_COORD_FRAC_BITS);
-			sh_css_dtrace(SH_DBG_TRACE,
-					"relative_y_nofrac[2]: %d\n", s.relative_y[2]>>DVS_COORD_FRAC_BITS);
-			sh_css_dtrace(SH_DBG_TRACE,
-					"relative_y_nofrac[3]: %d\n", s.relative_y[3]>>DVS_COORD_FRAC_BITS);
-			sh_css_dtrace(SH_DBG_TRACE, "\n");
+			printf("j: %d\ti:%d\n", j, i);
+			printf("offset: %d\n", s.in_addr_offset);
+			printf("p0_x: %d\n", s.p0_x);
+			printf("p0_y: %d\n", s.p0_y);
+			printf("p1_x: %d\n", s.p1_x);
+			printf("p1_y: %d\n", s.p1_y);
+			printf("p2_x: %d\n", s.p2_x);
+			printf("p2_y: %d\n", s.p2_y);
+			printf("p3_x: %d\n", s.p3_x);
+			printf("p3_y: %d\n", s.p3_y);
+			
+			printf("p0_x_nofrac[0]: %d\n", s.p0_x>>DVS_COORD_FRAC_BITS);
+		    printf("p0_y_nofrac[1]: %d\n", s.p0_y>>DVS_COORD_FRAC_BITS);
+		    printf("p1_x_nofrac[2]: %d\n", s.p1_x>>DVS_COORD_FRAC_BITS);
+		    printf("p1_y_nofrac[3]: %d\n", s.p1_y>>DVS_COORD_FRAC_BITS);
+		    printf("p2_x_nofrac[0]: %d\n", s.p2_x>>DVS_COORD_FRAC_BITS);
+		    printf("p2_y_nofrac[1]: %d\n", s.p2_y>>DVS_COORD_FRAC_BITS);
+		    printf("p3_x_nofrac[2]: %d\n", s.p3_x>>DVS_COORD_FRAC_BITS);
+		    printf("p3_y_nofrac[3]: %d\n", s.p3_y>>DVS_COORD_FRAC_BITS);
+		    printf("\n");
 #endif
 
 			/* HMM STORE the struct "s" */
@@ -2052,10 +2052,10 @@ assert (o_width % blockdim_x == 0);
 			// Y0 Y1 UV0 Y2 Y3 UV1
 			if (uv_flag) {
 				ddr_addr += DVS_6AXIS_COORDS_ELEMS * 3;
-		}
+		    }
 			else {
-        ddr_addr += DVS_6AXIS_COORDS_ELEMS * (1 + (i&1)); // increment with 2 incase x is odd, this to skip the uv position.
-	}
+                ddr_addr += DVS_6AXIS_COORDS_ELEMS * (1 + (i&1)); // increment with 2 incase x is odd, this to skip the uv position.
+	        }
 			
 }
 	}
@@ -2067,7 +2067,7 @@ store_dvs_6axis_config(
 	const struct sh_css_binary *binary,
 	hrt_vaddress ddr_addr_y)
 {
-	unsigned int i_width  = binary->in_frame_info.res.width;
+	unsigned int i_stride  = binary->in_frame_info.padded_width; // bgz115: replaced binary->in_frame_info.res.width for 'padded_width=stride'
 	unsigned int o_width  = binary->out_frame_info.res.width;
 	unsigned int o_height = binary->out_frame_info.res.height;
 	
@@ -2077,10 +2077,10 @@ store_dvs_6axis_config(
 	
 	/* Y plane */
 	convert_coords_to_ispparams(ddr_addr_y, params->dvs_6axis_config,
-				    i_width, o_width, o_height, 0);
+				    i_stride, o_width, o_height, 0);
 	/* UV plane (packed inside the y plane) */
 	convert_coords_to_ispparams(ddr_addr_y, params->dvs_6axis_config,
-				    i_width/2, o_width/2, o_height/2, 1);
+				    i_stride/2, o_width/2, o_height/2, 1);
 				    
 
 	params->isp_params_changed = true;	
@@ -2436,20 +2436,26 @@ sh_css_process_tnr(struct ia_css_isp_parameters *params)
 
 static void
 sh_css_process_ob(struct ia_css_isp_parameters *params,
+		  unsigned int isp_pipe_version,
 		  unsigned int raw_bit_depth)
 {
-	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_process_ob() enter:\n");
+	unsigned int ob_bit_depth
+		= isp_pipe_version == 2 ? SH_CSS_BAYER_BITS : raw_bit_depth;
+	
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_process_ob() enter: "
+		"isp_pipe_version=%d, raw_bit_depth=%d, ob_bit_depth=%d\n",
+		isp_pipe_version, raw_bit_depth, ob_bit_depth);
 
 	switch (params->ob_config.mode) {
 	case IA_CSS_OB_MODE_FIXED:
 		params->isp_parameters.ob_blacklevel_gr
-			= params->ob_config.level_gr >> (16 - raw_bit_depth);
+			= params->ob_config.level_gr >> (16 - ob_bit_depth);
 		params->isp_parameters.ob_blacklevel_r
-			= params->ob_config.level_r  >> (16 - raw_bit_depth);
+			= params->ob_config.level_r  >> (16 - ob_bit_depth);
 		params->isp_parameters.ob_blacklevel_b
-			= params->ob_config.level_b  >> (16 - raw_bit_depth);
+			= params->ob_config.level_b  >> (16 - ob_bit_depth);
 		params->isp_parameters.ob_blacklevel_gb
-			= params->ob_config.level_gb >> (16 - raw_bit_depth);
+			= params->ob_config.level_gb >> (16 - ob_bit_depth);
 		params->isp_parameters.obarea_start_bq = 0;
 		params->isp_parameters.obarea_length_bq = 0;
 		params->isp_parameters.obarea_length_bq_inverse = 0;
@@ -4753,7 +4759,7 @@ ia_css_stream_isp_parameters_init(struct ia_css_stream *stream)
 	struct sh_css_ddr_address_map_size *ddr_ptrs_size;
 	struct ia_css_isp_parameters *params;
        
-	stream->isp_params_configs = sh_css_calloc(1, sizeof(*stream->isp_params_configs));
+	stream->isp_params_configs = sh_css_malloc(sizeof(*stream->isp_params_configs));
 	if (!stream->isp_params_configs)
 		return IA_CSS_ERR_CANNOT_ALLOCATE_MEMORY;
 
@@ -4867,6 +4873,10 @@ ia_css_stream_isp_parameters_init(struct ia_css_stream *stream)
 	params->dvs2_ver_coefs.even_real = NULL;
 	params->dvs2_ver_coefs.even_imag = NULL;
 	params->dvs2_coef_table_changed = true;
+	
+	params->dis_hor_coef_tbl = NULL;
+	params->dis_ver_coef_tbl = NULL;
+	params->dis_coef_table_changed = true;
 	
 	/*Initialise and generate table later in star*/
 	params->dvs_6axis_config = NULL;
@@ -5298,10 +5308,17 @@ sh_css_param_update_isp_params(struct ia_css_stream *stream, bool commit)
 	hrt_vaddress cpy;
 	int i;
 	unsigned int raw_bit_depth = 10;
+	unsigned int isp_pipe_version = 1;
 	struct ia_css_isp_parameters *params = stream->isp_params_configs;
 	bool	any_cc_config_changed = false;
 
 	raw_bit_depth = ia_css_stream_input_format_bits_per_pixel(stream);
+	isp_pipe_version = ia_css_pipe_get_isp_pipe_version(stream->pipes[0]);
+	// this code assuemes that all the pipes have the same pipeversion.
+	for(i=1; i< stream->num_pipes; i++) {
+	  assert(isp_pipe_version == ia_css_pipe_get_isp_pipe_version(stream->pipes[i]));
+	}
+	
 
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_param_update_isp_params() enter:\n");
 
@@ -5319,7 +5336,7 @@ sh_css_param_update_isp_params(struct ia_css_stream *stream, bool commit)
 	if (params->tnr_config_changed)
 		sh_css_process_tnr(params);
 	if (params->ob_config_changed)
-		sh_css_process_ob(params, raw_bit_depth);
+		sh_css_process_ob(params, isp_pipe_version, raw_bit_depth);
 	if (params->dp_config_changed)
 		sh_css_process_dp(params);
 	if (params->nr_config_changed || params->ee_config_changed)
@@ -5644,7 +5661,7 @@ assert(ddr_map_size != NULL);
 		buff_realloced = reallocate_buffer(
 				&ddr_map->dvs_6axis_params_y,
 				&ddr_map_size->dvs_6axis_params_y,
-				(size_t)((DVS_6AXIS_BYTES(binary) * 3) / 2), // times 1.5 because UV is packed into the Y plane
+				(size_t)((DVS_6AXIS_BYTES(binary) / 2) * 3), // because UV is packed into the Y plane, calc total YYU size = /2 gives size of UV-only, total YYU size = UV-only * 3
 				params->dvs_6axis_config_changed,
 				&err);
 		if (err != IA_CSS_SUCCESS)
@@ -5653,7 +5670,7 @@ assert(ddr_map_size != NULL);
 			if(params->dvs_6axis_config == NULL) /* Generate default DVS unity table on start up*/
 			{				
 				struct ia_css_resolution dvs_offset;
-				dvs_offset.width = binary->dvs_envelope.width / 2;
+				dvs_offset.width  = binary->dvs_envelope.width / 2;
 				dvs_offset.height = binary->dvs_envelope.height / 2;
 
 				params->dvs_6axis_config = generate_dvs_6axis_table(&binary->out_frame_info.res,
@@ -6587,4 +6604,64 @@ ia_css_dvs2_coefficients_free(struct ia_css_dvs2_coefficients *me)
 		sh_css_free(me->ver_coefs.even_imag);
 		sh_css_free(me);
 	}
+}
+
+struct ia_css_dvs_6axis_config *
+ia_css_dvs2_6axis_config_allocate(const struct ia_css_stream *stream)
+{
+    struct ia_css_dvs_6axis_config *dvs_config = NULL;
+    struct ia_css_isp_parameters *params = NULL;
+    unsigned int width_y;
+    unsigned int height_y;
+    unsigned int width_uv;
+    unsigned int height_uv;
+
+    assert(stream);
+    params = stream->isp_params_configs;
+    assert(params);
+    assert(params->dvs_6axis_config);
+
+    dvs_config = (struct ia_css_dvs_6axis_config *)sh_css_calloc(1, sizeof(struct ia_css_dvs_6axis_config));
+    if(!dvs_config)
+          goto err;
+
+    dvs_config->width_y = width_y = params->dvs_6axis_config->width_y;
+    dvs_config->height_y = height_y = params->dvs_6axis_config->height_y;
+    dvs_config->width_uv = width_uv = params->dvs_6axis_config->width_uv;
+    dvs_config->height_uv = height_uv = params->dvs_6axis_config->height_uv;
+    sh_css_dtrace(SH_DBG_TRACE, "config_allocate table Y: W %d H %d\n",width_y,height_y); 
+    sh_css_dtrace(SH_DBG_TRACE, "config_allocate table UV: W %d H %d\n",width_uv,height_uv); 
+    dvs_config->xcoords_y = (uint32_t *)sh_css_malloc( width_y * height_y * sizeof(uint32_t));
+    if(!dvs_config->xcoords_y)
+        goto err;
+
+    dvs_config->ycoords_y = (uint32_t *)sh_css_malloc( width_y * height_y * sizeof(uint32_t));
+    if(!dvs_config->ycoords_y)
+        goto err;
+
+    dvs_config->xcoords_uv = (uint32_t *)sh_css_malloc( width_uv * height_uv * sizeof(uint32_t));
+    if(!dvs_config->xcoords_uv)
+        goto err;
+
+    dvs_config->ycoords_uv = (uint32_t *)sh_css_malloc( width_uv * height_uv * sizeof(uint32_t));
+    if(!dvs_config->ycoords_uv)
+        goto err;
+
+    return dvs_config;
+err:
+        ia_css_dvs2_6axis_config_free(dvs_config);
+        return NULL;
+}
+
+void
+ia_css_dvs2_6axis_config_free(struct ia_css_dvs_6axis_config *dvs_6axis_config)
+{
+    if(dvs_6axis_config)
+    {
+        sh_css_free(dvs_6axis_config->xcoords_y);
+        sh_css_free(dvs_6axis_config->ycoords_y);
+        sh_css_free(dvs_6axis_config->xcoords_uv);
+        sh_css_free(dvs_6axis_config->ycoords_uv);
+        sh_css_free(dvs_6axis_config);
+    }
 }

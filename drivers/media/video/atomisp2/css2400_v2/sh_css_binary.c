@@ -673,7 +673,7 @@ assert(binary != NULL);
 		if (mode == SH_CSS_BINARY_MODE_VIDEO &&
 		    candidate->enable.ds && need_ds)
 			need_dz = false;
-
+#if 0
 		if (mode != SH_CSS_BINARY_MODE_PREVIEW &&
 		    mode != SH_CSS_BINARY_MODE_COPY &&
 		    candidate->enable.vf_veceven && (req_vf_info == NULL)) {
@@ -683,6 +683,7 @@ assert(binary != NULL);
 			candidate->enable.vf_veceven, req_vf_info);
 			continue;
 		}
+#endif
 		if ((req_vf_info != NULL) && !(candidate->enable.vf_veceven ||   // when we require vf output, we need to have vf_veceven 
 				candidate->variable_vf_veceven || // or variable vf vec even
 				candidate->num_output_pins > 1)) { // or more than one output pin.
