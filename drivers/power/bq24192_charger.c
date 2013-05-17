@@ -602,6 +602,10 @@ int bq24192_get_charger_health(void)
 
 	dev_dbg(&chip->client->dev, "%s\n", __func__);
 
+	/* If we do not have any cable connected, return health as UNKNOWN */
+	if (chip->cable_type == POWER_SUPPLY_CHARGER_TYPE_NONE)
+		return POWER_SUPPLY_HEALTH_UNKNOWN;
+
 	ret_fault = bq24192_read_reg(chip->client, BQ24192_FAULT_STAT_REG);
 	if (ret_fault < 0) {
 		dev_warn(&chip->client->dev,

@@ -430,7 +430,8 @@ static int dwc3_gadget_set_ep_config(struct dwc3 *dwc, struct dwc3_ep *dep,
 
 	params.param0 = DWC3_DEPCFG_EP_TYPE(usb_endpoint_type(desc))
 		| DWC3_DEPCFG_MAX_PACKET_SIZE(usb_endpoint_maxp(desc))
-		| DWC3_DEPCFG_BURST_SIZE(dep->endpoint.maxburst);
+		| DWC3_DEPCFG_BURST_SIZE(dep->endpoint.maxburst)
+		| DWC3_DEPCFG_CONFIG_ACTION(action);
 
 	params.param1 = DWC3_DEPCFG_XFER_COMPLETE_EN
 		| DWC3_DEPCFG_XFER_NOT_READY_EN;
@@ -2559,16 +2560,18 @@ static void dwc3_gadget_conndone_interrupt(struct dwc3 *dwc)
 #endif
 
 	dep = dwc->eps[0];
-	ret = __dwc3_gadget_ep_enable(dep, &dwc3_gadget_ep0_desc, NULL);
+	ret = dwc3_gadget_set_ep_config(dwc, dep,
+			&dwc3_gadget_ep0_desc, NULL, 2);
 	if (ret) {
-		dev_err(dwc->dev, "failed to enable %s\n", dep->name);
+		dev_err(dwc->dev, "failed to modify %s config\n", dep->name);
 		return;
 	}
 
 	dep = dwc->eps[1];
-	ret = __dwc3_gadget_ep_enable(dep, &dwc3_gadget_ep0_desc, NULL);
+	ret = dwc3_gadget_set_ep_config(dwc, dep,
+			&dwc3_gadget_ep0_desc, NULL, 2);
 	if (ret) {
-		dev_err(dwc->dev, "failed to enable %s\n", dep->name);
+		dev_err(dwc->dev, "failed to modify %s config\n", dep->name);
 		return;
 	}
 
@@ -2825,8 +2828,19 @@ int __devinit dwc3_gadget_init(struct dwc3 *dwc)
 
 	scratch_array = dma_alloc_coherent(NULL, sizeof(*scratch_array),
 			&scratch_array_dma, GFP_KERNEL);
+	if (!scratch_array) {
+		dev_err(dwc->dev, "failed to allocate scratch_arrary\n");
+		return -ENOMEM;
+	}
+
 	scratch_buffer[0] = dma_alloc_coherent(NULL, 4096,
 			&dma_addr, GFP_KERNEL);
+
+	if (!scratch_buffer[0]) {
+		dev_err(dwc->dev, "failed to allocate scratch_buffer\n");
+		ret = -ENOMEM;
+		goto err;
+	}
 
 	scratch_array->dma_addr[0] = (uint64_t)dma_addr;
 
@@ -2963,6 +2977,13 @@ err1:
 			dwc->ctrl_req, dwc->ctrl_req_addr);
 
 err0:
+	dma_free_coherent(NULL, 4096, scratch_buffer[0],
+			  dma_addr);
+
+err:
+	dma_free_coherent(NULL, sizeof(*scratch_array),
+			  scratch_array, scratch_array_dma);
+
 	return ret;
 }
 

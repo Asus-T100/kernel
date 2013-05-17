@@ -126,6 +126,10 @@
 #define ULPMC_BM_REG_RESVBATT_THR	0x52 /* Reserve Battery Threhsold */
 #define ULPMC_BM_REG_CNTL		0x53 /* UMPLC command register */
 #define CNTL_CHRG_EN			(1 << 0)
+#define ULPMC_BM_REG_DIS_VSYS		0x55
+#define BM_DISABLE_VSYS			0x1
+#define BM_RESET_VSYS			0x2
+
 #define ULPMC_BM_REG_BATT_PRESENT	0x4E
 #define BATT_PRESENT_DET_FAIL		(0 << 0)
 #define BATT_PRESENT_DET_1P		(1 << 0)
@@ -148,6 +152,8 @@
 #define INTSTAT_THRM_BAT1		0xD
 #define INTSTAT_THRM_SKIN0		0xE
 #define INTSTAT_STOP_CHARGING		0xF
+#define INTSTAT_PERC_HIGH		0x10
+#define INTSTAT_PERC_LOW		0x11
 #define INTSTAT_FAULT_TRIGGER		0x13
 #define INTSTAT_BATT_WARN		0x14
 #define INTSTAT_BATT_LOW		0x15
@@ -179,6 +185,7 @@ struct ulpmc_chip_info {
 	struct mutex lock;
 	bool is_fwupdate_on;
 	int cur_throttle_state;
+	bool block_sdp;
 };
 
 static struct ulpmc_chip_info *chip_ptr;
@@ -568,7 +575,10 @@ static int ulpmc_get_battery_property(struct power_supply *psy,
 
 	switch (psp) {
 	case POWER_SUPPLY_PROP_STATUS:
-		val->intval = ulpmc_battery_status(chip);
+		if (!chip->block_sdp)
+			val->intval = ulpmc_battery_status(chip);
+		else
+			val->intval = POWER_SUPPLY_STATUS_DISCHARGING;
 		break;
 	case POWER_SUPPLY_PROP_HEALTH:
 		val->intval = ulpmc_battery_health(chip);
@@ -670,6 +680,7 @@ static int ulpmc_get_charger_property(struct power_supply *psy,
 					union power_supply_propval *val)
 {
 	int ret = 0, stat;
+	bool chg_present = false;
 	struct ulpmc_chip_info *chip = container_of(psy,
 				struct ulpmc_chip_info, chrg);
 
@@ -687,25 +698,32 @@ static int ulpmc_get_charger_property(struct power_supply *psy,
 		goto i2c_read_err;
 	}
 
+	if (((stat & BC_STAT_VBUS_MASK)
+		== BC_STAT_VBUS_ADP) && !chip->block_sdp)
+		chg_present = true;
+
 	switch (psp) {
 	case POWER_SUPPLY_PROP_PRESENT:
-		if ((stat & BC_STAT_VBUS_MASK) == BC_STAT_VBUS_ADP)
+		if (chg_present)
 			val->intval = 1;
 		else
 			val->intval = 0;
 		break;
 	case POWER_SUPPLY_PROP_ONLINE:
-		if (stat & BC_STAT_PWR_GOOD)
+		if (chg_present && (stat & BC_STAT_PWR_GOOD))
 			val->intval = 1;
 		else
 			val->intval = 0;
 		break;
 	case POWER_SUPPLY_PROP_HEALTH:
-		val->intval = ulpmc_charger_health(chip);
+		if (chg_present)
+			val->intval = ulpmc_charger_health(chip);
+		else
+			val->intval = POWER_SUPPLY_HEALTH_UNKNOWN;
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_CURRENT:
 		/* return error if charger is not present */
-		if (!((stat & BC_STAT_VBUS_MASK) == BC_STAT_VBUS_ADP)) {
+		if (!chg_present) {
 			ret = -EINVAL;
 			goto i2c_read_err;
 		}
@@ -861,6 +879,12 @@ static void log_interrupt_event(struct ulpmc_chip_info *chip, int intstat)
 	case INTSTAT_STOP_CHARGING:
 		dev_info(&chip->client->dev, "Stop Charging event\n");
 		break;
+	case INTSTAT_PERC_HIGH:
+		dev_info(&chip->client->dev, "Battery perc change high event\n");
+		break;
+	case INTSTAT_PERC_LOW:
+		dev_info(&chip->client->dev, "Battery perc change low event\n");
+		break;
 	case INTSTAT_FAULT_TRIGGER:
 		dev_info(&chip->client->dev, "fault event recieved\n");
 		break;
@@ -935,6 +959,59 @@ static void ulpmc_init_irq(struct ulpmc_chip_info *chip)
 		dev_info(&chip->client->dev, "IRQ No:%d\n", chip->client->irq);
 	}
 }
+
+int byt_ulpmc_cutoff_vsys(struct ulpmc_chip_info *chip)
+{
+	int ret;
+
+	ret = ulpmc_write_reg8(chip->client,
+			ULPMC_BM_REG_DIS_VSYS, BM_DISABLE_VSYS);
+	return ret;
+}
+
+int byt_ulpmc_reset_vsys(struct ulpmc_chip_info *chip)
+{
+	int ret;
+
+	ret = ulpmc_write_reg8(chip->client,
+			ULPMC_BM_REG_DIS_VSYS, BM_RESET_VSYS);
+	return ret;
+}
+
+int byt_ulpmc_suspend_sdp_charging(void)
+{
+	int ret = 0;
+
+	if (chip_ptr) {
+		ret = byt_ulpmc_cutoff_vsys(chip_ptr);
+		mutex_lock(&chip_ptr->lock);
+		chip_ptr->block_sdp = true;
+		mutex_unlock(&chip_ptr->lock);
+	}
+
+	return ret;
+}
+EXPORT_SYMBOL(byt_ulpmc_suspend_sdp_charging);
+
+int byt_ulpmc_reset_charger(void)
+{
+	int ret = 0;
+
+	if (chip_ptr) {
+		ret = byt_ulpmc_reset_vsys(chip_ptr);
+		/*
+		 * reset or clear the chip data
+		 * which was set by functions like
+		 * byt_ulpmc_suspend_sdp_charging().
+		 */
+		mutex_lock(&chip_ptr->lock);
+		chip_ptr->block_sdp = false;
+		mutex_unlock(&chip_ptr->lock);
+	}
+
+	return ret;
+}
+EXPORT_SYMBOL(byt_ulpmc_reset_charger);
 
 static void handle_extcon_events(struct ulpmc_chip_info *chip)
 {

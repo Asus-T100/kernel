@@ -344,7 +344,7 @@ int vsp_init_fw(struct drm_device *dev)
 		ret = -1;
 	}
 
-	if (ret < 0) {
+	if (ret < 0 || raw == NULL) {
 		DRM_ERROR("VSP: request_firmware failed: reason %d\n", ret);
 		return -1;
 	}

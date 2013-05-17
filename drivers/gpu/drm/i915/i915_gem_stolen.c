@@ -63,7 +63,7 @@
 static unsigned long i915_stolen_to_phys(struct drm_device *dev, u32 offset)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	struct pci_dev *pdev = dev_priv->bridge_dev;
+	struct pci_dev *pdev = dev->pdev;
 	u32 base;
 
 #if 0
@@ -80,16 +80,29 @@ static unsigned long i915_stolen_to_phys(struct drm_device *dev, u32 offset)
 		pci_bus_read_config_dword(pdev->bus, 2, 0x5C, &base);
 	}
 #else
-	if (INTEL_INFO(dev)->gen > 3 || IS_G33(dev)) {
-		u16 val;
-		pci_read_config_word(pdev, 0xb0, &val);
-		base = val >> 4 << 20;
+	if (INTEL_INFO(dev)->gen >= 6) {
+		/*SNB and above, Stolen memory base is available at
+		offset 0x5c */
+		u32 val = 0;
+
+		pci_read_config_dword(pdev, 0x5C, &val);
+
+		/*bits[31:20] has the value */
+		base = val & 0xFFF00000;
+
 	} else {
-		u8 val;
-		pci_read_config_byte(pdev, 0x9c, &val);
-		base = val >> 3 << 27;
+		if (INTEL_INFO(dev)->gen > 3 || IS_G33(dev)) {
+			u16 val;
+			pci_read_config_word(pdev, 0xb0, &val);
+			base = val >> 4 << 20;
+		} else {
+			u8 val;
+			pci_read_config_byte(pdev, 0x9c, &val);
+			base = val >> 3 << 27;
+		}
+		base -= dev_priv->mm.gtt->stolen_size;
 	}
-	base -= dev_priv->mm.gtt->stolen_size;
+
 #endif
 
 	return base + offset;
@@ -202,8 +215,14 @@ static void i915_cleanup_pctx(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
-	I915_WRITE(VLV_PCBR, 0);
-	drm_mm_put_block(dev_priv->vlv_pctx);
+	/*
+	Clear out pctx only if it is setup by driver. Other case is
+	that BIOS can do this setup
+	*/
+	if (dev_priv->vlv_pctx) {
+		I915_WRITE(VLV_PCBR, 0);
+		drm_mm_put_block(dev_priv->vlv_pctx);
+	}
 }
 
 void i915_gem_cleanup_stolen(struct drm_device *dev)
@@ -236,7 +255,8 @@ int i915_gem_init_stolen(struct drm_device *dev)
 		i915_setup_compression(dev, cfb_size);
 	}
 
-	if (IS_VALLEYVIEW(dev) && i915_powersave)
+	/*Setup PCBR only if FW hasnt set it up already*/
+	if (IS_VALLEYVIEW(dev) && i915_powersave && dev_priv->need_pcbr_setup)
 		i915_setup_pctx(dev);
 
 	return 0;

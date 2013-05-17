@@ -622,6 +622,11 @@ l2mux_skb_tx(struct sk_buff *skb, struct net_device *dev)
 #endif /* ACTIVATE_L2MUX_STAT */
 
 	/* Packet type ETH_P_XXX */
+	if (!skb) {
+		pr_err("invalud skb (NULL)!\n");
+		return -EINVAL;
+	}
+
 	type = ntohs(skb->protocol);
 
 #ifdef CONFIG_MHI_DUMP_FRAMES

@@ -46,7 +46,6 @@
 #define SST_SUSPEND_DELAY 2000
 #define FW_CONTEXT_MEM (64*1024)
 #define SST_ICCM_BOUNDARY 4
-#define SST_UNSOLICIT_MSG 0x00
 #define SST_CONFIG_SSP_SIGN 0x7ffe8001
 
 /* FIXME: All this info should come from platform data
@@ -382,7 +381,8 @@ struct snd_sst_probe_bytes {
 #define PCI_DMAC_CLV_ID 0x08F0
 #define PCI_DMAC_MRFLD_ID 0x119B
 #define SST_MAX_DMA_LEN (4095*4)
-#define SST_MAX_DMA_LEN_MRFLD (1024*128)
+/* On Mrfld, MAX DMA BLOCK SIZE is (2*17 - 1)*/
+#define SST_MAX_DMA_LEN_MRFLD (131071)
 
 struct sst_probe_info {
 	u32 iram_start;
@@ -409,6 +409,32 @@ struct sst_fw_context {
 struct sst_ram_buf {
 	u32 size;
 	char *buf;
+};
+
+/* Firmware Module Information*/
+
+enum sst_lib_dwnld_status {
+	SST_LIB_NOT_FOUND = 0,
+	SST_LIB_FOUND,
+	SST_LIB_DOWNLOADED,
+};
+
+struct sst_module_info {
+	const char *name; /* Library name */
+	u32	id; /* Module ID */
+	u32	entry_pt; /* Module entry point */
+	u8	status; /* module status*/
+	u8	rsvd1;
+	u16	rsvd2;
+};
+
+/* Structure for managing the Library Region(1.5MB)
+ * in DDR in Merrifield
+ */
+struct sst_mem_mgr {
+	unsigned int current_base;
+	int avail;
+	unsigned int count;
 };
 
 struct sst_dump_buf {
@@ -614,6 +640,7 @@ int intel_sst_release_cntrl(struct inode *i_node, struct file *file_ptr);
 
 int sst_load_fw(void);
 int sst_load_library(struct snd_sst_lib_download *lib, u8 ops);
+int sst_load_all_modules_elf(struct intel_sst_drv *ctx);
 int sst_get_block_stream(struct intel_sst_drv *sst_drv_ctx);
 void sst_memcpy_free_resources(void);
 

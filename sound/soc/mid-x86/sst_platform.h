@@ -95,6 +95,8 @@ struct sst_compress_cb {
 	void (*compr_cb)(void *param);
 };
 
+struct snd_sst_params;
+
 struct compress_sst_ops {
 	const char *name;
 	int (*open) (struct snd_sst_params *str_params,

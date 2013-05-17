@@ -75,7 +75,7 @@ void sst_restore_fw_context(void)
 			IPC_IA_SET_FW_CTXT, 0);
 	if (retval) {
 		pr_err("Can't allocate block/msg. No restore fw_context\n");
-		return retval;
+		return;
 	}
 
 	sst_drv_ctx->sst_state = SST_FW_CTXT_RESTORE;
@@ -439,7 +439,6 @@ static int sst_power_control(bool state)
  */
 static int sst_open_pcm_stream(struct snd_sst_params *str_param)
 {
-	struct stream_info *str_info;
 	int retval;
 
 	if (!str_param)
@@ -534,9 +533,10 @@ static int sst_cdev_ack(unsigned int str_id, unsigned long bytes)
 static int sst_cdev_set_metadata(unsigned int str_id,
 				struct snd_compr_metadata *metadata)
 {
-	int retval = 0;
+	int retval = 0, pvt_id, len;
 	struct ipc_post *msg = NULL;
 	struct stream_info *str_info;
+	struct ipc_dsp_hdr dsp_hdr;
 
 	pr_debug("set metadata for stream %d\n", str_id);
 
@@ -547,10 +547,29 @@ static int sst_cdev_set_metadata(unsigned int str_id,
 	if (sst_create_ipc_msg(&msg, 1))
 		return -ENOMEM;
 
-	sst_fill_header(&msg->header, IPC_IA_SET_STREAM_PARAMS, 1, str_id);
-	msg->header.part.data = sizeof(u32) + sizeof(*metadata);
-	memcpy(msg->mailbox_data, &msg->header, sizeof(u32));
-	memcpy(msg->mailbox_data + sizeof(u32), metadata, sizeof(*metadata));
+	if (!sst_drv_ctx->use_32bit_ops) {
+		pvt_id = sst_assign_pvt_id(sst_drv_ctx);
+		pr_debug("pvt id = %d\n", pvt_id);
+		pr_debug("pipe id = %d\n", str_info->pipe_id);
+		sst_fill_header_mrfld(&msg->mrfld_header,
+			IPC_CMD, str_info->task_id, 1, pvt_id);
+
+		len = sizeof(*metadata) + sizeof(dsp_hdr);
+		msg->mrfld_header.p.header_low_payload = len;
+		sst_fill_header_dsp(&dsp_hdr, IPC_IA_SET_STREAM_PARAMS_MRFLD,
+				str_info->pipe_id, sizeof(*metadata));
+		memcpy(msg->mailbox_data, &dsp_hdr, sizeof(dsp_hdr));
+		memcpy(msg->mailbox_data + sizeof(dsp_hdr),
+				metadata, sizeof(*metadata));
+	} else {
+		sst_fill_header(&msg->header, IPC_IA_SET_STREAM_PARAMS,
+					1, str_id);
+		msg->header.part.data = sizeof(u32) + sizeof(*metadata);
+		memcpy(msg->mailbox_data, &msg->header, sizeof(u32));
+		memcpy(msg->mailbox_data + sizeof(u32),
+				metadata, sizeof(*metadata));
+	}
+
 	sst_drv_ctx->ops->sync_post_message(msg);
 	return retval;
 }
@@ -588,7 +607,7 @@ static int sst_cdev_tstamp(unsigned int str_id, struct snd_compr_tstamp *tstamp)
 	struct stream_info *stream;
 
 	memcpy_fromio(&fw_tstamp,
-		((void *)(sst_drv_ctx->mailbox + SST_TIME_STAMP)
+		((void *)(sst_drv_ctx->mailbox + sst_drv_ctx->tstamp)
 		+(str_id * sizeof(fw_tstamp))),
 		sizeof(fw_tstamp));
 
@@ -602,7 +621,7 @@ static int sst_cdev_tstamp(unsigned int str_id, struct snd_compr_tstamp *tstamp)
 	tstamp->pcm_io_frames = fw_tstamp.hardware_counter /
 			((stream->num_ch) * SST_GET_BYTES_PER_SAMPLE(24));
 	tstamp->sampling_rate = fw_tstamp.sampling_frequency;
-	pr_debug("PCM  = %d\n", tstamp->pcm_io_frames);
+	pr_debug("PCM  = %lu\n", tstamp->pcm_io_frames);
 	pr_debug("Pointer Query on strid = %d  copied_total %d, decodec %ld\n",
 		str_id, tstamp->copied_total, tstamp->pcm_frames);
 	pr_debug("rendered %ld\n", tstamp->pcm_io_frames);
@@ -947,7 +966,7 @@ static int sst_set_generic_params(enum sst_controls cmd, void *arg)
 		break;
 	}
 	case SST_SET_SSP_CONFIG: {
-		sst_drv_ctx->ssp_config = (struct sst_driver_data *)arg;
+		sst_drv_ctx->ssp_config = (struct snd_ssp_config *)arg;
 		break;
 	}
 	case SST_SET_BYTE_STREAM: {
@@ -970,9 +989,6 @@ static int sst_set_generic_params(enum sst_controls cmd, void *arg)
 		break;
 	}
 	case SST_SET_PROBE_BYTE_STREAM: {
-		struct ipc_post *msg = NULL;
-		struct sst_iblock *block;
-		unsigned long irq_flags;
 		struct snd_sst_probe_bytes *prb_bytes = (struct snd_sst_probe_bytes *)arg;
 
 		if (sst_drv_ctx->probe_bytes) {

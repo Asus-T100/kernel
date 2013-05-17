@@ -22,27 +22,13 @@
 #include "platform_msic.h"
 #include "platform_msic_thermal.h"
 
-
-static struct intel_mid_thermal_sensor ctp_sensors[];
-
-/* ctp skin1 dependent sensor information */
-static struct intel_mid_thermal_sensor *ctp_skin1_sensors[] = {
-		&ctp_sensors[3]
-};
-
-/* ctp skin1 private info */
-static struct skin1_private_info ctp_skin1_info = {
-	.dependent = 1,
-	.sensors = ctp_skin1_sensors,
-};
-
 /* ctp thermal sensor list */
 static struct intel_mid_thermal_sensor ctp_sensors[] = {
 	{
 		.name = SKIN0_NAME,
 		.index = 0,
-		.slope = 446,
-		.intercept = 14050,
+		.slope = 410,
+		.intercept = 16808,
 		.adc_channel = 0x04 | CH_NEED_VREF | CH_NEED_VCALIB,
 		.temp_correlation = skin0_temp_correlation,
 		.direct = false,
@@ -50,11 +36,10 @@ static struct intel_mid_thermal_sensor ctp_sensors[] = {
 	{
 		.name = SKIN1_NAME,
 		.index = 1,
-		.slope = 723,
-		.intercept = 7084,
+		.slope = 665,
+		.intercept = 8375,
 		.adc_channel = 0x04 | CH_NEED_VREF | CH_NEED_VCALIB,
-		.priv = &ctp_skin1_info,
-		.temp_correlation = skin1_temp_correlation,
+		.temp_correlation = skin0_temp_correlation,
 		.direct = false,
 	},
 	{

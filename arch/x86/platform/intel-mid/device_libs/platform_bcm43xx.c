@@ -203,7 +203,7 @@ void __init bcm43xx_platform_data_init_post_scu(void)
 
 void __init *bcm43xx_platform_data(void *info)
 {
-	struct sd_board_info *sd_info;
+	struct sd_board_info *sd_info = NULL;
 	unsigned int sdhci_quirk = SDHCI_QUIRK2_ADVERTISE_2V0_FORCE_1V8
 			| SDHCI_QUIRK2_ENABLE_MMC_PM_IGNORE_PM_NOTIFY;
 

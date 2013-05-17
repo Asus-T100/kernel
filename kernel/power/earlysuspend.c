@@ -17,7 +17,7 @@
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/rtc.h>
-#include <linux/syscalls.h> /* sys_sync */
+#include <linux/writeback.h>
 #include <linux/pm_wakeup.h>
 #include <linux/workqueue.h>
 
@@ -153,9 +153,9 @@ static void early_suspend(struct work_struct *work)
 	mutex_unlock(&early_suspend_lock);
 
 	if (debug_mask & DEBUG_SUSPEND)
-		pr_info("early_suspend: sync\n");
-
-	sys_sync();
+		pr_info("early_suspend: after call handlers\n");
+	/* just wake up flusher to start write back and don't wait it finished*/
+	wakeup_flusher_threads(0, WB_REASON_SYNC);
 abort:
 	spin_lock_irqsave(&state_lock, irqflags);
 	if (state == SUSPEND_REQUESTED_AND_SUSPENDED)

@@ -1579,8 +1579,14 @@ static int pmu_init(void)
 	platform_set_pmu_ops();
 
 	/* platform specific initialization */
-	if (pmu_ops->init)
-		pmu_ops->init();
+	if (pmu_ops->init) {
+		status = pmu_ops->init();
+		if (status) {
+			dev_dbg(&mid_pmu_cxt->pmu_dev->dev,
+				"pmu_ops->init failed\n");
+			goto out_err1;
+		}
+	}
 
 	/* initialize the state variables here */
 	ss_config = kzalloc(sizeof(struct pmu_suspend_config), GFP_KERNEL);

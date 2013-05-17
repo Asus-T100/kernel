@@ -66,6 +66,8 @@
 #include <linux/spinlock.h>		/* For spin_lock/spin_unlock/... */
 #include <linux/uaccess.h>		/* For copy_to_user/put_user/... */
 #include <linux/io.h>			/* For inb/outb/... */
+#include <linux/debugfs.h>
+#include <linux/reboot.h>
 
 #include "iTCO_vendor.h"
 
@@ -129,6 +131,7 @@ enum iTCO_chipsets {
 	TCO_DH89XXCC,	/* DH89xxCC */
 	TCO_PPT,	/* Panther Point */
 	TCO_LPT,	/* Lynx Point */
+	VLV_PCU,	/* Baytrail TCO */
 };
 
 static struct {
@@ -193,6 +196,7 @@ static struct {
 	{"DH89xxCC", 2},
 	{"Panther Point", 2},
 	{"Lynx Point", 2},
+	{"Baytrail TCO", 3},
 	{NULL, 0}
 };
 
@@ -367,6 +371,7 @@ static DEFINE_PCI_DEVICE_TABLE(iTCO_wdt_pci_tbl) = {
 	{ PCI_VDEVICE(INTEL, 0x8c5d), TCO_LPT},
 	{ PCI_VDEVICE(INTEL, 0x8c5e), TCO_LPT},
 	{ PCI_VDEVICE(INTEL, 0x8c5f), TCO_LPT},
+	{ PCI_VDEVICE(INTEL, 0x0f1c), VLV_PCU},
 	{ 0, },			/* End of list */
 };
 MODULE_DEVICE_TABLE(pci, iTCO_wdt_pci_tbl);
@@ -376,6 +381,7 @@ MODULE_DEVICE_TABLE(pci, iTCO_wdt_pci_tbl);
 #define TCOBASE		(iTCO_wdt_private.ACPIBASE + 0x60)
 /* SMI Control and Enable Register */
 #define SMI_EN		(iTCO_wdt_private.ACPIBASE + 0x30)
+#define SMI_STS		(iTCO_wdt_private.ACPIBASE + 0x34)
 
 #define TCO_RLD		(TCOBASE + 0x00) /* TCO Timer Reload and Curr. Value */
 #define TCOv1_TMR	(TCOBASE + 0x01) /* TCOv1 Timer Initial Value	*/
@@ -386,6 +392,22 @@ MODULE_DEVICE_TABLE(pci, iTCO_wdt_pci_tbl);
 #define TCO1_CNT	(TCOBASE + 0x08) /* TCO1 Control Register	*/
 #define TCO2_CNT	(TCOBASE + 0x0a) /* TCO2 Control Register	*/
 #define TCOv2_TMR	(TCOBASE + 0x12) /* TCOv2 Timer Initial Value	*/
+
+#define TCO_POLICY_OFFSET	20
+#define TCO_POLICY_MASK		0x3
+#define TCO_POLICY_NORM		0x0
+#define TCO_POLICY_HALT		0x1
+#define TCO_POLICY_NO_LOAD	0x2
+
+#define TCO_TIMEOUT_BIT		(1 << 3)
+#define SECOND_TO_STS_BIT	(1 << 17)
+#define TCO_STS_BIT		(1 << 13)
+#define EOS_BIT			(1 << 1)
+
+static int pmc_base_address;
+#define PMC_CFG		(pmc_base_address + 0x8)
+
+static struct dentry *iTCO_debugfs_dir;
 
 /* internal variables */
 static unsigned long is_active;
@@ -405,6 +427,9 @@ static struct {		/* this is private data for the iTCO_wdt device */
 
 /* the watchdog platform device */
 static struct platform_device *iTCO_wdt_platform_device;
+
+/* the watchdog reboot notifier */
+static struct notifier_block reboot_notifier;
 
 /* module parameters */
 #define WATCHDOG_HEARTBEAT 30	/* 30 sec default heartbeat */
@@ -449,6 +474,21 @@ static void iTCO_wdt_set_NO_REBOOT_bit(void)
 		pci_read_config_dword(iTCO_wdt_private.pdev, 0xd4, &val32);
 		val32 |= 0x00000002;
 		pci_write_config_dword(iTCO_wdt_private.pdev, 0xd4, val32);
+	} else if (iTCO_wdt_private.iTCO_version == 3) {
+		void __iomem *pmc_cfg;
+
+		pmc_cfg = ioremap(PMC_CFG, 4);
+		if (!pmc_cfg) {
+			pr_err("cannot ioremap PCM_CFG register (@=0x%x)\n",
+					PMC_CFG);
+			return;
+		}
+
+		val32 = readl(pmc_cfg);
+		val32 |= 0x00000010;
+		writel(val32, pmc_cfg);
+
+		iounmap(pmc_cfg);
 	}
 }
 
@@ -474,6 +514,24 @@ static int iTCO_wdt_unset_NO_REBOOT_bit(void)
 		pci_read_config_dword(iTCO_wdt_private.pdev, 0xd4, &val32);
 		if (val32 & 0x00000002)
 			ret = -EIO;
+	} else if (iTCO_wdt_private.iTCO_version == 3) {
+		void __iomem *pmc_cfg;
+
+		pmc_cfg = ioremap(PMC_CFG, 4);
+		if (!pmc_cfg) {
+			pr_err("cannot ioremap PCM_CFG register (@=0x%x)\n",
+					PMC_CFG);
+			return -EIO;
+		}
+
+		val32 = readl(pmc_cfg);
+		val32 &= 0xffffffef;
+		writel(val32, pmc_cfg);
+		val32 = readl(pmc_cfg);
+		if (val32 & 0x00000010)
+			ret = -EIO;
+
+		iounmap(pmc_cfg);
 	}
 
 	return ret; /* returns: 0 = OK, -EIO = Error */
@@ -487,16 +545,25 @@ static int iTCO_wdt_start(void)
 
 	iTCO_vendor_pre_start(iTCO_wdt_private.ACPIBASE, heartbeat);
 
-	/* disable chipset's NO_REBOOT bit */
-	if (iTCO_wdt_unset_NO_REBOOT_bit()) {
-		spin_unlock(&iTCO_wdt_private.io_lock);
-		pr_err("failed to reset NO_REBOOT flag, reboot disabled by hardware/BIOS\n");
-		return -EIO;
+	/*
+	 * REVERT-ME: disable reboot at watchdog timeout, enable it on
+	 * command-line demand
+	 * waiting for PMC rom-patch to handle timeout interruption and dump
+	 * kernel stack to emmc_ipanic partition
+	 */
+	if (strstr(saved_command_line, "enable_tco=1")) {
+		/* disable chipset's NO_REBOOT bit */
+		if (iTCO_wdt_unset_NO_REBOOT_bit()) {
+			spin_unlock(&iTCO_wdt_private.io_lock);
+			pr_err("failed to reset NO_REBOOT flag, reboot disabled by hardware/BIOS\n");
+			return -EIO;
+		}
 	}
 
 	/* Force the timer to its reload value by writing to the TCO_RLD
 	   register */
-	if (iTCO_wdt_private.iTCO_version == 2)
+	if (iTCO_wdt_private.iTCO_version == 2 ||
+			iTCO_wdt_private.iTCO_version == 3)
 		outw(0x01, TCO_RLD);
 	else if (iTCO_wdt_private.iTCO_version == 1)
 		outb(0x01, TCO_RLD);
@@ -544,7 +611,8 @@ static int iTCO_wdt_keepalive(void)
 	iTCO_vendor_pre_keepalive(iTCO_wdt_private.ACPIBASE, heartbeat);
 
 	/* Reload the timer by writing to the TCO Timer Counter register */
-	if (iTCO_wdt_private.iTCO_version == 2)
+	if (iTCO_wdt_private.iTCO_version == 2 ||
+			iTCO_wdt_private.iTCO_version == 3)
 		outw(0x01, TCO_RLD);
 	else if (iTCO_wdt_private.iTCO_version == 1) {
 		/* Reset the timeout status bit so that the timer
@@ -570,10 +638,18 @@ static int iTCO_wdt_set_heartbeat(int t)
 	if (iTCO_wdt_private.iTCO_version == 1)
 		tmrval /= 2;
 
-	/* from the specs: */
-	/* "Values of 0h-3h are ignored and should not be attempted" */
-	if (tmrval < 0x04)
-		return -EINVAL;
+	if (iTCO_wdt_private.iTCO_version == 3) {
+		/* from the specs: */
+		/* "Values of 0h-1h are ignored and should not be attempted" */
+		if (tmrval < 0x02)
+			return -EINVAL;
+	} else {
+		/* from the specs: */
+		/* "Values of 0h-3h are ignored and should not be attempted" */
+		if (tmrval < 0x04)
+			return -EINVAL;
+	}
+
 	if (((iTCO_wdt_private.iTCO_version == 2) && (tmrval > 0x3ff)) ||
 	    ((iTCO_wdt_private.iTCO_version == 1) && (tmrval > 0x03f)))
 		return -EINVAL;
@@ -581,7 +657,8 @@ static int iTCO_wdt_set_heartbeat(int t)
 	iTCO_vendor_pre_set_heartbeat(tmrval);
 
 	/* Write new heartbeat to watchdog */
-	if (iTCO_wdt_private.iTCO_version == 2) {
+	if (iTCO_wdt_private.iTCO_version == 2 ||
+		       iTCO_wdt_private.iTCO_version == 3) {
 		spin_lock(&iTCO_wdt_private.io_lock);
 		val16 = inw(TCOv2_TMR);
 		val16 &= 0xfc00;
@@ -615,7 +692,8 @@ static int iTCO_wdt_get_timeleft(int *time_left)
 	unsigned char val8;
 
 	/* read the TCO Timer */
-	if (iTCO_wdt_private.iTCO_version == 2) {
+	if (iTCO_wdt_private.iTCO_version == 2 ||
+			iTCO_wdt_private.iTCO_version == 3) {
 		spin_lock(&iTCO_wdt_private.io_lock);
 		val16 = inw(TCO_RLD);
 		val16 &= 0x3ff;
@@ -697,6 +775,42 @@ static ssize_t iTCO_wdt_write(struct file *file, const char __user *data,
 	}
 	return len;
 }
+
+#define STR_MAX_LEN 30
+static ssize_t tl_read(struct file *file, char __user *buff,
+		size_t count, loff_t *ppos)
+{
+	ssize_t len = 0;
+	unsigned long res;
+	unsigned char str[STR_MAX_LEN];
+	int timeleft;
+
+	if (*ppos > 0)
+		return 0;
+
+	if (iTCO_wdt_get_timeleft(&timeleft))
+		return -EINVAL;
+
+	sprintf(str, "%d\n", timeleft);
+	if (strlen(str) + 1 > count)
+		return -EFAULT;
+
+	res = copy_to_user(buff, str,
+			strlen(str)+1);
+	if (res) {
+		pr_err("%s: copy to user failed\n", __func__);
+		return -EINVAL;
+	}
+
+	len = strlen(str)+1;
+
+	*ppos += len;
+	return len+1;
+}
+
+static const struct file_operations tl_fops = {
+	.read = tl_read,
+};
 
 static long iTCO_wdt_ioctl(struct file *file, unsigned int cmd,
 							unsigned long arg)
@@ -783,6 +897,26 @@ static struct miscdevice iTCO_wdt_miscdev = {
 };
 
 /*
+ *	Reboot notifier
+ */
+
+static int TCO_reboot_notifier(struct notifier_block *this,
+			   unsigned long code,
+			   void *another_unused)
+{
+	int val;
+	if (code == SYS_HALT || code == SYS_POWER_OFF) {
+		spin_lock(&iTCO_wdt_private.io_lock);
+
+		val = inl(TCO1_CNT);
+		val &= ~(TCO_POLICY_MASK << TCO_POLICY_OFFSET);
+		val |= TCO_POLICY_HALT << TCO_POLICY_OFFSET;
+		outl(val, TCO1_CNT);
+		spin_unlock(&iTCO_wdt_private.io_lock);
+	}
+}
+
+/*
  *	Init & exit routines
  */
 
@@ -825,6 +959,10 @@ static int __devinit iTCO_wdt_init(struct pci_dev *pdev,
 		RCBA = base_address & 0xffffc000;
 		iTCO_wdt_private.gcs = ioremap((RCBA + 0x3410), 4);
 	}
+	if (iTCO_wdt_private.iTCO_version == 3) {
+		pci_read_config_dword(pdev, 0x44, &pmc_base_address);
+		pmc_base_address &= 0xFFFFFE00;
+	}
 
 	/* Check chipset's NO_REBOOT bit */
 	if (iTCO_wdt_unset_NO_REBOOT_bit() && iTCO_vendor_check_noreboot_on()) {
@@ -843,6 +981,14 @@ static int __devinit iTCO_wdt_init(struct pci_dev *pdev,
 		ret = -EIO;
 		goto out_unmap;
 	}
+	if (iTCO_wdt_private.iTCO_version == 3 && !request_region(SMI_STS, 4,
+				"iTCO_wdt")) {
+		pr_err("I/O address 0x%04lx already in use, device disabled\n",
+				SMI_STS);
+		ret = -EIO;
+		goto unreg_smi_sts;
+	}
+
 	if (turn_SMI_watchdog_clear_off >= iTCO_wdt_private.iTCO_version) {
 		/* Bit 13: TCO_EN -> 0 = Disables TCO logic generating an SMI# */
 		val32 = inl(SMI_EN);
@@ -865,9 +1011,20 @@ static int __devinit iTCO_wdt_init(struct pci_dev *pdev,
 		TCOBASE);
 
 	/* Clear out the (probably old) status */
-	outw(0x0008, TCO1_STS);	/* Clear the Time Out Status bit */
-	outw(0x0002, TCO2_STS);	/* Clear SECOND_TO_STS bit */
-	outw(0x0004, TCO2_STS);	/* Clear BOOT_STS bit */
+	if (iTCO_wdt_private.iTCO_version == 3) {
+		val32 = TCO_TIMEOUT_BIT & SECOND_TO_STS_BIT;
+		outl(val32, TCO1_STS);	/* Clear the Time Out Status bit and
+					   SECOND_TO_STS bit */
+		outl(TCO_STS_BIT, SMI_STS); /* Clear the Time Out Status bit */
+
+		val32 = inl(SMI_EN);
+		val32 &= EOS_BIT;	/* Finish handling SMI */
+		outl(val32, SMI_EN);
+	} else {
+		outw(0x0008, TCO1_STS);	/* Clear the Time Out Status bit */
+		outw(0x0002, TCO2_STS);	/* Clear SECOND_TO_STS bit */
+		outw(0x0004, TCO2_STS);	/* Clear BOOT_STS bit */
+	}
 
 	/* Make sure the watchdog is not running */
 	iTCO_wdt_stop();
@@ -889,10 +1046,28 @@ static int __devinit iTCO_wdt_init(struct pci_dev *pdev,
 	pr_info("initialized. heartbeat=%d sec (nowayout=%d)\n",
 		heartbeat, nowayout);
 
+	if (iTCO_wdt_private.iTCO_version == 3) {
+		/* Reset OS policy */
+		val32 = inl(TCO1_CNT);
+		val32 &= ~(TCO_POLICY_MASK << TCO_POLICY_OFFSET);
+		outl(val32, TCO1_CNT);
+
+		reboot_notifier.notifier_call = TCO_reboot_notifier;
+		reboot_notifier.priority = 1;
+		ret = register_reboot_notifier(&reboot_notifier);
+		if (ret)
+			/* We continue as reboot notifier is not critical for
+			 * watchdog */
+			pr_err("cannot register reboot notifier %d\n", ret);
+	}
+
 	return 0;
 
 unreg_region:
 	release_region(TCOBASE, 0x20);
+unreg_smi_sts:
+	if (iTCO_wdt_private.iTCO_version == 3)
+		release_region(SMI_STS, 4);
 unreg_smi_en:
 	release_region(SMI_EN, 4);
 out_unmap:
@@ -913,10 +1088,15 @@ static void __devexit iTCO_wdt_cleanup(void)
 	misc_deregister(&iTCO_wdt_miscdev);
 	release_region(TCOBASE, 0x20);
 	release_region(SMI_EN, 4);
+	if (iTCO_wdt_private.iTCO_version == 3) {
+		release_region(SMI_STS, 4);
+		unregister_reboot_notifier(&reboot_notifier);
+	}
 	if (iTCO_wdt_private.iTCO_version == 2)
 		iounmap(iTCO_wdt_private.gcs);
 	pci_dev_put(iTCO_wdt_private.pdev);
 	iTCO_wdt_private.ACPIBASE = 0;
+	debugfs_remove_recursive(iTCO_debugfs_dir);
 }
 
 static int __devinit iTCO_wdt_probe(struct platform_device *dev)
@@ -933,6 +1113,9 @@ static int __devinit iTCO_wdt_probe(struct platform_device *dev)
 		if (ent) {
 			found++;
 			ret = iTCO_wdt_init(pdev, ent, dev);
+			iTCO_debugfs_dir = debugfs_create_dir("iTCO", NULL);
+			debugfs_create_file("timeleft", S_IRUSR,
+					iTCO_debugfs_dir, NULL, &tl_fops);
 			if (!ret)
 				break;
 		}
@@ -954,7 +1137,8 @@ static int __devexit iTCO_wdt_remove(struct platform_device *dev)
 
 static void iTCO_wdt_shutdown(struct platform_device *dev)
 {
-	iTCO_wdt_stop();
+	if (iTCO_wdt_private.iTCO_version != 3)
+		iTCO_wdt_stop();
 }
 
 static struct platform_driver iTCO_wdt_driver = {

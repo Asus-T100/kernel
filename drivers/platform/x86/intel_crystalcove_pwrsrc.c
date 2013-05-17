@@ -233,10 +233,10 @@ static int crystalcove_pwrsrc_probe(struct platform_device *pdev)
 	crystalcove_pwrsrc_log_rsi(pdev, pwrsrc_wakesrc_info,
 				CRYSTALCOVE_WAKESRC_REG);
 
-	/* Set VBUS supply mode to SW control mode */
-	intel_mid_pmic_writeb(CRYSTALCOVE_VBUSCNTL_REG, 0x02);
-
 #ifndef CONFIG_EXTCON_FSA9285
+	/* Workaround: Set VBUS supply mode to HW control mode */
+	intel_mid_pmic_writeb(CRYSTALCOVE_VBUSCNTL_REG, 0x00);
+
 	/* register with extcon */
 	info->edev = kzalloc(sizeof(struct extcon_dev), GFP_KERNEL);
 	if (!info->edev) {
@@ -259,6 +259,9 @@ static int crystalcove_pwrsrc_probe(struct platform_device *pdev)
 		goto otg_reg_failed;
 	}
 #else
+	/* Set VBUS supply mode to SW control mode */
+	intel_mid_pmic_writeb(CRYSTALCOVE_VBUSCNTL_REG, 0x02);
+
 	info->edev = NULL;
 	info->otg = NULL;
 #endif

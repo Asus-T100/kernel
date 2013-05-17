@@ -52,6 +52,7 @@ void DCCBFlipSprite(struct drm_device *dev,
 			struct intel_dc_sprite_ctx *ctx);
 void DCCBFlipPrimary(struct drm_device *dev,
 			struct intel_dc_primary_ctx *ctx);
+void DCCBUpdateDbiPanel(struct drm_device *dev);
 void DCCBFlipDSRCb(struct drm_device *dev);
 void DCCBUnblankDisplay(struct drm_device *dev);
 int DCCBgttMapMemory(struct drm_device *dev,

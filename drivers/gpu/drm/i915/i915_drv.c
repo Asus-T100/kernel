@@ -703,9 +703,9 @@ static int gen6_do_reset(struct drm_device *dev)
 
 	/* If reset with a user forcewake, try to restore, otherwise turn it off */
 	if (dev_priv->forcewake_count && 0)
-		dev_priv->gt.force_wake_get(dev_priv);
+		dev_priv->gt.force_wake_get(dev_priv, FORCEWAKE_ALL);
 	else
-		dev_priv->gt.force_wake_put(dev_priv);
+		dev_priv->gt.force_wake_put(dev_priv, FORCEWAKE_ALL);
 
 	/* Restore fifo count */
 	dev_priv->gt_fifo_count = I915_READ_NOTRACE(GT_FIFO_FREE_ENTRIES);
@@ -1114,6 +1114,7 @@ MODULE_LICENSE("GPL and additional rights");
 
 static bool IS_DISPLAYREG(u32 reg)
 {
+
 	/*
 	 * This should make it easier to transition modules over to the
 	 * new register block scheme, since we can do it incrementally.
@@ -1196,9 +1197,22 @@ static bool IS_DISPLAYREG(u32 reg)
 	case GEN6_MBCTL:
 	case GEN6_UCGCTL2:
 	case GEN7_UCGCTL4:
-	case FORCEWAKE_VLV:
-	case FORCEWAKE_ACK_VLV:
-	case VLV_GTLC_WAKE_CTRL:
+	case GEN7_CXT_SIZE:
+	/* TBD: Clean this up after Turbo registers are added */
+	case VLV_RENDER_C_STATE_CONTROL_1_REG:
+	case VLV_RC6_WAKE_RATE_LIMIT_REG:
+	case VLV_RC_EVALUATION_INTERVAL_REG:
+	case VLV_RC6_RENDER_PROMOTION_TIMER_REG:
+	case VLV_RC_IDLE_HYSTERESIS_REG:
+	case VLV_POWER_WELL_STATUS_REG:
+	case VLV_GTLC_SURVIVABILITY_REG:
+	case VLV_GTLC_WAKE_CONTROL_REG:
+	case VLV_RENDER_FORCE_WAKE_REG:
+	case VLV_MEDIA_FORCE_WAKE_REG:
+	case VLV_RENDER_FORCE_WAKE_STATUS_REG:
+	case VLV_MEDIA_FORCE_WAKE_STATUS_REG:
+	case VLV_DISPLAY_RENDER_RESPONSE_REG:
+	case VLV_RC_COUNTER_ENABLE_REG:
 		return false;
 	default:
 		break;
@@ -1209,17 +1223,32 @@ static bool IS_DISPLAYREG(u32 reg)
 #define __i915_read(x, y) \
 u##x i915_read##x(struct drm_i915_private *dev_priv, u32 reg, bool trace) { \
 	u##x val = 0, tmp = reg; \
-	if (IS_VALLEYVIEW(dev_priv->dev) && IS_DISPLAYREG(reg)) { \
-		tmp = reg + 0x180000;				\
+	int fwengine = FORCEWAKE_ALL;				\
+	bool forcewake = true;					\
+	unsigned int *fwcount = &dev_priv->forcewake_count;	\
+	if (IS_VALLEYVIEW(dev_priv->dev)) {			\
+		if (IS_DISPLAYREG(reg)) {			\
+			tmp = reg + VLV_DISPLAY_BASE;		\
+		}						\
+		if (FORCEWAKE_VLV_RENDER_RANGE_OFFSET(tmp)) {   \
+			fwengine = FORCEWAKE_RENDER;            \
+			fwcount = &dev_priv->fw_rendercount;    \
+		}                                               \
+		else if (FORCEWAKE_VLV_MEDIA_RANGE_OFFSET(tmp)) {       \
+			fwengine = FORCEWAKE_MEDIA;             \
+			fwcount = &dev_priv->fw_mediacount;     \
+		}                                               \
+		else						\
+			forcewake = false;			\
 	}							\
-	if (NEEDS_FORCE_WAKE((dev_priv), (tmp)) && (trace)) {	\
+	if (NEEDS_FORCE_WAKE((dev_priv), (tmp)) && (trace) && (forcewake)) {  \
 		unsigned long irqflags; \
 		spin_lock_irqsave(&dev_priv->gt_lock, irqflags); \
-		if (dev_priv->forcewake_count == 0) \
-			dev_priv->gt.force_wake_get(dev_priv); \
+		if ((*fwcount)++ == 0) \
+			dev_priv->gt.force_wake_get(dev_priv, fwengine); \
 		val = read##y(dev_priv->regs + tmp); \
-		if (dev_priv->forcewake_count == 0) \
-			dev_priv->gt.force_wake_put(dev_priv); \
+		if (--(*fwcount) == 0) \
+			dev_priv->gt.force_wake_put(dev_priv, fwengine); \
 		spin_unlock_irqrestore(&dev_priv->gt_lock, irqflags); \
 	} else { \
 		val = read##y(dev_priv->regs + tmp); \

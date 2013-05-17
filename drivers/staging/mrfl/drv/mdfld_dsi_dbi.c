@@ -114,7 +114,7 @@ void intel_dsi_dbi_update_fb(struct mdfld_dsi_dbi_output *dbi_output)
 	}
 
 	/* check DBI FIFO status */
-	if (get_panel_type(dev, pipe) == JDI_CMD) {
+	if (is_panel_vid_or_cmd(dev) == MDFLD_DSI_ENCODER_DBI) {
 		if (!(REG_READ(dspcntr_reg) & DISPLAY_PLANE_ENABLE) ||
 		   !(REG_READ(pipeconf_reg) & DISPLAY_PLANE_ENABLE))
 			return;
@@ -772,8 +772,26 @@ void mdfld_generic_dsi_dbi_dpms(struct drm_encoder *encoder, int mode)
 static
 void mdfld_generic_dsi_dbi_save(struct drm_encoder *encoder)
 {
+	struct mdfld_dsi_encoder *dsi_encoder;
+	struct mdfld_dsi_config *dsi_config;
+	struct drm_device *dev;
+	int pipe;
+
+	PSB_DEBUG_ENTRY("\n");
+
 	if (!encoder)
 		return;
+
+	dsi_encoder = MDFLD_DSI_ENCODER(encoder);
+	dsi_config = mdfld_dsi_encoder_get_config(dsi_encoder);
+	dev = dsi_config->dev;
+	pipe = mdfld_dsi_encoder_get_pipe(dsi_encoder);
+
+	/* Turn off vsync (TE) interrupt. */
+	drm_vblank_off(dev, pipe);
+
+	/* Make the pending flip request as completed. */
+	DCUnAttachPipe(pipe);
 
 	mdfld_generic_dsi_dbi_set_power(encoder, false);
 }
@@ -957,6 +975,7 @@ struct mdfld_dsi_encoder *mdfld_dsi_dbi_init(struct drm_device *dev,
 	dev_priv->dsr_fb_update = 0;
 	dev_priv->b_dsr_enable = false;
 	dev_priv->exit_idle = mdfld_dsi_dbi_exit_dsr;
+	dev_priv->b_async_flip_enable = false;
 
 #if defined(CONFIG_MDFLD_DSI_DPU) || defined(CONFIG_MDFLD_DSI_DSR)
 	dev_priv->b_dsr_enable_config = true;

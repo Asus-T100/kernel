@@ -24,8 +24,7 @@ static struct dw9719_device dw9719_dev;
 static int dw9719_i2c_rd8(struct i2c_client *client, u8 reg, u8 *val)
 {
 	struct i2c_msg msg[2];
-	u8 buf[2];
-	buf[0] = reg;
+	u8 buf[2] = { reg };
 
 	msg[0].addr = DW9719_VCM_ADDR;
 	msg[0].flags = 0;

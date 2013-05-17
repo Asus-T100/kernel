@@ -243,22 +243,29 @@ static void sst_fill_info(struct intel_sst_drv *sst,
 	pr_debug("%s: dma_max_len 0x%x", __func__, info->dma_max_len);
 }
 
-static inline int sst_validate_fw_elf(const struct firmware *sst_fw)
+static inline int sst_validate_elf(const struct firmware *sst_bin, bool dynamic)
 {
 	Elf32_Ehdr *elf;
 
-	BUG_ON(!sst_fw);
+	BUG_ON(!sst_bin);
 
 	pr_debug("IN %s\n", __func__);
 
-	elf = (Elf32_Ehdr *)sst_fw->data;
+	elf = (Elf32_Ehdr *)sst_bin->data;
 
 	if ((elf->e_ident[0] != 0x7F) || (elf->e_ident[1] != 'E') ||
 		(elf->e_ident[2] != 'L') || (elf->e_ident[3] != 'F')) {
-		pr_debug("ELF Header Not found!%d\n", sst_fw->size);
+		pr_debug("ELF Header Not found!%d\n", sst_bin->size);
 		return -EINVAL;
 	}
-	pr_debug("Valid ELF Header...%d\n", sst_fw->size);
+
+	if (dynamic == true) {
+		if (elf->e_type != ET_DYN) {
+			pr_err("Not a dynamic loadable library\n");
+			return -EINVAL;
+		}
+	}
+	pr_debug("Valid ELF Header...%d\n", sst_bin->size);
 	return 0;
 }
 
@@ -886,8 +893,8 @@ static int sst_parse_elf_module_memcpy(struct intel_sst_drv *sst,
 	if (ret_val)
 		return ret_val;
 
-	ret_val = sst_fill_memcpy_list(memcpy_list,
-					dstn, fw + pr->p_offset, pr->p_filesz, mem_type);
+	ret_val = sst_fill_memcpy_list(memcpy_list, dstn,
+			(void *)fw + pr->p_offset, pr->p_filesz, mem_type);
 	if (ret_val)
 		return ret_val;
 
@@ -1074,7 +1081,7 @@ static int sst_request_fw(struct intel_sst_drv *sst)
 		return retval;
 	}
 	if (sst->info.use_elf == true)
-		retval = sst_validate_fw_elf(sst->fw);
+		retval = sst_validate_elf(sst->fw, false);
 	if (retval != 0) {
 		pr_err("FW image invalid...\n");
 		goto end_release;
@@ -1289,15 +1296,15 @@ free_block:
  * Writing the DDR physical base to DCCM offset
  * so that FW can use it to setup TLB
  */
-static void mrfld_dccm_config_write(void __iomem *dram_base, u32 ddr_base)
+static void mrfld_dccm_config_write(void __iomem *dram_base, unsigned int ddr_base)
 {
 	void __iomem *addr;
 	u32 bss_reset = 0;
 
-	addr = dram_base + MRFLD_FW_DDR_BASE_OFFSET;
-	memcpy_toio(addr, &ddr_base, sizeof(u32));
+	addr = (void __iomem *)(dram_base + MRFLD_FW_DDR_BASE_OFFSET);
+	memcpy_toio(addr, (void *)&ddr_base, sizeof(u32));
 	bss_reset |= (1 << MRFLD_FW_BSS_RESET_BIT);
-	addr = dram_base + MRFLD_FW_FEATURE_BASE_OFFSET;
+	addr = (void __iomem *)(dram_base + MRFLD_FW_FEATURE_BASE_OFFSET);
 	memcpy_toio(addr, &bss_reset, sizeof(u32));
 	pr_debug("mrfld config written to DCCM\n");
 }
@@ -1312,6 +1319,7 @@ int sst_load_fw(void)
 {
 	int ret_val = 0;
 	struct sst_block *block;
+	static int lib_dwnld;
 
 	pr_debug("sst_load_fw\n");
 
@@ -1322,6 +1330,8 @@ int sst_load_fw(void)
 		ret_val = sst_request_fw(sst_drv_ctx);
 		if (ret_val)
 			return ret_val;
+		if (!sst_drv_ctx->use_32bit_ops)
+			lib_dwnld = 1;
 	}
 
 	BUG_ON(!sst_drv_ctx->fw_in_mem);
@@ -1347,9 +1357,18 @@ int sst_load_fw(void)
 	}
 	/* Write the DRAM config before enabling FW
 	 */
-	if (!sst_drv_ctx->use_32bit_ops)
+	if (!sst_drv_ctx->use_32bit_ops) {
 		mrfld_dccm_config_write(sst_drv_ctx->dram,
 						sst_drv_ctx->ddr_base);
+		/* For mrfld, download all libraries the first time fw is
+		 * downloaded */
+		pr_debug("lib_dwnld = %d\n", lib_dwnld);
+		if (lib_dwnld) {
+			sst_load_all_modules_elf(sst_drv_ctx);
+			lib_dwnld = 0;
+		}
+	}
+
 	sst_drv_ctx->sst_state = SST_FW_LOADED;
 	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID)
 		sst_fill_config(sst_drv_ctx);
@@ -1470,4 +1489,289 @@ wake_free:
 	release_firmware(fw_lib);
 wake:
 	return error;
+}
+
+
+#define MRFLD_FW_MOD_TABLE_OFFSET 0x80000
+#define MRFLD_FW_MOD_START (MRFLD_FW_LSP_DDR_BASE + MRFLD_FW_MOD_TABLE_OFFSET)
+#define MRFLD_FW_MOD_DWNLD_START (MRFLD_FW_MOD_START + 0x100)
+#define MRFLD_FW_MOD_END (MRFLD_FW_LSP_DDR_BASE + 0x1FFFFF)
+
+struct sst_module_info sst_modules_mrfld[] = {
+	{"mp3_dec", SST_CODEC_TYPE_MP3, 0, SST_LIB_NOT_FOUND},
+};
+
+/* In relocatable elf file, there can be  relocatable variables and functions.
+ * Variables are kept in Global Address Offset Table (GOT) and functions in
+ * Procedural Linkage Table (PLT). In current codec binaries only relocatable
+ * variables are seen. So we use the GOT table.
+ */
+static int sst_find_got_table(Elf32_Shdr *shdr, int nsec, char *in_elf,
+		Elf32_Rela **got, unsigned int *cnt)
+{
+	int i = 0;
+	while (i < nsec) {
+		if (shdr[i].sh_type == SHT_RELA) {
+			*got = (Elf32_Rela *)(in_elf + shdr[i].sh_offset);
+			*cnt = shdr[i].sh_size / sizeof(Elf32_Rela);
+			break;
+		}
+		i++;
+	}
+	if (i == nsec)
+		return -EINVAL;
+
+	return 0;
+}
+
+/* For each entry in the GOT table, find the unrelocated offset. Then
+ * add the relocation base to the offset and write back the new address to the
+ * original variable location.
+ */
+static int sst_relocate_got_entries(Elf32_Rela *table, unsigned int size,
+	char *in_elf, int elf_size, u32 rel_base)
+{
+	int i;
+	Elf32_Rela *entry;
+	Elf32_Addr *target_addr, unreloc_addr;
+
+	for (i = 0; i < size; i++) {
+		entry = &table[i];
+		if (ELF32_R_SYM(entry->r_info) != 0) {
+			return -EINVAL;
+		} else {
+			target_addr = (Elf32_Addr *)(in_elf + entry->r_offset);
+			if (((unsigned int)target_addr - (unsigned int)in_elf)
+							> elf_size) {
+				pr_err("GOT table target addr out of range\n");
+				return -EINVAL;
+			}
+			unreloc_addr = *target_addr + entry->r_addend;
+			*target_addr = unreloc_addr + rel_base;
+		}
+	}
+	return 0;
+}
+
+static int sst_relocate_elf(char *in_elf, int elf_size, u32 rel_base,
+		Elf32_Addr *entry_pt)
+{
+	int retval = 0;
+	Elf32_Ehdr *ehdr = (Elf32_Ehdr *)in_elf;
+	Elf32_Shdr *shdr = (Elf32_Shdr *) (in_elf + ehdr->e_shoff);
+	Elf32_Phdr *phdr = (Elf32_Phdr *) (in_elf + ehdr->e_phoff);
+	int i, num_sec;
+	Elf32_Rela *rel_table = NULL;
+	unsigned int rela_cnt = 0;
+
+	/* relocate the entry_pt */
+	*entry_pt = (Elf32_Addr)(ehdr->e_entry + rel_base);
+	num_sec = ehdr->e_shnum;
+
+	/* Find the relocation(GOT) table through the section header */
+	retval = sst_find_got_table(shdr, num_sec, in_elf,
+					&rel_table, &rela_cnt);
+	if (retval < 0)
+		return retval;
+
+	/* Relocate all the entries in the GOT */
+	retval = sst_relocate_got_entries(rel_table, rela_cnt, in_elf,
+						elf_size, rel_base);
+	if (retval < 0)
+		return retval;
+
+	pr_debug("GOT entries relocated\n");
+
+	/* Update the program headers in the ELF */
+	for (i = 0; i < ehdr->e_phnum; i++) {
+		if (phdr[i].p_type == PT_LOAD) {
+			phdr[i].p_vaddr += rel_base;
+			phdr[i].p_paddr += rel_base;
+		}
+	}
+	pr_debug("program header entries updated\n");
+
+	return retval;
+}
+
+static void sst_init_lib_mem_mgr(struct sst_mem_mgr *mgr)
+{
+	memset(mgr, 0, sizeof(*mgr));
+	mgr->current_base = MRFLD_FW_MOD_DWNLD_START;
+	mgr->avail = MRFLD_FW_MOD_END - MRFLD_FW_MOD_START;
+}
+
+static int sst_get_next_lib_mem(struct sst_mem_mgr *mgr, int size,
+			u32 *lib_base)
+{
+	int retval = 0;
+
+	if (size > mgr->avail)
+		return -ENOMEM;
+
+	*lib_base = mgr->current_base;
+	mgr->current_base += size;
+	mgr->avail -= size;
+	mgr->count++;
+	pr_debug("library base = 0x%x", *lib_base);
+	pr_debug("lib count = %d\n", mgr->count);
+	return retval;
+
+}
+
+static int sst_download_lib_elf(struct intel_sst_drv *sst, const void *lib,
+		int size)
+{
+	int retval = 0;
+
+	pr_debug("In %s\n", __func__);
+	if (sst->use_dma) {
+		retval = sst_parse_elf_fw_dma(sst, lib,
+				 &sst->library_list);
+		if (retval)
+			goto free_dma_res;
+		retval = sst_do_dma(&sst->library_list);
+		if (retval)
+			pr_err("sst_do_dma failed, abort\n");
+free_dma_res:
+		kfree(sst->library_list.src);
+		kfree(sst->library_list.dst);
+		sst->library_list.list_len = 0;
+	} else {
+		retval = sst_parse_elf_fw_memcpy(sst, lib,
+				 &sst->libmemcpy_list);
+		if (retval)
+			return retval;
+		sst_do_memcpy(&sst->libmemcpy_list);
+	}
+	pr_debug("download lib complete");
+	return retval;
+}
+
+static void sst_fill_fw_module_table(struct sst_module_info *mod_list,
+		int list_size, int ddr_base)
+{
+	int i;
+	u32 *write_ptr = (u32 *)ddr_base;
+
+	pr_debug("In %s\n", __func__);
+
+	for (i = 0; i < list_size; i++) {
+		if (mod_list[i].status == SST_LIB_DOWNLOADED) {
+			pr_debug("status dnwld for %d\n", i);
+			pr_debug("module id %d\n", mod_list[i].id);
+			pr_debug("entry pt 0x%x\n", mod_list[i].entry_pt);
+
+			*write_ptr++ = mod_list[i].id;
+			*write_ptr++ = mod_list[i].entry_pt;
+		}
+	}
+}
+
+static int sst_request_lib_elf(struct sst_module_info *mod_entry,
+	const struct firmware **fw_lib, int pci_id, struct device *dev)
+{
+	char name[25];
+	int retval = 0;
+
+	snprintf(name, sizeof(name), "%s%s%04x%s", mod_entry->name,
+			"_", pci_id, ".bin");
+	pr_debug("Requesting %s\n", name);
+
+	retval = request_firmware(fw_lib, name, dev);
+	if (retval) {
+		pr_err("%s library load failed %d\n", name, retval);
+		return retval;
+	}
+	pr_debug("got lib\n");
+	mod_entry->status = SST_LIB_FOUND;
+	return 0;
+}
+
+static int sst_allocate_lib_mem(const struct firmware *lib, int size,
+	struct sst_mem_mgr *mem_mgr, char **out_elf, u32 *lib_start)
+{
+	int retval = 0;
+
+	*out_elf = kzalloc(size, GFP_KERNEL);
+	if (!*out_elf) {
+		pr_err("cannot alloc mem for elf copy %d\n", retval);
+		goto mem_error;
+	}
+
+	memcpy(*out_elf, lib->data, size);
+	retval = sst_get_next_lib_mem(mem_mgr, size, lib_start);
+	if (retval < 0) {
+		pr_err("cannot alloc ddr mem for lib: %d\n", retval);
+		kfree(*out_elf);
+		goto mem_error;
+	}
+	return 0;
+
+mem_error:
+	release_firmware(lib);
+	return -ENOMEM;
+}
+
+int sst_load_all_modules_elf(struct intel_sst_drv *ctx)
+{
+	int retval = 0;
+	int i;
+	const struct firmware *fw_lib;
+	struct sst_module_info *mod = NULL;
+	struct sst_mem_mgr lib_mem_mgr;
+	char *out_elf;
+	unsigned int lib_size = 0;
+	u32 lib_base;
+
+	pr_debug("In %s", __func__);
+
+	sst_init_lib_mem_mgr(&lib_mem_mgr);
+
+	for (i = 0; i < ARRAY_SIZE(sst_modules_mrfld); i++) {
+		mod = &sst_modules_mrfld[i];
+
+		retval = sst_request_lib_elf(mod, &fw_lib,
+						ctx->pci_id, &ctx->pci->dev);
+		if (retval < 0)
+			continue;
+		lib_size = fw_lib->size;
+
+		retval = sst_validate_elf(fw_lib, true);
+		if (retval < 0) {
+			pr_err("library is not valid elf %d\n", retval);
+			release_firmware(fw_lib);
+			continue;
+		}
+		pr_debug("elf validated\n");
+		retval = sst_allocate_lib_mem(fw_lib, lib_size,
+				&lib_mem_mgr, &out_elf, &lib_base);
+		if (retval < 0) {
+			pr_err("lib mem allocation failed: %d\n", retval);
+			continue;
+		}
+		pr_debug("lib space allocated\n");
+
+		/* relocate in place */
+		retval = sst_relocate_elf(out_elf, lib_size,
+						lib_base, &mod->entry_pt);
+		if (retval < 0) {
+			pr_err("lib elf relocation failed: %d\n", retval);
+			release_firmware(fw_lib);
+			kfree(out_elf);
+			continue;
+		}
+		pr_debug("relocation done\n");
+		release_firmware(fw_lib);
+		/* write to ddr imr region,use memcpy method */
+		retval = sst_download_lib_elf(ctx, out_elf, lib_size);
+		mod->status = SST_LIB_DOWNLOADED;
+		kfree(out_elf);
+	}
+
+	/* write module table to DDR */
+	sst_fill_fw_module_table(sst_modules_mrfld,
+				ARRAY_SIZE(sst_modules_mrfld),
+				(int)(ctx->ddr + MRFLD_FW_MOD_TABLE_OFFSET));
+	return retval;
 }

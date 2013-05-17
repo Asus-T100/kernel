@@ -29,20 +29,6 @@ static unsigned int clock;
 static struct hsu_port_pin_cfg *hsu_port_gpio_mux;
 static struct hsu_port_cfg *platform_hsu_info;
 
-static void dw_hsu_rts(int port, int value)
-{
-	struct hsu_port_pin_cfg *info = hsu_port_gpio_mux + port;
-
-	if (!info->rts_gpio)
-		return;
-
-	if (value) {
-		gpio_request(info->rts_gpio, "dw_hsu");
-		gpio_direction_output(info->rts_gpio, 1);
-	} else
-		gpio_free(info->rts_gpio);
-}
-
 static struct
 hsu_port_pin_cfg hsu_port_pin_cfgs[][hsu_pid_max][hsu_port_max] = {
 	[hsu_pnw] = {
@@ -457,9 +443,10 @@ static struct hsu_port_cfg hsu_port_cfgs[][hsu_port_max] = {
 			.hw_init = intel_mid_hsu_init,
 			/* Trust FW has set it correctly */
 			.hw_set_alt = NULL,
-			.hw_set_rts = dw_hsu_rts,
+			.hw_set_rts = intel_mid_hsu_rts,
 			.hw_suspend = intel_mid_hsu_suspend,
 			.hw_resume = intel_mid_hsu_resume,
+			.hw_context_save = 1,
 		},
 		[hsu_port1] = {
 			.type = gps_port,
@@ -471,9 +458,10 @@ static struct hsu_port_cfg hsu_port_cfgs[][hsu_port_max] = {
 			.hw_init = intel_mid_hsu_init,
 			/* Trust FW has set it correctly */
 			.hw_set_alt = NULL,
-			.hw_set_rts = dw_hsu_rts,
+			.hw_set_rts = intel_mid_hsu_rts,
 			.hw_suspend = intel_mid_hsu_suspend,
 			.hw_resume = intel_mid_hsu_resume,
+			.hw_context_save = 1,
 		},
 	},
 
@@ -558,11 +546,7 @@ void intel_mid_hsu_suspend(int port, struct device *dev, irq_handler_t wake_isr)
 
 	info->dev = dev;
 	info->wake_isr = wake_isr;
-	if (info->rts_gpio) {
-		gpio_direction_output(info->rts_gpio, 1);
-		lnw_gpio_set_alt(info->rts_gpio, LNW_GPIO);
-		udelay(100);
-	}
+
 	if (info->wake_gpio) {
 		lnw_gpio_set_alt(info->wake_gpio, LNW_GPIO);
 		gpio_direction_input(info->wake_gpio);
@@ -582,7 +566,19 @@ void intel_mid_hsu_resume(int port, struct device *dev)
 	if (info->wake_gpio)
 		free_irq(gpio_to_irq(info->wake_gpio), info->dev);
 
-	hsu_port_enable(port);
+	if (info->rx_gpio) {
+		lnw_gpio_set_alt(info->rx_gpio, info->rx_alt);
+		gpio_direction_input(info->rx_gpio);
+	}
+	if (info->tx_gpio) {
+		gpio_direction_output(info->tx_gpio, 0);
+		lnw_gpio_set_alt(info->tx_gpio, info->tx_alt);
+
+	}
+	if (info->cts_gpio) {
+		lnw_gpio_set_alt(info->cts_gpio, info->cts_alt);
+		gpio_direction_input(info->cts_gpio);
+	}
 }
 
 void intel_mid_hsu_switch(int port)
@@ -603,15 +599,14 @@ void intel_mid_hsu_rts(int port, int value)
 {
 	struct hsu_port_pin_cfg *info = hsu_port_gpio_mux + port;
 
+	if (!info->rts_gpio)
+		return;
+
 	if (value) {
-		if (info->rts_gpio) {
-			gpio_direction_output(info->rts_gpio, 1);
-			lnw_gpio_set_alt(info->rts_gpio, LNW_GPIO);
-		}
-	} else {
-		if (info->rts_gpio)
-			lnw_gpio_set_alt(info->rts_gpio, info->rts_alt);
-	}
+		gpio_direction_output(info->rts_gpio, 1);
+		lnw_gpio_set_alt(info->rts_gpio, LNW_GPIO);
+	} else
+		lnw_gpio_set_alt(info->rts_gpio, info->rts_alt);
 }
 
 void intel_mid_hsu_suspend_post(int port)

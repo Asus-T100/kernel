@@ -267,8 +267,9 @@ static long __imx_set_exposure(struct v4l2_subdev *sd, int coarse_itg,
 
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
-	int ret;
 	struct imx_device *dev = to_imx_sensor(sd);
+	struct imx_write_buffer digit_gain;
+	int ret;
 
 	/* imx sensor driver has a limitation that the exposure
 	 * should not exceed beyond VTS-4
@@ -277,75 +278,60 @@ static long __imx_set_exposure(struct v4l2_subdev *sd, int coarse_itg,
 		coarse_itg = dev->lines_per_frame - 4;
 
 	/* enable group hold */
-	ret = imx_write_reg_array(client, imx_param_hold);
-	if (ret)
-		goto out;
+	if (dev->sensor_id == IMX135_ID) {
+			ret = imx_write_reg_array(client, imx_param_hold);
+		if (ret)
+			goto out;
 
-	ret = imx_write_reg(client, IMX_16BIT,
-		IMX_COARSE_INTEGRATION_TIME, coarse_itg);
-	if (ret)
-		goto out;
+		ret = imx_write_reg(client, IMX_16BIT,
+			IMX_COARSE_INTEGRATION_TIME, coarse_itg);
+		if (ret)
+			goto out_disable;
 
-	/* set global gain */
-	ret = imx_write_reg(client, IMX_8BIT,
-		IMX_GLOBAL_GAIN, gain);
+		/* set global gain */
+		ret = imx_write_reg(client, IMX_8BIT,
+			IMX_GLOBAL_GAIN, gain);
+		if (ret)
+			goto out_disable;
+
+		/* set short analog gain */
+		ret = imx_write_reg(client, IMX_8BIT,
+				IMX_SHORT_AGC_GAIN, gain);
+		if (ret)
+			goto out_disable;
+	} else {
+		ret = imx_write_reg(client, IMX_16BIT,
+			IMX_COARSE_INTEGRATION_TIME, coarse_itg);
+		if (ret)
+			goto out;
+
+		/* set global gain */
+		ret = imx_write_reg(client, IMX_8BIT,
+			IMX_GLOBAL_GAIN, dev->gain);
+		if (ret)
+			goto out;
+	}
+
+	digit_gain.addr = cpu_to_be16(IMX_DGC_ADJ);
+	digit_gain.data[0] = (digitgain >> 8) & 0xFF;
+	digit_gain.data[1] = digitgain & 0xFF;
+	digit_gain.data[2] = (digitgain >> 8) & 0xFF;
+	digit_gain.data[3] = digitgain & 0xFF;
+	digit_gain.data[4] = (digitgain >> 8) & 0xFF;
+	digit_gain.data[5] = digitgain & 0xFF;
+	digit_gain.data[6] = (digitgain >> 8) & 0xFF;
+	digit_gain.data[7] = digitgain & 0xFF;
+	ret = imx_i2c_write(client, IMX_DGC_LEN, (u8 *)&digit_gain);
 	if (ret)
 		goto out_disable;
 
-	/* set short analog gain */
-	ret = imx_write_reg(client, IMX_8BIT,
-			IMX_SHORT_AGC_GAIN, gain);
-	if (ret)
-		goto out;
-
-
-	/* set digital gain for channel 0*/
-	ret = imx_write_reg(client, IMX_8BIT,
-			IMX_DGC_ADJ, (digitgain >> 8) & 0xFF);
-	if (ret)
-		goto out;
-
-	ret = imx_write_reg(client, IMX_8BIT,
-			IMX_DGC_ADJ+1, digitgain & 0xFF);
-	if (ret)
-		goto out;
-
-	/* set digital gain for channel 1*/
-	ret = imx_write_reg(client, IMX_8BIT,
-			IMX_DGC_ADJ+2, (digitgain >> 8) & 0xFF);
-	if (ret)
-		goto out;
-
-	ret = imx_write_reg(client, IMX_8BIT,
-			IMX_DGC_ADJ+3, digitgain & 0xFF);
-	if (ret)
-		goto out;
-
-	/* set digital gain for channel 2*/
-	ret = imx_write_reg(client, IMX_8BIT,
-			IMX_DGC_ADJ+4, (digitgain >> 8) & 0xFF);
-	if (ret)
-		goto out;
-
-	ret = imx_write_reg(client, IMX_8BIT,
-			IMX_DGC_ADJ+5, digitgain & 0xFF);
-	if (ret)
-		goto out;
-
-	/* set digital gain for channel 3*/
-	ret = imx_write_reg(client, IMX_8BIT,
-			IMX_DGC_ADJ+6, (digitgain >> 8) & 0xFF);
-	if (ret)
-		goto out;
-
-	ret = imx_write_reg(client, IMX_8BIT,
-			IMX_DGC_ADJ+7, digitgain & 0xFF);
 	dev->gain       = gain;
 	dev->coarse_itg = coarse_itg;
 
 out_disable:
 	/* disable group hold */
-	imx_write_reg_array(client, imx_param_update);
+	if (dev->sensor_id == IMX135_ID)
+		ret = imx_write_reg_array(client, imx_param_update);
 out:
 	return ret;
 }

@@ -42,6 +42,10 @@
 #endif
 #endif
 
+struct port_wakeup {
+	struct mutex		wakeup_mutex;
+};
+
 struct usb_hub {
 	struct device		*intfdev;	/* the "interface" device */
 	struct usb_device	*hdev;
@@ -87,6 +91,7 @@ struct usb_hub {
 	struct delayed_work	leds;
 	struct delayed_work	init_work;
 	void			**port_owners;
+	struct port_wakeup	**port_wakeup;
 };
 
 static inline int hub_is_superspeed(struct usb_device *hdev)
@@ -1074,7 +1079,7 @@ static int hub_configure(struct usb_hub *hub,
 	u16 hubstatus, hubchange;
 	u16 wHubCharacteristics;
 	unsigned int pipe;
-	int maxp, ret;
+	int maxp, ret, i;
 	char *message = "out of memory";
 
 	hub->buffer = kmalloc(sizeof(*hub->buffer), GFP_KERNEL);
@@ -1113,6 +1118,23 @@ static int hub_configure(struct usb_hub *hub,
 	hdev->maxchild = hub->descriptor->bNbrPorts;
 	dev_info (hub_dev, "%d port%s detected\n", hdev->maxchild,
 		(hdev->maxchild == 1) ? "" : "s");
+
+	hub->port_wakeup = kmalloc(hdev->maxchild *
+				sizeof(struct port_wakeup *), GFP_KERNEL);
+	if (!hub->port_wakeup) {
+		ret = -ENOMEM;
+		goto fail;
+	}
+
+	for (i = 0; i < hdev->maxchild; i++) {
+		hub->port_wakeup[i] = kmalloc(sizeof(struct port_wakeup),
+				GFP_KERNEL);
+		if (!hub->port_wakeup[i]) {
+			ret = -ENOMEM;
+			goto fail;
+		}
+		mutex_init(&hub->port_wakeup[i]->wakeup_mutex);
+	}
 
 	hdev->children = kzalloc(hdev->maxchild *
 				sizeof(struct usb_device *), GFP_KERNEL);
@@ -1350,6 +1372,7 @@ static void hub_disconnect(struct usb_interface *intf)
 {
 	struct usb_hub *hub = usb_get_intfdata(intf);
 	struct usb_device *hdev = interface_to_usbdev(intf);
+	int i;
 
 	/* Take the hub off the event list and don't let it be added again */
 	spin_lock_irq(&hub_event_lock);
@@ -1365,6 +1388,11 @@ static void hub_disconnect(struct usb_interface *intf)
 	hub_quiesce(hub, HUB_DISCONNECT);
 
 	usb_set_intfdata (intf, NULL);
+
+	/* Free port_wakeup array */
+	for (i = 0; i < hdev->maxchild; i++)
+		kfree(hub->port_wakeup[i]);
+
 	hub->hdev->maxchild = 0;
 
 	if (hub->hdev->speed == USB_SPEED_HIGH)
@@ -1373,6 +1401,7 @@ static void hub_disconnect(struct usb_interface *intf)
 	usb_free_urb(hub->urb);
 	kfree(hdev->children);
 	kfree(hub->port_owners);
+	kfree(hub->port_wakeup);
 	kfree(hub->descriptor);
 	kfree(hub->status);
 	kfree(hub->buffer);
@@ -2576,9 +2605,10 @@ static int usb_disable_function_remotewakeup(struct usb_device *udev)
  */
 int usb_port_suspend(struct usb_device *udev, pm_message_t msg)
 {
-	struct usb_hub	*hub = hdev_to_hub(udev->parent);
-	int		port1 = udev->portnum;
-	int		status;
+	struct usb_hub		*hub = hdev_to_hub(udev->parent);
+	int			port1 = udev->portnum;
+	struct port_wakeup	*pwakeup = hub->port_wakeup[port1-1];
+	int			status;
 
 	/* enable remote wakeup when appropriate; this lets the device
 	 * wake up the upstream hub (including maybe the root hub).
@@ -2621,6 +2651,12 @@ int usb_port_suspend(struct usb_device *udev, pm_message_t msg)
 	if (udev->usb2_hw_lpm_enabled == 1)
 		usb_set_usb2_hardware_lpm(udev, 0);
 
+	/* Hold port wakeup mutex before set PORT_SUSPEND
+	 * if device may generate remote wakeup
+	 */
+	if (udev->do_remote_wakeup && pwakeup)
+			mutex_lock(&pwakeup->wakeup_mutex);
+
 	/* see 7.1.7.6 */
 	if (hub_is_superspeed(hub->hdev))
 		status = set_port_feature(hub->hdev,
@@ -2634,6 +2670,9 @@ int usb_port_suspend(struct usb_device *udev, pm_message_t msg)
 				port1, status);
 		/* paranoia:  "should not happen" */
 		if (udev->do_remote_wakeup) {
+			if (pwakeup)
+				mutex_unlock(&pwakeup->wakeup_mutex);
+
 			if (!hub_is_superspeed(hub->hdev)) {
 				(void) usb_control_msg(udev,
 						usb_sndctrlpipe(udev, 0),
@@ -2660,6 +2699,9 @@ int usb_port_suspend(struct usb_device *udev, pm_message_t msg)
 				(PMSG_IS_AUTO(msg) ? "auto-" : ""),
 				udev->do_remote_wakeup);
 		usb_set_device_state(udev, USB_STATE_SUSPENDED);
+		/* release port wakeup mutex after handle port_suspend */
+		if (udev->do_remote_wakeup && pwakeup)
+			mutex_unlock(&pwakeup->wakeup_mutex);
 		msleep(10);
 	}
 	usb_mark_last_busy(hub->hdev);
@@ -3730,7 +3772,11 @@ static int hub_handle_remote_wakeup(struct usb_hub *hub, unsigned int port,
 		msleep(10);
 
 		usb_lock_device(udev);
+		if (hub->port_wakeup[port-1])
+			mutex_lock(&hub->port_wakeup[port-1]->wakeup_mutex);
 		ret = usb_remote_wakeup(udev);
+		if (hub->port_wakeup[port-1])
+			mutex_unlock(&hub->port_wakeup[port-1]->wakeup_mutex);
 		usb_unlock_device(udev);
 		if (ret < 0)
 			connect_change = 1;

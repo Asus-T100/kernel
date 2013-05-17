@@ -307,8 +307,11 @@ void sst_post_message_mrfld32(struct work_struct *work)
 	size = (u32 *)msg->mailbox_data;
 	pr_debug("size: = %x\n", *size);
 
-	print_bytes((unsigned char *)msg->mailbox_data, *size + sizeof(u32), 32, 8);
-
+#ifdef SST_BYTE_DUMP
+	pr_debug("printing %lu bytes", *size+sizeof(u32));
+	print_hex_dump_bytes(__func__, DUMP_PREFIX_OFFSET,
+			(unsigned char *)msg->mailbox_data, *size + sizeof(u32));
+#endif
 	memcpy_toio(sst_drv_ctx->mailbox + SST_MAILBOX_SEND,
 		msg->mailbox_data, *size + 4);
 
@@ -638,11 +641,21 @@ void sst_process_message_mrfld(struct work_struct *work)
 	return;
 }
 
-/* FIXME get FW change for reply message payload */
+void print_fw_async_error_msg(struct snd_sst_async_msg *msg)
+{
+	if (msg->msg_id == IPC_IA_FW_ASYNC_ERR_MRFLD) {
+		pr_err("FW sent async error msg:\n");
+		pr_err("FW error: 0x%x, Lib error: 0x%x\n",
+					msg->fw_resp, msg->lib_resp);
+	} else
+		pr_err("Invalid err msg from fw\n");
+
+}
+
 void sst_process_reply_mrfld(struct work_struct *work)
 {
 	struct sst_ipc_msg_wq *msg, *tmp;
-	unsigned int msg_id, drv_id, err_id;
+	unsigned int msg_id, drv_id;
 	void *data = NULL;
 	union ipc_header_high msg_high;
 	u32 msg_low;
@@ -661,6 +674,7 @@ void sst_process_reply_mrfld(struct work_struct *work)
 	msg_low = msg->mrfld_header.p.header_low_payload;
 
 	drv_id = msg_high.part.drv_id;
+	/* First process error responses */
 	if (msg_high.part.result && drv_id && !msg_high.part.large) {
 		/* 32-bit FW error code in msg_low */
 		pr_err("FW sent error response 0x%x", msg_low);
@@ -669,38 +683,43 @@ void sst_process_reply_mrfld(struct work_struct *work)
 			msg_high.part.msg_id, NULL, 0);
 		goto end;
 	}
-	if (drv_id == SST_ASYNC_DRV_ID && !msg_high.part.large) {
-		msg_id = msg_low & SST_ASYNC_MSG_MASK;
-		switch (msg_id) {
-		case IPC_IA_FW_INIT_CMPLT_MRFLD:
-			intel_sst_clear_intr_mrfld();
-			process_fw_init(msg);
-			break;
-		case IPC_IA_FW_ASYNC_ERR_MRFLD:
-			err_id = (msg_low & SST_ASYNC_ERROR_MASK) >> 16;
-			pr_err("FW sent async error 0x%x ", err_id);
-			break;
-		default:
-			pr_debug("Not cleared:\n");
-			break;
-		}
-	} else {
-		/* if it is a large message, the payload contains the size to
-		 * copy from mailbox */
-		if (msg_high.part.large) {
-			data = kzalloc(msg_low, GFP_KERNEL);
-			if (!data)
-				goto end;
-			memcpy(data, (void *) msg->mailbox, msg_low);
-			if (sst_wake_up_block(sst_drv_ctx, msg_high.part.result,
-					msg_high.part.drv_id,
-					msg_high.part.msg_id, data, msg_low))
-				kfree(data);
+
+	/* Check for async messages */
+	if (drv_id == SST_ASYNC_DRV_ID) {
+		if (!msg_high.part.large) {
+			msg_id = msg_low & SST_ASYNC_MSG_MASK;
+			if (msg_id == IPC_IA_FW_INIT_CMPLT_MRFLD)
+				process_fw_init(msg);
 		} else {
-			sst_wake_up_block(sst_drv_ctx, msg_high.part.result,
-					msg_high.part.drv_id,
-					msg_high.part.msg_id, NULL, 0);
+			/* FW sent async error as large msg */
+			struct snd_sst_async_msg err_msg;
+			if (msg_low != sizeof(err_msg)) {
+				pr_err("Invalid async msg from FW:");
+				pr_err("Expected:%d, Got:%d\n",
+						sizeof(err_msg), msg_low);
+				goto end;
+			}
+			memcpy(&err_msg, (void *) msg->mailbox,
+							sizeof(err_msg));
+			print_fw_async_error_msg(&err_msg);
 		}
+	}
+	/* Process all valid responses */
+	/* if it is a large message, the payload contains the size to
+	 * copy from mailbox */
+	if (msg_high.part.large) {
+		data = kzalloc(msg_low, GFP_KERNEL);
+		if (!data)
+			goto end;
+		memcpy(data, (void *) msg->mailbox, msg_low);
+		if (sst_wake_up_block(sst_drv_ctx, msg_high.part.result,
+				msg_high.part.drv_id,
+				msg_high.part.msg_id, data, msg_low))
+			kfree(data);
+	} else {
+		sst_wake_up_block(sst_drv_ctx, msg_high.part.result,
+				msg_high.part.drv_id,
+				msg_high.part.msg_id, NULL, 0);
 	}
 end:
 	kfree(msg);

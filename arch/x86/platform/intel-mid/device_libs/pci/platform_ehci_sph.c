@@ -17,7 +17,7 @@ static struct ehci_sph_pdata sph_pdata = {
 	.has_gpio = 0,
 	.gpio_cs_n = 0,
 	.gpio_reset_n = 0,
-	.enabled = 1
+	.enabled = 0
 };
 
 static int is_board_ctp_prx(void)
@@ -52,12 +52,25 @@ static struct ehci_sph_pdata *get_sph_platform_data(struct pci_dev *pdev)
 	switch (pdev->device) {
 	case PCI_DEVICE_ID_INTEL_CLV_SPH:
 		if (is_board_ctp_prx()) {
+			/* request SPH CS_N gpio by name */
+			pdata->gpio_cs_n = get_gpio_by_name("sph_phy_cs_n");
+			if (pdata->gpio_cs_n == -1) {
+				dev_err(&pdev->dev,
+					"%s: No SPH gpio "
+					"pin sph_phy_cs_n\n", __func__);
+				return NULL;
+			}
+
+			/* request SPH RST_N gpio by name */
+			pdata->gpio_reset_n =
+					get_gpio_by_name("sph_phy_reset_n");
+			if (pdata->gpio_reset_n == -1) {
+				dev_err(&pdev->dev,
+					"%s: No SPH gpio "
+					"pin sph_phy_reset_n\n", __func__);
+				return NULL;
+			}
 			pdata->has_gpio = 1;
-			/* FIXME: This GPIO pin number should be
-			 * inquired by name, but not available for SPH
-			 */
-			pdata->gpio_cs_n = 51;
-			pdata->gpio_reset_n = 169;
 		}
 		break;
 

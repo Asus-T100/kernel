@@ -680,6 +680,7 @@ void psb_fence_or_sync(struct drm_file *file_priv,
 	struct ttm_object_file *tfile = psb_fpriv(file_priv)->tfile;
 	uint32_t handle;
 	struct ttm_validate_buffer *entry, *next;
+	struct ttm_bo_global *glob = dev_priv->bdev.glob;
 
 	ret = ttm_fence_user_create(fdev, tfile,
 				    engine, fence_types,
@@ -711,6 +712,7 @@ void psb_fence_or_sync(struct drm_file *file_priv,
 	}
 
 #ifndef CONFIG_DRM_VXD_BYT
+	spin_lock(&glob->lru_lock);
 	list_for_each_entry_safe(entry, next, list, head) {
 		struct psb_validate_buffer *vbuf =
 			container_of(entry, struct psb_validate_buffer,
@@ -722,6 +724,7 @@ void psb_fence_or_sync(struct drm_file *file_priv,
 			entry->reserved = false;
 		}
 	}
+	spin_unlock(&glob->lru_lock);
 #endif
 
 	ttm_eu_fence_buffer_objects(list, fence);
@@ -828,14 +831,35 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 	struct ttm_buffer_object *cmd_buffer = NULL;
 	struct psb_ttm_fence_rep fence_arg;
 	struct drm_psb_private *dev_priv = psb_priv(dev);
-	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
+	struct msvdx_private *msvdx_priv = NULL;
 #ifdef SUPPORT_VSP
-	struct vsp_private *vsp_priv = dev_priv->vsp_private;
+	struct vsp_private *vsp_priv = NULL;
 #endif
-	struct psb_video_ctx *pos, *n, *msvdx_ctx;
+	struct psb_video_ctx *pos = NULL;
+	struct psb_video_ctx *n = NULL;
+	struct psb_video_ctx *msvdx_ctx = NULL;
+#if defined(MERRIFIELD)
+	struct tng_topaz_private *topaz_priv = dev_priv->topaz_private;
+#endif
 	int engine, po_correct;
 	int found = 0;
 	struct psb_context *context = NULL;
+
+	if (dev_priv == NULL)
+		return -EINVAL;
+	msvdx_priv = dev_priv->msvdx_private;
+
+#ifdef SUPPORT_VSP
+	vsp_priv = dev_priv->vsp_private;
+#endif
+
+#if defined(MERRIFIELD)
+	if (drm_topaz_cmdpolicy != PSB_CMDPOLICY_PARALLEL) {
+		wait_event_interruptible(topaz_priv->cmd_wq, \
+			(atomic_read(&topaz_priv->cmd_wq_free) == 1));
+		atomic_set(&topaz_priv->cmd_wq_free, 0);
+	}
+#endif
 
 	ret = ttm_read_lock(&dev_priv->ttm_lock, true);
 	if (unlikely(ret != 0))
@@ -862,12 +886,12 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 			ret = -ENODEV;
 			goto out_err0;
 		}
-
+#ifndef MERRIFIELD
 		if (!ospm_power_using_video_begin(OSPM_VIDEO_ENC_ISLAND)) {
 			ret = -EBUSY;
 			goto out_err0;
 		}
-
+#endif
 		ret = mutex_lock_interruptible(&dev_priv->cmdbuf_mutex);
 		if (unlikely(ret != 0))
 			goto out_err0;
@@ -1061,8 +1085,10 @@ out_err0:
 		ospm_power_using_video_end(OSPM_VIDEO_DEC_ISLAND);
 
 #ifndef CONFIG_DRM_VXD_BYT
+#ifndef MERRIFIELD
 	if (arg->engine == LNC_ENGINE_ENCODE)
 		ospm_power_using_video_end(OSPM_VIDEO_ENC_ISLAND);
+#endif
 #endif
 
 #ifdef SUPPORT_VSP

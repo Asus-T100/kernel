@@ -86,7 +86,7 @@ static void vlv_set_mctrl(struct uart_port *port, unsigned int mctrl)
 	serial_port_out(port, UART_MCR, mcr);
 }
 
-static inline u32 set_clk_param(struct vlv_hsu_port *vp, u32 m, u32 n)
+static inline void set_clk_param(struct vlv_hsu_port *vp, u32 m, u32 n)
 {
 	u32 param, update_bit;
 

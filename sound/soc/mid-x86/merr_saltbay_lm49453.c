@@ -48,11 +48,8 @@
 extern void mid_headset_report(int state);
 #endif
 
-static int mrfld_hw_params(struct snd_pcm_substream *substream,
-			   struct snd_pcm_hw_params *params)
+static int mrfld_set_clk_fmt(struct snd_soc_dai *codec_dai)
 {
-	struct snd_soc_pcm_runtime *rtd = substream->private_data;
-	struct snd_soc_dai *codec_dai = rtd->codec_dai;
 	unsigned int fmt;
 	int ret;
 
@@ -69,6 +66,23 @@ static int mrfld_hw_params(struct snd_pcm_substream *substream,
 		return ret;
 	}
 	return 0;
+}
+
+static int mrfld_hw_params(struct snd_pcm_substream *substream,
+				struct snd_pcm_hw_params *params)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_dai *codec_dai = rtd->codec_dai;
+
+	return mrfld_set_clk_fmt(codec_dai);
+}
+
+static int mrfld_compr_set_params(struct snd_compr_stream *cstream)
+{
+	struct snd_soc_pcm_runtime *rtd = cstream->private_data;
+	struct snd_soc_dai *codec_dai = rtd->codec_dai;
+
+	return mrfld_set_clk_fmt(codec_dai);
 }
 
 struct mrfld_mc_private {
@@ -398,6 +412,10 @@ static struct snd_soc_ops mrfld_voip_aware_ops = {
 	.hw_params = mrfld_hw_params,
 };
 
+static struct snd_soc_compr_ops mrfld_compr_ops = {
+	.set_params = mrfld_compr_set_params,
+};
+
 enum {
 	MRFLD_AUDIO = 0,
 	MRFLD_COMPR = 1,
@@ -423,10 +441,13 @@ struct snd_soc_dai_link mrfld_msic_dailink[] = {
 	[MRFLD_COMPR] = {
 		.name = "Merrifield Compress Port",
 		.stream_name = "Compress",
-		.cpu_dai_name = "Virtual-cpu-dai",
-		.codec_dai_name = "snd-soc-dummy-dai",
-		.codec_name = "snd-soc-dummy",
+		.cpu_dai_name = "Compress-cpu-dai",
+		.codec_dai_name = "LM49453 Headset",
+		.codec_name = "lm49453.1-001a",
 		.platform_name = "sst-platform",
+		.init = NULL,
+		.ignore_suspend = 1,
+		.compr_ops = &mrfld_compr_ops,
 	},
 	[MRFLD_VOIP] = {
 		.name = "Merrifield VOIP Port",
@@ -486,11 +507,10 @@ static int snd_mrfld_prepare(struct device *dev)
 	return 0;
 }
 
-static int snd_mrfld_complete(struct device *dev)
+static void snd_mrfld_complete(struct device *dev)
 {
 	pr_debug("In %s\n", __func__);
 	snd_soc_resume(dev);
-	return 0;
 }
 
 static int snd_mrfld_poweroff(struct device *dev)

@@ -195,24 +195,21 @@ void jdi_cmd_controller_init(
 	hw_ctx->hs_tx_timeout = 0xFFFFFF;
 	hw_ctx->lp_rx_timeout = 0xFFFFFF;
 	hw_ctx->turn_around_timeout = 0x14;
-	hw_ctx->device_reset_timer = 0xFFFF;
-	hw_ctx->high_low_switch_count = 0x28;
-	hw_ctx->clk_lane_switch_time_cnt = 0x00a0014;
-	hw_ctx->eot_disable = 0x0;
-	hw_ctx->init_count = 0xF0;
-	hw_ctx->lp_byteclk = 0x0;
-	hw_ctx->dphy_param = 0x150c340f;
-
-	hw_ctx->dbi_bw_ctrl = 0x820;
+	hw_ctx->device_reset_timer = 0xffff;
+	hw_ctx->high_low_switch_count = 0x20;
+	hw_ctx->clk_lane_switch_time_cnt = 0x20000E;
+	hw_ctx->eot_disable = 0x3;
+	hw_ctx->init_count = 0xf0;
+	hw_ctx->lp_byteclk = 0x4;
+	hw_ctx->dphy_param = 0x1B104315;
+	hw_ctx->dbi_bw_ctrl = 1390;
 	hw_ctx->hs_ls_dbi_enable = 0x0;
-
 	hw_ctx->dsi_func_prg = ((DBI_DATA_WIDTH_OPT2 << 13) |
-							dsi_config->lane_count);
-
+				dsi_config->lane_count);
 	hw_ctx->mipi = SEL_FLOPPED_HSTX |
-					PASS_FROM_SPHY_TO_AFE |
-					BANDGAP_CHICKEN_BIT |
-					TE_TRIGGER_GPIO_PIN;
+			PASS_FROM_SPHY_TO_AFE |
+			BANDGAP_CHICKEN_BIT |
+			TE_TRIGGER_GPIO_PIN;
 	hw_ctx->video_mode_format = 0xf;
 
 #if 0
@@ -396,7 +393,7 @@ int jdi_cmd_set_brightness(
 {
 	struct mdfld_dsi_pkg_sender *sender =
 		mdfld_dsi_get_pkg_sender(dsi_config);
-	int duty_val = 0;
+	u8 duty_val = 0;
 
 	PSB_DEBUG_ENTRY("level = %d\n", level);
 
@@ -405,7 +402,7 @@ int jdi_cmd_set_brightness(
 		return -EINVAL;
 	}
 
-	duty_val = (0xFFF * level) / 100;
+	duty_val = (0xFF * level) / 100;
 	mdfld_dsi_send_mcs_short_hs(sender,
 			write_display_brightness, duty_val, 1,
 			MDFLD_DSI_SEND_PACKAGE);

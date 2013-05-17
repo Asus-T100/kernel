@@ -1524,6 +1524,13 @@ int i915_driver_load(struct drm_device *dev, unsigned long flags)
 		goto put_gmch;
 	}
 
+	/* RS state has to be initialized to pull render/media power wells out
+	 * of sleep. This is required before initializing gem, which touches
+	 * render/media registers
+	 */
+	if (IS_VALLEYVIEW(dev))
+		vlv_rs_sleepstateinit(dev, true);
+
 	aperture_size = dev_priv->mm.gtt->gtt_mappable_entries << PAGE_SHIFT;
 	dev_priv->mm.gtt_base_addr = dev_priv->mm.gtt->gma_bus_addr;
 
@@ -1894,6 +1901,11 @@ struct drm_ioctl_desc i915_ioctls[] = {
 	DRM_IOCTL_DEF_DRV(I915_GEM_CONTEXT_DESTROY, i915_gem_context_destroy_ioctl, DRM_UNLOCKED),
 	DRM_IOCTL_DEF_DRV(I915_REG_READ, i915_reg_read_ioctl, DRM_UNLOCKED),
 	DRM_IOCTL_DEF_DRV(I915_SET_PLANE_ZORDER, i915_set_plane_zorder, \
+							DRM_AUTH|DRM_UNLOCKED),
+	DRM_IOCTL_DEF_DRV(I915_EDP_PSR_CTL, intel_edp_psr_ctl_ioctl, DRM_AUTH),
+	DRM_IOCTL_DEF_DRV(I915_EDP_PSR_EXIT, intel_edp_psr_exit_ioctl,
+								DRM_AUTH),
+	DRM_IOCTL_DEF_DRV(I915_DISP_SCREEN_CONTROL, i915_disp_screen_control, \
 							DRM_AUTH|DRM_UNLOCKED),
 };
 

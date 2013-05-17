@@ -67,6 +67,8 @@ enum TOPAZ_REG_ID {
 };
 
 extern int drm_topaz_pmpolicy;
+extern int drm_topaz_cgpolicy;
+extern int drm_topaz_cmdpolicy;
 
 /* XXX: it's a copy of msvdx cmd queue. should have some change? */
 struct tng_topaz_cmd_queue {
@@ -136,6 +138,9 @@ struct tng_topaz_private {
 	spinlock_t topaz_lock;
 	struct mutex topaz_mutex;
 	struct list_head topaz_queue;
+	atomic_t cmd_wq_free;
+	atomic_t vec_ref_count;
+	wait_queue_head_t cmd_wq;
 	int topaz_busy;		/* 0 means topaz is free */
 	int topaz_fw_loaded;
 
@@ -152,8 +157,6 @@ struct tng_topaz_private {
 	struct ttm_bo_kmap_obj wb_bo_kmap[MAX_CONTEXT_CNT];
 	uint32_t wb_addr[MAX_CONTEXT_CNT][WB_FIFO_SIZE];
 #endif
-	uint32_t frame_count;
-
 	uint32_t *topaz_mtx_wb;
 	uint32_t topaz_wb_offset;
 	uint32_t *topaz_sync_addr;
@@ -317,9 +320,17 @@ uint32_t get_ctx_cnt(struct drm_device *dev);
 struct psb_video_ctx *get_ctx_from_fp(
 	struct drm_device *dev, struct file *filp);
 
-int tng_topaz_handle_sigint(
+void tng_topaz_handle_sigint(
 	struct drm_device *dev,
 	struct file *filp);
+
+void tng_topaz_CG_disable(struct drm_device *dev);
+
+int tng_topaz_set_vec_freq(u32 freq_code);
+
+bool power_island_get_dummy(struct drm_device *dev);
+
+bool power_island_put_dummy(struct drm_device *dev);
 
 #define TNG_TOPAZ_NEW_PMSTATE(drm_dev, topaz_priv, new_state)		\
 do { \

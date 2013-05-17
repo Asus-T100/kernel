@@ -198,27 +198,19 @@ int sst_alloc_stream_mrfld(char *params, struct sst_block *block)
 	alloc_param.ring_buf_info[0].size = str_params->aparams.ring_buf_info[0].size;
 	alloc_param.frag_size = str_params->aparams.frag_size;
 
-	alloc_param.codec_params.uc.pcm_params.num_ch = str_params->sparams.uc.pcm_params.num_chan;
-	alloc_param.codec_params.uc.pcm_params.pcm_wd_sz = str_params->sparams.uc.pcm_params.pcm_wd_sz;
-	alloc_param.codec_params.uc.pcm_params.path = 0;
-	alloc_param.codec_params.uc.pcm_params.rsvd = 0;
-	alloc_param.codec_params.uc.pcm_params.sfreq = str_params->sparams.uc.pcm_params.sfreq;
-	alloc_param.codec_params.uc.pcm_params.chan_map[0] = 0;
-	alloc_param.codec_params.uc.pcm_params.chan_map[1] = 1;
-
-	pr_debug("period_size = %d\n", alloc_param.frag_size);
-	pr_debug("ring_buf_addr = 0x%x\n", alloc_param.ring_buf_info[0].addr);
-	pr_debug("ring_buf_size = %d\n", alloc_param.ring_buf_info[0].size);
-	pr_debug("In alloc sg_count =%d\n", alloc_param.sg_count);
+	/* FIXME: check if any channel_map changes required later */
+	memcpy(&alloc_param.codec_params, &str_params->sparams,
+			sizeof(struct snd_sst_stream_params));
 
 	str_id = str_params->stream_id;
 	pipe_id = str_params->device_type;
 	task_id = str_params->task;
 	sst_drv_ctx->streams[str_id].pipe_id = pipe_id;
 	sst_drv_ctx->streams[str_id].task_id = task_id;
+	sst_drv_ctx->streams[str_id].num_ch = sst_get_num_channel(str_params);
 
 	pvt_id = sst_assign_pvt_id(sst_drv_ctx);
-	alloc_param.ts = (sst_drv_ctx->mailbox_add +
+	alloc_param.ts = (struct snd_sst_tstamp *) (sst_drv_ctx->mailbox_add +
 			sst_drv_ctx->tstamp + (str_id * sizeof(fw_tstamp)));
 	pr_debug("alloc tstamp location = 0x%p\n", alloc_param.ts);
 	pr_debug("assigned pipe id 0x%x to task %d\n", pipe_id, task_id);
@@ -235,7 +227,7 @@ int sst_alloc_stream_mrfld(char *params, struct sst_block *block)
 
 	sst_fill_header_mrfld(&msg->mrfld_header, IPC_CMD,
 			      task_id, 1, pvt_id);
-	pr_debug("header:%x\n", msg->mrfld_header.p.header_high);
+	pr_debug("header:%x\n", msg->mrfld_header.p.header_high.full);
 	msg->mrfld_header.p.header_high.part.res_rqd = 1;
 
 	len = msg->mrfld_header.p.header_low_payload = sizeof(alloc_param) + sizeof(dsp_hdr);
@@ -244,7 +236,7 @@ int sst_alloc_stream_mrfld(char *params, struct sst_block *block)
 	memcpy(msg->mailbox_data + sizeof(dsp_hdr), &alloc_param,
 			sizeof(alloc_param));
 	str_info = &sst_drv_ctx->streams[str_id];
-	pr_debug("header:%x\n", msg->mrfld_header.p.header_high);
+	pr_debug("header:%x\n", msg->mrfld_header.p.header_high.full);
 	pr_debug("response rqd: %x", msg->mrfld_header.p.header_high.part.res_rqd);
 	spin_lock_irqsave(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 	list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
@@ -453,7 +445,7 @@ int sst_send_byte_stream_mrfld(void *sbytes)
 	unsigned long irq_flags;
 	u32 length;
 	int ret, pvt_id;
-	struct sst_block *block;
+	struct sst_block *block = NULL;
 
 	pr_debug("%s:\ntype:%d\nipc_msg:%x\nblock:%d\ntask_id:%x\npipe: %d\nlength:%d\n",
 		__func__, bytes->type, bytes->ipc_msg,
@@ -502,8 +494,6 @@ int sst_send_byte_stream_mrfld(void *sbytes)
 		if (bytes->block) {
 			unsigned char *r = block->data;
 			pr_debug("read back %d bytes", bytes->len);
-			print_bytes(r, bytes->len, 16, 8);
-
 			memcpy(bytes->bytes, r, bytes->len);
 		}
 	}
@@ -602,7 +592,7 @@ int sst_send_probe_bytes(struct intel_sst_drv *sst)
 	list_add_tail(&msg->node, &sst->ipc_dispatch_list);
 	spin_unlock_irqrestore(&sst->ipc_spin_lock, irq_flags);
 
-	sst->ops->post_message(msg);
+	sst->ops->post_message(&sst->ipc_post_msg_wq);
 
 	ret_val = sst_wait_timeout(sst, block);
 	sst_free_block(sst, block);
@@ -620,12 +610,13 @@ int sst_send_probe_bytes(struct intel_sst_drv *sst)
  */
 int sst_pause_stream(int str_id)
 {
-	int retval = 0;
+	int retval = 0, pvt_id, len;
 	struct ipc_post *msg = NULL;
 	struct stream_info *str_info;
 	struct intel_sst_ops *ops;
 	unsigned long irq_flags;
 	struct sst_block *block;
+	struct ipc_dsp_hdr dsp_hdr;
 
 	pr_debug("SST DBG:sst_pause_stream for %d\n", str_id);
 	str_info = get_stream_info(str_id);
@@ -638,12 +629,29 @@ int sst_pause_stream(int str_id)
 		str_info->status == STREAM_INIT) {
 		if (str_info->prev == STREAM_UN_INIT)
 			return -EBADRQC;
-		retval = sst_create_block_and_ipc_msg(&msg, false, sst_drv_ctx,
-				&block, IPC_IA_PAUSE_STREAM, str_id);
-		if (retval)
-			return retval;
-
-		sst_fill_header(&msg->header, IPC_IA_PAUSE_STREAM, 0, str_id);
+		if (!sst_drv_ctx->use_32bit_ops) {
+			pvt_id = sst_assign_pvt_id(sst_drv_ctx);
+			retval = sst_create_block_and_ipc_msg(&msg, true,
+					sst_drv_ctx, &block, IPC_CMD, pvt_id);
+			if (retval)
+				return retval;
+			sst_fill_header_mrfld(&msg->mrfld_header, IPC_CMD,
+					str_info->task_id, 1, pvt_id);
+			msg->mrfld_header.p.header_high.part.res_rqd = 1;
+			len = sizeof(dsp_hdr);
+			msg->mrfld_header.p.header_low_payload = len;
+			sst_fill_header_dsp(&dsp_hdr, IPC_IA_PAUSE_STREAM_MRFLD,
+						str_info->pipe_id, 0);
+			memcpy(msg->mailbox_data, &dsp_hdr, sizeof(dsp_hdr));
+		} else {
+			retval = sst_create_block_and_ipc_msg(&msg, false,
+					sst_drv_ctx, &block,
+					IPC_IA_PAUSE_STREAM, str_id);
+			if (retval)
+				return retval;
+			sst_fill_header(&msg->header, IPC_IA_PAUSE_STREAM,
+								0, str_id);
+		}
 		spin_lock_irqsave(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 		list_add_tail(&msg->node,
 				&sst_drv_ctx->ipc_dispatch_list);
@@ -684,6 +692,8 @@ int sst_resume_stream(int str_id)
 	struct intel_sst_ops *ops;
 	unsigned long irq_flags;
 	struct sst_block *block = NULL;
+	int pvt_id, len;
+	struct ipc_dsp_hdr dsp_hdr;
 
 	pr_debug("SST DBG:sst_resume_stream for %d\n", str_id);
 	str_info = get_stream_info(str_id);
@@ -693,12 +703,30 @@ int sst_resume_stream(int str_id)
 	if (str_info->status == STREAM_RUNNING)
 			return 0;
 	if (str_info->status == STREAM_PAUSED) {
-		retval = sst_create_block_and_ipc_msg(&msg, false, sst_drv_ctx,
-				&block, IPC_IA_RESUME_STREAM, str_id);
-		if (retval)
-			return retval;
-
-		sst_fill_header(&msg->header, IPC_IA_RESUME_STREAM, 0, str_id);
+		if (!sst_drv_ctx->use_32bit_ops) {
+			pvt_id = sst_assign_pvt_id(sst_drv_ctx);
+			retval = sst_create_block_and_ipc_msg(&msg, true,
+					sst_drv_ctx, &block, IPC_CMD, pvt_id);
+			if (retval)
+				return retval;
+			sst_fill_header_mrfld(&msg->mrfld_header, IPC_CMD,
+					str_info->task_id, 1, pvt_id);
+			msg->mrfld_header.p.header_high.part.res_rqd = 1;
+			len = sizeof(dsp_hdr);
+			msg->mrfld_header.p.header_low_payload = len;
+			sst_fill_header_dsp(&dsp_hdr,
+						IPC_IA_RESUME_STREAM_MRFLD,
+						str_info->pipe_id, 0);
+			memcpy(msg->mailbox_data, &dsp_hdr, sizeof(dsp_hdr));
+		} else {
+			retval = sst_create_block_and_ipc_msg(&msg, false,
+					sst_drv_ctx, &block,
+					IPC_IA_RESUME_STREAM, str_id);
+			if (retval)
+				return retval;
+			sst_fill_header(&msg->header, IPC_IA_RESUME_STREAM,
+								0, str_id);
+		}
 		spin_lock_irqsave(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 		list_add_tail(&msg->node,
 				&sst_drv_ctx->ipc_dispatch_list);
@@ -740,7 +768,6 @@ int sst_drop_stream(int str_id)
 	struct stream_info *str_info;
 	struct ipc_post *msg = NULL;
 	struct ipc_dsp_hdr dsp_hdr;
-	u32 len = 0;
 
 	pr_debug("SST DBG:sst_drop_stream for %d\n", str_id);
 	str_info = get_stream_info(str_id);
@@ -784,12 +811,13 @@ int sst_drop_stream(int str_id)
 */
 int sst_drain_stream(int str_id, bool partial_drain)
 {
-	int retval = 0;
+	int retval = 0, pvt_id, len;
 	struct ipc_post *msg = NULL;
 	struct stream_info *str_info;
 	struct intel_sst_ops *ops;
 	unsigned long irq_flags;
 	struct sst_block *block = NULL;
+	struct ipc_dsp_hdr dsp_hdr;
 
 	pr_debug("SST DBG:sst_drain_stream for %d\n", str_id);
 	str_info = get_stream_info(str_id);
@@ -804,13 +832,34 @@ int sst_drain_stream(int str_id, bool partial_drain)
 			return -EBADRQC;
 	}
 
-	retval = sst_create_block_and_ipc_msg(&msg, false,
-			sst_drv_ctx, &block,
-			IPC_IA_DRAIN_STREAM, str_id);
-	if (retval)
-		return retval;
-	sst_fill_header(&msg->header, IPC_IA_DRAIN_STREAM, 0, str_id);
-	msg->header.part.data = partial_drain;
+	if (!sst_drv_ctx->use_32bit_ops) {
+		pvt_id = sst_assign_pvt_id(sst_drv_ctx);
+		retval = sst_create_block_and_ipc_msg(&msg, true,
+				sst_drv_ctx, &block, IPC_CMD, pvt_id);
+		if (retval)
+			return retval;
+		sst_fill_header_mrfld(&msg->mrfld_header, IPC_CMD,
+				str_info->task_id, 1, pvt_id);
+		pr_debug("header:%x\n",
+			(unsigned int)msg->mrfld_header.p.header_high.full);
+		msg->mrfld_header.p.header_high.part.res_rqd = 1;
+
+		len = sizeof(u8) + sizeof(dsp_hdr);
+		msg->mrfld_header.p.header_low_payload = len;
+		sst_fill_header_dsp(&dsp_hdr, IPC_IA_DRAIN_STREAM_MRFLD,
+					str_info->pipe_id, sizeof(u8));
+		memcpy(msg->mailbox_data, &dsp_hdr, sizeof(dsp_hdr));
+		memcpy(msg->mailbox_data + sizeof(dsp_hdr),
+				&partial_drain, sizeof(u8));
+	} else {
+		retval = sst_create_block_and_ipc_msg(&msg, false,
+				sst_drv_ctx, &block,
+				IPC_IA_DRAIN_STREAM, str_id);
+		if (retval)
+			return retval;
+		sst_fill_header(&msg->header, IPC_IA_DRAIN_STREAM, 0, str_id);
+		msg->header.part.data = partial_drain;
+	}
 	spin_lock_irqsave(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 	list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
 	spin_unlock_irqrestore(&sst_drv_ctx->ipc_spin_lock, irq_flags);
@@ -883,8 +932,14 @@ int sst_free_stream(int str_id)
 		spin_lock_irqsave(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 		list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
 		spin_unlock_irqrestore(&sst_drv_ctx->ipc_spin_lock, irq_flags);
-		sst_wake_up_block(sst_drv_ctx, 0, str_id,
+		if (!sst_drv_ctx->use_32bit_ops) {
+			/*FIXME: do we need to wake up drain stream here,
+			 * how to get the pvt_id and msg_id
+			 */
+		} else {
+			sst_wake_up_block(sst_drv_ctx, 0, str_id,
 				IPC_IA_DRAIN_STREAM, NULL, 0);
+		}
 		ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
 		retval = sst_wait_timeout(sst_drv_ctx, block);
 		pr_debug("sst: wait for free returned %d\n", retval);

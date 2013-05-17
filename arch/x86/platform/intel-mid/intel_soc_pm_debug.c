@@ -1331,6 +1331,52 @@ static char *nc_devices[] = {
 
 static int no_of_nc_devices = sizeof(nc_devices)/sizeof(nc_devices[0]);
 
+static void pmu_stat_seq_printf(struct seq_file *s, int type, char *typestr)
+{
+	unsigned long long t;
+	u32 scu_val, time;
+	u32 micro_sec_rem, remainder;
+	unsigned long init_2_now_time;
+
+	/* Print S0ix residency counter */
+	scu_val = readl(residency[type]);
+	t = scu_val;
+	micro_sec_rem = do_div(t, MICRO_SEC);
+	time = (unsigned int)t;
+
+	seq_printf(s, "%s\t%5lu.%03lu\t",
+		typestr, (unsigned long)(t),
+			(unsigned long) micro_sec_rem / 1000);
+
+	t =  cpu_clock(0);
+	t -= mid_pmu_cxt->pmu_init_time;
+	do_div(t, NANO_SEC);
+	init_2_now_time =  (unsigned long) t;
+
+	/* for calculating percentage residency */
+	time = time * 100;
+	t = (u64) time;
+
+	/* take care of divide by zero */
+	if (init_2_now_time) {
+		remainder = do_div(t, init_2_now_time);
+		time = (unsigned long) t;
+
+		/* for getting 3 digit precision after
+		 * decimal dot */
+		remainder *= 1000;
+		t = (u64) remainder;
+		remainder = do_div(t, init_2_now_time);
+	} else
+		time = t = 0;
+
+	seq_printf(s, "%5lu.%03lu\t", (unsigned long) time, (unsigned long) t);
+
+	/* Print number of interations of S0ix */
+	scu_val = readl(s0ix_counter[type]);
+	seq_printf(s, "%lu\n", (unsigned long) scu_val);
+}
+
 static int pmu_devices_state_show(struct seq_file *s, void *unused)
 {
 	struct pci_dev *pdev = NULL;
@@ -1338,6 +1384,10 @@ static int pmu_devices_state_show(struct seq_file *s, void *unused)
 	unsigned int base_class;
 	u32 mask, val, nc_pwr_sts;
 	struct pmu_ss_states cur_pmsss;
+	int ret;
+
+	if (!pmu_initialized)
+		return 0;
 
 	/* Acquire the scu_ready_sem */
 	down(&mid_pmu_cxt->scu_ready_sem);
@@ -1351,6 +1401,24 @@ static int pmu_devices_state_show(struct seq_file *s, void *unused)
 		seq_printf(s, "%08lX ", cur_pmsss.pmu2_states[i]);
 
 	seq_printf(s, "cmd_error_int count: %d\n", mid_pmu_cxt->cmd_error_int);
+
+	seq_printf(s, "\ttime(secs)\tresidency(%%)\tcount\n");
+
+	/* Dump S0ix residency counters */
+	ret = intel_scu_ipc_simple_command(DUMP_RES_COUNTER, 0);
+	if (ret) {
+		seq_printf(s, "IPC command to DUMP S0ix residency failed\n");
+		return 0;
+	}
+
+	/* Dump number of interations of S0ix */
+	ret = intel_scu_ipc_simple_command(DUMP_S0IX_COUNT, 0);
+	if (ret)
+		seq_printf(s, "IPC command to DUMP S0ix count failed\n");
+
+	pmu_stat_seq_printf(s, SYS_STATE_S0I1, "s0i1");
+	pmu_stat_seq_printf(s, SYS_STATE_S0I2, "S0i2");
+	pmu_stat_seq_printf(s, SYS_STATE_S0I3, "s0i3");
 
 	seq_printf(s, "\nNORTH COMPLEX DEVICES :\n\n");
 

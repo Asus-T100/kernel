@@ -3833,9 +3833,6 @@ int i915_gem_init(struct drm_device *dev)
 
 	mutex_lock(&dev->struct_mutex);
 
-	/* VLVA0 (potential hack), BIOS isn't actually waking us */
-	I915_WRITE(VLV_GTLC_WAKE_CTRL, 1);
-
 	if (intel_enable_ppgtt(dev) && HAS_ALIASING_PPGTT(dev)) {
 		/* PPGTT pdes are stolen from global gtt ptes, so shrink the
 		 * aperture accordingly when using aliasing ppgtt. */

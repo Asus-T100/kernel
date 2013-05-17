@@ -207,6 +207,10 @@ typedef struct _drm_i915_sarea {
 #define DRM_I915_GEM_GET_CACHEING	0x30
 #define DRM_I915_REG_READ		0x31
 #define DRM_I915_SET_PLANE_ZORDER	0x32
+#define DRM_I915_EDP_PSR_CTL            0x33
+#define DRM_I915_EDP_PSR_EXIT           0x34
+#define DRM_I915_DISP_SCREEN_CONTROL	0x35
+#define DRM_I915_SET_RESERVED_REG_BIT_2	0x37
 
 #define DRM_IOCTL_I915_INIT		DRM_IOW( DRM_COMMAND_BASE + DRM_I915_INIT, drm_i915_init_t)
 #define DRM_IOCTL_I915_FLUSH		DRM_IO ( DRM_COMMAND_BASE + DRM_I915_FLUSH)
@@ -259,6 +263,16 @@ typedef struct _drm_i915_sarea {
 #define DRM_IOCTL_I915_SET_PLANE_ZORDER		\
 			DRM_IOW(DRM_COMMAND_BASE + DRM_I915_SET_PLANE_ZORDER, \
 			struct drm_i915_set_plane_zorder)
+#define DRM_IOCTL_I915_EDP_PSR_CTL	DRM_IOW(DRM_COMMAND_BASE + \
+			DRM_I915_EDP_PSR_CTL, struct drm_i915_edp_psr_ctl)
+#define DRM_IOCTL_I915_EDP_PSR_EXIT	DRM_IO(DRM_COMMAND_BASE + \
+							DRM_I915_EDP_PSR_EXIT)
+#define DRM_IOCTL_I915_DISP_SCREEN_CONTROL             \
+		DRM_IOW(DRM_COMMAND_BASE + DRM_I915_DISP_SCREEN_CONTROL, \
+		struct drm_i915_disp_screen_control)
+#define DRM_IOCTL_I915_RESERVED_REG_BIT_2		\
+		DRM_IOW(DRM_COMMAND_BASE + DRM_I915_SET_RESERVED_REG_BIT_2, \
+		struct drm_i915_set_reserved_reg_bit_2)
 
 /* Allow drivers to submit batchbuffers directly to hardware, relying
  * on the security mechanisms provided by hardware.
@@ -293,6 +307,11 @@ typedef struct drm_i915_irq_emit {
 typedef struct drm_i915_irq_wait {
 	int irq_seq;
 } drm_i915_irq_wait_t;
+
+struct drm_i915_edp_psr_ctl {
+	int state;
+	int idle_frames;
+};
 
 /* Ioctl to query kernel params:
  */
@@ -960,4 +979,13 @@ struct drm_i915_set_plane_zorder {
 	__u32 order;
 };
 
+struct drm_i915_disp_screen_control {
+	__u32 on_off_cntrl;
+	__u32 crtc_id;
+};
+
+struct drm_i915_reserved_reg_bit_2 {
+	__u32 enable;
+	int plane;
+};
 #endif				/* _I915_DRM_H_ */

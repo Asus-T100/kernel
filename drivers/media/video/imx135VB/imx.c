@@ -43,7 +43,7 @@ static int
 imx_read_reg(struct i2c_client *client, u16 len, u16 reg, u16 *val)
 {
 	struct i2c_msg msg[2];
-	u16 data[IMX_SHORT_MAX];
+	u16 data[IMX_SHORT_MAX] = { 0 };
 	int err, i;
 
 	if (len > IMX_BYTE_MAX) {

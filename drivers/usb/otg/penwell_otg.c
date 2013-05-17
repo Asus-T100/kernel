@@ -5323,6 +5323,8 @@ static int penwell_otg_resume_noirq(struct device *dev)
 	/* If USB PHY is in OFF state, power on it and do basic init work */
 	if (!pnw->phy_power_state) {
 		penwell_otg_phy_power(1);
+		/* Change phy_power_state to 1 again */
+		pnw->phy_power_state = 1;
 		penwell_otg_phy_reset();
 
 		/* Reset controller and clear PHY low power mode setting */

@@ -401,6 +401,17 @@ void otm_disable_hdmi(void *context);
  */
 void otm_hdmi_restore_and_enable_display(void *context, bool connected);
 
+/**
+ * Description: notify security component of hdcp and hdmi cable status
+ *
+ * @hdcp	HDCP status: true if phase1 is enabled
+ * @cable	HDMI connection status: true if connected
+ *
+ * Returns:	none
+ */
+void otm_hdmi_update_security_hdmi_hdcp_status(bool hdcp, bool cable);
+
+
 /* TODO: Need refactor the logging and attr table */
 
 /*

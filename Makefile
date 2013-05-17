@@ -76,6 +76,13 @@ ifeq ("$(origin M)", "command line")
   KBUILD_EXTMOD := $(M)
 endif
 
+# Use make A=dir to specify additional directories for drivers
+# Drivers will appear in "External Device Driver" in configuration
+ifeq ("$(origin A)", "command line")
+  KBUILD_ADDMOD = $(A)
+  $(info ADD EXTERNAL MODULE $(KBUILD_ADDMOD))
+endif
+
 # kbuild supports saving output files in a separate directory.
 # To locate output files in a separate directory two syntaxes are supported.
 # In both cases the working directory must be the root of the kernel src.
@@ -277,6 +284,7 @@ endif
 
 export KBUILD_MODULES KBUILD_BUILTIN
 export KBUILD_CHECKSRC KBUILD_SRC KBUILD_EXTMOD
+export KBUILD_ADDMOD
 
 # Beautify output
 # ---------------------------------------------------------------------------
@@ -509,7 +517,7 @@ scripts: scripts_basic include/config/auto.conf include/config/tristate.conf
 
 # Objects we will link into vmlinux / subdirs we need to visit
 init-y		:= init/
-drivers-y	:= drivers/ sound/ firmware/
+drivers-y	:= drivers/ sound/ firmware/ $(addsuffix /,$(A))
 net-y		:= net/
 libs-y		:= lib/
 core-y		:= usr/

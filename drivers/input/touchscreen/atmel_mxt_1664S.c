@@ -17,6 +17,8 @@
 #include <linux/delay.h>
 #include <linux/firmware.h>
 #include <linux/i2c.h>
+#include <linux/gpio.h>
+#include <linux/acpi_gpio.h>
 #include <linux/input/mt.h>
 #include <linux/interrupt.h>
 #include <linux/slab.h>
@@ -25,6 +27,10 @@
 #include <linux/earlysuspend.h>
 #endif
 #include <asm/intel_vlv2.h>
+
+#define MXT_FORCE_BOOTLOADER	1
+#define BOOTLOADER_1664_1188	1
+#define MXT1664S_FAMILY_ID	0xa2
 
 /* Firmware files */
 #define MXT_FW_NAME		"maxtouch.fw"
@@ -201,6 +207,7 @@ enum mxt_device_state { INIT, APPMODE, BOOTLOADER, FAILED, SHUTDOWN, SUSPEND };
 static void mxt_early_suspend(struct early_suspend *es);
 static void mxt_late_resume(struct early_suspend *es);
 #endif
+static int mxt_load_fw(struct device *dev, const char *fn);
 
 /* The platform data for the Atmel maXTouch touchscreen driver */
 struct mxt_platform_data {
@@ -225,6 +232,7 @@ struct mxt_data {
 	u16 mem_size;
 	struct mxt_info *info;
 	void *raw_info_block;
+	int gpio_reset;
 	unsigned int irq;
 	unsigned int max_x;
 	unsigned int max_y;
@@ -1069,9 +1077,29 @@ static int mxt_soft_reset(struct mxt_data *data, u8 value)
 {
 	int ret;
 	struct device *dev = &data->client->dev;
+	int i;
 
 	dev_info(dev, "Resetting chip\n");
+#ifdef MXT_FORCE_BOOTLOADER
+	if (MXT_BOOT_VALUE == value) {
+		dev_info(dev, "Force to enter bootloader\n");
+		gpio_request(data->gpio_reset, "ts_rst");
+		gpio_direction_output(data->gpio_reset, 0);
+		for (i = 1; i < 10; i++) {
+			MSLEEP(1);
+			gpio_set_value(data->gpio_reset, 1);
+			MSLEEP(88);
+			gpio_set_value(data->gpio_reset, 0);
+		}
+		MSLEEP(1);
+		gpio_set_value(data->gpio_reset, 1);
+		MSLEEP(100);
+		MSLEEP(MXT_RESET_TIME * 3);
+		gpio_free(data->gpio_reset);
 
+		return 0;
+	}
+#endif
 	ret = mxt_t6_command(data, MXT_COMMAND_RESET, value, false);
 	if (ret)
 		return ret;
@@ -1693,6 +1721,16 @@ static int mxt_initialize(struct mxt_data *data)
 	struct i2c_client *client = data->client;
 	int error;
 	u8 retry_count = 0;
+	struct mxt_info info;
+
+	error = __mxt_read_reg(client, 0, sizeof(struct mxt_info), &info);
+	if (!error && info.family_id != MXT1664S_FAMILY_ID) {
+		error = mxt_load_fw(&client->dev, MXT_FW_NAME);
+		if (!error) {
+			dev_info(&client->dev, "Firmware update succeeded\n");
+			MSLEEP(MXT_FWRESET_TIME);
+		}
+	}
 
 retry_probe:
 	error = mxt_read_info_block(data);
@@ -1970,8 +2008,7 @@ static ssize_t mxt_update_fw_store(struct device *dev,
 		mxt_initialize(data);
 	}
 
-	if (data->state == APPMODE)
-		enable_irq(data->irq);
+	enable_irq(data->irq);
 
 	return count;
 }
@@ -2249,23 +2286,35 @@ static int __devinit mxt_probe(struct i2c_client *client,
 	const struct mxt_platform_data *pdata = &mxt_pdata;
 	struct mxt_data *data;
 	int error;
+	struct acpi_gpio_info gpio_info;
 
 	data = kzalloc(sizeof(struct mxt_data), GFP_KERNEL);
+	if (data == NULL)
+		return -ENOMEM;
+
 	data->state = INIT;
 	data->client = client;
 	data->pdata = pdata;
 	data->irq = client->irq;
+	data->gpio_reset = acpi_get_gpio_by_index(&client->dev, 0, &gpio_info);
 	i2c_set_clientdata(client, data);
+
+	error = sysfs_create_group(&client->dev.kobj, &mxt_attr_group);
+	if (error) {
+		dev_err(&client->dev, "Failure %d creating sysfs group\n",
+			error);
+		goto err_free_mem;
+	}
 
 	error = mxt_initialize(data);
 	if (error)
-		goto err_free_mem;
+		goto err_remove_sysfs_group;
 
 	error = mxt_initialize_t9_input_device(data);
 	if (error) {
 		dev_err(&client->dev, "Error %d registering input device\n",
 			error);
-		goto err_free_irq;
+		goto err_free_object;
 	}
 
 	error = request_threaded_irq(client->irq, NULL, mxt_interrupt,
@@ -2273,12 +2322,6 @@ static int __devinit mxt_probe(struct i2c_client *client,
 			client->name, data);
 	if (error) {
 		dev_err(&client->dev, "Failed to register interrupt\n");
-		goto err_free_object;
-	}
-	error = sysfs_create_group(&client->dev.kobj, &mxt_attr_group);
-	if (error) {
-		dev_err(&client->dev, "Failure %d creating sysfs group\n",
-			error);
 		goto err_unregister_device;
 	}
 
@@ -2293,7 +2336,7 @@ static int __devinit mxt_probe(struct i2c_client *client,
 				  &data->mem_access_attr) < 0) {
 		dev_err(&client->dev, "Failed to create %s\n",
 			data->mem_access_attr.attr.name);
-		goto err_remove_sysfs_group;
+		goto err_free_irq;
 	}
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
@@ -2305,15 +2348,15 @@ static int __devinit mxt_probe(struct i2c_client *client,
 
 	return 0;
 
-err_remove_sysfs_group:
-	sysfs_remove_group(&client->dev.kobj, &mxt_attr_group);
+err_free_irq:
+	free_irq(client->irq, data);
 err_unregister_device:
 	input_unregister_device(data->input_dev);
 	data->input_dev = NULL;
-err_free_irq:
-	free_irq(client->irq, data);
 err_free_object:
 	mxt_free_object_table(data);
+err_remove_sysfs_group:
+	sysfs_remove_group(&client->dev.kobj, &mxt_attr_group);
 err_free_mem:
 	kfree(data);
 	return error;
@@ -2426,19 +2469,6 @@ static struct i2c_driver mxt_driver = {
 	.id_table	= mxt_id,
 };
 module_i2c_driver(mxt_driver);
-
-static int __init init_byt_atmel_mxt_ts(void)
-{
-	struct i2c_board_info info = {
-		I2C_BOARD_INFO("atmel_mxt_mxt1664S", 0x4a),
-		.irq = VV_GPIO_IRQBASE + VV_NGPIO_SCORE + VV_NGPIO_NCORE + 12,
-	};
-
-	i2c_register_board_info(6, &info, 1);
-	return 0;
-}
-
-module_init(init_byt_atmel_mxt_ts);
 
 /* Module information */
 MODULE_AUTHOR("Joonyoung Shim <jy0922.shim@samsung.com>");

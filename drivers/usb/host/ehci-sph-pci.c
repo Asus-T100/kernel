@@ -70,7 +70,7 @@ static int sph_gpio_init(struct pci_dev *pdev)
 		goto ret;
 
 	if (gpio_is_valid(sph_pdata->gpio_cs_n)) {
-		retval = gpio_request(sph_pdata->gpio_cs_n, "SPH_CS_N");
+		retval = gpio_request(sph_pdata->gpio_cs_n, "sph_phy_cs_n");
 		if (retval < 0) {
 			printk(KERN_INFO "Request GPIO %d with error %d\n",
 			sph_pdata->gpio_cs_n, retval);
@@ -83,7 +83,8 @@ static int sph_gpio_init(struct pci_dev *pdev)
 	}
 
 	if (gpio_is_valid(sph_pdata->gpio_reset_n)) {
-		retval = gpio_request(sph_pdata->gpio_reset_n, "SPH_RST_N");
+		retval = gpio_request(sph_pdata->gpio_reset_n,
+				"sph_phy_reset_n");
 		if (retval < 0) {
 			printk(KERN_INFO "Request GPIO %d with error %d\n",
 			sph_pdata->gpio_reset_n, retval);

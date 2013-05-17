@@ -26,16 +26,28 @@
 
 /* Baytrail fake SFI table */
 
-/* Baytrail OEMB table */
-static struct sfi_table_oemb byt_oemb_table = {
+/* Baytrail OEMB table for VV */
+static struct sfi_table_oemb byt_oemb_table_vv = {
 	.spid = {
 		.customer_id = CUSTOMER_INTEL,
 		.vendor_id = VENDOR_INTEL,
 		.platform_family_id = INTEL_BYT_TABLET,
-		.product_line_id = INTEL_BYT_TABLET_TBD_ENG,
-		.hardware_id = BYT_TABLET_TBD_TBD0,
+		.product_line_id = INTEL_BYT_TABLET_BLK_ENG,
+		.hardware_id = BYT_TABLET_FRCB_VV3,
 	},
 };
+
+/* Baytrail OEMB table for PR1.1 */
+static struct sfi_table_oemb byt_oemb_table_pr1 = {
+	.spid = {
+		.customer_id = CUSTOMER_INTEL,
+		.vendor_id = VENDOR_INTEL,
+		.platform_family_id = INTEL_BYT_TABLET,
+		.product_line_id = INTEL_BYT_TABLET_BLK_ENG,
+		.hardware_id = BYT_TABLET_FRCB_PR1_1,
+	},
+};
+
 
 /* Baytrail devs table */
 static struct sfi_device_table_entry byt_devs_table[] = {
@@ -58,8 +70,16 @@ static struct sfi_gpio_table_entry byt_gpio_table[] = {
 static struct sfi_table_header *get_oem_b_table(void)
 {
 	struct sfi_table_header *sfi_oemb_table = NULL;
+	/*
+	 * FIXME: to be reverted asap
+	 */
+	pr_err("%s: %s\n", __func__, saved_command_line);
+	if (strstr(saved_command_line, "androidboot.boardid=02"))
+		sfi_oemb_table = (struct sfi_table_header *) &byt_oemb_table_vv;
+	else
+		sfi_oemb_table = (struct sfi_table_header *)
+			&byt_oemb_table_pr1;
 
-	sfi_oemb_table = (struct sfi_table_header *) &byt_oemb_table;
 
 	return sfi_oemb_table;
 }

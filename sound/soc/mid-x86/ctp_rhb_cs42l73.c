@@ -87,7 +87,7 @@ static int ctp_cs42l73_startup(struct snd_pcm_substream *substream)
 	return 0;
 }
 
-static int ctp_cs42l73_shutdown(struct snd_pcm_substream *substream)
+static void ctp_cs42l73_shutdown(struct snd_pcm_substream *substream)
 {
 	unsigned int device = substream->pcm->device;
 	switch (device) {
@@ -96,9 +96,7 @@ static int ctp_cs42l73_shutdown(struct snd_pcm_substream *substream)
 		break;
 	default:
 		pr_err("Invalid device\n");
-		return -EINVAL;
 	}
-	return 0;
 }
 
 static int ctp_cs42l73_hw_params(struct snd_pcm_substream *substream,
@@ -520,7 +518,7 @@ static struct snd_soc_dai_link ctp_rhb_dailink[] = {
 		.platform_name = "sst-platform",
 		.init = NULL,
 		.ignore_suspend = 1,
-		.ops = &ctp_asp_compr_ops,
+		.compr_ops = &ctp_asp_compr_ops,
 	},
 	[CTP_RHB_COMMS_BT_SCO_DEV] = {
 		.name = "Cloverview Comms BT SCO",

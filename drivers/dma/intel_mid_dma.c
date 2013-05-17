@@ -1994,9 +1994,9 @@ static struct pci_device_id intel_mid_dma_ids[] = {
 					INFO(4, 0, 4095, 0x400040, 0xFFAE8008, 1, 0x8, &v1_dma_ops)},
 	/* Mrfld */
 	{ PCI_VDEVICE(INTEL, INTEL_MRFLD_GP_DMAC2_ID),
-					INFO(4, 0, 131072, 0, 0, 0, 0, &v2_dma_ops)},
+					INFO(4, 0, 131071, 0, 0, 0, 0, &v2_dma_ops)},
 	{ PCI_VDEVICE(INTEL, INTEL_MRFLD_DMAC0_ID),
-					INFO(2, 6, 131072, 0xFF0000, 0xFF340018, 0, 0x10, &v2_dma_ops)},
+					INFO(2, 6, 131071, 0xFF0000, 0xFF340018, 0, 0x10, &v2_dma_ops)},
 	{ 0, }
 };
 MODULE_DEVICE_TABLE(pci, intel_mid_dma_ids);

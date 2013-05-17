@@ -68,7 +68,7 @@ int rt5640_update_eqmode(struct snd_soc_codec *codec, int mode)
 	if (mode == eqmode)
 		return 0;
 
-	for (i = 0; i <= EQ_REG_NUM; i++) {
+	for (i = 0; i < EQ_REG_NUM; i++) {
 		if (hweq_param[mode].reg[i])
 			ioctl_ops->index_write(codec, hweq_param[mode].reg[i],
 					       hweq_param[mode].value[i]);

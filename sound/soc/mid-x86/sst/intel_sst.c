@@ -120,7 +120,7 @@ static inline int get_stream_id_mrfld(u32 pipe_id)
 
 static inline void set_imr_interrupts(struct intel_sst_drv *ctx, bool enable)
 {
-	union interrupt_reg isr, imr;
+	union interrupt_reg imr;
 
 	spin_lock(&ctx->ipc_spin_lock);
 	imr.full = sst_shim_read(ctx->shim, SST_IMRX);
@@ -145,7 +145,9 @@ static irqreturn_t intel_sst_irq_thread_mrfld(int irq, void *context)
 
 	header.full = sst_shim_read64(drv->shim, SST_IPCD);
 	msg_id = header.p.header_low_payload & SST_ASYNC_MSG_MASK;
-	pr_debug("interrupt\n");
+	pr_debug("interrupt: header_high: 0x%x, header_low: 0x%x\n",
+				(unsigned int)header.p.header_high.full,
+				(unsigned int)header.p.header_low_payload);
 	if ((msg_id == IPC_SST_PERIOD_ELAPSED_MRFLD) &&
 	    (header.p.header_high.part.msg_id == IPC_CMD)) {
 		sst_drv_ctx->ops->clear_interrupt();
@@ -156,6 +158,8 @@ static irqreturn_t intel_sst_irq_thread_mrfld(int irq, void *context)
 			stream = &sst_drv_ctx->streams[str_id];
 			if (stream->period_elapsed)
 				stream->period_elapsed(stream->pcm_substream);
+			if (stream->compr_cb)
+				stream->compr_cb(stream->compr_cb_param);
 		}
 		return IRQ_HANDLED;
 	}
@@ -249,7 +253,7 @@ static irqreturn_t intel_sst_irq_thread_mfld(int irq, void *context)
 */
 static irqreturn_t intel_sst_intr_mfld(int irq, void *context)
 {
-	union interrupt_reg isr, imr;
+	union interrupt_reg isr;
 	union ipc_header header;
 	irqreturn_t retval = IRQ_HANDLED;
 
@@ -527,7 +531,7 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 	struct intel_sst_ops *ops;
 	struct sst_probe_info *info;
 	int ddr_base;
-	u32 byt_lpe_base;
+	u32 byt_lpe_base = 0;
 
 	pr_debug("Probe for DID %x\n", pci->device);
 	mutex_lock(&drv_ctx_lock);
@@ -632,6 +636,7 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 				sst_drv_ctx->info.max_streams);
 	for (i = 1; i <= sst_drv_ctx->info.max_streams; i++) {
 		struct stream_info *stream = &sst_drv_ctx->streams[i];
+		memset(stream, 0, sizeof(*stream));
 		mutex_init(&stream->lock);
 	}
 
@@ -762,7 +767,7 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 		if (!sst_drv_ctx->debugfs.ssp)
 			goto do_unmap_dram;
 
-		pr_debug("\n ssp io 0x%x ssp 0x%x size 0x%x",
+		pr_debug("\n ssp io 0x%p ssp 0x%x size 0x%x",
 			sst_drv_ctx->debugfs.ssp,
 			SSP_BASE_CTP, SSP_SIZE_CTP);
 
@@ -771,7 +776,7 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 		if (!sst_drv_ctx->debugfs.dma_reg)
 			goto do_unmap_ssp;
 
-		pr_debug("\n dma io 0x%x ssp 0x%x size 0x%x",
+		pr_debug("\n dma io 0x%p ssp 0x%x size 0x%x",
 			sst_drv_ctx->debugfs.dma_reg,
 			DMA_BASE_CTP, DMA_SIZE_CTP);
 	}
@@ -820,7 +825,7 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 		pci->irq = 29; /* FIXME */
 	}
 	ret = request_threaded_irq(pci->irq, sst_drv_ctx->ops->interrupt,
-		sst_drv_ctx->ops->irq_thread, NULL, SST_DRV_NAME,
+		sst_drv_ctx->ops->irq_thread, 0, SST_DRV_NAME,
 		sst_drv_ctx);
 	if (ret)
 		goto do_free_probe_bytes;

@@ -886,7 +886,8 @@ static int i915_cur_delayinfo(struct seq_file *m, void *unused)
 		if (ret)
 			return ret;
 
-		gen6_gt_force_wake_get(dev_priv);
+		/* TBD: Wake up relevant engine for VLV rather all */
+		gen6_gt_force_wake_get(dev_priv, FORCEWAKE_ALL);
 
 		rpstat = I915_READ(GEN6_RPSTAT1);
 		rpupei = I915_READ(GEN6_RP_CUR_UP_EI);
@@ -896,7 +897,8 @@ static int i915_cur_delayinfo(struct seq_file *m, void *unused)
 		rpcurdown = I915_READ(GEN6_RP_CUR_DOWN);
 		rpprevdown = I915_READ(GEN6_RP_PREV_DOWN);
 
-		gen6_gt_force_wake_put(dev_priv);
+		/* TBD: Wake up relevant engine for VLV rather all */
+		gen6_gt_force_wake_put(dev_priv, FORCEWAKE_ALL);
 		mutex_unlock(&dev->struct_mutex);
 
 		seq_printf(m, "GT_PERF_STATUS: 0x%08x\n", gt_perf_status);
@@ -1960,7 +1962,8 @@ static int i915_forcewake_open(struct inode *inode, struct file *file)
 	if (INTEL_INFO(dev)->gen < 6)
 		return 0;
 
-	gen6_gt_force_wake_get(dev_priv);
+	/* This will wake all engines on VLV */
+	gen6_gt_force_wake_get(dev_priv, FORCEWAKE_ALL);
 
 	return 0;
 }
@@ -1973,7 +1976,8 @@ static int i915_forcewake_release(struct inode *inode, struct file *file)
 	if (INTEL_INFO(dev)->gen < 6)
 		return 0;
 
-	gen6_gt_force_wake_put(dev_priv);
+	/* This will wake all engines on VLV */
+	gen6_gt_force_wake_put(dev_priv, FORCEWAKE_ALL);
 
 	return 0;
 }
@@ -1982,6 +1986,85 @@ static const struct file_operations i915_forcewake_fops = {
 	.owner = THIS_MODULE,
 	.open = i915_forcewake_open,
 	.release = i915_forcewake_release,
+};
+
+static int
+i915_read_rc6_status(struct file *filp,
+		   char __user *ubuf,
+		   size_t max,
+		   loff_t *ppos)
+{
+	struct drm_device *dev = filp->private_data;
+	drm_i915_private_t *dev_priv = dev->dev_private;
+	char buf[80];
+	int len = 0;
+
+	if (!(IS_VALLEYVIEW(dev)))
+		return -ENODEV;
+
+	len = snprintf(buf, sizeof(buf),
+		"RC6 is %s\n",
+		(I915_READ(VLV_RENDER_C_STATE_CONTROL_1_REG) & 0x18000000) ?
+				"enabled" : "disabled");
+
+	len += snprintf(&buf[len], (sizeof(buf) - len),
+		"Render well is %s & Media well is %s\n",
+		(I915_READ(VLV_POWER_WELL_STATUS_REG) & 0x80) ? "UP" : "DOWN",
+		(I915_READ(VLV_POWER_WELL_STATUS_REG) & 0x20) ? "UP" : "DOWN");
+
+
+	if (len > sizeof(buf))
+		len = sizeof(buf);
+
+	return simple_read_from_buffer(ubuf, max, ppos, buf, len);
+}
+
+static ssize_t
+i915_write_rc6_status(struct file *filp,
+		  const char __user *ubuf,
+		  size_t cnt,
+		  loff_t *ppos)
+{
+	struct drm_device *dev = filp->private_data;
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	char buf[20];
+	int ret = 0, val = 0;
+
+	if (!(IS_VALLEYVIEW(dev)))
+		return -ENODEV;
+
+	if (cnt > 0) {
+		if (cnt > sizeof(buf) - 1)
+			return -EINVAL;
+
+		if (copy_from_user(buf, ubuf, cnt))
+			return -EFAULT;
+		buf[cnt] = 0;
+
+		ret = kstrtoul(buf, 0, &val);
+		if (ret)
+			return -EINVAL;
+	}
+
+	ret = mutex_lock_interruptible(&dev->struct_mutex);
+	if (ret)
+		return ret;
+
+	vlv_rs_setstate(dev, (val > 0 ? true : false));
+
+	mutex_unlock(&dev->struct_mutex);
+
+	DRM_DEBUG_DRIVER("RC6 feature status is %d\n", val);
+
+	return cnt;
+}
+
+static const struct file_operations i915_rc6_status_fops = {
+	.owner = THIS_MODULE,
+	.open = simple_open,
+	.read = i915_read_rc6_status,
+	.write = i915_write_rc6_status,
+	.llseek = default_llseek,
 };
 
 static int i915_forcewake_create(struct dentry *root, struct drm_minor *minor)
@@ -2096,6 +2179,12 @@ int i915_debugfs_init(struct drm_minor *minor)
 	if (ret)
 		return ret;
 
+	ret = i915_debugfs_create(minor->debugfs_root, minor,
+				  "i915_rc6_status",
+				  &i915_rc6_status_fops);
+	if (ret)
+		return ret;
+
 	return drm_debugfs_create_files(i915_debugfs_list,
 					I915_DEBUGFS_ENTRIES,
 					minor->debugfs_root, minor);
@@ -2118,6 +2207,8 @@ void i915_debugfs_cleanup(struct drm_minor *minor)
 	drm_debugfs_remove_files((struct drm_info_list *) &i915_ring_stop_fops,
 				 1, minor);
 	drm_debugfs_remove_files((struct drm_info_list *) &i915_error_state_fops,
+				 1, minor);
+	drm_debugfs_remove_files((struct drm_info_list *) &i915_rc6_status_fops,
 				 1, minor);
 }
 

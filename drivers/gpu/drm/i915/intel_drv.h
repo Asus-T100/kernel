@@ -291,6 +291,7 @@ struct intel_hdmi {
 	bool has_hdmi_sink;
 	bool has_audio;
 	enum hdmi_force_audio force_audio;
+	enum hdmi_panel_fitter pfit;
 	void (*write_infoframe)(struct drm_encoder *encoder,
 				struct dip_infoframe *frame);
 	void (*set_infoframes)(struct drm_encoder *encoder,
@@ -314,6 +315,7 @@ struct intel_program_clock_bending {
 
 #define DP_RECEIVER_CAP_SIZE		0xf
 #define DP_LINK_CONFIGURATION_SIZE	9
+#define EDP_PSR_RECEIVER_CAP_SIZE	2
 
 struct intel_dp {
 	struct intel_encoder base;
@@ -328,6 +330,7 @@ struct intel_dp {
 	uint8_t link_bw;
 	uint8_t lane_count;
 	uint8_t dpcd[DP_RECEIVER_CAP_SIZE];
+	uint8_t psr_dpcd[EDP_PSR_RECEIVER_CAP_SIZE];
 	struct i2c_adapter adapter;
 	struct i2c_algo_dp_aux_data algo;
 	bool is_pch_edp;
@@ -342,6 +345,7 @@ struct intel_dp {
 	bool want_panel_vdd;
 	struct edid *edid; /* cached EDID for eDP */
 	int edid_mode_count;
+	uint8_t psr_setup;
 };
 
 static inline struct drm_crtc *
@@ -379,6 +383,7 @@ int intel_ddc_get_modes(struct drm_connector *c, struct i2c_adapter *adapter);
 
 extern void intel_attach_force_audio_property(struct drm_connector *connector);
 extern void intel_attach_broadcast_rgb_property(struct drm_connector *connector);
+extern void intel_attach_force_pfit_property(struct drm_connector *connector);
 
 extern void intel_crt_init(struct drm_device *dev);
 extern void intel_hdmi_init(struct drm_device *dev,
@@ -527,6 +532,13 @@ extern u32 intel_dpio_read(struct drm_i915_private *dev_priv, int reg);
 
 /* Power-related functions, located in intel_pm.c */
 extern void intel_init_pm(struct drm_device *dev);
+extern bool vlv_rs_initialize(struct drm_device *dev);
+extern void vlv_rs_sleepstateinit(struct drm_device *dev,
+				 bool   bdisable_rs);
+
+extern void vlv_rs_setstate(struct drm_device *dev,
+				bool enable);
+
 /* FBC */
 extern bool intel_fbc_enabled(struct drm_device *dev);
 extern void intel_enable_fbc(struct drm_crtc *crtc, unsigned long interval);
@@ -545,6 +557,11 @@ extern void intel_ddi_dpms(struct drm_encoder *encoder, int mode);
 extern void intel_ddi_mode_set(struct drm_encoder *encoder,
 				struct drm_display_mode *mode,
 				struct drm_display_mode *adjusted_mode);
+/* intel_dp.c */
+extern void intel_edp_psr_ctl_ioctl(struct drm_device *device, void *data,
+					struct drm_file *file_priv);
+extern void intel_edp_psr_exit_ioctl(struct drm_device *device, void *data,
+					struct drm_file *file_priv);
 
 /* VLV LP clock bending */
 extern void valleyview_program_clock_bending(struct drm_i915_private *dev_priv,

@@ -135,4 +135,8 @@ ia_css_input_configure_port(struct atomisp_device *isp,
 void
 ia_css_input_set_mode(struct atomisp_device *isp,
 		      enum ia_css_input_mode mode);
+
+void
+ia_css_enbale_dz(struct atomisp_device *isp, bool enable);
+
 #endif

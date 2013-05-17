@@ -1150,6 +1150,8 @@ int rt56xx_dsp_ioctl_common(struct snd_hwdep *hw, struct file *file,
 	struct rt56xx_cmd __user *_rt56xx = (struct rt56xx_cmd *)arg;
 	struct snd_soc_codec *codec = hw->private_data;
 	struct rt5640_priv *rt5640 = snd_soc_codec_get_drvdata(codec);
+	if (!rt5640)
+		return -EFAULT;
 
 	if (copy_from_user(&rt56xx, _rt56xx, sizeof(rt56xx))) {
 		dev_err(codec->dev, "copy_from_user faild\n");

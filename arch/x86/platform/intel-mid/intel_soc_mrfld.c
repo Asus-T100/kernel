@@ -20,9 +20,13 @@
 
 #include "intel_soc_pmu.h"
 
+u32 __iomem *residency[SYS_STATE_MAX];
+u32 __iomem *s0ix_counter[SYS_STATE_MAX];
+
 static int mrfld_pmu_init(void)
 {
 	mid_pmu_cxt->s3_hint = MRFLD_S3_HINT;
+
 
 	/* Put all unused LSS in D0i3 */
 	mid_pmu_cxt->os_sss[0] = (SSMSK(D0I3_MASK, PMU_PSH_LSS_00)	|
@@ -33,6 +37,13 @@ static int mrfld_pmu_init(void)
 				SSMSK(D0I3_MASK, PMU_RESERVED_LSS_13)	|
 				SSMSK(D0I3_MASK, PMU_RESERVED_LSS_14)	|
 				SSMSK(D0I3_MASK, PMU_RESERVED_LSS_15));
+
+	/* Put LSS8 and LSS11 as unused on  PRh */
+	if (INTEL_MID_BOARD(3, PHONE, MRFL, BB, PRO, PRH)) {
+		mid_pmu_cxt->os_sss[0] |= \
+			(SSMSK(D0I3_MASK, PMU_USB_MPH_LSS_08)|
+			SSMSK(D0I3_MASK, PMU_AUDIO_DMA0_11));
+	}
 
 	mid_pmu_cxt->os_sss[1] = (SSMSK(D0I3_MASK, PMU_RESERVED_LSS_16-16)|
 				SSMSK(D0I3_MASK, PMU_SSP3_LSS_17-16)|
@@ -47,8 +58,54 @@ static int mrfld_pmu_init(void)
 
 	mid_pmu_cxt->os_sss[2] &= ~SSMSK(D0I3_MASK, PMU_SSP4_LSS_35-32);
 
+	/* Map S0ix residency counters */
+	residency[SYS_STATE_S0I1] = ioremap_nocache(S0I1_RES_ADDR, 4);
+	if (residency[SYS_STATE_S0I1] == NULL)
+		goto err1;
+	residency[SYS_STATE_S0I2] = ioremap_nocache(S0I2_RES_ADDR, 4);
+	if (residency[SYS_STATE_S0I2] == NULL)
+		goto err1;
+	residency[SYS_STATE_S0I3] = ioremap_nocache(S0I3_RES_ADDR, 4);
+	if (residency[SYS_STATE_S0I3] == NULL)
+		goto err1;
+
+	/* Map S0ix iteration counters */
+	s0ix_counter[SYS_STATE_S0I1] = ioremap_nocache(S0I1_COUNT_ADDR, 4);
+	if (s0ix_counter[SYS_STATE_S0I1] == NULL)
+		goto err2;
+	s0ix_counter[SYS_STATE_S0I2] = ioremap_nocache(S0I2_COUNT_ADDR, 4);
+	if (s0ix_counter[SYS_STATE_S0I2] == NULL)
+		goto err2;
+	s0ix_counter[SYS_STATE_S0I3] = ioremap_nocache(S0I3_COUNT_ADDR, 4);
+	if (s0ix_counter[SYS_STATE_S0I3] == NULL)
+		goto err2;
+
 	return PMU_SUCCESS;
+
+err1:
+	pr_err("Cannot map memory to read S0ix residency\n");
+err2:
+	pr_err("Cannot map memory to read S0ix count\n");
+	return PMU_FAILED;
 }
+
+/* FIXME: Need to start the counter only if debug is
+ * needed. This will save SCU cycles if debug is
+ * disabled
+ */
+static int __init start_scu_s0ix_res_counters(void)
+{
+	int ret;
+
+	ret = intel_scu_ipc_simple_command(START_RES_COUNTER, 0);
+	if (ret) {
+		pr_err("IPC command to start res counter failed\n");
+		BUG();
+		return ret;
+	}
+	return 0;
+}
+late_initcall(start_scu_s0ix_res_counters);
 
 void platform_update_all_lss_states(struct pmu_ss_states *pmu_config,
 					int *PCIALLDEV_CFG)
@@ -63,6 +120,13 @@ void platform_update_all_lss_states(struct pmu_ss_states *pmu_config,
 				SSMSK(D0I3_MASK, PMU_RESERVED_LSS_13)	|
 				SSMSK(D0I3_MASK, PMU_RESERVED_LSS_14)	|
 				SSMSK(D0I3_MASK, PMU_RESERVED_LSS_15));
+
+	/* Put LSS8 and LSS11 as unused on  PRh */
+	if (INTEL_MID_BOARD(3, PHONE, MRFL, BB, PRO, PRH)) {
+		pmu_config->pmu2_states[0] |= \
+			(SSMSK(D0I3_MASK, PMU_USB_MPH_LSS_08)|
+			SSMSK(D0I3_MASK, PMU_AUDIO_DMA0_11));
+	}
 
 	pmu_config->pmu2_states[1] =
 				(SSMSK(D0I3_MASK, PMU_RESERVED_LSS_16-16)|

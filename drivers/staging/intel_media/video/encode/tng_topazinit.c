@@ -66,198 +66,198 @@ static int tng_init_error_dump_reg(struct drm_psb_private *dev_priv)
 	uint32_t reg_val;
 	DRM_ERROR("MULTICORE Registers:\n");
 	MULTICORE_READ32(0x00, &reg_val);
-	PSB_DEBUG_GENERAL("MULTICORE_SRST %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MULTICORE_SRST %08x\n", reg_val);
 	MULTICORE_READ32(0x04, &reg_val);
-	PSB_DEBUG_GENERAL("MULTICORE_INT_STAT %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MULTICORE_INT_STAT %08x\n", reg_val);
 	MULTICORE_READ32(0x08, &reg_val);
-	PSB_DEBUG_GENERAL("MULTICORE_MTX_INT_ENAB %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MULTICORE_MTX_INT_ENAB %08x\n", reg_val);
 	MULTICORE_READ32(0x0C, &reg_val);
-	PSB_DEBUG_GENERAL("MULTICORE_HOST_INT_ENAB %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MULTICORE_HOST_INT_ENAB %08x\n", reg_val);
 	MULTICORE_READ32(0x10, &reg_val);
-	PSB_DEBUG_GENERAL("MULTICORE_INT_CLEAR %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MULTICORE_INT_CLEAR %08x\n", reg_val);
 	MULTICORE_READ32(0x14, &reg_val);
-	PSB_DEBUG_GENERAL("MULTICORE_MAN_CLK_GATE %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MULTICORE_MAN_CLK_GATE %08x\n", reg_val);
 	MULTICORE_READ32(0x18, &reg_val);
-	PSB_DEBUG_GENERAL("TOPAZ_MTX_C_RATIO %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("TOPAZ_MTX_C_RATIO %08x\n", reg_val);
 	MULTICORE_READ32(0x1c, &reg_val);
-	PSB_DEBUG_GENERAL("MMU_STATUS %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MMU_STATUS %08x\n", reg_val);
 	MULTICORE_READ32(0x1c, &reg_val);
-	PSB_DEBUG_GENERAL("MMU_STATUS %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MMU_STATUS %08x\n", reg_val);
 	MULTICORE_READ32(0x20, &reg_val);
-	PSB_DEBUG_GENERAL("MMU_MEM_REQ %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MMU_MEM_REQ %08x\n", reg_val);
 	MULTICORE_READ32(0x24, &reg_val);
-	PSB_DEBUG_GENERAL("MMU_CONTROL0 %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MMU_CONTROL0 %08x\n", reg_val);
 	MULTICORE_READ32(0x28, &reg_val);
-	PSB_DEBUG_GENERAL("MMU_CONTROL1 %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MMU_CONTROL1 %08x\n", reg_val);
 	MULTICORE_READ32(0x2c , &reg_val);
-	PSB_DEBUG_GENERAL("MMU_CONTROL2 %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MMU_CONTROL2 %08x\n", reg_val);
 	MULTICORE_READ32(0x30, &reg_val);
-	PSB_DEBUG_GENERAL("MMU_DIR_LIST_BASE %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MMU_DIR_LIST_BASE %08x\n", reg_val);
 	MULTICORE_READ32(0x38, &reg_val);
-	PSB_DEBUG_GENERAL("MMU_TILE %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MMU_TILE %08x\n", reg_val);
 	MULTICORE_READ32(0x44, &reg_val);
-	PSB_DEBUG_GENERAL("MTX_DEBUG_MSTR %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MTX_DEBUG_MSTR %08x\n", reg_val);
 	MULTICORE_READ32(0x48, &reg_val);
-	PSB_DEBUG_GENERAL("MTX_DEBUG_SLV %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MTX_DEBUG_SLV %08x\n", reg_val);
 	MULTICORE_READ32(0x50, &reg_val);
-	PSB_DEBUG_GENERAL("MULTICORE_CORE_SEL_0 %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MULTICORE_CORE_SEL_0 %08x\n", reg_val);
 	MULTICORE_READ32(0x54, &reg_val);
-	PSB_DEBUG_GENERAL("MULTICORE_CORE_SEL_1 %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MULTICORE_CORE_SEL_1 %08x\n", reg_val);
 	MULTICORE_READ32(0x58, &reg_val);
-	PSB_DEBUG_GENERAL("MULTICORE_HW_CFG %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MULTICORE_HW_CFG %08x\n", reg_val);
 	MULTICORE_READ32(0x60, &reg_val);
-	PSB_DEBUG_GENERAL("MULTICORE_CMD_FIFO_WRITE %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MULTICORE_CMD_FIFO_WRITE %08x\n", reg_val);
 	MULTICORE_READ32(0x64, &reg_val);
-	PSB_DEBUG_GENERAL("MULTICORE_CMD_FIFO_WRITE_SPACE %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MULTICORE_CMD_FIFO_WRITE_SPACE %08x\n", reg_val);
 	MULTICORE_READ32(0x70, &reg_val);
-	PSB_DEBUG_GENERAL("TOPAZ_CMD_FIFO_READ %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("TOPAZ_CMD_FIFO_READ %08x\n", reg_val);
 	MULTICORE_READ32(0x74, &reg_val);
-	PSB_DEBUG_GENERAL("TOPAZ_CMD_FIFO_READ_AVAILABLE %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("TOPAZ_CMD_FIFO_READ_AVAILABLE %08x\n", reg_val);
 	MULTICORE_READ32(0x78, &reg_val);
-	PSB_DEBUG_GENERAL("TOPAZ_CMD_FIFO_FLUSH %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("TOPAZ_CMD_FIFO_FLUSH %08x\n", reg_val);
 	MULTICORE_READ32(0x80, &reg_val);
-	PSB_DEBUG_GENERAL("MMU_TILE_EXT %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MMU_TILE_EXT %08x\n", reg_val);
 	MULTICORE_READ32(0x100, &reg_val);
-	PSB_DEBUG_GENERAL("FIRMWARE_REG_1 %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("FIRMWARE_REG_1 %08x\n", reg_val);
 	MULTICORE_READ32(0x104, &reg_val);
-	PSB_DEBUG_GENERAL("FIRMWARE_REG_2 %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("FIRMWARE_REG_2 %08x\n", reg_val);
 	MULTICORE_READ32(0x108, &reg_val);
-	PSB_DEBUG_GENERAL("FIRMWARE_REG_3 %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("FIRMWARE_REG_3 %08x\n", reg_val);
 	MULTICORE_READ32(0x110, &reg_val);
-	PSB_DEBUG_GENERAL("CYCLE_COUNTER %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("CYCLE_COUNTER %08x\n", reg_val);
 	MULTICORE_READ32(0x114, &reg_val);
-	PSB_DEBUG_GENERAL("CYCLE_COUNTER_CTRL %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("CYCLE_COUNTER_CTRL %08x\n", reg_val);
 	MULTICORE_READ32(0x118, &reg_val);
-	PSB_DEBUG_GENERAL("MULTICORE_IDLE_PWR_MAN %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MULTICORE_IDLE_PWR_MAN %08x\n", reg_val);
 	MULTICORE_READ32(0x124, &reg_val);
-	PSB_DEBUG_GENERAL("DIRECT_BIAS_TABLE %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("DIRECT_BIAS_TABLE %08x\n", reg_val);
 	MULTICORE_READ32(0x128, &reg_val);
-	PSB_DEBUG_GENERAL("INTRA_BIAS_TABLE %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("INTRA_BIAS_TABLE %08x\n", reg_val);
 	MULTICORE_READ32(0x12c, &reg_val);
-	PSB_DEBUG_GENERAL("INTER_BIAS_TABLE %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("INTER_BIAS_TABLE %08x\n", reg_val);
 	MULTICORE_READ32(0x130, &reg_val);
-	PSB_DEBUG_GENERAL("INTRA_SCALE_TABLE %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("INTRA_SCALE_TABLE %08x\n", reg_val);
 	MULTICORE_READ32(0x134, &reg_val);
-	PSB_DEBUG_GENERAL("QPCB_QPCR_OFFSET %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("QPCB_QPCR_OFFSET %08x\n", reg_val);
 	MULTICORE_READ32(0x140, &reg_val);
-	PSB_DEBUG_GENERAL("INTER_INTRA_SCALE_TABLE %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("INTER_INTRA_SCALE_TABLE %08x\n", reg_val);
 	MULTICORE_READ32(0x144, &reg_val);
-	PSB_DEBUG_GENERAL("SKIPPED_CODED_SCALE_TABLE %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("SKIPPED_CODED_SCALE_TABLE %08x\n", reg_val);
 	MULTICORE_READ32(0x148, &reg_val);
-	PSB_DEBUG_GENERAL("POLYNOM_ALPHA_COEFF_CORE0 %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("POLYNOM_ALPHA_COEFF_CORE0 %08x\n", reg_val);
 	MULTICORE_READ32(0x14c, &reg_val);
-	PSB_DEBUG_GENERAL("POLYNOM_GAMMA_COEFF_CORE0 %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("POLYNOM_GAMMA_COEFF_CORE0 %08x\n", reg_val);
 	MULTICORE_READ32(0x150, &reg_val);
-	PSB_DEBUG_GENERAL("POLYNOM_CUTOFF_CORE0 %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("POLYNOM_CUTOFF_CORE0 %08x\n", reg_val);
 	MULTICORE_READ32(0x154, &reg_val);
-	PSB_DEBUG_GENERAL("POLYNOM_ALPHA_COEFF_CORE1 %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("POLYNOM_ALPHA_COEFF_CORE1 %08x\n", reg_val);
 	MULTICORE_READ32(0x158, &reg_val);
-	PSB_DEBUG_GENERAL("POLYNOM_GAMMA_COEFF_CORE1 %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("POLYNOM_GAMMA_COEFF_CORE1 %08x\n", reg_val);
 	MULTICORE_READ32(0x15c, &reg_val);
-	PSB_DEBUG_GENERAL("POLYNOM_CUTOFF_CORE1 %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("POLYNOM_CUTOFF_CORE1 %08x\n", reg_val);
 	MULTICORE_READ32(0x300, &reg_val);
-	PSB_DEBUG_GENERAL("FIRMWARE_REG_4 %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("FIRMWARE_REG_4 %08x\n", reg_val);
 	MULTICORE_READ32(0x304, &reg_val);
-	PSB_DEBUG_GENERAL("FIRMWARE_REG_5 %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("FIRMWARE_REG_5 %08x\n", reg_val);
 	MULTICORE_READ32(0x308, &reg_val);
-	PSB_DEBUG_GENERAL("FIRMWARE_REG_6 %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("FIRMWARE_REG_6 %08x\n", reg_val);
 	MULTICORE_READ32(0x30c, &reg_val);
-	PSB_DEBUG_GENERAL("FIRMWARE_REG_7 %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("FIRMWARE_REG_7 %08x\n", reg_val);
 	MULTICORE_READ32(0x3b0, &reg_val);
-	PSB_DEBUG_GENERAL("MULTICORE_RSVD0 %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MULTICORE_RSVD0 %08x\n", reg_val);
 
 	DRM_ERROR("TopazHP Core Registers:\n");
 	TOPAZCORE_READ32(0, 0x0, &reg_val);
-	PSB_DEBUG_GENERAL("TOPAZHP_SRST %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("TOPAZHP_SRST %08x\n", reg_val);
 	TOPAZCORE_READ32(0, 0x4, &reg_val);
-	PSB_DEBUG_GENERAL("TOPAZHP_INTSTAT %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("TOPAZHP_INTSTAT %08x\n", reg_val);
 	TOPAZCORE_READ32(0, 0x8, &reg_val);
-	PSB_DEBUG_GENERAL("TOPAZHP_MTX_INTENAB %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("TOPAZHP_MTX_INTENAB %08x\n", reg_val);
 	TOPAZCORE_READ32(0, 0xc, &reg_val);
-	PSB_DEBUG_GENERAL("TOPAZHP_HOST_INTENAB %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("TOPAZHP_HOST_INTENAB %08x\n", reg_val);
 	TOPAZCORE_READ32(0, 0x10, &reg_val);
-	PSB_DEBUG_GENERAL("TOPAZHP_INTCLEAR %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("TOPAZHP_INTCLEAR %08x\n", reg_val);
 	TOPAZCORE_READ32(0, 0x14, &reg_val);
-	PSB_DEBUG_GENERAL("TOPAZHP_INT_COMB_SEL %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("TOPAZHP_INT_COMB_SEL %08x\n", reg_val);
 	TOPAZCORE_READ32(0, 0x18, &reg_val);
-	PSB_DEBUG_GENERAL("TOPAZHP_BUSY %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("TOPAZHP_BUSY %08x\n", reg_val);
 	TOPAZCORE_READ32(0, 0x24, &reg_val);
-	PSB_DEBUG_GENERAL("TOPAZHP_AUTO_CLOCK_GATING %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("TOPAZHP_AUTO_CLOCK_GATING %08x\n", reg_val);
 	TOPAZCORE_READ32(0, 0x28, &reg_val);
-	PSB_DEBUG_GENERAL("TOPAZHP_MAN_CLOCK_GATING %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("TOPAZHP_MAN_CLOCK_GATING %08x\n", reg_val);
 	TOPAZCORE_READ32(0, 0x30, &reg_val);
-	PSB_DEBUG_GENERAL("TOPAZHP_RTM %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("TOPAZHP_RTM %08x\n", reg_val);
 	TOPAZCORE_READ32(0, 0x34, &reg_val);
-	PSB_DEBUG_GENERAL("TOPAZHP_RTM_VALUE %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("TOPAZHP_RTM_VALUE %08x\n", reg_val);
 	TOPAZCORE_READ32(0, 0x38, &reg_val);
-	PSB_DEBUG_GENERAL("TOPAZHP_MB_PERFORMANCE_RESULT %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("TOPAZHP_MB_PERFORMANCE_RESULT %08x\n", reg_val);
 	TOPAZCORE_READ32(0, 0x3c, &reg_val);
-	PSB_DEBUG_GENERAL("TOPAZHP_MB_PERFORMANCE_MB_NUMBER %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("TOPAZHP_MB_PERFORMANCE_MB_NUMBER %08x\n", reg_val);
 	TOPAZCORE_READ32(0, 0x188, &reg_val);
-	PSB_DEBUG_GENERAL("FIELD_PARITY %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("FIELD_PARITY %08x\n", reg_val);
 	TOPAZCORE_READ32(0, 0x3d0, &reg_val);
-	PSB_DEBUG_GENERAL("WEIGHTED_PRED_CONTROL %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("WEIGHTED_PRED_CONTROL %08x\n", reg_val);
 	TOPAZCORE_READ32(0, 0x3d4, &reg_val);
-	PSB_DEBUG_GENERAL("WEIGHTED_PRED_COEFFS %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("WEIGHTED_PRED_COEFFS %08x\n", reg_val);
 	TOPAZCORE_READ32(0, 0x3e0, &reg_val);
-	PSB_DEBUG_GENERAL("WEIGHTED_PRED_INV_WEIGHT %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("WEIGHTED_PRED_INV_WEIGHT %08x\n", reg_val);
 	TOPAZCORE_READ32(0, 0x3f0, &reg_val);
-	PSB_DEBUG_GENERAL("TOPAZHP_RSVD0 %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("TOPAZHP_RSVD0 %08x\n", reg_val);
 	TOPAZCORE_READ32(0, 0x3f4, &reg_val);
-	PSB_DEBUG_GENERAL("TOPAZHP_CRC_CLEAR %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("TOPAZHP_CRC_CLEAR %08x\n", reg_val);
 
 
 	DRM_ERROR("MTX Registers:\n");
 	MTX_READ32(0x00, &reg_val);
-	PSB_DEBUG_GENERAL("MTX_ENABLE %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MTX_ENABLE %08x\n", reg_val);
 	MTX_READ32(0x08, &reg_val);
-	PSB_DEBUG_GENERAL("MTX_STATUS %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MTX_STATUS %08x\n", reg_val);
 	MTX_READ32(0x80, &reg_val);
-	PSB_DEBUG_GENERAL("MTX_KICK %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MTX_KICK %08x\n", reg_val);
 	MTX_READ32(0x88, &reg_val);
-	PSB_DEBUG_GENERAL("MTX_KICKI %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MTX_KICKI %08x\n", reg_val);
 	MTX_READ32(0x90, &reg_val);
-	PSB_DEBUG_GENERAL("MTX_FAULT0 %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MTX_FAULT0 %08x\n", reg_val);
 	MTX_READ32(0xf8, &reg_val);
-	PSB_DEBUG_GENERAL("MTX_REGISTER_READ_WRITE_DATA %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MTX_REGISTER_READ_WRITE_DATA %08x\n", reg_val);
 	MTX_READ32(0xfc, &reg_val);
-	PSB_DEBUG_GENERAL("MTX_REGISTER_READ_WRITE_REQUEST %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MTX_REGISTER_READ_WRITE_REQUEST %08x\n", reg_val);
 	MTX_READ32(0x100, &reg_val);
-	PSB_DEBUG_GENERAL("MTX_RAM_ACCESS_DATA_EXCHANGE %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MTX_RAM_ACCESS_DATA_EXCHANGE %08x\n", reg_val);
 	MTX_READ32(0x104, &reg_val);
-	PSB_DEBUG_GENERAL("MTX_RAM_ACCESS_DATA_TRANSFER %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MTX_RAM_ACCESS_DATA_TRANSFER %08x\n", reg_val);
 	MTX_READ32(0x108, &reg_val);
-	PSB_DEBUG_GENERAL("MTX_RAM_ACCESS_CONTROL %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MTX_RAM_ACCESS_CONTROL %08x\n", reg_val);
 	MTX_READ32(0x10c, &reg_val);
-	PSB_DEBUG_GENERAL("MTX_RAM_ACCESS_STATUS %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MTX_RAM_ACCESS_STATUS %08x\n", reg_val);
 	MTX_READ32(0x200, &reg_val);
-	PSB_DEBUG_GENERAL("MTX_SOFT_RESET %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MTX_SOFT_RESET %08x\n", reg_val);
 	MTX_READ32(0x340, &reg_val);
-	PSB_DEBUG_GENERAL("MTX_SYSC_CDMAC %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MTX_SYSC_CDMAC %08x\n", reg_val);
 	MTX_READ32(0x344, &reg_val);
-	PSB_DEBUG_GENERAL("MTX_SYSC_CDMAA %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MTX_SYSC_CDMAA %08x\n", reg_val);
 	MTX_READ32(0x348, &reg_val);
-	PSB_DEBUG_GENERAL("MTX_SYSC_CDMAS0 %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MTX_SYSC_CDMAS0 %08x\n", reg_val);
 	MTX_READ32(0x34c, &reg_val);
-	PSB_DEBUG_GENERAL("MTX_SYSC_CDMAS1 %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MTX_SYSC_CDMAS1 %08x\n", reg_val);
 	MTX_READ32(0x350, &reg_val);
-	PSB_DEBUG_GENERAL("MTX_SYSC_CDMAT %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("MTX_SYSC_CDMAT %08x\n", reg_val);
 
 	DRM_ERROR("DMA Registers:\n");
 	DMAC_READ32(0x00, &reg_val);
-	PSB_DEBUG_GENERAL("DMA_Setup_n %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("DMA_Setup_n %08x\n", reg_val);
 	DMAC_READ32(0x04, &reg_val);
-	PSB_DEBUG_GENERAL("DMA_Count_n %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("DMA_Count_n %08x\n", reg_val);
 	DMAC_READ32(0x08, &reg_val);
-	PSB_DEBUG_GENERAL(" DMA_Peripheral_param_n %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ(" DMA_Peripheral_param_n %08x\n", reg_val);
 	DMAC_READ32(0x0C, &reg_val);
-	PSB_DEBUG_GENERAL("DMA_IRQ_Stat_n %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("DMA_IRQ_Stat_n %08x\n", reg_val);
 	DMAC_READ32(0x10, &reg_val);
-	PSB_DEBUG_GENERAL("DMA_2D_Mode_n %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("DMA_2D_Mode_n %08x\n", reg_val);
 	DMAC_READ32(0x14, &reg_val);
-	PSB_DEBUG_GENERAL("DMA_Peripheral_addr_n %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("DMA_Peripheral_addr_n %08x\n", reg_val);
 	DMAC_READ32(0x18, &reg_val);
-	PSB_DEBUG_GENERAL("DMA_Per_hold %08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("DMA_Per_hold %08x\n", reg_val);
 	return 0;
 }
 
@@ -624,42 +624,21 @@ void tng_powerdown_topaz(struct work_struct *work)
 	struct drm_device *dev = (struct drm_device *)topaz_priv->dev;
 	struct ospm_power_island *p_island;
 
-	PSB_DEBUG_GENERAL("TOPAZ: Task start\n");
+	PSB_DEBUG_TOPAZ("TOPAZ: Task start\n");
 
 	tng_topaz_dequeue_send(dev);
 
-	/* Workaround */
-	if (topaz_priv->power_down_by_release) {
-		p_island = get_island_ptr(OSPM_VIDEO_ENC_ISLAND);
-		atomic_dec(&p_island->ref_count);
-		PSB_DEBUG_GENERAL("TOPAZ: decrease ref count to" \
-			" %d for power down by release\n", \
-			atomic_read(&p_island->ref_count));
+	if (drm_topaz_pmpolicy == PSB_PMPOLICY_NOPM)
+		power_island_put_dummy(dev);
+	else
+		power_island_put(OSPM_VIDEO_ENC_ISLAND);
+out:
+	if (drm_topaz_cmdpolicy != PSB_CMDPOLICY_PARALLEL) {
+		atomic_set(&topaz_priv->cmd_wq_free, 1);
+		wake_up_interruptible(&topaz_priv->cmd_wq);
 	}
 
-	/* If topaz_busy is not 0, then this task should return */
-	if (topaz_priv->power_down_by_release ||
-	    drm_topaz_pmpolicy != PSB_PMPOLICY_NOPM) {
-		if (topaz_priv->topaz_busy == 0) {
-			PSB_DEBUG_GENERAL("TOPAZ: topaz_busy = 0, " \
-				"try to power down topaz\n");
-			ospm_apm_power_down_topaz(topaz_priv->dev);
-			topaz_priv->power_down_by_release = 0;
-		} else {
-			PSB_DEBUG_GENERAL("TOPAZ: topaz_busy = 1," \
-				 " bypass power down and saving context\n");
-		}
-	} else {
-		if (get_ctx_cnt(dev) > 1 &&
-		    topaz_priv->topaz_busy == 0) {
-			PSB_DEBUG_GENERAL("TOPAZ: more than 1(%d) context," \
-			" save current context status\n", \
-			get_ctx_cnt(dev));
-			tng_topaz_save_mtx_state(dev);
-		}
-	}
-out:
-	PSB_DEBUG_GENERAL("TOPAZ: Task finish\n");
+	PSB_DEBUG_TOPAZ("TOPAZ: Task finish\n");
 	return;
 }
 
@@ -709,6 +688,9 @@ int tng_topaz_init(struct drm_device *dev)
 	topaz_priv->cur_codec = 0;
 	topaz_priv->topaz_hw_busy = 1;
 	topaz_priv->power_down_by_release = 0;
+	atomic_set(&topaz_priv->cmd_wq_free, 1);
+	atomic_set(&topaz_priv->vec_ref_count, 0);
+	init_waitqueue_head(&topaz_priv->cmd_wq);
 
 	topaz_priv->saved_queue = kzalloc(\
 			sizeof(struct tng_topaz_cmd_queue), \
@@ -759,13 +741,14 @@ int tng_topaz_init(struct drm_device *dev)
 	ret = ttm_buffer_object_create(bdev, 4096, ttm_bo_type_kernel,
 		DRM_PSB_FLAG_MEM_MMU | TTM_PL_FLAG_NO_EVICT,
 		0, 0, 0, NULL, &(topaz_priv->topaz_bo));
-	if (ret) {
+	if (ret || (NULL==topaz_priv->topaz_bo)) {
 		DRM_ERROR("TOPAZ: failed to allocate topaz BO.\n");
-		ttm_bo_unref(&topaz_priv->topaz_bo);
+		if (topaz_priv->topaz_bo)
+		{
+			ttm_bo_unref(&topaz_priv->topaz_bo);
+		}
 		return ret;
 	}
-
-	topaz_priv->frame_count = 0;
 
 	ret = ttm_bo_kmap(topaz_priv->topaz_bo, 0,
 			  topaz_priv->topaz_bo->num_pages,
@@ -850,10 +833,6 @@ int tng_topaz_init(struct drm_device *dev)
 	return ret;
 
 out:
-
-	kfree(topaz_priv);
-	dev_priv->topaz_private = NULL;
-
 	for (n = 0; n < IMG_CODEC_NUM; ++n) {
 		if (topaz_priv->topaz_fw[n].text)
 			ttm_bo_unref(&topaz_priv->topaz_fw[n].text);
@@ -862,9 +841,10 @@ out:
 	}
 
 	ttm_bo_kunmap(&topaz_priv->topaz_bo_kmap);
+	ttm_bo_unref(&topaz_priv->topaz_bo);
 
-	if (topaz_priv->topaz_bo)
-		ttm_bo_unref(&topaz_priv->topaz_bo);
+	kfree(topaz_priv);
+	dev_priv->topaz_private = NULL;
 
 	return ret;
 }
@@ -1227,10 +1207,10 @@ int tng_topaz_init_board(
 
 	/*psb_irq_uninstall_islands(dev, OSPM_VIDEO_ENC_ISLAND);*/
 
-	PSB_DEBUG_GENERAL("TOPAZ: will setup firmware ....\n");
+	PSB_DEBUG_TOPAZ("TOPAZ: will setup firmware ....\n");
 
 	MULTICORE_READ32(TOPAZHP_TOP_CR_MULTICORE_HW_CFG, &reg_val);
-	PSB_DEBUG_GENERAL("TOPAZ: HW_CFG 0x%08x\n", reg_val);
+	PSB_DEBUG_TOPAZ("TOPAZ: HW_CFG 0x%08x\n", reg_val);
 
 	if (topaz_priv->topaz_num_pipes > TOPAZHP_PIPE_NUM) {
 		DRM_ERROR("TOPAZ: Number of pipes: 0x%x\n",
@@ -1249,7 +1229,7 @@ int tng_topaz_init_board(
 	tng_topaz_mmu_hwsetup(dev_priv);
 
 	for (i = 0; i < topaz_priv->topaz_num_pipes; i++) {
-		PSB_DEBUG_GENERAL("TOPAZ: Reset topaz registers for pipe %d",
+		PSB_DEBUG_TOPAZ("TOPAZ: Reset topaz registers for pipe %d",
 			i);
 		reg_val = F_ENCODE(1, TOPAZHP_CR_TOPAZHP_IPE_SOFT_RESET) |
 			F_ENCODE(1, TOPAZHP_CR_TOPAZHP_SPE_SOFT_RESET) |
@@ -1542,8 +1522,6 @@ int mtx_dmac_transfer(struct drm_psb_private *dev_priv, uint32_t channel,
 	uint32_t irq_stat;
 	uint32_t count;
 
-	PSB_DEBUG_TOPAZ("TOPAZ: using dma to transfer firmware\n");
-
 	/* check that no transfer is currently in progress */
 	DMAC_READ32(IMG_SOC_DMAC_COUNT(channel), &dmac_count);
 	if (0 != (dmac_count & (MASK_IMG_SOC_EN | MASK_IMG_SOC_LIST_EN))) {
@@ -1605,8 +1583,6 @@ int mtx_dmac_transfer(struct drm_psb_private *dev_priv, uint32_t channel,
 		count | MASK_IMG_SOC_EN);
 
 	/* DMAC_READ32(IMG_SOC_DMAC_COUNT(channel), &tmp);*/
-
-	PSB_DEBUG_TOPAZ("TOPAZ: dma transfer started.\n");
 
 	return 0;
 }

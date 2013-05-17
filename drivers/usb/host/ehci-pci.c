@@ -223,19 +223,18 @@ static int ehci_pci_setup(struct usb_hcd *hcd)
 			temp &= ~CLV_SPHCFG_ULPI1TYPE;
 			ehci_writel(ehci, temp, hcd->regs + CLV_SPHCFG);
 
+			struct ehci_sph_pdata   *sph_pdata;
+			sph_pdata = pdev->dev.platform_data;
+			if (!sph_pdata) {
+				ehci_err(ehci, "get SPH platform data failed\n");
+				retval = -ENODEV;
+				return retval;
+			}
+
+			sph_pdata->enabled = sph_enabled();
+
 			/* Check SPH enabled or not */
-			if (!sph_enabled()) {
-				struct ehci_sph_pdata   *sph_pdata;
-				sph_pdata = pdev->dev.platform_data;
-
-				if (!sph_pdata) {
-					ehci_err(ehci, "get SPH platform data failed\n");
-					retval = -ENODEV;
-					return retval;
-				}
-
-				sph_pdata->enabled = 0;
-
+			if (sph_pdata->enabled == 0) {
 				/* ULPI 1 ref-clock switch off */
 				temp = ehci_readl(ehci, hcd->regs + CLV_SPHCFG);
 				temp |= CLV_SPHCFG_REFCKDIS;

@@ -1314,7 +1314,7 @@ static void assert_planes_disabled(struct drm_i915_private *dev_priv,
 	int cur_pipe;
 
 	/* Planes are fixed to pipes on ILK+ */
-	if (HAS_PCH_SPLIT(dev_priv->dev)) {
+	if (HAS_PCH_SPLIT(dev_priv->dev) || IS_VALLEYVIEW(dev_priv->dev)) {
 		reg = DSPCNTR(pipe);
 		val = I915_READ(reg);
 		WARN((val & DISPLAY_PLANE_ENABLE),
@@ -2056,6 +2056,50 @@ void intel_unpin_fb_obj(struct drm_i915_gem_object *obj)
 {
 	i915_gem_object_unpin_fence(obj);
 	i915_gem_object_unpin(obj);
+}
+
+int i915_enable_plane_reserved_reg_bit_2(struct drm_device *dev, void *data,
+				 struct drm_file *file)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct drm_i915_reserved_reg_bit_2 *rrb = data;
+	u32 enable = rrb->enable;
+	int plane = rrb->plane;
+	u32 val;
+
+	/* Clear the older rrb setting*/
+	val = I915_READ(DSPSURF(plane));
+	val &= ~PLANE_RESERVED_REG_BIT_2_ENABLE;
+	I915_WRITE(DSPSURF(plane), val);
+
+	val = I915_READ(DSPSURFLIVE(plane));
+	val &= ~PLANE_RESERVED_REG_BIT_2_ENABLE;
+	I915_WRITE(DSPSURFLIVE(plane), val);
+
+	if (plane == 1 || plane == 4) {
+		val = I915_READ(VLV_DSPADDR(plane));
+		val &= ~PLANE_RESERVED_REG_BIT_2_ENABLE;
+		I915_WRITE(VLV_DSPADDR(plane), val);
+	}
+
+	/* Program bit enable if it was requested */
+	if (enable) {
+		val = I915_READ(DSPSURF(plane));
+		val |= PLANE_RESERVED_REG_BIT_2_ENABLE;
+		I915_WRITE(DSPSURF(plane), val);
+
+		val = I915_READ(DSPSURFLIVE(plane));
+		val |= PLANE_RESERVED_REG_BIT_2_ENABLE;
+		I915_WRITE(DSPSURFLIVE(plane), val);
+
+		if (plane == 1 || plane == 4) {
+			val = I915_READ(VLV_DSPADDR(plane));
+			val |= PLANE_RESERVED_REG_BIT_2_ENABLE;
+			I915_WRITE(VLV_DSPADDR(plane), val);
+		}
+	}
+
+	return 0;
 }
 
 /* Computes the linear offset to the base tile and adjusts x, y. bytes per pixel
@@ -6760,15 +6804,24 @@ static int intel_gen7_queue_flip(struct drm_device *dev,
 		goto err_unpin;
 	}
 
-	ret = intel_ring_begin(ring, 4);
+	ret = intel_ring_begin(ring, 8);
 	if (ret)
 		goto err_unpin;
+
+	/*Blitter engine is not coming out of RC6 upon MI_DISPLAY_FLIP.
+	Adding 4 NOOPS helped:)... Need to check with SV team*/
+	intel_ring_emit(ring, (MI_NOOP));
+	intel_ring_emit(ring, (MI_NOOP));
+	intel_ring_emit(ring, (MI_NOOP));
+	intel_ring_emit(ring, (MI_NOOP));
 
 	intel_ring_emit(ring, MI_DISPLAY_FLIP_I915 | plane_bit);
 	intel_ring_emit(ring, (fb->pitches[0] | obj->tiling_mode));
 	intel_ring_emit(ring, obj->gtt_offset + intel_crtc->dspaddr_offset);
 	intel_ring_emit(ring, (MI_NOOP));
 	intel_ring_advance(ring);
+
+
 	return 0;
 
 err_unpin:
@@ -7120,7 +7173,8 @@ static void intel_setup_outputs(struct drm_device *dev)
 			intel_dp_init(dev, PCH_DP_D, PORT_D);
 	}
 
-	intel_crt_init(dev);
+	if (!IS_VALLEYVIEW(dev))
+		intel_crt_init(dev);
 
 	if (IS_HASWELL(dev)) {
 		int found;
@@ -7801,3 +7855,57 @@ intel_display_print_error_state(struct seq_file *m,
 	}
 }
 #endif
+
+int i915_disp_screen_control(struct drm_device *dev, void *data,
+			struct drm_file *file)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct drm_i915_disp_screen_control *screen_cntrl = data;
+	struct drm_mode_object *obj;
+	struct drm_crtc *crtc;
+	struct intel_crtc *intel_crtc;
+	int pipe;
+	u32 val;
+	static u32 previous_bck_level;
+
+	obj = drm_mode_object_find(dev, screen_cntrl->crtc_id,
+			DRM_MODE_OBJECT_CRTC);
+
+	if (!obj) {
+		DRM_DEBUG_DRIVER("Unknown CRTC ID %d\n", screen_cntrl->crtc_id);
+		return -EINVAL;
+	}
+
+	 crtc = obj_to_crtc(obj);
+	DRM_DEBUG_DRIVER("[CRTC:%d]\n", crtc->base.id);
+	intel_crtc = to_intel_crtc(crtc);
+	pipe = intel_crtc->pipe;
+
+	DRM_DEBUG_DRIVER("pipe = %d, on_off_cntrl = %d", \
+			pipe, screen_cntrl->on_off_cntrl);
+
+	if (intel_pipe_has_type(crtc, INTEL_OUTPUT_EDP)) {
+		if (screen_cntrl->on_off_cntrl == DISP_SCREEN_OFF) {
+			previous_bck_level = dev_priv->backlight_level;
+			intel_panel_set_backlight(dev, 0);
+		} else if (screen_cntrl->on_off_cntrl == DISP_SCREEN_ON)
+			intel_panel_set_backlight(dev, previous_bck_level);
+
+	} else if (intel_pipe_has_type(crtc, INTEL_OUTPUT_HDMI)) {
+		val = I915_READ(PIPECONF(pipe));
+		if (screen_cntrl->on_off_cntrl == DISP_SCREEN_OFF) {
+			if (!(val & PIPECONF_DISP_OVERLAY_OFF))
+				val |= PIPECONF_DISP_OVERLAY_OFF;
+			if (!(val & PIPECONF_CURSOR_OFF))
+				val |= PIPECONF_CURSOR_OFF;
+		} else if (screen_cntrl->on_off_cntrl == DISP_SCREEN_ON) {
+			if (val & PIPECONF_DISP_OVERLAY_OFF)
+				val &= ~PIPECONF_DISP_OVERLAY_OFF;
+			if (val & PIPECONF_CURSOR_OFF)
+				val &= ~PIPECONF_CURSOR_OFF;
+		}
+		I915_WRITE(PIPECONF(pipe), val);
+	}
+
+	return 0;
+}

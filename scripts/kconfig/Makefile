@@ -5,38 +5,53 @@
 PHONY += oldconfig xconfig gconfig menuconfig config silentoldconfig update-po-config \
 	localmodconfig localyesconfig
 
+#default value
+Kconfig := Kconfig
+
 ifdef KBUILD_KCONFIG
 Kconfig := $(KBUILD_KCONFIG)
-else
-Kconfig := Kconfig
+endif
+ifdef KBUILD_ADDMOD
+#We have additional directories to search for external Module
+#Merge all Kconfig in the objtree directory
+Kconfig := $(objtree)/Kconfig-generated
+
+.PHONY: $(Kconfig)
+
+$(Kconfig): $(srctree)/Kconfig
+	$(Q)echo GEN $@
+	$(Q)cp -f $< $@
+	$(Q)echo 'menu "External Device Drivers"' >> $@
+	$(Q)for d in $(KBUILD_ADDMOD) ; do echo source $$d/Kconfig >> $@ ; done
+	$(Q)echo 'endmenu' >> $@
 endif
 
-xconfig: $(obj)/qconf
+xconfig: $(obj)/qconf $(Kconfig)
 	$< $(Kconfig)
 
-gconfig: $(obj)/gconf
+gconfig: $(obj)/gconf $(Kconfig)
 	$< $(Kconfig)
 
-menuconfig: $(obj)/mconf
+menuconfig: $(obj)/mconf $(Kconfig)
 	$< $(Kconfig)
 
-config: $(obj)/conf
+config: $(obj)/conf $(Kconfig)
 	$< --oldaskconfig $(Kconfig)
 
-nconfig: $(obj)/nconf
+nconfig: $(obj)/nconf $(Kconfig)
 	$< $(Kconfig)
 
-oldconfig: $(obj)/conf
+oldconfig: $(obj)/conf $(Kconfig)
 	$< --$@ $(Kconfig)
 
-defoldconfig: $(obj)/conf
+defoldconfig: $(obj)/conf $(Kconfig)
 	$< --defconfig=.config $(Kconfig)
 
-silentoldconfig: $(obj)/conf
+silentoldconfig: $(obj)/conf $(Kconfig)
 	$(Q)mkdir -p include/generated
 	$< --$@ $(Kconfig)
 
-localyesconfig localmodconfig: $(obj)/streamline_config.pl $(obj)/conf
+localyesconfig localmodconfig: $(obj)/streamline_config.pl $(obj)/conf $(Kconfig)
 	$(Q)mkdir -p include/generated
 	$(Q)perl $< --$@ $(srctree) $(Kconfig) > .tmp.config
 	$(Q)if [ -f .config ]; then 					\
@@ -53,7 +68,7 @@ localyesconfig localmodconfig: $(obj)/streamline_config.pl $(obj)/conf
 
 # Create new linux.pot file
 # Adjust charset to UTF-8 in .po file to accept UTF-8 in Kconfig files
-update-po-config: $(obj)/kxgettext $(obj)/gconf.glade.h
+update-po-config: $(obj)/kxgettext $(obj)/gconf.glade.h $(Kconfig)
 	$(Q)echo "  GEN     config.pot"
 	$(Q)xgettext --default-domain=linux                         \
 	    --add-comments --keyword=_ --keyword=N_                 \
@@ -76,18 +91,18 @@ update-po-config: $(obj)/kxgettext $(obj)/gconf.glade.h
 
 PHONY += allnoconfig allyesconfig allmodconfig alldefconfig randconfig
 
-allnoconfig allyesconfig allmodconfig alldefconfig randconfig: $(obj)/conf
+allnoconfig allyesconfig allmodconfig alldefconfig randconfig: $(obj)/conf $(Kconfig)
 	$< --$@ $(Kconfig)
 
 PHONY += listnewconfig oldnoconfig savedefconfig defconfig
 
-listnewconfig oldnoconfig: $(obj)/conf
+listnewconfig oldnoconfig: $(obj)/conf $(Kconfig)
 	$< --$@ $(Kconfig)
 
-savedefconfig: $(obj)/conf
+savedefconfig: $(obj)/conf $(Kconfig)
 	$< --$@=defconfig $(Kconfig)
 
-defconfig: $(obj)/conf
+defconfig: $(obj)/conf $(Kconfig)
 ifeq ($(KBUILD_DEFCONFIG),)
 	$< --defconfig $(Kconfig)
 else
@@ -95,7 +110,7 @@ else
 	$(Q)$< --defconfig=arch/$(SRCARCH)/configs/$(KBUILD_DEFCONFIG) $(Kconfig)
 endif
 
-%_defconfig: $(obj)/conf
+%_defconfig: $(obj)/conf $(Kconfig)
 	$(Q)$< --defconfig=arch/$(SRCARCH)/configs/$@ $(Kconfig)
 
 # Help text used by make help

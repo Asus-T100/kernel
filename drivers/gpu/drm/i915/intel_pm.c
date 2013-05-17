@@ -169,7 +169,10 @@ static void sandybridge_blit_fbc_update(struct drm_device *dev)
 	u32 blt_ecoskpd;
 
 	/* Make sure blitter notifies FBC of writes */
-	gen6_gt_force_wake_get(dev_priv);
+
+	/*Blitter is part of Media powerwell on VLV. No impact of
+	this param in other platforms for now*/
+	gen6_gt_force_wake_get(dev_priv, FORCEWAKE_MEDIA);
 	blt_ecoskpd = I915_READ(GEN6_BLITTER_ECOSKPD);
 	blt_ecoskpd |= GEN6_BLITTER_FBC_NOTIFY <<
 		GEN6_BLITTER_LOCK_SHIFT;
@@ -180,7 +183,10 @@ static void sandybridge_blit_fbc_update(struct drm_device *dev)
 			 GEN6_BLITTER_LOCK_SHIFT);
 	I915_WRITE(GEN6_BLITTER_ECOSKPD, blt_ecoskpd);
 	POSTING_READ(GEN6_BLITTER_ECOSKPD);
-	gen6_gt_force_wake_put(dev_priv);
+
+	/*Blitter is part of Media powerwell on VLV. No impact of
+	this param in other platforms for now*/
+	gen6_gt_force_wake_put(dev_priv, FORCEWAKE_MEDIA);
 }
 
 static void ironlake_enable_fbc(struct drm_crtc *crtc, unsigned long interval)
@@ -2446,7 +2452,8 @@ static void gen6_enable_rps(struct drm_device *dev)
 		I915_WRITE(GTFIFODBG, gtfifodbg);
 	}
 
-	gen6_gt_force_wake_get(dev_priv);
+	/* Single power well on Gen6 & Gen7 */
+	gen6_gt_force_wake_get(dev_priv, FORCEWAKE_ALL);
 
 	rp_state_cap = I915_READ(GEN6_RP_STATE_CAP);
 	gt_perf_status = I915_READ(GEN6_GT_PERF_STATUS);
@@ -2572,7 +2579,8 @@ skip_ring_freq:
 	/* enable all PM interrupts */
 	I915_WRITE(GEN6_PMINTRMSK, 0);
 
-	gen6_gt_force_wake_put(dev_priv);
+	/* Single power well on Gen6 & Gen7*/
+	gen6_gt_force_wake_put(dev_priv, FORCEWAKE_ALL);
 }
 
 static void gen6_update_ring_freq(struct drm_device *dev)
@@ -3308,6 +3316,24 @@ static void intel_init_emon(struct drm_device *dev)
 	dev_priv->corr = (lcfuse & LCFUSE_HIV_MASK);
 }
 
+/* This routine is to enable RC6, Turbo and other power features on VLV */
+static void valleyview_enable_rps(struct drm_device *dev)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
+	/* 1. Setup RC6 */
+	vlv_rs_initialize(dev);
+}
+
+/* This routine is to clean up RC6, Turbo and other power features on VLV */
+static void valleyview_disable_rps(struct drm_device *dev)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+
+	/* 1. Clear RC6 */
+	vlv_rs_setstate(dev, false);
+}
+
 void intel_disable_gt_powersave(struct drm_device *dev)
 {
 	if (IS_IRONLAKE_M(dev)) {
@@ -3315,6 +3341,9 @@ void intel_disable_gt_powersave(struct drm_device *dev)
 		ironlake_disable_rc6(dev);
 	} else if (INTEL_INFO(dev)->gen >= 6 && !IS_VALLEYVIEW(dev)) {
 		gen6_disable_rps(dev);
+		gen6_update_ring_freq(dev);
+	} else if (IS_VALLEYVIEW(dev)) {
+		valleyview_disable_rps(dev);
 	}
 }
 
@@ -3327,6 +3356,8 @@ void intel_enable_gt_powersave(struct drm_device *dev)
 	} else if ((IS_GEN6(dev) || IS_GEN7(dev)) && !IS_VALLEYVIEW(dev)) {
 		gen6_enable_rps(dev);
 		gen6_update_ring_freq(dev);
+	} else if (IS_VALLEYVIEW(dev)) {
+		valleyview_enable_rps(dev);
 	}
 }
 
@@ -3735,6 +3766,7 @@ static void valleyview_init_clock_gating(struct drm_device *dev)
 	 * when flip and other events complete.  So enable
 	 * all the GUnit->GT interrupts here
 	 */
+	/*
 	I915_WRITE(VLV_DPFLIPSTAT, PIPEB_LINE_COMPARE_INT_EN |
 		   PIPEB_HLINE_INT_EN | PIPEB_VBLANK_INT_EN |
 		   SPRITED_FLIPDONE_INT_EN | SPRITEC_FLIPDONE_INT_EN |
@@ -3742,6 +3774,7 @@ static void valleyview_init_clock_gating(struct drm_device *dev)
 		   PIPEA_HLINE_INT_EN | PIPEA_VBLANK_INT_EN |
 		   SPRITEB_FLIPDONE_INT_EN | SPRITEA_FLIPDONE_INT_EN |
 		   PLANEA_FLIPDONE_INT_EN);
+	*/
 
 	/*
 	 * WaDisableVLVClockGating_VBIIssue
@@ -4045,7 +4078,8 @@ static void __gen6_gt_wait_for_thread_c0(struct drm_i915_private *dev_priv)
 		DRM_ERROR("GT thread status wait timed out\n");
 }
 
-static void __gen6_gt_force_wake_get(struct drm_i915_private *dev_priv)
+static void __gen6_gt_force_wake_get(struct drm_i915_private *dev_priv,
+					int fw_engine)
 {
 	u32 forcewake_ack;
 
@@ -4066,7 +4100,8 @@ static void __gen6_gt_force_wake_get(struct drm_i915_private *dev_priv)
 	__gen6_gt_wait_for_thread_c0(dev_priv);
 }
 
-static void __gen6_gt_force_wake_mt_get(struct drm_i915_private *dev_priv)
+static void __gen6_gt_force_wake_mt_get(struct drm_i915_private *dev_priv,
+					int fw_engine)
 {
 	u32 forcewake_ack;
 
@@ -4093,13 +4128,18 @@ static void __gen6_gt_force_wake_mt_get(struct drm_i915_private *dev_priv)
  * be called at the beginning of the sequence followed by a call to
  * gen6_gt_force_wake_put() at the end of the sequence.
  */
-void gen6_gt_force_wake_get(struct drm_i915_private *dev_priv)
+void gen6_gt_force_wake_get(struct drm_i915_private *dev_priv,
+				int fw_engine)
 {
 	unsigned long irqflags;
 
+	/*Redirect to VLV specific routine*/
+	if (IS_VALLEYVIEW(dev_priv->dev))
+		return vlv_force_wake_get(dev_priv, fw_engine);
+
 	spin_lock_irqsave(&dev_priv->gt_lock, irqflags);
 	if (dev_priv->forcewake_count++ == 0)
-		dev_priv->gt.force_wake_get(dev_priv);
+		dev_priv->gt.force_wake_get(dev_priv, fw_engine);
 	spin_unlock_irqrestore(&dev_priv->gt_lock, irqflags);
 }
 
@@ -4112,14 +4152,16 @@ void gen6_gt_check_fifodbg(struct drm_i915_private *dev_priv)
 		I915_WRITE_NOTRACE(GTFIFODBG, GT_FIFO_CPU_ERROR_MASK);
 }
 
-static void __gen6_gt_force_wake_put(struct drm_i915_private *dev_priv)
+static void __gen6_gt_force_wake_put(struct drm_i915_private *dev_priv,
+					int fw_engine)
 {
 	I915_WRITE_NOTRACE(FORCEWAKE, 0);
 	POSTING_READ(FORCEWAKE);
 	gen6_gt_check_fifodbg(dev_priv);
 }
 
-static void __gen6_gt_force_wake_mt_put(struct drm_i915_private *dev_priv)
+static void __gen6_gt_force_wake_mt_put(struct drm_i915_private *dev_priv,
+					int fw_engine)
 {
 	I915_WRITE_NOTRACE(FORCEWAKE_MT, _MASKED_BIT_DISABLE(1));
 	POSTING_READ(FORCEWAKE_MT);
@@ -4129,13 +4171,18 @@ static void __gen6_gt_force_wake_mt_put(struct drm_i915_private *dev_priv)
 /*
  * see gen6_gt_force_wake_get()
  */
-void gen6_gt_force_wake_put(struct drm_i915_private *dev_priv)
+void gen6_gt_force_wake_put(struct drm_i915_private *dev_priv,
+				int fw_engine)
 {
 	unsigned long irqflags;
 
+	/*Redirect to VLV specific routine*/
+	if (IS_VALLEYVIEW(dev_priv->dev))
+		return vlv_force_wake_put(dev_priv, fw_engine);
+
 	spin_lock_irqsave(&dev_priv->gt_lock, irqflags);
 	if (--dev_priv->forcewake_count == 0)
-		dev_priv->gt.force_wake_put(dev_priv);
+		dev_priv->gt.force_wake_put(dev_priv, fw_engine);
 	spin_unlock_irqrestore(&dev_priv->gt_lock, irqflags);
 }
 
@@ -4146,11 +4193,11 @@ int __gen6_gt_wait_for_fifo(struct drm_i915_private *dev_priv)
 	if (dev_priv->gt_fifo_count < GT_FIFO_NUM_RESERVED_ENTRIES) {
 		int loop = 500;
 		u32 fifo = I915_READ_NOTRACE(GT_FIFO_FREE_ENTRIES);
-		while (fifo <= GT_FIFO_NUM_RESERVED_ENTRIES && loop--) {
+		while (fifo <= GT_FIFO_NUM_WRITE_THRESHOLD && loop--) {
 			udelay(10);
 			fifo = I915_READ_NOTRACE(GT_FIFO_FREE_ENTRIES);
 		}
-		if (WARN_ON(loop < 0 && fifo <= GT_FIFO_NUM_RESERVED_ENTRIES))
+		if (WARN_ON(loop < 0 && fifo <= GT_FIFO_NUM_WRITE_THRESHOLD))
 			++ret;
 		dev_priv->gt_fifo_count = fifo;
 	}
@@ -4159,24 +4206,86 @@ int __gen6_gt_wait_for_fifo(struct drm_i915_private *dev_priv)
 	return ret;
 }
 
-static void vlv_force_wake_get(struct drm_i915_private *dev_priv)
+static void __vlv_force_wake_get(struct drm_i915_private *dev_priv,
+				int fw_engine)
 {
-	/* Already awake? */
-	if ((I915_READ(0x130094) & 0xa1) == 0xa1)
-		return;
+	/* Check for Render Engine */
+	if (FORCEWAKE_RENDER & fw_engine) {
 
-	I915_WRITE_NOTRACE(FORCEWAKE_VLV, _MASKED_BIT_ENABLE(0x1));
-	POSTING_READ(FORCEWAKE_VLV);
+		/* Already awake? */
+		if (I915_READ(VLV_POWER_WELL_STATUS_REG) &
+				VLV_RENDER_WELL_STATUS_MASK) {
 
-	if (wait_for_atomic_us((I915_READ_NOTRACE(FORCEWAKE_ACK_VLV) & 0x1), 500))
-		DRM_ERROR("Force wake wait timed out\n");
+			/*
+			 * Still set the FW bit so that it will not go
+			 * down while being accessed
+			 */
+		}
+
+		I915_WRITE_NOTRACE(VLV_RENDER_FORCE_WAKE_REG,
+					_MASKED_BIT_ENABLE(0x1));
+
+		if (wait_for_atomic_us((I915_READ_NOTRACE(
+			VLV_RENDER_FORCE_WAKE_STATUS_REG) & 0x1), 500))
+			DRM_ERROR("Render force wake get wait timed out\n");
+	}
+
+	/* Check for Media Engine */
+	if (FORCEWAKE_MEDIA & fw_engine) {
+
+		/* Already awake? */
+		if (I915_READ(VLV_POWER_WELL_STATUS_REG) &
+				VLV_MEDIA_WELL_STATUS_MASK) {
+			/*
+			 * Still set the FW bit so that it will not go
+			 * down while being accessed
+			 */
+		}
+
+		I915_WRITE_NOTRACE(VLV_MEDIA_FORCE_WAKE_REG,
+					_MASKED_BIT_ENABLE(0x1));
+
+		if (wait_for_atomic_us((I915_READ_NOTRACE(
+			VLV_MEDIA_FORCE_WAKE_STATUS_REG) & 0x1), 500))
+			DRM_ERROR("Media Force wake get wait timed out\n");
+	}
+
 }
 
-static void vlv_force_wake_put(struct drm_i915_private *dev_priv)
+static void __vlv_force_wake_put(struct drm_i915_private *dev_priv,
+					int fw_engine)
 {
-	I915_WRITE_NOTRACE(FORCEWAKE_VLV, _MASKED_BIT_DISABLE(0xffff));
-	/* FIXME: confirm VLV behavior with Punit folks */
-	POSTING_READ(FORCEWAKE_VLV);
+
+	/* Check for Render Engine */
+	if (FORCEWAKE_RENDER & fw_engine) {
+
+		I915_WRITE_NOTRACE(VLV_RENDER_FORCE_WAKE_REG,
+					_MASKED_BIT_DISABLE(0x1));
+
+		/* FIXME: confirm VLV behavior with Punit folks */
+		POSTING_READ(VLV_RENDER_FORCE_WAKE_REG);
+
+		if (wait_for_atomic_us(!(I915_READ_NOTRACE(
+			VLV_RENDER_FORCE_WAKE_STATUS_REG) & 0x1), 500))
+			DRM_ERROR("Render Force wake put wait timed out\n");
+
+	}
+
+	/* Check for Media Engine */
+	if (FORCEWAKE_MEDIA & fw_engine) {
+
+		I915_WRITE_NOTRACE(VLV_MEDIA_FORCE_WAKE_REG,
+					_MASKED_BIT_DISABLE(0x1));
+
+		/* FIXME: confirm VLV behavior with Punit folks */
+		POSTING_READ(VLV_MEDIA_FORCE_WAKE_REG);
+
+		if (wait_for_atomic_us(!(I915_READ_NOTRACE(
+			VLV_MEDIA_FORCE_WAKE_STATUS_REG) & 0x1), 500))
+			DRM_ERROR("Force wake put media  wait timed out\n");
+
+	}
+
 }
 
 void intel_gt_init(struct drm_device *dev)
@@ -4186,8 +4295,8 @@ void intel_gt_init(struct drm_device *dev)
 	spin_lock_init(&dev_priv->gt_lock);
 
 	if (IS_VALLEYVIEW(dev)) {
-		dev_priv->gt.force_wake_get = vlv_force_wake_get;
-		dev_priv->gt.force_wake_put = vlv_force_wake_put;
+		dev_priv->gt.force_wake_get = __vlv_force_wake_get;
+		dev_priv->gt.force_wake_put = __vlv_force_wake_put;
 	} else if (INTEL_INFO(dev)->gen >= 6) {
 		dev_priv->gt.force_wake_get = __gen6_gt_force_wake_get;
 		dev_priv->gt.force_wake_put = __gen6_gt_force_wake_put;
@@ -4204,9 +4313,9 @@ void intel_gt_init(struct drm_device *dev)
 			 * forcewake being disabled.
 			 */
 			mutex_lock(&dev->struct_mutex);
-			__gen6_gt_force_wake_mt_get(dev_priv);
+			__gen6_gt_force_wake_mt_get(dev_priv, FORCEWAKE_ALL);
 			ecobus = I915_READ_NOTRACE(ECOBUS);
-			__gen6_gt_force_wake_mt_put(dev_priv);
+			__gen6_gt_force_wake_mt_put(dev_priv, FORCEWAKE_ALL);
 			mutex_unlock(&dev->struct_mutex);
 
 			if (ecobus & FORCEWAKE_MT_ENABLE) {
@@ -4220,3 +4329,260 @@ void intel_gt_init(struct drm_device *dev)
 	}
 }
 
+void vlv_force_wake_get(struct drm_i915_private *dev_priv,
+			int fw_engine)
+{
+	unsigned long irqflags;
+
+	spin_lock_irqsave(&dev_priv->gt_lock, irqflags);
+
+	if (FORCEWAKE_RENDER & fw_engine) {
+
+		if (dev_priv->fw_rendercount++ == 0)
+			dev_priv->gt.force_wake_get(dev_priv, FORCEWAKE_RENDER);
+	}
+
+	if (FORCEWAKE_MEDIA & fw_engine) {
+
+		if (dev_priv->fw_mediacount++ == 0)
+			dev_priv->gt.force_wake_get(dev_priv, FORCEWAKE_MEDIA);
+
+	}
+
+	spin_unlock_irqrestore(&dev_priv->gt_lock, irqflags);
+
+}
+
+void vlv_force_wake_put(struct drm_i915_private *dev_priv,
+			int fw_engine)
+{
+	unsigned long irqflags;
+
+	spin_lock_irqsave(&dev_priv->gt_lock, irqflags);
+
+	if (FORCEWAKE_RENDER & fw_engine) {
+
+		if (--dev_priv->fw_rendercount == 0)
+			dev_priv->gt.force_wake_put(dev_priv, FORCEWAKE_RENDER);
+
+	}
+
+	if (FORCEWAKE_MEDIA & fw_engine) {
+		if (--dev_priv->fw_mediacount == 0)
+			dev_priv->gt.force_wake_put(dev_priv, FORCEWAKE_MEDIA);
+
+	}
+
+	spin_unlock_irqrestore(&dev_priv->gt_lock, irqflags);
+}
+
+void vlv_rs_sleepstateinit(struct drm_device *dev,
+			 bool   disable_rs)
+{
+
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	u32 rs_powerwell_status = 0;
+	u32 regdata = 0;
+	u32 isRenderWellFWreq = 0, isMediaWellFWreq = 0;
+
+	if ((I915_READ(VLV_POWER_CONTEXT_BASE_REG) >> 20) == 0) {
+
+		/* Let driver do the setup subsequently */
+		dev_priv->need_pcbr_setup = true;
+	}
+
+	rs_powerwell_status = I915_READ(VLV_POWER_WELL_STATUS_REG);
+
+
+	/*
+	 * Set allow wake bit if it is cleared. Can happen with
+	 * S0ix scenarios
+	 */
+	if ((rs_powerwell_status & VLV_ALLOW_WAKE_ACK_BIT) == 0) {
+
+		regdata = I915_READ(VLV_GTLC_WAKE_CONTROL_REG);
+
+		regdata |= VLV_ALLOW_WAKE_REQ_BIT;
+
+		I915_WRITE(VLV_GTLC_WAKE_CONTROL_REG, regdata);
+
+		if (wait_for_atomic_us((I915_READ_NOTRACE(
+		VLV_POWER_WELL_STATUS_REG) & VLV_ALLOW_WAKE_ACK_BIT), 500)) {
+
+			DRM_ERROR("Not able to set ALLOW WAKE Bit\n");
+
+			/* Dont enable RC6 */
+			return;
+		}
+
+	}
+
+	/* Check Whether FW ack is required for render well */
+	isRenderWellFWreq = (I915_READ(VLV_POWER_WELL_STATUS_REG) &
+					 VLV_RENDER_WELL_STATUS_MASK);
+
+	/* Wake up the render well */
+	I915_WRITE(VLV_RENDER_FORCE_WAKE_REG,
+			 _MASKED_BIT_ENABLE(GLOBAL_FORCE_WAKE_BIT));
+
+	/* if ack is requred, then wait for it */
+	if (!isRenderWellFWreq) {
+		while ((I915_READ(VLV_RENDER_FORCE_WAKE_STATUS_REG) &
+					GLOBAL_FORCE_WAKE_BIT) == 0)
+			;
+
+	}
+
+	isMediaWellFWreq = (I915_READ(VLV_POWER_WELL_STATUS_REG) &
+				VLV_MEDIA_WELL_STATUS_MASK);
+
+	/* Wake up the media well */
+	I915_WRITE(VLV_MEDIA_FORCE_WAKE_REG,
+			 _MASKED_BIT_ENABLE(GLOBAL_FORCE_WAKE_BIT));
+
+
+	/* if ack is requred, then wait for it */
+	if (!isMediaWellFWreq) {
+		while ((I915_READ(VLV_MEDIA_FORCE_WAKE_STATUS_REG) &
+					GLOBAL_FORCE_WAKE_BIT) == 0)
+			;
+
+	}
+
+	regdata = I915_READ(VLV_GTLC_SURVIVABILITY_REG);
+
+	/*
+	 * Render and Media engines are awake at this point. Update the
+	 * FW counters to reflect the same
+	 */
+	dev_priv->fw_rendercount = dev_priv->fw_mediacount = 1;
+
+	/*
+	 * Disable HW RC if requested. Will be requested during boot as
+	 * it will be enabled at a later point
+	 */
+	if (disable_rs) {
+
+		regdata = I915_READ(VLV_RENDER_C_STATE_CONTROL_1_REG);
+
+
+		regdata &= ~(VLV_EVAL_METHOD_ENABLE_BIT |
+				VLV_EVAL_METHOD_ENABLE_BIT |
+				VLV_TIMEOUT_METHOD_ENABLE_BIT);
+
+		I915_WRITE(VLV_RENDER_C_STATE_CONTROL_1_REG, regdata);
+
+	}
+
+	return;
+}
+
+bool vlv_rs_initialize(struct drm_device *dev)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	struct intel_ring_buffer *ring;
+	int i = 0;
+	u32 regdata = 0;
+
+	/* bail out if BIOS hasnt programmed the PCBR value */
+	regdata = I915_READ(VLV_POWER_CONTEXT_BASE_REG);
+
+	if ((regdata >> 20) == 0) {
+
+		DRM_ERROR("FW or Driver hasnt set PCBR. Cannot enable RC6\n");
+		return 0;
+	}
+
+	/* Selecting the Time-Out method rather than eval interval method */
+
+	/* Set the Rc6 wake limit */
+	I915_WRITE(VLV_RC6_WAKE_RATE_LIMIT_REG, VLV_RC6_WAKE_RATE_LIMIT);
+
+	/* Set the Evaluation interval (in units of micro-seconds) */
+	I915_WRITE(VLV_RC_EVALUATION_INTERVAL_REG, VLV_EVALUATION_INTERVAL);
+
+	/* Set RC6 promotion timers */
+	I915_WRITE(VLV_RC6_RENDER_PROMOTION_TIMER_REG,
+			VLV_RC6_RENDER_PROMOTION_TIMER_TO);
+
+	/* Set the RC idle Hysteresis */
+	I915_WRITE(VLV_RC_IDLE_HYSTERESIS_REG, VLV_RC_IDLE_HYSTERESIS);
+
+	/* Set the idle count for each ring */
+	for_each_ring(ring, dev_priv, i) {
+		I915_WRITE(RING_MAX_IDLE(ring->mmio_base),
+						VLV_RING_IDLE_MAX_COUNT);
+	}
+
+	/* Enable RC state counters */
+	I915_WRITE(VLV_RC_COUNTER_ENABLE_REG, VLV_RC_COUNTER_CONTROL);
+
+	/* Control enabling of RC6 feature based on kernel param. Doing
+	 * this here rather than at the start of this routine as S0ix
+	 * will enable  RC6 as part of suspend sequence and we dont need
+	 * to worry about above initializations upon every suspend
+	 */
+	if (!intel_enable_rc6(dev)) {
+		DRM_DEBUG_DRIVER("RC6 is not enabled\n");
+		return 0;
+	}
+
+
+	/* Enable RC6 by setting the control register */
+	regdata = I915_READ(VLV_RENDER_C_STATE_CONTROL_1_REG);
+
+	regdata |= (1 << 28); /* Timeout method */
+	regdata |= (1 << 24); /* Context Restore request sequence maintain */
+	regdata &= ~(1 << 23); /* Context Save request sequence maintain */
+
+	I915_WRITE(VLV_RENDER_C_STATE_CONTROL_1_REG, regdata);
+
+	/* Let the engines go to RC6 by clearing FW */
+	vlv_force_wake_put(dev_priv, FORCEWAKE_ALL);
+
+	DRM_DEBUG_DRIVER("RC6 is enabled\n");
+
+	return 1;
+}
+
+/*
+ * This routine will
+ * 1. Enable RC6 in control register and put the wells down or
+ * 2. Bring up the wells by doing ForceWake and disable RC6 in control register
+
+ * Can be used to enable/disable RC6 feature at runtime
+ */
+void vlv_rs_setstate(struct drm_device *dev,
+			bool enable)
+{
+	struct drm_i915_private *dev_priv = dev->dev_private;
+	u32 regdata = 0;
+
+	regdata = I915_READ(VLV_RENDER_C_STATE_CONTROL_1_REG);
+
+	if (enable) {
+		regdata |= (1 << 28);
+		regdata |= (1 << 24);
+		regdata &= ~(1 << 23);
+
+		/* Enable RC6 in control register */
+		I915_WRITE(VLV_RENDER_C_STATE_CONTROL_1_REG, regdata);
+
+		/* Let engines go into RS by disabling FW */
+		vlv_force_wake_put(dev_priv, FORCEWAKE_ALL);
+
+		DRM_DEBUG_DRIVER("RC6 feature is enabled\n");
+
+	} else {
+		/* Forcewake all engines first */
+		vlv_force_wake_get(dev_priv, FORCEWAKE_ALL);
+
+		regdata &= ~(1 << 28);
+		regdata &= ~(1 << 24);
+
+		I915_WRITE(VLV_RENDER_C_STATE_CONTROL_1_REG, regdata);
+
+		DRM_DEBUG_DRIVER("RC6 feature is disabled\n");
+	}
+
+}

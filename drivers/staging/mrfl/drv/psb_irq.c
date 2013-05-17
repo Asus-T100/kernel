@@ -26,6 +26,7 @@
 #include "psb_drv.h"
 #include "psb_reg.h"
 #include "psb_msvdx.h"
+#include "mdfld_dsi_dbi_dsr.h"
 
 #ifdef MEDFIELD
 #include "pnw_topaz.h"
@@ -283,16 +284,29 @@ void mdfld_te_handler_work(struct work_struct *work)
 	    container_of(work, struct drm_psb_private, te_work);
 	int pipe = dev_priv->te_pipe;
 	struct drm_device *dev = dev_priv->dev;
+	if (dev_priv->b_async_flip_enable) {
+		/*
+		* will sync with HDMI later
+		*
+		*	if (mipi_te_hdmi_vsync_check(dev, pipe)) {
+		*/
+			if (dev_priv->psb_vsync_handler != NULL)
+				(*dev_priv->psb_vsync_handler)(dev, pipe);
+		/*
+		*	}
+		*/
+		mdfld_dsi_dsr_report_te(dev_priv->dsi_configs[0]);
+	} else {
+		#ifdef CONFIG_MID_DSI_DPU
+			mdfld_dpu_update_panel(dev);
+		#else
+			mdfld_dbi_update_panel(dev, pipe);
+		#endif
+		drm_handle_vblank(dev, pipe);
 
-#ifdef CONFIG_MID_DSI_DPU
-	mdfld_dpu_update_panel(dev);
-#else
-	mdfld_dbi_update_panel(dev, pipe);
-#endif
-	drm_handle_vblank(dev, pipe);
-
-	if (dev_priv->psb_vsync_handler != NULL)
-		(*dev_priv->psb_vsync_handler) (dev, pipe);
+		if (dev_priv->psb_vsync_handler != NULL)
+			(*dev_priv->psb_vsync_handler) (dev, pipe);
+	}
 }
 
 /**
@@ -807,8 +821,10 @@ int psb_enable_vblank(struct drm_device *dev, int pipe)
 	PSB_DEBUG_ENTRY("\n");
 
 	encoder_type = is_panel_vid_or_cmd(dev);
-	if (IS_MRFLD(dev) && (encoder_type == MDFLD_DSI_ENCODER_DBI))
-		return mdfld_enable_te(dev, pipe);
+	if (IS_MRFLD(dev) &&
+		(encoder_type == MDFLD_DSI_ENCODER_DBI) &&
+			(pipe == 0))
+				return 0;
 
 	if (power_island_get(power_island)) {
 		reg_val = REG_READ(pipeconf_reg);
@@ -845,9 +861,10 @@ void psb_disable_vblank(struct drm_device *dev, int pipe)
 	PSB_DEBUG_ENTRY("\n");
 
 	encoder_type = is_panel_vid_or_cmd(dev);
+#if 0
 	if (IS_MRFLD(dev) && (encoder_type == MDFLD_DSI_ENCODER_DBI))
 		mdfld_disable_te(dev, pipe);
-
+#endif
 	dev_priv->b_vblank_enable = false;
 
 	spin_lock_irqsave(&dev_priv->irqmask_lock, irqflags);

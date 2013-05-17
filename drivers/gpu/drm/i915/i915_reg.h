@@ -867,7 +867,7 @@
 #define   GMBUS_RATE_50KHZ	(1<<8)
 #define   GMBUS_RATE_400KHZ	(2<<8) /* reserved on Pineview */
 #define   GMBUS_RATE_1MHZ	(3<<8) /* reserved on Pineview */
-#define   GMBUS_HOLD_EXT	(1<<7) /* 300ns hold time, rsvd on Pineview */
+#define   GMBUS_HOLD_EXT	(1<<15)
 #define   GMBUS_PORT_DISABLED	0
 #define   GMBUS_PORT_SSC	1
 #define   GMBUS_PORT_VGADDC	2
@@ -907,6 +907,7 @@
 #define   GMBUS_HW_RDY_EN	(1<<0)
 #define GMBUS5			0x5120 /* byte index */
 #define   GMBUS_2BYTE_INDEX_EN	(1<<31)
+#define GMBUSFREQ		0x6510
 
 /*
  * Clock control & power management
@@ -1188,8 +1189,8 @@
  * Palette regs
  */
 
-#define _PALETTE_A		0x0a000
-#define _PALETTE_B		0x0a800
+#define _PALETTE_A		0x18a000
+#define _PALETTE_B		0x18a800
 #define PALETTE(pipe) _PIPE(pipe, _PALETTE_A, _PALETTE_B)
 
 /* MCH MMIO space */
@@ -1584,6 +1585,50 @@
 #define VSYNC(pipe) _PIPE(pipe, _VSYNC_A, _VSYNC_B)
 #define BCLRPAT(pipe) _PIPE(pipe, _BCLRPAT_A, _BCLRPAT_B)
 #define VSYNCSHIFT(pipe) _PIPE(pipe, _VSYNCSHIFT_A, _VSYNCSHIFT_B)
+
+
+/* VLV eDP PSR registers */
+#define EDP_PSR_CTL	0x60090
+#define EDP_PSR_ENABLE		(1<<0)
+#define EDP_PSR_RESET		(1<<1)
+#define EDP_PSR_MODE_MASK	(7<<2)
+#define EDP_PSR_MODE_HW_TIMER   (1<<3)
+#define EDP_PSR_MODE_SW_TIMER   (1<<2)
+#define EDP_PSR_SINGLE_FRAME_UPDATE  (1<<7)
+#define EDP_PSR_ACTIVE_ENTRY	(1<<8)
+#define EDP_PSR_SRC_TRANSMITTER_STATE   (1<<9)
+#define EDP_PSR_DBL_FRAME	(1<<10)
+#define EDP_PSR_FRAME_COUNT_MASK     (0xff<<16)
+#define EDP_PSR_INT_TRANSITION	(1 << 24)
+
+#define PIPEA_VSC_SDP_REG 0x600a0
+#define EDP_PSR_SDP_FREQ_MASK (3<<30)
+#define EDP_PSR_SDP_FREQ_ONCE (1<<31)
+#define EDP_PSR_SDP_FREQ_EVFRAME (1<<30)
+
+#define PIPE_FIFO_UNDERRUN	(1 << 31)
+
+#define EDP_PSR_STATUS_CTL	0x60094
+#define EDP_PSR_LAST_STATE_MASK	(7<<3)
+#define  EDP_PSR_CURR_STATE_MASK	7
+#define EDP_PSR_IN_TRANS	(1<<7)
+
+#define PSR_CLK_GATE_DISABLE	0x6204
+#define CLK_DISABLE_PIPE_B	(1<<30)
+
+enum PSR_STATE {
+EDP_PSR_DISABLED = 0,
+EDP_PSR_INACTIVE,
+EDP_PSR_TRANS_ACTIVE,
+EDP_PSR_ACTIVE_NORFB,
+EDP_PSR_ACTIVE_SINGLE_FRAME,
+EDP_PSR_EXIT
+};
+
+enum PSR_MODE {
+EDP_PSR_HW_TIMER = 0,
+EDP_PSR_SW_TIMER
+};
 
 /* VGA port control */
 #define ADPA			0x61100
@@ -2654,6 +2699,8 @@
 #define   PIPECONF_GAMMA		(1<<24)
 #define   PIPECONF_FORCE_BORDER	(1<<25)
 #define   PIPECONF_INTERLACE_MASK	(7 << 21)
+#define   PIPECONF_DISP_OVERLAY_OFF     (1 << 19)
+#define   PIPECONF_CURSOR_OFF           (1 << 18)
 /* Note that pre-gen3 does not support interlaced display directly. Panel
  * fitting must be disabled on pre-ilk for interlaced. */
 #define   PIPECONF_PROGRESSIVE			(0 << 21)
@@ -3083,9 +3130,13 @@
 #define _DSPASIZE		0x70190
 #define _DSPASURF		0x7019C /* 965+ only */
 #define _DSPATILEOFF		0x701A4 /* 965+ only */
+#define _VLV_DSPAADDR		0x7017C
+#define _DSPASURFLIVE		0x701AC
 
 #define DSPCNTR(plane) _PIPE(plane, _DSPACNTR, _DSPBCNTR)
 #define DSPADDR(plane) _PIPE(plane, _DSPAADDR, _DSPBADDR)
+#define VLV_DSPADDR(plane) _PIPE(plane, _VLV_DSPAADDR, _VLV_DSPBADDR)
+#define DSPSURFLIVE(plane) _PIPE(plane, _DSPASURFLIVE, _DSPBSURFLIVE)
 #define DSPSTRIDE(plane) _PIPE(plane, _DSPASTRIDE, _DSPBSTRIDE)
 #define DSPPOS(plane) _PIPE(plane, _DSPAPOS, _DSPBPOS)
 #define DSPSIZE(plane) _PIPE(plane, _DSPASIZE, _DSPBSIZE)
@@ -3137,6 +3188,8 @@
 #define _DSPBSIZE		0x71190
 #define _DSPBSURF		0x7119C
 #define _DSPBTILEOFF		0x711A4
+#define _VLV_DSPBADDR		0x7117C
+#define _DSPBSURFLIVE		0x711AC
 
 /* Sprite A control */
 #define _DVSACNTR		0x72180
@@ -3229,6 +3282,14 @@
 #define   SPRITE_DEST_KEY		(1<<2)
 #define	  SPRITE_FORCE_BOTTOM		(1<<2)
 #define	  SPRITE_ZORDER_ENABLE		(1<<0)
+
+#define P1S1S2C1	0
+#define P1S2S1C1	8
+#define S2P1S1C1        1
+#define S2S1P1C1        9
+#define S1P1S2C1        4
+#define S1S2P1C1        6
+
 #define _SPRA_LINOFF		0x70284
 #define _SPRA_STRIDE		0x70288
 #define _SPRA_POS		0x7028c
@@ -3331,6 +3392,9 @@
 #define SPTILEOFF(pipe, plane) _PIPE(pipe * 2 + plane, _SPATILEOFF, _SPBTILEOFF)
 #define SPCONSTALPHA(pipe, plane) _PIPE(pipe * 2 + plane, _SPACONSTALPHA, _SPBCONSTALPHA)
 #define SPGAMC(pipe, plane) _PIPE(pipe * 2 + plane, _SPAGAMC, _SPBGAMC)
+
+#define	  PLANE_RESERVED_REG_BIT_2_ENABLE	(1 << 2)
+#define          CURSOR_DECRYPTION_ENABLE      (1<<4)
 
 /* VBIOS regs */
 #define VGACNTRL		0x71400
@@ -4092,6 +4156,9 @@
 #define PCH_LVDS	0xe1180
 #define  LVDS_DETECTED	(1 << 1)
 
+#define DISP_SCREEN_OFF		0
+#define DISP_SCREEN_ON		1
+
 /* vlv has 2 sets of panel control regs. */
 #define PIPEA_PP_STATUS         0x61200
 #define PIPEA_PP_CONTROL        0x61204
@@ -4244,6 +4311,41 @@
 #define  ECOBUS					0xa180
 #define    FORCEWAKE_MT_ENABLE			(1<<5)
 
+#define VLV_RENDER_C_STATE_CONTROL_1_REG	0xA090
+#define VLV_RC6_WAKE_RATE_LIMIT_REG		0xA09c
+#define VLV_RC_EVALUATION_INTERVAL_REG		0xA0A8
+#define VLV_RC6_RENDER_PROMOTION_TIMER_REG	0xA0B8
+#define VLV_RC_IDLE_HYSTERESIS_REG		0xA0AC
+
+#define VLV_POWER_CONTEXT_BASE_REG		0x182120
+#define VLV_GTLC_SURVIVABILITY_REG		0x130098
+#define VLV_POWER_WELL_STATUS_REG		0x130094
+#define VLV_GTLC_WAKE_CONTROL_REG		0x130090
+#define VLV_RENDER_FORCE_WAKE_REG		0x1300B0
+#define VLV_MEDIA_FORCE_WAKE_REG		0x1300B8
+#define VLV_RENDER_FORCE_WAKE_STATUS_REG	0x1300B4
+#define VLV_MEDIA_FORCE_WAKE_STATUS_REG		0x1300BC
+
+#define VLV_DISPLAY_RENDER_RESPONSE_REG		0x44050
+#define VLV_RC_COUNTER_ENABLE_REG		0x138104
+
+#define VLV_ALLOW_WAKE_REQ_BIT			0x00000001
+#define VLV_ALLOW_WAKE_ACK_BIT			0x00000001
+#define VLV_RENDER_WELL_STATUS_MASK		0x00000080
+#define VLV_MEDIA_WELL_STATUS_MASK		0x00000020
+#define GLOBAL_FORCE_WAKE_BIT			0x00000001
+#define VLV_EVAL_METHOD_ENABLE_BIT		0x08000000
+#define VLV_TIMEOUT_METHOD_ENABLE_BIT		0x10000000
+
+#define VLV_RC6_WAKE_RATE_LIMIT			(0x28 << 16)
+#define VLV_EVALUATION_INTERVAL			0x0001E848 /* EI 160 ms */
+#define VLV_RC6_RENDER_PROMOTION_TIMER_EI	0x0000C350
+#define VLV_RC6_RENDER_PROMOTION_TIMER_TO	0x00000557
+#define VLV_RC_IDLE_HYSTERESIS			0x00000019
+#define VLV_RING_IDLE_MAX_COUNT			0xA
+#define VLV_RC_COUNTER_CONTROL			0xFFFF00FF
+
+
 #define  GTFIFODBG				0x120000
 #define    GT_FIFO_CPU_ERROR_MASK		7
 #define    GT_FIFO_OVFERR			(1<<2)
@@ -4252,6 +4354,7 @@
 
 #define  GT_FIFO_FREE_ENTRIES			0x120008
 #define    GT_FIFO_NUM_RESERVED_ENTRIES		20
+#define GT_FIFO_NUM_WRITE_THRESHOLD		48
 
 #define GEN6_UCGCTL1				0x9400
 # define GEN6_BLBUNIT_CLOCK_GATE_DISABLE		(1 << 5)

@@ -34,6 +34,8 @@
 #include <linux/pm_runtime.h>
 #include <linux/acpi.h>
 #include <linux/acpi_gpio.h>
+#include <linux/extcon/extcon-fsa9285.h>
+#include <linux/power/byt_ulpmc_battery.h>
 #include <asm/intel_crystalcove_pwrsrc.h>
 
 /* FSA9285 I2C registers */
@@ -134,6 +136,7 @@ static const char *fsa9285_extcon_cable[] = {
 
 struct fsa9285_chip {
 	struct i2c_client	*client;
+	struct fsa9285_pdata	*pdata;
 	struct usb_phy		*otg;
 	struct extcon_dev	*edev;
 	int mux_gpio;
@@ -262,12 +265,21 @@ static int fsa9285_detect_dev(struct fsa9285_chip *chip)
 
 	/* VBUS control */
 	if (drive_vbus)
-		ret = crystal_cove_enable_vbus();
+		ret = chip->pdata->enable_vbus();
 	else
-		ret = crystal_cove_disable_vbus();
+		ret = chip->pdata->disable_vbus();
 	if (ret < 0)
 		dev_warn(&chip->client->dev,
 			"pmic vbus control failed\n");
+
+	/* handle SDP case before enabling CHG_DETB */
+	if (w_man_chg_cntl & CHGCTRL_ASSERT_CHG_DETB)
+		ret = chip->pdata->sdp_pre_setup();
+	else
+		ret = chip->pdata->sdp_post_setup();
+	if (ret < 0)
+		dev_warn(&chip->client->dev,
+			"sdp cable control failed\n");
 
 	if (vbus_mask)
 		gpio_direction_output(chip->mux_gpio, 1);
@@ -425,6 +437,39 @@ irq_i2c_failed:
 	return ret;
 }
 
+/*
+ * function get_platform_data and
+ * related fucntions are added as
+ * WA to support multiple platforms
+ * based on SPID.
+ */
+static struct fsa9285_pdata fsa_pdata;
+static int fsa_dummy_vbus_enable(void)
+{
+	return 0;
+}
+static int fsa_dummy_vbus_disable(void)
+{
+	return 0;
+}
+static int fsa_dummy_sdp_pre_setup(void)
+{
+	return 0;
+}
+static int fsa_dummy_sdp_post_setup(void)
+{
+	return 0;
+}
+static void *get_platform_data(void)
+{
+	fsa_pdata.enable_vbus = crystal_cove_enable_vbus;
+	fsa_pdata.disable_vbus = crystal_cove_disable_vbus;
+	fsa_pdata.sdp_pre_setup = byt_ulpmc_suspend_sdp_charging;
+	fsa_pdata.sdp_post_setup = byt_ulpmc_reset_charger;
+
+	return &fsa_pdata;
+}
+
 static int fsa9285_probe(struct i2c_client *client,
 			 const struct i2c_device_id *id)
 {
@@ -450,6 +495,7 @@ static int fsa9285_probe(struct i2c_client *client,
 	}
 
 	chip->client = client;
+	chip->pdata = get_platform_data();
 	i2c_set_clientdata(client, chip);
 
 	/* register with extcon */

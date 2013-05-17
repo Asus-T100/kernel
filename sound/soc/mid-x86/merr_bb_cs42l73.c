@@ -46,8 +46,8 @@
 #include "ctp_comms_common.h"
 #include "merr_bb_cs42l73.h"
 
-#define GPIO_AMP_ON		0x30
-#define GPIO_AMP_OFF		0x31
+#define GPIO_AMP_BB_ON		0x30
+#define GPIO_AMP_BB_OFF		0x31
 #define GPIO2CTLO		0x80
 
 /* As per the codec spec the mic2_sdet debounce delay is 20ms.
@@ -62,12 +62,12 @@ int merr_bb_amp_event(struct snd_soc_dapm_widget *w,
 
 	if (SND_SOC_DAPM_EVENT_ON(event)) {
 		/*Enable  IHFAMP_SD_N  GPIO */
-		ret = intel_scu_ipc_iowrite8(GPIO2CTLO, GPIO_AMP_ON);
+		ret = intel_scu_ipc_iowrite8(GPIO2CTLO, GPIO_AMP_BB_ON);
 		if (ret)
 			pr_err("write of  failed, err %d\n", ret);
 	} else {
 		/*Disable  IHFAMP_SD_N  GPIO */
-		ret = intel_scu_ipc_iowrite8(GPIO2CTLO, GPIO_AMP_OFF);
+		ret = intel_scu_ipc_iowrite8(GPIO2CTLO, GPIO_AMP_BB_OFF);
 		if (ret)
 			pr_err("write of  failed, err %d\n", ret);
 	}
@@ -119,17 +119,16 @@ static int merr_bb_cs42l73_startup(struct snd_pcm_substream *substream)
 	return 0;
 }
 
-static int merr_bb_cs42l73_shutdown(struct snd_pcm_substream *substream)
+static void merr_bb_cs42l73_shutdown(struct snd_pcm_substream *substream)
 {
 	unsigned int device = substream->pcm->device;
 	switch (device) {
 	case MERR_BB_AUD_VSP_DEV:
 		ctp_config_voicecall_flag(substream, false);
+		break;
 	default:
 		pr_err("Invalid device\n");
-		return -EINVAL;
 	}
-	return 0;
 }
 
 static int merr_bb_cs42l73_hw_params(struct snd_pcm_substream *substream,

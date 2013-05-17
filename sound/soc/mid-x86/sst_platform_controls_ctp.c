@@ -21,7 +21,7 @@
  * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  */
 #include <linux/slab.h>
-
+#include <sound/intel_sst_ioctl.h>
 #include <sound/soc.h>
 #include "sst_platform.h"
 #include "sst_platform_pvt.h"
@@ -121,7 +121,6 @@ static int lpe_mixer_headset_set(struct snd_kcontrol *kcontrol,
 static int sst_probe_byte_control_get(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_value *ucontrol)
 {
-	int ret = 0;
 
 	return sst_dsp->ops->set_generic_params(SST_GET_PROBE_BYTE_STREAM,
 				ucontrol->value.bytes.data);
@@ -130,7 +129,6 @@ static int sst_probe_byte_control_get(struct snd_kcontrol *kcontrol,
 static int sst_probe_byte_control_set(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_value *ucontrol)
 {
-	int ret = 0;
 
 	return sst_dsp->ops->set_generic_params(SST_SET_PROBE_BYTE_STREAM,
 				ucontrol->value.bytes.data);

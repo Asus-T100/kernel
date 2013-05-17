@@ -462,7 +462,7 @@ static struct snd_soc_dai_link ctp_ht_wm5102_dailink[] = {
 		.platform_name = "sst-platform",
 		.init = NULL,
 		.ignore_suspend = 1,
-		.ops = &ctp_wm5102_asp_compr_ops,
+		.compr_ops = &ctp_wm5102_asp_compr_ops,
 	},
 	[CTP_HT_COMMS_BT_SCO_DEV] = {
 		.name = "Cloverview BT XSP",
