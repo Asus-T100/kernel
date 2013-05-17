@@ -1115,17 +1115,23 @@ program_input_formatter(struct sh_css_pipe *pipe,
          * Instead, IF_A and IF_B output (VMEM) addresses should be
          * swapped for this purpose (@Gokturk).
          */
-        if (two_ppc && input_is_raw && start_column%2 == 1) {
-           /* Still correct for center of image. Just subtract the part
-            * (which used to be correcting bayer order, now we do it by
-            * swapping the buffers) */
-           start_column   = start_column - 1;
-           start_column_b = start_column;
+        if (two_ppc && input_is_raw) {
+		if (start_column%2 == 1) {
+			/* Still correct for center of image. Just subtract 
+			 * the part (which used to be correcting bayer order,
+			 * now we do it by swapping the buffers) */
+			start_column   = start_column - 1;
+			
+			/* Buffer start address swap from (0, buf_offset_b) ->
+			 * (buf_offset_b, 0) */
+			buf_offset_a = buf_offset_b;
+			buf_offset_b = 0;
+		}
 
-           /* Buffer start address swap from (0, buf_offset_b) ->
-            * (buf_offset_b, 0) */
-           buf_offset_a = buf_offset_b;
-           buf_offset_b = 0;
+		/* Since each IF gets every two pixel in twoppc case, 
+		 * we need to halve the start_column per IF. */
+		start_column /= 2;
+		start_column_b = start_column;
         }
 	
 	if_a_config.start_line = start_line;
