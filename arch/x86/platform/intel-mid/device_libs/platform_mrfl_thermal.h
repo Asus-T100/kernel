@@ -17,4 +17,9 @@
 
 extern void __init *mrfl_thermal_platform_data(void *)
 			__attribute__((weak));
+
+enum {
+	mrfl_thermal,
+};
+
 #endif

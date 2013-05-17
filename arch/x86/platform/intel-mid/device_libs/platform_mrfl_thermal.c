@@ -16,10 +16,62 @@
 #include <linux/kernel.h>
 #include <linux/mfd/intel_msic.h>
 #include <linux/platform_device.h>
-
+#include <asm/intel_mid_thermal.h>
 #include <asm/intel-mid.h>
 #include <asm/intel_mid_remoteproc.h>
 #include "platform_mrfl_thermal.h"
+
+/* 'enum' of Thermal ADC channels */
+enum thermal_adc_channels { SYS0, SYS1, SYS2, PMIC_DIE };
+
+static int linear_temp_correlation(void *info, long temp, long *res)
+{
+	struct intel_mid_thermal_sensor *sensor = info;
+
+	*res = ((temp * sensor->slope) / 1000) + sensor->intercept;
+
+	return 0;
+}
+
+/*
+ * Naming convention:
+ * skin0 -> front skin,
+ * skin1--> back skin
+ */
+
+static struct intel_mid_thermal_sensor mrfl_sensors[] = {
+	{
+		.name = SKIN0_NAME,
+		.index = SYS2,
+		.slope = 969,
+		.intercept = -3741,
+		.temp_correlation = linear_temp_correlation,
+		.direct = false,
+	},
+	{
+		.name = SKIN1_NAME,
+		.index = SYS0,
+		.slope = 966,
+		.intercept = -2052,
+		.temp_correlation = linear_temp_correlation,
+		.direct = false,
+	},
+	{
+		.name = MSIC_DIE_NAME,
+		.index = PMIC_DIE,
+		.slope = 1000,
+		.intercept = 0,
+		.temp_correlation = linear_temp_correlation,
+		.direct = true,
+	},
+};
+
+static struct intel_mid_thermal_platform_data pdata[] = {
+	[mrfl_thermal] = {
+		.num_sensors = 3,
+		.sensors = mrfl_sensors,
+	},
+};
 
 void __init *mrfl_thermal_platform_data(void *info)
 {
@@ -40,6 +92,8 @@ void __init *mrfl_thermal_platform_data(void *info)
 		platform_device_put(pdev);
 		return NULL;
 	}
+
+	pdev->dev.platform_data = &pdata[mrfl_thermal];
 
 	install_irq_resource(pdev, entry->irq);
 	register_rpmsg_service("rpmsg_mrfl_thermal", RPROC_SCU,

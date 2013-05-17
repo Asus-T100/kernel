@@ -39,7 +39,7 @@
 #include <asm/intel_scu_pmic.h>
 #include <asm/intel_mid_rpmsg.h>
 #include <asm/intel_basincove_gpadc.h>
-
+#include <asm/intel_mid_thermal.h>
 #include "../staging/iio/consumer.h"
 
 #define DRIVER_NAME "bcove_thrm"
@@ -89,9 +89,6 @@
 /* 'enum' of Thermal sensors */
 enum thermal_sensors { SYS0, SYS1, SYS2, PMIC_DIE, _COUNT };
 
-/* ADC channels for the sensors. Order: SYS0 SYS1 SYS2 PMIC_DIE */
-static const int adc_channels[] = { GPADC_SYSTEMP0, GPADC_SYSTEMP1,
-				GPADC_SYSTEMP2, GPADC_PMICTEMP };
 /*
  * Alert registers store the 'alert' temperature for each sensor,
  * as 10 bit ADC code. The higher two bits are stored in bits[0:1] of
@@ -123,9 +120,7 @@ static const int adc_code[2][TABLE_LENGTH] = {
 static DEFINE_MUTEX(thrm_update_lock);
 
 struct thermal_device_info {
-	int sensor_index;
-	/* If 'direct', no table lookup is required */
-	bool is_direct;
+	struct intel_mid_thermal_sensor *sensor;
 };
 
 struct thermal_data {
@@ -138,6 +133,8 @@ struct thermal_data {
 	bool is_initialized;
 	unsigned long last_updated;
 	int cached_vals[PMIC_THERMAL_SENSORS];
+	int num_sensors;
+	struct intel_mid_thermal_sensor *sensors;
 };
 static struct thermal_data *tdata;
 
@@ -336,7 +333,10 @@ static int program_tmax(struct device *dev)
 	ret = temp_to_adc(1, DEFAULT_MAX_TEMP, &pmic_die_val);
 	if (ret)
 		return ret;
-
+	/*
+	 * Since this function sets max value, do for all sensors even if
+	 * the sensor does not register as a thermal zone.
+	 */
 	for (i = 0; i < PMIC_THERMAL_SENSORS - 1; i++) {
 		ret = set_tmax(alert_regs_h[i], adc_val);
 		if (ret)
@@ -356,12 +356,12 @@ exit_err:
 }
 
 static ssize_t store_trip_hyst(struct thermal_zone_device *tzd,
-				int trip, unsigned long hyst)
+				int trip, long hyst)
 {
 	int ret;
 	uint8_t data;
 	struct thermal_device_info *td_info = tzd->devdata;
-	int alert_reg = alert_regs_h[td_info->sensor_index];
+	int alert_reg = alert_regs_h[td_info->sensor->index];
 
 	/* Hysteresis value is 5 bits wide */
 	if (hyst > 31)
@@ -384,12 +384,12 @@ ipc_fail:
 }
 
 static ssize_t show_trip_hyst(struct thermal_zone_device *tzd,
-				int trip, unsigned long *hyst)
+				int trip, long *hyst)
 {
 	int ret;
 	uint8_t data;
 	struct thermal_device_info *td_info = tzd->devdata;
-	int alert_reg = alert_regs_h[td_info->sensor_index];
+	int alert_reg = alert_regs_h[td_info->sensor->index];
 
 	mutex_lock(&thrm_update_lock);
 
@@ -403,11 +403,11 @@ static ssize_t show_trip_hyst(struct thermal_zone_device *tzd,
 }
 
 static ssize_t store_trip_temp(struct thermal_zone_device *tzd,
-				int trip, unsigned long trip_temp)
+				int trip, long trip_temp)
 {
 	int ret, adc_val;
 	struct thermal_device_info *td_info = tzd->devdata;
-	int alert_reg = alert_regs_h[td_info->sensor_index];
+	int alert_reg = alert_regs_h[td_info->sensor->index];
 
 	if (trip_temp < 1000) {
 		dev_err(&tzd->device, "Temperature should be in mC\n");
@@ -419,7 +419,7 @@ static ssize_t store_trip_temp(struct thermal_zone_device *tzd,
 	/* Convert from mC to C */
 	trip_temp /= 1000;
 
-	ret = temp_to_adc(td_info->is_direct, (int)trip_temp, &adc_val);
+	ret = temp_to_adc(td_info->sensor->direct, (int)trip_temp, &adc_val);
 	if (ret)
 		goto exit;
 
@@ -430,12 +430,12 @@ exit:
 }
 
 static ssize_t show_trip_temp(struct thermal_zone_device *tzd,
-				int trip, unsigned long *trip_temp)
+				int trip, long *trip_temp)
 {
 	int ret, adc_val;
 	uint8_t l, h;
 	struct thermal_device_info *td_info = tzd->devdata;
-	int alert_reg = alert_regs_h[td_info->sensor_index];
+	int alert_reg = alert_regs_h[td_info->sensor->index];
 
 	mutex_lock(&thrm_update_lock);
 
@@ -450,7 +450,7 @@ static ssize_t show_trip_temp(struct thermal_zone_device *tzd,
 	/* Concatenate 'h' and 'l' to get 10-bit ADC code */
 	adc_val = ((h & 0x03) << 8) | l;
 
-	ret = adc_to_temp(td_info->is_direct, adc_val, trip_temp);
+	ret = adc_to_temp(td_info->sensor->direct, adc_val, trip_temp);
 exit:
 	mutex_unlock(&thrm_update_lock);
 	return ret;
@@ -465,11 +465,11 @@ static ssize_t show_trip_type(struct thermal_zone_device *tzd,
 	return 0;
 }
 
-static ssize_t show_temp(struct thermal_zone_device *tzd, unsigned long *temp)
+static ssize_t show_temp(struct thermal_zone_device *tzd, long *temp)
 {
 	int ret;
 	struct thermal_device_info *td_info = tzd->devdata;
-	int indx = td_info->sensor_index;
+	int indx = td_info->sensor->index;
 
 	if (!tdata->iio_chan)
 		return -EINVAL;
@@ -488,7 +488,14 @@ static ssize_t show_temp(struct thermal_zone_device *tzd, unsigned long *temp)
 		tdata->is_initialized = true;
 	}
 
-	ret = adc_to_temp(td_info->is_direct, tdata->cached_vals[indx], temp);
+	ret = adc_to_temp(td_info->sensor->direct, tdata->cached_vals[indx],
+								temp);
+	if (ret)
+		goto exit;
+
+	if (td_info->sensor->temp_correlation)
+		ret = td_info->sensor->temp_correlation(td_info->sensor,
+							*temp, temp);
 exit:
 	mutex_unlock(&thrm_update_lock);
 	return ret;
@@ -512,7 +519,8 @@ ipc_fail:
 	return ret;
 }
 
-static struct thermal_device_info *initialize_sensor(int index)
+static struct thermal_device_info *initialize_sensor(
+				struct intel_mid_thermal_sensor *sensor)
 {
 	struct thermal_device_info *td_info =
 		kzalloc(sizeof(struct thermal_device_info), GFP_KERNEL);
@@ -520,10 +528,7 @@ static struct thermal_device_info *initialize_sensor(int index)
 	if (!td_info)
 		return NULL;
 
-	td_info->sensor_index = index;
-
-	if (index == PMIC_DIE)
-		td_info->is_direct = true;
+	td_info->sensor = sensor;
 
 	return td_info;
 }
@@ -607,8 +612,13 @@ static struct thermal_zone_device_ops tzd_ops = {
 static int mrfl_thermal_probe(struct platform_device *pdev)
 {
 	int ret, i;
-	static char *name[PMIC_THERMAL_SENSORS] = {
-			"SYSTHERM0", "SYSTHERM1", "SYSTHERM2", "PMICDIE" };
+	struct intel_mid_thermal_platform_data *pdata;
+
+	pdata = pdev->dev.platform_data;
+	if (!pdata) {
+		dev_err(&pdev->dev, "platform data not found\n");
+		return -EINVAL;
+	}
 
 	tdata = kzalloc(sizeof(struct thermal_data), GFP_KERNEL);
 	if (!tdata) {
@@ -617,6 +627,8 @@ static int mrfl_thermal_probe(struct platform_device *pdev)
 	}
 
 	tdata->pdev = pdev;
+	tdata->num_sensors = pdata->num_sensors;
+	tdata->sensors = pdata->sensors;
 	tdata->irq = platform_get_irq(pdev, 0);
 	platform_set_drvdata(pdev, tdata);
 
@@ -627,7 +639,12 @@ static int mrfl_thermal_probe(struct platform_device *pdev)
 		goto exit_free;
 	}
 
-	/* Register with IIO to sample temperature values */
+	/*
+	 * Register with IIO to sample temperature values
+	 *
+	 * Order of the channels obtained from adc:
+	 * "SYSTHERM0", "SYSTHERM1", "SYSTHERM2", "PMICDIE"
+	 */
 	tdata->iio_chan = iio_st_channel_get_all("THERMAL");
 	if (tdata->iio_chan == NULL) {
 		dev_err(&pdev->dev, "tdata->iio_chan is null\n");
@@ -644,15 +661,16 @@ static int mrfl_thermal_probe(struct platform_device *pdev)
 	}
 
 	/* Register each sensor with the generic thermal framework */
-	for (i = 0; i < PMIC_THERMAL_SENSORS; i++) {
-		tdata->tzd[i] = thermal_zone_device_register(name[i],
-					1, 1, initialize_sensor(i), &tzd_ops,
-					0, 0, 0, 0);
+	for (i = 0; i < tdata->num_sensors; i++) {
+		tdata->tzd[i] = thermal_zone_device_register(
+				tdata->sensors[i].name,	1, 1,
+		initialize_sensor(&tdata->sensors[i]), &tzd_ops, 0, 0, 0, 0);
+
 		if (IS_ERR(tdata->tzd[i])) {
 			ret = PTR_ERR(tdata->tzd[i]);
 			dev_err(&pdev->dev,
 				"registering thermal sensor %s failed: %d\n",
-				name[i], ret);
+				tdata->sensors[i].name, ret);
 			goto exit_reg;
 		}
 	}
@@ -716,7 +734,7 @@ static int mrfl_thermal_remove(struct platform_device *pdev)
 	if (!tdata)
 		return 0;
 
-	for (i = 0; i < PMIC_THERMAL_SENSORS; i++)
+	for (i = 0; i < tdata->num_sensors; i++)
 		thermal_zone_device_unregister(tdata->tzd[i]);
 
 	free_irq(tdata->irq, tdata);
