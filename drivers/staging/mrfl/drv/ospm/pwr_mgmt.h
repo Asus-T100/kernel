@@ -154,13 +154,9 @@ u32 pipe_to_island(u32 pipe);
 bool ospm_power_using_hw_begin(int hw_island, u32 usage);
 void ospm_power_using_hw_end(int hw_island);
 
-bool ospm_power_using_video_begin(int hw_island);
-void ospm_power_using_video_end(int hw_island);
-
 void ospm_apm_power_down_msvdx(struct drm_device *dev, int on);
 bool ospm_power_is_hw_on(u32 hw_island);
 void ospm_apm_power_down_topaz(struct drm_device *dev);
-int ospm_apm_power_down_vsp(struct drm_device *dev);
 int ospm_runtime_pm_allow(struct drm_device *dev);
 void ospm_runtime_pm_forbid(struct drm_device *dev);
 

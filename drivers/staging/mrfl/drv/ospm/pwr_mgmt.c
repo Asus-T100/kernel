@@ -257,23 +257,9 @@ static bool power_up_island(struct ospm_power_island *p_island)
 		/* power on the island */
 		OSPM_DPF("Power up island %x\n", p_island->island);
 		ret = p_island->p_funcs->power_up(g_ospm_data->dev, p_island);
-		if (ret) {
+		if (ret)
 			p_island->island_state = OSPM_POWER_ON;
-
-			/*
-			* FIXME: revisit to check whether the 1st level
-			* interrupts of VED/VEC/VSP need to be turned on here.
-			*/
-			/* Video irq need to be set */
-			if (p_island->island & OSPM_VIDEO_VPP_ISLAND) {
-				psb_irq_preinstall_islands(
-					g_ospm_data->dev,
-					p_island->island);
-				psb_irq_postinstall_islands(
-					g_ospm_data->dev,
-					p_island->island);
-			}
-		} else
+		else
 			return ret;
 	}
 
@@ -591,22 +577,6 @@ void ospm_power_using_hw_end(int hw_island)
 	power_island_put(hw_island);
 }
 
-void ospm_power_using_video_end(int hw_island)
-{
-	if (hw_island == OSPM_VIDEO_DEC_ISLAND)
-		return;
-
-	ospm_power_using_hw_end(hw_island);
-}
-
-bool ospm_power_using_video_begin(int hw_island)
-{
-	if (hw_island == OSPM_VIDEO_DEC_ISLAND)
-		return true;
-
-	return ospm_power_using_hw_begin(hw_island, 0);
-}
-
 void ospm_apm_power_down_msvdx(struct drm_device *dev, int force_off)
 {
 	struct ospm_power_island *p_island;
@@ -672,49 +642,6 @@ void ospm_apm_power_down_topaz(struct drm_device *dev)
 out:
 	spin_unlock_irqrestore(&g_ospm_data->ospm_lock, flags);
 	return;
-}
-
-int ospm_apm_power_down_vsp(struct drm_device *dev)
-{
-	struct ospm_power_island *vsp_island;
-	int ret = 0;
-	bool pm_ret;
-	unsigned long flags;
-
-	spin_lock_irqsave(&g_ospm_data->ospm_lock, flags);
-
-	vsp_island = get_island_ptr(OSPM_VIDEO_VPP_ISLAND);
-	if (!vsp_island) {
-		PSB_DEBUG_PM("Couldn't get VSP island!\n");
-		goto out;
-	}
-
-	if (!ospm_power_is_hw_on(OSPM_VIDEO_VPP_ISLAND)) {
-		PSB_DEBUG_PM("VSP have been power off!\n");
-		goto out;
-	}
-
-	if (atomic_read(&vsp_island->ref_count)) {
-		PSB_DEBUG_PM("The VSP ref_count is NOT 0\n");
-		ret = -EBUSY;
-		goto out;
-	}
-
-	pm_ret = vsp_island->p_funcs->power_down(
-				g_ospm_data->dev,
-				vsp_island);
-	if (pm_ret == false) {
-		PSB_DEBUG_PM("Power OFF VSP island failed!\n");
-		ret = -EBUSY;
-		goto out;
-	}
-
-	vsp_island->island_state = OSPM_POWER_OFF;
-	PSB_DEBUG_PM("VSP island is powered off!\n");
-
-out:
-	spin_unlock_irqrestore(&g_ospm_data->ospm_lock, flags);
-	return ret;
 }
 
 int ospm_runtime_pm_allow(struct drm_device *dev)
