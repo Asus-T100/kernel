@@ -43,6 +43,9 @@
 #define INTEL_CLV_DMAC1_ID		0x08F0
 #define INTEL_MRFLD_GP_DMAC2_ID         0x11A2
 #define INTEL_MRFLD_DMAC0_ID		0x119B
+#define INTEL_BYT_LPIO1_DMAC_ID		0x0F06
+#define INTEL_BYT_LPIO2_DMAC_ID		0x0F40
+
 #define LNW_PERIPHRAL_MASK_SIZE		0x20
 
 struct intel_mid_dma_probe_info {
@@ -1649,6 +1652,11 @@ static int mid_setup_dma(struct pci_dev *pdev)
 	INIT_LIST_HEAD(&dma->common.channels);
 	dma->pci_id = pdev->device;
 
+	/* FIXME: hack to not enable IRQ for LPIO DMAC */
+	if (dma->pci_id == INTEL_BYT_LPIO1_DMAC_ID ||
+	    dma->pci_id == INTEL_BYT_LPIO2_DMAC_ID)
+		return 0;
+
 	if (dma->pimr_mask) {
 		dma->mask_reg = ioremap(dma->pimr_base, LNW_PERIPHRAL_MASK_SIZE);
 		if (dma->mask_reg == NULL) {
@@ -1914,6 +1922,11 @@ int dma_suspend(struct device *dev)
 	struct middma_device *device = dev_get_drvdata(dev);
 	pr_debug("MDMA: dma_suspend called\n");
 
+	/* FIXME: hack to not enable IRQ for LPIO DMAC */
+	if (device->pci_id == INTEL_BYT_LPIO1_DMAC_ID ||
+	    device->pci_id == INTEL_BYT_LPIO2_DMAC_ID)
+		return 0;
+
 	for (i = 0; i < device->max_chan; i++) {
 		if (device->ch[i].in_use)
 			return -EAGAIN;
@@ -1936,6 +1949,11 @@ int dma_resume(struct device *dev)
 	struct middma_device *device = dev_get_drvdata(dev);
 
 	pr_debug("MDMA: dma_resume called\n");
+	/* FIXME: hack to not enable IRQ for LPIO DMAC */
+	if (device->pci_id == INTEL_BYT_LPIO1_DMAC_ID ||
+	    device->pci_id == INTEL_BYT_LPIO2_DMAC_ID)
+		return 0;
+
 	device->state = RUNNING;
 	iowrite32(REG_BIT0, device->dma_base + DMA_CFG);
 
@@ -1989,6 +2007,11 @@ static struct pci_device_id intel_mid_dma_ids[] = {
 					INFO(4, 0, 131071, 0, 0, 0, 0, &v2_dma_ops)},
 	{ PCI_VDEVICE(INTEL, INTEL_MRFLD_DMAC0_ID),
 					INFO(2, 6, 131071, 0xFF0000, 0xFF340018, 0, 0x10, &v2_dma_ops)},
+	/* Baytrauk Low Speed Peripheral DMA */
+	{ PCI_VDEVICE(INTEL, INTEL_BYT_LPIO1_DMAC_ID),
+					INFO(2, 0, 2047, 0, 0, 1, 0, &v1_dma_ops)},
+	{ PCI_VDEVICE(INTEL, INTEL_BYT_LPIO2_DMAC_ID),
+					INFO(2, 0, 2047, 0, 0, 1, 0, &v1_dma_ops)},
 	{ 0, }
 };
 MODULE_DEVICE_TABLE(pci, intel_mid_dma_ids);
@@ -2002,7 +2025,7 @@ static const struct dev_pm_ops intel_mid_dma_pm = {
 };
 
 static struct pci_driver intel_mid_dma_pci_driver = {
-	.name		=	"Intel MID DMA",
+	.name		=	"intel_mid_dma",
 	.id_table	=	intel_mid_dma_ids,
 	.probe		=	intel_mid_dma_probe,
 	.remove		=	__devexit_p(intel_mid_dma_remove),
@@ -2013,21 +2036,10 @@ static struct pci_driver intel_mid_dma_pci_driver = {
 #endif
 };
 
-static int __init intel_mid_dma_init(void)
-{
-	pr_debug("INFO_MDMA: LNW DMA Driver Version %s\n",
-			INTEL_MID_DMA_DRIVER_VERSION);
-	return pci_register_driver(&intel_mid_dma_pci_driver);
-}
-fs_initcall(intel_mid_dma_init);
-
-static void __exit intel_mid_dma_exit(void)
-{
-	pci_unregister_driver(&intel_mid_dma_pci_driver);
-}
-module_exit(intel_mid_dma_exit);
+module_pci_driver(intel_mid_dma_pci_driver);
 
 MODULE_AUTHOR("Vinod Koul <vinod.koul@intel.com>");
 MODULE_DESCRIPTION("Intel (R) MID DMAC Driver");
 MODULE_LICENSE("GPL v2");
 MODULE_VERSION(INTEL_MID_DMA_DRIVER_VERSION);
+MODULE_ALIAS("pci:intel_mid_dma");
