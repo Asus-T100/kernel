@@ -3160,7 +3160,15 @@ static int gsmtty_open(struct tty_struct *tty, struct file *filp)
 	if (dlci->gsm->dlci[0]->state != DLCI_OPEN)
 		return -EACCES;
 	if (dlci->state == DLCI_CLOSING)
-		return -EAGAIN;
+		/* if we are in blocking mode, wait the end of the closing */
+		if (!(filp->f_flags & O_NONBLOCK)) {
+			t = wait_event_timeout(gsm->event,
+					dlci->state == DLCI_CLOSED,
+					gsm->n2 * gsm->t1 * HZ / 100);
+			if (!t)
+				return -ENXIO;
+		} else
+			return -EAGAIN;
 	port = &dlci->port;
 	port->count++;
 	tty_port_tty_set(port, tty);
