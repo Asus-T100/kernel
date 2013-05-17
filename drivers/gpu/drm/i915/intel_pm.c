@@ -3711,7 +3711,14 @@ static void valleyview_init_clock_gating(struct drm_device *dev)
 		   GEN7_CSC1_RHWO_OPT_DISABLE_IN_RCC);
 
 	/* WaApplyL3ControlAndL3ChickenMode requires those two on Ivy Bridge */
-	I915_WRITE(GEN7_L3CNTLREG1, I915_READ(GEN7_L3CNTLREG1) | GEN7_L3AGDIS);
+	if (IS_VALLEYVIEWP_M(dev)) {
+		I915_WRITE(GEN7_L3CNTLREG1,
+			I915_READ(GEN7_L3CNTLREG1) & (~GEN7_L3AGDIS));
+	} else {
+		I915_WRITE(GEN7_L3CNTLREG1,
+			I915_READ(GEN7_L3CNTLREG1) | GEN7_L3AGDIS);
+	}
+
 	I915_WRITE(GEN7_L3_CHICKEN_MODE_REGISTER, GEN7_WA_L3_CHICKEN_MODE);
 
 	/* WaDisableDopClockGating */
