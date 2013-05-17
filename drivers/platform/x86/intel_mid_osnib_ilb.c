@@ -226,13 +226,10 @@ const char *intel_mid_ilb_get_os_key(u8 value)
 u8 intel_mid_ilb_get_os_value(const char *target_os)
 {
 	int i;
-
-	if (target_os) {
-		pr_info("%s: %s\n", __func__, target_os);
-		for (i = 0; i < ARRAY_SIZE(oses); i++)
-			if (!strcmp(oses[i].name, target_os))
-				return oses[i].id;
-	}
+	pr_info("%s: %s\n", __func__, target_os);
+	for (i = 0; i < ARRAY_SIZE(oses); i++)
+		if (!strcmp(oses[i].name, target_os))
+			return oses[i].id;
 
 	pr_warning("%s: target os %s not found, default to main", __func__,
 			target_os);
@@ -253,12 +250,11 @@ const char *intel_mid_ilb_get_bootflow_value(u8 id)
 
 int intel_mid_ilb_write_osnib_rr(const char *target)
 {
-	if (target) {
-		intel_mid_ilb_write_osnib_field(&osnib_buffer,
+
+	intel_mid_ilb_write_osnib_field(&osnib_buffer,
 			offsetof(struct cmos_osnib, os_to_fw.target_mode),
 			intel_mid_ilb_get_os_value(target));
-		intel_mid_ilb_write_osnib_checksum(&osnib_buffer);
-	}
+	intel_mid_ilb_write_osnib_checksum(&osnib_buffer);
 
 	return 0;
 }
@@ -351,7 +347,7 @@ static void __exit intel_mid_ilb_osnib_exit(void)
 	default:
 		pr_info("%s: not unregistered %s\n",
 				__func__, ilb_osnib_driver.driver.name);
-		return;
+		return 0;
 	}
 
 	unregister_reboot_notifier(&osnib_ilb_reboot_notifier);
