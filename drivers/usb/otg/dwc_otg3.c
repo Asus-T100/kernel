@@ -1983,6 +1983,13 @@ static void dwc_otg_remove(struct pci_dev *pdev)
 	kfree(otg);
 }
 
+static void dwc_otg_shutdown(struct pci_dev *pdev)
+{
+	struct dwc_otg2 *otg = the_transceiver;
+
+	/* stop main thread, ignore notification events */
+	stop_main_thread(otg);
+}
 
 static DEFINE_PCI_DEVICE_TABLE(pci_ids) = {
 	{ PCI_DEVICE_CLASS(((PCI_CLASS_SERIAL_USB << 8) | 0x20), ~0),
@@ -2141,6 +2148,7 @@ static struct pci_driver dwc_otg_pci_driver = {
 	.id_table =	pci_ids,
 	.probe =	dwc_otg_probe,
 	.remove =	dwc_otg_remove,
+	.shutdown =	dwc_otg_shutdown,
 	.driver = {
 		.name = (char *) driver_name,
 		.pm = &dwc_usb_otg_pm_ops,
