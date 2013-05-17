@@ -80,6 +80,13 @@ struct s5k8aay_device {
  * NOTE: Currently sensor outputs only one size per aspect ratio. */
 static const struct s5k8aay_resolution const s5k8aay_res_modes[] = {
 	{
+		.desc = "s5k8aay_1056x864",
+		.width = 1056,
+		.height = 864,
+		.regs = s5k8aay_regs_19_1056x864,
+		.clock_regs = s5k8aay_regs_10,
+	},
+	{
 		.desc = "s5k8aay_1200x800",
 		.width = 1200,
 		.height = 800,
