@@ -21,6 +21,7 @@
 #include <asm/intel_mid_rpmsg.h>
 #include <asm/mwait.h>
 #include "intel_soc_pm_debug.h"
+#include <asm-generic/io-64-nonatomic-hi-lo.h>
 
 #ifdef CONFIG_PM_DEBUG
 #define MAX_CSTATES_POSSIBLE	32
@@ -1339,8 +1340,7 @@ static void pmu_stat_seq_printf(struct seq_file *s, int type, char *typestr)
 	unsigned long init_2_now_time;
 
 	/* Print S0ix residency counter */
-	scu_val = readl(residency[type]);
-	t = scu_val;
+	t = readq(residency[type]);
 	micro_sec_rem = do_div(t, MICRO_SEC);
 	time = (unsigned int)t;
 
