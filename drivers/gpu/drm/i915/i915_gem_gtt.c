@@ -385,7 +385,11 @@ void i915_gem_restore_gtt_mappings(struct drm_device *dev)
 			      (dev_priv->mm.gtt_end - dev_priv->mm.gtt_start) / PAGE_SIZE);
 
 	list_for_each_entry(obj, &dev_priv->mm.gtt_list, gtt_list) {
-		i915_gem_clflush_object(obj);
+		/* Hangs are seen on Valleyview D3->D0 transitions. This is a
+		 * temprory WA to fix the issue. TODO: Find a proper fix.
+		 */
+		if (!IS_VALLEYVIEW(dev))
+			i915_gem_clflush_object(obj);
 		i915_gem_gtt_bind_object(obj, obj->cache_level);
 	}
 
