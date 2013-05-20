@@ -1145,17 +1145,11 @@ stay_init:
 
 	otg_dbg(otg, "Return to DWC_STATE_INIT\n");
 
-	/* FIXME: assume VBUS is always on.
-	 * Need to remove this when PMIC event
-	 * notification is working */
-	if (!otg->otg_data->is_byt) {
-		ret = sleep_until_event(otg, otg_mask, \
-				0, user_mask, &events,\
-				NULL, &user_events, 0);
-		if (ret < 0)
-			return DWC_STATE_EXIT;
-	} else
-		events |= OEVT_B_DEV_SES_VLD_DET_EVNT;
+	ret = sleep_until_event(otg, otg_mask, \
+			0, user_mask, &events,\
+			NULL, &user_events, 0);
+	if (ret < 0)
+		return DWC_STATE_EXIT;
 
 	if (events & OEVT_B_DEV_SES_VLD_DET_EVNT) {
 		otg_dbg(otg, "OEVT_B_DEV_SES_VLD_DET_EVNT\n");
@@ -1396,6 +1390,8 @@ static int dwc_otg_handle_notification(struct notifier_block *nb,
 		state = NOTIFY_OK;
 		break;
 	case USB_EVENT_VBUS:
+		dev_dbg(otg->dev, "VBUS %s Event received\n",
+					val ? "On" : "OFF");
 		if (val) {
 			otg->otg_events |= OEVT_B_DEV_SES_VLD_DET_EVNT;
 			otg->otg_events &= ~OEVT_A_DEV_SESS_END_DET_EVNT;
