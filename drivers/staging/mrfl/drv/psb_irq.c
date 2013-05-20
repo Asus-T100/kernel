@@ -282,31 +282,26 @@ void mdfld_vsync_event_work(struct work_struct *work)
 void mdfld_te_handler_work(struct work_struct *work)
 {
 	struct drm_psb_private *dev_priv =
-	    container_of(work, struct drm_psb_private, te_work);
+		container_of(work, struct drm_psb_private, te_work);
 	int pipe = dev_priv->te_pipe;
 	struct drm_device *dev = dev_priv->dev;
+
+	drm_handle_vblank(dev, pipe);
+
 	if (dev_priv->b_async_flip_enable) {
-		/*
-		* will sync with HDMI later
-		*
-		*	if (mipi_te_hdmi_vsync_check(dev, pipe)) {
-		*/
-			if (dev_priv->psb_vsync_handler != NULL)
-				(*dev_priv->psb_vsync_handler)(dev, pipe);
-		/*
-		*	}
-		*/
+		if (dev_priv->psb_vsync_handler != NULL)
+			(*dev_priv->psb_vsync_handler)(dev, pipe);
+
 		mdfld_dsi_dsr_report_te(dev_priv->dsi_configs[0]);
 	} else {
-		#ifdef CONFIG_MID_DSI_DPU
-			mdfld_dpu_update_panel(dev);
-		#else
-			mdfld_dbi_update_panel(dev, pipe);
-		#endif
-		drm_handle_vblank(dev, pipe);
+#ifdef CONFIG_MID_DSI_DPU
+		mdfld_dpu_update_panel(dev);
+#else
+		mdfld_dbi_update_panel(dev, pipe);
+#endif
 
 		if (dev_priv->psb_vsync_handler != NULL)
-			(*dev_priv->psb_vsync_handler) (dev, pipe);
+			(*dev_priv->psb_vsync_handler)(dev, pipe);
 	}
 }
 
