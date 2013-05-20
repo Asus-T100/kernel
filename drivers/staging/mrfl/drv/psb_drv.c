@@ -2892,27 +2892,6 @@ static int psb_dpu_dsr_off_ioctl(struct drm_device *dev, void *arg,
 	return 0;
 }
 
-/*wait for ovadd flip complete*/
-static void overlay_wait_flip(struct drm_device *dev)
-{
-	int retry;
-	struct drm_psb_private *dev_priv = psb_priv(dev);
-	/**
-	 * make sure overlay command buffer
-	 * was copied before updating the system
-	 * overlay command buffer.
-	 */
-	retry = 3000;
-	while (--retry) {
-		if (BIT31 & PSB_RVDC32(OV_DOVASTA))
-			break;
-		udelay(10);
-	}
-
-	if (!retry)
-		DRM_ERROR("OVADD flip timeout!\n");
-}
-
 #if KEEP_UNUSED_CODE
 /*wait for vblank*/
 static void overlay_wait_vblank(struct drm_device *dev, uint32_t ovadd)
@@ -2982,25 +2961,24 @@ static int psb_vsync_set_ioctl(struct drm_device *dev, void *data,
 		}
 
 		if (arg->vsync_operation_mask & VSYNC_WAIT) {
-			vbl_count = intel_vblank_count(dev, pipe);
-
 			spin_lock_irqsave(&dev_priv->irqmask_lock, irq_flags);
 			vsync_enable = dev_priv->pipestat[pipe] &
 				(PIPE_TE_ENABLE | PIPE_VBLANK_INTERRUPT_ENABLE);
 			spin_unlock_irqrestore(&dev_priv->irqmask_lock,
 					irq_flags);
 
-			if (vsync_enable) {
-				DRM_WAIT_ON(ret, dev_priv->vsync_queue,
-						3 * DRM_HZ,
-						(intel_vblank_count(dev,
-								    pipe) !=
-						 vbl_count));
+			vbl_count = intel_vblank_count(dev, pipe);
 
-				if (ret == -EINTR)
-					DRM_ERROR("Pipe %d vsync time out\n",
-							pipe);
-			}
+			DRM_WAIT_ON(ret, dev_priv->vsync_queue,
+					3 * DRM_HZ,
+					(!vsync_enable ||
+					 (intel_vblank_count(dev, pipe) !=
+					  vbl_count)));
+
+			if (ret == -EINTR)
+				DRM_ERROR("Pipe %d vsync pending\n", pipe);
+			else if (ret == -EBUSY)
+				DRM_ERROR("Pipe %d vsync time out\n", pipe);
 
 			getrawmonotonic(&now);
 			nsecs = timespec_to_ns(&now);
@@ -3056,108 +3034,7 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 {
 	struct drm_psb_private *dev_priv = psb_priv(dev);
 	struct drm_psb_register_rw_arg *arg = data;
-	unsigned int iep_ble_status;
-	unsigned long iep_timeout;
 	u32 power_island = 0;
-
-	if (arg->display_write_mask != 0) {
-		if (power_island_get(OSPM_DISPLAY_ISLAND)) {
-			if (arg->display_write_mask & REGRWBITS_PFIT_CONTROLS)
-				PSB_WVDC32(arg->display.pfit_controls,
-					   PFIT_CONTROL);
-			if (arg->display_write_mask &
-			    REGRWBITS_PFIT_AUTOSCALE_RATIOS)
-				PSB_WVDC32(arg->display.pfit_autoscale_ratios,
-					   PFIT_AUTO_RATIOS);
-			if (arg->display_write_mask &
-			    REGRWBITS_PFIT_PROGRAMMED_SCALE_RATIOS)
-				PSB_WVDC32(arg->
-					   display.pfit_programmed_scale_ratios,
-					   PFIT_PGM_RATIOS);
-			if (arg->display_write_mask & REGRWBITS_PIPEASRC)
-				PSB_WVDC32(arg->display.pipeasrc, PIPEASRC);
-			if (arg->display_write_mask & REGRWBITS_PIPEBSRC)
-				PSB_WVDC32(arg->display.pipebsrc, PIPEBSRC);
-			if (arg->display_write_mask & REGRWBITS_VTOTAL_A)
-				PSB_WVDC32(arg->display.vtotal_a, VTOTAL_A);
-			if (arg->display_write_mask & REGRWBITS_VTOTAL_B)
-				PSB_WVDC32(arg->display.vtotal_b, VTOTAL_B);
-			if (arg->display_write_mask & REGRWBITS_DSPACNTR)
-				PSB_WVDC32(arg->display.dspcntr_a, DSPACNTR);
-			if (arg->display_write_mask & REGRWBITS_DSPBCNTR)
-				PSB_WVDC32(arg->display.dspcntr_b, DSPBCNTR);
-			power_island_put(OSPM_DISPLAY_ISLAND);
-		} else {
-			if (arg->display_write_mask & REGRWBITS_PFIT_CONTROLS)
-				dev_priv->savePFIT_CONTROL =
-				    arg->display.pfit_controls;
-			if (arg->display_write_mask &
-			    REGRWBITS_PFIT_AUTOSCALE_RATIOS)
-				dev_priv->savePFIT_AUTO_RATIOS =
-				    arg->display.pfit_autoscale_ratios;
-			if (arg->display_write_mask &
-			    REGRWBITS_PFIT_PROGRAMMED_SCALE_RATIOS)
-				dev_priv->savePFIT_PGM_RATIOS =
-				    arg->display.pfit_programmed_scale_ratios;
-			if (arg->display_write_mask & REGRWBITS_PIPEASRC)
-				dev_priv->savePIPEASRC = arg->display.pipeasrc;
-			if (arg->display_write_mask & REGRWBITS_PIPEBSRC)
-				dev_priv->savePIPEBSRC = arg->display.pipebsrc;
-			if (arg->display_write_mask & REGRWBITS_VTOTAL_A)
-				dev_priv->saveVTOTAL_A = arg->display.vtotal_a;
-			if (arg->display_write_mask & REGRWBITS_VTOTAL_B)
-				dev_priv->saveVTOTAL_B = arg->display.vtotal_b;
-		}
-	}
-
-	if (arg->display_read_mask != 0) {
-		if (power_island_get(OSPM_DISPLAY_ISLAND)) {
-			if (arg->display_read_mask & REGRWBITS_PFIT_CONTROLS)
-				arg->display.pfit_controls =
-				    PSB_RVDC32(PFIT_CONTROL);
-			if (arg->display_read_mask &
-			    REGRWBITS_PFIT_AUTOSCALE_RATIOS)
-				arg->display.pfit_autoscale_ratios =
-				    PSB_RVDC32(PFIT_AUTO_RATIOS);
-			if (arg->display_read_mask &
-			    REGRWBITS_PFIT_PROGRAMMED_SCALE_RATIOS)
-				arg->display.pfit_programmed_scale_ratios =
-				    PSB_RVDC32(PFIT_PGM_RATIOS);
-			if (arg->display_read_mask & REGRWBITS_PIPEASRC)
-				arg->display.pipeasrc = PSB_RVDC32(PIPEASRC);
-			if (arg->display_read_mask & REGRWBITS_PIPEBSRC)
-				arg->display.pipebsrc = PSB_RVDC32(PIPEBSRC);
-			if (arg->display_read_mask & REGRWBITS_VTOTAL_A)
-				arg->display.vtotal_a = PSB_RVDC32(VTOTAL_A);
-			if (arg->display_read_mask & REGRWBITS_VTOTAL_B)
-				arg->display.vtotal_b = PSB_RVDC32(VTOTAL_B);
-			if (arg->display_read_mask & REGRWBITS_DSPACNTR)
-				arg->display.dspcntr_a = PSB_RVDC32(DSPACNTR);
-			if (arg->display_read_mask & REGRWBITS_DSPBCNTR)
-				arg->display.dspcntr_b = PSB_RVDC32(DSPBCNTR);
-			power_island_put(OSPM_DISPLAY_ISLAND);
-		} else {
-			if (arg->display_read_mask & REGRWBITS_PFIT_CONTROLS)
-				arg->display.pfit_controls =
-				    dev_priv->savePFIT_CONTROL;
-			if (arg->display_read_mask &
-			    REGRWBITS_PFIT_AUTOSCALE_RATIOS)
-				arg->display.pfit_autoscale_ratios =
-				    dev_priv->savePFIT_AUTO_RATIOS;
-			if (arg->display_read_mask &
-			    REGRWBITS_PFIT_PROGRAMMED_SCALE_RATIOS)
-				arg->display.pfit_programmed_scale_ratios =
-				    dev_priv->savePFIT_PGM_RATIOS;
-			if (arg->display_read_mask & REGRWBITS_PIPEASRC)
-				arg->display.pipeasrc = dev_priv->savePIPEASRC;
-			if (arg->display_read_mask & REGRWBITS_PIPEBSRC)
-				arg->display.pipebsrc = dev_priv->savePIPEBSRC;
-			if (arg->display_read_mask & REGRWBITS_VTOTAL_A)
-				arg->display.vtotal_a = dev_priv->saveVTOTAL_A;
-			if (arg->display_read_mask & REGRWBITS_VTOTAL_B)
-				arg->display.vtotal_b = dev_priv->saveVTOTAL_B;
-		}
-	}
 
 	if (arg->overlay_write_mask != 0) {
 		if (arg->overlay_write_mask & OV_REGRWBITS_OGAM_ALL)
@@ -3167,321 +3044,56 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 			power_island |= OSPM_DISPLAY_C;
 
 		if (power_island_get(power_island)) {
+			u32 index = arg->overlay.index;
+			u32 ov_ogamc5_reg;
+			u32 ov_ogamc4_reg;
+			u32 ov_ogamc3_reg;
+			u32 ov_ogamc2_reg;
+			u32 ov_ogamc1_reg;
+			u32 ov_ogamc0_reg;
+
+			switch (index) {
+			case OVERLAY_A:
+				ov_ogamc5_reg = OV_OGAMC5;
+				ov_ogamc4_reg = OV_OGAMC4;
+				ov_ogamc3_reg = OV_OGAMC3;
+				ov_ogamc2_reg = OV_OGAMC2;
+				ov_ogamc1_reg = OV_OGAMC1;
+				ov_ogamc0_reg = OV_OGAMC0;
+				break;
+			case OVERLAY_C:
+				ov_ogamc5_reg = OVC_OGAMC5;
+				ov_ogamc4_reg = OVC_OGAMC4;
+				ov_ogamc3_reg = OVC_OGAMC3;
+				ov_ogamc2_reg = OVC_OGAMC2;
+				ov_ogamc1_reg = OVC_OGAMC1;
+				ov_ogamc0_reg = OVC_OGAMC0;
+				break;
+			default:
+				DRM_ERROR("Invalid overlay index %d\n", index);
+				return -EINVAL;
+			}
+
 			if (arg->overlay_write_mask & OV_REGRWBITS_OGAM_ALL) {
-				PSB_WVDC32(arg->overlay.OGAMC5, OV_OGAMC5);
-				PSB_WVDC32(arg->overlay.OGAMC4, OV_OGAMC4);
-				PSB_WVDC32(arg->overlay.OGAMC3, OV_OGAMC3);
-				PSB_WVDC32(arg->overlay.OGAMC2, OV_OGAMC2);
-				PSB_WVDC32(arg->overlay.OGAMC1, OV_OGAMC1);
-				PSB_WVDC32(arg->overlay.OGAMC0, OV_OGAMC0);
-			}
-			if (arg->overlay_write_mask & OVC_REGRWBITS_OGAM_ALL) {
-				PSB_WVDC32(arg->overlay.OGAMC5, OVC_OGAMC5);
-				PSB_WVDC32(arg->overlay.OGAMC4, OVC_OGAMC4);
-				PSB_WVDC32(arg->overlay.OGAMC3, OVC_OGAMC3);
-				PSB_WVDC32(arg->overlay.OGAMC2, OVC_OGAMC2);
-				PSB_WVDC32(arg->overlay.OGAMC1, OVC_OGAMC1);
-				PSB_WVDC32(arg->overlay.OGAMC0, OVC_OGAMC0);
+				PSB_WVDC32(arg->overlay.OGAMC5, ov_ogamc5_reg);
+				PSB_WVDC32(arg->overlay.OGAMC4, ov_ogamc4_reg);
+				PSB_WVDC32(arg->overlay.OGAMC3, ov_ogamc3_reg);
+				PSB_WVDC32(arg->overlay.OGAMC2, ov_ogamc2_reg);
+				PSB_WVDC32(arg->overlay.OGAMC1, ov_ogamc1_reg);
+				PSB_WVDC32(arg->overlay.OGAMC0, ov_ogamc0_reg);
 			}
 
-			if (arg->overlay_write_mask & OV_REGRWBITS_OVADD) {
-				PSB_WVDC32(arg->overlay.OVADD, OV_OVADD);
-
-				if (arg->overlay.b_wait_vblank)
-					overlay_wait_flip(dev);
-
-				if (IS_FLDS(dev)) {
-					if ((((arg->
-					       overlay.OVADD & OV_PIPE_SELECT)
-					      >> OV_PIPE_SELECT_POS) ==
-					     OV_PIPE_A)
-					    &&
-					    ((dev_priv->dsr_fb_update &
-					      MDFLD_DSR_OVERLAY_0))) {
-#ifndef CONFIG_MID_DSI_DPU
-						mdfld_dsi_dbi_exit_dsr(dev,
-							MDFLD_DSR_OVERLAY_0,
-							0, 0);
-#else
-						/*TODO: report overlay damage */
-#endif
-					}
-				if ((((arg->overlay.OVADD &
-					OV_PIPE_SELECT) >>
-					OV_PIPE_SELECT_POS) ==
-					OV_PIPE_C) &&
-				    ((dev_priv->dsr_fb_update &
-				      MDFLD_DSR_OVERLAY_2))) {
-#ifndef CONFIG_MID_DSI_DPU
-					mdfld_dsi_dbi_exit_dsr(dev,
-					       MDFLD_DSR_OVERLAY_2,
-					       0, 0);
-#else
-						/*TODO: report overlay damage */
-#endif
-					}
-
-					if (arg->overlay.IEP_ENABLED) {
-						/* VBLANK period */
-					iep_timeout = jiffies + HZ / 10;
-					do {
-						iep_ble_status =
-							PSB_RVDC32(0x31800);
-					if (time_after_eq(
-							jiffies,
-							iep_timeout)) {
-							DRM_ERROR(
-							"IEP Lite timeout\n");
-								break;
-							}
-							cpu_relax();
-					} while ((iep_ble_status >> 1)
-							 != 1);
-
-						arg->overlay.IEP_BLE_MINMAX =
-						    PSB_RVDC32(0x31804);
-						arg->overlay.IEP_BSSCC_CONTROL =
-						    PSB_RVDC32(0x32000);
-					}
-				}
-			}
-			if (arg->overlay_write_mask & OVC_REGRWBITS_OVADD) {
-				PSB_WVDC32(arg->overlay.OVADD, OVC_OVADD);
-				if (arg->overlay.b_wait_vblank) {
-					/*Wait for 20ms. */
-					unsigned long vblank_timeout =
-					    jiffies + HZ / 50;
-					uint32_t temp;
-					while (time_before_eq
-					       (jiffies, vblank_timeout)) {
-						temp = PSB_RVDC32(OVC_DOVCSTA);
-					if ((temp & (0x1 << 31)) != 0)
-							break;
-						cpu_relax();
-					}
-				}
-			}
-			power_island_put(power_island);
-		} else {
-			if (arg->overlay_write_mask & OV_REGRWBITS_OGAM_ALL) {
-				dev_priv->saveOV_OGAMC5 = arg->overlay.OGAMC5;
-				dev_priv->saveOV_OGAMC4 = arg->overlay.OGAMC4;
-				dev_priv->saveOV_OGAMC3 = arg->overlay.OGAMC3;
-				dev_priv->saveOV_OGAMC2 = arg->overlay.OGAMC2;
-				dev_priv->saveOV_OGAMC1 = arg->overlay.OGAMC1;
-				dev_priv->saveOV_OGAMC0 = arg->overlay.OGAMC0;
-			}
-			if (arg->overlay_write_mask & OVC_REGRWBITS_OGAM_ALL) {
-				dev_priv->saveOVC_OGAMC5 = arg->overlay.OGAMC5;
-				dev_priv->saveOVC_OGAMC4 = arg->overlay.OGAMC4;
-				dev_priv->saveOVC_OGAMC3 = arg->overlay.OGAMC3;
-				dev_priv->saveOVC_OGAMC2 = arg->overlay.OGAMC2;
-				dev_priv->saveOVC_OGAMC1 = arg->overlay.OGAMC1;
-				dev_priv->saveOVC_OGAMC0 = arg->overlay.OGAMC0;
-			}
-			if (arg->overlay_write_mask & OV_REGRWBITS_OVADD)
-				dev_priv->saveOV_OVADD = arg->overlay.OVADD;
-			if (arg->overlay_write_mask & OVC_REGRWBITS_OVADD)
-				dev_priv->saveOVC_OVADD = arg->overlay.OVADD;
-		}
-	}
-
-	if (arg->overlay_read_mask != 0) {
-		if (arg->overlay_write_mask & OV_REGRWBITS_OGAM_ALL)
-			power_island |= OSPM_DISPLAY_A;
-
-		if (arg->overlay_write_mask & OVC_REGRWBITS_OGAM_ALL)
-			power_island |= OSPM_DISPLAY_C;
-
-		if (power_island_get(power_island)) {
-			if (arg->overlay_read_mask & OV_REGRWBITS_OGAM_ALL) {
-				arg->overlay.OGAMC5 = PSB_RVDC32(OV_OGAMC5);
-				arg->overlay.OGAMC4 = PSB_RVDC32(OV_OGAMC4);
-				arg->overlay.OGAMC3 = PSB_RVDC32(OV_OGAMC3);
-				arg->overlay.OGAMC2 = PSB_RVDC32(OV_OGAMC2);
-				arg->overlay.OGAMC1 = PSB_RVDC32(OV_OGAMC1);
-				arg->overlay.OGAMC0 = PSB_RVDC32(OV_OGAMC0);
-			}
-			if (arg->overlay_read_mask & OVC_REGRWBITS_OGAM_ALL) {
-				arg->overlay.OGAMC5 = PSB_RVDC32(OVC_OGAMC5);
-				arg->overlay.OGAMC4 = PSB_RVDC32(OVC_OGAMC4);
-				arg->overlay.OGAMC3 = PSB_RVDC32(OVC_OGAMC3);
-				arg->overlay.OGAMC2 = PSB_RVDC32(OVC_OGAMC2);
-				arg->overlay.OGAMC1 = PSB_RVDC32(OVC_OGAMC1);
-				arg->overlay.OGAMC0 = PSB_RVDC32(OVC_OGAMC0);
-			}
-			if (arg->overlay_read_mask & OV_REGRWBITS_OVADD)
-				arg->overlay.OVADD = PSB_RVDC32(OV_OVADD);
-			if (arg->overlay_read_mask & OVC_REGRWBITS_OVADD)
-				arg->overlay.OVADD = PSB_RVDC32(OVC_OVADD);
-			power_island_put(power_island);
-		} else {
-			if (arg->overlay_read_mask & OV_REGRWBITS_OGAM_ALL) {
-				arg->overlay.OGAMC5 = dev_priv->saveOV_OGAMC5;
-				arg->overlay.OGAMC4 = dev_priv->saveOV_OGAMC4;
-				arg->overlay.OGAMC3 = dev_priv->saveOV_OGAMC3;
-				arg->overlay.OGAMC2 = dev_priv->saveOV_OGAMC2;
-				arg->overlay.OGAMC1 = dev_priv->saveOV_OGAMC1;
-				arg->overlay.OGAMC0 = dev_priv->saveOV_OGAMC0;
-			}
-			if (arg->overlay_read_mask & OVC_REGRWBITS_OGAM_ALL) {
-				arg->overlay.OGAMC5 = dev_priv->saveOVC_OGAMC5;
-				arg->overlay.OGAMC4 = dev_priv->saveOVC_OGAMC4;
-				arg->overlay.OGAMC3 = dev_priv->saveOVC_OGAMC3;
-				arg->overlay.OGAMC2 = dev_priv->saveOVC_OGAMC2;
-				arg->overlay.OGAMC1 = dev_priv->saveOVC_OGAMC1;
-				arg->overlay.OGAMC0 = dev_priv->saveOVC_OGAMC0;
-			}
-			if (arg->overlay_read_mask & OV_REGRWBITS_OVADD)
-				arg->overlay.OVADD = dev_priv->saveOV_OVADD;
-			if (arg->overlay_read_mask & OVC_REGRWBITS_OVADD)
-				arg->overlay.OVADD = dev_priv->saveOVC_OVADD;
-		}
-	}
-
-	if (arg->sprite_enable_mask != 0) {
-		if (power_island_get(OSPM_DISPLAY_A | OSPM_DISPLAY_C)) {
-			PSB_WVDC32(0x1F3E, DSPARB);
-			PSB_WVDC32(arg->
-				   sprite.dspa_control | PSB_RVDC32(DSPACNTR),
-				   DSPACNTR);
-			PSB_WVDC32(arg->sprite.dspa_key_value, DSPAKEYVAL);
-			PSB_WVDC32(arg->sprite.dspa_key_mask, DSPAKEYMASK);
-			PSB_WVDC32(PSB_RVDC32(DSPASURF), DSPASURF);
-			PSB_RVDC32(DSPASURF);
-			PSB_WVDC32(arg->sprite.dspc_control, DSPCCNTR);
-			PSB_WVDC32(arg->sprite.dspc_stride, DSPCSTRIDE);
-			PSB_WVDC32(arg->sprite.dspc_position, DSPCPOS);
-			PSB_WVDC32(arg->sprite.dspc_linear_offset, DSPCLINOFF);
-			PSB_WVDC32(arg->sprite.dspc_size, DSPCSIZE);
-			PSB_WVDC32(arg->sprite.dspc_surface, DSPCSURF);
-			PSB_RVDC32(DSPCSURF);
-			power_island_put(OSPM_DISPLAY_A | OSPM_DISPLAY_C);
-		}
-	}
-
-	if (arg->sprite_disable_mask != 0) {
-		if (power_island_get(OSPM_DISPLAY_A | OSPM_DISPLAY_C)) {
-			PSB_WVDC32(0x3F3E, DSPARB);
-			PSB_WVDC32(0x0, DSPCCNTR);
-			PSB_WVDC32(arg->sprite.dspc_surface, DSPCSURF);
-			PSB_RVDC32(DSPCSURF);
-			power_island_put(OSPM_DISPLAY_A | OSPM_DISPLAY_C);
-		}
-	}
-
-	if (arg->subpicture_enable_mask != 0) {
-		if (arg->subpicture_enable_mask & REGRWBITS_DSPACNTR)
-			power_island |= OSPM_DISPLAY_A;
-
-		if (arg->subpicture_enable_mask & REGRWBITS_DSPBCNTR)
-			power_island |= OSPM_DISPLAY_B;
-
-		if (arg->subpicture_enable_mask & REGRWBITS_DSPCCNTR)
-			power_island |= OSPM_DISPLAY_C;
-
-		if (power_island_get(power_island)) {
-			uint32_t temp;
-			if (arg->subpicture_enable_mask & REGRWBITS_DSPACNTR) {
-				temp = PSB_RVDC32(DSPACNTR);
-				temp &= ~DISPPLANE_PIXFORMAT_MASK;
-				temp &= ~DISPPLANE_BOTTOM;
-				temp |= DISPPLANE_32BPP;
-				PSB_WVDC32(temp, DSPACNTR);
-
-				temp = PSB_RVDC32(DSPABASE);
-				PSB_WVDC32(temp, DSPABASE);
-				PSB_RVDC32(DSPABASE);
-				temp = PSB_RVDC32(DSPASURF);
-				PSB_WVDC32(temp, DSPASURF);
-				PSB_RVDC32(DSPASURF);
-			}
-			if (arg->subpicture_enable_mask & REGRWBITS_DSPBCNTR) {
-				temp = PSB_RVDC32(DSPBCNTR);
-				temp &= ~DISPPLANE_PIXFORMAT_MASK;
-				temp &= ~DISPPLANE_BOTTOM;
-				temp |= DISPPLANE_32BPP;
-				PSB_WVDC32(temp, DSPBCNTR);
-
-				temp = PSB_RVDC32(DSPBBASE);
-				PSB_WVDC32(temp, DSPBBASE);
-				PSB_RVDC32(DSPBBASE);
-				temp = PSB_RVDC32(DSPBSURF);
-				PSB_WVDC32(temp, DSPBSURF);
-				PSB_RVDC32(DSPBSURF);
-			}
-			if (arg->subpicture_enable_mask & REGRWBITS_DSPCCNTR) {
-				temp = PSB_RVDC32(DSPCCNTR);
-				temp &= ~DISPPLANE_PIXFORMAT_MASK;
-				temp &= ~DISPPLANE_BOTTOM;
-				temp |= DISPPLANE_32BPP;
-				PSB_WVDC32(temp, DSPCCNTR);
-
-				temp = PSB_RVDC32(DSPCBASE);
-				PSB_WVDC32(temp, DSPCBASE);
-				PSB_RVDC32(DSPCBASE);
-				temp = PSB_RVDC32(DSPCSURF);
-				PSB_WVDC32(temp, DSPCSURF);
-				PSB_RVDC32(DSPCSURF);
-			}
 			power_island_put(power_island);
 		}
 	}
 
-	if (arg->subpicture_disable_mask != 0) {
-		if (arg->subpicture_enable_mask & REGRWBITS_DSPACNTR)
-			power_island |= OSPM_DISPLAY_A;
+	if (arg->plane_enable_mask != 0)
+		DC_MRFLD_Enable_Plane(arg->plane.type,
+				arg->plane.index, arg->plane.ctx);
 
-		if (arg->subpicture_enable_mask & REGRWBITS_DSPBCNTR)
-			power_island |= OSPM_DISPLAY_B;
-
-		if (arg->subpicture_enable_mask & REGRWBITS_DSPCCNTR)
-			power_island |= OSPM_DISPLAY_C;
-
-		if (power_island_get(power_island)) {
-			uint32_t temp;
-			if (arg->subpicture_disable_mask & REGRWBITS_DSPACNTR) {
-				temp = PSB_RVDC32(DSPACNTR);
-				temp &= ~DISPPLANE_PIXFORMAT_MASK;
-				temp |= DISPPLANE_32BPP_NO_ALPHA;
-				PSB_WVDC32(temp, DSPACNTR);
-
-				temp = PSB_RVDC32(DSPABASE);
-				PSB_WVDC32(temp, DSPABASE);
-				PSB_RVDC32(DSPABASE);
-				temp = PSB_RVDC32(DSPASURF);
-				PSB_WVDC32(temp, DSPASURF);
-				PSB_RVDC32(DSPASURF);
-			}
-			if (arg->subpicture_disable_mask & REGRWBITS_DSPBCNTR) {
-				temp = PSB_RVDC32(DSPBCNTR);
-				temp &= ~DISPPLANE_PIXFORMAT_MASK;
-				temp |= DISPPLANE_32BPP_NO_ALPHA;
-				PSB_WVDC32(temp, DSPBCNTR);
-
-				temp = PSB_RVDC32(DSPBBASE);
-				PSB_WVDC32(temp, DSPBBASE);
-				PSB_RVDC32(DSPBBASE);
-				temp = PSB_RVDC32(DSPBSURF);
-				PSB_WVDC32(temp, DSPBSURF);
-				PSB_RVDC32(DSPBSURF);
-			}
-			if (arg->subpicture_disable_mask & REGRWBITS_DSPCCNTR) {
-				temp = PSB_RVDC32(DSPCCNTR);
-				temp &= ~DISPPLANE_PIXFORMAT_MASK;
-				temp |= DISPPLANE_32BPP_NO_ALPHA;
-				PSB_WVDC32(temp, DSPCCNTR);
-
-				temp = PSB_RVDC32(DSPCBASE);
-				PSB_WVDC32(temp, DSPCBASE);
-				PSB_RVDC32(DSPCBASE);
-				temp = PSB_RVDC32(DSPCSURF);
-				PSB_WVDC32(temp, DSPCSURF);
-				PSB_RVDC32(DSPCSURF);
-			}
-			power_island_put(power_island);
-		}
-	}
+	if (arg->plane_disable_mask != 0)
+		DC_MRFLD_Disable_Plane(arg->plane.type,
+				arg->plane.index, arg->plane.ctx);
 
 	return 0;
 }

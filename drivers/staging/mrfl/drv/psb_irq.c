@@ -276,7 +276,7 @@ void mdfld_vsync_event_work(struct work_struct *work)
 	/* TODO: to report vsync event to HWC. */
 	/*report vsync event*/
 	/* mdfld_vsync_event(dev, pipe); */
-	wake_up_interruptible(&dev_priv->vsync_queue);
+	DRM_WAKEUP(&dev_priv->vsync_queue);
 }
 
 void mdfld_te_handler_work(struct work_struct *work)
