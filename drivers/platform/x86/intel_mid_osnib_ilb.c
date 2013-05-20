@@ -188,6 +188,10 @@ void intel_mid_ilb_reset_osnib(struct cmos_osnib *osnib)
 			osnib_buffer.checksum);
 	memset(osnib, 0, OSNIB_INTEL_SIZE);
 	osnib->checksum = 0x1;
+	osnib->header.magic[0] = 'N';
+	osnib->header.magic[1] = 'I';
+	osnib->header.magic[2] = 'B';
+	osnib->header.magic[3] = '\0';
 	intel_mid_ilb_write_osnib(osnib);
 }
 
@@ -312,8 +316,6 @@ static int __init intel_mid_ilb_osnib_init(void)
 				__func__, ilb_osnib_driver.driver.name);
 		return 0;
 	}
-
-	intel_mid_ilb_write_osnib_rr(oses[0].name);
 
 	if (register_reboot_notifier(&osnib_ilb_reboot_notifier))
 		pr_warning("%s: can't register reboot_notifier\n", __func__);
