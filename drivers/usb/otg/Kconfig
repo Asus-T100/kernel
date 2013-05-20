@@ -199,11 +199,4 @@ config USB_DWC_OTG_XCEIV
 	  this option will create the DWC OTG transceiver module and registers
 	  the xHCI and DWC as platform device.
 
-config WA_BAYTRAIL_IS_NOT_CRB
-	bool "Intel Baytrail CRB work arround
-	default n
-	help
-	  Say Y here if you are not using CRB
-
-	  If unsure, say N
 endif # USB || OTG
