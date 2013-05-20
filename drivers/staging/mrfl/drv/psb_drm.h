@@ -559,6 +559,11 @@ struct drm_psb_stolen_memory_arg {
 #define INTEL_DISPLAY_PLANE_NUM		5
 #define INVALID_INDEX			0xffffffff
 
+enum {
+	OVERLAY_A = 0,
+	OVERLAY_C,
+};
+
 struct drm_psb_vsync_set_arg {
 	uint32_t vsync_operation_mask;
 
@@ -605,6 +610,7 @@ struct drm_psb_register_rw_arg {
 		uint32_t IEP_ENABLED;
 		uint32_t IEP_BLE_MINMAX;
 		uint32_t IEP_BSSCC_CONTROL;
+		uint32_t index;
 		uint32_t b_wait_vblank;
 		uint32_t b_wms;
 		uint32_t buffer_handle;
@@ -644,6 +650,15 @@ struct drm_psb_register_rw_arg {
 	} cursor;
 	uint32_t cursor_enable_mask;
 	uint32_t cursor_disable_mask;
+
+	uint32_t plane_enable_mask;
+	uint32_t plane_disable_mask;
+
+	struct {
+		uint32_t type;
+		uint32_t index;
+		uint32_t ctx;
+	} plane;
 };
 
 enum {
