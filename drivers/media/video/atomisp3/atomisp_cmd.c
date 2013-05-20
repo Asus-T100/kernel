@@ -3836,7 +3836,9 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 			return -EINVAL;
 	}
 
-	ia_css_input_set_mode(isp, IA_CSS_INPUT_MODE_BUFFERED_SENSOR);
+	if (isp->inputs[isp->input_curr].type != TEST_PATTERN &&
+		isp->inputs[isp->input_curr].type != FILE_INPUT)
+		ia_css_input_set_mode(isp, IA_CSS_INPUT_MODE_BUFFERED_SENSOR);
 
 	ia_css_disable_vf_pp(isp, !isp->isp_subdev.enable_vfpp->val);
 
