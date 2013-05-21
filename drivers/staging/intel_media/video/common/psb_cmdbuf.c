@@ -838,16 +838,16 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 	struct psb_video_ctx *pos = NULL;
 	struct psb_video_ctx *n = NULL;
 	struct psb_video_ctx *msvdx_ctx = NULL;
+	if (dev_priv == NULL)
+		return -EINVAL;
+	msvdx_priv = dev_priv->msvdx_private;
+
 #if defined(MERRIFIELD)
 	struct tng_topaz_private *topaz_priv = dev_priv->topaz_private;
 #endif
 	int engine, po_correct;
 	int found = 0;
 	struct psb_context *context = NULL;
-
-	if (dev_priv == NULL)
-		return -EINVAL;
-	msvdx_priv = dev_priv->msvdx_private;
 
 #ifdef SUPPORT_VSP
 	vsp_priv = dev_priv->vsp_private;
