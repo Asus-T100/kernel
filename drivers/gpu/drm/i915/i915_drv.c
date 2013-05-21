@@ -890,10 +890,10 @@ static int i915_pm_suspend(struct device *dev)
 	return 0;
 }
 
-static int i915_pm_shutdown(struct pci_dev *pdev)
+static void i915_pm_shutdown(struct pci_dev *pdev)
 {
 	struct device *dev = &pdev->dev;
-	return i915_pm_suspend(dev);
+	i915_pm_suspend(dev);
 }
 
 static int i915_pm_resume(struct device *dev)
