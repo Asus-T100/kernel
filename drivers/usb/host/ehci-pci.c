@@ -218,11 +218,6 @@ static int ehci_pci_setup(struct usb_hcd *hcd)
 			ehci->has_hostpc = 1;
 		} else if (pdev->device == 0x08F2) {
 #ifdef CONFIG_USB_EHCI_HCD_SPH
-			/* All need to bypass tll mode  */
-			temp = ehci_readl(ehci, hcd->regs + CLV_SPHCFG);
-			temp &= ~CLV_SPHCFG_ULPI1TYPE;
-			ehci_writel(ehci, temp, hcd->regs + CLV_SPHCFG);
-
 			struct ehci_sph_pdata   *sph_pdata;
 			sph_pdata = pdev->dev.platform_data;
 			if (!sph_pdata) {
@@ -230,6 +225,11 @@ static int ehci_pci_setup(struct usb_hcd *hcd)
 				retval = -ENODEV;
 				return retval;
 			}
+
+			/* All need to bypass tll mode  */
+			temp = ehci_readl(ehci, hcd->regs + CLV_SPHCFG);
+			temp &= ~CLV_SPHCFG_ULPI1TYPE;
+			ehci_writel(ehci, temp, hcd->regs + CLV_SPHCFG);
 
 			sph_pdata->enabled = sph_enabled();
 
