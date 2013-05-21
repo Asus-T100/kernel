@@ -876,6 +876,12 @@ static int i915_pm_suspend(struct device *dev)
 	return 0;
 }
 
+static int i915_pm_shutdown(struct pci_dev *pdev)
+{
+	struct device *dev = &pdev->dev;
+	return i915_pm_suspend(dev);
+}
+
 static int i915_pm_resume(struct device *dev)
 {
 	struct pci_dev *pdev = to_pci_dev(dev);
@@ -1027,7 +1033,7 @@ static struct pci_driver i915_pci_driver = {
 	.probe = i915_pci_probe,
 	.remove = i915_pci_remove,
 	.driver.pm = &i915_pm_ops,
-	.shutdown = i915_pm_suspend,
+	.shutdown = i915_pm_shutdown,
 };
 
 static int __init i915_init(void)
