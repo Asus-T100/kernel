@@ -945,6 +945,7 @@ static irqreturn_t ulpmc_thread_handler(int id, void *dev)
 
 	dump_registers(chip);
 	power_supply_changed(&chip->bat);
+	power_supply_changed(&chip->chrg);
 
 	pm_runtime_put_sync(&chip->client->dev);
 	return IRQ_HANDLED;
