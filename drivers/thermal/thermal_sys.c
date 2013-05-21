@@ -1120,6 +1120,7 @@ void thermal_cooling_device_unregister(struct
 
 	release_idr(&thermal_cdev_idr, &thermal_idr_lock, cdev->id);
 	device_unregister(&cdev->device);
+	kfree(cdev);
 	return;
 }
 EXPORT_SYMBOL(thermal_cooling_device_unregister);
@@ -1490,6 +1491,7 @@ void thermal_zone_device_unregister(struct thermal_zone_device *tz)
 	idr_destroy(&tz->idr);
 	mutex_destroy(&tz->lock);
 	device_unregister(&tz->device);
+	kfree(tz);
 	return;
 }
 EXPORT_SYMBOL(thermal_zone_device_unregister);
