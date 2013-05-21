@@ -235,12 +235,14 @@ EXPORT_SYMBOL_GPL(mei_stop);
  */
 bool mei_write_is_idle(struct mei_device *dev)
 {
-	bool idle = (dev->wr_ext_msg.hdr.length == 0  &&
+	bool idle = (dev->dev_state == MEI_DEV_ENABLED &&
+		dev->wr_ext_msg.hdr.length == 0  &&
 		list_empty(&dev->ctrl_wr_list.list) &&
 		list_empty(&dev->write_list.list));
 
-	dev_dbg(&dev->pdev->dev, "pm: is idle[%d] extra=%d, ctrl=%d write=%d\n",
+	dev_dbg(&dev->pdev->dev, "pm: is idle[%d] state=%s extra=%d, ctrl=%d write=%d\n",
 		idle,
+		mei_dev_state_str(dev->dev_state),
 		dev->wr_ext_msg.hdr.length == 0,
 		list_empty(&dev->ctrl_wr_list.list),
 		list_empty(&dev->write_list.list));
