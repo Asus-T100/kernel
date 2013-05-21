@@ -101,7 +101,7 @@ $(PRODUCT_OUT)/ramdisk.img: copy_modules_to_root
 
 menuconfig xconfig gconfig: $(KERNEL_CONFIG)
 	@$(KERNEL_BLD_ENV) $(MAKE) -C kernel $(KERNEL_BLD_FLAGS) $@
-	@./kernel/scripts/diffconfig -m $(KERNEL_DEFCONFIG) $(KERNEL_OUT_DIR)/.config > $(KERNEL_DIFFCONFIG)
+	@./$(KERNEL_OUT_DIR)/scripts/diffconfig -m $(KERNEL_DEFCONFIG) $(KERNEL_OUT_DIR)/.config > $(KERNEL_DIFFCONFIG)
 	@echo ===========
 	@echo $(KERNEL_DIFFCONFIG) has been modified !
 	@echo ===========
