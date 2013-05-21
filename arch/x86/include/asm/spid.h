@@ -442,6 +442,9 @@ enum {
 #define SPID_PRODUCT_ID(vendor, platform, devtype, product, type) (\
 	(spid.product_line_id == \
 	vendor##_##platform##_##devtype##_##product##_##type))
+#define SPID_PRODUCT(vendor, platform, devtype, product) (\
+	((spid.product_line_id & 0x7FFF) == \
+	vendor##_##platform##_##devtype##_##product##_PRO))
 #define SPID_HARDWARE_ID(platform, devtype, product, hardware) (\
 	(spid.hardware_id == platform##_##devtype##_##product##_##hardware))
 
