@@ -382,6 +382,8 @@ static int jdi_cmd_power_off(
 		__func__, __LINE__);
 		goto power_off_err;
 	}
+	if (bias_en_gpio)
+		gpio_set_value_cansleep(bias_en_gpio, 0);
 	usleep_range(1000, 1500);
 	return 0;
 power_off_err:
@@ -492,6 +494,8 @@ int jdi_cmd_exit_deep_standby(
 {
 	PSB_DEBUG_ENTRY("\n");
 
+	if (bias_en_gpio)
+		gpio_set_value_cansleep(bias_en_gpio, 1);
 	_get_panel_reset_gpio();
 	gpio_direction_output(mipi_reset_gpio, 0);
 

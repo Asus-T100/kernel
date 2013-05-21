@@ -28,6 +28,9 @@
 
 #include "displays/jdi_vid.h"
 
+static int mipi_reset_gpio;
+static int bias_en_gpio;
+
 static u8 jdi_set_address_mode[] = {0x36, 0xc0, 0x00, 0x00};
 static u8 jdi_write_display_brightness[] = {0x51, 0x0f, 0xff, 0x00};
 
@@ -296,6 +299,8 @@ static int mdfld_dsi_jdi_power_off(struct mdfld_dsi_config *dsi_config)
 	/* Can not poweroff VPROG2, because many other module related to
 	 * this power supply, such as PSH sensor. */
 	/*__vpro2_power_ctrl(false);*/
+	if (bias_en_gpio)
+		gpio_set_value_cansleep(bias_en_gpio, 0);
 
 	return 0;
 
@@ -335,9 +340,9 @@ static int mdfld_dsi_jdi_set_brightness(struct mdfld_dsi_config *dsi_config,
 
 static int mdfld_dsi_jdi_panel_reset(struct mdfld_dsi_config *dsi_config)
 {
-	u8 *vaddr = NULL, *vaddr1 = NULL;
-	int reg_value = 0, reg_value_scl = 0;
-	int j = 0;
+	u8 *vaddr1 = NULL;
+	int reg_value_scl = 0;
+	int ret = 0;
 
 	PSB_DEBUG_ENTRY("\n");
 
@@ -354,41 +359,39 @@ static int mdfld_dsi_jdi_panel_reset(struct mdfld_dsi_config *dsi_config)
 	/* For meeting tRW1 panel spec */
 	usleep_range(2000, 2500);
 
-	vaddr = ioremap(0xff008000, 0x60);
-
-	reg_value = ioread32(vaddr);
-	if (reg_value == 1) {
-		while (j++ < 0x1000)
-			DRM_ERROR("GPDR is locked and can't be set.");
-	} else {
-		/* GPIO as an output */
-		reg_value = ioread32(vaddr + 0x30);
-		reg_value |= 0x60000000;
-		iowrite32(reg_value, vaddr + 0x30);
-
-		/* Clear the pin */
-		iowrite32(0x60000000, vaddr + 0x60);
-
-		/*
-		 * For meeting tRW1 panel spec in case RST pin starts from high
-		 */
-		usleep_range(2000, 2500);
-
-		/* set the pin */
-		iowrite32(0x40000000, vaddr + 0x48);
-
-		/* For meeting tsVSP panel spec */
-		usleep_range(2000, 2500);
-
-		/* set the pin */
-		iowrite32(0x20000000, vaddr + 0x48);
-
-		/* Additional delay for VSP and VSN to settle */
-		usleep_range(2000, 2500);
+	if (bias_en_gpio == 0) {
+		bias_en_gpio = 189;
+		ret = gpio_request(bias_en_gpio, "bias_enable");
+		if (ret) {
+			DRM_ERROR("Faild to request bias_enable gpio\n");
+			return -EINVAL;
+		}
+		gpio_direction_output(bias_en_gpio, 0);
 	}
-
-	iounmap(vaddr);
-
+	if (mipi_reset_gpio == 0) {
+		ret = get_gpio_by_name("disp0_rst");
+		if (ret < 0) {
+			DRM_ERROR("Faild to get panel reset gpio, " \
+				  "use default reset pin\n");
+			return;
+		}
+		mipi_reset_gpio = ret;
+		ret = gpio_request(mipi_reset_gpio, "mipi_display");
+		if (ret) {
+			DRM_ERROR("Faild to request panel reset gpio\n");
+			return;
+		}
+		gpio_direction_output(mipi_reset_gpio, 0);
+	}
+	gpio_direction_output(bias_en_gpio, 0);
+	gpio_direction_output(mipi_reset_gpio, 0);
+	gpio_set_value_cansleep(bias_en_gpio, 0);
+	gpio_set_value_cansleep(mipi_reset_gpio, 0);
+	usleep_range(2000, 2500);
+	gpio_set_value_cansleep(mipi_reset_gpio, 1);
+	usleep_range(2000, 2500);
+	gpio_set_value_cansleep(bias_en_gpio, 1);
+	usleep_range(2000, 2500);
 	/* switch i2c scl pin back */
 	reg_value_scl |= 0x1000;
 	iowrite32(reg_value_scl, vaddr1);
