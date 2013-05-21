@@ -1071,12 +1071,6 @@ static long ov9724_s_exposure(struct v4l2_subdev *sd,
 	coarse_itg = exposure->integration_time[0];
 	gain = exposure->gain[0];
 
-	/* we should not accept the invalid value below. */
-	if (gain == 0) {
-		struct i2c_client *client = v4l2_get_subdevdata(sd);
-		v4l2_err(client, "%s: invalid value\n", __func__);
-		return -EINVAL;
-	}
 	return ov9724_set_exposure(sd, coarse_itg, gain);
 }
 
