@@ -47,14 +47,14 @@ KERNEL_CROSS_COMP := "ccache $(KERNEL_CROSS_COMP)"
 KERNEL_PATH := $(KERNEL_PATH):$(ANDROID_BUILD_TOP)/$(dir $(KERNEL_CCACHE))
 endif
 
-KERNEL_OUT_DIR := $(PRODUCT_OUT)/kernel_build
+KERNEL_OUT_DIR := $(PRODUCT_OUT)/linux/kernel
 KERNEL_MODULES_OUT := $(PRODUCT_OUT)/kernel_modules
 KERNEL_MODULES_ROOT := $(PRODUCT_OUT)/root/lib/modules
 KERNEL_CONFIG := $(KERNEL_OUT_DIR)/.config
 KERNEL_BLD_FLAGS := \
     ARCH=$(KERNEL_ARCH) \
-    O=../$(KERNEL_OUT_DIR) \
-    INSTALL_MOD_PATH=../kernel_modules \
+    O=../../$(KERNEL_OUT_DIR) \
+    INSTALL_MOD_PATH=../../kernel_modules \
     $(KERNEL_EXTRA_FLAGS)
 KERNEL_BLD_ENV := CROSS_COMPILE=$(KERNEL_CROSS_COMP) \
     PATH=$(KERNEL_PATH):$(PATH)
@@ -69,17 +69,17 @@ $(KERNEL_CONFIG): $(KERNEL_DEFCONFIG) $(wildcard $(KERNEL_DIFFCONFIG))
 	@echo "cat $^ > $@"
 	@mkdir -p $(KERNEL_OUT_DIR)
 	@cat $^ > $@
-	@$(KERNEL_BLD_ENV) $(MAKE) -C kernel $(KERNEL_BLD_FLAGS) defoldconfig
+	@$(KERNEL_BLD_ENV) $(MAKE) -C $(KERNEL_SRC_DIR) $(KERNEL_BLD_FLAGS) defoldconfig
 
 build_bzImage: $(KERNEL_CONFIG) openssl $(MINIGZIP)
 	@$(RM) -r $(KERNEL_MODULES_OUT)
-	@$(KERNEL_BLD_ENV) $(MAKE) -C kernel $(KERNEL_BLD_FLAGS) bzImage
-	@$(KERNEL_BLD_ENV) $(MAKE) -C kernel $(KERNEL_BLD_FLAGS) modules
-	@$(KERNEL_BLD_ENV) $(MAKE) -C kernel $(KERNEL_BLD_FLAGS) modules_install
+	@$(KERNEL_BLD_ENV) $(MAKE) -C $(KERNEL_SRC_DIR) $(KERNEL_BLD_FLAGS) bzImage
+	@$(KERNEL_BLD_ENV) $(MAKE) -C $(KERNEL_SRC_DIR) $(KERNEL_BLD_FLAGS) modules
+	@$(KERNEL_BLD_ENV) $(MAKE) -C $(KERNEL_SRC_DIR) $(KERNEL_BLD_FLAGS) modules_install
 	@cp -f $(KERNEL_OUT_DIR)/arch/x86/boot/bzImage $(PRODUCT_OUT)/kernel
 
 clean_kernel:
-	@$(KERNEL_BLD_ENV) $(MAKE) -C kernel $(KERNEL_BLD_FLAGS) clean
+	@$(KERNEL_BLD_ENV) $(MAKE) -C $(KERNEL_SRC_DIR) $(KERNEL_BLD_FLAGS) clean
 
 #need to do this to have a modules.dep correctly set.
 #it is not optimized (copying all modules for each rebuild) but better than kernel-build.sh
@@ -100,8 +100,8 @@ get_kernel_from_source: copy_modules_to_root
 $(PRODUCT_OUT)/ramdisk.img: copy_modules_to_root
 
 menuconfig xconfig gconfig: $(KERNEL_CONFIG)
-	@$(KERNEL_BLD_ENV) $(MAKE) -C kernel $(KERNEL_BLD_FLAGS) $@
-	@./$(KERNEL_OUT_DIR)/scripts/diffconfig -m $(KERNEL_DEFCONFIG) $(KERNEL_OUT_DIR)/.config > $(KERNEL_DIFFCONFIG)
+	@$(KERNEL_BLD_ENV) $(MAKE) -C $(KERNEL_SRC_DIR) $(KERNEL_BLD_FLAGS) $@
+	@./$(KERNEL_SRC_DIR)/scripts/diffconfig -m $(KERNEL_DEFCONFIG) $(KERNEL_OUT_DIR)/.config > $(KERNEL_DIFFCONFIG)
 	@echo ===========
 	@echo $(KERNEL_DIFFCONFIG) has been modified !
 	@echo ===========
@@ -114,12 +114,12 @@ define build_kernel_module
 
 $(2): build_bzImage
 	@echo Building kernel module $(2) in $(1)
-	@mkdir -p $(PRODUCT_OUT)/$(1)
-	@+$(KERNEL_BLD_ENV) $(MAKE) -C kernel $(KERNEL_BLD_FLAGS) M=../$(1) $(3)
+	@mkdir -p $(KERNEL_OUT_DIR)/../../$(1)
+	@+$(KERNEL_BLD_ENV) $(MAKE) -C $(KERNEL_SRC_DIR) $(KERNEL_BLD_FLAGS) M=../../$(1) $(3)
 
 $(2)_clean:
 	@echo Cleaning kernel module $(2) in $(1)
-	@$(KERNEL_BLD_ENV) $(MAKE) -C kernel $(KERNEL_BLD_FLAGS) M=../$(1) clean
+	@$(KERNEL_BLD_ENV) $(MAKE) -C $(KERNEL_SRC_DIR) $(KERNEL_BLD_FLAGS) M=../../$(1) clean
 
 copy_modules_to_root: $(2)
 
