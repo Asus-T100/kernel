@@ -2510,6 +2510,9 @@ static u32 hsi_timeout(struct intel_controller *intel_hsi, u32 timeout_reg)
 	u32				*buf;
 	u32				 timeout_clr, timeout_mask;
 	unsigned long			 flags;
+	int msg_status;
+	unsigned int msg_actual_len;
+
 
 	timeout_clr = 0;
 
@@ -2541,15 +2544,19 @@ hsi_pio_timeout_try:
 			goto hsi_pio_timeout_done;
 		}
 
+		msg_status = msg->status;
+		msg_actual_len = msg->actual_len;
+		spin_unlock_irqrestore(&intel_hsi->sw_lock, flags);
+
 		timeout_clr |= timeout_mask;
 
 		while ((ioread32(ARASAN_REG(HSI_STATUS)) &
 			ARASAN_RX_NOT_EMPTY(i)) &&
-		       (msg->status == HSI_STATUS_PROCEEDING)) {
+		       (msg_status == HSI_STATUS_PROCEEDING)) {
 			if (likely(pio_ctx->blk->length > 0)) {
 				buf = sg_virt(pio_ctx->blk) + pio_ctx->offset*4;
 				*buf = ioread32(ARASAN_CHN_REG(RX_DATA, i));
-				msg->actual_len += HSI_FRAMES_TO_BYTES(1);
+				msg_actual_len += HSI_FRAMES_TO_BYTES(1);
 				pio_ctx->offset += 1;
 			}
 
@@ -2559,9 +2566,13 @@ hsi_pio_timeout_try:
 					pio_ctx->blk = sg_next(pio_ctx->blk);
 					pio_ctx->offset = 0;
 				} else
-					msg->status = HSI_STATUS_COMPLETED;
+					msg_status = HSI_STATUS_COMPLETED;
 			}
 		}
+
+		spin_lock_irqsave(&intel_hsi->sw_lock, flags);
+		msg->status = msg_status;
+		msg->actual_len = msg_actual_len;
 
 		if (msg->status == HSI_STATUS_COMPLETED) {
 hsi_pio_timeout_done:
@@ -2693,22 +2704,19 @@ static int hsi_mid_async(struct hsi_msg *msg)
 			return err;
 	}
 
-	spin_lock_irqsave(&intel_hsi->sw_lock, flags);
 	if (unlikely((*queue_busy) & QUEUE_BUSY(hsi_ch))) {
 		if (dma_ch >= 0)
 			dma_unmap_sg(intel_hsi->pdev, msg->sgt.sgl, nents, dir);
-		err = -EBUSY;
+		return -EBUSY;
 	} else {
 		msg->status = HSI_STATUS_QUEUED;
+		spin_lock_irqsave(&intel_hsi->sw_lock, flags);
 		list_add_tail(&msg->link, queue);
-		err = 0;
-	}
-	spin_unlock_irqrestore(&intel_hsi->sw_lock, flags);
-
-	if (!err)
+		spin_unlock_irqrestore(&intel_hsi->sw_lock, flags);
 		hsi_transfer(intel_hsi, is_tx, hsi_ch, dma_ch);
+		return 0;
+	}
 
-	return err;
 }
 
 /**
@@ -3215,6 +3223,8 @@ static inline u32 hsi_pio_xfer_complete(struct intel_controller *intel_hsi,
 	u32 *buf;
 	u32 avail, blk_len, sz;
 	unsigned long flags;
+	int msg_status;
+	unsigned int msg_actual_len;
 
 	queue = (is_tx) ?
 		&intel_hsi->tx_queue[ch] : &intel_hsi->rx_queue[ch];
@@ -3226,14 +3236,18 @@ static inline u32 hsi_pio_xfer_complete(struct intel_controller *intel_hsi,
 	}
 	msg = list_first_entry(queue, struct hsi_msg, link);
 	if (unlikely(!msg->sgt.nents)) {
-		msg->actual_len = 0;
+		msg_actual_len = 0;
 		goto hsi_pio_xfer_done;
 	}
+
+	msg_status = msg->status;
+	msg_actual_len = msg->actual_len;
+	spin_unlock_irqrestore(&intel_hsi->sw_lock, flags);
 
 	pio_ctx = (is_tx) ?
 		&intel_hsi->tx_ctx[ch].pio : &intel_hsi->rx_ctx[ch].pio;
 
-	if (msg->status == HSI_STATUS_PROCEEDING) {
+	if (msg_status == HSI_STATUS_PROCEEDING) {
 		if (is_tx) {
 			avail = intel_hsi->tx_fifo_th[ch];
 			fifo = ARASAN_CHN_REG(TX_DATA, ch);
@@ -3246,7 +3260,7 @@ static inline u32 hsi_pio_xfer_complete(struct intel_controller *intel_hsi,
 			buf = sg_virt(pio_ctx->blk) + (pio_ctx->offset*4);
 			blk_len = HSI_BYTES_TO_FRAMES(pio_ctx->blk->length);
 			sz = min(avail, blk_len - pio_ctx->offset);
-			msg->actual_len += HSI_FRAMES_TO_BYTES(sz);
+			msg_actual_len += HSI_FRAMES_TO_BYTES(sz);
 			avail -= sz;
 			pio_ctx->offset += sz;
 			for (; sz > 0; sz--) {
@@ -3259,8 +3273,11 @@ static inline u32 hsi_pio_xfer_complete(struct intel_controller *intel_hsi,
 
 			if (pio_ctx->offset >= blk_len) {
 				pio_ctx->offset = 0;
-				if (sg_is_last(pio_ctx->blk))
+				if (sg_is_last(pio_ctx->blk)) {
+					spin_lock_irqsave(&intel_hsi->sw_lock,
+							flags);
 					goto hsi_pio_xfer_done;
+				}
 				pio_ctx->blk = sg_next(pio_ctx->blk);
 			}
 		}
@@ -3269,13 +3286,17 @@ static inline u32 hsi_pio_xfer_complete(struct intel_controller *intel_hsi,
 	if ((pio_ctx->offset < HSI_BYTES_TO_FRAMES(pio_ctx->blk->length)) ||
 	    ((is_tx) &&
 	     (!(ioread32(ARASAN_REG(HSI_STATUS)) & ARASAN_TX_EMPTY(ch))))) {
+		spin_lock_irqsave(&intel_hsi->sw_lock, flags);
+		msg->actual_len = msg_actual_len;
 		spin_unlock_irqrestore(&intel_hsi->sw_lock, flags);
 		return (is_tx) ?
 			ARASAN_IRQ_TX_THRESHOLD(ch) :
 			ARASAN_IRQ_RX_THRESHOLD(ch);
 	}
 
+	spin_lock_irqsave(&intel_hsi->sw_lock, flags);
 hsi_pio_xfer_done:
+	msg->actual_len = msg_actual_len;
 	msg->status = HSI_STATUS_COMPLETED;
 	list_del(&msg->link);
 	spin_unlock_irqrestore(&intel_hsi->sw_lock, flags);
