@@ -2513,6 +2513,8 @@ static void dwc3_gadget_conndone_interrupt(struct dwc3 *dwc)
 
 	dev_vdbg(dwc->dev, "%s\n", __func__);
 
+	__dwc3_vbus_draw(dwc, 100);
+
 	memset(&params, 0x00, sizeof(params));
 
 	reg = dwc3_readl(dwc->regs, DWC3_DSTS);
