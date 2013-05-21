@@ -147,8 +147,17 @@ static irqreturn_t gpadc_isr(int irq, void *data)
 	info->irq_status = ioread8(info->intr);
 	info->sample_done = 1;
 	wake_up(&info->wait);
+	return IRQ_WAKE_THREAD;
+}
+
+static irqreturn_t gpadc_threaded_isr(int irq, void *data)
+{
+	/* Clear IRQLVL1MASK */
+	gpadc_clear_bits(MIRQLVL1, MIRQLVL1_ADC);
+
 	return IRQ_HANDLED;
 }
+
 
 /**
  * iio_basincove_gpadc_sample - do gpadc sample.
@@ -168,16 +177,11 @@ int iio_basincove_gpadc_sample(struct iio_dev *indio_dev,
 	struct gpadc_info *info = iio_priv(indio_dev);
 	int i, ret;
 	u8 tmp, th, tl;
-	u8 mask;
 
 	if (!info->initialized)
 		return -ENODEV;
 
 	mutex_lock(&info->lock);
-
-	mask = MBATTEMP | MSYSTEMP | MBATT | MVIBATT | MCCTICK;
-	gpadc_clear_bits(MADCIRQ, mask);
-	gpadc_clear_bits(MIRQLVL1, MIRQLVL1_ADC);
 
 	tmp = GPADCREQ_IRQEN;
 
@@ -215,8 +219,6 @@ int iio_basincove_gpadc_sample(struct iio_dev *indio_dev,
 	}
 
 done:
-	gpadc_set_bits(MADCIRQ, mask);
-	gpadc_set_bits(MIRQLVL1, MIRQLVL1_ADC);
 	mutex_unlock(&info->lock);
 	return ret;
 }
@@ -424,6 +426,7 @@ static int bcove_gpadc_probe(struct platform_device *pdev)
 	struct iio_dev *indio_dev;
 	struct intel_basincove_gpadc_platform_data *pdata =
 			pdev->dev.platform_data;
+	u8 mask;
 
 	if (!pdata) {
 		dev_err(&pdev->dev, "no platform data supplied\n");
@@ -451,7 +454,11 @@ static int bcove_gpadc_probe(struct platform_device *pdev)
 		goto err_free;
 	}
 
-	err = request_threaded_irq(info->irq, NULL, gpadc_isr,
+	mask = MBATTEMP | MSYSTEMP | MBATT | MVIBATT | MCCTICK;
+	gpadc_clear_bits(MADCIRQ, mask);
+	gpadc_clear_bits(MIRQLVL1, MIRQLVL1_ADC);
+
+	err = request_threaded_irq(info->irq, gpadc_isr, gpadc_threaded_isr,
 			IRQF_ONESHOT, "adc", indio_dev);
 	if (err) {
 		gpadc_dump(info);
