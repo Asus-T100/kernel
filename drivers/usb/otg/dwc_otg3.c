@@ -339,7 +339,6 @@ static void stop_peripheral(struct dwc_otg2 *otg)
 	if (!gadget)
 		return;
 
-	cancel_delayed_work_sync(&otg->sdp_check_work);
 	gadget->ops->stop_device(gadget);
 	pm_qos_update_request(otg->qos, PM_QOS_DEFAULT_VALUE);
 }
@@ -398,7 +397,8 @@ static int dwc_otg_notify_charger_type(struct dwc_otg2 *otg,
 
 	if ((otg->charging_cap.chrg_type ==
 			POWER_SUPPLY_CHARGER_TYPE_USB_SDP) &&
-			((otg->charging_cap.mA != 100) &&
+			((otg->charging_cap.mA != 0) &&
+			 (otg->charging_cap.mA != 100) &&
 			 (otg->charging_cap.mA != 150) &&
 			 (otg->charging_cap.mA != 500) &&
 			 (otg->charging_cap.mA != 900))) {
@@ -438,31 +438,6 @@ static int dwc_otg_get_chr_status(struct usb_phy *x, void *data)
 	spin_unlock_irqrestore(&otg->lock, flags);
 
 	return 0;
-}
-
-static void dwc_otg_sdp_check_work(struct work_struct *work)
-{
-	struct dwc_otg2 *otg = the_transceiver;
-	struct power_supply_cable_props	cap;
-	unsigned long flags;
-
-	cap.mA = 0;
-	cap.chrg_type = POWER_SUPPLY_CHARGER_TYPE_NONE;
-
-	if (otg_get_chr_status(&otg->phy, (void *)&cap)) {
-		otg_err(otg, "%s: sdp checking failed\n", __func__);
-		return;
-	}
-
-	if (cap.mA != 100 || cap.chrg_type != POWER_SUPPLY_CHARGER_TYPE_USB_SDP)
-		return;
-
-	otg_dbg(otg, "Current charger is Non-compliant charger!\n");
-	spin_lock_irqsave(&otg->lock, flags);
-	otg->charging_cap.mA = 500;
-	spin_unlock_irqrestore(&otg->lock, flags);
-
-	dwc_otg_notify_charger_type(otg, POWER_SUPPLY_CHARGER_EVENT_CONNECT);
 }
 
 static int ulpi_read(struct dwc_otg2 *otg, const u8 reg, u8 *val)
@@ -1051,12 +1026,6 @@ static enum dwc_otg_state do_charger_detection(struct dwc_otg2 *otg)
 	case POWER_SUPPLY_CHARGER_TYPE_USB_SDP:
 		if (otg->otg_data->charging_compliance)
 			mA = 500;
-		else {
-			/* Notify SDP current is 100ma before enumeration. */
-			mA = 100;
-			schedule_delayed_work(&otg->sdp_check_work,
-					INVALID_SDP_TIMEOUT);
-		}
 		break;
 	default:
 		otg_err(otg, "Charger type is not valid to notify battery\n");
@@ -1072,12 +1041,16 @@ static enum dwc_otg_state do_charger_detection(struct dwc_otg2 *otg)
 	case POWER_SUPPLY_CHARGER_TYPE_ACA_DOCK:
 	case POWER_SUPPLY_CHARGER_TYPE_USB_DCP:
 	case POWER_SUPPLY_CHARGER_TYPE_USB_CDP:
-	case POWER_SUPPLY_CHARGER_TYPE_USB_SDP:
 	case POWER_SUPPLY_CHARGER_TYPE_SE1:
 		if (dwc_otg_notify_charger_type(otg, \
 					POWER_SUPPLY_CHARGER_EVENT_CONNECT) < 0)
 			otg_err(otg, "Notify battery type failed!\n");
 		break;
+	case POWER_SUPPLY_CHARGER_TYPE_USB_SDP:
+		if (otg->otg_data->charging_compliance)
+			if (dwc_otg_notify_charger_type(otg, \
+				POWER_SUPPLY_CHARGER_EVENT_CONNECT) < 0)
+				otg_err(otg, "Notify battery type failed!\n");
 	default:
 		break;
 	}
@@ -1803,7 +1776,6 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 	otg->otg.set_host	= dwc_otg2_set_host;
 	otg->otg.set_peripheral	= dwc_otg2_set_peripheral;
 	ATOMIC_INIT_NOTIFIER_HEAD(&otg->phy.notifier);
-	INIT_DELAYED_WORK(&otg->sdp_check_work, dwc_otg_sdp_check_work);
 
 	otg->state = DWC_STATE_INIT;
 	spin_lock_init(&otg->lock);
