@@ -1178,6 +1178,7 @@ static int sst_download_library(const struct firmware *fw_lib,
 			retval = -EIO;
 			goto free_block;
 		}
+		kfree(block->data);
 	} else if (retval != 0) {
 		retval = -EIO;
 		goto free_block;
