@@ -709,7 +709,7 @@ static int rt5640_dsp_rate(struct snd_soc_codec *codec, int rate)
 {
 	struct rt5640_dsp_param param;
 	int ret, i, tab_num;
-	unsigned short (*rate_tab)[2];
+	const u16 (*rate_tab)[2];
 
 	if (rate != 48000 && rate != 44100 && rate != 16000)
 		return -EINVAL;
@@ -761,7 +761,7 @@ static int rt5640_dsp_set_mode(struct snd_soc_codec *codec, int mode)
 {
 	struct rt5640_dsp_param param;
 	int ret, i, tab_num;
-	unsigned short (*mode_tab)[2];
+	const u16 (*mode_tab)[2];
 
 	switch (mode) {
 	case RT5640_DSP_AEC_NS_FENS:
@@ -986,7 +986,7 @@ static ssize_t rt5640_dsp_show(struct device *dev,
 	struct i2c_client *client = to_i2c_client(dev);
 	struct rt5640_priv *rt5640 = i2c_get_clientdata(client);
 	struct snd_soc_codec *codec = rt5640->codec;
-	unsigned short (*rt5640_dsp_tab)[2];
+	const u16 (*rt5640_dsp_tab)[2];
 	unsigned int val;
 	int cnt = 0, i, tab_num;
 
@@ -1081,7 +1081,7 @@ static ssize_t dsp_reg_store(struct device *dev,
 	return count;
 }
 
-static DEVICE_ATTR(dsp_reg, 0666, rt5640_dsp_show, dsp_reg_store);
+static DEVICE_ATTR(dsp_reg, 0600, rt5640_dsp_show, dsp_reg_store);
 
 /**
  * rt5640_dsp_probe - register DSP for rt5640
@@ -1137,6 +1137,12 @@ int rt5640_dsp_probe(struct snd_soc_codec *codec)
 }
 EXPORT_SYMBOL_GPL(rt5640_dsp_probe);
 
+void rt5640_dsp_remove(struct snd_soc_codec *codec)
+{
+	device_remove_file(codec->dev, &dev_attr_dsp_reg);
+}
+EXPORT_SYMBOL_GPL(rt5640_dsp_remove);
+
 #ifdef RTK_IOCTL
 int rt56xx_dsp_ioctl_common(struct snd_hwdep *hw, struct file *file,
 			    unsigned int cmd, unsigned long arg)
@@ -1146,10 +1152,13 @@ int rt56xx_dsp_ioctl_common(struct snd_hwdep *hw, struct file *file,
 	int *p;
 	int ret;
 	struct rt5640_dsp_param param;
+	struct rt5640_priv *rt5640;
 
 	struct rt56xx_cmd __user *_rt56xx = (struct rt56xx_cmd *)arg;
 	struct snd_soc_codec *codec = hw->private_data;
-	struct rt5640_priv *rt5640 = snd_soc_codec_get_drvdata(codec);
+	if (!codec)
+		return -EFAULT;
+	rt5640 = snd_soc_codec_get_drvdata(codec);
 	if (!rt5640)
 		return -EFAULT;
 

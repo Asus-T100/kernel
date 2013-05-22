@@ -222,7 +222,6 @@ int __devinit sst_acpi_probe(struct platform_device *pdev)
 	struct acpi_device *device;
 	const char *hid;
 	int i, ret = 0;
-	struct intel_sst_ops *ops;
 	struct sst_probe_info *info;
 	struct intel_sst_drv *ctx;
 
@@ -258,7 +257,6 @@ int __devinit sst_acpi_probe(struct platform_device *pdev)
 	ret = sst_driver_ops(ctx);
 	if (ret != 0)
 		return -EINVAL;
-	ops = ctx->ops;
 
 	sst_init_locks(ctx);
 
@@ -274,6 +272,9 @@ int __devinit sst_acpi_probe(struct platform_device *pdev)
 		goto do_free_wq;
 
 	info = sst_get_acpi_driver_data(hid);
+	if (!info)
+		return -EINVAL;
+
 	memcpy(&ctx->info, info, sizeof(ctx->info));
 
 	ctx->ipc_reg.ipcx = SST_PRH_IPCX;
