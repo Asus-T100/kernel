@@ -48,16 +48,11 @@ module_param_named(nopg, nopg, bool, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(nopg, "don't enable power gating (default = false)");
 
 
-/* Currently this driver works as long as there is only a single AMT device. */
-static struct pci_dev *mei_device;
-
 static DEFINE_PCI_DEVICE_TABLE(mei_txe_pci_tbl) = {
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x0F18)},
 	{0, }
 };
 MODULE_DEVICE_TABLE(pci, mei_txe_pci_tbl);
-
-static DEFINE_MUTEX(mei_mutex);
 
 
 static void mei_txe_pci_iounmap(struct pci_dev *pdev, struct mei_txe_hw *hw)
@@ -85,11 +80,6 @@ static int mei_txe_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	int err;
 	int i;
 
-	mutex_lock(&mei_mutex);
-	if (mei_device) {
-		err = -EEXIST;
-		goto end;
-	}
 	/* enable pci dev */
 	err = pci_enable_device(pdev);
 	if (err) {
@@ -160,10 +150,7 @@ static int mei_txe_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	if (err)
 		goto release_irq;
 
-	mei_device = pdev;
 	pci_set_drvdata(pdev, dev);
-
-	mutex_unlock(&mei_mutex);
 
 	pm_runtime_set_autosuspend_delay(&pdev->dev, MEI_TXI_RPM_TIMEOUT);
 	pm_runtime_use_autosuspend(&pdev->dev);
@@ -194,7 +181,6 @@ release_regions:
 disable_device:
 	pci_disable_device(pdev);
 end:
-	mutex_unlock(&mei_mutex);
 	dev_err(&pdev->dev, "initialization failed.\n");
 	return err;
 }
@@ -212,11 +198,6 @@ static void mei_txe_remove(struct pci_dev *pdev)
 	struct mei_device *dev;
 	struct mei_txe_hw *hw;
 
-	if (mei_device != pdev) {
-		dev_err(&pdev->dev, "mei: mei_device != pdev\n");
-		return;
-	}
-
 	dev = pci_get_drvdata(pdev);
 	if (!dev) {
 		dev_err(&pdev->dev, "mei: dev =NULL\n");
@@ -231,7 +212,6 @@ static void mei_txe_remove(struct pci_dev *pdev)
 
 	mei_stop(dev);
 
-	mei_device = NULL;
 	/* disable interrupts */
 	mei_disable_interrupts(dev);
 	free_irq(pdev->irq, dev);
