@@ -503,12 +503,4 @@ static inline bool nc_device_state(void)
 	return !mid_pmu_cxt->display_off || !mid_pmu_cxt->camera_off;
 }
 
-static inline int platform_is(u8 model)
-{
-	if (boot_cpu_data.x86_model == model)
-		return true;
-	else
-		return false;
-}
-
 #endif
