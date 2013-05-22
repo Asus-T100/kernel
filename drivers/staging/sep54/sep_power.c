@@ -38,7 +38,7 @@
 #include "sep_sw_desc.h"
 #include "dx_sep_kapi.h"
 
-#define SEP_STATE_CHANGE_TIMEOUT_MSEC 5000
+#define SEP_STATE_CHANGE_TIMEOUT_MSEC 2500
 /**
  * struct sep_power_control - Control data for power state change operations
  * @drvdata:		The associated driver context
@@ -215,7 +215,8 @@ static int process_hibernation_req(void)
 
 	sep_state = GET_SEP_STATE(power_control.drvdata);
 	/* Already off, no need to send the sleep descriptor */
-	if (sep_state == DX_SEP_STATE_OFF)
+	if (sep_state == DX_SEP_STATE_OFF ||
+		sep_state == DX_SEP_STATE_DONE_SLEEP_MODE)
 		return 0;
 
 	if (sep_state != DX_SEP_STATE_DONE_FW_INIT ||
