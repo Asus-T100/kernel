@@ -506,7 +506,7 @@ static bool intel_sdvo_read_response(struct intel_sdvo *intel_sdvo,
 				     void *response, int response_len)
 {
 	u8 retry = 5;
-	u8 status;
+	u8 status = 0;
 	int i;
 
 	DRM_DEBUG_KMS("%s: R: ", SDVO_NAME(intel_sdvo));
@@ -609,6 +609,7 @@ static bool intel_sdvo_set_target_input(struct intel_sdvo *intel_sdvo)
 static bool intel_sdvo_get_trained_inputs(struct intel_sdvo *intel_sdvo, bool *input_1, bool *input_2)
 {
 	struct intel_sdvo_get_trained_inputs_response response;
+	memset(&response, 0, sizeof(response));
 
 	BUILD_BUG_ON(sizeof(response) != 1);
 	if (!intel_sdvo_get_value(intel_sdvo, SDVO_CMD_GET_TRAINED_INPUTS,
@@ -657,6 +658,7 @@ static bool intel_sdvo_get_input_pixel_clock_range(struct intel_sdvo *intel_sdvo
 						   int *clock_max)
 {
 	struct intel_sdvo_pixel_clock_range clocks;
+	memset(&clocks, 0 , sizeof(clocks));
 
 	BUILD_BUG_ON(sizeof(clocks) != 4);
 	if (!intel_sdvo_get_value(intel_sdvo,
@@ -961,6 +963,7 @@ intel_sdvo_get_preferred_input_mode(struct intel_sdvo *intel_sdvo,
 				    struct drm_display_mode *adjusted_mode)
 {
 	struct intel_sdvo_dtd input_dtd;
+	memset(&input_dtd, 0, sizeof(input_dtd));
 
 	/* Reset the input timing to the screen. Assume always input 0. */
 	if (!intel_sdvo_set_target_input(intel_sdvo))
@@ -1259,7 +1262,7 @@ static bool intel_sdvo_get_capabilities(struct intel_sdvo *intel_sdvo, struct in
 static int intel_sdvo_supports_hotplug(struct intel_sdvo *intel_sdvo)
 {
 	struct drm_device *dev = intel_sdvo->base.base.dev;
-	u8 response[2];
+	u8 response[2] = {0};
 
 	/* HW Erratum: SDVO Hotplug is broken on all i945G chips, there's noise
 	 * on the line. */
@@ -1378,7 +1381,7 @@ intel_sdvo_connector_matches_edid(struct intel_sdvo_connector *sdvo,
 static enum drm_connector_status
 intel_sdvo_detect(struct drm_connector *connector, bool force)
 {
-	uint16_t response;
+	uint16_t response = 0;
 	struct intel_sdvo *intel_sdvo = intel_attached_sdvo(connector);
 	struct intel_sdvo_connector *intel_sdvo_connector = to_intel_sdvo_connector(connector);
 	enum drm_connector_status ret;
@@ -2255,7 +2258,7 @@ intel_sdvo_output_setup(struct intel_sdvo *intel_sdvo, uint16_t flags)
 			return false;
 
 	if ((flags & SDVO_OUTPUT_MASK) == 0) {
-		unsigned char bytes[2];
+		unsigned char bytes[2] = {0};
 
 		intel_sdvo->controlled_output = 0;
 		memcpy(bytes, &intel_sdvo->caps.output_flags, 2);
@@ -2275,7 +2278,7 @@ static bool intel_sdvo_tv_create_property(struct intel_sdvo *intel_sdvo,
 {
 	struct drm_device *dev = intel_sdvo->base.base.dev;
 	struct intel_sdvo_tv_format format;
-	uint32_t format_map, i;
+	uint32_t format_map = 0, i;
 
 	if (!intel_sdvo_set_target_output(intel_sdvo, type))
 		return false;
@@ -2340,7 +2343,7 @@ intel_sdvo_create_enhance_property_tv(struct intel_sdvo *intel_sdvo,
 {
 	struct drm_device *dev = intel_sdvo->base.base.dev;
 	struct drm_connector *connector = &intel_sdvo_connector->base.base;
-	uint16_t response, data_value[2];
+	uint16_t response = 0, data_value[2] = {0};
 
 	/* when horizontal overscan is supported, Add the left/right  property */
 	if (enhancements.overscan_h) {
@@ -2457,7 +2460,7 @@ intel_sdvo_create_enhance_property_lvds(struct intel_sdvo *intel_sdvo,
 {
 	struct drm_device *dev = intel_sdvo->base.base.dev;
 	struct drm_connector *connector = &intel_sdvo_connector->base.base;
-	uint16_t response, data_value[2];
+	uint16_t response = 0, data_value[2] = {0};
 
 	ENHANCEMENT(brightness, BRIGHTNESS);
 

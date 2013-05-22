@@ -2413,7 +2413,7 @@ intel_dp_get_dpcd(struct intel_dp *intel_dp)
 static void
 intel_dp_probe_oui(struct intel_dp *intel_dp)
 {
-	u8 buf[3];
+	u8 buf[3] = {0};
 
 	if (!(intel_dp->dpcd[DP_DOWN_STREAM_PORT_COUNT] & DP_OUI_SUPPORT))
 		return;
@@ -2464,7 +2464,7 @@ intel_dp_handle_test_request(struct intel_dp *intel_dp)
 static void
 intel_dp_check_link_status(struct intel_dp *intel_dp)
 {
-	u8 sink_irq_vector;
+	u8 sink_irq_vector = 0;
 	u8 link_status[DP_LINK_STATUS_SIZE];
 
 	if (intel_dp->dpms_mode != DRM_MODE_DPMS_ON)
@@ -2971,7 +2971,7 @@ intel_dp_init(struct drm_device *dev, int output_reg, enum port port)
 		break;
 	default:
 		WARN(1, "Invalid port %c\n", port_name(port));
-		break;
+		return;
 	}
 
 	intel_dp_i2c_init(intel_dp, intel_connector, name);

@@ -2003,7 +2003,7 @@ intel_pin_and_fence_fb_obj(struct drm_device *dev,
 			   struct intel_ring_buffer *pipelined)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	u32 alignment;
+	u32 alignment = 0;
 	int ret;
 
 	switch (obj->tiling_mode) {

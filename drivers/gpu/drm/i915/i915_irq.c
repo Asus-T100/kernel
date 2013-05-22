@@ -573,7 +573,7 @@ static irqreturn_t valleyview_irq_handler(DRM_IRQ_ARGS)
 	irqreturn_t ret = IRQ_NONE;
 	unsigned long irqflags;
 	int pipe;
-	u32 pipe_stats[I915_MAX_PIPES];
+	u32 pipe_stats[I915_MAX_PIPES] = {0};
 	bool blc_event;
 	int lpe_stream;
 
@@ -2217,7 +2217,7 @@ static irqreturn_t i8xx_irq_handler(DRM_IRQ_ARGS)
 	struct drm_device *dev = (struct drm_device *) arg;
 	drm_i915_private_t *dev_priv = (drm_i915_private_t *) dev->dev_private;
 	u16 iir, new_iir;
-	u32 pipe_stats[2];
+	u32 pipe_stats[2] = {0};
 	unsigned long irqflags;
 	int irq_received;
 	int pipe;
@@ -2394,7 +2394,7 @@ static irqreturn_t i915_irq_handler(DRM_IRQ_ARGS)
 {
 	struct drm_device *dev = (struct drm_device *) arg;
 	drm_i915_private_t *dev_priv = (drm_i915_private_t *) dev->dev_private;
-	u32 iir, new_iir, pipe_stats[I915_MAX_PIPES];
+	u32 iir, new_iir, pipe_stats[I915_MAX_PIPES] = {0};
 	unsigned long irqflags;
 	u32 flip_mask =
 		I915_DISPLAY_PLANE_A_FLIP_PENDING_INTERRUPT |
@@ -2633,7 +2633,7 @@ static irqreturn_t i965_irq_handler(DRM_IRQ_ARGS)
 	struct drm_device *dev = (struct drm_device *) arg;
 	drm_i915_private_t *dev_priv = (drm_i915_private_t *) dev->dev_private;
 	u32 iir, new_iir;
-	u32 pipe_stats[I915_MAX_PIPES];
+	u32 pipe_stats[I915_MAX_PIPES] = {0};
 	unsigned long irqflags;
 	int irq_received;
 	int ret = IRQ_NONE, pipe;
