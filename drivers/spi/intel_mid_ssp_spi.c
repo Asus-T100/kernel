@@ -750,8 +750,15 @@ static void poll_transfer(unsigned long data)
 			if (delay)
 				udelay(10);
 			if (ssp_timing_wr) {
-				while ((read_SSSR(sspc->ioaddr)) & 0xF00)
-					;
+				int timeout = 100;
+				/* It is used as debug UART on Tangier. Since
+				   baud rate = 115200, it needs at least 312us
+				   for one word transferring. Becuase of silicon
+				   issue, it MUST check SFIFOL here instead of
+				   TNF. It is the workaround for A0 stepping*/
+				while (--timeout &&
+					((read_SFIFOL(sspc->ioaddr)) & 0xFFFF))
+					udelay(10);
 			}
 			sspc->write(sspc);
 			sspc->read(sspc);
