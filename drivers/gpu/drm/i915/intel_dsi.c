@@ -740,6 +740,19 @@ bool intel_dsi_init(struct drm_device *dev)
 	drm_encoder_init(dev, encoder, &intel_dsi_funcs,
 			DRM_MODE_ENCODER_MIPI);
 
+	/* Initialize panel id based on kernel param.
+	 * If no kernel param use panel id from VBT
+	 * If no  param and no VBT initialize with
+	 * default ASUS panel ID for now */
+	if (i915_mipi_panel_id <= 0) {
+		/* check if panel id available from VBT */
+		if (!dev_priv->mipi.panel_id) {
+			/* default ASUS panel */
+			dev_priv->mipi.panel_id = MIPI_DSI_AUO_PANEL_ID;
+		}
+	} else
+		dev_priv->mipi.panel_id = i915_mipi_panel_id;
+
 	for (i = 0; i < ARRAY_SIZE(intel_dsi_devices); i++) {
 		dsi = &intel_dsi_devices[i];
 		/* find the panel based on panel_id */
@@ -751,6 +764,12 @@ bool intel_dsi_init(struct drm_device *dev)
 			if (dsi->dev_ops->init(&intel_dsi->dev))
 				break;
 		}
+	}
+
+	if (i == ARRAY_SIZE(intel_dsi_devices)) {
+		DRM_ERROR("Unsupported MIPI Panel id:%d\n",
+					dev_priv->mipi.panel_id);
+		goto err;
 	}
 
 	intel_dsi->dsi_packet_format = dsi_24Bpp_packed;

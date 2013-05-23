@@ -149,7 +149,7 @@ void intel_dsi_enable(struct intel_encoder *encoder);
 bool intel_dsi_init(struct drm_device *dev);
 
 /* FIXME */
-#define	MIPI_DSI_CMI_PANEL_ID	0x00
-#define	MIPI_DSI_AUO_PANEL_ID	0x01
+#define	MIPI_DSI_CMI_PANEL_ID	0x01
+#define	MIPI_DSI_AUO_PANEL_ID	0x02
 
 #endif /* _INTEL_DSI_H */
