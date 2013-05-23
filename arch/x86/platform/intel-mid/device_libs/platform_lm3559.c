@@ -49,6 +49,7 @@ void *lm3559_platform_data_func(void *info)
 	 */
 	platform_data.envm_tx2 = 1;
 	platform_data.tx2_polarity = 1;
+	platform_data.flash_current_limit = 9;
 
 	/* set peak current limit to be 3.2A */
 	platform_data.current_limit = 0x3;
