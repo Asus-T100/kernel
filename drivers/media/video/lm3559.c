@@ -232,29 +232,8 @@ static int lm3559_set_config(struct lm3559 *flash)
 }
 
 /* -----------------------------------------------------------------------------
- * Hardware reset and trigger
+ * Hardware trigger
  */
-
-static int lm3559_hw_reset(struct i2c_client *client)
-{
-	struct v4l2_subdev *sd = i2c_get_clientdata(client);
-	struct lm3559 *flash = to_lm3559(sd);
-	struct lm3559_platform_data *pdata = flash->pdata;
-	int ret;
-
-	ret = gpio_request(pdata->gpio_reset, "flash reset");
-	if (ret < 0)
-		return ret;
-
-	gpio_set_value(pdata->gpio_reset, 0);
-	usleep_range(100, 100);
-
-	gpio_set_value(pdata->gpio_reset, 1);
-	usleep_range(100, 100);
-
-	gpio_free(pdata->gpio_reset);
-	return ret;
-}
 
 static void lm3559_flash_off_delay(long unsigned int arg)
 {
@@ -663,13 +642,21 @@ static int __lm3559_s_power(struct lm3559 *flash, int power)
 	if (ret < 0)
 		return ret;
 
-	if (power)
-		gpio_set_value(pdata->gpio_reset, 1);
-	else
-		gpio_set_value(pdata->gpio_reset, 0);
-
-	usleep_range(100, 100);
+	gpio_set_value(pdata->gpio_reset, power);
 	gpio_free(pdata->gpio_reset);
+	usleep_range(100, 100);
+
+	if (power) {
+		/* Setup default values. This makes sure that the chip
+		 * is in a known state.
+		 */
+		ret = lm3559_setup(flash);
+		if (ret < 0) {
+			__lm3559_s_power(flash, 0);
+			return ret;
+		}
+	}
+
 	return 0;
 }
 
@@ -717,26 +704,18 @@ static int lm3559_detect(struct v4l2_subdev *sd)
 		return -ENODEV;
 	}
 
-	/* Power up the flash driver and reset it */
+	/* Make sure the power is initially off to ensure chip is resetted */
+	__lm3559_s_power(flash, 0);
+
+	/* Power up the flash driver, resetting and initializing it. */
 	ret = lm3559_s_power(&flash->sd, 1);
-	if (ret < 0)
-		return ret;
+	if (ret < 0) {
+		dev_err(&client->dev, "Failed to power on lm3559 LED flash\n");
+	} else {
+		dev_dbg(&client->dev, "Successfully detected lm3559 LED flash\n");
+		lm3559_s_power(&flash->sd, 0);
+	}
 
-	lm3559_hw_reset(client);
-
-	/* Setup default values. This makes sure that the chip is in a known
-	 * state.
-	 */
-	ret = lm3559_setup(flash);
-	if (ret < 0)
-		goto fail;
-
-	dev_dbg(&client->dev, "Successfully detected lm3559 LED flash\n");
-	lm3559_s_power(&flash->sd, 0);
-	return 0;
-
-fail:
-	lm3559_s_power(&flash->sd, 0);
 	return ret;
 }
 
