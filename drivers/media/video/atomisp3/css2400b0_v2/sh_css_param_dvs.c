@@ -29,25 +29,6 @@
 #include <linux/string.h>		/* memcpy() */
 
 
-#define DVS_ENV_MIN_X (12)
-#define DVS_ENV_MIN_Y (12)
- 
-#define DVS_BLOCKDIM_X (64)
-#define DVS_BLOCKDIM_Y_LUMA (64)
-#define DVS_BLOCKDIM_Y_CHROMA (32) /* UV height block size is half the Y block height*/
-
-#define DVS_TABLE_IN_BLOCKDIM_X(X)   		(CEIL_DIV((X), DVS_BLOCKDIM_X) + 1)
-#define DVS_TABLE_IN_BLOCKDIM_Y_LUMA(X)		(CEIL_DIV((X), DVS_BLOCKDIM_Y_LUMA) + 1)
-#define DVS_TABLE_IN_BLOCKDIM_Y_CHROMA(X)	(CEIL_DIV((X), DVS_BLOCKDIM_Y_CHROMA) + 1)
-
-#define DVS_ENVELOPE_X(X) (((X) == 0) ? (DVS_ENV_MIN_X) : (X))
-#define DVS_ENVELOPE_Y(X) (((X) == 0) ? (DVS_ENV_MIN_Y) : (X))
-
-#define DVS_COORD_FRAC_BITS (10)
-
-
-
-
 struct ia_css_dvs_6axis_config *
 generate_dvs_6axis_table(const struct ia_css_resolution	*frame_res, const struct ia_css_resolution *dvs_offset)
 {
@@ -68,9 +49,9 @@ generate_dvs_6axis_table(const struct ia_css_resolution	*frame_res, const struct
 	}
 	else
 	{	/*Initialize new struct with latest config settings*/	
-		dvs_config->width_y = width_y = DVS_TABLE_IN_BLOCKDIM_X(frame_res->width);
+		dvs_config->width_y = width_y = DVS_TABLE_IN_BLOCKDIM_X_LUMA(frame_res->width);
 		dvs_config->height_y = height_y = DVS_TABLE_IN_BLOCKDIM_Y_LUMA(frame_res->height);
-		dvs_config->width_uv = width_uv = DVS_TABLE_IN_BLOCKDIM_X(frame_res->width / 2); /* UV = Y/2, depens on colour format YUV 4.2.0*/
+		dvs_config->width_uv = width_uv = DVS_TABLE_IN_BLOCKDIM_X_CHROMA(frame_res->width / 2); /* UV = Y/2, depens on colour format YUV 4.2.0*/
 		dvs_config->height_uv = height_uv = DVS_TABLE_IN_BLOCKDIM_Y_CHROMA(frame_res->height / 2);/* UV = Y/2, depens on colour format YUV 4.2.0*/
 
 		sh_css_dtrace(SH_DBG_TRACE, "generate_dvs_6axis_table: Env_X %d Env_Y %d\n",dvs_offset->width,dvs_offset->height);
@@ -220,11 +201,14 @@ free_dvs_6axis_table(struct ia_css_dvs_6axis_config  **dvs_6axis_config)
 			sh_css_free((*dvs_6axis_config)->ycoords_uv);
 			(*dvs_6axis_config)->ycoords_uv = NULL;
 		}
-		
+
+		sh_css_dtrace(SH_DBG_TRACE,
+			"<- free_dvs_6axis_table dvs_6axis_config %p\n",
+			(*dvs_6axis_config));
+
 		sh_css_free(*dvs_6axis_config);
 		*dvs_6axis_config = NULL;
 	}
-	sh_css_dtrace(SH_DBG_TRACE, "<- free_dvs_6axis_table dvs_6axis_config %p\n",(*dvs_6axis_config));
 }
 
 void copy_dvs_6axis_table(struct ia_css_dvs_6axis_config *dvs_config_dst,

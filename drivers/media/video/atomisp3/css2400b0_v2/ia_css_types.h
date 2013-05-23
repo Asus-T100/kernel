@@ -419,8 +419,8 @@ struct ia_css_fc_config {
 	uint16_t gain_neg_1;
 	uint16_t crop_pos_0;
 	uint16_t crop_pos_1;
-	uint16_t crop_neg_0;
-	uint16_t crop_neg_1;
+	int16_t  crop_neg_0;
+	int16_t  crop_neg_1;
 };
 
 /** Chroma Noise Reduction configuration.
@@ -538,9 +538,7 @@ enum ia_css_capture_mode {
 struct ia_css_capture_config {
 	enum ia_css_capture_mode mode; /**< Still capture mode */
 	uint32_t enable_xnr;	       /**< Enable/disable XNR */
-	uint32_t enable_capture_pp;
-	/**< Enable/disable the post-processing binary.
-	     This is for testing purposes only! */
+	uint32_t enable_capture_pp;    /**< Enable/disable the post-processing binary*/
 	uint32_t enable_raw_output;
 };
 

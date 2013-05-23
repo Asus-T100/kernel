@@ -4753,4 +4753,19 @@ EDP_PSR_SW_TIMER
 #define  WM_DBG_DISALLOW_MAXFIFO	(1<<1)
 #define  WM_DBG_DISALLOW_SPRITE		(1<<2)
 
+#define VLV_IOSFSB_PWRGT_CNT_CTRL   0x60
+#define VLV_POWER_GATE_DISPLAY_MASK (0x3<<6)
+
+#define VLV_DISPLAY_ISLAND (0x1<<3)
+
+#define VLV_GFX_CLK_FORCE_ON_BIT (1<<2)
+#define VLV_GFX_CLK_STATUS_BIT (1<<3)
+
+/* S0ix related */
+/* GUnit S0ix registers for save/rstore */
+#define GUNIT_CONTROL		0x02030
+#define GUNIT_CONTROL1		0x02034
+#define GUNIT_CZCLOCK_GATING_DISABLE1 0x02060
+#define GUNIT_CZCLOCK_GATING_DISABLE2 0x02064
+
 #endif /* _I915_REG_H_ */

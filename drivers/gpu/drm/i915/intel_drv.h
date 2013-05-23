@@ -157,6 +157,7 @@ struct intel_crtc {
 	u8 lut_r[256], lut_g[256], lut_b[256];
 	int dpms_mode;
 	bool active; /* is the crtc on? independent of the dpms mode */
+	bool s0ix_suspend_state;
 	bool primary_disabled; /* is the crtc obscured by a plane? */
 	bool lowfreq_avail;
 	struct intel_overlay *overlay;
@@ -567,4 +568,6 @@ extern void intel_edp_psr_exit_ioctl(struct drm_device *device, void *data,
 extern void valleyview_program_clock_bending(struct drm_i915_private *dev_priv,
 		struct intel_program_clock_bending *clockbendargs);
 
+extern ssize_t display_runtime_suspend(struct drm_device *drm_dev);
+extern ssize_t display_runtime_resume(struct drm_device *drm_dev);
 #endif /* __INTEL_DRV_H__ */

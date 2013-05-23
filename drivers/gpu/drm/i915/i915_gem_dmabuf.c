@@ -42,7 +42,8 @@ static struct sg_table *i915_gem_map_dma_buf(struct dma_buf_attachment *attachme
 		return ERR_PTR(ret);
 
 	if (!obj->pages) {
-		ret = i915_gem_object_get_pages_gtt(obj, __GFP_NORETRY | __GFP_NOWARN);
+		ret = i915_gem_object_get_pages(obj,
+				__GFP_NORETRY | __GFP_NOWARN);
 		if (ret)
 			goto out;
 	}
@@ -92,7 +93,8 @@ static void *i915_gem_dmabuf_vmap(struct dma_buf *dma_buf)
 	}
 
 	if (!obj->pages) {
-		ret = i915_gem_object_get_pages_gtt(obj, __GFP_NORETRY | __GFP_NOWARN);
+		ret = i915_gem_object_get_pages(obj,
+				__GFP_NORETRY | __GFP_NOWARN);
 		if (ret) {
 			mutex_unlock(&dev->struct_mutex);
 			return ERR_PTR(ret);

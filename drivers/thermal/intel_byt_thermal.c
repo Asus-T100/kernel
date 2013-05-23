@@ -23,6 +23,7 @@
 #include <linux/pm.h>
 #include <linux/init.h>
 #include <linux/slab.h>
+#include <linux/kfifo.h>
 #include <linux/module.h>
 #include <linux/debugfs.h>
 #include <linux/thermal.h>
@@ -55,13 +56,16 @@
 #define TS_CRIT_ENABLE	0x91
 #define TS_A0_STS	0x92
 #define TS_A1_STS	0x93
+#define TS_A2_STS	0xBD
 
+#define PMICSTS		(1 << 5)
 #define PMICALRT	(1 << 3)
 #define SYS2ALRT	(1 << 2)
 #define SYS1ALRT	(1 << 1)
 #define SYS0ALRT	(1 << 0)
 #define THERM_EN	(1 << 0)
 #define ALERT_EN	(1 << 6)
+#define IRQ_LVL1_EN	(1 << 1)
 #define TS_ENABLE_ALL	0x27
 
 /* ADC to Temperature conversion table length */
@@ -85,9 +89,29 @@
 #define PMIC_DIE_TEMP_MIN	-40
 #define PMIC_DIE_TEMP_MAX	125
 
-/* 'enum' of Thermal sensors */
-enum thermal_sensors { SYS0, SYS1, SYS2, PMIC_DIE, _COUNT };
+#define IRQ_FIFO_MAX		16
 
+struct thermal_event {
+	int sensor; /* For which sensor ? */
+	int event;  /* Whether LOW or HIGH event ? */
+	int level;  /* Which alert level 0/1/2 ? */
+};
+
+static DEFINE_KFIFO(irq_fifo, struct thermal_event, IRQ_FIFO_MAX);
+
+static const int params[3][PMIC_THERMAL_SENSORS] = {
+		{ TS_A0_STS, TS_A1_STS, TS_A2_STS, 0 }, /* status register */
+		{ SYS0ALRT, SYS1ALRT, SYS2ALRT, PMICALRT }, /* Interrupt bit */
+		{ SYS0ALRT, SYS1ALRT, SYS2ALRT, PMICSTS },  /* Status bit */
+		};
+/*
+ * ADC Result registers: The 10 bit ADC code is stored in two registers.
+ * The 'high' register holds D[8:9] of the ADC code, in D[0:1]. The 'low'
+ * register holds D[0:7] of the ADC code. These register addresses are
+ * consecutive.
+ */
+static const int adc_res_reg_l[PMIC_THERMAL_SENSORS] = {
+					0x75, 0x77, 0x79, 0x7F };
 /*
  * Alert registers store the 'alert' temperature for each sensor,
  * as 10 bit ADC code. The higher two bits are stored in bits[0:1] of
@@ -133,6 +157,8 @@ struct thermal_device_info {
 struct thermal_data {
 	struct platform_device *pdev;
 	struct iio_channel *iio_chan;
+	struct work_struct thermal_work;
+	struct mutex thrm_irq_lock;
 	struct thermal_zone_device *tzd[PMIC_THERMAL_SENSORS];
 	unsigned int irq;
 	/* Caching information */
@@ -403,9 +429,19 @@ static int set_alert_temp(int alert_reg_l, int adc_val, int level)
 		return intel_mid_pmic_writeb(alert_reg_l, adc_val);
 	}
 
+	/*
+	 * The alert register stores B[1:8] of val and the HW
+	 * while comparing prefixes and suffixes this value with
+	 * a 0.
+	 */
+	if (level == LEVEL_ALERT2) {
+		adc_val = (adc_val & 0x1FF) >> 1;
+		return intel_mid_pmic_writeb(alert_reg_l, adc_val);
+	}
+
 	/* Extract bits[0:7] of 'adc_val' and write them into alert_reg_l */
 	ret = intel_mid_pmic_writeb(alert_reg_l, adc_val & 0xFF);
-	if (ret < 0 || level == LEVEL_ALERT2)
+	if (ret < 0)
 		return ret;
 
 	/* Get the address of alert_reg_h */
@@ -565,6 +601,11 @@ static ssize_t store_trip_temp(struct thermal_zone_device *tzd,
 		return -EINVAL;
 	}
 
+	if (trip == LEVEL_ALERT2 && trip_temp < 55000) {
+		dev_err(&tzd->device, "Tcrit should be more than 55C\n");
+		return -EINVAL;
+	}
+
 	mutex_lock(&thrm_update_lock);
 
 	ret = temp_to_adc(td_info->is_direct, (int)trip_temp, &adc_val);
@@ -605,7 +646,26 @@ static ssize_t show_trip_type(struct thermal_zone_device *tzd,
 	return 0;
 }
 
-static ssize_t show_temp(struct thermal_zone_device *tzd, long *temp)
+static int read_result_regs(void)
+{
+	int i, ret;
+
+	for (i = 0; i < PMIC_THERMAL_SENSORS; i++) {
+		/*
+		 * Exploit the fact that the result registers store
+		 * the value in the same format as that of the alert
+		 * registers. So, use get_alert_temp but pass the
+		 * result register address, and level as 0.
+		 */
+		ret = get_alert_temp(adc_res_reg_l[i], 0);
+		if (ret < 0)
+			return ret;
+		tdata->cached_vals[i] = ret;
+	}
+	return 0;
+}
+
+static int update_temp(struct thermal_zone_device *tzd, long *temp)
 {
 	int ret;
 	struct thermal_device_info *td_info = tzd->devdata;
@@ -614,40 +674,69 @@ static ssize_t show_temp(struct thermal_zone_device *tzd, long *temp)
 	if (!tdata->iio_chan)
 		return -EINVAL;
 
-	mutex_lock(&thrm_update_lock);
-
 	if (!tdata->is_initialized ||
 			time_after(jiffies, tdata->last_updated + HZ)) {
 		ret = iio_st_read_channel_all_raw(tdata->iio_chan,
 						tdata->cached_vals);
-		if (ret) {
-			dev_err(&tzd->device, "ADC sampling failed:%d\n", ret);
-			goto exit;
+		if (ret == -ETIMEDOUT) {
+			dev_err(&tzd->device,
+				"ADC sampling failed:%d Reading rslt regs\n",
+				ret);
+
+			ret = read_result_regs();
+			if (ret)
+				return ret;
 		}
 		tdata->last_updated = jiffies;
 		tdata->is_initialized = true;
 	}
 
-	ret = adc_to_temp(td_info->is_direct, tdata->cached_vals[indx], temp);
-exit:
+	return adc_to_temp(td_info->is_direct, tdata->cached_vals[indx], temp);
+}
+
+static ssize_t show_temp(struct thermal_zone_device *tzd, long *temp)
+{
+	int ret;
+
+	mutex_lock(&thrm_update_lock);
+
+	ret = update_temp(tzd, temp);
+
 	mutex_unlock(&thrm_update_lock);
 	return ret;
 }
 
 static int enable_tm(void)
 {
-	int ret;
+	int i, reg, ret, level;
 
 	mutex_lock(&thrm_update_lock);
 
 	/* Setting these bits enables ADC to poll for these Thermistors */
-	ret = intel_mid_pmic_readb(TS_ENABLE);
+	ret = intel_mid_pmic_setb(TS_ENABLE, TS_ENABLE_ALL);
 	if (ret < 0)
 		goto exit;
 
-	ret = intel_mid_pmic_writeb(TS_ENABLE, ret | TS_ENABLE_ALL);
-	if (ret < 0)
-		goto exit;
+	/*
+	 * Enable Interrupts for Alert level 0 and 1. Alert
+	 * level 2 is critical and is enabled by default in the HW.
+	 */
+	for (level = 0; level <= LEVEL_ALERT1; level++) {
+		/* Unmask the 2nd level interrupts for Alerts 0,1,2 */
+		ret = intel_mid_pmic_writeb(MTHRMIRQ0 + level, 0x00);
+		if (ret < 0)
+			goto exit;
+
+		for (i = 0; i < PMIC_THERMAL_SENSORS; i++) {
+			reg = alert_regs_l[level][i] - 1;
+			ret = intel_mid_pmic_setb(reg, ALERT_EN);
+			if (ret < 0)
+				goto exit;
+		}
+	}
+
+	/* Unmask the first level IRQ bit for Thermal alerts */
+	ret = intel_mid_pmic_clearb(MIRQLVL1, IRQ_LVL1_EN);
 
 exit:
 	mutex_unlock(&thrm_update_lock);
@@ -668,6 +757,154 @@ static struct thermal_device_info *initialize_sensor(int index)
 		td_info->is_direct = true;
 
 	return td_info;
+}
+
+static void notify_thermal_event(struct thermal_event te)
+{
+	int ret;
+	long cur_temp;
+	char *thermal_event[5];
+
+	struct thermal_zone_device *tzd = tdata->tzd[te.sensor];
+
+	mutex_lock(&thrm_update_lock);
+
+	/*
+	 * Read the current Temperature and send it to user land;
+	 * so that the user space can avoid a sysfs read.
+	 */
+	ret = update_temp(tzd, &cur_temp);
+	if (ret) {
+		dev_err(&tzd->device, "Cannot update temperature\n");
+		goto exit;
+	}
+
+	pr_info("Thermal Event: sensor: %s, cur_temp: %ld, event: %d, level: %d\n",
+			tzd->type, cur_temp, te.event, te.level);
+	thermal_event[0] = kasprintf(GFP_KERNEL, "NAME=%s", tzd->type);
+	thermal_event[1] = kasprintf(GFP_KERNEL, "TEMP=%ld", cur_temp);
+	thermal_event[2] = kasprintf(GFP_KERNEL, "EVENT=%d", te.event);
+	thermal_event[3] = kasprintf(GFP_KERNEL, "LEVEL=%d", te.level);
+	thermal_event[4] = NULL;
+
+	kobject_uevent_env(&tzd->device.kobj, KOBJ_CHANGE, thermal_event);
+
+	kfree(thermal_event[3]);
+	kfree(thermal_event[2]);
+	kfree(thermal_event[1]);
+	kfree(thermal_event[0]);
+
+exit:
+	mutex_unlock(&thrm_update_lock);
+	return;
+}
+
+static int update_intrpt_params(int irq, int level, int *sensor, int *event)
+{
+	int i, sts;
+
+	/* Read the appropriate status register */
+	sts = intel_mid_pmic_readb(params[0][level]);
+	if (sts < 0)
+		return sts;
+
+	for (i = 0; i < PMIC_THERMAL_SENSORS; i++) {
+		if (irq & params[1][i]) {
+			*sensor = i;
+			*event = !!(sts & params[2][i]);
+			break;
+		}
+	}
+	return 0;
+}
+
+static void thermal_work_func(struct work_struct *work)
+{
+	int gotten;
+	struct thermal_event te;
+
+	gotten = kfifo_get(&irq_fifo, &te);
+	if (!gotten) {
+		pr_err("kfifo empty\n");
+		return;
+	}
+
+	/* Notify the user space through UEvent */
+	notify_thermal_event(te);
+}
+
+static irqreturn_t thermal_intrpt(int irq_nr, void *id)
+{
+	int ret, irq, reg, level, clear_bit;
+	int sensor = 0, event = 0;
+	struct thermal_event te;
+	struct thermal_data *tdata = (struct thermal_data *)id;
+
+	if (!tdata)
+		return IRQ_HANDLED;
+
+	mutex_lock(&tdata->thrm_irq_lock);
+
+	/*
+	 * Assertion of THRMIRQ1[0:3] indicates Alert2 ('critical')
+	 * event. Register Layout:
+	 *
+	 * THRMIRQ0: PMIC_DIE SYS2 SYS1 SYS0 PMIC_DIE SYS2 SYS1 SYS0
+	 * Alert0-1:   Alert1 A1   A1   A1   Alert0   A0   A0   A0
+	 *
+	 * THRMIRQ1:     RSVD RSVD RSVD RSVD PMIC_DIE SYS2 SYS1 SYS0
+	 *  Alert 2:			     Alert2   A2   A2   A2
+	 */
+	for (level = 0; level <= LEVEL_ALERT2; level++) {
+		reg = THRMIRQ0 + (level == LEVEL_ALERT2);
+		irq = intel_mid_pmic_readb(reg);
+		if (irq < 0)
+			goto exit;
+
+		irq = irq >> (PMIC_THERMAL_SENSORS * (level == LEVEL_ALERT1));
+		if (irq & 0x0F)
+			goto handle_event;
+	}
+
+	/*
+	 * If we are here, then this event is none of Alert0/1/2
+	 * events but somehow we got the interrupt. Just exit.
+	 * Very unlikely case though.
+	 */
+	goto exit;
+
+handle_event:
+	/*
+	 * From the interrupt and status register, find out
+	 * which sensor caused the event, and for what transition
+	 * [either 'Hot to Cold' or 'Cold to Hot']
+	 */
+	ret = update_intrpt_params(irq, level, &sensor, &event);
+	if (ret < 0)
+		goto exit_err;
+
+	te.event = event;
+	te.sensor = sensor;
+	te.level = level;
+
+	kfifo_put(&irq_fifo, &te);
+
+	/* Alright, we handled the interrupt; Now, clear it. */
+	clear_bit = sensor + PMIC_THERMAL_SENSORS * (level == LEVEL_ALERT1);
+	ret = intel_mid_pmic_setb(reg, (1 << clear_bit));
+	if (ret < 0)
+		goto exit_err;
+
+	schedule_work(&tdata->thermal_work);
+
+	mutex_unlock(&tdata->thrm_irq_lock);
+	return IRQ_HANDLED;
+
+exit_err:
+	pr_err("I2C read/write failed:%d\n", ret);
+exit:
+	mutex_unlock(&tdata->thrm_irq_lock);
+	return IRQ_HANDLED;
 }
 
 static struct thermal_zone_device_ops tzd_ops = {
@@ -692,7 +929,9 @@ static int byt_thermal_probe(struct platform_device *pdev)
 	}
 
 	tdata->pdev = pdev;
+	tdata->irq = platform_get_irq(pdev, 0);
 	platform_set_drvdata(pdev, tdata);
+	mutex_init(&tdata->thrm_irq_lock);
 
 	/* Program a default _max value for each sensor */
 	ret = program_tmax(&pdev->dev);
@@ -732,23 +971,37 @@ static int byt_thermal_probe(struct platform_device *pdev)
 		}
 	}
 
+	INIT_WORK(&tdata->thermal_work, thermal_work_func);
+
+	/* Register for Interrupt Handler */
+	ret = request_threaded_irq(tdata->irq, NULL, thermal_intrpt,
+					IRQF_TRIGGER_RISING,
+					DEVICE_NAME, tdata);
+	if (ret) {
+		dev_err(&pdev->dev, "request_threaded_irq failed:%d\n", ret);
+		goto exit_reg;
+	}
+
 	/* Enable Thermal Monitoring */
 	ret = enable_tm();
 	if (ret) {
 		dev_err(&pdev->dev, "Enabling TM failed:%d\n", ret);
-		goto exit_reg;
+		goto exit_irq;
 	}
 
 	create_ccove_thermal_debugfs();
 
 	return 0;
 
+exit_irq:
+	free_irq(tdata->irq, tdata);
 exit_reg:
 	while (--i >= 0)
 		thermal_zone_device_unregister(tdata->tzd[i]);
 exit_iio:
 	iio_st_channel_release_all(tdata->iio_chan);
 exit_free:
+	mutex_destroy(&tdata->thrm_irq_lock);
 	kfree(tdata);
 	return ret;
 }
@@ -777,6 +1030,8 @@ static int byt_thermal_remove(struct platform_device *pdev)
 		thermal_zone_device_unregister(tdata->tzd[i]);
 
 	iio_st_channel_release_all(tdata->iio_chan);
+	free_irq(tdata->irq, tdata);
+	mutex_destroy(&tdata->thrm_irq_lock);
 	kfree(tdata);
 
 	remove_ccove_thermal_debugfs();

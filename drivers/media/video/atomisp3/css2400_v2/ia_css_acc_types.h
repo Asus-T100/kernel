@@ -43,6 +43,7 @@
 #include <linux/kernel.h>
 #include <linux/string.h>       /* memcpy() */
 #else
+#include <stdarg.h>             /* printf() */
 #include <stdlib.h>             /* size_t */
 #include <string.h>             /* memcpy() */
 #include "math_support.h"		/* min(), max() */

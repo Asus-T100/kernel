@@ -22,7 +22,6 @@ struct ia_css_pipe_extra_config {
 	bool enable_dvs_6axis;
 	bool enable_reduced_pipe;
 	bool enable_dz;
-	unsigned int isp_pipe_version;
 	bool disable_vf_pp;
 	bool disable_capture_pp;
 };
@@ -96,18 +95,6 @@ enum ia_css_err
 ia_css_mipi_frame_allocate(struct	ia_css_frame **frame,
 				const unsigned int	size_bytes,
 				const bool			contiguous);
-
-/** @brief Specify a CSS MIPI frame buffer.
- *
- * @param[in]	size_bytes	The frame size in memory words (32B).
- * @param[in]	contiguous	Allocate memory physically contiguously or not.
- * @return		The error code.
- *
- * Specifies a CSS MIPI frame buffer: size in memory words (32B).
- */
-enum ia_css_err
-ia_css_mipi_frame_specify(const unsigned int	size_mem_words,
-				const bool contiguous);
 
 /** @brief Calculate the size of a mipi frame.
  *

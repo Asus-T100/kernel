@@ -50,6 +50,10 @@
 #define MIC2SDET_DEBOUNCE_DELAY 50 /* 50 ms */
 #define MICBIAS_NAME	"MIC2 Bias"
 
+static const char * const dmic_switch_text[] = {"DMIC1", "DMIC3"};
+
+static const struct soc_enum dmic_switch_config_enum =
+			SOC_ENUM_SINGLE_EXT(2, dmic_switch_text);
 /* CS42L73 widgets */
 static const struct snd_soc_dapm_widget ctp_vb_dapm_widgets[] = {
 
@@ -94,6 +98,35 @@ static int ctp_vb_comms_dai_link_startup(struct snd_pcm_substream *substream)
 	return snd_pcm_hw_constraint_integer(str_runtime,
 						SNDRV_PCM_HW_PARAM_PERIODS);
 }
+
+int ctp_vb_get_dmic_selected(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_card *card = snd_kcontrol_chip(kcontrol);
+	struct ctp_mc_private *ctx = snd_soc_card_get_drvdata(card);
+
+	ucontrol->value.integer.value[0] = ctx->dmic_switch;
+	return 0;
+}
+
+int ctp_vb_set_dmic_selected(struct snd_kcontrol *kcontrol,
+			struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_card *card = snd_kcontrol_chip(kcontrol);
+	struct ctp_mc_private *ctx = snd_soc_card_get_drvdata(card);
+
+	ctx->dmic_switch = ucontrol->value.integer.value[0];
+	if (ucontrol->value.integer.value[0])
+		gpio_set_value(ctx->dmic_gpio, 0);
+	else
+		gpio_set_value(ctx->dmic_gpio, 1);
+	return 0;
+}
+
+static const struct snd_kcontrol_new ctp_vb_snd_controls[] = {
+	SOC_ENUM_EXT("DMIC Switch", dmic_switch_config_enum,
+			ctp_vb_get_dmic_selected, ctp_vb_set_dmic_selected),
+};
 
 static int ctp_vb_cs42l73_startup(struct snd_pcm_substream *substream)
 {
@@ -373,6 +406,12 @@ int ctp_vb_init(struct snd_soc_pcm_runtime *runtime)
 	struct snd_soc_card *card = runtime->card;
 	struct ctp_mc_private *ctx = snd_soc_card_get_drvdata(runtime->card);
 
+	ret = snd_soc_add_card_controls(card, ctp_vb_snd_controls,
+					ARRAY_SIZE(ctp_vb_snd_controls));
+	if (ret) {
+		pr_err("soc_add_controls failed %d", ret);
+		return ret;
+	}
 	/* Set codec bias level */
 	ctp_set_bias_level(card, dapm, SND_SOC_BIAS_OFF);
 	card->dapm.idle_bias_off = true;
@@ -596,6 +635,7 @@ struct snd_soc_machine_ops ctp_vb_cs42l73_ops = {
 	.hp_detection = vb_hp_detection,
 	.mclk_switch = vb_mclk_switch,
 	.jack_support = true,
+	.dmic3_support = true,
 	.micsdet_debounce = MIC2SDET_DEBOUNCE_DELAY,
 	.mic_bias = MICBIAS_NAME,
 };

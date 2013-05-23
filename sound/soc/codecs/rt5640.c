@@ -3456,6 +3456,7 @@ static struct snd_soc_codec_driver soc_codec_dev_rt5640 = {
 
 static const struct i2c_device_id rt5640_i2c_id[] = {
 	{"rt5640", 0},
+	{"10EC5640:00", 0},
 	{}
 };
 
@@ -3467,6 +3468,7 @@ static int __devinit rt5640_i2c_probe(struct i2c_client *i2c,
 	struct rt5640_priv *rt5640;
 	int ret;
 
+	pr_debug("%s enter", __func__);
 	rt5640 = kzalloc(sizeof(struct rt5640_priv), GFP_KERNEL);
 	if (NULL == rt5640)
 		return -ENOMEM;

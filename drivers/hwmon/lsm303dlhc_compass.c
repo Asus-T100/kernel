@@ -434,3 +434,4 @@ module_exit(lsm303cmp_exit);
 MODULE_AUTHOR("Li Jian<jian.d.li@intel.com>");
 MODULE_DESCRIPTION("lsm303dlhc Compass Driver");
 MODULE_LICENSE("GPL v2");
+MODULE_ALIAS("i2c:lsm303cmp");

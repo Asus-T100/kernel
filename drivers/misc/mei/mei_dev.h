@@ -322,6 +322,7 @@ struct mei_cl_device {
  * struct mei_device -  MEI private device struct
 
  * @hbm_state - state of host bus message protocol
+ * @support_rpm - support runtime power managment
  * @mem_addr - mem mapped base register address
 
  * @hbuf_depth - depth of hardware host/write buffer is slots
@@ -367,6 +368,7 @@ struct mei_device {
 	enum mei_dev_state dev_state;
 	enum mei_hbm_state hbm_state;
 	u16 init_clients_timer;
+	bool support_rpm;
 
 	unsigned char rd_msg_buf[MEI_RD_MSG_BUF_SIZE];	/* control messages */
 	u32 rd_msg_hdr;
@@ -491,8 +493,8 @@ struct mei_cl_cb *mei_amthif_find_read_list_entry(struct mei_device *dev,
 
 void mei_amthif_run_next_cmd(struct mei_device *dev);
 
-int mei_amthif_irq_write_complete(struct mei_device *dev, s32 *slots,
-			struct mei_cl_cb *cb, struct mei_cl_cb *cmpl_list);
+int mei_amthif_irq_write_complete(struct mei_cl *cl, struct mei_cl_cb *cb,
+				  s32 *slots, struct mei_cl_cb *cmpl_list);
 
 void mei_amthif_complete(struct mei_device *dev, struct mei_cl_cb *cb);
 int mei_amthif_irq_read_msg(struct mei_device *dev,
@@ -567,9 +569,9 @@ static inline int mei_hw_reset(struct mei_device *dev, bool enable)
 	return dev->ops->hw_reset(dev, enable);
 }
 
-static inline void mei_hw_start(struct mei_device *dev)
+static inline int mei_hw_start(struct mei_device *dev)
 {
-	dev->ops->hw_start(dev);
+	return dev->ops->hw_start(dev);
 }
 
 static inline void mei_clear_interrupts(struct mei_device *dev)
@@ -633,6 +635,8 @@ static inline int mei_count_full_read_slots(struct mei_device *dev)
 {
 	return dev->ops->rdbuf_full_slots(dev);
 }
+
+bool mei_write_is_idle(struct mei_device *dev);
 
 #if IS_ENABLED(CONFIG_DEBUG_FS)
 int mei_dbgfs_register(struct mei_device *dev, const char *name);

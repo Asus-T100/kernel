@@ -39,14 +39,14 @@
 #define NC_PM_SSS			0x3F
 
 /* SRAM locations to get S0ix residency */
-#define S0I1_RES_ADDR		0xFFFFF604
-#define S0I2_RES_ADDR		0xFFFFF608
-#define S0I3_RES_ADDR		0xFFFFF60C
+#define S0I1_RES_ADDR		0xFFFFFDE0
+#define S0I2_RES_ADDR		0xFFFFFDE8
+#define S0I3_RES_ADDR		0xFFFFFDF0
 
 /* SRAM locations to get S0ix count */
-#define S0I1_COUNT_ADDR		0xFFFF7FF0
-#define S0I2_COUNT_ADDR		0xFFFF7FF4
-#define S0I3_COUNT_ADDR		0xFFFF7FF8
+#define S0I1_COUNT_ADDR		0xFFFFF420
+#define S0I2_COUNT_ADDR		0xFFFFF424
+#define S0I3_COUNT_ADDR		0xFFFFF428
 
 /* IPC commands to start, stop and
  * dump S0ix residency counters */

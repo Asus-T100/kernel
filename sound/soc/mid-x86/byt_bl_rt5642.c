@@ -26,6 +26,7 @@
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
+#include <linux/acpi.h>
 #include <linux/device.h>
 #include <linux/gpio.h>
 #include <linux/slab.h>
@@ -476,11 +477,18 @@ const struct dev_pm_ops snd_byt_mc_pm_ops = {
 	.poweroff = snd_byt_poweroff,
 };
 
+static const struct acpi_device_id byt_mc_acpi_ids[] = {
+	{ "AMCR0F28", 0 },
+	{},
+};
+MODULE_DEVICE_TABLE(acpi, byt_mc_acpi_ids);
+
 static struct platform_driver snd_byt_mc_driver = {
 	.driver = {
 		.owner = THIS_MODULE,
 		.name = "byt_rt5642",
 		.pm = &snd_byt_mc_pm_ops,
+		.acpi_match_table = ACPI_PTR(byt_mc_acpi_ids),
 	},
 	.probe = snd_byt_mc_probe,
 	.remove = snd_byt_mc_remove,

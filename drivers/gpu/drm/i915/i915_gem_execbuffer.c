@@ -450,7 +450,8 @@ i915_gem_execbuffer_reserve(struct intel_ring_buffer *ring,
 			need_mappable = need_fence || need_reloc_mappable(obj);
 
 			if ((entry->alignment && obj->gtt_offset & (entry->alignment - 1)) ||
-			    (need_mappable && !obj->map_and_fenceable))
+			    (need_mappable && !obj->map_and_fenceable) ||
+			    (obj->gt_old_ro != obj->gt_ro))
 				ret = i915_gem_object_unbind(obj);
 			else
 				ret = pin_and_fence_object(obj, ring);
@@ -977,6 +978,11 @@ i915_gem_do_execbuffer(struct drm_device *dev, void *data,
 		list_add_tail(&obj->exec_list, &objects);
 		obj->exec_handle = exec[i].handle;
 		obj->exec_entry = &exec[i];
+		/* Mark each buffer as r/w by default
+		 * If we are changing gt_ro, we need to make sure that it
+		 * gets re-mapped on gtt to update the ptes */
+		obj->gt_old_ro = obj->gt_ro;
+		obj->gt_ro = 0;
 		eb_add_object(eb, obj);
 	}
 

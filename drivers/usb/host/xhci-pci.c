@@ -121,6 +121,17 @@ static int xhci_pci_setup(struct usb_hcd *hcd)
 	struct pci_dev		*pdev = to_pci_dev(hcd->self.controller);
 	int			retval;
 
+	if (pdev->vendor == PCI_VENDOR_ID_INTEL) {
+		if (pdev->device == PCI_DEVICE_ID_INTEL_BYT_USH) {
+			xhci_dbg(xhci, "Detect BayTrail USH Controller\n");
+			device_set_wakeup_enable(&pdev->dev, true);
+
+			pm_runtime_put_noidle(&pdev->dev);
+			pm_runtime_allow(&pdev->dev);
+			pm_runtime_set_active(&pdev->dev);
+		}
+	}
+
 	retval = xhci_gen_setup(hcd, xhci_pci_quirks);
 	if (retval)
 		return retval;
@@ -201,6 +212,13 @@ static void xhci_pci_remove(struct pci_dev *dev)
 	if (xhci->shared_hcd) {
 		usb_remove_hcd(xhci->shared_hcd);
 		usb_put_hcd(xhci->shared_hcd);
+	}
+
+	if (dev->vendor == PCI_VENDOR_ID_INTEL) {
+		if (dev->device == PCI_DEVICE_ID_INTEL_BYT_USH) {
+			pm_runtime_get_noresume(&dev->dev);
+			pm_runtime_forbid(&dev->dev);
+		}
 	}
 	usb_hcd_pci_remove(dev);
 	kfree(xhci);

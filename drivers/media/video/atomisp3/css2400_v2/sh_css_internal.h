@@ -67,11 +67,7 @@
 #define NUM_REF_FRAMES		2
 
 /* keep next up to date with the definition for MAX_CB_ELEMS_FOR_TAGGER in tagger.sp.c */
-#if defined(HAS_SP_2400A0)
-#define NUM_CONTINUOUS_FRAMES	5
-#else
-#define NUM_CONTINUOUS_FRAMES	10
-#endif
+#define NUM_CONTINUOUS_FRAMES	15
 
 #define NUM_MIPI_FRAMES		8
 
@@ -830,7 +826,8 @@ sh_css_print_sp_debug_state(const struct sh_css_sp_debug_state *state);
 
 void
 sh_css_frame_info_set_width(struct ia_css_frame_info *info,
-			    unsigned int width);
+			    unsigned int width,
+			    unsigned int aligned); // this can be used for an extra alignemt requirement. when 0, no extra alignment is done.
 
 /* Return whether the sp copy process should be started */
 bool
@@ -852,7 +849,8 @@ void
 sh_css_frame_info_init(struct ia_css_frame_info *info,
 		       unsigned int width,
 		       unsigned int height,
-		       enum ia_css_frame_format format);
+		       enum ia_css_frame_format format,
+		       unsigned int aligned);
 
 bool
 sh_css_enqueue_frame(unsigned int pipe_num,
@@ -908,6 +906,9 @@ ia_css_pipe_get_pipeline(const struct ia_css_pipe *pipe);
 
 unsigned int
 ia_css_pipe_get_pipe_num(const struct ia_css_pipe *pipe);
+
+unsigned int
+ia_css_pipe_get_isp_pipe_version(const struct ia_css_pipe *pipe);
 
 bool
 sh_css_continuous_is_enabled(uint8_t pipe_num);

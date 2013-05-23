@@ -344,6 +344,7 @@ static int mfd_emmc_probe_slot(struct sdhci_pci_slot *slot)
 		slot->rst_n_gpio = -EINVAL;
 		break;
 	case PCI_DEVICE_ID_INTEL_BYT_MMC45:
+		slot->host->quirks2 |= SDHCI_QUIRK2_2MS_DELAY;
 	case PCI_DEVICE_ID_INTEL_BYT_MMC:
 		sdhci_alloc_panic_host(slot->host);
 		slot->rst_n_gpio = -EINVAL;
@@ -2056,14 +2057,19 @@ err:
 static void __devexit sdhci_pci_shutdown(struct pci_dev *pdev)
 {
 	struct sdhci_pci_chip *chip;
-
 	chip = pci_get_drvdata(pdev);
 
 	if (chip) {
 		if (chip->allow_runtime_pm) {
-			pm_runtime_get_sync(&pdev->dev);
-			pm_runtime_disable(&pdev->dev);
-			pm_runtime_put_noidle(&pdev->dev);
+			if (chip->pdev->device ==
+					PCI_DEVICE_ID_INTEL_MRFL_MMC) {
+				pm_runtime_get_sync(&pdev->dev);
+				pm_runtime_disable(&pdev->dev);
+				pm_runtime_put_noidle(&pdev->dev);
+			} else {
+				pm_runtime_put_sync_suspend(&pdev->dev);
+				pm_runtime_disable(&pdev->dev);
+			}
 		}
 		scu_ipc_shutdown(chip);
 	}

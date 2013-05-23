@@ -696,6 +696,10 @@ static int power_up(struct v4l2_subdev *sd)
 	ret = dev->platform_data->power_ctrl(sd, 1);
 	if (ret)
 		goto fail_power;
+
+	/* according to DS, at least 5ms is needed between DOVDD and PWDN */
+	usleep_range(5000, 6000);
+
 	/* gpio ctrl */
 	ret = dev->platform_data->gpio_ctrl(sd, 1);
 	if (ret) {
@@ -703,12 +707,14 @@ static int power_up(struct v4l2_subdev *sd)
 		if (ret)
 			goto fail_power;
 	}
-	usleep_range(150, 200);
 
 	/* flis clock control */
 	ret = dev->platform_data->flisclk_ctrl(sd, 1);
 	if (ret)
 		goto fail_clk;
+
+	/* according to DS, 20ms is needed between PWDN and i2c access */
+	msleep(20);
 
 	return 0;
 

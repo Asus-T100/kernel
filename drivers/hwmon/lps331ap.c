@@ -548,3 +548,4 @@ module_exit(lps331ap_exit);
 MODULE_DESCRIPTION("lps331ap pressure sensor driver");
 MODULE_AUTHOR("Xun Wang <xun.a.wang@intel.com>");
 MODULE_LICENSE("GPL");
+MODULE_ALIAS("i2c:lps331ap");

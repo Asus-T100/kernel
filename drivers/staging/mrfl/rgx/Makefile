@@ -208,7 +208,6 @@ merrifield_gfx-y += \
 	generated/dmm_bridge/client_mm_bridge.o \
 	generated/dpdumpmm_bridge/client_pdumpmm_bridge.o \
 	generated/rgxta3d_bridge/server_rgxta3d_bridge.o \
-	generated/cachegeneric_bridge/server_cachegeneric_bridge.o \
 	generated/pdumpcmm_bridge/server_pdumpcmm_bridge.o \
 	generated/rgxpdump_bridge/server_rgxpdump_bridge.o \
 	generated/pvrtl_bridge/server_pvrtl_bridge.o \

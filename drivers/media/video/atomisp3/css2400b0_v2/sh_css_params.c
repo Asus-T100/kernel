@@ -122,21 +122,6 @@
 	(SH_CSS_MORPH_TABLE_ELEM_BYTES * (binary)->morph_tbl_aligned_width * \
 	 (binary)->morph_tbl_height)
 
-/* @GC TODO: Move these defines to the appropriate place later. */
-#define DVS_BLOCKDIM_X (64)
-#define DVS_BLOCKDIM_Y (64)
-#define DVS_COORD_FRAC_BITS (10)
-#define DVS_INPUT_BYTES_PER_PIXEL (1)
-#define XMEM_ALIGN_LOG2 (5)
-
-#define DVS_6AXIS_COORDS_ELEMS CEIL_MUL(sizeof(gdc_warp_param_mem_t) \
-					, HIVE_ISP_DDR_WORD_BYTES)
-
-#define DVS_6AXIS_BYTES(binary) \
-	(DVS_6AXIS_COORDS_ELEMS \
-	 * (binary)->out_frame_info.res.width / DVS_BLOCKDIM_X \
-	 * (binary)->out_frame_info.res.height) / (DVS_BLOCKDIM_Y)
-
 
 /* We keep a second copy of the ptr struct for the SP to access.
    Again, this would not be necessary on the chip. */
@@ -1560,7 +1545,7 @@ static void
 ia_css_set_dvs_coefficients(struct ia_css_isp_parameters *params,
 				const struct ia_css_dvs_coefficients *coefs)
 {
-	assert(coefs);
+	assert_exit(coefs);
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_dis_coefficients() enter: \
 		hcoef=%p, vcoef=%p", coefs->hor_coefs, coefs->ver_coefs);
 	params->dis_hor_coef_tbl = coefs->hor_coefs;
@@ -1584,12 +1569,8 @@ ia_css_get_dvs_statistics(struct ia_css_dvs_statistics           *host_stats,
 	hrt_vaddress hor_ptr_isp,
 		     ver_ptr_isp;
 
-	assert(host_stats);
-	assert(host_stats->hor_proj);
-	assert(host_stats->ver_proj);
-	assert(isp_stats);
-	assert(isp_stats->hor_proj);
-	assert(isp_stats->ver_proj);
+	assert_exit(host_stats && host_stats->hor_proj && host_stats->ver_proj
+		&& isp_stats && isp_stats->hor_proj && isp_stats->ver_proj);
 
 	hor_num_isp = host_stats->grid.aligned_height;
 	ver_num_isp = host_stats->grid.aligned_width;
@@ -1636,7 +1617,7 @@ static void
 ia_css_set_dvs2_coefficients(struct ia_css_isp_parameters *params,
 				const struct ia_css_dvs2_coefficients *coefs)
 {
-	assert(coefs);
+	assert_exit(coefs);
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_dvs2_coefficients() enter: \
 		hor_coefs.odd_real=%p, hor_coefs.odd_imag=%p\
 		hor_coefs.even_real=%p, hor_coefs.even_imag=%p\
@@ -1661,18 +1642,16 @@ ia_css_get_dvs2_statistics(struct ia_css_dvs2_statistics           *host_stats,
 	unsigned int hor_num_isp, ver_num_isp, hor_bytes, ver_bytes;
 	hrt_vaddress hor_ptr_isp, ver_ptr_isp;
 
-	assert(host_stats);
-	assert(host_stats->hor_prod.odd_real );
-	assert(host_stats->hor_prod.odd_imag );
-	assert(host_stats->hor_prod.even_real);
-	assert(host_stats->hor_prod.even_imag);
-	assert(host_stats->ver_prod.odd_real );
-	assert(host_stats->ver_prod.odd_imag );
-	assert(host_stats->ver_prod.even_real);
-	assert(host_stats->ver_prod.even_imag);
-	assert(isp_stats);
-	assert(isp_stats->hor_proj);
-	assert(isp_stats->ver_proj);
+	assert_exit(host_stats && host_stats->hor_prod.odd_real
+		&& host_stats->hor_prod.odd_imag
+		&& host_stats->hor_prod.even_real
+		&& host_stats->hor_prod.even_imag
+		&& host_stats->ver_prod.odd_real
+		&& host_stats->ver_prod.odd_imag
+		&& host_stats->ver_prod.even_real
+		&& host_stats->ver_prod.even_imag
+		&& isp_stats && isp_stats->hor_proj
+		&& isp_stats->ver_proj);
 
 	hor_num_isp =
 	ver_num_isp = host_stats->grid.aligned_width
@@ -1725,10 +1704,8 @@ static void get_3a_stats_from_hmem(
 	struct ia_css_3a_rgby_output	*out_ptr;
 	int			i;
 
-assert(host_stats  != NULL);
-assert(host_stats->rgby_data != NULL);
-assert(ddr_ptr != mmgr_NULL);
-assert(hmem_buf != NULL);
+	assert_exit(host_stats && host_stats->rgby_data
+			&& ddr_ptr && hmem_buf);
 
 	out_ptr = host_stats->rgby_data;
 /*
@@ -1757,9 +1734,7 @@ get_3a_stats_from_dmem(struct ia_css_3a_statistics *host_stats,
 	    i;
 	struct ia_css_3a_output *out_ptr;
 
-	assert(host_stats);
-	assert(host_stats->data);
-	assert(ddr_ptr);
+	assert_exit(host_stats && host_stats->data && ddr_ptr);
 
 	ddr_width  = host_stats->grid.aligned_width;
 	out_width  = host_stats->grid.width;
@@ -1798,10 +1773,8 @@ get_3a_stats_from_vmem(struct ia_css_3a_statistics *host_stats,
 		      s3a_tbl_lo_buf[ISP_S3ATBL_HI_LO_STRIDE *
 				     SH_CSS_MAX_BQ_GRID_HEIGHT];
 
-	assert(host_stats!= NULL);
-	assert(host_stats->data);
-	assert(ddr_ptr_hi != mmgr_NULL);
-	assert(ddr_ptr_lo != mmgr_NULL);
+	assert_exit(host_stats && host_stats->data
+			&& ddr_ptr_hi && ddr_ptr_lo);
 
 	output = host_stats->data;
 	out_width  = host_stats->grid.width;
@@ -1910,7 +1883,7 @@ static void
 convert_coords_to_ispparams(
 	hrt_vaddress ddr_addr,
 	const struct ia_css_dvs_6axis_config *config,
-	unsigned int i_width,
+	unsigned int i_stride,
 	unsigned int o_width,
 	unsigned int o_height,
 	unsigned int uv_flag)
@@ -1924,42 +1897,41 @@ convert_coords_to_ispparams(
 	unsigned int topleft_x, topleft_y,
 		     topleft_x_frac, topleft_y_frac;
 
-	unsigned int blockdim_y = DVS_BLOCKDIM_Y >> uv_flag;
-	unsigned int blockdim_x = DVS_BLOCKDIM_X;
-
 	/* number of blocks per height and width */
-	unsigned int num_blocks_y = o_height / blockdim_y;
-	unsigned int num_blocks_x = o_width / blockdim_x;
+	unsigned int num_blocks_y =  (uv_flag ? DVS_NUM_BLOCKS_Y_CHROMA(o_height) : DVS_NUM_BLOCKS_Y(o_height) );
+	unsigned int num_blocks_x =  (uv_flag ? DVS_NUM_BLOCKS_X_CHROMA(o_width)  : DVS_NUM_BLOCKS_X(o_width)  ); // round num_x up to blockdim_x, if it concerns the Y0Y1 block (uv_flag==0) round up to even 
 
-	unsigned int in_stride = i_width * DVS_INPUT_BYTES_PER_PIXEL << uv_flag;
-	unsigned width;
+
+	unsigned int in_stride = i_stride * DVS_INPUT_BYTES_PER_PIXEL << uv_flag;
+	unsigned width, height;
 	unsigned int *xbuff = NULL;
 	unsigned int *ybuff = NULL;	                  
 
-assert(config != NULL);
-assert(ddr_addr != mmgr_NULL);
+	assert_exit(config && ddr_addr);
 
 	ddr_addr += (2* DVS_6AXIS_COORDS_ELEMS * uv_flag); /* format is Y0 Y1 UV, so UV starts at 3rd position */
-
-assert (o_height % blockdim_y == 0);
-assert (o_width % blockdim_x == 0);
-
 
 	if(uv_flag == 0)
 	{
 		xbuff = config->xcoords_y;
 		ybuff = config->ycoords_y;
 		width = config->width_y;
+		height = config->height_y;
 	}
 	else
 	{
 		xbuff = config->xcoords_uv;
 		ybuff = config->ycoords_uv;
 		width = config->width_uv;
+		height = config->height_uv;
 	}
 	
-	sh_css_dtrace(SH_DBG_TRACE, "convert_coords_to_ispparams blockdim_x %d blockdim_y %d\n",blockdim_x,blockdim_y);
+	sh_css_dtrace(SH_DBG_TRACE, "convert_coords_to_ispparams blockdim_x %d blockdim_y %d\n", DVS_BLOCKDIM_X, DVS_BLOCKDIM_Y_LUMA >> uv_flag);
 	sh_css_dtrace(SH_DBG_TRACE, "convert_coords_to_ispparams num_blocks_x %d num_blocks_y %d\n",num_blocks_x,num_blocks_y);
+	sh_css_dtrace(SH_DBG_TRACE, "convert_coords_to_ispparams width %d height %d\n",width,height);
+
+	assert(width == num_blocks_x + 1); // the width and height of the provided morphing table should be 1 more than the number of blocks
+	assert(height == num_blocks_y + 1);
 	
 	for (j = 0; j < num_blocks_y; j++) {
 		for (i = 0; i < num_blocks_x; i++) {	
@@ -1974,10 +1946,15 @@ assert (o_width % blockdim_x == 0);
 		      y10 = ybuff[(j+1) * width + i];
 		      y11 = ybuff[(j+1) * width + (i+1)];
 
-			/* TODO: Assert that right column's X is greater */
 			xmin = min(x00, x10);
-			/* TODO: Assert that bottom row's Y is greater */
 			ymin = min(y00, y01);
+
+/* Assert that right column's X is greater */
+assert ( x01 >= xmin);
+assert ( x11 >= xmin);
+/* Assert that bottom row's Y is greater */
+assert ( y10 >= ymin);
+assert ( y11 >= ymin);
 
 #if 0
 			/* TODO: Round width to the multiple of bus width */
@@ -2013,6 +1990,23 @@ assert (o_width % blockdim_x == 0);
 			s.p1_y = y01 - topleft_y_frac;
 			s.p2_y = y10 - topleft_y_frac;
 			s.p3_y = y11 - topleft_y_frac;
+
+      // block should fit within the boundingbox.
+      assert (s.p0_x < (s.in_block_width << DVS_COORD_FRAC_BITS));
+      assert (s.p1_x < (s.in_block_width << DVS_COORD_FRAC_BITS));
+      assert (s.p2_x < (s.in_block_width << DVS_COORD_FRAC_BITS));
+      assert (s.p3_x < (s.in_block_width << DVS_COORD_FRAC_BITS));
+      assert (s.p0_y < (s.in_block_height << DVS_COORD_FRAC_BITS));
+      assert (s.p1_y < (s.in_block_height << DVS_COORD_FRAC_BITS));
+      assert (s.p2_y < (s.in_block_height << DVS_COORD_FRAC_BITS));
+      assert (s.p3_y < (s.in_block_height << DVS_COORD_FRAC_BITS));
+
+      // block size should be greater than zero.
+      assert (s.p0_x < s.p1_x);
+      assert (s.p2_x < s.p3_x);
+      assert (s.p0_y < s.p2_y);
+      assert (s.p1_y < s.p3_y);
+      
 #if 0
 			printf("j: %d\ti:%d\n", j, i);
 			printf("offset: %d\n", s.in_addr_offset);
@@ -2026,14 +2020,14 @@ assert (o_width % blockdim_x == 0);
 			printf("p3_y: %d\n", s.p3_y);
 			
 			printf("p0_x_nofrac[0]: %d\n", s.p0_x>>DVS_COORD_FRAC_BITS);
-		        printf("p0_y_nofrac[1]: %d\n", s.p0_y>>DVS_COORD_FRAC_BITS);
-		        printf("p1_x_nofrac[2]: %d\n", s.p1_x>>DVS_COORD_FRAC_BITS);
-		        printf("p1_y_nofrac[3]: %d\n", s.p1_y>>DVS_COORD_FRAC_BITS);
-		        printf("p2_x_nofrac[0]: %d\n", s.p2_x>>DVS_COORD_FRAC_BITS);
-		        printf("p2_y_nofrac[1]: %d\n", s.p2_y>>DVS_COORD_FRAC_BITS);
-		        printf("p3_x_nofrac[2]: %d\n", s.p3_x>>DVS_COORD_FRAC_BITS);
-		        printf("p3_y_nofrac[3]: %d\n", s.p3_y>>DVS_COORD_FRAC_BITS);
-		        printf("\n");
+		    printf("p0_y_nofrac[1]: %d\n", s.p0_y>>DVS_COORD_FRAC_BITS);
+		    printf("p1_x_nofrac[2]: %d\n", s.p1_x>>DVS_COORD_FRAC_BITS);
+		    printf("p1_y_nofrac[3]: %d\n", s.p1_y>>DVS_COORD_FRAC_BITS);
+		    printf("p2_x_nofrac[0]: %d\n", s.p2_x>>DVS_COORD_FRAC_BITS);
+		    printf("p2_y_nofrac[1]: %d\n", s.p2_y>>DVS_COORD_FRAC_BITS);
+		    printf("p3_x_nofrac[2]: %d\n", s.p3_x>>DVS_COORD_FRAC_BITS);
+		    printf("p3_y_nofrac[3]: %d\n", s.p3_y>>DVS_COORD_FRAC_BITS);
+		    printf("\n");
 #endif
 
 			/* HMM STORE the struct "s" */
@@ -2045,10 +2039,10 @@ assert (o_width % blockdim_x == 0);
 			// Y0 Y1 UV0 Y2 Y3 UV1
 			if (uv_flag) {
 				ddr_addr += DVS_6AXIS_COORDS_ELEMS * 3;
-		}
+		    }
 			else {
-        ddr_addr += DVS_6AXIS_COORDS_ELEMS * (1 + (i&1)); // increment with 2 incase x is odd, this to skip the uv position.
-	}
+                ddr_addr += DVS_6AXIS_COORDS_ELEMS * (1 + (i&1)); // increment with 2 incase x is odd, this to skip the uv position.
+	        }
 			
 }
 	}
@@ -2060,20 +2054,24 @@ store_dvs_6axis_config(
 	const struct sh_css_binary *binary,
 	hrt_vaddress ddr_addr_y)
 {
-	unsigned int i_width  = binary->in_frame_info.res.width;
-	unsigned int o_width  = binary->out_frame_info.res.width;
-	unsigned int o_height = binary->out_frame_info.res.height;
+	unsigned int i_stride;
+	unsigned int o_width;
+	unsigned int o_height;
 	
-	assert(binary != NULL);
-	assert(ddr_addr_y != mmgr_NULL);
-	assert(params->dvs_6axis_config != NULL);
-	
+	assert_exit(binary && ddr_addr_y && params->dvs_6axis_config);
+	/* bgz115: replaced binary->in_frame_info.res.width
+	 * for 'padded_width=stride'
+	 */
+	i_stride  = binary->in_frame_info.padded_width;
+	o_width  = binary->out_frame_info.res.width;
+	o_height = binary->out_frame_info.res.height;
+
 	/* Y plane */
 	convert_coords_to_ispparams(ddr_addr_y, params->dvs_6axis_config,
-				    i_width, o_width, o_height, 0);
+				    i_stride, o_width, o_height, 0);
 	/* UV plane (packed inside the y plane) */
 	convert_coords_to_ispparams(ddr_addr_y, params->dvs_6axis_config,
-				    i_width/2, o_width/2, o_height/2, 1);
+				    i_stride/2, o_width/2, o_height/2, 1);
 				    
 
 	params->isp_params_changed = true;	
@@ -2099,7 +2097,7 @@ store_fpntbl(struct ia_css_isp_parameters *params, hrt_vaddress ptr)
 	unsigned int i, j;
 	short *data_ptr = params->fpn_table.data;
 
-assert(ptr != mmgr_NULL);
+	assert_exit(ptr);
 
 	for (i = 0; i < params->fpn_table.height; i++) {
 		for (j = 0;
@@ -2165,7 +2163,7 @@ sh_css_set_black_frame(struct ia_css_stream *stream,
 	hrt_vaddress ptr = raw_black_frame->data
 		+ raw_black_frame->planes.raw.offset;
 
-assert(raw_black_frame != NULL);
+	assert_exit_code(raw_black_frame, IA_CSS_ERR_INTERNAL_ERROR);
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_black_frame() enter: \
 		black_frame=%p\n",raw_black_frame);
@@ -2328,8 +2326,7 @@ store_sctbl(
 {
 	unsigned int i, j, aligned_width, row_padding;
 
-assert(binary != NULL);
-assert(ddr_addr != mmgr_NULL);
+	assert_exit(binary && ddr_addr);
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "store_sctbl() enter:\n");
 
 	if (shading_table == NULL) {
@@ -2429,20 +2426,26 @@ sh_css_process_tnr(struct ia_css_isp_parameters *params)
 
 static void
 sh_css_process_ob(struct ia_css_isp_parameters *params,
+		  unsigned int isp_pipe_version,
 		  unsigned int raw_bit_depth)
 {
-	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_process_ob() enter:\n");
+	unsigned int ob_bit_depth
+		= isp_pipe_version == 2 ? SH_CSS_BAYER_BITS : raw_bit_depth;
+	
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_process_ob() enter: "
+		"isp_pipe_version=%d, raw_bit_depth=%d, ob_bit_depth=%d\n",
+		isp_pipe_version, raw_bit_depth, ob_bit_depth);
 
 	switch (params->ob_config.mode) {
 	case IA_CSS_OB_MODE_FIXED:
 		params->isp_parameters.ob_blacklevel_gr
-			= params->ob_config.level_gr >> (16 - raw_bit_depth);
+			= params->ob_config.level_gr >> (16 - ob_bit_depth);
 		params->isp_parameters.ob_blacklevel_r
-			= params->ob_config.level_r  >> (16 - raw_bit_depth);
+			= params->ob_config.level_r  >> (16 - ob_bit_depth);
 		params->isp_parameters.ob_blacklevel_b
-			= params->ob_config.level_b  >> (16 - raw_bit_depth);
+			= params->ob_config.level_b  >> (16 - ob_bit_depth);
 		params->isp_parameters.ob_blacklevel_gb
-			= params->ob_config.level_gb >> (16 - raw_bit_depth);
+			= params->ob_config.level_gb >> (16 - ob_bit_depth);
 		params->isp_parameters.obarea_start_bq = 0;
 		params->isp_parameters.obarea_length_bq = 0;
 		params->isp_parameters.obarea_length_bq_inverse = 0;
@@ -2814,8 +2817,7 @@ static void ctc_gradient(
 	assert(y0 >= 0 && y0 <= max_dydx);
 	assert(y1 >= 0 && y1 <= max_dydx);
 	assert(x0 < x1);
-	assert(dydx != NULL);
-	assert(shift != NULL);
+	assert_exit(dydx && shift);
 
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "ctc_gradient() enter:\n");
 	
@@ -2905,7 +2907,7 @@ static void
 sh_css_set_gamma_table(struct ia_css_isp_parameters *params,
 			const struct ia_css_gamma_table *table)
 {
-	assert(table);
+	assert_exit(table);
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_gamma_table() enter: "
 		"table=%p\n",table);
 
@@ -2920,7 +2922,7 @@ static void
 sh_css_get_gamma_table(const struct ia_css_isp_parameters *params,
 			struct ia_css_gamma_table *table)
 {
-	assert(table != NULL);
+	assert_exit(table);
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_gamma_table() enter: "
 		"table=%p\n",table);
@@ -2935,7 +2937,7 @@ static void
 sh_css_set_ctc_table(struct ia_css_isp_parameters *params,
 			const struct ia_css_ctc_table *table)
 {
-	assert(table);
+	assert_exit(table);
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_ctc_table() enter: "
 		"table=%p\n",table);
 
@@ -2950,7 +2952,7 @@ static void
 sh_css_get_ctc_table(const struct ia_css_isp_parameters *params,
 			struct ia_css_ctc_table *table)
 {
-	assert(table != NULL);
+	assert_exit(table);
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_ctc_table() enter: "
 		"table=%p\n",table);
@@ -2965,7 +2967,7 @@ static void
 sh_css_set_xnr_table(struct ia_css_isp_parameters *params,
 			const struct ia_css_xnr_table *table)
 {
-	assert(table);
+	assert_exit(table);
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_xnr_table() enter: "
 		"table=%p\n",table);
 
@@ -2980,7 +2982,7 @@ static void
 sh_css_get_xnr_table(const struct ia_css_isp_parameters *params,
 			struct ia_css_xnr_table *table)
 {
-	assert(table != NULL);
+	assert_exit(table);
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_xnr_table() enter: "
 		"table=%p\n",table);
@@ -2995,7 +2997,7 @@ static void
 sh_css_set_macc_table(struct ia_css_isp_parameters *params,
 			const struct ia_css_macc_table *table)
 {
-	assert(table);
+	assert_exit(table);
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_macc_table() enter: "
 		"table=%p\n",table);
 
@@ -3010,7 +3012,7 @@ static void
 sh_css_get_macc_table(const struct ia_css_isp_parameters *params,
 			struct ia_css_macc_table *table)
 {
-	assert(table != NULL);
+	assert_exit(table);
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_macc_table() enter: "
 		"table=%p\n",table);
@@ -3025,7 +3027,7 @@ static void
 sh_css_set_anr_thres(struct ia_css_isp_parameters *params,
 			const struct ia_css_anr_thres *thres)
 {
-	assert(thres);
+	assert_exit(thres);
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_anr_thres() enter: "
 		"thres=%p\n",thres);
 
@@ -3040,7 +3042,7 @@ static void
 sh_css_get_anr_thres(const struct ia_css_isp_parameters *params,
 			struct ia_css_anr_thres *thres)
 {
-	assert(thres != NULL);
+	assert_exit(thres);
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_anr_thres() enter: "
 		"thres=%p\n",thres);
@@ -3128,17 +3130,16 @@ static enum ia_css_err sh_css_params_default_morph_table(
 	const struct sh_css_binary *binary)
 {
 /* MW 2400 advanced requires different scaling */
-	unsigned int i, j, k,
-		     step = (ISP_VEC_NELEMS / 16) * 128,
-		     width = binary->morph_tbl_width,
-		     height = binary->morph_tbl_height;
+	unsigned int i, j, k, width, height,
+		     step = (ISP_VEC_NELEMS / 16) * 128;
 	short start_x[IA_CSS_MORPH_TABLE_NUM_PLANES] = { -8, 0, -8, 0, 0, -8 },
 	      start_y[IA_CSS_MORPH_TABLE_NUM_PLANES] = { 0, 0, -8, -8, -8, 0 };
 	struct ia_css_morph_table *tab;
 
-assert(table != NULL);
-assert(binary != NULL);
+	assert_exit_code(table && binary, IA_CSS_ERR_INTERNAL_ERROR);
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_params_default_morph_table() enter:\n");
+	width = binary->morph_tbl_width;
+	height = binary->morph_tbl_height;
 
 	tab = ia_css_morph_table_allocate(width, height);
 	if (tab == NULL) {
@@ -3216,8 +3217,7 @@ void
 ia_css_get_3a_statistics(struct ia_css_3a_statistics           *host_stats,
 			 const struct ia_css_isp_3a_statistics *isp_stats)
 {
-	assert(host_stats != NULL);
-	assert(isp_stats != NULL);
+	assert_exit(host_stats && isp_stats);
 
 	sh_css_dtrace(SH_DBG_TRACE,
 		"ia_css_get_3a_statistics() enter: "
@@ -3245,7 +3245,7 @@ static void
 sh_css_set_3a_config(struct ia_css_isp_parameters *params,
 			const struct ia_css_3a_config *config)
 {
-	assert(config != NULL);
+	assert_exit(config);
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_3a_config() enter: "
 		"config.ae_y_coef_r=%d, config.ae_y_coef_g=%d, "
@@ -3267,7 +3267,7 @@ static void
 sh_css_get_3a_config(const struct ia_css_isp_parameters *params,
 			struct ia_css_3a_config *config)
 {
-	assert(config != NULL);
+	assert_exit(config);
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_3a_config() enter: "
 		"config=%p\n",config);
@@ -3287,7 +3287,7 @@ static void
 sh_css_set_wb_config(struct ia_css_isp_parameters *params,
 			const struct ia_css_wb_config *config)
 {
-	assert (config != NULL);
+	assert_exit(config);
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_wb_config() enter: "
 		"config.integer_bits=%d, "
 		"config.gr=%d, config.r=%d, "
@@ -3307,7 +3307,7 @@ static void
 sh_css_get_wb_config(const struct ia_css_isp_parameters *params,
 			struct ia_css_wb_config *config)
 {
-	assert(config != NULL);
+	assert_exit(config);
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_wb_config() enter: "
 		"config=%p\n",config);
@@ -3327,7 +3327,7 @@ static void
 sh_css_set_cc_config(struct ia_css_isp_parameters *params,
 			const struct ia_css_cc_config *config)
 {
-	assert (config != NULL);
+	assert_exit(config);
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_cc_config() enter: "
 		"config.fraction_bits=%d, config.m[0]=%d, "
@@ -3354,7 +3354,7 @@ static void
 sh_css_get_cc_config(const struct ia_css_isp_parameters *params,
 			struct ia_css_cc_config *config)
 {
-	assert(config != NULL);
+	assert_exit(config);
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_cc_config() enter: "
 		"config=%p\n",config);
@@ -3378,7 +3378,7 @@ static void
 sh_css_set_tnr_config(struct ia_css_isp_parameters *params,
 			const struct ia_css_tnr_config *config)
 {
-	assert (config != NULL);
+	assert_exit(config);
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_tnr_config() enter: "
 		"config.gain=%d, "
 		"config.threshold_y=%d, config.threshold_uv=%d\n",
@@ -3396,7 +3396,7 @@ static void
 sh_css_get_tnr_config(const struct ia_css_isp_parameters *params,
 			struct ia_css_tnr_config *config)
 {
-	assert(config != NULL);
+	assert_exit(config);
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_tnr_config() enter: "
 		"config=%p\n",config);
@@ -3414,7 +3414,7 @@ static void
 sh_css_set_ob_config(struct ia_css_isp_parameters *params,
 			const struct ia_css_ob_config *config)
 {
-	assert (config != NULL);
+	assert_exit(config);
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_ob_config() enter: "
 		"config.mode=%d, "
 		"config.level_gr=%d, config.level_r=%d, "
@@ -3437,7 +3437,7 @@ static void
 sh_css_get_ob_config(const struct ia_css_isp_parameters *params,
 			struct ia_css_ob_config *config)
 {
-	assert(config != NULL);
+	assert_exit(config);
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_ob_config() enter: "
 		"config=%p\n",config);
@@ -3459,7 +3459,7 @@ static void
 sh_css_set_dp_config(struct ia_css_isp_parameters *params,
 			const struct ia_css_dp_config *config)
 {
-	assert (config != NULL);
+	assert_exit(config);
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_dp_config() enter: "
 		"config.threshold=%d, config.gain=%d\n",
 		config->threshold, config->gain);
@@ -3475,7 +3475,7 @@ static void
 sh_css_get_dp_config(const struct ia_css_isp_parameters *params,
 			struct ia_css_dp_config *config)
 {
-	assert(config != NULL);
+	assert_exit(config);
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_dp_config() enter: "
 		"config=%p\n",config);
@@ -3491,7 +3491,7 @@ static void
 sh_css_set_nr_config(struct ia_css_isp_parameters *params,
 			const struct ia_css_nr_config *config)
 {
-	assert(config != NULL);
+	assert_exit(config);
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_nr_config() enter: "
 		"config.direction=%d, "
 		"config.bnr_gain=%d, config.ynr_gain=%d, "
@@ -3511,7 +3511,7 @@ static void
 sh_css_get_nr_config(const struct ia_css_isp_parameters *params,
 			struct ia_css_nr_config *config)
 {
-	assert(config != NULL);
+	assert_exit(config);
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_nr_config() enter: "
 		"config=%p\n",config);
@@ -3531,7 +3531,7 @@ static void
 sh_css_set_ee_config(struct ia_css_isp_parameters *params,
 			const struct ia_css_ee_config *config)
 {
-	assert(config != NULL);
+	assert_exit(config);
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_ee_config() enter: "
 		"config.threshold=%d, "
 		"config.gain=%d, config.detail_gain=%d\n",
@@ -3549,7 +3549,7 @@ static void
 sh_css_get_ee_config(const struct ia_css_isp_parameters *params,
 			struct ia_css_ee_config *config)
 {
-	assert(config != NULL);
+	assert_exit(config);
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_ee_config() enter: "
 		"config=%p\n",config);
@@ -3567,7 +3567,7 @@ static void
 sh_css_set_de_config(struct ia_css_isp_parameters *params,
 			const struct ia_css_de_config *config)
 {
-	assert(config != NULL);
+	assert_exit(config);
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_de_config() enter: "
 		"config.pixelnoise=%d, "
 		"config.c1_coring_threshold=%d, config.c2_coring_threshold=%d\n",
@@ -3585,7 +3585,7 @@ static void
 sh_css_get_de_config(const struct ia_css_isp_parameters *params,
 			struct ia_css_de_config *config)
 {
-	assert(config != NULL);
+	assert_exit(config);
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_de_config() enter: "
 		"config=%p\n",config);
@@ -3604,7 +3604,7 @@ static void
 sh_css_set_gc_config(struct ia_css_isp_parameters *params,
 			const struct ia_css_gc_config *config)
 {
-	assert(config != NULL);
+	assert_exit(config);
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_gc_config() enter: "
 		"config.gain_k1=%d, config.gain_k2=%d\n",
 		config->gain_k1, config->gain_k2);
@@ -3620,7 +3620,7 @@ static void
 sh_css_get_gc_config(const struct ia_css_isp_parameters *params,
 			struct ia_css_gc_config *config)
 {
-	assert(config != NULL);
+	assert_exit(config);
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_gc_config() enter: "
 		"config=%p\n",config);
@@ -3636,7 +3636,7 @@ static void
 sh_css_set_anr_config(struct ia_css_isp_parameters *params,
 			const struct ia_css_anr_config *config)
 {
-	assert(config != NULL);
+	assert_exit(config);
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_anr_config() enter: "
 		"config.threshold=%d\n",
 		config->threshold);
@@ -3652,7 +3652,7 @@ static void
 sh_css_get_anr_config(const struct ia_css_isp_parameters *params,
 			struct ia_css_anr_config *config)
 {
-	assert(config != NULL);
+	assert_exit(config);
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_anr_config() enter: "
 		"config=%p\n",config);
@@ -3668,7 +3668,7 @@ static void
 sh_css_set_ce_config(struct ia_css_isp_parameters *params,
 			const struct ia_css_ce_config *config)
 {
-	assert (config != NULL);
+	assert_exit(config);
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_ce_config() enter: "
 		"config.uv_level_min=%d, config.uv_level_max=%d\n",
 		config->uv_level_min, config->uv_level_max);
@@ -3684,7 +3684,7 @@ static void
 sh_css_get_ce_config(const struct ia_css_isp_parameters *params,
 			struct ia_css_ce_config *config)
 {
-	assert(config != NULL);
+	assert_exit(config);
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_ce_config() enter: "
 		"config=%p\n",config);
@@ -3704,7 +3704,7 @@ sh_css_set_dvs_6axis_config(struct ia_css_isp_parameters *params,
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_dvs_config() enter: "
 	"dvs_config=%p\n",dvs_config);
 
-	assert(dvs_config != NULL);
+	assert_exit(dvs_config);
 	assert(dvs_config->height_y == dvs_config->height_uv);
 	assert( (dvs_config->width_y - 1) == 2 * dvs_config->width_uv - 1);
 
@@ -3722,7 +3722,7 @@ static void
 sh_css_get_dvs_6axis_config(const struct ia_css_isp_parameters *params,
 				struct ia_css_dvs_6axis_config *dvs_config)
 {
-	assert(dvs_config != NULL);
+	assert_exit(dvs_config);
 	assert(dvs_config->height_y == dvs_config->height_uv);
 	assert( (dvs_config->width_y - 1) == 2 * dvs_config->width_uv - 1);
 
@@ -3751,7 +3751,7 @@ sh_css_set_ecd_config(struct ia_css_isp_parameters *params,
 			const struct ia_css_ecd_config *config)
 {
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_ecd_config()\n");
-	assert (config != NULL);
+	assert_exit(config);
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_ynr_config() enter: "
 		"config.zip_strength=%d, "
 		"config.fc_strength=%d, config.fc_debias=%d\n",
@@ -3768,7 +3768,7 @@ static void
 sh_css_get_ecd_config(const struct ia_css_isp_parameters *params,
 			struct ia_css_ecd_config *config)
 {
-	assert(config != NULL);
+	assert_exit(config);
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_ecd_config() enter: "
 		"config=%p\n",config);
@@ -3786,7 +3786,7 @@ static void
 sh_css_set_ynr_config(struct ia_css_isp_parameters *params,
 			const struct ia_css_ynr_config *config)
 {
-	assert (config != NULL);
+	assert_exit(config);
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_ynr_config() enter: "
 		"config.edge_sense_gain_0=%d, config.edge_sense_gain_1=%d, "
 		"config.corner_sense_gain_0=%d, config.corner_sense_gain_1=%d\n",
@@ -3805,7 +3805,7 @@ static void
 sh_css_get_ynr_config(const struct ia_css_isp_parameters *params,
 			struct ia_css_ynr_config *config)
 {
-	assert(config != NULL);
+	assert_exit(config);
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_ynr_config() enter: "
 		"config=%p\n",config);
@@ -3823,7 +3823,7 @@ static void
 sh_css_set_fc_config(struct ia_css_isp_parameters *params,
 			const struct ia_css_fc_config *config)
 {
-	assert(config != NULL);
+	assert_exit(config);
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_fc_config() enter: "
 		"config.gain_exp=%d, "
 		"config.gain_pos_0=%d, config.gain_pos_1=%d, "
@@ -3847,7 +3847,7 @@ static void
 sh_css_get_fc_config(const struct ia_css_isp_parameters *params,
 			struct ia_css_fc_config *config)
 {
-	assert(config != NULL);
+	assert_exit(config);
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_fc_config() enter: "
 		"config=%p\n",config);
@@ -3871,7 +3871,7 @@ static void
 sh_css_set_cnr_config(struct ia_css_isp_parameters *params,
 			const struct ia_css_cnr_config *config)
 {
-	assert (config != NULL);
+	assert_exit(config);
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_cnr_config() enter: "
 		"config.coring_u=%d, config.coring_v=%d, "
 		"config.sense_gain_vy=%d, config.sense_gain_hy=%d, "
@@ -3894,7 +3894,7 @@ static void
 sh_css_get_cnr_config(const struct ia_css_isp_parameters *params,
 			struct ia_css_cnr_config *config)
 {
-	assert(config != NULL);
+	assert_exit(config);
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_cnr_config() enter: "
 		"config=%p\n",config);
@@ -3916,7 +3916,7 @@ static void
 sh_css_set_macc_config(struct ia_css_isp_parameters *params,
 			const struct ia_css_macc_config *config)
 {
-	assert (config != NULL);
+	assert_exit(config);
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_macc_config() enter: "
 		"config.exp=%d\n",
 		config->exp);
@@ -3932,7 +3932,7 @@ static void
 sh_css_get_macc_config(const struct ia_css_isp_parameters *params,
 			struct ia_css_macc_config *config)
 {
-	assert(config != NULL);
+	assert_exit(config);
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_macc_config() enter: "
 		"config=%p\n",config);
@@ -3948,7 +3948,7 @@ static void
 sh_css_set_ctc_config(struct ia_css_isp_parameters *params,
 			const struct ia_css_ctc_config *config)
 {
-	assert (config != NULL);
+	assert_exit(config);
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_ctc_config() enter: "
 		"config.ce_gain_exp=%d, config.y0=%d, "
 		"config.x1=%d, config.y1=%d, "
@@ -3973,7 +3973,7 @@ static void
 sh_css_get_ctc_config(const struct ia_css_isp_parameters *params,
 			struct ia_css_ctc_config *config)
 {
-	assert(config != NULL);
+	assert_exit(config);
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_ctc_config() enter: "
 		"config=%p\n",config);
@@ -3997,7 +3997,7 @@ static void
 sh_css_set_aa_config(struct ia_css_isp_parameters *params,
 			const struct ia_css_aa_config *config)
 {
-	assert (config != NULL);
+	assert_exit(config);
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_aa_config() enter: "
 		"config.scale=%d\n",
 		config->scale);
@@ -4014,7 +4014,7 @@ static void
 sh_css_get_aa_config(const struct ia_css_isp_parameters *params,
 			struct ia_css_aa_config *config)
 {
-	assert(config != NULL);
+	assert_exit(config);
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_aa_config() enter: "
 		"config=%p\n",config);
@@ -4030,7 +4030,7 @@ static void
 sh_css_set_r_gamma_table(struct ia_css_isp_parameters *params,
 				const struct ia_css_rgb_gamma_table *table)
 {
-	assert(table);
+	assert_exit(table);
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_r_gamma_table() enter: "
 		"table=%p\n",table);
@@ -4047,7 +4047,7 @@ static void
 sh_css_get_r_gamma_table(const struct ia_css_isp_parameters *params,
 			struct ia_css_rgb_gamma_table *table)
 {
-	assert(table != NULL);
+	assert_exit(table);
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_r_gamma_table() enter:\n");
 
@@ -4061,7 +4061,7 @@ static void
 sh_css_set_g_gamma_table(struct ia_css_isp_parameters *params,
 			const struct ia_css_rgb_gamma_table *table)
 {
-	assert(table);
+	assert_exit(table);
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_g_gamma_table() enter: "
 		"table=%p\n",table);
@@ -4078,7 +4078,7 @@ static void
 sh_css_get_g_gamma_table(const struct ia_css_isp_parameters *params,
 			struct ia_css_rgb_gamma_table *table)
 {
-	assert(table != NULL);
+	assert_exit(table);
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_g_gamma_table() enter:\n");
 
@@ -4092,7 +4092,7 @@ static void
 sh_css_set_b_gamma_table(struct ia_css_isp_parameters *params,
 			const struct ia_css_rgb_gamma_table *table)
 {
-	assert(table);
+	assert_exit(table);
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_b_gamma_table() enter: "
 		"table=%p\n",table);
@@ -4109,7 +4109,7 @@ static void
 sh_css_get_b_gamma_table(const struct ia_css_isp_parameters *params,
 			struct ia_css_rgb_gamma_table *table)
 {
-	assert(table != NULL);
+	assert_exit(table);
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_b_gamma_table() enter:\n");
 
 	*table = params->b_gamma_table;
@@ -4123,8 +4123,7 @@ sh_css_set_yuv2rgb_cc_config(
 	struct ia_css_isp_parameters *params,
 	const struct ia_css_cc_config *config)
 {
-	assert(params != NULL);
-	assert (config != NULL);
+	assert_exit(params && config);
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_yuv2rgb_cc_config() enter: "
 		"config.m[0]=%d, "
@@ -4154,8 +4153,7 @@ sh_css_get_yuv2rgb_cc_config(
 	const struct ia_css_isp_parameters *params,
 	struct ia_css_cc_config *config)
 {
-	assert(params != NULL);
-	assert(config != NULL);
+	assert_exit(params && config);
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_yuv2rgb_cc_config() enter:\n");
 
@@ -4180,8 +4178,7 @@ sh_css_set_rgb2yuv_cc_config(
 	struct ia_css_isp_parameters *params,
 	const struct ia_css_cc_config *config)
 {
-	assert(params != NULL);
-	assert(config != NULL);
+	assert_exit(params && config);
 
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_rgb2yuv_cc_config() enter: "
 		"config.m[0]=%d, "
@@ -4211,8 +4208,7 @@ sh_css_get_rgb2yuv_cc_config(
 	const struct ia_css_isp_parameters *params,
 	struct ia_css_cc_config *config)
 {
-	assert(params != NULL);
-	assert(config != NULL);
+	assert_exit(params && config);
 
 /*	*config = params->rgb2yuv_cc_config; */
 	*config = params->cc_config[CSC_KERNEL_PARAM_SET1];
@@ -4234,7 +4230,7 @@ static void
 sh_css_set_dz_config(struct ia_css_isp_parameters *params,
 			const struct ia_css_dz_config *config)
 {
-	assert(config);
+	assert_exit(config);
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_set_zoom_factor() enter: dx=%d, dy=%d\n",
 		config->dx, config->dy);
@@ -4308,7 +4304,7 @@ ia_css_stream_set_isp_config(
 	const struct ia_css_isp_config *config)
 {
 	struct ia_css_isp_parameters *params = stream->isp_params_configs;
-	assert(config != NULL);
+	assert_exit(config);
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_isp_config() enter: "
 		"stream=%p, config=%p\n", stream, config);
 
@@ -4399,7 +4395,7 @@ ia_css_stream_get_isp_config(
 	struct ia_css_isp_config *config)
 {
 	struct ia_css_isp_parameters *params = stream->isp_params_configs;
-	assert(config != NULL);
+	assert_exit(config);
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_isp_config() enter: "
 		"config=%p\n", config);
 
@@ -4570,7 +4566,7 @@ ia_css_isp_3a_statistics_allocate(const struct ia_css_3a_grid_info *grid)
 {
 	struct ia_css_isp_3a_statistics *me;
 
-assert(grid != NULL);
+	assert_exit_code(grid, NULL);
 
 	sh_css_dtrace(SH_DBG_TRACE, "ia_css_isp_3a_statistics_allocate() enter: grid=%p\n",grid);
 
@@ -4643,7 +4639,7 @@ ia_css_isp_dvs_statistics_allocate(const struct ia_css_dvs_grid_info *grid)
 	struct ia_css_isp_dvs_statistics *me;
 	int hor_size, ver_size;
 
-	assert(grid != NULL);
+	assert_exit_code(grid, NULL);
 
 	sh_css_dtrace(SH_DBG_TRACE, "ia_css_isp_dvs_statistics_allocate() enter: grid=%p\n",grid);
 
@@ -4694,7 +4690,7 @@ ia_css_isp_dvs2_statistics_allocate(const struct ia_css_dvs_grid_info *grid)
 	struct ia_css_isp_dvs_statistics *me;
 	int hor_size, ver_size;
 
-	assert(grid != NULL);
+	assert_exit_code(grid, NULL);
 
 	sh_css_dtrace(SH_DBG_TRACE, "ia_css_isp_dvs2_statistics_allocate() enter: grid=%p\n",grid);
 
@@ -4746,7 +4742,7 @@ ia_css_stream_isp_parameters_init(struct ia_css_stream *stream)
 	struct sh_css_ddr_address_map_size *ddr_ptrs_size;
 	struct ia_css_isp_parameters *params;
        
-	stream->isp_params_configs = sh_css_calloc(1, sizeof(*stream->isp_params_configs));
+	stream->isp_params_configs = sh_css_malloc(sizeof(*stream->isp_params_configs));
 	if (!stream->isp_params_configs)
 		return IA_CSS_ERR_CANNOT_ALLOCATE_MEMORY;
 
@@ -4860,6 +4856,10 @@ ia_css_stream_isp_parameters_init(struct ia_css_stream *stream)
 	params->dvs2_ver_coefs.even_real = NULL;
 	params->dvs2_ver_coefs.even_imag = NULL;
 	params->dvs2_coef_table_changed = true;
+	
+	params->dis_hor_coef_tbl = NULL;
+	params->dis_ver_coef_tbl = NULL;
+	params->dis_coef_table_changed = true;
 	
 	/*Initialise and generate table later in star*/
 	params->dvs_6axis_config = NULL;
@@ -5121,21 +5121,25 @@ static void store_dis_coefficients(
 	hrt_vaddress ddr_addr_hor,
 	hrt_vaddress ddr_addr_ver)
 {
-	unsigned int hor_num_isp = binary->dis_hor_coef_num_isp,
-		     ver_num_isp = binary->dis_ver_coef_num_isp,
-		     hor_num_3a  = binary->dis_hor_coef_num_3a,
-		     ver_num_3a  = binary->dis_ver_coef_num_3a,
-		     hor_padding = hor_num_isp - hor_num_3a,
-		     ver_padding = ver_num_isp - ver_num_3a,
+	unsigned int hor_num_isp, ver_num_isp,
+		     hor_num_3a, ver_num_3a,
+		     hor_padding, ver_padding,
 		     i;
-	const short *hor_ptr_3a = params->dis_hor_coef_tbl,
-		*ver_ptr_3a = params->dis_ver_coef_tbl;
-	hrt_vaddress hor_ptr_isp = ddr_addr_hor,
-		ver_ptr_isp = ddr_addr_ver;
+	const short *hor_ptr_3a, *ver_ptr_3a;
+	hrt_vaddress hor_ptr_isp, ver_ptr_isp;
 
-assert(binary != NULL);
-assert(ddr_addr_hor != mmgr_NULL);
-assert(ddr_addr_ver != mmgr_NULL);
+	assert_exit(binary && params && ddr_addr_hor && ddr_addr_ver);
+
+	hor_num_isp = binary->dis_hor_coef_num_isp,
+	ver_num_isp = binary->dis_ver_coef_num_isp,
+	hor_num_3a  = binary->dis_hor_coef_num_3a,
+	ver_num_3a  = binary->dis_ver_coef_num_3a,
+	hor_padding = hor_num_isp - hor_num_3a,
+	ver_padding = ver_num_isp - ver_num_3a,
+	hor_ptr_3a = params->dis_hor_coef_tbl,
+	ver_ptr_3a = params->dis_ver_coef_tbl;
+	hor_ptr_isp = ddr_addr_hor,
+	ver_ptr_isp = ddr_addr_ver;
 
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "store_dis_coefficients() enter:\n");
 
@@ -5187,18 +5191,19 @@ static void store_dvs2_coefficients(
 	hrt_vaddress ddr_addr_hor,
 	hrt_vaddress ddr_addr_ver)
 {
-	unsigned int hor_num_isp = binary->dis_hor_coef_num_isp,
-		     ver_num_isp = binary->dis_ver_coef_num_isp,
-		     hor_num_3a  = binary->dis_hor_coef_num_3a,
-		     ver_num_3a  = binary->dis_ver_coef_num_3a,
-		     hor_padding = hor_num_isp - hor_num_3a,
-		     ver_padding = ver_num_isp - ver_num_3a;
+	unsigned int hor_num_isp, ver_num_isp,
+		     hor_num_3a, ver_num_3a,
+		     hor_padding, ver_padding;
 	hrt_vaddress hor_ptr_isp = ddr_addr_hor,
 		ver_ptr_isp = ddr_addr_ver;
 
-assert(binary != NULL);
-assert(ddr_addr_hor != mmgr_NULL);
-assert(ddr_addr_ver != mmgr_NULL);
+	assert_exit(binary && ddr_addr_hor && ddr_addr_ver);
+	hor_num_isp = binary->dis_hor_coef_num_isp;
+	ver_num_isp = binary->dis_ver_coef_num_isp;
+	hor_num_3a  = binary->dis_hor_coef_num_3a;
+	ver_num_3a  = binary->dis_ver_coef_num_3a;
+	hor_padding = hor_num_isp - hor_num_3a,
+	ver_padding = ver_num_isp - ver_num_3a;
 
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "store_dvs2_coefficients() enter:\n");
 
@@ -5291,10 +5296,17 @@ sh_css_param_update_isp_params(struct ia_css_stream *stream, bool commit)
 	hrt_vaddress cpy;
 	int i;
 	unsigned int raw_bit_depth = 10;
+	unsigned int isp_pipe_version = 1;
 	struct ia_css_isp_parameters *params = stream->isp_params_configs;
 	bool	any_cc_config_changed = false;
 
 	raw_bit_depth = ia_css_stream_input_format_bits_per_pixel(stream);
+	isp_pipe_version = ia_css_pipe_get_isp_pipe_version(stream->pipes[0]);
+	// this code assuemes that all the pipes have the same pipeversion.
+	for(i=1; i< stream->num_pipes; i++) {
+	  assert(isp_pipe_version == ia_css_pipe_get_isp_pipe_version(stream->pipes[i]));
+	}
+	
 
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_param_update_isp_params() enter:\n");
 
@@ -5312,7 +5324,7 @@ sh_css_param_update_isp_params(struct ia_css_stream *stream, bool commit)
 	if (params->tnr_config_changed)
 		sh_css_process_tnr(params);
 	if (params->ob_config_changed)
-		sh_css_process_ob(params, raw_bit_depth);
+		sh_css_process_ob(params, isp_pipe_version, raw_bit_depth);
 	if (params->dp_config_changed)
 		sh_css_process_dp(params);
 	if (params->nr_config_changed || params->ee_config_changed)
@@ -5499,9 +5511,8 @@ static enum ia_css_err sh_css_params_write_to_ddr_internal(
 	/* struct is > 128 bytes so it should not be on stack (see checkpatch) */
 	static struct ia_css_macc_table converted_macc_table;
 
-assert(binary != NULL);
-assert(ddr_map != NULL);
-assert(ddr_map_size != NULL);
+	assert_exit_code(binary && ddr_map && ddr_map_size,
+			IA_CSS_ERR_INTERNAL_ERROR);
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_params_write_to_ddr_internal() enter:\n");
 
 	if (binary->info->enable.fpnr) {
@@ -5637,7 +5648,7 @@ assert(ddr_map_size != NULL);
 		buff_realloced = reallocate_buffer(
 				&ddr_map->dvs_6axis_params_y,
 				&ddr_map_size->dvs_6axis_params_y,
-				(size_t)((DVS_6AXIS_BYTES(binary) * 3) / 2), // times 1.5 because UV is packed into the Y plane
+				(size_t)((DVS_6AXIS_BYTES(binary) / 2) * 3), // because UV is packed into the Y plane, calc total YYU size = /2 gives size of UV-only, total YYU size = UV-only * 3
 				params->dvs_6axis_config_changed,
 				&err);
 		if (err != IA_CSS_SUCCESS)
@@ -5646,7 +5657,7 @@ assert(ddr_map_size != NULL);
 			if(params->dvs_6axis_config == NULL) /* Generate default DVS unity table on start up*/
 			{				
 				struct ia_css_resolution dvs_offset;
-				dvs_offset.width = binary->dvs_envelope.width / 2;
+				dvs_offset.width  = binary->dvs_envelope.width / 2;
 				dvs_offset.height = binary->dvs_envelope.height / 2;
 
 				params->dvs_6axis_config = generate_dvs_6axis_table(&binary->out_frame_info.res,
@@ -5833,7 +5844,7 @@ sh_css_params_write_to_ddr(struct ia_css_stream *stream,
 	enum ia_css_err err = IA_CSS_SUCCESS;
 	struct ia_css_isp_parameters *params = stream->isp_params_configs;
 
-	assert(binary != NULL);
+	assert_exit_code(binary, IA_CSS_ERR_INTERNAL_ERROR);
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_params_write_to_ddr() enter:\n");
 
 	for (i = 0; i < stream->num_pipes; i++) {
@@ -5876,7 +5887,7 @@ struct ia_css_shading_table * ia_css_get_shading_table(struct ia_css_stream *str
 		//unsigned int thread_id;
 
 		pipeline = ia_css_pipe_get_pipeline(pipe);
-		assert(pipeline != NULL);
+		assert_exit_code(pipeline, NULL);
 
 		for (stage = pipeline->stages; stage; stage = stage->next) {
 			if (stage && stage->binary) {
@@ -5922,8 +5933,7 @@ void ia_css_get_isp_dis_coefficients(
 	struct sh_css_binary *dvs_binary;
 
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "ia_css_get_isp_dis_coefficients() enter\n");
-	assert(horizontal_coefficients != NULL);
-	assert(vertical_coefficients != NULL);
+	assert_exit(horizontal_coefficients && vertical_coefficients);
 
 	/* Only video pipe supports DVS */
 	hor_ptr_isp = params->pipe_ddr_ptrs[IA_CSS_PIPE_ID_VIDEO].sdis_hor_coef;
@@ -5967,14 +5977,10 @@ void ia_css_get_isp_dvs2_coefficients(struct ia_css_stream *stream,
 	struct sh_css_binary *dvs_binary;
 
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "ia_css_get_isp_dvs2_coefficients() enter\n");
-	assert(hor_coefs_odd_real != NULL);
-	assert(hor_coefs_odd_imag != NULL);
-	assert(hor_coefs_even_real != NULL);
-	assert(hor_coefs_even_imag != NULL);
-	assert(ver_coefs_odd_real != NULL);
-	assert(ver_coefs_odd_imag != NULL);
-	assert(ver_coefs_even_real != NULL);
-	assert(ver_coefs_even_imag != NULL);
+	assert_exit(hor_coefs_odd_real && hor_coefs_odd_imag
+		&& hor_coefs_even_real && hor_coefs_even_imag
+		&& ver_coefs_odd_real && ver_coefs_odd_imag
+		&& ver_coefs_even_real && ver_coefs_even_imag);
 
 	/* Only video pipe supports DVS */
 	hor_ptr_isp = params->pipe_ddr_ptrs[IA_CSS_PIPE_ID_VIDEO].sdis_hor_coef;
@@ -6048,8 +6054,7 @@ static enum ia_css_err ref_sh_css_ddr_address_map(
 	hrt_vaddress *in_addrs = (hrt_vaddress *)map;
 	hrt_vaddress *to_addrs = (hrt_vaddress *)out;
 
-assert(map != NULL);
-assert(out != NULL);
+	assert_exit_code(map && out, IA_CSS_ERR_INTERNAL_ERROR);
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "ref_sh_css_ddr_address_map() enter:\n");
 
 	/* copy map using size info */
@@ -6074,8 +6079,7 @@ static enum ia_css_err write_sh_css_address_map_to_ddr(
 	enum ia_css_err err = IA_CSS_SUCCESS;
 	bool succ;
 
-assert(me != NULL);
-assert(out != NULL);
+	assert_exit_code(me && out, IA_CSS_ERR_INTERNAL_ERROR);
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "write_sh_css_address_map_to_ddr() enter:\n");
 
 	*out = sh_css_refcount_retain(PARAM_SET_POOL, mmgr_malloc(
@@ -6173,14 +6177,8 @@ void sh_css_update_uds_and_crop_info(
 	struct sh_css_uds_info *uds,		/* out */
 	struct sh_css_crop_pos *sp_out_crop_pos)/* out */
 {
-assert(info != NULL);
-assert(in_frame_info != NULL);
-assert(out_frame_info != NULL);
-assert(dvs_env != NULL);
-assert(zoom != NULL);
-assert(motion_vector != NULL);
-assert(uds != NULL);
-assert(sp_out_crop_pos != NULL);
+	assert_exit(info && in_frame_info && out_frame_info
+		&& dvs_env && zoom && motion_vector && uds && sp_out_crop_pos);
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "sh_css_update_uds_and_crop_info() enter:\n");
 
 	if (info->mode == SH_CSS_BINARY_MODE_VF_PP && !preview_mode) {
@@ -6310,7 +6308,7 @@ ia_css_3a_statistics_allocate(const struct ia_css_3a_grid_info *grid)
 	struct ia_css_3a_statistics *me;
 	int grid_size;
 
-	assert(grid != NULL);
+	assert_exit_code(grid, NULL);
 
 	sh_css_dtrace(SH_DBG_TRACE, "ia_css_3a_statistics_allocate() enter: grid=%p\n",grid);
 
@@ -6356,7 +6354,7 @@ ia_css_dvs_statistics_allocate(const struct ia_css_dvs_grid_info *grid)
 {
 	struct ia_css_dvs_statistics *me;
 
-	assert(grid);
+	assert_exit_code(grid, NULL);
 
 	me = sh_css_calloc(1,sizeof(*me));
 	if (!me)
@@ -6395,7 +6393,7 @@ ia_css_dvs_coefficients_allocate(const struct ia_css_dvs_grid_info *grid)
 {
 	struct ia_css_dvs_coefficients *me;
 
-	assert(grid);
+	assert_exit_code(grid, NULL);
 
 	me = sh_css_calloc(1,sizeof(*me));
 	if (!me)
@@ -6436,7 +6434,7 @@ ia_css_dvs2_statistics_allocate(const struct ia_css_dvs_grid_info *grid)
 {
 	struct ia_css_dvs2_statistics *me;
 
-	assert(grid);
+	assert_exit_code(grid, NULL);
 
 	me = sh_css_calloc(1,sizeof(*me));
 	if (!me)
@@ -6512,7 +6510,7 @@ ia_css_dvs2_coefficients_allocate(const struct ia_css_dvs_grid_info *grid)
 {
 	struct ia_css_dvs2_coefficients *me;
 
-	assert(grid);
+	assert_exit_code(grid, NULL);
 
 	me = sh_css_calloc(1,sizeof(*me));
 	if (!me)
@@ -6580,4 +6578,63 @@ ia_css_dvs2_coefficients_free(struct ia_css_dvs2_coefficients *me)
 		sh_css_free(me->ver_coefs.even_imag);
 		sh_css_free(me);
 	}
+}
+
+struct ia_css_dvs_6axis_config *
+ia_css_dvs2_6axis_config_allocate(const struct ia_css_stream *stream)
+{
+    struct ia_css_dvs_6axis_config *dvs_config = NULL;
+    struct ia_css_isp_parameters *params = NULL;
+    unsigned int width_y;
+    unsigned int height_y;
+    unsigned int width_uv;
+    unsigned int height_uv;
+
+    assert_exit_code(stream, NULL);
+    params = stream->isp_params_configs;
+    assert_exit_code(params && params->dvs_6axis_config, NULL);
+
+    dvs_config = (struct ia_css_dvs_6axis_config *)sh_css_calloc(1, sizeof(struct ia_css_dvs_6axis_config));
+    if(!dvs_config)
+          goto err;
+
+    dvs_config->width_y = width_y = params->dvs_6axis_config->width_y;
+    dvs_config->height_y = height_y = params->dvs_6axis_config->height_y;
+    dvs_config->width_uv = width_uv = params->dvs_6axis_config->width_uv;
+    dvs_config->height_uv = height_uv = params->dvs_6axis_config->height_uv;
+    sh_css_dtrace(SH_DBG_TRACE, "config_allocate table Y: W %d H %d\n",width_y,height_y); 
+    sh_css_dtrace(SH_DBG_TRACE, "config_allocate table UV: W %d H %d\n",width_uv,height_uv); 
+    dvs_config->xcoords_y = (uint32_t *)sh_css_malloc( width_y * height_y * sizeof(uint32_t));
+    if(!dvs_config->xcoords_y)
+        goto err;
+
+    dvs_config->ycoords_y = (uint32_t *)sh_css_malloc( width_y * height_y * sizeof(uint32_t));
+    if(!dvs_config->ycoords_y)
+        goto err;
+
+    dvs_config->xcoords_uv = (uint32_t *)sh_css_malloc( width_uv * height_uv * sizeof(uint32_t));
+    if(!dvs_config->xcoords_uv)
+        goto err;
+
+    dvs_config->ycoords_uv = (uint32_t *)sh_css_malloc( width_uv * height_uv * sizeof(uint32_t));
+    if(!dvs_config->ycoords_uv)
+        goto err;
+
+    return dvs_config;
+err:
+        ia_css_dvs2_6axis_config_free(dvs_config);
+        return NULL;
+}
+
+void
+ia_css_dvs2_6axis_config_free(struct ia_css_dvs_6axis_config *dvs_6axis_config)
+{
+    if(dvs_6axis_config)
+    {
+        sh_css_free(dvs_6axis_config->xcoords_y);
+        sh_css_free(dvs_6axis_config->ycoords_y);
+        sh_css_free(dvs_6axis_config->xcoords_uv);
+        sh_css_free(dvs_6axis_config->ycoords_uv);
+        sh_css_free(dvs_6axis_config);
+    }
 }

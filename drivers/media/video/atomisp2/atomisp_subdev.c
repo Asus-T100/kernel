@@ -407,6 +407,12 @@ int atomisp_subdev_set_selection(struct v4l2_subdev *sd,
 	case ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE: {
 		/* Only compose target is supported on source pads. */
 
+		if (isp->isp_subdev.vfpp->val == ATOMISP_VFPP_DISABLE_LOWLAT) {
+			/* Scaling is disabled in this mode */
+			r->width = crop[ATOMISP_SUBDEV_PAD_SINK]->width;
+			r->height = crop[ATOMISP_SUBDEV_PAD_SINK]->height;
+		}
+
 		if (crop[ATOMISP_SUBDEV_PAD_SINK]->width == r->width
 		    && crop[ATOMISP_SUBDEV_PAD_SINK]->height == r->height)
 			isp->params.yuv_ds_en = false;
@@ -767,13 +773,20 @@ static const struct v4l2_ctrl_config ctrl_run_mode = {
 	.qmenu = ctrl_run_mode_menu,
 };
 
-static const struct v4l2_ctrl_config ctrl_enable_vfpp = {
-	.id = V4L2_CID_ENABLE_VFPP,
+static const char * const ctrl_vfpp_mode_menu[] = {
+	"Enable",			/* vfpp always enabled */
+	"Disable to scaler mode",	/* CSS into video mode and disable */
+	"Disable to low latency mode",	/* CSS into still mode and disable */
+};
+
+static const struct v4l2_ctrl_config ctrl_vfpp = {
+	.id = V4L2_CID_VFPP,
 	.name = "Atomisp vf postprocess",
-	.type = V4L2_CTRL_TYPE_BOOLEAN,
+	.type = V4L2_CTRL_TYPE_MENU,
 	.min = 0,
-	.def = 1,
-	.max = 1,
+	.def = 0,
+	.max = 2,
+	.qmenu = ctrl_vfpp_mode_menu,
 };
 
 /*
@@ -942,9 +955,8 @@ static int isp_subdev_init_entities(struct atomisp_sub_device *isp_subdev)
 						    &ctrl_fmt_auto, NULL);
 	isp_subdev->run_mode = v4l2_ctrl_new_custom(&isp_subdev->ctrl_handler,
 						    &ctrl_run_mode, NULL);
-	isp_subdev->enable_vfpp =
-				v4l2_ctrl_new_custom(&isp_subdev->ctrl_handler,
-						     &ctrl_enable_vfpp, NULL);
+	isp_subdev->vfpp = v4l2_ctrl_new_custom(&isp_subdev->ctrl_handler,
+						&ctrl_vfpp, NULL);
 	isp_subdev->continuous_mode =
 			v4l2_ctrl_new_custom(&isp_subdev->ctrl_handler,
 					     &ctrl_continuous_mode, NULL);

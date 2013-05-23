@@ -30,8 +30,6 @@
 #include "atomisp_internal.h"
 #include "atomisp_cmd.h"
 
-#define CSS_DTRACE_VERBOSITY_LEVEL	5	/* Controls trace verbosity */
-
 int atomisp_css_init(struct atomisp_device *isp)
 {
 	device_set_base_address(0);
@@ -70,12 +68,6 @@ int atomisp_css_init(struct atomisp_device *isp)
 	else
 		sh_css_set_zoom_factor(MFLD_MAX_ZOOM_FACTOR,
 					MFLD_MAX_ZOOM_FACTOR);
-
-	/* Initialize the CSS debug trace verbosity level. To change
-	 * the verbosity level, change the definition of this macro
-	 * up in the file
-	 */
-	sh_css_set_dtrace_level(CSS_DTRACE_VERBOSITY_LEVEL);
 
 	dev_dbg(isp->dev, "sh_css_init success\n");
 

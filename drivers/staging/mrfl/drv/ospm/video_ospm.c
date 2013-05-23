@@ -30,6 +30,7 @@
 #include "vsp.h"
 #include "psb_msvdx.h"
 #include "tng_topaz.h"
+#include "tng_wa.h"
 
 /***********************************************************
  * vsp islands
@@ -43,8 +44,6 @@ static bool vsp_power_up(struct drm_device *dev,
 			struct ospm_power_island *p_island)
 {
 	bool ret = true;
-	struct drm_psb_private *dev_priv = dev->dev_private;
-	struct vsp_private *vsp_priv = dev_priv->vsp_private;
 	int pm_ret = 0;
 
 	if (p_island->island_state == OSPM_POWER_ON)
@@ -72,8 +71,6 @@ static bool vsp_power_down(struct drm_device *dev,
 			struct ospm_power_island *p_island)
 {
 	bool ret = true;
-	struct drm_psb_private *dev_priv = dev->dev_private;
-	struct vsp_private *vsp_priv = dev_priv->vsp_private;
 	int pm_ret = 0;
 
 	/* whether the VSP is idle */

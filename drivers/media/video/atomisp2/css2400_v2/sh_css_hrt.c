@@ -443,6 +443,12 @@ static void sh_css_hrt_s2m_send_frame(
 
 	sh_css_hrt_s2m_start_frame(ch_id, fmt_type);
 	for (i = 0; i < height; i++) {
+		sh_css_dtrace(2, "%s: sending line %d|%d \n",
+				__func__, i, height);
+#if defined(__KERNEL__)
+		/* add some delay to avoid FIFO overflow*/
+		usleep_range(1000, 1500);
+#endif
 		if ((type == sh_css_mipi_data_type_yuv420) &&
 		    (i & 1) == 1) {
 			sh_css_hrt_s2m_send_line(data, 2 * width,

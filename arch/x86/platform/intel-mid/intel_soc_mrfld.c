@@ -59,32 +59,55 @@ static int mrfld_pmu_init(void)
 	mid_pmu_cxt->os_sss[2] &= ~SSMSK(D0I3_MASK, PMU_SSP4_LSS_35-32);
 
 	/* Map S0ix residency counters */
-	residency[SYS_STATE_S0I1] = ioremap_nocache(S0I1_RES_ADDR, 4);
+	residency[SYS_STATE_S0I1] = ioremap_nocache(S0I1_RES_ADDR, sizeof(u64));
 	if (residency[SYS_STATE_S0I1] == NULL)
 		goto err1;
-	residency[SYS_STATE_S0I2] = ioremap_nocache(S0I2_RES_ADDR, 4);
+	residency[SYS_STATE_S0I2] = ioremap_nocache(S0I2_RES_ADDR, sizeof(u64));
 	if (residency[SYS_STATE_S0I2] == NULL)
-		goto err1;
-	residency[SYS_STATE_S0I3] = ioremap_nocache(S0I3_RES_ADDR, 4);
+		goto err2;
+	residency[SYS_STATE_S0I3] = ioremap_nocache(S0I3_RES_ADDR, sizeof(u64));
 	if (residency[SYS_STATE_S0I3] == NULL)
-		goto err1;
+		goto err3;
 
 	/* Map S0ix iteration counters */
-	s0ix_counter[SYS_STATE_S0I1] = ioremap_nocache(S0I1_COUNT_ADDR, 4);
+	s0ix_counter[SYS_STATE_S0I1] = ioremap_nocache(S0I1_COUNT_ADDR,
+								sizeof(u32));
 	if (s0ix_counter[SYS_STATE_S0I1] == NULL)
-		goto err2;
-	s0ix_counter[SYS_STATE_S0I2] = ioremap_nocache(S0I2_COUNT_ADDR, 4);
+		goto err4;
+	s0ix_counter[SYS_STATE_S0I2] = ioremap_nocache(S0I2_COUNT_ADDR,
+								sizeof(u32));
 	if (s0ix_counter[SYS_STATE_S0I2] == NULL)
-		goto err2;
-	s0ix_counter[SYS_STATE_S0I3] = ioremap_nocache(S0I3_COUNT_ADDR, 4);
+		goto err5;
+	s0ix_counter[SYS_STATE_S0I3] = ioremap_nocache(S0I3_COUNT_ADDR,
+								sizeof(u32));
 	if (s0ix_counter[SYS_STATE_S0I3] == NULL)
-		goto err2;
+		goto err6;
 
 	return PMU_SUCCESS;
 
-err1:
-	pr_err("Cannot map memory to read S0ix residency\n");
+err3:
+	iounmap(residency[SYS_STATE_S0I3]);
+	residency[SYS_STATE_S0I3] = NULL;
 err2:
+	iounmap(residency[SYS_STATE_S0I2]);
+	residency[SYS_STATE_S0I2] = NULL;
+err1:
+	iounmap(residency[SYS_STATE_S0I1]);
+	residency[SYS_STATE_S0I1] = NULL;
+
+	pr_err("Cannot map memory to read S0ix residency and count\n");
+	return PMU_FAILED;
+
+err6:
+	iounmap(s0ix_counter[SYS_STATE_S0I3]);
+	s0ix_counter[SYS_STATE_S0I3] = NULL;
+err5:
+	iounmap(s0ix_counter[SYS_STATE_S0I2]);
+	s0ix_counter[SYS_STATE_S0I2] = NULL;
+err4:
+	iounmap(s0ix_counter[SYS_STATE_S0I1]);
+	s0ix_counter[SYS_STATE_S0I1] = NULL;
+
 	pr_err("Cannot map memory to read S0ix count\n");
 	return PMU_FAILED;
 }

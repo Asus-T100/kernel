@@ -550,7 +550,9 @@ struct dwc_otg2 {
 #define PMIC_I2COVRWRDATA			0x5B
 #define PMIC_I2COVRCTRL				0x58
 #define PMIC_I2COVRCTL_I2CWR		0x01
+#define PMIC_VLDOCNT				0xAF
 
+#define PMIC_VLDOCNT_VUSBPHYEN		(1 << 2)
 #define USBPHYCTRL_D0			(1 << 0)
 #define PMIC_USBIDCTRL				0x19
 #define USBIDCTRL_ACA_DETEN_D1	(1 << 1)

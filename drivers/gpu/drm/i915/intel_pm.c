@@ -31,6 +31,11 @@
 #include "../../../platform/x86/intel_ips.h"
 #include <linux/module.h>
 
+#ifdef CONFIG_HAS_EARLYSUSPEND
+	#include <linux/earlysuspend.h>
+	static struct drm_device *gdev;
+#endif
+
 /* FBC, or Frame Buffer Compression, is a technique employed to compress the
  * framebuffer contents in-memory, aiming at reducing the required bandwidth
  * during in-memory transfers and, therefore, reduce the power packet.
@@ -3706,7 +3711,14 @@ static void valleyview_init_clock_gating(struct drm_device *dev)
 		   GEN7_CSC1_RHWO_OPT_DISABLE_IN_RCC);
 
 	/* WaApplyL3ControlAndL3ChickenMode requires those two on Ivy Bridge */
-	I915_WRITE(GEN7_L3CNTLREG1, I915_READ(GEN7_L3CNTLREG1) | GEN7_L3AGDIS);
+	if (IS_VALLEYVIEWP_M(dev)) {
+		I915_WRITE(GEN7_L3CNTLREG1,
+			I915_READ(GEN7_L3CNTLREG1) & (~GEN7_L3AGDIS));
+	} else {
+		I915_WRITE(GEN7_L3CNTLREG1,
+			I915_READ(GEN7_L3CNTLREG1) | GEN7_L3AGDIS);
+	}
+
 	I915_WRITE(GEN7_L3_CHICKEN_MODE_REGISTER, GEN7_WA_L3_CHICKEN_MODE);
 
 	/* WaDisableDopClockGating */
@@ -3931,10 +3943,54 @@ void intel_init_power_wells(struct drm_device *dev)
 	mutex_unlock(&dev->struct_mutex);
 }
 
+#ifdef CONFIG_HAS_EARLYSUSPEND
+static void display_early_suspend(struct early_suspend *h)
+{
+	struct drm_device *drm_dev = gdev;
+	struct drm_i915_private *dev_priv = gdev->dev_private;
+	int ret = display_runtime_suspend(drm_dev);
+	if (ret)
+		DRM_ERROR("Display suspend failure\n");
+	else {
+		dev_priv->early_suspended = true;
+		DRM_DEBUG_DRIVER("Display suspend Success\n");
+	}
+}
+
+static void display_late_resume(struct early_suspend *h)
+{
+	struct drm_device *drm_dev = gdev;
+	struct drm_i915_private *dev_priv = gdev->dev_private;
+	int ret = display_runtime_resume(drm_dev);
+	if (ret)
+		DRM_ERROR("Display Resume failure\n");
+	else {
+		dev_priv->early_suspended = false;
+		DRM_DEBUG_DRIVER("Display Resume Success\n");
+	}
+}
+
+static struct early_suspend intel_display_early_suspend = {
+	.level = EARLY_SUSPEND_LEVEL_DISABLE_FB,
+	.suspend = display_early_suspend,
+	.resume = display_late_resume,
+};
+
+void intel_s0ix_init(struct drm_device *dev)
+{
+	gdev = dev;
+	register_early_suspend(&intel_display_early_suspend);
+}
+#endif
+
 /* Set up chip specific power management-related functions */
 void intel_init_pm(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
+
+#ifdef CONFIG_HAS_EARLYSUSPEND
+	intel_s0ix_init(dev);
+#endif
 
 	if (I915_HAS_FBC(dev)) {
 		if (HAS_PCH_SPLIT(dev)) {

@@ -184,10 +184,10 @@ static const struct file_operations sst_debug_shim_ops = {
 
 static inline int is_fw_running(struct intel_sst_drv *drv)
 {
-	pm_runtime_get_sync(&drv->pci->dev);
+	pm_runtime_get_sync(drv->dev);
 	if (drv->sst_state != SST_FW_RUNNING) {
 		pr_err("FW not running, cannot read SRAM\n");
-		pm_runtime_put(&drv->pci->dev);
+		pm_runtime_put(drv->dev);
 		return -EFAULT;
 	}
 	return 0;
@@ -258,7 +258,7 @@ static ssize_t sst_debug_sram_lpe_debug_read(struct file *file,
 				       (u32 *)(drv->mailbox + SST_RESERVED_OFFSET),
 				       SST_RESERVED_OFFSET);
 
-	pm_runtime_put(&drv->pci->dev);
+	pm_runtime_put(drv->dev);
 	return ret;
 }
 
@@ -280,7 +280,7 @@ static ssize_t sst_debug_sram_lpe_checkpoint_read(struct file *file,
 	ret = copy_sram_to_user_buffer(user_buf, count, ppos, CHECKPOINT_DUMP_SZ,
 				       (u32 *)(drv->mailbox + SST_CHECKPOINT_OFFSET),
 				       SST_CHECKPOINT_OFFSET);
-	pm_runtime_put(&drv->pci->dev);
+	pm_runtime_put(drv->dev);
 	return ret;
 }
 
@@ -303,7 +303,7 @@ static ssize_t sst_debug_sram_ia_lpe_mbox_read(struct file *file,
 	ret = copy_sram_to_user_buffer(user_buf, count, ppos, IA_LPE_MAILBOX_DUMP_SZ,
 				       (u32 *)(drv->mailbox + SST_MAILBOX_SEND),
 				       SST_MAILBOX_SEND);
-	pm_runtime_put(&drv->pci->dev);
+	pm_runtime_put(drv->dev);
 	return ret;
 }
 
@@ -331,7 +331,7 @@ static ssize_t sst_debug_sram_lpe_ia_mbox_read(struct file *file,
 	ret = copy_sram_to_user_buffer(user_buf, count, ppos, LPE_IA_MAILBOX_DUMP_SZ,
 				       (u32 *)(drv->mailbox + mailbox_offset),
 				       mailbox_offset);
-	pm_runtime_put(&drv->pci->dev);
+	pm_runtime_put(drv->dev);
 	return ret;
 }
 
@@ -352,7 +352,7 @@ static ssize_t sst_debug_sram_lpe_scu_mbox_read(struct file *file,
 	ret = copy_sram_to_user_buffer(user_buf, count, ppos, LPE_SCU_MAILBOX_DUMP_SZ,
 				       (u32 *)(drv->mailbox + SST_LPE_SCU_MAILBOX),
 				       SST_LPE_SCU_MAILBOX);
-	pm_runtime_put(&drv->pci->dev);
+	pm_runtime_put(drv->dev);
 	return ret;
 }
 
@@ -372,7 +372,7 @@ static ssize_t sst_debug_sram_scu_lpe_mbox_read(struct file *file,
 	ret = copy_sram_to_user_buffer(user_buf, count, ppos, SCU_LPE_MAILBOX_DUMP_SZ,
 				       (u32 *)(drv->mailbox + SST_SCU_LPE_MAILBOX),
 				       SST_SCU_LPE_MAILBOX);
-	pm_runtime_put(&drv->pci->dev);
+	pm_runtime_put(drv->dev);
 	return ret;
 }
 
@@ -455,7 +455,7 @@ static ssize_t sst_debug_lpe_log_enable_write(struct file *file,
 	drv->ops->sync_post_message(msg);
 	ret_val = buf_size;
 put_pm_runtime:
-	pm_runtime_put(&drv->pci->dev);
+	pm_runtime_put(drv->dev);
 	return ret_val;
 }
 
@@ -553,7 +553,7 @@ update_rd_ptr:
 	buf = NULL;
 	ret = bytes_read;
 put_pm_runtime:
-	pm_runtime_put(&drv->pci->dev);
+	pm_runtime_put(drv->dev);
 	return ret;
 }
 
@@ -569,7 +569,7 @@ static ssize_t sst_debug_rtpm_read(struct file *file, char __user *user_buf,
 {
 	struct intel_sst_drv *drv = file->private_data;
 	char *status;
-	int usage = atomic_read(&drv->pci->dev.power.usage_count);
+	int usage = atomic_read(&drv->dev->power.usage_count);
 
 	pr_debug("RTPM usage: %d\n", usage);
 	status = drv->debugfs.runtime_pm_status ? "enabled\n" : "disabled\n";
@@ -583,7 +583,7 @@ static ssize_t sst_debug_rtpm_write(struct file *file,
 	struct intel_sst_drv *drv = file->private_data;
 	char buf[16];
 	int sz = min(count, sizeof(buf)-1);
-	int usage = atomic_read(&drv->pci->dev.power.usage_count);
+	int usage = atomic_read(&drv->dev->power.usage_count);
 
 	if (copy_from_user(buf, user_buf, sz))
 		return -EFAULT;
@@ -596,13 +596,13 @@ static ssize_t sst_debug_rtpm_write(struct file *file,
 		if (drv->debugfs.runtime_pm_status)
 			return -EINVAL;
 		drv->debugfs.runtime_pm_status = 1;
-		pm_runtime_allow(&sst_drv_ctx->pci->dev);
+		pm_runtime_allow(drv->dev);
 		sz = 6; /* strlen("enable") */
 	} else if (!strncmp(buf, "disable\n", sz)) {
 		if (!drv->debugfs.runtime_pm_status)
 			return -EINVAL;
 		drv->debugfs.runtime_pm_status = 0;
-		pm_runtime_forbid(&sst_drv_ctx->pci->dev);
+		pm_runtime_forbid(drv->dev);
 		sz = 7; /* strlen("disable") */
 	} else
 		return -EINVAL;
@@ -883,7 +883,7 @@ static ssize_t sst_debug_ssp_reg_read(struct file *file,
 		return -EPERM;
 	}
 
-	pm_runtime_get_sync(&drv->pci->dev);
+	pm_runtime_get_sync(drv->dev);
 	buf[0] = 0;
 
 	while (index < ARRAY_SIZE(ssp_reg_off)) {
@@ -891,7 +891,7 @@ static ssize_t sst_debug_ssp_reg_read(struct file *file,
 			sst_reg_read(sst_drv_ctx->debugfs.ssp, ssp_reg_off[index]));
 		index++;
 	}
-	pm_runtime_put(&drv->pci->dev);
+	pm_runtime_put(drv->dev);
 
 	return simple_read_from_buffer(user_buf, count, ppos,
 					buf, pos);
@@ -922,7 +922,7 @@ static ssize_t sst_debug_dma_reg_read(struct file *file,
 		return -ENOMEM;
 	}
 
-	pm_runtime_get_sync(&drv->pci->dev);
+	pm_runtime_get_sync(drv->dev);
 	buf[0] = 0;
 
 	/* Dump the DMA channel registers */
@@ -954,7 +954,7 @@ static ssize_t sst_debug_dma_reg_read(struct file *file,
 			sst_reg_read64(sst_drv_ctx->debugfs.dma_reg, dma_reg_off[index]));
 		index++;
 	}
-	pm_runtime_put(&drv->pci->dev);
+	pm_runtime_put(drv->dev);
 
 	ret = simple_read_from_buffer(user_buf, count, ppos,
 					buf, pos);
@@ -1176,6 +1176,6 @@ void sst_debugfs_init(struct intel_sst_drv *sst)
 void sst_debugfs_exit(struct intel_sst_drv *sst)
 {
 	if (sst->debugfs.runtime_pm_status)
-		pm_runtime_allow(&sst->pci->dev);
+		pm_runtime_allow(sst->dev);
 	debugfs_remove_recursive(sst->debugfs.root);
 }

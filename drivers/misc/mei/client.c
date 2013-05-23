@@ -18,6 +18,7 @@
 #include <linux/sched.h>
 #include <linux/wait.h>
 #include <linux/delay.h>
+#include <linux/pm_runtime.h>
 
 #include <linux/mei.h>
 
@@ -366,6 +367,10 @@ void mei_host_client_init(struct work_struct *work)
 	dev->dev_state = MEI_DEV_ENABLED;
 
 	mutex_unlock(&dev->device_lock);
+
+	pm_runtime_mark_last_busy(&dev->pdev->dev);
+	dev_dbg(&dev->pdev->dev, "rpm: autosuspend\n");
+	pm_runtime_autosuspend(&dev->pdev->dev);
 }
 
 
@@ -397,6 +402,16 @@ int mei_cl_disconnect(struct mei_cl *cl)
 		return -ENOMEM;
 
 	cb->fop_type = MEI_FOP_CLOSE;
+
+	mutex_unlock(&dev->device_lock);
+	rets = pm_runtime_get_sync(&dev->pdev->dev);
+	dev_dbg(&dev->pdev->dev, "rpm: get sync %d\n", rets);
+	mutex_lock(&dev->device_lock);
+	if (IS_ERR_VALUE(rets)) {
+		dev_err(&dev->pdev->dev, "rpm: get sync failed %d\n", rets);
+		return rets;
+	}
+
 	if (dev->hbuf_is_ready) {
 		dev->hbuf_is_ready = false;
 		if (mei_hbm_cl_disconnect_req(dev, cl)) {
@@ -428,8 +443,7 @@ int mei_cl_disconnect(struct mei_cl *cl)
 
 		if (err)
 			dev_dbg(&dev->pdev->dev,
-					"wait failed disconnect err=%08x\n",
-					err);
+				"wait failed disconnect err=%08x\n", err);
 
 		dev_dbg(&dev->pdev->dev, "failed to disconnect from FW client.\n");
 	}
@@ -437,6 +451,13 @@ int mei_cl_disconnect(struct mei_cl *cl)
 	mei_io_list_flush(&dev->ctrl_rd_list, cl);
 	mei_io_list_flush(&dev->ctrl_wr_list, cl);
 free:
+
+	mutex_unlock(&dev->device_lock);
+	dev_dbg(&dev->pdev->dev, "rpm: autosuspend\n");
+	pm_runtime_mark_last_busy(&dev->pdev->dev);
+	pm_runtime_put_autosuspend(&dev->pdev->dev);
+	mutex_lock(&dev->device_lock);
+
 	mei_io_cb_free(cb);
 	return rets;
 }
@@ -498,6 +519,16 @@ int mei_cl_connect(struct mei_cl *cl, struct file *file)
 		goto out;
 	}
 
+
+	mutex_unlock(&dev->device_lock);
+	rets = pm_runtime_get_sync(&dev->pdev->dev);
+	dev_dbg(&dev->pdev->dev, "rpm: get sync %d\n", rets);
+	mutex_lock(&dev->device_lock);
+	if (IS_ERR_VALUE(rets)) {
+		dev_err(&dev->pdev->dev, "rpm: get sync failed %d\n", rets);
+		return rets;
+	}
+
 	cb->fop_type = MEI_FOP_IOCTL;
 
 	if (dev->hbuf_is_ready && !mei_cl_is_other_connecting(cl)) {
@@ -531,6 +562,12 @@ int mei_cl_connect(struct mei_cl *cl, struct file *file)
 	rets = cl->status;
 
 out:
+	mutex_unlock(&dev->device_lock);
+	dev_dbg(&dev->pdev->dev, "rpm: autosuspend\n");
+	pm_runtime_mark_last_busy(&dev->pdev->dev);
+	pm_runtime_put_autosuspend(&dev->pdev->dev);
+	mutex_lock(&dev->device_lock);
+
 	mei_io_cb_free(cb);
 	return rets;
 }
@@ -618,7 +655,7 @@ int mei_cl_flow_ctrl_reduce(struct mei_cl *cl)
 }
 
 /**
- * mei_cl_start_read - the start read client message function.
+ * mei_cl_read_start - the start read client message function.
  *
  * @cl: host client
  *
@@ -653,31 +690,52 @@ int mei_cl_read_start(struct mei_cl *cl, size_t length)
 		return  -ENODEV;
 	}
 
+	mutex_unlock(&dev->device_lock);
+	rets = pm_runtime_get_sync(&dev->pdev->dev);
+	dev_dbg(&dev->pdev->dev, "rpm: get sync %d\n", rets);
+	mutex_lock(&dev->device_lock);
+	if (IS_ERR_VALUE(rets)) {
+		dev_err(&dev->pdev->dev, "rpm: get sync failed %d\n", rets);
+		return rets;
+	}
+
 	cb = mei_io_cb_init(cl, NULL);
-	if (!cb)
-		return -ENOMEM;
+	if (!cb) {
+		rets = -ENOMEM;
+		goto out;
+	}
 
 	/* always allocate at least client max message */
 	length = max_t(size_t, length, dev->me_clients[i].props.max_msg_length);
 	rets = mei_io_cb_alloc_resp_buf(cb, length);
 	if (rets)
-		goto err;
+		goto out;
 
 	cb->fop_type = MEI_FOP_READ;
 	cl->read_cb = cb;
+
+
 	if (dev->hbuf_is_ready) {
 		dev->hbuf_is_ready = false;
 		if (mei_hbm_cl_flow_control_req(dev, cl)) {
 			rets = -ENODEV;
-			goto err;
+			goto out;
 		}
 		list_add_tail(&cb->list, &dev->read_list.list);
 	} else {
 		list_add_tail(&cb->list, &dev->ctrl_wr_list.list);
 	}
-	return rets;
-err:
-	mei_io_cb_free(cb);
+
+out:
+	mutex_unlock(&dev->device_lock);
+	dev_dbg(&dev->pdev->dev, "rpm: autosuspend\n");
+	pm_runtime_mark_last_busy(&dev->pdev->dev);
+	pm_runtime_put_autosuspend(&dev->pdev->dev);
+	mutex_lock(&dev->device_lock);
+
+	if (rets)
+		mei_io_cb_free(cb);
+
 	return rets;
 }
 
@@ -711,6 +769,14 @@ int mei_cl_write(struct mei_cl *cl, struct mei_cl_cb *cb, bool blocking)
 
 	dev_dbg(&dev->pdev->dev, "mei_cl_write %d\n", buf->size);
 
+	mutex_unlock(&dev->device_lock);
+	rets = pm_runtime_get_sync(&dev->pdev->dev);
+	dev_dbg(&dev->pdev->dev, "rpm: get sync %d\n", rets);
+	mutex_lock(&dev->device_lock);
+	if (IS_ERR_VALUE(rets)) {
+		dev_err(&dev->pdev->dev, "rpm: get sync failed %d\n", rets);
+		return rets;
+	}
 
 	cb->fop_type = MEI_FOP_WRITE;
 
@@ -781,9 +847,40 @@ out:
 		mutex_lock(&dev->device_lock);
 	}
 err:
+	mutex_unlock(&dev->device_lock);
+	dev_dbg(&dev->pdev->dev, "rpm: autosuspend\n");
+	pm_runtime_mark_last_busy(&dev->pdev->dev);
+	pm_runtime_put_autosuspend(&dev->pdev->dev);
+	mutex_lock(&dev->device_lock);
+
 	return rets;
 }
 
+
+/**
+ * mei_cl_complete - processes completed operation for a client
+ *
+ * @cl: private data of the file object.
+ * @cb: callback block.
+ */
+void mei_cl_complete(struct mei_cl *cl, struct mei_cl_cb *cb)
+{
+	if (cb->fop_type == MEI_FOP_WRITE) {
+		mei_io_cb_free(cb);
+		cl->writing_state = MEI_WRITE_COMPLETE;
+		if (waitqueue_active(&cl->tx_wait))
+			wake_up_interruptible(&cl->tx_wait);
+
+	} else if (MEI_FOP_READ == cb->fop_type &&
+			MEI_READING == cl->reading_state) {
+		cl->reading_state = MEI_READ_COMPLETE;
+		if (waitqueue_active(&cl->rx_wait))
+			wake_up_interruptible(&cl->rx_wait);
+		else
+			mei_cl_bus_rx_event(cl);
+
+	}
+}
 
 
 /**

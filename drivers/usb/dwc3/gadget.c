@@ -1462,6 +1462,10 @@ static int dwc3_gadget_pullup(struct usb_gadget *g, int is_on)
 		 * or soft reset.
 		 */
 		if (can_pullup(dwc)) {
+			local_irq_restore(flags);
+			dwc3_core_init(dwc);
+			local_irq_save(flags);
+
 			dwc3_gadget_power_on_or_soft_reset(dwc);
 			dwc->pm_state = PM_ACTIVE;
 		}
@@ -1568,7 +1572,7 @@ static int dwc3_dev_init(struct dwc3 *dwc)
 	dwc3_writel(dwc->regs, DWC3_DCFG, reg);
 
 	reg = dwc3_readl(dwc->regs, DWC3_DCFG);
-	reg |= DWC3_DCFG_LPMCAP;
+	reg |= DWC3_DCFG_LPM_CAP;
 	dwc3_writel(dwc->regs, DWC3_DCFG, reg);
 
 	reg = dwc3_readl(dwc->regs, DWC3_DCFG);
@@ -1731,6 +1735,11 @@ static int dwc3_start_peripheral(struct usb_gadget *g)
 
 	dwc->got_irq = 1;
 	if (can_pullup(dwc)) {
+
+		local_irq_restore(flags);
+		dwc3_core_init(dwc);
+		local_irq_save(flags);
+
 		dwc3_gadget_power_on_or_soft_reset(dwc);
 		dwc->pm_state = PM_ACTIVE;
 	}
@@ -2305,11 +2314,9 @@ static void dwc3_clear_stall_all_ep(struct dwc3 *dwc)
 
 static void dwc3_gadget_disconnect_interrupt(struct dwc3 *dwc)
 {
+	int			reg;
+
 	dev_vdbg(dwc->dev, "%s\n", __func__);
-#if 0
-	XXX
-	U1/U2 is powersave optimization. Skip it for now. Anyway we need to
-	enable it before we can disable it.
 
 	reg = dwc3_readl(dwc->regs, DWC3_DCTL);
 	reg &= ~DWC3_DCTL_INITU1ENA;
@@ -2317,7 +2324,6 @@ static void dwc3_gadget_disconnect_interrupt(struct dwc3 *dwc)
 
 	reg &= ~DWC3_DCTL_INITU2ENA;
 	dwc3_writel(dwc->regs, DWC3_DCTL, reg);
-#endif
 
 	dwc3_stop_active_transfers(dwc);
 	dwc3_disconnect_gadget(dwc);
@@ -2359,7 +2365,6 @@ static void dwc3_gadget_power_on_or_soft_reset(struct dwc3 *dwc)
 {
 	u32	reg;
 
-	dwc3_core_init(dwc);
 
 	/* Enable all but Start and End of Frame IRQs */
 	reg = (DWC3_DEVTEN_VNDRDEVTSTRCVEDEN |

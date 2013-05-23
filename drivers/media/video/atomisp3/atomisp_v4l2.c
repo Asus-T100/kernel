@@ -1179,6 +1179,23 @@ static void __devexit atomisp_pci_remove(struct pci_dev *dev)
 	hmm_pool_unregister(HMM_POOL_TYPE_RESERVED);
 }
 
+static void atomisp_pci_shutdown(struct pci_dev *dev)
+{
+	struct atomisp_device *isp = (struct atomisp_device *)
+		pci_get_drvdata(dev);
+
+	if (IS_ISP2400 && atomisp_mrfld_pre_power_down(isp))
+		return;
+
+	/*Turn off the ISP d-phy*/
+	if (atomisp_ospm_dphy_down(isp))
+		return;
+
+	pm_qos_update_request(&isp->pm_qos, PM_QOS_DEFAULT_VALUE);
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_VALLEYVIEW2)
+		atomisp_mrfld_power_down(isp);
+};
+
 static DEFINE_PCI_DEVICE_TABLE(atomisp_pci_tbl) = {
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x0148)},
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x0149)},
@@ -1217,6 +1234,7 @@ static struct pci_driver atomisp_pci_driver = {
 	.id_table = atomisp_pci_tbl,
 	.probe = atomisp_pci_probe,
 	.remove = atomisp_pci_remove,
+	.shutdown = atomisp_pci_shutdown,
 };
 
 static int __init atomisp_init(void)

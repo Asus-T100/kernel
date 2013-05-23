@@ -182,7 +182,12 @@ void mei_reset(struct mei_device *dev, int interrupts_enabled)
 		return;
 	}
 
-	mei_hw_start(dev);
+	ret = mei_hw_start(dev);
+	if (ret) {
+		dev_err(&dev->pdev->dev, "hw_start failed disabling the device\n");
+		dev->dev_state = MEI_DEV_DISABLED;
+		return;
+	}
 
 	dev_dbg(&dev->pdev->dev, "link is established start sending messages.\n");
 	/* link is established * start sending messages.  */
@@ -222,5 +227,24 @@ void mei_stop(struct mei_device *dev)
 }
 EXPORT_SYMBOL_GPL(mei_stop);
 
+/**
+ * mei_write_is_idle - check if there is pending write transaction
+ *
+ * @dev: the device structure
+ * returns true if the writ queues are empty
+ */
+bool mei_write_is_idle(struct mei_device *dev)
+{
+	bool idle = (dev->wr_ext_msg.hdr.length == 0  &&
+		list_empty(&dev->ctrl_wr_list.list) &&
+		list_empty(&dev->write_list.list));
 
+	dev_dbg(&dev->pdev->dev, "pm: is idle[%d] extra=%d, ctrl=%d write=%d\n",
+		idle,
+		dev->wr_ext_msg.hdr.length == 0,
+		list_empty(&dev->ctrl_wr_list.list),
+		list_empty(&dev->write_list.list));
 
+	return idle;
+}
+EXPORT_SYMBOL_GPL(mei_write_is_idle);
