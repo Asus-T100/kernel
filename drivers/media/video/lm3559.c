@@ -65,6 +65,7 @@ struct lm3559_ctrl_id {
 #define LM3559_FLASH_BRIGHTNESS_REG	0xb0
 #define LM3559_FLASH_LED1_CURRENT_SHIFT	0
 #define LM3559_FLASH_LED2_CURRENT_SHIFT	4
+#define LM3559_FLASH_MAX_CURRENT	15
 
 #define LM3559_FLASH_DURATION_REG	0xc0
 #define LM3559_FLASH_TIMEOUT_SHIFT	0
@@ -347,10 +348,13 @@ static int lm3559_g_flash_timeout(struct v4l2_subdev *sd, s32 *val)
 static int lm3559_s_flash_intensity(struct v4l2_subdev *sd, u32 intensity)
 {
 	struct lm3559 *flash = to_lm3559(sd);
+	unsigned int limit = flash->pdata->flash_current_limit;
+
+	if (limit == 0)
+		limit = LM3559_FLASH_MAX_CURRENT;
 
 	intensity = LM3559_CLAMP_PERCENTAGE(intensity);
-	intensity = LM3559_PERCENT_TO_VALUE(intensity, LM3559_FLASH_STEP);
-
+	intensity = intensity * limit / LM3559_MAX_PERCENT;
 	flash->flash_current = intensity;
 
 	return lm3559_set_flash(flash);
@@ -359,9 +363,12 @@ static int lm3559_s_flash_intensity(struct v4l2_subdev *sd, u32 intensity)
 static int lm3559_g_flash_intensity(struct v4l2_subdev *sd, s32 *val)
 {
 	struct lm3559 *flash = to_lm3559(sd);
+	unsigned int limit = flash->pdata->flash_current_limit;
 
-	*val = LM3559_VALUE_TO_PERCENT((u32)flash->flash_current,
-			LM3559_FLASH_STEP);
+	if (limit == 0)
+		limit = LM3559_FLASH_MAX_CURRENT;
+
+	*val = flash->flash_current * LM3559_MAX_PERCENT / limit;
 
 	return 0;
 }
@@ -597,6 +604,7 @@ static int lm3559_g_ctrl(struct v4l2_subdev *sd, struct v4l2_control *ctrl)
 static int lm3559_setup(struct lm3559 *flash)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(&flash->sd);
+	unsigned int flash_current_limit = flash->pdata->flash_current_limit;
 	int ret;
 
 	/* clear the flags register */
@@ -620,7 +628,10 @@ static int lm3559_setup(struct lm3559 *flash)
 	if (ret < 0)
 		return ret;
 
-	flash->flash_current = LM3559_FLASH_DEFAULT;
+	if (flash_current_limit == 0)
+		flash_current_limit = LM3559_FLASH_MAX_CURRENT;
+	flash->flash_current = LM3559_FLASH_DEFAULT_BRIGHTNESS *
+				flash_current_limit / LM3559_MAX_PERCENT;
 	ret = lm3559_set_flash(flash);
 	if (ret < 0)
 		return ret;
