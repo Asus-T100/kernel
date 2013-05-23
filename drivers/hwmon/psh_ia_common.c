@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * INTEL CONFIDENTIAL
  *
- * Copyright 2012 Intel Corporation All Rights Reserved.
+ * Copyright 2012-2013 Intel Corporation All Rights Reserved.
  *
  * This source code and all documentation related to the source code
  * ("Material") contains trade secrets and proprietary and confidential
@@ -508,6 +508,60 @@ ssize_t ia_trig_get_status(struct device *dev,
 	return count;
 }
 
+ssize_t ia_get_counter(struct device *dev,
+			struct device_attribute *attr, char *buf)
+{
+	int ret;
+	struct ia_cmd cmd;
+	struct cmd_counter_param *param = (struct cmd_counter_param *)cmd.param;
+	struct psh_ia_priv *psh_ia_data =
+			(struct psh_ia_priv *)dev_get_drvdata(dev);
+
+	cmd.cmd_id = CMD_COUNTER;
+	cmd.sensor_id = 0;
+	param->sub_cmd = SCMD_GET_COUNTER;
+
+	ret = ia_send_cmd(psh_ia_data, PSH2IA_CHANNEL0, &cmd, 5);
+	if (ret) {
+		pr_err("get_counter failed when send_cmd\n");
+		return ret;
+	}
+
+	if (!wait_for_completion_timeout(&psh_ia_data->cmd_counter_comp, HZ))
+		return snprintf(buf, PAGE_SIZE, "no response\n");
+
+	return snprintf(buf, PAGE_SIZE, "   Module        Counter(hex)\n"
+					"    GPIO          %x\n"
+					"    I2C           %x\n"
+					"    DMA           %x\n"
+					"    PRINT         %x\n",
+			psh_ia_data->counter.gpio_counter,
+			psh_ia_data->counter.i2c_counter,
+			psh_ia_data->counter.dma_counter,
+			psh_ia_data->counter.print_counter);
+}
+ssize_t ia_clear_counter(struct device *dev,
+			struct device_attribute *attr,
+			const char *str, size_t count)
+{
+	int ret;
+	struct ia_cmd cmd;
+	struct cmd_counter_param *param = (struct cmd_counter_param *)cmd.param;
+	struct psh_ia_priv *psh_ia_data =
+			(struct psh_ia_priv *)dev_get_drvdata(dev);
+
+	cmd.cmd_id = CMD_COUNTER;
+	cmd.sensor_id = 0;
+	param->sub_cmd = SCMD_CLEAR_COUNTER;
+
+	ret = ia_send_cmd(psh_ia_data, PSH2IA_CHANNEL0, &cmd, 5);
+	if (ret) {
+		pr_err("get_counter failed when send_cmd\n");
+		return ret;
+	} else
+		return count;
+}
+
 static SENSOR_DEVICE_ATTR(status_mask, S_IWUSR | S_IRUGO,
 				ia_get_status_mask, ia_set_status_mask, 0);
 static SENSOR_DEVICE_ATTR(status_trig, S_IWUSR, NULL, ia_trig_get_status, 1);
@@ -515,6 +569,9 @@ static SENSOR_DEVICE_ATTR(debug, S_IWUSR | S_IRUGO,
 				ia_get_dbg_mask, ia_set_dbg_mask, 0);
 static SENSOR_DEVICE_ATTR(control, S_IWUSR, NULL, ia_start_control, 1);
 static SENSOR_DEVICE_ATTR(data_size, S_IRUGO, ia_read_data_size, NULL, 2);
+static SENSOR_DEVICE_ATTR(counter, S_IWUSR | S_IRUGO, ia_get_counter,
+				ia_clear_counter, 0);
+
 static struct bin_attribute bin_attr = {
 	.attr = { .name = "data", .mode = S_IRUGO },
 	.read = ia_read_data
@@ -561,6 +618,11 @@ int ia_handle_frame(struct psh_ia_priv *psh_ia_data, void *dbuf, int size)
 		memcpy(&psh_ia_data->dbg_mask, resp->buf,
 				sizeof(psh_ia_data->dbg_mask));
 		complete(&psh_ia_data->cmpl);
+		return 0;
+	case RESP_COUNTER:
+		memcpy(&psh_ia_data->counter, resp->buf,
+				sizeof(psh_ia_data->counter));
+		complete(&psh_ia_data->cmd_counter_comp);
 		return 0;
 	default:
 		break;
@@ -611,6 +673,11 @@ void ia_process_lbuf(struct device *dev)
 					sizeof(psh_ia_data->dbg_mask));
 			complete(&psh_ia_data->cmpl);
 			continue;
+		} else if (resp->type == RESP_COUNTER) {
+			memcpy(&psh_ia_data->counter, resp->buf,
+					sizeof(psh_ia_data->counter));
+			complete(&psh_ia_data->cmd_counter_comp);
+			continue;
 		}
 		pr_debug("one DDR frame, data of sensor %d, size %d\n",
 				resp->sensor_id, size);
@@ -644,6 +711,7 @@ int psh_ia_common_init(struct device *dev, struct psh_ia_priv **data)
 	init_completion(&psh_ia_data->get_status_comp);
 	init_completion(&psh_ia_data->cmd_reset_comp);
 	init_completion(&psh_ia_data->cmd_load_comp);
+	init_completion(&psh_ia_data->cmd_counter_comp);
 
 	psh_ia_data->reset_in_progress = 0;
 
@@ -684,6 +752,8 @@ int psh_ia_common_init(struct device *dev, struct psh_ia_priv **data)
 			&sensor_dev_attr_control.dev_attr.attr);
 	ret += sysfs_create_file(&dev->kobj,
 			&sensor_dev_attr_data_size.dev_attr.attr);
+	ret += sysfs_create_file(&dev->kobj,
+			&sensor_dev_attr_counter.dev_attr.attr);
 	ret += sysfs_create_bin_file(&dev->kobj, &bin_attr);
 	ret += sysfs_create_bin_file(&dev->kobj, &dbg_attr);
 	if (ret) {
@@ -704,6 +774,8 @@ sysfs_err:
 		&sensor_dev_attr_control.dev_attr.attr);
 	sysfs_remove_file(&dev->kobj,
 		&sensor_dev_attr_data_size.dev_attr.attr);
+	sysfs_remove_file(&dev->kobj,
+		&sensor_dev_attr_counter.dev_attr.attr);
 	sysfs_remove_bin_file(&dev->kobj, &bin_attr);
 	sysfs_remove_bin_file(&dev->kobj, &dbg_attr);
 
@@ -733,6 +805,8 @@ void psh_ia_common_deinit(struct device *dev)
 		&sensor_dev_attr_control.dev_attr.attr);
 	sysfs_remove_file(&dev->kobj,
 		&sensor_dev_attr_data_size.dev_attr.attr);
+	sysfs_remove_file(&dev->kobj,
+		&sensor_dev_attr_counter.dev_attr.attr);
 	sysfs_remove_bin_file(&dev->kobj, &bin_attr);
 	sysfs_remove_bin_file(&dev->kobj, &dbg_attr);
 
