@@ -30,8 +30,11 @@
 #define		S0I3_TMR_OFFSET		0x8c
 #define		S0_TMR_OFFSET		0x90
 
+#define		S0IX_WAKE_EN		0x3c
+
 #define		PMC_MMIO_BAR		1
 #define		BASE_ADDRESS_MASK	0xFFFFFFFE00
+#define		DISABLE_LPC_CLK_WAKE_EN 0xffffef
 
 
 
@@ -72,6 +75,7 @@
 struct mid_pmc_dev {
 	u32 base_address;
 	u32 __iomem *pmc_registers;
+	u32 __iomem *s0ix_wake_en;
 	struct pci_dev const *pdev;
 	struct semaphore nc_ready_lock;
 };

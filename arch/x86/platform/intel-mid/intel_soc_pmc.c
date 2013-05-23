@@ -367,6 +367,7 @@ static int byt_pmu_init(void)
 	(void) debugfs_create_file("nc_set_power", S_IFREG | S_IRUGO,
 				NULL, NULL, &nc_set_power_operations);
 
+	writel(DISABLE_LPC_CLK_WAKE_EN, mid_pmc_cxt->s0ix_wake_en);
 	return 0;
 }
 
@@ -410,7 +411,11 @@ static int __devinit pmc_pci_probe(struct pci_dev *pdev,
 	mid_pmc_cxt->pmc_registers = ioremap_nocache(
 		mid_pmc_cxt->base_address + S0IX_REGISTERS_OFFSET, 20);
 
-	if (unlikely(!mid_pmc_cxt->pmc_registers)) {
+	mid_pmc_cxt->s0ix_wake_en = ioremap_nocache(
+		mid_pmc_cxt->base_address + S0IX_WAKE_EN, 4);
+
+	if (unlikely(!mid_pmc_cxt->pmc_registers ||
+				!mid_pmc_cxt->s0ix_wake_en)) {
 		pr_err("Failed to map PMC registers.\n");
 		error = -EFAULT;
 		goto exit_err1;
@@ -426,6 +431,7 @@ static int __devinit pmc_pci_probe(struct pci_dev *pdev,
 
 exit_err2:
 	iounmap(mid_pmc_cxt->pmc_registers);
+	iounmap(mid_pmc_cxt->s0ix_wake_en);
 exit_err1:
 	kfree(mid_pmc_cxt);
 	mid_pmc_cxt = NULL;
