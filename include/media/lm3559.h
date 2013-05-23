@@ -130,6 +130,7 @@ struct lm3559_platform_data {
 	unsigned int envm_tx2;
 	unsigned int tx2_polarity;
 	unsigned int flash_current_limit;
+	unsigned int disable_tx2;
 };
 
 #endif /* _LM3559_H_ */

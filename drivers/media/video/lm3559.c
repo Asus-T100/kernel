@@ -86,11 +86,16 @@ struct lm3559_ctrl_id {
 
 #define LM3559_CONFIG_REG_1_INIT_SETTING	0xec
 #define LM3559_CONFIG_REG_2_INIT_SETTING	0x01
+#define LM3559_GPIO_REG_INIT_SETTING		0x00
 
 #define LM3559_ENVM_TX2_SHIFT		0
 #define LM3559_ENVM_TX2_MASK		0x01
 #define LM3559_TX2_POLARITY_SHIFT	6
 #define LM3559_TX2_POLARITY_MASK	0x40
+
+#define LM3559_GPIO_REG			0x20
+#define LM3559_GPIO_DISABLE_TX2_SHIFT	3
+#define LM3559_GPIO_DISABLE_TX2_MASK	(1 << LM3559_GPIO_DISABLE_TX2_SHIFT)
 
 struct privacy_indicator {
 	u8 indicator_current;
@@ -229,7 +234,13 @@ static int lm3559_set_config(struct lm3559 *flash)
 
 	val = LM3559_CONFIG_REG_2_INIT_SETTING & ~LM3559_ENVM_TX2_MASK;
 	val |= flash->pdata->envm_tx2 << LM3559_ENVM_TX2_SHIFT;
-	return lm3559_write(flash, LM3559_CONFIG_REG_2, val);
+	ret = lm3559_write(flash, LM3559_CONFIG_REG_2, val);
+	if (ret)
+		return ret;
+
+	val = LM3559_GPIO_REG_INIT_SETTING & ~LM3559_GPIO_DISABLE_TX2_MASK;
+	val |= flash->pdata->disable_tx2 << LM3559_GPIO_DISABLE_TX2_SHIFT;
+	return lm3559_write(flash, LM3559_GPIO_REG, val);
 }
 
 /* -----------------------------------------------------------------------------
