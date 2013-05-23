@@ -49,7 +49,7 @@ struct ct_event {
 	char submitter_name[MAX_SB_N];
 	char ev_name[MAX_EV_N];
 	enum ct_ev_type type;
-	__u64 timestamp;
+	time_t timestamp;
 	__u32 attchmt_size; /* sizeof(all_attachments inc. padding) */
 	__u32 flags;
 	struct ct_attchmt attachments[];
