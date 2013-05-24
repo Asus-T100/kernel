@@ -807,9 +807,8 @@ int drm_fb_helper_single_fb_probe(struct drm_fb_helper *fb_helper,
 		printk(KERN_INFO "fb%d: %s frame buffer device\n", info->node,
 		       info->fix.id);
 
-	} else {
-		drm_fb_helper_set_par(info);
 	}
+	drm_fb_helper_set_par(info);
 
 	/* Switch back to kernel console on panic */
 	/* multi card linked list maybe */
