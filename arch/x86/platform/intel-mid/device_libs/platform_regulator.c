@@ -27,65 +27,194 @@
 #include <linux/lcd.h>
 #include <linux/regulator/intel_pmic.h>
 #include <linux/regulator/machine.h>
+#include <linux/regulator/fixed.h>
 
-/***********VPROG1 REGUATOR platform data*************/
-static struct regulator_consumer_supply vprog1_consumer[] = {
-	REGULATOR_SUPPLY("vprog1", "4-0048"),
-	REGULATOR_SUPPLY("vprog1", "4-0036"),
-	REGULATOR_SUPPLY("vprog1", "4-0010"),
+#include <asm/intel-mid.h>
+
+/****** Clovertrail SoC ******/
+
+/*** Redhookbay ***/
+
+static struct regulator_consumer_supply redhookbay_vprog1_consumer[] = {
+	REGULATOR_SUPPLY("vprog1", "4-0048"), /* lm3554 */
+	REGULATOR_SUPPLY("vprog1", "4-0036"), /* ov8830 */
 };
 
-static struct regulator_init_data vprog1_data = {
-	   .constraints = {
-			.min_uV			= 1200000,
-			.max_uV			= 2800000,
-			.valid_ops_mask	= REGULATOR_CHANGE_STATUS |
-							REGULATOR_CHANGE_MODE |
-						REGULATOR_CHANGE_VOLTAGE,
-			.valid_modes_mask	= REGULATOR_MODE_NORMAL |
-							REGULATOR_MODE_STANDBY |
-						REGULATOR_MODE_FAST,
-		},
-		.num_consumer_supplies	=	ARRAY_SIZE(vprog1_consumer),
-		.consumer_supplies	=	vprog1_consumer,
+static struct regulator_init_data redhookbay_vprog1_data = {
+	.constraints = {
+		.min_uV			= 2800000,
+		.max_uV			= 2800000,
+		.valid_ops_mask		= REGULATOR_CHANGE_STATUS
+			| REGULATOR_CHANGE_MODE | REGULATOR_CHANGE_VOLTAGE,
+		.valid_modes_mask	= REGULATOR_MODE_NORMAL
+			| REGULATOR_MODE_STANDBY | REGULATOR_MODE_FAST,
+	},
+	.num_consumer_supplies	= ARRAY_SIZE(redhookbay_vprog1_consumer),
+	.consumer_supplies	= redhookbay_vprog1_consumer,
 };
 
-static struct intel_pmic_info vprog1_info = {
-		.pmic_reg   = VPROG1CNT_ADDR,
-		.init_data  = &vprog1_data,
-		.table_len  = ARRAY_SIZE(VPROG1_VSEL_table),
-		.table      = VPROG1_VSEL_table,
+static struct intel_pmic_info redhookbay_vprog1_info = {
+	.pmic_reg   = VPROG1CNT_ADDR,
+	.init_data  = &redhookbay_vprog1_data,
+	.table_len  = ARRAY_SIZE(VPROG1_VSEL_table),
+	.table      = VPROG1_VSEL_table,
 };
-static struct platform_device vprog1_device = {
+
+static struct platform_device redhookbay_vprog1_device = {
 	.name = "intel_regulator",
 	.id = VPROG1,
 	.dev = {
-		.platform_data = &vprog1_info,
+		.platform_data = &redhookbay_vprog1_info,
 	},
 };
-/***********VPROG2 REGUATOR platform data*************/
+
+static void __init atom_regulator_redhookbay_init(void)
+{
+	platform_device_register(&redhookbay_vprog1_device);
+}
+
+/*** Victoria bay ***/
+
+static struct regulator_consumer_supply victoriabay_vprog1_consumer[] = {
+	REGULATOR_SUPPLY("VDDD", "4-003c"), /* s5k8aayx */
+};
+
+static struct regulator_init_data victoriabay_vprog1_data = {
+	.constraints = {
+		.min_uV			= 1200000,
+		.max_uV			= 1200000,
+		.valid_ops_mask		= REGULATOR_CHANGE_STATUS
+			| REGULATOR_CHANGE_MODE | REGULATOR_CHANGE_VOLTAGE,
+		.valid_modes_mask	= REGULATOR_MODE_NORMAL
+			| REGULATOR_MODE_STANDBY
+			| REGULATOR_MODE_FAST,
+	},
+	.num_consumer_supplies	= ARRAY_SIZE(victoriabay_vprog1_consumer),
+	.consumer_supplies	= victoriabay_vprog1_consumer,
+};
+
+static struct intel_pmic_info victoriabay_vprog1_info = {
+	.pmic_reg   = VPROG1CNT_ADDR,
+	.init_data  = &victoriabay_vprog1_data,
+	.table_len  = ARRAY_SIZE(VPROG1_VSEL_table),
+	.table      = VPROG1_VSEL_table,
+};
+
+static struct platform_device victoriabay_vprog1_device = {
+	.name = "intel_regulator",
+	.id = VPROG1,
+	.dev = {
+		.platform_data = &victoriabay_vprog1_info,
+	},
+};
+
+/*
+ * Victoria bay macro add-on board does not use vemmc1 but there's no
+ * harm from using it.
+ */
+static struct regulator_consumer_supply victoriabay_vemmc1_consumer[] = {
+	REGULATOR_SUPPLY("vprog1", "4-0048"), /* lm3554 */
+	REGULATOR_SUPPLY("VANA", "4-0020"), /* imx135 */
+	REGULATOR_SUPPLY("VDDA", "4-003c"), /* s5k8aayx */
+	REGULATOR_SUPPLY("vemmc1", "4-0010"), /* imx135, for compat */
+	REGULATOR_SUPPLY("vemmc1", "4-003c"), /* s5k8aayx, for compat */
+};
+
+static struct regulator_init_data victoriabay_vemmc1_data = {
+	.constraints = {
+		.min_uV			= 2850000,
+		.max_uV			= 2850000,
+		.valid_ops_mask		= REGULATOR_CHANGE_STATUS
+			| REGULATOR_CHANGE_MODE | REGULATOR_CHANGE_VOLTAGE,
+		.valid_modes_mask	= REGULATOR_MODE_NORMAL
+			| REGULATOR_MODE_STANDBY
+			| REGULATOR_MODE_FAST,
+	},
+	.num_consumer_supplies	= ARRAY_SIZE(victoriabay_vemmc1_consumer),
+	.consumer_supplies	= victoriabay_vemmc1_consumer,
+};
+
+static struct intel_pmic_info victoriabay_vemmc1_info = {
+	.pmic_reg   = VEMMC1CNT_ADDR,
+	.init_data  = &victoriabay_vemmc1_data,
+	.table_len  = ARRAY_SIZE(VEMMC1_VSEL_table),
+	.table      = VEMMC1_VSEL_table,
+};
+
+static struct platform_device victoriabay_vemmc1_device = {
+	.name = "intel_regulator",
+	.id = VEMMC1,
+	.dev = {
+		.platform_data = &victoriabay_vemmc1_info,
+	},
+};
+
+static struct regulator_consumer_supply victoriabay_v_1p05_cam_ldo_consumer[] = {
+	REGULATOR_SUPPLY("VDDL", "4-0010"), /* imx135 */
+};
+
+static struct regulator_init_data victoriabay_v_1p05_cam_ldo_data = {
+	.supply_regulator		= "v_2p80_vcm_vdd",
+	.constraints = {
+		/*
+		 * FIXME: This is really 1,05 V but let's pretend for
+		 * now we provide 1,2.
+		 */
+		.min_uV			= 1200000,
+		.max_uV			= 1200000,
+		.valid_modes_mask	= REGULATOR_MODE_NORMAL,
+	},
+	.num_consumer_supplies	= ARRAY_SIZE(victoriabay_v_1p05_cam_ldo_consumer),
+	.consumer_supplies	= victoriabay_v_1p05_cam_ldo_consumer,
+};
+
+static struct fixed_voltage_config victoriabay_v_1p05_cam_ldo_pdata = {
+	.supply_name	= "v_1p05_cam_ldo",
+	.microvolts	= 1200000,
+	.gpio		= -1,
+	.init_data	= &victoriabay_v_1p05_cam_ldo_data,
+};
+
+static struct platform_device victoriabay_v_1p05_cam_ldo_pdev = {
+	.name = "reg-fixed-voltage",
+	.id = -1,
+	.dev = {
+		.platform_data = &victoriabay_v_1p05_cam_ldo_pdata,
+	},
+};
+
+static void __init atom_regulator_victoriabay_init(void)
+{
+	platform_device_register(&victoriabay_vprog1_device);
+	platform_device_register(&victoriabay_vemmc1_device);
+	platform_device_register(&victoriabay_v_1p05_cam_ldo_pdev);
+}
+
+/*** Clovertrail SoC specific regulators ***/
+
 static struct regulator_consumer_supply vprog2_consumer[] = {
 };
+
 static struct regulator_init_data vprog2_data = {
-		.constraints = {
-			.min_uV			= 1200000,
-			.max_uV			= 2800000,
-			.valid_ops_mask	= REGULATOR_CHANGE_STATUS |
-							REGULATOR_CHANGE_MODE |
-						REGULATOR_CHANGE_VOLTAGE,
-			.valid_modes_mask	= REGULATOR_MODE_NORMAL |
-							REGULATOR_MODE_STANDBY |
-						REGULATOR_MODE_FAST,
-						},
-		.num_consumer_supplies	=	ARRAY_SIZE(vprog2_consumer),
-		.consumer_supplies	=	vprog2_consumer,
+	.constraints = {
+		.min_uV			= 1200000,
+		.max_uV			= 2800000,
+		.valid_ops_mask		= REGULATOR_CHANGE_STATUS
+			| REGULATOR_CHANGE_MODE | REGULATOR_CHANGE_VOLTAGE,
+		.valid_modes_mask	= REGULATOR_MODE_NORMAL
+			| REGULATOR_MODE_STANDBY | REGULATOR_MODE_FAST,
+	},
+	.num_consumer_supplies		= ARRAY_SIZE(vprog2_consumer),
+	.consumer_supplies		= vprog2_consumer,
 };
+
 static struct intel_pmic_info vprog2_info = {
-		.pmic_reg   = VPROG2CNT_ADDR,
-		.init_data  = &vprog2_data,
-		.table_len  = ARRAY_SIZE(VPROG2_VSEL_table),
-		.table      = VPROG2_VSEL_table,
+	.pmic_reg   = VPROG2CNT_ADDR,
+	.init_data  = &vprog2_data,
+	.table_len  = ARRAY_SIZE(VPROG2_VSEL_table),
+	.table      = VPROG2_VSEL_table,
 };
+
 static struct platform_device vprog2_device = {
 	.name = "intel_regulator",
 	.id = VPROG2,
@@ -93,63 +222,28 @@ static struct platform_device vprog2_device = {
 		.platform_data = &vprog2_info,
 	},
 };
-/***********VEMMC1 REGUATOR platform data*************/
-static struct regulator_consumer_supply vemmc1_consumer[] = {
-	REGULATOR_SUPPLY("vemmc1", "4-0010"),
-	REGULATOR_SUPPLY("vemmc1", "4-003c"),
-};
-static struct regulator_init_data vemmc1_data = {
-		.constraints = {
-			.min_uV			= 2850000,
-			.max_uV			= 2850000,
-			.valid_ops_mask	=	REGULATOR_CHANGE_STATUS |
-							REGULATOR_CHANGE_MODE,
-			.valid_modes_mask	= REGULATOR_MODE_NORMAL |
-							REGULATOR_MODE_STANDBY |
-						REGULATOR_MODE_FAST,
-		 },
-		.num_consumer_supplies	=	ARRAY_SIZE(vemmc1_consumer),
-		.consumer_supplies	=	vemmc1_consumer,
-};
 
-static struct intel_pmic_info vemmc1_info = {
-		.pmic_reg   = VEMMC1CNT_ADDR,
-		.init_data  = &vemmc1_data,
-		.table_len  = ARRAY_SIZE(VEMMC1_VSEL_table),
-		.table      = VEMMC1_VSEL_table,
-};
-
-static struct platform_device vemmc1_device = {
-	.name = "intel_regulator",
-	.id = VEMMC1,
-	.dev = {
-		.platform_data = &vemmc1_info,
-	},
-};
-
-/***********VEMMC2 REGUATOR platform data*************/
 static struct regulator_consumer_supply vemmc2_consumer[] = {
 };
 
 static struct regulator_init_data vemmc2_data = {
-		.constraints = {
-			.min_uV			= 2850000,
-			.max_uV			= 2850000,
-			.valid_ops_mask	=	REGULATOR_CHANGE_STATUS |
-							REGULATOR_CHANGE_MODE,
-			.valid_modes_mask	=	REGULATOR_MODE_NORMAL |
-							REGULATOR_MODE_STANDBY |
-						REGULATOR_MODE_FAST,
-		      },
-		.num_consumer_supplies		= ARRAY_SIZE(vemmc2_consumer),
-		.consumer_supplies		 = vemmc2_consumer,
+	.constraints = {
+		.min_uV			= 2850000,
+		.max_uV			= 2850000,
+		.valid_ops_mask		= REGULATOR_CHANGE_STATUS
+			| REGULATOR_CHANGE_MODE | REGULATOR_CHANGE_VOLTAGE,
+		.valid_modes_mask	= REGULATOR_MODE_NORMAL
+			| REGULATOR_MODE_STANDBY | REGULATOR_MODE_FAST,
+	},
+	.num_consumer_supplies		= ARRAY_SIZE(vemmc2_consumer),
+	.consumer_supplies		= vemmc2_consumer,
 };
 
 static struct intel_pmic_info vemmc2_info = {
-		.pmic_reg   = VEMMC2CNT_ADDR,
-		.init_data  = &vemmc2_data,
-		.table_len  = ARRAY_SIZE(VEMMC2_VSEL_table),
-		.table      = VEMMC2_VSEL_table,
+	.pmic_reg   = VEMMC2CNT_ADDR,
+	.init_data  = &vemmc2_data,
+	.table_len  = ARRAY_SIZE(VEMMC2_VSEL_table),
+	.table      = VEMMC2_VSEL_table,
 };
 
 static struct platform_device vemmc2_device = {
@@ -160,17 +254,22 @@ static struct platform_device vemmc2_device = {
 	},
 };
 
-static struct platform_device *regulator_devices[] __initdata = {
-	&vprog1_device,
-	&vprog2_device,
-	&vemmc1_device,
-	&vemmc2_device,
-};
-
 static int __init regulator_init(void)
 {
-	platform_add_devices(regulator_devices,
-		ARRAY_SIZE(regulator_devices));
+	if (INTEL_MID_BOARD(2, PHONE, CLVTP, VB, PRO)
+	    || INTEL_MID_BOARD(2, PHONE, CLVTP, VB, ENG)
+	    || ((INTEL_MID_BOARD(2, PHONE, CLVTP, RHB, PRO)
+		 || INTEL_MID_BOARD(2, PHONE, CLVTP, RHB, ENG))
+		&& (SPID_HARDWARE_ID(CLVTP, PHONE, VB, PR1A)
+		    || SPID_HARDWARE_ID(CLVTP, PHONE, VB, PR1B))))
+		atom_regulator_victoriabay_init();
+	else if (INTEL_MID_BOARD(2, PHONE, CLVTP, RHB, PRO)
+		 || INTEL_MID_BOARD(2, PHONE, CLVTP, RHB, ENG))
+		atom_regulator_redhookbay_init();
+
+	platform_device_register(&vprog2_device);
+	platform_device_register(&vemmc2_device);
+
 	return 0;
 }
 device_initcall(regulator_init);

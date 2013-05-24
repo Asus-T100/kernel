@@ -23,6 +23,5 @@ obj-$(CONFIG_INTEL_ATOM_CLV_POWER) += intel_soc_clv.o intel_soc_mdfld_clv_common
 obj-$(CONFIG_INTEL_ATOM_MRFLD_POWER) += intel_soc_mrfld.o
 obj-$(CONFIG_INTEL_MID_RAM_CONSOLE)     += intel_mid_ram_console.o
 # BOARD files
-obj-$(CONFIG_X86_INTEL_MID) += board.o
 obj-$(CONFIG_X86_INTEL_MID)		+= board.o
 obj-$(CONFIG_X86_INTEL_MID)		+= intel_mid_sfi.o
