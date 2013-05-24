@@ -80,8 +80,7 @@ enum panel_type {
 	HDMI,
 	JDI_VID,
 	JDI_CMD,
-	CMI_VID,
-	CMI_CMD,
+	H8C7_VID,
 	GCT_DETECT
 };
 

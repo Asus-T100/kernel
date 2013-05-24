@@ -55,8 +55,7 @@ obj-y += psb_bl.o \
 	tng_wa.o \
 	jdi_vid.o \
 	jdi_cmd.o \
-	cmi_vid.o \
-	cmi_cmd.o \
+	h8c7_vid.o \
 	dc_callbacks.o
 
 obj-$(CONFIG_MID_DSI_DPU) += mdfld_dsi_dbi_dpu.o

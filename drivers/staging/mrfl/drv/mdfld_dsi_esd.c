@@ -41,9 +41,7 @@ static bool intel_dsi_dbi_esd_detection(struct mdfld_dsi_config *dsi_config)
 	struct drm_device *dev = dsi_config->dev;
 
 	PSB_DEBUG_ENTRY("esd\n");
-	if (IS_MRFLD(dev) &&
-		(is_panel_vid_or_cmd(dev) !=
-				MDFLD_DSI_ENCODER_DBI)) {
+	if (get_panel_type(dev, 0) != JDI_CMD) {
 		ret = mdfld_dsi_get_power_mode(dsi_config,
 				(u8 *) &data,
 				MDFLD_DSI_HS_TRANSMISSION);

@@ -1233,8 +1233,8 @@ bool mrst_get_vbt_data(struct drm_psb_private *dev_priv)
 
 	if (INTEL_MID_BOARD(2, PHONE, MRFL, BB, PRO) ||
 		INTEL_MID_BOARD(2, PHONE, MRFL, BB, ENG)) {
-		dev_priv->panel_id = CMI_CMD;
-		PanelID = CMI_CMD;
+		dev_priv->panel_id = H8C7_VID;
+		PanelID = H8C7_VID;
 	} else if (INTEL_MID_BOARD(2, PHONE, MRFL, SB, PRO) ||
 			INTEL_MID_BOARD(2, PHONE, MRFL, SB, ENG)) {
 		if (spid.hardware_id <= MRFL_PHONE_SB_PR0) {
@@ -1248,6 +1248,7 @@ bool mrst_get_vbt_data(struct drm_psb_private *dev_priv)
 		DRM_INFO("Panel id %d from cmd line\n");
 		dev_priv->panel_id = PanelID;
 	}
+
 	return true;
 }
 void hdmi_do_hotplug_wq(struct work_struct *work)
@@ -3017,10 +3018,10 @@ static int psb_vsync_set_ioctl(struct drm_device *dev, void *data,
 
 				if (is_panel_vid_or_cmd(dev) ==
 						MDFLD_DSI_ENCODER_DPI)
-					ret = drm_vblank_get(dev, pipe);
+					drm_vblank_get(dev, pipe);
 				break;
 			case 1:
-				ret = drm_vblank_get(dev, pipe);
+				drm_vblank_get(dev, pipe);
 				break;
 			}
 		}
@@ -3044,7 +3045,7 @@ static int psb_vsync_set_ioctl(struct drm_device *dev, void *data,
 	}
 
 	mutex_unlock(&dev_priv->vsync_lock);
-	return ret;
+	return 0;
 }
 
 static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
