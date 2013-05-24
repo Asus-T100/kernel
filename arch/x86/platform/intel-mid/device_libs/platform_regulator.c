@@ -62,6 +62,7 @@ static struct regulator_init_data redhookbay_vprog1_data = {
 	.constraints = {
 		.min_uV			= 2800000,
 		.max_uV			= 2800000,
+		.apply_uV		= 1,
 		.valid_ops_mask		= REGULATOR_CHANGE_STATUS
 			| REGULATOR_CHANGE_MODE | REGULATOR_CHANGE_VOLTAGE,
 		.valid_modes_mask	= REGULATOR_MODE_NORMAL
@@ -101,6 +102,7 @@ static struct regulator_init_data victoriabay_vprog1_data = {
 	.constraints = {
 		.min_uV			= 1200000,
 		.max_uV			= 1200000,
+		.apply_uV		= 1,
 		.valid_ops_mask		= REGULATOR_CHANGE_STATUS
 			| REGULATOR_CHANGE_MODE | REGULATOR_CHANGE_VOLTAGE,
 		.valid_modes_mask	= REGULATOR_MODE_NORMAL
@@ -142,6 +144,7 @@ static struct regulator_init_data victoriabay_vemmc1_data = {
 	.constraints = {
 		.min_uV			= 2850000,
 		.max_uV			= 2850000,
+		.apply_uV		= 1,
 		.valid_ops_mask		= REGULATOR_CHANGE_STATUS
 			| REGULATOR_CHANGE_MODE | REGULATOR_CHANGE_VOLTAGE,
 		.valid_modes_mask	= REGULATOR_MODE_NORMAL
@@ -248,6 +251,7 @@ static struct regulator_init_data vemmc2_data = {
 	.constraints = {
 		.min_uV			= 2850000,
 		.max_uV			= 2850000,
+		.apply_uV		= 1,
 		.valid_ops_mask		= REGULATOR_CHANGE_STATUS
 			| REGULATOR_CHANGE_MODE | REGULATOR_CHANGE_VOLTAGE,
 		.valid_modes_mask	= REGULATOR_MODE_NORMAL
