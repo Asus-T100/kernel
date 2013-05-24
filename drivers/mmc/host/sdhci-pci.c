@@ -99,6 +99,7 @@ struct sdhci_pci_chip {
 	struct sdhci_pci_slot	*slots[MAX_SLOTS]; /* Pointers to host slots */
 	unsigned int		enctrl0_orig;
 	unsigned int		enctrl1_orig;
+	bool			dma_enabled;
 };
 
 
@@ -1424,6 +1425,9 @@ static int sdhci_pci_enable_dma(struct sdhci_host *host)
 	int ret;
 
 	slot = sdhci_priv(host);
+	if (slot->chip->dma_enabled)
+		return 0;
+
 	pdev = slot->chip->pdev;
 
 	if (((pdev->class & 0xFFFF00) == (PCI_CLASS_SYSTEM_SDHCI << 8)) &&
@@ -1438,6 +1442,8 @@ static int sdhci_pci_enable_dma(struct sdhci_host *host)
 		return ret;
 
 	pci_set_master(pdev);
+
+	slot->chip->dma_enabled = true;
 
 	return 0;
 }
@@ -1614,6 +1620,7 @@ static int sdhci_pci_suspend(struct device *dev)
 		if (ret)
 			goto err_pci_suspend;
 	}
+	chip->dma_enabled = false;
 
 	return 0;
 
