@@ -323,6 +323,9 @@ enum panel_type {
 
 #define PSB_CMDPOLICY_PARALLEL		1
 
+#define PSB_BOTTOM_HALF_WQ              1
+#define PSB_BOTTOM_HALF_TQ              2
+
 #define PSB_PMSTATE_POWERUP		0
 #define PSB_PMSTATE_CLOCKGATED		1
 #define PSB_PMSTATE_POWERDOWN		2

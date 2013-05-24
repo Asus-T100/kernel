@@ -1241,9 +1241,8 @@ void psb_powerdown_vsp(struct work_struct *work)
 	if (!vsp_priv)
 		return;
 
-	ret = ospm_apm_power_down_vsp(vsp_priv->dev);
-
-	if (ret)
+	ret = power_island_put(OSPM_VIDEO_VPP_ISLAND);
+	if (ret == false)
 		PSB_DEBUG_PM("The VSP could NOT be powered off!\n");
 	else
 		PSB_DEBUG_PM("The VSP has been powered off!\n");

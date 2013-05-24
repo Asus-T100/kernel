@@ -86,6 +86,7 @@
 #include "device_libs/platform_bq24261.h"
 #include "device_libs/platform_r69001.h"
 #include "device_libs/platform_wm5102.h"
+#include <asm/platform_cs42l73.h>
 
 /* SPI devices */
 #include "device_libs/platform_max3111.h"
@@ -208,7 +209,7 @@ struct devs_id __initconst device_ids[] = {
 					&intel_register_i2c_camera_device},
 	{"audience_es305", SFI_DEV_TYPE_I2C, 0, &audience_platform_data,
 						NULL},
-	{"cs42l73", SFI_DEV_TYPE_I2C, 1, &no_platform_data, NULL},
+	{"cs42l73", SFI_DEV_TYPE_I2C, 1, &cs42l73_platform_data, NULL},
 	{"mxt224", SFI_DEV_TYPE_I2C, 0, &mxt224_platform_data, NULL},
 	{"synaptics_3202", SFI_DEV_TYPE_I2C, 0, &rmi4_platform_data},
 	{"syn_3400_cgs", SFI_DEV_TYPE_I2C, 0, &rmi4_platform_data},

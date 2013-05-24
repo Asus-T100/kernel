@@ -548,7 +548,7 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 	struct xhci_bus_state *bus_state;
 	u16 link_state = 0;
 	u16 wake_mask = 0;
-	u32 __iomem *status_reg;
+	u32 __iomem *status_reg = NULL;
 	u32 i, command, num_ports, selector;
 
 

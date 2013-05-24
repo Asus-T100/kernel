@@ -770,6 +770,9 @@ int set_enable_s3(const char *val, struct kernel_param *kp)
 	if (rv)
 		return rv;
 
+	if (unlikely((!pmu_initialized)))
+		return 0;
+
 	if (platform_is(INTEL_ATOM_MRFLD)) {
 		if (!enable_s3)
 			__pm_stay_awake(mid_pmu_cxt->pmu_wake_lock);
@@ -792,6 +795,9 @@ int set_enable_s0ix(const char *val, struct kernel_param *kp)
 	int rv = param_set_int(val, kp);
 	if (rv)
 		return rv;
+
+	if (unlikely((!pmu_initialized)))
+		return 0;
 
 	if (platform_is(INTEL_ATOM_MRFLD)) {
 		if (!enable_s0ix) {

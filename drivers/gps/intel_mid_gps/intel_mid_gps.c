@@ -242,6 +242,17 @@ static int __devexit intel_mid_gps_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static void intel_mid_gps_shutdown(struct platform_device *pdev)
+{
+	struct intel_mid_gps_platform_data *pdata = pdev->dev.platform_data;
+
+	pr_info("%s shutdown called\n", dev_name(&pdev->dev));
+
+	/* Turn gps off if not done already */
+	if (gpio_is_valid(pdata->gpio_enable))
+		gpio_set_value(pdata->gpio_enable, ENABLE_OFF);
+}
+
 /*********************************************************************
  *		Driver initialisation and finalization
  *********************************************************************/
@@ -258,6 +269,7 @@ static struct platform_driver intel_mid_gps_driver = {
 		.owner	= THIS_MODULE,
 	},
 	.id_table = gps_id_table,
+	.shutdown	= intel_mid_gps_shutdown,
 };
 
 static int __init intel_mid_gps_driver_init(void)

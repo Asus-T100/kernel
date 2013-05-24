@@ -506,6 +506,20 @@ int bcm43xx_bluetooth_resume(struct platform_device *pdev)
 	enable_irq(bt_lpm.int_host_wake);
 	return 0;
 }
+
+void bcm43xx_bluetooth_shutdown(struct platform_device *pdev)
+{
+	pr_debug("%s\n", __func__);
+
+	/* Disable host wake interrupt */
+	disable_irq(bt_lpm.int_host_wake);
+
+	/* Turn transmitter off only if not done already */
+	if (gpio_get_value(bt_lpm.gpio_enable_bt)) {
+		bcm43xx_bt_rfkill_set_power(NULL, true);
+		rfkill_init_sw_state(bt_rfkill, true);
+	}
+}
 #endif
 
 #ifdef CONFIG_ACPI
@@ -524,6 +538,7 @@ static struct platform_driver bcm43xx_bluetooth_platform_driver = {
 #ifdef LPM_ON
 	.suspend = bcm43xx_bluetooth_suspend,
 	.resume = bcm43xx_bluetooth_resume,
+	.shutdown = bcm43xx_bluetooth_shutdown,
 #endif
 	.driver = {
 		   .name = "bcm_bt_lpm",

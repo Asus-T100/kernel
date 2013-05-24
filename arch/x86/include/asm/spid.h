@@ -402,12 +402,12 @@ enum {
 
 /* Hardware_ID table for Product_Line_ID == INTEL_BYT_TABLET_TBD */
 enum {
-	BYT_TABLET_FRCB_VV1, /* Bay Lake CRB/RVP FAB 1 */
-	BYT_TABLET_FRCB_VV2, /* Bay Lake CRB/RVP FAB 2 */
-	BYT_TABLET_FRCB_VV3, /* Bay Lake CRB/RVP FAB 3 */
-	BYT_TABLET_FRCB_PR1_1, /* Bay Lake FFRD-10 PR1.1 */
-	BYT_TABLET_TBD_RSVD,
-	BYT_TABLET_TBD_UNKNOWN = 0xFFFF
+	BYT_TABLET_BLK_VV1, /* Bay Lake CRB/RVP FAB 1 */
+	BYT_TABLET_BLK_VV2, /* Bay Lake CRB/RVP FAB 2 */
+	BYT_TABLET_BLK_VV3, /* Bay Lake CRB/RVP FAB 3 */
+	BYT_TABLET_BLK_PR1_1, /* Bay Lake FFRD-10 PR1.1 */
+	BYT_TABLET_BLK_RSVD,
+	BYT_TABLET_BLK_UNKNOWN = 0xFFFF
 };
 
 /* Hardware_ID table for Product_Line_ID == INTEL_MOOR_PHONE_FRCB */
@@ -442,6 +442,9 @@ enum {
 #define SPID_PRODUCT_ID(vendor, platform, devtype, product, type) (\
 	(spid.product_line_id == \
 	vendor##_##platform##_##devtype##_##product##_##type))
+#define SPID_PRODUCT(vendor, platform, devtype, product) (\
+	((spid.product_line_id & 0x7FFF) == \
+	vendor##_##platform##_##devtype##_##product##_PRO))
 #define SPID_HARDWARE_ID(platform, devtype, product, hardware) (\
 	(spid.hardware_id == platform##_##devtype##_##product##_##hardware))
 

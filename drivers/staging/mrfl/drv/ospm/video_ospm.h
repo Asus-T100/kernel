@@ -29,6 +29,7 @@
 #define _INTEL_MEDIA_VIDEO_OSPM_H_
 
 #include "pwr_mgmt.h"
+#include "psb_msvdx.h"
 
 #define PMU_VPP			0x1
 #define PMU_ENC			0x1
