@@ -112,6 +112,10 @@ static void xhci_pci_quirks(struct device *dev, struct xhci_hcd *xhci)
 	}
 	if (pdev->vendor == PCI_VENDOR_ID_VIA)
 		xhci->quirks |= XHCI_RESET_ON_RESUME;
+
+	if (pdev->vendor == PCI_VENDOR_ID_INTEL &&
+			pdev->device == PCI_DEVICE_ID_INTEL_BYT_USH)
+		xhci->quirks |= XHCI_SPURIOUS_SUCCESS;
 }
 
 /* called during probe() after chip reset completes */
