@@ -2098,39 +2098,47 @@ int i915_enable_plane_reserved_reg_bit_2(struct drm_device *dev, void *data,
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	struct drm_i915_reserved_reg_bit_2 *rrb = data;
 	u32 enable = rrb->enable;
-	int plane = rrb->plane;
+	u32 reg1, reg2;
 	u32 val;
 
-	/* Clear the older rrb setting*/
-	val = I915_READ(DSPSURF(plane));
-	val &= ~PLANE_RESERVED_REG_BIT_2_ENABLE;
-	I915_WRITE(DSPSURF(plane), val);
-
-	val = I915_READ(DSPSURFLIVE(plane));
-	val &= ~PLANE_RESERVED_REG_BIT_2_ENABLE;
-	I915_WRITE(DSPSURFLIVE(plane), val);
-
-	if (plane == 1 || plane == 4) {
-		val = I915_READ(VLV_DSPADDR(plane));
-		val &= ~PLANE_RESERVED_REG_BIT_2_ENABLE;
-		I915_WRITE(VLV_DSPADDR(plane), val);
+	switch (rrb->plane) {
+	case 2: /* SPRITE A */
+		reg1 = SPSURF(0, 0);
+		reg2 = SPLIVESURF(0, 0);
+		break;
+	case 3:	/* SPRITE B */
+		reg1 = SPSURF(0, 1);
+		reg2 = SPLIVESURF(0, 1);
+		break;
+	case 5: /* SPRITE C */
+		reg1 = SPSURF(1, 0);
+		reg2 = SPLIVESURF(1, 0);
+		break;
+	case 6: /* SPRITE D */
+		reg1 = SPSURF(1, 1);
+		reg2 = SPLIVESURF(1, 1);
+		break;
+	default: return -EINVAL;
 	}
 
 	/* Program bit enable if it was requested */
 	if (enable) {
-		val = I915_READ(DSPSURF(plane));
+		val = I915_READ(reg1);
 		val |= PLANE_RESERVED_REG_BIT_2_ENABLE;
-		I915_WRITE(DSPSURF(plane), val);
+		I915_WRITE(reg1, val);
 
-		val = I915_READ(DSPSURFLIVE(plane));
+		val = I915_READ(reg2);
 		val |= PLANE_RESERVED_REG_BIT_2_ENABLE;
-		I915_WRITE(DSPSURFLIVE(plane), val);
+		I915_WRITE(reg2, val);
+	} else {
+		/* Clear the older rrb setting*/
+		val = I915_READ(reg1);
+		val &= ~PLANE_RESERVED_REG_BIT_2_ENABLE;
+		I915_WRITE(reg1, val);
 
-		if (plane == 1 || plane == 4) {
-			val = I915_READ(VLV_DSPADDR(plane));
-			val |= PLANE_RESERVED_REG_BIT_2_ENABLE;
-			I915_WRITE(VLV_DSPADDR(plane), val);
-		}
+		val = I915_READ(reg2);
+		val &= ~PLANE_RESERVED_REG_BIT_2_ENABLE;
+		I915_WRITE(reg2, val);
 	}
 
 	return 0;
