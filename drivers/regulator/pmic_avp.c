@@ -386,6 +386,7 @@ static int __devinit avp_pmic_probe(struct platform_device *pdev)
 			break;
 	}
 	if (i < (ARRAY_SIZE(reg_addr_offset))) {
+		platform_set_drvdata(pdev, intel_pmic->intel_pmic_rdev);
 		intel_pmic->intel_pmic_rdev =
 		regulator_register(&intel_pmic_desc[i],
 				&pdev->dev, pdata->init_data, pdata,
@@ -395,7 +396,6 @@ static int __devinit avp_pmic_probe(struct platform_device *pdev)
 					PTR_ERR(intel_pmic->intel_pmic_rdev));
 			return PTR_ERR(intel_pmic->intel_pmic_rdev);
 		}
-		platform_set_drvdata(pdev, intel_pmic->intel_pmic_rdev);
 		dev_dbg(&pdev->dev, "registered regulator\n");
 		return 0;
 	}
