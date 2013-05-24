@@ -38,6 +38,24 @@
 static struct regulator_consumer_supply redhookbay_vprog1_consumer[] = {
 	REGULATOR_SUPPLY("vprog1", "4-0048"), /* lm3554 */
 	REGULATOR_SUPPLY("vprog1", "4-0036"), /* ov8830 */
+	/*
+	 * Begin Scaleht / VV board consumers
+	 *
+	 * Scaleht and VV boards have devices such as the wm5102
+	 * codec, but the SPID on VV boards still indicates they're
+	 * Redhookbay. Put the consumers here even if they don't
+	 * actually exist on every board. Should the device not be
+	 * present on the SFI tables, the consumer entries just won't
+	 * get used.
+	 */
+	REGULATOR_SUPPLY("AVDD", "1-001a"), /* wm5102 */
+	REGULATOR_SUPPLY("DBVDD1", "1-001a"), /* wm5102 */
+	REGULATOR_SUPPLY("DBVDD2", "wm5102-codec"),
+	REGULATOR_SUPPLY("DBVDD3", "wm5102-codec"),
+	REGULATOR_SUPPLY("CPVDD", "wm5102-codec"),
+	REGULATOR_SUPPLY("SPKVDDL", "wm5102-codec"),
+	REGULATOR_SUPPLY("SPKVDDR", "wm5102-codec"),
+	/* End Scaleht / VV board consumers */
 };
 
 static struct regulator_init_data redhookbay_vprog1_data = {
