@@ -211,10 +211,7 @@ enum VssResponseType {
 	VssInputSurfaceReadyResponse  = 0x80050000,
 	VssOutputSurfaceReadyResponse = 0x80060000,
 	VssVp8encSetSequenceParametersResponse = 150,
-	VssVp8encEncodeFrameResponse,
-	VssEndOfSequenceResponse_VP8,
-	VssErrorResponse_VP8,
-	VssIdleResponse_VP8
+	VssVp8encEncodeFrameResponse
 };
 
 enum VssStatus {
@@ -225,8 +222,7 @@ enum VssStatus {
 	VssInvalidDdrAddress          = 0x80050000,
 	VssInvalidSequenceParameters_VP8 = 0x1,
 	VssInvalidPictureParameters_VP8  = 0x2,
-	VssInvalidCommandType_VP8        = 0x3,
-	VssInvalidCommandArgument_VP8    = 0x4
+	VssInitFailure_VP8               = 0x5
 };
 
 enum FrcResponseType {
@@ -530,7 +526,8 @@ struct VssVp8encPictureParameterBuffer {
 enum VssVp8encCommandType {
 	VssVp8encSetSequenceParametersCommand = 123,
 	VssVp8encEncodeFrameCommand,
-	VssVp8encEndOfSequenceCommand
+	VssVp8encEndOfSequenceCommand,
+	VssVp8encInit
 };
 
 #endif

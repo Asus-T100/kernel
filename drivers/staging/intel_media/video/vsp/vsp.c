@@ -79,6 +79,7 @@ int vsp_handle_response(struct drm_psb_private *dev_priv)
 	unsigned int msg_num;
 	struct vss_response_t *msg;
 	uint32_t sequence;
+	uint32_t status;
 
 	rd = vsp_priv->ctrl->ack_rd;
 	wr = vsp_priv->ctrl->ack_wr;
@@ -98,21 +99,17 @@ int vsp_handle_response(struct drm_psb_private *dev_priv)
 			DRM_ERROR("error response:%.8x %.8x %.8x %.8x %.8x\n",
 				  msg->context, msg->type, msg->buffer,
 				  msg->size, msg->vss_cc);
-			handle_error_response(msg->buffer & 0xFFFF0000,
-					      msg->buffer & 0xFFFF);
-			ret = false;
-			break;
-		case VssErrorResponse_VP8:
-			DRM_ERROR("error response:%.8x %.8x %.8x %.8x %.8x\n",
-				  msg->context, msg->type, msg->buffer,
-				  msg->size, msg->vss_cc);
-			handle_error_response(msg->buffer & 0xFFFF,
-					      msg->buffer >> 16);
+			if (vsp_priv->fw_type == VSP_FW_TYPE_VPP) {
+				handle_error_response(msg->buffer & 0xFFFF0000,
+						msg->buffer & 0xFFFF);
+			} else {
+				handle_error_response(msg->buffer & 0xFFFF,
+						msg->buffer >> 16);
+			}
 			ret = false;
 			break;
 
 		case VssEndOfSequenceResponse:
-		case VssEndOfSequenceResponse_VP8:
 			PSB_DEBUG_GENERAL("end of the sequence received\n");
 			VSP_DEBUG("VSP clock cycles from pre response %x\n",
 				  msg->vss_cc);
@@ -159,7 +156,6 @@ int vsp_handle_response(struct drm_psb_private *dev_priv)
 			break;
 
 		case VssIdleResponse:
-		case VssIdleResponse_VP8:
 		{
 			unsigned int cmd_rd, cmd_wr;
 
@@ -191,14 +187,27 @@ int vsp_handle_response(struct drm_psb_private *dev_priv)
 			break;
 		}
 		case VssVp8encSetSequenceParametersResponse:
-			VSP_DEBUG("receive vp8 sequence response\n");
 			VSP_DEBUG("VSP clock cycles from pre response %x\n",
 				  msg->vss_cc);
 			vsp_priv->vss_cc_acc += msg->vss_cc;
+			status = msg->buffer;
+			switch (status) {
+			case VssOK:
+				VSP_DEBUG("vp8 sequence response received\n");
+				break;
+			default:
+				VSP_DEBUG("Unknown VssStatus %x\n", status);
+				DRM_ERROR("Invalid vp8 sequence response\n");
+				break;
+			}
 
 			break;
 		case VssVp8encEncodeFrameResponse:
 		{
+			sequence = msg->buffer;
+			VSP_DEBUG("sequence %d\n", sequence);
+			VSP_DEBUG("receive vp8 encoded frame response\n");
+#ifdef VP8_ENC_DEBUG
 			struct VssVp8encPictureParameterBuffer *t =
 				vsp_priv->vp8_encode_frame_cmd;
 			struct VssVp8encEncodedFrame *encoded_frame =
@@ -220,17 +229,18 @@ int vsp_handle_response(struct drm_psb_private *dev_priv)
 
 			psb_clflush(vsp_priv->coded_buf);
 
-			sequence = t->input_frame.surface_id;
-			VSP_DEBUG("sequence %x\n", sequence);
 			VSP_DEBUG("size %d\n", t->encoded_frame_size);
 
-			VSP_DEBUG("status[0=success] %x\n",
+			VSP_DEBUG("status[0x80010000=success] %x\n",
 					encoded_frame->status);
 			VSP_DEBUG("frame flags[1=Key, 0=Non-key] %d\n",
 					encoded_frame->frame_flags);
 			VSP_DEBUG("ref frame flags %d\n",
 					encoded_frame->ref_frame_flags);
-			VSP_DEBUG("segments = %d\n", encoded_frame->segments);
+			VSP_DEBUG("segments = %d\n",
+					encoded_frame->segments);
+			VSP_DEBUG("quantizer[0]=%d\n",
+					encoded_frame->quantizer[0]);
 			VSP_DEBUG("frame size %d[bytes]\n",
 					encoded_frame->frame_size);
 			VSP_DEBUG("partitions num %d\n",
@@ -258,6 +268,7 @@ int vsp_handle_response(struct drm_psb_private *dev_priv)
 				VSP_DEBUG("coded buf is: %d, %x\n", j,
 					*(tmp + size - 4 + j));
 			}
+#endif
 
 			break;
 		}
@@ -831,12 +842,8 @@ static int vsp_fence_vp8enc_surfaces(struct drm_file *priv,
 	bool is_iomem;
 	int ret = 0;
 	struct VssVp8encPictureParameterBuffer *pic_param;
-	uint32_t surf_handler;
-	struct ttm_buffer_object *surf_bo;
 	struct ttm_fence_object *fence = NULL;
 	struct list_head surf_list;
-	struct ttm_validate_buffer *pos, *next, *cur_valid_buf;
-	struct ttm_object_file *tfile = BCVideoGetPriv(priv)->tfile;
 	struct drm_device *dev = priv->minor->dev;
 	struct drm_psb_private *dev_priv = dev->dev_private;
 	struct vsp_private *vsp_priv = dev_priv->vsp_private;
@@ -865,10 +872,11 @@ static int vsp_fence_vp8enc_surfaces(struct drm_file *priv,
 			pic_param->input_frame.surface_id,
 			pic_param->input_frame.base);
 
-	vsp_priv->vp8_encode_frame_cmd = pic_param;
 	VSP_DEBUG("pic_param->encoded_frame_base = %p\n",
 			pic_param->encoded_frame_base);
 
+#ifdef VP8_ENC_DEBUG
+	vsp_priv->vp8_encode_frame_cmd = pic_param;
 	/* map coded buffer */
 	ret = ttm_bo_kmap(coded_buf_bo, 0, coded_buf_bo->num_pages,
 			  &vsp_priv->coded_buf_kmap);
@@ -881,6 +889,7 @@ static int vsp_fence_vp8enc_surfaces(struct drm_file *priv,
 		ttm_kmap_obj_virtual(
 				&vsp_priv->coded_buf_kmap,
 				&is_iomem);
+#endif
 
 	/* just fence pic param if this is not end command */
 	/* only send last output fence_arg back */
@@ -897,6 +906,9 @@ static int vsp_fence_vp8enc_surfaces(struct drm_file *priv,
 	}
 
 out:
+#ifndef VP8_ENC_DEBUG
+	ttm_bo_kunmap(&vp8_encode_frame__kmap);
+#endif
 	return ret;
 }
 
@@ -1288,6 +1300,11 @@ void check_invalid_cmd_type(unsigned int cmd_type)
 		DRM_ERROR("before pipeline command %x\n", cmd_type);
 		break;
 
+	case VssVp8encInit:
+		DRM_ERROR("Firmware initialization failure\n");
+		DRM_ERROR("state buffer size too small\n");
+		break;
+
 	default:
 		DRM_ERROR("VSP: Unknown command type %x\n", cmd_type);
 		break;
@@ -1316,12 +1333,10 @@ void handle_error_response(unsigned int error_type, unsigned int cmd_type)
 
 	switch (error_type) {
 	case VssInvalidCommandType:
-	case VssInvalidCommandType_VP8:
 		check_invalid_cmd_type(cmd_type);
 		DRM_ERROR("VSP: Invalid command\n");
 		break;
 	case VssInvalidCommandArgument:
-	case VssInvalidCommandArgument_VP8:
 		check_invalid_cmd_arg(cmd_type);
 		DRM_ERROR("VSP: Invalid command\n");
 		break;
@@ -1339,6 +1354,9 @@ void handle_error_response(unsigned int error_type, unsigned int cmd_type)
 		check_invalid_cmd_type(cmd_type);
 		DRM_ERROR("VSP: Invalid picture parameter\n");
 		break;
+	case VssInitFailure_VP8:
+		check_invalid_cmd_type(cmd_type);
+		DRM_ERROR("VSP: Init Failure\n");
 	default:
 		DRM_ERROR("VSP: Unknown error, code %x\n", error_type);
 		break;
