@@ -290,9 +290,9 @@ typedef struct _drm_i915_sarea {
 #define DRM_IOCTL_I915_DISP_SCREEN_CONTROL             \
 		DRM_IOW(DRM_COMMAND_BASE + DRM_I915_DISP_SCREEN_CONTROL, \
 		struct drm_i915_disp_screen_control)
-#define DRM_IOCTL_I915_RESERVED_REG_BIT_2		\
+#define DRM_IOCTL_I915_SET_RESERVED_REG_BIT_2		\
 		DRM_IOW(DRM_COMMAND_BASE + DRM_I915_SET_RESERVED_REG_BIT_2, \
-		struct drm_i915_set_reserved_reg_bit_2)
+		struct drm_i915_reserved_reg_bit_2)
 #define DRM_IOCTL_I915_GEM_VMAP		\
 			DRM_IOWR(DRM_COMMAND_BASE + DRM_I915_GEM_VMAP, \
 			struct drm_i915_gem_vmap)

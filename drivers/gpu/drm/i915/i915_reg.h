@@ -3392,6 +3392,7 @@ EDP_PSR_SW_TIMER
 #define _SPACONSTALPHA		0x721a8
 #define   SP_ALPHA_EN		(1<<31)
 #define _SPAGAMC		0x721f4
+#define _SPALIVESURF		0x721AC
 
 #define _SPBCNTR		0x72280
 #define _SPBLINOFF		0x72284
@@ -3406,6 +3407,7 @@ EDP_PSR_SW_TIMER
 #define _SPBCONSTALPHA		0x722a8
 #define _SPBGAMC		0x722f4
 #define VLV_NUM_SPRITES		2
+#define _SPBLIVESURF		0x722AC
 
 #define SPCNTR(pipe, plane) _PIPE(pipe * 2 + plane, _SPACNTR, _SPBCNTR)
 #define SPLINOFF(pipe, plane) _PIPE(pipe * 2 + plane, _SPALINOFF, _SPBLINOFF)
@@ -3419,9 +3421,10 @@ EDP_PSR_SW_TIMER
 #define SPTILEOFF(pipe, plane) _PIPE(pipe * 2 + plane, _SPATILEOFF, _SPBTILEOFF)
 #define SPCONSTALPHA(pipe, plane) _PIPE(pipe * 2 + plane, _SPACONSTALPHA, _SPBCONSTALPHA)
 #define SPGAMC(pipe, plane) _PIPE(pipe * 2 + plane, _SPAGAMC, _SPBGAMC)
+#define SPLIVESURF(pipe, plane) _PIPE(pipe * 2 + plane, _SPALIVESURF, \
+							_SPBLIVESURF);
 
 #define	  PLANE_RESERVED_REG_BIT_2_ENABLE	(1 << 2)
-#define          CURSOR_DECRYPTION_ENABLE      (1<<4)
 
 /* VBIOS regs */
 #define VGACNTRL		0x71400
