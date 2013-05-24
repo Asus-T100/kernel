@@ -75,6 +75,7 @@
 #define SP_THREAD_EMPTY_TOKEN 0x0
 #define SP_THREAD_RESERVED_TOKEN 0x1
 
+#define SH_CSS_VIDEO_BUFFER_ALIGNMENT 0
 
 #if WITH_PC_MONITORING
 #define MULTIPLE_SAMPLES 1
@@ -166,6 +167,7 @@ static int thread_alive;
 	NULL,                      /* output_stage */\
 	NULL,                      /* vf_stage */ \
 	IA_CSS_CAPTURE_MODE_PRIMARY,/* capture_mode */ \
+	false,			    /* enable_capture_pp */ \
 	false,                     /* xnr */ \
 	{ 0, 0 },                  /* dvs_envelope */ \
 	0,                         /* num_invalid_frames */ \
@@ -277,6 +279,7 @@ struct sh_css_pipe {
 	struct ia_css_fw_info	    *output_stage; /* extra output stage */
 	struct ia_css_fw_info	    *vf_stage;     /* extra vf stage */
 	enum ia_css_capture_mode     capture_mode;
+	bool 		     	     enable_capture_pp;
 	bool                         xnr;
 	struct ia_css_resolution     dvs_envelope;
 	int                          num_invalid_frames;
@@ -471,7 +474,7 @@ init_frame_planes(struct ia_css_frame *frame);
 
 
 static void
-free_mipi_frames(struct sh_css_pipe *pipe);
+free_mipi_frames(struct sh_css_pipe *pipe, bool uninit);
 
 
 #if 0
@@ -1776,13 +1779,14 @@ sh_css_set_irq_buffer(struct sh_css_pipeline_stage *stage,
 
 void sh_css_frame_info_set_width(
 	struct ia_css_frame_info *info,
-	unsigned int width)
+	unsigned int width,
+	unsigned int aligned)
 {
 assert(info != NULL);
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_frame_info_set_width() enter: "
-		"width=%d\n",
-		width);
+		"width=%d, aligned=%d\n",
+		width, aligned);
 	info->res.width = width;
 	/* frames with a U and V plane of 8 bits per pixel need to have
 	   all planes aligned, this means double the alignment for the
@@ -1795,7 +1799,13 @@ assert(info != NULL);
 	else if (info->format == IA_CSS_FRAME_FORMAT_RAW)
 		info->padded_width = CEIL_MUL(width, 2*ISP_VEC_NELEMS);
 	else
+	    {
 		info->padded_width = CEIL_MUL(width, HIVE_ISP_DDR_WORD_BYTES);
+		}
+
+	if (aligned) {
+    info->padded_width = CEIL_MUL(info->padded_width, aligned);
+	}
 }
 
 static void sh_css_frame_info_set_format(
@@ -1816,19 +1826,21 @@ void sh_css_frame_info_init(
 	struct ia_css_frame_info *info,
 	unsigned int width,
 	unsigned int height,
-	enum ia_css_frame_format format)
+	enum ia_css_frame_format format,
+	unsigned int aligned)
 {
 assert(info != NULL);
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_frame_info_init() enter: "
 		"width=%d, "
 		"height=%d, "
-		"format=%d\n",
+		"format=%d, "
+		"aligned=%d\n",
 		width, height,
-		format);
+		format, aligned);
 	info->res.height = height;
 	info->format = format;
-	sh_css_frame_info_set_width(info, width);
+	sh_css_frame_info_set_width(info, width, aligned);
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_frame_info_init() leave: return_void\n");
 }
@@ -2413,7 +2425,6 @@ ia_css_pipe_destroy(struct ia_css_pipe *pipe)
 void
 ia_css_uninit(void)
 {
-	int i = 0;
 	sh_css_dtrace(SH_DBG_TRACE, "ia_css_uninit() enter: void\n");
 #if WITH_PC_MONITORING
 	sh_css_print("PC_MONITORING: %s() -- started\n", __func__);
@@ -2427,13 +2438,6 @@ ia_css_uninit(void)
 
 	ia_css_i_host_rmgr_uninit();
 
-	for (i = 0; i < my_css.num_mipi_frames; i++) {
-		if (my_css.mipi_frames[i] != NULL)
-		{
-			ia_css_frame_free(my_css.mipi_frames[i]);
-			my_css.mipi_frames[i] = NULL;
-		}
-	}
 	sh_css_binary_uninit();
 	sh_css_sp_uninit();
 	sh_css_unload_firmware();
@@ -2443,6 +2447,9 @@ ia_css_uninit(void)
 	}
 
 	sh_css_sp_set_sp_running(false);
+	/* check and free any remaining mipi frames */
+	free_mipi_frames(NULL, true);
+	
 	sh_css_sp_reset_global_vars();
 	sh_css_dtrace(SH_DBG_TRACE, "ia_css_uninit() leave: return_void\n");
 }
@@ -3072,20 +3079,38 @@ alloc_continuous_frames(
 static enum ia_css_err
 allocate_mipi_frames(struct sh_css_pipe *pipe)
 {
-	enum ia_css_err err = IA_CSS_SUCCESS;
+	enum ia_css_err err = IA_CSS_ERR_INTERNAL_ERROR;
 	unsigned int i;
 	struct ia_css_frame_info mipi_intermediate_info;
 
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"allocate_mipi_frames(%p) enter:\n", pipe);
+
 	assert(pipe != NULL);
 	assert(pipe->stream != NULL); 
-	
-	if (pipe->stream->config.mode != IA_CSS_INPUT_MODE_BUFFERED_SENSOR)
-		return err;
 
+	if (pipe->stream->config.mode != IA_CSS_INPUT_MODE_BUFFERED_SENSOR) {
+		sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+			"allocate_mipi_frames(%p) exit: no buffers needed for pipe mode\n",
+			pipe);
+		return IA_CSS_SUCCESS;
+	}
+
+	assert(my_css.size_mem_words != 0);
+	if (my_css.size_mem_words == 0) {
+		sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+			"allocate_mipi_frames(%p) exit: mipi frame size not specified\n",
+			pipe);
+		return err;
+	}
 
 	ref_count_mipi_allocation++;	
-	if (ref_count_mipi_allocation > 1)
-		return err;
+	if (ref_count_mipi_allocation > 1) {
+		sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+			"allocate_mipi_frames(%p) exit: already allocated\n",
+			pipe);
+		return IA_CSS_SUCCESS;
+	}
 	assert(ref_count_mipi_allocation == 1);
 	
 // This code needs to modified to allocate the MIPI frames in the correct normal way with a allocate from info
@@ -3121,26 +3146,39 @@ allocate_mipi_frames(struct sh_css_pipe *pipe)
 				ia_css_frame_zero(my_css.mipi_frames[i]);
 		}
 	}
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"allocate_mipi_frames(%p) exit:\n", pipe);
 
 	return err;
 }
 
 static void
-free_mipi_frames(struct sh_css_pipe *pipe)
+free_mipi_frames(struct sh_css_pipe *pipe, bool uninit)
 {
 	unsigned int i;
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"free_mipi_frames(%p, %d) enter:\n", pipe, uninit);
+	if (!uninit) {
+		assert(pipe != NULL); 
+		assert(pipe->stream != NULL); 
+	
+		if (pipe->stream->config.mode != IA_CSS_INPUT_MODE_BUFFERED_SENSOR) {
+			sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+				"free_mipi_frames() exit: wrong mode\n");
+			return;
+		}
+	
+		assert(ref_count_mipi_allocation > 0);
+		ref_count_mipi_allocation--;
 		
-	assert(pipe != NULL); 
-	assert(pipe->stream != NULL); 
-
-	if (pipe->stream->config.mode != IA_CSS_INPUT_MODE_BUFFERED_SENSOR)
-		return;
-
-	assert(ref_count_mipi_allocation > 0);
-	ref_count_mipi_allocation--;
-	if (ref_count_mipi_allocation > 0)
-		return; 
-		
+		if (ref_count_mipi_allocation > 0) {
+			sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+				"free_mipi_frames(%p, %d) exit: "
+				"not last pipe (ref_count=%d):\n", 
+				pipe, uninit, ref_count_mipi_allocation);
+			return; 
+		}
+	}	
 
 	for (i = 0; i < my_css.num_mipi_frames; i++) {
 		if (my_css.mipi_frames[i] != NULL)
@@ -3149,6 +3187,10 @@ free_mipi_frames(struct sh_css_pipe *pipe)
 			my_css.mipi_frames[i] = NULL;
 		}
 	}
+	assert(ref_count_mipi_allocation == 0);
+	ref_count_mipi_allocation = 0;
+	sh_css_dtrace(SH_DBG_TRACE_PRIVATE,
+		"free_mipi_frames(%p, %d) exit (deallocated):\n", pipe, uninit);
 }
 
 
@@ -3940,7 +3982,7 @@ ia_css_pipe_dequeue_buffer(struct ia_css_pipe *pipe,
 		case IA_CSS_BUFFER_TYPE_OUTPUT_FRAME:
 			if (pipe->stop_requested == true)
 			{
-				free_mipi_frames(old_pipe);
+				free_mipi_frames(old_pipe, false);
 				pipe->stop_requested = false;
 			}
 		case IA_CSS_BUFFER_TYPE_VF_OUTPUT_FRAME:
@@ -4484,7 +4526,7 @@ assert(pipe != NULL);
 	if (pipe->output_info.res.width != width ||
 	    pipe->output_info.res.height != height ||
 	    pipe->output_info.format != format) {
-		sh_css_frame_info_init(&pipe->output_info, width, height, format);
+		sh_css_frame_info_init(&pipe->output_info, width, height, format, pipe->mode==IA_CSS_PIPE_ID_VIDEO ? SH_CSS_VIDEO_BUFFER_ALIGNMENT : 0);
 		sh_css_pipe_invalidate_binaries(pipe);
 	}
 	return IA_CSS_SUCCESS;
@@ -4674,6 +4716,7 @@ static enum ia_css_err load_video_binaries(
 	bool continuous = pipe->stream->config.continuous;
 	unsigned int i;
 	unsigned num_output_pins;
+	bool resolution_differs = false;
 
 assert(pipe != NULL);
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "load_video_binaries() enter:\n");
@@ -4703,10 +4746,13 @@ assert(pipe != NULL);
 	}
 
 	/* Video */
-	if (pipe->enable_viewfinder)
+	if (pipe->enable_viewfinder){
 		video_vf_info = &pipe->vf_output_info;
-	else
+		resolution_differs = (video_vf_info->res.width != pipe->output_info.res.width) || (video_vf_info->res.height != pipe->output_info.res.height);
+	}
+	else {
 		video_vf_info = NULL;
+	}
 	init_video_descr(pipe, &video_in_info, video_vf_info);
 
 	err = sh_css_binary_find(&video_descr,
@@ -4734,7 +4780,9 @@ assert(pipe != NULL);
 	}
 
 	/* Viewfinder post-processing */
-	if (pipe->enable_viewfinder && num_output_pins == 1) { // When the video binary has only one output pin, we need vf_pp to produce the viewfinder output.
+	if (pipe->enable_viewfinder &&  // only when viewfinder is enabled.
+	   ((num_output_pins == 1)        // when the binary has a single output pin, we need vf_pp
+      || ((num_output_pins == 2) && resolution_differs)) ) { // when the binary has dual output pin, we only need vf_pp in case the resolution is different.
 		init_vf_pp_descr(pipe,
 			&pipe->pipe.video.video_binary.vf_frame_info,
 			&pipe->vf_output_info);
@@ -4843,6 +4891,8 @@ static enum ia_css_err video_start(
 	struct ia_css_frame *out_frame = &pipe->out_frame_struct;
 	struct ia_css_frame *vf_frame = &pipe->vf_frame_struct;
 	unsigned num_output_pins;
+	bool need_vf_pp = false;
+	bool resolution_differs = false;
 
 	pipe->out_frame_struct.data = 0;
 	pipe->vf_frame_struct.data = 0;
@@ -4921,9 +4971,13 @@ static enum ia_css_err video_start(
 		} else if (pipe->stream->cont_capt) {
 			in_frame = pipe->continuous_frames[0];
 		}
+
+		resolution_differs = (pipe->vf_output_info.res.width != pipe->output_info.res.width) || (pipe->vf_output_info.res.height != pipe->output_info.res.height);
+		need_vf_pp = pipe->enable_viewfinder && ((num_output_pins == 1) || ((num_output_pins == 2) && resolution_differs));
+		
 		err = sh_css_pipeline_add_stage(me, video_binary, NULL,
 						video_binary->info->mode, NULL,
-						in_frame, out_frame, num_output_pins > 1 ? vf_frame : NULL,// when the video binary supports a second output pin, it can directly produce the vf_frame.
+						in_frame, out_frame, !need_vf_pp ? vf_frame : NULL,// when the video binary supports a second output pin, it can directly produce the vf_frame.
 						&video_stage);
 		if (err != IA_CSS_SUCCESS)
 			return err;
@@ -4931,7 +4985,7 @@ static enum ia_css_err video_start(
 		video_stage->args.copy_vf =
 			video_binary->info->mode == SH_CSS_BINARY_MODE_COPY;
 		video_stage->args.copy_output = video_stage->args.copy_vf;
-		if (!in_frame && pipe->enable_viewfinder && num_output_pins == 1) { // when the video binary supports only 1 output pin, vf_pp is needed to produce the vf_frame.
+		if (!in_frame && need_vf_pp) { // when the video binary supports only 1 output pin, vf_pp is needed to produce the vf_frame.
 			err = add_vf_pp_stage(pipe, vf_frame, vf_pp_binary,
 					      video_stage, &vf_pp_stage);
 			if (err != IA_CSS_SUCCESS)
@@ -4951,7 +5005,7 @@ static enum ia_css_err video_start(
 		in_stage = video_stage;
 
 
-	if (!in_frame && pipe->enable_viewfinder && num_output_pins == 1) {// when the video binary supports only 1 output pin, vf_pp is needed to produce the vf_frame.
+	if (!in_frame && need_vf_pp) {// when the video binary supports only 1 output pin, vf_pp is needed to produce the vf_frame.
 		err = sh_css_pipeline_get_output_stage(me,
 						       vf_pp_binary->info->mode,
 						       &vf_pp_stage);
@@ -5127,7 +5181,7 @@ sh_css_pipe_configure_viewfinder(struct sh_css_pipe *pipe,
 	    pipe->vf_output_info.res.height != height ||
 	    pipe->vf_output_info.format != format) {
 		sh_css_frame_info_init(&pipe->vf_output_info,
-				       width, height, format);
+				       width, height, format, pipe->mode==IA_CSS_PIPE_ID_VIDEO ? SH_CSS_VIDEO_BUFFER_ALIGNMENT : 0);
 		sh_css_pipe_invalidate_binaries(pipe);
 	}
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_pipe_configure_viewfinder() leave: return_err=%d\n",IA_CSS_SUCCESS);
@@ -5153,15 +5207,22 @@ assert(pipe != NULL);
 	if (err != IA_CSS_SUCCESS)
 		return err;
 
-	return load_copy_binary(pipe,
+	err = load_copy_binary(pipe,
 				&pipe->pipe.capture.copy_binary,
 				NULL);
+	if (err != IA_CSS_SUCCESS)
+		return err;
+	
+	err = allocate_mipi_frames(pipe);
+	
+	return err;
 }
 
 static bool need_capture_pp(
 	const struct sh_css_pipe *pipe)
 {
 	assert(pipe != NULL);
+	assert(pipe->mode == IA_CSS_PIPE_ID_CAPTURE);
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "need_capture_pp() enter:\n");
 	/* determine whether we need to use the capture_pp binary.
 	 * This is needed for:
@@ -5169,6 +5230,7 @@ static bool need_capture_pp(
 	 *   2. Digital Zoom or
 	 *   3. YUV downscaling
 	 *   4. in continuous capture mode
+	 *   5. explicit request to enable_capture_pp ON
 	 */
 	if (pipe->yuv_ds_input_info.res.width &&
 	    ((pipe->yuv_ds_input_info.res.width != pipe->output_info.res.width) ||
@@ -5181,12 +5243,12 @@ static bool need_capture_pp(
 	    (pipe->stream->isp_params_configs->dz_config.dy < HRT_GDC_N))
 		return true;
 
+        if(pipe->enable_capture_pp)
+		return true;
+
 	/* check if we are trying to a 'digital zoom' */
 	if (true == pipe->enable_dz)
 		return true;
-
-	/*if (my_css.cont_capt)
-		return true;*/
 
 	return false;
 }
@@ -5209,7 +5271,7 @@ assert(vf_info != NULL);
 		*in_info = pipe->output_info;
 	in_info->format = IA_CSS_FRAME_FORMAT_YUV420;
 	in_info->raw_bit_depth = 0;
-	sh_css_frame_info_set_width(in_info, in_info->res.width);
+	sh_css_frame_info_set_width(in_info, in_info->res.width, 0);
 	init_offline_descr(pipe,
 			   &capture_pp_descr,
 			   SH_CSS_BINARY_MODE_CAPTURE_PP,
@@ -5458,6 +5520,9 @@ assert(pipe != NULL);
 		if (err != IA_CSS_SUCCESS)
 			return err;
 	}
+	err = allocate_mipi_frames(pipe);
+	if (err != IA_CSS_SUCCESS)
+		return err;
 
 	if (need_pp)
 		return alloc_capture_pp_frame(pipe, &mycs->capture_pp_binary);
@@ -5551,6 +5616,10 @@ assert(pipe != NULL);
 	if (err != IA_CSS_SUCCESS)
 		return err;
 
+	err = allocate_mipi_frames(pipe);
+	if (err != IA_CSS_SUCCESS)
+		return err;
+
 	if (need_pp)
 		return alloc_capture_pp_frame(pipe,
 				&pipe->pipe.capture.capture_pp_binary);
@@ -5579,6 +5648,10 @@ assert(pipe != NULL);
 
 	err = sh_css_binary_find(&pre_anr_descr,
 				 &pipe->pipe.capture.pre_isp_binary);
+
+	err = allocate_mipi_frames(pipe);
+	if (err != IA_CSS_SUCCESS)
+		return err;
 
 	return err;
 }
@@ -5705,6 +5778,10 @@ assert(pipe != NULL);
 	if (err != IA_CSS_SUCCESS)
 		return err;
 
+	err = allocate_mipi_frames(pipe);
+	if (err != IA_CSS_SUCCESS)
+		return err;
+
 	if (need_pp)
 		return alloc_capture_pp_frame(pipe,
 				&pipe->pipe.capture.capture_pp_binary);
@@ -5734,6 +5811,11 @@ static enum ia_css_err load_capture_binaries(
 
 assert(pipe != NULL);
 	sh_css_dtrace(SH_DBG_TRACE_PRIVATE, "load_capture_binaries() enter:\n");
+
+	if (pipe->pipe.preview.preview_binary.info &&
+	    pipe->pipe.preview.vf_pp_binary.info)
+		return IA_CSS_SUCCESS;
+
 	/* in primary, advanced,low light or bayer,
 						the input format must be raw */
 	must_be_raw =
@@ -5747,7 +5829,7 @@ assert(pipe != NULL);
 	    pipe->stream->config.format == IA_CSS_STREAM_FORMAT_BINARY_8) {
 		sh_css_frame_info_init(
 			&pipe->output_info,
-			JPEG_BYTES, 1, IA_CSS_FRAME_FORMAT_BINARY_8);
+			JPEG_BYTES, 1, IA_CSS_FRAME_FORMAT_BINARY_8, 0);
 		return IA_CSS_SUCCESS;
 	}
 
@@ -5768,10 +5850,6 @@ assert(pipe != NULL);
 		err = load_low_light_binaries(pipe);
 		break;
 	}
-	if (err != IA_CSS_SUCCESS)
-		return err;
-
-	err = allocate_mipi_frames(pipe);
 	if (err != IA_CSS_SUCCESS)
 		return err;
 
@@ -6172,7 +6250,7 @@ sh_css_pipe_get_output_frame_info(struct sh_css_pipe *pipe,
 	if (copy_on_sp(pipe) &&
 	    pipe->stream->config.format == IA_CSS_STREAM_FORMAT_BINARY_8) {
 		sh_css_frame_info_init(info, JPEG_BYTES, 1,
-				IA_CSS_FRAME_FORMAT_BINARY_8);
+				IA_CSS_FRAME_FORMAT_BINARY_8, 0);
 	} else if (info->format == IA_CSS_FRAME_FORMAT_RAW) {
 		info->raw_bit_depth =
 			sh_css_pipe_input_format_bits_per_pixel(pipe);
@@ -7560,6 +7638,7 @@ void ia_css_pipe_config_defaults(struct ia_css_pipe_config *pipe_config)
 {
   struct ia_css_pipe_config def_config = {
     0,
+    1, /* isp_pipe_version */
     {0, 0},
     {0, 0},
     {0, 0},
@@ -7588,7 +7667,6 @@ ia_css_pipe_extra_config_defaults(struct ia_css_pipe_extra_config *extra_config)
 	extra_config->enable_high_speed = false;
 	extra_config->enable_dvs_6axis = false;
 	extra_config->enable_reduced_pipe = false;
-	extra_config->isp_pipe_version = 1;
 	extra_config->disable_vf_pp = false;
 	extra_config->disable_capture_pp = false;
 	extra_config->enable_dz = true;
@@ -7667,6 +7745,8 @@ ia_css_pipe_create_extra(const struct ia_css_pipe_config *config,
 		internal_pipe->config.default_capture_config.mode;
 	internal_pipe->old_pipe->xnr =
 		(bool)internal_pipe->config.default_capture_config.enable_xnr;
+	internal_pipe->old_pipe->enable_capture_pp = 
+		(bool)internal_pipe->config.default_capture_config.enable_capture_pp;	
 	/* DVS envelope */
 	internal_pipe->old_pipe->dvs_envelope =
 		internal_pipe->config.dvs_envelope;
@@ -7683,7 +7763,7 @@ ia_css_pipe_create_extra(const struct ia_css_pipe_config *config,
 				&internal_pipe->old_pipe->yuv_ds_input_info,
 				internal_pipe->config.bayer_ds_out_res.width,
 				internal_pipe->config.bayer_ds_out_res.height,
-				format);
+				format, 0);
 	}
 	/* handle output info, asume always needed */
 	if (internal_pipe->config.output_info.res.width) {
@@ -7729,7 +7809,7 @@ ia_css_pipe_create_extra(const struct ia_css_pipe_config *config,
 	internal_pipe->old_pipe->enable_dz =
 		internal_pipe->extra_config.enable_dz;
 	internal_pipe->old_pipe->isp_pipe_version =
-		internal_pipe->extra_config.isp_pipe_version;
+		internal_pipe->config.isp_pipe_version;
 	internal_pipe->old_pipe->disable_vf_pp =
 		internal_pipe->extra_config.disable_vf_pp;
 	internal_pipe->old_pipe->disable_capture_pp =
@@ -7888,6 +7968,15 @@ ia_css_stream_create(const struct ia_css_stream_config *stream_config,
 	assert(stream != NULL);
 	assert(*stream == NULL);
 	assert(pipes != NULL);
+	/* check if mipi size specified */
+	if (stream_config->mode == IA_CSS_INPUT_MODE_BUFFERED_SENSOR) {
+		if (my_css.size_mem_words == 0) {
+			sh_css_dtrace(SH_DBG_TRACE,
+				"ia_css_stream_create() exit, need to set mipi frame size\n");
+			assert(my_css.size_mem_words != 0);
+			return IA_CSS_ERR_INTERNAL_ERROR;
+		}
+	}
 	/* allocate the stream instance */
 	curr_stream = sh_css_malloc(sizeof(struct ia_css_stream));
 	if (curr_stream == NULL)
@@ -7904,15 +7993,17 @@ ia_css_stream_create(const struct ia_css_stream_config *stream_config,
 	curr_stream->csi_rx_config.rxcount = 0x04040404;
 	curr_stream->csi_rx_config.comp = MIPI_PREDICTOR_NONE;	/* Just for backward compatibility */
 	curr_stream->csi_rx_config.is_two_ppc = false;
-    curr_stream->reconfigure_css_rx = true;
+	curr_stream->reconfigure_css_rx = true;
 #else
 	curr_stream->csi_rx_config = (rx_cfg_t)DEFAULT_MIPI_CONFIG;
 #endif
 	/* allocate pipes */
 	curr_stream->num_pipes = num_pipes;
 	curr_stream->pipes = sh_css_malloc(num_pipes * sizeof(struct ia_css_pipe *));
-	if (curr_stream->pipes == NULL)
+	if (curr_stream->pipes == NULL) {
+		sh_css_free(curr_stream);
 		return IA_CSS_ERR_CANNOT_ALLOCATE_MEMORY;
+	}
 	/* store pipes */
 	for (i = 0; i < num_pipes; i++)
 		curr_stream->pipes [i] = pipes[i];
@@ -8258,14 +8349,14 @@ ia_css_pipe_get_3a_binary (const struct ia_css_pipe *pipe)
 		else if (pipe->old_pipe->capture_mode == IA_CSS_CAPTURE_MODE_ADVANCED ||
 			 pipe->old_pipe->capture_mode == IA_CSS_CAPTURE_MODE_LOW_LIGHT ||
 			 pipe->old_pipe->capture_mode == IA_CSS_CAPTURE_MODE_BAYER) {
-			if (pipe->extra_config.isp_pipe_version == 1) {
+			if (pipe->config.isp_pipe_version == 1) {
 				s3a_binary 
 				= &pipe->old_pipe->pipe.capture.pre_isp_binary;
 			} else {
 				s3a_binary
 				= &pipe->old_pipe->pipe.capture.pre_anr_binary;
 			}
-			}
+		}
 		break;
 	default:
 		break;
@@ -8287,6 +8378,12 @@ unsigned int
 ia_css_pipe_get_pipe_num(const struct ia_css_pipe *pipe)
 {
 	return pipe->pipe_num;
+}
+
+unsigned int
+ia_css_pipe_get_isp_pipe_version(const struct ia_css_pipe *pipe)
+{
+	return pipe->config.isp_pipe_version;
 }
 
 enum ia_css_err

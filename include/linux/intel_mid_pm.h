@@ -125,6 +125,7 @@ enum s3_parts {
 
 #define MID_S0IX_STATE         0xf
 #define MID_S3_STATE           0x1f
+#define MID_FAST_ON_OFF_STATE  0x3f
 
 /* combinations */
 #define MID_LPI1_STATE         0x1f
@@ -180,6 +181,9 @@ extern bool mid_pmu_is_wake_source(u32 lss_number);
 #define MID_LPMP3_STATE        C6_HINT
 #define MID_S0I3_STATE         C6_HINT
 #define MID_S3_STATE           C6_HINT
+#define MID_FAST_ON_OFF_STATE  C6_HINT
+
+
 
 /* Power usage unknown if MID_POWER not defined */
 #define C0_POWER_USAGE         0

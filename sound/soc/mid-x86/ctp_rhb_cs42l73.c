@@ -609,6 +609,7 @@ struct snd_soc_machine_ops ctp_rhb_cs42l73_ops = {
 	.hp_detection = ctp_hp_detection,
 	.mclk_switch = ctp_mclk_switch,
 	.jack_support = true,
+	.dmic3_support = false,
 	.micsdet_debounce = MIC2SDET_DEBOUNCE_DELAY,
 	.mic_bias = MICBIAS_NAME,
 };

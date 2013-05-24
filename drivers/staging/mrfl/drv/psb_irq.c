@@ -123,6 +123,7 @@ void psb_disable_pipestat(struct drm_psb_private *dev_priv, int pipe, u32 mask)
 
 	if ((dev_priv->pipestat[pipe] & mask) != 0) {
 		u32 reg = psb_pipestat(pipe);
+		u32 writeVal;
 		dev_priv->pipestat[pipe] &= ~mask;
 		if (power_island_get(power_island)) {
 			if ((mask == PIPE_VBLANK_INTERRUPT_ENABLE) ||
@@ -131,7 +132,7 @@ void psb_disable_pipestat(struct drm_psb_private *dev_priv, int pipe, u32 mask)
 				wake_up_interruptible(&dev_priv->vsync_queue);
 			}
 
-			u32 writeVal = PSB_RVDC32(reg);
+			writeVal = PSB_RVDC32(reg);
 			writeVal &= ~mask;
 			PSB_WVDC32(writeVal, reg);
 			(void)PSB_RVDC32(reg);
@@ -821,8 +822,10 @@ int psb_enable_vblank(struct drm_device *dev, int pipe)
 	PSB_DEBUG_ENTRY("\n");
 
 	encoder_type = is_panel_vid_or_cmd(dev);
-	if (IS_MRFLD(dev) && (encoder_type == MDFLD_DSI_ENCODER_DBI))
-		return mdfld_enable_te(dev, pipe);
+	if (IS_MRFLD(dev) &&
+		(encoder_type == MDFLD_DSI_ENCODER_DBI) &&
+			(pipe == 0))
+				return 0;
 
 	if (power_island_get(power_island)) {
 		reg_val = REG_READ(pipeconf_reg);
@@ -859,9 +862,10 @@ void psb_disable_vblank(struct drm_device *dev, int pipe)
 	PSB_DEBUG_ENTRY("\n");
 
 	encoder_type = is_panel_vid_or_cmd(dev);
+#if 0
 	if (IS_MRFLD(dev) && (encoder_type == MDFLD_DSI_ENCODER_DBI))
 		mdfld_disable_te(dev, pipe);
-
+#endif
 	dev_priv->b_vblank_enable = false;
 
 	spin_lock_irqsave(&dev_priv->irqmask_lock, irqflags);

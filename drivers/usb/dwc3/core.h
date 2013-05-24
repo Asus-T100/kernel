@@ -201,6 +201,7 @@
 #define DWC3_GHWPARAMS4_HIBER_SCRATCHBUFS(n)	((n & (15 << 13)) >> 13)
 
 /* Device Configuration Register */
+#define DWC3_DCFG_LPM_CAP	(1 << 22)
 #define DWC3_DCFG_DEVADDR(addr)	((addr) << 3)
 #define DWC3_DCFG_DEVADDR_MASK	DWC3_DCFG_DEVADDR(0x7f)
 
@@ -290,8 +291,6 @@
 #define DWC3_DSTS_FULLSPEED2		(1 << 0)
 #define DWC3_DSTS_LOWSPEED		(2 << 0)
 #define DWC3_DSTS_FULLSPEED1		(3 << 0)
-
-#define DWC3_DCFG_LPMCAP	(1 << 22)
 
 /* Device Generic Command Register */
 #define DWC3_DGCMD_SET_LMP		0x01

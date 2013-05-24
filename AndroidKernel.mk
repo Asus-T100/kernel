@@ -4,6 +4,11 @@
 
 # This can be overridden on the make command line.
 TARGET_KERNEL_SOURCE_IS_PRESENT ?= true
+# Force using bash as a shell, otherwise, on Ubuntu, dash will break some
+# dependency due to its bad handling of echo \1
+MAKE += SHELL=/bin/bash
+
+ifeq ($(TARGET_KERNEL_SOURCE_IS_PRESENT),true)
 
 .PHONY: menuconfig xconfig gconfig get_kernel_from_source
 .PHONY: build_bzImage copy_modules_to_root
@@ -48,14 +53,13 @@ KERNEL_PATH := $(KERNEL_PATH):$(ANDROID_BUILD_TOP)/$(dir $(KERNEL_CCACHE))
 endif
 
 KERNEL_OUT_DIR := $(PRODUCT_OUT)/kernel_build
-KERNEL_MODULES_OUT := $(PRODUCT_OUT)/kernel_modules
 KERNEL_MODULES_ROOT := $(PRODUCT_OUT)/root/lib/modules
 KERNEL_CONFIG := $(KERNEL_OUT_DIR)/.config
 KERNEL_BLD_FLAGS := \
     ARCH=$(KERNEL_ARCH) \
     O=../$(KERNEL_OUT_DIR) \
-    INSTALL_MOD_PATH=../kernel_modules \
     $(KERNEL_EXTRA_FLAGS)
+
 KERNEL_BLD_ENV := CROSS_COMPILE=$(KERNEL_CROSS_COMP) \
     PATH=$(KERNEL_PATH):$(PATH)
 KERNEL_FAKE_DEPMOD := $(KERNEL_OUT_DIR)/fakedepmod/lib/modules
@@ -63,19 +67,16 @@ KERNEL_FAKE_DEPMOD := $(KERNEL_OUT_DIR)/fakedepmod/lib/modules
 KERNEL_DEFCONFIG := kernel/arch/x86/configs/$(KERNEL_ARCH)_$(KERNEL_SOC)_defconfig
 KERNEL_DIFFCONFIG_DIR ?= $(TARGET_DEVICE_DIR)
 KERNEL_DIFFCONFIG := $(KERNEL_DIFFCONFIG_DIR)/$(TARGET_DEVICE)_diffconfig
+KERNEL_VERSION_FILE := $(KERNEL_OUT_DIR)/include/config/kernel.release
 
 $(KERNEL_CONFIG): $(KERNEL_DEFCONFIG) $(wildcard $(KERNEL_DIFFCONFIG))
 	@echo Regenerating kernel config $(KERNEL_OUT_DIR)
-	@echo "cat $^ > $@"
 	@mkdir -p $(KERNEL_OUT_DIR)
 	@cat $^ > $@
 	@$(KERNEL_BLD_ENV) $(MAKE) -C kernel $(KERNEL_BLD_FLAGS) defoldconfig
 
 build_bzImage: $(KERNEL_CONFIG) openssl $(MINIGZIP)
-	@$(RM) -r $(KERNEL_MODULES_OUT)
-	@$(KERNEL_BLD_ENV) $(MAKE) -C kernel $(KERNEL_BLD_FLAGS) bzImage
-	@$(KERNEL_BLD_ENV) $(MAKE) -C kernel $(KERNEL_BLD_FLAGS) modules
-	@$(KERNEL_BLD_ENV) $(MAKE) -C kernel $(KERNEL_BLD_FLAGS) modules_install
+	@$(KERNEL_BLD_ENV) $(MAKE) -C kernel $(KERNEL_BLD_FLAGS)
 	@cp -f $(KERNEL_OUT_DIR)/arch/x86/boot/bzImage $(PRODUCT_OUT)/kernel
 
 clean_kernel:
@@ -85,14 +86,13 @@ clean_kernel:
 #it is not optimized (copying all modules for each rebuild) but better than kernel-build.sh
 #fake depmod with a symbolic link to have /lib/modules/$(version_tag)/xxxx.ko
 copy_modules_to_root: build_bzImage
-	$(eval KERNEL_VERSION_TAG := $(notdir $(wildcard $(KERNEL_MODULES_OUT)/lib/modules/*)))
 	@$(RM) -rf $(KERNEL_MODULES_ROOT)
 	@mkdir -p $(KERNEL_MODULES_ROOT)
-	@find $(KERNEL_MODULES_OUT) -name "*.ko" -exec cp -f {} $(KERNEL_MODULES_ROOT)/ \;
+	@find $(KERNEL_OUT_DIR) -name "*.ko" -exec cp -f {} $(KERNEL_MODULES_ROOT)/ \;
 	@find $(ALL_KERNEL_MODULES) -name "*.ko" -exec cp -f {} $(KERNEL_MODULES_ROOT)/ \;
 	@mkdir -p $(KERNEL_FAKE_DEPMOD)
-	@ln -fns $(ANDROID_BUILD_TOP)/$(KERNEL_MODULES_ROOT) $(KERNEL_FAKE_DEPMOD)/$(KERNEL_VERSION_TAG)
-	@/sbin/depmod -b $(KERNEL_OUT_DIR)/fakedepmod $(KERNEL_VERSION_TAG)
+	@ln -fns $(ANDROID_BUILD_TOP)/$(KERNEL_MODULES_ROOT) $(KERNEL_FAKE_DEPMOD)/`cat $(KERNEL_VERSION_FILE)`
+	@/sbin/depmod -b $(KERNEL_OUT_DIR)/fakedepmod `cat $(KERNEL_VERSION_FILE)`
 
 get_kernel_from_source: copy_modules_to_root
 
@@ -127,3 +127,4 @@ clean_kernel: $(2)_clean
 
 ALL_KERNEL_MODULES += $(PRODUCT_OUT)/$(1)
 endef
+endif #TARGET_KERNEL_SOURCE_IS_PRESENT

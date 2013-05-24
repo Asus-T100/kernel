@@ -627,6 +627,12 @@ static int xhci_dwc_drv_probe(struct platform_device *pdev)
 	}
 	otg_irqnum = res->start;
 
+	/* WA: Disable PM for xHCI due to
+	 * some silicon issues of D3hot feature.
+	 **/
+	xhci_dwc_hc_driver.bus_suspend = NULL;
+	xhci_dwc_hc_driver.bus_resume = NULL;
+
 	hcd = usb_create_hcd(&xhci_dwc_hc_driver,
 			&pdev->dev, dev_name(&pdev->dev));
 	if (!hcd) {

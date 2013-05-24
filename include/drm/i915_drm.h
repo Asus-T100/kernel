@@ -211,6 +211,7 @@ typedef struct _drm_i915_sarea {
 #define DRM_I915_EDP_PSR_EXIT           0x34
 #define DRM_I915_DISP_SCREEN_CONTROL	0x35
 #define DRM_I915_SET_RESERVED_REG_BIT_2	0x37
+#define DRM_I915_GEM_VMAP		0x38
 
 #define DRM_IOCTL_I915_INIT		DRM_IOW( DRM_COMMAND_BASE + DRM_I915_INIT, drm_i915_init_t)
 #define DRM_IOCTL_I915_FLUSH		DRM_IO ( DRM_COMMAND_BASE + DRM_I915_FLUSH)
@@ -273,7 +274,9 @@ typedef struct _drm_i915_sarea {
 #define DRM_IOCTL_I915_RESERVED_REG_BIT_2		\
 		DRM_IOW(DRM_COMMAND_BASE + DRM_I915_SET_RESERVED_REG_BIT_2, \
 		struct drm_i915_set_reserved_reg_bit_2)
-
+#define DRM_IOCTL_I915_GEM_VMAP		\
+			DRM_IOWR(DRM_COMMAND_BASE + DRM_I915_GEM_VMAP, \
+			struct drm_i915_gem_vmap)
 /* Allow drivers to submit batchbuffers directly to hardware, relying
  * on the security mechanisms provided by hardware.
  */
@@ -335,6 +338,7 @@ struct drm_i915_edp_psr_ctl {
 #define I915_PARAM_HAS_ALIASING_PPGTT	 18
 #define I915_PARAM_HAS_WAIT_TIMEOUT	 19
 #define I915_PARAM_HAS_SEMAPHORES	 20
+#define I915_PARAM_HAS_VMAP		 21
 
 typedef struct drm_i915_getparam {
 	int param;
@@ -494,6 +498,20 @@ struct drm_i915_gem_mmap_gtt {
 	 * This is a fixed-size type for 32/64 compatibility.
 	 */
 	__u64 offset;
+};
+
+struct drm_i915_gem_vmap {
+	__u64 user_ptr;
+	__u32 user_size;
+	__u32 flags;
+#define I915_VMAP_READ_ONLY 0x1
+#define I915_USERPTR_UNSYNCHRONIZED 0x80000000
+    /**
+	 * Returned handle for the object.
+	 *
+	 * Object handles are nonzero.
+	 */
+	__u32 handle;
 };
 
 struct drm_i915_gem_set_domain {

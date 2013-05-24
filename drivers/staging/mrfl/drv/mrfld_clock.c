@@ -328,7 +328,7 @@ void mrfld_setup_pll(struct drm_device *dev, int pipe, int clk)
 	 * calculate them according to the DSI PLL HAS spec.
 	 */
 	if (pipe != 1) {
-		if (get_panel_type(dev, 0) == JDI_CMD) {
+		if (is_panel_vid_or_cmd(dev) == MDFLD_DSI_ENCODER_DBI) {
 			clock.p1 = 4;
 			clk_n = 1;
 			clock.m = 120;

@@ -35,14 +35,16 @@
 #include "displays/hdmi.h"
 #include "displays/jdi_vid.h"
 #include "displays/jdi_cmd.h"
-#include "displays/h8c7_vid.h"
+#include "displays/cmi_vid.h"
+#include "displays/cmi_cmd.h"
 #include "psb_drv.h"
 #include "android_hdmi.h"
 
 static struct intel_mid_panel_list panel_list[] = {
-	{JDI_VID,	MDFLD_DSI_ENCODER_DPI, jdi_vid_init},
-	{JDI_CMD,	MDFLD_DSI_ENCODER_DBI, jdi_cmd_init},
-	{H8C7_VID, MDFLD_DSI_ENCODER_DPI, h8c7_vid_init}
+	{JDI_VID, MDFLD_DSI_ENCODER_DPI, jdi_vid_init},
+	{JDI_CMD, MDFLD_DSI_ENCODER_DBI, jdi_cmd_init},
+	{CMI_VID, MDFLD_DSI_ENCODER_DPI, cmi_vid_init},
+	{CMI_CMD, MDFLD_DSI_ENCODER_DBI, cmi_cmd_init}
 };
 
 enum panel_type get_panel_type(struct drm_device *dev, int pipe)

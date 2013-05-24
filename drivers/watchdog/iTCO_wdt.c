@@ -914,6 +914,7 @@ static int TCO_reboot_notifier(struct notifier_block *this,
 		outl(val, TCO1_CNT);
 		spin_unlock(&iTCO_wdt_private.io_lock);
 	}
+	return NOTIFY_DONE;
 }
 
 /*

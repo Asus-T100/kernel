@@ -1290,7 +1290,8 @@ static int serial_hsu_startup(struct uart_port *port)
 		struct hsu_port_cfg *alt_cfg = hsu_port_func_cfg + cfg->alt;
 		struct uart_hsu_port *alt_up = phsu->port + alt_cfg->index;
 
-		if (test_bit(flag_startup, &alt_up->flags)) {
+		if (test_bit(flag_startup, &alt_up->flags) &&
+			alt_up->port.state->port.tty) {
 			if (alt_cfg->force_suspend) {
 				uart_suspend_port(&serial_hsu_reg,
 							&alt_up->port);
@@ -2537,9 +2538,6 @@ static int serial_hsu_port_probe(struct pci_dev *pdev,
 		up->rxc = &phsu->chans[index * 2 + 1];
 	}
 
-	serial_port_setup(up, cfg);
-	phsu->port_num++;
-
 	if (cfg->has_alt) {
 		struct hsu_port_cfg *alt_cfg =
 			hsu_port_func_cfg + cfg->alt;
@@ -2550,6 +2548,9 @@ static int serial_hsu_port_probe(struct pci_dev *pdev,
 		serial_port_setup(alt_up, alt_cfg);
 		phsu->port_num++;
 	}
+
+	serial_port_setup(up, cfg);
+	phsu->port_num++;
 
 	pm_runtime_put_noidle(&pdev->dev);
 	pm_runtime_allow(&pdev->dev);

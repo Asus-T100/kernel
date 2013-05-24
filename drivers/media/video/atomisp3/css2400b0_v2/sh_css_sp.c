@@ -205,7 +205,7 @@ sh_css_sp_start_binary_copy(unsigned int pipe_num, struct ia_css_frame *out_fram
 	struct sh_css_sp_pipeline *pipe;
 	unsigned stage_num = 0;
 
-assert(out_frame != NULL);
+	assert_exit(out_frame);
 	pipe_id = IA_CSS_PIPE_ID_CAPTURE;
 	sh_css_query_sp_thread_id(pipe_num, &thread_id);
 	pipe = &sh_css_sp_group.pipe[thread_id];
@@ -246,7 +246,7 @@ sh_css_sp_start_raw_copy(struct ia_css_frame *out_frame,
 	unsigned stage_num = 0;
 	struct sh_css_sp_pipeline *pipe;
 
-assert(out_frame != NULL);
+	assert_exit(out_frame);
 
 	{
 		/**
@@ -808,13 +808,14 @@ sh_css_sp_init_stage(struct sh_css_binary *binary,
 
 	sh_css_sp_stage.deinterleaved = stage == 0 && continuous;
 
+	assert_exit_code(binary, IA_CSS_ERR_INTERNAL_ERROR);
 	/*
 	 * TODO: Make the Host dynamically determine
 	 * the stage type.
 	 */
 	sh_css_sp_stage.stage_type = SH_CSS_ISP_STAGE_TYPE;
 	sh_css_sp_stage.num		= stage;
-	sh_css_sp_stage.isp_online	= binary && binary->online;
+	sh_css_sp_stage.isp_online	= binary->online;
 	sh_css_sp_stage.isp_copy_vf     = args->copy_vf;
 	sh_css_sp_stage.isp_copy_output = args->copy_output;
 	sh_css_sp_stage.enable.vf_output = (args->out_vf_frame != NULL);
@@ -931,13 +932,15 @@ sp_init_stage(struct sh_css_pipeline_stage *stage,
 		blob_info = &firmware->blob;
 		mem_if = firmware->mem_initializers;
 	} else {
-	  /* SP stage */
-	  assert (stage->sp_func != SH_CSS_SP_NO_FUNC);
+		/* SP stage */
+		assert(stage->sp_func != SH_CSS_SP_NO_FUNC);
 	}
 
 #ifdef __KERNEL__
 	printk(KERN_ERR "load binary: %s\n", binary_name);
 #endif
+	if (!binary)
+		return IA_CSS_ERR_INTERNAL_ERROR;
 
 	sh_css_sp_init_stage(binary,
 			     (const char *)binary_name,

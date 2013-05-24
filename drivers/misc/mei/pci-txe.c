@@ -36,21 +36,16 @@
 #include <linux/interrupt.h>
 #include <linux/workqueue.h>
 
+#include <linux/pm_runtime.h>
+
 #include <linux/mei.h>
 
 #include "mei_dev.h"
 #include "hw-txe.h"
 
-#define MEI_READ_TIMEOUT 45
-#define MEI_DRIVER_NAME	"mei"
-#define MEI_DEV_NAME "mei"
-
 /*
  *  mei driver strings
  */
-static bool nomsi;
-module_param_named(nomsi, nomsi, bool, S_IRUGO | S_IWUSR);
-MODULE_PARM_DESC(nomsi, "don't use msi (default = false)");
 
 bool nopg = true;
 module_param_named(nopg, nopg, bool, S_IRUGO | S_IWUSR);
@@ -69,6 +64,16 @@ MODULE_DEVICE_TABLE(pci, mei_txe_pci_tbl);
 static DEFINE_MUTEX(mei_mutex);
 
 
+static void mei_txe_pci_iounmap(struct pci_dev *pdev, struct mei_txe_hw *hw)
+{
+	int i;
+	for (i = SEC_BAR; i < NUM_OF_MEM_BARS; i++) {
+		if (hw->mem_addr[i]) {
+			pci_iounmap(pdev, hw->mem_addr[i]);
+			hw->mem_addr[i] = NULL;
+		}
+	}
+}
 /**
  * mei_probe - Device Initialization Routine
  *
@@ -92,7 +97,7 @@ static int mei_txe_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	/* enable pci dev */
 	err = pci_enable_device(pdev);
 	if (err) {
-		dev_err(&pdev->dev, "mei: Failed to enable pci device.\n");
+		dev_err(&pdev->dev, "failed to enable pci device.\n");
 		goto end;
 	}
 	/* set PCI host mastering  */
@@ -100,11 +105,11 @@ static int mei_txe_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	/* pci request regions for mei driver */
 	err = pci_request_regions(pdev, KBUILD_MODNAME);
 	if (err) {
-		dev_err(&pdev->dev, "mei: Failed to get pci regions.\n");
+		dev_err(&pdev->dev, "failed to get pci regions.\n");
 		goto disable_device;
 	}
 
-	err = pci_set_dma_mask(pdev, DMA_BIT_MASK(64));
+	err = pci_set_dma_mask(pdev, DMA_BIT_MASK(36));
 	if (err) {
 		err = pci_set_dma_mask(pdev, DMA_BIT_MASK(32));
 		if (err) {
@@ -124,27 +129,16 @@ static int mei_txe_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	/* mapping  IO device memory */
 	for (i = SEC_BAR; i < NUM_OF_MEM_BARS; i++) {
-		dev_dbg(&pdev->dev, "mei: mapping memmory of bar%d\n", i);
-		if (pci_resource_len(pdev, i) == 0) {
-			dev_err(&pdev->dev, "mei: Non-positive memory length was returned for one or more bars of the PCI device.\n");
-			err = -ENOMEM;
-			goto free_device;
-		}
 		hw->mem_addr[i] = pci_iomap(pdev, i, 0);
-		dev_dbg(&pdev->dev, "mei: mem_addr:%p flags %ld\n",
-			hw->mem_addr[i], pci_resource_flags(pdev, i));
 		if (!hw->mem_addr[i]) {
-			dev_err(&pdev->dev, "mei: mapping I/O device memory failure.\n");
+			dev_err(&pdev->dev, "mapping I/O device memory failure.\n");
 			err = -ENOMEM;
 			goto free_device;
 		}
 	}
 
 
-	if (!nomsi && !pci_enable_msi(pdev))
-		dev_err(&pdev->dev, "mei: MSI was enabled\n");
-	else
-		dev_err(&pdev->dev, "mei: MSI is not enabled\n");
+	pci_enable_msi(pdev);
 
 	/* clear spurious interrupts */
 	mei_clear_interrupts(dev);
@@ -161,7 +155,7 @@ static int mei_txe_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	}
 
 	if (mei_start(dev)) {
-		dev_err(&pdev->dev, "mei: Init hw failure.\n");
+		dev_err(&pdev->dev, "init hw failure.\n");
 		err = -ENODEV;
 		goto release_irq;
 	}
@@ -173,25 +167,28 @@ static int mei_txe_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	mei_device = pdev;
 	pci_set_drvdata(pdev, dev);
 
+#ifdef CONFIG_PM_RUNTIME
+	pm_runtime_put_noidle(&pdev->dev);
+	pm_runtime_allow(&pdev->dev);
+	pm_runtime_set_autosuspend_delay(&pdev->dev, MEI_TXI_RPM_TIMEOUT);
+	pm_runtime_mark_last_busy(&pdev->dev);
+	pm_runtime_use_autosuspend(&pdev->dev);
+#endif
 	mutex_unlock(&mei_mutex);
 
 	return 0;
 
-	mei_deregister(dev);
 release_irq:
 	/* disable interrupts */
-
 	mei_disable_interrupts(dev);
+
+	flush_scheduled_work();
+
 	free_irq(pdev->irq, dev);
 	pci_disable_msi(pdev);
 
 free_device:
-	for (i = SEC_BAR; i < NUM_OF_MEM_BARS; i++) {
-		if (hw->mem_addr[i]) {
-			pci_iounmap(pdev, hw->mem_addr[i]);
-			hw->mem_addr[i] = NULL;
-		}
-	}
+	mei_txe_pci_iounmap(pdev, hw);
 	kfree(dev);
 release_regions:
 	pci_release_regions(pdev);
@@ -199,7 +196,7 @@ disable_device:
 	pci_disable_device(pdev);
 end:
 	mutex_unlock(&mei_mutex);
-	dev_err(&pdev->dev, "mei: Driver initialization failed.\n");
+	dev_err(&pdev->dev, "initialization failed.\n");
 	return err;
 }
 
@@ -215,7 +212,6 @@ static void mei_txe_remove(struct pci_dev *pdev)
 {
 	struct mei_device *dev;
 	struct mei_txe_hw *hw;
-	int i;
 
 	if (mei_device != pdev) {
 		dev_err(&pdev->dev, "mei: mei_device != pdev\n");
@@ -228,27 +224,23 @@ static void mei_txe_remove(struct pci_dev *pdev)
 		return;
 	}
 
+	pm_runtime_get_noresume(&pdev->dev);
+	dev_dbg(&pdev->dev, "rpm: remove: usage count: %d\n",
+		atomic_read(&pdev->dev.power.usage_count));
+
 	hw = to_txe_hw(dev);
 
-	mutex_lock(&dev->device_lock);
+	mei_stop(dev);
 
+	mei_device = NULL;
 	/* disable interrupts */
 	mei_disable_interrupts(dev);
 	free_irq(pdev->irq, dev);
 	pci_disable_msi(pdev);
 
-	for (i = SEC_BAR; i < NUM_OF_MEM_BARS; i++) {
-		if (hw->mem_addr[i])
-			pci_iounmap(pdev, hw->mem_addr[i]);
-	}
-
-	mei_device = NULL;
-
-	mutex_unlock(&dev->device_lock);
-
-	flush_scheduled_work();
-
 	pci_set_drvdata(pdev, NULL);
+
+	mei_txe_pci_iounmap(pdev, hw);
 
 	mei_deregister(dev);
 
@@ -256,7 +248,6 @@ static void mei_txe_remove(struct pci_dev *pdev)
 
 	pci_release_regions(pdev);
 	pci_disable_device(pdev);
-
 }
 
 
@@ -268,16 +259,15 @@ static int mei_txe_pci_suspend(struct device *device)
 
 	if (!dev)
 		return -ENODEV;
-	mutex_lock(&dev->device_lock);
-	/* Set new mei state */
 
-	if (dev->dev_state == MEI_DEV_ENABLED) {
-		dev->dev_state = MEI_DEV_POWER_DOWN;
-		mei_reset(dev, 0);
-	}
-	mutex_unlock(&dev->device_lock);
+	dev_dbg(&pdev->dev, "suspend\n");
+
+	mei_stop(dev);
+
+	mei_disable_interrupts(dev);
 
 	free_irq(pdev->irq, dev);
+	pci_disable_msi(pdev);
 
 	return 0;
 }
@@ -292,13 +282,17 @@ static int mei_txe_pci_resume(struct device *device)
 	if (!dev)
 		return -ENODEV;
 
+	pci_enable_msi(pdev);
+
+	mei_clear_interrupts(dev);
+
 	/* request and enable interrupt   */
 	err = request_threaded_irq(pdev->irq,
 			mei_txe_irq_quick_handler,
 			mei_txe_irq_thread_handler,
 			IRQF_SHARED, KBUILD_MODNAME, dev);
 	if (err) {
-		dev_err(&pdev->dev, "mei: Request_irq failure. irq = %d\n",
+		dev_err(&pdev->dev, "request_threaded_irq failed: irq = %d.\n",
 				pdev->irq);
 		return err;
 	}
@@ -311,8 +305,82 @@ static int mei_txe_pci_resume(struct device *device)
 
 	return err;
 }
-static SIMPLE_DEV_PM_OPS(mei_txe_pm_ops,
-		mei_txe_pci_suspend, mei_txe_pci_resume);
+
+#ifdef CONFIG_PM_RUNTIME
+static int mei_txe_pm_runtime_idle(struct device *device)
+{
+	struct pci_dev *pdev = to_pci_dev(device);
+	struct mei_device *dev;
+
+	dev_dbg(&pdev->dev, "rpm: txe: runtime_idle\n");
+
+	dev = pci_get_drvdata(pdev);
+	if (!dev)
+		return -ENODEV;
+	if (mei_write_is_idle(dev))
+		pm_schedule_suspend(device, MEI_TXI_RPM_TIMEOUT * 2);
+
+	return -EBUSY;
+}
+static int mei_txe_pm_runtime_suspend(struct device *device)
+{
+	struct pci_dev *pdev = to_pci_dev(device);
+	struct mei_device *dev;
+	int ret;
+
+	dev_dbg(&pdev->dev, "rpm: txe: runtime suspend\n");
+
+	dev = pci_get_drvdata(pdev);
+	if (!dev)
+		return -ENODEV;
+
+	mutex_lock(&dev->device_lock);
+
+	if (mei_write_is_idle(dev))
+		/* FIXME: need to check API what error is epxected */
+		ret = mei_txe_aliveness_set_sync(dev, 0);
+	else
+		ret = -EAGAIN;
+
+	dev_dbg(&pdev->dev, "rpm: txe: runtime suspend ret=%d\n", ret);
+
+	mutex_unlock(&dev->device_lock);
+	return ret;
+}
+
+static int mei_txe_pm_runtime_resume(struct device *device)
+{
+	struct pci_dev *pdev = to_pci_dev(device);
+	struct mei_device *dev;
+	int ret;
+
+	dev_dbg(&pdev->dev, "rpm: txe: runtime resume\n");
+
+	dev = pci_get_drvdata(pdev);
+	if (!dev)
+		return -ENODEV;
+
+	mutex_lock(&dev->device_lock);
+
+	ret = mei_txe_aliveness_set_sync(dev, 1);
+
+	mutex_unlock(&dev->device_lock);
+
+	dev_dbg(&pdev->dev, "rpm: txe: runtime resume ret = %d\n", ret);
+
+	return ret;
+}
+#endif /* CONFIG_PM_RUNTIME */
+
+static const struct dev_pm_ops mei_txe_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(mei_txe_pci_suspend,
+				mei_txe_pci_resume)
+	SET_RUNTIME_PM_OPS(
+		mei_txe_pm_runtime_suspend,
+		mei_txe_pm_runtime_resume,
+		mei_txe_pm_runtime_idle)
+};
+
 #define MEI_TXE_PM_OPS	(&mei_txe_pm_ops)
 #else
 #define MEI_TXE_PM_OPS	NULL

@@ -21,6 +21,7 @@
 #include <asm/intel_mid_rpmsg.h>
 #include <asm/mwait.h>
 #include "intel_soc_pm_debug.h"
+#include <asm-generic/io-64-nonatomic-hi-lo.h>
 
 #ifdef CONFIG_PM_DEBUG
 #define MAX_CSTATES_POSSIBLE	32
@@ -1339,8 +1340,7 @@ static void pmu_stat_seq_printf(struct seq_file *s, int type, char *typestr)
 	unsigned long init_2_now_time;
 
 	/* Print S0ix residency counter */
-	scu_val = readl(residency[type]);
-	t = scu_val;
+	t = readq(residency[type]);
 	micro_sec_rem = do_div(t, MICRO_SEC);
 	time = (unsigned int)t;
 
@@ -1658,6 +1658,7 @@ static ssize_t pmu_sync_d0ix_write(struct file *file,
 	u32 lss, local_os_sss[4];
 	int sub_sys_pos, sub_sys_index;
 	u32 pm_cmd_val;
+	u32 temp_sss;
 
 	struct pmu_ss_states cur_pmsss;
 
@@ -1714,9 +1715,10 @@ static ssize_t pmu_sync_d0ix_write(struct file *file,
 			if (same)
 				goto unlock;
 
-			cur_pmsss.pmu2_states[sub_sys_index] |=
-					mid_pmu_cxt->os_sss[sub_sys_index]
-								& pm_cmd_val;
+			cur_pmsss.pmu2_states[sub_sys_index] &= ~pm_cmd_val;
+			temp_sss =
+				mid_pmu_cxt->os_sss[sub_sys_index] & pm_cmd_val;
+			cur_pmsss.pmu2_states[sub_sys_index] |= temp_sss;
 		}
 
 		/* Issue the pmu command to PMU 2

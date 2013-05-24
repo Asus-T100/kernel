@@ -33,8 +33,6 @@
 #include <linux/mmc/core.h>
 #include <linux/mmc/card.h>
 #include <linux/blkdev.h>
-#include <linux/acpi.h>
-#include <linux/intel_mid_acpi.h>
 
 #include <asm/setup.h>
 #include <asm/mpspec_def.h>
@@ -79,11 +77,7 @@ __cpuinitdata enum intel_mid_timer_options intel_mid_timer_options;
 
 struct kobject *spid_kobj;
 struct soft_platform_id spid;
-#ifdef CONFIG_ACPI
-struct kobject *pidv_kobj;
-struct platform_id pidv;
-#endif
-char intel_mid_ssn[INTEL_MID_SSN_SIZE + 1];
+char sfi_ssn[SFI_SSN_SIZE + 1];
 /* intel_mid_ops to store sub arch ops */
 struct intel_mid_ops *intel_mid_ops;
 /* getter function for sub arch ops*/
@@ -835,42 +829,6 @@ struct devs_id __init *get_device_id(u8 type, char *name)
 	return NULL;
 }
 
-static struct sfi_device_table_entry imx135_entry = {
-	.type = SFI_DEV_TYPE_I2C,
-	.host_num = 4,
-	.addr = 0x10,
-	.irq = 0xFF,
-	.max_freq = 400000,
-	.name = "imx135",
-};
-
-static struct sfi_device_table_entry s5k8aay_entry = {
-	.type = SFI_DEV_TYPE_I2C,
-	.host_num = 4,
-	.addr = 0x3c,
-	.irq = 0xFF,
-	.max_freq = 400000,
-	.name = "s5k8aay",
-};
-
-static struct sfi_device_table_entry dw9719_entry = {
-	.type = SFI_DEV_TYPE_I2C,
-	.host_num = 4,
-	.addr = 0x0c,
-	.irq = 0xFF,
-	.max_freq = 400000,
-	.name = "dw9719",
-};
-
-static struct sfi_device_table_entry lm3559_entry = {
-	.type = SFI_DEV_TYPE_I2C,
-	.host_num = 4,
-	.addr = 0x53,
-	.irq = 0xFF,
-	.max_freq = 400000,
-	.name = "lm3559",
-};
-
 static int __init sfi_parse_devs(struct sfi_table_header *table)
 {
 	struct sfi_table_simple *sb;
@@ -952,27 +910,6 @@ static int __init sfi_parse_devs(struct sfi_table_header *table)
 		}
 	}
 
-	if ((INTEL_MID_BOARD(2, PHONE, CLVTP, RHB, PRO) ||
-	     INTEL_MID_BOARD(2, PHONE, CLVTP, RHB, ENG) ||
-	     INTEL_MID_BOARD(2, PHONE, CLVTP, VB, PRO) ||
-	     INTEL_MID_BOARD(2, PHONE, CLVTP, VB, ENG)) &&
-	     (SPID_HARDWARE_ID(CLVTP, PHONE, VB, PR1A) ||
-	      SPID_HARDWARE_ID(CLVTP, PHONE, VB, PR1B))) {
-		pr_info("Simulating VB SFI table\n");
-		dev = get_device_id(SFI_DEV_TYPE_I2C, "imx135");
-		if (dev && dev->device_handler)
-			dev->device_handler(&imx135_entry, dev);
-		dev = get_device_id(SFI_DEV_TYPE_I2C, "s5k8aay");
-		if (dev && dev->device_handler)
-			dev->device_handler(&s5k8aay_entry, dev);
-		dev = get_device_id(SFI_DEV_TYPE_I2C, "dw9719");
-		if (dev && dev->device_handler)
-			dev->device_handler(&dw9719_entry, dev);
-		dev = get_device_id(SFI_DEV_TYPE_I2C, "lm3559");
-		if (dev && dev->device_handler)
-			dev->device_handler(&lm3559_entry, dev);
-	}
-
 	return 0;
 }
 
@@ -996,12 +933,12 @@ static int __init sfi_parse_oemb(struct sfi_table_header *table)
 	memcpy(&spid, &oemb->spid, sizeof(struct soft_platform_id));
 
 	if (oemb->header.len <
-			(char *)oemb->ssn + INTEL_MID_SSN_SIZE - (char *)oemb) {
+			(char *)oemb->ssn + SFI_SSN_SIZE - (char *)oemb) {
 		pr_err("SFI OEMB does not contains SSN\n");
-		intel_mid_ssn[0] = '\0';
+		sfi_ssn[0] = '\0';
 	} else {
-		memcpy(intel_mid_ssn, oemb->ssn, INTEL_MID_SSN_SIZE);
-		intel_mid_ssn[INTEL_MID_SSN_SIZE] = '\0';
+		memcpy(sfi_ssn, oemb->ssn, SFI_SSN_SIZE);
+		sfi_ssn[SFI_SSN_SIZE] = '\0';
 	}
 
 	snprintf(sig, (SFI_SIGNATURE_SIZE + 1), "%s",
@@ -1058,7 +995,7 @@ static int __init sfi_parse_oemb(struct sfi_table_header *table)
 		spid.fru[4], spid.fru[3], spid.fru[2], spid.fru[1],
 		spid.fru[0], spid.fru[9], spid.fru[8], spid.fru[7],
 		spid.fru[6], spid.fru[5],
-		intel_mid_ssn);
+		sfi_ssn);
 	return 0;
 }
 
@@ -1170,61 +1107,6 @@ void populate_spid_cmdline(void)
 		pr_err("SPID not found in kernel command line.\n");
 }
 
-#ifdef CONFIG_ACPI
-static int __init acpi_parse_pidv(struct acpi_table_header *table)
-{
-	struct acpi_table_pidv *pidv_tbl;
-
-	pidv_tbl = (struct acpi_table_pidv *)table;
-	if (!pidv_tbl) {
-		printk(KERN_WARNING "Unable to map PIDV\n");
-		return -ENODEV;
-	}
-
-	memcpy(&pidv, &(pidv_tbl->pidv), sizeof(struct platform_id));
-	/*
-	 * FIXME: add spid accessor, instead of memcpy
-	 */
-	memcpy(&spid, &(pidv_tbl->pidv.ext_id_1),
-			sizeof(struct soft_platform_id));
-	/*
-	 * FIXME: add ssn accessor, instead of memcpy
-	 */
-	memcpy(&intel_mid_ssn, &(pidv_tbl->pidv.part_number),
-			INTEL_MID_SSN_SIZE);
-	intel_mid_ssn[INTEL_MID_SSN_SIZE] = '\0';
-
-	return 0;
-}
-
-static ssize_t iafw_version_show(struct kobject *kobj,
-		struct kobj_attribute *attr, char *buf)
-{
-	return sprintf(buf, "%02X.%02X\n", pidv.iafw_major, pidv.iafw_minor);
-}
-pidv_attr(iafw_version);
-
-static ssize_t secfw_version_show(struct kobject *kobj,
-		struct kobj_attribute *attr, char *buf)
-{
-	return sprintf(buf, "%02X.%02X\n", pidv.secfw_major, pidv.secfw_minor);
-}
-pidv_attr(secfw_version);
-
-static struct attribute *pidv_attrs[] = {
-	&iafw_version_attr.attr,
-	&secfw_version_attr.attr,
-	NULL,
-};
-
-static struct attribute_group pidv_attr_group = {
-	.attrs = pidv_attrs,
-};
-
-#else
-#define acpi_parse_pidv NULL
-#endif
-
 static int __init intel_mid_platform_init(void)
 {
 	int ret = 0;
@@ -1242,37 +1124,13 @@ static int __init intel_mid_platform_init(void)
 		return ret;
 	}
 
-	/*
-	 * FIXME: add SFI compile flag check
-	 * FIXME: add SCU compile flag check
-	 */
-	switch (intel_mid_identify_cpu()) {
-	case INTEL_MID_CPU_CHIP_VALLEYVIEW2:
-#ifdef CONFIG_ACPI
-		acpi_table_parse(ACPI_SIG_PIDV, acpi_parse_pidv);
-		pidv_kobj = kobject_create_and_add("pidv", firmware_kobj);
-		if (!pidv_kobj) {
-			pr_err("pidv: ENOMEM for pidv_kobj\n");
-			return -ENOMEM;
-		}
+	/* Get MFD Validation SFI OEMB Layout */
+	handle_sfi_table(SFI_SIG_OEMB, NULL, NULL, sfi_parse_oemb);
+	handle_sfi_table(SFI_SIG_OEM0, NULL, NULL, sfi_parse_oem0);
+	handle_sfi_table(SFI_SIG_GPIO, NULL, NULL, sfi_parse_gpio);
+	handle_sfi_table(SFI_SIG_DEVS, NULL, NULL, sfi_parse_devs);
 
-		ret = sysfs_create_group(pidv_kobj, &pidv_attr_group);
-		if (ret) {
-			pr_err("SPID: failed to create /sys/spid\n");
-			return ret;
-		}
-#endif
-		break;
-	default:
-		/* Get MFD Validation SFI OEMB Layout */
-		handle_sfi_table(SFI_SIG_OEMB, NULL, NULL, sfi_parse_oemb);
-		handle_sfi_table(SFI_SIG_OEM0, NULL, NULL, sfi_parse_oem0);
-		handle_sfi_table(SFI_SIG_GPIO, NULL, NULL, sfi_parse_gpio);
-		handle_sfi_table(SFI_SIG_DEVS, NULL, NULL, sfi_parse_devs);
-
-		intel_mid_rproc_init();
-		break;
-	}
+	intel_mid_rproc_init();
 
 	/* Populate command line with SPID values */
 	populate_spid_cmdline();

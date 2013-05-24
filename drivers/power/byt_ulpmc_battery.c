@@ -562,7 +562,7 @@ static int ulpmc_get_battery_property(struct power_supply *psy,
 					enum power_supply_property psp,
 					union power_supply_propval *val)
 {
-	int ret = 0;
+	int ret = 0, batt_volt;
 	struct ulpmc_chip_info *chip = container_of(psy,
 				struct ulpmc_chip_info, bat);
 	mutex_lock(&chip->lock);
@@ -614,6 +614,18 @@ static int ulpmc_get_battery_property(struct power_supply *psy,
 		ret = ulpmc_get_capacity(chip);
 		if (ret < 0)
 			goto i2c_read_err;
+		/* do critical battery voltage check */
+		if (ret > 0) {
+			batt_volt = ulpmc_read_reg16(chip->client,
+							ULPMC_FG_REG_VOLT);
+			if (batt_volt < 0) {
+				ret = batt_volt;
+				goto i2c_read_err;
+			}
+			/* set capacity to 0% in case crit batt threshold */
+			if (batt_volt < chip->pdata->volt_sh_min)
+				ret = 0;
+		}
 		val->intval = ret;
 		break;
 	case POWER_SUPPLY_PROP_TEMP:
@@ -1073,6 +1085,29 @@ static int ulpmc_extcon_callback(struct notifier_block *nb,
 	return NOTIFY_OK;
 }
 
+static int ulpmc_extcon_dev_reg_callback(struct notifier_block *nb,
+					unsigned long event, void *data)
+{
+	struct ulpmc_chip_info *chip = container_of(nb,
+					struct ulpmc_chip_info, nb);
+	int ret;
+
+	chip->edev = extcon_get_extcon_dev(chip->pdata->extcon_devname);
+	if (!chip->edev) {
+		dev_err(&chip->client->dev, "failed to get extcon device\n");
+		return NOTIFY_OK;
+	} else {
+		extcon_dev_unregister_notify(&chip->nb);
+		chip->nb.notifier_call = &ulpmc_extcon_callback;
+		ret = extcon_register_notifier(chip->edev, &chip->nb);
+		if (ret)
+			dev_err(&chip->client->dev,
+				"failed to register extcon notifier:%d\n", ret);
+	}
+
+	return NOTIFY_OK;
+}
+
 static void set_s0ix_soc_thresholds(struct ulpmc_chip_info *chip)
 {
 	int ret;
@@ -1153,12 +1188,11 @@ EXPORT_SYMBOL(ulpmc_fwupdate_exit);
 
 struct i2c_client *ulpmc_get_i2c_client(void)
 {
-	dev_info(&chip_ptr->client->dev, ":%s\n", __func__);
-
-	if (chip_ptr)
+	if (chip_ptr) {
+		dev_info(&chip_ptr->client->dev, ":%s\n", __func__);
 		return chip_ptr->client;
-	else
-		return NULL;
+	}
+	return NULL;
 }
 EXPORT_SYMBOL(ulpmc_get_i2c_client);
 
@@ -1265,6 +1299,8 @@ static int ulpmc_battery_probe(struct i2c_client *client,
 	chip->edev = extcon_get_extcon_dev(chip->pdata->extcon_devname);
 	if (!chip->edev) {
 		dev_err(&client->dev, "failed to get extcon device\n");
+		chip->nb.notifier_call = &ulpmc_extcon_dev_reg_callback;
+		extcon_dev_register_notify(&chip->nb);
 	} else {
 		chip->nb.notifier_call = &ulpmc_extcon_callback;
 		ret = extcon_register_notifier(chip->edev, &chip->nb);
@@ -1397,7 +1433,7 @@ static int __init ulpmc_battery_init(void)
 
 	return ret;
 }
-late_initcall(ulpmc_battery_init);
+device_initcall(ulpmc_battery_init);
 
 static void __exit ulpmc_battery_exit(void)
 {

@@ -1,8 +1,8 @@
 /*
- * include/linux/intel_mid_acpi.h
+ * drivers/misc/intel_fw_trace.h
  *
  * Copyright (C) 2013 Intel Corp
- * Author: Vincent Tinelli (vincent.tinelli@intel.com)
+ * Author: jouni.hogander@intel.com
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,39 +18,25 @@
  * 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
  */
 
-#ifndef _INTEL_MID_ACPI_H
-#define _INTEL_MID_ACPI_H
+#ifndef __INTEL_FW_TRACE_H
+#define __INTEL_FW_TRACE_H
 
-#include <linux/acpi.h>
-#ifdef CONFIG_ACPI
-
-
-#define ACPI_SIG_PIDV           "PIDV"
-
-#define pidv_attr(_name) \
-static struct kobj_attribute _name##_attr = {	\
-	.attr   = {				\
-		.name = __stringify(_name),	\
-		.mode = 0440,			\
-	},					\
-	.show   = _name##_show,			\
-}
-
-struct platform_id {
-	u8 part_number[32];
-	u8 ext_id_1[32];
-	u8 ext_id_2[32];
-	u8 uuid[16];
-	u8 iafw_major;
-	u8 iafw_minor;
-	u8 secfw_major;
-	u8 secfw_minor;
+struct scu_trace_hdr_t {
+	u32 magic;
+	u8 majorrev;
+	u8 minorrev;
+	u16 cmd;
+	u32 offset;
+	u32 size;
 };
 
-struct acpi_table_pidv {
-	struct acpi_table_header header;
-	struct platform_id pidv;
-};
+#define TRACE_MAGIC 0x53435554
 
-#endif
-#endif
+#define TRACE_ID_INFO    0x0100
+#define TRACE_ID_ERROR   0x0200
+#define TRACE_ID_MASK    (0x3 << 8)
+
+#define TRACE_IS_ASCII   0x0001
+
+void apic_scu_panic_dump(void);
+#endif /* __INTEL_FABRICID_DEF_H */

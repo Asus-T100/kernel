@@ -106,7 +106,7 @@ struct atomisp_sub_device {
 	struct v4l2_ctrl_handler ctrl_handler;
 	struct v4l2_ctrl *fmt_auto;
 	struct v4l2_ctrl *run_mode;
-	struct v4l2_ctrl *enable_vfpp;
+	struct v4l2_ctrl *vfpp;
 	struct v4l2_ctrl *continuous_mode;
 	struct v4l2_ctrl *continuous_raw_buffer_size;
 	struct v4l2_ctrl *continuous_viewfinder;

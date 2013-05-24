@@ -1012,6 +1012,9 @@ static int i915_getparam(struct drm_device *dev, void *data,
 	case I915_PARAM_HAS_SEMAPHORES:
 		value = i915_semaphore_is_enabled(dev);
 		break;
+	case I915_PARAM_HAS_VMAP:
+		value = 1;
+		break;
 	default:
 		DRM_DEBUG_DRIVER("Unknown parameter %d\n",
 				 param->param);
@@ -1570,6 +1573,7 @@ int i915_driver_load(struct drm_device *dev, unsigned long flags)
 	/* This must be called before any calls to HAS_PCH_* */
 	intel_detect_pch(dev);
 
+	i915_pm_init(dev);
 	intel_irq_init(dev);
 	intel_gt_init(dev);
 
@@ -1907,6 +1911,7 @@ struct drm_ioctl_desc i915_ioctls[] = {
 								DRM_AUTH),
 	DRM_IOCTL_DEF_DRV(I915_DISP_SCREEN_CONTROL, i915_disp_screen_control, \
 							DRM_AUTH|DRM_UNLOCKED),
+	DRM_IOCTL_DEF_DRV(I915_GEM_VMAP, i915_gem_vmap_ioctl, DRM_UNLOCKED),
 };
 
 int i915_max_ioctl = DRM_ARRAY_SIZE(i915_ioctls);

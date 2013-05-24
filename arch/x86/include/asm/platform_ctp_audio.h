@@ -19,6 +19,7 @@ struct ctp_audio_platform_data {
 	const struct soft_platform_id *spid;
 	int codec_gpio_hsdet;
 	int codec_gpio_button;
+	int codec_gpio_dmic;
 };
 
 extern void __init *ctp_audio_platform_data(void *info) __attribute__((weak));

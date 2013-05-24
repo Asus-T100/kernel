@@ -129,6 +129,7 @@ void jdi_cmd_controller_init(
 
 	struct mdfld_dsi_hw_context *hw_ctx =
 				&dsi_config->dsi_hw_context;
+#ifdef ENABLE_CSC_GAMMA /*FIXME*/
 	struct drm_device *dev = dsi_config->dev;
 
 	struct csc_setting csc = {
@@ -179,13 +180,15 @@ void jdi_cmd_controller_init(
 			0xF0F0F0, 0xF2F2F2, 0xF4F4F4, 0xF6F6F6,
 			0xF7F7F7, 0xF9F9F9, 0xFBFBFB, 0xFDFDFD}
 	 };
+#endif
 
 	PSB_DEBUG_ENTRY("\n");
 
 	/*reconfig lane configuration*/
 	dsi_config->lane_count = 3;
 	dsi_config->lane_config = MDFLD_DSI_DATA_LANE_4_0;
-	dsi_config->enable_gamma_csc = ENABLE_GAMMA | ENABLE_CSC;
+	/* FIXME: enable CSC and GAMMA */
+	/*dsi_config->enable_gamma_csc = ENABLE_GAMMA | ENABLE_CSC;*/
 	/* This is for 400 mhz.  Set it to 0 for 800mhz */
 	hw_ctx->cck_div = 1;
 	hw_ctx->pll_bypass_mode = 0;
@@ -212,7 +215,7 @@ void jdi_cmd_controller_init(
 			TE_TRIGGER_GPIO_PIN;
 	hw_ctx->video_mode_format = 0xf;
 
-#if 0
+#ifdef ENABLE_CSC_GAMMA /*FIXME*/
 	if (dsi_config->enable_gamma_csc & ENABLE_CSC) {
 		/* setting the tuned csc setting */
 		drm_psb_enable_color_conversion = 1;
@@ -435,7 +438,7 @@ int jdi_cmd_panel_reset(
 {
 	int ret = 0;
 	u8 *vaddr = NULL, *vaddr1 = NULL;
-	int reg_value = 0, reg_value_scl = 0;
+	int reg_value_scl = 0;
 
 	PSB_DEBUG_ENTRY("\n");
 

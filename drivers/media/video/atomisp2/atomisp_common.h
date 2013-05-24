@@ -40,8 +40,9 @@ extern int pad_h;
 extern int atomisp_pci_vendor;
 extern int atomisp_pci_device;
 
+#define CSS_DTRACE_VERBOSITY_LEVEL	5	/* Controls trace verbosity */
+#define CSS_DTRACE_VERBOSITY_TIMEOUT	9	/* Verbosity on ISP timeout */
 #define MFLD_MAX_ZOOM_FACTOR	64
-
 #define MRFLD_MAX_ZOOM_FACTOR	1024
 
 #define IS_ISP2400(isp)							\

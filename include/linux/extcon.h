@@ -192,6 +192,10 @@ struct extcon_chrgr_cbl_props {
 	unsigned long mA;
 };
 
+/* extcon device register notify events */
+#define EXTCON_DEVICE_ADD		0x0001
+#define EXTCON_DEVICE_REMOVE		0x0002
+
 #if IS_ENABLED(CONFIG_EXTCON)
 
 /*
@@ -201,6 +205,8 @@ struct extcon_chrgr_cbl_props {
 extern int extcon_dev_register(struct extcon_dev *edev, struct device *dev);
 extern void extcon_dev_unregister(struct extcon_dev *edev);
 extern struct extcon_dev *extcon_get_extcon_dev(const char *extcon_name);
+extern void extcon_dev_register_notify(struct notifier_block *nb);
+extern void extcon_dev_unregister_notify(struct notifier_block *nb);
 
 /*
  * get/set/update_state access the 32b encoded state value, which represents
@@ -264,6 +270,8 @@ static inline int extcon_dev_register(struct extcon_dev *edev,
 }
 
 static inline void extcon_dev_unregister(struct extcon_dev *edev) { }
+static void extcon_dev_register_notify(struct notifier_block *nb) { }
+static void extcon_dev_unregister_notify(struct notifier_block *nb) { }
 
 static inline u32 extcon_get_state(struct extcon_dev *edev)
 {

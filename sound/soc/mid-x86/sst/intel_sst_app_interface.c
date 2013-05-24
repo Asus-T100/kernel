@@ -77,7 +77,7 @@ int intel_sst_release_cntrl(struct inode *i_node, struct file *file_ptr)
 {
 	/* audio manager close */
 	mutex_lock(&sst_drv_ctx->stream_lock);
-	pm_runtime_put(&sst_drv_ctx->pci->dev);
+	pm_runtime_put(sst_drv_ctx->dev);
 	mutex_unlock(&sst_drv_ctx->stream_lock);
 	pr_debug("AM handle closed\n");
 	return 0;

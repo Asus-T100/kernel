@@ -166,7 +166,7 @@ static int sst_send_lpe_mixer_algo_params(void)
 			algo_param.algo_id, algo_param.str_id,
 			algo_param.enable, algo_param.size);
 	sst_send_algo_param(&algo_param);
-	pm_runtime_put(&sst_drv_ctx->pci->dev);
+	pm_runtime_put(sst_drv_ctx->dev);
 	return retval;
 }
 
@@ -376,7 +376,7 @@ int intel_sst_check_device(void)
 	int retval = 0;
 
 	pr_debug("In %s\n", __func__);
-	pm_runtime_get_sync(&sst_drv_ctx->pci->dev);
+	pm_runtime_get_sync(sst_drv_ctx->dev);
 	mutex_lock(&sst_drv_ctx->sst_lock);
 	if (sst_drv_ctx->sst_state == SST_UN_INIT) {
 		sst_drv_ctx->sst_state = SST_START_INIT;
@@ -387,7 +387,7 @@ int intel_sst_check_device(void)
 			pr_err("FW download fail %x\n", retval);
 			sst_drv_ctx->sst_state = SST_UN_INIT;
 			mutex_unlock(&sst_drv_ctx->sst_lock);
-			pm_runtime_put(&sst_drv_ctx->pci->dev);
+			pm_runtime_put(sst_drv_ctx->dev);
 			return retval;
 		}
 	}
@@ -427,7 +427,7 @@ static int sst_power_control(bool state)
 	if (state == true)
 		return intel_sst_check_device();
 	else
-		return pm_runtime_put(&sst_drv_ctx->pci->dev);
+		return pm_runtime_put(sst_drv_ctx->dev);
 }
 /*
  * sst_open_pcm_stream - Open PCM interface
@@ -454,7 +454,7 @@ static int sst_open_pcm_stream(struct snd_sst_params *str_param)
 	if (retval > 0)
 		sst_drv_ctx->stream_cnt++;
 	else
-		pm_runtime_put(&sst_drv_ctx->pci->dev);
+		pm_runtime_put(sst_drv_ctx->dev);
 	return retval;
 }
 
@@ -477,7 +477,7 @@ static int sst_cdev_open(struct snd_sst_params *str_params,
 	} else {
 		pr_err("stream encountered error during alloc %d\n", str_id);
 		str_id = -EINVAL;
-		pm_runtime_put(&sst_drv_ctx->pci->dev);
+		pm_runtime_put(sst_drv_ctx->dev);
 	}
 	return str_id;
 }
@@ -492,7 +492,7 @@ static int sst_cdev_close(unsigned int str_id)
 	retval = sst_free_stream(str_id);
 	stream->compr_cb_param = NULL;
 	stream->compr_cb = NULL;
-	pm_runtime_put(&sst_drv_ctx->pci->dev);
+	pm_runtime_put(sst_drv_ctx->dev);
 	return retval;
 
 }
@@ -704,7 +704,7 @@ static int sst_close_pcm_stream(unsigned int str_id)
 	stream->period_elapsed = NULL;
 	sst_drv_ctx->stream_cnt--;
 	pr_debug("will call runtime put now\n");
-	pm_runtime_put(&sst_drv_ctx->pci->dev);
+	pm_runtime_put(sst_drv_ctx->dev);
 	return 0;
 }
 
@@ -976,7 +976,7 @@ static int sst_set_generic_params(enum sst_controls cmd, void *arg)
 			return ret_val;
 
 		ret_val = sst_send_byte_stream_mrfld(sst_bytes);
-		pm_runtime_put(&sst_drv_ctx->pci->dev);
+		pm_runtime_put(sst_drv_ctx->dev);
 		break;
 	}
 	case SST_GET_PROBE_BYTE_STREAM: {

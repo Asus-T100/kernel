@@ -548,13 +548,17 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 	struct xhci_bus_state *bus_state;
 	u16 link_state = 0;
 	u16 wake_mask = 0;
-	u32 __iomem *status_reg = &xhci->op_regs->port_power_base +
-		NUM_PORT_REGS*((wIndex & 0xff) - 1);
+	u32 __iomem *status_reg;
 	u32 i, command, num_ports, selector;
+
 
 	selector = wIndex >> 8;
 	max_ports = xhci_get_ports(hcd, &port_array);
 	bus_state = &xhci->bus_state[hcd_index(hcd)];
+
+	if (wIndex && wIndex <= max_ports)
+		status_reg	= &xhci->op_regs->port_power_base +
+			NUM_PORT_REGS*((wIndex & 0xff) - 1);
 
 	spin_lock_irqsave(&xhci->lock, flags);
 	switch (typeReq) {
@@ -853,7 +857,7 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 			temp = xhci_readl(xhci, port_array[wIndex]);
 			break;
 		case USB_PORT_FEAT_TEST:
-			if (!selector || selector >= 5)
+			if (!selector || selector >= 5 || !status_reg)
 				goto error;
 			/*
 			 * Disable all Device Slots.

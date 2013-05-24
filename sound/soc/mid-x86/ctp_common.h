@@ -58,6 +58,7 @@ struct snd_soc_machine_ops {
 	int micsdet_debounce;
 	char *mic_bias;
 	bool jack_support;
+	bool dmic3_support;
 	void (*card_name)(struct snd_soc_card *card);
 	int (*ctp_init)(struct snd_soc_pcm_runtime *runtime);
 	int (*dai_link) (struct snd_soc_card *card);
@@ -89,6 +90,8 @@ struct ctp_mc_private {
 	int bpirq;
 	atomic_t hs_det_retry;
 	bool btn_press_flag;
+	int dmic_switch;
+	int dmic_gpio;
 #ifdef CONFIG_HAS_WAKELOCK
 	struct wake_lock *jack_wake_lock;
 #endif

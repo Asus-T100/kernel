@@ -459,7 +459,7 @@ static int __get_css_frame_info(struct atomisp_device *isp,
 	switch (source_pad) {
 	case ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE:
 		if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO
-		    || !isp->isp_subdev.enable_vfpp->val)
+		    || isp->isp_subdev.vfpp->val == ATOMISP_VFPP_DISABLE_SCALER)
 			ret = atomisp_css_video_get_output_frame_info(isp,
 								frame_info);
 		else
@@ -1230,8 +1230,20 @@ enum atomisp_css_pipe_id atomisp_get_css_pipe_id(struct atomisp_device *isp)
 	    isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO)
 		return SH_CSS_PREVIEW_PIPELINE;
 
-	if (!isp->isp_subdev.enable_vfpp->val)
+	/*
+	 * Disable vf_pp and run CSS in video mode. This allows using ISP
+	 * scaling but it has one frame delay due to CSS internal buffering.
+	 */
+	if (isp->isp_subdev.vfpp->val == ATOMISP_VFPP_DISABLE_SCALER)
 		return SH_CSS_VIDEO_PIPELINE;
+
+	/*
+	 * Disable vf_pp and run CSS in still capture mode. In this mode
+	 * CSS does not cause extra latency with buffering, but scaling
+	 * is not available.
+	 */
+	if (isp->isp_subdev.vfpp->val == ATOMISP_VFPP_DISABLE_LOWLAT)
+		return SH_CSS_CAPTURE_PIPELINE;
 
 	switch (isp->isp_subdev.run_mode->val) {
 	case ATOMISP_RUN_MODE_PREVIEW:
@@ -1247,7 +1259,7 @@ enum atomisp_css_pipe_id atomisp_get_css_pipe_id(struct atomisp_device *isp)
 
 static unsigned int atomisp_sensor_start_stream(struct atomisp_device *isp)
 {
-	if (!isp->isp_subdev.enable_vfpp->val)
+	if (isp->isp_subdev.vfpp->val != ATOMISP_VFPP_ENABLE)
 		return 1;
 
 	if (isp->isp_subdev.run_mode->val == ATOMISP_RUN_MODE_VIDEO ||
