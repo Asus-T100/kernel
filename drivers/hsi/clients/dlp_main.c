@@ -83,7 +83,9 @@ void dlp_dump_channel_state(struct dlp_channel *ch_ctx, struct seq_file *m)
 	/* Dump the RX context info */
 	seq_printf(m, "\n RX ctx:\n");
 	read_lock_irqsave(&ch_ctx->rx.lock, flags);
-	seq_printf(m, "   state   : %d\n", ch_ctx->rx.state);
+	seq_printf(m, "   link_state   : %d\n",
+			atomic_read(&ch_ctx->rx.link_state));
+	seq_printf(m, "   link_flag   : %d\n", ch_ctx->rx.link_flag);
 	seq_printf(m, "   seq_num : %d\n", ch_ctx->rx.seq_num);
 	seq_printf(m, "   wait_max: %d\n", ch_ctx->rx.wait_max);
 	seq_printf(m, "   ctrl_max: %d\n", ch_ctx->rx.ctrl_max);
@@ -108,7 +110,9 @@ void dlp_dump_channel_state(struct dlp_channel *ch_ctx, struct seq_file *m)
 	/* Dump the TX context info */
 	seq_printf(m, "\n TX ctx:\n");
 	read_lock_irqsave(&ch_ctx->tx.lock, flags);
-	seq_printf(m, "   state   : %d\n", ch_ctx->tx.state);
+	seq_printf(m, "   link_state   : %d\n",
+			atomic_read(&ch_ctx->tx.link_state));
+	seq_printf(m, "   link_flag   : %d\n", ch_ctx->tx.link_flag);
 	seq_printf(m, "   seq_num : %d\n", ch_ctx->tx.seq_num);
 	seq_printf(m, "   wait_max: %d\n", ch_ctx->tx.wait_max);
 	seq_printf(m, "   ctrl_max: %d\n", ch_ctx->tx.ctrl_max);
@@ -614,31 +618,11 @@ static void dlp_pdu_destructor(struct hsi_msg *pdu)
  *
  * Returns the current state of the requested TX or RX context.
  */
-static inline __must_check
-unsigned int _dlp_ctx_get_state(struct dlp_xfer_ctx *xfer_ctx)
-{
-	return xfer_ctx->state & DLP_GLOBAL_STATE_MASK;
-}
-
-/**
- * dlp_ctx_get_state - get the global state of a state machine
- * @xfer_ctx: a reference to the state machine context
- *
- * Returns the current state of the requested TX or RX context.
- *
- * This version adds the spinlock guarding
- */
 inline __must_check
 unsigned int dlp_ctx_get_state(struct dlp_xfer_ctx *xfer_ctx)
 {
-	unsigned int state;
-	unsigned long flags;
+	return atomic_read(&xfer_ctx->link_state);
 
-	read_lock_irqsave(&xfer_ctx->lock, flags);
-	state = _dlp_ctx_get_state(xfer_ctx);
-	read_unlock_irqrestore(&xfer_ctx->lock, flags);
-
-	return state;
 }
 
 /**
@@ -648,15 +632,7 @@ unsigned int dlp_ctx_get_state(struct dlp_xfer_ctx *xfer_ctx)
  */
 inline void dlp_ctx_set_state(struct dlp_xfer_ctx *xfer_ctx, unsigned int state)
 {
-	unsigned long flags;
-
-#ifdef DEBUG
-	BUG_ON(state & ~DLP_GLOBAL_STATE_MASK);
-#endif
-
-	write_lock_irqsave(&xfer_ctx->lock, flags);
-	xfer_ctx->state = (xfer_ctx->state & ~DLP_GLOBAL_STATE_MASK) | state;
-	write_unlock_irqrestore(&xfer_ctx->lock, flags);
+	atomic_set(&xfer_ctx->link_state, state);
 }
 
 /**
@@ -672,12 +648,8 @@ inline __must_check int dlp_ctx_has_flag(struct dlp_xfer_ctx *xfer_ctx,
 	unsigned long flags;
 	int has_flag;
 
-#ifdef DEBUG
-	BUG_ON(flag & DLP_GLOBAL_STATE_MASK);
-#endif
-
 	read_lock_irqsave(&xfer_ctx->lock, flags);
-	has_flag = ((xfer_ctx->state & flag) == flag);
+	has_flag = ((xfer_ctx->link_flag & flag) == flag);
 	read_unlock_irqrestore(&xfer_ctx->lock, flags);
 
 	return has_flag;
@@ -692,12 +664,8 @@ inline void dlp_ctx_set_flag(struct dlp_xfer_ctx *xfer_ctx, unsigned int flag)
 {
 	unsigned long flags;
 
-#ifdef DEBUG
-	BUG_ON(flag & DLP_GLOBAL_STATE_MASK);
-#endif
-
 	write_lock_irqsave(&xfer_ctx->lock, flags);
-	xfer_ctx->state |= flag;
+	xfer_ctx->link_flag |= flag;
 	write_unlock_irqrestore(&xfer_ctx->lock, flags);
 }
 
@@ -710,12 +678,8 @@ inline void dlp_ctx_clear_flag(struct dlp_xfer_ctx *xfer_ctx, unsigned int flag)
 {
 	unsigned long flags;
 
-#ifdef DEBUG
-	BUG_ON(flag & DLP_GLOBAL_STATE_MASK);
-#endif
-
 	write_lock_irqsave(&xfer_ctx->lock, flags);
-	xfer_ctx->state &= ~flag;
+	xfer_ctx->link_flag &= ~flag;
 	write_unlock_irqrestore(&xfer_ctx->lock, flags);
 }
 
@@ -1374,13 +1338,14 @@ void dlp_do_stop_tx(struct work_struct *work)
  */
 void dlp_start_tx(struct dlp_xfer_ctx *xfer_ctx)
 {
-	if (dlp_ctx_get_state(xfer_ctx) == IDLE) {
-		/* Schedule the stop TX work */
+	del_timer_sync(&xfer_ctx->timer);
+
+	if (dlp_ctx_get_state(xfer_ctx) == IDLE)
+		/* Schedule the start TX work */
 		queue_work(dlp_drv.tx_wq, &xfer_ctx->channel->start_tx_w);
-	} else {
+	else
 		dlp_ctx_set_state(xfer_ctx, READY);
-		del_timer_sync(&xfer_ctx->timer);
-	}
+
 }
 
 /**
@@ -1393,7 +1358,9 @@ void dlp_start_tx(struct dlp_xfer_ctx *xfer_ctx)
  */
 void dlp_stop_tx(struct dlp_xfer_ctx *xfer_ctx)
 {
-	if (dlp_ctx_get_state(xfer_ctx) == ACTIVE) {
+
+	if (dlp_ctx_get_state(xfer_ctx) == ACTIVE &&
+			list_empty(&xfer_ctx->wait_pdus)) {
 		/* Update the context state */
 		dlp_ctx_set_state(xfer_ctx, IDLE);
 
@@ -1630,7 +1597,8 @@ void dlp_xfer_ctx_init(struct dlp_channel *ch_ctx,
 	xfer_ctx->pdu_size = pdu_size;
 	xfer_ctx->timer.data = (unsigned long)xfer_ctx;
 	xfer_ctx->delay = from_usecs(delay);
-	xfer_ctx->state = IDLE;
+	atomic_set(&xfer_ctx->link_state, IDLE);
+	xfer_ctx->link_flag = 0;
 	xfer_ctx->wait_max = wait_max;
 	xfer_ctx->ctrl_max = ctrl_max;
 	xfer_ctx->channel = ch_ctx;
@@ -1655,7 +1623,8 @@ void dlp_xfer_ctx_clear(struct dlp_xfer_ctx *xfer_ctx)
 	xfer_ctx->ctrl_len = 0;
 	xfer_ctx->wait_max = 0;
 	xfer_ctx->ctrl_max = 0;
-	xfer_ctx->state = IDLE;
+	atomic_set(&xfer_ctx->link_state, IDLE);
+	xfer_ctx->link_flag = 0;
 	del_timer_sync(&xfer_ctx->timer);
 
 	write_unlock_irqrestore(&xfer_ctx->lock, flags);
@@ -1901,7 +1870,8 @@ static int __init dlp_module_init(void)
 	dlp_drv.flow_ctrl = flow_ctrl;
 
 	/* Create a single thread workqueue to serialize TX background tasks */
-	dlp_drv.tx_wq = alloc_workqueue(DRVNAME "-tx_wq", WQ_UNBOUND, 1);
+	dlp_drv.tx_wq = alloc_workqueue(DRVNAME "-tx_wq", WQ_UNBOUND |
+							WQ_NON_REENTRANT, 1);
 	if (!dlp_drv.tx_wq) {
 		pr_err(DRVNAME ": Unable to create TX workqueue\n");
 		err = -EFAULT;
