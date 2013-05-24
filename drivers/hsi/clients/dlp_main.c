@@ -1001,6 +1001,9 @@ static int _dlp_from_wait_to_ctrl(struct dlp_xfer_ctx *xfer_ctx)
 		goto out;
 	}
 	if (pdu->status != HSI_STATUS_COMPLETED) {
+		/* write is on going, set to READY to allow sending pdu
+		 * in writing context */
+		dlp_ctx_set_state(xfer_ctx, READY);
 		write_unlock_irqrestore(&xfer_ctx->lock, flags);
 		ret = -EBUSY;
 		goto out;
@@ -1019,6 +1022,7 @@ static int _dlp_from_wait_to_ctrl(struct dlp_xfer_ctx *xfer_ctx)
 	if (ret) {
 		/* Push back the pdu to the wait FIFO */
 		dlp_fifo_wait_push_back(xfer_ctx, pdu);
+		dlp_ctx_set_state(xfer_ctx, READY);
 	} else {
 		read_lock_irqsave(&xfer_ctx->lock, flags);
 		ret = (xfer_ctx->ctrl_len > 0);
@@ -1301,10 +1305,8 @@ void dlp_do_start_tx(struct work_struct *work)
 				ch_ctx->hsi_channel, ret);
 		return;
 	}
-
-	/* The HSI controller is ready, push as many pdus as possible */
-	 dlp_ctx_set_state(xfer_ctx, READY);
-	 dlp_pop_wait_push_ctrl(xfer_ctx);
+	/* push as many pdus as possible */
+	dlp_pop_wait_push_ctrl(xfer_ctx);
 }
 
 /**
