@@ -275,7 +275,7 @@ static u8 ls04x_ledpwm_on[] = { 0x53, 0x2c };
 static u8 ls04x_cabc_on[] = { 0x55, 0x01 };
 static u8 ls04x_deep_standby[] = { 0xb1, 0x01 };
 
-static u8 ir2e69_power_on_seq[][2] = {
+static u8 ir2e69_power_on_seq_cabc[][2] = {
 	{0x03, 0x01},
 	{0,      20},
 	{0x27, 0xe8},
@@ -293,6 +293,26 @@ static u8 ir2e69_power_on_seq[][2] = {
 	{0xf1, 0x00},
 	{0xda, 0x30},
 	{0xd8, 0x00} };
+
+static u8 ir2e69_power_on_seq[][2] = {
+	{0x03, 0x01},
+	{0,      20},
+	{0x27, 0xe8},
+	{0x03, 0x83},
+	{0,      20},
+	{0x28, 0x40},
+	{0x2b, 0x01},
+	{0x05, 0x09},
+	{0x06, 0x01},
+	{0x25, 0x20},
+	{0x0a, 0x00},
+	{0x0b, 0x00},
+	{0xdc, 0x3b},
+	{0xee, 0x00},
+	{0xf1, 0x00},
+	{0xda, 0x30},
+	{0xd8, 0x00} };
+
 static u8 ir2e69_bias_on_seq[][2] = {
 	{0x28, 0x40},
 	{0,       1},
@@ -478,16 +498,31 @@ static void ir2e69_reset()
 	mdelay(20);
 	ir2e69_set_gpio(1);
 	mdelay(20);
-	for (i = 0; i < ARRAY_SIZE(ir2e69_power_on_seq); i++) {
-		if (ir2e69_power_on_seq[i][0] != 0) {
-			r = i2c_master_send(i2c_client,
-					    ir2e69_power_on_seq[i],
-					    sizeof(ir2e69_power_on_seq[i]));
-			if (r < 0)
-				dev_err(&i2c_client->dev, "%d: error %d\n",
-					i, r);
-		} else
-			mdelay(ir2e69_power_on_seq[i][1]);
+	if (drm_psb_enable_cabc) {
+		for (i = 0; i < ARRAY_SIZE(ir2e69_power_on_seq_cabc); i++) {
+			if (ir2e69_power_on_seq_cabc[i][0] != 0) {
+				r = i2c_master_send(i2c_client,
+					ir2e69_power_on_seq_cabc[i],
+					sizeof(ir2e69_power_on_seq_cabc[i]));
+				if (r < 0)
+					dev_err(&i2c_client->dev, "%d: error %d\n",
+						i, r);
+			} else
+				mdelay(ir2e69_power_on_seq_cabc[i][1]);
+		}
+	} else {
+		for (i = 0; i < ARRAY_SIZE(ir2e69_power_on_seq); i++) {
+			if (ir2e69_power_on_seq[i][0] != 0) {
+				r = i2c_master_send(i2c_client,
+					ir2e69_power_on_seq[i],
+					sizeof(ir2e69_power_on_seq[i]));
+				if (r < 0)
+					dev_err(&i2c_client->dev, "%d: error %d\n",
+						i, r);
+			} else
+				mdelay(ir2e69_power_on_seq[i][1]);
+		}
+
 	}
 }
 
