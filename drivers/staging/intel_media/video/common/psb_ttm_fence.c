@@ -190,11 +190,6 @@ void ttm_fence_handler(struct ttm_fence_device *fdev, uint32_t fence_class,
 		list_for_each_entry(fence, head, ring) {
 			if (&fence->ring == &fc->ring)
 				break;
-			diff =
-				(fc->highest_waiting_sequence -
-				 fence->sequence) & fc->sequence_mask;
-			if (diff > fc->wrap_diff)
-				break;
 
 			fc->waiting_types |=
 				fence->waiting_types & ~fence->info.signaled_types;
@@ -253,11 +248,6 @@ int ttm_fence_object_flush(struct ttm_fence_object *fence, uint32_t type)
 	write_lock_irqsave(&fc->lock, irq_flags);
 	fence->waiting_types |= type;
 	fc->waiting_types |= fence->waiting_types;
-	diff = (fence->sequence - fc->highest_waiting_sequence) &
-	       fc->sequence_mask;
-
-	if (diff < fc->wrap_diff)
-		fc->highest_waiting_sequence = fence->sequence;
 
 	/*
 	 * fence->waiting_types has changed. Determine whether
@@ -412,8 +402,6 @@ int ttm_fence_object_emit(struct ttm_fence_object *fence, uint32_t fence_flags,
 	fence->info.error = 0;
 	fence->sequence = sequence;
 	fence->timeout_jiffies = timeout;
-	if (list_empty(&fc->ring))
-		fc->highest_waiting_sequence = sequence - 1;
 	list_add_tail(&fence->ring, &fc->ring);
 	fc->latest_queued_sequence = sequence;
 	write_unlock_irqrestore(&fc->lock, flags);
