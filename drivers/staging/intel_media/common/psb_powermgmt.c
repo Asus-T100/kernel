@@ -463,6 +463,11 @@ static void mdfld_adjust_display_fifo(struct drm_device *dev)
 	struct drm_display_mode *mode = dsi_config->fixed_mode;
 
 	if (IS_CTP(dev)) {
+		/* Set proper high priority configuration to avoid overlay
+		 * block memory self-refresh entry */
+		temp = REG_READ(G_HP_CONTROL);
+		REG_WRITE(G_HP_CONTROL,
+			HP_REQUESTORS_STATUS_OVERRIDE_MODE | temp);
 		if (mode &&
 		    ((mode->hdisplay >= 1920 && mode->vdisplay >= 1080) ||
 		     (mode->hdisplay >= 1080 && mode->vdisplay >= 1920))) {
