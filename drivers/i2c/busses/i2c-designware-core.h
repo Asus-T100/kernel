@@ -219,6 +219,7 @@ struct dw_i2c_dev {
 	u32			(*get_clk_rate_khz) (struct dw_i2c_dev *dev);
 	int			(*get_scl_cfg) (struct dw_i2c_dev *dev);
 	void			(*reset)(struct dw_i2c_dev *dev);
+	void			(*abort)(int busnum);
 	struct dw_pci_controller *controller;
 	int			enable_stop;
 	int			share_irq;
@@ -259,4 +260,5 @@ extern void i2c_dw_disable(struct dw_i2c_dev *dev);
 extern void i2c_dw_clear_int(struct dw_i2c_dev *dev);
 extern void i2c_dw_disable_int(struct dw_i2c_dev *dev);
 extern u32 i2c_dw_read_comp_param(struct dw_i2c_dev *dev);
+extern int intel_mid_dw_i2c_abort(int busnum);
 
