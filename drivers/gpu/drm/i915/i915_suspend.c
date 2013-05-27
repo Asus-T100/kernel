@@ -833,7 +833,7 @@ int i915_save_state(struct drm_device *dev)
 	intel_disable_gt_powersave(dev);
 
 	/* Cache mode state */
-	dev_priv->saveCACHE_MODE_0 = I915_READ(CACHE_MODE_0);
+	dev_priv->saveCACHE_MODE_0 = I915_READ(CACHE_MODE_0_OFFSET(dev));
 
 	/* Memory Arbitration state */
 	dev_priv->saveMI_ARB_STATE = I915_READ(MI_ARB_STATE);
@@ -880,10 +880,8 @@ int i915_restore_state(struct drm_device *dev)
 	}
 
 	/* Cache mode state */
-	/*TODO: Check about this register conflicing with VLV_PCBR */
-	if (!IS_VALLEYVIEW(dev))
-		I915_WRITE(CACHE_MODE_0,
-			dev_priv->saveCACHE_MODE_0 | 0xffff0000);
+	I915_WRITE(CACHE_MODE_0_OFFSET(dev),
+				dev_priv->saveCACHE_MODE_0 | 0xffff0000);
 
 	/* Memory arbitration state */
 	I915_WRITE(MI_ARB_STATE, dev_priv->saveMI_ARB_STATE | 0xffff0000);

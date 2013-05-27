@@ -1212,6 +1212,7 @@ static bool IS_DISPLAYREG(u32 reg)
 	case GEN6_UCGCTL2:
 	case GEN7_UCGCTL4:
 	case GEN7_CXT_SIZE:
+	case GEN7_CACHE_MODE_0:
 	/* TBD: Clean this up after Turbo registers are added */
 	case VLV_RENDER_C_STATE_CONTROL_1_REG:
 	case VLV_RC6_WAKE_RATE_LIMIT_REG:

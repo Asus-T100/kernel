@@ -476,7 +476,7 @@ static int init_render_ring(struct intel_ring_buffer *ring)
 		 *  policy. [...] This bit must be reset.  LRA replacement
 		 *  policy is not supported."
 		 */
-		I915_WRITE(CACHE_MODE_0,
+		I915_WRITE(CACHE_MODE_0_OFFSET(dev),
 			   _MASKED_BIT_DISABLE(CM0_STC_EVICT_DISABLE_LRA_SNB));
 
 		/* This is not explicitly set for GEN6, so read the register.
