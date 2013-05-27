@@ -4153,7 +4153,7 @@ static struct early_suspend intel_display_early_suspend = {
 	.resume = display_late_resume,
 };
 
-void intel_s0ix_init(struct drm_device *dev)
+void intel_display_pm_init(struct drm_device *dev)
 {
 	gdev = dev;
 	register_early_suspend(&intel_display_early_suspend);
@@ -4178,7 +4178,7 @@ void intel_init_pm(struct drm_device *dev)
 	struct drm_i915_private *dev_priv = dev->dev_private;
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
-	intel_s0ix_init(dev);
+	intel_display_pm_init(dev);
 #endif
 
 	if (I915_HAS_FBC(dev)) {
