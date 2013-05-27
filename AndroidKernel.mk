@@ -29,6 +29,7 @@ KERNEL_SOC_clovertrail := ctp
 KERNEL_SOC_merrifield := mrfl
 KERNEL_SOC_baytrail := byt
 KERNEL_SOC_moorefield := moor
+KERNEL_SOC_carboncanyon := crc
 
 KERNEL_SOC := $(KERNEL_SOC_$(TARGET_BOARD_PLATFORM))
 
