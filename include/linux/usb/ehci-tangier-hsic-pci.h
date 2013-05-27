@@ -25,11 +25,12 @@
 #define PMU_HW_PEN0 0x108
 #define PMU_HW_PEN1 0x10C
 
-#define HSIC_L1_AUTOSUSPEND                     1
-#define HSIC_L1_INACTIVITYDURATION              1500
-#define HSIC_L2_AUTOSUSPEND                     1
-#define HSIC_L2_INACTIVITYDURATION              1500
-#define HSIC_REMOTEWAKEUP                       1
+/* Port Inactivity Duratoin is default value for L2 suspend */
+#define HSIC_PORT_INACTIVITYDURATION              1500
+/* This is the default value for L2 autosuspend enable */
+#define HSIC_AUTOSUSPEND                          1
+#define HSIC_BUS_INACTIVITYDURATION               1500
+#define HSIC_REMOTEWAKEUP                         1
 
 struct hsic_tangier_priv {
 	struct delayed_work  hsic_aux;
@@ -45,13 +46,11 @@ struct hsic_tangier_priv {
 	unsigned             hsic_stopped:1;
 
 	unsigned             remoteWakeup_enable;
-	unsigned             L2_autosuspend_enable;
-	unsigned             L1_autosuspend_enable;
+	unsigned             autosuspend_enable;
 	unsigned             aux_gpio;
 	unsigned             wakeup_gpio;
-	unsigned             L2_latency;
-	unsigned             L1_inactivityDuration;
-	unsigned             L2_inactivityDuration;
+	unsigned             port_inactivityDuration;
+	unsigned             bus_inactivityDuration;
 	spinlock_t           hsic_lock;
 	/* Root hub device */
 	struct usb_device           *rh_dev;
