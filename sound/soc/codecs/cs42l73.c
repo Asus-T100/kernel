@@ -1323,26 +1323,6 @@ static struct snd_soc_dai_driver cs42l73_dai[] = {
 	 }
 };
 
-static int cs42l73_set_mic_bias(struct snd_soc_codec *codec, int state)
-{
-
-	mutex_lock(&codec->mutex);
-	switch (state) {
-	case MIC_BIAS_DISABLE:
-		/* FIXME, need to remove this eventaully */
-		snd_soc_dapm_disable_pin(&codec->dapm, "MIC1 Bias");
-		break;
-
-	case MIC_BIAS_ENABLE:
-		snd_soc_dapm_force_enable_pin(&codec->dapm, "MIC1 Bias");
-		break;
-	}
-	snd_soc_dapm_sync(&codec->dapm);
-	mutex_unlock(&codec->mutex);
-
-	return 0;
-}
-
 void cs42l73_mclk_switch(struct device *dev, bool mode)
 {
 	struct snd_soc_card *card = dev_get_drvdata(dev);
@@ -1465,7 +1445,7 @@ static int cs42l73_probe(struct snd_soc_codec *codec)
 
 static int cs42l73_remove(struct snd_soc_codec *codec)
 {
-	struct cs42l73_private *cs42l73;
+	struct cs42l73_private *cs42l73 = snd_soc_codec_get_drvdata(codec);
 	/* put the codec in reset state */
 	if (cs42l73->codec_rst >= 0) {
 		gpio_set_value(cs42l73->codec_rst, 0);
