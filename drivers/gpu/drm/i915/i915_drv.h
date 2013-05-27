@@ -1615,10 +1615,6 @@ extern int i915_restore_state(struct drm_device *dev);
 extern void i915_pm_init(struct drm_device *dev);
 extern void i915_pm_deinit(struct drm_device *dev);
 
-/* i915_suspend.c */
-extern int i915_save_state(struct drm_device *dev);
-extern int i915_restore_state(struct drm_device *dev);
-
 /* i915_sysfs.c */
 void i915_setup_sysfs(struct drm_device *dev_priv);
 void i915_teardown_sysfs(struct drm_device *dev_priv);

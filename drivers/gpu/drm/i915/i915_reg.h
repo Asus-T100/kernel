@@ -698,7 +698,12 @@
 #define   MI_ARB_DISPLAY_PRIORITY_A_B		(0 << 0)	/* display A > display B */
 #define   MI_ARB_DISPLAY_PRIORITY_B_A		(1 << 0)	/* display B > display A */
 
-#define CACHE_MODE_0	0x02120 /* 915+ only */
+#define CACHE_MODE_0	0x02120 /* 915+ only Pre-IVB */
+#define GEN7_CACHE_MODE_0	0x07000 /* IVB+ */
+/* CACHE_MODE_0 offset is different for per-IVB and IVB+ systems */
+#define CACHE_MODE_0_OFFSET(d) ((INTEL_INFO(d)->gen >= 7) ? \
+					GEN7_CACHE_MODE_0 : CACHE_MODE_0)
+
 #define   CM0_IZ_OPT_DISABLE      (1<<6)
 #define   CM0_ZR_OPT_DISABLE      (1<<5)
 #define	  CM0_STC_EVICT_DISABLE_LRA_SNB	(1<<5)
