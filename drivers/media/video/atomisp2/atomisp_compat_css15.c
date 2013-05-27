@@ -1246,3 +1246,9 @@ void atomisp_css_morph_table_free(struct atomisp_css_morph_table *table)
 {
 	sh_css_morph_table_free(table);
 }
+
+void atomisp_css_set_cont_prev_start_time(struct atomisp_device *isp,
+					unsigned int overlap)
+{
+	sh_css_set_cont_prev_start_time(overlap);
+}

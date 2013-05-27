@@ -1341,9 +1341,17 @@ static int atomisp_streamon(struct file *file, void *fh,
 
 	if (isp->isp_subdev.continuous_mode->val &&
 	    isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO) {
+		struct v4l2_mbus_framefmt *sink;
+
+		sink = atomisp_subdev_get_ffmt(&isp->isp_subdev.subdev, NULL,
+				       V4L2_SUBDEV_FORMAT_ACTIVE,
+				       ATOMISP_SUBDEV_PAD_SINK);
+
 		INIT_COMPLETION(isp->init_done);
 		isp->delayed_init = ATOMISP_DELAYED_INIT_QUEUED;
 		queue_work(isp->delayed_init_workq, &isp->delayed_init_work);
+		atomisp_css_set_cont_prev_start_time(isp,
+				ATOMISP_CALC_CSS_PREV_OVERLAP(sink->height));
 	}
 
 	/* Make sure that update_isp_params is called at least once.*/

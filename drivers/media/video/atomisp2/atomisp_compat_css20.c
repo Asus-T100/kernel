@@ -2036,3 +2036,11 @@ void atomisp_css_morph_table_free(struct atomisp_css_morph_table *table)
 {
 	ia_css_morph_table_free(table);
 }
+
+void atomisp_css_set_cont_prev_start_time(struct atomisp_device *isp,
+					unsigned int overlap)
+{
+	/* CSS 2.0 doesn't support this API. */
+	dev_info(isp->dev, "set cont prev start time is not supported.\n");
+	return;
+}
