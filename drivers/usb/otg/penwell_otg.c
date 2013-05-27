@@ -792,10 +792,8 @@ static int penwell_otg_set_vbus(struct usb_otg *otg, bool enabled)
 			goto done;
 		}
 
-		dev_dbg(pnw->dev, "notify power_supply_charger_event\n");
-		dev_dbg(pnw->dev, "mA = %d\n", evt->cap.mA);
-		dev_dbg(pnw->dev, "event = %d\n", evt->cap.chrg_evt);
-		dev_dbg(pnw->dev, "type = %s\n",
+		dev_dbg(pnw->dev, "set_vbus mA = %d, event = %d, type = %s\n",
+				evt->cap.mA, evt->cap.chrg_evt,
 				psc_string(evt->cap.chrg_type));
 
 		spin_lock_irqsave(&pnw->charger_lock, flags);
@@ -2922,11 +2920,9 @@ static void penwell_otg_psc_notify_work(struct work_struct *work)
 		spin_unlock_irqrestore(&pnw->cap_lock, flags);
 
 		if (chrg_event != -1) {
-			dev_dbg(pnw->dev, "notify power_supply event\n");
-			dev_dbg(pnw->dev, "mA = %d\n", psc_cap.mA);
-			dev_dbg(pnw->dev, "evt = %d\n", psc_cap.chrg_evt);
-			dev_dbg(pnw->dev, "type = %s\n",
-					psc_string(psc_cap.chrg_type));
+			dev_dbg(pnw->dev, "mA = %d, evt = %d, type = %s\n",
+				psc_cap.mA, psc_cap.chrg_evt,
+				psc_string(psc_cap.chrg_type));
 
 			atomic_notifier_call_chain(&iotg->otg.notifier,
 					USB_EVENT_CHARGER, &psc_cap);
