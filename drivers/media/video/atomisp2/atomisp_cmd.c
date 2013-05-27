@@ -855,6 +855,11 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error,
 
 			pipe->buffers_in_css--;
 			frame = buffer.css_buffer.data.frame;
+			if (!frame) {
+				WARN_ON(1);
+				break;
+			}
+
 			if (isp->params.flash_state == ATOMISP_FLASH_ONGOING) {
 				if (frame->flash_state
 				    == CSS_FRAME_FLASH_STATE_PARTIAL)
@@ -880,6 +885,11 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error,
 			}
 			pipe->buffers_in_css--;
 			frame = buffer.css_buffer.data.frame;
+			if (!frame) {
+				WARN_ON(1);
+				break;
+			}
+
 			vb = atomisp_css_frame_to_vbuf(pipe, frame);
 			if (!vb) {
 				WARN_ON(1);
