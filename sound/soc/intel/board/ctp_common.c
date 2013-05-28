@@ -542,6 +542,16 @@ static int __devexit snd_ctp_mc_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static void snd_ctp_mc_shutdown(struct platform_device *pdev)
+{
+	struct snd_soc_card *soc_card = platform_get_drvdata(pdev);
+	struct ctp_mc_private *ctx = snd_soc_card_get_drvdata(soc_card);
+
+	pr_debug("In %s\n", __func__);
+	/* unregister jack intr */
+	snd_ctp_unregister_jack(ctx, pdev);
+}
+
 static int snd_ctp_jack_init(struct snd_soc_pcm_runtime *runtime,
 						bool jack_supported)
 {
@@ -715,6 +725,7 @@ static struct platform_driver snd_ctp_mc_driver = {
 	},
 	.probe = snd_ctp_mc_probe,
 	.remove = __devexit_p(snd_ctp_mc_remove),
+	.shutdown = snd_ctp_mc_shutdown,
 	.id_table = ctp_audio_ids,
 };
 
