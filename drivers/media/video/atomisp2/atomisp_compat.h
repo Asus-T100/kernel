@@ -228,6 +228,8 @@ void atomisp_css_input_set_two_pixels_per_clock(struct atomisp_device *isp,
 void atomisp_css_enable_raw_binning(struct atomisp_device *isp,
 					bool enable);
 
+void atomisp_css_enable_dz(struct atomisp_device *isp, bool enable);
+
 void atomisp_css_capture_set_mode(struct atomisp_device *isp,
 				enum atomisp_css_capture_mode mode);
 

@@ -954,6 +954,13 @@ void atomisp_css_enable_raw_binning(struct atomisp_device *isp,
 	}
 }
 
+void atomisp_css_enable_dz(struct atomisp_device *isp, bool enable)
+{
+	int i;
+	for (i = 0; i < IA_CSS_PIPE_ID_NUM; i++)
+		isp->css_env.pipe_extra_configs[i].enable_dz = enable;
+}
+
 void atomisp_css_capture_set_mode(struct atomisp_device *isp,
 				enum atomisp_css_capture_mode mode)
 {

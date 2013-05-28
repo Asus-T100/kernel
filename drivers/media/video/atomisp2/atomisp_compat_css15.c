@@ -620,6 +620,10 @@ void atomisp_css_enable_raw_binning(struct atomisp_device *isp,
 	sh_css_enable_raw_binning(enable);
 }
 
+void atomisp_css_enable_dz(struct atomisp_device *isp, bool enable)
+{
+}
+
 void atomisp_css_capture_set_mode(struct atomisp_device *isp,
 				enum atomisp_css_capture_mode mode)
 {
