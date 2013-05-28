@@ -820,17 +820,9 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error,
 				break;
 			}
 			/* update the 3A data to ISP context */
-			if (isp->params.s3a_output_buf &&
-			    isp->params.s3a_output_bytes && !error) {
-				/* To avoid racing with atomisp_3a_stat() */
-				err = atomisp_css_get_3a_statistics(isp,
-								    &buffer);
-				if (!err)
-					isp->params.s3a_buf_data_valid = true;
-				else
-					dev_err(isp->dev,
-						"get 3a statistics failed, not enough memory\n");
-			}
+			if (!error)
+				atomisp_css_get_3a_statistics(isp, &buffer);
+
 			isp->s3a_bufs_in_css[css_pipe_id]--;
 
 			atomisp_3a_stats_ready_event(isp);
@@ -842,16 +834,9 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error,
 				isp->sw_contex.invalid_dis = 0;
 				break;
 			}
-			if (isp->params.dis_ver_proj_bytes &&
-			    isp->params.dis_ver_proj_buf &&
-			    isp->params.dis_hor_proj_buf &&
-			    isp->params.dis_hor_proj_bytes &&
-			    !error) {
-				/* To avoid racing with atomisp_get_dis_stat()*/
+			if (!error)
 				atomisp_css_get_dis_statistics(isp, &buffer);
 
-				isp->params.dis_proj_data_valid = true;
-			}
 			isp->dis_bufs_in_css--;
 			break;
 		case CSS_BUFFER_TYPE_VF_OUTPUT_FRAME:

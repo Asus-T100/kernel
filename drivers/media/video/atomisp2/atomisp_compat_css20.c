@@ -843,8 +843,13 @@ int atomisp_alloc_dis_coef_buf(struct atomisp_device *isp)
 int atomisp_css_get_3a_statistics(struct atomisp_device *isp,
 				  struct atomisp_css_buffer *isp_css_buffer)
 {
-	ia_css_get_3a_statistics(isp->params.s3a_user_stat,
+	if (isp->params.s3a_user_stat &&
+			isp->params.s3a_output_bytes) {
+		/* To avoid racing with atomisp_3a_stat() */
+		ia_css_get_3a_statistics(isp->params.s3a_user_stat,
 				 isp_css_buffer->css_buffer.data.stats_3a);
+		isp->params.s3a_buf_data_valid = true;
+	}
 
 	return 0;
 }
@@ -852,8 +857,11 @@ int atomisp_css_get_3a_statistics(struct atomisp_device *isp,
 void atomisp_css_get_dis_statistics(struct atomisp_device *isp,
 				    struct atomisp_css_buffer *isp_css_buffer)
 {
-	ia_css_get_dvs_statistics(isp->params.dvs_stat,
+	if (isp->params.dvs_stat) {
+		ia_css_get_dvs_statistics(isp->params.dvs_stat,
 				  isp_css_buffer->css_buffer.data.stats_dvs);
+		isp->params.dis_proj_data_valid = true;
+	}
 }
 
 int atomisp_css_dequeue_event(struct atomisp_css_event *current_event)
