@@ -230,9 +230,83 @@ void intel_register_i2c_camera_device(struct sfi_device_table_entry *pentry,
 	return;
 }
 
+#ifdef CONFIG_ACPI
+#if 0
+static int match_name(struct device *dev, void *data)
+{
+	const char *name = data;
+	struct i2c_client *client = to_i2c_client(dev);
+	return !strncmp(client->name, name, strlen(client->name));
+}
+
+struct i2c_client *i2c_find_client_by_name(char *name)
+{
+	struct device *dev = bus_find_device(&i2c_bus_type, NULL,
+						name, match_name);
+	return dev ? to_i2c_client(dev) : NULL;
+}
+#endif
+/*
+ * In BTY, ACPI enumination will register all the camera i2c devices
+ * which will cause v4l2_i2c_new_subdev_board() failed called in atomisp
+ * driver.
+ * Here we unregister the devices registered by ACPI
+ */
+static void atomisp_unregister_acpi_devices(struct atomisp_platform_data *pdata)
+{
+	const char *subdev_name[] = {
+		"3-0053",	/* FFRD8 lm3554 */
+		"4-0036",	/* ov2722 */
+		"4-0010",	/* imx1xx Sensor*/
+		"4-0053",	/* FFRD10 lm3554 */
+		"4-0054",	/* imx1xx EEPROM*/
+		"4-000c",	/* imx1xx driver*/
+#if 0
+		"INTCF0B:00",	/* From ACPI ov2722 */
+		"INTCF1A:00",	/* From ACPI imx175 */
+		"INTCF1C:00",	/* From ACPI lm3554 */
+#endif
+	};
+	struct device *dev;
+	struct i2c_client *client;
+	struct i2c_board_info board_info;
+	int i;
+	/* search by device name */
+	for (i = 0; i < ARRAY_SIZE(subdev_name); i++) {
+		dev = bus_find_device_by_name(&i2c_bus_type, NULL,
+					      subdev_name[i]);
+		if (dev) {
+			client = to_i2c_client(dev);
+			board_info.flags = client->flags;
+			board_info.addr = client->addr;
+			board_info.irq = client->irq;
+			strlcpy(board_info.type, client->name,
+				sizeof(client->name));
+			i2c_unregister_device(client);
+		}
+	}
+#if 0
+	/* search by client name */
+	for (i = 0; i < ARRAY_SIZE(subdev_name); i++) {
+		client = i2c_find_client_by_name(subdev_name[i]);
+		if (client) {
+			board_info.flags = client->flags;
+			board_info.addr = client->addr;
+			board_info.irq = client->irq;
+			strlcpy(board_info.type, client->name,
+				sizeof(client->name));
+			i2c_unregister_device(client);
+		}
+	}
+#endif
+}
+#endif
 const struct atomisp_platform_data *atomisp_get_platform_data(void)
 {
 	if (atomisp_platform_data) {
+#ifdef CONFIG_ACPI
+		atomisp_unregister_acpi_devices(atomisp_platform_data);
+#endif
 		atomisp_platform_data->spid = &spid;
 		return atomisp_platform_data;
 	} else {
