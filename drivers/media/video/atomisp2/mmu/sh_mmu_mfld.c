@@ -21,7 +21,6 @@
  *
  */
 
-
 #include <sh_css.h>
 #include <host/mmu_local.h>
 
@@ -52,7 +51,7 @@ static int sh_set_pd_base(struct isp_mmu *mmu,
 			  phys_addr_t phys)
 {
 	/*mmgr_set_base_address(HOST_ADDRESS(u32)phys);*/
-	sh_css_mmu_set_page_table_base_index(HOST_ADDRESS(u32)phys);
+	atomisp_css_mmu_set_page_table_base_index(HOST_ADDRESS(u32)phys);
 	return 0;
 }
 

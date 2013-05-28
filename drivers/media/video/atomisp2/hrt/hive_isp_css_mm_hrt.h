@@ -29,6 +29,7 @@
 #include <stdlib.h>
 #endif
 #include <hmm/hmm.h>
+#include <hrt/hive_isp_css_custom_host_hrt.h>
 
 #define HRT_BUF_FLAG_CACHED (1 << 0)
 
@@ -44,6 +45,7 @@ struct hrt_userbuffer_attr {
 	unsigned int		pgnr;
 };
 
+void hrt_isp_css_mm_init(void);
 void hrt_isp_css_mm_set_user_ptr(unsigned int userptr,
 				unsigned int num_pages, enum hrt_userptr_type);
 

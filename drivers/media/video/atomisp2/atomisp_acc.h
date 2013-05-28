@@ -98,7 +98,7 @@ int atomisp_acc_wait(struct atomisp_device *isp,
 
 /*
  * Appends the loaded acceleration binary extensions to the
- * current ISP mode. Must be called just before sh_css_start().
+ * current ISP mode. Must be called just before atomisp_css_start().
  */
 int atomisp_acc_load_extensions(struct atomisp_device *isp);
 

@@ -182,9 +182,9 @@ static int atomisp_get_css_buf_type(struct atomisp_device *isp,
 	if (source_pad == ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE ||
 	    (source_pad == ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW &&
 	     isp->isp_subdev.run_mode->val != ATOMISP_RUN_MODE_VIDEO))
-		return SH_CSS_BUFFER_TYPE_OUTPUT_FRAME;
+		return CSS_BUFFER_TYPE_OUTPUT_FRAME;
 	else
-		return SH_CSS_BUFFER_TYPE_VF_OUTPUT_FRAME;
+		return CSS_BUFFER_TYPE_VF_OUTPUT_FRAME;
 }
 
 /* queue all available buffers to css */
@@ -596,7 +596,7 @@ static int do_isp_mm_remap(struct atomisp_device *isp,
 }
 
 static int frame_mmap(struct atomisp_device *isp,
-	const struct sh_css_frame *frame, struct vm_area_struct *vma)
+	const struct atomisp_css_frame *frame, struct vm_area_struct *vma)
 {
 	void *isp_virt;
 	u32 host_virt;
@@ -669,7 +669,7 @@ int atomisp_videobuf_mmap_mapper(struct videobuf_queue *q,
  * There is also padding on the right (padded_width - width).
  */
 static int remove_pad_from_frame(struct atomisp_device *isp,
-		struct sh_css_frame *in_frame, __u32 width, __u32 height)
+		struct atomisp_css_frame *in_frame, __u32 width, __u32 height)
 {
 	unsigned int i;
 	unsigned short *buffer;
@@ -708,7 +708,7 @@ static int atomisp_mmap(struct file *file, struct vm_area_struct *vma)
 	struct video_device *vdev = video_devdata(file);
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
-	struct sh_css_frame *raw_virt_addr;
+	struct atomisp_css_frame *raw_virt_addr;
 	u32 start = vma->vm_start;
 	u32 end = vma->vm_end;
 	u32 size = end - start;

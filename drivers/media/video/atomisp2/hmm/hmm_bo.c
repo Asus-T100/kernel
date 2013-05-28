@@ -974,8 +974,11 @@ int hmm_bo_bind(struct hmm_buffer_object *bo)
 	 * meaning updating 1 PTE, but the MMU fetches 4 PTE at one time,
 	 * so the additional 3 PTEs are invalid.
 	 */
-	isp_mmu_flush_tlb_range(&bdev->mmu, bo->vm_node->start,
-				(bo->pgnr << PAGE_SHIFT));
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+	if (bo->vm_node->start != 0x0)
+#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
+		isp_mmu_flush_tlb_range(&bdev->mmu, bo->vm_node->start,
+						(bo->pgnr << PAGE_SHIFT));
 
 	bo->status |= HMM_BO_BINDED;
 

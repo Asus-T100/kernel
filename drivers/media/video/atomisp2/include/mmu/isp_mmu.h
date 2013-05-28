@@ -115,6 +115,7 @@ struct isp_mmu_client {
 struct isp_mmu {
 	struct isp_mmu_client *driver;
 	unsigned int l1_pte;
+	unsigned int base_address;
 
 	struct mutex pt_mutex;
 #ifdef USE_KMEM_CACHE

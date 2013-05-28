@@ -31,6 +31,11 @@
 #include "atomisp_internal.h"
 #include "atomisp_cmd.h"
 
+void atomisp_store_uint32(hrt_address addr, uint32_t data)
+{
+	device_store_uint32(addr, data);
+}
+
 int atomisp_css_init(struct atomisp_device *isp)
 {
 	device_set_base_address(0);
@@ -142,19 +147,32 @@ void atomisp_set_css_env(struct atomisp_device *isp)
 void atomisp_css_init_struct(struct atomisp_device *isp)
 {
 	/* obtain the pointers to the default configurations */
-	sh_css_get_tnr_config(&isp->params.default_tnr_config);
-	sh_css_get_nr_config(&isp->params.default_nr_config);
-	sh_css_get_ee_config(&isp->params.default_ee_config);
-	sh_css_get_ob_config(&isp->params.default_ob_config);
-	sh_css_get_dp_config(&isp->params.default_dp_config);
-	sh_css_get_wb_config(&isp->params.default_wb_config);
-	sh_css_get_cc_config(&isp->params.default_cc_config);
-	sh_css_get_de_config(&isp->params.default_de_config);
-	sh_css_get_gc_config(&isp->params.default_gc_config);
-	sh_css_get_3a_config(&isp->params.default_3a_config);
-	sh_css_get_macc_table(&isp->params.default_macc_table);
-	sh_css_get_ctc_table(&isp->params.default_ctc_table);
-	sh_css_get_gamma_table(&isp->params.default_gamma_table);
+	sh_css_get_tnr_config((const struct atomisp_css_tnr_config **)
+				&isp->params.default_tnr_config);
+	sh_css_get_nr_config((const struct atomisp_css_nr_config **)
+				&isp->params.default_nr_config);
+	sh_css_get_ee_config((const struct atomisp_css_ee_config **)
+				&isp->params.default_ee_config);
+	sh_css_get_ob_config((const struct atomisp_css_ob_config **)
+				&isp->params.default_ob_config);
+	sh_css_get_dp_config((const struct atomisp_css_dp_config **)
+				&isp->params.default_dp_config);
+	sh_css_get_wb_config((const struct atomisp_css_wb_config **)
+				&isp->params.default_wb_config);
+	sh_css_get_cc_config((const struct atomisp_css_cc_config **)
+				&isp->params.default_cc_config);
+	sh_css_get_de_config((const struct atomisp_css_de_config **)
+				&isp->params.default_de_config);
+	sh_css_get_gc_config((const struct atomisp_css_gc_config **)
+				&isp->params.default_gc_config);
+	sh_css_get_3a_config((const struct atomisp_css_3a_config **)
+				&isp->params.default_3a_config);
+	sh_css_get_macc_table((const struct atomisp_css_macc_table **)
+				&isp->params.default_macc_table);
+	sh_css_get_ctc_table((const struct atomisp_css_ctc_table **)
+				&isp->params.default_ctc_table);
+	sh_css_get_gamma_table((const struct atomisp_css_gamma_table **)
+				&isp->params.default_gamma_table);
 
 	/* we also initialize our configurations with the defaults */
 	isp->params.tnr_config  = *isp->params.default_tnr_config;
@@ -223,6 +241,11 @@ void atomisp_css_mmu_invalidate_cache(void)
 void atomisp_css_mmu_invalidate_tlb(void)
 {
 	sh_css_enable_sp_invalidate_tlb();
+}
+
+void atomisp_css_mmu_set_page_table_base_index(unsigned long base_index)
+{
+	sh_css_mmu_set_page_table_base_index((hrt_data)base_index);
 }
 
 int atomisp_css_start(struct atomisp_device *isp,
@@ -520,11 +543,15 @@ void atomisp_css_get_dis_statistics(struct atomisp_device *isp,
 
 int atomisp_css_dequeue_event(struct atomisp_css_event *current_event)
 {
-	if (sh_css_dequeue_event(&current_event->pipe, &current_event->event)
-	    != sh_css_success)
+	if (sh_css_dequeue_event(&current_event->pipe,
+				&current_event->event.type) != sh_css_success)
 		return -EINVAL;
 
 	return 0;
+}
+
+void atomisp_css_temp_pipe_to_pipe_id(struct atomisp_css_event *current_event)
+{
 }
 
 int atomisp_css_input_set_resolution(struct atomisp_device *isp,
@@ -613,8 +640,7 @@ void atomisp_css_enable_continuous(struct atomisp_device *isp,
 	sh_css_enable_continuous(enable);
 }
 
-void atomisp_css_enable_cont_capt(struct atomisp_device *isp,
-				  bool enable, bool stop_copy_preview)
+void atomisp_css_enable_cont_capt(bool enable, bool stop_copy_preview)
 {
 	sh_css_enable_cont_capt(enable, stop_copy_preview);
 }
@@ -942,25 +968,25 @@ void atomisp_css_request_flash(struct atomisp_device *isp)
 }
 
 void atomisp_css_set_wb_config(struct atomisp_device *isp,
-			const struct atomisp_css_wb_config *wb_config)
+			struct atomisp_css_wb_config *wb_config)
 {
 	sh_css_set_wb_config(wb_config);
 }
 
 void atomisp_css_set_ob_config(struct atomisp_device *isp,
-			const struct atomisp_css_ob_config *ob_config)
+			struct atomisp_css_ob_config *ob_config)
 {
 	sh_css_set_ob_config(ob_config);
 }
 
 void atomisp_css_set_dp_config(struct atomisp_device *isp,
-			const struct atomisp_css_dp_config *dp_config)
+			struct atomisp_css_dp_config *dp_config)
 {
 	sh_css_set_dp_config(dp_config);
 }
 
 void atomisp_css_set_de_config(struct atomisp_device *isp,
-			const struct atomisp_css_de_config *de_config)
+			struct atomisp_css_de_config *de_config)
 {
 	sh_css_set_de_config(de_config);
 }
@@ -971,61 +997,61 @@ void atomisp_css_set_default_de_config(struct atomisp_device *isp)
 }
 
 void atomisp_css_set_ce_config(struct atomisp_device *isp,
-			const struct atomisp_css_ce_config *ce_config)
+			struct atomisp_css_ce_config *ce_config)
 {
 	sh_css_set_ce_config(ce_config);
 }
 
 void atomisp_css_set_nr_config(struct atomisp_device *isp,
-			const struct atomisp_css_nr_config *nr_config)
+			struct atomisp_css_nr_config *nr_config)
 {
 	sh_css_set_nr_config(nr_config);
 }
 
 void atomisp_css_set_ee_config(struct atomisp_device *isp,
-			const struct atomisp_css_ee_config *ee_config)
+			struct atomisp_css_ee_config *ee_config)
 {
 	sh_css_set_ee_config(ee_config);
 }
 
 void atomisp_css_set_tnr_config(struct atomisp_device *isp,
-			const struct atomisp_css_tnr_config *tnr_config)
+			struct atomisp_css_tnr_config *tnr_config)
 {
 	sh_css_set_tnr_config(tnr_config);
 }
 
 void atomisp_css_set_cc_config(struct atomisp_device *isp,
-			const struct atomisp_css_cc_config *cc_config)
+			struct atomisp_css_cc_config *cc_config)
 {
 	sh_css_set_cc_config(cc_config);
 }
 
 void atomisp_css_set_macc_table(struct atomisp_device *isp,
-			const struct atomisp_css_macc_table *macc_table)
+			struct atomisp_css_macc_table *macc_table)
 {
 	sh_css_set_macc_table(macc_table);
 }
 
 void atomisp_css_set_gamma_table(struct atomisp_device *isp,
-			const struct atomisp_css_gamma_table *gamma_table)
+			struct atomisp_css_gamma_table *gamma_table)
 {
 	sh_css_set_gamma_table(gamma_table);
 }
 
 void atomisp_css_set_ctc_table(struct atomisp_device *isp,
-			const struct atomisp_css_ctc_table *ctc_table)
+			struct atomisp_css_ctc_table *ctc_table)
 {
 	sh_css_set_ctc_table(ctc_table);
 }
 
 void atomisp_css_set_gc_config(struct atomisp_device *isp,
-			const struct atomisp_css_gc_config *gc_config)
+			struct atomisp_css_gc_config *gc_config)
 {
 	sh_css_set_gc_config(gc_config);
 }
 
 void atomisp_css_set_3a_config(struct atomisp_device *isp,
-			const struct atomisp_css_3a_config *s3a_config)
+			struct atomisp_css_3a_config *s3a_config)
 {
 	sh_css_set_3a_config(s3a_config);
 }
@@ -1129,7 +1155,7 @@ int atomisp_css_get_ctc_table(struct atomisp_device *isp,
 	const struct sh_css_ctc_table *tab;
 
 	sh_css_get_ctc_table(&tab);
-	memcpy(config, tab, sizeof(*config));
+	memcpy(config, tab->data, sizeof(tab->data));
 	return 0;
 }
 
@@ -1139,7 +1165,7 @@ int atomisp_css_get_gamma_table(struct atomisp_device *isp,
 	const struct sh_css_gamma_table *tab;
 
 	sh_css_get_gamma_table(&tab);
-	memcpy(config, tab, sizeof(*config));
+	memcpy(config, tab->data, sizeof(tab->data));
 
 	return 0;
 }
@@ -1172,7 +1198,7 @@ struct atomisp_css_shading_table *atomisp_css_shading_table_alloc(
 }
 
 void atomisp_css_set_shading_table(struct atomisp_device *isp,
-		const struct atomisp_css_shading_table *table)
+				struct atomisp_css_shading_table *table)
 {
 	sh_css_set_shading_table(table);
 }
@@ -1189,7 +1215,7 @@ struct atomisp_css_morph_table *atomisp_css_morph_table_allocate(
 }
 
 void atomisp_css_set_morph_table(struct atomisp_device *isp,
-				const struct atomisp_css_morph_table *table)
+					struct atomisp_css_morph_table *table)
 {
 	sh_css_set_morph_table(table);
 }

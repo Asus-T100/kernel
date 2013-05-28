@@ -193,6 +193,8 @@ struct atomisp_css_params {
 	int s3a_output_bytes;
 	bool s3a_buf_data_valid;
 
+	bool dis_proj_data_valid;
+
 	/* current configurations */
 	struct atomisp_css_dp_config   dp_config;
 	struct atomisp_css_wb_config   wb_config;
@@ -223,12 +225,11 @@ struct atomisp_css_params {
 	struct ia_css_3a_statistics *s3a_user_stat;
 	struct ia_css_dvs_coefficients *dvs_coeff;
 	struct ia_css_dvs_statistics *dvs_stat;
-	bool dvs_proj_data_valid;
 	int  dvs_hor_coef_bytes;
 	int  dvs_ver_coef_bytes;
 	int  dvs_ver_proj_bytes;
 	int  dvs_hor_proj_bytes;
-#else
+#else /* CONFIG_VIDEO_ATOMISP_CSS20 */
 	struct sh_css_3a_output *s3a_output_buf;
 	/* DIS Coefficients */
 	short *dis_hor_coef_buf;
@@ -240,24 +241,23 @@ struct atomisp_css_params {
 	int  dis_ver_proj_bytes;
 	int *dis_hor_proj_buf;
 	int  dis_hor_proj_bytes;
-	bool dis_proj_data_valid;
 
 	/* default configurations */
-	const struct atomisp_css_dp_config   *default_dp_config;
-	const struct atomisp_css_wb_config   *default_wb_config;
-	const struct atomisp_css_cc_config   *default_cc_config;
-	const struct atomisp_css_nr_config   *default_nr_config;
-	const struct atomisp_css_ee_config   *default_ee_config;
-	const struct atomisp_css_ob_config   *default_ob_config;
-	const struct atomisp_css_de_config   *default_de_config;
-	const struct atomisp_css_ce_config   *default_ce_config;
-	const struct atomisp_css_gc_config   *default_gc_config;
-	const struct atomisp_css_tnr_config  *default_tnr_config;
-	const struct atomisp_css_3a_config   *default_3a_config;
-	const struct atomisp_css_macc_table  *default_macc_table;
-	const struct atomisp_css_ctc_table   *default_ctc_table;
-	const struct atomisp_css_gamma_table *default_gamma_table;
-#endif
+	struct atomisp_css_dp_config   *default_dp_config;
+	struct atomisp_css_wb_config   *default_wb_config;
+	struct atomisp_css_cc_config   *default_cc_config;
+	struct atomisp_css_nr_config   *default_nr_config;
+	struct atomisp_css_ee_config   *default_ee_config;
+	struct atomisp_css_ob_config   *default_ob_config;
+	struct atomisp_css_de_config   *default_de_config;
+	struct atomisp_css_ce_config   *default_ce_config;
+	struct atomisp_css_gc_config   *default_gc_config;
+	struct atomisp_css_tnr_config  *default_tnr_config;
+	struct atomisp_css_3a_config   *default_3a_config;
+	struct atomisp_css_macc_table  *default_macc_table;
+	struct atomisp_css_ctc_table   *default_ctc_table;
+	struct atomisp_css_gamma_table *default_gamma_table;
+#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 
 	/* Flash */
 	int num_flash_frames;
@@ -314,7 +314,7 @@ struct atomisp_device {
 	struct {
 		struct list_head fw;
 		struct list_head memory_maps;
-		struct sh_css_pipeline *pipeline;
+		struct atomisp_css_pipeline *pipeline;
 		bool extension_mode;
 		struct ida ida;
 	} acc;
@@ -343,8 +343,8 @@ struct atomisp_device {
 	struct list_head s3a_stats;
 	struct list_head dis_stats;
 
-	struct sh_css_frame *vf_frame; /* TODO: needed? */
-	struct sh_css_frame *raw_output_frame;
+	struct atomisp_css_frame *vf_frame; /* TODO: needed? */
+	struct atomisp_css_frame *raw_output_frame;
 	enum atomisp_frame_status frame_status[VIDEO_MAX_FRAME];
 
 	int input_cnt;
@@ -394,7 +394,13 @@ extern void *atomisp_kernel_malloc(size_t bytes);
 extern void atomisp_kernel_free(void *ptr);
 
 #define MFLD_FW_PATH	"shisp_css15.bin"
+
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+#define ISP2400_FW_PATH   "shisp_2400_cssv2.bin"
+#define ISP2400B0_FW_PATH   "shisp_2400b0_cssv2.bin"
+#else /* CONFIG_VIDEO_ATOMISP_CSS20 */
 #define ISP2400_FW_PATH   "shisp_2400.bin"
 #define ISP2400B0_FW_PATH   "shisp_2400b0.bin"
+#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 
 #endif /* __ATOMISP_INTERNAL_H__ */

@@ -28,6 +28,7 @@
 #include "sh_css_sp.h"
 
 #define atomisp_css_pipe_id sh_css_pipe_id
+#define atomisp_css_pipeline	sh_css_pipeline
 #define atomisp_css_buffer_type sh_css_buffer_type
 #define atomisp_css_dis_data sh_css_dis_data
 #define atomisp_css_irq_info sh_css_interrupt_info
@@ -123,9 +124,13 @@ struct atomisp_css_buffer {
 	atomisp_css_3a_data *s3a_data;
 };
 
+struct atomisp_css_event_type {
+	enum sh_css_event_type type;
+};
+
 struct atomisp_css_event {
 	enum atomisp_css_pipe_id pipe;
-	enum sh_css_event_type event;
+	struct atomisp_css_event_type event;
 };
 
 void atomisp_css_mmu_invalidate_tlb(void);

@@ -472,7 +472,7 @@ static void print_csi_rx_errors(struct atomisp_device *isp)
 	atomisp_css_rx_get_irq_info(&infos);
 
 	dev_err(isp->dev, "CSI Receiver errors:\n");
-	if (infos & SH_CSS_RX_IRQ_INFO_BUFFER_OVERRUN)
+	if (infos & CSS_RX_IRQ_INFO_BUFFER_OVERRUN)
 		dev_err(isp->dev, "  buffer overrun");
 	if (infos & CSS_RX_IRQ_INFO_ERR_SOT)
 		dev_err(isp->dev, "  start-of-transmission error");
@@ -571,7 +571,7 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 		isp->sw_contex.invalid_s3a = 1;
 		isp->sw_contex.invalid_dis = 1;
 	}
-#endif
+#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 
 	spin_unlock_irqrestore(&isp->lock, flags);
 
@@ -1167,7 +1167,7 @@ irqreturn_t atomisp_isr_thread(int irq, void *isp_ptr)
 	spin_unlock_irqrestore(&isp->lock, flags);
 
 	while (!atomisp_css_dequeue_event(&current_event)) {
-		switch (current_event.event) {
+		switch (current_event.event.type) {
 		case CSS_EVENT_PIPELINE_DONE:
 			css_pipe_done = true;
 			break;
@@ -1177,17 +1177,21 @@ irqreturn_t atomisp_isr_thread(int irq, void *isp_ptr)
 			/* fall through */
 		case CSS_EVENT_3A_STATISTICS_DONE:
 		case CSS_EVENT_DIS_STATISTICS_DONE:
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+		case CSS_EVENT_PORT_EOF:
+#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 			break;
 		default:
 			dev_err(isp->dev, "unknown event 0x%x pipe:%d\n",
-				current_event.event, current_event.pipe);
+				current_event.event.type, current_event.pipe);
 			break;
 		}
 		kfifo_in(&events, &current_event, 1);
 	}
 
 	while (kfifo_out(&events, &current_event, 1)) {
-		switch (current_event.event) {
+		atomisp_css_temp_pipe_to_pipe_id(&current_event);
+		switch (current_event.event.type) {
 		case CSS_EVENT_OUTPUT_FRAME_DONE:
 			frame_done_found = true;
 			atomisp_buf_done(isp, 0,
@@ -1214,10 +1218,13 @@ irqreturn_t atomisp_isr_thread(int irq, void *isp_ptr)
 					 css_pipe_done);
 			break;
 		case CSS_EVENT_PIPELINE_DONE:
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+		case CSS_EVENT_PORT_EOF:
+#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 			break;
 		default:
 			dev_err(isp->dev, "unhandled css stored event: 0x%x\n",
-					current_event.event);
+					current_event.event.type);
 			break;
 		}
 	}
@@ -1326,28 +1333,28 @@ v4l2_fmt_to_sh_fmt(u32 fmt)
  */
 static int raw_output_format_match_input(u32 input, u32 output)
 {
-	if ((input == SH_CSS_INPUT_FORMAT_RAW_12) &&
+	if ((input == CSS_FORMAT_RAW_12) &&
 	    ((output == V4L2_PIX_FMT_SRGGB12) ||
 	     (output == V4L2_PIX_FMT_SGRBG12) ||
 	     (output == V4L2_PIX_FMT_SBGGR12) ||
 	     (output == V4L2_PIX_FMT_SGBRG12)))
 		return 0;
 
-	if ((input == SH_CSS_INPUT_FORMAT_RAW_10) &&
+	if ((input == CSS_FORMAT_RAW_10) &&
 	    ((output == V4L2_PIX_FMT_SRGGB10) ||
 	     (output == V4L2_PIX_FMT_SGRBG10) ||
 	     (output == V4L2_PIX_FMT_SBGGR10) ||
 	     (output == V4L2_PIX_FMT_SGBRG10)))
 		return 0;
 
-	if ((input == SH_CSS_INPUT_FORMAT_RAW_8) &&
+	if ((input == CSS_FORMAT_RAW_8) &&
 	    ((output == V4L2_PIX_FMT_SRGGB8) ||
 	     (output == V4L2_PIX_FMT_SGRBG8) ||
 	     (output == V4L2_PIX_FMT_SBGGR8) ||
 	     (output == V4L2_PIX_FMT_SGBRG8)))
 		return 0;
 
-	if ((input == SH_CSS_INPUT_FORMAT_RAW_16) &&
+	if ((input == CSS_FORMAT_RAW_16) &&
 	    (output == V4L2_PIX_FMT_SBGGR16))
 		return 0;
 
@@ -1565,8 +1572,8 @@ int atomisp_gamma(struct atomisp_device *isp, int flag,
 			return -EINVAL;
 	} else {
 		/* Set gamma table to isp parameters */
-		memcpy(&isp->params.gamma_table, config,
-		       sizeof(isp->params.gamma_table));
+		memcpy(&isp->params.gamma_table.data, config,
+		       sizeof(isp->params.gamma_table.data));
 		atomisp_css_set_gamma_table(isp, &isp->params.gamma_table);
 	}
 
@@ -1585,8 +1592,8 @@ int atomisp_ctc(struct atomisp_device *isp, int flag,
 			return -EINVAL;
 	} else {
 		/* Set ctc table to isp parameters */
-		memcpy(&isp->params.ctc_table, config,
-			sizeof(isp->params.ctc_table));
+		memcpy(&isp->params.ctc_table.data, config,
+			sizeof(isp->params.ctc_table.data));
 		atomisp_css_set_ctc_table(isp, &isp->params.ctc_table);
 	}
 
@@ -1678,6 +1685,7 @@ err_dis:
 static void atomisp_curr_user_grid_info(struct atomisp_device *isp,
 				    struct atomisp_grid_info *info)
 {
+#ifndef CONFIG_VIDEO_ATOMISP_CSS20
 	info->isp_in_width          = isp->params.curr_grid_info.isp_in_width;
 	info->isp_in_height         = isp->params.curr_grid_info.isp_in_height;
 	info->s3a_width             = isp->params.curr_grid_info.s3a_grid.width;
@@ -1694,17 +1702,15 @@ static void atomisp_curr_user_grid_info(struct atomisp_device *isp,
 		isp->params.curr_grid_info.dvs_grid.aligned_height;
 	info->dis_bqs_per_grid_cell =
 		isp->params.curr_grid_info.dvs_grid.bqs_per_grid_cell;
-#ifdef CONFIG_VIDEO_ATOMISP_CSS20
-	info->dis_hor_coef_num      =
-		isp->params.curr_grid_info.dvs_grid.num_hor_coefs;
-	info->dis_ver_coef_num      =
-		isp->params.curr_grid_info.dvs_grid.num_ver_coefs;
-#else
 	info->dis_hor_coef_num      =
 		isp->params.curr_grid_info.dvs_hor_coef_num;
 	info->dis_ver_coef_num      =
 		isp->params.curr_grid_info.dvs_ver_coef_num;
-#endif
+#else /* CONFIG_VIDEO_ATOMISP_CSS20 */
+	memcpy(info, &isp->params.curr_grid_info.s3a_grid,
+			sizeof(struct atomisp_css_3a_grid_info));
+
+#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 }
 
 static int atomisp_compare_grid(struct atomisp_device *isp,
@@ -1868,10 +1874,10 @@ int atomisp_get_dis_stat(struct atomisp_device *isp,
 #ifdef CONFIG_VIDEO_ATOMISP_CSS20
 	    isp->params.dvs_stat->hor_proj == NULL ||
 	    isp->params.dvs_stat->ver_proj == NULL)
-#else
+#else /* CONFIG_VIDEO_ATOMISP_CSS20 */
 	    isp->params.dis_hor_proj_buf  == NULL ||
 	    isp->params.dis_ver_proj_buf  == NULL)
-#endif
+#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 		return -EINVAL;
 
 	/* isp needs to be streaming to get DIS statistics */
@@ -1902,7 +1908,7 @@ int atomisp_get_dis_stat(struct atomisp_device *isp,
 	error |= copy_to_user(stats->horizontal_projections,
 			     isp->params.dvs_stat->hor_proj,
 			     isp->params.dvs_hor_proj_bytes);
-#else
+#else /* CONFIG_VIDEO_ATOMISP_CSS20 */
 	error = copy_to_user(stats->vertical_projections,
 			     isp->params.dis_ver_proj_buf,
 			     isp->params.dis_ver_proj_bytes);
@@ -1910,7 +1916,7 @@ int atomisp_get_dis_stat(struct atomisp_device *isp,
 	error |= copy_to_user(stats->horizontal_projections,
 			     isp->params.dis_hor_proj_buf,
 			     isp->params.dis_hor_proj_bytes);
-#endif
+#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 
 	if (error)
 		return -EFAULT;
@@ -1956,11 +1962,11 @@ int atomisp_3a_stat(struct atomisp_device *isp, int flag,
 	ret = copy_to_user(config->data,
 			   isp->params.s3a_user_stat->data,
 			   isp->params.s3a_output_bytes);
-#else
+#else /* CONFIG_VIDEO_ATOMISP_CSS20 */
 	ret = copy_to_user(config->data,
 			   isp->params.s3a_output_buf,
 			   isp->params.s3a_output_bytes);
-#endif
+#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 	if (ret) {
 		dev_err(isp->dev, "copy to user failed: copied %lu bytes\n",
 				ret);
@@ -2052,8 +2058,8 @@ static int __atomisp_set_general_isp_parameters(struct atomisp_device *isp,
 	}
 
 	if (arg->ctc_table) {
-		if (copy_from_user(&isp->params.ctc_table, arg->ctc_table,
-			sizeof(isp->params.ctc_table)))
+		if (copy_from_user(&isp->params.ctc_table.data, arg->ctc_table,
+			sizeof(isp->params.ctc_table.data)))
 			return -EFAULT;
 		atomisp_css_set_ctc_table(isp, &isp->params.ctc_table);
 	}
@@ -2284,9 +2290,9 @@ int atomisp_param(struct atomisp_device *isp, int flag,
  */
 int atomisp_color_effect(struct atomisp_device *isp, int flag, __s32 *effect)
 {
-	const struct atomisp_css_cc_config *cc_config;
-	const struct atomisp_css_macc_table *macc_table;
-	const struct atomisp_css_ctc_table *ctc_table;
+	struct atomisp_css_cc_config *cc_config = NULL;
+	struct atomisp_css_macc_table *macc_table = NULL;
+	struct atomisp_css_ctc_table *ctc_table = NULL;
 	int ret = 0;
 	struct v4l2_control control;
 
@@ -2312,6 +2318,7 @@ int atomisp_color_effect(struct atomisp_device *isp, int flag, __s32 *effect)
 	if (*effect == isp->params.color_effect)
 		return 0;
 
+#ifndef CONFIG_VIDEO_ATOMISP_CSS20
 	/*
 	 * restore the default cc and ctc table config:
 	 * when change from sepia/mono to macc effect, the default
@@ -2321,12 +2328,15 @@ int atomisp_color_effect(struct atomisp_device *isp, int flag, __s32 *effect)
 	ctc_table = isp->params.default_ctc_table;
 
 	/*
-	 * set macc enable to false by default:
-	 * when change from macc to sepia/mono,
+	 * set macc table to default when change from macc to
+	 * sepia/mono,
+	 */
+	macc_table = isp->params.default_macc_table;
+#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
+	/*
 	 * isp->params.macc_en should be set to false.
 	 */
 	isp->params.macc_en = false;
-	macc_table = isp->params.default_macc_table;
 
 	switch (*effect) {
 	case V4L2_COLORFX_NONE:
@@ -2891,7 +2901,7 @@ static int __enable_continuous_mode(struct atomisp_device *isp, bool enable)
 	atomisp_css_capture_enable_online(isp, !enable);
 	atomisp_css_preview_enable_online(isp, !enable);
 	atomisp_css_enable_continuous(isp, enable);
-	atomisp_css_enable_cont_capt(isp, enable,
+	atomisp_css_enable_cont_capt(enable,
 				!isp->isp_subdev.continuous_viewfinder->val);
 
 	if (atomisp_css_continuous_set_num_raw_frames(isp,
@@ -3039,6 +3049,7 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 			return -EINVAL;
 	}
 
+	atomisp_css_input_set_mode(isp, CSS_INPUT_MODE_SENSOR);
 	atomisp_css_disable_vf_pp(isp,
 			isp->isp_subdev.vfpp->val != ATOMISP_VFPP_ENABLE);
 

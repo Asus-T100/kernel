@@ -45,7 +45,7 @@ int __atomisp_reqbufs(struct file *file, void *fh,
 int atomisp_reqbufs(struct file *file, void *fh,
 			struct v4l2_requestbuffers *req);
 
-enum sh_css_pipe_id atomisp_get_css_pipe_id(struct atomisp_device *isp);
+enum atomisp_css_pipe_id atomisp_get_css_pipe_id(struct atomisp_device *isp);
 
 void atomisp_videobuf_free_buf(struct videobuf_buffer *vb);
 

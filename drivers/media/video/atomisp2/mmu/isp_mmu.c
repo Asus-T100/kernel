@@ -337,6 +337,7 @@ static int mmu_map(struct isp_mmu *mmu, unsigned int isp_virt,
 			mutex_unlock(&mmu->pt_mutex);
 			return ret;
 		}
+		mmu->base_address = l1_pt;
 		mmu->l1_pte = isp_pgaddr_to_pte_valid(mmu, l1_pt);
 	}
 
@@ -532,7 +533,9 @@ int isp_mmu_init(struct isp_mmu *mmu, struct isp_mmu_client *driver)
 
 	mutex_init(&mmu->pt_mutex);
 
+#ifndef CONFIG_VIDEO_ATOMISP_CSS20
 	isp_mmu_flush_tlb(mmu);
+#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 
 #ifdef USE_KMEM_CACHE
 	mmu->tbl_cache = kmem_cache_create("iopte_cache", ISP_PAGE_SIZE,

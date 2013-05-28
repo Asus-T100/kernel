@@ -37,9 +37,6 @@ extern int mipicsi_flag;
 extern int pad_w;
 extern int pad_h;
 
-extern int atomisp_pci_vendor;
-extern int atomisp_pci_device;
-
 #define CSS_DTRACE_VERBOSITY_LEVEL	5	/* Controls trace verbosity */
 #define CSS_DTRACE_VERBOSITY_TIMEOUT	9	/* Verbosity on ISP timeout */
 #define MFLD_MAX_ZOOM_FACTOR	64
@@ -53,7 +50,7 @@ struct atomisp_format_bridge {
 	unsigned int pixelformat;
 	unsigned int depth;
 	enum v4l2_mbus_pixelcode mbus_code;
-	enum sh_css_frame_format sh_fmt;
+	enum atomisp_css_frame_format sh_fmt;
 	unsigned char description[32];	/* the same as struct v4l2_fmtdesc */
 };
 
