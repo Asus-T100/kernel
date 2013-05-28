@@ -54,9 +54,19 @@
 #define atomisp_css_gc_config	ia_css_gc_config
 #define atomisp_css_tnr_config	ia_css_tnr_config
 #define atomisp_css_3a_config	ia_css_3a_config
+#define atomisp_css_ecd_config	ia_css_ecd_config
+#define atomisp_css_ynr_config	ia_css_ynr_config
+#define atomisp_css_fc_config	ia_css_fc_config
+#define atomisp_css_aa_config	ia_css_aa_config
+#define atomisp_css_anr_config	ia_css_anr_config
+#define atomisp_css_xnr_config	ia_css_xnr_config
+#define atomisp_css_macc_config	ia_css_macc_config
 #define atomisp_css_gamma_table	ia_css_gamma_table
 #define atomisp_css_ctc_table	ia_css_ctc_table
 #define atomisp_css_macc_table	ia_css_macc_table
+#define atomisp_css_xnr_table	ia_css_xnr_table
+#define atomisp_css_rgb_gamma_table	ia_css_rgb_gamma_table
+#define atomisp_css_anr_thres	ia_css_anr_thres
 #define atomisp_css_grid_info	ia_css_grid_info
 #define atomisp_css_3a_grid_info	ia_css_3a_grid_info
 #define atomisp_css_shading_table	ia_css_shading_table
@@ -104,6 +114,8 @@ typedef struct ia_css_isp_3a_statistics atomisp_css_3a_data;
 
 #define CSS_MIPI_FRAME_BUFFER_SIZE	0x60000
 
+struct atomisp_device;
+
 /*
  * These are used to indicate the css stream state, corresponding
  * stream handling can be done via judging the different state.
@@ -147,4 +159,45 @@ struct atomisp_css_event {
 	struct ia_css_event event;
 };
 
+void atomisp_css_set_macc_config(struct atomisp_device *isp,
+			struct atomisp_css_macc_config *macc_config);
+
+void atomisp_css_set_ecd_config(struct atomisp_device *isp,
+			struct atomisp_css_ecd_config *ecd_config);
+
+void atomisp_css_set_ynr_config(struct atomisp_device *isp,
+			struct atomisp_css_ynr_config *ynr_config);
+
+void atomisp_css_set_fc_config(struct atomisp_device *isp,
+			struct atomisp_css_fc_config *fc_config);
+
+void atomisp_css_set_aa_config(struct atomisp_device *isp,
+			struct atomisp_css_aa_config *aa_config);
+
+void atomisp_css_set_anr_config(struct atomisp_device *isp,
+			struct atomisp_css_anr_config *anr_config);
+
+void atomisp_css_set_xnr_config(struct atomisp_device *isp,
+			struct atomisp_css_xnr_config *xnr_config);
+
+void atomisp_css_set_yuv2rgb_cc_config(struct atomisp_device *isp,
+			struct atomisp_css_cc_config *yuv2rgb_cc_config);
+
+void atomisp_css_set_rgb2yuv_cc_config(struct atomisp_device *isp,
+			struct atomisp_css_cc_config *rgb2yuv_cc_config);
+
+void atomisp_css_set_xnr_table(struct atomisp_device *isp,
+			struct atomisp_css_xnr_table *xnr_table);
+
+void atomisp_css_set_r_gamma_table(struct atomisp_device *isp,
+			struct atomisp_css_rgb_gamma_table *r_gamma_table);
+
+void atomisp_css_set_g_gamma_table(struct atomisp_device *isp,
+			struct atomisp_css_rgb_gamma_table *g_gamma_table);
+
+void atomisp_css_set_b_gamma_table(struct atomisp_device *isp,
+			struct atomisp_css_rgb_gamma_table *b_gamma_table);
+
+void atomisp_css_set_anr_thres(struct atomisp_device *isp,
+			struct atomisp_css_anr_thres *anr_thres);
 #endif

@@ -201,22 +201,55 @@ struct atomisp_css_params {
 	bool dis_proj_data_valid;
 
 	/* current configurations */
+	/* Dead Pixel config */
 	struct atomisp_css_dp_config   dp_config;
+	/* White Balance config */
 	struct atomisp_css_wb_config   wb_config;
+	/* Color Correction config */
 	struct atomisp_css_cc_config   cc_config;
+	/* Noise Reduction config */
 	struct atomisp_css_nr_config   nr_config;
+	/* Edge Enhancement config */
 	struct atomisp_css_ee_config   ee_config;
+	/* Objective Black config */
 	struct atomisp_css_ob_config   ob_config;
+	/* Demosaic config */
 	struct atomisp_css_de_config   de_config;
 	struct atomisp_css_ce_config   ce_config;
+	/* Gamma Correction config */
 	struct atomisp_css_gc_config   gc_config;
+	/* Temporal Noise Reduction */
 	struct atomisp_css_tnr_config  tnr_config;
+	/* 3A Statistics config */
 	struct atomisp_css_3a_config   s3a_config;
 	struct atomisp_css_gamma_table gamma_table;
 	struct atomisp_css_ctc_table   ctc_table;
 	struct atomisp_css_macc_table  macc_table;
 
 #ifdef CONFIG_VIDEO_ATOMISP_CSS20
+	struct atomisp_css_macc_config	macc_config;
+	/* Eigen Color Demosaicing */
+	struct atomisp_css_ecd_config	ecd_config;
+	/* Y(Luma) Noise Reduction */
+	struct atomisp_css_ynr_config	ynr_config;
+	/* Fringe Control */
+	struct atomisp_css_fc_config	fc_config;
+	/* Anti-Aliasing */
+	struct atomisp_css_aa_config	aa_config;
+	/* Advanced Noise Reduction */
+	struct atomisp_css_anr_config	anr_config;
+	/* eXtra Noise Reduction */
+	struct atomisp_css_xnr_config	xnr_config;
+	/* Color Correction config */
+	struct atomisp_css_cc_config	yuv2rgb_cc_config;
+	/* Color Correction config */
+	struct atomisp_css_cc_config	rgb2yuv_cc_config;
+	struct atomisp_css_xnr_table   xnr_table;
+	struct atomisp_css_rgb_gamma_table	r_gamma_table;
+	struct atomisp_css_rgb_gamma_table	g_gamma_table;
+	struct atomisp_css_rgb_gamma_table	b_gamma_table;
+	struct atomisp_css_anr_thres	anr_thres;
+
 	struct ia_css_dz_config   dz_config;  /**< Digital Zoom */
 	struct ia_css_capture_config   capture_config;
 	struct ia_css_dvs_coefficients dvs_coefs;

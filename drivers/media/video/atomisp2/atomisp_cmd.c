@@ -1969,6 +1969,7 @@ int atomisp_3a_stat(struct atomisp_device *isp, int flag,
 static int __atomisp_set_general_isp_parameters(struct atomisp_device *isp,
 					struct atomisp_parameters *arg)
 {
+	/* TODO: add cnr_config and ctc_config when they're ready */
 	if (arg->wb_config) {
 		if (copy_from_user(&isp->params.wb_config, arg->wb_config,
 			sizeof(struct atomisp_css_wb_config)))
@@ -2032,6 +2033,147 @@ static int __atomisp_set_general_isp_parameters(struct atomisp_device *isp,
 		atomisp_css_set_cc_config(isp, &isp->params.cc_config);
 	}
 
+	if (arg->ctc_table) {
+		if (copy_from_user(&isp->params.ctc_table.data, arg->ctc_table,
+			sizeof(isp->params.ctc_table.data)))
+			return -EFAULT;
+		atomisp_css_set_ctc_table(isp, &isp->params.ctc_table);
+	}
+
+	if (arg->gc_config) {
+		if (copy_from_user(&isp->params.gc_config, arg->gc_config,
+			sizeof(isp->params.gc_config)))
+			return -EFAULT;
+		atomisp_css_set_gc_config(isp, &isp->params.gc_config);
+	}
+
+	if (arg->a3a_config) {
+		if (copy_from_user(&isp->params.s3a_config, arg->a3a_config,
+			sizeof(isp->params.s3a_config)))
+			return -EFAULT;
+		atomisp_css_set_3a_config(isp, &isp->params.s3a_config);
+	}
+
+#ifdef CONFIG_VIDEO_ATOMISP_CSS20
+	if (arg->ecd_config) {
+		if (copy_from_user(&isp->params.ecd_config, arg->ecd_config,
+				sizeof(struct atomisp_css_ecd_config)))
+			return -EFAULT;
+		atomisp_css_set_ecd_config(isp, &isp->params.ecd_config);
+	}
+
+	if (arg->ynr_config) {
+		if (copy_from_user(&isp->params.ynr_config, arg->ynr_config,
+					sizeof(struct atomisp_css_ynr_config)))
+			return -EFAULT;
+		atomisp_css_set_ynr_config(isp, &isp->params.ynr_config);
+	}
+
+	if (arg->fc_config) {
+		if (copy_from_user(&isp->params.fc_config, arg->fc_config,
+				sizeof(struct atomisp_css_fc_config)))
+			return -EFAULT;
+		atomisp_css_set_fc_config(isp, &isp->params.fc_config);
+	}
+
+	if (arg->macc_config) {
+		if (copy_from_user(&isp->params.macc_config, arg->macc_config,
+				   sizeof(struct atomisp_css_macc_config)))
+			return -EFAULT;
+		atomisp_css_set_macc_config(isp, &isp->params.macc_config);
+	}
+
+	if (arg->aa_config) {
+		if (copy_from_user(&isp->params.aa_config, arg->aa_config,
+					sizeof(struct atomisp_css_aa_config)))
+			return -EFAULT;
+		atomisp_css_set_aa_config(isp, &isp->params.aa_config);
+	}
+
+	if (arg->anr_config) {
+		if (copy_from_user(&isp->params.anr_config, arg->anr_config,
+					sizeof(struct atomisp_css_anr_config)))
+			return -EFAULT;
+		atomisp_css_set_anr_config(isp, &isp->params.anr_config);
+	}
+
+	if (arg->xnr_config) {
+		if (copy_from_user(&isp->params.xnr_config, arg->xnr_config,
+					sizeof(struct atomisp_css_xnr_config)))
+			return -EFAULT;
+		atomisp_css_set_xnr_config(isp, &isp->params.xnr_config);
+	}
+
+	if (arg->yuv2rgb_cc_config) {
+		if (copy_from_user(&isp->params.yuv2rgb_cc_config,
+				   arg->yuv2rgb_cc_config,
+				   sizeof(struct atomisp_css_cc_config)))
+			return -EFAULT;
+		atomisp_css_set_yuv2rgb_cc_config(isp,
+					&isp->params.yuv2rgb_cc_config);
+	}
+
+	if (arg->rgb2yuv_cc_config) {
+		if (copy_from_user(&isp->params.rgb2yuv_cc_config,
+				   arg->rgb2yuv_cc_config,
+				   sizeof(struct atomisp_css_cc_config)))
+			return -EFAULT;
+		atomisp_css_set_rgb2yuv_cc_config(isp,
+					&isp->params.rgb2yuv_cc_config);
+	}
+
+	if (arg->macc_table) {
+		if (copy_from_user(&isp->params.macc_table, arg->macc_table,
+				   sizeof(struct atomisp_css_macc_table)))
+			return -EFAULT;
+		atomisp_css_set_macc_table(isp, &isp->params.macc_table);
+	}
+
+	if (arg->xnr_table) {
+		if (copy_from_user(&isp->params.xnr_table, arg->xnr_table,
+				   sizeof(struct atomisp_css_xnr_table)))
+			return -EFAULT;
+		atomisp_css_set_xnr_table(isp, &isp->params.xnr_table);
+	}
+
+	if (arg->r_gamma_table) {
+		if (copy_from_user(&isp->params.r_gamma_table,
+				   arg->r_gamma_table,
+				   sizeof(struct atomisp_css_rgb_gamma_table)))
+			return -EFAULT;
+		atomisp_css_set_r_gamma_table(isp, &isp->params.r_gamma_table);
+	}
+
+	if (arg->g_gamma_table) {
+		if (copy_from_user(&isp->params.g_gamma_table,
+				   arg->g_gamma_table,
+				   sizeof(struct atomisp_css_rgb_gamma_table)))
+			return -EFAULT;
+		atomisp_css_set_g_gamma_table(isp, &isp->params.g_gamma_table);
+	}
+
+	if (arg->b_gamma_table) {
+		if (copy_from_user(&isp->params.b_gamma_table,
+				   arg->b_gamma_table,
+				   sizeof(struct atomisp_css_rgb_gamma_table)))
+			return -EFAULT;
+		atomisp_css_set_b_gamma_table(isp, &isp->params.b_gamma_table);
+	}
+
+	if (arg->anr_thres) {
+		if (copy_from_user(&isp->params.anr_thres, arg->anr_thres,
+				sizeof(struct atomisp_css_anr_thres)))
+			return -EFAULT;
+		atomisp_css_set_anr_thres(isp, &isp->params.anr_thres);
+	}
+
+	if (isp->css_env.stream
+		&& isp->isp_subdev.run_mode->val
+			== ATOMISP_RUN_MODE_STILL_CAPTURE) {
+		atomisp_css_update_isp_params(isp);
+		isp->params.css_update_params_needed = false;
+	}
+#else /* CONFIG_VIDEO_ATOMISP_CSS20 */
 	if (arg->macc_config) {
 		if (copy_from_user(&isp->params.macc_table,
 			&arg->macc_config->table,
@@ -2048,36 +2190,7 @@ static int __atomisp_set_general_isp_parameters(struct atomisp_device *isp,
 		atomisp_css_set_gamma_table(isp, &isp->params.gamma_table);
 	}
 
-	if (arg->ctc_table) {
-		if (copy_from_user(&isp->params.ctc_table.data, arg->ctc_table,
-			sizeof(isp->params.ctc_table.data)))
-			return -EFAULT;
-		atomisp_css_set_ctc_table(isp, &isp->params.ctc_table);
-	}
-
-	/*
-	 * TODO/FIXME: No implementation exists for setting the XNR threshold
-	 * in CSS. Enable this when CSS implementation is ready.
-	 */
-	/*
-	if (arg->xnr_config)
-		sh_css_xnr_config(xnr_config->threshold);
-	*/
-
-	if (arg->gc_config) {
-		if (copy_from_user(&isp->params.gc_config, arg->gc_config,
-			sizeof(isp->params.gc_config)))
-			return -EFAULT;
-		atomisp_css_set_gc_config(isp, &isp->params.gc_config);
-	}
-
-	if (arg->a3a_config) {
-		if (copy_from_user(&isp->params.s3a_config, arg->a3a_config,
-			sizeof(isp->params.s3a_config)))
-			return -EFAULT;
-		atomisp_css_set_3a_config(isp, &isp->params.s3a_config);
-	}
-
+#endif /* CONFIG_VIDEO_ATOMISP_CSS20 */
 	return 0;
 }
 

@@ -1516,18 +1516,100 @@ void atomisp_css_set_macc_table(struct atomisp_device *isp,
 	isp->params.config.macc_table = macc_table;
 }
 
+void atomisp_css_set_macc_config(struct atomisp_device *isp,
+			struct atomisp_css_macc_config *macc_config)
+{
+	isp->params.config.macc_config = macc_config;
+}
+
+void atomisp_css_set_ecd_config(struct atomisp_device *isp,
+			struct atomisp_css_ecd_config *ecd_config)
+{
+	isp->params.config.ecd_config = ecd_config;
+}
+
+void atomisp_css_set_ynr_config(struct atomisp_device *isp,
+			struct atomisp_css_ynr_config *ynr_config)
+{
+	isp->params.config.ynr_config = ynr_config;
+}
+
+void atomisp_css_set_fc_config(struct atomisp_device *isp,
+			struct atomisp_css_fc_config *fc_config)
+{
+	isp->params.config.fc_config = fc_config;
+}
+
+void atomisp_css_set_aa_config(struct atomisp_device *isp,
+			struct atomisp_css_aa_config *aa_config)
+{
+	isp->params.config.aa_config = aa_config;
+}
+
+void atomisp_css_set_anr_config(struct atomisp_device *isp,
+			struct atomisp_css_anr_config *anr_config)
+{
+	isp->params.config.anr_config = anr_config;
+}
+
+void atomisp_css_set_xnr_config(struct atomisp_device *isp,
+			struct atomisp_css_xnr_config *xnr_config)
+{
+	isp->params.config.xnr_config = xnr_config;
+}
+
+void atomisp_css_set_yuv2rgb_cc_config(struct atomisp_device *isp,
+			struct atomisp_css_cc_config *yuv2rgb_cc_config)
+{
+	isp->params.config.yuv2rgb_cc_config = yuv2rgb_cc_config;
+}
+
+void atomisp_css_set_rgb2yuv_cc_config(struct atomisp_device *isp,
+			struct atomisp_css_cc_config *rgb2yuv_cc_config)
+{
+	isp->params.config.rgb2yuv_cc_config = rgb2yuv_cc_config;
+}
+
+void atomisp_css_set_xnr_table(struct atomisp_device *isp,
+			struct atomisp_css_xnr_table *xnr_table)
+{
+	isp->params.config.xnr_table = xnr_table;
+}
+
+void atomisp_css_set_r_gamma_table(struct atomisp_device *isp,
+			struct atomisp_css_rgb_gamma_table *r_gamma_table)
+{
+	isp->params.config.r_gamma_table = r_gamma_table;
+}
+
+void atomisp_css_set_g_gamma_table(struct atomisp_device *isp,
+			struct atomisp_css_rgb_gamma_table *g_gamma_table)
+{
+	isp->params.config.g_gamma_table = g_gamma_table;
+}
+
+void atomisp_css_set_b_gamma_table(struct atomisp_device *isp,
+			struct atomisp_css_rgb_gamma_table *b_gamma_table)
+{
+	isp->params.config.b_gamma_table = b_gamma_table;
+}
+
 void atomisp_css_set_gamma_table(struct atomisp_device *isp,
 			struct atomisp_css_gamma_table *gamma_table)
 {
 	isp->params.config.gamma_table = gamma_table;
-	return;
 }
 
 void atomisp_css_set_ctc_table(struct atomisp_device *isp,
 			struct atomisp_css_ctc_table *ctc_table)
 {
 	isp->params.config.ctc_table = ctc_table;
-	return;
+}
+
+void atomisp_css_set_anr_thres(struct atomisp_device *isp,
+			struct atomisp_css_anr_thres *anr_thres)
+{
+	isp->params.config.anr_thres = anr_thres;
 }
 
 void atomisp_css_set_gc_config(struct atomisp_device *isp,
