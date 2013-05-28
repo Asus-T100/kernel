@@ -224,6 +224,11 @@ static int ctp_get_vsys_min(void)
 	return BATT_VMIN_THRESHOLD_DEF * 1000;
 }
 
+static int ctp_get_battery_temp(int *temp)
+{
+	return platform_get_battery_pack_temp(temp);
+}
+
 int mrfl_get_bat_health(void)
 {
 
@@ -343,6 +348,7 @@ static void init_callbacks(struct max17042_platform_data *pdata)
 		pdata->battery_health = bq24192_get_battery_health;
 		pdata->get_vmin_threshold = ctp_get_vsys_min;
 		pdata->reset_chip = true;
+		pdata->battery_pack_temp = ctp_get_battery_temp;
 	} else if (INTEL_MID_BOARD(1, PHONE, MRFL)
 			|| INTEL_MID_BOARD(1, TABLET, MRFL)) {
 		/* MRFL Phones and tablets*/

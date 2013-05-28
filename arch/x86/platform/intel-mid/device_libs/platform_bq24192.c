@@ -490,11 +490,12 @@ read_adc_exit:
 }
 
 /* returns the battery pack temperature read from adc */
-static int platform_get_battery_pack_temp(int *temp)
+int platform_get_battery_pack_temp(int *temp)
 {
 	pr_debug("%s\n", __func__);
 	return platform_read_adc_temp(temp, bptherm_curve_data);
 }
+EXPORT_SYMBOL(platform_get_battery_pack_temp);
 
 static void platform_free_data(void)
 {
