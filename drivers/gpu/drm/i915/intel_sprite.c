@@ -813,13 +813,6 @@ intel_update_plane(struct drm_plane *plane, struct drm_crtc *crtc,
 		goto out;
 
 	/*
-	 * We can take a larger source and scale it down, but
-	 * only so much...  16x is the max on SNB.
-	 */
-	if (((src_w * src_h) / (crtc_w * crtc_h)) > intel_plane->max_downscale)
-		return -EINVAL;
-
-	/*
 	 * If the sprite is completely covering the primary plane,
 	 * we can disable the primary and save power.
 	 */
