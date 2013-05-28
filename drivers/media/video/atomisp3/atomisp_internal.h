@@ -285,6 +285,20 @@ struct atomisp_css_params {
 	bool css_update_params_needed;
 };
 
+#ifdef ATOMISP_CSS2
+struct atomisp_acc_fw {
+	struct ia_css_fw_info *fw;
+	unsigned int handle;
+	unsigned int flags;
+	unsigned int type;
+	struct {
+		size_t length;
+		unsigned long css_ptr;
+	} args[N_IA_CSS_ISP_MEMORIES];
+	struct list_head list;
+};
+
+#else
 struct atomisp_acc_fw {
 	struct sh_css_fw_info *fw;
 	unsigned int handle;
@@ -296,6 +310,8 @@ struct atomisp_acc_fw {
 	} args[ATOMISP_ACC_NR_MEMORY];
 	struct list_head list;
 };
+#endif
+
 
 struct atomisp_map {
 	hrt_vaddress ptr;
