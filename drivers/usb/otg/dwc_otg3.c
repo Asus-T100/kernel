@@ -1732,6 +1732,7 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 	otg->otg_data = pdev->dev.platform_data;
 	if (!otg->otg_data) {
 		otg_err(otg, "Get otg platform data failed\n");
+		retval = -EINVAL;
 		goto exit;
 	}
 
