@@ -161,6 +161,21 @@ static int hmm_get_mmu_base_addr(unsigned int *mmu_base_addr)
 	return 0;
 }
 
+static void atomisp_isp_parameters_clean_up(
+				struct atomisp_css_isp_config *config)
+{
+	if (config->shading_table)
+		ia_css_shading_table_free(config->shading_table);
+	if (config->morph_table)
+		ia_css_morph_table_free(config->morph_table);
+
+	/*
+	 * Set NULL to configs pointer to avoid they are set into isp again when
+	 * some configs are changed and need to be updated later.
+	 */
+	memset(config, 0, sizeof(*config));
+}
+
 static void __dump_stream_pipe_config(struct atomisp_device *isp)
 {
 	struct ia_css_pipe_config *p_config;
@@ -382,6 +397,9 @@ int atomisp_css_init(struct atomisp_device *isp)
 
 void atomisp_css_uninit(struct atomisp_device *isp)
 {
+	atomisp_isp_parameters_clean_up(&isp->params.config);
+	isp->params.css_update_params_needed = false;
+
 	ia_css_uninit();
 }
 
@@ -615,21 +633,6 @@ stream_err:
 		dev_err(isp->dev, "stop sp failed.\n");
 
 	return ret;
-}
-
-static void atomisp_isp_parameters_clean_up(
-				struct atomisp_css_isp_config *config)
-{
-	if (config->shading_table)
-		ia_css_shading_table_free(config->shading_table);
-	if (config->morph_table)
-		ia_css_morph_table_free(config->morph_table);
-
-	/*
-	 * Set NULL to configs pointer to avoid they are set into isp again when
-	 * some configs are changed and need to be updated later.
-	 */
-	memset(config, 0, sizeof(struct atomisp_css_isp_config));
 }
 
 void atomisp_css_update_isp_params(struct atomisp_device *isp)
