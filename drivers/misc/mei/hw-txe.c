@@ -858,6 +858,9 @@ irqreturn_t mei_txe_irq_thread_handler(int irq, void *dev_id)
 	mutex_lock(&dev->device_lock);
 	mei_io_list_init(&complete_list);
 
+	if (pci_dev_msi_enabled(dev->pdev))
+		mei_txe_check_and_ack_intrs(dev, true);
+
 	hw->aliveness = mei_txe_aliveness_get(dev);
 	hw->readiness_state = mei_txe_readiness_get(dev);
 

@@ -129,8 +129,14 @@ static int mei_txe_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	/* clear spurious interrupts */
 	mei_clear_interrupts(dev);
 
-	/* request and enable interrupt   */
-	err = request_threaded_irq(pdev->irq,
+	/* request and enable interrupt  */
+	if (pci_dev_msi_enabled(pdev))
+		err = request_threaded_irq(pdev->irq,
+			NULL,
+			mei_txe_irq_thread_handler,
+			IRQF_ONESHOT, KBUILD_MODNAME, dev);
+	else
+		err = request_threaded_irq(pdev->irq,
 			mei_txe_irq_quick_handler,
 			mei_txe_irq_thread_handler,
 			IRQF_SHARED, KBUILD_MODNAME, dev);
@@ -265,8 +271,14 @@ static int mei_txe_pci_resume(struct device *device)
 
 	mei_clear_interrupts(dev);
 
-	/* request and enable interrupt   */
-	err = request_threaded_irq(pdev->irq,
+	/* request and enable interrupt */
+	if (pci_dev_msi_enabled(pdev))
+		err = request_threaded_irq(pdev->irq,
+			NULL,
+			mei_txe_irq_thread_handler,
+			IRQF_ONESHOT, KBUILD_MODNAME, dev);
+	else
+		err = request_threaded_irq(pdev->irq,
 			mei_txe_irq_quick_handler,
 			mei_txe_irq_thread_handler,
 			IRQF_SHARED, KBUILD_MODNAME, dev);
